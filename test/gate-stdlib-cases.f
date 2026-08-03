@@ -317,20 +317,30 @@ SUITE codegen-compare
 
 \ The end-to-end workload measurement, and the same division of labour. Its
 \ member checks the facts the measurement's numbers would be meaningless
-\ without: the engine's own call-or-copy rule, read off compiled code and
-\ checked against fixtures built to break it in each direction; that each arm's
-\ driver enters ITS OWN code generator's word and not the other one's - the
-\ mutation a two-arm timing turns on, because an after-arm still calling the
-\ before-arm's record reports a delta of nothing and looks healthy; that the two
-\ arms of every workload compute the same pinned answer; and that the two arms
-\ of one workload body come out the same number of bytes, because a name lives
-\ in a dictionary record and not in a compiled body.
+\ without: the engine's own call-or-copy rule, read off compiled code and pinned
+\ REASON BY REASON - a straight-line body at the size limit and one instruction
+\ over it, on both sides of the two separate size tests C-CALL makes; a patched
+\ return slot against an unpatched one compiled from the same six instructions;
+\ and one body per refusal class whose only unmovable instruction is of that
+\ class; that each arm's driver enters ITS OWN code generator's word and not the
+\ other one's - the mutation a two-arm timing turns on, because an after-arm
+\ still calling the before-arm's record reports a delta of nothing and looks
+\ healthy; that the two arms of every workload compute the same pinned answer;
+\ that the two arms of one workload body come out the same number of bytes,
+\ because a name lives in a dictionary record and not in a compiled body; and
+\ that a row's delta keeps its sign while a row's two columns keep their arms.
 \
 \ NO ASSERTION THE MEMBER RUNS READS A CLOCK, for the reason the entry above
-\ gives. The deltas themselves - what the new code generator is worth to a
-\ program, which of them clear their control and floor rows, and which are
-\ invisible under the layout noise of the shape they measure - are printed by
+\ gives. It does measure a small family of rows of its own, through the store
+\ every reported row goes through, but it reads their ANSWERS, their kinds and
+\ the shape of their runs, never their times. The deltas themselves - what the
+\ new code generator is worth to a program, and which of them clear the bar
+\ their own family's null draws set - are printed by
 \ bin/hb --load tools/codegen-workload.f, run by hand on a quiet machine. The
+\ one claim that genuinely needs two arms to have taken measurably different
+\ times - that the column a row calls old holds the arm handed to it as old - is
+\ in tools/codegen-workload-timed-test.f, run by hand beside that entry and
+\ listed in no suite, exactly as tools/codegen-compare-timed-test.f is. The
 \ member is mirrored into the resident stdlib/tail-pure fork group, so it is
 \ scheduled rather than manual-gate, and nothing is entered for it in the
 \ manual-gate table of tools/suite-coverage-lint-core.f.

@@ -34,10 +34,25 @@
 \
 \ The constants are habu2.f's own, and are named here with the spelling that file
 \ uses so the two can be read side by side. They are a copy - this file cannot
-\ reach into the engine builder's dictionary - and the acceptance suite pins the
-\ rule against the live engine rather than against these numbers: it asks the
-\ predicate about words whose call sites it also counts, and a disagreement
-\ between the rule and the count is a finding.
+\ reach into the engine builder's dictionary - and a copy is only worth as much
+\ as the gate that holds it to its original.
+\
+\ HOW THE SUITE HOLDS THE COPY TO THE ENGINE, CLAUSE BY CLAUSE. The gate is one
+\ identity, checked per fixture: for a callee S and a caller C compiled after it
+\ with a single mention of S,
+\
+\    ENGINE-COPIES? S   is true exactly when   C CALLS? S   is false.
+\
+\ The left side is this file's rule. The right side is not a rule at all - it is
+\ the engine's decision, already made and already written into C's machine code
+\ as a call instruction or as the absence of one. So the two sides can only agree
+\ by the copy still saying what the engine says, and either one drifting is a
+\ failing case. tools/codegen-workload-test.f carries a fixture per reason a body
+\ can be refused - one instruction over the size limit, and one instruction of
+\ each refusal class in an otherwise movable body - so that a clause that went
+\ missing from either side has a case whose only reason to refuse was that
+\ clause. Four of the nine classes have no such fixture and cannot get one; that
+\ file records which, and why, rather than pretending otherwise.
 \
 \ AND THE COUNT, WHICH IS THE OTHER HALF. CALL-SITES walks every live dictionary
 \ record and counts the `bl` instructions whose target is the subject's own code
@@ -64,6 +79,7 @@ package CODEGEN-SCAN
 public
 
 -7220 constant E-WLSCAN-SUBJECT   \ a named subject word is not in the live dictionary
+-7227 constant E-WLSCAN-INSN      \ an instruction index the walk over a record never reached
 
 private
 
@@ -85,11 +101,30 @@ variable AT
    AT-PTR 3 + c@ 24 lshift or ;
 
 \ ---- the engine's own constants, spelled as src/habu/habu2.f spells them -----
+\ The three sizes and the two frame instructions are public because the
+\ acceptance suite states its fixtures' sizes and ends against the engine's own
+\ numbers rather than against a second copy of them: a fixture "one instruction
+\ over the limit" is a fixture whose record is INL-MAX + FRAME-BYTES +
+\ INSN-BYTES long, and that sentence should read the same in the suite as it
+\ does here.
+public
+
 $28 constant INL-MAX                  \ the most bytes of BODY the engine copies
 16 constant FRAME-BYTES               \ prologue plus epilogue of a compiled word
 4 constant INSN-BYTES
 
 $D10043FF constant C-CALL-PROLOGUE-INSTR
+
+\ The instruction that undoes the prologue: `add sp, sp, #16`, the last one
+\ inside a compiled word's record (src/habu/habu2.f:522 emits it, and the `ret`
+\ that follows it lives one instruction PAST the record - which is the fact
+\ PLAIN-BODY below leans on). habu2.f has no name for it because it never has to
+\ recognise it; the suite does, because a record's last instruction is how a walk
+\ that stopped one short is caught.
+$910043FF constant C-CALL-FRAME-DOWN-INSTR
+
+private
+
 $D65F03C0 constant C-CALL-RET-INSTR
 $FC000000 constant C-CALL-B-IMM-MASK
 $94000000 constant C-CALL-BL-IMM
@@ -112,6 +147,27 @@ $04000000 constant IMM26-SPAN
 
 : MASKED? ( n n n -- bool ) {: w:n mask:n op:n :}
    w mask and op = ;
+
+\ ---- the one walk over a record's instructions -------------------------------
+\ Every answer in this file that is read out of emitted code is read through
+\ SPAN-EACH: the call counter, the per-word call count, the two-arm wiring
+\ question, and the two words the acceptance suite reads a record with. There is
+\ one loop over a record's code in this file and this is it.
+\
+\ THAT IS THE POINT, not tidiness. A walk that started one instruction late or
+\ stopped one instruction early would undercount calls in every record that had
+\ one at that end, and a second walk written out beside it could stay correct
+\ while this one drifted - which is exactly how a scan comes to report a number
+\ nobody can check. Because the suite reads its fixtures through the same walk,
+\ "the walk covers the record end to end" is a case it can state directly, and a
+\ dropped end fails it before it can quietly change a count.
+\
+\ typed-local-lint: allow-bare-local - q receives an instruction's address and
+\ the instruction at it, and a local annotation cannot carry a quotation effect.
+: SPAN-EACH ( n n [ n n -- ] -- ) {: s:n len:n q :}
+   len INSN-BYTES / 0 ?do
+      s i INSN-BYTES * +  dup INSN@  q execute
+   loop ;
 
 public
 
@@ -173,6 +229,45 @@ public
 
 : LIVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u XREF-FIND XREF-FOUND? ;
+
+private
+
+\ ---- reading a record back through the walk ----------------------------------
+\ The suite's own view of a record, and it is deliberately the walk's view and
+\ not the dictionary's: WORD-BYTES says how long the record is, these say what
+\ the walk actually visited in it. The two agreeing is the case that catches a
+\ walk which lost an end.
+variable INSN-N
+variable INSN-WANT
+variable INSN-GOT
+variable INSN-SEEN
+
+: COUNT-INSN ( n n -- )
+   drop drop
+   INSN-N @ 1+ INSN-N ! ;
+
+: PICK-INSN ( n n -- )
+   nip {: w:n :}
+   INSN-N @ INSN-WANT @ = if w INSN-GOT !  true INSN-SEEN ! then
+   INSN-N @ 1+ INSN-N ! ;
+
+public
+
+\ How many instructions the walk sees in this word's record.
+: WORD-INSNS ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 INSN-N !
+   a u WORD-ENTRY  a u WORD-BYTES  [: COUNT-INSN ;] SPAN-EACH
+   INSN-N @ ;
+
+\ The k'th instruction the walk sees, counted from the record's first. An index
+\ the walk never reached is refused rather than answered: a caller asking for the
+\ last instruction of a record has to be told when the walk stopped short of it,
+\ and a stale or zero word would read as an answer.
+: WORD-INSN-AT ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
+   0 INSN-N !  k INSN-WANT !  false INSN-SEEN !
+   a u WORD-ENTRY  a u WORD-BYTES  [: PICK-INSN ;] SPAN-EACH
+   INSN-SEEN @ 0= if E-WLSCAN-INSN throw then
+   INSN-GOT @ ;
 
 private
 
@@ -239,10 +334,8 @@ variable CALLERS
    SITES @ 1+ SITES !
    IN-REC @ 1+ IN-REC ! ;
 
-: SCAN-SPAN ( n n -- ) {: s:n len:n :}
-   len INSN-BYTES / 0 ?do
-      s i INSN-BYTES * +  dup INSN@  SITE
-   loop ;
+: SCAN-SPAN ( n n -- )
+   [: SITE ;] SPAN-EACH ;
 
 : SCAN-REC ( n -- ) {: k:n :}
    k CODED? 0= if exit then
@@ -266,15 +359,40 @@ public
    a u WORD-ENTRY SWEEP
    CALLERS @ ;
 
+private
+
+variable BL-N
+
+: COUNT-BL ( n n -- )
+   nip BL? if BL-N @ 1+ BL-N ! then ;
+
+public
+
 \ How many call instructions this word's own code contains.
 : BLS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u WORD-ENTRY {: s:n :}
-   a u WORD-BYTES {: len:n :}
-   s AT !
-   0
-   len INSN-BYTES / 0 ?do
-      s i INSN-BYTES * + INSN@ BL? if 1+ then
-   loop ;
+   0 BL-N !
+   a u WORD-ENTRY  a u WORD-BYTES  [: COUNT-BL ;] SPAN-EACH
+   BL-N @ ;
+
+private
+
+variable STUCK-N
+
+: COUNT-STUCK ( n n -- )
+   nip MOVABLE? 0= if STUCK-N @ 1+ STUCK-N ! then ;
+
+public
+
+\ How many instructions of this word's code the rule refuses to move. This is
+\ the other half of a refusal, and the acceptance suite needs it stated rather
+\ than assumed: a fixture meant to test the SIZE limit is only testing the size
+\ limit while this answers zero, and a fixture meant to isolate ONE refusal
+\ clause is only isolating it while this answers one. A comment claiming either
+\ is a comment; this is a number the suite can fail on.
+: UNMOVABLE-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 STUCK-N !
+   a u WORD-ENTRY  a u WORD-BYTES  [: COUNT-STUCK ;] SPAN-EACH
+   STUCK-N @ ;
 
 private
 
@@ -296,11 +414,7 @@ public
 : CALLS-IN ( ptr u8 n ptr u8 n -- n ) {: ca:ptr cu:n ta:ptr tu:n :}
    0 HITS !
    ta tu WORD-ENTRY WANT !
-   ca cu WORD-ENTRY {: s:n :}
-   ca cu WORD-BYTES {: len:n :}
-   len INSN-BYTES / 0 ?do
-      s i INSN-BYTES * +  dup INSN@  CALL-SITE?
-   loop
+   ca cu WORD-ENTRY  ca cu WORD-BYTES  [: CALL-SITE? ;] SPAN-EACH
    HITS @ ;
 
 \ Does the caller's own code hold a call instruction that enters the callee?

@@ -97,17 +97,42 @@ $7FFFFFFFFFFFFFFF constant NS-MAX
 0 constant KIND-REAL
 1 constant KIND-NULL
 
+\ ---- a row's two columns, each written as one column --------------------------
+\ A row holds three numbers per column: the column's fastest run, its spread, and
+\ the value it computed. They live in ONE array per column rather than one array
+\ per number, and CLOSE writes each column with a single call, because the thing
+\ a reader of the report is trusting is that this column IS the before-arm. Cell
+\ by cell, that can be true of the value and false of the time, and two numbers
+\ swapped between columns is a delta with its sign inverted and nothing on the
+\ page to show it. Written as one column, a column that got the wrong arm got the
+\ wrong ANSWER as well - and an answer is a fact a scheduled suite can check,
+\ because unlike a time it does not come from a clock.
+\
+\ THAT ARGUMENT IS ABOUT PAIR ROWS AND NOT ABOUT SWEEP ROWS. A sweep's two
+\ columns are the fastest and the slowest of five publications of ONE body, so
+\ both computed the same value and the answers cannot tell them apart. What
+\ identifies a sweep's columns instead is a fact of its construction rather than
+\ of its measurement: the old column is the smallest fastest run and the new one
+\ is the largest, so the old is never the greater. That is what the suite states
+\ about a sweep row, and it cannot fail for host load - whatever the five times
+\ were, the least of them is not the greatest.
+\
+\ WHAT IS NOT AN ARM COLUMN. A row's name, its family and its kind belong to the
+\ ROW and not to either of its arms - a family is what the row is a measurement
+\ OF - so they stay row-wide columns and the arm array holds only what an arm
+\ measured.
+3 constant ARM-CELLS
+0 constant ARM-NS
+1 constant ARM-SPREAD
+2 constant ARM-SUM
+
 ROW-MAX NAME-MAX * BUFFER: NAME-BYTES
 create NAME-LENS ROW-MAX cells allot
 ROW-MAX NAME-MAX * BUFFER: FAM-BYTES
 create FAM-LENS ROW-MAX cells allot
 create KIND-A ROW-MAX cells allot
-create OLD-NS-A ROW-MAX cells allot
-create NEW-NS-A ROW-MAX cells allot
-create OLD-SPREAD-A ROW-MAX cells allot
-create NEW-SPREAD-A ROW-MAX cells allot
-create OLD-SUM-A ROW-MAX cells allot
-create NEW-SUM-A ROW-MAX cells allot
+create OLD-ARM ROW-MAX ARM-CELLS * cells allot
+create NEW-ARM ROW-MAX ARM-CELLS * cells allot
 create REPS-A ROW-MAX cells allot
 create ROUNDS-A ROW-MAX cells allot
 create WOVEN-A ROW-MAX cells allot
@@ -147,6 +172,12 @@ variable ROUNDS-V
 
 : FAM-AT ( n -- ptr u8 )
    FAM-BYTES swap STR-AT ;
+
+: ARM-SLOT ( ptr a n n -- ptr a ) {: arm:ptr k:n s:n :}
+   arm k ARM-CELLS * s + SLOT ;
+
+: ARM@ ( n ptr a n -- n ) {: k:n arm:ptr s:n :}
+   arm k ROW-OK s ARM-SLOT @ ;
 
 \ ---- one timed run ----------------------------------------------------------
 \ typed-local-lint: allow-bare-local - q is the timing body; its effect is in the
@@ -196,6 +227,12 @@ variable ROUNDS-V
 
 : OPEN-CK ( -- )
    OPEN? @ 0= if E-WLTIME-STATE throw then ;
+
+\ One column's three numbers into one column, in one decision.
+: ARM! ( n n n ptr a -- ) {: fast:n slow:n sum:n arm:ptr :}
+   fast          arm ROW-N @ ARM-NS ARM-SLOT !
+   fast slow SPREAD-OF  arm ROW-N @ ARM-SPREAD ARM-SLOT !
+   sum           arm ROW-N @ ARM-SUM ARM-SLOT ! ;
 
 \ ---- opening a row ----------------------------------------------------------
 \ A row is opened with its whole identity: what it is called, which workload
@@ -262,12 +299,8 @@ public
    HAVE-OLD @ 0= HAVE-NEW @ 0= or if E-WLTIME-STATE throw then
    HAVE-SUMS @ 0= if E-WLTIME-STATE throw then
    OLD-FAST @ 0= NEW-FAST @ 0= or if E-WLTIME-CLOCK throw then
-   OLD-FAST @ OLD-NS-A ROW-N @ SLOT !
-   NEW-FAST @ NEW-NS-A ROW-N @ SLOT !
-   OLD-FAST @ OLD-SLOW @ SPREAD-OF OLD-SPREAD-A ROW-N @ SLOT !
-   NEW-FAST @ NEW-SLOW @ SPREAD-OF NEW-SPREAD-A ROW-N @ SLOT !
-   OLD-SUM-V @ OLD-SUM-A ROW-N @ SLOT !
-   NEW-SUM-V @ NEW-SUM-A ROW-N @ SLOT !
+   OLD-FAST @ OLD-SLOW @ OLD-SUM-V @ OLD-ARM ARM!
+   NEW-FAST @ NEW-SLOW @ NEW-SUM-V @ NEW-ARM ARM!
    REPS-V @ REPS-A ROW-N @ SLOT !
    ROUNDS-V @ ROUNDS-A ROW-N @ SLOT !
    WOVEN @ WOVEN-A ROW-N @ SLOT !
@@ -393,23 +426,23 @@ public
 : REAL? ( n -- bool ) {: k:n :}
    k KIND KIND-REAL = ;
 
-: OLD-NS ( n -- n ) {: k:n :}
-   OLD-NS-A k ROW-OK SLOT @ ;
+: OLD-NS ( n -- n )
+   OLD-ARM ARM-NS ARM@ ;
 
-: NEW-NS ( n -- n ) {: k:n :}
-   NEW-NS-A k ROW-OK SLOT @ ;
+: NEW-NS ( n -- n )
+   NEW-ARM ARM-NS ARM@ ;
 
-: OLD-SPREAD ( n -- n ) {: k:n :}
-   OLD-SPREAD-A k ROW-OK SLOT @ ;
+: OLD-SPREAD ( n -- n )
+   OLD-ARM ARM-SPREAD ARM@ ;
 
-: NEW-SPREAD ( n -- n ) {: k:n :}
-   NEW-SPREAD-A k ROW-OK SLOT @ ;
+: NEW-SPREAD ( n -- n )
+   NEW-ARM ARM-SPREAD ARM@ ;
 
-: OLD-SUM ( n -- n ) {: k:n :}
-   OLD-SUM-A k ROW-OK SLOT @ ;
+: OLD-SUM ( n -- n )
+   OLD-ARM ARM-SUM ARM@ ;
 
-: NEW-SUM ( n -- n ) {: k:n :}
-   NEW-SUM-A k ROW-OK SLOT @ ;
+: NEW-SUM ( n -- n )
+   NEW-ARM ARM-SUM ARM@ ;
 
 : REPS ( n -- n ) {: k:n :}
    REPS-A k ROW-OK SLOT @ ;
@@ -425,12 +458,20 @@ public
 : SAME-ANSWER? ( n -- bool ) {: k:n :}
    k OLD-SUM k NEW-SUM = ;
 
+\ How much of an old number a new one saved, in parts per thousand, SIGNED: a new
+\ arm that took longer than the old one answers negative, and that sign is the
+\ whole verdict of a row. It is a word of its own rather than three tokens inside
+\ DELTA-PERMILLE because a scheduled suite can hand it a pair of numbers it chose
+\ and check the sign that comes back, while a row's two times only ever arrive
+\ from a clock.
+: DELTA-OF ( n n -- n ) {: old:n new:n :}
+   old 0= if E-WLTIME-CLOCK throw then
+   old new - PERMILLE * old / ;
+
 \ How much of the old arm's time the new arm saved, in parts per thousand. A
 \ negative row is one the new code generator lost.
 : DELTA-PERMILLE ( n -- n ) {: k:n :}
-   k OLD-NS {: o:n :}
-   o 0= if E-WLTIME-CLOCK throw then
-   o k NEW-NS - PERMILLE * o / ;
+   k OLD-NS  k NEW-NS  DELTA-OF ;
 
 : ROW-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup ROW-N @ < while
