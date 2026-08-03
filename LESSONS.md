@@ -4650,3 +4650,41 @@ clobber record could not: the caller states what effect it believes a callee has
 the callee's own migration recorded what it really declares, and the two are held
 against each other. A caller compiled against the wrong effect used to compile
 silently and compute the wrong thing; it is now refused by name.
+
+## A microbenchmark delta transfers to a program only where the program spends
+
+The four committed corpora say the native chain emits code that is smaller and
+faster, word by word. Timing three real workloads through those same words in one
+process said something the corpora cannot: the system-level number is whatever
+fraction of the program's time was inside the migrated code, and nothing more.
+COUNT-CH is a loop, so a workload that calls it once per buffer spends nearly all
+of its time inside it and came out 85 per cent faster - repeatably, to a tenth of
+a per cent across runs. FOLD-C is a leaf called once per byte from a loop the old
+emitter compiled, and its 0.45 ns of saved routine disappeared into the caller's
+own 3.8 ns per byte. Same code generator, same two words, two orders of magnitude
+between the two answers. Publish the workload, not the ratio.
+
+## A two-arm timing needs a control AND a floor, and they catch different lies
+
+The control - old code against old code, the two arms compiled either side of the
+migration - is the obvious one, and it caught nothing. The floor row is old code
+against old code reaching two different PUBLICATIONS of the same body, and it is
+the one that mattered: for a workload whose inner loop calls a small word once per
+byte, two byte-identical drivers calling two byte-identical copies of one 144-byte
+routine differ by twenty to thirty-five per cent, reproducibly, decided by which
+copy they reach. Without that row the scan workload's three per cent would have
+been reported as a small win. With it, the honest answer is that the measurement
+cannot see anything that small at that shape. A control row is not one row.
+
+## The inliner decides what a migration can possibly reach, before any timing
+
+The engine copies a callee's body into a caller when the body is at most forty
+bytes and holds no pc-relative instruction, and it decides that while compiling
+the CALLER. Both outcomes are permanent: a copy leaves no call site to redirect,
+and a call site holds an absolute displacement to the address the callee had then.
+So republishing a word reaches only callers compiled afterwards - and the engine,
+checker included, is compiled into bin/hb and never recompiled. Read that off the
+machine code before timing anything: TAG and PAY are 56 bytes and have zero call
+sites in the entire live dictionary, which is why migrating them cannot move the
+checker by one nanosecond, and why the compile-shaped workload's honest answer is
+a measured zero rather than a failure.

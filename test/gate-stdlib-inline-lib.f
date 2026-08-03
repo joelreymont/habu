@@ -489,6 +489,12 @@ public
    \ parallel; see the note on the codegen-compare entry in
    \ test/gate-stdlib-cases.f, and run the timed check by hand.
    s" tools/codegen-compare-test.f" GSI-FORK-INCLUDE
+   \ Runs the exact half of the end-to-end workload measurement - the engine's
+   \ call-or-copy rule read off compiled code, each arm's wiring to its own code
+   \ generator's word, and the answers the two arms compute. The deltas are
+   \ timings and are left out here for the same reason; run
+   \ bin/hb --load tools/codegen-workload.f by hand.
+   s" tools/codegen-workload-test.f" GSI-FORK-INCLUDE
    s" test/pointer-storage-test.f" GSI-FORK-INCLUDE
    s" test/ptr-elem-test.f" GSI-FORK-INCLUDE
    s" test/typed-storage-test.f" GSI-FORK-INCLUDE

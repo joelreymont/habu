@@ -1,0 +1,9 @@
+---
+title: Reach callers already compiled after a migration
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-03T20:10:46.618818+02:00"
+---
+
+Full context: tools/codegen-workload.f measured this and it is the finding that bounds every system-level number the native chain can produce. The engine decides at the moment it compiles a CALLER whether that caller will emit one call instruction to a callee or carry a verbatim copy of the callee's body (src/habu/habu2.f C-CALL, INL-MAX = 40 body bytes, and C-CALL-SCAN-SAFE refuses any body holding a pc-relative branch). Either way the decision is baked into the caller's machine code: a copy has no call site left to redirect, and a call site holds an absolute displacement to the address the callee occupied then. So NMIGRATE:REPUBLISH, which rewrites the callee's dictionary record, reaches only callers compiled AFTER it - and the whole engine, checker included, was compiled into bin/hb and is never recompiled. Measured truth table from tools/codegen-workload-scan.f on the live image: TAG 56 bytes copied 0 call sites, PAY 56 bytes copied 0 call sites, SYM-FOLD-C 144 bytes called 4 sites in 3 callers, T-RES-WALK 36 bytes called 2 sites, TV-NEXT? 304 bytes called 1 site. The compile-shaped workload therefore measured -1 to -3 per cent (i.e. nothing) across three runs while a compute workload over post-migration callers measured +85 per cent. Needed capability: after a migration, re-emit or patch the callers - either recompile the engine's callers of the migrated word, or record every call site at compile time so republication can rewrite the displacements, and re-splice the bodies the engine copied. Acceptance: migrate SYM-FOLD-C and show the compile-shaped row in tools/codegen-workload.f move outside its own spread. Depends: src/compiler/native/publish.f (NPUB:REPUBLISH), src/habu/habu2.f C-CALL. Ownership: unassigned. Claim: unassigned.

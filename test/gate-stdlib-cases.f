@@ -315,6 +315,29 @@ SUITE codegen-compare
    tools/codegen-compare-test.f
 ;SUITE
 
+\ The end-to-end workload measurement, and the same division of labour. Its
+\ member checks the facts the measurement's numbers would be meaningless
+\ without: the engine's own call-or-copy rule, read off compiled code and
+\ checked against fixtures built to break it in each direction; that each arm's
+\ driver enters ITS OWN code generator's word and not the other one's - the
+\ mutation a two-arm timing turns on, because an after-arm still calling the
+\ before-arm's record reports a delta of nothing and looks healthy; that the two
+\ arms of every workload compute the same pinned answer; and that the two arms
+\ of one workload body come out the same number of bytes, because a name lives
+\ in a dictionary record and not in a compiled body.
+\
+\ NO ASSERTION THE MEMBER RUNS READS A CLOCK, for the reason the entry above
+\ gives. The deltas themselves - what the new code generator is worth to a
+\ program, which of them clear their control and floor rows, and which are
+\ invisible under the layout noise of the shape they measure - are printed by
+\ bin/hb --load tools/codegen-workload.f, run by hand on a quiet machine. The
+\ member is mirrored into the resident stdlib/tail-pure fork group, so it is
+\ scheduled rather than manual-gate, and nothing is entered for it in the
+\ manual-gate table of tools/suite-coverage-lint-core.f.
+SUITE codegen-workload
+   tools/codegen-workload-test.f
+;SUITE
+
 SUITE compiler-native-hir
    test/compiler/native-hir.f
 ;SUITE
