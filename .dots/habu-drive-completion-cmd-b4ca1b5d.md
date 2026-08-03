@@ -1,6 +1,6 @@
 ---
 title: Serve framed GPT-2 requests
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-30T07:31:05.723904+02:00"
@@ -16,4 +16,4 @@ The command authenticates BPE and opens `GPT2:model` once, then repeatedly reads
 
 No new shared type or generic frame package is permitted. Owner: this one model-specific binary protocol, exact stdio loop, command entry, and its tests only. Production red: no command can serve a second prompt without reopening and reauthenticating the model. Acceptance: the real child opens through a test-owned alias root, receives good `Hello`, and returns its exact tagged pinned continuation. The test then renames that alias root out of reach before sending a fully framed max_tokens-zero refusal and good `Hello` again; the exact second continuation proves the child retained the already authenticated BPE and model rather than reopening. EOF with the alias still absent closes the model and exits zero with clean stderr. Focused tests drive the real private codec over real pipe descriptors and prove exact body-length referents, tags, clean EOF, representative prefix/body splits, partial prefix, partial body, oversized length, and read error without copying the codec or adding an I/O abstraction. Owner counts return to baseline. Forbidden: HTTP, Unix or IPv4 socket, JSON, OpenAI schema, scheduler, connection, poll, concurrent request, stream token response, request id, model registry, daemon, signal handler, thread, generic codec, dynamic allocation, retry, ABI/version, compatibility, metric, manifest, lint, suite, fallback, Python, or shell server. Smallest owning checks: `bin/hb --load maki/infer/gpt2-serve-test.f` for the real codec and `bin/hb --load maki/infer/gpt2-serve-device-test.f -- gpt2-model` for the exact production command.
 
-Claim: unassigned.
+Claim: agent=codex workspace=.jj-ws/habu-drive-completion-cmd-b4ca1b5d
