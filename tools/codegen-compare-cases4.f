@@ -71,6 +71,8 @@
 \ the same host at the same moment as the rows divided by it.
 
 require tools/codegen-compare-core.f
+require tools/codegen-compare-corpora.f
+require tools/codegen-compare-calibrate.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-corpus4.f
 require tools/codegen-compare-new4.f
@@ -78,13 +80,6 @@ require tools/codegen-compare-new4.f
 package CODEGEN-CASES4
 
 private
-
-: CALIBRATION-CASE ( -- )
-   s" CODEGEN-CORPUS:NOOP"
-   [: CODEGEN-CORPUS:NOOP ;]
-   [: ;]
-   CODEGEN-COMPARE:MEASURE
-   CODEGEN-COMPARE:CALIBRATE ;
 
 : CALL-FAN-CASE ( -- )
    s" CODEGEN-CORPUS4:CALL-FAN"
@@ -188,7 +183,7 @@ private
    CODEGEN-COMPARE:MEASURE ;
 
 : ALL-CASES ( -- )
-   CALIBRATION-CASE
+   CODEGEN-CALIBRATE:OLD
    CALL-FAN-CASE
    CALL-LOOP-3-CASE
    TINY-CALLEE-CASE
@@ -202,24 +197,18 @@ private
 
 public
 
-\ Where this corpus's committed table lives, and which source file it is the
-\ measurement of. Both are stated here, beside the cases, so that the runner
-\ names a corpus once and everything about that corpus follows.
-: BASELINE-PATH$ ( -- ptr u8 n )
-   s" test/compiler/codegen-compare-baseline4.txt" ;
-
-: CORPUS-PATH$ ( -- ptr u8 n )
-   s" tools/codegen-compare-corpus4.f" ;
-
-\ The old column first, then the new one: tools/codegen-compare-new4.f checks
-\ every name it writes down against a row the old column measured, so the old
-\ rows have to be there before it runs.
+\ One measured pass over this corpus: the two columns of it, handed to the pass
+\ machinery that every corpus shares.
 : RUN ( -- )
-   CODEGEN-COMPARE:RESET
-   CODEGEN-COMPARE:PASS-BEGIN
-   ALL-CASES
-   CODEGEN-NEW4:RUN
-   CODEGEN-COMPARE:PASS-END
-   CODEGEN-COMPARE:NORMALIZE ;
+   [: ALL-CASES ;] [: CODEGEN-NEW4:RUN ;] CODEGEN-COMPARE:PASS ;
 
 ;package
+
+\ What this corpus is called, where its committed table lives, and which source
+\ file that table is the measurement of. Stated here, beside the cases, so that
+\ naming a corpus once brings everything about it with it; the drivers read it
+\ back out of the register rather than naming this corpus a second time.
+s" corpus4"
+s" test/compiler/codegen-compare-baseline4.txt"
+s" tools/codegen-compare-corpus4.f"
+CODEGEN-CORPORA:DECLARE

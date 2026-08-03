@@ -232,4 +232,18 @@ public
       then
    loop ;
 
+\ ONE NEW COLUMN'S WHOLE ACCOUNT: the gap list cleared, the caller's compiled
+\ rows and declared gaps, and the check that between them they cover every
+\ corpus word. Every corpus needs those three in that order, so the order is
+\ here once and each new column hands in the part that is its own. The check is
+\ what makes a short new column read as named missing capabilities rather than
+\ as a harness that stopped looking, and it cannot be forgotten by a column
+\ that reaches its account through this word.
+\ typed-local-lint: allow-bare-local - declare is the column's own body, and a
+\ local annotation cannot carry a quotation effect.
+: ACCOUNT ( [ -- ] -- ) {: declare :}
+   RESET
+   declare execute
+   COVERAGE-CK ;
+
 ;package

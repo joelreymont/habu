@@ -67,6 +67,7 @@ require lib/prelude.f
 require lib/string.f
 require tools/codegen-compare-core.f
 require tools/codegen-compare-gap.f
+require tools/codegen-compare-calibrate.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-corpus2.f
 require tools/codegen-compare-migrated.f
@@ -85,18 +86,6 @@ private
 \ NOTHING HERE CATCHES. A word this file names that the migration did not
 \ publish is a claim the comparison made and did not keep, and it must surface as
 \ the missing subject rather than as a row that quietly went away.
-
-\ The calibration row, which is the first corpus's empty call measured again in
-\ this pass - the reason is in tools/codegen-compare-cases2.f beside the old
-\ column's calibration case. It returns nothing, so it has no output to compare;
-\ what it measures is the floor of a call on this path, which every other new
-\ row is divided by.
-: NOOP-CASE ( -- )
-   s" CODEGEN-CORPUS:NOOP" s" CODEGEN-CORPUS:NOOP-N"
-   [: CODEGEN-CORPUS:NOOP-N ;]
-   [: ;]
-   CODEGEN-COMPARE:MEASURE-NEW
-   CODEGEN-COMPARE:CALIBRATE ;
 
 \ The pinned inputs, written here the way the first corpus's new column writes
 \ its own: as the literals the old column uses, so the two columns are handed
@@ -221,7 +210,7 @@ private
    CODEGEN-COMPARE:MEASURE-NEW ;
 
 : COVERED-CASES ( -- )
-   NOOP-CASE
+   CODEGEN-CALIBRATE:NEW
    TAG-CASE
    WS-CASE
    SYM-FOLD-CASE
@@ -238,8 +227,6 @@ public
 \ compiled nor declared is refused. Runs after the old column, whose rows the
 \ names are checked against.
 : RUN ( -- )
-   CODEGEN-GAP:RESET
-   COVERED-CASES
-   CODEGEN-GAP:COVERAGE-CK ;
+   [: COVERED-CASES ;] CODEGEN-GAP:ACCOUNT ;
 
 ;package

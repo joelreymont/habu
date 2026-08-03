@@ -7,10 +7,20 @@
 \ line and calls one of these; nothing here looks at the command line.
 \
 \ Three runs: CHECK compares everything, CHECK-EXACT compares everything except
-\ the timings, and UPDATE rewrites the committed tables. CHECK and CHECK-EXACT
-\ differ by one decision, taken in one place, over one shared body. Each of them
-\ measures every pinned corpus in a pass of its own, in the order the corpora
-\ were written - there are four.
+\ the timings, and UPDATE-ONE rewrites one committed table. CHECK and
+\ CHECK-EXACT differ by one decision, taken in one place, over one shared body.
+\
+\ EVERY DRIVER HERE WALKS tools/codegen-compare-corpora.f RATHER THAN NAMING THE
+\ CORPORA. Each corpus declares its name, its committed table and its source
+\ file beside its own cases, and the loops below measure whatever was declared,
+\ in the order it was declared. Four hand-written pairs in the check and four
+\ hand-written triples in the update were four places to forget a corpus in; a
+\ run that stopped after the first table would have left the others unchecked
+\ while still printing "0 finding(s)". The one thing the register cannot hold is
+\ the word that runs a corpus's pass - the checker refuses to execute a routine
+\ fetched from untyped memory, and rightly - so RUN-PASS below is where the
+\ corpora are named, once, and an index it does not know throws rather than
+\ measuring the wrong corpus.
 
 require lib/errors.f
 require lib/prelude.f
@@ -18,6 +28,7 @@ require lib/string.f
 require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
+require tools/codegen-compare-corpora.f
 require tools/codegen-compare-cases.f
 require tools/codegen-compare-cases2.f
 require tools/codegen-compare-cases3.f
@@ -35,6 +46,18 @@ private
 
 70 constant FINDINGS-RC           \ sysexits EX_SOFTWARE: the comparison disagreed
 
+\ The measurement pass of one declared corpus. This is the one place the four
+\ corpora are named, and the index is the register's own, so the pass that runs
+\ and the table it is compared against cannot come from two different corpora.
+\ A corpus declared without an arm here reaches the throw instead of being
+\ measured as some other corpus.
+: RUN-PASS ( n -- ) {: k:n :}
+   k 0 = if CODEGEN-CASES:RUN exit then
+   k 1 = if CODEGEN-CASES2:RUN exit then
+   k 2 = if CODEGEN-CASES3:RUN exit then
+   k 3 = if CODEGEN-CASES4:RUN exit then
+   E-CODEGEN-COMPARE-CORPUS throw ;
+
 \ One measurement pass, one report, one finding count: the whole check apart
 \ from the decision about the cost column, which the two public entries below
 \ make before calling this. Factored so the checked and the unchecked run are
@@ -48,30 +71,24 @@ private
    CODEGEN-BASELINE:COSTS-CHECKED? 0= if 0 exit then
    CODEGEN-REPORT:SAY-FLOOR-GAP ;
 
-\ One measured pass reported and compared with its own committed table. The
-\ caller runs the pass; this reads whatever the pass left in the store, which is
-\ why the two corpora need no second copy of any of it.
-: TABLE-FINDINGS ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ One corpus measured, reported and compared with its own committed table.
+: TABLE-FINDINGS ( n -- n ) {: k:n :}
+   k RUN-PASS
    CODEGEN-REPORT:PRINT
-   a u CODEGEN-BASELINE:LOAD
+   k CODEGEN-CORPORA:BASELINE$ CODEGEN-BASELINE:LOAD
    CODEGEN-BASELINE:COMPARE
    CODEGEN-REPORT:SAY-MISMATCHES +
    FLOOR-FINDINGS + ;
 
-\ ALL FOUR TABLES, IN ORDER, AND THE FINDINGS ADDED UP. Each corpus is measured
-\ in a pass of its own - the store holds one corpus at a time, so each later pass
-\ resets it - and each is compared with its own committed table. A run that
-\ stopped after the first table would leave the others unchecked while still
-\ printing "0 finding(s)", so the four are added and none can hide another.
+\ EVERY DECLARED TABLE, IN ORDER, AND THE FINDINGS ADDED UP. Each corpus is
+\ measured in a pass of its own - the store holds one corpus at a time, so each
+\ later pass resets it - and each is compared with its own committed table. The
+\ findings are added so that none can hide another.
 : RUN-CHECK ( -- n )
-   CODEGEN-CASES:RUN
-   CODEGEN-CASES:BASELINE-PATH$ TABLE-FINDINGS
-   CODEGEN-CASES2:RUN
-   CODEGEN-CASES2:BASELINE-PATH$ TABLE-FINDINGS +
-   CODEGEN-CASES3:RUN
-   CODEGEN-CASES3:BASELINE-PATH$ TABLE-FINDINGS +
-   CODEGEN-CASES4:RUN
-   CODEGEN-CASES4:BASELINE-PATH$ TABLE-FINDINGS + ;
+   0
+   CODEGEN-CORPORA:COUNT 0 ?do
+      i TABLE-FINDINGS +
+   loop ;
 
 : VERDICT ( n -- ) {: findings:n :}
    cr
@@ -103,23 +120,29 @@ public
    CODEGEN-BASELINE:COSTS-UNCHECKED!
    RUN-CHECK VERDICT ;
 
-\ Measure, print, and rewrite one committed table from this measurement. The
-\ caller runs the pass, as with TABLE-FINDINGS.
-: WRITE-TABLE ( ptr u8 n ptr u8 n -- ) {: ba:ptr bu:n ca:ptr cu:n :}
+\ Measure ONE declared corpus, print its report, and rewrite ITS committed table
+\ from that measurement - and no other table. Regenerating a baseline used to
+\ rewrite all four, which put three tables nobody had touched into a diff a
+\ person was about to commit, and three lanes have restored them by hand.
+: UPDATE-ONE ( n -- ) {: k:n :}
+   k RUN-PASS
    CODEGEN-REPORT:PRINT
-   ba bu  ca cu CODEGEN-REPORT:BASELINE$  ATOMIC-WRITE-FILE
+   k CODEGEN-CORPORA:BASELINE$
+   k CODEGEN-REPORT:BASELINE$
+   ATOMIC-WRITE-FILE
    cr s" codegen-compare: baseline rewritten: " type
-   ba bu type cr ;
+   k CODEGEN-CORPORA:BASELINE$ type cr ;
 
-\ Measure, print, and rewrite every committed table from this measurement.
-: UPDATE ( -- )
-   CODEGEN-CASES:RUN
-   CODEGEN-CASES:BASELINE-PATH$ CODEGEN-CASES:CORPUS-PATH$ WRITE-TABLE
-   CODEGEN-CASES2:RUN
-   CODEGEN-CASES2:BASELINE-PATH$ CODEGEN-CASES2:CORPUS-PATH$ WRITE-TABLE
-   CODEGEN-CASES3:RUN
-   CODEGEN-CASES3:BASELINE-PATH$ CODEGEN-CASES3:CORPUS-PATH$ WRITE-TABLE
-   CODEGEN-CASES4:RUN
-   CODEGEN-CASES4:BASELINE-PATH$ CODEGEN-CASES4:CORPUS-PATH$ WRITE-TABLE ;
+\ Every declared table rewritten from one run. A caller has to ask for this by
+\ name; see tools/codegen-compare.f for why it is not what a bare --update does.
+: UPDATE-ALL ( -- )
+   CODEGEN-CORPORA:COUNT 0 ?do i UPDATE-ONE loop ;
+
+\ Rewrite the one table this name was declared for. Answers false, having
+\ written nothing, when no corpus goes by that name - the caller says so and
+\ names the ones that exist rather than guessing which table was meant.
+: UPDATE-NAMED ( ptr u8 n -- bool )
+   CODEGEN-CORPORA:FIND dup 0 < if drop false exit then
+   UPDATE-ONE true ;
 
 ;package

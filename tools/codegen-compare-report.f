@@ -43,6 +43,7 @@ require lib/prelude.f
 require lib/string.f
 require lib/fmt.f
 require tools/codegen-compare-core.f
+require tools/codegen-compare-corpora.f
 require tools/codegen-compare-gap.f
 
 package CODEGEN-REPORT
@@ -196,13 +197,16 @@ variable TEXT-U
 
 public
 
-\ The committed table for the corpus whose source file is named. Nothing else
-\ about the two corpora differs here: both are measured the same way, both are
-\ read back the same way, and the path is what a reader identifies the file by.
-: BASELINE$ ( ptr u8 n -- ptr u8 n )
+\ The committed table of one declared corpus. Nothing else about the corpora
+\ differs here: all four are measured the same way and read back the same way,
+\ and what tells a reader which table is in front of them is the corpus the
+\ register names. The corpus is given by its register index rather than by its
+\ path, so the file's own prose and the argument that regenerates it come from
+\ one declaration.
+: BASELINE$ ( n -- ptr u8 n ) {: k:n :}
    0 TEXT-U !
    TITLE
-   WHAT-IT-IS
+   k CODEGEN-CORPORA:SOURCE$ WHAT-IT-IS
    HOW-TO-READ
    TABLE-HEAD
    TABLE-ROWS

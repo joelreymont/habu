@@ -87,6 +87,7 @@ require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
 require tools/codegen-compare-cli.f
+require tools/codegen-compare-calibrate.f
 require tools/codegen-compare-gap.f
 require tools/codegen-compare-cases.f
 require tools/codegen-compare-cases2.f
@@ -225,13 +226,6 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 
 \ ---- measurement -----------------------------------------------------------
 
-: CALIBRATION-CASE ( -- )
-   s" CODEGEN-CORPUS:NOOP"
-   [: CODEGEN-CORPUS:NOOP ;]
-   [: ;]
-   CODEGEN-COMPARE:MEASURE
-   CODEGEN-COMPARE:CALIBRATE ;
-
 : HONEST-ADD3-CASE ( -- )
    s" CODEGEN-CORPUS:ADD3"
    [: 1 2 3 CODEGEN-CORPUS:ADD3 drop ;]
@@ -246,28 +240,35 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
       -5 5 7 SLOW-ADD3 CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE ;
 
+\ Two two-row passes over the production pass machinery: the calibration row
+\ every corpus shares, and one corpus word measured honestly or the slow way.
 : MEASURE-HONEST ( -- )
-   CODEGEN-COMPARE:RESET
-   CODEGEN-COMPARE:PASS-BEGIN
-   CALIBRATION-CASE
-   HONEST-ADD3-CASE
-   CODEGEN-COMPARE:PASS-END
-   CODEGEN-COMPARE:NORMALIZE ;
+   [: CODEGEN-CALIBRATE:OLD HONEST-ADD3-CASE ;] [: ;] CODEGEN-COMPARE:PASS ;
 
 : MEASURE-SLOW ( -- )
-   CODEGEN-COMPARE:RESET
-   CODEGEN-COMPARE:PASS-BEGIN
-   CALIBRATION-CASE
-   SLOW-ADD3-CASE
-   CODEGEN-COMPARE:PASS-END
-   CODEGEN-COMPARE:NORMALIZE ;
+   [: CODEGEN-CALIBRATE:OLD SLOW-ADD3-CASE ;] [: ;] CODEGEN-COMPARE:PASS ;
 
 \ ---- fixtures --------------------------------------------------------------
 
-: HONEST-FIXTURE ( -- )
+\ The head of an honest two-row table: the declared count and the calibration
+\ row written truly, with the second row left for the case under test to write
+\ however it needs to. Eight cases below open this way and differ only in what
+\ they put in the second row.
+: FIRST-ROW-ONLY ( -- )
    FIX-RESET
    2 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   0 FIX-TRUE-ROW ;
+
+\ The same for a table that declares ONE row, which is how a case makes the
+\ table miss a row it should have.
+: FIRST-ROW-ALONE ( -- )
+   FIX-RESET
+   1 FIX-DECLARED
+   0 FIX-TRUE-ROW ;
+
+\ The whole two-row table, written the way the harness itself would write it.
+: HONEST-FIXTURE ( -- )
+   FIRST-ROW-ONLY
    1 FIX-TRUE-ROW ;
 
 : TWO-ROW-CASES ( -- )
@@ -276,16 +277,12 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    FIX-FINDINGS 0 T=
 
    s" one wrong size byte is reported" T-LABEL
-   FIX-RESET
-   2 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ONLY
    1 1 CODEGEN-COMPARE:SIZE 4 + 1 CODEGEN-COMPARE:COST FIX-ROW
    FIX-FINDINGS 1 T=
 
    s" one wrong output value is reported" T-LABEL
-   FIX-RESET
-   2 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ONLY
    1 BAD-ROW ! 1 BAD-OUTPUT !
    1 FIX-TRUE-ROW
    FIX-FINDINGS 1 T=
@@ -299,15 +296,11 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 
 : STRUCTURE-CASES ( -- )
    s" a deleted row is reported as missing" T-LABEL
-   FIX-RESET
-   1 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ALONE
    FIX-FINDINGS 1 T=
 
    s" a row hidden inside a sentence is not a row" T-LABEL
-   FIX-RESET
-   1 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ALONE
    s" the missing row reads old CODEGEN-CORPUS:ADD3 72 1884 6 7 in full" FIX-LINE
    FIX-FINDINGS 1 T=
 
@@ -327,16 +320,12 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    FIX-FINDINGS 1 T=
 
    s" the size and cost columns swapped are reported twice" T-LABEL
-   FIX-RESET
-   2 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ONLY
    1 1 CODEGEN-COMPARE:COST 1 CODEGEN-COMPARE:SIZE FIX-ROW
    FIX-FINDINGS 2 T=
 
    s" a size that is not a number is reported, and its row is gone" T-LABEL
-   FIX-RESET
-   2 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ONLY
    s" old CODEGEN-CORPUS:ADD3 seventy-two 1884 6 7" FIX-LINE
    FIX-FINDINGS 3 T=
 
@@ -380,9 +369,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    k k CODEGEN-COMPARE:SIZE 1 FIX-ROW ;
 
 : WILD-COST-FIXTURE ( -- )
-   FIX-RESET
-   2 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ONLY
    1 WILD-COST-ROW ;
 
 : COST-MODE-CASES ( -- )
@@ -403,24 +390,18 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 
    s" but a wrong size byte still is" T-LABEL
    MEASURE-HONEST
-   FIX-RESET
-   2 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ONLY
    1 1 CODEGEN-COMPARE:SIZE 4 + 1 FIX-ROW
    FIX-FINDINGS 1 T=
 
    s" and so does a wrong output value" T-LABEL
-   FIX-RESET
-   2 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ONLY
    1 BAD-ROW ! 1 BAD-OUTPUT !
    1 WILD-COST-ROW
    FIX-FINDINGS 1 T=
 
    s" and so does a row the baseline is missing" T-LABEL
-   FIX-RESET
-   1 FIX-DECLARED
-   0 FIX-TRUE-ROW
+   FIRST-ROW-ALONE
    FIX-FINDINGS 1 T=
 
    CODEGEN-BASELINE:COSTS-CHECKED! ;
@@ -472,7 +453,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    CODEGEN-COMPARE:RESET
    CODEGEN-GAP:RESET
    CODEGEN-COMPARE:PASS-BEGIN
-   CALIBRATION-CASE
+   CODEGEN-CALIBRATE:OLD
    HONEST-ADD3-CASE
    NEW-CALIBRATION-CASE
    build execute
@@ -914,40 +895,69 @@ private
 \ size can move by, so a check that catches this catches any real regression.
 4 constant ONE-INSN
 
-: CORPUS2-TABLE-CASES ( -- )
-   s" the second corpus's own table, written honestly, reports nothing" T-LABEL
+\ THE FIVE WAYS A COMMITTED TABLE IS ATTACKED, WRITTEN ONCE. Each corpus after
+\ the first is broken in the same places - the honest table, a byte count moved
+\ by one instruction either way, a recorded output moved by one, and a row left
+\ out - and the sets below used to write all five out again for every corpus,
+\ with only the row names differing. What is genuinely per corpus is which row
+\ each case names and why that row is the interesting one, and that is what the
+\ three sets keep.
+\
+\ Every one of them writes a whole table from the pass the caller ran last and
+\ asks the real comparison how many findings it reports, so a set proves
+\ something about that corpus's own table and not about a fixture.
+
+\ The table the harness itself would write, which must report nothing.
+: HONEST-TABLE-CK ( -- )
    -1 0 WHOLE-OLD-COLUMN
-   FIX-FINDINGS 0 T=
+   FIX-FINDINGS 0 T= ;
 
-   s" one instruction added to one row's byte count is reported" T-LABEL
-   s" CODEGEN-CORPUS2:COUNT-CHAR" OLD-ROW ONE-INSN WHOLE-OLD-COLUMN
-   FIX-FINDINGS 1 T=
+\ One named row's byte count moved by `delta` bytes, and nothing else touched.
+: BYTE-DELTA-CK ( ptr u8 n n -- ) {: a:ptr u:n delta:n :}
+   a u OLD-ROW delta WHOLE-OLD-COLUMN
+   FIX-FINDINGS 1 T= ;
 
-   s" and so is one taken off a different row" T-LABEL
-   s" CODEGEN-CORPUS2:T-RES-WALK" OLD-ROW ONE-INSN negate WHOLE-OLD-COLUMN
-   FIX-FINDINGS 1 T=
-
-   s" a byte regression on a GAP row's old column is reported too" T-LABEL
-   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" OLD-ROW ONE-INSN WHOLE-OLD-COLUMN
-   FIX-FINDINGS 1 T=
-
-   s" one wrong output value in the second table is reported" T-LABEL
-   -1 0 WHOLE-OLD-COLUMN
+\ One recorded output of one named row moved by one, and nothing else touched.
+\ Which output is named because a row's outputs are not interchangeable: the
+\ interesting one is the edge the pinned inputs were chosen to reach.
+: BAD-OUTPUT-CK ( ptr u8 n n -- ) {: a:ptr u:n j:n :}
    FIX-RESET
    OLD-ROWS FIX-DECLARED
-   s" CODEGEN-CORPUS2:WS?" OLD-ROW BAD-ROW ! 4 BAD-OUTPUT !
+   a u OLD-ROW BAD-ROW ! j BAD-OUTPUT !
    -1 0 FIX-OLD-ROWS
-   FIX-FINDINGS 1 T=
+   FIX-FINDINGS 1 T= ;
 
-   s" a second table missing a row is reported" T-LABEL
+\ The whole table with one named row left out of it, and the declared count
+\ lowered to match, so what is caught is the missing row and not the count.
+: MISSING-ROW-CK ( ptr u8 n -- ) {: a:ptr u:n :}
    FIX-RESET
    OLD-ROWS 1- FIX-DECLARED
+   a u OLD-ROW {: gone:n :}
    CODEGEN-COMPARE:ROWS 0 ?do
       i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
-         i s" CODEGEN-CORPUS2:MAX-DIM" OLD-ROW <> if i FIX-TRUE-ROW then
+         i gone <> if i FIX-TRUE-ROW then
       then
    loop
    FIX-FINDINGS 1 T= ;
+
+: CORPUS2-TABLE-CASES ( -- )
+   s" the second corpus's own table, written honestly, reports nothing" T-LABEL
+   HONEST-TABLE-CK
+
+   s" one instruction added to one row's byte count is reported" T-LABEL
+   s" CODEGEN-CORPUS2:COUNT-CHAR" ONE-INSN BYTE-DELTA-CK
+
+   s" and so is one taken off a different row" T-LABEL
+   s" CODEGEN-CORPUS2:T-RES-WALK" ONE-INSN negate BYTE-DELTA-CK
+
+   s" a byte regression on a GAP row's old column is reported too" T-LABEL
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" ONE-INSN BYTE-DELTA-CK
+
+   s" one wrong output value in the second table is reported" T-LABEL
+   s" CODEGEN-CORPUS2:WS?" 4 BAD-OUTPUT-CK
+
+   s" a second table missing a row is reported" T-LABEL
+   s" CODEGEN-CORPUS2:MAX-DIM" MISSING-ROW-CK ;
 
 \ ---- the third corpus's committed table, on fixtures built to fool it --------
 \ The same attack as the second corpus's, over the whole of the float table -
@@ -962,40 +972,22 @@ private
 \ the third corpus immediately before calling them.
 : CORPUS3-TABLE-CASES ( -- )
    s" the third corpus's own table, written honestly, reports nothing" T-LABEL
-   -1 0 WHOLE-OLD-COLUMN
-   FIX-FINDINGS 0 T=
+   HONEST-TABLE-CK
 
    s" one instruction added to a float row's byte count is reported" T-LABEL
-   s" CODEGEN-CORPUS3:T-SGD!" OLD-ROW ONE-INSN WHOLE-OLD-COLUMN
-   FIX-FINDINGS 1 T=
+   s" CODEGEN-CORPUS3:T-SGD!" ONE-INSN BYTE-DELTA-CK
 
    s" and so is one taken off the row that reaches its answer through calls" T-LABEL
-   s" CODEGEN-CORPUS3:T-REL-L2" OLD-ROW ONE-INSN negate WHOLE-OLD-COLUMN
-   FIX-FINDINGS 1 T=
+   s" CODEGEN-CORPUS3:T-REL-L2" ONE-INSN negate BYTE-DELTA-CK
 
    s" a NaN recorded one bit out is reported" T-LABEL
-   FIX-RESET
-   OLD-ROWS FIX-DECLARED
-   s" CODEGEN-CORPUS3:T-REL-L2" OLD-ROW BAD-ROW ! 3 BAD-OUTPUT !
-   -1 0 FIX-OLD-ROWS
-   FIX-FINDINGS 1 T=
+   s" CODEGEN-CORPUS3:T-REL-L2" 3 BAD-OUTPUT-CK
 
    s" and so is a negative zero written as a positive one" T-LABEL
-   FIX-RESET
-   OLD-ROWS FIX-DECLARED
-   s" CODEGEN-CORPUS3:RELU-F" OLD-ROW BAD-ROW ! 2 BAD-OUTPUT !
-   -1 0 FIX-OLD-ROWS
-   FIX-FINDINGS 1 T=
+   s" CODEGEN-CORPUS3:RELU-F" 2 BAD-OUTPUT-CK
 
    s" a third table missing a row is reported" T-LABEL
-   FIX-RESET
-   OLD-ROWS 1- FIX-DECLARED
-   CODEGEN-COMPARE:ROWS 0 ?do
-      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
-         i s" CODEGEN-CORPUS3:MAX-F" OLD-ROW <> if i FIX-TRUE-ROW then
-      then
-   loop
-   FIX-FINDINGS 1 T= ;
+   s" CODEGEN-CORPUS3:MAX-F" MISSING-ROW-CK ;
 
 \ ---- the fourth corpus, the one built to make the new chain lose --------------
 \ Every row of the fourth corpus is a shape somebody had a reason to believe the
@@ -1167,40 +1159,22 @@ $94000000 constant BL-OP
 \ so MAIN runs the fourth corpus immediately before calling them.
 : CORPUS4-TABLE-CASES ( -- )
    s" the fourth corpus's own table, written honestly, reports nothing" T-LABEL
-   -1 0 WHOLE-OLD-COLUMN
-   FIX-FINDINGS 0 T=
+   HONEST-TABLE-CK
 
    s" one instruction added to a call row's byte count is reported" T-LABEL
-   s" CODEGEN-CORPUS4:CALL-FAN" OLD-ROW ONE-INSN WHOLE-OLD-COLUMN
-   FIX-FINDINGS 1 T=
+   s" CODEGEN-CORPUS4:CALL-FAN" ONE-INSN BYTE-DELTA-CK
 
    s" and so is one taken off the row the chain refuses" T-LABEL
-   s" CODEGEN-CORPUS4:PRESSURE-LOOP" OLD-ROW ONE-INSN negate WHOLE-OLD-COLUMN
-   FIX-FINDINGS 1 T=
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" ONE-INSN negate BYTE-DELTA-CK
 
    s" a wrong sixty-four-bit output is reported" T-LABEL
-   FIX-RESET
-   OLD-ROWS FIX-DECLARED
-   s" CODEGEN-CORPUS4:BIG-CONSTS" OLD-ROW BAD-ROW ! 0 BAD-OUTPUT !
-   -1 0 FIX-OLD-ROWS
-   FIX-FINDINGS 1 T=
+   s" CODEGEN-CORPUS4:BIG-CONSTS" 0 BAD-OUTPUT-CK
 
    s" and so is a wrong answer on the last rung of the ladder" T-LABEL
-   FIX-RESET
-   OLD-ROWS FIX-DECLARED
-   s" CODEGEN-CORPUS4:LADDER" OLD-ROW BAD-ROW ! 7 BAD-OUTPUT !
-   -1 0 FIX-OLD-ROWS
-   FIX-FINDINGS 1 T=
+   s" CODEGEN-CORPUS4:LADDER" 7 BAD-OUTPUT-CK
 
    s" a fourth table missing a row is reported" T-LABEL
-   FIX-RESET
-   OLD-ROWS 1- FIX-DECLARED
-   CODEGEN-COMPARE:ROWS 0 ?do
-      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
-         i s" CODEGEN-CORPUS4:TINY-CALLEE" OLD-ROW <> if i FIX-TRUE-ROW then
-      then
-   loop
-   FIX-FINDINGS 1 T= ;
+   s" CODEGEN-CORPUS4:TINY-CALLEE" MISSING-ROW-CK ;
 
 \ ---- the three ceilings the fourth corpus was designed around -----------------
 \ tools/codegen-compare-corpus4.f says two shapes were left out of the corpus

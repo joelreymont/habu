@@ -62,6 +62,7 @@
 require lib/errors.f
 require lib/prelude.f
 require src/compiler/native/migrate.f
+require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus2.f
 
 package CODEGEN-MIGRATED2
@@ -82,14 +83,6 @@ private
 \ is the next even number above that floor. TV-NEXT? reaches a table, compares
 \ against two constants and answers a pair, and takes the same budget.
 12 constant WIDE-REGS
-
-\ Where a published word's code starts, read off its own dictionary record. This
-\ is the same reader tools/codegen-compare-core.f measures a size with, on the
-\ same record, so the address a call site is given and the bytes the table
-\ reports come from one authority.
-: ENTRY ( ptr u8 n -- n )
-   XREF-FIND dup XREF-FOUND? 0= if E-NPUB-NAME throw then
-   XREF-START ;
 
 : TAG ( -- )
    s" : TAG-N ( n -- n ) 7 and ;" 1 1 REGS NMIGRATE:DEFINE ;
@@ -130,7 +123,7 @@ private
 \ src/compiler/native/abi.f gives - the first call destroys the return address,
 \ so it has to have somewhere to live.
 : T-RES-WALK ( -- )
-   s" TV-NEXT?-N" s" CODEGEN-CORPUS2:TV-NEXT?-N" ENTRY 1 2 NMIGRATE:CALLEE
+   s" TV-NEXT?-N" s" CODEGEN-CORPUS2:TV-NEXT?-N" CODEGEN-COMPARE:CODE-ENTRY 1 2 NMIGRATE:CALLEE
    s" : T-RES-WALK-N ( n -- n ) begin TV-NEXT?-N while repeat ;"
    1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 
@@ -157,7 +150,7 @@ private
 14 constant COPY-REGS
 
 : VEC-COPY-CELLS ( -- )
-   s" CELL-FIELD-N" s" CODEGEN-CORPUS2:CELL-FIELD-N" ENTRY 2 1 NMIGRATE:CALLEE
+   s" CELL-FIELD-N" s" CODEGEN-CORPUS2:CELL-FIELD-N" CODEGEN-COMPARE:CODE-ENTRY 2 1 NMIGRATE:CALLEE
    s" : VEC-COPY-CELLS-N ( ptr n ptr n n -- ) {: src:ptr dst:ptr len:n :} len 0 ?do src i CELL-FIELD-N @ dst i CELL-FIELD-N ! loop ;"
    3 0 COPY-REGS NMIGRATE:DEFINE-CALLING ;
 

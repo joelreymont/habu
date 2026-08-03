@@ -10,16 +10,20 @@
 \ case uses a small ordinary value plus, where the word has an interesting edge,
 \ a second value that reaches it (an empty span, a zero argument, a miss).
 \
-\ The calibration case is first and says so. It measures an empty call, and
-\ every other old row's cost is expressed as a multiple of it, so the table
-\ survives being regenerated on a faster or slower machine.
+\ The calibration case is first and says so. Every corpus opens with the shared
+\ CODEGEN-CALIBRATE:OLD, which measures an empty call; every other old row's
+\ cost is expressed as a multiple of it, so the table survives being regenerated
+\ on a faster or slower machine.
 \
 \ The new code generator's column is measured in the same pass, from
 \ tools/codegen-compare-new.f, on the same corpus words and the same pinned
-\ inputs. It keeps its own calibration row for the reason given there: the two
-\ paths are entered differently and only a ratio to a like call compares.
+\ inputs. It keeps its own calibration row, for the reason
+\ tools/codegen-compare-calibrate.f gives: each path is divided by its own
+\ floor, and only a ratio to a like call compares.
 
 require tools/codegen-compare-core.f
+require tools/codegen-compare-corpora.f
+require tools/codegen-compare-calibrate.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-new.f
 
@@ -35,13 +39,6 @@ private
 
 103 constant LETTER-G             \ present in SUBJECT$
 122 constant LETTER-Z             \ absent from SUBJECT$
-
-: CALIBRATION-CASE ( -- )
-   s" CODEGEN-CORPUS:NOOP"
-   [: CODEGEN-CORPUS:NOOP ;]
-   [: ;]
-   CODEGEN-COMPARE:MEASURE
-   CODEGEN-COMPARE:CALIBRATE ;
 
 : ADD3-CASE ( -- )
    s" CODEGEN-CORPUS:ADD3"
@@ -123,7 +120,7 @@ private
    CODEGEN-COMPARE:MEASURE ;
 
 : ALL-CASES ( -- )
-   CALIBRATION-CASE
+   CODEGEN-CALIBRATE:OLD
    ADD3-CASE
    SQUARE-SUM-CASE
    MAX2-CASE
@@ -137,24 +134,18 @@ private
 
 public
 
-\ Where this corpus's committed table lives, and which source file it is the
-\ measurement of. Both are stated here, beside the cases, so that the runner
-\ names a corpus once and everything about that corpus follows.
-: BASELINE-PATH$ ( -- ptr u8 n )
-   s" test/compiler/codegen-compare-baseline.txt" ;
-
-: CORPUS-PATH$ ( -- ptr u8 n )
-   s" tools/codegen-compare-corpus.f" ;
-
-\ The old column first, then the new one: tools/codegen-compare-new.f checks
-\ every name it writes down against a row the old column measured, so the old
-\ rows have to be there before it runs.
+\ One measured pass over this corpus: the two columns of it, handed to the pass
+\ machinery that every corpus shares.
 : RUN ( -- )
-   CODEGEN-COMPARE:RESET
-   CODEGEN-COMPARE:PASS-BEGIN
-   ALL-CASES
-   CODEGEN-NEW:RUN
-   CODEGEN-COMPARE:PASS-END
-   CODEGEN-COMPARE:NORMALIZE ;
+   [: ALL-CASES ;] [: CODEGEN-NEW:RUN ;] CODEGEN-COMPARE:PASS ;
 
 ;package
+
+\ What this corpus is called, where its committed table lives, and which source
+\ file that table is the measurement of. Stated here, beside the cases, so that
+\ naming a corpus once brings everything about it with it; the drivers read it
+\ back out of the register rather than naming this corpus a second time.
+s" corpus"
+s" test/compiler/codegen-compare-baseline.txt"
+s" tools/codegen-compare-corpus.f"
+CODEGEN-CORPORA:DECLARE

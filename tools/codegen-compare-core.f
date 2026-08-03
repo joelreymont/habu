@@ -299,6 +299,14 @@ public
    {: a:ptr u:n na:ptr nu:n timing vectors :}
    a u PATH-NEW  na nu SUBJECT-SIZE  timing vectors RECORD ;
 
+\ Where a published word's code starts, read off its own dictionary record. It
+\ is here, beside the reader that takes a size off the same record, so that the
+\ address a migrated call site is given and the bytes the table reports come
+\ from one authority rather than from three copies of one reader.
+: CODE-ENTRY ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if E-NPUB-NAME throw then
+   XREF-START ;
+
 \ Declare the row just measured to be its path's calibration row: every other
 \ row of that path expresses its cost as a multiple of this one. Declared
 \ explicitly rather than assumed to be the path's first row, so a reordered case
@@ -333,6 +341,27 @@ public
       1+
    repeat drop
    -1 NORMALIZED ! ;
+
+\ ONE MEASURED PASS OVER ONE CORPUS, AND THE FIVE STEPS IT IS MADE OF: the store
+\ cleared, the clock started, the old column's cases, the new column's, the clock
+\ stopped, and the normalisation that turns picoseconds into costs. Every corpus
+\ needs all six in that order and none of them differ between corpora, so the
+\ order is stated here once and each case file hands in the two bodies that are
+\ its own. A pass assembled by hand could leave a step out, and the one that
+\ costs least to leave out - NORMALIZE - is the one that would hand every
+\ comparison a zero and fail nothing.
+\
+\ The old column runs before the new one because the new column checks every
+\ name it writes down against a row the old column measured.
+\ typed-local-lint: allow-bare-local - old and new are the two columns' bodies,
+\ and a local annotation cannot carry a quotation effect.
+: PASS ( [ -- ] [ -- ] -- ) {: old new :}
+   RESET
+   PASS-BEGIN
+   old execute
+   new execute
+   PASS-END
+   NORMALIZE ;
 
 \ The word that opens a data row in the baseline table, and names which code
 \ generator produced it.

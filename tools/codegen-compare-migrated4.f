@@ -50,6 +50,7 @@
 require lib/errors.f
 require lib/prelude.f
 require src/compiler/native/migrate.f
+require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus4.f
 
 package CODEGEN-MIGRATED4
@@ -58,14 +59,6 @@ private
 
 8 constant REGS                   \ general registers a straight-line routine may use
 18 constant LOOP-REGS             \ x0..x17: the whole pool, x18 being platform-reserved
-
-\ Where a published word's code starts, read off its own dictionary record. This
-\ is the same reader tools/codegen-compare-core.f measures a size with, on the
-\ same record, so the address a call site is given and the bytes the table
-\ reports come from one authority.
-: ENTRY ( ptr u8 n -- n )
-   XREF-FIND dup XREF-FOUND? 0= if E-NPUB-NAME throw then
-   XREF-START ;
 
 \ ---- the four callees the call rows reach through -----------------------------
 \ The corpus's own four, verbatim but for the `-N`. They are not rows and they
@@ -89,24 +82,24 @@ private
 \ of tools/codegen-compare-corpus4.f is about: the engine's code for this body
 \ contains no call instruction at all and the chain's contains five.
 : CALL-FAN ( -- )
-   s" C-ADD1-N" s" CODEGEN-CORPUS4:C-ADD1-N" ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-MUL2-N" s" CODEGEN-CORPUS4:C-MUL2-N" ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-AND7-N" s" CODEGEN-CORPUS4:C-AND7-N" ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-XOR5-N" s" CODEGEN-CORPUS4:C-XOR5-N" ENTRY 1 1 NMIGRATE:CALLEE
+   s" C-ADD1-N" s" CODEGEN-CORPUS4:C-ADD1-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
+   s" C-MUL2-N" s" CODEGEN-CORPUS4:C-MUL2-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
+   s" C-AND7-N" s" CODEGEN-CORPUS4:C-AND7-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
+   s" C-XOR5-N" s" CODEGEN-CORPUS4:C-XOR5-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : CALL-FAN-N ( n -- n ) C-ADD1-N C-MUL2-N C-AND7-N C-XOR5-N C-ADD1-N ;"
    1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 \ Three calls a turn with three locals live across the loop and read after it.
 : CALL-LOOP-3 ( -- )
-   s" C-ADD1-N" s" CODEGEN-CORPUS4:C-ADD1-N" ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-MUL2-N" s" CODEGEN-CORPUS4:C-MUL2-N" ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-XOR5-N" s" CODEGEN-CORPUS4:C-XOR5-N" ENTRY 1 1 NMIGRATE:CALLEE
+   s" C-ADD1-N" s" CODEGEN-CORPUS4:C-ADD1-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
+   s" C-MUL2-N" s" CODEGEN-CORPUS4:C-MUL2-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
+   s" C-XOR5-N" s" CODEGEN-CORPUS4:C-XOR5-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : CALL-LOOP-3-N ( n n n n n -- n ) {: a:n b:n c:n seed:n len:n :} seed len 0 ?do C-ADD1-N C-MUL2-N C-XOR5-N loop a + b + c + ;"
    5 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 
 \ Four calls a turn and nothing else in the body.
 : TINY-CALLEE ( -- )
-   s" C-ADD1-N" s" CODEGEN-CORPUS4:C-ADD1-N" ENTRY 1 1 NMIGRATE:CALLEE
+   s" C-ADD1-N" s" CODEGEN-CORPUS4:C-ADD1-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : TINY-CALLEE-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do C-ADD1-N C-ADD1-N C-ADD1-N C-ADD1-N loop ;"
    2 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 

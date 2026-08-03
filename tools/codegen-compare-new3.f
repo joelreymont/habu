@@ -53,16 +53,17 @@
 \ handed to the chain in the hope that some part of it survives. The ten bodies
 \ are the corpus's own to the byte - not one constant is respelled, which is more
 \ than either of the first two corpora could say - and
-\ tools/codegen-compare-migrated3.f publishes them. The calibration row below is
-\ the first corpus's empty call, already published by
-\ tools/codegen-compare-migrated.f, measured again in this pass because a cost is
-\ a ratio to a call timed on the same host at the same moment.
+\ tools/codegen-compare-migrated3.f publishes them. The calibration row is the
+\ shared CODEGEN-CALIBRATE:NEW - the first corpus's empty call, published by
+\ tools/codegen-compare-migrated.f - measured again in this pass because a cost
+\ is a ratio to a call timed on the same host at the same moment.
 
 require lib/errors.f
 require lib/prelude.f
 require lib/string.f
 require tools/codegen-compare-core.f
 require tools/codegen-compare-gap.f
+require tools/codegen-compare-calibrate.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-corpus3.f
 require tools/codegen-compare-migrated.f
@@ -71,19 +72,6 @@ require tools/codegen-compare-migrated3.f
 package CODEGEN-NEW3
 
 private
-
-\ The calibration row, which is the first corpus's empty call measured again in
-\ this pass. It returns nothing, so it has no output to compare; what it
-\ measures is the floor of a call on this path, which every other new row would
-\ be divided by - and which the report still needs even in a pass whose new
-\ column is nothing but this row, because NORMALIZE divides each path by its own
-\ floor.
-: NOOP-CASE ( -- )
-   s" CODEGEN-CORPUS:NOOP" s" CODEGEN-CORPUS:NOOP-N"
-   [: CODEGEN-CORPUS:NOOP-N ;]
-   [: ;]
-   CODEGEN-COMPARE:MEASURE-NEW
-   CODEGEN-COMPARE:CALIBRATE ;
 
 \ ---- no declarations left ----------------------------------------------------
 \ The seven rows that were gaps are rows. What they were waiting for was one
@@ -261,16 +249,8 @@ private
       NAN CODEGEN-CORPUS3:FROUND-N CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
 
-public
-
-\ Measure what the chain can express, declare the rest, and check that between
-\ them they account for all of it. Nothing is compiled today and the check is
-\ what makes that a statement rather than a hope: a word neither compiled nor
-\ declared is refused. Runs after the old column, whose rows every name here is
-\ checked against.
-: RUN ( -- )
-   CODEGEN-GAP:RESET
-   NOOP-CASE
+: COVERED-CASES ( -- )
+   CODEGEN-CALIBRATE:NEW
    SGD-CASE
    SEG-CASE
    MAX-F-CASE
@@ -280,7 +260,16 @@ public
    T-DIST2-CASE
    T-NORM2-CASE
    T-SGD-CASE
-   T-REL-L2-CASE
-   CODEGEN-GAP:COVERAGE-CK ;
+   T-REL-L2-CASE ;
+
+public
+
+\ Measure what the chain can express, declare the rest, and check that between
+\ them they account for all of it. Nothing is declared today and the check is
+\ what makes that a statement rather than a hope: a word neither compiled nor
+\ declared is refused. Runs after the old column, whose rows every name here is
+\ checked against.
+: RUN ( -- )
+   [: COVERED-CASES ;] CODEGEN-GAP:ACCOUNT ;
 
 ;package

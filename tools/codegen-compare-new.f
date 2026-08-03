@@ -50,6 +50,7 @@ require lib/prelude.f
 require lib/string.f
 require tools/codegen-compare-core.f
 require tools/codegen-compare-gap.f
+require tools/codegen-compare-calibrate.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-migrated.f
 
@@ -69,18 +70,9 @@ private
 \ publish is a claim the comparison made and did not keep, and it must surface as
 \ the missing subject rather than as a row that quietly went away.
 
-\ `: NOOP ( -- ) ;` - the calibration row. It returns nothing, so it has no
-\ output to compare; what it measures is the floor of a call on this path, which
-\ every other new row is divided by. Both paths' floors are now the same call
-\ into the same kind of record, so the two are expected to agree and the report
-\ prints them side by side.
-: NOOP-CASE ( -- )
-   s" CODEGEN-CORPUS:NOOP" s" CODEGEN-CORPUS:NOOP-N"
-   [: CODEGEN-CORPUS:NOOP-N ;]
-   [: ;]
-   CODEGEN-COMPARE:MEASURE-NEW
-   CODEGEN-COMPARE:CALIBRATE ;
-
+\ The calibration row of this pass is CODEGEN-CALIBRATE:NEW, which every corpus
+\ shares. Both paths' floors are the same call into the same kind of record, so
+\ the two are expected to agree and the report prints them side by side.
 : ADD3-CASE ( -- )
    s" CODEGEN-CORPUS:ADD3" s" CODEGEN-CORPUS:ADD3-N"
    [: 1 2 3 CODEGEN-CORPUS:ADD3-N drop ;]
@@ -212,7 +204,7 @@ private
    CODEGEN-COMPARE:MEASURE-NEW ;
 
 : COVERED-CASES ( -- )
-   NOOP-CASE
+   CODEGEN-CALIBRATE:NEW
    ADD3-CASE
    SQUARE-SUM-CASE
    MAX2-CASE
@@ -237,9 +229,6 @@ public
 \ that between them they account for all of it. Runs after the old column, whose
 \ rows the names are checked against.
 : RUN ( -- )
-   CODEGEN-GAP:RESET
-   COVERED-CASES
-   GAP-CASES
-   CODEGEN-GAP:COVERAGE-CK ;
+   [: COVERED-CASES GAP-CASES ;] CODEGEN-GAP:ACCOUNT ;
 
 ;package

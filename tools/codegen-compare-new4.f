@@ -156,6 +156,7 @@ require lib/prelude.f
 require lib/string.f
 require tools/codegen-compare-core.f
 require tools/codegen-compare-gap.f
+require tools/codegen-compare-calibrate.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-corpus4.f
 require tools/codegen-compare-migrated.f
@@ -164,16 +165,6 @@ require tools/codegen-compare-migrated4.f
 package CODEGEN-NEW4
 
 private
-
-\ The calibration row, which is the first corpus's empty call measured again in
-\ this pass. It returns nothing, so it has no output to compare; what it measures
-\ is the floor of a call on this path, which every other new row is divided by.
-: NOOP-CASE ( -- )
-   s" CODEGEN-CORPUS:NOOP" s" CODEGEN-CORPUS:NOOP-N"
-   [: CODEGEN-CORPUS:NOOP-N ;]
-   [: ;]
-   CODEGEN-COMPARE:MEASURE-NEW
-   CODEGEN-COMPARE:CALIBRATE ;
 
 \ ---- the one declaration ------------------------------------------------------
 \ The row the chain refuses, against the capability it waits for. The refusal is
@@ -287,15 +278,8 @@ private
       CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
 
-public
-
-\ Measure what the chain can express, declare the rest, and check that between
-\ them they account for all of it. Runs after the old column, whose rows every
-\ name here is checked against.
-: RUN ( -- )
-   CODEGEN-GAP:RESET
-   GAPS
-   NOOP-CASE
+: COVERED-CASES ( -- )
+   CODEGEN-CALIBRATE:NEW
    CALL-FAN-CASE
    CALL-LOOP-3-CASE
    TINY-CALLEE-CASE
@@ -304,7 +288,14 @@ public
    BIG-CONSTS-CASE
    MANY-LOCALS-CASE
    FLOAT-MIX-CASE
-   STORE-LOAD-CASE
-   CODEGEN-GAP:COVERAGE-CK ;
+   STORE-LOAD-CASE ;
+
+public
+
+\ Measure what the chain can express, declare the rest, and check that between
+\ them they account for all of it. Runs after the old column, whose rows every
+\ name here is checked against.
+: RUN ( -- )
+   [: GAPS COVERED-CASES ;] CODEGEN-GAP:ACCOUNT ;
 
 ;package

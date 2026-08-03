@@ -81,6 +81,8 @@
 \ the same host at the same moment as the rows divided by it.
 
 require tools/codegen-compare-core.f
+require tools/codegen-compare-corpora.f
+require tools/codegen-compare-calibrate.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-corpus3.f
 require tools/codegen-compare-new3.f
@@ -100,13 +102,6 @@ private
 
 \ 2^53+1, the smallest integer a double cannot hold.
 9007199254740993 constant WIDE-INT
-
-: CALIBRATION-CASE ( -- )
-   s" CODEGEN-CORPUS:NOOP"
-   [: CODEGEN-CORPUS:NOOP ;]
-   [: ;]
-   CODEGEN-COMPARE:MEASURE
-   CODEGEN-COMPARE:CALIBRATE ;
 
 : T-SUM-CASE ( -- )
    s" CODEGEN-CORPUS3:T-SUM"
@@ -228,7 +223,7 @@ private
    CODEGEN-COMPARE:MEASURE ;
 
 : ALL-CASES ( -- )
-   CALIBRATION-CASE
+   CODEGEN-CALIBRATE:OLD
    T-SUM-CASE
    T-DIST2-CASE
    T-NORM2-CASE
@@ -242,24 +237,18 @@ private
 
 public
 
-\ Where this corpus's committed table lives, and which source file it is the
-\ measurement of. Both are stated here, beside the cases, so that the runner
-\ names a corpus once and everything about that corpus follows.
-: BASELINE-PATH$ ( -- ptr u8 n )
-   s" test/compiler/codegen-compare-baseline3.txt" ;
-
-: CORPUS-PATH$ ( -- ptr u8 n )
-   s" tools/codegen-compare-corpus3.f" ;
-
-\ The old column first, then the new one: tools/codegen-compare-new3.f checks
-\ every name it writes down against a row the old column measured, so the old
-\ rows have to be there before it runs.
+\ One measured pass over this corpus: the two columns of it, handed to the pass
+\ machinery that every corpus shares.
 : RUN ( -- )
-   CODEGEN-COMPARE:RESET
-   CODEGEN-COMPARE:PASS-BEGIN
-   ALL-CASES
-   CODEGEN-NEW3:RUN
-   CODEGEN-COMPARE:PASS-END
-   CODEGEN-COMPARE:NORMALIZE ;
+   [: ALL-CASES ;] [: CODEGEN-NEW3:RUN ;] CODEGEN-COMPARE:PASS ;
 
 ;package
+
+\ What this corpus is called, where its committed table lives, and which source
+\ file that table is the measurement of. Stated here, beside the cases, so that
+\ naming a corpus once brings everything about it with it; the drivers read it
+\ back out of the register rather than naming this corpus a second time.
+s" corpus3"
+s" test/compiler/codegen-compare-baseline3.txt"
+s" tools/codegen-compare-corpus3.f"
+CODEGEN-CORPORA:DECLARE
