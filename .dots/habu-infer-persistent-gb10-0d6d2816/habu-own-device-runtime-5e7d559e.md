@@ -1,9 +1,11 @@
 ---
 title: Own persistent GPU session
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-30T00:55:48.211793+02:00"
+closed-at: "2026-08-03T12:46:35.464323+02:00"
+close-reason: Landed checked persistent GPU session cleanup and mandatory real-device proof at 41221c38.
 blocks:
   - habu-delete-maki-cuda-22ba9ede
 ---
