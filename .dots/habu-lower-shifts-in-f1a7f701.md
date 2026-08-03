@@ -10,6 +10,6 @@ Why: native jitdump of the exact SHA-256 consumer proves lshift/rshift are absen
 
 Frozen VOP design: parameterize the existing LVBINIPREP/VOPI-ENTRY immediate maximum instead of copying its probe; plus/minus keep 4095, shifts pass 63. Literal counts 0..63 emit LSLI/LSRI; every other non-folded count uses LSLV/LSRV so primitive modulo-cell semantics stay exact.
 
-Frozen ownership correction: make only C-VBINI-PROBE through EMIT-VBINIPREP, VOPI-ENTRY through EI-, EMIT-JIT, EM-COMPILE-ARITH-OPS, and EM-COMPILE-OPS private in the existing ENGINE-EMIT package. Keep FESK2, FESK6, and VOP-ENTRY global. The bootstrap mirrors remain Gforth source and receive behavior changes only. Publish no new ENGINE-EMIT word.
+Frozen ownership correction: declare LKWLSH and LKWRSH immediately before EMIT-FOLDKW, append their bytes there, and make that keyword block private in the existing ENGINE-EMIT package. Also make only C-VBINI-PROBE through EMIT-VBINIPREP, VOPI-ENTRY through EI-, EMIT-JIT, EM-COMPILE-ARITH-OPS, and EM-COMPILE-OPS private. Keep FESK2, FESK6, VOP-ENTRY, and VOP-ENTRY's adjacent TRUST row global. EMIT-JIT emits runtime helpers only; shift keyword bytes stay with their arithmetic peers under EMIT-DICTIONARY-SECTIONS. The bootstrap mirrors remain Gforth source and receive behavior changes only. Publish no new ENGINE-EMIT word.
 
 Claim: agent=codex workspace=.jj-ws/habu-lower-shifts-in-f1a7f701
