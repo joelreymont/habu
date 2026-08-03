@@ -17,7 +17,7 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/attention.f
 require maki/eval/active-target.f
-require maki/infer/gpt2-attention-cg.f
+require lib/ptx/gpt2-attention.f
 
 package GPT2-ATTN-DEVICE-TEST
 
@@ -41,9 +41,11 @@ $1000 constant ERR-CAP
 0.001 constant TOL
 $FFFFFFFF constant U32-MAX
 $7FFFFFFFFFFFFFFF constant CELL-MAX
+$7FFFFFFF constant GRID-X-MAX
+U32-MAX BLOCK 1- - constant STRIDE-MAX
 U32-MAX 4 / 1- constant SHARED-CAP-MAX
-CELL-MAX 4 / U32-MAX / constant ROW-HEAD-MAX
-CELL-MAX 2 / 4 / U32-MAX / constant CACHE-HEAD-MAX
+CELL-MAX 4 / STRIDE-MAX / constant ROW-HEAD-MAX
+CELL-MAX 2 / 4 / STRIDE-MAX / constant CACHE-HEAD-MAX
 
 create EMIT-OUT EMIT-CAP allot
 create EMIT-ERR ERR-CAP allot
@@ -158,7 +160,7 @@ variable SHARED-N
 : EMIT-PTX ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" maki/infer/gpt2-attention-device-test.f" >LEN PROC-ARGV+
+   s" tools/ptx/gpt2-attention-device-test.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" emit" >LEN PROC-ARGV+
    ATGT:LABEL$ >LEN PROC-ARGV+
@@ -275,17 +277,27 @@ variable SHARED-N
 : BOUND-OK ( n n n n -- )
    GPT2-ATTN:LAUNCH-CHECK drop drop drop ;
 
-: ROW-BOUND ( -- ) 0 ROW-HEAD-MAX U32-MAX 1 BOUND-OK ;
-: ROW-OVER ( -- ) 0 ROW-HEAD-MAX 1+ U32-MAX 1 BOUND-OK ;
-: CACHE-BOUND ( -- ) 0 CACHE-HEAD-MAX U32-MAX 2 BOUND-OK ;
-: CACHE-OVER ( -- ) 0 CACHE-HEAD-MAX 1+ U32-MAX 2 BOUND-OK ;
+: GRID-BOUND ( -- ) 0 GRID-X-MAX 1 1 BOUND-OK ;
+: GRID-OVER ( -- ) 0 GRID-X-MAX 1+ 1 1 BOUND-OK ;
+: WIDTH-BOUND ( -- ) 0 1 STRIDE-MAX 1 BOUND-OK ;
+: WIDTH-OVER ( -- ) 0 1 $FFFFFF81 1 BOUND-OK ;
+: CAP-STRIDE-OVER ( -- ) 0 1 1 STRIDE-MAX 1+ BOUND-OK ;
+: ROW-BOUND ( -- ) 0 ROW-HEAD-MAX STRIDE-MAX 1 BOUND-OK ;
+: ROW-OVER ( -- ) 0 ROW-HEAD-MAX 1+ STRIDE-MAX 1 BOUND-OK ;
+: CACHE-BOUND ( -- ) 0 CACHE-HEAD-MAX STRIDE-MAX 2 BOUND-OK ;
+: CACHE-OVER ( -- ) 0 CACHE-HEAD-MAX 1+ STRIDE-MAX 2 BOUND-OK ;
 : SHARED-BOUND ( -- ) 0 1 1 SHARED-CAP-MAX BOUND-OK ;
 : SHARED-OVER ( -- ) 0 1 1 SHARED-CAP-MAX 1+ BOUND-OK ;
 
 : BOUNDARIES ( -- )
+   GRID-BOUND
+   WIDTH-BOUND
    ROW-BOUND
    CACHE-BOUND
    SHARED-BOUND
+   [: GRID-OVER ;] E-PTX-BLOCK TTHROWSQ
+   [: WIDTH-OVER ;] E-PTX-BLOCK TTHROWSQ
+   [: CAP-STRIDE-OVER ;] E-PTX-BLOCK TTHROWSQ
    [: ROW-OVER ;] E-PTX-BLOCK TTHROWSQ
    [: CACHE-OVER ;] E-PTX-BLOCK TTHROWSQ
    [: SHARED-OVER ;] E-PTX-BLOCK TTHROWSQ ;

@@ -1,4 +1,4 @@
-\ gpt2-attention-cg.f - GPT-2 one-row causal decode attention.
+\ gpt2-attention.f - GPT-2 one-row causal decode attention.
 
 require lib/prelude.f
 require lib/errors.f
@@ -14,6 +14,10 @@ private
 
 $FFFFFFFF constant U32-MAX
 $7FFFFFFFFFFFFFFF constant CELL-MAX
+$7FFFFFFF constant GRID-X-MAX
+128 constant BLOCK
+\ .reqntid fixes %ntid.x; STRIDE-MAX makes every active i+BLOCK fit u32.
+U32-MAX BLOCK 1- - constant STRIDE-MAX
 4 constant F32-BYTES
 8 constant ROLE-BITS
 $FF constant ROLE-MASK
@@ -56,7 +60,8 @@ $FF constant ROLE-MASK
    s" .visible .entry GPT2_ATTN(" PTX-L
    s" .param .u64 p_q,.param .u64 p_k,.param .u64 p_v," PTX-L
    s" .param .u64 p_kc,.param .u64 p_vc,.param .u64 p_out," PTX-L
-   s" .param .u32 p_pos,.param .u32 p_heads,.param .u32 p_hd,.param .u32 p_cap)" PTX-L ;
+   s" .param .u32 p_pos,.param .u32 p_heads,.param .u32 p_hd,.param .u32 p_cap)" PTX-L
+   SB-RESET s" .reqntid " SB-APPEND BLOCK FMT:SB-U s" ,1,1" SB-APPEND SB$ PTX-L ;
 
 : REGS ( -- )
    s" {" PTX-L
@@ -242,26 +247,26 @@ $FF constant ROLE-MASK
 
 \ Register-to-row is the irreducible target cast; phantom minting retires under habu-ptx-phantom-preserving-3df9db92.
 TRUSTED: ROW-REG ( n -- matrix<space-global,f32,extent-h,extent-d> ) ;
-\ Register-to-flat-KV minting and extent-kv=cap*heads retire under habu-ptx-phantom-preserving-3df9db92 and habu-extent-bound-loop-a70a49b3.
+\ Register-to-flat-KV mints extent-kv=cap*heads; owner: habu-ptx-phantom-preserving-3df9db92.
 TRUSTED: CACHE-REG ( n -- matrix<space-global,f32,extent-kv,extent-d> ) ;
 
 \ STATE only packs six ordered PTX register ids; phantom preservation retires under habu-ptx-phantom-preserving-3df9db92.
 TRUSTED: STATE ( matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,extent-kv,d> matrix<space-global,f32,extent-kv,d> matrix<space-global,f32,h,d> -- attnctx<h,d,attn-stage-q> attnacc<f32,block-128,mask-live> )
    PACK 0 ;
 
-\ APPEND writes ((pos*heads+head)*width+dim)*4; checked loop bounds retire under habu-extent-bound-loop-a70a49b3.
+\ APPEND mint: habu-ptx-phantom-preserving-3df9db92; raw r8+=128 and ((pos*heads+head)*width+r8)*4: habu-type-emitted-ptx-8ed6f4b3.
 TRUSTED: APPEND ( attnctx<h,d,attn-stage-q> attnacc<f32,b,m> -- attnctx<h,d,attn-stage-score> attnacc<f32,b,m> )
    over APPEND-EMIT ;
 
-\ SCORE reads ((token*heads+head)*width+dim)*4 for token<=pos; checked bounds retire under habu-extent-bound-loop-a70a49b3.
+\ SCORE mint: habu-ptx-phantom-preserving-3df9db92; raw r9+=128, r8+=1, and KV byte address: habu-type-emitted-ptx-8ed6f4b3.
 TRUSTED: SCORE ( attnctx<h,d,attn-stage-score> attnacc<f32,b,m> -- attnctx<h,d,attn-stage-softmax> attnacc<f32,b,m> )
    over SCORE-EMIT ;
 
-\ SOFTMAX owns shared scores [0,pos] and sum[cap]; checked bounds retire under habu-extent-bound-loop-a70a49b3.
+\ SOFTMAX mint: habu-ptx-phantom-preserving-3df9db92; raw r9+=1 over [0,pos] and shared [cap]: habu-type-emitted-ptx-8ed6f4b3.
 TRUSTED: SOFTMAX ( attnctx<h,d,attn-stage-softmax> attnacc<f32,b,m> -- attnctx<h,d,attn-stage-output> attnacc<f32,b,m> )
    SOFTMAX-EMIT ;
 
-\ OUTPUT reads flat V at token*heads*width+head*width+dim; checked bounds retire under habu-extent-bound-loop-a70a49b3.
+\ OUTPUT mint: habu-ptx-phantom-preserving-3df9db92; raw r8+=128, r9+=1, and flat V/O addresses: habu-type-emitted-ptx-8ed6f4b3.
 TRUSTED: OUTPUT ( attnctx<h,d,attn-stage-output> attnacc<f32,b,m> -- attnctx<h,d,attn-stage-done> attnacc<f32,b,m> )
    over OUTPUT-EMIT ;
 
@@ -293,7 +298,9 @@ public
    width POS-U32? 0= if E-PTX-BLOCK throw then
    cap POS-U32? 0= if E-PTX-BLOCK throw then
    pos cap >= if E-PTX-BLOCK throw then
-   cap U32-MAX >= if E-PTX-BLOCK throw then
+   heads GRID-X-MAX > if E-PTX-BLOCK throw then
+   width STRIDE-MAX > if E-PTX-BLOCK throw then
+   cap STRIDE-MAX > if E-PTX-BLOCK throw then
    \ row=heads*width*4 and cache=cap*row bound every u64 byte address; shared=(cap+1)*4 stays u32.
    heads width CELL-MAX SIZE* F32-BYTES CELL-MAX SIZE* {: row:n :}
    cap row CELL-MAX SIZE* {: cache:n :}
