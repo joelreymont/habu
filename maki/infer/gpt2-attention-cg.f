@@ -1,4 +1,4 @@
-\ gpt2-attention.f - GPT-2 one-row causal decode attention.
+\ gpt2-attention-cg.f - GPT-2 one-row causal decode attention.
 
 require lib/prelude.f
 require lib/errors.f

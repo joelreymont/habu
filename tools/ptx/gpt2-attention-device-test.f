@@ -17,7 +17,7 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/attention.f
 require maki/eval/active-target.f
-require lib/ptx/gpt2-attention.f
+require maki/infer/gpt2-attention-cg.f
 
 package GPT2-ATTN-DEVICE-TEST
 
