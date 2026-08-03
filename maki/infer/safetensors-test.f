@@ -954,6 +954,7 @@ private
    s" STT-BAD-DOUBLE-UNMAP ( SAFET:mapping -- result<n,n> result<n,n> ) SAFET:UNMAP-MAPPING SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-UNMAP-THEN-READ ( SAFET:mapping -- result<n,n> SAFET:mapping n ) SAFET:UNMAP-MAPPING SAFET:WITH-MAPPING" REJECTED
    s" STT-OK-MAPPING-WITH ( SAFET:mapping [ SAFET:mapping ptr u8 n -- SAFET:mapping ] -- SAFET:mapping n ) SAFET:WITH-MAPPING" ACCEPTED
+   s" STT-OK-MAPPING-ROWS ( n SAFET:mapping [ n SAFET:mapping ptr u8 n -- bool SAFET:mapping ] -- bool SAFET:mapping n ) SAFET:WITH-MAPPING" ACCEPTED
    s" the three owner tokens are not interchangeable" T-LABEL
    s" STT-BAD-MAPPING-RELEASE ( SAFET:mapping -- ) SAFET:RELEASE" REJECTED
    s" STT-BAD-MAPPING-CLOSE ( SAFET:mapping -- ) SAFET:CLOSE" REJECTED

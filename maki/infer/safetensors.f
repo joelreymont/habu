@@ -817,9 +817,9 @@ public
 \ enforced; it is claimed no more strongly here than for WITH-TENSOR.
 \ Every mapping was minted from a successfully parsed positive-length image, so
 \ the body always runs and the returned length needs no optional arm.
-\ typed-local-lint: allow-bare-local - `body` carries the quotation effect
-\ [ SAFET:mapping ptr u8 n -- SAFET:mapping ], which a local annotation cannot express.
-: WITH-MAPPING ( SAFET:mapping [ SAFET:mapping ptr u8 n -- SAFET:mapping ] -- SAFET:mapping n )
+\ typed-local-lint: allow-bare-local - `body` carries a row-polymorphic
+\ quotation effect, which a local annotation cannot express.
+: WITH-MAPPING ( R SAFET:mapping [ R SAFET:mapping ptr u8 n -- S SAFET:mapping ] -- S SAFET:mapping n )
    {: body :}
    MAPPING>REC {: mr:ptr :}
    mr MR-LEN-OFF + @ {: len:n :}
