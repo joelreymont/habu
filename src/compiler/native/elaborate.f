@@ -1389,11 +1389,21 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ answers that can disagree. So it is a table keyed by the body token, filled
 \ here, and read everywhere else.
 \
-\ WHAT MAKES THE COPY TERMINATE. A body that calls anything is not recorded at
-\ all (src/compiler/native/inline.f), so nothing that is copied can contain a
-\ call to copy in its turn, and a definition cannot reach itself: `RECURSE` is a
-\ control word, which is not a meaning a recorded body may hold. The copying is
+\ WHAT MAKES THE COPY TERMINATE. No recorded body holds a call
+\ (src/compiler/native/inline.f), so nothing that is copied can contain a call to
+\ copy in its turn, and a definition cannot reach itself: `RECURSE` is a control
+\ word, which is not a meaning a recorded body may hold. The splice here is
 \ therefore one level deep by construction rather than by a depth counter.
+\
+\ AND THAT IS TRUE OF A CALLEE WHOSE OWN CALLS WERE COPIED TOO, WITHOUT THIS FILE
+\ DOING ANYTHING ABOUT IT. A definition whose call this walk copies is recorded
+\ with the callee's ROW written where the call stood rather than with the call -
+\ src/compiler/native/inline.f's STAGE-RECORD, driven by COPIED? below - so the
+\ row that reaches a later caller is already flat. What that buys is the whole
+\ point of it: `T-GET-N` writes `T-AT-N @` and publishes a routine with no call
+\ in it, and a loop that reads an element per turn now copies `cells + @` into
+\ its own body instead of branching. The recursion happens once, while the callee
+\ is compiled, where the emitter's instruction count can be held against it.
 \
 \ AND THE ARITY IS HELD BETWEEN TWO AUTHORITIES. The caller states what effect it
 \ believes a callee has (src/compiler/native/migrate.f stages it), and the
@@ -2647,6 +2657,34 @@ public
    kd NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    r  v key ix NTAPE:SPELL@  HIR-WORD:MODELS? 0= if false exit then
    r  v key ix NTAPE:SPELL@  HIR-WORD:MEANING@ SPLICE-MEANING? ;
+
+\ ---- what a recorder has to be told about a call -----------------------------
+\ SPLICEABLE? above answers no for every call, and that is right for a token that
+\ will really BE a call. It is wrong for one this pass decided to copy: the
+\ routine being compiled has the callee's operations in it and no branch, so a
+\ recorder that judged the source token would throw away a straight-line routine.
+\ These two publish the decision instead, so src/compiler/native/migrate.f writes
+\ down what the routine IS rather than what its source said.
+\
+\ THE DECISION IS NOT RE-DERIVED, IT IS READ. INLINE-SCAN made it once, before
+\ any other walk, precisely so that the walks cannot disagree about which sites
+\ are calls; a recorder deciding it again would be a fourth reader of a question
+\ with one answer. So COPIED? is the table, and it answers about the definition
+\ this pass elaborated LAST - which is the one the migration is recording, since
+\ the recording stands between COLON and the emission.
+
+\ Was the call written on this body token COPIED into the definition rather than
+\ made?
+: COPIED? ( n -- bool )
+   INL-AT? ;
+
+\ Whose row it was copied from, as the address that row is keyed by. Asked of a
+\ token that is not a copied call it is refused by name: an address answered for
+\ a token that will really branch would be a body staged where a call belongs.
+: COPIED-ENTRY ( IR-ARENA:arena n -- n )
+   {: r:IR-ARENA:arena ix:n :}
+   ix INL-AT? 0= if E-NELAB-INLINE throw then
+   r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:ENTRY@ ;
 
 \ Does the definition this pass last elaborated CALL anything? It is the pre-scan
 \ answer above, published because the routine contract the later stages are told

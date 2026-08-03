@@ -37,16 +37,45 @@
 \
 \ WHICH BODIES ARE RECORDED, AND BOTH HALVES OF THE RULE ARE DERIVED.
 \
-\   IT HAS TO BE STRAIGHT-LINE SOURCE. Every token of the body has to mean a
-\   literal, an operation, a constant-and-operation word, a fixed value or a
-\   compile-time rename - so a body with a control structure, a locals group, a
-\   call of its own or a `RECURSE` is not recorded at all. That is what makes
-\   splicing a body into a caller a splice of OPERATIONS rather than of blocks,
-\   and it is also what makes the copying terminate: a body that calls nothing is
-\   never recorded, so nothing that is inlined can inline anything further and
-\   no body can reach itself. The rule is applied twice - once here, against the
-\   callee's own word model, and again at every call site against the CALLER's
-\   model, which has to admit each token itself before it may splice it.
+\   A ROW HOLDS STRAIGHT-LINE OPERATIONS. Every token of a row means a literal,
+\   an operation, a constant-and-operation word, a fixed value or a compile-time
+\   rename - so a body with a control structure, a locals group or a `RECURSE` is
+\   not recorded at all. That is what makes splicing a body into a caller a splice
+\   of OPERATIONS rather than of blocks, and it is also what makes the copying
+\   terminate: NO ROW HOLDS A CALL, so nothing that is copied can contain a call
+\   to copy in its turn and no body can reach itself. The rule is applied twice -
+\   once when the row is written, against the callee's own word model, and again
+\   at every call site against the CALLER's model, which has to admit each token
+\   itself before it may splice it.
+\
+\   AND A CALL THE CALLEE'S OWN COMPILATION COPIED IS NOT A CALL IN THE ROW. This
+\   is the one place where the rule is about the ROUTINE and not about the source
+\   text, and it has to be. `: T-GET-N ( ptr a n -- r ) T-AT-N @ ;` WRITES a call,
+\   and the routine published for it contains none: its own elaboration found a
+\   row for T-AT-N and copied that row in, so what the publication seam wrote at
+\   that address is `cells + @` and a return. Judging such a body by its source
+\   token refuses a routine that is straight-line machine code, which is what kept
+\   every kernel of the third comparison corpus paying a call per element. So the
+\   token staged for a call the elaborator COPIED is not the call at all: it is
+\   the callee's own row, spliced in whole by STAGE-RECORD below.
+\
+\   THE ROW THEREFORE DESCRIBES THE ROUTINE AT ITS ADDRESS RATHER THAN THE TEXT
+\   THAT WAS WRITTEN, and that is the honest way round. A row is keyed by an
+\   address and read by a caller that is about to reproduce what lives there; a
+\   row saying "call T-AT-N" about a routine with no call in it would describe
+\   something nobody published. The flattened row is the same operations in the
+\   same order, so it elaborates to the instructions the emitter really wrote -
+\   and the no-call invariant above is then kept BY INDUCTION rather than by
+\   refusing the source: the row spliced in has no call in it, so neither has the
+\   row built out of it, and there is no depth to bound and no counter to keep.
+\
+\   AND THE SIZE RULE STAYS ONE MEASUREMENT RATHER THAN A SUM OVER A CHAIN.
+\   Because a row is flattened while its routine is being compiled, the emission
+\   the rule is asked about ALREADY contains those copies - it is what the
+\   flattened tokens elaborate to. A chain of routines each copying the last is
+\   therefore admitted or refused at every step by the emitter's own instruction
+\   count, with no transitive arithmetic anywhere and no second authority that
+\   could disagree with the emitter about what it emitted.
 \
 \   AND THE COPY MAY NOT BE BIGGER THAN THE CALL IT REPLACES. This is where the
 \   size rule comes from, and there is no chosen number in it. A call to a
@@ -65,11 +94,14 @@
 \ instruction at all, so a body of nothing but `dup` and `swap` can hold more
 \ tokens than its emission holds instructions, and a table of fixed rows has to
 \ stop somewhere. BODY-MAX and SPELL-MAX are those stops, and they are CAPACITIES
-\ rather than parts of the rule: FITS? and SPELL-FITS? are asked BEFORE anything
-\ is staged, so a body that does not fit is one this file never claims to hold
-\ and its callers call it, exactly as they call a word the engine compiled. What
-\ is not allowed is finding out halfway - a token staged past either ceiling is
-\ refused by name, because a row half written is a body nobody could copy.
+\ rather than parts of the rule: STAGE-FITS? and SPELL-FITS? are asked BEFORE
+\ each staging step, so a body that does not fit is one this file never claims to
+\ hold and its callers call it, exactly as they call a word the engine compiled.
+\ Asking per step rather than once up front is what a flattened row needs: the
+\ tokens a splice adds are not the source's, so the only count that can be tested
+\ is the one already staged against the one about to be. What is not allowed is
+\ finding out halfway - a token staged past either ceiling is refused by name,
+\ because a row half written is a body nobody could copy.
 \
 \ WHAT AN UNKNOWN ADDRESS ANSWERS. Nothing - KNOWN? is false, and the call site
 \ emits the call it always emitted. A word the engine's own emitter compiled has
@@ -214,6 +246,16 @@ public
 : FITS? ( n -- bool )
    BODY-MAX <= ;
 
+\ The same ceiling, asked about what is staged NOW plus what is about to be. A
+\ recorder stages one token for a literal or a name and a whole row for a call
+\ its callee's compilation copied, so the number that has to be tested is the
+\ number of tokens the next step will add - which is why this and not FITS? is
+\ what src/compiler/native/migrate.f asks before every step.
+: STAGE-FITS? ( n -- bool )
+   {: k:n :}
+   S-OPEN-CK
+   S-N @ k + FITS? ;
+
 : SPELL-FITS? ( n -- bool )
    {: u:n :}
    u 1 >=  u SPELL-MAX <=  and ;
@@ -247,6 +289,32 @@ public
 : STAGE-REAL ( n -- )
    {: v:n :}
    S-SPELL 0 NTAPE-KIND:REAL-LITERAL v S-PUT ;
+
+\ A fourth constructor, and the only one that stages more than one token: the
+\ whole of ANOTHER address's row. It is what a body writes in place of a call its
+\ own compilation copied, and the head of this file argues why that is the right
+\ thing to write down. The row is read through the same ROW-CK the public readers
+\ use, so an address with no row is refused by name here rather than staging
+\ nothing and leaving a body that quietly lost a call; and the caller has already
+\ asked STAGE-FITS? about exactly this many tokens, so the capacity refusal
+\ inside S-PUT is a backstop and not the path.
+\
+\ NOTHING IS RE-JUDGED WHILE IT IS COPIED. Every token of the row was admitted
+\ against the callee's own word model when the row was written, and again against
+\ THIS definition's model when its elaborator decided to copy the call - which is
+\ the decision that brings a recorder here at all. A third judgement would be a
+\ second opinion about a question already answered twice.
+: STAGE-RECORD ( n -- )
+   {: entry:n :}
+   S-OPEN-CK
+   entry ROW-CK {: l:n :}
+   l cells R-N + @ 0 ?do
+      l BODY-MAX * i + R-SPELL-AT
+      l BODY-MAX * i + cells R-SLEN + @
+      l BODY-MAX * i + R-KIND @
+      l BODY-MAX * i + cells R-LIT + @
+      S-PUT
+   loop ;
 
 \ Give the staging up without keying it to anything. A run that refused, and a
 \ definition whose body turned out not to qualify, both end here.

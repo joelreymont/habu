@@ -3,7 +3,7 @@
 \ src/compiler/native/inline.f and the splice src/compiler/native/elaborate.f
 \ makes out of it.
 \
-\ WHAT THIS SUITE HAS TO SHOW. Seven things, and the last five are the ones a
+\ WHAT THIS SUITE HAS TO SHOW. Eight things, and the last six are the ones a
 \ change to the rule would break.
 \
 \   1. That the record answers about an ADDRESS, keeps the tokens and the arity
@@ -21,11 +21,11 @@
 \      the smaller is copied and the larger is called. Nothing else about the two
 \      callers differs, so a change that widened or narrowed the rule moves
 \      exactly one of these two counts.
-\   5. That the three refusals are refusals about the BODY and not about its
-\      size, which is checked by asking the size rule about the same routine and
+\   5. That the refusals are refusals about the BODY and not about its size,
+\      which is checked by asking the size rule about the same routine and
 \      getting a yes: a callee with a control structure, a callee that calls
-\      another word, and a callee that calls itself are all small enough to copy
-\      and none of them is recorded.
+\      itself, and a callee that calls a word NOTHING RECORDED are all small
+\      enough to copy and none of them is recorded.
 \   6. That a copied body brings its own memory order and its own trap with it. A
 \      caller with no memory word of its own compiles and answers correctly when
 \      the body it copies has one, and a caller that copies a division carries
@@ -34,6 +34,12 @@
 \      took them as, so a caller holding a computed double where the record has
 \      a cell store compiles, and the eight bytes that reach memory are the
 \      double's own.
+\   8. That a routine whose OWN calls were copied is itself recorded, as the
+\      tokens that replaced them: the row is flat, the literals inside it survive
+\      each further copy to the bit, the chain stops at whichever ceiling it
+\      reaches first - the size rule or the row's capacity - and a routine
+\      refused at either ceiling is CALLED by its callers and still answers
+\      correctly.
 \
 \ WHY THE COUNTS ARE OF INSTRUCTIONS AND NOT OF BYTES. A byte count moves for any
 \ reason at all. What copying a body removes is exactly the branch-with-link, the
@@ -248,9 +254,9 @@ variable ROWS-BEFORE
    s" : NINL-ENGINE-LIT ( n -- n ) 3 * 7 + ;" EV ;
 
 : EDGE-CASES ( -- )
-   s" four routines were migrated and the record grew by the two that qualify"
+   s" six routines were migrated and the record grew by the four that qualify"
    T-LABEL
-   NINL:ROWS ROWS-BEFORE @ 2 + T=
+   NINL:ROWS ROWS-BEFORE @ 4 + T=
 
    s" a small routine's body is recorded when it is published" T-LABEL
    s" NINL-EDGE-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
@@ -305,19 +311,26 @@ variable ROWS-BEFORE
    s" NINL-EDGE-IN" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
 \ ---- what is refused about a BODY rather than about its size -------------------
-\ Each of these three is small enough to copy and is not recorded, and each case
-\ says so twice: the record does not know the address, and the size rule asked
-\ about that same routine's own emission answers yes. So what refused it is the
-\ shape of its body, which is the claim.
+\ The first of these is small enough to copy and is still not recorded, and its
+\ case says so twice: the record does not know the address, and the size rule
+\ asked about that same routine's own emission answers yes. So what refused it is
+\ the shape of its body, which is the claim.
 \
 \   a control structure   a copied body is spliced into the block the call site
 \                         stands in, and this elaborator counts its blocks in a
 \                         walk that never saw the callee
-\   a call of its own     which is what makes the copying terminate: nothing that
-\                         is copied can contain a call to copy in its turn
 \   a call to ITSELF      `RECURSE` is a control word, so it is refused by the
 \                         same rule, and a body that could reach itself is what
 \                         that rule is there to make impossible
+\
+\ THE THIRD REFUSAL IS THE ONE THAT KEEPS EVERY ROW FLAT, and it is stated by the
+\ machine code rather than by the size rule, because a routine that really calls
+\ can never be small: the call costs it one whole interface, which is half of
+\ what the rule allows. What its case says instead is the thing that matters -
+\ the routine contains a branch-with-link, and no row holds one, so a caller
+\ copying it would be copying a branch. A call the elaboration COULD copy is not
+\ this case at all: it leaves no branch behind, and the chain cases below are
+\ about that.
 : MIGRATE-CTRL ( -- )
    s" : NINL-CTRL ( n -- n ) dup 0 < if drop 0 then ;"
    1 1 REGS NMIGRATE:DEFINE ;
@@ -339,15 +352,26 @@ variable ROWS-BEFORE
    s" NINL-CTRL" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
    1 1 s" NINL-CTRL" WORD-INSNS NINL:SMALL? TTRUE
 
-   s" a callee that calls another word is not recorded" T-LABEL
-   s" NINL-VIA" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
-   1 1 s" NINL-VIA" WORD-INSNS NINL:SMALL? TTRUE
-
    s" and neither is one that calls itself" T-LABEL
    s" NINL-SELF" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
 
-   s" the caller whose call was copied is itself not a body to copy" T-LABEL
-   s" NINL-COPIES" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
+   s" a routine that really CALLS is not recorded, and both of these do" T-LABEL
+   s" NINL-VIA-CTRL" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
+   s" NINL-VIA-CTRL" BL-COUNT 1 T=
+   s" NINL-CALLS" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
+   s" NINL-CALLS" BL-COUNT 1 T=
+
+   s" while the caller whose call WAS copied is a body to copy in its turn"
+   T-LABEL
+   s" NINL-COPIES" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-VIA" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+
+   s" and its row is the callee's tokens, with no call left anywhere in it"
+   T-LABEL
+   s" NINL-VIA" ENTRY-OF NINL:TOKENS 10 T=
+   s" NINL-VIA" ENTRY-OF 0 NINL:SPELL$ s" dup" STR= TTRUE
+   s" NINL-VIA" ENTRY-OF 1 NINL:SPELL$ s" +" STR= TTRUE
+   s" NINL-VIA" ENTRY-OF 9 NINL:SPELL$ s" +" STR= TTRUE
 
    s" and a caller of one of them CALLS it, which is the answer to refusing it"
    T-LABEL
@@ -430,6 +454,126 @@ variable ROWS-BEFORE
    s" NINL-DIV-BIG" BRK-COUNT 1 T=
    s" 20 4 NINL-CALL-DIV" EV-N 11 T= ;
 
+\ ---- a chain of records, and the two ceilings that end one -------------------
+\ A routine whose own calls were copied is recorded as the tokens that replaced
+\ them, so a record can be built out of a record. Nothing bounds that by depth;
+\ what bounds it is that each step has to pass the SAME two ceilings a first-level
+\ record passes, measured on what the step really produced. These two families
+\ walk a chain into each ceiling in turn and show which one stopped it.
+\
+\ THE LITERAL CHAIN WALKS INTO THE SIZE RULE. Each link multiplies or adds a
+\ constant, so each splice adds two instructions to the next routine's emission
+\ and the arithmetic is different at every link - a copy that dropped a literal,
+\ reordered two, or truncated one answers a different number. F-L1 is recorded;
+\ F-L2 copies it and is recorded with F-L1's literals inside it; F-L3 copies F-L2
+\ and is recorded with literals that have now survived two splices; F-L4 copies
+\ F-L3 and is ONE instruction past the rule for its arity, so it is not recorded;
+\ and F-L5, whose callee has no record, makes a real call.
+\
+\ THE RENAME CHAIN WALKS INTO THE ROW'S CAPACITY INSTEAD, and the pair of them is
+\ why the two ceilings have to be separate. A rename is a token and no
+\ instruction, so every link of this chain emits exactly the same seven
+\ instructions and passes the size rule forever - the row fills up first. F-R2
+\ holds sixteen tokens, which is the whole of a row; F-R3 would need twenty-four
+\ and is refused, and the case asserts the size rule says YES about that same
+\ routine, so what refused it was the capacity and not the rule.
+\
+\ BOTH REFUSALS ARE SOFT, AND THAT IS THE POINT OF ASSERTING WHAT STILL RUNS. A
+\ body this file will not hold is a body its callers call, exactly as they call a
+\ word the engine compiled: F-L4 and F-R3 are published, answer correctly, and
+\ their own callers carry one branch each.
+: MIGRATE-LIT-CHAIN ( -- )
+   s" : NINL-L1 ( n -- n ) 3 * ;" 1 1 REGS NMIGRATE:DEFINE
+   s" NINL-L1" s" NINL-L1" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-L2 ( n -- n ) NINL-L1 7 + ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" NINL-L2" s" NINL-L2" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-L3 ( n -- n ) NINL-L2 ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" NINL-L3" s" NINL-L3" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-L4 ( n -- n ) NINL-L3 5 - ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" NINL-L4" s" NINL-L4" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-L5 ( n -- n ) NINL-L4 ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: MIGRATE-RENAME-CHAIN ( -- )
+   s" : NINL-R1 ( n n -- n n ) swap swap swap swap swap swap swap swap ;"
+   2 2 REGS NMIGRATE:DEFINE
+   s" NINL-R1" s" NINL-R1" ENTRY-OF 2 2 NMIGRATE:CALLEE
+   s" : NINL-R2 ( n n -- n n ) NINL-R1 NINL-R1 ;" 2 2 REGS NMIGRATE:DEFINE-CALLING
+   s" NINL-R1" s" NINL-R1" ENTRY-OF 2 2 NMIGRATE:CALLEE
+   s" NINL-R2" s" NINL-R2" ENTRY-OF 2 2 NMIGRATE:CALLEE
+   s" : NINL-R3 ( n n -- n n ) NINL-R2 NINL-R1 ;" 2 2 REGS NMIGRATE:DEFINE-CALLING
+   s" NINL-R3" s" NINL-R3" ENTRY-OF 2 2 NMIGRATE:CALLEE
+   s" : NINL-R4 ( n n -- n n ) NINL-R3 ;" 2 2 REGS NMIGRATE:DEFINE-CALLING ;
+
+\ The same arithmetic as the whole literal chain, compiled by the ENGINE, so what
+\ the copied chain answers is held against a second compiler.
+: DEFINE-CHAIN-TWIN ( -- )
+   s" : NINL-ENGINE-CHAIN ( n -- n ) 3 * 7 + 5 - ;" EV ;
+
+: CHAIN-CASES ( -- )
+   s" a routine whose own call was copied is recorded, and so is one of those"
+   T-LABEL
+   s" NINL-L1" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-L2" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-L3" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+
+   s" and each row is the operations, never the call that was written" T-LABEL
+   s" NINL-L1" ENTRY-OF NINL:TOKENS 2 T=
+   s" NINL-L2" ENTRY-OF NINL:TOKENS 4 T=
+   s" NINL-L3" ENTRY-OF NINL:TOKENS 4 T=
+
+   s" the literals survive two splices, in the right order and to the bit"
+   T-LABEL
+   s" NINL-L3" ENTRY-OF 0 NINL:LIT@ 3 T=
+   s" NINL-L3" ENTRY-OF 1 NINL:SPELL$ s" *" STR= TTRUE
+   s" NINL-L3" ENTRY-OF 2 NINL:LIT@ 7 T=
+   s" NINL-L3" ENTRY-OF 3 NINL:SPELL$ s" +" STR= TTRUE
+
+   s" one link further is one instruction past the rule, so it is not recorded"
+   T-LABEL
+   s" NINL-L4" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
+   s" NINL-L3" WORD-INSNS 9 T=
+   s" NINL-L4" WORD-INSNS 11 T=
+   1 1 s" NINL-L3" WORD-INSNS NINL:SMALL? TTRUE
+   1 1 s" NINL-L4" WORD-INSNS NINL:SMALL? TFALSE
+
+   s" the refused link still copied ITS callee, so it carries no call itself"
+   T-LABEL
+   s" NINL-L4" BL-COUNT 0 T=
+   s" NINL-L4" FRAME-COUNT 0 T=
+
+   s" but a caller of it calls it, because nothing recorded it" T-LABEL
+   s" NINL-L5" BL-COUNT 1 T=
+   s" NINL-L5" FRAME-COUNT 1 T=
+   s" NINL-L5" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
+
+   s" and the whole chain answers what the engine's code for it answers" T-LABEL
+   s" 5 NINL-L4" EV-N  s" 5 NINL-ENGINE-CHAIN" EV-N T=
+   s" 0 NINL-L4" EV-N  s" 0 NINL-ENGINE-CHAIN" EV-N T=
+   s" -7 NINL-L4" EV-N  s" -7 NINL-ENGINE-CHAIN" EV-N T=
+   s" 5 NINL-L4" EV-N 17 T=
+   s" 5 NINL-L5" EV-N 17 T=
+
+   s" a chain of renames fills the ROW before it reaches the size rule" T-LABEL
+   s" NINL-R1" ENTRY-OF NINL:TOKENS 8 T=
+   s" NINL-R2" ENTRY-OF NINL:TOKENS 16 T=
+   s" NINL-R3" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
+
+   s" and it is the capacity that refused it, because the rule says yes" T-LABEL
+   s" NINL-R3" WORD-INSNS 7 T=
+   2 2 s" NINL-R3" WORD-INSNS NINL:SMALL? TTRUE
+   16 NINL:FITS? TTRUE
+   17 NINL:FITS? TFALSE
+
+   s" the refused row's routine copied its own callees and still runs" T-LABEL
+   s" NINL-R3" BL-COUNT 0 T=
+   s" 3 4 NINL-R3 drop" EV-N 3 T=
+   s" 3 4 NINL-R3 nip" EV-N 4 T=
+
+   s" while its caller calls it, and runs too" T-LABEL
+   s" NINL-R4" BL-COUNT 1 T=
+   s" 3 4 NINL-R4 drop" EV-N 3 T=
+   s" 3 4 NINL-R4 nip" EV-N 4 T= ;
+
 \ ---- the arguments a copied body is handed --------------------------------
 \ A routine reads its arguments out of data-stack slots, so its entry block takes
 \ CELLS and the recorded tokens were elaborated with cells in those positions.
@@ -492,6 +636,10 @@ public
    MIGRATE-DIV-BIG
    MIGRATE-CALL-DIV
    CARRIED-CASES
+   DEFINE-CHAIN-TWIN
+   MIGRATE-LIT-CHAIN
+   MIGRATE-RENAME-CHAIN
+   CHAIN-CASES
    MIGRATE-STORE
    MIGRATE-PUT
    ARG-CASES

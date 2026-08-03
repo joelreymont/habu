@@ -720,6 +720,28 @@ $F9400000 constant LDR-OP
 : DS-LOADS ( ptr u8 n -- n )
    LDR-OP DS-COUNT ;
 
+\ ---- and how many calls a word's own code makes ------------------------------
+\ The other exact number, and the one a claim about copying a callee rests on:
+\ AArch64's branch-with-link, top six bits 100101 - the same encoding
+\ src/habu/habu2.f names `$94000000 constant C-CALL-BL-IMM` and scans for when it
+\ decides whether a span is safe to copy. A byte count can be explained away; a
+\ branch either is in the emitted code or is not. It stands here beside the
+\ data-stack counters because the third and fourth corpora both read it.
+$FC000000 constant BL-MASK
+$94000000 constant BL-OP
+
+\ How many call instructions a live word's compiled code contains. The code start
+\ and the code length come off the word's own dictionary record, which is where
+\ every other size in this harness comes from.
+: BL-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then
+   dup XREF-START CODE-AT !
+   XREF-LEN {: len:n :}
+   0
+   len 4 / 0 ?do
+      CODE-PTR i 4 * + U32@ BL-MASK and BL-OP = if 1+ then
+   loop ;
+
 \ ---- what each column spends on the caller's own data stack ------------------
 \ A COST is a measurement; a count of instructions is not. What the timing rows
 \ of this harness were really about is the traffic each column makes with the
@@ -866,7 +888,25 @@ $F9400000 constant LDR-OP
 \ pinned is the traffic itself - how many stores and loads against the caller's
 \ data-stack pointer the emitted word contains - which is exact, moves for one
 \ reason, and does not turn on host load. The row was 340 bytes with 24 stores
-\ and 23 loads and is 204 with seven and six.
+\ and 23 loads, then 204 with seven and six, and is 140 with none and four.
+\
+\ AND THE KERNELS NOW CARRY NO CALL AT ALL, WHICH IS WHY THOSE COUNTS MOVED
+\ AGAIN. Every one of the five reaches an element through `T-GET` or `T-SET`, and
+\ each of those two is written as `T-AT @` or `T-AT !` - a call inside a call. The
+\ chain copied T-AT-N's body into them from the start, so the routines it
+\ published for T-GET-N and T-SET-N contain no branch; what it would not do was
+\ RECORD such a routine, because the record was judged on the source token rather
+\ than on the routine. It is judged on the routine now (dot
+\ habu-copy-a-callee-711e74eb, src/compiler/native/inline.f), so a kernel copies
+\ `cells + @` into its own loop and the per-element call is gone.
+\
+\ THIS IS THE CORPUS WHERE THE TWO COLUMNS DIFFER ON THAT, and that is what makes
+\ the Bl counts below worth pinning rather than restating the fourth corpus's
+\ result. The ENGINE copies a callee of at most forty body bytes and refuses any
+\ span with a branch-with-link in it, so T-GET - which HAS one, to T-AT - is a
+\ word it calls; its own kernels therefore still branch once, twice or three
+\ times per turn of the loop, and they are pinned here so that a change to either
+\ compiler shows up as a moved number in the column it belongs to.
 : GAP-WANTS? ( n CODEGEN-GAP:cap -- bool ) {: k:n c:CODEGEN-GAP:cap :}
    false
    k CODEGEN-GAP:GAP-CAPS@ 0 ?do
@@ -937,9 +977,9 @@ $F9400000 constant LDR-OP
    s" CODEGEN-CORPUS3:T-SUM" SMALLER? TTRUE
    s" CODEGEN-CORPUS3:T-SGD!" SMALLER? TTRUE
 
-   s" the loop with three calls in it saves only what its callees destroy" T-LABEL
-   s" CODEGEN-CORPUS3:T-SGD!-N" DS-STORES 7 T=
-   s" CODEGEN-CORPUS3:T-SGD!-N" DS-LOADS 6 T=
+   s" the loop written with three calls in it now makes none of them" T-LABEL
+   s" CODEGEN-CORPUS3:T-SGD!-N" DS-STORES 0 T=
+   s" CODEGEN-CORPUS3:T-SGD!-N" DS-LOADS 4 T=
 
    s" exactly one row of this corpus touches the caller's data stack more often" T-LABEL
    DS-HEAVIER-ROWS 1 T=
@@ -951,15 +991,34 @@ $F9400000 constant LDR-OP
    s" CODEGEN-CORPUS3:SGD-N" DS-STORES 1 T=
    s" CODEGEN-CORPUS3:SGD-N" DS-LOADS 3 T=
 
-   s" and the loop rows, which the timings were about, spend half what the engine does" T-LABEL
+   s" and the loop rows, which the timings were about, spend its own arguments" T-LABEL
    s" CODEGEN-CORPUS3:T-SUM" DS-STORES 6 T=
-   s" CODEGEN-CORPUS3:T-SUM-N" DS-STORES 3 T=
+   s" CODEGEN-CORPUS3:T-SUM-N" DS-STORES 1 T=
    s" CODEGEN-CORPUS3:T-SUM" DS-LOADS 6 T=
-   s" CODEGEN-CORPUS3:T-SUM-N" DS-LOADS 3 T=
+   s" CODEGEN-CORPUS3:T-SUM-N" DS-LOADS 2 T=
    s" CODEGEN-CORPUS3:T-DIST2" DS-HEAVIER? TFALSE
    s" CODEGEN-CORPUS3:T-NORM2" DS-HEAVIER? TFALSE
    s" CODEGEN-CORPUS3:T-REL-L2" DS-HEAVIER? TFALSE
    s" CODEGEN-CORPUS3:RELU-F" DS-HEAVIER? TFALSE
+
+   s" the engine still branches once per element, because T-GET itself calls" T-LABEL
+   s" CODEGEN-CORPUS3:T-GET" BL-COUNT 1 T=
+   s" CODEGEN-CORPUS3:T-SUM" BL-COUNT 1 T=
+   s" CODEGEN-CORPUS3:T-NORM2" BL-COUNT 1 T=
+   s" CODEGEN-CORPUS3:T-DIST2" BL-COUNT 2 T=
+   s" CODEGEN-CORPUS3:T-SGD!" BL-COUNT 3 T=
+
+   s" and the chain's code for the same five kernels carries no call at all" T-LABEL
+   s" CODEGEN-CORPUS3:T-GET-N" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS3:T-SET-N" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS3:T-SUM-N" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS3:T-NORM2-N" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS3:T-DIST2-N" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS3:T-SGD!-N" BL-COUNT 0 T=
+
+   s" while the row whose callees are whole loops still calls them, in both" T-LABEL
+   s" CODEGEN-CORPUS3:T-REL-L2" BL-COUNT 2 T=
+   s" CODEGEN-CORPUS3:T-REL-L2-N" BL-COUNT 2 T=
 
    s" the sum row's pinned input distinguishes one evaluation order from another" T-LABEL
    CODEGEN-CORPUS3:SUM-REVERSED CODEGEN-COMPARE:REAL-BITS
@@ -1212,28 +1271,12 @@ private
 \ The call rows of the fourth corpus rested on one claim: the engine COPIES a
 \ small callee into its caller and emits no call instruction, while the chain
 \ emitted a Bl per call site. The first half is unchanged and the second half is
-\ what this leaf's work removed - both columns now carry no call instruction at
-\ all for these three bodies, each under its own rule, and the counts below say
-\ so on both sides. A byte count could be explained away; the instruction cannot.
-\ This counts
-\ the Bl instructions in a word's own compiled code - top six bits 100101, which
-\ is AArch64's branch-with-link, the same encoding src/habu/habu2.f names
-\ `$94000000 constant C-CALL-BL-IMM` and scans for when it decides whether a span
-\ is safe to copy.
-$FC000000 constant BL-MASK
-$94000000 constant BL-OP
-
-\ How many call instructions a live word's compiled code contains. The code start
-\ and the code length come off the word's own dictionary record, which is where
-\ every other size in this harness comes from.
-: BL-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then
-   dup XREF-START CODE-AT !
-   XREF-LEN {: len:n :}
-   0
-   len 4 / 0 ?do
-      CODE-PTR i 4 * + U32@ BL-MASK and BL-OP = if 1+ then
-   loop ;
+\ what an earlier leaf's work removed - both columns now carry no call
+\ instruction at all for these three bodies, each under its own rule, and the
+\ counts below say so on both sides. A byte count could be explained away; the
+\ instruction cannot. BL-COUNT is up beside the data-stack counters, because the
+\ third corpus reads it too, and reads it for a case this corpus does not have:
+\ there the ENGINE still branches and only the chain does not.
 
 \ src/habu/habu2.f, `$28 constant INL-MAX`: the most bytes of BODY the engine
 \ copies into a caller. A callee that opens with the standard two-instruction

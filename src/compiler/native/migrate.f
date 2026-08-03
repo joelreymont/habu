@@ -280,6 +280,16 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 \ decides nothing about the body; it copies the tokens out and states the arity
 \ the caller declared for the definition.
 \
+\ AND WHAT IS WRITTEN DOWN FOR A CALL IS WHAT THE ROUTINE HAS, NOT WHAT THE
+\ SOURCE SAID. A body may write a call that the elaboration COPIED - the routine
+\ published for `: T-GET-N ( ptr a n -- r ) T-AT-N @ ;` contains T-AT-N's
+\ operations and no branch at all - and staging the call token for it would key a
+\ row full of calls to an address holding straight-line code. So the elaborator
+\ is asked which sites it copied (NELAB:COPIED?) and from which row
+\ (NELAB:COPIED-ENTRY), and that row is spliced into the staging in place of the
+\ call. src/compiler/native/inline.f carries the argument for why a flattened row
+\ is the honest one and why the recording still terminates.
+\
 \ AND THE TOKENS ARE STAGED BEFORE THE ADDRESS IS KNOWN, WHICH IS WHY THE RECORD
 \ HAS TWO STEPS. The spellings have to be read while the module is still being
 \ built; the address is not the definition's until the publication seam has
@@ -294,12 +304,30 @@ create SPELL-BUF SPELL-CAP allot
 here CELL 1- and CELL swap - CELL 1- and allot
 variable REC-OK                      \ the body staged so far is still one worth keeping
 
+\ A call the elaboration copied, staged as the row it was copied FROM. The row is
+\ already flat - no row holds a call - so this adds operations and never another
+\ call, and one splice is the whole of it. A row that will not fit beside what is
+\ staged already ends the recording, exactly as an over-long spelling does: this
+\ definition is one its callers will call, and calling it is correct.
+: REC-CALL ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix NELAB:COPIED-ENTRY {: entry:n :}
+   entry NINL:TOKENS NINL:STAGE-FITS? 0= if 0 REC-OK ! exit then
+   entry NINL:STAGE-RECORD ;
+
 \ One body token, copied into the staging area. A token the elaborator could not
-\ stage inside a copied body, and one whose spelling is longer than a record
-\ holds, both end the recording: this definition is one its callers will call.
+\ stage inside a copied body, one whose spelling is longer than a record holds,
+\ and one that no longer fits in a row, all end the recording: this definition is
+\ one its callers will call.
+\
+\ THE COPIED CALL IS ASKED ABOUT FIRST, because SPLICEABLE? answers about the
+\ token as written and every call is written as a call. Asking it first is what
+\ makes the two questions one order rather than two overlapping rules.
 : REC-TOKEN ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    REC-OK @ 0= if exit then
+   ix NELAB:COPIED? if r ix REC-CALL exit then
+   1 NINL:STAGE-FITS? 0= if 0 REC-OK ! exit then
    TAPE MKEY r ix NELAB:SPLICEABLE? 0= if 0 REC-OK ! exit then
    TAPE ix NTAPE:KIND@ {: kd:NTAPE:kind :}
    kd NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if
@@ -315,10 +343,15 @@ variable REC-OK                      \ the body staged so far is still one worth
 
 \ The whole body, or nothing. It runs while the module is still being built,
 \ which is why it stands between the elaboration and the emission.
+\
+\ THE CAPACITY IS NOT ASKED ABOUT THE SOURCE HERE ANY MORE, because a source
+\ token is no longer one staged token: a call the elaboration copied stages a
+\ whole row. A count taken before the walk could only be a guess in both
+\ directions, so the ceiling is asked at each step instead, by the step that
+\ knows what it is about to add.
 : STAGE-BODY ( IR-ARENA:arena -- )
    {: r:IR-ARENA:arena :}
    TAPE NTAPE:TOKENS {: n:n :}
-   n 1- NINL:FITS? 0= if exit then
    M-IN @ M-OUT @ NINL:STAGE-BEGIN
    1 REC-OK !
    n 1 ?do
