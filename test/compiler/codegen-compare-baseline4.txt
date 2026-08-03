@@ -8,7 +8,7 @@ over the pinned word corpus in tools/codegen-compare-corpus4.f. The harness
 recreates this table on every run and compares it with this committed copy,
 field by field. Nothing here is written by hand; regenerate it with
 
-    bin/hb --load tools/codegen-compare.f -- --update
+    bin/hb --load tools/codegen-compare.f -- --update corpus4
 
 The new compiler chain compiles the corpus words it can express in the same
 run, and the harness prints the two side by side - bytes, cost, and whether

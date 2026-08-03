@@ -108,20 +108,22 @@ variable TEXT-U
    s" =========================================" LINE
    NL ;
 
-\ Which corpus this table is of. The measurement is the same for both, so the
-\ text is one text and the corpus file's path is what tells a reader which table
-\ is in front of them. It is a parameter rather than a constant because a second
-\ corpus was always going to arrive, and two copies of this prose would be two
-\ places to fix.
-: WHAT-IT-IS ( ptr u8 n -- ) {: a:ptr u:n :}
+\ Which corpus this table is of, and the command that rewrites THIS table. The
+\ measurement is the same for every corpus, so the text is one text and the
+\ corpus tells a reader which table is in front of them. Both come from the
+\ corpus's own declaration, so the instruction a reader follows regenerates the
+\ file the instruction is printed in and leaves the other three alone.
+: WHAT-IT-IS ( n -- ) {: k:n :}
    s" What this file is" LINE
    s" -----------------" LINE
    s" This is the recorded measurement of the code generator bin/hb uses today," LINE
-   s" over the pinned word corpus in " APPEND a u APPEND s" . The harness" LINE
+   s" over the pinned word corpus in " APPEND
+   k CODEGEN-CORPORA:SOURCE$ APPEND s" . The harness" LINE
    s" recreates this table on every run and compares it with this committed copy," LINE
    s" field by field. Nothing here is written by hand; regenerate it with" LINE
    NL
-   s"     bin/hb --load tools/codegen-compare.f -- --update" LINE
+   s"     bin/hb --load tools/codegen-compare.f -- --update " APPEND
+   k CODEGEN-CORPORA:NAME$ APPEND NL
    NL
    s" The new compiler chain compiles the corpus words it can express in the same" LINE
    s" run, and the harness prints the two side by side - bytes, cost, and whether" LINE
@@ -206,7 +208,7 @@ public
 : BASELINE$ ( n -- ptr u8 n ) {: k:n :}
    0 TEXT-U !
    TITLE
-   k CODEGEN-CORPORA:SOURCE$ WHAT-IT-IS
+   k WHAT-IT-IS
    HOW-TO-READ
    TABLE-HEAD
    TABLE-ROWS

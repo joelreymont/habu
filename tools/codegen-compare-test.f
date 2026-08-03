@@ -491,6 +491,70 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    s" naming a gap for a word the old column never measured is refused" T-LABEL
    [: UNKNOWN-GAP ;] E-CODEGEN-COMPARE-CORPUS TTHROWSQ ;
 
+\ ---- the register the drivers walk ------------------------------------------
+\ Every driver in tools/codegen-compare-cli.f reads which corpora exist, and
+\ what each one's table is, out of tools/codegen-compare-corpora.f. Two things
+\ have to hold for `--update <corpus>` to mean one table: a name has to select
+\ exactly one corpus, and no two corpora may point at the same file. A register
+\ that mapped two names onto one table would let a regeneration rewrite a
+\ yardstick nobody asked about, which is the failure the per-table update
+\ exists to prevent.
+\
+\ These read the live register, filled by the four case files as they loaded,
+\ so they say something about the declarations production uses.
+
+: PATHS-CLASH ( -- n )
+   0
+   CODEGEN-CORPORA:COUNT 0 ?do
+      CODEGEN-CORPORA:COUNT 0 ?do
+         i j <> if
+            i CODEGEN-CORPORA:BASELINE$ j CODEGEN-CORPORA:BASELINE$ STR= if 1+ then
+         then
+      loop
+   loop ;
+
+: NAMES-CLASH ( -- n )
+   0
+   CODEGEN-CORPORA:COUNT 0 ?do
+      CODEGEN-CORPORA:COUNT 0 ?do
+         i j <> if
+            i CODEGEN-CORPORA:NAME$ j CODEGEN-CORPORA:NAME$ STR= if 1+ then
+         then
+      loop
+   loop ;
+
+: REGISTER-CASES ( -- )
+   s" four corpora are declared, in the order they are measured" T-LABEL
+   CODEGEN-CORPORA:COUNT 4 T=
+   0 CODEGEN-CORPORA:NAME$ s" corpus" T$=
+   1 CODEGEN-CORPORA:NAME$ s" corpus2" T$=
+   2 CODEGEN-CORPORA:NAME$ s" corpus3" T$=
+   3 CODEGEN-CORPORA:NAME$ s" corpus4" T$=
+
+   s" each declared name selects its own corpus" T-LABEL
+   s" corpus" CODEGEN-CORPORA:FIND 0 T=
+   s" corpus2" CODEGEN-CORPORA:FIND 1 T=
+   s" corpus3" CODEGEN-CORPORA:FIND 2 T=
+   s" corpus4" CODEGEN-CORPORA:FIND 3 T=
+
+   s" a name no corpus was declared under selects none" T-LABEL
+   s" corpus9" CODEGEN-CORPORA:FIND -1 T=
+   s" " CODEGEN-CORPORA:FIND -1 T=
+   s" corpus3 " CODEGEN-CORPORA:FIND -1 T=
+
+   s" and rewriting under such a name writes nothing and says so" T-LABEL
+   s" corpus9" CODEGEN-COMPARE-CLI:UPDATE-NAMED TFALSE
+
+   s" no two corpora share a name or a committed table" T-LABEL
+   NAMES-CLASH 0 T=
+   PATHS-CLASH 0 T=
+
+   s" and every corpus names a table and the source it measures" T-LABEL
+   CODEGEN-CORPORA:COUNT 0 ?do
+      i CODEGEN-CORPORA:BASELINE$ nip 0 > TTRUE
+      i CODEGEN-CORPORA:SOURCE$ nip 0 > TTRUE
+   loop ;
+
 \ ---- what the real run left behind ------------------------------------------
 \ Read back off the store the production path filled, so these say something
 \ about the run that just happened rather than about a fixture.
@@ -1289,6 +1353,7 @@ variable TRY-REGS
    SLOWDOWN-CASES
    COST-MODE-CASES
    NEW-COLUMN-CASES
+   REGISTER-CASES
    \ Each account and each fixture is read off a pass this file runs BY NAME.
    \ Reading whatever the previous run happened to leave in the store would make
    \ every assertion below depend on the order of the file rather than on the

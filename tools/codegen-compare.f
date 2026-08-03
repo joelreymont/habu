@@ -89,17 +89,25 @@ private
    s"   all" type cr
    s" codegen-compare: nothing was written." type cr ;
 
-: REFUSE ( -- )
+\ --update with nothing after it. It used to mean all four tables; it now says
+\ which names it would have taken and writes nothing.
+: REFUSE-BARE ( -- )
    SAY-CORPORA
    S\" codegen-compare: --update needs a corpus name\n" USAGE-RC die ;
 
-\ --update with the word that follows it. A bare flag, or a name no corpus was
-\ declared under, writes nothing and says which names exist.
+\ --update with a name no corpus was declared under. The offending word is
+\ printed back, because the likeliest cause is a typo in it.
+: REFUSE-NAME ( ptr u8 n -- )
+   s" codegen-compare: no corpus is declared under the name " type type cr
+   SAY-CORPORA
+   S\" codegen-compare: --update was given a name no corpus goes by\n" USAGE-RC die ;
+
+\ --update with the word that follows it.
 : UPDATE-RUN ( n -- ) {: at:n :}
-   at 1+ SCRIPT-ARGC >= if REFUSE then
+   at 1+ SCRIPT-ARGC >= if REFUSE-BARE then
    at 1+ SCRIPT-ARGV$ ALL$ STR= if CODEGEN-COMPARE-CLI:UPDATE-ALL exit then
    at 1+ SCRIPT-ARGV$ CODEGEN-COMPARE-CLI:UPDATE-NAMED if exit then
-   REFUSE ;
+   at 1+ SCRIPT-ARGV$ REFUSE-NAME ;
 
 public
 
