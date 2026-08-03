@@ -879,13 +879,13 @@ public
    ia ilen ADOPT PARSE
    ia ilen ;
 
-: LOAD ( ptr u8 n -- SAFET:file )            \ map + parse + publish, closing on any fault
+: LOAD ( ptr u8 n -- result<SAFET:file,n> )  \ map + parse + publish, closing on any fault
    {: pa:ptr pu:n :}
    OPEN pa pu
    [: TAKE-FILE+PARSE ;] catch {: code:n :}
    2drop
-   code 0 <> if CLOSE code throw then
-   DETACH ;
+   code 0 <> if CLOSE code RESULT:ERR exit then
+   DETACH RESULT:OK ;
 
 : LOAD-SPAN ( ptr u8 n -- SAFET:file )       \ the same over a caller-owned image
    {: ia:ptr ilen:n :}

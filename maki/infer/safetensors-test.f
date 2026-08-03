@@ -160,6 +160,13 @@ variable SEEN-MAP-LEN
       empty OF SAFET:E-ORDER throw ENDOF
    ;MATCH ;
 
+: MUST-LOAD ( ptr u8 n -- SAFET:file )
+   SAFET:LOAD
+   MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
 \ CHECK-QUIET-CANDIDATE! verdicts: -1 accepted, 0 rejected on a type error,
 \ 1 uncheckable (a token the dictionary cannot resolve at all). The three
 \ assertions below keep those apart, so "private" is proved by non-resolution
@@ -293,12 +300,12 @@ variable SEEN-MAP-LEN
 : ABSENT-PATH ( -- ptr u8 n ) s" /tmp/hb-st-does-not-exist.safetensors" ;
 
 : LOAD-ABSENT ( -- )
-   ABSENT-PATH SAFET:LOAD SAFET:RELEASE ;
+   ABSENT-PATH MUST-LOAD SAFET:RELEASE ;
 
 : LOAD-SHORT ( -- )                             \ a real file with only 4 bytes in it
    0 IMG-A 0 + c!  1 IMG-A 1 + c!  2 IMG-A 2 + c!  3 IMG-A 3 + c!
    SHORT-PATH IMG-A 4 WRITE-ALL
-   SHORT-PATH SAFET:LOAD SAFET:RELEASE ;
+   SHORT-PATH MUST-LOAD SAFET:RELEASE ;
 
 : TEST-LOAD-FAULTS ( -- )
    s" LOAD on a missing path throws and closes its session" T-LABEL
@@ -314,7 +321,7 @@ variable SEEN-MAP-LEN
    J-VALID 24 BUILD-A
    SYNTH-PATH A$ WRITE-ALL
    NO-LEAK
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET-MAP:LIVE 1 T=                          \ the census holds exactly one mapping
    CHECK-VALID
    SAFET:RELEASE
@@ -531,7 +538,7 @@ variable BIG-LEN
    s" release frees an unused reservation; adopted bytes remain caller-owned" T-LABEL
    J-VALID 24 BUILD-A
    SYNTH-PATH A$ WRITE-ALL
-   SYNTH-PATH SAFET:LOAD                        \ this census owns its mapping
+   SYNTH-PATH MUST-LOAD                        \ this census owns its mapping
    SAFET:COUNT 2 T=
    SAFET-MAP:LIVE 1 T=
    SAFET:RELEASE
@@ -646,7 +653,7 @@ variable BIG-LEN
    s" the mapping frame matches the known synthetic layout" T-LABEL
    BUILD-SYNTH
    NO-LEAK
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET-MAP:LIVE 1 T=
    SAFET:LIVE-OWNERS 1 T=
    CHECK-MAP-OFFSETS
@@ -657,7 +664,7 @@ variable BIG-LEN
 : TEST-DETACH-MAPPING ( -- )
    s" detaching a mapping moves ownership without mapping anything new" T-LABEL
    BUILD-SYNTH
-   SYNTH-PATH SAFET:LOAD                        \ ( c )
+   SYNTH-PATH MUST-LOAD                        \ ( c )
    s" b" ID-OF {: ib:n :}
    ib DATA-BUF 64 SAFET:COPY-DATA? 8 OPT=       \ b's bytes while the census still owns them
    DATA-BUF c@ {: want-b0:n :}
@@ -683,7 +690,7 @@ variable BIG-LEN
    SAFET-MAP:LIVE 0 T=
    NO-LEAK
    s" the mapping can leave first while the census keeps its metadata" T-LABEL
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET:DETACH-MAPPING TAKE-MOVED               \ ( c m )
    SAFET:UNMAP-MAPPING LEN-A @ RES-OK=           \ ( c )
    SAFET-MAP:LIVE 0 T=
@@ -741,7 +748,7 @@ variable BIG-LEN
 : TEST-DETACH-FAILED ( -- )
    s" a failed load leaves a live census able to detach its mapping" T-LABEL
    BUILD-SYNTH
-   SYNTH-PATH SAFET:LOAD                        \ ( c ) the live, mapped census
+   SYNTH-PATH MUST-LOAD                        \ ( c ) the live, mapped census
    J-BADJSON 0 BUILD-B
    SAFET:OPEN B$ SAFET:ADOPT                    \ ( c sB )
    [: SAFET:PARSE ;] catch {: code:n :}
@@ -787,7 +794,7 @@ $0F0E0D0C constant AT-SHORT-LAST                \ the short file's last window: 
    s" a mapping reads four little-endian bytes bounded by its own length" T-LABEL
    BUILD-SYNTH
    LEN-A @ {: long:n :}                         \ measured from what BUILD-A just wrote
-   SYNTH-PATH SAFET:LOAD                        \ ( c ) through the real mmap path
+   SYNTH-PATH MUST-LOAD                        \ ( c ) through the real mmap path
    SAFET:DETACH-MAPPING TAKE-MOVED              \ ( c m )
    swap SAFET:RELEASE                           \ ( m ) the census leaves first
    152 AT-152 U32-AT=                           \ aligned, on the live mapping
@@ -802,7 +809,7 @@ $0F0E0D0C constant AT-SHORT-LAST                \ the short file's last window: 
    J-ALPHA 16 BUILD-A                           \ same path, a different length
    SYNTH-PATH A$ WRITE-ALL
    LEN-A @ long < TTRUE                         \ it really is the shorter one
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET:DETACH-MAPPING TAKE-MOVED
    swap SAFET:RELEASE                           \ ( m )
    LEN-A @ U32W - AT-SHORT-LAST U32-AT=         \ this file's own last window
@@ -883,7 +890,7 @@ private
 \ faults at every invalid offset, and that failure IS the control - a dedicated
 \ exploit child would only re-assert what the mutation already demonstrates.
 : DETACHED ( -- SAFET:mapping )                 \ the synthetic file's mapping, census gone
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET:DETACH-MAPPING TAKE-MOVED
    swap SAFET:RELEASE ;
 
@@ -1088,7 +1095,7 @@ private
       0 0= TTRUE exit
    then
    s" the real gpt2 checkpoint publishes its full census" T-LABEL
-   REAL-PATH SAFET:LOAD
+   REAL-PATH MUST-LOAD
    CHECK-REAL
    SAFET:RELEASE ;
 
