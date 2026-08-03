@@ -187,8 +187,6 @@ private
    s" gate-stats" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" nanogpt-inventory-lint" SUITE-LABEL= if SUITE-TRUE exit then
-   s" nanogpt-inventory-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" refine-lint" SUITE-LABEL= if SUITE-TRUE exit then

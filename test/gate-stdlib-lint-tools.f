@@ -75,10 +75,6 @@ REQUIRE-HARNESS
    s" dot-dep-lint" [: DOT-DEP-LINT ;] GSI-RUN
    s" tools/dot-dep-lint-test.f" GSI-INCLUDE ;
 
-: NANOGPT ( -- )
-   s" nanogpt-inventory-lint" [: NANOGPT-INVENTORY-LINT ;] GSI-RUN
-   s" tools/nanogpt-inventory-lint-test.f" GSI-INCLUDE ;
-
 : MAKI ( -- )
    s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE ;
@@ -120,7 +116,6 @@ public
    s" lint-tools/repo" GSI-FORK-TIMEOUT-MS [: REPOSITORY ;] GT-POOL-START-FORK
    s" lint-tools/status" GSI-FORK-TIMEOUT-MS [: STATUS ;] GT-POOL-START-FORK
    s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: DOT ;] GT-POOL-START-FORK
-   s" lint-tools/nanogpt" GSI-FORK-TIMEOUT-MS [: NANOGPT ;] GT-POOL-START-FORK
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: MAKI ;] GT-POOL-START-FORK
    s" lint-tools/refine" GSI-FORK-TIMEOUT-MS [: REFINE ;] GT-POOL-START-FORK
    s" lint-tools/def" GSI-FORK-TIMEOUT-MS [: LINT-DEF ;] GT-POOL-START-FORK
