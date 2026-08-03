@@ -30,6 +30,9 @@ private
 
 -5651 constant E-CATALOG
 -5654 constant E-DIGEST
+-5655 constant E-TOKEN
+-5656 constant E-CONTEXT
+-5657 constant E-OUTPUT
 
 32 constant M-DIGEST-LEN
 64 constant M-HEX-LEN
@@ -41,6 +44,7 @@ create M-ASM-OUT M-ASM-CAP allot
 create M-ASM-ERR M-ASM-CAP allot
 create M-CUBIN FS-PATH-CAP 1+ allot
 create M-KNAME M-KNAME-CAP allot
+create M-PARAM 10 cells allot
 
 variable M-TMOD-H
 variable M-AMOD-H
@@ -303,7 +307,7 @@ TRUSTED: M-TAKE
    cx row CHECKED-MUL nl CHECKED-MUL {: kv-len:n :}
    x row M-ADD {: a:n :}
    a row M-ADD {: b:n :}
-   b row M-ADD {: logits:n :}
+   b row 4 CHECKED-MUL M-ADD {: logits:n :}
    logits logits-len M-ADD {: token:n :}
    token 4 M-ADD {: k:n :}
    k kv-len M-ADD {: v:n :}
@@ -447,6 +451,363 @@ private
 
 : M-FIRST ( n n -- n ) {: first:n code:n :}
    first 0= code 0<> and if code else first then ;
+
+: M-CUDA ( rc -- )
+   RC>N dup 0<> if throw then drop ;
+
+: M-U! ( n n -- )
+   cells M-PARAM + ! ;
+
+: M-PD ( n n n -- ) {: fn:n off:n slot:n :}
+   fn >CUDA-FN off >IDX M-PARAM slot cells + 8 >LEN
+   CUDA:CU-PARAM-SET-V M-CUDA ;
+
+: M-PU ( n n n -- ) {: fn:n off:n slot:n :}
+   fn >CUDA-FN off >IDX M-PARAM slot cells + 4 >LEN
+   CUDA:CU-PARAM-SET-V M-CUDA ;
+
+: M-EMBED-BODY ( n n -- n n ) {: fn:n grid:n :}
+   fn grid
+   fn >CUDA-FN 44 >LEN CUDA:CU-PARAM-SET-SIZE M-CUDA
+   fn 0 0 M-PD  fn 8 1 M-PD  fn 16 2 M-PD  fn 24 3 M-PD
+   fn 32 4 M-PU  fn 36 5 M-PU  fn 40 6 M-PU
+   fn >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE M-CUDA
+   fn >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID M-CUDA ;
+
+: M-EMBED-GO ( n n -- n )
+   [: M-EMBED-BODY ;] catch nip nip ;
+
+: M-LN-BODY ( n n -- n n ) {: fn:n grid:n :}
+   fn grid
+   fn >CUDA-FN 40 >LEN CUDA:CU-PARAM-SET-SIZE M-CUDA
+   fn 0 0 M-PD  fn 8 1 M-PD  fn 16 2 M-PD  fn 24 3 M-PD
+   fn 32 4 M-PU  fn 36 5 M-PU
+   fn >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE M-CUDA
+   fn >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID M-CUDA ;
+
+: M-LN-GO ( n n -- n )
+   [: M-LN-BODY ;] catch nip nip ;
+
+: M-LINEAR-BODY ( n n -- n n ) {: fn:n grid:n :}
+   fn grid
+   fn >CUDA-FN 44 >LEN CUDA:CU-PARAM-SET-SIZE M-CUDA
+   fn 0 0 M-PD  fn 8 1 M-PD  fn 16 2 M-PD  fn 24 3 M-PD
+   fn 32 4 M-PU  fn 36 5 M-PU  fn 40 6 M-PU
+   fn >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE M-CUDA
+   fn >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID M-CUDA ;
+
+: M-LINEAR-GO ( n n -- n )
+   [: M-LINEAR-BODY ;] catch nip nip ;
+
+: M-UNEMBED-BODY ( n n -- n n ) {: fn:n grid:n :}
+   fn grid
+   fn >CUDA-FN 32 >LEN CUDA:CU-PARAM-SET-SIZE M-CUDA
+   fn 0 0 M-PD  fn 8 1 M-PD  fn 16 2 M-PD
+   fn 24 3 M-PU  fn 28 4 M-PU
+   fn >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE M-CUDA
+   fn >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID M-CUDA ;
+
+: M-UNEMBED-GO ( n n -- n )
+   [: M-UNEMBED-BODY ;] catch nip nip ;
+
+: M-GELU-BODY ( n n -- n n ) {: fn:n grid:n :}
+   fn grid
+   fn >CUDA-FN 12 >LEN CUDA:CU-PARAM-SET-SIZE M-CUDA
+   fn 0 0 M-PD  fn 8 1 M-PU
+   fn >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE M-CUDA
+   fn >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID M-CUDA ;
+
+: M-GELU-GO ( n n -- n )
+   [: M-GELU-BODY ;] catch nip nip ;
+
+: M-RESIDUAL-BODY ( n n -- n n ) {: fn:n grid:n :}
+   fn grid
+   fn >CUDA-FN 28 >LEN CUDA:CU-PARAM-SET-SIZE M-CUDA
+   fn 0 0 M-PD  fn 8 1 M-PD  fn 16 2 M-PD  fn 24 3 M-PU
+   fn >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE M-CUDA
+   fn >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID M-CUDA ;
+
+: M-RESIDUAL-GO ( n n -- n )
+   [: M-RESIDUAL-BODY ;] catch nip nip ;
+
+: M-ATTN-BODY ( n n n -- n n n ) {: fn:n grid:n shared:n :}
+   fn grid shared
+   fn >CUDA-FN 64 >LEN CUDA:CU-PARAM-SET-SIZE M-CUDA
+   fn 0 0 M-PD  fn 8 1 M-PD  fn 16 2 M-PD
+   fn 24 3 M-PD  fn 32 4 M-PD  fn 40 5 M-PD
+   fn 48 6 M-PU  fn 52 7 M-PU  fn 56 8 M-PU  fn 60 9 M-PU
+   fn >CUDA-FN 128 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE M-CUDA
+   fn >CUDA-FN shared CUDA:CU-FUNC-SET-SHARED-SIZE M-CUDA
+   fn >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID M-CUDA ;
+
+: M-ATTN-GO ( n n n -- n )
+   [: M-ATTN-BODY ;] catch nip nip nip ;
+
+: M-GRID ( n -- n )
+   256 /mod swap 0<> if 1+ then ;
+
+: M-SUB-OK? ( CAD-NUM:byte-len CAD-NUM:byte-len -- bool )
+   CAD-NUM:SUB-BYTES MATCH CAD-NUM:numeric-result
+      ok OF drop true ENDOF
+      negative OF false ENDOF
+      zero OF true ENDOF
+      overflow OF false ENDOF
+      underflow OF false ENDOF
+      bad-alignment OF false ENDOF
+      misaligned OF false ENDOF
+   ;MATCH ;
+
+: M-BYTES= ( CAD-NUM:byte-len CAD-NUM:byte-len -- bool )
+   2dup M-SUB-OK? >r swap M-SUB-OK? r> and ;
+
+\ M-PARAM holds borrowed device addresses only through the immediate launch;
+\ GPU:session and GPU:buffer remain live on the stack. The checker cannot bind
+\ that lifetime yet; retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
+: M-SPAN-SAVE ( result<cuda-devptr,n> n -- n ) {: slot:n :}
+   MATCH result
+      ok OF M-PARAM slot cells + ! 0 ENDOF
+      err OF ENDOF
+   ;MATCH ;
+
+: M-O-SPAN
+   ( GPU:session GPU:buffer config n n n -- GPU:session GPU:buffer config n )
+   {: off:n bytes:n slot:n :}
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c :}
+   off M-BYTE-OFF bytes M-BYTE-LEN GPU:SPAN slot M-SPAN-SAVE {: code:n :}
+   c code ;
+
+: M-W-SPAN
+   ( GPU:session GPU:buffer config tensor-id n -- GPU:session GPU:buffer config n )
+   \ typed-local-lint: allow-bare-local - tensor-id is a variant structure.
+   {: id slot:n :}
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c :}
+   c id SPAN
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c2 off:CAD-NUM:byte-off bytes:CAD-NUM:byte-len :}
+   off bytes GPU:SPAN slot M-SPAN-SAVE {: code:n :}
+   c2 code ;
+
+: M-EMBED
+   ( GPU:session GPU:buffer config n n n n -- GPU:session GPU:buffer config n )
+   {: token:n x:n pos:n fn:n :}
+   NEMBD@ {: ne:n :}
+   1 4 M-U!  ne 5 M-U!  pos 6 M-U!
+   token 4 0 M-O-SPAN {: c0:n :}
+   c0 0<> if c0 exit then
+   GPT2-GLOBAL--ROLE:WTE GPT2-TENSOR--ID:GLOBAL 1 M-W-SPAN {: c1:n :}
+   c1 0<> if c1 exit then
+   GPT2-GLOBAL--ROLE:WPE GPT2-TENSOR--ID:GLOBAL 2 M-W-SPAN {: c2:n :}
+   c2 0<> if c2 exit then
+   x ne 4 CHECKED-MUL 3 M-O-SPAN {: c3:n :}
+   c3 0<> if c3 exit then
+   fn ne M-GRID M-EMBED-GO ;
+
+: M-LN-LAYER
+   ( GPU:session GPU:buffer config n n layer-role layer-role n n -- GPU:session GPU:buffer config n )
+   \ typed-local-lint: allow-bare-local - roles are arity-zero enum values.
+   {: x:n out:n grole brole layer:n fn:n :}
+   NEMBD@ {: ne:n :}
+   1 4 M-U!  ne 5 M-U!
+   x ne 4 CHECKED-MUL 0 M-O-SPAN {: c0:n :}
+   c0 0<> if c0 exit then
+   layer LAYER-ID grole GPT2-TENSOR--ID:LAYER
+   1 M-W-SPAN {: c1:n :}
+   c1 0<> if c1 exit then
+   layer LAYER-ID brole GPT2-TENSOR--ID:LAYER
+   2 M-W-SPAN {: c2:n :}
+   c2 0<> if c2 exit then
+   out ne 4 CHECKED-MUL 3 M-O-SPAN {: c3:n :}
+   c3 0<> if c3 exit then
+   fn 1 M-LN-GO ;
+
+: M-LN-FINAL
+   ( GPU:session GPU:buffer config n n n -- GPU:session GPU:buffer config n )
+   {: x:n out:n fn:n :}
+   NEMBD@ {: ne:n :}
+   1 4 M-U!  ne 5 M-U!
+   x ne 4 CHECKED-MUL 0 M-O-SPAN {: c0:n :}
+   c0 0<> if c0 exit then
+   GPT2-GLOBAL--ROLE:LNF-G GPT2-TENSOR--ID:GLOBAL 1 M-W-SPAN {: c1:n :}
+   c1 0<> if c1 exit then
+   GPT2-GLOBAL--ROLE:LNF-B GPT2-TENSOR--ID:GLOBAL 2 M-W-SPAN {: c2:n :}
+   c2 0<> if c2 exit then
+   out ne 4 CHECKED-MUL 3 M-O-SPAN {: c3:n :}
+   c3 0<> if c3 exit then
+   fn 1 M-LN-GO ;
+
+: M-LINEAR
+   ( GPU:session GPU:buffer config n n n n layer-role layer-role n n -- GPU:session GPU:buffer config n )
+   \ typed-local-lint: allow-bare-local - roles are arity-zero enum values.
+   {: x:n out:n in:n cols:n wrole brole layer:n fn:n :}
+   1 4 M-U!  in 5 M-U!  cols 6 M-U!
+   x in 4 CHECKED-MUL 0 M-O-SPAN {: c0:n :}
+   c0 0<> if c0 exit then
+   layer LAYER-ID wrole GPT2-TENSOR--ID:LAYER 1 M-W-SPAN {: c1:n :}
+   c1 0<> if c1 exit then
+   layer LAYER-ID brole GPT2-TENSOR--ID:LAYER 2 M-W-SPAN {: c2:n :}
+   c2 0<> if c2 exit then
+   out cols 4 CHECKED-MUL 3 M-O-SPAN {: c3:n :}
+   c3 0<> if c3 exit then
+   fn cols M-GRID M-LINEAR-GO ;
+
+: M-GELU
+   ( GPU:session GPU:buffer config n n n -- GPU:session GPU:buffer config n )
+   {: x:n elems:n fn:n :}
+   elems 1 M-U!
+   x elems 4 CHECKED-MUL 0 M-O-SPAN {: code:n :}
+   code 0<> if code exit then
+   fn elems M-GRID M-GELU-GO ;
+
+: M-RESIDUAL
+   ( GPU:session GPU:buffer config n n n n n -- GPU:session GPU:buffer config n )
+   {: x:n residual:n out:n elems:n fn:n :}
+   elems 3 M-U!
+   x elems 4 CHECKED-MUL 0 M-O-SPAN {: c0:n :}
+   c0 0<> if c0 exit then
+   residual elems 4 CHECKED-MUL 1 M-O-SPAN {: c1:n :}
+   c1 0<> if c1 exit then
+   out elems 4 CHECKED-MUL 2 M-O-SPAN {: c2:n :}
+   c2 0<> if c2 exit then
+   fn elems M-GRID M-RESIDUAL-GO ;
+
+: M-UNEMBED
+   ( GPU:session GPU:buffer config n n n -- GPU:session GPU:buffer config n )
+   {: x:n out:n fn:n :}
+   NEMBD@ {: ne:n :}
+   NVOCAB@ {: vo:n :}
+   ne 3 M-U!  vo 4 M-U!
+   x ne 4 CHECKED-MUL 0 M-O-SPAN {: c0:n :}
+   c0 0<> if c0 exit then
+   GPT2-GLOBAL--ROLE:WTE GPT2-TENSOR--ID:GLOBAL 1 M-W-SPAN {: c1:n :}
+   c1 0<> if c1 exit then
+   out vo 4 CHECKED-MUL 2 M-O-SPAN {: c2:n :}
+   c2 0<> if c2 exit then
+   fn vo M-GRID M-UNEMBED-GO ;
+
+: M-ATTN-CHECK-BODY ( n n n n -- n n n n )
+   {: pos:n heads:n hd:n cap:n :}
+   pos heads hd cap
+   pos heads hd cap GPT2-ATTN:LAUNCH-CHECK {: row:n cache:n shared:n :}
+   row 0 M-U!  cache 1 M-U!  shared 2 M-U! ;
+
+: M-ATTN-CHECK ( n n n n -- n )
+   [: M-ATTN-CHECK-BODY ;] catch nip nip nip nip ;
+
+: M-ATTN
+   ( GPU:session GPU:buffer config n n n n n n n -- GPU:session GPU:buffer config n )
+   {: b:n out:n kc:n vc:n pos:n layer:n fn:n :}
+   NEMBD@ {: ne:n :}
+   NHEAD@ {: heads:n :}
+   NCTX@ {: cap:n :}
+   ne heads / {: hd:n :}
+   pos heads hd cap M-ATTN-CHECK {: check:n :}
+   check 0<> if check exit then
+   M-PARAM @ {: row:n :}
+   M-PARAM 1 cells + @ {: cache:n :}
+   M-PARAM 2 cells + @ {: shared:n :}
+   layer cache CHECKED-MUL {: cache-off:n :}
+   b row 0 M-O-SPAN {: c0:n :}
+   c0 0<> if c0 exit then
+   b row M-ADD row 1 M-O-SPAN {: c1:n :}
+   c1 0<> if c1 exit then
+   b row 2 CHECKED-MUL M-ADD row 2 M-O-SPAN {: c2:n :}
+   c2 0<> if c2 exit then
+   kc cache-off M-ADD cache 3 M-O-SPAN {: c3:n :}
+   c3 0<> if c3 exit then
+   vc cache-off M-ADD cache 4 M-O-SPAN {: c4:n :}
+   c4 0<> if c4 exit then
+   out row 5 M-O-SPAN {: c5:n :}
+   c5 0<> if c5 exit then
+   pos 6 M-U!  heads 7 M-U!  hd 8 M-U!  cap 9 M-U!
+   fn heads shared M-ATTN-GO ;
+
+: M-SYNC ( -- n )
+   [: CUDA:CU-CTX-SYNCHRONIZE M-CUDA ;] catch ;
+
+: M-LAYER
+   ( GPU:session GPU:buffer config n n n n n n n n n n n n -- GPU:session GPU:buffer config n )
+   {: x:n a:n b:n k:n v:n pos:n layer:n ln:n linear:n gelu:n residual:n attn:n :}
+   NEMBD@ {: ne:n :}
+   x a GPT2-LAYER--ROLE:LN1-G GPT2-LAYER--ROLE:LN1-B layer ln
+   M-LN-LAYER {: c0:n :}
+   c0 0<> if c0 exit then
+   a b ne ne 3 CHECKED-MUL GPT2-LAYER--ROLE:QKV-W GPT2-LAYER--ROLE:QKV-B layer linear
+   M-LINEAR {: c1:n :}
+   c1 0<> if c1 exit then
+   b a k v pos layer attn M-ATTN {: c2:n :}
+   c2 0<> if c2 exit then
+   a b ne ne GPT2-LAYER--ROLE:APROJ-W GPT2-LAYER--ROLE:APROJ-B layer linear
+   M-LINEAR {: c3:n :}
+   c3 0<> if c3 exit then
+   x b x ne residual M-RESIDUAL {: c4:n :}
+   c4 0<> if c4 exit then
+   x a GPT2-LAYER--ROLE:LN2-G GPT2-LAYER--ROLE:LN2-B layer ln
+   M-LN-LAYER {: c5:n :}
+   c5 0<> if c5 exit then
+   a b ne ne 4 CHECKED-MUL GPT2-LAYER--ROLE:FC-W GPT2-LAYER--ROLE:FC-B layer linear
+   M-LINEAR {: c6:n :}
+   c6 0<> if c6 exit then
+   b ne 4 CHECKED-MUL gelu M-GELU {: c7:n :}
+   c7 0<> if c7 exit then
+   b a ne 4 CHECKED-MUL ne GPT2-LAYER--ROLE:MPROJ-W GPT2-LAYER--ROLE:MPROJ-B layer linear
+   M-LINEAR {: c8:n :}
+   c8 0<> if c8 exit then
+   x a x ne residual M-RESIDUAL ;
+
+: M-LAYERS
+   ( GPU:session GPU:buffer config n n n n n n n n n n n n n -- GPU:session GPU:buffer config n )
+   {: x:n a:n b:n k:n v:n pos:n ln:n linear:n gelu:n residual:n attn:n layer:n total:n :}
+   layer total = if 0 exit then
+   x a b k v pos layer ln linear gelu residual attn M-LAYER {: code:n :}
+   code 0<> if code exit then
+   x a b k v pos ln linear gelu residual attn layer 1+ total RECURSE ;
+
+: M-VALIDATE
+   ( config n n CAD-NUM:byte-len -- config n )
+   {: token:n pos:n outu:CAD-NUM:byte-len :}
+   NVOCAB@ {: vo:n :}
+   NCTX@ {: cx:n :}
+   token 0 < token vo >= or if E-TOKEN exit then
+   pos 0 < pos cx >= or if E-CONTEXT exit then
+   outu vo 4 CHECKED-MUL M-BYTE-LEN M-BYTES= 0= if E-OUTPUT exit then
+   0 ;
+
+: M-UPLOAD-TOKEN
+   ( GPU:session GPU:buffer config n n -- GPU:session GPU:buffer config n )
+   {: token:n off:n :}
+   token 0 M-U!
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c :}
+   off M-BYTE-OFF M-PARAM 4 M-BYTE-LEN GPU:UPLOAD M-RESULT-CODE {: code:n :}
+   c code ;
+
+: M-DOWNLOAD
+   ( GPU:session GPU:buffer config n ptr u8 CAD-NUM:byte-len -- GPU:session GPU:buffer config n )
+   {: off:n dst:ptr outu:CAD-NUM:byte-len :}
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c :}
+   off M-BYTE-OFF dst outu GPU:DOWNLOAD M-RESULT-CODE {: code:n :}
+   c code ;
+
+: M-INFER
+   ( GPU:session GPU:buffer config n n n n n n n n n n n n n n n n ptr u8 CAD-NUM:byte-len -- GPU:session GPU:buffer config n )
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tok:n dst:ptr outu:CAD-NUM:byte-len :}
+   NLAYER@ {: nl:n :}
+   tok token M-UPLOAD-TOKEN {: c0:n :}
+   c0 0<> if c0 exit then
+   token x pos embed M-EMBED {: c1:n :}
+   c1 0<> if c1 exit then
+   x a b k v pos ln linear gelu residual attn 0 nl M-LAYERS {: c2:n :}
+   c2 0<> if c2 exit then
+   x a ln M-LN-FINAL {: c3:n :}
+   c3 0<> if c3 exit then
+   a logits unembed M-UNEMBED {: c4:n :}
+   c4 0<> if c4 exit then
+   M-SYNC {: c5:n :}
+   c5 0<> if c5 exit then
+   logits dst outu M-DOWNLOAD ;
 
 : M-MODEL-ERR ( n -- result<GPT2:model,n> )
    RESULT:ERR ;
@@ -864,6 +1225,31 @@ public
          root rootu c M-OPEN-CFG
       ENDOF
    ;MATCH ;
+
+: LOGITS
+   ( GPT2:model n ptr u8 CAD-NUM:byte-len -- GPT2:model result<n,n> )
+   {: tok:n dst:ptr outu:CAD-NUM:byte-len :}
+   M-TAKE
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
+   tok pos outu M-VALIDATE {: valid:n :}
+   valid 0= if
+      x a b logits token k v pos embed ln linear unembed gelu residual attn
+      tok dst outu M-INFER
+   else
+      valid
+   then
+   {: code:n :}
+   x a b logits token k v
+   code 0= if pos 1+ else pos then
+   tmod amod embed ln linear unembed gelu residual attn rec M-SAVE
+   code 0= if 0 RESULT:OK else code RESULT:ERR then ;
+
+: RESET ( GPT2:model -- GPT2:model )
+   M-TAKE
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
+   pos drop
+   x a b logits token k v 0
+   tmod amod embed ln linear unembed gelu residual attn rec M-SAVE ;
 
 : CLOSE ( GPT2:model -- result<n,n> )
    M-TAKE {: rec:ptr :}
