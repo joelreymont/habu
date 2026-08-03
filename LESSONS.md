@@ -4568,3 +4568,40 @@ a NaN. Three orderings per relation is the minimum: less, greater and equal,
 because the six conditions of this machine partition exactly on those three plus
 unordered. A comparison suite that omits the equal case is testing five
 conditions and reporting six.
+
+## The class's hull crosses the call; no member of it does
+
+Barring a register at a call site looked like one line: a value whose live range
+spans the branch may not have a register the callee writes. Over a routine of
+more than one block the allocator holds a register for a whole CLASS - the
+values an edge joins - and the first version asked whether the class's hull
+spanned the call. Every routine that already compiled broke. The reason is the
+discipline being narrowed: a call site stores its live values and reads them
+back, the store's value and the load's value are two values, and the edges
+around the call join them into one class. The class spans every call in the
+routine while no member of it does. Asking each MEMBER whether its own interval
+spans the branch is the same rule at the granularity the rule is about, and it
+answers "no" for exactly the values that are sitting in a data-stack slot when
+the branch runs.
+
+## A routine destroys what its callees destroy, and the corpus is what said so
+
+The registers a published routine writes are the registers its accepted
+allocation assigns - that argument is exact, and it is also only half. A routine
+that CALLS another word destroys everything that word destroys too, and none of
+that appears in its own claims. The half-answer passed every suite and crashed
+the third corpus, because a suite that migrates one leaf at a time never builds
+a caller of a caller. Two lessons: the transitive part of a fact like this is
+where it will be wrong, and a benchmark corpus with real nesting in it is a
+correctness test that no leaf suite replaces.
+
+## Pin the traffic, not the wall clock
+
+Two rows had their direction pinned - "the new code costs more than the old" -
+because that was the finding at the time. When the change flipped them the honest
+update was not to flip the assertion: the two columns are now within host noise
+of each other, and an assertion either way is a gate that fails for load. What
+replaced it is a count of the instructions the change actually removes - the
+stores and loads against the caller's data-stack pointer, read off the emitted
+word. It is exact, it moves for one reason, and it fails when somebody stops
+narrowing instead of failing when somebody else's build is running.

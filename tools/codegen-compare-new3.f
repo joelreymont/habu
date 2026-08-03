@@ -29,16 +29,25 @@
 \ files, the same eight bytes read the other way - which is why every row's
 \ recorded output is the old column's to the bit.
 \
-\ ONE ROW COSTS MORE THAN THE ENGINE'S CODE, AND IT IS SAID HERE RATHER THAN LEFT
-\ TO BE NOTICED. T-SGD! is 340 bytes against the engine's 448 and is SLOWER: its
-\ loop body is three calls - two loads and a store - and its four locals, two
-\ counters and accumulator are live across all of them, so each call writes seven
-\ values into data-stack slots and reads them back. Nothing in a Habu word's
-\ convention is callee-saved, so that discipline is correct; it is also paid three
-\ times per turn here. Dot habu-narrow-what-a-5d6a0845 carries narrowing what
-\ a call site saves to what the callee can really reach, and
-\ tools/codegen-compare-test.f pins the row's direction so the day it moves
-\ somebody has to look at it.
+\ THE ROW THAT USED TO COST MORE THAN THE ENGINE'S CODE, AND WHAT MOVED IT.
+\ T-SGD! was 340 bytes against the engine's 448 and was SLOWER - 55.6 ns against
+\ 45.2 - because its loop body is three calls, two loads and a store, and its
+\ four locals, two counters and accumulator are live across all of them: each
+\ call wrote seven values into data-stack slots and read them back, three times a
+\ turn. Twenty-four such stores and twenty-three loads stood in its code.
+\
+\ Nothing in a Habu word's convention is callee-saved, and that is still true.
+\ What changed is that the site no longer has to assume the worst about a callee
+\ the chain itself compiled: a published routine records which registers its
+\ accepted allocation writes (src/compiler/native/clobber.f), and a call site
+\ saves only the live values that set can reach. T-GET and T-SET destroy a
+\ handful of registers between them, so the row is now 204 bytes with SEVEN
+\ data-stack stores and six loads in the whole word, and it measures 29.5 to 44.6
+\ ns over five passes against the engine's 45.0 to 45.9 - a loss turned into a
+\ win. tools/codegen-compare-test.f no longer pins a direction here, because the
+\ two columns are now close enough that a wall clock cannot separate them
+\ honestly; it pins the store and load counts instead, which are exact and which
+\ move for exactly one reason.
 \
 \ WHAT IS NOT DONE HERE. No body is respelled to buy a row, and no float body is
 \ handed to the chain in the hope that some part of it survives. The ten bodies

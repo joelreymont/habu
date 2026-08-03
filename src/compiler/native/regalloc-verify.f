@@ -151,6 +151,9 @@ variable NB-N                        \ blocks in the function being checked
 1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER V-POOL A64EFF:gprs
+1 TYPED-BUFFER V-FPOOL A64EFF:fprs
 
 create D-AT VMAX cells allot         \ where the module says each value is written
 create L-AT VMAX cells allot         \ where the module says each value is last read
@@ -541,6 +544,58 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
          i FPR? if fpool else pool then
          1 r lshift and 0= if E-A64RAV-REGISTER throw then
       then
+   loop ;
+
+\ ---- what a caller may keep in a register across a call ----------------------
+\ THE RULE. A value whose own live range spans a call site is in a register the
+\ callee does not write. Nothing in a Habu word's convention is callee-saved, so
+\ the only reason such a register exists is that the callee is a routine this
+\ system published and recorded what it destroys (src/compiler/native/clobber.f);
+\ for a callee with no record - every word the engine's own emitter compiled -
+\ the set is the whole pool and nothing may cross the call in a register at all.
+\
+\ WHY IT IS RE-DERIVED HERE AND NOT READ OFF THE CALL SITE. The selector decided
+\ how many values to leave in registers, and this file's whole job is to disagree
+\ with the selector when it is wrong. So the callee's address is read off the
+\ operation - which is where the branch's displacement was measured from, so it
+\ IS the code that will run - and the destroyed set is asked of the one record
+\ that published it. A selector that saved too little is refused here whatever it
+\ believed, and so is an allocator that put a crossing value in a register the
+\ callee writes.
+\
+\ AND THE RANGE IS OPEN AT BOTH ENDS, for the reason the allocator's own version
+\ gives: a value the site stores in front of the branch is dead there and a value
+\ it loads behind the branch is not alive yet, so neither is at risk. What is at
+\ risk is a value defined strictly before and read strictly after.
+: VCALL-ENTRY ( IR-ID:ir-op-id -- n )
+   0 BND-ENTRY @ ATTR-INT ;
+
+: VCALL-BITS ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id cls:n :}
+   id VCALL-ENTRY {: e:n :}
+   cls C-FPR = if
+      e NOSLOT = if 0 V-FPOOL @ A64EFF:FPRS-N exit then
+      e 0 V-FPOOL @ NCLOB:FPR-CLOB A64EFF:FPRS-N exit
+   then
+   e NOSLOT = if 0 V-POOL @ A64EFF:GPRS-N exit then
+   e 0 V-POOL @ NCLOB:GPR-CLOB A64EFF:GPRS-N ;
+
+: CLOB-AT ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id p:n :}
+   id DCALL? 0= if exit then
+   N-VALS @ 0 ?do
+      i REGGED?  i DEF-AT p <  and  i LAST-AT p >  and if
+         id i CLS-AT VCALL-BITS  1 i A64RA:CLAIM@ lshift  and
+         0<> if E-A64RAV-CLOBBER throw then
+      then
+   loop ;
+
+\ Every call of one straight-line block, at its own operation index, which is
+\ what a live range of that block is measured in.
+: CLOB-CK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      bk i OP-AT i CLOB-AT
    loop ;
 
 \ Are these two values ever live at the same instant? See the header: values
@@ -1401,6 +1456,20 @@ create V-TMP SETC cells allot
    BLOCK-COUNT 1 <> if true exit then
    V-CALLS @ 0<> ;
 
+\ The same call rule over the whole linear order, for a routine of more than one
+\ block. A live range there is measured in global positions, so the operation
+\ index inside its block is turned into one before the rule is asked.
+: VCLOB-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      bk i OP-AT  b i VOP-POS  CLOB-AT
+   loop ;
+
+: VCLOB-CK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   V-BLKS @ 0 ?do f i VCLOB-BLOCK loop ;
+
 : MB-VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    f VMEASURE
@@ -1415,7 +1484,8 @@ create V-TMP SETC cells allot
    f VBLOCK-CKS
    f 0 BLOCK-AT args ARG-CK
    f rb BLOCK-AT outs OUT-CK
-   f rb args outs VDSTACK-CK ;
+   f rb args outs VDSTACK-CK
+   f VCLOB-CK ;
 
 \ ---- what the acceptance is bound to -----------------------------------------
 : STATE-CK ( -- )
@@ -1474,6 +1544,8 @@ create V-TMP SETC cells allot
    m BND-MODULE-CK
    STATE-CK
    m MODULE-CK
+   pool 0 V-POOL !
+   fpool 0 V-FPOOL !
    pool fpool CONTRACT-CK
    m VIEWS!
    FUN-OF {: f:IR-ID:ir-fun-id :}
@@ -1496,6 +1568,7 @@ create V-TMP SETC cells allot
    bk args outs DSTACK-CK
    bk frame FRAME-CK
    bk FLOW-CK
+   bk CLOB-CK
    f ;
 
 public
@@ -1521,6 +1594,7 @@ public
    c b A64IR:KEY-DSLOT  0 BND-DSLOT !
    c b A64IR:KEY-DBYTES 0 BND-DBYTES !
    c b A64IR:KEY-DBACK  0 BND-DBACK !
+   c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    BOUND-YES BND-MODE ! ;
 
 \ ---- the check ---------------------------------------------------------------
@@ -1558,6 +1632,65 @@ public
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
    dup REGGED? 0= if E-A64RAV-CLASS throw then
    A64RA:CLAIM@ ;
+
+\ Which register FILE this value lives in. The emitter asks after it has asked
+\ for the register, because the number alone does not say which file it names -
+\ d3 and x3 are two registers and both are number three - and what a routine
+\ destroys has to be counted per file.
+: FLOATING? ( n -- bool )
+   FRESH-CK
+   dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
+   dup REGGED? 0= if E-A64RAV-CLASS throw then
+   FPR? ;
+
+\ ---- what the accepted allocation says this routine destroys ------------------
+\ THE DERIVATION, AS ONE STATEMENT. The general registers a routine emitted from
+\ this allocation writes, and that a CALLER could be holding a value in, are
+\ exactly the registers this allocation assigns to its values.
+\
+\ THE ARGUMENT IS THE EMITTER'S, READ OFF ITS SOURCE. Every general register that
+\ reaches an instruction in src/compiler/native/emit.f comes from one of four
+\ places and no other: REG-OF, which is A64RAV:REG@ and answers only this
+\ allocation's claims; A64EFF:LINK-GPR, the link register the prologue saves and
+\ the epilogue restores; A64EFF:SP-GPR, operand 31, which the frame accesses name
+\ as the stack pointer; and A64EFF:DSTACK-GPR, the register the running engine
+\ keeps its data-stack pointer in, which the entry, the exit and every call site
+\ step. The last three are excluded from A64EFF's GPR-MASK, so no routine
+\ contract can hand one to an allocator and no caller can be holding a value in
+\ one - which is why they are not in the answer here rather than being subtracted
+\ from it.
+\
+\ WHAT A CALLER MAY THEREFORE RELY ON. The data-stack pointer is not preserved
+\ and is not clobbered either: a routine moves it down over its arguments and up
+\ over its results, which is the convention every call site already accounts for
+\ in the two byte counts it carries. The link register is written at every call
+\ site by the branch itself, whatever the callee does, so it is the CALLER's
+\ business and not a fact about any callee. Both are outside this answer for the
+\ same reason: no value of any routine ever lives in them.
+\
+\ AND THIS IS ONE AUTHORITY AND NOT TWO. It is derived from the assignment this
+\ file ACCEPTED, so a register that reaches an instruction without being in it
+\ would have had to reach it without being a claim - which is what the emitter
+\ holds its own count of written registers against before it seals.
+: GPR-WRITTEN ( -- A64EFF:gprs )
+   FRESH-CK
+   0
+   N-VALS @ 0 ?do
+      i REGGED? i GPR? and if
+         1  i A64RA:CLAIM@  lshift or
+      then
+   loop
+   A64EFF:GPR-SET ;
+
+: FPR-WRITTEN ( -- A64EFF:fprs )
+   FRESH-CK
+   0
+   N-VALS @ 0 ?do
+      i REGGED? i FPR? and if
+         1  i A64RA:CLAIM@  lshift or
+      then
+   loop
+   A64EFF:FPR-SET ;
 
 \ Is this value one that lives in a register at all? The emitter asks before it
 \ asks for a register, and a caller that wants to probe an accepted answer for

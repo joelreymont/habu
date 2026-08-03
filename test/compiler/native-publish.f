@@ -35,6 +35,16 @@
 \ of both numbers and it writes them from its own layout. They are checked by
 \ mutating the emitter, which is recorded in the dot rather than here, on the
 \ same terms as the other compiler mutations in this family.
+\
+\ E-NPUB-CLOBBER IS THE THIRD OF THOSE, and it is the one worth naming here
+\ because of what it guards. What a routine destroys has to cover what everything
+\ it calls destroys; the emitter counts that while it emits, and BRANCH-CK finds
+\ the same callees a second way, by decoding the branches in the finished
+\ instruction stream. No caller can present an emission whose two answers
+\ disagree, so the fixture is a mutation: deleting the emitter's NOTE-CALLEE
+\ makes every migration of a caller-of-a-caller refuse with this code, where
+\ before the check existed the same mutation published a routine that destroyed
+\ more than it said and the corpus crashed several words later.
 
 require lib/test.f
 require src/compiler/native/publish.f

@@ -179,6 +179,7 @@ require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/clobber.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 
@@ -251,6 +252,9 @@ A64EFF:FILE-SIZE constant REGS-N
 \ Nothing holds this register.
 -1 constant NOBODY
 
+\ The operation carries no attribute under this key.
+-1 constant NOATTR
+
 \ This result shares its register field with no operand.
 -1 constant UNTIED
 
@@ -294,6 +298,7 @@ variable OUTS-N
 1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MOV IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
@@ -472,6 +477,54 @@ create PL-VAL PLMAX cells allot
       loop
    loop ;
 
+\ ---- what a call site destroys -----------------------------------------------
+\ A call site is the one place in a routine where a register can lose its value
+\ without any instruction of this module naming it. Which registers those are is
+\ not a guess: a callee the native chain published recorded what it destroys
+\ against the address its code starts at (src/compiler/native/clobber.f), and the
+\ call operation carries that address. So a value whose live range crosses a call
+\ may be given any register the callee does not write, and must not be given one
+\ it does.
+\
+\ THE TWO ANSWERS FOR A CALL WITH NO RECORD, and both are the worst case rather
+\ than a guess. A call to ANOTHER word whose address this process has no row for
+\ is a word the engine's own emitter compiled: nothing is known about it, so
+\ every register of this routine's pool is assumed destroyed and no value may
+\ cross it in a register - which is exactly the discipline that was in force
+\ before any of this existed. A call to THIS SAME routine is not unknown at all
+\ and is still the whole pool: the callee is this routine and its contract
+\ destroys precisely the registers this walk is handing out.
+: ATTR-INT-OF ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
+   {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
+   NOATTR
+   id ATTRS-OF 0 ?do
+      id i ATTR-KEY-AT want SAME-SYM? if
+         drop
+         id i ATTR-INT-AT
+         leave
+      then
+   loop ;
+
+\ Is this operation the branch of a call site? Asked by the attribute a call
+\ carries and no other operation does - how far the branch takes the data-stack
+\ pointer back - so a form added to the dialect is judged by what it says about
+\ itself, exactly as DSTACK-TOUCH? above is.
+: CALL-AT? ( IR-ID:ir-op-id -- bool )
+   DK-BACK BND-DKEY @ ATTR-INT-OF NOATTR <> ;
+
+: CALL-BITS ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id cls:n :}
+   id 0 BND-ENTRY @ ATTR-INT-OF {: e:n :}
+   e NOATTR = if cls POOL-BITS exit then
+   cls C-FPR = if
+      e 0 S-FPOOL @ NCLOB:FPR-CLOB A64EFF:FPRS-N exit
+   then
+   e 0 S-POOL @ NCLOB:GPR-CLOB A64EFF:GPRS-N ;
+
+: FORBIDDEN? ( n n -- bool )
+   {: forbid:n r:n :}
+   1 r lshift forbid and 0<> ;
+
 \ ---- the two value classes this dialect has ----------------------------------
 \ A general register, or the memory token the frame forms thread. Both identities
 \ came from the dialect itself at binding time, so nothing here compares
@@ -564,14 +617,19 @@ create PL-VAL PLMAX cells allot
    {: cls:n r:n :}
    cls POOL-BITS 1 r lshift and 0<> ;
 
-\ The lowest-numbered register of one file's pool that holds nothing, or -1 when
-\ every one of them is taken. Lowest rather than next-around, so the same block
-\ always allocates the same way.
-: FREE-REG ( n -- n )
-   {: cls:n :}
+\ The lowest-numbered register of one file's pool that holds nothing and that
+\ the value being placed may have, or -1 when every one of them is taken or
+\ barred. Lowest rather than next-around, so the same block always allocates the
+\ same way. `forbid` is the registers a call inside the value's own live range
+\ destroys - no bits at all for a value that crosses no call, which is every
+\ value of a routine that calls nothing.
+: FREE-REG ( n n -- n )
+   {: cls:n forbid:n :}
    -1
    REGS-N 0 ?do
-      cls i POOL-HAS? cls i HOLD-AT NOBODY = and if drop i leave then
+      cls i POOL-HAS?
+      forbid i FORBIDDEN? 0= and
+      cls i HOLD-AT NOBODY = and if drop i leave then
    loop ;
 
 \ Nothing below hands out a register that is not the routine's: FREE-REG only
@@ -671,6 +729,32 @@ create PL-VAL PLMAX cells allot
       i cells O-REG + @  k WANT!
    loop ;
 
+\ ---- which registers one value may not have ----------------------------------
+\ The registers destroyed by the calls this value's live range crosses. A value
+\ defined at the call itself, or last read by it, does not cross it: the store
+\ run in front of a call and the load run behind it are ordinary operations of
+\ this module and the values they move are dead, or not yet alive, at the branch.
+\ So the range is open at both ends.
+\
+\ IT IS ASKED PER VALUE AND NOT ONCE PER ROUTINE because two values of one
+\ routine cross different calls: in a body that calls two different words, a
+\ value live across only the first is barred from what the first destroys and
+\ nothing else. A routine that calls nothing answers no bits for every value,
+\ which is what makes this change invisible to every routine that does not call.
+: SB-FORBID ( n -- n )
+   {: k:n :}
+   k CLS-AT {: cls:n :}
+   k DEF-AT {: lo:n :}
+   k LAST-AT {: hi:n :}
+   0
+   N-OPS @ 0 ?do
+      i lo >  i hi <  and if
+         BLK i OP-AT CALL-AT? if
+            BLK i OP-AT cls CALL-BITS or
+         then
+      then
+   loop ;
+
 \ ---- the cost rule -----------------------------------------------------------
 \ Does this operation read this value?
 : READS? ( IR-ID:ir-op-id n -- bool )
@@ -704,11 +788,14 @@ create PL-VAL PLMAX cells allot
    spare ENTRY = if true exit then
    BLK spare OP-AT v READS? 0= ;
 
-: FURTHEST ( n n n -- n )
-   {: cls:n spare:n pos:n :}
+\ A register the value being placed may not have is not a candidate to take
+\ away either: taking it would put the evicted value in a frame slot and still
+\ leave the placed value in a register a call destroys.
+: FURTHEST ( n n n n -- n )
+   {: cls:n spare:n pos:n forbid:n :}
    -1
    REGS-N 0 ?do
-      cls i spare EVICTABLE? if
+      cls i spare EVICTABLE?  forbid i FORBIDDEN? 0= and if
          cls i HOLD-AT pos 1+ 0 max NEXT-USE {: c:n :}
          c over > if drop c then
       then
@@ -718,13 +805,13 @@ create PL-VAL PLMAX cells allot
 \ otherwise the one whose value is read furthest away, with the lowest register
 \ number breaking a tie. A shape where nothing can be taken is the one register
 \ pressure no spill can serve.
-: VICTIM ( n n n -- n )
-   {: cls:n spare:n pos:n :}
-   cls spare pos FURTHEST {: want:n :}
+: VICTIM ( n n n n -- n )
+   {: cls:n spare:n pos:n forbid:n :}
+   cls spare pos forbid FURTHEST {: want:n :}
    want 0 < if E-A64RA-POOL throw then
    -1
    REGS-N 0 ?do
-      cls i spare EVICTABLE? if
+      cls i spare EVICTABLE?  forbid i FORBIDDEN? 0= and if
          cls i HOLD-AT pos 1+ 0 max NEXT-USE want = if drop i leave then
       then
    loop
@@ -761,11 +848,11 @@ create PL-VAL PLMAX cells allot
 \ A register of the file the value belongs to. Which file is the value's class,
 \ so a double never takes a general register and an integer never takes a
 \ floating one, and running out of one file is answered from that file alone.
-: GRAB ( n n n -- n )
-   {: cls:n spare:n pos:n :}
-   cls FREE-REG {: r:n :}
+: GRAB ( n n n n -- n )
+   {: cls:n spare:n pos:n forbid:n :}
+   cls forbid FREE-REG {: r:n :}
    r 0 >= if r exit then
-   cls spare pos VICTIM {: v:n :}
+   cls spare pos forbid VICTIM {: v:n :}
    cls v pos EVICT
    v ;
 
@@ -784,12 +871,13 @@ create PL-VAL PLMAX cells allot
    {: k:n pos:n :}
    k CLS-AT {: cls:n :}
    k WANT-AT {: want:n :}
-   want NOBODY <> if
+   k SB-FORBID {: forbid:n :}
+   want NOBODY <> forbid want FORBIDDEN? 0= and if
       cls want HOLD-AT {: held:n :}
       held NOBODY = if want exit then
       held WANT-AT NOBODY <> if E-A64RA-FIXED throw then
    then
-   cls ENTRY pos GRAB ;
+   cls ENTRY pos forbid GRAB ;
 
 : ASSIGN ( IR-ID:ir-value-id n -- )
    {: id:IR-ID:ir-value-id pos:n :}
@@ -811,6 +899,7 @@ create PL-VAL PLMAX cells allot
    id SLOT {: k:n :}
    k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
    k CLS-AT r HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
+   k SB-FORBID r FORBIDDEN? if E-A64RA-FIXED throw then
    k r TAKE ;
 
 \ A tied result lands in the register field its operand already occupies, so that
@@ -878,7 +967,7 @@ create PL-VAL PLMAX cells allot
       id i OPERAND-AT SLOT {: k:n :}
       k SLOT-AT NOSLOT <>  0 k pos RELOADED? 0=  and if
          k CLS-AT {: cls:n :}
-         cls pos pos GRAB {: r:n :}
+         cls pos pos 0 GRAB {: r:n :}
          0 P-RELOAD pos k PLAN+
          k cls r HOLD!
          r k REG!
@@ -1723,12 +1812,52 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    {: p:n cls:n :}
    SHORT-AT @ 0 < if p SHORT-AT !  cls SHORT-CLS ! then ;
 
-: MB-PLACE1 ( n n -- )
-   {: r:n pos:n :}
+\ ---- which registers one class may not have ----------------------------------
+\ The same statement SB-FORBID makes about one value of one block, over the
+\ whole routine's linear order: a class live from before a loop to after it
+\ crosses every call inside that loop, which is exactly the shape a local read
+\ after a loop of calls has.
+\
+\ AND IT IS ASKED OF THE MEMBERS AND NOT OF THE CLASS'S OWN HULL. A class holds
+\ one register for the whole stretch from its first definition to its last read,
+\ and that stretch is wider than any one member's: the values a call site saves
+\ and the values it reads back afterwards are joined into one class by the edges
+\ around the call, so the CLASS spans every call while no MEMBER of it does. A
+\ register barred by the class's hull would be barred for a value that is in a
+\ data-stack slot at the branch, which would refuse programs that allocated
+\ before any of this existed. What really loses a register at a call is a member
+\ whose own definition is before the branch and whose own last read is after it,
+\ so that is the question, asked of each member exactly as SB-FORBID asks it of
+\ a value of one block.
+: MB-CROSSES? ( n n -- bool )
+   {: r:n p:n :}
+   false
+   N-VALS @ 0 ?do
+      i UF-FIND r = if
+         i DEF-AT p <  i LAST-AT p >  and or
+      then
+   loop ;
+
+: MB-FORBID ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id r:n :}
+   r CLS-AT {: cls:n :}
+   0
+   MB-AT @ 0 ?do
+      i POS-OP? if
+         f i POS-OP CALL-AT? if
+            r i MB-CROSSES? if
+               f i POS-OP cls CALL-BITS or
+            then
+         then
+      then
+   loop ;
+
+: MB-PLACE1 ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id r:n pos:n :}
    r cells CL-LO + @ pos <> if exit then
    r CLS-AT C-TOKEN = if exit then
    r cells CL-SLOT + @ NOSLOT <> if exit then
-   r CLS-AT FREE-REG {: g:n :}
+   r CLS-AT  f r MB-FORBID  FREE-REG {: g:n :}
    g 0 < if pos r CLS-AT MB-SHORT! exit then
    r g TAKE ;
 
@@ -1740,7 +1869,7 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    {: f:IR-ID:ir-fun-id pos:n :}
    pos 1+ MB-EXPIRE
    N-VALS @ 0 ?do
-      i UF-FIND i = if i pos MB-PLACE1 then
+      i UF-FIND i = if f i pos MB-PLACE1 then
    loop
    SHORT-AT @ 0 >= if exit then
    f pos C-GPR MB-PRESSURE
@@ -2066,6 +2195,7 @@ public
    c b A64IR:KEY-DSLOT  DK-SLOT BND-DKEY !
    c b A64IR:KEY-DBYTES DK-BYTES BND-DKEY !
    c b A64IR:KEY-DBACK  DK-BACK BND-DKEY !
+   c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    c b A64IR-OPCODE:MOV A64IR:OPCODE 0 BND-MOV !
    BOUND-YES BND-MODE ! ;
 

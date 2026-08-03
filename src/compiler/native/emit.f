@@ -304,6 +304,31 @@ variable N-BLK
 variable LAY-AT
 0 LAY-AT !
 
+\ The registers this run has put into a destination field, and the registers the
+\ accepted allocation says the routine destroys. The first is counted while the
+\ instructions are built and the second is taken at the seal; NOTE-WRITE and
+\ CLOBBER-SEAL below are where each of them is said.
+variable EM-WGPR
+0 EM-WGPR !
+variable EM-WFPR
+0 EM-WFPR !
+variable EM-CGPR
+0 EM-CGPR !
+variable EM-CFPR
+0 EM-CFPR !
+
+\ And what the code this run BRANCHES TO destroys. A routine destroys what its
+\ own instructions write and everything the routines it calls write, so a caller
+\ that read only the first half would be told a register survives a call that the
+\ callee's callee writes. It is kept apart from the count above because it is not
+\ something these instructions did: the check that the emission wrote nothing the
+\ allocation did not claim is about this routine's own instructions, and this is
+\ about somebody else's.
+variable EM-KGPR
+0 EM-KGPR !
+variable EM-KFPR
+0 EM-KFPR !
+
 \ ---- where this routine will be written --------------------------------------
 \ A branch to a block is measured from the layout, so it is the same displacement
 \ wherever the routine lands. A branch to ANOTHER WORD is not: the callee has an
@@ -485,8 +510,31 @@ create B-START BMAX cells allot
 : REG-OF ( IR-ID:ir-value-id -- n )
    IR-ID:VALUE-LOCAL A64RAV:REG@ ;
 
+\ ---- the registers this emission WRITES --------------------------------------
+\ A destination register is noted as it is asked for, so what the finished
+\ emission destroys is counted from the instructions it really built rather than
+\ from the module it read. It is held against the accepted allocation's own
+\ answer before the run seals, and the two together are what
+\ src/compiler/native/publish.f may record about the routine: an emission that
+\ wrote a register no value claimed is refused instead of published as a routine
+\ that destroys less than it does.
+\
+\ THE COUNT IS PER FILE because a register number names a register of ONE file -
+\ d3 and x3 are two registers and both are number three - so which file the value
+\ lives in is asked of the same accepted allocation the number came from.
+: NOTE-WRITE ( IR-ID:ir-value-id n -- )
+   {: v:IR-ID:ir-value-id r:n :}
+   v IR-ID:VALUE-LOCAL A64RAV:FLOATING? if
+      1 r lshift  EM-WFPR @ or  EM-WFPR !
+      exit
+   then
+   1 r lshift  EM-WGPR @ or  EM-WGPR ! ;
+
 : RESULT-REG ( IR-ID:ir-op-id n -- n )
-   RESULT-AT REG-OF ;
+   RESULT-AT {: v:IR-ID:ir-value-id :}
+   v REG-OF {: r:n :}
+   v r NOTE-WRITE
+   r ;
 
 : OPERAND-REG ( IR-ID:ir-op-id n -- n )
    OPERAND-AT REG-OF ;
@@ -1083,6 +1131,18 @@ create B-START BMAX cells allot
    d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
    d ENC-BL ;
 
+\ What a branch out of this routine adds to what the routine destroys. A
+\ self-call adds nothing at all, and that is not an omission: the callee IS this
+\ routine, so what it destroys is what is being counted here and the union with
+\ itself changes nothing. A call to another word adds that word's own recorded
+\ answer, or - for a word this process has no row for, which is every word the
+\ engine's own emitter compiled - the whole register file, because nothing is
+\ known about it.
+: NOTE-CALLEE ( n -- )
+   {: e:n :}
+   e A64EFF:GPR-ALL NCLOB:GPR-CLOB A64EFF:GPRS-N  EM-KGPR @ or  EM-KGPR !
+   e A64EFF:FPR-ALL NCLOB:FPR-CLOB A64EFF:FPRS-N  EM-KFPR @ or  EM-KFPR ! ;
+
 : PUT-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-ADDI  APPEND
@@ -1122,6 +1182,7 @@ create B-START BMAX cells allot
 
 : PUT-WORD-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id ENTRY-ADDR NOTE-CALLEE
    id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-ADDI  APPEND
    id  id WORD-DELTA BL-WORD  APPEND
    id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBACK-SIZE  ENC-SUBI  APPEND ;
@@ -1327,6 +1388,23 @@ create B-START BMAX cells allot
 : SEAL-CK ( -- )
    ST @ ST-SEALED <> if E-A64EMIT-STATE throw then ;
 
+\ What this routine destroys, decided once, at the seal, from two answers that
+\ were reached different ways. The allocation's answer is every register it
+\ assigned to a value (A64RAV:GPR-WRITTEN); this run's answer is every register
+\ it put into a destination field. The first is what may be published, because a
+\ register the emission does not happen to write today is still one an
+\ instruction could name tomorrow without the allocation changing; the second is
+\ what proves the first is not too narrow. An emission that wrote a register no
+\ value claimed means the two disagree about what the routine is, and neither can
+\ be published: E-A64EMIT-CLOBBER.
+: CLOBBER-SEAL ( -- )
+   A64RAV:GPR-WRITTEN A64EFF:GPRS-N {: g:n :}
+   A64RAV:FPR-WRITTEN A64EFF:FPRS-N {: f:n :}
+   EM-WGPR @ g invert and 0<> if E-A64EMIT-CLOBBER throw then
+   EM-WFPR @ f invert and 0<> if E-A64EMIT-CLOBBER throw then
+   g EM-KGPR @ or EM-CGPR !
+   f EM-KFPR @ or EM-CFPR ! ;
+
 : ORD-CK ( n -- n )
    dup 0 < over N-INS @ >= or if E-A64EMIT-BOUND throw then ;
 
@@ -1469,6 +1547,10 @@ public
    PLACE-TAKE
    ST-EMPTY ST !
    0 N-INS !
+   0 EM-WGPR !
+   0 EM-WFPR !
+   0 EM-KGPR !
+   0 EM-KFPR !
    m BND-MODULE-CK
    c TARGET-CK
    m VIEWS!
@@ -1477,11 +1559,23 @@ public
    m ALLOC-CK
    f LAYOUT
    f WALK
+   CLOBBER-SEAL
    ST-SEALED ST ! ;
 
 \ ---- the sealed emission -----------------------------------------------------
 : SEALED? ( -- bool )
    ST @ ST-SEALED = ;
+
+\ What the routine this emission is destroys, one reader per register file. It
+\ reads off the SEALED run for the same reason every byte the publication seam
+\ writes does: an emission that refused leaves no answer here, and an answer here
+\ was reached under the allocation this emission was made against rather than
+\ under whichever one is live when the question is asked.
+: GPR-CLOBBER ( -- A64EFF:gprs )
+   SEAL-CK EM-CGPR @ A64EFF:GPR-SET ;
+
+: FPR-CLOBBER ( -- A64EFF:fprs )
+   SEAL-CK EM-CFPR @ A64EFF:FPR-SET ;
 
 \ How many instructions were emitted, and how many bytes they occupy.
 : INSNS ( -- n )

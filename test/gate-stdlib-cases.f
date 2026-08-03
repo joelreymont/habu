@@ -345,6 +345,13 @@ SUITE compiler-native-migrate
    test/compiler/native-migrate.f
 ;SUITE
 
+\ What a published routine destroys, and what a call site does with the answer.
+\ It runs after the migration entry because the measurement it makes is over two
+\ words the migration published.
+SUITE compiler-native-clobber
+   test/compiler/native-clobber.f
+;SUITE
+
 \ The native chain's end-to-end run: source text through the real compile path
 \ to executed machine code. It runs after the leaves it composes, so a red here
 \ with green leaves means the leaves disagree with each other.

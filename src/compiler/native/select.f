@@ -168,6 +168,7 @@ require src/compiler/ir/build.f
 require src/compiler/a64-effect.f
 require src/compiler/native/hir.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/clobber.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 
@@ -275,6 +276,8 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-ARGS A64EFF:placeseq
 1 TYPED-BUFFER S-OUTS A64EFF:placeseq
 1 TYPED-BUFFER S-TRT A64EFF:traits
+1 TYPED-BUFFER S-POOL A64EFF:gprs
+1 TYPED-BUFFER S-FPOOL A64EFF:fprs
 1 TYPED-BUFFER S-FTOK IR-ID:ir-value-id
 1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
 1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
@@ -779,36 +782,125 @@ create NAMEBUF NAME-CAP allot
 \ CALLED-CK decides the other half after the last one, by holding the calls this
 \ pass really built against the contract's declaration. A third copy of the
 \ question here would be a check no mutation can reach.
+\ ---- how many live values may stay where they are ----------------------------
+\ THE NARROWING, IN ONE SENTENCE. A call site has to put a live value somewhere
+\ the callee cannot reach, and a register the callee never writes is such a
+\ place. Which registers those are is the callee's own answer, recorded against
+\ its entry address when it was published (src/compiler/native/clobber.f), so a
+\ site calling a routine the chain compiled saves only what that answer covers
+\ and a site calling anything else saves everything, exactly as before.
+\
+\ WHAT DECIDES THE NUMBER. Every value kept in a register across the branch needs
+\ a register of its own file that the callee does not destroy, and it needs it
+\ for the whole stretch it is live - so the most that can be kept is how many
+\ such registers this routine has.
+\
+\ AND NOTHING RESTS ON THIS NUMBER BEING RIGHT, which is worth saying plainly. It
+\ is a request, not a promise: the allocator is what really places a value, and
+\ it will not put one that crosses a call in a register the callee writes
+\ (src/compiler/native/regalloc.f, SB-FORBID and MB-FORBID), while the validator
+\ refuses an assignment that does anyway (E-A64RAV-CLOBBER). A count that asked
+\ for too much would cost a REFUSAL - the allocator running out of registers it
+\ may use - and never wrong code. What the count is for is not asking.
+\
+\ AND THE KEPT VALUES ARE A SUFFIX OF THE LIVE LIST, which is not a preference
+\ about which value is worth keeping - it is what makes the saved ones name slots
+\ zero upwards with nothing missing, which is the shape the validator measures a
+\ store run as. The suffix is taken from the TOP of the caller's stack downwards,
+\ so the values nearest the work being done are the ones that stay in registers.
+: BITS-N ( n -- n )
+   {: v:n :}
+   0
+   A64EFF:FILE-SIZE 0 ?do
+      v 1 i lshift and 0<> if 1+ then
+   loop ;
+
+: GPR-ROOM ( n -- n )
+   {: e:n :}
+   0 S-POOL @ A64EFF:GPRS-N {: p:n :}
+   e 0 S-POOL @ NCLOB:GPR-CLOB A64EFF:GPRS-N {: c:n :}
+   p c invert and BITS-N ;
+
+: FPR-ROOM ( n -- n )
+   {: e:n :}
+   0 S-FPOOL @ A64EFF:FPRS-N {: p:n :}
+   e 0 S-FPOOL @ NCLOB:FPR-CLOB A64EFF:FPRS-N {: c:n :}
+   p c invert and BITS-N ;
+
+\ How many of the kept suffix are of each file, as the walk grows it. They are
+\ package state rather than two more numbers on the stack because the walk below
+\ carries its answer there and a loop cannot hold three.
+variable KEPT-G
+variable KEPT-F
+
+: KEEP-N ( IR-ID:ir-op-id n n -- n )
+   {: id:IR-ID:ir-op-id e:n k:n :}
+   e GPR-ROOM {: groom:n :}
+   e FPR-ROOM {: froom:n :}
+   0 KEPT-G !
+   0 KEPT-F !
+   0
+   k 0 ?do
+      id k i - OPERAND-AT REAL? if
+         KEPT-F @ 1+ froom > if leave then
+         KEPT-F @ 1+ KEPT-F !
+      else
+         KEPT-G @ 1+ groom > if leave then
+         KEPT-G @ 1+ KEPT-G !
+      then
+      1+
+   loop ;
+
 \ The store run in front of the branch, the load run behind it, and the two
 \ pointer moves the branch itself carries. Both call forms are this sequence and
 \ they differ only in the operation in the middle, so the sequence is written
 \ once: a second copy would be a second statement of the caller-save discipline
 \ the whole design turns on.
-: CALL-SAVE ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id n:n :}
-   n 0 ?do
+\
+\ `kk` live values go out to slots zero upwards, then the `a` arguments; `m` are
+\ kept, and a kept value has no operation here at all - it is in a register the
+\ callee does not write, and the restore below says so by binding the source
+\ value that comes back out of the call to the very value that went in.
+: CALL-SAVE ( IR-ID:ir-op-id n n n -- )
+   {: id:IR-ID:ir-op-id kk:n m:n a:n :}
+   kk 0 ?do
       id  id i 1+ OPERAND  i A64IR:SLOT-WIDTH *  EMIT-DSTORE
+   loop
+   a 0 ?do
+      id  id kk m + i + 1+ OPERAND  kk i + A64IR:SLOT-WIDTH *  EMIT-DSTORE
    loop ;
 
-: CALL-RESTORE ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id n:n :}
-   n 0 ?do
+: CALL-RESTORE ( IR-ID:ir-op-id n n n -- )
+   {: id:IR-ID:ir-op-id kk:n m:n r:n :}
+   kk 0 ?do
       id i 1+ RESULT-AT
       id  i A64IR:SLOT-WIDTH *  EMIT-DLOAD
+      VBIND
+   loop
+   m 0 ?do
+      id kk i + 1+ RESULT-AT   id kk i + 1+ OPERAND   VBIND
+   loop
+   r 0 ?do
+      id kk m + i + 1+ RESULT-AT
+      id  kk i + A64IR:SLOT-WIDTH *  EMIT-DLOAD
       VBIND
    loop
    id 0 RESULT-AT  TOK  VBIND
    N-CALLS @ 1+ N-CALLS ! ;
 
+\ A call to THIS routine keeps nothing. The callee is this same routine and its
+\ contract destroys exactly the registers the allocator hands out, so there is no
+\ register of the pool a value could survive in - and there is no recorded answer
+\ to consult either, because the routine being compiled has not been published.
 : EMIT-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    ARGS SLOT-POSITIONS {: a:n :}
    OUTS SLOT-POSITIONS {: r:n :}
    id a r CALL-LIVE {: k:n :}
    id 0 OPERAND TOK!
-   id k a + CALL-SAVE
+   id k 0 a CALL-SAVE
    id  k a + A64IR:SLOT-WIDTH *  k r + A64IR:SLOT-WIDTH *  EMIT-BL
-   id k r + CALL-RESTORE ;
+   id k 0 r CALL-RESTORE ;
 
 \ ---- selecting a call to another word ----------------------------------------
 \ THE ONE THING THAT DIFFERS FROM A SELF-CALL IS WHOSE ARITY IS READ. A self-call
@@ -851,12 +943,15 @@ create NAMEBUF NAME-CAP allot
    {: id:IR-ID:ir-op-id :}
    id 0 BND-IN @ ATTR-INT-OF {: a:n :}
    id 0 BND-OUT @ ATTR-INT-OF {: r:n :}
+   id 0 BND-ENTRY @ ATTR-INT-OF {: e:n :}
    id a r CALL-LIVE {: k:n :}
+   id e k KEEP-N {: m:n :}
+   k m - {: kk:n :}
    id 0 OPERAND TOK!
-   id k a + CALL-SAVE
-   id  k a + A64IR:SLOT-WIDTH *  k r + A64IR:SLOT-WIDTH *
-   id 0 BND-ENTRY @ ATTR-INT-OF  EMIT-WBL
-   id k r + CALL-RESTORE ;
+   id kk m a CALL-SAVE
+   id  kk a + A64IR:SLOT-WIDTH *  kk r + A64IR:SLOT-WIDTH *
+   e EMIT-WBL
+   id kk m r CALL-RESTORE ;
 
 \ ---- selecting a constant ----------------------------------------------------
 \ The literal is the whole content of a source constant, and it rides as the
@@ -1930,6 +2025,10 @@ public
    m BND-MODULE-CK
    gi 0 S-ARGS !
    gr 0 S-OUTS !
+   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   A64EFF:GPR-WRITABLE 0 S-POOL !
+   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   A64EFF:FPR-WRITABLE 0 S-FPOOL !
    t 0 S-TRT !
    size S-FRAME !
    0 N-CALLS !

@@ -1029,6 +1029,8 @@ public
 -8554 constant E-HIR-CALLEE     \ a callable-word declaration this dialect cannot hold: an entry address that is negative or not instruction aligned, or an argument or result count that is negative
 -8555 constant E-A64IR-ENTRY    \ a callee entry address the branch-with-link form cannot name: negative, or not the address of a whole instruction
 -8556 constant E-A64EMIT-PLACE  \ an emission that names a callee and was told no address of its own to measure the branch from, a placement that is negative or not instruction aligned, or a second placement declared over a live one
+-8557 constant E-A64RAV-CLOBBER \ a value the caller keeps in a register across a call to a routine that destroys that register: an assignment the callee's recorded clobber set says the call site cannot make
+-8558 constant E-A64EMIT-CLOBBER \ an emission that writes a general or floating register the accepted allocation claimed for no value, so what the routine destroys cannot be published from the allocation
 
 \ Native publication: -8560..-8579
 \
@@ -1048,6 +1050,9 @@ public
 -8564 constant E-NPUB-CAP     \ more republished words than the seam's replacement log holds
 -8565 constant E-NPUB-LOG     \ a replacement asked about a word the log has no row for
 -8566 constant E-NPUB-PLACE   \ an emission whose branches were measured from an address that is not the code slot this seam is claiming for it
+-8567 constant E-NCLOB-WIDEN  \ a second record of what the routine at one code address destroys that names a register the first record did not: every call site compiled against the first one skipped saving exactly that register
+-8568 constant E-NCLOB-CAP    \ more published routines than the clobber record's table holds
+-8569 constant E-NPUB-CLOBBER \ an emission that branches to a routine destroying a register the set about to be published for it does not name: what a routine destroys has to cover what everything it calls destroys
 
 -8570 constant E-NMIGRATE-STATE   \ a migration reached while another one is open: the recorder takes one definition at a time
 -8571 constant E-NMIGRATE-TEXT    \ definition source longer than the recorder's text buffer, or a name longer than the log holds

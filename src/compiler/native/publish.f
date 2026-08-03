@@ -65,10 +65,24 @@
 \ transaction, so what was there before is evidence: it is what a refusal has to
 \ leave untouched, and it is the byte count of the code the old emitter produced
 \ for the same name, which nothing else remembers once the record is rewritten.
+\
+\ AND WHAT IT PUBLISHES BESIDES THE BYTES: WHAT THE ROUTINE DESTROYS. A call site
+\ has to put every value it is holding somewhere the callee cannot reach, and
+\ "every register the caller could be holding a value in" is the only honest
+\ answer for a callee nobody knows anything about. This seam knows something
+\ about the one it is publishing: the emission was made under an allocation the
+\ validator accepted, and that allocation says which registers the routine writes
+\ (A64EMIT:GPR-CLOBBER, derived in src/compiler/native/regalloc-verify.f and held
+\ against the emission's own destination fields before it seals). So the answer
+\ is recorded here, against the ADDRESS this seam is writing the routine at,
+\ which is the address a later call site branches to - src/compiler/native/
+\ clobber.f is the record and carries the argument for why an address is the
+\ right key and why a row may only ever narrow.
 
 require lib/prelude.f
 require lib/errors.f
 require lib/string.f
+require src/compiler/native/clobber.f
 require src/compiler/native/emit.f
 
 package NPUB
@@ -249,6 +263,58 @@ variable LOG-N
    A64EMIT:PLACED? 0= if exit then
    A64EMIT:PLACEMENT fn <> if E-NPUB-PLACE throw then ;
 
+\ ---- what the routine branches to, read off the instructions ------------------
+\ A routine destroys what its own instructions write AND everything the routines
+\ it calls destroy. The emitter counts both while it emits (A64EMIT's NOTE-WRITE
+\ and NOTE-CALLEE) and hands the union over as one answer; this is the second
+\ derivation of the callee half, made the only other way there is - by finding
+\ the branches in the finished instruction stream and computing where each one
+\ goes. A recorded set that does not cover a callee's own recorded set is refused
+\ here, before a byte is written, rather than published as a routine that
+\ destroys less than it does. That is worth a decoder because it is the half that
+\ is silently wrong when it is wrong: a caller of THIS routine would keep a value
+\ in a register the callee's callee writes, and nothing downstream would ever ask
+\ again.
+\
+\ A BRANCH TO THIS ROUTINE'S OWN ENTRY IS NOT A CALLEE. The callee is this same
+\ routine, so what it destroys is the set being computed and the union of a set
+\ with itself is that set. It is also not recorded yet - this runs before RECORD
+\ does - so asking about it would answer the worst case and refuse every routine
+\ that calls itself.
+$FC000000 constant BL-MASK
+$94000000 constant BL-OP
+$03FFFFFF constant BL-IMM
+26 constant BL-BITS
+
+: BL-AT? ( n -- bool )
+   BL-MASK and BL-OP = ;
+
+\ The address a branch-with-link goes to: its own address plus its signed
+\ twenty-six-bit word displacement.
+: BL-TARGET ( n n -- n ) {: w:n at:n :}
+   w BL-IMM and {: imm:n :}
+   imm  1 BL-BITS 1- lshift  and 0<> if imm 1 BL-BITS lshift - else imm then
+   INSN-BYTES * at + ;
+
+: INSN-ADDR ( n n n -- n ) {: fn:n size:n k:n :}
+   k A64EMIT:MAP-OFFSET@ size OFFSET-CK fn + ;
+
+: TARGET-CK ( n n n n -- ) {: t:n fn:n g:n f:n :}
+   t fn = if exit then
+   t A64EFF:GPR-ALL NCLOB:GPR-CLOB A64EFF:GPRS-N
+   g invert and 0<> if E-NPUB-CLOBBER throw then
+   t A64EFF:FPR-ALL NCLOB:FPR-CLOB A64EFF:FPRS-N
+   f invert and 0<> if E-NPUB-CLOBBER throw then ;
+
+: BRANCH-CK ( n n -- ) {: fn:n size:n :}
+   A64EMIT:GPR-CLOBBER A64EFF:GPRS-N {: g:n :}
+   A64EMIT:FPR-CLOBBER A64EFF:FPRS-N {: f:n :}
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ BL-AT? if
+         i A64EMIT:WORD@  fn size i INSN-ADDR  BL-TARGET  fn g f TARGET-CK
+      then
+   loop ;
+
 \ Write the emission at the claimed slot and move the code pointer past it, so
 \ the next definition the engine compiles begins after this routine.
 : WRITE ( n n -- ) {: fn:n size:n :}
@@ -280,10 +346,13 @@ public
    a u wid TARGET {: idx:n :}
    size ROOM-CK {: fn:n :}
    fn PLACE-CK
+   fn NCLOB:ROOM-CK
+   fn size BRANCH-CK
    idx XREF-REC XREF-START {: os:n :}
    idx XREF-REC XREF-LEN {: ol:n :}
    fn size WRITE
    idx fn size RETARGET
+   fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD
    a u wid os ol fn  size INSN-BYTES -  LOG+ ;
 
 \ The address the next republication will write its first instruction at. It is

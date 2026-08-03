@@ -667,15 +667,19 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 \ forward with the chain, and counting alone cannot tell one wrong name from
 \ another.
 \
-\ ONE ROW COSTS MORE THAN THE ENGINE'S CODE FOR THE SAME BODY, and it is pinned
-\ here in the shape the second corpus pins T-RES-WALK's byte count: T-SGD!, whose
-\ loop body is THREE calls - two loads and a store - and whose four locals, two
-\ counters and accumulator are live across all of them. Every one of those values
-\ goes out through a data-stack slot and comes back at every call, because
-\ nothing in a Habu word's convention is callee-saved, so a body with three calls
-\ per turn pays that discipline three times. It is a real cost of a real rule and
-\ dot habu-narrow-what-a-5d6a0845 carries narrowing it; pinning it means the
-\ day it changes, in either direction, somebody has to look at it.
+\ NO ROW OF THIS CORPUS COSTS MORE THAN THE ENGINE'S CODE ANY MORE, and what
+\ used to is pinned here by something a wall clock cannot blur. T-SGD!'s loop
+\ body is THREE calls - two loads and a store - and its four locals, two counters
+\ and accumulator are live across all of them; every one of those values used to
+\ go out through a data-stack slot and come back at every call, because nothing
+\ in a Habu word's convention is callee-saved. That is still the rule for a
+\ callee nobody knows anything about, and it is no longer the rule for one the
+\ chain published: such a routine records which registers its own allocation
+\ writes, and the site saves only the live values that set can reach. So what is
+\ pinned is the traffic itself - how many stores and loads against the caller's
+\ data-stack pointer the emitted word contains - which is exact, moves for one
+\ reason, and does not turn on host load. The row was 340 bytes with 24 stores
+\ and 23 loads and is 204 with seven and six.
 : GAP-WANTS? ( n CODEGEN-GAP:cap -- bool ) {: k:n c:CODEGEN-GAP:cap :}
    false
    k CODEGEN-GAP:GAP-CAPS@ 0 ?do
@@ -705,6 +709,48 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    k CODEGEN-COMPARE:PARTNER {: b:n :}
    b 0 < if false exit then
    k CODEGEN-COMPARE:COST  b CODEGEN-COMPARE:COST  > ;
+
+variable CODE-AT
+
+: CODE-PTR ( -- ptr u8 )
+   CODE-AT 0 ptr-field @ ;
+
+: U32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@
+   p 1 + c@ 8 lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or ;
+
+\ ---- the traffic a call site makes with the caller's own data stack ----------
+\ What a call costs the chain beyond the branch is the values it puts into its
+\ own data-stack slots and reads back. Since dot habu-narrow-what-a-5d6a0845 a
+\ site saves only what the callee's recorded destroyed set covers, and the whole
+\ of that change shows up here: these are the Str and Ldr forms of a whole cell
+\ against the register the running engine keeps its data-stack pointer in
+\ (src/compiler/a64-effect.f DSTACK-GPR), counted in a word's own compiled code.
+\ A byte count moves for any reason; this moves for one.
+$FFC00000 constant MEM-MASK
+$F9000000 constant STR-OP
+$F9400000 constant LDR-OP
+
+: DSTACK-AT? ( n n -- bool ) {: w:n op:n :}
+   w MEM-MASK and op =
+   w 5 rshift $1F and  A64EFF:DSTACK-GPR =  and ;
+
+: DS-COUNT ( ptr u8 n n -- n ) {: a:ptr u:n op:n :}
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then
+   dup XREF-START CODE-AT !
+   XREF-LEN {: len:n :}
+   0
+   len 4 / 0 ?do
+      CODE-PTR i 4 * + U32@ op DSTACK-AT? if 1+ then
+   loop ;
+
+: DS-STORES ( ptr u8 n -- n )
+   STR-OP DS-COUNT ;
+
+: DS-LOADS ( ptr u8 n -- n )
+   LDR-OP DS-COUNT ;
 
 : REAL-RUN-CASES3 ( -- )
    11 ACCOUNT-CASES
@@ -744,8 +790,11 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    s" CODEGEN-CORPUS3:T-SUM" SMALLER? TTRUE
    s" CODEGEN-CORPUS3:T-SGD!" SMALLER? TTRUE
 
-   s" and exactly one of them COSTS more, which is the loop with three calls in it" T-LABEL
-   s" CODEGEN-CORPUS3:T-SGD!" COSTLIER? TTRUE
+   s" the loop with three calls in it saves only what its callees destroy" T-LABEL
+   s" CODEGEN-CORPUS3:T-SGD!-N" DS-STORES 7 T=
+   s" CODEGEN-CORPUS3:T-SGD!-N" DS-LOADS 6 T=
+
+   s" and no row of this corpus COSTS more than the engine's code" T-LABEL
    s" CODEGEN-CORPUS3:T-SUM" COSTLIER? TFALSE
    s" CODEGEN-CORPUS3:T-DIST2" COSTLIER? TFALSE
    s" CODEGEN-CORPUS3:T-NORM2" COSTLIER? TFALSE
@@ -962,16 +1011,24 @@ private
 \ REFUSAL-CASES below hands the corpus's own text to the real migration entry and
 \ checks that the refusal is E-A64RA-SPILL and not some other code.
 \
-\ WHICH ROWS COST MORE, AND WHICH ARE PINNED. Two of the nine cost more than the
-\ engine's code for the same body - CALL-LOOP-3 and TINY-CALLEE, the two whose
-\ loop bodies contain nothing but calls - and both are pinned here by name. Two
-\ more are DRAWS and are deliberately not pinned in either direction: CALL-FAN and
-\ LADDER measured within a twentieth of each other, and over five passes on an
-\ idle host each of them came out ahead of the other at least once, so an
-\ assertion either way would be a gate that fails for host noise. The head of this
-\ file says why that is worse than no assertion at all. The four rows the chain
-\ wins by more than a factor of two are pinned, because a margin that large cannot
-\ be crossed by scheduling.
+\ WHICH ROWS COST MORE, AND WHICH ARE PINNED. ONE of the nine costs more than the
+\ engine's code for the same body - TINY-CALLEE, whose loop body contains nothing
+\ but calls and whose callee the engine copies rather than calls - and it is
+\ pinned here by name. CALL-LOOP-3 was the second and is a draw now: narrowing
+\ what a call site saves took it from about 1.33x to level, and level is not
+\ something a wall clock can assert. Three more are DRAWS and are deliberately
+\ not pinned in either direction: CALL-FAN and LADDER measured within a twentieth
+\ of each other, and over five passes on an idle host each of them came out ahead
+\ of the other at least once, so an assertion either way would be a gate that
+\ fails for host noise. The head of this file says why that is worse than no
+\ assertion at all. The four rows the chain wins by more than a factor of two are
+\ pinned, because a margin that large cannot be crossed by scheduling.
+\
+\ WHAT IS PINNED INSTEAD, FOR THE ROWS THAT TURN ON A CALL, is the traffic
+\ itself: how many stores and loads against the caller's own data-stack pointer
+\ each emitted word contains. Those numbers are exact, they are what the
+\ narrowing removes, and they do not move for host load - so a change that
+\ stopped narrowing fails a gate here rather than being absorbed into a timing.
 \
 \ EVERY COMPILED ROW IS STILL FEWER BYTES, which is itself the shape of the
 \ finding: what the chain spends at a call is data-stack traffic in the caller's
@@ -987,17 +1044,6 @@ private
 \ is safe to copy.
 $FC000000 constant BL-MASK
 $94000000 constant BL-OP
-
-variable CODE-AT
-
-: CODE-PTR ( -- ptr u8 )
-   CODE-AT 0 ptr-field @ ;
-
-: U32@ ( ptr u8 -- n ) {: p:ptr :}
-   p c@
-   p 1 + c@ 8 lshift or
-   p 2 + c@ 16 lshift or
-   p 3 + c@ 24 lshift or ;
 
 \ How many call instructions a live word's compiled code contains. The code start
 \ and the code length come off the word's own dictionary record, which is where
@@ -1054,9 +1100,18 @@ variable CODE-AT
    s" CODEGEN-CORPUS4:TINY-CALLEE" SMALLER? TTRUE
    s" CODEGEN-CORPUS4:LADDER" SMALLER? TTRUE
 
-   s" the two rows whose loop bodies are nothing but calls COST more" T-LABEL
-   s" CODEGEN-CORPUS4:CALL-LOOP-3" COSTLIER? TTRUE
+   s" the row whose loop body is nothing but calls still COSTS more" T-LABEL
    s" CODEGEN-CORPUS4:TINY-CALLEE" COSTLIER? TTRUE
+
+   s" and what a call site saves is what the callee's own record says it must" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-LOOP-3-N" DS-STORES 4 T=
+   s" CODEGEN-CORPUS4:CALL-LOOP-3-N" DS-LOADS 8 T=
+   s" CODEGEN-CORPUS4:TINY-CALLEE-N" DS-STORES 5 T=
+   s" CODEGEN-CORPUS4:TINY-CALLEE-N" DS-LOADS 6 T=
+
+   s" the row with nothing live across its calls saves nothing either way" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN-N" DS-STORES 6 T=
+   s" CODEGEN-CORPUS4:CALL-FAN-N" DS-LOADS 6 T=
 
    s" and the four the chain wins by more than a factor of two do not" T-LABEL
    s" CODEGEN-CORPUS4:BIG-CONSTS" COSTLIER? TFALSE
