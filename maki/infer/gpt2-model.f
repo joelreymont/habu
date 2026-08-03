@@ -264,6 +264,18 @@ TRUSTED: M-TAKE
       misaligned OF E-SIZE throw ENDOF
    ;MATCH ;
 
+: M-ITEM-COUNT ( n -- CAD-NUM:item-count )
+   CAD-NUM:ITEM-COUNT
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF
+      negative OF E-CONTEXT throw ENDOF
+      zero OF E-CONTEXT throw ENDOF
+      overflow OF E-CONTEXT throw ENDOF
+      underflow OF E-CONTEXT throw ENDOF
+      bad-alignment OF E-CONTEXT throw ENDOF
+      misaligned OF E-CONTEXT throw ENDOF
+   ;MATCH ;
+
 : M-BYTE-LEN ( n -- CAD-NUM:byte-len )
    CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
       ok OF ENDOF
@@ -1225,6 +1237,22 @@ public
          root rootu c M-OPEN-CFG
       ENDOF
    ;MATCH ;
+
+: CONTEXT-LEN ( GPT2:model -- GPT2:model CAD-NUM:item-count )
+   M-TAKE
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
+   NCTX@ {: cx:n :}
+   x a b logits token k v pos
+   tmod amod embed ln linear unembed gelu residual attn rec M-SAVE
+   cx M-ITEM-COUNT ;
+
+: EOS-ID ( GPT2:model -- GPT2:model n )
+   M-TAKE
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
+   EOS@ {: eos:n :}
+   x a b logits token k v pos
+   tmod amod embed ln linear unembed gelu residual attn rec M-SAVE
+   eos ;
 
 : LOGITS
    ( GPT2:model n ptr u8 CAD-NUM:byte-len -- GPT2:model result<n,n> )

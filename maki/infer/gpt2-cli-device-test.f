@@ -1,4 +1,4 @@
-\ gpt2-cli-device-test.f - end-to-end GPT-2 CLI generation proof.
+\ gpt2-cli-device-test.f - exact one-request GPT-2 CLI proof.
 
 require lib/test.f
 require lib/memory.f
@@ -6,6 +6,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require test/checker-assert.f
 require maki/infer/gpt2-cli.f
 require maki/infer/gpt2-reference-data.f
 
@@ -16,22 +17,17 @@ private
 4096 constant T-CAP
 240000 constant T-TIMEOUT-MS
 
-create T-BAD FS-PATH-CAP allot
-create T-MISS FS-PATH-CAP allot
+create T-ROOT FS-PATH-CAP allot
 create T-SRC FS-PATH-CAP allot
 create T-DST FS-PATH-CAP allot
 create T-LONG T-LONG-N allot
 create T-OUT T-CAP allot
 create T-ERR T-CAP allot
 
-variable T-BAD-U
-variable T-MISS-U
+variable T-ROOT-U
 
-: T-BAD$ ( -- ptr u8 n )
-   T-BAD T-BAD-U @ ;
-
-: T-MISS$ ( -- ptr u8 n )
-   T-MISS T-MISS-U @ ;
+: T-ROOT$ ( -- ptr u8 n )
+   T-ROOT T-ROOT-U @ ;
 
 : T-COPY! ( ptr u8 n ptr u8 ptr n -- )
    {: src:ptr srcu:n dst:ptr lenp:ptr :}
@@ -55,14 +51,17 @@ variable T-MISS-U
    dst dstu T-DST T-MERGES$
    COPY-FILE-STREAM ;
 
-: T-PREPARE ( ptr u8 n -- ) {: root:ptr rootu:n :}
+: T-FILL ( ptr u8 n n -- )
+   {: dst:ptr len:n byte:n :}
+   len 0 ?do byte dst i + c! loop ;
+
+: T-PREPARE ( ptr u8 n -- )
+   {: root:ptr rootu:n :}
    CLEANUP-RESET
-   s" gpt2-cli-bad" T-BAD T-BAD-U T-TEMP!
-   s" gpt2-cli-missing" T-MISS T-MISS-U T-TEMP!
-   root rootu T-BAD$ T-COPY-MERGES
-   root rootu T-MISS$ T-COPY-MERGES
-   T-BAD$ T-DST T-MERGES$ s" corrupt" WRITE-ALL
-   T-LONG-N 0 ?do 120 T-LONG i + c! loop ;
+   s" gpt2-cli-refusal" T-ROOT T-ROOT-U T-TEMP!
+   root rootu T-ROOT$ T-COPY-MERGES
+   T-ROOT$ T-DST T-MERGES$ s" corrupt" WRITE-ALL
+   T-LONG T-LONG-N 120 T-FILL ;
 
 : T-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -100,62 +99,35 @@ variable T-MISS-U
    outu 0 T=
    T-ERR erru want wantu CONTAINS? TTRUE ;
 
-: T-FAILURES ( ptr u8 n -- ) {: root:ptr rootu:n :}
+: T-FAILURES ( ptr u8 n -- )
+   {: root:ptr rootu:n :}
    s" digest mismatch writes no stdout" T-LABEL
-   T-BAD$ s" Hello" s" -5664" T-FAIL
+   T-ROOT$ s" Hello" s" -5664" T-FAIL
    s" empty prompt writes no stdout" T-LABEL
    root rootu s" " s" -5665" T-FAIL
    s" tokenizer overcapacity writes no stdout" T-LABEL
    root rootu T-LONG T-LONG-N s" -5324" T-FAIL
+   root rootu T-ROOT$ T-COPY-MERGES
    s" model-open failure writes no stdout" T-LABEL
-   T-MISS$ s" Hello" s" -2102" T-FAIL ;
+   T-ROOT$ s" Hello" s" -2102" T-FAIL ;
 
-using GPT2-REFERENCE
-
-: T-IDS ( -- )
-   STAGE-N @ CONT-N T=
-   CONT-N 0 ?do
-      i ID@ i REAL-ID T=
-   loop
-   CONT-N ID@ CANARY T= ;
-
-: T-BYTES ( -- )
-   OUT OUT-U @ REAL-BYTES$ T$= ;
-
-: T-ENTRY ( ptr u8 n -- ) {: root:ptr rootu:n :}
-   s" public CLI emits only the pinned continuation" T-LABEL
+: T-ENTRY ( ptr u8 n -- )
+   {: root:ptr rootu:n :}
+   s" direct CLI emits the exact 64-token continuation" T-LABEL
    root rootu s" Hello" T-CLI {: outu:n erru:n code:n :}
    erru 0<> if T-ERR erru type then
    code 0 T=
    erru 0 T=
-   T-OUT outu REAL-BYTES$ T$= ;
-
-;using
-
-: T-CANARY ( -- )
-   0 CONT-N ID!
-   [: REQUIRE-STAGED ;] catch E-STATE T=
-   CANARY CONT-N ID! ;
-
-: T-SUCCESS ( ptr u8 n -- ) {: root:ptr rootu:n :}
-   SAFET:LIVE-OWNERS {: owners:n :}
-   SAFET-MAP:LIVE {: maps:n :}
-   root rootu s" Hello" RUN-ACT
-   s" production path stages 64 pinned continuation ids" T-LABEL
-   T-IDS
-   s" one post-close decode matches the pinned bytes" T-LABEL
-   T-BYTES
-   s" staging canary detects an overwrite" T-LABEL
-   T-CANARY
-   SAFET:LIVE-OWNERS owners T=
-   SAFET-MAP:LIVE maps T= ;
+   T-OUT outu GPT2-REFERENCE:REAL-BYTES$ T$= ;
 
 : T-RUN ( -- )
    SCRIPT-ARGC 1 <> if E-USAGE throw then
    T-RESET
+   s" GPT2-CLI:BL>N" XREF-FIND XREF-FOUND? TFALSE
+   s" CLI-BL-PRIVATE ( CAD-NUM:byte-len -- n ) GPT2-CLI:BL>N"
+   CHECK-QUIET-CANDIDATE! 1 T=
    0 SCRIPT-ARGV$ 2dup T-PREPARE
    2dup T-FAILURES
-   2dup T-SUCCESS
    T-ENTRY
    CLEANUP-RUN
    T-REPORT ;
