@@ -19,12 +19,12 @@
 \ A word that needs a branch and a comparison is not unblocked by branches alone,
 \ and a reader planning the next capability should see that.
 \
-\ THIS FILE IS SHARED BY ALL THREE CORPORA AND HOLDS ONE STORE. A measurement
+\ THIS FILE IS SHARED BY ALL FOUR CORPORA AND HOLDS ONE STORE. A measurement
 \ pass holds one corpus at a time - tools/codegen-compare-cases.f measures the
-\ first, tools/codegen-compare-cases2.f the second and
-\ tools/codegen-compare-cases3.f the third, each opening with a RESET - so one
-\ store serves them all and the report renders whichever pass just ran without
-\ knowing which corpus it was.
+\ first, tools/codegen-compare-cases2.f the second,
+\ tools/codegen-compare-cases3.f the third and tools/codegen-compare-cases4.f
+\ the fourth, each opening with a RESET - so one store serves them all and the
+\ report renders whichever pass just ran without knowing which corpus it was.
 
 require lib/errors.f
 require lib/prelude.f
@@ -63,6 +63,21 @@ public
 \ word would have made every gap row that waits for either read as waiting for
 \ both, which is the opposite of what this account is for. Dots
 \ habu-carry-a-double-570d2f5c and habu-store-a-double-a31b313e carry it.
+\
+\ AND WHY `loop-spill` IS A CAPABILITY AND NOT REGISTER PRESSURE IN GENERAL.
+\ Register pressure on its own is no longer a refusal: the multi-block allocator
+\ spills, and src/compiler/native/spill.f turns its decisions into real stores
+\ and loads. What it will not spill is a class whose value is defined or read in
+\ a block that is neither the one the routine is entered through nor the one
+\ control leaves through - src/compiler/native/regalloc.f says so where
+\ MB-SPILLABLE? decides it, because a frame access inside such a block would sit
+\ where the memory order cannot be stated. The body of a loop is exactly such a
+\ block, so a loop that holds more values at once than the machine has registers
+\ is refused with E-A64RA-SPILL however large a register budget it is given. It
+\ is a capability of its own because a chain that gained it would compile a class
+\ of bodies nothing else unblocks, and because the refusal names a place rather
+\ than a shortage: the same body outside a loop is allocated. Dot
+\ habu-spill-from-a-4145325c carries it.
 ENUM cap DERIVE eq
    control-flow
    locals
@@ -72,6 +87,7 @@ ENUM cap DERIVE eq
    division
    floats
    float-place
+   loop-spill
 ;ENUM
 
 private
@@ -80,7 +96,7 @@ private
 
 \ How many capabilities one gap row may name. It is the size of the vocabulary
 \ above, so a row that genuinely waits for everything can say so.
-8 constant CAP-MAX
+9 constant CAP-MAX
 
 GAP-MAX CODEGEN-COMPARE:NAME-MAX * BUFFER: GAP-NAMES
 create GAP-LENS GAP-MAX cells allot
@@ -111,6 +127,7 @@ variable GAP-N
       division     OF 5 ENDOF
       floats       OF 6 ENDOF
       float-place  OF 7 ENDOF
+      loop-spill   OF 8 ENDOF
    ;MATCH ;
 
 : N>CAP ( n -- CODEGEN-GAP:cap )
@@ -123,6 +140,7 @@ variable GAP-N
       5 of CODEGEN--GAP-CAP:DIVISION endof
       6 of CODEGEN--GAP-CAP:FLOATS endof
       7 of CODEGEN--GAP-CAP:FLOAT-PLACE endof
+      8 of CODEGEN--GAP-CAP:LOOP-SPILL endof
       E-CODEGEN-COMPARE-ROW throw
    endcase ;
 
@@ -182,6 +200,7 @@ public
       division     OF s" division" ENDOF
       floats       OF s" floats" ENDOF
       float-place  OF s" placing a double" ENDOF
+      loop-spill   OF s" spilling inside a loop" ENDOF
    ;MATCH ;
 
 : RESET ( -- )

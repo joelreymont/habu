@@ -91,7 +91,9 @@ require tools/codegen-compare-gap.f
 require tools/codegen-compare-cases.f
 require tools/codegen-compare-cases2.f
 require tools/codegen-compare-cases3.f
+require tools/codegen-compare-cases4.f
 require tools/codegen-compare-report.f
+require src/compiler/native/migrate.f
 
 package CODEGEN-COMPARE-TEST
 
@@ -946,6 +948,287 @@ private
    loop
    FIX-FINDINGS 1 T= ;
 
+\ ---- the fourth corpus, the one built to make the new chain lose --------------
+\ Every row of the fourth corpus is a shape somebody had a reason to believe the
+\ new chain handles WORSE than the engine's emitter, and the head of
+\ tools/codegen-compare-corpus4.f gives the reason for each. What the assertions
+\ below pin is the answer that corpus got, so a change in either direction has to
+\ be looked at rather than absorbed.
+\
+\ NINE COMPILED ROWS AND ONE GAP. PRESSURE-LOOP is refused, and it is the first
+\ gap in this harness whose cause is neither a missing operation nor a missing
+\ type: the chain has every capability the body needs and will not put a
+\ loop-carried value in a frame slot. The `loop-spill` capability names that, and
+\ REFUSAL-CASES below hands the corpus's own text to the real migration entry and
+\ checks that the refusal is E-A64RA-SPILL and not some other code.
+\
+\ WHICH ROWS COST MORE, AND WHICH ARE PINNED. Two of the nine cost more than the
+\ engine's code for the same body - CALL-LOOP-3 and TINY-CALLEE, the two whose
+\ loop bodies contain nothing but calls - and both are pinned here by name. Two
+\ more are DRAWS and are deliberately not pinned in either direction: CALL-FAN and
+\ LADDER measured within a twentieth of each other, and over five passes on an
+\ idle host each of them came out ahead of the other at least once, so an
+\ assertion either way would be a gate that fails for host noise. The head of this
+\ file says why that is worse than no assertion at all. The four rows the chain
+\ wins by more than a factor of two are pinned, because a margin that large cannot
+\ be crossed by scheduling.
+\
+\ EVERY COMPILED ROW IS STILL FEWER BYTES, which is itself the shape of the
+\ finding: what the chain spends at a call is data-stack traffic in the caller's
+\ own frame, and that is cheap in bytes and dear in cycles.
+
+\ ---- the engine's inlining rule, read off the emitted machine code ------------
+\ The call rows of the fourth corpus rest on one claim: the engine COPIES a small
+\ callee into its caller and emits no call instruction, while the chain emits a
+\ Bl. A byte count could be explained away; the instruction cannot. This counts
+\ the Bl instructions in a word's own compiled code - top six bits 100101, which
+\ is AArch64's branch-with-link, the same encoding src/habu/habu2.f names
+\ `$94000000 constant C-CALL-BL-IMM` and scans for when it decides whether a span
+\ is safe to copy.
+$FC000000 constant BL-MASK
+$94000000 constant BL-OP
+
+variable CODE-AT
+
+: CODE-PTR ( -- ptr u8 )
+   CODE-AT 0 ptr-field @ ;
+
+: U32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@
+   p 1 + c@ 8 lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or ;
+
+\ How many call instructions a live word's compiled code contains. The code start
+\ and the code length come off the word's own dictionary record, which is where
+\ every other size in this harness comes from.
+: BL-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then
+   dup XREF-START CODE-AT !
+   XREF-LEN {: len:n :}
+   0
+   len 4 / 0 ?do
+      CODE-PTR i 4 * + U32@ BL-MASK and BL-OP = if 1+ then
+   loop ;
+
+\ src/habu/habu2.f, `$28 constant INL-MAX`: the most bytes of BODY the engine
+\ copies into a caller. A callee that opens with the standard two-instruction
+\ prologue is measured as clen-16, so a callee of exactly this many body bytes
+\ occupies this many plus sixteen.
+40 constant INL-MAX
+16 constant FRAME-BYTES
+
+: REAL-RUN-CASES4 ( -- )
+   11 ACCOUNT-CASES
+
+   s" the fourth corpus compiles nine rows and declares one gap" T-LABEL
+   CODEGEN-GAP:GAPS 1 T=
+   NEW-ROWS 10 T=
+
+   s" and the gap is the loop that holds more values than the machine has" T-LABEL
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" NAMED-GAP-AMONG? TTRUE
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" MEASURED? TFALSE
+   CODEGEN--GAP-CAP:LOOP-SPILL GAPS-WANTING 1 T=
+
+   s" no other row of it waits for anything" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN" NAMED-GAP-AMONG? TFALSE
+   s" CODEGEN-CORPUS4:CALL-LOOP-3" NAMED-GAP-AMONG? TFALSE
+   s" CODEGEN-CORPUS4:TINY-CALLEE" NAMED-GAP-AMONG? TFALSE
+   s" CODEGEN-CORPUS4:MANY-LOCALS" NAMED-GAP-AMONG? TFALSE
+
+   s" and the nine it does compile are measured rows" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN" MEASURED? TTRUE
+   s" CODEGEN-CORPUS4:CALL-LOOP-3" MEASURED? TTRUE
+   s" CODEGEN-CORPUS4:TINY-CALLEE" MEASURED? TTRUE
+   s" CODEGEN-CORPUS4:WIDE-ARITY" MEASURED? TTRUE
+   s" CODEGEN-CORPUS4:LADDER" MEASURED? TTRUE
+   s" CODEGEN-CORPUS4:BIG-CONSTS" MEASURED? TTRUE
+   s" CODEGEN-CORPUS4:MANY-LOCALS" MEASURED? TTRUE
+   s" CODEGEN-CORPUS4:FLOAT-MIX" MEASURED? TTRUE
+   s" CODEGEN-CORPUS4:STORE-LOAD" MEASURED? TTRUE
+
+   s" every compiled row is fewer bytes than the code the old emitter wrote" T-LABEL
+   NOT-SMALLER 0 T=
+   s" CODEGEN-CORPUS4:CALL-FAN" SMALLER? TTRUE
+   s" CODEGEN-CORPUS4:CALL-LOOP-3" SMALLER? TTRUE
+   s" CODEGEN-CORPUS4:TINY-CALLEE" SMALLER? TTRUE
+   s" CODEGEN-CORPUS4:LADDER" SMALLER? TTRUE
+
+   s" the two rows whose loop bodies are nothing but calls COST more" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-LOOP-3" COSTLIER? TTRUE
+   s" CODEGEN-CORPUS4:TINY-CALLEE" COSTLIER? TTRUE
+
+   s" and the four the chain wins by more than a factor of two do not" T-LABEL
+   s" CODEGEN-CORPUS4:BIG-CONSTS" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:MANY-LOCALS" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:FLOAT-MIX" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:STORE-LOAD" COSTLIER? TFALSE
+
+   s" each of the four callees is one the engine copies rather than calls" T-LABEL
+   s" CODEGEN-CORPUS4:C-ADD1" WORD-BYTES INL-MAX FRAME-BYTES + T=
+   s" CODEGEN-CORPUS4:C-MUL2" WORD-BYTES INL-MAX FRAME-BYTES + T=
+   s" CODEGEN-CORPUS4:C-AND7" WORD-BYTES INL-MAX FRAME-BYTES + T=
+   s" CODEGEN-CORPUS4:C-XOR5" WORD-BYTES INL-MAX FRAME-BYTES + T=
+
+   s" so the engine's code for the three call rows carries no call at all" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS4:CALL-LOOP-3" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS4:TINY-CALLEE" BL-COUNT 0 T=
+
+   s" and the chain's code for the same three bodies is one call per call site" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN-N" BL-COUNT 5 T=
+   s" CODEGEN-CORPUS4:CALL-LOOP-3-N" BL-COUNT 3 T=
+   s" CODEGEN-CORPUS4:TINY-CALLEE-N" BL-COUNT 4 T=
+
+   s" the five copied bodies are the whole of the five-call row's code" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN" WORD-BYTES  INL-MAX 5 * FRAME-BYTES + T=
+
+   s" a loop of zero turns runs its body no times, in both columns" T-LABEL
+   s" CODEGEN-CORPUS4:TINY-CALLEE" 1 OLD-OUTPUT 5 T=
+   s" CODEGEN-CORPUS4:MANY-LOCALS" 1 OLD-OUTPUT 0 T=
+
+   s" and the step that writes one cell leaves the cell after it alone" T-LABEL
+   s" CODEGEN-CORPUS4:STORE-LOAD" 2 OLD-OUTPUT -7 T= ;
+
+\ ---- the fourth corpus's committed table, on fixtures built to fool it --------
+\ The same attack as the second and third corpora's, over the whole of the fourth
+\ table - eleven old rows, one of which is a gap in the new column - broken in one
+\ place at a time. The measurement they read is whatever pass the caller ran last,
+\ so MAIN runs the fourth corpus immediately before calling them.
+: CORPUS4-TABLE-CASES ( -- )
+   s" the fourth corpus's own table, written honestly, reports nothing" T-LABEL
+   -1 0 WHOLE-OLD-COLUMN
+   FIX-FINDINGS 0 T=
+
+   s" one instruction added to a call row's byte count is reported" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN" OLD-ROW ONE-INSN WHOLE-OLD-COLUMN
+   FIX-FINDINGS 1 T=
+
+   s" and so is one taken off the row the chain refuses" T-LABEL
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" OLD-ROW ONE-INSN negate WHOLE-OLD-COLUMN
+   FIX-FINDINGS 1 T=
+
+   s" a wrong sixty-four-bit output is reported" T-LABEL
+   FIX-RESET
+   OLD-ROWS FIX-DECLARED
+   s" CODEGEN-CORPUS4:BIG-CONSTS" OLD-ROW BAD-ROW ! 0 BAD-OUTPUT !
+   -1 0 FIX-OLD-ROWS
+   FIX-FINDINGS 1 T=
+
+   s" and so is a wrong answer on the last rung of the ladder" T-LABEL
+   FIX-RESET
+   OLD-ROWS FIX-DECLARED
+   s" CODEGEN-CORPUS4:LADDER" OLD-ROW BAD-ROW ! 7 BAD-OUTPUT !
+   -1 0 FIX-OLD-ROWS
+   FIX-FINDINGS 1 T=
+
+   s" a fourth table missing a row is reported" T-LABEL
+   FIX-RESET
+   OLD-ROWS 1- FIX-DECLARED
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         i s" CODEGEN-CORPUS4:TINY-CALLEE" OLD-ROW <> if i FIX-TRUE-ROW then
+      then
+   loop
+   FIX-FINDINGS 1 T= ;
+
+\ ---- the three ceilings the fourth corpus was designed around -----------------
+\ tools/codegen-compare-corpus4.f says two shapes were left out of the corpus
+\ because the migration entry cannot carry them, and gives an error code for each;
+\ tools/codegen-compare-new4.f says the tenth row is refused and gives a third.
+\ These run the real entry - the same NMIGRATE the whole new column goes through -
+\ and check the codes, so each account is a measurement rather than a sentence.
+\
+\ THE REFUSED ROW IS THE ONE THAT MATTERS. "The chain refuses PRESSURE-LOOP" is a
+\ claim about a compiler, and the honest way to check it is to hand the compiler
+\ the corpus's own text. The body below is the corpus's, character for character,
+\ under the `-N` name tools/codegen-compare-migrated4.f would have given it, at
+\ EIGHTEEN registers - the largest pool src/compiler/a64-effect.f allows, x18
+\ being platform-reserved. The control beside it is the same body with one field
+\ fewer, which compiles at the same budget: without that control, "refused" could
+\ mean "the number was too small".
+
+PTR-VARIABLE TRY-SRC
+variable TRY-U
+variable TRY-IN
+variable TRY-REGS
+
+\ The migration a case is asking about, run where its failure can be read as a
+\ code. A quotation cannot see the enclosing word's locals, so what it needs is
+\ parked - the shape src/compiler/native/migrate.f uses for the same reason.
+: MIGRATE-RC ( -- n )
+   [: TRY-SRC @ TRY-U @ TRY-IN @ 1 TRY-REGS @ NMIGRATE:DEFINE ;] catch ;
+
+: TRY ( ptr u8 n n n -- n ) {: a:ptr u:n in:n regs:n :}
+   a TRY-SRC ! u TRY-U ! in TRY-IN ! regs TRY-REGS !
+   MIGRATE-RC ;
+
+\ The corpus's PRESSURE-LOOP body, character for character.
+: SPILL-14$ ( -- ptr u8 n )
+   s" : PRESSURE-LOOP-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;" ;
+
+\ The same body with one field fewer, which is the control.
+: SPILL-13$ ( -- ptr u8 n )
+   s" : PRESSURE-13-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ + + + + + + + + + + + + + loop ;" ;
+
+\ Eleven arguments, which is one more than a routine's place list holds.
+: WIDE-11$ ( -- ptr u8 n )
+   s" : WIDE-11-N ( n n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n j:n k:n m:n :} a b + c + d + e + f + g + h + j + k + m + ;" ;
+
+\ Ten, which is what it does hold.
+: WIDE-10$ ( -- ptr u8 n )
+   s" : WIDE-10-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n j:n k:n :} a b + c + d + e + f + g + h + j + k + ;" ;
+
+\ One staged callee, named the way a migrated body would spell it and addressed
+\ off its own dictionary record.
+: CALLEE-AT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then
+   XREF-START 1 1 NMIGRATE:CALLEE ;
+
+\ Stage a fifth callee for one definition. The entry holds four
+\ (src/compiler/native/migrate.f, `4 constant CALLEES-MAX`), so the fifth staging
+\ is the refusal and nothing after it runs.
+: STAGE-FIVE ( -- )
+   s" CODEGEN-CORPUS4:C-ADD1-N" CALLEE-AT
+   s" CODEGEN-CORPUS4:C-MUL2-N" CALLEE-AT
+   s" CODEGEN-CORPUS4:C-AND7-N" CALLEE-AT
+   s" CODEGEN-CORPUS4:C-XOR5-N" CALLEE-AT
+   s" CODEGEN-CORPUS4:C-ADD1-N" CALLEE-AT ;
+
+\ The four rows the refused fifth left staged belong to the next migration
+\ whatever happens, so they are spent here on a real one rather than left for some
+\ later caller to be refused for. It is also the other half of the claim: four is
+\ a ceiling because four WORK.
+: SPEND-FOUR ( -- )
+   s" : FAN-CEILING-N ( n -- n ) CODEGEN-CORPUS4:C-ADD1-N CODEGEN-CORPUS4:C-MUL2-N CODEGEN-CORPUS4:C-AND7-N CODEGEN-CORPUS4:C-XOR5-N ;"
+   1 1 8 NMIGRATE:DEFINE-CALLING ;
+
+: FIVE-RC ( -- n )
+   [: STAGE-FIVE ;] catch ;
+
+: SPEND-RC ( -- n )
+   [: SPEND-FOUR ;] catch ;
+
+: REFUSAL-CASES ( -- )
+   s" the corpus's own pressure loop is refused at the largest register pool" T-LABEL
+   SPILL-14$ 2 18 TRY E-A64RA-SPILL T=
+
+   s" and it is the loop and not the budget: one field fewer compiles there" T-LABEL
+   SPILL-13$ 2 18 TRY 0 T=
+
+   s" a routine of eleven arguments is refused by the place list" T-LABEL
+   WIDE-11$ 11 18 TRY E-A64EFF-SEQ T=
+
+   s" and ten, which is what it holds, is not" T-LABEL
+   WIDE-10$ 10 18 TRY 0 T=
+
+   s" a fifth callee staged for one definition is refused" T-LABEL
+   FIVE-RC E-NMIGRATE-STATE T=
+
+   s" and the four the refusal left staged make a definition that compiles" T-LABEL
+   SPEND-RC 0 T= ;
+
 : SETUP ( -- )
    CLEANUP-RESET
    s" habu-codegen-compare" TMPDIR-MKDIR
@@ -975,6 +1258,10 @@ private
    CODEGEN-CASES3:RUN
    REAL-RUN-CASES3
    CORPUS3-TABLE-CASES
+   CODEGEN-CASES4:RUN
+   REAL-RUN-CASES4
+   CORPUS4-TABLE-CASES
+   REFUSAL-CASES
    CLEANUP-RUN
    CODEGEN-BASELINE:LOUD!
    CODEGEN-COMPARE-CLI:CHECK-EXACT

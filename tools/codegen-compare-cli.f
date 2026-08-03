@@ -10,7 +10,7 @@
 \ the timings, and UPDATE rewrites the committed tables. CHECK and CHECK-EXACT
 \ differ by one decision, taken in one place, over one shared body. Each of them
 \ measures every pinned corpus in a pass of its own, in the order the corpora
-\ were written.
+\ were written - there are four.
 
 require lib/errors.f
 require lib/prelude.f
@@ -21,11 +21,13 @@ require lib/fs-mutate.f
 require tools/codegen-compare-cases.f
 require tools/codegen-compare-cases2.f
 require tools/codegen-compare-cases3.f
+require tools/codegen-compare-cases4.f
 require tools/codegen-compare-report.f
 require tools/codegen-compare-baseline.f
 require tools/codegen-compare-new.f
 require tools/codegen-compare-new2.f
 require tools/codegen-compare-new3.f
+require tools/codegen-compare-new4.f
 
 package CODEGEN-COMPARE-CLI
 
@@ -56,18 +58,20 @@ private
    CODEGEN-REPORT:SAY-MISMATCHES +
    FLOOR-FINDINGS + ;
 
-\ ALL THREE TABLES, IN ORDER, AND THE FINDINGS ADDED UP. Each corpus is measured
+\ ALL FOUR TABLES, IN ORDER, AND THE FINDINGS ADDED UP. Each corpus is measured
 \ in a pass of its own - the store holds one corpus at a time, so each later pass
 \ resets it - and each is compared with its own committed table. A run that
 \ stopped after the first table would leave the others unchecked while still
-\ printing "0 finding(s)", so the three are added and none can hide another.
+\ printing "0 finding(s)", so the four are added and none can hide another.
 : RUN-CHECK ( -- n )
    CODEGEN-CASES:RUN
    CODEGEN-CASES:BASELINE-PATH$ TABLE-FINDINGS
    CODEGEN-CASES2:RUN
    CODEGEN-CASES2:BASELINE-PATH$ TABLE-FINDINGS +
    CODEGEN-CASES3:RUN
-   CODEGEN-CASES3:BASELINE-PATH$ TABLE-FINDINGS + ;
+   CODEGEN-CASES3:BASELINE-PATH$ TABLE-FINDINGS +
+   CODEGEN-CASES4:RUN
+   CODEGEN-CASES4:BASELINE-PATH$ TABLE-FINDINGS + ;
 
 : VERDICT ( n -- ) {: findings:n :}
    cr
@@ -114,6 +118,8 @@ public
    CODEGEN-CASES2:RUN
    CODEGEN-CASES2:BASELINE-PATH$ CODEGEN-CASES2:CORPUS-PATH$ WRITE-TABLE
    CODEGEN-CASES3:RUN
-   CODEGEN-CASES3:BASELINE-PATH$ CODEGEN-CASES3:CORPUS-PATH$ WRITE-TABLE ;
+   CODEGEN-CASES3:BASELINE-PATH$ CODEGEN-CASES3:CORPUS-PATH$ WRITE-TABLE
+   CODEGEN-CASES4:RUN
+   CODEGEN-CASES4:BASELINE-PATH$ CODEGEN-CASES4:CORPUS-PATH$ WRITE-TABLE ;
 
 ;package

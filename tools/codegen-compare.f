@@ -11,16 +11,20 @@
 \       from this measurement. Use it when a deliberate compiler change has
 \       moved the numbers, and read the resulting diff before committing it.
 \
-\ THREE CORPORA, THREE TABLES, ONE RUN. tools/codegen-compare-corpus.f is the
+\ FOUR CORPORA, FOUR TABLES, ONE RUN. tools/codegen-compare-corpus.f is the
 \ original eleven words - one smallest honest example of each shape a code
 \ generator has to handle - tools/codegen-compare-corpus2.f is seven words taken
-\ from the places this system really spends its time, and
+\ from the places this system really spends its time,
 \ tools/codegen-compare-corpus3.f is ten float words, measured before the chain
 \ has a single float capability so that the float campaign has a yardstick it
-\ did not choose afterwards. They are separate files with separate committed
-\ tables because each table is a pinned yardstick: adding a row to one would be
-\ a change to the artifact every compiler change is read against. The runner
-\ measures them one after the other, in one pass each, and adds the findings up.
+\ did not choose afterwards, and tools/codegen-compare-corpus4.f is ten shapes
+\ chosen the other way round - each one picked because somebody had a reason to
+\ believe the new chain handles it WORSE than the engine's emitter, so that the
+\ suite does not consist only of rows its subject wins. They are separate files
+\ with separate committed tables because each table is a pinned yardstick:
+\ adding a row to one would be a change to the artifact every compiler change is
+\ read against. The runner measures them one after the other, in one pass each,
+\ and adds the findings up.
 \
 \ THIS ENTRY IS THE TIMED CHECK, AND IT IS RUN BY HAND. It compares the cost
 \ column with the committed table; no gate does. A cost is a measurement, and a

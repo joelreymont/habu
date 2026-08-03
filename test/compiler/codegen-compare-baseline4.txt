@@ -1,0 +1,63 @@
+habu code generator comparison - baseline
+=========================================
+
+What this file is
+-----------------
+This is the recorded measurement of the code generator bin/hb uses today,
+over the pinned word corpus in tools/codegen-compare-corpus4.f. The harness
+recreates this table on every run and compares it with this committed copy,
+field by field. Nothing here is written by hand; regenerate it with
+
+    bin/hb --load tools/codegen-compare.f -- --update
+
+The new compiler chain compiles the corpus words it can express in the same
+run, and the harness prints the two side by side - bytes, cost, and whether
+the two answers agree. Those rows are not written here. The chain is still
+gaining capabilities and its numbers move with each one, so pinning them
+would turn an advance into a red gate; they are recomputed every run and
+compared with the old rows live instead. Every row in this file is therefore
+marked old. The reader still understands the word new, so a hand-added new
+row is reported as an extra row rather than quietly ignored.
+
+How to read a row
+-----------------
+Every line that begins with the word old or new is a data row; every other
+line is prose. A row carries, in order:
+
+  path     which code generator produced the row
+  word     the corpus word that was compiled, executed and timed
+  bytes    how many bytes of machine code the word occupies, read from the
+           word's own dictionary record - the record holds its code start
+           address and its code length
+  cost     how long one call takes, in thousandths of the cost of calling
+           the empty word CODEGEN-CORPUS:NOOP in the same run. 1000 means
+           an ordinary empty call; 4000 means four times that. Absolute
+           nanoseconds are printed by the harness but not stored here,
+           because they differ from machine to machine while this ratio
+           largely does not.
+  outputs  the values the word left on the stack when it ran on its pinned
+           inputs, in the order the harness recorded them
+
+Sizes and outputs are compared exactly: one byte or one value out of place
+is a finding. A cost is a measurement, so it is compared with a stated
+tolerance instead. A row is reported only when it measures more than
+8 times slower than the cost recorded here. That tolerance is measured,
+not chosen; tools/codegen-compare-core.f records the load it was taken
+under, and says plainly what a timing check of this shape can and cannot
+catch.
+
+rows: 11
+
+path  word                          bytes    cost  outputs
+----  ----------------------------  -----  ------  -------
+old   CODEGEN-CORPUS:NOOP              16    1000
+old   CODEGEN-CORPUS4:CALL-FAN        216    3824  6 8 6 6
+old   CODEGEN-CORPUS4:CALL-LOOP-3     476   26990  2567 13 -2053
+old   CODEGEN-CORPUS4:TINY-CALLEE     360   31850  32 5 29
+old   CODEGEN-CORPUS4:WIDE-ARITY      148    2749  -3 3 0 3
+old   CODEGEN-CORPUS4:LADDER          400    2362  0 0 1 2 5 7 7 8
+old   CODEGEN-CORPUS4:PRESSURE-LOOP   1092  112573  4512 0
+old   CODEGEN-CORPUS4:BIG-CONSTS      636   45410  -6684231971589409744 0 3776157021978711687
+old   CODEGEN-CORPUS4:MANY-LOCALS     604   67501  288 0 32
+old   CODEGEN-CORPUS4:FLOAT-MIX       360   19425  12 0 -99
+old   CODEGEN-CORPUS4:STORE-LOAD      308   21630  124 124 -7 100
