@@ -175,6 +175,13 @@ $41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
    A1 s" NINL-ROW-A2" NINL:NAMED? TFALSE
    A1 s" NINL-ROW-A" NINL:NAMED? TFALSE
    A1 s" NINL-ROW-A1X" NINL:NAMED? TFALSE
+
+   s" including one the row's name is only the tail or the head of: this
+      compares names, and reducing a spelling to a name is the caller's job"
+   T-LABEL
+   A1 s" XNINL-ROW-A1" NINL:NAMED? TFALSE
+   A1 s" NINL-PKG:NINL-ROW-A1" NINL:NAMED? TFALSE
+   A1 s" NINL-ROW-A1-X" NINL:NAMED? TFALSE
    [: A3 s" NINL-ROW-A1" NINL:NAMED? drop ;] E-NINL-BOUND TTHROWSQ
 
    s" and a token answers only for the kind it is" T-LABEL
@@ -393,8 +400,14 @@ variable CODE-AT
    p 2 + c@ 16 lshift or
    p 3 + c@ 24 lshift or ;
 
+\ The record of a word named the way a call site would name it. It is the
+\ engine's own resolver rather than a global-wordlist lookup, because some of the
+\ fixtures below are published INSIDE a package and are reachable only as
+\ PKG:TAIL - and because the address a caller stages is obtained this way too. On
+\ a bare name at global scope the two are the same answer: XREF-FIND sends an
+\ unqualified token to the global wordlist.
 : WORD-REC ( ptr u8 n -- ptr a ) {: a:ptr u:n :}
-   a u GLOBAL-WID XREF-FIND-WL
+   a u XREF-FIND
    dup XREF-FOUND? 0= if drop E-NPUB-NAME throw then ;
 
 : ENTRY-OF ( ptr u8 n -- n )
@@ -664,6 +677,102 @@ variable ROWS-BEFORE
    MIGRATE-CASE-NAME
    s" NINL-CASE-NAME" BL-COUNT 0 T=
    s" 3 NINL-CASE-NAME" EV-N 96 T= ;
+
+\ ---- the name a spelling denotes -----------------------------------------------
+\ A publication's name is a bare tail: a word published inside a package is
+\ stored as its tail in that package's wordlist, so that is what a row records. A
+\ call site may write either spelling of that same word, and BOTH name it. So
+\ what the row is held against is the name the site DENOTES, reduced through the
+\ engine's own naming grammar - the one every lookup in this system goes through.
+\
+\ THE CASES BELOW ARE THE ONES WHERE A HAND-ROLLED TEST WOULD ANSWER DIFFERENTLY,
+\ which is the whole reason to assert the reduction rather than only its effect. A
+\ suffix test accepts `X:PKG-IN` for a row named `PKG-IN`; a "text after the last
+\ colon" test disagrees with the grammar on a token with two of them; a "text
+\ before the colon" mix-up shows up on the leading and trailing forms, which the
+\ grammar keeps as ordinary names because a colon at an edge does not qualify
+\ anything.
+: DENOTES ( ptr u8 n ptr u8 n -- bool )
+   {: b:ptr v:n :} \ typed-local-lint: allow-bare-local - b keeps the ptr u8 byte-span role
+   NELAB:BARE-NAME$ b v STR= ;
+
+: NAME-GRAMMAR-CASES ( -- )
+   s" a qualified spelling denotes its tail, and the whole tail" T-LABEL
+   s" NINL-PKG:NINL-PKG-IN" s" NINL-PKG-IN" DENOTES TTRUE
+   s" NINL-PKG:NINL-PKG-IN" s" PKG-IN" DENOTES TFALSE
+   s" NINL-PKG:NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" DENOTES TFALSE
+
+   s" a bare spelling denotes itself" T-LABEL
+   s" NINL-EDGE-IN" s" NINL-EDGE-IN" DENOTES TTRUE
+
+   s" a colon at either edge qualifies nothing, so the token is an ordinary name"
+   T-LABEL
+   s" :LEAD" s" :LEAD" DENOTES TTRUE
+   s" :LEAD" s" LEAD" DENOTES TFALSE
+   s" TRAIL:" s" TRAIL:" DENOTES TTRUE
+   s" TRAIL:" s" TRAIL" DENOTES TFALSE
+
+   s" and a second colon names nothing, so it is left whole and matches no row"
+   T-LABEL
+   s" A:B:C" s" A:B:C" DENOTES TTRUE
+   s" A:B:C" s" C" DENOTES TFALSE
+   s" A:B:C" s" B:C" DENOTES TFALSE ;
+
+\ ---- a call site that names its callee across a package boundary ---------------
+\ This is the shape the check first got wrong. A word published inside a package
+\ is recorded under its bare tail, because that is the name the publication gave
+\ it; a caller outside that package can only name it as PKG:TAIL. Both name one
+\ routine, and the copy has to happen - the first version of the name check
+\ compared raw spellings and refused a legal program (tools/codegen-compare-test.f
+\ assertion 238, dot habu-resolve-qualified-spellings-ec037942).
+\
+\ THE PACKAGE HOLDS TWO ROUTINES, so the case can say both halves. One qualified
+\ caller names the routine at its own address and is copied; the other names the
+\ package's OTHER routine at the first one's address, at the same arity, and is
+\ refused. Without the second half, a fix that simply stopped comparing names
+\ would pass the first.
+: MIGRATE-PKG-CALLEES ( -- )
+   s" package NINL-PKG public" EV
+   s" : NINL-PKG-IN ( n -- n ) dup + dup + dup + dup + dup + ;"
+   1 1 REGS NMIGRATE:DEFINE
+   s" : NINL-PKG-LIT ( n -- n ) 3 * 7 + ;" 1 1 REGS NMIGRATE:DEFINE
+   s" ;package" EV ;
+
+: MIGRATE-QUALIFIED ( -- )
+   s" NINL-PKG:NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-QUALIFIED ( n -- n ) NINL-PKG:NINL-PKG-IN ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: MIGRATE-QUAL-WRONG ( -- )
+   s" NINL-PKG:NINL-PKG-LIT" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-QUAL-WRONG ( n -- n ) NINL-PKG:NINL-PKG-LIT ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: QUALIFIED-CASES ( -- )
+   s" a routine published inside a package is recorded under its bare tail"
+   T-LABEL
+   s" NINL-PKG:NINL-PKG-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-PKG:NINL-PKG-IN" ENTRY-OF s" NINL-PKG-IN" NINL:NAMED? TTRUE
+   s" NINL-PKG:NINL-PKG-IN" ENTRY-OF s" NINL-PKG:NINL-PKG-IN" NINL:NAMED? TFALSE
+
+   s" and a caller outside the package, which can only name it qualified, copies"
+   T-LABEL
+   MIGRATE-QUALIFIED
+   s" NINL-QUALIFIED" BL-COUNT 0 T=
+   s" NINL-QUALIFIED" FRAME-COUNT 0 T=
+   s" 3 NINL-QUALIFIED" EV-N 96 T=
+   s" -7 NINL-QUALIFIED" EV-N  s" -7 NINL-ENGINE-COPIES" EV-N T=
+
+   s" while a qualified name for the package's OTHER routine is still refused"
+   T-LABEL
+   s" NINL-PKG:NINL-PKG-LIT" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-PKG:NINL-PKG-LIT" ENTRY-OF NINL:IN@
+   s" NINL-PKG:NINL-PKG-IN" ENTRY-OF NINL:IN@ T=
+   [: MIGRATE-QUAL-WRONG ;] E-NELAB-INLINE TTHROWSQ
+
+   s" and both package routines still run" T-LABEL
+   s" 3 NINL-PKG:NINL-PKG-IN" EV-N 96 T=
+   s" 5 NINL-PKG:NINL-PKG-LIT" EV-N 22 T= ;
 
 \ ---- what a copied body brings with it -----------------------------------------
 \ A copied body's loads and stores thread the CALLER's memory order, because
@@ -1199,6 +1308,9 @@ public
    MIGRATE-SELF
    BODY-REFUSAL-CASES
    KEY-CASES
+   NAME-GRAMMAR-CASES
+   MIGRATE-PKG-CALLEES
+   QUALIFIED-CASES
    DEFINE-CELL
    MIGRATE-LOAD
    MIGRATE-USE-LOAD
