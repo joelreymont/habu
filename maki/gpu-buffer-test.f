@@ -3,6 +3,15 @@
 require maki/gpu-session-test.f
 require maki/gpu-buffer.f
 
+package GPU-SPAN-TEST
+public
+
+: CALL
+   ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer result<cuda-devptr,n> )
+   GPU:SPAN ;
+
+;package
+
 package GPU
 private
 
@@ -164,7 +173,7 @@ create BT-DST BT-BUF-LEN allot
 
 : BT-MUST-SPAN
    ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer cuda-devptr )
-   SPAN MATCH result
+   GPU-SPAN-TEST:CALL MATCH result
       ok OF ENDOF
       err OF throw ENDOF
    ;MATCH ;
@@ -425,9 +434,12 @@ create BT-DST BT-BUF-LEN allot
    7 BT-BYTE-OFF 0 BT-BYTE-LEN BT-BUF0 7 + BT-SPAN-WANT
    BT-BUF-LEN BT-BYTE-OFF 0 BT-BYTE-LEN
       BT-BUF0 BT-BUF-LEN + BT-SPAN-WANT
+   FT-LOG-RESET
    BT-BUF-LEN BT-BYTE-OFF 1 BT-BYTE-LEN E-BUF-BOUNDS BT-SPAN-ERR
    BT-BUF-LEN 1 + BT-BYTE-OFF 0 BT-BYTE-LEN E-BUF-BOUNDS BT-SPAN-ERR
    13 BT-BYTE-OFF 4 BT-BYTE-LEN E-BUF-BOUNDS BT-SPAN-ERR
+   BT-MAX-N BT-BYTE-OFF 1 BT-BYTE-LEN E-BUF-BOUNDS BT-SPAN-ERR
+   FT-N @ 0 T=
    BT-MUST-FREE FT-MUST-CLOSE ;
 
 : BT-SPAN-BIND ( -- )
