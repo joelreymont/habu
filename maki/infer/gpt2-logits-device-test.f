@@ -5,6 +5,7 @@ require lib/cad-num-arithmetic.f
 require lib/fs-path.f
 require lib/float32-buffer.f
 require maki/infer/gpt2-model.f
+require maki/infer/gpt2-greedy.f
 require maki/infer/gpt2-reference-data.f
 
 package GPT2
@@ -16,6 +17,7 @@ LT-VO 4 * constant LT-BYTES
 
 create LT-OUT LT-BYTES allot
 create LT-FIRST LT-BYTES allot
+create LT-SCAN 16 allot
 variable LT-ARG
 variable LT-MAX
 
@@ -49,9 +51,15 @@ variable LT-MAX
       err OF throw ENDOF
    ;MATCH ;
 
+: LT-GREEDY ( GPT2:model n -- GPT2:model n )
+   LT-OUT LT-BYTES LT-LEN GREEDY MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
 : LT-ERR ( GPT2:model n ptr u8 n n -- GPT2:model )
    {: want:n :}
-   LT-LEN LOGITS MATCH result
+   LT-LEN GREEDY MATCH result
       ok OF drop E-FIX throw ENDOF
       err OF want T= ENDOF
    ;MATCH ;
@@ -92,16 +100,56 @@ variable LT-MAX
 : LT-SAME-FIRST ( -- )
    LT-OUT LT-BYTES LT-FIRST LT-BYTES STR= TTRUE ;
 
+: LT-SCAN! ( n n -- )
+   {: bits:n idx:n :}
+   bits LT-SCAN idx 4 * + F32-BUF:STORE ;
+
+: LT-SCAN-OK ( n n -- )
+   {: count:n want:n :}
+   LT-SCAN count 4 * LT-LEN G-SCAN
+   MATCH result
+      ok OF want T= ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: LT-SCAN-ERR ( n -- )
+   {: count:n :}
+   LT-SCAN count 4 * LT-LEN G-SCAN
+   MATCH result
+      ok OF drop E-FIX throw ENDOF
+      err OF E-NUMERIC T= ENDOF
+   ;MATCH ;
+
+: LT-SCANNER ( -- )
+   s" greedy scanner keeps the first finite maximum" T-LABEL
+   $3F800000 0 LT-SCAN!
+   $40A00000 1 LT-SCAN!
+   $40A00000 2 LT-SCAN!
+   $BF800000 3 LT-SCAN!
+   4 1 LT-SCAN-OK
+   1 0 LT-SCAN-OK
+   $40C00000 3 LT-SCAN!
+   4 3 LT-SCAN-OK
+   $C0A00000 0 LT-SCAN!
+   $BF800000 1 LT-SCAN!
+   $C0000000 2 LT-SCAN!
+   3 1 LT-SCAN-OK
+   s" greedy scanner rejects every non-finite F32 class" T-LABEL
+   $7FC00000 0 LT-SCAN! 1 LT-SCAN-ERR
+   $3F800000 0 LT-SCAN!
+   $7FC00000 1 LT-SCAN! 2 LT-SCAN-ERR
+   $7F800000 1 LT-SCAN! 2 LT-SCAN-ERR
+   $FF800000 1 LT-SCAN! 2 LT-SCAN-ERR ;
+
 : LT-DECODE ( GPT2:model -- GPT2:model )
    s" first and second production decode rows match pinned GPT-2" T-LABEL
-   15496 LT-OUT LT-BYTES LT-OK
+   15496 LT-GREEDY 0 GPT2-REFERENCE:REAL-ID T=
    LT-REFS
    LT-OUT LT-FIRST LT-BYTES BYTE-COPY
-   11 LT-OUT LT-BYTES LT-OK
-   LT-ARGMAX 1 GPT2-REFERENCE:REAL-ID T=
+   0 GPT2-REFERENCE:REAL-ID LT-GREEDY 1 GPT2-REFERENCE:REAL-ID T=
    s" RESET repeats the first row bit-for-bit" T-LABEL
    RESET
-   15496 LT-OUT LT-BYTES LT-OK
+   15496 LT-GREEDY 0 GPT2-REFERENCE:REAL-ID T=
    LT-SAME-FIRST
    s" invalid token and wrong length leave position unchanged" T-LABEL
    RESET
@@ -116,6 +164,7 @@ variable LT-MAX
 : LT-RUN ( -- )
    SCRIPT-ARGC 1 <> if E-FIX throw then
    T-RESET
+   LT-SCANNER
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
    s" two GPT-2 models coexist and close in either order" T-LABEL
