@@ -1,9 +1,11 @@
 ---
 title: Hold the staged callee address against its spelling
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-03T23:00:47.410424+02:00"
 ---
 
 NMIGRATE:CALLEE ( ptr u8 n n n n -- ) takes the callee's spelling AND its entry address from the caller and cross-checks neither against the other. The caller obtained that address by resolving that spelling (tools/codegen-compare-core.f CODE-ENTRY, test/compiler/native-inline.f ENTRY-OF: XREF-FIND then XREF-START), so the two are one fact stated twice and the migration never holds them together. Consequences: (1) a caller that computes or hardcodes an address that is not what its spelling resolves to compiles against another routine, and the CALL it emits branches there, so this is not covered by NELAB:CALLEE-COPY?'s row check, which exits early when the address has no NINL row; (2) it is the residual hole in that row check's name comparison, which reduces a qualified spelling to its bare tail (NELAB:BARE-NAME$) and therefore cannot tell PKG-A:FOO from PKG-B:FOO. The complete guard is one step where the address is staged: resolve the spelling with the engine's own XREF-FIND and refuse when XREF-START differs from the stated entry, which settles name AND package AND address in one comparison, needs no new naming grammar, no new row field, and no seed-affecting change. Rejected alternative: recording the publication's package (NMIGRATE NAME-WID, one cell) in the NINL row and comparing it against the reference's package — the publication half is cheap but the reference half needs the engine's package-name-to-wordlist step, which is buried inside XREF-FIND-QUALIFIED in src/habu/xref.f (engine prefix, so factoring it out is seed-affecting) and would give NELAB a live-dictionary dependency it does not have. Blast radius to check first: every NMIGRATE:CALLEE caller in tools/codegen-compare-migrated*.f, tools/codegen-compare-test.f, maki, and test/compiler/native-inline.f must stage an address that its own spelling resolves to; a caller that does not is a real finding, not a reason to weaken the check.
+
+Claim: agent=hold-staged workspace=.jj-ws/habu-hold-the-staged-6837d532

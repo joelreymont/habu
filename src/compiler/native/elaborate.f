@@ -1405,19 +1405,18 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ its own body instead of branching. The recursion happens once, while the callee
 \ is compiled, where the emitter's instruction count can be held against it.
 \
-\ AND WHOSE BODY IT IS, IS HELD BETWEEN TWO AUTHORITIES. The caller states which
-\ word it believes lives at an address and what effect it believes that word has
-\ (src/compiler/native/migrate.f stages both), and the callee's own migration
-\ recorded the name it was published under and the effect it really declared. The
-\ key is the caller's claim rather than a lookup, so a stated address one routine
-\ out lands on a real row: the arity agrees by coincidence all the time, and the
-\ NAME is what tells the two apart. A disagreement of either kind means the
-\ caller is compiling against some other routine than the one at that address -
-\ the call it would emit instead would be just as wrong - so it is refused by
-\ name rather than resolved in either direction.
+\ AND WHOSE BODY IT IS, IS HELD BETWEEN TWO AUTHORITIES. The caller states what
+\ effect it believes the word at an address has (src/compiler/native/migrate.f
+\ stages it), and the callee's own migration recorded the effect that word really
+\ declared. WHICH word lives at that address is no longer one of the caller's two
+\ statements to get wrong: the staging refuses an address that is not where the
+\ staged spelling's own word begins (migrate.f RESOLVES-TO-ENTRY), so the row
+\ reached here is the row of the word the site named. The ARITY is what is left,
+\ and a disagreement about it means the caller is compiling against an effect the
+\ publication does not have - the call it would emit instead would be just as
+\ wrong - so it is refused by name rather than resolved in either direction.
 here CELL 1- and CELL swap - CELL 1- and allot
 create INL-TAB TMAX cells allot      \ whether the call on this body token is copied
-create INL-NAME NINL:NAME-MAX allot  \ a call site's own spelling of its callee
 
 : INL-RESET ( -- )
    TMAX 0 ?do
@@ -1559,84 +1558,31 @@ private
       r entry i REC-TOKEN-ORDER? or
    loop ;
 
-\ The name a source spelling DENOTES, which is not the same thing as the
-\ spelling. A row records the name a routine was published under, and a
-\ publication's name is a bare tail: a definition written `PKG:FOO` is stored as
-\ `FOO` in PKG's wordlist, so the row holds `FOO`. A call site may write either
-\ form for that same word - bare where the package is open or imported, qualified
-\ from outside - and both name one routine.
-\
-\ THE SPLIT IS THE ENGINE'S OWN AND NOT A SEARCH FOR A COLON. XREF-QUAL-INDEX is
-\ the grammar every lookup in this system already goes through: it answers the
-\ index of the single non-edge colon, -1 when the token is an ordinary name (no
-\ colon, or a leading or trailing one), and -2 when a second colon makes the
-\ token one that names nothing at all. Taking the tail from that index is the
-\ same arithmetic XREF-FIND-QUALIFIED does, so a spelling this reduces and a
-\ spelling the engine resolves cannot come apart. A hand-rolled suffix or
-\ substring test would have accepted `X:PKG-IN` for a row named `PKG-IN`, which
-\ is a different word.
-\
-\ AND A TOKEN THE GRAMMAR REFUSES IS LEFT WHOLE, WHICH FAILS CLOSED BY ITSELF. A
-\ published name never contains a colon, so a malformed spelling kept whole can
-\ equal no row's name and the comparison below refuses it - the same answer
-\ XREF-FIND gives such a token, reached without a second refusal to write down.
-: BARE-NAME$ ( ptr u8 n -- ptr u8 n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a u XREF-QUAL-INDEX {: i:n :}
-   i 0 < if a u exit then
-   a i 1+ ZPTR+  u i - 1- ;
-
-\ The name this call site's token denotes, as bytes. The row it is about to be
-\ held against carries bytes, and this module's own interner is where the token's
-\ are; what comes back is the bare name, so a qualified reference to the right
-\ routine is not mistaken for a reference to some other one.
-\
-\ THE BUFFER IS A ROW'S NAME CAPACITY AND THAT IS NOT A GUESS AT A LENGTH. A
-\ token only reaches here once the word model answered `callable` for it, and a
-\ callable row is declared from nothing but a name src/compiler/native/migrate.f
-\ staged - which that file caps at NINL:NAME-MAX, the same constant, for the same
-\ reason. So the copy cannot be the thing that refuses a spelling, and a tail is
-\ never longer than the spelling it came out of.
-: TOK-NAME$ ( n -- ptr u8 n )
-   {: ix:n :}
-   CTX BLD  VW MKEY ix NTAPE:SPELL@  INL-NAME NINL:NAME-MAX
-   IR-BUILD:SYMBOL-COPY {: u:n :}
-   INL-NAME u BARE-NAME$ ;
-
 \ The callee named on this token, and whether its body may be copied here.
 \
-\ THE ROW IS FOUND BY AN ADDRESS THE CALLER STATED, so the first thing asked of
-\ it is whether it is the right routine's. Two records are held against the
-\ caller's declaration and neither is decoration: the NAME, because a stated
-\ address one routine out lands on a real row and splices a body nobody wrote a
-\ call to, and the ARITY, because a row of the right name and the wrong effect
-\ leaves the caller's stack a value out. Both disagreements are the same event -
-\ the caller's declaration and the publication disagree about what lives at that
-\ address, and the CALL the site would emit instead branches to the same wrong
-\ address - so both are refused by name rather than resolved in either direction.
-\ An address with NO row is not a disagreement at all: nothing was ever recorded
-\ there, and the site calls, which is what it always did.
+\ THE ROW IS FOUND BY AN ADDRESS THE CALLER STATED, and what makes that address
+\ the right routine's is settled where it was staged rather than here: a staged
+\ address that is not where the staged spelling's own word begins is refused by
+\ src/compiler/native/migrate.f's RESOLVES-TO-ENTRY, against the engine's own
+\ lookup, which settles the name, the package and the address in one comparison.
+\ So a row reached here belongs to the word this site named, and nothing about
+\ WHICH routine it is remains to be asked.
 \
-\ THE NAME COMPARED IS THE ONE THE SITE DENOTES AND NOT THE ONE IT WROTE. Both
-\ spellings of a package's word name that word, so reducing the site's token to
-\ its bare name first is what makes this a comparison of routines rather than of
-\ typography. What it does NOT compare is the PACKAGE half of a qualified
-\ reference, and that is a stated gap rather than an oversight: the publication's
-\ package is cheap to record here, but the reference's package is only comparable
-\ against it through the engine's package-name-to-wordlist step, which lives
-\ inside XREF-FIND-QUALIFIED in the engine prefix and would have to be factored
-\ out of a seed-affecting file, and consumed here by giving this pass a live
-\ dictionary dependency it does not otherwise have. The residue is a caller that
-\ states one package's address while writing another package's identical tail -
-\ a disagreement inside the caller's own declaration, whose complete guard is to
-\ hold the staged address against what the staged spelling resolves to, once,
-\ where the addresses are staged. Dot habu-hold-the-staged-6837d532.
+\ WHAT IS STILL HELD AGAINST THE ROW IS THE ARITY, because that half is still the
+\ caller's own statement: the migration takes the callee's declared effect from
+\ the caller (dot habu-resolve-a-callee-0340dfde carries reading it off the
+\ checker instead), and a row of the right routine and the wrong effect leaves
+\ the caller's stack a value out. The caller's declaration and the publication
+\ then disagree about the word at that address, and the CALL the site would emit
+\ instead is wrong in exactly the same way, so it is refused by name rather than
+\ resolved in either direction. An address with NO row is not a disagreement at
+\ all: nothing was ever recorded there, and the site calls, which is what it
+\ always did.
 : CALLEE-COPY? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:ENTRY@ {: entry:n :}
    entry NINL:KNOWN? 0= if false exit then
-   entry  ix TOK-NAME$  NINL:NAMED? 0= if E-NELAB-INLINE throw then
    entry NINL:IN@  r sy HIR-WORD:CALLEE-IN@  <> if E-NELAB-INLINE throw then
    entry NINL:OUT@ r sy HIR-WORD:CALLEE-OUT@ <> if E-NELAB-INLINE throw then
    r entry REC-BODY? ;
@@ -2792,12 +2738,6 @@ public
 \ for each meaning of the dialect against what the chain then does with it.
 EXPORT SPLICE-STAGING
 EXPORT SPLICE-MEANING?
-
-\ The name a source spelling denotes, published for the same reason: what a call
-\ site is held against is a comparison this pass makes, and a suite can only
-\ prove it is the engine's naming grammar and not a suffix test by asking it
-\ about the spellings where the two answer differently.
-EXPORT BARE-NAME$
 
 \ Could a body copied into a caller hold this tape token? It is the rule the
 \ decision above applies to a RECORDED token, asked of a token still on a tape -

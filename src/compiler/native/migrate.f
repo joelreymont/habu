@@ -56,10 +56,17 @@
 \ facts of the running engine - the address is the callee's dictionary record and
 \ the effect is what the checker accepted for it - and reading them off those two
 \ authorities instead of taking them from the caller is dot
-\ habu-resolve-a-callee-0340dfde. Until it lands a caller that states them wrongly
-\ compiles a routine that computes the wrong thing, which is exactly why the dot
-\ exists and why the acceptance suite states them from the same publication the
-\ callee was made by.
+\ habu-resolve-a-callee-0340dfde.
+\
+\ THE FIRST TWO OF THE THREE ARE HELD AGAINST EACH OTHER HERE. A spelling and an
+\ address are ONE fact stated twice: the caller obtained the address by resolving
+\ that spelling, and the definition's body reaches the routine by writing that
+\ spelling. So the staging asks the dictionary what the spelling denotes and
+\ refuses an address that is not where that word's code starts
+\ (RESOLVES-TO-ENTRY below). That settles the name, the package it was published
+\ in and the address in one comparison. Until the effect is read off the checker
+\ too, a caller can still state THAT wrongly, and the arity a callee's own
+\ migration recorded is what catches it.
 
 require lib/prelude.f
 require lib/errors.f
@@ -84,10 +91,13 @@ TRUSTED: EV ( ptr u8 n -- )
 
 512 constant TEXT-CAP                \ the longest definition a unit may record
 128 constant TAPE-CAP                \ the most tokens one definition may hold
-\ The longest name a migration answers about, taken from the record that has to
-\ hold it: a name this file kept but src/compiler/native/inline.f could only
-\ store the front of would be a row claiming another word.
-NINL:NAME-MAX constant NAME-CAP
+\ The longest name or spelling this file holds. Two things are measured by it -
+\ the name the migration publishes under, and each callee spelling a caller
+\ stages - and a staged spelling may be QUALIFIED where a publication's own name
+\ is never more than a tail, so the ceiling is the longer of the two forms. A
+\ spelling past it is refused rather than truncated into a name that denotes
+\ another word.
+64 constant NAME-CAP
 
 create TXT TEXT-CAP allot
 create NAME-BUF NAME-CAP allot
@@ -129,6 +139,108 @@ create CALLEE-OUT CALLEES-MAX cells allot
 
 : CALLEES-NONE-CK ( -- )
    CALLEE-N @ 0<> if E-NMIGRATE-STATE throw then ;
+
+\ ---- holding a staged spelling against the address staged with it -------------
+\ WHY THE TWO ARE ONE FACT. The caller obtained the address by resolving the
+\ spelling and the body reaches the routine by writing it, so a staging where
+\ they disagree is a caller contradicting itself. Nothing downstream catches it:
+\ the recorded-body check (src/compiler/native/elaborate.f CALLEE-COPY?) is only
+\ reached for an address that HAS a row, and the CALL a site emits instead
+\ branches to the stated address whatever the spelling said. So it is settled
+\ here, where the two arrive together, and settling it settles the NAME, the
+\ PACKAGE the routine was published in and the ADDRESS in one comparison.
+\
+\ THE ORDER IS THE ENGINE'S OWN AND NOT A SECOND OPINION ABOUT IT.
+\ src/habu/habu1.f EMIT-FIND resolves a bare token in the open package's private
+\ wordlist, then its public one, then the global wordlist, and a NAME:tail token
+\ through the namespace record for NAME - which is what src/habu/xref.f
+\ XREF-FIND-QUALIFIED is. That lookup is what resolves the definition's own body
+\ when the engine compiles it (SCAN below), in the scope this staging runs in, so
+\ any other question would answer about a word the body does not name. What is
+\ NOT walked is the used-publics leg the engine reaches after the global
+\ wordlist: a callee named through a `using` answers absent here and its
+\ migration is refused rather than compiled against an unconfirmed address, which
+\ is the fail-closed direction. Dot habu-walk-the-used-96694010 carries it, and
+\ dot habu-one-resolver-for-4e9e3e59 carries giving the engine, the checker and
+\ this file one resolver instead of three walks of one order.
+\
+\ `search-wl` is the engine's own scan and case fold over one wordlist, and it
+\ answers the record's code start - which is the address a call site branches to.
+\ Zero is its absent answer, and no word's code starts there.
+\ XREF-QUAL-INDEX's answer for a token a second colon makes name nothing.
+-2 constant QUAL-BAD
+
+: PKG-PRI-WID ( -- n )
+   data-base PKG-PRI-CELL + @ ;
+
+: PKG-PUB-WID ( -- n )
+   data-base PKG-PUB-CELL + @ ;
+
+\ The open package's two wordlists, in the engine's order. A zero private cell is
+\ the engine's own test for no package open, and it answers absent so that the
+\ global leg below is then the whole of the search.
+: OPEN-START ( ptr u8 n -- n )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   PKG-PRI-WID 0= if 0 exit then
+   a u PKG-PRI-WID search-wl {: pri:n :}
+   pri 0<> if pri exit then
+   a u PKG-PUB-WID search-wl ;
+
+: BARE-START ( ptr u8 n -- n )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u OPEN-START {: open:n :}
+   open 0<> if open exit then
+   a u 0 search-wl ;
+
+: QUAL-START ( ptr u8 n n -- n )
+   XREF-FIND-QUALIFIED
+   dup XREF-FOUND? 0= if drop 0 exit then
+   XREF-START ;
+
+\ Where the code of the word this spelling denotes starts, or zero when it
+\ denotes no word where this definition is compiled.
+: SPELL-START ( ptr u8 n -- n )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u XREF-QUAL-INDEX {: q:n :}
+   q QUAL-BAD = if 0 exit then
+   q 0 >= if a u q QUAL-START exit then
+   a u BARE-START ;
+
+\ The one refusal. A spelling that denotes nothing is refused for the same reason
+\ a mismatched address is: there is no second authority to prefer, and a
+\ migration compiled against an unconfirmed address is a routine that branches
+\ somewhere nobody named.
+: RESOLVES-TO-ENTRY ( ptr u8 n n -- )
+   {: ca cu:n entry:n :} \ typed-local-lint: allow-bare-local - ca keeps the ptr u8 byte-span role
+   ca cu SPELL-START {: start:n :}
+   start 0= if E-NMIGRATE-CALLEE throw then
+   start entry <> if E-NMIGRATE-CALLEE throw then ;
+
+\ ---- and the scope a staged list is spent in ---------------------------------
+\ A spelling is resolved in the scope the STAGING runs in, and the definition it
+\ was staged for is compiled in the scope the MIGRATION runs in. Those are one
+\ scope for every caller there is, because a caller stages its callees and
+\ migrates in one word - and the whole of the check above rests on it, so it is
+\ REFUSED rather than assumed. The wordlists the resolver walked are recorded
+\ with the first row and held against the ones each later row and the run itself
+\ find, which turns "the scope did not move between them" into the same kind of
+\ refusal the publication seam holds an emission's placement to.
+\
+\ IT RETIRES WITH THE CALLER'S ADDRESS. When the migration reads a callee's
+\ address off the dictionary itself (dot habu-resolve-a-callee-0340dfde) the
+\ resolution happens inside the run, in the one scope that can matter, and both
+\ this and the check above go with it.
+variable CALLEE-PRI
+variable CALLEE-PUB
+
+: CALLEES-SCOPE! ( -- )
+   PKG-PRI-WID CALLEE-PRI !
+   PKG-PUB-WID CALLEE-PUB ! ;
+
+: CALLEES-SCOPE-CK ( -- )
+   CALLEE-N @ 0= if exit then
+   PKG-PRI-WID CALLEE-PRI @ <> if E-NMIGRATE-CALLEE throw then
+   PKG-PUB-WID CALLEE-PUB @ <> if E-NMIGRATE-CALLEE throw then ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER M-CTX IR-CTX:ctx
@@ -373,26 +485,21 @@ variable REC-OK                      \ the body staged so far is still one worth
    M-IN @ M-OUT @ A64EMIT:INSNS NINL:SMALL? 0= if NINL:STAGE-CLEAR then ;
 
 \ Claim the row for the staged body: the address the routine is about to be
-\ published at, and the name it is about to be published under. The emitter's own
-\ recorded placement is that address before the publication as much as after it -
-\ the seam refuses to publish an emission whose placement is not the slot it is
-\ claiming, so a publication that returns wrote the routine at exactly the
-\ address this asked about - and the name is the one RESOLVES-TO-LATEST already
-\ proved the evaluation published, which is the same name the republication two
-\ lines below is handed. So the row states whose body it holds rather than only
-\ where it lives, and states it from the same two facts the publication itself
-\ runs on.
+\ published at. The emitter's own recorded placement is that address before the
+\ publication as much as after it - the seam refuses to publish an emission whose
+\ placement is not the slot it is claiming, so a publication that returns wrote
+\ the routine at exactly the address this asked about.
 \
 \ IT IS ASKED HERE BECAUSE THIS IS THE LAST MOMENT A REFUSAL IS FREE. Everything
-\ the record can refuse - an address that is not one, a name that is not one, an
-\ address that already has a row - is refused with the word still running the
-\ code the engine compiled for it, which is what every other refusal in this
-\ chain leaves behind. And a record with no room for another body refuses nothing
-\ at all: it declines the row, the word publishes, and its callers call it,
-\ exactly as they call a body the size rule turned down.
+\ the record can refuse - an address that is not one, an address that already has
+\ a row - is refused with the word still running the code the engine compiled for
+\ it, which is what every other refusal in this chain leaves behind. And a record
+\ with no room for another body refuses nothing at all: it declines the row, the
+\ word publishes, and its callers call it, exactly as they call a body the size
+\ rule turned down.
 : CLAIM-ROW ( -- )
    NINL:STAGED? 0= if exit then
-   NAME-BUF NAME-U @ A64EMIT:PLACEMENT NINL:CLAIM ;
+   A64EMIT:PLACEMENT NINL:CLAIM ;
 
 \ Write the row the claim reserved, now that the seam has published the routine
 \ at the address it was claimed for. A staging that was declined a row left no
@@ -520,6 +627,7 @@ variable REC-OK                      \ the body staged so far is still one worth
 : RUN ( -- )
    M-OPEN @ 0<> if E-NMIGRATE-STATE throw then
    M-SRC-U @ TEXT-CAP > if E-NMIGRATE-TEXT throw then
+   CALLEES-SCOPE-CK
    1 M-OPEN !
    0 M-RC !
    IN-CONTEXT
@@ -555,11 +663,19 @@ public
 \ definition writes it, the address its code starts at, and the effect it
 \ declares. The spelling is COPIED, because it is a span of the caller's memory
 \ and the migration reads it later, inside the recorded run.
+\
+\ THE SPELLING AND THE ADDRESS ARE HELD AGAINST EACH OTHER BEFORE EITHER IS
+\ KEPT, so a staging that contradicts itself leaves no row behind for the next
+\ migration to be refused for. The two capacity refusals come first because they
+\ are about this list rather than about the callee, and the scope the list
+\ belongs to is taken from the first row and held against every row after it.
 : CALLEE ( ptr u8 n n n n -- )
    {: ca cu:n entry:n cin:n cout:n :} \ typed-local-lint: allow-bare-local - ca keeps the ptr u8 byte-span role
    CALLEE-N @ {: k:n :}
    k CALLEES-MAX >= if E-NMIGRATE-STATE throw then
    cu NAME-CAP > if E-NMIGRATE-TEXT throw then
+   k 0= if CALLEES-SCOPE! else CALLEES-SCOPE-CK then
+   ca cu entry RESOLVES-TO-ENTRY
    ca  CALLEE-BUF k NAME-CAP * +  cu STR-LEN BYTE-COPY-LEN
    cu k cells CALLEE-U + !
    entry k cells CALLEE-ADDR + !

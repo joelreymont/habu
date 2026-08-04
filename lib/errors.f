@@ -1065,6 +1065,7 @@ public
 -8571 constant E-NMIGRATE-TEXT    \ definition source longer than the recorder's text buffer, or a name longer than the log holds
 -8572 constant E-NMIGRATE-VERDICT \ the engine's own check did not certify the definition, so there is no checked word to migrate
 -8573 constant E-NMIGRATE-NAME    \ the definition the source published is not the name the caller asked to migrate: the newest dictionary record carries another name
+-8579 constant E-NMIGRATE-CALLEE  \ a staged callee whose spelling and whose address are not one fact: a spelling that denotes no word where the definition is compiled, or one whose word's code starts somewhere other than the address staged beside it
 
 \ The float subset: -8580..-8589
 \

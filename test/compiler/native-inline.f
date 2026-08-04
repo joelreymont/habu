@@ -6,10 +6,10 @@
 \ WHAT THIS SUITE HAS TO SHOW. Thirteen things, and the last eleven are the ones
 \ a change to the rule would break.
 \
-\   1. That the record answers about an ADDRESS, keeps the tokens, the arity and
-\      the NAME it was told, refuses a second body for one address, refuses a
-\      claim carrying no name at all, and refuses to be read about an address it
-\      has no row for or a token a row does not hold.
+\   1. That the record answers about an ADDRESS, keeps the tokens and the arity
+\      it was told, refuses a second body for one address, refuses a claim on an
+\      address no routine could be published at, and refuses to be read about an
+\      address it has no row for or a token a row does not hold.
 \   2. That the size rule is DERIVED and not chosen: what one side of a call to a
 \      routine of a given arity costs in instructions, and a routine admitted
 \      exactly when its whole emission is within twice that.
@@ -57,21 +57,26 @@
 \      are copied and the splice that copies them both read it, so neither can
 \      hold an answer the other contradicts.
 \  12. That the row a call site splices is the routine the site NAMED. The key is
-\      an address the caller stated, so a stated address one routine out lands on
-\      a real row of the same arity; a caller that names one recorded word at
-\      another's address is refused by name, and one that names the same word in
-\      the other case is not refused at all.
+\      an address the caller stated, so a stated address one routine out would
+\      land on a real row of the same arity - and a caller may no longer state
+\      one: a spelling and an address that name two different routines are
+\      refused where they are staged, before anything is compiled, while the same
+\      word written in the other case, a package word written as its bare tail
+\      from inside that package, and the same word written qualified from outside
+\      it are all one word and all stage. Two packages holding a routine of one
+\      TAIL is the case a comparison of tails cannot decide, and it is refused.
 \  13. That a row DIES WITH THE ROUTINE it was copied out of. A FORGET hands the
 \      bytes above the code pointer back to the engine and the next definition is
 \      compiled over them, so a row left behind is a body a later caller would
 \      splice in place of the routine it meant to call - and the name check in 12
 \      cannot see it either, because the reclaimed routine and its replacement
-\      are two different words at ONE address. A small migrated word is therefore
+\      are ONE address that two different words really did occupy, so the address
+\      is the resolver's answer for both. A small migrated word is therefore
 \      forgotten through the engine's own FORGET-DEFS-FROM, a LARGER
 \      engine-compiled word takes the freed slot, and its caller must emit a call
 \      and reach the larger word's answer; it reached the forgotten word's answer
-\      before rows were given back. The rows below the cut are untouched, name
-\      and all, the freed row taken again carries the new routine's name, a mark
+\      before rows were given back. The rows below the cut are untouched, tokens
+\      and all, the freed row taken again carries the new routine's body, a mark
 \      the cut fell below is refused rather than re-interpreted, and a claim
 \      outstanding over a reclamation is given up so no row can follow it.
 \
@@ -92,7 +97,6 @@
 \ these numbers, and a change that stopped copying would move all three.
 
 require lib/test.f
-require lib/fmt.f
 require src/compiler/native/hir.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/migrate.f
@@ -128,21 +132,6 @@ $20004 constant A2
 $20008 constant A3
 $2000C constant A4
 
-\ A name one byte past what a row can hold, measured from the record's own
-\ ceiling rather than written down here: a change that widened the ceiling would
-\ otherwise leave this case passing for a reason that had stopped being true.
-NINL:NAME-MAX 1+ constant LONG-NAME-U
-create LONG-NAME LONG-NAME-U allot
-here CELL 1- and CELL swap - CELL 1- and allot
-
-$41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
-
-: LONG-NAME-FILL ( -- )
-   LONG-NAME-U 0 ?do  NAME-BYTE  LONG-NAME i + c!  loop ;
-
-: LONG-NAME$ ( -- ptr u8 n )
-   LONG-NAME LONG-NAME-U ;
-
 \ ---- the table, on its own -----------------------------------------------------
 : TABLE-CASES ( -- )
    s" an address with no row is unknown and cannot be read" T-LABEL
@@ -155,7 +144,7 @@ $41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
    7 NINL:STAGE-INT
    s" +" NINL:STAGE-NAME
    NINL:STAGED-TOKENS 2 T=
-   s" NINL-ROW-A1" A1 NINL:CLAIM
+   A1 NINL:CLAIM
    NINL:CLAIMED? FLAG# 1 T=
    NINL:COMMIT
    A1 NINL:KNOWN? FLAG# 1 T=
@@ -164,25 +153,6 @@ $41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
    A1 NINL:TOKENS 2 T=
    A1 0 NINL:LIT@ 7 T=
    A1 1 NINL:SPELL$ s" +" STR= TTRUE
-
-   s" and it remembers the name the routine was published under" T-LABEL
-   A1 s" NINL-ROW-A1" NINL:NAMED? TTRUE
-
-   s" which is a dictionary name, so either case is the same name" T-LABEL
-   A1 s" ninl-row-a1" NINL:NAMED? TTRUE
-
-   s" and any other name is a different word, however close" T-LABEL
-   A1 s" NINL-ROW-A2" NINL:NAMED? TFALSE
-   A1 s" NINL-ROW-A" NINL:NAMED? TFALSE
-   A1 s" NINL-ROW-A1X" NINL:NAMED? TFALSE
-
-   s" including one the row's name is only the tail or the head of: this
-      compares names, and reducing a spelling to a name is the caller's job"
-   T-LABEL
-   A1 s" XNINL-ROW-A1" NINL:NAMED? TFALSE
-   A1 s" NINL-PKG:NINL-ROW-A1" NINL:NAMED? TFALSE
-   A1 s" NINL-ROW-A1-X" NINL:NAMED? TFALSE
-   [: A3 s" NINL-ROW-A1" NINL:NAMED? drop ;] E-NINL-BOUND TTHROWSQ
 
    s" and a token answers only for the kind it is" T-LABEL
    [: A1 0 NINL:SPELL$ drop drop ;] E-NINL-BOUND TTHROWSQ
@@ -193,31 +163,23 @@ $41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
    NINL:STAGED? FLAG# 0 T=
    NINL:CLAIMED? FLAG# 0 T=
    [: NINL:COMMIT ;] E-NINL-STATE TTHROWSQ
-   [: s" NINL-ROW-A2" A2 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   [: A2 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
 
    s" a second body for one address is refused while the claim is still free"
    T-LABEL
    1 1 NINL:STAGE-BEGIN
    9 NINL:STAGE-INT
-   [: s" NINL-ROW-A1B" A1 NINL:CLAIM ;] E-NINL-DUP TTHROWSQ
+   [: A1 NINL:CLAIM ;] E-NINL-DUP TTHROWSQ
    NINL:CLAIMED? FLAG# 0 T=
    NINL:STAGE-CLEAR
    A1 NINL:TOKENS 2 T=
    A1 0 NINL:LIT@ 7 T=
-   A1 s" NINL-ROW-A1" NINL:NAMED? TTRUE
 
    s" and so is an address no routine could have been published at" T-LABEL
    1 1 NINL:STAGE-BEGIN
    9 NINL:STAGE-INT
-   [: s" NINL-ROW-A2" 0 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
-   [: s" NINL-ROW-A2" -4 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
-   NINL:STAGE-CLEAR
-
-   s" and so is a claim carrying no name, or one longer than a row holds" T-LABEL
-   1 1 NINL:STAGE-BEGIN
-   9 NINL:STAGE-INT
-   [: s" " A2 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
-   [: LONG-NAME$ A2 NINL:CLAIM ;] E-NINL-CAP TTHROWSQ
+   [: 0 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   [: -4 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
    NINL:CLAIMED? FLAG# 0 T=
    A2 NINL:KNOWN? FLAG# 0 T=
    NINL:STAGE-CLEAR
@@ -226,7 +188,7 @@ $41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
    T-LABEL
    1 1 NINL:STAGE-BEGIN
    9 NINL:STAGE-INT
-   s" NINL-ROW-A2" A2 NINL:CLAIM
+   A2 NINL:CLAIM
    [: 1 1 NINL:STAGE-BEGIN ;] E-NINL-STATE TTHROWSQ
 
    s" and a claim given up keys nothing" T-LABEL
@@ -260,7 +222,7 @@ $41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
    NINL:MARK {: k:n :}
    1 1 NINL:STAGE-BEGIN
    5 NINL:STAGE-INT
-   s" NINL-ROW-A3" A3 NINL:CLAIM
+   A3 NINL:CLAIM
    NINL:COMMIT
    A3 NINL:KNOWN? FLAG# 1 T=
    NINL:ROWS k 1 + T=
@@ -288,7 +250,7 @@ $41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
    s" a code reclamation gives a live claim up, so no row can follow it" T-LABEL
    1 1 NINL:STAGE-BEGIN
    5 NINL:STAGE-INT
-   s" NINL-ROW-A4" A4 NINL:CLAIM
+   A4 NINL:CLAIM
    NINL:CLAIMED? FLAG# 1 T=
    NINL:ROWS {: before:n :}
    cp@ CODE-RECLAIM:TRUNCATE
@@ -412,6 +374,12 @@ variable CODE-AT
 
 : ENTRY-OF ( ptr u8 n -- n )
    WORD-REC XREF-START ;
+
+\ Whether a record of this name exists at all. A staging refused before the
+\ engine has compiled anything leaves no word behind, which needs a reader that
+\ does not throw on a name nothing carries.
+: DEFINED? ( ptr u8 n -- bool )
+   XREF-FIND XREF-FOUND? ;
 
 \ How many instructions the published word holds. The record's length excludes
 \ the trailing return, which is what the engine means by a word's length, so the
@@ -626,30 +594,39 @@ variable ROWS-BEFORE
 \ ---- whose body the row at a stated address is ---------------------------------
 \ A call site does not FIND its row: it states an address, taken from what its own
 \ migration declared about the callee, and reads whatever is keyed there. So the
-\ key is a claim, and the only other thing ever held against it was the arity -
-\ which agrees by coincidence all the time, because `( n -- n )` helpers are
-\ everywhere. NINL-LIT and NINL-EDGE-IN are both recorded, both `( n -- n )`, and
-\ answer entirely different arithmetic; the caller below declares NINL-LIT at
-\ NINL-EDGE-IN's address, so nothing but the NAME can tell the claim from the
-\ truth.
+\ key is a claim, and the only thing the ROW holds against it is the arity - which
+\ agrees by coincidence all the time, because `( n -- n )` helpers are everywhere.
+\ What makes the claim the right routine's is settled where the spelling and the
+\ address are staged together: NINL-LIT and NINL-EDGE-IN are both recorded, both
+\ `( n -- n )`, and answer entirely different arithmetic, and the staging below
+\ declares NINL-LIT at NINL-EDGE-IN's address.
 \
 \ THE REFUSAL IS LOUD AND THAT IS DELIBERATE. Everything else this file refuses -
 \ a body with a control structure, one too large, one that fills a row, one that
 \ met a full table - is the record declining to hold a body, and the answer is the
-\ call the site always made. This is not that: the caller's declaration and the
-\ publication disagree about which word lives at an address, and the CALL that
-\ would be emitted instead branches to that same wrong address. Neither answer is
-\ usable, so it is refused by name, exactly as a disagreement about the arity
-\ already was.
+\ call the site always made. This is not that: the caller's two statements about
+\ one callee name two different routines, and the CALL that would be emitted
+\ instead branches to the address whatever the spelling said. Neither answer is
+\ usable, so the staging is refused - which happens before the engine has compiled
+\ anything, so the definition that would have used it is never published either.
+: STAGE-WRONG-NAME ( -- )
+   s" NINL-LIT" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
+
 : MIGRATE-WRONG-NAME ( -- )
-   s" NINL-LIT" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   STAGE-WRONG-NAME
    s" : NINL-WRONG-NAME ( n -- n ) NINL-LIT ;"
    1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
+\ A migration that takes no list at all. It refuses a staged one by name, so it
+\ is how "the refusal staged nothing" is asked structurally rather than inferred
+\ from a later migration happening to work.
+: MIGRATE-NO-CALLEE ( -- )
+   s" : NINL-NO-CALLEE ( n -- n ) 3 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
 \ The same declaration written in the other case. A dictionary name is the same
-\ name in either case, so this names the SAME word and the body is still copied -
-\ which is what stops the check above from being a byte comparison that refuses
-\ legal Habu.
+\ name in either case, so this names the SAME word, the staging is accepted and
+\ the body is still copied - which is what stops the refusal above from being a
+\ byte comparison that turns away legal Habu.
 : MIGRATE-CASE-NAME ( -- )
    s" ninl-edge-in" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-CASE-NAME ( n -- n ) ninl-edge-in ;"
@@ -662,80 +639,145 @@ variable ROWS-BEFORE
    s" NINL-LIT" ENTRY-OF NINL:IN@  s" NINL-EDGE-IN" ENTRY-OF NINL:IN@ T=
    s" NINL-LIT" ENTRY-OF NINL:OUT@ s" NINL-EDGE-IN" ENTRY-OF NINL:OUT@ T=
 
-   s" and each row says which routine it is, so they are told apart" T-LABEL
-   s" NINL-LIT" ENTRY-OF s" NINL-LIT" NINL:NAMED? TTRUE
-   s" NINL-LIT" ENTRY-OF s" NINL-EDGE-IN" NINL:NAMED? TFALSE
-   s" NINL-EDGE-IN" ENTRY-OF s" NINL-EDGE-IN" NINL:NAMED? TTRUE
-   s" NINL-EDGE-IN" ENTRY-OF s" NINL-LIT" NINL:NAMED? TFALSE
-
-   s" a caller naming one word at the other's address is refused, not spliced"
+   s" so a caller naming one of them at the other's address is refused as it
+      states it, before anything is compiled"
    T-LABEL
-   [: MIGRATE-WRONG-NAME ;] E-NELAB-INLINE TTHROWSQ
+   [: STAGE-WRONG-NAME ;] E-NMIGRATE-CALLEE TTHROWSQ
+   [: MIGRATE-WRONG-NAME ;] E-NMIGRATE-CALLEE TTHROWSQ
+   s" NINL-WRONG-NAME" DEFINED? TFALSE
 
-   s" and the refusal left nothing behind: the next migration still runs"
+   s" and the refusal staged nothing, so a migration that takes no list runs"
    T-LABEL
+   MIGRATE-NO-CALLEE
+   s" 4 NINL-NO-CALLEE" EV-N 7 T=
+
+   s" while the same name in the other case is one word, and is copied" T-LABEL
    MIGRATE-CASE-NAME
    s" NINL-CASE-NAME" BL-COUNT 0 T=
    s" 3 NINL-CASE-NAME" EV-N 96 T= ;
 
-\ ---- the name a spelling denotes -----------------------------------------------
-\ A publication's name is a bare tail: a word published inside a package is
-\ stored as its tail in that package's wordlist, so that is what a row records. A
-\ call site may write either spelling of that same word, and BOTH name it. So
-\ what the row is held against is the name the site DENOTES, reduced through the
-\ engine's own naming grammar - the one every lookup in this system goes through.
+\ ---- an address that WAS this word's and is not any more -----------------------
+\ The sharpest shape of a caller contradicting itself, because every other
+\ question about it answers yes. A word is migrated and its routine recorded at
+\ the address the seam gave it; then the name is retired, defined again and
+\ migrated again, so the live record points at a NEW slot while the row at the
+\ OLD address is still keyed there, still holds a body, and still belongs to a
+\ routine that was published under THIS VERY NAME at the right arity. A caller
+\ that states the old address meets a row that agrees with it about everything
+\ except which code it is, and the CALL it would emit instead enters a routine
+\ nobody wanted. Nothing the row itself carries could tell the two apart - the
+\ name it was published under is the same name - and the dictionary can, because
+\ the record moved.
+variable STALE-ENTRY
+
+: MIGRATE-TWICE-FIRST ( -- )
+   s" : NINL-TWICE ( n -- n ) 1 + ;" 1 1 REGS NMIGRATE:DEFINE
+   s" NINL-TWICE" ENTRY-OF STALE-ENTRY ! ;
+
+: MIGRATE-TWICE-AGAIN ( -- )
+   s" undefine NINL-TWICE" EV
+   s" : NINL-TWICE ( n -- n ) 2 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: STAGE-STALE ( -- )
+   s" NINL-TWICE" STALE-ENTRY @ 1 1 NMIGRATE:CALLEE ;
+
+: STALE-CASES ( -- )
+   s" the old address still holds a row, of the right arity, under this name"
+   T-LABEL
+   STALE-ENTRY @ NINL:KNOWN? FLAG# 1 T=
+   STALE-ENTRY @ NINL:IN@ 1 T=
+   STALE-ENTRY @ NINL:OUT@ 1 T=
+   STALE-ENTRY @ 0 NINL:LIT@ 1 T=
+
+   s" while the word itself now begins somewhere else, holding another body"
+   T-LABEL
+   s" NINL-TWICE" ENTRY-OF STALE-ENTRY @ T<>
+   s" NINL-TWICE" ENTRY-OF 0 NINL:LIT@ 2 T=
+
+   s" so a caller that states the old address is refused, though every question
+      the row itself could answer answers yes"
+   T-LABEL
+   [: STAGE-STALE ;] E-NMIGRATE-CALLEE TTHROWSQ
+
+   s" and the word still runs the code it really has" T-LABEL
+   s" 5 NINL-TWICE" EV-N 7 T= ;
+
+\ ---- which word a staged spelling denotes --------------------------------------
+\ The address staged beside a spelling has to be where THAT spelling's own word
+\ begins, and which word a spelling names is asked of the engine's own lookup
+\ (src/compiler/native/migrate.f RESOLVES-TO-ENTRY) rather than of a comparison
+\ written here. The cases below are the ones where a test built out of colons and
+\ suffixes would answer differently: a token with a second colon names nothing, a
+\ colon at either edge qualifies nothing so the token is an ordinary name, and a
+\ package word's bare TAIL names nothing from outside that package - which is
+\ precisely what a comparison against the recorded tail used to accept.
 \
-\ THE CASES BELOW ARE THE ONES WHERE A HAND-ROLLED TEST WOULD ANSWER DIFFERENTLY,
-\ which is the whole reason to assert the reduction rather than only its effect. A
-\ suffix test accepts `X:PKG-IN` for a row named `PKG-IN`; a "text after the last
-\ colon" test disagrees with the grammar on a token with two of them; a "text
-\ before the colon" mix-up shows up on the leading and trailing forms, which the
-\ grammar keeps as ordinary names because a colon at an edge does not qualify
-\ anything.
-: DENOTES ( ptr u8 n ptr u8 n -- bool )
-   {: b:ptr v:n :} \ typed-local-lint: allow-bare-local - b keeps the ptr u8 byte-span role
-   NELAB:BARE-NAME$ b v STR= ;
+\ EVERY ONE OF THEM IS STAGED AGAINST A REAL ADDRESS, so the refusal is about the
+\ spelling and not about the address: NINL-EDGE-IN's own entry is what each of
+\ them claims.
+: STAGE-SPELL ( ptr u8 n -- )
+   s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
 
-: NAME-GRAMMAR-CASES ( -- )
-   s" a qualified spelling denotes its tail, and the whole tail" T-LABEL
-   s" NINL-PKG:NINL-PKG-IN" s" NINL-PKG-IN" DENOTES TTRUE
-   s" NINL-PKG:NINL-PKG-IN" s" PKG-IN" DENOTES TFALSE
-   s" NINL-PKG:NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" DENOTES TFALSE
+: STAGE-TWO-COLONS ( -- )   s" A:B:C" STAGE-SPELL ;
+: STAGE-LEAD-COLON ( -- )   s" :NINL-EDGE-IN" STAGE-SPELL ;
+: STAGE-TRAIL-COLON ( -- )  s" NINL-EDGE-IN:" STAGE-SPELL ;
+: STAGE-NO-SUCH-WORD ( -- ) s" NINL-NOBODY" STAGE-SPELL ;
 
-   s" a bare spelling denotes itself" T-LABEL
-   s" NINL-EDGE-IN" s" NINL-EDGE-IN" DENOTES TTRUE
-
-   s" a colon at either edge qualifies nothing, so the token is an ordinary name"
+: SPELLING-CASES ( -- )
+   s" a token with a second colon names nothing, so no address is its own"
    T-LABEL
-   s" :LEAD" s" :LEAD" DENOTES TTRUE
-   s" :LEAD" s" LEAD" DENOTES TFALSE
-   s" TRAIL:" s" TRAIL:" DENOTES TTRUE
-   s" TRAIL:" s" TRAIL" DENOTES TFALSE
+   [: STAGE-TWO-COLONS ;] E-NMIGRATE-CALLEE TTHROWSQ
 
-   s" and a second colon names nothing, so it is left whole and matches no row"
+   s" a colon at either edge qualifies nothing, so the token is an ordinary name
+      and there is no such word"
    T-LABEL
-   s" A:B:C" s" A:B:C" DENOTES TTRUE
-   s" A:B:C" s" C" DENOTES TFALSE
-   s" A:B:C" s" B:C" DENOTES TFALSE ;
+   [: STAGE-LEAD-COLON ;] E-NMIGRATE-CALLEE TTHROWSQ
+   [: STAGE-TRAIL-COLON ;] E-NMIGRATE-CALLEE TTHROWSQ
+
+   s" and a spelling that denotes no word at all is refused rather than believed"
+   T-LABEL
+   [: STAGE-NO-SUCH-WORD ;] E-NMIGRATE-CALLEE TTHROWSQ
+
+   s" none of which staged anything, so an entry that takes no list still runs"
+   T-LABEL
+   s" : NINL-SPELL-OK ( n -- n ) 5 + ;" 1 1 REGS NMIGRATE:DEFINE
+   s" 4 NINL-SPELL-OK" EV-N 9 T= ;
 
 \ ---- a call site that names its callee across a package boundary ---------------
-\ This is the shape the check first got wrong. A word published inside a package
-\ is recorded under its bare tail, because that is the name the publication gave
-\ it; a caller outside that package can only name it as PKG:TAIL. Both name one
-\ routine, and the copy has to happen - the first version of the name check
-\ compared raw spellings and refused a legal program (tools/codegen-compare-test.f
-\ assertion 238, dot habu-resolve-qualified-spellings-ec037942).
+\ A word published inside a package is recorded under its bare tail, because that
+\ is the name the publication gave it; a caller outside that package can only name
+\ it as PKG:TAIL, and a caller INSIDE it writes the tail alone. Both name one
+\ routine and both have to stage, which is what makes the resolver the engine's
+\ own and not a lookup in the global wordlist: a bare tail resolves through the
+\ open package's wordlists exactly as the engine resolves the body that writes it.
+\ (The first version of the name check compared raw spellings and refused a legal
+\ program: tools/codegen-compare-test.f assertion 238, dot
+\ habu-resolve-qualified-spellings-ec037942.)
 \
-\ THE PACKAGE HOLDS TWO ROUTINES, so the case can say both halves. One qualified
-\ caller names the routine at its own address and is copied; the other names the
-\ package's OTHER routine at the first one's address, at the same arity, and is
-\ refused. Without the second half, a fix that simply stopped comparing names
-\ would pass the first.
+\ TWO PACKAGES HOLD A ROUTINE OF THE SAME TAIL, which is the case a comparison of
+\ tails cannot decide at all: NINL-PKG:NINL-PKG-IN and NINL-PKG2:NINL-PKG-IN are
+\ different routines with one tail, so a caller that names the second at the
+\ first's address writes a tail that matches and an address that does not. It is
+\ refused because the spelling is resolved WHOLE, package and all.
 : MIGRATE-PKG-CALLEES ( -- )
    s" package NINL-PKG public" EV
    s" : NINL-PKG-IN ( n -- n ) dup + dup + dup + dup + dup + ;"
    1 1 REGS NMIGRATE:DEFINE
    s" : NINL-PKG-LIT ( n -- n ) 3 * 7 + ;" 1 1 REGS NMIGRATE:DEFINE
+   s" ;package" EV
+   s" package NINL-PKG2 public" EV
+   s" : NINL-PKG-IN ( n -- n ) 9 * ;" 1 1 REGS NMIGRATE:DEFINE
+   s" ;package" EV ;
+
+\ A caller compiled INSIDE the package, naming its callee by the bare tail the
+\ open package resolves. The staging runs in that same scope, which is the whole
+\ point: the spelling is the one the body writes and the scope is the one the body
+\ is compiled in.
+: MIGRATE-PKG-INSIDE ( -- )
+   s" package NINL-PKG public" EV
+   s" NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-PKG-BARE ( n -- n ) NINL-PKG-IN ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING
    s" ;package" EV ;
 
 : MIGRATE-QUALIFIED ( -- )
@@ -743,19 +785,30 @@ variable ROWS-BEFORE
    s" : NINL-QUALIFIED ( n -- n ) NINL-PKG:NINL-PKG-IN ;"
    1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
-: MIGRATE-QUAL-WRONG ( -- )
-   s" NINL-PKG:NINL-PKG-LIT" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-QUAL-WRONG ( n -- n ) NINL-PKG:NINL-PKG-LIT ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+: STAGE-QUAL-WRONG ( -- )
+   s" NINL-PKG:NINL-PKG-LIT" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
+
+: STAGE-WRONG-PKG ( -- )
+   s" NINL-PKG2:NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
+
+: STAGE-BARE-TAIL ( -- )
+   s" NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
 
 : QUALIFIED-CASES ( -- )
-   s" a routine published inside a package is recorded under its bare tail"
+   s" a routine published inside a package is recorded under its own address"
    T-LABEL
    s" NINL-PKG:NINL-PKG-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
-   s" NINL-PKG:NINL-PKG-IN" ENTRY-OF s" NINL-PKG-IN" NINL:NAMED? TTRUE
-   s" NINL-PKG:NINL-PKG-IN" ENTRY-OF s" NINL-PKG:NINL-PKG-IN" NINL:NAMED? TFALSE
+   s" NINL-PKG2:NINL-PKG-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-PKG:NINL-PKG-IN" ENTRY-OF
+   s" NINL-PKG2:NINL-PKG-IN" ENTRY-OF T<>
 
-   s" and a caller outside the package, which can only name it qualified, copies"
+   s" a caller inside the package names it by the bare tail, and copies" T-LABEL
+   MIGRATE-PKG-INSIDE
+   s" NINL-PKG:NINL-PKG-BARE" BL-COUNT 0 T=
+   s" NINL-PKG:NINL-PKG-BARE" FRAME-COUNT 0 T=
+   s" 3 NINL-PKG:NINL-PKG-BARE" EV-N 96 T=
+
+   s" and a caller outside it, which can only name it qualified, copies too"
    T-LABEL
    MIGRATE-QUALIFIED
    s" NINL-QUALIFIED" BL-COUNT 0 T=
@@ -763,16 +816,53 @@ variable ROWS-BEFORE
    s" 3 NINL-QUALIFIED" EV-N 96 T=
    s" -7 NINL-QUALIFIED" EV-N  s" -7 NINL-ENGINE-COPIES" EV-N T=
 
-   s" while a qualified name for the package's OTHER routine is still refused"
-   T-LABEL
+   s" while a qualified name for the package's OTHER routine is refused" T-LABEL
    s" NINL-PKG:NINL-PKG-LIT" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
    s" NINL-PKG:NINL-PKG-LIT" ENTRY-OF NINL:IN@
    s" NINL-PKG:NINL-PKG-IN" ENTRY-OF NINL:IN@ T=
-   [: MIGRATE-QUAL-WRONG ;] E-NELAB-INLINE TTHROWSQ
+   [: STAGE-QUAL-WRONG ;] E-NMIGRATE-CALLEE TTHROWSQ
 
-   s" and both package routines still run" T-LABEL
+   s" and so is ANOTHER package's routine of the same tail, which is the case a
+      comparison of tails cannot decide"
+   T-LABEL
+   [: STAGE-WRONG-PKG ;] E-NMIGRATE-CALLEE TTHROWSQ
+
+   s" and so is the bare tail itself, named from outside the package that holds it"
+   T-LABEL
+   [: STAGE-BARE-TAIL ;] E-NMIGRATE-CALLEE TTHROWSQ
+
+   s" and all three package routines still run" T-LABEL
    s" 3 NINL-PKG:NINL-PKG-IN" EV-N 96 T=
-   s" 5 NINL-PKG:NINL-PKG-LIT" EV-N 22 T= ;
+   s" 5 NINL-PKG:NINL-PKG-LIT" EV-N 22 T=
+   s" 3 NINL-PKG2:NINL-PKG-IN" EV-N 27 T= ;
+
+\ ---- a list staged in one scope and spent in another ---------------------------
+\ Which word a bare spelling denotes is a question about a SCOPE, so the staging
+\ resolves it in the scope the staging runs in and the migration compiles the
+\ body in the scope the run runs in. Every caller there is stages and migrates in
+\ one word, so those are one scope - and the check rests on that, which is why
+\ the wordlists are recorded with the first row and held against the ones the run
+\ finds rather than assumed to be the same. Moving the scope in between is the
+\ one way to make the resolver's answer stale without changing the dictionary.
+: STAGE-THEN-MOVE ( -- )
+   s" NINL-EDGE-IN" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" package NINL-PKG public" EV
+   s" : NINL-SCOPE-MOVED ( n -- n ) NINL-EDGE-IN ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: SCOPE-CASES ( -- )
+   s" a list staged in one scope and spent in another is refused" T-LABEL
+   [: STAGE-THEN-MOVE ;] E-NMIGRATE-CALLEE TTHROWSQ
+   s" ;package" EV
+   s" NINL-SCOPE-MOVED" DEFINED? TFALSE
+   s" NINL-PKG:NINL-SCOPE-MOVED" DEFINED? TFALSE
+
+   s" and the row it staged is still the list's, so the run that spends it works"
+   T-LABEL
+   s" : NINL-AFTER-SCOPE ( n -- n ) NINL-EDGE-IN ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" 3 NINL-AFTER-SCOPE" EV-N 96 T=
+   s" NINL-AFTER-SCOPE" BL-COUNT 0 T= ;
 
 \ ---- what a copied body brings with it -----------------------------------------
 \ A copied body's loads and stores thread the CALLER's memory order, because
@@ -1100,21 +1190,11 @@ variable FILL-MARK
 variable FULL-ROWS
 variable DECLINED-BEFORE
 
-\ Every filler row carries a name of its own, derived from the address it is
-\ keyed to, so the fill cannot accidentally satisfy a name check anything else in
-\ this suite makes.
-: FILL-NAME$ ( n -- ptr u8 n )
-   {: entry:n :}
-   SB-RESET
-   s" NINL-FILL-" SB-APPEND
-   entry FMT:SB-U
-   SB$ ;
-
 : FILL-ONE ( n -- )
    {: entry:n :}
    1 1 NINL:STAGE-BEGIN
    1 NINL:STAGE-INT
-   entry FILL-NAME$ entry NINL:CLAIM
+   entry NINL:CLAIM
    NINL:COMMIT ;
 
 : FILL-TABLE ( -- )
@@ -1161,8 +1241,8 @@ variable DECLINED-BEFORE
    NINL:DECLINED {: d:n :}
    1 1 NINL:STAGE-BEGIN
    1 NINL:STAGE-INT
-   [: s" " A2 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
-   [: LONG-NAME$ A2 NINL:CLAIM ;] E-NINL-CAP TTHROWSQ
+   [: 0 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   [: -4 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
    NINL:DECLINED d T=
    NINL:CLAIMED? FLAG# 0 T=
    NINL:STAGE-CLEAR ;
@@ -1193,9 +1273,11 @@ variable RECLAIM-ENTRY
    1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 \ The freed row taken again, by a body small enough to be recorded. Its row is
-\ the index the reclamation gave back, which is what makes the name question
-\ below the sharp one: a table that gave the index back without giving the NAME
-\ column back would answer this row with the forgotten routine's name.
+\ the index the reclamation gave back, which is what makes the body question
+\ below the sharp one: a table that gave the index back without rewriting every
+\ column of it would answer this row with the forgotten routine's tokens. The two
+\ bodies differ in their literal - `2 +` here against the forgotten `1 +` - so
+\ the answer separates them rather than only their lengths.
 : MIGRATE-REUSER ( -- )
    s" : NINL-REUSER ( n -- n ) 2 + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
@@ -1213,10 +1295,10 @@ variable RECLAIM-ENTRY
    RECLAIM-ENTRY @ NINL:KNOWN? FLAG# 0 T=
    NINL:ROWS RECLAIM-ROWS @ T=
 
-   s" while every row below the cut is untouched, name and all" T-LABEL
+   s" while every row below the cut is untouched, tokens and all" T-LABEL
    A1 NINL:KNOWN? FLAG# 1 T=
    s" NINL-EDGE-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
-   s" NINL-EDGE-IN" ENTRY-OF s" NINL-EDGE-IN" NINL:NAMED? TTRUE
+   s" NINL-EDGE-IN" ENTRY-OF NINL:TOKENS 10 T=
 
    \ A mark is a prefix count, so a reclamation leaves one in exactly two states:
    \ the table still reaches it, or the cut fell below it. The second is refused
@@ -1250,9 +1332,11 @@ variable RECLAIM-ENTRY
    NINL:ROWS RECLAIM-ROWS @ 1 + T=
    s" NINL-REUSER" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
 
-   s" and it carries the new routine's name and not the forgotten one's" T-LABEL
-   s" NINL-REUSER" ENTRY-OF s" NINL-REUSER" NINL:NAMED? TTRUE
-   s" NINL-REUSER" ENTRY-OF s" NINL-GONE" NINL:NAMED? FLAG# 0 T=
+   s" and every column of it is the new routine's, not the forgotten one's"
+   T-LABEL
+   s" NINL-REUSER" ENTRY-OF NINL:TOKENS 2 T=
+   s" NINL-REUSER" ENTRY-OF 0 NINL:LIT@ 2 T=
+   s" NINL-REUSER" ENTRY-OF 1 NINL:SPELL$ s" +" STR= TTRUE
 
    s" and a caller of it copies the body it really holds" T-LABEL
    s" 5 NINL-REUSER" EV-N 7 T= ;
@@ -1288,7 +1372,6 @@ public
    T-RESET
    NINL:MARK ROW-MARK !
    FENCE
-   LONG-NAME-FILL
    TABLE-CASES
    MARK-CASES
    RULE-CASES
@@ -1308,9 +1391,13 @@ public
    MIGRATE-SELF
    BODY-REFUSAL-CASES
    KEY-CASES
-   NAME-GRAMMAR-CASES
+   MIGRATE-TWICE-FIRST
+   MIGRATE-TWICE-AGAIN
+   STALE-CASES
+   SPELLING-CASES
    MIGRATE-PKG-CALLEES
    QUALIFIED-CASES
+   SCOPE-CASES
    DEFINE-CELL
    MIGRATE-LOAD
    MIGRATE-USE-LOAD

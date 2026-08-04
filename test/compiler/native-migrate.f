@@ -324,29 +324,43 @@ variable OLD-LEN
    s" 0 NMG-LN" EV-N 0 T= ;
 
 \ ---- what a call to another word refuses -------------------------------------
-\ Each of these is a callee statement the chain cannot turn into a branch, and
-\ each is refused by the authority that owns the fact - not one code for "the
-\ call is wrong". They are run through the production entry, on real source, so
-\ what is measured is the path a program takes.
+\ A callee is stated as a spelling and an address, and those are ONE fact: the
+\ caller got the address by resolving the spelling, and the body reaches the
+\ routine by writing it. So the first four cases below are all one statement
+\ contradicting itself - a spelling whose word does not begin where the address
+\ says - and the migration entry refuses every one of them by its own name, at
+\ the moment they are staged, before the engine has compiled anything at all.
 \
-\   the null address        no code lives there, and the word model says so
-\   an address that is not  no instruction begins there, and the machine dialect
-\     four-byte aligned     says so
-\   an address out of reach a Bl carries a 26-bit displacement, and the emitter
-\                           says so - the encoder masks that field rather than
-\                           bounding it, so a target too far away would silently
-\                           become a branch somewhere else
-\   more arguments than     the vector cannot hand over values it does not hold,
-\     the caller holds      and the elaborator says so
+\   the null address        no word begins at zero
+\   an address that is not  no word begins in the middle of an instruction
+\     four-byte aligned
+\   an address out of reach nothing this process published lives 256 MiB from
+\                           the routine that would branch to it
+\   a spelling that no      there is no word to have an address, and no second
+\     lookup answers        authority to prefer
 \
-\ AND EVERY ONE OF THEM LEAVES THE WORD THE ENGINE PUBLISHED RUNNING, which the
-\ last case measures: the definitions are compiled by the engine before the chain
-\ refuses them, so a refusal that had already written something would show up as
-\ a word that no longer answers.
-\ Each case gets a definition of its own, because the engine PUBLISHES the word
-\ before the chain refuses it - that is the state a refusal has to leave working
-\ - so a second case reusing the name would be a duplicate definition rather than
-\ a second measurement.
+\ WHAT THE THREE ADDRESS SHAPES USED TO REACH, AND WHERE EACH IS PROVED NOW. A
+\ caller could once state any number, so these three cases carried the refusals of
+\ the three stages that would have met one: the word model's E-HIR-CALLEE, the
+\ machine dialect's E-A64IR-ENTRY and the emitter's E-A64EMIT-REACH. Those stages
+\ still refuse, and no production path can reach them any more, because a resolved
+\ address is a real code address of this process by construction. The word model's
+\ refusal is proved directly in test/compiler/native-hir.f, and the dialect's - a
+\ null and an unaligned entry - in test/compiler/native-a64ir.f, where the reach
+\ bound's own predicate is pinned at its exact edge as well. Restoring an
+\ end-to-end assertion of the emitter's reach refusal, which now needs a module
+\ built for it rather than a migration, is dot habu-reach-the-emitter-e23caccb.
+\
+\ AND NONE OF THEM PUBLISHES A WORD AT ALL, which the cases measure: the refusal
+\ is a whole migration earlier than it was, so the definition that would have used
+\ the staged callee is never handed to the engine. Each case keeps a name of its
+\ own so that measurement is one assertion per case rather than one for all four.
+\
+\ THE ARITY HALF IS STILL THE CALLER'S TO GET WRONG, and the last two cases are
+\ that half: what a call site publishes is the arity it was told, and a site told
+\ to publish more than the caller holds has nothing to publish. Those two run the
+\ whole migration, so the word IS published by the engine before the chain refuses
+\ it - the state a refusal has to leave working.
 $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 26-bit field
 
 : MIGRATE-NULL-ENTRY ( -- )
@@ -360,6 +374,13 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
 : MIGRATE-FAR-ENTRY ( -- )
    s" NMG-DBL" DBL-ENTRY FAR-ENOUGH + 1 1 NMIGRATE:CALLEE
    s" : NMG-B3 ( n -- n ) NMG-DBL 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+\ A spelling nothing in this image carries, stated against a real address. It is
+\ the other half of the same rule: an address is only a callee's when a spelling
+\ says so, and a spelling that says nothing leaves the address unclaimed.
+: MIGRATE-NO-SUCH-CALLEE ( -- )
+   s" NMG-NOBODY" DBL-ENTRY 1 1 NMIGRATE:CALLEE
+   s" : NMG-B6 ( n -- n ) NMG-NOBODY 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 \ A body the checker certifies, whose callee is STATED to take two values where
 \ the compile-time vector holds one. It is the arity half of the same statement:
@@ -391,14 +412,25 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    s" : NMG-B5 ( n n -- n ) NMG-DBL + ;" 2 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : CALL-REFUSAL-CASES ( -- )
-   s" a callee at the null address is refused by the word model" T-LABEL
-   [: MIGRATE-NULL-ENTRY ;] E-HIR-CALLEE TTHROWSQ
+   s" a callee stated at the null address is not the word the spelling names"
+   T-LABEL
+   [: MIGRATE-NULL-ENTRY ;] E-NMIGRATE-CALLEE TTHROWSQ
 
-   s" a callee address that is no instruction is refused by the dialect" T-LABEL
-   [: MIGRATE-ODD-ENTRY ;] E-A64IR-ENTRY TTHROWSQ
+   s" nor is one stated in the middle of that word's first instruction" T-LABEL
+   [: MIGRATE-ODD-ENTRY ;] E-NMIGRATE-CALLEE TTHROWSQ
 
-   s" a callee out of the branch's reach is refused by the emitter" T-LABEL
-   [: MIGRATE-FAR-ENTRY ;] E-A64EMIT-REACH TTHROWSQ
+   s" nor is one stated a quarter of a gigabyte away from it" T-LABEL
+   [: MIGRATE-FAR-ENTRY ;] E-NMIGRATE-CALLEE TTHROWSQ
+
+   s" and a spelling no lookup answers leaves a real address unclaimed" T-LABEL
+   [: MIGRATE-NO-SUCH-CALLEE ;] E-NMIGRATE-CALLEE TTHROWSQ
+
+   s" every one of them is refused before the engine compiles the caller"
+   T-LABEL
+   s" NMG-B1" DEFINED? TFALSE
+   s" NMG-B2" DEFINED? TFALSE
+   s" NMG-B3" DEFINED? TFALSE
+   s" NMG-B6" DEFINED? TFALSE
 
    s" a call site told to publish more than the caller holds is refused" T-LABEL
    DEFINE-ENGINE-DBL
@@ -407,17 +439,9 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    s" and an effect that is not the one the callee recorded is refused" T-LABEL
    [: MIGRATE-WRONG-ARITY ;] E-NELAB-INLINE TTHROWSQ
 
-   s" a callee the word model refuses is refused before the engine compiles"
-   T-LABEL
-   s" NMG-B1" DEFINED? TFALSE
-
-   s" every word the engine did publish still runs its own code" T-LABEL
-   s" 5 NMG-B2" EV-N 11 T=
-   s" 5 NMG-B3" EV-N 11 T=
+   s" while the words those two DID publish still run their own code" T-LABEL
    s" 5 NMG-B4" EV-N 10 T=
    s" 3 5 NMG-B5" EV-N 13 T=
-   s" NMG-B2" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
-   s" NMG-B3" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
    s" NMG-B4" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
    s" NMG-B5" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
 

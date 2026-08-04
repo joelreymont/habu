@@ -10,6 +10,39 @@ with all falsification detail is archived in `docs/archive/lessons-2026h1.md`
 and in git history. One tight bullet per lesson; add a section only if none
 fits.
 
+- **`XREF-FIND` is not the engine's resolver: it sends a BARE token to the global
+  wordlist.** `src/habu/xref.f` XREF-FIND resolves `PKG:TAIL` through the
+  namespace record, but an unqualified token goes to wid 0 only — it does not
+  walk the open package. The engine's own lookup (`src/habu/habu1.f` EMIT-FIND)
+  tries the open package's PRIVATE wordlist, then its PUBLIC one, then wid 0,
+  then the used publics. The two agree only at global scope, which is where
+  every comment claiming XREF-FIND "is the engine's own resolver" was written.
+  Probed directly: a public `PW` in an open `package PX` answers found for
+  `s" PX:PW" XREF-FIND` and NOT found for `s" PW" XREF-FIND`. Building the
+  staged-callee check on XREF-FIND would have refused three shipped tools —
+  `tools/codegen-compare-migrated{2,3,4}.f` stage a BARE `-N` spelling while
+  `package CODEGEN-CORPUS{2,3,4}` is open — so the check walks the engine's own
+  order instead (`src/compiler/native/migrate.f` SPELL-START). `search-wl` is
+  the right primitive for one leg of it: it is the engine's own scan and case
+  fold, and it answers the record's slot 0, which IS the code start XREF-START
+  reads.
+- **Two facts a caller states about one thing are one fact, and the fix is to
+  derive one from the other where they arrive together.** `NMIGRATE:CALLEE` took
+  a callee's spelling and its entry address and cross-checked neither; every
+  caller had obtained the address by resolving that spelling. Downstream checks
+  could not close it — the recorded-body name check in
+  `src/compiler/native/elaborate.f` reduced a qualified spelling to its bare tail
+  and so could not tell `PKG-A:FOO` from `PKG-B:FOO`, and it was not reached at
+  all for an address with no recorded row while the emitted CALL still branched
+  there. Measured on the pre-change tree: a caller written as `HOLE-B:HOLE-IN`
+  compiled at `HOLE-A:HOLE-IN`'s address, migrated with rc 0, and answered 96
+  where its own callee answers 27. Once the address is resolved from the
+  spelling at the staging seam, the row's own name column stops doing work — it
+  can only repeat the dictionary, and where it disagreed it was WRONG, because
+  `EXPORT` publishes a second record over one routine's code and an alias names
+  that routine as truly as its first name does. Net effect of the guard: the
+  name column, `NAMED?`, `BARE-NAME$` and their buffers deleted, 91 lines out of
+  the two files that held them.
 - **A memoized entry point hides the scan under it from every behavioural test.**
   Replacing `SCAN-USIGS-SYM` in `src/core/checker.f` with an indexed answer, the
   order-pinning cases went through `SIG-MIN-IN` — the real entry point — and

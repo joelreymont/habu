@@ -56,21 +56,22 @@
 \ order, and the second is what stops it depending on migration HISTORY - on how
 \ many times a program forgot and re-migrated before this one.
 \
-\ AND THE NAME IS RECORDED BESIDE IT, BECAUSE THE KEY IS A CLAIM AND NOT A
-\ LOOKUP. A call site does not search for its row: it STATES an address, taken
-\ from what its own migration declared about the callee
+\ AND THE ROW HOLDS NO NAME, BECAUSE THE ADDRESS A CALLER STATES IS ALREADY THE
+\ NAME'S OWN ANSWER. A call site does not search for its row: it STATES an
+\ address, taken from what its own migration declared about the callee
 \ (src/compiler/native/migrate.f's CALLEE), and reads whatever row is keyed
-\ there. An address one routine out therefore lands on a real row, and the only
-\ other thing held against it is the arity - which agrees by coincidence all the
-\ time, because `( n n -- n )` helpers are everywhere. So the row remembers the
-\ name the publication really gave the routine, and NAMED? holds it against the
-\ name the caller wrote at the call site. A disagreement is the caller's
-\ declaration and the publication disagreeing about what lives at an address -
-\ the CALL that would be emitted instead branches to that same wrong address, so
-\ neither answer is usable - and it is refused by name, exactly as a
-\ disagreement about the arity is. The comparison is case-insensitive because a
-\ dictionary name is the same name in either case: a body that writes `foo` for
-\ a routine published as `FOO` names one word, not two.
+\ there. That statement used to be free, so an address one routine out landed on
+\ a real row and only the arity was held against it - which agrees by coincidence
+\ all the time, because `( n n -- n )` helpers are everywhere - and the row
+\ carried the published name so that the two could be told apart. It is not free
+\ any more: RESOLVES-TO-ENTRY refuses a staged address that is not where the
+\ staged spelling's own word begins, so the address a row is read by is the
+\ dictionary's answer for the name the site wrote. A recorded name held against
+\ that spelling could then only repeat the dictionary, and where it did NOT it
+\ was wrong: `EXPORT` publishes a second record over one routine's code, so an
+\ alias names that routine as truly as its first name does and a name comparison
+\ would refuse a legal copy. What remains held against the row is the ARITY,
+\ which is still the caller's own statement and not yet anybody else's answer.
 \
 \ WHICH BODIES ARE RECORDED, AND BOTH HALVES OF THE RULE ARE DERIVED.
 \
@@ -225,16 +226,6 @@ private
 \ it is staged rather than truncated into a name that means something else.
 24 constant SPELL-MAX
 
-\ The longest name a row remembers the published routine by. It is the whole
-\ chain's ceiling on a name and not this file's alone -
-\ src/compiler/native/migrate.f takes its own from here, and
-\ src/compiler/native/elaborate.f sizes the buffer it reads a call site's
-\ spelling into from it - so the name a migration keeps, the name a row records
-\ and the name a call site is held against are one length. Two ceilings that
-\ happened to be the same number would let one stage hold a name another stage
-\ truncates, and a truncated name is a name that means another word.
-64 constant NAME-MAX
-
 ROWS-MAX BODY-MAX * constant SLOTS-MAX
 
 create R-ENTRY ROWS-MAX cells allot
@@ -245,10 +236,8 @@ SLOTS-MAX TYPED-BUFFER R-KIND NTAPE:kind
 create R-LIT SLOTS-MAX cells allot
 create R-SLEN SLOTS-MAX cells allot
 create R-SPELL SLOTS-MAX SPELL-MAX * allot
-create R-NAME ROWS-MAX NAME-MAX * allot
 
 here CELL 1- and CELL swap - CELL 1- and allot
-create R-NLEN ROWS-MAX cells allot
 variable ROWS-N
 0 ROWS-N !
 
@@ -265,7 +254,6 @@ BODY-MAX TYPED-BUFFER S-KIND NTAPE:kind
 create S-LIT BODY-MAX cells allot
 create S-SLEN BODY-MAX cells allot
 create S-SPELL BODY-MAX SPELL-MAX * allot
-create S-NAME NAME-MAX allot
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable S-OPEN
@@ -273,17 +261,15 @@ variable S-N
 variable S-IN
 variable S-OUT
 
-\ The claim: the address this staging is to be keyed to, the name the routine
-\ there is being published under, and the row that will hold both. All of them
-\ are answered by CLAIM, before the routine is published, so that the commit
-\ which runs after the publication has nothing left to decide. The NAME is a
-\ claim's business and not the staging's for the same reason the address is:
-\ both describe the ROUTINE, and which routine a staged body turned out to be is
-\ settled by the publication it is claimed against, not by the tokens.
+\ The claim: the address this staging is to be keyed to, and the row that will
+\ hold it. Both are answered by CLAIM, before the routine is published, so that
+\ the commit which runs after the publication has nothing left to decide. The
+\ ADDRESS is a claim's business and not the staging's, because it describes the
+\ ROUTINE: which routine a staged body turned out to be is settled by the
+\ publication it is claimed against, not by the tokens.
 variable S-CLAIM
 variable S-ENTRY
 variable S-ROW
-variable S-NLEN
 0 S-OPEN !
 0 S-CLAIM !
 
@@ -334,9 +320,6 @@ variable S-NLEN
 : R-SPELL-AT ( n -- ptr u8 )
    SPELL-MAX * R-SPELL + ;
 
-: R-NAME-AT ( n -- ptr u8 )
-   NAME-MAX * R-NAME + ;
-
 \ ---- giving back the rows of code that was reclaimed --------------------------
 \ The first row at or above this address, or the end of the table. What makes
 \ this one number the whole answer is that the live table is in publication
@@ -368,8 +351,8 @@ variable S-NLEN
 \ suffix is what keeps a MARK meaning what it meant - a mark is a prefix count,
 \ and a prefix of a prefix is the same prefix - and it is why no column has to be
 \ carried anywhere: the rows below the cut are untouched, and COMMIT writes every
-\ column of the row it fills, the name among them, so a reused slot cannot show
-\ a previous body's name.
+\ column of the row it fills, so a reused slot cannot show a previous body's
+\ tokens.
 : DROP-FROM ( n -- )
    {: floor:n :}
    floor FLOOR-ROW {: k:n :}
@@ -377,10 +360,6 @@ variable S-NLEN
    k ROWS-N ! ;
 
 public
-
-\ The chain's one ceiling on a name, published so that every stage that holds or
-\ reads one takes it from here.
-EXPORT NAME-MAX
 
 \ ---- what the size rule is ---------------------------------------------------
 \ How many instructions one side of a call to a routine of this arity is: the
@@ -503,37 +482,33 @@ EXPORT NAME-MAX
    ROWS-N @ ROWS-MAX < ;
 
 \ Claim the row this staging is to become: the address the routine is about to be
-\ published at, and the name it is about to be published under. Everything that
-\ can refuse refuses here, before the publication, and the head of this file
-\ argues why every one of these questions belongs on this side of it.
+\ published at. Everything that can refuse refuses here, before the publication,
+\ and the head of this file argues why every one of these questions belongs on
+\ this side of it.
 \
-\ ALL BUT ONE ARE REFUSALS AND THE LAST IS A DECLINE. An address that is not one,
-\ and a name that is not one, are this file's caller getting the protocol wrong;
-\ a second row for one address is refused rather than replacing a body some
-\ caller has already copied - it cannot be reached through the publication seam,
-\ which never claims a code slot twice, and it is held here because that is a
-\ property of another file and a rule callers rest on should fail closed where it
-\ is used. A full table is none of those: the migration is sound, the word will
-\ publish, and only the row is given up.
+\ ALL BUT ONE ARE REFUSALS AND THE LAST IS A DECLINE. An address that is not one
+\ is this file's caller getting the protocol wrong; a second row for one address
+\ is refused rather than replacing a body some caller has already copied - it
+\ cannot be reached through the publication seam, which never claims a code slot
+\ twice, and it is held here because that is a property of another file and a
+\ rule callers rest on should fail closed where it is used. A full table is
+\ neither: the migration is sound, the word will publish, and only the row is
+\ given up.
 \
-\ THE NAME IS VALIDATED BEFORE THE TABLE IS ASKED FOR ROOM, so a malformed claim
-\ is refused whether or not there was anywhere to put it. A decline that swallowed
-\ a protocol error would make the caller's bug appear and disappear with the
-\ table's fill level.
-: CLAIM ( ptr u8 n n -- )
-   {: a u:n entry:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+\ THE ADDRESS IS VALIDATED BEFORE THE TABLE IS ASKED FOR ROOM, so a malformed
+\ claim is refused whether or not there was anywhere to put it. A decline that
+\ swallowed a protocol error would make the caller's bug appear and disappear
+\ with the table's fill level.
+: CLAIM ( n -- )
+   {: entry:n :}
    S-OPEN-CK
    entry 0 <= if E-NINL-STATE throw then
-   u 1 < if E-NINL-STATE throw then
-   u NAME-MAX > if E-NINL-CAP throw then
    entry ROW-OF 0 >= if E-NINL-DUP throw then
    ROOM? 0= if
       1 DECLINED-N +!
       STAGE-CLEAR exit
    then
    entry S-ENTRY !
-   a S-NAME u STR-LEN BYTE-COPY-LEN
-   u S-NLEN !
    ROWS-N @ S-ROW !
    1 S-CLAIM ! ;
 
@@ -544,18 +519,16 @@ EXPORT NAME-MAX
    S-CLAIM @ 0<> ;
 
 \ Write the row the claim reserved. This runs on the far side of the publication,
-\ where a refusal cannot be acted on, so it decides nothing: the address, the
-\ name and the row are the claim's answers, and none of them can have changed
-\ since - the table grows only here, and a commit is only reached through a
-\ claim, of which one staging admits exactly one. What is left is the protocol
-\ itself, which fails closed: a commit with no claim behind it is refused rather
-\ than writing a row nobody asked for.
+\ where a refusal cannot be acted on, so it decides nothing: the address and the
+\ row are the claim's answers, and neither can have changed since - the table
+\ grows only here, and a commit is only reached through a claim, of which one
+\ staging admits exactly one. What is left is the protocol itself, which fails
+\ closed: a commit with no claim behind it is refused rather than writing a row
+\ nobody asked for.
 : COMMIT ( -- )
    CLAIM-CK
    S-ROW @ {: l:n :}
    S-ENTRY @ l cells R-ENTRY + !
-   S-NAME  l R-NAME-AT  S-NLEN @ STR-LEN BYTE-COPY-LEN
-   S-NLEN @ l cells R-NLEN + !
    S-IN @ l cells R-IN + !
    S-OUT @ l cells R-OUT + !
    S-N @ l cells R-N + !
@@ -575,17 +548,6 @@ EXPORT NAME-MAX
 \ Does this file hold the body of the routine at this address?
 : KNOWN? ( n -- bool )
    ROW-OF 0 >= ;
-
-\ Is the routine recorded at this address the one the caller names? The key a
-\ caller reads a row by is an address it STATED, so a row of the right arity at
-\ the wrong address answers every other question here exactly as the right one
-\ would; this is the question that tells the two apart. It is asked of an
-\ address that has a row - an address with none is refused by name, as IN@ and
-\ OUT@ are - because "no row" is already the call site's answer to call.
-: NAMED? ( n ptr u8 n -- bool )
-   {: entry:n a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   entry ROW-CK {: l:n :}
-   l R-NAME-AT  l cells R-NLEN + @  a u STR=CI ;
 
 : IN@ ( n -- n )
    ROW-CK cells R-IN + @ ;
