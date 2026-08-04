@@ -1,14 +1,16 @@
 ---
 title: Reconcile stale jj workspaces
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-03T16:35:17.983816+02:00"
 ---
 
+Claim: agent=cleanup-audit workspace=.jj-ws/habu-reconcile-stale-jj-015594c8
+
 Why: merged and abandoned lanes were not consistently cleaned. The 2026-08-03 snapshot found 479 `.jj-ws` entries and 491 registered workspaces; the 2026-08-04 snapshot finds 481 and 493. Result: perform one safe census pass over every registered or on-disk workspace. For each workspace, record its tip, parent, owning dot, and commits not reachable from master. Forget the workspace and trash its directory only when every change is already on master or explicitly abandoned or superseded. Retain unique valid work and record its exact commit under the owning dot; do not merge product work in this cleanup. Remove missing-directory registrations only after recording their tips.
 
-Current cleanup ledger: retain `.jj-ws/habu-speed-up-scalar-8f5563d2` until its work is merged or explicitly abandoned. Retain `/tmp/habu-sha256-bench.f`, `/tmp/habu-sha256-bench64.f`, `/tmp/habu-sha256-profile.f`, and `/tmp/habu-sha64.bin` only while the SHA lane needs them. At each successful landing or abandonment, immediately forget the workspace, trash its directory and lane-private temporary artifacts, and verify both the registry and default workspace are clean. Before each push or session handoff and after each feature wave, reconcile the registry, `.jj-ws/`, lane-private temporary artifacts, and this ledger. Record newly discovered cleanup obligations here instead of creating another cleanup tracker.
+Current cleanup ledger: retain `.jj-ws/habu-speed-up-scalar-8f5563d2` until its work is merged or explicitly abandoned. Retain `/tmp/habu-sha256-bench.f`, `/tmp/habu-sha256-bench64.f`, `/tmp/habu-sha256-profile.f`, and `/tmp/habu-sha64.bin` only while the SHA lane needs them. Reconcile the 4,438 other top-level `/tmp/habu-*` entries (20 GiB measured on 2026-08-04); trash every entry not actively owned or preserving unique uncommitted work. At each successful landing or abandonment, immediately forget the workspace, trash its directory and lane-private temporary artifacts, and verify both the registry and default workspace are clean. Before each push or session handoff and after each feature wave, reconcile the registry, `.jj-ws/`, lane-private temporary artifacts, and this ledger. Record newly discovered cleanup obligations here instead of creating another cleanup tracker.
 
 The 2026-08-04 safe pass forgot 68 registrations and trashed 70 directories. It retained 388 histories without sufficient deletion proof, 19 missing-root registrations with unique tips (`codex-enum-family-a51-1784840741@0f10e08f0736`, `codex-enum-family-mut-1784840741@b607d604ea80`, `diag-r3-2o8nt2@86176bcafb6a`, `enum-review-04e-1881772@249dd25d7efb`, `enumcert-baseline-20260722@33185e5248a4`, `fp-review-kbfkg7@d13a1d80f4ed`, `habu-bind-mut-swap@ad709fa05d84`, `hist-habu-a51-review.4gpEb9@5dabc4e58fe0`, `qbt-accepted-lint@2a374969cb62`, `qbt-accepted-lint2@ebbcb0fc0828`, `qbt-base@f56c603d73cc`, `review-atomic-tip-e22@51a25a1d9305`, `review-habu-wstore-u32-review.n10afL@da6c3a134223`, `review-model-types-661384@ddf8da8117b5`, `review-pubsig-97642e1c@9982f5372542`, `review-pubsig-parent-049518c@1f827b7bc9e1`, `review-wstore-u32-mut-1785278674298@f863fb8d92ef`, `ws-42d0f41d@848832b1ee24`, `ws-82251e59@f0669931a0af`), unique package-family commit `ff823ddb5efa`, and six unregistered `review-model-config-r3-mut-{float,global,private,public,ready,role}` directories. Reassess these retained items in later safe passes; preserve them until their commits are proved landed, abandoned, superseded, or separately owned.
 
