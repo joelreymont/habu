@@ -4636,3 +4636,27 @@ own table would have tested a copy. What worked is two marks over the real state
 and a fence word plus `HIDE-DEFS-FROM` for the dictionary. Running the suite twice
 in one process is then the assertion itself, and removing either half turns it red
 - the row half with E-NINL-DUP, the dictionary half with a duplicate definition.
+
+## Sweep the variable, and keep one arm that cannot have the effect
+
+Two publications of one body measured 18 to 35 per cent apart, and four candidate
+mechanisms fitted the pair equally well - line straddling, fetch window, page
+crossing, call-site alignment. A pair cannot tell them apart because a pair moves
+every address at once. What told them apart was a sweep with each variable pinned
+in turn (`tools/codegen-align-sweep.f`), plus two arms per position so the
+disagreement between arms at the SAME position is a measured floor rather than an
+assumption, plus a control arm built to be immune: the same body, the same byte
+count, the same name, the same driver - branches removed. The control was the
+whole answer. Every front-end explanation predicts it behaves like the others; it
+went flat, which refuted all of them at once and left the branches as the only
+survivor. Build the arm that must show nothing if your hypothesis is wrong.
+
+## A per-call figure without its prediction regime is not comparable
+
+Two committed tools disagreed 3.8x about one routine, and neither was broken:
+`tools/codegen-compare.f` feeds a branchy word the SAME byte every iteration, so
+its branches never mispredict, while the workload feeds it pseudo-random data. A
+routine's cost with predicted branches and its cost on real data are different
+quantities, and a table that prints one as "ns/call" invites the other to be
+subtracted from it. When a microbenchmark drives a body with control flow, the
+input distribution is part of the measurement and belongs in the report.
