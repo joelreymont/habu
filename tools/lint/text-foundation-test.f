@@ -953,8 +953,48 @@ variable REG-I
    largesourceu largesize ASSERT=
    largesource largesourceu s" LABEL@" LINT-CONTAINS? ASSERT ;
 
+\ CMP-CI is an ORDER, and a caller only gets to replace a scan with a binary
+\ search if it is a total one whose 0 answer is exactly LINT-STR=CI's true. The
+\ three laws are checked directly: sign, antisymmetry, and agreement with the
+\ equality the scan used - including the case where one name is a prefix of the
+\ other, which is where a compare that only walked the shared bytes would call
+\ two different names equal.
+: CMP-SIGN ( n -- n )
+   dup 0 < if drop -1 exit then
+   0 > if 1 exit then
+   0 ;
+
+: BOOL>N ( bool -- n )
+   IF 1 ELSE 0 THEN ;
+
+: ASSERT-CMP ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n b:ptr v:n want:n :}
+   a u b v LINT-ORDER:CMP-CI CMP-SIGN want ASSERT=
+   b v a u LINT-ORDER:CMP-CI CMP-SIGN 0 want - ASSERT=          \ antisymmetric
+   a u b v LINT-STR=CI BOOL>N  want 0= BOOL>N  ASSERT= ;        \ 0 iff LINT-STR=CI
+
+: TEST-CMP-CI ( -- )
+   s" abc" s" abd" -1 ASSERT-CMP
+   s" abd" s" abc" 1 ASSERT-CMP
+   s" abc" s" abc" 0 ASSERT-CMP
+   s" ABC" s" abc" 0 ASSERT-CMP                                 \ folded, like the dictionary
+   s" aBc" s" AbC" 0 ASSERT-CMP
+   s" ab" s" abc" -1 ASSERT-CMP                                 \ prefix sorts first
+   s" abc" s" ab" 1 ASSERT-CMP
+   s" " s" " 0 ASSERT-CMP
+   s" " s" a" -1 ASSERT-CMP
+   s" RAW>NODE" s" RAW>SLOT" -1 ASSERT-CMP                      \ real mint names
+   s" MINT-ROW" s" MINT-PATH" 1 ASSERT-CMP
+   s" raw>node" s" RAW>NODE" 0 ASSERT-CMP ;
+
+: TEST-CMP-CI-TRANSITIVE ( -- )                                 \ a<b and b<c imply a<c
+   s" MINT-BYTE-LEN" s" MINT-CELL-OFF" -1 ASSERT-CMP
+   s" MINT-CELL-OFF" s" MINT-INDEX" -1 ASSERT-CMP
+   s" MINT-BYTE-LEN" s" MINT-INDEX" -1 ASSERT-CMP ;
+
 : RUN  ( -- )
    1 TEST-N !
+   TEST-CMP-CI
+   TEST-CMP-CI-TRANSITIVE
    INIT-FIXTURES
    TEST-STRINGS
    TEST-SCANNERS

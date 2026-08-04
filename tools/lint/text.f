@@ -239,6 +239,31 @@ public
       1+
    repeat drop LINT-TRUE ;
 
+\ A total order on case-folded names, so a tool holding a fixed name set can keep
+\ it sorted and reach it by binary search instead of scanning it. Kept apart from
+\ the equality helpers above because ordering is the whole of this module's job:
+\ CMP-CI answers 0 on exactly the pairs LINT-STR=CI calls equal, which is what
+\ makes a search over the sorted set agree with a scan that used LINT-STR=CI.
+package LINT-ORDER
+
+public
+
+: CMP-CI ( ptr u8 n ptr u8 n -- n )   \ <0 a before b, 0 equal folded, >0 a after
+   {: a:ptr u:n b:ptr v:n :}
+   u v < IF u ELSE v THEN {: m:n :}
+   0 begin dup m < while
+      dup a + c@ LINT-FOLD
+      over b + c@ LINT-FOLD
+      2dup < IF 2drop drop -1 exit THEN
+      > IF drop 1 exit THEN
+      1+
+   repeat drop
+   u v < IF -1 exit THEN
+   u v > IF 1 exit THEN
+   0 ;
+
+;package
+
 : FOLD-TO ( ptr u8 n ptr u8 -- ) {: a:ptr u dst:ptr :}
    0 begin dup u < while  dup a + c@ LINT-FOLD  over dst + c!  1+  repeat  drop ;
 

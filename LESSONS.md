@@ -5081,3 +5081,28 @@ alone, from both sides.
 FCSEL-COUNT and BCOND-COUNT were both unchanged by the float fusion; its witness
 is CSET-COUNT going 1 to 0 - the flag materialisation the fusion removes. Pin
 the counter that moves, or the assertion certifies the wrong thing.
+
+## A case chain read inside a per-item loop is a quadratic waiting for growth
+
+A Forth `case` chain is a linear scan, so using one as a TABLE READ inside a
+per-token loop makes cost quadratic in the table size - and the table grows with
+the project (refine-lint asked "is this token seed k?" per (token, seed) pair,
+re-deriving both operands each time: 16.5s where its peers cost 2s). Cache the
+table once at load, order it, and ask one search per item. The same shape was
+found in tools/lint/def.f the same day (dot habu-idx-def-f-220d64e8).
+
+## Explain the outlier before deriving the budget
+
+A flake budget derived around an unexplained cost enshrines the defect. Here
+~14.5s of the 16.5s entry was avoidable; removing it gave the original budget 5x
+headroom before any budget arithmetic. Measure the lex-only floor first - it
+says what "peer class" numerically is (1.9s of the remaining 3.5s is reading and
+lexing 1419 files).
+
+## A fixture that resets to clear a deliberate failure erases its own assertions
+
+TIMEOUT-VERDICT drove the real verdict word with an unmeetable budget, then
+T-RESET to clear the deliberate failure - which also erased the case's own
+assertions, so two mutations printed a mismatch yet the suite exited 0.
+Snapshot, reset, then judge - and prove the fixture with a mutation, because
+this failure mode is a green suite that prints a mismatch.

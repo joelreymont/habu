@@ -77,7 +77,64 @@ create RAW-NAME-BUF 64 allot
    ESC-CONTENT$ RFL:COUNT-STR 0 T=                \ S\" escaped-string bodies too
    s" MY-ROWS-REFINE drop" RFL:COUNT-STR 0 T=          \ whole-token matching only
    s" ROWS-REFINED drop" RFL:COUNT-STR 0 T=
-   s" :ROWS-REFINE drop" RFL:COUNT-STR 0 T= ;          \ edge colon is not a qualifier
+   s" :ROWS-REFINE drop" RFL:COUNT-STR 0 T=            \ edge colon is not a qualifier
+   s" ROWS-REFINE: drop" RFL:COUNT-STR 0 T=            \ nor is a trailing one
+   s" MAKI:ROWS-REFINE-X drop" RFL:COUNT-STR 0 T= ;    \ the qualified tail must be whole
+
+\ The reference forms the confinement scan recognises, written out per seed. A
+\ scan that resolves a token by name has to answer for every name in the list,
+\ not for the handful DETECT spells out: a lookup that mislays part of the list
+\ still reports 0 findings on a clean tree, and this is what would notice.
+: BARE-REF$ ( n -- ptr u8 n ) {: k:n :}
+   SB-RESET
+   k RFL:TOKEN-SEED$ SB-APPEND
+   s"  drop" SB-APPEND
+   SB$ ;
+
+: QUALIFIED-REF$ ( n -- ptr u8 n ) {: k:n :}
+   SB-RESET
+   s" MAKI:" SB-APPEND
+   k RFL:TOKEN-SEED$ SB-APPEND
+   s"  drop" SB-APPEND
+   SB$ ;
+
+: DEEP-REF$ ( n -- ptr u8 n ) {: k:n :}         \ more than one qualifier segment
+   SB-RESET
+   s" MAKI:SUB:" SB-APPEND
+   k RFL:TOKEN-SEED$ SB-APPEND
+   s"  drop" SB-APPEND
+   SB$ ;
+
+: SEED-SWEEP ( -- )
+   0 begin dup RFL:TOKEN-SEED-COUNT < while
+      dup BARE-REF$ RFL:COUNT-STR 1 T=
+      dup QUALIFIED-REF$ RFL:COUNT-STR 1 T=
+      dup DEEP-REF$ RFL:COUNT-STR 1 T=
+      1+
+   repeat drop ;
+
+\ Two properties the scan's name resolution rests on, checked here against the
+\ seed list itself rather than trusted: a name carrying a `:` would break the
+\ split that separates a package qualifier from the mint it names, and two seeds
+\ sharing a name would make confinement ambiguous - the same reference would sit
+\ inside one owner and outside the other.
+: SEEDS-DIFFER ( n n -- ) {: a:n b:n :}
+   a RFL:TOKEN-SEED$ b RFL:TOKEN-SEED$ LINT-STR=CI TFALSE ;
+
+: SEED-NAMES-DISTINCT ( -- )
+   0 begin dup RFL:TOKEN-SEED-COUNT < while
+      dup 1+ begin dup RFL:TOKEN-SEED-COUNT < while
+         2dup SEEDS-DIFFER
+         1+
+      repeat drop
+      1+
+   repeat drop ;
+
+: SEED-NAMES-COLON-FREE ( -- )
+   0 begin dup RFL:TOKEN-SEED-COUNT < while
+      dup RFL:TOKEN-SEED$ [char] : LINT-COUNT-CHAR 0 T=
+      1+
+   repeat drop ;
 
 : IR-PUBLIC-PKG$ ( n -- ptr u8 n )
    case
@@ -604,6 +661,9 @@ public
    SETUP
    DETECT
    NO-FALSE-POSITIVE
+   SEED-NAMES-DISTINCT
+   SEED-NAMES-COLON-FREE
+   SEED-SWEEP
    RAW-TABLE-COVERAGE
    PRIVATE-FORM-MUTATIONS
    OWNER-FORM-MUTATIONS

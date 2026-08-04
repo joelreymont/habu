@@ -19,6 +19,14 @@
 \ exactly the distinction the lane required: an entry that throws while parsing
 \ arguments still passes, an entry that never finished loading does not.
 \
+\ The three ways a child can finish are kept apart. A child that merely ran out of
+\ wall clock is not a child that died, and folding the two into one boolean is how
+\ a saturated box came to be reported as a dead lint entry: the failure read
+\ "expected true got false" and named neither the deadline nor the fact that one
+\ was hit (dot habu-un-flake-lint-2535cef6). Exit, signal and timeout each get
+\ their own verdict below, and a timeout is recorded as a timeout naming the entry
+\ and the budget it burned.
+\
 \ The entry list is DERIVED each run by walking tools/ and keeping the flat
 \ tools/<name>-lint.f entries. Nested tools/lint/<name>-lint.f helpers are library
 \ pieces their parents load, and -lint-core.f / -lint-test.f are not entry points;
@@ -28,6 +36,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/fmt.f
 require lib/memory.f
 require lib/fs.f
 require lib/process.f
@@ -38,7 +47,6 @@ require lib/test.f
 package LINT-CLI-STANDALONE-LOAD
 
 2048 constant CAP
-20000 constant TIMEOUT-MS
 $4000 constant PATHS-CAP                     \ collected entry path bytes
 64 constant PATHS-MAX                        \ collected entry slots
 47 constant SLASH
@@ -57,8 +65,37 @@ create PATH-OFF PATHS-MAX cells allot
 create PATH-LEN PATHS-MAX cells allot
 variable PATHS-N
 variable PATHS-USED
-variable RC
-variable EXITED
+
+\ ---- per-child budget ------------------------------------------------------
+\ Derived from measurement, not picked. The nominal budget covers the slowest
+\ entry this suite spawns, measured standalone on an idle box; the scaling on top
+\ of it is the gate's own measured load factor (lib/test/budget.f T-BUDGET-MS),
+\ which is what keeps a healthy-but-slow child on a busy box from reading as a
+\ dead one. Whole-tree scan times over the same 1419-file tree, measured
+\ 2026-08-04 on a 12-core macOS ARM64 host:
+\
+\   idle                  refine-lint 3.50 / 3.51 / 3.52 s   slowest entry
+\                     error-code-lint 2.12 / 2.16 s
+\                      namespace-lint 0.52 / 0.53 s
+\   one full gate         refine-lint 3.55 / 3.68 / 3.71 / 3.73 s          1.05x
+\   alongside, load 6-9
+\   that gate plus busy    refine-lint 7.94 / 8.00 / 8.26 / 8.36 / 8.89 s   2.5x
+\   loops, load 25-55
+\
+\ The middle row is the load this suite is accepted under - one full gate at
+\ --pool-slots 3 - and it barely moves the entry. The bottom row is a 12-core box
+\ carrying two to four times its cores, past anything a gate produces, and 2.5x
+\ is the worst saturation factor measured. 12000 ms nominal is 3.4x the slowest idle
+\ entry and 1.35x that worst saturated time BEFORE any scaling, and T-BUDGET-MS
+\ takes it to [12 s .. 36 s] through its [1x .. 3x] clamp. A child that never
+\ finishes still fails inside that ceiling instead of hanging the suite.
+\
+\ Raising this number is not how a slow entry gets fixed. When an entry outgrows
+\ the budget, the question is what it does per file that its peers do not: the
+\ flat 20000 ms this replaced was 87% consumed by one entry whose token match
+\ re-derived its whole seed list for every token it read.
+12000 constant NOMINAL-MS
+: TIMEOUT-MS ( -- n ) NOMINAL-MS T-BUDGET-MS ;
 
 : ENGINE$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" GETENV dup 0 > if exit then
@@ -106,22 +143,60 @@ variable EXITED
    repeat drop FALSE ;
 
 \ ---- spawn one entry -------------------------------------------------------
-: STORE! ( len len outcome -- )
-   MATCH outcome
-     exited   OF RC ! TRUE EXITED ! ENDOF
-     signaled OF RC ! FALSE EXITED ! ENDOF
-     timeout  OF 0 RC ! FALSE EXITED ! ENDOF
-   ;MATCH
-   LEN>N drop LEN>N drop ;
-
-: LOADS ( ptr u8 n -- ) {: p:ptr u:n :}
+: SPAWN ( ptr u8 n n -- len len outcome ) {: p:ptr u:n ms:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    p u >LEN PROC-ARGV+
    ENGINE$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE!
-   p u T-LABEL  EXITED @ TTRUE
-   p u T-LABEL  RC @ REJECT-RC <> TTRUE ;
+   ERR CAP >LEN  ms >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+
+: DROP-LENS ( len len -- )
+   LEN>N drop LEN>N drop ;
+
+\ Its own failure kind, not an assertion that happened to go false: the entry and
+\ the budget it burned are the two facts needed to tell a slow box from a hang, so
+\ both go into the label and therefore into the machine-readable TFAIL record a
+\ gate log is read with, not only into an adjacent printed line.
+: OVER-BUDGET$ ( ptr u8 n n -- ptr u8 n ) {: p:ptr u:n ms:n :}
+   SB-RESET
+   p u SB-APPEND
+   s"  over its per-child budget of " SB-APPEND
+   ms FMT:SB-U
+   s" ms" SB-APPEND
+   SB$ ;
+
+: ON-SIGNAL$ ( ptr u8 n n -- ptr u8 n ) {: p:ptr u:n sig:n :}
+   SB-RESET
+   p u SB-APPEND
+   s"  died on signal " SB-APPEND
+   sig FMT:SB-U
+   SB$ ;
+
+: TIMED-OUT ( ptr u8 n n -- )
+   T-NEXT
+   OVER-BUDGET$ T-LABEL
+   s" timeout" T-FAIL-AS
+   T-LABEL-CLEAR ;
+
+: SIGNALLED ( ptr u8 n n -- )
+   T-NEXT
+   ON-SIGNAL$ T-LABEL
+   s" signal" T-FAIL-AS
+   T-LABEL-CLEAR ;
+
+\ The budget is a parameter so the suite can drive this exact word - the one the
+\ real legs run - with a budget no child can meet and check the verdict it makes.
+: LOAD-VERDICT ( ptr u8 n n -- ) {: p:ptr u:n ms:n :}
+   p u ms SPAWN
+   MATCH outcome
+     exited   OF {: rc:n :} p u T-LABEL rc REJECT-RC <> TTRUE ENDOF
+     signaled OF {: sig:n :} p u sig SIGNALLED ENDOF
+     timeout  OF p u ms TIMED-OUT ENDOF
+   ;MATCH
+   DROP-LENS ;
+
+: LOADS ( ptr u8 n -- )
+   TIMEOUT-MS LOAD-VERDICT ;
 
 : LOAD-ALL ( -- )
    0 begin dup PATHS-N @ < while
@@ -138,13 +213,61 @@ variable EXITED
 \ like a missing require and sent one earlier investigation down that path. The two
 \ statuses must stay distinct for this row to mean anything.
 : REFUSES ( ptr u8 n -- ) {: p:ptr u:n :}
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   p u >LEN PROC-ARGV+
-   ENGINE$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE!
-   p u T-LABEL  EXITED @ TTRUE
-   p u T-LABEL  RC @ THROW-RC T= ;
+   TIMEOUT-MS {: ms:n :}
+   p u ms SPAWN
+   MATCH outcome
+     exited   OF {: rc:n :} p u T-LABEL rc THROW-RC T= ENDOF
+     signaled OF {: sig:n :} p u sig SIGNALLED ENDOF
+     timeout  OF p u ms TIMED-OUT ENDOF
+   ;MATCH
+   DROP-LENS ;
+
+\ ---- fixture: a timeout is its own verdict ---------------------------------
+\ The distinction this suite exists to make is between an entry that never
+\ finished loading and one that merely ran out of wall clock, so the timeout path
+\ is exercised rather than assumed. A discovered entry is spawned through the same
+\ LOAD-VERDICT the real legs use, with a budget nothing can meet, and the record
+\ it produces is checked: kind `timeout`, and a label naming that entry and the
+\ budget it burned. It records one deliberate failure and clears it, which is the
+\ lib/test/assert-test.f convention for testing a failure path; it runs before
+\ anything else so the reset cannot erase a real one.
+1 constant UNMEETABLE-MS
+256 constant GOT-CAP
+create GOT-BUF GOT-CAP allot
+variable GOT-U
+
+: GOT! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u GOT-CAP > if E-TBL-BOUNDS throw then
+   a GOT-BUF u BYTE-COPY
+   u GOT-U ! ;
+
+: GOT$ ( -- ptr u8 n )
+   GOT-BUF GOT-U @ ;
+
+\ Spelled out here rather than taken from OVER-BUDGET$: a label that stopped
+\ naming the entry, or stopped naming the budget, has to fail this.
+: WANT-LABEL$ ( ptr u8 n n -- ptr u8 n ) {: p:ptr u:n ms:n :}
+   SB-RESET
+   p u SB-APPEND
+   s"  over its per-child budget of " SB-APPEND
+   ms FMT:SB-U
+   s" ms" SB-APPEND
+   SB$ ;
+
+: TIMEOUT-VERDICT ( -- )
+   0 PATHS-N !  0 PATHS-USED !
+   s" tools" [: COLLECT ;] WALK-FILES
+   PATHS-N @ 0 <= if E-TBL-BOUNDS throw then
+   T-RESET
+   0 PATH$ UNMEETABLE-MS LOAD-VERDICT
+   TREC$ GOT!
+   T-CASES {: id:n :}
+   T-FAILURES {: fails:n :}
+   T-RESET                                   \ drop the deliberate failure, THEN judge it,
+   s" timeout verdict record" T-LABEL        \ so a verdict that came out wrong survives
+   GOT$  s" timeout" id  0 PATH$ UNMEETABLE-MS WANT-LABEL$  TREC-FAIL$  T$=
+   s" timeout counts as exactly one failure" T-LABEL
+   fails 1 T= ;
 
 \ ---- fixture: scheduling is structural, no exclusion table -----------------
 \ Inject synthetic paths straight into COLLECT and assert each verdict without
@@ -187,7 +310,7 @@ variable EXITED
 public
 
 : RUN ( -- )
-   T-RESET
+   TIMEOUT-VERDICT                           \ owns the suite's T-RESET; see its comment
    FIXTURE
    0 PATHS-N !  0 PATHS-USED !
    s" tools" [: COLLECT ;] WALK-FILES

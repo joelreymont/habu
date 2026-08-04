@@ -403,6 +403,21 @@ private
       E-TBL-BOUNDS throw
    endcase ;
 
+public
+
+\ The token-matched part of the seed list, read back by the module suite so it can
+\ sweep every seed through the confinement scan instead of spot-checking a few
+\ names. The count stops at TOKEN-SEED# because the rows past it are seed-only
+\ boundaries the structural IR-ID scan owns, not token matches.
+: TOKEN-SEED-COUNT ( -- n )
+   TOKEN-SEED# ;
+
+: TOKEN-SEED$ ( n -- ptr u8 n )
+   dup 0 < over TOKEN-SEED# >= or if E-TBL-BOUNDS throw then
+   SEED-NAME$ ;
+
+private
+
 \ ---- allowlist: documented (mint, caller file) exceptions --------------------
 \ Empty today. Entries must cite the review that documented the exception.
 \ Caller-supplied strings must stay live for the run (s" literals are).
@@ -599,17 +614,6 @@ private
 : TOK=CI ( ptr u8 n -- bool )
    TOK$ 2swap LINT-STR=CI ;
 
-: QUAL-TOK? ( n -- bool ) {: k:n :}
-   k SEED-NAME$ {: na:ptr nu:n :}
-   TOK$ {: a:ptr u:n :}
-   u nu 2 + < if LINT-FALSE exit then
-   a u nu - +  nu  na nu LINT-STR=CI 0= if LINT-FALSE exit then
-   a u nu - 1- + c@ COLON = ;
-
-: TOK-MINT? ( n -- bool ) {: k:n :}
-   TOK$ k SEED-NAME$ LINT-STR=CI if LINT-TRUE exit then
-   k QUAL-TOK? ;
-
 : HIT ( n -- ) {: k:n :}
    REPORT? @ if
       s" REFINE-CONFINE " OUT
@@ -619,13 +623,128 @@ private
    then
    BAD+ ;
 
-: MATCH-TOKEN ( -- )
-   0 begin dup TOKEN-SEED# < while
-      dup TOK-MINT? if
-         dup ALLOWED? 0= if dup HIT then
-      then
+\ ---- token-seed index --------------------------------------------------------
+\ MATCH-TOKEN asks "does this token name a confined mint?" once per word token in
+\ the scanned tree - 1.14M times over maki/ lib/ src/ tools/ test/. It used to ask
+\ that question once per (token, seed) PAIR, re-deriving both operands inside the
+\ inner loop: SEED-NAME$ is a `case` chain, so reading seed k costs k comparisons,
+\ and TOK$ re-reads the lexer's bounds-checked vectors. With 69 token seeds that
+\ is ~138 case walks and ~276 checked vector reads for every token, and the
+\ per-token cost grows with the seed list, which every new mint lengthens. That
+\ is why this lint cost 7.7x its whole-tree peers over the same 1419 files.
+\ The seed set is fixed for a run, so it is cached and ordered once at load and
+\ each token asks it one binary search.
+
+create SEED-NA TOKEN-SEED# cells allot   \ seed name pointer, by token-seed index
+create SEED-NU TOKEN-SEED# cells allot   \ seed name length, by token-seed index
+create SEED-ORD TOKEN-SEED# cells allot  \ token-seed indices, ordered by folded name
+variable ORD-N
+variable SEED-MIN-U                      \ shortest and longest seed name, both derived
+variable SEED-MAX-U
+variable LO  variable HI  variable MID
+
+: SEED-NA-FIELD ( n -- ptr ptr u8 ) cells SEED-NA + 0 ptr-field ;
+
+: SEED-U@ ( n -- n ) cells SEED-NU + @ ;
+
+: SEED-AT$ ( n -- ptr u8 n )                \ one token seed's cached name
+   dup SEED-NA-FIELD @ swap SEED-U@ ;
+
+: ORD@ ( n -- n ) cells SEED-ORD + @ ;
+
+: ORD$ ( n -- ptr u8 n ) ORD@ SEED-AT$ ;
+
+: SEED-CACHE ( n -- ) {: k:n :}
+   k SEED-NAME$ {: na:ptr nu:n :}
+   na k SEED-NA-FIELD !
+   nu k cells SEED-NU + ! ;
+
+\ A mint name carrying a `:` would break the split MATCH-TOKEN relies on, and two
+\ seeds sharing a name would make confinement ambiguous - the reference would be
+\ inside one owner and outside the other. Both are refused where the list is read,
+\ so neither can be introduced silently by a later seed.
+: SEED-COLON-FREE ( n -- ) {: k:n :}
+   k SEED-AT$ COLON LINT-COUNT-CHAR 0 > if
+      s" refine-lint: a mint name may not contain `:`" FAIL
+   then ;
+
+: ORD-SHIFT ( n -- ) {: j:n :}              \ open a hole at order position j
+   ORD-N @ begin dup j > while
+      dup 1- ORD@ over cells SEED-ORD + !
+      1-
+   repeat drop ;
+
+: ORD-SLOT ( n -- n ) {: k:n :}             \ where seed k belongs in the order
+   0 begin dup ORD-N @ < while
+      dup ORD$ k SEED-AT$ LINT-ORDER:CMP-CI
+      dup 0= if s" refine-lint: duplicate mint name in the seed list" FAIL then
+      0 > if exit then
+      1+
+   repeat ;
+
+: ORD+ ( n -- ) {: k:n :}
+   k ORD-SLOT {: j:n :}
+   j ORD-SHIFT
+   k j cells SEED-ORD + !
+   ORD-N @ 1+ ORD-N ! ;
+
+: BUILD-BOUNDS ( -- )
+   0 SEED-U@ dup SEED-MIN-U ! SEED-MAX-U !
+   1 begin dup TOKEN-SEED# < while
+      dup SEED-U@ SEED-MIN-U @ < if dup SEED-U@ SEED-MIN-U ! then
+      dup SEED-U@ SEED-MAX-U @ > if dup SEED-U@ SEED-MAX-U ! then
       1+
    repeat drop ;
+
+: BUILD-INDEX ( -- )
+   0 ORD-N !
+   0 begin dup TOKEN-SEED# < while
+      dup SEED-CACHE
+      dup SEED-COLON-FREE
+      dup ORD+
+      1+
+   repeat drop
+   BUILD-BOUNDS ;
+
+BUILD-INDEX
+
+: SEED-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}   \ the token seed named a/u, or -1
+   0 LO !  ORD-N @ 1- HI !
+   begin LO @ HI @ <= while
+      LO @ HI @ + 2 / MID !
+      MID @ ORD$ a u LINT-ORDER:CMP-CI
+      dup 0= if drop MID @ ORD@ exit then
+      0 < if MID @ 1+ LO ! else MID @ 1- HI ! then
+   repeat -1 ;
+
+: LAST-COLON ( ptr u8 n -- n ) {: a:ptr u:n :}   \ index of the last `:`, or -1
+   u 1- begin dup 0 >= while
+      dup a + c@ COLON = if exit then
+      1-
+   repeat ;
+
+: CANDIDATE ( ptr u8 n -- )                 \ report the mint this span names, if any
+   {: ca:ptr cu:n :}
+   cu SEED-MIN-U @ < if exit then
+   cu SEED-MAX-U @ > if exit then
+   ca cu SEED-FIND {: k:n :}
+   k 0 < if exit then
+   k ALLOWED? 0= if k HIT then ;
+
+\ The two reference forms are the bare mint name and a package-qualified
+\ `PKG:NAME`, and no mint name contains a `:`, so a token's LAST `:` splits off
+\ its only candidate and a token without one is its own candidate. A token
+\ shorter than the shortest seed name can be neither: an exact reference needs
+\ the same length, and a qualified one is strictly longer than the name it ends
+\ with. `:NAME` with nothing before the colon is not a qualified reference,
+\ which is the old `u >= nu + 2` guard.
+: MATCH-TOKEN ( -- )
+   TOK$ {: a:ptr u:n :}
+   u SEED-MIN-U @ < if exit then
+   a u LAST-COLON {: c:n :}
+   c 0= if exit then
+   c 0 < if a u CANDIDATE exit then
+   a c 1+ +  u c - 1-  CANDIDATE ;
 
 : PACKAGE-TOK? ( -- bool )
    s" package" TOK=CI ;
