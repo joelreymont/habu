@@ -17,7 +17,7 @@ contains linear ownership, including linear-to-linear casts. Add one fixed
 top-level declarer which may run only in the owning package's private wordlist:
 
 ```
-LINEAR-HANDLE BPE:builder AS ptr cell
+LINEAR-HANDLE BPE:builder AS ptr a
    ACQUIRE MINT-BUILDER
    BORROW BUILDER>BLOCK
    TAKE TAKE-BUILDER
@@ -25,7 +25,7 @@ LINEAR-HANDLE BPE:builder AS ptr cell
 ```
 
 The type is an existing `DEFLINEAR` owned by the current package. The raw
-representation is exactly one of `n`, `ptr u8`, or `ptr cell` and becomes one
+representation is exactly one of `n`, `ptr u8`, or `ptr a` and becomes one
 immutable fact for that type. The declarer accepts exactly one complete
 ACQUIRE/BORROW/TAKE triple, no user effects, bodies, or aliases, and generates
 fixed effects `( raw -- owner )`, `( owner -- owner raw )`, and
@@ -38,7 +38,7 @@ Owner: `src/core/roles.f` owns declaration syntax and publication;
 `src/core/checker.f` owns transitive-linear `CAST:` refusal and the single
 type-to-representation authority record; native/source verification must accept
 the complete caller chain. BPE builder-to-state conversion composes generated
-TAKE then ACQUIRE over their common `ptr cell` representation; it is never a
+TAKE then ACQUIRE over their common `ptr a` representation; it is never a
 linear cast. Current landed `CAST:` definitions are non-linear role conversions,
 so the hard cut requires no compatibility path.
 
@@ -47,7 +47,7 @@ package's linear type; the owner cannot declare mismatched raw representations;
 linear-to-linear and nested-linear casts reject; public/global declaration,
 missing, duplicate, reordered, user-bodied, and partially failing blocks publish
 nothing; generated borrow preserves the exact owner and cannot enable
-dup/drop/take/reacquire; `n`, `ptr u8`, and `ptr cell` representations work; the
+dup/drop/take/reacquire; `n`, `ptr u8`, and `ptr a` representations work; the
 landed non-linear cast suite is unchanged. Use the real declaration and checker
 load paths, with a production foreign-package forge as the red. No `TRUSTED:`,
 generic effect declarer, exact-effect escape hatch, ABI version, compatibility

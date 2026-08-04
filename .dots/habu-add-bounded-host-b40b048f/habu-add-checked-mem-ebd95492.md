@@ -1,9 +1,11 @@
 ---
 title: Expose cell-aligned MEM bases
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-13T16:44:21.424964+02:00"
+closed-at: "2026-08-04T06:00:32.800853+02:00"
+close-reason: "Unnecessary: existing MEM:ALLOC-CELLS creates the cell-typed ptr a carrier at allocation. BPE and MODEL-ASSET round their one-block extents to cells, store the exact rounded byte extent, and derive byte tails only through BYTE-VIEW. This removes BLOCK>CELLS without a new MEM API, legacy migration, second refinement boundary, or compatibility shim."
 ---
 
 Problem: BPE and MODEL-ASSET allocate one anonymous mapping containing
