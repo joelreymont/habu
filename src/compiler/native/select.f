@@ -349,6 +349,40 @@ variable R-NEWBASE                   \ and where they start in the module being 
 NFROZEN:BMAX SEL-WIDTH-MAX * TYPED-BUFFER RSEL IR-ID:ir-value-id
 1 TYPED-BUFFER R-JB IR-ID:ir-block-id
 
+\ ---- what the data-stack residency pass answers ------------------------------
+\ THE FACT, IN ONE SENTENCE. A slot of the caller's data stack holds a value of
+\ the source module, and the pass below says which one at every point of the
+\ routine. A store that would write a value into the slot that already holds it
+\ is no instruction at all, and a value nothing needs in a register never has to
+\ be lifted out of its slot in the first place - so the two answers this section
+\ keeps are WHICH VALUE EACH SLOT HOLDS and WHICH VALUES REACH A REGISTER.
+\
+\ WHY THE TWO ARE COMPUTED IN THAT ORDER AND NOT TOGETHER. Dropping a store that
+\ writes what is already there leaves the memory exactly as it was, and so does
+\ dropping a load, and so does dropping a block argument. None of the three
+\ changes what any slot holds. So the residency fact does not depend on any of
+\ them, it is computed first from the source module alone, and the register need
+\ is then read off it. A single fixpoint over both would be stating a dependence
+\ that is not there.
+\
+\ THE SLOT WINDOW IS A PRECISION BOUND AND NOT A LIMIT ON WHAT COMPILES, which
+\ is the same shape as the region bounds above. A slot outside the window is
+\ simply never resident, so every access to it is emitted exactly as it was
+\ before this pass existed; the window is wider than any convention the chain
+\ builds, and a routine that reached past it would lose an optimisation rather
+\ than be refused.
+64 constant DSLOT-MAX                \ slots one routine's residency is tracked over
+-1 constant DNONE                    \ this slot holds nothing this pass can name
+-2 constant DANY                     \ nothing has been said about this slot yet
+63 constant DELIDE-MAX               \ store positions one run's elision mask holds
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create D-IN NFROZEN:BMAX DSLOT-MAX * cells allot   \ what each slot holds at a block's head
+create D-OUT NFROZEN:BMAX DSLOT-MAX * cells allot  \ and at its end
+create D-CUR DSLOT-MAX cells allot                 \ the running answer inside one block
+create D-NEED VMAX cells allot                     \ this value reaches a register
+variable D-MOVED                                   \ a fixpoint round changed something
+
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
@@ -549,6 +583,54 @@ NFROZEN:BMAX SEL-WIDTH-MAX * TYPED-BUFFER RSEL IR-ID:ir-value-id
 \ value it selects to belongs in.
 : REAL? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT  0 BND-REAL @  SAME-TYPE? ;
+
+\ ---- the residency answers, read back ----------------------------------------
+\ The map holds a source value by its module-local ordinal, so a slot's content
+\ is compared with a value by the one ordinal the value map is keyed on too. The
+\ readers are here rather than beside the pass that fills them because the
+\ lowering words below consult them and the pass that fills them needs the whole
+\ of the block and successor machinery, which is further down.
+: DSLOT-CK ( n -- n )
+   dup 0 < if E-A64SEL-CAP throw then ;
+
+\ Does the window reach this slot at all? A slot beyond it is never resident,
+\ which is what makes the window a precision bound rather than a refusal.
+: DIN-WINDOW? ( n -- bool )
+   DSLOT-CK DSLOT-MAX < ;
+
+: DRES@ ( n -- n )
+   dup DIN-WINDOW? 0= if drop DNONE exit then
+   cells D-CUR + @ ;
+
+: DRES! ( IR-ID:ir-value-id n -- )
+   {: v:IR-ID:ir-value-id s:n :}
+   s DIN-WINDOW? 0= if exit then
+   v VSLOT s cells D-CUR + ! ;
+
+\ Publish one value into one slot: the answer is whether the cell already held
+\ it, which is the whole of what makes a store droppable. Every store this pass
+\ lowers goes through here, so the map and the emission cannot come to disagree
+\ about what a slot holds.
+: DPUT? ( IR-ID:ir-value-id n -- bool )
+   {: v:IR-ID:ir-value-id s:n :}
+   s DRES@  v VSLOT =  {: had:bool :}
+   v s DRES!
+   had ;
+
+: DKILL ( -- )
+   DSLOT-MAX 0 ?do DNONE i cells D-CUR + ! loop ;
+
+\ Does anything this pass emits read this value out of a register? A memory
+\ order holds no register and is never dropped, so it answers yes without being
+\ asked: the order has to cross every edge it crosses today.
+: DNEED? ( IR-ID:ir-value-id -- bool )
+   dup TOKEN? if drop true exit then
+   VSLOT cells D-NEED + @ 0<> ;
+
+: DNEED+ ( IR-ID:ir-value-id -- )
+   dup DNEED? if drop exit then
+   VSLOT cells D-NEED + 1 swap !
+   1 D-MOVED ! ;
 
 \ ---- staging one machine operation -------------------------------------------
 \ Every machine operation carries the span of the source operation it selects
@@ -912,39 +994,85 @@ variable KEPT-F
       1+
    loop ;
 
-\ The store run in front of the branch, the load run behind it, and the two
-\ pointer moves the branch itself carries. Both call forms are this sequence and
-\ they differ only in the operation in the middle, so the sequence is written
-\ once: a second copy would be a second statement of the caller-save discipline
-\ the whole design turns on.
+\ ---- what a call site publishes, and what it takes back ----------------------
+\ WHICH VALUE GOES INTO WHICH SLOT IS WRITTEN DOWN ONCE. Three readers stand
+\ between a call operation and the two runs around it: the value store `i`
+\ publishes, the value slot `i` holds when the branch comes back, and nothing
+\ else. The lowering below reads them, and so does the residency pass further
+\ down that decides which of those stores are already true - so the two cannot
+\ come to disagree about which operand names which slot, which is exactly the
+\ kind of disagreement that would publish one value where a callee reads another.
 \
 \ `kk` live values go out to slots zero upwards, then the `a` arguments; `m` are
 \ kept, and a kept value has no operation here at all - it is in a register the
 \ callee does not write, and the restore below says so by binding the source
 \ value that comes back out of the call to the very value that went in.
+: DSAVE-VAL ( IR-ID:ir-op-id n n n -- IR-ID:ir-value-id )
+   {: id:IR-ID:ir-op-id kk:n m:n i:n :}
+   i kk < if id i 1+ OPERAND-AT exit then
+   id m i + 1+ OPERAND-AT ;
+
+\ Slot `i` after the branch: below `kk` it is the live value the site saved,
+\ coming back out of the very cell it went into, and at or above it the callee's
+\ own result. Both are results of the source operation, which is what lets the
+\ pass name a slot's content whether or not a load for it is built.
+: DBACK-VAL ( IR-ID:ir-op-id n n n -- IR-ID:ir-value-id )
+   {: id:IR-ID:ir-op-id kk:n m:n i:n :}
+   i kk < if id i 1+ RESULT-AT exit then
+   id m i + 1+ RESULT-AT ;
+
+\ ---- the residency of one call site ------------------------------------------
+\ The store run, applied to the map: the answer is one bit per position, set
+\ where the cell already held the value that position publishes. A run longer
+\ than the mask carries reports no position at all, so a site past the bound
+\ emits every store exactly as it did before this pass existed.
+: DBIT? ( n n -- bool )
+   {: mask:n i:n :}
+   i DELIDE-MAX >= if false exit then
+   mask 1 i lshift and 0<> ;
+
+: DSAVE-XFER ( IR-ID:ir-op-id n n n -- n )
+   {: id:IR-ID:ir-op-id kk:n m:n a:n :}
+   0
+   kk a + 0 ?do
+      id kk m i DSAVE-VAL  i  DPUT? if
+         i DELIDE-MAX < if 1 i lshift or then
+      then
+   loop ;
+
+\ AND WHAT THE BRANCH ITSELF DOES TO THE MAP. Every slot the callee could have
+\ written stops holding anything this routine can name, which is every slot at or
+\ above the callee's own base - and the callee's base is the caller's slot `kk`,
+\ so the saved values below it are exactly the ones that survive. The run then
+\ names all of `kk + r` again from the operation's own results, which covers the
+\ survivors and the callee's answers in one statement.
+: DBACK-XFER ( IR-ID:ir-op-id n n n -- )
+   {: id:IR-ID:ir-op-id kk:n m:n r:n :}
+   DKILL
+   kk r + 0 ?do
+      id kk m i DBACK-VAL  i  DRES!
+   loop ;
+
 : CALL-SAVE ( IR-ID:ir-op-id n n n -- )
    {: id:IR-ID:ir-op-id kk:n m:n a:n :}
-   kk 0 ?do
-      id  id i 1+ OPERAND  i A64IR:SLOT-WIDTH *  EMIT-DSTORE
-   loop
-   a 0 ?do
-      id  id kk m + i + 1+ OPERAND  kk i + A64IR:SLOT-WIDTH *  EMIT-DSTORE
+   id kk m a DSAVE-XFER {: mask:n :}
+   kk a + 0 ?do
+      mask i DBIT? 0= if
+         id  id kk m i DSAVE-VAL VOF  i A64IR:SLOT-WIDTH *  EMIT-DSTORE
+      then
    loop ;
 
 : CALL-RESTORE ( IR-ID:ir-op-id n n n -- )
    {: id:IR-ID:ir-op-id kk:n m:n r:n :}
-   kk 0 ?do
-      id i 1+ RESULT-AT
-      id  i A64IR:SLOT-WIDTH *  EMIT-DLOAD
-      VBIND
+   id kk m r DBACK-XFER
+   kk r + 0 ?do
+      id kk m i DBACK-VAL {: v:IR-ID:ir-value-id :}
+      v DNEED? if
+         v  id  i A64IR:SLOT-WIDTH *  EMIT-DLOAD  VBIND
+      then
    loop
    m 0 ?do
       id kk i + 1+ RESULT-AT   id kk i + 1+ OPERAND   VBIND
-   loop
-   r 0 ?do
-      id kk m + i + 1+ RESULT-AT
-      id  kk i + A64IR:SLOT-WIDTH *  EMIT-DLOAD
-      VBIND
    loop
    id 0 RESULT-AT  TOK  VBIND
    N-CALLS @ 1+ N-CALLS ! ;
@@ -953,15 +1081,22 @@ variable KEPT-F
 \ contract destroys exactly the registers the allocator hands out, so there is no
 \ register of the pool a value could survive in - and there is no recorded answer
 \ to consult either, because the routine being compiled has not been published.
-: EMIT-CALL ( IR-ID:ir-op-id -- )
+\ The four numbers are answered by one word because the residency pass asks for
+\ them too, and a second reading of the convention could give another answer.
+: SELF-SHAPE ( IR-ID:ir-op-id -- n n n n )
    {: id:IR-ID:ir-op-id :}
    ARGS SLOT-POSITIONS {: a:n :}
    OUTS SLOT-POSITIONS {: r:n :}
    id a r CALL-LIVE {: k:n :}
+   a r k 0 ;
+
+: EMIT-CALL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id SELF-SHAPE {: a:n r:n kk:n m:n :}
    id 0 OPERAND TOK!
-   id k 0 a CALL-SAVE
-   id  k a + A64IR:SLOT-WIDTH *  k r + A64IR:SLOT-WIDTH *  EMIT-BL
-   id k 0 r CALL-RESTORE ;
+   id kk m a CALL-SAVE
+   id  kk a + A64IR:SLOT-WIDTH *  kk r + A64IR:SLOT-WIDTH *  EMIT-BL
+   id kk m r CALL-RESTORE ;
 
 \ ---- selecting a call to another word ----------------------------------------
 \ THE ONE THING THAT DIFFERS FROM A SELF-CALL IS WHOSE ARITY IS READ. A self-call
@@ -1000,14 +1135,24 @@ variable KEPT-F
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
    id  id want ATTR-SLOT-OF  ATTR-INT-AT ;
 
-: EMIT-WORD-CALL ( IR-ID:ir-op-id -- )
+: WORD-ENTRY ( IR-ID:ir-op-id -- n )
+   0 BND-ENTRY @ ATTR-INT-OF ;
+
+\ The same four numbers a self-call answers, read off the operation's own record
+\ of the callee's convention. One word for the same reason SELF-SHAPE is one: the
+\ residency pass asks the same question and has to get the same answer.
+: WORD-SHAPE ( IR-ID:ir-op-id -- n n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 BND-IN @ ATTR-INT-OF {: a:n :}
    id 0 BND-OUT @ ATTR-INT-OF {: r:n :}
-   id 0 BND-ENTRY @ ATTR-INT-OF {: e:n :}
    id a r CALL-LIVE {: k:n :}
-   id e k KEEP-N {: m:n :}
-   k m - {: kk:n :}
+   id  id WORD-ENTRY  k KEEP-N {: m:n :}
+   a r  k m -  m ;
+
+: EMIT-WORD-CALL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id WORD-SHAPE {: a:n r:n kk:n m:n :}
+   id WORD-ENTRY {: e:n :}
    id 0 OPERAND TOK!
    id kk m a CALL-SAVE
    id  kk a + A64IR:SLOT-WIDTH *  kk r + A64IR:SLOT-WIDTH *
@@ -1208,12 +1353,32 @@ variable KEPT-F
 \ data-stack convention each of them is written into the slot its declared place
 \ names first, the pointer is moved up over them, and the return carries nothing:
 \ the results are already published where the caller will look.
+\ The exit run, applied to the map, answering which of the routine's results are
+\ already in the cells the convention publishes them from. A result the caller
+\ handed in and the routine only passed along is such a value, which is the whole
+\ of what this pass is for.
+\ THE ARITY IS HELD HERE AND NOT AT THE LOWERING, because this is where the
+\ return is first read: the residency pass walks the operations before a single
+\ one is lowered, so a return whose operand list disagrees with the convention
+\ has to be refused by name here or it would be read past instead.
+: DEXIT-XFER ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id r:n :}
+   id OPERANDS-OF r <> if E-A64SEL-PLACE throw then
+   0
+   r 0 ?do
+      id i OPERAND-AT  OUTS i A64EFF:SEQ-SLOT@  DPUT? if
+         i DELIDE-MAX < if 1 i lshift or then
+      then
+   loop ;
+
 : EMIT-EXIT ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    OUTS SLOT-POSITIONS {: r:n :}
-   id OPERANDS-OF r <> if E-A64SEL-PLACE throw then
+   id r DEXIT-XFER {: mask:n :}
    r 0 ?do
-      id  id i OPERAND  OUTS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  EMIT-DSTORE
+      mask i DBIT? 0= if
+         id  id i OPERAND  OUTS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  EMIT-DSTORE
+      then
    loop
    id  r A64IR:SLOT-WIDTH *  EMIT-DPUBLISH ;
 
@@ -1450,6 +1615,47 @@ variable KEPT-F
    BLOCK-ORD-CK cells R-ORD + @
    dup 0 < if E-A64SEL-SHAPE throw then ;
 
+\ ---- which block arguments are built -----------------------------------------
+\ The map at a block's head, read by the block's own ordinal. The rows are here
+\ rather than beside the pass that fills them because the branch below and the
+\ block opening further down both ask which of a destination's arguments are
+\ built, and the answer has to be one answer.
+: DIN-AT ( n n -- n )
+   {: b:n s:n :}
+   s DIN-WINDOW? 0= if DNONE exit then
+   b BLOCK-ORD-CK DSLOT-MAX * s + cells D-IN + @ ;
+
+: DIN-AT! ( n n n -- )
+   {: v:n b:n s:n :}
+   s DIN-WINDOW? 0= if exit then
+   v  b BLOCK-ORD-CK DSLOT-MAX * s + cells D-IN + ! ;
+
+: DIN-HOLDS? ( n IR-ID:ir-value-id -- bool )
+   {: b:n v:IR-ID:ir-value-id :}
+   v VSLOT {: k:n :}
+   false
+   DSLOT-MAX 0 ?do
+      b i DIN-AT k = if drop true leave then
+   loop ;
+
+\ A block argument is not built when the value it carries lives in a data-stack
+\ slot however control arrived AND nothing reads it out of a register. The values
+\ every edge hands it are then not built either, which is what removes the copy an
+\ edge would otherwise make.
+\
+\ WHY BOTH HALVES, WHEN ONE WOULD BE SOUND. Nothing needs a register is the whole
+\ of the safety argument: an argument nothing reads can be left out and the module
+\ still says what it said. But an argument that no slot holds and nothing reads is
+\ a DEAD value, which is a different fact with a different owner - the source
+\ module should not be carrying it at all - and removing it here would be this
+\ pass quietly doing dead-code elimination under the name of residency. Dot
+\ habu-drop-a-dead-1c0ff5a2 carries that half.
+: DDROP? ( n n -- bool )
+   {: b:n i:n :}
+   FUN b BLOCK-AT i ARG-AT {: v:IR-ID:ir-value-id :}
+   v DNEED? if false exit then
+   b v DIN-HOLDS? ;
+
 \ A block names itself twice over: by its ordinal in the module, which is what a
 \ successor carries, and by its ordinal in its own function, which is what the
 \ readers above index by and what the plan's rows are keyed on. The two differ
@@ -1550,15 +1756,27 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    id i OPERAND-AT TOKEN? if id i OPERAND exit then
    id  id i OPERAND  id i OPERAND-AT REAL?  EMIT-COPY ;
 
+\ The block this branch goes on to. Which of its arguments are built is what
+\ decides which of this branch's operands cross, and the two questions are asked
+\ of the one block so the positions cannot slide against each other.
+: BR-TARGET ( IR-ID:ir-op-id -- n )
+   0 SUCC-IDX ;
+
 : EMIT-BR ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OPERANDS-OF {: k:n :}
    k EDGE-MAX > if E-A64SEL-CAP throw then
+   id BR-TARGET {: tb:n :}
+   0
    k 0 ?do
-      id i EDGE-VALUE  i EDGE-V !
+      tb i DDROP? 0= if
+         id i EDGE-VALUE  over EDGE-V !
+         1+
+      then
    loop
+   {: n:n :}
    id A64IR-OPCODE:BR OPEN
-   k 0 ?do
+   n 0 ?do
       CTX BLD  i EDGE-V @  IR-BUILD:ADD-OPERAND
    loop
    id 0 SUCCESSOR+
@@ -2437,6 +2655,325 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       realbits OF id A64IR-OPCODE:FMOVDX EMIT-UNARY ENDOF
    ;MATCH ;
 
+\ ---- which slot holds which value, over the whole routine ---------------------
+\ THE FACT. A slot of the caller's data stack holds a value of the source module,
+\ and this pass says which one at the head and at the end of every block. It is a
+\ MUST fact: a slot holds a value only when it holds that same value however
+\ control arrived, so the answer starts at "nothing has been said" everywhere but
+\ the entry and descends until it stops moving.
+\
+\ THE ONE STEP THAT MAKES A LOOP WORK IS THE TRANSLATION ACROSS AN EDGE. A
+\ predecessor's map names the predecessor's own values, and the block it goes on
+\ to names its own arguments; so a value the branch hands to argument `i` is READ
+\ as that argument on the way in. Without it the walker's loop - whose value
+\ comes out of the entry on one edge and out of the call on the other - would
+\ meet two different names for one cell and conclude that the cell holds nothing.
+\ With it both edges say "argument zero", which is the true statement: whichever
+\ way control arrived, slot zero holds what argument zero is.
+\
+\ AND IT IS EXACT RATHER THAN MERELY SOUND WHERE TWO ARMS DISAGREE. If one arm
+\ hands over `x` and the other `y`, both translate to the argument, and the
+\ argument IS whichever of the two the run took - which is the same thing the
+\ cell holds. Nothing is claimed that is not true on every path.
+\
+\ WHAT A BRANCH TO A ROUTINE DESTROYS. Every slot at or above the callee's own
+\ base, which is the caller's slot `kk`: the callee takes its arguments out of
+\ the caller's cells, leaves its results in them, and saves whatever it holds
+\ across its OWN calls below its own argument base - which is at or above `kk`
+\ and never under it. That is the same statement the caller-save discipline
+\ above already rests on, read the other way round. The run then names all of
+\ `kk + r` from the operation's results, so the survivors and the answers are one
+\ statement.
+\
+\ AND WHAT AN ADDRESSED STORE DESTROYS: everything. A value the program computed
+\ may be the address of a data-stack cell - which is exactly what the dialect
+\ declares when it puts a64.astr in the same space and the same chain as the
+\ data-stack forms - so a store through one says nothing about which cell it
+\ reached and every slot stops holding anything this pass can name.
+: DOUT-AT ( n n -- n )
+   {: b:n s:n :}
+   s DIN-WINDOW? 0= if DNONE exit then
+   b BLOCK-ORD-CK DSLOT-MAX * s + cells D-OUT + @ ;
+
+: DOUT-AT! ( n n n -- )
+   {: v:n b:n s:n :}
+   s DIN-WINDOW? 0= if exit then
+   v  b BLOCK-ORD-CK DSLOT-MAX * s + cells D-OUT + ! ;
+
+: DCUR<IN ( n -- )
+   {: b:n :}
+   DSLOT-MAX 0 ?do  b i DIN-AT  i cells D-CUR + !  loop ;
+
+: DOUT<CUR ( n -- )
+   {: b:n :}
+   DSLOT-MAX 0 ?do  i cells D-CUR + @  b i DOUT-AT!  loop ;
+
+\ ---- the effect of one source operation on the map ---------------------------
+\ Every walk over a block's operations goes through this one word - the fixpoint
+\ that computes the map, the pass that reads the register need off it, and the
+\ lowering itself, which calls the same two halves either side of the branch it
+\ builds. So there is one statement of what an operation does to the caller's
+\ stack, and the answer a lowering acts on is the answer the fixpoint reached.
+: DCALL-XFER ( IR-ID:ir-op-id n n n n -- n )
+   {: id:IR-ID:ir-op-id a:n r:n kk:n m:n :}
+   id kk m a DSAVE-XFER {: mask:n :}
+   id kk m r DBACK-XFER
+   mask ;
+
+: DOP-XFER ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT {: s:n :}
+   s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
+   s O-WORDCALL = if id  id WORD-SHAPE  DCALL-XFER exit then
+   s O-RETURN = if
+      DSTACK? 0= if 0 exit then
+      id  OUTS SLOT-POSITIONS  DEXIT-XFER exit
+   then
+   s O-STORE = if DKILL 0 exit then
+   s O-BSTORE = if DKILL 0 exit then
+   0 ;
+
+: DXFER-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b DCUR<IN
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do  bk i OP-AT DOP-XFER drop  loop
+   b DOUT<CUR ;
+
+\ ---- the meet, and the translation that makes it exact -----------------------
+here CELL 1- and CELL swap - CELL 1- and allot
+create D-MEET DSLOT-MAX cells allot
+
+: DMEET1 ( n n -- n )
+   {: a:n b:n :}
+   a DANY = if b exit then
+   b DANY = if a exit then
+   a b = if a exit then
+   DNONE ;
+
+\ WHY A NAME MAY NOT CROSS A BACKWARD EDGE UNCHANGED, which is the one step of
+\ this pass that is not obvious and the one a wrong answer comes out of. A value
+\ is written once, but a value written INSIDE a loop is written once per turn,
+\ and "slot s holds v" carried round the back edge would be a claim about the
+\ PREVIOUS turn's v read as a claim about this turn's. `begin dup 0 > while 1-
+\ repeat` is the smallest example: the cell holds the loop's argument at the
+\ bottom of the body, and the branch hands the DECREMENT to that same argument -
+\ so carrying the name unchanged says the cell holds the argument when it holds
+\ the number the argument had one turn ago, and the routine answers what it was
+\ given instead of zero.
+\
+\ SO ONLY A TRANSLATED NAME CROSSES A BACKWARD EDGE. Translation is exactly the
+\ statement that survives: the cell held the value the branch hands to argument
+\ `i`, and argument `i` IS that value at the other end, this turn and every turn.
+\ Every cycle in any block order contains at least one edge whose destination
+\ does not come after its source, so killing the untranslated names there is
+\ enough to stop a name from ever going round a loop; on an edge that goes
+\ forward nothing runs between the two ends, so a name crosses unchanged.
+: DXLATE ( IR-ID:ir-op-id IR-ID:ir-block-id bool n -- n )
+   {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id back:bool v:n :}
+   v 0 < if v exit then
+   tb ARG-COUNT {: k:n :}
+   DANY
+   t OP-SLOT O-BR = if
+      t OPERANDS-OF k = if
+         k 0 ?do
+            t i OPERAND-AT VSLOT v = if
+               drop  tb i ARG-AT VSLOT  leave
+            then
+         loop
+      then
+   then
+   dup DANY <> if exit then
+   drop
+   back if DNONE exit then
+   v ;
+
+: DMEET-EDGE ( IR-ID:ir-op-id IR-ID:ir-block-id n n -- )
+   {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id p:n b:n :}
+   b p <= {: back:bool :}
+   DSLOT-MAX 0 ?do
+      i cells D-MEET + @
+      t tb  back  p i DOUT-AT  DXLATE
+      DMEET1
+      i cells D-MEET + !
+   loop ;
+
+: DEDGE? ( IR-ID:ir-op-id n -- bool )
+   {: t:IR-ID:ir-op-id b:n :}
+   false
+   t SUCCS-OF 0 ?do
+      t i SUCC-IDX b = if drop true leave then
+   loop ;
+
+: DMEET-FROM ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id p:n b:n :}
+   f p BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
+   t b DEDGE? 0= if exit then
+   t  f b BLOCK-AT  p b DMEET-EDGE ;
+
+: DIN-SET? ( n n n -- bool )
+   {: v:n b:n s:n :}
+   b s DIN-AT v = if false exit then
+   v b s DIN-AT!
+   true ;
+
+: DMEET-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   DSLOT-MAX 0 ?do DANY i cells D-MEET + ! loop
+   f BLOCK-COUNT 0 ?do  f i b DMEET-FROM  loop
+   DSLOT-MAX 0 ?do
+      i cells D-MEET + @  b i DIN-SET? if 1 D-MOVED ! then
+   loop ;
+
+\ ---- the entry map, and the fixpoint over the rest ---------------------------
+\ The routine's own arguments are the seed, and they are the only thing in the
+\ map that no operation of the module put there: the CALLER wrote those cells,
+\ the pointer move at the head of the entry block is what makes them slots zero
+\ upwards, and the convention says which slot each argument arrived in.
+: DIN-ANY ( n -- )
+   {: b:n :}
+   DSLOT-MAX 0 ?do DANY b i DIN-AT! loop ;
+
+: DENTRY-IN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   DSLOT-MAX 0 ?do DNONE 0 i DIN-AT! loop
+   DSTACK? 0= if exit then
+   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   ARGS SLOT-POSITIONS {: a:n :}
+   bk ARG-COUNT a <> if E-A64SEL-PLACE throw then
+   a 0 ?do
+      bk i ARG-AT VSLOT  0  ARGS i A64EFF:SEQ-SLOT@  DIN-AT!
+   loop ;
+
+: DIN-INIT ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 1 ?do i DIN-ANY loop
+   f DENTRY-IN ;
+
+: DRES-ROUND ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 1 ?do  f i DMEET-BLOCK  loop
+   f BLOCK-COUNT 0 ?do  f i DXFER-BLOCK  loop ;
+
+\ How many rounds the descent can still be moving after. Every cell of the map
+\ starts at "nothing said", may name one value, and may then fall to "nothing
+\ this pass can name" - two steps, and a round that moves nothing ends the walk -
+\ so a round past twice the map's own size is a round that cannot be reached.
+\ Reaching it is a fixpoint that is not descending, which is a bug in a transfer
+\ rather than a routine this pass should compile.
+NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
+
+: DRES-FIX ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f DIN-INIT
+   f BLOCK-COUNT 0 ?do f i DXFER-BLOCK loop
+   0
+   begin
+      1 D-MOVED !
+      dup DRES-ROUNDS >= if E-A64SEL-CAP throw then
+      0 D-MOVED !
+      f DRES-ROUND
+      1+
+      D-MOVED @ 0=
+   until
+   drop ;
+
+\ ---- which values reach a register -------------------------------------------
+\ A value needs a register when some operation this pass really emits reads it
+\ out of one. Three positions do not: a store the map says is already true, an
+\ argument of a block that carries nothing to a register, and the memory order,
+\ which holds no register at all and is therefore always carried. The first two
+\ are what makes the answer a fixpoint - whether an edge's operand is read
+\ depends on whether the argument it feeds is built, which depends on what reads
+\ THAT - and the third is why a token answers yes without being asked.
+\
+\ NOTHING HERE DECIDES SAFETY, WHICH IS WORTH SAYING PLAINLY. A value this pass
+\ wrongly calls unneeded is a value nothing binds in the value map, so the
+\ operation that reads it is refused by name at the moment it is selected. The
+\ answer is an optimisation and its failure mode is a refusal, never a register
+\ holding something else.
+: DNEED-CLEAR ( -- )
+   VMAX 0 ?do 0 i cells D-NEED + ! loop ;
+
+\ The routine's own interface is not this pass's to change. Under a register
+\ convention the entry block's arguments ARE the declared argument registers and
+\ every one of them is built whether the body reads it or not; under the
+\ data-stack convention they are cells the caller wrote, and the entry load is
+\ exactly what this pass may drop.
+: DNEED-ENTRY ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   DSTACK? if exit then
+   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT 0 ?do bk i ARG-AT DNEED+ loop ;
+
+: DNEED-OPERANDS ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do id i OPERAND-AT DNEED+ loop ;
+
+: DNEED-CALL ( IR-ID:ir-op-id n n n n n -- )
+   {: id:IR-ID:ir-op-id mask:n a:n r:n kk:n m:n :}
+   id 0 OPERAND-AT DNEED+
+   kk a + 0 ?do
+      mask i DBIT? 0= if id kk m i DSAVE-VAL DNEED+ then
+   loop
+   m 0 ?do id kk i + 1+ OPERAND-AT DNEED+ loop ;
+
+: DNEED-EXIT ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
+   DSTACK? 0= if id DNEED-OPERANDS exit then
+   OUTS SLOT-POSITIONS 0 ?do
+      mask i DBIT? 0= if id i OPERAND-AT DNEED+ then
+   loop ;
+
+: DNEED-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id DOP-XFER {: mask:n :}
+   id OP-SLOT {: s:n :}
+   s O-BR = if exit then
+   s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
+   s O-WORDCALL = if id mask  id WORD-SHAPE  DNEED-CALL exit then
+   s O-RETURN = if id mask DNEED-EXIT exit then
+   id DNEED-OPERANDS ;
+
+: DNEED-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b DCUR<IN
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do  bk i OP-AT DNEED-OP  loop ;
+
+: DNEED-EDGE-OF ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
+   t OP-SLOT O-BR <> if exit then
+   t BR-TARGET {: tb:n :}
+   FUN tb BLOCK-AT ARG-COUNT {: k:n :}
+   t OPERANDS-OF k <> if exit then
+   k 0 ?do
+      tb i DDROP? 0= if t i OPERAND-AT DNEED+ then
+   loop ;
+
+: DNEED-EDGES ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 0 ?do f i DNEED-EDGE-OF loop ;
+
+\ The closure only ever ADDS to the answer, and there are as many values as the
+\ map holds, so it stops.
+: DNEED-FIX ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   DNEED-CLEAR
+   f DNEED-ENTRY
+   f BLOCK-COUNT 0 ?do f i DNEED-BLOCK loop
+   begin
+      0 D-MOVED !
+      f DNEED-EDGES
+      D-MOVED @ 0=
+   until ;
+
+: DRESIDENCY ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f DRES-FIX
+   f DNEED-FIX ;
+
 \ ---- opening the selected function -------------------------------------------
 \ The two modules number their symbols separately, so the name is copied out of
 \ the source interner and interned into the new one. Interning deduplicates, so
@@ -2499,11 +3036,16 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ previous block's value forward is what makes a loop work: the order the second
 \ turn reads is the one the first turn left, and no value of one turn is read in
 \ another.
-: OPEN-ARGS ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
+\ A block argument nothing reads out of a register is not built at all: the
+\ values every edge hands it are not built either, so the copy each edge would
+\ have made is gone with it. Nothing binds it in the value map, so an operation
+\ that did read it would be refused by name rather than given some other value -
+\ which is what makes the register-need answer above fail closed.
+: OPEN-ARGS ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id ord:n :}
    bk ARG-COUNT {: n:n :}
    n 0 ?do
-      bk i ARG-AT OPEN-ARG1
+      ord i DDROP? 0= if bk i ARG-AT OPEN-ARG1 then
    loop ;
 
 \ The same inputs under the data-stack convention: the block takes no argument at
@@ -2511,6 +3053,10 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ caller's operands once, and each argument is then the value its own load
 \ defines. The entry operations are anchored to the block's first source
 \ operation, so they carry a span of the word they belong to.
+\ An argument no operation reads out of a register is left in its slot: the
+\ caller put it there, nothing here moves it, and the routine's own exit or the
+\ call it is handed to finds it exactly where it already is. The load is the only
+\ thing that goes; the pointer move is not this pass's to touch.
 : OPEN-DARGS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    ARGS SLOT-POSITIONS {: a:n :}
@@ -2519,9 +3065,12 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    at PROLOGUE
    at  a A64IR:SLOT-WIDTH *  EMIT-DTAKE
    a 0 ?do
-      bk i ARG-AT
-      at  ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  EMIT-DLOAD
-      VBIND
+      bk i ARG-AT {: v:IR-ID:ir-value-id :}
+      v DNEED? if
+         v
+         at  ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  EMIT-DLOAD
+         VBIND
+      then
    loop ;
 
 \ Every block keeps its arguments, and only the entry block carries the routine's
@@ -2534,7 +3083,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD bk BLOCK-SPAN IR-BUILD:SET-BLOCK-SPAN
    DSTACK? ord 0= and if bk OPEN-DARGS exit then
-   bk OPEN-ARGS ;
+   bk ord OPEN-ARGS ;
 
 
 \ ---- emitting a selection as a select ----------------------------------------
@@ -2719,7 +3268,9 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    then
    t OPERANDS-OF k <> if E-A64SEL-SHAPE throw then
    k 0 ?do
-      bk i ARG-AT  t i OPERAND  VBIND
+      b i DDROP? 0= if
+         bk i ARG-AT  t i OPERAND  VBIND
+      then
    loop ;
 
 \ Every operation of one block of the region but its terminator, and but the
@@ -2756,16 +3307,27 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    loop ;
 
 \ ---- what each block of the region hands the exit ---------------------------
+\ A join position whose argument is not built carries nothing anywhere: no value
+\ is read for it, no select is made for it and no copy crosses the one branch the
+\ region keeps. Every walk over the join's positions asks this first, so the
+\ region's three passes and its branch drop the same positions.
+: RJOIN-DROP? ( n -- bool )
+   R-EXIT-BK @ swap DDROP? ;
+
 : REGION-VALUES-BR ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
    t 0 SUCC-IDX {: sc:n :}
    sc R-EXIT-BK @ = if
       t OPERANDS-OF R-WIDTH @ <> if E-A64SEL-SHAPE throw then
-      R-WIDTH @ 0 ?do  t i OPERAND  b i RSEL!  loop
+      R-WIDTH @ 0 ?do
+         i RJOIN-DROP? 0= if  t i OPERAND  b i RSEL!  then
+      loop
       exit
    then
-   R-WIDTH @ 0 ?do  sc i RSEL@  b i RSEL!  loop ;
+   R-WIDTH @ 0 ?do
+      i RJOIN-DROP? 0= if  sc i RSEL@  b i RSEL!  then
+   loop ;
 
 : REGION-VALUES-BRZ ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
@@ -2775,7 +3337,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    t 0 SUCC-IDX R-S0 !
    t 1 SUCC-IDX R-S1 !
    R-WIDTH @ 0 ?do
-      t fz i REGION-PICK  b i RSEL!
+      i RJOIN-DROP? 0= if  t fz i REGION-PICK  b i RSEL!  then
    loop ;
 
 : REGION-BLOCK-VALUES ( IR-ID:ir-fun-id n -- )
@@ -2806,16 +3368,21 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ that does not hold them.
 : REGION-BR ( IR-ID:ir-op-id n -- )
    {: t:IR-ID:ir-op-id h:n :}
+   0
    R-WIDTH @ 0 ?do
-      0 R-JB @ i ARG-AT TOKEN? if
-         h i RSEL@
-      else
-         t  h i RSEL@  0 R-JB @ i ARG-AT REAL?  EMIT-COPY
+      i RJOIN-DROP? 0= if
+         0 R-JB @ i ARG-AT TOKEN? if
+            h i RSEL@
+         else
+            t  h i RSEL@  0 R-JB @ i ARG-AT REAL?  EMIT-COPY
+         then
+         over EDGE-V !
+         1+
       then
-      i EDGE-V !
    loop
+   {: n:n :}
    t A64IR-OPCODE:BR OPEN
-   R-WIDTH @ 0 ?do
+   n 0 ?do
       CTX BLD  i EDGE-V @  IR-BUILD:ADD-OPERAND
    loop
    R-EXIT-BK @ SUCCESSOR-ORD+
@@ -2853,6 +3420,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : WALK-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id ord:n :}
    ord R-ABSORB? if exit then
+   ord DCUR<IN
    f ord BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk ord OPEN-BLOCK
    bk 0 S-BLK !
@@ -2880,6 +3448,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    f OPEN-FUN
    VCLEAR
    f PLAN-REGIONS
+   f DRESIDENCY
    n 0 ?do
       f i WALK-BLOCK
    loop

@@ -1102,3 +1102,18 @@ public
 -8596 constant E-NREACH-NONE    \ no call instruction in the live dictionary enters the old code: either the engine copied the body into its callers, or nothing calls it, and either way there is nothing a redirection can carry
 -8597 constant E-NREACH-SELF    \ the routine being pointed at itself enters the code being redirected, so carrying the redirection into it would make it call itself
 -8598 constant E-NBR-RANGE      \ a branch-with-link whose two addresses are not both whole instructions, or whose displacement does not fit the twenty-six-bit field the form encodes it in
+
+\ Data-stack residency: -8610..-8619
+\
+\ A value the routine only hands on lives in the caller's data-stack slot it
+\ arrived in, and the emission neither lifts it into a register nor writes it
+\ back. Which slot holds which value is a fact about a whole routine, so the
+\ selector computes it and the allocation validator computes it AGAIN from the
+\ module it is handed - these are the refusals of that second derivation. The
+\ validator names a machine value, never a source one, so what it can decide is
+\ that a slot the emission publishes holds something, and that no access it kept
+\ was one it could have dropped. Whether the value in the slot is the value the
+\ program meant to publish there is a statement about the module the selector
+\ read, and it stays where it already was: dot habu-prove-a-data-df458151.
+-8610 constant E-A64RAV-DRES    \ a data-stack slot published with no store in front of it that no path defines: an omitted store for a slot nothing ever wrote, one a call between the write and the publication destroyed, or a read of such a slot - and, fail-closed rather than reachable, a residency descent that was still moving after every cell of the map could have fallen as far as it can
+-8611 constant E-A64RAV-DKEEP   \ a data-stack access the emission had no reason to make: a store writing a slot that already holds that very value, a load of a slot whose value is already in a register, or a load whose result nothing reads

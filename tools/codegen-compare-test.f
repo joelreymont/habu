@@ -979,8 +979,19 @@ $1E602008 constant FCMP0-OP
 \ own state - and one of the seven takes MORE bytes than the engine's code for
 \ the same body: T-RES-WALK, whose own record is three instructions of loop
 \ around a call in the old emitter's code and a frame, a saved return address and
-\ a saved loop value in the chain's. Both numbers are pinned here so that the day
-\ either changes, in either direction, somebody has to look at it.
+\ two pointer moves the routine does not need in the chain's. Both numbers are
+\ pinned here so that the day either changes, in either direction, somebody has
+\ to look at it.
+\
+\ WHAT IT NO LONGER CARRIES is the saved loop value, and that half of the account
+\ was closed by the residency pass in src/compiler/native/select.f: the value the
+\ walker carries round its loop never leaves the data-stack cell it arrived in,
+\ so the entry load, the call's store of the same value into the same cell, the
+\ result load, the return's store and the edge copy that only existed because the
+\ value was in a register are all gone. The row fell from 76 bytes to 56 and no
+\ row of this corpus touches the caller's data stack more often than the engine
+\ any more - which is why the assertion below is now zero and names the row it
+\ used to be about.
 : REAL-RUN-CASES2 ( -- )
    8 ACCOUNT-CASES
 
@@ -1012,11 +1023,9 @@ $1E602008 constant FCMP0-OP
    s" CODEGEN-CORPUS2:COUNT-CHAR" SMALLER? TTRUE
    s" CODEGEN-CORPUS2:VEC-COPY-CELLS" SMALLER? TTRUE
 
-   s" exactly one row also touches the caller's data stack more often" T-LABEL
-   DS-HEAVIER-ROWS 1 T=
-
-   s" and it is the same row - the loop whose test is a call" T-LABEL
-   s" CODEGEN-CORPUS2:T-RES-WALK" DS-HEAVIER? TTRUE
+   s" and no row of it touches the caller's data stack more often" T-LABEL
+   DS-HEAVIER-ROWS 0 T=
+   s" CODEGEN-CORPUS2:T-RES-WALK" DS-HEAVIER? TFALSE
    s" CODEGEN-CORPUS2:COUNT-CHAR" DS-HEAVIER? TFALSE ;
 
 \ The third corpus, whose account is now eleven compiled rows and no gap at all.

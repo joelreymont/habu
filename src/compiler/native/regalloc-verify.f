@@ -1236,49 +1236,497 @@ create V-TMP SETC cells allot
    V-FRAME @ 0<> if 1 exit then
    0 ;
 
-: VDEXIT-POS? ( n n n -- bool )
-   {: n:n r:n at:n :}
+\ ---- what each slot of the caller's stack holds ------------------------------
+\ THE SECOND DERIVATION. The selector decides that a value already lies in the
+\ slot a store would write and builds no store, and that a value nothing reads
+\ out of a register need never be loaded into one. This is that decision measured
+\ again, from the module alone: two facts per slot, computed over the whole
+\ function by the same kind of forward walk the selector runs and by code that
+\ shares none of it.
+\
+\   IS THE SLOT DEFINED - has some path put a value in this cell and has nothing
+\     destroyed it since. Meet is `and`, so a slot is defined only when it is
+\     defined however control arrived. A call publishing a slot no store in front
+\     of it wrote is refused unless this says the cell already holds something,
+\     which is the whole of what an omitted store claims.
+\
+\   WHICH VALUE THE SLOT HOLDS - the machine value the cell provably equals, or
+\     nothing. Two paths disagreeing means nothing, which only ever costs a
+\     refusal this check would otherwise make. What it decides is the other
+\     direction: a store writing the value the cell already holds, and a load of a
+\     cell whose value is already in a register, are accesses the emission had no
+\     reason to make and are refused.
+\
+\ WHAT THIS CANNOT DECIDE, AND WHOSE IT IS. Whether the value standing in a slot
+\ is the value the PROGRAM meant to publish there is a statement about the module
+\ the selector read, and this file is handed one module - the same gap the store
+\ run always had (dot habu-prove-a-data-df458151, named at the head of the data
+\ stack section above). What is decided here is that the emission is the one
+\ canonical lowering for the module's own residency: every omission justified,
+\ every access necessary.
+\
+\ A SLOT'S CONTENT IS NAMED BY A CELL AND THE THREE KINDS DO NOT COLLIDE. A
+\ machine value is its own module-local ordinal, below VMAX; the routine's own
+\ argument `i`, which no operation of the module defines, is VMAX + i; and the
+\ slot `j` a call publishes back is counted past both from the call's own ordinal.
+\ Nothing indexes by these numbers - they are only ever compared - so the naming
+\ needs no table and no bound.
+64 constant VDSLOTS                  \ slots the residency is tracked over
+-1 constant VD-BOT                   \ nothing is known about this slot
+-2 constant VD-TOP                   \ nothing has been said about it yet
+0 constant VD-UNDEF
+1 constant VD-DEF
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create VD-VIN BMAX VDSLOTS * cells allot    \ the value each slot holds at a block's head
+create VD-VOUT BMAX VDSLOTS * cells allot   \ and at its end
+create VD-DIN BMAX VDSLOTS * cells allot    \ whether each slot is defined there
+create VD-DOUT BMAX VDSLOTS * cells allot
+create VD-VCUR VDSLOTS cells allot
+create VD-DCUR VDSLOTS cells allot
+create VD-VMEET VDSLOTS cells allot
+create VD-DMEET VDSLOTS cells allot
+variable VD-EL                       \ argument loads the entry sequence really built
+variable VD-ES                       \ result stores the exit sequence really built
+variable VD-P                        \ the position one of the scans below stands at
+variable VD-J                        \ the declared place one of them stands at
+variable VD-S
+variable VD-PREV
+variable VD-MOVED
+
+: VD-WINDOW? ( n -- bool )
+   dup 0 < if drop false exit then
+   VDSLOTS < ;
+
+: VDV-IN ( n n -- n )
+   {: b:n s:n :}
+   s VD-WINDOW? 0= if VD-BOT exit then
+   b VDSLOTS * s + cells VD-VIN + @ ;
+
+: VDV-IN! ( n n n -- )
+   {: v:n b:n s:n :}
+   s VD-WINDOW? 0= if exit then
+   v  b VDSLOTS * s + cells VD-VIN + ! ;
+
+: VDD-IN ( n n -- n )
+   {: b:n s:n :}
+   s VD-WINDOW? 0= if VD-DEF exit then
+   b VDSLOTS * s + cells VD-DIN + @ ;
+
+: VDD-IN! ( n n n -- )
+   {: v:n b:n s:n :}
+   s VD-WINDOW? 0= if exit then
+   v  b VDSLOTS * s + cells VD-DIN + ! ;
+
+: VDV-OUT ( n n -- n )
+   {: b:n s:n :}
+   s VD-WINDOW? 0= if VD-BOT exit then
+   b VDSLOTS * s + cells VD-VOUT + @ ;
+
+: VDV-OUT! ( n n n -- )
+   {: v:n b:n s:n :}
+   s VD-WINDOW? 0= if exit then
+   v  b VDSLOTS * s + cells VD-VOUT + ! ;
+
+: VDD-OUT ( n n -- n )
+   {: b:n s:n :}
+   s VD-WINDOW? 0= if VD-DEF exit then
+   b VDSLOTS * s + cells VD-DOUT + @ ;
+
+: VDD-OUT! ( n n n -- )
+   {: v:n b:n s:n :}
+   s VD-WINDOW? 0= if exit then
+   v  b VDSLOTS * s + cells VD-DOUT + ! ;
+
+\ ---- the running map, and what one operation does to it ----------------------
+: VDCUR<IN ( n -- )
+   {: b:n :}
+   VDSLOTS 0 ?do
+      b i VDV-IN  i cells VD-VCUR + !
+      b i VDD-IN  i cells VD-DCUR + !
+   loop ;
+
+: VDOUT<CUR ( n -- )
+   {: b:n :}
+   VDSLOTS 0 ?do
+      i cells VD-VCUR + @  b i VDV-OUT!
+      i cells VD-DCUR + @  b i VDD-OUT!
+   loop ;
+
+: VDV@ ( n -- n )
+   dup VD-WINDOW? 0= if drop VD-BOT exit then
+   cells VD-VCUR + @ ;
+
+: VDD@ ( n -- n )
+   dup VD-WINDOW? 0= if drop VD-DEF exit then
+   cells VD-DCUR + @ ;
+
+: VDPUT ( n n n -- )
+   {: v:n d:n s:n :}
+   s VD-WINDOW? 0= if exit then
+   v s cells VD-VCUR + !
+   d s cells VD-DCUR + ! ;
+
+\ Is this content a value of the module - the only kind a register can already
+\ hold, and therefore the only kind that makes an access unnecessary?
+: VD-NAMED? ( n -- bool )
+   dup 0 >= swap N-VALS @ < and ;
+
+: VDARG ( n -- n )
+   VMAX + ;
+
+: VDCALLRES ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id j:n :}
+   VMAX VDSLOTS +  id IR-ID:OP-LOCAL VDSLOTS * +  j + ;
+
+\ Everything the callee could have written stops holding anything, and the slots
+\ it takes back hold what it left there. The verifier reads the take-back count
+\ off the call's own field, so a site that saved live values below the callee's
+\ base is covered without this check having to know how many: those cells are
+\ inside the take-back run and are defined, which is all an omitted store needs.
+: VDCALL-XFER ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   VDSLOTS 0 ?do VD-BOT VD-UNDEF i VDPUT loop
+   id DBACK-OF A64IR:SLOT-WIDTH / 0 ?do
+      id i VDCALLRES  VD-DEF  i VDPUT
+   loop ;
+
+\ A store through an address the program computed may have reached a data-stack
+\ cell - which is exactly what the dialect declares by putting the addressed
+\ forms in the same space as the data-stack forms - so no cell provably holds a
+\ named value afterwards. It cannot UNdefine one: a store leaves something
+\ behind wherever it landed.
+: VDCLOBBER? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id STORES? 0= if false exit then
+   id DSTACK-TOUCH? 0= ;
+
+: VDCLOBBER-XFER ( -- )
+   VDSLOTS 0 ?do
+      i VDD@  VD-BOT swap  i VDPUT
+   loop ;
+
+\ ---- one operation, measured -------------------------------------------------
+\ The refusals are here rather than in a second walk because the map they judge
+\ is the map at that operation, and re-deriving it twice would be two answers.
+: VDLOAD-CK ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id DSLOT-OF A64IR:SLOT-WIDTH / {: s:n :}
+   s VDD@ VD-DEF <> if E-A64RAV-DRES throw then
+   s VDV@ VD-NAMED? if E-A64RAV-DKEEP throw then
+   id 0 RESULT-AT SLOT {: k:n :}
+   k USES-AT 0= if E-A64RAV-DKEEP throw then
+   k VD-DEF s VDPUT ;
+
+: VDSTORE-CK ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id DSLOT-OF A64IR:SLOT-WIDTH / {: s:n :}
+   id 0 OPERAND-AT SLOT {: k:n :}
+   s VDV@ k = if E-A64RAV-DKEEP throw then
+   k VD-DEF s VDPUT ;
+
+\ Every slot the branch publishes holds something. A store in front of it is one
+\ way; the cell already holding what the callee is to read is the other, and this
+\ is where that claim is held against the module.
+: VDPUBLISH-CK ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id DBYTES-OF A64IR:SLOT-WIDTH / 0 ?do
+      i VDD@ VD-DEF <> if E-A64RAV-DRES throw then
+   loop ;
+
+\ The routine's own publication: the cells the convention says the caller will
+\ read the results out of, at the moment the pointer moves over them.
+: VDOUTS-CK ( A64EFF:placeseq n -- )
+   {: outs:A64EFF:placeseq r:n :}
+   r 0 ?do
+      outs i A64EFF:SEQ-SLOT@ VDD@ VD-DEF <> if E-A64RAV-DRES throw then
+   loop ;
+
+: VDOP-XFER ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id DCALL? if id VDCALL-XFER exit then
+   id DSLOT-OF NOSLOT <> if
+      id STORES? if id VDSTORE-CK exit then
+      id VDLOAD-CK exit
+   then
+   id VDCLOBBER? if VDCLOBBER-XFER then ;
+
+\ ---- the fixpoint ------------------------------------------------------------
+: VDMEET-V ( n n -- n )
+   {: a:n b:n :}
+   a VD-TOP = if b exit then
+   b VD-TOP = if a exit then
+   a b = if a exit then
+   VD-BOT ;
+
+: VDMEET-D ( n n -- n )
+   {: a:n b:n :}
+   a VD-TOP = if b exit then
+   b VD-TOP = if a exit then
+   a b = if a exit then
+   VD-UNDEF ;
+
+\ A value the branch hands to argument `i` is read as that argument on the way
+\ in, which is what lets one cell keep its name round a loop whose two edges
+\ carry two different values into it.
+: VDXLATE ( IR-ID:ir-op-id IR-ID:ir-block-id n -- n )
+   {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id v:n :}
+   v VD-NAMED? 0= if v exit then
+   tb ARG-COUNT {: k:n :}
+   t OPERANDS-OF k <> if v exit then
+   v
+   k 0 ?do
+      t i OPERAND-AT SLOT v = if
+         drop  tb i ARG-AT SLOT  leave
+      then
+   loop ;
+
+: VDMEET-EDGE ( IR-ID:ir-op-id IR-ID:ir-block-id n -- )
+   {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id p:n :}
+   VDSLOTS 0 ?do
+      i cells VD-VMEET + @   t tb  p i VDV-OUT  VDXLATE   VDMEET-V
+      i cells VD-VMEET + !
+      i cells VD-DMEET + @   p i VDD-OUT   VDMEET-D
+      i cells VD-DMEET + !
+   loop ;
+
+: VDEDGE? ( IR-ID:ir-op-id n -- bool )
+   {: t:IR-ID:ir-op-id b:n :}
+   false
+   t SUCCS-OF 0 ?do
+      t i SUCC-AT IR-ID:BLOCK-LOCAL b = if drop true leave then
+   loop ;
+
+: VDMEET-FROM ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id p:n b:n :}
+   f p BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t b VDEDGE? 0= if exit then
+   t  f b BLOCK-AT  p VDMEET-EDGE ;
+
+: VDIN-SET? ( n n n n -- bool )
+   {: v:n d:n b:n s:n :}
+   false
+   b s VDV-IN v <> if v b s VDV-IN! drop true then
+   b s VDD-IN d <> if d b s VDD-IN! drop true then ;
+
+: VDMEET-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   VDSLOTS 0 ?do
+      VD-TOP i cells VD-VMEET + !
+      VD-TOP i cells VD-DMEET + !
+   loop
+   V-BLKS @ 0 ?do  f i b VDMEET-FROM  loop
+   VDSLOTS 0 ?do
+      i cells VD-VMEET + @  i cells VD-DMEET + @  b i VDIN-SET?
+      if 1 VD-MOVED ! then
+   loop ;
+
+: VDXFER-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b VDCUR<IN
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do  bk i OP-AT VDOP-XFER  loop
+   b VDOUT<CUR ;
+
+\ The entry map: the caller wrote the argument cells, the pointer move at the
+\ head of the entry block is what makes them slots zero upwards, and nothing in
+\ the module defines them - so they are named as the routine's own arguments.
+: VDENTRY-IN ( n A64EFF:placeseq -- )
+   {: a:n args:A64EFF:placeseq :}
+   VDSLOTS 0 ?do
+      VD-BOT 0 i VDV-IN!
+      VD-UNDEF 0 i VDD-IN!
+   loop
+   a 0 ?do
+      i VDARG  0  args i A64EFF:SEQ-SLOT@  VDV-IN!
+      VD-DEF   0  args i A64EFF:SEQ-SLOT@  VDD-IN!
+   loop ;
+
+: VDIN-ANY ( n -- )
+   {: b:n :}
+   VDSLOTS 0 ?do
+      VD-TOP b i VDV-IN!
+      VD-TOP b i VDD-IN!
+   loop ;
+
+BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
+
+: VDRES-FIX ( IR-ID:ir-fun-id n A64EFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id a:n args:A64EFF:placeseq :}
+   V-BLKS @ 1 ?do i VDIN-ANY loop
+   a args VDENTRY-IN
+   V-BLKS @ 0 ?do f i VDXFER-BLOCK loop
+   0
+   begin
+      dup VD-ROUNDS >= if E-A64RAV-DRES throw then
+      0 VD-MOVED !
+      V-BLKS @ 1 ?do  f i VDMEET-BLOCK  loop
+      V-BLKS @ 0 ?do  f i VDXFER-BLOCK  loop
+      1+
+      VD-MOVED @ 0=
+   until
+   drop ;
+
+\ ---- the checked pass --------------------------------------------------------
+\ The same walk once more with the refusals turned on. It is a second walk rather
+\ than a flag on the first because the map has to have STOPPED moving before an
+\ omission is judged against it: a round of the descent above is an answer that
+\ may still fall.
+: VDCK-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id DCALL? if id VDPUBLISH-CK  id VDCALL-XFER exit then
+   id DSLOT-OF NOSLOT <> if
+      id STORES? if id VDSTORE-CK exit then
+      id VDLOAD-CK exit
+   then
+   id VDCLOBBER? if VDCLOBBER-XFER then ;
+
+: VDCK-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b VDCUR<IN
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do  bk i OP-AT VDCK-OP  loop ;
+
+\ The exit publication is judged in its own block, at the position the shape
+\ check already found it: the map there is the one the walk above rebuilt, and
+\ the cells the convention names have to hold something at exactly that point.
+: VDCK-EXIT ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
+   rb VDCUR<IN
+   f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
+   xb OP-COUNT PRO-N - 2 - {: pub:n :}
+   pub 0 ?do  xb i OP-AT VDOP-XFER  loop
+   outs r VDOUTS-CK ;
+
+: VDRES-CK ( IR-ID:ir-fun-id n n n A64EFF:placeseq A64EFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n a:n r:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   f a args VDRES-FIX
+   V-BLKS @ 0 ?do f i VDCK-BLOCK loop
+   f rb r outs VDCK-EXIT ;
+
+\ ---- the entry and exit sequences, re-derived --------------------------------
+\ Which loads and stores the two sequences really carry is not fixed any more:
+\ an argument no operation reads out of a register has no load and a result
+\ already standing in the cell it publishes from has no store. What is fixed is
+\ that the ones present name the declared places IN ORDER and name no other
+\ place, so the run is a rising subsequence of the convention rather than a
+\ prefix of it. The counts are recorded because the scan that accounts for every
+\ data-stack position of the routine has to know where these two windows end.
+: VDLOAD? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id DSLOT-OF NOSLOT = if false exit then
+   id STORES? 0= ;
+
+: VDSTORE? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id DSLOT-OF NOSLOT = if false exit then
+   id STORES? ;
+
+: VDSLOT-AT ( IR-ID:ir-block-id n -- n )
+   OP-AT DSLOT-OF A64IR:SLOT-WIDTH / ;
+
+: VDSEQ-FIND ( A64EFF:placeseq n n -- )
+   {: seq:A64EFF:placeseq len:n s:n :}
+   begin
+      VD-J @ len >= if E-A64RAV-DSTACK throw then
+      seq VD-J @ A64EFF:SEQ-SLOT@ s =
+      VD-J @ 1+ VD-J !
+   until ;
+
+: VDENTRY-CK ( IR-ID:ir-fun-id n A64EFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id a:n args:A64EFF:placeseq :}
+   f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
+   eb OP-COUNT PRO-N 1+ < if E-A64RAV-DSTACK throw then
+   eb PRO-N  a A64IR:SLOT-WIDTH *  DTAKE-AT?
+   PRO-N 1+ VD-P !
+   0 VD-J !
+   0 VD-EL !
+   begin
+      VD-P @ eb OP-COUNT < if eb VD-P @ VDLOAD? else false then
+   while
+      args a  eb VD-P @ VDSLOT-AT  VDSEQ-FIND
+      VD-P @ 1+ VD-P !
+      VD-EL @ 1+ VD-EL !
+   repeat ;
+
+\ WHY WALKING BACK FROM THE PUBLICATION CANNOT MISREAD A CALL SITE'S STORES. A
+\ site's store run is always followed by the branch itself, so the operation in
+\ front of the pointer move that publishes the results is either one of these
+\ stores or something that is not a data-stack store at all.
+: VDEXIT-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
+   f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
+   xb OP-COUNT PRO-N - {: n:n :}
+   n 2 < if E-A64RAV-DSTACK throw then
+   xb n 2 -  r A64IR:SLOT-WIDTH *  DTAKE-AT?
+   n 2 - VD-P !
+   0 VD-ES !
+   begin
+      VD-P @ 0 > if xb VD-P @ 1- VDSTORE? else false then
+   while
+      VD-P @ 1- VD-P !
+      VD-ES @ 1+ VD-ES !
+   repeat
+   0 VD-J !
+   VD-ES @ 0 ?do
+      outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
+   loop ;
+
+: VDEXIT-POS? ( n n -- bool )
+   {: n:n at:n :}
    n 2 - PRO-N - {: p:n :}
    at p = if true exit then
-   at p r - >= at p < and ;
+   at p VD-ES @ - >= at p < and ;
 
-: VDPOS? ( n n n n n n -- bool )
-   {: b:n at:n eb:n rb:n a:n r:n :}
-   b eb = at a PRO-N + <= and if true exit then
-   b rb = if rb VB-OPS r at VDEXIT-POS? exit then
+: VDPOS? ( n n n n -- bool )
+   {: b:n at:n eb:n rb:n :}
+   b eb = at VD-EL @ PRO-N + <= and if true exit then
+   b rb = if rb VB-OPS at VDEXIT-POS? exit then
    false ;
 
 \ ---- a call site, re-derived -------------------------------------------------
 \ What the dialect lowers a call to, measured from the module rather than taken
-\ from the selector: a run of data-stack stores naming slots zero upwards in
-\ order, the call, and a run of data-stack loads naming slots zero upwards in
-\ order. The call's own two byte counts have to be exactly those two runs - it
-\ moves the pointer up over what it stores and back down over what it loads - so
-\ a store the selector forgot, a slot named out of order, and a byte count that
-\ does not stand for its run are three different disagreements and all three are
-\ refused here. That is the whole of what makes a caller's live values survive:
-\ the pointer ends where it started and every value comes back out of the slot it
-\ went into.
+\ from the selector: a run of data-stack stores naming slots the call publishes,
+\ in rising order, the call, and a run of data-stack loads naming slots it takes
+\ back, in rising order. Neither run has to be complete any more - an omitted
+\ store is one the residency above has to justify and an omitted load is one
+\ nothing reads - so what is measured is that every access present names a slot
+\ inside its own run and that no two of them name the same slot or name them out
+\ of order. A store the emission put after the branch, a slot named twice, and a
+\ store naming a cell past the ones the call publishes are three different
+\ disagreements and all three are refused here.
 : DSTORE-RUN ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
+   -1 VD-PREV !
    0
    n at - 0 ?do
-      bk at i + OP-AT {: id:IR-ID:ir-op-id :}
-      id DSLOT-OF  i A64IR:SLOT-WIDTH * =  id STORES?  and
-      0= if leave then
+      bk at i + VDSTORE? 0= if leave then
+      bk at i + VDSLOT-AT VD-S !
+      VD-S @ VD-PREV @ <= if E-A64RAV-CALL throw then
+      VD-S @ VD-PREV !
       drop i 1+
    loop ;
 
 : DLOAD-RUN ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
+   -1 VD-PREV !
    0
    n at - 0 ?do
-      bk at i + OP-AT {: id:IR-ID:ir-op-id :}
-      id DSLOT-OF  i A64IR:SLOT-WIDTH * =  id STORES? 0=  and
-      0= if leave then
+      bk at i + VDLOAD? 0= if leave then
+      bk at i + VDSLOT-AT VD-S !
+      VD-S @ VD-PREV @ <= if E-A64RAV-CALL throw then
+      VD-S @ VD-PREV !
       drop i 1+
+   loop ;
+
+: VDRUN-BOUND ( IR-ID:ir-block-id n n n -- )
+   {: bk:IR-ID:ir-block-id at:n k:n limit:n :}
+   k 0 ?do
+      bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
    loop ;
 
 : VCALL-SITE ( IR-ID:ir-block-id n -- n )
@@ -1288,9 +1736,9 @@ create V-TMP SETC cells allot
    cp bk OP-COUNT >= if E-A64RAV-CALL throw then
    bk cp OP-AT {: id:IR-ID:ir-op-id :}
    id DCALL? 0= if E-A64RAV-CALL throw then
-   id DBYTES-OF  g A64IR:SLOT-WIDTH * <> if E-A64RAV-CALL throw then
+   bk at g  id DBYTES-OF A64IR:SLOT-WIDTH /  VDRUN-BOUND
    bk cp 1+ DLOAD-RUN {: b:n :}
-   id DBACK-OF  b A64IR:SLOT-WIDTH * <> if E-A64RAV-CALL throw then
+   bk cp 1+ b  id DBACK-OF A64IR:SLOT-WIDTH /  VDRUN-BOUND
    cp 1+ b + ;
 
 \ Every position of every block that touches the caller's data stack is either
@@ -1298,13 +1746,13 @@ create V-TMP SETC cells allot
 \ forward and consumes a whole call site at a time, so a store left over between
 \ two sites, or a call with no stores in front of it, stops at the first position
 \ the scan cannot account for.
-: VDCLEAN1 ( IR-ID:ir-fun-id n n n n n -- )
-   {: f:IR-ID:ir-fun-id b:n eb:n rb:n a:n r:n :}
+: VDCLEAN1 ( IR-ID:ir-fun-id n n n -- )
+   {: f:IR-ID:ir-fun-id b:n eb:n rb:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    0 VD-AT !
    begin VD-AT @ n < while
-      b VD-AT @ eb rb a r VDPOS? if
+      b VD-AT @ eb rb VDPOS? if
          VD-AT @ 1+ VD-AT !
       else
          bk VD-AT @ OP-AT DSTACK-TOUCH? if
@@ -1323,20 +1771,10 @@ create V-TMP SETC cells allot
       V-BLKS @ 0 ?do f i BLOCK-AT VNO-DSTACK loop
       exit
    then
-   f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
-   eb OP-COUNT a 1+ PRO-N + < if E-A64RAV-DSTACK throw then
-   eb PRO-N  a A64IR:SLOT-WIDTH *  DTAKE-AT?
-   a 0 ?do
-      eb PRO-N i + 1+  args i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
-   loop
-   f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
-   xb OP-COUNT PRO-N - {: n:n :}
-   n r 2 + < if E-A64RAV-DSTACK throw then
-   xb n 2 -  r A64IR:SLOT-WIDTH *  DTAKE-AT?
-   r 0 ?do
-      xb  n 2 - r - i +  outs i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
-   loop
-   V-BLKS @ 0 ?do f i 0 rb a r VDCLEAN1 loop ;
+   f a args VDENTRY-CK
+   f rb r outs VDEXIT-CK
+   V-BLKS @ 0 ?do f i 0 rb VDCLEAN1 loop
+   f rb a r args outs VDRES-CK ;
 
 \ ---- the whole re-derivation -------------------------------------------------
 : VBLOCK-CKS ( IR-ID:ir-fun-id -- )

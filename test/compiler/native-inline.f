@@ -1036,8 +1036,17 @@ variable STALE-ENTRY
    s" NINL-R2" ENTRY-OF NINL:TOKENS 16 T=
    s" NINL-R3" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
 
+\ Its routine is three instructions - the pointer down over the two arguments,
+\ the pointer up over the two results, and the return. Twenty-four swaps of one
+\ pair are the identity, so each argument is still in the cell it arrived in when
+\ the routine publishes it; the residency pass in src/compiler/native/select.f
+\ writes no store for a value the cell already holds and builds no load for a
+\ value nothing reads out of a register, so nothing of the body survives. Which
+\ is what makes the point of this case sharper rather than softer: the routine is
+\ as small as the size rule could ever ask for, and it is still refused, because
+\ what refused it is the row's capacity.
    s" and it is the capacity that refused it, because the rule says yes" T-LABEL
-   s" NINL-R3" WORD-INSNS 7 T=
+   s" NINL-R3" WORD-INSNS 3 T=
    2 2 s" NINL-R3" WORD-INSNS NINL:SMALL? TTRUE
    16 NINL:FITS? TTRUE
    17 NINL:FITS? TFALSE

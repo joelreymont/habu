@@ -253,6 +253,27 @@ $1000 constant BUMP-ADDR
    HIR-OPCODE:ADD got one BINOP RET1
    CLOSE-FUN ;
 
+\ `: PASS ( n -- n ) ;` - a routine that hands its argument straight back. There
+\ is nothing between the two, so under the data-stack convention the cell the
+\ caller wrote is already the cell the caller will read.
+: BUILD-PASS ( -- )
+   1 1 OPEN-FUN
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ `: EXCH ( a b -- b a ) swap ;` - the same two cells the other way round. Every
+\ result is in a cell, and it is the WRONG cell, so nothing here is droppable and
+\ the whole entry and exit sequence has to be built.
+: BUILD-EXCH ( -- )
+   2 2 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:RETURN CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB IR-BUILD:END-OP drop
+   CLOSE-FUN ;
+
 \ A literal that fits one move-wide half, and one that needs two.
 : BUILD-SMALL ( -- )
    0 1 OPEN-FUN
@@ -1779,6 +1800,50 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: DSTACK-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 8 T= TTRUE 0 T= TTRUE TTRUE 0 T= TTRUE 8 T= TTRUE 6 T= 0 T= ;
 
+\ ---- a value that only crosses the routine -----------------------------------
+\ THE RESIDENCY ANSWER, at its smallest. A routine that hands its argument back
+\ unchanged publishes it out of the very cell the caller wrote it into, so the
+\ load that would lift it into a register and the store that would put it back
+\ are both instructions with nothing to do. What is left is the two pointer
+\ moves - which are not this pass's to remove, and say so under their own dot
+\ habu-place-the-data-9f128e58 - and the return.
+\
+\ THE PAIR IS THE POINT. `swap` is the same routine with its two results in each
+\ other's cells: nothing is where it will be published from, so every load and
+\ every store is built. A pass that dropped stores by counting rather than by
+\ asking what the cell holds would pass the first case and lose the second, which
+\ is why they are asserted together.
+: PASS-BODY ( IR-CTX:ctx -- n bool bool bool )
+   HIR-MOD
+   BUILD-PASS
+   1 1 SELECTED-HABU READ!
+   OPS
+   0 s" a64.dtake" OPCODE-IS?
+   1 s" a64.dpublish" OPCODE-IS?
+   2 s" a64.ret" OPCODE-IS? ;
+
+: PASS-CASE ( -- )
+   s" a value that only crosses the routine never leaves its slot" T-LABEL
+   WBND [: PASS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE 3 T= ;
+
+: EXCH-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool )
+   HIR-MOD
+   BUILD-EXCH
+   2 2 SELECTED-HABU READ!
+   OPS
+   0 s" a64.dtake" OPCODE-IS?
+   1 s" a64.dload" OPCODE-IS?
+   2 s" a64.dload" OPCODE-IS?
+   3 s" a64.dstore" OPCODE-IS?
+   4 s" a64.dstore" OPCODE-IS?
+   5 s" a64.dpublish" OPCODE-IS? ;
+
+: EXCH-CASE ( -- )
+   s" and a value published from another value's slot is still moved" T-LABEL
+   WBND [: EXCH-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 7 T= ;
+
 \ ---- the memory operations, lowered ------------------------------------------
 \ What the two addressed forms are wired to, read off the selected module. The
 \ source order is minted by hir.mem, which selects to no instruction at all: the
@@ -1944,6 +2009,8 @@ public
    WIDE-CASE
    FUN-CASE
    DSTACK-CASE
+   PASS-CASE
+   EXCH-CASE
    MEM-CASE
    WBND [: GROUP-BIND-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SOURCE-REFUSE ;] IR-CTX:WITH-CONTEXT

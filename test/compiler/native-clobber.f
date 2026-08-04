@@ -232,9 +232,19 @@ $F9400000 constant LDR-OP
 \ Two callers of one shape. Two values are live across every call in both - the
 \ loop's index and its limit; the accumulator is the call's own argument and goes
 \ out through a slot either way - so the difference between their counts is the
-\ discipline and nothing else. Four calls in all, two values live across each:
-\ eight stores and eight loads that the narrowing removes, four of each measured
-\ here because the two rows differ by exactly that.
+\ discipline and nothing else, and both counts are measured so that a change in
+\ either is visible rather than only their order.
+\
+\ WHY THE COUNTS ARE SMALL RATHER THAN EIGHT AND EIGHT. The residency pass in
+\ src/compiler/native/select.f writes no store for a value the cell it would
+\ write already holds, and builds no load for a value nothing reads out of a
+\ register. The accumulator is handed in on the caller's stack, handed straight
+\ to the callee and handed straight back, so it crosses either body without ever
+\ reaching a register - which removes the accumulator's own traffic from both
+\ rows. What is left in the wide row is the loop's index and limit going out and
+\ coming back at every call, which is the discipline the narrowing removes, and
+\ the assertions below hold the two rows against each other as well as against
+\ their own numbers.
 2 constant CALL-IN
 1 constant CALL-OUT
 
@@ -260,12 +270,16 @@ $F9400000 constant LDR-OP
    s" NCLOB-NARROW" DS-LOADS  s" NCLOB-WIDE" DS-LOADS  < TTRUE
 
    s" and what it still stores is its arguments, not its live values" T-LABEL
-   s" NCLOB-NARROW" DS-STORES 3 T=
-   s" NCLOB-NARROW" DS-LOADS 4 T=
+   s" NCLOB-NARROW" DS-STORES 0 T=
+   s" NCLOB-NARROW" DS-LOADS 1 T=
 
    s" while the caller of an engine-compiled word keeps the whole discipline" T-LABEL
-   s" NCLOB-WIDE" DS-STORES 7 T=
-   s" NCLOB-WIDE" DS-LOADS 8 T= ;
+   s" NCLOB-WIDE" DS-STORES 3 T=
+   s" NCLOB-WIDE" DS-LOADS 5 T=
+
+   s" and the narrowing is the whole of the gap between the two rows" T-LABEL
+   s" NCLOB-WIDE" DS-STORES  s" NCLOB-NARROW" DS-STORES -  3 T=
+   s" NCLOB-WIDE" DS-LOADS  s" NCLOB-NARROW" DS-LOADS -  4 T= ;
 
 \ ---- the narrowing, measured where it can actually be lost -------------------
 \ The pair above holds two values live across each call while the callee's row
