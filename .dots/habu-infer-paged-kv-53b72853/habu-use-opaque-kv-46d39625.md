@@ -1,9 +1,11 @@
 ---
 title: Use opaque KV sequence IDs
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-29T21:43:29.427685+02:00"
+closed-at: "2026-08-04T18:20:57.696695+02:00"
+close-reason: "Retired: wide nested STRUCTURE fields retain the existing validated handle directly; the one-cell identity scan and owner-construction dependency add no product capability."
 blocks:
   - habu-publish-owner-product-32b3f03c
 ---
