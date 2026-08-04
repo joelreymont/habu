@@ -7,6 +7,7 @@ require lib/fs-mutate.f
 require lib/fs-path.f
 require lib/process-fork.f
 require test/checker-assert.f
+require lib/test/mmap-exhaust.f
 require lib/test/outcome.f
 require maki/infer/gpt2-model.f
 
@@ -15,8 +16,6 @@ private
 
 -7697 constant E-FIX
 $86 constant FAULT-RC
-$5002 constant NORESERVE-MAP
-1 44 lshift constant MAP-START
 $80 constant STATM-CAP
 
 create BASE-BYTE 1 allot
@@ -291,26 +290,11 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
 : TOKEN-ALLOC-LEN ( -- CAD-NUM:alloc-byte-len )
    TOKEN-BYTES MEM:BYTES-ALLOC-LEN ;
 
-: MAP-ONE ( n -- bool )
-   0 swap MEM-PROT-RW NORESERVE-MAP MEM-ANON-FD MEM-OFF-ZERO mmap
-   0 >= ;
-
-: FILL-MAPS ( n -- )
-   begin dup MAP-ONE while repeat drop ;
-
-: EXHAUST-MAPS ( -- )
-   MAP-START
-   begin dup TOKEN-BYTES > while
-      dup FILL-MAPS 2 /
-   repeat
-   drop
-   TOKEN-BYTES FILL-MAPS ;
-
 : ALLOC-REFUSAL-CHILD ( -- )
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
-   EXHAUST-MAPS
-   TOKEN-BYTES MAP-ONE if E-FIX throw then
+   TOKEN-BYTES MMAP-TEST:EXHAUST-CHILD
+   TOKEN-BYTES MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
    0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-MEM-MAP <> if E-FIX throw then ENDOF
@@ -318,7 +302,7 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    ;MATCH
    SAFET:LIVE-OWNERS owners <> if E-FIX throw then
    SAFET-MAP:LIVE maps <> if E-FIX throw then
-   TOKEN-BYTES MAP-ONE if E-FIX throw then
+   TOKEN-BYTES MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
    s" " 0 die ;
 
 : TEST-ALLOC-REFUSAL ( -- )

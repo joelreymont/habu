@@ -1,1007 +1,701 @@
-\ maki/infer/kv-cache-test.f - checked paged KV allocator contract.
+\ maki/infer/kv-cache-test.f - linear device KV cache contract.
 \ Run: bin/hb --load maki/infer/kv-cache-test.f
-\
-\ The suite pins the host allocator only. Device-visible snapshots and publication
-\ leases belong to habu-lease-kv-snapshot-9ef40f19 and are intentionally absent.
 
 require lib/test.f
-require lib/property.f
+require lib/process-fork.f
+require lib/test/mmap-exhaust.f
+require lib/test/outcome.f
 require test/checker-assert.f
 require maki/infer/kv-cache.f
+
+package KV-OPEN-PROBE
+
+: CALL ( GPU:session KV:config -- GPU:session result<KV:cache,n> )
+   KV:OPEN ;
+
+;package
 
 package KV
 private
 
-create KVT-CACHE HDR-BYTES allot
-create KVT-OTHER HDR-BYTES allot
+4 constant KVT-H-CAP
+create KVT-H-CID  KVT-H-CAP cells allot
+create KVT-H-SLOT KVT-H-CAP cells allot
+create KVT-H-GEN  KVT-H-CAP cells allot
 
-: KVT-INIT/P ( n n n n n n n -- )
-   {: nlayer:n nkv:n hdim:n dbytes:n npages:n nseq:n ptok:n :}
-   KVT-CACHE DISPOSE
-   nlayer nkv hdim dbytes npages nseq npages ptok KV-MUL0 ptok CONFIG/P
-   KVT-CACHE swap INIT ;
+: KVT-H! ( seq n -- ) {: idx:n :}
+   SEQ-PARTS {: cid:n slot:n gen:n :}
+   cid idx cells KVT-H-CID + !
+   slot idx cells KVT-H-SLOT + !
+   gen idx cells KVT-H-GEN + ! ;
 
-: KVT-INIT ( n n n n n n -- )
-   {: nlayer:n nkv:n hdim:n dbytes:n npages:n nseq:n :}
-   KVT-CACHE DISPOSE
-   nlayer nkv hdim dbytes npages nseq npages PAGE-TOKENS KV-MUL0 CONFIG
-   KVT-CACHE swap INIT ;
+: KVT-H@ ( n -- seq ) {: idx:n :}
+   idx cells KVT-H-CID + @
+   idx cells KVT-H-SLOT + @
+   idx cells KVT-H-GEN + @ LOAD-SEQ ;
 
-: KVT-INIT/MAX/P ( n n n n n n n n -- )
-   KVT-CACHE DISPOSE
-   CONFIG/P KVT-CACHE swap INIT ;
+: KVT-MUST-SESSION ( -- GPU:session )
+   GPU:OPEN MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
 
-\ ---- structured sequence-handle storage for caught calls and churn ----------------
-create KVT-H-CACHE 9 cells allot
-create KVT-H-SLOT  9 cells allot
-create KVT-H-GEN   9 cells allot
+: KVT-MUST-SESSION-CLOSE ( GPU:session -- )
+   GPU:CLOSE MATCH result
+      ok OF drop ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
 
-256 constant KVT-SNAP-CELLS
-create KVT-SNAP KVT-SNAP-CELLS cells allot
+: KVT-MUST-OPEN
+   ( GPU:session config -- GPU:session KV:cache )
+   OPEN MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-MUST-CLOSE ( GPU:session KV:cache -- GPU:session )
+   CLOSE MATCH result
+      ok OF drop ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-OPEN-ERR ( GPU:session config n -- GPU:session ) {: want:n :}
+   OPEN MATCH result
+      ok OF KVT-MUST-CLOSE 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH ;
+
+: KVT-CLOSE-ERR ( GPU:session KV:cache n -- GPU:session ) {: want:n :}
+   CLOSE MATCH result
+      ok OF drop 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH ;
+
+: KVT-ALLOC ( KV:cache n n -- KV:cache ) {: max:n idx:n :}
+   max ALLOC-SEQ MATCH result
+      ok OF idx KVT-H! ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-FORK ( KV:cache n n -- KV:cache ) {: parent:n child:n :}
+   parent KVT-H@ FORK-SEQ MATCH result
+      ok OF child KVT-H! ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-CANCEL ( KV:cache n -- KV:cache ) {: idx:n :}
+   idx KVT-H@ CANCEL-SEQ MATCH result
+      ok OF drop ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-APPEND ( GPU:session KV:cache n -- GPU:session KV:cache ) {: idx:n :}
+   idx KVT-H@ APPEND-TOKEN MATCH result
+      ok OF drop ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-APPEND-ERR
+   ( GPU:session KV:cache n n -- GPU:session KV:cache )
+   {: idx:n want:n :}
+   idx KVT-H@ APPEND-TOKEN MATCH result
+      ok OF drop 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH ;
+
+: KVT-N ( KV:cache result<n,n> -- KV:cache n )
+   MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-ERR ( KV:cache result<n,n> n -- KV:cache ) {: want:n :}
+   MATCH result
+      ok OF drop 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH ;
+
+: KVT-ALLOC-ERR ( KV:cache result<seq,n> n -- KV:cache ) {: want:n :}
+   MATCH result
+      ok OF KV-SEQ:UNMAKE drop drop drop 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH ;
+
+: KVT-SEQ-LEN ( KV:cache n -- KV:cache n )
+   KVT-H@ SEQ-LEN KVT-N ;
+
+: KVT-SEQ-RES ( KV:cache n -- KV:cache n )
+   KVT-H@ SEQ-RESERVED KVT-N ;
+
+: KVT-PAGE-ID ( KV:cache n n -- KV:cache n ) {: idx:n pageix:n :}
+   idx KVT-H@ SEQ-PARTS {: cid:n slot:n gen:n :}
+   KC-TAKE {: h:ptr :}
+   h cid slot gen LOAD-SEQ pageix SEQ-PAGE-INNER {: pid:n :}
+   h KC-MINT pid ;
+
+: KVT-HOST-ID ( KV:cache -- KV:cache ptr u8 )
+   KC-TAKE {: h:ptr :}
+   h KC-MINT h ;
+
+: KVT-FIELD@ ( KV:cache n -- KV:cache n ) {: off:n :}
+   KC-TAKE {: h:ptr :}
+   h off H@ {: value:n :}
+   h KC-MINT value ;
+
+: KVT-CHECK ( KV:cache -- KV:cache )
+   KC-TAKE {: h:ptr :}
+   h KV-CHECK
+   h KC-MINT ;
+
+2048 constant KVT-SNAP-CAP
+create KVT-SNAP KVT-SNAP-CAP allot
 variable KVT-SNAP-N
-PTR-VARIABLE KVT-META-SAVE
 
-KV-MAX-N 3 / 1+ constant KVT-WRAP-NKV
+: KVT-SNAPSHOT ( KV:cache -- KV:cache )
+   KC-TAKE {: h:ptr :}
+   h HOSTB-OFF H@ {: bytes:n :}
+   bytes KVT-SNAP-CAP > if E-KV-BOUNDS throw then
+   h 1 cells + KVT-SNAP bytes 1 cells - BYTE-COPY
+   bytes 1 cells - KVT-SNAP-N !
+   h KC-MINT ;
 
-: KVT-H! ( seq n -- ) {: i:n :}
-   KV-SEQ:UNMAKE {: cid:kv-cache-id slot:kv-seq-slot gen:kv-seq-gen :}
-   cid KV-CACHE-ID>N i cells KVT-H-CACHE + !
-   slot KV-SEQ-SLOT>N i cells KVT-H-SLOT + !
-   gen KV-SEQ-GEN>N i cells KVT-H-GEN + ! ;
-
-: KVT-H@ ( n -- seq ) {: i:n :}
-   i cells KVT-H-CACHE + @ >KV-CACHE-ID
-   i cells KVT-H-SLOT + @ >KV-SEQ-SLOT
-   i cells KVT-H-GEN + @ >KV-SEQ-GEN
-   KV-SEQ:MAKE ;
-
-: KVT-SNAPSHOT ( -- )
-   HDR-BYTES 1 cells / {: hdrcells:n :}
-   KVT-CACHE METAC-OFF H@ {: metacells:n :}
-   hdrcells metacells KV-ADD0 dup KVT-SNAP-CELLS > if E-KV-BOUNDS throw then
-   KVT-SNAP-N !
-   hdrcells 0 ?do KVT-CACHE i cells + @ KVT-SNAP i cells + ! loop
-   metacells 0 ?do
-      KVT-CACHE META@ i cells + @
-      KVT-SNAP hdrcells i + cells + !
-   loop ;
-
-: KVT-SNAPSHOT= ( -- bool )
-   HDR-BYTES 1 cells / KVT-CACHE METAC-OFF H@ +
-   KVT-SNAP-N @ <> if false exit then
+: KVT-SNAPSHOT= ( KV:cache -- KV:cache bool )
+   KC-TAKE {: h:ptr :}
    true
-   HDR-BYTES 1 cells / 0 ?do
-      KVT-CACHE i cells + @ KVT-SNAP i cells + @ = and
-   loop
-   KVT-CACHE METAC-OFF H@ 0 ?do
-      KVT-CACHE META@ i cells + @
-      KVT-SNAP HDR-BYTES 1 cells / i + cells + @ = and
+   h HOSTB-OFF H@ 1 cells - KVT-SNAP-N @ = and
+   KVT-SNAP-N @ 0 ?do h 1 cells + i + c@ KVT-SNAP i + c@ = and loop
+   {: same:bool :}
+   h KC-MINT same ;
+
+: KVT-IO-CODE
+   ( GPU:session GPU:buffer result<n,n> -- GPU:session GPU:buffer n )
+   RES-CODE ;
+
+: KVT-UPLOAD
+   ( GPU:session KV:cache n ptr u8 n -- GPU:session KV:cache )
+   {: off:n src:ptr bytes:n :}
+   KC-TAKE {: h:ptr :}
+   off CAD-OFF src bytes CAD-LEN GPU:UPLOAD KVT-IO-CODE
+   {: code:n :}
+   h KC-MINT
+   code 0<> if code throw then ;
+
+: KVT-DOWNLOAD
+   ( GPU:session KV:cache n ptr u8 n -- GPU:session KV:cache )
+   {: off:n dst:ptr bytes:n :}
+   KC-TAKE {: h:ptr :}
+   off CAD-OFF dst bytes CAD-LEN GPU:DOWNLOAD KVT-IO-CODE
+   {: code:n :}
+   h KC-MINT
+   code 0<> if code throw then ;
+
+: KVT-SPAN-N
+   ( GPU:session KV:cache result<cuda-devptr,n> -- GPU:session KV:cache n )
+   MATCH result
+      ok OF CUDA-DEVPTR>N ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-SPAN-ERR
+   ( GPU:session KV:cache result<cuda-devptr,n> n -- GPU:session KV:cache )
+   {: want:n :}
+   MATCH result
+      ok OF drop 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH ;
+
+: KVT-KV-ERR
+   ( GPU:session KV:cache n n n n n -- GPU:session KV:cache )
+   {: idx:n layer:n tok:n head:n want:n :}
+   idx KVT-H@ layer tok head K-SPAN want KVT-SPAN-ERR
+   idx KVT-H@ layer tok head V-SPAN want KVT-SPAN-ERR ;
+
+: KVT-K-SPAN
+   ( GPU:session KV:cache n n n n -- GPU:session KV:cache n )
+   {: idx:n layer:n tok:n head:n :}
+   idx KVT-H@ layer tok head K-SPAN KVT-SPAN-N ;
+
+: KVT-V-SPAN
+   ( GPU:session KV:cache n n n n -- GPU:session KV:cache n )
+   {: idx:n layer:n tok:n head:n :}
+   idx KVT-H@ layer tok head V-SPAN KVT-SPAN-N ;
+
+1024 constant KVT-PAGE-BYTES
+create KVT-SRC KVT-PAGE-BYTES allot
+create KVT-DST KVT-PAGE-BYTES allot
+
+: KVT-FILL ( -- )
+   KVT-PAGE-BYTES 0 ?do
+      i 37 * 11 + 255 and KVT-SRC i + c!
+      0 KVT-DST i + c!
    loop ;
 
-\ ---- geometry and checked arithmetic ----------------------------------------------
+: KVT-PAGE= ( -- bool )
+   true KVT-PAGE-BYTES 0 ?do
+      KVT-SRC i + c@ KVT-DST i + c@ = and
+   loop ;
+
+variable KVT-DTOD-RC
+variable KVT-DTOD-N
+variable KVT-GPU-ALLOC-CALLS
+
+: KVT-FDTOD ( cuda-devptr cuda-devptr len -- rc )
+   {: dst:cuda-devptr src:cuda-devptr bytes:len :}
+   dst drop src drop
+   bytes LEN>N KVT-DTOD-N !
+   KVT-DTOD-RC @ >RC ;
+
+: KVT-FALLOC ( ptr a len -- rc )
+   1 KVT-GPU-ALLOC-CALLS +!
+   2drop 701 >RC ;
+
+: KVT-HOST-THROW ( -- )  E-MEM-MAP throw ;
+
+: KVT-FHOST ( ptr u8 n -- ptr u8 n )
+   KVT-HOST-THROW ;
+
+variable KVT-HOST-CALLS
+PTR-VARIABLE KVT-ALLOC-P
+variable KVT-ALLOC-B
+PTR-VARIABLE KVT-RELEASE-P
+variable KVT-RELEASE-B
+variable KVT-RELEASE-N
+variable KVT-EVENT
+variable KVT-FREE-EVENT
+variable KVT-RELEASE-EVENT
+
+: KVT-FCOUNT-HOST ( ptr u8 n -- ptr u8 n )
+   1 KVT-HOST-CALLS +!
+   KVT-HOST-THROW ;
+
+: KVT-FCOUNT-REAL-HOST ( ptr u8 n -- ptr u8 n )
+   1 KVT-HOST-CALLS +!
+   ALLOC-HOST-REAL ;
+
+: KVT-FTRACK-HOST ( ptr u8 n -- ptr u8 n )
+   ALLOC-HOST-REAL {: h:ptr bytes:n :}
+   h KVT-ALLOC-P !
+   bytes KVT-ALLOC-B !
+   h bytes ;
+
+: KVT-RELEASE-RESET ( -- )
+   NULL$ drop KVT-RELEASE-P !
+   0 KVT-RELEASE-B !
+   0 KVT-RELEASE-N !
+   0 KVT-EVENT !
+   0 KVT-FREE-EVENT !
+   0 KVT-RELEASE-EVENT ! ;
+
+: KVT-RELEASE-RECORD ( ptr u8 n -- )
+   {: h:ptr bytes:n :}
+   h KVT-RELEASE-P !
+   bytes KVT-RELEASE-B !
+   1 KVT-RELEASE-N +! ;
+
+: KVT-FRELEASE ( ptr u8 n -- )
+   1 KVT-EVENT +!
+   KVT-EVENT @ KVT-RELEASE-EVENT !
+   2dup KVT-RELEASE-RECORD
+   RELEASE-HOST-REAL ;
+
+: KVT-FFREE ( cuda-devptr -- rc )
+   1 KVT-EVENT +!
+   KVT-EVENT @ KVT-FREE-EVENT !
+   CUDA:CU-MEM-FREE drop
+   702 >RC ;
+
+: KVT-CONFIG ( -- config )
+   2 2 4 2 8 4 65 16 CONFIG/P ;
+
+: KVT-FORGED-CONFIG ( -- config )
+   1 1 1 0 1 1 1 16 KV-CONFIG:MAKE ;
+
+: KVT-MUL-CONFIG ( -- config )
+   1449 1449 1449 1449 1449 1 1 1449 KV-CONFIG:MAKE ;
+
+: KVT-ADD-CONFIG ( -- config )
+   1 1 1 1 1073741818 1073741821 1073741818 1 KV-CONFIG:MAKE ;
+
+: KVT-OPEN-STANDARD ( GPU:session -- GPU:session KV:cache )
+   KVT-CONFIG KVT-MUST-OPEN ;
+
+: KVT-MUST-BUF
+   ( GPU:session result<GPU:buffer,n> -- GPU:session GPU:buffer )
+   MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-BUF-SPAN-OK
+   ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer )
+   GPU:SPAN MATCH result
+      ok OF CUDA-DEVPTR>N drop ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-BUF-SPAN-ERR
+   ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer )
+   GPU:SPAN MATCH result
+      ok OF CUDA-DEVPTR>N drop 0 1 T= ENDOF
+      err OF E-BUF-BOUNDS T= ENDOF
+   ;MATCH ;
+
+: KVT-FOOT-ROLE
+   ( GPU:session KV:cache CAD-NUM:alloc-byte-len n -- GPU:session KV:cache )
+   {: expected:n :}
+   swap >r
+   GPU:ALLOC KVT-MUST-BUF
+   expected 1- CAD-OFF 1 CAD-LEN KVT-BUF-SPAN-OK
+   expected CAD-OFF 1 CAD-LEN KVT-BUF-SPAN-ERR
+   GPU:FREE RES-CODE 0 T=
+   r> ;
+
 : KVT-GEOMETRY ( -- )
-   2 2 4 2 8 4 65 16 KVT-INIT/MAX/P
-   KVT-CACHE PAGE-SIZE 16 T=
-   KVT-CACHE MAX-CONTEXT 65 T=
-   KVT-CACHE BLOCK-CAPACITY 5 T=
-   KVT-CACHE TOK-BYTES 64 T=
-   KVT-CACHE PAGE-BYTES 1024 T=
-   KVT-CACHE NUM-PAGES 8 T=
-   KVT-CACHE FREE-PAGES 8 T=
-   KVT-CACHE WATERMARK 0 T=
-   KVT-CACHE HIGH-WATER 0 T=
-   KVT-CACHE CHECK ;
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   FOOTPRINT >r
+   688 KVT-FOOT-ROLE
+   r> 8192 KVT-FOOT-ROLE
+   HOSTB-OFF KVT-FIELD@ 688 T=
+   DEVB-OFF KVT-FIELD@ 8192 T=
+   PAGE-SIZE 16 T=
+   PAGE-BYTES KVT-PAGE-BYTES T=
+   TOK-BYTES 64 T=
+   NUM-PAGES 8 T=
+   BLOCK-CAPACITY 5 T=
+   MAX-CONTEXT 65 T=
+   FREE-PAGES 8 T=
+   RESERVED-PAGES 0 T=
+   WATERMARK 0 T=
+   HIGH-WATER 0 T=
+   65 PAGES-FOR KVT-N 5 T=
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
 
-: KVT-GENERATED-OPS ( -- )
-   KVT-CACHE DISPOSE
-   2 2 4 2 8 4 65 16 CONFIG/P
-   KV-CONFIG:UNMAKE
-   {: nlayer:n nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n :}
-   nlayer 2 T=
-   nkv 2 T=  hdim 4 T=  dbytes 2 T=  npages 8 T=
-   nseq 4 T=  maxctx 65 T=  ptok 16 T=
-   nlayer nkv hdim dbytes npages nseq maxctx ptok KV-CONFIG:MAKE
-   KVT-CACHE swap INIT
-   KVT-CACHE 1 ALLOC-SEQ
-   KV-SEQ:UNMAKE {: cid:kv-cache-id slot:kv-seq-slot gen:kv-seq-gen :}
-   cid KV-CACHE-ID>N 0 > TTRUE
-   slot KV-SEQ-SLOT>N 0 T=
-   gen KV-SEQ-GEN>N 1 T=
-   cid slot gen KV-SEQ:MAKE 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ SEQ-LEN 0 T=
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE CHECK ;
+: KVT-SPANS ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   32 0 KVT-ALLOC
+   17 0 ?do 0 KVT-APPEND loop
+   0 0 KVT-PAGE-ID {: p0:n :}
+   0 1 KVT-PAGE-ID {: p1:n :}
+   0 0 0 0 KVT-K-SPAN {: k000:n :}
+   0 0 0 1 KVT-K-SPAN k000 8 + T=
+   0 0 15 1 KVT-K-SPAN k000 488 + T=
+   0 0 0 0 KVT-V-SPAN k000 16 + T=
+   0 0 15 1 KVT-V-SPAN k000 504 + T=
+   0 1 0 0 KVT-K-SPAN k000 512 + T=
+   p0 7 T=
+   0 1 15 1 KVT-V-SPAN 8 + k000 KVT-PAGE-BYTES + T=
+   0 0 16 0 KVT-K-SPAN
+   k000 p1 p0 - KVT-PAGE-BYTES * + T=
+   0 -1 0 0 E-KV-BOUNDS KVT-KV-ERR
+   0 2 0 0 E-KV-BOUNDS KVT-KV-ERR
+   0 0 -1 0 E-KV-BOUNDS KVT-KV-ERR
+   0 0 17 0 E-KV-BOUNDS KVT-KV-ERR
+   0 0 0 -1 E-KV-BOUNDS KVT-KV-ERR
+   0 0 0 2 E-KV-BOUNDS KVT-KV-ERR
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
 
-: KVT-LAYER-ADDRESS ( -- )
-   2 2 4 2 1 1 16 16 KVT-INIT/MAX/P
-   KVT-CACHE 16 ALLOC-SEQ 0 KVT-H!
-   16 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
-   KVT-CACHE 0 KVT-H@ SEQ-PAGES 1 T=
-   KVT-CACHE 0 KVT-H@ 0 0 TOKEN-PTR
-   KVT-CACHE 0 KVT-H@ 0 15 TOKEN-PTR
-   swap 480 + = TTRUE
-   KVT-CACHE 0 KVT-H@ 0 0 TOKEN-PTR
-   KVT-CACHE 0 KVT-H@ 1 0 TOKEN-PTR
-   swap 512 + = TTRUE
-   KVT-CACHE 0 KVT-H@ 0 0 TOKEN-PTR
-   KVT-CACHE 0 KVT-H@ 1 15 TOKEN-PTR
-   swap 992 + = TTRUE ;
-
-: KVT-GPT2-GEOMETRY ( -- )
-   12 12 64 4 1 1 16 16 KVT-INIT/MAX/P
-   KVT-CACHE TOK-BYTES 73728 T=
-   KVT-CACHE PAGE-BYTES 1179648 T=
-   KVT-CACHE CHECK ;
-
-: KVT-OVERFLOW-2NKV ( -- )
-   1 KV-MAX-N 1 1 1 1 1 1 CONFIG/P drop ;
-
-: KVT-OVERFLOW-HDIM ( -- )
-   1 KVT-WRAP-NKV 3 1 1 1 1 1 CONFIG/P drop ;
-
-: KVT-OVERFLOW-DBYTES ( -- )
-   1 KVT-WRAP-NKV 1 3 1 1 1 1 CONFIG/P drop ;
-
-: KVT-OVERFLOW-TOK ( -- )
-   3 KVT-WRAP-NKV 1 1 1 1 1 1 CONFIG/P drop ;
-
-: KVT-OVERFLOW-PAGE ( -- )
-   1 KVT-WRAP-NKV 1 1 1 1 1 3 CONFIG/P drop ;
-
-: KVT-OVERFLOW-POOL ( -- )
-   1 KVT-WRAP-NKV 1 1 3 1 1 1 CONFIG/P drop ;
-
-: KVT-OVERFLOW-META ( -- )
-   1 1 1 1 1 KV-MAX-N 1 16 CONFIG/P drop ;
-
-: KVT-OVERFLOW-META-BYTES ( -- )
-   1 1 KV-MAX-N 1 cells / 1+ META-CELLS drop ;
-
-: KVT-OVERFLOW-TABLE-META ( -- )
-   1 2 KV-MAX-N 2 / 1+ META-CELLS drop ;
-
-: KVT-BAD-BLOCK-CAPACITY ( -- )
-   1 1 1 1 1 1 2 1 CONFIG/P drop ;
-
-: KVT-BAD-PAGE ( -- )
-   1 1 1 1 8 4 1 0 CONFIG/P drop ;
-
-: KVT-CEIL-SAFE ( -- )
-   1 1 1 1 8 4 64 KVT-INIT/P
-   KVT-CACHE 0 PAGES-FOR 0 T=
-   KVT-CACHE 64 PAGES-FOR 1 T=
-   KVT-CACHE 65 PAGES-FOR 2 T=
-   KVT-CACHE KV-MAX-N PAGES-FOR
-   KV-MAX-N 64 / KV-MAX-N 64 mod 0<> if 1+ then T= ;
-
-\ Four sequence slots, six pages, and a five-page block capacity, so the metadata
-\ partition is 6*3 page cells + 4*6 sequence cells + 4*5 block-table cells = 62. All
-\ three terms differ at this geometry, so losing or swapping any one of the multipliers
-\ moves the total that CONFIG/P and INIT actually allocate.
-: KVT-FIXED-TABLES ( -- )
-   1 2 4 2 6 4 65 16 KVT-INIT/MAX/P
-   KVT-CACHE META@ KVT-META-SAVE !
-   KVT-CACHE METAC-OFF H@ 62 T=
-   KVT-CACHE 65 ALLOC-SEQ 0 KVT-H!
-   65 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
-   KVT-CACHE 0 KVT-H@ SEQ-LEN 65 T=
-   KVT-CACHE 0 KVT-H@ SEQ-PAGES 5 T=
-   KVT-CACHE 0 4 KV-BLK@ KVT-CACHE 0 KVT-H@ 4 SEQ-PAGE T=
-   KVT-SNAPSHOT
-   [: KVT-CACHE 0 KVT-H@ APPEND-TOKEN ;] catch E-KV-ADMIT T=
-   KVT-SNAPSHOT= TTRUE
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE 0 SEQBLEN@ 0 T=
-   KVT-CACHE BLOCK-CAPACITY 0 ?do KVT-CACHE 0 i KV-BLK@ 0 T= loop
-   KVT-CACHE 1 ALLOC-SEQ 1 KVT-H!
-   KVT-CACHE META@ KVT-META-SAVE @ = TTRUE
-   KVT-CACHE METAC-OFF H@ 62 T=
-   KVT-CACHE BLOCK-CAPACITY 0 ?do KVT-CACHE 0 i KV-BLK@ 0 T= loop
-   KVT-CACHE 1 KVT-H@ CANCEL-SEQ
-   KVT-CACHE CHECK ;
-
-: KVT-HUGE-POOL-INIT ( -- )
-   1 KV-MAX-N 2 / 1 1 1 1 1 1 CONFIG/P KVT-CACHE swap INIT ;
-
-: KVT-INIT-FAIL-CLEANUP ( -- )
-   KVT-CACHE DISPOSE
-   [: KVT-HUGE-POOL-INIT ;] catch E-MEM-MAP T=
-   KVT-CACHE LIVE-CACHE? TFALSE
-   1 2 4 2 8 1 KVT-INIT
-   KVT-CACHE LIVE-CACHE? TTRUE
-   KVT-CACHE FREE-PAGES 8 T=
-   KVT-CACHE CHECK ;
-
-\ ---- token indices where page-index arithmetic can break ---------------------------
-\ Six indices carry the page arithmetic for one page size: the first two tokens, the
-\ last token of the first page, the first two tokens of the second page, and the final
-\ token. A wrong divisor, a wrong remainder, or an off-by-one page index shows up at
-\ one of those six; the tokens between them repeat the same arithmetic.
-6 constant KVT-BOUNDS-N
-create KVT-BOUND-TAB KVT-BOUNDS-N cells allot
-
-: KVT-BOUND! ( n n -- ) {: v:n k:n :}  v k cells KVT-BOUND-TAB + ! ;
-: KVT-BOUND@ ( n -- n ) {: k:n :}  k cells KVT-BOUND-TAB + @ ;
-
-: KVT-BOUND-PLAN ( n n -- ) {: ptok:n last:n :}
-   0 0 KVT-BOUND!
-   1 1 KVT-BOUND!
-   ptok 1- 2 KVT-BOUND!
-   ptok 3 KVT-BOUND!
-   ptok 1+ 4 KVT-BOUND!
-   last 5 KVT-BOUND! ;
-
-: KVT-BOUND? ( n -- bool ) {: tok:n :}
-   false
-   KVT-BOUNDS-N 0 ?do
-      i KVT-BOUND@ tok = if drop true then
-   loop ;
-
-\ ---- page-token parameterization: exact addressing at 8/16/32/64 ------------------
-129 constant KVT-LANE-TOKENS
-
-: KVT-LANE-BYTE ( n -- n ) {: tok:n :}  tok 17 * 3 + 255 and ;
-
-: KVT-LANE-FILL ( seq -- )
-   8 KVT-H!
-   KVT-LANE-TOKENS 0 ?do
-      KVT-CACHE 8 KVT-H@ APPEND-TOKEN
-      i KVT-LANE-BYTE KVT-CACHE 8 KVT-H@ 0 i TOKEN-PTR c!
-   loop ;
-
-: KVT-LANE-SHAPE ( n -- ) {: ptok:n :}
-   KVT-CACHE PAGE-SIZE ptok T=
-   KVT-CACHE 8 KVT-H@ SEQ-PAGES KVT-LANE-TOKENS ptok / KVT-LANE-TOKENS ptok mod 0<> if 1+ then T= ;
-
-: KVT-LANE-TOK ( n -- ) {: tok:n :}
-   KVT-CACHE 8 KVT-H@ 0 tok TOKEN-PTR c@ tok KVT-LANE-BYTE T= ;
-
-\ The exhaustive sweep, for the one page size that gets it.
-: KVT-LANE-CHECK ( seq n -- ) {: ptok:n :}
-   8 KVT-H!
-   ptok KVT-LANE-SHAPE
-   KVT-LANE-TOKENS 0 ?do i KVT-LANE-TOK loop ;
-
-\ The boundary sweep, for the remaining page sizes.
-: KVT-LANE-BOUNDS ( seq n -- ) {: ptok:n :}
-   8 KVT-H!
-   ptok KVT-LANE-SHAPE
-   KVT-BOUNDS-N 0 ?do i KVT-BOUND@ KVT-LANE-TOK loop ;
-
-: KVT-LANE-SETUP ( n -- ) {: ptok:n :}
-   1 2 4 2 64 4 ptok KVT-INIT/P
-   ptok KVT-LANE-TOKENS 1- KVT-BOUND-PLAN
-   KVT-CACHE KVT-LANE-TOKENS ALLOC-SEQ 0 KVT-H!
-   0 KVT-H@ KVT-LANE-FILL ;
-
-: KVT-LANE-FULL ( n -- ) {: ptok:n :}
-   ptok KVT-LANE-SETUP
-   0 KVT-H@ ptok KVT-LANE-CHECK
-   KVT-CACHE 0 KVT-H@ FORK-SEQ 1 KVT-H!
-   1 KVT-H@ ptok KVT-LANE-CHECK
-   KVT-CACHE CHECK ;
-
-: KVT-LANE ( n -- ) {: ptok:n :}
-   ptok KVT-LANE-SETUP
-   0 KVT-H@ ptok KVT-LANE-BOUNDS
-   KVT-CACHE 0 KVT-H@ FORK-SEQ 1 KVT-H!
-   1 KVT-H@ ptok KVT-LANE-BOUNDS
-   KVT-CACHE CHECK ;
-
-\ The production page size proves every token index on the parent and on the fork;
-\ the other three page sizes prove the six indices that can break, on both handles.
-: KVT-PAGE-TOKENS ( -- )
-   8 KVT-LANE  16 KVT-LANE-FULL  32 KVT-LANE  64 KVT-LANE ;
-
-\ ---- generation-bearing handles ----------------------------------------------------
-: KVT-STALE-REUSE ( -- )
-   1 2 4 2 8 1 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H! KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE 1 ALLOC-SEQ 1 KVT-H! KVT-CACHE 1 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 1 KVT-H@ SEQ-LEN 1 T=
-   0 KVT-H@ KV-SEQ:UNMAKE {: oc:kv-cache-id os:kv-seq-slot og:kv-seq-gen :}
-   1 KVT-H@ KV-SEQ:UNMAKE {: nc:kv-cache-id ns:kv-seq-slot ng:kv-seq-gen :}
-   oc KV-CACHE-ID>N nc KV-CACHE-ID>N = TTRUE
-   os KV-SEQ-SLOT>N ns KV-SEQ-SLOT>N = TTRUE
-   og KV-SEQ-GEN>N ng KV-SEQ-GEN>N <> TTRUE ;
-
-: KVT-OLD-USE ( -- )
-   KVT-CACHE 0 KVT-H@ SEQ-LEN drop ;
+: KVT-STALE ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC
+   0 KVT-CANCEL
+   16 1 KVT-ALLOC
+   0 KVT-H@ SEQ-LEN E-KV-SEQ KVT-ERR
+   0 0 0 0 E-KV-SEQ KVT-KV-ERR
+   1 KVT-SEQ-LEN 0 T=
+   1 KVT-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
 
 : KVT-CROSS-CACHE ( -- )
-   1 2 4 2 8 1 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 1 KVT-H!
-   KVT-OTHER DISPOSE
-   1 2 4 2 8 1 128 CONFIG KVT-OTHER swap INIT
-   KVT-OTHER 1 ALLOC-SEQ 8 KVT-H!
-   [: KVT-OTHER 1 KVT-H@ APPEND-TOKEN ;] catch E-KV-SEQ T=
-   KVT-OTHER RESERVED-PAGES 1 T=
-   KVT-OTHER 8 KVT-H@ SEQ-RESERVED 1 T=
-   KVT-OTHER 8 KVT-H@ SEQ-LEN 0 T=
-   KVT-OTHER CHECK ;
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC
+   swap KVT-CONFIG KVT-MUST-OPEN
+   0 KVT-H@ SEQ-LEN E-KV-SEQ KVT-ERR
+   0 0 0 0 E-KV-SEQ KVT-KV-ERR
+   KVT-MUST-CLOSE
+   swap 0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
 
-: KVT-STALE-SPEND ( -- )
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN ;
+: KVT-CAPACITY ( -- )
+   KVT-MUST-SESSION
+   1 1 1 1 4 2 64 16 CONFIG/P KVT-MUST-OPEN
+   64 0 KVT-ALLOC
+   RESERVED-PAGES 4 T=
+   1 ALLOC-SEQ E-KV-ADMIT KVT-ALLOC-ERR
+   RESERVED-PAGES 4 T=
+   0 KVT-SEQ-RES 4 T=
+   64 0 ?do 0 KVT-APPEND loop
+   RESERVED-PAGES 0 T=
+   WATERMARK 4 T=
+   0 KVT-SEQ-LEN 64 T=
+   0 E-KV-ADMIT KVT-APPEND-ERR
+   0 KVT-CANCEL
+   FREE-PAGES 4 T=
+   RESERVED-PAGES 0 T=
+   HIGH-WATER 4 T=
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
 
-: KVT-STALE-RESERVATION ( -- )
-   1 2 4 2 2 1 KVT-INIT
-   KVT-CACHE 32 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE 32 ALLOC-SEQ 1 KVT-H!
+: KVT-COW ( -- )
+   KVT-FILL
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   KVT-HOST-ID {: host:ptr :}
+   32 0 KVT-ALLOC
+   4 0 ?do 0 KVT-APPEND loop
+   0 0 KVT-PAGE-ID {: old:n :}
+   old KVT-PAGE-BYTES * KVT-SRC KVT-PAGE-BYTES KVT-UPLOAD
+   0 1 KVT-FORK
+   0 2 KVT-FORK
+   RESERVED-PAGES 5 T=
+   FREE-PAGES 7 T=
+   SHARED-PAGES 1 T=
+   TAIL-WASTE 12 T=
+   KVT-CHECK
    KVT-SNAPSHOT
-   [: KVT-STALE-SPEND ;] catch E-KV-SEQ T=
+   703 KVT-DTOD-RC ! 0 KVT-DTOD-N !
+   [: KVT-FDTOD ;] MKD:DTOD!
+   1 703 KVT-APPEND-ERR
+   MKD:USE-REAL
+   KVT-DTOD-N @ KVT-PAGE-BYTES T=
    KVT-SNAPSHOT= TTRUE
-   KVT-CACHE RESERVED-PAGES 2 T=
-   KVT-CACHE 1 KVT-H@ SEQ-RESERVED 2 T=
-   KVT-CACHE 1 KVT-H@ SEQ-LEN 0 T=
-   KVT-CACHE CHECK ;
-
-: KVT-REBUILD-CACHE ( -- )
-   1 2 4 2 8 1 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE DISPOSE
-   1 2 4 2 8 1 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 1 KVT-H! ;
-
-: KVT-OLD-CACHE-USE ( -- )
-   KVT-CACHE 0 KVT-H@ SEQ-LEN drop ;
-
-variable KVT-ID-SAVE
-
-\ Narrow test-only ceiling injection. These helpers are the only test reach into
-\ allocator identity state; production exposes no raw identity or generation setter.
-: KVT-CACHE-ID-LIMIT! ( -- )
-   KV-NEXT-CACHE-ID @ KVT-ID-SAVE !
-   KV-ID-MAX KV-NEXT-CACHE-ID ! ;
-
-: KVT-CACHE-ID-RESTORE ( -- )
-   KVT-ID-SAVE @ KV-NEXT-CACHE-ID ! ;
-
-: KVT-SLOT-GEN-LIMIT! ( -- )
-   KV-ID-MAX KVT-CACHE 0 SEQGEN! ;
-
-: KVT-SLOT-GEN-LIMIT-ALL! ( -- )
-   KVT-CACHE NSEQ-OFF H@ 0 ?do KV-ID-MAX KVT-CACHE i SEQGEN! loop ;
-
-: KVT-INIT-AT-ID-LIMIT ( -- )
-   1 2 4 2 8 1 128 CONFIG KVT-CACHE swap INIT ;
-
-: KVT-CACHE-ID-EXHAUST ( -- )
-   KVT-CACHE DISPOSE
-   KVT-CACHE-ID-LIMIT!
-   [: KVT-INIT-AT-ID-LIMIT ;] catch {: code:n :}
-   KVT-CACHE-ID-RESTORE
-   code E-KV-ID T=
-   KVT-CACHE LIVE-CACHE? TFALSE ;
-
-: KVT-SLOT-GEN-EXHAUST-CALL ( -- )
-   KVT-CACHE 1 ALLOC-SEQ 8 KVT-H! ;
-
-: KVT-SLOT-GEN-EXHAUST ( -- )
-   1 2 4 2 8 2 KVT-INIT
-   KVT-SLOT-GEN-LIMIT-ALL!
-   KVT-SNAPSHOT
-   [: KVT-SLOT-GEN-EXHAUST-CALL ;] catch E-KV-ID T=
-   KVT-SNAPSHOT= TTRUE
-   KVT-CACHE WATERMARK 0 T=
-   KVT-CACHE FREE-PAGES 8 T=
-   KVT-CACHE RESERVED-PAGES 0 T=
-   KVT-CACHE 0 SEQLIVE@ 0 T=
-   KVT-CACHE 1 SEQLIVE@ 0 T=
-   KVT-CACHE 0 SEQGEN@ KV-ID-MAX T=
-   KVT-CACHE 1 SEQGEN@ KV-ID-MAX T=
-   KVT-CACHE 0 SEQBLEN@ 0 T=
-   KVT-CACHE 1 SEQBLEN@ 0 T=
-   KVT-CACHE BLOCK-CAPACITY 0 ?do
-      KVT-CACHE 0 i KV-BLK@ 0 T=
-      KVT-CACHE 1 i KV-BLK@ 0 T=
-   loop
-   KVT-CACHE CHECK ;
-
-: KVT-SLOT-GEN-SKIP-FIRST ( -- )
-   1 2 4 2 8 2 KVT-INIT
-   KVT-SLOT-GEN-LIMIT!
-   KVT-CACHE 1 ALLOC-SEQ 8 KVT-H!
-   8 KVT-H@ KV-SEQ:UNMAKE {: cid:kv-cache-id slot:kv-seq-slot gen:kv-seq-gen :}
-   cid KV-CACHE-ID>N 0 > TTRUE
-   slot KV-SEQ-SLOT>N 1 T=
-   gen KV-SEQ-GEN>N 1 T=
-   KVT-CACHE CHECK ;
-
-: KVT-SLOT-GEN-SKIP-LAST ( -- )
-   1 2 4 2 8 2 KVT-INIT
-   KV-ID-MAX KVT-CACHE 1 SEQGEN!
-   KVT-CACHE 1 ALLOC-SEQ 8 KVT-H!
-   8 KVT-H@ KV-SEQ:UNMAKE {: cid:kv-cache-id slot:kv-seq-slot gen:kv-seq-gen :}
-   cid KV-CACHE-ID>N 0 > TTRUE
-   slot KV-SEQ-SLOT>N 0 T=
-   gen KV-SEQ-GEN>N 1 T=
-   KVT-CACHE CHECK ;
-
-\ ---- boundary append, recycling, and failure atomicity -----------------------------
-: KVT-BOUNDARY ( -- )
-   1 2 4 2 8 4 KVT-INIT
-   KVT-CACHE PAGE-TOKENS 1+ ALLOC-SEQ 0 KVT-H!
-   PAGE-TOKENS 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
-   KVT-CACHE 0 KVT-H@ SEQ-PAGES 1 T=
-   KVT-CACHE WATERMARK 1 T=
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 0 KVT-H@ SEQ-PAGES 2 T=
-   KVT-CACHE WATERMARK 2 T=
-   KVT-CACHE CHECK ;
-
-: KVT-OWNED-POP ( -- )
-   1 2 4 2 2 1 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   0 KVT-CACHE FREETOP-OFF H!                 \ inject impossible physical state
-   KVT-SNAPSHOT
-   [: KVT-CACHE 0 KVT-H@ APPEND-TOKEN ;] catch E-KV-INVARIANT T=
-   KVT-SNAPSHOT= TTRUE ;
-
-: KVT-RECYCLE ( -- )
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE WATERMARK 0 T=
-   KVT-CACHE 1 ALLOC-SEQ 1 KVT-H!
-   KVT-CACHE 1 KVT-H@ APPEND-TOKEN
-   KVT-CACHE WATERMARK 1 T=
-   KVT-CACHE CHECK ;
-
-: KVT-SEQS-FULL ( -- )
-   1 2 4 2 8 1 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   KVT-SNAPSHOT
-   KVT-CACHE 1 ALLOC-SEQ 8 KVT-H! ;
-
-: KVT-SEQS-FAIL-ATOMIC ( -- )
-   [: KVT-SEQS-FULL ;] catch E-KV-SEQS T=
-   KVT-SNAPSHOT= TTRUE
-   KVT-CACHE 0 SEQLIVE@ 1 T=
-   KVT-CACHE 0 SEQGEN@ 1 T=
-   KVT-CACHE FREE-PAGES 8 T=
-   KVT-CACHE RESERVED-PAGES 1 T=
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 0 KVT-H@ SEQ-LEN 1 T=
-   KVT-CACHE CHECK ;
-
-\ ---- lifecycle and bounds reject by their owning error -----------------------------
-: KVT-BAD-CONFIG ( -- )
-   1 0 4 2 8 4 128 CONFIG drop ;
-
-: KVT-BAD-LAYER ( -- )
-   0 2 4 2 8 4 128 CONFIG drop ;
-
-: KVT-DOUBLE-CANCEL ( -- )
-   1 2 4 2 8 4 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ ;
-
-: KVT-USE-AFTER-CANCEL ( -- )
-   1 2 4 2 8 4 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE 0 KVT-H@ SEQ-LEN drop ;
-
-: KVT-DISPOSED-USE ( -- )
-   1 2 4 2 8 4 KVT-INIT
-   KVT-CACHE DISPOSE
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H! ;
-
-: KVT-REINIT ( -- )
-   1 2 4 2 8 4 KVT-INIT
-   1 2 4 2 8 4 128 CONFIG KVT-CACHE swap INIT ;
-
-: KVT-BAD-TOKEN ( -- )
-   2 2 4 2 8 4 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 0 KVT-H@ 0 1 TOKEN-PTR drop ;
-
-: KVT-BAD-TOKEN-NEG ( -- )
-   2 2 4 2 8 4 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 0 KVT-H@ 0 -1 TOKEN-PTR drop ;
-
-: KVT-BAD-LAYER-NEG ( -- )
-   2 2 4 2 8 4 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 0 KVT-H@ -1 0 TOKEN-PTR drop ;
-
-: KVT-BAD-LAYER-HI ( -- )
-   2 2 4 2 8 4 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 0 KVT-H@ 2 0 TOKEN-PTR drop ;
-
-: KVT-BAD-SEQ-PAGE ( -- )
-   1 2 4 2 8 4 KVT-INIT
-   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 0 KVT-H@ 1 SEQ-PAGE drop ;
-
-\ ---- sharing and physical tail-waste accounting ------------------------------------
-: KVT-COW-BYTES ( -- )
-   2 2 4 2 8 4 KVT-INIT
-   KVT-CACHE 4 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   11 KVT-CACHE 0 KVT-H@ 0 0 TOKEN-PTR c!
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN 22 KVT-CACHE 0 KVT-H@ 0 1 TOKEN-PTR c!
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN 33 KVT-CACHE 0 KVT-H@ 0 2 TOKEN-PTR c!
-   44 KVT-CACHE 0 KVT-H@ 1 2 TOKEN-PTR 31 + c!
-   KVT-CACHE 0 KVT-H@ 0 SEQ-PAGE {: tail:n :}
-   KVT-CACHE 0 KVT-H@ FORK-SEQ 1 KVT-H!
-   KVT-CACHE 1 KVT-H@ 0 SEQ-PAGE tail T=
-   KVT-CACHE tail PAGE-REFC 2 T=
-   KVT-CACHE 1 KVT-H@ 0 0 TOKEN-PTR c@ 11 T=
-   KVT-CACHE 1 KVT-H@ 0 1 TOKEN-PTR c@ 22 T=
-   KVT-CACHE 1 KVT-H@ 0 2 TOKEN-PTR c@ 33 T=
-   KVT-CACHE 1 KVT-H@ 1 2 TOKEN-PTR 31 + c@ 44 T=
-   KVT-CACHE 1 KVT-H@ APPEND-TOKEN
-   KVT-CACHE 1 KVT-H@ 0 SEQ-PAGE {: newp:n :}
-   newp tail <> TTRUE
-   KVT-CACHE tail PAGE-REFC 1 T=
-   KVT-CACHE newp PAGE-REFC 1 T=
-   99 KVT-CACHE 1 KVT-H@ 0 3 TOKEN-PTR c!
-   88 KVT-CACHE 1 KVT-H@ 1 3 TOKEN-PTR c!
-   55 KVT-CACHE 0 KVT-H@ 0 0 TOKEN-PTR c!
-   66 KVT-CACHE 0 KVT-H@ 1 0 TOKEN-PTR c!
-   KVT-CACHE 0 KVT-H@ 0 0 TOKEN-PTR c@ 55 T=
-   KVT-CACHE 0 KVT-H@ 1 0 TOKEN-PTR c@ 66 T=
-   KVT-CACHE 1 KVT-H@ 0 0 TOKEN-PTR c@ 11 T=
-   KVT-CACHE 1 KVT-H@ 1 2 TOKEN-PTR 31 + c@ 44 T=
-   KVT-CACHE 1 KVT-H@ 0 3 TOKEN-PTR c@ 99 T=
-   KVT-CACHE 1 KVT-H@ 1 3 TOKEN-PTR c@ 88 T=
-   KVT-CACHE 0 KVT-H@ SEQ-LEN 3 T=
-   KVT-CACHE 1 KVT-H@ SEQ-LEN 4 T=
-   KVT-CACHE WATERMARK 2 T=
-   KVT-CACHE CHECK ;
-
-: KVT-SHARED-WASTE ( -- )
-   1 2 4 2 8 4 KVT-INIT
-   KVT-CACHE 5 ALLOC-SEQ 0 KVT-H!
-   4 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
-   s" unique tail waste" T-LABEL KVT-CACHE TAIL-WASTE 12 T=
-   KVT-CACHE 0 KVT-H@ FORK-SEQ 1 KVT-H!
-   s" shared physical tail waste" T-LABEL KVT-CACHE TAIL-WASTE 12 T=
-   s" shared page metric" T-LABEL KVT-CACHE SHARED-PAGES 1 T=
-   KVT-CACHE 1 KVT-H@ APPEND-TOKEN          \ copy-on-write makes two physical tails
-   s" split physical tail waste" T-LABEL KVT-CACHE TAIL-WASTE 23 T=
-   s" split shared page metric" T-LABEL KVT-CACHE SHARED-PAGES 0 T=
-   KVT-CACHE WATERMARK 2 T=
-   KVT-CACHE CHECK ;
-
-\ ---- peak physical occupancy -------------------------------------------------------
-\ One token per page makes the peak exactly the number of live tokens. The peak is the
-\ highest occupancy the cache ever reached, so it has to survive a release back to
-\ empty and must not follow a lower second peak back down.
-5 constant KVT-HW-PEAK
-3 constant KVT-HW-LATER
-
-: KVT-HW-GROW ( n n -- ) {: slot:n toks:n :}
-   KVT-CACHE toks ALLOC-SEQ slot KVT-H!
-   toks 0 ?do KVT-CACHE slot KVT-H@ APPEND-TOKEN loop ;
-
-: KVT-HIGH-WATER ( -- )
-   1 2 4 2 8 4 1 KVT-INIT/P
-   s" fresh cache has no peak" T-LABEL KVT-CACHE HIGH-WATER 0 T=
-   0 KVT-HW-PEAK KVT-HW-GROW
-   s" first peak occupancy" T-LABEL KVT-CACHE WATERMARK KVT-HW-PEAK T=
-   s" first peak recorded" T-LABEL KVT-CACHE HIGH-WATER KVT-HW-PEAK T=
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   s" released back to empty" T-LABEL KVT-CACHE WATERMARK 0 T=
-   s" peak survives the release" T-LABEL KVT-CACHE HIGH-WATER KVT-HW-PEAK T=
-   1 KVT-HW-LATER KVT-HW-GROW
-   s" lower second peak" T-LABEL KVT-CACHE WATERMARK KVT-HW-LATER T=
-   s" peak is the maximum, not the latest" T-LABEL KVT-CACHE HIGH-WATER KVT-HW-PEAK T=
-   KVT-CACHE 1 KVT-H@ CANCEL-SEQ
-   s" peak survives the last cancel" T-LABEL KVT-CACHE HIGH-WATER KVT-HW-PEAK T=
-   KVT-CACHE CHECK ;
-
-\ ---- real max-context reservations --------------------------------------------------
-: KVT-RESERVATION-CONSUME ( -- )
-   1 2 4 2 4 4 KVT-INIT
-   KVT-CACHE 17 ALLOC-SEQ 0 KVT-H!             \ two page guarantee
-   KVT-CACHE RESERVED-PAGES 2 T=
-   KVT-CACHE 0 KVT-H@ SEQ-RESERVED 2 T=
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE RESERVED-PAGES 1 T=
-   KVT-CACHE 0 KVT-H@ SEQ-RESERVED 1 T=
-   15 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
-   KVT-CACHE RESERVED-PAGES 1 T=
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE RESERVED-PAGES 0 T=
-   KVT-CACHE 0 KVT-H@ SEQ-RESERVED 0 T=
-   KVT-CACHE WATERMARK 2 T=
-   KVT-CACHE CHECK ;
-
-\ Every token of the declared maximum is appended, and the remaining reservation is
-\ checked at the six indices where the page arithmetic changes: reservation only moves
-\ when an append crosses a page boundary, so those are the appends that can get it
-\ wrong.
-: KVT-BOUNDARY-STEP ( n -- ) {: tok:n :}
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   tok KVT-BOUND? 0= if exit then
-   KVT-CACHE RESERVED-PAGES
-   KVT-CACHE 65 PAGES-FOR KVT-CACHE tok 1+ PAGES-FOR - T=
-   KVT-CACHE CHECK ;
-
-: KVT-BOUNDARY-RESERVATION ( -- )
-   1 2 4 2 5 2 65 16 KVT-INIT/MAX/P
-   16 64 KVT-BOUND-PLAN
-   KVT-CACHE 65 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE RESERVED-PAGES 5 T=
-   65 0 ?do i KVT-BOUNDARY-STEP loop
-   KVT-CACHE 0 KVT-H@ SEQ-PAGES 5 T=
-   KVT-CACHE 0 KVT-H@ SEQ-LEN 65 T= ;
-
-: KVT-EXACT-FIT ( -- )
-   1 2 4 2 4 2 KVT-INIT
-   KVT-CACHE 64 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE RESERVED-PAGES 4 T=
-   KVT-CACHE 0 KVT-H@ SEQ-RESERVED 4 T=
-   KVT-CACHE CHECK ;
-
-: KVT-ONE-OVER-CALL ( -- )
-   KVT-CACHE 1 ALLOC-SEQ 8 KVT-H! ;
-
-: KVT-ONE-OVER-ATOMIC ( -- )
-   1 2 4 2 4 2 KVT-INIT
-   KVT-CACHE 64 ALLOC-SEQ 0 KVT-H!
-   KVT-SNAPSHOT
-   [: KVT-ONE-OVER-CALL ;] catch E-KV-ADMIT T=
-   KVT-SNAPSHOT= TTRUE
-   KVT-CACHE RESERVED-PAGES 4 T=
-   KVT-CACHE 1 SEQLIVE@ 0 T=
-   KVT-CACHE 1 SEQGEN@ 0 T=
-   KVT-CACHE CHECK ;
-
-: KVT-OVER-MAX-CALL ( -- )
-   KVT-CACHE 65 ALLOC-SEQ 8 KVT-H! ;
-
-: KVT-OVER-MAX-ATOMIC ( -- )
-   1 2 4 2 8 2 64 16 KVT-INIT/MAX/P
-   KVT-SNAPSHOT
-   [: KVT-OVER-MAX-CALL ;] catch E-KV-ADMIT T=
-   KVT-SNAPSHOT= TTRUE
-   KVT-CACHE RESERVED-PAGES 0 T=
-   KVT-CACHE 0 SEQLIVE@ 0 T=
-   KVT-CACHE 0 SEQGEN@ 0 T=
-   KVT-CACHE CHECK ;
-
-: KVT-SEQ-CEILING ( -- )
-   1 2 4 2 8 1 64 16 KVT-INIT/MAX/P
-   KVT-CACHE 17 ALLOC-SEQ 0 KVT-H!
-   17 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
-   KVT-SNAPSHOT
-   [: KVT-CACHE 0 KVT-H@ APPEND-TOKEN ;] catch E-KV-ADMIT T=
-   KVT-SNAPSHOT= TTRUE
-   KVT-CACHE 0 KVT-H@ SEQ-LEN 17 T=
-   KVT-CACHE 0 KVT-H@ SEQ-RESERVED 0 T=
-   KVT-CACHE CHECK ;
-
-: KVT-ZERO-MAX ( -- )
-   1 2 4 2 4 2 KVT-INIT
-   KVT-SNAPSHOT
-   [: KVT-CACHE 0 ALLOC-SEQ 8 KVT-H! ;] catch E-KV-ADMIT T=
-   KVT-SNAPSHOT= TTRUE
-   KVT-CACHE CHECK ;
-
-: KVT-MULTI-RESERVATION ( -- )
-   1 2 4 2 4 4 KVT-INIT
-   KVT-CACHE 48 ALLOC-SEQ 0 KVT-H!
-   KVT-CACHE 16 ALLOC-SEQ 1 KVT-H!
-   KVT-CACHE RESERVED-PAGES 4 T=                    \ exact fit across admissions
-   [: KVT-CACHE 1 ALLOC-SEQ 8 KVT-H! ;] catch E-KV-ADMIT T=
-   KVT-CACHE RESERVED-PAGES 4 T=                    \ no oversubscription
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE RESERVED-PAGES 1 T=                    \ unused reservation released
-   KVT-CACHE 1 KVT-H@ CANCEL-SEQ
-   KVT-CACHE RESERVED-PAGES 0 T=
-   KVT-CACHE CHECK ;
-
-: KVT-CANCEL-RESERVATION ( -- )
-   1 2 4 2 4 4 KVT-INIT
-   KVT-CACHE 64 ALLOC-SEQ 0 KVT-H!
-   s" cancel initial sequence reservation" T-LABEL KVT-CACHE 0 KVT-H@ SEQ-RESERVED 4 T=
-   s" cancel initial global reservation" T-LABEL KVT-CACHE RESERVED-PAGES 4 T=
-   s" cancel initial free" T-LABEL KVT-CACHE FREE-PAGES 4 T=
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE RESERVED-PAGES 3 T=
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE RESERVED-PAGES 0 T=
-   KVT-CACHE WATERMARK 0 T=
-   KVT-CACHE CHECK ;
-
-: KVT-FORK-RESERVE-FAIL ( -- )
-   1 2 4 2 2 4 KVT-INIT
-   KVT-CACHE 32 ALLOC-SEQ 0 KVT-H!
-   4 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop    \ free=1, reserved=1
-   KVT-CACHE 0 KVT-H@ FORK-SEQ 8 KVT-H! ;           \ needs child future page + COW
-
-: KVT-FORK-FAIL-ATOMIC ( -- )
-   [: KVT-FORK-RESERVE-FAIL ;] catch E-KV-ADMIT T=
-   KVT-CACHE 0 KVT-H@ 0 SEQ-PAGE {: page:n :}
-   KVT-CACHE page PAGE-REFC 1 T=
-   KVT-CACHE 0 KVT-H@ SEQ-LEN 4 T=
-   KVT-CACHE RESERVED-PAGES 1 T=
-   KVT-CACHE WATERMARK 1 T=
-   KVT-CACHE CHECK
-   KVT-CACHE DISPOSE ;
-
-: KVT-FORK-RESERVE-SUCCESS ( -- )
-   1 2 4 2 4 4 KVT-INIT
-   KVT-CACHE 32 ALLOC-SEQ 0 KVT-H!
-   4 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop    \ remaining parent page=1
-   KVT-CACHE 0 KVT-H@ FORK-SEQ 1 KVT-H!
-   KVT-CACHE RESERVED-PAGES 3 T=                    \ parent page + child page + one COW
-   KVT-CACHE 0 KVT-H@ APPEND-TOKEN
-   KVT-CACHE RESERVED-PAGES 2 T=
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE RESERVED-PAGES 1 T=
-   KVT-CACHE 1 KVT-H@ CANCEL-SEQ
-   KVT-CACHE WATERMARK 0 T=
-   KVT-CACHE CHECK ;
-
-: KVT-FORK-MULTI-SHARE ( -- )
-   1 2 4 2 6 4 KVT-INIT
-   KVT-CACHE 32 ALLOC-SEQ 0 KVT-H!
-   4 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
-   KVT-CACHE 0 KVT-H@ 0 SEQ-PAGE {: shared:n :}
-   KVT-CACHE 0 KVT-H@ FORK-SEQ 1 KVT-H!
-   KVT-CACHE 0 KVT-H@ FORK-SEQ 2 KVT-H!
-   KVT-CACHE RESERVED-PAGES 5 T=                 \ three future pages + two physical COWs
-   KVT-CACHE shared PAGE-REFC 3 T=
-   KVT-CACHE 1 KVT-H@ APPEND-TOKEN
-   KVT-CACHE RESERVED-PAGES 4 T=
-   KVT-CACHE shared PAGE-REFC 2 T=
-   KVT-CACHE 1 KVT-H@ CANCEL-SEQ
-   KVT-CACHE RESERVED-PAGES 3 T=
-   KVT-CACHE 2 KVT-H@ CANCEL-SEQ
-   KVT-CACHE RESERVED-PAGES 1 T=                 \ parent future page only
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE RESERVED-PAGES 0 T=
-   KVT-CACHE WATERMARK 0 T=
-   KVT-CACHE CHECK ;
-
-\ ---- copy-on-write reservation, counted from the sharing this test built -----------
-\ The allocator checks its own copy-on-write reservation against KV-COW-DESIRED, and
-\ the rebalance that writes that reservation is computed from KV-COW-DESIRED too, so
-\ the allocator cannot notice a mistake inside it. This test states the expected
-\ reservation from what the test itself constructed instead.
-\
-\ Every sequence here declares 32 tokens, which is two 16-token pages, and holds one
-\ partially filled page, so every one of them still owns exactly one future page. They
-\ all share that single page. Any sharer may later be forced to copy the page
-\ privately, except the last one left, which keeps the original: so the allocator must
-\ hold one copy page for every sharer beyond the first.
-32 constant KVT-SHARE-MAX
-4 constant KVT-SHARE-FILL
-5 constant KVT-SHARE-SEQS
-
-: KVT-SHARE-COW ( n -- n ) {: seqs:n :}  seqs 1- 0 max ;
-: KVT-SHARE-TOTAL ( n -- n ) {: seqs:n :}  seqs seqs KVT-SHARE-COW KV-ADD0 ;
-
-: KVT-COW-HELD ( -- n )
-   0 KVT-CACHE NUM-PAGES 0 ?do KVT-CACHE i COWRES@ KV-ADD0 loop ;
-
-: KVT-SHARE-STAGE ( n n -- ) {: page:n seqs:n :}
-   s" sharers of the partial page" T-LABEL KVT-CACHE page PAGE-REFC seqs T=
-   s" copy pages held for that page" T-LABEL KVT-CACHE page COWRES@ seqs KVT-SHARE-COW T=
-   s" no other page holds copy pages" T-LABEL KVT-COW-HELD seqs KVT-SHARE-COW T=
-   s" future pages plus copy pages" T-LABEL KVT-CACHE RESERVED-PAGES seqs KVT-SHARE-TOTAL T= ;
-
-: KVT-SHARE-FORK ( n -- ) {: slot:n :}
-   KVT-CACHE 0 KVT-H@ FORK-SEQ slot KVT-H! ;
-
-: KVT-COW-SHARE ( -- )
-   1 2 4 2 10 KVT-SHARE-SEQS KVT-INIT
-   KVT-CACHE KVT-SHARE-MAX ALLOC-SEQ 0 KVT-H!
-   KVT-SHARE-FILL 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
-   KVT-CACHE 0 KVT-H@ 0 SEQ-PAGE {: page:n :}
-   page 1 KVT-SHARE-STAGE                        \ nothing shares it yet
-   KVT-SHARE-SEQS 1 ?do
-      i KVT-SHARE-FORK
-      page i 1+ KVT-SHARE-STAGE                  \ one fork, then two, then more
-   loop
-   KVT-SHARE-SEQS 1 ?do
-      KVT-SHARE-SEQS i - {: dead:n :}
-      KVT-CACHE dead KVT-H@ CANCEL-SEQ
-      page dead KVT-SHARE-STAGE                  \ each cancel releases one copy page
-   loop
-   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
-   KVT-CACHE RESERVED-PAGES 0 T=
-   KVT-CACHE WATERMARK 0 T=
-   KVT-CACHE CHECK ;
-
-\ ---- churn: every caught capacity failure leaves ownership accounting exact --------
-8 constant KVT-ACT-CAP
-variable KVT-NACT
-variable KVT-FAILURES
-variable KVT-PICK
-
-: KVT-ACT@ ( n -- seq )  KVT-H@ ;
-: KVT-ACT! ( seq n -- )  KVT-H! ;
-: KVT-ACT-PUSH ( seq -- )  KVT-NACT @ KVT-ACT! 1 KVT-NACT +! ;
-: KVT-ACT-DROP ( n -- ) {: i:n :}
-   KVT-NACT @ 1- {: last:n :}
-   last KVT-ACT@ i KVT-ACT!
-   -1 KVT-NACT +! ;
-
-: KVT-SEQ-HAS? ( seq n -- bool ) {: pid:n :}
-   8 KVT-H!
-   false
-   KVT-CACHE 8 KVT-H@ SEQ-PAGES 0 ?do
-      KVT-CACHE 8 KVT-H@ i SEQ-PAGE pid = if drop true then
-   loop ;
-
-: KVT-CONTAINS? ( n -- bool ) {: pid:n :}
-   false
-   KVT-NACT @ 0 ?do
-      i KVT-ACT@ pid KVT-SEQ-HAS? if drop true then
-   loop ;
-
-: KVT-DISTINCT ( -- n )
-   0
-   KVT-CACHE NUM-PAGES 0 ?do i KVT-CONTAINS? if 1+ then loop ;
-
-: KVT-TRY-APPEND-BODY ( -- )
-   KVT-CACHE 8 KVT-ACT@ APPEND-TOKEN ;
-
-: KVT-DO-APPEND ( -- )
-   KVT-NACT @ 0= if exit then
-   KVT-NACT @ PROP:RND% KVT-ACT@ 8 KVT-H!
-   [: KVT-TRY-APPEND-BODY ;] catch {: code:n :}
-   code 0= if exit then
-   code E-KV-ADMIT = if 1 KVT-FAILURES +! exit then
-   code throw ;
-
-: KVT-TRY-ALLOC-BODY ( -- )
-   KVT-CACHE PAGE-TOKENS 2 * PROP:RND% 1+ ALLOC-SEQ 8 KVT-H! ;
-
-: KVT-DO-ALLOC ( -- )
-   KVT-NACT @ KVT-ACT-CAP >= if exit then
-   [: KVT-TRY-ALLOC-BODY ;] catch {: code:n :}
-   code 0= if 8 KVT-H@ KVT-ACT-PUSH exit then
-   code E-KV-ADMIT = if 1 KVT-FAILURES +! exit then
-   code throw ;
-
-: KVT-TRY-FORK-BODY ( -- )
-   KVT-CACHE KVT-PICK @ KVT-ACT@ FORK-SEQ 8 KVT-H! ;
-
-: KVT-DO-FORK ( -- )
-   KVT-NACT @ 0= KVT-NACT @ KVT-ACT-CAP >= or if exit then
-   KVT-NACT @ PROP:RND% KVT-PICK !
-   [: KVT-TRY-FORK-BODY ;] catch {: code:n :}
-   code 0= if 8 KVT-H@ KVT-ACT-PUSH exit then
-   code E-KV-ADMIT = if 1 KVT-FAILURES +! exit then
-   code throw ;
-
-: KVT-DO-CANCEL ( -- )
-   KVT-NACT @ 0= if exit then
-   KVT-NACT @ PROP:RND% {: i:n :}
-   KVT-CACHE i KVT-ACT@ CANCEL-SEQ
-   i KVT-ACT-DROP ;
-
-: KVT-CHURN-ROUND ( -- )
-   5 PROP:RND% case
-      0 of KVT-DO-ALLOC endof
-      1 of KVT-DO-APPEND endof
-      2 of KVT-DO-APPEND endof
-      3 of KVT-DO-FORK endof
-      4 of KVT-DO-CANCEL endof
-   endcase
-   KVT-CACHE CHECK
-   KVT-CACHE WATERMARK KVT-DISTINCT T= ;
-
-: KVT-EXHAUST-ADMISSION ( -- )
-   KVT-CACHE 1 ALLOC-SEQ 6 KVT-H! ;
-
-: KVT-INJECT-EXHAUSTION ( -- )
-   KVT-CACHE PAGE-TOKENS 7 * ALLOC-SEQ 8 KVT-H!
-   KVT-CACHE PAGE-TOKENS ALLOC-SEQ 7 KVT-H!
-   KVT-SNAPSHOT
-   [: KVT-EXHAUST-ADMISSION ;] catch {: code:n :}
-   code E-KV-ADMIT <> if code throw then
-   KVT-SNAPSHOT= TTRUE
-   1 KVT-FAILURES +!
-   KVT-CACHE CHECK
-   KVT-CACHE 7 KVT-H@ CANCEL-SEQ
-   KVT-CACHE 8 KVT-H@ CANCEL-SEQ ;
+   0 KVT-SEQ-LEN 4 T=
+   1 KVT-SEQ-LEN 4 T=
+   2 KVT-SEQ-LEN 4 T=
+   RESERVED-PAGES 5 T=
+   FREE-PAGES 7 T=
+   SHARED-PAGES 1 T=
+   TAIL-WASTE 12 T=
+   1 KVT-APPEND
+   1 0 KVT-PAGE-ID {: new1:n :}
+   new1 old <> TTRUE
+   new1 KVT-PAGE-BYTES * KVT-DST KVT-PAGE-BYTES KVT-DOWNLOAD
+   KVT-PAGE= TTRUE
+   RESERVED-PAGES 4 T=
+   FREE-PAGES 6 T=
+   SHARED-PAGES 1 T=
+   TAIL-WASTE 23 T=
+   WATERMARK 2 T=
+   2 KVT-APPEND
+   2 0 KVT-PAGE-ID {: new2:n :}
+   new2 old <> TTRUE
+   new2 new1 <> TTRUE
+   new2 KVT-PAGE-BYTES * KVT-DST KVT-PAGE-BYTES KVT-DOWNLOAD
+   KVT-PAGE= TTRUE
+   RESERVED-PAGES 3 T=
+   FREE-PAGES 5 T=
+   SHARED-PAGES 0 T=
+   TAIL-WASTE 34 T=
+   WATERMARK 3 T=
+   KVT-HOST-ID host = TTRUE
+   KVT-CHECK
+   1 KVT-CANCEL
+   RESERVED-PAGES 2 T=
+   FREE-PAGES 6 T=
+   SHARED-PAGES 0 T=
+   TAIL-WASTE 23 T=
+   KVT-CHECK
+   2 KVT-CANCEL
+   RESERVED-PAGES 1 T=
+   FREE-PAGES 7 T=
+   TAIL-WASTE 12 T=
+   KVT-CHECK
+   0 KVT-CANCEL
+   RESERVED-PAGES 0 T=
+   FREE-PAGES 8 T=
+   TAIL-WASTE 0 T=
+   SHARED-PAGES 0 T=
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
 
 : KVT-CHURN ( -- )
-   1 2 4 2 8 KVT-ACT-CAP KVT-INIT
-   0 KVT-NACT ! 0 KVT-FAILURES !
-   KVT-INJECT-EXHAUSTION
-   11 300 PROP:RUN-RESET
-   PROP:COUNT@ 0 ?do KVT-CHURN-ROUND loop
-   KVT-FAILURES @ 0 > TTRUE
-   begin KVT-NACT @ 0 > while 0 KVT-ACT@ KVT-CACHE swap CANCEL-SEQ 0 KVT-ACT-DROP repeat
-   KVT-CACHE WATERMARK 0 T=
-   KVT-CACHE RESERVED-PAGES 0 T=
-   KVT-CACHE CHECK ;
+   0 KVT-HOST-CALLS !
+   [: KVT-FCOUNT-REAL-HOST ;] is HOST-ALLOC
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   KVT-HOST-ID {: host:ptr :}
+   100 0 ?do
+      16 0 KVT-ALLOC
+      0 KVT-APPEND
+      0 KVT-CANCEL
+      KVT-CHECK
+   loop
+   FREE-PAGES 8 T=
+   RESERVED-PAGES 0 T=
+   WATERMARK 0 T=
+   HIGH-WATER 1 T=
+   KVT-HOST-ID host = TTRUE
+   KVT-MUST-CLOSE
+   HOST-USE-REAL
+   KVT-HOST-CALLS @ 1 T=
+   KVT-MUST-SESSION-CLOSE ;
 
-\ ---- run ----------------------------------------------------------------------------
-T-RESET
+: KVT-NO-ALLOC-BODY ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   1 MMAP-TEST:EXHAUST-CHILD
+   1 MMAP-TEST:EXHAUSTED? 0= if E-KV-INVARIANT throw then
+   32 0 KVT-ALLOC
+   WATERMARK drop
+   FREE-PAGES drop
+   RESERVED-PAGES drop
+   SHARED-PAGES drop
+   TAIL-WASTE drop
+   HIGH-WATER drop
+   NUM-PAGES drop
+   PAGE-SIZE drop
+   PAGE-BYTES drop
+   TOK-BYTES drop
+   MAX-CONTEXT drop
+   BLOCK-CAPACITY drop
+   0 KVT-H@ SEQ-LEN KVT-N drop
+   0 KVT-H@ SEQ-RESERVED KVT-N drop
+   1 PAGES-FOR KVT-N drop
+   FOOTPRINT 2drop
+   4 0 ?do 0 KVT-APPEND loop
+   0 0 0 0 KVT-K-SPAN drop
+   0 0 0 0 KVT-V-SPAN drop
+   0 1 KVT-FORK
+   1 KVT-APPEND
+   KVT-CHECK
+   1 KVT-CANCEL
+   0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
 
-s" old config type absent" T-LABEL
-s" KVT-OLD-CFG ( KV:kvcfg -- KV:kvcfg )" CHECK-QUIET-CANDIDATE! 0 T=
-s" old sequence type absent" T-LABEL
-s" KVT-OLD-SEQ ( KV:kvseq -- KV:kvseq )" CHECK-QUIET-CANDIDATE! 0 T=
-s" old CONFIG arity rejected" T-LABEL
-s" KVT-OLD-CONFIG ( n n n n n n -- KV:config ) KV:CONFIG" CHECK-QUIET-CANDIDATE! 0 T=
+: KVT-NO-ALLOC-CHILD ( -- )
+   [: KVT-NO-ALLOC-BODY ;] catch {: code:n :}
+   s" " code die ;
 
-s" geometry" T-LABEL ' KVT-GEOMETRY 0 TTHROWS
-s" generated structure operations" T-LABEL ' KVT-GENERATED-OPS 0 TTHROWS
-s" two layers occupy distinct offsets" T-LABEL ' KVT-LAYER-ADDRESS 0 TTHROWS
-s" GPT-2 geometry" T-LABEL ' KVT-GPT2-GEOMETRY 0 TTHROWS
-' KVT-OVERFLOW-2NKV E-KV-CONFIG TTHROWS
-' KVT-OVERFLOW-HDIM E-KV-CONFIG TTHROWS
-' KVT-OVERFLOW-DBYTES E-KV-CONFIG TTHROWS
-' KVT-OVERFLOW-TOK E-KV-CONFIG TTHROWS
-' KVT-OVERFLOW-PAGE E-KV-CONFIG TTHROWS
-' KVT-OVERFLOW-POOL E-KV-CONFIG TTHROWS
-' KVT-OVERFLOW-META E-KV-CONFIG TTHROWS
-' KVT-OVERFLOW-META-BYTES E-KV-CONFIG TTHROWS
-' KVT-OVERFLOW-TABLE-META E-KV-CONFIG TTHROWS
-' KVT-BAD-BLOCK-CAPACITY E-KV-CONFIG TTHROWS
-' KVT-BAD-PAGE E-KV-CONFIG TTHROWS
-s" overflow-free ceiling" T-LABEL ' KVT-CEIL-SAFE 0 TTHROWS
-s" fixed block tables" T-LABEL ' KVT-FIXED-TABLES 0 TTHROWS
-s" failed install cleanup" T-LABEL ' KVT-INIT-FAIL-CLEANUP 0 TTHROWS
-s" page-token parameterization" T-LABEL ' KVT-PAGE-TOKENS 0 TTHROWS
+: KVT-NO-ALLOC ( -- )
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if KVT-NO-ALLOC-CHILD then
+   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
-s" stale slot reuse" T-LABEL ' KVT-STALE-REUSE 0 TTHROWS
-' KVT-OLD-USE E-KV-SEQ TTHROWS
-s" stale reservation ownership" T-LABEL ' KVT-STALE-RESERVATION 0 TTHROWS
-s" cross-cache reservation ownership" T-LABEL ' KVT-CROSS-CACHE 0 TTHROWS
-KVT-OTHER DISPOSE
-s" cache rebuild setup" T-LABEL ' KVT-REBUILD-CACHE 0 TTHROWS
-' KVT-OLD-CACHE-USE E-KV-SEQ TTHROWS
-s" cache identity exhaustion" T-LABEL ' KVT-CACHE-ID-EXHAUST 0 TTHROWS
-s" slot generation exhaustion" T-LABEL ' KVT-SLOT-GEN-EXHAUST 0 TTHROWS
-s" skip first exhausted slot" T-LABEL ' KVT-SLOT-GEN-SKIP-FIRST 0 TTHROWS
-s" skip last exhausted slot" T-LABEL ' KVT-SLOT-GEN-SKIP-LAST 0 TTHROWS
+: KVT-DEVICE-ALLOC-FAIL ( -- )
+   KVT-RELEASE-RESET
+   0 KVT-GPU-ALLOC-CALLS !
+   KVT-MUST-SESSION
+   [: KVT-FTRACK-HOST ;] is HOST-ALLOC
+   [: KVT-FRELEASE ;] is HOST-RELEASE
+   [: KVT-FALLOC ;] MKD:CUMEMALLOC!
+   KVT-CONFIG 701 KVT-OPEN-ERR
+   MKD:USE-REAL
+   HOST-USE-REAL
+   KVT-RELEASE-N @ 1 T=
+   KVT-RELEASE-P @ KVT-ALLOC-P @ = TTRUE
+   KVT-RELEASE-B @ KVT-ALLOC-B @ T=
+   KVT-RELEASE-B @ 688 T=
+   KVT-GPU-ALLOC-CALLS @ 1 T=
+   KVT-MUST-SESSION-CLOSE ;
 
-s" page boundary" T-LABEL ' KVT-BOUNDARY 0 TTHROWS
-s" page recycling" T-LABEL ' KVT-RECYCLE 0 TTHROWS
-s" owned physical exhaustion" T-LABEL ' KVT-OWNED-POP 0 TTHROWS
-s" sequence failure atomic" T-LABEL ' KVT-SEQS-FAIL-ATOMIC 0 TTHROWS
-s" invalid config" T-LABEL ' KVT-BAD-CONFIG E-KV-CONFIG TTHROWS
-s" positive layer count" T-LABEL ' KVT-BAD-LAYER E-KV-CONFIG TTHROWS
-s" double cancel" T-LABEL ' KVT-DOUBLE-CANCEL E-KV-SEQ TTHROWS
-s" use after cancel" T-LABEL ' KVT-USE-AFTER-CANCEL E-KV-SEQ TTHROWS
-s" disposed use" T-LABEL ' KVT-DISPOSED-USE E-KV-STATE TTHROWS
-s" live reinitialization" T-LABEL ' KVT-REINIT E-KV-STATE TTHROWS
-s" token bounds" T-LABEL ' KVT-BAD-TOKEN E-KV-BOUNDS TTHROWS
-s" negative token bounds" T-LABEL ' KVT-BAD-TOKEN-NEG E-KV-BOUNDS TTHROWS
-s" negative layer bounds" T-LABEL ' KVT-BAD-LAYER-NEG E-KV-BOUNDS TTHROWS
-s" upper layer bounds" T-LABEL ' KVT-BAD-LAYER-HI E-KV-BOUNDS TTHROWS
-s" sequence page bounds" T-LABEL ' KVT-BAD-SEQ-PAGE E-KV-BOUNDS TTHROWS
-s" copy-on-write bytes" T-LABEL ' KVT-COW-BYTES 0 TTHROWS
-s" physical tail waste" T-LABEL ' KVT-SHARED-WASTE 0 TTHROWS
-s" peak physical occupancy" T-LABEL ' KVT-HIGH-WATER 0 TTHROWS
+: KVT-HOST-ALLOC-FAIL ( -- )
+   KVT-RELEASE-RESET
+   0 KVT-GPU-ALLOC-CALLS !
+   KVT-MUST-SESSION
+   [: KVT-FHOST ;] is HOST-ALLOC
+   [: KVT-RELEASE-RECORD ;] is HOST-RELEASE
+   [: KVT-FALLOC ;] MKD:CUMEMALLOC!
+   KVT-CONFIG E-MEM-MAP KVT-OPEN-ERR
+   MKD:USE-REAL
+   HOST-USE-REAL
+   KVT-RELEASE-N @ 0 T=
+   KVT-GPU-ALLOC-CALLS @ 0 T=
+   KVT-MUST-SESSION-CLOSE ;
 
-s" reservation consumption" T-LABEL ' KVT-RESERVATION-CONSUME 0 TTHROWS
-s" reservation at page boundaries" T-LABEL ' KVT-BOUNDARY-RESERVATION 0 TTHROWS
-s" exact-fit admission" T-LABEL ' KVT-EXACT-FIT 0 TTHROWS
-s" capacity oversubscription atomicity" T-LABEL ' KVT-ONE-OVER-ATOMIC 0 TTHROWS
-s" one-page-over maximum atomicity" T-LABEL ' KVT-OVER-MAX-ATOMIC 0 TTHROWS
-s" per-sequence append ceiling" T-LABEL ' KVT-SEQ-CEILING 0 TTHROWS
-s" positive declared maximum" T-LABEL ' KVT-ZERO-MAX 0 TTHROWS
-s" multiple reservations" T-LABEL ' KVT-MULTI-RESERVATION 0 TTHROWS
-s" cancel reservation" T-LABEL ' KVT-CANCEL-RESERVATION 0 TTHROWS
-s" fork reservation rollback" T-LABEL ' KVT-FORK-FAIL-ATOMIC 0 TTHROWS
-s" fork reservation guarantee" T-LABEL ' KVT-FORK-RESERVE-SUCCESS 0 TTHROWS
-s" multi-fork reservation" T-LABEL ' KVT-FORK-MULTI-SHARE 0 TTHROWS
-s" copy-on-write sharing reservation" T-LABEL ' KVT-COW-SHARE 0 TTHROWS
+: KVT-OPEN-CODE ( GPU:session config -- GPU:session n )
+   OPEN MATCH result
+      ok OF KVT-MUST-CLOSE 0 ENDOF
+      err OF ENDOF
+   ;MATCH ;
 
-s" failure churn" T-LABEL ' KVT-CHURN 0 TTHROWS
+: KVT-PLAN-RESET ( -- )
+   0 KVT-HOST-CALLS !
+   0 KVT-GPU-ALLOC-CALLS !
+   KVT-RELEASE-RESET
+   [: KVT-FCOUNT-HOST ;] is HOST-ALLOC
+   [: KVT-RELEASE-RECORD ;] is HOST-RELEASE
+   [: KVT-FALLOC ;] MKD:CUMEMALLOC! ;
 
-KVT-CACHE DISPOSE
-KVT-OTHER DISPOSE
-T-REPORT
+: KVT-PLAN-ASSERT ( GPU:session n -- ) {: code:n :}
+   MKD:USE-REAL
+   HOST-USE-REAL
+   code E-KV-CONFIG T=
+   KVT-HOST-CALLS @ 0 T=
+   KVT-RELEASE-N @ 0 T=
+   KVT-GPU-ALLOC-CALLS @ 0 T=
+   KVT-MUST-SESSION-CLOSE ;
+
+: KVT-CONFIG-FAIL ( -- )
+   KVT-PLAN-RESET
+   KVT-MUST-SESSION KVT-FORGED-CONFIG KVT-OPEN-CODE
+   KVT-PLAN-ASSERT ;
+
+: KVT-MUL-FAIL ( -- )
+   KVT-PLAN-RESET
+   KVT-MUST-SESSION KVT-MUL-CONFIG KVT-OPEN-CODE
+   KVT-PLAN-ASSERT ;
+
+: KVT-ADD-FAIL ( -- )
+   KVT-PLAN-RESET
+   KVT-MUST-SESSION KVT-ADD-CONFIG KVT-OPEN-CODE
+   KVT-PLAN-ASSERT ;
+
+: KVT-CLOSE-FAIL ( -- )
+   KVT-RELEASE-RESET
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   KVT-HOST-ID {: host:ptr :}
+   HOSTB-OFF KVT-FIELD@ {: bytes:n :}
+   [: KVT-FRELEASE ;] is HOST-RELEASE
+   [: KVT-FFREE ;] MKD:CUMEMFREE!
+   702 KVT-CLOSE-ERR
+   MKD:USE-REAL
+   HOST-USE-REAL
+   KVT-RELEASE-N @ 1 T=
+   KVT-RELEASE-P @ host = TTRUE
+   KVT-RELEASE-B @ bytes T=
+   KVT-RELEASE-B @ 688 T=
+   KVT-FREE-EVENT @ 1 T=
+   KVT-RELEASE-EVENT @ 2 T=
+   KVT-MUST-SESSION-CLOSE ;
+
+: KVT-OLD-API ( -- )
+   s" KVT-NO-HDR ( -- n ) KV:HDR-BYTES" CHECK-QUIET-CANDIDATE! 1 T=
+   s" KVT-NO-INIT ( ptr a KV:config -- ) KV:INIT" CHECK-QUIET-CANDIDATE! 1 T=
+   s" KVT-NO-DISPOSE ( ptr a -- ) KV:DISPOSE" CHECK-QUIET-CANDIDATE! 1 T=
+   s" KVT-NO-TOKEN-PTR ( ptr a KV:seq n n -- ptr u8 ) KV:TOKEN-PTR" CHECK-QUIET-CANDIDATE! 1 T= ;
+
+: KVT-PRIVATE-SPANS ( -- )
+   s" KVT-NO-K-SPAN ( GPU:session KV:cache KV:seq n n n -- GPU:session KV:cache result<cuda-devptr,n> ) KV:K-SPAN" CHECK-QUIET-CANDIDATE! 1 T=
+   s" KVT-NO-V-SPAN ( GPU:session KV:cache KV:seq n n n -- GPU:session KV:cache result<cuda-devptr,n> ) KV:V-SPAN" CHECK-QUIET-CANDIDATE! 1 T= ;
+
+: KVT-LINEAR-REJECTS ( -- )
+   s" KVT-BAD-DUP ( KV:cache -- KV:cache KV:cache ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+   s" KVT-BAD-DROP ( KV:cache -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+   s" KVT-BAD-DOUBLE-CLOSE ( GPU:session KV:cache -- GPU:session result<n,n> result<n,n> ) KV:CLOSE KV:CLOSE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" KVT-BAD-POST-CLOSE ( GPU:session KV:cache -- GPU:session result<n,n> n ) KV:CLOSE KV:WATERMARK" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: KVT-RUN ( -- )
+   T-RESET
+   s" post-open operations require no host allocation" T-LABEL [: KVT-NO-ALLOC ;] 0 TTHROWSQ
+   s" exact geometry and footprint" T-LABEL [: KVT-GEOMETRY ;] 0 TTHROWSQ
+   s" bounded K and V device spans" T-LABEL [: KVT-SPANS ;] 0 TTHROWSQ
+   s" stale generation" T-LABEL [: KVT-STALE ;] 0 TTHROWSQ
+   s" cross-cache identity" T-LABEL [: KVT-CROSS-CACHE ;] 0 TTHROWSQ
+   s" reservation and capacity" T-LABEL [: KVT-CAPACITY ;] 0 TTHROWSQ
+   s" copy failure atomicity and real full-page COW" T-LABEL [: KVT-COW ;] 0 TTHROWSQ
+   s" allocation-free churn" T-LABEL [: KVT-CHURN ;] 0 TTHROWSQ
+   s" device allocation failure cleanup" T-LABEL [: KVT-DEVICE-ALLOC-FAIL ;] 0 TTHROWSQ
+   s" host allocation failure cleanup" T-LABEL [: KVT-HOST-ALLOC-FAIL ;] 0 TTHROWSQ
+   s" forged configuration rejected before allocation" T-LABEL [: KVT-CONFIG-FAIL ;] 0 TTHROWSQ
+   s" multiplicative overflow rejected before allocation" T-LABEL [: KVT-MUL-FAIL ;] 0 TTHROWSQ
+   s" additive overflow rejected before allocation" T-LABEL [: KVT-ADD-FAIL ;] 0 TTHROWSQ
+   s" device close failure with host release" T-LABEL [: KVT-CLOSE-FAIL ;] 0 TTHROWSQ
+   s" old pointer API absent" T-LABEL [: KVT-OLD-API ;] 0 TTHROWSQ
+   s" device span borrows remain private" T-LABEL [: KVT-PRIVATE-SPANS ;] 0 TTHROWSQ
+   s" linear cache misuse rejected" T-LABEL [: KVT-LINEAR-REJECTS ;] 0 TTHROWSQ
+   MKD:USE-REAL
+   HOST-USE-REAL
+   T-REPORT ;
+
+KVT-RUN
 
 ;package
