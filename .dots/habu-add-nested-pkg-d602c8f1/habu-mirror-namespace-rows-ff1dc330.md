@@ -1,6 +1,6 @@
 ---
 title: Mirror namespace rows in recovery
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-31T06:35:00.747855+02:00"
@@ -35,4 +35,4 @@ namespace kinds, absolute prefix creation/reopen, `WID:MAX` boundaries,
 protected publication, caught rollback, snapshot and compact-AOT validation,
 and failure parity with native.
 
-Claim: agent=recovery_e1_impl workspace=.jj-ws/habu-mirror-namespace-rows-ff1dc330.
+Evidence: Unlanded candidate commit `6f90f4297156` is preserved for future adaptation.

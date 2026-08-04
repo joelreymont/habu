@@ -1,9 +1,10 @@
 ---
 title: Package match-factor bench source
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "\"2026-07-23T06:20:47.334950+02:00\""
+close-reason: "Landed as 37108aa73d38."
 ---
 
 Problem: test/match-factor-pin.f:300 emits a global SRC buffer into a SUBJECT
@@ -33,4 +34,3 @@ Smallest real check: bin/hb --load test/gate-runner-support.f
 test/gate-runner-entry.f -- tail-process --pool-slots 8.
 Depends: none.
 Owned result: generated match-factor benchmark namespace only.
-Claim: agent=match_bench_owner workspace=.jj-ws/habu-pkg-match-factor-28b18558.

@@ -1,6 +1,6 @@
 ---
 title: Cut ENUM to binder FIELD grammar
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-30T23:53:23.711587+02:00"
@@ -14,4 +14,4 @@ Production defect: ENUM-DECL:DRIVE rejects name<e,a> before head parsing, choose
 
 Files: src/core/enum-decl.f, test/enum-decl-suite.f, test/decl-replay-verify-source.f. Owner: ENUM-DECL binder-head consumption and final FIELD-only payload grammar. Dependency: the landed DECL-HEAD interface from habu-parse-structure-binder-1da50c1c. Before M17, acceptance is exact hunk review, final-spelling census, rooted package diff, and typed-local diff only. Forbidden: compatibility grammar, dual parser, numeric arity, alphabet-derived ordinals, bare positional payloads, new parser/type/package/transaction, persistent binder metadata, caller rewrites, constructor changes, compact-mode changes, trust, wrappers, or new gates.
 
-Claim: agent=enum_cut workspace=.jj-ws/habu-cut-enum-to-b83a478f.
+Evidence: Unlanded candidate commit `49f8b6a2bc5c` is preserved for future adaptation.

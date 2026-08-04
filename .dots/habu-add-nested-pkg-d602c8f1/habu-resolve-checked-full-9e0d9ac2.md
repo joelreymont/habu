@@ -1,6 +1,6 @@
 ---
 title: Resolve checked full namespace paths
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-31T06:35:00.353571+02:00"
@@ -43,4 +43,4 @@ hide, and forget; exact full-prefix diagnostics are retained. Run the focused
 engine, XREF, property, and JSON diagnostic tests plus package, typed-local,
 fixpoint, and full native gates.
 
-Claim: agent=e2a_checked_impl workspace=.jj-ws/habu-resolve-checked-full-9e0d9ac2.
+Evidence: Unlanded candidate commit `d0ae5455ec21` is preserved for future adaptation.

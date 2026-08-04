@@ -1,6 +1,6 @@
 ---
 title: Enforce package ownership in Forth diffs
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-16T05:04:12.099422+02:00\""
@@ -13,4 +13,3 @@ Full context: AGENTS.md:60-71 and docs/forth.md:109-123 require every new librar
 
 Dependency: habu-lint-diff-share-486c2d86 must land first; this lane consumes its checked DIFF package and must not copy or fork the parser.
 
-Claim: agent=package_diff_lint workspace=.jj-ws/habu-package-diff-lint.

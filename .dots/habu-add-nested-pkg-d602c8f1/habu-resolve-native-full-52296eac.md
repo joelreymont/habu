@@ -1,6 +1,6 @@
 ---
 title: Resolve native full namespace paths
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-31T06:34:59.946328+02:00"
@@ -38,4 +38,4 @@ into a type rejects; shallow behavior remains exact. Run the focused dictionary
 and export suites, package and typed-local gates, native fixpoint, and full
 native gate.
 
-Claim: agent=e2a_native_impl workspace=.jj-ws/habu-resolve-native-full-52296eac.
+Evidence: Unlanded candidate commit `816dfe4885b6` is preserved for future adaptation.

@@ -1,9 +1,10 @@
 ---
 title: Complete engine emitter ownership
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-30T22:13:55.502748+02:00"
+close-reason: "Superseded by e12f36ec161e."
 ---
 
 Problem: changing the native emitter exposes every altered transitive definition to the mandatory package gate. The reviewed first slice, commit e6c56d71a872a92d0c054ab42db68817e8ae8856, correctly owns the terminal callback, production drivers, generated caller, and trust identity, but a representative package-wall deletion still reports legacy global callees beginning with BPROTWIDADD and C-POSTPONE. Complete that emitter closure without coupling its package correction to unrelated package renames.
@@ -25,4 +26,4 @@ the typed-local gate passes; `ENGINE-EMIT` still publishes only `FORTH`;
 definition named in the Result remains; and the focused AOT-WID production
 build passes. E1 and the native package-wall deletion consume this commit.
 
-Forbidden: package renames, caller rewrites, behavior changes, namespace semantics, compatibility aliases, forwarding shims, new gates or exemptions, bootstrap edits, whole-driver packaging, helper-owner dots, and unrelated emitter refactors. Claim: agent=engine_emitter_impl workspace=.jj-ws/habu-own-engine-emitter-42db38aa.
+Forbidden: package renames, caller rewrites, behavior changes, namespace semantics, compatibility aliases, forwarding shims, new gates or exemptions, bootstrap edits, whole-driver packaging, helper-owner dots, and unrelated emitter refactors.
