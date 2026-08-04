@@ -251,6 +251,7 @@ public
 -5700 constant E-BUF-BOUNDS      \ byte offset / active length outside the buffer
 -5701 constant E-BUF-CAPACITY    \ zero, negative, or cell-overflowing byte capacity
 -5702 constant E-BUF-STATE       \ touch of a disposed buffer, or re-init of a live one
+-5703 constant E-BUF-OVERLAP     \ source and destination byte ranges overlap
 
 \ Open-addressing integer-key hash probe: -5800..-5899
 -5800 constant E-HM-FIRST

@@ -160,6 +160,12 @@ TRUSTED: CU-MEMCPY-DTOH ( ptr u8 cuda-devptr len -- rc )
    FFI:RESET  dst len 0 FFI:WRITABLE!  src 1 FFI:VALUE!  len 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
 
+TRUSTED: CU-MEMCPY-DTOD ( cuda-devptr cuda-devptr len -- rc )
+   {: dst:cuda-devptr src:cuda-devptr len:len :}
+   s" cuMemcpyDtoD_v2" SYMBOL {: call:n :}
+   FFI:RESET  dst 0 FFI:VALUE!  src 1 FFI:VALUE!  len 2 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
+
 \ ---- host-memory registration (UMA zero-copy residency; epic habu-epic-gb10-uma-391d12e8).
 \ Register an existing host mapping (e.g. an mmap'd weight file) so a kernel reads
 \ it through the device address space; the host address is passed by value.

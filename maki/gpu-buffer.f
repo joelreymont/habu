@@ -113,6 +113,15 @@ TRUSTED: GB-DEVPTR+ ( cuda-devptr CAD-NUM:byte-off -- cuda-devptr ) + ;
    o buf GB-RAW-LEN > if 0 0 > exit then
    u buf GB-RAW-LEN o - <= ;
 
+: GB-NONOVERLAP?
+   ( CAD-NUM:byte-off CAD-NUM:byte-off CAD-NUM:byte-len -- bool )
+   {: dst:CAD-NUM:byte-off src:CAD-NUM:byte-off len:CAD-NUM:byte-len :}
+   dst GB-BYTE-OFF>N {: d:n :}
+   src GB-BYTE-OFF>N {: s:n :}
+   len GB-BYTE-LEN>N {: u:n :}
+   d s <= if u s d - <= exit then
+   u d s - <= ;
+
 : GB-UPLOAD-BODY
    ( cuda-devptr ptr u8 CAD-NUM:byte-len n -- cuda-devptr ptr u8 CAD-NUM:byte-len n )
    {: dst:cuda-devptr src:ptr len:CAD-NUM:byte-len first:n :}
@@ -155,6 +164,42 @@ TRUSTED: GB-DEVPTR+ ( cuda-devptr CAD-NUM:byte-off -- cuda-devptr ) + ;
    2drop 2drop drop
    st buf copy-code ;
 
+: GB-COPY-BODY
+   ( cuda-devptr cuda-devptr CAD-NUM:byte-len n -- cuda-devptr cuda-devptr CAD-NUM:byte-len n )
+   {: dst:cuda-devptr src:cuda-devptr len:CAD-NUM:byte-len first:n :}
+   dst src len
+   first dst src len GB-BYTE-LEN>N >LEN CUMEMCPYDTOD RC>N GS-FIRST ;
+
+: GB-COPY-CALL
+   ( cuda-devptr cuda-devptr CAD-NUM:byte-len n -- cuda-devptr cuda-devptr CAD-NUM:byte-len n )
+   [: GB-COPY-BODY ;] catch GS-FIRST ;
+
+: GB-COPY-CHECK
+   ( ptr n CAD-NUM:byte-off CAD-NUM:byte-off CAD-NUM:byte-len -- n )
+   {: buf:ptr dst:CAD-NUM:byte-off src:CAD-NUM:byte-off len:CAD-NUM:byte-len :}
+   buf dst len GB-RANGE? 0= if E-BUF-BOUNDS exit then
+   buf src len GB-RANGE? 0= if E-BUF-BOUNDS exit then
+   dst src len GB-NONOVERLAP? 0= if E-BUF-OVERLAP exit then
+   0 ;
+
+: GB-COPY-ARGS
+   ( ptr n CAD-NUM:byte-off CAD-NUM:byte-off -- cuda-devptr cuda-devptr )
+   {: buf:ptr dst:CAD-NUM:byte-off src:CAD-NUM:byte-off :}
+   buf GB-DEV dst GB-DEVPTR+
+   buf GB-DEV src GB-DEVPTR+ ;
+
+: GB-COPY-RAW
+   ( ptr n ptr n CAD-NUM:byte-off CAD-NUM:byte-off CAD-NUM:byte-len -- ptr n ptr n n )
+   {: st:ptr buf:ptr dst:CAD-NUM:byte-off src:CAD-NUM:byte-off len:CAD-NUM:byte-len :}
+   buf dst src len GB-COPY-CHECK {: check:n :}
+   check 0 <> if st buf check exit then
+   st buf 0 GB-BIND-STEP {: bind:n :}
+   2drop
+   bind 0 <> if st buf bind exit then
+   st buf buf dst src GB-COPY-ARGS len 0 GB-COPY-CALL {: copy:n :}
+   2drop 2drop drop
+   st buf copy ;
+
 : GB-FREE-RAW ( ptr n ptr n -- ptr n n )
    0 GB-BIND-STEP GB-FREE-CALL {: code:n :}
    dup GB-FREE-HOST drop
@@ -186,6 +231,14 @@ public
    {: off:CAD-NUM:byte-off dst:ptr len:CAD-NUM:byte-len :}
    GB-TAKE swap GS-TAKE swap
    off dst len GB-DOWNLOAD-RAW {: code:n :}
+   GB-MINT swap GS-MINT swap
+   code 0= if 0 RESULT:OK else code RESULT:ERR then ;
+
+: COPY
+   ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer result<n,n> )
+   {: dst:CAD-NUM:byte-off src:CAD-NUM:byte-off len:CAD-NUM:byte-len :}
+   GB-TAKE swap GS-TAKE swap
+   dst src len GB-COPY-RAW {: code:n :}
    GB-MINT swap GS-MINT swap
    code 0= if 0 RESULT:OK else code RESULT:ERR then ;
 

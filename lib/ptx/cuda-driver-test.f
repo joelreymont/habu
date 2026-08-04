@@ -4,7 +4,8 @@
 \ CUresult throw E-CUDA) and the off-device OPEN? smoke without touching a real
 \ GPU. The typed FFI bindings and convenience helpers (LOAD-MODULE / GET-FUNCTION
 \ / DEVICE-ALLOC / HTOD / DTOH) are checked at load; their device legs are
-\ exercised by the tools/ptx launcher device gate on hardware.
+\ exercised by the tools/ptx launcher device gate on hardware. CU-MEMCPY-DTOD
+\ is checked at load and by the GPU buffer device gate.
 
 require lib/test.f
 require lib/ptx/cuda-driver.f
@@ -26,6 +27,9 @@ package CUDA-DRIVER-TEST
 
 : RC-BAD ( -- )                                   \ any nonzero CUresult fails closed
    [: 7 >RC CUDA:RC0 ;] E-CUDA TTHROWSQ ;
+
+: DTOD-CHECKED ( cuda-devptr cuda-devptr len -- rc )
+   CUDA:CU-MEMCPY-DTOD ;
 
 : RUN ( -- )
    T-RESET

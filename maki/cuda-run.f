@@ -40,6 +40,7 @@ package MKD
 : R-MEMSET      ( cuda-devptr n count -- rc ) CUDA:CU-MEMSET-D32 ;
 : R-HTOD        ( cuda-devptr ptr u8 len -- rc ) CUDA:CU-MEMCPY-HTOD ;
 : R-DTOH        ( ptr u8 cuda-devptr len -- rc ) CUDA:CU-MEMCPY-DTOH ;
+: R-DTOD        ( cuda-devptr cuda-devptr len -- rc ) CUDA:CU-MEMCPY-DTOD ;
 
 public
 
@@ -60,6 +61,7 @@ defer CUMEMFREE                ( cuda-devptr -- rc )
 defer CUMEMSETD32              ( cuda-devptr n count -- rc )
 defer CUMEMCPYHTOD             ( cuda-devptr ptr u8 len -- rc )
 defer CUMEMCPYDTOH             ( ptr u8 cuda-devptr len -- rc )
+defer CUMEMCPYDTOD             ( cuda-devptr cuda-devptr len -- rc )
 
 : USE-REAL ( -- )                              \ (re)arm the whole table to the sealed CUDA driver
    [: R-OPEN      ;] is OPEN
@@ -77,7 +79,8 @@ defer CUMEMCPYDTOH             ( ptr u8 cuda-devptr len -- rc )
    [: R-MEMFREE   ;] is CUMEMFREE
    [: R-MEMSET    ;] is CUMEMSETD32
    [: R-HTOD      ;] is CUMEMCPYHTOD
-   [: R-DTOH      ;] is CUMEMCPYDTOH ;
+   [: R-DTOH      ;] is CUMEMCPYDTOH
+   [: R-DTOD      ;] is CUMEMCPYDTOD ;
 
 \ ---- per-op injection setters (host-only tests) -----------------------------
 : OPEN!        ( [ -- ] -- )                        is OPEN ;
@@ -96,6 +99,7 @@ defer CUMEMCPYDTOH             ( ptr u8 cuda-devptr len -- rc )
 : CUMEMSETD32! ( [ cuda-devptr n count -- rc ] -- ) is CUMEMSETD32 ;
 : HTOD!        ( [ cuda-devptr ptr u8 len -- rc ] -- ) is CUMEMCPYHTOD ;
 : DTOH!        ( [ ptr u8 cuda-devptr len -- rc ] -- ) is CUMEMCPYDTOH ;
+: DTOD!        ( [ cuda-devptr cuda-devptr len -- rc ] -- ) is CUMEMCPYDTOD ;
 
 USE-REAL
 

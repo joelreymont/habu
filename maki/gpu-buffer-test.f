@@ -10,6 +10,10 @@ public
    ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer result<cuda-devptr,n> )
    GPU:SPAN ;
 
+: COPY-CALL
+   ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer result<n,n> )
+   GPU:COPY ;
+
 ;package
 
 package GPU
@@ -22,6 +26,7 @@ using MKD
 11 constant BT-UPLOAD
 12 constant BT-FREE
 13 constant BT-DOWNLOAD
+14 constant BT-COPY
 
 variable BT-ALLOC-RC
 variable BT-ALLOC-X
@@ -36,6 +41,11 @@ variable BT-DOWNLOAD-X
 variable BT-DOWNLOAD-SRC
 variable BT-DOWNLOAD-LEN
 variable BT-DOWNLOAD-DST?
+variable BT-COPY-RC
+variable BT-COPY-X
+variable BT-COPY-DST
+variable BT-COPY-SRC
+variable BT-COPY-N
 variable BT-FREE-RC
 variable BT-FREE-X
 PTR-VARIABLE BT-BUF-P
@@ -47,6 +57,7 @@ PTR-VARIABLE BT-OWN-BUF
 401 constant BT-CTX0
 402 constant BT-CTX1
 16 constant BT-BUF-LEN
+8 constant BT-HALF
 $7FFFFFFFFFFFFFFF constant BT-MAX-N
 
 create BT-SRC BT-BUF-LEN allot
@@ -67,6 +78,11 @@ create BT-DST BT-BUF-LEN allot
    0 BT-DOWNLOAD-SRC !
    0 BT-DOWNLOAD-LEN !
    0 BT-DOWNLOAD-DST? !
+   0 BT-COPY-RC !
+   0 BT-COPY-X !
+   0 BT-COPY-DST !
+   0 BT-COPY-SRC !
+   0 BT-COPY-N !
    0 BT-FREE-RC !
    0 BT-FREE-X !
    NULL$ drop dup BT-BUF-P ! dup BT-OWN-ST ! BT-OWN-BUF ! ;
@@ -96,6 +112,15 @@ create BT-DST BT-BUF-LEN allot
    BT-DOWNLOAD-X @ FT-X
    BT-DOWNLOAD-RC @ >RC ;
 
+: BT-FCOPY ( cuda-devptr cuda-devptr len -- rc )
+   {: dst:cuda-devptr src:cuda-devptr len:len :}
+   BT-COPY dst CUDA-DEVPTR>N FT-LOG
+   dst CUDA-DEVPTR>N BT-COPY-DST !
+   src CUDA-DEVPTR>N BT-COPY-SRC !
+   len LEN>N BT-COPY-N !
+   BT-COPY-X @ FT-X
+   BT-COPY-RC @ >RC ;
+
 : BT-FFREE ( cuda-devptr -- rc ) {: dev:cuda-devptr :}
    BT-FREE dev CUDA-DEVPTR>N FT-LOG
    BT-FREE-X @ FT-X
@@ -106,6 +131,7 @@ create BT-DST BT-BUF-LEN allot
    [: BT-FALLOC ;] CUMEMALLOC!
    [: BT-FUPLOAD ;] HTOD!
    [: BT-FDOWNLOAD ;] DTOH!
+   [: BT-FCOPY ;] DTOD!
    [: BT-FFREE ;] CUMEMFREE! ;
 
 : BT-OFF ( -- )
@@ -169,6 +195,20 @@ create BT-DST BT-BUF-LEN allot
    {: off:CAD-NUM:byte-off dst:ptr len:CAD-NUM:byte-len want:n :}
    BT-SAVE-OWNERS
    off dst len DOWNLOAD BT-CODE {: code:n :}
+   BT-CHECK-OWNERS code want T= ;
+
+: BT-MUST-COPY
+   ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer )
+   {: dst:CAD-NUM:byte-off src:CAD-NUM:byte-off len:CAD-NUM:byte-len :}
+   BT-SAVE-OWNERS
+   dst src len GPU-SPAN-TEST:COPY-CALL BT-CODE {: code:n :}
+   BT-CHECK-OWNERS code 0 T= ;
+
+: BT-COPY-ERR
+   ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-off CAD-NUM:byte-len n -- GPU:session GPU:buffer )
+   {: dst:CAD-NUM:byte-off src:CAD-NUM:byte-off len:CAD-NUM:byte-len want:n :}
+   BT-SAVE-OWNERS
+   dst src len GPU-SPAN-TEST:COPY-CALL BT-CODE {: code:n :}
    BT-CHECK-OWNERS code want T= ;
 
 : BT-MUST-SPAN
@@ -401,6 +441,86 @@ create BT-DST BT-BUF-LEN allot
    BT-DOWNLOAD-BIND-RC
    BT-DOWNLOAD-BIND-X ;
 
+: BT-COPY-LOG ( n n n -- ) {: dst:n src:n len:n :}
+   FT-N @ 2 T=
+   0 FT-OP@ FT-SET T=
+   1 FT-OP@ BT-COPY T=
+   BT-COPY-DST @ dst T=
+   BT-COPY-SRC @ src T=
+   BT-COPY-N @ len T= ;
+
+: BT-COPY-BOUNDS ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   13 BT-BYTE-OFF 0 BT-BYTE-OFF 4 BT-BYTE-LEN
+      E-BUF-BOUNDS BT-COPY-ERR
+   FT-N @ 0 T=
+   0 BT-BYTE-OFF 13 BT-BYTE-OFF 4 BT-BYTE-LEN
+      E-BUF-BOUNDS BT-COPY-ERR
+   FT-N @ 0 T=
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-COPY-OVERLAP ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   4 BT-BYTE-OFF 8 BT-BYTE-OFF 8 BT-BYTE-LEN
+      E-BUF-OVERLAP BT-COPY-ERR
+   FT-N @ 0 T=
+   8 BT-BYTE-OFF 4 BT-BYTE-OFF 8 BT-BYTE-LEN
+      E-BUF-OVERLAP BT-COPY-ERR
+   FT-N @ 0 T=
+   4 BT-BYTE-OFF 4 BT-BYTE-OFF 8 BT-BYTE-LEN
+      E-BUF-OVERLAP BT-COPY-ERR
+   FT-N @ 0 T=
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-COPY-DISJOINT ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   8 BT-BYTE-OFF 0 BT-BYTE-OFF 8 BT-BYTE-LEN BT-MUST-COPY
+   BT-BUF0 8 + BT-BUF0 8 BT-COPY-LOG
+   FT-LOG-RESET
+   0 BT-BYTE-OFF 8 BT-BYTE-OFF 8 BT-BYTE-LEN BT-MUST-COPY
+   BT-BUF0 BT-BUF0 8 + 8 BT-COPY-LOG
+   FT-LOG-RESET
+   4 BT-BYTE-OFF 4 BT-BYTE-OFF 0 BT-BYTE-LEN BT-MUST-COPY
+   BT-BUF0 4 + BT-BUF0 4 + 0 BT-COPY-LOG
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-COPY-BIND-RC ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I ! 111 FT-SET-RC !
+   8 BT-BYTE-OFF 0 BT-BYTE-OFF 8 BT-BYTE-LEN 111 BT-COPY-ERR
+   FT-N @ 1 T= 0 FT-OP@ FT-SET T=
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-COPY-BIND-X ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I ! 112 FT-SET-X !
+   8 BT-BYTE-OFF 0 BT-BYTE-OFF 8 BT-BYTE-LEN 112 BT-COPY-ERR
+   FT-N @ 1 T= 0 FT-OP@ FT-SET T=
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-COPY-RC-CASE ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   113 BT-COPY-RC !
+   8 BT-BYTE-OFF 0 BT-BYTE-OFF 8 BT-BYTE-LEN 113 BT-COPY-ERR
+   BT-BUF0 8 + BT-BUF0 8 BT-COPY-LOG
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-COPY-X-CASE ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   114 BT-COPY-X !
+   8 BT-BYTE-OFF 0 BT-BYTE-OFF 8 BT-BYTE-LEN 114 BT-COPY-ERR
+   BT-BUF0 8 + BT-BUF0 8 BT-COPY-LOG
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-BUF-COPY ( -- )
+   BT-COPY-BOUNDS
+   BT-COPY-OVERLAP
+   BT-COPY-DISJOINT
+   BT-COPY-BIND-RC
+   BT-COPY-BIND-X
+   BT-COPY-RC-CASE
+   BT-COPY-X-CASE ;
+
 : BT-DOWNLOAD-BOUNDS ( -- )
    BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
    13 BT-BYTE-OFF BT-DST 4 BT-BYTE-LEN E-BUF-BOUNDS BT-DOWNLOAD-ERR
@@ -526,6 +646,11 @@ create BT-DST BT-BUF-LEN allot
       BT-SRC i + c@ BT-DST i + c@ T=
    loop ;
 
+: BT-REAL-COPY-EQUAL ( -- )
+   BT-HALF 0 ?do
+      BT-SRC i + c@ BT-DST i + c@ T=
+   loop ;
+
 : BT-REAL-BUF ( GPU:session -- GPU:session )
    BT-REAL-FILL
    BT-MUST-ALLOC
@@ -542,10 +667,18 @@ create BT-DST BT-BUF-LEN allot
       CUDA-DEVPTR>N base - 5 T=
    BT-MUST-FREE ;
 
+: BT-REAL-COPY ( GPU:session -- GPU:session )
+   BT-REAL-FILL
+   BT-MUST-ALLOC
+   0 BT-BYTE-OFF BT-SRC BT-BUF-LEN BT-BYTE-LEN BT-MUST-UPLOAD
+   BT-HALF BT-BYTE-OFF 0 BT-BYTE-OFF BT-HALF BT-BYTE-LEN BT-MUST-COPY
+   BT-HALF BT-BYTE-OFF BT-DST BT-HALF BT-BYTE-LEN BT-MUST-DOWNLOAD
+   BT-REAL-COPY-EQUAL
+   BT-MUST-FREE ;
+
 : BT-REAL-TWO ( -- )
-   BT-OFF
    FT-MUST-OPEN FT-MUST-OPEN
-   BT-REAL-BUF swap BT-REAL-BUF swap
+   BT-REAL-COPY swap BT-REAL-BUF swap
    FT-MUST-CLOSE FT-MUST-CLOSE
    FT-MUST-OPEN FT-MUST-OPEN
    BT-REAL-SPAN swap BT-REAL-BUF
@@ -559,10 +692,12 @@ create BT-DST BT-BUF-LEN allot
    BT-BUF-BOUNDS
    BT-BUF-DOWNLOAD-ERRORS
    BT-DOWNLOAD-BOUNDS
+   BT-BUF-COPY
    BT-SPAN-RANGES
    BT-SPAN-BIND
    BT-SPAN-TWO
    BT-BUF-FREE-ERRORS
+   BT-OFF
    BT-REAL-TWO
    T-REPORT ;
 
