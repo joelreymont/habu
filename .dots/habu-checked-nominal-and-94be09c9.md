@@ -1,6 +1,6 @@
 ---
 title: Bind linear handles atomically
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-19T21:44:49.846693+02:00"
@@ -58,3 +58,5 @@ and focused tests. The dot remains open until the 18 PTY mint/erase bridges in
 `lib/process-pty-handle.f` migrate coherently; BPE and MODEL-ASSET migrate under
 their own active product dots. Smallest owning checks: `test/cast-negative-suite.f`
 and the focused linear-handle declaration suite.
+
+Claim: agent=codex-linear-handle workspace=.jj-ws/habu-checked-nominal-and-94be09c9.

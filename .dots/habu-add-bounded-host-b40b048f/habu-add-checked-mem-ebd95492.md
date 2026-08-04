@@ -1,6 +1,6 @@
 ---
 title: Expose cell-aligned MEM bases
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-13T16:44:21.424964+02:00"
@@ -44,3 +44,5 @@ Forbidden: subspan, region, generation, alignment-evidence framework, runtime
 modulus check, misaligned/result union, new error, new `TRUSTED:`, `MEM:BYTES`
 duplicate, caller compatibility shim, docs, manifest, lint, or suite. This
 shrunken outcome has no dependency on `habu-add-unique-bounded-527e05ca`.
+
+Claim: agent=codex-mem-base workspace=.jj-ws/habu-add-checked-mem-ebd95492.
