@@ -6472,6 +6472,7 @@ variable UNSAFE-SYM-N
 7129 constant E-CAST-ARITY    \ sig is not exactly one input and one output term
 7130 constant E-CAST-CLASS    \ in/out is not a single retype-eligible machine cell
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
+7135 constant E-CAST-LINEAR   \ in/out transitively contains linear ownership
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable, like CK-SEAL-LATCH-OFF.
@@ -9551,6 +9552,8 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    t TAG T-VAR = IF RES-TRUE EXIT THEN
    t TAG T-PARAM = IF t T-WIDTH 1 = EXIT THEN
    RES-FALSE ;
+: CAST-LINEAR? ( n -- bool )
+   LIN-TYPE-COUNT 0 <> ;
 \ CAST-CERTIFY : the matched-window certification. Throw the named reject when the
 \ declared retype is illegal, else certify the body output against SGIN (the
 \ identity ( in -- in ) flow); the shared tail then records the declared row.
@@ -9561,6 +9564,8 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
+   SGIN @ CAST-ROW-TERM CAST-LINEAR? IF E-CAST-LINEAR throw THEN
+   SGOUT @ CAST-ROW-TERM CAST-LINEAR? IF E-CAST-LINEAR throw THEN
    SGIN @ SUNI-COERCE ;
 
 \ Generative layout-buffer authorization. xref.f erases every arming-state
