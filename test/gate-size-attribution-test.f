@@ -305,9 +305,10 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ only a call to the participant's gate. tools/decl-gen-probe.f and the four
 \ test files are not part of the assembled
 \ stage2 engine source.
-118428 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ cda6ec6d: compile/ops +288, dictionary-code +16, aot-seed -312; net -8, total 123072 unchanged.
+118420 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3740 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+3732 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 123072 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
@@ -343,7 +344,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" compile/p2wide"          2460 q execute
    s" compile/keywords"       9916 q execute
    s" compile/literal"           36 q execute
-   s" compile/ops"             2456 q execute
+   s" compile/ops"             2744 q execute
    s" compile/call"             628 q execute
    s" compile/undef"            924 q execute
    s" compile/die"              200 q execute
@@ -367,10 +368,10 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" primitives/hash-index"    852 q execute
    s" primitives/number"        332 q execute
    s" primitives/top-hook"       68 q execute
-   s" dictionary-code"         5000 q execute
+   s" dictionary-code"         5016 q execute
    s" runtime"                 9464 q execute
    s" seed-dictionary"         8352 q execute
-   s" aot-seed"               22468 q execute
+   s" aot-seed"               22156 q execute
    s" primitives/qualify-def"  2448 q execute
    s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;
