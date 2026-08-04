@@ -46,6 +46,12 @@ variable UPLOAD-BAD
    model modelu GPT2PIN:CONFIG-NAME$ SRC JOIN-PATH SRC-U !
    ROOT$ GPT2PIN:CONFIG-NAME$ DST JOIN-PATH DST-U !
    SRC$ DST$ COPY-FILE-STREAM
+   model modelu GPT2PIN:VOCAB-NAME$ SRC JOIN-PATH SRC-U !
+   ROOT$ GPT2PIN:VOCAB-NAME$ DST JOIN-PATH DST-U !
+   SRC$ DST$ COPY-FILE-STREAM
+   model modelu GPT2PIN:MERGES-NAME$ SRC JOIN-PATH SRC-U !
+   ROOT$ GPT2PIN:MERGES-NAME$ DST JOIN-PATH DST-U !
+   SRC$ DST$ COPY-FILE-STREAM
    ROOT$ GPT2PIN:MODEL-NAME$ DST JOIN-PATH DST-U !
    DST$ EMPTY-MODEL 10 WRITE-ALL ;
 
@@ -182,6 +188,22 @@ variable UPLOAD-BAD
    SAFET-MAP:LIVE maps T=
    CLEANUP-RUN ;
 
+: TEST-TOKEN-MISSING ( ptr u8 n -- )
+   s" OPEN rejects a missing pinned tokenizer asset before GPU ownership" T-LABEL
+   PREPARE-EMPTY
+   ROOT$ GPT2PIN:VOCAB-NAME$ DST JOIN-PATH DST-U !
+   DST$ REMOVE-FILE
+   SAFET:LIVE-OWNERS {: before:n :}
+   SAFET-MAP:LIVE {: maps:n :}
+   ROOT$ FS-PATH:MAKE GPT2:OPEN
+   MATCH result
+      err OF E-TOK-IO T= ENDOF
+      ok OF GPT2:CLOSE CLOSE-OK false TTRUE ENDOF
+   ;MATCH
+   SAFET:LIVE-OWNERS before T=
+   SAFET-MAP:LIVE maps T=
+   CLEANUP-RUN ;
+
 : TRACK-HTOD ( cuda-devptr ptr u8 len -- rc )
    {: dst:cuda-devptr src:ptr len:len :}
    dst CUDA-DEVPTR>N {: raw:n :}
@@ -217,6 +239,7 @@ variable UPLOAD-BAD
       s" gpt2-model: no model root argument -> device leg SKIPPED" type cr
       exit
    then
+   0 SCRIPT-ARGV$ TEST-TOKEN-MISSING
    0 SCRIPT-ARGV$ TEST-EMPTY
    s" OPEN uploads the pinned GPT-2 model and CLOSE releases every owner" T-LABEL
    0 SCRIPT-ARGV$ REAL-TOTAL {: total:CAD-NUM:byte-len :}

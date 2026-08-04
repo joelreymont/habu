@@ -14,6 +14,7 @@ require src/arch/ptx/emit.f
 require maki/gpu-buffer.f
 require maki/eval/active-target.f
 require maki/infer/gpt2-pin.f
+require maki/infer/gpt2-token.f
 require maki/infer/hf-config.f
 require maki/infer/safetensors.f
 require maki/infer/gpt2-tensor.f
@@ -87,7 +88,8 @@ variable M-ATTN-H
 28 cells constant R-GELU
 29 cells constant R-RESIDUAL
 30 cells constant R-ATTN
-31 cells constant R-BYTES
+31 cells constant R-TOKSTATE
+32 cells constant R-BYTES
 
 \ One GPU:buffer is laid out as weights | x | a | b | logits | token | K | V;
 \ the private offsets below are the sole authority for that allocation.
@@ -113,8 +115,8 @@ variable M-ATTN-H
 \ The checker cannot tie the opaque owner to its private host record.
 \ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: M-SAVE
-   ( GPU:session GPU:buffer config n n n n n n n n n n n n n n n n n ptr u8 -- GPT2:model )
-   {: g:GPU:session buf:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
+   ( GPU:session GPU:buffer config n n n n n n n n n n n n n n n n n ptr a ptr u8 -- GPT2:model )
+   {: g:GPU:session buf:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr rec:ptr :}
    g rec R-GPU + !
    buf rec R-BUF + !
    dt rec R-DT + !
@@ -146,10 +148,11 @@ TRUSTED: M-SAVE
    gelu rec R-GELU + !
    residual rec R-RESIDUAL + !
    attn rec R-ATTN + !
+   tokstate rec R-TOKSTATE + !
    rec ;
 
 TRUSTED: M-TAKE
-   ( GPT2:model -- GPU:session GPU:buffer config n n n n n n n n n n n n n n n n n ptr u8 )
+   ( GPT2:model -- GPU:session GPU:buffer config n n n n n n n n n n n n n n n n n ptr a ptr u8 ptr u8 )
    {: rec:ptr :}
    rec R-GPU + @
    rec R-BUF + @
@@ -183,6 +186,8 @@ TRUSTED: M-TAKE
    rec R-GELU + @
    rec R-RESIDUAL + @
    rec R-ATTN + @
+   rec R-TOKSTATE + @
+   rec R-TOKSTATE + @
    rec ;
 
 : M-ADD ( n n -- n ) {: a:n b:n :}
@@ -1052,8 +1057,8 @@ private
    first2 M-GPU-CLEAN ;
 
 : M-FINISH
-   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr u8 -- result<GPT2:model,n> )
-   {: rec:ptr :}
+   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a ptr u8 -- result<GPT2:model,n> )
+   {: tokstate:ptr rec:ptr :}
    SAFET:UNMAP-MAPPING M-RESULT-CODE {: code:n :}
    drop
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
@@ -1062,14 +1067,14 @@ private
    code 0<> if
       c M-DROP-CFG
       code M-GPU-CLEAN
-      rec drop M-MODEL-ERR
+      tokstate drop rec drop M-MODEL-ERR
       exit
    then
    M-BUILD-CODE {: build:n :}
    build 0<> if
       c M-DROP-CFG
       build M-GPU-CLEAN
-      rec drop M-MODEL-ERR
+      tokstate drop rec drop M-MODEL-ERR
       exit
    then
    c M-LAYOUT
@@ -1077,30 +1082,30 @@ private
    alloc drop
    x a b logits token k v 0
    M-CODE@
-   rec M-SAVE
+   tokstate rec M-SAVE
    M-CODE-RESET
    RESULT:OK ;
 
 : M-GPU-FAIL
-   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr u8 n -- result<GPT2:model,n> )
+   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a ptr u8 n -- result<GPT2:model,n> )
    {: code:n :}
-   drop
+   drop drop
    code M-ALL-CLEAN M-MODEL-ERR ;
 
 : M-GPU-FLOW
-   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr u8 -- result<GPT2:model,n> )
-   >r
+   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a ptr u8 -- result<GPT2:model,n> )
+   >r >r
    M-UPLOAD-FRAME
    >r {: code:n :}
    code 0<> if
-      r> r> code M-GPU-FAIL
+      r> r> r> code M-GPU-FAIL
    else
-      r> r> M-FINISH
+      r> r> r> M-FINISH
    then ;
 
 : M-GPU
-   ( config ptr u8 SAFET:file SAFET:mapping CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
-   {: alloc:CAD-NUM:alloc-byte-len rec:ptr :}
+   ( config ptr u8 SAFET:file SAFET:mapping CAD-NUM:alloc-byte-len ptr a ptr u8 -- result<GPT2:model,n> )
+   {: alloc:CAD-NUM:alloc-byte-len tokstate:ptr rec:ptr :}
    >r >r
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr :}
@@ -1109,7 +1114,7 @@ private
       err OF
          {: code:n :}
          c scratch r> r> code M-SOURCE-CLEAN
-         rec drop M-MODEL-ERR
+         tokstate drop rec drop M-MODEL-ERR
       ENDOF
       ok OF
          alloc GPU:ALLOC
@@ -1118,41 +1123,41 @@ private
                {: code:n :}
                code M-SESSION-CLEAN {: first:n :}
                c scratch r> r> first M-SOURCE-CLEAN
-               rec drop M-MODEL-ERR
+               tokstate drop rec drop M-MODEL-ERR
             ENDOF
             ok OF
                r> r> >r c scratch r>
-               rec M-GPU-FLOW
+               tokstate rec M-GPU-FLOW
             ENDOF
          ;MATCH
       ENDOF
    ;MATCH ;
 
 : M-FILE
-   ( config ptr u8 SAFET:file CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
-   {: alloc:CAD-NUM:alloc-byte-len rec:ptr :}
+   ( config ptr u8 SAFET:file CAD-NUM:alloc-byte-len ptr a ptr u8 -- result<GPT2:model,n> )
+   {: alloc:CAD-NUM:alloc-byte-len tokstate:ptr rec:ptr :}
    SAFET:DETACH-MAPPING
    MATCH SAFET:map-take
       empty OF
          SAFET:RELEASE
          drop M-DROP-CFG
-         rec drop E-CATALOG M-MODEL-ERR
+         tokstate drop rec drop E-CATALOG M-MODEL-ERR
       ENDOF
       moved OF
          \ Parse rejects hostile structure before the digest gates GPU work.
          M-CATALOG-ORDER M-PIN-ORDER {: code:n :}
          code 0<> if
             code M-SOURCE-CLEAN
-            rec drop M-MODEL-ERR
+            tokstate drop rec drop M-MODEL-ERR
          else
-            alloc rec M-GPU
+            alloc tokstate rec M-GPU
          then
       ENDOF
    ;MATCH ;
 
 : M-BODY
-   ( ptr u8 n config CAD-NUM:alloc-byte-len ptr u8 CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
-   {: root:ptr rootu:n c alloc:CAD-NUM:alloc-byte-len scratch:ptr scratchu:CAD-NUM:alloc-byte-len rec:ptr :} \ typed-local-lint: allow-bare-local
+   ( ptr u8 n config CAD-NUM:alloc-byte-len ptr u8 CAD-NUM:alloc-byte-len ptr a ptr u8 -- result<GPT2:model,n> )
+   {: root:ptr rootu:n c alloc:CAD-NUM:alloc-byte-len scratch:ptr scratchu:CAD-NUM:alloc-byte-len tokstate:ptr rec:ptr :} \ typed-local-lint: allow-bare-local
    scratchu drop
    c scratch
    root rootu GPT2PIN:MODEL-NAME$ scratch JOIN-PATH {: pathu:n :}
@@ -1161,10 +1166,10 @@ private
       err OF
          {: code:n :}
          drop M-DROP-CFG
-         rec drop code M-MODEL-ERR
+         tokstate drop rec drop code M-MODEL-ERR
       ENDOF
       ok OF
-         alloc rec M-FILE
+         alloc tokstate rec M-FILE
       ENDOF
    ;MATCH ;
 
@@ -1192,12 +1197,13 @@ private
       ENDOF
    ;MATCH ;
 
-: M-OPEN-CFG ( ptr u8 n config -- result<GPT2:model,n> )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
-   {: root:ptr rootu:n c :}
+: M-OPEN-CFG ( ptr u8 n config ptr a -- result<GPT2:model,n> )
+   \ typed-local-lint: allow-bare-local - config is multi-cell beside tokenizer ownership.
+   {: root:ptr rootu:n c tokstate:ptr :}
    root rootu GPT2PIN:MODEL-NAME$ nip M-JOIN-LEN
    FS-PATH-CAP > if
       c M-DROP-CFG
+      tokstate drop
       E-FS-CAPACITY M-MODEL-ERR
       exit
    then
@@ -1208,6 +1214,7 @@ private
    NULL$ drop [: M-ALLOC-REC ;] catch {: rec-code:n :}
    rec-code 0<> if
       drop c M-DROP-CFG
+      tokstate drop
       rec-code M-MODEL-ERR
       exit
    then
@@ -1216,13 +1223,46 @@ private
    path-code 0<> if
       drop rec M-FREE-REC
       c M-DROP-CFG
+      tokstate drop
       path-code M-MODEL-ERR
       exit
    then
    {: scratch:ptr :}
    rec scratch FS-PATH-CAP MEM:BYTES-ALLOC-LEN
-   root rootu c alloc scratch FS-PATH-CAP MEM:BYTES-ALLOC-LEN rec M-BODY
+   root rootu c alloc scratch FS-PATH-CAP MEM:BYTES-ALLOC-LEN tokstate rec M-BODY
    M-SCOPE-FINISH ;
+
+: M-ALLOC-TOK ( ptr u8 -- ptr a )
+   drop T-NEW ;
+
+: M-BUILD-TOK ( ptr a ptr u8 n -- ptr a ptr u8 n )
+   {: tokstate:ptr root:ptr rootu:n :}
+   tokstate root rootu T-BUILD
+   tokstate root rootu ;
+
+: M-OPEN-TOK ( ptr u8 n config -- result<GPT2:model,n> )
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: root:ptr rootu:n c :}
+   NULL$ drop [: M-ALLOC-TOK ;] catch {: alloc-code:n :}
+   alloc-code 0<> if
+      drop c M-DROP-CFG
+      alloc-code M-MODEL-ERR
+      exit
+   then
+   {: tokstate:ptr :}
+   tokstate root rootu [: M-BUILD-TOK ;] catch {: build-code:n :}
+   2drop drop
+   build-code 0<> if
+      tokstate T-FREE
+      c M-DROP-CFG
+      build-code M-MODEL-ERR
+      exit
+   then
+   root rootu c tokstate M-OPEN-CFG
+   MATCH result
+      err OF tokstate T-FREE M-MODEL-ERR ENDOF
+      ok OF RESULT:OK ENDOF
+   ;MATCH ;
 
 public
 
@@ -1234,31 +1274,34 @@ public
       ok OF
          \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
          {: c :}
-         root rootu c M-OPEN-CFG
+         root rootu c M-OPEN-TOK
       ENDOF
    ;MATCH ;
 
 : CONTEXT-LEN ( GPT2:model -- GPT2:model CAD-NUM:item-count )
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr tokbytes:ptr rec:ptr :}
+   tokbytes drop
    NCTX@ {: cx:n :}
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate rec M-SAVE
    cx M-ITEM-COUNT ;
 
 : EOS-ID ( GPT2:model -- GPT2:model n )
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr tokbytes:ptr rec:ptr :}
+   tokbytes drop
    EOS@ {: eos:n :}
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate rec M-SAVE
    eos ;
 
 : LOGITS
    ( GPT2:model n ptr u8 CAD-NUM:byte-len -- GPT2:model result<n,n> )
    {: tok:n dst:ptr outu:CAD-NUM:byte-len :}
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr tokbytes:ptr rec:ptr :}
+   tokbytes drop
    tok pos outu M-VALIDATE {: valid:n :}
    valid 0= if
       x a b logits token k v pos embed ln linear unembed gelu residual attn
@@ -1269,18 +1312,20 @@ public
    {: code:n :}
    x a b logits token k v
    code 0= if pos 1+ else pos then
-   tmod amod embed ln linear unembed gelu residual attn rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate rec M-SAVE
    code 0= if 0 RESULT:OK else code RESULT:ERR then ;
 
 : RESET ( GPT2:model -- GPT2:model )
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr tokbytes:ptr rec:ptr :}
+   tokbytes drop
    pos drop
    x a b logits token k v 0
-   tmod amod embed ln linear unembed gelu residual attn rec M-SAVE ;
+   tmod amod embed ln linear unembed gelu residual attn tokstate rec M-SAVE ;
 
 : CLOSE ( GPT2:model -- result<n,n> )
-   M-TAKE {: rec:ptr :}
+   M-TAKE {: tokstate:ptr tokbytes:ptr rec:ptr :}
+   tokbytes drop
    2drop 2drop 2drop drop
    {: tmod:n amod:n :}
    2drop 2drop 2drop 2drop
@@ -1294,6 +1339,7 @@ public
    amod bind M-UNLOAD
    tmod swap M-UNLOAD
    M-GPU-CLEAN {: code:n :}
+   tokstate T-FREE
    rec M-FREE-REC
    code 0= if 0 RESULT:OK else code RESULT:ERR then ;
 

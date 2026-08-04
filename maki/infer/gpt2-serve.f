@@ -26,7 +26,7 @@ U32-N TAG-N + I64-N + constant REFUSAL-N
 
 CAST: BL>N ( CAD-NUM:byte-len -- n ) ;
 
-using GPT2-GEN
+using GPT2
 using RESULT
 using OPTION
 
@@ -344,7 +344,7 @@ using CAD-NUM
 
 : RUN-ACT ( ptr u8 n -- )
    1 >FD FD-NOSIGPIPE!
-   FS-PATH:MAKE GPT2-GEN:OPEN
+   FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF throw ENDOF
       ok OF SERVICE FINISH ENDOF

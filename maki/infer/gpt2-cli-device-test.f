@@ -51,6 +51,12 @@ variable T-ROOT-U
    dst dstu T-DST T-MERGES$
    COPY-FILE-STREAM ;
 
+: T-COPY-ASSET ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: root:ptr rootu:n dst:ptr dstu:n name:ptr nameu:n :}
+   root rootu name nameu T-SRC JOIN-PATH {: srcu:n :}
+   dst dstu name nameu T-DST JOIN-PATH {: outu:n :}
+   T-SRC srcu T-DST outu COPY-FILE-STREAM ;
+
 : T-FILL ( ptr u8 n n -- )
    {: dst:ptr len:n byte:n :}
    len 0 ?do byte dst i + c! loop ;
@@ -59,6 +65,8 @@ variable T-ROOT-U
    {: root:ptr rootu:n :}
    CLEANUP-RESET
    s" gpt2-cli-refusal" T-ROOT T-ROOT-U T-TEMP!
+   root rootu T-ROOT$ GPT2PIN:CONFIG-NAME$ T-COPY-ASSET
+   root rootu T-ROOT$ GPT2PIN:VOCAB-NAME$ T-COPY-ASSET
    root rootu T-ROOT$ T-COPY-MERGES
    T-ROOT$ T-DST T-MERGES$ s" corrupt" WRITE-ALL
    T-LONG T-LONG-N 120 T-FILL ;
@@ -108,6 +116,8 @@ variable T-ROOT-U
    s" tokenizer overcapacity writes no stdout" T-LABEL
    root rootu T-LONG T-LONG-N s" -5324" T-FAIL
    root rootu T-ROOT$ T-COPY-MERGES
+   T-ROOT$ GPT2PIN:CONFIG-NAME$ T-DST JOIN-PATH
+   T-DST swap REMOVE-FILE
    s" model-open failure writes no stdout" T-LABEL
    T-ROOT$ s" Hello" s" -2102" T-FAIL ;
 

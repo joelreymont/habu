@@ -12,9 +12,7 @@ require maki/infer/gpt2-reference-data.f
 package GPT2-SERVE
 private
 
-using GPT2-GEN
-
-OUTPUT-CAP BL>N constant T-CAP
+GPT2:OUTPUT-CAP BL>N constant T-CAP
 240000 constant T-TIMEOUT-MS
 
 create T-TMP FS-PATH-CAP allot
@@ -114,7 +112,7 @@ variable T-PID
    ;MATCH ;
 
 : T-SEND ( n ptr u8 n -- ) {: max:n prompt:ptr promptu:n :}
-   promptu 0 < promptu PROMPT-CAP BL>N > or if
+   promptu 0 < promptu GPT2:PROMPT-CAP BL>N > or if
       E-FS-CAPACITY throw
    then
    U32-N promptu + T-REQ U32!
@@ -142,11 +140,9 @@ variable T-PID
 
 : T-BUFFER-BOUNDS ( -- )
    s" device request and response buffers reject oversized lengths" T-LABEL
-   [: 1 T-BUF PROMPT-CAP BL>N 1+ T-SEND ;]
+   [: 1 T-BUF GPT2:PROMPT-CAP BL>N 1+ T-SEND ;]
       E-FS-CAPACITY TTHROWSQ
    [: T-BUF T-CAP 1+ T-READ-OK ;] E-FS-CAPACITY TTHROWSQ ;
-
-;using
 
 : T-READ-REFUSAL ( n n -- ) {: lo:n hi:n :}
    T-READY
@@ -214,7 +210,7 @@ variable T-PID
    s" empty prompt is refused and the session remains live" T-LABEL
    64 s" " T-SEND
    $DF $E9 T-READ-REFUSAL
-   s" second request proves the opened model and BPE remain retained" T-LABEL
+   s" second request proves the opened model and tokenizer remain retained" T-LABEL
    64 s" Hello" T-SEND
    GPT2-REFERENCE:REAL-BYTES$ T-READ-OK
    T-WAIT ;
@@ -228,7 +224,7 @@ variable T-PID
    T-WAIT-WRITE-FAIL ;
 
 : T-GENERATE-FAILURE ( -- )
-   s" real GENERATE BPE refusal is tagged exactly and terminates" T-LABEL
+   s" real GENERATE tokenizer refusal is tagged exactly and terminates" T-LABEL
    s" tools/gpt2-serve.f" T-SPAWN
    BODY-CAP U32-N - 0 ?do 0 T-BUF i + c! loop
    1 T-BUF BODY-CAP U32-N - T-SEND

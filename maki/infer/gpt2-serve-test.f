@@ -9,8 +9,6 @@ require maki/infer/gpt2-serve.f
 package GPT2-SERVE
 private
 
-using GPT2-GEN
-
 32 constant T-BUF-N
 100 constant T-DELAY-MS
 
@@ -95,7 +93,7 @@ variable T-W
 
 : T-MAX-BOUND ( -- )
    s" max_tokens exactly at the generator cap is accepted" T-LABEL
-   MAX-TOKENS VALID-MAX
+   GPT2:MAX-TOKENS VALID-MAX
    MATCH result
       err OF drop 1 0 T= ENDOF
       ok OF drop 0 0 T= ENDOF
@@ -107,7 +105,7 @@ variable T-W
       ok OF
          VALID-MAX
          MATCH result
-            err OF E-LIMIT T= ENDOF
+            err OF GPT2:E-LIMIT T= ENDOF
             ok OF drop 1 0 T= ENDOF
          ;MATCH
       ENDOF
@@ -306,7 +304,7 @@ variable T-W
 : T-REFUSAL-FRAME ( -- )
    s" refusal body is tag plus exact signed i64-le error" T-LABEL
    T-PIPE
-   T-W @ >FD E-LIMIT WRITE-REFUSAL T-IO-OK
+   T-W @ >FD GPT2:E-LIMIT WRITE-REFUSAL T-IO-OK
    T-W @ close
    REFUSAL-N T-READ
    T-BUF c@ 9 T=
@@ -335,11 +333,9 @@ variable T-W
    T-PIPE
    T-W @ >FD FD-NOSIGPIPE!
    T-R @ close
-   T-W @ >FD E-PROMPT TERMINAL-REFUSAL
-      E-PROMPT T-REQ-ERR
+   T-W @ >FD GPT2:E-PROMPT TERMINAL-REFUSAL
+      GPT2:E-PROMPT T-REQ-ERR
    T-W @ close ;
-
-;using
 
 : T-SURFACE ( -- )
    s" GST-RUN ( -- ) GPT2-SERVE:RUN" CHECK-QUIET-CANDIDATE! -1 T=

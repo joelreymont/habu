@@ -8,7 +8,7 @@ require maki/cuda-run.f
 require maki/infer/gpt2-generate.f
 require maki/infer/gpt2-reference-data.f
 
-package GPT2-GEN
+package GPT2
 private
 
 4097 constant LONG-N
@@ -22,6 +22,10 @@ create BEFORE OUTPUT-CAP allot
 create LONG LONG-N allot
 create CONTEXT CONTEXT-N allot
 
+create U-JA 33768 , 98 , 17312 , 105 , 45739 , 252 ,
+create U-AR 149 , 97 , 149 , 95 ,
+create U-LATIN 2616 , 38776 ,
+
 : YES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
@@ -29,13 +33,14 @@ create CONTEXT CONTEXT-N allot
    CHECK-QUIET-CANDIDATE! 1 T= ;
 
 : T-SURFACE ( -- )
-   s" GEN-SIG ( GPT2:model ptr u8 CAD-NUM:byte-len CAD-NUM:item-count ptr u8 CAD-NUM:byte-len -- GPT2:model result<CAD-NUM:byte-len,n> ) GPT2-GEN:GENERATE" YES
+   s" GEN-SIG ( GPT2:model ptr u8 CAD-NUM:byte-len CAD-NUM:item-count ptr u8 CAD-NUM:byte-len -- GPT2:model result<CAD-NUM:byte-len,n> ) GPT2:GENERATE" YES
    s" GEN-CX ( GPT2:model -- GPT2:model CAD-NUM:item-count ) GPT2:CONTEXT-LEN" YES
    s" GEN-EOS ( GPT2:model -- GPT2:model n ) GPT2:EOS-ID" YES
-   s" GEN-BL-PRIVATE ( CAD-NUM:byte-len -- n ) GPT2-GEN:BL>N" UNK
-   s" GEN-IC-PRIVATE ( CAD-NUM:item-count -- n ) GPT2-GEN:IC>N" UNK
-   s" GPT2-GEN:BL>N" XREF-FIND XREF-FOUND? TFALSE
-   s" GPT2-GEN:IC>N" XREF-FIND XREF-FOUND? TFALSE ;
+   s" GEN-BL-PRIVATE ( CAD-NUM:byte-len -- n ) GPT2:BL>N" UNK
+   s" GEN-IC-PRIVATE ( CAD-NUM:item-count -- n ) GPT2:IC>N" UNK
+   s" GPT2:BL>N" XREF-FIND XREF-FOUND? TFALSE
+   s" GPT2:IC>N" XREF-FIND XREF-FOUND? TFALSE
+   s" GPT2-GEN:GENERATE" XREF-FIND XREF-FOUND? TFALSE ;
 
 : FILL ( ptr u8 n n -- )
    {: dst:ptr len:n byte:n :}
@@ -76,7 +81,7 @@ using GPT2
    ;MATCH ;
 
 : OPEN-MODEL ( -- GPT2:model )
-   0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2-GEN:OPEN
+   0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       ok OF ENDOF
       err OF throw ENDOF
@@ -100,14 +105,14 @@ using GPT2
    E-LIMIT EXPECT-ERR
    OUT-PRESERVED ;
 
-: T-BPE-REFUSAL ( GPT2:model -- GPT2:model )
-   s" BPE refusal returns the model and preserves caller output" T-LABEL
+: T-TOK-REFUSAL ( GPT2:model -- GPT2:model )
+   s" tokenizer refusal returns the model and preserves caller output" T-LABEL
    OUT-RESET
    LONG LONG-N BYTE-CAP 1 TOKEN-CAP OUT OUTPUT-CAP GENERATE
-   E-BPE-CAP EXPECT-ERR
+   E-TOK-CAP EXPECT-ERR
    OUT-PRESERVED ;
 
-: CONTEXT-COUNT ( -- )
+: CONTEXT-COUNT ( GPT2:model -- GPT2:model )
    CONTEXT CONTEXT-N BYTE-CAP ENCODE
    MATCH result
       ok OF IC>N CONTEXT-N T= ENDOF
@@ -123,6 +128,23 @@ using GPT2
    OUT-PRESERVED
    CONTEXT CONTEXT-N BYTE-CAP 1 TOKEN-CAP OUT OUTPUT-CAP GENERATE
    EXPECT-OK BL>N drop ;
+
+: T-ENC-EQ ( GPT2:model ptr u8 n ptr a n -- GPT2:model )
+   {: src:ptr srcu:n want:ptr wantn:n :}
+   src srcu BYTE-CAP ENCODE
+   MATCH result
+      err OF throw ENDOF
+      ok OF IC>N wantn T= ENDOF
+   ;MATCH
+   wantn 0 ?do
+      i ID-AT want i cells + @ T=
+   loop ;
+
+: T-UNICODE ( GPT2:model -- GPT2:model )
+   s" complete Unicode letter and number classes preserve pinned GPT-2 ids" T-LABEL
+   s" 日本語" U-JA 6 T-ENC-EQ
+   s" ٤٢" U-AR 4 T-ENC-EQ
+   s\" na\xC3\xAFve" U-LATIN 2 T-ENC-EQ ;
 
 : FAIL-DTOH ( ptr u8 cuda-devptr len -- rc )
    {: dst:ptr src:cuda-devptr len:len :}
@@ -160,9 +182,9 @@ using MKD
 
 using GPT2-REFERENCE
 
-: PINNED-IDS ( -- )
+: PINNED-IDS ( GPT2:model -- GPT2:model )
    REAL-ID-COUNT 0 ?do
-      i ID@ i REAL-ID T=
+      i ID-AT i REAL-ID T=
    loop ;
 
 : PINNED-BYTES ( CAD-NUM:byte-len -- )
@@ -187,8 +209,15 @@ using GPT2-REFERENCE
    OUT-RESET
    REAL-BYTES$ nip 1- BYTE-CAP {: short:CAD-NUM:byte-len :}
    s" Hello" BYTE-CAP 64 TOKEN-CAP OUT short GENERATE
-   E-BPE-CAP EXPECT-ERR
+   E-TOK-CAP EXPECT-ERR
    OUT-PRESERVED ;
+
+: T-DISTINCT ( GPT2:model GPT2:model -- GPT2:model GPT2:model )
+   s" two live models keep distinct tokenizer blocks" T-LABEL
+   456 4000 ID-PUT
+   swap 123 4000 ID-PUT swap
+   4000 ID-AT 456 T=
+   swap 4000 ID-AT 123 T= swap ;
 
 ;using
 
@@ -200,14 +229,23 @@ using GPT2-REFERENCE
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
    OPEN-MODEL
+   OPEN-MODEL
+   T-DISTINCT
    T-METADATA
    T-LIMITS
-   T-BPE-REFUSAL
+   T-TOK-REFUSAL
+   T-UNICODE
    T-CONTEXT
    T-MODEL-REFUSAL
    T-EOS
    T-PINNED
    T-ONE-SHORT
+   CLOSE-OK
+   CLOSE-OK
+   OPEN-MODEL
+   OPEN-MODEL
+   T-DISTINCT
+   swap CLOSE-OK
    CLOSE-OK
    SAFET:LIVE-OWNERS owners T=
    SAFET-MAP:LIVE maps T=

@@ -11,7 +11,7 @@ private
 
 CAST: BL>N ( CAD-NUM:byte-len -- n ) ;
 
-using GPT2-GEN
+using GPT2
 
 create OUT OUTPUT-CAP allot
 
@@ -56,7 +56,7 @@ using CAD-NUM
 
 : RUN-ACT ( ptr u8 n ptr u8 n -- CAD-NUM:byte-len )
    {: root:ptr rootu:n prompt:ptr promptu:n :}
-   root rootu FS-PATH:MAKE GPT2-GEN:OPEN
+   root rootu FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF throw ENDOF
       ok OF

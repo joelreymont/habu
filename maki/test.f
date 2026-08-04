@@ -389,7 +389,6 @@ SUITE maki/device-smoke.f
 ;SUITE
 SUITE maki/examples/nanogpt/tokenizer-test.f
 ;SUITE
-SUITE maki/examples/nanogpt/bpe-test.f
 ;SUITE
 SUITE maki/examples/nanogpt/data-loader-test.f
 ;SUITE

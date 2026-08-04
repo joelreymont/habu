@@ -2806,3 +2806,11 @@ pre-dispatch rule ("prove every planned definition has a package owner; a
 legacy global is not an implicit exception") existed and was skipped. One rg
 census over the write sets would have surfaced the cascade before the
 workers started.
+
+## Publish derived state only after every asset authenticates (2026-08-04)
+
+A model-owned tokenizer can keep all mutable tables, token ids, and generation
+scratch in one checked cell mapping while reading pinned source files through
+short-lived byte mappings. Build the complete private block, authenticate every
+pinned input, and set readiness last; then any failed allocation, read, digest,
+parse, or model open has one unpublished owner to release.

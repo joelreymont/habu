@@ -16,8 +16,8 @@ package GPT2-SERVE
 private
 
 : T-CLOSE-CHECK ( -- )
-   SAFET:LIVE-OWNERS T-OWNERS <> if GPT2-GEN:E-STATE throw then
-   SAFET-MAP:LIVE T-MAPS <> if GPT2-GEN:E-STATE throw then ;
+   SAFET:LIVE-OWNERS T-OWNERS <> if GPT2:E-STATE throw then
+   SAFET-MAP:LIVE T-MAPS <> if GPT2:E-STATE throw then ;
 
 T-CLOSE-CHECK
 
