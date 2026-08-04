@@ -25,7 +25,6 @@ private
 50257 constant T-VOCAB-N
 50256 constant T-EOT
 4096 constant T-ID-CAP
-1024 constant T-WORK-CAP
 8192 constant T-DEC-CAP
 400000 constant T-ARENA-CAP
 131072 constant T-HCAP
@@ -56,8 +55,7 @@ T-A T-MERGE-N + constant T-B
 T-B T-MERGE-N + constant T-HK
 T-HK T-HCAP + constant T-HU
 T-HU T-HCAP + constant T-HV
-T-HV T-HCAP + constant T-WORK
-T-WORK T-WORK-CAP + constant T-OUT
+T-HV T-HCAP + constant T-OUT
 T-OUT T-ID-CAP + constant T-GID
 T-GID T-GID-N + constant T-R2I
 T-R2I T-VOCAB-N + constant T-DEC
@@ -441,20 +439,26 @@ create T-BYTE-ID
 : T-ENC-FITS? ( ptr u8 n n -- bool ) {: a:ptr u:n p:n :}
    p u >= if T-TRUE exit then
    a u p T-CHUNK {: len:n :}
-   len 0 <= len T-WORK-CAP > or if T-FALSE exit then
+   len 0 <= if T-FALSE exit then
    a u p len + recurse ;
 
-: T-WORK-IN ( ptr a ptr u8 n n -- ) {: t:ptr a:ptr p:n u:n :}
-   u T-WORK-CAP > if E-TOK-CAP throw then
+: T-STAGE ( ptr a ptr u8 n n -- ) {: t:ptr a:ptr p:n u:n :}
+   t T-OUTN T@ u + T-ID-CAP > if E-TOK-CAP throw then
    u 0 ?do
       a p + i + c@ {: byte:n :}
-      byte t T-WORK i TV!
+      byte t T-OUT t T-OUTN T@ i + TV!
    loop
    u t T-WLEN T! ;
 
+: T-SYM@ ( ptr a n -- n ) {: t:ptr i:n :}
+   t T-OUT t T-OUTN T@ i + TV@ ;
+
+: T-SYM! ( n ptr a n -- ) {: value:n t:ptr i:n :}
+   value t T-OUT t T-OUTN T@ i + TV! ;
+
 : T-MIN-STEP ( ptr a n n -- n ) {: t:ptr i:n best:n :}
    i t T-WLEN T@ 1- >= if best exit then
-   t t T-WORK i TV@ t T-WORK i 1+ TV@ T-RANK {: rank:n :}
+   t t i T-SYM@ t i 1+ T-SYM@ T-RANK {: rank:n :}
    rank 0 >= if
       best 0 < rank best < or if rank else best then
    else best then {: next:n :}
@@ -467,12 +471,12 @@ create T-BYTE-ID
    {: t:ptr rank:n a:n b:n ri:n :}
    ri t T-WLEN T@ >= if t T-WI T@ exit then
    ri t T-WLEN T@ 1- <
-   t T-WORK ri TV@ a = and
-   t T-WORK ri 1+ TV@ b = and if
-      T-BYTE-N rank + t T-WORK t T-WI T@ TV!
+   t ri T-SYM@ a = and
+   t ri 1+ T-SYM@ b = and if
+      T-BYTE-N rank + t t T-WI T@ T-SYM!
       ri 2 +
    else
-      t T-WORK ri TV@ t T-WORK t T-WI T@ TV!
+      t ri T-SYM@ t t T-WI T@ T-SYM!
       ri 1+
    then {: next:n :}
    t T-WI T@ 1+ t T-WI T!
@@ -490,20 +494,13 @@ create T-BYTE-ID
    t rank T-APPLY
    t recurse ;
 
-: T-OUT-WORK ( ptr a n -- ) {: t:ptr i:n :}
-   i t T-WLEN T@ = if exit then
-   t T-OUTN T@ T-ID-CAP >= if E-TOK-CAP throw then
-   t T-WORK i TV@ t T-OUT t T-OUTN T@ TV!
-   t T-OUTN T@ 1+ t T-OUTN T!
-   t i 1+ recurse ;
-
 : T-ENC-STEP ( ptr a ptr u8 n n -- ) {: t:ptr a:ptr u:n p:n :}
    p u >= if exit then
    a u p T-CHUNK {: len:n :}
    len 0 <= if E-TOK-VOCAB throw then
-   t a p len T-WORK-IN
+   t a p len T-STAGE
    t T-MERGE
-   t 0 T-OUT-WORK
+   t T-OUTN T@ t T-WLEN T@ + t T-OUTN T!
    t a u p len + recurse ;
 
 : T-ENCODE ( ptr a ptr u8 n -- n ) {: t:ptr a:ptr u:n :}

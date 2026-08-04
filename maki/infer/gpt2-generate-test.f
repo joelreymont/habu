@@ -11,8 +11,11 @@ require maki/infer/gpt2-reference-data.f
 package GPT2
 private
 
-4097 constant LONG-N
-1024 constant CONTEXT-N
+1024 constant CHUNK-EDGE
+CHUNK-EDGE constant CONTEXT-N
+T-ID-CAP 1+ constant LONG-N
+LONG-N 2 + constant LONG-BUF-N
+T-ID-CAP 2 + constant CHUNK-DEC-N
 50257 constant TEST-VOCAB
 TEST-VOCAB 4 * constant TEST-LOGIT-BYTES
 $A5 constant GUARD
@@ -20,7 +23,10 @@ $A5 constant GUARD
 
 create OUT OUTPUT-CAP allot
 create BEFORE OUTPUT-CAP allot
-create LONG LONG-N allot
+create LONG LONG-BUF-N allot
+create CHUNK-DEC CHUNK-DEC-N allot
+create PREFIX-IDS T-ID-CAP cells allot
+variable PREFIX-N
 create CONTEXT CONTEXT-N allot
 
 create U-JA 33768 , 98 , 17312 , 105 , 45739 , 252 ,
@@ -99,8 +105,26 @@ create T-C-M9 2 , 1 ,
    {: dst:ptr len:n byte:n :}
    len 0 ?do byte dst i + c! loop ;
 
+: LONG-A ( -- ptr u8 )
+   LONG 1+ ;
+
+: DEC-A ( -- ptr u8 )
+   CHUNK-DEC 1+ ;
+
+: LONG-FILL ( n n -- ) {: len:n byte:n :}
+   GUARD LONG c!
+   LONG-A len byte FILL
+   GUARD LONG-A len + c! ;
+
+: SRC-GUARDS ( n -- ) {: len:n :}
+   LONG c@ GUARD T=
+   LONG-A len + c@ GUARD T= ;
+
+: DEC-GUARDS ( n -- ) {: len:n :}
+   CHUNK-DEC c@ GUARD T=
+   DEC-A len + c@ GUARD T= ;
+
 : PREPARE ( -- )
-   LONG LONG-N 120 FILL
    CONTEXT CONTEXT-N 0 FILL ;
 
 : T-PREFIX$ ( -- ptr u8 n )
@@ -224,10 +248,12 @@ using GPT2
 
 : T-TOK-REFUSAL ( GPT2:model -- GPT2:model )
    s" tokenizer refusal returns the model and preserves caller output" T-LABEL
+   LONG-N [char] x LONG-FILL
    OUT-RESET
-   LONG LONG-N BYTE-CAP 1 TOKEN-CAP OUT OUTPUT-CAP GENERATE
+   LONG-A LONG-N BYTE-CAP 1 TOKEN-CAP OUT OUTPUT-CAP GENERATE
    E-TOK-CAP EXPECT-ERR
-   OUT-PRESERVED ;
+   OUT-PRESERVED
+   LONG-N SRC-GUARDS ;
 
 : CONTEXT-COUNT ( GPT2:model -- GPT2:model )
    CONTEXT CONTEXT-N BYTE-CAP ENCODE
@@ -283,12 +309,79 @@ using GPT2
       ok OF IC>N src srcu T-DECODE-EQ ENDOF
    ;MATCH ;
 
+: T-CANARY-DECODE ( GPT2:model n n -- GPT2:model )
+   {: count:n len:n :}
+   CHUNK-DEC CHUNK-DEC-N GUARD FILL
+   count DEC-A len BYTE-CAP DECODE
+   MATCH result
+      err OF throw ENDOF
+      ok OF BL>N len T= ENDOF
+   ;MATCH
+   DEC-A len LONG-A len T$=
+   len DEC-GUARDS ;
+
+: T-CHUNK-ROUND ( GPT2:model n -- GPT2:model ) {: len:n :}
+   len [char] x LONG-FILL
+   LONG-A len BYTE-CAP ENCODE
+   MATCH result
+      err OF throw ENDOF
+      ok OF IC>N len T-CANARY-DECODE ENDOF
+   ;MATCH
+   len SRC-GUARDS ;
+
+: PREFIX-SAVE ( GPT2:model -- GPT2:model )
+   LONG-A CHUNK-EDGE BYTE-CAP ENCODE
+   MATCH result
+      err OF throw ENDOF
+      ok OF
+         IC>N {: count:n :}
+         count PREFIX-N !
+         count 0 ?do
+            i ID-AT PREFIX-IDS i cells + !
+         loop
+      ENDOF
+   ;MATCH ;
+
+: PREFIX-CHECK ( GPT2:model -- GPT2:model )
+   PREFIX-N @ 0 ?do
+      i ID-AT PREFIX-IDS i cells + @ T=
+   loop ;
+
+: MULTI-FILL ( -- )
+   T-ID-CAP [char] ! LONG-FILL
+   T-ID-CAP CHUNK-EDGE - 0 ?do
+      [char] x LONG-A CHUNK-EDGE + i + c!
+   loop ;
+
+: T-MULTI-CHUNK ( GPT2:model -- GPT2:model )
+   s" a later chunk cannot overwrite finalized prefix identifiers" T-LABEL
+   MULTI-FILL
+   PREFIX-SAVE
+   LONG-A T-ID-CAP BYTE-CAP ENCODE
+   MATCH result
+      err OF throw ENDOF
+      ok OF
+         IC>N {: count:n :}
+         count PREFIX-N @ > TTRUE
+         PREFIX-CHECK
+         count T-ID-CAP T-CANARY-DECODE
+      ENDOF
+   ;MATCH
+   T-ID-CAP SRC-GUARDS ;
+
 : T-GRAMMAR-ROUNDTRIPS ( GPT2:model -- GPT2:model )
    s" model-owned encode and decode preserve representative grammar bytes" T-LABEL
    T-M1 2 T-ROUNDTRIP
    s" ＡB１２3" T-ROUNDTRIP
    s" 𐐀A𝟘7" T-ROUNDTRIP
    T-MIXED-SPACE$ T-ROUNDTRIP ;
+
+: T-CHUNK-CAP ( GPT2:model -- GPT2:model )
+   s" model-owned encode accepts every admitted Letter chunk boundary" T-LABEL
+   CHUNK-EDGE T-CHUNK-ROUND
+   CHUNK-EDGE 1+ T-CHUNK-ROUND
+   T-ID-CAP T-CHUNK-ROUND
+   T-MULTI-CHUNK ;
 
 : T-UNICODE ( GPT2:model -- GPT2:model )
    s" complete Unicode letter and number classes preserve pinned GPT-2 ids" T-LABEL
@@ -401,6 +494,7 @@ using GPT2-REFERENCE
    T-TOK-REFUSAL
    T-MALFORMED-C3
    T-GRAMMAR-ROUNDTRIPS
+   T-CHUNK-CAP
    T-UNICODE
    T-CONTEXT
    T-MODEL-REFUSAL

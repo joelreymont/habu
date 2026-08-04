@@ -276,7 +276,6 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    8
    T-MERGE-N + T-MERGE-N +
    T-HCAP + T-HCAP + T-HCAP +
-   T-WORK-CAP +
    T-ID-CAP +
    T-GID-N +
    T-VOCAB-N +
@@ -401,6 +400,7 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
          total TEST-UPLOAD-TOTAL
          TOKEN-OWNER
          {: tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
+         TOKEN-LIVE-CELLS T-CELLS T=
          toklen TOK-LEN-OBS !
          [: TOK-LEN-OBS @ ;] [: TOKEN-ALLOC-LEN ;] SNAP=
          GPT2:CLOSE CLOSE-OK
