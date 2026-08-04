@@ -23,13 +23,11 @@ private
 40 constant TR-PHASES
 32 constant TR-NUM-CAP
 $100 constant TR-HOST-CAP
-$82 constant TR-UNDER-STAMP-U
 public
 $2 constant CANDIDATE-HOST-PHASES
 $1A constant EARLY-HOST-PHASES
 $3 constant LATE-PHASES
 private
-9 constant TR-UNDER-PREFIX-U
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
 1 constant TR-PROFILE-MACOS-ARM64-10X2
@@ -88,17 +86,8 @@ create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
 create TR-UNDER-BUF FS-PATH-CAP allot
 create TR-UNDER-HEX 64 allot
-create TR-UNDER-KEY-HEX 80 allot
 create TR-RESULT-KEY-HEX 64 allot
 create TR-UNDER-ARG-BUF FS-PATH-CAP allot
-create TR-UNDER-CACHE-BUF FS-PATH-CAP allot
-create TR-UNDER-CACHE-TMP-BUF FS-PATH-CAP allot
-create TR-UNDER-CACHE-LOCK-BUF FS-PATH-CAP allot
-create TR-UNDER-CACHE-STAMP-BUF FS-PATH-CAP allot
-create TR-UNDER-CACHE-STAMP-TMP-BUF FS-PATH-CAP allot
-create TR-UNDER-NAME-BUF 80 allot
-create TR-UNDER-STAMP-BUF TR-UNDER-STAMP-U allot
-create TR-UNDER-STAMP-RD TR-UNDER-STAMP-U allot
 create TR-PERSIST-BUF FS-PATH-CAP allot
 create TR-NUM-BUF TR-NUM-CAP allot
 create TR-HOST-BUF TR-HOST-CAP allot
@@ -112,12 +101,6 @@ variable TR-BUILD-CACHE-U
 variable TR-PATH-U
 variable TR-UNDER-U
 variable TR-UNDER-ARG-U
-variable TR-UNDER-CACHE-U
-variable TR-UNDER-CACHE-TMP-U
-variable TR-UNDER-CACHE-LOCK-U
-variable TR-UNDER-CACHE-STAMP-U
-variable TR-UNDER-CACHE-STAMP-TMP-U
-variable TR-UNDER-NAME-U
 variable TR-PERSIST-U
 variable TR-RED-FILE-U
 variable TR-RED-LIST-PATH-U
@@ -126,8 +109,6 @@ variable TR-RERUN-N
 variable TR-RERUN-POS
 variable TR-GATE-START-NS
 variable TR-UNDER-READY
-variable TR-UNDER-CACHE-HIT
-variable TR-UNDER-CACHE-RC
 variable TR-ARG-I
 variable TR-NESTED-POOL
 variable TR-TIMINGS
@@ -164,24 +145,6 @@ public
 private
 : TR-UNDER-ARG$ ( -- ptr u8 n )
    TR-UNDER-ARG-BUF TR-UNDER-ARG-U @ ;
-
-: TR-UNDER-CACHE$ ( -- ptr u8 n )
-   TR-UNDER-CACHE-BUF TR-UNDER-CACHE-U @ ;
-
-: TR-UNDER-CACHE-TMP$ ( -- ptr u8 n )
-   TR-UNDER-CACHE-TMP-BUF TR-UNDER-CACHE-TMP-U @ ;
-
-: TR-UNDER-CACHE-LOCK$ ( -- ptr u8 n )
-   TR-UNDER-CACHE-LOCK-BUF TR-UNDER-CACHE-LOCK-U @ ;
-
-: TR-UNDER-CACHE-STAMP$ ( -- ptr u8 n )
-   TR-UNDER-CACHE-STAMP-BUF TR-UNDER-CACHE-STAMP-U @ ;
-
-: TR-UNDER-CACHE-STAMP-TMP$ ( -- ptr u8 n )
-   TR-UNDER-CACHE-STAMP-TMP-BUF TR-UNDER-CACHE-STAMP-TMP-U @ ;
-
-: TR-UNDER-NAME$ ( -- ptr u8 n )
-   TR-UNDER-NAME-BUF TR-UNDER-NAME-U @ ;
 
 : TR-USAGE ( -- )
    s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--perf-profile NAME|auto] [--pool-slots N] [--nested-pool-slots N] [--cold-cache] [--no-result-cache] [--rerun-failed] [--timings]" TR-USAGE-RC die ;
@@ -346,13 +309,6 @@ private
    0 TR-RERUN !
    0 TR-UNDER-ARG-U !
    DETECT-PROFILE TR-PROFILE-APPLY ;
-
-\ The cache-root world is still tracked: a candidate cache miss mid-run means
-\ this gate built its candidate instead of being served one, which the perf
-\ profile line reports. It no longer selects a budget, because there is none.
-: TR-MARK-COLD ( -- )
-   TR-COLD-CACHE @ 0 <> if exit then
-   -1 TR-COLD-CACHE ! ;
 
 : TR-PERF-PROFILE-OPT ( -- )
    TR-ARG-VALUE$ PROFILE-ID? TR-PROFILE-APPLY
@@ -566,8 +522,7 @@ private
 : TR-UNDER-PATHS ( -- )
    GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
    UNDER$ EXISTS? if UNDER$ REMOVE-FILE then
-   0 TR-UNDER-READY !
-   0 TR-UNDER-CACHE-HIT ! ;
+   0 TR-UNDER-READY ! ;
 
 : TR-UNDER-ENV+ ( -- )
    s" HABU_UNDER_TEST" >LEN UNDER$ >LEN PROC-ENV+ ;
@@ -679,13 +634,6 @@ private
    s" tools/gate-json-assert-core.f"  >LEN PROC-ARGV+
    s" tools/aot-call-report-lib.f"  >LEN PROC-ARGV+ ;
 
-: TR-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
-   {: a:ptr u:n suf:ptr su:n dst:ptr lenp:ptr :}
-   u su + FS-PATH-CAP > if E-FS-PATH throw then
-   a dst u BYTE-COPY
-   suf dst u + su BYTE-COPY
-   u su + lenp ! ;
-
 : TR-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
@@ -714,152 +662,6 @@ private
 
 : TR-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CONTENT-KEY:FILE+ ;
-
-: TR-UNDER-SOURCE-KEY ( -- )
-   [: TR-KEY-FILE+ ;] TR-UNDER-SOURCE-FILES ;
-
-: TR-UNDER-LINUX-KEY ( -- )
-   s" target:linux-aarch64" CONTENT-KEY:TEXT+
-   s" src/os/linux/target.f" TR-KEY-FILE+
-   s" src/os/linux/layout.f" TR-KEY-FILE+
-   s" src/os/linux/sys.f" TR-KEY-FILE+
-   s" src/os/linux/proc-watch.f" TR-KEY-FILE+
-   s" src/os/linux/proc-control.f" TR-KEY-FILE+
-   s" src/os/linux/elf.f" TR-KEY-FILE+
-   s" src/os/linux/sign.f" TR-KEY-FILE+
-   s" src/os/linux/repl-term.f" TR-KEY-FILE+ ;
-
-: TR-UNDER-MACOS-KEY ( -- )
-   s" target:macos-aarch64" CONTENT-KEY:TEXT+
-   s" src/os/macos/target.f" TR-KEY-FILE+
-   s" src/os/macos/layout.f" TR-KEY-FILE+
-   s" src/os/macos/sys.f" TR-KEY-FILE+
-   s" src/os/macos/proc-watch.f" TR-KEY-FILE+
-   s" src/os/macos/proc-control.f" TR-KEY-FILE+
-   s" src/os/macos/macho.f" TR-KEY-FILE+
-   s" src/os/macos/sign2.f" TR-KEY-FILE+
-   s" src/os/macos/repl-term.f" TR-KEY-FILE+ ;
-
-: TR-UNDER-TARGET-KEY ( -- )
-   HB-TARGET-LINUX? if TR-UNDER-LINUX-KEY exit then
-   HB-TARGET-MACOS? if TR-UNDER-MACOS-KEY exit then
-   s" Habu-under-test cache unknown target" TR-FAIL ;
-
-: TR-UNDER-KEY! ( -- )
-   CONTENT-KEY:RESET
-   s" hb-under-test-cache-v3" CONTENT-KEY:TEXT+
-   s" bin/hb" TR-KEY-FILE+
-   TR-UNDER-SOURCE-KEY
-   TR-UNDER-TARGET-KEY
-   TR-UNDER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
-
-: TR-UNDER-NAME! ( -- )
-   s" hb-under-" {: p:ptr pu:n :}
-   pu TR-UNDER-PREFIX-U <> if E-STR-BOUNDS throw then
-   p TR-UNDER-NAME-BUF pu BYTE-COPY
-   TR-UNDER-KEY-HEX TR-UNDER-NAME-BUF pu + 64 BYTE-COPY
-   pu 64 + TR-UNDER-NAME-U ! ;
-
-: TR-UNDER-CACHE-PATHS ( -- )
-   TR-UNDER-NAME!
-   PERSIST$ MAKE-DIRS
-   PERSIST$ TR-UNDER-NAME$ TR-UNDER-CACHE-BUF JOIN-PATH TR-UNDER-CACHE-U !
-   TR-UNDER-CACHE$ s" .tmp" TR-UNDER-CACHE-TMP-BUF TR-UNDER-CACHE-TMP-U TR-SUFFIX!
-   TR-UNDER-CACHE$ s" .lock" TR-UNDER-CACHE-LOCK-BUF TR-UNDER-CACHE-LOCK-U TR-SUFFIX!
-   TR-UNDER-CACHE$ s" .stamp" TR-UNDER-CACHE-STAMP-BUF TR-UNDER-CACHE-STAMP-U TR-SUFFIX!
-   TR-UNDER-CACHE-STAMP$ s" .tmp" TR-UNDER-CACHE-STAMP-TMP-BUF TR-UNDER-CACHE-STAMP-TMP-U TR-SUFFIX! ;
-
-: TR-UNDER-CACHE-KEY! ( -- )
-   TR-UNDER-KEY!
-   TR-UNDER-CACHE-PATHS ;
-
-: TR-UNDER-STAMP$ ( -- ptr u8 n )
-   TR-UNDER-STAMP-BUF TR-UNDER-STAMP-U ;
-
-: TR-UNDER-CACHE-SHA! ( -- )
-   TR-UNDER-CACHE$ TR-UNDER-HEX SHA256-FILE-HEX 0 <> if
-      s" failed to hash cached Habu-under-test" TR-FAIL
-   then ;
-
-: TR-UNDER-STAMP! ( -- )
-   TR-UNDER-KEY-HEX TR-UNDER-STAMP-BUF 64 BYTE-COPY
-   $09 TR-UNDER-STAMP-BUF 64 + c!
-   TR-UNDER-HEX TR-UNDER-STAMP-BUF 65 + 64 BYTE-COPY
-   $0A TR-UNDER-STAMP-BUF 129 + c! ;
-
-: TR-UNDER-CACHE-STAMP-MISSING? ( -- bool )
-   TR-UNDER-CACHE-STAMP$ FILE? 0= ;
-
-: TR-UNDER-CACHE-STAMP-OK? ( -- bool )
-   TR-UNDER-CACHE-SHA!
-   TR-UNDER-STAMP!
-   TR-UNDER-CACHE-STAMP$ TR-UNDER-STAMP-RD TR-UNDER-STAMP-U READ-ALL {: got:n :}
-   got TR-UNDER-STAMP-U <> if 0 0= 0= exit then
-   TR-UNDER-STAMP-RD TR-UNDER-STAMP-U TR-UNDER-STAMP$ STR= ;
-
-: TR-UNDER-CACHE-REMOVE ( -- )
-   TR-UNDER-CACHE-TMP$ EXISTS? if TR-UNDER-CACHE-TMP$ REMOVE-FILE then
-   TR-UNDER-CACHE-STAMP-TMP$ EXISTS? if TR-UNDER-CACHE-STAMP-TMP$ REMOVE-FILE then
-   TR-UNDER-CACHE-STAMP$ EXISTS? if TR-UNDER-CACHE-STAMP$ REMOVE-FILE then
-   TR-UNDER-CACHE$ EXISTS? if TR-UNDER-CACHE$ REMOVE-FILE then ;
-
-: TR-UNDER-CACHE-CORRUPT ( -- )
-   s" candidate-cache-corrupt" GS-EVENT
-   s" Habu-under-test cache stamp mismatch" TR-FAIL ;
-
-: TR-UNDER-CACHE-LOCK? ( -- bool )
-   TR-UNDER-CACHE-LOCK$ FS-PATHZ FS-MUT-MODE-PRIVATE-DIR mkdir 0= if TR-TRUE exit then
-   TR-UNDER-CACHE-LOCK$ DIR? if TR-FALSE exit then
-   E-FS-IO throw ;
-
-: TR-UNDER-CACHE-UNLOCK ( -- )
-   TR-UNDER-CACHE-LOCK$ DIR? if TR-UNDER-CACHE-LOCK$ REMOVE-DIR then ;
-
-: TR-UNDER-CACHE-RESTORE ( -- )
-   TR-UNDER-READY @ 0 <> if exit then
-   TR-PERSIST? 0= if exit then
-   TR-UNDER-CACHE-KEY!
-   TR-UNDER-CACHE$ EXECUTABLE? 0= if TR-MARK-COLD s" candidate-cache-miss" GS-EVENT exit then
-   TR-UNDER-CACHE-STAMP-MISSING? if TR-MARK-COLD s" candidate-cache-miss" GS-EVENT exit then
-   TR-UNDER-CACHE-STAMP-OK? 0= if TR-UNDER-CACHE-CORRUPT then
-   s" candidate-cache-hit" GS-EVENT
-   TR-UNDER-CACHE$ UNDER$ COPY-FILE-STREAM
-   UNDER$ CHMOD-X
-   -1 TR-UNDER-CACHE-HIT !
-   -1 TR-UNDER-READY ! ;
-
-: TR-UNDER-CACHE-INSTALL-LOCKED ( -- )
-   TR-UNDER-CACHE$ EXECUTABLE? if
-      TR-UNDER-CACHE-STAMP-MISSING? 0= if
-         TR-UNDER-CACHE-STAMP-OK? if exit then
-         TR-UNDER-CACHE-CORRUPT
-      then
-   then
-   TR-UNDER-CACHE-REMOVE
-   UNDER$ TR-UNDER-CACHE-TMP$ COPY-FILE-STREAM
-   TR-UNDER-CACHE-TMP$ CHMOD-X
-   TR-UNDER-SHA!
-   TR-UNDER-STAMP!
-   TR-UNDER-CACHE-TMP$ TR-UNDER-CACHE$ RENAME-FILE
-   TR-UNDER-CACHE-STAMP-TMP$ TR-UNDER-STAMP$ WRITE-ALL
-   TR-UNDER-CACHE-STAMP-TMP$ TR-UNDER-CACHE-STAMP$ RENAME-FILE
-   s" candidate-cache-install" GS-EVENT ;
-
-: TR-UNDER-CACHE-INSTALL ( -- )
-   TR-UNDER-ARG? if exit then
-   TR-PERSIST? 0= if exit then
-   TR-UNDER-CACHE-HIT @ 0 <> if exit then
-   TR-UNDER-CACHE-KEY!
-   TR-UNDER-CACHE$ EXECUTABLE? if
-      TR-UNDER-CACHE-STAMP-MISSING? 0= if
-         TR-UNDER-CACHE-STAMP-OK? if exit then
-         TR-UNDER-CACHE-CORRUPT
-      then
-   then
-   TR-UNDER-CACHE-LOCK? 0= if exit then
-   [: TR-UNDER-CACHE-INSTALL-LOCKED ;] catch TR-UNDER-CACHE-RC !
-   TR-UNDER-CACHE-UNLOCK
-   TR-UNDER-CACHE-RC @ 0 <> if TR-UNDER-CACHE-RC @ throw then ;
 
 : TR-BUILD-COMMON ( -- )
    TR-COMMON
@@ -1414,7 +1216,6 @@ public
       GT-POOL-STEP
    repeat
    TR-EXPECT-UNDER
-   TR-UNDER-CACHE-INSTALL
    TR-MAKI-KICK ;
 
 : CANDIDATE-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
@@ -1813,11 +1614,7 @@ public
    GT-POOL-RESET
    TR-PRE-TOOLS-START
    TR-PRE-CANDIDATE-START
-   TR-UNDER-READY @ 0= if
-      15 >IDX PHASE-START
-   else
-      s" candidate-build-skip" GS-EVENT
-   then ;
+   15 >IDX PHASE-START ;
 
 : PREPARE ( -- )
    TR-CALIBRATE
@@ -1830,7 +1627,6 @@ public
    TR-PRE-RESET
    TR-EXPECT-HB
    TR-UNDER-IMPORT
-   TR-UNDER-CACHE-RESTORE
    TR-RERUN-MAYBE-LOAD ;
 
 : RED-COMPLETE ( -- )
