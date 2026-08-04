@@ -168,18 +168,24 @@ variable UPLOAD-BAD
 
 : TEST-REFUSAL ( -- )
    s" OPEN refuses before GPU ownership and leaves no source owner" T-LABEL
+   SAFET:LIVE-OWNERS {: before:n :}
+   SAFET-MAP:LIVE {: maps:n :}
+   T-LIVE-MAPS @ {: tokens:n :}
    s" /tmp/habu-no-gpt2-model" FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-FS-OPEN T= ENDOF
       ok OF GPT2:CLOSE CLOSE-OK false TTRUE ENDOF
    ;MATCH
-   SAFET:LIVE-OWNERS 0 T= ;
+   SAFET:LIVE-OWNERS before T=
+   SAFET-MAP:LIVE maps T=
+   T-LIVE-MAPS @ tokens T= ;
 
 : TEST-EMPTY ( ptr u8 n -- )
    s" OPEN rejects an empty real Safetensors catalog before GPU ownership" T-LABEL
    PREPARE-EMPTY
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
+   T-LIVE-MAPS @ {: tokens:n :}
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-CATALOG T= ENDOF
@@ -187,6 +193,7 @@ variable UPLOAD-BAD
    ;MATCH
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T=
+   T-LIVE-MAPS @ tokens T=
    CLEANUP-RUN ;
 
 : TEST-TOKEN-MISSING ( ptr u8 n -- )
@@ -196,6 +203,7 @@ variable UPLOAD-BAD
    DST$ REMOVE-FILE
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
+   T-LIVE-MAPS @ {: tokens:n :}
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-TOK-IO T= ENDOF
@@ -203,6 +211,7 @@ variable UPLOAD-BAD
    ;MATCH
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T=
+   T-LIVE-MAPS @ tokens T=
    CLEANUP-RUN ;
 
 : MUTATE-VOCAB ( -- )
@@ -215,6 +224,7 @@ variable UPLOAD-BAD
    MUTATE-VOCAB
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
+   T-LIVE-MAPS @ {: tokens:n :}
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-TOK-DIGEST T= ENDOF
@@ -222,6 +232,7 @@ variable UPLOAD-BAD
    ;MATCH
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T=
+   T-LIVE-MAPS @ tokens T=
    CLEANUP-RUN ;
 
 : TRACK-HTOD ( cuda-devptr ptr u8 len -- rc )
@@ -266,6 +277,7 @@ variable UPLOAD-BAD
    0 SCRIPT-ARGV$ REAL-TOTAL {: total:CAD-NUM:byte-len :}
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
+   T-LIVE-MAPS @ {: tokens:n :}
    UPLOAD-RESET
    [: TRACK-HTOD ;] MKD:HTOD!
    0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
@@ -280,7 +292,8 @@ variable UPLOAD-BAD
       ENDOF
    ;MATCH
    SAFET:LIVE-OWNERS before T=
-   SAFET-MAP:LIVE maps T= ;
+   SAFET-MAP:LIVE maps T=
+   T-LIVE-MAPS @ tokens T= ;
 
 : RUN ( -- )
    T-RESET

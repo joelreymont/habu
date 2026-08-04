@@ -72,6 +72,8 @@ T-IDS T-ID-CAP + constant T-LOGITS
 50257 4 * 1 cells 1- + 1 cells / constant T-LOGIT-CELLS
 T-LOGITS T-LOGIT-CELLS + constant T-CELLS
 
+variable T-LIVE-MAPS
+
 create T-BYTE-ID
    188 , 189 , 190 , 191 , 192 , 193 , 194 , 195 , 196 , 197 , 198 , 199 ,
    200 , 201 , 202 , 203 , 204 , 205 , 206 , 207 , 208 , 209 , 210 , 211 ,
@@ -103,11 +105,14 @@ create T-BYTE-ID
 : T-TRUE ( -- bool ) 0 0= ;
 : T-FALSE ( -- bool ) T-TRUE 0= ;
 
-: T-NEW ( -- ptr a )
-   T-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS ;
+: T-NEW ( -- ptr a CAD-NUM:alloc-byte-len )
+   T-CELLS >COUNT MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN
+   T-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS swap
+   1 T-LIVE-MAPS +! ;
 
-: T-FREE ( ptr a -- )
-   T-CELLS >COUNT MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+: T-FREE ( ptr a CAD-NUM:alloc-byte-len -- )
+   MEM:RELEASE-BYTES
+   -1 T-LIVE-MAPS +! ;
 
 : T-READY? ( ptr a -- )
    T-READY T@ 0= if E-TOK-VOCAB throw then ;

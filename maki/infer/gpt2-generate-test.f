@@ -41,7 +41,10 @@ create U-LATIN 2616 , 38776 ,
    s" GEN-IC-PRIVATE ( CAD-NUM:item-count -- n ) GPT2:IC>N" UNK
    s" GPT2:BL>N" XREF-FIND XREF-FOUND? TFALSE
    s" GPT2:IC>N" XREF-FIND XREF-FOUND? TFALSE
-   s" GPT2-GEN:GENERATE" XREF-FIND XREF-FOUND? TFALSE ;
+   s" GPT2-GEN" XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? TFALSE
+   ndict@ 0 ?do
+      i XREF-REC XREF-NAME$ s" GPT2-GEN:" STARTS-WITH? TFALSE
+   loop ;
 
 : FILL ( ptr u8 n n -- )
    {: dst:ptr len:n byte:n :}
@@ -220,6 +223,18 @@ using GPT2-REFERENCE
    4000 ID-AT 456 T=
    swap 4000 ID-AT 123 T= swap ;
 
+: T-ONE ( GPT2:model -- GPT2:model )
+   OUT-RESET
+   s" Hello" BYTE-CAP 1 TOKEN-CAP OUT OUTPUT-CAP GENERATE
+   EXPECT-OK BL>N 1 T=
+   OUT 1 s" ," T$=
+   0 ID-AT 11 T= ;
+
+: T-ALTERNATE ( GPT2:model GPT2:model -- GPT2:model GPT2:model )
+   s" both live models generate the pinned one-token continuation" T-LABEL
+   swap T-ONE swap
+   T-ONE ;
+
 ;using
 
 : T-RUN ( -- )
@@ -241,11 +256,13 @@ using GPT2-REFERENCE
    T-EOS
    T-PINNED
    T-ONE-SHORT
+   T-ALTERNATE
    CLOSE-OK
    CLOSE-OK
    OPEN-MODEL
    OPEN-MODEL
    T-DISTINCT
+   T-ALTERNATE
    swap CLOSE-OK
    CLOSE-OK
    SAFET:LIVE-OWNERS owners T=
