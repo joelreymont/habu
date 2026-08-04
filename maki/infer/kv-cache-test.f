@@ -53,6 +53,56 @@ create KVT-H-GEN  KVT-H-CAP cells allot
       err OF throw ENDOF
    ;MATCH ;
 
+: KVT-MUST-BEGIN ( KV:cache -- KV:cache KV:batch )
+   BEGIN-BATCH MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: KVT-MUST-CANCEL ( KV:cache KV:batch -- KV:cache )
+   CANCEL-BATCH MATCH cancel-result
+      cancelled OF ENDOF
+      refused OF throw ENDOF
+   ;MATCH ;
+
+: KVT-BEGIN-ERR ( KV:cache n -- KV:cache ) {: want:n :}
+   BEGIN-BATCH MATCH result
+      ok OF E-KV-INVARIANT throw ENDOF
+      err OF want T= ENDOF
+   ;MATCH ;
+
+: KVT-DUP-BEGIN ( KV:cache KV:batch -- KV:cache KV:batch )
+   swap BEGIN-BATCH MATCH result
+      ok OF
+         CANCEL-BATCH MATCH cancel-result
+            cancelled OF 0 1 T= ENDOF
+            refused OF throw ENDOF
+         ;MATCH
+         swap
+      ENDOF
+      err OF E-KV-BATCH T= swap ENDOF
+   ;MATCH ;
+
+: KVT-CANCEL-ERR ( KV:cache KV:batch -- KV:cache KV:batch )
+   CANCEL-BATCH MATCH cancel-result
+      cancelled OF E-KV-INVARIANT throw ENDOF
+      refused OF E-KV-BATCH T= ENDOF
+   ;MATCH ;
+
+: KVT-CROSS-ONE
+   ( KV:cache KV:batch KV:cache KV:batch -- KV:cache KV:batch KV:cache KV:batch )
+   swap rot KVT-CANCEL-ERR swap rot ;
+
+: KVT-BATCH-GEN ( KV:batch -- KV:batch n )
+   KB-TAKE {: gen:n :}
+   gen KB-MINT gen ;
+
+: KVT-STALE-ONE ( KV:cache KV:batch KV:batch n -- KV:cache KV:batch )
+   {: want:n :}
+   rot swap KVT-CANCEL-ERR
+   KB-TAKE want T=
+   swap ;
+
 : KVT-MUST-CLOSE ( GPU:session KV:cache -- GPU:session )
    CLOSE MATCH result
       ok OF drop ENDOF
@@ -238,6 +288,7 @@ create KVT-DST KVT-PAGE-BYTES allot
 variable KVT-DTOD-RC
 variable KVT-DTOD-N
 variable KVT-GPU-ALLOC-CALLS
+variable KVT-DEV-CALLS
 
 : KVT-FDTOD ( cuda-devptr cuda-devptr len -- rc )
    {: dst:cuda-devptr src:cuda-devptr bytes:len :}
@@ -248,6 +299,13 @@ variable KVT-GPU-ALLOC-CALLS
 : KVT-FALLOC ( ptr a len -- rc )
    1 KVT-GPU-ALLOC-CALLS +!
    2drop 701 >RC ;
+
+: KVT-FDEV ( -- rc )  1 KVT-DEV-CALLS +! 703 >RC ;
+: KVT-FDEV-FREE ( cuda-devptr -- rc )  drop KVT-FDEV ;
+: KVT-FDEV-SET ( cuda-devptr n count -- rc )  2drop drop KVT-FDEV ;
+: KVT-FDEV-HTOD ( cuda-devptr ptr u8 len -- rc )  2drop drop KVT-FDEV ;
+: KVT-FDEV-DTOH ( ptr u8 cuda-devptr len -- rc )  2drop drop KVT-FDEV ;
+: KVT-FDEV-DTOD ( cuda-devptr cuda-devptr len -- rc )  2drop drop KVT-FDEV ;
 
 : KVT-HOST-THROW ( -- )  E-MEM-MAP throw ;
 
@@ -353,9 +411,9 @@ variable KVT-RELEASE-EVENT
 : KVT-GEOMETRY ( -- )
    KVT-MUST-SESSION KVT-OPEN-STANDARD
    FOOTPRINT >r
-   688 KVT-FOOT-ROLE
+   696 KVT-FOOT-ROLE
    r> 8192 KVT-FOOT-ROLE
-   HOSTB-OFF KVT-FIELD@ 688 T=
+   HOSTB-OFF KVT-FIELD@ 696 T=
    DEVB-OFF KVT-FIELD@ 8192 T=
    PAGE-SIZE 16 T=
    PAGE-BYTES KVT-PAGE-BYTES T=
@@ -530,6 +588,84 @@ variable KVT-RELEASE-EVENT
    KVT-HOST-CALLS @ 1 T=
    KVT-MUST-SESSION-CLOSE ;
 
+: KVT-BATCH-LIFETIME ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   KVT-MUST-BEGIN KVT-BATCH-GEN {: first:n :}
+   first 0 > TTRUE
+   NEXT-BATCH-GEN @ first T=
+   swap KVT-SNAPSHOT swap
+   KVT-DUP-BEGIN
+   NEXT-BATCH-GEN @ first T=
+   swap KVT-SNAPSHOT= TTRUE swap
+   KVT-MUST-CANCEL
+   BATCH-OFF KVT-FIELD@ 0 T=
+   KVT-MUST-BEGIN KVT-BATCH-GEN {: second:n :}
+   second first > TTRUE
+   KVT-MUST-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-BATCH-STALE ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   KVT-MUST-BEGIN KVT-BATCH-GEN {: stale:n :}
+   KVT-MUST-CANCEL
+   KVT-MUST-BEGIN KVT-BATCH-GEN {: active:n :}
+   swap KVT-SNAPSHOT swap
+   stale KB-MINT stale KVT-STALE-ONE
+   NEXT-BATCH-GEN @ active T=
+   swap KVT-SNAPSHOT= TTRUE swap
+   KVT-MUST-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-BATCH-CROSS ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD KVT-MUST-BEGIN
+   rot KVT-CONFIG KVT-MUST-OPEN
+   2swap rot
+   KVT-MUST-BEGIN
+   KVT-CROSS-ONE
+   KVT-MUST-CANCEL
+   -rot 2swap
+   KVT-MUST-CLOSE
+   -rot KVT-MUST-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-BATCH-EXHAUST ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   NEXT-BATCH-GEN @ {: saved:n :}
+   KV-ID-MAX NEXT-BATCH-GEN !
+   KVT-SNAPSHOT
+   E-KV-ID KVT-BEGIN-ERR
+   NEXT-BATCH-GEN @ KV-ID-MAX T=
+   KVT-SNAPSHOT= TTRUE
+   E-KV-ID KVT-BEGIN-ERR
+   NEXT-BATCH-GEN @ KV-ID-MAX T=
+   saved NEXT-BATCH-GEN !
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-BATCH-PURE ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   KVT-SNAPSHOT
+   0 KVT-HOST-CALLS !  0 KVT-GPU-ALLOC-CALLS !  0 KVT-DEV-CALLS !
+   [: KVT-FCOUNT-HOST ;] is HOST-ALLOC
+   [: KVT-FALLOC ;] MKD:CUMEMALLOC!
+   [: KVT-FDEV-FREE ;] MKD:CUMEMFREE!
+   [: KVT-FDEV-SET ;] MKD:CUMEMSETD32!
+   [: KVT-FDEV-HTOD ;] MKD:HTOD!
+   [: KVT-FDEV-DTOH ;] MKD:DTOH!
+   [: KVT-FDEV-DTOD ;] MKD:DTOD!
+   KVT-MUST-BEGIN KVT-MUST-CANCEL
+   MKD:USE-REAL  HOST-USE-REAL
+   KVT-SNAPSHOT= TTRUE
+   KVT-HOST-CALLS @ 0 T=
+   KVT-GPU-ALLOC-CALLS @ 0 T=
+   KVT-DEV-CALLS @ 0 T=
+   FREE-PAGES 8 T=  RESERVED-PAGES 0 T=
+   WATERMARK 0 T=  HIGH-WATER 0 T=
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
 : KVT-NO-ALLOC-BODY ( -- )
    KVT-MUST-SESSION KVT-OPEN-STANDARD
    1 MMAP-TEST:EXHAUST-CHILD
@@ -583,7 +719,7 @@ variable KVT-RELEASE-EVENT
    KVT-RELEASE-N @ 1 T=
    KVT-RELEASE-P @ KVT-ALLOC-P @ = TTRUE
    KVT-RELEASE-B @ KVT-ALLOC-B @ T=
-   KVT-RELEASE-B @ 688 T=
+   KVT-RELEASE-B @ 696 T=
    KVT-GPU-ALLOC-CALLS @ 1 T=
    KVT-MUST-SESSION-CLOSE ;
 
@@ -652,7 +788,7 @@ variable KVT-RELEASE-EVENT
    KVT-RELEASE-N @ 1 T=
    KVT-RELEASE-P @ host = TTRUE
    KVT-RELEASE-B @ bytes T=
-   KVT-RELEASE-B @ 688 T=
+   KVT-RELEASE-B @ 696 T=
    KVT-FREE-EVENT @ 1 T=
    KVT-RELEASE-EVENT @ 2 T=
    KVT-MUST-SESSION-CLOSE ;
@@ -673,6 +809,14 @@ variable KVT-RELEASE-EVENT
    s" KVT-BAD-DOUBLE-CLOSE ( GPU:session KV:cache -- GPU:session result<n,n> result<n,n> ) KV:CLOSE KV:CLOSE" CHECK-QUIET-CANDIDATE! 0 T=
    s" KVT-BAD-POST-CLOSE ( GPU:session KV:cache -- GPU:session result<n,n> n ) KV:CLOSE KV:WATERMARK" CHECK-QUIET-CANDIDATE! 0 T= ;
 
+: KVT-BATCH-REJECTS ( -- )
+   s" KVT-BAD-BATCH-DUP ( KV:batch -- KV:batch KV:batch ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+   s" KVT-BAD-BATCH-DROP ( KV:batch -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+   s" KVT-BAD-BATCH-RAW ( n -- KV:batch ) drop 0" CHECK-QUIET-CANDIDATE! 0 T=
+   s" KVT-BAD-BATCH-MINT ( n -- KV:batch ) KV:KB-MINT" CHECK-QUIET-CANDIDATE! 1 T=
+   s" KVT-BAD-BATCH-TAKE ( KV:batch -- n ) KV:KB-TAKE" CHECK-QUIET-CANDIDATE! 1 T=
+   s" KVT-BAD-CANCEL-DROP ( KV:cancel-result -- ) drop" CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : KVT-RUN ( -- )
    T-RESET
    s" post-open operations require no host allocation" T-LABEL [: KVT-NO-ALLOC ;] 0 TTHROWSQ
@@ -683,6 +827,11 @@ variable KVT-RELEASE-EVENT
    s" reservation and capacity" T-LABEL [: KVT-CAPACITY ;] 0 TTHROWSQ
    s" copy failure atomicity and real full-page COW" T-LABEL [: KVT-COW ;] 0 TTHROWSQ
    s" allocation-free churn" T-LABEL [: KVT-CHURN ;] 0 TTHROWSQ
+   s" one active batch and monotone generation" T-LABEL [: KVT-BATCH-LIFETIME ;] 0 TTHROWSQ
+   s" stale batch refusal preserves the active owner" T-LABEL [: KVT-BATCH-STALE ;] 0 TTHROWSQ
+   s" cross-cache batch refusal preserves both owners" T-LABEL [: KVT-BATCH-CROSS ;] 0 TTHROWSQ
+   s" batch generation exhaustion is mutation-free" T-LABEL [: KVT-BATCH-EXHAUST ;] 0 TTHROWSQ
+   s" batch lifetime changes no allocator, device, or metric state" T-LABEL [: KVT-BATCH-PURE ;] 0 TTHROWSQ
    s" device allocation failure cleanup" T-LABEL [: KVT-DEVICE-ALLOC-FAIL ;] 0 TTHROWSQ
    s" host allocation failure cleanup" T-LABEL [: KVT-HOST-ALLOC-FAIL ;] 0 TTHROWSQ
    s" forged configuration rejected before allocation" T-LABEL [: KVT-CONFIG-FAIL ;] 0 TTHROWSQ
@@ -692,6 +841,7 @@ variable KVT-RELEASE-EVENT
    s" old pointer API absent" T-LABEL [: KVT-OLD-API ;] 0 TTHROWSQ
    s" device span borrows remain private" T-LABEL [: KVT-PRIVATE-SPANS ;] 0 TTHROWSQ
    s" linear cache misuse rejected" T-LABEL [: KVT-LINEAR-REJECTS ;] 0 TTHROWSQ
+   s" linear batch misuse and representation access rejected" T-LABEL [: KVT-BATCH-REJECTS ;] 0 TTHROWSQ
    MKD:USE-REAL
    HOST-USE-REAL
    T-REPORT ;

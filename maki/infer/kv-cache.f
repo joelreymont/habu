@@ -51,7 +51,15 @@ DEFTYPE KV-SEQ-GEN
 
 public
 
+-5624 constant E-KV-BATCH       \ another batch is active, or this owner does not match
+
 DEFLINEAR KV:cache
+DEFLINEAR KV:batch
+
+ENUM cancel-result 0
+   VARIANT cancelled FIELD cache KV:cache ;VARIANT
+   VARIANT refused FIELD cache KV:cache FIELD batch KV:batch FIELD code n ;VARIANT
+;ENUM
 
 \ The nominal fields are private representation roles. The structure is public so
 \ callers can transport a sequence value, but only allocator operations mint the
@@ -84,6 +92,14 @@ TRUSTED: KC-MINT ( GPU:buffer ptr u8 -- KV:cache )
 TRUSTED: KC-TAKE ( KV:cache -- GPU:buffer ptr u8 )
    dup @ swap ;
 
+\ The checker cannot bind a raw generation to its opaque linear batch owner.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
+TRUSTED: KB-MINT ( n -- KV:batch ) ;
+
+\ The checker cannot recover a raw generation from its opaque linear batch owner.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
+TRUSTED: KB-TAKE ( KV:batch -- n ) ;
+
 0  constant BUF-OFF
 1  cells constant HOSTB-OFF
 2  cells constant DEVB-OFF
@@ -102,13 +118,15 @@ TRUSTED: KC-TAKE ( KV:cache -- GPU:buffer ptr u8 )
 15 cells constant HIWATER-OFF
 16 cells constant CACHEID-OFF
 17 cells constant RESERVED-OFF
-18 cells constant HEADER-SIZE
+18 cells constant BATCH-OFF
+19 cells constant HEADER-SIZE
 
 $7FFFFFFFFFFFFFFF constant KV-MAX-N
 KV-MAX-N constant KV-ID-MAX
 16 constant KV-P
 
 variable KV-NEXT-CACHE-ID
+variable NEXT-BATCH-GEN
 
 : META@ ( ptr a -- ptr a )  HEADER-SIZE + ;
 
@@ -621,6 +639,10 @@ variable KV-NEXT-CACHE-ID
 : KV-ID-COMMIT ( ptr a -- ) {: h:ptr :}
    KV-NEXT-CACHE-ID @ 1+ dup KV-NEXT-CACHE-ID ! h CACHEID-OFF H! ;
 
+: BATCH-COMMIT ( ptr a n -- ) {: h:ptr gen:n :}
+   gen NEXT-BATCH-GEN !
+   gen h BATCH-OFF H! ;
+
 : STORE-DIMS ( ptr a n n n n n n n n n n n n n -- )
    {: h:ptr nlayer:n nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n pageb:n tokb:n blkcap:n hostb:n devb:n :}
    0 h BUF-OFF H!
@@ -630,7 +652,7 @@ variable KV-NEXT-CACHE-ID
    npages h NPAGES-OFF H!  nseq h NSEQ-OFF H!  ptok h PTOK-OFF H!
    maxctx h MAXCTX-OFF H!  blkcap h BLKCAP-OFF H!
    pageb h PAGEB-OFF H!  tokb h TOKB-OFF H!
-   0 h HIWATER-OFF H!  0 h RESERVED-OFF H! ;
+   0 h HIWATER-OFF H!  0 h RESERVED-OFF H!  0 h BATCH-OFF H! ;
 
 : CONFIG-VALUES ( n n n n n n n n -- n n n n n n )
    {: nlayer:n nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n :}
@@ -818,6 +840,25 @@ public
 : CONFIG/P ( n n n n n n n n -- config )  CONFIG-INNER ;
 : OPEN ( GPU:session config -- GPU:session result<KV:cache,n> )  OPEN-INNER ;
 : CLOSE ( GPU:session KV:cache -- GPU:session result<n,n> )  CLOSE-INNER ;
+
+: BEGIN-BATCH ( KV:cache -- KV:cache result<KV:batch,n> )
+   KC-TAKE {: h:ptr :}
+   h BATCH-OFF H@ 0<> if h KC-MINT E-KV-BATCH RESULT:ERR exit then
+   NEXT-BATCH-GEN @ KV-ID-MAX >= if
+      h KC-MINT E-KV-ID RESULT:ERR exit
+   then
+   NEXT-BATCH-GEN @ 1+ {: gen:n :}
+   h gen BATCH-COMMIT
+   h KC-MINT gen KB-MINT RESULT:OK ;
+
+: CANCEL-BATCH ( KV:cache KV:batch -- cancel-result )
+   KB-TAKE {: gen:n :}
+   KC-TAKE {: h:ptr :}
+   h BATCH-OFF H@ gen = if
+      0 h BATCH-OFF H!
+      h KC-MINT KV-CANCEL--RESULT:CANCELLED exit
+   then
+   h KC-MINT gen KB-MINT E-KV-BATCH KV-CANCEL--RESULT:REFUSED ;
 
 : ALLOC-SEQ ( KV:cache n -- KV:cache result<seq,n> ) {: n:n :}
    KC-TAKE {: h:ptr :}
