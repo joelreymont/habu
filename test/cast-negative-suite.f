@@ -82,7 +82,12 @@ variable CN-SRC-U
    CN-SRC-U ! CN-SRC-A !
    [: CN-EVAL-SOURCE ;] catch ;
 : CN-ABSENT? ( ptr u8 n -- bool )
-   0 search-wl 0= ;
+   get-current search-wl 0= ;
+: CN-PRIVATE-PROBE ( -- ) ;
+\ WID 0 cannot observe a current-package private word, so it cannot prove
+\ rollback here. The exact current private WID sees the probe and no failed cast.
+s" CN-PRIVATE-PROBE" 0 search-wl 0= -1 T=
+s" CN-PRIVATE-PROBE" CN-ABSENT? 0 T=
 s" CAST: CNP1 ( n -- CAST-NEG:lease ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
 s" CAST: CNP2 ( CAST-NEG:lease -- n ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
 s" CAST: CNP3 ( CAST-NEG:lease -- CAST-NEG:lease ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
