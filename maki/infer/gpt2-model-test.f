@@ -5,13 +5,18 @@ require lib/cad-num-arithmetic.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/fs-path.f
+require lib/process-fork.f
 require test/checker-assert.f
+require lib/test/outcome.f
 require maki/infer/gpt2-model.f
 
 package GPT2
 private
 
 -7697 constant E-FIX
+$86 constant FAULT-RC
+$5002 constant NORESERVE-MAP
+1 44 lshift constant MAP-START
 
 create BASE-BYTE 1 allot
 create ROOT FS-PATH-CAP allot
@@ -170,22 +175,19 @@ variable UPLOAD-BAD
    s" OPEN refuses before GPU ownership and leaves no source owner" T-LABEL
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
-   T-LIVE-MAPS @ {: tokens:n :}
    s" /tmp/habu-no-gpt2-model" FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-FS-OPEN T= ENDOF
       ok OF GPT2:CLOSE CLOSE-OK false TTRUE ENDOF
    ;MATCH
    SAFET:LIVE-OWNERS before T=
-   SAFET-MAP:LIVE maps T=
-   T-LIVE-MAPS @ tokens T= ;
+   SAFET-MAP:LIVE maps T= ;
 
 : TEST-EMPTY ( ptr u8 n -- )
    s" OPEN rejects an empty real Safetensors catalog before GPU ownership" T-LABEL
    PREPARE-EMPTY
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
-   T-LIVE-MAPS @ {: tokens:n :}
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-CATALOG T= ENDOF
@@ -193,7 +195,6 @@ variable UPLOAD-BAD
    ;MATCH
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T=
-   T-LIVE-MAPS @ tokens T=
    CLEANUP-RUN ;
 
 : TEST-TOKEN-MISSING ( ptr u8 n -- )
@@ -203,7 +204,6 @@ variable UPLOAD-BAD
    DST$ REMOVE-FILE
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
-   T-LIVE-MAPS @ {: tokens:n :}
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-TOK-IO T= ENDOF
@@ -211,7 +211,6 @@ variable UPLOAD-BAD
    ;MATCH
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T=
-   T-LIVE-MAPS @ tokens T=
    CLEANUP-RUN ;
 
 : MUTATE-VOCAB ( -- )
@@ -224,7 +223,6 @@ variable UPLOAD-BAD
    MUTATE-VOCAB
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
-   T-LIVE-MAPS @ {: tokens:n :}
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-TOK-DIGEST T= ENDOF
@@ -232,8 +230,63 @@ variable UPLOAD-BAD
    ;MATCH
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T=
-   T-LIVE-MAPS @ tokens T=
    CLEANUP-RUN ;
+
+: TOKEN-BYTES ( -- n )
+   T-CELLS >COUNT MEM-CELLS>BYTES ;
+
+: MAP-ONE ( n -- bool )
+   0 swap MEM-PROT-RW NORESERVE-MAP MEM-ANON-FD MEM-OFF-ZERO mmap
+   0 >= ;
+
+: FILL-MAPS ( n -- )
+   begin dup MAP-ONE while repeat drop ;
+
+: EXHAUST-MAPS ( -- )
+   MAP-START
+   begin dup TOKEN-BYTES > while
+      dup FILL-MAPS 2 /
+   repeat
+   drop
+   TOKEN-BYTES FILL-MAPS ;
+
+: ALLOC-REFUSAL-CHILD ( -- )
+   SAFET:LIVE-OWNERS {: owners:n :}
+   SAFET-MAP:LIVE {: maps:n :}
+   EXHAUST-MAPS
+   TOKEN-BYTES MAP-ONE if E-FIX throw then
+   0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
+   MATCH result
+      err OF E-MEM-MAP <> if E-FIX throw then ENDOF
+      ok OF GPT2:CLOSE CLOSE-OK E-FIX throw ENDOF
+   ;MATCH
+   SAFET:LIVE-OWNERS owners <> if E-FIX throw then
+   SAFET-MAP:LIVE maps <> if E-FIX throw then
+   TOKEN-BYTES MAP-ONE if E-FIX throw then
+   s" " 0 die ;
+
+: TEST-ALLOC-REFUSAL ( -- )
+   s" OPEN returns tokenizer allocation refusal without taking SAFET ownership" T-LABEL
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if ALLOC-REFUSAL-CHILD then
+   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+
+: TOKEN-BASE ( GPT2:model -- GPT2:model ptr a )
+   M-TAKE
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
+   tokbytes drop
+   x a b logits token k v pos
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   tokstate ;
+
+: READ-TOKEN-TAIL ( ptr a -- )
+   T-CELLS 1- cells + @ drop
+   s" " 0 die ;
+
+: TOKEN-UNMAPPED ( ptr a -- ) {: tokstate:ptr :}
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if 2 close-rc drop tokstate READ-TOKEN-TAIL then
+   pid PROC-WAIT-OUTCOME FAULT-RC T-OUTCOME-EXITED= ;
 
 : TRACK-HTOD ( cuda-devptr ptr u8 len -- rc )
    {: dst:cuda-devptr src:ptr len:len :}
@@ -273,11 +326,11 @@ variable UPLOAD-BAD
    0 SCRIPT-ARGV$ TEST-TOKEN-MISSING
    0 SCRIPT-ARGV$ TEST-TOKEN-DIGEST
    0 SCRIPT-ARGV$ TEST-EMPTY
+   TEST-ALLOC-REFUSAL
    s" OPEN uploads the pinned GPT-2 model and CLOSE releases every owner" T-LABEL
    0 SCRIPT-ARGV$ REAL-TOTAL {: total:CAD-NUM:byte-len :}
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
-   T-LIVE-MAPS @ {: tokens:n :}
    UPLOAD-RESET
    [: TRACK-HTOD ;] MKD:HTOD!
    0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
@@ -288,12 +341,13 @@ variable UPLOAD-BAD
          UPLOAD-N @ 160 T=
          UPLOAD-BAD @ 0 T=
          total TEST-UPLOAD-TOTAL
+         TOKEN-BASE {: tokstate:ptr :}
          GPT2:CLOSE CLOSE-OK
+         tokstate TOKEN-UNMAPPED
       ENDOF
    ;MATCH
    SAFET:LIVE-OWNERS before T=
-   SAFET-MAP:LIVE maps T=
-   T-LIVE-MAPS @ tokens T= ;
+   SAFET-MAP:LIVE maps T= ;
 
 : RUN ( -- )
    T-RESET
