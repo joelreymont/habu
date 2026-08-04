@@ -57,6 +57,12 @@
 \   a64.dpublish Addi ds ds n    - make the results the caller's
 \   a64.flag     Cmp rn rm; Cset rd cc; Sub rd xzr rd
 \                                - leave the Habu flag of one comparison
+\   a64.selz     Cmp rn #0; Csel rd rn rm ne
+\                                - choose between two registers on whether a
+\                                  third is not zero
+\   a64.cmpsel   Cmp rn rm; Csel rd rn rm cc
+\                                - compare two registers and choose between two
+\                                  others under the condition
 \   a64.b        B target        - go to one block, handing it its arguments
 \   a64.cbz      Cbz rt target; B other
 \                                - go to the first block when rt is zero and to
@@ -74,6 +80,20 @@
 \   a64.fcmpbr   Fcmp dn dm; B.cc target; B other
 \                                - the fused float compare-and-branch
 \   a64.fcmpbrz  Fcmp dn #0.0; B.cc target; B other
+\                                - the same against the immediate zero
+\   a64.selzd    Cmp rn #0; Fcsel dd dn dm ne
+\                                - a64.selz choosing between two DOUBLES
+\   a64.cmpseld  Cmp rn rm; Fcsel dd dn dm cc
+\                                - a64.cmpsel choosing between two DOUBLES
+\   a64.fcmpsel  Fcmp dn dm; Csel rd rn rm cc
+\                                - compare two DOUBLES and choose between two
+\                                  general registers under the condition
+\   a64.fcmpselz Fcmp dn #0.0; Csel rd rn rm cc
+\                                - the same against the immediate zero
+\   a64.fcmpseld Fcmp dn dm; Fcsel dd dn dm cc
+\                                - compare two DOUBLES and choose between two
+\                                  more under the condition
+\   a64.fcmpselzd Fcmp dn #0.0; Fcsel dd dn dm cc
 \                                - the same against the immediate zero
 \   a64.call     Addi ds ds n; Bl entry; Subi ds ds m
 \                                - hand the caller's data stack to the word being
@@ -98,33 +118,35 @@
 \ would emit a longer sequence than the interpreted word for the same source
 \ word, and an operation whose operand list does not match its instruction's.
 \
-\ SIX OF THEM ARE MORE THAN ONE INSTRUCTION, AND SAY WHY. Every other form
-\ above is one instruction, and that is the rule this dialect keeps wherever it
-\ can: one operation, one form, four bytes. The division breaks it because its
+\ THE FORMS THAT ARE MORE THAN ONE INSTRUCTION, AND WHY EACH ONE IS. Every other
+\ form above is one instruction, and that is the rule this dialect keeps wherever
+\ it can: one operation, one form, four bytes. The division breaks it because its
 \ zero-divisor guard and the divide it guards are inseparable - the whole point
 \ of the guard is that nothing runs between the test and the divide. The two call
 \ forms break it because between the first of their three instructions and the
 \ last, the data-stack pointer stands above values that are the CALLEE's, so an
 \ access placed in the middle would read the callee's stack through the caller's
-\ offsets. The
-\ comparison, the two-way branch and the compare-and-branch break it for a
-\ related reason, which is the condition flags. The flags are a
-\ single architectural register that no value of this dialect stands for and the
-\ allocator may never hand out, so the instructions that write them and the
-\ instruction that reads them have to be inseparable - and the only way an IR can
-\ say "inseparable" is to make them one operation. What a form's count is, is
-\ written down once and read by the layout: how many instructions the operations
-\ of a block are is never guessed at from anything but the opcodes in it.
+\ offsets. Every other one breaks it for a single related reason, which is the
+\ condition flags: the three comparisons that materialise a flag, the two-way
+\ branch, the three compare-and-branches and the eight conditional selects. The
+\ flags are a single architectural register that no value of this dialect stands
+\ for and the allocator may never hand out, so the instructions that write them
+\ and the instruction that reads them have to be inseparable - and the only way
+\ an IR can say "inseparable" is to make them one operation. What a form's count
+\ is, is written down once and read by the layout: how many instructions the
+\ operations of a block are is never guessed at from anything but the opcodes in
+\ it.
 \
-\ THE COUNT IS A CEILING FOR FOUR FORMS AND AN EXACT NUMBER FOR EVERYTHING ELSE.
-\ The one-way branch, the two-way branch and the compare-and-branch each end in
-\ an unconditional branch, and src/compiler/native/emit.f does not emit that
-\ branch when the block it names is the block laid out next - the machine gets
-\ there by falling into it. So those three are one instruction shorter wherever
-\ the layout allows, which makes their count a property of the operation's
-\ POSITION as well as of its form. The fourth is the copy: a64.mov whose source
-\ and destination registers are the same moves nothing and is not emitted either,
-\ which makes its count a property of the REGISTER ASSIGNMENT. All of that is the
+\ THE COUNT IS A CEILING FOR SEVEN FORMS AND AN EXACT NUMBER FOR EVERYTHING ELSE.
+\ The one-way branch, the two-way branch and the three compare-and-branches each
+\ end in an unconditional branch, and src/compiler/native/emit.f does not emit
+\ that branch when the block it names is the block laid out next - the machine
+\ gets there by falling into it. So those five are one instruction shorter
+\ wherever the layout allows, which makes their count a property of the
+\ operation's POSITION as well as of its form. The other two are the copies:
+\ a64.mov and a64.fmovdd whose source and destination registers are the same move
+\ nothing and are not emitted either, which makes their count a property of the
+\ REGISTER ASSIGNMENT. All of that is the
 \ emitter's own arithmetic and it is stated there: each rule is one word both its
 \ layout pass and its writing pass ask, and the two are held against each other
 \ at every block boundary. Nothing outside the emitter counts instructions.
@@ -374,6 +396,10 @@ ENUM opcode DERIVE eq
    fcmpbrz
    selzd
    cmpseld
+   fcmpsel
+   fcmpselz
+   fcmpseld
+   fcmpselzd
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -753,6 +779,10 @@ public
       fcmpbrz  OF s" a64.fcmpbrz" ENDOF
       selzd    OF s" a64.selzd" ENDOF
       cmpseld  OF s" a64.cmpseld" ENDOF
+      fcmpsel   OF s" a64.fcmpsel" ENDOF
+      fcmpselz  OF s" a64.fcmpselz" ENDOF
+      fcmpseld  OF s" a64.fcmpseld" ENDOF
+      fcmpselzd OF s" a64.fcmpselzd" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -957,6 +987,10 @@ private
       fcmpbrz  OF s" a64.rule.fcmpbrz" ENDOF
       selzd    OF s" a64.rule.selzd" ENDOF
       cmpseld  OF s" a64.rule.cmpseld" ENDOF
+      fcmpsel   OF s" a64.rule.fcmpsel" ENDOF
+      fcmpselz  OF s" a64.rule.fcmpselz" ENDOF
+      fcmpseld  OF s" a64.rule.fcmpseld" ENDOF
+      fcmpselzd OF s" a64.rule.fcmpselzd" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1016,6 +1050,10 @@ private
       fcmpbrz  OF s" a64.render.fcmpbrz" ENDOF
       selzd    OF s" a64.render.selzd" ENDOF
       cmpseld  OF s" a64.render.cmpseld" ENDOF
+      fcmpsel   OF s" a64.render.fcmpsel" ENDOF
+      fcmpselz  OF s" a64.render.fcmpselz" ENDOF
+      fcmpseld  OF s" a64.render.fcmpseld" ENDOF
+      fcmpselzd OF s" a64.render.fcmpselzd" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1406,16 +1444,14 @@ private
 \ table for both.
 \
 \ AND THE CONDITION MEANS WHAT THE INSTRUCTION THAT WROTE THE FLAGS MADE IT
-\ MEAN. Every select of this dialect takes its flags from a Cmp of two general
-\ registers or from a Cmp of one against the immediate zero, so its condition is
-\ the integer relation the source comparison names. A float comparison is not
-\ fused into a select here: it materialises its Habu flag with a64.fflag - which
-\ already answers zero for a NaN, because the conditions that form is given are
-\ the three that are false when the unordered flag is set - and a zero-test
-\ select then chooses on that number. So a compiled float selection takes the
-\ arm the interpreted word takes for a NaN, and it does so through the SAME flag
-\ the interpreted word computes rather than through a second NaN argument. The
-\ fused float select is dot habu-fuse-a-float-4545c786.
+\ MEAN, WHICH IS WHY THE FLAGS-WRITER IS PART OF THE FORM. These two take their
+\ flags from a Cmp of two general registers or from a Cmp of one against the
+\ immediate zero, so their condition is the integer relation the source
+\ comparison names and no NaN can reach them. The four forms whose first
+\ instruction is an Fcmp are separate opcodes further down for exactly that
+\ reason: after an Fcmp the same four bits mean something else on an unordered
+\ comparison, so which instruction wrote the flags cannot be an operand or an
+\ attribute - it has to be the opcode.
 \
 \ TWO OF THE FOUR MOVE A DOUBLE, AND THE ONLY THING THAT MAKES THEM A SECOND
 \ PAIR IS THE FILE THE ANSWER LIVES IN. Csel writes a general register and Fcsel
@@ -1427,15 +1463,15 @@ private
 \ downstream learns which file a value belongs to - which is the same reason the
 \ four crossing forms above are four and not one.
 \
-\ HOW THE FOUR ARE SPELLED, so a form added later has a name rather than an
+\ HOW THE EIGHT ARE SPELLED, so a form added later has a name rather than an
 \ argument. A leading `f` says the values COMPARED are doubles, exactly as it
 \ does in a64.fflag and a64.fcmpbr. A trailing `d` says the value CHOSEN is,
-\ exactly as it does in a64.fmovxd. The two shipped pairs are the corner with
-\ neither - a general compare choosing between general registers - and the
-\ corner with only the trailing `d`. The other four names are spoken for and
-\ unused: a64.fcmpsel and a64.fcmpselz for the fused float comparison choosing
-\ between cells (dot habu-fuse-a-float-4545c786), and a64.fcmpseld and
-\ a64.fcmpselzd for the same comparison choosing between doubles.
+\ exactly as it does in a64.fmovxd. That is a square rather than a list: two
+\ shapes - a zero test and a two-register compare - times two flags-writers times
+\ two answer files, and all eight corners are now filled. This pair is the corner
+\ with neither letter; a64.selzd and a64.cmpseld below carry only the trailing
+\ `d`; and a64.fcmpsel, a64.fcmpselz, a64.fcmpseld and a64.fcmpselzd, also below,
+\ are the four whose flags an Fcmp wrote.
 
 \ Selz: the value tested against zero, the answer when it is NOT zero, the
 \ answer when it is. Two instructions: compare the tested register against the
@@ -1893,6 +1929,105 @@ private
    c b A64IR-OPCODE:CMPSELD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the four selects whose flags an Fcmp wrote ------------------------------
+\ The last row of the square. The four forms above choose on flags a Cmp over
+\ CELLS left; these four choose on flags an Fcmp over DOUBLES left, which is the
+\ shape a source `x y f< if a else b then` really has. Written the long way that
+\ is an a64.fflag - Fcmp, Cset, Sub - and then a select that tests the number it
+\ answered against zero, five instructions and one register; written as one of
+\ these it is the Fcmp and the select, two instructions and no register.
+\
+\ WHY THE FLAGS-WRITER HAS TO BE THE OPCODE AND NOT A FIELD. A condition is four
+\ bits of the select instruction, and what those four bits MEAN depends on which
+\ instruction wrote the flags: after an Fcmp of a NaN the unordered condition is
+\ set - N=0 Z=0 C=1 V=1 - and `lt` reads TRUE there while `mi` reads false, where
+\ after a Subs the two are the same relation. So an operation that carried "which
+\ instruction wrote the flags" as an attribute would let a later pass change the
+\ meaning of the condition beside it without changing the condition. It is the
+\ opcode, and the condition table that pairs a source relation with a condition
+\ for THIS row of the square is at the head of src/compiler/native/select.f, with
+\ the whole derivation written out beside it.
+\
+\ THE ZERO FORMS CARRY A CONDITION AND a64.selz DOES NOT, which is the one shape
+\ difference a reader would not predict from the names. a64.selz tests a Habu
+\ FLAG cell - a number the program computed - so its condition is always `ne`,
+\ "the flag is not zero", and there is nothing to say. a64.fcmpselz compares a
+\ DOUBLE against the immediate zero, and which relation it is asking about -
+\ `f0<` or `f0=` - is the condition. Both zero forms therefore take one compared
+\ operand and carry the condition attribute.
+\
+\ EACH IS ONE OPERATION AND TWO INSTRUCTIONS for the reason every other
+\ flags-reading form is: the flags pass between the compare and the select and
+\ are a single architectural resource no value of this dialect stands for, so a
+\ later pass must have nowhere to put anything between them.
+
+\ Fcmpsel: the two doubles compared, the cell taken when the named relation
+\ holds, the cell taken when it does not. Two instructions: the Fcmp, then the
+\ Csel under the condition the operation carries.
+: DEF-FCMPSEL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FCMPSEL OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FCMPSEL NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Fcmpselz: the same against the immediate zero, which the instruction carries
+\ and the operation therefore does not.
+: DEF-FCMPSELZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FCMPSELZ OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FCMPSELZ NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Fcmpseld: the two doubles compared, the double taken when the named relation
+\ holds, the double taken when it does not. Every operand and the result are of
+\ the floating file, which is the only corner of the square where that is so.
+: DEF-FCMPSELD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FCMPSELD OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FCMPSELD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Fcmpselzd: the same against the immediate zero. This is the shape RELU-F has.
+: DEF-FCMPSELZD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FCMPSELZD OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FCMPSELZD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the table this dialect may fill -----------------------------------------
 \ Design line 229's closed world is per dialect, so an operation family may only
 \ be defined into the schema table of the dialect it belongs to. The table's
@@ -1984,7 +2119,11 @@ public
    c b f DEF-FCMPBR
    c b f DEF-FCMPBRZ
    c b t f DEF-SELZD
-   c b t f DEF-CMPSELD ;
+   c b t f DEF-CMPSELD
+   c b t f DEF-FCMPSEL
+   c b t f DEF-FCMPSELZ
+   c b f DEF-FCMPSELD
+   c b f DEF-FCMPSELZD ;
 
 private
 get-current prot-wid-add

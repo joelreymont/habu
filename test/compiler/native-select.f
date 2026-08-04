@@ -562,20 +562,34 @@ $1000 constant BUMP-ADDR
    xc RET1
    CLOSE-FUN ;
 
-\ `: MAX-ISH ( r r -- r ) x y f< if y else x then ;` in the shape the elaborator
-\ leaves it: a FLOAT comparison deciding between two doubles. It is the other
-\ half of the pair, and the half that carries the NaN question.
+\ ---- a FLOAT comparison feeding a selection ----------------------------------
+\ The four fixtures below are the second ROW of the select square: the flags the
+\ select reads were written by an Fcmp rather than by a Cmp. The four corners are
+\ the two comparison shapes - two doubles, or one double against the
+\ instruction's own zero - times the two files the chosen answers may live in,
+\ and two of them are bodies this system runs:
 \
-\ THE COMPARISON IS NOT FUSED INTO THE SELECT AND THAT IS WHAT THE CASE READS.
-\ SEL-FUSE-OF admits only the comparison of two GENERAL registers, so this one
-\ materialises its Habu flag with a64.fflag - all bits set or none, and none for
-\ a NaN, because the three conditions that form is given are the three that are
-\ false when the unordered flag is set - and the select then tests THAT NUMBER
-\ against zero. So what the converted code chooses on is the very number the
-\ source `if` tested, and it takes the arm the source branch took on every
-\ input including a NaN. Fusing the float comparison in is a cost item and is
-\ dot habu-fuse-a-float-4545c786.
-: BUILD-SELECT-REAL-FLAG ( -- )
+\   BUILD-FSEL-REAL   `x y f< if y else x then` with doubles at the join
+\   BUILD-FSEL-CELL   the same handing the argument CELLS on - MAX-F's shape
+\   BUILD-FSELZ-REAL  `x f0< if y else x then` with doubles at the join -
+\                     RELU-F's shape, with a second argument standing in for the
+\                     float literal that leaf has no fixture for
+\   BUILD-FSELZ-CELL  `x f0= if xc else yc then`, the zero compare choosing cells
+\
+\ WHAT EACH ONE HAS TO COME OUT AS, and why reading the opcode BY NAME is the
+\ assertion. A conversion that chose a Cmp-flagged form would ask the machine to
+\ compare two D registers with an integer Cmp, which is not an instruction; one
+\ that chose the wrong ANSWER file would move eight bytes out of a register that
+\ does not hold them. The names are the only thing that separates the four.
+\
+\ AND THE CONDITION IS THE OTHER HALF, which is why every case below reads the
+\ condition attribute against the dialect's own code for `mi` or `equal`. A fused
+\ float select reads the flags an Fcmp left, so what decides the arm for a NaN is
+\ that condition and nothing else: `mi`, `gt` and `equal` are false on unordered
+\ and `lt` is TRUE on it. The two `f<`-shaped fixtures are the negative control
+\ for the whole condition table - their naive condition, read off the relation's
+\ name, is `lt`, and asserting `mi` is what makes the table's derivation a check.
+: BUILD-FSEL-REAL ( -- )
    2 1 OPEN-FUN
    ARG+ {: xc:IR-ID:ir-value-id :}
    ARG+ {: yc:IR-ID:ir-value-id :}
@@ -590,6 +604,74 @@ $1000 constant BUMP-ADDR
    BLOCK+
    FARG+ drop
    xc RET1
+   CLOSE-FUN ;
+
+\ The same again with the arms handed over the other way round, so the operand
+\ assertions below are a statement about polarity rather than a restatement of
+\ the order the fixture was written in.
+: BUILD-FSEL-REAL-SWAPPED ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   ARG+ {: yc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   yc CROSS {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:FLT x y FCMP2 {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   y 3 BR1
+   BLOCK+
+   x 3 BR1
+   BLOCK+
+   FARG+ drop
+   xc RET1
+   CLOSE-FUN ;
+
+: BUILD-FSEL-CELL ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   ARG+ {: yc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   yc CROSS {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:FLT x y FCMP2 {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   xc 3 BR1
+   BLOCK+
+   yc 3 BR1
+   BLOCK+
+   ARG+ RET1
+   CLOSE-FUN ;
+
+: BUILD-FSELZ-REAL ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   ARG+ {: yc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   yc CROSS {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:FLTZ x FCMP1 {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   x 3 BR1
+   BLOCK+
+   y 3 BR1
+   BLOCK+
+   FARG+ drop
+   xc RET1
+   CLOSE-FUN ;
+
+: BUILD-FSELZ-CELL ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   ARG+ {: yc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:FEQZ x FCMP1 {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   xc 3 BR1
+   BLOCK+
+   yc 3 BR1
+   BLOCK+
+   ARG+ RET1
    CLOSE-FUN ;
 
 \ ---- running the pass --------------------------------------------------------
@@ -637,6 +719,23 @@ $1000 constant BUMP-ADDR
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
+\ And a contract that hands out EXACTLY n floating registers, which is what turns
+\ each form's floating floor from a number in a comment into a measured boundary:
+\ the same module is selected once with one register too few and once with
+\ enough, and only the second one converts. The registers are the lowest n
+\ because which ones they are decides nothing here - a floor is a count.
+: FPR-N ( n -- A64EFF:fprs )
+   {: n:n :}
+   A64EFF:FPR-NONE
+   n 0 ?do  i A64EFF:FPR-REG A64EFF:FPR-WITH  loop ;
+
+: POOLED-FN ( n -- A64EFF:routine )
+   {: n:n :}
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE n FPR-N
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
 \ Bind the source dialect while the module is still live, freeze it, and select.
 : SELECTED ( -- IR-BUILD:module )
    CC BB A64SEL:BIND-SOURCE
@@ -652,6 +751,12 @@ $1000 constant BUMP-ADDR
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m A64-BUILDER TXT TXT-N POOLED-FP A64SEL:SELECT ;
+
+: SELECTED-POOL-FN ( n -- IR-BUILD:module )
+   {: n:n :}
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m A64-BUILDER TXT TXT-N  n POOLED-FN  A64SEL:SELECT ;
 
 \ ---- reading the selected module ---------------------------------------------
 1 TYPED-BUFFER R-KEY IR-ID:ir-module-key
@@ -1005,32 +1110,194 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: SELECT-REAL-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE 4 T= ;
 
-\ A FLOAT comparison deciding between two doubles, which is the shape both of
-\ the branching float bodies in the corpus have. Nothing fuses: the comparison
-\ materialises its Habu flag with a64.fflag and the select tests that number
-\ against zero, so what comes out is a64.selzd over the flag and the two
-\ doubles. That is the whole of the NaN argument in one shape - the number the
-\ select tests is the number the source branch tested, so the arm is the same
-\ arm on every input, unordered or not - and it is the shape the NaN rows of
+\ ---- the four selects whose flags an Fcmp wrote -----------------------------
+\ A FLOAT comparison deciding between two doubles, which is RELU-F's file and
+\ MAX-F's comparison. The comparison FUSES: it selects to no operation of its
+\ own, and what comes out is one a64.fcmpseld over the two doubles compared and
+\ the two chosen between. Written the long way it would be an a64.fflag - Fcmp,
+\ Cset, Sub - and then a zero-test select on the number it answered, which is
+\ five instructions and a register where this is two and none.
+\
+\ THE CONDITION IS THE NEGATIVE CONTROL. `f<` reads as less-than and the machine
+\ condition called less-than is `lt`, which is TRUE when an Fcmp raises the
+\ unordered flag; the table gives `mi`, which is false there. The two agree on
+\ every ordered pair, so this assertion is the ONLY thing in the structural
+\ suite that separates them, and it is what the NaN rows of
 \ tools/codegen-compare-corpus3.f measure end to end.
-: SELECT-REAL-FLAG-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool )
+: FSEL-REAL-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool bool bool bool n )
    HIR-MOD
-   BUILD-SELECT-REAL-FLAG
+   BUILD-FSEL-REAL
    SELECTED-POOL-FP READ!
    BLOCKS
    OPS
+   2 s" a64.fcmpseld" OPCODE-IS?
+   2 s" a64.cmpseld" OPCODE-IS?
+   2 s" a64.selzd" OPCODE-IS?
    2 s" a64.fflag" OPCODE-IS?
-   3 s" a64.selzd" OPCODE-IS?
-   3 0 OPERAND@  2 0 RESULT@  SAME-VALUE?
-   3 1 OPERAND@  1 0 RESULT@  SAME-VALUE?
-   3 2 OPERAND@  0 0 RESULT@  SAME-VALUE? ;
+   2 0 OPERAND@  0 0 RESULT@  SAME-VALUE?
+   2 1 OPERAND@  1 0 RESULT@  SAME-VALUE?
+   2 2 OPERAND@  1 0 RESULT@  SAME-VALUE?
+   2 3 OPERAND@  0 0 RESULT@  SAME-VALUE?
+   2 0 ATTR-INT ;
 
-: SELECT-REAL-FLAG-CASE ( -- )
-   s" a float comparison choosing between doubles is a flag and a zero-test select"
+: FSEL-REAL-CASE ( -- )
+   s" a float compare choosing between doubles fuses into one select under mi"
    T-LABEL
-   WBND [: SELECT-REAL-FLAG-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE
-   6 T= 2 T= ;
+   WBND [: FSEL-REAL-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:MI A64IR:COND-CODE T=
+   TTRUE TTRUE TTRUE TTRUE TFALSE TFALSE TFALSE TTRUE
+   5 T= 2 T= ;
+
+: FSEL-REAL-SWAPPED-BODY ( IR-CTX:ctx -- bool bool bool )
+   HIR-MOD
+   BUILD-FSEL-REAL-SWAPPED
+   SELECTED-POOL-FP READ!
+   2 s" a64.fcmpseld" OPCODE-IS?
+   2 2 OPERAND@  0 0 RESULT@  SAME-VALUE?
+   2 3 OPERAND@  1 0 RESULT@  SAME-VALUE? ;
+
+: FSEL-REAL-SWAPPED-CASE ( -- )
+   s" exchanging the two arms exchanges the two chosen sources and nothing else"
+   T-LABEL
+   WBND [: FSEL-REAL-SWAPPED-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE ;
+
+\ The same comparison with the argument CELLS at the join, which is MAX-F's own
+\ shape. What changes is one thing: the answer is chosen with a Csel and not an
+\ Fcsel, so the form is a64.fcmpsel. The compared operands are still the two
+\ doubles, which is what makes this the corner with the leading `f` and no
+\ trailing one.
+: FSEL-CELL-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool bool bool n )
+   HIR-MOD
+   BUILD-FSEL-CELL
+   SELECTED-POOL-FP READ!
+   BLOCKS
+   OPS
+   2 s" a64.fcmpsel" OPCODE-IS?
+   2 s" a64.cmpsel" OPCODE-IS?
+   2 s" a64.fcmpseld" OPCODE-IS?
+   2 0 OPERAND@  0 0 RESULT@  SAME-VALUE?
+   2 1 OPERAND@  1 0 RESULT@  SAME-VALUE?
+   2 2 OPERAND@  1 ARG@  SAME-VALUE?
+   2 3 OPERAND@  0 ARG@  SAME-VALUE?
+   2 0 ATTR-INT ;
+
+: FSEL-CELL-CASE ( -- )
+   s" the same compare choosing between cells is the general-answer form"
+   T-LABEL
+   WBND [: FSEL-CELL-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:MI A64IR:COND-CODE T=
+   TTRUE TTRUE TTRUE TTRUE TFALSE TFALSE TTRUE
+   5 T= 2 T= ;
+
+\ The comparison against the instruction's own zero, which is RELU-F's shape.
+\ Its operand list is one SHORTER, because the zero is a form of the Fcmp and
+\ not a register anything computed - so the chosen pair starts at operand one.
+: FSELZ-REAL-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool bool n )
+   HIR-MOD
+   BUILD-FSELZ-REAL
+   SELECTED-POOL-FP READ!
+   BLOCKS
+   OPS
+   2 s" a64.fcmpselzd" OPCODE-IS?
+   2 s" a64.fcmpseld" OPCODE-IS?
+   2 s" a64.selzd" OPCODE-IS?
+   2 0 OPERAND@  0 0 RESULT@  SAME-VALUE?
+   2 1 OPERAND@  1 0 RESULT@  SAME-VALUE?
+   2 2 OPERAND@  0 0 RESULT@  SAME-VALUE?
+   2 0 ATTR-INT ;
+
+: FSELZ-REAL-CASE ( -- )
+   s" a float zero compare choosing between doubles reads one register and mi"
+   T-LABEL
+   WBND [: FSELZ-REAL-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:MI A64IR:COND-CODE T=
+   TTRUE TTRUE TTRUE TFALSE TFALSE TTRUE
+   5 T= 2 T= ;
+
+\ And the fourth corner, on `f0=` so that the condition assertion is a second
+\ row of the table rather than a third reading of the same one.
+: FSELZ-CELL-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool n )
+   HIR-MOD
+   BUILD-FSELZ-CELL
+   SELECTED-POOL-FP READ!
+   BLOCKS
+   OPS
+   1 s" a64.fcmpselz" OPCODE-IS?
+   1 s" a64.selz" OPCODE-IS?
+   1 0 OPERAND@  0 0 RESULT@  SAME-VALUE?
+   1 1 OPERAND@  1 ARG@  SAME-VALUE?
+   1 2 OPERAND@  0 ARG@  SAME-VALUE?
+   1 0 ATTR-INT ;
+
+: FSELZ-CELL-CASE ( -- )
+   s" a float zero compare choosing between cells is the fourth corner, under equal"
+   T-LABEL
+   WBND [: FSELZ-CELL-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:EQUAL A64IR:COND-CODE T=
+   TTRUE TTRUE TTRUE TFALSE TTRUE
+   4 T= 2 T= ;
+
+\ ---- the floating floor each of the four sits on ----------------------------
+\ A fused float select reads its compared D registers AND its chosen ones at one
+\ instant, so the floor it is held against is the sum of the two - and the whole
+\ point of this pair of cases is that the COMPARED half is now counted. Before
+\ the fusion the compare was an a64.fflag standing on its own and the select's
+\ floating floor was the arms alone; a rule that still counted only the arms
+\ would put BUILD-FSEL-REAL's floor at two, and three registers would be enough.
+\ It is four - two doubles compared plus two chosen - so three is not, and the
+\ region stays branched.
+\
+\ THE PRESSURE QUESTION DOES NOT ANSWER THIS ONE, which is why three is the
+\ number chosen. That region speculates two doubles and hands one across, so its
+\ floating PRESSURE is three: at a pool of three the pressure test passes and
+\ only the floor refuses, and at four both pass. The pair therefore reads the
+\ floor and nothing else.
+: FSEL-REAL-POOL3-BODY ( IR-CTX:ctx -- n bool bool )
+   HIR-MOD
+   BUILD-FSEL-REAL
+   3 SELECTED-POOL-FN READ!
+   BLOCKS
+   2 s" a64.fcmpbr" OPCODE-IS?
+   2 s" a64.fcmpseld" OPCODE-IS? ;
+
+: FSEL-REAL-POOL4-BODY ( IR-CTX:ctx -- n bool bool )
+   HIR-MOD
+   BUILD-FSEL-REAL
+   4 SELECTED-POOL-FN READ!
+   BLOCKS
+   2 s" a64.fcmpseld" OPCODE-IS?
+   2 s" a64.fcmpbr" OPCODE-IS? ;
+
+: FSEL-REAL-POOL-CASE ( -- )
+   s" three floating registers cannot hold the fused float select and four can"
+   T-LABEL
+   WBND [: FSEL-REAL-POOL3-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE 4 T=
+   WBND [: FSEL-REAL-POOL4-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE 2 T= ;
+
+\ The other side of the same floor, and the one that says the compared half is
+\ counted against the FLOATING file and not the general one. MAX-F's shape
+\ chooses between two cells, so its general floor is the two arms alone and its
+\ floating floor is the two doubles the Fcmp reads. A routine that may write no
+\ floating register at all therefore keeps its branch even though every value
+\ the select CHOOSES is a cell - which is exactly what changed, because the old
+\ lowering put a Cset between the Fcmp and the select and asked nothing of the
+\ floating pool at all.
+: FSEL-CELL-REFUSE-BODY ( IR-CTX:ctx -- n bool bool )
+   HIR-MOD
+   BUILD-FSEL-CELL
+   SELECTED-POOL READ!
+   BLOCKS
+   2 s" a64.fcmpbr" OPCODE-IS?
+   2 s" a64.fcmpsel" OPCODE-IS? ;
+
+: FSEL-CELL-REFUSE-CASE ( -- )
+   s" a routine with no floating register keeps its branch even to choose cells"
+   T-LABEL
+   WBND [: FSEL-CELL-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE 4 T= ;
 
 \ ---- the fused compare-and-branch --------------------------------------------
 \ The entry block of the branching shape holds ONE operation when the comparison
@@ -1661,7 +1928,13 @@ public
    SELECT-REAL-SWAPPED-CASE
    SELECT-REAL-REST-CASE
    SELECT-REAL-REFUSE-CASE
-   SELECT-REAL-FLAG-CASE
+   FSEL-REAL-CASE
+   FSEL-REAL-SWAPPED-CASE
+   FSEL-CELL-CASE
+   FSELZ-REAL-CASE
+   FSELZ-CELL-CASE
+   FSEL-REAL-POOL-CASE
+   FSEL-CELL-REFUSE-CASE
    FLAG-VALUE-CASE
    FFUSE-CASE
    FFUSE-REST-CASE

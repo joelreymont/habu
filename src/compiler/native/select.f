@@ -1232,23 +1232,75 @@ variable KEPT-F
 
 \ ---- selecting a comparison --------------------------------------------------
 \ Which condition one source comparison is made under, read off the operation's
-\ own opcode. Every form below asks here - the two that answer a Habu flag and
-\ the two fused compare-and-branches - so the pairing of a source relation to a
-\ machine condition is written once: a comparison lowered under the wrong
-\ condition is one wrong line of this table rather than two lines that can
-\ disagree with each other. An operation that is not one of the eleven is refused
-\ by name, because a caller asking this of anything else has already gone wrong.
+\ own opcode. Every form below asks here - the three that answer a Habu flag, the
+\ three fused compare-and-branches and the six fused compare-and-selects - so the
+\ pairing of a source relation to a machine condition is written once: a
+\ comparison lowered under the wrong condition is one wrong line of this table
+\ rather than several lines that can disagree with each other. An operation that
+\ is not one of the eleven is refused by name, because a caller asking this of
+\ anything else has already gone wrong.
 \
 \ THE FIVE FLOAT ROWS ARE NOT THE INTEGER ROWS REPEATED, and this is the one
 \ table in the chain where reading a condition off a relation's name would be
-\ wrong. `<` is lowered under `lt` and `f<` is lowered under `mi`, because the
-\ flags a compare of two DOUBLES leaves are not the flags a compare of two cells
-\ leaves: an Fcmp raises the unordered condition for a NaN, and under it `lt`
-\ holds while `mi` does not. The engine's own `f<` uses `mi` for exactly that
-\ reason and this table follows it; src/compiler/native/a64ir.f carries the flag
-\ table the claim rests on. There is no float row for `<=`, `>=` or `<>` because
-\ the engine has no such word - the three float relations it has are these three,
-\ twice over, once against another double and once against zero.
+\ wrong. What follows is the derivation, because three separate lowerings now
+\ rest on it and each of them reads the flags an Fcmp left.
+\
+\ (a) WHAT THE FLAGS ARE. An Fcmp of x against y sets NZCV from x-y, except that
+\ when either operand is a NaN it raises the UNORDERED condition instead, which
+\ is N=0 Z=0 C=1 V=1. The four cases are the whole input to this table:
+\
+\     x < y        N=1 Z=0 C=0 V=0
+\     x > y        N=0 Z=0 C=1 V=0
+\     x = y        N=0 Z=1 C=1 V=0
+\     unordered    N=0 Z=0 C=1 V=1
+\
+\ (b) WHAT THE ENGINE ANSWERS, which is the contract a compiled body has to
+\ match. src/habu/habu1.f (FCMP) is `Fcmp d0,d1; Cset a,cc; Sub a,xzr,a` under
+\ cc = MI for `f<`, GT for `f>` and EQ for `f=`, and (FCMP0) is the same three
+\ against the immediate zero under MI for `f0<` and EQ for `f0=`. So the Habu
+\ flag is all bits set exactly when cc holds, and the measured consequence -
+\ every float comparison answers FALSE for a NaN - is survey (4) at the head of
+\ tools/codegen-compare-corpus3.f.
+\
+\ (c) THE CONDITIONS, READ AGAINST (a). Each row is the architecture's own test
+\ evaluated on each of the four flag states:
+\
+\     condition code  the test         x<y    x>y    x=y    unordered
+\     mi         4    N = 1            TRUE   false  false  false
+\     gt        12    Z=0 and N = V    false  TRUE   false  false
+\     equal      0    Z = 1            false  false  TRUE   false
+\     lt        11    N != V           TRUE   false  false  TRUE
+\     le        13    Z=1 or N != V    TRUE   false  TRUE   TRUE
+\     ne         1    Z = 0            TRUE   TRUE   false  TRUE
+\     ge        10    N = V            false  TRUE   TRUE   false
+\     hs         2    C = 1            false  TRUE   TRUE   TRUE
+\
+\ `mi`, `gt` and `equal` are the three whose column is TRUE in exactly one of the
+\ four states and false in the unordered one, so they are the three that mean
+\ what the engine's `f<`, `f>` and `f=` mean on every input. That is why this
+\ table gives the float rows those three and not the ones their names suggest.
+\
+\ (d) THE ROW THAT WOULD HAVE BEEN WRONG, by name. `f<` reads as less-than, and
+\ the machine condition called less-than is `lt` - which agrees with `mi` on all
+\ three ORDERED states and disagrees on the fourth. A table that took `lt` would
+\ therefore pass every test that did not hand it a NaN and then take the wrong
+\ arm on one, and the same holds for `f0<`. `ne` and `hs` are unordered-TRUE for
+\ the same reason. test/compiler/native-select.f asserts the two `lt`-shaped rows
+\ answer `mi`, which is the negative control for this whole derivation.
+\
+\ (e) WHY THIS TABLE DECIDES THE ARM AND NOT ONLY THE FLAG. A fused branch and a
+\ fused select both read the flags directly, so nothing downstream of them can
+\ repair a wrong condition: the branch goes to its condition-holds successor and
+\ the select writes its first source, and both of those were wired to the arm the
+\ source's `if` takes when the relation HOLDS. Under `mi` a NaN takes neither, so
+\ control and value both go the way the interpreted word goes; under `lt` both
+\ would go the other way. The wiring is identical either way, which is why the
+\ NaN rule lives here and nowhere else.
+\
+\ There is no float row for `<=`, `>=` or `<>` because the engine has no such
+\ word - the three float relations it has are these three, twice over, once
+\ against another double and once against zero. src/compiler/native/a64ir.f
+\ carries the flag table and the condition codes this derivation rests on.
 : COMPARE-COND ( IR-ID:ir-op-id -- A64IR:cond )
    OPCODE-AT OPCODE-SLOT
    case
@@ -1809,22 +1861,18 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       bk i OP-AT SPECULABLE? 0= if drop false leave then
    loop ;
 
-\ Which comparison this block's two-way branch may be made into a select with.
-\ It is the fused branch's own three facts - the comparison stands immediately
-\ above the branch, the branch tests the value it defines, and nothing else
-\ reads that value - and one more that belongs to the machine: a Csel reads the
-\ flags a Cmp left, so only the six comparisons of two GENERAL registers fuse
-\ here. A float comparison keeps a64.fflag and the select is made on the number
-\ it answers - which is the engine's own flag, all bits set or none and none for
-\ a NaN - so a compiled float selection takes the arm the interpreted word takes
-\ without this leaf having a second NaN argument to get right.
-: SEL-FUSE-OF ( IR-ID:ir-block-id -- n )
-   {: bk:IR-ID:ir-block-id :}
-   bk FUSE-INDEX {: k:n :}
-   k 0 < if -1 exit then
-   bk k OP-AT OP-KIND  A64SEL-CMPKIND:GPR A64SEL-CMPKIND:EQ  0= if -1 exit then
-   k ;
-
+\ WHICH COMPARISON A BLOCK'S SELECT FUSES WITH IS THE SAME QUESTION AS WHICH ONE
+\ ITS BRANCH FUSES WITH, and it is FUSE-INDEX above for both. It used to be a
+\ second and narrower question: a select had to read the flags a Cmp of two
+\ GENERAL registers left, because those were the only conditional-select forms
+\ the dialect had, so a float comparison materialised its Habu flag with
+\ a64.fflag and the select tested that number against zero. The dialect now has
+\ the other row of the square - a64.fcmpsel, a64.fcmpselz, a64.fcmpseld and
+\ a64.fcmpselzd, whose first instruction is the Fcmp - so every comparison that
+\ fuses into a branch fuses into a select as well and there is no filter left to
+\ write. What a float comparison changes is not WHETHER it fuses but which POOL
+\ its compared registers come out of, which is the next question below.
+\
 \ ---- whether the routine has registers for the form at all -------------------
 \ A select reads every one of its sources AT ONE INSTANT, which is what makes
 \ this a question about the routine's POOL rather than about pressure anywhere.
@@ -1840,12 +1888,16 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ holding a sum against a pool neither half comes out of. The read count
 \ therefore splits exactly the way the instruction does:
 \
-\   the COMPARE half is always general. It is one register for the zero test -
-\     the value the source branch tests - and two for the fused form, and it is
-\     general in both cases whichever file the answers live in, because what
-\     writes the flags a select reads is a Cmp over cells. (A float comparison
-\     is not fused into a select yet - SEL-FUSE-OF admits only the general kind
-\     - so no shape here compares two doubles. Dot habu-fuse-a-float-4545c786.)
+\   the COMPARE half is one file or the other, and WHICH is the kind of the
+\     comparison the select fuses with. A select that fuses with nothing tests
+\     the cell the source branch tests, which is one GENERAL register. A select
+\     that fuses with a comparison of two cells reads two general ones. A select
+\     that fuses with a FLOAT comparison reads no general register at all and
+\     reads the D registers the Fcmp names instead - two of them, or one for the
+\     form that compares against the instruction's own zero. That count is not
+\     written out again here: KIND-OPERANDS above already says how many
+\     registers each kind of comparison reads, and the kind already says which
+\     file they are registers of, so both floors come off the one table.
 \
 \   the CHOSEN half is two registers of the file the position lives in, and a
 \     region may have positions in both files at once, so both counts get their
@@ -1855,6 +1907,14 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \     the floor is the widest single instruction and not the whole row. What
 \     the whole row costs is pressure, which is the next question below.
 \
+\ SO THE SIX FLOORS ARE, per shape, general first and floating second: an
+\ unfused select choosing cells 1+2 and 0; unfused choosing doubles 1 and 2;
+\ cell-compare fused choosing cells 2+2 and 0; cell-compare fused choosing
+\ doubles 2 and 2; float-compare fused choosing cells 2 and 2 (or 1 for the zero
+\ form); float-compare fused choosing doubles 0 and 2+2 (or 1+2). A region with
+\ positions in both files takes the sum in each, which is exactly what the two
+\ words below add up.
+\
 \ THE ANSWER IS NOT COUNTED, and that is a statement about the allocator rather
 \ than a rounding down. A select's result may take the register of a source that
 \ dies at it, which is the ordinary case and is why the two-argument bodies this
@@ -1862,9 +1922,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ exactly on the floor may still be refused, and that refusal is the allocator's
 \ own answer about the whole routine; this pass is not in a position to predict
 \ it and does not try.
-1 constant SELZ-CMP-REGS             \ the value a zero-test select reads
-2 constant CMPSEL-CMP-REGS           \ the two a fused select compares
-2 constant SEL-ARM-REGS              \ the two either of them chooses between
+1 constant SELZ-CMP-REGS             \ the cell a zero-test select reads
+2 constant SEL-ARM-REGS              \ the two any of them chooses between
 
 : GPR-POOL-N ( -- n )
    0 S-POOL @ A64EFF:GPRS-N BITS-N ;
@@ -1872,22 +1931,47 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : FPR-POOL-N ( -- n )
    0 S-FPOOL @ A64EFF:FPRS-N BITS-N ;
 
-\ What one block's selects read out of the general file: the compare, plus the
-\ arms of any position that is not a double. A block that does not end in a
-\ two-way branch emits no select and reads nothing.
+\ Whether the comparison a block's select fuses with compares two general
+\ registers. It is asked twice below, once per file, so the two floors cannot
+\ disagree about which file a compare's operands come out of.
+: FUSED-GPR? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id fz:n :}
+   bk fz OP-AT OP-KIND  A64SEL-CMPKIND:GPR A64SEL-CMPKIND:EQ ;
+
+\ How many GENERAL registers the compare half of this block's select reads.
+: SEL-CMP-G ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   bk FUSE-INDEX {: fz:n :}
+   fz 0 < if SELZ-CMP-REGS exit then
+   bk fz FUSED-GPR? 0= if 0 exit then
+   bk fz OP-AT OP-KIND KIND-OPERANDS ;
+
+\ And how many FLOATING ones, which is the same question the other way round: a
+\ float comparison's operands are the two D registers it compares, or the one it
+\ compares against the instruction's own zero.
+: SEL-CMP-F ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   bk FUSE-INDEX {: fz:n :}
+   fz 0 < if 0 exit then
+   bk fz FUSED-GPR? if 0 exit then
+   bk fz OP-AT OP-KIND KIND-OPERANDS ;
+
+\ What one block's selects read out of the general file: the compare's general
+\ registers, plus the arms of any position that is not a double. A block that
+\ does not end in a two-way branch emits no select and reads nothing.
 : SEL-NEED-G ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
    bk BRZ-TERM? 0= if 0 exit then
-   bk SEL-FUSE-OF 0 < if SELZ-CMP-REGS else CMPSEL-CMP-REGS then
+   bk SEL-CMP-G
    R-WIDTH @ R-WIDTH-D @ > if SEL-ARM-REGS + then ;
 
-\ And out of the floating file: the arms of any position that is a double, and
-\ nothing else, because nothing a select compares lives there.
+\ And out of the floating file: the compare's D registers when an Fcmp is what
+\ writes the flags, plus the arms of any position that is a double.
 : SEL-NEED-F ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
    bk BRZ-TERM? 0= if 0 exit then
-   R-WIDTH-D @ 0 > if SEL-ARM-REGS exit then
-   0 ;
+   bk SEL-CMP-F
+   R-WIDTH-D @ 0 > if SEL-ARM-REGS + then ;
 
 \ How many VALUES one block of the region would compute on a path the program
 \ would not have taken. It is the block's operations less its terminator, which
@@ -1898,7 +1982,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : SPEC-DEFS ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 1-
-   bk SEL-FUSE-OF 0 >= if 1- then ;
+   bk FUSE-INDEX 0 >= if 1- then ;
 
 \ Does this operation define a double? An operation that defines nothing at all
 \ answers no, which is the right answer for the floating count and leaves it in
@@ -1915,7 +1999,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ neither file's pressure can be counted twice or missed.
 : SPEC-DEFS-D ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
-   bk SEL-FUSE-OF {: fz:n :}
+   bk FUSE-INDEX {: fz:n :}
    bk OP-COUNT 1- {: k:n :}
    0
    k 0 ?do
@@ -2496,20 +2580,74 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : RSEL! ( IR-ID:ir-value-id n n -- )
    RSEL-SLOT RSEL ! ;
 
-\ The two machine select SHAPES, each in the two files it may answer in. Each
-\ takes the answer the source branch reaches when the tested value is NOT zero
-\ first, because that is the arm a Habu `if` takes and because both Csel and
-\ Fcsel write their first source when the condition holds.
+\ The two machine select SHAPES, in the files they may answer in and under the
+\ instructions that may have written their flags. Each takes the answer the
+\ source branch reaches when the tested value is NOT zero first, because that is
+\ the arm a Habu `if` takes and because both Csel and Fcsel write their first
+\ source when the condition holds.
 \
-\ THE FILE IS A PARAMETER AND NOT A SECOND WORD, because the two forms of a
-\ shape differ in exactly one thing: which opcode is staged. The operands, their
-\ order, the condition and the polarity are the same statement, so writing them
-\ twice would be two places for the polarity to be got right in.
+\ THE FILE AND THE FLAGS-WRITER ARE PARAMETERS AND NOT SIX MORE WORDS, because
+\ the forms of one shape differ in exactly one thing: which opcode is staged.
+\ The operands, their order, the condition and the polarity are the same
+\ statement, so writing them out per form would be six places for the polarity to
+\ be got right in.
+\
+\ THE ZERO-TEST SHAPE HAS ONLY THE TWO FORMS IT ALWAYS HAD, and that is not an
+\ omission. It is what a block whose branch fuses with NOTHING becomes, so what
+\ it tests is a cell the program computed and what wrote the flags is the Cmp
+\ against the immediate zero this form itself carries. A float comparison
+\ against zero is not this shape at all: it is a comparison, so it goes through
+\ the fused shape below under a64.fcmpselz or a64.fcmpselzd.
+\
+\ AND THE POLARITY CARRIES THE NaN RULE THROUGH A FUSED FLOAT SELECT, which is
+\ the one thing this leaf has to get right and is the same argument the fused
+\ float BRANCH makes with the successors instead of the sources. Work it through
+\ for `x y f< if y else x then`, whose condition the table above gives as `mi`:
+\
+\   x y f<   answers 0 when either operand is a NaN (measured; survey (4))
+\   so the INTERPRETED `if` takes hir.brz succ 0 - the source's `else`, which is
+\      `x` - and that is the value R-S0 holds, which REGION-PICK passes as fv
+\   the FUSED select is Fcmp x,y then a select under `mi`. A NaN raises the
+\      unordered condition, N is clear, `mi` does not hold
+\   a Csel and an Fcsel both write their SECOND source when the condition does
+\      not hold, which is fv - the same value the interpreted word answers
+\
+\ The step that does the work is the third: `mi` is false on unordered.
+\ It holds identically for `f>` under `gt`, `f=` under `equal` and the two zero
+\ comparisons under `mi` and `equal`, because those three conditions are exactly
+\ the ones that are false when the unordered flag is set. Under `lt`, which is
+\ what a table that read the condition off the relation's NAME would give `f<`,
+\ the unordered flag makes the condition HOLD and the select would write tv - the
+\ arm the interpreted word does not take. Nothing about the source order changes
+\ between the two, which is why the NaN rule lives in the condition table and not
+\ here.
 : SELZ-OPCODE ( bool -- A64IR:opcode )
    if A64IR-OPCODE:SELZD else A64IR-OPCODE:SELZ then ;
 
-: CMPSEL-OPCODE ( bool -- A64IR:opcode )
+\ One row of the fused shape each: which file the answer lives in, under the
+\ instruction that wrote the flags.
+: GPR-SEL-OPCODE ( bool -- A64IR:opcode )
    if A64IR-OPCODE:CMPSELD else A64IR-OPCODE:CMPSEL then ;
+
+: FREG-SEL-OPCODE ( bool -- A64IR:opcode )
+   if A64IR-OPCODE:FCMPSELD else A64IR-OPCODE:FCMPSEL then ;
+
+: FZERO-SEL-OPCODE ( bool -- A64IR:opcode )
+   if A64IR-OPCODE:FCMPSELZD else A64IR-OPCODE:FCMPSELZ then ;
+
+\ Which fused select one comparison becomes: its kind says which instruction
+\ writes the flags and how many registers that instruction reads, and the join
+\ argument's type says which file the answer lives in. Six of the eight forms
+\ are here because the other two are the zero-test shape above.
+: CMPSEL-OPCODE ( A64SEL:cmpkind bool -- A64IR:opcode )
+   {: k:A64SEL:cmpkind d:bool :}
+   k
+   MATCH A64SEL:cmpkind
+      none  OF E-A64SEL-OPCODE throw ENDOF
+      gpr   OF d GPR-SEL-OPCODE ENDOF
+      freg  OF d FREG-SEL-OPCODE ENDOF
+      fzero OF d FZERO-SEL-OPCODE ENDOF
+   ;MATCH ;
 
 : SEL-RESULT+ ( bool -- )
    if FRESULT+ else RESULT+ then ;
@@ -2525,12 +2663,20 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    CLOSE-VALUE
    ACC ;
 
+\ HOW MANY OF THE COMPARISON'S OPERANDS THE SELECT CARRIES comes off its kind,
+\ exactly as it does for the fused BRANCH: the two comparisons against zero carry
+\ one, because the instruction's second operand is the immediate zero the form
+\ itself holds. The chosen-between pair follows them, so a form's operand list is
+\ the compared registers and then the two answers, in that order, whichever
+\ corner of the square it is.
 : EMIT-CMPSEL ( IR-ID:ir-op-id IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id bool -- IR-ID:ir-value-id )
    {: at:IR-ID:ir-op-id cm:IR-ID:ir-op-id
       tv:IR-ID:ir-value-id fv:IR-ID:ir-value-id d:bool :}
-   at d CMPSEL-OPCODE OPEN
-   CTX BLD  cm 0 OPERAND  IR-BUILD:ADD-OPERAND
-   CTX BLD  cm 1 OPERAND  IR-BUILD:ADD-OPERAND
+   cm OP-KIND {: k:A64SEL:cmpkind :}
+   at k d CMPSEL-OPCODE OPEN
+   k KIND-OPERANDS 0 ?do
+      CTX BLD  cm i OPERAND  IR-BUILD:ADD-OPERAND
+   loop
    CTX BLD tv IR-BUILD:ADD-OPERAND
    CTX BLD fv IR-BUILD:ADD-OPERAND
    d SEL-RESULT+
@@ -2583,7 +2729,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ for both.
 : REGION-OPS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   bk SEL-FUSE-OF {: fz:n :}
+   bk FUSE-INDEX {: fz:n :}
    bk OP-COUNT 1- {: k:n :}
    k 0 ?do
       i fz <> if bk i OP-AT RULE then
@@ -2625,7 +2771,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk TERM-OP {: t:IR-ID:ir-op-id :}
-   bk SEL-FUSE-OF {: fz:n :}
+   bk FUSE-INDEX {: fz:n :}
    t 0 SUCC-IDX R-S0 !
    t 1 SUCC-IDX R-S1 !
    R-WIDTH @ 0 ?do

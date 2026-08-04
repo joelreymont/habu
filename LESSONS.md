@@ -5040,3 +5040,44 @@ plus a control proving the blanked hook alone still boots 0); and never let a
 child-rc assertion print only a number. `lib/test/spawn-report.f` `CHILD` prints
 the child's own stdout/stderr and the launch context on a mismatch — the answer
 that took a day was one line of the child's stderr the fixture was discarding.
+
+## An edge value can be the only witness a table has
+
+A condition table where the wrong entry agrees with the right one on every
+ordinary input is the dangerous shape: after an Fcmp, `lt` and `mi` differ only
+on the unordered flag, so a suite that never hands the compiler a NaN certifies
+the swapped condition. When a table's rows can only be distinguished by an edge
+value, the test that pins the edge value is the whole test - write it first, and
+write down which naive row it excludes (`test/compiler/native-select.f` asserts
+both lt-shaped rows come out `mi`; nothing else in the structural suite separates
+them).
+
+## Delete a filter a capability made vacuous, don't widen it
+
+When every comparison kind gained a select form, "which comparison may a select
+fuse with" became the same question as "which may a branch fuse with", already
+answered by FUSE-INDEX. Widening SEL-FUSE-OF to admit every kind would have made
+it a word whose body says yes - a second copy of the real rule, free to drift.
+It was deleted and its call sites ask the one authority.
+
+## Derive per-file floors from the table that already knows the shape
+
+A select's register floor comes from KIND-OPERANDS (how many registers the
+comparison kind reads) plus the kind itself (which file they live in). The
+deleted CMPSEL-CMP-REGS was a 2 that happened to agree with KIND-OPERANDS gpr;
+restating a floor as a constant per form is how a third form gets a 2 that does
+not. A floor and an operand list built from one table cannot disagree.
+
+## Pick a test contract's register count where only the questioned rule refuses
+
+A floor case proves nothing unless the OTHER admission tests already pass at the
+chosen count: the fused-float floor pair uses a contract with exactly 3 D
+registers (branch kept) against 4 (converted), 3 being the count where the
+pressure test passes and only the floor refuses - so the pair reads the floor
+alone, from both sides.
+
+## A structural counter earns its place by moving for the change
+
+FCSEL-COUNT and BCOND-COUNT were both unchanged by the float fusion; its witness
+is CSET-COUNT going 1 to 0 - the flag materialisation the fusion removes. Pin
+the counter that moves, or the assertion certifies the wrong thing.

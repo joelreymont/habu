@@ -763,6 +763,30 @@ $34000000 constant CBZ-OP
 $FFE00C00 constant FCSEL-MASK
 $1E600C00 constant FCSEL-OP
 
+\ AND THE THREE THAT SAY WHETHER A FLOAT COMPARISON WAS FOLDED INTO THE SELECT
+\ OR ONLY STOOD IN FRONT OF IT. A body that materialises a Habu flag and then
+\ chooses on it emits an Fcmp, a Cset and a select; one that folds the
+\ comparison in emits the Fcmp and the select and no Cset. So the Cset is the
+\ exact witness, and the Fcmp beside it says the select really is reading an
+\ Fcmp's flags rather than an integer compare's.
+\
+\   Csel  is the general-file select, src/arch/arm64/asm.f ENC-CSEL, and the
+\         same 11-bit base as Fcsel with the op2 field zero - which is what
+\         separates it from the Csinc a Cset is.
+\   Cset  is that Csinc with both source registers the zero register, which is
+\         why its mask covers the rm and rn fields as well as the opcode.
+\   Fcmp  is the float compare, in both its forms: two D registers, and one
+\         against the immediate zero. A body may use either, so both are
+\         counted - what is being asserted is that the comparison happened in
+\         this word's own code and not behind a call.
+$FFE00C00 constant CSEL-MASK
+$9A800000 constant CSEL-OP
+$FFFF0FE0 constant CSET-MASK
+$9A9F07E0 constant CSET-OP
+$FFE0FC1F constant FCMP-MASK
+$1E602000 constant FCMP-OP
+$1E602008 constant FCMP0-OP
+
 : FORM-COUNT ( ptr u8 n n n -- n ) {: a:ptr u:n mask:n op:n :}
    a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then
    dup XREF-START CODE-AT !
@@ -778,6 +802,16 @@ $1E600C00 constant FCSEL-OP
 
 : FCSEL-COUNT ( ptr u8 n -- n )
    FCSEL-MASK FCSEL-OP FORM-COUNT ;
+
+: CSEL-COUNT ( ptr u8 n -- n )
+   CSEL-MASK CSEL-OP FORM-COUNT ;
+
+: CSET-COUNT ( ptr u8 n -- n )
+   CSET-MASK CSET-OP FORM-COUNT ;
+
+: FCMP-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u FCMP-MASK FCMP-OP FORM-COUNT
+   a u FCMP-MASK FCMP0-OP FORM-COUNT + ;
 
 \ ---- what each column spends on the caller's own data stack ------------------
 \ A COST is a measurement; a count of instructions is not. What the timing rows
@@ -1083,20 +1117,35 @@ $1E600C00 constant FCSEL-OP
 \ MAX-F-N, which never had a branch to lose, gains nothing - which is what says
 \ the cell path was left alone.
 \
-\ THE COMPARISON ITSELF IS NOT FOLDED INTO THE SELECT in either body. It
-\ materialises the Habu flag a64.fflag or a64.fflagz answers - zero for a NaN,
-\ because the conditions those forms are given are the three that are false
-\ under the unordered flag - and the select then tests THAT NUMBER against zero.
-\ So a converted body chooses on the very number the source `if` tested and
-\ takes the same arm on every input.
+\ AND THE COMPARISON ITSELF IS NOW FOLDED INTO THE SELECT IN BOTH. The chain's
+\ code for each of them is one Fcmp and one conditional select and nothing else:
+\ the Cset and the negation that turned the comparison into a Habu flag are gone,
+\ and so is the compare-against-zero that tested that flag. RELU-F-N's select
+\ reads the flags an `Fcmp d,#0.0` left and MAX-F-N's the flags an `Fcmp d,d`
+\ left, which is what a64.fcmpselzd and a64.fcmpsel are.
+\
+\ WHAT THAT RESTS ON, AND WHY IT IS SAFE. A select that reads an Fcmp's flags
+\ takes its arm from a condition, and after an Fcmp a NaN raises the unordered
+\ flag - so the condition is the whole of the NaN behaviour. The conditions
+\ src/compiler/native/select.f gives the float comparisons are `mi`, `gt` and
+\ `equal`, which are exactly the three that are FALSE under the unordered flag,
+\ so an unordered comparison takes the same arm the engine's own flag-and-branch
+\ takes. The derivation is written out at that table.
 \
 \ THAT LAST SENTENCE IS WHAT THE OUTPUT ROWS ABOVE MEASURE AND THESE COUNTS DO
 \ NOT. The corpus runs RELU-F on a NaN and on a negative zero, and MAX-F on a
 \ NaN in each position, and the report compares every recorded cell against the
 \ interpreted word's - so a conversion that took the other arm for an unordered
 \ comparison is a finding and not a slower row. What is pinned here is the other
-\ half: that the branch really left, and that what stands in its place is an
-\ Fcsel rather than an arm that was dropped.
+\ half: that the branch really left, that the flag is never materialised, and
+\ that what stands in its place chooses in the file its arms live in.
+\
+\ THE OLD COLUMN'S TWO ROWS DO NOT AGREE WITH EACH OTHER, and that is the engine
+\ and not a mistake here. RELU-F's `f0<` is a LEAF primitive with no call in its
+\ body, so the engine copies it inline and the row really does hold an Fcmp and
+\ the Cset that turns it into a number; MAX-F's `f<` is reached by a call, so its
+\ own code holds neither and one Bl instead. Both are pinned, because between
+\ them they say what the chain's two rows replaced.
    s" the engine branches through both float selections and the chain does not" T-LABEL
    s" CODEGEN-CORPUS3:RELU-F" BCOND-COUNT 1 T=
    s" CODEGEN-CORPUS3:MAX-F" BCOND-COUNT 1 T=
@@ -1108,7 +1157,26 @@ $1E600C00 constant FCSEL-OP
    s" CODEGEN-CORPUS3:RELU-F-N" FCSEL-COUNT 1 T=
    s" CODEGEN-CORPUS3:MAX-F-N" FCSEL-COUNT 0 T=
    s" CODEGEN-CORPUS3:RELU-F" FCSEL-COUNT 0 T=
-   s" CODEGEN-CORPUS3:MAX-F" FCSEL-COUNT 0 T= ;
+   s" CODEGEN-CORPUS3:MAX-F" FCSEL-COUNT 0 T=
+
+   s" while the one whose join carries cells chose with the general select" T-LABEL
+   s" CODEGEN-CORPUS3:MAX-F-N" CSEL-COUNT 1 T=
+   s" CODEGEN-CORPUS3:RELU-F-N" CSEL-COUNT 0 T=
+
+   s" neither of them materialises the comparison's flag any more" T-LABEL
+   s" CODEGEN-CORPUS3:RELU-F-N" CSET-COUNT 0 T=
+   s" CODEGEN-CORPUS3:MAX-F-N" CSET-COUNT 0 T=
+
+   s" because each select reads the flags an Fcmp in its own code left" T-LABEL
+   s" CODEGEN-CORPUS3:RELU-F-N" FCMP-COUNT 1 T=
+   s" CODEGEN-CORPUS3:MAX-F-N" FCMP-COUNT 1 T=
+
+   s" where the engine either inlines the compare and sets a flag, or calls out"
+   T-LABEL
+   s" CODEGEN-CORPUS3:RELU-F" FCMP-COUNT 1 T=
+   s" CODEGEN-CORPUS3:RELU-F" CSET-COUNT 1 T=
+   s" CODEGEN-CORPUS3:MAX-F" FCMP-COUNT 0 T=
+   s" CODEGEN-CORPUS3:MAX-F" BL-COUNT 1 T= ;
 
 \ ---- the claim the second corpus's two respelled rows rest on ----------------
 \ tools/codegen-compare-migrated2.f compiles two of the second corpus's bodies

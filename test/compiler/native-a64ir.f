@@ -117,8 +117,9 @@ private
 \ addressed cell forms in ADDR-SHAPE-CASE, the two addressed byte forms in
 \ BYTE-SHAPE-CASE, the fused compare-and-branch in CMPBR-SHAPE-CASE, the two
 \ conditional selects that answer a cell in SELZ-SHAPE-CASE and
-\ CMPSEL-SHAPE-CASE, the two that answer a double in FSEL-SHAPE-CASE, and the six
-\ bitwise and shift forms in BITWISE-CASE, and the count covers all of them.
+\ CMPSEL-SHAPE-CASE, the two that answer a double in FSEL-SHAPE-CASE, the four
+\ whose flags an Fcmp wrote in FFSEL-SHAPE-CASE, and the six bitwise and shift
+\ forms in BITWISE-CASE, and the count covers all of them.
 : COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -166,10 +167,10 @@ private
    rv wc IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the fifty-four machine opcodes" T-LABEL
+   s" registration defines exactly the fifty-eight machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 54 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 58 T= ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one
@@ -888,6 +889,109 @@ private
    BND [: FSEL-TERM-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TFALSE TFALSE TFALSE ;
 
+\ ---- the four selects whose flags an Fcmp wrote ------------------------------
+\ The last row of the select square, and what its shapes say. The COMPARED pair
+\ is of the floating file in all four, which is the whole difference from the
+\ four above: those read a cell or two cells with an integer Cmp, these read one
+\ or two D registers with an Fcmp, and a form that had them the other way round
+\ would be asking the machine for an instruction it does not have. Which file the
+\ CHOSEN pair is in is the other axis, and it is what separates a64.fcmpsel from
+\ a64.fcmpseld and a64.fcmpselz from a64.fcmpselzd.
+\
+\ AND ALL FOUR CARRY THE CONDITION, INCLUDING THE ZERO FORMS, which a64.selz and
+\ a64.selzd do not. Those two test a Habu flag a program computed, so their
+\ condition can only be "not zero" and the form holds it; a comparison against
+\ the immediate zero is asking about a RELATION - `f0<` or `f0=` - and which one
+\ has to be on the operation. A zero form that carried no condition would make
+\ the two source words one lowering.
+: FFSEL-SHAPE-BODY ( IR-CTX:ctx -- bool bool bool bool n n n n n n n n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:FCMPSEL A64IR:OPCODE {: s:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPSELZ A64IR:OPCODE {: sz:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPSELD A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPSELZD A64IR:OPCODE {: pz:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-COND {: ck:IR-ID:ir-symbol-id :}
+   c b A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
+   c b A64IR:FPR-TYPE {: f:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv s s" a64.fcmpsel" IR-SYM:FEQ?
+   pv yv sz s" a64.fcmpselz" IR-SYM:FEQ?
+   pv yv p s" a64.fcmpseld" IR-SYM:FEQ?
+   pv yv pz s" a64.fcmpselzd" IR-SYM:FEQ?
+   rv s IR-SCHEMA:FOPERANDS
+   rv sz IR-SCHEMA:FOPERANDS
+   rv p IR-SCHEMA:FOPERANDS
+   rv pz IR-SCHEMA:FOPERANDS
+   rv s IR-SCHEMA:FATTRS
+   rv sz IR-SCHEMA:FATTRS
+   rv p IR-SCHEMA:FATTRS
+   rv pz IR-SCHEMA:FATTRS
+   qv rv key s 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key s 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key s 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key s 3 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key s 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key sz 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key sz 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key sz 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key p 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key p 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key p 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key pz 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key pz 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key pz 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key s 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL =
+   qv rv key sz 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL = ;
+
+: FFSEL-SHAPE-CASE ( -- )
+   s" the four Fcmp-flagged selects compare doubles and each carries a condition"
+   T-LABEL
+   BND [: FFSEL-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   1 T= 1 T= 1 T= 1 T=
+   3 T= 4 T= 3 T= 4 T=
+   TTRUE TTRUE TTRUE TTRUE ;
+
+\ None of them ends a block and none of them traps, which is what separates a
+\ select from the fused compare-and-BRANCH it shares its first instruction with:
+\ a64.fcmpbr names two successors and defines no value, and these define a value
+\ and name none.
+: FFSEL-TERM-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool n n n n )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:FCMPSEL A64IR:OPCODE {: s:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPSELZ A64IR:OPCODE {: sz:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPSELD A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPSELZD A64IR:OPCODE {: pz:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv s IR-SCHEMA:FTERMINATOR?
+   rv sz IR-SCHEMA:FTERMINATOR?
+   rv p IR-SCHEMA:FTERMINATOR?
+   rv pz IR-SCHEMA:FTERMINATOR?
+   rv s IR-SCHEMA:FTRAPS?
+   rv sz IR-SCHEMA:FTRAPS?
+   rv p IR-SCHEMA:FTRAPS?
+   rv pz IR-SCHEMA:FTRAPS?
+   rv s IR-SCHEMA:FSUCCESSORS
+   rv s IR-SCHEMA:FRESULTS
+   rv pz IR-SCHEMA:FSUCCESSORS
+   rv pz IR-SCHEMA:FRESULTS ;
+
+: FFSEL-TERM-CASE ( -- )
+   s" no Fcmp-flagged select ends a block, none traps, each defines one value"
+   T-LABEL
+   BND [: FFSEL-TERM-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 0 T= 1 T= 0 T=
+   TFALSE TFALSE TFALSE TFALSE
+   TFALSE TFALSE TFALSE TFALSE ;
+
 \ ---- the condition a float comparison is made under --------------------------
 \ THE ONE FACT THIS WHOLE LEAF RESTS ON, held as a number rather than described.
 \ `mi` is C-MI, the assembler's own code for it, and it is NOT `lt`. The
@@ -1390,7 +1494,9 @@ private
    FCMP-SHAPE-CASE
    FCMP-TERM-CASE
    FSEL-SHAPE-CASE
-   FSEL-TERM-CASE ;
+   FSEL-TERM-CASE
+   FFSEL-SHAPE-CASE
+   FFSEL-TERM-CASE ;
 
 : GROUP-TIE ( IR-CTX:ctx -- )
    drop

@@ -217,7 +217,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-54 constant OPCODES-N
+58 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -272,6 +272,10 @@ private
 51 constant O-CMPSEL
 52 constant O-SELZD
 53 constant O-CMPSELD
+54 constant O-FCMPSEL
+55 constant O-FCMPSELZ
+56 constant O-FCMPSELD
+57 constant O-FCMPSELZD
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -441,6 +445,10 @@ create B-START BMAX cells allot
       fcmpbrz  OF O-FCMPBRZ  ENDOF
       selzd    OF O-SELZD    ENDOF
       cmpseld  OF O-CMPSELD  ENDOF
+      fcmpsel   OF O-FCMPSEL   ENDOF
+      fcmpselz  OF O-FCMPSELZ  ENDOF
+      fcmpseld  OF O-FCMPSELD  ENDOF
+      fcmpselzd OF O-FCMPSELZD ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -499,6 +507,10 @@ create B-START BMAX cells allot
       O-FCMPBRZ  of A64IR-OPCODE:FCMPBRZ  endof
       O-SELZD    of A64IR-OPCODE:SELZD    endof
       O-CMPSELD  of A64IR-OPCODE:CMPSELD  endof
+      O-FCMPSEL   of A64IR-OPCODE:FCMPSEL   endof
+      O-FCMPSELZ  of A64IR-OPCODE:FCMPSELZ  endof
+      O-FCMPSELD  of A64IR-OPCODE:FCMPSELD  endof
+      O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -845,15 +857,19 @@ create B-START BMAX cells allot
    SUCC-AT IR-ID:BLOCK-LOCAL BLK-ORD-CK ;
 
 \ How many instructions a FORM is, is a property of the form: one for all but the
-\ four comparisons, the division, the call and the three compare-and-branches,
-\ which are three each, and the two-way branch and the two conditional selects,
-\ which are two.
+\ three comparisons, the division, the two calls and the three
+\ compare-and-branches, which are three each, and the two-way branch and the
+\ eight conditional selects, which are two.
 : INSNS-OF ( n -- n )
    {: k:n :}
    k O-SELZ = if 2 exit then
    k O-CMPSEL = if 2 exit then
    k O-SELZD = if 2 exit then
    k O-CMPSELD = if 2 exit then
+   k O-FCMPSEL = if 2 exit then
+   k O-FCMPSELZ = if 2 exit then
+   k O-FCMPSELD = if 2 exit then
+   k O-FCMPSELZD = if 2 exit then
    k O-FLAG = if 3 exit then
    k O-FFLAG = if 3 exit then
    k O-FFLAGZ = if 3 exit then
@@ -1155,6 +1171,50 @@ create B-START BMAX cells allot
    id  id 0 RESULT-REG  id 2 OPERAND-REG  id 3 OPERAND-REG
        id COND-OF  ENC-FCSEL  APPEND ;
 
+\ The four whose flags an FLOAT compare wrote. Each is one of the four above
+\ with its first instruction changed from a Cmp over cells to the Fcmp over
+\ doubles the source really wrote, and nothing after that first instruction
+\ differs: a Csel and an Fcsel read the flags the same way whichever instruction
+\ left them, and the condition-holds answer is still the first source.
+\
+\ WHAT THE Fcmp DOES THAT THE Cmp DOES NOT is raise the unordered condition when
+\ either operand is a NaN, and that is the whole of how a fused float select
+\ keeps the interpreted word's answer for one. The conditions
+\ src/compiler/native/select.f names for a float comparison - MI, GT and EQ - are
+\ all false under it, so the select writes its SECOND source, which the selection
+\ wired to the arm the source's `if` takes when its flag is zero. No check is
+\ written here because there is nothing to check: the rule is the instruction's
+\ and the condition's, exactly as it is in PUT-FCMPBR above.
+\
+\ THE TWO ZERO FORMS READ THEIR CONDITION OFF THE OPERATION and not off `ne` the
+\ way PUT-SELZ and PUT-SELZD do. Those two test a Habu flag a program computed,
+\ so the only question is whether it is zero; these two compare a double against
+\ the immediate zero, so which relation is being asked - `f0<` or `f0=` - is the
+\ condition the operation carries.
+: PUT-FCMPSEL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-FCMP  APPEND
+   id  id 0 RESULT-REG  id 2 OPERAND-REG  id 3 OPERAND-REG
+       id COND-OF  ENC-CSEL  APPEND ;
+
+: PUT-FCMPSELZ ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG ENC-FCMP0  APPEND
+   id  id 0 RESULT-REG  id 1 OPERAND-REG  id 2 OPERAND-REG
+       id COND-OF  ENC-CSEL  APPEND ;
+
+: PUT-FCMPSELD ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-FCMP  APPEND
+   id  id 0 RESULT-REG  id 2 OPERAND-REG  id 3 OPERAND-REG
+       id COND-OF  ENC-FCSEL  APPEND ;
+
+: PUT-FCMPSELZD ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG ENC-FCMP0  APPEND
+   id  id 0 RESULT-REG  id 1 OPERAND-REG  id 2 OPERAND-REG
+       id COND-OF  ENC-FCSEL  APPEND ;
+
 \ One division, which is three instructions: branch past the trap when the
 \ divisor is not zero, the trap, and the divide. It is the sequence the engine's
 \ own `/` compiles to - src/habu/habu1.f BDIV0? followed by BDIV - so a compiled
@@ -1335,6 +1395,10 @@ create B-START BMAX cells allot
       fcmpbrz  OF id home PUT-FCMPBRZ ENDOF
       selzd    OF id PUT-SELZD ENDOF
       cmpseld  OF id PUT-CMPSELD ENDOF
+      fcmpsel   OF id PUT-FCMPSEL ENDOF
+      fcmpselz  OF id PUT-FCMPSELZ ENDOF
+      fcmpseld  OF id PUT-FCMPSELD ENDOF
+      fcmpselzd OF id PUT-FCMPSELZD ENDOF
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
@@ -1541,6 +1605,10 @@ public
    c b A64IR-OPCODE:FCMPBRZ  BIND1
    c b A64IR-OPCODE:SELZD    BIND1
    c b A64IR-OPCODE:CMPSELD  BIND1
+   c b A64IR-OPCODE:FCMPSEL   BIND1
+   c b A64IR-OPCODE:FCMPSELZ  BIND1
+   c b A64IR-OPCODE:FCMPSELD  BIND1
+   c b A64IR-OPCODE:FCMPSELZD BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-SLOT   0 BND-SLOT !
