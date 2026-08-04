@@ -198,8 +198,8 @@ overrides must appear after the profile; top-level `--pool-slots` is capped at
 12.
 
 `--cold-cache` selects a private per-run scratch cache root under the suite temp
-directory and measures builder, maker, artifact, and result cache fill without
-deleting the default persistent caches.
+directory, disables the result cache, and measures builder, maker, and artifact
+cache fill without deleting the default persistent caches.
 
 Wrap the command with `/usr/bin/time -p` when comparing end-to-end shell wall
 time across hosts. `test/run.f` runs the suite directly in `bin/hb`; no

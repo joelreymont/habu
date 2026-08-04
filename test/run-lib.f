@@ -315,7 +315,7 @@ private
    2 TR-ADVANCE ;
 
 : TR-UNDER-ARG! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < if E-FS-PATH throw then
+   u 0 <= if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
    a TR-UNDER-ARG-BUF u BYTE-COPY
    u TR-UNDER-ARG-U ! ;

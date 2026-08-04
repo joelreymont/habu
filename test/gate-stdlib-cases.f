@@ -600,6 +600,7 @@ SUITE export-keyword-package
 
 SUITE gate-runner-entry-load
    test/gate-runner-entry-test.f
+   test/candidate-rebuild-test.f
 ;SUITE
 
 SUITE load-reject-diag

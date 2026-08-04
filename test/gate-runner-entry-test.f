@@ -34,6 +34,7 @@ package GATE-ENTRY-TEST
 $1000 constant GRE-CAP
 60000 constant GRE-TIMEOUT-MS
 64 constant GRE-USAGE-RC             \ GR-USAGE-RC: the usage-die exit status
+67 constant GRE-UNCAUGHT-RC          \ deterministic engine exit for an uncaught throw
 
 create GRE-OUT GRE-CAP allot
 create GRE-ERR GRE-CAP allot
@@ -61,8 +62,8 @@ variable GRE-RC
    ;MATCH
    LEN>N GRE-ERR-U !  LEN>N GRE-OUT-U ! ;
 
-: GRE-CAPTURE ( -- )
-   GRE-HB$ >LEN  GRE-EMPTY 0 >LEN  GRE-OUT GRE-CAP >LEN
+: GRE-CAPTURE ( ptr u8 n -- )
+   >LEN  GRE-EMPTY 0 >LEN  GRE-OUT GRE-CAP >LEN
    GRE-ERR GRE-CAP >LEN  GRE-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    GRE-STORE! ;
 
@@ -75,7 +76,7 @@ variable GRE-RC
    s" test/gate-runner-entry.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    phase phaseu >LEN PROC-ARGV+
-   GRE-CAPTURE ;
+   GRE-HB$ GRE-CAPTURE ;
 
 : GRE-RUN-STDLIB ( -- )
    PROC-ARGV-RESET
@@ -83,7 +84,19 @@ variable GRE-RC
    s" test/gate-stdlib.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" gre-unknown-slice" >LEN PROC-ARGV+
-   GRE-CAPTURE ;
+   GRE-HB$ GRE-CAPTURE ;
+
+: GRE-RUN-EMPTY-UNDER ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/run.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" --under" >LEN PROC-ARGV+
+   s" " >LEN PROC-ARGV+
+   s" bin/hb" GRE-CAPTURE ;
+
+: GRE-OUT$ ( -- ptr u8 n )
+   GRE-OUT GRE-OUT-U @ ;
 
 : GRE-ERR$ ( -- ptr u8 n )
    GRE-ERR GRE-ERR-U @ ;
@@ -112,10 +125,22 @@ variable GRE-RC
    GRE-RUN-STDLIB
    GRE-ASSERT-STDLIB-USAGE ;
 
+: GRE-TEST-EMPTY-UNDER ( -- )
+   s" empty --under path is refused before candidate work" T-LABEL
+   GRE-RUN-EMPTY-UNDER
+   GRE-EXITED @ TTRUE
+   GRE-RC @ GRE-UNCAUGHT-RC T=
+   GRE-ERR-U @ 1 > TTRUE
+   GRE-ERR GRE-ERR-U @ 1- s" hb: uncaught throw code -2100" T$=
+   GRE-ERR GRE-ERR-U @ 1- + c@ STR-LF T=
+   GRE-OUT$ s" candidate-build" CONTAINS? TFALSE
+   GRE-OUT$ s" native engine build slice" CONTAINS? TFALSE ;
+
 : GRE-MAIN ( -- )
    T-RESET
    GRE-TEST-UNKNOWN-PHASE
    GRE-TEST-UNKNOWN-STDLIB-SLICE
+   GRE-TEST-EMPTY-UNDER
    T-REPORT
    s" gate-runner-entry-test: ok" type cr ;
 
