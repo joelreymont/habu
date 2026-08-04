@@ -1,9 +1,0 @@
----
-title: Delete ENUM census
-status: active
-priority: 2
-issue-type: task
-created-at: "2026-07-28T11:00:11.011696+02:00"
----
-
-Problem: tools/enum-census-core.f replays declarations through a second parser, compares a hand-recorded baseline, and hardcodes a source-file count; deleting unrelated FILEMAP sources makes the product gate fail even though no ENUM behavior changed. Acceptance: delete tools/enum-census.f, tools/enum-census-core.f, tools/enum-census-test.f, and tools/enum-census-baseline.txt; remove every active source, gate, suite, status, trust-ledger, and current-document reference whose only purpose is the census; preserve real ENUM compiler/checker unit and integration tests; leave zero non-archive/non-closed-dot enum-census, WALKED-FILES, or WALK-TREES references on the combined census-and-FILEMAP deletion tree; add no replacement scanner, walk, count, baseline, inventory, or migration proof; standard focused gate composition remains green without census rows. Files: tools/enum-census.f, tools/enum-census-core.f, tools/enum-census-test.f, tools/enum-census-baseline.txt, test/gate-stdlib-lint-tools.f, test/gate-stdlib-cases.f, test/gate-stdlib-lib.f, tools/suite-coverage-lint-core.f, test/lint-cli-standalone-load.f, STATUS.md, TRUSTED.md, src/core/enum-decl.f, LESSONS.md, current maki/test comments containing enum-census. Verify: one rg census proving zero active references on the combined tree; bin/hb --load test/gate-stdlib-lint-tools.f; bin/hb --load tools/suite-coverage-lint.f; bin/hb --load test/checker-assert-test.f; standard Forth diff ownership gates. Depends: habu-delete-filemap-gate-32e7261d and habu-remove-filemap-process-f72075cc must land in the same verified wave so FILEMAP.md and live process prose cannot retain stale census references. Ownership: exact listed census artifacts and reference-only removals in listed consumers. Claim: agent=codex-enum-census workspace=.jj-ws/habu-delete-enum-census-10f94dcc.
