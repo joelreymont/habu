@@ -46,9 +46,8 @@ $9E3779B97F4A7C15 constant T-HMIX
 5 constant T-AN
 6 constant T-NP
 7 constant T-READY
-8 constant T-HDR-N
 
-T-HDR-N constant T-A
+T-READY 1+ constant T-A
 T-A T-MERGE-N + constant T-B
 T-B T-MERGE-N + constant T-HK
 T-HK T-HCAP + constant T-HU

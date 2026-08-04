@@ -203,32 +203,35 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    tokenu 0= if E-FIX throw then
    STATM-BUF tokenu 0 STATM-N ;
 
-: EMPTY-REFUSAL ( -- )
+: OPEN-REFUSAL ( n -- ) {: want:n :}
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
-      err OF E-CATALOG <> if E-FIX throw then ENDOF
+      err OF want <> if E-FIX throw then ENDOF
       ok OF GPT2:CLOSE CLOSE-OK E-FIX throw ENDOF
    ;MATCH ;
 
-: EMPTY-REFUSAL-CHILD ( -- )
+: REFUSAL-CHILD ( n -- ) {: want:n :}
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
-   EMPTY-REFUSAL
+   want OPEN-REFUSAL
    SAFET:LIVE-OWNERS owners <> if E-FIX throw then
    SAFET-MAP:LIVE maps <> if E-FIX throw then
    VM-PAGES {: pages:n :}
-   EMPTY-REFUSAL
+   want OPEN-REFUSAL
    SAFET:LIVE-OWNERS owners <> if E-FIX throw then
    SAFET-MAP:LIVE maps <> if E-FIX throw then
    VM-PAGES pages <> if E-FIX throw then
    s" " 0 die ;
 
+: REFUSAL-PROOF ( n -- ) {: want:n :}
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if want REFUSAL-CHILD then
+   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+
 : TEST-EMPTY ( ptr u8 n -- )
    s" OPEN rejects an empty real Safetensors catalog and restores VM ownership" T-LABEL
    PREPARE-EMPTY
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if EMPTY-REFUSAL-CHILD then
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED=
+   E-CATALOG REFUSAL-PROOF
    CLEANUP-RUN ;
 
 : TEST-TOKEN-MISSING ( ptr u8 n -- )
@@ -251,23 +254,40 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    ROOT$ GPT2PIN:VOCAB-NAME$ DST JOIN-PATH DST-U !
    DST$ MUT-BYTE 1 FS-O-WRONLY FS-WRITE-BY-FLAGS ;
 
-: TEST-TOKEN-DIGEST ( ptr u8 n -- )
-   s" OPEN rejects a mutated pinned vocab before GPU ownership" T-LABEL
+: MUTATE-MERGES ( -- )
+   ROOT$ GPT2PIN:MERGES-NAME$ DST JOIN-PATH DST-U !
+   DST$ MUT-BYTE 1 FS-O-WRONLY FS-WRITE-BY-FLAGS ;
+
+: TEST-VOCAB-DIGEST ( ptr u8 n -- )
+   s" OPEN rejects a mutated pinned vocab and restores VM ownership" T-LABEL
    PREPARE-EMPTY
    MUTATE-VOCAB
-   SAFET:LIVE-OWNERS {: before:n :}
-   SAFET-MAP:LIVE {: maps:n :}
-   ROOT$ FS-PATH:MAKE GPT2:OPEN
-   MATCH result
-      err OF E-TOK-DIGEST T= ENDOF
-      ok OF GPT2:CLOSE CLOSE-OK false TTRUE ENDOF
-   ;MATCH
-   SAFET:LIVE-OWNERS before T=
-   SAFET-MAP:LIVE maps T=
+   E-TOK-DIGEST REFUSAL-PROOF
    CLEANUP-RUN ;
 
+: TEST-MERGES-DIGEST ( ptr u8 n -- )
+   s" OPEN rejects mutated pinned merges and restores VM ownership" T-LABEL
+   PREPARE-EMPTY
+   MUTATE-MERGES
+   E-TOK-DIGEST REFUSAL-PROOF
+   CLEANUP-RUN ;
+
+: TOKEN-LIVE-CELLS ( -- n )
+   8
+   T-MERGE-N + T-MERGE-N +
+   T-HCAP + T-HCAP + T-HCAP +
+   T-WORK-CAP +
+   T-ID-CAP +
+   T-GID-N +
+   T-VOCAB-N +
+   T-DEC-CAP +
+   T-ARENA-CAP +
+   T-SCAP + T-SCAP + T-SCAP + T-SCAP +
+   T-ID-CAP +
+   T-LOGIT-CELLS + ;
+
 : TOKEN-BYTES ( -- n )
-   T-CELLS >COUNT MEM-CELLS>BYTES ;
+   TOKEN-LIVE-CELLS >COUNT MEM-CELLS>BYTES ;
 
 : TOKEN-ALLOC-LEN ( -- CAD-NUM:alloc-byte-len )
    TOKEN-BYTES MEM:BYTES-ALLOC-LEN ;
@@ -317,7 +337,7 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    tokstate toklen ;
 
 : READ-TOKEN-TAIL ( ptr a -- )
-   T-CELLS 1- cells + @ drop
+   TOKEN-LIVE-CELLS 1- cells + @ drop
    s" " 0 die ;
 
 : TOKEN-UNMAPPED ( ptr a -- ) {: tokstate:ptr :}
@@ -361,7 +381,8 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
       exit
    then
    0 SCRIPT-ARGV$ TEST-TOKEN-MISSING
-   0 SCRIPT-ARGV$ TEST-TOKEN-DIGEST
+   0 SCRIPT-ARGV$ TEST-VOCAB-DIGEST
+   0 SCRIPT-ARGV$ TEST-MERGES-DIGEST
    0 SCRIPT-ARGV$ TEST-EMPTY
    TEST-ALLOC-REFUSAL
    s" OPEN uploads the pinned GPT-2 model and CLOSE releases every owner" T-LABEL
