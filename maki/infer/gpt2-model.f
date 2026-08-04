@@ -1201,8 +1201,7 @@ private
    ;MATCH ;
 
 : M-OPEN-CFG ( ptr u8 n config ptr a CAD-NUM:alloc-byte-len -- result<GPT2:model,n> )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
-   {: root:ptr rootu:n c tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
+   {: root:ptr rootu:n c tokstate:ptr toklen:CAD-NUM:alloc-byte-len :} \ typed-local-lint: allow-bare-local - c preserves GPT2:config's W>1 layout, which locals cannot annotate.
    root rootu GPT2PIN:MODEL-NAME$ nip M-JOIN-LEN
    FS-PATH-CAP > if
       c M-DROP-CFG

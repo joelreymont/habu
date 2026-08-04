@@ -40,16 +40,13 @@ $9E3779B97F4A7C15 constant T-HMIX
 
 0 constant T-N
 1 constant T-WLEN
-2 constant T-BEST
-3 constant T-WI
-4 constant T-RI
-5 constant T-OUTN
-6 constant T-POS
-7 constant T-DECN
-8 constant T-AN
-9 constant T-NP
-10 constant T-READY
-16 constant T-HDR-N
+2 constant T-WI
+3 constant T-OUTN
+4 constant T-DECN
+5 constant T-AN
+6 constant T-NP
+7 constant T-READY
+8 constant T-HDR-N
 
 T-HDR-N constant T-A
 T-A T-MERGE-N + constant T-B
@@ -60,8 +57,7 @@ T-HV T-HCAP + constant T-WORK
 T-WORK T-WORK-CAP + constant T-OUT
 T-OUT T-ID-CAP + constant T-GID
 T-GID T-GID-N + constant T-R2I
-T-R2I T-VOCAB-N + constant T-INT
-T-INT T-ID-CAP + constant T-DEC
+T-R2I T-VOCAB-N + constant T-DEC
 T-DEC T-DEC-CAP + constant T-ARENA
 T-ARENA T-ARENA-CAP + constant T-SUSED
 T-SUSED T-SCAP + constant T-SOFF
@@ -553,12 +549,5 @@ create T-BYTE-ID
 
 : T-DECODE-OUT ( ptr a ptr u8 n -- )
    0 T-DECODE-COPY ;
-
-: T-DECODE ( ptr a n ptr u8 n -- n ) {: t:ptr count:n out:ptr cap:n :}
-   cap 0 < if E-TOK-CAP throw then
-   t count T-DECODE-LEN {: u:n :}
-   u cap > if E-TOK-CAP throw then
-   t out u T-DECODE-OUT
-   u ;
 
 ;package

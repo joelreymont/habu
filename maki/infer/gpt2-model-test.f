@@ -17,6 +17,7 @@ private
 $86 constant FAULT-RC
 $5002 constant NORESERVE-MAP
 1 44 lshift constant MAP-START
+$80 constant STATM-CAP
 
 create BASE-BYTE 1 allot
 create ROOT FS-PATH-CAP allot
@@ -24,6 +25,7 @@ create SRC FS-PATH-CAP allot
 create DST FS-PATH-CAP allot
 create JOIN-ROOT FS-PATH-CAP allot
 create JOIN-DST FS-PATH-CAP allot
+create STATM-BUF STATM-CAP allot
 create EMPTY-MODEL 2 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 123 c, 125 c,
 create MUT-BYTE $5B c,
 
@@ -34,6 +36,7 @@ variable UPLOAD-N
 variable UPLOAD-BASE
 variable UPLOAD-NEXT
 variable UPLOAD-BAD
+TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
 
 : BASE ( -- ptr u8 ) BASE-BYTE ;
 
@@ -183,18 +186,49 @@ variable UPLOAD-BAD
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T= ;
 
-: TEST-EMPTY ( ptr u8 n -- )
-   s" OPEN rejects an empty real Safetensors catalog before GPU ownership" T-LABEL
-   PREPARE-EMPTY
-   SAFET:LIVE-OWNERS {: before:n :}
-   SAFET-MAP:LIVE {: maps:n :}
+: STATM-TOK-U ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+   i u = if i exit then
+   a i + c@ STR-SPACE <= if i exit then
+   a u i 1+ recurse ;
+
+: STATM-N ( ptr u8 n n -- n ) {: a:ptr u:n acc:n :}
+   u 0= if acc exit then
+   a c@ {: c:n :}
+   c STR-DIGIT? 0= if E-FIX throw then
+   a 1+ u 1- acc 10 * c STR-ZERO - + recurse ;
+
+: VM-PAGES ( -- n )
+   s" /proc/self/statm" STATM-BUF STATM-CAP READ-ALL {: u:n :}
+   STATM-BUF u 0 STATM-TOK-U {: tokenu:n :}
+   tokenu 0= if E-FIX throw then
+   STATM-BUF tokenu 0 STATM-N ;
+
+: EMPTY-REFUSAL ( -- )
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
-      err OF E-CATALOG T= ENDOF
-      ok OF GPT2:CLOSE CLOSE-OK false TTRUE ENDOF
-   ;MATCH
-   SAFET:LIVE-OWNERS before T=
-   SAFET-MAP:LIVE maps T=
+      err OF E-CATALOG <> if E-FIX throw then ENDOF
+      ok OF GPT2:CLOSE CLOSE-OK E-FIX throw ENDOF
+   ;MATCH ;
+
+: EMPTY-REFUSAL-CHILD ( -- )
+   SAFET:LIVE-OWNERS {: owners:n :}
+   SAFET-MAP:LIVE {: maps:n :}
+   EMPTY-REFUSAL
+   SAFET:LIVE-OWNERS owners <> if E-FIX throw then
+   SAFET-MAP:LIVE maps <> if E-FIX throw then
+   VM-PAGES {: pages:n :}
+   EMPTY-REFUSAL
+   SAFET:LIVE-OWNERS owners <> if E-FIX throw then
+   SAFET-MAP:LIVE maps <> if E-FIX throw then
+   VM-PAGES pages <> if E-FIX throw then
+   s" " 0 die ;
+
+: TEST-EMPTY ( ptr u8 n -- )
+   s" OPEN rejects an empty real Safetensors catalog and restores VM ownership" T-LABEL
+   PREPARE-EMPTY
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if EMPTY-REFUSAL-CHILD then
+   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED=
    CLEANUP-RUN ;
 
 : TEST-TOKEN-MISSING ( ptr u8 n -- )
@@ -235,6 +269,9 @@ variable UPLOAD-BAD
 : TOKEN-BYTES ( -- n )
    T-CELLS >COUNT MEM-CELLS>BYTES ;
 
+: TOKEN-ALLOC-LEN ( -- CAD-NUM:alloc-byte-len )
+   TOKEN-BYTES MEM:BYTES-ALLOC-LEN ;
+
 : MAP-ONE ( n -- bool )
    0 swap MEM-PROT-RW NORESERVE-MAP MEM-ANON-FD MEM-OFF-ZERO mmap
    0 >= ;
@@ -271,13 +308,13 @@ variable UPLOAD-BAD
    pid PID>N 0= if ALLOC-REFUSAL-CHILD then
    pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
-: TOKEN-BASE ( GPT2:model -- GPT2:model ptr a )
+: TOKEN-OWNER ( GPT2:model -- GPT2:model ptr a CAD-NUM:alloc-byte-len )
    M-TAKE
    {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
    tokbytes drop
    x a b logits token k v pos
    tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
-   tokstate ;
+   tokstate toklen ;
 
 : READ-TOKEN-TAIL ( ptr a -- )
    T-CELLS 1- cells + @ drop
@@ -341,7 +378,10 @@ variable UPLOAD-BAD
          UPLOAD-N @ 160 T=
          UPLOAD-BAD @ 0 T=
          total TEST-UPLOAD-TOTAL
-         TOKEN-BASE {: tokstate:ptr :}
+         TOKEN-OWNER
+         {: tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
+         toklen TOK-LEN-OBS !
+         [: TOK-LEN-OBS @ ;] [: TOKEN-ALLOC-LEN ;] SNAP=
          GPT2:CLOSE CLOSE-OK
          tokstate TOKEN-UNMAPPED
       ENDOF
