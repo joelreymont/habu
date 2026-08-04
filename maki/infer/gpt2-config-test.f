@@ -30,7 +30,7 @@ $7FFFFFFFFFFFFFFF constant HUGE
 : DT0 ( -- MAKI:datatype ) MAKI-DATATYPE:DF32 ;
 : EPS0 ( -- r ) 0.00001 ;
 
-: CFG ( -- config )
+: CFG ( -- GPT2:config )
    DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 EPS0 true BUILD ;
 
 : T-FIELDS ( -- )
