@@ -40,17 +40,6 @@ variable T-ROOT-U
    path pathu dst lenp T-COPY!
    dst pathu CLEANUP-TREE+ ;
 
-: T-MERGES$ ( ptr u8 n ptr u8 -- ptr u8 n )
-   {: root:ptr rootu:n dst:ptr :}
-   root rootu GPT2PIN:MERGES-NAME$ dst JOIN-PATH {: pathu:n :}
-   dst pathu ;
-
-: T-COPY-MERGES ( ptr u8 n ptr u8 n -- )
-   {: root:ptr rootu:n dst:ptr dstu:n :}
-   root rootu T-SRC T-MERGES$
-   dst dstu T-DST T-MERGES$
-   COPY-FILE-STREAM ;
-
 : T-COPY-ASSET ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: root:ptr rootu:n dst:ptr dstu:n name:ptr nameu:n :}
    root rootu name nameu T-SRC JOIN-PATH {: srcu:n :}
@@ -67,8 +56,9 @@ variable T-ROOT-U
    s" gpt2-cli-refusal" T-ROOT T-ROOT-U T-TEMP!
    root rootu T-ROOT$ GPT2PIN:CONFIG-NAME$ T-COPY-ASSET
    root rootu T-ROOT$ GPT2PIN:VOCAB-NAME$ T-COPY-ASSET
-   root rootu T-ROOT$ T-COPY-MERGES
-   T-ROOT$ T-DST T-MERGES$ s" corrupt" WRITE-ALL
+   root rootu T-ROOT$ GPT2PIN:MERGES-NAME$ T-COPY-ASSET
+   T-ROOT$ GPT2PIN:MERGES-NAME$ T-DST JOIN-PATH
+   T-DST swap s" corrupt" WRITE-ALL
    T-LONG T-LONG-N 120 T-FILL ;
 
 : T-ARG+ ( ptr u8 n -- )
@@ -115,7 +105,7 @@ variable T-ROOT-U
    root rootu s" " s" -5665" T-FAIL
    s" tokenizer overcapacity writes no stdout" T-LABEL
    root rootu T-LONG T-LONG-N s" -5324" T-FAIL
-   root rootu T-ROOT$ T-COPY-MERGES
+   root rootu T-ROOT$ GPT2PIN:MERGES-NAME$ T-COPY-ASSET
    T-ROOT$ GPT2PIN:CONFIG-NAME$ T-DST JOIN-PATH
    T-DST swap REMOVE-FILE
    s" model-open failure writes no stdout" T-LABEL

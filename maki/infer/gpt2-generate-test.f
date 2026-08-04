@@ -16,6 +16,7 @@ private
 50257 constant TEST-VOCAB
 TEST-VOCAB 4 * constant TEST-LOGIT-BYTES
 $A5 constant GUARD
+64 constant E-USAGE
 
 create OUT OUTPUT-CAP allot
 create BEFORE OUTPUT-CAP allot
@@ -222,7 +223,7 @@ using GPT2-REFERENCE
 ;using
 
 : T-RUN ( -- )
-   SCRIPT-ARGC 1 <> if E-STATE throw then
+   SCRIPT-ARGC 1 <> if E-USAGE throw then
    T-RESET
    T-SURFACE
    PREPARE

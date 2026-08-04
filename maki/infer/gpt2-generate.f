@@ -9,7 +9,6 @@ package GPT2
 public
 
 -5665 constant E-PROMPT
--5666 constant E-STATE
 -5667 constant E-LIMIT
 
 private

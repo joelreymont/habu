@@ -20,6 +20,7 @@ create DST FS-PATH-CAP allot
 create JOIN-ROOT FS-PATH-CAP allot
 create JOIN-DST FS-PATH-CAP allot
 create EMPTY-MODEL 2 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 123 c, 125 c,
+create MUT-BYTE $5B c,
 
 variable ROOT-U
 variable SRC-U
@@ -204,6 +205,25 @@ variable UPLOAD-BAD
    SAFET-MAP:LIVE maps T=
    CLEANUP-RUN ;
 
+: MUTATE-VOCAB ( -- )
+   ROOT$ GPT2PIN:VOCAB-NAME$ DST JOIN-PATH DST-U !
+   DST$ MUT-BYTE 1 FS-O-WRONLY FS-WRITE-BY-FLAGS ;
+
+: TEST-TOKEN-DIGEST ( ptr u8 n -- )
+   s" OPEN rejects a mutated pinned vocab before GPU ownership" T-LABEL
+   PREPARE-EMPTY
+   MUTATE-VOCAB
+   SAFET:LIVE-OWNERS {: before:n :}
+   SAFET-MAP:LIVE {: maps:n :}
+   ROOT$ FS-PATH:MAKE GPT2:OPEN
+   MATCH result
+      err OF E-TOK-DIGEST T= ENDOF
+      ok OF GPT2:CLOSE CLOSE-OK false TTRUE ENDOF
+   ;MATCH
+   SAFET:LIVE-OWNERS before T=
+   SAFET-MAP:LIVE maps T=
+   CLEANUP-RUN ;
+
 : TRACK-HTOD ( cuda-devptr ptr u8 len -- rc )
    {: dst:cuda-devptr src:ptr len:len :}
    dst CUDA-DEVPTR>N {: raw:n :}
@@ -240,6 +260,7 @@ variable UPLOAD-BAD
       exit
    then
    0 SCRIPT-ARGV$ TEST-TOKEN-MISSING
+   0 SCRIPT-ARGV$ TEST-TOKEN-DIGEST
    0 SCRIPT-ARGV$ TEST-EMPTY
    s" OPEN uploads the pinned GPT-2 model and CLOSE releases every owner" T-LABEL
    0 SCRIPT-ARGV$ REAL-TOTAL {: total:CAD-NUM:byte-len :}

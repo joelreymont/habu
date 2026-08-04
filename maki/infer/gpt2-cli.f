@@ -8,6 +8,7 @@ package GPT2-CLI
 private
 
 64 constant E-USAGE
+-5666 constant E-TOTALITY
 
 CAST: BL>N ( CAD-NUM:byte-len -- n ) ;
 
@@ -21,24 +22,24 @@ using CAD-NUM
    BYTE-LEN
    MATCH numeric-result
       ok OF ENDOF
-      negative OF E-STATE throw ENDOF
-      zero OF E-STATE throw ENDOF
-      overflow OF E-STATE throw ENDOF
-      underflow OF E-STATE throw ENDOF
-      bad-alignment OF E-STATE throw ENDOF
-      misaligned OF E-STATE throw ENDOF
+      negative OF E-TOTALITY throw ENDOF
+      zero OF E-TOTALITY throw ENDOF
+      overflow OF E-TOTALITY throw ENDOF
+      underflow OF E-TOTALITY throw ENDOF
+      bad-alignment OF E-TOTALITY throw ENDOF
+      misaligned OF E-TOTALITY throw ENDOF
    ;MATCH ;
 
 : TOKEN-COUNT ( n -- CAD-NUM:item-count )
    ITEM-COUNT
    MATCH numeric-result
       ok OF ENDOF
-      negative OF E-STATE throw ENDOF
-      zero OF E-STATE throw ENDOF
-      overflow OF E-STATE throw ENDOF
-      underflow OF E-STATE throw ENDOF
-      bad-alignment OF E-STATE throw ENDOF
-      misaligned OF E-STATE throw ENDOF
+      negative OF E-TOTALITY throw ENDOF
+      zero OF E-TOTALITY throw ENDOF
+      overflow OF E-TOTALITY throw ENDOF
+      underflow OF E-TOTALITY throw ENDOF
+      bad-alignment OF E-TOTALITY throw ENDOF
+      misaligned OF E-TOTALITY throw ENDOF
    ;MATCH ;
 
 ;using
