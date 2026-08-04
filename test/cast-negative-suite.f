@@ -35,6 +35,7 @@ create CNDIAG-BUF 8192 allot
 CNDIAG-BUF 8192 DIAG-BUFFER!
 
 NEWTYPE cnfam 0
+s" STRUCTURE cnpbox 1 FIELD value a ;STRUCTURE" INCLUDE-EVALUATE
 package CAST-NEG
 public
 DEFLINEAR CAST-NEG:lease
@@ -81,6 +82,7 @@ variable CN-SRC-U
 : CN-EVAL-SOURCE ( -- )
    CN-SRC-A @ CN-SRC-U @ INCLUDE-EVALUATE ;
 : CN-EVAL-CATCH ( ptr u8 n -- n )
+   CN-WID @ set-current
    CN-SRC-U ! CN-SRC-A !
    [: CN-EVAL-SOURCE ;] catch ;
 : CN-ABSENT? ( ptr u8 n -- bool )
@@ -91,15 +93,24 @@ variable CN-SRC-U
 s" CN-PRIVATE-PROBE" 0 search-wl 0= -1 T=
 s" CN-PRIVATE-PROBE" CN-ABSENT? 0 T=
 s" CAST: CNP1 ( n -- CAST-NEG:lease ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP1" CN-ABSENT? -1 T=  s" CNP1" 0 search-wl 0= -1 T=
 s" CAST: CNP2 ( CAST-NEG:lease -- n ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP2" CN-ABSENT? -1 T=  s" CNP2" 0 search-wl 0= -1 T=
 s" CAST: CNP3 ( CAST-NEG:lease -- CAST-NEG:lease ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP3" CN-ABSENT? -1 T=  s" CNP3" 0 search-wl 0= -1 T=
 s" CAST: CNP4 ( n -- CAST-NEG:nested ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP4" CN-ABSENT? -1 T=  s" CNP4" 0 search-wl 0= -1 T=
 s" CAST: CNP5 ( CAST-NEG:nested -- n ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP1" CN-ABSENT? -1 T=
-s" CNP2" CN-ABSENT? -1 T=
-s" CNP3" CN-ABSENT? -1 T=
-s" CNP4" CN-ABSENT? -1 T=
-s" CNP5" CN-ABSENT? -1 T=
+s" CNP5" CN-ABSENT? -1 T=  s" CNP5" 0 search-wl 0= -1 T=
+s" CAST: CNP6 ( n -- cnpbox<CAST-NEG:lease> ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP6" CN-ABSENT? -1 T=  s" CNP6" 0 search-wl 0= -1 T=
+s" CAST: CNP7 ( cnpbox<cnpbox<CAST-NEG:lease>> -- n ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP7" CN-ABSENT? -1 T=  s" CNP7" 0 search-wl 0= -1 T=
+s" CAST: CNP8 ( n -- a ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP8" CN-ABSENT? -1 T=  s" CNP8" 0 search-wl 0= -1 T=
+s" CAST: CNP9 ( n -- cnpbox<cnpbox<a>> ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP9" CN-ABSENT? -1 T=  s" CNP9" 0 search-wl 0= -1 T=
+s" CN-PRIVATE-PROBE" 0 search-wl 0= -1 T=
 s" CN-PRIVATE-PROBE" CN-ABSENT? 0 T=
 ;package
 \ net-stack-effect body: the ( in -- in ) identity certification rejects.

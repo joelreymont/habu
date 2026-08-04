@@ -49,8 +49,8 @@ CAST: CSROLE>N ( csrole -- n ) ;
 CAST: >CSBND ( n -- csbnd ) dup 0 < over 128 >= or if E-CS-RANGE throw then ;
 CAST: CSBND>N ( csbnd -- n ) ;
 
-\ 3. parametric family: a concrete-arg injection to build a value, plus the
-\    generic projection ( family<e> -- n ).
+\ 3. parametric cell family: its type argument is phantom, so the generic
+\    projection is structurally non-owning.
 CAST: >CSIXN ( n -- csix<n> ) ;
 CAST: CSIX>N ( csix<e> -- n ) ;
 

@@ -9552,8 +9552,27 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    t TAG T-VAR = IF RES-TRUE EXIT THEN
    t TAG T-PARAM = IF t T-WIDTH 1 = EXIT THEN
    RES-FALSE ;
-: CAST-LINEAR? ( n -- bool )
-   LIN-TYPE-COUNT 0 <> ;
+\ CAST-MAY-LINEAR? : fail closed over the complete signature term. CAST is an
+\ authority boundary, so its question is stricter than LIN-TYPE-COUNT's runtime
+\ ownership accounting: a direct unresolved var may later bind linear, and every
+\ value-bearing family argument subtree can carry that possibility. Cell-family
+\ parameters are structurally phantom, so their terms contain no owned payload.
+\ Known pointers, quotations, and atoms are non-owning type structure; concrete
+\ family schemas are covered by TFAM-CON-LIN-XT.
+: CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
+   t0 T-RES {: t:n :}
+   t TAG T-VAR = IF RES-TRUE EXIT THEN
+   t TAG T-CON = IF t PAY CT-LINEAR? EXIT THEN
+   t TAG T-PARAM = IF
+      t PARAM>FAM dup 0 < IF drop RES-TRUE EXIT THEN
+      TFAM-CON-LIN-XT IF RES-TRUE EXIT THEN
+      t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+      0 BEGIN dup t PARAM>ARGC < WHILE
+         t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-FALSE ;
 \ CAST-CERTIFY : the matched-window certification. Throw the named reject when the
 \ declared retype is illegal, else certify the body output against SGIN (the
 \ identity ( in -- in ) flow); the shared tail then records the declared row.
@@ -9564,8 +9583,10 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
-   SGIN @ CAST-ROW-TERM CAST-LINEAR? IF E-CAST-LINEAR throw THEN
-   SGOUT @ CAST-ROW-TERM CAST-LINEAR? IF E-CAST-LINEAR throw THEN
+   TWALK-RESET
+   SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
+   TWALK-RESET
+   SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    SGIN @ SUNI-COERCE ;
 
 \ Generative layout-buffer authorization. xref.f erases every arming-state
