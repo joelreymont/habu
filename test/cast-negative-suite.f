@@ -74,6 +74,8 @@ s" CNL5"  s" CNL5 ( CAST-NEG:nested -- n )" CN-CAST E-CAST-LINEAR T=
 \ The production declarer path rejects the same foreign-package forgeries and
 \ rolls every failed word back out of the dictionary.
 package CAST-FOREIGN
+variable CN-WID
+get-current CN-WID !
 variable CN-SRC-A
 variable CN-SRC-U
 : CN-EVAL-SOURCE ( -- )
@@ -82,10 +84,10 @@ variable CN-SRC-U
    CN-SRC-U ! CN-SRC-A !
    [: CN-EVAL-SOURCE ;] catch ;
 : CN-ABSENT? ( ptr u8 n -- bool )
-   get-current search-wl 0= ;
+   CN-WID @ search-wl 0= ;
 : CN-PRIVATE-PROBE ( -- ) ;
-\ WID 0 cannot observe a current-package private word, so it cannot prove
-\ rollback here. The exact current private WID sees the probe and no failed cast.
+\ WID 0 cannot observe a package-private word, so it cannot prove rollback.
+\ The captured private WID sees the probe and must see no failed cast.
 s" CN-PRIVATE-PROBE" 0 search-wl 0= -1 T=
 s" CN-PRIVATE-PROBE" CN-ABSENT? 0 T=
 s" CAST: CNP1 ( n -- CAST-NEG:lease ) ;" CN-EVAL-CATCH E-CAST-LINEAR T=
@@ -98,6 +100,7 @@ s" CNP2" CN-ABSENT? -1 T=
 s" CNP3" CN-ABSENT? -1 T=
 s" CNP4" CN-ABSENT? -1 T=
 s" CNP5" CN-ABSENT? -1 T=
+s" CN-PRIVATE-PROBE" CN-ABSENT? 0 T=
 ;package
 \ net-stack-effect body: the ( in -- in ) identity certification rejects.
 s" CNS1"  s" CNS1 ( n -- cnfam ) dup"    CN-CAST 0 T=
