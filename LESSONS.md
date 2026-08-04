@@ -941,22 +941,13 @@ fits.
   (a 24s impl still permits the old regression at a 70s verdict). Never bump MAX-MS to pass a
   ratchet — the engine battery's runtime ratchet catches real per-process regressions (region
   growth to 8MB regressed boot +41ms via LPROT's full-region mprotect brackets, linear in the flip
-  window). Report cache-fill as budget coverage and persistent-cache as the architecture number;
-  discovered content-cache misses switch to the scratch-cache budget class.
-- **Cache Habu-under-test by CONTENT not path, keep the producer build-only, always validate.**
-  Hash `bin/hb` + runner/build harness + every emitted engine/repl source; a hit unblocks
-  under-test slices, a miss runs the fixpoint and installs under that key. A hit that also skips
-  `GE-ENGINE-SUITE`/hook checks is wrong — candidate PRODUCTION is not VALIDATION; run a candidate
-  validation row after the `under` capability is ready. Build the candidate in the early
-  engine-build slot, publish atomically (path+SHA), then release downstream phases onto
-  `HABU_UNDER_TEST` (pass it INTO the producer phase; make the drain fail once `GT-POOL-LIVE` is
-  zero, not poll an empty pool). Cache stamps assert the INSTALLED artifact from CONSUMED inputs
-  (record each stage-source digest at emit/consume via `BF-RECORD-STAGE`, assemble from those +
-  the post-install engine hash; re-hashing the tree races mid-build edits). Gate retries need FRESH
-  `XDG_CACHE_HOME` + `HB_TMP` per ATTEMPT (a reused cache replays a timeout-poisoned verdict as a
-  false persistent red). A fresh gate root does not imply zero aggregate cache hits — the suite
-  proves maker/artifact hit paths inside one attempt; retry isolation rejects INHERITED artifacts
-  while preserving the within-attempt hit-counter contract.
+  window). Report maker, artifact, and result cache fills as budget coverage; none changes whether
+  phase 15 runs.
+- **Every ordinary gate run builds Habu-under-test in phase 15; only explicit `--under` skips it.**
+  A persistent candidate cache can publish a binary before phase 15's verdict, then reuse it and
+  skip the failing phase on a later run. Build the candidate in the early engine-build slot, then
+  release downstream phases onto `HABU_UNDER_TEST` after it is ready. Maker, artifact, and result
+  caches may hit, but none may suppress phase 15.
 - **Private temp dirs for native builds; shared `/tmp` races parallel agents.** `HB_TMP` defaults
   to `/tmp` with fixed names (`stage2-src`, `hb-stdin-got`) — concurrent workspaces corrupt each
   other's refresh/gate with transient opaque exits. Allocate+export a private `HB_TMP` (create it

@@ -39,6 +39,18 @@ bin/hb --load test/run.f -- --under bin/hb
 `--under` copies the executable into the suite-owned temp root and marks the
 candidate capability ready. The candidate build phase is not scheduled.
 
+A whole-gate scheduling regression cannot run inside `test/run.f` or a slice
+that it schedules: its child would enter the same gate recursively. Run these
+two candidate-scheduling checks separately before landing gate-runner changes:
+
+```sh
+bin/hb --load test/candidate-rebuild-test.f -- rebuild
+bin/hb --load test/candidate-rebuild-test.f -- import
+```
+
+The first requires two ordinary runs to build phase 15. The second requires an
+ordinary source build followed by exact `--under` import with no phase 15.
+
 ## Boundary Rule
 
 Semantic checks run in-process by default. A child process is justified only

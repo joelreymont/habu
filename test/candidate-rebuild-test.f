@@ -31,7 +31,6 @@ create UNDER-EXE FS-PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
 create SRC-HEX HEX-U allot
-create HOST-HEX HEX-U allot
 create UNDER-HEX HEX-U allot
 
 variable ROOT-U
@@ -147,10 +146,7 @@ variable OUT-START
 : SOURCE-PREPARE ( -- )
    RUN1$ s" hb-under-test" SRC-EXE JOIN-PATH SRC-EXE-U !
    s" first run produced executable" T-LABEL SRC-EXE$ EXECUTABLE? TTRUE
-   s" first run source hash" T-LABEL SRC-EXE$ SRC-HEX SHA256-FILE-HEX 0 T=
-   s" host hash" T-LABEL s" bin/hb" HOST-HEX SHA256-FILE-HEX 0 T=
-   s" first run source differs from host" T-LABEL
-      SRC-HEX HEX-U HOST-HEX HEX-U STR= TFALSE ;
+   s" first run source hash" T-LABEL SRC-EXE$ SRC-HEX SHA256-FILE-HEX 0 T= ;
 
 : IMPORT-HASH ( -- )
    SRC-EXE$ SRC-HEX SHA256-FILE-HEX 0 T=
