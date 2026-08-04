@@ -4937,3 +4937,35 @@ naming rule down beside the forms and reserve all four unused names: a leading
 trailing `d` says the value CHOSEN is, as it does in `a64.fmovxd`. A family that
 grows along axes needs its axes named before its second member ships, or the
 third arrives with a name that has to be argued about.
+
+## A spawned child inherits the launcher's fd 0, so the launcher decides the verdict
+
+`test/pre-trust-defer.f` spawned its engine-under-test through
+`PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE`, which passes `-1` for the child's stdin.
+`src/habu/habu1.f` `SPAWN-DUP2-ACTION` skips the dup2 for a negative fd, so the
+child kept the FIXTURE's fd 0 — and `posix_spawn` makes it a process-group
+leader. Launched from a terminal, that child was a bare engine, found a tty on
+fd 0, entered the REPL, and its terminal ioctl stopped it with SIGTTOU as a
+background group: the boot never returned and the case died on the 20s timeout
+instead of reporting an exit code. From a pipe the same tree gave a clean
+verdict. A fixture that asserts a child's exit code must hand that child an
+explicit stdin (the empty-pipe `*-STDIN-CAPTURE` variants) — the same promise
+`test/gate-env-stdin-tty-test.f` already holds for `GE-RUN-ENV`. `test/gate-pool.f`
+`GT-POOL-SPAWN` passes `-1` too, so every pooled job inherits the gate's fd 0;
+only jobs that spawn a BARE engine are exposed, because `--load` takes the
+file-list path and never reaches the tty REPL branch.
+
+## An exit-code assertion silently rots when an earlier guard learns to fire
+
+The same fixture asserted exit 73, the runtime `SEAL-CAPTURE` backstop, for a
+tree with its pre-trust drain blanked. Once the prefix gained a CHECKED `is` on
+a pre-trust defer (`src/habu/xref.f` `INSTALL`, `[: LIVE ;] is PKG-LIVE-XT`),
+the checker refused that definition first and the boot died at 70 — the property
+still held, by a different and earlier guard, and the fixture read as an
+environment flake for a day. Two lessons: assert each guard in its own case
+(here, one case blanks the drain and expects the checker's 70, another also
+blanks the hook install so the runtime backstop is reachable and expects 73,
+plus a control proving the blanked hook alone still boots 0); and never let a
+child-rc assertion print only a number. `lib/test/spawn-report.f` `CHILD` prints
+the child's own stdout/stderr and the launch context on a mismatch — the answer
+that took a day was one line of the child's stderr the fixture was discarding.

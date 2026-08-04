@@ -313,6 +313,44 @@ maximum retains the required headroom under that shared power of two. Native
 layout and Gforth recovery carry matching owner tokens; stage2 and maker alias
 that owner rather than carrying independent numeric ceilings.
 
+## A child-process fixture disagrees with itself — `tools/launch-context.f`
+
+A fixture that spawns a child and asserts its exit code reports a bare number
+when it fails (`expected 73 got 70`), which is what makes this class look
+environmental: the child printed the reason and the fixture threw it away. Get
+the reason before theorising about the launcher.
+
+- `lib/test/spawn-report.f` is the reporter. `SPAWN-REPORT:CHILD
+  ( ptr u8 n n n ptr u8 n ptr u8 n -- )` takes a label, the wanted and the got
+  rc, and the captured stdout/stderr, and prints all of it plus the launch
+  context. Wire every child-rc assertion in a fixture through a helper that
+  calls it on a mismatch — `test/pre-trust-defer.f` `CHILD-RC` is the pattern.
+  The exit-70-vs-73 disagreement that stood for a day was one line of the
+  child's own stderr.
+- `bin/hb --load tools/launch-context.f` prints only the context, so the same
+  report can be taken under different launchers and diffed. Every line starts
+  `ctx `: pid, script argv, whether `bin/hb` is reachable from the process's cwd
+  and from its inherited `PWD` (a stale `PWD` shows up as a yes/no split), fds
+  0/1/2 with open state, status flags and tty-ness, and the environment.
+
+```sh
+bin/hb --load tools/launch-context.f | grep '^ctx ' | sort > /tmp/pipe.txt
+script -q /tmp/tty.log bin/hb --load tools/launch-context.f >/dev/null
+grep '^ctx ' /tmp/tty.log | sort > /tmp/tty.txt
+diff /tmp/pipe.txt /tmp/tty.txt
+```
+
+tty-ness is read with the host's own terminal-attributes ioctl, selected by
+`HB-TARGET-MACOS?`/`HB-TARGET-LINUX?`. The two hosts' request numbers are not
+interchangeable — issuing Linux `TCGETS` on macOS kills the process (exit 83) —
+so an unrecognised host throws `E-PROC-HOST` instead of trying both.
+
+Before concluding "environment", check the cheaper explanations the same way
+this class was mis-filed once already: the suite may not be selected by the
+slice that looked green (`SUITE-RUN?` in `test/gate-stdlib-lib.f`), and a
+fixture that asserts a specific exit code may simply be asserting a code the
+tree stopped producing.
+
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).
 - Declaring locals inside `IF`/loop corrupts the frame.

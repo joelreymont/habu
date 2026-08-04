@@ -56,6 +56,7 @@
 -2506 constant E-PROC-PATH
 -2507 constant E-PROC-PTY-CAPACITY
 -2508 constant E-PROC-PTY-HANDLE
+-2509 constant E-PROC-HOST        \ a host-specific request number was needed on a host that is neither supported target
 
 \ Time/date: -2600..-2699
 -2600 constant E-TIME-FIRST

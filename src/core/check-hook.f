@@ -42,6 +42,17 @@ TRUSTED: INSTALL ( -- )
    ['] PREFLIGHT set-preflight
    ['] HOOK set-check ;
 
+\ The bare INSTALL call sits between the two unique PTD-HOOK-BLANK sentinels so
+\ test/pre-trust-defer.f can blank exactly this region and reach the RUNTIME
+\ backstop it is testing. Blanking the pre-trust drain alone never reaches that
+\ backstop: the checker rejects the first checked `is` on an undrained pre-trust
+\ defer long before it (src/habu/xref.f INSTALL, exit 70). Removing the hook for
+\ that one case isolates the runtime property — a non-empty pending table at
+\ SEAL-CAPTURE refuses the boot at exit 73 — from the checker's earlier refusal,
+\ which that fixture asserts as its own case. Keep the sentinels contiguous with
+\ the call.
+\ PTD-HOOK-BLANK-BEGIN
 INSTALL
+\ PTD-HOOK-BLANK-END
 
 ;package
