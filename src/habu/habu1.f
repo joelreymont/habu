@@ -2327,6 +2327,55 @@ SOURCE-INIT
    pos LBL,
    9 G-PUSH ;
 
+\ Emit the FNV-1a fold+hash of the name at reg `nr` (ptr), length `lr`,
+\ into reg `hr`; clobbers c3 c4 (byte/fold scratch) and c7 (cursor). The
+\ fold is the same A-Z|0x20 idiom the FIND compare uses.
+\
+\ This is the dictionary hash index's KEY DERIVATION and every user of the table
+\ shares it: the inserter and the duplicate wall further down this file, LFIND's
+\ two probes, and BSWL just below. It sits here rather than beside them because
+\ BSWL is the earliest of those and a name must be defined before it is used.
+: C-HIDX-HASH ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
+   LBL LBL {: hl:label hd:label :}
+   hr $CBF29CE484222325 LIT64,
+   c7 0 MOVZ,
+   hl LBL,  c7 lr CMP,  C-GE hd BCOND,
+      c4 nr c7 ADD,  c4 c4 0 LDRB,
+      c3 c4 $41 SUBI,  c3 $1A CMPI,  c3 C-CC CSET,  c3 c3 5 LSLI,  c4 c4 c3 ORR,
+      hr hr c4 EOR,
+      c3 $100000001B3 LIT64,
+      hr hr c3 MUL,
+      c7 c7 1 ADDI,  hl B,
+   hd LBL, ;
+
+\ BSWL is the `search-wl` primitive: the name's row in ONE wordlist, or 0.
+\
+\ ITS ANSWER IS THE LAST MATCHING ROW, and that is not the same rule as "the
+\ matching row". The scan below runs record 0 upwards and overwrites its result
+\ on every hit, so where a wordlist held two rows for one folded name the higher
+\ index would win. The hash probe cannot express that rule - the table is
+\ insert-once, one slot per (name, wid), and a chain walk stops at the FIRST
+\ validated row it meets. The two rules coincide only where a wid holds at most
+\ one live row per folded name, and that is a property of the wid, not of this
+\ word:
+\   - a real wordlist (0, a package's private or public wid, and the
+\     DICT-WL:NAMESPACE that package rows carry) is guarded by the definer's
+\     duplicate wall (habu2.f C-REJECT-DUP-DEF), which refuses a second
+\     definition of a tail already live in the wordlist being defined into. At
+\     most one row, so first and last are the same row and the probe reproduces
+\     the scan exactly;
+\   - DICT-WL:RETIRED is not a wordlist. xref.f XREF-RETIRE stamps it onto rows
+\     that are ALREADY in the table under the wid they were published in, so
+\     those rows sit on another chain entirely and this key's chain is empty -
+\     and retiring one name twice puts two rows under the key, which is the
+\     duplicate case the probe has no shape for. Both failures point the same
+\     way, so the probe is not consulted for that wid at all and the scan, which
+\     answers it correctly today, keeps answering it.
+\ The remaining two exits are the ones LFIND keeps the scan for and they carry
+\ the same reasoning as its FIND-START comment: no table at all, and a chain
+\ walked through every slot without meeting an empty one. An empty slot IS the
+\ answer "absent from this wordlist", because every record below NDICT is in the
+\ table and slots only ever go empty -> occupied.
 : BSWL ( -- )
    LBL SWL-LOOP !
    LBL SWL-END !
@@ -2336,6 +2385,7 @@ SOURCE-INIT
    LBL SWL-F1 !
    LBL SWL-F2 !
    LBL SWL-INL !
+   LBL LBL LBL LBL LBL LBL {: plin:label ploop:label pnext:label pinl:label pcmp:label pmatch:label :}
    2 G-POP  1 G-POP  0 G-POP
    11 0 MOVZ,                                              \ result defaults to absent
    \ search-wl short-circuits WID OWNER-API-PRI-WID to absent: WID 2 is the
@@ -2344,6 +2394,39 @@ SOURCE-INIT
    \ start at FIRST-DYNAMIC-WID), and test/engine-suite.f pins that (PROT-SPAN)
    \ stays hidden from every wordlist.
    2 OWNER-API-PRI-WID CMPI,  C-EQ SWL-END LABEL@ BCOND,   \ reserved OWNER-API-private WID is never raw-searchable
+   \ Hash probe. x0 (name), x1 (len), x2 (wid) and x11 (result) are preserved
+   \ across it for the scan the two fallbacks reach.
+   4 DICT-WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,   \ not a wordlist key -> scan
+   14 DATA HIDXP-CELL LDR,  14 plin CBZ,                   \ no table -> scan
+   0 1 15 4 16 7 C-HIDX-HASH
+   6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
+   8 HIDX-SLOTS LIT64,
+   ploop LBL,
+      17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,            \ x3 = slot value (index+1)
+      3 SWL-END LABEL@ CBZ,                                \ empty slot -> absent from this wordlist
+      4 3 1 SUBI,  4 NDICT CMP,  C-GE pnext BCOND,         \ stale (truncated) index
+      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,             \ x5 = record ptr
+      16 5 40 LDR,  16 2 CMP,  C-NE pnext BCOND,           \ wid mismatch (retired / other wordlist)
+      16 5 16 LDR,  16 16 12 LSLI,  16 16 12 LSRI,  16 1 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      16 5 24 ADDI,
+      3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 pinl CBZ,
+         16 5 24 LDR,
+      pinl LBL,
+      7 0 MOVZ,
+      pcmp LBL,
+         7 1 CMP,  C-GE pmatch BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 0 7 ADD,     4 4 0 LDRB,
+         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE pnext BCOND,
+         7 7 1 ADDI,  pcmp B,
+      pmatch LBL,
+         11 5 0 LDR,  SWL-END LABEL@ B,
+      pnext LBL,
+         8 8 1 SUBI,  8 plin CBZ,
+         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  ploop B,
+   plin LBL,
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
@@ -2728,22 +2811,6 @@ SOURCE-INIT
 
 variable LHIDXADD
 variable LHIDXBUILD
-
-\ Emit the FNV-1a fold+hash of the name at reg `nr` (ptr), length `lr`,
-\ into reg `hr`; clobbers c3 c4 (byte/fold scratch) and c7 (cursor). The
-\ fold is the same A-Z|0x20 idiom the FIND compare uses.
-: C-HIDX-HASH ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
-   LBL LBL {: hl:label hd:label :}
-   hr $CBF29CE484222325 LIT64,
-   c7 0 MOVZ,
-   hl LBL,  c7 lr CMP,  C-GE hd BCOND,
-      c4 nr c7 ADD,  c4 c4 0 LDRB,
-      c3 c4 $41 SUBI,  c3 $1A CMPI,  c3 C-CC CSET,  c3 c3 5 LSLI,  c4 c4 c3 ORR,
-      hr hr c4 EOR,
-      c3 $100000001B3 LIT64,
-      hr hr c3 MUL,
-      c7 c7 1 ADDI,  hl B,
-   hd LBL, ;
 
 \ Emit: insert record index x3 into table x14. The dictionary rejects
 \ duplicate definitions, so the table is insert-once: probe to the first

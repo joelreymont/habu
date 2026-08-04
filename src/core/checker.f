@@ -6014,6 +6014,32 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    vis CHECKER-PACKAGE-NONE <> IF pkg pkgu vis a u CHECKER-PKG-SYM EXIT THEN
    a u CHECKER-GLOBAL-SYM ;
 
+\ The scope chain, in the engine's own order (habu1.f EMIT-FIND): the open
+\ package's private wordlist, then its public one, then the global wordlist,
+\ then the used publics. The checker walks it over ITS symbol table, which holds
+\ only the words it recorded — so a `0 set-check` definition, or anything else
+\ with no checker signature, is invisible to it at every leg.
+\
+\ THE ENGINE GETS THE DECIDING VOTE AT THE TWO PACKAGE LEGS as well as at the
+\ used-publics one (CHECKER-USED-BIND above, dot habu-reject-a-bare-1f43a9a6).
+\ Without it the open-package leg had the same hole the used-publics leg had:
+\ the checker's package lookup missed a package word it never recorded, fell
+\ through to the global symbol of the same spelling, and certified the body
+\ against THAT word while the engine bound the package one — two different words
+\ named by one token, with no diagnostic (dot habu-bind-a-bare-69c2a5fd: the
+\ reproducer certified against a global `PVG` and ran the package's `PVG`).
+\ A tail the engine's open package claims but the checker has no symbol for is
+\ not certifiable, so the answer is 0, which is E-UNDEFINED at the call site —
+\ never a certificate written against some other word.
+\
+\ The probe reads the ENGINE's package cells, not the checker's package mode:
+\ what decides the binding is which wordlists the engine will actually search,
+\ and CK-OPEN-CLAIMS? returns at once when no package is open, so a top-level
+\ token pays one cell read. Inside a package it costs two wordlist lookups per
+\ token the checker's own package tables missed — which is every reference to a
+\ global or a primitive from package code. That is affordable only because
+\ `search-wl` answers through the dictionary hash index (habu1.f BSWL) instead
+\ of scanning the record table.
 : CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
@@ -6022,6 +6048,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
       pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
       pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
    THEN
+   a u CK-OPEN-CLAIMS? IF 0 EXIT THEN       \ engine-authoritative: an open-package word the checker cannot see
    a u CHECKER-GLOBAL-SYM? dup 0 <> IF
       dup >r a u r> CHECKER-USED-SHADOW      \ throws if a live used public also exports this bare tail
       EXIT

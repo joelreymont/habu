@@ -196,6 +196,53 @@ s" package USQ using USP public : USQ-R1 ( -- n ) 41 USPW ; ;using ;package" UCE
 s" package USQ using USP public : USQ-R2 ( -- n ) 41 USP:USPW ; ;using ;package" UCE-CATCH 0 T=
 USQ:USQ-R2 42 T=
 
+\ === an open-package word claims the tail with no `using` anywhere ===
+\ The leg above is reached only once a used public has matched. This one needs
+\ no import at all: inside a package, a tail the checker's package tables miss
+\ used to fall straight through to the GLOBAL symbol, while the engine's chain
+\ stopped one scope earlier at the package's own word. Certification and
+\ execution then named different words and nothing said so (dot
+\ habu-bind-a-bare-69c2a5fd). The engine's package wordlists are now asked at
+\ those two legs as well, so such a tail is uncheckable and refused.
+\ Each subject arrives through INCLUDE-EVALUATE, the same load path every case
+\ above uses, so the globals these cases need are created where a user's would
+\ be - at genuine top level - without this file growing an unpackaged word.
+s" : OPK-G ( -- n ) 7 ;" UCE-CATCH 0 T=    \ the global the checker used to bind
+\ a package-PRIVATE OPK-G the checker never records (explicit unchecked window)
+s" check@ package OPKA 0 set-check : OPK-G ( -- n ) 41 ; ;package set-check" UCE-CATCH 0 T=
+\ what the ENGINE binds there, witnessed by an unchecked body: the package's own
+\ word, not the global. So refusing the checked body below is the right answer
+\ and not an over-eager one.
+s" check@ package OPKA public 0 set-check : OPKA-W ( -- n ) OPK-G ; ;package set-check" UCE-CATCH 0 T=
+OPKA:OPKA-W 41 T=
+\ the checked body naming the same bare tail: uncheckable, refused
+s" package OPKA public : OPKA-R ( -- n ) OPK-G ; ;package" UCE-CATCH E-REJECT T=
+\ the global is still reachable from a package that does NOT shadow it, which is
+\ what keeps the probe from rejecting every global reference made inside one
+s" package OPKB public : OPKB-R ( -- n ) OPK-G ; ;package" UCE-CATCH 0 T=
+OPKB:OPKB-R 7 T=
+\ and so is a primitive, the other thing every package body names
+s" package OPKB public : OPKB-P ( n -- n ) dup + ; ;package" UCE-CATCH 0 T=
+7 OPKB:OPKB-P 14 T=
+
+\ The public leg of the same chain: the shadowing definition in the package's
+\ PUBLIC wordlist rather than its private one.
+s" : OPK-H ( -- n ) 7 ;" UCE-CATCH 0 T=
+s" check@ package OPKC public 0 set-check : OPK-H ( -- n ) 41 ; ;package set-check" UCE-CATCH 0 T=
+s" package OPKC public : OPKC-R ( -- n ) OPK-H ; ;package" UCE-CATCH E-REJECT T=
+
+\ The damage the refusal prevents, made visible: the package's word has a
+\ DIFFERENT effect from the global's, so the old certificate was not merely
+\ against the wrong record - it was against the wrong stack behaviour.
+s" : OPK-K ( -- n ) 7 ;" UCE-CATCH 0 T=
+s" check@ package OPKD 0 set-check : OPK-K ( n -- n ) drop 41 ; ;package set-check" UCE-CATCH 0 T=
+s" package OPKD public : OPKD-R ( -- n ) OPK-K ; ;package" UCE-CATCH E-REJECT T=
+
+\ A checked package word of the same shape is unaffected: the checker records it,
+\ its own table answers, and the engine is never asked.
+s" package OPKE : OPK-G ( -- n ) 41 ; public : OPKE-R ( -- n ) OPK-G ; ;package" UCE-CATCH 0 T=
+OPKE:OPKE-R 41 T=
+
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

@@ -4882,6 +4882,77 @@ register arity belongs in a decision: `src/compiler/native/select.f` refuses the
 conversion when the routine has fewer registers than the select reads, and the
 three-register pool of the chain suite's spill case is what proved it necessary.
 
+## An index answers a scan only for the keys that can hold one row
+
+`search-wl` (habu1.f BSWL) scanned the whole record table and kept the LAST
+match; the dictionary hash index returns the FIRST validated row on a chain.
+Those are different rules, and asking "is the index correct?" is the wrong
+question — the right one is "for which keys is at most one row live?", which is
+a property of the KEY, not of the lookup. For every real wordlist the definer's
+duplicate wall (habu2.f `C-REJECT-DUP-DEF`) makes it true, so first and last are
+the same row. For one key it is false, and the key is not a wordlist at all:
+`undefine` (xref.f `XREF-RETIRE`) stamps `DICT-WL:RETIRED` onto the wordlist
+cell of a row that is ALREADY in the table, so the row stays on the chain of the
+wid it was PUBLISHED under and this key's chain is empty — and retiring one name
+twice puts two rows under the key, which an insert-once table has no slot shape
+for. Both failures point the same way, so the probe is not consulted for that
+wid and the scan keeps answering it. The general rule: when you replace a scan
+with an index, enumerate the writers of the index's KEY. A key written once at
+insertion is indexable; a key some later writer re-stamps onto a row that is
+already filed is not, and the linear fallback for it is the correct answer
+rather than a hedge.
+
+## Pin a lookup by which ROW it returned, not by whether it returned one
+
+The order-pinning fixture for the change above (`test/engine-suite.f`, package
+`ES-SWL`) works because no case asserts "non-zero". Each one names the row it
+expects by the index the row was published at — `ndict@` in the instant before
+publication — and compares `search-wl`'s answer with that row's own first cell.
+An answer of the WRONG row of a pair then fails, where "found something" would
+have passed. The same battery is captured twice, once with the index live and
+once at the end of the file after the `ndict!` block has dropped it, so the
+probe and the scan must agree row for row over one dictionary. Mutation:
+removing the retired-wid guard reddened four cases including the two-capture
+comparison. One mutation SURVIVED and is worth knowing — deleting the probe's
+name-length check changed no answer, because the hash already encodes the
+length; that check only bites when a slot collision coincides with a prefix
+relationship, which no fixture reaches. A surviving mutation is not always a
+weak test; sometimes it names a guard whose reachability needs a collision to
+construct.
+
+## A correctness fix can be gated on a performance fix, and saying so is the design
+
+The checker's bare-tail resolver had the same hole at the OPEN-PACKAGE leg that
+was closed at the used-publics leg (`CHECKER-USED-BIND`): a package word the
+checker never recorded — a `0 set-check` definition — was invisible to its
+tables, so it fell through to the GLOBAL symbol of that spelling and certified
+the body against the wrong word while the engine bound the package one. The
+earlier repair stopped at the used-publics leg for a stated reason: that leg is
+reached only after a used public has matched, so it pays one wordlist probe per
+matched reference, while the package leg would probe on every token whose
+package lookup missed — which is every reference to a global or a primitive from
+package code. With `search-wl` scanning the record table that was 4.2-5.9 µs per
+call and unaffordable; measured on `tools/dict-lookup-cost.f`, a 40-definition
+batch went 5.5 ms → 12.8-14.3 ms and the dictionary-size slope came back. Once
+the primitive answered from the index (10-21 ns per call, flat) the same leg cost
+nothing: 5.3-5.4 ms, flat, indistinguishable from before the leg existed. When a
+correct rule is declined on cost, write down the measurement and the cost that
+would make it affordable — that turns "we did not do it" into a dependency
+another dot can discharge, and the resolver leg lands the day the primitive does.
+
+## A new global in an engine-trunk file has to join a package, even where its neighbours do not
+
+`tools/package-diff-lint.f` admits changes to the BODY of a global that
+`src/habu/{layout,habu1,habu2,xref}.f` already defines, and still reports a
+genuinely NEW global there — the asymmetry is deliberate, because those files
+already open real packages, so a new name has an owner it can join. Adding two
+constants beside `DREC` and `OWNER-API-PRI-WID` in `layout.f` was reported
+twice; putting the same two in `package DICT-WL` was clean and cost nothing,
+because a brand-new name has no bare callers yet and so does not inherit the
+`using` blocker that stops the rest of that file from being packaged (dot
+habu-give-layout-f-315df2ca). Do not read the surrounding global surface as
+permission: check whether the name is new before deciding where it lives.
+
 ## A fixture that pins "what the elaborator leaves" outlives its subject
 
 `test/compiler/native-select.f` pinned the fused compare-and-branch on `MAX2` -

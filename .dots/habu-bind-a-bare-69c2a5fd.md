@@ -1,6 +1,6 @@
 ---
 title: Bind a bare tail to the package word the engine runs
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-04T10:45:10.580784+02:00"
@@ -30,3 +30,5 @@ Why it was not fixed with the using leg: the used-publics leg is reached only af
 What is needed: a cheap engine-authoritative existence probe. The engine's own LFIND already answers this in O(1) through the HIDX hash index (habu1.f EMIT-FIND FIND-START); exposing that as a primitive (or teaching BSWL to use HIDX with the linear scan as fallback, exactly as LFIND does) makes the probe affordable, and CHECKER-FIND-ACTIVE-SYM can then consult the engine at the package legs too. Engine change, seed-affecting, fixpoint rebuild.
 
 Regression: the case belongs beside the ones added to test/using-test.f under 'an open-package word claims the tail before any used public'.
+
+Claim: agent=open-pkg-leg workspace=.jj-ws/habu-bind-a-bare-69c2a5fd

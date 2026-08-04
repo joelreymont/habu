@@ -65,6 +65,31 @@ $181000 constant DICT-SIZE
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
+\ --- the wordlist cell's two non-wordlist values ---------------------------
+\ A record's wordlist cell is HALF THE HASH INDEX'S KEY (habu1.f C-HIDX-INS
+\ keys a slot on the folded name XOR this cell), and it is written once, at
+\ publication, BEFORE the record is inserted - which is what lets a probe with a
+\ caller's wid find the row or prove it absent.
+\
+\ NAMESPACE keeps that rule: a package's own row carries it from birth, so the
+\ row is on this key's chain and LFIND's qualifier probe finds it there.
+\ RETIRED breaks it. src/habu/xref.f XREF-RETIRE stamps it on the cell of a
+\ record that is ALREADY in the table, so the row stays on the chain of the wid
+\ it was published under. Every lookup keyed on a REAL wid still agrees with a
+\ scan (the row's cell no longer matches, so both skip it), but a lookup keyed
+\ on RETIRED itself cannot be answered by the table at all - and retiring one
+\ name twice puts two rows under the key, which an insert-once table has no slot
+\ shape for. habu1.f BSWL therefore keeps its linear scan for exactly this wid.
+\
+\ Both live in a package rather than beside the constants above because they are
+\ new: the surrounding global surface is this file's packaging debt (dot
+\ habu-give-layout-f-315df2ca), and a name that has no bare callers yet has no
+\ reason to join it. `package SNAP-RELOC` further down is the same shape.
+package DICT-WL
+public
+-1 constant NAMESPACE
+-2 constant RETIRED
+;package
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time

@@ -8,8 +8,13 @@
 2 constant XREF-FLAGS-SLOT
 3 constant XREF-NAME-SLOT
 5 constant XREF-WORDLIST-SLOT
--1 constant XREF-NAMESPACE-WL
--2 constant XREF-RETIRED-WL
+\ The two non-wordlist values a record's wordlist cell can carry. They are
+\ src/habu/layout.f's, not this file's: the engine's hash index is keyed on the
+\ same cell, and XREF-RETIRE below is the one writer that changes it after a
+\ record is already in that index - see the DICT-WL comment there for what the
+\ lookup does about it.
+DICT-WL:NAMESPACE constant XREF-NAMESPACE-WL
+DICT-WL:RETIRED constant XREF-RETIRED-WL
 
 32 constant XREF-SP
 
