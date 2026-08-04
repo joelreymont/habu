@@ -600,8 +600,19 @@ SUITE export-keyword-package
 
 SUITE gate-runner-entry-load
    test/gate-runner-entry-test.f
-   test/candidate-rebuild-test.f
 ;SUITE
+
+GROUP SEQ candidate-gates
+
+SUITE candidate-rebuild
+   test/candidate-rebuild-test.f -- rebuild
+;SUITE
+
+SUITE candidate-import
+   test/candidate-rebuild-test.f -- import
+;SUITE
+
+;GROUP
 
 SUITE load-reject-diag
    test/load-reject-diag-test.f

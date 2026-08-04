@@ -1,6 +1,6 @@
 \ candidate-rebuild-test.f - real scheduler candidate-source regression.
 \
-\ Run: bin/hb --load test/candidate-rebuild-test.f
+\ Run: bin/hb --load test/candidate-rebuild-test.f -- rebuild; bin/hb --load test/candidate-rebuild-test.f -- import
 
 require lib/errors.f
 require lib/string.f
@@ -18,6 +18,7 @@ package CANDIDATE-REBUILD-TEST
 $10000 constant CAP
 300000 constant TIMEOUT-MS
 64 constant HEX-U
+64 constant USAGE-RC
 
 create ROOT FS-PATH-CAP allot
 create XDG FS-PATH-CAP allot
@@ -181,14 +182,24 @@ variable OUT-START
    IMPORT-HASH ;
 
 : MAIN ( -- )
+   SCRIPT-ARGC 1 <> if
+      s" usage: test/candidate-rebuild-test.f -- [rebuild|import]" USAGE-RC die
+   then
+   0 SCRIPT-ARGV$ {: mode:ptr modeu:n :}
+   mode modeu s" rebuild" STR= mode modeu s" import" STR= or 0= if
+      s" usage: test/candidate-rebuild-test.f -- [rebuild|import]" USAGE-RC die
+   then
    T-RESET
    SETUP
    RUN1$ ORDINARY
    SOURCE-PREPARE
-   RUN2$ ORDINARY
-   s" second run maker cache remains active" T-LABEL GS-MAKER-HIT @ 0 > TTRUE
-   s" second run artifact cache remains active" T-LABEL GS-ARTIFACT-HIT @ 0 > TTRUE
-   IMPORTED
+   mode modeu s" rebuild" STR= if
+      RUN2$ ORDINARY
+      s" second run maker cache remains active" T-LABEL GS-MAKER-HIT @ 0 > TTRUE
+      s" second run artifact cache remains active" T-LABEL GS-ARTIFACT-HIT @ 0 > TTRUE
+   else
+      IMPORTED
+   then
    CLEANUP-RUN
    T-REPORT
    s" candidate-rebuild-test: ok" type cr ;
