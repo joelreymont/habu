@@ -27,8 +27,8 @@ and SHA before the test runs.
 
 Candidate production is not candidate validation. The build test only produces
 `HABU_UNDER_TEST`; a separate candidate validation test always runs after that
-capability is ready, whether the candidate came from a build, the content cache,
-or explicit `--under PATH`.
+capability is ready, whether the candidate came from a build or explicit
+`--under PATH`.
 
 The explicit reuse path is:
 
@@ -37,7 +37,7 @@ bin/hb --load test/run.f -- --under bin/hb
 ```
 
 `--under` copies the executable into the suite-owned temp root and marks the
-candidate capability ready. It does not install into the content cache.
+candidate capability ready. The candidate build phase is not scheduled.
 
 ## Boundary Rule
 
@@ -123,7 +123,7 @@ primitive declaration table.
 The summary must show:
 
 - total top-level phases;
-- cache/candidate counters;
+- result/maker/artifact-cache and candidate counters;
 - child-Habu, process-exec, candidate-exec, process-fork, process-reaper, and
   backward-compatible helper-spawn counts;
 - in-process evaluation count;
@@ -186,7 +186,7 @@ instead of recording a red phase.
 Timing regression checks are host-specific. Use named profiles instead of
 remembering slot counts or cache state:
 
-| Profile | Host proof | Slots | Nested | Persistent nominal budget | Scratch-cache nominal budget |
+| Profile | Host proof | Slots | Nested | Default nominal budget | Cold-cache nominal budget |
 |---|---|---:|---:|---:|---:|
 | `macos-arm64-10x2` | macOS ARM64 target | 10 | 2 | 30000ms / 35000ms wall | 30000ms / 35000ms wall |
 | `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 | 100000ms / 110000ms wall | 150000ms / 160000ms wall |
@@ -200,15 +200,9 @@ top-level `--pool-slots` is capped at 12. Table budgets are nominal and scale
 with the calibrated host factor.
 
 `--cold-cache` selects a private per-run scratch cache root under the suite temp
-directory, applies the profile scratch-cache budget unless the user supplied
-explicit budget arguments, and proves content-cache fill behavior without
-deleting the persistent cache.
-
-If a default persistent-cache run discovers a missing `HABU_UNDER_TEST` after
-argument parsing, the runner uses the same scratch-cache budget unless explicit
-budget arguments were supplied. Use
-`--cold-cache` when explicitly measuring builder/maker artifact cache-fill
-behavior.
+directory, applies the profile cold-cache budget unless the user supplied
+explicit budget arguments, and measures builder, maker, artifact, and result
+cache fill without deleting the default persistent caches.
 
 The runner's wall budget is monotonic elapsed test-suite time; wrap the
 command with `/usr/bin/time -p` when comparing end-to-end shell wall time across
@@ -225,9 +219,9 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    through a checked `defer` hook.
 
 2. Candidate production and validation split.
-   Acceptance: persistent cache or `--under PATH` prints `candidate-build=0` and
-   `candidate-validate=1`; build misses still install a stamp-backed executable
-   cache entry.
+   Acceptance: `--under PATH` prints `candidate=0`, `candidate-import=1`, and
+   `candidate-validate=1`; an ordinary invocation prints `candidate=1` and
+   `candidate-validate=1`.
    Status: implemented in `test/run.f` and `test/gate-engine-lib.f`.
 
 3. Replace index-only phase dispatch with a checked manifest.
@@ -241,20 +235,10 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    tests remain explicit boundary tests.
    Status: implemented for repair, doc/schema, split lint, typed-local,
    diagnostic SARIF/public-signature and JIT dump semantics.
-   Current macOS proof after removing top snapshot launchers, replacing the
-   monolithic parent support load with explicit suite setup, moving the
-   check-tool file-label smoke to the in-process checker core, splitting AOT
-   closure diagnostics from the maker path, keeping SARIF/prop-test CLI entries
-   thin, running tail/lint groups through worker-local fork pools, and fixing
-   post-build candidate scheduling, and moving PTY coverage to the
-   post-candidate runtime slice: 16.702s internal / 19.00s shell wall hot,
-   `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=25`,
-   `candidate-hit=1`, `candidate-validate=1`; `check-cli` is 3.162s,
-   dictionary/checker is 7.815s, diagnostics all-strict is 11.891s, tail/lint
-   groups are under 7.7s, and the slowest test is checker diagnostics at
-   11.806s. Scratch cold-cache fill with one real candidate build and one real
-   AOT maker build is 39.336s internal / 41.64s shell wall with
-   `candidate-miss=1`, `candidate-install=1`, and `candidate-validate=1`.
+   Current runs distinguish ordinary candidate production
+   (`candidate=1`) from explicit import (`candidate-import=1`, `candidate=0`).
+   Maker, artifact, and result caches remain independent
+   of candidate production.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local
@@ -293,8 +277,8 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
 
 ## Targets
 
-Short-term Jetson/Orin target: persistent content cache, uncontended,
-`--budget-ms 70000` passes.
+Short-term Jetson/Orin target: warm builder, maker, artifact, and result caches,
+uncontended, `--budget-ms 70000` passes.
 
 Architecture target:
 
