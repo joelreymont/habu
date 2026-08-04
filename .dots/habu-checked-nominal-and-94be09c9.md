@@ -59,4 +59,4 @@ and focused tests. The dot remains open until the 18 PTY mint/erase bridges in
 their own active product dots. Smallest owning checks: `test/cast-negative-suite.f`
 and the focused linear-handle declaration suite.
 
-Claim: agent=codex-linear-handle workspace=.jj-ws/habu-checked-nominal-and-94be09c9.
+Landed subset: universal may-linear `CAST:` rejection and rollback proof at `a36d1700287c860f7d728d73062fca35ef64aea9`. The remaining `LINEAR-HANDLE` and PTY migration work is unclaimed.
