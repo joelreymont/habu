@@ -97,6 +97,39 @@ create KVT-H-GEN  KVT-H-CAP cells allot
    KB-TAKE {: gen:n :}
    gen KB-MINT gen ;
 
+: ACTIVE-ALLOC
+   ( KV:cache KV:batch -- KV:cache KV:batch result<KV:seq,n> )
+   >r 16 ALLOC-SEQ r> swap ;
+
+: KVT-MUST-ADD ( KV:cache KV:batch n -- KV:cache KV:batch )
+   KVT-H@ ADD MATCH add-result
+      added OF ENDOF
+      refused OF throw ENDOF
+   ;MATCH ;
+
+: KVT-ADD-OK ( KV:cache KV:batch n -- KV:cache KV:batch )
+   KVT-H@ ADD MATCH add-result
+      added OF ENDOF
+      refused OF drop 0 1 T= ENDOF
+   ;MATCH ;
+
+: KVT-ADD-ERR ( KV:cache KV:batch n n -- KV:cache KV:batch )
+   {: idx:n want:n :}
+   idx KVT-H@ ADD MATCH add-result
+      added OF 0 1 T= ENDOF
+      refused OF want T= ENDOF
+   ;MATCH ;
+
+: KVT-STALE-ADD ( KV:cache KV:batch KV:batch n n -- KV:cache KV:batch )
+   {: idx:n want:n :}
+   rot swap idx E-KV-BATCH KVT-ADD-ERR
+   KB-TAKE want T=
+   swap ;
+
+: KVT-CROSS-ADD
+   ( KV:cache KV:batch KV:cache KV:batch -- KV:cache KV:batch KV:cache KV:batch )
+   swap rot 1 E-KV-BATCH KVT-ADD-ERR swap rot ;
+
 : KVT-STALE-ONE ( KV:cache KV:batch KV:batch n -- KV:cache KV:batch )
    {: want:n :}
    rot swap KVT-CANCEL-ERR
@@ -153,6 +186,39 @@ create KVT-H-GEN  KVT-H-CAP cells allot
       err OF want T= ENDOF
    ;MATCH ;
 
+: KVT-ACTIVE-ALLOC-ERR ( KV:cache KV:batch n -- KV:cache KV:batch )
+   {: want:n :}
+   >r 16 ALLOC-SEQ MATCH result
+      ok OF KV-SEQ:UNMAKE drop drop drop 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH
+   r> ;
+
+: KVT-ACTIVE-FORK-ERR ( KV:cache KV:batch n n -- KV:cache KV:batch )
+   {: idx:n want:n :}
+   >r idx KVT-H@ FORK-SEQ MATCH result
+      ok OF KV-SEQ:UNMAKE drop drop drop 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH
+   r> ;
+
+: KVT-ACTIVE-CANCEL-ERR ( KV:cache KV:batch n n -- KV:cache KV:batch )
+   {: idx:n want:n :}
+   >r idx KVT-H@ CANCEL-SEQ MATCH result
+      ok OF drop 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH
+   r> ;
+
+: KVT-ACTIVE-APPEND-ERR
+   ( GPU:session KV:cache KV:batch n n -- GPU:session KV:cache KV:batch )
+   {: idx:n want:n :}
+   >r idx KVT-H@ APPEND-TOKEN MATCH result
+      ok OF drop 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH
+   r> ;
+
 : KVT-N ( KV:cache result<n,n> -- KV:cache n )
    MATCH result
       ok OF ENDOF
@@ -192,10 +258,53 @@ create KVT-H-GEN  KVT-H-CAP cells allot
    h off H@ {: value:n :}
    h KC-MINT value ;
 
+: KVT-FIELD! ( KV:cache n n -- KV:cache ) {: value:n off:n :}
+   KC-TAKE {: h:ptr :}
+   value h off H!
+   h KC-MINT ;
+
+: KVT-SEQ-RES! ( KV:cache n n -- KV:cache ) {: idx:n value:n :}
+   KC-TAKE {: h:ptr :}
+   value h idx SEQRES!
+   h KC-MINT ;
+
+: KVT-BLK-LEN! ( KV:cache n n -- KV:cache ) {: idx:n value:n :}
+   KC-TAKE {: h:ptr :}
+   value h idx SEQBLEN!
+   h KC-MINT ;
+
+: KVT-D-MODE ( KV:cache n -- KV:cache n ) {: idx:n :}
+   KC-TAKE {: h:ptr :}
+   h idx D-MODE@ {: value:n :}
+   h KC-MINT value ;
+
+: KVT-D-OLD ( KV:cache n -- KV:cache n ) {: idx:n :}
+   KC-TAKE {: h:ptr :}
+   h idx D-OLD@ {: value:n :}
+   h KC-MINT value ;
+
+: KVT-D-NEW ( KV:cache n -- KV:cache n ) {: idx:n :}
+   KC-TAKE {: h:ptr :}
+   h idx D-NEW@ {: value:n :}
+   h KC-MINT value ;
+
 : KVT-CHECK ( KV:cache -- KV:cache )
    KC-TAKE {: h:ptr :}
    h KV-CHECK
    h KC-MINT ;
+
+: KVT-CHECK-ERR ( KV:cache n -- KV:cache ) {: want:n :}
+   KC-TAKE {: h:ptr :}
+   h [: dup KV-CHECK ;] catch {: rh:ptr code:n :}
+   rh drop
+   code want T=
+   h KC-MINT ;
+
+: KVT-BATCH-OFF! ( KV:cache KV:batch n -- KV:cache KV:batch ) {: value:n :}
+   KB-TAKE {: gen:n :}
+   KC-TAKE {: h:ptr :}
+   value h BATCH-OFF H!
+   h KC-MINT gen KB-MINT ;
 
 2048 constant KVT-SNAP-CAP
 create KVT-SNAP KVT-SNAP-CAP allot
@@ -214,6 +323,22 @@ variable KVT-SNAP-N
    true
    h HOSTB-OFF H@ 1 cells - KVT-SNAP-N @ = and
    KVT-SNAP-N @ 0 ?do h 1 cells + i + c@ KVT-SNAP i + c@ = and loop
+   {: same:bool :}
+   h KC-MINT same ;
+
+: KVT-HIGH-BYTE? ( n -- bool )
+   dup HIWATER-OFF 1 cells - >=
+   swap HIWATER-OFF < and ;
+
+: KVT-SNAPSHOT/HIGH= ( KV:cache -- KV:cache bool )
+   KC-TAKE {: h:ptr :}
+   true
+   h HOSTB-OFF H@ 1 cells - KVT-SNAP-N @ = and
+   KVT-SNAP-N @ 0 ?do
+      i KVT-HIGH-BYTE? 0= if
+         h 1 cells + i + c@ KVT-SNAP i + c@ = and
+      then
+   loop
    {: same:bool :}
    h KC-MINT same ;
 
@@ -411,9 +536,9 @@ variable KVT-RELEASE-EVENT
 : KVT-GEOMETRY ( -- )
    KVT-MUST-SESSION KVT-OPEN-STANDARD
    FOOTPRINT >r
-   696 KVT-FOOT-ROLE
+   856 KVT-FOOT-ROLE
    r> 8192 KVT-FOOT-ROLE
-   HOSTB-OFF KVT-FIELD@ 696 T=
+   HOSTB-OFF KVT-FIELD@ 856 T=
    DEVB-OFF KVT-FIELD@ 8192 T=
    PAGE-SIZE 16 T=
    PAGE-BYTES KVT-PAGE-BYTES T=
@@ -677,6 +802,286 @@ variable KVT-RELEASE-EVENT
    KVT-CHECK
    KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
 
+: KVT-ADD-GROW ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC
+   KVT-SNAPSHOT
+   KVT-MUST-BEGIN 0 KVT-MUST-ADD
+   swap
+   0 KVT-D-MODE D-GROW T=
+   0 KVT-SEQ-LEN 0 T=
+   0 KVT-SEQ-RES 0 T=
+   FREE-PAGES 7 T=  RESERVED-PAGES 0 T=
+   WATERMARK 1 T=  HIGH-WATER 1 T=
+   KVT-CHECK
+   swap
+   KVT-MUST-CANCEL
+   KVT-SNAPSHOT/HIGH= TTRUE
+   HIGH-WATER 1 T=
+   KVT-CHECK
+   0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-SAME ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   32 0 KVT-ALLOC
+   0 KVT-APPEND
+   0 0 KVT-PAGE-ID {: old:n :}
+   KVT-SNAPSHOT
+   KVT-MUST-BEGIN 0 KVT-MUST-ADD
+   swap
+   0 KVT-D-MODE D-SAME T=
+   0 KVT-D-OLD old T=
+   0 KVT-D-NEW old T=
+   0 KVT-SEQ-LEN 1 T=
+   FREE-PAGES 7 T=  RESERVED-PAGES 1 T=
+   WATERMARK 1 T=  HIGH-WATER 1 T=
+   KVT-CHECK
+   swap
+   KVT-MUST-CANCEL
+   KVT-SNAPSHOT= TTRUE
+   KVT-CHECK
+   0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-COW ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   32 0 KVT-ALLOC
+   4 0 ?do 0 KVT-APPEND loop
+   0 1 KVT-FORK
+   1 0 KVT-PAGE-ID {: old:n :}
+   KVT-SNAPSHOT
+   KVT-MUST-BEGIN 1 KVT-MUST-ADD
+   swap
+   1 KVT-D-MODE D-COW T=
+   1 KVT-D-OLD old T=
+   1 KVT-D-NEW old <> TTRUE
+   1 KVT-SEQ-LEN 4 T=
+   FREE-PAGES 6 T=  RESERVED-PAGES 2 T=
+   WATERMARK 2 T=  HIGH-WATER 2 T=
+   KVT-CHECK
+   swap
+   KVT-MUST-CANCEL
+   KVT-SNAPSHOT/HIGH= TTRUE
+   HIGH-WATER 2 T=
+   KVT-CHECK
+   1 KVT-CANCEL  0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-SHARED ( n n -- ) {: first:n second:n :}
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   32 0 KVT-ALLOC
+   0 KVT-APPEND
+   0 1 KVT-FORK
+   KVT-SNAPSHOT
+   KVT-MUST-BEGIN
+   first KVT-ADD-OK  second KVT-ADD-OK
+   swap
+   first KVT-D-MODE D-COW T=
+   second KVT-D-MODE D-SAME T=
+   FREE-PAGES 6 T=  RESERVED-PAGES 2 T=
+   HIGH-WATER 2 T=
+   KVT-CHECK
+   swap
+   KVT-MUST-CANCEL
+   KVT-SNAPSHOT/HIGH= TTRUE
+   KVT-CHECK
+   1 KVT-CANCEL  0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-SHARED3 ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   32 0 KVT-ALLOC
+   0 KVT-APPEND
+   0 1 KVT-FORK  0 2 KVT-FORK
+   KVT-SNAPSHOT
+   KVT-MUST-BEGIN
+   2 KVT-ADD-OK  0 KVT-ADD-OK  1 KVT-ADD-OK
+   swap
+   2 KVT-D-MODE D-COW T=
+   0 KVT-D-MODE D-COW T=
+   1 KVT-D-MODE D-SAME T=
+   FREE-PAGES 5 T=  RESERVED-PAGES 3 T=
+   HIGH-WATER 3 T=
+   KVT-CHECK
+   swap
+   KVT-MUST-CANCEL
+   KVT-SNAPSHOT/HIGH= TTRUE
+   KVT-CHECK
+   2 KVT-CANCEL  1 KVT-CANCEL  0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-N-ROLLBACK ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC  16 1 KVT-ALLOC  16 2 KVT-ALLOC
+   KVT-SNAPSHOT
+   KVT-MUST-BEGIN
+   2 KVT-MUST-ADD  0 KVT-MUST-ADD  1 KVT-MUST-ADD
+   swap
+   FREE-PAGES 5 T=  RESERVED-PAGES 0 T=
+   HIGH-WATER 3 T=
+   KVT-CHECK
+   swap
+   KVT-MUST-CANCEL
+   KVT-SNAPSHOT/HIGH= TTRUE
+   HIGH-WATER 3 T=
+   KVT-CHECK
+   2 KVT-CANCEL  1 KVT-CANCEL  0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-DUP ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC
+   KVT-MUST-BEGIN 0 KVT-MUST-ADD
+   swap KVT-SNAPSHOT swap
+   0 E-KV-BATCH KVT-ADD-ERR
+   swap KVT-SNAPSHOT= TTRUE swap
+   KVT-MUST-CANCEL
+   0 KVT-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-STALE ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC  0 KVT-CANCEL  16 1 KVT-ALLOC
+   KVT-MUST-BEGIN
+   swap KVT-SNAPSHOT swap
+   0 E-KV-SEQ KVT-ADD-ERR
+   swap KVT-SNAPSHOT= TTRUE swap
+   KVT-MUST-CANCEL
+   1 KVT-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-CROSS ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC
+   swap KVT-CONFIG KVT-MUST-OPEN
+   16 1 KVT-ALLOC
+   >r swap KVT-MUST-BEGIN r>
+   >r swap KVT-SNAPSHOT swap r>
+   >r 1 E-KV-SEQ KVT-ADD-ERR r>
+   >r swap KVT-SNAPSHOT= TTRUE swap r>
+   >r KVT-MUST-CANCEL r>
+   swap >r
+   1 KVT-CANCEL KVT-MUST-CLOSE
+   r> 0 KVT-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-LIMIT ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   1 0 KVT-ALLOC  0 KVT-APPEND
+   KVT-MUST-BEGIN
+   swap KVT-SNAPSHOT swap
+   0 E-KV-ADMIT KVT-ADD-ERR
+   swap KVT-SNAPSHOT= TTRUE swap
+   KVT-MUST-CANCEL
+   0 KVT-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-BATCH-STALE ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC
+   KVT-MUST-BEGIN KVT-BATCH-GEN {: stale:n :}
+   KVT-MUST-CANCEL
+   KVT-MUST-BEGIN KVT-BATCH-GEN {: active:n :}
+   swap KVT-SNAPSHOT swap
+   stale KB-MINT 0 stale KVT-STALE-ADD
+   NEXT-BATCH-GEN @ active T=
+   swap KVT-SNAPSHOT= TTRUE swap
+   KVT-MUST-CANCEL
+   0 KVT-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-BATCH-ZERO ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC
+   KVT-SNAPSHOT
+   0 KB-MINT 0 E-KV-BATCH KVT-ADD-ERR
+   KB-TAKE 0 T=
+   KVT-SNAPSHOT= TTRUE
+   KVT-CHECK
+   0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-BATCH-CROSS ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC KVT-MUST-BEGIN
+   rot KVT-CONFIG KVT-MUST-OPEN
+   16 1 KVT-ALLOC
+   2swap rot KVT-MUST-BEGIN
+   swap KVT-SNAPSHOT swap
+   KVT-CROSS-ADD
+   swap KVT-SNAPSHOT= TTRUE swap
+   KVT-MUST-CANCEL
+   1 KVT-CANCEL
+   -rot 2swap
+   KVT-MUST-CLOSE
+   -rot KVT-MUST-CANCEL
+   0 KVT-CANCEL
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-ADD-REFUSALS ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC
+   KVT-MUST-BEGIN
+   swap 0 0 KVT-SEQ-RES! swap
+   swap 0 RESERVED-OFF KVT-FIELD! swap
+   0 E-KV-INVARIANT KVT-ADD-ERR
+   swap 0 1 KVT-SEQ-RES! swap
+   swap 1 RESERVED-OFF KVT-FIELD! swap
+   swap 0 FREETOP-OFF KVT-FIELD! swap
+   0 E-KV-INVARIANT KVT-ADD-ERR
+   swap 8 FREETOP-OFF KVT-FIELD! swap
+   swap 0 5 KVT-BLK-LEN! swap
+   0 E-KV-ADMIT KVT-ADD-ERR
+   swap 0 0 KVT-BLK-LEN! swap
+   swap KV-MAX-N PAGEB-OFF KVT-FIELD! swap
+   0 E-KV-CONFIG KVT-ADD-ERR
+   swap KVT-PAGE-BYTES PAGEB-OFF KVT-FIELD! swap
+   swap 3 NLAYER-OFF KVT-FIELD! swap
+   0 E-KV-BOUNDS KVT-ADD-ERR
+   swap 2 NLAYER-OFF KVT-FIELD! swap
+   swap 0 KVT-D-MODE 0 T= swap
+   KVT-MUST-CANCEL
+   0 KVT-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-BATCH-MUTATORS ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   32 0 KVT-ALLOC
+   KVT-MUST-BEGIN
+   swap KVT-SNAPSHOT swap
+   E-KV-BATCH KVT-ACTIVE-ALLOC-ERR
+   0 E-KV-BATCH KVT-ACTIVE-FORK-ERR
+   0 E-KV-BATCH KVT-ACTIVE-CANCEL-ERR
+   0 E-KV-BATCH KVT-ACTIVE-APPEND-ERR
+   swap KVT-SNAPSHOT= TTRUE swap
+   KVT-MUST-CANCEL
+   16 1 KVT-ALLOC
+   0 2 KVT-FORK
+   0 KVT-APPEND
+   1 KVT-CANCEL  2 KVT-CANCEL  0 KVT-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
+: KVT-SKIP-ROLLBACK ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   16 0 KVT-ALLOC
+   KVT-MUST-BEGIN KVT-BATCH-GEN {: gen:n :}
+   0 KVT-MUST-ADD
+   0 KVT-BATCH-OFF!
+   swap E-KV-INVARIANT KVT-CHECK-ERR swap
+   gen KVT-BATCH-OFF!
+   KVT-MUST-CANCEL
+   0 KVT-CANCEL
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
 : KVT-NO-ALLOC-BODY ( -- )
    KVT-MUST-SESSION KVT-OPEN-STANDARD
    1 MMAP-TEST:EXHAUST-CHILD
@@ -703,6 +1108,7 @@ variable KVT-RELEASE-EVENT
    0 0 0 0 KVT-V-SPAN drop
    0 1 KVT-FORK
    1 KVT-APPEND
+   KVT-MUST-BEGIN 0 KVT-MUST-ADD KVT-MUST-CANCEL
    KVT-CHECK
    1 KVT-CANCEL
    0 KVT-CANCEL
@@ -730,7 +1136,7 @@ variable KVT-RELEASE-EVENT
    KVT-RELEASE-N @ 1 T=
    KVT-RELEASE-P @ KVT-ALLOC-P @ = TTRUE
    KVT-RELEASE-B @ KVT-ALLOC-B @ T=
-   KVT-RELEASE-B @ 696 T=
+   KVT-RELEASE-B @ 856 T=
    KVT-GPU-ALLOC-CALLS @ 1 T=
    KVT-MUST-SESSION-CLOSE ;
 
@@ -799,7 +1205,7 @@ variable KVT-RELEASE-EVENT
    KVT-RELEASE-N @ 1 T=
    KVT-RELEASE-P @ host = TTRUE
    KVT-RELEASE-B @ bytes T=
-   KVT-RELEASE-B @ 696 T=
+   KVT-RELEASE-B @ 856 T=
    KVT-FREE-EVENT @ 1 T=
    KVT-RELEASE-EVENT @ 2 T=
    KVT-MUST-SESSION-CLOSE ;
@@ -826,7 +1232,13 @@ variable KVT-RELEASE-EVENT
    s" KVT-BAD-BATCH-RAW ( n -- KV:batch ) drop 0" CHECK-QUIET-CANDIDATE! 0 T=
    s" KVT-BAD-BATCH-MINT ( n -- KV:batch ) KV:KB-MINT" CHECK-QUIET-CANDIDATE! 1 T=
    s" KVT-BAD-BATCH-TAKE ( KV:batch -- n ) KV:KB-TAKE" CHECK-QUIET-CANDIDATE! 1 T=
-   s" KVT-BAD-CANCEL-DROP ( KV:cancel-result -- ) drop" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" KVT-BAD-CANCEL-DROP ( KV:cancel-result -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+   s" KVT-BAD-ADD-DUP ( KV:add-result -- KV:add-result KV:add-result ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+   s" KVT-BAD-ADD-DROP ( KV:add-result -- ) drop" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: KVT-ADD-PRESENT ( -- )
+   s" KVT-ADD-CALL ( KV:cache KV:batch KV:seq -- KV:add-result ) KV:ADD"
+   CHECK-QUIET-CANDIDATE! -1 T= ;
 
 : KVT-RUN ( -- )
    T-RESET
@@ -844,6 +1256,24 @@ variable KVT-RELEASE-EVENT
    s" cross-cache batch refusal preserves both owners" T-LABEL [: KVT-BATCH-CROSS ;] 0 TTHROWSQ
    s" batch generation exhaustion is mutation-free" T-LABEL [: KVT-BATCH-EXHAUST ;] 0 TTHROWSQ
    s" batch lifetime changes no allocator, device, or metric state" T-LABEL [: KVT-BATCH-PURE ;] 0 TTHROWSQ
+   s" ADD surface certifies" T-LABEL [: KVT-ADD-PRESENT ;] 0 TTHROWSQ
+   s" provisional grow and exact rollback" T-LABEL [: KVT-ADD-GROW ;] 0 TTHROWSQ
+   s" unique partial tail stages without page mutation" T-LABEL [: KVT-ADD-SAME ;] 0 TTHROWSQ
+   s" provisional copy-on-write and exact rollback" T-LABEL [: KVT-ADD-COW ;] 0 TTHROWSQ
+   s" shared partial tail stages parent then child" T-LABEL [: 0 1 KVT-ADD-SHARED ;] 0 TTHROWSQ
+   s" shared partial tail stages child then parent" T-LABEL [: 1 0 KVT-ADD-SHARED ;] 0 TTHROWSQ
+   s" three shared tails stage two departures then unique" T-LABEL [: KVT-ADD-SHARED3 ;] 0 TTHROWSQ
+   s" multi-row cancellation restores allocator state" T-LABEL [: KVT-ADD-N-ROLLBACK ;] 0 TTHROWSQ
+   s" duplicate ADD refusal preserves staged state" T-LABEL [: KVT-ADD-DUP ;] 0 TTHROWSQ
+   s" stale ADD refusal" T-LABEL [: KVT-ADD-STALE ;] 0 TTHROWSQ
+   s" cross-cache ADD refusal" T-LABEL [: KVT-ADD-CROSS ;] 0 TTHROWSQ
+   s" maximum-token ADD refusal" T-LABEL [: KVT-ADD-LIMIT ;] 0 TTHROWSQ
+   s" reservation capacity layer and arithmetic refusals" T-LABEL [: KVT-ADD-REFUSALS ;] 0 TTHROWSQ
+   s" inactive zero batch ADD refusal preserves returned owners" T-LABEL [: KVT-ADD-BATCH-ZERO ;] 0 TTHROWSQ
+   s" stale batch ADD refusal preserves returned owners" T-LABEL [: KVT-ADD-BATCH-STALE ;] 0 TTHROWSQ
+   s" cross-cache batch ADD refusal preserves returned owners" T-LABEL [: KVT-ADD-BATCH-CROSS ;] 0 TTHROWSQ
+   s" four batch mutators refuse and re-enable" T-LABEL [: KVT-BATCH-MUTATORS ;] 0 TTHROWSQ
+   s" skipped rollback mutation fails KV-CHECK" T-LABEL [: KVT-SKIP-ROLLBACK ;] 0 TTHROWSQ
    s" device allocation failure cleanup" T-LABEL [: KVT-DEVICE-ALLOC-FAIL ;] 0 TTHROWSQ
    s" host allocation failure cleanup" T-LABEL [: KVT-HOST-ALLOC-FAIL ;] 0 TTHROWSQ
    s" forged configuration rejected before allocation" T-LABEL [: KVT-CONFIG-FAIL ;] 0 TTHROWSQ

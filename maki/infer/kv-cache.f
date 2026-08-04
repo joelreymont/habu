@@ -61,6 +61,11 @@ ENUM cancel-result 0
    VARIANT refused FIELD cache KV:cache FIELD batch KV:batch FIELD code n ;VARIANT
 ;ENUM
 
+ENUM add-result 0
+   VARIANT added FIELD cache KV:cache FIELD batch KV:batch ;VARIANT
+   VARIANT refused FIELD cache KV:cache FIELD batch KV:batch FIELD code n ;VARIANT
+;ENUM
+
 \ The nominal fields are private representation roles. The structure is public so
 \ callers can transport a sequence value, but only allocator operations mint the
 \ three field values from raw state.
@@ -121,6 +126,17 @@ TRUSTED: KB-TAKE ( KV:batch -- n ) ;
 18 cells constant BATCH-OFF
 19 cells constant HEADER-SIZE
 
+1 constant D-SAME
+2 constant D-GROW
+3 constant D-COW
+
+0       constant D-MODE-OFF
+1 cells constant D-GEN-OFF
+2 cells constant D-LEN-OFF
+3 cells constant D-OLD-OFF
+4 cells constant D-NEW-OFF
+5 constant D-CELLS
+
 $7FFFFFFFFFFFFFFF constant KV-MAX-N
 KV-MAX-N constant KV-ID-MAX
 16 constant KV-P
@@ -166,6 +182,7 @@ variable NEXT-BATCH-GEN
    np 3 KV-MUL0
    ns 6 KV-MUL0 KV-ADD0
    ns blkcap KV-MUL0 KV-ADD0
+   ns D-CELLS KV-MUL0 KV-ADD0
    dup 1 cells KV-MUL0 drop ;
 
 : KV-PAGES-FOR-RAW ( n n -- n ) {: toks:n ptok:n :}
@@ -175,7 +192,7 @@ variable NEXT-BATCH-GEN
 \ ---- metadata partition ------------------------------------------------------------
 \ [free np][refcount np][COW reservation np][len ns][live ns]
 \ [generation ns][future-page reservation ns][maximum tokens ns][block len ns]
-\ [nseq * block-cap fixed page ids].
+\ [nseq * block-cap fixed page ids][mode/gen/new-len/old-page/new-page ns].
 : FREE-BASE ( ptr a -- ptr a )  META@ ;
 
 : REFC-BASE ( ptr a -- ptr a ) {: h:ptr :}
@@ -226,6 +243,43 @@ variable NEXT-BATCH-GEN
 
 : SEQBLK ( ptr a n -- ptr a ) {: h:ptr i:n :}
    h SEQBLK-BASE i h BLKCAP-OFF H@ KV-MUL0 cells + ;
+
+: D-BASE ( ptr a -- ptr a ) {: h:ptr :}
+   h SEQBLK-BASE
+   h NSEQ-OFF H@ h BLKCAP-OFF H@ KV-MUL0 cells + ;
+
+: D-ROW ( ptr a n -- ptr a ) {: h:ptr s:n :}
+   h D-BASE s D-CELLS KV-MUL0 cells + ;
+
+: D@ ( ptr a n n -- n ) {: h:ptr s:n off:n :}
+   h s D-ROW off + @ ;
+
+: D! ( n ptr a n n -- ) {: v:n h:ptr s:n off:n :}
+   v h s D-ROW off + ! ;
+
+: D-MODE@ ( ptr a n -- n )  D-MODE-OFF D@ ;
+: D-GEN@  ( ptr a n -- n )  D-GEN-OFF D@ ;
+: D-LEN@  ( ptr a n -- n )  D-LEN-OFF D@ ;
+: D-OLD@  ( ptr a n -- n )  D-OLD-OFF D@ ;
+: D-NEW@  ( ptr a n -- n )  D-NEW-OFF D@ ;
+
+: D-CLEAR ( ptr a n -- ) {: h:ptr s:n :}
+   0 h s D-GEN-OFF D!
+   0 h s D-LEN-OFF D!
+   0 h s D-OLD-OFF D!
+   0 h s D-NEW-OFF D!
+   0 h s D-MODE-OFF D! ;
+
+: D-CLEAR-ALL ( ptr a -- ) {: h:ptr :}
+   h NSEQ-OFF H@ 0 ?do h i D-CLEAR loop ;
+
+: D-PUBLISH ( ptr a n n n n n n -- )
+   {: h:ptr s:n mode:n gen:n len:n old:n new:n :}
+   gen h s D-GEN-OFF D!
+   len h s D-LEN-OFF D!
+   old h s D-OLD-OFF D!
+   new h s D-NEW-OFF D!
+   mode h s D-MODE-OFF D! ;
 
 \ ---- block-table operations --------------------------------------------------------
 : KV-BLK-LEN ( ptr a n -- n ) {: h:ptr s:n :}
@@ -317,6 +371,7 @@ variable NEXT-BATCH-GEN
 : KV-TAKE-GROW-COMMIT ( ptr a n -- n ) {: h:ptr s:n :}
    h KV-POP-COMMIT {: pid:n :}
    h s KV-SEQ-RESERVE-ONE
+   1 h pid REFC!
    pid ;
 
 : KV-COW-GUARANTEED? ( ptr a n -- bool ) {: h:ptr s:n :}
@@ -367,40 +422,20 @@ variable NEXT-BATCH-GEN
    pid h PAGEB-OFF H@ KV-MUL0 ;
 
 : KV-GROW-PAGE ( ptr a n -- ) {: h:ptr s:n :}
-   h s KV-GROW-PREFLIGHT
-   h s BLK-ROOM
    h s KV-TAKE-GROW-COMMIT {: pid:n :}
-   1 h pid REFC!
    pid h s KV-BLK-PUSH ;
 
-: COW-PLAN ( ptr a n n -- n n n n n n n n n ) {: h:ptr s:n len:n :}
-   h s KV-BLK-LEN 1- {: last:n :}
-   h s last KV-BLK@ {: old:n :}
-   h s KV-COW-GUARANTEED? 0= if E-KV-INVARIANT throw then
-   h old REFC@ {: oldref:n :}
-   oldref 1 <= if E-KV-INVARIANT throw then
-   h old COWRES@ {: cow:n :}
-   cow 0 <= if E-KV-INVARIANT throw then
-   h RESERVED-OFF H@ {: res:n :}
-   res 0 <= if E-KV-INVARIANT throw then
-   h FREETOP-OFF H@ {: top:n :}
-   top 0 <= if E-KV-INVARIANT throw then
-   top 1- {: newtop:n :}
-   h newtop FREE@ {: new:n :}
-   new 0 < new h NPAGES-OFF H@ >= or if E-KV-INVARIANT throw then
-   h new REFC@ 0<> h new COWRES@ 0<> or if E-KV-INVARIANT throw then
-   h old KV-COW-DESIRED cow <> if E-KV-INVARIANT throw then
-   h NPAGES-OFF H@ newtop - h HIWATER-OFF H@ max {: hi:n :}
-   len 1 KV-ADD0
-   last old new newtop hi res 1- cow 1- oldref 1- ;
-
-: COW-COMMIT ( ptr a n n n n n n n n n n -- )
-   {: h:ptr s:n newlen:n last:n old:n new:n top:n hi:n res:n cow:n oldref:n :}
+: COW-ALLOC ( ptr a n n n n n n -- )
+   {: h:ptr old:n new:n top:n hi:n res:n cow:n :}
    top h FREETOP-OFF H!
    hi h HIWATER-OFF H!
    res h RESERVED-OFF H!
    cow h old COWRES!
-   1 h new REFC!
+   1 h new REFC! ;
+
+: COW-COMMIT ( ptr a n n n n n n n n n n -- )
+   {: h:ptr s:n newlen:n last:n old:n new:n top:n hi:n res:n cow:n oldref:n :}
+   h old new top hi res cow COW-ALLOC
    new h s last KV-BLK!
    oldref h old REFC!
    newlen h s SEQLEN! ;
@@ -545,6 +580,131 @@ variable NEXT-BATCH-GEN
 : LAYER-CK ( ptr a n -- ) {: h:ptr layer:n :}
    layer 0 < layer h NLAYER-OFF H@ >= or if E-KV-BOUNDS throw then ;
 
+\ ---- provisional batch rows -------------------------------------------------------
+: LOAD-SEQ ( n n n -- seq )
+   {: cid:n slot:n gen:n :}
+   cid >KV-CACHE-ID slot >KV-SEQ-SLOT gen >KV-SEQ-GEN KV-SEQ:MAKE ;
+
+: ADD-BATCH-CK ( ptr a n -- ) {: h:ptr gen:n :}
+   h BATCH-OFF H@ {: active:n :}
+   active 0= active gen <> or if E-KV-BATCH throw then ;
+
+: PAGE-ID-CK ( ptr a n -- ) {: h:ptr pid:n :}
+   pid 0 < pid h NPAGES-OFF H@ >= or if E-KV-INVARIANT throw then ;
+
+: BYTE-RANGE-CK ( n n n -- ) {: off:n bytes:n cap:n :}
+   off KV-NONNEG drop  bytes KV-NONNEG drop  cap KV-NONNEG drop
+   off cap > if E-KV-BOUNDS throw then
+   bytes cap off - > if E-KV-BOUNDS throw then ;
+
+: PAGE-RANGE-CK ( ptr a n -- ) {: h:ptr pid:n :}
+   h pid PAGE-ID-CK
+   h pid PAGE-OFF h PAGEB-OFF H@ h DEVB-OFF H@ BYTE-RANGE-CK ;
+
+: DEST-CK ( ptr a n n -- ) {: h:ptr pid:n tok:n :}
+   h pid PAGE-RANGE-CK
+   tok h PTOK-OFF H@ mod {: slot:n :}
+   h ROW-BYTES {: rowb:n :}
+   h NLAYER-OFF H@ 0 ?do
+      h i LAYER-CK
+      h pid PAGE-OFF
+      i h LAYER-SPAN KV-MUL0 KV-ADD0
+      slot rowb KV-MUL0 KV-ADD0
+      rowb h DEVB-OFF H@ BYTE-RANGE-CK
+   loop ;
+
+: ADD-ROW-PREFLIGHT ( ptr a n -- ) {: h:ptr s:n :}
+   h s D-MODE@ 0<> if E-KV-BATCH throw then ;
+
+: PROV-COW ( ptr a n -- n ) {: h:ptr pid:n :}
+   0
+   h NSEQ-OFF H@ 0 ?do
+      h i D-MODE@ D-COW = h i D-OLD@ pid = and if 1+ then
+   loop ;
+
+: EFF-REFC ( ptr a n -- n ) {: h:ptr pid:n :}
+   h pid REFC@ h pid PROV-COW -
+   dup 0 <= if drop E-KV-INVARIANT throw then ;
+
+: PLAN-FREE ( ptr a -- n ) {: h:ptr :}
+   h KV-POP-PREFLIGHT
+   h FREETOP-OFF H@ 1- {: top:n :}
+   h top FREE@ {: pid:n :}
+   h pid PAGE-ID-CK
+   h pid REFC@ 0<> h pid COWRES@ 0<> or if E-KV-INVARIANT throw then
+   pid ;
+
+: TOKEN-PLAN ( ptr a n n -- n n n ) {: h:ptr s:n len:n :}
+   len 1 KV-ADD0 drop
+   len h PTOK-OFF H@ mod 0= if
+      h s KV-GROW-PREFLIGHT
+      h s BLK-ROOM
+      h RESERVED-OFF H@ 0 <= if E-KV-INVARIANT throw then
+      h PLAN-FREE {: new:n :}
+      h new len DEST-CK
+      D-GROW 0 0 exit
+   then
+   h s KV-BLK-LEN 0 <= if E-KV-INVARIANT throw then
+   h s KV-TAIL-PAGE {: old:n :}
+   h old PAGE-ID-CK
+   h old PROV-COW {: prov:n :}
+   h old COWRES@ prov KV-ADD0 h old KV-COW-DESIRED <>
+   if E-KV-INVARIANT throw then
+   h old EFF-REFC 1 = if
+      h old COWRES@ 0<> if E-KV-INVARIANT throw then
+      h old len DEST-CK
+      D-SAME old old exit
+   then
+   h s KV-COW-GUARANTEED? 0= if E-KV-INVARIANT throw then
+   h old COWRES@ 0 <= if E-KV-INVARIANT throw then
+   h RESERVED-OFF H@ 0 <= if E-KV-INVARIANT throw then
+   h PLAN-FREE {: new:n :}
+   new old = if E-KV-INVARIANT throw then
+   h old PAGE-RANGE-CK
+   h new len DEST-CK
+   D-COW old new ;
+
+: COW-ARGS ( ptr a n -- n n n n ) {: h:ptr old:n :}
+   h FREETOP-OFF H@ 1- {: top:n :}
+   top  h NPAGES-OFF H@ top - h HIWATER-OFF H@ max
+   h RESERVED-OFF H@ 1-
+   h old COWRES@ 1- ;
+
+: STAGE-GROW ( ptr a n n -- ) {: h:ptr s:n newlen:n :}
+   h s KV-TAKE-GROW-COMMIT {: new:n :}
+   h s D-GROW h s SEQGEN@ newlen 0 new D-PUBLISH ;
+
+: STAGE-COW ( ptr a n n n n -- )
+   {: h:ptr s:n newlen:n old:n new:n :}
+   h old COW-ARGS {: top:n hi:n res:n cow:n :}
+   h old new top hi res cow COW-ALLOC
+   h s D-COW h s SEQGEN@ newlen old new D-PUBLISH ;
+
+: ADD-STAGE-COMMIT ( ptr a n n n n n -- )
+   {: h:ptr s:n len:n mode:n old:n new:n :}
+   len 1 KV-ADD0 {: newlen:n :}
+   mode D-SAME = if
+      h s D-SAME h s SEQGEN@ newlen old new D-PUBLISH exit
+   then
+   mode D-GROW = if h s newlen STAGE-GROW exit then
+   h s newlen old new STAGE-COW ;
+
+: ADD-STAGE ( ptr a n n n n -- )
+   {: h:ptr batch:n cid:n slot:n gen:n :}
+   h batch ADD-BATCH-CK
+   h cid slot gen LOAD-SEQ SEQ-CK {: hp:ptr s:n :}
+   hp s ADD-ROW-PREFLIGHT
+   hp s SEQLEN@ {: len:n :}
+   len hp MAXCTX-OFF H@ KV-APPEND-LIMIT-CK
+   len hp s SEQMAX@ KV-APPEND-LIMIT-CK
+   hp s len TOKEN-PLAN {: mode:n old:n new:n :}
+   hp s len mode old new ADD-STAGE-COMMIT ;
+
+: ADD-TRY ( ptr a n n n n -- ptr a n n n n )
+   {: h:ptr batch:n cid:n slot:n gen:n :}
+   h batch cid slot gen ADD-STAGE
+   h batch cid slot gen ;
+
 : KV-SHARED-PAGES ( ptr a -- n ) {: h:ptr :}
    0 h NPAGES-OFF H@ 0 ?do h i REFC@ 1 > if 1+ then loop ;
 
@@ -569,13 +729,71 @@ variable NEXT-BATCH-GEN
    loop ;
 
 \ ---- invariant proof ---------------------------------------------------------------
+: D-ZERO-CK ( ptr a n -- ) {: h:ptr s:n :}
+   h s D-GEN@ 0<> h s D-LEN@ 0<> or
+   h s D-OLD@ 0<> or h s D-NEW@ 0<> or if E-KV-INVARIANT throw then ;
+
+: D-NEW-REF? ( ptr a n -- bool ) {: h:ptr s:n :}
+   h s D-MODE@ dup D-GROW = swap D-COW = or ;
+
+: PROV-REFS ( ptr a n -- n ) {: h:ptr pid:n :}
+   0
+   h NSEQ-OFF H@ 0 ?do
+      h i D-NEW-REF? h i D-NEW@ pid = and if 1+ then
+   loop ;
+
+: D-CHECK-SAME ( ptr a n n -- ) {: h:ptr s:n len:n :}
+   len h PTOK-OFF H@ mod 0= if E-KV-INVARIANT throw then
+   h s D-OLD@ {: old:n :}
+   h old PAGE-ID-CK
+   old h s D-NEW@ <> if E-KV-INVARIANT throw then
+   old h s KV-TAIL-PAGE <> if E-KV-INVARIANT throw then
+   h old EFF-REFC 1 <> h old COWRES@ 0<> or if E-KV-INVARIANT throw then ;
+
+: D-CHECK-GROW ( ptr a n n -- ) {: h:ptr s:n len:n :}
+   len h PTOK-OFF H@ mod 0<> if E-KV-INVARIANT throw then
+   h s D-OLD@ 0<> if E-KV-INVARIANT throw then
+   h s KV-BLK-LEN h BLKCAP-OFF H@ >= if E-KV-INVARIANT throw then
+   h s D-NEW@ {: new:n :}
+   h new PAGE-ID-CK
+   h new REFC@ 1 <> h new COWRES@ 0<> or if E-KV-INVARIANT throw then ;
+
+: D-CHECK-COW ( ptr a n n -- ) {: h:ptr s:n len:n :}
+   len h PTOK-OFF H@ mod 0= if E-KV-INVARIANT throw then
+   h s D-OLD@ {: old:n :}
+   h s D-NEW@ {: new:n :}
+   h old PAGE-ID-CK  h new PAGE-ID-CK
+   old new = if E-KV-INVARIANT throw then
+   old h s KV-TAIL-PAGE <> if E-KV-INVARIANT throw then
+   h old REFC@ 1 <= if E-KV-INVARIANT throw then
+   h new REFC@ 1 <> h new COWRES@ 0<> or if E-KV-INVARIANT throw then ;
+
+: D-CHECK ( ptr a n -- ) {: h:ptr s:n :}
+   h s D-MODE@ {: mode:n :}
+   mode 0= if h s D-ZERO-CK exit then
+   mode D-SAME < mode D-COW > or if E-KV-INVARIANT throw then
+   h BATCH-OFF H@ 0= if E-KV-INVARIANT throw then
+   h s SEQLIVE@ 0= if E-KV-INVARIANT throw then
+   h s D-GEN@ h s SEQGEN@ <> if E-KV-INVARIANT throw then
+   h s SEQLEN@ {: len:n :}
+   len 1 KV-ADD0 h s D-LEN@ <> if E-KV-INVARIANT throw then
+   h s D-LEN@ h MAXCTX-OFF H@ > if E-KV-INVARIANT throw then
+   h s D-LEN@ h s SEQMAX@ > if E-KV-INVARIANT throw then
+   mode D-SAME = if h s len D-CHECK-SAME exit then
+   mode D-GROW = if h s len D-CHECK-GROW exit then
+   h s len D-CHECK-COW ;
+
+: D-CHECK-ALL ( ptr a -- ) {: h:ptr :}
+   h NSEQ-OFF H@ 0 ?do h i D-CHECK loop ;
+
 : KV-SEQ-REFS ( ptr a n n -- n ) {: h:ptr s:n pid:n :}
    0 h s KV-BLK-LEN 0 ?do h s i KV-BLK@ pid = if 1+ then loop ;
 
 : KV-COUNT-REFS ( ptr a n -- n ) {: h:ptr pid:n :}
    0 h NSEQ-OFF H@ 0 ?do
       h i SEQLIVE@ 0<> if h i pid KV-SEQ-REFS + then
-   loop ;
+   loop
+   h pid PROV-REFS KV-ADD0 ;
 
 : KV-CHECK-REFS ( ptr a -- ) {: h:ptr :}
    h NPAGES-OFF H@ 0 ?do
@@ -611,13 +829,18 @@ variable NEXT-BATCH-GEN
    maxtoks 0 <= maxtoks h MAXCTX-OFF H@ > or if E-KV-INVARIANT throw then
    h s SEQLEN@ maxtoks > if E-KV-INVARIANT throw then
    maxtoks h PTOK-OFF H@ KV-PAGES-FOR-RAW h s KV-BLK-LEN -
+   h s D-MODE@ D-GROW = if
+      dup 0 <= if drop E-KV-INVARIANT throw then
+      1-
+   then
    h s SEQRES@ <> if E-KV-INVARIANT throw then
    h s SEQRES@ ;
 
 : KV-CHECK-COW ( ptr a -- n ) {: h:ptr :}
    0
    h NPAGES-OFF H@ 0 ?do
-      h i COWRES@ h i KV-COW-DESIRED <> if E-KV-INVARIANT throw then
+      h i COWRES@ h i PROV-COW KV-ADD0
+      h i KV-COW-DESIRED <> if E-KV-INVARIANT throw then
       h i COWRES@ KV-ADD0
    loop ;
 
@@ -629,6 +852,7 @@ variable NEXT-BATCH-GEN
 
 : KV-CHECK ( ptr a -- ) {: h:ptr :}
    h CACHEID-OFF H@ 0 <= if E-KV-INVARIANT throw then
+   h D-CHECK-ALL
    h KV-CHECK-REFS
    h KV-CHECK-FREE
    h KV-CHECK-RESERVATIONS ;
@@ -643,6 +867,58 @@ variable NEXT-BATCH-GEN
    gen NEXT-BATCH-GEN !
    gen h BATCH-OFF H! ;
 
+: D-NEW-N ( ptr a -- n ) {: h:ptr :}
+   0 h NSEQ-OFF H@ 0 ?do h i D-NEW-REF? if 1+ then loop ;
+
+: D-SUFFIX-HAS? ( ptr a n n -- bool ) {: h:ptr pages:n pid:n :}
+   false
+   pages 0 ?do h h FREETOP-OFF H@ i + FREE@ pid = or loop ;
+
+: D-SUFFIX-CK ( ptr a n -- ) {: h:ptr pages:n :}
+   h NSEQ-OFF H@ 0 ?do
+      h i D-NEW-REF? if
+         h pages h i D-NEW@ D-SUFFIX-HAS? 0= if E-KV-INVARIANT throw then
+      then
+   loop ;
+
+: CANCEL-BATCH-PREFLIGHT ( ptr a n -- ) {: h:ptr gen:n :}
+   h gen ADD-BATCH-CK
+   h KV-CHECK
+   h D-NEW-N {: pages:n :}
+   h FREETOP-OFF H@ h NPAGES-OFF H@ pages - > if E-KV-INVARIANT throw then
+   h RESERVED-OFF H@ KV-MAX-N pages - > if E-KV-INVARIANT throw then
+   h pages D-SUFFIX-CK ;
+
+: D-ROLLBACK-GROW ( ptr a n -- ) {: h:ptr s:n :}
+   h s D-NEW@ {: new:n :}
+   0 h new REFC!
+   h s SEQRES@ 1+ h s SEQRES!
+   h RESERVED-OFF H@ 1+ h RESERVED-OFF H! ;
+
+: D-ROLLBACK-COW ( ptr a n -- ) {: h:ptr s:n :}
+   h s D-NEW@ {: new:n :}
+   h s D-OLD@ {: old:n :}
+   0 h new REFC!
+   h old COWRES@ 1+ h old COWRES!
+   h RESERVED-OFF H@ 1+ h RESERVED-OFF H! ;
+
+: D-ROLLBACK ( ptr a n -- ) {: h:ptr s:n :}
+   h s D-MODE@ {: mode:n :}
+   mode D-GROW = if h s D-ROLLBACK-GROW then
+   mode D-COW = if h s D-ROLLBACK-COW then
+   h s D-CLEAR ;
+
+: CANCEL-BATCH-COMMIT ( ptr a -- ) {: h:ptr :}
+   h D-NEW-N {: pages:n :}
+   h NSEQ-OFF H@ 0 ?do h i D-ROLLBACK loop
+   h FREETOP-OFF H@ pages + h FREETOP-OFF H!
+   0 h BATCH-OFF H! ;
+
+: CANCEL-BATCH-TRY ( ptr a n -- ptr a n ) {: h:ptr gen:n :}
+   h gen CANCEL-BATCH-PREFLIGHT
+   h CANCEL-BATCH-COMMIT
+   h gen ;
+
 : STORE-DIMS ( ptr a n n n n n n n n n n n n n -- )
    {: h:ptr nlayer:n nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n pageb:n tokb:n blkcap:n hostb:n devb:n :}
    0 h BUF-OFF H!
@@ -652,7 +928,8 @@ variable NEXT-BATCH-GEN
    npages h NPAGES-OFF H!  nseq h NSEQ-OFF H!  ptok h PTOK-OFF H!
    maxctx h MAXCTX-OFF H!  blkcap h BLKCAP-OFF H!
    pageb h PAGEB-OFF H!  tokb h TOKB-OFF H!
-   0 h HIWATER-OFF H!  0 h RESERVED-OFF H!  0 h BATCH-OFF H! ;
+   0 h HIWATER-OFF H!  0 h RESERVED-OFF H!  0 h BATCH-OFF H!
+   h D-CLEAR-ALL ;
 
 : CONFIG-VALUES ( n n n n n n n n -- n n n n n n )
    {: nlayer:n nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n :}
@@ -716,10 +993,6 @@ HOST-USE-REAL
       misaligned OF E-KV-INVARIANT throw ENDOF
    ;MATCH ;
 
-: LOAD-SEQ ( n n n -- seq )
-   {: cid:n slot:n gen:n :}
-   cid >KV-CACHE-ID slot >KV-SEQ-SLOT gen >KV-SEQ-GEN KV-SEQ:MAKE ;
-
 : ALLOC-TRY ( ptr a n n n n -- ptr a n n n n )
    {: h:ptr max:n xcid:n xslot:n xgen:n :}
    xcid drop xslot drop xgen drop
@@ -755,6 +1028,13 @@ HOST-USE-REAL
 : APPEND-NOCOPY ( ptr a n n n -- ptr a n n n n n n n n n n n n n n )
    0 0 0 0 0 0 0 0 0 0 0 ;
 
+: COMMIT-COW-ARGS ( ptr a n n n n -- n n n n n n n n n )
+   {: h:ptr s:n len:n old:n new:n :}
+   h s KV-BLK-LEN 1- {: last:n :}
+   len 1+ last old new
+   h old COW-ARGS
+   h old REFC@ 1- ;
+
 : APPEND-TRY
    ( ptr a n n n n n n n n n n n n n n -- ptr a n n n n n n n n n n n n n n )
    {: h:ptr cid:n slot:n gen:n xcopy:n xs:n xlen:n xlast:n xold:n xnew:n xtop:n xhi:n xres:n xcow:n xref:n :}
@@ -762,18 +1042,18 @@ HOST-USE-REAL
    xtop drop xhi drop xres drop xcow drop xref drop
    h cid slot gen LOAD-SEQ APPEND-PREFLIGHT
    {: hp:ptr s:n len:n :}
-   len h PTOK-OFF H@ mod 0= if
+   hp s len TOKEN-PLAN {: mode:n old:n new:n :}
+   mode D-GROW = if
       hp s KV-GROW-PAGE
       len 1+ hp s SEQLEN!
       hp cid slot gen APPEND-NOCOPY exit
    then
-   hp s KV-TAIL-PAGE {: old:n :}
-   hp old REFC@ 1 <= if
+   mode D-SAME = if
       len 1+ hp s SEQLEN!
       hp cid slot gen APPEND-NOCOPY exit
    then
    hp cid slot gen 1 s
-   hp s len COW-PLAN ;
+   hp s len old new COMMIT-COW-ARGS ;
 
 : CONFIG-INNER ( n n n n n n n n -- config )
    {: nlayer:n nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n :}
@@ -854,15 +1134,25 @@ public
 : CANCEL-BATCH ( KV:cache KV:batch -- cancel-result )
    KB-TAKE {: gen:n :}
    KC-TAKE {: h:ptr :}
-   h BATCH-OFF H@ {: active:n :}
-   active 0<> active gen = and if
-      0 h BATCH-OFF H!
-      h KC-MINT KV-CANCEL--RESULT:CANCELLED exit
-   then
-   h KC-MINT gen KB-MINT E-KV-BATCH KV-CANCEL--RESULT:REFUSED ;
+   h gen [: CANCEL-BATCH-TRY ;] catch
+   {: rh:ptr rgen:n code:n :}
+   rh drop rgen drop
+   code 0= if h KC-MINT KV-CANCEL--RESULT:CANCELLED exit then
+   h KC-MINT gen KB-MINT code KV-CANCEL--RESULT:REFUSED ;
+
+: ADD ( KV:cache KV:batch seq -- add-result )
+   SEQ-PARTS {: cid:n slot:n sgen:n :}
+   KB-TAKE {: batch:n :}
+   KC-TAKE {: h:ptr :}
+   h batch cid slot sgen [: ADD-TRY ;] catch
+   {: rh:ptr rbatch:n rcid:n rslot:n rsgen:n code:n :}
+   rh drop rbatch drop rcid drop rslot drop rsgen drop
+   code 0= if h KC-MINT batch KB-MINT KV-ADD--RESULT:ADDED exit then
+   h KC-MINT batch KB-MINT code KV-ADD--RESULT:REFUSED ;
 
 : ALLOC-SEQ ( KV:cache n -- KV:cache result<seq,n> ) {: n:n :}
    KC-TAKE {: h:ptr :}
+   h BATCH-OFF H@ 0<> if h KC-MINT E-KV-BATCH RESULT:ERR exit then
    h n 0 0 0 [: ALLOC-TRY ;] catch
    {: rh:ptr max:n cid:n slot:n gen:n code:n :}
    rh drop max drop
@@ -872,6 +1162,7 @@ public
 : FORK-SEQ ( KV:cache seq -- KV:cache result<seq,n> )
    SEQ-PARTS {: cid:n slot:n gen:n :}
    KC-TAKE {: h:ptr :}
+   h BATCH-OFF H@ 0<> if h KC-MINT E-KV-BATCH RESULT:ERR exit then
    h cid slot gen [: FORK-TRY ;] catch
    {: rh:ptr ncid:n nslot:n ngen:n code:n :} rh drop
    h KC-MINT
@@ -880,6 +1171,7 @@ public
 : CANCEL-SEQ ( KV:cache seq -- KV:cache result<n,n> )
    SEQ-PARTS {: cid:n slot:n gen:n :}
    KC-TAKE {: h:ptr :}
+   h BATCH-OFF H@ 0<> if h KC-MINT E-KV-BATCH RESULT:ERR exit then
    h cid slot gen [: CANCEL-TRY ;] catch
    {: rh:ptr rcid:n rslot:n rgen:n code:n :}
    rh drop rcid drop rslot drop rgen drop
@@ -890,6 +1182,9 @@ public
    ( GPU:session KV:cache seq -- GPU:session KV:cache result<n,n> )
    SEQ-PARTS {: cid:n slot:n gen:n :}
    KC-TAKE {: h:ptr :}
+   h BATCH-OFF H@ 0<> if
+      h KC-MINT E-KV-BATCH RESULT:ERR exit
+   then
    h cid slot gen 0 0 0 0 0 0 0 0 0 0 0
    [: APPEND-TRY ;] catch
    {: rh:ptr rcid:n rslot:n rgen:n copy:n s:n newlen:n last:n old:n new:n top:n hi:n res:n cow:n oldref:n code:n :}
