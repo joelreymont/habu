@@ -903,6 +903,10 @@ SUITE export-keyword-package
    test/export-package.f
 ;SUITE
 
+SUITE using-import
+   test/using-test.f
+;SUITE
+
 SUITE gate-runner-entry-load
    test/gate-runner-entry-test.f
 ;SUITE

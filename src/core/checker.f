@@ -5585,6 +5585,58 @@ USHADOW-DIAG-DEFAULT
    USHADOW-DIAG-XT
    E-USING-SHADOW-GLOBAL throw ;
 
+\ --- one resolver for the used-publics leg (dot habu-reject-a-bare-1f43a9a6) ---
+\ The checker and the engine each walk the same scope chain — open package
+\ (private, then public), then the global wordlist, then the used publics — but
+\ they walked it over DIFFERENT dictionaries. The engine walks its wordlists,
+\ which hold every word. The checker walked its own symbol table, which holds
+\ only the words IT recorded: an engine-prefix word, a `0 set-check` definition
+\ or anything else with no checker signature is invisible to it. So an earlier
+\ scope could claim a bare tail in the engine while the checker's chain fell
+\ through to a used public and certified against THAT word's effect. Nothing
+\ diverged loudly: the reproducer certified `41 FRESH` as ( -- ) against a used
+\ public ( n -- n ) and ran the checker-internal global FRESH ( -- n ), exit 0,
+\ wrong values, one item left on the stack.
+\ The repair is to give the two resolvers ONE authority for the question "does an
+\ earlier scope claim this tail?": the engine's own wordlists, read through
+\ `search-wl` (habu1.f BSWL — the same linear scan and the same case fold as the
+\ engine's LFIND). The checker's tables keep answering the other question, "what
+\ is this word's effect?", which is theirs alone.
+\ Cost is confined to the leg that was wrong: the probe runs only once a used
+\ public has actually matched, so a body with no `using` in scope, or one whose
+\ tails all resolve earlier, never reaches it.
+: CK-WL-CLAIMS? ( ptr u8 n n -- bool ) {: a:ptr u:n wid:n :}
+   a u wid search-wl 0 <> ;
+
+\ The open package's two wordlists, in the engine's order (habu1.f EMIT-FIND:
+\ PKG-PRI-CELL, then PKG-PUB-CELL, then wid 0), read from the engine's own cells
+\ through the offsets CHECKER-PKG-BOOT-LIVE already mirrors. The question here is
+\ which wordlist the ENGINE will bind in, so the raw cells it branches on are the
+\ right source — the validated PKG-LIVE-XT provider answers a different question
+\ (which package NAME is open). A zero private cell is the
+\ engine's own "no package open" test, and it is also what an engine that
+\ predates the package band leaves at this offset — such an engine has no
+\ `using` either, so the mirror is empty and this probe is unreachable there.
+: CK-OPEN-CLAIMS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   data-base CK-PKG-PRI-OFF + @ {: pri:n :}
+   pri 0= IF RES-FALSE EXIT THEN
+   a u pri CK-WL-CLAIMS? IF RES-TRUE EXIT THEN
+   a u data-base CK-PKG-PUB-OFF + @ CK-WL-CLAIMS? ;
+
+\ The used-publics leg, reached only after every earlier CHECKER scope missed.
+\ Before a used public may bind, the engine gets the deciding vote:
+\ - the open package claims the tail: inner scope wins silently (docs/forth.md
+\   § Packages), and the checker has no signature for that word, so the
+\   reference is uncheckable — 0 here is E-UNDEFINED at the call site;
+\ - a global claims the tail: the documented global-vs-used collision, rejected
+\   at the reference site exactly as when the global carries a signature.
+: CHECKER-USED-BIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u CHECKER-USED-SYM {: usym:n :}
+   usym 0= IF 0 EXIT THEN
+   a u CK-OPEN-CLAIMS? IF 0 EXIT THEN
+   a u 0 CK-WL-CLAIMS? IF a u 0 CHECKER-USED-SHADOW THEN
+   usym ;
+
 \ --- generated-constructor protection (item 8 slice 3). The registry-backed
 \ predicates live in type-family.f (loads later) and install into these friend
 \ cells; empty cells fail open only in engines with no TFAM registry at all
@@ -5776,7 +5828,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
       dup >r a u r> CHECKER-USED-SHADOW      \ throws if a live used public also exports this bare tail
       EXIT
    THEN drop
-   a u CHECKER-USED-SYM ;
+   a u CHECKER-USED-BIND ;                   \ engine-authoritative: no earlier scope may claim the tail
 
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.
 \ Cache value: record offset+1, 0 = none/deleted; a miss re-derives from the

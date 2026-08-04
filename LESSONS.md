@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-31
+Last updated: 2026-08-04
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -4729,3 +4729,37 @@ real row inherit the drift: one run printed +1.6 per cent against a 5.1 per cent
 bar and the next printed -2.5 per cent against a 1.9 per cent bar and called it a
 REAL LOSS, with nothing whatever having slowed down. A bar answers noise. It does
 not answer bias, and a null draw that always has the same sign is announcing bias.
+
+## Two resolvers over two dictionaries will disagree, and nothing will say so
+
+The checker and the engine both walked the same scope chain for a bare token —
+open package, global, used publics — but over different dictionaries. The engine
+walked its wordlists, which hold every word. The checker walked its own symbol
+table, which holds only what it recorded, so every engine-prefix word without a
+signature and every `0 set-check` definition was invisible to it. Where a `using`
+import exported a tail that such a global also owned, the checker walked past the
+global, bound the used public, and certified the reference against that word's
+effect while the engine compiled a call to the global. Exit 0, no diagnostic,
+wrong values — a package public named `FRESH` ran the checker's internal `FRESH`
+and every measurement built on it was wrong. The rule meant to catch exactly this
+(`E-USING-SHADOW-GLOBAL`, 7141) had been in the checker for months and fired only
+when the global happened to carry a signature, which is the case that would have
+been caught anyway by the effect mismatch. The lesson is about the shape, not the
+bug: when two components must agree on a decision, do not give each its own copy
+of the facts and a rule to compare answers afterwards. Give the decision ONE
+authority and let the other component ask. Here the engine's `search-wl` — the
+same scan and case fold its own lookup uses — answers "which scope claims this
+tail?", and the checker's table answers only "what is this word's effect?", which
+is a question the engine cannot answer. Two mirrors are a drift waiting to be
+found by whoever picks the unlucky name.
+
+## A partial mirror hides its gaps behind the cases you tested
+
+The shadow rule's tests all used globals defined in the test file, so all of them
+carried signatures, so all of them passed — and the entire class the rule existed
+for, the checker-invisible global, went untested and unenforced. When a test
+fixture is something you construct, ask which property of the real hazard you
+just constructed away. The repaired tests assert their preconditions (the chosen
+name IS in the engine's global wordlist AND is undefined to the checker) so that
+if the fixture ever stops being hazardous the precondition fails instead of the
+hazard case passing vacuously.

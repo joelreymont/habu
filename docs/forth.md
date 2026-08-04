@@ -464,14 +464,29 @@ TEST:COMPLETE
   the reference site, so it holds for every checked body; the engine's raw
   interpret / `0 set-check` resolution keeps the global-first order as the
   explicit unchecked boundary.
+- The colliding global does NOT have to be one the checker knows. Every
+  engine-prefix colon word with no signature and no primitive axiom is a global
+  the checker has no symbol for, and a `0 set-check` definition adds more. The
+  reference site asks the ENGINE's wordlists — `search-wl`, the same scan and
+  case fold the engine's own lookup uses — before a used public may bind, so the
+  refusal covers signed and unsigned globals alike (dot
+  `habu-reject-a-bare-1f43a9a6`, where a package public `FRESH` bound the
+  checker's internal global `FRESH` and ran it: exit 0, wrong values). The same
+  question decides the open-package leg: a word in the open package's own
+  wordlist wins over a used public even when the checker never recorded it, and
+  because it has no signature the reference is then uncheckable
+  (`E-UNDEFINED`) rather than certified against the used public's effect.
 - Qualified `NAME:WORD` lookup is unchanged and always available regardless of
   any `using`.
 - Resolution happens at compile/certify time: a call compiled inside a `using`
   scope keeps resolving after `;using`, and the AOT/baked image needs no runtime
-  using-state. The checker resolves a bare tail through the used publics
-  identically to the runtime — a checked body that reads a used public certifies,
-  a used private or an ambiguous tail is rejected before runtime — so
-  certification and execution always agree.
+  using-state. Which scope claims a bare tail has ONE authority, the engine's
+  wordlists; the checker's symbol table answers only what a word's effect is. So
+  a checked body that reads a used public certifies, a used private or an
+  ambiguous tail is rejected before runtime, and certification and execution
+  always name the same word. A global that appears AFTER a reference was
+  certified does not change what that reference runs — it was resolved when the
+  body was compiled — while the next reference to the same tail is refused.
 - `using` state is file-local: it is snapshotted per eval frame and per REPL
   line and rolled back with the open-package scope, so a `using` left open in an
   included file (or aborted by a throw) never leaks to the caller.

@@ -122,6 +122,80 @@ s" using USG : USG-R5 ( -- n ) NC ; ;using" UCE-CATCH 0 T=
 \ no using in scope: a bare global is never a shadow error (resolves to the global)
 s" MW drop" UCE-CATCH 0 T=
 
+\ === globals the checker cannot see (dot habu-reject-a-bare-1f43a9a6) ===
+\ The cases above collide with globals that carry a checker signature. The engine
+\ also holds globals that carry NONE - every engine-prefix colon word with no
+\ certified/trusted signature and no primitive axiom, the checker's own FRESH
+\ among them. Those live in the engine's global wordlist, so the ENGINE binds
+\ them; they are absent from the checker's symbol table, so the checker used to
+\ walk straight past them into the used publics and certify the reference against
+\ the WRONG word's effect - exit 0, no diagnostic, wrong values on the stack.
+\ Preconditions are asserted rather than assumed: if FRESH ever stops being a
+\ checker-invisible global, the two precondition cases fail instead of leaving
+\ the shadow case to pass vacuously.
+\ The engine's own wordlist probe, as a number T= can compare.
+package DICTQ public
+: HAS? ( ptr u8 n n -- n )
+   search-wl 0 <> if 1 else 0 then ;
+;package
+
+package USH public
+   : FRESH ( n -- n ) 1 + ;             \ tail of the checker's global FRESH ( -- n )
+   : SOLO ( -- n ) 7 ;                  \ no global of this name: purely additive
+   : LATER ( n -- n ) 2 * ;             \ the order-swapped fixture's used public
+   : SOONER ( -- n ) 13 ;               \ bound before any global of the name exists
+;package
+
+\ precondition: FRESH is a live word in the ENGINE's global wordlist
+s" FRESH" 0 DICTQ:HAS? 1 T=
+\ precondition: and it is invisible to the CHECKER (bare use in a checked body
+\ is undefined), so the two resolvers really do disagree about this name
+s" : USH-P2 ( -- n ) FRESH ;" UCE-CATCH E-REJECT T=
+\ the fixture tails that must NOT already name a global, or the additive and
+\ order cases below would be testing a collision instead of the absence of one
+s" SOLO" 0 DICTQ:HAS? 0 T=
+s" LATER" 0 DICTQ:HAS? 0 T=
+s" SOONER" 0 DICTQ:HAS? 0 T=
+\ the hole: the bare tail must be refused at the reference site, not bound to the
+\ used public while the engine runs the global
+s" using USH : USH-R1 ( -- ) 41 FRESH drop ; ;using" UCE-CATCH E-SHADOW T=
+\ the qualified escape still certifies AND runs the used public: certification and
+\ execution name one word (41 + 1 = 42, not the checker's FRESH counter)
+s" using USH : USH-R2 ( -- n ) 41 USH:FRESH ; ;using" UCE-CATCH 0 T=
+USH-R2 42 T=
+\ purely additive when nothing collides: the bare used public certifies and the
+\ engine executes the same word
+s" using USH : USH-R3 ( -- n ) SOLO ; ;using" UCE-CATCH 0 T=
+USH-R3 7 T=
+\ order-swapped against a checker-invisible global: the import comes first and the
+\ unchecked global is defined later in the same scope. The reference site asks the
+\ dictionary as it stands when the body is certified, so it rejects.
+s" using USH check@ 0 set-check : LATER ( -- n ) 3 ; set-check : USH-R4 ( -- n ) LATER ; ;using" UCE-CATCH E-SHADOW T=
+\ the converse of that order: a reference certified BEFORE any global of the name
+\ exists keeps the binding it was compiled with (resolution is compile-time), and
+\ a later global does not retroactively change what it runs
+s" using USH : USH-R5 ( -- n ) SOONER ; ;using" UCE-CATCH 0 T=
+USH-R5 13 T=
+s" check@ 0 set-check : SOONER ( -- n ) 99 ; set-check" UCE-CATCH 0 T=
+USH-R5 13 T=
+
+\ === an open-package word claims the tail before any used public ===
+\ Same divergence one scope earlier: a definition the checker never recorded, in
+\ the OPEN package's own wordlist. The engine's chain (habu1.f EMIT-FIND: package
+\ private, package public, global) binds it; the checker's chain missed it and
+\ bound the used public. docs/forth.md § Packages makes the inner scope the
+\ winner, so the reference is that package's own word - which has no signature,
+\ so it is uncheckable and must be refused, never certified against the used
+\ public's effect.
+package USP public : USPW ( n -- n ) 1 + ; ;package
+\ mint a package-private USPW the checker never records (explicit unchecked window)
+s" check@ package USQ using USP 0 set-check : USPW ( -- n ) 5 ; ;using ;package set-check" UCE-CATCH 0 T=
+\ the bare tail is the package's own word: uncheckable, refused
+s" package USQ using USP public : USQ-R1 ( -- n ) 41 USPW ; ;using ;package" UCE-CATCH E-REJECT T=
+\ the qualified form still reaches the used public and runs it
+s" package USQ using USP public : USQ-R2 ( -- n ) 41 USP:USPW ; ;using ;package" UCE-CATCH 0 T=
+USQ:USQ-R2 42 T=
+
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

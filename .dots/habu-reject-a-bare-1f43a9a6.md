@@ -1,6 +1,6 @@
 ---
 title: Reject a bare tail that a using and a global both claim
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-04T09:52:52.907544+02:00"
@@ -34,3 +34,5 @@ Prints 42 then 3, exit 0, no diagnostic, and leaves one item on the stack. FRESH
 Found while factoring tools/codegen-time.f out of the two codegen harnesses (dot habu-share-the-timing-2eda3703): the shared package first exported a word named FRESH, and every call site through `using CODEGEN-TIME` silently ran the checker's global FRESH instead. The accumulator was never cleared and every measurement was wrong, with no error anywhere. Worked around by renaming to ACC-CLEAR after probing each proposed public tail against the global dictionary by hand (s" NAME" XREF-FIND XREF-FOUND?), which is the manual discipline this rule exists to replace.
 
 Owner: checker semantics - the using-resolution path in src/core/checker.f, plus whatever the engine's bare-tail lookup does under an open using. Fix: make the reference site reject with E-USING-SHADOW-GLOBAL (7141) naming both candidates and their arities, per docs/forth.md. Regression: the reproducer above as a negative fixture, plus a positive one showing the qualified form still certifies and runs.
+
+Claim: agent=shadow-fix workspace=.jj-ws/habu-reject-a-bare-1f43a9a6
