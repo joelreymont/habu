@@ -11,18 +11,19 @@
 \ does not compile at all, and nothing here catches: a body the chain refuses is
 \ a claim this file made and did not keep.
 \
-\ NINE OF THE TEN, AND THE ONE THAT IS NOT HERE. PRESSURE-LOOP is absent, and its
-\ absence is the finding rather than an omission: the chain refuses it, by name,
-\ with E-A64RA-SPILL, and tools/codegen-compare-new4.f declares it a gap naming
-\ the capability it waits for. tools/codegen-compare-test.f hands the corpus's own
-\ text to the same migration entry this file uses and checks that the refusal is
-\ that code and not some other, so "the chain cannot compile it" is a measurement
-\ here and not a sentence.
+\ TEN OF THE TWELVE, AND THE TWO THAT ARE NOT HERE. PRESSURE-LOOP and
+\ CALL-PRESSURE are absent, and their absence is the finding rather than an
+\ omission: the chain refuses both, by name, with E-A64RA-SPILL, and
+\ tools/codegen-compare-new4.f declares each a gap naming the capability it waits
+\ for. tools/codegen-compare-test.f hands the corpus's own text to the same
+\ migration entry this file uses and checks that each refusal is that code and
+\ not some other, with the largest accepted neighbour beside it, so "the chain
+\ cannot compile it" is a measurement here and not a sentence.
 \
 \ THE SUBSTITUTIONS, AND THERE IS ONLY THE ONE KIND. Every body carries `-N` on
-\ the name it defines, which is the migration's own convention, and the three call
-\ rows call `C-ADD1-N`, `C-MUL2-N`, `C-AND7-N` and `C-XOR5-N` where the corpus
-\ writes the names without it - the discipline tools/codegen-compare-migrated2.f
+\ the name it defines, which is the migration's own convention, and the four call
+\ rows call `C-ADD1-N`, `C-MUL2-N`, `C-AND7-N`, `C-XOR5-N` and `C-MAD-N` where
+\ the corpus writes the names without it - the discipline tools/codegen-compare-migrated2.f
 \ established when it migrated CELL-FIELD for VEC-COPY-CELLS to call: the new
 \ column's word is the new chain's code all the way down, so a row measures a
 \ program of the chain's making rather than a chain-compiled shell around the
@@ -76,6 +77,22 @@ private
 : C-XOR5 ( -- )
    s" : C-XOR5-N ( n -- n ) 5 xor ;" 1 1 REGS NMIGRATE:DEFINE ;
 
+\ ---- and the two callees the engine will not copy -----------------------------
+\ C-MAD is what CALL-FAN-BIG-N calls, and the chain copies it: that row's whole
+\ point is that the two inlining rules disagree about this one callee.
+\
+\ C-LONG has NO row here, and is migrated anyway, because CALL-PRESSURE is the
+\ row the chain refuses. tools/codegen-compare-test.f hands the corpus's own text
+\ to this same migration entry to check that the refusal is E-A64RA-SPILL, and a
+\ body whose callee the chain had never published would be refused for the callee
+\ instead - which would make the measurement say nothing about the allocator.
+: C-MAD ( -- )
+   s" : C-MAD-N ( n -- n ) 3 * 5 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: C-LONG ( -- )
+   s" : C-LONG-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
+   1 1 REGS NMIGRATE:DEFINE ;
+
 \ ---- the three call rows ------------------------------------------------------
 
 \ Five call sites over four callees. It is the row the inlining rule at the head
@@ -87,6 +104,12 @@ private
    s" C-AND7-N" s" CODEGEN-CORPUS4:C-AND7-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" C-XOR5-N" s" CODEGEN-CORPUS4:C-XOR5-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : CALL-FAN-N ( n -- n ) C-ADD1-N C-MUL2-N C-AND7-N C-XOR5-N C-ADD1-N ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+\ Five sites over the callee the engine calls and the chain copies.
+: CALL-FAN-BIG ( -- )
+   s" C-MAD-N" s" CODEGEN-CORPUS4:C-MAD-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
+   s" : CALL-FAN-BIG-N ( n -- n ) C-MAD-N C-MAD-N C-MAD-N C-MAD-N C-MAD-N ;"
    1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 \ Three calls a turn with three locals live across the loop and read after it.
@@ -143,7 +166,10 @@ public
    C-MUL2
    C-AND7
    C-XOR5
+   C-MAD
+   C-LONG
    CALL-FAN
+   CALL-FAN-BIG
    CALL-LOOP-3
    TINY-CALLEE
    WIDE-ARITY

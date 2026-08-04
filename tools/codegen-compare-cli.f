@@ -78,6 +78,7 @@ private
    k CODEGEN-CORPORA:BASELINE$ CODEGEN-BASELINE:LOAD
    CODEGEN-BASELINE:COMPARE
    CODEGEN-REPORT:SAY-MISMATCHES +
+   CODEGEN-REPORT:SAY-BYTE-LOSSES +
    FLOOR-FINDINGS + ;
 
 \ EVERY DECLARED TABLE, IN ORDER, AND THE FINDINGS ADDED UP. Each corpus is
@@ -100,10 +101,12 @@ private
 public
 
 \ Measure the pinned corpus with both code generators, print the report, and
-\ check two things: that the old column still agrees with the committed
-\ baseline, and that every word the new chain compiled computes what the old
-\ one computes. Exits the process non-zero, after naming every disagreement,
-\ when either finds anything.
+\ check three things: that the old column still agrees with the committed
+\ baseline, that every word the new chain compiled computes what the old one
+\ computes, and that none of them is more bytes of machine code than the
+\ engine's, apart from the rows tools/codegen-compare-report.f names as known
+\ losses with the dot each one dies with. Exits the process non-zero, after
+\ naming every disagreement, when any of them finds anything.
 : CHECK ( -- )
    CODEGEN-BASELINE:COSTS-CHECKED!
    RUN-CHECK VERDICT ;
@@ -114,8 +117,9 @@ public
 \ suites have the cores can miss the tolerance band for reasons that have nothing
 \ to do with a code generator - measured, with the numbers, at the head of
 \ tools/codegen-compare-baseline.f. Sizes, outputs, the head-to-head agreement of
-\ the two code generators and the structure of the committed table are all still
-\ compared exactly, and the run prints one line saying the timings were not.
+\ the two code generators, the byte adjudication of the two columns against each
+\ other and the structure of the committed table are all still compared exactly,
+\ and the run prints one line saying the timings were not.
 : CHECK-EXACT ( -- )
    CODEGEN-BASELINE:COSTS-UNCHECKED!
    RUN-CHECK VERDICT ;

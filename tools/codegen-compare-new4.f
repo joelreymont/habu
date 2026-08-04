@@ -2,13 +2,23 @@
 \ comparison. One concern: what the new chain makes of the corpus built to beat
 \ it, and what it refuses.
 \
-\ TEN ROWS AND ONE GAP. Nine of the ten subjects compile; PRESSURE-LOOP does not,
-\ and what stops it is a refusal by name rather than a shortage of anything a
-\ bigger number would buy. The row below declares it against the `loop-spill`
-\ capability, and the account in tools/codegen-compare-gap.f says what that word
-\ covers and why it is a capability rather than register pressure in general.
+\ TWELVE ROWS AND TWO GAPS. Ten of the twelve subjects compile; PRESSURE-LOOP and
+\ CALL-PRESSURE do not, and what stops each is a refusal by name rather than a
+\ shortage of anything a bigger number would buy. Both rows below are declared
+\ against the `loop-spill` capability, and the account in
+\ tools/codegen-compare-gap.f says what that word covers and why it is a
+\ capability rather than register pressure in general.
 \
-\ THE REFUSAL, MEASURED. The corpus's own text, handed to the same migration
+\ THE TWO REFUSALS ARE ONE REFUSAL REACHED TWO WAYS, which is why they name one
+\ capability. PRESSURE-LOOP holds fourteen values live inside a loop and
+\ CALL-PRESSURE holds seven across a call inside one; both are values the
+\ allocator has to put somewhere other than a register while control is in the
+\ body of a loop, and MB-SPILLABLE? refuses exactly that. The second row exists
+\ because the first reaches the wall with a shape nobody writes - fourteen live
+\ loads - while seven values live across a call in a loop is an ordinary program,
+\ and a capability whose only witness is a contrived body is easy to leave.
+\
+\ THE FIRST REFUSAL, MEASURED. The corpus's own text, handed to the same migration
 \ entry every other row here uses, with the largest register pool the
 \ architecture allows:
 \
@@ -29,13 +39,39 @@
 \ tools/codegen-compare-test.f runs that migration and checks the code, so the
 \ paragraph above is a measurement rather than a claim.
 \
+\ AND THE SECOND REFUSAL, MEASURED THE SAME WAY. CALL-PRESSURE's own text, at the
+\ same eighteen registers, with the callee the chain published beside it so that
+\ what is being refused is the body and not a missing routine:
+\
+\     : CALL-PRESSURE-N ( n n n n n n n n n -- n )
+\        {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :}
+\        seed len 0 ?do C-LONG-N loop a + b + c + d + e + f + g + ;
+\                                          18 registers   threw -8508  E-A64RA-SPILL
+\
+\ It is not the budget here either, and the control is the neighbour: the same
+\ body with SIX values live across the call instead of seven compiles at the same
+\ eighteen. So the wall on this shape is at seven, the same allocator rule puts it
+\ there, and tools/codegen-compare-test.f runs both migrations and checks both
+\ codes. The two rows together say the refusal is about WHERE a value has to live
+\ and not about how many there are: fourteen without a call, seven with one.
+\
 \ ============================================================================
 \ WHERE THE CHAIN LOST, WHICH IS WHY THIS CORPUS EXISTS, AND WHAT CLOSED IT
 \ ============================================================================
-\ NONE of the nine compiled rows costs more than the code the engine's emitter
+\ NONE of the ten compiled rows costs more than the code the engine's emitter
 \ wrote for the same body. That was not true when this corpus was written: it was
 \ built to find the shapes the chain handles worse, it found two, and both of them
 \ turned on the same thing.
+\
+\ ON BYTES IT IS NOT NONE, AND CALL-FAN-BIG IS WHERE IT IS NOT. The chain's word
+\ for that body is 96 bytes against the engine's 36, and the reason is the same
+\ inlining decision that wins it the time: five copies of `3 * 5 +` with the
+\ interface of each site around them are more instructions than five Bl. It is a
+\ declared known loss in tools/codegen-compare-report.f, which names the two dots
+\ that close it - habu-keep-a-pass-8025401f keeps a value in a register across the
+\ site and habu-place-the-data-9f128e58 places the copied body's values in the
+\ caller's own - and the entry has to be deleted when they land, because an entry
+\ that has stopped losing is itself a finding.
 \
 \ THE TWO ROWS, AND THE THREE STAGES THEY WENT THROUGH. Measured on an idle
 \ twelve-core Apple Silicon host with the entry cost taken off, over five passes:
@@ -99,11 +135,13 @@
 \ ============================================================================
 \ WHERE THE SUSPECTED WEAKNESS DID NOT BITE, AND WHY
 \ ============================================================================
-\ Seven rows were designed to be losses and are not. ONE of them is a DRAW and
-\ six are wins, and in every one of the wins the same thing happens: the engine's
-\ emitter is a stack machine and moves every intermediate through memory, so a row
-\ whose body does real work pays the engine far more than the shape the row was
-\ built to punish costs the chain.
+\ Eight rows were designed to be losses. ONE of them is a DRAW, six are wins, and
+\ one - CALL-FAN-BIG, which was added after the others and is the only one of them
+\ whose callee the engine will not copy - is a win on time and a LOSS on bytes.
+\ In every one of the wins the same thing happens: the engine's emitter is a stack
+\ machine and moves every intermediate through memory, so a row whose body does
+\ real work pays the engine far more than the shape the row was built to punish
+\ costs the chain.
 \
 \   CALL-FAN      A WIN NOW, and the row whose answer moved furthest. It was a
 \                 DRAW for as long as the chain emitted five calls where the
@@ -117,6 +155,15 @@
 \                 against the engine's 5.23-5.45: the five copies are twelve
 \                 instructions in all, because the caller's own registers are
 \                 where each result already is.
+\   CALL-FAN-BIG  THE ONE THAT BIT, and on the column nobody was watching. Its
+\                 callee is two operations rather than one, which is past the
+\                 engine's forty bytes of body and still inside the chain's own
+\                 rule, so the engine emits five Bl - four bytes each, 36 with the
+\                 frame - and the chain copies the body and its interface into
+\                 five sites for 96. The chain is far faster for it and that is
+\                 not the point: this row exists because the corpus's other call
+\                 rows all use a callee BOTH generators copy, so none of them can
+\                 see what a call site costs when the two rules disagree.
 \   LADDER        a draw: eight compares and eight branches are eight compares
 \                 and eight branches, and the chain's are in registers while the
 \                 engine's go through the data stack, which buys back about what
@@ -148,8 +195,16 @@
 \ a call was made and there was nothing else in the body to hide it, and nowhere
 \ else. That was the corpus's finding, it was acted on twice - once by narrowing
 \ what a call site saves and once by not making the call at all - and there is no
-\ row of the four corpora left where the chain costs more. It still wins every row
-\ on size.
+\ row of the four corpora left where the chain costs more.
+\
+\ ON SIZE IT DOES NOT WIN EVERY ROW, AND SAYING SO USED TO BE THE GAP. This
+\ paragraph used to end "it still wins every row on size", which was already
+\ untrue of CODEGEN-CORPUS2:T-RES-WALK when it was written: the byte columns were
+\ printed side by side and compared by nothing, so the sentence a reader saw -
+\ "rows the new column costs more on: none" - was only ever about a clock. The
+\ byte columns are adjudicated now (tools/codegen-compare-report.f), the two rows
+\ that lose are named there with the dot each dies with, and a third would fail
+\ the run.
 
 require lib/errors.f
 require lib/prelude.f
@@ -171,7 +226,8 @@ private
 \ E-A64RA-SPILL at the largest register pool the architecture allows, and
 \ tools/codegen-compare-test.f is where that is checked rather than described.
 : GAPS ( -- )
-   s" CODEGEN-CORPUS4:PRESSURE-LOOP" CODEGEN--GAP-CAP:LOOP-SPILL CODEGEN-GAP:GAP ;
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" CODEGEN--GAP-CAP:LOOP-SPILL CODEGEN-GAP:GAP
+   s" CODEGEN-CORPUS4:CALL-PRESSURE" CODEGEN--GAP-CAP:LOOP-SPILL CODEGEN-GAP:GAP ;
 
 \ ---- the three call rows ------------------------------------------------------
 \ The pinned inputs are the old column's, written as the same literals
@@ -185,6 +241,17 @@ private
       0 CODEGEN-CORPUS4:CALL-FAN-N CODEGEN-COMPARE:VECTOR
       -1 CODEGEN-CORPUS4:CALL-FAN-N CODEGEN-COMPARE:VECTOR
       255 CODEGEN-CORPUS4:CALL-FAN-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+\ Five sites over the callee the engine calls and the chain copies. The one row
+\ of the four corpora where the chain's word is the LARGER of the two.
+: CALL-FAN-BIG-CASE ( -- )
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" s" CODEGEN-CORPUS4:CALL-FAN-BIG-N"
+   [: 7 CODEGEN-CORPUS4:CALL-FAN-BIG-N drop ;]
+   [: 7 CODEGEN-CORPUS4:CALL-FAN-BIG-N CODEGEN-COMPARE:VECTOR
+      0 CODEGEN-CORPUS4:CALL-FAN-BIG-N CODEGEN-COMPARE:VECTOR
+      -1 CODEGEN-CORPUS4:CALL-FAN-BIG-N CODEGEN-COMPARE:VECTOR
+      255 CODEGEN-CORPUS4:CALL-FAN-BIG-N CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
 
 : CALL-LOOP-3-CASE ( -- )
@@ -281,6 +348,7 @@ private
 : COVERED-CASES ( -- )
    CODEGEN-CALIBRATE:NEW
    CALL-FAN-CASE
+   CALL-FAN-BIG-CASE
    CALL-LOOP-3-CASE
    TINY-CALLEE-CASE
    WIDE-ARITY-CASE

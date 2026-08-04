@@ -18,7 +18,9 @@
 \              table - each corpus word's old and new bytes, costs and whether
 \              the two agree about what the word computes - followed by the
 \              words the new chain cannot compile yet and what each is waiting
-\              for, and then the measurement detail that is true of this run
+\              for, then the rows the new column is BIGGER on, which is the byte
+\              column adjudicated instead of left in a table for a reader to
+\              work out, and then the measurement detail that is true of this run
 \              only: absolute nanoseconds per call, how far apart the timed runs
 \              were, and how long the whole pass took.
 \
@@ -36,7 +38,11 @@
 \ FLOOR-GAP compares them: while they agree the two ratios are comparable with
 \ each other, and if they ever stop agreeing that is a finding naming the two
 \ numbers rather than a caveat asking the reader to allow for it. The byte and
-\ result columns never needed such an allowance: they are exact.
+\ result columns never needed such an allowance: they are exact. THAT IS ALSO
+\ WHY THE THREE COLUMNS ARE NOT ADJUDICATED ALIKE. The two exact columns are
+\ findings - a wrong answer by SAY-MISMATCHES, a bigger word by SAY-BYTE-LOSSES,
+\ and either exits the run non-zero - while the cost direction is printed and
+\ counted nowhere, because a gate runs on a machine whose load can move it.
 
 require lib/errors.f
 require lib/prelude.f
@@ -482,6 +488,174 @@ public
       then
    loop ;
 
+private
+
+\ ---- which rows the new column is BIGGER on ----------------------------------
+\ The other question the head-to-head table asks and used to leave to the reader.
+\ It is answered here the way the RESULT question above it is answered, and NOT
+\ the way the cost question below it is: a row the new chain compiles into more
+\ bytes than the engine's emitter wrote for the same body is a FINDING, named and
+\ counted, and the run exits non-zero on it.
+\
+\ WHY THE TWO DIRECTIONS ARE TREATED DIFFERENTLY, WHICH IS THE WHOLE DECISION.
+\ The head of this file already draws the line: a cost is a measurement and the
+\ byte and result columns are exact. SAY-COSTLIER therefore prints and counts
+\ nothing, and is printed only by the timed entry, because on a loaded host the
+\ direction of a small gap is host noise and a gate that acted on it would fail
+\ for the machine it ran on. A byte count is read off the word's own dictionary
+\ record; it is the same number on every host, in every run, and moves only when
+\ a compiler moves it. So it belongs with the outputs, which are also exact and
+\ are also a finding. Treating it like the cost column is how CODEGEN-CORPUS2:
+\ T-RES-WALK's 36-against-76 sat green under "rows the new column costs more on:
+\ none" - a line that was only ever about a clock.
+
+\ The new column's row for the corpus word an old row names, or -1.
+: NEW-PARTNER ( n -- n ) {: k:n :}
+   CODEGEN-COMPARE:PATH-NEW k CODEGEN-COMPARE:NAME$ CODEGEN-COMPARE:FIND-ROW ;
+
+: BIGGER-ROW? ( n n -- bool ) {: k:n j:n :}
+   j CODEGEN-COMPARE:SIZE  k CODEGEN-COMPARE:SIZE  > ;
+
+\ The same question of an OLD row alone: is there a new row for this word, and is
+\ it bigger? A word the chain cannot compile yet has no new row and is not a loss.
+: BIGGER-PAIR? ( n -- bool ) {: k:n :}
+   k NEW-PARTNER {: j:n :}
+   j 0 < if false exit then
+   k j BIGGER-ROW? ;
+
+\ ---- the rows that lose on bytes today, and what closes each one --------------
+\ Two rows of the four corpora are bigger in the new column right now. Each is a
+\ known consequence of a capability the chain has not got yet, each has a dot
+\ that removes it, and a gate that went red on them would be red for work that is
+\ already scheduled. So they are written down HERE, by name, and the check
+\ subtracts them.
+\
+\ WHY A LIST OF ROWS AND NOT A TOLERANCE. A tolerance - "a row may be up to so
+\ much bigger" - would also absorb the next loss, and the next loss is the whole
+\ reason this check exists. A named row absorbs itself and nothing else.
+\
+\ AND WHY AN ENTRY THAT HAS STOPPED LOSING IS ITSELF A FINDING. Without that the
+\ list would outlive the defect: the day the dot lands the row stops being bigger,
+\ the entry stays, and the row is free to lose again with nobody told. So the
+\ list is checked in both directions and empties itself.
+2 constant KNOWN-LOSSES
+
+: KNOWN-LOSS$ ( n -- ptr u8 n ) {: e:n :}
+   e 0 = if s" CODEGEN-CORPUS2:T-RES-WALK" exit then
+   e 1 = if s" CODEGEN-CORPUS4:CALL-FAN-BIG" exit then
+   E-CODEGEN-COMPARE-ROW throw ;
+
+\ The dot each entry dies with, printed beside the row so a reader of a report
+\ does not have to come here to find out who owns it.
+: KNOWN-WHY$ ( n -- ptr u8 n ) {: e:n :}
+   e 0 = if s" the loop whose test is a call; dies with habu-match-the-engine-1d6eb862" exit then
+   e 1 = if s" five sites over a callee only the chain copies; dies with habu-keep-a-pass-8025401f and habu-place-the-data-9f128e58" exit then
+   E-CODEGEN-COMPARE-ROW throw ;
+
+: KNOWN-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup KNOWN-LOSSES < while
+      dup KNOWN-LOSS$ a u STR= if exit then
+      1+
+   repeat drop -1 ;
+
+\ ---- the printed adjudication ------------------------------------------------
+\ The byte column's own version of the line SAY-COSTLIER prints for the cost
+\ column, and printed on EVERY run rather than only on a timed one, for the
+\ reason the section head gives: there is nothing about a byte count that a
+\ loaded host can move.
+
+: SAY-BIGGER-ROW ( n -- ) {: k:n :}
+   s"   " type k CODEGEN-COMPARE:NAME$ type
+   s"  " type k NEW-PARTNER CODEGEN-COMPARE:SIZE FMT:.U
+   s"  bytes against " type k CODEGEN-COMPARE:SIZE FMT:.U
+   k CODEGEN-COMPARE:NAME$ KNOWN-AT {: e:n :}
+   e 0 < if cr exit then
+   s"  (known: " type e KNOWN-WHY$ type s" )" type cr ;
+
+: BIGGER-ROWS ( -- n )
+   0
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         i BIGGER-PAIR? if 1+ then
+      then
+   loop ;
+
+: SAY-BIGGER ( -- )
+   BIGGER-ROWS 0= if
+      s" rows the new column is BIGGER on: none" type cr exit
+   then
+   s" rows the new column is BIGGER on:" type cr
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         i BIGGER-PAIR? if i SAY-BIGGER-ROW then
+      then
+   loop ;
+
+\ ---- and the finding it counts -----------------------------------------------
+
+: SAY-LOSS ( n -- ) {: k:n :}
+   s" codegen-compare: BIGGER " type
+   k CODEGEN-COMPARE:NAME$ type
+   s"  compiled by the new chain is " type k NEW-PARTNER CODEGEN-COMPARE:SIZE FMT:.U
+   s"  bytes of machine code, the old emitter's is " type k CODEGEN-COMPARE:SIZE FMT:.U
+   cr ;
+
+: UNKNOWN-LOSSES ( -- n )
+   0
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         i BIGGER-PAIR? if
+            i CODEGEN-COMPARE:NAME$ KNOWN-AT 0 < if i SAY-LOSS 1+ then
+         then
+      then
+   loop ;
+
+\ A known loss this pass measured in both columns and that is no longer bigger.
+\ A pass that does not hold the row at all says nothing about it: the store holds
+\ one corpus at a time and the two entries belong to two of them.
+: STALE-ENTRY? ( n -- bool ) {: e:n :}
+   CODEGEN-COMPARE:PATH-OLD e KNOWN-LOSS$ CODEGEN-COMPARE:FIND-ROW {: k:n :}
+   k 0 < if false exit then
+   k NEW-PARTNER 0 < if false exit then
+   k BIGGER-PAIR? 0= ;
+
+: SAY-STALE ( n -- ) {: e:n :}
+   s" codegen-compare: KNOWN-LOSS " type
+   e KNOWN-LOSS$ type
+   s"  is no longer bigger than the old emitter's code: take its entry off the" type
+   s"  known-loss list in tools/codegen-compare-report.f" type cr ;
+
+: STALE-ENTRIES ( -- n )
+   0
+   KNOWN-LOSSES 0 ?do
+      i STALE-ENTRY? if i SAY-STALE 1+ then
+   loop ;
+
+public
+
+\ Is the chain's code for this corpus word more bytes than the engine's? The one
+\ authority for that question: the report asks it, the check asks it, and
+\ tools/codegen-compare-test.f names rows through it rather than comparing two
+\ sizes of its own.
+: BIGGER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CODEGEN-COMPARE:PATH-OLD a u CODEGEN-COMPARE:FIND-ROW {: k:n :}
+   k 0 < if false exit then
+   k BIGGER-PAIR? ;
+
+\ How many rows the known-loss list holds, and what each one is. Published so
+\ that the scheduled test can pin the list itself: an entry added to buy a gate a
+\ quiet life then has to survive an assertion that names it. They are the private
+\ words themselves rather than wrappers around them, so the list the report reads
+\ and the list the test reads cannot become two lists.
+EXPORT KNOWN-LOSSES
+EXPORT KNOWN-LOSS$
+
+\ Name every row the new chain compiled into more bytes than the engine's
+\ emitter wrote, apart from the known losses above, and every known-loss entry
+\ that has stopped losing. Answer how many findings that was.
+: SAY-BYTE-LOSSES ( -- n )
+   UNKNOWN-LOSSES STALE-ENTRIES + ;
+
 : PRINT ( -- )
    s" code generator comparison: old (the emitter bin/hb uses today)" type cr
    s"                            new (the native chain)" type cr
@@ -492,6 +666,8 @@ public
    s"  ms, budget " type CODEGEN-COMPARE:BUDGET-MS FMT:.U s"  ms" type cr
    cr
    PAIRS$ type
+   cr
+   SAY-BIGGER
    cr
    0 begin dup CODEGEN-COMPARE:ROWS < while
       dup PRINT-ROW

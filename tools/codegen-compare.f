@@ -32,7 +32,7 @@
 \ from the places this system really spends its time,
 \ tools/codegen-compare-corpus3.f is ten float words, measured before the chain
 \ has a single float capability so that the float campaign has a yardstick it
-\ did not choose afterwards, and tools/codegen-compare-corpus4.f is ten shapes
+\ did not choose afterwards, and tools/codegen-compare-corpus4.f is twelve shapes
 \ chosen the other way round - each one picked because somebody had a reason to
 \ believe the new chain handles it WORSE than the engine's emitter, so that the
 \ suite does not consist only of rows its subject wins. They are separate files

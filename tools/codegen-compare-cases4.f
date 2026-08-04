@@ -19,6 +19,19 @@
 \                takes to zero), 0, -1 (every bit set, so the mask keeps three of
 \                them) and 255. A chain that dropped one of the five calls answers
 \                differently on at least one of the four.
+\   CALL-FAN-BIG the same four values, for the same reason and one more: the
+\                chain through five copies of `3 * 5 +` is 243x + 605, and a
+\                chain that made only four of the five calls is 81x + 200, which
+\                agrees with it at no whole number at all - so every one of the
+\                four inputs catches a dropped call, and -1 and 255 also catch a
+\                sign or a width lost on the way through.
+\   CALL-PRESSURE
+\                seven locals and a seed over the ordinary eight turns; the same
+\                nine values with a length of ZERO, which must be the seed plus
+\                the seven locals and nothing else; and all nine negative,
+\                because the locals are added after the loop and a sign lost
+\                there is invisible on positive inputs. Only the old column
+\                measures this row; the new one declares it a gap.
 \   CALL-LOOP-3  the ordinary eight turns; a length of ZERO, which must be the
 \                seed plus the three locals and nothing else - that is the case
 \                that catches a loop whose body ran once when it should not have;
@@ -88,6 +101,26 @@ private
       0 CODEGEN-CORPUS4:CALL-FAN CODEGEN-COMPARE:VECTOR
       -1 CODEGEN-CORPUS4:CALL-FAN CODEGEN-COMPARE:VECTOR
       255 CODEGEN-CORPUS4:CALL-FAN CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE ;
+
+: CALL-FAN-BIG-CASE ( -- )
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG"
+   [: 7 CODEGEN-CORPUS4:CALL-FAN-BIG drop ;]
+   [: 7 CODEGEN-CORPUS4:CALL-FAN-BIG CODEGEN-COMPARE:VECTOR
+      0 CODEGEN-CORPUS4:CALL-FAN-BIG CODEGEN-COMPARE:VECTOR
+      -1 CODEGEN-CORPUS4:CALL-FAN-BIG CODEGEN-COMPARE:VECTOR
+      255 CODEGEN-CORPUS4:CALL-FAN-BIG CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE ;
+
+: CALL-PRESSURE-CASE ( -- )
+   s" CODEGEN-CORPUS4:CALL-PRESSURE"
+   [: 1 2 3 4 5 6 7 9 CODEGEN-CORPUS4:LOOP-LEN
+      CODEGEN-CORPUS4:CALL-PRESSURE drop ;]
+   [: 1 2 3 4 5 6 7 9 CODEGEN-CORPUS4:LOOP-LEN
+      CODEGEN-CORPUS4:CALL-PRESSURE CODEGEN-COMPARE:VECTOR
+      1 2 3 4 5 6 7 9 0 CODEGEN-CORPUS4:CALL-PRESSURE CODEGEN-COMPARE:VECTOR
+      -1 -2 -3 -4 -5 -6 -7 -9 CODEGEN-CORPUS4:LOOP-LEN
+      CODEGEN-CORPUS4:CALL-PRESSURE CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE ;
 
 : CALL-LOOP-3-CASE ( -- )
@@ -185,7 +218,9 @@ private
 : ALL-CASES ( -- )
    CODEGEN-CALIBRATE:OLD
    CALL-FAN-CASE
+   CALL-FAN-BIG-CASE
    CALL-LOOP-3-CASE
+   CALL-PRESSURE-CASE
    TINY-CALLEE-CASE
    WIDE-ARITY-CASE
    LADDER-CASE

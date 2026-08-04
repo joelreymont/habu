@@ -29,11 +29,20 @@
 \ capabilities it waits for, never both and never neither, and no new row
 \ disagrees with its old row. What the two corpora do NOT share is the byte
 \ result: every word of the first that the chain compiled came out smaller than
-\ the old emitter made it, and one word of the second - T-RES-WALK, the loop
-\ whose test is a call - came out LARGER. That number is pinned here by name, so
-\ a change in either direction has to be looked at rather than absorbed. These
+\ the old emitter made it, one word of the second - T-RES-WALK, the loop whose
+\ test is a call - came out LARGER, and so did one of the fourth - CALL-FAN-BIG,
+\ five sites over a callee only the chain copies. Both are pinned here by name,
+\ so a change in either direction has to be looked at rather than absorbed. These
 \ are assertions about the store a pass left behind, computed here from the
 \ public readers rather than by calling the harness's own check.
+\
+\ THE BYTE COLUMNS ARE NOW CHECKED THE WAY THE OUTPUT COLUMNS ARE. A row the
+\ chain compiles into more bytes than the engine's emitter wrote is a finding
+\ that exits the run non-zero, unless it is one of the two rows
+\ tools/codegen-compare-report.f declares a known loss with the dot that closes
+\ it. BYTE-COLUMN-CASES below attacks that on fixtures - a smaller row, an equal
+\ row, a larger row, and a known loss that has stopped losing - through the
+\ production words, so what passes there is what a gate runs.
 \
 \ The second corpus's committed table is then attacked the way the first one is,
 \ on fixtures built from the whole of its old column: a byte count moved by one
@@ -465,6 +474,46 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
       OLD-ADD3-ROW 1 CODEGEN-COMPARE:OUTPUT 1+ CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
 
+\ ---- and the byte columns, on rows built to fool them ------------------------
+\ The size a new row carries is the size of the word NAMED as carrying the new
+\ chain's code, read off that word's own dictionary record - which is what lets a
+\ fixture put a row of a chosen size in front of the adjudication without
+\ inventing a number. These three name real words of the first corpus whose real
+\ sizes stand in the three relations there are: ADD3-N is smaller than ADD3, ADD3
+\ is exactly equal to itself, and BYTE-FIND is larger. What is being checked is
+\ that the adjudication is a strict `>` - a draw is not a loss - and that a row
+\ that IS larger is named and counted.
+
+\ A new row for ADD3 whose code is ADD3's own, so the two columns are equal.
+: NEW-EQUAL-CASE ( -- )
+   s" CODEGEN-CORPUS:ADD3" s" CODEGEN-CORPUS:ADD3"
+   [: ;]
+   [: OLD-ADD3-ROW 0 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR
+      OLD-ADD3-ROW 1 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+\ And one whose code is the corpus's largest word, so the new column is bigger.
+: NEW-BIGGER-CASE ( -- )
+   s" CODEGEN-CORPUS:ADD3" s" CODEGEN-CORPUS:BYTE-FIND"
+   [: ;]
+   [: OLD-ADD3-ROW 0 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR
+      OLD-ADD3-ROW 1 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+\ A pass that holds a KNOWN loss - the second corpus's T-RES-WALK - in which the
+\ new column is NOT bigger. That is the day the dot behind the entry lands, and
+\ the entry has to go with it; the harness says so rather than quietly keeping an
+\ allowance for a row that no longer needs one.
+: SHRUNK-KNOWN-LOSS ( -- )
+   s" CODEGEN-CORPUS2:T-RES-WALK"
+   [: ;]
+   [: ;]
+   CODEGEN-COMPARE:MEASURE
+   s" CODEGEN-CORPUS2:T-RES-WALK" s" CODEGEN-CORPUS:NOOP"
+   [: ;]
+   [: ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
 \ And one that answers a value short.
 : NEW-SHORT-CASE ( -- )
    s" CODEGEN-CORPUS:ADD3" s" CODEGEN-CORPUS:ADD3-N"
@@ -535,6 +584,42 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 
    s" and so is a new column that left a corpus word out without declaring it" T-LABEL
    [: SHORT-COLUMN-PASS ;] E-CODEGEN-COMPARE-CORPUS TTHROWSQ ;
+
+\ The byte adjudication, on the same fixtures. It reports through the production
+\ words - CODEGEN-REPORT:BIGGER? is the one place the question is asked and
+\ SAY-BYTE-LOSSES is what the run's exit status is made of - so what passes here
+\ is what a gate runs. The third case prints one finding line while it passes,
+\ which is the harness saying out loud what the fixture made it find.
+: BYTE-COLUMN-CASES ( -- )
+   s" a new row of fewer bytes than its old row is not a byte loss" T-LABEL
+   [: NEW-HONEST-CASE ;] MEASURE-WITH
+   s" CODEGEN-CORPUS:ADD3" CODEGEN-REPORT:BIGGER? TFALSE
+   CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
+
+   s" and neither is a row of exactly the same size: a draw is not a loss" T-LABEL
+   [: NEW-EQUAL-CASE ;] MEASURE-WITH
+   s" CODEGEN-CORPUS:ADD3" CODEGEN-REPORT:BIGGER? TFALSE
+   CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
+
+   s" a new row of MORE bytes than its old row is a loss, named and counted" T-LABEL
+   [: NEW-BIGGER-CASE ;] MEASURE-WITH
+   s" CODEGEN-CORPUS:ADD3" CODEGEN-REPORT:BIGGER? TTRUE
+   CODEGEN-REPORT:SAY-BYTE-LOSSES 1 T=
+
+   s" and a known loss that has stopped losing is a finding of its own" T-LABEL
+   [: SHRUNK-KNOWN-LOSS ;] MEASURE-WITH
+   s" CODEGEN-CORPUS2:T-RES-WALK" CODEGEN-REPORT:BIGGER? TFALSE
+   CODEGEN-REPORT:SAY-BYTE-LOSSES 1 T=
+
+   s" while a known loss this pass does not hold says nothing either way" T-LABEL
+   [: NEW-HONEST-CASE ;] MEASURE-WITH
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" CODEGEN-REPORT:BIGGER? TFALSE
+   CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
+
+   s" the known-loss list is the two rows that lose today, named" T-LABEL
+   CODEGEN-REPORT:KNOWN-LOSSES 2 T=
+   0 CODEGEN-REPORT:KNOWN-LOSS$ s" CODEGEN-CORPUS2:T-RES-WALK" T$=
+   1 CODEGEN-REPORT:KNOWN-LOSS$ s" CODEGEN-CORPUS4:CALL-FAN-BIG" T$= ;
 
 \ ---- the register the drivers walk ------------------------------------------
 \ Every driver in tools/codegen-compare-cli.f reads which corpora exist, and
@@ -911,6 +996,13 @@ $1E602008 constant FCMP0-OP
 
    s" and it is the loop whose test is a call" T-LABEL
    s" CODEGEN-CORPUS2:T-RES-WALK" SMALLER? TFALSE
+
+   s" it is bigger and not a draw, which the harness adjudicates by name" T-LABEL
+   s" CODEGEN-CORPUS2:T-RES-WALK" CODEGEN-REPORT:BIGGER? TTRUE
+   s" CODEGEN-CORPUS2:COUNT-CHAR" CODEGEN-REPORT:BIGGER? TFALSE
+
+   s" and carries it as a KNOWN loss, so the run stays green on it alone" T-LABEL
+   CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
 
    s" every other compiled word of it is fewer bytes" T-LABEL
    s" CODEGEN-CORPUS2:TAG" SMALLER? TTRUE
@@ -1379,12 +1471,14 @@ private
 \ below pin is the answer that corpus got, so a change in either direction has to
 \ be looked at rather than absorbed.
 \
-\ NINE COMPILED ROWS AND ONE GAP. PRESSURE-LOOP is refused, and it is the first
-\ gap in this harness whose cause is neither a missing operation nor a missing
-\ type: the chain has every capability the body needs and will not put a
-\ loop-carried value in a frame slot. The `loop-spill` capability names that, and
-\ REFUSAL-CASES below hands the corpus's own text to the real migration entry and
-\ checks that the refusal is E-A64RA-SPILL and not some other code.
+\ TEN COMPILED ROWS AND TWO GAPS. PRESSURE-LOOP and CALL-PRESSURE are refused,
+\ and they are the first gaps in this harness whose cause is neither a missing
+\ operation nor a missing type: the chain has every capability either body needs
+\ and will not put a loop-carried value in a frame slot. The `loop-spill`
+\ capability names that, and REFUSAL-CASES below hands the corpus's own text to
+\ the real migration entry and checks that each refusal is E-A64RA-SPILL and not
+\ some other code, with the largest accepted neighbour beside it so that
+\ "refused" cannot mean "the register budget was too small".
 \
 \ WHICH ROWS COST MORE. NONE of the nine does any more. TINY-CALLEE was the last
 \ one that did - its loop body is nothing but calls, and the engine copied the
@@ -1408,9 +1502,25 @@ private
 \ into a timing. Being exact, they are also stricter than a direction: a row that
 \ kept its speed by some other route would still have to make the same accesses.
 \
-\ EVERY COMPILED ROW IS STILL FEWER BYTES, which is itself the shape of the
-\ finding: what the chain spends at a call is data-stack traffic in the caller's
-\ own frame, and that is cheap in bytes and dear in cycles.
+\ EVERY COMPILED ROW BUT ONE IS FEWER BYTES, and the one is CALL-FAN-BIG. Its
+\ callee is two operations, which is past the forty bytes of body the engine
+\ copies and still inside the chain's own rule, so the engine emits five Bl - one
+\ instruction each - and the chain copies the body and its interface into all
+\ five sites: 96 bytes against 36, and about twenty-five times faster. That is
+\ the row the corpus did not have while every callee in it was one BOTH
+\ generators copy, and it is pinned here in both directions - the byte loss by
+\ name through the harness's own adjudication, the Bl counts on both sides - so
+\ that a change to either inlining rule has to be looked at. It is a declared
+\ known loss in tools/codegen-compare-report.f with the two dots that close it.
+\
+\ IT IS ALSO THE ONE ROW WHERE THE DATA-STACK COUNT GOES THE OTHER WAY, and that
+\ is worth reading carefully rather than as the chain being wasteful. The counts
+\ are of a word's OWN emitted code, and the engine's CALL-FAN-BIG makes no
+\ data-stack access at all: it is five Bl and a frame, and every load and store
+\ happens inside the five callees, which are five other words. The chain's word
+\ has no callee to hide anything in, so its one load and one store - its own
+\ argument and its own result - are more than nothing. Both numbers are asserted,
+\ so what the assertion says is exactly this and not a claim about total work.
 
 \ ---- who copies a small callee, read off the emitted machine code -------------
 \ The call rows of the fourth corpus rested on one claim: the engine COPIES a
@@ -1431,25 +1541,29 @@ private
 16 constant FRAME-BYTES
 
 : REAL-RUN-CASES4 ( -- )
-   11 ACCOUNT-CASES
+   13 ACCOUNT-CASES
 
-   s" the fourth corpus compiles nine rows and declares one gap" T-LABEL
-   CODEGEN-GAP:GAPS 1 T=
-   NEW-ROWS 10 T=
+   s" the fourth corpus compiles ten rows and declares two gaps" T-LABEL
+   CODEGEN-GAP:GAPS 2 T=
+   NEW-ROWS 11 T=
 
-   s" and the gap is the loop that holds more values than the machine has" T-LABEL
+   s" and both gaps are loops that hold a value the allocator cannot place" T-LABEL
    s" CODEGEN-CORPUS4:PRESSURE-LOOP" NAMED-GAP-AMONG? TTRUE
    s" CODEGEN-CORPUS4:PRESSURE-LOOP" MEASURED? TFALSE
-   CODEGEN--GAP-CAP:LOOP-SPILL GAPS-WANTING 1 T=
+   s" CODEGEN-CORPUS4:CALL-PRESSURE" NAMED-GAP-AMONG? TTRUE
+   s" CODEGEN-CORPUS4:CALL-PRESSURE" MEASURED? TFALSE
+   CODEGEN--GAP-CAP:LOOP-SPILL GAPS-WANTING 2 T=
 
    s" no other row of it waits for anything" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN" NAMED-GAP-AMONG? TFALSE
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" NAMED-GAP-AMONG? TFALSE
    s" CODEGEN-CORPUS4:CALL-LOOP-3" NAMED-GAP-AMONG? TFALSE
    s" CODEGEN-CORPUS4:TINY-CALLEE" NAMED-GAP-AMONG? TFALSE
    s" CODEGEN-CORPUS4:MANY-LOCALS" NAMED-GAP-AMONG? TFALSE
 
-   s" and the nine it does compile are measured rows" T-LABEL
+   s" and the ten it does compile are measured rows" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN" MEASURED? TTRUE
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" MEASURED? TTRUE
    s" CODEGEN-CORPUS4:CALL-LOOP-3" MEASURED? TTRUE
    s" CODEGEN-CORPUS4:TINY-CALLEE" MEASURED? TTRUE
    s" CODEGEN-CORPUS4:WIDE-ARITY" MEASURED? TTRUE
@@ -1459,15 +1573,24 @@ private
    s" CODEGEN-CORPUS4:FLOAT-MIX" MEASURED? TTRUE
    s" CODEGEN-CORPUS4:STORE-LOAD" MEASURED? TTRUE
 
-   s" every compiled row is fewer bytes than the code the old emitter wrote" T-LABEL
-   NOT-SMALLER 0 T=
+   s" exactly one compiled row is not fewer bytes than the engine's" T-LABEL
+   NOT-SMALLER 1 T=
    s" CODEGEN-CORPUS4:CALL-FAN" SMALLER? TTRUE
    s" CODEGEN-CORPUS4:CALL-LOOP-3" SMALLER? TTRUE
    s" CODEGEN-CORPUS4:TINY-CALLEE" SMALLER? TTRUE
    s" CODEGEN-CORPUS4:LADDER" SMALLER? TTRUE
 
-   s" no row of this corpus touches the caller's data stack more often" T-LABEL
-   DS-HEAVIER-ROWS 0 T=
+   s" and it is the five sites over the callee only the chain copies" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" SMALLER? TFALSE
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" CODEGEN-REPORT:BIGGER? TTRUE
+   s" CODEGEN-CORPUS4:CALL-FAN" CODEGEN-REPORT:BIGGER? TFALSE
+
+   s" which the harness adjudicates as a KNOWN loss and not as a finding" T-LABEL
+   CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
+
+   s" exactly one row touches the caller's data stack more often, and is that one" T-LABEL
+   DS-HEAVIER-ROWS 1 T=
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" DS-HEAVIER? TTRUE
 
    s" and the data-stack traffic in a call row is its own arguments and result" T-LABEL
    s" CODEGEN-CORPUS4:CALL-LOOP-3-N" DS-LOADS 5 T=
@@ -1503,6 +1626,23 @@ private
    s" CODEGEN-CORPUS4:CALL-LOOP-3-N" BL-COUNT 0 T=
    s" CODEGEN-CORPUS4:TINY-CALLEE-N" BL-COUNT 0 T=
 
+   s" while the two callees past that ceiling are called and not copied" T-LABEL
+   s" CODEGEN-CORPUS4:C-MAD" WORD-BYTES INL-MAX FRAME-BYTES + > TTRUE
+   s" CODEGEN-CORPUS4:C-LONG" WORD-BYTES INL-MAX FRAME-BYTES + > TTRUE
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" BL-COUNT 5 T=
+   s" CODEGEN-CORPUS4:CALL-PRESSURE" BL-COUNT 1 T=
+
+   s" and the chain copies the smaller of the two, which is the whole loss" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG-N" BL-COUNT 0 T=
+
+   s" so the engine's caller makes no data-stack access of its own at all" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" DS-STORES 0 T=
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" DS-LOADS 0 T=
+
+   s" and the chain's makes its own entry and exit and nothing else" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG-N" DS-STORES 1 T=
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG-N" DS-LOADS 1 T=
+
    s" and it reaches that with a fraction of the engine's bytes" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN-N" WORD-BYTES
    s" CODEGEN-CORPUS4:CALL-FAN" WORD-BYTES 2 /  < TTRUE
@@ -1521,8 +1661,8 @@ private
 
 \ ---- the fourth corpus's committed table, on fixtures built to fool it --------
 \ The same attack as the second and third corpora's, over the whole of the fourth
-\ table - eleven old rows, one of which is a gap in the new column - broken in one
-\ place at a time. The measurement they read is whatever pass the caller ran last,
+\ table - thirteen old rows, two of which are gaps in the new column - broken in
+\ one place at a time. The measurement they read is whatever pass the caller ran last,
 \ so MAIN runs the fourth corpus immediately before calling them.
 : CORPUS4-TABLE-CASES ( -- )
    s" the fourth corpus's own table, written honestly, reports nothing" T-LABEL
@@ -1543,21 +1683,29 @@ private
    s" a fourth table missing a row is reported" T-LABEL
    s" CODEGEN-CORPUS4:TINY-CALLEE" MISSING-ROW-CK ;
 
-\ ---- the three ceilings the fourth corpus was designed around -----------------
+\ ---- the ceilings the fourth corpus was designed around -----------------------
 \ tools/codegen-compare-corpus4.f says two shapes were left out of the corpus
 \ because the migration entry cannot carry them, and gives an error code for each;
-\ tools/codegen-compare-new4.f says the tenth row is refused and gives a third.
-\ These run the real entry - the same NMIGRATE the whole new column goes through -
-\ and check the codes, so each account is a measurement rather than a sentence.
+\ tools/codegen-compare-new4.f says two of the corpus's own rows are refused and
+\ gives a third code for both. These run the real entry - the same NMIGRATE the
+\ whole new column goes through - and check the codes, so each account is a
+\ measurement rather than a sentence.
 \
-\ THE REFUSED ROW IS THE ONE THAT MATTERS. "The chain refuses PRESSURE-LOOP" is a
-\ claim about a compiler, and the honest way to check it is to hand the compiler
-\ the corpus's own text. The body below is the corpus's, character for character,
+\ THE REFUSED ROWS ARE THE ONES THAT MATTER. "The chain refuses PRESSURE-LOOP" is
+\ a claim about a compiler, and the honest way to check it is to hand the compiler
+\ the corpus's own text. Each body below is the corpus's, character for character,
 \ under the `-N` name tools/codegen-compare-migrated4.f would have given it, at
 \ EIGHTEEN registers - the largest pool src/compiler/a64-effect.f allows, x18
-\ being platform-reserved. The control beside it is the same body with one field
-\ fewer, which compiles at the same budget: without that control, "refused" could
-\ mean "the number was too small".
+\ being platform-reserved. Each has a control beside it - the same body one value
+\ smaller, which compiles at the same budget - because without the control
+\ "refused" could mean "the number was too small".
+\
+\ THE TWO REFUSALS REACH ONE RULE BY TWO ROADS. PRESSURE-LOOP holds fourteen
+\ values live in a loop body and nothing else; CALL-PRESSURE holds seven across a
+\ call the loop makes, which is a shape programs really have. Their walls are at
+\ different counts and the reason is one: MB-SPILLABLE? will not place a value
+\ defined or read in a block that is neither the entry nor the exit, and a call
+\ costs the allocator registers it then cannot get back inside the loop.
 
 PTR-VARIABLE TRY-SRC
 variable TRY-U
@@ -1573,6 +1721,13 @@ variable TRY-REGS
 : TRY ( ptr u8 n n n -- n ) {: a:ptr u:n in:n regs:n :}
    a TRY-SRC ! u TRY-U ! in TRY-IN ! regs TRY-REGS !
    MIGRATE-RC ;
+
+\ The same for a body that CALLS, with the callee staged first. A migration
+\ clears its staged callees whether it succeeded or was refused
+\ (src/compiler/native/migrate.f, RUN), so a refusal here leaves nothing behind
+\ for the cases after it.
+: MIGRATE-CALLING-RC ( -- n )
+   [: TRY-SRC @ TRY-U @ TRY-IN @ 1 TRY-REGS @ NMIGRATE:DEFINE-CALLING ;] catch ;
 
 \ The corpus's PRESSURE-LOOP body, character for character.
 : SPILL-14$ ( -- ptr u8 n )
@@ -1590,12 +1745,32 @@ variable TRY-REGS
 : WIDE-10$ ( -- ptr u8 n )
    s" : WIDE-10-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n j:n k:n :} a b + c + d + e + f + g + h + j + k + ;" ;
 
+\ The corpus's CALL-PRESSURE body, character for character but for the `-N` the
+\ migration's convention puts on a name: seven values live across a call the loop
+\ really makes, to a callee neither generator copies. The callee is named as the
+\ package publishes it, which is a spelling the migration's own resolver has to
+\ take (test/compiler/native-inline.f pins that it does).
+: SPILL-CALL-7$ ( -- ptr u8 n )
+   s" : CALL-PRESSURE-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + ;" ;
+
+\ The same body with one value fewer live across the call, which is the control.
+: SPILL-CALL-6$ ( -- ptr u8 n )
+   s" : CALL-PRESSURE-6-N ( n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + ;" ;
+
 \ One staged callee, named the way a migrated body would spell it and addressed
 \ off its own dictionary record.
 : CALLEE-AT ( ptr u8 n -- ) {: a:ptr u:n :}
    a u
    a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then
    XREF-START 1 1 NMIGRATE:CALLEE ;
+
+\ A calling body tried against the callee the corpus's own gap row calls. The
+\ callee is the chain's published C-LONG-N, so a refusal is about the body and
+\ not about a routine the chain has never seen.
+: TRY-CALLING ( ptr u8 n n n -- n ) {: a:ptr u:n in:n regs:n :}
+   a TRY-SRC ! u TRY-U ! in TRY-IN ! regs TRY-REGS !
+   s" CODEGEN-CORPUS4:C-LONG-N" CALLEE-AT
+   MIGRATE-CALLING-RC ;
 
 \ Stage a fifth callee for one definition. The entry holds four
 \ (src/compiler/native/migrate.f, `4 constant CALLEES-MAX`), so the fifth staging
@@ -1628,6 +1803,12 @@ variable TRY-REGS
    s" and it is the loop and not the budget: one field fewer compiles there" T-LABEL
    SPILL-13$ 2 18 TRY 0 T=
 
+   s" the corpus's own call-pressure loop is refused at the same pool" T-LABEL
+   SPILL-CALL-7$ 9 18 TRY-CALLING E-A64RA-SPILL T=
+
+   s" and it is the seventh live value and not the budget: six compiles there" T-LABEL
+   SPILL-CALL-6$ 8 18 TRY-CALLING 0 T=
+
    s" a routine of eleven arguments is refused by the place list" T-LABEL
    WIDE-11$ 11 18 TRY E-A64EFF-SEQ T=
 
@@ -1657,11 +1838,17 @@ variable TRY-REGS
 \ LADDER is deliberately absent: the two columns measured within a twentieth of
 \ each other and each came out ahead at least once over five passes, so it is a
 \ draw and pinning it in either direction would be inventing a result.
+\
+\ CALL-FAN-BIG is here despite being the row the chain LOSES on bytes, and the
+\ two facts are one fact: copying the callee is what makes its word larger and
+\ what makes it about twenty-five times faster - 12.8 ns against 0.58 on an idle
+\ host. A margin that size is not a draw, so the direction is worth pinning.
 : COST-DIRECTION-CASES4 ( -- )
    s" no row of the fourth corpus costs more than the engine's code" T-LABEL
    s" CODEGEN-CORPUS4:TINY-CALLEE" COSTLIER? TFALSE
    s" CODEGEN-CORPUS4:CALL-LOOP-3" COSTLIER? TFALSE
    s" CODEGEN-CORPUS4:CALL-FAN" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" COSTLIER? TFALSE
    s" CODEGEN-CORPUS4:BIG-CONSTS" COSTLIER? TFALSE
    s" CODEGEN-CORPUS4:MANY-LOCALS" COSTLIER? TFALSE
    s" CODEGEN-CORPUS4:FLOAT-MIX" COSTLIER? TFALSE
@@ -1682,6 +1869,7 @@ variable TRY-REGS
    STRUCTURE-CASES
    COST-MODE-CASES
    NEW-COLUMN-CASES
+   BYTE-COLUMN-CASES
    REGISTER-CASES
    \ Each account and each fixture is read off a pass this file runs BY NAME.
    \ Reading whatever the previous run happened to leave in the store would make

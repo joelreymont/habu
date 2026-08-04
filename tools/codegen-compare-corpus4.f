@@ -1,5 +1,5 @@
 \ codegen-compare-corpus4.f - the FOURTH pinned word corpus the codegen
-\ comparison measures: ten shapes chosen to make the new code generator LOSE.
+\ comparison measures: twelve shapes chosen to make the new code generator LOSE.
 \ One concern: the subject words themselves, and the structural advantage each
 \ one is built to hand the old emitter.
 \
@@ -61,13 +61,22 @@
 \ position-independent code is copied. C-CALL-COPY-INLINE then emits the span's
 \ instructions into the caller one by one.
 \
-\ THE MEASUREMENT THAT CONFIRMS IT, taken with bin/hb on the four callees this
-\ file publishes. Each of them is a literal and one binary operation, and each
+\ THE MEASUREMENT THAT CONFIRMS IT, taken with bin/hb on the six callees this
+\ file publishes. Four of them are a literal and one binary operation, and each
 \ occupies 56 bytes: sixteen of prologue and epilogue and forty of body, which is
 \ INL-MAX exactly. CALL-FAN below calls five of them in a row and comes out at
 \ 216 bytes = 5 * 40 + 16, with no Bl in it at all - every one of the five was
 \ copied. Add a fifth instruction to a callee and it is 68 bytes, the body is 52,
 \ and the call site emits a Bl instead.
+\
+\ AND THE TWO CALLEES ON THE OTHER SIDE OF THAT LINE, measured the same way.
+\ C-MAD is TWO operations and comes out at 96 bytes: eighty of body, which is
+\ twice INL-MAX, so the engine emits a Bl at every site that calls it and
+\ CALL-FAN-BIG below is 36 bytes of five calls and a frame. C-LONG is eleven
+\ operations and 420 bytes, which neither generator will copy under any rule it
+\ has. Those two are what make the call-site cost measurable at all: while every
+\ callee in the corpus was one the engine copied, no committed row could see what
+\ either generator spends on a call it really emits.
 \
 \ WHAT THE NEW CHAIN DID INSTEAD, WHEN THIS CORPUS WAS WRITTEN. It emitted a Bl
 \ for every call, at every size, always; there was no inliner in
@@ -83,20 +92,42 @@
 \ routine, so a routine whose whole emission is within twice that has a body no
 \ longer than the call site's own half and copying it in cannot make the site
 \ bigger. src/compiler/native/inline.f is the record and carries the argument;
-\ every callee this corpus publishes qualifies under both rules, and neither
-\ column emits a call instruction for the three call rows any more. The rows are
-\ NOT retired by that: what they measure now is whether the two rules stay in
-\ step, and tools/codegen-compare-test.f counts the branch-with-link instructions
-\ on both sides to say so.
+\ each of the four one-operation callees qualifies under both rules, and neither
+\ column emits a call instruction for the three call rows built on them any more.
+\ The rows are NOT retired by that: what they measure now is whether the two
+\ rules stay in step, and tools/codegen-compare-test.f counts the
+\ branch-with-link instructions on both sides to say so.
+\
+\ AND WHERE THE TWO RULES DO NOT MEET, WHICH THOSE ROWS CANNOT REACH. The
+\ engine's ceiling is forty bytes of body and the chain's is twice `in + out + 3`
+\ instructions, and they are not the same line. C-MAD is on the far side of the
+\ engine's and the near side of the chain's: the engine emits five calls for
+\ CALL-FAN-BIG, one instruction each, and the chain copies the body into all five
+\ sites and pays its whole interface at each one. That is a byte loss for the
+\ chain - 96 against 36 - and a large time win, and it is the shape no row of
+\ this corpus could see while every callee in it was one the engine copied.
 \
 \ ============================================================================
-\ THE TEN ROWS AND THE WEAKNESS EACH ONE IS LOOKING FOR
+\ THE TWELVE ROWS AND THE WEAKNESS EACH ONE IS LOOKING FOR
 \ ============================================================================
 \
 \   CALL-FAN        five call sites over four callees the engine copies
 \                   verbatim, in a straight line. The purest form of the
 \                   inlining advantage: the engine emits no call at all and the
 \                   chain emits five.
+\   CALL-FAN-BIG    the same five sites over ONE callee the engine will not copy
+\                   and the chain will. It is the row that measures a call SITE
+\                   rather than an inliner: the engine spends one instruction per
+\                   site and the chain spends its whole interface - one load per
+\                   argument, one store per result and the operations between -
+\                   copied in five times over.
+\   CALL-PRESSURE   one call per turn of a counted loop to a callee NEITHER
+\                   generator copies, with seven values live across it and read
+\                   after the loop. PRESSURE-LOOP asks what the chain does when a
+\                   loop holds more values than the machine has; this asks what
+\                   it does when a loop holds values across a real call, which is
+\                   the same allocator question reached by the shape a program
+\                   actually has.
 \   CALL-LOOP-3     three of those calls per turn of a counted loop, with three
 \                   locals live across the whole loop and used only after it.
 \                   Nothing in a Habu word's convention is callee-saved, so the
@@ -206,12 +237,37 @@ public
 : C-AND7 ( n -- n ) 7 and ;
 : C-XOR5 ( n -- n ) 5 xor ;
 
-\ ---- the ten subjects --------------------------------------------------------
+\ ---- and the two callees the engine will NOT copy ----------------------------
+\ Everything above is inside the engine's forty bytes of body. These two are not,
+\ and that is the whole reason they exist: a corpus whose every callee is copied
+\ by the engine measures an inliner and never a call.
+\
+\ C-MAD is TWO operations, 96 bytes, so its body is eighty - twice INL-MAX. The
+\ engine emits a Bl for it and the chain copies it, because the chain's rule is
+\ about its own interface and not about the engine's byte count. It is the
+\ SMALLEST callee that separates the two rules, which is what makes CALL-FAN-BIG
+\ the smallest honest witness of the disagreement rather than a big one.
+\
+\ C-LONG is eleven operations, 420 bytes, and there is no rule either generator
+\ has under which that is copied. It is the callee for the row about a call that
+\ really is emitted on both sides.
+: C-MAD ( n -- n ) 3 * 5 + ;
+
+: C-LONG ( n -- n )
+   dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
+
+\ ---- the twelve subjects -----------------------------------------------------
 
 \ Five call sites in a straight line, over the four callees above. The engine
 \ copies all five bodies in and emits no call; the chain emits five.
 : CALL-FAN ( n -- n )
    C-ADD1 C-MUL2 C-AND7 C-XOR5 C-ADD1 ;
+
+\ The same five sites over the callee the engine will not copy. Five Bl
+\ instructions in the engine's code and five copied bodies in the chain's, which
+\ is the one row of this corpus where the chain is the larger of the two.
+: CALL-FAN-BIG ( n -- n )
+   C-MAD C-MAD C-MAD C-MAD C-MAD ;
 
 \ Three calls per turn with three locals live across the whole loop. The locals
 \ are read only after the loop, so they add nothing to the body and everything to
@@ -254,6 +310,19 @@ public
       base 80 + @  base 88 + @  base 96 + @  base 104 + @
       + + + + + + + + + + + + + +
    loop ;
+
+\ Seven values live across a call the loop really makes, read only after it. The
+\ callee is C-LONG, which neither generator copies, so what crosses the call is
+\ crossing a call and not an inlined body; the seven locals are read after the
+\ loop so they add nothing to the body and everything to what must survive.
+\ Six of them is the largest the chain places today and seven is one more, so
+\ this is the smallest body on the far side of that line - the survey that
+\ establishes both is at the head of tools/codegen-compare-new4.f.
+: CALL-PRESSURE ( n n n n n n n n n -- n )
+   {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :}
+   seed
+   len 0 ?do C-LONG loop
+   a + b + c + d + e + f + g + ;
 
 \ Four distinct sixty-four-bit literals a turn, each combined with the loop index
 \ so that no turn computes what the last one did. The literals are written in
