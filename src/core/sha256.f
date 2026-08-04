@@ -6,26 +6,20 @@ $FFFFFFFF constant W32
 : M32 ( n -- n )
    W32 and ;
 
-variable ROTR-N
-
 : ROTR ( n n -- n )
-   ROTR-N !
-   dup ROTR-N @ rshift swap 32 ROTR-N @ - lshift or M32 ;
+   2dup rshift >r
+   32 swap - lshift r> or M32 ;
 
 : SHR ( n n -- n )
    rshift ;
 
-variable SHA-X
-variable SHA-Y
-variable SHA-Z
-
 : CH ( n n n -- n )
-   SHA-Z ! SHA-Y ! SHA-X !
-   SHA-X @ SHA-Y @ and  SHA-X @ invert SHA-Z @ and  xor ;
+   {: x:n y:n z:n :}
+   x y and  x invert z and  xor ;
 
 : MAJ ( n n n -- n )
-   SHA-Z ! SHA-Y ! SHA-X !
-   SHA-X @ SHA-Y @ and  SHA-X @ SHA-Z @ and  SHA-Y @ SHA-Z @ and  xor xor ;
+   {: x:n y:n z:n :}
+   x y and  x z and  y z and  xor xor ;
 
 : BSIG0 ( n -- n )
    dup 2 ROTR  over 13 ROTR  rot 22 ROTR  xor xor ;
@@ -48,7 +42,7 @@ $a2bfe8a1 , $a81a664b , $c24b8b70 , $c76c51a3 , $d192e819 , $d6990624 , $f40e358
 $19a4c116 , $1e376c08 , $2748774c , $34b0bcb5 , $391c0cb3 , $4ed8aa4a , $5b9cca4f , $682e6ff3 ,
 $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f7 , $c67178f2 ,
 create HH0 $6a09e667 , $bb67ae85 , $3c6ef372 , $a54ff53a , $510e527f , $9b05688c , $1f83d9ab , $5be0cd19 ,
-create H $40 allot   create WS $200 allot   create ST $40 allot
+create H $40 allot   create WS $200 allot
 
 $1000 constant SHA-IO-CAP
 -1 constant SHA-E-OPEN
@@ -66,10 +60,7 @@ variable SHA-NEED
 variable SHA-NBLK
 variable SHA-FD
 variable SHA-RD
-variable SHA-T1
-variable SHA-T2
 variable SHA-BLEN
-variable SHA-RI
 variable SHA-BLOCK-A
 variable SHA-P
 variable SHA-SRC
@@ -138,27 +129,52 @@ variable SHA-UB
 : SHA-BLOCK-A! ( ptr u8 -- )
    SHA-BLOCK-A-FIELD ! ;
 
-: STV ( n -- n )
-   cells ST + @ ;
+: SHA-H@ ( n -- n )
+   cells H + @ ;
 
-\ one compression round for schedule index ri (local named ri, not i, to keep loop-i)
-: SHA-ROUND ( n -- )
-   SHA-RI !
-   7 STV  4 STV BSIG1 +  4 STV 5 STV 6 STV CH +  KK SHA-RI @ cells + @ +  WS SHA-RI @ cells + @ +  M32  SHA-T1 !
-   0 STV BSIG0  0 STV 1 STV 2 STV MAJ +  M32  SHA-T2 !
-   7 0 DO  ST 6 i - cells + @  ST 7 i - cells + !  LOOP   \ h=g g=f f=e d=c c=b b=a
-   4 STV SHA-T1 @ + M32  ST 4 cells + !                     \ e = d + t1
-   SHA-T1 @ SHA-T2 @ + M32  ST 0 cells + ! ;                \ a = t1 + t2
+: SHA-H! ( n n -- )
+   cells H + ! ;
 
 : SHA-BLOCK ( ptr u8 -- )
    SHA-BLOCK-A!
    16 0 DO  SHA-BLOCK-A@ i 4 * ZPTR+ BE32@  WS i cells + !  LOOP
    64 16 DO
-     WS i 2 - cells + @ SSIG1  WS i 7 - cells + @ +  WS i 15 - cells + @ SSIG0 +  WS i 16 - cells + @ +  M32
-     WS i cells + !  LOOP
-   8 0 DO  H i cells + @  ST i cells + !  LOOP
-   64 0 DO  i SHA-ROUND  LOOP
-   8 0 DO  H i cells + @  ST i cells + @ +  M32  H i cells + !  LOOP ;
+      WS i 2 - cells + @ {: x:n :}
+      x 17 rshift x 15 lshift or
+      x 19 rshift x 13 lshift or xor
+      x 10 rshift xor W32 and
+      WS i 7 - cells + @ +
+      WS i 15 - cells + @ {: y:n :}
+      y 7 rshift y 25 lshift or
+      y 18 rshift y 14 lshift or xor
+      y 3 rshift xor W32 and +
+      WS i 16 - cells + @ + W32 and
+      WS i cells + !
+   LOOP
+   0 SHA-H@ 1 SHA-H@ 2 SHA-H@ 3 SHA-H@
+   4 SHA-H@ 5 SHA-H@ 6 SHA-H@ 7 SHA-H@
+   64 0 DO
+      {: a:n b:n c:n d:n e:n f:n g:n h:n :}
+      e 6 rshift e 26 lshift or
+      e 11 rshift e 21 lshift or xor
+      e 25 rshift e 7 lshift or xor W32 and
+      h + f g xor e and g xor +
+      KK i cells + @ + WS i cells + @ + {: t1:n :}
+      a 2 rshift a 30 lshift or
+      a 13 rshift a 19 lshift or xor
+      a 22 rshift a 10 lshift or xor W32 and
+      a b and a b or c and or + {: t2:n :}
+      t1 t2 + W32 and  a  b  c  d t1 + W32 and  e  f  g
+   LOOP
+   {: a:n b:n c:n d:n e:n f:n g:n h:n :}
+   0 SHA-H@ a + W32 and 0 SHA-H!
+   1 SHA-H@ b + W32 and 1 SHA-H!
+   2 SHA-H@ c + W32 and 2 SHA-H!
+   3 SHA-H@ d + W32 and 3 SHA-H!
+   4 SHA-H@ e + W32 and 4 SHA-H!
+   5 SHA-H@ f + W32 and 5 SHA-H!
+   6 SHA-H@ g + W32 and 6 SHA-H!
+   7 SHA-H@ h + W32 and 7 SHA-H! ;
 
 : SHA-INIT ( -- )
    8 0 DO  HH0 i cells + @  H i cells + !  LOOP ;

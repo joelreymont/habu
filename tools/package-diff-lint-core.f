@@ -244,6 +244,7 @@ variable FILE-USED
 : GLOBAL-IMPLEMENTATION? ( -- bool )
    FILE$ s" lib/prelude.f" LINT-STR= if true exit then
    FILE$ s" src/core/util.f" LINT-STR= if true exit then          \ first prefix source; see header
+   FILE$ s" src/core/sha256.f" LINT-STR= if true exit then       \ standalone stage-0 prefix; tools/bootstrap.sh:81
    FILE$ s" src/core/sumtype.f" LINT-STR= if true exit then
    FILE$ s" src/core/roles.f" LINT-STR= if true exit then
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then

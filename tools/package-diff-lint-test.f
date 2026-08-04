@@ -505,6 +505,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-DIFF-RESET
    s" PRELUDE-GLOBAL" s" lib/prelude.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" UTIL-GLOBAL" s" src/core/util.f" TEST-ADD-WHOLE-CORE-EXEMPTION
+   s" SHA256-GLOBAL" s" src/core/sha256.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" SUMTYPE-GLOBAL" s" src/core/sumtype.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" ROLE-GLOBAL" s" src/core/roles.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" STRUCTURE-GLOBAL" s" src/core/structures.f" TEST-ADD-WHOLE-CORE-EXEMPTION
