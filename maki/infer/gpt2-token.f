@@ -5,6 +5,7 @@ require lib/fs.f
 require lib/fs-path.f
 require lib/memory.f
 require lib/string.f
+require lib/utf8-scalar.f
 require lib/unicode/class.f
 require src/core/sha256.f
 require maki/infer/gpt2-pin.f
@@ -32,6 +33,9 @@ private
 32 constant T-DIGEST-LEN
 64 constant T-HEX-LEN
 T-DIGEST-LEN T-HEX-LEN + constant T-DIGEST-CAP
+
+$20 constant T-SPACE
+$27 constant T-APOSTROPHE
 
 $CBF29CE484222325 constant T-FNV-OFF
 $100000001B3 constant T-FNV-PRIME
@@ -344,53 +348,54 @@ create T-BYTE-ID
    t T-IDMAP
    1 t T-READY T! ;
 
-\ Total UTF-8 decoder. Invalid sequences are one raw byte so byte-level encoding remains total.
-: T-CP@ ( ptr u8 n n -- n n ) {: a:ptr n:n p:n :}
-   a p + c@ {: b0:n :}
-   b0 128 < if b0 1 exit then
-   b0 192 < if b0 1 exit then
-   b0 224 < if b0 31 and 2 128
-   else b0 240 < if b0 15 and 3 2048
-   else b0 248 < if b0 7 and 4 65536
-   else b0 1 exit then then then {: acc0:n len:n mincp:n :}
-   p len + n > if b0 1 exit then
-   acc0
-   len 1 ?do
-      a p i + + c@ dup 192 and 128 <> if drop drop b0 1 unloop exit then
-      63 and swap 6 lshift or
-   loop
-   dup mincp < if drop b0 1 exit then
-   dup UNICODE-CLASS:SCALAR? 0= if drop b0 1 exit then
-   len ;
+: T-STEP ( ptr u8 n n -- n n bool )
+   UTF8:NEXT
+   MATCH UTF8:scalar-step
+      scalar OF T-TRUE ENDOF
+      raw-byte OF T-FALSE ENDOF
+   ;MATCH ;
+
+: T-LETTER? ( n bool -- bool ) {: cp:n scalar:bool :}
+   scalar 0= if T-FALSE exit then
+   cp UNICODE-CLASS:LETTER? ;
+
+: T-NUMBER? ( n bool -- bool ) {: cp:n scalar:bool :}
+   scalar 0= if T-FALSE exit then
+   cp UNICODE-CLASS:NUMBER? ;
+
+: T-WHITE-SPACE? ( n bool -- bool ) {: cp:n scalar:bool :}
+   scalar 0= if T-FALSE exit then
+   cp UNICODE-CLASS:WHITE-SPACE? ;
 
 : T-LET-RUN ( ptr u8 n n n -- n ) {: a:ptr n:n p:n off:n :}
    p off + n >= if off exit then
-   a n p off + T-CP@ {: cp:n w:n :}
-   cp UNICODE-CLASS:LETTER? 0= if off exit then
-   a n p off w + recurse ;
+   a n p off + T-STEP {: cp:n next:n scalar:bool :}
+   cp scalar T-LETTER? 0= if off exit then
+   a n p next p - recurse ;
 
 : T-NUM-RUN ( ptr u8 n n n -- n ) {: a:ptr n:n p:n off:n :}
    p off + n >= if off exit then
-   a n p off + T-CP@ {: cp:n w:n :}
-   cp UNICODE-CLASS:NUMBER? 0= if off exit then
-   a n p off w + recurse ;
+   a n p off + T-STEP {: cp:n next:n scalar:bool :}
+   cp scalar T-NUMBER? 0= if off exit then
+   a n p next p - recurse ;
 
-: T-OTHER? ( n -- bool ) {: cp:n :}
+: T-OTHER? ( n bool -- bool ) {: cp:n scalar:bool :}
+   scalar 0= if T-TRUE exit then
    cp UNICODE-CLASS:WHITE-SPACE?
    cp UNICODE-CLASS:LETTER? or
    cp UNICODE-CLASS:NUMBER? or 0= ;
 
 : T-OTHER-RUN ( ptr u8 n n n -- n ) {: a:ptr n:n p:n off:n :}
    p off + n >= if off exit then
-   a n p off + T-CP@ {: cp:n w:n :}
-   cp T-OTHER? 0= if off exit then
-   a n p off w + recurse ;
+   a n p off + T-STEP {: cp:n next:n scalar:bool :}
+   cp scalar T-OTHER? 0= if off exit then
+   a n p next p - recurse ;
 
 : T-WS-RUN ( ptr u8 n n n n -- n n ) {: a:ptr n:n p:n off:n last:n :}
    p off + n >= if off last exit then
-   a n p off + T-CP@ {: cp:n w:n :}
-   cp UNICODE-CLASS:WHITE-SPACE? 0= if off last exit then
-   a n p off w + off recurse ;
+   a n p off + T-STEP {: cp:n next:n scalar:bool :}
+   cp scalar T-WHITE-SPACE? 0= if off last exit then
+   a n p next p - off recurse ;
 
 : T-WS-TAIL ( ptr u8 n n -- n ) {: a:ptr n:n p:n :}
    a n p 0 0 T-WS-RUN {: off:n last:n :}
@@ -412,19 +417,25 @@ create T-BYTE-ID
    0 ;
 
 : T-CHUNK ( ptr u8 n n -- n ) {: a:ptr n:n p:n :}
-   a n p T-CP@ drop {: cp:n :}
-   cp 39 = if a n p T-CONTRACT dup 0 > if exit then drop then
-   cp UNICODE-CLASS:LETTER? if a n p 0 T-LET-RUN exit then
-   cp UNICODE-CLASS:NUMBER? if a n p 0 T-NUM-RUN exit then
-   cp 32 = if
-      p 1+ n < if
-         a n p 1+ T-CP@ drop {: next:n :}
-         next UNICODE-CLASS:LETTER? if 1 a n p 1+ 0 T-LET-RUN + exit then
-         next UNICODE-CLASS:NUMBER? if 1 a n p 1+ 0 T-NUM-RUN + exit then
-         next T-OTHER? if 1 a n p 1+ 0 T-OTHER-RUN + exit then
+   a n p T-STEP {: cp:n next:n scalar:bool :}
+   scalar cp T-APOSTROPHE = and if
+      a n p T-CONTRACT dup 0 > if exit then drop
+   then
+   cp scalar T-LETTER? if a n p 0 T-LET-RUN exit then
+   cp scalar T-NUMBER? if a n p 0 T-NUM-RUN exit then
+   scalar cp T-SPACE = and next n < and if
+      a n next T-STEP {: next-cp:n after:n next-scalar:bool :}
+      next-cp next-scalar T-LETTER? if
+         after p - a n after 0 T-LET-RUN + exit
+      then
+      next-cp next-scalar T-NUMBER? if
+         after p - a n after 0 T-NUM-RUN + exit
+      then
+      next-cp next-scalar T-OTHER? if
+         after p - a n after 0 T-OTHER-RUN + exit
       then
    then
-   cp T-OTHER? if a n p 0 T-OTHER-RUN exit then
+   cp scalar T-OTHER? if a n p 0 T-OTHER-RUN exit then
    a n p T-WS-TAIL ;
 
 : T-ENC-FITS? ( ptr u8 n n -- bool ) {: a:ptr u:n p:n :}

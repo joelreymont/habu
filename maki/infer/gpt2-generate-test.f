@@ -26,6 +26,55 @@ create CONTEXT CONTEXT-N allot
 create U-JA 33768 , 98 , 17312 , 105 , 45739 , 252 ,
 create U-AR 149 , 97 , 149 , 95 ,
 create U-LATIN 2616 , 38776 ,
+create MAL-C3-ASCII $C3 c, $41 c,
+
+create T-C-ASCII 3 , 3 , 2 ,
+create T-C-PREFIX 2 , 2 , 2 ,
+create T-C-CONTRACTIONS
+   1 , 2 , 2 , 2 , 2 , 3 , 2 , 3 , 2 , 2 , 2 , 3 , 2 , 2 ,
+create T-C-TRAILING 3 , 1 , 2 ,
+create T-C-FULLWIDTH 4 , 7 ,
+create T-C-ASTRAL 5 , 5 ,
+create T-C-COMBINING 1 , 2 , 1 ,
+create T-C-PUNCT 2 ,
+
+create T-WHITE-SPACE
+   $09 c, $0A c, $0B c, $0C c, $0D c, $20 c,
+   $C2 c, $85 c, $C2 c, $A0 c,
+   $E1 c, $9A c, $80 c,
+   $E2 c, $80 c, $80 c, $E2 c, $80 c, $81 c,
+   $E2 c, $80 c, $82 c, $E2 c, $80 c, $83 c,
+   $E2 c, $80 c, $84 c, $E2 c, $80 c, $85 c,
+   $E2 c, $80 c, $86 c, $E2 c, $80 c, $87 c,
+   $E2 c, $80 c, $88 c, $E2 c, $80 c, $89 c,
+   $E2 c, $80 c, $8A c,
+   $E2 c, $80 c, $A8 c, $E2 c, $80 c, $A9 c,
+   $E2 c, $80 c, $AF c, $E2 c, $81 c, $9F c,
+   $E3 c, $80 c, $80 c,
+
+create T-C-TWO-ASCII 1 , 2 ,
+create T-C-TWO-NBSP 2 , 2 , 1 ,
+create T-C-MIXED-SPACE 1 , 3 , 1 ,
+
+create T-M1 $C3 c, $41 c,
+create T-M2 $C0 c, $41 c,
+create T-M3 $E2 c, $41 c,
+create T-M4 $F0 c, $41 c,
+create T-M5 $80 c, $41 c,
+create T-M6 $ED c, $A0 c, $80 c, $41 c,
+create T-M7 $F4 c, $90 c, $80 c, $80 c, $41 c,
+create T-M8 $E2 c, $82 c, $20 c,
+create T-M9 $C0 c, $80 c, $41 c,
+
+create T-C-M1 1 , 1 ,
+create T-C-M2 1 , 1 ,
+create T-C-M3 1 , 1 ,
+create T-C-M4 1 , 1 ,
+create T-C-M5 1 , 1 ,
+create T-C-M6 3 , 1 ,
+create T-C-M7 4 , 1 ,
+create T-C-M8 2 , 1 ,
+create T-C-M9 2 , 1 ,
 
 : YES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -53,6 +102,70 @@ create U-LATIN 2616 , 38776 ,
 : PREPARE ( -- )
    LONG LONG-N 120 FILL
    CONTEXT CONTEXT-N 0 FILL ;
+
+: T-PREFIX$ ( -- ptr u8 n )
+   s"  a 1 !" ;
+
+: T-CONTRACTIONS$ ( -- ptr u8 n )
+   s" a's a't a're a've a'm a'll a'd" ;
+
+: T-TRAILING$ ( -- ptr u8 n )
+   s" end.  " ;
+
+: T-COMBINING$ ( -- ptr u8 n )
+   s\" a\xCC\x81b" ;
+
+: T-TWO-NBSP$ ( -- ptr u8 n )
+   s\" \xC2\xA0\xC2\xA0x" ;
+
+: T-MIXED-SPACE$ ( -- ptr u8 n )
+   s\"  \xE3\x80\x80x" ;
+
+: T-CHUNKS? ( ptr a n ptr u8 n -- bool )
+   {: want:ptr wantn:n src:ptr srcu:n :}
+   0 0
+   begin over srcu < while
+      dup wantn >= if 2drop T-FALSE exit then
+      over {: cursor:n :}
+      dup {: row:n :}
+      src srcu cursor T-CHUNK {: chunk:n :}
+      chunk 0 <= if 2drop T-FALSE exit then
+      chunk srcu cursor - > if 2drop T-FALSE exit then
+      chunk want row cells + @ <> if 2drop T-FALSE exit then
+      swap chunk + swap 1+
+   repeat
+   swap srcu = swap wantn = and ;
+
+: T-GRAMMAR ( -- )
+   s" leftmost GPT-2 alternatives retain exact Unicode chunk boundaries" T-LABEL
+   T-C-ASCII 3 s" abc123!!" T-CHUNKS? TTRUE
+   T-C-PREFIX 3 T-PREFIX$ T-CHUNKS? TTRUE
+   T-C-CONTRACTIONS 14 T-CONTRACTIONS$ T-CHUNKS? TTRUE
+   T-C-TRAILING 3 T-TRAILING$ T-CHUNKS? TTRUE
+   T-C-FULLWIDTH 2 s" ＡB１２3" T-CHUNKS? TTRUE
+   T-C-ASTRAL 2 s" 𐐀A𝟘7" T-CHUNKS? TTRUE
+   T-C-COMBINING 3 T-COMBINING$ T-CHUNKS? TTRUE
+   T-C-PUNCT 1 s" !?" T-CHUNKS? TTRUE ;
+
+: T-WHITE-SPACE-GRAMMAR ( -- )
+   s" all 25 White_Space scalars retain GPT-2 tail backtracking" T-LABEL
+   T-WHITE-SPACE 61 0 T-CHUNK 61 T=
+   T-C-TWO-ASCII 2 s"   a" T-CHUNKS? TTRUE
+   T-C-TWO-NBSP 3 T-TWO-NBSP$ T-CHUNKS? TTRUE
+   T-C-MIXED-SPACE 3 T-MIXED-SPACE$ T-CHUNKS? TTRUE
+   s\" \xC2\xA0\xE3\x80\x80" 2dup 0 T-CHUNK swap T= drop ;
+
+: T-MALFORMED-GRAMMAR ( -- )
+   s" malformed UTF-8 stays raw OTHER with one-byte decoder progress" T-LABEL
+   T-C-M1 2 T-M1 2 T-CHUNKS? TTRUE
+   T-C-M2 2 T-M2 2 T-CHUNKS? TTRUE
+   T-C-M3 2 T-M3 2 T-CHUNKS? TTRUE
+   T-C-M4 2 T-M4 2 T-CHUNKS? TTRUE
+   T-C-M5 2 T-M5 2 T-CHUNKS? TTRUE
+   T-C-M6 2 T-M6 4 T-CHUNKS? TTRUE
+   T-C-M7 2 T-M7 5 T-CHUNKS? TTRUE
+   T-C-M8 2 T-M8 3 T-CHUNKS? TTRUE
+   T-C-M9 2 T-M9 3 T-CHUNKS? TTRUE ;
 
 : OUT-RESET ( -- )
    OUT OUTPUT-CAP BL>N GUARD FILL
@@ -143,6 +256,39 @@ using GPT2
    wantn 0 ?do
       i ID-AT want i cells + @ T=
    loop ;
+
+: T-MALFORMED-C3 ( GPT2:model -- GPT2:model )
+   s" malformed C3 stays outside the following ASCII Letter run" T-LABEL
+   MAL-C3-ASCII 2 BYTE-CAP ENCODE
+   MATCH result
+      err OF throw ENDOF
+      ok OF IC>N 2 T= ENDOF
+   ;MATCH
+   MAL-C3-ASCII 2 0 T-CHUNK 1 T= ;
+
+: T-DECODE-EQ ( GPT2:model n ptr u8 n -- GPT2:model )
+   {: count:n src:ptr srcu:n :}
+   count OUT srcu BYTE-CAP DECODE
+   MATCH result
+      err OF throw ENDOF
+      ok OF BL>N srcu T= ENDOF
+   ;MATCH
+   OUT srcu src srcu T$= ;
+
+: T-ROUNDTRIP ( GPT2:model ptr u8 n -- GPT2:model )
+   {: src:ptr srcu:n :}
+   src srcu BYTE-CAP ENCODE
+   MATCH result
+      err OF throw ENDOF
+      ok OF IC>N src srcu T-DECODE-EQ ENDOF
+   ;MATCH ;
+
+: T-GRAMMAR-ROUNDTRIPS ( GPT2:model -- GPT2:model )
+   s" model-owned encode and decode preserve representative grammar bytes" T-LABEL
+   T-M1 2 T-ROUNDTRIP
+   s" ＡB１２3" T-ROUNDTRIP
+   s" 𐐀A𝟘7" T-ROUNDTRIP
+   T-MIXED-SPACE$ T-ROUNDTRIP ;
 
 : T-UNICODE ( GPT2:model -- GPT2:model )
    s" complete Unicode letter and number classes preserve pinned GPT-2 ids" T-LABEL
@@ -242,6 +388,9 @@ using GPT2-REFERENCE
    T-RESET
    T-SURFACE
    PREPARE
+   T-GRAMMAR
+   T-WHITE-SPACE-GRAMMAR
+   T-MALFORMED-GRAMMAR
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
    OPEN-MODEL
@@ -250,6 +399,8 @@ using GPT2-REFERENCE
    T-METADATA
    T-LIMITS
    T-TOK-REFUSAL
+   T-MALFORMED-C3
+   T-GRAMMAR-ROUNDTRIPS
    T-UNICODE
    T-CONTEXT
    T-MODEL-REFUSAL
