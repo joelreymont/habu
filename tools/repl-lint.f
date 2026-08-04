@@ -1,5 +1,5 @@
 \ repl-lint.f -- CLI wrapper for REPL exit lint.
-\ Load after tools/repl-lint-core.f and tools/argv.f.
+\ Load after tools/repl-lint-core.f and lib/argv.f.
 
 require lib/errors.f
 require lib/string.f

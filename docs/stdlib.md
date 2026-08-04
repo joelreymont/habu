@@ -1619,9 +1619,9 @@ day, or `NONE` on malformed input. `DATE:FORMAT-YMD` writes `YYYY-MM-DD`; `DATE:
 ## Argv
 
 `lib/argv.f` provides checked command-line parsing for `hb script.f args...`
-scripts and multi-source tools. `lib/argv.f` is a symlink to `lib/argv.f`, so
-the tool CLIs and the stdlib share one packaged module and call it through the
-qualified `ARGV:` API. The parser reads `SCRIPT-ARGC` and `SCRIPT-ARGV$` by
+scripts and multi-source tools. The tool CLIs and the stdlib share this one
+packaged module and call it through the qualified `ARGV:` API. The parser reads
+`SCRIPT-ARGC` and `SCRIPT-ARGV$` by
 default, or an
 in-memory mock argv set for focused tests. `ARGV:PARSE` recognizes `--json`,
 `--json-errors`, `--label NAME`, `--strict-signatures`, `--all-errors`,

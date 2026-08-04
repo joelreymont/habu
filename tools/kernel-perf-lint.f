@@ -1,6 +1,6 @@
 \ kernel-perf-lint.f - CLI wrapper for the kernel profile-row diff lint.
 \ Run: bin/hb tools/kernel-perf-lint.f diff.patch ...
-\ Load after tools/kernel-perf-lint-core.f and tools/argv.f.
+\ Load after tools/kernel-perf-lint-core.f and lib/argv.f.
 
 require lib/errors.f
 require lib/string.f

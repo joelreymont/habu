@@ -1,5 +1,5 @@
 \ typed-local-diff-lint.f - CLI wrapper for added bare-local lint.
-\ Load after tools/typed-local-diff-lint-core.f and tools/argv.f.
+\ Load after tools/typed-local-diff-lint-core.f and lib/argv.f.
 
 require lib/errors.f
 require lib/string.f

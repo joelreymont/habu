@@ -1,8 +1,6 @@
 \ reserved-name-lint.f - CLI wrapper for reserved definition-name lint.
 \ This is a standalone entry point: it loads its own dependencies, so
-\ `bin/hb --load tools/reserved-name-lint.f` works on its own. It used to only
-\ list them in a comment - and that list still named tools/argv.f, which no
-\ longer exists; the argv module lives in lib/argv.f.
+\ `bin/hb --load tools/reserved-name-lint.f` works on its own.
 
 require lib/errors.f
 require lib/string.f

@@ -3,7 +3,7 @@
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
-\ tools/check-all-errors-core.f tools/argv.f
+\ tools/check-all-errors-core.f lib/argv.f
 \ tools/check-all-errors-test.f
 
 require lib/errors.f

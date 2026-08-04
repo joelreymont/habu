@@ -6,7 +6,7 @@
 \ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
 \ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
 \ tools/reserved-name-lint-core.f,
-\ tools/check-all-errors-core.f (which loads verify-source.f), and tools/argv.f.
+\ tools/check-all-errors-core.f (which loads verify-source.f), and lib/argv.f.
 \ The dependency-closure producer (whole-file ordered loader events) and its
 \ dynamic-tail manifest are required below.
 

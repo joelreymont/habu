@@ -43,8 +43,8 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - Authoritative verdict (-1 certified / 0 rejected / 1 uncheckable) is native:
   use `bin/hb` for quick checks and `tools/check.f` under `bin/hb --load ... --`
   for files. `CHECK` infers the body's effect; `CHECK!` verifies the body
-  against its declared `( in -- out )`. No-binary recovery uses
-  `tools/seed.sh /path/to/hb-seed`.
+  against its declared `( in -- out )`. No-binary recovery is `docs/bootstrap.md`;
+  a trusted native seed is `docs/seed.md`.
 
 ## 4. On checker rejection: FIX THE BODY, NOT THE SIGNATURE
 - A rejection means the body's real effect ≠ the declared `( in -- out )`. The
@@ -67,9 +67,9 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 
 ## 7. Run the gate
 - `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test/runner.f test/gate-pool.f test/run.f` — habu-native, no gforth. Must be green.
-- If `bin/hb` is missing, install a trusted native seed with
-  `tools/seed.sh /path/to/hb-seed`; the seed immediately rebuilds current source
-  through the native build-fixpoint installer.
+- If `bin/hb` is missing, install a trusted native seed with the checked command
+  in `docs/seed.md`; the seed immediately rebuilds current source through the
+  native build-fixpoint installer.
 
 ## 8. Record lessons
 - On any new finding, mistake, or insight, add a lesson to `LESSONS.md` (lessons
