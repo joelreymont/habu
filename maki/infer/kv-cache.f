@@ -854,7 +854,8 @@ public
 : CANCEL-BATCH ( KV:cache KV:batch -- cancel-result )
    KB-TAKE {: gen:n :}
    KC-TAKE {: h:ptr :}
-   h BATCH-OFF H@ gen = if
+   h BATCH-OFF H@ {: active:n :}
+   active 0<> active gen = and if
       0 h BATCH-OFF H!
       h KC-MINT KV-CANCEL--RESULT:CANCELLED exit
    then

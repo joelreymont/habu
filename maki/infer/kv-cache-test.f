@@ -618,6 +618,17 @@ variable KVT-RELEASE-EVENT
    KVT-CHECK
    KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
 
+: KVT-BATCH-ZERO ( -- )
+   KVT-MUST-SESSION KVT-OPEN-STANDARD
+   NEXT-BATCH-GEN @ {: saved:n :}
+   KVT-SNAPSHOT
+   0 KB-MINT KVT-CANCEL-ERR
+   KB-TAKE 0 T=
+   NEXT-BATCH-GEN @ saved T=
+   KVT-SNAPSHOT= TTRUE
+   KVT-CHECK
+   KVT-MUST-CLOSE KVT-MUST-SESSION-CLOSE ;
+
 : KVT-BATCH-CROSS ( -- )
    KVT-MUST-SESSION KVT-OPEN-STANDARD KVT-MUST-BEGIN
    rot KVT-CONFIG KVT-MUST-OPEN
@@ -829,6 +840,7 @@ variable KVT-RELEASE-EVENT
    s" allocation-free churn" T-LABEL [: KVT-CHURN ;] 0 TTHROWSQ
    s" one active batch and monotone generation" T-LABEL [: KVT-BATCH-LIFETIME ;] 0 TTHROWSQ
    s" stale batch refusal preserves the active owner" T-LABEL [: KVT-BATCH-STALE ;] 0 TTHROWSQ
+   s" zero batch generation cannot cancel an inactive cache" T-LABEL [: KVT-BATCH-ZERO ;] 0 TTHROWSQ
    s" cross-cache batch refusal preserves both owners" T-LABEL [: KVT-BATCH-CROSS ;] 0 TTHROWSQ
    s" batch generation exhaustion is mutation-free" T-LABEL [: KVT-BATCH-EXHAUST ;] 0 TTHROWSQ
    s" batch lifetime changes no allocator, device, or metric state" T-LABEL [: KVT-BATCH-PURE ;] 0 TTHROWSQ
