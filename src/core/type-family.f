@@ -203,7 +203,11 @@ variable TF-PK-N   0 TF-PK-N !   REG-PROTECT
 16 cells constant TF.SPAN-OFF-AT
 17 cells constant TF.SPAN-U-OFF
 18 cells constant TF.DERIVE-OFF
-19 cells constant TF-REC
+\ TF.TAILNEXT: next family id (+1) in this row's tail bucket, 0 at the end of the
+\ chain. It is the registry's own lookup index (TFX-* below), which is why it
+\ lives in the record rather than in a side table that could drift from it.
+19 cells constant TF.TAILNEXT-OFF
+20 cells constant TF-REC
 CELL constant TF-REC-ALIGN
 0 constant TF-REC-PTR-MASK
 
@@ -226,6 +230,7 @@ CELL constant TF-REC-ALIGN
 : TF.SPAN-OFF ( ptr a -- ptr a ) TF.SPAN-OFF-AT + ;
 : TF.SPAN-U ( ptr a -- ptr a ) TF.SPAN-U-OFF + ;
 : TF.DERIVE ( ptr a -- ptr a ) TF.DERIVE-OFF + ;
+: TF.TAILNEXT ( ptr a -- ptr a ) TF.TAILNEXT-OFF + ;
 
 TF.PKG-OFF-AT 0 cells TF-LAYOUT=
 TF.PKG-U-OFF 1 cells TF-LAYOUT=
@@ -246,7 +251,8 @@ TF.SCHEMA-ROOT-OFF 15 cells TF-LAYOUT=
 TF.SPAN-OFF-AT 16 cells TF-LAYOUT=
 TF.SPAN-U-OFF 17 cells TF-LAYOUT=
 TF.DERIVE-OFF 18 cells TF-LAYOUT=
-TF-REC 19 cells TF-LAYOUT=
+TF.TAILNEXT-OFF 19 cells TF-LAYOUT=
+TF-REC 20 cells TF-LAYOUT=
 TF-REC-ALIGN CELL TF-LAYOUT=
 TF-REC TF-REC-ALIGN mod 0 TF-LAYOUT=
 TF-REC-PTR-MASK 0 TF-LAYOUT=
@@ -269,6 +275,7 @@ TF-REC-PTR-MASK 0 TF-LAYOUT=
 0 TF.SPAN-OFF TF.SPAN-OFF-AT TF-LAYOUT=
 0 TF.SPAN-U TF.SPAN-U-OFF TF-LAYOUT=
 0 TF.DERIVE TF.DERIVE-OFF TF-LAYOUT=
+0 TF.TAILNEXT TF.TAILNEXT-OFF TF-LAYOUT=
 
 4 constant TF-CAP-INIT
 variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !   REG-PROTECT
@@ -382,8 +389,137 @@ variable TFAM-N   0 TFAM-N !   REG-PROTECT
 : TFAM-NAME-MATCH? ( ptr u8 n n -- bool ) {: na:ptr nu:n id:n :}
    id TFAM-NAME$ na nu CORE-STR= ;
 
+\ --- tail index (TFX) ----------------------------------------------------------
+\ Both registry lookups below ask a question about ONE tail: TFAM-FIND-IN wants
+\ the row with that tail in a given package, TFAM-FIND-PUBLIC wants the public
+\ rows with that tail across packages. Every other row in the registry is
+\ irrelevant to both, so the walk over [0, TFAM-N) is replaced by a walk of the
+\ rows that share the tail's hash bucket — a handful, and independent of how many
+\ families the program declared.
+\
+\ Rows are pushed on their bucket in id order and retired newest-first, so a
+\ retired row is always at its bucket head and TFAM-N rewinding IS the chain's
+\ retirement — the property the rollback comment further down already relies on.
+\ The bucket count follows the record arena's own capacity; a capacity change or
+\ a rewind performed outside the retire seam rebuilds the whole index.
+
+64 constant TFX-SLOTS-INIT              \ power of two; grown to keep load <= 1/2
+variable TFX-SLOTS-V   TFX-SLOTS-INIT TFX-SLOTS-V !   REG-PROTECT
+: TFX-SLOTS ( -- n ) TFX-SLOTS-V @ ;
+create TFX-A-BOOT   TFX-SLOTS-INIT cells allot   REG-PROTECT
+variable TFX-A-P   TFX-A-BOOT TFX-A-P !   REG-PROTECT
+: TFX-BASE ( -- ptr a ) TFX-A-P @ ;
+variable TFX-READY   0 TFX-READY !   REG-PROTECT
+variable TFX-HI      0 TFX-HI !       REG-PROTECT
+variable TFX-CAP     0 TFX-CAP !      REG-PROTECT   \ the TF-CAP the buckets were sized for
+variable TFX-H                \ private hash accumulator
+variable TFX-I                \ private build/retire index
+variable TFX-CUR              \ private bucket-walk cursor
+
+: TFX-BKT ( n -- ptr a ) {: slot:n :}
+   slot cells TFX-BASE + ;
+
+: TFX-H+ ( n -- )
+   TFX-H @ xor HIDX-FNV-PRIME * TFX-H ! ;
+
+\ Hashes the exact bytes, because TFAM-NAME-MATCH? compares the exact bytes:
+\ registry tails are canonical lowercase, so a non-canonical token misses here
+\ for the same reason it misses the comparison.
+: TFX-HASH ( ptr u8 n -- n ) {: na:ptr nu:n :}
+   HIDX-FNV-BASIS TFX-H !
+   0 BEGIN dup nu < WHILE
+      dup na + c@ TFX-H+
+      1 +
+   REPEAT drop
+   TFX-H @ TFX-SLOTS 1 - and ;
+
+: TFX-ROW-BKT ( n -- ptr a ) {: id:n :}
+   id TFAM-NAME$ TFX-HASH TFX-BKT ;
+
+: TFX-PUSH ( n -- ) {: id:n :}
+   id TFX-ROW-BKT {: b:ptr :}
+   b @ id TF-REC@ TF.TAILNEXT !
+   id 1 + b ! ;
+
+: TFX-POP ( n -- ) {: id:n :}
+   id TFX-ROW-BKT {: b:ptr :}
+   b @ id 1 + <> IF s" tfam: tail index corrupt" 76 die THEN
+   id TF-REC@ TF.TAILNEXT @ b ! ;
+
+: TFX-BKTS-CLEAR ( -- )
+   0 BEGIN dup TFX-SLOTS < WHILE
+      0 over TFX-BKT !
+      1 +
+   REPEAT drop ;
+
+\ Keep the load factor at or below one half, so a bucket walk stays a handful of
+\ rows however many families the program declares.
+: TFX-SLOTS-NEED ( -- n )
+   TFX-SLOTS-INIT
+   BEGIN dup TF-CAP 2 * < WHILE 2 * REPEAT ;
+
+: TFX-RESIZE ( -- )
+   TF-CAP TFX-CAP !
+   TFX-SLOTS-NEED {: need:n :}
+   need TFX-SLOTS = IF EXIT THEN
+   TFX-A-P  TFX-SLOTS cells  need cells  REG-GROW1
+   need TFX-SLOTS-V ! ;
+
+: TFX-BUILD ( -- )
+   TFX-RESIZE
+   TFX-BKTS-CLEAR
+   0 TFX-I !
+   BEGIN TFX-I @ TFAM-N @ < WHILE
+      TFX-I @ TFX-PUSH
+      TFX-I @ 1 + TFX-I !
+   REPEAT
+   TFAM-N @ TFX-HI !
+   -1 TFX-READY ! ;
+
+\ On every registry lookup, so the question is three cell reads: has the index
+\ been built, has the store rewound under it, and has the record arena been
+\ resized since the buckets were sized from it.
+: TFX-ENSURE ( -- )
+   TFX-READY @ 0=
+   TFAM-N @ TFX-HI @ < or
+   TFX-CAP @ TF-CAP <> or IF TFX-BUILD THEN ;
+
+\ TFX-RETIRE ( n -- ) : pop rows [newn, TFAM-N) before TFAM-N rewinds to newn.
+\ Newest first, so each popped row is at its bucket head.
+: TFX-RETIRE ( n -- ) {: newn:n :}
+   TFX-READY @ 0= IF EXIT THEN
+   TFAM-N @ 1 -
+   BEGIN dup newn >= WHILE
+      dup TFX-POP
+      1 -
+   REPEAT drop
+   newn TFX-HI ! ;
+
+\ The row is already inside [0, TFAM-N) by the time its fields are written, so
+\ the caller runs TFX-ENSURE BEFORE committing the slot — a rebuild here would
+\ chain the new row once and this push would chain it a second time.
+: TFX-ADD ( n -- ) {: id:n :}
+   id TFX-PUSH
+   TFAM-N @ TFX-HI ! ;
+
 \ exact (package,tail) — the qualified-lookup and duplicate-detection primitive.
 : TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   TFX-ENSURE
+   na nu TFX-HASH TFX-BKT @ TFX-CUR !
+   BEGIN TFX-CUR @ 0 <> WHILE
+      TFX-CUR @ 1 - {: id:n :}
+      pa pu id TFAM-PKG-MATCH? IF
+         na nu id TFAM-NAME-MATCH? IF id RES-TRUE EXIT THEN
+      THEN
+      id TF-REC@ TF.TAILNEXT @ TFX-CUR !
+   REPEAT
+   0 RES-FALSE ;
+
+\ TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool ) : the SPECIFICATION of what
+\ the index answers — the lowest row matching (package, tail), by walking the
+\ registry. test/checker-scan-index-suite.f differentials the two.
+: TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    0 TF-I !
    BEGIN TF-I @ TFAM-N @ < WHILE
@@ -402,17 +538,19 @@ variable TFAM-N   0 TFAM-N !   REG-PROTECT
 \ public match resolves; none is false.
 : TFAM-FIND-PUBLIC ( ptr u8 n -- n bool ) {: na:ptr nu:n :}
    -1 TF-PUB !
-   0 TF-I !
-   BEGIN TF-I @ TFAM-N @ < WHILE
-      TF-I @ TFAM-PUBLIC? IF
-         TF-I @ TFAM-PKG$ nip 0 <> IF
-            na nu TF-I @ TFAM-NAME-MATCH? IF
-               TF-PUB @ 0< IF TF-I @ TF-PUB !
+   TFX-ENSURE
+   na nu TFX-HASH TFX-BKT @ TFX-CUR !
+   BEGIN TFX-CUR @ 0 <> WHILE
+      TFX-CUR @ 1 - {: id:n :}
+      id TFAM-PUBLIC? IF
+         id TFAM-PKG$ nip 0 <> IF
+            na nu id TFAM-NAME-MATCH? IF
+               TF-PUB @ 0< IF id TF-PUB !
                ELSE E-TFAM-AMBIG throw THEN
             THEN
          THEN
       THEN
-      TF-I @ 1 + TF-I !
+      id TF-REC@ TF.TAILNEXT @ TFX-CUR !
    REPEAT
    TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
 
@@ -446,6 +584,7 @@ variable TFAM-N   0 TFAM-N !   REG-PROTECT
    kind TFAM-KIND-VALID? 0= IF E-TFAM-KIND throw THEN
    pa pu na nu TFAM-FIND-IN IF drop E-TFAM-DUP throw THEN drop   \ FIND returns (id-or-0 flag); drop the id
    TF-ENSURE
+   TFX-ENSURE                             \ before the slot is committed; see TFX-ADD
    TFAM-N @ {: id:n :}
    pa pu TF-INTERN {: poff:n :}
    na nu TF-INTERN {: noff:n :}
@@ -464,6 +603,8 @@ variable TFAM-N   0 TFAM-N !   REG-PROTECT
    0 r TF.SCHEMA-ROOT !
    0 r TF.SPAN-OFF !   0 r TF.SPAN-U !
    0 r TF.DERIVE !
+   0 r TF.TAILNEXT !
+   id TFX-ADD                             \ the row's tail is written: it can be found now
    arity TFAM-PK-RESERVE
    id ;
 
@@ -558,8 +699,91 @@ variable SUMV-N   0 SUMV-N !   REG-PROTECT
    off id SUMV-REC@ SV.CTOR-PKG-OFF !   u id SUMV-REC@ SV.CTOR-PKG-U ! ;
 : SUMV-CTOR-PKG$ ( n -- ptr u8 n ) {: id:n :}
    id SUMV-REC@ {: r:ptr :}  r SV.CTOR-PKG-OFF @ r SV.CTOR-PKG-U @ TF-OFF$ ;
-: SUMV-CTOR-SYM! ( n n -- ) swap SUMV-REC@ SV.CTOR-SYM ! ;
 : SUMV-CTOR-SYM@ ( n -- n ) SUMV-REC@ SV.CTOR-SYM @ ;
+
+\ --- constructor-symbol index (SVX) --------------------------------------------
+\ SUMV-FROM-CTOR-SYM runs on every resolved call token and answers "no" for
+\ almost all of them, so it must not cost a walk of the variant store. The
+\ answer it wants is the LOWEST variant id carrying that constructor symbol, and
+\ a variant's constructor symbol is written exactly once, so a per-symbol head
+\ that only ever takes its FIRST writer reproduces it exactly.
+\
+\ Retirement is the store's own: variant rows only leave by SUMV-N rewinding, and
+\ the lowest id for a symbol is the first to go, so a head pointing at a retired
+\ row means the symbol has no row left. SVX-TRUNCATE therefore needs no
+\ back-link — it clears the heads the retired rows own and nothing else.
+\ SVX-HI catches a rewind performed outside those seams; SVX-GEN catches the
+\ shared mapping being dropped or re-laid-out under it.
+variable SVX-GEN   variable SVX-HI
+0 SVX-GEN !   0 SVX-HI !
+
+: SVX@ ( n -- n ) HT-SVX IDX-HEAD@ ;
+: SVX! ( n n -- ) HT-SVX IDX-HEAD! ;
+
+: SVX-STAMP ( -- ) SUMV-N @ SVX-HI ! ;
+
+: SVX-SYNC ( -- )
+   SUMV-N @ SVX-HI @ < IF 0 SVX-GEN ! THEN ;
+
+variable SVX-I
+
+\ First writer wins, matching SUMV-FROM-CTOR-SYM's lowest-id answer. Under the
+\ store's one-constructor-per-variant rule (SUMV-CTOR-SYM! refuses a second
+\ write) a symbol can key at most one row, so no test can tell first from last;
+\ the condition reproduces the specification without leaning on that rule.
+: SVX-LINK ( n n -- ) {: vid:n sym:n :}
+   sym 0= IF EXIT THEN
+   sym IDX-SYM-OK
+   sym SVX@ 0 <> IF EXIT THEN
+   vid 1 + sym SVX! ;
+
+: SVX-BUILD ( -- )
+   HT-SVX IDX-HEADS-CLEAR
+   0 SVX-I !
+   BEGIN SVX-I @ SUMV-N @ < WHILE
+      SVX-I @ dup SUMV-CTOR-SYM@ SVX-LINK
+      SVX-I @ 1 + SVX-I !
+   REPEAT
+   SVX-STAMP
+   HIDX-GEN @ SVX-GEN ! ;
+
+: SVX-ENSURE ( -- )
+   HIDX-ENSURE
+   SVX-SYNC
+   SVX-GEN @ HIDX-GEN @ <> IF SVX-BUILD THEN ;
+
+\ SVX-TRUNCATE ( n -- ) : called before SUMV-N rewinds to `newn`.
+: SVX-TRUNCATE ( n -- ) {: newn:n :}
+   SVX-GEN @ HIDX-GEN @ <> IF EXIT THEN
+   newn SVX-I !
+   BEGIN SVX-I @ SUMV-N @ < WHILE
+      SVX-I @ SUMV-CTOR-SYM@ {: sym:n :}
+      sym 0 <> IF
+         sym SVX@ SVX-I @ 1 + = IF 0 sym SVX! THEN
+      THEN
+      SVX-I @ 1 + SVX-I !
+   REPEAT
+   newn SVX-HI ! ;
+
+\ A variant owns exactly one generated constructor. Rewriting the cell would
+\ strand the old symbol's head on a row that no longer carries it, so the second
+\ write is refused rather than silently indexed wrong.
+: SUMV-CTOR-SYM! ( n n -- ) {: vid:n sym:n :}
+   vid SUMV-CTOR-SYM@ 0 <> IF s" tfam: variant constructor symbol already set" 76 die THEN
+   SVX-ENSURE
+   sym vid SUMV-REC@ SV.CTOR-SYM !
+   vid sym SVX-LINK ;
+
+\ SUMV-CTOR-FIRST-LINEAR ( n -- n ) : the SPECIFICATION of what SVX answers —
+\ the lowest variant id (+1) with this constructor symbol, by walking the store.
+\ test/checker-scan-index-suite.f differentials the indexed answer against it.
+: SUMV-CTOR-FIRST-LINEAR ( n -- n ) {: sym:n :}
+   0 SVX-I !
+   BEGIN SVX-I @ SUMV-N @ < WHILE
+      SVX-I @ SUMV-CTOR-SYM@ sym = IF SVX-I @ 1 + EXIT THEN
+      SVX-I @ 1 + SVX-I !
+   REPEAT
+   0 ;
 
 \ generated-constructor protection predicates (item 8 slice 3). Names are
 \ matched case-insensitively against the recorded SV.CTOR-PKG spellings, so a
@@ -1822,6 +2046,8 @@ variable LAY-N   0 LAY-N !   REG-PROTECT
 \ ---------------------------------------------------------------------------
 : TFAM-RESET ( -- )
    PF-TX-DEPTH @ IF E-PF-TX throw THEN   \ live field transaction: reset would discard its frame
+   0 SVX-GEN !                           \ every variant row the index points at is going
+   0 TFX-READY !                         \ ... and every family row the tail index chains
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
    -1 FIELD-FAM !     \ field family is de-registered until re-declared, so its id can't dangle
@@ -1834,10 +2060,12 @@ TFAM-RESET
 \ high-water marks plus the string-pool and param-kind pool ends; rejecting a
 \ scope/candidate pops them so a rejected family declaration leaves no family,
 \ variant, field, or layout row and no interned name behind. These registries use
-\ linear scans keyed on (package, tail) — no separate hash index — so restoring
-\ the counters IS entry retirement: TFAM-FIND-IN/SUMV-FIND/PF-FIND/LAY-FIND only
-\ scan [0,N), and re-adding under the same name interns fresh at the restored
-\ pool end. Pushed/popped in lockstep with checker.f's core frame.
+\ scans keyed on (package, tail), so restoring the counters IS entry retirement:
+\ SUMV-FIND/PF-FIND/LAY-FIND only scan [0,N), and re-adding under the same name
+\ interns fresh at the restored pool end. The two lookups that now go through an
+\ index — TFAM-FIND-IN and SUMV-FROM-CTOR-SYM — unchain their rows from that same
+\ restore (TFX-RETIRE, SVX-TRUNCATE) so the index retires exactly with the rows.
+\ Pushed/popped in lockstep with checker.f's core frame.
 \ ---------------------------------------------------------------------------
 0 cells constant TFRB.TFAMN-OFF
 1 cells constant TFRB.STRU-OFF
@@ -1924,9 +2152,11 @@ package CHECKER-DECL-FRAME
 : TF-RESTORE-TOP ( ptr a -- )
    TF-RELEASE
    {: r:ptr :}
+   r TFRB.TFAMN @ TFX-RETIRE             \ unchain the rows before their ids go out of range
    r TFRB.TFAMN @ TFAM-N !
    r TFRB.STRU @ TF-STR-U !
    r TFRB.PKN @ TF-PK-N !
+   r TFRB.SUMVN @ SVX-TRUNCATE           \ retire the constructor heads the rows own
    r TFRB.SUMVN @ SUMV-N !
    r TFRB.PFN @ PF-N @ PF-SCRUB       \ scrub product-field rows this rejected declaration retires
    r TFRB.PFN @ PF-N !
@@ -2030,10 +2260,23 @@ private
       TF-STR-U @ TF-STR-CAP-V !
    THEN ;
 
+\ TFX-SNAP-RESET ( -- ) : snapshot prepare — the tail index's bucket array is a
+\ grown, process-local buffer, so it is dropped back to the baked boot store and
+\ marked not-ready. The chains themselves live in the persisted records, but they
+\ address buckets that no longer exist, so the restored image must rebuild rather
+\ than follow them. Mirrors HIDX-RESET on the checker side.
+: TFX-SNAP-RESET ( -- )
+   TFX-A-BOOT TFX-A-P !
+   TFX-SLOTS-INIT TFX-SLOTS-V !
+   0 TFX-CAP !
+   0 TFX-READY !
+   0 TFX-HI ! ;
+
 \ install the friend-only registry persist hook read by CHECKER-SNAPSHOT-PREPARE.
 : REG-EXT-PERSIST ( -- )
    TFAM-SNAPSHOT-PERSIST
    SCHEMA-SNAPSHOT-PERSIST
+   TFX-SNAP-RESET              \ tail-index buckets are process-local
    PF-TX-SNAP-RESET            \ field transactions are process-local
    RBF-SNAP-RESET               \ core rollback frames are process-local
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
@@ -2455,12 +2698,9 @@ TFC-QUOT-ROW-INSTALL
 \ call — every cell/generic/scalar constructor call is untouched.
 : SUMV-FROM-CTOR-SYM ( n -- n bool ) {: sym:n :}   \ constructor word symbol -> variant id
    sym 0 <= IF 0 RES-FALSE EXIT THEN
-   0 TF-I !
-   BEGIN TF-I @ SUMV-N @ < WHILE
-      TF-I @ SUMV-CTOR-SYM@ sym = IF TF-I @ RES-TRUE EXIT THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
-   0 RES-FALSE ;
+   SVX-ENSURE
+   sym SVX@ dup 0= IF RES-FALSE EXIT THEN          \ 0 head = no variant with this symbol
+   1 - RES-TRUE ;
 : TFAM-CTOR-STEP? ( n -- bool ) {: sym:n :}
    sym SUMV-FROM-CTOR-SYM 0= IF drop RES-FALSE EXIT THEN
    {: vid:n :}

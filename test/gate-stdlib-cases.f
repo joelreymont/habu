@@ -859,6 +859,10 @@ SUITE verify-prim
    test/verify-prim-test.f
 ;SUITE
 
+SUITE checker-scan-index
+   test/checker-scan-index-suite.f
+;SUITE
+
 SUITE owner-wid-internal
    test/owner-wid-internal.f
 ;SUITE

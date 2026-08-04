@@ -10,6 +10,23 @@ with all falsification detail is archived in `docs/archive/lessons-2026h1.md`
 and in git history. One tight bullet per lesson; add a section only if none
 fits.
 
+- **A memoized entry point hides the scan under it from every behavioural test.**
+  Replacing `SCAN-USIGS-SYM` in `src/core/checker.f` with an indexed answer, the
+  order-pinning cases went through `SIG-MIN-IN` — the real entry point — and
+  passed with the scan mutated to report deleted records as live. `HIDX-EFF@`
+  answered every one of them from the memo, so the scan never ran. Mutation
+  testing found it; the fix was a named whitebox shim onto the scan itself
+  (`SCAN-USIGS-SYM` then `FEP-HIT?`/`FEP @ ER.MINI @`) alongside the entry-point
+  cases. When a lookup has a cache in front of it, a test through the entry point
+  proves the CACHE, and you need a second case that reaches past it.
+- **An index with a rebuild safety net makes its own fast path unfalsifiable.**
+  The per-symbol store indexes detect a rewind they did not perform (UEND below
+  the watermark they were last exact at) and rebuild. That means deleting the
+  incremental truncation repair entirely still gives correct answers — every
+  "repair no-op" mutation passed. The repair is only observable as the WATERMARK
+  it leaves behind, so the regression asserts, before any lookup can rebuild,
+  that each index's mark is at or below its store's new end. Assert the cheap
+  path's evidence, not just its answer, or the whole optimisation is untested.
 - **An empty slot in a complete hash index is an ANSWER; the engine was throwing
   it away.** `src/habu/habu1.f`'s LFIND has had a dictionary hash index for a
   long time, but a probe that reached an EMPTY slot fell through to the full

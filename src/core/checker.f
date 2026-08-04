@@ -3385,6 +3385,23 @@ variable USIGS-GROW-CAP   variable USIGS-GROW-NEXT
 variable CHK-CAND
 PTR-VARIABLE USIGS-SNAP-P
 
+\ Per-symbol effect-record index state. The index itself lives in the symbol
+\ hash mapping (HT-USX, below); these are the three things it depends on.
+\ USX-GEN is the mapping generation the index was built at, so a dropped or
+\ re-laid-out mapping (HIDX-GEN below) invalidates it; USX-HI is the UEND it was
+\ last made exact at, so a rewind this file did not perform is detected as
+\ non-monotone growth; USX-BASE is the store the offsets were read against, so an
+\ arena swap is detected as identity change. Declared here because USIGS-CLEAR —
+\ far below the index words — has to be able to drop the index.
+variable USX-GEN   variable USX-HI
+PTR-VARIABLE USX-BASE
+0 USX-GEN !   0 USX-HI !
+
+\ The same three for the no-return/control-flag store (NORETS, far below).
+variable NRX-GEN   variable NRX-HI
+PTR-VARIABLE NRX-BASE
+0 NRX-GEN !   0 NRX-HI !
+
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
 
 \ USIGS is a byte-addressed store (ptr u8), but its head cell holds a real cell
@@ -3444,6 +3461,7 @@ TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
    USIGS-MMAP-RC USIGS-RC>PTR ;
 
 : USIGS-CLEAR ( -- )
+   0 USX-GEN !                    \ every record the index points at is being dropped
    0 UEND !
    0 USIGS-HEAD !
    0 USIGS-GROW-CAP !
@@ -3532,9 +3550,9 @@ USIGS-RUNTIME-INIT
 \ UTERM! ( -- )
 : UTERM! 0 UEND @ USIGS-CELL-AT ! ;
 
-: USIGS-RESTORE-END ( n -- )
-   UEND !
-   UTERM! ;
+\ USIGS-RESTORE-END is the store's truncation seam and is defined with the
+\ per-symbol index it has to repair (search USX-TRUNCATE), because the repair
+\ needs the record accessors declared further down this file.
 
 : USIGS-USER ( -- ptr a )
    USIGS USIGS-USER-OFF @ + ;
@@ -3741,11 +3759,31 @@ variable SYM-ID
 7 constant HT-DFR-E
 8 constant HT-PRM-V
 9 constant HT-PRM-E
-10 constant HIDX-TABLES
+\ HT-USX is NOT an epoch-memoized answer like the nine cells above it: it is the
+\ exact per-symbol head of the USIGS user region — offset+1 of the newest effect
+\ record for that symbol, 0 when the symbol has none. It is maintained at the
+\ store's own append and truncation seams and rebuilt only when it cannot be,
+\ so an epoch bump leaves it alone. It shares this mapping because it is sized
+\ and indexed by symbol id exactly like the memo cells.
+10 constant HT-USX
+\ HT-NRX is the same kind of head for the no-return/control-flag store: offset+1
+\ of the newest NORETS entry for the symbol, 0 when it has none.
+11 constant HT-NRX
+\ HT-SVX belongs to src/core/type-family.f's variant store: the FIRST variant id
+\ (+1) whose generated constructor is that symbol. It is keyed by symbol id like
+\ everything else in this mapping, which is why it is sized and dropped here.
+12 constant HT-SVX
+13 constant HIDX-TABLES
 $CBF29CE484222325 constant HIDX-FNV-BASIS
 $100000001B3 constant HIDX-FNV-PRIME
 variable HIDX-MEM
 variable HIDX-VALID
+\ HIDX-GEN counts the times this mapping was dropped or re-laid-out. HIDX-EPOCH
+\ above invalidates the memoized ANSWERS in it; HIDX-GEN invalidates the tables
+\ THEMSELVES, so an index built on the mapping — including the ones
+\ src/core/type-family.f builds — rebuilds when the cells it addresses moved.
+\ Starts at 1 so a never-built index recorded as 0 can never look current.
+variable HIDX-GEN
 variable HIDX-EPOCH
 variable HIDX-EFF-HI
 variable HIDX-EFF-BASE
@@ -3772,7 +3810,18 @@ variable HIDX-CUR
 TRUSTED: HIDX-MEM-NULL ( -- ptr a )
    0 ;
 
+1 HIDX-GEN !
+
+: HIDX-GEN+ ( -- )
+   HIDX-GEN @ 1 + HIDX-GEN ! ;
+
+\ Dropping the mapping drops every index built on it: the HT-USX, HT-NRX and
+\ HT-SVX cells live in this allocation, so no index word may touch them until it
+\ has rebuilt at the new generation. This is the ONE place the generation moves,
+\ because it is the one event an index cannot survive — a re-laid-out mapping
+\ (SYM-GROW) reaches it too, and HIDX-BUILD only ever runs after it.
 : HIDX-MEM-CLEAR ( -- )
+   HIDX-GEN+
    HIDX-MEM-NULL HIDX-MEM! ;
 
 : HIDX-MEM-READY? ( -- bool )
@@ -4021,6 +4070,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 8 constant ER-RVN-CELL
 9 constant ER-SYM-CELL
 10 constant ER-MINI-CELL
+11 constant ER-SYMPREV-CELL
 $0 constant ER-NEXT-OFF
 $8 constant ER-ACTIVE-OFF
 $10 constant ER-DIN-OFF
@@ -4032,7 +4082,12 @@ $38 constant ER-TVN-OFF
 $40 constant ER-RVN-OFF
 $48 constant ER-SYM-OFF
 $50 constant ER-MINI-OFF
-$58 constant EFF-REC
+\ ER-SYMPREV: offset+1 of the PREVIOUS user record with this record's symbol,
+\ 0 when there is none. The per-symbol index (USX-* below) keeps the newest
+\ record per symbol; this back-link is what lets a store truncation restore the
+\ index in time proportional to the records it discards instead of rescanning.
+$58 constant ER-SYMPREV-OFF
+$60 constant EFF-REC
 $8 constant EFF-REC-ALIGN
 0 constant EFF-REC-PTR-MASK
 
@@ -4047,6 +4102,7 @@ $8 constant EFF-REC-ALIGN
 : ER.RVN ( ptr a -- ptr a ) ER-RVN-OFF + ;
 : ER.SYM ( ptr a -- ptr a ) ER-SYM-OFF + ;
 : ER.MINI ( ptr a -- ptr a ) ER-MINI-OFF + ;
+: ER.SYMPREV ( ptr a -- ptr a ) ER-SYMPREV-OFF + ;
 
 0 constant EN-TAG-CELL
 1 constant EN-A-CELL
@@ -4096,7 +4152,8 @@ $8 constant EFF-NODE-ALIGN
 
 : ER-LAYOUT-TAIL ( -- )
    ER-MINI-CELL cells ER-MINI-OFF CHECKER-RECORD-LAYOUT=
-   ER-MINI-OFF CELL + EFF-REC CHECKER-RECORD-LAYOUT=
+   ER-SYMPREV-CELL cells ER-SYMPREV-OFF CHECKER-RECORD-LAYOUT=
+   ER-SYMPREV-OFF CELL + EFF-REC CHECKER-RECORD-LAYOUT=
    CELL EFF-REC-ALIGN CHECKER-RECORD-LAYOUT=
    EFF-REC EFF-REC-ALIGN mod 0 CHECKER-RECORD-LAYOUT=
    EFF-REC-PTR-MASK 0 CHECKER-RECORD-LAYOUT= ;
@@ -4114,7 +4171,8 @@ $8 constant EFF-NODE-ALIGN
    here dup ER.TVN swap ER-TVN-OFF CHECKER-RECORD-FIELD=
    here dup ER.RVN swap ER-RVN-OFF CHECKER-RECORD-FIELD=
    here dup ER.SYM swap ER-SYM-OFF CHECKER-RECORD-FIELD=
-   here dup ER.MINI swap ER-MINI-OFF CHECKER-RECORD-FIELD= ;
+   here dup ER.MINI swap ER-MINI-OFF CHECKER-RECORD-FIELD=
+   here dup ER.SYMPREV swap ER-SYMPREV-OFF CHECKER-RECORD-FIELD= ;
 
 : EN-LAYOUT-OFFSETS-A ( -- )
    EN-TAG-CELL cells EN-TAG-OFF CHECKER-RECORD-LAYOUT=
@@ -4350,6 +4408,139 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : USIG-END? ( ptr a -- bool )
    @ 0= ;
 
+\ --- per-symbol effect-record index (USX) --------------------------------------
+\ What a symbol lookup actually needs from the user region is ONE record: the
+\ NEWEST one carrying that symbol. Everything older is shadowed by it, and its
+\ state (active or deleted) is the whole answer. USX keeps that record's
+\ offset+1 per symbol id in HT-USX, so the answer costs one indexed load instead
+\ of a walk of every record in the store.
+\
+\ It is exact, not a memo. Three seams keep it so:
+\   append      E-REC-START pushes the new record onto its symbol's chain
+\               (ER.SYMPREV = the old head) and makes it the head.
+\   truncation  USIGS-RESTORE-END walks only the records being discarded and
+\               resets each affected head to the surviving record below them.
+\   rebuild     anything else — an arena swap, a rewind performed outside this
+\               file, a symbol-table grow that moves every index — is detected
+\               structurally (non-monotone UEND, changed store identity, dropped
+\               mapping) and the index is rebuilt from the store it indexes.
+\ Because the append seam syncs BEFORE it writes, a rewind cannot be masked by
+\ regrowth over the truncated offsets — the same discipline HIDX-EFF-SYNC keeps
+\ for the memo cells.
+
+: USX-BASE-FIELD ( -- ptr ptr u8 )
+   USX-BASE 0 ptr-field ;
+
+: USX-BASE@ ( -- ptr u8 )
+   USX-BASE-FIELD @ ;
+
+: USX-BASE! ( ptr u8 -- )
+   USX-BASE-FIELD ! ;
+
+USIGS USX-BASE!
+
+\ --- the shared cell layer for symbol-keyed store heads. One table id per store;
+\ everything else about a store — stride, fields, base, end mark — stays concrete
+\ in that store's own words.
+
+: IDX-HEAD@ ( n n -- n ) {: sym:n tbl:n :}
+   sym tbl HIDX-CELL @ ;
+
+: IDX-HEAD! ( n n n -- ) {: head:n sym:n tbl:n :}
+   head sym tbl HIDX-CELL ! ;
+
+: IDX-HEADS-CLEAR ( n -- ) {: tbl:n :}
+   0 begin dup SYM-CAP < while
+      0 over tbl IDX-HEAD!
+      1 +
+   repeat drop ;
+
+\ Every record an index touches must name a symbol the mapping has a cell for.
+\ A symbol id outside [1, SYM-CAP) means a store and the symbol table have
+\ disagreed, which no later answer could be trusted through.
+: IDX-SYM-OK ( n -- ) {: sym:n :}
+   sym 1 <  sym SYM-CAP >=  or IF
+      s" checker: store record symbol outside index range" 76 die
+   THEN ;
+
+: USX@ ( n -- n )
+   HT-USX IDX-HEAD@ ;
+
+: USX! ( n n -- )
+   HT-USX IDX-HEAD! ;
+
+: USX-STAMP ( -- )
+   UEND @ USX-HI !
+   USIGS USX-BASE! ;
+
+: USX-SYNC ( -- )
+   UEND @ USX-HI @ <
+   USIGS USX-BASE@ <> or IF 0 USX-GEN ! THEN ;
+
+variable USX-P                          \ index-owned cursor; FP belongs to the scans
+
+: USX-LINK ( n n -- ) {: off:n sym:n :}
+   sym 0= IF EXIT THEN
+   sym IDX-SYM-OK
+   sym USX@ off E-PTR ER.SYMPREV !
+   off 1 + sym USX! ;
+
+: USX-BUILD ( -- )
+   HT-USX IDX-HEADS-CLEAR
+   USIGS-USER USX-P !
+   begin USX-P @ USIG-END? 0= while
+      USX-P @ USIG-OFF  USX-P @ ER.SYM @  USX-LINK
+      USX-P @ USIG-NEXT USX-P !
+   repeat
+   USX-STAMP
+   HIDX-GEN @ USX-GEN ! ;
+
+: USX-ENSURE ( -- )
+   HIDX-ENSURE                          \ may rebuild the mapping, which bumps the generation
+   USX-SYNC
+   USX-GEN @ HIDX-GEN @ <> IF USX-BUILD THEN ;
+
+\ USX-TRUNCATE ( n -- ) : repair the heads before the store rewinds to `newend`.
+\ Walking forward from newend visits the discarded records oldest-first, so for
+\ each symbol the FIRST discarded record is the one whose back-link names a
+\ record that survives — and that back-link is the symbol's restored head. Later
+\ discarded records of the same symbol link to discarded records and write
+\ nothing, so each affected symbol is written exactly once.
+: USX-TRUNCATE ( n -- ) {: newend:n :}
+   USX-GEN @ HIDX-GEN @ <> IF EXIT THEN
+   newend E-PTR USX-P !
+   begin USX-P @ USIG-END? 0= while
+      USX-P @ ER.SYM @ {: sym:n :}
+      sym 0 <> IF
+         USX-P @ ER.SYMPREV @ {: prev:n :}
+         prev newend <= IF prev sym USX! THEN
+      THEN
+      USX-P @ USIG-NEXT USX-P !
+   repeat
+   newend USX-HI ! ;
+
+: USIGS-RESTORE-END ( n -- )
+   dup USX-TRUNCATE
+   UEND !
+   UTERM! ;
+
+\ USIG-NEWEST-LINEAR ( n -- n ) : the SPECIFICATION of what USX answers — the
+\ newest user record for a symbol, offset+1, by walking every record the way the
+\ store is ordered. test/checker-scan-index-suite.f differentials the indexed
+\ answer against this one over shadowing, deletion and rollback corpora, and
+\ USX-BUILD is this same walk done for every symbol at once.
+: USIG-NEWEST-LINEAR ( n -- n ) {: sym:n :}
+   0
+   USIGS-USER USX-P !
+   begin USX-P @ USIG-END? 0= while
+      USX-P @ ER.SYM @ sym = IF drop USX-P @ USIG-OFF 1 + THEN
+      USX-P @ USIG-NEXT USX-P !
+   repeat ;
+
+: USIG-NEWEST ( n -- n ) {: sym:n :}
+   USX-ENSURE
+   sym USX@ ;
+
 \ E-REC-START runs the effect-cache sync first: it is the single choke point
 \ for USIGS appends, so a rewind (scope/candidate rollback, forget, reset)
 \ flushes the cache BEFORE new records can reuse the truncated offsets — a
@@ -4359,14 +4550,19 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    0 p ER.NEXT !  0 p ER.ACTIVE !
    0 p ER.DIN !   0 p ER.DOUT !  0 p ER.RIN !  0 p ER.ROUT !
    0 p ER.HASR !  0 p ER.TVN !   0 p ER.RVN !  0 p ER.MINI !
+   0 p ER.SYMPREV !
    CHECKER-REC-SYM @ p ER.SYM ! ;
 
 : E-REC-START ( -- ptr a )
    HIDX-EFF-SYNC
+   USX-ENSURE                            \ USX-LINK writes into the mapping: it has to
+                                         \ exist, and be current, before the append
    UEND @ EFF-REC + CELL + USIGS-ENSURE
    USIGS UEND @ + {: p:ptr :}
    p E-REC-INIT
+   p USIGS - CHECKER-REC-SYM @ USX-LINK
    p EFF-REC + USIGS - UEND !
+   USX-STAMP                             \ USIGS-ENSURE may have moved the store
    p ;
 
 : E-REC-FINISH ( ptr a -- )
@@ -4556,20 +4752,18 @@ BADSIG-DEFAULT
 
 variable FMEND
 
-\ SCAN-USIGS-SYM ( n -- ) : FEP = last ACTIVE record for sym (0 if none or
-\ deleted); FMEND = end offset of the last matching record of ANY state — the
-\ cache dependency: a rewind below it can change the answer.
+\ SCAN-USIGS-SYM ( n -- ) : FEP = the NEWEST record for sym when that record is
+\ active, cleared when it is deleted or there is none; FMEND = that record's end
+\ offset — the cache dependency, since a rewind below it can change the answer.
+\ Older records for the same symbol are shadowed and cannot change either value,
+\ which is exactly why the per-symbol head answers this in one load.
 : SCAN-USIGS-SYM {: sym:n :}
    FEP-CLEAR
    0 FMEND !
-   USIGS-USER FP !
-   begin FP @ USIG-END? 0= while
-      FP @ sym USIG-MATCH-SYM? if
-         FP @ ER.NEXT @ FMEND !
-         FP @ dup ER.ACTIVE @ if FEP-SET else drop FEP-CLEAR then
-      then
-      FP @ USIG-NEXT FP !
-   repeat ;
+   sym USIG-NEWEST dup 0= if drop exit then
+   1 - E-PTR {: rec:ptr :}
+   rec ER.NEXT @ FMEND !
+   rec ER.ACTIVE @ if rec FEP-SET then ;
 
 : E-INST-RESET ( ptr a -- ) {: h:ptr :}
    E-I-AK-RESET
@@ -4965,8 +5159,12 @@ variable PE-QDOUT
    0 UEND !
    UTERM! ;
 
+\ PTABLE-END moves the boundary the index is defined over: the user region it
+\ opens is empty, so every symbol's newest user record is none. Rebuilding from
+\ the new boundary states that, instead of leaving prim-region heads behind.
 : PTABLE-END ( -- )
    UEND @ USIGS-USER-OFF !
+   0 USX-GEN !
    UTERM! ;
 
 PTABLE-START
@@ -5854,8 +6052,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    a u CHECKER-FIND-ACTIVE-SYM USIG-FIND-OFF-SYM 0= IF
       s" checker: missing signature truncation mark" 76 die
    THEN
-   UEND !
-   UTERM! ;
+   USIGS-RESTORE-END ;
 
 \ TFAM 2b-iii: a direct post-seal user call would forget the checker's signature
 \ for an engine word so it could be redefined (spoof). Reject it fail-closed; the
@@ -6265,23 +6462,31 @@ variable LBUF-INFO-W
 1 constant CTL-DEAD
 2 constant CTL-THROW
 4 constant CTL-BARRIER
-$10000 constant NORET-INIT-CAP
+\ $18000 not $10000: the entry carries a third cell (NORET.SYMPREV, the
+\ per-symbol back-link that makes NORET-SCAN-SYM sublinear), so the byte cap is
+\ scaled with it and the store still holds the same number of entries — the
+\ figure NORET-SNAPSHOT-CAP is written against.
+$18000 constant NORET-INIT-CAP
 
 0 constant NORET-SYM-CELL
 1 constant NORET-FLAG-CELL
+2 constant NORET-SYMPREV-CELL
 $0 constant NORET-SYM-OFF
 $8 constant NORET-FLAG-OFF
-$10 constant NORET-ENTRY
+$10 constant NORET-SYMPREV-OFF
+$18 constant NORET-ENTRY
 $8 constant NORET-ENTRY-ALIGN
 0 constant NORET-ENTRY-PTR-MASK
 
 : NORET.SYM ( ptr a -- ptr a ) NORET-SYM-OFF + ;
 : NORET.FLAG ( ptr a -- ptr a ) NORET-FLAG-OFF + ;
+: NORET.SYMPREV ( ptr a -- ptr a ) NORET-SYMPREV-OFF + ;
 
 : NORET-LAYOUT-ASSERT ( -- )
    NORET-SYM-CELL cells NORET-SYM-OFF CHECKER-RECORD-LAYOUT=
    NORET-FLAG-CELL cells NORET-FLAG-OFF CHECKER-RECORD-LAYOUT=
-   NORET-FLAG-OFF CELL + NORET-ENTRY CHECKER-RECORD-LAYOUT=
+   NORET-SYMPREV-CELL cells NORET-SYMPREV-OFF CHECKER-RECORD-LAYOUT=
+   NORET-SYMPREV-OFF CELL + NORET-ENTRY CHECKER-RECORD-LAYOUT=
    CELL NORET-ENTRY-ALIGN CHECKER-RECORD-LAYOUT=
    NORET-ENTRY NORET-ENTRY-ALIGN mod 0 CHECKER-RECORD-LAYOUT=
    NORET-ENTRY-PTR-MASK 0 CHECKER-RECORD-LAYOUT= ;
@@ -6291,7 +6496,7 @@ NORET-LAYOUT-ASSERT
 create NORET-BOOT NORET-INIT-CAP allot
 variable NORET-P   variable NORET-CAP-U   variable NORET-END
 NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT !
-variable NORET-POS   variable NORET-FLAG
+variable NORET-FLAG
 variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 
 : NORETS ( -- ptr u8 ) NORET-P @ ;
@@ -6303,11 +6508,102 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 : NORET-TERM ( -- )
    0 NORET-END @ NORET-CELL ! ;
 
+\ --- per-symbol control-flag index (NRX) ---------------------------------------
+\ NORET entries are append-only and later-wins, so a symbol's flags are decided
+\ entirely by its NEWEST entry — the same shape as the effect store, and kept
+\ exact by the same three seams (append, truncation, rebuild). The entry's
+\ NORET.SYMPREV back-link is what a truncation walks instead of the whole store.
+\ An entry's SYM cell doubles as the store terminator, so an entry keyed 0 would
+\ hide every entry after it; NORET-ADD-SYM refuses to write one.
+
+: NRX-BASE-FIELD ( -- ptr ptr u8 )
+   NRX-BASE 0 ptr-field ;
+
+: NRX-BASE@ ( -- ptr u8 )
+   NRX-BASE-FIELD @ ;
+
+: NRX-BASE! ( ptr u8 -- )
+   NRX-BASE-FIELD ! ;
+
+NORETS NRX-BASE!
+
+: NRX@ ( n -- n )
+   HT-NRX IDX-HEAD@ ;
+
+: NRX! ( n n -- )
+   HT-NRX IDX-HEAD! ;
+
+: NRX-STAMP ( -- )
+   NORET-END @ NRX-HI !
+   NORETS NRX-BASE! ;
+
+: NRX-SYNC ( -- )
+   NORET-END @ NRX-HI @ <
+   NORETS NRX-BASE@ <> or IF 0 NRX-GEN ! THEN ;
+
+variable NRX-POS                        \ byte offset cursor over the entry array
+
+: NRX-ENTRY-END? ( -- bool )
+   NRX-POS @ NORET-CELL NORET.SYM @ 0= ;
+
+: NRX-LINK ( n n -- ) {: off:n sym:n :}
+   sym IDX-SYM-OK
+   sym NRX@ off NORET-CELL NORET.SYMPREV !
+   off 1 + sym NRX! ;
+
+: NRX-BUILD ( -- )
+   HT-NRX IDX-HEADS-CLEAR
+   0 NRX-POS !
+   begin NRX-ENTRY-END? 0= while
+      NRX-POS @ dup NORET-CELL NORET.SYM @ NRX-LINK
+      NRX-POS @ NORET-ENTRY + NRX-POS !
+   repeat
+   NRX-STAMP
+   HIDX-GEN @ NRX-GEN ! ;
+
+: NRX-ENSURE ( -- )
+   HIDX-ENSURE
+   NRX-SYNC
+   NRX-GEN @ HIDX-GEN @ <> IF NRX-BUILD THEN ;
+
+\ NRX-TRUNCATE ( n -- ) : same argument as USX-TRUNCATE — walking the discarded
+\ entries oldest-first, each symbol's FIRST discarded entry is the one whose
+\ back-link names a surviving entry, so each affected symbol is written once.
+: NRX-TRUNCATE ( n -- ) {: newend:n :}
+   NRX-GEN @ HIDX-GEN @ <> IF EXIT THEN
+   newend NRX-POS !
+   begin NRX-ENTRY-END? 0= while
+      NRX-POS @ NORET-CELL {: e:ptr :}
+      e NORET.SYMPREV @ newend <= IF
+         e NORET.SYMPREV @ e NORET.SYM @ NRX!
+      THEN
+      NRX-POS @ NORET-ENTRY + NRX-POS !
+   repeat
+   newend NRX-HI ! ;
+
 : NORET-RESTORE-END ( n -- )
+   dup NRX-TRUNCATE
    NORET-END !
    NORET-TERM ;
 
+\ NORET-NEWEST-LINEAR ( n -- n ) : the SPECIFICATION of what NRX answers — the
+\ newest entry for a symbol, offset+1, by walking the store the way the scan
+\ does. test/checker-scan-index-suite.f differentials the indexed answer
+\ against it.
+: NORET-NEWEST-LINEAR ( n -- n ) {: sym:n :}
+   0
+   0 NRX-POS !
+   begin NRX-ENTRY-END? 0= while
+      NRX-POS @ NORET-CELL NORET.SYM @ sym = IF drop NRX-POS @ 1 + THEN
+      NRX-POS @ NORET-ENTRY + NRX-POS !
+   repeat ;
+
+: NORET-NEWEST ( n -- n ) {: sym:n :}
+   NRX-ENSURE
+   sym NRX@ ;
+
 : NORET-RESET ( -- )
+   0 NRX-GEN !                    \ every entry the index points at is being dropped
    NORET-BOOT NORET-P !
    NORET-INIT-CAP NORET-CAP-U !
    0 NORET-END !
@@ -6482,15 +6778,6 @@ REG-EXT-DEFAULTS
 : NORET-FLAG@ ( ptr a -- n )
    NORET.FLAG @ ;
 
-: NORET-SYM@ ( ptr a -- n )
-   NORET.SYM @ ;
-
-: NORET-NEXT ( ptr a -- ptr a )
-   NORET-ENTRY + ;
-
-: NORET-END? ( ptr a -- bool )
-   @ 0= ;
-
 \ HIDX-CTL-SYNC ( -- ) : flush the cache when NORETS rewound below a cached
 \ dependency. The store swap paths (persist/reset) keep values or rewind END.
 : HIDX-CTL-SYNC
@@ -6499,14 +6786,22 @@ REG-EXT-DEFAULTS
 \ NORET-ADD syncs first for the same reason as E-REC-START: it is the only
 \ NORETS appender, and appending over a rewound tail must flush stale flags
 \ before the new entry masks the rewind.
+\ A 0 symbol is not a fact about any word — CTL-FLAGS-SYM answers 0 for it
+\ without ever reading the store — and its SYM cell is the store terminator, so
+\ writing one would hide every entry appended after it. Record nothing.
 : NORET-ADD-SYM {: sym:n flag:n :}
+   sym 0= IF EXIT THEN
    HIDX-CTL-SYNC
+   NRX-ENSURE                    \ NRX-LINK writes into the mapping: same precondition
    NORET-END @ NORET-ENTRY + CELL + NORET-ENSURE
    sym NORET-REC NORET.SYM !
    flag NORET-REC NORET.FLAG !
+   0 NORET-REC NORET.SYMPREV !
+   NORET-END @ sym NRX-LINK
    NORET-END @ NORET-ENTRY + NORET-END !
    NORET-TERM
-   sym 0 <> HIDX-VALID @ and IF
+   NRX-STAMP                     \ NORET-ENSURE may have moved the store
+   HIDX-VALID @ IF
       flag sym HIDX-CTL!
       NORET-END @ HIDX-CTL-DEP+
    THEN ;
@@ -6526,19 +6821,17 @@ REG-EXT-DEFAULTS
 
 variable NORET-FMEND
 
-\ NORET-SCAN-SYM ( n -- ) : NORET-FLAG = last flag for sym (later wins);
-\ NORET-FMEND = end offset of the last matching entry (cache dependency).
+\ NORET-SCAN-SYM ( n -- ) : NORET-FLAG = the newest flag for sym (later wins, 0
+\ when the symbol has no entry); NORET-FMEND = that entry's end offset (the cache
+\ dependency). Older entries are shadowed by the newest one and cannot change
+\ either value, so the per-symbol head answers both in one load.
 : NORET-SCAN-SYM {: sym:n :}
    0 NORET-FLAG !
    0 NORET-FMEND !
-   0 NORET-POS !
-   BEGIN NORETS NORET-POS @ + NORET-END? 0= WHILE
-      NORETS NORET-POS @ + NORET-SYM@ sym = IF
-         NORETS NORET-POS @ + NORET-FLAG@ NORET-FLAG !
-         NORET-POS @ NORET-ENTRY + NORET-FMEND !
-      THEN
-      NORETS NORET-POS @ + NORET-NEXT NORETS - NORET-POS !
-   REPEAT ;
+   sym NORET-NEWEST dup 0= IF drop EXIT THEN
+   1 - {: off:n :}
+   off NORET-CELL NORET-FLAG@ NORET-FLAG !
+   off NORET-ENTRY + NORET-FMEND ! ;
 
 : CTL-FLAGS-SYM {: sym:n :}
    sym 0= IF 0 EXIT THEN
