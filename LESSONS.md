@@ -4660,3 +4660,42 @@ routine's cost with predicted branches and its cost on real data are different
 quantities, and a table that prints one as "ns/call" invites the other to be
 subtracted from it. When a microbenchmark drives a body with control flow, the
 input distribution is part of the measurement and belongs in the report.
+
+## Probe a shared package's public tails against the global dictionary first
+
+Factoring `tools/codegen-time.f` out of the two codegen harnesses, the new
+package exported a word named `FRESH`. Every consumer reached it through
+`using CODEGEN-TIME`, and every one of them silently ran the checker's own
+global `FRESH ( -- n )` (`src/core/checker.f:1787`) instead: the accumulator was
+never cleared, the measurements were nonsense, and there was no diagnostic, no
+non-zero exit, nothing. The checker had certified the body against the used
+public's effect while the engine executed the global - certification and
+execution named different words - and the `E-USING-SHADOW-GLOBAL` rule that
+`docs/forth.md` promises for exactly this collision never fired. Dot
+`habu-reject-a-bare-1f43a9a6` carries the reproducer and the checker fix.
+
+Until that lands, a new public tail is not safe because it reads well. Probe it
+before writing any call site:
+
+```forth
+: HAS ( ptr u8 n -- )
+   2dup XREF-FIND XREF-FOUND? if s" TAKEN " type else s" free  " type then
+   type cr ;
+s" FRESH" HAS
+```
+
+Of nine proposed tails only `FRESH` was taken; renaming it to `ACC-CLEAR` fixed
+every call site at once. The failure mode is worth the thirty seconds: a shadowed
+tail does not throw, it answers.
+
+## The line ledger of a consolidation is not the duplication it removes
+
+The same factoring deleted about 50 lines of restated timing code and prose from
+the two harnesses and still came out net POSITIVE, because a new checked package
+costs its own header, requires, `package`/`public`/`;package`, and a doc header
+that states the discipline it now owns - roughly 30 lines before the first word.
+Two files that each restate a rule in 20 lines are cheaper in LINES than one file
+that states it once, and dearer in every other way: they drift, and these two had
+drifted far enough to measure one leaf 3.8x apart. Judge a consolidation by
+whether the rule now has one owner, and report the line count honestly rather
+than shaving the header until the arithmetic flatters it.
