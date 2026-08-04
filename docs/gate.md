@@ -73,12 +73,12 @@ before and after their group run. A sequential group is for isolation barriers
 and ordered aggregate proofs only; it must not be used to hide missing setup
 factoring.
 
-Suite setup owns shared binaries and content-keyed build artifacts. Tests do not
-list shared setup loads: setup builds or reuses the needed candidate/maker
-artifact by content key, groups choose a mode, and tests load only their test
+Suite setup owns shared binaries and build artifacts. Tests do not list shared
+setup loads: ordinary setup builds the candidate; only maker/build artifacts
+are content-key reused. Groups choose a mode, and tests load only their test
 entry files or execute in-process words from the resident runner. Successful
-setup is silent. Setup failure prints the failing setup path as a failure; it is
-not reported as a passing test.
+setup is silent. Setup failure prints the failing setup path as a failure; it
+is not reported as a passing test.
 
 ## Metrics
 
@@ -186,30 +186,26 @@ instead of recording a red phase.
 Timing regression checks are host-specific. Use named profiles instead of
 remembering slot counts or cache state:
 
-| Profile | Host proof | Slots | Nested | Default nominal budget | Cold-cache nominal budget |
-|---|---|---:|---:|---:|---:|
-| `macos-arm64-10x2` | macOS ARM64 target | 10 | 2 | 30000ms / 35000ms wall | 30000ms / 35000ms wall |
-| `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 | 100000ms / 110000ms wall | 150000ms / 160000ms wall |
-| `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 | 120000ms | 150000ms |
+| Profile | Host proof | Slots | Nested |
+|---|---|---:|---:|
+| `macos-arm64-10x2` | macOS ARM64 target | 10 | 2 |
+| `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 |
+| `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 |
 
 The default profile is `auto`: the runner inspects the target and host files
-before the suite starts. Manual `--perf-profile NAME` forces a profile. Manual
-`--budget-ms` and `--wall-budget-ms` override the profile in either argument
-order and remain unscaled. Pool overrides must appear after the profile;
-top-level `--pool-slots` is capped at 12. Table budgets are nominal and scale
-with the calibrated host factor.
+before the suite starts. Manual `--perf-profile NAME` forces a profile. Pool
+overrides must appear after the profile; top-level `--pool-slots` is capped at
+12.
 
 `--cold-cache` selects a private per-run scratch cache root under the suite temp
-directory, applies the profile cold-cache budget unless the user supplied
-explicit budget arguments, and measures builder, maker, artifact, and result
-cache fill without deleting the default persistent caches.
+directory and measures builder, maker, artifact, and result cache fill without
+deleting the default persistent caches.
 
-The runner's wall budget is monotonic elapsed test-suite time; wrap the
-command with `/usr/bin/time -p` when comparing end-to-end shell wall time across
-hosts. `test/run.f` runs the suite directly in `bin/hb`; no top-level test-suite
-snapshot is built. The side-effect-free implementation lives in
-`test/run-lib.f`; invoking it directly is for focused harness debugging only.
-Current commands live in `skills/habu-host-profiles/SKILL.md`.
+Wrap the command with `/usr/bin/time -p` when comparing end-to-end shell wall
+time across hosts. `test/run.f` runs the suite directly in `bin/hb`; no
+top-level test-suite snapshot is built. The side-effect-free implementation
+lives in `test/run-lib.f`; invoking it directly is for focused harness debugging
+only. Current commands live in `skills/habu-host-profiles/SKILL.md`.
 
 ## Implementation Sequence
 
@@ -278,7 +274,7 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
 ## Targets
 
 Short-term Jetson/Orin target: warm builder, maker, artifact, and result caches,
-uncontended, `--budget-ms 70000` passes.
+uncontended full gate passes.
 
 Architecture target:
 

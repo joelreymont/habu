@@ -1,0 +1,194 @@
+\ candidate-rebuild-test.f - real scheduler candidate-source regression.
+\
+\ Run: bin/hb --load test/candidate-rebuild-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+require test/gate-stats.f
+
+package CANDIDATE-REBUILD-TEST
+
+$10000 constant CAP
+300000 constant TIMEOUT-MS
+64 constant HEX-U
+
+create ROOT FS-PATH-CAP allot
+create XDG FS-PATH-CAP allot
+create RUN1 FS-PATH-CAP allot
+create RUN2 FS-PATH-CAP allot
+create UNDER FS-PATH-CAP allot
+create STAT FS-PATH-CAP allot
+create UNDER-EXE FS-PATH-CAP allot
+create OUT CAP allot
+create ERR CAP allot
+create SRC-HEX HEX-U allot
+create UNDER-HEX HEX-U allot
+
+variable ROOT-U
+variable XDG-U
+variable RUN1-U
+variable RUN2-U
+variable UNDER-U
+variable STAT-U
+variable UNDER-EXE-U
+variable OUT-U
+variable ERR-U
+variable RC
+variable OUT-I
+variable OUT-START
+
+: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
+: XDG$ ( -- ptr u8 n ) XDG XDG-U @ ;
+: RUN1$ ( -- ptr u8 n ) RUN1 RUN1-U @ ;
+: RUN2$ ( -- ptr u8 n ) RUN2 RUN2-U @ ;
+: UNDER$ ( -- ptr u8 n ) UNDER UNDER-U @ ;
+: STAT$ ( -- ptr u8 n ) STAT STAT-U @ ;
+: UNDER-EXE$ ( -- ptr u8 n ) UNDER-EXE UNDER-EXE-U @ ;
+
+: SETUP ( -- )
+   CLEANUP-RESET
+   s" candidate-rebuild-test" TMPDIR-MKDIR {: a:ptr u:n :}
+   a ROOT u BYTE-COPY
+   u ROOT-U !
+   ROOT$ CLEANUP-TREE+
+   ROOT$ s" xdg" XDG JOIN-PATH XDG-U !
+   ROOT$ s" run1" RUN1 JOIN-PATH RUN1-U !
+   ROOT$ s" run2" RUN2 JOIN-PATH RUN2-U !
+   ROOT$ s" under" UNDER JOIN-PATH UNDER-U !
+   XDG$ MAKE-DIRS
+   RUN1$ MAKE-DIRS
+   RUN2$ MAKE-DIRS
+   UNDER$ MAKE-DIRS
+   UNDER$ s" hb-under-test" UNDER-EXE JOIN-PATH UNDER-EXE-U ! ;
+
+: STORE ( result<pcap:captured,pcap:failed> -- )
+   MATCH result
+     ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
+        o LEN>N OUT-U ! e LEN>N ERR-U ! 0 RC ! ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
+        o LEN>N OUT-U ! e LEN>N ERR-U ! c RC>N RC ! ENDOF
+   ;MATCH ;
+
+: ARGS ( n -- ) {: imported:n :}
+   PROC-ARGV-ENV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/run.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   imported 0 <> if
+      s" --under" >LEN PROC-ARGV+
+      s" bin/hb" >LEN PROC-ARGV+
+   then ;
+
+: RUN-GATE ( ptr u8 n n -- ) {: root:ptr rootu:n imported:n :}
+   imported ARGS
+   s" XDG_CACHE_HOME" >LEN XDG$ >LEN PROC-ENV+
+   s" HB_TMP" >LEN root rootu >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE STORE ;
+
+: SCAN ( ptr u8 n -- ) {: root:ptr rootu:n :}
+   root rootu s" gate-stats.tsv" STAT JOIN-PATH STAT-U !
+   STAT$ GS-COPY-PATH!
+   GS-READ
+   GS-SCAN ;
+
+: BUILD-ROW? ( -- bool )
+   0 begin dup GS-TROW-N @ < while
+      dup GS-TROW-LABEL$ GS-UNQUAL$ s" native engine build slice" STR= if
+         drop 0 0= exit
+      then
+      1+
+   repeat drop 0 0= 0= ;
+
+: OUT-LINE? ( ptr u8 n -- bool ) {: want:ptr wantu:n :}
+   0 OUT-I !
+   0 OUT-START !
+   begin OUT-I @ OUT-U @ < while
+      OUT OUT-I @ + c@ STR-LF = if
+         OUT OUT-START @ + OUT-I @ OUT-START @ - want wantu STR= if
+            0 0= exit
+         then
+         OUT-I @ 1 + OUT-START !
+      then
+      OUT-I @ 1 + OUT-I !
+   repeat
+   OUT-START @ OUT-U @ < if
+      OUT OUT-START @ + OUT-U @ OUT-START @ - want wantu STR= exit
+   then
+   0 0= 0= ;
+
+: CACHE-ZERO ( -- )
+   s" candidate cache hit absent" T-LABEL GS-CANDIDATE-HIT @ 0 T=
+   s" candidate cache miss absent" T-LABEL GS-CANDIDATE-MISS @ 0 T=
+   s" candidate cache install absent" T-LABEL GS-CANDIDATE-INSTALL @ 0 T=
+   s" candidate build skip absent" T-LABEL GS-CANDIDATE-BUILD-SKIP @ 0 T=
+   s" candidate cache corrupt absent" T-LABEL GS-CANDIDATE-CORRUPT @ 0 T= ;
+
+: ORDINARY ( ptr u8 n -- ) {: root:ptr rootu:n :}
+   root rootu 0 RUN-GATE
+   s" ordinary gate exits zero" T-LABEL RC @ 0 T=
+   s" candidate=1" OUT-LINE? TTRUE
+   s" candidate-validate=1" OUT-LINE? TTRUE
+   root rootu SCAN
+   s" ordinary candidate build event" T-LABEL GS-CANDIDATE @ 1 T=
+   s" ordinary candidate not imported" T-LABEL GS-CANDIDATE-IMPORT @ 0 T=
+   s" ordinary candidate ready" T-LABEL GS-CANDIDATE-READY @ 1 T=
+   s" ordinary candidate validated" T-LABEL GS-CANDIDATE-VALIDATE @ 1 T=
+   s" ordinary phase 15 row" T-LABEL BUILD-ROW? TTRUE
+   s" ordinary engine build passed" T-LABEL
+      OUT OUT-U @ s" PASS: native engine build slice (" CONTAINS? TTRUE
+   CACHE-ZERO ;
+
+: IMPORT-HASH ( -- )
+   s" bin/hb" SRC-HEX SHA256-FILE-HEX 0 T=
+   UNDER-EXE$ EXECUTABLE? TTRUE
+   UNDER-EXE$ UNDER-HEX SHA256-FILE-HEX 0 T=
+   SRC-HEX HEX-U UNDER-HEX HEX-U STR= TTRUE
+   SB-RESET
+   s" Habu-under-test: " SB-APPEND
+   UNDER-EXE$ SB-APPEND
+   s"  sha256=" SB-APPEND
+   UNDER-HEX HEX-U SB-APPEND
+   SB$ OUT-LINE? TTRUE ;
+
+: IMPORTED ( -- )
+   UNDER$ 1 RUN-GATE
+   s" imported gate exits zero" T-LABEL RC @ 0 T=
+   s" candidate=0" OUT-LINE? TTRUE
+   s" candidate-import=1" OUT-LINE? TTRUE
+   s" candidate-ready=1" OUT-LINE? TTRUE
+   s" candidate-validate=1" OUT-LINE? TTRUE
+   UNDER$ SCAN
+   s" imported candidate not built" T-LABEL GS-CANDIDATE @ 0 T=
+   s" imported candidate event" T-LABEL GS-CANDIDATE-IMPORT @ 1 T=
+   s" imported candidate ready" T-LABEL GS-CANDIDATE-READY @ 1 T=
+   s" imported candidate validated" T-LABEL GS-CANDIDATE-VALIDATE @ 1 T=
+   s" imported phase 15 absent" T-LABEL BUILD-ROW? TFALSE
+   s" imported engine build absent" T-LABEL
+      OUT OUT-U @ s" native engine build slice" CONTAINS? TFALSE
+   CACHE-ZERO
+   IMPORT-HASH ;
+
+: MAIN ( -- )
+   T-RESET
+   SETUP
+   RUN1$ ORDINARY
+   RUN2$ ORDINARY
+   s" second run maker cache remains active" T-LABEL GS-MAKER-HIT @ 0 > TTRUE
+   s" second run artifact cache remains active" T-LABEL GS-ARTIFACT-HIT @ 0 > TTRUE
+   IMPORTED
+   CLEANUP-RUN
+   T-REPORT
+   s" candidate-rebuild-test: ok" type cr ;
+
+MAIN
+
+;package
