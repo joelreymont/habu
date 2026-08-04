@@ -1607,6 +1607,30 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    \ suffix but is not exact, so it still fails.
    s" lib/xref.f" TEST-ENGINE-BODY-CASE
    s" lib/xref.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ The fourth engine-trunk row, src/habu/habu1.f, is pinned by the same
+   \ fixtures in both directions.  The positive is its measured probe: adding a
+   \ trailing comment to the body of the existing global EMIT-FLUSH reported
+   \ E-PACKAGE-OWNERSHIP before this row, so the engine's primitive emitters
+   \ could not be changed at all.
+   s" src/habu/habu1.f" TEST-ENGINE-BODY-CASE
+   s" habu1 exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a new unpackaged word in habu1.f is still reported.  The file
+   \ already opens ENGINE-BUILD, ENGINE-HELPER, GUARD, PROT-GUARD and
+   \ OWNER-WID-EMIT, so a new emitter has an owner it can join.
+   s" src/habu/habu1.f" TEST-ENGINE-NEW-GLOBAL-CASE
+   s" new global in habu1 still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling carrying the row's path as a prefix is not an exact
+   \ match, so its body edit still fails.
+   s" src/habu/habu1-extra.f" TEST-ENGINE-BODY-CASE
+   s" sibling src/habu/habu1-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the row's path as a
+   \ suffix but is not exact, so it still fails.
+   s" lib/habu1.f" TEST-ENGINE-BODY-CASE
+   s" lib/habu1.f basename collision still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
 \ ---- bootstrap/cg/forth.fs: the Gforth recovery mirror ------------------------

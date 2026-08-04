@@ -1210,8 +1210,19 @@ variable SZA-I
 \ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
+\ ndict! is a FORGET sink and every caller in the tree lowers the mark, but the
+\ name lookup now reads an empty hash slot as proof that a name is absent, and
+\ that proof only holds while every record below NDICT is in the table. Raising
+\ NDICT re-exposes records whose slots a later publication was free to reuse, so
+\ a raise is the one motion that can leave the table short of the dictionary.
+\ The lookup keeps its authority by construction rather than by trusting the
+\ callers: a raise drops the table, and the linear scan answers from then on.
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
+   LBL {: keep:label :}
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
+   A NDICT CMP,  C-LE keep BCOND,
+      C 0 MOVZ,  C DATA HIDXP-CELL STR,
+   keep LBL,
    NDICT A 0 ADDI, ;
 
 : BEPOCHSECONDS ( -- )
@@ -2857,6 +2868,10 @@ variable FIND-HCMP
 variable FIND-HMATCH
 
 : EMIT-FIND ( -- )
+   \ The qualifier probe's labels are lexical: the file's older passes keep
+   \ theirs in variables, but a label only has to reach the emit it names, and
+   \ these five never leave this word.
+   LBL LBL LBL LBL LBL {: qlin:label qhloop:label qhnext:label qhinl:label qhcmp:label :}
    LFIND LABEL@ LBL,
    LBL FIND-QSCAN !
    LBL FIND-QNONE !
@@ -2903,6 +2918,43 @@ variable FIND-HMATCH
       15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ FIND-QBAD LABEL@ BCOND,
       14 14 1 ADDI,  FIND-QTAIL LABEL@ B,
    FIND-QTAILOK LABEL@ LBL,
+      \ NAME:tail - resolve the qualifier. A wordlist is a dictionary record
+      \ like any other, distinguished only by carrying the wordlist marker -1
+      \ where a word carries its wordlist, so it is in the same hash table under
+      \ the same key rule and the same probe finds it: the head of the token as
+      \ the name and -1 as the wid. x17 is the head's length (the tail follows
+      \ the colon), and x9/x10/x13/x17 all survive the probe for the linear
+      \ fallback and for FIND-NMATCH. An empty slot means no wordlist by that
+      \ name, which is the same answer the scan's own end returns.
+      14 DATA HIDXP-CELL LDR,  14 qlin CBZ,                    \ no table -> linear
+      2 0 MOVN,                                                \ wordlist records carry wid -1
+      9 17 15 4 16 7 C-HIDX-HASH
+      6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
+      8 HIDX-SLOTS LIT64,
+   qhloop LBL,
+      16 6 2 LSLI,  16 14 16 ADD,  3 16 0 LDRW,                \ x3 = slot value (index+1)
+      3 FIND-NEND LABEL@ CBZ,                                  \ empty slot -> no such wordlist
+      4 3 1 SUBI,  4 NDICT CMP,  C-GE qhnext BCOND,            \ stale (truncated) index
+      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                 \ x5 = record ptr
+      16 5 40 LDR,  16 2 CMP,  C-NE qhnext BCOND,              \ not a wordlist record
+      16 5 16 LDR,  16 16 12 LSLI,  16 16 12 LSRI,  16 17 CMP,  C-NE qhnext BCOND,  \ name-len mismatch
+      16 5 24 ADDI,
+      3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 qhinl CBZ,
+         16 5 24 LDR,
+      qhinl LBL,
+      7 0 MOVZ,
+      qhcmp LBL,
+         7 17 CMP,  C-GE FIND-NMATCH LABEL@ BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 9 7 ADD,     4 4 0 LDRB,
+         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE qhnext BCOND,
+         7 7 1 ADDI,  qhcmp B,
+      qhnext LBL,
+         8 8 1 SUBI,  8 qlin CBZ,
+         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  qhloop B,
+   qlin LBL,
       5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    FIND-NLOOP LABEL@ LBL,
       6 FIND-NEND LABEL@ CBZ,
@@ -2930,18 +2982,35 @@ variable FIND-HMATCH
    FIND-NEND LABEL@ LBL,  RET,
    FIND-QBAD LABEL@ LBL,  RET,
    FIND-START LABEL@ LBL,
-      \ hash probe (fast path): fold+hash the name once, walk the open-addressed
-      \ chain for (name XOR wid). A validated slot (index<NDICT, wid==x2, name
-      \ equal) returns immediately; an empty slot is a probe miss and falls
-      \ through to the linear scan, which stays the authoritative fallback. x2
-      \ (wid), x9/x10 (name), x13 (result) are preserved for that fallback.
-      14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table yet -> linear
+      \ Hash probe: fold+hash the name once, walk the open-addressed chain for
+      \ (name XOR wid). A validated slot (index<NDICT, wid==x2, name equal)
+      \ returns immediately.
+      \
+      \ AN EMPTY SLOT IS AN ANSWER, NOT A GUESS: this wordlist holds no such
+      \ name, and the search moves straight to FIND-DONE - the same place the
+      \ linear scan's own miss goes, so every downstream decision (the open
+      \ package's private -> public -> global retry chain, and the final RET
+      \ with x13=0) is reached by the identical path it was reached by before.
+      \ That rests on ONE invariant: every record in [0,NDICT) is in the table.
+      \ LHIDXBUILD indexes the whole dictionary once NDICT is final at startup,
+      \ every publishing site increments NDICT and calls LHIDXADD in the same
+      \ breath, and no entry is ever removed - a truncated record's slot keeps
+      \ its stale index and is skipped, so no chain is ever cut. Slots therefore
+      \ only ever go empty -> occupied, and an insert takes the FIRST empty or
+      \ stale slot on its own chain, so nothing can hide behind an empty one.
+      \ The two ways the invariant can lapse both keep the linear scan: no table
+      \ (a failed insert cleared HIDXP-CELL, or ndict! raised NDICT over records
+      \ the table never saw - see BNDSET), and a chain walked for every slot
+      \ without meeting an empty one.
+      \
+      \ x2 (wid), x9/x10 (name), x13 (result) are preserved for that fallback.
+      14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table -> linear
       9 10 15 4 16 7 C-HIDX-HASH
       6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
       8 HIDX-SLOTS LIT64,
    FIND-HLOOP LABEL@ LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,               \ x3 = slot value (index+1)
-      3 FIND-LINEAR LABEL@ CBZ,                               \ empty slot -> probe miss
+      3 FIND-DONE LABEL@ CBZ,                                 \ empty slot -> absent from this wordlist
       4 3 1 SUBI,  4 NDICT CMP,  C-GE FIND-HNEXT LABEL@ BCOND, \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ wid mismatch (retired=-2 / other wl)

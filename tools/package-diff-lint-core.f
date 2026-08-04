@@ -1135,13 +1135,32 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ genuinely new word in it has an owner it can join and must join one - and the
 \ notice's own package is exactly that shape.
 \
+\ Why src/habu/habu1.f is the fourth member.  It is habu2.f's other half and the
+\ same kind of file: the arm64 assembler vocabulary, the register aliases, the
+\ label helpers and the primitive emitters that habu2.f's passes call bare while
+\ the engine is being built.  Measured 2026-08-04: adding a single trailing
+\ comment to the body of the existing global EMIT-FLUSH -- defining no new word
+\ and changing no behaviour -- reported
+\ `E-PACKAGE-OWNERSHIP src/habu/habu1.f:2714:3`, so as configured the gate
+\ rejected every possible change to the engine's primitive emitters, including
+\ the dictionary-lookup repair that found this (dot
+\ habu-compile-shaped-cost-4e74a181, which had to change the bodies of the
+\ existing global BNDSET and EMIT-FIND and nothing else).  The asymmetry is
+\ earned on the same structural fact as the other three: habu1.f already opens
+\ ENGINE-BUILD, ENGINE-HELPER, GUARD, PROT-GUARD and OWNER-WID-EMIT, so a
+\ genuinely new word in it has an owner it can join and must join one -- which
+\ is what the repair above did with its five new labels, keeping them lexical
+\ inside the word that emits them rather than adding five globals.
+\
 \ Retirement condition.  The habu2.f half is removed when the continuing habu2
 \ packaging work (dot habu-cont-habu2-emitter-493363e7) extends those seams over
 \ the remaining global surface, the layout.f half when dot
-\ habu-give-layout-f-315df2ca finishes packaging that file, and the xref.f half
+\ habu-give-layout-f-315df2ca finishes packaging that file, the xref.f half
 \ when dot habu-pkg-dictionary-cross-73f449d9 splits that file into its read and
-\ lifecycle packages - exactly as the checker and render entries are removed by
-\ their own sealing dots.  FINISH-DEFINITION
+\ lifecycle packages, and the habu1.f half when dot
+\ habu-pkg-the-engine-842acca7 packages the primitive emitters - exactly as the
+\ checker and render entries are removed by their own sealing dots.
+\ FINISH-DEFINITION
 \ checks SCOPE-DELTA before it consults this admission, so adding or deleting a
 \ package boundary around an engine word is still reported here like anywhere
 \ else.  A rename or copy that makes some other file arrive AT one of these paths
@@ -1153,12 +1172,13 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ fixture row table below gives: a weakening -- a suffix match, a case fold, a
 \ prefix test -- then has exactly one place to live and changes every row at once,
 \ so the hostile fixtures kill it on all of them.
-3 constant ENGINE-TRUNK-N
+4 constant ENGINE-TRUNK-N
 
 : ENGINE-TRUNK-AT ( n -- ptr u8 n ) {: row:n :}
    row 0= if s" src/habu/habu2.f" exit then
    row 1 = if s" src/habu/layout.f" exit then
-   s" src/habu/xref.f" ;
+   row 2 = if s" src/habu/xref.f" exit then
+   s" src/habu/habu1.f" ;
 
 : ENGINE-TRUNK-PATH? ( -- bool )
    0 TRUNK-HIT !

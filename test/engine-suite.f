@@ -424,6 +424,113 @@ s" public resolves qualified outside the package" T-LABEL
 s" COK-PRES-QUAL ( -- n ) ES-PRES:ES-PRES-PUB" CHECK-QUIET-CANDIDATE! -1 T=
 s" public does not resolve bare outside the package" T-LABEL
 s" CUNK-PRES-BARE ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! 1 T=
+
+\ ---- what the ENGINE's name lookup resolves ---------------------------------
+\ The block above is the checker's answer. This one is the engine's: which BODY
+\ a token binds to when LFIND resolves it. That order is a compile-time fact -
+\ bind a token to the wrong wordlist and the program runs code nobody wrote for
+\ it - so it is pinned by EXECUTION rather than by a verdict: every case below
+\ calls the word the engine resolved and reads back the number it returns.
+\
+\ THE SHARED TAIL IS T-LABEL-CAP, the global constant this file declares at the
+\ top and T-LABEL really reads. The fixture does not mint a global of its own:
+\ it SHADOWS that one from inside a package, in the package's private wordlist
+\ and in its public wordlist at once, which is the shape a real package has and
+\ also proves the shadow does not leak back to the word already compiled
+\ against the global. References differ from definitions only in case, which
+\ the dictionary folds. The refusals matter as much as the hits: a lookup that
+\ answers "absent" for a name that IS there compiles a program the author did
+\ not write just as surely as one that answers with the wrong row, so each one
+\ is a source the engine's own load path must refuse, with the engine's own
+\ code for refusing it.
+package ES-RESO
+
+2 constant T-LABEL-CAP
+: ES-RES-PRIV ( -- n ) 5 ;
+
+s" engine resolution: private tail beats the global one" T-LABEL
+T-LABEL-CAP 2 T=
+s" engine resolution: private tail resolves bare in the package" T-LABEL
+ES-RES-PRIV 5 T=
+
+public
+
+3 constant T-LABEL-CAP
+: ES-RES-PUB ( -- n ) 4 ;
+
+s" engine resolution: private tail still beats the public one" T-LABEL
+T-LABEL-CAP 2 T=
+s" engine resolution: public tail resolves bare in the package" T-LABEL
+ES-RES-PUB 4 T=
+
+\ A retired row must give way to its replacement rather than to nothing: the
+\ name is published twice with different bodies and the second one is what the
+\ engine has to resolve.
+: ES-RES-U ( -- n ) 1 ;
+undefine ES-RES-U
+: ES-RES-U ( -- n ) 2 ;
+s" engine resolution: a retired tail gives way to its replacement" T-LABEL
+ES-RES-U 2 T=
+
+;package
+
+s" engine resolution: the global tail is back outside the package" T-LABEL
+T-LABEL-CAP 256 T=
+\ T-LABEL was compiled against the global cap and is still reading it: a label
+\ this long could not have been stored under the package's shadowed 2.
+s" engine resolution: shadow did not reach the compiled reader" T-LABEL
+T-LABEL$ nip 59 T=
+s" engine resolution: the reference spelling is case-folded" T-LABEL
+t-label-cap 256 T=
+T-Label-Cap 256 T=
+s" engine resolution: a qualified tail names the public row" T-LABEL
+ES-RESO:T-LABEL-CAP 3 T=
+ES-RESO:ES-RES-PUB 4 T=
+s" engine resolution: qualifier and tail fold independently" T-LABEL
+es-reso:T-LABEL-CAP 3 T=
+ES-RESO:t-label-cap 3 T=
+es-reso:t-label-cap 3 T=
+
+package ES-RES-REFUSE
+
+\ Whitebox: the engine's load path, so what a case measures is the engine
+\ refusing a source rather than a test deciding it should have.
+TRUSTED: EV ( ptr u8 n -- ) evaluate ;
+
+public
+
+\ The engine's own exit codes for the two refusals, which inside evaluate
+\ arrive as catchable throws of the same code.
+70 constant UNDEFINED
+78 constant DUPLICATE
+
+\ The source travels through the quotation and back out, because a quotation
+\ cannot read the enclosing word's locals.
+: OUTCOME ( ptr u8 n -- n )
+   [: 2dup EV ;] catch {: rc:n :}
+   2drop rc ;
+
+;package
+
+1 DIAG-QUIET +!
+s" engine resolution: an accepted source is the control" T-LABEL
+s" : ES-RES-CONTROL ( -- n ) T-LABEL-CAP ;" ES-RES-REFUSE:OUTCOME 0 T=
+s" engine resolution: the control resolved the global row" T-LABEL
+ES-RES-CONTROL 256 T=
+s" engine resolution: a public tail is refused bare outside" T-LABEL
+s" : ES-RES-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" engine resolution: a private tail is refused qualified" T-LABEL
+s" : ES-RES-P2 ( -- n ) ES-RESO:ES-RES-PRIV ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" engine resolution: a private tail is refused bare outside" T-LABEL
+s" : ES-RES-P3 ( -- n ) ES-RES-PRIV ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" engine resolution: an unknown package qualifier is refused" T-LABEL
+s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" engine resolution: a duplicate tail is refused case-folded" T-LABEL
+s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:DUPLICATE T=
+s" engine resolution: the global row survived the refusals" T-LABEL
+T-LABEL-CAP 256 T=
+-1 DIAG-QUIET +!
+
 \ mid-body ( ... ) comments are comments (EM-COMMENT parity), never a second
 \ signature: they must not clobber declared-sig state or flip the verdict.
 s" CBAD-SIG-TRAIL ( n -- n ) dup dup ( n -- n )" T-CHECK-REJECTS
@@ -2307,6 +2414,63 @@ S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
    ;
 TX18-DA TX18-DB TX18-DC TX18-DD TX18-DE TX18-DF TX18-DG TX18-DH TX18-DI TX18-DJ TX18-DK TX18-DL
 TX18-DM TX18-DN TX18-DO TX18-DP TX18-DQ TX18-DR TX18-DS TX18-DT TX18-DU TX18-DV TX18-DW TX18-DX
+
+\ ---- ndict! and the authority of the lookup index ---------------------------
+\ The engine reads an empty hash slot as PROOF that a name is absent, and that
+\ proof holds only while the table covers every record below NDICT. Every
+\ ndict! in the tree lowers the mark, but raising it re-exposes records whose
+\ index slots a later publication was free to reuse, so BNDSET drops the table
+\ on a raise rather than trusting its callers, and the linear scan answers from
+\ then on.
+\
+\ THIS BLOCK IS LAST IN THE FILE ON PURPOSE. It leaves the index dropped, so
+\ everything after it resolves names by the scan - which is why the cases that
+\ follow the raise are lookups: they are the assertion that the fallback still
+\ resolves what the index resolved, over the same shared tails the resolution
+\ block above pinned.
+package ES-NDX
+
+\ Whitebox: a fixed engine header cell, and the FORGET sink itself.
+TRUSTED: HIDXP@ ( -- n )  data-base HIDXP-CELL + @ ;
+TRUSTED: ND! ( n -- )     ndict! ;
+
+variable LO
+variable HI
+
+public
+
+: MARK-LOW ( -- )   ndict@ LO ! ;
+: MARK-HIGH ( -- )  ndict@ HI ! ;
+: LOWER ( -- )      LO @ ND! ;
+: RAISE ( -- )      HI @ ND! ;
+: INDEXED? ( -- bool )  HIDXP@ 0 <> ;
+
+;package
+
+s" ndict!: the lookup index is live to begin with" T-LABEL
+ES-NDX:INDEXED? -1 T=
+
+package ES-NDX
+MARK-LOW
+public
+: FRESH ( -- n ) 7 ;
+;package
+ES-NDX:MARK-HIGH
+
+s" ndict!: the fresh record resolves through the index" T-LABEL
+ES-NDX:FRESH 7 T=
+ES-NDX:LOWER
+ES-NDX:RAISE
+s" ndict!: a raise drops the index" T-LABEL
+ES-NDX:INDEXED? 0 T=
+s" ndict!: the scan resolves the re-exposed record" T-LABEL
+ES-NDX:FRESH 7 T=
+s" ndict!: the scan resolves the global tail" T-LABEL
+T-LABEL-CAP 256 T=
+s" ndict!: the scan resolves the qualified tail" T-LABEL
+ES-RESO:T-LABEL-CAP 3 T=
+s" ndict!: the scan still refuses a bare package public" T-LABEL
+s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
 
 \ report: count + nonzero exit on failure
 : REPORT ( -- )

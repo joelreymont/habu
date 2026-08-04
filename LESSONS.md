@@ -10,6 +10,47 @@ with all falsification detail is archived in `docs/archive/lessons-2026h1.md`
 and in git history. One tight bullet per lesson; add a section only if none
 fits.
 
+- **An empty slot in a complete hash index is an ANSWER; the engine was throwing
+  it away.** `src/habu/habu1.f`'s LFIND has had a dictionary hash index for a
+  long time, but a probe that reached an EMPTY slot fell through to the full
+  linear scan "as the authoritative fallback", so every MISS cost a whole
+  dictionary walk. Inside an open package a bare global name misses twice
+  (package private, then package public) before the global probe hits — two full
+  scans per token, on every token the compiler reads. The index was already
+  complete: LHIDXBUILD indexes the dictionary at startup, every publishing site
+  increments NDICT and calls LHIDXADD in the same breath, and no entry is ever
+  removed (a truncated record's slot goes stale and is skipped, so no chain is
+  cut). The fix was to route the empty slot to the same miss handler the scan
+  used. Measured on the compile-shaped batch with the checker off: 4.17 ms →
+  0.80 ms, and growth per dictionary record 393 ns → 14 ns. When a fast path
+  keeps a slow one "for safety", ask what invariant the fast path is missing —
+  often it is missing none, and the fallback is only costing.
+- **Make a lookup's precondition structural, not a survey of its callers.**
+  Reading an empty slot as proof of absence holds only while the table covers
+  every record below NDICT, and the one motion that can break that is `ndict!`
+  RAISING the mark (it re-exposes records whose slots a later publication was
+  free to reuse). Every caller in the tree lowers, but "I read all the callers"
+  is not an invariant: BNDSET now drops the table on a raise and the linear scan
+  takes over, so the lookup keeps its authority by construction. The last block
+  of `test/engine-suite.f` pins it and fails on the pre-change engine.
+- **Attribute a "the compiler is slow" number before optimising the compiler.**
+  The same generated batch compiled with `0 set-check` costs 0.8 ms and is FLAT
+  in the dictionary; with the checker on it is 20–23 ms and still grows 1.13 µs
+  per record. So after the engine's lookup was fixed, the ENTIRE remaining
+  growth belongs to the checker's own symbol-keyed LINEAR scans
+  (`SCAN-USIGS-SYM`, `USIG-MATCH-SYM?`, `NORET-SCAN-SYM`, `SUMV-FROM-CTOR-SYM`,
+  `TFAM-FIND-*`). The in-engine sampling profiler names them in one run:
+  `n prof-on` … `prof-report` (`src/habu/prof.f`) attributes each 1 ms sample to
+  a dictionary word and lumps the engine itself into `(other)` — exactly the
+  split that decides whether the engine or the Habu on top of it owns a cost.
+  Reach for it before reading assembly.
+- **A qualified name used to cost a whole dictionary scan.** `PKG:WORD` resolved
+  its qualifier by walking every record looking for the wordlist marker: 10.0 µs
+  for a qualified token against 1.1 µs for a bare one at ndict 11354, and the
+  tree contains about 70000 qualified tokens. A wordlist is an ordinary record
+  carrying wid −1, so the same hash probe finds it with −1 as the wid; both now
+  cost 1.05 µs. If a lookup has a special case, check whether the special case
+  is really a different KIND of record or just a different key.
 - **A hostile fixture can pass for the wrong reason; falsify each guard by
   deletion.** Found while adding manifest-shape fixtures to the identity parity
   gate: the "unpinned theorem" fixture passed because the END-OF-FILE check
