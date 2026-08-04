@@ -9,7 +9,6 @@
 \   tools/srclist.f        - canonical stdin order names SDC-AOT$/SDC-DRIVER$.
 \   tools/bootstrap.sh     - audited launcher: its emit_src stdin branch must
 \                            cat every SDC-HOST file (literal paths).
-\   test/run-files.f       - TR-UNDER-SOURCE-FILES must list every SDC-KEYED file.
 \   tools/hb-build-lib.f   - proven outside the per-file closure: its maker key
 \                            hashes the whole engine binary via BF-ENGINE$.
 
@@ -54,10 +53,6 @@ variable SDCL-BAD
    1 SDCL-BAD +! ;
 
 \ typed-local-lint: allow-bare-local - callback fires per manifest row.
-: SDCL-KEYED-NEED ( n ptr u8 n n -- ) {: ix:n pa:ptr pu:n fl:n :}
-   fl SDC-KEYED SDC-ROLE? if pa pu SDCL-NEED then ;
-
-\ typed-local-lint: allow-bare-local - callback fires per manifest row.
 : SDCL-HOST-NEED ( n ptr u8 n n -- ) {: ix:n pa:ptr pu:n fl:n :}
    fl SDC-HOST SDC-ROLE? if pa pu SDCL-NEED then ;
 
@@ -82,11 +77,6 @@ variable SDCL-BAD
    s" tools/bootstrap.sh" SDCL-CONSUMER!
    [: SDCL-HOST-NEED ;] SDC-WALK ;
 
-\ run-files keys the candidate build: every SDC-KEYED file must be listed.
-: SDCL-CHECK-RUN-FILES ( -- )
-   s" test/run-files.f" SDCL-CONSUMER!
-   [: SDCL-KEYED-NEED ;] SDC-WALK ;
-
 \ hb-build's maker key covers the closure via the whole-engine hash BF-ENGINE$,
 \ so it is proven outside the per-file closure (must still hash the engine).
 : SDCL-CHECK-HB-BUILD ( -- )
@@ -97,7 +87,6 @@ variable SDCL-BAD
    SDCL-CHECK-BUILD-FIXPOINT
    SDCL-CHECK-SRCLIST
    SDCL-CHECK-BOOTSTRAP
-   SDCL-CHECK-RUN-FILES
    SDCL-CHECK-HB-BUILD ;
 
 \ Fail-closed proof: the presence detector must answer both ways. A sentinel the

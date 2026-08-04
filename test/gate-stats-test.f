@@ -115,14 +115,9 @@ variable GST-GEN-SAVE-U
    s" artifact-cache-hit" GS-EVENT
    s" artifact-cache-miss" GS-EVENT
    s" candidate-build" GS-EVENT
-   s" candidate-cache-hit" GS-EVENT
-   s" candidate-cache-miss" GS-EVENT
-   s" candidate-cache-install" GS-EVENT
    s" candidate-import" GS-EVENT
    s" candidate-ready" GS-EVENT
-   s" candidate-build-skip" GS-EVENT
    s" candidate-validate" GS-EVENT
-   s" candidate-cache-corrupt" GS-EVENT
    s" test phase" s" host-source" s" gate-runner" s" process" s" -" GS-TEST
    s" art phase" s" artifact" s" gate-runner" s" process" s" -" GS-TEST
    s" fast phase" 12 GS-SPAN
@@ -159,14 +154,9 @@ variable GST-GEN-SAVE-U
    GS-ARTIFACT-HIT @ 1 T=
    GS-ARTIFACT-MISS @ 1 T=
    GS-CANDIDATE @ 1 T=
-   GS-CANDIDATE-HIT @ 1 T=
-   GS-CANDIDATE-MISS @ 1 T=
-   GS-CANDIDATE-INSTALL @ 1 T=
    GS-CANDIDATE-IMPORT @ 1 T=
    GS-CANDIDATE-READY @ 1 T=
-   GS-CANDIDATE-BUILD-SKIP @ 1 T=
    GS-CANDIDATE-VALIDATE @ 1 T=
-   GS-CANDIDATE-CORRUPT @ 1 T=
    GS-HELPER-SPAWN @ 0 T=
    GS-SPANS @ 6 T=
    GS-SLOW-MS @ 34 T=
@@ -597,16 +587,6 @@ public
    GST-EXPECT-DEDUPE
    GST-EXPECT-TEST ;
 
-\ Within-attempt cache-counter contract: ready>=1 and no corruption passes;
-\ corruption or a never-ready candidate fails closed.
-: GST-TEST-CACHE-OK ( -- )
-   0 GS-CANDIDATE-CORRUPT ! 1 GS-CANDIDATE-READY !
-   GS-ATTEMPT-CACHE-OK? TTRUE
-   1 GS-CANDIDATE-CORRUPT ! 1 GS-CANDIDATE-READY !
-   GS-ATTEMPT-CACHE-OK? TFALSE
-   0 GS-CANDIDATE-CORRUPT ! 0 GS-CANDIDATE-READY !
-   GS-ATTEMPT-CACHE-OK? TFALSE ;
-
 : GST-MAIN-BODY ( -- )
    T-RESET
    GST-TEST-SCAN
@@ -619,7 +599,6 @@ public
    GST-TEST-GEN-SPLIT
    GST-TEST-DUP-GUARD
    GST-TEST-GEN-ENV
-   GST-TEST-CACHE-OK
    CLEANUP-RUN
    GST-ROOT$ EXISTS? TFALSE
    T-REPORT

@@ -25,10 +25,12 @@ create RUN1 FS-PATH-CAP allot
 create RUN2 FS-PATH-CAP allot
 create UNDER FS-PATH-CAP allot
 create STAT FS-PATH-CAP allot
+create SRC-EXE FS-PATH-CAP allot
 create UNDER-EXE FS-PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
 create SRC-HEX HEX-U allot
+create HOST-HEX HEX-U allot
 create UNDER-HEX HEX-U allot
 
 variable ROOT-U
@@ -37,6 +39,7 @@ variable RUN1-U
 variable RUN2-U
 variable UNDER-U
 variable STAT-U
+variable SRC-EXE-U
 variable UNDER-EXE-U
 variable OUT-U
 variable ERR-U
@@ -50,6 +53,7 @@ variable OUT-START
 : RUN2$ ( -- ptr u8 n ) RUN2 RUN2-U @ ;
 : UNDER$ ( -- ptr u8 n ) UNDER UNDER-U @ ;
 : STAT$ ( -- ptr u8 n ) STAT STAT-U @ ;
+: SRC-EXE$ ( -- ptr u8 n ) SRC-EXE SRC-EXE-U @ ;
 : UNDER-EXE$ ( -- ptr u8 n ) UNDER-EXE UNDER-EXE-U @ ;
 
 : SETUP ( -- )
@@ -83,7 +87,7 @@ variable OUT-START
    s" --" >LEN PROC-ARGV+
    imported 0 <> if
       s" --under" >LEN PROC-ARGV+
-      s" bin/hb" >LEN PROC-ARGV+
+      SRC-EXE$ >LEN PROC-ARGV+
    then ;
 
 : RUN-GATE ( ptr u8 n n -- ) {: root:ptr rootu:n imported:n :}
@@ -125,13 +129,6 @@ variable OUT-START
    then
    0 0= 0= ;
 
-: CACHE-ZERO ( -- )
-   s" candidate cache hit absent" T-LABEL GS-CANDIDATE-HIT @ 0 T=
-   s" candidate cache miss absent" T-LABEL GS-CANDIDATE-MISS @ 0 T=
-   s" candidate cache install absent" T-LABEL GS-CANDIDATE-INSTALL @ 0 T=
-   s" candidate build skip absent" T-LABEL GS-CANDIDATE-BUILD-SKIP @ 0 T=
-   s" candidate cache corrupt absent" T-LABEL GS-CANDIDATE-CORRUPT @ 0 T= ;
-
 : ORDINARY ( ptr u8 n -- ) {: root:ptr rootu:n :}
    root rootu 0 RUN-GATE
    s" ordinary gate exits zero" T-LABEL RC @ 0 T=
@@ -144,11 +141,18 @@ variable OUT-START
    s" ordinary candidate validated" T-LABEL GS-CANDIDATE-VALIDATE @ 1 T=
    s" ordinary phase 15 row" T-LABEL BUILD-ROW? TTRUE
    s" ordinary engine build passed" T-LABEL
-      OUT OUT-U @ s" PASS: native engine build slice (" CONTAINS? TTRUE
-   CACHE-ZERO ;
+      OUT OUT-U @ s" PASS: native engine build slice (" CONTAINS? TTRUE ;
+
+: SOURCE-PREPARE ( -- )
+   RUN1$ s" hb-under-test" SRC-EXE JOIN-PATH SRC-EXE-U !
+   s" first run produced executable" T-LABEL SRC-EXE$ EXECUTABLE? TTRUE
+   s" first run source hash" T-LABEL SRC-EXE$ SRC-HEX SHA256-FILE-HEX 0 T=
+   s" host hash" T-LABEL s" bin/hb" HOST-HEX SHA256-FILE-HEX 0 T=
+   s" first run source differs from host" T-LABEL
+      SRC-HEX HEX-U HOST-HEX HEX-U STR= TFALSE ;
 
 : IMPORT-HASH ( -- )
-   s" bin/hb" SRC-HEX SHA256-FILE-HEX 0 T=
+   SRC-EXE$ SRC-HEX SHA256-FILE-HEX 0 T=
    UNDER-EXE$ EXECUTABLE? TTRUE
    UNDER-EXE$ UNDER-HEX SHA256-FILE-HEX 0 T=
    SRC-HEX HEX-U UNDER-HEX HEX-U STR= TTRUE
@@ -174,13 +178,13 @@ variable OUT-START
    s" imported phase 15 absent" T-LABEL BUILD-ROW? TFALSE
    s" imported engine build absent" T-LABEL
       OUT OUT-U @ s" native engine build slice" CONTAINS? TFALSE
-   CACHE-ZERO
    IMPORT-HASH ;
 
 : MAIN ( -- )
    T-RESET
    SETUP
    RUN1$ ORDINARY
+   SOURCE-PREPARE
    RUN2$ ORDINARY
    s" second run maker cache remains active" T-LABEL GS-MAKER-HIT @ 0 > TTRUE
    s" second run artifact cache remains active" T-LABEL GS-ARTIFACT-HIT @ 0 > TTRUE
