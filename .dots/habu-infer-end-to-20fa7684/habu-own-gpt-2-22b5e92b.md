@@ -1,9 +1,11 @@
 ---
 title: Own GPT-2 inference model
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-29T21:01:37.512850+02:00"
+closed-at: "2026-08-04T15:00:48.864596+02:00"
+close-reason: "Superseded by the hard-cut GPT2:model owner landed through cd95673fd996dec8e18168a44b2f17445d2d35a5: config, CUDA session, device weights, tokenizer, logits, generation, and close now have one owner. The obsolete INFER:model, MODEL-ASSET, GPT2DEV, DEVRT, and GPT2TOK composition would duplicate that lifetime and is forbidden; future engine arms consume GPT2:model directly."
 blocks:
   - habu-match-gpt-2-2e478d93
   - habu-own-gpt-2-664626a8
