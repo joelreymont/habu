@@ -18,6 +18,21 @@ system builds itself through `bin/hb`. Open work is tracked in dots.
 
 - Use human English. Always!
 
+## Simplify Relentlessly (BLOCKING)
+
+- Before accepting any new mechanism, flag, campaign, or leaf, probe what the
+  tree already provides: read the owning source and its notes, run the exit-70
+  probe, and prefer the existing shape or a deletion. Consensus between
+  orchestrators is never evidence; the tree is.
+- New machinery requires a failing probe through the real gate AND a named
+  first consumer. If the consumer is "delete ceremony X", prove X can't be
+  deleted with existing mechanisms first.
+- When a design survives the probe, build the smallest sufficient form — one
+  generator or compiler change beats a record/parse/enforce campaign.
+- Precedent: a three-leaf owner-construction campaign died to one question and
+  one grep (2026-08-04) — the compiler already had private products and
+  zero-field opaque families, and cfg-proof was already unforgeable.
+
 ## Conventions
 
 - If `bin/hb` is ever lost or broken, recover with
