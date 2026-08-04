@@ -95,21 +95,22 @@ variable PIN-N
 
 \ ---- one instruction ---------------------------------------------------------
 
-: +INSN ( n n n n -- ) {: form:n a:n b:n c:n :}
+: +INSN ( n n n n n -- ) {: form:n a:n b:n c:n d:n :}
    s" (" +$ form FORM-NAME$ +$
    form FORM-ARITY {: n:n :}
    n 0 > if s"  " +$ a +OPERAND then
    n 1 > if s"  " +$ b +OPERAND then
    n 2 > if s"  " +$ c +OPERAND then
+   n 3 > if s"  " +$ d +OPERAND then
    s" )" +$ ;
 
 \ ---- the encoding rows -------------------------------------------------------
 
 : EMIT-VECTOR ( n -- ) {: r:n :}
    s" Example enc_" +$ r ROW-FORM@ FORM-NAME$ +$ s" _" +$ r +N s"  :" +$ +NL
-   s"   enc " +$ r ROW-FORM@ r ROW-A@ r ROW-B@ r ROW-C@ +INSN
+   s"   enc " +$ r ROW-FORM@ r ROW-A@ r ROW-B@ r ROW-C@ r ROW-D@ +INSN
    s"  = " +$ r ROW-WORD@ +N +NL
-   s"   /\ wf " +$ r ROW-FORM@ r ROW-A@ r ROW-B@ r ROW-C@ +INSN
+   s"   /\ wf " +$ r ROW-FORM@ r ROW-A@ r ROW-B@ r ROW-C@ r ROW-D@ +INSN
    s"  = true." +$ +NL
    s" Proof. split; vm_compute; reflexivity. Qed." +$ +NL ;
 
@@ -119,7 +120,7 @@ variable PIN-N
 
 : EMIT-OUT-OF-RANGE ( n -- ) {: r:n :}
    s" Example out_of_range_" +$ r OOR-FORM@ FORM-NAME$ +$ s" _" +$ r +N s"  :" +$ +NL
-   s"   wf " +$ r OOR-FORM@ r OOR-A@ r OOR-B@ r OOR-C@ +INSN
+   s"   wf " +$ r OOR-FORM@ r OOR-A@ r OOR-B@ r OOR-C@ r OOR-D@ +INSN
    s"  = false." +$ +NL
    s" Proof. vm_compute. reflexivity. Qed." +$ +NL ;
 
@@ -128,7 +129,7 @@ variable PIN-N
 
 : EMIT-RESERVED ( n -- ) {: r:n :}
    s" Example reserved_" +$ r RES-FORM@ FORM-NAME$ +$ s" _" +$ r +N s"  :" +$ +NL
-   s"   refused " +$ r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ +INSN
+   s"   refused " +$ r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ r RES-D@ +INSN
    s"  = " +$
    r RES-RC@ RESERVED-RC = if s" true" +$ else s" false" +$ then
    s" ." +$ +NL

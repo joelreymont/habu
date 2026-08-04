@@ -217,7 +217,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-50 constant OPCODES-N
+52 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -268,6 +268,8 @@ private
 47 constant O-FCMPBR
 48 constant O-FCMPBRZ
 49 constant O-FMOVDD
+50 constant O-SELZ
+51 constant O-CMPSEL
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -409,6 +411,8 @@ create B-START BMAX cells allot
       abload   OF O-ABLOAD  ENDOF
       abstore  OF O-ABSTORE ENDOF
       flag     OF O-FLAG     ENDOF
+      selz     OF O-SELZ     ENDOF
+      cmpsel   OF O-CMPSEL   ENDOF
       br       OF O-BR       ENDOF
       brz      OF O-BRZ      ENDOF
       cmpbr    OF O-CMPBR    ENDOF
@@ -459,6 +463,8 @@ create B-START BMAX cells allot
       O-DSTORE   of A64IR-OPCODE:DSTORE   endof
       O-DPUBLISH of A64IR-OPCODE:DPUBLISH endof
       O-FLAG     of A64IR-OPCODE:FLAG     endof
+      O-SELZ     of A64IR-OPCODE:SELZ     endof
+      O-CMPSEL   of A64IR-OPCODE:CMPSEL   endof
       O-BR       of A64IR-OPCODE:BR       endof
       O-BRZ      of A64IR-OPCODE:BRZ      endof
       O-CMPBR    of A64IR-OPCODE:CMPBR    endof
@@ -834,9 +840,12 @@ create B-START BMAX cells allot
 
 \ How many instructions a FORM is, is a property of the form: one for all but the
 \ four comparisons, the division, the call and the three compare-and-branches,
-\ which are three each, and the two-way branch, which is two.
+\ which are three each, and the two-way branch and the two conditional selects,
+\ which are two.
 : INSNS-OF ( n -- n )
    {: k:n :}
+   k O-SELZ = if 2 exit then
+   k O-CMPSEL = if 2 exit then
    k O-FLAG = if 3 exit then
    k O-FFLAG = if 3 exit then
    k O-FFLAGZ = if 3 exit then
@@ -1094,6 +1103,29 @@ create B-START BMAX cells allot
    id  rd id COND-OF ENC-CSET  APPEND
    id  rd rd ENC-NEG  APPEND ;
 
+\ The two conditional selects, each two instructions: write the flags, then move
+\ one of two registers into the result on the condition. Nothing branches, so
+\ neither of them asks the fall-through rule anything and neither carries a
+\ successor - they are ordinary value operations that happen to read the flags
+\ the instruction in front of them wrote.
+\
+\ THE FIRST SOURCE IS THE CONDITION-HOLDS ANSWER in both, which is the same
+\ order a64.cmpbr puts its successors in and the order the dialect's own note
+\ states. A Csel writes its first source register when the condition holds and
+\ its second when it does not, so the operand order and the instruction agree
+\ without anything here turning them round.
+: PUT-SELZ ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG 0 ENC-CMPI  APPEND
+   id  id 0 RESULT-REG  id 1 OPERAND-REG  id 2 OPERAND-REG
+       A64IR-COND:NE A64IR:COND-CODE  ENC-CSEL  APPEND ;
+
+: PUT-CMPSEL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
+   id  id 0 RESULT-REG  id 2 OPERAND-REG  id 3 OPERAND-REG
+       id COND-OF  ENC-CSEL  APPEND ;
+
 \ One division, which is three instructions: branch past the trap when the
 \ divisor is not zero, the trap, and the divide. It is the sequence the engine's
 \ own `/` compiles to - src/habu/habu1.f BDIV0? followed by BDIV - so a compiled
@@ -1246,6 +1278,8 @@ create B-START BMAX cells allot
       abload   OF id  id WORD-ABLOAD  APPEND ENDOF
       abstore  OF id  id WORD-ABSTORE  APPEND ENDOF
       flag     OF id PUT-FLAG ENDOF
+      selz     OF id PUT-SELZ ENDOF
+      cmpsel   OF id PUT-CMPSEL ENDOF
       br       OF id home PUT-BR ENDOF
       brz      OF id home PUT-BRZ ENDOF
       cmpbr    OF id home PUT-CMPBR ENDOF
@@ -1444,6 +1478,8 @@ public
    c b A64IR-OPCODE:DSTORE   BIND1
    c b A64IR-OPCODE:DPUBLISH BIND1
    c b A64IR-OPCODE:FLAG     BIND1
+   c b A64IR-OPCODE:SELZ     BIND1
+   c b A64IR-OPCODE:CMPSEL   BIND1
    c b A64IR-OPCODE:BR       BIND1
    c b A64IR-OPCODE:BRZ      BIND1
    c b A64IR-OPCODE:CMPBR    BIND1

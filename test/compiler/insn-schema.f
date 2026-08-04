@@ -140,6 +140,7 @@ s" STLR," s" n n --" TRUST
 s" CMP," s" n n --" TRUST
 s" CMPI," s" n n --" TRUST
 s" CSET," s" n n --" TRUST
+s" CSEL," s" n n n n --" TRUST
 s" B," s" n --" TRUST
 s" BL," s" n --" TRUST
 s" BCOND," s" n n --" TRUST
@@ -175,13 +176,14 @@ public
 21 constant F-LDR      22 constant F-STR      23 constant F-LDRB
 24 constant F-STRB     25 constant F-LDRW     26 constant F-STRW
 27 constant F-LDAR     28 constant F-STLR     29 constant F-CMP
-30 constant F-CMPI     31 constant F-CSET     32 constant F-B
-33 constant F-BL       34 constant F-BCOND    35 constant F-CBZ
-36 constant F-CBNZ     37 constant F-ADR      38 constant F-SVC
-39 constant F-RET      40 constant F-BRK      41 constant F-NOP
-42 constant F-DSB-ISH  43 constant F-ISB      44 constant F-BLR
-45 constant F-BR       46 constant F-ICIVAU   47 constant F-DCCVAU
-48 constant FORMS
+30 constant F-CMPI     31 constant F-CSET     32 constant F-CSEL
+33 constant F-B        34 constant F-BL       35 constant F-BCOND
+36 constant F-CBZ      37 constant F-CBNZ     38 constant F-ADR
+39 constant F-SVC      40 constant F-RET      41 constant F-BRK
+42 constant F-NOP      43 constant F-DSB-ISH  44 constant F-ISB
+45 constant F-BLR      46 constant F-BR       47 constant F-ICIVAU
+48 constant F-DCCVAU
+49 constant FORMS
 
 \ The constructor name in `formal/Common/Insn.v`. It names the form in a
 \ failing row's label and in the generated Rocq obligation, so the two reports
@@ -198,12 +200,13 @@ public
       21 of s" Ldr" endof      22 of s" Str" endof     23 of s" Ldrb" endof
       24 of s" Strb" endof     25 of s" Ldrw" endof    26 of s" Strw" endof
       27 of s" Ldar" endof     28 of s" Stlr" endof    29 of s" Cmp" endof
-      30 of s" Cmpi" endof     31 of s" Cset" endof    32 of s" B" endof
-      33 of s" Bl" endof       34 of s" Bcond" endof   35 of s" Cbz" endof
-      36 of s" Cbnz" endof     37 of s" Adr" endof     38 of s" Svc" endof
-      39 of s" Ret" endof      40 of s" Brk" endof     41 of s" Nop" endof
-      42 of s" DsbIsh" endof   43 of s" Isb" endof     44 of s" Blr" endof
-      45 of s" Br" endof       46 of s" IcIvau" endof  47 of s" DcCvau" endof
+      30 of s" Cmpi" endof     31 of s" Cset" endof    32 of s" Csel" endof
+      33 of s" B" endof        34 of s" Bl" endof      35 of s" Bcond" endof
+      36 of s" Cbz" endof      37 of s" Cbnz" endof    38 of s" Adr" endof
+      39 of s" Svc" endof      40 of s" Ret" endof     41 of s" Brk" endof
+      42 of s" Nop" endof      43 of s" DsbIsh" endof  44 of s" Isb" endof
+      45 of s" Blr" endof      46 of s" Br" endof      47 of s" IcIvau" endof
+      48 of s" DcCvau" endof
       E-CIE-FORM throw
    endcase ;
 
@@ -222,11 +225,17 @@ public
    k F-LDAR = k F-STLR = or k F-CMP = or k F-CMPI = or k F-CSET = or
    k F-BCOND = or k F-CBZ = or k F-CBNZ = or k F-ADR = or ;
 
+\ The one form with four: a conditional select names a destination, two
+\ sources and the condition that chooses between them.
+: QUATERNARY-FORM? ( n -- bool ) {: k:n :}
+   k F-CSEL = ;
+
 : FORM-ARITY ( n -- n ) {: k:n :}
    k 0 < k FORMS >= or if E-CIE-FORM throw then
    k NULLARY-FORM? if 0 exit then
    k UNARY-FORM? if 1 exit then
    k BINARY-FORM? if 2 exit then
+   k QUATERNARY-FORM? if 4 exit then
    3 ;
 
 \ The forms whose last operand is a label distance rather than a plain number.
@@ -254,6 +263,7 @@ create VEC-FORM VEC-CAP cells allot
 create VEC-A VEC-CAP cells allot
 create VEC-B VEC-CAP cells allot
 create VEC-C VEC-CAP cells allot
+create VEC-D VEC-CAP cells allot
 create VEC-MASK VEC-CAP cells allot
 create VEC-WORD VEC-CAP cells allot
 
@@ -261,11 +271,13 @@ create OOR-FORM OOR-CAP cells allot
 create OOR-A OOR-CAP cells allot
 create OOR-B OOR-CAP cells allot
 create OOR-C OOR-CAP cells allot
+create OOR-D OOR-CAP cells allot
 
 create RES-FORM RES-CAP cells allot
 create RES-A RES-CAP cells allot
 create RES-B RES-CAP cells allot
 create RES-C RES-CAP cells allot
+create RES-D RES-CAP cells allot
 create RES-MASK RES-CAP cells allot
 create RES-RC RES-CAP cells allot
 create RES-WORD RES-CAP cells allot
@@ -292,57 +304,71 @@ variable LIM-N
 
 \ ---- table builders ----------------------------------------------------------
 
-: VEC+ ( n n n n n n -- ) {: form:n a:n b:n c:n mask:n word:n :}
+: VEC+ ( n n n n n n n -- ) {: form:n a:n b:n c:n d:n mask:n word:n :}
    VEC-N @ VEC-CAP >= if E-CIE-ROW throw then
    form VEC-FORM VEC-N @ cells + !
    a VEC-A VEC-N @ cells + !
    b VEC-B VEC-N @ cells + !
    c VEC-C VEC-N @ cells + !
+   d VEC-D VEC-N @ cells + !
    mask VEC-MASK VEC-N @ cells + !
    word VEC-WORD VEC-N @ cells + !
    VEC-N @ 1+ VEC-N ! ;
 
 \ One row per operand count, so a row reads as the mnemonic call it drives.
-: V0 ( n n -- ) {: form:n word:n :}       form 0 0 0 0 word VEC+ ;
-: V1 ( n n n -- ) {: form:n a:n word:n :} form a 0 0 0 word VEC+ ;
-: V2 ( n n n n -- ) {: form:n a:n b:n word:n :}  form a b 0 0 word VEC+ ;
-: V3 ( n n n n n -- ) {: form:n a:n b:n c:n word:n :} form a b c 0 word VEC+ ;
+: V0 ( n n -- ) {: form:n word:n :}       form 0 0 0 0 0 word VEC+ ;
+: V1 ( n n n -- ) {: form:n a:n word:n :} form a 0 0 0 0 word VEC+ ;
+: V2 ( n n n n -- ) {: form:n a:n b:n word:n :}  form a b 0 0 0 word VEC+ ;
+: V3 ( n n n n n -- ) {: form:n a:n b:n c:n word:n :} form a b c 0 0 word VEC+ ;
+: V4 ( n n n n n n -- ) {: form:n a:n b:n c:n d:n word:n :}
+   form a b c d 0 word VEC+ ;
 
 \ A logical-immediate row also carries the plain mask the mnemonic is handed;
 \ the third operand is the packed value `>LIMM` must build from it.
 : VL ( n n n n n n -- ) {: form:n a:n b:n nis:n mask:n word:n :}
-   form a b nis mask word VEC+ ;
+   form a b nis 0 mask word VEC+ ;
 
 \ An out-of-range row carries no expected word: the shipped code refuses it, so
 \ there is nothing to read back. It carries no mask either, because the only
 \ operand a mask would be for - the packed logical immediate - cannot be driven
 \ out of range through the shipped mnemonic.
-: OOR+ ( n n n n -- ) {: form:n a:n b:n c:n :}
+: OOR4+ ( n n n n n -- ) {: form:n a:n b:n c:n d:n :}
    OOR-N @ OOR-CAP >= if E-CIE-ROW throw then
    form OOR-FORM OOR-N @ cells + !
    a OOR-A OOR-N @ cells + !
    b OOR-B OOR-N @ cells + !
    c OOR-C OOR-N @ cells + !
+   d OOR-D OOR-N @ cells + !
    OOR-N @ 1+ OOR-N ! ;
+
+: OOR+ ( n n n n -- ) {: form:n a:n b:n c:n :}
+   form a b c 0 OOR4+ ;
 
 \ A reserved-register row carries the plain mask as well, because the logical
 \ mnemonics take one and build the packed operand from it; the `c` column is
 \ that packed value, which is what the model is asked about.
-: RES+ ( n n n n n n n -- ) {: form:n a:n b:n c:n mask:n rc:n word:n :}
+: RES4+ ( n n n n n n n n -- ) {: form:n a:n b:n c:n d:n mask:n rc:n word:n :}
    RES-N @ RES-CAP >= if E-CIE-ROW throw then
    form RES-FORM RES-N @ cells + !
    a RES-A RES-N @ cells + !
    b RES-B RES-N @ cells + !
    c RES-C RES-N @ cells + !
+   d RES-D RES-N @ cells + !
    mask RES-MASK RES-N @ cells + !
    rc RES-RC RES-N @ cells + !
    word RES-WORD RES-N @ cells + !
    RES-N @ 1+ RES-N ! ;
 
+: RES+ ( n n n n n n n -- ) {: form:n a:n b:n c:n mask:n rc:n word:n :}
+   form a b c 0 mask rc word RES4+ ;
+
 \ Almost every reserved-register row is the same shape: an operand slot holding
 \ x18, no mask, refused before a word exists.
 : X18 ( n n n n -- ) {: form:n a:n b:n c:n :}
    form a b c 0 RESERVED-RC 0 RES+ ;
+
+: X184 ( n n n n n -- ) {: form:n a:n b:n c:n d:n :}
+   form a b c d 0 RESERVED-RC 0 RES4+ ;
 
 : LIM+ ( n n -- ) {: mask:n nis:n :}
    LIM-N @ LIM-CAP >= if E-CIE-ROW throw then
@@ -465,6 +491,20 @@ variable LIM-N
    F-CMPI 31 $FFF $F13FFFFF V2
    F-CSET 31 15 $9A9FE7FF V2 ;
 
+\ The conditional select: a destination, the source taken when the condition
+\ holds, the source taken when it does not, and the condition. Its three
+\ register operands go through `XR3`, exactly as a shifted-register form's do,
+\ so the field bound on a register needs no row of its own here - the Add rows
+\ already ask that question of that word. What is this form's own is the
+\ four-bit condition field, which is bounded by `?COND` at this call site.
+: CONDITIONAL-SELECT-VECTORS ( -- )
+   F-CSEL 3 4 5 0 $9A850083 V4
+   F-CSEL 13 9 21 11 $9A95B12D V4
+   F-CSEL 0 1 2 1 $9A821020 V4
+   F-CSEL 7 8 9 12 $9A89C107 V4
+   F-CSEL 20 2 30 4 $9A9E4054 V4
+   F-CSEL 31 31 31 15 $9A9FF3FF V4 ;
+
 \ Branch rows carry the word-relative delta. A row with a delta at or below
 \ zero resolves against a label already bound, which is the immediate path in
 \ `BR-EMIT`; a positive delta records a fixup and is backpatched by `LBL,`,
@@ -561,6 +601,7 @@ variable LIM-N
    F-LSRI 1 2 64 OOR+
    F-ASRI 1 2 64 OOR+
    F-CSET 1 16 0 OOR+                        \ was: cond 16 became cond eq
+   F-CSEL 1 2 2 16 OOR4+                     \ was: cond 16 ran into the second source
    F-BCOND 16 0 0 OOR+ ;
 
 \ A byte operand the encoder divides by its access scale. Each was rounded down
@@ -625,6 +666,7 @@ variable LIM-N
    F-CMP 18 8 0 X18    F-CMP 9 18 0 X18
    F-CMPI 18 16 0 X18
    F-CSET 18 0 0 X18
+   F-CSEL 18 2 3 0 X184   F-CSEL 1 18 3 0 X184   F-CSEL 1 2 18 0 X184
    F-CBZ 18 0 0 X18
    F-CBNZ 18 0 0 X18
    F-ADR 18 0 0 X18
@@ -667,6 +709,7 @@ variable LIM-N
    SHIFT-VECTORS
    MEMORY-VECTORS
    COMPARE-VECTORS
+   CONDITIONAL-SELECT-VECTORS
    BRANCH-VECTORS
    SYSTEM-VECTORS
    REGISTER-RANGE-VECTORS
@@ -690,6 +733,7 @@ public
 : ROW-A@ ( n -- n )       dup VEC-RANGE cells VEC-A + @ ;
 : ROW-B@ ( n -- n )       dup VEC-RANGE cells VEC-B + @ ;
 : ROW-C@ ( n -- n )       dup VEC-RANGE cells VEC-C + @ ;
+: ROW-D@ ( n -- n )       dup VEC-RANGE cells VEC-D + @ ;
 : ROW-MASK@ ( n -- n )    dup VEC-RANGE cells VEC-MASK + @ ;
 : ROW-WORD@ ( n -- n )    dup VEC-RANGE cells VEC-WORD + @ ;
 
@@ -697,11 +741,13 @@ public
 : OOR-A@ ( n -- n )       dup OOR-RANGE cells OOR-A + @ ;
 : OOR-B@ ( n -- n )       dup OOR-RANGE cells OOR-B + @ ;
 : OOR-C@ ( n -- n )       dup OOR-RANGE cells OOR-C + @ ;
+: OOR-D@ ( n -- n )       dup OOR-RANGE cells OOR-D + @ ;
 
 : RES-FORM@ ( n -- n )    dup RES-RANGE cells RES-FORM + @ ;
 : RES-A@ ( n -- n )       dup RES-RANGE cells RES-A + @ ;
 : RES-B@ ( n -- n )       dup RES-RANGE cells RES-B + @ ;
 : RES-C@ ( n -- n )       dup RES-RANGE cells RES-C + @ ;
+: RES-D@ ( n -- n )       dup RES-RANGE cells RES-D + @ ;
 : RES-MASK@ ( n -- n )    dup RES-RANGE cells RES-MASK + @ ;
 : RES-RC@ ( n -- n )      dup RES-RANGE cells RES-RC + @ ;
 : RES-WORD@ ( n -- n )    dup RES-RANGE cells RES-WORD + @ ;

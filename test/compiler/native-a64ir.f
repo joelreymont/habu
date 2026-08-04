@@ -115,8 +115,9 @@ private
 \ than assumed. The eighteen the register conventions use are here; the four that
 \ reach the caller's data stack are checked in DSTACK-SPELL-CASE below, the two
 \ addressed cell forms in ADDR-SHAPE-CASE, the two addressed byte forms in
-\ BYTE-SHAPE-CASE, the fused compare-and-branch in CMPBR-SHAPE-CASE and the six
-\ bitwise and shift forms in BITWISE-CASE, and the count covers all thirty-four.
+\ BYTE-SHAPE-CASE, the fused compare-and-branch in CMPBR-SHAPE-CASE, the two
+\ conditional selects in SELZ-SHAPE-CASE and CMPSEL-SHAPE-CASE, and the six
+\ bitwise and shift forms in BITWISE-CASE, and the count covers all of them.
 : COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -164,10 +165,10 @@ private
    rv wc IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the fifty machine opcodes" T-LABEL
+   s" registration defines exactly the fifty-two machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 50 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 52 T= ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one
@@ -215,7 +216,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   3 T= 0 T= TTRUE ;
+   4 T= 0 T= TTRUE ;
 
 \ The spellings themselves, because every reference this dialect stores is a
 \ symbol and a renamed opcode would still read back through the same accessor.
@@ -675,6 +676,62 @@ private
    T-LABEL
    BND [: CMPBR-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE TTRUE 1 T= 2 T= 0 T= 2 T= TTRUE ;
+
+\ ---- the two conditional selects ---------------------------------------------
+\ What makes them a select rather than a branch, measured off their own schemas:
+\ each DEFINES a value and names NO successor, where the fused compare-and-branch
+\ above defines none and names two. A form that grew a successor, or lost its
+\ result, would stop being the thing this dialect added and this is where that
+\ shows. The operand counts are the two shapes apart: three for the form that
+\ tests one register against zero, four for the one that compares two, and only
+\ the second carries a condition.
+: SELZ-SHAPE-BODY ( IR-CTX:ctx -- bool n n n n bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:SELZ A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv n s" a64.selz" IR-SYM:FEQ?
+   rv n IR-SCHEMA:FOPERANDS
+   rv n IR-SCHEMA:FRESULTS
+   rv n IR-SCHEMA:FSUCCESSORS
+   rv n IR-SCHEMA:FATTRS
+   rv n IR-SCHEMA:FTERMINATOR?
+   rv n IR-SCHEMA:FTRAPS? ;
+
+: SELZ-SHAPE-CASE ( -- )
+   s" the zero-test select reads three registers, defines one and branches nowhere"
+   T-LABEL
+   BND [: SELZ-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TFALSE 0 T= 0 T= 1 T= 3 T= TTRUE ;
+
+: CMPSEL-SHAPE-BODY ( IR-CTX:ctx -- bool n n n n bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:CMPSEL A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-COND {: ck:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv n s" a64.cmpsel" IR-SYM:FEQ?
+   rv n IR-SCHEMA:FOPERANDS
+   rv n IR-SCHEMA:FRESULTS
+   rv n IR-SCHEMA:FSUCCESSORS
+   rv n IR-SCHEMA:FATTRS
+   qv rv key n 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL =
+   rv n IR-SCHEMA:FTERMINATOR?
+   rv n IR-SCHEMA:FTRAPS? ;
+
+: CMPSEL-SHAPE-CASE ( -- )
+   s" the fused compare-and-select reads four registers, defines one and carries the condition"
+   T-LABEL
+   BND [: CMPSEL-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TFALSE TTRUE 1 T= 0 T= 1 T= 4 T= TTRUE ;
 
 \ ---- the four float comparison forms -----------------------------------------
 \ Their shapes, and the one thing that is genuinely new in them: the two register
@@ -1253,7 +1310,9 @@ private
    drop
    BRANCH-SHAPE-CASE
    BRANCH-TERM-CASE
-   CMPBR-SHAPE-CASE ;
+   CMPBR-SHAPE-CASE
+   SELZ-SHAPE-CASE
+   CMPSEL-SHAPE-CASE ;
 
 : GROUP-FCMP ( IR-CTX:ctx -- )
    drop

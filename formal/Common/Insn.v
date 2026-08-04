@@ -238,6 +238,7 @@ Inductive insn : Type :=
 | Cmp (rn rm : Z)
 | Cmpi (rn imm : Z)
 | Cset (rd cond : Z)
+| Csel (rd rn rm cond : Z)
 | B (d : Z)
 | Bl (d : Z)
 | Bcond (cond d : Z)
@@ -289,6 +290,7 @@ Definition enc (i : insn) : Z :=
   | Cmp rn rm => Z.lor 0xEB00001F (Z.lor (fld (rn) 5) (fld (rm) 16))
   | Cmpi rn imm => Z.lor 0xF100001F (Z.lor (fld (rn) 5) (fld (imm) 10))
   | Cset rd cond => Z.lor 0x9A9F07E0 (Z.lor (fld (rd) 0) (fld (Z.lxor cond 1) 12))
+  | Csel rd rn rm cond => Z.lor 0x9A800000 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (Z.lor (fld (rm) 16) (fld (cond) 12))))
   | B d => Z.lor 0x14000000 (fld (low 26 d) 0)
   | Bl d => Z.lor 0x94000000 (fld (low 26 d) 0)
   | Bcond cond d => Z.lor 0x54000000 (Z.lor (fld (cond) 0) (fld (low 19 d) 5))
@@ -359,6 +361,7 @@ Definition wf (i : insn) : bool :=
   | Cmp rn rm => rok rn && rok rm
   | Cmpi rn imm => rok rn && uok 12 imm
   | Cset rd cond => rok rd && uok 4 cond
+  | Csel rd rn rm cond => rok rd && rok rn && rok rm && uok 4 cond
   | B d => sok 26 d
   | Bl d => sok 26 d
   | Bcond cond d => uok 4 cond && sok 19 d
@@ -419,6 +422,7 @@ Definition checked_regs (i : insn) : list Z :=
   | Cmp rn rm => [rn; rm]
   | Cmpi rn imm => [rn]
   | Cset rd cond => [rd]
+  | Csel rd rn rm cond => [rd; rn; rm]
   | B d => []
   | Bl d => []
   | Bcond cond d => []
@@ -471,6 +475,7 @@ Definition xregs (i : insn) : list Z :=
   | Cmp rn rm => [rn; rm]
   | Cmpi rn imm => [rn]
   | Cset rd cond => [rd]
+  | Csel rd rn rm cond => [rd; rn; rm]
   | B d => []
   | Bl d => []
   | Bcond cond d => []
@@ -533,6 +538,7 @@ Definition row_Stlr := R 0xFFFFFC00 0xC89FFC00 (fun w => Stlr (get 0 5 w) (get 5
 Definition row_Cmp := R 0xFFE0FC1F 0xEB00001F (fun w => Cmp (get 5 5 w) (get 16 5 w)).
 Definition row_Cmpi := R 0xFFC0001F 0xF100001F (fun w => Cmpi (get 5 5 w) (get 10 12 w)).
 Definition row_Cset := R 0xFFFF0FE0 0x9A9F07E0 (fun w => Cset (get 0 5 w) (Z.lxor (get 12 4 w) 1)).
+Definition row_Csel := R 0xFFE00C00 0x9A800000 (fun w => Csel (get 0 5 w) (get 5 5 w) (get 16 5 w) (get 12 4 w)).
 Definition row_B := R 0xFC000000 0x14000000 (fun w => B (sext 26 (get 0 26 w))).
 Definition row_Bl := R 0xFC000000 0x94000000 (fun w => Bl (sext 26 (get 0 26 w))).
 Definition row_Bcond := R 0xFF000010 0x54000000 (fun w => Bcond (get 0 4 w) (sext 19 (get 5 19 w))).
@@ -590,6 +596,7 @@ Definition table : list row :=
   ; row_Cmp
   ; row_Cmpi
   ; row_Cset
+  ; row_Csel
   ; row_B
   ; row_Bl
   ; row_Bcond
@@ -1086,6 +1093,17 @@ Proof.
   - cbv [row_Cset rmask rval enc]. lfields.
 Qed.
 
+Lemma dec_Csel : forall rd rn rm cond, wf (Csel rd rn rm cond) = true ->
+  decode (enc (Csel rd rn rm cond)) = Some (Csel rd rn rm cond).
+Proof.
+  intros rd rn rm cond H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_Csel).
+  - cbv [row_Csel rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Csel rmask rval enc]. lfields.
+Qed.
+
 Lemma dec_B : forall d, wf (B d) = true ->
   decode (enc (B d)) = Some (B d).
 Proof.
@@ -1324,6 +1342,7 @@ Proof.
   - apply dec_Cmp.
   - apply dec_Cmpi.
   - apply dec_Cset.
+  - apply dec_Csel.
   - apply dec_B.
   - apply dec_Bl.
   - apply dec_Bcond.
@@ -1402,6 +1421,7 @@ Definition opmask (i : insn) : Z :=
   | Cmp _ _ => 0xFFE0FC1F
   | Cmpi _ _ => 0xFFC0001F
   | Cset _ _ => 0xFFFF0FE0
+  | Csel _ _ _ _ => 0xFFE00C00
   | B _ => 0xFC000000
   | Bl _ => 0xFC000000
   | Bcond _ _ => 0xFF000010
@@ -1454,6 +1474,7 @@ Definition fldmask (i : insn) : Z :=
   | Cmp _ _ => 0x001F03E0
   | Cmpi _ _ => 0x003FFFE0
   | Cset _ _ => 0x0000F01F
+  | Csel _ _ _ _ => 0x001FF3FF
   | B _ => 0x03FFFFFF
   | Bl _ => 0x03FFFFFF
   | Bcond _ _ => 0x00FFFFEF

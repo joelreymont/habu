@@ -57,6 +57,8 @@
 
 : CSET, ( n n -- )  ENC-CSET EMITW ;
 
+: CSEL, ( n n n n -- )  ENC-CSEL EMITW ;
+
 : LDR, ( n n n -- )  ENC-LDR EMITW ;
 
 : STR, ( n n n -- )  ENC-STR EMITW ;

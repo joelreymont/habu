@@ -112,6 +112,12 @@ private
    form F-CSET = if a b CSET, true exit then
    false ;
 
+\ The one form that carries four operands, which is why it has a branch of its
+\ own rather than a fourth argument on the word above.
+: SELECT-CALL ( n n n n n -- bool ) {: form:n a:n b:n c:n d:n :}
+   form F-CSEL = if a b c d CSEL, true exit then
+   false ;
+
 : SYSTEM-CALL ( n n -- bool ) {: form:n a:n :}
    form F-SVC = if a SVC, true exit then
    form F-RET = if RET, true exit then
@@ -166,7 +172,7 @@ private
 public
 
 \ Emit one row through the shipped words and answer the position of its word.
-: EMIT-ROW ( n n n n n -- n ) {: form:n a:n b:n c:n mask:n :}
+: EMIT-ROW ( n n n n n n -- n ) {: form:n a:n b:n c:n d:n mask:n :}
    ASM-INIT
    form FORM-BRANCH? if
       form  form a BRANCH-REG  form a b BRANCH-DELTA  BRANCH-EMIT exit
@@ -176,10 +182,11 @@ public
    form a b c mask IMM-CALL if 0 exit then
    form a b c MEM-CALL if 0 exit then
    form a b COMPARE-CALL if 0 exit then
+   form a b c d SELECT-CALL if 0 exit then
    form a SYSTEM-CALL if 0 exit then
    E-CIE-FORM throw ;
 
-: EMITTED-WORD ( n n n n n -- n )
+: EMITTED-WORD ( n n n n n n -- n )
    EMIT-ROW U32@ ;
 
 private
@@ -197,7 +204,7 @@ private
 
 : VECTOR-ROW ( n -- ) {: r:n :}
    r ROW-LABEL
-   r ROW-FORM@ r ROW-A@ r ROW-B@ r ROW-C@ r ROW-MASK@ EMITTED-WORD
+   r ROW-FORM@ r ROW-A@ r ROW-B@ r ROW-C@ r ROW-D@ r ROW-MASK@ EMITTED-WORD
    r ROW-WORD@ T= ;
 
 \ How many words the row should have left in the buffer. Every plain mnemonic
@@ -246,7 +253,7 @@ private
    r RES-FORM@ FORM-NAME$ SB-APPEND
    s"  is not refused, and encodes" SB-APPEND
    SB$ T-LABEL
-   r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ r RES-MASK@ EMITTED-WORD
+   r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ r RES-D@ r RES-MASK@ EMITTED-WORD
    r RES-WORD@ T= ;
 
 : PHASE-RESERVED-ALLOWED ( -- )

@@ -167,6 +167,8 @@ create TXT
 : ARG+ ( -- IR-ID:ir-value-id )
    CC BB CELLT IR-BUILD:ADD-BLOCK-ARG ;
 
+
+
 : CLOSE-FUN ( -- )
    CC BB IR-BUILD:END-BLOCK drop
    CC BB IR-BUILD:END-FUN drop ;
@@ -263,14 +265,24 @@ $1000 constant BUMP-ADDR
    CLOSE-FUN ;
 
 \ ---- a comparison and the branch that tests it -------------------------------
-\ `: MAX2 ( n n -- n ) 2dup < if swap then drop ;` as the elaborator leaves it:
-\ four blocks - the entry that compares and branches, one stub per arm because a
-\ two-way branch carries no values, and the join that takes the chosen value as
-\ its argument. It is built here rather than elaborated for the reason every
-\ other fixture in this file is, and it is built ONCE and used three ways: the
-\ comparison it opens with is a parameter, and the value its two arms hand on is
-\ a parameter, so the fused case, the three conditions and the multi-use
-\ fall-back are the same shape with one thing changed.
+\ The four blocks a two-armed `if` leaves: the entry that compares and branches,
+\ one stub per arm because a two-way branch carries no values, and the join that
+\ takes the chosen value as its argument. It is built here rather than
+\ elaborated for the reason every other fixture in this file is, and it is built
+\ ONCE and used three ways: the comparison it opens with is a parameter, and the
+\ value its two arms hand on is a parameter, so the fused case, the three
+\ conditions and the multi-use fall-back are the same shape with one thing
+\ changed.
+\
+\ ONE ARM DIVIDES, AND THAT IS WHAT KEEPS THIS FIXTURE ABOUT A BRANCH. The
+\ if-conversion further down turns a selection whose arms are speculable into a
+\ machine select and no branch at all, and the shape without the division - a
+\ plain `a b < if a else b then` - is exactly what it converts; that shape has
+\ its own cases below. A division may TRAP, so its arm cannot be run on a path
+\ the program would not have taken, the region is refused, and the two-way
+\ branch survives to be fused. It is the smallest source-level fact that keeps a
+\ branch: an arm that divides, calls, loads or stores is a branch a real body
+\ still emits.
 : BLOCK-ID ( n -- IR-ID:ir-block-id )
    {: k:n :}
    BB IR-BUILD:MODULE-KEY k IR-ID:PACK-BLOCK ;
@@ -308,7 +320,8 @@ $1000 constant BUMP-ADDR
    o x y BINOP {: f:IR-ID:ir-value-id :}
    f 1 2 BRZ2
    BLOCK+
-   carry if f 3 BR1 else x 3 BR1 then
+   HIR-OPCODE:DIV x y BINOP {: q:IR-ID:ir-value-id :}
+   q 3 BR1
    BLOCK+
    carry if f 3 BR1 else y 3 BR1 then
    BLOCK+
@@ -334,6 +347,13 @@ $1000 constant BUMP-ADDR
 \ shape MAX-F has, and the reason MAX-F compiles today while RELU-F does not.
 : REALT ( -- IR-ID:ir-type-id )
    CC BB HIR:REAL-TYPE ;
+
+\ A block argument in the floating file. Only the if-conversion cases need one:
+\ a join that carries a double is the shape this leaf refuses to select, because
+\ choosing between two doubles is an instruction the shipped assembler has no
+\ encoder for.
+: FARG+ ( -- IR-ID:ir-value-id )
+   CC BB REALT IR-BUILD:ADD-BLOCK-ARG ;
 
 : CROSS ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: v:IR-ID:ir-value-id :}
@@ -374,7 +394,8 @@ $1000 constant BUMP-ADDR
    o x y FCMP2 {: f:IR-ID:ir-value-id :}
    f 1 2 BRZ2
    BLOCK+
-   carry if f 3 BR1 else xc 3 BR1 then
+   HIR-OPCODE:DIV xc yc BINOP {: q:IR-ID:ir-value-id :}
+   q 3 BR1
    BLOCK+
    carry if f 3 BR1 else yc 3 BR1 then
    BLOCK+
@@ -392,7 +413,8 @@ $1000 constant BUMP-ADDR
    o x FCMP1 {: f:IR-ID:ir-value-id :}
    f 1 2 BRZ2
    BLOCK+
-   xc 3 BR1
+   HIR-OPCODE:DIV xc xc BINOP {: q:IR-ID:ir-value-id :}
+   q 3 BR1
    BLOCK+
    xc 3 BR1
    BLOCK+
@@ -460,6 +482,64 @@ $1000 constant BUMP-ADDR
    CLOSE-VALUE RET1
    CLOSE-FUN ;
 
+\ ---- the selections that become a select ------------------------------------
+\ The same four blocks the branching fixture has, with nothing in the arms that
+\ could trap or touch memory - which is the whole of what the if-conversion
+\ admits. `carry` again says what the arms hand the join: two DIFFERENT values,
+\ which is what needs a select at all, or the comparison's own answer twice,
+\ which needs none because there is nothing to choose between.
+: BUILD-SELECT ( HIR:opcode bool -- )
+   {: o:HIR:opcode carry:bool :}
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   o x y BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   carry if f 3 BR1 else x 3 BR1 then
+   BLOCK+
+   carry if f 3 BR1 else y 3 BR1 then
+   BLOCK+
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ `: PICK ( n n n -- n ) {: c:n x:n y:n :} c if x else y then ;` - a selection
+\ on a value that no comparison next to it computed. There is nothing to fuse,
+\ so the tested value is compared against zero and the select is made on that.
+: BUILD-SELECT-VALUE ( -- )
+   3 1 OPEN-FUN
+   ARG+ {: c:IR-ID:ir-value-id :}
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   c 1 2 BRZ2
+   BLOCK+
+   x 3 BR1
+   BLOCK+
+   y 3 BR1
+   BLOCK+
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ The same selection with a join that carries a DOUBLE. Everything else about it
+\ is admissible, so it is the boundary itself: one type on one argument decides
+\ whether the branch survives.
+: BUILD-SELECT-REAL ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   ARG+ {: yc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   yc CROSS {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:LT xc yc BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   x 3 BR1
+   BLOCK+
+   y 3 BR1
+   BLOCK+
+   FARG+ drop
+   xc RET1
+   CLOSE-FUN ;
+
 \ ---- running the pass --------------------------------------------------------
 : A64-BUILDER ( -- IR-BUILD:builder )
    IR-BUILD:PLAN-BEGIN
@@ -477,11 +557,29 @@ $1000 constant BUMP-ADDR
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
+\ The same contract with the whole general file to hand out. The cases about a
+\ branching or selecting body run under this one, because whether a selection
+\ may become a select at all is partly a question about the ROUTINE: a machine
+\ select reads its sources at one instant, so a routine with no registers to
+\ hand out cannot hold one and the conversion is refused for that reason alone.
+\ Under the contract above every such case would be refused by the pool and none
+\ of them would be asking about the rule they are written for.
+: POOLED ( -- A64EFF:routine )
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
 \ Bind the source dialect while the module is still live, freeze it, and select.
 : SELECTED ( -- IR-BUILD:module )
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m A64-BUILDER TXT TXT-N NO-PLACES A64SEL:SELECT ;
+
+: SELECTED-POOL ( -- IR-BUILD:module )
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m A64-BUILDER TXT TXT-N POOLED A64SEL:SELECT ;
 
 \ ---- reading the selected module ---------------------------------------------
 1 TYPED-BUFFER R-KEY IR-ID:ir-module-key
@@ -540,6 +638,13 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 
 : OPS ( -- n )
    R-BLKR RV BLK0 IR-FUN:FOP-COUNT ;
+
+\ How many blocks the selected function has. The if-conversion is the one thing
+\ in this pass that changes the number, so a case that asserts the branch is
+\ gone asserts this too: a select in a module that still had four blocks would
+\ be a select with the branch still beside it.
+: BLOCKS ( -- n )
+   RF  RK 0 IR-ID:PACK-FUN  IR-FUN:FBLOCK-COUNT ;
 
 : ATTR-INT ( n n -- n )
    {: i:n k:n :}
@@ -630,6 +735,126 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: ADD-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE ;
 
+
+\ ---- the selection that becomes a select ------------------------------------
+\ WHAT THE CONVERSION IS, MEASURED. The four-block shape becomes TWO blocks: the
+\ entry, which now holds the machine select, the copy that carries its answer
+\ across the one edge left, and that edge's branch; and the join, unchanged. The
+\ two arms are gone, and with them the two-way branch - which is the whole point
+\ of the transform and the thing the placement measurement asked for
+\ (docs/codegen-placement.md).
+\
+\ THE OPERANDS SAY THE POLARITY IS RIGHT, and they are why this case reads four
+\ of them rather than counting instructions. A source `<` answers a flag that is
+\ true when the relation holds, and the source branch takes its FIRST successor
+\ when that flag is ZERO - the arm the relation did NOT choose. A Csel writes its
+\ first source when the condition holds. So the fused select compares x against
+\ y under `lt` and takes the value the SECOND arm handed over, y, as its first
+\ source: `csel d, y, x, lt` is `x < y ? y : x`, which is what the source
+\ computes. A select whose two sources were the other way round is the other
+\ arm on every unequal pair, and these two operand assertions are what catches
+\ it.
+: SELECT-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool bool bool n )
+   HIR-MOD
+   HIR-OPCODE:LT false BUILD-SELECT
+   SELECTED-POOL READ!
+   BLOCKS
+   OPS
+   0 s" a64.cmpsel" OPCODE-IS?
+   0 s" a64.cmpbr" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 1 OPERAND@ 1 ARG@ SAME-VALUE?
+   0 2 OPERAND@ 1 ARG@ SAME-VALUE?
+   0 3 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 0 s" a64.cond" ATTR-KEY-IS?
+   0 0 ATTR-INT ;
+
+: SELECT-CASE ( -- )
+   s" a selection whose arms are single values becomes a select and no branch"
+   T-LABEL
+   WBND [: SELECT-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:LT A64IR:COND-CODE T=
+   TTRUE TTRUE TTRUE TTRUE TTRUE TFALSE TTRUE
+   3 T= 2 T= ;
+
+\ The rest of the converted entry block: the answer is copied into a value of
+\ its own and handed to the join by an ordinary one-way branch, exactly as every
+\ other argument-carrying edge in this pass crosses. There is no two-way branch
+\ left anywhere in it.
+: SELECT-REST-BODY ( IR-CTX:ctx -- bool bool bool )
+   HIR-MOD
+   HIR-OPCODE:LT false BUILD-SELECT
+   SELECTED-POOL READ!
+   1 s" a64.mov" OPCODE-IS?
+   2 s" a64.b" OPCODE-IS?
+   2 s" a64.cbz" OPCODE-IS? ;
+
+: SELECT-REST-CASE ( -- )
+   s" the converted block ends in one unconditional branch to the join" T-LABEL
+   WBND [: SELECT-REST-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE ;
+
+\ A selection on a value no comparison beside it computed. There is nothing to
+\ fuse, so the machine compares the value against zero itself and selects on
+\ `ne` - which is the same polarity by a different route, because hir.brz takes
+\ its second successor when the value is NOT zero.
+: SELECT-VALUE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+   HIR-MOD
+   BUILD-SELECT-VALUE
+   SELECTED-POOL READ!
+   BLOCKS
+   0 s" a64.selz" OPCODE-IS?
+   0 s" a64.cmpsel" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 1 OPERAND@ 2 ARG@ SAME-VALUE?
+   0 2 OPERAND@ 1 ARG@ SAME-VALUE? ;
+
+: SELECT-VALUE-CASE ( -- )
+   s" a selection on a plain value becomes a zero test and a select" T-LABEL
+   WBND [: SELECT-VALUE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TFALSE TTRUE 2 T= ;
+
+\ Two arms that hand the join the SAME value need no select at all: there is
+\ nothing to choose between. The branch still goes, because the region is still
+\ admissible - what disappears is only the instruction that would have chosen.
+\ This is also what a memory order crossing a converted selection is, and it is
+\ the reason the conversion needs no case for one.
+: SELECT-SAME-BODY ( IR-CTX:ctx -- n bool bool bool )
+   HIR-MOD
+   HIR-OPCODE:LT true BUILD-SELECT
+   SELECTED-POOL READ!
+   OPS
+   0 s" a64.flag" OPCODE-IS?
+   1 s" a64.mov" OPCODE-IS?
+   2 s" a64.b" OPCODE-IS? ;
+
+: SELECT-SAME-CASE ( -- )
+   s" two arms handing over one value need no select" T-LABEL
+   WBND [: SELECT-SAME-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE 3 T= ;
+
+\ THE ADMISSION BOUNDARY, BOTH SIDES OF IT. The fused-branch fixture above is
+\ this same selection with a division in one arm, and it still branches: FUSE-CASE
+\ reads a64.cmpbr out of it. This one is the same selection with a DOUBLE at the
+\ join, and it still branches too. Neither is a shape the conversion may take,
+\ and each is refused for its own reason - a division may raise on a path the
+\ program would not have taken, and a double is a choice this dialect has no
+\ instruction for.
+\ The entry block's first two operations are the crossings that read the two
+\ cells as doubles, so the terminator this case reads is the third.
+: SELECT-REAL-BODY ( IR-CTX:ctx -- n bool bool )
+   HIR-MOD
+   BUILD-SELECT-REAL
+   SELECTED-POOL READ!
+   BLOCKS
+   2 s" a64.cmpbr" OPCODE-IS?
+   2 s" a64.cmpsel" OPCODE-IS? ;
+
+: SELECT-REAL-CASE ( -- )
+   s" a selection whose join carries a double keeps its branch" T-LABEL
+   WBND [: SELECT-REAL-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE 4 T= ;
+
 \ ---- the fused compare-and-branch --------------------------------------------
 \ The entry block of the branching shape holds ONE operation when the comparison
 \ fuses: the source comparison selects to nothing at all, and the branch selects
@@ -649,7 +874,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : FUSE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool n n n )
    HIR-MOD
    HIR-OPCODE:LT false BUILD-BRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    OPS
    0 s" a64.cmpbr" OPCODE-IS?
    0 s" a64.flag" OPCODE-IS?
@@ -676,7 +901,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : FUSE-LE-BODY ( IR-CTX:ctx -- bool n )
    HIR-MOD
    HIR-OPCODE:LE false BUILD-BRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    0 s" a64.cmpbr" OPCODE-IS?
    0 0 ATTR-INT ;
 
@@ -688,7 +913,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : FUSE-EQ-BODY ( IR-CTX:ctx -- bool n )
    HIR-MOD
    HIR-OPCODE:EQUAL false BUILD-BRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    0 s" a64.cmpbr" OPCODE-IS?
    0 0 ATTR-INT ;
 
@@ -706,7 +931,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : NOFUSE-BODY ( IR-CTX:ctx -- n bool bool bool bool n )
    HIR-MOD
    HIR-OPCODE:LT true BUILD-BRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    OPS
    0 s" a64.flag" OPCODE-IS?
    1 s" a64.cbz" OPCODE-IS?
@@ -756,7 +981,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : FFUSE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool n n n )
    HIR-MOD
    HIR-OPCODE:FLT false BUILD-FBRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    OPS
    2 s" a64.fcmpbr" OPCODE-IS?
    2 s" a64.cmpbr" OPCODE-IS?
@@ -783,21 +1008,21 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : FFUSE-GT-BODY ( IR-CTX:ctx -- bool n )
    HIR-MOD
    HIR-OPCODE:FGT false BUILD-FBRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    2 s" a64.fcmpbr" OPCODE-IS?
    2 0 ATTR-INT ;
 
 : FFUSE-EQ-BODY ( IR-CTX:ctx -- bool n )
    HIR-MOD
    HIR-OPCODE:FEQ false BUILD-FBRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    2 s" a64.fcmpbr" OPCODE-IS?
    2 0 ATTR-INT ;
 
 : FFUSE-LTZ-BODY ( IR-CTX:ctx -- bool bool n n )
    HIR-MOD
    HIR-OPCODE:FLTZ BUILD-FZBRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    1 s" a64.fcmpbrz" OPCODE-IS?
    1 s" a64.fcmpbr" OPCODE-IS?
    1 OPERANDS
@@ -806,7 +1031,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : FFUSE-EQZ-BODY ( IR-CTX:ctx -- bool n n )
    HIR-MOD
    HIR-OPCODE:FEQZ BUILD-FZBRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    1 s" a64.fcmpbrz" OPCODE-IS?
    1 OPERANDS
    1 0 ATTR-INT ;
@@ -838,7 +1063,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : FNOFUSE-BODY ( IR-CTX:ctx -- n bool bool bool bool n )
    HIR-MOD
    HIR-OPCODE:FLT true BUILD-FBRANCH
-   SELECTED READ!
+   SELECTED-POOL READ!
    OPS
    2 s" a64.fflag" OPCODE-IS?
    3 s" a64.cbz" OPCODE-IS?
@@ -1251,6 +1476,11 @@ public
    FUSE-LE-CASE
    FUSE-EQ-CASE
    NOFUSE-CASE
+   SELECT-CASE
+   SELECT-REST-CASE
+   SELECT-VALUE-CASE
+   SELECT-SAME-CASE
+   SELECT-REAL-CASE
    FLAG-VALUE-CASE
    FFUSE-CASE
    FFUSE-REST-CASE

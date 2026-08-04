@@ -59,7 +59,9 @@ the one branch displacement that differs by construction; each driver holds
 exactly one call and it enters that arm's own copy; every arm running one program
 reached the same answer; and the branchless stand-in really has no branch (the
 copy rule's own count of unmovable instructions is 0 for it and 4 for the engine
-fold, 6 for the chain fold) at exactly the fold's 144 bytes.
+fold) at exactly the fold's 144 bytes. The chain fold's own count was 6 when the
+tables below were taken and is 0 now — see *What the chain does with this body
+today* at the end — and the sweep refuses if it is anything else.
 
 `ps/call` is the arm's fastest run **minus the baseline's**, divided by the
 204800 calls a run makes. The subtraction matters: the driver pays a loop, a byte
@@ -269,8 +271,47 @@ symptom: the chain's branch-around idiom is what makes its leaf both slower at
 matched placement and more sensitive to placement. Turning `cmp / b.cond then / b
 else` into a `csel`-shaped selection where the arms are small removes branches
 rather than moving them, which is the only change here that improves every
-placement at once. That is filed as its own dot.
+placement at once. That was filed as its own dot and has landed; the section
+below is what it did to these numbers.
 
 The `tools/codegen-compare.f` constant-input measurement is filed separately: it
 is not wrong, but its per-call figures for branchy corpus words are a
 perfect-prediction number and the committed tables do not say so.
+
+## What the chain does with this body today
+
+`src/compiler/native/select.f` now if-converts a selection whose arms are single
+values into a machine select, so the chain's copy of this fold has **no branch at
+all**: 48 bytes where it used to be 76, and 0 branch instructions where it used to
+be 6. The engine's copy is untouched — 36 instructions, 148 bytes, 4 branches — so
+phase 1 is the same measurement it always was and phase 3 is a measurement of a
+different body.
+
+Two fresh runs of the same sweep, on the same host, read the same way as the
+tables above:
+
+| | run A | run B |
+| --- | ---: | ---: |
+| engine fold, best placement | 2082 ps/call | 1705 ps/call |
+| chain fold, best placement | **698 ps/call** | **611 ps/call** |
+| chain against engine, best vs best | **−66 %** | **−64 %** |
+| engine fold, mean over the period | 3004 | 2789 |
+| chain fold, mean over the period | 794 | 689 |
+| engine fold, span across the period | 2.05x | 2.47x |
+| chain fold, span across the period | **1.44x** | **1.48x** |
+| branchless 144-byte stand-in, span | 1.34x | 1.38x |
+
+Both halves of part (b) turn over. The chain leaf was 28 per cent slower than the
+engine's at matched best placement and is now about a third of it, and that is not
+a placement result: the branch is gone, so the same body runs without the
+mispredictions the pseudo-random byte stream used to buy. The placement
+sensitivity went with it — the chain's span across the whole period has fallen
+from roughly 1.9x to 1.44x, which is the branchless stand-in's own span in the
+same run. Phase 3 no longer has a band anywhere; what is left is the harness
+floor, and where the routine lands no longer decides what it costs.
+
+Part (c) is unchanged, and this result makes the case against an aligner stronger
+rather than weaker. The effect exists only for a callee with data-dependent
+branches; the answer to a leaf that has them is to take them out, which improves
+every placement at once, and not to choose a residue for it, which improves one
+placement and worsens another.

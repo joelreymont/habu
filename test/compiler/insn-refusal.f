@@ -45,10 +45,12 @@ private
    ;MATCH ;
 
 : RESERVED-ROW ( n -- ) {: r:n :}
-   r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ r RES-MASK@ COMPILER-INSN-CASES:EMIT-ROW drop ;
+   r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ r RES-D@ r RES-MASK@
+   COMPILER-INSN-CASES:EMIT-ROW drop ;
 
 : RANGE-ROW ( n -- ) {: r:n :}
-   r OOR-FORM@ r OOR-A@ r OOR-B@ r OOR-C@ 0 COMPILER-INSN-CASES:EMIT-ROW drop ;
+   r OOR-FORM@ r OOR-A@ r OOR-B@ r OOR-C@ r OOR-D@ 0
+   COMPILER-INSN-CASES:EMIT-ROW drop ;
 
 : LIMM-ROW ( n -- ) {: r:n :}
    r LIMM-BAD-MASK >LIMM drop ;

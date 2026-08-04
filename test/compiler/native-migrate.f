@@ -29,6 +29,7 @@
 require lib/test.f
 require test/checker-assert.f
 require src/compiler/native/migrate.f
+require src/compiler/native/codewalk.f
 
 package NMIGRATE-TEST
 
@@ -779,6 +780,98 @@ public
    s" -0.0 0.0 NMG-BEQ" EV-N   -0.0 0.0 NMI-BEQ T=
    s" -0.0 0.0 NMG-BLT" EV-N   -0.0 0.0 NMI-BLT T= ;
 
+
+\ ---- what a converted selection leaves in the published record ---------------
+\ THE ONE PLACE THE CLAIM CAN BE MADE ABOUT REAL BYTES. Every other statement
+\ about the if-conversion in src/compiler/native/select.f is about a module: the
+\ selected operations, the block count, the operands. This is the record the
+\ engine will actually enter, walked instruction by instruction through
+\ src/compiler/native/codewalk.f - the same walk the redirection seam and the
+\ workload scan use - and counted for branches through the form tests below and
+\ src/compiler/native/branch.f's own reader for the one that is a call. Nothing
+\ here re-derives where a record starts or how long it is; both come off the
+\ dictionary, which is where a caller finds them.
+\
+\ TWO BODIES, ONE SOURCE-LEVEL DIFFERENCE. Both are the range fold that
+\ docs/codegen-placement.md measured - two tests, each leaving the word from the
+\ middle - and they differ in one thing: the second divides in an arm. A
+\ division may raise, so its arm cannot be run on a path the program would not
+\ have taken, the region is refused, and the branches stay. That is the
+\ admission rule read from the outside: the same shape converts or does not
+\ according to one operation in one arm, and the record says which.
+$FC000000 constant B-MASK            \ the unconditional branch
+$14000000 constant B-FORM
+$FF000010 constant BCOND-MASK        \ the conditional branch
+$54000000 constant BCOND-FORM
+$FF000000 constant CBZ-MASK          \ the two compare-with-zero branches
+$B4000000 constant CBZ-FORM
+$B5000000 constant CBNZ-FORM
+
+variable BRANCH-N
+
+\ Is this instruction word one that can move control? The branch-with-link is
+\ asked of src/compiler/native/branch.f, which owns that form for the three
+\ seams that read call sites; the other four are named here by their own
+\ encodings because nothing else in the tree has to know them.
+: BRANCH-INSN? ( n -- bool )
+   {: w:n :}
+   w NBR:BL? if true exit then
+   w B-MASK and B-FORM = if true exit then
+   w BCOND-MASK and BCOND-FORM = if true exit then
+   w CBZ-MASK and CBZ-FORM = if true exit then
+   w CBZ-MASK and CBNZ-FORM = ;
+
+\ The walk's callback. It counts into a cell rather than onto the stack because
+\ a quotation cannot read the enclosing word's locals, which is the same reason
+\ every other caller of this walk parks its answer.
+: BRANCH-NOTE ( n n -- )
+   {: at:n w:n :}
+   w BRANCH-INSN? if BRANCH-N @ 1+ BRANCH-N ! then ;
+
+: BRANCHES-IN ( ptr u8 n -- n )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   0 BRANCH-N !
+   a u REC-START  a u REC-LEN  [: BRANCH-NOTE ;] NWALK:SPAN-EACH
+   BRANCH-N @ ;
+
+: FOLD-MIGRATION ( -- )
+   s" : NMG-FOLD ( n -- n ) {: c:n :} c 65 < if c exit then c 90 > if c exit then c 32 or ;"
+      1 1 REGS NMIGRATE:DEFINE ;
+
+: TRAPPING-MIGRATION ( -- )
+   s" : NMG-FOLDIV ( n -- n ) {: c:n :} c 65 < if 100 c / exit then c 90 > if c exit then c 32 or ;"
+      1 1 REGS NMIGRATE:DEFINE ;
+
+\ The interpreted twins, compiled by the engine from the same text, so the
+\ answers are held against the emitter this chain is replacing and not against
+\ numbers written here.
+: NMI-FOLD ( n -- n ) {: c:n :}
+   c 65 < if c exit then c 90 > if c exit then c 32 or ;
+
+: NMI-FOLDIV ( n -- n ) {: c:n :}
+   c 65 < if 100 c / exit then c 90 > if c exit then c 32 or ;
+
+: BRANCHLESS-CASE ( -- )
+   FOLD-MIGRATION
+   TRAPPING-MIGRATION
+
+   s" the converted selection leaves no branch instruction in the record" T-LABEL
+   s" NMG-FOLD" BRANCHES-IN 0 T=
+
+   s" a selection whose arm may trap keeps its branches" T-LABEL
+   s" NMG-FOLDIV" BRANCHES-IN 0 T<>
+
+   s" and both answer what the engine's compilation of the same source answers"
+   T-LABEL
+   s" 64 NMG-FOLD" EV-N   64 NMI-FOLD T=
+   s" 65 NMG-FOLD" EV-N   65 NMI-FOLD T=
+   s" 77 NMG-FOLD" EV-N   77 NMI-FOLD T=
+   s" 90 NMG-FOLD" EV-N   90 NMI-FOLD T=
+   s" 91 NMG-FOLD" EV-N   91 NMI-FOLD T=
+   s" 64 NMG-FOLDIV" EV-N 64 NMI-FOLDIV T=
+   s" 50 NMG-FOLDIV" EV-N 50 NMI-FOLDIV T=
+   s" 91 NMG-FOLDIV" EV-N 91 NMI-FOLDIV T= ;
+
 \ maki/autograd.f:48 verbatim, which is the third corpus's MAX-F: the shape
 \ where the fused branch's arms carry the compared values themselves. What it
 \ adds to the cases above is that the value the branch ANSWERS is one of the two
@@ -994,6 +1087,7 @@ public
    FCMP-MIGRATIONS
    FCMP-FLAG-CASE
    FCMP-FUSED-CASE
+   BRANCHLESS-CASE
    MAXF-CASE
    SHAPE-CASE
    FLOAT-PLACE-CASES

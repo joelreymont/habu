@@ -250,86 +250,74 @@ create TXT TEXT-CAP allot
    NFIX:BINDING [: HABU-BODY ;] IR-CTX:WITH-CONTEXT
    121 T= 49 T= 49 T= 6 T= ;
 
-\ ---- a definition with a branch, all the way through -------------------------
-\ The same run over a body whose answer depends on which way a branch went. Four
-\ blocks come out of `if … then`: the entry that compares and branches, the stub
-\ the false arm reaches the join through, the true arm, and the join that takes
-\ both arms' values as its arguments. What this case adds to the two above is the
-\ layout and the fixups - the block starts are asserted exactly, and so are the
-\ two branches, decoded as the numbers the assembler produces for them.
+\ ---- a definition whose two arms become a select -----------------------------
+\ The same run over a body whose answer depends on which of two values it
+\ chooses. `2dup < if swap then drop` is a two-armed selection whose arms are
+\ single values and whose join is one block, which is exactly the shape
+\ src/compiler/native/select.f converts: the two arms and the two-way branch go
+\ away, both answers are computed, and a Csel picks between them. What comes out
+\ is TWO blocks - the entry, which computes and chooses, and the join, which
+\ publishes and returns - where the branching shape had four.
 \
-\ THE ENTRY BLOCK ENDS IN THE FUSED COMPARE-AND-BRANCH, WHICH IS WHY IT IS TWO
-\ AND NOT FIVE. `2dup <` answers a flag whose only reader is the `if` right
-\ after it, so src/compiler/native/select.f selects the pair as one a64.cmpbr:
-\ compare, branch on the condition, branch. The first two land at indices three
-\ and four; the two the old shape spent materialising the flag as a number - the
-\ `cset` and the `neg` - are not emitted at all, and neither is the third
-\ instruction of the fused form, for the reason below.
+\ WHY THAT IS THE SHAPE WORTH PINNING HERE. docs/codegen-placement.md measured
+\ this chain's branch-around idiom costing twenty-eight per cent at matched
+\ placement against the engine on data no predictor can learn, and being twice as
+\ sensitive to where the routine lands. A select removes the branch rather than
+\ moving it, which is the only change that improves every placement at once, and
+\ this case is the end-to-end evidence that the whole chain really emits one:
+\ no conditional branch anywhere in the routine, and the answers unchanged.
 \
-\ AND TWO OF ITS BRANCHES ARE NOT THERE AT ALL, WHICH IS THE ELISION. A
-\ terminator's trailing unconditional branch is left out when the block it names
-\ is the block laid out next, because the machine reaches that block by running
-\ into it (src/compiler/native/emit.f, FALL-THRU?). Two of the four blocks here
-\ are in that position: the entry block's unconditional half goes to block one,
-\ which is laid out immediately after it, and block two - the arm that swaps -
-\ ends in a branch to the join, which is laid out immediately after IT. Both are
-\ gone. That is why this shape is thirteen instructions rather than fifteen, and
-\ why the block starts are 0, 5, 8 and 10 rather than 0, 6, 9 and 12.
+\ THE ANSWERS ARE WHAT HOLD THE POLARITY. A Csel writes its FIRST source when
+\ the condition holds, and the arm a Habu `if` takes is the source branch's
+\ SECOND successor, so the conversion puts the second arm's value first. Getting
+\ that the wrong way round answers 3 for `3 4 NCH-MAX` instead of 4 and 9 for
+\ `9 -1` instead of -1's partner - which is why both an ordered pair and a pair
+\ with a negative in it are run.
 \
-\ WHY THE TWO WORDS ARE PINNED, AND WHY THESE TWO. A branch is the one
-\ instruction whose operand is not in the module: it is the distance to a block,
-\ computed from the layout. Asserting the emitted word is the only way to say the
-\ distance was computed from the right end - a fixup to the wrong block, or a
-\ displacement measured from the branch's block instead of the branch itself,
-\ changes exactly these numbers and nothing else the suite can see. And the two
-\ chosen are the two sides of the elision rule. The `b.lt` at index 4 carries +4,
-\ which lands on block TWO, the arm that swaps: it is a conditional, so the rule
-\ never touches it, and its displacement moved from +5 to +4 exactly because the
-\ layout in front of it lost an instruction. The `b` at index 7 carries +3, which
-\ lands on block THREE, the join: it is an unconditional branch that is emitted
-\ in full, because block one is followed by block two and not by its own
-\ successor. An elision that fired on a target that is not the next block would
-\ delete that branch, and block one would fall into the swapping arm instead of
-\ the join - which is why the execution rows below are what really hold it.
-\
-\ AND WHY THE CONDITION IN IT IS `lt` WITH THE SUCCESSORS THE OTHER WAY ROUND. A
-\ Habu flag is true when the source relation holds, and the source two-way
-\ branch goes to its FIRST successor when that flag is zero - the arm the
-\ comparison did not choose - while a64.cmpbr goes to its first successor when
-\ the condition HOLDS. So the fused branch keeps `<` as `lt` and takes the
-\ source branch's SECOND successor first. The other wiring - negate the
-\ condition, keep the order - computes the same program and is measurably slower
-\ on loops, which is why src/compiler/native/select.f states which one it uses
-\ and why; it is also the wiring that leaves the unconditional half pointing at
-\ the next block, so it is what makes the elision above possible at all. Getting
-\ either half wrong sends `3 4 NCH-MAX` down the arm that does not swap and
-\ answers 3, which is what the two execution rows below catch.
-\
-\ The instruction before the two branches is the compare itself, asserted with
-\ its two register fields masked out: which registers the allocator chose is not
-\ this suite's business, but that the fused operation begins with a Cmp and not
-\ with something that writes a register is.
-\ AND THE FOUR COPIES ARE THE OTHER SIDE OF THE COALESCING RULE. This is the
-\ smallest routine whose edge copies CANNOT be removed, and it is why the copies
-\ exist at all. The two arms hand the join the same two values the other way
-\ round - one passes (a, b) and the other (b, a) - so the join's first argument
-\ is a class holding a copy of `a` and a copy of `b`, and both of those are made
-\ while `a` and `b` are still live. Merging either copy's ends into the argument
-\ class would put two values that are live at the same instant in one register,
-\ so src/compiler/native/regalloc.f refuses the merge, all four copies stay real
-\ instructions, and the swap happens.
-\
-\ A COALESCER THAT SKIPPED THE INTERFERENCE TEST DIES HERE TWICE. It would merge
-\ the copies away, and this count would drop; and the routine would then swap
-\ with one register, which answers 3 for `3 4 NCH-MAX` instead of 4. The count is
-\ asserted as well as the answers because the count says WHY the answers came out
-\ right - a later pass that removed the copies some other way and still answered
-\ 4 would be a different program and should be looked at.
-4 constant SWAP-COPIES               \ two arms, two values each, none of them coalescible
+\ AND THE COPIES ARE ZERO, WHICH IS THE OTHER SIDE OF THE OLD SWAP. The
+\ branching shape could not coalesce its four edge copies, because the two arms
+\ handed the join the same two values the other way round and every copy was
+\ made while both were still live. With no arms there are no such edges: the
+\ selects write their answers straight into the registers the join's arguments
+\ were given, and the copies the conversion's own edge asks for are all
+\ coalescible. A copy left here would mean the allocator stopped merging a copy
+\ whose ends do not interfere.
+$FFE00C00 constant CSEL-SHAPE        \ the Csel form, register and condition fields cleared
+$9A800000 constant CSEL-FORM
 $FFE0FC1F constant CMP-SHAPE         \ the Cmp form with its two register fields cleared
 $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
-1409286283 constant BLT-TO-TWO       \ B.lt +4, the fused branch to block two
-335544323 constant B-TO-THREE        \ B +3, block one's branch to the join
+
+: CSELS ( -- n )
+   0
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ CSEL-SHAPE and CSEL-FORM = if 1+ then
+   loop ;
+
+\ The conditional SET, counted the same way: Csinc with both source registers
+\ the zero register, which is what a Cset is and what the middle instruction of
+\ a materialised Habu flag is. No fused form of this dialect emits one, so its
+\ presence is what says a comparison answered a number rather than being folded
+\ into the thing that read it.
+$FFFF0FE0 constant CSET-SHAPE
+$9A9F07E0 constant CSET-FORM
+
+: CSETS ( -- n )
+   0
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ CSET-SHAPE and CSET-FORM = if 1+ then
+   loop ;
+
+\ And the conditional branch, counted the same way. Zero of them is the whole
+\ claim this case makes about the shape: not "fewer branches" but none.
+$FF000010 constant BCOND-SHAPE
+$54000000 constant BCOND-FORM
+
+: BCONDS ( -- n )
+   0
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ BCOND-SHAPE and BCOND-FORM = if 1+ then
+   loop ;
+
 : SRC3 ( -- ptr u8 n )
    s" : NCH-MAX ( n n -- n ) 2dup < if swap then drop ;" ;
 
@@ -343,7 +331,7 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    CC BB TAPE p r 2 1 NELAB:COLON drop ;
 
-: BRANCH-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n n n n )
+: BRANCH-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n n )
    {: c:IR-CTX:ctx :}
    c 0 R-CTX !
    c HIR-MOD 0 R-BLD !
@@ -357,11 +345,9 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    A64EMIT:BLOCKS
    0 A64EMIT:BLOCK-START@
    1 A64EMIT:BLOCK-START@
-   2 A64EMIT:BLOCK-START@
-   3 A64EMIT:BLOCK-START@
    3 A64EMIT:WORD@ CMP-SHAPE and
-   4 A64EMIT:WORD@
-   7 A64EMIT:WORD@
+   CSELS
+   BCONDS
    COPIES
    NRUN:PUBLISH {: fn:n :}
    3 4 fn NRUN:ENTER2
@@ -370,13 +356,12 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    s" 9 -1 NCH-MAX" EV-N ;
 
 : BRANCH-CASE ( -- )
-   s" a definition with a branch compiles, lays out and runs" T-LABEL
+   s" a definition whose arms are single values compiles to a select and runs"
+   T-LABEL
    NFIX:BINDING [: BRANCH-BODY ;] IR-CTX:WITH-CONTEXT
    9 T= 4 T= 9 T= 4 T=
-   SWAP-COPIES T=
-   B-TO-THREE T= BLT-TO-TWO T= CMP-FORM T=
-   10 T= 8 T= 5 T= 0 T=
-   4 T= 13 T= -1 T= 7 T= ;
+   0 T= 0 T= 2 T= CMP-FORM T=
+   7 T= 0 T= 2 T= 10 T= -1 T= 7 T= ;
 
 \ ---- a definition that reads and writes memory -------------------------------
 \ The same run over a body whose whole point is a side effect, and the first one
@@ -893,21 +878,19 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
 \ is needed to give the flag a second reader, and adding anything would only make
 \ the fixture harder to read.
 \
-\ WHAT IT ASSERTS. Fourteen instructions and four blocks, and the instruction at
-\ index six is a Cbz and not a B.cond - checked by its top byte, because which
-\ register the Cbz tests and how far it jumps are not this case's business. Six
-\ is where the two-way branch lands only when the flag really was materialised:
-\ the pointer down, two loads, then the comparison's three, and the branch after
-\ them. A fusion that ignored the use count would put a B.cond at index four
-\ instead, and leave the value the two edges carry defined by nothing at all.
+\ WHAT IT ASSERTS, AND WHAT SAYS THE FLAG WAS MATERIALISED. Both arms of this
+\ `if` are empty, so both hand the join the same value and the selection is
+\ converted with no select emitted at all - there is nothing to choose between.
+\ What is left is the comparison itself, and the question this case exists for
+\ is whether it was materialised or folded into something. One Cset says it was:
+\ a64.flag is a Cmp, a Cset and a negation, and the Cset is the instruction no
+\ fused form of this dialect emits. A fusion that ignored the use count would
+\ put the comparison INTO the branch or the select instead, leaving no Cset and
+\ the value the two edges carry defined by nothing at all.
 \
-\ AND FOURTEEN RATHER THAN FIFTEEN BECAUSE THE UNFUSED TWO-WAY BRANCH ELIDES
-\ TOO. a64.brz is a Cbz to its first successor and an unconditional branch to its
-\ second, and that second successor is the block laid out immediately after this
-\ one, so the branch is not emitted and the not-taken path falls into it
-\ (src/compiler/native/emit.f, FALL-THRU?). The rule is the terminator's trailing
-\ unconditional branch, whichever terminator carries it - which is why this
-\ shape, with no fusion in it anywhere, is one instruction shorter as well.
+\ AND NO CONDITIONAL BRANCH AND NO SELECT, which is the conversion. The two-way
+\ branch and both stubs are gone, so nine instructions and two blocks where the
+\ branching shape was fourteen and four.
 : SRC11 ( -- ptr u8 n )
    s" : NCH-LTKEEP ( n n -- bool ) < dup if then ;" ;
 
@@ -920,7 +903,7 @@ $B4000000 constant CBZ-KIND          \ Cbz - the unfused two-way branch
    SRC11 EV
    NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
 
-: LTKEEP-BODY ( IR-CTX:ctx -- n n n n n n n )
+: LTKEEP-BODY ( IR-CTX:ctx -- n n n n n n n n n )
    {: c:IR-CTX:ctx :}
    c 0 R-CTX !
    c HIR-MOD 0 R-BLD !
@@ -930,7 +913,9 @@ $B4000000 constant CBZ-KIND          \ Cbz - the unfused two-way branch
    CC BB TXT TEXT-LEN 0 REGS 2 1 NFIX:RUN-HABU
    A64EMIT:INSNS
    A64EMIT:BLOCKS
-   6 A64EMIT:WORD@ BRANCH-KIND and
+   BCONDS
+   CSELS
+   CSETS
    NRUN:PUBLISH {: fn:n :}
    3 4 fn NRUN:ENTER2
    9 -1 fn NRUN:ENTER2
@@ -941,7 +926,7 @@ $B4000000 constant CBZ-KIND          \ Cbz - the unfused two-way branch
    s" a comparison that is branched on and kept keeps its flag and runs" T-LABEL
    NFIX:BINDING [: LTKEEP-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= -1 T= 0 T= -1 T=
-   CBZ-KIND T= 4 T= 14 T= ;
+   1 T= 0 T= 0 T= 2 T= 9 T= ;
 
 \ ---- the loop the corpus actually writes -------------------------------------
 \ `begin … while … repeat` outnumbers `begin … until` nine to one in real Habu,
@@ -1008,15 +993,17 @@ $B4000000 constant CBZ-KIND          \ Cbz - the unfused two-way branch
    buf 5 LETTER-Z fn NRUN:ENTER3
    s" NCH-BUF2 5 97 NCH-COUNT-CHAR" EV-N ;
 
-\ Eight blocks: the entry, the loop header, the stub the `while` leaves through,
-\ the body up to the `if`, the stub that `if` skips its arm through, the arm, the
-\ arm's join - which is also the latch, because the `1+` after the `then` is the
-\ last of the body and the back edge leaves from there - and the block after the
-\ loop.
+\ Six blocks: the entry, the loop header, the stub the `while` leaves through,
+\ the body - which is now one block, because the `if` inside it adds to the
+\ accumulator without branching and is converted whole - and the block after the
+\ loop. The body's `if` used to be three blocks of its own: the stub it skipped
+\ its arm through, the arm, and the join that was also the latch. The LOOP is
+\ still a loop: its back edge goes to a lower ordinal, which is exactly what the
+\ conversion refuses to speculate over.
 : COUNTCHAR-CASE ( -- )
    s" the corpus's while-repeat byte scan compiles and runs" T-LABEL
    NFIX:BINDING [: COUNTCHAR-BODY ;] IR-CTX:WITH-CONTEXT
-   3 T= 0 T= 1 T= 0 T= 3 T= 8 T= ;
+   3 T= 0 T= 1 T= 0 T= 3 T= 6 T= ;
 
 \ ---- a while's test is a comparison, and it fuses ----------------------------
 \ The test of a `while` is a comparison standing immediately above the two-way
@@ -1105,7 +1092,7 @@ $54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused 
 : MAXDIM-CASE ( -- )
    s" the minimal else compiles and runs both arms" T-LABEL
    NFIX:BINDING [: MAXDIM-BODY ;] IR-CTX:WITH-CONTEXT
-   7 T= -4 T= 5 T= 7 T= 7 T= 5 T= ;
+   7 T= -4 T= 5 T= 7 T= 7 T= 2 T= ;
 
 \ The same structure with two values in each arm and different work in each, so
 \ the join is two wide and neither arm can be mistaken for the other. `swap`
@@ -1139,7 +1126,7 @@ $54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused 
 : SUMMAX-CASE ( -- )
    s" an else whose arms both leave two values compiles and runs" T-LABEL
    NFIX:BINDING [: SUMMAX-BODY ;] IR-CTX:WITH-CONTEXT
-   14 T= 11 T= 14 T= 11 T= 5 T= ;
+   14 T= 11 T= 14 T= 11 T= 2 T= ;
 
 \ ---- two structures one after the other, in one definition -------------------
 \ A control frame is a slot the walk reuses: the second structure of a body sits

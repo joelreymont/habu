@@ -526,8 +526,23 @@ create DRV-NAME NAME-CAP allot
 \ The one fact the branchless control rests on, read off the emitted code rather
 \ than off the source it was written from: the flat subject holds no instruction
 \ the engine's own copy rule refuses to move - which is its list of branches,
-\ register branches and returns - and every folding subject holds some.
+\ register branches and returns - and the ENGINE's fold holds some.
+\
+\ AND THE CHAIN'S FOLD NOW HOLDS NONE EITHER, which is what phase 3 came here to
+\ measure. When this file was written both folds branched and the chain's
+\ branched harder - six branch instructions in 76 bytes against the engine's
+\ four in 148 - and that density is what docs/codegen-placement.md named as the
+\ mechanism behind the chain leaf's twenty-eight per cent and its wider
+\ placement band. src/compiler/native/select.f now turns a selection whose arms
+\ are single values into a machine select, so the chain's copy of this body has
+\ no branch at all. The check is written as that statement rather than relaxed
+\ into silence: a chain that started branching here again would be the
+\ regression this whole measurement exists to catch, and the sweep refuses
+\ rather than quietly reporting a different body's numbers under phase 3's name.
 : FLAT-BRANCH-CK ( n -- ) {: b:n :}
+   b 0<> if E-CALIGN-CODE throw then ;
+
+: CHAIN-BRANCH-CK ( n -- ) {: b:n :}
    b 0<> if E-CALIGN-CODE throw then ;
 
 : FOLD-BRANCH-CK ( n -- ) {: b:n :}
@@ -537,6 +552,7 @@ create DRV-NAME NAME-CAP allot
    k KIND K-BASE = if exit then
    k ARM-SUBJ$ CODEGEN-SCAN:UNMOVABLE-IN {: b:n :}
    k KIND K-FLAT = if b FLAT-BRANCH-CK exit then
+   k KIND K-CHAIN = if b CHAIN-BRANCH-CK exit then
    b FOLD-BRANCH-CK ;
 
 : CODE-CK ( -- )

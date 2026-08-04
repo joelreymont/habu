@@ -288,6 +288,65 @@ VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
 create NAMEBUF NAME-CAP allot
 
+\ ---- what the if-conversion below is working on ------------------------------
+\ One row per block of the function being selected. They are package storage
+\ rather than a structure because this pass selects one module at a time, which
+\ is the same discipline the value map above keeps.
+\
+\ THE THREE BOUNDS ARE WHAT KEEPS THE CONVERSION TO A SMALL SELECTION, and they
+\ are the whole of the cost side of the rule. Every operation of an arm is run
+\ whichever arm the program would have taken, so a converted region pays its
+\ own operations on every path and is paid back one branch that no predictor
+\ can get wrong. That trade is a win while the arms are a few instructions and
+\ a loss when they are many, which is why the width, the block count and the
+\ speculated value count are all held down rather than left open: the
+\ measurement this leaf exists for (docs/codegen-placement.md) is over bodies
+\ whose arms are one or two operations, and these bounds admit that shape and
+\ nothing much larger.
+\
+\ THE VALUE COUNT IS ALSO WHAT KEEPS THE ROUTINE ALLOCATABLE, and that half of
+\ it was measured rather than argued. Every value an arm computes is live from
+\ where it is computed to the select that reads it, so a converted region holds
+\ all of them at once; the eight-deep early-exit ladder of
+\ tools/codegen-compare-corpus4.f is the shape that showed it, running an
+\ eight-register routine out of registers when the bound was eight and
+\ allocating cleanly at four. Four is also exactly what the range fold this work
+\ was raised for needs: three values across its two arms, and one of headroom.
+\ Correctness never rests on the number - a region refused here is a region that
+\ keeps its branch - and the allocator remains the authority on what really
+\ fits, which is what R-PRESSURE-OK? below holds the count against.
+16 constant SEL-WIDTH-MAX            \ values a converted selection may hand its join
+16 constant SEL-BLOCK-MAX            \ blocks a converted region may absorb
+4 constant SEL-DEFS-MAX              \ values it may compute on a path not taken
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create R-PRED NFROZEN:BMAX cells allot     \ predecessors this block has
+create R-FROM NFROZEN:BMAX cells allot     \ and the last one seen, which is the only
+                                           \ one when the count is one
+create R-ABSORB NFROZEN:BMAX cells allot   \ this block is inside a converted region
+create R-OWNER NFROZEN:BMAX cells allot    \ and this is the head that absorbed it
+create R-HEAD NFROZEN:BMAX cells allot     \ this block heads a converted region
+create R-EXIT NFROZEN:BMAX cells allot     \ and the region leaves through this block
+create R-ORD NFROZEN:BMAX cells allot      \ the machine block this source block became
+create R-MARK NFROZEN:BMAX cells allot     \ membership while one region is being tried
+create R-QB NFROZEN:BMAX cells allot       \ blocks still to classify
+create R-QP NFROZEN:BMAX cells allot       \ and the block each was reached from
+create R-LIST NFROZEN:BMAX cells allot     \ the members the current try has taken
+variable R-QN
+variable R-QI
+variable R-LIST-N
+variable R-SPEC                      \ operations the current try would speculate
+variable R-JOIN                      \ the exit the current try has found, or -1
+variable R-WIDTH                     \ how many values the region hands its exit
+variable R-EXIT-BK                   \ the exit of the region being emitted
+variable R-NEXT                      \ the next machine block ordinal to hand out
+variable R-S0                        \ the successors of the branch being selected
+variable R-S1
+variable R-BASE                      \ where this function's blocks start in the module
+variable R-NEWBASE                   \ and where they start in the module being built
+NFROZEN:BMAX SEL-WIDTH-MAX * TYPED-BUFFER RSEL IR-ID:ir-value-id
+1 TYPED-BUFFER R-JB IR-ID:ir-block-id
+
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
@@ -1319,15 +1378,43 @@ variable KEPT-F
    id 0 RESULT-AT  ACC  VBIND ;
 
 \ ---- selecting the branches --------------------------------------------------
-\ A successor is a block of the source module, and this pass rebuilds the blocks
-\ one for one and in order, so block b of the source is block b of the machine
-\ module and the edge is carried across by its ordinal. Nothing is renumbered:
-\ the source module's block order is the order the whole chain agrees on.
+\ A successor is a block of the source module, and this pass rebuilds the source
+\ blocks in order, so the edge is carried across by its ordinal. The ordinals
+\ are not always the same two numbers, because a block the if-conversion below
+\ absorbed into an earlier one is not rebuilt at all - so every edge goes
+\ through the one table that says which machine block a source block became.
+\ Without a region to convert that table is the identity and this is the same
+\ statement it always was; with one it is the only place the two numberings
+\ meet, which is what stops a branch from naming a block that is no longer
+\ there. A branch INTO an absorbed block is refused by name rather than
+\ renumbered to something: an absorbed block's only predecessor is inside its
+\ own region, and that edge is what the conversion replaced.
+: BLOCK-ORD-CK ( n -- n )
+   dup 0 < over NFROZEN:BMAX >= or if E-A64SEL-CAP throw then ;
+
+: R-ORD-OF ( n -- n )
+   BLOCK-ORD-CK cells R-ORD + @
+   dup 0 < if E-A64SEL-SHAPE throw then ;
+
+\ A block names itself twice over: by its ordinal in the module, which is what a
+\ successor carries, and by its ordinal in its own function, which is what the
+\ readers above index by and what the plan's rows are keyed on. The two differ
+\ by where the function's blocks start, and they differ AGAIN on the new side
+\ because the functions in front of this one may have emitted fewer blocks than
+\ they were selected from. Both bases are held here so a successor crosses
+\ through one subtraction and one addition and no caller does the arithmetic.
+: SUCC-IDX ( IR-ID:ir-op-id n -- n )
+   SUCC-AT IR-ID:BLOCK-LOCAL  R-BASE @ -  BLOCK-ORD-CK ;
+
+: SUCCESSOR-ORD+ ( n -- )
+   {: b:n :}
+   CTX BLD
+   BLD IR-BUILD:MODULE-KEY  R-NEWBASE @ b R-ORD-OF +  IR-ID:PACK-BLOCK
+   IR-BUILD:ADD-SUCCESSOR ;
+
 : SUCCESSOR+ ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id i:n :}
-   CTX BLD
-   BLD IR-BUILD:MODULE-KEY  id i SUCC-AT IR-ID:BLOCK-LOCAL  IR-ID:PACK-BLOCK
-   IR-BUILD:ADD-SUCCESSOR ;
+   id i SUCC-IDX SUCCESSOR-ORD+ ;
 
 \ ---- splitting the edges that carry values -----------------------------------
 \ A block argument and every value handed to it across an edge have to end up in
@@ -1591,20 +1678,442 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ Where this block's fused comparison is, or -1 when it has none. It is read
 \ once per block, before a single operation of the block is selected, so the
 \ walk and the terminator both read one answer.
-: FUSE-SCAN ( IR-ID:ir-block-id -- )
+: FUSE-INDEX ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
-   -1 FUSE-AT !
    bk OP-COUNT {: n:n :}
-   n 2 < if exit then
-   bk n 1- OP-AT OPCODE-AT OPCODE-SLOT O-BRZ <> if exit then
+   n 2 < if -1 exit then
+   bk n 1- OP-AT OPCODE-AT OPCODE-SLOT O-BRZ <> if -1 exit then
    bk n 2 - OP-AT {: d:IR-ID:ir-op-id :}
-   d OPCODE-AT OPCODE-SLOT COMPARE-SLOT? 0= if exit then
-   d RESULTS-OF 1 <> if exit then
-   d 0 RESULT-AT  bk n 1- OP-AT 0 OPERAND-AT  SAME-VALUE? 0= if exit then
-   d 0 RESULT-AT USES-OF 1 <> if exit then
+   d OPCODE-AT OPCODE-SLOT COMPARE-SLOT? 0= if -1 exit then
+   d RESULTS-OF 1 <> if -1 exit then
+   d 0 RESULT-AT  bk n 1- OP-AT 0 OPERAND-AT  SAME-VALUE? 0= if -1 exit then
+   d 0 RESULT-AT USES-OF 1 <> if -1 exit then
    d OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
    sym OPCODE-SLOT SLOT-OPCODE  sym TRAP-CK  drop
-   n 2 - FUSE-AT ! ;
+   n 2 - ;
+
+: FUSE-SCAN ( IR-ID:ir-block-id -- )
+   FUSE-INDEX FUSE-AT ! ;
+
+
+\ ---- which selections become a select instead of a branch --------------------
+\ THE SHAPE, IN ONE SENTENCE. A two-way branch whose two arms compute a few
+\ values and meet again at one block does not need the branch at all: the
+\ machine can run both arms and choose the answer with a Csel, which is one
+\ instruction and nothing for a predictor to get wrong. This is the pass that
+\ decides which two-way branches are that shape, and the emission below is what
+\ replaces them.
+\
+\ WHY IT IS HERE AND NOT IN A PASS OF ITS OWN, which is the same argument the
+\ comparison fusion above makes and it decides this the same way. This pass is
+\ already the only place that says which machine operations a source operation
+\ becomes; a pass that rewrote the source module into a select-shaped source
+\ module would need a source form for a select, and a select is a machine form.
+\ Rewriting the MACHINE module afterwards would mean building the branches and
+\ the blocks and then deleting them, which is the shape src/compiler/native/
+\ spill.f has and has for a reason this transform does not share: a spill plan
+\ is the ALLOCATOR's output and cannot exist before the module is frozen, while
+\ every fact this decision needs is in the frozen SOURCE module before a single
+\ operation is selected.
+\
+\ THE ADMISSION RULE, DERIVED RATHER THAN CHOSEN. Four things have to be true,
+\ and each of them is the answer to a question the transform cannot avoid.
+\
+\   1. WHAT MAY RUN THAT WOULD NOT HAVE RUN. The conversion runs both arms, so
+\      every operation of an arm has to be one the program can run on a path it
+\      would not have taken. That is exactly "cannot raise, and touches no
+\      memory", and both are read off the SOURCE dialect's own schema - the
+\      may-trap flag and the memory effect - rather than off a list of opcode
+\      names kept here. A division stays branched because its schema says it
+\      traps; a load stays branched because its schema says it reads; a call
+\      stays branched because its schema says both.
+\
+\   2. WHERE THE ARMS MEET. Every path out of the branch has to reach ONE block,
+\      because the values the arms compute are handed to that block and a select
+\      is what chooses between them. The region is grown from the branch's two
+\      successors: a block every path to which comes from inside the region is
+\      part of it, and the first block that is reached from anywhere else is
+\      where the region leaves. Two different such blocks mean the arms do not
+\      meet and there is nothing to select.
+\
+\   3. WHY EVERY BLOCK OF THE REGION HAS EXACTLY ONE PREDECESSOR IN IT. Because
+\      this pass emits each block's operations ONCE. A block reached on two
+\      paths inside the region would arrive with two different sets of block
+\      arguments, so its operations would compute two different things and one
+\      copy of them cannot stand for both. Converting that shape needs a
+\      predicate per block and a select for every block argument, which is a
+\      different and larger transform; dot habu-if-convert-a-774efe46
+\      carries it. Here the region is a TREE hanging off the branch, every
+\      block's arguments have one source, and the value a path hands the exit is
+\      read off the tree from the leaves up.
+\
+\   4. WHY THE ORDINALS ONLY GO FORWARD. A region that could reach a block with
+\      a lower ordinal than the one branching to it would be a region containing
+\      a loop, and running a loop speculatively is not running a few extra
+\      instructions. The elaborator numbers a loop's latch above its header, so
+\      "every edge inside the region goes to a higher ordinal" is exactly "the
+\      region is acyclic" - and it is also what makes plain ordinal order a
+\      topological order, which is what lets the emission below walk the members
+\      once, forwards for the operations and backwards for the values.
+\
+\ AND WHAT IT DOES NOT ADMIT, by name and with the reason. A join that carries a
+\ DOUBLE: choosing between two doubles is Fcsel, an instruction the shipped
+\ assembler has no encoder for, so the region stays branched and dot
+\ habu-select-between-two-98a15305 carries the form. The three bounds at the head
+\ of this file: a region wider, deeper or busier than a small selection is
+\ refused because the trade it makes stops paying.
+: TERM-OP ( IR-ID:ir-block-id -- IR-ID:ir-op-id )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT {: n:n :}
+   n 1 < if E-A64SEL-SHAPE throw then
+   bk n 1- OP-AT ;
+
+: OP-SLOT ( IR-ID:ir-op-id -- n )
+   OPCODE-AT OPCODE-SLOT ;
+
+: BRZ-TERM? ( IR-ID:ir-block-id -- bool )
+   TERM-OP OP-SLOT O-BRZ = ;
+
+: BR-TERM? ( IR-ID:ir-block-id -- bool )
+   TERM-OP OP-SLOT O-BR = ;
+
+\ May this operation be run on a path the program would not have taken? The two
+\ halves of the answer are the source dialect's own declarations and nothing
+\ else: an operation whose schema may trap could raise where the program never
+\ would, and one whose schema names any memory effect could read or write where
+\ the program never would.
+: SPECULABLE? ( IR-ID:ir-op-id -- bool )
+   OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
+   V-SCHR VW sym IR-SCHEMA:FTRAPS? if false exit then
+   V-SCHR VW sym IR-SCHEMA:FEFFECT@
+   IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ ;
+
+\ Everything but the terminator has to be speculable, and the terminator has to
+\ be a branch this walk can follow.
+: MEMBER-OK? ( IR-ID:ir-block-id -- bool )
+   {: bk:IR-ID:ir-block-id :}
+   bk BR-TERM? bk BRZ-TERM? or 0= if false exit then
+   bk OP-COUNT 1- {: n:n :}
+   true
+   n 0 ?do
+      bk i OP-AT SPECULABLE? 0= if drop false leave then
+   loop ;
+
+\ Which comparison this block's two-way branch may be made into a select with.
+\ It is the fused branch's own three facts - the comparison stands immediately
+\ above the branch, the branch tests the value it defines, and nothing else
+\ reads that value - and one more that belongs to the machine: a Csel reads the
+\ flags a Cmp left, so only the six comparisons of two GENERAL registers fuse
+\ here. A float comparison keeps a64.fflag and the select is made on the number
+\ it answers - which is the engine's own flag, all bits set or none and none for
+\ a NaN - so a compiled float selection takes the arm the interpreted word takes
+\ without this leaf having a second NaN argument to get right.
+: SEL-FUSE-OF ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   bk FUSE-INDEX {: k:n :}
+   k 0 < if -1 exit then
+   bk k OP-AT OP-KIND  A64SEL-CMPKIND:GPR A64SEL-CMPKIND:EQ  0= if -1 exit then
+   k ;
+
+\ ---- whether the routine has registers for the form at all -------------------
+\ A select reads every one of its sources AT ONE INSTANT, which is what makes
+\ this a question about the routine's POOL rather than about pressure anywhere.
+\ The fused form reads four registers and the zero-test form three, and a
+\ routine whose pool is smaller than that cannot hold the instruction whatever
+\ it puts away: a spill frees a register by moving a value that is NOT wanted at
+\ that instant, and every one of a select's sources is. So the read count is a
+\ floor no allocation can get under, and a region that would need more than the
+\ routine has stays branched - refusing the conversion is always correct, where
+\ refusing the ROUTINE would turn an optimisation into a compilation failure.
+\
+\ THE ANSWER IS NOT COUNTED, and that is a statement about the allocator rather
+\ than a rounding down. A select's result may take the register of a source that
+\ dies at it, which is the ordinary case and is why the two-argument bodies this
+\ leaf exists for fit in four registers with room to spare. A routine sitting
+\ exactly on the floor may still be refused, and that refusal is the allocator's
+\ own answer about the whole routine; this pass is not in a position to predict
+\ it and does not try.
+3 constant SELZ-REGS                 \ the value tested and the two chosen between
+4 constant CMPSEL-REGS               \ two compared and two chosen between
+
+: GPR-POOL-N ( -- n )
+   0 S-POOL @ A64EFF:GPRS-N BITS-N ;
+
+: SEL-NEED ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   bk BRZ-TERM? 0= if 0 exit then
+   bk SEL-FUSE-OF 0 < if SELZ-REGS exit then
+   CMPSEL-REGS ;
+
+\ How many VALUES one block of the region would compute on a path the program
+\ would not have taken. It is the block's operations less its terminator, which
+\ is not selected at all, and less the comparison its branch fuses with, which
+\ selects to no register either - the select stands for both. Every one of the
+\ rest defines a value that is live from where it is computed to the select that
+\ reads it, which is why this is the number the pool is held against.
+: SPEC-DEFS ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 1-
+   bk SEL-FUSE-OF 0 >= if 1- then ;
+
+\ ---- the per-block rows, read and written ------------------------------------
+: R-PRED@ ( n -- n )     BLOCK-ORD-CK cells R-PRED + @ ;
+: R-FROM@ ( n -- n )     BLOCK-ORD-CK cells R-FROM + @ ;
+: R-ABSORB? ( n -- bool ) BLOCK-ORD-CK cells R-ABSORB + @ 0<> ;
+: R-OWNER@ ( n -- n )    BLOCK-ORD-CK cells R-OWNER + @ ;
+: R-HEAD? ( n -- bool )  BLOCK-ORD-CK cells R-HEAD + @ 0<> ;
+: R-EXIT@ ( n -- n )     BLOCK-ORD-CK cells R-EXIT + @ ;
+: R-MARK? ( n -- bool )  BLOCK-ORD-CK cells R-MARK + @ 0<> ;
+
+: R-RESET1 ( n -- )
+   {: b:n :}
+   0 b cells R-PRED + !
+   -1 b cells R-FROM + !
+   0 b cells R-ABSORB + !
+   -1 b cells R-OWNER + !
+   0 b cells R-HEAD + !
+   -1 b cells R-EXIT + !
+   -1 b cells R-ORD + !
+   0 b cells R-MARK + ! ;
+
+: R-RESET ( -- )
+   NFROZEN:BMAX 0 ?do i R-RESET1 loop ;
+
+\ ---- counting the predecessors -----------------------------------------------
+\ How many edges reach each block, taken off every terminator's successor list.
+\ It is the one fact the region growth turns on: a block every path to which
+\ comes from inside the region has exactly one predecessor and belongs to it,
+\ and the first block that is reached from anywhere else is where the region
+\ leaves.
+: PRED-NOTE ( n n -- )
+   {: p:n t:n :}
+   t BLOCK-ORD-CK cells R-PRED + dup @ 1+ swap !
+   p t BLOCK-ORD-CK cells R-FROM + ! ;
+
+: PRED-NOTE-OP ( n IR-ID:ir-op-id -- )
+   {: home:n t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0 ?do
+      home  t i SUCC-IDX  PRED-NOTE
+   loop ;
+
+: PRED-SCAN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 0 ?do
+      i  f i BLOCK-AT TERM-OP  PRED-NOTE-OP
+   loop ;
+
+\ ---- growing one region ------------------------------------------------------
+: R-TRY-RESET ( -- )
+   0 R-QN !
+   0 R-QI !
+   0 R-LIST-N !
+   0 R-SPEC !
+   -1 R-JOIN !
+   NFROZEN:BMAX 0 ?do 0 i cells R-MARK + ! loop ;
+
+: R-PUSH ( n n -- )
+   {: p:n b:n :}
+   R-QN @ NFROZEN:BMAX >= if E-A64SEL-CAP throw then
+   b R-QB R-QN @ cells + !
+   p R-QP R-QN @ cells + !
+   R-QN @ 1+ R-QN ! ;
+
+: R-TAKE ( n -- )
+   {: b:n :}
+   R-LIST-N @ NFROZEN:BMAX >= if E-A64SEL-CAP throw then
+   1 b BLOCK-ORD-CK cells R-MARK + !
+   b R-LIST R-LIST-N @ cells + !
+   R-LIST-N @ 1+ R-LIST-N ! ;
+
+\ The first block reached from outside the region is where it leaves; a second
+\ such block that is not the first one means the two arms never meet.
+: R-JOIN-OK? ( n -- bool )
+   {: b:n :}
+   R-JOIN @ 0 < if b R-JOIN ! true exit then
+   R-JOIN @ b = ;
+
+\ One popped candidate, classified. It is either where the region leaves - a
+\ block something outside reaches too - or one more block of the region, and a
+\ block of the region has to be admissible and pushes its own successors on.
+: R-CLASSIFY ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id p:n b:n :}
+   b p <= if false exit then
+   b R-MARK? if false exit then
+   b R-PRED@ 1 <> if b R-JOIN-OK? exit then
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk MEMBER-OK? 0= if false exit then
+   b R-TAKE
+   R-SPEC @  bk SPEC-DEFS +  R-SPEC !
+   bk TERM-OP {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0 ?do
+      b  t i SUCC-IDX  R-PUSH
+   loop
+   true ;
+
+: R-GROW ( IR-ID:ir-fun-id -- bool )
+   {: f:IR-ID:ir-fun-id :}
+   true
+   begin
+      dup  R-QI @ R-QN @ <  and
+   while
+      drop
+      R-QI @ {: k:n :}
+      k 1+ R-QI !
+      f  k cells R-QP + @  k cells R-QB + @  R-CLASSIFY
+   repeat ;
+
+\ ---- what a grown region still has to satisfy --------------------------------
+\ The exit's arguments are the values the arms hand over, so their number is the
+\ width of the selection and their types are what decides whether this leaf can
+\ select them at all.
+: R-WIDTH-OK? ( IR-ID:ir-fun-id -- bool )
+   {: f:IR-ID:ir-fun-id :}
+   f R-JOIN @ BLOCK-AT {: jb:IR-ID:ir-block-id :}
+   jb ARG-COUNT {: w:n :}
+   w SEL-WIDTH-MAX > if false exit then
+   w R-WIDTH !
+   true
+   w 0 ?do
+      jb i ARG-AT REAL? if drop false leave then
+   loop ;
+
+\ Every two-way branch left inside the region has to land on blocks the region
+\ owns, because a two-way branch hands nothing over and the exit takes the
+\ arms' values as arguments. It is vacuous for a region whose exit takes none,
+\ and that is the only shape where a branch may reach the exit directly.
+: R-EDGE-OK? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id b:n :}
+   R-WIDTH @ 0= if true exit then
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk BRZ-TERM? 0= if true exit then
+   bk TERM-OP {: t:IR-ID:ir-op-id :}
+   true
+   t SUCCS-OF 0 ?do
+      t i SUCC-IDX R-MARK? 0= if drop false leave then
+   loop ;
+
+: R-EDGES-OK? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id h:n :}
+   f h R-EDGE-OK? 0= if false exit then
+   true
+   R-LIST-N @ 0 ?do
+      f  i cells R-LIST + @  R-EDGE-OK? 0= if drop false leave then
+   loop ;
+
+\ The widest select the region would emit, held against the pool. A region that
+\ hands its exit nothing selects nothing, so it needs no register at all.
+: R-NEED ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id h:n :}
+   f h BLOCK-AT SEL-NEED
+   R-LIST-N @ 0 ?do
+      f  i cells R-LIST + @  BLOCK-AT SEL-NEED  max
+   loop ;
+
+\ THE OTHER HALF OF THE POOL QUESTION IS PRESSURE, AND IT IS THE ONE THAT
+\ DECIDES REAL BODIES. A converted region computes every arm's values whether
+\ that arm would have run or not, and each of those values is live from where it
+\ is computed to the select that reads it - so they are all live at once, on top
+\ of the values the join is handed. A region that makes more of them than the
+\ routine has registers does not become slower code: it becomes a routine the
+\ allocator refuses, which would turn this optimisation into a compilation
+\ failure. So the count is held against the pool, and a region that does not fit
+\ stays branched.
+\
+\ WHAT THE COUNT DOES NOT INCLUDE, said plainly. Whatever else the routine has
+\ live where the branch stood is not counted here, because this pass has no
+\ liveness of its own and building one would be a second derivation of what the
+\ allocator already computes. The bound is therefore a floor rather than a
+\ proof, and it is the floor that was measured: with it the four comparison
+\ corpora, the maki suite and the chain's own suites all allocate, and without
+\ it the eight-deep early-exit ladder of tools/codegen-compare-corpus4.f does
+\ not. A routine that still runs out is refused by the allocator by name, which
+\ is the same refusal any too-tight pool has always given.
+: R-PRESSURE-OK? ( -- bool )
+   GPR-POOL-N  R-SPEC @ R-WIDTH @ +  >= ;
+
+: R-POOL-OK? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id h:n :}
+   R-WIDTH @ 0= if true exit then
+   GPR-POOL-N  f h R-NEED  < if false exit then
+   R-PRESSURE-OK? ;
+
+: R-BOUNDS-OK? ( -- bool )
+   R-LIST-N @ 0= if false exit then
+   R-LIST-N @ SEL-BLOCK-MAX > if false exit then
+   R-SPEC @ SEL-DEFS-MAX > if false exit then
+   R-JOIN @ 0 >= ;
+
+: R-COMMIT ( n -- )
+   {: h:n :}
+   R-LIST-N @ 0 ?do
+      i cells R-LIST + @ {: b:n :}
+      1 b BLOCK-ORD-CK cells R-ABSORB + !
+      h b BLOCK-ORD-CK cells R-OWNER + !
+   loop
+   1 h BLOCK-ORD-CK cells R-HEAD + !
+   R-JOIN @ h BLOCK-ORD-CK cells R-EXIT + ! ;
+
+\ One candidate head, tried whole. Nothing is written outside this pass's own
+\ scratch rows until every question has been answered, so a region that fails
+\ half way leaves the plan exactly as it found it.
+: R-TRY ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id h:n :}
+   f h BLOCK-AT {: hb:IR-ID:ir-block-id :}
+   hb BRZ-TERM? 0= if exit then
+   hb TERM-OP {: t:IR-ID:ir-op-id :}
+   t 0 SUCC-IDX {: s0:n :}
+   t 1 SUCC-IDX {: s1:n :}
+   s0 s1 = if exit then
+   R-TRY-RESET
+   h s0 R-PUSH
+   h s1 R-PUSH
+   f R-GROW 0= if exit then
+   R-BOUNDS-OK? 0= if exit then
+   f R-WIDTH-OK? 0= if exit then
+   f h R-EDGES-OK? 0= if exit then
+   f h R-POOL-OK? 0= if exit then
+   h R-COMMIT ;
+
+\ ---- the plan for one function -----------------------------------------------
+\ Every block in order gets one try, and a block already inside a region is
+\ never a head of its own: the region that took it will emit it. The machine
+\ ordinals are handed out afterwards, in source order, skipping what was
+\ absorbed - so the block order the rest of the chain reads is still the source
+\ module's order with the absorbed blocks taken out of it.
+: R-NUMBER ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   0 R-NEXT !
+   f BLOCK-COUNT 0 ?do
+      i R-ABSORB? 0= if
+         R-NEXT @ i BLOCK-ORD-CK cells R-ORD + !
+         R-NEXT @ 1+ R-NEXT !
+      then
+   loop ;
+
+\ Where this function's blocks start in the module, and that they run on from
+\ there without a gap. The plan's rows and every reader above are indexed by a
+\ block's ordinal WITHIN its function, and a successor carries its ordinal
+\ within the MODULE, so the two are one subtraction apart exactly while the
+\ function's blocks are contiguous. That is how IR-BUILD mints them, and it is
+\ proved here rather than assumed because everything downstream of the
+\ subtraction would be reading someone else's block if it were not so.
+: R-BASE! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f 0 BLOCK-AT IR-ID:BLOCK-LOCAL R-BASE !
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT IR-ID:BLOCK-LOCAL  R-BASE @ -  i <>
+      if E-A64SEL-SHAPE throw then
+   loop ;
+
+: PLAN-REGIONS ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   R-RESET
+   f R-BASE!
+   f PRED-SCAN
+   f BLOCK-COUNT 0 ?do
+      i R-ABSORB? 0= if f i R-TRY then
+   loop
+   f R-NUMBER ;
 
 \ THE POLARITY, WHICH IS THE ONE THING THIS FUSION HAS TO GET RIGHT. A Habu flag
 \ is all bits set when the source relation HOLDS, and hir.brz goes to its FIRST
@@ -1843,6 +2352,218 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    DSTACK? ord 0= and if bk OPEN-DARGS exit then
    bk OPEN-ARGS ;
 
+
+\ ---- emitting a selection as a select ----------------------------------------
+\ The plan above says which blocks a region absorbed and where it leaves; this
+\ is what the head block becomes. Three passes over the region, and the order
+\ of them is the whole of the construction:
+\
+\   the OPERATIONS, head first and then every member in ordinal order. A
+\     member's block arguments are not arguments any more - the edge that
+\     carried them is gone - so they are bound to the very values its one
+\     predecessor's branch was handing over, and every operation of the member
+\     is then selected exactly as it would have been in its own block. Ordinal
+\     order is a topological order because the plan admitted no edge that goes
+\     backwards, so every value is defined before it is read.
+\
+\   the VALUES, in the opposite order. What a path hands the exit is read off
+\     the region from the leaves up: a block that branches to the exit hands
+\     over its own branch's operands, a block that branches to another member
+\     hands over whatever that member hands over, and a block that still ends
+\     in a two-way branch hands over the SELECT of its two successors' answers.
+\     Reverse ordinal order is what makes each of those readable when it is
+\     needed.
+\
+\   the BRANCH, once, from the head to the exit, carrying the head's answer.
+\     Its successor is the exit's machine ordinal, and the exit is almost always
+\     the block laid out next - so the emitter's fall-through rule usually
+\     leaves no instruction for it at all.
+\
+\ WHAT IS NOT SELECTED, AND WHY THAT IS NOT AN EXCEPTION. A position where both
+\ arms hand over the SAME value needs no instruction: there is nothing to
+\ choose. The memory order is always such a position, because nothing in a
+\ converted region touches memory - which is the admission rule doing the work
+\ rather than a case written here - and an order that somehow differed would be
+\ an order this pass has no way to choose between, so it is refused by name.
+: RSEL-SLOT ( n n -- n )
+   {: b:n i:n :}
+   i 0 < i SEL-WIDTH-MAX >= or if E-A64SEL-CAP throw then
+   b BLOCK-ORD-CK SEL-WIDTH-MAX * i + ;
+
+: RSEL@ ( n n -- IR-ID:ir-value-id )
+   RSEL-SLOT RSEL @ ;
+
+: RSEL! ( IR-ID:ir-value-id n n -- )
+   RSEL-SLOT RSEL ! ;
+
+\ The two machine selects. Each takes the answer the source branch reaches when
+\ the tested value is NOT zero first, because that is the arm a Habu `if` takes
+\ and because a Csel writes its first source when the condition holds.
+: EMIT-SELZ ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id
+      tv:IR-ID:ir-value-id fv:IR-ID:ir-value-id :}
+   at A64IR-OPCODE:SELZ OPEN
+   CTX BLD v IR-BUILD:ADD-OPERAND
+   CTX BLD tv IR-BUILD:ADD-OPERAND
+   CTX BLD fv IR-BUILD:ADD-OPERAND
+   RESULT+
+   CLOSE-VALUE
+   ACC ;
+
+: EMIT-CMPSEL ( IR-ID:ir-op-id IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id cm:IR-ID:ir-op-id
+      tv:IR-ID:ir-value-id fv:IR-ID:ir-value-id :}
+   at A64IR-OPCODE:CMPSEL OPEN
+   CTX BLD  cm 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  cm 1 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD tv IR-BUILD:ADD-OPERAND
+   CTX BLD fv IR-BUILD:ADD-OPERAND
+   RESULT+
+   CTX BLD  CTX BLD A64IR:KEY-COND
+   CTX BLD  cm COMPARE-COND  A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   ACC ;
+
+\ One position of the join, as the block ending in this two-way branch leaves
+\ it. The comparison, when the branch fuses with one, is read out of the block
+\ this walk is standing in - the same place the fused branch reads it.
+: REGION-PICK ( IR-ID:ir-op-id n n -- IR-ID:ir-value-id )
+   {: t:IR-ID:ir-op-id fz:n i:n :}
+   R-S1 @ i RSEL@ {: tv:IR-ID:ir-value-id :}
+   R-S0 @ i RSEL@ {: fv:IR-ID:ir-value-id :}
+   tv fv SAME-VALUE? if tv exit then
+   0 R-JB @ i ARG-AT TOKEN? if E-A64SEL-SHAPE throw then
+   fz 0 < if  t  t 0 OPERAND  tv fv  EMIT-SELZ exit then
+   t  BLK fz OP-AT  tv fv  EMIT-CMPSEL ;
+
+\ ---- one block of the region ------------------------------------------------
+\ A member's arguments, bound to what its one predecessor handed over. A
+\ predecessor that ends in a two-way branch hands nothing over, which is that
+\ form's own rule, so a block reached that way has to take no arguments.
+: REGION-BIND-ARGS ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT {: k:n :}
+   f b R-FROM@ BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
+   t OP-SLOT O-BR <> if
+      k 0<> if E-A64SEL-SHAPE throw then
+      exit
+   then
+   t OPERANDS-OF k <> if E-A64SEL-SHAPE throw then
+   k 0 ?do
+      bk i ARG-AT  t i OPERAND  VBIND
+   loop ;
+
+\ Every operation of one block of the region but its terminator, and but the
+\ comparison the select will make: the terminator is what the conversion
+\ replaced, and a fused comparison selects to nothing here for exactly the
+\ reason it selects to nothing under the fused branch - the select below stands
+\ for both.
+: REGION-OPS ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk SEL-FUSE-OF {: fz:n :}
+   bk OP-COUNT 1- {: k:n :}
+   k 0 ?do
+      i fz <> if bk i OP-AT RULE then
+   loop ;
+
+: REGION-BLOCK-OPS ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk 0 S-BLK !
+   bk REGION-OPS ;
+
+: REGION-MEMBER? ( n n -- bool )
+   {: h:n b:n :}
+   b R-ABSORB? 0= if false exit then
+   b R-OWNER@ h = ;
+
+: REGION-MEMBERS-OPS ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id h:n :}
+   f BLOCK-COUNT h 1+ ?do
+      h i REGION-MEMBER? if
+         f i REGION-BIND-ARGS
+         f i REGION-BLOCK-OPS
+      then
+   loop ;
+
+\ ---- what each block of the region hands the exit ---------------------------
+: REGION-VALUES-BR ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
+   t 0 SUCC-IDX {: sc:n :}
+   sc R-EXIT-BK @ = if
+      t OPERANDS-OF R-WIDTH @ <> if E-A64SEL-SHAPE throw then
+      R-WIDTH @ 0 ?do  t i OPERAND  b i RSEL!  loop
+      exit
+   then
+   R-WIDTH @ 0 ?do  sc i RSEL@  b i RSEL!  loop ;
+
+: REGION-VALUES-BRZ ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk TERM-OP {: t:IR-ID:ir-op-id :}
+   bk SEL-FUSE-OF {: fz:n :}
+   t 0 SUCC-IDX R-S0 !
+   t 1 SUCC-IDX R-S1 !
+   R-WIDTH @ 0 ?do
+      t fz i REGION-PICK  b i RSEL!
+   loop ;
+
+: REGION-BLOCK-VALUES ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk 0 S-BLK !
+   bk BR-TERM? if f b REGION-VALUES-BR exit then
+   f b REGION-VALUES-BRZ ;
+
+: REGION-MEMBERS-VALUES ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id h:n :}
+   f BLOCK-COUNT {: k:n :}
+   k h 1+ ?do
+      k h + i - {: b:n :}
+      h b REGION-MEMBER? if f b REGION-BLOCK-VALUES then
+   loop ;
+
+\ ---- the one branch the region keeps ----------------------------------------
+\ Each value the exit takes as an argument crosses the same way every other
+\ argument-carrying edge in this pass crosses: copied into a value of its own,
+\ so the argument's register class holds one live value. The memory order is
+\ exempt for the reason EDGE-VALUE gives - it holds no register - and there is
+\ nothing to copy an ordering with.
+: REGION-BR ( IR-ID:ir-op-id n -- )
+   {: t:IR-ID:ir-op-id h:n :}
+   R-WIDTH @ 0 ?do
+      0 R-JB @ i ARG-AT TOKEN? if
+         h i RSEL@
+      else
+         t  h i RSEL@  false  EMIT-COPY
+      then
+      i EDGE-V !
+   loop
+   t A64IR-OPCODE:BR OPEN
+   R-WIDTH @ 0 ?do
+      CTX BLD  i EDGE-V @  IR-BUILD:ADD-OPERAND
+   loop
+   R-EXIT-BK @ SUCCESSOR-ORD+
+   CTX BLD IR-BUILD:END-OP drop ;
+
+: REGION-WIDTH! ( -- )
+   0 R-JB @ ARG-COUNT {: w:n :}
+   w SEL-WIDTH-MAX > if E-A64SEL-CAP throw then
+   w R-WIDTH ! ;
+
+: REGION-EMIT ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id h:n :}
+   h R-EXIT@ R-EXIT-BK !
+   f R-EXIT-BK @ BLOCK-AT 0 R-JB !
+   REGION-WIDTH!
+   f h REGION-BLOCK-OPS
+   f h REGION-MEMBERS-OPS
+   f h REGION-MEMBERS-VALUES
+   f h REGION-BLOCK-VALUES
+   f h BLOCK-AT TERM-OP  h  REGION-BR ;
+
 \ One block of the source function, selected whole. The value map is NOT cleared
 \ between blocks: a value defined in one block and read in another is ordinary
 \ SSA under dominance - the freeze verifier proved it of the source module and
@@ -1856,10 +2577,17 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ it. That is what the single-use fact bought, and it is held rather than
 \ assumed - a second reader would ask the map for a value nothing bound and be
 \ refused by name.
-: WALK-BLOCK ( IR-ID:ir-block-id n -- )
-   {: bk:IR-ID:ir-block-id ord:n :}
+: WALK-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id ord:n :}
+   ord R-ABSORB? if exit then
+   f ord BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk ord OPEN-BLOCK
    bk 0 S-BLK !
+   ord R-HEAD? if
+      f ord REGION-EMIT
+      CTX BLD IR-BUILD:END-BLOCK drop
+      exit
+   then
    bk FUSE-SCAN
    bk OP-COUNT {: n:n :}
    n 0 ?do
@@ -1878,9 +2606,11 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    f 0 S-FUN !
    f OPEN-FUN
    VCLEAR
+   f PLAN-REGIONS
    n 0 ?do
-      f i BLOCK-AT i WALK-BLOCK
+      f i WALK-BLOCK
    loop
+   R-NEWBASE @ R-NEXT @ + R-NEWBASE !
    CTX BLD IR-BUILD:END-FUN drop ;
 
 \ ---- what one selection run is told ------------------------------------------
@@ -2032,6 +2762,7 @@ public
    t 0 S-TRT !
    size S-FRAME !
    0 N-CALLS !
+   0 R-NEWBASE !
    DSTACK-CK
    CONTRACT-CK
    c b A64IR:REGISTER

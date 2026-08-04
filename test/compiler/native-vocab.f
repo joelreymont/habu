@@ -196,6 +196,29 @@ $54000000 constant BCOND-FORM
       if $F and nip else drop then
    loop ;
 
+\ A conditional select, found by its own form: the Csel encoding with its three
+\ register fields and its condition cleared. It is what an if-conversion emits
+\ where a branch used to be, so a case that reads it beside BCONDS is asserting
+\ both halves of that trade at once - the branch went and the select arrived.
+$FFE00C00 constant CSEL-MASK
+$9A800000 constant CSEL-FORM
+
+: CSELS ( -- n )
+   0
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ CSEL-MASK and CSEL-FORM = if 1+ then
+   loop ;
+
+\ The condition the last conditional select carries, in the same four-bit field
+\ a conditional branch carries it in. Every case that reads it asserts CSELS is
+\ one, so "the last" is "the only".
+: CSEL-COND ( -- n )
+   -1
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ dup CSEL-MASK and CSEL-FORM =
+      if 12 rshift $F and nip else drop then
+   loop ;
+
 \ The bitwise complement, found the same way: Orn with the zero register and both
 \ its register fields cleared. It is the whole of what `invert` compiles to, so
 \ counting it says the chain reached the one-instruction form and did not
@@ -287,24 +310,31 @@ $FFE0FFE0 constant MVN-SHAPE
    NFIX:BINDING [: ZEQ-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 0 T= -1 T= 0 T= 0 T= -1 T= ;
 
-\ ---- the comparisons that fuse into a branch ---------------------------------
+\ ---- the comparisons that fuse into a select ---------------------------------
 \ The same three relations, each standing immediately above the `if` that tests
-\ it, so each selects with that branch into one compare-and-branch. Each body
-\ answers 1 on the arm the relation chose and 0 on the other, so a fused branch
-\ whose two successors went the wrong way round answers the wrong number on every
-\ row - and the three argument pairs are chosen so that the EQUAL pair tells
-\ greater-or-equal from greater and not-equal from equal.
+\ it. Both arms of each are a single constant, so the whole selection is
+\ if-converted and what the comparison fuses into is a machine SELECT rather
+\ than a branch (src/compiler/native/select.f). Each body answers 1 on the arm
+\ the relation chose and 0 on the other, so a select whose two sources went the
+\ wrong way round answers the wrong number on every row - and the three argument
+\ pairs are chosen so that the EQUAL pair tells greater-or-equal from greater
+\ and not-equal from equal.
 \
-\ AND THE CONDITION IS READ OUT OF THE EMITTED BRANCH AS WELL. Two relations can
+\ AND THE CONDITION IS READ OUT OF THE EMITTED SELECT AS WELL. Two relations can
 \ agree on any finite set of arguments; what says which one was really encoded is
-\ the four-bit field the conditional branch carries, and it is asserted against
-\ the assembler's own name for that condition rather than a number written here.
-\ There is exactly one conditional branch in each of these routines, which is
-\ what makes "the field" a well-posed question.
-: GTF-BODY ( IR-CTX:ctx -- n n n n n n n n )
+\ the four-bit field the Csel carries - the same field a conditional branch
+\ carries it in, read through the same table - and it is asserted against the
+\ assembler's own name for that condition rather than a number written here.
+\ There is exactly one select in each of these routines and no conditional
+\ branch at all, which is what makes "the field" a well-posed question and is
+\ also the whole of what the conversion did to these bodies. The fused BRANCH is
+\ still reached by every loop, which is what GTL-CASE below is: a loop's back
+\ edge is the one thing an if-conversion may never speculate over.
+: GTF-BODY ( IR-CTX:ctx -- n n n n n n n n n )
    PREP
    BCONDS
-   BCOND-COND
+   CSELS
+   CSEL-COND
    NRUN:PUBLISH {: fn:n :}
    4 3 fn NRUN:ENTER2
    3 3 fn NRUN:ENTER2
@@ -315,16 +345,17 @@ $FFE0FFE0 constant MVN-SHAPE
 
 : GTF-CASE ( -- )
    s" : NVC-GTF ( n n -- n ) 2dup > if 2drop 1 exit then 2drop 0 ;" 2 1 CASE!
-   s" a greater-than fuses into its branch under the greater-than condition"
+   s" a greater-than fuses into its select under the greater-than condition"
    T-LABEL
    NFIX:BINDING [: GTF-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 0 T= 1 T= 0 T= 0 T= 1 T=
-   C-GT T= 1 T= ;
+   C-GT T= 1 T= 0 T= ;
 
-: GEF-BODY ( IR-CTX:ctx -- n n n n n n n n )
+: GEF-BODY ( IR-CTX:ctx -- n n n n n n n n n )
    PREP
    BCONDS
-   BCOND-COND
+   CSELS
+   CSEL-COND
    NRUN:PUBLISH {: fn:n :}
    4 3 fn NRUN:ENTER2
    3 3 fn NRUN:ENTER2
@@ -335,15 +366,16 @@ $FFE0FFE0 constant MVN-SHAPE
 
 : GEF-CASE ( -- )
    s" : NVC-GEF ( n n -- n ) 2dup >= if 2drop 1 exit then 2drop 0 ;" 2 1 CASE!
-   s" a greater-or-equal fuses into its branch under its own condition" T-LABEL
+   s" a greater-or-equal fuses into its select under its own condition" T-LABEL
    NFIX:BINDING [: GEF-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 1 T= 1 T= 0 T= 1 T= 1 T=
-   C-GE T= 1 T= ;
+   C-GE T= 1 T= 0 T= ;
 
-: NEF-BODY ( IR-CTX:ctx -- n n n n n n n n )
+: NEF-BODY ( IR-CTX:ctx -- n n n n n n n n n )
    PREP
    BCONDS
-   BCOND-COND
+   CSELS
+   CSEL-COND
    NRUN:PUBLISH {: fn:n :}
    4 3 fn NRUN:ENTER2
    3 3 fn NRUN:ENTER2
@@ -354,10 +386,10 @@ $FFE0FFE0 constant MVN-SHAPE
 
 : NEF-CASE ( -- )
    s" : NVC-NEF ( n n -- n ) 2dup <> if 2drop 1 exit then 2drop 0 ;" 2 1 CASE!
-   s" an inequality fuses into its branch under the not-equal condition" T-LABEL
+   s" an inequality fuses into its select under the not-equal condition" T-LABEL
    NFIX:BINDING [: NEF-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= 0 T= 1 T= 1 T= 0 T= 1 T=
-   C-NE T= 1 T= ;
+   C-NE T= 1 T= 0 T= ;
 
 \ ---- a loop whose exit test is a fused comparison ----------------------------
 \ `begin 1+ dup 3 > until` counts up until it is past three, so the relation is

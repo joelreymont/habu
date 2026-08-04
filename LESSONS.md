@@ -4804,3 +4804,43 @@ just constructed away. The repaired tests assert their preconditions (the chosen
 name IS in the engine's global wordlist AND is undefined to the checker) so that
 if the fixture ever stops being hazardous the precondition fails instead of the
 hazard case passing vacuously.
+
+## An optimisation that speculates has to be held against the register pool
+
+If-converting a selection computes both arms, and every value an arm computes is
+live from where it is computed to the select that reads it - so a converted
+region holds all of them at once, on top of everything the routine already has
+live. The first version of the rule bounded the region by blocks and by
+operations and left the pool out of it, and the eight-deep early-exit ladder in
+`tools/codegen-compare-corpus4.f` stopped compiling: not slower code, a REFUSED
+routine, because the allocator ran out of registers and the spiller had nothing
+it was allowed to put away. An optimisation that can turn a compilable routine
+into a compilation failure is not an optimisation, so the bound is now held
+against the routine's own pool and the region stays branched when it does not
+fit - refusing the conversion is always correct. The general shape: any transform
+that lengthens live ranges owes the allocator a bound, and the bound has to be
+against the actual pool rather than a number that looked small.
+
+## A form that reads N registers at once needs a pool of N, whatever it spills
+
+A spill frees a register by moving a value that is NOT wanted at that instant.
+Every source of a `csel` is wanted at that instant, so a routine whose pool is
+smaller than the form's read count cannot hold the instruction at all and no
+allocation exists for it - which is a different and harder failure than pressure.
+It is also a clean structural admission test, and the one place a machine form's
+register arity belongs in a decision: `src/compiler/native/select.f` refuses the
+conversion when the routine has fewer registers than the select reads, and the
+three-register pool of the chain suite's spill case is what proved it necessary.
+
+## A fixture that pins "what the elaborator leaves" outlives its subject
+
+`test/compiler/native-select.f` pinned the fused compare-and-branch on `MAX2` -
+`2dup < if swap then drop` - described as the shape the elaborator leaves. The
+if-conversion then ate exactly that shape, and the fused-branch cases either
+threw or asserted about a module that no longer had a branch in it. The repair
+was not to weaken them but to give the fixture a reason to keep its branch that
+a reader can see: one arm now divides, a division may trap, so its arm cannot be
+speculated and the branch survives. The lesson is that a fixture named after a
+SOURCE shape is hostage to every pass that learns to rewrite that shape; a
+fixture named after the PROPERTY it needs - here "an arm that may trap" - says
+why it still tests what it says it tests.

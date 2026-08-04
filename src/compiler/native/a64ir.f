@@ -346,6 +346,8 @@ ENUM opcode DERIVE eq
    abload
    abstore
    flag
+   selz
+   cmpsel
    br
    brz
    cmpbr
@@ -545,13 +547,13 @@ public
 : NAME ( -- ptr u8 n )
    s" a64" ;
 
-\ Version 0.3: the integer subset, the scalar floating forms, and the four float
-\ comparison forms. The major version stays at zero until the dialect is the
+\ Version 0.4: the integer subset, the scalar floating forms, the four float
+\ comparison forms, and the two conditional selects. The major version stays at zero until the dialect is the
 \ whole machine; the minor version moves whenever the schema table gains a form,
 \ because a table with these forms in it and one without are two different tables
 \ and every consumer compares the version exactly.
 0 constant MAJOR
-3 constant MINOR
+4 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 \ A pass that materialises a constant walks the halves of a register, and it asks
@@ -720,6 +722,8 @@ public
       abload   OF s" a64.aldrb"    ENDOF
       abstore  OF s" a64.astrb"    ENDOF
       flag     OF s" a64.flag"     ENDOF
+      selz     OF s" a64.selz"     ENDOF
+      cmpsel   OF s" a64.cmpsel"   ENDOF
       br       OF s" a64.b"        ENDOF
       brz      OF s" a64.cbz"      ENDOF
       cmpbr    OF s" a64.cmpbr"    ENDOF
@@ -920,6 +924,8 @@ private
       abload   OF s" a64.rule.aldrb"    ENDOF
       abstore  OF s" a64.rule.astrb"    ENDOF
       flag     OF s" a64.rule.flag"     ENDOF
+      selz     OF s" a64.rule.selz"     ENDOF
+      cmpsel   OF s" a64.rule.cmpsel"   ENDOF
       br       OF s" a64.rule.b"        ENDOF
       brz      OF s" a64.rule.cbz"      ENDOF
       cmpbr    OF s" a64.rule.cmpbr"    ENDOF
@@ -975,6 +981,8 @@ private
       abload   OF s" a64.render.aldrb"    ENDOF
       abstore  OF s" a64.render.astrb"    ENDOF
       flag     OF s" a64.render.flag"     ENDOF
+      selz     OF s" a64.render.selz"     ENDOF
+      cmpsel   OF s" a64.render.cmpsel"   ENDOF
       br       OF s" a64.render.b"        ENDOF
       brz      OF s" a64.render.cbz"      ENDOF
       cmpbr    OF s" a64.render.cmpbr"    ENDOF
@@ -1363,6 +1371,80 @@ private
    TOTAL
    TARGET
    c b A64IR-OPCODE:FLAG NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ ---- the two conditional-select forms ----------------------------------------
+\ A selection whose two answers are already computed does not need a branch at
+\ all: the machine's Csel writes one of two registers into a third on a
+\ condition, in one instruction and with nothing for a predictor to get wrong.
+\ These are the two forms that reach it, and they stand to the two BRANCH forms
+\ below exactly as those stand to each other - one tests a register against
+\ zero, the other compares two registers under a named condition.
+\
+\ EACH IS ONE OPERATION AND TWO INSTRUCTIONS, for the reason a64.flag and
+\ a64.cmpbr are one operation and three: what passes between the compare and
+\ the select is the condition flags, a single architectural resource that no
+\ value of this dialect stands for and the register allocator may never hand
+\ out. An IR in which the two were two operations would let a later pass - the
+\ spill lowering is the one that really inserts instructions - put a load
+\ between them, and then the select would read whatever that load left.
+\
+\ THE POLARITY IS THE SOURCE BRANCH'S, NOT THE MACHINE'S. hir.brz goes to its
+\ FIRST successor when the value it tests is zero, so the arm a Habu `if`
+\ takes is the SECOND. Both forms below therefore name the
+\ condition-holds answer first and the other second, which is the same order
+\ a64.cmpbr puts its successors in; src/compiler/native/select.f wires one
+\ table for both.
+\
+\ AND THE CONDITION MEANS WHAT THE INSTRUCTION THAT WROTE THE FLAGS MADE IT
+\ MEAN. a64.cmpsel's flags come from a Cmp, so its condition is the integer
+\ relation the source comparison names. A float comparison is not fused into a
+\ select here: it materialises its Habu flag with a64.fflag - which already
+\ answers zero for a NaN, because the conditions that form is given are the
+\ three that are false when the unordered flag is set - and a64.selz then
+\ chooses on that number. So a compiled float selection takes the arm the
+\ interpreted word takes for a NaN, and it does so through the SAME flag the
+\ interpreted word computes rather than through a second NaN argument. The
+\ fused float select is dot habu-fuse-a-float-4545c786.
+\
+\ NEITHER FORM MOVES A DOUBLE. Csel writes a general register; the D-file
+\ answer is Fcsel, a different instruction with no encoder in the shipped
+\ assembler, so a selection whose answers are doubles is refused by the
+\ selector rather than lowered here - dot habu-select-between-two-98a15305.
+
+\ Selz: the value tested against zero, the answer when it is NOT zero, the
+\ answer when it is. Two instructions: compare the tested register against the
+\ immediate zero, then select on `ne`.
+: DEF-SELZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:SELZ OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:SELZ NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Cmpsel: the two registers compared, the answer when the named relation holds,
+\ the answer when it does not. Two instructions: the compare, then the select
+\ under the condition the operation carries - which is the same attribute under
+\ the same key every other comparing form of this dialect carries.
+: DEF-CMPSEL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:CMPSEL OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:CMPSEL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the two branch forms ----------------------------------------------------
@@ -1791,6 +1873,8 @@ public
    c b t k DEF-ALDRB
    c b t k DEF-ASTRB
    c b t DEF-FLAG
+   c b t DEF-SELZ
+   c b t DEF-CMPSEL
    c b t DEF-BR
    c b t DEF-BRZ
    c b t DEF-CMPBR

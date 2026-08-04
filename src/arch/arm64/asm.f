@@ -259,6 +259,21 @@ variable ARM-Z
    XR2ND ?COND ARM-IMM ! ARM-RD !
    $9A9F07E0 ARM-RD @ or  ARM-IMM @ 1 xor 12 lshift or MSK ;
 
+\ conditional select ( rd rn rm cond -- w ): rd takes rn when the condition
+\ holds and rm when it does not, in one instruction and with no branch. It is
+\ the same 11-bit base the Cset above is built on with the two-bit op2 field
+\ left at zero - Cset is that base with op2 = 01, which is Csinc, and its own
+\ line spells the base out with the increment bit already in it. The condition
+\ sits in the same four-bit field a conditional branch carries it in, so the
+\ four bits mean whatever the instruction that last wrote the flags made them
+\ mean - which is why a select after an Fcmp keeps the NaN rule its condition
+\ was chosen for.
+: ENC-CSEL ( n n n n -- n )
+   ?COND ARM-IMM !
+   XR3 ARM-R3!
+   $9A800000 ARM-RD @ or  ARM-RN @ 5 lshift or
+   ARM-RM @ 16 lshift or  ARM-IMM @ 12 lshift or MSK ;
+
 \ data-processing 2-source: shift-by-register, divide
 : ENC-LSLV ( n n n -- n ) XR3 $9AC02000 RRR ;
 
