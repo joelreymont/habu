@@ -1,9 +1,11 @@
 ---
 title: Add KV layer dimension
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-29T21:16:42.471542+02:00"
+closed-at: "2026-08-04T19:21:48.989877+02:00"
+close-reason: "Landed e7677541: layer-major KV geometry, bounded private address calculation, whole-page COW, hard-cut config/seq API; exact-tree gates green."
 blocks:
   - habu-parse-gpt-2-c8baa4db
   - habu-use-opaque-kv-46d39625
