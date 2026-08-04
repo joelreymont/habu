@@ -48,14 +48,6 @@ SUITE maki-dep-lint-fixtures
    tools/maki-dep-lint-test.f
 ;SUITE
 
-SUITE refine-lint
-   tools/refine-lint.f
-;SUITE
-
-SUITE refine-lint-fixtures
-   tools/refine-lint-test.f
-;SUITE
-
 SUITE namespace-lint
    tools/namespace-lint.f
 ;SUITE
@@ -514,6 +506,7 @@ SUITE float-parse
 SUITE ieee-float32
    lib/ieee754-test.f
    lib/float32-test.f
+   lib/float32-buffer-test.f
 ;SUITE
 
 SUITE fmt-numbers
@@ -601,6 +594,7 @@ SUITE ptx-stdlib
    lib/ptx/cpp-slot-test.f
    lib/ptx/collective-test.f
    lib/ptx/cg-collective-test.f
+   lib/ptx/cg-activation-test.f
    lib/ptx/autograd-test.f
    lib/ptx/ir-test.f
    lib/ptx/opt-ir-test.f
@@ -858,12 +852,8 @@ SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
-SUITE owner-wid-internal
-   test/owner-wid-internal.f
-;SUITE
-
-SUITE owner-wid-snapshot
-   test/owner-wid-snapshot.f
+SUITE snapshot-writer
+   test/snapshot-writer.f
 ;SUITE
 
 SUITE stdlib-standalone-load

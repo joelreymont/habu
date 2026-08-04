@@ -4,8 +4,8 @@ status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-19T21:36:26.080502+02:00"
-closed-at: "2026-08-04T00:22:52.661658+02:00"
-close-reason: ledger retired with the governance mirror
+closed-at: "2026-08-01T12:36:35.377094+02:00"
+close-reason: "Abolished: the deleted stdlib manifest test has no row storage, parser, parity, or diagnostic product left to structure."
 blocks:
   - habu-lowering-hash-unified-586f7881
 ---

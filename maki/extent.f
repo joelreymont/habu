@@ -105,6 +105,7 @@ XG-CAP E-EXT-CAP E-EXT-VALUE CODEGEN:BUFFER-E XG-BUFFER
 \ audited TRUSTED wrapper compiles the constructed text with the check hook active
 \ (lib/type/deftype.f NG-EVAL / maki/cad.f CAP-COMPILE-RUN pattern). Every generated body is
 \ certified by that hook; the definer itself adds no unchecked code.
+\ Retirement owner: habu-primitive-effect-axiom-1119f176.
 TRUSTED: XG-EVAL ( -- )  XG$ evaluate ;
 
 \ ---- extent registry: surface name -> (mangled tail, runtime value). The tensor

@@ -48,7 +48,7 @@ or double release. Canonical identity is independent of address,
 handle, allocation order, checkout root, and diagnostic coordinates.
 
 Files: one narrow source-frame identity/lifecycle module, focused tests,
-required assembly/bootstrap mirror rows, manifests, and public frame API docs.
+required assembly/bootstrap mirror rows, and public frame API docs.
 Because this is a pre-M1 prerequisite, its private pre-checker state uses the
 explicit named-offset implementation-layout exception in
 `MODEL-CAD-V2-PLAN.md`; it publishes no raw handle and adds no legacy or
@@ -59,6 +59,6 @@ capture persistent declaration provenance, own field
 metadata, compose source text, or render diagnostics.
 
 Verify: focused source-frame lifecycle and rollback suites, native/recovery,
-snapshot, ahead-of-time, replay and fixpoint parity; typed-local, trust, package,
+snapshot, ahead-of-time, replay and fixpoint parity; typed-local, package,
 host, and dot lints. Dependencies: none. Ownership: authenticated
 source-frame identity plus nested push/pop/restore lifecycle only.

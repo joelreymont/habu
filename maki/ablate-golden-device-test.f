@@ -33,6 +33,7 @@ require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
+require lib/float32-buffer.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
 require maki/cad.f
@@ -110,11 +111,11 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
    LLA-SETUP
    obytes LLA-ALLOC-UPLOAD
    LLA-BIND-PARAMS
-   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    LLA-HRB obytes PTXSENT:FILL                      \ readback poisoned (as LLA-READBACK pre-fills)...
    \ ---- DELIBERATELY OMIT the cuMemcpyDtoH copy-back (obytes LLA-READBACK) ----
-   [: LLA-HRB SF-LD PTXSENT:GUARD drop ;] catch {: rc:n :}
+   [: LLA-HRB F32-BUF:LOAD PTXSENT:GUARD drop ;] catch {: rc:n :}
    LLA-RELEASE                                      \ free device buffers/module/ctx on every path
    rc 0<> if rc throw then ;                         \ re-throw the sentinel E-PTX-READBACK
 : ABL-SENT ( -- )

@@ -240,6 +240,7 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 \ role's cell here. Private, no public export, confined to lib/vector.f like the MEM
 \ pair; retire when TVK-RAW (habu-nominal-storage-raw-a3430ef2) lets the header and
 \ address primitives take the nominal role directly.
+\ Retirement owner: habu-epic-model-cad-70b629a9.
 
 package VEC
 private

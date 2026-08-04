@@ -48,6 +48,28 @@ $48425350414E5321 constant SNAP-MAGIC
 \ fail closed rc 80 rather than execute the other's literals.
 6 constant SNAP-FORMAT-VERSION
 
+\ --- snapshot trailer geometry: the single owner ----------------------------
+\ The trailer is the last thing in the authenticated text extent, so its base is
+\ (the header's text-size field + IMAGE-TEXT-TRAILER-ADJ) - SNAP-TRL-BYTES; the
+\ codesign blob and any page padding follow it and are not part of the extent.
+\ Everything that reads or writes a trailer derives its size and field offsets
+\ from here: the writer (src/habu/snap-lib.f SNAP:WRITE-BYTES), the loader
+\ (src/habu/habu2.f EM-SNAPSHOT-RESTORE), the image dumper (tools/imgdump.f) and
+\ the two fixtures that doctor a real image (test/snapshot-writer.f,
+\ tools/build-fixpoint-test.f). They diverged once - the readers kept the legacy
+\ 40-byte size after the format grew to 48 - and every reader then addressed the
+\ wrong cells while still finding plausible values, so the size lives in exactly
+\ one place now.
+48 constant SNAP-TRL-BYTES        \ magic, text base, ndict, region len, data len, version
+8 constant SNAP-TRL-TBASE         \ snapshot-time text base (canonically 0)
+16 constant SNAP-TRL-NDICT        \ dictionary record count
+24 constant SNAP-TRL-REGLEN       \ region payload length
+32 constant SNAP-TRL-DATALEN      \ data payload length
+40 constant SNAP-TRL-VERSION      \ SNAP-FORMAT-VERSION of the writing engine
+\ The pre-version trailer. Only the loader may name it, and only to recognise a
+\ legacy image and fail it closed rc 80 instead of misreading its fields.
+40 constant SNAP-TRL-LEGACY-BYTES
+
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
 \ Grown $61000 -> $C1000 with DICT-CAP 8192 -> 16384 (the gate-runner-support
@@ -89,6 +111,13 @@ package DICT-WL
 public
 -1 constant NAMESPACE
 -2 constant RETIRED
+;package
+
+\ WID:MAX is the largest value a wordlist id may take; it bounds every
+\ WID-indexed table and the snapshot's registry validation.
+package WID
+public
+$FFFFFFFE constant MAX
 ;package
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
@@ -181,8 +210,8 @@ $3000 constant LOCNAMES
 \ write buffers) carry the runtime range check. The old scattered slots were
 \ since reclaimed: $2780..$27A0/$27C0..$27E8 are free again after the pass-2
 \ transaction moved into TXN-STATE-OFF; $27A8 remains CMM-CELL below ($1A0 stays
-\ free). Two more guarded bands (the constructor protected-WID registry and the
-\ sealed-owner WID registry below) are checked by the same PROT-GUARD.
+\ free). One more guarded band, the constructor protected-WID registry below,
+\ is checked by the same PROT-GUARD.
 \ The 18th cell (SEAL-NDICT-CELL, $A8) holds the seal-time ndict watermark (TFAM
 \ 2b-iii). The latch is sealed EARLY (EMIT-SEAL-FRIEND, before the engine's own
 \ checker/xref/stdlib source is even evaluated), so the watermark is captured
@@ -265,6 +294,8 @@ $3668 constant RRECP-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
+\ Fixed startup DATA offsets for the native argc and vector pointers.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 s" ARGC-CELL" s" -- n" TRUST
 s" ARGV-CELL" s" -- n" TRUST
 s" ENVP-CELL" s" -- n" TRUST
@@ -387,39 +418,8 @@ PROT-BITS-OFF constant PROT-WID-LEGACY-OFF
 \ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
 \ DATA region is zero until boot).
 $40C0 constant UNCGH-CELL
-\ --- sealed-owner WID registry: count plus atomic u32 (public,private) rows.
-\ This registry is distinct from the constructor protected-WID table above: owner
-\ role checks must distinguish callable public WIDs from inaccessible private WIDs,
-\ while constructor protection keeps its existing flat-table ABI. The band starts
-\ immediately after the sixteen evaluator frames ($43C0..$47C0) and ends before
-\ the lowering transaction at $5000. A 256-row table occupies $808 bytes and leaves
-\ $38 bytes of separation, so no runtime scratch range moves and old constructor
-\ offsets remain byte-for-byte stable. PROT-GUARD treats this as its own protected
-\ interval; the hidden mutator stores each aligned pair atomically, then
-\ release-publishes the count consumed by acquire scans. Cold entry clears the
-\ count and every row before any test-only build hook runs. ---
-$47C0 constant OWNER-WID-N-CELL
-$47C8 constant OWNER-WID-OFF
-8 constant OWNER-WID-ROW
-0 constant OWNER-WID-PUB
-4 constant OWNER-WID-PRI
-$FFFFFFFE constant OWNER-WID-LIMIT
-256 constant OWNER-WID-MAX
-OWNER-WID-OFF OWNER-WID-MAX OWNER-WID-ROW * + constant OWNER-WID-END
-OWNER-WID-N-CELL constant OWNER-REG-OFF
-OWNER-WID-END OWNER-REG-OFF - constant OWNER-REG-LEN
-$4F57494450414952 constant AOT-OWNER-MAGIC
-2 constant AOT-OWNER-VERSION
 16 constant AOT-CREC-ROW
 $4000 constant AOT-NAMES-CAP
-32 constant AOT-OWNER-HEADER
-16 constant AOT-OWNER-ROW
-0 constant AOT-OWNER-SOURCE-PUB
-4 constant AOT-OWNER-SOURCE-PRI
-8 constant AOT-OWNER-NAME-OFF
-12 constant AOT-OWNER-NAME-LEN
-$524941504449574F constant AOT-OWNER-END-MAGIC
-82 constant AOT-OWNER-RC
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
 \ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 32768: HIDX-SLOTS $10000
@@ -649,7 +649,7 @@ public
 \ call site that does not hold a call instruction, so the image's region bytes and
 \ its call map come from different builds or one of them is damaged. Relocating it
 \ anyway would write a wild branch into live code, so the image is refused. It
-\ lives here beside BL-RANGE-RC and AOT-OWNER-RC rather than in the
+\ lives here beside BL-RANGE-RC rather than in the
 \ src/core/engine-error.f registry for the same reason those two do: the engine
 \ emitter reads its exit statuses from this file while it is being compiled, one
 \ generation before a new src/core constant would be reachable. 95 is the next

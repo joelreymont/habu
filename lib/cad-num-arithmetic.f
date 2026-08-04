@@ -53,7 +53,7 @@ private
 \ ---- proof-erasure projections: role -> raw cell (no public inverse) ----------
 \ Read a validated role's cell so the raw kernels can do the arithmetic. Slice 1
 \ already ships BYTE-LEN>N / CELL-COUNT>N; these six complete the set. Private,
-\ audited, and confined by tools/refine-lint.f like the slice 1 projections.
+\ audited, private to the owning package, and tested like the slice 1 projections.
 TRUSTED: ITEM-COUNT>N ( item-count -- n ) ;
 TRUSTED: INDEX>N ( index -- n ) ;
 TRUSTED: BYTE-OFF>N ( byte-off -- n ) ;

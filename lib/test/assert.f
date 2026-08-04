@@ -130,7 +130,8 @@ variable T-LABEL-U
    T-EXPECTED# !
    catch T-EXPECTED# @ = T-ASSERT ;
 
-\ Trusted boundary: top-level tests cannot push `[: ;]` quotations.
+\ Top-level tests cannot push `[: ;]` quotations; checked words use TTHROWSQ.
+\ Retirement owner: habu-typed-depth-introspection-18f0efda.
 TRUSTED: TTHROWS-RAW ( a n -- )
    T-EXPECTED# !
    catch T-EXPECTED# @ = T-ASSERT ;

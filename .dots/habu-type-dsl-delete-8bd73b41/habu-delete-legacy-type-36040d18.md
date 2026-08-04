@@ -8,4 +8,4 @@ blocks:
   - habu-delete-legacy-variant-ad234821
 ---
 
-Own final token-aware cleanup of docs, TRUSTED.md, manifests, generated-source lists, and comments after code deletion. Remove all live claims/examples for legacy definers; retain spellings only in migration history and dedicated rejection fixtures. Prove no dead files, aliases, stubs, or undocumented trusted boundaries remain.
+Own final token-aware cleanup of current docs, generated-source lists, and comments after code deletion. Remove all live claims/examples for legacy definers; retain spellings only in migration history and dedicated rejection fixtures. Prove no dead files, aliases, or stubs remain; every surviving source TRUST has a local rationale, a retirement owner, and a focused production-path test.

@@ -1,9 +1,11 @@
 ---
 title: Remove obsolete Zig kernel consumer
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "\"2026-07-19T20:45:54.361662+02:00\""
+closed-at: "2026-08-02T16:54:36.030704+02:00"
+close-reason: landed at 565959967156dd7b552610220771dcb47262444a; obsolete Zig consumer absent on the exact current tree
 ---
 
 The only Zig source in this repository is the two-file

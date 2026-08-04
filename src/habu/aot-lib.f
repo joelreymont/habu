@@ -17,6 +17,8 @@
 \ pointer inference until the typed dictionary-record schema lands (dot
 \ habu-typed-dictionary-record-c67adddb). The driver installs USER-HOOK below
 \ for user source only.
+\ Retirement: MAP-IN-BLOB under habu-typed-dictionary-record-c67adddb;
+\ the raw AOT source-buffer view under habu-builder-trust-rows-c5d41af6.
 
 package AOT-LINK
 
@@ -128,9 +130,9 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 
 : EMIT-DATA-REGION-MAP ( -- )
    LBL {: dvok:label :}
-   0 EM-DATA-VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 DATA-VA VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   5 EM-DATA-VA>N LIT64,  0 5 CMP,
+   5 DATA-VA VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL,
@@ -171,7 +173,7 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 \ the selected root is called. A preseeded bad-tag object/AOT entry
 \ (tools/hb-build.f --preseed-entry) pushes a forged bundle (payload slots + an
 \ out-of-range tag) so the matched helper reaches its inline invalid-tag die
-\ (docs/type-families.md; docs/census-tfam-10.md Category 1). SEED-CELLS is
+\ (docs/type-families.md §25.5). SEED-CELLS is
 \ bottom-of-stack first, tag last (top). Empty for a normal MAIN build.
 64 constant SEED-MAX
 create SEED-CELLS SEED-MAX cells allot   variable SEED-N

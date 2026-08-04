@@ -27,7 +27,7 @@ require lib/errors.f
 require lib/string.f
 require lib/fmt.f
 require lib/fs.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require tools/ptx/bench.f
@@ -51,6 +51,7 @@ variable RP-REG-NS                 \ (2) steady, registered
 variable RP-COPY-NS                \ (3) one-time HtoD populate
 variable RP-DEV-NS                 \ (3) steady, device buffer
 
+\ Retirement owner: habu-epic-gb10-uma-391d12e8.
 TRUSTED: RP-N>PTR ( n -- ptr u8 ) ;   \ host mapping address -> byte pointer for HtoD
 
 : RP-HOST-PATH ( -- ptr u8 n )  s" gpt2-model/resid-host.bin" ;

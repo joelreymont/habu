@@ -1,5 +1,5 @@
 ---
-title: Define canonical HBOBJ 2
+title: Define canonical HBOBJ
 status: open
 priority: 1
 issue-type: task
@@ -8,4 +8,4 @@ blocks:
   - habu-remove-native-src-ccf0e004
 ---
 
-Full context: design sections 7.11 and Wave 7 require structured canonical HBOBJ 2 for code/data, symbols, relocations, source maps, target/policy/schema/compiler/checker identities, and validation. Acceptance: canonical codec/digest, hostile count/offset/relocation/symbol/version fixtures, and diagnostic renderer pass; text is never the proof subject.
+Full context: design sections 7.11 and Wave 7 require structured canonical HBOBJ for code/data, symbols, relocations, source maps, target/policy/schema/compiler/checker identities, and validation. Acceptance: canonical codec/digest, hostile count/offset/relocation/symbol/magic fixtures, and diagnostic renderer pass; text is never the proof subject.

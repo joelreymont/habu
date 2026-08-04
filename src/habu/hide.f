@@ -11,6 +11,9 @@
 -1 constant BFR-NOT-FOUND
 24 constant BFR-INLINE-OFF
 
+\ Refresh casts expose mixed dictionary records, inline/long names, the signature
+\ terminator, and the raw cursors truncated before reload.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: BFR-N>REC ( n -- ptr a ) ;
 TRUSTED: BFR-A>U8 ( ptr a -- ptr u8 ) ;
 TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
@@ -23,6 +26,7 @@ TRUSTED: BFR-NDICT! ( n -- ) ndict! ;
 \ build-fixpoint.f BF-CERTIFY-*) statically checks THROUGH the window, and
 \ BF-AUDIT-BOUNDARY pins this call as the only check-off line a generated
 \ stage source may carry.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
 
 : BFR-REC-ADDR ( n -- n )
@@ -75,6 +79,8 @@ variable BFR-SU
    + c@ ;
 s" BFR-BYTE@" s" ptr u8 n -- u8" TRUST
 
+\ The name scanner reads and writes three byte pointers through generic scratch
+\ cells. Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: BFR-A@ ( -- ptr u8 )
    BFR-A @ ;
 

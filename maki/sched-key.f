@@ -110,7 +110,7 @@ STRUCTURE skey 0 DERIVE eq
   FIELD rm n
   FIELD ck dimclass
   FIELD cm n
-  FIELD dt dtype
+  FIELD dt datatype
   FIELD lay layout
   FIELD al align
   FIELD pol NPOL:dom

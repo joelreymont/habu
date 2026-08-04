@@ -33,7 +33,7 @@ It then declares and publishes a new payload ENUM as `TK-SUM`.
 Checkpoint: on the exact enforcement parent, normal payloadless and payload
 ENUM cases pass, the existing unmodified snapshot path builds, and the
 representative new test packages pass ownership gates. Stop if any production
-snapshot, build, type-family, finalizer, or owner-WID interface must change.
+snapshot, build, type-family, or finalizer interface must change.
 
 Acceptance: cold source observes `snapkind` as `TK-ENUM`; real `hb-new` exits
 zero and reports the restored kind, exact 7173 rejection with unchanged family
@@ -46,11 +46,10 @@ and both checks pass.
 
 Exact files: `test/enum-kind-snapshot.f`,
 `test/enum-kind-snapshot-source.f`, `test/enum-kind-snapshot-check.f`,
-`test/gate-stdlib-cases.f`, `test/run-files.f`.
+`test/gate-stdlib-cases.f` and `test/run-files.f`.
 
-Forbidden: raw kind store, forged image, copied snapshot writer, owner-WID
-fixture edit, build-tool API change, persisted latch, registry, restore hook,
-or production source change.
+Forbidden: raw kind store, forged image, copied snapshot writer, build-tool API
+change, persisted latch, registry, restore hook, or production source change.
 
 Smallest owning check: `bin/hb --load test/enum-kind-snapshot.f`.
 Claim: unassigned.

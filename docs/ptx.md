@@ -288,8 +288,8 @@ CUDA device proof remains Linux/Orin-specific:
 
 1. **AAPCS64 FFI + target loader slots:** `lib/ffi-abi.f` provides target-independent
    integer/pointer calls, stack-spill support, float-return helpers, out-param
-   readback, and `void**` kernelParams packing. `lib/ffi.f` adds
-   loader-resolved `dlopen`/`dlsym` slots on Linux ELF and macOS Mach-O. Current
+   readback, `void**` kernelParams packing, and loader-resolved `dlopen`/`dlsym`
+   slots on Linux ELF and macOS Mach-O. Current
    device tools still need stronger fail-closed rc wrappers and cleanup (dot
    `habu-make-ptx-device-c0eb12a3`).
 2. **Parametric checker terms:** signatures such as

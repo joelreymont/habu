@@ -14,7 +14,7 @@
 \ contraction `ak` its COLUMN, exactly K^T). The row ops between the two
 \ contractions - the 1/sqrt(d) scale and the row softmax - STAY plain named ops
 \ (maki/attention.f ATTN-SCALE! / ATTN-SOFTMAX-ROWS), per the SPEC: escape-hatch
-\ design (docs/golden-syntax.md:153, docs/nanogpt-inventory.md:115): SPEC: expresses
+\ design (docs/golden-syntax.md:153): SPEC: expresses
 \ the contraction dataflow, not the softmax numerics. Composing the two SPEC: goldens
 \ with those named ops reproduces ATTN-FWD to exact numeric equality.
 \

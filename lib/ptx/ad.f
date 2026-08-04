@@ -18,6 +18,8 @@
 
 require src/arch/ptx/vjp.f
 
+package PTX-AD
+
 \ --- control-flow boundary: v0 reverses straight-line dataflow only ---
 : AD-CONTROL? ( ptr u8 n -- bool )
    2dup s" if" STR=CI if 2drop 0 0= exit then
@@ -45,24 +47,33 @@ require src/arch/ptx/vjp.f
 : AD-REQUIRE-STRAIGHT ( ptr u8 n -- )
    AD-CONTROL? if E-PTX-AD-CONTROL throw then ;
 
-\ VJP-ADJOINT / VJP-EXPAND: forward word -> adjoint expansion, from the
+\ VJP-EXPAND: forward word -> adjoint expansion, from the
 \ src/arch/ptx/vjp.f table. One lookup serves both the 1:1 linear adjoints
 \ (single-token expansions) and the nonlinear multi-token expansions that
-\ reference saved primals/outputs by name (SAVED-*); VJP-ADJOINT remains the
-\ historical spelling. Missing entries fail closed (E-PTX-NOVJP).
-: VJP-ADJOINT ( ptr u8 n -- ptr u8 n )
+\ reference saved primals/outputs by name (SAVED-*). Missing entries fail
+\ closed (E-PTX-NOVJP).
+public
+
+: VJP-EXPAND ( ptr u8 n -- ptr u8 n )
    2dup AD-REQUIRE-STRAIGHT
    VJP-ADJOINT$ ;
 
-: VJP-EXPAND ( ptr u8 n -- ptr u8 n )
-   VJP-ADJOINT ;
+private
 
 \ --- forward token spans (offset,len into the source body) ---
 64 constant AD-MAX-TOK
 create AD-TOK-OFF AD-MAX-TOK cells allot
 create AD-TOK-LEN AD-MAX-TOK cells allot
+
+public
+
 variable AD-TOK-N
+
+private
+
 variable AD-START
+
+;package
 
 \ pinned-raw residuals: STR:SPLIT-NEXT returns a checked CAD-NUM:byte-len token
 \ length and CAD-NUM:byte-off cursor, but AD-TOKENIZE feeds the cursor back
@@ -76,6 +87,8 @@ public
 : AD-BO>N ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
 ;package
 
+package PTX-AD
+
 : AD-PUSH-TOK ( n n -- ) {: off len :}
    AD-TOK-N @ AD-MAX-TOK < 0= if E-PTX-ADCAP throw then
    off AD-TOK-N @ cells AD-TOK-OFF + !
@@ -83,6 +96,8 @@ public
    AD-TOK-N @ 1+ AD-TOK-N ! ;
 
 \ split the body on spaces, recording each non-empty token span in order.
+public
+
 : AD-TOKENIZE ( ptr u8 n -- ) {: a u :}
    0 AD-TOK-N !  0 AD-START !
    begin
@@ -100,6 +115,8 @@ public
       ;MATCH
    while repeat ;
 
+private
+
 \ emit VJP of token i, reconstructing its ptr from the base.
 : AD-EMIT-TOK ( ptr u8 n -- ) {: a ix :}
    a  ix cells AD-TOK-OFF + @ +         \ token ptr<u8>
@@ -116,6 +133,8 @@ public
    repeat drop ;
 
 \ AD-REVERSE: forward body -> backward body (the reverse-mode AD pass v0).
+public
+
 : AD-REVERSE ( ptr u8 n -- ptr u8 n ) {: a u :}
    a u AD-TOKENIZE
    a AD-EMIT-REV
@@ -135,11 +154,17 @@ public
 : AD-RECOMPUTE? ( n n -- bool ) {: save-cost recompute-cost :}
    recompute-cost save-cost < ;
 
+private
+
 \ --- algebraic-simplify (peephole): cancel adjacent NEG NEG (double negation) ---
 \ Token i as a string, reconstructed from the recorded span and the base ptr.
+public
+
 : TOK-STR ( ptr u8 n -- ptr u8 n ) {: ix :}
    ix cells AD-TOK-OFF + @  +          \ base(on stack) + offset -> token ptr
    ix cells AD-TOK-LEN + @ ;           \ token len
+
+private
 
 : TOK-IS-NEG? ( ptr u8 n -- bool )  TOK-STR s" NEG" STR= ;
 
@@ -147,6 +172,8 @@ public
 : SB-SEP ( -- )  SB$ nip 0 > if $20 SB-APPEND-C then ;
 
 \ AD-SIMPLIFY: drop adjacent NEG NEG pairs from a body, preserving the rest.
+public
+
 : AD-SIMPLIFY ( ptr u8 n -- ptr u8 n ) {: a u :}
    a u AD-TOKENIZE
    SB-RESET
@@ -158,6 +185,8 @@ public
       else  SB-SEP  dup a swap TOK-STR SB-APPEND  1+  then
    repeat drop
    SB$ ;
+
+private
 
 \ --- the EXPLICIT save-vs-recompute cost model (docs/autograd.md) ---
 \ Unit: 1/8 of a global-memory transaction per element (integer arithmetic).
@@ -206,6 +235,8 @@ variable AD-COST-SUM
    VJP-FIND 0 < if E-PTX-AD-UNKNOWN throw then
    AD-COST-ALU ;
 
+public
+
 : AD-SLICE-COST ( ptr u8 n -- n ) {: a:ptr u:n :}   \ cost of recomputing a forward slice
    a u AD-TOKENIZE
    0 AD-COST-SUM !
@@ -223,7 +254,11 @@ variable AD-COST-SUM
 1 constant AD-POLICY-SAVE        \ force the save path
 2 constant AD-POLICY-RECOMPUTE   \ force the recompute path
 
+private
+
 variable AD-POLICY
+
+public
 
 : AD-POLICY! ( n -- ) {: p:n :}
    p AD-POLICY-AUTO < if E-PTX-SYNTAX throw then
@@ -239,6 +274,8 @@ variable AD-POLICY
    AD-SLICE-COST {: rc:n :}
    sc rc AD-RECOMPUTE? 0= ;
 
+private
+
 \ --- the composed pass: forward body -> simplified backward body ---
 \ AD-REVERSE and AD-SIMPLIFY both render into SB, so the reversal is copied to
 \ a private buffer before simplification (never simplify SB$ in place).
@@ -253,7 +290,11 @@ variable AD-BWD-U
 
 \ The result is returned from the private buffer (not SB$), so it stays valid
 \ while the caller's kernel scaffold reuses SB for emit lines.
+public
+
 : AD-BACKWARD$ ( ptr u8 n -- ptr u8 n )
    AD-REVERSE AD-BWD-COPY
    AD-BWD-BUF AD-BWD-U @ AD-SIMPLIFY AD-BWD-COPY
    AD-BWD-BUF AD-BWD-U @ ;
+
+;package

@@ -16,6 +16,7 @@
 \ effect is the contract. In emit-mode the body is applied `n` times,
 \ unrolling the reduction exactly as cg-matmul.f's hand-written K-loop does. Load after
 \ lib/ptx/tile.f.
+\ Retirement owner: habu-ptx-phantom-preserving-3df9db92.
 
 TRUSTED: TILE-LOOP ( n tile<t,b,m> [ tile<t,b,m> -- tile<t,b,m> ] -- tile<t,b,m> )
    {: cnt acc body :}

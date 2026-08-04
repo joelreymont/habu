@@ -22,6 +22,8 @@ require lib/string.f
 require src/arch/ptx/vjp.f
 require lib/ptx/ad.f
 
+using PTX-AD
+
 16 constant ADG-MAX
 
 create ADG-VS ADG-MAX cells allot
@@ -232,3 +234,5 @@ variable ADG-SV-A
       then
    then
    ba bu dzsp outsp ctx 0 0 ADG-CORE ;
+
+;using

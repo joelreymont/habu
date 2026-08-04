@@ -41,16 +41,15 @@ persistent bounded-index evidence.
 Authority correction: the exact tree already loads this arithmetic from
 `lib/memory.f` and inference modules, so inherited claims that CAD-NUM has no
 production loader or that its type test is its sole consumer are false. Correct
-those statements in `lib/cad-num-types.f`, `lib/cad-num-types-test.f`, and the two module rows in `lib/std.manifest`; make no other
-change to the type slice.
+those statements in `lib/cad-num-types.f` and `lib/cad-num-types-test.f`; make no
+other change to the type slice.
 
 Files: `lib/cad-num-arithmetic.f`, `lib/cad-num-arithmetic-test.f`,
-`lib/cad-num-types.f`, `lib/cad-num-types-test.f`, `lib/std.manifest`, `test/gate-stdlib-cases.f`,
-`tools/suite-coverage-lint-core.f`, and `MODEL-CAD-V2-PLAN.md` only.
+`lib/cad-num-types.f`, `lib/cad-num-types-test.f`,
+`test/gate-stdlib-cases.f`, and `MODEL-CAD-V2-PLAN.md` only.
 
-Acceptance: focused arithmetic suite, exact owning load, typed-local, package,
-manifest, trust, suite-coverage, owning standard-library gates, and
-an exact source/plan/manifest interface census pass. The standard-library gate
+Acceptance: focused arithmetic suite registered in test/gate-stdlib-cases.f and executed by test/gate-stdlib.f, exact owning load, typed-local, package, owning standard-library gates, and an exact
+source/plan interface census pass. The standard-library gate
 must execute the focused suite, whose checked F32 composition certifies without
 a cast. The final tree must contain no false no-production-loader or sole-
 consumer claim for either CAD-NUM slice.

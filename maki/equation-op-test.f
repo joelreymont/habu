@@ -90,8 +90,8 @@ BW-BWD-COUNT 0 > TTRUE                                              \ a backward
 \ named E-TV-SHAPE reject, exactly like the matmul inner-dim check.
 : EQO-BADOP ( -- )
    TENSOR:TV-RESET
-   #EQA 5 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC       \ Q operand: 4 x 5
-   #EQB #EQK SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC    \ K operand: 4 x 3
+   #EQA 5 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC       \ Q operand: 4 x 5
+   #EQB #EQK SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC    \ K operand: 4 x 3
    s" EQO-QK" EQ-FIND MATCH option
       none OF E-SPEC-SYNTAX throw ENDOF
       some OF PLAN-EQUATION ENDOF

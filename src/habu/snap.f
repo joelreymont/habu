@@ -23,6 +23,7 @@
 \ trusted form keeps the emitted snap source free of raw check-off lines so
 \ the pre-pass boundary audit (tools/build-fixpoint.f BF-AUDIT-BOUNDARY) can
 \ pin the refresh prelude's BFR-CHECK-OFF as the only one.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 
 require src/habu/snap-lib.f
 
@@ -41,6 +42,8 @@ public
 undefine INSTALL-TEST
 ;package
 
+package SNAPSHOT
+
 $4A constant E-SNAP-HOOK
 
 TRUSTED: SNAP-RETIRE-GO ( -- )
@@ -51,4 +54,12 @@ TRUSTED: SNAP-RETIRE-GO ( -- )
    CHECKER-SNAPSHOT-PREPARE
    INCLUDE-SNAPSHOT-PREPARE
    SNAPGO ;
-SNAP-RETIRE-GO
+
+: ACTION ( -- [ -- ] )
+   [: SNAP-RETIRE-GO ;] ;
+
+ACTION
+
+;package
+
+execute

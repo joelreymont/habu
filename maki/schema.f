@@ -20,12 +20,10 @@
 \      is already expressed as a CHECKED TYPED PRODUCT (POLICY:gate-set) the checker
 \      enforces; re-encoding that grammar as interned bytes would duplicate a
 \      checker-owned shape with no consumer.
-\   2. The envelope splits schema-id from schema-version (§ 23.9 Canonical typed
-\      artifacts: `schema-id, schema-version, kind`), exactly as producer-id splits
-\      from producer-version. schema-id is therefore the VERSION-INDEPENDENT identity
-\      of a schema definition; the grammar EVOLVES with versions, so folding the
-\      grammar into the id would make it version-DEPENDENT and break that split. The
-\      versioned grammar lives behind schema-version; schema-id is the schema NAME.
+\   2. The envelope carries schema-id as the canonical schema identity (§ 23.9
+\      Canonical typed artifacts). A semantic schema change therefore uses a distinct
+\      canonical schema name and content key; the envelope has no parallel version
+\      authority.
 \ So the interned content is the canonical schema name bytes; equal names are one id.
 \
 \ WIRE FORMS. Two audited public codecs share the private RAW>SCHEMA-ID refinement:

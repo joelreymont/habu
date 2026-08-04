@@ -17,12 +17,13 @@
 \ TOLERANCE (measured on GB10 sm_121a, not defaulted): the forward |device f32 - host f64| is
 \ below 5e-7 (under print resolution) over this fixture, and the FD-vs-analytic gradient gap
 \ is at most 2.4e-4 (central-difference O(eps^2) truncation at eps=2^-12 plus f32 device noise);
-\ SW-NEAR? uses 2e-3, ~8x over the measured worst case. Fully checked Habu via lib/ffi.f.
-\ Load after lib/test.f, lib/ffi.f, lib/ptx/cg.f, maki/array.f, maki/swiglu.f.
+\ SW-NEAR? uses 2e-3, ~8x over the measured worst case. Fully checked Habu via lib/ffi-abi.f.
+\ Load after lib/test.f, lib/ffi-abi.f, lib/ptx/cg.f, maki/array.f, maki/swiglu.f.
 
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/test.f
 require maki/array.f
@@ -38,6 +39,8 @@ require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
 package SWIGLU-DEVICE-TEST
+
+using F32
 
 private
 
@@ -60,8 +63,8 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src dst :}  SWK 0 ?do  src i T-GET F64>F32  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src dst :}  SWK 0 ?do  src i F32@ F32>F64  dst i T-SET  loop ;
+: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : SW-OUT-GUARD ( -- )  SWK 0 ?do  SW-OUT i F32@ PTXSENT:GUARD drop  loop ;   \ fail closed if copy-back dropped
 
 : SW-DEVICE? ( -- bool )  CUDA:OPEN? ;
@@ -92,10 +95,10 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
    SW-CTX SW-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    SW-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    SW-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ SW-P1 >CSTR
+   PTXTC:CUBIN$ SW-P1 FFI:CSTR
    SW-MF SW-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
    SW-MF @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SWIGLU_ROWS" SW-KF >CSTR
+   s" SWIGLU_ROWS" SW-KF FFI:CSTR
    SW-FWD SW-MF @ >CUDA-MOD SW-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    SW-dG 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   SW-dG @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    SW-dU 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   SW-dU @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
@@ -174,4 +177,5 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
 
 SWIGLU-DEVICE-MAIN
 
+;using
 ;package

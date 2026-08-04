@@ -13,6 +13,8 @@ require lib/process.f
 require lib/process-argv.f
 require tools/imgdump.f
 
+package IMAGE-DUMP-TEST
+
 $4000 constant IDT-CAP
 5000 constant IDT-TIMEOUT-MS
 
@@ -104,6 +106,14 @@ variable IDT-DIFF-U
    s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
+: IDT-RUN-PC ( ptr u8 n -- n n n ) {: a:ptr u:n :}
+   IDT-ARGV-BASE
+   s" --pc" IDT-ARG+
+   IDT-A$ IDT-ARG+
+   a u IDT-ARG+
+   s" bin/hb" >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
+
 : IDT-TEST-DUMP ( -- )
    s" imgdump single image" T-LABEL
    IDT-A$ IDT-RUN-1 0 T=
@@ -136,36 +146,45 @@ variable IDT-DIFF-U
    IDT-OUT outu s" > B $10" CONTAINS? TTRUE
    IDT-ERR erru s" imgdump: dictionaries differ" CONTAINS? TTRUE ;
 
-\ switchover wave A: the imgdump number parsers return option<n> (SOME parsed
-\ value, else NONE). Both branches through IMG>NUMBER? ($hex, 0x hex, decimal, bad).
-: IDT-NUM-SOME ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
-   a u IMG>NUMBER? MATCH option
-     none OF 0 0= 0= ENDOF
-     some OF want = ENDOF
-   ;MATCH TTRUE ;
-: IDT-NUM-NONE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u IMG>NUMBER? MATCH option
-     none OF 0 0= ENDOF
-     some OF drop 0 0= 0= ENDOF
-   ;MATCH TTRUE ;
+: IDT-PC-OK ( ptr u8 n n -- ) {: a:ptr u:n value:n :}
+   IDT-A$ value 1 65 IDT-WRITE-IMG
+   a u IDT-RUN-PC 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   IDT-OUT outu s" A " CONTAINS? TTRUE ;
+
+: IDT-PC-BAD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u IDT-RUN-PC 64 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   IDT-ERR erru s" usage:" CONTAINS? TTRUE ;
+
 : IDT-TEST-PARSERS ( -- )
-   s" $ff" 255 IDT-NUM-SOME
-   s" 0x10" 16 IDT-NUM-SOME
-   s" 42" 42 IDT-NUM-SOME
-   s" $zz" IDT-NUM-NONE
-   s" 4x2" IDT-NUM-NONE
-   s" " IDT-NUM-NONE ;
+   s" imgdump parses $hex" T-LABEL
+   s" $ff" 255 IDT-PC-OK
+   s" imgdump parses 0x hex" T-LABEL
+   s" 0x10" 16 IDT-PC-OK
+   s" imgdump parses decimal" T-LABEL
+   s" 42" 42 IDT-PC-OK
+   s" imgdump rejects malformed hex" T-LABEL
+   s" $zz" IDT-PC-BAD
+   s" imgdump rejects mixed decimal" T-LABEL
+   s" 4x2" IDT-PC-BAD
+   s" imgdump rejects empty number" T-LABEL
+   s" " IDT-PC-BAD ;
 
 : IDT-MAIN ( -- )
    T-RESET
    IDT-PREPARE
-   IDT-TEST-PARSERS
    IDT-TEST-DUMP
    IDT-TEST-IDENTICAL
    IDT-TEST-SHIFT
    IDT-TEST-DIFF
+   IDT-TEST-PARSERS
    CLEANUP-RUN
    T-REPORT
    s" imgdump-test: ok" type cr ;
 
 IDT-MAIN
+
+;package

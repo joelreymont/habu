@@ -14,4 +14,4 @@ blocks:
   - habu-libs-migrate-ptx-1071a2e6
 ---
 
-Migrate lib declarations and APIs to STRUCTURE and payload-capable ENUM with named fields. Delete VALUE-RECORD, PRODUCT, SUMTYPE, positional variant payload, and legacy structure syntax from lib. Preserve public package APIs, nominal identities, binary layouts, manifests, and tests. Replace numeric closed domains encountered during migration with ENUM while retaining external wire codes behind exhaustive codecs. Run every owning lib suite and stdlib manifest gate.
+Migrate lib declarations and APIs to STRUCTURE and payload-capable ENUM with named fields. Delete VALUE-RECORD, PRODUCT, SUMTYPE, positional variant payload, and legacy structure syntax from lib. Preserve public package APIs, nominal identities, binary layouts, and tests. Replace numeric closed domains encountered during migration with ENUM while retaining external wire codes behind exhaustive codecs. Run every owning lib suite and its real-consumer gates.

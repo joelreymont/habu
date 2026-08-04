@@ -1,4 +1,4 @@
-habu-eval-transcript v1
+habu-eval-transcript
 \ Synthetic RECORDED transcript for the external arm, mirroring the 2026-06-27
 \ round (docs/eval-triton.md): Triton SAXPY 5/5 and softmax 5/5. The external
 \ target is graded outside the tree (Habu Only boundary); its per-sample

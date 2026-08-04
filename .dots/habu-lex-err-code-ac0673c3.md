@@ -55,7 +55,7 @@ Owned result: tools/error-code-lint-core.f gets its tokens from the shared comme
 
 Acceptance and smallest owning check: the three measured cases above become fixtures in tools/error-code-lint-test.f and give 1, 1 and 0 findings respectively. Add hostile cases for an escaped string opener, a quote inside a paren comment, a claim inside a line comment, and a claim split across a string boundary. Every existing case in that file keeps its current expected count, and MECLT-LIVE still certifies the real tree clean. A mutation that reinstates the quote-parity toggle must red the new false-negative fixture.
 
-Verify: bin/hb --load tools/error-code-lint-test.f, the gate entry point ERROR-CODE-LINT-STRICT on the real tree, typed-local-diff-lint and package-diff-lint on the exact diff, host-lint.
+Verify: bin/hb --load tools/error-code-lint-test.f, the gate entry point ERROR-CODE-LINT-STRICT on the real tree, and typed-local-diff-lint and package-diff-lint on the exact diff.
 
 Files: tools/error-code-lint-core.f and tools/error-code-lint-test.f.
 

@@ -3,7 +3,7 @@
 \ acc-cg.f, which lowers ACC-ZERO/ACC-FMA/ACC-TILE via lib/ptx/cg.f) to a private PTX,
 \ ptxas-assembles, then launches on the Orin with x=2.0, y=3.0, n=4 and asserts the result
 \ y[0] = x*y = 6.0 (FP32 exact). Proves the (c) accumulator path is not just type-checked
-\ but device-correct. Orin-only (FFI device launch). Load after lib/test.f, lib/ffi.f, and
+\ but device-correct. Orin-only (FFI device launch). Load after lib/test.f, lib/ffi-abi.f, and
 \ the fs/process libs.
 
 require lib/test.f
@@ -53,10 +53,10 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
    AD-CTX AD-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    AD-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    AD-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ AD-PATH >CSTR
+   PTXTC:CUBIN$ AD-PATH FFI:CSTR
    AD-MOD AD-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    AD-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SAXPY" AD-KN >CSTR
+   s" SAXPY" AD-KN FFI:CSTR
    AD-FUNC AD-MOD @ >CUDA-MOD AD-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    AD-DX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  AD-DX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    AD-DY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  AD-DY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR

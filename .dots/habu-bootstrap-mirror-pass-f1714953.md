@@ -10,10 +10,10 @@ Mirror the native width-aware pass-2 lowering (habu2.f EM-COMPILE-P2WIDE / EM-P2
 
 ## RE-VERIFICATION + TRIPWIRE (trigger condition fired: production ADTs landed)
 
-The switchover campaign landed ELEVEN production declarations outside test
+The switchover campaign landed TEN production declarations outside test
 files: lib/adt/option.f:26 (SUMTYPE option 1), lib/adt/result.f:35 (SUMTYPE
-result 2), lib/map.f:8 (ENUM slot-state) + :30 (SUMTYPE map-loc 0), lib/ffi.f:19
-(ENUM kind), lib/process.f:12 (SUMTYPE outcome 0), lib/ptx/ir.f:23 (PRODUCT
+result 2), lib/map.f:8 (ENUM slot-state) + :30 (SUMTYPE map-loc 0),
+lib/process.f:12 (SUMTYPE outcome 0), lib/ptx/ir.f:23 (PRODUCT
 ptxir-node 0), maki/fusion-plan.f:55 + maki/report.f:52/67/86 (ENUMs). The
 original "no declaration anywhere in non-test source" proof is DEAD.
 

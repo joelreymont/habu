@@ -15,8 +15,8 @@ Took the migrate-and-retire option. Landed:
   (requires lib/errors.f + lib/process.f added); a signal-killed bench child
   now reports `FAILED rc=128+sig` instead of silently passing as rc 0.
 - lib/process.f PROC-WAIT-RAW (the raw wait-rc alias, zero callers) retired:
-  word deleted, lib/std.manifest row removed, docs/stdlib.md updated with an
-  explicit "no raw wait-rc wrapper" rationale.
+  word deleted and docs/stdlib.md updated with an explicit "no raw wait-rc
+  wrapper" rationale.
 - Regression lib/process-test.f TEST-PROC-WAIT-RC-SIGNAL: /bin/sh child
   SIGKILLs itself; PROC-WAIT-RC must report 137 (128+9), never 0.
 - Zero `wait-rc` call sites remain outside the engine (registration

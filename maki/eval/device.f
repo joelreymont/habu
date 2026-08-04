@@ -17,7 +17,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/engine-candidate.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/float.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
@@ -25,7 +25,7 @@ require lib/ptx/cg.f
 require lib/ptx/header.f
 require lib/ptx/tile.f
 require maki/eval/eval.f
-require maki/cuda-driver.f
+require lib/ptx/cuda-driver.f
 require maki/cuda-run.f
 require maki/device-artifacts.f
 require maki/eval/active-target.f
@@ -78,26 +78,26 @@ $23 constant ED-EXIT-FAULT     \ launch threw (E-CUDA etc.) / crashed
    ED-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0
    ED-MOD ED-PATH MKD:CUMODULELOAD CUDA:RC0
    ED-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SAXPY" ED-KN >CSTR
+   s" SAXPY" ED-KN FFI:CSTR
    ED-FUNC ED-MOD @ >CUDA-MOD ED-KN MKD:CUMODULEGETFUNCTION CUDA:RC0
    ED-DX 16 >LEN MKD:CUMEMALLOC CUDA:RC0  ED-DX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    ED-DY 16 >LEN MKD:CUMEMALLOC CUDA:RC0  ED-DY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    ED-DX @ >CUDA-DEVPTR $40000000 4 >COUNT MKD:CUMEMSETD32 CUDA:RC0     \ x = 2.0
    ED-DY @ >CUDA-DEVPTR 0 4 >COUNT MKD:CUMEMSETD32 CUDA:RC0             \ y = 0
    $40400000 ED-AB !  4 ED-NV !                                      \ a = 3.0, n = 4
-   ED-FUNC @ >CUDA-FN 256 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   ED-FUNC @ >CUDA-FN 24 >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
-   ED-FUNC @ >CUDA-FN 0 >IDX  ED-DX 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   ED-FUNC @ >CUDA-FN 8 >IDX  ED-DY 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   ED-FUNC @ >CUDA-FN 16 >IDX ED-AB 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   ED-FUNC @ >CUDA-FN 20 >IDX ED-NV 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   ED-FUNC @ >CUDA-FN 1 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   ED-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   ED-FUNC @ >CUDA-FN 24 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   ED-FUNC @ >CUDA-FN 0 >IDX  ED-DX 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   ED-FUNC @ >CUDA-FN 8 >IDX  ED-DY 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   ED-FUNC @ >CUDA-FN 16 >IDX ED-AB 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   ED-FUNC @ >CUDA-FN 20 >IDX ED-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   ED-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    ED-RBUF ED-DY @ >CUDA-DEVPTR 4 >LEN MKD:CUMEMCPYDTOH CUDA:RC0 ;
 
 : ED-RUN ( ptr u8 n -- n ) {: pa pu :}          \ cubin path -> f32 result bits
    ED-RBUF 4 PTXSENT:FILL                        \ poison readback: a dropped copy-back fails closed
-   pa pu ED-PATH >CSTR
+   pa pu ED-PATH FFI:CSTR
    [: ED-RUN-CORE ;] CUDA-SCOPE:SCOPE
    ED-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 : DEVICE-CORRECT? ( ptr u8 n -- bool )  ED-RUN $40C00000 = ;   \ golden a*x+y = 6.0

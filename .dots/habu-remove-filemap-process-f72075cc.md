@@ -1,12 +1,14 @@
 ---
 title: Remove FILEMAP process references
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-28T10:47:08.235402+02:00"
+closed-at: "2026-08-02T16:54:45.219719+02:00"
+close-reason: landed by the 85a9646fd6b97e5d2cbb86d637bcf8d8ab2aece8 hard cut; live process and plan references are absent
 ---
 
-Why: after the manual index and its gate disappear, live guidance must not tell agents or plans to maintain or run them. Owned result: remove FILEMAP.md and filemap-lint requirements from AGENTS.md, STATUS.md, LESSONS.md, PLAN.md, MODEL-CAD-V2-PLAN.md, docs/model-unified.md, docs/compiler-ir-design.md, docs/porting.md, docs/worker-briefing.md, and docs/census-type-dsl-cutover.md. Preserve every remaining gate, source-list rule, lesson, plan dependency, and substantive design statement; rewrite grammar only where needed. Closed historical dots and docs/archive are frozen history and are outside this leaf. Forbidden: deleting other docs, changing runtime/code, weakening host/dot/type gates, rewriting unrelated lessons, or creating a replacement inventory. Checkpoint: an exact path census names every live non-dot, non-archive reference before edits. Acceptance: the same census reports zero live references after edits; AGENTS master workflow remains complete without filemap; STATUS and plans name only real gates and files; Markdown links and package names remain valid; LESSONS says flat stdlib modules require a lib/std.manifest row and calls the retired comparison a reported source-path count. Ownership: live process and plan prose only.
+Why: after the manual index and its gate disappear, live guidance must not tell agents or plans to maintain or run them. Owned result: remove FILEMAP.md and filemap-lint requirements from AGENTS.md, STATUS.md, LESSONS.md, PLAN.md, MODEL-CAD-V2-PLAN.md, docs/model-unified.md, docs/compiler-ir-design.md, docs/porting.md, docs/worker-briefing.md, and docs/census-type-dsl-cutover.md. Preserve every remaining gate, source-list rule, lesson, plan dependency, and substantive design statement; rewrite grammar only where needed. Closed historical dots and docs/archive are frozen history and are outside this leaf. Forbidden: deleting other docs, changing runtime/code, weakening host/dot/type gates, rewriting unrelated lessons, or creating a replacement inventory. Checkpoint: an exact path census names every live non-dot, non-archive reference before edits. Acceptance: the same census reports zero live references after edits; AGENTS master workflow remains complete without filemap; STATUS and plans name only real gates and files; Markdown links and package names remain valid; LESSONS calls the retired comparison a reported source-path count. Ownership: live process and plan prose only.
 
 Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `codex-filemap-docs` and workspace `.jj-ws/habu-remove-filemap-process-f72075cc` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `FILEMAP.md` is still present and references remain in `AGENTS.md`, `STATUS.md`, `PLAN.md`, `LESSONS.md`, `docs/porting.md` and `docs/worker-briefing.md`. The dot stays active and is free to claim.
 

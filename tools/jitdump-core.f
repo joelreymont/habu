@@ -30,6 +30,8 @@ variable JDP  variable JDN
 : JIT-FIND ( ptr u8 n -- n )
    get-current search-wl dup 0= if s" jitdump: target word not found" 74 die then ;
 
+\ Evaluates caller source through the real compiler before lookup; retire with
+\ habu-builder-trust-rows-c5d41af6 when dynamic evaluation is checker-typed.
 TRUSTED: JIT-EVALUATE ( ptr u8 n -- )
    evaluate ;
 

@@ -4,8 +4,8 @@ status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-19T21:31:49.523543+02:00"
-closed-at: "2026-08-04T00:22:52.644623+02:00"
-close-reason: ledger retired with the governance mirror
+closed-at: "2026-08-02T15:17:47.161895+02:00"
+close-reason: "Superseded by the a8c716c5 hard cut: the trusted-inventory ledger, tables, and lint were deleted; no trust inventory remains to structure."
 blocks:
   - habu-lowering-hash-unified-586f7881
 ---

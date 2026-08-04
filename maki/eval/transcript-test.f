@@ -15,10 +15,10 @@ package MAKI
 : TST-NO-HDR   ( -- )  EVAL:TS-RESET s" target habu-ptx" EVAL:TS-LINE ;
 : TST-DUP-HDR  ( -- )
    EVAL:TS-RESET
-   s" habu-eval-transcript v1" EVAL:TS-LINE
-   s" habu-eval-transcript v1" EVAL:TS-LINE ;
+   s" habu-eval-transcript" EVAL:TS-LINE
+   s" habu-eval-transcript" EVAL:TS-LINE ;
 : TST-END-NO-HDR ( -- )  EVAL:TS-RESET EVAL:TS-END ;
-: TST-HDR      ( -- )  EVAL:TS-RESET s" habu-eval-transcript v1" EVAL:TS-LINE ;
+: TST-HDR      ( -- )  EVAL:TS-RESET s" habu-eval-transcript" EVAL:TS-LINE ;
 : TST-UNKNOWN  ( -- )  TST-HDR s" verdict green" EVAL:TS-LINE ;
 : TST-TASK-1ST ( -- )  TST-HDR s" task saxpy" EVAL:TS-LINE ;
 : TST-2-TARGET ( -- )
@@ -59,57 +59,50 @@ package MAKI
 : TST-NO-FILE ( -- )  s" maki/transcripts/no-such.txt" EVAL:TS-FILE ;
 : TST-IDX-OOR ( -- )  2 EVAL:TS-N@ drop ;
 
-\ ---- format v1.1: optional generator-reported `tokens N` per candidate ----
-: TST11-HDR ( -- )  EVAL:TS-RESET s" habu-eval-transcript v1.1" EVAL:TS-LINE ;
-: TST11-TO-SAMPLE ( -- )
-   TST11-HDR
+\ ---- optional generator-reported `tokens N` per candidate ----------------
+: TST-TOK-SAMPLE ( -- )
+   TST-HDR
    s" target habu-ptx" EVAL:TS-LINE
    s" task saxpy" EVAL:TS-LINE
    s" sample m1" EVAL:TS-LINE ;
-: TST11-GREEN ( -- )  s" candidate K ( n -- n ) 1+" EVAL:TS-LINE ;
-: TST11-RED   ( -- )  s" candidate K ( n -- n ) drop" EVAL:TS-LINE ;
+: TST-GREEN ( -- )  s" candidate K ( n -- n ) 1+" EVAL:TS-LINE ;
+: TST-RED   ( -- )  s" candidate K ( n -- n ) drop" EVAL:TS-LINE ;
 \ real path: every candidate model-counted; post-green extras stay ignored
-: TST11-MODEL ( -- )
-   TST11-TO-SAMPLE
-   TST11-GREEN  s" tokens 120" EVAL:TS-LINE
-   TST11-GREEN  s" tokens 999" EVAL:TS-LINE    \ ignored: sample already green
+: TST-MODEL ( -- )
+   TST-TOK-SAMPLE
+   TST-GREEN  s" tokens 120" EVAL:TS-LINE
+   TST-GREEN  s" tokens 999" EVAL:TS-LINE    \ ignored: sample already green
    s" sample m2" EVAL:TS-LINE
-   TST11-RED    s" tokens 50" EVAL:TS-LINE     \ author reject -> 1 repair round
-   TST11-GREEN  s" tokens 60" EVAL:TS-LINE
+   TST-RED    s" tokens 50" EVAL:TS-LINE     \ author reject -> 1 repair round
+   TST-GREEN  s" tokens 60" EVAL:TS-LINE
    EVAL:TS-END ;
-\ proxy path: v1.1 without tokens directives keeps the whitespace proxy
-: TST11-PROXY ( -- )
-   TST11-TO-SAMPLE
-   TST11-GREEN
+\ a transcript without tokens directives keeps the whitespace proxy
+: TST-PROXY ( -- )
+   TST-TOK-SAMPLE
+   TST-GREEN
    s" sample m2" EVAL:TS-LINE
-   TST11-RED
-   TST11-GREEN
+   TST-RED
+   TST-GREEN
    EVAL:TS-END ;
 \ fail-closed tokens classes
-: TST11-V1-TOKENS ( -- )
-   TST-TO-TASK
-   s" sample s1" EVAL:TS-LINE
-   TST11-GREEN
-   s" tokens 120" EVAL:TS-LINE ;
-: TST11-MISPLACED ( -- )  TST11-TO-SAMPLE s" tokens 120" EVAL:TS-LINE ;
-: TST11-DUP ( -- )
-   TST11-TO-SAMPLE TST11-GREEN
+: TST-TOK-MISPLACED ( -- )  TST-TOK-SAMPLE s" tokens 120" EVAL:TS-LINE ;
+: TST-TOK-DUP ( -- )
+   TST-TOK-SAMPLE TST-GREEN
    s" tokens 120" EVAL:TS-LINE
    s" tokens 121" EVAL:TS-LINE ;
-: TST11-BAD-ARG  ( -- )  TST11-TO-SAMPLE TST11-GREEN s" tokens 12x" EVAL:TS-LINE ;
-: TST11-ZERO-ARG ( -- )  TST11-TO-SAMPLE TST11-GREEN s" tokens 0" EVAL:TS-LINE ;
-: TST11-NEG-ARG  ( -- )  TST11-TO-SAMPLE TST11-GREEN s" tokens -5" EVAL:TS-LINE ;
+: TST-TOK-BAD-ARG  ( -- )  TST-TOK-SAMPLE TST-GREEN s" tokens 12x" EVAL:TS-LINE ;
+: TST-TOK-ZERO-ARG ( -- )  TST-TOK-SAMPLE TST-GREEN s" tokens 0" EVAL:TS-LINE ;
+: TST-TOK-NEG-ARG  ( -- )  TST-TOK-SAMPLE TST-GREEN s" tokens -5" EVAL:TS-LINE ;
 \ mixed-file negatives: a transcript is all-model or all-proxy, never both
-: TST11-MIX-LATE ( -- )
-   TST11-TO-SAMPLE
-   TST11-RED                                    \ no tokens -> proxy settled
-   TST11-GREEN  s" tokens 60" EVAL:TS-LINE ;
-: TST11-MIX-DROP ( -- )
-   TST11-TO-SAMPLE
-   TST11-RED    s" tokens 50" EVAL:TS-LINE      \ model settled...
-   TST11-GREEN                                  \ ...then a proxy candidate
+: TST-TOK-MIX-LATE ( -- )
+   TST-TOK-SAMPLE
+   TST-RED                                    \ no tokens -> proxy settled
+   TST-GREEN  s" tokens 60" EVAL:TS-LINE ;
+: TST-TOK-MIX-DROP ( -- )
+   TST-TOK-SAMPLE
+   TST-RED    s" tokens 50" EVAL:TS-LINE      \ model settled...
+   TST-GREEN                                  \ ...then a proxy candidate
    EVAL:TS-END ;
-: TST11-DUP-HDR ( -- )  TST-HDR s" habu-eval-transcript v1.1" EVAL:TS-LINE ;
 
 : EVAL-TRANSCRIPT-MAIN ( -- )
    T-RESET
@@ -132,7 +125,7 @@ package MAKI
    1 EVAL:TS-REPAIRED@ 2 T=      \ sh3 + sh4 reach green via repair
    1 EVAL:TS-ROUNDS@   3 T=      \ sh3: 2 rounds, sh4: 1 round
    1 EVAL:TS-REC@      0 T=
-   0 EVAL:TS-TOKSRC@ EVAL:TS-TOK-PROXY T=   \ v1: whitespace proxy, marked as such
+   0 EVAL:TS-TOKSRC@ EVAL:TS-TOK-PROXY T=   \ whitespace proxy, marked as such
    1 EVAL:TS-TOKSRC@ EVAL:TS-TOK-PROXY T=
 
    \ --- recorded arm: the committed triton fixture, no replay ---
@@ -147,8 +140,8 @@ package MAKI
    1 EVAL:TS-EST@   0 T=
    1 EVAL:TS-TOKSRC@ EVAL:TS-TOK-NONE T=    \ recorded-only: no token data at all
 
-   \ --- v1.1 model-token path: `tokens` overrides the whitespace proxy ---
-   TST11-MODEL
+   \ --- model-token path: `tokens` overrides the whitespace proxy ---
+   TST-MODEL
    0 EVAL:TS-N@        2 T=
    0 EVAL:TS-GREEN@    1 T=
    0 EVAL:TS-REPAIRED@ 1 T=
@@ -157,8 +150,8 @@ package MAKI
    0 EVAL:TS-EST@     26 T=     \ est stays source-derived: m1 9 + m2 (8+9)
    0 EVAL:TS-TOKSRC@ EVAL:TS-TOK-MODEL T=
 
-   \ --- v1.1 proxy path: no tokens directives -> proxy tally, marked proxy ---
-   TST11-PROXY
+   \ --- proxy path: no tokens directives -> proxy tally, marked proxy ---
+   TST-PROXY
    0 EVAL:TS-N@        2 T=
    0 EVAL:TS-TOKENS@  21 T=     \ whitespace proxy: 7 + (7+7) source tokens
    0 EVAL:TS-EST@     26 T=     \ same est as the model path: unit-independent
@@ -181,16 +174,14 @@ package MAKI
    ['] TST-MIXED        E-TS-ORDER  TTHROWS
    ['] TST-NO-FILE      E-FS-OPEN   TTHROWS
 
-   \ --- fail-closed tokens classes (v1.1) ---
-   ['] TST11-V1-TOKENS  E-TS-LINE   TTHROWS   \ v1 grammar has no tokens directive
-   ['] TST11-MISPLACED  E-TS-ORDER  TTHROWS
-   ['] TST11-DUP        E-TS-ORDER  TTHROWS
-   ['] TST11-BAD-ARG    E-TS-LINE   TTHROWS
-   ['] TST11-ZERO-ARG   E-TS-LINE   TTHROWS
-   ['] TST11-NEG-ARG    E-TS-LINE   TTHROWS
-   ['] TST11-MIX-LATE   E-TS-TOKENS TTHROWS
-   ['] TST11-MIX-DROP   E-TS-TOKENS TTHROWS
-   ['] TST11-DUP-HDR    E-TS-HEADER TTHROWS
+   \ --- fail-closed tokens classes ---
+   ['] TST-TOK-MISPLACED  E-TS-ORDER  TTHROWS
+   ['] TST-TOK-DUP        E-TS-ORDER  TTHROWS
+   ['] TST-TOK-BAD-ARG    E-TS-LINE   TTHROWS
+   ['] TST-TOK-ZERO-ARG   E-TS-LINE   TTHROWS
+   ['] TST-TOK-NEG-ARG    E-TS-LINE   TTHROWS
+   ['] TST-TOK-MIX-LATE   E-TS-TOKENS TTHROWS
+   ['] TST-TOK-MIX-DROP   E-TS-TOKENS TTHROWS
 
    \ --- index guard ---
    s" maki/transcripts/synth-triton.txt" EVAL:TS-FILE

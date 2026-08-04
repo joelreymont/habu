@@ -14,7 +14,7 @@
 \ EMIT-BLOCK-SUM / EMIT-BLOCK-MAX), and the region output row is masked-stored (ROW-STORE).
 \
 \ Reduction bodies MIRROR the host references op-for-op so the device f32 output matches
-\ F64>F32(host) under the section 11 reduction tolerance (maki/lower/golden.f):
+\ F32:NARROW(host) under the section 11 reduction tolerance (maki/lower/golden.f):
 \   RMSNORM   (maki/rmsnorm.f RMS-FWD): y = x / sqrt(mean(x^2)+eps)    - one BLOCK-SUM.
 \   LAYERNORM (maki/layernorm.f LN-FWD): y = (x-mu)/sqrt(var+eps)      - two BLOCK-SUMs.
 \   SOFTMAX-ROW (maki/softmax.f SM-FWD): y = exp(x-max)/sum            - BLOCK-MAX + BLOCK-SUM.
@@ -87,6 +87,9 @@ package CAD-NUM public
 -5192 constant E-LRED-REG      \ node / input register-map index out of range
 
 package MAKI
+
+using PTX-ACT
+
 private
 
 4    constant LRED-MAX-IN      \ v1 input cap (documented): >4 region inputs fails closed
@@ -439,4 +442,5 @@ public
       s" }" PTX-L
    }PTX-MODULE ;
 
+;using
 ;package

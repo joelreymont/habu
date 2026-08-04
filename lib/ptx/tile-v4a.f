@@ -36,6 +36,8 @@
 \ lib/ptx/cg.f + lib/ptx/cg-vec.f + lib/ptx/tile.f + lib/ptx/tile-v4.f. The
 \ pointwise ops PRESERVE the vtile phantom, so they are CHECKED callers of the
 \ PTXREP register-emitter combinators (lib/ptx/rep.f).
+\ Retirement owner for every trusted site below:
+\ habu-ptx-phantom-preserving-3df9db92.
 
 require lib/ptx/rep.f
 

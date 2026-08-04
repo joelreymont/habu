@@ -1,9 +1,11 @@
 ---
 title: Migrate OPTION to unified ENUM
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-13T17:16:48.654673+02:00"
+closed-at: "2026-08-02T16:54:45.189627+02:00"
+close-reason: landed at bf61e776601225484ea4d75b8450e68e7198a1d2; current lib/adt/option.f is the exact requested unified ENUM declaration
 ---
 
 Replace the shared global arity-one legacy `SUMTYPE option` with:
@@ -33,20 +35,14 @@ both-arm construction, `MATCH`, payload round trip, tags, reflection kind
 Use the existing distinct `idx` and `len` signature roles for that rejection;
 do not publish test-only type families.
 
-Exact files: `lib/adt/option.f`, `lib/adt/option-test.f`, `docs/forth.md`,
-`tools/package-diff-lint-core.f`, `tools/package-diff-lint-test.f`,
-`test/gate-stdlib-cases.f`, `tools/suite-coverage-lint-core.f`.
-The new test file raises the enum census's walked-file count from 1,266 to
-1,267, so the exact write set also includes `tools/enum-census-core.f` solely
-for that ratchet. Its declaration baseline stays unchanged at 111 plain and 88
-full sites. Do not edit `lib/std.manifest`, the enum-census baseline, RESULT, or
-any consumer. Acceptance: focused OPTION suite, exact owning standard-library
-suite including enum census, typed-local and package exact-diff lints, suite-coverage lint, an exact census proving 1,267 walked files
-with 111 plain and 88 full sites, an exact census proving 124 unchanged
-consumers and only the declaration changed in the 125-file universe, and
-scratch mutation kills for arm order, field name, compact mode, and
-generator-domain drift. Smallest owning path: the standard-library gate
-executes the new suite through the real OPTION constructors and `MATCH`
-implementation.
+Exact files: `lib/adt/option.f`, `lib/adt/option-test.f`, `docs/forth.md`, `tools/package-diff-lint-core.f`,
+`tools/package-diff-lint-test.f`, `test/gate-stdlib-cases.f`, `tools/suite-coverage-lint-core.f`. The new test file raises the enum
+census's walked-file count from 1,266 to 1,267, so the exact write set also includes `tools/enum-census-core.f` solely for that
+ratchet. Its declaration baseline stays unchanged at 111 plain and 88 full sites. Do not edit the enum-census baseline, RESULT, or any
+consumer. Acceptance: focused OPTION suite, exact owning standard-library suite including enum census, typed-local and package
+exact-diff lints, suite-coverage lint, an exact census proving 1,267 walked files with 111 plain and 88 full sites, an exact census
+proving 124 unchanged consumers and only the declaration changed in the 125-file universe, and scratch mutation kills for arm order,
+field name, compact mode, and generator-domain drift. Smallest owning path: the standard-library gate executes the new suite through
+the real OPTION constructors and `MATCH` implementation.
 
 Claim: agent=option-enum workspace=.jj-ws/habu-libs-migrate-option-510a7e40

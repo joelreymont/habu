@@ -18,11 +18,11 @@ package MAKI
 \ ---- one gelu/relu elementwise chain over a single input (sched-key fixture) --
 : SRT-BUILD ( n n -- ) {: rows:n cols:n :}
    MIR-RESET
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
    MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
    MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 \ ---- growth fixtures: 33 distinct synthetic keys (> the 32-entry boot table) --
 : SRT-KEY$ ( n -- ptr u8 n ) {: k:n :}  SB-RESET s" sk" SB-APPEND k FMT:SB-INT SB$ ;

@@ -1,9 +1,11 @@
 ---
 title: Rename GPT-2 checkpoint loader
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-27T19:24:10.296426+02:00"
+closed-at: "2026-08-02T15:33:29.184564+02:00"
+close-reason: "Obsolete. Authoritative ancestor 5b0ebb070a5b8ef7c04e2d28772421f796b686c6 deleted the unused GPT2LOAD loader/path and its suites. Retaining this rename task would resurrect deleted architecture. Historical body and claim preserved as closed evidence; no rewrite, source/docs/other dots/new machinery."
 ---
 
 Why: gpt2-bind.f loads and validates a checkpoint, but its file, package GPT2TX, tests, comments, and rejection codes use invented transaction or binding names. The operation is checkpoint loading.
@@ -14,10 +16,10 @@ Behavior and representation do not change: PREPARE, CHECK, CHECK-ALLOC, COMMIT-M
 
 Landed dependency: habu-rename-gpt-2-60fee511 introduced GPT2TENSOR, so this loader consumes GPT2TENSOR and never introduces a compatibility bridge.
 
-Owned write set: the three file renames; gpt2-alloc-test.f, gpt2-check-test.f, gpt2-payload-test.f, weight-store-test.f, maki/test.f, maki/test-core.f, test/enum-decl-suite.f, tools/refine-lint-core.f, STATUS.md, TRUSTED.md, and current task or lesson text that names this exact loader API. The orchestrator reconciles current task descriptions without changing another worker claim.
+Owned write set: the three file renames; gpt2-alloc-test.f, gpt2-check-test.f, gpt2-payload-test.f, weight-store-test.f, maki/test.f, maki/test-core.f, test/enum-decl-suite.f, and current task or lesson text that names this exact loader API. The orchestrator reconciles current task descriptions without changing another worker claim.
 
 Forbidden: aliases, forwarding words, duplicate files, old require paths, compatibility packages, behavioral changes, model redesign, a new public pointer, a top-level LOAD implementation, broad replacement of unrelated compiler or evidence uses of bind, or leaving old error names reachable.
 
-Production defect and acceptance: before the change, every real GPT-2 preparation, mapped-load, allocated-load, cleanup, and family-rejection suite requires gpt2-bind.f and resolves GPT2TX; gpt2-load.f and GPT2LOAD are absent. After the change, the renamed focused suites plus gpt2-check-test.f, gpt2-alloc-test.f, gpt2-payload-test.f, weight-store-test.f, and full Maki pass through gpt2-load.f; exact symbol probes accept GPT2LOAD and each clear rejection name while rejecting GPT2TX, every E-GX name, and every old file path; the source-list check finds no old checkpoint-loader path. Exact package, typed-local, error-code, and host gates pass. This is a pure hard cutover and one compiling commit.
+Production defect and acceptance: before the change, every real GPT-2 preparation, mapped-load, allocated-load, cleanup, and family-rejection suite requires gpt2-bind.f and resolves GPT2TX; gpt2-load.f and GPT2LOAD are absent. After the change, the renamed focused suites plus gpt2-check-test.f, gpt2-alloc-test.f, gpt2-payload-test.f, weight-store-test.f, and full Maki pass through gpt2-load.f; exact symbol probes accept GPT2LOAD and each clear rejection name while rejecting GPT2TX, every E-GX name, and every old file path. Exact package, typed-local, error-code, and host gates pass. This is a pure hard cutover and one compiling commit.
 
 Claim: agent=codex-gpt2-load workspace=.jj-ws/habu-rename-gpt-2-b97c2f18

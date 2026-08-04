@@ -47,7 +47,8 @@ letters/digits, non-BMP letters/numbers, every White_Space range, combining
 marks, punctuation, malformed bytes, and multilingual mixtures. Mutations to
 one chunk, token id, descriptor count, row order, production caller, compact
 merge, or full-table load fail. All old public fixture and matcher names reject.
-Files: focused split/parity/full-vocabulary tests, suite manifests, requires. Smallest owning-path check: one production corpus scan returns
+Files: focused split/parity/full-vocabulary tests, suite manifests, and requires.
+Smallest owning-path check: one production corpus scan returns
 zero, then a one-token mutation returns exactly one. Verify focused BPE,
 tokenizer, full-vocabulary, and owning Maki tests plus exact typed-local,
 package, host, and dot checks.

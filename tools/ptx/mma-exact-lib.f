@@ -23,6 +23,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32-buffer.f
 require lib/fmt.f
 require lib/memory.f
 require maki/array.f
@@ -37,6 +38,9 @@ require maki/eval/active-target.f
 require tools/ptx/bench.f
 
 package MMA-EXACT
+
+using F32-BUF
+
 public
 
 512 constant MX-MAX                        \ largest square edge (buffers sized for this; 512 = grouped-raster / XSWIZ 512^3 checks)
@@ -149,7 +153,7 @@ public
 : MX-PACK-AB ( e -- )  MX-CHECK-E {: e:n :}
    MMA-BF16? if      MX-HA e MX-PA BF16-PACK  MX-HB e MX-PB BF16-PACK   \ F64>BF16 RNE
    else MMA-F16? if  MX-HA e MX-PA F16-PACK   MX-HB e MX-PB F16-PACK    \ F64->fp16
-   else              MX-HA e MX-PA F32-PACK   MX-HB e MX-PB F32-PACK    \ F64->tf32
+   else              MX-HA e MX-PA PACK   MX-HB e MX-PB PACK    \ F64->tf32
    then then ;
 
 \ ---- device buffers + host<->device movement --------------------------------
@@ -172,7 +176,7 @@ variable MX-DA  variable MX-DB  variable MX-DC
    MX-DB @ MX-PB e MMA-ESZ * PTXBENCH:HTOD ;
 : MX-DTOH-C ( e -- )  MX-CHECK-E {: e:n :}    \ read C back to the host and unpack f32 -> host f64
    MX-PC MX-DC @ e 4 * PTXBENCH:DTOH
-   MX-PC e MX-HC F32-UNPACK ;
+   MX-PC e MX-HC UNPACK ;
 
 \ ---- 2D grid/block + kernel params for the applied config at MX-N -----------
 : MX-PARAMS ( -- )
@@ -205,4 +209,5 @@ public
 : MX-CHECK-SHAPE ( n -- )                   \ throw the named code on a zero-block / ragged-M launch shape
    MX-SHAPE-OK? 0= if MX-E-ZEROBLK throw then ;
 
+;using
 ;package

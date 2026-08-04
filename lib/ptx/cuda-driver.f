@@ -14,7 +14,7 @@
 \ API (cuFuncSetBlockShape / cuParamSetv / cuLaunchGrid) avoids cuLaunchKernel's
 \ 11 args; the real driver memory entry points are the _v2 symbols.
 
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/type/deftype.f         \ DEFTYPE - the CUDA handle families
 
 -5002 constant E-CUDA          \ CUDA Driver call failed: null handle or nonzero CUresult
@@ -27,15 +27,6 @@ DEFTYPE CUDA-MOD
 DEFTYPE CUDA-FN
 DEFTYPE CUDA-DEVPTR
 DEFTYPE CUDA-EVENT
-
-\ Fail-closed guards, global so historical maki call sites (CUDA-HANDLE0 /
-\ CUDA-RC0) resolve unqualified.
-: CUDA-HANDLE0 ( n -- n )
-   dup 0= if E-CUDA throw then ;
-
-: CUDA-RC0 ( rc -- )
-   RC>N dup 0 <> if E-CUDA throw then
-   drop ;
 
 package CUDA
 
@@ -62,6 +53,8 @@ variable CD-H
 
 public
 
+DEFTYPE STREAM
+
 : OPEN? ( -- bool )
    CD-H @ NONZERO? if TRUE exit then
    s" libcuda.so.1" CD-LIB FFI:CSTR
@@ -75,11 +68,15 @@ public
    CD-H @ ;
 
 : HANDLE0 ( n -- n )
-   CUDA-HANDLE0 ;
+   dup 0= if E-CUDA throw then ;
 
 : RC0 ( rc -- )
-   CUDA-RC0 ;
+   RC>N dup 0 <> if E-CUDA throw then
+   drop ;
 
+\ Each trusted word is one exact CUDA FFI schema: its signature, symbol,
+\ READABLE/WRITABLE extent, and VALUE slots fix the unique call contract.
+\ Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: CU-INIT ( n -- rc ) {: flags:n :}
    s" cuInit" SYMBOL {: call:n :}
    FFI:RESET  flags 0 FFI:VALUE!
@@ -107,6 +104,21 @@ TRUSTED: CU-DEVICE-PRIMARY-CTX-RETAIN ( ptr a cuda-dev -- rc )
 TRUSTED: CU-CTX-SET-CURRENT ( cuda-ctx -- rc ) {: ctx:cuda-ctx :}
    s" cuCtxSetCurrent" SYMBOL {: call:n :}
    FFI:RESET  ctx 0 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
+
+TRUSTED: CU-STREAM-CREATE ( ptr a n -- rc ) {: out:ptr flags:n :}
+   s" cuStreamCreate" SYMBOL {: call:n :}
+   FFI:RESET  out 8 0 FFI:WRITABLE!  flags 1 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
+
+TRUSTED: CU-STREAM-SYNCHRONIZE ( stream -- rc ) {: stream:stream :}
+   s" cuStreamSynchronize" SYMBOL {: call:n :}
+   FFI:RESET  stream 0 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
+
+TRUSTED: CU-STREAM-DESTROY ( stream -- rc ) {: stream:stream :}
+   s" cuStreamDestroy_v2" SYMBOL {: call:n :}
+   FFI:RESET  stream 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
 
 TRUSTED: CU-MODULE-LOAD ( ptr a ptr u8 -- rc ) {: out:ptr path:ptr :}
@@ -148,9 +160,16 @@ TRUSTED: CU-MEMCPY-DTOH ( ptr u8 cuda-devptr len -- rc )
    FFI:RESET  dst len 0 FFI:WRITABLE!  src 1 FFI:VALUE!  len 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
 
+TRUSTED: CU-MEMCPY-DTOD ( cuda-devptr cuda-devptr len -- rc )
+   {: dst:cuda-devptr src:cuda-devptr len:len :}
+   s" cuMemcpyDtoD_v2" SYMBOL {: call:n :}
+   FFI:RESET  dst 0 FFI:VALUE!  src 1 FFI:VALUE!  len 2 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
+
 \ ---- host-memory registration (UMA zero-copy residency; epic habu-epic-gb10-uma-391d12e8).
 \ Register an existing host mapping (e.g. an mmap'd weight file) so a kernel reads
 \ it through the device address space; the host address is passed by value.
+\ Retirement owner for these three bindings: habu-epic-gb10-uma-391d12e8.
 TRUSTED: CU-MEM-HOST-REGISTER ( n len n -- rc )
    {: p:n bytes:len flags:n :}
    s" cuMemHostRegister_v2" SYMBOL {: call:n :}
@@ -169,6 +188,8 @@ TRUSTED: CU-MEM-HOST-UNREGISTER ( n -- rc )
    FFI:RESET  p 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
 
+\ Remaining exact CUDA schemas retain the package-private FFI rationale above.
+\ Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: CU-FUNC-SET-BLOCK-SHAPE ( cuda-fn n n n -- rc )
    {: fn:cuda-fn x:n y:n z:n :}
    s" cuFuncSetBlockShape" SYMBOL {: call:n :}
@@ -245,28 +266,6 @@ TRUSTED: CU-EVENT-ELAPSED-TIME ( ptr a cuda-event cuda-event -- rc )
    s" cuEventElapsedTime" SYMBOL {: call:n :}
    FFI:RESET  out 4 0 FFI:WRITABLE!  start 1 FFI:VALUE!  stop 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
-
-\ Historical CUDA C spellings remain package methods.  The package is sealed
-\ below, so no later source can redirect them or add competing bindings.
-: CUINIT ( n -- rc ) CU-INIT ;
-: CUDEVICEGET ( ptr a idx -- rc ) CU-DEVICE-GET ;
-: CUDEVICEGETATTRIBUTE ( ptr a n cuda-dev -- rc ) CU-DEVICE-GET-ATTRIBUTE ;
-: CUDEVICEPRIMARYCTXRETAIN ( ptr a cuda-dev -- rc ) CU-DEVICE-PRIMARY-CTX-RETAIN ;
-: CUCTXSETCURRENT ( cuda-ctx -- rc ) CU-CTX-SET-CURRENT ;
-: CUMODULELOAD ( ptr a ptr u8 -- rc ) CU-MODULE-LOAD ;
-: CUMODULEGETFUNCTION ( ptr a cuda-mod ptr u8 -- rc ) CU-MODULE-GET-FUNCTION ;
-: CUMEMALLOC ( ptr a len -- rc ) CU-MEM-ALLOC ;
-: CUMEMFREE ( cuda-devptr -- rc ) CU-MEM-FREE ;
-: CUMEMSETD32 ( cuda-devptr n count -- rc ) CU-MEMSET-D32 ;
-: CUMEMCPYHTOD ( cuda-devptr ptr u8 len -- rc ) CU-MEMCPY-HTOD ;
-: CUMEMCPYDTOH ( ptr u8 cuda-devptr len -- rc ) CU-MEMCPY-DTOH ;
-: CUFUNCSETBLOCKSHAPE ( cuda-fn n n n -- rc ) CU-FUNC-SET-BLOCK-SHAPE ;
-: CUPARAMSETSIZE ( cuda-fn len -- rc ) CU-PARAM-SET-SIZE ;
-: CUPARAMSETV ( cuda-fn idx ptr u8 len -- rc ) CU-PARAM-SET-V ;
-: CULAUNCHGRID ( cuda-fn n n -- rc ) CU-LAUNCH-GRID ;
-: CUCTXSYNCHRONIZE ( -- rc ) CU-CTX-SYNCHRONIZE ;
-: CUMODULEUNLOAD ( cuda-mod -- rc ) CU-MODULE-UNLOAD ;
-: CUDEVICEPRIMARYCTXRELEASE ( cuda-dev -- rc ) CU-DEVICE-PRIMARY-CTX-RELEASE ;
 
 \ ---- typed convenience helpers (named throws via HANDLE0 / RC0) -------------
 

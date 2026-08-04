@@ -842,7 +842,6 @@ public
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE
-   out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE ;
 
@@ -951,7 +950,6 @@ public
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
-   out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;
 
 : BF-APPEND-SNAP-PRESEAL ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -972,7 +970,7 @@ public
 
 \ Snapshot source with one extra test source appended after the builder tail
 \ (snap-lib.f and the target image words are live by then) and just before the
-\ driver, so an owner-WID snapshot fixture can plant return-stack canaries or arm
+\ driver, so a snapshot fixture can plant return-stack canaries or arm
 \ the test-only close seam before SNAPGO runs. Builder-only: the injected source
 \ sits above the SNAP-TAIL-MARK, so SNAP-RETIRE-GO forgets it before the image is
 \ written and nothing reaches a shipped snapshot.
@@ -1315,25 +1313,6 @@ public
    s" hb-new" BF-EXPECT
    s" snapshot image OK: candidate validated" type cr ;
 
-package BUILD-EXT
-
-private
-
-: OWNER-WID-ACT ( -- )
-   BF-BUILD-STDIN-FRESH
-   BF-BUILD-SNAP-FROM-STDIN ;
-
-public
-
-: OWNER-WID-BUILD ( -- )
-   s" test/owner-wid-emitter.f" SET
-   s" test/owner-wid-source.f" KEEP-SET
-   [: OWNER-WID-ACT ;] catch {: code:n :}
-   CLEAR
-   code 0 <> if code throw then ;
-
-;package
-
 : BF-BUILD-ALL ( -- )
    BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-STDIN-FRESH ;
@@ -1646,7 +1625,6 @@ undefine KEEP-SET
 undefine KEEP@
 undefine KEEP-A
 undefine KEEP-U
-undefine OWNER-WID-ACT
 ;package
 
 \ Fail-closed CLI self-dispatch. tools/build-fixpoint-main.f and

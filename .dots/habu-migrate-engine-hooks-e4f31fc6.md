@@ -6,7 +6,10 @@ issue-type: task
 created-at: "2026-07-16T08:27:22.049121+02:00"
 ---
 
-Stage 2 of the stored-xt soundness program (RCA + sequencing in habu-checker-exec-of-5923c543; stage 1 landed: typed xt<effect> cells, f369f37c). Migrate the ~36 engine hook cells that use the raw-var @ execute shape - the RCA's measured inventory: checker.f/type-family.f/sumtype.f/layout-buffer.f plugin dispatch (tfam-resolve*/arity*/layout?*/cell?*/width@*/concrete-linear?, match-fam-tok/match-variant-tok/match-of-tok/construct-tok, checker-usig-cert-add/checker-package/checker-undefine-guard/checker-lbuf-name-guard/checker-snapshot-prepare, rbf-push/rbf-pop/report-uncheckable/usig-add-bad/sig-type/loc-show-one/check, lbuf-eval-run/layout-maybe-linear?/layout-linear-count, tdecl-gen-eval/tdecl-ctor-prot-wid/tf-ctor-build-hash) and habu1.f hooks (source-hook/prefix-hook/cold-hook/restore-hook/proof-hook) - to typed xt<E> cells (TYPED-VARIABLE with the hook's true effect) or defer/is where install semantics fit; fprim/fprim-l/fprim-wid stay TRUSTED machine-code boundaries (classify explicitly). Each migrated hook: declared effect matches the real callers (derive from the current install sites), store sites become first-class quotation stores or typed installs, fetch+execute fit-checks. Acceptance: zero raw-var @ execute sites remain in the inventory (rg proof), all suites + self-check certify, fixpoint x2, full run.f, maki 0 FAIL; the stage-3 pin (xt-cell-test L1) still shows plain user variable laundering (the flip is stage 3, not this dot). COORDINATE: broad checker.f surface - tfam's sealed-packages lane is active; keep hunks per-hook surgical; integrator rebases by hash. Files: src/core/checker.f, type-family.f, sumtype.f, layout-buffer.f, render.f, src/habu/habu1.f, tests. Ownership: checker/engine hook typing.
+Stage 2 of the stored-xt soundness program (RCA + sequencing in habu-checker-exec-of-5923c543; stage 1 landed: typed xt<effect> cells, f369f37c). Migrate the ~36 engine hook cells that use the raw-var @ execute shape - the RCA's measured inventory: checker.f/type-family.f/sumtype.f/layout-buffer.f plugin dispatch (tfam-resolve*/arity*/layout?*/cell?*/width@*/concrete-linear?, match-fam-tok/match-variant-tok/match-of-tok/construct-tok, checker-usig-cert-add/checker-package/checker-undefine-guard/checker-lbuf-name-guard/checker-snapshot-prepare, rbf-push/rbf-pop/report-uncheckable/usig-add-bad/sig-type/loc-show-one/check, lbuf-eval-run/layout-maybe-linear?/layout-linear-count, tdecl-gen-eval/tdecl-ctor-prot-wid/tf-ctor-build-hash) and habu1.f hooks (source-hook/prefix-hook/cold-hook/restore-hook/proof-hook) - to typed xt<E> cells (TYPED-VARIABLE with the hook's true effect) or defer/is where install semantics fit; fprim/fprim-l/fprim-wid stay TRUSTED machine-code boundaries (classify explicitly). Each migrated hook: declared effect matches the real callers (derive from the current install sites), store sites become first-class quotation stores or typed installs, fetch+execute fit-checks. Acceptance: zero raw-var @ execute sites remain in the inventory (rg proof), all suites + self-check certify, fixpoint x2, full run.f, maki 0 FAIL; the stage-3 pin (xt-cell-test L1) still shows plain user variable laundering (the flip is stage 3, not this dot). Files: src/core/checker.f, type-family.f, sumtype.f, layout-buffer.f, render.f, src/habu/habu1.f, tests. Ownership: checker/engine hook typing.
+
+Every surviving source TRUST boundary has a source-local rationale, names this
+dot as retirement owner, and is exercised through a focused production test.
 
 
 RE-SCOPED 2026-07-16 (hookmig lane; enabler landed 7e93b439 "engine: load
@@ -49,42 +52,23 @@ excluded by scope - already checked since the btrust batch). Stage-3 pin
 intact (xt-cell-test L1 still launders). Proven on BOTH paths after the
 checker-defer bridge: native fixpoint x2 0a71f23d; full recovery chain
 'bootstrap check OK' with the mirror-built seed certifying the checked
-defer/is hooks. Zero new TRUSTED sites; owner-wid-emit-seal absence rows
-follow the new words.
+defer/is hooks. Zero new TRUSTED sites.
 
 REMAINING = STAGE-2B (checker.f/type-family/sumtype/layout-buffer/render
 hooks, the ~31-cell balance of the opening inventory): the bridge removed the
 mirror-side rejection; the open constraints are (1) the install-ordering
 design - those hooks install BEFORE the checker prefix is live, so either
 stage0-compatible defer placement or a typed pre-prefix install primitive,
-decide at dispatch; (2) tfam sealed-packages coordination on checker.f hunks
-(surgical per-hook hunks, integrator rebases by hash). Corrected premise for
+decide at dispatch; (2) checker.f/type-family collision boundaries recorded
+below. Corrected premise for
 2b (proven by stage-2a): the engine prefix files are in the CHECKED region of
 the generated stage sources - 2b conversions will be checker-certified code,
 not unchecked-region code.
 
 
-STAGE-2A STATUS 2026-07-16 (stage2a lane, implementation COMPLETE and
-native-green, held uncommitted in .jj-ws/fable-stage2a pending the bridge):
-PREMISE CORRECTION - the habu1.f hooks are NOT unchecked-region code: in the
-assembled stage2-src, LOWER-CERT-HOOK:INSTALL (checking ON) precedes
-SOURCE-HOOK! with no 0 set-check between, so the owner-wid hooks compile
-CHECKED. Native certifies checked defer+is fine (fixpoint x2 5a7638a6);
-the gforth-mirror stage0 rejects it - exit 70 'hook: non-certified definition:
-source-hook! at is' - because mirror C-DEFER (forth.fs:4344) omits
-C-CALL-CHECKER-DEFER. Option A (unchecked-region placement) would require
-adding a forbidden 0 set-check boundary; therefore ALL of stage 2 gates on
-habu-mirror-checker-defer-6a8a366e (blocks: edge added). Minimal blocker
-fixture: any 'defer FOO (E)' + ': FOO! ([E] --) is FOO ;' after
-LOWER-CERT-HOOK:INSTALL on the mirror-built stage. Per-hook conversion table,
-rg proof (zero raw *-XT sites), stage-3 pin intact, and full gate tails are in
-the stage2a lane report. When the bridge lands: rerun recovery in the
-workspace, commit 'engine: habu1 hooks to defer/is (stage 2a)', integrate.
-
 BRIDGE LANDED 2026-07-16 (habu-mirror-checker-defer-6a8a366e closed, 5d2f6d29):
-the mirror-built seed now certifies checked defer/is. Stage-2a proceeds from
-the held implementation in .jj-ws/fable-stage2a (rerun recovery, commit,
-integrate). Stage-2b's defer approach is likewise unblocked on the stage0 side;
+the mirror-built seed now certifies checked defer/is. Stage-2b's defer approach
+is unblocked on the stage0 side;
 its remaining constraint is the checker.f-internal install-ordering design +
 tfam coordination.
 
@@ -143,16 +127,14 @@ BATCH PLAN (LOW-risk first; each its own commit):
   B5 TFAM/MATCH/CONSTRUCT core (HIGH - tfam epicenter): Groups A+B+C, decls
      checker.f:418-430 + guards 4824-4942/5233-5240, installs the contiguous
      type-family.f:1358-1372 block. ONE tightly-scoped commit in a coordinated
-     window; integrator rebases by hash.
+     window.
   B6 TDECL-PROT-WID-XT: separate boundary decision.
 
 TFAM COLLISION MAP: HIGH = type-family.f 1358-1372 / 518-560 / 1030-1093 /
 780-814 / 620-680, checker.f 418-431 / 4824-4942 / 5233-5240 / 7315-7445 /
 7955-7973. LOW = render.f everywhere, checker.f 3990/6502/7486-7487/
 5519-5534/8351-8494/2497-2644, sumtype.f + layout-buffer.f + include.f +
-type-family-sha.f. Lane markers: recent tfam commits e596b0f1 (ctor-package
-limit), c217293a + the option-family/field-schema cluster; live hunks
-type-family.f @-1093, checker.f @-2337.
+type-family-sha.f.
 
 CLEAN-4 PARTIAL LANDED 2026-07-16 (stage2b lane; claim released; B1-B4 scope
 exhausted - everything else in stage 2b now gates on the pre-trust defer
@@ -186,13 +168,6 @@ pre-existing LESSONS entry documenting the constraint):
   throw recoverable E-LAYOUT-BUFFER inside a catch; sumtype.f:824 dies 76
   fatal) - one default-is cannot preserve both; either unify the consumer
   contract first or keep the guarded raw cell. Design decision, not a swap.
-- CLEAN-4 partial authorized and in flight (regrouped commit 'engine:
-  post-trust hook cells to defer/is (2b partial)'): REG-EXT-RB-SAVE/RESTORE
-  (no-op default-is), TF-SHA16-XT (die default-is, exact current message),
-  TFCL-NODE-XT (plain defer, install :813 only).
-- Process note for future scouts: rg LESSONS.md for the target surface before
-  designing - this constraint was already recorded there.
-
 PRE-TRUST CAPABILITY LANDED 2026-07-17 (habu-engine-pre-trust-77410827 closed,
 318c748e): defers now declarable before checker.f's ': TRUST' via the pending
 registration table (capture -> drain at 7690). TWO OBLIGATIONS bound to the
@@ -201,9 +176,8 @@ ecosystem transition (old binaries cannot boot a tree whose prefix declares a
 pre-trust defer - sequence after sol/tfam have refreshed past 318c748e; the
 old-binary-boots gate flips from required-pass to expected-fail-with-named-
 diagnostic at that landing); (2) it REVERTS the TRUSTED: DRAIN-PRETRUST-COMPAT
-shim at checker.f's drain point to the bare DRAIN-PRETRUST token and deletes
-its TRUSTED.md rows (owner habu-checker-exec-of-5923c543, discharge-candidate
-class). The pre-7687 class (BADSIG-XT, REG-SCRATCH-SNAP-XT, REG-EXT-PERSIST-XT,
+shim at checker.f's drain point to the bare DRAIN-PRETRUST token. The pre-7687
+class (BADSIG-XT, REG-SCRATCH-SNAP-XT, REG-EXT-PERSIST-XT,
 SIG-QUOT-XT) is otherwise ready; LOCSHOWXT/DIAGXT still need the harness
 save/restore design; TDECL-EVAL-XT still needs the dual-shape decision; B5
 still needs the tfam window.

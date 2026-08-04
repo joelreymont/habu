@@ -13,6 +13,7 @@
 
 require test/checker-assert.f
 require tools/prot-wid-probe.f
+require lib/adt/result.f
 
 variable #FAIL
 variable #CASE
@@ -644,6 +645,7 @@ s" : CLXN-GET ( clxg<n> -- n ) MATCH clxg wtwo OF + ENDOF wthree OF + + ENDOF ;M
 variable XPAD-D0                                              \ data-stack depth snapshot taken before the build
 : XPAD-MARK ( -- ) depth XPAD-D0 ! ;                         \ checked: snapshot the baseline depth
 : XPAD-DELTA ( -- n ) depth XPAD-D0 @ - ;                    \ checked: cells the build added to the stack
+\ Retirement owner: habu-fail-closed-on-0ab1e401.
 TRUSTED: TWX-XPAD-DROP-BUNDLE ( clxg<clx2> n -- n )          \ trusted leaf: drop the measured layout value, keep the count
    >r 2drop 2drop drop r> ;
 : XPAD-WTHREE-W ( -- n )                                     \ native cell footprint of the certified clxg<clx2> wthree bundle
@@ -694,6 +696,7 @@ s" XPGFLAT ( n n n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=      \
 s" XPGCONC ( n n -- xpg<n> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=            \ concrete non-widening instantiation certifies
 package XPAD-TAGLESS
 : XPGW-MK ( xpginr n -- xpg<xpginr> ) XPG:MAKE ;              \ compiled generated STRUCTURE constructor at the wide instantiation
+\ Retirement owner: habu-instantiate-wide-generic-075aced1.
 TRUSTED: TWX-XPG-CHECK ( xpg<xpginr> -- )                    \ trusted leaf: read the wide bundle's cells top->bottom (z, b, a) and assert their values in declaration order
    3 T= 2 T= 1 T= ;
 : XPGW-RT ( -- )                                             \ build the certified wide bundle and verify its content + exact width
@@ -1194,6 +1197,111 @@ CTOR-PAYPROV-TEST:LIVE-NAME s" PV-ZPL:ONE" T$=
 CTOR-PAYPROV-TEST:LIVE-DEF s" PV-ZPL:ONE ( n -- zpl ) 0 " T$=
 
 s" PAYLOAD-PROVIDER" type cr
+
+\ ---------------------------------------------------------------------------
+\ A constructor effect may ground a generic payload/result parameter from a
+\ closed one-cell nominal family. The binding happens while equal-family result
+\ arguments pair, before the same variable meets the constructor payload.
+\ ---------------------------------------------------------------------------
+package zpub
+public
+
+ENUM rfbtag red blue ;ENUM
+ENUM rfberr bad worse ;ENUM
+PRODUCT rfbprod 0 FIELD value n ;PRODUCT
+NEWTYPE rfbcell 1
+NEWTYPE rfbpair 2
+PRODUCT rfbwone 1 FIELD value a ;PRODUCT
+
+\ Each constructor arm grounds its own parameter. The conditional forces the
+\ independently checked arms through one joined result, then MATCH proves the
+\ exact runtime tag and payload survive.
+: RFB-OK  ( rfbtag -- result<rfbtag,rfberr> ) RESULT:OK ;
+: RFB-ERR ( rfberr -- result<rfbtag,rfberr> ) RESULT:ERR ;
+: RFB-SELECT ( bool -- result<rfbtag,rfberr> )
+   if ZPUB-RFBTAG:RED RESULT:OK else ZPUB-RFBERR:BAD RESULT:ERR then ;
+: RFB-TAG# ( rfbtag -- n )
+   MATCH rfbtag red OF 11 ENDOF blue OF 12 ENDOF ;MATCH ;
+: RFB-ERR# ( rfberr -- n )
+   MATCH rfberr bad OF 21 ENDOF worse OF 22 ENDOF ;MATCH ;
+: RFB-VALUE ( result<rfbtag,rfberr> -- n )
+   MATCH result ok OF RFB-TAG# ENDOF err OF RFB-ERR# ENDOF ;MATCH ;
+
+\ Fresh generated-constructor paths exercise the same bidirectional seeding
+\ independently of the shared RESULT provider, with width-1 enum and product
+\ layout arguments.
+: RFB-ZENUM ( rfbtag -- zpoly<rfbtag,rfberr> ) ZPOLY:OK ;
+: RFB-ZPROD ( rfbprod -- zpoly<rfbprod,rfberr> ) ZPOLY:OK ;
+: RFB-ZENUM# ( zpoly<rfbtag,rfberr> -- n )
+   MATCH zpoly ok OF RFB-TAG# ENDOF err OF RFB-ERR# ENDOF ;MATCH ;
+: RFB-ZPROD# ( zpoly<rfbprod,rfberr> -- n )
+   MATCH zpoly ok OF ZPUB-RFBPROD:UNMAKE ENDOF err OF RFB-ERR# ENDOF ;MATCH ;
+: RFB-PROD-OK ( rfbprod -- result<rfbprod,rfberr> ) RESULT:OK ;
+: RFB-PROD# ( result<rfbprod,rfberr> -- n )
+   MATCH result ok OF ZPUB-RFBPROD:UNMAKE ENDOF err OF RFB-ERR# ENDOF ;MATCH ;
+: RFB-RUN ( -- )
+   ZPUB-RFBTAG:BLUE RFB-OK RFB-VALUE 12 T=
+   ZPUB-RFBERR:WORSE RFB-ERR RFB-VALUE 22 T=
+   0 0= RFB-SELECT RFB-VALUE 11 T=
+   0 0= 0= RFB-SELECT RFB-VALUE 21 T=
+   ZPUB-RFBTAG:BLUE RFB-ZENUM RFB-ZENUM# 12 T=
+   29 ZPUB-RFBPROD:MAKE RFB-ZPROD RFB-ZPROD# 29 T=
+   31 ZPUB-RFBPROD:MAKE RFB-PROD-OK RFB-PROD# 31 T= ;
+RFB-RUN
+
+\ A generic same-family identity supplies the reverse argument orientation.
+\ Repeating one parameter propagates its first grounding; a different second
+\ grounding and a later inconsistent top-level use both reject.
+: RFB-ALIAS ( rfbpair<a,a> -- rfbpair<a,a> ) ;
+: RFB-LATER ( a rfbpair<a,b> -- a ) drop ;
+s" RFB-A1 ( rfbpair<rfbtag,rfbtag> -- rfbpair<rfbtag,rfbtag> ) RFB-ALIAS"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" RFB-A2 ( rfbpair<rfbtag,rfberr> -- rfbpair<rfbtag,rfberr> ) RFB-ALIAS"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" RFB-L1 ( rfbtag rfbpair<rfbtag,rfberr> -- rfbtag ) RFB-LATER"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" RFB-L2 ( rfberr rfbpair<rfbtag,rfberr> -- rfberr ) RFB-LATER"
+   CHECK-QUIET-CANDIDATE! 0 T=
+
+\ The narrow seam changes none of the existing fail-closed boundaries: wide or
+\ open family terms, one-cell families containing a linear resource, and pointer-
+\ strict generic pointees cannot ground the alias variable. Nominal family and
+\ payload roles remain exact, including after logical values lower to hidden
+\ physical fields.
+: RFB-PTR-ID ( ptr rfbpair<a,a> -- ptr rfbpair<a,a> ) ;
+s" RFB-WIDE ( rfbpair<clw2,clw2> -- rfbpair<clw2,clw2> ) RFB-ALIAS"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" RFB-OPEN ( rfbpair<clopt<a>,clopt<a>> -- rfbpair<clopt<a>,clopt<a>> ) RFB-ALIAS"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" RFB-LIN ( rfbpair<rfbcell<own>,rfbcell<own>> -- rfbpair<rfbcell<own>,rfbcell<own>> ) RFB-ALIAS"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" RFB-PTR ( ptr rfbpair<rfbtag,rfbtag> -- ptr rfbpair<rfbtag,rfbtag> ) RFB-PTR-ID"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" RFB-XFAM ( rfbtag -- clopt<rfbtag> ) RESULT:OK"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" RFB-XPAY ( rfberr -- result<rfbtag,rfberr> ) RESULT:OK"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" RESULT-FAMILY-BIND" type cr
+
+;package
+
+\ Reserved construct resolves in its owner's global package. The dynamically
+\ evaluated definitions are real checked compiles, and RFB-CON-RUN executes both
+\ the W1 enum and W1 product lowering paths through their exact MATCH consumers.
+s" : RFB-CON-E ( zpub:rfbtag -- result<zpub:rfbtag,zpub:rfberr> ) construct result ok ;"
+   TCE-CATCH 0 T=
+s" : RFB-CON-P ( zpub:rfbprod -- result<zpub:rfbprod,zpub:rfberr> ) construct result ok ;"
+   TCE-CATCH 0 T=
+s" : RFB-CON-RUN ( -- ) ZPUB-RFBTAG:RED RFB-CON-E ZPUB:RFB-VALUE 11 T= 37 ZPUB-RFBPROD:MAKE RFB-CON-P ZPUB:RFB-PROD# 37 T= ;"
+   TCE-CATCH 0 T=
+RFB-CON-RUN
+\ Open variables nested below a pointer are not closed family arguments. Both
+\ definitions compile through INCLUDE-EVALUATE; neither constructor may pre-seed
+\ rfbwone<ptr a> into RESULT's fresh payload variable.
+s" : RFB-PTR-GEN-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) RESULT:OK ;"
+   TCE-CATCH 70 T=
+s" : RFB-PTR-CON-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) construct result ok ;"
+   TCE-CATCH 70 T=
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

@@ -93,34 +93,3 @@ TR-FILES: TR-AOT-NEG-PHASE-FILES
    test/run-worker-aot-neg.f test/gate-aot-negative-lib.f
    src/habu/aot-closure.f tools/gate-json-assert-core.f
 ;TR-FILES
-
-TR-FILES: TR-UNDER-SOURCE-FILES
-   tools/build-fixpoint.f tools/stdin-closure-lib.f src/habu/hide.f src/core/util.f
-   src/core/cell.f src/core/pointer-storage.f src/core/structures.f src/core/engine-error.f src/core/checker.f
-   src/core/engine-error-effects.f
-   src/core/lower-cert-base.f
-   src/core/type-schema.f src/core/type-family.f
-   src/core/render.f src/core/sumtype.f
-   src/core/layout-buffer.f src/core/layout-valid.f
-   src/core/check-hook.f src/core/cell-effects.f
-   src/core/pointer-storage-effects.f
-   src/core/declaration-transaction.f
-   src/core/generated-declaration.f
-   src/core/roles.f src/core/bytes.f
-   src/arch/arm64/asm.f src/arch/arm64/icode.f src/arch/arm64/mnem.f
-   src/habu/layout.f src/os/env-base.f src/os/script-argv.f
-   src/core/enums.f src/core/exec-vector.f
-   src/core/sha256.f src/core/type-family-sha.f
-   src/core/combinators.f src/habu/treeshake.f
-   src/habu/rt.f src/habu/crash.f src/os/image-bytes.f src/habu/habu1.f
-   src/habu/prof.f src/habu/regalloc.f src/habu/jit.f src/habu/engine-size.f src/habu/habu2.f
-   src/habu/xref.f src/core/generated-declaration-dictionary.f
-   src/core/generated-declaration-protection.f
-   src/habu/owner-wid-emit-seal.f src/core/layout-buffer-seal.f src/core/lower-cert-seal.f
-   src/habu/driver-io.f src/core/include.f src/habu/aot-capture.f
-   src/habu/stage2.f src/habu/stdin.f src/habu/snap-lib.f src/habu/snap.f src/habu/repl.f
-   src/habu/debug-watch.f src/habu/stepper.f src/habu/debug.f
-   test/owner-wid-emitter.f test/owner-wid-image.f test/owner-wid-doctor.f test/owner-wid-child.f test/owner-wid-build-forge.f
-   test/owner-wid-internal.f test/owner-wid-state.f test/owner-wid-call.f test/owner-wid-private-call.f
-   test/owner-wid-role-swap.f
-;TR-FILES

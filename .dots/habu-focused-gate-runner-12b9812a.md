@@ -7,7 +7,7 @@ created-at: "2026-07-08T20:39:00.798054+02:00"
 ---
 
 printf '' | bin/hb --load test/gate-runner-support.f test/gate-runner-entry.f
--- lint-libs-ptx (and -- lint-manifest) exits rc=77 printing a single ':' byte
+-- lint-libs-ptx exits rc=77 printing a single ':' byte
 on a pristine fable tree. Full suite path bin/hb --load test/run.f unaffected.
 
 BLOCKED-ON: the planned fable rebase onto maki-type-families plus the bin/hb
@@ -42,7 +42,7 @@ chain.
   family subset; only the standalone gate-runner entry loads the whole
   closure (~9.3k dictionary entries) in one process.
 - Load-time overflow means EVERY phase token failed identically
-  (lint-libs-ptx, lint-manifest, dictionary, debug, repair, diag-*,
+  (lint-libs-ptx, dictionary, debug, repair, diag-*,
   check-cli all rc=77 + ':').
 
 ## Fix (already landed on maki-type-families)
@@ -60,9 +60,9 @@ Commit db88a576 "Regress gate-runner-entry standalone load; close dot"
 
 ## Fable action after the rebase + bin/hb refresh
 
-1. Run both focused commands and confirm rc=0 with GROUP:/PASS output:
+1. Run the focused command and confirm rc=0 with GROUP:/PASS output:
    `printf '' | bin/hb --load test/gate-runner-support.f
-   test/gate-runner-entry.f -- lint-libs-ptx` and `-- lint-manifest`.
+   test/gate-runner-entry.f -- lint-libs-ptx`.
 2. Confirm test/gate-runner-entry-test.f rides along in the dispatch
    manifests and passes in the full suite.
 Then close this dot.

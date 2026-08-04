@@ -2,6 +2,11 @@
 3 constant S-ROW   4 constant S-PUSH
 5 constant T-QUOT  6 constant T-ATOM  7 constant T-PARAM
 -1 constant UNBOUND
+\ Trusted checker internals below are confined to raw mmap-result refinements,
+\ typed views/nulls over checker arenas, one raw effect query, and the two engine
+\ primitive models tok-imm?/parse-imm.
+\ Retirement: habu-checker-self-typing-9ff8ba86 for arena/view/query sites;
+\ habu-primitive-effect-axiom-1119f176 for the immediate models.
 \ --- growable checker arenas --------------------------------------------
 \ Shared mmap primitives for the checker's process-local scratch stores. Each
 \ store keeps a baked DATA "boot" buffer (stable address across snapshot) and
@@ -468,7 +473,7 @@ defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical w
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
 defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ item 9 construct family resolve, active package only
 defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ item 9 construct variant resolve + step effect
-defer CTOR-STEP-XT ( n -- bool )                        \ layout-cap slice 3: a generated-constructor CALL whose declared output instantiates a family param at a multi-cell layout arg routes through the arg-aware construct step (the fixed 1-cell-per-param stored effect cannot consume/produce the wide bundle); 0/cell/open args fall through to the ordinary word call
+defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL whose declared output has a direct closed layout arg routes through the bidirectionally seeded construct step; scalar/pointer/open/linear args fall through
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ item 9 MATCH family resolve, signature scope
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
 defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
@@ -1325,19 +1330,6 @@ CT-INIT
    \ name in the single shared-counter case, so this rejects nothing that unified.
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
-: PARAM-FAM-OK? ( n n -- bool ) {: t1:n t2:n :}
-   t1 PARAM>FAM t2 PARAM>FAM = ;   \ identity by resolved family-id, not folded spelling
-
-: PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
-   t1 PARAM>ARGC t2 PARAM>ARGC <> IF t1 t2 U-FAIL EXIT THEN
-   t1 t2 PARAM-FAM-OK? 0= IF t1 t2 U-FAIL EXIT THEN
-   0 PARAM-I !
-   BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
-      t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
-      PARAM-I @ 1 + PARAM-I !
-   REPEAT ;
-
-
 \ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
 \ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
 \ bindings acyclic) whose STRUCTURAL depth is small — hundreds at most — so a
@@ -1356,35 +1348,42 @@ variable TWALK-D
    TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" 76 die THEN ;
 : TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
 
-\ TY-OCC? ( n n -- bool ) : does tyvar v occur in type/row t, descending
-\ through quotation effect rows and parameter arguments.
-: TY-OCC?* ( n n -- bool ) {: v:n t:n :}
+\ TYPE-VAR?* ( v term-or-row any? -- bool ) : one resolved term/row variable
+\ walk. With any? false, find the named type variable for the occurs check.
+\ With any? true, find any unresolved type OR row variable for closedness.
+\ Descend pointer pointees, all quotation effect rows, and family arguments.
+: TYPE-VAR?* ( n n bool -- bool ) {: v:n t:n any:bool :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE v swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         dup P>TYPE v swap any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          P>REST R-RES
-      REPEAT drop RES-FALSE EXIT
-   THEN drop
+      REPEAT
+      dup ISROW IF drop any ELSE drop RES-FALSE THEN
+      EXIT
+   THEN
+   dup ISROW IF drop any EXIT THEN
+   drop
    t T-RES {: x:n :}
-   x TAG T-VAR = IF x PAY v = EXIT THEN
-   x TAG T-PTR = IF v x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-VAR = IF any IF RES-TRUE ELSE x PAY v = THEN EXIT THEN
+   x TAG T-PTR = IF v x PTR>INNER any TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
-      v x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      v x Q>DIN any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>DOUT any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>RIN any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>ROUT any TWALK-DEEPER RECURSE TWALK-SHALLOWER
       EXIT
    THEN
    x TAG T-PARAM = IF
       0 BEGIN dup x PARAM>ARGC < WHILE       \ data-stack index (RECURSE-safe)
          x over PARAM>ARG                    \ ( i arg )
-         v swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         v swap any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
       RES-FALSE EXIT
    THEN
    RES-FALSE ;
-: TY-OCC? ( n n -- bool ) TWALK-RESET TY-OCC?* ;
+: TY-OCC? ( n n -- bool ) TWALK-RESET RES-FALSE TYPE-VAR?* ;
+: TYPE-CLOSED? ( n -- bool ) TWALK-RESET 0 swap RES-TRUE TYPE-VAR?* 0= ;
 
 \ --- item 7 (docs/type-families.md §10-11, PLAN item 7, reject-only): a logical
 \ sum/enum/product layout value is ONE T-PARAM cell in a signature and is NOT
@@ -1680,6 +1679,42 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 : RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates the RAW cell discipline?
    over TVK-RAW? 0= IF 2drop RES-FALSE EXIT THEN     \ ordinary var: never blocks
    nip RAW-OK? 0= ;                                   \ RAW var: `term` must be RAW-admissible
+
+\ A generated constructor's result can ground one of its effect variables before
+\ that same variable meets the payload value. Permit that grounding only inside
+\ equal-family argument pairing and only when the direct logical layout term has
+\ a stable one-cell representation. TYPE-CLOSED? rejects unresolved descendants
+\ under pointers, quotation rows, and nested families; LAYOUT-MAYBE-LINEAR?
+\ rejects possible linear payloads. Pointer-strict pairing, hidden fields, wide
+\ terms, RAW vars, and occurs cycles retain ordinary PAIR and its fail-closed rules.
+: PARAM-BIND-OK? ( n n -- bool ) {: v:n p:n :}
+   v ISVAR 0= IF RES-FALSE EXIT THEN
+   p LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   p HIDDEN-PARAM? IF RES-FALSE EXIT THEN
+   CUR-STRICT @ 0 <> IF RES-FALSE EXIT THEN
+   v PAY TVK-RAW? IF RES-FALSE EXIT THEN
+   p TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
+   p LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+   p T-WIDTH 1 <> IF RES-FALSE EXIT THEN
+   v PAY p TY-OCC? IF RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+: PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
+   t1 PARAM>ARGC t2 PARAM>ARGC <> IF t1 t2 U-FAIL EXIT THEN
+   t1 PARAM>FAM t2 PARAM>FAM <> IF t1 t2 U-FAIL EXIT THEN
+   0 PARAM-I !
+   BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
+      t1 PARAM-I @ PARAM>ARG T-RES {: a:n :}
+      t2 PARAM-I @ PARAM>ARG T-RES {: b:n :}
+      a b PARAM-BIND-OK? IF
+         b a PAY TV!
+      ELSE b a PARAM-BIND-OK? IF
+         a b PAY TV!
+      ELSE
+         a b PAIR
+      THEN THEN
+      PARAM-I @ 1 + PARAM-I !
+   REPEAT ;
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
@@ -2011,19 +2046,28 @@ variable CDT-ROW
    REPEAT
    0 RES-FALSE ;
 
-\ CONSTRUCT-DECL-MULTICELL? ( fam -- bool ) : does the declared output bind a
-\ param of `fam` to a genuinely MULTI-CELL (T-WIDTH>1) layout arg? This is the
-\ gate for the generated-constructor intercept: only such a call needs the
-\ arg-aware construct step; every cell/open/scalar-arg construction keeps the
-\ ordinary stored-effect word call, so no existing construction changes path.
-: CONSTRUCT-DECL-MULTICELL? ( n -- n ) {: fam:n :}
-   fam TFAM-ARITY* 0= IF 0 EXIT THEN         \ arity-0 families have no TYPE ARGS: a wide arity-0 sum (its width from concrete payload fields) is the existing machinery, never this slice's parametric multi-cell-arg capability
-   fam CONSTRUCT-DECL-TERM 0= IF drop 0 EXIT THEN
-   {: t:n :}                                 \ a resolved hidden field of fam; its args are the instantiation
+\ CONSTRUCT-DECL-LAYOUT ( fam -- term bool ) : should the constructor pre-seed
+\ its fresh args from the declared output? Preserve the existing wide arm first:
+\ any direct argument wider than one cell needs the arg-aware construct path,
+\ including its established open/linear checks downstream. The W1 extension is
+\ narrower: a closed, non-linear declared instantiation with a DIRECT layout-
+\ family arg needs pre-seeding because its hidden input cannot bind an ordinary
+\ payload var. Pointer-wrapped families are not direct args; nominal scalars and
+\ plain con/pointer args stay on the ordinary stored-effect word path.
+: CONSTRUCT-DECL-LAYOUT ( n -- n bool ) {: fam:n :}
+   fam TFAM-ARITY* 0= IF 0 RES-FALSE EXIT THEN
+   fam CONSTRUCT-DECL-TERM 0= IF drop 0 RES-FALSE EXIT THEN
+   {: t:n :}
    0 BEGIN dup t PARAM>ARGC < WHILE
-      t over PARAM>ARG T-WIDTH 1 > IF drop t EXIT THEN
+      t over PARAM>ARG T-WIDTH 1 > IF drop t RES-TRUE EXIT THEN
       1 +
-   REPEAT drop 0 ;
+   REPEAT drop
+   t TYPE-CLOSED? 0= IF 0 RES-FALSE EXIT THEN
+   t LAYOUT-MAYBE-LINEAR? IF 0 RES-FALSE EXIT THEN
+   0 BEGIN dup t PARAM>ARGC < WHILE
+      t over PARAM>ARG LAYOUT-PARAM? IF drop t RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop 0 RES-FALSE ;
 
 : CHECKER-STEP {: din dout :}
    din dout LIN-EXPLICIT? LINEXP !
@@ -3425,8 +3469,7 @@ TRUSTED: USIGS-CELL-AT ( n -- ptr a )
 \ emitter is slice 4. So a REAL definition (CHK-CAND = 0) that would reach codegen
 \ fails closed here rather than emit declared-width pads; a CHECK-CANDIDATE probe
 \ (CHK-CAND ≠ 0) still certifies the type. No new diagnostic code: it renders the
-\ ordinary E-REJECTED, and only fires when the construct is genuinely wide
-\ (CONSTRUCT-DECL-MULTICELL?), so nothing else moves.
+\ ordinary E-REJECTED and remains only a wide-lowering backstop.
 : CONSTRUCT-WIDE-STAGED-REJECT ( -- )
    CHK-CAND @ 0 <> IF EXIT THEN
    0 OK !  -1 FAILSET ! ;
@@ -5332,10 +5375,6 @@ PRIM: DRAIN-PRETRUST PRIM;   \ dot habu-engine-pre-trust-77410827: drains the pe
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
 PRIM: prot-wid-add   PE-N PE-IN PRIM;
 PRIM: prot-wid-room  PE-N PE-OUT PRIM;
-PRIM: owner-wid-preflight? PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: owner-wid-public?    PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: owner-wid-private?   PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: owner-wid?           PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-CTOR-WORD? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: wordlist       PE-N PE-OUT PRIM;
 PRIM: get-current    PE-N PE-OUT PRIM;
@@ -5615,8 +5654,8 @@ PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM; 
 PRIM: munmap   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
 \ BTC-7: EXTPROD: (maki/extent.f) marks a product's free factor via this axiom. The
 \ effect keeps it checker-known so the seal-time internal-word marking pass leaves it
-\ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Placed
-\ last in the checker prim table so it appends to the ordered manifests. Last checker.f axiom.
+\ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Its
+\ unique name makes row order immaterial; it only must be registered before PTABLE-END.
 PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 
 PTABLE-END
@@ -7088,6 +7127,9 @@ variable UNSAFE-SYM-N
 7130 constant E-CAST-CLASS    \ in/out is not a single retype-eligible machine cell
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
 7135 constant E-CAST-OWNER    \ scalar-cell family output is outside its declaring package
+\ 7136 is E-PKG-CONTEXT above; the linear rule took the next free code in this
+\ block rather than sharing 7135, so a test can tell the two rejects apart.
+7137 constant E-CAST-LINEAR   \ in/out transitively contains linear ownership
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable, like CK-SEAL-LATCH-OFF.
@@ -7472,7 +7514,7 @@ variable WF-I
    a u CHECKER-FIND-ACTIVE-SYM CURSYM !
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
-   CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ multi-cell generated-constructor call -> arg-aware step (default rejects pre-registry)
+   CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ direct-layout generated-constructor call -> seeded step (default rejects pre-registry)
    FEP-HIT? IF FEP @ EFF-APPLY ELSE
    CURSYM @ TRY-PRIMS IF EXIT THEN
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
@@ -9533,8 +9575,8 @@ variable IS-TU
 \ its polymorphic effect. This is sound because the name implies a builtin or
 \ a checked/audited definition: a CHECKED shadow's effect is verified against
 \ its body, which can only move the value it binds; a TRUSTED shadow is
-\ already an audited boundary whose declared effect is the audit's
-\ responsibility.
+\ already a named, audited trusted boundary whose declared effect is the
+\ audit's responsibility.
 : LAYOUT-XPORT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" drop"  CORE-STR= IF RES-TRUE EXIT THEN
@@ -10317,6 +10359,27 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
 : CAST-OWNER? ( n -- bool ) {: t0:n :}
    t0 T-RES dup NP-CELLFAM? 0= IF drop RES-TRUE EXIT THEN
    PARAM>FAM TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
+\ CAST-MAY-LINEAR? : fail closed over the complete signature term. CAST is an
+\ authority boundary, so its question is stricter than LIN-TYPE-COUNT's runtime
+\ ownership accounting: a direct unresolved var may later bind linear, and every
+\ value-bearing family argument subtree can carry that possibility. Cell-family
+\ parameters are structurally phantom, so their terms contain no owned payload.
+\ Known pointers, quotations, and atoms are non-owning type structure; concrete
+\ family schemas are covered by TFAM-CON-LIN-XT.
+: CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
+   t0 T-RES {: t:n :}
+   t TAG T-VAR = IF RES-TRUE EXIT THEN
+   t TAG T-CON = IF t PAY CT-LINEAR? EXIT THEN
+   t TAG T-PARAM = IF
+      t PARAM>FAM dup 0 < IF drop RES-TRUE EXIT THEN
+      TFAM-CON-LIN-XT IF RES-TRUE EXIT THEN
+      t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+      0 BEGIN dup t PARAM>ARGC < WHILE
+         t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-FALSE ;
 \ CAST-CERTIFY : the matched-window certification. Throw the named reject when the
 \ declared retype is illegal, else certify the body output against SGIN (the
 \ identity ( in -- in ) flow); the shared tail then records the declared row.
@@ -10327,6 +10390,14 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
+   \ Linearity is checked before ownership on purpose: a linear family minted
+   \ from a foreign package violates both rules, and the ownership reject would
+   \ otherwise mask the stronger one. Ownership is a packaging question; carrying
+   \ an owned value through a retype is an unsoundness, so it names the reject.
+   TWALK-RESET
+   SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
+   TWALK-RESET
+   SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    SGOUT @ CAST-ROW-TERM CAST-OWNER? 0= IF E-CAST-OWNER throw THEN
    SGIN @ SUNI-COERCE ;
 
@@ -10707,18 +10778,10 @@ TYPES-DEFAULTS
    leaked POP-ORDINARY
    RESTORE-TOP ;
 
-\ RELEASE runs last, after every other participant has already published, so it
-\ must not be able to reject.  It therefore drops its own frame instead of going
-\ through the ordinary CHECKER-SCOPE-FINALIZE, whose one rejecting condition is a
-\ product-field transaction depth that no longer matches the frame.  Today that
-\ mismatch is impossible to reach from a declaration body: the only way to shift
-\ the field depth across this point is to leave a declaration-event frame open,
-\ and src/core/decl-event.f rejects exactly that at the participant's PREPARE
-\ (DEV-PART-PROVE -> DEV-TX-OPEN-REQUIRE), with the depths restored.  Keep the
-\ delegation anyway — throw-freeness here is a contract of the total-release
-\ protocol, not a consequence of that upstream guard, and the upstream guard is
-\ free to move.  Dot habu-make-txn-release-c9892c89 owns the structural inventory
-\ that will make a rejecting release fail closed.
+\ RELEASE is private and reachable through the sealed declaration participant.
+\ The participant calls it only after PREPARE and all COMMIT callbacks succeed.
+\ It invokes the installed type-frame release and drops the one prepared checker
+\ frame.  No public caller can drive either operation independently.
 : RELEASE ( -- )
    TYPES-RELEASE-XT
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;

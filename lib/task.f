@@ -2,7 +2,7 @@
 
 s" lib/errors.f" required
 s" lib/memory.f" required
-s" lib/ffi.f" required
+s" lib/ffi-abi.f" required
 
 package TASK
 
@@ -99,12 +99,14 @@ TASK-USER-BASE TASK-USER-NEXT !
 : TASK-NULL ( -- ptr a )
    NULL$ drop ;
 
+\ TCB raw-cell pointer refinement and pointer-slot reinterpretation are outside
+\ checker inference. Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: TASK-N>PTR ( n -- ptr a ) ;
 
 TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
 
 : TASK-ALIGN8 ( -- )
-   here P>N 7 and dup 0= if drop exit then
+   here FFI:>CELL 7 and dup 0= if drop exit then
    8 swap - allot ;
 
 : TASK-LIB-PATH ( -- ptr u8 )
@@ -129,6 +131,8 @@ TASK-SYM-PTHREAD-MUTEX-INIT TASK-SYM constant MUTEX-INIT-XT
 TASK-SYM-PTHREAD-MUTEX-LOCK TASK-SYM constant MUTEX-LOCK-XT
 TASK-SYM-PTHREAD-MUTEX-UNLOCK TASK-SYM constant MUTEX-UNLOCK-XT
 
+\ Exact task-internal C bindings fix every pointer extent and scalar role before
+\ entering the bounded FFI trampoline. Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: MUNMAP-CALL ( ptr a n -- n ) {: a:ptr len:n :}
    FFI:RESET
    a 0 FFI:READABLE!
@@ -279,6 +283,7 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
 
 TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
    patch32 ;                             \ TRUSTED-ONLY capability prim (F3 gate)
+\ Retirement owner: habu-checker-capability-gate-14022ba9.
 
 : TASK-ENTRY-BUILD ( -- )
    TASK-ENTRY-NEEDED? 0= if exit then
@@ -335,6 +340,7 @@ TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
 \ (E-EXEC-OPAQUE-XT, dot habu-flip-rscatch-opaque-5da02bd5), so this dynamic
 \ dispatch is confined to a named TRUSTED: boundary, like the file's other
 \ task-runtime boundaries; a task body must be ( -- ).
+\ Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: TASK-RUN-USER ( -- n ) TASK-SELF TCB.USER-XT @ catch ;
 
 : TASK-RUNNER ( -- )
@@ -397,6 +403,8 @@ TRUSTED: TASK-RUN-USER ( -- n ) TASK-SELF TCB.USER-XT @ catch ;
 : TASK-DONE? ( ptr a -- bool )
    TASK-STATE@ TASK-DONE = ;
 
+\ CREATE/DOES> publishes a typed TCB address, outside checker inference.
+\ Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: TASK ( n -- )
    dup TASK-CHECK-SIZE
    TASK-ALIGN8
@@ -414,6 +422,8 @@ TRUSTED: TASK ( n -- )
    size TXN-STATE-OFF off - > if E-TASK-USER throw then
    off size + ;
 
+\ CREATE/DOES> derives a task-local address from the current data region.
+\ Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: +USER ( n n -- n )
    over over USER-NEXT
    dup TASK-USER-NEXT !
@@ -423,6 +433,8 @@ TRUSTED: +USER ( n n -- n )
 : HIS ( ptr a ptr a -- ptr a ) {: tcb:ptr cur:ptr :}
    cur data-base - tcb TCB.REGION @ + ;
 
+\ CREATE/DOES> publishes owner-tracked pthread mutex storage.
+\ Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: FACILITY ( -- )
    TASK-ALIGN8
    create TASK-FACILITY-BYTES allot
@@ -435,7 +447,7 @@ TRUSTED: FACILITY ( -- )
    TASK-FACILITY-MUTEX-OFF + ;
 
 : TASK-OWNER ( -- n )
-   TASK-SELF-N dup 0= if drop data-base P>N then ;
+   TASK-SELF-N dup 0= if drop data-base FFI:>CELL then ;
 
 : FACILITY-OWNER@ ( ptr a -- n )
    FACILITY-OWNER atomic@ ;

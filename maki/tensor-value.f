@@ -265,7 +265,7 @@ TRUSTED: TENSOR>RAW ( tensor -- n ) ;
 DEFER-LAYOUT-BUFFER TV-ROWS-AT  CAD-KIND:rows           \ rows column ( n -- ptr CAD-KIND:rows )
 DEFER-LAYOUT-BUFFER TV-COLS-AT  CAD-KIND:cols           \ cols column ( n -- ptr CAD-KIND:cols )
 DEFER-LAYOUT-BUFFER TV-SPACE-AT CAD-KIND:address-space  \ address-space column ( n -- ptr CAD-KIND:address-space )
-DEFER-LAYOUT-BUFFER TV-DT-AT  dtype   \ dtype column ( n -- ptr dtype )
+DEFER-LAYOUT-BUFFER TV-DT-AT  datatype   \ datatype column ( n -- ptr datatype )
 DEFER-LAYOUT-BUFFER TV-LAY-AT layout  \ layout column ( n -- ptr layout )
 DEFER-LAYOUT-BUFFER TV-AL-AT  align   \ align column ( n -- ptr align )
 DEFER-LAYOUT-BUFFER TV-STORE-AT tensor \ storage-ref column ( n -- ptr tensor ): self = degenerate, other = view
@@ -306,10 +306,10 @@ TV-SEED TV-BOUND !
 $FFFFFFFFFF constant TV-GEN-MAX   \ lowered so TV-GEN-MAX * TV-CAP fits a signed cell
 
 \ ---- alignment measurement ------------------------------------------------
-\ Record the pointer's real base alignment. P>N (lib/ffi-abi.f) is the audited
+\ Record the pointer's real base alignment. FFI:>CELL (lib/ffi-abi.f) is the audited
 \ pointer->cell cast; the low bits are exact, so no data-base assumption is made.
 : TV-ALIGN-CLASS ( ptr a -- align ) {: p:ptr :}
-   p P>N {: a:n :}
+   p FFI:>CELL {: a:n :}
    a 15 and 0= if MAKI-ALIGN:A16  exit then
    a 7  and 0= if MAKI-ALIGN:A8   exit then
    a 3  and 0= if MAKI-ALIGN:A4   exit then
@@ -369,7 +369,7 @@ public
 \ measured from the real data pointer. Untyped eager pointers originate on the
 \ host; device-space constructors must require provenance-bearing allocator
 \ results, not a caller-selected label.
-: TV-NEW-HOST ( ptr a CAD-KIND:rows CAD-KIND:cols dtype layout -- tensor )
+: TV-NEW-HOST ( ptr a CAD-KIND:rows CAD-KIND:cols datatype layout -- tensor )
    TV-SLOT+ {: idx:n :}
    idx TV-LAY-AT !                      \ layout (top)
    idx TV-DT-AT !                       \ dtype
@@ -384,12 +384,12 @@ public
 
 \ TV-NEW defaults dtype f32 + row-major (the eager host-array convention).
 : TV-NEW ( ptr a CAD-KIND:rows CAD-KIND:cols -- tensor )
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TV-NEW-HOST ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW TV-NEW-HOST ;
 
 \ TV-DESC builds a planning descriptor: typed facts only, no buffer.
 \ Alignment is unknown (conservative) and TV-DATA@ fails closed. The data
 \ slot stores data-base purely as a never-read placeholder (HAS=0 guards it).
-: TV-DESC ( CAD-KIND:rows CAD-KIND:cols dtype layout CAD-KIND:address-space -- tensor )
+: TV-DESC ( CAD-KIND:rows CAD-KIND:cols datatype layout CAD-KIND:address-space -- tensor )
    TV-SLOT+ {: idx:n :}
    idx TV-SPACE-AT !                    \ address space (top)
    idx TV-LAY-AT !                      \ layout
@@ -406,7 +406,7 @@ public
 : TV-ROWS@   ( tensor -- CAD-KIND:rows )  TV-IX TV-ROWS-AT @ ;
 : TV-COLS@   ( tensor -- CAD-KIND:cols )  TV-IX TV-COLS-AT @ ;
 : TV-SPACE@  ( tensor -- CAD-KIND:address-space )  TV-IX TV-SPACE-AT @ ;
-: TV-DTYPE@  ( tensor -- dtype )   TV-IX TV-DT-AT  @ ;
+: TV-DTYPE@  ( tensor -- datatype )   TV-IX TV-DT-AT  @ ;
 : TV-LAYOUT@ ( tensor -- layout )  TV-IX TV-LAY-AT @ ;
 : TV-ALIGN@  ( tensor -- align )   TV-IX TV-AL-AT  @ ;
 
@@ -444,8 +444,8 @@ private
 \ install a view slot: data = storage ptr, extents/dtype/layout/space recorded, and
 \ the view descriptor (storage-ref, offset, strides) set. The high-level
 \ constructors prove the bounds BEFORE calling this, so it does not re-check.
-: TV-NEW-VIEW ( ptr a tensor CAD-KIND:rows CAD-KIND:cols dtype layout CAD-KIND:address-space n n n -- tensor )
-   {: base:ptr store:tensor rows:CAD-KIND:rows cols:CAD-KIND:cols dt:dtype lay:layout sp:CAD-KIND:address-space off:n rstr:n cstr:n :}
+: TV-NEW-VIEW ( ptr a tensor CAD-KIND:rows CAD-KIND:cols datatype layout CAD-KIND:address-space n n n -- tensor )
+   {: base:ptr store:tensor rows:CAD-KIND:rows cols:CAD-KIND:cols dt:datatype lay:layout sp:CAD-KIND:address-space off:n rstr:n cstr:n :}
    TV-SLOT+ {: idx:n :}
    sp  idx TV-SPACE-AT !
    lay idx TV-LAY-AT !
@@ -700,6 +700,8 @@ public
 private
 
 \ Typed descriptor facts cross into the legacy eager array kernel only here.
+\ The checked caller validates every nominal role before this adapter.
+\ Retirement owner: habu-epic-model-cad-70b629a9.
 TRUSTED: TYPED-LINEAR ( ptr a ptr a ptr a ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:cols -- )
    MAKI:LINEAR ;
 

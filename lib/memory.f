@@ -51,6 +51,8 @@ $1002 constant MEM-MAP-PRIVATE-ANON
    bytes MEM-CHECK-SIZE
    MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap ;
 
+\ Refines a validated successful mmap result to a byte pointer; syscall-result
+\ refinement is not expressible. Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
    MEM-MMAP-RC dup 0 < if E-MEM-MAP throw then ;
 
@@ -79,11 +81,10 @@ TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
 \ (zero is a valid scalar answer), while the allocation sinks (ALLOC-BYTES,
 \ ALLOC-CELLS, ALLOC-64K) accept only the `alloc-*` roles, which reject zero and
 \ over-allocation at VALIDATION - so a byte/cell role swap or a zero/overflow
-\ allocation cannot reach `mmap`. MEM owns exactly two audited representation
-\ projections (ALLOC-BYTES>N, ALLOC-CELLS>N): the checked algebra never reads a
-\ role's raw cell, so these are the ONLY unchecked words in the package. They read
-\ an `alloc-*` cell where the raw allocation primitive still consumes a bare `n`;
-\ retire them when `mmap`/`cells` accept the nominal allocation role directly.
+\ allocation cannot reach `mmap`. MEM owns three audited private projections:
+\ one allocation extent for `mmap` and whole-map `munmap`, one cell count for
+\ `cells`, and one mapped byte extent for range `munmap`. Retire each when its
+\ primitive accepts the nominal role directly.
 \
 \ The legacy MEM-ALLOC-BYTES surface stays untouched for its four caller waves;
 \ MEM-ALLOC-CELLS and the multi-64K conveniences are out of this B5 wave.
@@ -161,9 +162,19 @@ private
 : 64K-ALLOC-LEN ( -- CAD-NUM:alloc-byte-len )
    64K-LEN CAD-NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN ;
 
-\ ---- audited representation projections (the ONLY unchecked words in MEM) ------
+\ Private allocation-role erasure for mmap/cells/munmap; no raw value escapes.
+\ Retire when those primitives accept the nominal roles directly.
+\ Retirement owner: habu-epic-model-cad-70b629a9.
 TRUSTED: ALLOC-BYTES>N ( CAD-NUM:alloc-byte-len -- n ) ;
 TRUSTED: ALLOC-CELLS>N ( CAD-NUM:alloc-cell-count -- n ) ;
+TRUSTED: BYTE-LEN>N ( CAD-NUM:byte-len -- n ) ;
+
+$47 constant UNMAP-EXIT
+
+: RELEASE-RANGE ( ptr u8 n -- )
+   munmap 0 < if
+      s" memory: unmap failed" UNMAP-EXIT die
+   then ;
 
 public
 
@@ -190,17 +201,12 @@ public
 : ALLOC-64K ( -- ptr u8 CAD-NUM:alloc-byte-len )
    64K-ALLOC-LEN ALLOC-BYTES ;
 
-\ ---- release: return an ALLOC-BYTES mapping to the OS (checked munmap) ----------
-\ The typed inverse of ALLOC-BYTES: it consumes the `ptr u8` mapping and the exact
-\ `alloc-byte-len` the allocation minted, so a caller cannot release a length it
-\ never validated (a byte/cell role swap or a raw `n` is a checker reject). The
-\ length projects to the raw munmap operand through the same audited ALLOC-BYTES>N
-\ reader the allocation sink uses - no new unchecked boundary - and a negative
-\ munmap rc (the kernel rejecting a misaligned/forged address) throws E-MEM-UNMAP.
+\ ---- release: return an ALLOC-BYTES mapping to the OS ---------------------------
 : RELEASE-BYTES ( ptr u8 CAD-NUM:alloc-byte-len -- )
-   ALLOC-BYTES>N munmap
-   dup 0 < if E-MEM-UNMAP throw then
-   drop ;
+   ALLOC-BYTES>N RELEASE-RANGE ;
+
+: UNMAP ( ptr u8 CAD-NUM:byte-len -- )
+   BYTE-LEN>N RELEASE-RANGE ;
 
 \ ---- caller-facing size narrowing: raw n -> validated alloc role --------------
 \ The fixed-capacity buffer callers (source, codesign, content-key, object-cache,
@@ -214,60 +220,34 @@ public
    CAD-NUM:CELL-COUNT SIZE-CELL-COUNT
    CAD-NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
 
-\ ---- MEM:WITH-BYTES: quotation-scoped mapped memory (RAII) ---------------------
-\ Allocate a byte extent, run a body quotation over it, and release the mapping via
-\ RELEASE-BYTES on BOTH normal return and throw, primary error winning - the
-\ lib/ptx/cuda-scope.f frame discipline (consume-on-release, primary-error-wins,
-\ reverse-order-on-nesting) specialised to a single host mapping.
-\
-\ TWIN, NOT EXTRACTION. cuda-scope's reusable machinery is its (kind,handle) LEDGER
-\ with per-SCOPE base markers, an rc-returning release-defer table, and cleanup-error
-\ retention (CLN-*/RECORD) - all intrinsic to ONE scope owning MANY heterogeneous
-\ driver resources. WITH-BYTES owns exactly ONE homogeneous mapping per call and
-\ NESTS through the native call stack (the two-buffer case is written as nested
-\ quotations - Joel's settled form), so it needs no ledger, no base markers, no
-\ kind dispatch, and no rc-retention. The only shared logic is the 6-line
-\ primary-error-wins combinator (WB-COMBINE, byte-for-byte cuda-scope's COMBINE);
-\ extracting just that would churn the bit-identical cuda-scope for negligible reuse
-\ and misrepresent a 6-line helper as "the frame machinery." Unifying the two behind
-\ a shared scope-frame module is deferred to its own refactor dot; linear owner types
-\ (habu-epic-type-habu-a34713f0) eventually subsume this construct outright.
-\
-\ TRUSTED PLUMBING behind a CHECKED public surface. catch admits only a stack-preserving
-\ quotation (checker RSCATCH unifies its in/out rows), and a nested quotation captures no
-\ enclosing local, so the body's arbitrary result row S cannot be threaded through catch in
-\ checked code - the same limit that makes lib/test/snap.f SNAP= and combinators.f
-\ EACH/MAP/FOLD TRUSTED. The plumbing lives in the private TRUSTED WB-SCOPE; the public
-\ WITH-BYTES is a thin CHECKED forwarder, so its row-polymorphic signature is
-\ checker-verified, manifest-registered, and enforced at every call site (the static
-\ role-swap matrix in memory-test.f proves the boundary). The mapping and body xt are
-\ parked off the data stack (WB-CUR-*, save/restored to locals per call so nesting rides
-\ the native call stack) and the caught quotations take no data-stack argument, so a throw
-\ leaves the row clean (row ++ code), never restored buffer cells.
+\ ---- quotation-scoped owned mapping --------------------------------------------
+\ The private trusted word parks the body and mapping off-stack because checked
+\ catch cannot carry an arbitrary result row through a fetched execution token.
+\ Release is fatal on failure, so the outer frame is restored only after success.
+\ Retirement owner: habu-epic-type-habu-a34713f0.
 private
-PTR-VARIABLE WB-CUR-BUF              \ the mapping being scoped (fat pointer), off the data stack across catch
-variable WB-CUR-LEN                  \ its alloc-byte-len (raw cell; re-typed at the RELEASE-BYTES boundary)
-variable WB-CUR-BODY                 \ the body quotation xt
+PTR-VARIABLE WB-CUR-BUF
+variable WB-CUR-LEN
+variable WB-CUR-BODY
 
-TRUSTED: WB-RUN-CUR ( -- )           \ push the current mapping and run its body (true effect is row-poly)
+TRUSTED: WB-RUN-CUR ( -- )
    WB-CUR-BUF @ WB-CUR-LEN @ WB-CUR-BODY @ execute ;
-TRUSTED: WB-REL-CUR ( -- )           \ release the current mapping exactly once
+TRUSTED: WB-REL-CUR ( -- )
    WB-CUR-BUF @ WB-CUR-LEN @ RELEASE-BYTES
    NULL$ drop WB-CUR-BUF !  0 WB-CUR-LEN ! ;
-: WB-COMBINE ( n n -- )              \ (primary cleanup -- ) primary error wins; else cleanup propagates
-   over 0 <> if drop throw else nip dup 0 <> if throw then drop then ;
 
 \ typed-local-lint: allow-bare-local - `body` carries the row-polymorphic quotation
 \ effect [ R ptr u8 CAD-NUM:alloc-byte-len -- S ], which a local annotation cannot express.
 TRUSTED: WB-SCOPE ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
    {: body :}
-   WB-CUR-BUF @ {: sb:ptr :} WB-CUR-LEN @ {: sl :} WB-CUR-BODY @ {: sbody :}   \ save outer frame
+   WB-CUR-BUF @ {: sb:ptr :} WB-CUR-LEN @ {: sl:n :} WB-CUR-BODY @ {: sbody:n :}
    ALLOC-BYTES {: fbuf:ptr flen :}
-   fbuf WB-CUR-BUF ! flen WB-CUR-LEN ! body WB-CUR-BODY !                       \ install this frame
-   [: WB-RUN-CUR ;] catch                                                        \ run body: row S | throw code
-   [: WB-REL-CUR ;] catch                                                        \ release on both paths
-   sb WB-CUR-BUF ! sl WB-CUR-LEN ! sbody WB-CUR-BODY !                          \ restore outer frame
-   WB-COMBINE ;
+   fbuf WB-CUR-BUF ! flen WB-CUR-LEN ! body WB-CUR-BODY !
+   [: WB-RUN-CUR ;] catch
+   WB-REL-CUR
+   sb WB-CUR-BUF ! sl WB-CUR-LEN ! sbody WB-CUR-BODY !
+   dup 0 <> if throw then
+   drop ;
 
 public
 

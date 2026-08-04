@@ -14,4 +14,4 @@ blocks:
   - habu-self-host-staged-520ab588
 ---
 
-Full context: design sections 7 and 14 Waves 2-8 replace native direct emission with source tape through HIR, SIR, LIR, A64IR, allocation, layout, and HBOBJ 2. Required result: production-shaped vertical waves, isolated shadow execution, AOT/object cutover, self-host fixpoint, and old-path deletion. Acceptance: design section 21 native criteria pass.
+Full context: design sections 7 and 14 Waves 2-8 replace native direct emission with source tape through HIR, SIR, LIR, A64IR, allocation, layout, and HBOBJ. Required result: production-shaped vertical waves, isolated shadow execution, AOT/object cutover, self-host fixpoint, and old-path deletion. Acceptance: design section 21 native criteria pass.

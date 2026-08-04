@@ -22,6 +22,7 @@ require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
 require maki/device-artifacts.f
@@ -30,6 +31,8 @@ require maki/lower/golden.f
 require maki/eval/active-target.f
 
 package MAKI
+
+using F32
 
 create LRD-OUT $4000 allot  create LRD-ERR $1000 allot
 create LRD-QO  $1000 allot  create LRD-QE  $2000 allot
@@ -47,12 +50,12 @@ create LRD-CS $800 allot  variable LRD-CS-U
 : LRD-COL-SRC ( -- ptr u8 n )
    LRD-CS-RESET
    S\" MIR-RESET\n"                                                                                        LRD-CS+
-   S\" 4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop\n"                                        LRD-CS+
-   S\" 4 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop\n"                                        LRD-CS+
+   S\" 4 8 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop\n"                                        LRD-CS+
+   S\" 4 1 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop\n"                                        LRD-CS+
    S\" MAKI-OPKIND:ADD MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 1 MIR-SLOT-ID MIR-IN-REF MIR-IN+\n"   LRD-CS+
-   S\" 4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop\n"                                       LRD-CS+
+   S\" 4 8 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop\n"                                       LRD-CS+
    S\" MAKI-OPKIND:RMSNORM MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+\n"                              LRD-CS+
-   S\" 4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop\n"                                       LRD-CS+
+   S\" 4 8 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop\n"                                       LRD-CS+
    LRD-CS LRD-CS-U @ ;
 
 \ ---- spawn bin/hb to emit region 0's PTX into PTXTC:PTX$ (child re-builds the IR) --
@@ -74,7 +77,7 @@ create LRD-CS $800 allot  variable LRD-CS-U
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
 : LRD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
-: LRD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;   \ narrowed host elem
+: LRD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  NARROW WIDEN ;   \ narrowed host elem
 : LRD-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do
@@ -108,6 +111,7 @@ create LRD-CS $800 allot  variable LRD-CS-U
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
+;using
 ;package
 
 package MAKI

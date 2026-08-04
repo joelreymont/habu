@@ -12,12 +12,13 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/engine-candidate.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require maki/eval/eval.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
@@ -26,7 +27,7 @@ require lib/ptx/header.f
 require lib/ptx/cg-collective.f
 require lib/ptx/launch.f
 require lib/ptx/collective.f
-require maki/cuda-driver.f
+require lib/ptx/cuda-driver.f
 require maki/cuda-run.f
 require maki/device-artifacts.f
 require lib/ptx/sentinel.f
@@ -48,8 +49,8 @@ variable SM-DI variable SM-DO variable SM-KV
 : SM-F32@ ( n -- n ) {: idx :} idx 4 * {: o :}
    SM-OUT o + c@  SM-OUT o 1 + + c@ 8 lshift or  SM-OUT o 2 + + c@ 16 lshift or  SM-OUT o 3 + + c@ 24 lshift or ;
 : SM-INIT ( -- )                                   \ input [1,2,3,4] + golden softmax bits
-   1.0 F64>F32 SM-IN 0 SM-F32!  2.0 F64>F32 SM-IN 1 SM-F32!
-   3.0 F64>F32 SM-IN 2 SM-F32!  4.0 F64>F32 SM-IN 3 SM-F32!
+   1.0 F32:NARROW SM-IN 0 SM-F32!  2.0 F32:NARROW SM-IN 1 SM-F32!
+   3.0 F32:NARROW SM-IN 2 SM-F32!  4.0 F32:NARROW SM-IN 3 SM-F32!
    1023627234 SMG 0 cells + !  1035106489 SMG 1 cells + !
    1047695721 SMG 2 cells + !  1059379089 SMG 3 cells + ! ;
 
@@ -65,25 +66,25 @@ variable SM-DI variable SM-DO variable SM-KV
    SM-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0
    SM-MOD SM-PATH MKD:CUMODULELOAD CUDA:RC0
    SM-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SOFTMAX_ROWS" SM-KN >CSTR
+   s" SOFTMAX_ROWS" SM-KN FFI:CSTR
    SM-FUNC SM-MOD @ >CUDA-MOD SM-KN MKD:CUMODULEGETFUNCTION CUDA:RC0
    SM-DI 16 >LEN MKD:CUMEMALLOC CUDA:RC0  SM-DI @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    SM-DO 16 >LEN MKD:CUMEMALLOC CUDA:RC0  SM-DO @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    SM-DI @ >CUDA-DEVPTR SM-IN 16 >LEN MKD:CUMEMCPYHTOD CUDA:RC0
    4 SM-KV !
-   SM-FUNC @ >CUDA-FN 256 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   SM-FUNC @ >CUDA-FN 20 >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
-   SM-FUNC @ >CUDA-FN 0 >IDX  SM-DI 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   SM-FUNC @ >CUDA-FN 8 >IDX  SM-DO 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   SM-FUNC @ >CUDA-FN 16 >IDX SM-KV 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   SM-FUNC @ >CUDA-FN 1 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   SM-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   SM-FUNC @ >CUDA-FN 20 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   SM-FUNC @ >CUDA-FN 0 >IDX  SM-DI 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   SM-FUNC @ >CUDA-FN 8 >IDX  SM-DO 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   SM-FUNC @ >CUDA-FN 16 >IDX SM-KV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   SM-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    SM-OUT SM-DO @ >CUDA-DEVPTR 16 >LEN MKD:CUMEMCPYDTOH CUDA:RC0 ;
 
 : SM-RUN ( ptr u8 n -- ) {: pa pu :}               \ run softmax cubin, fill SM-OUT
    SM-OUT 16 PTXSENT:FILL                          \ poison readback: a dropped copy-back fails closed
    1 4 256 PTX-ROW-LAUNCH-CHECK
-   pa pu SM-PATH >CSTR
+   pa pu SM-PATH FFI:CSTR
    [: SM-RUN-CORE ;] CUDA-SCOPE:SCOPE ;
 
 : SM-NEAR? ( n n -- bool )  - abs 8 <= ;            \ within 8 ULP (ex2.approx)

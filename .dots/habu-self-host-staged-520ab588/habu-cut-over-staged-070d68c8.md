@@ -8,4 +8,4 @@ blocks:
   - habu-prove-staged-compiler-5b5b145a
 ---
 
-Full context: after one release-quality green checkpoint, make the staged compiler default, remove old direct compilation paths, disable/remove shadow fallback, retain useful differentials, and lower trust/size ratchets atomically. Acceptance: design section 21 native/trust exits and all master gates pass on the exact tree before verified master fast-forward.
+Full context: after one release-quality green checkpoint, make the staged compiler default, remove old direct compilation paths, disable/remove shadow fallback, and retain useful differentials. Acceptance: design section 21 native exits and all current master gates pass on the exact tree before verified master fast-forward.

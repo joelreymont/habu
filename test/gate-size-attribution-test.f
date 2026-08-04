@@ -36,11 +36,11 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 136540 -> 136568). Re-measuring the live macOS byte-fixpoint on this tree gives
 \ CODELEN 127860 (floor 884). The previous row (127420, floor 444) had drifted
 \ BELOW the true feae4380 fixpoint (127832): page-absorbed engine growth from the
-\ merges since the row was last set, invisible to the whole-file GB-SIZE ratchet
+\ merges since the row was last set, invisible to the whole-file BUILD-SIZE ratchet
 \ (exactly the drift the exact-CODELEN ratchet exists to close). So this row jumps
 \ 127420 -> 127860 = +412 stale-drift correction + my +28. Header+code still fits
 \ nine 16 KiB __TEXT pages, so the code signature and whole-file total are
-\ unchanged. Keep MACOS-TOTAL equal to GB-SIZE-BASELINE-MACOS in
+\ unchanged. Keep MACOS-TOTAL equal to BUILD-SIZE:BASELINE-MACOS in
 \ test/gate-build-size.f.
 \ Lowered again on 2026-07-19 after the DP out-of-range die rework landed from
 \ the Linux side (commit cffe4d44): that engine change shrinks macOS __text by
@@ -120,7 +120,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ ad-hoc code signature loses four 4 KiB code-directory hash slots (1423 -> 1295 =
 \ -128). Whole file 165367 -> 148855 (-16384 page - 128 signature = -16512).
 \ MACOS-DATA-CONST and MACOS-LINKEDIT are unchanged. Keep MACOS-TOTAL equal to
-\ GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
+\ BUILD-SIZE:BASELINE-MACOS in test/gate-build-size.f.
 \ 2026-07-21 second owed re-measure: the FINDPTR primitive retirement (linux
 \ commit 017524d8, spark cannot measure macOS) shrank baked __text by 392 bytes
 \ within the same 16 KiB page, so only CODE-TEXT and the floor distance move;
@@ -219,7 +219,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ inside the same eight 16 KiB pages, and the text pad absorbs the whole 1680
 \ (11988 -> 10308). MACOS-SIGNATURE, MACOS-DATA-CONST, MACOS-LINKEDIT and
 \ MACOS-TOTAL are therefore unchanged, the model sum reconstructs 148855 exactly,
-\ and MACOS-TOTAL still equals GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
+\ and MACOS-TOTAL still equals BUILD-SIZE:BASELINE-MACOS in test/gate-build-size.f.
 \ The other ten commits on this stack that touch assembled engine source were each
 \ measured too and move zero baked __text: the encode-time ARM64 operand guards,
 \ the checker's source-tape observer seam, the persisted producer-xt cells, the
@@ -273,17 +273,31 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ inside the same eight 16 KiB pages, and the text pad absorbs the whole 1072
 \ (10308 -> 9236). MACOS-SIGNATURE, MACOS-DATA-CONST, MACOS-LINKEDIT and
 \ MACOS-TOTAL are unchanged, the model sum reconstructs 148855 exactly, and
-\ MACOS-TOTAL still equals GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
+\ MACOS-TOTAL still equals BUILD-SIZE:BASELINE-MACOS in test/gate-build-size.f.
 \ The registry-exhaustion diagnostic that rides the same rebuild (dot
 \ habu-name-registry-exhaustion-bdd23c70) was measured separately on top of the
 \ bitmap tree and moves zero bytes here: its REASON-PROTECTION row lives in
 \ src/core/generated-declaration.f, boot-time source the engine re-reads at
 \ launch rather than baked __text. The linux row below is owed a linux-host
 \ re-measure for all 1072.
-117740 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-05 MERGE macOS lowering 117740 -> 114236, measured live at the merged
+\ proofs/master fixpoint (bin/hb sha d34e5ee8..., byte-identical over two
+\ `install --force` runs). The merged engine is SMALLER than either parent's row:
+\ proofs committed 117740 and master committed 114484, and the union carries
+\ master's owner-registry deletion (the owner-WID emitters, the owner AOT
+\ routines, the owner half of the snapshot WID validation) on top of proofs'
+\ engine text. The exact-CODELEN ratchet reported STALE-BASELINE candidate 114236
+\ against the proofs row, which is the shrink this lowering commits. Floor
+\ follows from the same number - MACOS-MODEL-FLOOR is (CODE-OFF + CODE-TEXT) mod
+\ 16 KiB - so 7148 -> 3644, exactly master's 3892 less the further 248 bytes.
+\ MACOS-SIGNATURE and MACOS-TOTAL do not move: the shave stays inside the same
+\ eight 16 KiB __TEXT pages, so the text pad absorbs all 3504 bytes and
+\ `FILE-SIZE bin/hb` is still 148855 = BUILD-SIZE:BASELINE-MACOS. The Linux row
+\ below is owed a linux-host re-measure for the same merge.
+114236 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-7148 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
-148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
+3644 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
 \ Spark, linux-arm64) after the shared PROT-GUARD:CALL span-guard fold (CODELEN
@@ -293,7 +307,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 404 bytes, CODELEN 136136 -> 136540 (floor 968 -> 1372), confirming the +28
 \ prediction; all 432 bytes since the fold fit inside the same 4 KiB page
 \ padding (LINUX-TOTAL unchanged). Keep LINUX-TOTAL equal to
-\ GB-SIZE-BASELINE-LINUX in test/gate-build-size.f.
+\ BUILD-SIZE:BASELINE-LINUX in test/gate-build-size.f.
 \ 2026-07-19 re-measured live at the merged linux-arm64 fixpoint (spark): MATCH
 \ dispatch B.cond slimming adds +28 of compiler text (136540 -> 136568, matching
 \ the macOS-measured delta) and the DP out-of-range named-die fix shaves -256
@@ -429,16 +443,17 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 122584 -> 122592 and floor 3800 -> 3808. The text pad absorbs the 8 bytes
 \ (296 -> 288), so the whole file remains exactly 127168 and LINUX-TOTAL is
 \ unchanged. src/core/enum-decl.f moves no engine bytes: it gains no definition,
-\ only a call to the participant's gate. tools/decl-gen-probe.f and
-\ the four test files are not part of the assembled
+\ only a call to the participant's gate. tools/decl-gen-probe.f and the four
+\ test files are not part of the assembled
 \ stage2 engine source.
-122592 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ cda6ec6d: compile/ops +288, dictionary-code +16, aot-seed -312; net -8, total 123072 unchanged.
+118420 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3808 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
-127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
+3732 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+123072 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
-\ The whole-file (GB-SIZE) and __text-total (CODE-TEXT / SUM-TEXT) ratchets catch
+\ The whole-file (BUILD-SIZE) and __text-total (CODE-TEXT / SUM-TEXT) ratchets catch
 \ aggregate growth, but a region that grows while a sibling shrinks nets zero at
 \ the total and hides which emitter moved, and a lone region regression only
 \ surfaces once it crosses a page. These committed rows decompose CODE-TEXT into
@@ -457,7 +472,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ and dictionary-code +32 (the generator's baked entry) - exactly the
 \ attribution this ratchet exists to give.
 : LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
-   s" main/startup"            5752 q execute
+   s" main/startup"            4792 q execute
    s" main/comment"             380 q execute
    s" interpret/colon"         752 q execute
    s" interpret/define"       10464 q execute
@@ -470,35 +485,34 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" compile/p2wide"          2460 q execute
    s" compile/keywords"       9916 q execute
    s" compile/literal"           36 q execute
-   s" compile/ops"             2456 q execute
+   s" compile/ops"             2744 q execute
    s" compile/call"             628 q execute
    s" compile/undef"            924 q execute
    s" compile/die"              200 q execute
-   s" compile/exit"            1724 q execute
+   s" compile/exit"            1868 q execute
    s" compile/eval-recover"     724 q execute
    s" main/underflow"           192 q execute
-   s" primitives/base"        17820 q execute
-   s" primitives/arity"         856 q execute
-   s" primitives/extra"         572 q execute
+   s" primitives/base"        17604 q execute
+   s" primitives/arity"         760 q execute
+   s" primitives/extra"         568 q execute
    s" primitives/prof"          220 q execute
    s" primitives/float"         764 q execute
    s" primitives/cemit"         108 q execute
    s" primitives/cemitbl"       100 q execute
    s" primitives/capture"       156 q execute
    s" primitives/token"         104 q execute
-   s" primitives/protect"       336 q execute
-   s" primitives/protected-wid" 1540 q execute
-   s" primitives/aot-owner"    1416 q execute
+   s" primitives/protect"       304 q execute
+   s" primitives/protected-wid" 120 q execute
    s" primitives/flush"          72 q execute
    s" primitives/find"          952 q execute
    s" primitives/find-used"     520 q execute
    s" primitives/hash-index"    852 q execute
    s" primitives/number"        332 q execute
    s" primitives/top-hook"       68 q execute
-   s" dictionary-code"         4732 q execute
-   s" runtime"                 9508 q execute
-   s" seed-dictionary"         8700 q execute
-   s" aot-seed"               22508 q execute   \ +8: the GENERATED-DECL-CTOR private axiom rows
+   s" dictionary-code"         5016 q execute
+   s" runtime"                 9464 q execute
+   s" seed-dictionary"         8352 q execute
+   s" aot-seed"               22156 q execute
    s" primitives/qualify-def"  2448 q execute
    s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;

@@ -1,4 +1,7 @@
 \ layout.f -- macos-aarch64 executable/data layout constants.
+\ Trusted rows publish fixed Mach-O image offsets/sizes and refine computed
+\ header/GOT addresses for runtime reads.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 
 $D8 constant IMAGE-TEXT-SIZE-OFF
 0 constant IMAGE-TEXT-CONTENT-ADJ
@@ -34,7 +37,7 @@ TRUSTED: MACHO>N-PTR ( n -- ptr n ) ;
 s" IMAGE-TEXT-SIZE-OFF" s" -- n" TRUST
 s" IMAGE-TEXT-CONTENT-ADJ" s" -- n" TRUST
 s" IMAGE-TEXT-TRAILER-ADJ" s" -- n" TRUST
-s" DATA-VA" s" -- ptr a" TRUST
+s" DATA-VA" s" -- va" TRUST
 s" DATA-SIZE" s" -- n" TRUST
 s" CODE-OFF" s" -- n" TRUST
 s" DLOPEN-SLOT" s" -- ptr n" TRUST

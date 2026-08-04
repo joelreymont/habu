@@ -23,6 +23,8 @@
 \ kernel op that PRESERVES its operand's phantom type — and every phantom-CONSUMING
 \ store that returns nothing (the SINK* family) — is now a checked caller of one of
 \ these combinators, so per-op TRUSTED: wrappers collapse to this core.
+\ Retirement owner for the REP*/SINK* trusted sites below:
+\ habu-ptx-phantom-preserving-3df9db92.
 \ Load before the tile / collective op vocabularies (lib/ptx/cg.f supplies the
 \ EMIT-* leaves the callers quote).
 

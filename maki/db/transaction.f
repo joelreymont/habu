@@ -26,11 +26,8 @@
 \   - dependency edges : CAD-KIND:artifact-id input objects the outputs depend on.
 \       Every edge object MUST appear in the read set, else VALIDATE rejects
 \       (omitted-read) - "you cannot depend on what you did not read".
-\   - capability set : closed-vocabulary capability CODES (n). CONSERVATIVE READING:
-\       CAD-KIND:capability-id's owner package CAP is a product decision out of this
-\       dot's scope (§ 23.9 capability-id row), so a capability is held as its stable
-\       vocabulary code (the plan's capability WIRE form) until CAP lands; migrate to
-\       the nominal when it does.
+\   - capability set : opaque capability codes (n), stored canonically for the
+\       CAPTOK authorization mechanism.
 \   - budget ledger  : (dimension code, amount) entries, one per dimension.
 \   - obligations    : CAD-KIND:obligation-id (the interned proof-obligation identity;
 \       maki/db/obligation.f OBLIG:INTERN owns the model subject/relation/domain/policy/
@@ -671,7 +668,7 @@ public
    id ARTIFACT:VALIDATE-ID  B-DEP-N @ B-DEP-ID !
    B-DEP-N @ 1+ B-DEP-N ! ;
 
-: CAP+ ( n -- ) {: c:n :}                        \ closed-vocabulary capability code
+: CAP+ ( n -- ) {: c:n :}                        \ capability code
    B-CAP-N @ SET-CAP >= if E-TX-SET-CAP throw then
    c B-CAP-N @ cells B-CAP + !
    B-CAP-N @ 1+ B-CAP-N ! ;
@@ -878,12 +875,6 @@ public
 : BUDGET-COUNT ( txn -- n )   TXN> BUD-N@ ;
 : OBLIG-COUNT ( txn -- n )    TXN> OBL-N@ ;
 
-\ CAP-MASK@ folds the declared capability CODE set into one u64 bitmask. Each capability code is
-\ a closed-vocabulary BIT FLAG (the plan:3652 "stable constant like the TARGET:CAP-* bits" form,
-\ the maki/db/action.f D-CAP model), so a commit gate can test granted-authority ⊇ declared by
-\ mask containment (the ACTION:DISPATCH capability precedent). An empty declared set folds to 0
-\ (⊆ every grant). Additive read accessor over the existing capability-set column - no field
-\ repoint, no behaviour change (dot habu-v2-capability-and-0970a96d, the deferred COMMIT legs).
 : CAP-MASK@ ( txn -- n ) {: t:txn :}
    t TXN> {: s:n :}
    0  0 begin dup s CAP-N@ < while

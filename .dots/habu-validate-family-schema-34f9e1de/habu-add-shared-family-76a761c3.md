@@ -78,8 +78,8 @@ Rejected reference evidence, not merge candidates:
   shorter `TWX-TFAM-LINEAR?` and satisfy every mutation twin above.
 
 Acceptance: all production declaration, family-schema, `DECL-EVENT`,
-confinement, linearity, candidate-validation, diff-lint, and trusted-inventory
-gates pass. Mutating each recursion edge, owner filter, legacy route,
+confinement, linearity, candidate-validation, and diff-lint gates pass.
+Mutating each recursion edge, owner filter, legacy route,
 confinement route, logical rollback mark, or executable enrollment makes its
 exact test fail.
 

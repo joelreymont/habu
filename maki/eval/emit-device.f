@@ -42,28 +42,31 @@
 \ a recorded SKIP and this file still check-loads. This file OWNS the canonical
 \ wrong-but-green fixture strings; maki/eval/emit-test.f references them so the
 \ structural pins and the device golden grade the EXACT same candidates.
-\ Fully checked Habu; no 0 set-check. Load after maki/cuda-driver.f.
+\ Fully checked Habu; no 0 set-check. Load after lib/ptx/cuda-driver.f.
 
 require lib/prelude.f
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/engine-candidate.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/header.f
-require maki/cuda-driver.f
+require lib/ptx/cuda-driver.f
 require maki/cuda-run.f
 require maki/device-artifacts.f
 require maki/eval/active-target.f
 
 package EVND
+
+using F32
 
 private
 
@@ -121,7 +124,7 @@ create PA-OUT PA-OUT-CAP allot  create PA-ERR PA-ERR-CAP allot
    buf o 3 + + c@  24 lshift or ;
 
 : F! ( r ptr a n -- ) {: v:r buf:ptr idx:n :}    \ store a Habu float as f32 at element idx
-   v F64>F32 buf idx F32! ;
+   v NARROW buf idx F32! ;
 
 : MAXF ( r r -- r ) {: a:r b:r :}  a b f> if a else b then ;
 
@@ -216,10 +219,10 @@ variable EVND-DEV variable EVND-CTX variable EVND-MOD variable EVND-FUNC
    EVND-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0 ;
 
 : CU-LOAD ( ptr u8 n -- ) {: na:ptr nu:n :}    \ load CUBIN$ (owned), resolve function <name> into EVND-FUNC
-   MAKI-GRADE:CUBIN$ EVND-PATH >CSTR
+   MAKI-GRADE:CUBIN$ EVND-PATH FFI:CSTR
    EVND-MOD EVND-PATH MKD:CUMODULELOAD CUDA:RC0
    EVND-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   na nu EVND-KN >CSTR
+   na nu EVND-KN FFI:CSTR
    EVND-FUNC EVND-MOD @ >CUDA-MOD EVND-KN MKD:CUMODULEGETFUNCTION CUDA:RC0 ;
 
 \ ---- sumnorm device run: SOFTMAX_ROWS, grid = R blocks, block = 256 ----------
@@ -233,13 +236,13 @@ variable SN-DIN variable SN-DOUT variable SN-KV
    SN-DIN @ >CUDA-DEVPTR SN-IN SN-BYTES >LEN MKD:CUMEMCPYHTOD CUDA:RC0
    SN-DOUT @ >CUDA-DEVPTR 0 SN-ELEMS >COUNT MKD:CUMEMSETD32 CUDA:RC0   \ sentinel 0: an unwritten output stays 0
    SN-COLS SN-KV !
-   EVND-FUNC @ >CUDA-FN 256 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   EVND-FUNC @ >CUDA-FN SN-PARAM-BYTES >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 0 >IDX  SN-DIN 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 8 >IDX  SN-DOUT 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 16 >IDX SN-KV 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN SN-ROWS 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   EVND-FUNC @ >CUDA-FN SN-PARAM-BYTES >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 0 >IDX  SN-DIN 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 8 >IDX  SN-DOUT 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 16 >IDX SN-KV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN SN-ROWS 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    SN-OUT SN-DOUT @ >CUDA-DEVPTR SN-BYTES >LEN MKD:CUMEMCPYDTOH CUDA:RC0 ;
 : RUN-SUMNORM ( -- )  [: RUN-SUMNORM-CORE ;] CUDA-SCOPE:SCOPE ;   \ buffers+module+ctx released on return/throw
 
@@ -257,16 +260,16 @@ variable GM-MV variable GM-NV variable GM-KV
    GM-DB @ >CUDA-DEVPTR GEMM-B GM-B-BYTES >LEN MKD:CUMEMCPYHTOD CUDA:RC0
    GM-DC @ >CUDA-DEVPTR 0 GM-C-ELEMS >COUNT MKD:CUMEMSETD32 CUDA:RC0
    GEMM-M GM-MV !  GEMM-N GM-NV !  GEMM-K GM-KV !
-   EVND-FUNC @ >CUDA-FN 16 16 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   EVND-FUNC @ >CUDA-FN GM-PARAM-BYTES >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 0 >IDX  GM-DA 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 8 >IDX  GM-DB 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 16 >IDX GM-DC 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 24 >IDX GM-MV 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 28 >IDX GM-NV 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 32 >IDX GM-KV 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN GM-GRID-N GM-GRID-M CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 16 16 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   EVND-FUNC @ >CUDA-FN GM-PARAM-BYTES >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 0 >IDX  GM-DA 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 8 >IDX  GM-DB 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 16 >IDX GM-DC 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 24 >IDX GM-MV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 28 >IDX GM-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 32 >IDX GM-KV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN GM-GRID-N GM-GRID-M CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    GEMM-C GM-DC @ >CUDA-DEVPTR GM-C-BYTES >LEN MKD:CUMEMCPYDTOH CUDA:RC0 ;
 : RUN-GEMM ( -- )  [: RUN-GEMM-CORE ;] CUDA-SCOPE:SCOPE ;
 
@@ -286,16 +289,16 @@ variable AT-NV variable AT-DPARAM
    AT-DV @ >CUDA-DEVPTR ATTN-V AT-BYTES >LEN MKD:CUMEMCPYHTOD CUDA:RC0
    AT-DO @ >CUDA-DEVPTR 0 AT-ELEMS >COUNT MKD:CUMEMSETD32 CUDA:RC0
    ATTN-N AT-NV !  ATTN-D AT-DPARAM !
-   EVND-FUNC @ >CUDA-FN ATTN-N 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   EVND-FUNC @ >CUDA-FN AT-PARAM-BYTES >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 0 >IDX  AT-DQ 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 8 >IDX  AT-DK 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 16 >IDX AT-DV 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 24 >IDX AT-DO 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 32 >IDX AT-NV 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN 36 >IDX AT-DPARAM 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   EVND-FUNC @ >CUDA-FN ATTN-N 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   EVND-FUNC @ >CUDA-FN ATTN-N 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   EVND-FUNC @ >CUDA-FN AT-PARAM-BYTES >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 0 >IDX  AT-DQ 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 8 >IDX  AT-DK 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 16 >IDX AT-DV 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 24 >IDX AT-DO 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 32 >IDX AT-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN 36 >IDX AT-DPARAM 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   EVND-FUNC @ >CUDA-FN ATTN-N 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    ATTN-O AT-DO @ >CUDA-DEVPTR AT-BYTES >LEN MKD:CUMEMCPYDTOH CUDA:RC0 ;
 : RUN-ATTN ( -- )  [: RUN-ATTN-CORE ;] CUDA-SCOPE:SCOPE ;
 
@@ -313,7 +316,7 @@ variable AT-NV variable AT-DPARAM
    SN-ELEMS 0 ?do  i SN-COLS /mod swap SN-INVAL  SN-IN i F!  loop ;
 : SN-MAXERR ( -- r )
    0.0  SN-ELEMS 0 ?do
-      SN-OUT i F32@ F32>F64   i SN-COLS /mod swap SN-REFVAL  f- fabs  MAXF
+      SN-OUT i F32@ WIDEN   i SN-COLS /mod swap SN-REFVAL  f- fabs  MAXF
    loop ;
 
 \ gemm: A[i][k]=1, B[k][j]=((j&3)+1)*0.25, so C[i][j] = 32*B[0][j] = 8*((j&3)+1).
@@ -326,7 +329,7 @@ variable AT-NV variable AT-DPARAM
 : FILL-GEMM-B ( -- )  GM-B-ELEMS 0 ?do  i GEMM-N mod GEMM-BVAL  GEMM-B i F!  loop ;
 : GEMM-MAXERR ( -- r )
    0.0  GM-C-ELEMS 0 ?do
-      GEMM-C i F32@ F32>F64   i GEMM-N mod GEMM-REFVAL  f- fabs  MAXF
+      GEMM-C i F32@ WIDEN   i GEMM-N mod GEMM-REFVAL  f- fabs  MAXF
    loop ;
 
 \ attention: K rows all equal -> scores equal per query -> softmax uniform, so
@@ -348,7 +351,7 @@ variable AT-NV variable AT-DPARAM
 : FILL-ATTN-V ( -- )  AT-ELEMS 0 ?do  i ATTN-D /mod swap ATTN-VVAL  ATTN-V i F!  loop ;
 : ATTN-MAXERR ( -- r )
    0.0  AT-ELEMS 0 ?do
-      ATTN-O i F32@ F32>F64   i ATTN-D /mod swap ATTN-REFVAL  f- fabs  MAXF
+      ATTN-O i F32@ WIDEN   i ATTN-D /mod swap ATTN-REFVAL  f- fabs  MAXF
    loop ;
 
 \ ---- build + run + compare per task -----------------------------------------
@@ -385,7 +388,7 @@ public
 \ device-FFI probe (maki/device-smoke.f pattern): libcuda present AND cuInit ok
 : ON-DEVICE? ( -- bool )
    CUDA:OPEN? 0= if false exit then
-   0 CUDA:CUINIT RC>N 0= ;
+   0 CUDA:CU-INIT RC>N 0= ;
 
 \ ---- canonical wrong-but-green fixtures (also referenced by eval-emit-test.f) ----
 : SN-GREEN$ ( -- ptr u8 n )
@@ -423,4 +426,5 @@ public
 : ATTN-OV-CAUGHT? ( -- bool )
    ATTN-OV$ ATTN-RUN {: e:r :}  s" attn output-into-V [stores into V ptr]" e REPORT-ERR  e TOL f> ;
 
+;using
 ;package

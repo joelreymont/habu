@@ -7,13 +7,14 @@
 \   RED : a forged image whose baked LAOTDATASIZE exceeds the DATA region
 \         (HABU_AOT_SPAN = 2*DATA-SIZE, well past the seed headroom top - seedDP)
 \         must die at boot naming "hb: AOT data span out of range" and exit 82
-\         (AOT-OWNER-RC). On the unfixed base the same image boots silently (the
+\         (ENGINE-ERROR:AOT-SEED). On the unfixed base the same image boots silently (the
 \         forged span is accepted with no bound check), so this case is red-first.
 \   GREEN: the unforged engine (its real few-KB span) must still boot to the REPL
 \         prompt and exit 0 -- the maximal legal reserve must not be over-rejected.
 \
 \ Spawn-only helper: test/aot-wid-suite.f runs it as a child and gates on its exit
-\ code; it is not a TEST:SUITE member, like test/aot-wid-build.f. The PTY primitives below mirror test/proc-pty.f
+\ code; it is not a TEST:SUITE member, like test/aot-wid-build.f. The PTY
+\ primitives below mirror test/proc-pty.f
 \ verbatim; factoring them into a shared lib is out of this dot's scope. Linux gate
 \ hosts provide /dev/ptmx + a mounted /dev/pts (docs/process-pty.md).
 \
@@ -165,7 +166,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    HBPWID$ PTY-SPAWN                 \ boot the forged image under a PTY
    s" AOT data span guard: forged span prints the named boot die" T-LABEL
    s" hb: AOT data span out of range" WAIT-FOR TTRUE   \ its fd-2 die reaches the master
-   s" AOT data span guard: forged span exits 82 (AOT-OWNER-RC)" T-LABEL
+   s" AOT data span guard: forged span exits 82 (ENGINE-ERROR:AOT-SEED)" T-LABEL
    PID @ >PID PROC-WAIT-RC MATCH result
      ok  OF drop 1 0 T= ENDOF          \ unexpected clean exit -> fail
      err OF 82 T= ENDOF                \ expected: exit code == 82

@@ -22,6 +22,8 @@ PTR-VARIABLE KEEP-A  variable KEEP-U
 : KEEP-A@ ( -- ptr u8 )
    KEEP-A @ ;
 
+\ Raw byte-pointer offset used by the treeshaker token scanner.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: SHK-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
 : SHK-C@ ( ptr u8 n -- n )

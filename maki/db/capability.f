@@ -19,21 +19,12 @@
 \ authority ORIGIN - the trusted upstream contract boundary, plan:3203-3211) and ATTENUATE (a
 \ subset-only derivation). The private representation refinements RAW>GRANT / GRANT>RAW are
 \ owner-only TRUSTED: rows (the maki/db/action.f RAW>ACTION-ID / maki/db/obligation.f
-\ RAW>OBLIGATION-ID precedent), confined to this file by tools/refine-lint-core.f.
+\ RAW>OBLIGATION-ID precedent), private to this owning package.
 \ Consequences, each proven by a static checker fixture in the test:
 \   - a raw `n` CANNOT stand where a `CAPTOK:grant` is required (nominal safety; verdict 0);
 \   - `RAW>GRANT` is unresolvable outside this file (sealed mint; verdict 1);
 \   - `=` on a grant rejects (an ADT value never laundry-compares through the scalar prim),
 \ so the sole ways to obtain a grant are ROOT and ATTENUATE, and ATTENUATE cannot escalate.
-\
-\ ---- CAPABILITY CODES ARE OPAQUE BIT FLAGS (the vocabulary content is USER-GATED) --------
-\ The capability CODES are held as an opaque u64 BITMASK of closed-vocabulary bits (the plan's
-\ "stable constant like the TARGET:CAP-* bits", plan:3652; the maki/db/action.f D-CAP / DISPATCH
-\ precedent). The vocabulary CONTENT - which capabilities exist and what each bit means - is a
-\ user-gated product decision (owner package CAP, plan:3679 NEEDS-DECISION), NOT invented here:
-\ this file treats the mask purely as opaque bits. SUBSET / AUTHORIZES? are mask operations
-\ (need AND granted == need), identical to ACTION:DISPATCH's capability gate. When CAP lands,
-\ its named bit constructors feed these masks unchanged.
 \
 \ ---- ATTENUATION IS SUBSET ON BOTH AXES (nested actions cannot exceed parent authority) --
 \ A child is admissible iff its requested cap-mask is a SUBSET of the parent's (every requested
@@ -71,7 +62,7 @@ ENUM attenuate-result 1
 
 private
 
-\ ---- private representation refinement (owner-only, TRUSTED:, refine-lint-confined) ------
+\ ---- private representation refinement (owner-only, TRUSTED:) -----------------------------
 \ ROOT / ATTENUATE are the ONLY public mints, each bound to a real slot allocation, so a raw n
 \ cannot forge a grant. GRANT>RAW is the owner-only projection used for pooled slot access.
 TRUSTED: RAW>GRANT ( n -- CAPTOK:grant ) ;

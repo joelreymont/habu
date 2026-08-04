@@ -38,6 +38,9 @@ public
       2 S\" '\n" write drop
       CHECK-RC throw then ;
 
+\ Dynamic preflight/hook installation asserts the canonical checker identities;
+\ ordinary checked code cannot type execution-token installation.
+\ Retirement: cap:checker-hook-identity.
 TRUSTED: INSTALL ( -- )
    ['] PREFLIGHT set-preflight
    ['] HOOK set-check ;

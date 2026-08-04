@@ -49,6 +49,8 @@
 require lib/prelude.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
+require lib/float32-buffer.f
 require lib/fmt.f
 require lib/fs.f
 require lib/memory.f
@@ -156,7 +158,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
          if E-ONNX-SHAPE throw then            \ shapes must agree; the initializer binds it
       exit then
    drop
-   gi OGIN-ROWS@ gi OGIN-COLS@ MAKI:SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+
+   gi OGIN-ROWS@ gi OGIN-COLS@ MAKI:SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+
       {: s:MIR:input-slot :}
    ni s MAKI:MIR-IN-REF IMP-BIND
    s IMP-IN-N @ IMP-IN-SLOT!
@@ -165,7 +167,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
 
 : IMP-INIT-1 ( n -- ) {: iz:n :}
    iz OGI-ROWS@ {: rows:n :}  iz OGI-COLS@ {: cols:n :}
-   rows cols MAKI:SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:MIR:input-slot :}
+   rows cols MAKI:SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:MIR:input-slot :}
    iz OGI-NAME@ s MAKI:MIR-IN-REF IMP-BIND
    s iz IMP-INIT-SLOT!
    rows cols * {: e:n :}
@@ -179,7 +181,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
    iz OGI-ROWS@ iz OGI-COLS@ * {: e:n :}
    IMP-ARENA  iz cells IMP-AOFF + @  T-AT {: dst:ptr :}
    e 0 ?do
-      a off i 4 * + +  SF-LD F32>F64  dst i T-SET
+      a off i 4 * + +  F32-BUF:LOAD F32:WIDEN  dst i T-SET
    loop ;
 
 : IMP-MATERIALIZE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -194,7 +196,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
 
 : IMP-COMMIT ( n CAD-KIND:rows CAD-KIND:cols -- )   \ close the staged MIR node; bind its output
    {: j:n rows:CAD-KIND:rows cols:CAD-KIND:cols :}
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+ IMP-NODE+
+   rows cols MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+ IMP-NODE+
       {: k:CAD-KIND:node-id :}
    j OND-OUT@ k MAKI:MIR-NODE-REF IMP-BIND ;
 
@@ -205,7 +207,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
 
 : IMP-COMMIT-MOVE ( n CAD-KIND:rows CAD-KIND:cols n -- )   \ close a movement node
    {: j:n rows:CAD-KIND:rows cols:CAD-KIND:cols attr:n :}
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ IMP-NODE+
+   rows cols MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ IMP-NODE+
       {: k:CAD-KIND:node-id :}
    j OND-OUT@ k MAKI:MIR-NODE-REF IMP-BIND ;
 
@@ -214,19 +216,19 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
 \ only the last node in a composed chain binds the graph output name (IMP-COMMIT).
 : MK-COMPUTE ( CAD-KIND:rows CAD-KIND:cols -- MIR:operand-ref )
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}   \ close a compute node (materialized); return its ref
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+
+   rows cols MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+
    IMP-NODE+ MAKI:MIR-NODE-REF ;
 
 : MK-MOVE ( CAD-KIND:rows CAD-KIND:cols n -- MIR:operand-ref )
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols attr:n :}   \ close a movement node; return its ref
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+
+   rows cols MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+
    IMP-NODE+ MAKI:MIR-NODE-REF ;
 
 \ a synthetic 1x1 f32 constant holding v (written into the arena now); returns its MIR input ref
 : SYN-CONST ( r -- MIR:operand-ref ) {: v:r :}
    SYN-N @ SYN-CAP >= if E-ONNX-CAP throw then
    IMP-BUMP @ 1+ IMP-ARENA-CELLS > if E-ONNX-CAP throw then
-   1 1 MAKI:SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:MIR:input-slot :}
+   1 1 MAKI:SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:MIR:input-slot :}
    v IMP-ARENA IMP-BUMP @ T-SET
    IMP-BUMP @ SYN-N @ cells SYN-OFF + !
    s SYN-N @ SYN-SLOT!
@@ -251,7 +253,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
    c OGIC-NVAL@ {: k:n :}
    SYN-N @ SYN-CAP >= if E-ONNX-CAP throw then
    IMP-BUMP @ k + IMP-ARENA-CELLS > if E-ONNX-CAP throw then
-   k 1 MAKI:SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:MIR:input-slot :}
+   k 1 MAKI:SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:MIR:input-slot :}
    IMP-BUMP @ SYN-N @ cells SYN-OFF + !
    s SYN-N @ SYN-SLOT!
    k 0 ?do  c i OGIC-VAL@ rows GA-IDX s>f  IMP-ARENA  IMP-BUMP @ i +  T-SET  loop
@@ -357,7 +359,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
    rc IMP-REF-ROWS 1 MAKI:ROWS-IS? 0=
    rc IMP-REF-COLS acc IMP-REF-COLS MAKI:COLS-EQUAL? 0= or if E-ONNX-SHAPE throw then
    j OND-BETA@ F32-ONE <> if
-      rc j OND-BETA@ F32>F64 GEMM-SCALE
+      rc j OND-BETA@ F32:WIDEN GEMM-SCALE
    else
       rc
    then {: rc2:MIR:operand-ref :}
@@ -374,7 +376,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
    MAKI-OPKIND:MATMUL MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
    m nc MK-COMPUTE {: acc:MIR:operand-ref :}
    j OND-ALPHA@ F32-ONE <> if
-      acc j OND-ALPHA@ F32>F64 GEMM-SCALE
+      acc j OND-ALPHA@ F32:WIDEN GEMM-SCALE
    else
       acc
    then {: acc2:MIR:operand-ref :}

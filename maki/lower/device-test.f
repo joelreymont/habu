@@ -21,6 +21,7 @@ require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
 require maki/device-artifacts.f
@@ -29,6 +30,8 @@ require maki/lower/golden.f
 require maki/eval/active-target.f
 
 package MAKI
+
+using F32
 
 create LD-OUT $4000 allot  create LD-ERR $1000 allot
 create LD-QO  $1000 allot  create LD-QE  $2000 allot
@@ -54,7 +57,7 @@ create LD-QO  $1000 allot  create LD-QE  $2000 allot
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
 : LD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
-: LD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;   \ narrowed host elem
+: LD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  NARROW WIDEN ;   \ narrowed host elem
 : LD-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do
@@ -87,6 +90,7 @@ create LD-QO  $1000 allot  create LD-QE  $2000 allot
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
+;using
 ;package
 
 package MAKI

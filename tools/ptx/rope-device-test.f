@@ -18,6 +18,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/test.f
 require maki/array.f
@@ -33,6 +34,8 @@ require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
 package ROPE-DEVICE-TEST
+
+using F32
 
 private
 
@@ -54,8 +57,8 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src dst :}  ROK 0 ?do  src i T-GET F64>F32  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src dst :}  ROK 0 ?do  src i F32@ F32>F64  dst i T-SET  loop ;
+: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  ROK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  ROK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : RO-OUT-GUARD ( -- )  ROK 0 ?do  RO-IN i F32@ PTXSENT:GUARD drop  loop ;
 
 : RO-DEVICE? ( -- bool )  CUDA:OPEN? ;
@@ -85,12 +88,12 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
    RO-CTX RO-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    RO-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    RO-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ RO-P1 >CSTR
+   PTXTC:CUBIN$ RO-P1 FFI:CSTR
    RO-MF RO-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
    RO-MF @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" ROPE_ROWS" RO-KF >CSTR
+   s" ROPE_ROWS" RO-KF FFI:CSTR
    RO-FWD RO-MF @ >CUDA-MOD RO-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
-   s" ROPE_BWD_ROWS" RO-KB >CSTR
+   s" ROPE_BWD_ROWS" RO-KB FFI:CSTR
    RO-BWD RO-MF @ >CUDA-MOD RO-KB CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    RO-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0    RO-dX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    RO-dCOS 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  RO-dCOS @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
@@ -172,4 +175,5 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
 
 ROPE-DEVICE-MAIN
 
+;using
 ;package

@@ -177,8 +177,8 @@ throw \emph{named} codes from documented per-subsystem ranges; silent
 fallbacks and error masking are prohibited by convention and enforced by
 lint gates. Where the checker cannot yet express a boundary (a raw
 syscall pointer walk, an FFI cast), the boundary is a named
-\code{TRUSTED:} word with a manifest row and a ratchet: the count of
-trusted sites may only decrease without explicit review.
+\code{TRUSTED:} word with source-local rationale and a focused
+production-path test; adding or changing such a site requires explicit review.
 
 \paragraph{Scale.} The measured binary is 115{,}831 bytes on macOS/ARM64
 and 102{,}592 bytes on Linux/AArch64---both committed size-ratchet

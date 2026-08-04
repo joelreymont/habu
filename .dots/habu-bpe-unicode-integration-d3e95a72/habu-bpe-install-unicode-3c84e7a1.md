@@ -1,20 +1,18 @@
 ---
-title: "BPE: install Unicode chunk matcher"
-status: active
+title: Preserve GPT-2 byte grammar
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T09:47:20.909072+02:00\""
+created-at: "2026-07-23T09:47:20.909072+02:00"
+closed-at: "2026-08-04T16:22:38.185955+02:00"
+close-reason: Landed 9a3797456ddbdc1887a367aef3c6d789d71612f0 on master after root, Claude, and discussion-blind destruction ACCEPT; exact maki, ptx-stdlib/lint-libs, and canonical native gates passed.
 blocks:
   - habu-bpe-unicode-data-45a7c2e9
   - habu-bpe-utf8-scalar-8c1d6f34
 ---
 
-Problem: production BPE encoding and training still use the legacy bounded Unicode matcher and ambient helper state. Complete Unicode tables and strict scalar decoding are already landed, but no stateless GPT-2 grammar owner composes them.
+Why: model-owned `GPT2:T-CP@` erases the tagged `UTF8:NEXT` distinction between a valid scalar and one malformed raw byte. The class matcher can therefore treat an invalid lead such as `C3` as Unicode U+00C3 Letter and merge it with adjacent ASCII. Result: inside the existing private `GPT2` tokenizer, use shared `UTF8:NEXT` and retain its scalar/raw-byte arm through every grammar decision. Scalars use `UNICODE-CLASS`; every raw byte is exactly one byte of progress and always OTHER, never Letter, Number, or White_Space. Preserve the existing leftmost greedy GPT-2 alternatives and arbitrary-byte round trips. Delete `T-CP@`; do not add another decoder, tokenizer package, public splitter, test hook, table, alias, manifest, lint, framework, or compatibility path.
 
-Required result: create package `BPE-SPLIT` with one public word `CHUNK-LEN ( ptr u8 n n -- n )`. It receives a counted byte span and byte cursor, returns the positive byte length of the next GPT-2 regex chunk, and implements alternatives in exact leftmost greedy order: contractions, optional-space Letter run, optional-space Number run, optional-space nonspace/non-Letter/non-Number run, end-of-input whitespace run with one whole trailing scalar retained when followed by nonspace, then ordinary whitespace run. It consumes `UTF8:NEXT` plus complete `UNICODE-CLASS:LETTER?`, `NUMBER?`, and `WHITE-SPACE?`. Malformed UTF-8 uses the decoder raw-lead result: one exact source byte, one byte of progress, and no overread. Negative length, cursor before zero, cursor at/after end, or any computed span escape throws the existing string-bounds error. The package owns no mutable cursor, range table, return buffer, or scratch state.
+Owner: `maki/infer/gpt2-token.f` private chunk classification and its production-path tests only. Source evidence to adapt, not merge: `602f4566da0a7b981f8cf6000f96deea49b87609`. Dependencies: landed `UTF8:NEXT`, `UNICODE-CLASS`, and model-owned tokenizer. This result does not own workspace capacity, vocabulary data, tokenizer lifetime, training, or a public grammar API. Production red: real `GPT2:ENCODE` currently joins malformed `C3` with following ASCII as a Letter run.
 
-Migrate both production `BPE-ENCODE` and `BPE-TRAIN` chunk traversal to `BPE-SPLIT:CHUNK-LEN`. Delete `BPE-CP@`, bounded Unicode tables and lookup state, `BPE-CHUNK-LEN`, and every compatibility alias. Preserve arbitrary-byte round trips.
-
-Prerequisites: `habu-bpe-unicode-data-45a7c2e9` and `habu-bpe-utf8-scalar-8c1d6f34`. Owned result: chunk grammar and production routing only. It does not own reference corpus data, compact vocabulary generation, encode workspace capacity, or tokenizer instances.
-
-Acceptance: focused production tests pin ASCII adjacency and contractions, every White_Space form, Letter/Number adjacency across representative scripts and non-BMP scalars, combining marks, punctuation, malformed/truncated/overlong bytes, multiple whitespace scalars before nonspace and at end of input, bounds, repeated calls, nested scans, and interleaved scans over two explicit cursors. Mutating alternative order, whitespace backtracking, raw-lead progress, or either production caller makes a focused test fail. Public inventory is exactly `CHUNK-LEN`; all legacy names reject. Files: `bpe-split.f`, its focused test, `bpe.f`, manifests. Smallest owning-path check: encode and train one fixture whose correct result changes when either caller uses the legacy matcher, plus the focused grammar suite. Also run exact typed-local, package, and host checks. Claim: agent=bpe_unicode workspace=.jj-ws/habu-bpe-install-unicode-3c84e7a1.
+Acceptance: real model-owned encoding pins ASCII adjacency and every contraction; fullwidth and astral Letter/Number boundaries; combining marks and punctuation; all 25 Unicode White_Space scalars including multiple-scalar tail retention; and malformed vectors M1-M9 covering bad continuation, invalid/overlong lead, truncated 3/4-byte sequences, stray continuation, surrogate, above U+10FFFF, bad final continuation, and overlong pair. Representative malformed, fullwidth, astral, and whitespace cases pass through real `GPT2:ENCODE` and exact decode round trips. Seven production-path guard-page cases put terminal apostrophe and each truncated 2/3/4-byte sequence immediately before an unmapped page and do not fault or overread. Mutating the tagged arm, raw-byte class, alternative order, or whitespace backtracking fails the owning tests. Smallest owning-path check: load the pinned model and encode `C3` followed by ASCII through the real private `GPT2:ENCODE` entry used by `GPT2:GENERATE`; it must retain the raw-byte boundary and round-trip exact bytes. Files: `maki/infer/gpt2-token.f`, `maki/infer/gpt2-generate-test.f`, and the smallest guard child/test needed for unmapped-page proof. Run the focused model/generate, typed-local, package, and canonical gates.

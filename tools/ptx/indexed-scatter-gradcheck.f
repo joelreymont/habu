@@ -9,6 +9,7 @@ require lib/fs.f
 require lib/process-argv.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -158,8 +159,8 @@ variable NDATA
    PDX @ READ-DEV ;
 
 : CENTRAL ( -- r )
-   XPLUS-BITS RUN-FWD F32>F64 {: zp:r :}
-   XMINUS-BITS RUN-FWD F32>F64 {: zm:r :}
+   XPLUS-BITS RUN-FWD F32:WIDEN {: zp:r :}
+   XMINUS-BITS RUN-FWD F32:WIDEN {: zm:r :}
    zp zm f- 2.0 f/ ;
 
 : ABS-DIFF ( r r -- r )
@@ -175,7 +176,7 @@ variable NDATA
    CENTRAL {: num:r :}
    RUN-BWD {: analytic:n :}
    analytic EXPECTED-BITS T=
-   analytic F32>F64 num NEAR? TTRUE
+   analytic F32:WIDEN num NEAR? TTRUE
    PTXBENCH:UNLOAD ;
 
 : MAIN ( -- )

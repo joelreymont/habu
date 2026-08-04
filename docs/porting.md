@@ -94,9 +94,12 @@ The engine ABI is currently ARM64:
     x26 DBASE dict+code region                  x27/x28 NDICT/CP
     sp        machine stack: word frames, locals frames
 
-Snapshots rely on fixed mappings and the 40-byte trailer convention: magic, old
-text base, ndict, region length, and data length. A non-fixed mapping port must
-implement full relocation before it can pass refresh.
+Snapshots rely on fixed mappings and the trailer convention: magic, old text
+base, ndict, region length, data length, and format version. Its size and field
+offsets are owned by `src/habu/layout.f` (`SNAP-TRL-BYTES` and the
+`SNAP-TRL-*` field constants); the writer, the loader and every reader derive
+from there, so a port must never spell the numbers itself. A non-fixed mapping
+port must implement full relocation before it can pass refresh.
 
 ## Port Gate
 

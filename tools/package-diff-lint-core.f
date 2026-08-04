@@ -241,7 +241,7 @@ variable FILE-USED
 : BAD+ ( -- )
    BAD @ 1+ BAD ! ;
 
-: FORTH? ( -- bool )
+: HABU? ( -- bool )
    FILE$ s" .f" LINT-ENDS-WITH? if true exit then
    FILE$ s" .fs" LINT-ENDS-WITH? ;
 
@@ -296,6 +296,7 @@ variable FILE-USED
 : GLOBAL-IMPLEMENTATION? ( -- bool )
    FILE$ s" lib/prelude.f" LINT-STR= if true exit then
    FILE$ s" src/core/util.f" LINT-STR= if true exit then          \ first prefix source; see header
+   FILE$ s" src/core/sha256.f" LINT-STR= if true exit then       \ standalone stage-0 prefix; tools/bootstrap.sh:81
    FILE$ s" src/core/sumtype.f" LINT-STR= if true exit then
    FILE$ s" src/core/roles.f" LINT-STR= if true exit then
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then
@@ -844,6 +845,10 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    DEF-NAME-I @ s" E-PACKAGE-OWNERSHIP" REPORT-HEAD
    s" defines a changed module word outside a package" OUT LF-C OUT-C ;
 
+: REPORT-RESULT-OWNER ( -- )
+   DEF-NAME-I @ s" E-PACKAGE-OWNERSHIP" REPORT-HEAD
+   s" must remain the global result declaration" OUT LF-C OUT-C ;
+
 : REPORT-OWNER-PREFIX ( -- )
    DEF-NAME-I @ s" E-REDUNDANT-PACKAGE-PREFIX" REPORT-HEAD
    s" repeats its package owner `" OUT PACKAGE$ OUT s" `" OUT LF-C OUT-C ;
@@ -1064,7 +1069,7 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ Why it is narrower than the core-surface entries.  Unlike checker.f and
 \ render.f, habu2.f is not a growing language surface; it is a body of existing
 \ code being packaged file-region by file-region.  The packaging seams are real
-\ and already present -- OWNER-WID-EMIT, KWDATA, LOOP-EMIT, LASTC-TRUST,
+\ and already present -- SNAP-RELOC, KWDATA, LOOP-EMIT, LASTC-TRUST,
 \ DOESPATCH, INTERP-EMIT, COMPILE-EMIT, LABELS, ENGINE-BUILD, LOWER-TXN and the
 \ rest all open in this same file -- so a genuinely new engine word has a package
 \ to join and must join one.  The distinction is structural, not a value guess:
@@ -1147,7 +1152,7 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ habu-compile-shaped-cost-4e74a181, which had to change the bodies of the
 \ existing global BNDSET and EMIT-FIND and nothing else).  The asymmetry is
 \ earned on the same structural fact as the other three: habu1.f already opens
-\ ENGINE-BUILD, ENGINE-HELPER, GUARD, PROT-GUARD and OWNER-WID-EMIT, so a
+\ ENGINE-BUILD, ENGINE-HELPER, GUARD, PROT-GUARD and ENGINE-EMIT, so a
 \ genuinely new word in it has an owner it can join and must join one -- which
 \ is what the repair above did with its five new labels, keeping them lexical
 \ inside the word that emits them rather than adding five globals.
@@ -1281,6 +1286,12 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
    MIRROR-PATH? 0= if false exit then
    WHOLE-CHANGED @ 0= ;
 
+: EXACT-ENUM? ( ptr u8 n ptr u8 n -- bool )
+   {: path:ptr pathu:n name:ptr nameu:n :}
+   FILE$ path pathu LINT-STR= 0= if false exit then
+   DEF-DEFINER-I @ s" ENUM" TOK=CI 0= if false exit then
+   DEF-NAME-I @ name nameu TOK=CI ;
+
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
    GRAMMAR-FIXTURE? if true exit then
@@ -1288,10 +1299,8 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
    ERR-VOCAB? if true exit then
    ENGINE-BODY-EDIT? if true exit then
    MIRROR-EDIT? if true exit then
-   FILE$ s" lib/adt/option.f" LINT-STR= if
-      DEF-DEFINER-I @ s" ENUM" TOK=CI
-      DEF-NAME-I @ s" option" TOK=CI and exit
-   then
+   s" lib/adt/option.f" s" option" EXACT-ENUM? if true exit then
+   s" lib/adt/result.f" s" result" EXACT-ENUM? if true exit then
    FILE$ s" lib/type/deftype.f" LINT-STR= if
       DEF-NAME-I @ s" DEFTYPE" TOK=CI exit
    then
@@ -1327,7 +1336,11 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ an already-global definition is exempt, and only on that surface.
 : FINISH-DEFINITION ( n -- ) {: last-line:n :}
    DEF-PACKAGED @ if
-      CHECK-PREFIX
+      s" lib/adt/result.f" s" result" EXACT-ENUM? if
+         REPORT-RESULT-OWNER
+      else
+         CHECK-PREFIX
+      then
    else
       SCOPE-DELTA @ 0<> if
          REPORT-GLOBAL
@@ -1402,9 +1415,7 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
       SCAN-LINE @ 1+ SCAN-LINE !
    repeat ;
 
-: SCAN-DEFINITIONS ( -- )
-   SOURCE$ LINT-LEX:SOURCE
-   LEX-CHECK
+: SCAN-DEFINITION-PASS ( -- )
    0 LEX-I !
    false PACKAGE-OPEN !
    0 SCOPE-DELTA !
@@ -1416,6 +1427,11 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
       LEX-I @ SCAN-TOKEN
    repeat
    DEF-OPEN @ 0<> PACKAGE-OPEN @ 0<> or if E-DIFF-SYNTAX throw then ;
+
+: SCAN-DEFINITIONS ( -- )
+   SOURCE$ LINT-LEX:SOURCE
+   LEX-CHECK
+   SCAN-DEFINITION-PASS ;
 
 : OLD-PACKAGE-TOKEN ( n -- bool ) {: k:n :}
    k s" package" TOK=CI if
@@ -1496,7 +1512,7 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
    false SECTION-ACTIVE !
    kind WHOLE-CHANGE? WHOLE-CHANGED !
    newu 0= if exit then
-   FORTH? 0= if exit then
+   HABU? 0= if exit then
    body 0= WHOLE-CHANGED @ 0= and if exit then
    LOAD-SOURCE
    1 SOURCE-LINE !

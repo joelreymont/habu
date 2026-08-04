@@ -136,7 +136,7 @@ the device, each verified correct-vs-CPU on the Orin:
 
   ```
   bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
-    lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/ffi.f \
+    lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/ffi-abi.f \
     src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f lib/ptx/cg-collective.f lib/ptx/tile.f \
     lib/ptx/collective.f maki/eval/eval.f maki/eval/device.f maki/eval/device-sm.f \
     maki/eval/author.f maki/eval/author-test.f

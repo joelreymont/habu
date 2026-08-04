@@ -1,4 +1,6 @@
 \ script-argv.f - bin/hb source-list script argument convention.
+\ Trusted rows parse raw argv C strings and compute the source-list separator
+\ and user-argument slice. Retirement: habu-raw-self-path-4514ffd3.
 
 : SCRIPT-LOAD-Z? ( ptr u8 -- bool )
    dup 0 ZBYTE@ ENV-DASH <> if drop ENV-FALSE exit then

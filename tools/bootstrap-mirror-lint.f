@@ -14,13 +14,6 @@
 \ lexer) that is not a definition NAME (src/core/sumtype.f defines the words
 \ SUMTYPE / ENUM / PRODUCT / NEWTYPE themselves) and not an escaped
 \ reference (' / ['] / postpone / char / [char]).
-\
-\ Native-engine-only src subtrees that the gforth stage-0 never compiles (they are
-\ loaded by the recovered native engine only, like lib/) are OUTSIDE this corpus
-\ and skipped: src/cad (the Model-CAD layer over lib/nominal) carries the finite
-\ effect-atom / slot-kind sums and the effect-row family, none of which reach the
-\ Gforth emitter (they are absent from bootstrap.sh SRC_COMMON and srclist.f).
-\
 \ This is a standalone entry point: it loads its own dependencies, so
 \ `bin/hb --load tools/bootstrap-mirror-lint.f` works on its own. It used to only
 \ list them in a comment and rely on the caller having loaded them first, which
@@ -180,13 +173,9 @@ private
 : TEST-FILE? ( ptr u8 n -- bool )          \ src/ carries no test sources today; skip any that appear
    s" test" LINT-CONTAINS? ;
 
-: NATIVE-ONLY? ( ptr u8 n -- bool )        \ native-engine-only src subtrees outside the gforth SRC_COMMON corpus
-   s" src/cad/" LINT-CONTAINS? ;               \ CAD model layer: consumes lib/nominal, loaded only by the native engine
-
 : WALK-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u FORTH-FILE? 0= if exit then
    a u TEST-FILE? if exit then
-   a u NATIVE-ONLY? if exit then
    a u FILE ;
 
 public

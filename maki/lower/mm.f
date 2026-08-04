@@ -38,8 +38,8 @@
 \
 \ Emit-mode discipline mirrors lower-red.f: the fixed GEMM prologue/K-loop/store use
 \ explicit registers (%f1 = accumulator, %r/%rd address math); the epilogue reuses the
-\ cg-activation.f EMIT-RELU/EMIT-GELU/EMIT-SILU emitters (each returns a fresh %f via
-\ CG-NEXT-F) op-for-op with the host references, so the device f32 matches F64>F32(host)
+\ cg-activation.f EMIT-RELU/PTX-ACT:EMIT-GELU/PTX-ACT:EMIT-SILU emitters (each returns a fresh %f via
+\ CG-NEXT-F) op-for-op with the host references, so the device f32 matches F32:NARROW(host)
 \ under the section 11 matmul tolerance (maki/lower/golden.f). Kernel ABI (REGION_<rid>):
 \ one `.param .u64 p_in<i>` per contraction operand (A, B, [bias]), then `.param .u64
 \ p_out`, then `.param .u32 p_m, p_n, p_k`.
@@ -95,6 +95,9 @@ package CAD-NUM public
 -5200 constant E-LMM-REG       \ node / input register-map index out of range
 
 package MAKI
+
+using PTX-ACT
+
 private
 
 4    constant LMM-MAX-IN       \ contraction arity cap (linear=3, matmul=2, both <=4)
@@ -577,4 +580,5 @@ public
       s" }" PTX-L
    }PTX-MODULE ;
 
+;using
 ;package

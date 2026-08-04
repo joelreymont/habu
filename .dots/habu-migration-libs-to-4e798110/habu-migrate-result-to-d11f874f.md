@@ -1,9 +1,11 @@
 ---
 title: Migrate RESULT to unified ENUM
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T05:04:26.432169+02:00"
+closed-at: "2026-08-02T16:54:45.205890+02:00"
+close-reason: landed at 80b8be9206a840fcbe69848db2e0c88b4dabfd85; current lib/adt/result.f is the exact requested unified ENUM declaration
 blocks:
   - habu-libs-migrate-option-510a7e40
 ---
@@ -30,13 +32,9 @@ wordlist contains exactly `OK` and `ERR` with the unchanged effects; both-arm
 round trips, tags, reflection kind `TK-SUM`, arity two, field names `value` and
 `error`, distinct payload roles, and swapped-role rejection.
 
-Dependency: `habu-libs-migrate-option-510a7e40` lands first because both leaves
-edit the exact-path global-family lint. Exact files: `lib/adt/result.f`,
-`lib/adt/result-test.f`, `docs/forth.md`, `tools/package-diff-lint-core.f`,
-`tools/package-diff-lint-test.f`. Do not edit consumers,
-`lib/std.manifest`, enum census, gate schedule, or suite-coverage table.
-Acceptance: focused `adt-result` production suite, typed-local and package exact-diff lints, exact 174-file unchanged census, exact public
-wordlist enumeration, and scratch mutation kills for arm order, field names,
-compact mode, and parameter swap. Smallest owning path: the existing
-standard-library suite executes the migrated declaration through the real
-RESULT constructors and `MATCH` implementation.
+Dependency: `habu-libs-migrate-option-510a7e40` lands first because both leaves edit the exact-path global-family lint. Exact files:
+`lib/adt/result.f`, `lib/adt/result-test.f`, `docs/forth.md`, `tools/package-diff-lint-core.f`, `tools/package-diff-lint-test.f`. Do not
+edit consumers, enum census, gate schedule, or suite-coverage table. Acceptance: focused `adt-result` production suite, typed-local and
+package exact-diff lints, exact 174-file unchanged census, exact public wordlist enumeration, and scratch mutation kills for arm order,
+field names, compact mode, and parameter swap. Smallest owning path: the existing standard-library suite executes the migrated declaration
+through the real RESULT constructors and `MATCH` implementation.

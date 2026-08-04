@@ -10,8 +10,8 @@ require maki/model-ir.f
 \ ---- white-box CAD-NUM role reader (mirrors lib/vector-test.f's VECT-IC>RAW) --
 \ Reopen the CAD-NUM package to project a validated item-count's raw cell for the
 \ scalar count assertions below. A plain checked word over the already-audited
-\ CAD-NUM:ITEM-COUNT>N projection - not a new boundary (refine-lint does not
-\ confine the *>N projections, only the MINT-*/RAW>* refinements).
+\ CAD-NUM:ITEM-COUNT>N projection, not a new boundary: the public projection
+\ reads an already validated role and exposes no inverse refinement.
 package CAD-NUM
 public
 : MT-IC>RAW ( CAD-NUM:item-count -- n ) ITEM-COUNT>N ;
@@ -55,18 +55,18 @@ variable MT-VA  variable MT-VU
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 MIR-RESET
-2 3 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MT-SX!   \ slot 0 = x (2x3)
-3 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MT-SW!   \ slot 1 = w (3x4)
-0 0 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MT-SU!   \ slot 2 = unbound (?x?)
+2 3 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MT-SX!   \ slot 0 = x (2x3)
+3 4 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MT-SW!   \ slot 1 = w (3x4)
+0 0 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MT-SU!   \ slot 2 = unbound (?x?)
 
 MAKI-OPKIND:LINEAR MIR-OP-BEGIN
    MT-SX@ MIR-IN-REF MIR-IN+
    MT-SW@ MIR-IN-REF MIR-IN+
-2 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ MT-N0!  \ node 0 : y0 = 2x4, materialized
+2 4 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ MT-N0!  \ node 0 : y0 = 2x4, materialized
 
 MAKI-OPKIND:GELU MIR-OP-BEGIN
    MT-N0@ MIR-NODE-REF MIR-IN+
-2 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ MT-N1!  \ node 1 : y1 = 2x4
+2 4 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ MT-N1!  \ node 1 : y1 = 2x4
 
 T-RESET
 
@@ -86,7 +86,7 @@ MIR-IN-SLOTS@  3 T=
 \ then prove the production marker and generated inverse preserve field order.
 : MT-MARK-VALUES ( -- n n n )
    MIR-MARK MT-MARK!
-   5 7 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   5 7 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
    MIR-MARK MIR-MARK:UNMAKE ;
 : MT-MARK-RESTORE ( -- )
    MT-MARK@ MIR-RELEASE ;
@@ -148,10 +148,10 @@ s" input.2.shape: ?x?" MT-IN
 : MT-MV@ ( -- CAD-KIND:node-id )  0 MT-MV @ ;
 
 MIR-RESET
-4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop            \ slot 0 = x (4x8)
+4 8 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop            \ slot 0 = x (4x8)
 MAKI-OPKIND:RESHAPE MIR-OP-BEGIN
    0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-8 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  MV-RESHAPE MVV-FREE 8 4 MV-PACK  0  MIR-OP+ MT-MV!
+8 4 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW  MV-RESHAPE MVV-FREE 8 4 MV-PACK  0  MIR-OP+ MT-MV!
 
 MT-MV@ MIR-MOVE?          TTRUE
 MT-MV@ MIR-OP@ OPKIND>N OP-RESHAPE T=
@@ -185,7 +185,7 @@ MIR-PROV@ MAKI-PROV:NONE MAKI-PROV:EQ TTRUE
 : TRY-MIR-REF     ( -- )  MIR-RESET MAKI-OPKIND:GELU MIR-OP-BEGIN 5 RAW>REF MIR-IN+ ;
 : TRY-MIR-STATE   ( -- )
    MIR-RESET
-   1 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MIR-IN-REF MIR-IN+ ;
+   1 1 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MIR-IN-REF MIR-IN+ ;
 : TRY-MIR-INSLOT  ( -- )  MIR-RESET 0 RAW>SLOT MIR-SLOT-ROWS@ drop ;
 \ ceiling-pins (dot habu-size-model-proportional): the tables derive their size from the
 \ model and grow-to-largest, so the caps are the transactional generous ceilings - a
@@ -197,9 +197,9 @@ MIR-PROV@ MAKI-PROV:NONE MAKI-PROV:EQ TTRUE
 \ a verdict requested from a non-movement (gelu) node fails closed
 : TRY-MIR-NOTMOVE ( -- )
    MIR-RESET
-   0 0 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ {: s:MIR:input-slot :}
+   0 0 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ {: s:MIR:input-slot :}
    MAKI-OPKIND:GELU MIR-OP-BEGIN  s MIR-IN-REF MIR-IN+
-   0 0 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+  MIR-MOVE-VERDICT@ drop ;
+   0 0 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+  MIR-MOVE-VERDICT@ drop ;
 
 \ a release mark that would GROW the table fails closed
 : TRY-MIR-MARK-GROW ( -- )
@@ -242,15 +242,15 @@ s" MT-MARK-UNMAKE ( MIR:mark -- n n n ) MIR-MARK:UNMAKE" MT-CHECK-YES
 
 : MT-ROLLBACK ( -- CAD-KIND:node-id )
    MIR-RESET
-   2 3 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ {: s:MIR:input-slot :}
+   2 3 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ {: s:MIR:input-slot :}
    MAKI-OPKIND:GELU MIR-OP-BEGIN
    s MIR-IN-REF MIR-IN+
-   2 3 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ {: base:CAD-KIND:node-id :}
+   2 3 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ {: base:CAD-KIND:node-id :}
    MIR-MARK MT-MARK!
-   4 5 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   4 5 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
    MAKI-OPKIND:RELU MIR-OP-BEGIN
    base MIR-NODE-REF MIR-IN+
-   2 3 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   2 3 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
    MT-MARK@ MIR-RELEASE
    base ;
 
@@ -286,7 +286,7 @@ MIR-CAP $8000 T=
    MIR-RESET
    MT-FILL-N 0 ?do
       MAKI-OPKIND:CAST MIR-OP-BEGIN
-      1 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 0 MIR-OP+ drop
+      1 1 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 0 MIR-OP+ drop
    loop ;
 MT-FILL-MAX
 NODE-COUNT@        CAD-NUM:MT-IC>RAW MT-FILL-N T=                     \ live count is exact
@@ -302,17 +302,17 @@ MIR-RESET
 \ and the typed rows/cols kinds reject raw or transposed extents. Positive
 \ controls pin the well-typed calls; n-launder rows pin that a raw code cannot
 \ enter and a family cannot leak as n.
-s" MTX-IN-OK    ( CAD-KIND:rows CAD-KIND:cols dtype layout -- MIR:input-slot ) MIR-INPUT+"  CHECK-QUIET-CANDIDATE! -1 T=
-s" MTX-IN-SWAP  ( CAD-KIND:rows CAD-KIND:cols layout dtype -- MIR:input-slot ) MIR-INPUT+"  CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-IN-OK    ( CAD-KIND:rows CAD-KIND:cols datatype layout -- MIR:input-slot ) MIR-INPUT+"  CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-IN-SWAP  ( CAD-KIND:rows CAD-KIND:cols layout datatype -- MIR:input-slot ) MIR-INPUT+"  CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-IN-NDT   ( CAD-KIND:rows CAD-KIND:cols n layout -- MIR:input-slot ) MIR-INPUT+"      CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-IN-NROWS ( n n dtype layout -- MIR:input-slot ) MIR-INPUT+"                          CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-IN-RCSWP ( CAD-KIND:cols CAD-KIND:rows dtype layout -- MIR:input-slot ) MIR-INPUT+"  CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-OP-OK    ( CAD-KIND:rows CAD-KIND:cols dtype layout n n -- CAD-KIND:node-id ) MIR-OP+" CHECK-QUIET-CANDIDATE! -1 T=
-s" MTX-OP-SWAP  ( CAD-KIND:rows CAD-KIND:cols layout dtype n n -- CAD-KIND:node-id ) MIR-OP+" CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-OP-NLAY  ( CAD-KIND:rows CAD-KIND:cols dtype n n n -- CAD-KIND:node-id ) MIR-OP+"      CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-IN-NROWS ( n n datatype layout -- MIR:input-slot ) MIR-INPUT+"                          CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-IN-RCSWP ( CAD-KIND:cols CAD-KIND:rows datatype layout -- MIR:input-slot ) MIR-INPUT+"  CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-OP-OK    ( CAD-KIND:rows CAD-KIND:cols datatype layout n n -- CAD-KIND:node-id ) MIR-OP+" CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-OP-SWAP  ( CAD-KIND:rows CAD-KIND:cols layout datatype n n -- CAD-KIND:node-id ) MIR-OP+" CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-OP-NLAY  ( CAD-KIND:rows CAD-KIND:cols datatype n n n -- CAD-KIND:node-id ) MIR-OP+"      CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-AL-OK    ( MIR:input-slot align -- ) MIR-SLOT-AL!"  CHECK-QUIET-CANDIDATE! -1 T=
 s" MTX-AL-N     ( MIR:input-slot n -- ) MIR-SLOT-AL!"      CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-AL-DT    ( MIR:input-slot dtype -- ) MIR-SLOT-AL!"  CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-AL-DT    ( MIR:input-slot datatype -- ) MIR-SLOT-AL!"  CHECK-QUIET-CANDIDATE! 0 T=
 \ accessor outputs are families, not n: enum->n laundering rejects
 s" MTX-DT-NOUT  ( CAD-KIND:node-id -- n ) MIR-DT@"         CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-LAY-NOUT ( MIR:input-slot -- n ) MIR-SLOT-LAY@"     CHECK-QUIET-CANDIDATE! 0 T=
@@ -323,14 +323,14 @@ s" MTX-ROWS-NOUT ( CAD-KIND:node-id -- n ) MIR-ROWS@"      CHECK-QUIET-CANDIDATE
 \ cannot leak as n, and opkind<->dtype cross-swaps reject both directions.
 s" MTX-OPB-OK   ( opkind -- ) MIR-OP-BEGIN"            CHECK-QUIET-CANDIDATE! -1 T=
 s" MTX-OPB-N    ( n -- ) MIR-OP-BEGIN"                 CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-OPB-DT   ( dtype -- ) MIR-OP-BEGIN"             CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-OPB-DT   ( datatype -- ) MIR-OP-BEGIN"             CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-OP-NOUT  ( CAD-KIND:node-id -- n ) MIR-OP@"     CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-OP-ASDT  ( CAD-KIND:node-id -- dtype ) MIR-OP@" CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-OP-ASDT  ( CAD-KIND:node-id -- datatype ) MIR-OP@" CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-DT-ASOP  ( CAD-KIND:rows CAD-KIND:cols opkind opkind -- MIR:input-slot ) MIR-INPUT+" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ derived op identity (MAKI-OPKIND:EQ, DERIVE eq S1): both args must be opkind
 s" MTX-EQ-OK    ( opkind opkind -- bool ) MAKI-OPKIND:EQ" CHECK-QUIET-CANDIDATE! -1 T=
-s" MTX-EQ-DT    ( dtype opkind -- bool ) MAKI-OPKIND:EQ"  CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-EQ-DT    ( datatype opkind -- bool ) MAKI-OPKIND:EQ"  CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-EQ-N     ( n opkind -- bool ) MAKI-OPKIND:EQ"      CHECK-QUIET-CANDIDATE! 0 T=
 
 \ provenance family negatives: a raw n cannot adopt, the stored provenance cannot

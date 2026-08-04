@@ -2,15 +2,16 @@
 \
 \ AXPY over float arrays: y[i] = a*x[i] + y[i], computed on the Orin via the
 \ CHECKED SAXPY kernel (lib/ptx/...), with ARBITRARY float data marshalled through
-\ F64>F32, and verified against the CPU. Fully checked Habu (no 0 set-check) via
-\ the checked FFI (lib/ffi.f) + F64>F32 (lib/ptx/cg.f). maki -> habu only.
+\ F32:NARROW, and verified against the CPU. Fully checked Habu (no 0 set-check) via
+\ the checked FFI (lib/ffi-abi.f) + F32:NARROW (lib/float32.f). maki -> habu only.
 \ Self-contained: SETUP emits the checked SAXPY kernel (tools/ptx/saxpy-cg.f) to a
 \ PRIVATE per-run PTX under a toolchain root, ptxas-assembles it, and loads that
 \ cubin - no shared /tmp/saxpy.cubin that could be stale/missing/wrong.
 
-require maki/cuda-driver.f
+require lib/ptx/cuda-driver.f
 require maki/cuda-run.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -97,10 +98,10 @@ create GQ-ERR $1000 allot
    GCTX GDEV @ >CUDA-DEV MKD:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
    GDEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    GCTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0
-   PTXTC:CUBIN$ GPATH >CSTR
+   PTXTC:CUBIN$ GPATH FFI:CSTR
    GMOD GPATH MKD:CUMODULELOAD CUDA:RC0
    GMOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SAXPY" GKN >CSTR
+   s" SAXPY" GKN FFI:CSTR
    GFUNC GMOD @ >CUDA-MOD GKN MKD:CUMODULEGETFUNCTION CUDA:RC0 ;
 
 \ one launch's device buffers live in a per-call SCOPE frame: GDX/GDY are freed on
@@ -112,14 +113,14 @@ create GQ-ERR $1000 allot
    GDY bytes >LEN MKD:CUMEMALLOC CUDA:RC0  GDY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    GDX @ >CUDA-DEVPTR GHX bytes >LEN MKD:CUMEMCPYHTOD CUDA:RC0
    GDY @ >CUDA-DEVPTR GHY bytes >LEN MKD:CUMEMCPYHTOD CUDA:RC0
-   GFUNC @ >CUDA-FN 256 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   GFUNC @ >CUDA-FN 24 >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
-   GFUNC @ >CUDA-FN 0 >IDX  GDX 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   GFUNC @ >CUDA-FN 8 >IDX  GDY 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   GFUNC @ >CUDA-FN 16 >IDX GABITS 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   GFUNC @ >CUDA-FN 20 >IDX GNVAR 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   GFUNC @ >CUDA-FN 1 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   GFUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   GFUNC @ >CUDA-FN 24 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   GFUNC @ >CUDA-FN 0 >IDX  GDX 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GFUNC @ >CUDA-FN 8 >IDX  GDY 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GFUNC @ >CUDA-FN 16 >IDX GABITS 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GFUNC @ >CUDA-FN 20 >IDX GNVAR 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GFUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    GHY bytes PTXSENT:FILL                                  \ poison before copy-back (y already on device)
    GHY GDY @ >CUDA-DEVPTR bytes >LEN MKD:CUMEMCPYDTOH CUDA:RC0 ;
 
@@ -139,11 +140,11 @@ public
 
 \ load element i of x and y from Habu floats into the host f32 buffers
 : PUT ( r r n -- ) {: xv:r yv:r ix:n :}
-   xv F64>F32 GHX ix F32!
-   yv F64>F32 GHY ix F32! ;
+   xv F32:NARROW GHX ix F32!
+   yv F32:NARROW GHY ix F32! ;
 
 : LAUNCH ( r -- )  {: a:r :}                        \ a = scalar; x,y already in GHX/GHY
-   a F64>F32 GABITS !  GN GNVAR !                          \ stash into globals for the scope body
+   a F32:NARROW GABITS !  GN GNVAR !                          \ stash into globals for the scope body
    [: LAUNCH-CORE ;] CUDA-SCOPE:SCOPE ;                    \ GDX/GDY owned + freed within this launch
 
 : RELEASE ( -- )

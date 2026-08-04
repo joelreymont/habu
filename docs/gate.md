@@ -27,8 +27,8 @@ and SHA before the test runs.
 
 Candidate production is not candidate validation. The build test only produces
 `HABU_UNDER_TEST`; a separate candidate validation test always runs after that
-capability is ready, whether the candidate came from a build, the content cache,
-or explicit `--under PATH`.
+capability is ready, whether the candidate came from a build or explicit
+`--under PATH`.
 
 The explicit reuse path is:
 
@@ -37,7 +37,19 @@ bin/hb --load test/run.f -- --under bin/hb
 ```
 
 `--under` copies the executable into the suite-owned temp root and marks the
-candidate capability ready. It does not install into the content cache.
+candidate capability ready. The candidate build phase is not scheduled.
+
+A whole-gate scheduling regression cannot run inside `test/run.f` or a slice
+that it schedules: its child would enter the same gate recursively. Run these
+two candidate-scheduling checks separately before landing gate-runner changes:
+
+```sh
+bin/hb --load test/candidate-rebuild-test.f -- rebuild
+bin/hb --load test/candidate-rebuild-test.f -- import
+```
+
+The first requires two ordinary runs to build phase 15. The second requires an
+ordinary source build followed by exact `--under` import with no phase 15.
 
 ## Boundary Rule
 
@@ -73,12 +85,12 @@ before and after their group run. A sequential group is for isolation barriers
 and ordered aggregate proofs only; it must not be used to hide missing setup
 factoring.
 
-Suite setup owns shared binaries and content-keyed build artifacts. Tests do not
-list shared setup loads: setup builds or reuses the needed candidate/maker
-artifact by content key, groups choose a mode, and tests load only their test
+Suite setup owns shared binaries and build artifacts. Tests do not list shared
+setup loads: ordinary setup builds the candidate; only maker/build artifacts
+are content-key reused. Groups choose a mode, and tests load only their test
 entry files or execute in-process words from the resident runner. Successful
-setup is silent. Setup failure prints the failing setup path as a failure; it is
-not reported as a passing test.
+setup is silent. Setup failure prints the failing setup path as a failure; it
+is not reported as a passing test.
 
 ## Metrics
 
@@ -123,7 +135,7 @@ primitive declaration table.
 The summary must show:
 
 - total top-level phases;
-- cache/candidate counters;
+- result/maker/artifact-cache and candidate counters;
 - child-Habu, process-exec, candidate-exec, process-fork, process-reaper, and
   backward-compatible helper-spawn counts;
 - in-process evaluation count;
@@ -186,36 +198,26 @@ instead of recording a red phase.
 Timing regression checks are host-specific. Use named profiles instead of
 remembering slot counts or cache state:
 
-| Profile | Host proof | Slots | Nested | Persistent nominal budget | Scratch-cache nominal budget |
-|---|---|---:|---:|---:|---:|
-| `macos-arm64-10x2` | macOS ARM64 target | 10 | 2 | 30000ms / 35000ms wall | 30000ms / 35000ms wall |
-| `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 | 100000ms / 110000ms wall | 150000ms / 160000ms wall |
-| `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 | 120000ms | 150000ms |
+| Profile | Host proof | Slots | Nested |
+|---|---|---:|---:|
+| `macos-arm64-10x2` | macOS ARM64 target | 10 | 2 |
+| `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 |
+| `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 |
 
 The default profile is `auto`: the runner inspects the target and host files
-before the suite starts. Manual `--perf-profile NAME` forces a profile. Manual
-`--budget-ms` and `--wall-budget-ms` override the profile in either argument
-order and remain unscaled. Pool overrides must appear after the profile;
-top-level `--pool-slots` is capped at 12. Table budgets are nominal and scale
-with the calibrated host factor.
+before the suite starts. Manual `--perf-profile NAME` forces a profile. Pool
+overrides must appear after the profile; top-level `--pool-slots` is capped at
+12.
 
 `--cold-cache` selects a private per-run scratch cache root under the suite temp
-directory, applies the profile scratch-cache budget unless the user supplied
-explicit budget arguments, and proves content-cache fill behavior without
-deleting the persistent cache.
+directory, disables the result cache, and measures builder, maker, and artifact
+cache fill without deleting the default persistent caches.
 
-If a default persistent-cache run discovers a missing `HABU_UNDER_TEST` after
-argument parsing, the runner uses the same scratch-cache budget unless explicit
-budget arguments were supplied. Use
-`--cold-cache` when explicitly measuring builder/maker artifact cache-fill
-behavior.
-
-The runner's wall budget is monotonic elapsed test-suite time; wrap the
-command with `/usr/bin/time -p` when comparing end-to-end shell wall time across
-hosts. `test/run.f` runs the suite directly in `bin/hb`; no top-level test-suite
-snapshot is built. The side-effect-free implementation lives in
-`test/run-lib.f`; invoking it directly is for focused harness debugging only.
-Current commands live in `skills/habu-host-profiles/SKILL.md`.
+Wrap the command with `/usr/bin/time -p` when comparing end-to-end shell wall
+time across hosts. `test/run.f` runs the suite directly in `bin/hb`; no
+top-level test-suite snapshot is built. The side-effect-free implementation
+lives in `test/run-lib.f`; invoking it directly is for focused harness debugging
+only. Current commands live in `skills/habu-host-profiles/SKILL.md`.
 
 ## Implementation Sequence
 
@@ -225,9 +227,9 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    through a checked `defer` hook.
 
 2. Candidate production and validation split.
-   Acceptance: persistent cache or `--under PATH` prints `candidate-build=0` and
-   `candidate-validate=1`; build misses still install a stamp-backed executable
-   cache entry.
+   Acceptance: `--under PATH` prints `candidate=0`, `candidate-import=1`, and
+   `candidate-validate=1`; an ordinary invocation prints `candidate=1` and
+   `candidate-validate=1`.
    Status: implemented in `test/run.f` and `test/gate-engine-lib.f`.
 
 3. Replace index-only phase dispatch with a checked manifest.
@@ -241,20 +243,10 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    tests remain explicit boundary tests.
    Status: implemented for repair, doc/schema, split lint, typed-local,
    diagnostic SARIF/public-signature and JIT dump semantics.
-   Current macOS proof after removing top snapshot launchers, replacing the
-   monolithic parent support load with explicit suite setup, moving the
-   check-tool file-label smoke to the in-process checker core, splitting AOT
-   closure diagnostics from the maker path, keeping SARIF/prop-test CLI entries
-   thin, running tail/lint groups through worker-local fork pools, and fixing
-   post-build candidate scheduling, and moving PTY coverage to the
-   post-candidate runtime slice: 16.702s internal / 19.00s shell wall hot,
-   `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=25`,
-   `candidate-hit=1`, `candidate-validate=1`; `check-cli` is 3.162s,
-   dictionary/checker is 7.815s, diagnostics all-strict is 11.891s, tail/lint
-   groups are under 7.7s, and the slowest test is checker diagnostics at
-   11.806s. Scratch cold-cache fill with one real candidate build and one real
-   AOT maker build is 39.336s internal / 41.64s shell wall with
-   `candidate-miss=1`, `candidate-install=1`, and `candidate-validate=1`.
+   Current runs distinguish ordinary candidate production
+   (`candidate=1`) from explicit import (`candidate-import=1`, `candidate=0`).
+   Maker, artifact, and result caches remain independent
+   of candidate production.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local
@@ -293,8 +285,8 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
 
 ## Targets
 
-Short-term Jetson/Orin target: persistent content cache, uncontended,
-`--budget-ms 70000` passes.
+Short-term Jetson/Orin target: warm builder, maker, artifact, and result caches,
+uncontended full gate passes.
 
 Architecture target:
 

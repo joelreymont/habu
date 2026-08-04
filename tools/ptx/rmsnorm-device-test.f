@@ -10,8 +10,8 @@
 \ assert it matches maki/rmsnorm.f RMS-FWD within tolerance. GRADCHECK: perturb each
 \ x[j] by +-eps, re-run the SAME device forward, form the central difference
 \ sum_i dy[i]*(y+[i]-y-[i])/(2eps), and assert it matches the device backward dx[j].
-\ Fully checked Habu via lib/ffi.f. Off-device (no libcuda) it records a SKIP and
-\ still check-loads. Load after lib/test.f, lib/ffi.f, lib/ptx/cg.f, maki/array.f.
+\ Fully checked Habu via lib/ffi-abi.f. Off-device (no libcuda) it records a SKIP and
+\ still check-loads. Load after lib/test.f, lib/ffi-abi.f, lib/ptx/cg.f, maki/array.f.
 \
 \ OWED: the dot targets sm_87 goldens on Orin; that box is unavailable here, so the
 \ Orin sm_87 golden + its profile row are OWED and recorded in tools/ptx/perf-rows.tsv.
@@ -19,6 +19,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/test.f
 require maki/array.f
@@ -34,6 +35,8 @@ require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
 package RMSNORM-DEVICE-TEST
+
+using F32
 
 private
 
@@ -54,8 +57,8 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src dst :}  RNK 0 ?do  src i T-GET F64>F32  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src dst :}  RNK 0 ?do  src i F32@ F32>F64  dst i T-SET  loop ;
+: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  RNK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  RNK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : RN-OUT-GUARD ( -- )  RNK 0 ?do  RN-OUT i F32@ PTXSENT:GUARD drop  loop ;   \ fail closed if copy-back dropped
 
 : RN-DEVICE? ( -- bool )  CUDA:OPEN? ;
@@ -86,12 +89,12 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
    RN-CTX RN-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    RN-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    RN-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ RN-P1 >CSTR
+   PTXTC:CUBIN$ RN-P1 FFI:CSTR
    RN-MF RN-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
    RN-MF @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" RMSNORM_ROWS" RN-KF >CSTR
+   s" RMSNORM_ROWS" RN-KF FFI:CSTR
    RN-FWD RN-MF @ >CUDA-MOD RN-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
-   s" RMSNORM_BWD_ROWS" RN-KB >CSTR
+   s" RMSNORM_BWD_ROWS" RN-KB FFI:CSTR
    RN-BWD RN-MF @ >CUDA-MOD RN-KB CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    RN-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   RN-dX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    RN-dDY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  RN-dDY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
@@ -175,4 +178,5 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
 
 RMSNORM-DEVICE-MAIN
 
+;using
 ;package

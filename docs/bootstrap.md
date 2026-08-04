@@ -211,7 +211,7 @@ or candidate launcher, and must be rebuilt after source changes.
 If a device tool (`maki/eval/device.f`, `maki/gpu.f`, `tools/ptx/*`) errors with a
 cryptic missing-primitive name such as `ffi-call-abi`, the running `bin/hb` predates a
 native FFI primitive — **refresh it with the command above.** The maki test suite
-guards this with `maki/device-smoke.f`: it requires `lib/ffi.f` (which fails closed
+guards this with `maki/device-smoke.f`: it requires `lib/ffi-abi.f` (which fails closed
 on a stale engine) and then runs a live `cuInit`/`cuDeviceGet` canary, so the break
 surfaces early at the FFI layer.
 
@@ -231,10 +231,10 @@ Python, Rust, TypeScript, or model runtimes.
 
 The test suite runs directly in the small `bin/hb` engine; it does not bake a
 top-level test-suite snapshot and it does not use checker/tool snapshot images
-as launchers. The persistent content cache stores rebuilt `HABU_UNDER_TEST`
-candidates and builder/maker artifacts. Snapshot coverage belongs to the native
-build/fixpoint path; generated images are local artifacts and must not be
-committed.
+as launchers. Every ordinary run builds its `HABU_UNDER_TEST` candidate in
+phase 15. Maker, artifact, and result caches remain, but none can skip that
+phase. Snapshot coverage belongs to the native build/fixpoint path; generated
+images are local artifacts and must not be committed.
 
 ### Performance
 

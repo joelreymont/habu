@@ -9,7 +9,7 @@
 \ that consume it), not in lib: lib never requires maki.
 
 require lib/errors.f
-require maki/cuda-driver.f
+require lib/ptx/cuda-driver.f
 require maki/target/target.f
 
 -5429 constant E-ACTIVE-TARGET    \ compute capability maps to no registered target
@@ -29,11 +29,11 @@ TYPED-VARIABLE AT-ID CAD-KIND:target-id
 
 : PROBE ( -- n n )                \ (major minor) from the current CUDA device
    CUDA:OPEN
-   0 CUDA:CUINIT CUDA:RC0
-   AT-DEV 0 >IDX CUDA:CUDEVICEGET CUDA:RC0
+   0 CUDA:CU-INIT CUDA:RC0
+   AT-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    0 AT-MAJ !  0 AT-MIN !         \ zero the 8-byte cells; the attribute writes 4
-   AT-MAJ CC-MAJOR-ATTR AT-DEV @ >CUDA-DEV CUDA:CUDEVICEGETATTRIBUTE CUDA:RC0
-   AT-MIN CC-MINOR-ATTR AT-DEV @ >CUDA-DEV CUDA:CUDEVICEGETATTRIBUTE CUDA:RC0
+   AT-MAJ CC-MAJOR-ATTR AT-DEV @ >CUDA-DEV CUDA:CU-DEVICE-GET-ATTRIBUTE CUDA:RC0
+   AT-MIN CC-MINOR-ATTR AT-DEV @ >CUDA-DEV CUDA:CU-DEVICE-GET-ATTRIBUTE CUDA:RC0
    AT-MAJ @ AT-MIN @ ;
 
 : MAP ( n n -- CAD-KIND:target-id )   \ compute capability -> registered target

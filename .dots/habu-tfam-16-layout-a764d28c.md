@@ -3,7 +3,7 @@ title: "TFAM 16: layout policies"
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-03T23:36:48.961669+02:00\""
+created-at: "2026-07-03T23:36:48.961669+02:00"
 ---
 
 PLAN.md item 16. Parse/validate POLICY; stack-cell-tag required default; invalid/unsupported/recursive layouts reject with documented diagnostics; packed-tag, niche-null, boxed as separate checked extensions with layout tests before public exposure. Boxed policy is the maki recursive-IR unlock - see maki adoption epic. Gate 17p. Depends: TFAM 9-15.
@@ -314,26 +314,25 @@ Design forks (flag before implementing the coupled block):
    codegen MUST gate on TL-BOXED so it never emits an inline tag read for a boxed
    scrutinee (or an inline pointer read for a stack-cell-tag one).
 
-### BOXED SUB-SLICE 2 — LANDED (runtime record library)
-`lib/layout/box.f` (checked): a grow-only bump arena of mmap chunks (the
-cell-typed MEM-ALLOC-CELLS member of the MEM-ALLOC family; default chunk = 64K of
-cells) + box record layout [ tag | payload 0..M-1 ] (tag at cell 0, one-load
-deref) + BOX-ALLOC / BOX-TAG! / BOX-DEREF-TAG / BOX-PAY! / BOX-PAY@ (the words the
-coupled ctor/MATCH codegen will emit calls to) + BOX-ARENA-RESET (free-all: leak
-chunks, force a fresh zeroed chunk). No POLICY accept, no checker width change, no
-codegen — purely the reusable runtime half. Ownership is arena/free-all (no
-per-node free; the platform has no MEM-FREE), keeping boxed decoupled from the
-linear/destructor system. Global pointer state uses the json-write ptr-field
-idiom (variable + `X 0 ptr-field`). Unit-tested directly in `lib/layout/box-test.f`
-(zero-init, tag/payload round-trip, distinct/independent storage, chunk-boundary
-growth survival, arena reset) — no boxed SUMTYPE declaration involved. Placed in
-the `lib/layout/` SUBDIR so it is internal boxed-policy runtime, correctly exempt
-from the published-stdlib manifest coverage walk (which only requires module rows
-for flat `lib/*.f`), like `lib/ptx/`. Registered in the stdlib gate
-(tail-pure-fixtures suite). No engine/prim change → lighter gate (no byte-fixpoint
-from this change; bin/hb refreshed only because fable's engine moved under the
-lane). Remaining boxed sub-slices 3-6 (heap-alloc/ctor codegen, MATCH deref,
-self-ref grammar, accept-flip, mutual recursion) unchanged.
+### BOXED SUB-SLICE 2 — LANDED (runtime record library) `lib/layout/box.f`
+(checked): a grow-only bump arena of mmap chunks (the cell-typed MEM-ALLOC-CELLS
+member of the MEM-ALLOC family; default chunk = 64K of cells) + box record layout [
+tag | payload 0..M-1 ] (tag at cell 0, one-load deref) + BOX-ALLOC / BOX-TAG! /
+BOX-DEREF-TAG / BOX-PAY! / BOX-PAY@ (the words the coupled ctor/MATCH codegen will
+emit calls to) + BOX-ARENA-RESET (free-all: leak chunks, force a fresh zeroed
+chunk). No POLICY accept, no checker width change, no codegen — purely the reusable
+runtime half. Ownership is arena/free-all (no per-node free; the platform has no
+MEM-FREE), keeping boxed decoupled from the linear/destructor system. Global
+pointer state uses the json-write ptr-field idiom (variable + `X 0 ptr-field`).
+Unit-tested directly in `lib/layout/box-test.f` (zero-init, tag/payload round-trip,
+distinct/independent storage, chunk-boundary growth survival, arena reset) — no
+boxed SUMTYPE declaration involved. Placed in the `lib/layout/` SUBDIR because it
+is internal boxed-policy runtime, like `lib/ptx/`; its source and real consumers
+define its operational surface. Registered in the stdlib gate (tail-pure-fixtures
+suite). No engine/prim change → lighter gate (no byte-fixpoint from this change;
+bin/hb refreshed only because fable's engine moved under the lane). Remaining boxed
+sub-slices 3-6 (heap-alloc/ctor codegen, MATCH deref, self-ref grammar,
+accept-flip, mutual recursion) unchanged.
 
 ### Item-lane collision (public-signature / repair-diagnostics, tfam-13)
 Item lane touches sumtype.f (declaration-DIAGNOSTIC packet shape: c1-doc,

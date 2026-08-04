@@ -41,15 +41,15 @@ variable BT-VA  variable BT-VU
 
 \ ---- fail-closed probes (MODEL: parses at runtime, so build the IR by hand) --
 : BT-MK1 ( opkind -- )                                  \ single op over one 2x2 input; op rides the stack
-   MIR-RESET  2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   MIR-RESET  2 2 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
    MIR-OP-BEGIN  0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-   2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   2 2 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 : BT-MK-SCALE ( n n -- ) {: sr:n sc:n :}                 \ SCALE(x:2x3, s:sr x sc)
    MIR-RESET
-   2 3 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop               \ x = 2x3 (slot 0)
-   sr sc SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop             \ s = sr x sc (slot 1)
+   2 3 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop               \ x = 2x3 (slot 0)
+   sr sc SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop             \ s = sr x sc (slot 1)
    MAKI-OPKIND:SCALE MIR-OP-BEGIN  0 MIR-SLOT-ID MIR-IN-REF MIR-IN+  1 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-   2 3 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   2 3 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 : BT-TRY-STATE ( -- )  BW-FWD-N@ drop ;                  \ accessor before build
 : BT-TRY-EMPTY ( -- )  MIR-RESET BW-BUILD ;              \ empty IR
 : BT-TRY-CAST  ( -- )  MAKI-OPKIND:CAST  BT-MK1 BW-BUILD ;           \ no adjoint (non-differentiable)
@@ -81,12 +81,12 @@ FP-BUILD
 \ ---- fan-out: a value used twice sums its cotangents via OP-ADD -------------
 \ n0 = gelu(i0) ; n1 = add(n0, n0) -> n0 used twice on the backward path.
 MIR-RESET
-0 0 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+0 0 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
 MAKI-OPKIND:GELU MIR-OP-BEGIN  0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-0 0 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+0 0 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
 MAKI-OPKIND:ADD MIR-OP-BEGIN
 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+ 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+
-0 0 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+0 0 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
 BW-BUILD
 BW-BWD-COUNT 2 T=
 2 OP-ADD BT-OP=                       \ the fan-out summation node

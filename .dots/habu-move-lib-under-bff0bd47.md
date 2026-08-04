@@ -6,4 +6,15 @@ issue-type: task
 created-at: "2026-07-04T21:10:11.398145+02:00"
 ---
 
-User decision 2026-07-04: single source root; lib/ looks strange beside src/. Move lib/ -> src/lib/ (~2038 references across .f/.fs/.sh/.md): every 'require lib/...' and '--load lib/...' site, lib/std.manifest (and its row paths), tools/bootstrap.sh, build-fixpoint prelude lists, hb-build key lists, test/run-files.f, TRUSTED.md evidence columns, docs/bootstrap.md gate prelude, docs/stdlib.md. NOTE the load-time boundary this blurs: src/core+src/habu are baked engine prefix, lib/ is runtime-loaded checked stdlib — keep that distinction documented in docs/forth.md section Files after the move (src/lib = runtime stdlib, NOT engine prefix; build-fixpoint must not start baking it). Whole-tree path sweep: MUST run solo; full native gate + maki suite + bootstrap check + lints after. SEQUENCE: after src/habu->src/hb rename (do renames in dependency-free order, separate commits, one solo slot).
+User decision 2026-07-04: use one source root. Move `lib/` to `src/lib/`
+and update every live `require lib/...`, `--load lib/...`, bootstrap source list,
+fixpoint prelude, build cache key, test source list, and documentation path.
+Preserve the load-time boundary after the preceding rename: `src/core` and
+`src/hb` are the baked engine prefix; `src/lib` remains runtime-loaded checked
+standard library and must not be added to the baked prefix.
+
+Run the whole-tree path sweep in one isolated change after the `src/habu` to
+`src/hb` rename. Acceptance: no tracked source, test, tool, bootstrap file, or
+documentation names the old `lib/` path; all moved modules keep their current
+package ownership and standalone load behavior; the bootstrap check, Maki,
+package and typed-local gates, and the full native gate pass.

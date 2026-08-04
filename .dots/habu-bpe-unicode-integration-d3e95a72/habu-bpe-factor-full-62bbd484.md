@@ -36,7 +36,7 @@ overflow, and trailing malformed data reject by the qualified named errors; a
 structural test proves parser logic exists once, the public inventory is
 exactly the errors plus `PRESENT?` and `LOAD`, and every parser definition is
 private. Files: `bpe-vocab-parse.f`, reduced `bpe-full.f`, all direct callers,
-focused parser/full-loader tests, manifests. Smallest owning-path
+focused parser/full-loader tests and manifests. Smallest owning-path
 check: `BPE-FULL:LOAD` loads a compact valid vocab fixture, compares every
 resolved row, then injects one malformed row and proves the prior vocabulary
 is unchanged. Also run exact typed-local, package, and host checks.

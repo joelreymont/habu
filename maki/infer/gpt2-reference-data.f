@@ -3,8 +3,7 @@
 \ Provenance (2026-07-21): PyTorch 2.11.0+cu130 and Transformers 5.14.1,
 \ eager attention, eval mode, weights widened from their checkpoint F32 values
 \ to f64 before evaluation. The real artifact is openai-community/gpt2 at
-\ model.safetensors SHA-256
-\ 248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707.
+\ model.safetensors SHA-256 pinned by GPT2PIN:MODEL-SHA256$.
 \ The prompt is the fixed token id 15496. Tiny references use the deterministic
 \ two-layer, two-head, four-embedding fixture: every tensor is first narrowed
 \ to F32, weight entries repeat (index mod 11 - 5) * 0.01, biases repeat
@@ -13,6 +12,7 @@
 
 require lib/string.f
 require lib/memory.f
+require maki/infer/gpt2-pin.f
 
 package GPT2-REFERENCE
 
@@ -93,6 +93,10 @@ create REAL-IDS 64 cells allot
 13 REAL-IDS 60 cells + ! 314 REAL-IDS 61 cells + ! 1101 REAL-IDS 62 cells + !
 407 REAL-IDS 63 cells + !
 
+\ Exact pinned-merges decode of REAL-IDS.
+: REAL-BYTES ( -- ptr u8 n )
+   s" , I'm sorry, but I'm not sure if you're aware of this. I'm not sure if you're aware of this. I'm not sure if you're aware of this. I'm not sure if you're aware of this. I'm not sure if you're aware of this. I'm not" ;
+
 create REAL-PROBES 42 cells allot
 -0.087471479550004005 REAL-PROBES 0 cells + !
 -3.773832254446460865 REAL-PROBES 1 cells + !
@@ -161,9 +165,7 @@ create REAL-LOGITS 8 cells allot
    ( ptr u8 n ptr u8 CAD-NUM:alloc-byte-len -- )
    {: path:ptr path-len:n digest:ptr digest-len:CAD-NUM:alloc-byte-len :}
    path path-len digest SHA256-FILE-HEX 0= 0= if E-ARTIFACT throw then
-   digest 64
-   s" 248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707"
-   STR= 0= if E-DIGEST throw then ;
+   digest 64 GPT2PIN:MODEL-SHA256$ STR= 0= if E-DIGEST throw then ;
 
 public
 
@@ -181,6 +183,8 @@ public
    TINY-LOGIT-COUNT REF-INDEX cells TINY-LOGITS + @ ;
 : REAL-ID ( n -- n )
    REAL-ID-COUNT REF-INDEX cells REAL-IDS + @ ;
+: REAL-BYTES$ ( -- ptr u8 n )
+   REAL-BYTES ;
 : REAL-PROBE ( n n -- r ) {: boundary:n component:n :}
    boundary REAL-BOUNDARY-COUNT REF-INDEX
    PROBE-COMPONENT-COUNT *

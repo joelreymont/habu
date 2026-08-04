@@ -290,12 +290,12 @@ private
    s" set-top-check" UB-TOK=CI UB-TICK-PREV2? and ;
 
 \ Audited checker hooks. tools/hook-sites.f is the single registry of legitimate
-\ hook identities, and a row names a file as well as a word. The installed name alone proves nothing - any
-\ file may define a word called CHECK-HOOK - so an install is audited only when
-\ the file being scanned and the installed name together match a registry row.
-\ Registry paths are the committed repo-relative spellings and are compared
-\ exactly, so `./path`, an absolute path, or a workspace-prefixed path fails
-\ closed here just as it does in the census.
+\ hook identities, and a row names a file as well as a word. The installed name
+\ alone proves nothing - any file may define a word called CHECK-HOOK - so an
+\ install is audited only when the file being scanned and the installed name
+\ together match a registry row. Registry paths are the committed repo-relative
+\ spellings and are compared exactly, so `./path`, an absolute path, or a
+\ workspace-prefixed path fails closed.
 : UB-HOOK-ALLOWED? ( -- bool )
    UB-FILE$ UB-PREV$ HOOK-SITES:CHECK-MATCH? ;
 

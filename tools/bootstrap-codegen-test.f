@@ -606,7 +606,6 @@ create LF $0A c,
    s" src/habu/xref.f" EXPECT-FILE
    s" src/core/generated-declaration-dictionary.f" EXPECT-FILE
    s" src/core/generated-declaration-protection.f" EXPECT-FILE
-   s" src/habu/owner-wid-emit-seal.f" EXPECT-FILE
    s" src/core/layout-buffer-seal.f" EXPECT-FILE
    s" src/core/lower-cert-seal.f" EXPECT-FILE ;
 
@@ -644,7 +643,6 @@ create LF $0A c,
    s" src/habu/xref.f" EXPECT-FILE
    s" src/core/generated-declaration-dictionary.f" EXPECT-FILE
    s" src/core/generated-declaration-protection.f" EXPECT-FILE
-   s" src/habu/owner-wid-emit-seal.f" EXPECT-FILE
    s" src/core/layout-buffer-seal.f" EXPECT-FILE
    s" src/core/lower-cert-seal.f" EXPECT-FILE ;
 
@@ -939,10 +937,10 @@ public
       s" src/core/structures.f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 RECOVERY-U !
    s" SRC_COMMON=(" s" emit_boot_hide() {" MODE-ARRAY s" "
-      [: RECOVERY+ ;] CAPTURE 34 T=
+      [: RECOVERY+ ;] CAPTURE 33 T=
    EXPECT-RECOVERY-COMMON
    RECOVERY$ EXPECT$ T$=
-   RECOVERY$ 34 ASSERT-UNIQUE
+   RECOVERY$ 33 ASSERT-UNIQUE
    RECOVERY-TARGETS ;
 
 : FIXPOINT ( -- )
@@ -970,10 +968,10 @@ public
       s" BF-APPEND-CORE-FILES" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 FIXPOINT-U !
    s" : BF-APPEND-COMMON" s" : BF-APPEND-DRIVER-IO" MODE-COMMON s" "
-      [: FIXPOINT+ ;] CAPTURE 35 T=
+      [: FIXPOINT+ ;] CAPTURE 34 T=
    EXPECT-FIXPOINT-COMMON
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 35 ASSERT-UNIQUE
+   FIXPOINT$ 34 ASSERT-UNIQUE
    FIXPOINT-TARGETS ;
 
 ;package
@@ -1404,30 +1402,26 @@ private
    s" mv " MUST-HAVE
    s" bin/hb" MUST-HAVE ;
 
-: OWNER-PERSIST ( -- )
+: SNAPSHOT-PERSIST ( -- )
    s" bootstrap/cg/forth.fs" LOAD
    s" 3 constant SNAP-FORMAT-VERSION" MUST-HAVE
    s" 1 constant OWNER-API-PUB-WID" MUST-HAVE
    s" 2 constant OWNER-API-PRI-WID" MUST-HAVE
    s" 3 constant FIRST-DYNAMIC-WID" MUST-HAVE
+   s" $FFFFFFFE constant WID:MAX" MUST-HAVE
    s" 256 constant RSTK-CELLS" MUST-HAVE
-   s" $47C0 constant OWNER-WID-N-CELL" MUST-HAVE
    s" create PWID PRIM-CAP cells allot" MUST-HAVE
-   S\" s\" FINALIZE\" ['] BOWNERFINALIZE OWNER-API-PUB-WID FPRIM-WID" MUST-HAVE
-   s" LNCOUNT @ LBL,  #PL @ 1+ DCQ," MUST-HAVE
-   s" OWNER-API-PUB-WID DCQ," MUST-HAVE
-   s" OWNER-API-PRI-WID DCQ," MUST-HAVE
+   s" LNCOUNT @ LBL,  #PL @ DCQ," MUST-HAVE
    s" : EMIT-SNAPSHOT-VALIDATE-WIDS" MUST-HAVE
    s" 13 9 40 LDR,  14 0 MOVN,  13 14 CMP,  C-EQ sds2 BCOND," MUST-HAVE
-   s" 22 22 48 SUBI," MUST-HAVE
+   s" 22 22 SNAP-TRL-BYTES SUBI," MUST-HAVE
    s" 14 5 CMP,  C-NE snbadver BCOND," MUST-HAVE
    s" 6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND," MUST-HAVE
    s" 13 LSRC @ ADR,  14 13 25 SUB," MUST-HAVE
    s" C-GT snpresent BCOND," MUST-HAVE
-   s" 4 4 DBASE SUB,  4 4 25 ADD," MUST-HAVE
    s" 9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR," MUST-HAVE ;
 
-: OWNER-PUBLISH ( -- )
+: PROT-PUBLISH ( -- )
    s" src/habu/habu1.f" LOAD
    \ prot-wid-add publishes a set bit with acquire-load / release-store on the band
    \ word that holds it; the AOT restore release-publishes the shape tag only after
@@ -1439,9 +1433,6 @@ private
    s" src/habu/aot-capture.f" LOAD
    s" AOT-LIVE-DATA PROT-REG-TAG-CELL + atomic@" MUST-HAVE
    s" AOT-LIVE-DATA PROT-REG-TAG-CELL + AOT-CELL@" MUST-LACK
-   s" AOT-LIVE-DATA OWNER-WID-N-CELL + atomic@" MUST-HAVE
-   s" variable OWNER-PACKAGE-K" MUST-HAVE
-   s" variable OWNER-PACKAGE-REC" MUST-LACK
    s" tools/build-fixpoint.f" LOAD
    s" PTR-VARIABLE KEEP-A" MUST-HAVE
    s" variable KEEP-A" MUST-LACK ;
@@ -1644,8 +1635,8 @@ public
    HIDE-PRELUDE
    PROLOGUE-UNCONDITIONAL
    BCG-HIDE:TEST
-   OWNER-PERSIST
-   OWNER-PUBLISH
+   SNAPSHOT-PERSIST
+   PROT-PUBLISH
    SMALL-BIN
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;

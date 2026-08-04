@@ -1,9 +1,11 @@
 ---
 title: Straighten GPT2TX cleanup ladders
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:25:12.215782+02:00"
+closed-at: "2026-08-02T16:39:49.961140+02:00"
+close-reason: authoritative ancestor 5b0ebb070a5b8ef7c04e2d28772421f796b686c6 deleted the unused GPT2LOAD/GPT2TX/WSTORE/MODELPROV host architecture and suites; retaining the task would resurrect deleted architecture.
 blocks:
   - habu-cut-gpt2-model-445a19ff
   - habu-retype-safet-unmap-ed05d42c

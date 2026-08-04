@@ -9,21 +9,16 @@
 \ and the bootstrap-install engine can all load it without pulling extra libs.
 \
 \ Role flags (why each file participates where it does):
-\   SDC-HOST  - compiled INTO the stdin metabuild host, so both stdin source
+\   SDC-HOST - compiled INTO the stdin metabuild host, so both stdin source
 \               builders (build-fixpoint stdin emit + bootstrap emit_src stdin)
-\               must include it: aot-capture.f (its ACAP-CAPTURE runs in stdin.f
-\               GO) and the driver stdin.f itself. include.f is NOT host-needed:
+\               must include it: aot-capture.f (its AOT-CAPTURE:CAPTURE runs in
+\               STDIN-DRIVER:RUN) and the driver stdin.f itself. include.f is NOT host-needed:
 \               habu2.f EMIT-COLD-PREFIX bakes its source (read from disk) into
 \               every engine, so `require`/`include` exist at runtime without
 \               host compilation.
-\   SDC-KEYED - disk content shapes the emitted engine, so any cache key that can
-\               skip a rebuild MUST cover it: include.f (cold-prefix source),
-\               aot-capture.f (host AOT blob captured into the engine), and
-\               stdin.f (driver). Covered by build-fixpoint's stdin-src SHA256
-\               digest and test/run-files.f TR-UNDER-SOURCE-FILES.
+\ The build-fixpoint stdin source digest covers every emitted input directly.
 
 $1 constant SDC-HOST
-$2 constant SDC-KEYED
 
 3 constant SDC-COUNT
 0 constant SDC-I-INCLUDE
@@ -38,11 +33,17 @@ $4A constant SDC-BAD-IDX-RC
    ix SDC-I-DRIVER  = if s" src/habu/stdin.f" exit then
    s" stdin-closure: bad file index" SDC-BAD-IDX-RC die ;
 
+package STDIN-CLOSURE
+
+public
+
 : SDC-FLAGS ( n -- n ) {: ix:n :}
-   ix SDC-I-INCLUDE = if SDC-KEYED exit then
-   ix SDC-I-AOT     = if SDC-HOST SDC-KEYED or exit then
-   ix SDC-I-DRIVER  = if SDC-HOST SDC-KEYED or exit then
+   ix SDC-I-INCLUDE = if 0 exit then
+   ix SDC-I-AOT     = if SDC-HOST exit then
+   ix SDC-I-DRIVER  = if SDC-HOST exit then
    s" stdin-closure: bad file index" SDC-BAD-IDX-RC die ;
+
+;package
 
 \ named accessors: the ONLY sanctioned way for a checked consumer to name a
 \ stdin-closure path, so the literal lives here alone.
@@ -52,8 +53,12 @@ $4A constant SDC-BAD-IDX-RC
 
 : SDC-ROLE? ( n n -- bool ) and 0= 0= ;
 
+using STDIN-CLOSURE
+
 \ typed-local-lint: allow-bare-local - q keeps the callback quotation effect from the stack signature.
 : SDC-WALK ( [ n ptr u8 n n -- ] -- ) {: q :}
    SDC-COUNT 0 ?do
       i i SDC-PATH i SDC-FLAGS q execute
    loop ;
+
+;using

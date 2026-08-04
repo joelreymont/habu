@@ -142,6 +142,9 @@ $FF constant ROLE-MASK       \ operand register lives in the low byte of its lan
    s" mov.u32 %r16,%r5;" PTX-L  s" add.u32 %r16,%r16," L-OFF OFF  s" ld.shared.f32 %f7,[%r16];" PTX-L  s" div.rn.f32 %f1,%f1,%f7;" PTX-L
    s" mul.wide.u32 %rd13,%r6,4;" PTX-L  13 oreg ATTN-ADD-BASE  s" st.global.f32 [%rd13],%f1;" PTX-L  s" $SK3:" PTX-L ;
 
+\ Q/K/V/O casts retain distinct ABI roles; STATE and each following primitive
+\ enforce the exact nominal phase transition described above.
+\ Retirement owner for all nine sites: habu-ptx-phantom-preserving-3df9db92.
 TRUSTED: Q-REG ( n -- matrix<space-global,f32,extent-q,extent-d> ) ;
 TRUSTED: K-REG ( n -- matrix<space-global,f32,extent-q,extent-d> ) ;
 TRUSTED: V-REG ( n -- matrix<space-global,f32,extent-q,extent-d> ) ;

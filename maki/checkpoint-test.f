@@ -239,13 +239,13 @@ create DGB3 DP-B3N cells allot    create DN0  DP-N0N cells allot
 \ ---- fail closed: non-interval segments ---------------------------------------
 \ n0 gelu(i0) opens seg0; n1 matmul(i0,i1) opens seg1; n2 relu(n0) rejoins seg0
 \ -> seg0 = {0,2} is not an interval -> CK-SETUP throws before BW-BUILD.
-: CKT-IN+ ( -- )  2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop ;
+: CKT-IN+ ( -- )  2 2 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop ;
 : CKT-U+ ( MIR:operand-ref opkind -- )   \ unary 2x2 node over operand ref
-   MIR-OP-BEGIN MIR-IN+ 2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   MIR-OP-BEGIN MIR-IN+ 2 2 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 : CKT-MM+ ( MIR:operand-ref MIR:operand-ref -- )   \ matmul 2x2 node over two operand refs
    MAKI-OPKIND:MATMUL MIR-OP-BEGIN {: a:MIR:operand-ref b:MIR:operand-ref :}
    a MIR-IN+  b MIR-IN+
-   2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   2 2 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 : CKT-TRY-INTERVAL ( -- )
    MIR-RESET  CKT-IN+  CKT-IN+
@@ -276,7 +276,7 @@ create CXA 4 cells allot   create CXB 4 cells allot   create CXS 4 cells allot
    EX-RESET  CXA 0 MIR-SLOT-ID EX-BIND  CXB 1 MIR-SLOT-ID EX-BIND  CXS BW-SEED-SLOT@ EX-BIND
    CK-FWD
    MAKI-OPKIND:MUL MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+ 2 MIR-NODE-ID MIR-NODE-REF MIR-IN+
-   2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   2 2 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
    CK-BWD ;
 
 T-RESET

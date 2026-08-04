@@ -37,9 +37,11 @@ package SNAP
 \ closed rc 80 instead of misreading the dictionary.
 \ Version 3: snapshot DATA includes the owner public/private WID registry.
 \ Older formats cannot prove qualified-call visibility and fail closed.
-create TRL 48 allot
+create TRL SNAP-TRL-BYTES allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SPAD  variable SFD
+\ These views expose the raw snapshot source and dictionary/data buffer cells.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : STB@ STB @ ;
 s" STB@" s" -- ptr u8" TRUST
 : STB-CELL@ STB @ ;
@@ -48,7 +50,7 @@ s" STB-CELL@" s" -- ptr n" TRUST
 s" SDB@" s" -- ptr u8" TRUST
 
 : SIZE! ( -- )
-   STSZ @ SCL @ + SDL @ + 48 + SNL ! ;   \ +48: 48-byte format-versioned trailer
+   STSZ @ SCL @ + SDL @ + SNAP-TRL-BYTES + SNL ! ;   \ the format-versioned trailer
 
 : HDR! ( -- snap )
    SNL @ BUILD-SNAP-HDR SFTS ! ;
@@ -102,6 +104,8 @@ variable SNC-N
 
 \ Scratch region view: raw anonymous mmap address held as a cell; the
 \ typed view is the one audited reinterpret (same class as IMGD-MMAP-PTR).
+\ All scratch views, zeroers, and quarantine-table reads retire under
+\ habu-builder-trust-rows-c5d41af6.
 TRUSTED: SNC-PTR ( -- ptr u8 ) SNC-N @ ;
 TRUSTED: SNC-TEXT-N ( -- n ) STB @ ;
 
@@ -288,7 +292,7 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 \ ---- test-only final-close fault seam ----
 \ snap-lib.f is builder-only: SNAP-RETIRE-GO forgets this whole tail before the
 \ snapshot header is written, so nothing here reaches a shipped image. The seam
-\ lets the owner-WID snapshot suite force the final close to fail and prove
+\ lets the snapshot-writer suite force the final close to fail and prove
 \ the writer's WRITE-BYTES fails closed (rc 74) instead of accepting a
 \ half-written image. BEFORE defaults to a no-op; only a test source injected ahead of the
 \ snap driver can arm it through INSTALL-TEST, and snap.f undefines that entry on
@@ -318,12 +322,14 @@ public
 package SNAP
 
 : WRITE-BYTES ( -- )
-   \ trailer (48 bytes): magic, CANONICAL text base (0), dict count, region
+   \ trailer (SNAP-TRL-BYTES): magic, CANONICAL text base (0), dict count, region
    \ length, data length, format version - the region stream below is the
-   \ canonicalized copy. Version at +40 is the last field so the magic/field
-   \ offsets 0..40 stay identical to the legacy 40-byte trailer.
-   SNAP-MAGIC TRL !  0 TRL 8 + !  ndict@ TRL 16 + !
-   SCL @ TRL 24 + !  SDL @ TRL 32 + !  SNAP-FORMAT-VERSION TRL 40 + !
+   \ canonicalized copy. The version is the LAST field so the magic and the four
+   \ older fields sit where the legacy trailer put them, which is what lets the
+   \ loader tell a legacy image apart from a corrupt one.
+   SNAP-MAGIC TRL !  0 TRL SNAP-TRL-TBASE + !  ndict@ TRL SNAP-TRL-NDICT + !
+   SCL @ TRL SNAP-TRL-REGLEN + !  SDL @ TRL SNAP-TRL-DATALEN + !
+   SNAP-FORMAT-VERSION TRL SNAP-TRL-VERSION + !
    \ stream: header, engine text, region, data, trailer, zero pad
    OUT-PATH PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
@@ -345,6 +351,8 @@ package SNAP
 
 \ Freeze the verify-on-definition hook into the emitted image: hb is fully
 \ loaded, so a typed def in its REPL is checked against its sig.
+\ Retirement: CHECK-HOOK under cap:checker-hook-identity;
+\ INSTALL-HOOK under habu-builder-trust-rows-c5d41af6.
 TRUSTED: CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> IF 70 throw THEN ;
 

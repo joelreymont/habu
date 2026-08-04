@@ -29,6 +29,9 @@ require lib/test.f
 require test/checker-assert.f
 require lib/test/outcome.f
 require lib/test/subject.f
+require lib/process-argv.f
+require lib/engine-candidate.f
+require src/habu/xref.f
 require lib/cad-num-arithmetic.f                \ CAD-NUM:BYTE-OFF, called directly below
 require maki/infer/safetensors.f
 
@@ -146,7 +149,7 @@ variable SEEN-MAP-LEN
 
 : >BOFF ( n -- CAD-NUM:byte-off )   CAD-NUM:BYTE-OFF FIX-BOFF ;
 
-: ID-OF ( SAFET:census ptr u8 n -- SAFET:census n )
+: ID-OF ( SAFET:file ptr u8 n -- SAFET:file n )
    SAFET:FIND OPT-VAL ;
 
 \ Extracts the first detach's moved payload. Empty on a fresh validated census is
@@ -155,6 +158,13 @@ variable SEEN-MAP-LEN
    MATCH SAFET:map-take
       moved OF ENDOF
       empty OF SAFET:E-ORDER throw ENDOF
+   ;MATCH ;
+
+: MUST-LOAD ( ptr u8 n -- SAFET:file )
+   SAFET:LOAD
+   MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
    ;MATCH ;
 
 \ CHECK-QUIET-CANDIDATE! verdicts: -1 accepted, 0 rejected on a type error,
@@ -184,6 +194,9 @@ variable SEEN-MAP-LEN
 
 : J-BETA ( -- ptr u8 n )                        \ model B: one BF16 [4] named beta
    s" {`beta`:{`dtype`:`BF16`,`shape`:[4],`data_offsets`:[0,8]}}" ;
+
+: J-DTYPES ( -- ptr u8 n )                      \ types absent from J-VALID
+   s" {`f16`:{`dtype`:`F16`,`shape`:[1],`data_offsets`:[0,2]},`i32`:{`dtype`:`I32`,`shape`:[1],`data_offsets`:[4,8]},`u32`:{`dtype`:`U32`,`shape`:[1],`data_offsets`:[8,12]}}" ;
 
 : J-BADJSON ( -- ptr u8 n )   s" { bad" ;
 
@@ -240,31 +253,31 @@ variable SEEN-MAP-LEN
 
 : CLEANUP ( -- )  SYNTH-PATH FS-PATHZ unlink drop ;
 
-: SEE-TENSOR ( SAFET:census ptr u8 n -- SAFET:census )   \ scoped zero-copy body
+: SEE-TENSOR ( SAFET:file ptr u8 n -- SAFET:file )   \ scoped zero-copy body
    {: a:ptr u:n :}
    u SEEN-LEN !
    a c@ SEEN-B0 ! ;
 
-: CHECK-VALID ( SAFET:census -- SAFET:census )
+: CHECK-VALID ( SAFET:file -- SAFET:file )
    SAFET:COUNT 2 T=                             \ __metadata__ not counted
    s" a" ID-OF {: ia:n :}
    ia 0 < 0= TTRUE
    ia SAFET:RANK? 2 OPT=
    ia 0 SAFET:DIM? 2 OPT=   ia 1 SAFET:DIM? 2 OPT=
    ia 2 SAFET:DIM? OPT-NONE                     \ axis past the rank
-   ia SAFET:DTYPE? SAFET:DT-F32 OPT=
+   ia MAKI-DATATYPE:DF32 SAFET:DATATYPE= TTRUE
    ia SAFET:NBYTES? 16 OPT=
    ia SAFET:BEGIN? 0 OPT=
    ia SAFET:END? 16 OPT=
    s" b" ID-OF {: ib:n :}
    ib 0 < 0= TTRUE
-   ib SAFET:DTYPE? SAFET:DT-BF16 OPT=
+   ib MAKI-DATATYPE:DBF16 SAFET:DATATYPE= TTRUE
    ib SAFET:RANK? 1 OPT=
    ib 0 SAFET:DIM? 4 OPT=
    ib SAFET:NBYTES? 8 OPT=
    ib SAFET:BEGIN? 16 OPT=
    s" absent" SAFET:FIND OPT-NONE               \ unknown name -> NONE, never -1
-   99 SAFET:DTYPE? OPT-NONE                     \ id past the census -> NONE
+   99 MAKI-DATATYPE:DF32 SAFET:DATATYPE= TFALSE \ id past the census -> false
    -1 SAFET:NBYTES? OPT-NONE
    ia [: SEE-TENSOR ;] SAFET:WITH-TENSOR 16 OPT=
    SEEN-LEN @ 16 T=  SEEN-B0 @ 0 T=             \ a's data starts at data byte 0
@@ -286,20 +299,24 @@ variable SEEN-MAP-LEN
 : SHORT-PATH ( -- ptr u8 n )  s" /tmp/hb-st-short.safetensors" ;
 : ABSENT-PATH ( -- ptr u8 n ) s" /tmp/hb-st-does-not-exist.safetensors" ;
 
-: LOAD-ABSENT ( -- )
-   ABSENT-PATH SAFET:LOAD SAFET:RELEASE ;
+: LOAD-CODE ( ptr u8 n -- n )
+   SAFET:LOAD
+   MATCH result
+      err OF ENDOF
+      ok OF SAFET:RELEASE 0 ENDOF
+   ;MATCH ;
 
-: LOAD-SHORT ( -- )                             \ a real file with only 4 bytes in it
+: LOAD-SHORT-CODE ( -- n )                      \ a real file with only 4 bytes in it
    0 IMG-A 0 + c!  1 IMG-A 1 + c!  2 IMG-A 2 + c!  3 IMG-A 3 + c!
    SHORT-PATH IMG-A 4 WRITE-ALL
-   SHORT-PATH SAFET:LOAD SAFET:RELEASE ;
+   SHORT-PATH LOAD-CODE ;
 
 : TEST-LOAD-FAULTS ( -- )
-   s" LOAD on a missing path throws and closes its session" T-LABEL
-   [: LOAD-ABSENT ;] E-FS-STAT TTHROWSQ
+   s" LOAD returns the original missing-path error and closes its session" T-LABEL
+   ABSENT-PATH LOAD-CODE E-FS-STAT T=
    NO-LEAK
-   s" LOAD on a file under 8 bytes throws and closes its session" T-LABEL
-   [: LOAD-SHORT ;] SAFET:E-HEADER TTHROWSQ
+   s" LOAD returns the original short-file error and closes its session" T-LABEL
+   LOAD-SHORT-CODE SAFET:E-HEADER T=
    NO-LEAK
    SHORT-PATH FS-PATHZ unlink drop ;
 
@@ -308,29 +325,41 @@ variable SEEN-MAP-LEN
    J-VALID 24 BUILD-A
    SYNTH-PATH A$ WRITE-ALL
    NO-LEAK
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET-MAP:LIVE 1 T=                          \ the census holds exactly one mapping
    CHECK-VALID
    SAFET:RELEASE
    NO-LEAK
    CLEANUP ;
 
+using MAKI-DATATYPE
+
+: CHECK-DTYPES ( SAFET:file -- SAFET:file )
+   s" f16"  ID-OF DF16  SAFET:DATATYPE= TTRUE
+   s" i32"  ID-OF DI32  SAFET:DATATYPE= TTRUE
+   s" u32"  ID-OF DU32  SAFET:DATATYPE= TTRUE
+   s" f16"  ID-OF DF32  SAFET:DATATYPE= TFALSE ;
+
+;using
+
+: TEST-DTYPES ( -- )
+   J-DTYPES 12 BUILD-A
+   A$ SAFET:LOAD-SPAN CHECK-DTYPES SAFET:RELEASE ;
+
 \ ---- interleaved sessions --------------------------------------------------
-: CHECK-ALPHA ( SAFET:census -- SAFET:census )
+: CHECK-ALPHA ( SAFET:file -- SAFET:file )
    SAFET:COUNT 1 T=
    s" alpha" ID-OF {: ia:n :}
    ia 0 < 0= TTRUE
-   ia SAFET:DTYPE? SAFET:DT-F32 OPT=
    ia SAFET:NBYTES? 16 OPT=
    ia SAFET:RANK? 2 OPT=
    ia 0 SAFET:DIM? 2 OPT=
    s" beta" SAFET:FIND OPT-NONE ;
 
-: CHECK-BETA ( SAFET:census -- SAFET:census )
+: CHECK-BETA ( SAFET:file -- SAFET:file )
    SAFET:COUNT 1 T=
    s" beta" ID-OF {: ib:n :}
    ib 0 < 0= TTRUE
-   ib SAFET:DTYPE? SAFET:DT-BF16 OPT=
    ib SAFET:NBYTES? 8 OPT=
    ib SAFET:RANK? 1 OPT=
    ib 0 SAFET:DIM? 4 OPT=
@@ -513,7 +542,7 @@ variable BIG-LEN
    s" release frees an unused reservation; adopted bytes remain caller-owned" T-LABEL
    J-VALID 24 BUILD-A
    SYNTH-PATH A$ WRITE-ALL
-   SYNTH-PATH SAFET:LOAD                        \ this census owns its mapping
+   SYNTH-PATH MUST-LOAD                        \ this census owns its mapping
    SAFET:COUNT 2 T=
    SAFET-MAP:LIVE 1 T=
    SAFET:RELEASE
@@ -580,7 +609,7 @@ variable BIG-LEN
    [: SEE-MAPPING ;] SAFET:WITH-MAPPING LEN-A @ T=
    MAP-BUF c@ ;
 
-: CHECK-MAP-OFFSETS ( SAFET:census -- SAFET:census )
+: CHECK-MAP-OFFSETS ( SAFET:file -- SAFET:file )
    SAFET:HDR-LEN SYNTH-HDR T=
    s" a" ID-OF {: ia:n :}
    s" b" ID-OF {: ib:n :}
@@ -597,12 +626,10 @@ variable BIG-LEN
 \ Everything a census must still answer once its mapping has left, and
 \ everything it must refuse. The poison assertions prove the scoped body is not
 \ run at all, rather than run over a stale address.
-: CHECK-DETACHED-CENSUS ( SAFET:census -- SAFET:census )
+: CHECK-DETACHED-CENSUS ( SAFET:file -- SAFET:file )
    SAFET:COUNT 2 T=
    s" a" ID-OF {: ia:n :}
    s" b" ID-OF {: ib:n :}
-   ia SAFET:DTYPE? SAFET:DT-F32 OPT=
-   ib SAFET:DTYPE? SAFET:DT-BF16 OPT=
    ia SAFET:RANK? 2 OPT=
    ia 0 SAFET:DIM? 2 OPT=   ia 1 SAFET:DIM? 2 OPT=
    ia SAFET:NBYTES? 16 OPT=  ib SAFET:NBYTES? 8 OPT=
@@ -630,7 +657,7 @@ variable BIG-LEN
    s" the mapping frame matches the known synthetic layout" T-LABEL
    BUILD-SYNTH
    NO-LEAK
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET-MAP:LIVE 1 T=
    SAFET:LIVE-OWNERS 1 T=
    CHECK-MAP-OFFSETS
@@ -641,7 +668,7 @@ variable BIG-LEN
 : TEST-DETACH-MAPPING ( -- )
    s" detaching a mapping moves ownership without mapping anything new" T-LABEL
    BUILD-SYNTH
-   SYNTH-PATH SAFET:LOAD                        \ ( c )
+   SYNTH-PATH MUST-LOAD                        \ ( c )
    s" b" ID-OF {: ib:n :}
    ib DATA-BUF 64 SAFET:COPY-DATA? 8 OPT=       \ b's bytes while the census still owns them
    DATA-BUF c@ {: want-b0:n :}
@@ -667,7 +694,7 @@ variable BIG-LEN
    SAFET-MAP:LIVE 0 T=
    NO-LEAK
    s" the mapping can leave first while the census keeps its metadata" T-LABEL
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET:DETACH-MAPPING TAKE-MOVED               \ ( c m )
    SAFET:UNMAP-MAPPING LEN-A @ RES-OK=           \ ( c )
    SAFET-MAP:LIVE 0 T=
@@ -725,7 +752,7 @@ variable BIG-LEN
 : TEST-DETACH-FAILED ( -- )
    s" a failed load leaves a live census able to detach its mapping" T-LABEL
    BUILD-SYNTH
-   SYNTH-PATH SAFET:LOAD                        \ ( c ) the live, mapped census
+   SYNTH-PATH MUST-LOAD                        \ ( c ) the live, mapped census
    J-BADJSON 0 BUILD-B
    SAFET:OPEN B$ SAFET:ADOPT                    \ ( c sB )
    [: SAFET:PARSE ;] catch {: code:n :}
@@ -771,7 +798,7 @@ $0F0E0D0C constant AT-SHORT-LAST                \ the short file's last window: 
    s" a mapping reads four little-endian bytes bounded by its own length" T-LABEL
    BUILD-SYNTH
    LEN-A @ {: long:n :}                         \ measured from what BUILD-A just wrote
-   SYNTH-PATH SAFET:LOAD                        \ ( c ) through the real mmap path
+   SYNTH-PATH MUST-LOAD                        \ ( c ) through the real mmap path
    SAFET:DETACH-MAPPING TAKE-MOVED              \ ( c m )
    swap SAFET:RELEASE                           \ ( m ) the census leaves first
    152 AT-152 U32-AT=                           \ aligned, on the live mapping
@@ -786,7 +813,7 @@ $0F0E0D0C constant AT-SHORT-LAST                \ the short file's last window: 
    J-ALPHA 16 BUILD-A                           \ same path, a different length
    SYNTH-PATH A$ WRITE-ALL
    LEN-A @ long < TTRUE                         \ it really is the shorter one
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET:DETACH-MAPPING TAKE-MOVED
    swap SAFET:RELEASE                           \ ( m )
    LEN-A @ U32W - AT-SHORT-LAST U32-AT=         \ this file's own last window
@@ -867,7 +894,7 @@ private
 \ faults at every invalid offset, and that failure IS the control - a dedicated
 \ exploit child would only re-assert what the mutation already demonstrates.
 : DETACHED ( -- SAFET:mapping )                 \ the synthetic file's mapping, census gone
-   SYNTH-PATH SAFET:LOAD
+   SYNTH-PATH MUST-LOAD
    SAFET:DETACH-MAPPING TAKE-MOVED
    swap SAFET:RELEASE ;
 
@@ -907,21 +934,21 @@ private
    s" STT-BAD-SESSION-DROP ( SAFET:session -- ) drop" REJECTED
    s" STT-BAD-SESSION-STORE ( SAFET:session ptr n -- ) !" REJECTED
    s" a census cannot be duplicated, dropped, or stored" T-LABEL
-   s" STT-BAD-CENSUS-DUP ( SAFET:census -- SAFET:census SAFET:census ) dup" REJECTED
-   s" STT-BAD-CENSUS-DROP ( SAFET:census -- ) drop" REJECTED
-   s" STT-BAD-CENSUS-STORE ( SAFET:census ptr n -- ) !" REJECTED
+   s" STT-BAD-CENSUS-DUP ( SAFET:file -- SAFET:file SAFET:file ) dup" REJECTED
+   s" STT-BAD-CENSUS-DROP ( SAFET:file -- ) drop" REJECTED
+   s" STT-BAD-CENSUS-STORE ( SAFET:file ptr n -- ) !" REJECTED
    s" detach, close and release consume their owner" T-LABEL
-   s" STT-BAD-DETACH-KEEPS ( SAFET:session -- SAFET:session SAFET:census ) SAFET:DETACH" REJECTED
+   s" STT-BAD-DETACH-KEEPS ( SAFET:session -- SAFET:session SAFET:file ) SAFET:DETACH" REJECTED
    s" STT-BAD-CLOSE-KEEPS ( SAFET:session -- SAFET:session ) SAFET:CLOSE" REJECTED
-   s" STT-BAD-RELEASE-KEEPS ( SAFET:census -- SAFET:census ) SAFET:RELEASE" REJECTED
+   s" STT-BAD-RELEASE-KEEPS ( SAFET:file -- SAFET:file ) SAFET:RELEASE" REJECTED
    s" detach and close are exactly once" T-LABEL
-   s" STT-BAD-DOUBLE-DETACH ( SAFET:session -- SAFET:census SAFET:census ) SAFET:DETACH SAFET:DETACH" REJECTED
+   s" STT-BAD-DOUBLE-DETACH ( SAFET:session -- SAFET:file SAFET:file ) SAFET:DETACH SAFET:DETACH" REJECTED
    s" STT-BAD-DOUBLE-CLOSE ( SAFET:session -- ) SAFET:CLOSE SAFET:CLOSE" REJECTED
-   s" STT-BAD-DETACH-AFTER-CLOSE ( SAFET:session -- SAFET:census ) SAFET:CLOSE SAFET:DETACH" REJECTED
-   s" STT-BAD-CLOSE-AFTER-DETACH ( SAFET:session -- SAFET:census ) SAFET:DETACH SAFET:CLOSE" REJECTED
+   s" STT-BAD-DETACH-AFTER-CLOSE ( SAFET:session -- SAFET:file ) SAFET:CLOSE SAFET:DETACH" REJECTED
+   s" STT-BAD-CLOSE-AFTER-DETACH ( SAFET:session -- SAFET:file ) SAFET:DETACH SAFET:CLOSE" REJECTED
    s" a census is released exactly once and never unmapped twice" T-LABEL
-   s" STT-BAD-DOUBLE-RELEASE ( SAFET:census -- ) SAFET:RELEASE SAFET:RELEASE" REJECTED
-   s" STT-BAD-RELEASE-THEN-READ ( SAFET:census -- n ) SAFET:RELEASE SAFET:COUNT" REJECTED ;
+   s" STT-BAD-DOUBLE-RELEASE ( SAFET:file -- ) SAFET:RELEASE SAFET:RELEASE" REJECTED
+   s" STT-BAD-RELEASE-THEN-READ ( SAFET:file -- n ) SAFET:RELEASE SAFET:COUNT" REJECTED ;
 
 : TEST-MAPPING-OWNERSHIP ( -- )
    s" a mapping cannot be duplicated, dropped, or stored" T-LABEL
@@ -933,15 +960,16 @@ private
    s" STT-OK-TAKE-MOVED ( SAFET:mapping -- SAFET:map-take ) SAFET-MAP--TAKE:MOVED" ACCEPTED
    s" STT-OK-TAKE-EMPTY ( -- SAFET:map-take ) SAFET-MAP--TAKE:EMPTY" ACCEPTED
    s" a detach keeps its census and an unmap consumes its mapping" T-LABEL
-   s" STT-BAD-DETACH-EATS-CENSUS ( SAFET:census -- SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
+   s" STT-BAD-DETACH-EATS-CENSUS ( SAFET:file -- SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" STT-BAD-UNMAP-KEEPS ( SAFET:mapping -- SAFET:mapping result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-DOUBLE-UNMAP ( SAFET:mapping -- result<n,n> result<n,n> ) SAFET:UNMAP-MAPPING SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-UNMAP-THEN-READ ( SAFET:mapping -- result<n,n> SAFET:mapping n ) SAFET:UNMAP-MAPPING SAFET:WITH-MAPPING" REJECTED
    s" STT-OK-MAPPING-WITH ( SAFET:mapping [ SAFET:mapping ptr u8 n -- SAFET:mapping ] -- SAFET:mapping n ) SAFET:WITH-MAPPING" ACCEPTED
+   s" STT-OK-MAPPING-ROWS ( n SAFET:mapping [ n SAFET:mapping ptr u8 n -- bool SAFET:mapping ] -- bool SAFET:mapping n ) SAFET:WITH-MAPPING" ACCEPTED
    s" the three owner tokens are not interchangeable" T-LABEL
    s" STT-BAD-MAPPING-RELEASE ( SAFET:mapping -- ) SAFET:RELEASE" REJECTED
    s" STT-BAD-MAPPING-CLOSE ( SAFET:mapping -- ) SAFET:CLOSE" REJECTED
-   s" STT-BAD-CENSUS-UNMAP ( SAFET:census -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
+   s" STT-BAD-CENSUS-UNMAP ( SAFET:file -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-SESSION-DETACH-MAP ( SAFET:session -- SAFET:session SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" STT-BAD-MAPPING-COUNT ( SAFET:mapping -- SAFET:mapping n ) SAFET:COUNT" REJECTED
    s" a cleanup result cannot be dropped or read as a bare number" T-LABEL
@@ -952,20 +980,20 @@ private
    s" STT-BAD-AMBIENT-UNMAP ( -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-AMBIENT-DETACH ( -- SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" the mapping surface really does resolve (control)" T-LABEL
-   s" STT-OK-DETACH ( SAFET:census -- SAFET:census SAFET:map-take ) SAFET:DETACH-MAPPING" ACCEPTED
+   s" STT-OK-DETACH ( SAFET:file -- SAFET:file SAFET:map-take ) SAFET:DETACH-MAPPING" ACCEPTED
    s" STT-OK-UNMAP ( SAFET:mapping -- result<n,n> ) SAFET:UNMAP-MAPPING" ACCEPTED
-   s" STT-OK-MAP-OFFSET ( SAFET:census n -- SAFET:census option<n> ) SAFET:MAP-OFFSET?" ACCEPTED
+   s" STT-OK-MAP-OFFSET ( SAFET:file n -- SAFET:file option<n> ) SAFET:MAP-OFFSET?" ACCEPTED
    s" the mapping record and the no-image state stay private" T-LABEL
    s" STT-BAD-MINT-MAPPING ( ptr u8 -- SAFET:mapping ) SAFET:MINT-MAPPING" UNRESOLVED
    s" STT-BAD-MAPPING-REC ( SAFET:mapping -- SAFET:mapping ptr n ) SAFET:MAPPING>REC" UNRESOLVED
    s" STT-BAD-TAKE-MAPPING ( SAFET:mapping -- ptr n ) SAFET:TAKE-MAPPING" UNRESOLVED
-   s" STT-BAD-HAS-IMG ( SAFET:census -- SAFET:census bool ) SAFET:HAS-IMG?" UNRESOLVED
-   s" STT-BAD-BYTES-OK ( SAFET:census n -- SAFET:census bool ) SAFET:BYTES-OK?" UNRESOLVED
+   s" STT-BAD-HAS-IMG ( SAFET:file -- SAFET:file bool ) SAFET:HAS-IMG?" UNRESOLVED
+   s" STT-BAD-BYTES-OK ( SAFET:file n -- SAFET:file bool ) SAFET:BYTES-OK?" UNRESOLVED
    s" no mapping word hands back a raw pointer" T-LABEL
    s" STT-BAD-MAP-BASE ( SAFET:mapping -- SAFET:mapping ptr u8 ) SAFET:MAP-BASE" UNRESOLVED
    s" an offset reader returns option, never a -1 sentinel" T-LABEL
-   s" STT-BAD-MAP-OFFSET-RAW ( SAFET:census n -- SAFET:census n ) SAFET:MAP-OFFSET?" REJECTED
-   s" STT-BAD-MAP-OFFSET-SENTINEL ( SAFET:census n -- SAFET:census bool ) SAFET:MAP-OFFSET? -1 =" REJECTED ;
+   s" STT-BAD-MAP-OFFSET-RAW ( SAFET:file n -- SAFET:file n ) SAFET:MAP-OFFSET?" REJECTED
+   s" STT-BAD-MAP-OFFSET-SENTINEL ( SAFET:file n -- SAFET:file bool ) SAFET:MAP-OFFSET? -1 =" REJECTED ;
 
 : TEST-U32-TYPING ( -- )
    s" the bounded read resolves, and only at its own offset role" T-LABEL
@@ -976,41 +1004,80 @@ private
    s" no census reader answers without its census" T-LABEL
    s" STT-BAD-AMBIENT-COUNT ( -- n ) SAFET:COUNT" REJECTED
    s" STT-BAD-AMBIENT-FIND ( ptr u8 n -- n ) SAFET:FIND" REJECTED
-   s" STT-BAD-AMBIENT-DTYPE ( n -- n ) SAFET:DTYPE?" REJECTED
+   s" STT-BAD-AMBIENT-DATATYPE ( n MAKI:datatype -- bool ) SAFET:DATATYPE=" REJECTED
    s" STT-BAD-AMBIENT-NBYTES ( n -- n ) SAFET:NBYTES?" REJECTED
    s" STT-BAD-AMBIENT-DIM ( n n -- n ) SAFET:DIM?" REJECTED
    s" a session is not a census and a census is not a session" T-LABEL
    s" STT-BAD-SESSION-READ ( SAFET:session -- SAFET:session n ) SAFET:COUNT" REJECTED
-   s" STT-BAD-CENSUS-PARSE ( SAFET:census -- SAFET:census ) SAFET:PARSE" REJECTED
-   s" STT-BAD-CENSUS-CLOSE ( SAFET:census -- ) SAFET:CLOSE" REJECTED
+   s" STT-BAD-CENSUS-PARSE ( SAFET:file -- SAFET:file ) SAFET:PARSE" REJECTED
+   s" STT-BAD-CENSUS-CLOSE ( SAFET:file -- ) SAFET:CLOSE" REJECTED
    s" STT-BAD-SESSION-RELEASE ( SAFET:session -- ) SAFET:RELEASE" REJECTED ;
 
 : TEST-SEALED-REPRESENTATION ( -- )
    s" the public surface really does resolve (control)" T-LABEL
-   s" STT-OK-COUNT ( SAFET:census -- SAFET:census n ) SAFET:COUNT" ACCEPTED
-   s" STT-OK-WITH ( SAFET:census n -- SAFET:census option<n> ) SAFET:NBYTES?" ACCEPTED
+   s" STT-OK-COUNT ( SAFET:file -- SAFET:file n ) SAFET:COUNT" ACCEPTED
+   s" STT-OK-WITH ( SAFET:file n -- SAFET:file option<n> ) SAFET:NBYTES?" ACCEPTED
    s" the block and token representation stays private" T-LABEL
    s" STT-BAD-MINT ( ptr u8 -- SAFET:session ) SAFET:MINT-SESSION" UNRESOLVED
    s" STT-BAD-BLOCK ( SAFET:session -- SAFET:session ptr n ) SAFET:SESSION>BLOCK" UNRESOLVED
    s" STT-BAD-TAKE ( SAFET:session -- ptr n ) SAFET:TAKE-SESSION" UNRESOLVED
-   s" STT-BAD-RETYPE ( SAFET:session -- SAFET:census ) SAFET:SESSION>CENSUS" UNRESOLVED
-   s" STT-BAD-CENSUS-BLOCK ( SAFET:census -- SAFET:census ptr n ) SAFET:CENSUS>BLOCK" UNRESOLVED
+   s" STT-BAD-RETYPE ( SAFET:session -- SAFET:file ) SAFET:SESSION>CENSUS" UNRESOLVED
+   s" STT-BAD-CENSUS-BLOCK ( SAFET:file -- SAFET:file ptr n ) SAFET:CENSUS>BLOCK" UNRESOLVED
    s" STT-BAD-BYTES ( ptr n -- ptr u8 ) SAFET:BLOCK>BYTES" UNRESOLVED
    s" STT-BAD-MAP-N>PTR ( n -- ptr u8 ) SAFET-MAP:N>PTR" UNRESOLVED
    s" no public word hands back a raw pointer" T-LABEL
-   s" STT-BAD-RAW-DATA ( SAFET:census n -- SAFET:census ptr u8 ) SAFET:DATA-PTR" UNRESOLVED
-   s" STT-BAD-RAW-BASE ( SAFET:census -- SAFET:census ptr u8 ) SAFET:BASE" UNRESOLVED ;
+   s" STT-BAD-RAW-DATA ( SAFET:file n -- SAFET:file ptr u8 ) SAFET:DATA-PTR" UNRESOLVED
+   s" STT-BAD-RAW-BASE ( SAFET:file -- SAFET:file ptr u8 ) SAFET:BASE" UNRESOLVED ;
 
 : TEST-OPTION-DISCIPLINE ( -- )
    s" an id-addressed reader returns option, never a -1 sentinel" T-LABEL
-   s" STT-BAD-FIND-SENTINEL ( SAFET:census ptr u8 n -- SAFET:census bool ) SAFET:FIND -1 =" REJECTED
-   s" STT-BAD-DTYPE-RAW ( SAFET:census n -- SAFET:census n ) SAFET:DTYPE? 1 +" REJECTED
-   s" STT-BAD-RANK-RAW ( SAFET:census n -- SAFET:census n ) SAFET:RANK?" REJECTED ;
+   s" STT-BAD-FIND-SENTINEL ( SAFET:file ptr u8 n -- SAFET:file bool ) SAFET:FIND -1 =" REJECTED
+   s" STT-BAD-RANK-RAW ( SAFET:file n -- SAFET:file n ) SAFET:RANK?" REJECTED ;
+
+: ABSENT-BOTH ( ptr u8 n n -- ) {: wid:n :}
+   2dup 0 search-wl 0= TTRUE
+   wid search-wl 0= TTRUE ;
+
+: TEST-DATATYPE-TYPING ( -- )
+   s" datatype comparison consumes only the canonical MAKI enum" T-LABEL
+   s" STT-OK-DATATYPE ( SAFET:file n MAKI:datatype -- SAFET:file bool ) SAFET:DATATYPE=" ACCEPTED
+   s" STT-BAD-DATATYPE-N ( SAFET:file n n -- SAFET:file bool ) SAFET:DATATYPE=" REJECTED
+   s" STT-OK-ID-ERROR ( CAD-KIND:id-error -- CAD-KIND:id-error )" ACCEPTED
+   s" STT-BAD-DATATYPE-FOREIGN ( SAFET:file n CAD-KIND:id-error -- SAFET:file bool ) SAFET:DATATYPE=" REJECTED
+   s" retired and private datatype words are absent from the runtime dictionary" T-LABEL
+   s" SAFET:DATATYPE=" XREF-FIND dup XREF-FOUND? TTRUE XREF-WORDLIST {: wid:n :}
+   s" dup" 0 search-wl 0= TFALSE
+   s" DATATYPE=" wid search-wl 0= TFALSE
+   s" DTYPE?" wid ABSENT-BOTH
+   s" DTYPE=" wid ABSENT-BOTH
+   s" DT-F32" wid ABSENT-BOTH
+   s" DT-F16" wid ABSENT-BOTH
+   s" DT-BF16" wid ABSENT-BOTH
+   s" DT-I32" wid ABSENT-BOTH
+   s" DT-U32" wid ABSENT-BOTH
+   s" WIRE-F32" wid ABSENT-BOTH
+   s" WIRE-F16" wid ABSENT-BOTH
+   s" WIRE-BF16" wid ABSENT-BOTH
+   s" WIRE-I32" wid ABSENT-BOTH
+   s" WIRE-U32" wid ABSENT-BOTH
+   s" WIRE>TYPE" wid ABSENT-BOTH ;
+
+: TEST-STANDALONE-LOAD ( -- )
+   s" the SAFET module owns every standalone dependency" T-LABEL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" maki/infer/safetensors.f" >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ >LEN
+   SUBJ-OUT 0 >LEN
+   SUBJ-OUT SUBJ-CAP >LEN
+   SUBJ-ERR SUBJ-CAP >LEN
+   CHILD-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   0 T-OUTCOME-EXITED= 2drop ;
 
 \ ---- presence-gated real artifact (HF gpt2 model.safetensors) --------------
 : REAL-PATH ( -- ptr u8 n )  s" gpt2-model/model.safetensors" ;
 
-: CHECK-REAL ( SAFET:census -- SAFET:census )
+: CHECK-REAL ( SAFET:file -- SAFET:file )
    s" real gpt2 tensors=" type SAFET:COUNT dup . cr
    160 T=
    s" wte.weight" ID-OF {: w:n :}
@@ -1018,7 +1085,7 @@ private
    w SAFET:RANK? 2 OPT=
    w 0 SAFET:DIM? 50257 OPT=
    w 1 SAFET:DIM? 768 OPT=
-   w SAFET:DTYPE? SAFET:DT-F32 OPT=
+   w MAKI-DATATYPE:DF32 SAFET:DATATYPE= TTRUE
    w SAFET:NBYTES? 154389504 OPT=               \ 50257*768*4
    s" wpe.weight" ID-OF {: p:n :}
    p 0 SAFET:DIM? 1024 OPT=   p 1 SAFET:DIM? 768 OPT=
@@ -1032,7 +1099,7 @@ private
       0 0= TTRUE exit
    then
    s" the real gpt2 checkpoint publishes its full census" T-LABEL
-   REAL-PATH SAFET:LOAD
+   REAL-PATH MUST-LOAD
    CHECK-REAL
    SAFET:RELEASE ;
 
@@ -1045,6 +1112,7 @@ public
    TEST-MALFORMED         NO-LEAK
    TEST-LOAD-FAULTS       NO-LEAK
    TEST-VALID-FILE        NO-LEAK
+   TEST-DTYPES            NO-LEAK
    TEST-INTERLEAVED       NO-LEAK
    TEST-FAILED-ISOLATION  NO-LEAK
    TEST-NESTED-CATCH      NO-LEAK
@@ -1067,6 +1135,8 @@ public
    TEST-NO-AMBIENT-STATE
    TEST-SEALED-REPRESENTATION
    TEST-OPTION-DISCIPLINE
+   TEST-DATATYPE-TYPING
+   TEST-STANDALONE-LOAD
    TEST-REAL
    s" the whole suite released every mapping it took" T-LABEL
    NO-LEAK

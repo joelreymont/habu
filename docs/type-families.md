@@ -432,9 +432,6 @@ and a missing arity on `STRUCTURE` or full `ENUM` reject at the exact token.
 The final source lint requires zero occurrences in live executable or generated
 source outside the tombstone table and explicitly allowlisted negative fixtures.
 
-The exact source census and migration owner for every old surface is
-`docs/census-type-dsl-cutover.md`.
-
 ### 2.8 Design position
 
 A real Rust-like `result<t,e>` is not just a parametric type expression.
@@ -889,7 +886,7 @@ arity-0 nominals, and it owns the identities the canonical artifact envelope
 binds (MODEL-CAD-V2-PLAN.md § 23.9 Canonical typed artifacts; dot
 `habu-freeze-canonical-artifact-3b6b7087`). The envelope-provenance roles are
 `CAD-KIND:artifact-kind`, `producer-id`, `config-id`, `numeric-policy-id`,
-`capability-id`, and `audit-event-id`, alongside the pre-existing
+and `audit-event-id`, alongside the pre-existing
 `artifact-id`, `schema-id`, `rev-id`, and `target-id`. Each is a distinct
 family id, so no id-shaped scalar of one role unifies with another — the
 type-family mechanism, not a runtime tag check, is the confusion barrier.
@@ -2883,8 +2880,8 @@ save/restore paths, or field coercions outside constructors and `MATCH`.
 ## 26. Historical implementation phases
 
 These phases record how the pre-cutover substrate landed. They are superseded
-by the unified hard-cutover dot chain in §2 and
-`docs/census-type-dsl-cutover.md`; none authorizes a compatibility surface.
+by the normative hard-cutover contract in §2; none authorizes a compatibility
+surface.
 
 ### Phase 1: Type-family registry
 

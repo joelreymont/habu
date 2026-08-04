@@ -5,6 +5,9 @@ variable LCRASHH   variable LHEX   variable LHDR
 create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2  variable CR-L3
 variable CR-OFF  variable CR-HANDLER
+\ Crash trust rows cover the raw output buffer and ARM64 signal-entry,
+\ mcontext/register, and guarded saved-PC instruction accesses.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 s" CRH" s" -- ptr u8" TRUST
 : CRH-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 

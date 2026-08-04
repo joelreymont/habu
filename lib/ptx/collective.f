@@ -28,6 +28,7 @@
 \ lib/ptx/cg-collective.f (EMIT-*). Broadcast/exp ops that PRESERVE the operand
 \ phantom are CHECKED callers of the PTXREP register-emitter combinators
 \ (lib/ptx/rep.f); reductions/broadcast-mints keep their trusted boundaries.
+\ Retirement owner except UN: habu-ptx-phantom-preserving-3df9db92.
 
 require lib/ptx/rep.f
 
@@ -78,6 +79,7 @@ TRUSTED: BLOCK-SUM ( tile<f32,b,m> -- uniform<f32> )
 \ the reduction DENOMINATOR a mean needs (mean = BLOCK-SUM x PTX:U/ UN). Reads the
 \ kernel's ABI k register and MINTS a uniform from it, so it is a TRUSTED boundary
 \ like ROW / BROADCAST (a fresh phantom with no operand to project from).
+\ Retirement owner: habu-ptx-opt-layer-325b9507.
 TRUSTED: UN ( -- uniform<f32> )
    EMIT-UN ;
 
@@ -102,7 +104,7 @@ public
 
 \ RMS scale building blocks (the "rsqrt+scale" half of the RMSNorm row kernel).
 \ USQRT is the block-uniform square root; RMS-EPS+ adds the LLaMA RMSNorm epsilon
-\ (0f3727C5AC = F64>F32(1e-5), matching maki/rmsnorm.f RMS-EPS) BEFORE the sqrt, so
+\ (0f3727C5AC = F32:NARROW(1e-5), matching maki/rmsnorm.f RMS-EPS) BEFORE the sqrt, so
 \ the row scale is r = sqrt(mean(x^2) + eps) with the eps placement pinned in the
 \ body. Both PRESERVE the uniform phantom -> CHECKED REP1 callers, like EXP.
 : USQRT ( uniform<f32> -- uniform<f32> )

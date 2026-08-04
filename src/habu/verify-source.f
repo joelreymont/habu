@@ -274,6 +274,9 @@ create BODY-BUF BODYBUF-CAP allot
    TOKEN-A @ TOKEN-U @ PARSE-NEXT? IF SKIP-NEXT-BODY exit THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST THEN ;
 
+\ Verifier trust rows below cover recursive checker entrypoints, checker-owned
+\ mode state, dynamic signature publication, and raw-definer mode.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: CHECK-BODY ( ptr u8 n -- n )
    CHECK! dup 1 = JSON-DIAGS @ 0= and DIAG-QUIET @ 0= and IF DIAGXT THEN ;
 

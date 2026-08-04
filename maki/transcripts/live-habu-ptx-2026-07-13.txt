@@ -1,4 +1,4 @@
-habu-eval-transcript v1
+habu-eval-transcript
 \ LIVE model-generated pass@k round, 2026-07-13 (dot habu-eval-real-gen-dab1b6cd).
 \ Tasks: the three OFF-DEVICE authoring tasks (sumnorm / gemm / attention);
 \ maki/eval/emit.f grades them at checker/emit level with PTX structural
@@ -12,8 +12,8 @@ habu-eval-transcript v1
 \ repair round, the raw checker reject fed back to the SAME session; no sample
 \ in this round needed a repair. Candidates are verbatim model output -
 \ orchestration assembled, never edited. Generator-reported token counts are
-\ not exposed by the Agent tool, so this file stays format v1 (whitespace
-\ proxy unit); the matrix additionally records the source-derived GEN-TOK-EST
+\ not exposed by the Agent tool, so this file uses the whitespace proxy unit;
+\ the matrix additionally records the source-derived GEN-TOK-EST
 \ estimate per row (tok-est column).
 target habu-ptx
 task sumnorm

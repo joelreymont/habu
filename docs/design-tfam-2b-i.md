@@ -187,11 +187,12 @@ not a syscall.
 
 ### 2d. Sinks that must ALL carry the guard (the "land together" set)
 
-From census cat-3 + cat-5 (`docs/census-tfam-2b.md`): `!` `c!` `+!` `atomic!`
-`atomic-add` `atomic-cas` `patch32` `cp!` `ndict!` `,` `c,` `allot` (extending into
-arena) `snap-rebase`; plus every syscall/FFI writer whose pointer arg can land in
-the arena (`read` `readlink` `stat64` `lstat64` `getdirentries64` `poll` `ioctl`
-`mmap` remap `ffi-call*`). Native sites: `habu1.f:1185,1191,1197,1203,1205,1207,
+Every raw writer that can target the arena must carry the guard: `!` `c!` `+!`
+`atomic!` `atomic-add` `atomic-cas` `patch32` `cp!` `ndict!` `,` `c,` `allot`
+(extending into arena) `snap-rebase`; plus every syscall/FFI writer whose pointer
+arg can land in the arena (`read` `readlink` `stat64` `lstat64`
+`getdirentries64` `poll` `ioctl` `mmap` remap `ffi-call*`). Native sites:
+`habu1.f:1185,1191,1197,1203,1205,1207,
 1250,1266,1270,1274,1548,967,968` + syscall bodies `habu1.f:1307-1541`. Miss any
 one and it becomes the new bypass — this is why the dot says latch + protection
 must land together. Syscall/FFI writers are where B-style provenance *does* help
@@ -262,7 +263,7 @@ calls by real user-source files loaded through `--load`:
 - `lib/task.f` — `data-base TASKS-LIVE-CELL + !`, `dbase@`, `rbase reg RBASE-CELL + !`,
   `ndict@`, `atomic!`, `patch32` (scheduler/TCB runtime; :157,160,193-205,218-219,251,402).
 - `lib/ffi-abi.f:29-47` — `data-base FFI-*-OFF +` (FFI buffer addressing).
-- `lib/ffi.f:124`, `lib/prelude.f:6`, `lib/ptx/header.f:21` — `parse-name`.
+- `lib/prelude.f:6`, `lib/ptx/header.f:21` — `parse-name`.
 - `lib/memory-test.f:82,84,96,99` — `here data-base -`.
 - `test/gate-common-lib.f:443-450,484-487` — `get-current`/`set-current`,
   `ndict@`/`ndict!`, `data-base S0-CELL + !` (swaps the eval stack base).
@@ -281,7 +282,8 @@ calls by real user-source files loaded through `--load`:
   `tools/duplicate-definition-lint-core.f`, `tools/duplicate-definition-lint-test-lib.f`,
   `tools/image-bytes-test.f`, `tools/imgdump.f`, `tools/jitdump-core.f`,
   `tools/object-image.f`, `tools/reserved-name-lint-core.f`,
-  `tools/reserved-name-lint-test-lib.f`, `tools/xref-test.f` (+ `tools/bootstrap.sh`, the exempt recovery launcher).
+  `tools/reserved-name-lint-test-lib.f`,
+  `tools/xref-test.f` (+ `tools/bootstrap.sh`, the exempt recovery launcher).
 
 So A can only ever be applied to the *pure mutators with zero tool use*
 (`CHECKER-DEFTYPE/DEFLINEAR/DEFRECORD`, registry truncate/undefine hooks,

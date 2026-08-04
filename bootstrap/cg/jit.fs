@@ -129,10 +129,13 @@ variable FESK
 
 : FXOR2 ( -- ) 11 11 12 EOR, ;
 
+variable LKWLSH  variable LKWRSH
+
 : EMIT-FOLDKW ( -- )
    LKWPLUS @ LBL,  s" +" BYTES,    LKWMINUS @ LBL,  s" -" BYTES,
    LKWSTAR @ LBL,  s" *" BYTES,    LKWAND2 @ LBL,   s" and" BYTES,
-   LKWOR2 @ LBL,   s" or" BYTES,   LKWXOR2 @ LBL,   s" xor" BYTES, ;
+   LKWOR2 @ LBL,   s" or" BYTES,   LKWXOR2 @ LBL,   s" xor" BYTES,
+   LKWLSH @ LBL,   s" lshift" BYTES,  LKWRSH @ LBL,  s" rshift" BYTES, ;
 variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  variable LKWNIP2
 
 : EMIT-SHUFKW ( -- )
@@ -295,7 +298,8 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    bno LBL,  13 0 MOVZ,
    bdone LBL,  C-VBIN-RET ;
 
-\ LVBINIPREP ( -- x13=mode ) : LVBINPREP plus mode 3 for top small constant.
+\ LVBINIPREP ( x10=imm-max -- x13=mode ) : LVBINPREP plus mode 3 for top
+\ nonnegative constant no greater than imm-max.
 \ mode 3: x14=rd/rn for the deep operand, x15=imm12, VSP already --.
 \ This routine is a PROBE ONLY: it decides mode 3 or nothing. Every other
 \ outcome unwinds this frame and tail-branches into the single LVBINPREP body,
@@ -312,7 +316,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    7 1 CMPI,  C-NE b2 BCOND,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
    12 0 CMPI,  C-LT b2 BCOND,
-   12 4095 CMPI,  C-GT b2 BCOND,
+   12 10 CMP,  C-GT b2 BCOND,
    12 SP 8 STR,
    5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDRB,
    8 b2 CBNZ,
@@ -370,10 +374,12 @@ variable FESK2
 variable FESK6
 
 \ vopi-entry: VOP-ENTRY plus small top-constant immediate lowering.
-: VOPI-ENTRY ( n ptr a n n n n -- ) {: lmainlbl kwvar kwlen foldxt emitxt immxt :}
+\ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: VOPI-ENTRY ( n ptr a n n n n n -- ) {: lmainlbl kwvar kwlen foldxt emitxt immxt max :}
    LBL FESK !  LBL FESK2 !  LBL FESK6 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK @ CBZ,
+   10 max MOVZ,
    LVBINIPREP @ BL,
    13 FESK @ CBZ,
    13 1 CMPI,  C-NE FESK2 @ BCOND,
@@ -390,6 +396,10 @@ variable FESK6
       lmainlbl B,
    FESK @ LBL, ;
 
+: FLSH ( -- ) 11 11 12 LSLV, ;
+
+: FRSH ( -- ) 11 11 12 LSRV, ;
+
 : E+ ( -- ) 8 $8B000000 LIT64, ;
 
 : E- ( -- ) 8 $CB000000 LIT64, ;
@@ -402,11 +412,24 @@ variable FESK6
 
 : EXOR ( -- ) 8 $CA000000 LIT64, ;
 
+: ELSH ( -- ) 8 $9AC02000 LIT64, ;
+
+: ERSH ( -- ) 8 $9AC02400 LIT64, ;
+
 : EI2N ( -- )  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL, ;
 
 : EI+ ( -- )  8 $91000000 LIT64,  EI2N ;
 
 : EI- ( -- )  8 $D1000000 LIT64,  EI2N ;
+
+: EILSH ( -- )
+   8 $D3400000 LIT64,  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,
+   8 64 MOVZ,  8 8 15 SUB,  8 8 63 ANDI,  8 8 16 LSLI,  9 9 8 ORR,
+   8 63 MOVZ,  8 8 15 SUB,  8 8 10 LSLI,  9 9 8 ORR,  LCEMIT @ BL, ;
+
+: EIRSH ( -- )
+   8 $D340FC00 LIT64,  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,
+   7 15 16 LSLI,  9 9 7 ORR,  LCEMIT @ BL, ;
 variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKWLE2  variable LKWGE2
 
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
@@ -855,6 +878,7 @@ variable FESK4
    LKWZEQ @ LBL,   s" 0=" BYTES,      LKWZLT @ LBL,   s" 0<" BYTES,
    LKWNEG2 @ LBL,  s" negate" BYTES,  LKWINV2 @ LBL,  s" invert" BYTES, ;
 
-: EMIT-JIT ( -- )  EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
+: EMIT-JIT ( -- )
+   EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
    EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;

@@ -7,11 +7,14 @@
 \ could publish a definition into a sealed constructor word-list and the guard
 \ would never fire.
 \
-\ The restore currently runs inside EM-STARTUP-RUNTIME-STATE (src/habu/habu2.f),
-\ via COLD-RESET -> the RESTORE-HOOK installed by EM-AOT-RESTORE-HOOK-INIT.
-\ That single hook line is load-bearing: neutralizing it moves the restore back
-\ past the batch interpret loop and turns every probe below red (no shape tag, no
-\ bits, WIDN not advanced, forge into a baked wid exits 0 not 84).
+\ Cold startup restores the baked band immediately after clearing the live one,
+\ before the cold prefix registers its constructor families and before any user
+\ source runs: EM-STARTUP-RUNTIME-STATE (src/habu/habu2.f) clears the band,
+\ publishes the shape tag and then calls the LAOTPROT routine
+\ (EMIT-AOT-PROT-RESTORE). Warm snapshot startup skips both the clear and the
+\ baked replay, keeping the band the snapshot DATA image carried. That call is
+\ load-bearing: removing it turns every probe below red (no baked bits, WIDN not
+\ advanced, forge into a baked wid exits 0 not 84).
 \
 \ The registry is a WID-INDEXED BITMAP (dot habu-replace-the-protected-ca920a8f),
 \ so what gets baked is a fixed-width image of a SET, behind a shape tag. The
@@ -47,6 +50,16 @@
 \ asserts; a separate case proves the child engine still defines normally, so the
 \ exit-84 results cannot be read as "this engine refuses everything".
 \
+\ NOT covered here, and recorded rather than faked: a baked band that is invalid
+\ on its face. EMIT-AOT-PROT-RESTORE rejects two shapes at cold startup - a frame
+\ whose tag is not PROT-REG-TAG, and a band with bit 0 set (WID 0 is not a
+\ wordlist) - and exits ENGINE-ERROR:AOT-SEED with a named newline-terminated
+\ diagnostic. This builder cannot stage either one: it injects after CAPTURE-REPL,
+\ and the maker hb-pwid-mk is itself emitted from that same injected source, so a
+\ corrupt band kills the maker run before hb-pwid ever exists. A forge that
+\ corrupts only the FINAL image is what the probe needs - dot
+\ habu-forge-a-corrupt-844064a9.
+\
 \ Note on counts: an earlier revision asserted the registry count was exactly 2
 \ with a plain-engine baseline of 0. The engine registers boot-time protected
 \ word-lists for its own constructor families, so an exact-count proxy is stale
@@ -55,10 +68,8 @@
 \
 \ Cost: three child engine builds (~12 s each). It is registered as
 \ `TEST:SUITE aot-wid-restore` in test/gate-stdlib-cases.f, so it runs in the
-\ standalone stdlib gate
-\ (a required master gate), like the sibling heavy-build suite
-\ test/owner-wid-snapshot.f - not the fast tail-process fork tier, whose perf
-\ ratchet the build cost would exceed. Run standalone:
+\ standalone stdlib gate (a required master gate) - not the fast tail-process
+\ fork tier, whose perf ratchet the build cost would exceed. Run standalone:
 \ bin/hb --load test/aot-wid-suite.f
 
 require lib/errors.f

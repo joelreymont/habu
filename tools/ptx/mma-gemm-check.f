@@ -19,7 +19,7 @@
 \ 512*143 = 73216 < 2^24 - exactly representable in f32, so no add rounds. Hence the device f32 C
 \ equals the exact integer dot product, which equals the f64 host reference EXACTLY: MX-COMPARE
 \ requires err = 0.0 (bitwise-exact within f32), no epsilon. The fp16 tile stores A/B as f16 in
-\ BOTH global and shared; C stays f32 (F32-UNPACK on readback), the accumulate is f32.
+\ BOTH global and shared; C stays f32 (F32-BUF:UNPACK on readback), the accumulate is f32.
 \
 \ BF16 tile (MMA-DTYPE=2, dot habu-bf16-m16n8k16-tile): the SAME m16n8k16 shape and fragment maps as
 \ fp16, SAME fill + reference + compare, with the integer-exact argument ADAPTED to bf16's narrower

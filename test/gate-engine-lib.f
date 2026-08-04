@@ -230,11 +230,16 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 : GE-SRC-CANDIDATE! ( -- )
    s" hb-stdin" BF-A$ GE-SRC-CANDIDATE-PATH! ;
 
-: GE-CANDIDATE-SIZE-CHECK ( -- )
+package ENGINE-GATE
+public
+
+: CANDIDATE-SIZE-CHECK ( -- )
    GE-CANDIDATE$ FILE-SIZE GE-MAX-CANDIDATE-BYTES > if
       s" Habu-under-test candidate too large" GE-FAIL
    then
-   GE-CANDIDATE$ GB-SIZE-RATCHET ;
+   GE-CANDIDATE$ BUILD-SIZE:RATCHET ;
+
+;package
 
 : GE-REMOVE-CANDIDATE ( -- )
    GE-CANDIDATE$ EXISTS? if GE-CANDIDATE$ REMOVE-FILE then ;
@@ -333,15 +338,18 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-STAGE2-ORDER-SHAPE
    GE-STAGE2-IMAGE-SHAPE ;
 
+package ENGINE-GATE
+private
+
 \ --- Exact CODELEN ratchet (dot habu-gate-enforce-exact-6effb905) -----------
-\ The whole-file ratchet (GB-SIZE-*) measures the page-rounded container, so up to
+\ The whole-file BUILD-SIZE ratchet measures the page-rounded container, so up to
 \ one page of __text growth (Linux 4 KiB, macOS 16 KiB) accumulates INVISIBLY
 \ between commits. This closes it: re-run the freshly built metabuild host
 \ (hb-stdin-mk, the stdin engine's emitter) with HABU_ENGINE_SIZE_MAP=1, capture
 \ its byte-attribution map (one block, byte-identical to the candidate at the
 \ fixpoint), and hold the candidate's measured SUM-TEXT to the committed CODE-TEXT
 \ row for the running target - so any code growth needs a deliberate same-commit
-\ row bump in test/gate-size-attribution-test.f, mirroring the GB-SIZE
+\ row bump in test/gate-size-attribution-test.f, mirroring the BUILD-SIZE
 \ grown/STALE-BASELINE semantics. SIZE-ATTR:VALIDATE then reconciles every
 \ remaining byte (floor-dist, region rows, residue). A missing or unparseable map
 \ fails closed (SIZE-REPORT:LOAD dies).
@@ -359,45 +367,36 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" candidate size-map capture" GE-EXPECT-OK
    GE-SZMAP$ GT-OUT$ WRITE-ALL ;
 
-\ Directional failures mirror test/gate-build-size.f's GB-SIZE-*-FAIL, retargeted
-\ at the CODE-TEXT (__text) row. The pure class->action map is GB-SIZE's, already
-\ self-checked by GB-SIZE-SELF-CHECK.
+: GE-CODELEN-PAIR. ( n n -- ) {: sz:n base:n :}
+   s" candidate " type sz .
+   s" baseline " type base . ;
+
+\ Directional failures mirror test/gate-build-size.f, retargeted at the CODE-TEXT
+\ (__text) row.
 : GE-CODELEN-GROWN-FAIL ( n n -- )
-   GB-SIZE-PAIR. cr
+   GE-CODELEN-PAIR. cr
    s" candidate CODELEN ratchet: __text grew past the CODE-TEXT row - bump it in test/gate-size-attribution-test.f in this commit" GE-FAIL ;
 
 : GE-CODELEN-STALE-FAIL ( n n -- )
-   s" STALE-BASELINE " type GB-SIZE-PAIR. cr
+   s" STALE-BASELINE " type GE-CODELEN-PAIR. cr
    s" candidate CODELEN ratchet: __text shrank below the CODE-TEXT row - lower it in test/gate-size-attribution-test.f in this commit" GE-FAIL ;
 
 : GE-CODELEN-MISSING-FAIL ( n n -- )
-   GB-SIZE-PAIR. cr
+   GE-CODELEN-PAIR. cr
    s" candidate CODELEN ratchet: no CODE-TEXT row for this target - commit the measured __text to test/gate-size-attribution-test.f" GE-FAIL ;
 
 : GE-CODELEN-ENFORCE ( n n -- ) {: sz:n base:n :}   \ measured-SUM-TEXT committed-row
-   sz base GB-SIZE-CLASS GB-SIZE-ACTION
-   case
-      GB-SIZE-GROWN of sz base GE-CODELEN-GROWN-FAIL endof
-      GB-SIZE-SHRUNK of sz base GE-CODELEN-STALE-FAIL endof
-      GB-SIZE-MISSING of sz base GE-CODELEN-MISSING-FAIL endof
-   endcase ;
-
-: GE-CODELEN-SYNTH$ ( -- ptr u8 n )        \ synthetic map: SUM-TEXT = 300 + 8 = 308
-   s\" main/startup 300\nbaked-source 8\ncontainer/header 100\n" ;
-
-\ Both-direction wiring proof: parse a synthetic map, then classify its SUM-TEXT
-\ against a matching row (OK), a lower row (GROWN), a higher row (SHRUNK), and no
-\ row (MISSING) - reds off-baseline, greens on baseline, without a fake engine.
-: GE-CODELEN-SELF-CHECK ( -- )
-   GE-CODELEN-SYNTH$ SIZE-REPORT:LOAD-BYTES
-   SIZE-REPORT:SUM-TEXT {: st:n :}
-   st st    GB-SIZE-OK      GB-SIZE-CLASS-EXPECT
-   st st 1- GB-SIZE-GROWN   GB-SIZE-CLASS-EXPECT
-   st st 1+ GB-SIZE-SHRUNK  GB-SIZE-CLASS-EXPECT
-   st 0     GB-SIZE-MISSING GB-SIZE-CLASS-EXPECT ;
+   base 0= if
+      sz base GE-CODELEN-MISSING-FAIL
+   else
+      sz base > if
+         sz base GE-CODELEN-GROWN-FAIL
+      else
+         sz base < if sz base GE-CODELEN-STALE-FAIL then
+      then
+   then ;
 
 : GE-CODELEN-RATCHET ( -- )
-   GE-CODELEN-SELF-CHECK
    GE-CODELEN-CAPTURE
    GE-SZMAP$ SIZE-REPORT:LOAD
    SIZE-REPORT:SUM-TEXT SIZE-ATTR:HOST-CODE-TEXT GE-CODELEN-ENFORCE
@@ -409,17 +408,21 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 \ region that grows while a sibling shrinks nets zero there and hides which emitter
 \ moved. This holds EACH committed per-region budget (SIZE-ATTR:HOST-REGION-BUDGETS,
 \ measured same-commit at the byte fixpoint) to the candidate's measured region
-\ size, mirroring the GB-SIZE / CODE-TEXT directional semantics per region: a grown
+\ size, mirroring the BUILD-SIZE / CODE-TEXT directional semantics per region: a grown
 \ region is bumped, a shrunk region is STALE, and the reject NAMES the region.
 \ Coverage is bidirectional - a newly emitted region with no budget and a budget row
 \ whose region vanished both fail closed, named. macOS budgets are owed
 \ (HOST-REGION-BUDGETS-MEASURED? false): the ratchet reports the owed state and the
 \ measured page-crossing prediction, skipping enforcement on that host exactly as
 \ the census skips its owed target.
+0 constant GE-REGION-OK
+1 constant GE-REGION-GROWN
+2 constant GE-REGION-SHRUNK
+
 : GE-REGION-CLASS ( n n -- n ) {: m:n b:n :}
-   m b > if GB-SIZE-GROWN exit then
-   m b < if GB-SIZE-SHRUNK exit then
-   GB-SIZE-OK ;
+   m b > if GE-REGION-GROWN exit then
+   m b < if GE-REGION-SHRUNK exit then
+   GE-REGION-OK ;
 
 : GE-REGION-CLASS-EXPECT ( n n n -- ) {: m:n b:n want:n :}
    m b GE-REGION-CLASS want <> if
@@ -436,16 +439,16 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 : GE-REGION-REJECT$ ( ptr u8 n n n n -- ptr u8 n ) {: na:ptr nu:n m:n b:n dir:n :}
    SB-RESET
    s" region " SB-APPEND na nu SB-APPEND
-   dir GB-SIZE-GROWN = if s"  grew past budget " else s"  shrank below budget (STALE-BASELINE) " then SB-APPEND
+   dir GE-REGION-GROWN = if s"  grew past budget " else s"  shrank below budget (STALE-BASELINE) " then SB-APPEND
    b GE-N>SB s"  to candidate " SB-APPEND m GE-N>SB
    s"  - update its row in test/gate-size-attribution-test.f this commit" SB-APPEND
    SB$ ;
 
 : GE-REGION-GROWN-FAIL ( ptr u8 n n n -- ) {: na:ptr nu:n m:n b:n :}
-   na nu m b GB-SIZE-GROWN GE-REGION-REJECT$ GE-FAIL ;
+   na nu m b GE-REGION-GROWN GE-REGION-REJECT$ GE-FAIL ;
 
 : GE-REGION-STALE-FAIL ( ptr u8 n n n -- ) {: na:ptr nu:n m:n b:n :}
-   na nu m b GB-SIZE-SHRUNK GE-REGION-REJECT$ GE-FAIL ;
+   na nu m b GE-REGION-SHRUNK GE-REGION-REJECT$ GE-FAIL ;
 
 : GE-REGION-VANISHED-FAIL ( ptr u8 n n -- ) {: na:ptr nu:n b:n :}
    SB-RESET
@@ -464,8 +467,8 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 : GE-REGION-ENFORCE-ONE ( ptr u8 n n n -- ) {: na:ptr nu:n m:n b:n :}
    m b GE-REGION-CLASS
    case
-      GB-SIZE-GROWN  of na nu m b GE-REGION-GROWN-FAIL endof
-      GB-SIZE-SHRUNK of na nu m b GE-REGION-STALE-FAIL endof
+      GE-REGION-GROWN  of na nu m b GE-REGION-GROWN-FAIL endof
+      GE-REGION-SHRUNK of na nu m b GE-REGION-STALE-FAIL endof
    endcase ;
 
 \ Forward: every committed budget row is present in the map and matches exactly; a
@@ -496,22 +499,22 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 \ Red-first per boundary, target-agnostic: at-budget green, one-past and +4 red,
 \ shrink STALE, and the reject names the region - proven without a fake engine.
 : GE-REGION-SYNTH-CHECK ( -- )
-   100 100 GB-SIZE-OK     GE-REGION-CLASS-EXPECT
-   101 100 GB-SIZE-GROWN  GE-REGION-CLASS-EXPECT
-   104 100 GB-SIZE-GROWN  GE-REGION-CLASS-EXPECT
-    99 100 GB-SIZE-SHRUNK GE-REGION-CLASS-EXPECT
-    96 100 GB-SIZE-SHRUNK GE-REGION-CLASS-EXPECT
-   s" main/startup" 104 100 GB-SIZE-GROWN GE-REGION-REJECT$ s" main/startup" CONTAINS? 0= if
+   100 100 GE-REGION-OK     GE-REGION-CLASS-EXPECT
+   101 100 GE-REGION-GROWN  GE-REGION-CLASS-EXPECT
+   104 100 GE-REGION-GROWN  GE-REGION-CLASS-EXPECT
+    99 100 GE-REGION-SHRUNK GE-REGION-CLASS-EXPECT
+    96 100 GE-REGION-SHRUNK GE-REGION-CLASS-EXPECT
+   s" main/startup" 104 100 GE-REGION-GROWN GE-REGION-REJECT$ s" main/startup" CONTAINS? 0= if
       s" candidate region ratchet reject omits region name" GE-FAIL
    then ;
 
 \ +4 into EACH committed region rejects GROWN and the reject names that region;
 \ at-budget stays green, -4 is STALE. Runs where budgets are measured (host Linux).
 : GE-REGION-BOUNDARY-STEP ( ptr u8 n n -- ) {: na:ptr nu:n b:n :}
-   b     b GB-SIZE-OK     GE-REGION-CLASS-EXPECT
-   b 4 + b GB-SIZE-GROWN  GE-REGION-CLASS-EXPECT
-   b 4 - b GB-SIZE-SHRUNK GE-REGION-CLASS-EXPECT
-   na nu b 4 + b GB-SIZE-GROWN GE-REGION-REJECT$ na nu CONTAINS? 0= if
+   b     b GE-REGION-OK     GE-REGION-CLASS-EXPECT
+   b 4 + b GE-REGION-GROWN  GE-REGION-CLASS-EXPECT
+   b 4 - b GE-REGION-SHRUNK GE-REGION-CLASS-EXPECT
+   na nu b 4 + b GE-REGION-GROWN GE-REGION-REJECT$ na nu CONTAINS? 0= if
       s" candidate region ratchet reject omits region name" GE-FAIL
    then ;
 
@@ -531,7 +534,9 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    SIZE-ATTR:PAGE-CROSS-REPORT
    s" PASS: per-region __text budget ratchet (every region held to its committed budget)" type cr ;
 
-: GE-BUILD-FIXPOINT ( -- )
+public
+
+: FIXPOINT ( -- )
    s" candidate-build" GS-EVENT
    s" hb-gate-engine" GT-START
    GT-ROOT BF-TMP!
@@ -546,8 +551,10 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-REGION-RATCHET
    BF-TMP-RESET
    GE-EXPECT-CANDIDATE
-   GE-CANDIDATE-SIZE-CHECK
+   ENGINE-GATE:CANDIDATE-SIZE-CHECK
    s" PASS: self-rebuild fixpoint" type cr ;
+
+;package
 
 : GE-RUN-STD-FIXTURES ( -- )
    GT-POOL-RESET
@@ -2064,23 +2071,28 @@ public
 : GE-RUNTIME-CHECKS ( -- )
    RUNTIME-CHECKS:ALL ;
 
-: GENG-BUILD-SLICE ( -- )
-   GE-BUILD-FIXPOINT
+package ENGINE-GATE
+public
+
+: BUILD-SLICE ( -- )
+   ENGINE-GATE:FIXPOINT
    GT-CLEANUP
    s" PASS: native engine build gate slice" type cr ;
 
-: GE-CANDIDATE-VALIDATE ( -- )
+: CANDIDATE-VALIDATE ( -- )
    s" candidate-validate" GS-EVENT
    GE-CANDIDATE!
    GE-EXPECT-CANDIDATE
-   GE-CANDIDATE-SIZE-CHECK
+   ENGINE-GATE:CANDIDATE-SIZE-CHECK
    GE-CANDIDATE$ GATE-VALIDATION:RUN ;
 
-: GENG-VALIDATE-SLICE ( -- )
+: VALIDATE-SLICE ( -- )
    s" hb-gate-engine-validate" GT-START
-   GE-CANDIDATE-VALIDATE
+   CANDIDATE-VALIDATE
    GT-CLEANUP
    s" PASS: native engine candidate validation slice" type cr ;
+
+;package
 
 : GENG-FIXTURES-SLICE ( -- )
    s" hb-gate-engine-fixtures" GT-START
@@ -2281,18 +2293,23 @@ public
    GT-CLEANUP
    s" PASS: exact candidate construct parity slice" type cr ;
 
-: GE-MAIN ( -- )
+package ENGINE-GATE
+public
+
+: MAIN ( -- )
    GENG-PARSE-SLICE
-   GENG-SLICE @ GENG-BUILD-ID = if GENG-BUILD-SLICE exit then
+   GENG-SLICE @ GENG-BUILD-ID = if ENGINE-GATE:BUILD-SLICE exit then
    GENG-SLICE @ GENG-FIXTURES-ID = if GENG-FIXTURES-SLICE exit then
    GENG-SLICE @ GENG-REPAIR-ID = if GENG-REPAIR-SLICE exit then
    GENG-SLICE @ GENG-RUNTIME-ID = if GENG-RUNTIME-SLICE exit then
    GENG-SLICE @ GENG-RUNTIME-PARITY-ID = if GENG-RUNTIME-PARITY-SLICE exit then
-   GENG-SLICE @ GENG-VALIDATE-ID = if GENG-VALIDATE-SLICE exit then
+   GENG-SLICE @ GENG-VALIDATE-ID = if ENGINE-GATE:VALIDATE-SLICE exit then
    GENG-SLICE @ GENG-CONSTRUCT-ID = if GENG-CONSTRUCT-PARITY-SLICE exit then
-   GE-BUILD-FIXPOINT
+   ENGINE-GATE:FIXPOINT
    GE-RUN-EXTRA-FIXTURES
-   GE-CANDIDATE-VALIDATE
+   ENGINE-GATE:CANDIDATE-VALIDATE
    RUNTIME-WORKER:SUBJECT
    GT-CLEANUP
    s" PASS: native engine gate phase" type cr ;
+
+;package

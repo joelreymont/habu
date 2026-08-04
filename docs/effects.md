@@ -665,8 +665,7 @@ The axiom set is audited two ways:
   behavioral gate (the rebuilt engine runs real programs). Their recipe is an
   explicit fail-closed `noexec` row bound to that exact slot rather than a
   name/prefix allowlist, so an identity change must update that row and a stale
-  classification cannot be inherited by an adjacent or same-spelled overload;
-  exact source/live identity stays independently ratcheted by `PEINV` below. The
+  classification cannot be inherited by an adjacent or same-spelled overload. The
   substrate's zero-arg high-water readers (`wf-n@`,
   `tfam-n@`, `sumv-n@`, `tf-str-u@`, `tf-pk-n@`, `schema-n@`,
   `schema-root-n@`) are pure variable reads and ARE difftested, matching
@@ -674,6 +673,11 @@ The axiom set is audited two ways:
 
 Axiom-set size is reported by the census, which prints the live `PES` row count
 (`prim-axiom: N axioms (D difftested, X noexec)`).
+
+The native fixpoint rebuild compiles the engine from these rows and the
+behavioral gates exercise the rebuilt primitives through real programs.
+Trusted readers or representation casts around the table carry source-local
+rationale, a retirement owner, and focused production-path tests.
 
 ### ARM64 contract link (`PRIM-LINK`, `src/core/checker.f`)
 

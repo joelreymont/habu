@@ -139,6 +139,6 @@ $0042 constant MACOS-SA-PROF-FLAGS
 : BPROF-REPORT  SP SP 16 SUBI,  30 SP 0 STR,  LPROFDUMP @ BL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
-\ registered right after EMIT-PRIMS (EMIT-FORTH) so the dict order is stable
+\ registered right after EMIT-PRIMS (ENGINE-EMIT:FORTH) so the dict order is stable
 : EMIT-PROF-PRIMS ( -- )
    s" prof-on" ['] BPROF-ON FPRIM-L  s" prof-report" ['] BPROF-REPORT FPRIM-L ;

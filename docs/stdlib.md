@@ -1,11 +1,9 @@
 # Standard Library
 
-The standard library lives under `lib/`. `lib/std.manifest` is the canonical
-machine-readable layout and signature index for that tree. This file is the
-authoritative LLM-facing stdlib surface: prompts, examples, benchmark tasks, and
-future module implementations must use the effects and boundary contracts here.
-The initial manifest reserves module ownership only; public word rows are added
-only after checked source exists.
+The standard library lives under `lib/`. Checked source and its real consumers
+define the operational surface. This file is the authoritative LLM-facing stdlib
+guide: prompts, examples, benchmark tasks, and future module implementations must
+use the effects and boundary contracts here.
 
 ## Layout
 
@@ -21,7 +19,6 @@ Planned module files:
 - `lib/map.f`
 - `lib/memory.f`
 - `lib/ffi-abi.f`
-- `lib/ffi.f`
 - `lib/fs.f`
 - `lib/fs-root.f`
 - `lib/build-cache.f`
@@ -48,18 +45,18 @@ Planned module files:
 - `lib/time.f`
 - `lib/date.f`
 
-Each module gets a focused test file named in the manifest and documentation in
-this file. Source files stay one concern per file, and new public/library words
-default to checked typed definitions.
+Each module owns focused tests and documentation in this file. Source files stay
+one concern per file, and new public/library words default to checked typed
+definitions.
 
 ## LLM Surface
 
 LLM-facing code should call the highest-level checked word that matches the
 task, and should only reach for unchecked host/runtime primitives at the audited
 boundaries named below. The surface below includes active source-backed words
-and planned API contracts. Source-backed public word rows are the only published
-rows in `lib/std.manifest`; planned contracts here define the target API shape
-for implementation dots and benchmark prompts.
+and planned API contracts. Checked definitions in source are the published
+surface; planned contracts here define the target API shape for implementation
+dots and benchmark prompts.
 
 Typed examples in prompts must use the current checked grammar exactly. Array
 views and cell-backed map storage use `ptr a n`; byte strings, regex bytecode
@@ -88,16 +85,16 @@ capacity. Public signatures must keep that representation visible until
 dedicated concrete handle types exist.
 
 Opaque `addr` values are boundary-only. A module may use `addr` only for values
-that checked code never dereferences, or behind a named audited `TRUST` wrapper
-that converts the boundary value into a typed pointer contract with focused
-tests. Regex prose may call values `rx`, but manifest effects and source
-signatures remain typed as `ptr u8 n`; map prose may call values `map`, but
-manifest effects and source signatures remain typed as `ptr a n` for storage
-and `ptr u8 n` for keys.
+that checked code never dereferences. When the checker cannot express a
+boundary, add a checker-owned `PRIM:` axiom; unchecked colon bodies are
+forbidden. Regex prose may call values `rx`, but source signatures remain typed
+as `ptr u8 n`; map prose may call values `map`, but source signatures remain
+typed as `ptr a n` for storage and `ptr u8 n` for keys.
 
 ## PTX
 
-`lib/ptx/` is a research sub-library, not a flat `lib/std.manifest` module.
+`lib/ptx/` is a separate research sub-library with its own source consumers and
+tests.
 `lib/ptx/header.f` provides the checked PTX kernel header vocabulary used by
 `docs/ptx-sketch.md`. `KERNEL:` is a compiler keyword alias for `:`; load
 `lib/errors.f lib/ptx/header.f` before kernel sources. `%BLOCK` validates legal
@@ -324,16 +321,15 @@ stack slots. x8 is the AAPCS64 indirect-result register: sret writers must use
 `FFI:X8-WRITABLE!` with the complete result extent. Stack writers use the
 corresponding stack slot and extent; neither table aliases the other.
 
-`lib/ffi.f` is the compatibility entry for the sealed `FFI` package owned by
-`lib/ffi-abi.f`. On Linux/aarch64 the package
+`lib/ffi-abi.f` owns the sealed `FFI` package. On Linux/aarch64 the package
 calls `dlopen` and `dlsym` through loader-resolved dynamic ELF slots
 (`DLOPEN-SLOT`, `DLSYM-SLOT`). On macOS/aarch64 the Mach-O writer emits a
 `__DATA_CONST,__got` page and `LC_DYLD_CHAINED_FIXUPS` imports for libSystem
-`_dlopen` and `_dlsym`; the same checked `DLOPEN`/`DLSYM` words read those
+`_dlopen` and `_dlsym`; the same checked `FFI:DLOPEN`/`FFI:DLSYM` words read those
 resolved slots. The exact package bindings are `FFI:DLOPEN` and `FFI:DLSYM`.
-Legacy global `DLOPEN`/`DLSYM` aliases remain for existing sources; new code
-uses the package words. `FFI`, `CUDA`, and `TASK` seal both wordlists after
-definition, so later source cannot reopen them, add a call, or redirect a symbol.
+No global loader or marshalling aliases exist. `FFI`, `CUDA`, and `TASK` seal
+both wordlists after definition, so later source cannot reopen them, add a call,
+or redirect a symbol.
 
 `FFI:DLSYM` uses a dedicated task-DATA loader block, so it cannot overwrite a
 staged call. Wrappers still resolve before staging to keep the foreign-call
@@ -419,16 +415,18 @@ payload, and quiet/signaling state. Higher input bits do not participate in the
 binary32 pattern. Neither conversion throws for an IEEE-754 input.
 
 Both packages are deliberately scalar-only. They expose no pointer, byte-load,
-byte-store, packing, or unpacking surface. Byte marshalling belongs to the
-bounded `MEM` span and subspan APIs, where capacity and access width can be
-checked before memory is touched.
+byte-store, packing, or unpacking surface. `lib/float32-buffer.f` owns the raw
+little-endian bridge as `F32-BUF:STORE`, `F32-BUF:LOAD`, `F32-BUF:PACK`, and
+`F32-BUF:UNPACK`; callers own the buffer capacity required by each operation.
+Bounded marshalling belongs to the `MEM` span and subspan APIs, where capacity
+and access width can be checked before memory is touched.
 
 ## Core Bytes
 
 `src/core/bytes.f` provides small checked byte-buffer helpers that are part of
 the native prelude. They are available before stdlib and tool modules so low
 level code does not depend on broad library ordering such as loading
-`lib/string.f` before `lib/ffi.f`.
+`lib/string.f` before `lib/ffi-abi.f`.
 
 ```forth
 BYTE-VIEW       ( ptr a -- ptr u8 )
@@ -785,7 +783,19 @@ MEM-ALLOC-CELLS       ( count -- ptr a )
 MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
 MEM-ALLOC-64K-SPAN    ( n -- ptr u8 n )
 MEM-ALLOC-64K         ( -- ptr u8 n )
+
+MEM:ALLOC-BYTES       ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len )
+MEM:RELEASE-BYTES     ( ptr u8 CAD-NUM:alloc-byte-len -- )
+MEM:UNMAP             ( ptr u8 CAD-NUM:byte-len -- )
+MEM:WITH-BYTES        ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
 ```
+
+`MEM:RELEASE-BYTES` consumes the exact extent returned by `MEM:ALLOC-BYTES`.
+`MEM:UNMAP` releases a validated mapped byte range without fabricating an
+allocation extent. Both use one private `munmap` sink; kernel refusal writes
+`memory: unmap failed` to standard error and exits 71, bypassing `catch`.
+`MEM:WITH-BYTES` releases after normal return or a body throw, restores its
+outer frame after successful release, then rethrows the body code.
 
 `MEM-MAP-SHARED` is the named shared-mapping flag for checked device or file
 mappings that use the raw `mmap` primitive directly.
@@ -1952,39 +1962,3 @@ in Habu scripts and libraries. Habu build helpers are responsible for validating
 user source, proving checked definitions, detecting missing artifacts, and
 reporting named failures. Shell may allocate private temporary space and pass it
 to Habu; Habu decides what work happens inside that space.
-
-## Manifest Format
-
-`lib/std.manifest` is UTF-8 TSV with schema version `1` and this exact header:
-
-```text
-schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
-```
-
-Columns:
-
-- `schema_version`: currently `1`.
-- `module`: lowercase stable module name.
-- `file`: stable `lib/<module>.f` source path.
-- `kind`: `module` or `word`.
-- `word`: public word name for `word` rows; empty for `module` rows.
-- `effect`: normalized checked effect for `word` rows; empty for `module` rows.
-- `test`: focused test path that owns the row.
-- `doc`: documentation path for the row.
-- `owner`: stable ownership label for future parallel workers.
-- `status`: `planned`, `active`, or `published`.
-- `notes`: short human context, without tabs.
-
-`module` rows reserve file ownership and leave `word` and `effect` empty. `word`
-rows describe only public checked definitions that exist in source. The `effect`
-field must match the normalized `signature` emitted by:
-
-```sh
-bin/hb --load \
-  lib/errors.f lib/memory.f lib/vector.f \
-  tools/lint/text.f tools/lint/intern.f tools/lint/token.f tools/lint/lib.f \
-  tools/public-signatures.f -- lib/<module>.f
-```
-
-The `effect` field is kept honest by re-running the signature emitter above and
-comparing its output with the recorded row.

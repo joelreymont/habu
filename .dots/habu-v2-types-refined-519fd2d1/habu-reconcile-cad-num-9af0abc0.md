@@ -4,8 +4,8 @@ status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-15T07:02:12.438629+02:00"
-closed-at: "2026-08-04T00:25:46.458666+02:00"
-close-reason: ledger retired with the governance mirror
+closed-at: "2026-08-02T15:17:47.141344+02:00"
+close-reason: "Superseded by the a8c716c5 hard cut: TRUSTED.md and its CAD-NUM ownership rows were deleted, so no trust retirement metadata remains to reconcile."
 blocks:
   - habu-v2-r3-type-144b5fa2
 ---

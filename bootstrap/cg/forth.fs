@@ -23,6 +23,17 @@ $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs 
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 3 constant SNAP-FORMAT-VERSION
+\ Trailer geometry, mirroring src/habu/layout.f. The recovery seed carries its
+\ own SNAP-FORMAT-VERSION (see the xt! note below) but the SHAPE is the same, so
+\ the size and field offsets are named here too rather than spelled as literals
+\ in the loader emitter.
+48 constant SNAP-TRL-BYTES
+8 constant SNAP-TRL-TBASE
+16 constant SNAP-TRL-NDICT
+24 constant SNAP-TRL-REGLEN
+32 constant SNAP-TRL-DATALEN
+40 constant SNAP-TRL-VERSION
+40 constant SNAP-TRL-LEGACY-BYTES
 $181000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (grown $C1000->$181000 with DICT-CAP 32768)
                                \ (= CFSTK-OFF + $1000; grown with DICT-CAP 16384,
                                \ mirrors src/habu/layout.f)
@@ -31,6 +42,7 @@ $181000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (g
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
+$FFFFFFFE constant WID:MAX
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
 \ native checker/seal pass (src/habu/layout.f, dot
@@ -90,6 +102,7 @@ $3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
+82 constant ENGINE-ERROR:AOT-SEED
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
 83 constant ENGINE-ERROR:SEAL-VIOLATION \ process exit status for a post-seal protected write
 84 constant ENGINE-ERROR:SEAL-PACKAGE
@@ -124,16 +137,6 @@ PROT-WID-MAX 8 / constant PROT-BITS-BYTES
 PROT-BITS-OFF PROT-BITS-BYTES + constant PROT-BITS-END
 PROT-REG-TAG-CELL constant PROT-REG-OFF
 $410 constant PROT-REG-LEN   \ = PROT-BITS-END 1 cells + PROT-REG-OFF - ; band unchanged by the bitmap
-$47C0 constant OWNER-WID-N-CELL
-$47C8 constant OWNER-WID-OFF
-8 constant OWNER-WID-ROW
-0 constant OWNER-WID-PUB
-4 constant OWNER-WID-PRI
-$FFFFFFFE constant OWNER-WID-LIMIT
-256 constant OWNER-WID-MAX
-OWNER-WID-OFF OWNER-WID-MAX OWNER-WID-ROW * + constant OWNER-WID-END
-OWNER-WID-N-CELL constant OWNER-REG-OFF
-OWNER-WID-END OWNER-REG-OFF - constant OWNER-REG-LEN
 $28 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
 $30 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
 $38 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
@@ -1014,6 +1017,8 @@ previous definitions
 
 : BSETCUR ( -- )    A G-POP  A DATA CUR-CELL STR, ;                                        \ ( wid -- )
 
+: BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
+
 : BSETCHECK ( -- )
    LBL {: done :} \ typed-local-lint: allow-bare-local - Gforth label id
    A G-POP
@@ -1215,10 +1220,7 @@ previous definitions
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L ;
 
-: BOWNERFINALIZE ( -- ) ;
-
 : EMIT-ENGINE-PRIMS ( -- )
-   s" FINALIZE" ['] BOWNERFINALIZE OWNER-API-PUB-WID FPRIM-WID
    s" run-rc" ['] BRUNRC FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
@@ -1242,7 +1244,7 @@ previous definitions
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
-   s" set-check" ['] BSETCHECK FPRIM-L
+   s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM ;
 
@@ -1667,7 +1669,7 @@ previous definitions
 
 \ ---- seed dictionary: NPRIMS records of [startoff(8) endoff(8) namelen(8) name(16)] ----
 : EMIT-DICT ( -- )
-   LNCOUNT @ LBL,  #PL @ 1+ DCQ,                           \ live count, read at startup
+   LNCOUNT @ LBL,  #PL @ DCQ,                              \ live count, read at startup
    LDICT @ LBL,
    #PL @ 0 ?do
       i cells PLBL + @ DLBL,                                \ +0  start byte-offset
@@ -1676,13 +1678,7 @@ previous definitions
       i cells PNAM + @  i cells PLEN + @  BYTES,            \ +24 name (padded to 4)
       16  i cells PLEN + @  3 + -4 and  -  ?dup if  PNPOOL  swap BYTES, then
       i cells PWID + @ DCQ,                                \ +40 wid
-   loop
-   OWNER-API-PUB-WID DCQ,
-   OWNER-API-PRI-WID DCQ,
-   9 DCQ,
-   s" OWNER-WID" BYTES,
-   PNPOOL 4 BYTES,
-   -1 DCQ, ;
+   loop ;
 
 \ ---- literal emitters: scalars vs relocatable addresses (mirrors src/habu/habu2.f) --
 \ A relocatable address must never be emitted through the scalar path. Scalars use the
@@ -4299,13 +4295,11 @@ variable CFSK2
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL, ;
 
-: EMIT-DATA-VA>N ( -- n ) DATA-VA ;
-
 : EMIT-MMAP-DATA-REGION ( -- )
    LBL {: dvok :}
-   0 EMIT-DATA-VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   5 EMIT-DATA-VA>N LIT64,  0 5 CMP,
+   5 DATA-VA LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
       s" hb: cannot map fixed data region" 78 C-EXIT-DIAG   \ name the fault on fd 2 (C-EXIT-DIAG inlines the bytes in __text, ADRs them locally) before exit
    dvok LBL, ;
@@ -4383,22 +4377,16 @@ variable CFSK2
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH @ BL, ;
 
 : EMIT-SNAPSHOT-VALIDATE-WIDS ( n -- ) {: bad :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: prot-loop prot-max prot-inner prot-next owners owner-loop pub-max pri-max \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-      oscan onext odone owner-prot owner-prev-start owner-prev owner-next widn \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-      name-inline name-ready name-loop name-ok pkg-scan pkg-inline \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-      pkg-ready pkg-bytes pkg-hit pkg-next pkg-done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL LBL LBL
+   {: prot-loop prot-max prot-inner prot-next widn :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    5 PROT-BITS-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,
-   25 10 6 SUB,
-   16 15 0 ADDI,
    11 10 PROT-REG-TAG-CELL LDR,
    5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND,
    12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,
    2 12 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,
    17 0 MOVZ,  8 PROT-BITS-BYTES MOVZ,
-   prot-loop LBL,  8 owners CBZ,
+   prot-loop LBL,  8 widn CBZ,
       8 8 8 SUBI,
       9 12 8 ADD,  9 9 0 LDR,
       9 prot-max CBNZ,
@@ -4409,103 +4397,6 @@ variable CFSK2
       9 9 1 LSRI,  5 5 1 ADDI,  prot-inner B,
    prot-next LBL,
       17 17 5 ADD,  17 17 1 SUBI,
-
-   owners LBL,
-   5 OWNER-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
-   6 10 OWNER-WID-N-CELL LDR,
-   6 OWNER-WID-MAX CMPI,  C-HI bad BCOND,
-   9 OWNER-WID-OFF MOVZ,  9 10 9 ADD,
-   8 0 MOVZ,  5 9 0 ADDI,
-   owner-loop LBL,  8 6 CMP,  C-GE widn BCOND,
-      14 5 OWNER-WID-PUB LDRW,  15 5 OWNER-WID-PRI LDRW,
-      14 bad CBZ,  15 bad CBZ,
-      4 OWNER-WID-LIMIT LIT64,
-      14 4 CMP,  C-HI bad BCOND,  15 4 CMP,  C-HI bad BCOND,
-      14 15 CMP,  C-EQ bad BCOND,
-      14 17 CMP,  C-LS pub-max BCOND,  17 14 0 ADDI,
-   pub-max LBL,
-      15 17 CMP,  C-LS pri-max BCOND,  17 15 0 ADDI,
-   pri-max LBL,
-      22 25 0 ADDI,  23 16 0 ADDI,  24 0 MOVZ,  1 0 MOVZ,
-   oscan LBL,  23 odone CBZ,
-      2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE onext BCOND,
-      2 22 0 LDR,  14 2 CMP,  C-NE onext BCOND,
-      2 22 8 LDR,  15 2 CMP,  C-NE onext BCOND,
-      24 24 1 ADDI,  24 1 CMPI,  C-HI bad BCOND,
-      1 22 0 ADDI,
-   onext LBL,
-      22 22 DREC ADDI,  23 23 1 SUBI,  oscan B,
-   odone LBL,
-      24 1 CMPI,  C-NE bad BCOND,
-      2 1 16 LDR,
-      0 2 12 LSLI,  0 0 12 LSRI,
-      0 bad CBZ,  0 $FF CMPI,  C-HI bad BCOND,
-      21 1 24 ADDI,
-      3 2 DNAME-EXT ANDI,  3 name-inline CBZ,
-         0 DNAME-INL CMPI,  C-LE bad BCOND,
-         21 1 24 LDR,
-         21 DBASE CMP,  C-LT bad BCOND,
-         21 21 DBASE SUB,  21 21 25 ADD,
-         21 25 CMP,  C-LT bad BCOND,  21 10 CMP,  C-HI bad BCOND,
-         2 10 21 SUB,  0 2 CMP,  C-HI bad BCOND,
-         name-ready B,
-      name-inline LBL,
-         0 DNAME-INL CMPI,  C-GT bad BCOND,
-      name-ready LBL,
-      4 0 MOVZ,
-      name-loop LBL,  4 0 CMP,  C-GE name-ok BCOND,
-         2 21 4 ADD,  2 2 0 LDRB,
-         2 $3A CMPI,  C-EQ bad BCOND,
-         4 4 1 ADDI,  name-loop B,
-      name-ok LBL,
-      24 0 MOVZ,  22 25 0 ADDI,  23 16 0 ADDI,
-      pkg-scan LBL,  23 pkg-done CBZ,
-         2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE pkg-next BCOND,
-         3 22 16 LDR,
-         2 3 12 LSLI,  2 2 12 LSRI,  2 0 CMP,  C-NE pkg-next BCOND,
-         4 22 24 ADDI,
-         2 3 DNAME-EXT ANDI,  2 pkg-inline CBZ,
-            0 DNAME-INL CMPI,  C-LE bad BCOND,
-            4 22 24 LDR,
-            4 DBASE CMP,  C-LT bad BCOND,
-            4 4 DBASE SUB,  4 4 25 ADD,
-            4 25 CMP,  C-LT bad BCOND,  4 10 CMP,  C-HI bad BCOND,
-            2 10 4 SUB,  0 2 CMP,  C-HI bad BCOND,
-            pkg-ready B,
-         pkg-inline LBL,
-            0 DNAME-INL CMPI,  C-GT bad BCOND,
-         pkg-ready LBL,
-         7 0 MOVZ,
-         pkg-bytes LBL,  7 0 CMP,  C-GE pkg-hit BCOND,
-            2 4 7 ADD,  2 2 0 LDRB,
-            3 2 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  2 2 3 ORR,
-            12 21 7 ADD,  12 12 0 LDRB,
-            13 12 $41 SUBI,  13 $1A CMPI,  13 C-CC CSET,  13 13 5 LSLI,  12 12 13 ORR,
-            2 12 CMP,  C-NE pkg-next BCOND,
-            7 7 1 ADDI,  pkg-bytes B,
-         pkg-hit LBL,
-            24 24 1 ADDI,  24 1 CMPI,  C-HI bad BCOND,
-      pkg-next LBL,
-         22 22 DREC ADDI,  23 23 1 SUBI,  pkg-scan B,
-      pkg-done LBL,
-         24 1 CMPI,  C-NE bad BCOND,
-      12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,
-      2 PROT-WID-MAX MOVZ,  14 2 CMP,  C-CS owner-prot BCOND,
-         12 14 4 3 2 PROT-BITS-AT,
-         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
-   owner-prot LBL,
-      2 PROT-WID-MAX MOVZ,  15 2 CMP,  C-CS owner-prev-start BCOND,
-         12 15 4 3 2 PROT-BITS-AT,
-         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
-   owner-prev-start LBL,
-      4 0 MOVZ,  12 9 0 ADDI,
-   owner-prev LBL,  4 8 CMP,  C-GE owner-next BCOND,
-      2 12 OWNER-WID-PUB LDRW,  3 12 OWNER-WID-PRI LDRW,
-      14 2 CMP,  C-EQ bad BCOND,  14 3 CMP,  C-EQ bad BCOND,
-      15 2 CMP,  C-EQ bad BCOND,  15 3 CMP,  C-EQ bad BCOND,
-      12 12 OWNER-WID-ROW ADDI,  4 4 1 ADDI,  owner-prev B,
-   owner-next LBL,
-      5 5 OWNER-WID-ROW ADDI,  8 8 1 ADDI,  owner-loop B,
 
    widn LBL,
    6 10 WIDN-CELL LDR,
@@ -4532,18 +4423,18 @@ variable CFSK2
    snomag B,
    snpresent LBL,
    5 SNAP-MAGIC LIT64,
-   13 12 48 SUBI,  14 13 0 LDR,  14 5 CMP,  C-EQ snnew BCOND,
-   13 12 40 SUBI,  14 13 0 LDR,  14 5 CMP,  C-NE snbad BCOND,
+   13 12 SNAP-TRL-BYTES SUBI,  14 13 0 LDR,  14 5 CMP,  C-EQ snnew BCOND,
+   13 12 SNAP-TRL-LEGACY-BYTES SUBI,  14 13 0 LDR,  14 5 CMP,  C-NE snbad BCOND,
    snbadver B,
    snnew LBL,
-      14 13 40 LDR,
+      14 13 SNAP-TRL-VERSION LDR,
       5 SNAP-FORMAT-VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
    snhave LBL,
    12 13 0 ADDI,
-   21 12 8 LDR,
-   15 12 16 LDR,
-   6 12 24 LDR,
-   7 12 32 LDR,
+   21 12 SNAP-TRL-TBASE LDR,
+   15 12 SNAP-TRL-NDICT LDR,
+   6 12 SNAP-TRL-REGLEN LDR,
+   7 12 SNAP-TRL-DATALEN LDR,
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
    5 DICT-SIZE LIT64,  6 5 CMP,  C-LT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
@@ -4560,7 +4451,7 @@ variable CFSK2
    snbadver LBL,  s" hb: snapshot format version unsupported" 80 C-EXIT-DIAG
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
-   22 11 6 SUB,  22 22 7 SUB,  22 22 48 SUBI,
+   22 11 6 SUB,  22 22 7 SUB,  22 22 SNAP-TRL-BYTES SUBI,
    8 12 7 SUB,  8 8 6 SUB,
    EMIT-SNAPSHOT-COPY-CODE
    EMIT-SNAPSHOT-COPY-DATA
@@ -4584,7 +4475,6 @@ variable CFSK2
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
-   9 DATA OWNER-WID-N-CELL STR,
    10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
    11 PROT-BITS-BYTES MOVZ,
    pwclr LBL,  11 pwclrd CBZ,
@@ -5914,12 +5804,14 @@ variable P2SK
    lcnotnum LBL, ;
 
 : EMIT-COMPILE-ARITH-OPS ( n -- ) {: lmain :}
-   lmain LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ VOPI-ENTRY
-   lmain LKWMINUS 1 ['] VF- ['] E- ['] EI- VOPI-ENTRY
+   lmain LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ 4095 VOPI-ENTRY
+   lmain LKWMINUS 1 ['] VF- ['] E- ['] EI- 4095 VOPI-ENTRY
    lmain LKWSTAR  1 ['] VF* ['] E* VOP-ENTRY
    lmain LKWAND2  3 ['] FAND ['] EAND VOP-ENTRY
    lmain LKWOR2   2 ['] FOR2 ['] EOR2 VOP-ENTRY
-   lmain LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY ;
+   lmain LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY
+   lmain LKWLSH 6 ['] FLSH ['] ELSH ['] EILSH 63 VOPI-ENTRY
+   lmain LKWRSH 6 ['] FRSH ['] ERSH ['] EIRSH 63 VOPI-ENTRY ;
 
 : EMIT-COMPILE-SHUFFLE-OPS ( n -- ) {: lmain :}
    lmain LKWDUP2  3 1 ['] XDUP  VSHUF-ENTRY
@@ -6481,7 +6373,7 @@ variable P2SK
 
 : EMIT-LABEL-OPS ( -- )
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !
-   LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !
+   LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !  LBL LKWLSH !  LBL LKWRSH !
    LBL LKWDUP2 !  LBL LKWDROP2 !  LBL LKWSWAP2 !
    LBL LKWOVER2 !  LBL LKWNIP2 !
    LBL LKWEQ2 !  LBL LKWNE2 !  LBL LKWLT2 !
@@ -6565,7 +6457,7 @@ variable P2SK
 : EMIT-SOURCE-BYTES ( -- )
    LSRC @ LBL,  SRCA @ SRCN @ BYTES, ;
 
-: EMIT-FORTH ( src-a src-u -- )
+: ENGINE-EMIT:FORTH ( src-a src-u -- )
    SRCN !  SRCA !
    EMIT-RESET-BUILDER
    EMIT-LABELS
@@ -6574,12 +6466,12 @@ variable P2SK
 
 \ Build a standalone native Forth that interprets `src`, write it to `outfile`.
 : FORTH-EXE ( src-a src-u out-a out-u -- )
-   2>r  EMIT-FORTH  2r> EMIT-EXE ;
+   2>r  ENGINE-EMIT:FORTH  2r> EMIT-EXE ;
 
 : FORTH-BUILD-EXE ( src-a src-u out-a out-u -- )
    2>r
    BUILD-SOURCE? on
-   ['] EMIT-FORTH catch
+   ['] ENGINE-EMIT:FORTH catch
    BUILD-SOURCE? off
    throw
    2r> EMIT-EXE ;
@@ -6587,5 +6479,5 @@ variable P2SK
 \ Build a standalone native Forth that reads its program from STDIN (batch REPL),
 \ write it to `outfile`:  echo ': SQ DUP * ; 5 SQ .' | ./outfile
 : FORTH-REPL-EXE ( out-a out-u -- )
-   STDIN? on  s" "  ['] EMIT-FORTH catch  STDIN? off  throw  \ restore mode even on error
+   STDIN? on  s" "  ['] ENGINE-EMIT:FORTH catch  STDIN? off  throw  \ restore mode even on error
    EMIT-EXE ;

@@ -5,17 +5,18 @@
 \ forms the numerical gradient by central differences: perturb each x[j] by +-eps,
 \ re-run the forward SOFTMAX-ROWS, and accumulate sum_i dy[i]*(y+[i]-y-[i])/(2eps).
 \ Both use the SAME ex2.approx forward, so they agree to finite-diff + f32 error.
-\ Fully checked Habu via lib/ffi.f. Self-contained: spawns bin/hb to emit ONE PTX
+\ Fully checked Habu via lib/ffi-abi.f. Self-contained: spawns bin/hb to emit ONE PTX
 \ module holding BOTH the forward SOFTMAX_ROWS and the AD-derived SOFTMAX_BWD kernels
 \ (tools/ptx/softmax-fb-cg.f), ptxas-assembles it to a PRIVATE per-run cubin under a
 \ toolchain root, loads that SINGLE cubin, and pulls BOTH function handles from it -
 \ no shared /tmp/softmax.cubin + /tmp/softmax-bwd.cubin pair. Load after lib/errors.f
 \ lib/string.f lib/test.f lib/float.f lib/fmt.f src/arch/ptx/emit.f lib/ptx/cg.f
-\ lib/ptx/header.f lib/ptx/launch.f lib/ffi.f maki/array.f.
+\ lib/ptx/header.f lib/ptx/launch.f lib/ffi-abi.f maki/array.f.
 
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/test.f
 require maki/array.f
@@ -30,6 +31,8 @@ require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
 package SOFTMAX-GRADCHECK
+
+using F32
 
 private
 
@@ -50,8 +53,8 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src dst :}  GCK 0 ?do  src i T-GET F64>F32  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src dst :}  GCK 0 ?do  src i F32@ F32>F64  dst i T-SET  loop ;
+: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : GC-OUT-GUARD ( -- )  GCK 0 ?do  GC-OUT i F32@ PTXSENT:GUARD drop  loop ;  \ fail closed if the copy-back was dropped
 
 \ device availability (false iff off-device); false means Mac/CI, so the gradcheck skips
@@ -84,12 +87,12 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    GC-CTX GC-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    GC-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    GC-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ GC-P1 >CSTR
+   PTXTC:CUBIN$ GC-P1 FFI:CSTR
    GC-MF GC-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
    GC-MF @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SOFTMAX_ROWS" GC-KF >CSTR
+   s" SOFTMAX_ROWS" GC-KF FFI:CSTR
    GC-FWD GC-MF @ >CUDA-MOD GC-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
-   s" SOFTMAX_BWD" GC-KB >CSTR
+   s" SOFTMAX_BWD" GC-KB FFI:CSTR
    GC-BWD GC-MF @ >CUDA-MOD GC-KB CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0      \ same module, second entry
    GC-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   GC-dX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    GC-dDY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  GC-dDY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
@@ -169,4 +172,5 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 
 SOFTMAX-GRADCHECK-MAIN
 
+;using
 ;package

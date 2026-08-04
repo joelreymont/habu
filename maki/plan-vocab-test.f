@@ -55,7 +55,7 @@ public
 package MAKI
 
 : PVT-DESC ( n n -- tensor ) {: rows:n cols:n :}   \ f32 row-major planning descriptor
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC ;
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC ;
 : PVT-IN ( n n -- tensor ) {: node:n k:n :}  node k TENSOR:PLAN-IN@ ;   \ k-th input handle
 : PVT-OUT ( n -- tensor ) {: node:n :}  node TENSOR:PLAN-OUT@ ;         \ output handle
 

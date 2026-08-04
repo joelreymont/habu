@@ -33,6 +33,7 @@ require lib/ptx/tile-pipe.f
 \ MM-PARAMS) are asserted as the related A[M,K], B[K,N], C[M,N] operands. The
 \ caller's launch contract guarantees it, exactly as MK-SPAN's caller guarantees
 \ the extent; token values are the param register numbers (phantom).
+\ Retirement owner: habu-ptx-phantom-preserving-3df9db92.
 TRUSTED: MM-ABI ( -- matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> )
    1 2 3 ;
 

@@ -21,6 +21,6 @@ Owned result: package-diff-lint parses and evaluates src/core/checker.f and src/
 
 Acceptance and smallest owning check: a negative regression in tools/package-diff-lint-test.f built from the minimal construct that reproduces the throw, proving the lint reports a finding rather than throwing. Then, on a real diff artifact, a new global definition added to src/core/checker.f is either reported as E-PACKAGE-OWNERSHIP or admitted by a documented allowlist decision, and the same for src/core/sumtype.f, with no E-DIFF-SYNTAX in either case. The control files above keep their current verdicts unchanged. A mutation that restores the old parse behaviour must red the new regression.
 
-Verify: bin/hb --load tools/package-diff-lint-test.f, the measured survey above rerun on the changed tree, typed-local-diff-lint and package-diff-lint on the exact diff, host-lint.
+Verify: bin/hb --load tools/package-diff-lint-test.f, the measured survey above rerun on the changed tree, and typed-local-diff-lint and package-diff-lint on the exact diff.
 
 Files: tools/package-diff-lint-core.f, tools/package-diff-lint-test.f, and whichever source file the root cause implicates. Claim: unassigned.

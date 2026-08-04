@@ -678,9 +678,9 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
    CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then     \ generous ceiling (transactional)
    CAP-IN-N @ CAP-IN-ENSURE                             \ derive input-handle column from the model
    a u PARSE-SHAPE {: rows:n cols:n :}
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC
    CAP-IN-N @ CAP-IN!                                                        \ handle for the seed
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop           \ register the IR input slot
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop           \ register the IR input slot
    a u SPEC-NAME {: na:ptr nu:n :}
    nu 0 > if  na nu NT-BIND drop  else  CAP-SYNTH-NAME  then
    CAP-IN-N @ 1+ CAP-IN-N ! ;
@@ -835,6 +835,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ The body reads every input / named value from the slot table by index (no per-input local,
 \ no dynamic-arity stack push). TRUSTED: `evaluate` is metaprogramming the checker cannot
 \ express; the compiled body is fully checked by the active hook (dot habu-checker-reentrancy-certify).
+\ Retirement owner: habu-primitive-effect-axiom-1119f176.
 TRUSTED: CAP-COMPILE-RUN ( -- )
    NT-N @ 1- CAP-SLOT-ENSURE                       \ size the slot table to the interned slot count
    CAP-IN-N @ 0 ?do  i CAP-IN@ i CAP-SLOT!  loop    \ store input descriptors into slots 0..N-1

@@ -1,4 +1,7 @@
 \ layout.f -- linux-aarch64 executable/data layout constants.
+\ Trusted rows publish fixed ELF image offsets/sizes and refine computed runtime
+\ image/GOT addresses for header and loader-slot reads.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 
 96 constant IMAGE-TEXT-SIZE-OFF
 $1000 constant IMAGE-TEXT-CONTENT-ADJ
@@ -38,7 +41,7 @@ TRUSTED: LINUX-VA>PTR ( va -- ptr n ) ;
 s" IMAGE-TEXT-SIZE-OFF" s" -- n" TRUST
 s" IMAGE-TEXT-CONTENT-ADJ" s" -- n" TRUST
 s" IMAGE-TEXT-TRAILER-ADJ" s" -- n" TRUST
-s" DATA-VA" s" -- ptr a" TRUST
+s" DATA-VA" s" -- va" TRUST
 s" DATA-SIZE" s" -- n" TRUST
 s" CODE-OFF" s" -- n" TRUST
 s" LINUX-DLOPEN-SLOT-OFF" s" -- n" TRUST

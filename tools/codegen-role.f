@@ -311,7 +311,8 @@ variable CGR-RTE
 \ ---- dynamic-compile boundaries ----
 \ The checker intentionally rejects `evaluate` inside checked definitions
 \ (INCLUDE-EVALUATE precedent); extracted real-source text crosses here and any
-\ failure is renamed E-CGR-EVAL by the wrappers below.
+\ failure is renamed E-CGR-EVAL by the wrappers below. CGR-EVALUATE and
+\ CGR-CHECK! retire with habu-primitive-effect-axiom-1119f176.
 TRUSTED: CGR-EVALUATE ( ptr u8 n -- ) evaluate ;
 
 \ Checker boundary: certify an extracted definition before compiling it, the
@@ -328,6 +329,8 @@ TRUSTED: CGR-CHECK! ( ptr u8 n -- n ) CHECK! ;
 \ off would compile later eval'd support definitions untyped and poison later
 \ CHECK! calls. CGR-HOOK mirrors the image's frozen session hook
 \ (src/habu/snap-lib.f SNAP-CHECK-HOOK) byte for byte.
+\ The literal `0 set-check` and hook rearm retire under TYPE-FIXES-PLAN item 26's
+\ `NO-TYPE-CHECK ... ;NO-TYPE-CHECK` block.
 TRUSTED: CGR-EVALUATE-UNCHECKED ( ptr u8 n -- ) 0 set-check evaluate ;
 TRUSTED: CGR-HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> IF 70 throw THEN ;
 TRUSTED: CGR-HOOK! ( -- )

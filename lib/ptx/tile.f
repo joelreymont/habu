@@ -19,6 +19,8 @@
 \ derived masks are distinct unless an explicit constructor stamps the same token.
 \ Span extent freshness is the same checker mechanism for MK-SPAN-style
 \ constructors; fixed kernel-ABI spans may still assert a named extent token.
+\ Retirement owner for every trusted site below:
+\ habu-ptx-phantom-preserving-3df9db92.
 \ Load after lib/errors.f.
 
 require lib/ptx/rep.f

@@ -26,7 +26,7 @@ package OBJ
 $40000 constant CAP
 $1000 constant FIELD-CAP
 64 constant HASH-U
-8 constant ROW-BASE
+6 constant ROW-BASE
 9 constant TAB
 10 constant LF
 13 constant CR
@@ -85,8 +85,6 @@ variable LOAD-OFF
 
 : MAGIC+ ( -- )
    s" HBOBJ" BYTES+
-   TAB+
-   s" 1" BYTES+
    LF+ ;
 
 : FLAG! ( ptr a -- ) {: flag:ptr :}
@@ -309,7 +307,7 @@ private
    ;MATCH ;
 
 : MAGIC-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" HBOBJ	1" STR= 0= if E-OBJ-SCHEMA throw then ;
+   a u s" HBOBJ" STR= 0= if E-OBJ-SCHEMA throw then ;
 
 : END-LF ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-OBJ-SCHEMA throw then
@@ -418,7 +416,7 @@ public
 \ name, a test mode, and the forged seed cells (big-endian u64 hex, tag last).
 \ Recording it in the object bytes makes a preseeded object distinct from a
 \ normal MAIN object (OBJ:KEY-HEX diverges) and lets the object self-describe its
-\ non-MAIN entry. docs/census-tfam-10.md Category 2.
+\ non-MAIN entry.
 : ENTRY+ ( ptr u8 n n ptr u8 n -- )
    s" entry" LINE3N ;
 
@@ -492,7 +490,7 @@ public
 : KEY-HEX ( ptr u8 -- ) {: dst:ptr :}
    BYTES$ DG SHA256
    CONTENT-KEY:RESET
-   s" habu-object-record-key-v1" CONTENT-KEY:TEXT+
+   s" habu-object-record-key" CONTENT-KEY:TEXT+
    DG CONTENT-KEY:DIGEST+
    dst CONTENT-KEY:FINAL-HEX ;
 

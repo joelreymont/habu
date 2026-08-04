@@ -13,12 +13,13 @@
 \ group wires, truncations via ENC-B). Fail closed on the encoder's own state
 \ only: an unbalanced ;ENC-SUB / an ENC$ inside an open sub throws E-ONNX-ENC;
 \ a level overflowing its buffer or the depth cap throws E-ONNX-ENC-CAP. Floats
-\ are appended as little-endian IEEE-754 f32 via F64>F32 (lib/ptx/cg.f, the
+\ are appended as little-endian IEEE-754 f32 via F32:NARROW (lib/float32.f, the
 \ audited narrowing). ONNX owns -5220..-5239; encode.f uses -5236..-5237.
 
 require lib/prelude.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -76,7 +77,7 @@ public
    u 0 ?do  a i + c@ ENC-B  loop ;
 
 : ENC-F32 ( r -- )                             \ append 4 raw LE f32 bytes (payload element)
-   F64>F32 {: b:n :}
+   F32:NARROW {: b:n :}
    b $FF and ENC-B          b 8 rshift $FF and ENC-B
    b 16 rshift $FF and ENC-B  b 24 rshift $FF and ENC-B ;
 

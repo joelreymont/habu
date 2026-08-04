@@ -8,4 +8,4 @@ blocks:
   - habu-cut-over-staged-070d68c8
 ---
 
-Full context: design Wave 8 compiles the new compiler with itself, proves a byte-identical fixpoint, makes it default after release-quality green evidence, deletes old direct paths, and lowers trust/size ratchets atomically. Acceptance: complete candidate suite and design section 21 native exits pass on the exact cutover tree.
+Full context: `docs/compiler-ir-design.md` Wave 8 compiles the new compiler with itself, proves a byte-identical fixpoint, makes it default after release-quality green evidence, deletes old direct paths, and updates the current size baseline atomically. Acceptance: the complete candidate suite and Wave 8 native exits pass on the exact cutover tree.

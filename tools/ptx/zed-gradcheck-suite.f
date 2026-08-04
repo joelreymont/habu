@@ -143,7 +143,7 @@ variable AGS-PTX-U
    s" cd ~/Work/habu && ./bin/hb --load" CMD-TOK
    s" lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f" CMD-TOK
    s" src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f" CMD-TOK
-   s" lib/ffi.f maki/cuda-types.f maki/cuda-driver.f" CMD-TOK
+   s" lib/ffi-abi.f lib/ptx/cuda-driver.f" CMD-TOK
    SCRATCH$ CMD-TOK  s" /ad-gradcheck-launch.f" CMD-RAW
    s" --" CMD-TOK  dir diru CMD-TOK ;
 

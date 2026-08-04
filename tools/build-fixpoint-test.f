@@ -25,16 +25,13 @@ $40000 constant BFT-BIG-CAP
 120000 constant BFT-TIMEOUT-MS
 13 constant BFT-BUILD-ARGV#
 
-\ Snapshot trailer field offsets from the magic cell (src/habu/snap-lib.f
-\ SNAP-WRITE-BYTES): magic +0, text base +8, ndict +16, region len +24,
-\ data len +32, format version +40.
-16 constant BFT-TRL-NDICT
-24 constant BFT-TRL-REGLEN
-40 constant BFT-TRL-VERSION
+\ The snapshot trailer's size and field offsets are owned by src/habu/layout.f
+\ (SNAP-TRL-BYTES, SNAP-TRL-NDICT, SNAP-TRL-REGLEN, SNAP-TRL-DATALEN,
+\ SNAP-TRL-VERSION); the writer, the loader and this fixture all read them from
+\ there, so a format change cannot leave one side addressing the wrong cells.
 
 package BFT-SNAP-HOOK
 private
-32 constant TRL-DATALEN
 $A5 constant FORGE
 $4A constant MISSING-RC
 ;package
@@ -65,8 +62,6 @@ variable BFT-READ-A
 variable BFT-READ-CAP
 variable BFT-BYTES-A
 variable BFT-BYTES-N
-variable BFT-MAG-I
-variable BFT-MAG-LAST
 variable BFT-PROF-I
 variable BFT-REG-I
 variable BFT-JIT-I
@@ -718,30 +713,24 @@ public
 
 \ Doctored snapshot-trailer regression (TFAM 12 item 6, dot
 \ habu-tfam-12-layout-057181a9): the loader EM-SNAPSHOT-RESTORE
-\ (src/habu/habu2.f) validates the 48-byte format-versioned trailer before
-\ restoring regions - version cell > SNAP-FORMAT-VERSION exits 80
+\ (src/habu/habu2.f) validates the format-versioned trailer before restoring
+\ regions - a version cell that is not SNAP-FORMAT-VERSION exits 80
 \ (E-SNAP-VERSION), an oversized region-len/data-len/ndict field exits 79
-\ (corrupt trailer). The snapshot binary is built through the SAME gated route
+\ (corrupt trailer). The snapshot binary
+\ is built through the SAME gated route
 \ the pipeline uses (BF-SNAP-SOURCE + BF-CERTIFY-SNAP + hb-stdin --build
 \ hb-snap-src -> hb-snap0, the BF-BUILD-SNAP-FROM-STDIN mechanism): snap.f's
 \ former 0 set-check window is now the TRUSTED: SNAP-RETIRE-GO boundary, so
 \ the emitted snap source certifies clean and the `-- snap` route is gated
 \ end-to-end again (dot habu-tfam-12-item-346f03c2 part 1).
-\ Measured facts this fixture encodes (macOS/arm64, 2026-07-09):
-\ - The trailer magic is NOT at FILE-SIZE-48: SNAP-EXTRA-SIZE padding and the
-\   codesign blob follow it, so the fixture SCANS for the LAST SNAP-MAGIC
-\   occurrence (the trailer is written after both payloads; nothing after it
-\   contains the magic).
+\ The target header's full 64-bit text-size field owns the trailer location;
+\ padding and the codesign blob may follow the trailer.
 \ - A patched image must be re-signed (CODESIGN:FORCE) or macOS SIGKILLs it
 \   before the loader runs.
-\ - Corrupting the magic itself is NOT a rejection: both trailer probes miss
-\   and the engine falls through to a COLD boot (rc 0) by design, so there is
-\   no magic-corruption leg.
-\ - EM-SNAPSHOT-RESTORE now labels both fatal exits on fd 2 before the
-\   NR-EXIT-GROUP (dot habu-tfam-12-item-346f03c2 part 2): rc 79 prints
-\   "hb: snapshot trailer corrupt", rc 80 prints
+\ - EM-SNAPSHOT-RESTORE labels both fatal exits on fd 2 before NR-EXIT-GROUP:
+\   rc 79 prints "hb: snapshot trailer corrupt", rc 80 prints
 \   "hb: snapshot format version unsupported". BFT-DOCTORED-CAPTURE captures the
-\   doctored engine's stderr so this fixture asserts the diagnostic TEXT, not
+\   doctored engine's stderr, so this fixture asserts the diagnostic TEXT and not
 \   just the rc.
 : BFT-BYTES-FIELD ( -- ptr ptr u8 )
    BFT-BYTES-A 0 ptr-field ;
@@ -769,24 +758,6 @@ public
    sz MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BYTES-FIELD !
    s" hb-snap0" BF-A$ BFT-BYTES sz READ-ALL BFT-BYTES-N ! ;
 
-: BFT-MAGIC$ ( -- ptr u8 n )
-   s" !SNAPSBH" ;
-
-: BFT-MAGIC-STEP ( -- bool )
-   BFT-BYTES BFT-BYTES-N @ BFT-MAG-I @ BFT-MAGIC$ BFT-FIND-AFTER MATCH option
-     none OF 0 0= 0= exit ENDOF
-     some OF IDX>N ENDOF
-   ;MATCH {: i:n :}
-   i BFT-MAG-LAST !
-   i 1 + BFT-MAG-I !
-   0 0= ;
-
-: BFT-MAGIC-LAST! ( -- )
-   0 BFT-MAG-I !
-   -1 BFT-MAG-LAST !
-   begin BFT-MAGIC-STEP 0= until
-   BFT-MAG-LAST @ 0 >= TTRUE ;
-
 : BFT-BYTE@ ( n -- n ) {: off:n :}
    BFT-BYTES off BYTE+ c@ ;
 
@@ -802,8 +773,11 @@ private
       off i + BFT-BYTE@ i 8 * lshift or
    loop ;
 
+: TRAILER-OFF ( -- n )
+   IMAGE-TEXT-SIZE-OFF U64@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - ;
+
 : DATA-OFF ( -- n )
-   BFT-MAG-LAST @ dup TRL-DATALEN + U64@ - ;
+   TRAILER-OFF dup SNAP-TRL-DATALEN + U64@ - ;
 
 : HOOK-OFF ( -- n )
    DATA-OFF ENGINE-SNAP-XT-CELL + ;
@@ -887,7 +861,7 @@ private
 : RAW ( -- )
    HOOK-OFF {: off:n :}
    off 0 >= TTRUE
-   off 8 + BFT-MAG-LAST @ <= TTRUE
+   off 8 + TRAILER-OFF <= TTRUE
    off U64@ 0 T= ;
 
 : STARTUP ( -- )
@@ -951,28 +925,32 @@ public
 
 ;package
 
-: BFT-TEST-SNAP-TRAILER ( -- )
+package BFT-SNAP-HOOK
+private
+
+: TEST-TRAILER ( -- )
    BFT-ROOT BF-TMP!
    BFT-SNAP0-BUILD
    BFT-EMPTY-STDIN!
    s" hb-snap0" BFT-SNAP-RUN 0 T=
    s" hb-snap0" BF-A$ s" lib/prelude.f" BF-RUN-LOAD-STAGE 0 T=
    BFT-BYTES-READ
-   BFT-MAGIC-LAST!
-   BFT-SNAP-HOOK:VERIFY-IMAGE
-   BFT-MAG-LAST @ {: mag:n :}
-   mag BFT-TRL-VERSION + BFT-BYTE@ SNAP-FORMAT-VERSION T=
-   mag BFT-TRL-VERSION + 2 BFT-DOCTORED-CAPTURE
+   VERIFY-IMAGE
+   TRAILER-OFF {: tr:n :}
+   tr SNAP-TRL-VERSION + BFT-BYTE@ SNAP-FORMAT-VERSION T=
+   tr SNAP-TRL-VERSION + 2 BFT-DOCTORED-CAPTURE
    80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
-   mag BFT-TRL-VERSION + $FF BFT-DOCTORED-CAPTURE
+   tr SNAP-TRL-VERSION + $FF BFT-DOCTORED-CAPTURE
    80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
    \ +4/+3: a MIDDLE byte of the 8-byte field keeps the value positive but
    \ far above REGION/DICT-CAP (top bytes could go negative or SIGSEGV).
-   mag BFT-TRL-REGLEN + 4 + $FF BFT-DOCTORED-CAPTURE
+   tr SNAP-TRL-REGLEN + 4 + $FF BFT-DOCTORED-CAPTURE
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
-   mag BFT-TRL-NDICT + 3 + $FF BFT-DOCTORED-CAPTURE
+   tr SNAP-TRL-NDICT + 3 + $FF BFT-DOCTORED-CAPTURE
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
    BF-TMP-RESET ;
+
+;package
 
 \ ---- effective source boundary --------------------------------------------
 \ The cold prefix already occupies IBUFSZ and the reader performs an EOF probe,
@@ -1422,7 +1400,10 @@ public
    a u type s" : throw " type rc . cr
    s" build-fixpoint-test: subtest threw" T-EX-FAIL die ;
 
-: BFT-MAIN ( -- )
+package BFT-SNAP-HOOK
+public
+
+: RUN ( -- )
    T-RESET
    BFT-PREPARE
    s" tmp override" [: BFT-TEST-TMP-OVERRIDE ;] BFT-STEP
@@ -1461,7 +1442,7 @@ public
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
    s" snap missing hook" [: BFT-SNAP-HOOK:MISSING ;] BFT-STEP
-   s" snap trailer" [: BFT-TEST-SNAP-TRAILER ;] BFT-STEP
+   s" snap trailer" [: TEST-TRAILER ;] BFT-STEP
    s" source boundary" [: BFT-CAP:SOURCE-BOUNDARY ;] BFT-STEP
    s" stage2 source cap" [: BFT-CAP:STAGE2 ;] BFT-STEP
    s" maker source cap" [: BFT-CAP:MAKER ;] BFT-STEP
@@ -1470,4 +1451,6 @@ public
    T-REPORT
    s" build-fixpoint-test: ok" type cr ;
 
-BFT-MAIN
+;package
+
+BFT-SNAP-HOOK:RUN

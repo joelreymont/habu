@@ -8,8 +8,8 @@
 \ off identifiers, so `GRID-CTX` counts 3 and `span<space-global,f32,extent-n>`
 \ counts 12). Whitespace only separates. It is an ESTIMATE by construction -
 \ the honest dependency-free stand-in the eval matrix records NEXT TO the raw
-\ whitespace source-token proxy, so a generator-reported model count
-\ (transcript v1.1 `tokens`, docs/maki/eval.md) can be compared against both.
+\ whitespace source-token proxy, so a generator-reported `tokens` count
+\ (docs/maki/eval.md) can be compared against both.
 
 package EVAL
 

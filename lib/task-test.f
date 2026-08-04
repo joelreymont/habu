@@ -11,7 +11,7 @@ require lib/test/outcome.f
 package TASK-TEST
 
 : TASK-TEST-ALIGN8 ( -- )
-   here P>N 7 and 8 swap - 7 and allot ;
+   here FFI:>CELL 7 and 8 swap - 7 and allot ;
 
 TASK-TEST-ALIGN8
 variable TASK-COUNT
@@ -112,6 +112,8 @@ variable APP-BAD
 
 TASK-STRLEN-LOAD constant TASK-STRLEN-XT
 
+\ Exact strlen fixture pauses after task-local argument staging to prove tasks
+\ do not share FFI tables. Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    FFI:RESET
    cstr 0 FFI:READABLE!
@@ -296,8 +298,8 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    TASK-USER-CELL @ 99 T=
    WORKER-A TASK-USER-CELL TASK:HIS @ 11 T=
    WORKER-B TASK-USER-CELL TASK:HIS @ 22 T=
-   TASK-SELF-A @ WORKER-A P>N T=
-   TASK-SELF-B @ WORKER-B P>N T=
+   TASK-SELF-A @ WORKER-A FFI:>CELL T=
+   TASK-SELF-B @ WORKER-B FFI:>CELL T=
    WORKER-A TASK:KILL
    WORKER-B TASK:KILL
    TASK-COUNT @ 2 T=

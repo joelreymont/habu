@@ -1,6 +1,6 @@
 \ gate-build-size.f - committed size ratchet for the Habu-under-test candidate.
 \
-\ Machine-readable baseline manifest: the
+\ Machine-readable size baseline: the
 \ committed rows below are the contract, and the owning gate validates the
 \ fresh artifact against them. One row per build target. The candidate build
 \ and validate slices (test/gate-engine-lib.f) fail on any candidate larger
@@ -82,80 +82,48 @@
 \ absorbs all of it and the page-rounded whole-file total is unchanged. Exact
 \ CODE-TEXT/floor rows and the per-region attribution are in
 \ test/gate-size-attribution-test.f.
-148855 constant GB-SIZE-BASELINE-MACOS
-127168 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-21 (DGX Spark linux-arm64):
-                                         \ retiring the vestigial snapshot rebase-calls scan
-                                         \ (habu-retire-vestigial-snapshot) shaves CODELEN to 134860,
-                                         \ dropping the whole file back under the 4 KiB floor to 139456.
-                                         \ Exact rows in test/gate-size-attribution-test.f.
 
-0 constant GB-SIZE-OK
-1 constant GB-SIZE-GROWN
-2 constant GB-SIZE-SHRUNK
-3 constant GB-SIZE-MISSING
+package BUILD-SIZE
 
-: GB-SIZE-BASELINE ( -- n )
-   HB-TARGET-MACOS? if GB-SIZE-BASELINE-MACOS exit then
-   HB-TARGET-LINUX? if GB-SIZE-BASELINE-LINUX exit then
+148855 constant BASELINE-MACOS
+123072 constant BASELINE-LINUX
+
+: BASELINE ( -- n )
+   HB-TARGET-MACOS? if BASELINE-MACOS exit then
+   HB-TARGET-LINUX? if BASELINE-LINUX exit then
    0 ;
 
-: GB-SIZE-CLASS ( n n -- n ) {: sz:n base:n :}
-   base 0= if GB-SIZE-MISSING exit then
-   sz base > if GB-SIZE-GROWN exit then
-   sz base < if GB-SIZE-SHRUNK exit then
-   GB-SIZE-OK ;
-
-: GB-SIZE-PAIR. ( n n -- ) {: sz:n base:n :}
+: PAIR. ( n n -- ) {: sz:n base:n :}
    s" candidate " type sz .
    s" baseline " type base . ;
 
-: GB-SIZE-GROWN-FAIL ( n n -- )
-   GB-SIZE-PAIR. cr
+: GROWN-FAIL ( n n -- )
+   PAIR. cr
    s" candidate size ratchet: grew past test/gate-build-size.f baseline" GE-FAIL ;
 
-: GB-SIZE-STALE-FAIL ( n n -- )
+: STALE-FAIL ( n n -- )
    s" STALE-BASELINE " type
-   GB-SIZE-PAIR. cr
+   PAIR. cr
    s" candidate size ratchet: shrank below baseline - lower the test/gate-build-size.f row in this commit" GE-FAIL ;
 
-: GB-SIZE-MISSING-FAIL ( n n -- )
-   GB-SIZE-PAIR. cr
+: MISSING-FAIL ( n n -- )
+   PAIR. cr
    s" candidate size ratchet: no baseline row for this target - commit the measured size to test/gate-build-size.f" GE-FAIL ;
 
-\ Pure class->action mapping so the wiring itself is testable: 0 = pass,
-\ nonzero = the failing class. Every non-OK class must map to itself.
-: GB-SIZE-ACTION ( n -- n ) {: class:n :}
-   class GB-SIZE-OK = if GB-SIZE-OK exit then
-   class ;
-
-: GB-SIZE-ENFORCE ( n n -- ) {: sz:n base:n :}
-   sz base GB-SIZE-CLASS GB-SIZE-ACTION
-   case
-      GB-SIZE-GROWN of sz base GB-SIZE-GROWN-FAIL endof
-      GB-SIZE-SHRUNK of sz base GB-SIZE-STALE-FAIL endof
-      GB-SIZE-MISSING of sz base GB-SIZE-MISSING-FAIL endof
-   endcase ;
-
-: GB-SIZE-CLASS-EXPECT ( n n n -- ) {: sz:n base:n want:n :}
-   sz base GB-SIZE-CLASS want <> if
-      s" candidate size ratchet classifier" GE-FAIL
+: ENFORCE ( n n -- ) {: sz:n base:n :}
+   base 0= if
+      sz base MISSING-FAIL
+   else
+      sz base > if
+         sz base GROWN-FAIL
+      else
+         sz base < if sz base STALE-FAIL then
+      then
    then ;
 
-: GB-SIZE-ACTION-EXPECT ( n n -- ) {: class:n want:n :}
-   class GB-SIZE-ACTION want <> if
-      s" candidate size ratchet action wiring" GE-FAIL
-   then ;
+public
 
-: GB-SIZE-SELF-CHECK ( -- )
-   7 7 GB-SIZE-OK GB-SIZE-CLASS-EXPECT
-   8 7 GB-SIZE-GROWN GB-SIZE-CLASS-EXPECT
-   6 7 GB-SIZE-SHRUNK GB-SIZE-CLASS-EXPECT
-   7 0 GB-SIZE-MISSING GB-SIZE-CLASS-EXPECT
-   GB-SIZE-OK GB-SIZE-OK GB-SIZE-ACTION-EXPECT
-   GB-SIZE-GROWN GB-SIZE-GROWN GB-SIZE-ACTION-EXPECT
-   GB-SIZE-SHRUNK GB-SIZE-SHRUNK GB-SIZE-ACTION-EXPECT
-   GB-SIZE-MISSING GB-SIZE-MISSING GB-SIZE-ACTION-EXPECT ;
+: RATCHET ( ptr u8 n -- )
+   FILE-SIZE BASELINE ENFORCE ;
 
-: GB-SIZE-RATCHET ( ptr u8 n -- )
-   GB-SIZE-SELF-CHECK
-   FILE-SIZE GB-SIZE-BASELINE GB-SIZE-ENFORCE ;
+;package

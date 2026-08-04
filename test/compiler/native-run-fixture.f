@@ -47,7 +47,7 @@
 \ fixture, not a test, so it never names the harness verdict word and no gate
 \ schedules it on its own.
 
-require lib/ffi.f
+require lib/ffi-abi.f
 require src/compiler/native/emit.f
 
 package NRUN

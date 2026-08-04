@@ -1,9 +1,11 @@
 ---
 title: "ENUM: allow compact headers"
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-24T23:00:45.771927+02:00"
+closed-at: "2026-07-30T21:22:44.604322+02:00"
+close-reason: Landed by 11432f827b93 (Allow compact ENUM headers), verified in master ancestry; claim was stale
 blocks:
   - habu-enum-parse-full-39c0dc1b
 ---

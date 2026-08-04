@@ -36,9 +36,9 @@ package MAKI
 \ one 2x2 gelu model-IR node (the kernel-payload fixture)
 : ADT-IR1 ( -- )
    MIR-RESET
-   2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   2 2 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
    MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-   2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   2 2 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 \ one copy node + one kernel node on a single stream
 : ADT-BUILD-CK ( -- )

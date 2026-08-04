@@ -2,7 +2,9 @@
 \ primitives, helper routines, and seed dictionary. Needs asm.fs +
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
-\ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
+\ loop, keyword JIT and ENGINE-EMIT:FORTH follow in part 2 (habu2.f).
+\ Trusted rows expose the builder-mode cell and the data-driven raw-code emitter.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
 
@@ -138,7 +140,7 @@ variable FP-WID
 
 \ --- deref/execute arity-guard table (for the interpret-boundary guard) ---
 \ A deref/execute/dispatch prim (@ ! +! c@ c! atomic@ atomic! atomic-add
-\ atomic-cas count type execute run-in-stack int-mark min-in-mark owner-wid-*,
+\ atomic-cas count type execute run-in-stack int-mark min-in-mark,
 \ plus the census additions of dot habu-habu-certified-words-84e84eaf: evaluate
 \ catch ffi-call* patch32 search-wl set-check cp! ndict!) consumes garbage into
 \ a user-space deref, a BLR, or an engine control cell on a shallow stack,
@@ -211,12 +213,6 @@ variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
    EREG DREG CMP,  C-HI trap BCOND,             \ checked end > protected start
    skip LBL, ;
 
-: GUARD-ADDR-BAND ( n n n label -- ) {: addr:n off:n len:n trap:label :}
-   DREG addr DATA SUB,
-   EREG off LIT64,  EREG DREG EREG SUB,
-   DREG len LIT64,
-   EREG DREG CMP,  C-CC trap BCOND, ;
-
 package GUARD
 
 : BLOB-SPAN ( n label -- ) {: addr:n trap:label :}
@@ -229,19 +225,9 @@ package GUARD
    addr DREG CMP,  C-CC trap BCOND,
    skip LBL, ;
 
-: BLOB-ADDR ( n label -- ) {: addr:n trap:label :}
-   LBL {: skip:label :}
-   DREG DATA TXN-BLOB-A-CELL LDR,
-   DREG skip CBZ,
-   EREG addr DREG SUB,
-   DREG DATA TXN-BLOB-CAP-CELL LDR,
-   EREG DREG CMP,  C-CC trap BCOND,
-   skip LBL, ;
-
 public
 
 : SPAN ( n label -- ) BLOB-SPAN ;
-: ADDR ( n label -- ) BLOB-ADDR ;
 
 ;package
 
@@ -250,6 +236,8 @@ public
 \ tests, then every protected half-open interval is checked for intersection.
 \ The guard is inactive only while the canonical cold prefix owns the open
 \ friend latch. x12/x13 are the only clobbers.
+package ENGINE-EMIT
+
 : GUARD-SPAN ( n n -- ) {: addr:n len:n :}
    LBL LBL {: ok:label trap:label :}
    DREG DATA FRIEND-LATCH-CELL LDR,
@@ -258,7 +246,7 @@ public
    EREG addr len ADD,                   \ checked end = start + length
    EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND  addr OWNER-REG-OFF OWNER-REG-LEN trap GUARD-BAND
+   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND
    addr ENGINE-HOOK-OFF ENGINE-HOOK-LEN trap GUARD-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
@@ -266,6 +254,8 @@ public
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+
+;package
 
 package PROT-GUARD
 
@@ -295,21 +285,6 @@ public
    LPROTSPAN LABEL@ BL, ;
 
 ;package
-
-: PROT-GUARD ( n -- )
-   {: addr:n :}
-   LBL LBL {: ok:label trap:label :}
-   DREG DATA FRIEND-LATCH-CELL LDR,
-   DREG ok CBZ,
-   addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-ADDR-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND  addr OWNER-REG-OFF OWNER-REG-LEN trap GUARD-ADDR-BAND
-   addr ENGINE-HOOK-OFF ENGINE-HOOK-LEN trap GUARD-ADDR-BAND
-   addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-ADDR-BAND
-   addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
-   addr trap GUARD:ADDR
-   ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
 
 \ A code emission target owns one aligned instruction inside the writable code
 \ interval [DBASE+DICT-SIZE, DBASE+REGION). This invariant is independent of
@@ -1640,7 +1615,7 @@ variable SZA-I
 \ ---- FFI: AAPCS64 trampolines ----
 \ `ffi-call` keeps the old fast path: load 8 cells from argbuf into x0-x7,
 \ BLR fn, push x0. `ffi-call-abi`/`ffi-call-abi-r` add x8, d0-d7, caller-packed
-\ stack spill, and integer/float return variants for the checked lib/ffi.f API.
+\ stack spill, and integer/float return variants for the checked lib/ffi-abi.f API.
 \ argbuf must be a >=8-cell (64-byte) buffer; trailing cells are ignored by a
 \ callee that takes fewer args. XDS (x19) is AAPCS64 callee-saved so the C call
 \ preserves the data stack; x30 is framed by FPRIM (these prims have a BLR).
@@ -2152,42 +2127,6 @@ variable SZA-I
    msg LBL,  s" set-top-check: invalid top-row hook xt" BYTES,
    done LBL, ;
 
-package OWNER-WID-EMIT
-
-: HOOK-NOOP ( -- )
-;
-
-: SOURCE-DEFAULT ( -- ptr u8 n )
-   PNPOOL 0 ;
-
-public
-
-\ SOURCE-HOOK ( -- ptr u8 n ): image-source emitter for the sealed OWNER-WID
-\ package. Default SOURCE-DEFAULT emits the empty-pool source; install a custom
-\ emitter with SOURCE-HOOK!. Called by habu2 EMIT-SOURCE.
-defer SOURCE-HOOK ( -- ptr u8 n )
-
-: SOURCE-HOOK! ( [ -- ptr u8 n ] -- )
-   is SOURCE-HOOK ;
-
-\ PREFIX-HOOK ( -- ): seal-time prefix side effect. Default HOOK-NOOP preserves
-\ the prior unset-was-a-no-op contract; install one with PREFIX-HOOK!. Called by
-\ habu1 BSEALCAP.
-defer PREFIX-HOOK ( -- )
-
-: PREFIX-HOOK! ( [ -- ] -- )
-   is PREFIX-HOOK ;
-
-private
-
-: SOURCE-INIT ( -- )
-   [: SOURCE-DEFAULT ;] SOURCE-HOOK!
-   [: HOOK-NOOP ;] PREFIX-HOOK! ;
-
-SOURCE-INIT
-
-;package
-
 \ TFAM 2b-iii: capture the seal-time dictionary-truncation watermark. Called from
 \ SEAL-CAPTURE source tokens - the xref.f baseline plus the cold-prefix
 \ assembler's token at the true engine-prefix end (habu2.f
@@ -2202,8 +2141,10 @@ SOURCE-INIT
 \ pending table (layout.f PD-*) must be empty by the engine-prefix seal — checker.f
 \ drains it after `: TRUST`, and SEAL-CAPTURE only ever runs after checker.f. A
 \ non-empty table means DRAIN-PRETRUST never ran; name each undrained defer
-\ on fd 2 and exit 73. Leaf-safe (syscalls only, no BL); loop state stays off the
-\ write-clobbered x0-x2/x9 and re-derives the band base each iteration.
+\ on fd 2 and exit 73. Loop state stays off the write-clobbered x0-x2/x9 and
+\ re-derives the band base each iteration.
+package ENGINE-EMIT
+
 : BSEALCAP ( -- )
    LBL LBL LBL {: pdok pdloop pdexit :}   \ typed-local-lint: allow-bare-local
    9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,   \ x10 = pending count; 0 -> drained
@@ -2218,8 +2159,9 @@ SOURCE-INIT
          13 13 1 ADDI,  pdloop B,
       pdexit LBL,  0 73 MOVZ,  NR-EXIT-GROUP SYS,
    pdok LBL,
-   NDICT DATA SEAL-NDICT-CELL STR,
-   OWNER-WID-EMIT:PREFIX-HOOK ;
+   NDICT DATA SEAL-NDICT-CELL STR, ;
+
+;package
 
 : BSEALFRIEND ( -- )
    9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
@@ -2270,6 +2212,8 @@ SOURCE-INIT
    C A 16 LDR,  C C B ORR,  C A 16 STR,
    2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
+package ENGINE-EMIT
+
 \ PROT-BITS-ADDR, ( base w a m scratch -- ): emit the bitmap addressing sequence.
 \ xbase holds the region base (DATA live, or a snapshot/AOT image's DATA source) and
 \ xw the WID; xa comes back holding &word-containing-the-bit and xm that bit's mask.
@@ -2312,6 +2256,8 @@ SOURCE-INIT
    16 16 14 ORR,
    16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
+
+;package
 
 \ prot-wid-room ( -- n ): how many more wordlists may still be allocated AND
 \ protected. Every WID below PROT-WID-MAX has a bit, so the only thing that can run
@@ -2527,6 +2473,8 @@ SOURCE-INIT
    s" wait-rc" ['] BWAITRC FPRIM-L
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
 
+package ENGINE-EMIT
+
 : EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
@@ -2542,6 +2490,8 @@ SOURCE-INIT
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;
+
+;package
 
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM   s" ioctl" ['] BIOCTL FPRIM
@@ -2574,11 +2524,15 @@ SOURCE-INIT
    s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
    s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 
+package ENGINE-EMIT
+
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
    EMIT-PROCESS-PRIMS  EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS
    EMIT-CHECKER-PRIMS ;
+
+;package
 
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
@@ -2732,6 +2686,8 @@ SOURCE-INIT
 \ reaches it by a direct branch is carried into an ahead-of-time image and
 \ relocated. The label is reserved in the habu2.f LABELS allocator (its CORE
 \ block) so the record spans exactly [start, end).
+package ENGINE-EMIT
+
 : EMIT-PROT-SPAN ( -- )
    LPROTSPAN LABEL@ {: start:label :}
    LBL {: end:label :}
@@ -2758,6 +2714,8 @@ SOURCE-INIT
    0 9 14 LSRI,  0 0 14 LSLI,  1 $8000 MOVZ,  NR-MPROTECT SYS,  RET,
    EMIT-PROT-SPAN ;
 
+;package
+
 \ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
 \ wid is a protected wordlist, else 0. The two engine-reserved OWNER-API
 \ wordlists (public=1, private=2) are ALWAYS protected: they are the sealed
@@ -2776,6 +2734,8 @@ SOURCE-INIT
 \ bound, a silently-unprotected one cannot. Preserves x5 x6 x7 x9 x14; x13 is
 \ the result. Called by the sealed-WID guards (record publish, AOT
 \ relocation/bootrun, snap-rebase) and the AOT registry restore's dedup.
+package ENGINE-EMIT
+
 : EMIT-PROTWID ( -- )
    LBL LBL {: qdone:label qhit:label :}
    LPROTWIDQ LABEL@ LBL,
@@ -2793,6 +2753,8 @@ SOURCE-INIT
    qdone LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
    SP SP 32 ADDI,  RET, ;
+
+;package
 
 : EMIT-FLUSH ( -- )
    LFLUSH LABEL@ LBL,
@@ -3239,6 +3201,8 @@ variable FIND-HMATCH
    NUM-LINT LABEL@ LBL,  C-NUM-INT-FINISH
    NUM-DONE LABEL@ LBL,  RET, ;
 
+package ENGINE-EMIT
+
 : EMIT-DICT ( -- )
    0 BEGIN dup #PL @ < WHILE
       dup cells PLEN + @ DNAME-INL > IF
@@ -3249,7 +3213,7 @@ variable FIND-HMATCH
          -1 over cells PNLBL + !
       THEN
       1 + REPEAT drop
-   LNCOUNT LABEL@ LBL,  #PL @ 1+ DCQ,
+   LNCOUNT LABEL@ LBL,  #PL @ DCQ,
    LDICT LABEL@ LBL,
    0 BEGIN dup #PL @ < WHILE
       dup cells PLBL + LABEL@ DLBL,
@@ -3264,267 +3228,6 @@ variable FIND-HMATCH
          16  over cells PLEN + @  3 + -4 and  -  dup 0 > IF PNPOOL swap BYTES, ELSE drop THEN
       THEN
       dup cells PWID + @ DCQ,
-      1 + REPEAT drop
-   OWNER-API-PUB-WID DCQ,
-   OWNER-API-PRI-WID DCQ,
-   9 DCQ,
-   s" OWNER-WID" BYTES,
-   PNPOOL 4 BYTES,
-   -1 DCQ, ;
-
-package OWNER-WID-EMIT
-
-variable LPUBQ
-variable LPRIQ
-variable LANYQ
-variable LPAIRQ
-variable LPREF
-variable LADD
-variable LCOLD
-variable LOWNER
-
-: COUNT@, ( -- )
-   5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
-   6 5 LDAR, ;
-
-: COUNT!, ( -- )
-   5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
-   6 5 STLR, ;
-
-: SCAN-INIT ( -- )
-   13 0 MOVZ,
-   COUNT@,
-   7 0 MOVZ,
-   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD, ;
-
-: SCAN-NEXT ( label -- ) {: loop:label :}
-   5 5 OWNER-WID-ROW ADDI,
-   7 7 1 ADDI,
-   loop B, ;
-
-: ROLE-ROW ( label label n -- ) {: next:label done:label role:n :}
-   14 5 role LDRW,
-   14 9 CMP,  C-NE next BCOND,
-   13 1 MOVZ,
-   done B, ;
-
-: ROLE ( label n -- ) {: entry:label role:n :}
-   LBL LBL LBL {: loop:label next:label done:label :}
-   entry LBL,
-   SCAN-INIT
-   loop LBL,
-   7 6 CMP,  C-GE done BCOND,
-   next done role ROLE-ROW
-   next LBL,  loop SCAN-NEXT
-   done LBL,  RET, ;
-
-: ANY-ROW ( label label -- ) {: next:label done:label :}
-   14 5 OWNER-WID-PUB LDRW,
-   14 9 CMP,  C-EQ done BCOND,
-   14 5 OWNER-WID-PRI LDRW,
-   14 9 CMP,  C-NE next BCOND,
-   done B, ;
-
-: ANY-DONE ( -- )
-   LBL {: miss:label :}
-   7 6 CMP,  C-GE miss BCOND,
-   13 1 MOVZ,
-   miss LBL,  RET, ;
-
-: ANY ( -- )
-   LBL LBL LBL {: loop:label next:label done:label :}
-   LANYQ LABEL@ LBL,
-   SCAN-INIT
-   loop LBL,
-   7 6 CMP,  C-GE done BCOND,
-   next done ANY-ROW
-   next LBL,  loop SCAN-NEXT
-   done LBL,  ANY-DONE ;
-
-: PAIR ( -- )
-   LBL LBL LBL {: loop:label next:label done:label :}
-   LPAIRQ LABEL@ LBL,
-   SCAN-INIT
-   loop LBL,
-   7 6 CMP,  C-GE done BCOND,
-   14 5 OWNER-WID-PUB LDRW,  14 9 CMP,  C-NE next BCOND,
-   14 5 OWNER-WID-PRI LDRW,  14 10 CMP,  C-NE next BCOND,
-   13 1 MOVZ,  done B,
-   next LBL,  loop SCAN-NEXT
-   done LBL,  RET, ;
-
-: PREFLIGHT-ARGS ( label -- ) {: done:label :}
-   13 0 MOVZ,
-   11 OWNER-WID-MAX CMPI,  C-HI done BCOND,
-   COUNT@,
-   6 11 CMP,  C-GE done BCOND,
-   9 done CBZ,  10 done CBZ,
-   14 9 32 LSRI,  14 done CBNZ,
-   14 10 32 LSRI,  14 done CBNZ,
-   9 10 CMP,  C-EQ done BCOND, ;
-
-: PREFLIGHT-ROW ( label -- ) {: done:label :}
-   14 5 OWNER-WID-PUB LDRW,
-   14 9 CMP,  C-EQ done BCOND,
-   14 10 CMP,  C-EQ done BCOND,
-   14 5 OWNER-WID-PRI LDRW,
-   14 9 CMP,  C-EQ done BCOND,
-   14 10 CMP,  C-EQ done BCOND, ;
-
-: PREFLIGHT ( -- )
-   LBL LBL LBL {: loop:label ok:label done:label :}
-   LPREF LABEL@ LBL,
-   done PREFLIGHT-ARGS
-   7 0 MOVZ,
-   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
-   loop LBL,
-   7 6 CMP,  C-GE ok BCOND,
-   done PREFLIGHT-ROW
-   loop SCAN-NEXT
-   ok LBL,  13 1 MOVZ,
-   done LBL,  RET, ;
-
-: STORE-PAIR ( -- )
-   COUNT@,
-   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
-   7 6 3 LSLI,  5 5 7 ADD,
-   14 10 32 LSLI,  14 14 9 ORR,
-   14 5 0 STR,
-   6 6 1 ADDI,
-   COUNT!, ;
-
-: ADD-BODY ( -- )
-   LBL {: done:label :}
-   10 G-POP  9 G-POP
-   11 OWNER-WID-MAX MOVZ,  LPREF LABEL@ BL,
-   13 done CBZ,
-   STORE-PAIR
-   13 1 MOVZ,
-   done LBL,
-   13 SP 13 SUB,  13 G-PUSH ;
-
-: ADD-ROUTINE ( -- )
-   LADD LABEL@ LBL,
-   SP SP 16 SUBI,  30 SP 0 STR,
-   ADD-BODY
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
-
-: BPRE? ( -- )
-   11 G-POP  10 G-POP  9 G-POP
-   LPREF LABEL@ BL,
-   13 SP 13 SUB,  13 G-PUSH ;
-
-: BPUB? ( -- )
-   9 G-POP  LPUBQ LABEL@ BL,
-   13 SP 13 SUB,  13 G-PUSH ;
-
-: BPRI? ( -- )
-   9 G-POP  LPRIQ LABEL@ BL,
-   13 SP 13 SUB,  13 G-PUSH ;
-
-: BANY? ( -- )
-   9 G-POP  LANYQ LABEL@ BL,
-   13 SP 13 SUB,  13 G-PUSH ;
-
-public
-
-: LABELS ( -- )
-   LBL LPUBQ !  LBL LPRIQ !  LBL LANYQ !  LBL LPAIRQ !
-   LBL LPREF !  LBL LADD !  LBL LCOLD !  LBL LOWNER ! ;
-
-: ADD-LABEL@ ( -- label )
-   LADD LABEL@ ;
-
-: PREFLIGHT-LABEL@ ( -- label )
-   LPREF LABEL@ ;
-
-: PUBLIC-LABEL@ ( -- label )
-   LPUBQ LABEL@ ;
-
-: PRIVATE-LABEL@ ( -- label )
-   LPRIQ LABEL@ ;
-
-: ANY-LABEL@ ( -- label )
-   LANYQ LABEL@ ;
-
-: PAIR-LABEL@ ( -- label )
-   LPAIRQ LABEL@ ;
-
-\ COLD-HOOK ( -- ): post-cold-prefix side effect. Default HOOK-NOOP preserves the
-\ prior unset-was-a-no-op contract; install one with COLD-HOOK!. Called by habu1
-\ BFINALIZE and the habu2 REPL AOT seed.
-defer COLD-HOOK ( -- )
-
-: COLD-HOOK! ( [ -- ] -- )
-   is COLD-HOOK ;
-
-\ RESTORE-HOOK ( -- ): owner-WID registry restore on cold reset. Default HOOK-NOOP;
-\ habu2 installs EM-AOT-RESTORE-WIDS. Called by COLD-RESET.
-defer RESTORE-HOOK ( -- )
-
-: RESTORE-HOOK! ( [ -- ] -- )
-   is RESTORE-HOOK ;
-
-\ PROOF-HOOK ( -- ): owner-WID proof-registration side effect. Default HOOK-NOOP;
-\ install one with PROOF-HOOK!. Called by ROUTINES.
-defer PROOF-HOOK ( -- )
-
-: PROOF-HOOK! ( [ -- ] -- )
-   is PROOF-HOOK ;
-
-: COLD-RESET ( -- )
-   LBL {: loop:label :}
-   LCOLD LABEL@ LBL,
-   SP SP 16 SUBI,  30 SP 0 STR,
-   6 0 MOVZ,  COUNT!,
-   9 0 MOVZ,
-   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
-   7 OWNER-WID-MAX MOVZ,
-   loop LBL,
-   9 5 0 STR,
-   5 5 OWNER-WID-ROW ADDI,
-   7 7 1 SUBI,
-   7 loop CBNZ,
-   RESTORE-HOOK
-   30 SP 0 LDR,  SP SP 16 ADDI,
-   RET, ;
-
-: COLD-LABEL@ ( -- label )
-   LCOLD LABEL@ ;
-
-: OWNER-LABEL@ ( -- label )
-   LOWNER LABEL@ ;
-
-private
-
-: BFINALIZE ( -- )
-   OWNER-LABEL@ BL,
-   COLD-HOOK ;
-
-: OWNER-HOOK-INIT ( -- )
-   [: HOOK-NOOP ;] COLD-HOOK!
-   [: HOOK-NOOP ;] RESTORE-HOOK!
-   [: HOOK-NOOP ;] PROOF-HOOK! ;
-
-OWNER-HOOK-INIT
-
-public
-
-: PRIMS ( -- )
-   s" FINALIZE" ['] BFINALIZE OWNER-API-PUB-WID FPRIM-WID
-   s" owner-wid-preflight?" ['] BPRE? 3 GDEREF-F
-   s" owner-wid-public?" ['] BPUB? 1 GDEREF-F
-   s" owner-wid-private?" ['] BPRI? 1 GDEREF-F
-   s" owner-wid?" ['] BANY? 1 GDEREF-F ;
-
-: ROUTINES ( -- )
-   LPUBQ LABEL@ OWNER-WID-PUB ROLE
-   LPRIQ LABEL@ OWNER-WID-PRI ROLE
-   ANY
-   PAIR
-   PREFLIGHT
-   COLD-RESET
-   ADD-ROUTINE
-   PROOF-HOOK ;
+      1 + REPEAT drop ;
 
 ;package

@@ -35,6 +35,9 @@ $0042 constant MACOS-SA-PROF-FLAGS
       9 17 0 ADDI,  G-PRINT9
    dret LBL,  RET, ;
 
+\ Profiler trust rows emit ARM64 signal-context, sigaction/timer-frame, syscall,
+\ sampling, and primitive-publication code.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : C-PROF-MCTX>R21 ( -- )
    HB-TARGET-LINUX? IF 21 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
    21 4 MCTX-OFF LDR, ;

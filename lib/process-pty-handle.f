@@ -45,6 +45,9 @@ SLOT-CAP TYPED-BUFFER SLOT-TARGET-WATCH target-watch
 SLOT-CAP TYPED-BUFFER SLOT-SUP-WATCH sup-watch
 create SLOT-OWNER SLOT-CAP cells allot
 
+\ Packed slot/generation cell <-> three distinct linear lifecycle tokens. The
+\ checker cannot refine or erase these use-once roles.
+\ Retirement owner: habu-recover-checked-pty-04fcb611.
 TRUSTED: N>HANDLE ( n -- process-pty-handle ) ;
 TRUSTED: HANDLE>N ( process-pty-handle -- n ) ;
 TRUSTED: N>RESERVATION ( n -- process-pty-reservation ) ;

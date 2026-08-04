@@ -3,7 +3,7 @@
 
 \ The per-file timed RUN-FILE harness lives in maki/test-harness.f, shared with
 \ the parallel gate slices (maki/test-<slice>.f). This file is the full standalone
-\ run-all inventory: every suite below must land in exactly one slice.
+\ run-all inventory; every suite below must land in exactly one slice.
 require maki/test-harness.f
 require tools/prot-wid-probe.f
 
@@ -304,25 +304,17 @@ SUITE maki/config-test.f
 ;SUITE
 SUITE maki/infer/safetensors-test.f
 ;SUITE
-SUITE maki/infer/weight-store-test.f
-;SUITE
 SUITE maki/infer/gpt2-reference-data-test.f
 ;SUITE
-SUITE maki/infer/model-types-test.f
+SUITE maki/infer/gpt2-pin-test.f
 ;SUITE
-SUITE maki/infer/model-config-test.f
+SUITE maki/infer/gpt2-config-test.f
+;SUITE
+SUITE maki/infer/hf-config-test.f
 ;SUITE
 SUITE maki/infer/gpt2-tensor-test.f
 ;SUITE
-SUITE maki/infer/model-provenance-test.f
-;SUITE
-SUITE maki/infer/gpt2-prepare-test.f
-;SUITE
-SUITE maki/infer/gpt2-mapped-test.f
-;SUITE
-SUITE maki/infer/gpt2-copy-test.f
-;SUITE
-SUITE maki/infer/gpt2-payload-test.f
+SUITE maki/infer/gpt2-model-test.f
 ;SUITE
 SUITE maki/journal-test.f
 ;SUITE
@@ -351,10 +343,6 @@ SUITE tools/eval-triton-test.f
 SUITE maki/competitive-evidence-test.f
 ;SUITE
 SUITE maki/competitive-evidence-store-test.f
-;SUITE
-SUITE maki/cuda-types-test.f
-;SUITE
-SUITE maki/cuda-driver-test.f
 ;SUITE
 SUITE maki/device-artifacts-test.f
 ;SUITE
@@ -396,11 +384,12 @@ SUITE maki/gpu-emit-test.f
 ;SUITE
 SUITE maki/gpu-leak-test.f
 ;SUITE
+SUITE maki/gpu-buffer-test.f
+;SUITE
 SUITE maki/device-smoke.f
 ;SUITE
 SUITE maki/examples/nanogpt/tokenizer-test.f
 ;SUITE
-SUITE maki/examples/nanogpt/bpe-test.f
 ;SUITE
 SUITE maki/examples/nanogpt/data-loader-test.f
 ;SUITE

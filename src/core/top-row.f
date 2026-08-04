@@ -103,6 +103,9 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ Snapshot boots keep the hook disarmed (snap-lib.f SND-ZERO-LIVE), so tier-2, like
 \ tier-1, is cold-boot only until the snapshot re-arm lands (habu-snapshot-rebase-
 \ persisted-4bd33351 / docs §5.6); a re-armed snapshot must re-read TR-STAGED-TIER.
+\ Trusted sites are the raw effect query and dynamic top-row hook install described
+\ below. Retirement: habu-checker-self-typing-9ff8ba86 and
+\ cap:checker-hook-identity, respectively.
 1 constant TR-TIER1                      \ warn only, rc unchanged (default)
 2 constant TR-TIER2                      \ reject pre-execution (rc 70 diagnostic)
 70 constant TR-REJECT-RC                 \ RC-REJECT: catchable, rc 70 uncaught

@@ -1104,22 +1104,13 @@ fits.
   (a 24s impl still permits the old regression at a 70s verdict). Never bump MAX-MS to pass a
   ratchet — the engine battery's runtime ratchet catches real per-process regressions (region
   growth to 8MB regressed boot +41ms via LPROT's full-region mprotect brackets, linear in the flip
-  window). Report cache-fill as budget coverage and persistent-cache as the architecture number;
-  discovered content-cache misses switch to the scratch-cache budget class.
-- **Cache Habu-under-test by CONTENT not path, keep the producer build-only, always validate.**
-  Hash `bin/hb` + runner/build harness + every emitted engine/repl source; a hit unblocks
-  under-test slices, a miss runs the fixpoint and installs under that key. A hit that also skips
-  `GE-ENGINE-SUITE`/hook checks is wrong — candidate PRODUCTION is not VALIDATION; run a candidate
-  validation row after the `under` capability is ready. Build the candidate in the early
-  engine-build slot, publish atomically (path+SHA), then release downstream phases onto
-  `HABU_UNDER_TEST` (pass it INTO the producer phase; make the drain fail once `GT-POOL-LIVE` is
-  zero, not poll an empty pool). Cache stamps assert the INSTALLED artifact from CONSUMED inputs
-  (record each stage-source digest at emit/consume via `BF-RECORD-STAGE`, assemble from those +
-  the post-install engine hash; re-hashing the tree races mid-build edits). Gate retries need FRESH
-  `XDG_CACHE_HOME` + `HB_TMP` per ATTEMPT (a reused cache replays a timeout-poisoned verdict as a
-  false persistent red). A fresh gate root does not imply zero aggregate cache hits — the suite
-  proves maker/artifact hit paths inside one attempt; retry isolation rejects INHERITED artifacts
-  while preserving the within-attempt hit-counter contract.
+  window). Report maker, artifact, and result cache fills as budget coverage; none changes whether
+  phase 15 runs.
+- **Every ordinary gate run builds Habu-under-test in phase 15; only explicit `--under` skips it.**
+  A persistent candidate cache can publish a binary before phase 15's verdict, then reuse it and
+  skip the failing phase on a later run. Build the candidate in the early engine-build slot, then
+  release downstream phases onto `HABU_UNDER_TEST` after it is ready. Maker, artifact, and result
+  caches may hit, but none may suppress phase 15.
 - **Private temp dirs for native builds; shared `/tmp` races parallel agents.** `HB_TMP` defaults
   to `/tmp` with fixed names (`stage2-src`, `hb-stdin-got`) — concurrent workspaces corrupt each
   other's refresh/gate with transient opaque exits. Allocate+export a private `HB_TMP` (create it
@@ -1512,10 +1503,11 @@ fits.
   persisted capacity for the supported workload). Snapshot writers clear mmap-backed image buffer
   pointers/cursors (`MBUF-A` persisted → crashed the next `IMG-M8`) and reset include state
   (`INCLUDE-BUFS-A` pointed at the baker's mmap → "include: read failed"). Snapshot images relocate
-  only engine-text refs (fixed VAs keep dict/data valid); accept a trailer only when
-  `region-len + data-len` ends exactly at the trailer offset (magic also appears in code); locate the
-  trailer by scanning for the LAST `SNAP-MAGIC` (48-byte trailer is NOT at file-end — SNAP-EXTRA-SIZE
-  pad + macOS codesign blob follow); an un-resigned patched image is SIGKILLed (rc -9). Snapshot DATA
+  only engine-text refs (fixed VAs keep dict/data valid). Locate the sole 40-byte
+  trailer at the full 64-bit target header value at `IMAGE-TEXT-SIZE-OFF`, plus
+  `IMAGE-TEXT-TRAILER-ADJ`, minus 40; never scan for `SNAP-MAGIC`. Validate the
+  header-derived trailer fields there and require `region-len + data-len <= trailer
+  offset`, so subtracting them cannot underflow the image prefix. Snapshot DATA
   must exclude invocation-mode hooks (`REPLH-CELL` built under a TTY made a later `--load` enter the
   REPL) — canonicalize to zero and recompute batch-vs-interactive after restore; any hook a
   cold-prefix file arms must be explicitly disarmed in the snapshot-zero path unless its warm-boot
@@ -1685,8 +1677,9 @@ fits.
   R+W segment at a FIXED high vaddr so slot addresses are compile-time constants; BOTH AOT
   (`BUILD-ELF`) and snapshot image paths must go dynamic (the self-host fixpoint is the acceptance
   test). no-crt dlopen works (glibc ld.so initializes libc enough that a no-startfiles binary can
-  dlopen libcuda). Keep FFI ABI separate from loader binding (`lib/ffi-abi.f` portable + gateable;
-  `lib/ffi.f` the loader layer). A mechanical guard on all 8 FFI arg registers is UNSOUND — ffi-call
+  dlopen libcuda). Keep ABI marshalling and loader binding as separate private concerns inside
+  the one sealed `FFI` package (`lib/ffi-abi.f`), not as compatibility files.
+  A mechanical guard on all 8 FFI arg registers is UNSOUND — ffi-call
   loads 8 cells regardless of arity, so slots past the real args hold STALE values; only `ffi-call-n`
   carries x14=nargs (guard `argbuf[0..nargs)`, BEFORE the x20 repurpose), and the CHECKED library
   funnels integer/pointer calls through it.
@@ -1816,7 +1809,7 @@ fits.
   timing called a GPU profile. `.f` emit-driver signatures use checker type tokens (`n`/`ptr`/`bool`),
   never descriptive names (`node`/`rid`).
 - **Device-vs-host GOLDEN compares device f32 against the f32-NARROWED host, not the raw f64.** The
-  host runs f64, the device f32 — round the host elem onto the f32 grid first (`F64>F32 F32>F64`) then
+  host runs f64, the device f32 — round the host elem onto the f32 grid first (`F32:NARROW F32:WIDEN`) then
   `|dev - host_f32| ≤ atol + rtol*|host_f32|`, else the dtype step folds into the error budget and blows
   the tol. Since no onnxruntime exists for a composed Gemm, the committed host-executor result (validated
   ==ort at 1e-5 on the pure-matmul fixture) is the oracle — device-vs-host discipline, ort leg a
@@ -2284,6 +2277,9 @@ fits.
   `E-PROTECTION-CAP` (7169), which the uncaught boundary reports with exit 67;
   expecting the engine's `prot-wid-add` exit 84 would require crossing the
   atomic publication boundary and is obsolete.
+- **An excluded record kind is corruption, not a compatibility marker.** If a
+  compact range contains ordinary dictionary rows only, reject namespace WIDs
+  during whole-set preflight; skipping one lets unvalidated authority publish.
 - **Rollback is not an atomic publication boundary when a generator yields
   between words.** Render the complete declaration plan, check every name,
   effect, body, visibility rule, and plan-determined capacity in one discardable
@@ -2490,6 +2486,10 @@ fits.
   Remove the old writer, reader, validator, fixtures, and state in one green
   change; do not preserve an empty ABI with versions, tombstones, or migration
   branches.
+- **Census namespace claims before accepting a package rename.** `HB-BUILD`
+  already owns the user-facing build tool, so renaming the native emission
+  lifecycle into it would merge unrelated authorities. Fold lifecycle state
+  into its real `HB-EMIT` owner and leave one package per concern.
 - **Audit every consumer before reusing a protection registry.** PROT-WID
   membership also blocks ahead-of-time calls, so enrolling owner package WIDs
   would change public callability instead of only guarding publication.
@@ -4013,6 +4013,23 @@ fits.
   Mutate the compiler, run the gate, revert: that is evidence about the check,
   and it is worth more than a fixture that can only be built by agreeing with the
   thing under test.
+- **A fixture substitute must be production-load-bearing.** When a rejection
+  probe's wrong-type operand dies, pick the replacement from nominals with
+  real production consumers, not from whatever is still declared — the M8
+  repair first chose pass-id, itself dead, and a later ruling deleted it,
+  forcing a second repair. Check "does my substitute have production
+  consumers?" before substituting, and pin its resolution with a file-local
+  positive control so a lost declaration flips a positive instead of letting
+  every negative go silently green (dot habu-add-positive-controls-3eff7393).
+- **Do not encode a staged source prerequisite as a tracker blocker when both
+  leaves stay active until one terminal gate.** Record the exact prerequisite
+  commit in the contract and worker parent; otherwise the dependent leaf can
+  never become dispatchable before the terminal gate that closes its provider.
+- **Probe protected-word reachability in the exact suite load before freezing a
+  test seam.** Top-level interpretation does not imply that a protected internal
+  colon word is callable: the engine can reject it before its range or behavior
+  is exercised. Use an existing public observation when one exists; otherwise
+  name and inventory the smallest test-metaprogramming wrapper in the contract.
 
 ## The width of a memory access is a form, not a field
 
@@ -5106,3 +5123,33 @@ T-RESET to clear the deliberate failure - which also erased the case's own
 assertions, so two mutations printed a mismatch yet the suite exited 0.
 Snapshot, reset, then judge - and prove the fixture with a mutation, because
 this failure mode is a green suite that prints a mismatch.
+
+## Verify carried-over claims by experiment before ruling on them (2026-08-01)
+
+During the process-train abandonment decision, I grounded a ruling on "master
+is unbootstrappable" — a claim carried through context compaction that
+actually described the provisional composition, not master. Codex ran the
+bootstrap and the full suite on clean master and disproved it in minutes.
+What worked: adversarial verification of the other orchestrator's premises
+before accepting a program. What didn't: relaying remembered state as a
+ruling ground without re-deriving it. Rule: a factual premise that decides a
+design ruling gets an experiment, not a recollection — bootstrappability,
+greenness, and consumer counts are all cheap to measure.
+
+## Run the ownership census before dispatching a caller wave (2026-08-01)
+
+Seven launched runner-caller lanes (of eight planned; the run-lib lane never
+launched — the thread cap was reached) all hit the same E-PACKAGE-OWNERSHIP
+wall because the write sets included legacy-global gate files. The
+pre-dispatch rule ("prove every planned definition has a package owner; a
+legacy global is not an implicit exception") existed and was skipped. One rg
+census over the write sets would have surfaced the cascade before the
+workers started.
+
+## Publish derived state only after every asset authenticates (2026-08-04)
+
+A model-owned tokenizer can keep all mutable tables, token ids, and generation
+scratch in one checked cell mapping while reading pinned source files through
+short-lived byte mappings. Build the complete private block, authenticate every
+pinned input, and set readiness last; then any failed allocation, read, digest,
+parse, or model open has one unpublished owner to release.

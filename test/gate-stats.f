@@ -77,14 +77,9 @@ variable GS-MAKER-RUN
 variable GS-ARTIFACT-HIT
 variable GS-ARTIFACT-MISS
 variable GS-CANDIDATE
-variable GS-CANDIDATE-HIT
-variable GS-CANDIDATE-MISS
-variable GS-CANDIDATE-INSTALL
 variable GS-CANDIDATE-IMPORT
 variable GS-CANDIDATE-READY
-variable GS-CANDIDATE-BUILD-SKIP
 variable GS-CANDIDATE-VALIDATE
-variable GS-CANDIDATE-CORRUPT
 variable GS-HELPER-SPAWN
 
 : GS-FALSE ( -- bool )
@@ -546,14 +541,9 @@ GATE-PROCESS:INSTALL
    0 GS-ARTIFACT-HIT !
    0 GS-ARTIFACT-MISS !
    0 GS-CANDIDATE !
-   0 GS-CANDIDATE-HIT !
-   0 GS-CANDIDATE-MISS !
-   0 GS-CANDIDATE-INSTALL !
    0 GS-CANDIDATE-IMPORT !
    0 GS-CANDIDATE-READY !
-   0 GS-CANDIDATE-BUILD-SKIP !
    0 GS-CANDIDATE-VALIDATE !
-   0 GS-CANDIDATE-CORRUPT !
    0 GS-HELPER-SPAWN !
    GATE-PROCESS:COUNTS-RESET
    0 GS-SPANS !
@@ -850,6 +840,10 @@ public
 
 ;package
 
+package GATE-STATS
+
+public
+
 : GS-COUNT-LINE ( n n -- ) {: off:n u:n :}
    off u GATE-PROCESS:COUNT? if exit then
    off u GS-COUNT-SPAN
@@ -871,14 +865,13 @@ public
    off u s" artifact-cache-hit" GS-LINE= if GS-ARTIFACT-HIT GS-INC exit then
    off u s" artifact-cache-miss" GS-LINE= if GS-ARTIFACT-MISS GS-INC exit then
    off u s" candidate-build" GS-LINE= if GS-CANDIDATE GS-INC exit then
-   off u s" candidate-cache-hit" GS-LINE= if GS-CANDIDATE-HIT GS-INC exit then
-   off u s" candidate-cache-miss" GS-LINE= if GS-CANDIDATE-MISS GS-INC exit then
-   off u s" candidate-cache-install" GS-LINE= if GS-CANDIDATE-INSTALL GS-INC exit then
    off u s" candidate-import" GS-LINE= if GS-CANDIDATE-IMPORT GS-INC exit then
    off u s" candidate-ready" GS-LINE= if GS-CANDIDATE-READY GS-INC exit then
-   off u s" candidate-build-skip" GS-LINE= if GS-CANDIDATE-BUILD-SKIP GS-INC exit then
-   off u s" candidate-validate" GS-LINE= if GS-CANDIDATE-VALIDATE GS-INC exit then
-   off u s" candidate-cache-corrupt" GS-LINE= if GS-CANDIDATE-CORRUPT GS-INC exit then ;
+   off u s" candidate-validate" GS-LINE= if GS-CANDIDATE-VALIDATE GS-INC exit then ;
+
+;package
+
+using GATE-STATS
 
 : GS-SCAN ( -- )
    GS-RESET-COUNTS
@@ -896,6 +889,8 @@ public
    GS-START @ GS-U @ < if
       GS-START @ GS-U @ GS-START @ - GS-COUNT-LINE
    then ;
+
+;using
 
 : GS-READ ( -- )
    GS-PATH$ FILE? 0= if 0 GS-U ! exit then
@@ -915,16 +910,6 @@ public
       dup GS-SUBJ-LINE.
       1+
    repeat drop ;
-
-\ Within-attempt cache-counter contract for the perf verdict (dot
-\ habu-integrate-robust-verdict-7f26769e). After GS-SUMMARY has scanned one
-\ attempt's stats, the candidate must have become ready at least once and no
-\ cache-stamp corruption may have been observed. Expected within-attempt hits
-\ (candidate restored once, shared tool base) are legitimate and NOT cross-attempt
-\ reuse; a fresh-root retry attempt gets its own zeroed counters.
-: GS-ATTEMPT-CACHE-OK? ( -- bool )
-   GS-CANDIDATE-CORRUPT @ 0=
-   GS-CANDIDATE-READY @ 0 > and ;
 
 : GS-SUMMARY ( -- )
    GS-ON? 0= if exit then
@@ -948,14 +933,9 @@ public
    GS-ARTIFACT-HIT @ s" artifact-hit" GS-ITEM.
    GS-ARTIFACT-MISS @ s" artifact-miss" GS-ITEM.
    GS-CANDIDATE @ s" candidate" GS-ITEM.
-   GS-CANDIDATE-HIT @ s" candidate-hit" GS-ITEM.
-   GS-CANDIDATE-MISS @ s" candidate-miss" GS-ITEM.
-   GS-CANDIDATE-INSTALL @ s" candidate-install" GS-ITEM.
    GS-CANDIDATE-IMPORT @ s" candidate-import" GS-ITEM.
    GS-CANDIDATE-READY @ s" candidate-ready" GS-ITEM.
-   GS-CANDIDATE-BUILD-SKIP @ s" candidate-build-skip" GS-ITEM.
    GS-CANDIDATE-VALIDATE @ s" candidate-validate" GS-ITEM.
-   GS-CANDIDATE-CORRUPT @ s" candidate-corrupt" GS-ITEM.
    GS-HELPER-SPAWN @ s" helper-spawn" GS-ITEM.
    GATE-PROCESS:EXEC# s" process-exec" GS-ITEM.
    GATE-PROCESS:FORK# s" process-fork" GS-ITEM.

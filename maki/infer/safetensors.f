@@ -6,7 +6,7 @@
 \ SESSION and hands back a linear `SAFET:session` token. Every later step takes
 \ that token explicitly: MAP-FILE or ADOPT gives the session its image, PARSE
 \ reads and validates the header into that session's own staging area, DETACH
-\ consumes a fully validated session and returns one immutable `SAFET:census`
+\ consumes a fully validated session and returns one immutable `SAFET:file`
 \ that owns the mapping, and CLOSE consumes a session that will never be
 \ published. No public word reads "the current load", so two sessions can be
 \ parsed interleaved without cross-talk and a session that fails leaves every
@@ -131,6 +131,7 @@ require lib/cad-num-arithmetic.f          \ CAD-NUM: the byte-offset/extent alge
 require lib/adt/option.f                  \ option<n> for every id-addressed reader
 require lib/adt/result.f                  \ result<n,n> for UNMAP-MAPPING's cleanup outcome
 require lib/json-read.f                   \ JR: streaming JSON pull reader
+require maki/tensor.f                     \ canonical MAKI:datatype consumed by DATATYPE=
 
 \ ---------------------------------------------------------------------------
 \ package SAFET-MAP - the host file-mapping seam.
@@ -149,6 +150,7 @@ private
 \ Reinterprets the raw address the mmap primitive returns as a typed byte
 \ pointer. The checker cannot express this syscall-result refinement, and this
 \ is the only place in the loader that needs it.
+\ Retirement owner: habu-epic-gb10-uma-391d12e8.
 TRUSTED: N>PTR ( n -- ptr u8 ) ;
 
 0 constant MAP-ADDR-ANY
@@ -214,18 +216,9 @@ public
 -7607 constant E-CAP       \ too many tensors, or name arena exhausted
 -7608 constant E-ORDER     \ session step taken out of order (image twice, parse first, detach unparsed)
 
-\ ---- dtype codes (numerically match maki/tensor.f MAKI:DT-* for the intersecting
-\ set, so the forward dot maps SAFET:DTYPE? -> MAKI dtype by value; the loader is
-\ the authority on the safetensors wire dtype and may support a superset) --------
-0 constant DT-F32
-1 constant DT-F16
-2 constant DT-BF16
-3 constant DT-U32
-4 constant DT-I32
-
 \ ---- the three owner tokens ------------------------------------------------
 DEFLINEAR SAFET:session        \ one open, unpublished load transaction
-DEFLINEAR SAFET:census         \ one published, immutable tensor census
+DEFLINEAR SAFET:file         \ one published, immutable tensor census
 DEFLINEAR SAFET:mapping        \ one file mapping detached out of a census
 
 \ A detach is total: the first call moves the reserved mapping record; later
@@ -236,6 +229,28 @@ ENUM map-take 0
 ;ENUM
 
 private
+
+\ Private wire tags stored in tensor rows. MAKI:datatype is the sole semantic
+\ datatype outside the parser.
+0 constant WIRE-F32
+1 constant WIRE-F16
+2 constant WIRE-BF16
+3 constant WIRE-U32
+4 constant WIRE-I32
+
+using MAKI-DATATYPE
+
+: WIRE>TYPE ( n -- MAKI:datatype )
+   case
+      WIRE-F32  of DF32  endof
+      WIRE-F16  of DF16  endof
+      WIRE-BF16 of DBF16 endof
+      WIRE-I32  of DI32  endof
+      WIRE-U32  of DU32  endof
+      E-DTYPE throw
+   endcase ;
+
+;using
 
 \ ---- capacities ------------------------------------------------------------
 8    constant MAX-RANK         \ max tensor rank a census records
@@ -296,7 +311,7 @@ MR-REC-OFF 1 cells + constant BLOCK-BYTES
 \ ---- tensor row columns ----------------------------------------------------
 0 constant C-NMOFF             \ name offset into the arena
 1 constant C-NMLEN             \ name length
-2 constant C-DTY               \ dtype code (DT-*)
+2 constant C-DTY               \ private wire datatype tag
 3 constant C-RANK
 4 constant C-NB                \ tensor byte length
 5 constant C-BEG               \ data_offsets begin (data-section relative)
@@ -328,12 +343,12 @@ TRUSTED: SESSION>BLOCK ( SAFET:session -- SAFET:session ptr n )
 
 TRUSTED: TAKE-SESSION ( SAFET:session -- ptr n ) ;
 
-TRUSTED: SESSION>CENSUS ( SAFET:session -- SAFET:census ) ;
+TRUSTED: SESSION>CENSUS ( SAFET:session -- SAFET:file ) ;
 
-TRUSTED: CENSUS>BLOCK ( SAFET:census -- SAFET:census ptr n )
+TRUSTED: CENSUS>BLOCK ( SAFET:file -- SAFET:file ptr n )
    dup ;
 
-TRUSTED: TAKE-CENSUS ( SAFET:census -- ptr n ) ;
+TRUSTED: TAKE-CENSUS ( SAFET:file -- ptr n ) ;
 
 TRUSTED: MINT-MAPPING ( ptr u8 -- SAFET:mapping ) ;
 
@@ -413,10 +428,17 @@ variable LIVE-N
    0 st PARSED-OFF + !
    NULL$ drop st MR-REC-IDX ptr-field ! ;
 
+: UNMAP-BODY ( ptr u8 n -- ptr u8 n ) {: base:ptr len:n :}
+   base len SAFET-MAP:UNMAP
+   base len ;
+
+: FIRST-CODE ( n n -- n ) {: first:n code:n :}
+   first 0= code 0 <> and if code else first then ;
+
 \ The single disposal path behind both CLOSE and RELEASE. It reads the mapping
 \ decision out of the block BEFORE freeing the block, so neither outcome can
 \ touch released memory and a failing munmap still cannot leak the metadata.
-: DISPOSE ( ptr n -- ) {: st:ptr :}
+: DISPOSE-CODE ( ptr n n -- n ) {: st:ptr first:n :}
    st OWNS-MAP-OFF + @ {: owns:n :}
    st IMG {: base:ptr :}
    st MAP-LEN-OFF + @ {: len:n :}
@@ -425,7 +447,25 @@ variable LIVE-N
    then
    st BLOCK>BYTES BLOCK-LEN MEM:RELEASE-BYTES
    -1 LIVE-N +!
-   owns 0 <> if base len SAFET-MAP:UNMAP then ;
+   owns 0= if first exit then
+   base len [: UNMAP-BODY ;] catch {: code:n :}
+   2drop
+   first code FIRST-CODE ;
+
+: DISPOSE ( ptr n -- )
+   0 DISPOSE-CODE {: code:n :}
+   code 0 <> if code throw then ;
+
+: ALLOC-BLOCK ( ptr u8 -- ptr u8 )
+   drop BLOCK-LEN MEM:ALLOC-BYTES drop ;
+
+: START-BLOCK ( ptr u8 -- SAFET:session )
+   MINT-SESSION
+   1 LIVE-N +!
+   SESSION>BLOCK INIT-BLOCK ;
+
+: CLOSE-CODE ( SAFET:session n -- n ) {: first:n :}
+   TAKE-SESSION first DISPOSE-CODE ;
 
 \ ---- mapping records -------------------------------------------------------
 : MR-FILL ( ptr n ptr n -- ) {: mr:ptr st:ptr :}   \ copy a block's image cells into a record
@@ -453,10 +493,6 @@ variable LIVE-N
    0 st MAP-LEN-OFF + !
    0 st OWNS-MAP-OFF + !
    0 st HAS-IMG-OFF + ! ;
-
-: UNMAP-BODY ( ptr u8 n -- ptr u8 n ) {: base:ptr len:n :}   \ stack-preserving, so `catch` accepts it
-   base len SAFET-MAP:UNMAP
-   base len ;
 
 \ ---- bounded fixed-width reads over a mapping ------------------------------
 \ The bound is the length the RECORD carries, not the census's copy: CLEAR-IMG
@@ -526,11 +562,11 @@ using CAD-NUM
 
 \ ---- dtype wire decode: set the current dtype code + element size ----------
 : DECODE-DTYPE ( ptr u8 n ptr n -- ) {: st:ptr :}
-   2dup s" F32"  STR= if 2drop DT-F32  st DT-OFF + ! 4 st ES-OFF + ! exit then
-   2dup s" F16"  STR= if 2drop DT-F16  st DT-OFF + ! 2 st ES-OFF + ! exit then
-   2dup s" BF16" STR= if 2drop DT-BF16 st DT-OFF + ! 2 st ES-OFF + ! exit then
-   2dup s" I32"  STR= if 2drop DT-I32  st DT-OFF + ! 4 st ES-OFF + ! exit then
-   2dup s" U32"  STR= if 2drop DT-U32  st DT-OFF + ! 4 st ES-OFF + ! exit then
+   2dup s" F32"  STR= if 2drop WIRE-F32  st DT-OFF + ! 4 st ES-OFF + ! exit then
+   2dup s" F16"  STR= if 2drop WIRE-F16  st DT-OFF + ! 2 st ES-OFF + ! exit then
+   2dup s" BF16" STR= if 2drop WIRE-BF16 st DT-OFF + ! 2 st ES-OFF + ! exit then
+   2dup s" I32"  STR= if 2drop WIRE-I32  st DT-OFF + ! 4 st ES-OFF + ! exit then
+   2dup s" U32"  STR= if 2drop WIRE-U32  st DT-OFF + ! 4 st ES-OFF + ! exit then
    2drop E-DTYPE throw ;
 
 : KEY= ( ptr u8 n ptr n -- bool ) {: st:ptr :}   \ literal vs the stashed member key
@@ -720,7 +756,7 @@ using CAD-NUM
 
 \ Shared by every id-addressed scalar reader: one column of one row, or NONE
 \ when the id is not a tensor of this census.
-: COL? ( SAFET:census n n -- SAFET:census option<n> ) {: id:n col:n :}
+: COL? ( SAFET:file n n -- SAFET:file option<n> ) {: id:n col:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id ID-OK? 0= if OPTION:NONE exit then
    st id col ROW@ OPTION:SOME ;
@@ -729,9 +765,7 @@ public
 
 \ ---- session lifecycle -----------------------------------------------------
 : OPEN ( -- SAFET:session )                    \ begin one isolated load transaction
-   BLOCK-LEN MEM:ALLOC-BYTES drop MINT-SESSION
-   1 LIVE-N +!
-   SESSION>BLOCK INIT-BLOCK ;
+   NULL$ drop ALLOC-BLOCK START-BLOCK ;
 
 : MAP-FILE ( SAFET:session ptr u8 n -- SAFET:session )   \ give the session a mapped file
    {: pa:ptr pu:n :}
@@ -749,7 +783,7 @@ public
 : PARSE ( SAFET:session -- SAFET:session )     \ read + validate this session's header
    SESSION>BLOCK PARSE-INTO ;
 
-: DETACH ( SAFET:session -- SAFET:census )     \ consume a validated session, publish it
+: DETACH ( SAFET:session -- SAFET:file )     \ consume a validated session, publish it
    SESSION>BLOCK PUBLISH
    SESSION>CENSUS ;
 
@@ -773,14 +807,14 @@ public
 \ length to the new owner. RELEASE's contract - consume the census, free
 \ everything the census still owns, never unmap what it does not - is already
 \ final and does not change when that state arrives.
-: RELEASE ( SAFET:census -- )
+: RELEASE ( SAFET:file -- )
    TAKE-CENSUS DISPOSE ;
 
 \ ---- mapped residency: moving the file mapping out of a census -------------
 \ The first call moves the record PARSE reserved and clears the census image.
 \ Every step is total. A later call finds no reservation, changes nothing, and
 \ returns empty; it cannot allocate or fabricate an owner.
-: DETACH-MAPPING ( SAFET:census -- SAFET:census SAFET:map-take )
+: DETACH-MAPPING ( SAFET:file -- SAFET:file SAFET:map-take )
    CENSUS>BLOCK {: st:ptr :}
    st MR-REC-IDX ptr-field @ 0= if SAFET-MAP--TAKE:EMPTY exit then
    st MR-REC-IDX ptr-field @ {: mr:ptr :}
@@ -802,9 +836,9 @@ public
 \ enforced; it is claimed no more strongly here than for WITH-TENSOR.
 \ Every mapping was minted from a successfully parsed positive-length image, so
 \ the body always runs and the returned length needs no optional arm.
-\ typed-local-lint: allow-bare-local - `body` carries the quotation effect
-\ [ SAFET:mapping ptr u8 n -- SAFET:mapping ], which a local annotation cannot express.
-: WITH-MAPPING ( SAFET:mapping [ SAFET:mapping ptr u8 n -- SAFET:mapping ] -- SAFET:mapping n )
+\ typed-local-lint: allow-bare-local - `body` carries a row-polymorphic
+\ quotation effect, which a local annotation cannot express.
+: WITH-MAPPING ( R SAFET:mapping [ R SAFET:mapping ptr u8 n -- S SAFET:mapping ] -- S SAFET:mapping n )
    {: body :}
    MAPPING>REC {: mr:ptr :}
    mr MR-LEN-OFF + @ {: len:n :}
@@ -864,15 +898,17 @@ public
    ia ilen ADOPT PARSE
    ia ilen ;
 
-: LOAD ( ptr u8 n -- SAFET:census )            \ map + parse + publish, closing on any fault
+: LOAD ( ptr u8 n -- result<SAFET:file,n> )  \ map + parse + publish, closing on any fault
    {: pa:ptr pu:n :}
-   OPEN pa pu
+   NULL$ drop [: ALLOC-BLOCK ;] catch {: alloc-code:n :}
+   alloc-code 0 <> if drop alloc-code RESULT:ERR exit then
+   START-BLOCK pa pu
    [: TAKE-FILE+PARSE ;] catch {: code:n :}
    2drop
-   code 0 <> if CLOSE code throw then
-   DETACH ;
+   code 0 <> if code CLOSE-CODE RESULT:ERR exit then
+   DETACH RESULT:OK ;
 
-: LOAD-SPAN ( ptr u8 n -- SAFET:census )       \ the same over a caller-owned image
+: LOAD-SPAN ( ptr u8 n -- SAFET:file )       \ the same over a caller-owned image
    {: ia:ptr ilen:n :}
    OPEN ia ilen
    [: TAKE-SPAN+PARSE ;] catch {: code:n :}
@@ -899,33 +935,36 @@ public
    LIVE-N @ ;
 
 \ ---- census readers (every one takes its census; none reads ambient state) --
-: COUNT ( SAFET:census -- SAFET:census n )
+: COUNT ( SAFET:file -- SAFET:file n )
    CENSUS>BLOCK N-OFF + @ ;
 
-: MAP-LEN ( SAFET:census -- SAFET:census n )   \ 0 once DETACH-MAPPING took the image
+: MAP-LEN ( SAFET:file -- SAFET:file n )   \ 0 once DETACH-MAPPING took the image
    CENSUS>BLOCK MAP-LEN-OFF + @ ;
 
-: HDR-LEN ( SAFET:census -- SAFET:census n )
+: HDR-LEN ( SAFET:file -- SAFET:file n )
    CENSUS>BLOCK HDR-LEN-OFF + @ ;
 
-: FIND ( SAFET:census ptr u8 n -- SAFET:census option<n> )   \ tensor id by name
+: FIND ( SAFET:file ptr u8 n -- SAFET:file option<n> )   \ tensor id by name
    {: qa:ptr qu:n :}
    CENSUS>BLOCK {: st:ptr :}
    st qa qu FIND-ID ID? ;
 
-: DTYPE? ( SAFET:census n -- SAFET:census option<n> )
-   C-DTY COL? ;
+: DATATYPE= ( SAFET:file n MAKI:datatype -- SAFET:file bool )
+   {: id:n want:MAKI:datatype :}
+   CENSUS>BLOCK {: st:ptr :}
+   st id ID-OK? dup 0= if exit then drop
+   st id C-DTY ROW@ WIRE>TYPE want MAKI-DATATYPE:EQ ;
 
-: RANK? ( SAFET:census n -- SAFET:census option<n> )
+: RANK? ( SAFET:file n -- SAFET:file option<n> )
    C-RANK COL? ;
 
-: NBYTES? ( SAFET:census n -- SAFET:census option<n> )
+: NBYTES? ( SAFET:file n -- SAFET:file option<n> )
    C-NB COL? ;
 
-: BEGIN? ( SAFET:census n -- SAFET:census option<n> )   \ data-section relative
+: BEGIN? ( SAFET:file n -- SAFET:file option<n> )   \ data-section relative
    C-BEG COL? ;
 
-: END? ( SAFET:census n -- SAFET:census option<n> )     \ data-section relative
+: END? ( SAFET:file n -- SAFET:file option<n> )     \ data-section relative
    C-END COL? ;
 
 \ MAPPING-BASE relative, NOT data-section relative: the byte distance from the
@@ -936,20 +975,20 @@ public
 \ plus the JSON header. Reading a mapping at a BEGIN? offset lands inside the
 \ header. It keeps answering after DETACH-MAPPING: the frame is arithmetic on
 \ the header geometry the census still holds, not access to any bytes.
-: MAP-OFFSET? ( SAFET:census n -- SAFET:census option<n> )   \ mapping-base relative
+: MAP-OFFSET? ( SAFET:file n -- SAFET:file option<n> )   \ mapping-base relative
    {: id:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id ID-OK? 0= if OPTION:NONE exit then
    8 st HDR-LEN-OFF + @ +  st id C-BEG ROW@ +  OPTION:SOME ;
 
-: DIM? ( SAFET:census n n -- SAFET:census option<n> )
+: DIM? ( SAFET:file n n -- SAFET:file option<n> )
    {: id:n axis:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id ID-OK? 0= if OPTION:NONE exit then
    axis 0 < axis st id C-RANK ROW@ >= or if OPTION:NONE exit then
    st id axis DIMS@ OPTION:SOME ;
 
-: COPY-NAME? ( SAFET:census n ptr u8 n -- SAFET:census option<n> )   \ SOME copied length
+: COPY-NAME? ( SAFET:file n ptr u8 n -- SAFET:file option<n> )   \ SOME copied length
    {: id:n da:ptr dcap:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id ID-OK? 0= if OPTION:NONE exit then
@@ -960,7 +999,7 @@ public
 
 \ NONE when the id is not a tensor of this census OR when this census no longer
 \ holds the image - a census whose mapping was detached copies out no bytes.
-: COPY-DATA? ( SAFET:census n ptr u8 n -- SAFET:census option<n> )   \ SOME copied length
+: COPY-DATA? ( SAFET:file n ptr u8 n -- SAFET:file option<n> )   \ SOME copied length
    {: id:n da:ptr dcap:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id BYTES-OK? 0= if OPTION:NONE exit then
@@ -979,8 +1018,8 @@ public
 \ pointer-lifetime / region-type note in this file's header for the capability
 \ that will make it enforced.
 \ typed-local-lint: allow-bare-local - `body` carries the quotation effect
-\ [ SAFET:census ptr u8 n -- SAFET:census ], which a local annotation cannot express.
-: WITH-TENSOR ( SAFET:census n [ SAFET:census ptr u8 n -- SAFET:census ] -- SAFET:census option<n> )
+\ [ SAFET:file ptr u8 n -- SAFET:file ], which a local annotation cannot express.
+: WITH-TENSOR ( SAFET:file n [ SAFET:file ptr u8 n -- SAFET:file ] -- SAFET:file option<n> )
    {: id:n body :}
    CENSUS>BLOCK {: st:ptr :}
    st id BYTES-OK? 0= if OPTION:NONE exit then

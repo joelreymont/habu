@@ -32,9 +32,9 @@ persistence derives canonical capacity and zeroed dead bytes from committed
 state, never allocation history.
 
 Preserve serial tokens and the current restoration order: schema before
-type-family. Remove raw hook installation from type-family.f. Do not expose
-registry cells, add test setters, add a second rollback authority, or add
-`TRUSTED`.
+type-family. Remove raw hook installation from `type-family.f`. Do not expose
+registry cells, add test setters, add a second rollback authority, or add a
+trusted boundary.
 
 Acceptance: injected growth failure in either frame or data arena leaves both
 owners byte-identical, including tails, base, and capacity; readiness failure
@@ -45,8 +45,9 @@ rejected declarations produce the same snapshot and fixpoint bytes as the
 untouched baseline. Mutations preserving a dirty tail, historical capacity,
 leaked replacement mapping, or reversed restore order fail.
 
-Files: `src/core/type-family.f`, `src/core/type-schema.f`, focused rollback
-suites, and `TRUSTED.md` only if rows retire. Smallest check: a real checker
-scope forces each of the eight arenas to grow, rejects after publication,
-compares the complete owner state and snapshot bytes, then accepts the same
-declaration; typed-local and package gates.
+Files: `src/core/type-family.f`, `src/core/type-schema.f`, and focused rollback
+suites. If a surviving source `TRUST` changes, retain only its source-local
+rationale, retirement owner, and focused production test. Smallest check: a
+real checker scope forces each of the eight arenas to grow, rejects after
+publication, compares the complete owner state and snapshot bytes, then accepts
+the same declaration; run typed-local and package gates.

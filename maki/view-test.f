@@ -37,7 +37,7 @@ VST @ TENSOR:TV-STORE@ VST @ TENSOR:TV-EQUAL? TTRUE   \ storage-ref = self
 VST @ TENSOR:TV-DATA@ VS =  TTRUE            \ flat buffer accessor unchanged (bit-identical)
 
 \ col-major degenerate: natural strides (1, rows) => classified contiguous-col
-TYPED-VARIABLE VC TENSOR:tensor   VS 4 6 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:COL TENSOR:TV-NEW-HOST  VC !
+TYPED-VARIABLE VC TENSOR:tensor   VS 4 6 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:COL TENSOR:TV-NEW-HOST  VC !
 VC @ TENSOR:TV-RSTR@  1 T=
 VC @ TENSOR:TV-CSTR@  4 T=
 VC @ TENSOR:TV-CONTIG-COL? TTRUE

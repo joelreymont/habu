@@ -18,6 +18,8 @@ DICT-WL:RETIRED constant XREF-RETIRED-WL
 
 32 constant XREF-SP
 
+\ Xref casts expose mixed dictionary records and their inline/long name bytes.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: XREF-N>REC ( n -- ptr a ) ;
 TRUSTED: XREF-A>U8 ( ptr a -- ptr u8 ) ;
 TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
@@ -350,6 +352,8 @@ get-current prot-wid-add
 
 ;package
 
+\ Explicit undefine patches raw wordlist/status cells in a live dictionary record.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: XREF-PATCH32 ( n ptr a -- )
    patch32 ;
 

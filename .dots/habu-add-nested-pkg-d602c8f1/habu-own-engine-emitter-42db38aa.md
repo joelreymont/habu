@@ -1,0 +1,29 @@
+---
+title: Complete engine emitter ownership
+status: closed
+priority: 1
+issue-type: task
+created-at: "2026-07-30T22:13:55.502748+02:00"
+close-reason: "Superseded by e12f36ec161e."
+---
+
+Problem: changing the native emitter exposes every altered transitive definition to the mandatory package gate. The reviewed first slice, commit e6c56d71a872a92d0c054ab42db68817e8ae8856, correctly owns the terminal callback, production drivers, generated caller, and trust identity, but a representative package-wall deletion still reports legacy global callees beginning with BPROTWIDADD and C-POSTPONE. Complete that emitter closure without coupling its package correction to unrelated package renames.
+
+Result: retain the reviewed first slice. Reopen ENGINE-EMIT in src/habu/habu1.f and make BPROTWIDADD, EMIT-ENGINE-PRIMS, and EMIT-PRIMS private. In src/habu/habu2.f, put these remaining private groups under ENGINE-EMIT: C-POSTPONE, C-BTICK, EM-COMPILE-META-KEYWORDS, EM-COMPILE-KEYWORDS, and EM-COMPILE; C-TICK, C-PACKAGE, C-EXPORT, EM-INTERPRET-DEFINE-KEYWORDS, EM-INTERPRET-WORDS, EM-INTERPRET, and EMIT-MAIN; LRESTAB, RESTAB-BUF, RESTAB-LEN, EMIT-KWDATA, C-SEAL-PACKAGE-FAIL, C-SEAL-MATCH, C-QUALIFY-SEAL-GUARD, EMIT-QUALIFY-DEF, C-PACKAGE-PROT-GUARD, C-PACKAGE-SEAL-GUARD, and the TRUST rows already attached to that block; EMIT-STORE-DEF-NAME and EM-AOTWIDGATE. Keep every other internal private. Preserve ENGINE-BUILD as the separate process-local build lifecycle owner and preserve ENGINE-SIZE and ENGINE-ERROR as their existing complete owners.
+
+The retained first slice hard-cuts global EMIT-FORTH, publishes BUILD-DRIVER:RUN and STDIN-DRIVER:RUN, updates AOT-WID-BUILD, and renames the single trust identity. This completion makes no package rename. The user-directed HB naming cutover is a separate hard-cut concern whose exact sequence remains pending; it may consume the completed owner but cannot expand this ownership leaf or delay the package wall.
+
+Owner and files: this completion owns only `src/habu/habu1.f` and
+`src/habu/habu2.f`; the retained first slice owns `src/habu/build.f`,
+`src/habu/stdin.f`, and `test/aot-wid-build.f`. Existing source `TRUST` rows
+stay beside their boundary with only source-local rationale, retirement owner,
+and focused production-path test. Production defect: an exact representative
+deletion through the real native emitter produces package findings for
+`BPROTWIDADD` and `C-POSTPONE` before this completion. Acceptance: the rooted
+exact-diff package gate reports no finding for the complete transitive closure;
+the typed-local gate passes; `ENGINE-EMIT` still publishes only `FORTH`;
+`ENGINE-BUILD` still publishes only `BUILD` and `BUILDING?`; no global
+definition named in the Result remains; and the focused AOT-WID production
+build passes. E1 and the native package-wall deletion consume this commit.
+
+Forbidden: package renames, caller rewrites, behavior changes, namespace semantics, compatibility aliases, forwarding shims, new gates or exemptions, bootstrap edits, whole-driver packaging, helper-owner dots, and unrelated emitter refactors.

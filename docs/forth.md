@@ -282,7 +282,7 @@ private
   before `B.f` just to run `B-test.f`. If many files need a small primitive
   helper, factor that helper into a narrow `src/core/*.f` prelude file loaded
   before stdlib/tool sources instead of depending on a broad library order such
-  as `lib/string.f` before `lib/ffi.f`.
+  as `lib/string.f` before `lib/ffi-abi.f`.
 - Use include when a file should be self-sufficient or when a top-level entry
   file should assemble a package from submodules:
 
@@ -1068,9 +1068,11 @@ skipped, or unrun means the bookmark does not move.
   and the boolean/float conveniences (`true`, `false`, `fdup`, `fover`, `fdrop`,
   `f<=`, `f>=`) are not in core either — `require lib/prelude.f` for them instead
   of re-deriving `0 0=` / `0 0= 0=` by hand.
-- **Trust is asserted, not proved.** `TRUST` records asserted effects so callers
-  can be checked; the assertion is the boundary's own contract, and the file
-  that declares it is where the reason for it is written.
+- **Trust is asserted, not proved — it is explicit, tested debt.** `TRUST` records
+  asserted effects so callers can be checked; the assertion is the boundary's own
+  contract, and the file that declares it is where the reason for it is written.
+  Each site needs source-local rationale, a retirement owner, and a focused
+  production-path test.
 - **Typed pointer fields use cell indexes.** When a variable or record cell
   stores a pointer, construct a `ptr ptr x` field with `ptr-field`, then use
   normal `@`/`!`. Do not multiply indexes by cell size before `ptr-field`; use a

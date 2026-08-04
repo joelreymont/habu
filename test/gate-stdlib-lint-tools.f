@@ -55,7 +55,7 @@ REQUIRE-HARNESS
    s" tools/process-primitive-lint-test.f" GSI-INCLUDE
    s" tools/stdin-closure-lint.f" GSI-REQUIRE ;
 
-: REPL-STATS ( -- )
+: REPL-GROUP ( -- )
    s" repl-lint" [: REPL ;] GSI-RUN
    s" test/gate-stats-test.f" GSI-INCLUDE ;
 
@@ -73,10 +73,6 @@ REQUIRE-HARNESS
 : MAKI ( -- )
    s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE ;
-
-: REFINE ( -- )
-   s" refine-lint" [: RFL:RUN ;] GSI-RUN
-   s" tools/refine-lint-test.f" GSI-INCLUDE ;
 
 : LINT-DEF ( -- )
    s" tools/lint/def-test.f" GSI-INCLUDE ;
@@ -109,10 +105,9 @@ public
    s" lint-tools/package-inheritance" GSI-FORK-TIMEOUT-MS [: PACKAGE-INHERITANCE ;] GT-POOL-START-FORK
    s" lint-tools/clobber" GSI-FORK-TIMEOUT-MS [: CLOBBER ;] GT-POOL-START-FORK
    s" lint-tools/repo" GSI-FORK-TIMEOUT-MS [: REPOSITORY ;] GT-POOL-START-FORK
-   s" lint-tools/repl-stats" GSI-FORK-TIMEOUT-MS [: REPL-STATS ;] GT-POOL-START-FORK
+   s" lint-tools/repl" GSI-FORK-TIMEOUT-MS [: REPL-GROUP ;] GT-POOL-START-FORK
    s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: DOT ;] GT-POOL-START-FORK
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: MAKI ;] GT-POOL-START-FORK
-   s" lint-tools/refine" GSI-FORK-TIMEOUT-MS [: REFINE ;] GT-POOL-START-FORK
    s" lint-tools/def" GSI-FORK-TIMEOUT-MS [: LINT-DEF ;] GT-POOL-START-FORK
    s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: NAMESPACE ;] GT-POOL-START-FORK
    s" lint-tools/package-diff" GSI-FORK-TIMEOUT-MS [: PACKAGE-OWNERSHIP ;] GT-POOL-START-FORK

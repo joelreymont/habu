@@ -811,9 +811,9 @@ bin/hb --load maki/eval/matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-
 - **Token units:** `tokens-to-green` is the whitespace source-token proxy;
   `tok-est` is the `GEN-TOK-EST` model-token estimate (alnum runs + punctuation
   bytes) from the same committed candidates. Generator-reported counts are not
-  exposed by the Agent tool, so the transcript stays format v1; a future round
-  recorded through the `claude` CLI can carry real `usage` counts as v1.1
-  `tokens` directives and the matrix will mark that row `model`.
+  exposed by the Agent tool, so the transcript omits `tokens`; a future round
+  recorded through the `claude` CLI can carry real `usage` counts in `tokens`
+  directives and the matrix will mark that row `model`.
 - Honest scope: host-only round (GB/s + device columns `not-run`; the sumnorm/
   gemm/attention device goldens are tracked Orin work). Phase-word tasks (gemm,
   attention) measure *composition* authoring — the phase implementations are
@@ -1592,7 +1592,7 @@ mma lines, nothing else.
 
 **Host pack (the one real numeric addition): `F64>BF16`, round-to-nearest-even** (`lib/ptx/cg.f`),
 **not truncation.** bf16's exponent field is identical to f32's (8 bits, bias 127), so bf16 is an
-f32 with the low 16 mantissa bits removed; `F64>BF16` therefore mirrors `F64>F32` (target exponent
+f32 with the low 16 mantissa bits removed; `F64>BF16` therefore mirrors `F32:NARROW` (target exponent
 `e−896`, f32's overflow/subnormal bounds) — **not** `F64>F16` (whose `e−1008` bias and tiny range
 would be wrong for bf16). The rounding is done in **one** step directly on the 52-bit f64 mantissa
 (keep 7 bits, RNE the 45 dropped), the correctly-rounded nearest bf16; it is deliberately **not**

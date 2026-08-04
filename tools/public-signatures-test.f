@@ -446,10 +446,10 @@ variable PST-NUM-U
 
 \ Number-parser-claimable definition names (all digits, float shape, $hex,
 \ optional minus) have no alpha byte, so PS-PROJECT-WORD? alone skipped them
-\ silently - how lib/fmt.f's old `.0` escaped its lib/std.manifest row. The
-\ scanner must SEE them (defensive for historical trees; E-NUMERIC-DEFINITION
-\ rejects new ones). Punctuation-only names the number parser does NOT claim
-\ (`...`) stay invisible - no over-correction.
+\ silently - how lib/fmt.f's old `.0` escaped the output. The scanner must SEE
+\ them (defensive for historical trees; E-NUMERIC-DEFINITION rejects new ones).
+\ Punctuation-only names the number parser does NOT claim (`...`) stay
+\ invisible - no over-correction.
 : PST-NUM-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : .0 ( n -- n ) dup ;" SB-APPEND PST-LF

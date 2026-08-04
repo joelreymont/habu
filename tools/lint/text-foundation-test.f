@@ -882,30 +882,23 @@ variable REG-I
    REG-COUNT 8 ASSERT=
    11 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
-\ End-to-end acceptance on the two real axiom sources. The row counts are a
-\ ratchet on the live primitive-effect table: src/core/checker.f holds 284 rows
-\ opening `PRIM: ` plus 61 opening `PPRIM: `, and src/core/sumtype.f holds 3. A
-\ new primitive changes these numbers, and the number is meant to be updated
-\ deliberately with the axiom that caused it. The two counts move independently,
-\ one per file. In src/core/checker.f the count reached 338 through the eight
-\ `TYPE-FIELD-OWNER` package axioms and the four `CHECKER-DECL-FRAME` rows closed
-\ with `CLOSE-PRIVATE`, less the deleted `checker-defenum` row; it moved to 345
-\ when persisted callback cells added `xt!` and the checker's source-tape observer
-\ seam added the six `CHECKER-TAPE` rows `INSTALL`, `ARM`, `DISARM`, `K-NAME`,
-\ `K-INT` and `K-REAL`. In src/core/sumtype.f the four block openers were
-\ `NEWTYPE`, `SUMTYPE`, `ENUM` and `PRODUCT`; deleting the `ENUM` row leaves 3,
-\ because the global ENUM keyword is an ordinary checked ( -- ) definition over
-\ ENUM-DECL:ED-RUN now, so it needs no axiom of its own, and the metadata-only
-\ `checker-defenum` entry it used went with it.
+\ End-to-end structural acceptance on the real axiom sources. Both must scan
+\ without error; checker.f's quoted primitive name must remain one registry token
+\ ending at its own closer rather than opening a string.
 : TEST-REAL-REGISTRY-FILES ( -- )
    s" src/core/checker.f" LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   REG-COUNT 345 ASSERT=
-   \ Line 5116's `PRIM: s"` row is the one that broke the old lexer: its name is a
-   \ live string opener, so the word path consumed source through the quote in the
-   \ next row. Name that row and pin that it is one token ending at its own closer.
+   \ Ratchet on the whole axiom registry of checker.f: 280 `PRIM:` rows plus 61
+   \ `PPRIM:` rows. It was 345 before the sealed-owner WID registry was deleted,
+   \ which took the four `owner-wid-preflight?` / `owner-wid-public?` /
+   \ `owner-wid-private?` / `owner-wid?` axioms with it. A lexer that swallowed a
+   \ row into a neighbouring string would drop the count, not raise it.
+   REG-COUNT 341 ASSERT=
+   \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
+   \ string opener, so the word path consumed source through the quote in the next
+   \ row. Name that row and pin that it is one token ending at its own closer.
    ROW-RESET  s" PRIM: s" ROW+  ROW-Q
    ROW$ REG-FIND {: q:n :}
    q 0 >= ASSERT
@@ -916,6 +909,9 @@ variable REG-I
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
+   \ The three surviving block openers of sumtype.f: NEWTYPE, SUMTYPE and
+   \ PRODUCT. The global ENUM keyword is an ordinary checked ( -- ) definition
+   \ over ENUM-DECL:ED-RUN now, so it carries no axiom of its own.
    REG-COUNT 3 ASSERT= ;
 
 : TEST-TOKENIZER  ( -- )

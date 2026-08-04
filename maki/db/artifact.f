@@ -43,20 +43,18 @@
 \     provenance): EMIT-SEMANTIC emits it as the last digest-covered field, so
 \     changing the set flips the digest (proven by ADT-SREVS-DIGEST).
 \
-\ V2 CROSS-PROCESS WIRE (this dot, habu-wire-content-key-e5efaa74). SCHEMA-VERSION is
-\ now 2: the artifact-id (TAG-ID), the dependency set (TAG-DEPS), the source-revision set
-\ (TAG-SREVS), and the four content-addressed foreign ids (schema/producer/config/target)
+\ CROSS-PROCESS WIRE (dot habu-wire-content-key-e5efaa74). The artifact-id (TAG-ID),
+\ dependency set (TAG-DEPS), source-revision set (TAG-SREVS), and four content-addressed
+\ foreign ids (schema/producer/config/target)
 \ serialise as their owner's 32-byte SHA-256 CONTENT KEY (ARTIFACT:KEY>WIRE / REV:KEY>WIRE
-\ / X:KEY>WIRE) rather than the pre-migration process-local registry raw, so envelope
+\ / X:KEY>WIRE), never a process-local registry raw, so envelope
 \ identity survives process death: a decoded content key resolves BY CONTENT against the
 \ local registry (WIRE>KEY), never by registration order. numeric-policy's KEY>WIRE is
 \ byte-coincident with its ID>WIRE (its content IS the dom rank, already cross-process
 \ stable), and the created-event (audit-event-id) stays the 8-byte occurrence SEQUENCE
 \ (JOURNAL:ID>WIRE - a sequence is occurrence-local; its cross-process replica identity is
-\ the flagged journal design point, out of this dot's scope). A v1 (raw-index) envelope
-\ decodes as unsupported-migration (DEC-POST version gate); no persisted v1 goldens exist.
-\ The digest-coverage table is FROZEN across the migration: the SAME fields stay
-\ covered/excluded, only their wire width changes.
+\ the flagged journal design point, out of this dot's scope). This is the sole artifact
+\ envelope wire; there is no version field, compatibility reader, or migration dispatch.
 \ Every foreign id is serialized ACROSS the package boundary through its owner's total
 \ KEY>WIRE and fail-closed WIRE>KEY (§ 23.9 "Foreign identity constructors and wire
 \ codecs"): ARTIFACT never mints, raw-casts, or range-checks a foreign id. A WIRE>KEY
@@ -64,17 +62,15 @@
 \ -> malformed (truncated/over-long id bytes), unknown -> bounds (out-of-range/
 \ unresolved id); a duplicate rev in the set -> duplicate. Together with the
 \ second-slice foreign ids (schema/producer/config/numeric-policy/target) and the
-\ first-slice fields (schema-version, kind, producer-version, artifact-id identity,
+\ first-slice fields (kind, producer-version, artifact-id identity,
 \ the artifact-id dependency set, and the content digest) the envelope now binds every
-\ semantic identity the plan names EXCEPT the one still out of the checker's reach:
-\ capabilities-used[] (CAD-KIND:capability-id, a user-gated closed vocabulary - owner
-\ CAP, a product decision; its ascending tag stays reserved, see TAG-CAP-RESERVED).
+\ semantic identity the plan names.
 \
 \ VALIDATE (§ 23.9 ARTIFACT:VALIDATE, the bare tail freed by the maki/artifact.f
 \ VALIDATE-ID rename) is the kind-AGNOSTIC leg: it checks owned bytes structurally
 \ and verifies the recomputed digest against the stored digest WITHOUT refining to a
 \ per-kind handle, returning the same art-result taxonomy as DECODE. It shares the
-\ DEC-POST structural/version/digest core with DECODE; DECODE additionally pins the
+\ DEC-POST structural/digest core with DECODE; DECODE additionally pins the
 \ exact reader kind, VALIDATE accepts any KNOWN kind.
 
 require lib/prelude.f
@@ -130,7 +126,6 @@ SUMTYPE art-result 1
    VARIANT duplicate ;VARIANT
    VARIANT unknown-required ;VARIANT
    VARIANT kind-mismatch ;VARIANT
-   VARIANT unsupported-migration ;VARIANT
    VARIANT digest-mismatch ;VARIANT
 ;SUMTYPE
 
@@ -150,45 +145,33 @@ private
 : R-DUP ( -- art-result<n> )          ARTIFACT-ART--RESULT:DUPLICATE ;
 : R-UNKNOWN-REQ ( -- art-result<n> )  ARTIFACT-ART--RESULT:UNKNOWN-REQUIRED ;
 : R-KIND ( -- art-result<n> )         ARTIFACT-ART--RESULT:KIND-MISMATCH ;
-: R-MIGRATION ( -- art-result<n> )    ARTIFACT-ART--RESULT:UNSUPPORTED-MIGRATION ;
 : R-DIGEST ( -- art-result<n> )       ARTIFACT-ART--RESULT:DIGEST-MISMATCH ;
 
-\ ---- protocol constants (frozen wire) -----------------------------------------
-2 constant SCHEMA-VERSION            \ the only schema version this reader supports (v2:
-                                     \ id/dep/foreign-id fields carry the cross-process
-                                     \ content key; v1 bytes decode as unsupported-migration)
+\ ---- protocol constants (canonical wire) --------------------------------------
 0 constant KIND-WEIGHT               \ wire kind discriminant for weight-artifact
 1 constant KIND-KERNEL               \ wire kind discriminant for kernel-artifact
 
-\ Canonical ascending field tags. 1..11 are the digest-covered semantic fields
-\ (1..5 first-slice scalars/set + artifact-id content key; 6..10 the foreign-id families
-\ whose owners publish a KEY>WIRE/WIRE>KEY cross-process pair; 11 the rev-id source-
-\ revision set); 12 and 13 are excluded from the digest; unknown tags (> TAG-KNOWN-MAX)
+\ Canonical ascending field tags. 1..10 are the digest-covered semantic fields
+\ (1..4 first-slice scalars/set + artifact-id content key; 5..9 the foreign-id families
+\ whose owners publish a KEY>WIRE/WIRE>KEY cross-process pair; 10 the rev-id source-
+\ revision set); 11 and 12 are excluded from the digest; unknown tags (> TAG-KNOWN-MAX)
 \ are optional-or-required extension fields. The digest and event fields keep the HIGHEST
 \ decoded tags because EMIT-SEMANTIC emits every digest-covered field as the ascending
 \ wire prefix and the stored digest+event follow it; a semantic field with a tag above
 \ them would break ascending order.
-1  constant TAG-VER
-2  constant TAG-KIND
-3  constant TAG-PVER
-4  constant TAG-ID                     \ CAD-KIND:artifact-id       (ARTIFACT:KEY>WIRE/WIRE>KEY)
-5  constant TAG-DEPS                   \ dependency set: CAD-KIND:artifact-id content keys
-6  constant TAG-SCHEMA                 \ CAD-KIND:schema-id         (SCHEMA:KEY>WIRE/WIRE>KEY)
-7  constant TAG-PRODUCER               \ CAD-KIND:producer-id       (PRODUCER:KEY>WIRE/WIRE>KEY)
-8  constant TAG-CONFIG                 \ CAD-KIND:config-id         (CONFIG:KEY>WIRE/WIRE>KEY)
-9  constant TAG-NPOL                   \ CAD-KIND:numeric-policy-id (NPOL:KEY>WIRE/WIRE>KEY, 8B)
-10 constant TAG-TARGET                 \ CAD-KIND:target-id         (TARGET:KEY>WIRE/WIRE>KEY)
-11 constant TAG-SREVS                  \ source-revisions[]: CAD-KIND:rev-id set (REV:KEY>WIRE/WIRE>KEY)
-12 constant TAG-DIGEST                 \ stored content digest (excluded from digest)
-13 constant TAG-EVENT                  \ created-event: CAD-KIND:audit-event-id (JOURNAL, excluded)
-13 constant TAG-KNOWN-MAX
-\ Tag reserved for the one digest-covered identity the checker cannot yet reach so a
-\ future landing keeps ascending order without renumbering: capabilities-used[]
-\ (CAD-KIND:capability-id, closed vocabulary, owner CAP - a user-gated product
-\ decision). It stays ABOVE TAG-KNOWN-MAX (an as-yet-unhandled reserved tag routes to
-\ the unknown-extension path, never a silent no-op in KNOWN-BODY); its digest-coverage
-\ placement is deferred to the CAP landing dot. Documented, not yet wired here.
-14 constant TAG-CAP-RESERVED          \ capabilities-used[] (reserved; not decoded here)
+1  constant TAG-KIND
+2  constant TAG-PVER
+3  constant TAG-ID                     \ CAD-KIND:artifact-id       (ARTIFACT:KEY>WIRE/WIRE>KEY)
+4  constant TAG-DEPS                   \ dependency set: CAD-KIND:artifact-id content keys
+5  constant TAG-SCHEMA                 \ CAD-KIND:schema-id         (SCHEMA:KEY>WIRE/WIRE>KEY)
+6  constant TAG-PRODUCER               \ CAD-KIND:producer-id       (PRODUCER:KEY>WIRE/WIRE>KEY)
+7  constant TAG-CONFIG                 \ CAD-KIND:config-id         (CONFIG:KEY>WIRE/WIRE>KEY)
+8  constant TAG-NPOL                   \ CAD-KIND:numeric-policy-id (NPOL:KEY>WIRE/WIRE>KEY, 8B)
+9  constant TAG-TARGET                 \ CAD-KIND:target-id         (TARGET:KEY>WIRE/WIRE>KEY)
+10 constant TAG-SREVS                  \ source-revisions[]: CAD-KIND:rev-id set (REV:KEY>WIRE/WIRE>KEY)
+11 constant TAG-DIGEST                 \ stored content digest (excluded from digest)
+12 constant TAG-EVENT                  \ created-event: CAD-KIND:audit-event-id (JOURNAL, excluded)
+12 constant TAG-KNOWN-MAX
 1 constant FLAG-REQUIRED              \ flags bit 0: an unknown field flagged required rejects
 8 constant U64W                       \ fixed little-endian scalar width
 4 constant U32W                       \ fixed little-endian length width
@@ -212,8 +195,7 @@ private
 4 constant D-DUP
 5 constant D-UNKNOWN-REQ
 6 constant D-KIND
-7 constant D-MIGRATION
-8 constant D-DIGEST
+7 constant D-DIGEST
 
 \ ---- capacities (first-slice bounded pool; a durable store is a later dot) -----
 64 constant ENV-CAP                   \ live envelope slots (ring reuse)
@@ -223,7 +205,6 @@ $1000 constant SCRATCH-CAP            \ semantic/encode scratch bytes
 $2000 constant ROPAQUE-CAP            \ retained opaque optional-field arena
 
 \ ---- envelope pool (parallel per-slot columns) --------------------------------
-create P-VER   ENV-CAP cells allot
 create P-KIND  ENV-CAP cells allot
 create P-PVER  ENV-CAP cells allot
 create P-DEPN  ENV-CAP cells allot
@@ -279,8 +260,6 @@ create DEC-PREVDEP CKW allot                   \ previous dep content key (ascen
 create DEC-PREVSREV CKW allot                  \ previous source-rev content key (ascending check)
 
 \ ---- per-slot column access ---------------------------------------------------
-: VER@ ( n -- n )    cells P-VER + @ ;
-: VER! ( n n -- )    cells P-VER + ! ;
 : KIND@ ( n -- n )   cells P-KIND + @ ;
 : KIND! ( n n -- )   cells P-KIND + ! ;
 : PVER@ ( n -- n )   cells P-PVER + @ ;
@@ -462,12 +441,11 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
    s EVENT-ID@ IDWBUF FID-WIRE-CAP JOURNAL:ID>WIRE {: w:n :}
    TAG-EVENT IDWBUF w E-WIRE-FIELD ;
 
-\ Emit the digest-covered semantic fields (tags 1..11) into EBUF from a slot, in
-\ ascending tag order: first-slice scalars/deps, the five foreign ids, then the
+\ Emit the digest-covered semantic fields (tags 1..10) into EBUF from a slot, in
+\ ascending tag order: kind, producer version, identity/deps, the five foreign ids, then the
 \ source-revision set.
 : EMIT-SEMANTIC ( n -- ) {: s:n :}
    E-RESET
-   TAG-VER  s VER@  E-U64-FIELD
    TAG-KIND s KIND@ E-U64-FIELD
    TAG-PVER s PVER@ E-U64-FIELD
    s E-ID-FIELD
@@ -480,7 +458,7 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
    s E-SREVS-FIELD ;
 
 \ ---- SHA-256 content digest over the semantic prefix --------------------------
-: HASH-SEMANTIC ( n -- )                       \ slot -> EBUF holds fields 1..11, DGBUF = 32 digest bytes
+: HASH-SEMANTIC ( n -- )                       \ slot -> EBUF holds fields 1..10, DGBUF = 32 digest bytes
    EMIT-SEMANTIC
    EBUF EO @ DGBUF SHA256 ;
 
@@ -494,11 +472,11 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
 
 \ ---- full canonical envelope into EBUF ----------------------------------------
 : EMIT-ENVELOPE ( n -- ) {: s:n :}
-   s HASH-SEMANTIC                             \ EBUF = tags 1..11, DGBUF = their digest
+   s HASH-SEMANTIC                             \ EBUF = tags 1..10, DGBUF = their digest
    TAG-DIGEST FLAG-REQUIRED E-HEAD
    DIGEST-BYTES U32W E-LE
    DGBUF DIGEST-BYTES E-BYTES
-   s E-EVENT-FIELD                             \ excluded audit-event-id (tag 13)
+   s E-EVENT-FIELD                             \ excluded audit-event-id (tag 12)
    s RLEN@ 0 > if                              \ retained opaque optionals (tags > TAG-KNOWN-MAX)
       ROPAQUE s ROFF@ +  s RLEN@  E-BYTES
    then ;
@@ -614,7 +592,7 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
 \ malformed), then enforce the ascending/duplicate-free set invariant on its content-key
 \ BYTES via CMP32 (duplicate -> duplicate, descending -> noncanonical), and store the
 \ canonical content key. `k > 0` gates the ascending check so the first element has no
-\ predecessor to compare (the pre-migration -1 raw sentinel has no byte-string analogue).
+\ predecessor to compare.
 : DEP-ELEM ( n n -- ) {: s:n k:n :}
    REMAIN CKW < if D-MALFORMED FAIL exit then
    FID-PTR CKW WIRE>KEY
@@ -703,7 +681,6 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
 : KNOWN-BODY ( n n n -- ) {: s:n tag:n declen:n :}
    tag SEEN? if D-DUP FAIL exit then
    tag SEEN-TAG
-   tag TAG-VER      = if declen TAKE-U64 s VER!   exit then
    tag TAG-KIND     = if declen TAKE-U64 s KIND!  exit then
    tag TAG-PVER     = if declen TAKE-U64 s PVER!  exit then
    tag TAG-ID       = if s declen TAKE-ID         exit then
@@ -735,7 +712,7 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
    s tag flags declen RETAIN-FIELD ;
 
 : REQUIRED-COMPLETE? ( -- bool )
-   TAG-VER SEEN? TAG-KIND SEEN? and TAG-PVER SEEN? and
+   TAG-KIND SEEN? TAG-PVER SEEN? and
    TAG-ID SEEN? and TAG-DEPS SEEN? and
    TAG-SCHEMA SEEN? and TAG-PRODUCER SEEN? and TAG-CONFIG SEEN? and
    TAG-NPOL SEEN? and TAG-TARGET SEEN? and
@@ -754,11 +731,9 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
 
 : KNOWN-KIND? ( n -- bool )   dup KIND-WEIGHT = swap KIND-KERNEL = or ;
 
-\ Structural core shared by DECODE (kind-pinned) and VALIDATE (kind-agnostic): once
-\ the kind is settled, verify version (migration) then the recomputed digest against
-\ the stored one. Order is preserved from the first slice - migration before digest.
+\ Structural core shared by DECODE (kind-pinned) and VALIDATE (kind-agnostic):
+\ recompute the digest and compare it with the stored value.
 : DEC-POST ( n -- ) {: s:n :}
-   s VER@ SCHEMA-VERSION <> if D-MIGRATION FAIL exit then
    s HASH-SEMANTIC
    DGBUF STOREDG DIG-BYTES-EQ? 0= if D-DIGEST FAIL exit then ;
 
@@ -782,7 +757,6 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
    DERR @ D-DUP         = if R-DUP exit then
    DERR @ D-UNKNOWN-REQ = if R-UNKNOWN-REQ exit then
    DERR @ D-KIND        = if R-KIND exit then
-   DERR @ D-MIGRATION   = if R-MIGRATION exit then
    R-DIGEST ;
 
 : DECODE-INTO ( ptr u8 n n -- art-result<n> ) {: a:ptr u:n expkind:n :}
@@ -922,14 +896,14 @@ private
 \ (no raw, no refinement here). The pending DEPS-* / SREVS-* sets become the canonical
 \ dependency and source-revision columns. `disc` is the wire kind discriminant
 \ supplied by the per-kind public builder.
-: BUILD-SLOT ( n n CAD-KIND:artifact-id CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id CAD-KIND:audit-event-id n -- n )
-   {: ver:n pver:n identity:CAD-KIND:artifact-id
-      schema:CAD-KIND:schema-id producer:CAD-KIND:producer-id
-      config:CAD-KIND:config-id npol:CAD-KIND:numeric-policy-id
-      target:CAD-KIND:target-id event:CAD-KIND:audit-event-id disc:n :}
+: BUILD-SLOT ( n CAD-KIND:artifact-id CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id CAD-KIND:audit-event-id n -- n )
+   {: pver:n identity:CAD-KIND:artifact-id
+      schema:CAD-KIND:schema-id  producer:CAD-KIND:producer-id
+      config:CAD-KIND:config-id  npol:CAD-KIND:numeric-policy-id
+      target:CAD-KIND:target-id  event:CAD-KIND:audit-event-id  disc:n :}
    DEPS-CANON  SREVS-CANON
    SLOT-ALLOC {: s:n :}
-   ver s VER!  disc s KIND!  pver s PVER!
+   disc s KIND!  pver s PVER!
    identity s ID-ID!
    schema s SCHEMA-ID!  producer s PRODUCER-ID!  config s CONFIG-ID!
    npol s NPOL-ID!  target s TARGET-ID!
@@ -948,11 +922,11 @@ private
 public
 
 \ ---- weight-kind envelope API -------------------------------------------------
-\ ( schema-version producer-version artifact-id schema-id producer-id config-id
+\ ( producer-version artifact-id schema-id producer-id config-id
 \   numeric-policy-id target-id created-event -- weight-artifact ); created-event is a
 \ CAD-KIND:audit-event-id. The pending DEPS-RESET/DEP+ and SREVS-RESET/SREV+ sets
 \ supply the dependency and source-revision columns.
-: BUILD-WEIGHT ( n n CAD-KIND:artifact-id CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id CAD-KIND:audit-event-id -- weight-artifact )
+: BUILD-WEIGHT ( n CAD-KIND:artifact-id CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id CAD-KIND:audit-event-id -- weight-artifact )
    KIND-WEIGHT BUILD-SLOT >WART ;
 
 : DIGEST-WEIGHT ( weight-artifact -- content-digest )
@@ -969,7 +943,7 @@ public
 
 \ ---- kernel-kind envelope API -------------------------------------------------
 \ Same field order as BUILD-WEIGHT.
-: BUILD-KERNEL ( n n CAD-KIND:artifact-id CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id CAD-KIND:audit-event-id -- kernel-artifact )
+: BUILD-KERNEL ( n CAD-KIND:artifact-id CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id CAD-KIND:audit-event-id -- kernel-artifact )
    KIND-KERNEL BUILD-SLOT >KART ;
 
 : DIGEST-KERNEL ( kernel-artifact -- content-digest )

@@ -1,14 +1,14 @@
 \ softmax-launch.f - CHECKED on-device proof: launch the EMITTED SOFTMAX-ROWS
 \ kernel on the Orin and verify it against the CPU golden.
 \
-\ Fully checked Habu via lib/ffi.f (only P>N trusted). The cubin is produced
+\ Fully checked Habu via lib/ffi-abi.f (only FFI:>CELL trusted). The cubin is produced
 \ by the checked kernel itself (tools/ptx/softmax-cg.f + ptxas -arch=sm_87), so
 \ this closes the loop: the same body the ptx-stdlib gate certifies emits PTX
 \ that runs numerically correct on hardware. Self-contained: spawns bin/hb to emit
 \ tools/ptx/softmax-cg.f to a PRIVATE per-run PTX, ptxas-assembles, then launches -
 \ no shared /tmp/softmax.cubin. Load after lib/errors.f, lib/string.f, lib/test.f,
 \ lib/float.f, lib/fmt.f, src/arch/ptx/emit.f, lib/ptx/cg.f, lib/ptx/header.f,
-\ lib/ptx/launch.f, lib/ffi.f.
+\ lib/ptx/launch.f, lib/ffi-abi.f.
 \
 \ Data: in = [[1,2,3,4],[1,1,1,1]] (2 rows, k=4). Golden softmax (f32 bits):
 \   row0 = 1023627234 1035106489 1047695721 1059379089   (~1 ULP, ex2.approx)
@@ -17,6 +17,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/test.f
 require src/arch/ptx/emit.f
@@ -72,10 +73,10 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    SL-QO $1000 >LEN SL-QE $1000 >LEN PTXTC:ASSEMBLE ;
 
 : SL-PUT ( -- )                                       \ in = [1,2,3,4, 1,1,1,1]
-   1.0 F64>F32 SL-HIN 0 SL-F32!  2.0 F64>F32 SL-HIN 1 SL-F32!
-   3.0 F64>F32 SL-HIN 2 SL-F32!  4.0 F64>F32 SL-HIN 3 SL-F32!
-   1.0 F64>F32 SL-HIN 4 SL-F32!  1.0 F64>F32 SL-HIN 5 SL-F32!
-   1.0 F64>F32 SL-HIN 6 SL-F32!  1.0 F64>F32 SL-HIN 7 SL-F32! ;
+   1.0 F32:NARROW SL-HIN 0 SL-F32!  2.0 F32:NARROW SL-HIN 1 SL-F32!
+   3.0 F32:NARROW SL-HIN 2 SL-F32!  4.0 F32:NARROW SL-HIN 3 SL-F32!
+   1.0 F32:NARROW SL-HIN 4 SL-F32!  1.0 F32:NARROW SL-HIN 5 SL-F32!
+   1.0 F32:NARROW SL-HIN 6 SL-F32!  1.0 F32:NARROW SL-HIN 7 SL-F32! ;
 
 : SL-SETUP ( -- )
    CUDA:OPEN
@@ -84,10 +85,10 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    SL-CTX SL-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    SL-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    SL-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ SL-PATH >CSTR
+   PTXTC:CUBIN$ SL-PATH FFI:CSTR
    SL-MOD SL-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    SL-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SOFTMAX_ROWS" SL-KN >CSTR
+   s" SOFTMAX_ROWS" SL-KN FFI:CSTR
    SL-FUNC SL-MOD @ >CUDA-MOD SL-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 : SL-LAUNCH ( -- )                                    \ grid = 2 rows, block = 256

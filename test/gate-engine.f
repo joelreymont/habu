@@ -5,4 +5,4 @@
 
 include test/gate-engine-lib.f
 
-' GE-MAIN catch s" native engine gate" GE-THROW-REPORT
+' ENGINE-GATE:MAIN catch s" native engine gate" GE-THROW-REPORT

@@ -14,17 +14,12 @@
 \   ADT-DUP                     : a repeated field tag -> duplicate
 \   ADT-BOUNDS                  : a length outside its declared range -> bounds
 \   ADT-KIND-MISMATCH           : a weight envelope decoded as a kernel -> kind-mismatch
-\   ADT-MIGRATION               : a valid v2 envelope mutated to an unsupported version
-\                                 -> unsupported-migration
-\   ADT-V1-REJECT               : a v1 (pre-content-key) envelope -> unsupported-migration
-\                                 (the deterministic reject path for the v1->v2 wire bump)
 \   ADT-OPAQUE                  : an unknown OPTIONAL field is retained and re-emitted verbatim
 \
-\ V2 CROSS-PROCESS WIRE (dot habu-wire-content-key-e5efaa74): the artifact-id, dependency
+\ CROSS-PROCESS WIRE (dot habu-wire-content-key-e5efaa74): the artifact-id, dependency
 \ set, source-revision set, and schema/producer/config/target foreign ids serialise as
 \ 32-byte SHA-256 CONTENT KEYS (KEY>WIRE / WIRE>KEY); numeric-policy is byte-coincident
-\ 8-byte and the created-event stays the 8-byte JOURNAL sequence. Happy-path builds use
-\ SCHEMA-VERSION (=2); the version-covered/digest-only fixtures may keep any version value.
+\ 8-byte and the created-event stays the 8-byte JOURNAL sequence.
 \
 \ Foreign-id fields (via the owner KEY>WIRE/WIRE>KEY codecs + VALIDATE):
 \   ADT-{SCHEMA,PRODUCER,CONFIG,NPOL,TARGET}-DIGEST : each digest-covered foreign id flips
@@ -90,8 +85,7 @@ variable ADT-TB-U
       duplicate OF 4 ENDOF
       unknown-required OF 5 ENDOF
       kind-mismatch OF 6 ENDOF
-      unsupported-migration OF 7 ENDOF
-      digest-mismatch OF 8 ENDOF
+      digest-mismatch OF 7 ENDOF
    ;MATCH ;
 
 : ADT-OK? ( art-result<n> -- n bool )      \ ok -> ( slot true ), else ( 0 false )
@@ -103,7 +97,6 @@ variable ADT-TB-U
       duplicate OF 0 false ENDOF
       unknown-required OF 0 false ENDOF
       kind-mismatch OF 0 false ENDOF
-      unsupported-migration OF 0 false ENDOF
       digest-mismatch OF 0 false ENDOF
    ;MATCH ;
 
@@ -176,19 +169,19 @@ create ADT-CKB CKW allot
 : ADT-REV-CK ( CAD-KIND:rev-id ptr u8 -- ) {: id:CAD-KIND:rev-id out:ptr :}
    id out CKW REV:KEY>WIRE drop ;
 
-\ a canonical two-dependency weight envelope with the given schema-version /
-\ producer-version and an EMPTY source-revision set, the default foreign ids, and the
+\ a canonical two-dependency weight envelope with the given producer-version and an EMPTY
+\ source-revision set, the default foreign ids, and the
 \ supplied CAD-KIND:audit-event-id created-event. Source-revisions is held empty so the
 \ adversarial tail-offset tests keep a fixed layout; ADT-SREVS-* build populated sets.
-: ADT-BUILD-STD ( n n CAD-KIND:audit-event-id -- weight-artifact )
-   {: ver:n pver:n event:CAD-KIND:audit-event-id :}
+: ADT-BUILD-STD ( n CAD-KIND:audit-event-id -- weight-artifact )
+   {: pver:n event:CAD-KIND:audit-event-id :}
    DEPS-RESET  ADT-DEP1 DEP+  ADT-DEP2 DEP+
    SREVS-RESET
-   ver pver ADT-ID1
+   pver ADT-ID1
    ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET
    event BUILD-WEIGHT ;
 
-\ a two-dependency weight envelope with schema-version/producer-version/event fixed
+\ a two-dependency weight envelope with producer-version/event fixed
 \ and the five foreign ids supplied, so a per-field digest flip varies exactly one.
 : ADT-BUILD-IDS ( CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id -- weight-artifact )
    {: schema:CAD-KIND:schema-id producer:CAD-KIND:producer-id
@@ -196,7 +189,7 @@ create ADT-CKB CKW allot
       target:CAD-KIND:target-id :}
    DEPS-RESET  ADT-DEP1 DEP+  ADT-DEP2 DEP+
    SREVS-RESET
-   1 1 ADT-ID1  schema producer config npol target  ADT-EV BUILD-WEIGHT ;
+   1 ADT-ID1  schema producer config npol target  ADT-EV BUILD-WEIGHT ;
 
 \ ---- adversarial byte builder (uses the private wire constants) ----------------
 : ADT-TB-RESET ( -- )   0 ADT-TB-U ! ;
@@ -222,44 +215,44 @@ T-RESET
 
 \ ---- 1. equal values encode byte-identically and hash identically -------------
 : ADT-EQ-BYTES ( -- bool )
-   1 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
-   1 1 ADT-EV ADT-BUILD-STD ADT-B 512 ENCODE-WEIGHT {: lb:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-B 512 ENCODE-WEIGHT {: lb:n :}
    ADT-A la ADT-B lb ADT-BYTES-EQ? ;
 ADT-EQ-BYTES TTRUE
 
 : ADT-EQ-HASH ( -- bool )
-   1 1 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT
-   1 1 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT
+   1 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT
+   1 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT
    DIGEST-EQ? ;
 ADT-EQ-HASH TTRUE
 
 \ dependency insertion order must not matter (builder canonicalises the set)
 : ADT-DEP-ORDER ( -- bool )
    DEPS-RESET ADT-DEP1 DEP+ ADT-DEP2 DEP+  SREVS-RESET
-   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
    ADT-A 512 ENCODE-WEIGHT {: la:n :}
    DEPS-RESET ADT-DEP2 DEP+ ADT-DEP1 DEP+  SREVS-RESET
-   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
    ADT-B 512 ENCODE-WEIGHT {: lb:n :}
    ADT-A la ADT-B lb ADT-BYTES-EQ? ;
 ADT-DEP-ORDER TTRUE
 
 \ ---- 2. one semantic field change changes the digest; excluded field does not --
 : ADT-FIELD-DIGEST ( -- bool )
-   1 1 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT
-   2 1 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT       \ schema-version 1 -> 2
+   1 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT
+   2 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT       \ producer-version 1 -> 2
    DIGEST-EQ? 0= ;
 ADT-FIELD-DIGEST TTRUE
 
 : ADT-EXCLUDED-DIGEST ( -- bool )
-   1 1 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT
-   1 1 ADT-EV-ALT ADT-BUILD-STD DIGEST-WEIGHT  \ created-event -> a DISTINCT audit event (excluded)
+   1 ADT-EV ADT-BUILD-STD DIGEST-WEIGHT
+   1 ADT-EV-ALT ADT-BUILD-STD DIGEST-WEIGHT  \ created-event -> a DISTINCT audit event (excluded)
    DIGEST-EQ? ;
 ADT-EXCLUDED-DIGEST TTRUE
 
 \ ---- 3. decode round-trips encode ---------------------------------------------
 : ADT-ROUNDTRIP ( -- bool )
-   SCHEMA-VERSION 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
    ADT-A la DECODE-WEIGHT ADT-OK? {: slot:n ok:bool :}
    ok 0= if false exit then
    slot WEIGHT-OF ADT-B 512 ENCODE-WEIGHT {: lb:n :}
@@ -268,7 +261,7 @@ ADT-ROUNDTRIP TTRUE
 
 \ ---- 4. unknown required + digest mismatch -> typed diagnostics ----------------
 : ADT-UNKNOWN-REQ ( -- n )                 \ valid bytes + an unknown REQUIRED field
-   1 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
    200 ADT-A la + c!                       \ tag = 200 (unknown, > known max)
    FLAG-REQUIRED ADT-A la 1+ + c!          \ flags = required
    0 ADT-A la 2 + + U32W LE-PUT            \ len = 0
@@ -276,36 +269,36 @@ ADT-ROUNDTRIP TTRUE
 ADT-UNKNOWN-REQ 5 T=
 
 : ADT-DIGEST-MISMATCH ( -- n )
-   SCHEMA-VERSION 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
    \ layout tail: [digest field 38B][event field 14B]; digest payload = [la-46 .. la-14).
    la 30 -  {: dpos:n :}                   \ a byte well inside the 32-byte digest payload
    ADT-A dpos + c@ 1 xor  ADT-A dpos + c!
    ADT-A la DECODE-WEIGHT ADT-CODE ;
-ADT-DIGEST-MISMATCH 8 T=
+ADT-DIGEST-MISMATCH 7 T=
 
-\ ---- 5. malformed / noncanonical / kind-mismatch (+ duplicate, bounds, migration)
+\ ---- 5. malformed / noncanonical / kind-mismatch (+ duplicate, bounds) --------
 : ADT-MALFORMED ( -- n )                   \ truncate a valid envelope
-   1 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
    ADT-A la 1-  DECODE-WEIGHT ADT-CODE ;
 ADT-MALFORMED 1 T=
 
-: ADT-NONCANON ( -- n )                    \ TAG-KIND before TAG-VER (descending)
+: ADT-NONCANON ( -- n )                    \ TAG-PVER before TAG-KIND (descending)
    ADT-TB-RESET
+   TAG-PVER FLAG-REQUIRED 1 ADT-TB-U64-FIELD
    TAG-KIND FLAG-REQUIRED KIND-WEIGHT ADT-TB-U64-FIELD
-   TAG-VER  FLAG-REQUIRED 1 ADT-TB-U64-FIELD
    ADT-TB$ DECODE-WEIGHT ADT-CODE ;
 ADT-NONCANON 2 T=
 
-: ADT-DUP ( -- n )                         \ TAG-VER twice
+: ADT-DUP ( -- n )                         \ TAG-KIND twice
    ADT-TB-RESET
-   TAG-VER FLAG-REQUIRED 1 ADT-TB-U64-FIELD
-   TAG-VER FLAG-REQUIRED 1 ADT-TB-U64-FIELD
+   TAG-KIND FLAG-REQUIRED KIND-WEIGHT ADT-TB-U64-FIELD
+   TAG-KIND FLAG-REQUIRED KIND-WEIGHT ADT-TB-U64-FIELD
    ADT-TB$ DECODE-WEIGHT ADT-CODE ;
 ADT-DUP 4 T=
 
 : ADT-BOUNDS ( -- n )                      \ a scalar field with a non-8 declared length
    ADT-TB-RESET
-   TAG-VER ADT-TB-U8  FLAG-REQUIRED ADT-TB-U8
+   TAG-KIND ADT-TB-U8  FLAG-REQUIRED ADT-TB-U8
    4 U32W ADT-TB-LE                         \ declared len = 4 (a scalar field must be 8)
    0 U32W ADT-TB-LE                         \ 4-byte payload
    ADT-TB$ DECODE-WEIGHT ADT-CODE ;
@@ -313,29 +306,14 @@ ADT-BOUNDS 3 T=
 
 : ADT-KIND-MISMATCH ( -- n )               \ a kernel envelope decoded as weight
    DEPS-RESET ADT-DEP1 DEP+  SREVS-RESET
-   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-KERNEL
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-KERNEL
    ADT-A 512 ENCODE-KERNEL {: la:n :}
    ADT-A la DECODE-WEIGHT ADT-CODE ;
 ADT-KIND-MISMATCH 6 T=
 
-: ADT-MIGRATION ( -- n )                   \ mutate a valid v2 schema-version to an unsupported value
-   SCHEMA-VERSION 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
-   99 ADT-A HDR-W U32W + + U64W LE-PUT      \ first field payload = version 99
-   ADT-A la DECODE-WEIGHT ADT-CODE ;
-ADT-MIGRATION 7 T=
-
-\ v1 (pre-content-key, raw-index) envelopes are unsupported: an envelope claiming
-\ schema-version 1 decodes as unsupported-migration (the DEC-POST version gate), the
-\ deterministic-reject path for the v1->v2 wire bump. No persisted v1 goldens exist, so
-\ this fixes the version field to 1 over the v2 codec and asserts the gate fires.
-: ADT-V1-REJECT ( -- n )
-   1 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
-   ADT-A la DECODE-WEIGHT ADT-CODE ;
-ADT-V1-REJECT 7 T=
-
 \ ---- 6. unknown OPTIONAL field is retained opaquely and re-emitted -------------
 : ADT-OPAQUE ( -- bool )
-   SCHEMA-VERSION 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
    \ append an unknown OPTIONAL field (tag 210, flags 0, len 8, value 7)
    210 ADT-A la + c!
    0 ADT-A la 1+ + c!
@@ -423,31 +401,31 @@ TAG-EVENT    ADT-FID-WIDTH     1 T=
 
 \ ---- 9. envelope VALIDATE: accepts the golden, kind-agnostic, rejects corruption -
 : ADT-VALIDATE-OK ( -- n )                 \ golden weight envelope validates
-   SCHEMA-VERSION 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
    ADT-A la VALIDATE ADT-CODE ;
 ADT-VALIDATE-OK 0 T=
 
 : ADT-VALIDATE-KERNEL ( -- n )             \ kind-agnostic: a kernel envelope also validates
    DEPS-RESET ADT-DEP1 DEP+  SREVS-RESET
-   SCHEMA-VERSION 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-KERNEL
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-KERNEL
    ADT-A 512 ENCODE-KERNEL {: la:n :}
    ADT-A la VALIDATE ADT-CODE ;
 ADT-VALIDATE-KERNEL 0 T=
 
 : ADT-VALIDATE-MALFORMED ( -- n )          \ truncated bytes -> malformed
-   1 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
    ADT-A la 1- VALIDATE ADT-CODE ;
 ADT-VALIDATE-MALFORMED 1 T=
 
 : ADT-VALIDATE-DIGEST ( -- n )             \ corrupted stored digest -> digest-mismatch
-   SCHEMA-VERSION 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
    la 30 -  {: dpos:n :}
    ADT-A dpos + c@ 1 xor  ADT-A dpos + c!
    ADT-A la VALIDATE ADT-CODE ;
-ADT-VALIDATE-DIGEST 8 T=
+ADT-VALIDATE-DIGEST 7 T=
 
 : ADT-VALIDATE-UNKNOWN-REQ ( -- n )        \ unknown REQUIRED field -> unknown-required
-   1 1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   1 ADT-EV ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
    200 ADT-A la + c!
    FLAG-REQUIRED ADT-A la 1+ + c!
    0 ADT-A la 2 + + U32W LE-PUT
@@ -460,11 +438,11 @@ ADT-VALIDATE-UNKNOWN-REQ 5 T=
 : ADT-SREVS-DIGEST ( -- bool )
    DEPS-RESET ADT-DEP1 DEP+ ADT-DEP2 DEP+
    SREVS-RESET ADT-REV1 SREV+
-   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
    DIGEST-WEIGHT
    DEPS-RESET ADT-DEP1 DEP+ ADT-DEP2 DEP+
    SREVS-RESET ADT-REV1 SREV+ ADT-REV2 SREV+
-   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
    DIGEST-WEIGHT
    DIGEST-EQ? 0= ;
 ADT-SREVS-DIGEST TTRUE
@@ -473,11 +451,11 @@ ADT-SREVS-DIGEST TTRUE
 : ADT-SREVS-ORDER ( -- bool )
    DEPS-RESET ADT-DEP1 DEP+
    SREVS-RESET ADT-REV1 SREV+ ADT-REV2 SREV+
-   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
    ADT-A 512 ENCODE-WEIGHT {: la:n :}
    DEPS-RESET ADT-DEP1 DEP+
    SREVS-RESET ADT-REV2 SREV+ ADT-REV1 SREV+
-   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
    ADT-B 512 ENCODE-WEIGHT {: lb:n :}
    ADT-A la ADT-B lb ADT-BYTES-EQ? ;
 ADT-SREVS-ORDER TTRUE
@@ -487,7 +465,7 @@ ADT-SREVS-ORDER TTRUE
 : ADT-SREVS-ROUNDTRIP ( -- bool )
    DEPS-RESET ADT-DEP1 DEP+ ADT-DEP2 DEP+
    SREVS-RESET ADT-REV1 SREV+ ADT-REV2 SREV+
-   SCHEMA-VERSION 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
    ADT-A 512 ENCODE-WEIGHT {: la:n :}
    ADT-A la DECODE-WEIGHT ADT-OK? {: slot:n ok:bool :}
    ok 0= if false exit then
@@ -500,7 +478,7 @@ ADT-SREVS-ROUNDTRIP TTRUE
 : ADT-VALIDATE-SREVS ( -- n )
    DEPS-RESET ADT-DEP1 DEP+
    SREVS-RESET ADT-REV1 SREV+ ADT-REV2 SREV+
-   SCHEMA-VERSION 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
+   1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-EV BUILD-WEIGHT
    ADT-A 512 ENCODE-WEIGHT {: la:n :}
    ADT-A la VALIDATE ADT-CODE ;
 ADT-VALIDATE-SREVS 0 T=

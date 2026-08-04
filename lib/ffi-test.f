@@ -2,9 +2,11 @@
 \ Run: bin/hb --load lib/ffi-test.f
 
 require lib/test.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require test/checker-assert.f
 require lib/type/deftype.f         \ DEFTYPE - the ffi-dev / ffi-ctx test nominals
+
+package FFI-TEST
 
 create FFI-T-LIBC   108 c, 105 c, 98 c, 99 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libc.so.6"
 create FFI-T-LIBM   108 c, 105 c, 98 c, 109 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libm.so.6"
@@ -43,12 +45,16 @@ variable FFI-T-MATH
 DEFTYPE FFI-DEV
 DEFTYPE FFI-CTX
 
+\ Every trusted test helper below is a fixed local stub or exact FFI schema;
+\ no raw ABI surface escapes. Retirement owner: habu-ptx-m1-c-1df1d6e7.
+\ Exact strlen binding: one read-only pointer.
 TRUSTED: FFI-T-STRLEN$ ( ptr u8 -- n ) {: str:ptr :}
    s" strlen" FFI-T-SYM$ {: fn:n :}
    FFI:RESET
    str 0 FFI:READABLE!
    FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
 
+\ Exact strncmp binding: two read-only pointers and one scalar length.
 TRUSTED: FFI-T-STRNCMP$ ( ptr u8 ptr u8 n -- n )
    {: a:ptr b:ptr len:n :}
    s" strncmp" FFI-T-SYM$ {: fn:n :}
@@ -58,17 +64,20 @@ TRUSTED: FFI-T-STRNCMP$ ( ptr u8 ptr u8 n -- n )
    len 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 fn ffi-call-bounded ;
 
+\ Exact zero-argument getpid binding.
 TRUSTED: FFI-T-GETPID$ ( -- n )
    s" getpid" FFI-T-SYM$ {: fn:n :}
    FFI:RESET
    FFI:ARGS FFI:REG-LENS 0 fn ffi-call-bounded ;
 
+\ Nominal-input fixture proves ABI-cell identity does not erase a role.
 TRUSTED: FFI-T-CTX-SET ( ffi-ctx -- rc ) {: ctx:ffi-ctx :}
    s" getpid" FFI-T-SYM$ {: fn:n :}
    FFI:RESET
    ctx 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
 
+\ Exact void-result binding drops the machine return cell here.
 TRUSTED: FFI-T-VOID$ ( -- )
    s" getpid" FFI-T-SYM$ {: fn:n :}
    FFI:RESET
@@ -80,6 +89,9 @@ TRUSTED: FFI-T-VOID$ ( -- )
 : FFI-T-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ Fixed raw stubs: FFI-T-SUM10 reads x0-x7 plus two stack integers;
+\ FFI-T-FSUM3 reads d0-d2; FFI-T-FADD-X0 mixes x0/d0;
+\ FFI-T-FADD-FSTACK mixes d0/stack slot 0; FFI-T-X8-STORE writes sret x8.
 \ Leaf stub at cp@: x0 = x0+..+x7 + [sp+0] + [sp+8]; ret. Exercises ffi-call-n's
 \ register args + the 16-byte-aligned stack spill. Built inside a word so cp@ is
 \ the stable free code slot (a top-level cp@ patch would clobber the line buffer).
@@ -106,17 +118,20 @@ TRUSTED: FFI-T-FADD-FSTACK ( -- n ) cp@ {: fn:n :}
 TRUSTED: FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
    $F9000100 fn patch32  $D65F03C0 fn $4 + patch32  fn ;
 
+\ Late strlen resolution proves loader scratch cannot overwrite staged args.
 TRUSTED: FFI-T-STRLEN-LATE ( ptr u8 -- n ) {: str:ptr :}
    FFI:RESET
    str 0 FFI:READABLE!
    FFI-T-STRLEN FFI-T-SYM {: fn:n :}
    FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
 
+\ Exact ten-integer binding covers x0-x7 and two stack-spilled cells.
 TRUSTED: FFI-T-SUM10-CALL ( -- n )
    FFI:RESET
    10 0 ?do i 1+ i FFI:VALUE! loop
    FFI:ARGS FFI:REG-LENS 10 FFI-T-SUM10 ffi-call-bounded ;
 
+\ Exact three-register floating binding.
 TRUSTED: FFI-T-FSUM3-CALL ( -- r )
    FFI:RESET
    1.25 0 FFI:FLOAT!
@@ -125,6 +140,7 @@ TRUSTED: FFI-T-FSUM3-CALL ( -- r )
    FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
    0 FFI-T-FSUM3 ffi-call-abi-r-bounded ;
 
+\ Exact mixed x0/d0 binding.
 TRUSTED: FFI-T-FADD-X0-CALL ( -- r )
    FFI:RESET
    4 0 FFI:VALUE!
@@ -132,6 +148,7 @@ TRUSTED: FFI-T-FADD-X0-CALL ( -- r )
    FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
    0 FFI-T-FADD-X0 ffi-call-abi-r-bounded ;
 
+\ Exact floating-register plus stack-spill binding with distinct extents.
 TRUSTED: FFI-T-FADD-FSTACK-CALL ( -- r )
    FFI:RESET
    1.25 0 FFI:FLOAT!
@@ -139,6 +156,7 @@ TRUSTED: FFI-T-FADD-FSTACK-CALL ( -- r )
    FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
    1 FFI-T-FADD-FSTACK ffi-call-abi-r-bounded ;
 
+\ Exact sret binding fixes x8 to an eight-byte output.
 TRUSTED: FFI-T-X8-ABI-CALL ( ptr a -- n ) {: out:ptr :}
    FFI:RESET
    42 0 FFI:VALUE!
@@ -146,6 +164,7 @@ TRUSTED: FFI-T-X8-ABI-CALL ( ptr a -- n ) {: out:ptr :}
    FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
    0 FFI-T-X8-STORE ffi-call-abi-bounded ;
 
+\ Exact libm square-root binding returns one float.
 TRUSTED: FFI-T-SQRT-CALL ( r -- r ) {: value:r :}
    FFI-T-SQRT FFI-T-MSYM {: fn:n :}
    FFI:RESET
@@ -201,3 +220,5 @@ TRUSTED: FFI-T-SQRT-CALL ( r -- r ) {: value:r :}
 FFI-RUN
 
 T-REPORT
+
+;package

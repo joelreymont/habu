@@ -3,7 +3,7 @@ title: Add generic bounded-copy result family
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T15:51:34.318889+02:00\""
+created-at: "2026-07-22T15:51:34.318889+02:00"
 blocks:
   - habu-type-dsl-prove-93da83c4
   - habu-checker-sealed-destructure-d967fc03
@@ -38,8 +38,8 @@ zero length, exact capacity, excess capacity, and one-byte-short refusal; a
 sentinel-filled destination remains byte-identical on refusal. Reopening COPY,
 publishing COPY:FORGE, and calling private/generated raw construction reject.
 lib/adt/copy-test.f is enrolled in the canonical type-linear gate, and a
-mutation that removes its suite entry fails suite coverage. Typed-local,
-package, type-linear, suite-coverage, and host gates pass.
+deliberately failing assertion in that test makes the production gate red.
+Typed-local, package, type-linear, and host gates pass.
 
 Files: lib/adt/copy.f, lib/adt/copy-test.f, the canonical type-linear suite
 inventory. Smallest real check: the enrolled type-linear slice

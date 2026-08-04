@@ -82,7 +82,7 @@ called at exactly one site, after the header is complete.
 ## Construction and release
 
 ```
-: WORKSPACE-NEW     ( MDLCFG:mcfg n -- MDLCFG:mcfg workspace )   \ n = max tokens
+: WORKSPACE-NEW     ( GPT2:config n -- GPT2:config workspace )   \ n = max tokens
 : WORKSPACE-RELEASE ( workspace -- )                             \ TOTAL
 ```
 
@@ -103,11 +103,9 @@ it does and is false; measured and frozen in
 
 ### Failure ordering
 
-1. **reject every non-GPT-2 architecture arm.** `MATCH` the config's `arch`
-   and refuse anything but `gpt2` with a named code, *before* `F = 4E` is
-   applied anywhere. A valid Llama config carries its own `ffn-dim`
-   (`maki/infer/model-config.f:72`); silently imposing 4E on it would
-   allocate a layout that does not match the model
+1. exhaustively `MATCH` the config's architecture before layout; adding an arm
+   stops certification until that arm explicitly refuses GPT-2 layout, so no
+   future arm can inherit `F = 4E`
 2. reject non-positive T, E, H, V; reject requested T above the config's
    context length
 3. reject H that does not divide E
@@ -214,10 +212,9 @@ earlier draft sized it [T,V], which would waste about 404 MB at GPT-2 small
 and scale catastrophically. Observation of intermediate boundaries uses the
 existing probe sink, not a resident plane.
 
-**F is 4E by architecture, not assumption.** `MDLCFG`'s `arch` ENUM gives the
-llama arm an explicit `ffn-dim` and the gpt2 arm none
-(`maki/infer/model-config.f:70-73`), so for GPT-2 the feed-forward width is
-defined as four times the embedding width.
+**F is 4E by architecture, not assumption.** Layout begins with an exhaustive
+architecture `MATCH`. Adding an arm stops certification until that arm refuses
+GPT-2 layout before any layout calculation, so it cannot inherit `F = 4E`.
 
 ## Layout formula
 
@@ -254,7 +251,7 @@ numbering, and its dependencies are otherwise unchanged.
 
 | # | leaf | owned result | depends |
 |---|---|---|---|
-| 8a | pure checked layout | the private typed `layout` value; the pure functions from `(T,E,H,V)` to every region size, every offset, the header size, and the total, on the overflow-checked CAD operations, with `logits` as [1,V]; the two private `numeric-result` extractors and the size pipeline. No allocation, no owner, no address. Tests: zero and negative extents, H not dividing E, T above context length, product overflow, maximum accepted total and maximum-plus-one, and one test per non-`ok` arm reaching the named size error | MDLCFG accessors |
+| 8a | pure checked layout | the private typed `layout` value; the pure functions from `(T,E,H,V)` to every region size, every offset, the header size, and the total, on the overflow-checked CAD operations, with `logits` as [1,V]; the two private `numeric-result` extractors and the size pipeline. No allocation, no owner, no address. Tests: zero and negative extents, H not dividing E, T above context length, product overflow, maximum accepted total and maximum-plus-one, and one test per non-`ok` arm reaching the named size error | GPT2 config accessors |
 | 8b | one allocation, header, linear mint and release | `DEFLINEAR workspace`; the 27-cell header; the three private crossings with `MINT-WORKSPACE` erasing the typed `layout` exactly once; `WORKSPACE-NEW` with the throw-ordered failure sequence; total `WORKSPACE-RELEASE` reading the stored exact length | 8a; `habu-make-owned-release-79de2b5c` |
 | 8c | private bounded views | `region-id`, `VIEW`, the per-head pane derivation, and the private row loops that consume them | 8b |
 

@@ -13,7 +13,7 @@
 \ .version/.target header. Kernel ABI (named REGION_<rid>): one `.param .u64` per
 \ region input buffer, then `.param .u64 p_out`, then `.param .u32 p_n`; param
 \ registers %rd1..%rd<K> (inputs), %rd<K+1> (output), %r1 (n). GELU/SILU mirror the
-\ host references op-for-op so the device f32 output matches F64>F32(host) under the
+\ host references op-for-op so the device f32 output matches F32:NARROW(host) under the
 \ section 11 tolerance (proven by maki/lower/golden.f LOWER-GOLDEN).
 \
 \ BROADCAST operands (bias/scale): a region input whose shape is a legal broadcast of the
@@ -69,6 +69,9 @@ package CAD-NUM public
 -5176 constant E-LEW-CAP      \ driver text buffer capacity exceeded
 
 package MAKI
+
+using PTX-ACT
+
 private
 
 4   constant LEW-MAX-IN       \ v1 input cap (documented): >4 region inputs fails closed
@@ -413,4 +416,5 @@ public
    {: ma:ptr mu:n rid:CAD-KIND:region pa:ptr pu:n :}
    ma mu  s" require maki/lower/ew.f"  s" LEW-EMIT"  rid  pa pu  LOWER-DRIVER! ;
 
+;using
 ;package

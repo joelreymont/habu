@@ -4,8 +4,8 @@ status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-19T21:36:43.040780+02:00"
-closed-at: "2026-08-04T00:22:52.653596+02:00"
-close-reason: ledger retired with the governance mirror
+closed-at: "2026-08-02T21:03:10.673605+02:00"
+close-reason: "Obsolete: the suite-coverage lint and every row this task proposed restructuring are deleted in the same reviewed hard-cut change; no product behavior remains to implement."
 blocks:
   - habu-lowering-hash-unified-586f7881
 ---

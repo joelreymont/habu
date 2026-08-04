@@ -1,9 +1,10 @@
 ---
 title: Validate bootstrap load paths
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-21T22:42:54.547671+02:00"
+close-reason: "Landed as c012ad10a0a3."
 ---
 
 Invariant: every command in bootstrap documentation that names repository load paths is executable on the exact tree it documents. The current native refresh recipe still names the removed tools/date.f path after the date module moved to lib/date.f, so the first prescribed recovery step exits 74 before any build. A one-line documentation edit would rot again because build source lists, refresh drivers, and prose currently repeat path inventories independently.
@@ -22,4 +23,3 @@ fenced refresh command, verifies its token sequence and every referenced path,
 and proves missing, duplicate, reordered, and extra dependency mutations reject.
 Keep the audited no-binary shell launcher unchanged.
 
-Claim: agent=fork-bootstrap-path workspace=.jj-ws/habu-validate-bootstrap-load-927d5544

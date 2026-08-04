@@ -4,8 +4,8 @@ status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-27T10:33:57.118380+02:00"
-closed-at: "2026-08-04T00:22:52.671083+02:00"
-close-reason: ledger retired with the governance mirror
+closed-at: "2026-08-01T12:36:35.226877+02:00"
+close-reason: "Abolished: the hand-maintained stdlib ledger and its lint were hard-deleted; no generator or replacement authority remains."
 blocks:
   - habu-pkg-public-signatures-e25db8b1
 ---

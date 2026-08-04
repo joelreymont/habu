@@ -57,6 +57,15 @@ s" CK-STAGE ( CAD-KIND:stage -- CAD-KIND:stage )" YES
 s" CK-EFFECT ( CAD-KIND:effect -- CAD-KIND:effect )" YES
 s" CK-REGION ( CAD-KIND:region -- CAD-KIND:region )" YES
 
+: ID-ERROR>N ( CAD-KIND:id-error -- n )
+   MATCH CAD-KIND:id-error
+      wrong-width OF 1 ENDOF
+      unknown     OF 2 ENDOF
+   ;MATCH ;
+
+CAD--KIND-ID--ERROR:WRONG-WIDTH ID-ERROR>N 1 T=
+CAD--KIND-ID--ERROR:UNKNOWN ID-ERROR>N 2 T=
+
 \ Adjacent roles never collapse to one cell-shaped scalar identity.
 s" CK-X01 ( CAD-KIND:design-id -- CAD-KIND:rev-id )" NO
 s" CK-X02 ( CAD-KIND:rev-id -- CAD-KIND:obj-id )" NO
@@ -135,25 +144,17 @@ s" CK-AKIND ( CAD-KIND:artifact-kind -- CAD-KIND:artifact-kind )" YES
 s" CK-PRODUCER ( CAD-KIND:producer-id -- CAD-KIND:producer-id )" YES
 s" CK-CONFIG ( CAD-KIND:config-id -- CAD-KIND:config-id )" YES
 s" CK-NPOLICY ( CAD-KIND:numeric-policy-id -- CAD-KIND:numeric-policy-id )" YES
-s" CK-CAP ( CAD-KIND:capability-id -- CAD-KIND:capability-id )" YES
 s" CK-AUDIT ( CAD-KIND:audit-event-id -- CAD-KIND:audit-event-id )" YES
 
 \ Adjacent envelope roles never collapse to one cell-shaped scalar identity.
 s" CK-XA1 ( CAD-KIND:artifact-kind -- CAD-KIND:producer-id )" NO
 s" CK-XA2 ( CAD-KIND:producer-id -- CAD-KIND:config-id )" NO
 s" CK-XA3 ( CAD-KIND:config-id -- CAD-KIND:numeric-policy-id )" NO
-s" CK-XA4 ( CAD-KIND:numeric-policy-id -- CAD-KIND:capability-id )" NO
-s" CK-XA5 ( CAD-KIND:capability-id -- CAD-KIND:audit-event-id )" NO
 \ The artifact CLASS is not the artifact IDENTITY (a kind cannot forge an id).
 s" CK-XA6 ( CAD-KIND:artifact-kind -- CAD-KIND:artifact-id )" NO
 s" CK-XA7 ( CAD-KIND:artifact-id -- CAD-KIND:artifact-kind )" NO
 \ An existing neighbor role does not launder into a new envelope identity.
 s" CK-XA8 ( CAD-KIND:schema-id -- CAD-KIND:config-id )" NO
-
-\ Generic typed memory keeps the new role on store and fetch.
-s" CK-CAP-PUT ( CAD-KIND:capability-id ptr CAD-KIND:capability-id -- ) !" YES
-s" CK-CAP-GET ( ptr CAD-KIND:capability-id -- CAD-KIND:capability-id ) @" YES
-s" CK-CAP-BAD ( CAD-KIND:producer-id ptr CAD-KIND:capability-id -- ) !" NO
 
 \ The PERSISTENT audit-event identity is not the EPHEMERAL runtime async event
 \ (ADAG:event-id): audit provenance can never unify with a synchronization

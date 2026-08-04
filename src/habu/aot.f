@@ -12,6 +12,7 @@ package AOT-LINK
 \ definition. `evaluate` compiles the generated constructor bodies into the
 \ maker dictionary exactly as the engine does at interpret level. Named boundary:
 \ source-string metaprogramming (`evaluate`) is outside checked inference.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: AOT-CTOR-EVAL ( ptr u8 n -- ) evaluate ;
 : AOT-CTOR-EVAL-INSTALL ( -- ) [: AOT-CTOR-EVAL ;] is TDECL-EVAL-XT ;
 AOT-CTOR-EVAL-INSTALL
@@ -19,8 +20,8 @@ AOT-CTOR-EVAL-INSTALL
 
 \ --- preseeded test entry argv (tools/hb-build.f --preseed-entry / --preseed-seed):
 \ argv[3] = selected entry word (default MAIN), argv[4] = seed cells as big-endian
-\ u64 hex, 16 chars per cell, bottom-of-stack first. See src/habu/aot-lib.f EMIT-SEED
-\ and docs/census-tfam-10.md Category 1.
+\ u64 hex, 16 chars per cell, bottom-of-stack first.
+\ src/habu/aot-lib.f EMIT-SEED materializes the cells before entry.
 variable AOT-HEXACC
 : AOT-HEXNIB ( c -- n ) {: c:n :}
    c 48 >= c 58 < and IF c 48 - EXIT THEN
@@ -47,6 +48,7 @@ variable AOT-HEXACC
 
 \ Named boundary: installs the user-source checker hook; `set-check` is a
 \ compiler-control op the checker rejects inside a checked body (top-level only).
+\ Retirement: cap:checker-hook-identity.
 TRUSTED: INSTALL-USER-HOOK ( -- )
    LOWER-CERT-HOOK:INSTALL
    ['] USER-HOOK set-check ;
@@ -59,8 +61,8 @@ public
    READ-PROG
    SENTSET
    INSTALL-USER-HOOK
-   AOT-PB@ DATA-VA INP-CELL + !
-   AOT-PB@ PN @ + DATA-VA INE-CELL + ! ;
+   AOT-PB@ data-base INP-CELL + !
+   AOT-PB@ PN @ + data-base INE-CELL + ! ;
 
 ;package
 

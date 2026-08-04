@@ -4,4 +4,4 @@
 
 require test/prop-test-core.f
 
-PROP-MAIN
+PROP-TEST:RUN

@@ -3,7 +3,7 @@
 \ bin/hb to emit tools/ptx/redadd-cg.f to a private PTX, ptxas-assembles, then launches 256
 \ threads each atomically adding 1.0 to out[0] and asserts out[0] = 256.0 (FP32 exact). Orin-only.
 \ Releases the primary context before exit (or bin/hb hangs at teardown). Load after lib/test.f,
-\ lib/ffi.f, and the fs/process libs.
+\ lib/ffi-abi.f, and the fs/process libs.
 
 require lib/test.f
 require lib/ptx/toolchain.f
@@ -46,10 +46,10 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
    RA-CTX RA-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    RA-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    RA-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ RA-PATH >CSTR
+   PTXTC:CUBIN$ RA-PATH FFI:CSTR
    RA-MOD RA-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    RA-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" REDADD" RA-KN >CSTR
+   s" REDADD" RA-KN FFI:CSTR
    RA-FUNC RA-MOD @ >CUDA-MOD RA-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    RA-OUT 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  RA-OUT @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    RA-OUT @ >CUDA-DEVPTR 0 1 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0      \ out = 0

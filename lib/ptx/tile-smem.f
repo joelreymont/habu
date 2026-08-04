@@ -23,6 +23,7 @@
 \ SSTORE returns nothing, so it is a CHECKED caller of PTXREP:SINK3 (lib/ptx/rep.f).
 \ The emit lowers to PTX cp.async/ld.shared/st.shared + barriers the checker cannot
 \ infer. Load after lib/ptx/tile.f.
+\ Retirement owner: habu-ptx-phantom-preserving-3df9db92.
 
 require lib/ptx/rep.f
 

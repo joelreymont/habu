@@ -1,8 +1,8 @@
 \ maki/db/keywire-xproc-env-test.f - the DECISIVE cross-process ENVELOPE + TRANSACTION
 \ identity test (dot habu-wire-content-key-e5efaa74, § 23.9; the "encode in one process
-\ image, decode in a fresh one" requirement applied to the composite v2 codecs).
+\ image, decode in a fresh one" requirement applied to the composite codecs).
 \
-\ This process (the PARENT) BUILDs a v2 artifact envelope (self artifact-id + a two-element
+\ This process (the PARENT) BUILDs an artifact envelope (self artifact-id + a two-element
 \ dependency set + the four 32-byte foreign ids + a source-revision + an 8-byte event) and a
 \ transaction (base revision + read/write/dep), ENCODEs both to a fixed-layout file, and
 \ spawns a FRESH bin/hb (the child, maki/db/keywire-xproc-env-child.f) that registers DECOYS
@@ -13,7 +13,7 @@
 \
 \ Why it is decisive: envelope identity (and the transaction Merkle base) survives PROCESS
 \ DEATH only because the id / dependency / source-revision / foreign-id wire forms are now
-\ 32-byte content keys, not the process-local registry raws. The pre-migration raw form would
+\ 32-byte content keys, not process-local registry raws. A raw-index form would
 \ make the child resolve a decoy (or go out of range) because its raw indices are shifted; the
 \ content key resolves correctly regardless of registration order.
 \
@@ -35,8 +35,6 @@ require maki/device-artifacts.f     \ MAKI-GRADE: private tmp driver path (PREPA
 require maki/db/keywire-xproc-env-child.f  \ KWXPC-ENV: shared descriptors + REG-* + RESOLVE-ENV
 
 package KWXPC-ENV-TEST
-
-2 constant SV                            \ envelope schema-version (must track ARTIFACT SCHEMA-VERSION)
 
 create ENVBUF 1024 allot                 \ encoded envelope bytes
 create TXNBUF 1024 allot                 \ encoded transaction bytes
@@ -64,13 +62,13 @@ create XP-OUT $2000 allot   create XP-ERR $1000 allot
    u KPATH-U ! ;
 : KPATH$ ( -- ptr u8 n )   KPATH KPATH-U @ ;
 
-\ ---- build the v2 envelope + transaction in THIS process image -----------------
+\ ---- build the envelope + transaction in THIS process image --------------------
 \ BUILD-ENV populates the pending dependency + source-revision sets through the public
 \ ARTIFACT build protocol, then builds and encodes the weight envelope; returns its length.
 : BUILD-ENV ( CAD-KIND:audit-event-id -- n ) {: event:CAD-KIND:audit-event-id :}
    ARTIFACT:DEPS-RESET  KWXPC-ENV:REG-DEP1 ARTIFACT:DEP+  KWXPC-ENV:REG-DEP2 ARTIFACT:DEP+
    ARTIFACT:SREVS-RESET  KWXPC-ENV:REG-SREV ARTIFACT:SREV+
-   SV 1 KWXPC-ENV:REG-ID
+   1 KWXPC-ENV:REG-ID
       KWXPC-ENV:REG-SCHEMA KWXPC-ENV:REG-PRODUCER KWXPC-ENV:REG-CONFIG
       KWXPC-ENV:REG-NPOL KWXPC-ENV:REG-TARGET  event  ARTIFACT:BUILD-WEIGHT
    ENVBUF 1024 ARTIFACT:ENCODE-WEIGHT ;

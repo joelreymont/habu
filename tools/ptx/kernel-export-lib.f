@@ -2,7 +2,7 @@
 \
 \ EXPORT captures a registered producer's PTX in-process (PTX-CAPTURE around
 \ `included` of the same producer source the harnesses spawn), renders the
-\ habu-kernel-manifest v1 JSON from the ACTIVE KABI record via KMAN:MANIFEST$,
+\ habu-kernel-manifest JSON from the ACTIVE KABI record via KMAN:MANIFEST$,
 \ and writes <out-dir>/<NAME>.ptx plus <NAME>.manifest.json. Host-only: no
 \ CUDA calls, so the export runs as a build step off-device. The registry maps
 \ kernel names to producer sources; a producer must leave the KABI record

@@ -1,9 +1,11 @@
 ---
 title: Publish owner product surface
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-29T20:53:42.833583+02:00"
+closed-at: "2026-08-02T22:32:09.621638+02:00"
+close-reason: "Retired without landing: the STRUCTURE-MAKE owner-product surface was the CONSTRUCT-owner substrate cut from the GPT-2 milestone. Owner-only construction proceeds via a private structure declaration inside the sealed owner package per habu-seal-validated-model-4361ff22, whose checkpoint stop-rule replaces this dot; no consumer of the generator flag exists."
 blocks:
   - habu-lower-owner-product-4c07eff9
   - habu-delete-runtime-pkg-a21b0679

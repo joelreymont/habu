@@ -188,8 +188,8 @@ The implementation dependency chain is:
 12. `habu-type-dsl-prove-93da83c4` — fixpoint, recovery, snapshot/AOT, full gate, and final census proof.
 
 No dependent V2 schema is complete while it uses a removed declaration. The
-exact baseline and file-to-owner routing live in
-`docs/census-type-dsl-cutover.md`.
+authoritative cutover contract lives in
+[`docs/type-families.md`](docs/type-families.md) §2.
 
 ## 4. Architecture
 
@@ -1103,8 +1103,9 @@ it does not throw and no allocator accepts a zero-admitting scalar role.
 zero returns `zero`, and the first count whose `cells` conversion would exceed
 `MAX-N` returns `overflow` before an allocation primitive is reachable.
 
-Every mint and any unavoidable role-to-`n` primitive adapter receives
-source-local rationale, a focused validation test, and a removal condition. No public unchecked raw mint or conversion exists. A
+Every mint and any unavoidable role-to-`n` primitive adapter receives a
+source-local justification, a focused validation test, and a removal condition.
+No public unchecked raw mint or conversion exists. A
 role-specific refined-to-`n` projection may exist only in private owner code
 where an existing primitive cannot consume the role directly. It is explicit
 proof erasure, never paired with a public inverse, and must not appear in a V2
@@ -1353,8 +1354,9 @@ The implementation is split into these disjoint core owners:
 2. `lib/cad-num-arithmetic.f` and `lib/cad-num-arithmetic-test.f` own exactly the
    B5.2 table. They depend on slice 1 and add no roles or overloads.
 3. The open `habu-seal-cad-num-36dbeec6` dot owns `lib/cad-num.f` and
-   `lib/cad-num-seal-test.f`: final assembly, permanent sealing, and hostile
-   reopen/qualified-publication probes only. It depends on slices 1-2, the unified declaration migration, the
+   `lib/cad-num-seal-test.f`: final assembly, permanent sealing,
+   source-local boundary validation, and hostile reopen/qualified-publication
+   probes only. It depends on slices 1-2, the unified declaration migration, the
    landed gate-path TVK-RAW seal, the native/REPL registration follow-up, and
    package sealing; it is the first production authority.
 
@@ -1369,7 +1371,7 @@ workspace.
 | Vector | `lib/vector.f`, `lib/vector-test.f` | Add packaged `VEC:INIT`, `VEC:CLEAR`, `VEC:LEN@`, `VEC:CAP@`, `VEC:RESIZE`, `VEC:ENSURE`, `VEC:@`, `VEC:!`, `VEC:PUSH`, and `VEC:EACH`. Length/capacity are `item-count`, access/push uses `index`, and only the private one-cell-per-item adapter produces `cell-count` then `alloc-cell-count`. Assigned direct callers are exactly `maki/sched-key.f`, `tools/lint/intern.f`, and `tools/lint/source-lex.f`; the first is one combined sched-key vector/Model-IR caller commit, and the latter pair belong to the combined memory/vector tool caller commit described below. | `bin/hb --load lib/vector-test.f`, then `bin/hb --load maki/sched-key-test.f` and `bin/hb --load tools/lint/text-foundation-test.f`; zero length remains valid, zero capacity allocation rejects, growth overflow and index/count swaps reject | sealed CAD-NUM; packaged MEM API; bounded-host owns relational bounds/generations, not this row |
 | Model IR | `maki/model-ir.f`, `maki/model-ir-test.f` | Reopen package `MIR` for `MIR:NODE-COUNT@`, `MIR:SLOT-COUNT@`, `MIR:OPERAND-COUNT@`, and `MIR:MATERIALIZED-COUNT`, all returning `item-count`. Keep `MIR:input-index`, `MIR:ref-pos`, and `MIR:operand-ref`; never replace them with scalar `index`. Operand-count callers are exactly `maki/backward-test.f`, `maki/backward.f`, `maki/cad.f`, `maki/checkpoint.f`, `maki/fusion-plan.f`, `maki/lower/ew.f`, `maki/lower/mm.f`, `maki/lower/move.f`, `maki/lower/red.f`, `maki/mem-plan.f`, `maki/saved.f`, `maki/sched-key.f`, and `maki/traffic.f`. Count accessors are added first; those caller files move in separately owned commits, and the old MAKI-prefixed count accessors are removed only after the listed set is empty. | `bin/hb --load maki/model-ir-test.f`, then `bin/hb --load maki/test.f`; zero-node/zero-operand state, maximum capacities, count-versus-index checker negatives, rollback counts | sealed CAD-NUM; existing MIR nominal handles; no typed-storage-definer dependency and no ownership of MI-* storage migration |
 | Shape census | Read-only census of `maki/tensor.f`, `maki/tensor-value.f`, `maki/cad.f`, `maki/executor.f`, `maki/golden-artifact.f`, `maki/gradcheck.f`, `maki/lower/ew.f`, `maki/lower/launch.f`, `maki/lower/mm.f`, `maki/lower/move.f`, `maki/lower/red.f`, `maki/move-view.f`, `maki/plan-ops.f`, `maki/saved.f`, and `maki/traffic.f`; only the census result is added to this plan | Classify every current product as already owned by `MAKI:DIM*`, `MAKI:SHAPE-ELEMS`, or `MAKI:TENSOR-BYTES`, or name an exact residual file/word for a new dot. This row edits no Maki source and adds no CAD-NUM multiplication. | `bin/hb --load maki/tensor-test.f` and `bin/hb --load maki/tensor-value-test.f`; the census records zero/overflow semantics of each owner | read-only after B5.2; any residual becomes a separate owner dot |
-| Final integration | `src/habu/habu2.f`, `MODEL-CAD-V2-PLAN.md`, and `tools/public-signatures-test.f` only | Load the sealed `lib/cad-num.f`, audit trusted mints and packaged public signatures, and prove the V2 production entry point uses no legacy global numeric cast or allocation boundary. It does not migrate consumers or change arithmetic. | exact public-signature/trust/status gates, native fixpoint, then the full owning gates on the rebased tree | every dispatched owner/caller dot above green and integrated |
+| Final integration | `src/habu/habu2.f`, `MODEL-CAD-V2-PLAN.md`, and `tools/public-signatures-test.f` only | Load the sealed `lib/cad-num.f`, audit unchecked mints and packaged public signatures, and prove the V2 production entry point uses no legacy global numeric cast or allocation boundary. It does not migrate consumers or change arithmetic. | exact public-signature and focused boundary tests, native fixpoint, then the full owning gates on the rebased tree | every dispatched owner/caller dot above green and integrated |
 
 The memory owner contains exactly two private representation projections:
 
@@ -1388,7 +1390,7 @@ render them as `MEM:ALLOC-BYTES>N` and `MEM:ALLOC-CELLS>N` only to identify the
 owner. `ALLOC-BYTES>N` appears solely at the `mmap` size operand, and
 `ALLOC-CELLS>N` solely before the `cells` primitive used by the cell-allocation
 sink. They are never public conversions or general arithmetic adapters. Each
-has source-local rationale, refine-lint classification, and focused tests
+has source-local rationale, package-private confinement, and focused tests
 proving qualified lookup/export is unavailable and byte/cell
 roles cannot swap. Their removal condition is that the corresponding primitive
 accepts the nominal allocation role directly.
@@ -1479,7 +1481,7 @@ wave, `MEM-ALLOC-BYTES`, is split into disjoint caller dots:
   `tools/diag-origin-core.f`, `tools/diagnose-hb-test.f`,
   `tools/examples-test.f`, `tools/hb-build-lib.f`,
   `tools/json-only-test-lib.f`, `tools/json-only.f`, `tools/lint/intern.f`,
-  `tools/lint/text-foundation-test.f`, `tools/refine-lint-core.f`,
+  `tools/lint/text-foundation-test.f`,
   `tools/repair-packet-core.f`, `tools/repair-packet-test.f`,
   `tools/repair-schema-doc-test.f`, and `tools/signature-lint-core.f`.
 
@@ -1578,14 +1580,13 @@ and therefore blocks on D0.
   `maki/lower/red-test.f`, `maki/lower/mm-test.f`, `maki/lower/ew-test.f`,
   `maki/lower/mv-test.f`, `maki/onnx/deploy-test.f` (all FIND-SUB). No BUF use; no
   D0 dependency.
-- **D3 — test callers** `Migrate test string callers to STR:` (7 files):
+- **D3 — test callers** `Migrate test string callers to STR:` (6 files):
   `test/boot-pin-test.f` (FIND-SUB), `test/gate-engine-lib.f` (FIND-SUB),
-  `test/owner-wid-doctor.f` (FIND-SUB),
   `test/gate-pool-test.f` (FIND-SUB, INDEX-OF),
   `test/seal-absence.f` (FIND-SUB, SPLIT-NEXT),
   `test/run-lib.f` (SPLIT-NEXT, BUF-RESET, BUF-APPEND, BUF-APPEND-C `(C)`),
   `test/run-rerun-failed-test.f` (BUF-RESET). Blocks on D0.
-- **D4 — tool callers** `Migrate tool string callers to STR:` (14 files):
+- **D4 — tool callers** `Migrate tool string callers to STR:` (12 files):
   `tools/codegen-role.f` (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C `(C)`),
   `tools/codegen-role-test.f` (FIND-SUB, BUF-APPEND),
   `tools/hb-build-lib.f` (INDEX-OF),
@@ -1617,15 +1618,15 @@ files are distinct from the non-test `maki/lower/*.f` files in the Model IR wave
 **Ready-to-mint leaf dots** (orchestrator mints; census records verbatim):
 
 ~~~
-dot add "Add STR:BUF-APPEND-C typed byte append" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census. The typed STR: surface wraps BUF-RESET/BUF-LEN@/BUF-APPEND but omits a typed equivalent for the raw single-byte appender BUF-APPEND-C ( n ptr u8 n ptr len -- ), which 5 files depend on. Add packaged STR:BUF-APPEND-C ( n ptr u8 CAD-NUM:byte-len ptr len -- ) to lib/string.f mirroring STR:BUF-APPEND: bind RAW-BUF-APPEND-C to the global before the package word shadows it, take cap as CAD-NUM:byte-len via BYTE-LEN>N, keep the same c<0/c>255 E-STR-BOUNDS and E-STR-CAPACITY throws. Acceptance: STR:BUF-APPEND-C lands with a T{ }T test covering append, capacity overflow throw, and byte-range reject; lib/string-test.f green. Files: lib/string.f, lib/string-test.f. Verify: bin/hb --load lib/string-test.f. Depends: landed STR owner. Ownership: lib/string.f, lib/string-test.f. Claim: unassigned."
+dot add "Add STR:BUF-APPEND-C typed byte append" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census. The typed STR: surface wraps BUF-RESET/BUF-LEN@/BUF-APPEND but omits a typed equivalent for the raw single-byte appender BUF-APPEND-C ( n ptr u8 n ptr len -- ), which 4 files depend on. Add packaged STR:BUF-APPEND-C ( n ptr u8 CAD-NUM:byte-len ptr len -- ) to lib/string.f mirroring STR:BUF-APPEND: bind RAW-BUF-APPEND-C to the global before the package word shadows it, take cap as CAD-NUM:byte-len via BYTE-LEN>N, keep the same c<0/c>255 E-STR-BOUNDS and E-STR-CAPACITY throws. Acceptance: STR:BUF-APPEND-C lands with a T{ }T test covering append, capacity overflow throw, and byte-range reject; lib/string-test.f green. Files: lib/string.f, lib/string-test.f. Verify: bin/hb --load lib/string-test.f. Depends: landed STR owner. Ownership: lib/string.f, lib/string-test.f. Claim: unassigned."
 
 dot add "Migrate library string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, library lane. Migrate every raw STR call in these files to the typed STR: surface: examples/string-regex.f (INDEX-OF), lib/json-read.f (INDEX-OF), lib/float.f (INDEX-OF), lib/process-env.f (INDEX-OF, SPLIT-NEXT), lib/object.f (SPLIT-NEXT), lib/ptx/ad.f (SPLIT-NEXT), lib/content-key.f (BUF-APPEND-LEN -> STR:BUF-APPEND, dropping the >LEN pre-conversion). INDEX-OF/FIND-SUB return option<CAD-NUM:index>; SPLIT-NEXT gains the one-past-end offset-advance overflow guard; behavior otherwise byte-identical. Acceptance: no raw STR-LEN/STR-OFF/STR-COUNT/FIND-SUB/INDEX-OF/SPLIT-NEXT/BUF-* call remains in these files (fresh rg census empty); each file's focused test green. Files: examples/string-regex.f, lib/json-read.f, lib/float.f, lib/process-env.f, lib/object.f, lib/ptx/ad.f, lib/content-key.f, plus their focused tests. Verify: bin/hb --load each owned file's focused test; library gate slice. Depends: landed STR owner. Ownership: the 7 listed library files. Claim: unassigned."
 
 dot add "Migrate Maki string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, Maki lane. Migrate every raw STR call to the typed STR: surface in: maki/store.f (INDEX-OF), maki/store-rehydrate.f (INDEX-OF, SPLIT-NEXT), maki/competitive-store.f (INDEX-OF), maki/cad.f (INDEX-OF), maki/eval/transcript.f (INDEX-OF, SPLIT-NEXT), maki/golden-artifact.f (INDEX-OF, SPLIT-NEXT), maki/eval/repair-loop.f (SPLIT-NEXT), maki/ablate-ptx.f (FIND-SUB), maki/lower/red-test.f, maki/lower/mm-test.f, maki/lower/ew-test.f, maki/lower/mv-test.f, maki/onnx/deploy-test.f (FIND-SUB). No BUF use, no D0 dependency. INDEX-OF/FIND-SUB return option<CAD-NUM:index>; SPLIT-NEXT gains offset-advance overflow guard; behavior byte-identical. Overlap note: maki/cad.f and maki/golden-artifact.f were touched by the landed Model IR count wave (sequential). Acceptance: fresh rg census empty in these files; maki/test.f and each focused test green. Files: the 13 listed Maki files plus their focused tests. Verify: bin/hb --load maki/test.f and the owned focused tests. Depends: landed STR owner. Ownership: the 13 listed Maki files. Claim: unassigned."
 
-dot add "Migrate test string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, test lane. Migrate every raw STR call to the typed STR: surface in: test/boot-pin-test.f (FIND-SUB), test/gate-engine-lib.f (FIND-SUB), test/owner-wid-doctor.f (FIND-SUB), test/gate-pool-test.f (FIND-SUB, INDEX-OF), test/seal-absence.f (FIND-SUB, SPLIT-NEXT), test/run-lib.f (SPLIT-NEXT, BUF-RESET, BUF-APPEND, BUF-APPEND-C), test/run-rerun-failed-test.f (BUF-RESET). test/run-lib.f uses BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: test/gate-engine-lib.f and test/seal-absence.f were touched by the landed MEM test wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/gate slice green. Files: the 7 listed test files plus their focused tests. Verify: bin/hb --load the owned focused tests / gate slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 7 listed test files. Claim: unassigned."
+dot add "Migrate test string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, test lane. Migrate every raw STR call to the typed STR: surface in: test/boot-pin-test.f (FIND-SUB), test/gate-engine-lib.f (FIND-SUB), test/gate-pool-test.f (FIND-SUB, INDEX-OF), test/seal-absence.f (FIND-SUB, SPLIT-NEXT), test/run-lib.f (SPLIT-NEXT, BUF-RESET, BUF-APPEND, BUF-APPEND-C), test/run-rerun-failed-test.f (BUF-RESET). test/run-lib.f uses BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: test/gate-engine-lib.f and test/seal-absence.f were touched by the landed MEM test wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/gate slice green. Files: the 6 listed test files plus their focused tests. Verify: bin/hb --load the owned focused tests / gate slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 6 listed test files. Claim: unassigned."
 
-dot add "Migrate tool string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, tool lane. Migrate every raw STR call to the typed STR: surface in: tools/codegen-role.f (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C), tools/codegen-role-test.f (FIND-SUB, BUF-APPEND), tools/hb-build-lib.f (INDEX-OF), tools/bootstrap-codegen-test.f (FIND-SUB), tools/build-fixpoint.f (FIND-SUB), tools/build-fixpoint-test.f (FIND-SUB), tools/ptx/saxpy-test.f (FIND-SUB), tools/ptx/perf-registry.f (SPLIT-NEXT), tools/lint/text.f (BUF-RESET, BUF-APPEND), tools/lint/text-foundation-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C), tools/public-signatures-core.f (BUF-APPEND), tools/typed-local-diff-lint-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C). Four files use BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: build-fixpoint(.f/-test.f), codegen-role(.f/-test.f), hb-build-lib.f, lint/text-foundation-test.f were touched by the landed MEM/VEC tool wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/lint slice green. Files: the 12 listed tool files plus their focused tests. Verify: bin/hb --load the owned focused tests / lint slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 12 listed tool files. Claim: unassigned."
+dot add "Migrate tool string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, tool lane. Migrate every raw STR call to the typed STR: surface in: tools/codegen-role.f (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C), tools/codegen-role-test.f (FIND-SUB, BUF-APPEND), tools/hb-build-lib.f (INDEX-OF), tools/bootstrap-codegen-test.f (FIND-SUB), tools/build-fixpoint.f (FIND-SUB), tools/build-fixpoint-test.f (FIND-SUB), tools/ptx/saxpy-test.f (FIND-SUB), tools/ptx/perf-registry.f (SPLIT-NEXT), tools/lint/text.f (BUF-RESET, BUF-APPEND), tools/lint/text-foundation-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C), tools/public-signatures-core.f (BUF-APPEND), tools/typed-local-diff-lint-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C). Three files use BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: build-fixpoint(.f/-test.f), codegen-role(.f/-test.f), hb-build-lib.f, lint/text-foundation-test.f were touched by the landed MEM/VEC tool wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/lint slice green. Files: the 12 listed tool files plus their focused tests. Verify: bin/hb --load the owned focused tests / lint slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 12 listed tool files. Claim: unassigned."
 ~~~
 
 **`habu-integrate-sealed-cad-ba510e2e` amendment.** Before it closes, its
@@ -1854,7 +1855,7 @@ Sealing decision: the generated `PLAN-COMPLETE:MAKE` is public
 only producer of a `complete-proof` cell is a private
 `TRUSTED: MINT-COMPLETE-PROOF ( -- complete-proof )` inside the owning
 package, invoked by the transition word after its independent verifier
-succeeds — the maki/target/target.f:54 pattern, with source-local rationale
+succeeds — the maki/target/target.f:54 pattern, with a source-local justification
 and a focused test per mint. Outside code cannot produce the token, so it cannot
 forge the staged product even though `MAKE` resolves. Private products were
 considered and rejected: they have no construction surface at all (docs §9.4),
@@ -2086,7 +2087,7 @@ Bounded decomposition (children of §21 `v2-type-typestate`,
    no type distinguishes a drafted from a verified object.
    Acceptance: stage proof-token families and staged products declared per
    this addendum for MODEL/TIR/RIR/PLAN/KIR/CAND/ART; private mints with
-   source-local rationale; positive/negative candidate matrix TS-OK1/2,
+   source-local justifications; positive/negative candidate matrix TS-OK1/2,
    TS-BAD-ORDER, TS-BAD-PLAN green; wrong-stage diagnostics name qualified
    families.
    Files: maki/ir/*/stage.f (new, one per level), maki/typestate-test.f (new).
@@ -2158,7 +2159,7 @@ Every stored object is addressed by a digest over:
 
 ~~~text
 object kind
-schema version
+canonical schema identity
 canonical payload
 ordered child hashes
 producer/pass version when derived
@@ -2230,7 +2231,7 @@ objects and rejects incomplete manifests.
 
 Requirements:
 
-- explicit schema version;
+- canonical schema identity;
 - fixed endianness and widths;
 - length-delimited strings/vectors;
 - deterministic map/set ordering;
@@ -3465,19 +3466,19 @@ Every stored value uses a canonical envelope:
 
 ~~~text
 Artifact<Kind> = {
-  schema-id, schema-version, kind,
+  schema-id, kind,
   content-digest, canonical-payload,
   producer-id, producer-version,
   source-revisions[], dependencies[],
   target/config/numeric-policy facts,
-  capabilities-used[], created-event
+  created-event
 }
 ~~~
 
 The digest covers every semantic field and dependency version. Provenance and
 evidence are first-class linked artifacts, never comments attached to a mutable
 row. Decoders reject non-canonical representations, unknown required fields,
-kind/schema disagreement, digest mismatch, and unsupported migrations.
+kind disagreement, unresolved schema identity, and digest mismatch.
 
 The rest of this subsection is the FROZEN package/type/wire contract for that
 envelope (dot `habu-freeze-canonical-artifact-3b6b7087`). It fixes identities,
@@ -3512,7 +3513,6 @@ role can never unify with another:
 | producer-id | `CAD-KIND:producer-id` | producing component identity |
 | config facts | `CAD-KIND:config-id` | build/config identity |
 | numeric-policy | `CAD-KIND:numeric-policy-id` | numeric-domain policy identity |
-| capabilities-used[] | `CAD-KIND:capability-id` | capability identity |
 | created-event | `CAD-KIND:audit-event-id` | persistent append-only audit-record link |
 | dependencies[] | `CAD-KIND:artifact-id` | ordered dependency identities |
 | source-revisions[] | `CAD-KIND:rev-id` | ordered source-revision identities |
@@ -3533,8 +3533,9 @@ or as flat per-kind families (the stage-family precedent under "Stage families"
 in the R7 addendum), and the checker enforces separation either way.
 
 Non-unification is proven by verdict-pinned checker fixtures in
-`maki/cad-kinds-test.f`: adjacent envelope roles reject
-(`CK-XA1`..`CK-XA8`), `artifact-kind` versus `artifact-id`
+`maki/cad-kinds-test.f`: envelope roles reject across adjacent and existing
+identity boundaries (`CK-XA1`..`CK-XA3`, `CK-XA6`..`CK-XA8`),
+`artifact-kind` versus `artifact-id`
 (`CK-XA6`/`CK-XA7`), `audit-event-id` versus `ADAG:event-id`
 (`CK-EV-X1`/`CK-EV-X2`), `artifact<weight-kind>` versus `artifact<kernel-kind>`
 (`CK-ART-XK`), and `artifact-id` versus the 256-bit digest
@@ -3577,20 +3578,16 @@ diagnostic. Consumers updated with the rename: maki/artifact-test.f.
 
 - Fixed little-endian widths for every scalar; no host-endianness or
   variable-width scalar encoding.
-- Versioned, length-delimited fields: each field carries its tag and byte
-  length; the envelope carries `schema-id` + `schema-version`.
+- Length-delimited fields: each field carries its tag and byte length; the
+  envelope carries the canonical `schema-id` identity directly.
 - Ascending field tags; a decoder that sees a non-ascending or repeated tag
   rejects (canonical order is total, duplicates are `duplicate`).
 - Unknown REQUIRED field: reject (`unknown-required`). Unknown OPTIONAL field:
   retained OPAQUELY and re-emitted byte-for-byte, so a forward-compatible
   reader neither drops nor reinterprets it.
-- Dependency and capability SETS are canonically ordered (ascending by their
+- Dependency and source-revision SETS are canonically ordered (ascending by their
   nominal identity) and duplicate-free; unordered or duplicated sets are
   `noncanonical`.
-- Version handling is EXACT match or a registered deterministic migration from
-  the stored `schema-version` to the reader's; any other version is
-  `unsupported-migration`. A migration is a pure registered function, never
-  ad-hoc reinterpretation.
 - Every length and count is bounds-checked before use (`bounds`); truncated or
   over-long input is `malformed`.
 
@@ -3616,8 +3613,7 @@ Decode/validate outcomes are explicit typed `diag-set` variants, never silent:
 | `bounds` | a length or count outside its declared/representable range |
 | `duplicate` | a repeated field tag or set element |
 | `unknown-required` | an unknown field flagged REQUIRED |
-| `kind/schema mismatch` | `kind`/`schema-id`/`schema-version` disagree with the decoded shape |
-| `unsupported-migration` | stored version has no registered deterministic migration to the reader's |
+| `kind-mismatch` | `kind` disagrees with the decoder's requested artifact kind |
 | `digest-mismatch` | recomputed `content-digest` differs from the stored digest |
 
 Malformed, noncanonical, and digest-mismatch are thus explicit typed results of
@@ -3626,11 +3622,11 @@ envelope and `DIGEST` are total.
 
 ##### Foreign identity constructors and wire codecs
 
-The envelope binds eleven nominal identity fields (the table above), but only
+The envelope binds ten nominal identity fields (the table above), but only
 `CAD-KIND:artifact-id` has an owner-published producer and — via reopening
 `package ARTIFACT` — a wire path today (maki/artifact.f `ARTIFACT:REGISTER` plus
 its private `RAW>ARTIFACT-ID` / `ARTIFACT-ID>RAW`). The other identity families
-— `schema-id`, `producer-id`, `config-id`, `numeric-policy-id`, `capability-id`,
+— `schema-id`, `producer-id`, `config-id`, `numeric-policy-id`,
 `audit-event-id`, `rev-id`, and `target-id` — have NO caller-reachable
 constructor or wire codec, so nothing can obtain a value and the "no new trust
 boundary" rule forbids the envelope codec from minting or raw-casting a foreign
@@ -3671,7 +3667,6 @@ guarantee. The wire form per origin class is:
 | Origin class | Families | Canonical wire form | Width |
 |---|---|---|---|
 | content-addressed registry intern | schema-id, producer-id, config-id, numeric-policy-id, rev-id, target-id | the owner's canonical descriptor content key (SHA-256), fixed little-endian | 32 bytes |
-| closed vocabulary | capability-id | the shared vocabulary code (a stable constant like the `TARGET:CAP-*` bits), fixed little-endian | 8 bytes |
 | append-only sequence | audit-event-id | the journal-assigned monotonic sequence number, fixed little-endian (digest-excluded) | 8 bytes |
 
 The first-slice artifact-id and dependency wire form stores the registry RAW
@@ -3698,10 +3693,8 @@ fixed for every family.
 | `producer-id` | new `PRODUCER` (the machine-facing action/component registry, §23.9) | `PRODUCER:REGISTER` interns a producing component's stable identity (version-independent — `producer-version` is a separate envelope field); content-addressed. | what uniquely identifies a producer (name only? name + class?) — NEEDS-DECISION |
 | `config-id` | new `CONFIG` | `CONFIG:REGISTER` interns the canonical build/config facts; content-addressed. | which build/config facts are canonical / digest-covered — NEEDS-DECISION |
 | `numeric-policy-id` | `NPOL` (maki/numpolicy.f, reopened) | `NPOL:REGISTER` interns a numeric policy; content-addressed. `NPOL:DOM>N` / `N>DOM` is the existing minimal wire precedent if a policy is a single `dom`. | numeric-policy descriptor scope (single `dom` vs a per-region / tolerance bundle) — NEEDS-DECISION |
-| `capability-id` | new `CAP` | closed vocabulary: named capability constructors over a shared registry (like `NPOL:dom` / `TARGET:CAP-*`); wire = the stable vocabulary code. | the initial capability vocabulary content (which capabilities exist) — NEEDS-DECISION (product) |
 
-Only `capability-id`'s vocabulary content is a product decision; `schema-id`,
-`producer-id`, `config-id`, and `numeric-policy-id` descriptor contents are
+`schema-id`, `producer-id`, `config-id`, and `numeric-policy-id` descriptor contents are
 engineering contracts resolvable within their per-family dot, and `target-id`,
 `audit-event-id`, and `rev-id` need no new decision.
 
@@ -3721,17 +3714,15 @@ envelope work inherits them:
   SINGLE-CELL payload (an index or arity-0 handle — a multi-cell PRODUCT can be
   neither a sum payload nor a typed local) and whose error members are baked-in
   nullary variants. The landed `art-result` (malformed / noncanonical / bounds /
-  duplicate / unknown-required / kind-mismatch / unsupported-migration /
-  digest-mismatch) is exactly this, and each family's `WIRE>ID` result uses the
+  duplicate / unknown-required / kind-mismatch / digest-mismatch) is exactly
+  this, and each family's `WIRE>ID` result uses the
   same idiom. The `result<...,diag-set>` in "Conceptual checked signatures"
   therefore DENOTES this per-package sum family; it is not the polymorphic
   lib/adt/result.f type.
 - **`owned-bytes` is realized as a caller-supplied buffer + length
   (`ptr u8 n`), not a first-class value.** ENCODE writes canonical bytes into a
   caller buffer and returns the length; DECODE/VALIDATE read a caller buffer +
-  length. This follows the lib/nominal/codec.f precedent
-  (`CHUNK-ENCODE ( start count buf cap -- len )`,
-  `CHUNK-DECODE ( buf len -- start count )`) and the landed
+  length. The landed
   `ENCODE-WEIGHT ( weight-artifact ptr u8 n -- n )` /
   `DECODE-WEIGHT ( ptr u8 n -- art-result<n> )`. The `content-digest` stays a
   four-word owned multi-cell value consumed straight off the stack (`UNMAKE`),

@@ -11,11 +11,14 @@
 \ its own build produced.
 \
 \ How the bits are injected without editing production source: the stdin
-\ metabuild driver src/habu/stdin.f ends with a single top-level `STDIN-DRV:GO`
-\ call. This builder reads that file, verifies it still ends with that call (and
-\ dies with a clear message if the tail ever drifts), drops the call, and appends
-\ a `PWID-GO` that mirrors `GO` but works on the capture buffer between capturing
-\ the REPL and emitting the image. The rest of the build reuses
+\ metabuild driver src/habu/stdin.f ends with a single top-level
+\ `STDIN-DRIVER:RUN` call. This builder reads that file, verifies it still ends
+\ with that call (and dies with a clear message if the tail ever drifts), drops
+\ the call, and appends the same sequence written out at interpret level, with
+\ the protected-WID work spliced in between capturing the REPL and emitting the
+\ image. CAPTURE-REPL and the capture words are package-private, so the appended
+\ text reopens STDIN-DRIVER and AOT-CAPTURE to reach them by their bare names -
+\ it never adds a public tail to either. The rest of the build reuses
 \ tools/build-fixpoint.f exactly as the normal stdin build does.
 \
 \ Four modes, selected by environment so one builder serves every case its
@@ -90,15 +93,15 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    repeat ;
 
 : TAIL-BAD ( -- )
-   s" aot-wid-build: src/habu/stdin.f no longer ends with a top-level STDIN-DRV:GO call" BF-BUILD-RC die ;
+   s" aot-wid-build: src/habu/stdin.f no longer ends with STDIN-DRIVER:RUN" BF-BUILD-RC die ;
 
-: GO-TAIL$ ( -- ptr u8 n ) s" STDIN-DRV:GO" ;
+: RUN-TAIL$ ( -- ptr u8 n ) s" STDIN-DRIVER:RUN" ;
 
 \ Length of stdin.f to keep: everything up to (not including) the trailing
-\ `STDIN-DRV:GO`. Fail closed if the file does not end with that standalone token.
-: GO-KEEP ( -- n )
+\ `STDIN-DRIVER:RUN`. Fail closed if the file does not end with that token.
+: RUN-KEEP ( -- n )
    SRC-LAST {: l:n :}
-   GO-TAIL$ {: t:ptr tu:n :}
+   RUN-TAIL$ {: t:ptr tu:n :}
    l 1+ tu < if TAIL-BAD then
    l 1+ tu - SRC-BUF + tu t tu STR= 0= if TAIL-BAD then
    l 1+ tu > if l tu - SRC-BUF + c@ WS? 0= if TAIL-BAD then then
@@ -122,13 +125,13 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 \ EM-AOT-RELOC-DATA advances DP by the baked LAOTDATASIZE span read straight from
 \ the image; test/aot-data-span-forge.f probes that guard by baking a forged span.
 \ When HABU_AOT_SPAN is set to a decimal, that value overwrites the captured span
-\ AFTER CAPTURE-REPL and BEFORE ENGINE-BUILD:EMIT-FORTH, so LAOTDATASIZE carries the forged value
+\ AFTER CAPTURE-REPL and BEFORE ENGINE-EMIT:FORTH, so LAOTDATASIZE carries the forged value
 \ (the forge test passes 2*DATA-SIZE, unambiguously past the seed headroom). No env
 \ leaves the real capture untouched (the plain protected-WID build path).
 : SPAN-FORGE-LINE ( -- )
    s" HABU_AOT_SPAN" GETENV {: v:ptr vu:n :}
    vu 0 > if
-      s"    " DRV+  v vu DRV+  s"  AOT-DATA-SIZE !" DRV-LINE
+      v vu DRV+  s"  AOT-DATA-SIZE !" DRV-LINE
    then ;
 
 \ --- the fixture contract -----------------------------------------------------
@@ -144,8 +147,11 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 \ --- shape and conversion checks emitted into the driver ----------------------
 \ These run in the METABUILD HOST, where the live band and the capture buffer both
 \ exist, and they use the very words the real capture uses. They are the only
-\ place the capture's format contract can be checked against a live band.
+\ place the capture's format contract can be checked against a live band. Those
+\ words are private to package AOT-CAPTURE, so the definitions are emitted inside
+\ a reopened block of it and stay private too.
 : SHAPE-CHECK-DEF ( -- )
+   s" package AOT-CAPTURE" DRV-LINE
    s" : PWID-SHAPE-CHECK ( -- )" DRV-LINE
    s"    ACAP-PWID-TAG@ PROT-REG-TAG <> if" DRV-LINE
    S\"       s\" aot-wid-build: metabuild host band carries no bitmap tag\" 74 die then" DRV-LINE
@@ -176,20 +182,21 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    s"    0 ACAP-PWID-LEGACY" DRV-LINE
    s"    ACAP-PWID-COUNT 0 <> if" DRV-LINE
    S\"       s\" aot-wid-build: empty legacy registry set a bit\" 74 die then" DRV-LINE
-   s"    ACAP-PWID-CAPTURE ;" DRV-LINE ;
+   s"    ACAP-PWID-CAPTURE ;" DRV-LINE
+   s" ;package" DRV-LINE ;
 
-\ --- the body of PWID-GO between CAPTURE-REPL and the image emit ---------------
+\ --- the body between CAPTURE-REPL and the image emit --------------------------
 : OOR-ENV$ ( -- ptr u8 n )       s" HABU_PWID_OOR" GETENV ;
 : LEGACY-ENV$ ( -- ptr u8 n )    s" HABU_PWID_LEGACY_N" GETENV ;
 
 : REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
-   s"    " DRV+  v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
+   v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
 
 : FIXTURE-BODY ( -- )
-   s"    PWID-SHAPE-CHECK" DRV-LINE
-   s"    PWID-LEGACY-CHECK" DRV-LINE
-   s"    " DRV+  FIXTURE-A$ DRV+  s"  ACAP-PWID-SET" DRV-LINE
-   s"    " DRV+  FIXTURE-B$ DRV+  s"  ACAP-PWID-SET" DRV-LINE ;
+   s" PWID-SHAPE-CHECK" DRV-LINE
+   s" PWID-LEGACY-CHECK" DRV-LINE
+   FIXTURE-A$ DRV+  s"  ACAP-PWID-SET" DRV-LINE
+   FIXTURE-B$ DRV+  s"  ACAP-PWID-SET" DRV-LINE ;
 
 : PWID-BODY ( -- )
    OOR-ENV$ {: o:ptr ou:n :}
@@ -198,8 +205,17 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    lu 0 > if l lu s" ACAP-PWID-LEGACY" REFUSE-BODY exit then
    FIXTURE-BODY ;
 
-\ Append the checks PWID-GO needs, then PWID-GO itself: stdin.f's GO with the
-\ protected-WID work spliced in after CAPTURE-REPL.
+\ CAPTURE-REPL is private to package STDIN-DRIVER, so the appended text reopens
+\ that package, ticks it, closes the package and executes the token - reaching the
+\ real word by its real name without publishing anything.
+: CAPTURE-REPL-LINES ( -- )
+   s" package STDIN-DRIVER" DRV-LINE
+   s" ' CAPTURE-REPL" DRV-LINE
+   s" ;package" DRV-LINE
+   s" execute" DRV-LINE ;
+
+\ Append the checks the fixture build needs, then stdin.f's own terminal sequence
+\ with the protected-WID work spliced in after CAPTURE-REPL.
 : CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
    OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and ;
 
@@ -208,23 +224,23 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
       SHAPE-CHECK-DEF
       LEGACY-CHECK-DEF
    then
-   s" : PWID-GO ( -- )" DRV-LINE
-   s"    CAPTURE-REPL" DRV-LINE
+   CAPTURE-REPL-LINES
+   s" package AOT-CAPTURE" DRV-LINE
    PWID-BODY
+   s" ;package" DRV-LINE
    SPAN-FORGE-LINE
-   s"    0 0= STDIN? !" DRV-LINE
-   s"    HB@ 0 ENGINE-BUILD:EMIT-FORTH" DRV-LINE
-   S\"    s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV-LINE
-   s"    DRV-EXIT-OK ;" DRV-LINE
-   s" PWID-GO" DRV-LINE ;
+   s" 0 0= STDIN? !" DRV-LINE
+   s" HB@ 0 ENGINE-EMIT:FORTH" DRV-LINE
+   S\" s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV-LINE
+   s" DRV-EXIT-OK" DRV-LINE ;
 
 : GEN-DRIVER ( -- )
    DRV-PATH!
    READ-STDIN-SRC
-   GO-KEEP {: keep:n :}
+   RUN-KEEP {: keep:n :}
    DRV-RESET
-   SRC-BUF keep DRV+                \ stdin.f minus its trailing GO call
-   INJECT                           \ ... plus the bitmap-working PWID-GO
+   SRC-BUF keep DRV+                \ stdin.f minus its terminal driver call
+   INJECT                           \ ... plus the bitmap-working fixture
    DRV-PATH$ DRV-BUF DRV-U @ WRITE-ALL ;
 
 : EMIT-PWID-STDIN ( -- )

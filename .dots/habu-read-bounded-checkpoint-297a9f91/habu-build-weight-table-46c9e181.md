@@ -1,9 +1,11 @@
 ---
 title: Build weight table atomically
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-29T20:31:06.640317+02:00"
+closed-at: "2026-07-30T10:21:05.724667+02:00"
+close-reason: "Removed from the GPT-2 critical path: raw pair-pointer construction cannot prove source capacity, and the existing builder remains the bounded owner."
 blocks:
   - habu-enforce-ptr-elem-7e7cf2e4
   - habu-delete-resident-and-05c594cb

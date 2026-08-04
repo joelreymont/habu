@@ -1,9 +1,11 @@
 ---
 title: Own GPT-2 runtime storage
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-30T00:55:48.437756+02:00"
+closed-at: "2026-08-04T19:31:48.048346+02:00"
+close-reason: "Superseded by GPT2:model at 57a19153daab and 1056a0ad14d5: checked config-derived layout, one GPU:buffer for weights/activations/logits/token/K/V, persistent addresses, allocation cleanup, and close are already owned; DEVRT storage would duplicate them."
 blocks:
   - habu-own-device-runtime-5e7d559e
   - habu-parse-gpt-2-c8baa4db

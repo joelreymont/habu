@@ -15,6 +15,8 @@
 : DBG-SRC ( -- ptr u8 n )  s" src/habu/debug.f" ;
 variable HB  variable HL  variable HFD  variable HRD
 $20000 constant HMAX
+\ HB exposes the raw baked-source buffer cell.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : HB@ ( -- ptr u8 ) HB @ ;
 s" HB@" s" -- ptr u8" TRUST
 
@@ -78,30 +80,36 @@ s" HB@" s" -- ptr u8" TRUST
 \ the boot-run list: EM-SEED-AOT LFINDs + calls each after the seed, so the engine
 \ installs the REPL with ZERO baked source. stage2/maker/snap use other drivers,
 \ so their AOT buffers stay empty and EM-SEED-AOT skips.
+\ Dynamic host evaluation is source-dependent and cannot carry a static effect.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: EVAL-HOST ( ptr u8 n -- ) evaluate ;    \ compile a source buffer in the host dict
 variable REPL-B0  variable REPL-R0  variable REPL-D0
 variable REPL-B1  variable REPL-R1  variable REPL-D1
+
+package STDIN-DRIVER
+
 : CAPTURE-REPL ( -- )
    READ-REPL                                     \ REPL sources -> HB scratch buffer
    cp@ REPL-B0 !  ndict@ REPL-R0 !  here REPL-D0 !
    HB@ HL @ EVAL-HOST                             \ compile the REPL in the host dictionary
    cp@ REPL-B1 !  ndict@ REPL-R1 !  here REPL-D1 !
-   REPL-B0 @ REPL-B1 @  REPL-R0 @ REPL-R1 @  REPL-D0 @ REPL-D1 @  ACAP-CAPTURE
-   s" INSTALL" ACAP-BOOTRUN+                      \ repl.f    -> REPL read hook + termios save
-   s" BPW-INSTALL" ACAP-BOOTRUN+                  \ debug-watch.f -> watch table init
-   s" S-INSTALL" ACAP-BOOTRUN+ ;                  \ stepper.f -> stepper read hook
+   REPL-B0 @ REPL-B1 @  REPL-R0 @ REPL-R1 @  REPL-D0 @ REPL-D1 @  AOT-CAPTURE:CAPTURE
+   s" INSTALL" AOT-CAPTURE:BOOTRUN+                \ repl.f    -> REPL read hook + termios save
+   s" BPW-INSTALL" AOT-CAPTURE:BOOTRUN+            \ debug-watch.f -> watch table init
+   s" S-INSTALL" AOT-CAPTURE:BOOTRUN+ ;            \ stepper.f -> stepper read hook
 
-package STDIN-DRV
+;package
 
+package STDIN-DRIVER
 public
 
-: GO ( -- )
+: RUN ( -- )
    CAPTURE-REPL
    0 0= STDIN? !
-   HB@ 0 ENGINE-BUILD:EMIT-FORTH                  \ empty LSRC: the REPL is seeded, not re-parsed
+   HB@ 0 ENGINE-EMIT:FORTH                        \ empty LSRC: the REPL is seeded, not re-parsed
    s" hb" STDIN-OUT DRV-EMIT-IMAGE
    DRV-EXIT-OK ;
 
 ;package
 
-STDIN-DRV:GO
+STDIN-DRIVER:RUN

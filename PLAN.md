@@ -25,7 +25,7 @@ interfere with the independent Spark vLLM-replacement work.
 `CORE` — Replace both direct-emission pipelines with immutable validated stages:
 
 ```text
-source tape -> HIR -> SIR -> LIR -> A64IR -> allocation/layout -> HBOBJ 2
+source tape -> HIR -> SIR -> LIR -> A64IR -> allocation/layout -> HBOBJ
 model IR -> RIR -> KIR -> GIR -> PTXIR2 -> PTX
 ```
 
@@ -75,7 +75,9 @@ an owner.
   `IR-BUILD`, `IR-VERIFY`, `IR-CODEC`, and `IR-PASS`.
 - `src/compiler/ir.f` may open `IR` only to publish semantic facade words over
   public substrate operations. The facade has no `IR-ID` mint authority.
-- `refine-lint` inventories and confines every mint. The complete assembly
+- The sealed private `IR-ID` package confines every mint: the wordlists reject
+  reopen, qualified publication, direct WID publication, and source replay, and
+  `test/compiler/ir-id.f` pins that. The complete assembly
   protects package wordlists only after a closed schema has passed through the
   real builder/freeze path without reopening `IR`.
 - Dialects are separate closed packages: `HIR`, `SIR`, `LIR`, `A64IR`,
@@ -265,7 +267,7 @@ Existing native dots are reconciled before new native leaves:
 - Formal synchronization and gates: sections 10-12 and 16.6.
 
 The decisive exits are structured control, calls/exceptions, defining semantics,
-wide `ENUM`/`STRUCTURE` values, `HBOBJ 2` AOT, and self-host cutover for native;
+wide `ENUM`/`STRUCTURE` values, `HBOBJ` AOT, and self-host cutover for native;
 SAXPY PTXIR2, elementwise KIR, softmax, MMA, and planner/tuner cutover for GPU.
 Each stable schema ships its manifest/digest, valid and hostile canonical
 fixtures, witness vectors, and the assumptions report for any covered theorem.
@@ -300,7 +302,7 @@ GPU work does not edit `maki/infer/` while the Spark agents are active.
 | 16 | structural, correctness, performance, and formal gates attached to their owning leaves |
 | 17 | every dot's frozen interface, mutation test, destruction review, and green integration proof |
 | 18-20 | IR-0/NATIVE-1 leaves plus native/GPU lowering fixtures |
-| 21 | final native, GPU, and trust campaign exits |
+| 21 | final native, GPU, and unchecked-boundary campaign exits |
 
 ## First implementation leaf: IR-0.1
 
@@ -332,12 +334,10 @@ test/cast-negative-suite.f
 test/type-decl-suite.f
 test/type-export-suite.f
 tools/check-core.f
-tools/refine-lint-core.f
-tools/refine-lint-test.f
 docs/forth.md
 ```
 
-`PLAN.md`, `FILEMAP.md`, `LESSONS.md`, and the two dot records are shared
+`PLAN.md`, `LESSONS.md`, and the two dot records are shared
 integration records updated only after both contracts are reconciled.
 
 IR-0.1 changes no task, manifest, loader, fixpoint, AOT, or public-signature
@@ -351,7 +351,8 @@ It declares public `NEWTYPE` identities in package `IR-ID` with exact tails
 `ir-symbol-id`, `ir-span-id`, `ir-pool-offset`, and `ir-count`. Private checked
 `CAST:` words in that same owner package implement module capabilities, packed
 referential IDs, and scalar count/offset roles. `NEW-MODULE` is the sole public
-module-key constructor. No raw `n -> ir-module-key` path is public.
+module-key constructor. No raw `n -> ir-module-key` path is public. No new
+unchecked declaration is permitted.
 
 The frozen representation contract is:
 
@@ -391,9 +392,9 @@ PACK-{KIND}        ( IR-ID:ir-module-key n -- IR-ID:ir-{kind}-id )
 `{KIND}` expands exactly to `SOURCE`, `FUN`, `BLOCK`, `OP`, `VALUE`,
 `TYPE`, `ATTR`, `SYMBOL`, and `SPAN`. The later arena/builder is the only
 semantic caller of `PACK-*`; the codec is the only semantic caller of `*-LOCAL`.
-`refine-lint` confines private raw definitions to `id.f`'s private `IR-ID`
-window and rejects direct definitions, qualified references, and `EXPORT`
-aliases across the complete 19-package compiler API set.
+The sealed private `IR-ID` window in `id.f` confines private raw definitions:
+runtime package protection rejects direct definitions, qualified references, and
+`EXPORT` aliases across the complete 19-package compiler API set.
 
 The exact block and named errors reserved in `lib/errors.f` are:
 
@@ -454,15 +455,15 @@ Acceptance:
 - the 26 package-qualified raw authority tails are definable only as private
   `CAST:` words in `src/compiler/ir/id.f`'s `IR-ID` window; unrelated/global
   same-tail role APIs such as global `COUNT>N ( count -- n )` remain distinct;
-- `refine-lint` rejects direct definitions and `EXPORT` aliases of those raw
-  tails in all 19 compiler API packages, plus compiler-qualified raw references
-  outside the owner;
+- the sealed `IR-ID` wordlists reject direct definitions and `EXPORT` aliases of
+  those raw tails in all 19 compiler API packages, plus compiler-qualified raw
+  references outside the owner;
 - both `IR-ID` wordlists reject reopen, qualified publication, direct WID
   publication, and source replay;
-- every cast is checker-certified and confined by `refine-lint`;
+- every cast is checker-certified and confined by package ownership;
 - `bin/hb --load test/compiler/ir-id.f` passes;
-  dispatcher, and error, trust, refine, package, typed-local, and suite
-  file-map, package, typed-local, and suite coverage gates pass.
+- the `compiler-ir-id` suite is declared and scheduled by the inline stdlib
+  dispatcher, and error, refine, package, and typed-local gates pass.
 
 ## Dot and worker rules
 

@@ -8,6 +8,8 @@ package IEEE754
 
 private
 
+\ Exact private bit reinterpretations behind the checked public binary64 API.
+\ Retirement owner: habu-infer-gpt-2-412c6f04.
 TRUSTED: F64>BITS-RAW ( r -- n ) ;
 TRUSTED: BITS>F64-RAW ( n -- r ) ;
 

@@ -25,6 +25,9 @@ variable I-W
    0 CODE-CAP-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
    dup 0 < if s" icode: code mmap failed" ICODE-EXIT-RC die then ;
 
+\ CODE and ICODE-TABS refine successful anonymous mappings into the byte-code
+\ buffer and numeric label/fixup tables; syscall-result provenance is not inferred.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : CODE ( -- ptr u8 )
    CODE-A @ 0= IF CODE-ALLOC CODE-A ! THEN
    CODE-A @ ;

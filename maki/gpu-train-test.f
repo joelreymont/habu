@@ -7,6 +7,8 @@
 \ Loss sum_i (w[i]-1)^2 falls 84 -> 1.3125 (training reduces the loss). Load after
 \ maki/gpu.f, maki/array.f, maki/gpu-train.f. Prereq: cubin at /tmp/saxpy.cubin.
 
+require lib/float32.f
+
 variable LOSS0
 
 T-RESET
@@ -19,10 +21,10 @@ GPU:SETUP
 GPU:RELEASE
 
 \ weights converged along the exact trajectory (final = 0.5^3 path)
-0 GPU:WBITS  1.125 F64>F32 T=
-1 GPU:WBITS  1.375 F64>F32 T=
-2 GPU:WBITS  1.625 F64>F32 T=
-3 GPU:WBITS  1.875 F64>F32 T=
+0 GPU:WBITS  1.125 F32:NARROW T=
+1 GPU:WBITS  1.375 F32:NARROW T=
+2 GPU:WBITS  1.625 F32:NARROW T=
+3 GPU:WBITS  1.875 F32:NARROW T=
 
 \ training reduced the loss
 GPU:LOSS LOSS0 @ f< TTRUE

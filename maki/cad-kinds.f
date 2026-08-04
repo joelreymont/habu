@@ -62,8 +62,12 @@ NEWTYPE artifact-kind 0
 NEWTYPE producer-id 0
 NEWTYPE config-id 0
 NEWTYPE numeric-policy-id 0
-NEWTYPE capability-id 0
 NEWTYPE audit-event-id 0
+
+ENUM id-error
+   wrong-width
+   unknown
+;ENUM
 
 \ Model and lowering domain roles.
 \ dtype and layout are NOT declared here: those roles are owned by the maki

@@ -8,8 +8,14 @@
 \ reduce), not an O(B) fold. Each collective applies its own inactive-lane
 \ identity before writing shared memory, so direct sums and backward cotangents
 \ do not inherit ROW-LOAD's max-friendly -inf seed. Param registers (CG-SM-PARAMS):
-\ in=%rd1, out=%rd2, k=%r1. Load after lib/errors.f, lib/string.f, lib/fmt.f,
-\ src/arch/ptx/emit.f, lib/ptx/header.f, and lib/ptx/cg.f. Checked Habu.
+\ in=%rd1, out=%rd2, k=%r1. Checked Habu; dependencies are direct.
+
+require lib/errors.f
+require lib/string.f
+require lib/fmt.f
+require src/arch/ptx/emit.f
+require lib/ptx/header.f
+require lib/ptx/cg.f
 
 : CG-BLOCK ( -- n )
    PTX-BLOCK@ dup PTX-BLOCK-CHECK ;
@@ -359,7 +365,7 @@
    SB-RESET s" sqrt.rn.f32 " CG-S r CG-F s" , " CG-S u CG-F s" ;" CG-S CG-LINE
    r ;
 
-\ RMS-EPS+ : add the RMSNorm epsilon 1e-5 (0f3727C5AC = F64>F32(1e-5), the exact
+\ RMS-EPS+ : add the RMSNorm epsilon 1e-5 (0f3727C5AC = F32:NARROW(1e-5), the exact
 \ f32 nearest maki/rmsnorm.f RMS-EPS) to the mean-square uniform BEFORE the sqrt.
 : EMIT-RMS-EPS+ ( n -- n ) {: u:n :}
    CG-NEXT-F {: r:n :}

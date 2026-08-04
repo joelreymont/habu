@@ -136,7 +136,7 @@ Rejects and throws:
 the window tier 2 degrades to tier-1 warnings; on re-arm (`' HOOK
 set-check` / `check@ set-check` restore) the tracker reseeds from live
 depth. No new escape mechanism, no per-line pragma: the audited
-unchecked-boundary window — already surfaced by the checked-boundary lint and
+unchecked-boundary window — surfaced by the checked-boundary lint and its
 source-local rationale — is the only hatch. The friend-latch precedent
 applies: an escape is a sealed, enumerable, lintable site, not an ambient
 mode.

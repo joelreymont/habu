@@ -1,8 +1,8 @@
 \ float32.f - exact scalar IEEE-754 F32 conversion.
 \
 \ Habu arithmetic is f64. This module owns exact narrowing to an F32 bit pattern
-\ and widening from one. Bounded byte marshalling belongs to the common MEM span
-\ chain; this scalar package intentionally exposes no pointer surface.
+\ and widening from one. Byte marshalling lives in lib/float32-buffer.f; this
+\ scalar package intentionally exposes no pointer surface.
 
 require lib/ieee754.f
 

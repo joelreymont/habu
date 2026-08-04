@@ -7,8 +7,8 @@
 \ src tree ONCE to a private root; each case patches the copy, boots the
 \ engine-under-test with CWD = that root, then restores the touched files -- the
 \ real workspace tree is never touched. Suite weight is five child-engine boots
-\ (~2s total): it belongs to the manual/heavy set, not the fast-tier fork
-\ group. Cases:
+\ (~2s total), so it runs in the standalone stdlib gate instead of the fast tier.
+\ Cases:
 \   positive  - a pre-trust defer ( -- n ) + a post-hook CHECKED selftest that
 \               `is`-installs [: 42 ;] and round-trips it: boots exit 0 and the
 \               piped call prints 42. Proves capture -> drain -> trust row ->

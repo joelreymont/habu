@@ -92,6 +92,9 @@ variable LKWPLUS  variable LKWMINUS  variable LKWSTAR
 variable LKWAND2  variable LKWOR2   variable LKWXOR2
 variable FESK
 
+\ JIT trust rows dispatch an opaque emitter xt and publish the raw-register
+\ fold/vector entry emitters whose generated behavior is described below.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: JIT-XT-EXECUTE ( n -- )
    execute ;
 
@@ -127,10 +130,21 @@ s" fold-entry" s" label ptr a n n --" TRUST
 : FXOR2 ( -- )
    11 11 12 EOR, ;
 
+\ The keyword-string label cells are global like every other LKW* cell in this
+\ file: the habu2.f LABELS allocator (its OPS block) mints them, and it is not
+\ this package.
+variable LKWLSH  variable LKWRSH
+
+package ENGINE-EMIT
+
 : EMIT-FOLDKW ( -- )
    LKWPLUS LABEL@ LBL,  s" +" BYTES,    LKWMINUS LABEL@ LBL,  s" -" BYTES,
    LKWSTAR LABEL@ LBL,  s" *" BYTES,    LKWAND2 LABEL@ LBL,   s" and" BYTES,
-   LKWOR2 LABEL@ LBL,   s" or" BYTES,   LKWXOR2 LABEL@ LBL,   s" xor" BYTES, ;
+   LKWOR2 LABEL@ LBL,   s" or" BYTES,   LKWXOR2 LABEL@ LBL,   s" xor" BYTES,
+   LKWLSH LABEL@ LBL,   s" lshift" BYTES,  LKWRSH LABEL@ LBL,  s" rshift" BYTES, ;
+
+;package
+
 variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  variable LKWNIP2
 
 : EMIT-SHUFKW ( -- )
@@ -293,7 +307,8 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    bno LBL,  13 0 MOVZ,
    bdone LBL,  C-VBIN-RET ;
 
-\ LVBINIPREP ( -- x13=mode ) : LVBINPREP plus mode 3 for top small constant.
+\ LVBINIPREP ( x10=imm-max -- x13=mode ) : LVBINPREP plus mode 3 for top
+\ nonnegative constant no greater than imm-max.
 \ mode 3: x14=rd/rn for the deep operand, x15=imm12, VSP already --.
 \ This routine is a PROBE ONLY: it decides mode 3 or nothing. Every other
 \ outcome unwinds this frame and tail-branches into the single LVBINPREP body,
@@ -304,13 +319,15 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 \ all three. The probe mutates nothing before it commits (the imm12 goes to this
 \ frame's scratch slot), so an LVFORCEK allocation failure leaves the VS pristine
 \ and falls out as mode 0, exactly as before.
+package ENGINE-EMIT
+
 : C-VBINI-PROBE ( label label label -- ) {: bno:label b2:label bdone:label :}
    6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT b2 BCOND,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    7 1 CMPI,  C-NE b2 BCOND,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
    12 0 CMPI,  C-LT b2 BCOND,
-   12 4095 CMPI,  C-GT b2 BCOND,
+   12 10 CMP,  C-GT b2 BCOND,
    12 SP 8 STR,
    5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDRB,
    8 b2 CBNZ,
@@ -330,6 +347,8 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    bno LBL,  13 0 MOVZ,
    bdone LBL,  C-VBIN-RET
    b2 LBL,  C-VBIN-TAIL ;
+
+;package
 
 \ LVPUSHR ( x14=reg ) : push a register entry (spill-on-full keeps x14 claimed)
 : EMIT-VPUSHR ( -- )
@@ -364,14 +383,18 @@ variable FESK2
       9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
    FESK LABEL@ LBL, ;
+s" vop-entry" s" label ptr a n n n --" TRUST
 
 variable FESK6
 
 \ vopi-entry: VOP-ENTRY plus small top-constant immediate lowering.
-: VOPI-ENTRY ( label ptr a n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt:n emitxt:n immxt:n :}
+package ENGINE-EMIT
+
+: VOPI-ENTRY ( label ptr a n n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt:n emitxt:n immxt:n max:n :}
    LBL FESK !  LBL FESK2 !  LBL FESK6 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK LABEL@ CBZ,
+   10 max MOVZ,
    LVBINIPREP LABEL@ BL,
    13 FESK LABEL@ CBZ,
    13 1 CMPI,  C-NE FESK2 LABEL@ BCOND,
@@ -387,8 +410,13 @@ variable FESK6
       9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
    FESK LABEL@ LBL, ;
-s" vopi-entry" s" label ptr a n n n n --" TRUST
-s" vop-entry" s" label ptr a n n n --" TRUST
+s" vopi-entry" s" label ptr a n n n n n --" TRUST
+
+: FLSH ( -- )
+   11 11 12 LSLV, ;
+
+: FRSH ( -- )
+   11 11 12 LSRV, ;
 
 : E+ ( -- )
    8 $8B000000 LIT64, ;
@@ -408,6 +436,12 @@ s" vop-entry" s" label ptr a n n n --" TRUST
 : EXOR ( -- )
    8 $CA000000 LIT64, ;
 
+: ELSH ( -- )
+   8 $9AC02000 LIT64, ;
+
+: ERSH ( -- )
+   8 $9AC02400 LIT64, ;
+
 : EI2N ( -- )
    9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
 
@@ -416,6 +450,18 @@ s" vop-entry" s" label ptr a n n n --" TRUST
 
 : EI- ( -- )
    8 $D1000000 LIT64,  EI2N ;
+
+: EILSH ( -- )
+   8 $D3400000 LIT64,  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,
+   8 64 MOVZ,  8 8 15 SUB,  8 8 63 ANDI,  8 8 16 LSLI,  9 9 8 ORR,
+   8 63 MOVZ,  8 8 15 SUB,  8 8 10 LSLI,  9 9 8 ORR,  LCEMIT LABEL@ BL, ;
+
+: EIRSH ( -- )
+   8 $D340FC00 LIT64,  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,
+   7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
+
+;package
+
 variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKWLE2  variable LKWGE2
 
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
@@ -884,7 +930,11 @@ s" vun-entry" s" label ptr a n n n --" TRUST
    LKWZEQ LABEL@ LBL,   s" 0=" BYTES,      LKWZLT LABEL@ LBL,   s" 0<" BYTES,
    LKWNEG2 LABEL@ LBL,  s" negate" BYTES,  LKWINV2 LABEL@ LBL,  s" invert" BYTES, ;
 
+package ENGINE-EMIT
+
 : EMIT-JIT ( -- )
    EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
    EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;
+
+;package

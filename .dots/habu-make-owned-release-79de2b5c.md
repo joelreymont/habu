@@ -1,9 +1,11 @@
 ---
 title: Make owned release uncatchably fatal
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:16:26.896717+02:00"
+closed-at: "2026-08-02T16:00:56.223770+02:00"
+close-reason: Landed as 9c659329c0a345083d1d7faa9f4c1dafe8628a1f.
 ---
 
 Why: a failed kernel unmap violates memory ownership. Today
@@ -27,8 +29,8 @@ paths. It calls release directly, restores the outer frame after successful
 release, and then rethrows the body code. Delete the cleanup `catch`,
 `WB-COMBINE`, retry state, and every test for a catchable cleanup result.
 
-Exact write set: `lib/memory.f`, `lib/memory-test.f`, `lib/std.manifest`,
-`docs/stdlib.md`, and `TRUSTED.md`. Keep `E-MEM-UNMAP` until the later SAFET and
+Exact write set: `lib/memory.f`, `lib/memory-test.f`, `docs/stdlib.md`, and
+`TRUSTED.md`. Keep `E-MEM-UNMAP` until the later SAFET and
 WSTORE closure removes its final user.
 
 Forbidden: no syscall defer, injector, mutable hook, environment or mode flag,
@@ -51,7 +53,7 @@ pointer roles. Left and right range release preserve the requested untouched
 page. Existing normal, throwing-body, and nested `WITH-BYTES` tests still prove
 release and outer-frame restoration; obsolete cleanup-error fixtures are
 deleted and named in the report. Run the focused memory suite, exact owning
-load, both diff lints, manifest/trust checks, and independent destruction review.
+load, both diff lints, trust checks, and independent destruction review.
 
 Long-term result: one fatal kernel sink, two truthful nominal interfaces, and no
 recoverable state after ownership failure. The later hard rename to

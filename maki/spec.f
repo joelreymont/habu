@@ -775,6 +775,7 @@ variable EQ-OUT                      \ output buffer pointer
 \ EQ-EXEC runs the equation's RUN word (raw xt from the registry). TRUSTED: the xt is
 \ a spec-registry cell whose provenance is a word this file generated + captured, but
 \ execute of a fetched cell is not checker-expressible; this is the audited boundary.
+\ Retire when typed xt-cell arrays land: habu-typed-xt-cell-4c8ecc4c.
 TRUSTED: EQ-EXEC ( eq-slot -- )  EQ-SLOT>N cells EQ-XT-A + @ execute ;
 
 private

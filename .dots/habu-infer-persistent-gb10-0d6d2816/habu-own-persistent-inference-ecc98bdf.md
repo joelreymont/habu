@@ -1,9 +1,11 @@
 ---
 title: Own persistent inference session
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-29T20:40:51.505656+02:00"
+closed-at: "2026-08-04T19:31:35.810142+02:00"
+close-reason: "Superseded by GPT2:model: landed GPU session, one device buffer, config, modules/functions, tokenizer, inference state, and exact reverse close already compose one linear owner; a DEVRT session would duplicate that lifetime."
 blocks:
   - habu-own-device-runtime-5e7d559e
   - habu-load-gpt-2-6b12b3fe

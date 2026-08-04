@@ -212,8 +212,8 @@ private
 
 \ ---- tolerance --------------------------------------------------------------
 : GA-OUT-NODE ( -- CAD-KIND:node-id )  NODE-COUNT@ CAD-NUM:GA-IC>N 1- MIR-NODE-ID ;
-: GA-DEFAULT-TOL ( dtype -- n n )                 \ dtype -> atol-exp rtol-exp
-   MATCH dtype
+: GA-DEFAULT-TOL ( datatype -- n n )                 \ datatype -> atol-exp rtol-exp
+   MATCH datatype
       df32  OF GA-F32-ATOL-EXP GA-F32-RTOL-EXP ENDOF
       df16  OF GA-LOW-ATOL-EXP GA-LOW-RTOL-EXP ENDOF
       dbf16 OF GA-LOW-ATOL-EXP GA-LOW-RTOL-EXP ENDOF

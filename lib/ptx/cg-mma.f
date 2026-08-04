@@ -1196,6 +1196,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ NP-MINT-CHECK-sealed tile mints and the CPPSLOT COMMIT/WAIT transitions. The
 \ commit->wait->read ORDERING this slot enters is checked at the caller
 \ (MMA-PIPE-KLOOP-SINGLE); misorderings reject (lib/ptx/cg-mma-slot-neg-test.f).
+\ Retirement owner: habu-ptx-phantom-preserving-3df9db92.
 TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
 
 \ double-buffered (MMA-STAGES=2) cp.async pipeline, BK-parameterized (mirror of MM-PIPE-KLOOP-WITH).

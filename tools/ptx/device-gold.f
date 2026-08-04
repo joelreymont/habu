@@ -30,12 +30,13 @@ require lib/prelude.f
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/test.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -46,6 +47,8 @@ require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
 package DEVGOLD
+
+using F32
 
 private
 
@@ -110,9 +113,9 @@ create SP-X SP-BYTES allot    create SP-Y SP-BYTES allot
    buf o 2 + + c@  16 lshift or
    buf o 3 + + c@  24 lshift or ;
 : F! ( r ptr a n -- ) {: v:r buf:ptr idx:n :}    \ store a Habu float as f32 at element idx
-   v F64>F32 buf idx F32! ;
+   v NARROW buf idx F32! ;
 : MAXF ( r r -- r ) {: a:r b:r :}  a b f> if a else b then ;
-: NARROW ( r -- r )  F64>F32 F32>F64 ;           \ round a host f64 onto the f32 grid
+: ROUND-F32 ( r -- r )  NARROW WIDEN ;           \ round a host f64 onto the f32 grid
 : WITHIN? ( r r r r -- bool ) {: dev:r host:r atol:r rtol:r :}
    atol  rtol host fabs f*  f+ {: tol:r :}       \ tol = atol + rtol*|host|
    dev host f- fabs {: d:r :}                     \ d   = |dev - host|
@@ -162,10 +165,10 @@ variable DG-DEV variable DG-CTX variable DG-MOD variable DG-FUNC
    DG-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    DG-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0 ;
 : CU-LOAD ( ptr u8 n -- ) {: na:ptr nu:n :}      \ load PTXTC:CUBIN$, resolve function <name> into DG-FUNC
-   PTXTC:CUBIN$ DG-PATH >CSTR
+   PTXTC:CUBIN$ DG-PATH FFI:CSTR
    DG-MOD DG-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    DG-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   na nu DG-KN >CSTR
+   na nu DG-KN FFI:CSTR
    DG-FUNC DG-MOD @ >CUDA-MOD DG-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 \ ============================ SGEMM (MM) golden ==============================
@@ -207,12 +210,12 @@ variable GEMM-OK
 
 : GEMM-MAXERR ( -- r )
    0.0  GM-C-ELEMS 0 ?do
-      GEMM-C i F32@ F32>F64   i GEMM-N mod GEMM-REFVAL NARROW  f- fabs  MAXF
+      GEMM-C i F32@ WIDEN   i GEMM-N mod GEMM-REFVAL ROUND-F32  f- fabs  MAXF
    loop ;
 : GEMM-ALL-WITHIN? ( -- bool )                   \ every element within atol+rtol (matmul class)
    -1 GEMM-OK !
    GM-C-ELEMS 0 ?do
-      GEMM-C i F32@ F32>F64   i GEMM-N mod GEMM-REFVAL NARROW  GM-ATOL GM-RTOL WITHIN? 0= if 0 GEMM-OK ! then
+      GEMM-C i F32@ WIDEN   i GEMM-N mod GEMM-REFVAL ROUND-F32  GM-ATOL GM-RTOL WITHIN? 0= if 0 GEMM-OK ! then
    loop  GEMM-OK @ ;
 
 \ ============================ attention (ATTN) golden =======================
@@ -263,7 +266,7 @@ variable AT-NV variable AT-DPARAM
 
 : ATTN-MAXERR ( -- r )
    0.0  AT-ELEMS 0 ?do
-      ATTN-O i F32@ F32>F64   i ATTN-D /mod swap ATTN-REFVAL NARROW  f- fabs  MAXF
+      ATTN-O i F32@ WIDEN   i ATTN-D /mod swap ATTN-REFVAL ROUND-F32  f- fabs  MAXF
    loop ;
 
 \ ==================== SAXPY-family launch (fused + bandwidth) ================
@@ -296,7 +299,7 @@ variable SP-DX variable SP-DY variable SP-A variable SP-NV
 : FU-REFVAL ( n -- r )  1 and 0 = if 0.0 else 10.0 then ;
 : FILL-FUSED ( -- )  SP-N 0 ?do  i FU-XVAL SP-X i F!  i FU-YVAL SP-Y i F!  loop ;
 : FUSED-MAXERR ( -- r )
-   0.0  SP-N 0 ?do  SP-Y i F32@ F32>F64  i FU-REFVAL NARROW  f- fabs  MAXF  loop ;
+   0.0  SP-N 0 ?do  SP-Y i F32@ WIDEN  i FU-REFVAL ROUND-F32  f- fabs  MAXF  loop ;
 
 \ bandwidth SAXPY y=a*x+y, a=2, y=0, x[i]=((i&3)+1)*0.25 -> y[i]=2*x[i]: the copy/
 \ scale identity the bandwidth kernel must satisfy (right x read, scaled, right store).
@@ -304,7 +307,7 @@ variable SP-DX variable SP-DY variable SP-A variable SP-NV
 : BW-REFVAL ( n -- r )  BW-XVAL 2.0 f* ;         \ 2*x
 : FILL-BW ( -- )  SP-N 0 ?do  i BW-XVAL SP-X i F!  0.0 SP-Y i F!  loop ;
 : BW-MAXERR ( -- r )
-   0.0  SP-N 0 ?do  SP-Y i F32@ F32>F64  i BW-REFVAL NARROW  f- fabs  MAXF  loop ;
+   0.0  SP-N 0 ?do  SP-Y i F32@ WIDEN  i BW-REFVAL ROUND-F32  f- fabs  MAXF  loop ;
 
 \ ---- evidence printing ------------------------------------------------------
 : REPORT-ERR ( ptr u8 n r -- ) {: a:ptr u:n e:r :}
@@ -363,4 +366,5 @@ public
 
 MAIN
 
+;using
 ;package

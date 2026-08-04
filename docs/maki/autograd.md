@@ -39,16 +39,14 @@ For a checked **kernel** (a concatenative word sequence), the backward is derive
 **automatically** by a *syntactic reversal* — no runtime tape:
 
 ```
-AD-REVERSE ( forward-body -- backward-body ):
-  AD-TOKENIZE   split the forward body into whitespace tokens
+PTX-AD:AD-REVERSE ( forward-body -- backward-body ):
+  PTX-AD:AD-TOKENIZE   split the forward body into whitespace tokens
   AD-EMIT-REV   emit the tokens in REVERSE order, each replaced by its adjoint
 ```
 
 A forward pipeline `w1 w2 … wn` has gradient `VJP[wn] … VJP[w1]`. The adjoint of each
 token comes from **one table** (`src/arch/ptx/vjp.f`), looked up through
-`VJP-ADJOINT`; `VJP-EXPAND` is an alias of the same lookup (`lib/ptx/ad.f` defines it
-as `VJP-ADJOINT`), kept as the expansion-flavored spelling. The entries fall into two
-classes:
+`PTX-AD:VJP-EXPAND` in `lib/ptx/ad.f`. The entries fall into two classes:
 
 - the *linear, data-free* primitive adjoints (single-token expansions):
   `+.`↔`DUP`, `BLOCK-SUM`↔`BROADCAST`, `STORE`→`LOAD`,
@@ -68,7 +66,7 @@ classes:
 The derived backward is **an ordinary checked kernel** — it type-checks through the same
 stack-effect checker as any forward kernel.
 
-### Save-vs-recompute (`VJP-SAVES`)
+### Save-vs-recompute (`PTX-AD:VJP-SAVES`)
 
 The tape's replacement: each op declares how many forward values its backward needs
 (`EXP.`→1, `*.`→2, `B/`→2 (s, z), linear ops →0). Finite and known at compile time. The

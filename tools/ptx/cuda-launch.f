@@ -1,7 +1,7 @@
 \ cuda-launch.f - CHECKED on-device proof: LAUNCH a checked-emitted scalar SAXPY
 \ kernel on the Orin GPU and verify the result against the CPU golden.
 \
-\ Fully checked Habu via lib/ffi.f (NO 0 set-check; only P>N trusted). The
+\ Fully checked Habu via lib/ffi-abi.f (NO 0 set-check; only FFI:>CELL trusted). The
 \ deprecated <=8-arg launch API (cuFuncSetBlockShape / cuParamSetv / cuLaunchGrid)
 \ avoids cuLaunchKernel's 11 args; the real driver memory entry points are the
 \ _v2 symbols (the earlier INVALID_CONTEXT was symbol versioning). Self-contained:
@@ -10,7 +10,7 @@
 \ this launches that private cubin. A missing producer or a nonzero emit/ptxas rc
 \ fails CLOSED with the named E-PTX-EMIT throw (child stderr surfaced), never a
 \ stale/absent /tmp/saxpy.cubin. A dropped copy-back fails closed via PTXSENT.
-\ Data: x=2.0, y=0, n=4, ARBITRARY a marshalled through F64>F32 (lib/ptx/cg.f)
+\ Data: x=2.0, y=0, n=4, ARBITRARY a marshalled through F32:NARROW (lib/float32.f)
 \ => y' = a*x+y = 2a. The kernel name, block shape, cuParamSetSize total, and
 \ every cuParamSetV offset/size are GENERATED from the kernel-ABI record
 \ (lib/ptx/kernel-abi.f) - the same record that renders the kernel's entry and
@@ -21,11 +21,12 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/kernel-abi.f
 require lib/ptx/cg.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
@@ -75,10 +76,10 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    LL-CTX LL-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    LL-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    LL-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ LL-PATH >CSTR
+   PTXTC:CUBIN$ LL-PATH FFI:CSTR
    LL-MOD LL-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    LL-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   KABI:NAME$ LL-KN >CSTR                         \ kernel entry name from the ABI record
+   KABI:NAME$ LL-KN FFI:CSTR                         \ kernel entry name from the ABI record
    LL-FUNC LL-MOD @ >CUDA-MOD LL-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 \ record-driven .param packing: offset and size of one named field
@@ -91,9 +92,9 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    LL-RBUF 4 PTXSENT:FILL                                                  \ poison readback: dropped copy-back fails closed
    LL-DX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  LL-DX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    LL-DY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  LL-DY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
-   LL-DX @ >CUDA-DEVPTR 2.0 F64>F32 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ x = 2.0
+   LL-DX @ >CUDA-DEVPTR 2.0 F32:NARROW 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ x = 2.0
    LL-DY @ >CUDA-DEVPTR 0 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0             \ y = 0
-   a F64>F32 LL-ABITS !  4 LL-NV !                                        \ arbitrary a, n = 4
+   a F32:NARROW LL-ABITS !  4 LL-NV !                                        \ arbitrary a, n = 4
    LL-FUNC @ >CUDA-FN KABI:BLOCK@ 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
    LL-FUNC @ >CUDA-FN KABI:TOTAL >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
    LL-FUNC @ >CUDA-FN s" x" LL-POFF LL-DX s" x" LL-PLEN CUDA:CU-PARAM-SET-V CUDA:RC0
@@ -111,10 +112,10 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
 \ two CPU goldens (a*x = 2a for a in {3.0, 1.7}) are the f32 bits the device must
 \ return.
 : HOST-CHECK ( -- )
-   3.0 F64>F32 $40400000 T=            \ a=3.0 marshals to the previously hardcoded bits
-   1.7 F64>F32 $3FD9999A T=            \ a=1.7 arbitrary scalar marshals correctly
-   3.0 2.0 f* F64>F32 $40C00000 T=     \ a=3.0 CPU golden 6.0
-   1.7 2.0 f* F64>F32 $4059999A T= ;   \ a=1.7 CPU golden 3.4
+   3.0 F32:NARROW $40400000 T=            \ a=3.0 marshals to the previously hardcoded bits
+   1.7 F32:NARROW $3FD9999A T=            \ a=1.7 arbitrary scalar marshals correctly
+   3.0 2.0 f* F32:NARROW $40C00000 T=     \ a=3.0 CPU golden 6.0
+   1.7 2.0 f* F32:NARROW $4059999A T= ;   \ a=1.7 CPU golden 3.4
 
 \ pinned: the record-generated launch packing equals the old hand literals
 \ (name SAXPY, block 256,1,1, cuParamSetSize 24, offsets 0/8/16/20, sizes 8/8/4/4)
@@ -128,7 +129,7 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    s" n" KABI:OFFSET-OF 20 T=   s" n" KABI:SIZE-OF 4 T= ;
 
 : SAXPY-CHECK ( r -- )  {: a:r :}       \ device result == CPU golden f32(a*x+y), x=2 y=0
-   SAXPY-GPU-BITS  a 2.0 f* F64>F32  T=
+   SAXPY-GPU-BITS  a 2.0 f* F32:NARROW  T=
    s" SAXPY a*2 on GPU -> f32 bits " type SAXPY-GPU-BITS . cr ;
 
 : RUN ( -- )

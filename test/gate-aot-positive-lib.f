@@ -444,7 +444,7 @@ variable BLR-CNT
 \ MAIN) exits 0, and the entry/seed/mode axis is folded into every cache layer
 \ (artifact key + source-index key + object bytes) so the two are distinct
 \ artifacts with no cross-restore in either direction, and the die survives an
-\ object-cache relink. docs/census-tfam-10.md.
+\ object-cache relink.
 : PRESEED-SRC ( -- )                        \ matched family + helper + trivial MAIN
    GE-SRC-RESET
    s" SUMTYPE gemt 0" GE-SRC-LINE

@@ -12,6 +12,9 @@
 \ FFI-CALL* calls in one task; finish one foreign call before preparing the next.
 
 s" lib/errors.f" required
+s" lib/string.f" required
+
+package FFI
 
 8 constant FFI-REG-ARGS
 16 constant FFI-MAX-ARGS
@@ -57,7 +60,8 @@ $41C8 constant FFI-SCRATCH-END
 
 \ Pointer <-> cell reinterpret trusted boundary: the checker cannot know a raw
 \ cell is a valid pointer, so we assert it here, once.
-TRUSTED: P>N ( ptr a -- n ) ;             \ pointer  -> arg cell
+\ Retirement owner: habu-typed-defining-words-aa224eb5.
+TRUSTED: PTR>CELL ( ptr a -- n ) ;        \ pointer -> arg cell
 
 \ ---- argument marshalling -------------------------------------------------
 \ Integer slot 8 is x8, the AAPCS64 indirect-result register. Stack slots are
@@ -83,7 +87,7 @@ TRUSTED: P>N ( ptr a -- n ) ;             \ pointer  -> arg cell
 : FFI-ARG! ( n n -- ) {: v:n idx:n :}
    v idx FFI-SLOT ! ;
 : FFI-PTR-ARG! ( ptr a n -- ) {: p:ptr idx:n :}
-   p P>N idx FFI-ARG! ;
+   p PTR>CELL idx FFI-ARG! ;
 : FFI-FARG! ( r n -- ) {: v:r idx:n :}
    v idx FFI-FSLOT ! ;
 : FFI-STACK! ( n n -- ) {: v:n idx:n :}
@@ -119,7 +123,7 @@ TRUSTED: P>N ( ptr a -- n ) ;             \ pointer  -> arg cell
    1 + FFI-KPARAM# ! ;
 : FFI-KPARAM+ ( ptr a -- ) {: p:ptr :}
    FFI-KPARAM-COUNT {: idx:n :}
-   p P>N idx FFI-KPARAM-PTR-SLOT !
+   p PTR>CELL idx FFI-KPARAM-PTR-SLOT !
    idx FFI-KPARAM-BUMP ;
 : FFI-KPARAM-N+ ( n -- ) {: v:n :}
    FFI-KPARAM-COUNT {: idx:n :}
@@ -128,19 +132,17 @@ TRUSTED: P>N ( ptr a -- n ) ;             \ pointer  -> arg cell
 : FFI-KPARAMS ( -- ptr n n )
    FFI-KPARAM-PBUF FFI-KPARAM-COUNT ;
 : FFI-KPARAMS>N ( -- n )
-   FFI-KPARAM-PBUF P>N ;
+   FFI-KPARAM-PBUF PTR>CELL ;
 
 \ ---- C strings ------------------------------------------------------------
 \ Copy a Habu byte-string into dst and NUL-terminate it, yielding a C string
 \ for the callee. dst must hold at least n+1 bytes; the caller owns it.
-: >CSTR ( ptr u8 n ptr u8 -- ) {: src:ptr u:n dst:ptr :}
+: COPY-CSTR ( ptr u8 n ptr u8 -- ) {: src:ptr u:n dst:ptr :}
    src dst u BYTE-COPY
    0 dst u + c! ;                         \ dst+u : NUL terminator
 
-\ Exact bindings use this sealed package surface. Legacy global marshalling
-\ words remain compatible but cannot mint checked effects; raw calls remain
-\ TRUSTED-only and no universal binder is published.
-package FFI
+\ Exact bindings use this sealed package surface. Raw calls remain TRUSTED-only
+\ and no universal binder is published.
 
 : REG-LEN-SLOT ( n -- ptr n ) {: idx:n :}
    idx FFI-MAX-ARGS FFI-CHECK-INDEX
@@ -169,7 +171,7 @@ public
 : SCRATCH-END ( -- n ) FFI-SCRATCH-END ;
 : NOW ( -- n ) 2 ;
 
-: >CELL ( ptr a -- n ) P>N ;
+: >CELL ( ptr a -- n ) PTR>CELL ;
 
 : RESET ( -- )
    FFI-MAX-ARGS 0 ?do
@@ -200,11 +202,11 @@ public
    0 idx STACK-LEN! ;
 
 : STACK-READABLE! ( ptr a n -- ) {: value:ptr idx:n :}
-   value P>N idx FFI-STACK!
+   value PTR>CELL idx FFI-STACK!
    0 idx STACK-LEN! ;
 
 : STACK-WRITABLE! ( ptr a n n -- ) {: value:ptr len:n idx:n :}
-   value P>N idx FFI-STACK!
+   value PTR>CELL idx FFI-STACK!
    len WRITABLE-LEN idx STACK-LEN! ;
 
 : X8-VALUE! ( n -- ) 8 VALUE! ;
@@ -225,12 +227,14 @@ public
 : KPARAM-VALUE+ ( n -- ) FFI-KPARAM-N+ ;
 : KPARAMS ( -- ptr n n ) FFI-KPARAMS ;
 : KPARAMS>CELL ( -- n ) FFI-KPARAMS>N ;
-: CSTR ( ptr u8 n ptr u8 -- ) >CSTR ;
+: CSTR ( ptr u8 n ptr u8 -- ) COPY-CSTR ;
 
 private
 
+\ Exact package-private dlopen/dlsym bindings: paths and symbols are read-only, while
+\ handles and flags are scalar. Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
-   path P>N FFI-DLBUF !
+   path PTR>CELL FFI-DLBUF !
    flags FFI-DLBUF CELL + !
    0 FFI-DLBUF 2 cells + !
    0 FFI-DLBUF 3 cells + !
@@ -238,7 +242,7 @@ TRUSTED: DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
 
 TRUSTED: DLSYM-RAW ( n ptr u8 -- n ) {: handle:n name:ptr :}
    handle FFI-DLBUF !
-   name P>N FFI-DLBUF CELL + !
+   name PTR>CELL FFI-DLBUF CELL + !
    0 FFI-DLBUF 2 cells + !
    0 FFI-DLBUF 3 cells + !
    FFI-DLBUF FFI-DLBUF 2 cells + 2 DLSYM-SLOT @ ffi-call-bounded ;

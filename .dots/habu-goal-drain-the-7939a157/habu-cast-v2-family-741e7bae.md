@@ -1,6 +1,6 @@
 ---
 title: "CAST: v2 - family ownership rule for cast declarations"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-19T01:59:06.031631+02:00"
@@ -21,8 +21,7 @@ This dot owns the shared authority repair in `src/core/checker.f`,
 `src/core/enum-decl.f`, `src/habu/verify-source.f`, `src/habu/xref.f`, and
 `tools/check-core.f`; its hostile and confinement gates are
 `test/cast-negative-suite.f`, `test/compiler/ir-id.f`,
-`test/type-decl-suite.f`, `test/type-export-suite.f`,
-`tools/refine-lint-core.f`, `tools/refine-lint-test.f`, and `TRUSTED.md`.
+`test/type-decl-suite.f`, and `test/type-export-suite.f`.
 
 Checkpoint: the family owner is the live namespace provider; production
 entries are source verification, the check runner, and `CAST:` declaration.
@@ -31,8 +30,8 @@ owner mint reaches the declaration path. The interface change is one
 provider-authenticated destination-owner check. Forbidden alternatives are
 trust expansion, checker-mirror authority, runtime guards, value heuristics,
 or a public grant. Focused acceptance is the cast-negative, type-declaration,
-type-export, compiler-ID, and refine-lint suites; broader gates are trust,
-package, typed-local, Maki, PTX standard library, fixpoint, bootstrap,
+type-export, and compiler-ID suites; broader gates are package, typed-local,
+Maki, PTX standard library, fixpoint, bootstrap,
 and the native publication gate.
 
 Acceptance covers A-as-B owner spoofing, visibility spoofing, foreign private

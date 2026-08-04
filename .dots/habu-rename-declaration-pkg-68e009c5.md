@@ -13,7 +13,7 @@ every qualified call site.
 
 Required result: rename only the package identity to `DECL-TX`. Keep the
 descriptive source path `src/core/declaration-transaction.f`. Update every
-qualified production call, test package reopen, release-inventory token, and
+qualified production call, test package reopen, and
 current documentation reference that denotes the package identifier. Preserve
 all public word tails, stack effects, error codes, behavior, load order, file
 manifests, and transaction semantics. Do not abbreviate prose that describes
@@ -23,8 +23,8 @@ source file, or combine semantic refactoring with this namespace change.
 Owner: the existing declaration transaction module and exact consumers.
 Dependencies: none. Acceptance: `rg` over tracked Forth and current docs finds
 no `DECLARATION-TRANSACTION` package identifier. The generated declaration
-transaction suite, engine suite, bootstrap/load path, release inventory,
-host-lint, filemap-lint, typed-local diff lint, and package diff lint all pass
+transaction suite, engine suite, bootstrap/load path, host-lint, filemap-lint,
+typed-local diff lint, and package diff lint all pass
 through native `bin/hb`. The namespace rename is one coherent commit and the
 workspace is clean.
 

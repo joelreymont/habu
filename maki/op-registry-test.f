@@ -95,7 +95,7 @@ NUM-RELTOL       OPR-NUMERIC-NAME s" rel-tol"   T$=
 s" OPX-OK    ( opkind -- n ) OPR-CLASS"      CHECK-QUIET-CANDIDATE! -1 T=
 s" OPX-N     ( n -- n ) OPR-CLASS"           CHECK-QUIET-CANDIDATE!  0 T=
 s" OPX-NAME-N ( n -- ptr u8 n ) OPR-NAME"    CHECK-QUIET-CANDIDATE!  0 T=
-s" OPX-DT    ( dtype -- n ) OPR-CLASS"       CHECK-QUIET-CANDIDATE!  0 T=
+s" OPX-DT    ( datatype -- n ) OPR-CLASS"       CHECK-QUIET-CANDIDATE!  0 T=
 
 T-REPORT
 

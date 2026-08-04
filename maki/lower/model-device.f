@@ -42,6 +42,7 @@ require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
 require maki/device-artifacts.f
@@ -50,6 +51,8 @@ require maki/lower/golden.f
 require maki/eval/active-target.f
 
 package MAKI
+
+using F32
 
 create LMDM-OUT  $4000  allot  create LMDM-ERR $1000 allot
 create LMDM-QO   $1000  allot  create LMDM-QE  $2000 allot
@@ -110,7 +113,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
 
 \ ---- per-element evidence (final model output: device value | host value rounded to f32) -----
 : LMDM-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
-: LMDM-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;
+: LMDM-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  NARROW WIDEN ;
 : LMDM-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do
@@ -162,4 +165,5 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    LMDM-DIR LMDM-DIR-U @ REMOVE-TREE
    T-REPORT ;
 
+;using
 ;package

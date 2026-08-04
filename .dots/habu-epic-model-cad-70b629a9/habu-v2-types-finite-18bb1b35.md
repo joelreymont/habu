@@ -18,11 +18,11 @@ Spec written into `docs/effects.md` (new "## R8 capability-effect design" part a
 - R8-3 mandatory Maki registration, capability tokens (`CAPTOK` precedent), and the per-atom planner-legality table of forbidden rewrite/fusion/recompute/cache moves.
 - R8-4 the separate runtime resolver, the cache-identity rule (sealed versioned projections, completeness evidence, tested irrelevance proofs, policy version in key), and a 37-row adversarial static/runtime/projection mutation matrix.
 - R8-5 leaf/spec-ownership table and dependency order; the doc ends with the explicit R8 acceptance-mapping table.
-`MODEL-CAD-V2-PLAN.md` § R8 gained a one-line cross-reference to `docs/effects.md`; `FILEMAP.md` now lists `docs/effects.md`.
+`MODEL-CAD-V2-PLAN.md` § R8 gained a one-line cross-reference to `docs/effects.md`.
 
 Leaf decomposition (design-reference note appended to each leaf dot): define-finite (R8-0, closed), seal (R8-1 authority), persist-cad-semantic (R8-2 checker), require-maki-op (R8-1/R8-3 registry), add-explicit-cad (R8-3 capability), enforce-effect-aware (R8-3 planner), resolve-runtime (R8-4 resolver), census (R8-4 census), define-complete (R8-4 projection), key-caches (R8-4 integration). The `blocks:` dependency edges were audited against the target order define-finite -> seal -> {persist, require-maki-op} -> add-explicit-cad -> resolve-runtime -> {census, enforce-effect-aware} -> census -> define-complete -> key-caches; they already form the correct DAG, so no edge repair was needed (enforce-effect-aware correctly branches off resolve-runtime because it consumes resolved bindings).
 
-Gates on the design tree (native `bin/hb`): dot-dep-lint 0 finding(s); stale-status-lint 0 finding(s); host-lint 0 finding(s); filemap-lint 0 finding(s). No `.f`/`.fs` source touched, so no engine battery applies.
+Gates on the design tree (native `bin/hb`): dot-dep-lint 0 finding(s); stale-status-lint 0 finding(s); host-lint 0 finding(s). No `.f`/`.fs` source touched, so no engine battery applies.
 
 First implementation leaf to start: `habu-seal-cad-effect-49cac404` (R8-1 authority boundary). Its prerequisites define-finite (row vocabulary) and add-immutable-nominal (arena) are closed/landed; it waits on `habu-checker-sealed-destructure-d967fc03` for owner-only construction and package closure. Then it builds `src/cad/effect-authority.f`, admits only arena-validated handles, exposes no raw handle mint or cast, and closes `CAD-EFFECT` exactly once, per `docs/effects.md` § R8-1.
 

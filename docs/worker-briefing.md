@@ -27,6 +27,11 @@ the gate files are the source of truth.
   copy the measured numbers. Arithmetic predictions have been wrong twice.
 - macOS rows are OWED, never guessed. Update linux-arm64 rows only.
 
+## Trusted boundaries
+
+- Every `TRUST` or `TRUSTED:` site needs source-local rationale, a retirement
+  owner, and a focused production-path test.
+
 ## Gates and evidence
 
 - Run gates as `... > /tmp/<name>.log 2>&1; echo $?` then

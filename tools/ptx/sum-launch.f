@@ -1,14 +1,15 @@
 \ sum-launch.f - Orin device proof for the checked SUM-ROWS kernel.
 \
-\ Fully checked Habu via lib/ffi.f. Self-contained: spawns bin/hb to emit the
+\ Fully checked Habu via lib/ffi-abi.f. Self-contained: spawns bin/hb to emit the
 \ checked SUM-ROWS kernel (tools/ptx/sum-cg.f) to a PRIVATE PTX under a per-run
 \ toolchain root, ptxas-assembles it, then launches on the Orin - no shared
 \ /tmp/sum.cubin. Load after lib/test.f, lib/ptx/header.f, lib/ptx/launch.f,
-\ lib/ffi.f, and f32 marshalling helpers.
+\ lib/ffi-abi.f, and f32 marshalling helpers.
 
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/test.f
 require src/arch/ptx/emit.f
@@ -68,10 +69,10 @@ variable RS-DIN variable RS-DOUT variable RS-KV
 \   row0 = [1,2,3,4] -> sum 10.0 (0x41200000)
 \   row1 = [2,3,4,5] -> sum 14.0 (14 = 1.75*2^3: exp 130=0x82, mant .75=0x600000 -> 0x41600000)
 : RS-PUT ( -- )
-   1.0 F64>F32 RS-HIN 0 RS-F32!  2.0 F64>F32 RS-HIN 1 RS-F32!
-   3.0 F64>F32 RS-HIN 2 RS-F32!  4.0 F64>F32 RS-HIN 3 RS-F32!
-   2.0 F64>F32 RS-HIN 4 RS-F32!  3.0 F64>F32 RS-HIN 5 RS-F32!
-   4.0 F64>F32 RS-HIN 6 RS-F32!  5.0 F64>F32 RS-HIN 7 RS-F32! ;
+   1.0 F32:NARROW RS-HIN 0 RS-F32!  2.0 F32:NARROW RS-HIN 1 RS-F32!
+   3.0 F32:NARROW RS-HIN 2 RS-F32!  4.0 F32:NARROW RS-HIN 3 RS-F32!
+   2.0 F32:NARROW RS-HIN 4 RS-F32!  3.0 F32:NARROW RS-HIN 5 RS-F32!
+   4.0 F32:NARROW RS-HIN 6 RS-F32!  5.0 F32:NARROW RS-HIN 7 RS-F32! ;
 
 : RS-SETUP ( -- )
    CUDA:OPEN
@@ -80,10 +81,10 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    RS-CTX RS-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    RS-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    RS-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ RS-PATH >CSTR
+   PTXTC:CUBIN$ RS-PATH FFI:CSTR
    RS-MOD RS-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    RS-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SUM_ROWS" RS-KN >CSTR
+   s" SUM_ROWS" RS-KN FFI:CSTR
    RS-FUNC RS-MOD @ >CUDA-MOD RS-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 : RS-LAUNCH ( -- )

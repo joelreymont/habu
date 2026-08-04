@@ -21,8 +21,7 @@
 \ the softmax row with the shared LCG - a fixed seed locks the sequence; the final
 \ bucket absorbs floating rounding so u in [0,1) never falls off the row end.
 \
-\ generate owns -5328, -5329, -5399 (the free -53xx tail slots; -5322..-5327 are
-\ reserved for the concurrent BPE-tokenizer lane). maki -> habu only.
+\ generate owns -5328, -5329, -5399. maki -> habu only.
 
 require maki/array.f          \ T-GET / T-SET / T-AT / T-FILL
 require maki/softmax.f        \ SM-FWD (numerically-stable host softmax)
