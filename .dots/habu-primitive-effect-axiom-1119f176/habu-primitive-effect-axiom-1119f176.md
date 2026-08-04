@@ -41,3 +41,30 @@ ratchet, per-row proof recipes, and the stable ARM64 contract link. Engine
 emitter TRUST conversion remains owned by habu-builder-trust-rows-c5d41af6.
 This parent closes only after the three evidence leaves land; consumers depend
 on the narrow leaf they need rather than this durable owner lifecycle.
+
+## Groomed 2026-08-04 (dot-groom): close condition met, one deliverable since retired
+
+Deliberately left OPEN rather than closed, because closing it would bury a live gap.
+
+The completion rule above ("This parent closes only after the three evidence leaves
+land") is satisfied on paper: all three children are closed. Verified in the current
+tree - the recipe ledger merged at 651f30f4, and PRIM-LINK landed at 39ac7cc3 with
+test/prim-link-test.f present and PEINV/PRIM-LINK still referenced from
+src/core/checker.f and test/prop-test-core.f. The remaining scope this dot named for
+itself, folding engine-primitive TRUST rows into the audited table, is reassigned to
+habu-builder-trust-rows-c5d41af6, which is open.
+
+What is NOT satisfied: the third deliverable in the opening paragraph - "inventory
+ratchet counts axioms separately from discharged TRUSTED" - landed as
+tools/primitive-effect-inventory.f (package PEINV, closing
+habu-ratchet-primitive-effect-43e46e7a) and was then DELETED by commit df9bf14ac
+"Mirror the governance cleanup onto proofs", part of the governance-mirror retirement.
+So today nothing ratchets the axiom set independently of the trust-site classes, and
+that is currently un-owned by any dot.
+
+Two follow-ups for whoever picks this up. First, decide explicitly whether the
+independent axiom ratchet is wanted after the governance cleanup or was retired on
+purpose; if it is wanted it needs its own dot, and if it is not, this parent can close.
+Second, docs/effects.md:669 still asserts that "exact source/live identity stays
+independently ratcheted by `PEINV` below" - that sentence is stale prose describing a
+deleted tool and should be corrected either way.

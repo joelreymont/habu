@@ -3,10 +3,9 @@ title: Package intern lint module
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-27T00:09:32.400720+02:00\""
+created-at: "2026-07-27T00:09:32.400720+02:00"
 blocks:
   - habu-pkg-set-test-07723f0e
-  - habu-pkg-filemap-lint-5d7baf5c
   - habu-pkg-err-code-9508f911
   - habu-pkg-repl-lint-cd31219c
   - habu-pkg-public-signatures-e25db8b1
@@ -39,3 +38,12 @@ nominal linear vector owner first, and it may not be re-dispatched until that
 design review is clean.
 
 Claim: RELEASED 2026-07-27 with the park above. The vecmem lane worker is released and .jj-ws/habu-pkg-vecmem is kept as rejected evidence only.
+
+GROOMED 2026-08-04 (dot-groom). The blocker edge to habu-pkg-filemap-lint-5d7baf5c is
+removed and that dot is closed: commit 85a9646fd "Delete FILEMAP and census gates"
+deleted tools/filemap-lint.f, tools/filemap-lint-test.f and FILEMAP.md, so there is no
+filemap-lint left to package. Two consumer counts in the paragraph above are now stale
+for the same reason: filemap-lint (7 references) and suite-coverage-lint-core (3
+references, tools/suite-coverage-lint-core.f also deleted) are gone, so the resolved
+consumer set is 5 files and 70 references, not 7 files and 80. The rest of the contract
+is unchanged and still live.
