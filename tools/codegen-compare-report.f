@@ -523,12 +523,13 @@ private
    j 0 < if false exit then
    k j BIGGER-ROW? ;
 
-\ ---- the rows that lose on bytes today, and what closes each one --------------
-\ ONE row of the four corpora is bigger in the new column right now. It is a
-\ known consequence of a capability the chain has not got yet, it has a dot that
-\ removes it, and a gate that went red on it would be red for work that is
-\ already scheduled. So it is written down HERE, by name, and the check subtracts
-\ it.
+\ ---- the rows that lose on bytes today, and why each one is allowed to --------
+\ ONE row of the four corpora is bigger in the new column right now. A row gets
+\ on this list for one of two reasons - a capability the chain has not got yet,
+\ or a trade a rule of the chain makes deliberately and states - and either way
+\ it is written down HERE, by name, with which of the two it is, and the check
+\ subtracts it. A gate that went red on it would be red for work that is already
+\ scheduled, or for a decision that has already been made and argued.
 \
 \ THE LIST WAS TWO ROWS AND IS NOW ONE. CODEGEN-CORPUS2:T-RES-WALK - the loop
 \ whose test is a call - came off it when the three mechanisms its diagnosis
@@ -536,6 +537,21 @@ private
 \ order (habu-order-blocks-to-f6d89653) and the data-stack placement
 \ (habu-place-the-data-9f128e58). It compiles to 36 bytes, which is the engine's
 \ own number for the same body, instruction for instruction.
+\
+\ AND THE ONE THAT IS LEFT IS OF THE SECOND KIND, WHICH IS WHY IT HAS NO DOT.
+\ CODEGEN-CORPUS4:CALL-FAN-BIG was on this list waiting for
+\ habu-measure-inline-cost-031e817e to re-derive the inliner's size rule. That
+\ landed, and the honest re-derivation kept the row: a copy costs the callee's
+\ body and a call site costs anything from the branch alone to the whole of what
+\ its arity allows, so no rule read while the CALLEE is published can promise
+\ that a copy is never bigger - the only bound that would is a one-instruction
+\ body, which refuses
+\ every routine these corpora show copying wins on. The rule therefore bounds
+\ what a copy ADDS and says so, and this row is that bound at its widest: five
+\ sites whose calls are one instruction each against copies of four, 88 bytes
+\ against 36, in about a twentieth of the time. src/compiler/native/inline.f carries
+\ the derivation. The row comes off this list if the rule ever tightens past
+\ C-MAD's body, and the stale check below is what would say so.
 \
 \ WHY A LIST OF ROWS AND NOT A TOLERANCE. A tolerance - "a row may be up to so
 \ much bigger" - would also absorb the next loss, and the next loss is the whole
@@ -552,10 +568,10 @@ private
    e 0 = if s" CODEGEN-CORPUS4:CALL-FAN-BIG" exit then
    E-CODEGEN-COMPARE-ROW throw ;
 
-\ The dot each entry dies with, printed beside the row so a reader of a report
-\ does not have to come here to find out who owns it.
+\ Why each entry is allowed to lose, printed beside the row so a reader of a
+\ report does not have to come here to find out.
 : KNOWN-WHY$ ( n -- ptr u8 n ) {: e:n :}
-   e 0 = if s" five copies of a callee the engine calls; dies with habu-measure-inline-cost-031e817e" exit then
+   e 0 = if s" five copies of a callee the engine calls; the inline size rule's stated trade, src/compiler/native/inline.f" exit then
    E-CODEGEN-COMPARE-ROW throw ;
 
 : KNOWN-AT ( ptr u8 n -- n ) {: a:ptr u:n :}

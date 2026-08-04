@@ -480,9 +480,17 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ The size rule, asked of the emission the validator accepted. It is the last
 \ thing that can disqualify a body, and it is asked here because this is the
 \ first moment the definition's own instruction count exists.
+\
+\ WHAT IT IS ASKED ABOUT IS THE BODY AND NOT THE WHOLE EMISSION, because the body
+\ is what a caller copying this routine would write - the emitter measured it
+\ while it wrote it, and src/compiler/native/inline.f carries the argument for
+\ why that measurement and not an arity-derived subtraction. A routine that calls
+\ has no answer there, and none is needed: a body with a call in it never reaches
+\ this word, because every token of it had to be one the elaborator could splice
+\ and a call is not.
 : SIZE-CK ( -- )
    NINL:STAGED? 0= if exit then
-   M-IN @ M-OUT @ A64EMIT:INSNS NINL:SMALL? 0= if NINL:STAGE-CLEAR then ;
+   M-IN @ M-OUT @ A64EMIT:BODY-INSNS NINL:SMALL? 0= if NINL:STAGE-CLEAR then ;
 
 \ Claim the row for the staged body: the address the routine is about to be
 \ published at. The emitter's own recorded placement is that address before the

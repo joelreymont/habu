@@ -10,9 +10,11 @@
 \      it was told, refuses a second body for one address, refuses a claim on an
 \      address no routine could be published at, and refuses to be read about an
 \      address it has no row for or a token a row does not hold.
-\   2. That the size rule is DERIVED and not chosen: what one side of a call to a
-\      routine of a given arity costs in instructions, and a routine admitted
-\      exactly when its whole emission is within twice that.
+\   2. That the size rule is DERIVED and not chosen: the most a call SITE to a
+\      routine of a given arity can cost in instructions, and a routine admitted
+\      exactly when the BODY the emitter measured for it is within that. The
+\      body is read from the emitter and never re-derived here from an arity,
+\      because an arity-derived interface is exactly what the rule stopped using.
 \   3. That a real migration records a body, and that a caller compiled
 \      afterwards contains NO call instruction at all, no frame and no saved link
 \      register - and answers exactly what the same body compiled by the engine
@@ -261,24 +263,26 @@ $2000C constant A4
    A4 NINL:KNOWN? FLAG# 0 T= ;
 
 \ ---- the size rule, which is derived and not chosen ---------------------------
-\ One side of a call to a routine of arity (in -> out) is its stores, its three
-\ instructions of branch and pointer adjustment, and its loads; the routine pays
-\ the mirror of that. So the interface is `in + out + 3` on each side, and a
-\ routine is small exactly when its whole emission is within both halves - which
-\ is when its BODY is no longer than the call site's own half.
+\ A call SITE to a routine of arity (in -> out) writes one store per argument,
+\ one load per result, the branch and the two pointer adjustments around it, and
+\ every one of those but the branch can turn out to be nothing - so what the rule
+\ uses is the site's MAXIMUM, and a copy, which costs the callee's BODY and
+\ nothing else, is admitted exactly when that body is within it.
+\ src/compiler/native/inline.f states the arithmetic and argues why the maximum
+\ is the bound it can use; the cases below pin the numbers that statement
+\ produces, asking NINL:SITE-INSNS for them rather than computing their own.
 : RULE-CASES ( -- )
-   s" one side of a call is the arity plus the branch and the two moves" T-LABEL
-   1 1 NINL:INTERFACE-INSNS 5 T=
-   2 1 NINL:INTERFACE-INSNS 6 T=
-   0 0 NINL:INTERFACE-INSNS 3 T=
+   s" a call site costs at most the arity, the branch and the two moves" T-LABEL
+   1 1 NINL:SITE-INSNS 5 T=
+   2 1 NINL:SITE-INSNS 6 T=
+   0 0 NINL:SITE-INSNS 3 T=
 
-   s" and a routine is small exactly when its emission is within twice that"
-   T-LABEL
-   1 1 9 NINL:SMALL? TTRUE
-   1 1 10 NINL:SMALL? TTRUE
-   1 1 11 NINL:SMALL? TFALSE
-   3 2 16 NINL:SMALL? TTRUE
-   3 2 17 NINL:SMALL? TFALSE
+   s" and a routine is small exactly when its BODY is within that" T-LABEL
+   1 1 4 NINL:SMALL? TTRUE
+   1 1 5 NINL:SMALL? TTRUE
+   1 1 6 NINL:SMALL? TFALSE
+   3 2 8 NINL:SMALL? TTRUE
+   3 2 9 NINL:SMALL? TFALSE
 
    s" a row holds what the rule admits, and says so before anything is staged"
    T-LABEL
@@ -420,29 +424,50 @@ variable CODE-AT
 \ that "it recorded these" is a count that moved rather than rows that were there.
 variable ROWS-BEFORE
 
-\ The callee is a doubling written seven times. Its body is seven additions and
-\ nothing else, so its emission is the interface plus seven - exactly twice the
-\ interface bound, which is the largest a copied body may be. It used to be five
-\ additions: the interface a routine of this arity really emits fell by the two
-\ pointer adjustments the placement no longer needs, so the same bound now leaves
-\ room for two more instructions of body, and the fixture is moved to sit on the
-\ edge again rather than to sit inside it.
+\ The body count the size rule was really asked about, taken from the pass that
+\ answered it while that routine's emission is still sealed. It is read and not
+\ re-derived: what a routine's body is, is the emission less its crossings, and
+\ the whole point of the rule's rewrite is that those crossings are not a
+\ function of the arity - so a second derivation here is exactly the one that
+\ would drift from the production answer it is supposed to be checking.
+variable EDGE-IN-BODY
+variable EDGE-OUT-BODY
+variable CTRL-BODY
+
+\ The callee is a doubling written five times. Its body is five additions and
+\ nothing else - exactly the bound `in + out + 3` puts on a routine of this
+\ arity, which is the largest a copied body may be. The fixture has moved twice
+\ and each move is a rule that got more honest: it was five additions, then seven
+\ when the placement stopped emitting pointer moves that move nothing and the
+\ rule went on subtracting them from the emission anyway, and it is five again
+\ now that the body is measured instead of derived.
 : MIGRATE-SMALL ( -- )
-   s" : NINL-EDGE-IN ( n -- n ) dup + dup + dup + dup + dup + dup + dup + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-EDGE-IN ( n -- n ) dup + dup + dup + dup + dup + ;"
+   1 1 REGS NMIGRATE:DEFINE
+   A64EMIT:BODY-INSNS EDGE-IN-BODY ! ;
 
 \ The same shape with ONE addition more, which is one instruction past the rule.
 : MIGRATE-LARGE ( -- )
-   s" : NINL-EDGE-OUT ( n -- n ) dup + dup + dup + dup + dup + dup + dup + dup + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-EDGE-OUT ( n -- n ) dup + dup + dup + dup + dup + dup + ;"
+   1 1 REGS NMIGRATE:DEFINE
+   A64EMIT:BODY-INSNS EDGE-OUT-BODY ! ;
 
 : MIGRATE-COPIES ( -- )
    s" NINL-EDGE-IN" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-COPIES ( n -- n ) NINL-EDGE-IN ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
+\ The body count of a routine that CALLS has no meaning - a call site publishes
+\ and takes back through the very data-stack forms a routine's own crossings use,
+\ so the emission less its crossings would not be that routine's body - and the
+\ emitter refuses it rather than answering. It can only be asked while that
+\ routine's emission is still the sealed one, so the code is taken here and
+\ asserted where the other refusals about a body are.
+variable CALLS-BODY-RC
+
 : MIGRATE-CALLS ( -- )
    s" NINL-EDGE-OUT" s" NINL-EDGE-OUT" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-CALLS ( n -- n ) NINL-EDGE-OUT ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : NINL-CALLS ( n -- n ) NINL-EDGE-OUT ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   [: A64EMIT:BODY-INSNS drop ;] catch CALLS-BODY-RC ! ;
 
 \ A third callee, whose body carries LITERALS. The two above are additions of a
 \ value to itself, so a copy that lost or altered a literal would answer the same
@@ -458,8 +483,8 @@ variable ROWS-BEFORE
 \ caller answers is held against a second compiler and not only against
 \ arithmetic written down here.
 : DEFINE-ENGINE-TWINS ( -- )
-   s" : NINL-ENGINE-COPIES ( n -- n ) dup + dup + dup + dup + dup + dup + dup + ;" EV
-   s" : NINL-ENGINE-CALLS ( n -- n ) dup + dup + dup + dup + dup + dup + dup + dup + ;" EV
+   s" : NINL-ENGINE-COPIES ( n -- n ) dup + dup + dup + dup + dup + ;" EV
+   s" : NINL-ENGINE-CALLS ( n -- n ) dup + dup + dup + dup + dup + dup + ;" EV
    s" : NINL-ENGINE-LIT ( n -- n ) 3 * 7 + ;" EV ;
 
 : EDGE-CASES ( -- )
@@ -471,16 +496,21 @@ variable ROWS-BEFORE
    s" NINL-EDGE-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
    s" NINL-EDGE-IN" ENTRY-OF NINL:IN@ 1 T=
    s" NINL-EDGE-IN" ENTRY-OF NINL:OUT@ 1 T=
-   s" NINL-EDGE-IN" ENTRY-OF NINL:TOKENS 14 T=
+   s" NINL-EDGE-IN" ENTRY-OF NINL:TOKENS 10 T=
 
    s" and the one instruction larger routine's body is not" T-LABEL
    s" NINL-EDGE-OUT" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
 
-   s" which is exactly where the rule puts them" T-LABEL
-   s" NINL-EDGE-IN" WORD-INSNS 10 T=
-   s" NINL-EDGE-OUT" WORD-INSNS 11 T=
-   1 1 s" NINL-EDGE-IN" WORD-INSNS NINL:SMALL? TTRUE
-   1 1 s" NINL-EDGE-OUT" WORD-INSNS NINL:SMALL? TFALSE
+   s" which is exactly where the rule puts them, on the BODY the emitter"
+   T-LABEL
+   EDGE-IN-BODY @ 5 T=
+   EDGE-OUT-BODY @ 6 T=
+   1 1 EDGE-IN-BODY @ NINL:SMALL? TTRUE
+   1 1 EDGE-OUT-BODY @ NINL:SMALL? TFALSE
+
+   s" measured, which is three fewer than each whole emission" T-LABEL
+   s" NINL-EDGE-IN" WORD-INSNS 8 T=
+   s" NINL-EDGE-OUT" WORD-INSNS 9 T=
 
    s" the caller of the recorded one contains no call at all" T-LABEL
    s" NINL-COPIES" BL-COUNT 0 T=
@@ -505,8 +535,8 @@ variable ROWS-BEFORE
 
    s" and the copied answer is the arithmetic itself, not a call that vanished"
    T-LABEL
-   s" 3 NINL-COPIES" EV-N 384 T=
-   s" 3 NINL-CALLS" EV-N 768 T=
+   s" 3 NINL-COPIES" EV-N 96 T=
+   s" 3 NINL-CALLS" EV-N 192 T=
 
    s" a copied body carries its literals, not just its shape" T-LABEL
    s" NINL-USE-LIT" BL-COUNT 0 T=
@@ -516,7 +546,7 @@ variable ROWS-BEFORE
    s" 5 NINL-USE-LIT" EV-N 22 T=
 
    s" the callee is still a word of its own and still runs" T-LABEL
-   s" 3 NINL-EDGE-IN" EV-N 384 T=
+   s" 3 NINL-EDGE-IN" EV-N 96 T=
    s" NINL-EDGE-IN" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
 \ ---- what is refused about a BODY rather than about its size -------------------
@@ -542,7 +572,8 @@ variable ROWS-BEFORE
 \ about that.
 : MIGRATE-CTRL ( -- )
    s" : NINL-CTRL ( n -- n ) dup 0 < if drop 0 then ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 REGS NMIGRATE:DEFINE
+   A64EMIT:BODY-INSNS CTRL-BODY ! ;
 
 : MIGRATE-VIA-CTRL ( -- )
    s" NINL-CTRL" s" NINL-CTRL" ENTRY-OF 1 1 NMIGRATE:CALLEE
@@ -559,7 +590,8 @@ variable ROWS-BEFORE
 : BODY-REFUSAL-CASES ( -- )
    s" a callee with a control structure is not recorded" T-LABEL
    s" NINL-CTRL" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
-   1 1 s" NINL-CTRL" WORD-INSNS NINL:SMALL? TTRUE
+   CTRL-BODY @ 4 T=
+   1 1 CTRL-BODY @ NINL:SMALL? TTRUE
 
    s" and neither is one that calls itself" T-LABEL
    s" NINL-SELF" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
@@ -570,6 +602,9 @@ variable ROWS-BEFORE
    s" NINL-CALLS" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
    s" NINL-CALLS" BL-COUNT 1 T=
 
+   s" and the emitter refuses to say what such a routine's BODY is" T-LABEL
+   CALLS-BODY-RC @ E-A64EMIT-BODY T=
+
    s" while the caller whose call WAS copied is a body to copy in its turn"
    T-LABEL
    s" NINL-COPIES" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
@@ -577,7 +612,7 @@ variable ROWS-BEFORE
 
    s" and its row is the callee's tokens, with no call left anywhere in it"
    T-LABEL
-   s" NINL-VIA" ENTRY-OF NINL:TOKENS 14 T=
+   s" NINL-VIA" ENTRY-OF NINL:TOKENS 10 T=
    s" NINL-VIA" ENTRY-OF 0 NINL:SPELL$ s" dup" STR= TTRUE
    s" NINL-VIA" ENTRY-OF 1 NINL:SPELL$ s" +" STR= TTRUE
    s" NINL-VIA" ENTRY-OF 9 NINL:SPELL$ s" +" STR= TTRUE
@@ -590,7 +625,7 @@ variable ROWS-BEFORE
    s" 6 NINL-VIA-CTRL" EV-N 6 T=
 
    s" and every one of them still runs" T-LABEL
-   s" 4 NINL-VIA" EV-N 512 T=
+   s" 4 NINL-VIA" EV-N 128 T=
    s" 3 NINL-SELF" EV-N 0 T=
    s" 4 NINL-CTRL" EV-N 4 T=
    s" -4 NINL-CTRL" EV-N 0 T= ;
@@ -658,7 +693,7 @@ variable ROWS-BEFORE
    s" while the same name in the other case is one word, and is copied" T-LABEL
    MIGRATE-CASE-NAME
    s" NINL-CASE-NAME" BL-COUNT 0 T=
-   s" 3 NINL-CASE-NAME" EV-N 384 T= ;
+   s" 3 NINL-CASE-NAME" EV-N 96 T= ;
 
 \ ---- an address that WAS this word's and is not any more -----------------------
 \ The sharpest shape of a caller contradicting itself, because every other
@@ -765,7 +800,7 @@ variable STALE-ENTRY
 \ refused because the spelling is resolved WHOLE, package and all.
 : MIGRATE-PKG-CALLEES ( -- )
    s" package NINL-PKG public" EV
-   s" : NINL-PKG-IN ( n -- n ) dup + dup + dup + dup + dup + dup + dup + ;"
+   s" : NINL-PKG-IN ( n -- n ) dup + dup + dup + dup + dup + ;"
    1 1 REGS NMIGRATE:DEFINE
    s" : NINL-PKG-LIT ( n -- n ) 3 * 7 + ;" 1 1 REGS NMIGRATE:DEFINE
    s" ;package" EV
@@ -810,14 +845,14 @@ variable STALE-ENTRY
    MIGRATE-PKG-INSIDE
    s" NINL-PKG:NINL-PKG-BARE" BL-COUNT 0 T=
    s" NINL-PKG:NINL-PKG-BARE" FRAME-COUNT 0 T=
-   s" 3 NINL-PKG:NINL-PKG-BARE" EV-N 384 T=
+   s" 3 NINL-PKG:NINL-PKG-BARE" EV-N 96 T=
 
    s" and a caller outside it, which can only name it qualified, copies too"
    T-LABEL
    MIGRATE-QUALIFIED
    s" NINL-QUALIFIED" BL-COUNT 0 T=
    s" NINL-QUALIFIED" FRAME-COUNT 0 T=
-   s" 3 NINL-QUALIFIED" EV-N 384 T=
+   s" 3 NINL-QUALIFIED" EV-N 96 T=
    s" -7 NINL-QUALIFIED" EV-N  s" -7 NINL-ENGINE-COPIES" EV-N T=
 
    s" while a qualified name for the package's OTHER routine is refused" T-LABEL
@@ -836,7 +871,7 @@ variable STALE-ENTRY
    [: STAGE-BARE-TAIL ;] E-NMIGRATE-CALLEE TTHROWSQ
 
    s" and all three package routines still run" T-LABEL
-   s" 3 NINL-PKG:NINL-PKG-IN" EV-N 384 T=
+   s" 3 NINL-PKG:NINL-PKG-IN" EV-N 96 T=
    s" 5 NINL-PKG:NINL-PKG-LIT" EV-N 22 T=
    s" 3 NINL-PKG2:NINL-PKG-IN" EV-N 27 T= ;
 
@@ -865,7 +900,7 @@ variable STALE-ENTRY
    T-LABEL
    s" : NINL-AFTER-SCOPE ( n -- n ) NINL-EDGE-IN ;"
    1 1 REGS NMIGRATE:DEFINE-CALLING
-   s" 3 NINL-AFTER-SCOPE" EV-N 384 T=
+   s" 3 NINL-AFTER-SCOPE" EV-N 96 T=
    s" NINL-AFTER-SCOPE" BL-COUNT 0 T= ;
 
 \ ---- what a copied body brings with it -----------------------------------------
@@ -944,13 +979,13 @@ variable STALE-ENTRY
 \ walk a chain into each ceiling in turn and show which one stopped it.
 \
 \ THE LITERAL CHAIN WALKS INTO THE SIZE RULE. Each link multiplies or adds a
-\ constant, so each splice adds two instructions to the next routine's emission
-\ and the arithmetic is different at every link - a copy that dropped a literal,
-\ reordered two, or truncated one answers a different number. F-L1 is recorded;
-\ F-L2 copies it and is recorded with F-L1's literals inside it; F-L3 copies F-L2
-\ and is recorded with literals that have now survived two splices; F-L4 copies
-\ F-L3 and is ONE instruction past the rule for its arity, so it is not recorded;
-\ and F-L5, whose callee has no record, makes a real call.
+\ constant, which is a move-wide and an operation - two instructions of body -
+\ and the arithmetic is different at every link, so a copy that dropped a
+\ literal, reordered two, or truncated one answers a different number. L1 is
+\ recorded; L2 copies it and is recorded with L1's literals inside it; L3 copies
+\ L2 and is recorded with literals that have now survived two splices; L4 copies
+\ L3 and its body is ONE instruction past the rule for its arity, so it is not
+\ recorded; and L5, whose callee has no record, makes a real call.
 \
 \ THE RENAME CHAIN WALKS INTO THE ROW'S CAPACITY INSTEAD, and the pair of them is
 \ why the two ceilings have to be separate. A rename is a token and no
@@ -964,16 +999,23 @@ variable STALE-ENTRY
 \ body this file will not hold is a body its callers call, exactly as they call a
 \ word the engine compiled: F-L4 and F-R3 are published, answer correctly, and
 \ their own callers carry one branch each.
+variable L3-BODY
+variable L4-BODY
+
 : MIGRATE-LIT-CHAIN ( -- )
    s" : NINL-L1 ( n -- n ) 3 * ;" 1 1 REGS NMIGRATE:DEFINE
    s" NINL-L1" s" NINL-L1" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-L2 ( n -- n ) NINL-L1 7 + 7 + ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" : NINL-L2 ( n -- n ) NINL-L1 7 + ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
    s" NINL-L2" s" NINL-L2" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-L3 ( n -- n ) NINL-L2 ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   A64EMIT:BODY-INSNS L3-BODY !
    s" NINL-L3" s" NINL-L3" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-L4 ( n -- n ) NINL-L3 5 - ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   A64EMIT:BODY-INSNS L4-BODY !
    s" NINL-L4" s" NINL-L4" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-L5 ( n -- n ) NINL-L4 ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+variable R3-BODY
 
 : MIGRATE-RENAME-CHAIN ( -- )
    s" : NINL-R1 ( n n -- n n ) swap swap swap swap swap swap swap swap ;"
@@ -983,13 +1025,14 @@ variable STALE-ENTRY
    s" NINL-R1" s" NINL-R1" ENTRY-OF 2 2 NMIGRATE:CALLEE
    s" NINL-R2" s" NINL-R2" ENTRY-OF 2 2 NMIGRATE:CALLEE
    s" : NINL-R3 ( n n -- n n ) NINL-R2 NINL-R1 ;" 2 2 REGS NMIGRATE:DEFINE-CALLING
+   A64EMIT:BODY-INSNS R3-BODY !
    s" NINL-R3" s" NINL-R3" ENTRY-OF 2 2 NMIGRATE:CALLEE
    s" : NINL-R4 ( n n -- n n ) NINL-R3 ;" 2 2 REGS NMIGRATE:DEFINE-CALLING ;
 
 \ The same arithmetic as the whole literal chain, compiled by the ENGINE, so what
 \ the copied chain answers is held against a second compiler.
 : DEFINE-CHAIN-TWIN ( -- )
-   s" : NINL-ENGINE-CHAIN ( n -- n ) 3 * 7 + 7 + 5 - ;" EV ;
+   s" : NINL-ENGINE-CHAIN ( n -- n ) 3 * 7 + 5 - ;" EV ;
 
 : CHAIN-CASES ( -- )
    s" a routine whose own call was copied is recorded, and so is one of those"
@@ -1000,8 +1043,8 @@ variable STALE-ENTRY
 
    s" and each row is the operations, never the call that was written" T-LABEL
    s" NINL-L1" ENTRY-OF NINL:TOKENS 2 T=
-   s" NINL-L2" ENTRY-OF NINL:TOKENS 6 T=
-   s" NINL-L3" ENTRY-OF NINL:TOKENS 6 T=
+   s" NINL-L2" ENTRY-OF NINL:TOKENS 4 T=
+   s" NINL-L3" ENTRY-OF NINL:TOKENS 4 T=
 
    s" the literals survive two splices, in the right order and to the bit"
    T-LABEL
@@ -1013,10 +1056,12 @@ variable STALE-ENTRY
    s" one link further is one instruction past the rule, so it is not recorded"
    T-LABEL
    s" NINL-L4" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
-   s" NINL-L3" WORD-INSNS 9 T=
-   s" NINL-L4" WORD-INSNS 11 T=
-   1 1 s" NINL-L3" WORD-INSNS NINL:SMALL? TTRUE
-   1 1 s" NINL-L4" WORD-INSNS NINL:SMALL? TFALSE
+   s" NINL-L3" WORD-INSNS 7 T=
+   s" NINL-L4" WORD-INSNS 9 T=
+   L3-BODY @ 4 T=
+   L4-BODY @ 6 T=
+   1 1 L3-BODY @ NINL:SMALL? TTRUE
+   1 1 L4-BODY @ NINL:SMALL? TFALSE
 
    s" the refused link still copied ITS callee, so it carries no call itself"
    T-LABEL
@@ -1032,8 +1077,8 @@ variable STALE-ENTRY
    s" 5 NINL-L4" EV-N  s" 5 NINL-ENGINE-CHAIN" EV-N T=
    s" 0 NINL-L4" EV-N  s" 0 NINL-ENGINE-CHAIN" EV-N T=
    s" -7 NINL-L4" EV-N  s" -7 NINL-ENGINE-CHAIN" EV-N T=
-   s" 5 NINL-L4" EV-N 24 T=
-   s" 5 NINL-L5" EV-N 24 T=
+   s" 5 NINL-L4" EV-N 17 T=
+   s" 5 NINL-L5" EV-N 17 T=
 
    s" a chain of renames fills the ROW before it reaches the size rule" T-LABEL
    s" NINL-R1" ENTRY-OF NINL:TOKENS 8 T=
@@ -1053,7 +1098,8 @@ variable STALE-ENTRY
 \ refused it is the row's capacity.
    s" and it is the capacity that refused it, because the rule says yes" T-LABEL
    s" NINL-R3" WORD-INSNS 1 T=
-   2 2 s" NINL-R3" WORD-INSNS NINL:SMALL? TTRUE
+   R3-BODY @ 0 T=
+   2 2 R3-BODY @ NINL:SMALL? TTRUE
    16 NINL:FITS? TTRUE
    17 NINL:FITS? TFALSE
 
@@ -1121,11 +1167,16 @@ variable STALE-ENTRY
 \ THE PAD IS A MULTIPLICATION BY ONE, which moves no bit of a finite double, so
 \ the two callees are the same arithmetic and the stored eight bytes can be held
 \ against each other and against the literal sum.
+variable FSUM-BODY
+variable FSUM-BIG-BODY
+
 : MIGRATE-FSUM ( -- )
-   s" : NINL-FSUM ( r r -- r ) f+ ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-FSUM ( r r -- r ) f+ ;" 2 1 REGS NMIGRATE:DEFINE
+   A64EMIT:BODY-INSNS FSUM-BODY ! ;
 
 : MIGRATE-FSUM-BIG ( -- )
-   s" : NINL-FSUM-BIG ( r r -- r ) f+ 1.0 f* ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-FSUM-BIG ( r r -- r ) f+ 1.0 f* ;" 2 1 REGS NMIGRATE:DEFINE
+   A64EMIT:BODY-INSNS FSUM-BIG-BODY ! ;
 
 : MIGRATE-FPUT ( -- )
    s" NINL-FSUM" s" NINL-FSUM" ENTRY-OF 2 1 NMIGRATE:CALLEE
@@ -1153,8 +1204,10 @@ variable STALE-ENTRY
    s" NINL-FSUM" ENTRY-OF NINL:TOKENS 1 T=
    s" NINL-FSUM" ENTRY-OF 0 NINL:SPELL$ s" f+" STR= TTRUE
    s" NINL-FSUM-BIG" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
-   2 1 s" NINL-FSUM" WORD-INSNS NINL:SMALL? TTRUE
-   2 1 s" NINL-FSUM-BIG" WORD-INSNS NINL:SMALL? TFALSE
+   FSUM-BODY @ 4 T=
+   FSUM-BIG-BODY @ 8 T=
+   2 1 FSUM-BODY @ NINL:SMALL? TTRUE
+   2 1 FSUM-BIG-BODY @ NINL:SMALL? TFALSE
 
    s" so one caller copies the body and the other really calls it" T-LABEL
    s" NINL-FPUT" BL-COUNT 0 T=
@@ -1220,9 +1273,12 @@ variable DECLINED-BEFORE
 \ The same body as NINL-EDGE-IN, which is exactly as large as the size rule
 \ admits, so this routine is one the record would hold if it had anywhere to put
 \ it.
+variable FULL-BODY
+
 : MIGRATE-FULL ( -- )
-   s" : NINL-FULL ( n -- n ) dup + dup + dup + dup + dup + dup + dup + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-FULL ( n -- n ) dup + dup + dup + dup + dup + ;"
+   1 1 REGS NMIGRATE:DEFINE
+   A64EMIT:BODY-INSNS FULL-BODY ! ;
 
 : MIGRATE-CALL-FULL ( -- )
    s" NINL-FULL" s" NINL-FULL" ENTRY-OF 1 1 NMIGRATE:CALLEE
@@ -1234,12 +1290,13 @@ variable DECLINED-BEFORE
 
    s" a small routine migrated into a full table is published and runs" T-LABEL
    s" NINL-FULL" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
-   s" 3 NINL-FULL" EV-N 384 T=
+   s" 3 NINL-FULL" EV-N 96 T=
    s" -7 NINL-FULL" EV-N  s" -7 NINL-ENGINE-COPIES" EV-N T=
 
    s" and the size rule says yes about it, so what it lost is the ROW" T-LABEL
-   s" NINL-FULL" WORD-INSNS 10 T=
-   1 1 s" NINL-FULL" WORD-INSNS NINL:SMALL? TTRUE
+   s" NINL-FULL" WORD-INSNS 8 T=
+   FULL-BODY @ 5 T=
+   1 1 FULL-BODY @ NINL:SMALL? TTRUE
    s" NINL-FULL" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
    NINL:ROWS FULL-ROWS @ T=
 
@@ -1249,7 +1306,7 @@ variable DECLINED-BEFORE
    s" and a caller of it calls it, with a frame to call from, and runs" T-LABEL
    s" NINL-CALL-FULL" BL-COUNT 1 T=
    s" NINL-CALL-FULL" FRAME-COUNT 1 T=
-   s" 3 NINL-CALL-FULL" EV-N 384 T=
+   s" 3 NINL-CALL-FULL" EV-N 96 T=
 
    s" a malformed claim is still refused with the table full, and not declined"
    T-LABEL
@@ -1313,7 +1370,7 @@ variable RECLAIM-ENTRY
    s" while every row below the cut is untouched, tokens and all" T-LABEL
    A1 NINL:KNOWN? FLAG# 1 T=
    s" NINL-EDGE-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
-   s" NINL-EDGE-IN" ENTRY-OF NINL:TOKENS 14 T=
+   s" NINL-EDGE-IN" ENTRY-OF NINL:TOKENS 10 T=
 
    \ A mark is a prefix count, so a reclamation leaves one in exactly two states:
    \ the table still reaches it, or the cut fell below it. The second is refused

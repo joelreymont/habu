@@ -7,8 +7,11 @@
 \ with link and reads each result back out; the routine it enters moves the
 \ pointer down over those arguments, loads each one, stores each result, moves
 \ the pointer back up and returns. For a routine that takes one value and leaves
-\ one that is ten instructions and two round trips through memory before a single
-\ addition happens - and the engine's own emitter does not pay them, because it
+\ one that is up to ten instructions and two round trips through memory before a
+\ single addition happens - six of them where every pointer move turns out to be
+\ nothing, which is the ordinary case since the placement, and as few as two
+\ where the caller was already holding the value in the cell and wants the answer
+\ back in it. The engine's own emitter does not pay any of them, because it
 \ copies a small callee's body into its caller instead of calling it
 \ (src/habu/habu2.f, C-CALL). This file is where the chain's answer to that
 \ lives: what a published routine's body IS, between the publication that
@@ -126,32 +129,91 @@
 \   count, with no transitive arithmetic anywhere and no second authority that
 \   could disagree with the emitter about what it emitted.
 \
-\   AND THE COPY MAY NOT BE BIGGER THAN THE CALL IT REPLACES. This is where the
-\   size rule comes from. A call to a routine of arity (in -> out) costs the SITE
-\   in stores, its branch, up to two pointer adjustments and out loads; the
-\   ROUTINE pays the mirror of that - up to two pointer adjustments, in loads,
-\   out stores and one return. So one interface is AT MOST `in + out + 3`
-\   instructions, and a routine whose entire emission is within twice that is one
-\   whose body is within a call site's own half. Copy such a body into a site and
-\   the site does not grow by more than the interfaces that disappeared.
+\   AND THE SIZE RULE BOUNDS WHAT A COPY ADDS TO A CALL SITE. This is the whole
+\   of it, and both sides of the comparison are stated here.
 \
-\   THE WORD "AT MOST" IS NEW AND IT IS THE HONEST WORD. The two pointer
-\   adjustments used to be two instructions every time. Since dot
-\   habu-place-the-data-9f128e58 the data-stack pointer stands where the fewest
-\   adjustments are needed and each of the four is written only when it moves
-\   the pointer at all - so a leaf routine of equal arity pays NONE of them, and
-\   a call site whose place already is the callee's base pays none either. The
-\   number below is therefore a bound on an interface rather than a count of one,
-\   and it is deliberately the LOOSE direction: it admits every body it admitted
-\   before, so nothing that was copied stops being copied. Tightening it is the
-\   whole of dot habu-measure-inline-cost-031e817e, which already owns the other
-\   half of the same question - the rule measures the callee's emission under the
-\   CALLEE's register pressure and not the cost at the site - and that dot is
-\   where the bound and its derivation are to be made exact together.
+\   WHAT A COPY COSTS IS THE BODY, EXACTLY. A splice writes the callee's
+\   operations and nothing else - no store run, no branch, no load run, and none
+\   of the callee's own crossings - so what a caller grows by is the number of
+\   instructions the callee's emission spent on its body. That number is
+\   MEASURED, by the pass that wrote those instructions: A64EMIT:BODY-INSNS is
+\   the emission less its crossings, counted off the emitter's own cursor as each
+\   operation is written.
+\
+\   IT USED TO BE DERIVED INSTEAD, AND THE DERIVATION WENT STALE. The rule took
+\   the WHOLE emission and compared it with twice an interface computed from the
+\   declared arity - which is the same as taking the body to be the emission less
+\   that same computed interface. The computed interface was `in + out + 3`: two
+\   pointer adjustments, in loads, out stores and a return. A routine no longer
+\   pays that. Since the placement (dot habu-place-the-data-9f128e58) a routine's
+\   pointer stands where the fewest moves are needed, so a body of equal arity
+\   pays NO adjustment and an unequal one pays a single one; and since the
+\   residency (dot habu-keep-a-pass-8025401f) a load is written only for an
+\   argument something reads out of its cell and a store only for a result whose
+\   cell does not already hold it. A routine of arity (1 -> 1) therefore pays
+\   THREE and not five, and `( n n -- n n ) swap` pays five where the arity says
+\   seven. Subtracting an interface bigger than the routine paid UNDERSTATES the
+\   body, which is the unsound direction for a rule that admits small ones: it
+\   admitted, at that arity, two instructions of body more than it meant to.
+\
+\   AND WHAT A CALL COSTS AT A SITE CANNOT BE KNOWN HERE, WHICH IS WHY THE RULE
+\   IS A BOUND. A call to a routine of arity (in -> out) costs the site one store
+\   per argument, one load per result, the branch, and the two pointer
+\   adjustments around it - and every one of those but the branch can be nothing.
+\   Which of them are nothing is a fact about the SITE: whether the caller was
+\   already holding that value in that cell, whether it needs the answer in a
+\   register at all, and where the caller's own placement stood. The site also
+\   pays two more accesses for every value it holds live across the branch and
+\   cannot keep in a register the callee leaves alone - and a copy pays none of
+\   those, because there is no branch to survive. No site exists when this rule
+\   runs: it is asked while the callee is being published, before any caller has
+\   been compiled. So the exact per-site cost is not available, and the rule uses
+\   the only bound the callee's own declaration determines: `in + out + 3`, the
+\   most a call site of that arity can cost.
+\
+\   WHY THE MAXIMUM AND NOT SOMETHING SMALLER. Every smaller candidate needs a
+\   fact about the caller. The MINIMUM is one instruction - the branch alone -
+\   and it is one instruction at every arity, so a rule resting on it says
+\   nothing about the callee's interface and admits only a one-instruction body;
+\   it would refuse every routine the four comparison corpora show copying wins
+\   on. Anything between the two is the maximum with some of the site's
+\   instructions assumed away, and assuming them away is precisely the guess this
+\   rule was rewritten to remove. What is a function of (in -> out) alone, and
+\   bounds a call site, is `in + out + 3`.
+\
+\   SO THE RULE SAYS WHAT IT GUARANTEES AND WHAT IT DOES NOT. It guarantees that
+\   a copied body is bounded by the callee's declared ARITY and never by how big
+\   the callee happens to be, so what inlining adds to a caller is bounded per
+\   site by a number the callee published. It does NOT guarantee that a copy is
+\   no bigger than the call it replaced: at a site where residency and placement
+\   made that call cheaper than its arity allows, the copy is bigger, by at most
+\   `in + out + 2` instructions. That case is measured rather than argued -
+\   CODEGEN-CORPUS4:CALL-FAN-BIG in tools/codegen-compare-corpus4.f is five sites
+\   whose calls would be one instruction each against copies of four, 88 bytes
+\   against the engine's 36 - and it is the trade this rule accepts: the same row
+\   runs in about a twentieth of the time.
+\
+\   AND WHAT THE BODY COSTS AT THE SITE IS THE CALLEE'S OPERATIONS AND THE
+\   CALLER'S PRESSURE. The operations are the same ones: a recorded body is
+\   straight-line, its tokens elaborate in the caller to what they elaborated to
+\   in the callee, and the two instructions the emitter ever leaves out belong to
+\   forms a recorded body has none of - a register copy whose ends are one
+\   register, which only an edge between blocks builds, and a pointer move of
+\   nothing, which only a crossing or a call site carries. What the caller's own
+\   register allocator does around them is a fact about the caller, and nothing
+\   recorded about a callee could bound it. It does not favour the call, either:
+\   a call site writes every value it holds live into the caller's data stack and
+\   reads it back, save for the few the callee's recorded clobber set lets stay in
+\   registers - which is a forced spill of almost everything live, paid whether or
+\   not the machine was short. The shapes where the difference could still go the
+\   other way are the two corpus rows the chain cannot compile yet, so what the
+\   committed tables adjudicate today is that it does not appear in the rows they
+\   reach; dot habu-price-a-copy-c522be11 is where the caller's own pressure is
+\   measured.
 \
 \ WHAT IS NOT DERIVED IS THE ROW'S CAPACITY. A rename is a token and no
 \ instruction at all, so a body of nothing but `dup` and `swap` can hold more
-\ tokens than its emission holds instructions, and a table of fixed rows has to
+\ tokens than its body holds instructions, and a table of fixed rows has to
 \ stop somewhere. BODY-MAX and SPELL-MAX are those stops, and they are CAPACITIES
 \ rather than parts of the rule: STAGE-FITS? and SPELL-FITS? are asked BEFORE
 \ each staging step, so a body that does not fit is one this file never claims to
@@ -225,10 +287,10 @@ private
 64 constant ROWS-MAX
 
 \ The capacity of one row, and the argument for the number is above: it is not
-\ the size rule, which is derived from the callee's own interface, but the point
-\ where a fixed row stops. The size rule admits a body of `in + out + 3`
-\ instructions, so sixteen tokens is past every body it admits at every arity
-\ this chain compiles except one made almost entirely of renames.
+\ the size rule, which is derived from the callee's declared arity, but the point
+\ where a fixed row stops. The size rule admits a body of SITE-INSNS below -
+\ `in + out + 3` instructions - so sixteen tokens is past every body it admits at
+\ every arity this chain compiles except one made almost entirely of renames.
 16 constant BODY-MAX
 
 \ The longest spelling one recorded token may carry. Habu's own vocabulary is
@@ -372,24 +434,30 @@ variable S-ROW
 public
 
 \ ---- what the size rule is ---------------------------------------------------
-\ The most instructions one side of a call to a routine of this arity can be: the
-\ site's stores, its branch, its two pointer adjustments and its loads - which is
-\ the same bound as the routine's own two adjustments, loads, stores and return.
-\ It is a bound and not a count because the placement writes an adjustment only
-\ when the pointer really moves; the head of this file says which dot makes the
-\ two exact again.
-: INTERFACE-INSNS ( n n -- n )
+\ THE ONE STATEMENT OF THE ARITHMETIC. Everything else that talks about this rule
+\ - the size rule's own suite, the record ceiling below, the comparison corpora's
+\ accounts of which callee each generator copies - points here rather than
+\ repeating it.
+\
+\ The most instructions a call SITE to a routine of this arity can be: one store
+\ per argument, one load per result, the branch, and the two pointer adjustments
+\ around it. It is the site's MAXIMUM and not a count of one: every instruction
+\ of it but the branch can turn out to be nothing, and which ones do is a fact
+\ about the site rather than about the callee. The head of this file argues why
+\ the maximum is the bound the rule can use and the minimum is not.
+: SITE-INSNS ( n n -- n )
    {: in:n out:n :}
    in out + 3 + ;
 
-\ Is a routine of this arity, whose whole emission is this many instructions,
-\ small enough that copying its body into a call site does not make the site
-\ bigger? Its body is the emission less its own interface, and the site's own
-\ interface is the same count again, so the question is whether the emission is
-\ within twice one interface.
+\ Is a routine of this arity, whose BODY is this many instructions, one whose
+\ copy into a call site is bounded by that site's own interface? A splice writes
+\ the body and nothing else, so this compares what a copy really costs with the
+\ most the call it stands in for could have cost. The body is measured by the
+\ emitter (A64EMIT:BODY-INSNS) rather than derived from the arity here, for the
+\ reason the head of this file gives.
 : SMALL? ( n n n -- bool )
-   {: in:n out:n insns:n :}
-   insns  in out INTERFACE-INSNS 2 *  <= ;
+   {: in:n out:n body:n :}
+   body  in out SITE-INSNS  <= ;
 
 \ ---- what one row can hold ---------------------------------------------------
 \ The two capacities, asked before anything is staged. They are not the size

@@ -64,14 +64,18 @@
 \ turned on the same thing.
 \
 \ ON BYTES IT IS NOT NONE, AND CALL-FAN-BIG IS WHERE IT IS NOT. The chain's word
-\ for that body is 96 bytes against the engine's 36, and the reason is the same
-\ inlining decision that wins it the time: five copies of `3 * 5 +` with the
-\ interface of each site around them are more instructions than five Bl. It is a
-\ declared known loss in tools/codegen-compare-report.f, which names the two dots
-\ that close it - habu-keep-a-pass-8025401f keeps a value in a register across the
-\ site and habu-place-the-data-9f128e58 places the copied body's values in the
-\ caller's own - and the entry has to be deleted when they land, because an entry
-\ that has stopped losing is itself a finding.
+\ for that body is 88 bytes against the engine's 36, and the reason is the same
+\ inlining decision that wins it the time: five copies of `3 * 5 +` are four
+\ instructions each, and the five Bl they replace are one instruction each -
+\ residency and placement having left the engine's call sites with no store, no
+\ load and no pointer move to make. It is a declared known loss in
+\ tools/codegen-compare-report.f. It used to name two dots that would close it,
+\ and it names none now: both landed, they are what made those call sites one
+\ instruction, and the size rule's re-derivation
+\ (habu-measure-inline-cost-031e817e) concluded that no rule read while the
+\ CALLEE is published can promise a copy is never bigger. The row is what the
+\ rule's stated bound looks like at its widest, and it comes off this list only
+\ if the rule tightens past this callee's body.
 \
 \ THE TWO ROWS, AND THE THREE STAGES THEY WENT THROUGH. Measured on an idle
 \ twelve-core Apple Silicon host with the entry cost taken off, over five passes:
@@ -95,14 +99,14 @@
 \ tools/codegen-compare-corpus4.f - a callee of forty bytes of body or less, with
 \ no branch in it, is copied into its caller verbatim - and forty bytes is a fact
 \ about that emitter. The chain's rule is derived from its own calling convention
-\ instead: a call to a routine of arity (in -> out) costs `in + out + 3`
-\ instructions at the site and the same again inside the routine, so a routine
-\ whose whole emission is no longer than both halves together has a body no longer
-\ than the call site's own half - and copying it in cannot make the site bigger.
-\ Such a body is recorded when the routine is published
-\ (src/compiler/native/inline.f) and elaborated at the call site out of the
-\ caller's own values (src/compiler/native/elaborate.f). Every callee this corpus
-\ has qualifies under both rules.
+\ instead: a copy costs the callee's measured BODY, a call site of arity
+\ (in -> out) costs at most one store per argument, one load per result, the
+\ branch and the two pointer moves, and a routine is small when its body is
+\ within that bound. src/compiler/native/inline.f states the arithmetic and
+\ argues it; nothing here restates it. Such a body is recorded when the routine
+\ is published (src/compiler/native/inline.f) and elaborated at the call site out
+\ of the caller's own values (src/compiler/native/elaborate.f). Every callee this
+\ corpus has qualifies under both rules.
 \
 \ WHAT IT REMOVES, COUNTED ON THE EMITTED CODE. Not just the branch: the whole
 \ interface on both sides, and with it everything the CALLER was doing on account
@@ -159,8 +163,8 @@
 \                 callee is two operations rather than one, which is past the
 \                 engine's forty bytes of body and still inside the chain's own
 \                 rule, so the engine emits five Bl - four bytes each, 36 with the
-\                 frame - and the chain copies the body and its interface into
-\                 five sites for 96. The chain is far faster for it and that is
+\                 frame - and the chain copies four instructions of body into
+\                 five sites for 88. The chain is far faster for it and that is
 \                 not the point: this row exists because the corpus's other call
 \                 rows all use a callee BOTH generators copy, so none of them can
 \                 see what a call site costs when the two rules disagree.

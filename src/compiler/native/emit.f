@@ -50,6 +50,11 @@
 \     mean something this file does not know, and guessing is how the wrong four
 \     bytes get published.
 \   - a caller reading an emission that never happened, or an index past its end.
+\   - a caller asking how many instructions of an emission are its BODY when that
+\     emission BRANCHES OUT of itself. A call site publishes its arguments and
+\     takes its results back through the very data-stack forms a routine's own
+\     crossings use, so for such a routine the emission less its crossings is not
+\     its body, and there is no number to give.
 \
 \ WHAT IT DOES NOT RE-CHECK, DELIBERATELY. It does not bound a register number, a
 \ move-wide immediate or a half selector. Every encoder in src/arch/arm64/asm.f
@@ -349,6 +354,24 @@ variable EM-KGPR
 0 EM-KGPR !
 variable EM-KFPR
 0 EM-KFPR !
+
+\ How many of the instructions this run wrote are the routine's CROSSINGS rather
+\ than its work, and how many branches out of the routine it wrote. Both are
+\ counted the way the clobber set is - while the instructions are being written,
+\ by the word that writes them - and BODY-INSNS at the foot of this file is what
+\ they are for: a caller deciding whether to copy a routine's body into itself
+\ has to know how much of the emission that body IS.
+\
+\ THE COUNT IS THE CURSOR'S OWN DIFFERENCE AND NOT A SECOND ARITHMETIC. What an
+\ operation costs in instructions is already decided twice over - by the layout,
+\ which counts it, and by the writer, which appends it, held together by
+\ CURSOR-CK - and a third count here could disagree with both. So the interface
+\ total is read off N-INS across each operation the writer is handed, which makes
+\ it the same number by construction whatever elisions apply to it.
+variable EM-IFACE
+0 EM-IFACE !
+variable EM-NCALL
+0 EM-NCALL !
 
 \ ---- where this routine will be written --------------------------------------
 \ A branch to a block is measured from the layout, so it is the same displacement
@@ -1720,10 +1743,45 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       f i BLOCK-AT BLOCK-CK
    loop ;
 
+\ ---- which instructions are the routine's crossings, and which are its work ---
+\ A Habu routine is entered with its arguments in the caller's data-stack cells
+\ and leaves its results in them, so five of the dialect's forms are its
+\ CROSSINGS rather than anything it computes: the two pointer moves the
+\ convention needs, the loads that read the arguments out of those cells, the
+\ stores that write the results back, and the return. Everything else is the
+\ routine's work - the instructions a caller that copied this body would have to
+\ write for itself.
+\
+\ THE SAME TWO FORMS APPEAR AT A CALL SITE, WHICH IS WHY THE CALLS ARE COUNTED
+\ TOO. A site publishing its arguments and reading its results back uses the very
+\ a64.dstore and a64.dload the entry and the exit use, so in a routine that CALLS
+\ they are not all interface and the difference below would not be that routine's
+\ body. BODY-INSNS refuses such an emission by name rather than answering a
+\ number that means something else.
+: IFACE-FORM? ( n -- bool )
+   {: k:n :}
+   k O-DTAKE = k O-DLOAD = or k O-DSTORE = or k O-DPUBLISH = or k O-RET = or ;
+
+: CALL-FORM? ( n -- bool )
+   {: k:n :}
+   k O-CALL = k O-WORDCALL = or ;
+
+\ One operation written, and what it added to the two counts above. The cursor is
+\ read on both sides of the writer, so an elided adjustment costs the interface
+\ nothing here exactly as it costs the layout nothing there.
+: PUT-COUNTED ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id home:n :}
+   id SLOT-AT {: k:n :}
+   N-INS @ {: was:n :}
+   id home PUT-OP
+   k CALL-FORM? if 1 EM-NCALL +! then
+   k IFACE-FORM? 0= if exit then
+   N-INS @ was - EM-IFACE +! ;
+
 : WALK-BLOCK ( IR-ID:ir-block-id n -- )
    {: bk:IR-ID:ir-block-id home:n :}
    bk OP-COUNT 0 ?do
-      bk i OP-AT home PUT-OP
+      bk i OP-AT home PUT-COUNTED
    loop ;
 
 \ The cursor against the layout, at the start of every block and once more when
@@ -1984,6 +2042,8 @@ public
    0 EM-WFPR !
    0 EM-KGPR !
    0 EM-KFPR !
+   0 EM-IFACE !
+   0 EM-NCALL !
    m BND-MODULE-CK
    c TARGET-CK
    m VIEWS!
@@ -2014,6 +2074,33 @@ public
 \ How many instructions were emitted, and how many bytes they occupy.
 : INSNS ( -- n )
    SEAL-CK N-INS @ ;
+
+\ And how many of them are the routine's BODY: the emission less its crossings -
+\ the two data-stack pointer moves, the loads that read its arguments out of the
+\ caller's cells, the stores that write its results back, and the return.
+\
+\ WHAT IT IS FOR, AND WHY IT IS MEASURED HERE RATHER THAN DERIVED FROM AN ARITY.
+\ A caller that copies this routine's body into itself writes exactly these
+\ instructions and none of the crossings - src/compiler/native/inline.f carries
+\ the argument - so this is what such a copy COSTS, and the size rule that
+\ decides whether to make one is asked about this number. It used to be derived
+\ instead: the whole emission less an interface computed from the declared arity.
+\ That derivation stopped being true when the crossings stopped being a fixed
+\ count - the residency pass emits no store for a cell that already holds the
+\ value and no load for a value nothing reads out of one, and the placement emits
+\ a pointer move only where the pointer really moves - so an arity-derived
+\ interface OVERSTATES what most routines pay and therefore UNDERSTATES their
+\ bodies, which is the unsound direction for a rule that admits small bodies.
+\ Counting them while they are written cannot be wrong about them.
+\
+\ AND A ROUTINE THAT CALLS HAS NO ANSWER HERE. Its call sites publish and take
+\ back through the same two forms its own crossings use, so the difference would
+\ not be its body; and a routine that calls is one no caller may copy anyway, for
+\ the reason inline.f gives. It is refused by name rather than answered.
+: BODY-INSNS ( -- n )
+   SEAL-CK
+   EM-NCALL @ 0<> if E-A64EMIT-BODY throw then
+   N-INS @ EM-IFACE @ - ;
 
 \ ---- the block layout, read back ---------------------------------------------
 \ How many blocks were laid out, and where each one starts. A caller that wants

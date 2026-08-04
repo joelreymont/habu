@@ -1534,13 +1534,15 @@ private
 \ EVERY COMPILED ROW BUT ONE IS FEWER BYTES, and the one is CALL-FAN-BIG. Its
 \ callee is two operations, which is past the forty bytes of body the engine
 \ copies and still inside the chain's own rule, so the engine emits five Bl - one
-\ instruction each - and the chain copies the body and its interface into all
-\ five sites: 96 bytes against 36, and about twenty-five times faster. That is
-\ the row the corpus did not have while every callee in it was one BOTH
-\ generators copy, and it is pinned here in both directions - the byte loss by
-\ name through the harness's own adjudication, the Bl counts on both sides - so
-\ that a change to either inlining rule has to be looked at. It is a declared
-\ known loss in tools/codegen-compare-report.f with the two dots that close it.
+\ instruction each, because residency and placement leave those sites nothing
+\ else to write - and the chain copies four instructions of body into all five
+\ sites: 88 bytes against 36, and about twenty times faster. That is the row the
+\ corpus did not have while every callee in it was one BOTH generators copy, and
+\ it is pinned here in both directions - the byte loss by name through the
+\ harness's own adjudication, the Bl counts on both sides - so that a change to
+\ either inlining rule has to be looked at. It is a declared known loss in
+\ tools/codegen-compare-report.f, which says why the chain's size rule accepts
+\ it rather than naming a dot that removes it.
 \
 \ IT IS ALSO THE ONE ROW WHERE THE DATA-STACK COUNT GOES THE OTHER WAY, and that
 \ is worth reading carefully rather than as the chain being wasteful. The counts

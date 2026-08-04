@@ -87,25 +87,27 @@
 \
 \ AND WHAT IT DOES NOW, WHICH IS THIS CORPUS'S FINDING ACTED ON. It copies a
 \ small callee too, under a rule derived from its own calling convention rather
-\ than from any emitter's byte count: a call to a routine of arity (in -> out)
-\ costs `in + out + 3` instructions at the site and the same again inside the
-\ routine, so a routine whose whole emission is within twice that has a body no
-\ longer than the call site's own half and copying it in cannot make the site
-\ bigger. src/compiler/native/inline.f is the record and carries the argument;
-\ each of the four one-operation callees qualifies under both rules, and neither
-\ column emits a call instruction for the three call rows built on them any more.
-\ The rows are NOT retired by that: what they measure now is whether the two
-\ rules stay in step, and tools/codegen-compare-test.f counts the
-\ branch-with-link instructions on both sides to say so.
+\ than from any emitter's byte count: a copy costs the callee's BODY, and a
+\ routine is small when that body is within the most a call site of its arity
+\ could have cost. src/compiler/native/inline.f is the record and holds the one
+\ statement of that arithmetic - this file does not repeat it - and each of the
+\ four one-operation callees qualifies under both rules, so neither column emits a
+\ call instruction for the three call rows built on them any more. The rows are
+\ NOT retired by that: what they measure now is whether the two rules stay in
+\ step, and tools/codegen-compare-test.f counts the branch-with-link
+\ instructions on both sides to say so.
 \
 \ AND WHERE THE TWO RULES DO NOT MEET, WHICH THOSE ROWS CANNOT REACH. The
-\ engine's ceiling is forty bytes of body and the chain's is twice `in + out + 3`
-\ instructions, and they are not the same line. C-MAD is on the far side of the
-\ engine's and the near side of the chain's: the engine emits five calls for
-\ CALL-FAN-BIG, one instruction each, and the chain copies the body into all five
-\ sites and pays its whole interface at each one. That is a byte loss for the
-\ chain - 96 against 36 - and a large time win, and it is the shape no row of
-\ this corpus could see while every callee in it was one the engine copied.
+\ engine's ceiling is forty bytes of body and the chain's is a bound on the body
+\ read off the callee's arity, and they are not the same line. C-MAD is on the
+\ far side of the engine's and the near side of the chain's, and CALL-FAN-BIG is
+\ therefore the corpus's one measurement of the chain's rule at its widest: the
+\ engine emits five calls, and residency and placement leave each of them ONE
+\ instruction - no store, no load, no pointer move - while the chain copies four
+\ instructions of body into each of the five sites. 88 bytes against 36, and
+\ about a twentieth of the time. It is the row that shows what the chain's rule
+\ knowingly trades and the shape no row of this corpus could see while every
+\ callee in it was one the engine copied.
 \
 \ ============================================================================
 \ THE TWELVE ROWS AND THE WEAKNESS EACH ONE IS LOOKING FOR
@@ -118,9 +120,11 @@
 \   CALL-FAN-BIG    the same five sites over ONE callee the engine will not copy
 \                   and the chain will. It is the row that measures a call SITE
 \                   rather than an inliner: the engine spends one instruction per
-\                   site and the chain spends its whole interface - one load per
-\                   argument, one store per result and the operations between -
-\                   copied in five times over.
+\                   site - the branch alone, because residency and placement
+\                   leave nothing else to write - and the chain spends the
+\                   callee's four instructions of body, copied in five times
+\                   over. It is where the chain's size rule is at its widest and
+\                   where the trade it states can be read off the two columns.
 \   CALL-PRESSURE   one call per turn of a counted loop to a callee NEITHER
 \                   generator copies, with seven values live across it and read
 \                   after the loop. PRESSURE-LOOP asks what the chain does when a

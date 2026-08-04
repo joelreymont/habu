@@ -864,11 +864,12 @@ public
 \ authority owns keep that authority's name - a register answered from a stale
 \ acceptance is E-A64RAV-STATE, and an operand or attribute value outside the
 \ field it lands in is the assembler's own refusal in src/arch/arm64/asm.f - so
-\ these eleven are the facts the emitter alone can judge: whether it was told
+\ these twelve are the facts the emitter alone can judge: whether it was told
 \ which dialect it is reading, whether the module and the register assignment it
 \ was handed are the ones it was told about, whether what it found is a shape this
 \ leaf can emit, whether the instructions it wrote landed where its own layout
-\ said they would, and whether a caller is reading an emission that exists.
+\ said they would, whether a caller is reading an emission that exists, and
+\ whether the emission it is reading is one whose body has a meaning at all.
 -8380 constant E-A64EMIT-STATE   \ a reader asked about an emission that has not happened, or that a later refused run replaced
 -8381 constant E-A64EMIT-BIND    \ emission attempted before the machine dialect's identities were bound, or a second binding over a live one
 -8382 constant E-A64EMIT-MODULE  \ a frozen module that is not the bound one, or a builder of another dialect or schema version
@@ -880,6 +881,7 @@ public
 -8388 constant E-A64EMIT-TARGET  \ emission under a context bound to a machine these instructions are not for
 -8389 constant E-A64EMIT-BOUND   \ an instruction or source-map index at or past the count the sealed emission holds
 -8390 constant E-A64EMIT-LAYOUT  \ the instructions written and the instructions the layout counted disagree: the writer reached a block at an offset the layout did not put it at, or ended the routine at a different length
+-8391 constant E-A64EMIT-BODY    \ how many instructions of an emission are its body, asked about a routine that calls: a call site publishes and takes back through the very data-stack forms a routine's own crossings use, so the emission less its crossings would not be that routine's body
 
 \ Native stage N0 source-tape producer (package NFEED): -8400..-8409
 \
