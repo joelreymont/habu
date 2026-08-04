@@ -1079,3 +1079,24 @@ public
 \ whose operand type is not the one its schema declares is IR-OP's.
 -8580 constant E-NELAB-TYPE     \ a compile-time value whose type is not the one the position wants and is not a crossing this dialect performs: a double handed to an operation that computes with cells, or a double stored into a memory cell, which no leaf places yet
 -8581 constant E-A64RA-FILE     \ two values of two different register files joined into one class: an edge or a schema tie whose two ends cannot share a register because no register holds both
+
+\ Native call-site redirection: -8590..-8609
+\
+\ A republication points a dictionary record at new code, which reaches every
+\ caller compiled AFTER it. The callers compiled before it hold a branch to the
+\ address the word occupied then, and moving those branches is what this band's
+\ refusals guard. Two owners: the branch-with-link reader, which is the one
+\ authority on what such an instruction says and what one has to say to reach a
+\ given address, and the redirection seam, which decides whether a site may be
+\ moved at all. A refusal another authority already owns keeps that authority's
+\ name: a routine that is not this process's to point at is still the
+\ publication seam's E-NPUB-LOG, and a widened clobber row is NCLOB's.
+-8590 constant E-NREACH-NAME    \ a name that resolves to no record, to a record holding no word's code, or two names resolving to one record: there is nothing to carry from, or nothing to carry to
+-8591 constant E-NREACH-WORD    \ the two records do not carry the same word: a redirection may move a word's callers onto that word's new code and onto nothing else
+-8592 constant E-NREACH-ROUTINE \ the code the redirection points at is not a routine the publication seam wrote for that record: the only code a caller may be moved onto is one an accepted allocation stands behind
+-8593 constant E-NREACH-EFFECT  \ the two words declare different stack effects, so a site compiled around one of them cannot enter the other
+-8594 constant E-NREACH-CLOBBER \ the routine being pointed at destroys a register a caller of the old code was entitled to keep across the call: every site was compiled against what the old address destroys, and the new one may only narrow it
+-8595 constant E-NREACH-RANGE   \ a call site whose distance to the new routine does not fit the branch-with-link displacement field
+-8596 constant E-NREACH-NONE    \ no call instruction in the live dictionary enters the old code: either the engine copied the body into its callers, or nothing calls it, and either way there is nothing a redirection can carry
+-8597 constant E-NREACH-SELF    \ the routine being pointed at itself enters the code being redirected, so carrying the redirection into it would make it call itself
+-8598 constant E-NBR-RANGE      \ a branch-with-link whose two addresses are not both whole instructions, or whose displacement does not fit the twenty-six-bit field the form encodes it in

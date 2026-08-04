@@ -4699,3 +4699,33 @@ that states it once, and dearer in every other way: they drift, and these two ha
 drifted far enough to measure one leaf 3.8x apart. Judge a consolidation by
 whether the rule now has one owner, and report the line count honestly rather
 than shaving the header until the arithmetic flatters it.
+
+## Measure what a hot word is worth before you migrate it for its worth
+
+The compile-shaped workload row read as nothing for three runs, and the standing
+explanation was that a republication cannot reach callers already compiled. It
+cannot - that was true and worth fixing - but it was not why the row read as
+nothing. Two measurements settled it in ten minutes, both built out of the very
+seam being written. Migrating a fold that increments a `create`d cell and moving
+the checker's four call sites onto it counted the calls: one batch enters
+SYM-FOLD-C 24389 times. Timing 24389 calls of each column's fold gave 80
+microseconds either way - 0.3 per cent of a 27 millisecond batch. So the row
+could not have moved however good the new code was. Compiling the same source at
+four dictionary sizes then found where the time really goes: 1.3 microseconds of
+batch per dictionary record, which is a linear name scan and more than half the
+batch, and it lives in engine text rather than in a dictionary record, so no
+migration can reach it at all. The lesson is the order: a capability that lets
+you reach a hot word is worth building on its own terms, but "this row will move
+when we reach it" is a claim about a FRACTION, and the fraction is cheap to
+measure first. The instrument was a by-product of the capability, which is the
+happy case; the unhappy case is publishing the row and calling it a win.
+
+## A one-sided drift is not removed by a bar built from magnitudes
+
+The same row's null draws all came out negative, because a batch costs more the
+longer the dictionary is and every draw compares a sequence with the sequence
+after it. A bar taken as the largest magnitude of four such draws still lets the
+real row inherit the drift: one run printed +1.6 per cent against a 5.1 per cent
+bar and the next printed -2.5 per cent against a 1.9 per cent bar and called it a
+REAL LOSS, with nothing whatever having slowed down. A bar answers noise. It does
+not answer bias, and a null draw that always has the same sign is announcing bias.

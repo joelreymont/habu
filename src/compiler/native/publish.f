@@ -97,6 +97,7 @@
 require lib/prelude.f
 require lib/errors.f
 require lib/string.f
+require src/compiler/native/branch.f
 require src/compiler/native/clobber.f
 require src/compiler/native/emit.f
 
@@ -317,21 +318,12 @@ variable CLAIMED
 \ with itself is that set. It is also not recorded yet - this runs before RECORD
 \ does - so asking about it would answer the worst case and refuse every routine
 \ that calls itself.
-$FC000000 constant BL-MASK
-$94000000 constant BL-OP
-$03FFFFFF constant BL-IMM
-26 constant BL-BITS
-
-: BL-AT? ( n -- bool )
-   BL-MASK and BL-OP = ;
-
-\ The address a branch-with-link goes to: its own address plus its signed
-\ twenty-six-bit word displacement.
-: BL-TARGET ( n n -- n ) {: w:n at:n :}
-   w BL-IMM and {: imm:n :}
-   imm  1 BL-BITS 1- lshift  and 0<> if imm 1 BL-BITS lshift - else imm then
-   INSN-BYTES * at + ;
-
+\
+\ WHAT A BRANCH SAYS IS NOT DECIDED HERE. Reading the form and computing where
+\ one goes is src/compiler/native/branch.f, which is also what the redirection
+\ seam moves a call site with and what the workload scan counts call sites with.
+\ Three copies of one signed displacement is three chances for one of them to
+\ drift while the others stay right.
 : INSN-ADDR ( n n n -- n ) {: fn:n size:n k:n :}
    k A64EMIT:MAP-OFFSET@ size OFFSET-CK fn + ;
 
@@ -346,8 +338,8 @@ $03FFFFFF constant BL-IMM
    A64EMIT:GPR-CLOBBER A64EFF:GPRS-N {: g:n :}
    A64EMIT:FPR-CLOBBER A64EFF:FPRS-N {: f:n :}
    A64EMIT:INSNS 0 ?do
-      i A64EMIT:WORD@ BL-AT? if
-         i A64EMIT:WORD@  fn size i INSN-ADDR  BL-TARGET  fn g f TARGET-CK
+      i A64EMIT:WORD@ NBR:BL? if
+         fn size i INSN-ADDR  i A64EMIT:WORD@  NBR:BL-TARGET  fn g f TARGET-CK
       then
    loop ;
 

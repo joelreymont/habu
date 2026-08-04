@@ -362,6 +362,15 @@ SUITE compiler-native-inline
    test/compiler/native-inline.f
 ;SUITE
 
+\ Carrying a migration back to the callers that were compiled before it: the
+\ call instructions already in the image, moved onto the routine the chain
+\ published, and every reason a move is refused. It runs after the publication
+\ and clobber suites because what decides whether a site may be moved at all is
+\ the row the publication seam recorded for the routine it is moved onto.
+SUITE compiler-native-reach
+   test/compiler/native-reach.f
+;SUITE
+
 \ The native chain's end-to-end run: source text through the real compile path
 \ to executed machine code. It runs after the leaves it composes, so a red here
 \ with green leaves means the leaves disagree with each other.

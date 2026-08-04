@@ -68,10 +68,16 @@
 \ carries the package's identity rather than a word's code, and -2 marks a
 \ retired record. Reading a package record's `start` as a code address is how an
 \ earlier version of this scan walked into address 1 and took the process down.
+\ That test, and the walk it guards, now live in
+\ src/compiler/native/codewalk.f: the redirection seam that MOVES the call sites
+\ this file counts has to visit exactly the same instructions, and one walk is
+\ the only way those two answers can be about one thing.
 
 require lib/errors.f
 require lib/prelude.f
 require lib/string.f
+require src/compiler/native/branch.f
+require src/compiler/native/codewalk.f
 
 package CODEGEN-SCAN
 
@@ -84,21 +90,12 @@ public
 private
 
 \ ---- reading one instruction out of the code region -------------------------
-\ An address arrives as a number - that is what a dictionary record holds and
-\ what a branch displacement computes - and a byte read needs a pointer, so the
-\ number goes through a cell the checker will hand back as one. This is the same
-\ route tools/codegen-compare-test.f reads emitted instructions by.
-variable AT
-
-: AT-PTR ( -- ptr u8 )
-   AT 0 ptr-field @ ;
-
-: INSN@ ( n -- n ) {: a:n :}
-   a AT !
-   AT-PTR c@
-   AT-PTR 1 + c@ 8 lshift or
-   AT-PTR 2 + c@ 16 lshift or
-   AT-PTR 3 + c@ 24 lshift or ;
+\ src/compiler/native/codewalk.f is the reader, and the walk below is its walk.
+\ It was this file's until the redirection seam needed the same one, and one
+\ walk over live code is the whole point of the section further down: two of
+\ them written out side by side can drift apart while each stays plausible.
+: INSN@ ( n -- n )
+   NWALK:INSN@ ;
 
 \ ---- the engine's own constants, spelled as src/habu/habu2.f spells them -----
 \ The three sizes and the two frame instructions are public because the
@@ -140,11 +137,6 @@ $D61F0000 constant C-CALL-BR
 $1F000000 constant C-CALL-ADR-MASK
 $10000000 constant C-CALL-ADR
 
-\ A `bl`'s displacement: 26 bits of signed instruction count.
-$03FFFFFF constant IMM26
-$02000000 constant IMM26-SIGN
-$04000000 constant IMM26-SPAN
-
 : MASKED? ( n n n -- bool ) {: w:n mask:n op:n :}
    w mask and op = ;
 
@@ -152,34 +144,35 @@ $04000000 constant IMM26-SPAN
 \ Every answer in this file that is read out of emitted code is read through
 \ SPAN-EACH: the call counter, the per-word call count, the two-arm wiring
 \ question, and the two words the acceptance suite reads a record with. There is
-\ one loop over a record's code in this file and this is it.
+\ one loop over a record's code and it is not in this file any more - it is
+\ src/compiler/native/codewalk.f, because the redirection seam
+\ (src/compiler/native/reach.f) has to walk exactly the same instructions in
+\ order to move the call sites this file counts.
 \
 \ THAT IS THE POINT, not tidiness. A walk that started one instruction late or
 \ stopped one instruction early would undercount calls in every record that had
 \ one at that end, and a second walk written out beside it could stay correct
 \ while this one drifted - which is exactly how a scan comes to report a number
-\ nobody can check. Because the suite reads its fixtures through the same walk,
-\ "the walk covers the record end to end" is a case it can state directly, and a
+\ nobody can check, and how a seam comes to move some of a word's callers and
+\ not the rest. Because the suite reads its fixtures through the same walk, "the
+\ walk covers the record end to end" is a case it can state directly, and a
 \ dropped end fails it before it can quietly change a count.
 \
 \ typed-local-lint: allow-bare-local - q receives an instruction's address and
 \ the instruction at it, and a local annotation cannot carry a quotation effect.
 : SPAN-EACH ( n n [ n n -- ] -- ) {: s:n len:n q :}
-   len INSN-BYTES / 0 ?do
-      s i INSN-BYTES * +  dup INSN@  q execute
-   loop ;
+   s len q NWALK:SPAN-EACH ;
 
 public
 
+\ The branch form is src/compiler/native/branch.f's, for the reason the walk is
+\ codewalk.f's: the seam that MOVES a call site and the scan that counts them
+\ have to agree about which instruction is one and where it goes.
 : BL? ( n -- bool )
-   C-CALL-B-IMM-MASK C-CALL-BL-IMM MASKED? ;
+   NBR:BL? ;
 
-\ Where a `bl` at this address goes. The displacement is counted in instructions
-\ from the site itself, and its top bit is its sign.
-: BL-TARGET ( n n -- n ) {: pc:n w:n :}
-   w IMM26 and {: d:n :}
-   d IMM26-SIGN and 0<> if d IMM26-SPAN - INSN-BYTES * pc + exit then
-   d INSN-BYTES * pc + ;
+: BL-TARGET ( n n -- n )
+   NBR:BL-TARGET ;
 
 private
 
@@ -195,24 +188,6 @@ private
    w C-CALL-RET-INSTR = if false exit then
    w C-CALL-ADR-MASK C-CALL-ADR MASKED? if false exit then
    true ;
-
-\ ---- the live dictionary ----------------------------------------------------
--1 constant NAMESPACE-WL              \ a package name, not a word
-0 constant LOWEST-WL
-
-: REC-WL ( n -- n ) {: k:n :}
-   k XREF-REC XREF-WORDLIST ;
-
-: REC-START ( n -- n ) {: k:n :}
-   k XREF-REC XREF-START ;
-
-: REC-LEN ( n -- n ) {: k:n :}
-   k XREF-REC XREF-LEN ;
-
-\ A record that holds a word's code: a real wordlist, and something in it.
-: CODED? ( n -- bool ) {: k:n :}
-   k REC-WL LOWEST-WL < if false exit then
-   k REC-LEN 0 > ;
 
 public
 
@@ -338,14 +313,14 @@ variable CALLERS
    [: SITE ;] SPAN-EACH ;
 
 : SCAN-REC ( n -- ) {: k:n :}
-   k CODED? 0= if exit then
+   k NWALK:CODED? 0= if exit then
    0 IN-REC !
-   k REC-START k REC-LEN SCAN-SPAN
+   k NWALK:REC-START k NWALK:REC-LEN SCAN-SPAN
    IN-REC @ 0 > if CALLERS @ 1+ CALLERS ! then ;
 
 : SWEEP ( n -- ) {: t:n :}
    t TARGET !  0 SITES !  0 CALLERS !
-   ndict@ 0 ?do i SCAN-REC loop ;
+   NWALK:RECS 0 ?do i SCAN-REC loop ;
 
 public
 

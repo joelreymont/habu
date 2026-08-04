@@ -22,6 +22,11 @@
 \      itself.
 \   5  the subjects are published a seventh time, by the native chain, into
 \      HOT-CHAIN.
+\   5b the CHECKER's own fold is migrated into HOT-REACH and every call
+\      instruction that entered its old code is moved onto the new routine
+\      (src/compiler/native/reach.f). This is the only step that reaches a
+\      caller nothing can recompile, and it is the one the compile-shaped row
+\      exists to see: the checker's callers were compiled into this binary.
 \   6  the after-arm drivers are compiled - the same bodies against HOT-CHAIN,
 \      and the same control bodies against HOT-FIXED again.
 \   7  the compile-shaped workload's after-arm is measured and its row closed.
@@ -291,6 +296,23 @@ package HOT-CHAIN
 public
 CODEGEN-HOT:PUBLISH-CHAIN
 ;package
+
+\ ---- 5b. the checker's own fold, and the callers already in the image -------
+\ The four subjects above are a program published twice to be timed. This is the
+\ engine's own word: SYM-FOLD-C, run once per byte of every symbol the checker
+\ compares. Its callers are the checker's, compiled into bin/hb and never
+\ recompiled, so no republication can reach them - which is why the
+\ compile-shaped row below used to report nothing whatever the chain emitted.
+\ The body is migrated into a package of its own and every call instruction that
+\ entered the old code is moved onto the new routine, so the after-arm compiles
+\ its batches with the chain's fold in the checker's own path. The move refuses
+\ rather than answering zero, so this step cannot silently do nothing.
+package HOT-REACH
+public
+CODEGEN-HOT:PUBLISH-CHECKER-FOLD
+;package
+
+CODEGEN-HOT:REACH-CHECKER-FOLD
 
 \ ---- 6. the after-arm drivers -----------------------------------------------
 \ The same strings, and the same control strings, under a search order in which a

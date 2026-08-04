@@ -123,9 +123,18 @@ public
    s" TAG" ENGINE-ROW
    s" PAY" ENGINE-ROW
    s" SYM-FOLD-C" ENGINE-ROW
+   s" HOT-REACH:SYM-FOLD-C" ENGINE-ROW
    s" TV-NEXT?" ENGINE-ROW
    s" T-RES-WALK" ENGINE-ROW
    s" T-COMPRESS" ENGINE-ROW
+   cr
+   s" The fold in the middle is the checker's own, and its row now reads zero" type cr
+   s" sites for a reason: it was migrated into HOT-REACH before the after-arm," type cr
+   s" and the " type CODEGEN-HOT:REACHED FMT:.INT
+   s"  call instructions that entered the engine's code were" type cr
+   s" moved onto the chain's routine (src/compiler/native/reach.f). So the" type cr
+   s" compile-shaped arms below are separated by a migration that really did" type cr
+   s" reach the callers already in this binary." type cr
    cr ;
 
 private
@@ -363,6 +372,19 @@ public
    s" migration and cannot be woven, so its null draws are pairs of consecutive" type cr
    s" batch sequences compiled before it, with nothing between them but the" type cr
    s" dictionary they grew - which is the confound its two arms are separated by." type cr
+   cr
+   s" AND ITS ARMS ARE NOW SEPARATED BY A MIGRATION THAT REACHED THE CHECKER." type cr
+   s" Section 1 shows it: the checker's own fold was migrated and every call" type cr
+   s" instruction that entered it was moved onto the chain's routine. If this row" type cr
+   s" still reads NOT MEASURABLE, that is a fact about where a batch spends its" type cr
+   s" time and not about whether the migration landed. It was measured: one batch" type cr
+   s" enters that fold about twenty-four thousand times, and twenty-four thousand" type cr
+   s" calls of it cost well under a tenth of one per cent of a batch through" type cr
+   s" either code generator, while more than half of a batch scales with the SIZE" type cr
+   s" of the dictionary - the engine's own linear name lookup, which is engine" type cr
+   s" text and not a dictionary record, so no republication can reach it at all." type cr
+   s" Dot habu-compile-shaped-cost-4e74a181 carries that measurement and the work" type cr
+   s" behind it." type cr
    cr
    CODEGEN-CLOCK:ROWS 0 ?do
       i CODEGEN-CLOCK:REAL? if i VERDICT then

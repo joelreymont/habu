@@ -29,6 +29,14 @@
 \                             calling the before-arm's record would run old code
 \                             under a new name, report a delta of nothing, and
 \                             look perfectly healthy.
+\   the reach                 the checker's own fold was migrated between the two
+\                             arms and every call instruction that entered its
+\                             old code was MOVED onto the chain's routine, so the
+\                             compile-shaped row's arms really are separated by a
+\                             migration the checker itself runs. Counted rather
+\                             than asserted in prose: the number of sites moved
+\                             is the number the scan finds entering the new
+\                             record, and the old record has none left.
 \   the answers               the two arms of every workload compute the same
 \                             value, and that value is pinned. Two arms that
 \                             disagree ran different programs.
@@ -434,11 +442,11 @@ using CODEGEN-SCAN
    s" FIXTURE:FX-CALLER" BLS-IN 2 T= ;
 
 \ ---- the surveyed hot words of the live engine ------------------------------
-\ These are facts about the engine bin/hb is running, and they are the reason
-\ the compile-shaped workload's delta is nothing: the checker's smallest hot
-\ words are copied into every one of their callers, and the ones that ARE called
-\ are called from code that was compiled into this binary and is never
-\ recompiled.
+\ These are facts about the engine bin/hb is running. Two of them decide what a
+\ migration of a checker word can reach at all: a word the engine COPIES has its
+\ body pasted into every caller and leaves no call instruction to move, and a
+\ word it CALLS is called from code compiled into this binary and never
+\ recompiled - which is what src/compiler/native/reach.f moves.
 : SURVEY-CASES ( -- )
    s" the checker's two smallest hot words are copied, never called" T-LABEL
    s" TAG" ENGINE-COPIES? TTRUE
@@ -448,9 +456,17 @@ using CODEGEN-SCAN
 
    s" the fold the checker runs per byte is too big to copy, so it is called" T-LABEL
    s" SYM-FOLD-C" ENGINE-COPIES? TFALSE
-   s" SYM-FOLD-C" CALL-SITES 0 > TTRUE
 
-   s" and so is the type-variable walk, because it is a loop" T-LABEL
+   s" and every one of those call sites was moved onto the chain's routine" T-LABEL
+   CODEGEN-HOT:REACHED 0 > TTRUE
+   s" HOT-REACH:SYM-FOLD-C" CALL-SITES CODEGEN-HOT:REACHED T=
+   s" SYM-FOLD-C" CALL-SITES 0 T=
+
+   s" so the checker's callers enter the chain's fold and nothing else" T-LABEL
+   s" SYM-STR=CI" s" HOT-REACH:SYM-FOLD-C" CALLS? TTRUE
+   s" SYM-STR=CI" s" SYM-FOLD-C" CALLS? TFALSE
+
+   s" and the type-variable walk is called too, because it is a loop" T-LABEL
    s" T-RES-WALK" ENGINE-COPIES? TFALSE
    s" T-RES-WALK" CALL-SITES 0 > TTRUE ;
 

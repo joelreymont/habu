@@ -31,6 +31,12 @@
 \               manufacture a delta out of nothing, and the report would be
 \               worthless.
 \
+\ AND ONE PUBLICATION THAT IS NOT A SUBJECT AT ALL: HOT-REACH, the checker's own
+\ fold, migrated so that the call instructions already in this binary can be
+\ moved onto it. It is timed by nothing; what it changes is the code the
+\ compile-shaped workload's after-arm runs INSIDE the checker. Its own section
+\ is at the end of this file.
+\
 \ THE DRIVERS ARE ONE STRING EACH, TOO, AND THE ARMS DIFFER ONLY IN THE SEARCH
 \ ORDER THEY ARE COMPILED UNDER. A driver body names its subjects BARE, and the
 \ file that runs the choreography opens `using HOT-ENGINE` around the before-arm
@@ -86,6 +92,7 @@ require lib/errors.f
 require lib/prelude.f
 require lib/string.f
 require src/compiler/native/migrate.f
+require src/compiler/native/reach.f
 
 package CODEGEN-HOT
 
@@ -161,6 +168,46 @@ public
    COUNT-CH$ 3 1 WIDE-REGS NMIGRATE:DEFINE
    TERM-TAG$ 1 1 REGS NMIGRATE:DEFINE
    TERM-PAY$ 1 1 REGS NMIGRATE:DEFINE ;
+
+\ ---- the checker's OWN fold, and its callers ---------------------------------
+\ The four subjects above are a program this file publishes twice in order to
+\ time it. This one is not: SYM-FOLD-C is a word of the engine bin/hb is running
+\ (src/core/checker.f), run once per byte of every symbol the checker compares,
+\ and its callers are the checker's own - compiled into the binary and never
+\ recompiled. That is why the compile-shaped workload used to report nothing
+\ whatever the chain did: republishing a word reaches the callers compiled after
+\ it, and the checker's callers all came first.
+\
+\ SO THE BODY IS MIGRATED AND THE CALL SITES ARE MOVED. The definition cannot be
+\ published under the checker's own record - a tail may be defined once in a
+\ wordlist, so the engine refuses a second SYM-FOLD-C where the first one lives
+\ - so it is migrated into a package of its own and
+\ src/compiler/native/reach.f moves every call instruction that entered the old
+\ code onto the new routine. The seam refuses if it finds no site to move, so
+\ this cannot quietly do nothing.
+\
+\ The source is checker.f's body word for word, with its three hexadecimal
+\ literals written in decimal for the reason the four subjects above are: the
+\ tape reads a literal's spelling back with the stdlib's decimal reader (dot
+\ habu-record-the-engine-79c570ed), and the engine compiles $41 and 65 to the
+\ same code.
+: CHECKER-FOLD$ ( -- ptr u8 n )
+   s" : SYM-FOLD-C ( n -- n ) {: c:n :} c 65 < if c exit then c 90 > if c exit then c 32 or ;" ;
+
+variable REACHED-N
+
+: PUBLISH-CHECKER-FOLD ( -- )
+   CHECKER-FOLD$ 1 1 BRANCH-REGS NMIGRATE:DEFINE ;
+
+\ Move the checker's own call sites onto it. The count is kept because it is the
+\ fact the compile-shaped row's delta rests on: nothing about that row means
+\ anything if this is zero, and the acceptance suite reads it rather than
+\ trusting the report's prose.
+: REACH-CHECKER-FOLD ( -- )
+   s" SYM-FOLD-C" s" HOT-REACH:SYM-FOLD-C" NREACH:REDIRECT REACHED-N ! ;
+
+: REACHED ( -- n )
+   REACHED-N @ ;
 
 private
 
