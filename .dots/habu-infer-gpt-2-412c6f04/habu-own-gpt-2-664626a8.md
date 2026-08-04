@@ -1,9 +1,11 @@
 ---
 title: Own GPT-2 tokenizer
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-29T23:22:19.676884+02:00"
+closed-at: "2026-08-04T14:26:33.238381+02:00"
+close-reason: Landed model-owned GPT-2 tokenizer at cd95673fd996dec8e18168a44b2f17445d2d35a5; root, Claude, and fresh destruction accepted; exact model/generate/CLI/service, full Maki, PTX, canonical, and ownership gates green; workspace and lane temp roots cleaned.
 blocks:
   - habu-pin-gpt-2-cdb5cfe0
 ---
