@@ -29,9 +29,13 @@ system builds itself through `bin/hb`. Open work is tracked in dots.
   deleted with existing mechanisms first.
 - When a design survives the probe, build the smallest sufficient form — one
   generator or compiler change beats a record/parse/enforce campaign.
-- Precedent: a three-leaf owner-construction campaign died to one question and
-  one grep (2026-08-04) — the compiler already had private products and
-  zero-field opaque families, and cfg-proof was already unforgeable.
+- Precedent (2026-08-04): a three-leaf owner-construction campaign was stopped
+  when production tests proved cfg-proof mints are already unresolvable outside
+  their package and layer re-MAKE is revalidated at every use — the existing
+  proof ceremony already enforced the needed boundary, so replacing it added no
+  product capability. Whether KV needs a one-cell opaque handle,
+  and whether private products or zero-field families cover it, is unresolved
+  and must be probed before any construction-authority mechanism is minted.
 
 ## Conventions
 
