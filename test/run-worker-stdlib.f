@@ -28,7 +28,7 @@ TEST:TRW-LOAD-DONE
       3 of CHECK-CLI-GATE:RUN endof
       17 of GSI-LINT-TOOLS endof
       21 of GSI-TOOL-REPAIR endof
-      22 of GSI-TOOL-DOC endof
+      22 of TOOL-SEMANTICS:DOC endof
       23 of GSI-TOOL-LINT-PHASE endof
       24 of GSI-TOOL-TYPED endof
       25 of GSI-TAIL-FAST endof

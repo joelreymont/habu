@@ -210,8 +210,3 @@ The Habu-PTX-side metric machinery — checker-as-judge pass@k, device-golden
 grading (task-general), repair-rounds, tokens-to-green, GB/s, and the real-Triton
 eval matrix snapshot — has run on hardware. Remaining follow-up work is the durable
 in-tree device-grader cleanup and live sampled matrix expansion.
-
-## Status
-
-See [`STATUS.md`](STATUS.md). Active work is in the root dot chain (`maki-*` /
-`habu-maki-*` dots).

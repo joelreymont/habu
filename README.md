@@ -367,7 +367,6 @@ skills/           operational recipes for agents and humans
 - [`docs/debugging.md`](docs/debugging.md) — stepper, debugger, breakpoints,
   watchpoints, image dumpers, JIT dumpers, and native fallback boundaries.
 - [`maki/README.md`](maki/README.md) — the Maki framework layer.
-- [`STATUS.md`](STATUS.md) — current gate status.
 - [`LESSONS.md`](LESSONS.md) — concise project memory.
 - `.dots/` — active implementation tasks.
 

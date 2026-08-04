@@ -15,7 +15,6 @@ package GATE-RUNNER
 3 constant ID-TOOL-REPAIR-PACKET
 4 constant ID-TOOL-DOC
 5 constant ID-TOOL-DOC-PUBLIC
-6 constant ID-TOOL-DOC-STATUS
 7 constant ID-TOOL-DOC-SCHEMA
 8 constant ID-TOOL-LINTS
 9 constant ID-TOOL-LINT-REPL
@@ -109,7 +108,6 @@ variable ARG-I
    s" tool-repair-packet" ARG0= if ID-TOOL-REPAIR-PACKET exit then
    s" tool-doc" ARG0= if ID-TOOL-DOC exit then
    s" tool-doc-public" ARG0= if ID-TOOL-DOC-PUBLIC exit then
-   s" tool-doc-status" ARG0= if ID-TOOL-DOC-STATUS exit then
    s" tool-doc-schema" ARG0= if ID-TOOL-DOC-SCHEMA exit then
    s" tool-lints" ARG0= if ID-TOOL-LINTS exit then
    s" tool-lint-repl" ARG0= if ID-TOOL-LINT-REPL exit then
@@ -159,9 +157,8 @@ variable ARG-I
       ID-TOOL-REPAIR of GSI-TOOL-REPAIR endof
       ID-TOOL-REPAIR-CHECK of GSI-TOOL-REPAIR-CHECK endof
       ID-TOOL-REPAIR-PACKET of GSI-TOOL-REPAIR-PACKET endof
-      ID-TOOL-DOC of GSI-TOOL-DOC endof
+      ID-TOOL-DOC of TOOL-SEMANTICS:DOC endof
       ID-TOOL-DOC-PUBLIC of GSI-TOOL-DOC-PUBLIC endof
-      ID-TOOL-DOC-STATUS of GSI-TOOL-DOC-STATUS endof
       ID-TOOL-DOC-SCHEMA of GSI-TOOL-DOC-SCHEMA endof
       ID-TOOL-LINTS of GSI-TOOL-LINT-PHASE endof
       ID-TOOL-LINT-REPL of GSI-TOOL-LINT-REPL-PHASE endof
@@ -169,7 +166,7 @@ variable ARG-I
       ID-TOOL-LINT-NAMES of GSI-TOOL-LINT-NAMES endof
       ID-TOOL-LINT-BUNDLE of GSI-TOOL-LINT-BUNDLE endof
       ID-TOOL-TYPED of GSI-TOOL-TYPED endof
-      ID-TOOL-SEMANTICS of GSI-TOOL-SEMANTICS endof
+      ID-TOOL-SEMANTICS of TOOL-SEMANTICS:RUN endof
       ID-CHECK-CLI of CHECK-CLI-GATE:RUN endof
       ID-TAIL of STDLIB endof
       ID-LINT-TOOLS of GSI-LINT-TOOLS endof
@@ -231,7 +228,6 @@ variable ARG-I
       ID-TOOL-REPAIR-PACKET of 0 0= endof
       ID-TOOL-DOC of 0 0= endof
       ID-TOOL-DOC-PUBLIC of 0 0= endof
-      ID-TOOL-DOC-STATUS of 0 0= endof
       ID-TOOL-DOC-SCHEMA of 0 0= endof
       ID-TOOL-LINTS of 0 0= endof
       ID-TOOL-LINT-REPL of 0 0= endof

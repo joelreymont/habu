@@ -131,9 +131,9 @@ LOWER-MODEL-GOLDEN) -> then SAXPY retirement.
 The blanket premise "maki ops do NOT lower onto the checked Habu-PTX kernels" is
 stale: maki/gpu.f lowers AXPY (scale + `+.`) onto the checked SAXPY kernel with
 F64>F32 marshalling, and maki/gpu-train.f runs SGD on device — both device-proven
-(maki/STATUS.md: SAXPY/SOFTMAX-ROWS within 1 ULP; maki trains 3 SGD epochs on the
+(maki/README.md: SAXPY/SOFTMAX-ROWS within 1 ULP; maki trains 3 SGD epochs on the
 GPU). Remaining scope: the GENERAL tensor-op selection/lowering seam (arbitrary
-elementwise ops, softmax, matmul dispatch from maki tensors), which maki/STATUS.md
+elementwise ops, softmax, matmul dispatch from maki tensors), which maki/README.md
 itself lists as future work.
 
 2026-07-20 note from the affine-LayerNorm landing (ef4e8233): device BACKWARD for affine LN is bounded by layernorm-bwd/rowsum-bwd having no device lowering (host-only today); the affine forward IS device-lowered (fused block-per-row kernel). When this dot lowers the backward reduction family, the affine dgamma/dbeta reductions ride along - see maki/lower/red.f LRED-EMIT-LN-AFFINE for the forward pattern.

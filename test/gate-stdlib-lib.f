@@ -182,7 +182,6 @@ private
    s" clobber-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" clobber-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" repl-lint" SUITE-LABEL= if SUITE-TRUE exit then
-   s" stale-status-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdin-closure-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" gate-stats" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then

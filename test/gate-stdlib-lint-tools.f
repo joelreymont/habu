@@ -39,10 +39,6 @@ REQUIRE-HARNESS
    s" ." REPL-ROOT!
    REPL-LINT ;
 
-: STALE-STATUS ( -- )
-   s" ." STALE-STATUS-LINT:ROOT!
-   STALE-STATUS-LINT:RUN 0 > IF 1 throw THEN ;
-
 : CLOBBER ( -- )
    s" tools/lint/clobber-lint.f" GSI-REQUIRE
    s" tools/lint/clobber-lint-test.f" GSI-INCLUDE ;
@@ -59,9 +55,8 @@ REQUIRE-HARNESS
    s" tools/process-primitive-lint-test.f" GSI-INCLUDE
    s" tools/stdin-closure-lint.f" GSI-REQUIRE ;
 
-: STATUS ( -- )
+: REPL-STATS ( -- )
    s" repl-lint" [: REPL ;] GSI-RUN
-   s" stale-status-lint" [: STALE-STATUS ;] GSI-RUN
    s" test/gate-stats-test.f" GSI-INCLUDE ;
 
 \ One fork per sub-suite so GT-POOL-FAIL's `FAIL: <label>` line names the
@@ -114,7 +109,7 @@ public
    s" lint-tools/package-inheritance" GSI-FORK-TIMEOUT-MS [: PACKAGE-INHERITANCE ;] GT-POOL-START-FORK
    s" lint-tools/clobber" GSI-FORK-TIMEOUT-MS [: CLOBBER ;] GT-POOL-START-FORK
    s" lint-tools/repo" GSI-FORK-TIMEOUT-MS [: REPOSITORY ;] GT-POOL-START-FORK
-   s" lint-tools/status" GSI-FORK-TIMEOUT-MS [: STATUS ;] GT-POOL-START-FORK
+   s" lint-tools/repl-stats" GSI-FORK-TIMEOUT-MS [: REPL-STATS ;] GT-POOL-START-FORK
    s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: DOT ;] GT-POOL-START-FORK
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: MAKI ;] GT-POOL-START-FORK
    s" lint-tools/refine" GSI-FORK-TIMEOUT-MS [: REFINE ;] GT-POOL-START-FORK

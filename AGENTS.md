@@ -3,8 +3,7 @@
 Habu is a Forth with a type checker. Every word (function) declares what it
 takes and leaves on the stack, and the checker proves the body matches the
 declaration — so Forth written by an LLM is verified instead of trusted. The
-system builds itself through `bin/hb`. Open work is tracked in dots; the
-current verification state is in `STATUS.md`.
+system builds itself through `bin/hb`. Open work is tracked in dots.
 
 ## Orchestrator Role (BLOCKING)
 

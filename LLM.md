@@ -8,7 +8,6 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - `AGENTS.md` — conventions and the gate.
 - `docs/forth.md` — Forth style rules (BLOCKING).
 - `LESSONS.md` (top) — the project's running memory; the latest findings.
-- `STATUS.md` — the current self-check counts and known gaps.
 
 ## 1. Conventions (BLOCKING)
 - **Our words UPPER-CASE** (`SQUARE`, `AVG2`); built-in Forth words stay

@@ -429,7 +429,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 122584 -> 122592 and floor 3800 -> 3808. The text pad absorbs the 8 bytes
 \ (296 -> 288), so the whole file remains exactly 127168 and LINUX-TOTAL is
 \ unchanged. src/core/enum-decl.f moves no engine bytes: it gains no definition,
-\ only a call to the participant's gate. tools/decl-gen-probe.f, STATUS.md and
+\ only a call to the participant's gate. tools/decl-gen-probe.f and
 \ the four test files are not part of the assembled
 \ stage2 engine source.
 122592 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)

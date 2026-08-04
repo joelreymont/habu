@@ -221,12 +221,6 @@ public
    s" tools/public-signatures-core.f" GSI-TOOL-SETUP-FILE
    s" tools/public-signatures-test.f" GSI-INCLUDE ;
 
-: GSI-TOOL-DOC-STATUS ( -- )
-   s" stdlib/tool-doc/stale-status" GSI-GROUP-SEQ GSI-GROUP-HEADER
-   GSI-TOOL-SETUP
-   s" tools/stale-status-lint-core.f" GSI-TOOL-SETUP-FILE
-   s" tools/stale-status-lint-test.f" GSI-INCLUDE ;
-
 : GSI-TOOL-DOC-SCHEMA ( -- )
    s" stdlib/tool-doc/schema-examples" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-SETUP
@@ -270,16 +264,19 @@ public
    s" tools/check-all-errors-test.f" GSI-INCLUDE
    s" tools/repair-packet-test.f" GSI-INCLUDE ;
 
-: GSI-TOOL-DOC-SETUP ( -- )
-   GSI-TOOL-SETUP
-   s" tools/public-signatures-core.f" GSI-TOOL-SETUP-FILE
-   s" tools/stale-status-lint-core.f" GSI-TOOL-SETUP-FILE ;
+package TOOL-SEMANTICS
+private
 
-: GSI-TOOL-DOC-BODY ( -- )
+: SETUP ( -- )
+   GSI-TOOL-SETUP
+   s" tools/public-signatures-core.f" GSI-TOOL-SETUP-FILE ;
+
+: BODY ( -- )
    s" tools/public-signatures-test.f" GSI-INCLUDE
-   s" tools/stale-status-lint-test.f" GSI-INCLUDE
    s" tools/repair-schema-doc-test.f" GSI-INCLUDE
    s" tools/examples-test.f" GSI-INCLUDE ;
+
+;package
 
 : GSI-TOOL-LINT-SETUP ( -- )
    GSI-TOOL-SETUP
@@ -307,10 +304,15 @@ public
    GSI-TOOL-REPAIR-SETUP
    GSI-TOOL-REPAIR-BODY ;
 
-: GSI-TOOL-DOC ( -- )
+package TOOL-SEMANTICS
+public
+
+: DOC ( -- )
    s" stdlib/tool-doc" GSI-GROUP-PAR GSI-GROUP-HEADER
-   GSI-TOOL-DOC-SETUP
-   GSI-TOOL-DOC-BODY ;
+   SETUP
+   BODY ;
+
+;package
 
 : GSI-TOOL-LINT-PHASE ( -- )
    s" stdlib/tool-lints" GSI-GROUP-PAR GSI-GROUP-HEADER
@@ -322,14 +324,17 @@ public
    GSI-TOOL-TYPED-SETUP
    GSI-TOOL-TYPED-BODY ;
 
-: GSI-TOOL-SEMANTICS ( -- )
+package TOOL-SEMANTICS
+public
+
+: RUN ( -- )
    s" stdlib/tool-semantics" GSI-GROUP-SEQ GSI-GROUP-HEADER
    s" stdlib/tool-repair" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-REPAIR-SETUP
    GSI-TOOL-REPAIR-BODY
    s" stdlib/tool-doc" GSI-GROUP-SEQ GSI-GROUP-HEADER
-   GSI-TOOL-DOC-SETUP
-   GSI-TOOL-DOC-BODY
+   SETUP
+   BODY
    s" stdlib/tool-lints" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-LINT-SETUP
    GSI-TOOL-LINT-BODY
@@ -337,11 +342,12 @@ public
    GSI-TOOL-TYPED-SETUP
    GSI-TOOL-TYPED-BODY ;
 
+;package
+
 : GSI-LINT-TOOLS-SETUP ( -- )
    GSI-SETUP!
    GSI-TOOL-BASE
    s" tools/repl-lint-core.f" GSI-REQUIRE
-   s" tools/stale-status-lint-core.f" GSI-REQUIRE
    s" tools/dot-dep-lint-core.f" GSI-REQUIRE
    s" tools/maki-dep-lint-core.f" GSI-REQUIRE
    s" tools/refine-lint-core.f" GSI-REQUIRE

@@ -19,10 +19,6 @@ SUITE repl-lint
    tools/repl-lint.f
 ;SUITE
 
-SUITE stale-status-lint
-   tools/stale-status-lint.f
-;SUITE
-
 SUITE ptx-emitter-lint
    tools/lint/ptx-emitter-lint.f
    tools/lint/ptx-emitter-lint-test.f
@@ -123,7 +119,6 @@ SUITE tool-boundary-check-repair
 
 SUITE tool-boundary-doc-public
    tools/public-signatures-test.f
-   tools/stale-status-lint-test.f
    tools/repair-schema-doc-test.f
    tools/examples-test.f
 ;SUITE
