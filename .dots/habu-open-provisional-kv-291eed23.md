@@ -1,9 +1,11 @@
 ---
 title: Open provisional KV batch
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-30T06:31:31.208766+02:00"
+closed-at: "2026-08-05T00:11:08.167722+02:00"
+close-reason: "Landed KV:batch generation lifetime, BEGIN-BATCH, zero-row CANCEL-BATCH, and real ownership/purity tests at 2332b5507923415a3b8df937571ca35d5243254b; exact full gates and origin master verified."
 blocks:
   - habu-infer-kv-declared-a0319bef
   - habu-own-device-kv-8e5bbf98
