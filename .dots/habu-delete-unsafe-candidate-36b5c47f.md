@@ -1,9 +1,11 @@
 ---
 title: Delete unsafe candidate gate cache
-status: active
+status: closed
 priority: 0
 issue-type: task
 created-at: "2026-08-04T07:05:34.361630+02:00"
+closed-at: "2026-08-04T12:33:06.518309+02:00"
+close-reason: Landed structural candidate-cache deletion at f91830c7bfe719014450caaf316693fb7a29b7f4; standalone rebuild/import, canonical, Maki, PTX, typed/package/dot gates green; root, Claude, and fresh destruction accepted.
 ---
 
 Why: the canonical native gate can report green after a red engine build. The 2026-08-04 production capture recorded test/run-lib.f publishing the executable into the persistent candidate cache before phase 15 finished; the same phase then failed CODELEN 118420 versus 118428. A second run restored that artifact, skipped phase 15, and returned 0. Blackboard evidence: coordination message 20260804-045938.251-codex-7527. Result: delete only the outer persistent Habu-under-test restore/install cache and all state, paths, stamp/lock helpers, events, and branches made dead by that deletion. Every canonical run must execute phase 15. Retain the internal HABU_BUILD_CACHE/object cache and unrelated per-phase PASS cache. Do not add a replacement cache, identity certificate, cache schema, lint, framework, fallback, or process rule. Owner: package TEST in test/run-lib.f plus only directly affected runner statistics/tests. Smallest real red: two canonical bin/hb --load test/run.f runs sharing one XDG cache root while test/gate-size-attribution-test.f contains an intentionally stale Linux row; current code makes run one nonzero and run two zero. Acceptance: under the same setup both runs return nonzero and both stats show the engine build phase executed; with the correct rows two consecutive canonical runs both return zero and both execute phase 15; the internal build cache may hit; focused runner tests and full canonical gate pass. Delete obsolete code rather than preserving compatibility. Adjacent habu-bind-cache-valid-3b6d1aba owns tools/hb-build only and is not a dependency. Depends: none. Claim: agent=codex-cache-delete workspace=.jj-ws/habu-delete-unsafe-candidate-36b5c47f.
