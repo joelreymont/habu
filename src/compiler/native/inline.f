@@ -127,17 +127,27 @@
 \   could disagree with the emitter about what it emitted.
 \
 \   AND THE COPY MAY NOT BE BIGGER THAN THE CALL IT REPLACES. This is where the
-\   size rule comes from, and there is no chosen number in it. A call to a
-\   routine of arity (in -> out) costs the SITE in stores, three instructions of
-\   branch and pointer adjustment, and out loads; the ROUTINE pays the mirror of
-\   that - one pointer move down, in loads, out stores, one pointer move up and
-\   one return. So the whole interface is `in + out + 3` instructions on each
-\   side, and a routine whose entire emission is no longer than both sides
-\   together is one whose BODY is no longer than the call site's own half. Copy
-\   such a body into a site and the site does not grow; every instruction the
-\   interface spent disappears, on both sides. That is INTERFACE-INSNS and SMALL?
-\   below, measured on the emission the validator accepted rather than guessed
-\   at from the source.
+\   size rule comes from. A call to a routine of arity (in -> out) costs the SITE
+\   in stores, its branch, up to two pointer adjustments and out loads; the
+\   ROUTINE pays the mirror of that - up to two pointer adjustments, in loads,
+\   out stores and one return. So one interface is AT MOST `in + out + 3`
+\   instructions, and a routine whose entire emission is within twice that is one
+\   whose body is within a call site's own half. Copy such a body into a site and
+\   the site does not grow by more than the interfaces that disappeared.
+\
+\   THE WORD "AT MOST" IS NEW AND IT IS THE HONEST WORD. The two pointer
+\   adjustments used to be two instructions every time. Since dot
+\   habu-place-the-data-9f128e58 the data-stack pointer stands where the fewest
+\   adjustments are needed and each of the four is written only when it moves
+\   the pointer at all - so a leaf routine of equal arity pays NONE of them, and
+\   a call site whose place already is the callee's base pays none either. The
+\   number below is therefore a bound on an interface rather than a count of one,
+\   and it is deliberately the LOOSE direction: it admits every body it admitted
+\   before, so nothing that was copied stops being copied. Tightening it is the
+\   whole of dot habu-measure-inline-cost-031e817e, which already owns the other
+\   half of the same question - the rule measures the callee's emission under the
+\   CALLEE's register pressure and not the cost at the site - and that dot is
+\   where the bound and its derivation are to be made exact together.
 \
 \ WHAT IS NOT DERIVED IS THE ROW'S CAPACITY. A rename is a token and no
 \ instruction at all, so a body of nothing but `dup` and `swap` can hold more
@@ -362,10 +372,12 @@ variable S-ROW
 public
 
 \ ---- what the size rule is ---------------------------------------------------
-\ How many instructions one side of a call to a routine of this arity is: the
-\ site's stores, its three instructions of branch and pointer adjustment, and its
-\ loads - which is the same count as the routine's own pointer move down, loads,
-\ stores, pointer move up and return.
+\ The most instructions one side of a call to a routine of this arity can be: the
+\ site's stores, its branch, its two pointer adjustments and its loads - which is
+\ the same bound as the routine's own two adjustments, loads, stores and return.
+\ It is a bound and not a count because the placement writes an adjustment only
+\ when the pointer really moves; the head of this file says which dot makes the
+\ two exact again.
 : INTERFACE-INSNS ( n n -- n )
    {: in:n out:n :}
    in out + 3 + ;

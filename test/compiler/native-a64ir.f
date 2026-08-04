@@ -1207,19 +1207,36 @@ private
    c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
 
 \ ---- the data-stack operand refusals -----------------------------------------
-\ A data-stack slot the load and store forms cannot address, and an adjustment
+\ A data-stack offset the load and store forms cannot address, and an adjustment
 \ of the pointer that is not a whole number of cells or does not fit the one
 \ immediate that makes it. Both are refused on the production builder, so no
 \ module can hold one.
+\
+\ BOTH FIELDS ARE SIGNED, AND THAT IS WHAT THE TWO DIRECTIONS BELOW ARE FOR. A
+\ routine's pointer stands where the fewest adjustments are needed, so a cell it
+\ reaches can be under the pointer as easily as over it and an adjustment can go
+\ either way. What is bounded is therefore the reach in each direction: above the
+\ pointer the scaled unsigned field, below it the unscaled signed one, and for an
+\ adjustment the magnitude of the add/sub immediate whichever way it goes. One
+\ cell under the pointer is an ordinary access and one cell down is an ordinary
+\ adjustment; a cell past either reach is not.
 : DSLOT-ODD-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR:SLOT-WIDTH 1- A64IR:DSLOT-ATTR drop ;
 
-: DSLOT-LOW-BODY ( IR-CTX:ctx -- )
+: DSLOT-DEEP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b A64IR:SLOT-WIDTH negate A64IR:DSLOT-ATTR drop ;
+   c b  A64EFF:SLOT-BACK A64IR:SLOT-WIDTH + negate  A64IR:DSLOT-ATTR drop ;
+
+\ And the two that are inside their reach, so the refusals above are about the
+\ reach and not about the sign.
+: DSLOT-UNDER-BODY ( IR-CTX:ctx -- n )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR:SLOT-WIDTH negate A64IR:DSLOT-ATTR drop
+   A64EFF:SLOT-BACK ;
 
 : DSLOT-HIGH-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -1235,6 +1252,11 @@ private
 : DBYTES-LOW-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN + negate  A64IR:DBYTES-ATTR drop ;
+
+: DBYTES-DOWN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR:SLOT-WIDTH negate A64IR:DBYTES-ATTR drop ;
 
 : DBYTES-HIGH-BODY ( IR-CTX:ctx -- )
@@ -1243,10 +1265,12 @@ private
    c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN +  A64IR:DBYTES-ATTR drop ;
 
 : DSLOT-ODD ( -- )    BND [: DSLOT-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
-: DSLOT-LOW ( -- )    BND [: DSLOT-LOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DSLOT-DEEP ( -- )   BND [: DSLOT-DEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DSLOT-UNDER ( -- n ) BND [: DSLOT-UNDER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DSLOT-HIGH ( -- )   BND [: DSLOT-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DBYTES-ODD ( -- )   BND [: DBYTES-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DBYTES-LOW ( -- )   BND [: DBYTES-LOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DBYTES-DOWN ( -- )  BND [: DBYTES-DOWN-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DBYTES-HIGH ( -- )  BND [: DBYTES-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ Two refusals per group, for the reason the frame-depth group already gives:
@@ -1255,8 +1279,22 @@ private
 : DSLOT-REFUSE-CASES ( -- )
    s" a data-stack slot that is not a whole cell from the pointer is refused" T-LABEL
    [: DSLOT-ODD ;] E-A64IR-DSLOT TTHROWSQ
-   s" a negative data-stack slot is refused" T-LABEL
-   [: DSLOT-LOW ;] E-A64IR-DSLOT TTHROWSQ ;
+   s" a data-stack offset deeper than the unscaled field reaches is refused"
+   T-LABEL
+   [: DSLOT-DEEP ;] E-A64IR-DSLOT TTHROWSQ ;
+
+\ The other direction of both bounds, which is what says the two refusals above
+\ are about the REACH and not about the sign: one cell under the pointer is an
+\ offset the unscaled signed field holds, and one cell down is an adjustment the
+\ add/sub immediate holds. Neither case abandons a context, so they share one.
+\ The reach they are held against is read back too, because a reach of zero would
+\ make "inside it" true of nothing.
+: DSLOT-SIGN-CASES ( -- )
+   s" an offset one cell under the pointer is an ordinary data-stack access"
+   T-LABEL
+   DSLOT-UNDER 0 > TTRUE
+   s" and one cell down is an ordinary adjustment of the pointer" T-LABEL
+   DBYTES-DOWN ;
 
 : DSLOT-REACH-CASES ( -- )
    s" a data-stack slot past the reach of the offset field is refused" T-LABEL
@@ -1265,7 +1303,7 @@ private
    [: DBYTES-ODD ;] E-A64IR-DBYTES TTHROWSQ ;
 
 : DBYTES-REFUSE-CASES ( -- )
-   s" a negative data-stack adjustment is refused" T-LABEL
+   s" a data-stack adjustment past its immediate downwards is refused" T-LABEL
    [: DBYTES-LOW ;] E-A64IR-DBYTES TTHROWSQ
    s" a data-stack adjustment past its immediate is refused" T-LABEL
    [: DBYTES-HIGH ;] E-A64IR-DBYTES TTHROWSQ ;
@@ -1459,6 +1497,10 @@ private
    drop
    DSLOT-REFUSE-CASES ;
 
+: GROUP-DSLOT-SIGN ( IR-CTX:ctx -- )
+   drop
+   DSLOT-SIGN-CASES ;
+
 : GROUP-DSLOT-REACH ( IR-CTX:ctx -- )
    drop
    DSLOT-REACH-CASES ;
@@ -1546,6 +1588,7 @@ public
    BND [: GROUP-FRAME-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-DEPTH ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-DSLOT-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-DSLOT-SIGN ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-DSLOT-REACH ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-DBYTES-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-ENTRY-REFUSE ;] IR-CTX:WITH-CONTEXT

@@ -243,12 +243,18 @@ create TXT TEXT-CAP allot
    s" 7 NCH-SQD" EV-N
    s" 11 NCH-SQD" EV-N ;
 
-\ Five instructions: the pointer down over the one argument, the load, the
-\ multiply, the store, the pointer up over the one result - and the return.
+\ Four instructions: the load, the multiply, the store and the return. NEITHER
+\ pointer move is written, and that is the placement rather than an omission: the
+\ routine takes one cell and leaves one, so the place the caller left the pointer
+\ and the place it expects it back are the same place, the routine stands there,
+\ and both adjustments are distances of zero. The two accesses reach their cell
+\ one below that place, in the unscaled signed form - which is where the answer
+\ below comes from, so a placement that stood somewhere else would read the wrong
+\ cell and not the square of seven.
 : HABU-CASE ( -- )
    s" a compiled word is entered and left through the data stack" T-LABEL
    NFIX:BINDING [: HABU-BODY ;] IR-CTX:WITH-CONTEXT
-   121 T= 49 T= 49 T= 6 T= ;
+   121 T= 49 T= 49 T= 4 T= ;
 
 \ ---- a definition whose two arms become a select -----------------------------
 \ The same run over a body whose answer depends on which of two values it
@@ -361,7 +367,7 @@ $54000000 constant BCOND-FORM
    NFIX:BINDING [: BRANCH-BODY ;] IR-CTX:WITH-CONTEXT
    9 T= 4 T= 9 T= 4 T=
    0 T= 0 T= 2 T= CMP-FORM T=
-   7 T= 0 T= 2 T= 10 T= -1 T= 7 T= ;
+   7 T= 0 T= 2 T= 9 T= -1 T= 7 T= ;
 
 \ ---- a definition that reads and writes memory -------------------------------
 \ The same run over a body whose whole point is a side effect, and the first one
@@ -487,9 +493,11 @@ $54000000 constant BCOND-FORM
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    CC BB TAPE p r 3 1 NELAB:COLON drop ;
 
-\ Fourteen instructions: the pointer down over the three arguments, three loads,
-\ the subtraction, the multiply, the constant, the division's three, the
-\ addition, the store, the pointer up over the one result, and the return.
+\ Thirteen instructions: the pointer to where the body stands, three loads, the
+\ subtraction, the multiply, the constant, the division's three, the addition,
+\ the store and the return. There is no second pointer move: the routine leaves
+\ one result, so the place the caller expects the pointer back IS the place the
+\ body stands, and the publication is a distance of zero.
 : LOCALS-BODY ( IR-CTX:ctx -- n n n n n n n n )
    {: c:IR-CTX:ctx :}
    c 0 R-CTX !
@@ -520,7 +528,7 @@ $54000000 constant BCOND-FORM
 : LOCALS-CASE ( -- )
    s" a definition with typed locals and a division compiles and runs" T-LABEL
    NFIX:BINDING [: LOCALS-BODY ;] IR-CTX:WITH-CONTEXT
-   -28 T= 8 T= -28 T= 25 T= 8 T= 14 T= -1 T= 15 T= ;
+   -28 T= 8 T= -28 T= 25 T= 8 T= 13 T= -1 T= 15 T= ;
 
 \ ---- a definition that reads BYTES in a loop ---------------------------------
 \ The same run over a body that walks a byte span: `c@` inside a counted loop,
@@ -867,7 +875,7 @@ $54000000 constant BCOND-FORM
    s" a comparison whose answer is the word's result keeps its flag and runs"
    T-LABEL
    NFIX:BINDING [: ISLT-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= -1 T= 0 T= -1 T= 1 T= 9 T= ;
+   0 T= -1 T= 0 T= -1 T= 1 T= 8 T= ;
 
 \ THE SECOND IS A COMPARISON THAT IS BOTH BRANCHED ON AND KEPT. `< dup if then`
 \ is the smallest checked source there is for it: the comparison answers one
@@ -889,7 +897,7 @@ $54000000 constant BCOND-FORM
 \ the value the two edges carry defined by nothing at all.
 \
 \ AND NO CONDITIONAL BRANCH AND NO SELECT, which is the conversion. The two-way
-\ branch and both stubs are gone, so nine instructions and two blocks where the
+\ branch and both stubs are gone, so eight instructions and two blocks where the
 \ branching shape was fourteen and four.
 : SRC11 ( -- ptr u8 n )
    s" : NCH-LTKEEP ( n n -- bool ) < dup if then ;" ;
@@ -926,7 +934,7 @@ $B4000000 constant CBZ-KIND          \ Cbz - the unfused two-way branch
    s" a comparison that is branched on and kept keeps its flag and runs" T-LABEL
    NFIX:BINDING [: LTKEEP-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= -1 T= 0 T= -1 T=
-   1 T= 0 T= 0 T= 2 T= 9 T= ;
+   1 T= 0 T= 0 T= 2 T= 8 T= ;
 
 \ ---- the loop the corpus actually writes -------------------------------------
 \ `begin … while … repeat` outnumbers `begin … until` nine to one in real Habu,

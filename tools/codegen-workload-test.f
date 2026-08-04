@@ -478,11 +478,16 @@ using CODEGEN-SCAN
    s" HOT-CHAIN:TERM-TAG" WORD-BYTES  s" HOT-ENGINE:TERM-TAG" WORD-BYTES  < TTRUE
    s" HOT-CHAIN:TERM-PAY" WORD-BYTES  s" HOT-ENGINE:TERM-PAY" WORD-BYTES  < TTRUE
 
-   s" the two subjects with control flow are calls in both columns" T-LABEL
-   s" HOT-ENGINE:FOLD-C" ENGINE-COPIES? TFALSE
-   s" HOT-CHAIN:FOLD-C" ENGINE-COPIES? TFALSE
+   s" the loop subject is a call in both columns" T-LABEL
    s" HOT-ENGINE:COUNT-CH" ENGINE-COPIES? TFALSE
    s" HOT-CHAIN:COUNT-CH" ENGINE-COPIES? TFALSE
+
+   s" while the fold is a call in the engine's column and a COPY in the chain's"
+   T-LABEL
+   s" HOT-ENGINE:FOLD-C" ENGINE-COPIES? TFALSE
+   s" HOT-CHAIN:FOLD-C" ENGINE-COPIES? TTRUE
+   s" HOT-CHAIN:FOLD-C" WORD-BYTES INL-MAX <= TTRUE
+   s" HOT-ENGINE:FOLD-C" WORD-BYTES INL-MAX > TTRUE
 
    s" and the two the engine inlines are copied in both columns" T-LABEL
    s" HOT-ENGINE:TERM-TAG" ENGINE-COPIES? TTRUE
@@ -501,9 +506,13 @@ using CODEGEN-SCAN
 : WIRING-CASES ( -- )
    s" each calling arm enters its own column's word" T-LABEL
    s" WORKLOAD:SCAN-OLD" s" HOT-ENGINE:FOLD-C" CALLS? TTRUE
-   s" WORKLOAD:SCAN-NEW" s" HOT-CHAIN:FOLD-C" CALLS? TTRUE
    s" WORKLOAD:COUNT-OLD" s" HOT-ENGINE:COUNT-CH" CALLS? TTRUE
    s" WORKLOAD:COUNT-NEW" s" HOT-CHAIN:COUNT-CH" CALLS? TTRUE
+
+   s" and the arm over the copied fold holds that column's body, not the other's"
+   T-LABEL
+   s" WORKLOAD:SCAN-NEW" s" HOT-CHAIN:FOLD-C" COPIED-FROM? TTRUE
+   s" WORKLOAD:SCAN-OLD" s" HOT-CHAIN:FOLD-C" COPIED-FROM? TFALSE
 
    s" and no arm enters the other column's" T-LABEL
    s" WORKLOAD:SCAN-OLD" s" HOT-CHAIN:FOLD-C" CALLS? TFALSE
@@ -519,9 +528,11 @@ using CODEGEN-SCAN
 
    s" a calling arm holds exactly one call, which is its subject's" T-LABEL
    s" WORKLOAD:SCAN-OLD" BLS-IN 1 T=
-   s" WORKLOAD:SCAN-NEW" BLS-IN 1 T=
    s" WORKLOAD:COUNT-OLD" BLS-IN 1 T=
    s" WORKLOAD:COUNT-NEW" BLS-IN 1 T=
+
+   s" and the arm over the copied fold holds none" T-LABEL
+   s" WORKLOAD:SCAN-NEW" BLS-IN 0 T=
 
    s" and the arms over the inlined subjects hold none, in either column" T-LABEL
    s" WORKLOAD:TERM-OLD" BLS-IN 0 T=
@@ -540,7 +551,6 @@ using CODEGEN-SCAN
 \ compile to a call in both columns must come out the same number of bytes.
 : BODY-CASES ( -- )
    s" the two arms of a calling workload are the same code size" T-LABEL
-   s" WORKLOAD:SCAN-NEW" WORD-BYTES  s" WORKLOAD:SCAN-OLD" WORD-BYTES  T=
    s" WORKLOAD:SCAN-CTL-A" WORD-BYTES s" WORKLOAD:SCAN-OLD" WORD-BYTES T=
    s" WORKLOAD:SCAN-CTL-B" WORD-BYTES s" WORKLOAD:SCAN-OLD" WORD-BYTES T=
    s" WORKLOAD:COUNT-NEW" WORD-BYTES  s" WORKLOAD:COUNT-OLD" WORD-BYTES T=

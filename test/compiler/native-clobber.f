@@ -163,13 +163,23 @@ variable CODE-AT
    p 2 + c@ 16 lshift or
    p 3 + c@ 24 lshift or ;
 
-\ The unsigned-offset Str and Ldr of a whole cell, against the data-stack
-\ pointer. The two encodings differ in one bit of the opc field, and the base
-\ register is the field bits nine to five, so this is the form and the register
-\ and nothing else about the instruction.
+\ The Str and Ldr of a whole cell against the data-stack pointer, in BOTH of the
+\ addressing modes the chain writes them in. The two directions differ in one bit
+\ of the opc field, and the base register is the field bits nine to five, so this
+\ is the form and the register and nothing else about the instruction.
+\
+\ WHY THERE ARE FOUR FORMS AND NOT TWO. Since dot habu-place-the-data-9f128e58
+\ the chain stands its data-stack pointer where the fewest adjustments are
+\ needed, so a cell it reaches can be UNDER the pointer as well as over it, and
+\ under it is the unscaled signed encoding - Ldur and Stur - of the same access.
+\ A counter that knew only the scaled forms would report a routine that touches
+\ the caller's stack as touching it not at all, which is exactly the claim these
+\ cases are about.
 $FFC00000 constant MEM-MASK
 $F9000000 constant STR-OP
 $F9400000 constant LDR-OP
+$F8000000 constant STUR-OP
+$F8400000 constant LDUR-OP
 
 : DSTACK-AT? ( n n -- bool ) {: w:n op:n :}
    w MEM-MASK and op =
@@ -185,11 +195,13 @@ $F9400000 constant LDR-OP
       CODE-PTR i INSN-BYTES * + U32@ op DSTACK-AT? if 1+ then
    loop ;
 
-: DS-STORES ( ptr u8 n -- n )
-   STR-OP DS-COUNT ;
+: DS-STORES ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u STR-OP DS-COUNT
+   a u STUR-OP DS-COUNT + ;
 
-: DS-LOADS ( ptr u8 n -- n )
-   LDR-OP DS-COUNT ;
+: DS-LOADS ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u LDR-OP DS-COUNT
+   a u LDUR-OP DS-COUNT + ;
 
 : ENTRY-OF ( ptr u8 n -- n )
    GLOBAL-WID XREF-FIND-WL

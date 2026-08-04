@@ -1795,29 +1795,73 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    4 0 ATTR-INT
    R-OPR RV 5 OP@ IR-OP:FOPERANDS ;
 
+\ WHAT THE FOUR NUMBERS ARE, because they are distances and not slots. SQUARE
+\ takes one value and leaves one, so the caller leaves the pointer at 8 and
+\ expects it back at 8, and the only two places the routine requires are that one
+\ - so the placement stands the body there and BOTH pointer moves are zero, which
+\ is no instruction at all. The two accesses then reach slot zero from a pointer
+\ standing one cell above it, which is -8: a cell UNDER the pointer, written in
+\ the unscaled signed form, and the ordinary case rather than the exceptional one
+\ under this convention.
 : DSTACK-CASE ( -- )
    s" a routine's data-stack convention is selected into its own operations" T-LABEL
    WBND [: DSTACK-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= 8 T= TTRUE 0 T= TTRUE TTRUE 0 T= TTRUE 8 T= TTRUE 6 T= 0 T= ;
+   0 T= 0 T= TTRUE -8 T= TTRUE TTRUE -8 T= TTRUE 0 T= TTRUE 6 T= 0 T= ;
+
+\ ---- where the pointer stands, when the two ends disagree --------------------
+\ THE CASE THE PLACEMENT IS REALLY ABOUT. `+` takes two cells and leaves one, so
+\ the caller leaves the pointer at 16 and expects it back at 8: two required
+\ places, neither of which zeroes the other, and the base zeroes neither. One
+\ adjustment is therefore the best any place can do, and the rule picks the lower
+\ of the two tied places, so the routine stands at 8 - the return costs nothing
+\ and the entry costs the one `sub`.
+\
+\ AND BOTH SIGNS OF OFFSET APPEAR IN ONE ROUTINE, which is the other half of the
+\ statement: standing at 8 puts the first argument's cell one below the pointer
+\ and the second argument's cell exactly at it, so the two loads are -8 and 0.
+\ Neither is expressible without the unscaled signed form, and a placement
+\ confined to the unsigned one could not have chosen this place at all.
+: PLACE-BODY ( IR-CTX:ctx -- n n n n n n bool bool )
+   HIR-MOD
+   BUILD-ADD
+   2 1 SELECTED-HABU READ!
+   OPS
+   0 0 ATTR-INT
+   1 0 ATTR-INT
+   2 0 ATTR-INT
+   4 0 ATTR-INT
+   5 0 ATTR-INT
+   0 s" a64.dtake" OPCODE-IS?
+   5 s" a64.dpublish" OPCODE-IS? ;
+
+: PLACE-CASE ( -- )
+   s" the pointer stands where the fewest adjustments are needed" T-LABEL
+   WBND [: PLACE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 0 T= -8 T= 0 T= -8 T= 8 T= 7 T= ;
 
 \ ---- a value that only crosses the routine -----------------------------------
 \ THE RESIDENCY ANSWER, at its smallest. A routine that hands its argument back
 \ unchanged publishes it out of the very cell the caller wrote it into, so the
 \ load that would lift it into a register and the store that would put it back
-\ are both instructions with nothing to do. What is left is the two pointer
-\ moves - which are not this pass's to remove, and say so under their own dot
-\ habu-place-the-data-9f128e58 - and the return.
+\ are both instructions with nothing to do. What is left is the two pointer moves
+\ and the return - and BOTH MOVES ARE NOTHING TOO: the routine takes one cell and
+\ leaves one, so the place the caller left the pointer and the place it expects
+\ it back are the same place, the routine stands there, and each move is a
+\ distance of zero that the emitter writes no instruction for. The whole word is
+\ its own return, which is the engine's answer for the same body.
 \
 \ THE PAIR IS THE POINT. `swap` is the same routine with its two results in each
 \ other's cells: nothing is where it will be published from, so every load and
 \ every store is built. A pass that dropped stores by counting rather than by
 \ asking what the cell holds would pass the first case and lose the second, which
 \ is why they are asserted together.
-: PASS-BODY ( IR-CTX:ctx -- n bool bool bool )
+: PASS-BODY ( IR-CTX:ctx -- n n n bool bool bool )
    HIR-MOD
    BUILD-PASS
    1 1 SELECTED-HABU READ!
    OPS
+   0 0 ATTR-INT
+   1 0 ATTR-INT
    0 s" a64.dtake" OPCODE-IS?
    1 s" a64.dpublish" OPCODE-IS?
    2 s" a64.ret" OPCODE-IS? ;
@@ -1825,7 +1869,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : PASS-CASE ( -- )
    s" a value that only crosses the routine never leaves its slot" T-LABEL
    WBND [: PASS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE 3 T= ;
+   TTRUE TTRUE TTRUE 0 T= 0 T= 3 T= ;
 
 : EXCH-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool )
    HIR-MOD
@@ -2009,6 +2053,7 @@ public
    WIDE-CASE
    FUN-CASE
    DSTACK-CASE
+   PLACE-CASE
    PASS-CASE
    EXCH-CASE
    MEM-CASE

@@ -80,6 +80,19 @@
    screens them for the reserved register would be a claim about a file that
    has no reserved member, and `every_x_register_is_checked` refuses it.
 
+   AND TWO FORMS OF THE UNSCALED ADDRESSING MODE, FOR THE SAME REASON.  Ldur
+   and Stur are here because the chain emits them (src/compiler/native/emit.f):
+   since dot habu-place-the-data-9f128e58 a compiled routine stands its
+   data-stack pointer where the fewest adjustments are needed, so the cell an
+   access names is under the pointer as often as over it - and under it has no
+   spelling in the scaled Ldr and Str.  They are the only load and store forms
+   here whose offset is SIGNED, and it is not scaled either, so their field is
+   nine bits read as two's complement at bit twelve rather than twelve bits
+   scaled at bit ten.  A field that moved between the two would be wrong code
+   with nothing to catch it, which is what this file exists to prevent, and a
+   sign that was dropped would turn every access below the pointer into one far
+   above it.
+
    MODEL GAPS.  The remaining floating-point encoders (FMOVXD, FMOVDX, FMOVDD,
    FADD, FSUB, FMUL, FDIV, FNEG, FABS, FSQRT, FCMP, FCMP0, SCVTF, FCVTZS) are
    not modelled here; neither is `>LIMM`, the logical-immediate mask synthesis,
@@ -239,6 +252,8 @@ Inductive insn : Type :=
 | Asri (rd rn sh : Z)
 | Ldr (rt rn off : Z)
 | Str (rt rn off : Z)
+| Ldur (rt rn off : Z)
+| Stur (rt rn off : Z)
 | Ldrb (rt rn off : Z)
 | Strb (rt rn off : Z)
 | Ldrw (rt rn off : Z)
@@ -292,6 +307,8 @@ Definition enc (i : insn) : Z :=
   | Asri rd rn sh => Z.lor 0x9340FC00 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (fld (sh) 16)))
   | Ldr rt rn off => Z.lor 0xF9400000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off / 8) 10)))
   | Str rt rn off => Z.lor 0xF9000000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off / 8) 10)))
+  | Ldur rt rn off => Z.lor 0xF8400000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (low 9 off) 12)))
+  | Stur rt rn off => Z.lor 0xF8000000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (low 9 off) 12)))
   | Ldrb rt rn off => Z.lor 0x39400000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off) 10)))
   | Strb rt rn off => Z.lor 0x39000000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off) 10)))
   | Ldrw rt rn off => Z.lor 0xB9400000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off / 4) 10)))
@@ -364,6 +381,8 @@ Definition wf (i : insn) : bool :=
   | Asri rd rn sh => rok rd && rok rn && (0 <=? sh) && (sh <? 64)
   | Ldr rt rn off => rok rt && rok rn && (off mod 8 =? 0) && uok 12 (off / 8)
   | Str rt rn off => rok rt && rok rn && (off mod 8 =? 0) && uok 12 (off / 8)
+  | Ldur rt rn off => rok rt && rok rn && sok 9 off
+  | Stur rt rn off => rok rt && rok rn && sok 9 off
   | Ldrb rt rn off => rok rt && rok rn && uok 12 off
   | Strb rt rn off => rok rt && rok rn && uok 12 off
   | Ldrw rt rn off => rok rt && rok rn && (off mod 4 =? 0) && uok 12 (off / 4)
@@ -432,6 +451,8 @@ Definition checked_regs (i : insn) : list Z :=
   | Asri rd rn sh => [rd; rn]
   | Ldr rt rn off => [rt; rn]
   | Str rt rn off => [rt; rn]
+  | Ldur rt rn off => [rt; rn]
+  | Stur rt rn off => [rt; rn]
   | Ldrb rt rn off => [rt; rn]
   | Strb rt rn off => [rt; rn]
   | Ldrw rt rn off => [rt; rn]
@@ -486,6 +507,8 @@ Definition xregs (i : insn) : list Z :=
   | Asri rd rn sh => [rd; rn]
   | Ldr rt rn off => [rt; rn]
   | Str rt rn off => [rt; rn]
+  | Ldur rt rn off => [rt; rn]
+  | Stur rt rn off => [rt; rn]
   | Ldrb rt rn off => [rt; rn]
   | Strb rt rn off => [rt; rn]
   | Ldrw rt rn off => [rt; rn]
@@ -550,6 +573,8 @@ Definition row_Eori := R 0xFF800000 0xD2000000 (fun w => Eori (get 0 5 w) (get 5
 Definition row_Asri := R 0xFFC0FC00 0x9340FC00 (fun w => Asri (get 0 5 w) (get 5 5 w) (get 16 6 w)).
 Definition row_Ldr := R 0xFFC00000 0xF9400000 (fun w => Ldr (get 0 5 w) (get 5 5 w) (8 * get 10 12 w)).
 Definition row_Str := R 0xFFC00000 0xF9000000 (fun w => Str (get 0 5 w) (get 5 5 w) (8 * get 10 12 w)).
+Definition row_Ldur := R 0xFFE00C00 0xF8400000 (fun w => Ldur (get 0 5 w) (get 5 5 w) (sext 9 (get 12 9 w))).
+Definition row_Stur := R 0xFFE00C00 0xF8000000 (fun w => Stur (get 0 5 w) (get 5 5 w) (sext 9 (get 12 9 w))).
 Definition row_Ldrb := R 0xFFC00000 0x39400000 (fun w => Ldrb (get 0 5 w) (get 5 5 w) (get 10 12 w)).
 Definition row_Strb := R 0xFFC00000 0x39000000 (fun w => Strb (get 0 5 w) (get 5 5 w) (get 10 12 w)).
 Definition row_Ldrw := R 0xFFC00000 0xB9400000 (fun w => Ldrw (get 0 5 w) (get 5 5 w) (4 * get 10 12 w)).
@@ -609,6 +634,8 @@ Definition table : list row :=
   ; row_Asri
   ; row_Ldr
   ; row_Str
+  ; row_Ldur
+  ; row_Stur
   ; row_Ldrb
   ; row_Strb
   ; row_Ldrw
@@ -716,6 +743,7 @@ Ltac gz := first
   | rewrite (get_fld_zero _ _ _ _ 4) by side
   | rewrite (get_fld_zero _ _ _ _ 5) by side
   | rewrite (get_fld_zero _ _ _ _ 6) by side
+  | rewrite (get_fld_zero _ _ _ _ 9) by side
   | rewrite (get_fld_zero _ _ _ _ 12) by side
   | rewrite (get_fld_zero _ _ _ _ 13) by side
   | rewrite (get_fld_zero _ _ _ _ 16) by side
@@ -727,6 +755,7 @@ Ltac lz := first
   | rewrite (fld_land_disjoint _ _ 4) by side
   | rewrite (fld_land_disjoint _ _ 5) by side
   | rewrite (fld_land_disjoint _ _ 6) by side
+  | rewrite (fld_land_disjoint _ _ 9) by side
   | rewrite (fld_land_disjoint _ _ 12) by side
   | rewrite (fld_land_disjoint _ _ 13) by side
   | rewrite (fld_land_disjoint _ _ 16) by side
@@ -738,6 +767,7 @@ Ltac ls := first
   | rewrite (fld_land_super _ _ 4) by side
   | rewrite (fld_land_super _ _ 5) by side
   | rewrite (fld_land_super _ _ 6) by side
+  | rewrite (fld_land_super _ _ 9) by side
   | rewrite (fld_land_super _ _ 12) by side
   | rewrite (fld_land_super _ _ 13) by side
   | rewrite (fld_land_super _ _ 16) by side
@@ -1015,6 +1045,36 @@ Proof.
   - vm_compute; reflexivity.
   - cbv [table]; simpl; tauto.
   - cbv [row_Str rmask rval enc]. lfields.
+Qed.
+
+(* The two unscaled forms.  Their offset is the one load/store operand this
+   model carries as a SIGNED number, so it goes through `low` on the way into
+   the word and `sext` on the way out - the same two-place round trip a branch
+   delta makes - and `sext_low` inside `gfields` is what closes it.  They are
+   here because the chain emits them: since dot habu-place-the-data-9f128e58 a
+   compiled routine stands its data-stack pointer where the fewest adjustments
+   are needed, so the cell an access names is under the pointer as often as
+   over it, and under it has no spelling in the scaled forms above. *)
+Lemma dec_Ldur : forall rt rn off, wf (Ldur rt rn off) = true ->
+  decode (enc (Ldur rt rn off)) = Some (Ldur rt rn off).
+Proof.
+  intros rt rn off H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_Ldur).
+  - cbv [row_Ldur rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Ldur rmask rval enc]. lfields.
+Qed.
+
+Lemma dec_Stur : forall rt rn off, wf (Stur rt rn off) = true ->
+  decode (enc (Stur rt rn off)) = Some (Stur rt rn off).
+Proof.
+  intros rt rn off H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_Stur).
+  - cbv [row_Stur rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Stur rmask rval enc]. lfields.
 Qed.
 
 Lemma dec_Ldrb : forall rt rn off, wf (Ldrb rt rn off) = true ->
@@ -1367,6 +1427,8 @@ Proof.
   - apply dec_Asri.
   - apply dec_Ldr.
   - apply dec_Str.
+  - apply dec_Ldur.
+  - apply dec_Stur.
   - apply dec_Ldrb.
   - apply dec_Strb.
   - apply dec_Ldrw.
@@ -1447,6 +1509,8 @@ Definition opmask (i : insn) : Z :=
   | Asri _ _ _ => 0xFFC0FC00
   | Ldr _ _ _ => 0xFFC00000
   | Str _ _ _ => 0xFFC00000
+  | Ldur _ _ _ => 0xFFE00C00
+  | Stur _ _ _ => 0xFFE00C00
   | Ldrb _ _ _ => 0xFFC00000
   | Strb _ _ _ => 0xFFC00000
   | Ldrw _ _ _ => 0xFFC00000
@@ -1501,6 +1565,8 @@ Definition fldmask (i : insn) : Z :=
   | Asri _ _ _ => 0x003F03FF
   | Ldr _ _ _ => 0x003FFFFF
   | Str _ _ _ => 0x003FFFFF
+  | Ldur _ _ _ => 0x001FF3FF
+  | Stur _ _ _ => 0x001FF3FF
   | Ldrb _ _ _ => 0x003FFFFF
   | Strb _ _ _ => 0x003FFFFF
   | Ldrw _ _ _ => 0x003FFFFF

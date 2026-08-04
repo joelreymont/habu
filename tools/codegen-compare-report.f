@@ -524,11 +524,18 @@ private
    k j BIGGER-ROW? ;
 
 \ ---- the rows that lose on bytes today, and what closes each one --------------
-\ Two rows of the four corpora are bigger in the new column right now. Each is a
-\ known consequence of a capability the chain has not got yet, each has a dot
-\ that removes it, and a gate that went red on them would be red for work that is
-\ already scheduled. So they are written down HERE, by name, and the check
-\ subtracts them.
+\ ONE row of the four corpora is bigger in the new column right now. It is a
+\ known consequence of a capability the chain has not got yet, it has a dot that
+\ removes it, and a gate that went red on it would be red for work that is
+\ already scheduled. So it is written down HERE, by name, and the check subtracts
+\ it.
+\
+\ THE LIST WAS TWO ROWS AND IS NOW ONE. CODEGEN-CORPUS2:T-RES-WALK - the loop
+\ whose test is a call - came off it when the three mechanisms its diagnosis
+\ named landed: the pass-through residency (habu-keep-a-pass-8025401f), the block
+\ order (habu-order-blocks-to-f6d89653) and the data-stack placement
+\ (habu-place-the-data-9f128e58). It compiles to 36 bytes, which is the engine's
+\ own number for the same body, instruction for instruction.
 \
 \ WHY A LIST OF ROWS AND NOT A TOLERANCE. A tolerance - "a row may be up to so
 \ much bigger" - would also absorb the next loss, and the next loss is the whole
@@ -537,19 +544,18 @@ private
 \ AND WHY AN ENTRY THAT HAS STOPPED LOSING IS ITSELF A FINDING. Without that the
 \ list would outlive the defect: the day the dot lands the row stops being bigger,
 \ the entry stays, and the row is free to lose again with nobody told. So the
-\ list is checked in both directions and empties itself.
-2 constant KNOWN-LOSSES
+\ list is checked in both directions and empties itself - which is exactly how
+\ the entry above came off.
+1 constant KNOWN-LOSSES
 
 : KNOWN-LOSS$ ( n -- ptr u8 n ) {: e:n :}
-   e 0 = if s" CODEGEN-CORPUS2:T-RES-WALK" exit then
-   e 1 = if s" CODEGEN-CORPUS4:CALL-FAN-BIG" exit then
+   e 0 = if s" CODEGEN-CORPUS4:CALL-FAN-BIG" exit then
    E-CODEGEN-COMPARE-ROW throw ;
 
 \ The dot each entry dies with, printed beside the row so a reader of a report
 \ does not have to come here to find out who owns it.
 : KNOWN-WHY$ ( n -- ptr u8 n ) {: e:n :}
-   e 0 = if s" the loop whose test is a call; dies with habu-match-the-engine-1d6eb862" exit then
-   e 1 = if s" five sites over a callee only the chain copies; dies with habu-keep-a-pass-8025401f and habu-place-the-data-9f128e58" exit then
+   e 0 = if s" five copies of a callee the engine calls; dies with habu-measure-inline-cost-031e817e" exit then
    E-CODEGEN-COMPARE-ROW throw ;
 
 : KNOWN-AT ( ptr u8 n -- n ) {: a:ptr u:n :}

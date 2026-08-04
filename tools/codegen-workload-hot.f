@@ -61,10 +61,14 @@
 \ generator, is what decides whether a caller ever reaches the new code at all:
 \
 \   FOLD-C    src/core/checker.f:3542's SYM-FOLD-C, run once per byte of every
-\             symbol the checker compares. Its body has branches, so the engine
-\             will never copy it into a caller: it is a real call in both arms,
-\             and a workload that calls it measures the two code generators with
-\             no inlining in the way.
+\             symbol the checker compares. The ENGINE's code for it has branches
+\             and is over the size the engine will move, so the before-arm calls
+\             it. The CHAIN's code for it has neither: the two arms of a
+\             selection become one Csel and the routine is exactly the forty
+\             bytes the engine will copy, so the after-arm holds the body. That
+\             asymmetry is recorded at SCAN-BODY$ below with the dot that decides
+\             what to do about it; it was a call in both arms until the chain's
+\             fold lost its two data-stack pointer moves.
 \   COUNT-CH  lib/string.f:103's COUNT-CHAR, a loop carrying two values over a
 \             byte span. Also a real call in both arms, and the whole scan is
 \             INSIDE it - so a workload that calls it once per buffer spends
@@ -311,6 +315,21 @@ public
 \ in both arms. This is the shape the checker's symbol comparison really has -
 \ a fold per byte, called from the comparison's own loop - and the migration can
 \ only reach the callee.
+\
+\ AND ITS TWO ARMS ARE NO LONGER THE SAME SHAPE, which a reader of this row's
+\ delta has to know. The engine copies a callee of forty bytes or fewer into
+\ whatever it is compiling; the chain's fold used to be forty-eight and is now
+\ exactly forty (dot habu-place-the-data-9f128e58 took the two data-stack pointer
+\ moves out of it), so the arm compiled over the chain's column now holds the
+\ fold's body where it used to hold a call to it. The old arm still calls, so
+\ this row's delta is now "a call to the engine's fold, per byte" against "the
+\ chain's fold copied in, per byte" - which is MORE than what migrating the word
+\ buys the real checker, where the callers were compiled long ago and keep their
+\ call. Dot habu-restore-the-scan-65da9d00 carries the decision about whether the
+\ row should be forced back to a calling shape; until then the row is read with
+\ this paragraph beside it, and the wiring is still proved off the emitted code -
+\ tools/codegen-workload-scan.f's COPIED-FROM? finds the chain's own body in the
+\ arm, so which column the arm resolved to is a fact and not a search order.
 : SCAN-BODY$ ( -- ptr u8 n )
    s"  ( ptr u8 n -- n ) {: a:ptr u:n :} 0 u 0 ?do a i + c@ FOLD-C + loop ;" ;
 

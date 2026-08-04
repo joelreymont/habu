@@ -1040,7 +1040,7 @@ variable BACK-N
    s" a loop whose build order was already the best is written out unmoved" T-LABEL
    A64EMIT:BLOCKS 4 T=
    SELF-PLACED  A64EMIT:BLOCKS T=
-   A64EMIT:INSNS 12 T=
+   A64EMIT:INSNS 10 T=
 
    s" and it too keeps only its back edge" T-LABEL
    s" NMG-UNTIL" UNCOND-IN 1 T=

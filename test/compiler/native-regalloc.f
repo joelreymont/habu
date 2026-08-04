@@ -140,6 +140,21 @@ private
 : LEAF-N ( n -- A64EFF:routine )
    POOL-N LEAF ;
 
+\ The same leaf under the data-stack convention: its arguments arrive in slots
+\ 0.. of the caller's stack and its results are left in slots 0.., which is what
+\ gives the routine a data-stack pointer to place at all.
+: SLOTS-N ( n -- A64EFF:placeseq )
+   {: n:n :}
+   A64EFF:SEQ-NONE
+   n 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+
+: HABU-N ( n n n -- A64EFF:routine )
+   {: n:n in:n out:n :}
+   in SLOTS-N  out SLOTS-N  n POOL-N
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
 \ The same leaf with a frame of its own: a routine that spills has to have
 \ somewhere to spill to, and how deep that is, is the contract's declaration.
 : LEAF-FRAMED ( n n -- A64EFF:routine )
@@ -823,6 +838,89 @@ create TXT
    CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CC BB id 0 IR-BUILD:OP-RESULT@
    CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+\ ---- the four data-stack forms, built by hand --------------------------------
+\ Every number one of these carries is a DISTANCE from where the routine's
+\ data-stack pointer stands, and where it stands is the entry form's own field
+\ read against the place the caller left it. Building them by hand is the only
+\ way to hand the validator a routine that stands somewhere the placement in
+\ src/compiler/native/select.f would never have chosen - which is exactly what
+\ the cases below are for.
+: M-DSLOT-ATTR ( n -- )
+   {: off:n :}
+   CC BB  CC BB A64IR:KEY-DSLOT  CC BB off A64IR:DSLOT-ATTR  IR-BUILD:ADD-ATTR ;
+
+: M-DBYTES-ATTR ( n -- )
+   {: d:n :}
+   CC BB  CC BB A64IR:KEY-DBYTES  CC BB d A64IR:DBYTES-ATTR  IR-BUILD:ADD-ATTR ;
+
+: M-DTAKE ( n -- IR-ID:ir-value-id )
+   {: d:n :}
+   A64IR-OPCODE:DTAKE M-OPEN
+   M-TOKEN+
+   d M-DBYTES-ATTR
+   CLOSE-VALUE ;
+
+: M-DLOAD ( IR-ID:ir-value-id n -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: tok:IR-ID:ir-value-id off:n :}
+   A64IR-OPCODE:DLOAD M-OPEN
+   CC BB tok IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   M-TOKEN+
+   off M-DSLOT-ATTR
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 0 IR-BUILD:OP-RESULT@
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+: M-DSTORE ( IR-ID:ir-value-id IR-ID:ir-value-id n -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id tok:IR-ID:ir-value-id off:n :}
+   A64IR-OPCODE:DSTORE M-OPEN
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB tok IR-BUILD:ADD-OPERAND
+   M-TOKEN+
+   off M-DSLOT-ATTR
+   CLOSE-VALUE ;
+
+: M-DPUBLISH ( IR-ID:ir-value-id n -- )
+   {: tok:IR-ID:ir-value-id d:n :}
+   A64IR-OPCODE:DPUBLISH M-OPEN
+   CC BB tok IR-BUILD:ADD-OPERAND
+   d M-DBYTES-ATTR
+   CC BB IR-BUILD:END-OP drop ;
+
+\ The return of a routine under that convention carries nothing: its results are
+\ already in the cells the caller reads them out of.
+: M-RET0 ( -- )
+   A64IR-OPCODE:RET M-OPEN
+   CC BB IR-BUILD:END-OP drop ;
+
+\ ---- a call site, built by hand ----------------------------------------------
+\ The branch and the frame the caller's own return address lives in. A call site
+\ carries TWO distances: where the pointer has to stand when the branch is taken,
+\ which is the callee's argument base, and where it stands when the branch comes
+\ back, which is the callee's result base. Both are measured from the place the
+\ routine stands at, so a site can be moved without touching anything else in the
+\ module - which is what the case below does.
+: M-DBACK-ATTR ( n -- )
+   {: d:n :}
+   CC BB  CC BB A64IR:KEY-DBACK  CC BB d A64IR:DBACK-ATTR  IR-BUILD:ADD-ATTR ;
+
+: M-LINK ( IR-ID:ir-value-id A64IR:opcode -- IR-ID:ir-value-id )
+   {: tok:IR-ID:ir-value-id o:A64IR:opcode :}
+   o M-OPEN
+   CC BB tok IR-BUILD:ADD-OPERAND
+   M-TOKEN+
+   A64FRAME:LINK-SLOT M-SLOT-ATTR
+   CLOSE-VALUE ;
+
+: M-CALL ( IR-ID:ir-value-id n n -- IR-ID:ir-value-id )
+   {: tok:IR-ID:ir-value-id give:n back:n :}
+   A64IR-OPCODE:CALL M-OPEN
+   CC BB tok IR-BUILD:ADD-OPERAND
+   M-TOKEN+
+   give M-DBYTES-ATTR
+   back M-DBACK-ATTR
+   CLOSE-VALUE ;
 
 \ ---- the shape that cannot fit -----------------------------------------------
 \ Five literals are materialised before any of them is read, so all five are live
@@ -2254,7 +2352,188 @@ create TXT
    s" an accepted answer stops answering when a later walk replaces it" T-LABEL
    [: STALE ;] E-A64RAV-STATE TTHROWSQ ;
 
+\ ---- where the data-stack pointer stands, and the four ways to get it wrong ---
+\ WHAT THESE MODULES ARE. `: DBL ( n -- n ) dup + ;` under the data-stack
+\ convention, built straight into the machine dialect so that the one number the
+\ placement chooses can be set to something the placement would never choose. The
+\ routine takes one cell and leaves one, so the place the caller left the pointer
+\ and the place it expects it back are the same place, 8: standing there costs no
+\ adjustment at either end, and the one cell the routine touches is then one
+\ BELOW the pointer, which is the -8 the two accesses carry.
+\
+\ AND THE FIRST ONE IS THE CANONICAL LOWERING, asserted to be ACCEPTED, because
+\ every refusal below is a refusal of a module that differs from it in exactly
+\ one number. Without it the four cases would only say "these are rejected" and
+\ not "these are rejected and the right one is not".
+: BUILD-DBL ( n n n -- )
+   {: stand:n off:n leave:n :}
+   s" DBL" 1 1 OPEN-FUN
+   A64IR:SLOT-WIDTH stand - M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 off M-DLOAD {: v:IR-ID:ir-value-id t1:IR-ID:ir-value-id :}
+   v v M-ADD {: w:IR-ID:ir-value-id :}
+   w t1 off M-DSTORE {: t2:IR-ID:ir-value-id :}
+   t2  leave stand -  M-DPUBLISH
+   M-RET0
+   CLOSE-FUN ;
+
+: DBL-ACCEPT ( n n n -- )
+   {: stand:n off:n leave:n :}
+   stand off leave BUILD-DBL
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  4 1 1 HABU-N  A64RA:ALLOCATE
+   m  4 1 1 HABU-N  A64RAV:ACCEPT ;
+
+\ The lowering the placement really makes: standing at 8, both adjustments zero,
+\ both accesses one cell under the pointer.
+: DBL-CANON-BODY ( IR-CTX:ctx -- bool )
+   A64-MOD
+   8 -8 8 DBL-ACCEPT
+   A64RAV:ACCEPTED? ;
+
+\ THE POINTER MOVED AND THE ACCESSES NOT MOVED WITH IT. The entry form says the
+\ body stands at the base; every access still names the cell it named when the
+\ body stood one above it. Nothing about the module is out of range and nothing
+\ is missing: what is wrong is that two statements about one pointer disagree,
+\ and the cell the load then names is under the caller's window altogether.
+: DBL-MISPLACED-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   0 -8 8 DBL-ACCEPT ;
+
+\ THE REQUIRED MOVE SKIPPED. The body stands at the base, so the results are
+\ published from there and the pointer has to be moved up over them before the
+\ routine returns - and this module leaves it where it stood. Every access is in
+\ range and every cell is the cell it should be; the routine simply hands its
+\ caller a stack whose top is one cell out.
+: DBL-UNPUBLISHED-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   0 0 0 DBL-ACCEPT ;
+
+\ THE NET-ZERO PAIR KEPT. This module is CORRECT: it stands at the base, moves
+\ the pointer down at entry and back up at exit, and names every cell rightly -
+\ it is what this chain emitted before the placement existed. What is wrong with
+\ it is that the two moves cancel, so a place that needed neither was available
+\ and two instructions are spent reaching one that needed both. The validator
+\ re-derives the choice and refuses it, exactly as it refuses a store that writes
+\ what the cell already holds.
+: DBL-NET-ZERO-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   0 0 8 DBL-ACCEPT ;
+
+\ THE PLACE OUT OF REACH. A body standing further above the base than the
+\ unscaled field reaches could not address the base at all, so the place is
+\ refused where it is derived rather than at whichever access first could not be
+\ encoded.
+: DBL-DEEP-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   A64EFF:SLOT-BACK A64IR:SLOT-WIDTH + -8 8 DBL-ACCEPT ;
+
+: DBL-CANON ( -- bool )
+   WBND [: DBL-CANON-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DBL-MISPLACED ( -- )
+   WBND [: DBL-MISPLACED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DBL-UNPUBLISHED ( -- )
+   WBND [: DBL-UNPUBLISHED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DBL-NET-ZERO ( -- )
+   WBND [: DBL-NET-ZERO-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DBL-DEEP ( -- )
+   WBND [: DBL-DEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: PLACE-ACCEPT-CASE ( -- )
+   s" the lowering that stands where the fewest adjustments are needed is accepted"
+   T-LABEL
+   DBL-CANON TTRUE ;
+
+: PLACE-MISPLACED-CASES ( -- )
+   s" a pointer moved without its accesses is refused" T-LABEL
+   [: DBL-MISPLACED ;] E-A64RAV-DSTACK TTHROWSQ
+   s" and so is a routine that returns with the pointer where the body stood"
+   T-LABEL
+   [: DBL-UNPUBLISHED ;] E-A64RAV-DSTACK TTHROWSQ ;
+
+: PLACE-CANON-CASES ( -- )
+   s" a pair of moves that cancel is refused, place and all" T-LABEL
+   [: DBL-NET-ZERO ;] E-A64RAV-DSTACK TTHROWSQ
+   s" and so is a place further above the base than an access can reach back"
+   T-LABEL
+   [: DBL-DEEP ;] E-A64RAV-DSTACK TTHROWSQ ;
+
+\ ---- and the place a BRANCH is taken from ------------------------------------
+\ `: SELF ( n -- n ) SELF ;` is the smallest routine there is with a call in it,
+\ and the smallest that can be entered at the wrong place. It hands its argument
+\ straight on, so the cell the callee reads its argument out of is the cell this
+\ routine's caller wrote, nothing is stored and nothing is loaded, and the four
+\ places the routine requires - the caller's, the callee's argument base, the
+\ callee's result base and the caller's again - are all one place. So it stands
+\ there and every one of its adjustments is nothing: the routine is its frame,
+\ its saved return address, one branch and its return.
+\
+\ WHAT MOVING THE SITE DOES. Add one cell to both of the site's distances and the
+\ branch is taken with the pointer one cell above the callee's base. The callee
+\ then reads its argument out of a cell this routine never wrote and leaves its
+\ result in one this routine never publishes - and the module says so about
+\ itself: the cells a branch publishes are the cells under where it is taken
+\ from, and one of them is a cell no path of this routine has defined.
+: BUILD-SELF ( n n -- )
+   {: give:n back:n :}
+   s" SELF" 1 1 OPEN-FUN
+   A64EFF:SP-ALIGN M-RESERVE {: f0:IR-ID:ir-value-id :}
+   f0 A64IR-OPCODE:LINKSAVE M-LINK {: f1:IR-ID:ir-value-id :}
+   0 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 give back M-CALL {: t1:IR-ID:ir-value-id :}
+   t1 0 M-DPUBLISH
+   f1 A64IR-OPCODE:LINKLOAD M-LINK {: f2:IR-ID:ir-value-id :}
+   f2 A64EFF:SP-ALIGN M-RELEASE
+   M-RET0
+   CLOSE-FUN ;
+
+: CALL-HABU-N ( n n n -- A64EFF:routine )
+   {: n:n in:n out:n :}
+   in SLOTS-N  out SLOTS-N  n POOL-N
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
+
+: SELF-ACCEPT ( n n -- )
+   {: give:n back:n :}
+   give back BUILD-SELF
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  4 1 1 CALL-HABU-N  A64RA:ALLOCATE
+   m  4 1 1 CALL-HABU-N  A64RAV:ACCEPT ;
+
+: SELF-CANON-BODY ( IR-CTX:ctx -- bool )
+   A64-MOD
+   0 0 SELF-ACCEPT
+   A64RAV:ACCEPTED? ;
+
+: SELF-HIGH-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   A64IR:SLOT-WIDTH A64IR:SLOT-WIDTH SELF-ACCEPT ;
+
+: SELF-CANON ( -- bool )
+   WBND [: SELF-CANON-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: SELF-HIGH ( -- )
+   WBND [: SELF-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: CALL-PLACE-ACCEPT-CASE ( -- )
+   s" a call whose callee's base is where the routine already stands costs nothing"
+   T-LABEL
+   SELF-CANON TTRUE ;
+
+: CALL-PLACE-REFUSE-CASE ( -- )
+   s" a branch taken from anywhere but the callee's base is refused" T-LABEL
+   [: SELF-HIGH ;] E-A64RAV-DRES TTHROWSQ ;
+
 \ ---- groups ------------------------------------------------------------------
+: GROUP-PLACE-ACCEPT ( IR-CTX:ctx -- ) drop PLACE-ACCEPT-CASE ;
+: GROUP-PLACE-MOVED ( IR-CTX:ctx -- ) drop PLACE-MISPLACED-CASES ;
+: GROUP-PLACE-CANON ( IR-CTX:ctx -- ) drop PLACE-CANON-CASES ;
+: GROUP-CALL-PLACE ( IR-CTX:ctx -- ) drop CALL-PLACE-ACCEPT-CASE ;
+: GROUP-CALL-PLACE-BAD ( IR-CTX:ctx -- ) drop CALL-PLACE-REFUSE-CASE ;
 : GROUP-SHAPE ( IR-CTX:ctx -- )     drop SHAPE-REFUSE-CASES ;
 : GROUP-TIE ( IR-CTX:ctx -- )       drop TIE-REFUSE-CASES ;
 : GROUP-PRESSURE ( IR-CTX:ctx -- )  drop PRESSURE-REFUSE-CASES ;
@@ -2313,6 +2592,11 @@ public
    MB-LOWER-CASE
    MB-FIXED-CASE
    RESERVED-CASES
+   WBND [: GROUP-PLACE-ACCEPT ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-PLACE-MOVED ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-PLACE-CANON ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-CALL-PLACE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-CALL-PLACE-BAD ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-PRESSURE ;] IR-CTX:WITH-CONTEXT

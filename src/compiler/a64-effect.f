@@ -298,6 +298,13 @@ SEQ-LEN-SHIFT PLACE-BITS / constant SEQ-MAX-N   \ positions one cell holds
 8 constant WIDEST                     \ bytes moved by the Ldr and Str forms
 16 constant SP-ALIGN-N                \ the stack pointer is 16-byte aligned
 
+\ The unscaled load and store field: nine bits read as a signed number of BYTES,
+\ so an access can name a byte below the register it is taken from as well as
+\ above it. It is a second field on the same instruction group rather than a
+\ second group, and it is what makes an access below a base expressible at all.
+\ The number below is the DEEPEST byte under the base such a field can name.
+1 8 lshift constant BACK-MAX-N
+
 OFF-MAX WIDEST * dup SP-ALIGN-N mod - constant FRAME-MAX-N
 
 \ ---- trait bits --------------------------------------------------------------
@@ -559,6 +566,14 @@ public
 : SLOT-REACH ( n -- n )
    dup WIDTH-OK? 0= if E-A64EFF-SLOT throw then
    OFF-MAX * ;
+
+\ And the deepest byte UNDER the base that an access can name, through the
+\ unscaled signed field. It takes no width because that field is not scaled: the
+\ same nine bits mean the same bytes whatever the access moves. It is answered
+\ as a positive magnitude, so a consumer writes `negate` where it means an
+\ offset and reads it as a depth where it means a bound.
+: SLOT-BACK ( -- n )
+   BACK-MAX-N ;
 
 \ ---- register sets -----------------------------------------------------------
 : GPR-SET ( n -- A64EFF:gprs )    GPR-CK MK-G ;

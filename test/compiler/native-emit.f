@@ -728,19 +728,56 @@ $1000 constant BUMP-ADDR
 \ address's, and the load's transfer field is the loaded value's register. Both
 \ offsets are zero, which is `[Xn]`, and a form that grew an offset it should not
 \ have moves these numbers.
+\
+\ AND THE ROUTINE IS ELEVEN INSTRUCTIONS AND NOT THIRTEEN, which is where the
+\ positions below come from. It takes one cell and leaves one, so the place the
+\ caller left the data-stack pointer and the place it expects it back are the
+\ same place; the routine stands there, and the two adjustments that used to
+\ bracket the body are distances of zero that no instruction is written for.
 : BUMP-BODY ( IR-CTX:ctx -- n n n n )
    HIR-MOD
    BUILD-BUMP
    6 1 1 EMITTED-HABU
    A64EMIT:INSNS
-   3 A64EMIT:WORD@                   \ str x0, [x1] - the argument into the cell
-   5 A64EMIT:WORD@                   \ ldr x0, [x0] - and back out of it
-   9 A64EMIT:WORD@ ;                 \ str x0, [x1] - the bumped value in again
+   2 A64EMIT:WORD@                   \ str x0, [x1] - the argument into the cell
+   4 A64EMIT:WORD@                   \ ldr x0, [x0] - and back out of it
+   8 A64EMIT:WORD@ ;                 \ str x0, [x1] - the bumped value in again
 
 : BUMP-CASE ( -- )
    s" an addressed store and load emit through the registers they name" T-LABEL
    WBND [: BUMP-BODY ;] IR-CTX:WITH-CONTEXT
-   $F9000020 T= $F9400000 T= $F9000020 T= 13 T= ;
+   $F9000020 T= $F9400000 T= $F9000020 T= 11 T= ;
+
+\ ---- the two addressing modes a data-stack access is written in --------------
+\ THE WHOLE OF WHAT THE PLACEMENT COSTS THE ENCODER. A routine stands where the
+\ fewest pointer adjustments are needed, so the cell an access names can be UNDER
+\ the pointer as easily as over it - and under it has no spelling in the scaled
+\ unsigned Ldr and Str. It is the unscaled SIGNED pair, Ldur and Stur, and which
+\ of the two an access is written in is decided by the sign of its offset and
+\ nothing else.
+\
+\ WHY THE EXACT WORDS AND NOT THE MNEMONIC. The two forms differ in one bit of
+\ the size field and hold their offsets in DIFFERENT fields - twelve scaled bits
+\ at bit ten against nine signed bits at bit twelve - so an access written in the
+\ wrong one reads a cell somewhere else entirely rather than failing to encode.
+\ Squaring one cell is the smallest routine that has both: it stands at 8, so its
+\ load and its store are both eight bytes under the pointer, and both are the
+\ negative form. The routine is also RUN, in RUN-SQUARE-CASE above, over the same
+\ contract - so a wrong field would answer something other than forty-nine as
+\ well as read differently here.
+: SQUARE-HABU-BODY ( IR-CTX:ctx -- n n n n )
+   HIR-MOD
+   BUILD-SQUARE
+   4 1 1 EMITTED-HABU
+   A64EMIT:INSNS
+   0 A64EMIT:WORD@                   \ ldur x0, [x19, #-8] - the argument's cell
+   2 A64EMIT:WORD@                   \ stur x0, [x19, #-8] - the result into it
+   7 PUBLISH NRUN:ENTER1 ;
+
+: SQUARE-HABU-CASE ( -- )
+   s" a cell under the pointer is written in the unscaled signed form" T-LABEL
+   WBND [: SQUARE-HABU-BODY ;] IR-CTX:WITH-CONTEXT
+   49 T= $F81F8260 T= $F85F8260 T= 4 T= ;
 
 \ ---- a program that does not fit ---------------------------------------------
 \ The whole spill route, ending in bytes that run: allocate the chain, lower the
@@ -1062,6 +1099,7 @@ public
    SUM3-HIGH-CASE
    WIDE-CASE
    BUMP-CASE
+   SQUARE-HABU-CASE
    MAP-CASE
    RUN-SQUARE-CASE
    RUN-DIFF-CASE

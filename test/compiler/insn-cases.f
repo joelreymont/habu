@@ -102,6 +102,14 @@ private
    form F-STRB = if a b c STRB, true exit then
    form F-LDRW = if a b c LDRW, true exit then
    form F-STRW = if a b c STRW, true exit then
+\ The two unscaled forms reach their encoder directly and go into the buffer
+\ through the same EMITW every mnemonic ends in, exactly as a shifted move-wide
+\ row does above. They have no mnemonic of their own because nothing writes
+\ them by hand: the chain's emitter calls ENC-LDUR and ENC-STUR itself
+\ (src/compiler/native/emit.f), so the encoder IS the shipped word here and a
+\ mnemonic wrapper would be vocabulary the engine builder never writes.
+   form F-LDUR = if a b c ENC-LDUR EMITW true exit then
+   form F-STUR = if a b c ENC-STUR EMITW true exit then
    form F-LDAR = if a b LDAR, true exit then
    form F-STLR = if a b STLR, true exit then
    false ;

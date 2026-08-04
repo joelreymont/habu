@@ -607,6 +607,17 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    id want ATTR-SLOT {: k:n :}
    id k ATTR-INT-AT ;
 
+\ Whether an operation carries a key at all. ATTR-SLOT above refuses a key that
+\ is missing, because every reader that asks for one is reading a field its
+\ operation's schema requires; this is the other question, asked by a reader that
+\ walks operations of every form and acts on the fields it FINDS.
+: ATTR-HAS? ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- bool )
+   {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
+   false
+   id ATTRS-OF 0 ?do
+      id i ATTR-KEY-AT want SAME-SYM? if drop true leave then
+   loop ;
+
 : IMM-OF ( IR-ID:ir-op-id -- n )
    0 BND-IMM @ ATTR-INT ;
 
@@ -750,21 +761,29 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 \ other pointer. The base is A64EFF:DSTACK-GPR - the register the running engine
 \ keeps the data stack in - asked for rather than written here, for the same
 \ reason the frame accesses ask for the stack-pointer operand.
-: WORD-DTAKE ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-SUBI ;
+\
+\ WHICH ADDRESSING MODE AN ACCESS IS WRITTEN IN. The offset an access carries is
+\ the distance from where the pointer stands to the cell it names, and the
+\ placement in src/compiler/native/select.f stands the pointer where the fewest
+\ adjustments are needed - so a cell can be under the pointer as easily as over
+\ it. Over it is the scaled unsigned field, Ldr and Str; under it is the unscaled
+\ signed field, Ldur and Stur. It is ONE dialect form written two ways rather
+\ than two forms, because which way it goes is not a property of the access: the
+\ same a64.dload names the same cell whichever place the routine happens to
+\ stand at. Both are one instruction, so nothing about the layout turns on it.
+: DENC-LDR ( n n n -- n )
+   dup 0 < if ENC-LDUR exit then ENC-LDR ;
 
-: WORD-DPUBLISH ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-ADDI ;
+: DENC-STR ( n n n -- n )
+   dup 0 < if ENC-STUR exit then ENC-STR ;
 
 : WORD-DLOAD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  ENC-LDR ;
+   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-LDR ;
 
 : WORD-DSTORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  ENC-STR ;
+   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-STR ;
 
 \ ---- the two addressed forms -------------------------------------------------
 \ The same Ldr and Str the frame and the data stack use, with the base taken out
@@ -1171,11 +1190,28 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    id COPY? 0= if false exit then
    id 0 RESULT-REG  id 0 OPERAND-REG  = ;
 
+\ How many of an operation's data-stack adjustments are no instruction at all.
+\ The question is asked of the operation and not of its opcode - which is the
+\ rule every reader in this file follows - so an operation carrying one
+\ adjustment answers about that one, a call carrying two answers about both, and
+\ an operation carrying neither answers nothing.
+: DZERO1 ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
+   {: id:IR-ID:ir-op-id key:IR-ID:ir-symbol-id :}
+   id key ATTR-HAS? 0= if 0 exit then
+   id key ATTR-INT 0= if 1 exit then
+   0 ;
+
+: DZERO-MOVES ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-DBYTES @ DZERO1
+   id 0 BND-DBACK @ DZERO1 + ;
+
 : OP-INSNS ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT INSNS-OF
    id home FALL-THRU? if 1- then
-   id SELF-MOV? if 1- then ;
+   id SELF-MOV? if 1- then
+   id DZERO-MOVES - ;
 
 : BLOCK-INSNS ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id home:n :}
@@ -1451,11 +1487,45 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    id  ENC-BRK  APPEND
    id  id TRIPLE ENC-SDIV  APPEND ;
 
-\ One call, which is three instructions: the data-stack pointer up over
-\ everything the callee is being handed, the branch that leaves the return
-\ address in the link register, and the pointer back down over everything the
-\ callee left. The two adjustments are the operation's own fields; only the
-\ branch is this pass's arithmetic.
+\ ---- moving the data-stack pointer -------------------------------------------
+\ One adjustment, and the whole of what an adjustment is: a distance, in
+\ whichever direction its sign names, and NO INSTRUCTION AT ALL when it is zero.
+\ Zero is the ordinary case rather than the exception - the placement in
+\ src/compiler/native/select.f stands the routine's pointer where the most of
+\ these come out zero - and an `add x19, x19, #0` would be an instruction that
+\ moves nothing, written because a field happened to be there.
+\
+\ THE ELISION IS THE LAYOUT'S RULE TOO. DZERO-MOVES above answers, from the
+\ operation, how many of its adjustments are nothing, and BOTH the layout and
+\ this word are that one answer - the same discipline SELF-MOV? and FALL-THRU?
+\ keep, and for the same reason: an instruction the layout counted and the
+\ emitter did not write moves every branch after it.
+: PUT-DMOVE ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id d:n :}
+   d 0= if exit then
+   d 0 > if
+      id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR d  ENC-ADDI  APPEND
+      exit
+   then
+   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR d negate  ENC-SUBI  APPEND ;
+
+\ The routine's own two, which differ only in which way the field is read: the
+\ entry field says how far DOWN from where the caller left the pointer the body
+\ stands, and the exit field how far UP from there the results are published.
+: PUT-DTAKE ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id DBYTES-SIZE negate  PUT-DMOVE ;
+
+: PUT-DPUBLISH ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id DBYTES-SIZE  PUT-DMOVE ;
+
+\ One call, which is the branch and up to two adjustments: the data-stack
+\ pointer to the base the callee is entered at, the branch that leaves the return
+\ address in the link register, and the pointer back to where the body stands.
+\ The two adjustments are the operation's own fields and either of them can be a
+\ distance of nothing, which is no instruction; only the branch is this pass's
+\ arithmetic, and only the branch is always written.
 \
 \ THE TARGET IS BLOCK ZERO OF THE ROUTINE BEING EMITTED, which is where the
 \ caller entered and therefore where the callee has to enter: the prologue that
@@ -1485,12 +1555,13 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 
 : PUT-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-ADDI  APPEND
+   id  id DBYTES-SIZE  PUT-DMOVE
    id  CALL-BLOCK DELTA BL-WORD  APPEND
-   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBACK-SIZE  ENC-SUBI  APPEND ;
+   id  id DBACK-SIZE negate  PUT-DMOVE ;
 
 \ ---- calling another word ----------------------------------------------------
-\ The same three instructions, and only the middle one is computed differently.
+\ The same one to three instructions, and only the branch is computed
+\ differently.
 \ A self-call's target is block zero of this routine, so its displacement is the
 \ label table's answer; this one's target is an address, so the displacement is
 \ that address less the address the branch instruction itself will occupy - which
@@ -1523,9 +1594,9 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : PUT-WORD-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id ENTRY-ADDR NOTE-CALLEE
-   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-ADDI  APPEND
+   id  id DBYTES-SIZE  PUT-DMOVE
    id  id WORD-DELTA BL-WORD  APPEND
-   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBACK-SIZE  ENC-SUBI  APPEND ;
+   id  id DBACK-SIZE negate  PUT-DMOVE ;
 
 \ One copy, which is one instruction unless it is a copy from a register into
 \ itself, and then it is none. SELF-MOV? is the layout's own word, asked here
@@ -1577,10 +1648,10 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       load     OF id  id WORD-LOAD  APPEND ENDOF
       reserve  OF id  id WORD-RESERVE  APPEND ENDOF
       release  OF id  id WORD-RELEASE  APPEND ENDOF
-      dtake    OF id  id WORD-DTAKE  APPEND ENDOF
+      dtake    OF id PUT-DTAKE ENDOF
       dload    OF id  id WORD-DLOAD  APPEND ENDOF
       dstore   OF id  id WORD-DSTORE  APPEND ENDOF
-      dpublish OF id  id WORD-DPUBLISH  APPEND ENDOF
+      dpublish OF id PUT-DPUBLISH ENDOF
       aload    OF id  id WORD-ALOAD  APPEND ENDOF
       astore   OF id  id WORD-ASTORE  APPEND ENDOF
       abload   OF id  id WORD-ABLOAD  APPEND ENDOF

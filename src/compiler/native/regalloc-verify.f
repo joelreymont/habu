@@ -696,27 +696,22 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ with a fixed sequence, and this is where the module is measured against the
 \ declaration that sequence came from. Four facts are decidable from one module
 \ and one contract, and all four are checked by VDSTACK-CK below: the pointer is
-\ moved down over exactly the arguments the contract declares and up over exactly
-\ the results; each load names the slot the argument place at its position names,
-\ in that order; each store names the slot the result place at its position
-\ names, in that order; and nothing anywhere else touches the data stack.
+\ moved from where the caller left it to where the body stands, and from there to
+\ exactly one past the results before the routine returns; each load names the
+\ slot the argument place at its position names, in that order; each store names
+\ the slot the result place at its position names, in that order; and nothing
+\ anywhere else touches the data stack.
 \
 \ WHAT IS NOT DECIDABLE HERE, and its owner. Whether the value a store publishes
 \ is the value the program computed for that result is a statement about the
 \ module the selector read, and this file is handed one module - the same gap the
 \ spill lowering has (dot habu-prove-the-spill-0294e0e8), with the same owner
 \ (dot habu-prove-a-data-df458151).
-: DTAKE-AT? ( IR-ID:ir-block-id n n -- )
+: DMOVE-AT? ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id at:n want:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
    id DSLOT-OF NOSLOT <> if E-A64RAV-DSTACK throw then
    id DBYTES-OF want <> if E-A64RAV-DSTACK throw then ;
-
-: DSLOT-AT? ( IR-ID:ir-block-id n n -- )
-   {: bk:IR-ID:ir-block-id at:n want:n :}
-   bk at OP-AT {: id:IR-ID:ir-op-id :}
-   id DBYTES-OF NOSLOT <> if E-A64RAV-DSTACK throw then
-   id DSLOT-OF want <> if E-A64RAV-DSTACK throw then ;
 
 \ Every slot the module names is written before it is read, and no slot is
 \ written twice. See the header for why the second rule is the decidable form of
@@ -1294,6 +1289,59 @@ variable VD-S
 variable VD-PREV
 variable VD-MOVED
 
+\ ---- where the pointer stands, re-derived ------------------------------------
+\ THE THIRD DERIVATION. Every number the four data-stack forms carry is a
+\ DISTANCE from the data-stack pointer, and the pointer is not at the base of the
+\ routine's window any more: src/compiler/native/select.f stands it wherever the
+\ fewest adjustments are needed and writes every offset against that place. So
+\ this file cannot read a slot off an attribute; it has to know where the pointer
+\ IS at each point, and it works that out from the module and the contract alone.
+\
+\ WHICH IS ONE NUMBER, and that is a fact about the machine rather than a
+\ simplification. The pointer is a register: it holds one value at a time, and a
+\ body that stood in two places would need an adjustment on every edge between
+\ them, which is more instructions and never fewer. So the routine stands at ONE
+\ place; it is entered at 8*in, moved to that place by the entry form, moved to
+\ the callee's base and back at each call, and moved to 8*out to return. The
+\ entry form's own field is what says where: the caller left the pointer at 8*in
+\ and that form moves it down by what it carries, so the place is the difference,
+\ and every other rule below is measured from it.
+variable VD-STAND                    \ where the body's data-stack pointer stands
+0 VD-STAND !
+variable VD-ENTRY                    \ where the caller leaves it: 8*in
+0 VD-ENTRY !
+variable VD-LEAVE                    \ where the caller expects it back: 8*out
+0 VD-LEAVE !
+
+\ AND WHY THE PLACE ITSELF IS RE-DERIVED AND NOT MERELY READ. A place that is
+\ inside the bound and consistent with every offset written against it is still
+\ the wrong place if some other place would have cost fewer instructions: the
+\ adjustments a routine does not need are exactly the adjustments this whole
+\ capability exists to delete, so a module carrying one is a module whose
+\ lowering is not the canonical one - the same judgement this file already makes
+\ about a store that writes what the cell holds and a load of a value already in
+\ a register. The places a routine REQUIRES are decidable from the module: one
+\ where the caller leaves the pointer, one where it expects it back, and two per
+\ call site, which are the two distances that site carries. So the choice is
+\ re-derived from those and the module is refused if it stands anywhere else.
+\
+\ AND THE COLLECTION HAS THE SAME SIZE AS THE SELECTOR'S SURVEY, and gives up in
+\ the same way. src/compiler/native/select.f keeps the base for a routine with
+\ more required places than its survey holds, because standing at the base is
+\ always available and always correct; a routine past that size therefore has no
+\ chosen place to re-derive, and this rule stands aside for it while every other
+\ rule here still applies. The two sizes are one number twice for one reason: two
+\ different ones would make this rule refuse the very modules the selector
+\ decided not to place.
+256 constant VDREQ-MAX               \ places one routine's collection holds
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create VD-REQ VDREQ-MAX cells allot
+variable VD-REQ-N
+variable VD-REQ-OVER
+variable VD-BEST
+variable VD-BCOST
+
 : VD-WINDOW? ( n -- bool )
    dup 0 < if drop false exit then
    VDSLOTS < ;
@@ -1367,6 +1415,32 @@ variable VD-MOVED
    v s cells VD-VCUR + !
    d s cells VD-DCUR + ! ;
 
+\ The cell one of those distances names. It is the distance plus where the
+\ pointer stands, and it has to come out a whole cell at or above the base: a
+\ distance that names a cell under the caller's window, or a cell boundary the
+\ stack has not got, is not an access of this routine's stack at all.
+: VDCELL ( n -- n )
+   VD-STAND @ + {: off:n :}
+   off 0 < if E-A64RAV-DSTACK throw then
+   off A64IR:SLOT-WIDTH mod 0<> if E-A64RAV-DSTACK throw then
+   off A64IR:SLOT-WIDTH / ;
+
+\ And the reach of the field it is written in, which is the whole of what makes
+\ the placement's freedom safe: over the pointer an access is the scaled unsigned
+\ field, under it the unscaled signed one, and A64EFF answers both. It is asked
+\ of the distance rather than of the cell, because the distance is what the
+\ instruction holds.
+: VDREACH-CK ( n -- )
+   {: off:n :}
+   off A64EFF:SLOT-BACK negate < if E-A64RAV-DSTACK throw then
+   off A64IR:SLOT-WIDTH A64EFF:SLOT-REACH > if E-A64RAV-DSTACK throw then ;
+
+: VDSLOT-CELL ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id DSLOT-OF {: off:n :}
+   off VDREACH-CK
+   off VDCELL ;
+
 \ Is this content a value of the module - the only kind a register can already
 \ hold, and therefore the only kind that makes an access unnecessary?
 : VD-NAMED? ( n -- bool )
@@ -1386,8 +1460,9 @@ variable VD-MOVED
 \ inside the take-back run and are defined, which is all an omitted store needs.
 : VDCALL-XFER ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id DBACK-OF VDCELL {: back:n :}
    VDSLOTS 0 ?do VD-BOT VD-UNDEF i VDPUT loop
-   id DBACK-OF A64IR:SLOT-WIDTH / 0 ?do
+   back 0 ?do
       id i VDCALLRES  VD-DEF  i VDPUT
    loop ;
 
@@ -1411,7 +1486,7 @@ variable VD-MOVED
 \ is the map at that operation, and re-deriving it twice would be two answers.
 : VDLOAD-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id DSLOT-OF A64IR:SLOT-WIDTH / {: s:n :}
+   id VDSLOT-CELL {: s:n :}
    s VDD@ VD-DEF <> if E-A64RAV-DRES throw then
    s VDV@ VD-NAMED? if E-A64RAV-DKEEP throw then
    id 0 RESULT-AT SLOT {: k:n :}
@@ -1420,7 +1495,7 @@ variable VD-MOVED
 
 : VDSTORE-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id DSLOT-OF A64IR:SLOT-WIDTH / {: s:n :}
+   id VDSLOT-CELL {: s:n :}
    id 0 OPERAND-AT SLOT {: k:n :}
    s VDV@ k = if E-A64RAV-DKEEP throw then
    k VD-DEF s VDPUT ;
@@ -1428,9 +1503,15 @@ variable VD-MOVED
 \ Every slot the branch publishes holds something. A store in front of it is one
 \ way; the cell already holding what the callee is to read is the other, and this
 \ is where that claim is held against the module.
+\
+\ AND THIS IS ALSO WHERE THE POINTER'S PLACE AT THE BRANCH IS JUDGED. Where the
+\ pointer stands when the Bl is taken IS the callee's base - one past the last
+\ cell the site publishes - so a site that entered the callee one cell too high
+\ would be claiming a cell nothing has written, and this rule refuses it under its
+\ own name rather than letting the callee read whatever was there.
 : VDPUBLISH-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id DBYTES-OF A64IR:SLOT-WIDTH / 0 ?do
+   id DBYTES-OF VDCELL 0 ?do
       i VDD@ VD-DEF <> if E-A64RAV-DRES throw then
    loop ;
 
@@ -1625,7 +1706,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    id STORES? ;
 
 : VDSLOT-AT ( IR-ID:ir-block-id n -- n )
-   OP-AT DSLOT-OF A64IR:SLOT-WIDTH / ;
+   OP-AT VDSLOT-CELL ;
 
 : VDSEQ-FIND ( A64EFF:placeseq n n -- )
    {: seq:A64EFF:placeseq len:n s:n :}
@@ -1635,11 +1716,30 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       VD-J @ 1+ VD-J !
    until ;
 
+\ The entry form is where the pointer's place comes FROM. The caller left the
+\ pointer one past the arguments, at 8*in; this form moves it down by what it
+\ carries; so where the body stands is the difference, and every distance the
+\ module holds afterwards is read against it. It is bounded as well as derived: a
+\ place under the base names cells this routine does not own, and a place further
+\ above the base than the unscaled field reaches would put an access of the base
+\ itself out of reach - so a module standing outside [0, SLOT-BACK] is refused
+\ here rather than at whichever access happened to notice.
+: VDSTAND-AT ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id at:n entry:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id DSLOT-OF NOSLOT <> if E-A64RAV-DSTACK throw then
+   id DBYTES-OF NOSLOT = if E-A64RAV-DSTACK throw then
+   entry id DBYTES-OF - {: stand:n :}
+   stand 0 < if E-A64RAV-DSTACK throw then
+   stand A64EFF:SLOT-BACK > if E-A64RAV-DSTACK throw then
+   stand A64IR:SLOT-WIDTH mod 0<> if E-A64RAV-DSTACK throw then
+   stand VD-STAND ! ;
+
 : VDENTRY-CK ( IR-ID:ir-fun-id n A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id a:n args:A64EFF:placeseq :}
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
    eb OP-COUNT PRO-N 1+ < if E-A64RAV-DSTACK throw then
-   eb PRO-N  a A64IR:SLOT-WIDTH *  DTAKE-AT?
+   eb PRO-N  a A64IR:SLOT-WIDTH *  VDSTAND-AT
    PRO-N 1+ VD-P !
    0 VD-J !
    0 VD-EL !
@@ -1655,12 +1755,20 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
 \ site's store run is always followed by the branch itself, so the operation in
 \ front of the pointer move that publishes the results is either one of these
 \ stores or something that is not a data-stack store at all.
+\
+\ AND THE PUBLICATION IS WHERE THE RETURN IS JUDGED. The body stands where the
+\ entry form put it, this form moves it up by what it carries, and it has to
+\ arrive at 8*out - which is the place the caller will read the results from and
+\ go on computing against. A routine that returns with the pointer anywhere else
+\ hands its caller a stack whose top is not where the caller believes it is, so
+\ the wanted distance is stated as one past the results LESS where the body
+\ stands, and a module carrying any other one is refused.
 : VDEXIT-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT PRO-N - {: n:n :}
    n 2 < if E-A64RAV-DSTACK throw then
-   xb n 2 -  r A64IR:SLOT-WIDTH *  DTAKE-AT?
+   xb n 2 -  r A64IR:SLOT-WIDTH * VD-STAND @ -  DMOVE-AT?
    n 2 - VD-P !
    0 VD-ES !
    begin
@@ -1729,6 +1837,32 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
    loop ;
 
+\ THE CALL'S OWN ARITHMETIC, as far as it can be re-derived. A branch-with-link
+\ leaves the pointer at the callee's RESULT base, which is its argument base less
+\ what the callee takes and plus what it leaves - so the two places one site
+\ carries differ by exactly the callee's net effect. For a call to another word
+\ that effect is the callee's own declaration and this file is handed no callee,
+\ so nothing here can check it, and the site is covered by the two run bounds and
+\ by the publication rule instead. For a call to THIS routine the callee IS the
+\ routine being measured: its net effect is 8*out less 8*in, and a site claiming
+\ any other one is refused. Which of the two a site is, is read off the field that
+\ names an address - a call carrying one enters somebody else - exactly as every
+\ other reader here asks the operation rather than its opcode.
+: VDNET-CK ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id VCALL-ENTRY NOSLOT <> if exit then
+   id DBACK-OF  id DBYTES-OF -  {: net:n :}
+   net  VD-LEAVE @ VD-ENTRY @ -  <> if E-A64RAV-CALL throw then ;
+
+\ One place the routine requires, recorded as the re-derivation of the placement
+\ needs it. A place required twice is recorded twice, because two points each pay
+\ their own adjustment.
+: VDREQ+ ( n -- )
+   {: at:n :}
+   VD-REQ-N @ VDREQ-MAX >= if 1 VD-REQ-OVER ! exit then
+   at  VD-REQ-N @ cells VD-REQ + !
+   VD-REQ-N @ 1+ VD-REQ-N ! ;
+
 : VCALL-SITE ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk at DSTORE-RUN {: g:n :}
@@ -1736,9 +1870,12 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    cp bk OP-COUNT >= if E-A64RAV-CALL throw then
    bk cp OP-AT {: id:IR-ID:ir-op-id :}
    id DCALL? 0= if E-A64RAV-CALL throw then
-   bk at g  id DBYTES-OF A64IR:SLOT-WIDTH /  VDRUN-BOUND
+   id VDNET-CK
+   id DBYTES-OF VD-STAND @ + VDREQ+
+   id DBACK-OF VD-STAND @ + VDREQ+
+   bk at g  id DBYTES-OF VDCELL  VDRUN-BOUND
    bk cp 1+ DLOAD-RUN {: b:n :}
-   bk cp 1+ b  id DBACK-OF A64IR:SLOT-WIDTH /  VDRUN-BOUND
+   bk cp 1+ b  id DBACK-OF VDCELL  VDRUN-BOUND
    cp 1+ b + ;
 
 \ Every position of every block that touches the caller's data stack is either
@@ -1763,6 +1900,43 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       then
    repeat ;
 
+\ ---- the placement, re-derived -----------------------------------------------
+\ The same choice src/compiler/native/select.f makes, made again here from the
+\ places this file collected while it walked the module: fewest adjustments wins,
+\ a place outside the bound is not a candidate, the base is the incumbent because
+\ it is where the pass stood before there was a choice, and a tie goes to the
+\ lower place so the answer does not depend on the order the walk found them in.
+: VDPLACE-COST ( n -- n )
+   {: c:n :}
+   0
+   VD-REQ-N @ 0 ?do
+      i cells VD-REQ + @ c <> if 1+ then
+   loop ;
+
+: VDPLACE-OK? ( n -- bool )
+   {: c:n :}
+   c 0 >=  c A64EFF:SLOT-BACK <=  and ;
+
+: VDPLACE-BETTER? ( n n -- bool )
+   {: c:n k:n :}
+   k VD-BCOST @ < if true exit then
+   k VD-BCOST @ =  c VD-BEST @ <  and ;
+
+: VDPLACE-TRY ( n -- )
+   {: c:n :}
+   c VDPLACE-OK? 0= if exit then
+   c VDPLACE-COST {: k:n :}
+   c k VDPLACE-BETTER? 0= if exit then
+   c VD-BEST !
+   k VD-BCOST ! ;
+
+: VDPLACE-CK ( -- )
+   VD-REQ-OVER @ 0<> if exit then
+   0 VD-BEST !
+   0 VDPLACE-COST VD-BCOST !
+   VD-REQ-N @ 0 ?do  i cells VD-REQ + @ VDPLACE-TRY  loop
+   VD-BEST @ VD-STAND @ <> if E-A64RAV-DSTACK throw then ;
+
 : VDSTACK-CK ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
    args A64EFF:SEQ-SLOTS {: a:n :}
@@ -1771,9 +1945,16 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       V-BLKS @ 0 ?do f i BLOCK-AT VNO-DSTACK loop
       exit
    then
+   a A64IR:SLOT-WIDTH * VD-ENTRY !
+   r A64IR:SLOT-WIDTH * VD-LEAVE !
+   0 VD-REQ-N !
+   0 VD-REQ-OVER !
+   VD-ENTRY @ VDREQ+
+   VD-LEAVE @ VDREQ+
    f a args VDENTRY-CK
    f rb r outs VDEXIT-CK
    V-BLKS @ 0 ?do f i 0 rb VDCLEAN1 loop
+   VDPLACE-CK
    f rb a r args outs VDRES-CK ;
 
 \ ---- the whole re-derivation -------------------------------------------------

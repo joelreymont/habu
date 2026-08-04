@@ -399,4 +399,50 @@ public
 : CALLS? ( ptr u8 n ptr u8 n -- bool )
    CALLS-IN 0 > ;
 
+private
+
+\ ---- and the same question about a subject the engine COPIED ----------------
+\ WHY THERE HAS TO BE A SECOND QUESTION. A call instruction names an address, so
+\ CALLS? above can say which of two words an arm really entered. A COPIED subject
+\ leaves no address anywhere: the caller holds its instructions and nothing that
+\ points at it. So an arm over a copied subject cannot be checked by CALLS? at
+\ all, and "the arm resolved the bare name to its own column's word" would be an
+\ assumption about a search order rather than a fact read off the emitted code -
+\ which is exactly what this file exists not to do.
+\
+\ WHAT IS READ INSTEAD. The subject's copyable span is the bytes the engine would
+\ have moved, and that is what a caller that copied it holds, instruction for
+\ instruction, somewhere in its own code. So the caller's code is searched for
+\ that span. Two subjects computing one answer from different code - which is
+\ what the two columns of this harness are - are different bytes, so finding one
+\ is finding that column and not the other.
+variable CFROM-AT                    \ where in the caller a match is being tried
+variable CFROM-OK
+
+: CFROM-MATCH? ( n n n -- bool ) {: at:n lo:n len:n :}
+   true CFROM-OK !
+   len INSN-BYTES / 0 ?do
+      at i INSN-BYTES * + INSN@
+      lo i INSN-BYTES * + INSN@ <> if false CFROM-OK ! leave then
+   loop
+   CFROM-OK @ ;
+
+public
+
+\ Does the caller's own code hold the callee's copyable body, verbatim? False
+\ when the engine would not copy that callee at all, because then there is no
+\ body to look for and the question is CALLS?'s.
+: COPIED-FROM? ( ptr u8 n ptr u8 n -- bool ) {: ca:ptr cu:n ta:ptr tu:n :}
+   ta tu ENGINE-COPIES? 0= if false exit then
+   ta tu WORD-ENTRY  ta tu WORD-BYTES  BODY-SPAN
+   HI @ LO @ - {: len:n :}
+   len 0 <= if false exit then
+   LO @ {: lo:n :}
+   ca cu WORD-ENTRY CFROM-AT !
+   ca cu WORD-BYTES len - INSN-BYTES / 1+ {: tries:n :}
+   false
+   tries 0 ?do
+      CFROM-AT @ i INSN-BYTES * +  lo len  CFROM-MATCH? if drop true leave then
+   loop ;
+
 ;package

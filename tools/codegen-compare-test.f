@@ -500,16 +500,18 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
       OLD-ADD3-ROW 1 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ A pass that holds a KNOWN loss - the second corpus's T-RES-WALK - in which the
-\ new column is NOT bigger. That is the day the dot behind the entry lands, and
-\ the entry has to go with it; the harness says so rather than quietly keeping an
-\ allowance for a row that no longer needs one.
+\ A pass that holds the KNOWN loss - the fourth corpus's CALL-FAN-BIG - in which
+\ the new column is NOT bigger. That is the day the dot behind the entry lands,
+\ and the entry has to go with it; the harness says so rather than quietly
+\ keeping an allowance for a row that no longer needs one. It is not a
+\ hypothetical: the list's other entry, the second corpus's T-RES-WALK, came off
+\ through exactly this finding when the chain reached the engine's 36 bytes.
 : SHRUNK-KNOWN-LOSS ( -- )
-   s" CODEGEN-CORPUS2:T-RES-WALK"
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG"
    [: ;]
    [: ;]
    CODEGEN-COMPARE:MEASURE
-   s" CODEGEN-CORPUS2:T-RES-WALK" s" CODEGEN-CORPUS:NOOP"
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" s" CODEGEN-CORPUS:NOOP"
    [: ;]
    [: ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
@@ -608,7 +610,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 
    s" and a known loss that has stopped losing is a finding of its own" T-LABEL
    [: SHRUNK-KNOWN-LOSS ;] MEASURE-WITH
-   s" CODEGEN-CORPUS2:T-RES-WALK" CODEGEN-REPORT:BIGGER? TFALSE
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" CODEGEN-REPORT:BIGGER? TFALSE
    CODEGEN-REPORT:SAY-BYTE-LOSSES 1 T=
 
    s" while a known loss this pass does not hold says nothing either way" T-LABEL
@@ -616,10 +618,9 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    s" CODEGEN-CORPUS4:CALL-FAN-BIG" CODEGEN-REPORT:BIGGER? TFALSE
    CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
 
-   s" the known-loss list is the two rows that lose today, named" T-LABEL
-   CODEGEN-REPORT:KNOWN-LOSSES 2 T=
-   0 CODEGEN-REPORT:KNOWN-LOSS$ s" CODEGEN-CORPUS2:T-RES-WALK" T$=
-   1 CODEGEN-REPORT:KNOWN-LOSS$ s" CODEGEN-CORPUS4:CALL-FAN-BIG" T$= ;
+   s" the known-loss list is the one row that loses today, named" T-LABEL
+   CODEGEN-REPORT:KNOWN-LOSSES 1 T=
+   0 CODEGEN-REPORT:KNOWN-LOSS$ s" CODEGEN-CORPUS4:CALL-FAN-BIG" T$= ;
 
 \ ---- the register the drivers walk ------------------------------------------
 \ Every driver in tools/codegen-compare-cli.f reads which corpora exist, and
@@ -782,9 +783,22 @@ variable CODE-AT
 \ against the register the running engine keeps its data-stack pointer in
 \ (src/compiler/a64-effect.f DSTACK-GPR), counted in a word's own compiled code.
 \ A byte count moves for any reason; this moves for one.
+\
+\ AND THERE ARE TWO SPELLINGS OF ONE ACCESS, which is why each counter below adds
+\ two forms rather than one. Since dot habu-place-the-data-9f128e58 the chain
+\ stands its data-stack pointer where the fewest adjustments are needed, so a
+\ cell it reaches can be UNDER the pointer as well as over it - and under it is
+\ the unscaled signed form, Ldur and Stur, which is a different encoding of the
+\ same access. A counter that knew only the scaled forms would report an access
+\ the routine really makes as no access at all, and would read a change of
+\ addressing mode as a saving. Both forms are counted, so what these numbers
+\ measure stays "how often the caller's stack is touched" whatever the placement
+\ chose.
 $FFC00000 constant MEM-MASK
 $F9000000 constant STR-OP
 $F9400000 constant LDR-OP
+$F8000000 constant STUR-OP
+$F8400000 constant LDUR-OP
 
 : DSTACK-AT? ( n n -- bool ) {: w:n op:n :}
    w MEM-MASK and op =
@@ -799,11 +813,13 @@ $F9400000 constant LDR-OP
       CODE-PTR i 4 * + U32@ op DSTACK-AT? if 1+ then
    loop ;
 
-: DS-STORES ( ptr u8 n -- n )
-   STR-OP DS-COUNT ;
+: DS-STORES ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u STR-OP DS-COUNT
+   a u STUR-OP DS-COUNT + ;
 
-: DS-LOADS ( ptr u8 n -- n )
-   LDR-OP DS-COUNT ;
+: DS-LOADS ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u LDR-OP DS-COUNT
+   a u LDUR-OP DS-COUNT + ;
 
 \ ---- and how many calls a word's own code makes ------------------------------
 \ The other exact number, and the one a claim about copying a callee rests on:
@@ -973,24 +989,28 @@ $1E602008 constant FCMP0-OP
    s" and no row of it touches the caller's data stack more often" T-LABEL
    DS-HEAVIER-ROWS 0 T= ;
 
-\ The second corpus, whose account is not all wins and says so. All seven of its
-\ words are compiled now - VEC-COPY-CELLS was a gap until dot
+\ The second corpus, whose account was not all wins and now is. All eight of its
+\ words are compiled - VEC-COPY-CELLS was a gap until dot
 \ habu-save-the-loop-5f07e0c3 made a call inside a counted loop save the loop's
-\ own state - and one of the seven takes MORE bytes than the engine's code for
-\ the same body: T-RES-WALK, whose own record is three instructions of loop
-\ around a call in the old emitter's code and a frame, a saved return address and
-\ two pointer moves the routine does not need in the chain's. Both numbers are
-\ pinned here so that the day either changes, in either direction, somebody has
-\ to look at it.
+\ own state - and the one row that took MORE bytes than the engine's code for the
+\ same body, T-RES-WALK, is now a DRAW at 36 bytes each. That number is pinned
+\ here so that the day it changes, in either direction, somebody has to look at
+\ it: it is the engine's own code for the same body, instruction for instruction.
 \
-\ WHAT IT NO LONGER CARRIES is the saved loop value, and that half of the account
-\ was closed by the residency pass in src/compiler/native/select.f: the value the
-\ walker carries round its loop never leaves the data-stack cell it arrived in,
-\ so the entry load, the call's store of the same value into the same cell, the
-\ result load, the return's store and the edge copy that only existed because the
-\ value was in a register are all gone. The row fell from 76 bytes to 56 and no
-\ row of this corpus touches the caller's data stack more often than the engine
-\ any more - which is why the assertion below is now zero and names the row it
+\ THREE MECHANISMS CLOSED IT AND NONE OF THEM REACHED 36 ALONE. The residency
+\ pass in src/compiler/native/select.f took the row from 76 bytes to 56: the value
+\ the walker carries round its loop never leaves the data-stack cell it arrived
+\ in, so the entry load, the call's store of the same value into the same cell,
+\ the result load, the return's store and the edge copy that only existed because
+\ the value was in a register are all gone. The block order in
+\ src/compiler/native/emit.f took it to 48 by laying the loop body next to its
+\ header. And the placement in src/compiler/native/select.f took it to 36 by
+\ standing the routine's data-stack pointer where the loop's own call already
+\ wants it, which left one adjustment in the whole routine - the same one the
+\ engine writes, `sub x19, x19, #8`, to pop the flag.
+\
+\ NO ROW OF THIS CORPUS TOUCHES THE CALLER'S DATA STACK MORE OFTEN than the
+\ engine any more, which is why the assertion below is zero and names the row it
 \ used to be about.
 : REAL-RUN-CASES2 ( -- )
    8 ACCOUNT-CASES
@@ -1008,11 +1028,11 @@ $1E602008 constant FCMP0-OP
    s" and it is the loop whose test is a call" T-LABEL
    s" CODEGEN-CORPUS2:T-RES-WALK" SMALLER? TFALSE
 
-   s" it is bigger and not a draw, which the harness adjudicates by name" T-LABEL
-   s" CODEGEN-CORPUS2:T-RES-WALK" CODEGEN-REPORT:BIGGER? TTRUE
+   s" it is a DRAW and not a loss, which the harness adjudicates by name" T-LABEL
+   s" CODEGEN-CORPUS2:T-RES-WALK" CODEGEN-REPORT:BIGGER? TFALSE
    s" CODEGEN-CORPUS2:COUNT-CHAR" CODEGEN-REPORT:BIGGER? TFALSE
 
-   s" and carries it as a KNOWN loss, so the run stays green on it alone" T-LABEL
+   s" and the corpus carries no known loss at all any more" T-LABEL
    CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
 
    s" every other compiled word of it is fewer bytes" T-LABEL

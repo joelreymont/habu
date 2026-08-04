@@ -52,6 +52,22 @@ $FFFFFFFF constant ARM64-W32
 : ?SHIFT ( n -- n )
    dup SHIFT-LIM OUT? IF s" asm: shift amount out of range" ASM-EXIT-RC die THEN ;
 
+\ The unscaled load/store offset field: nine bits read as a signed number, so it
+\ holds -256 .. 255 and it counts BYTES rather than access widths. It is the one
+\ field in this file that is signed, which is why it has a bound of its own
+\ rather than reusing OUT? above: a negative operand is in range here and out of
+\ range everywhere else.
+1 8 lshift constant SIMM9-LIM        \ the magnitude one side of the field holds
+
+: ?SIMM9 ( n -- n )
+   dup dup SIMM9-LIM negate < swap SIMM9-LIM >= or
+   IF s" asm: 9-bit signed offset out of range" ASM-EXIT-RC die THEN ;
+
+\ Its bits, once the bound has been made: the field is nine bits wide and sits
+\ at bit twelve, so a negative offset is its two's complement in those nine bits.
+1 9 lshift 1 - constant SIMM9-MASK
+12 constant SIMM9-SHIFT
+
 : ?COND ( n -- n )
    dup COND-LIM OUT? IF s" asm: condition code out of range" ASM-EXIT-RC die THEN ;
 
@@ -219,6 +235,21 @@ variable ARM-Z
 : ENC-LDRB ( n n n -- n ) XRDI ?IMM12 $39400000 RRI ;
 
 : ENC-STRB ( n n n -- n ) XRDI ?IMM12 $39000000 RRI ;
+
+\ load/store, unscaled SIGNED offset: the same two accesses through the other
+\ addressing mode of the same instruction group. The offset is in bytes and may
+\ be negative, which is the whole reason these two forms exist here - an access
+\ BELOW the base register has no spelling in the unsigned forms above. It is not
+\ scaled, so no alignment is forced by the encoding; a caller that wants cells
+\ still hands over a multiple of eight because that is what its own data is.
+: RRSI ( n n n n -- n )
+   ARM-BASE ! ARM-I3!
+   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or
+   ARM-IMM @ SIMM9-MASK and SIMM9-SHIFT lshift or MSK ;
+
+: ENC-LDUR ( n n n -- n ) XRDI ?SIMM9 $F8400000 RRSI ;
+
+: ENC-STUR ( n n n -- n ) XRDI ?SIMM9 $F8000000 RRSI ;
 
 : ENC-LDRW ( n n n -- n ) XRDI 4 SCALE/ ?IMM12 $B9400000 RRI ;
 

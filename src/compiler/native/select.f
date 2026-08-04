@@ -383,6 +383,56 @@ create D-CUR DSLOT-MAX cells allot                 \ the running answer inside o
 create D-NEED VMAX cells allot                     \ this value reaches a register
 variable D-MOVED                                   \ a fixpoint round changed something
 
+\ ---- where the routine's data-stack pointer stands ---------------------------
+\ THE FACT, IN ONE SENTENCE. The pointer is a register, so it stands at ONE place
+\ while the body runs, and every access of the caller's stack is written as the
+\ distance from that place to the cell it names. Which place it is, is this
+\ pass's choice; what a choice costs is one instruction at each point that
+\ REQUIRES some other place, and nothing at each point that requires this one.
+\
+\ WHAT ACTUALLY REQUIRES A PLACE, WHICH IS THE WHOLE OF THE PROBLEM. Three
+\ things, and they are all interface: the caller leaves the pointer one past the
+\ arguments, so the routine is ENTERED at 8*in; a branch-with-link has to hand
+\ the callee its own base, so a call site REQUIRES the pointer at the callee's
+\ argument base and gets it back at the callee's result base; and the caller
+\ reads the results from where the convention says, so the return REQUIRES the
+\ pointer at 8*out. Nothing else requires anything: an access reaches its cell
+\ from wherever the pointer is, because the offset is signed.
+\
+\ SO THE CHOICE IS AMONG THOSE REQUIRED PLACES AND NOWHERE ELSE. A place that is
+\ required by nothing zeroes no adjustment and cannot beat a place that is, so
+\ the candidates are exactly the required places, plus the base itself - which is
+\ where this pass used to stand unconditionally and is therefore the incumbent
+\ every other candidate has to beat. Ties go to the smallest place, so the answer
+\ does not depend on the order the requirements were met in.
+\
+\ AND WHY THE POSITION IS BOUNDED RATHER THAN THE ACCESSES FILTERED. An access
+\ under the pointer is encoded in the unscaled signed field, which reaches
+\ A64EFF:SLOT-BACK bytes down; an access over it is encoded in the scaled field,
+\ which reaches A64EFF:SLOT-REACH up. Every slot of the caller's window is at or
+\ above the base, so a position kept inside [0, SLOT-BACK] puts EVERY access of
+\ the routine inside one of the two fields, whichever cells it turns out to name.
+\ Bounding the position is therefore the same statement as checking every access,
+\ made once and before any access exists - which is what lets this run before the
+\ operations are lowered.
+\
+\ AND THE SURVEY'S OWN SIZE IS A PRECISION BOUND AND NOT A LIMIT ON WHAT
+\ COMPILES, which is the same shape as the residency window above. A routine with
+\ more required places than the survey holds keeps the BASE - which is where this
+\ pass stood before there was a choice, is always inside the bound, and puts
+\ every access at a non-negative offset - so what such a routine loses is an
+\ optimisation and never a compilation. The number is a hundred and twenty-seven
+\ call sites, which no routine this chain compiles comes near.
+256 constant DREQ-MAX                \ places one routine's survey holds
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create D-REQ DREQ-MAX cells allot                  \ the places, with repeats
+variable D-REQ-N
+variable D-REQ-OVER                                \ the survey ran past its size
+variable D-POS                                     \ where the body's pointer stands
+variable D-COST                                    \ what standing there costs
+variable D-RETS                                    \ returns seen while surveying
+
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
@@ -719,18 +769,32 @@ variable D-MOVED                                   \ a fixpoint round changed so
 \ ---- the four data-stack operations ------------------------------------------
 \ Each carries the span of the source operation it is anchored to, so a
 \ diagnostic about an entry load still points at the word the programmer wrote.
+\
+\ AND EVERY ONE OF THEM IS WRITTEN AGAINST WHERE THE POINTER STANDS. A caller
+\ below names the CELL it means - the slot the convention gives an argument, the
+\ base a callee is entered at, the place the routine returns with - and the four
+\ builders turn that into the distance from the body's own position, which is
+\ what the instruction encodes. The subtraction is here and in one word rather
+\ than at each caller so that a place and an offset can never be swapped: a
+\ caller of these builders never handles an offset at all.
+: DPLACED ( n -- n )
+   D-POS @ - ;
+
 : DSLOT-ATTR+ ( n -- )
    {: off:n :}
-   CTX BLD  CTX BLD A64IR:KEY-DSLOT  CTX BLD off A64IR:DSLOT-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-DSLOT  CTX BLD off DPLACED A64IR:DSLOT-ATTR
    IR-BUILD:ADD-ATTR ;
 
 : DBYTES-ATTR+ ( n -- )
-   {: size:n :}
-   CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD size A64IR:DBYTES-ATTR
+   {: at:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD at DPLACED A64IR:DBYTES-ATTR
    IR-BUILD:ADD-ATTR ;
 
-\ The pointer moves down over the caller's operands, and the order of every
-\ data-stack access starts here.
+\ The pointer is placed where the body addresses from, and the order of every
+\ data-stack access starts here. What it moves over is not the caller's operands
+\ any more: it is whatever distance separates the place the caller left it - one
+\ past the arguments - from the place the placement above chose, and that
+\ distance is nothing whenever the two coincide.
 : EMIT-DTAKE ( IR-ID:ir-op-id n -- )
    {: at:IR-ID:ir-op-id bytes:n :}
    at A64IR-OPCODE:DTAKE OPEN
@@ -763,8 +827,10 @@ variable D-MOVED                                   \ a fixpoint round changed so
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
 
-\ The pointer moves up over the results, which is the moment they become the
-\ caller's, and the order of the data-stack accesses ends.
+\ The pointer is left where the caller expects it - one past the results, which
+\ is the moment they become the caller's - and the order of the data-stack
+\ accesses ends. It is the same distance-from-the-position the entry is, so a
+\ routine whose body already stands there publishes with no instruction at all.
 : EMIT-DPUBLISH ( IR-ID:ir-op-id n -- )
    {: at:IR-ID:ir-op-id bytes:n :}
    at A64IR-OPCODE:DPUBLISH OPEN
@@ -882,8 +948,8 @@ variable D-MOVED                                   \ a fixpoint round changed so
 \ two lists tell different stories is refused by name rather than lowered into a
 \ store run and a load run of different lengths.
 : DBACK-ATTR+ ( n -- )
-   {: size:n :}
-   CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD size A64IR:DBACK-ATTR
+   {: at:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD at DPLACED A64IR:DBACK-ATTR
    IR-BUILD:ADD-ATTR ;
 
 : CALL-LIVE ( IR-ID:ir-op-id n n -- n )
@@ -2974,6 +3040,106 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    f DRES-FIX
    f DNEED-FIX ;
 
+\ ---- choosing where the pointer stands ---------------------------------------
+\ The survey and the choice the section at the head of this file describes. It
+\ runs over the SOURCE function, because every place the body requires is read
+\ off the routine's contract and off the shape of each call operation - which
+\ values a site hands over and takes back - and none of that depends on which
+\ accesses the residency above turned out to drop. So the position is settled
+\ before a single operation is lowered, which is what lets every builder write
+\ its offset against it.
+: DREQ+ ( n -- )
+   {: at:n :}
+   D-REQ-N @ DREQ-MAX >= if 1 D-REQ-OVER ! exit then
+   at  D-REQ-N @ cells D-REQ + !
+   D-REQ-N @ 1+ D-REQ-N ! ;
+
+: DREQ-AT ( n -- n )
+   cells D-REQ + @ ;
+
+\ A call requires two places and they are the callee's, not this routine's: the
+\ base it is entered at, which is one past everything the site hands it, and the
+\ base it leaves at, which is one past everything it hands back. How many of the
+\ live values the site keeps in registers is the last of the four numbers a shape
+\ answers and is nothing to do with where the pointer stands, so it is dropped
+\ rather than bound.
+: DPLACE-CALL ( n n n n -- )
+   drop
+   {: a:n r:n kk:n :}
+   kk a + A64IR:SLOT-WIDTH * DREQ+
+   kk r + A64IR:SLOT-WIDTH * DREQ+ ;
+
+\ A routine with two returns would publish twice and this survey would count one
+\ place per publication, while every reader that measures the routine afterwards
+\ - the allocation validator included - re-derives ONE block that control leaves
+\ through. Refused here rather than surveyed, so the two cannot count differently.
+: DPLACE-RETURN ( -- )
+   D-RETS @ 1+ D-RETS !
+   D-RETS @ 1 > if E-A64SEL-PLACE throw then
+   OUTS SLOT-POSITIONS A64IR:SLOT-WIDTH * DREQ+ ;
+
+: DPLACE-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT {: s:n :}
+   s O-CALL = if id SELF-SHAPE DPLACE-CALL exit then
+   s O-WORDCALL = if id WORD-SHAPE DPLACE-CALL exit then
+   s O-RETURN = if DPLACE-RETURN then ;
+
+: DPLACE-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do  bk i OP-AT DPLACE-OP  loop ;
+
+\ What standing at one place costs: one instruction for every place the routine
+\ requires that is not this one. A place required twice is counted twice, because
+\ two points each pay their own adjustment.
+: DPLACE-COST ( n -- n )
+   {: c:n :}
+   0
+   D-REQ-N @ 0 ?do
+      i DREQ-AT c <> if 1+ then
+   loop ;
+
+\ Whether the body may stand here at all - the bound the section head derives,
+\ and the reason no access has to be consulted.
+: DPLACE-OK? ( n -- bool )
+   {: c:n :}
+   c 0 >=  c A64EFF:SLOT-BACK <=  and ;
+
+\ Better means fewer adjustments, and on a tie the lower place. The base is the
+\ incumbent: it is where this pass stood before there was a choice, it is always
+\ inside the bound, and it is the lowest place there is, so a tie with it keeps
+\ it and the answer does not depend on the order the survey ran in.
+: DPLACE-BETTER? ( n n -- bool )
+   {: c:n k:n :}
+   k D-COST @ < if true exit then
+   k D-COST @ =  c D-POS @ <  and ;
+
+: DPLACE-TRY ( n -- )
+   {: c:n :}
+   c DPLACE-OK? 0= if exit then
+   c DPLACE-COST {: k:n :}
+   c k DPLACE-BETTER? 0= if exit then
+   c D-POS !
+   k D-COST ! ;
+
+: DPLACE-CHOOSE ( -- )
+   0 D-POS !
+   0 DPLACE-COST D-COST !
+   D-REQ-N @ 0 ?do  i DREQ-AT DPLACE-TRY  loop ;
+
+: DPLACE ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   0 D-POS !
+   0 D-REQ-N !
+   0 D-REQ-OVER !
+   0 D-RETS !
+   DSTACK? 0= if exit then
+   ARGS SLOT-POSITIONS A64IR:SLOT-WIDTH * DREQ+
+   f BLOCK-COUNT 0 ?do  f i DPLACE-BLOCK  loop
+   D-REQ-OVER @ 0<> if exit then
+   DPLACE-CHOOSE ;
+
 \ ---- opening the selected function -------------------------------------------
 \ The two modules number their symbols separately, so the name is copied out of
 \ the source interner and interned into the new one. Interning deduplicates, so
@@ -3449,6 +3615,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    VCLEAR
    f PLAN-REGIONS
    f DRESIDENCY
+   f DPLACE
    n 0 ?do
       f i WALK-BLOCK
    loop

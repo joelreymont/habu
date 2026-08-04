@@ -117,6 +117,8 @@ s" ASM-LEN" s" -- n" TRUST
 s" LBL" s" -- n" TRUST
 s" LBL," s" n --" TRUST
 s" MOVZHW" s" n n n -- n" TRUST
+s" ENC-LDUR" s" n n n -- n" TRUST
+s" ENC-STUR" s" n n n -- n" TRUST
 s" MOVNHW" s" n n n -- n" TRUST
 s" EMITW" s" n --" TRUST
 s" MOVZ," s" n n --" TRUST
@@ -194,8 +196,9 @@ public
 39 constant F-SVC      40 constant F-RET      41 constant F-BRK
 42 constant F-NOP      43 constant F-DSB-ISH  44 constant F-ISB
 45 constant F-BLR      46 constant F-BR       47 constant F-ICIVAU
-48 constant F-DCCVAU  49 constant F-FCSEL
-50 constant FORMS
+48 constant F-DCCVAU  49 constant F-FCSEL     50 constant F-LDUR
+51 constant F-STUR
+52 constant FORMS
 
 \ The constructor name in `formal/Common/Insn.v`. It names the form in a
 \ failing row's label and in the generated Rocq obligation, so the two reports
@@ -218,7 +221,8 @@ public
       39 of s" Svc" endof      40 of s" Ret" endof     41 of s" Brk" endof
       42 of s" Nop" endof      43 of s" DsbIsh" endof  44 of s" Isb" endof
       45 of s" Blr" endof      46 of s" Br" endof      47 of s" IcIvau" endof
-      48 of s" DcCvau" endof   49 of s" Fcsel" endof
+      48 of s" DcCvau" endof   49 of s" Fcsel" endof   50 of s" Ldur" endof
+      51 of s" Stur" endof
       E-CIE-FORM throw
    endcase ;
 
@@ -491,6 +495,29 @@ variable LIM-N
    F-LDAR 31 31 $C8DFFFFF V2
    F-STLR 31 31 $C89FFFFF V2 ;
 
+\ The unscaled pair, whose offset is the only SIGNED one a load or a store
+\ carries here and is counted in bytes rather than in access widths. The chain
+\ writes them for a cell under the data-stack pointer, which is where a routine
+\ standing at its own place reaches most of its cells, so both directions are
+\ ordinary and both ends of the field are rows: -256 and 255 are the deepest and
+\ the highest the nine bits hold, and one past either is refused in the
+\ out-of-range table below. The first two rows are the exact words
+\ test/compiler/native-emit.f pins in a compiled routine, so the model, the
+\ assembler and the emitter are held to one number.
+: UNSCALED-VECTORS ( -- )
+   F-LDUR 0 19 -8 $F85F8260 V3
+   F-STUR 0 19 -8 $F81F8260 V3
+   F-LDUR 5 6 0 $F84000C5 V3
+   F-STUR 7 8 24 $F8018107 V3
+   F-LDUR 1 2 -256 $F8500041 V3
+   F-STUR 1 2 -256 $F8100041 V3
+   F-LDUR 3 4 255 $F84FF083 V3
+   F-STUR 3 4 255 $F80FF083 V3
+   F-LDUR 31 31 255 $F84FF3FF V3
+   F-STUR 31 31 255 $F80FF3FF V3
+   F-LDUR 31 31 -256 $F85003FF V3
+   F-STUR 31 31 -256 $F81003FF V3 ;
+
 : COMPARE-VECTORS ( -- )
    F-CMP 9 8 $EB08013F V2
    F-CMP 15 14 $EB0E01FF V2
@@ -628,6 +655,10 @@ variable LIM-N
    F-STR 1 2 32768 OOR+
    F-LDRW 1 2 16384 OOR+
    F-STRW 1 2 16384 OOR+
+   F-LDUR 1 2 256 OOR+                       \ one past the top of the signed nine
+   F-LDUR 1 2 -257 OOR+                      \ and one past the bottom of it
+   F-STUR 1 2 256 OOR+
+   F-STUR 1 2 -257 OOR+
    F-LSLI 1 2 64 OOR+
    F-LSRI 1 2 64 OOR+
    F-ASRI 1 2 64 OOR+
@@ -691,6 +722,8 @@ variable LIM-N
    F-STRB 18 15 0 X18  F-STRB 1 18 0 X18
    F-LDRW 18 15 0 X18  F-LDRW 1 18 0 X18
    F-STRW 18 15 0 X18  F-STRW 1 18 0 X18
+   F-LDUR 18 15 0 X18  F-LDUR 1 18 0 X18
+   F-STUR 18 15 0 X18  F-STUR 1 18 0 X18
    F-LDAR 18 15 0 X18  F-LDAR 14 18 0 X18
    F-STLR 18 5 0 X18   F-STLR 14 18 0 X18 ;
 
@@ -751,6 +784,7 @@ variable LIM-N
    IMMEDIATE-VECTORS
    SHIFT-VECTORS
    MEMORY-VECTORS
+   UNSCALED-VECTORS
    COMPARE-VECTORS
    CONDITIONAL-SELECT-VECTORS
    FLOAT-SELECT-VECTORS

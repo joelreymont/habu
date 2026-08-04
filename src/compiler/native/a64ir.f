@@ -640,23 +640,30 @@ private
    dup FRAME-LIM > if E-A64IR-FRAME throw then ;
 
 \ ---- checked data-stack operands ---------------------------------------------
-\ A slot of the caller's data stack, measured the same way a frame slot is - the
-\ two forms that reach it are the same Ldr and Str - so the reach is A64EFF's
-\ answer for this width and not a constant repeated here. The stack is a stack of
-\ whole cells, so an offset that is not a multiple of one names no slot.
+\ An offset from the data-stack pointer, which is what an access of the caller's
+\ stack encodes. It is SIGNED, and that is the whole difference from a frame
+\ slot: a routine's pointer stands where the fewest adjustments put it, so a cell
+\ it still has to reach can be under the pointer as easily as over it - and the
+\ engine's own convention keeps every live value under the pointer, so under is
+\ the ordinary direction rather than the exceptional one. Above, the reach is the
+\ scaled unsigned field's, which is A64EFF's answer for this width; below, it is
+\ the unscaled signed field's, which is A64EFF's answer too and takes no width.
+\ The stack is a stack of whole cells, so an offset that is not a multiple of one
+\ names no cell in either direction.
 : DSLOT ( n -- n )
-   dup 0 < if E-A64IR-DSLOT throw then
+   dup A64EFF:SLOT-BACK negate < if E-A64IR-DSLOT throw then
    dup SLOT-BYTES mod 0<> if E-A64IR-DSLOT throw then
    dup SLOT-BYTES A64EFF:SLOT-REACH > if E-A64IR-DSLOT throw then ;
 
-\ How far the data-stack pointer moves at entry or at exit. It is a whole number
-\ of cells - a routine takes and publishes values, not bytes - and it goes into
-\ the same unsigned twelve-bit add/sub immediate the frame is claimed with. There
-\ is no stack-alignment rule: the data stack is cell-aligned, not sixteen.
+\ How far the data-stack pointer moves at one of the four points that move it.
+\ It is a whole number of cells - a routine takes and publishes values, not
+\ bytes - and it goes into the twelve-bit add/sub immediate the frame is claimed
+\ with, in whichever direction its sign names: the same field serves the Add and
+\ the Sub, so what is bounded here is the MAGNITUDE. There is no stack-alignment
+\ rule: the data stack is cell-aligned, not sixteen.
 : DBYTES ( n -- n )
-   dup 0 < if E-A64IR-DBYTES throw then
    dup SLOT-BYTES mod 0<> if E-A64IR-DBYTES throw then
-   dup OFF-MAX > if E-A64IR-DBYTES throw then ;
+   dup abs OFF-MAX > if E-A64IR-DBYTES throw then ;
 
 \ A callee entry address a Bl could name: the address of a whole instruction, and
 \ not the null address, where no code lives. How far away it is, is not asked
