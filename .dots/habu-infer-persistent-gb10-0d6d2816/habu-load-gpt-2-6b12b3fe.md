@@ -1,9 +1,11 @@
 ---
 title: Load GPT-2 runtime modules
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-30T00:55:48.332822+02:00"
+closed-at: "2026-08-04T19:31:43.576583+02:00"
+close-reason: "Superseded by GPT2:model at 1056a0ad14d5: OPEN builds the exact tensor and attention modules once, resolves the seven functions, retains them across LOGITS calls, and CLOSE unloads them; a DEVRT module inventory would duplicate production code."
 blocks:
   - habu-own-device-runtime-5e7d559e
   - habu-prove-gb10-inference-d43eecce

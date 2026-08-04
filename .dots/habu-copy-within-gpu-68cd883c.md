@@ -1,0 +1,9 @@
+---
+title: Copy within GPU buffer
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-08-04T19:31:10.063203+02:00"
+---
+
+Why: device-backed KV copy-on-write must copy one complete physical page without restoring a host payload, but GPU has no device-to-device copy. Owner: package GPU device-buffer copy only. Interface: GPU:COPY ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer result<n,n> ), with destination offset before source offset. Validate both ranges and reject any overlap with E-BUF-OVERLAP before binding the session or calling the driver; on every result preserve the exact session and buffer owners. Add only the sealed CUDA:CU-MEMCPY-DTOD binding for cuMemcpyDtoD_v2 and the existing MKD injectable defer/setter/USE-REAL arm needed to prove failure. No async or stream variant, cross-buffer copy, host staging, generic memcpy family, allocation, compatibility, version, or fallback. Checkpoint: an exact checker candidate through the production load proves GPU:COPY is currently undefined; the first representative diff passes package and typed-local gates before the device test. Acceptance: the existing gpu-buffer test's host injection proves both range failures, overlap refusal, bind refusal, driver refusal, exact arguments, no call before validation, and owner preservation; its mandatory real DGX Spark leg copies between disjoint spans, matches bytes, and leaves both owners usable; every fake restores USE-REAL. Files: lib/errors.f, lib/ptx/cuda-driver.f, lib/ptx/cuda-driver-test.f, maki/cuda-run.f, maki/gpu-buffer.f, and maki/gpu-buffer-test.f only. No new test entry or suite. Smallest owning check: bin/hb --load maki/gpu-buffer-test.f. Blocks habu-own-device-kv-8e5bbf98.
