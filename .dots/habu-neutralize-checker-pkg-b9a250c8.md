@@ -18,7 +18,7 @@ Forbidden: repeating CHECKER-END-PACKAGE at each call site as the permanent answ
 
 Acceptance and smallest owning check: before the change, one negative regression per site must fail. For each of the three tools/check-core.f sites, drive that site's real production entry point from a package-owned caller with source that performs a top-level EXPORT, and record the pre-change exit 78. After the change all three pass, the caller's package mode, length and name bytes are proved restored after both a clean and a throwing replay, and the existing packaged all-errors suite (bin/hb --load tools/check-all-errors-test.f, all 23 cases including the top-level EXPORT case) stays green. A mutation that removes the neutralization from the new opener must red every one of those regressions.
 
-Verify: tools/check-test.f, tools/check-all-errors-test.f, the checker suite covering scope push and pop, trust-lint, typed-local-diff-lint and package-diff-lint on the exact diff, host-lint and filemap-lint.
+Verify: tools/check-test.f, tools/check-all-errors-test.f, the checker suite covering scope push and pop, trust-lint, typed-local-diff-lint and package-diff-lint on the exact diff, host-lint.
 
 Files: src/core/checker.f, tools/check-core.f, tools/check-all-errors-core.f, TRUSTED.md, and the owning test files for the three new regressions.
 

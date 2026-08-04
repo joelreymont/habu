@@ -46,7 +46,7 @@ and both checks pass.
 
 Exact files: `test/enum-kind-snapshot.f`,
 `test/enum-kind-snapshot-source.f`, `test/enum-kind-snapshot-check.f`,
-`test/gate-stdlib-cases.f`, `test/run-files.f`, and `FILEMAP.md`.
+`test/gate-stdlib-cases.f`, `test/run-files.f`.
 
 Forbidden: raw kind store, forged image, copied snapshot writer, owner-WID
 fixture edit, build-tool API change, persisted latch, registry, restore hook,

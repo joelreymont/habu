@@ -35,7 +35,6 @@ lint suite, its exact production command, typed-local diff lint, and package
 diff lint pass.
 
 Files: `tools/signature-lint.f`, `tools/signature-lint-core.f`, its existing
-test/fixture owner, `tools/refine-lint-core.f`, and `FILEMAP.md` only if a new
-tracked fixture is required. Dependency:
+test/fixture owner, and `tools/refine-lint-core.f` only. Dependency:
 `habu-load-lint-sources-a553610f`. Ownership: the `SIGNATURE-LINT` consumer and
 standalone CLI boundary only; `LINT-SOURCE` remains the sole source owner.

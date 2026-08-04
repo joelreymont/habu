@@ -38,7 +38,7 @@ STRUCTURE/ENUM consumers.
 Files: `src/core/type-family.f`, the declaration producer that commits PF rows,
 and focused type-family/declaration/provenance tests. Verify the type-family,
 type-declaration, package, diagnostic, snapshot, ahead-of-time, replay, and
-fixpoint suites plus typed-local, package, host, filemap, and dot lints.
+fixpoint suites plus typed-local, package, host, and dot lints.
 Ownership: shared field-row visibility/provenance storage and typed reflection
 only. Source-frame capture belongs to `habu-stable-source-origin-frame-9d4b2a61`;
 package-wide nominal type scoping remains `habu-scope-declared-types-984c5202`.

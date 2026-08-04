@@ -41,7 +41,7 @@ Claim: RELEASED 2026-07-27 with the park above. The vecmem lane worker is releas
 
 GROOMED 2026-08-04 (dot-groom). The blocker edge to habu-pkg-filemap-lint-5d7baf5c is
 removed and that dot is closed: commit 85a9646fd "Delete FILEMAP and census gates"
-deleted tools/filemap-lint.f, tools/filemap-lint-test.f and FILEMAP.md, so there is no
+deleted tools/filemap-lint.f, tools/filemap-lint-test.f, so there is no
 filemap-lint left to package. Two consumer counts in the paragraph above are now stale
 for the same reason: filemap-lint (7 references) and suite-coverage-lint-core (3
 references, tools/suite-coverage-lint-core.f also deleted) are gone, so the resolved

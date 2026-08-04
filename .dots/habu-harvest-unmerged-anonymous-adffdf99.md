@@ -1,6 +1,6 @@
 ---
 title: Harvest unmerged anonymous work heads
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-28T20:21:33.349400+02:00"
@@ -32,3 +32,5 @@ whose jj records were already forgotten: /Users/joel/Work/habu-minion-audit-rRsm
 -bootstrap-wide, -doc-esJW, -seal-UllK. Any uncommitted content there exists
 only on disk. Diff each against the repo, harvest anything real, then delete
 the directories.
+
+REOPENED 2026-08-04 (dot-purge): this dot carried `status: active` with no live owner - no `agent=`/workspace claim, or a claim explicitly released. An active dot with no owner is invisible to `dot ready` and holds its id hostage, so the status is now `open` and the dot is free to claim.

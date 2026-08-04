@@ -60,5 +60,5 @@ metadata, compose source text, or render diagnostics.
 
 Verify: focused source-frame lifecycle and rollback suites, native/recovery,
 snapshot, ahead-of-time, replay and fixpoint parity; typed-local, trust, package,
-host, filemap, and dot lints. Dependencies: none. Ownership: authenticated
+host, and dot lints. Dependencies: none. Ownership: authenticated
 source-frame identity plus nested push/pop/restore lifecycle only.

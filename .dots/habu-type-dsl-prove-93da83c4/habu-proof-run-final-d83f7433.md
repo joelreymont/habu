@@ -8,4 +8,4 @@ blocks:
   - habu-proof-run-type-a106a19c
 ---
 
-Run host-lint, filemap-lint, trust-lint, typed-local diff lint, sole-surface lint, Maki, PTX, and the full native test suite on the exact rebased candidate. Require green performance budgets and zero unexpected spans before master can fast-forward.
+Run host-lint, trust-lint, typed-local diff lint, sole-surface lint, Maki, PTX, and the full native test suite on the exact rebased candidate. Require green performance budgets and zero unexpected spans before master can fast-forward.

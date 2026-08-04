@@ -1,16 +1,18 @@
 ---
 title: Add compiler IR IDs
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-26T22:54:38.085129+02:00"
+closed-at: "2026-08-04T20:24:43.797083+02:00"
+close-reason: "delivered: src/compiler/ir/id.f with test/compiler/ir-id.f and test/compiler/ir-id-concurrency.f are on the proofs branch, and proofs@origin is at the same revision (1bb76eab). That was the dot's own stated close condition. Five blocker edges repointed with that evidence."
 ---
 
 Depends on active prerequisite `habu-cast-v2-family-741e7bae`, which owns all
 shared checker, declaration, verification, package-provider, and refine-lint
 changes. This leaf owns `src/compiler/ir/id.f`,
 `test/compiler/ir-id-concurrency.f`, `test/compiler/ir-id.f`,
-`lib/errors.f`, and `docs/compiler-ir-design.md`. `PLAN.md`, `FILEMAP.md`,
+`lib/errors.f`, and `docs/compiler-ir-design.md`. `PLAN.md`,
 `LESSONS.md`, and both dot records are shared integration records.
 
 IR-0.1 freezes one `IR-ID` package owner with public nominal identity and
@@ -37,7 +39,7 @@ the exact ID, allocator, pack/project/check, error, seal, and suite surface in
 PLAN.md IR-0.1. Forbidden alternatives are `IR-RAW`, public raw casts, runtime
 kind tags, per-dialect copies, and changes to TASK or typed storage. Focused
 acceptance is `bin/hb --load test/compiler/ir-id.f`; broader gates are refine,
-package, error, file-map, typed-local, suite coverage, Maki, PTX standard
+package, error, typed-local, suite coverage, Maki, PTX standard
 library, and the native publication gate.
 
 Acceptance: key round trips; nonzero unique concurrent owners; require replay;

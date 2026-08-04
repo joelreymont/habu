@@ -21,4 +21,4 @@ Checkpoint:
 5. Interface: monotonicity, nonzero, uniqueness, stale-retry, exhaustion-before-wrap, and host-refinement theorems, mutation counterexamples, and local assumption output.
 6. Forbidden: stronger CAS axioms, hidden or renamed assumptions, weakened interleavings, post-wrap rejection, a committed report, parity work, Habu edits, or Admitted.
 7. Focused: run `rocq compile -Q formal Habu formal/Common/Ids.v`, then `rocq compile -Q formal Habu formal/Common/IdAllocator.v`, then `rocq compile -Q formal Habu formal/Common/IdAllocatorLaws.v`, checking local assumptions output.
-8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, file-map, stale-status, and dot dependency gates.
+8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, stale-status, and dot dependency gates.

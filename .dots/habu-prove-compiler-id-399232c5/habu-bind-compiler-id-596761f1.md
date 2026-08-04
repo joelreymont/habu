@@ -30,4 +30,4 @@ Checkpoint:
 5. Interface: one checked parity runner, one child replay fixture, one committed exact external-axiom manifest, and one deterministic final assumptions report; no runtime compiler API.
 6. Forbidden: source-text-only equality without executable Habu mutations, copied vectors, packed scalar roles, numeric wrong-family/replay rows, assumption-subset checks, generated uncommitted allowlists, hidden trust, or Admitted.
 7. Focused: compile all four Rocq files, then `bin/hb --load test/compiler/ir-id-proof.f`.
-8. Broader: complete Rocq proof, compiler-ID, typed-local, package, refine, error, suite coverage, file-map, host, stale-status, dot dependency, Maki, PTX standard library, required fixpoint/bootstrap, and native publication gates.
+8. Broader: complete Rocq proof, compiler-ID, typed-local, package, refine, error, suite coverage, host, stale-status, dot dependency, Maki, PTX standard library, required fixpoint/bootstrap, and native publication gates.

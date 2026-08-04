@@ -8,4 +8,4 @@ blocks:
   - habu-lint-detect-removed-b53f1090
 ---
 
-Integrate the removed-token lint into native lint-tools/full gate, FILEMAP, STATUS, and focused positive/negative fixtures. Prove only STRUCTURE/;STRUCTURE and ENUM/;ENUM declare public composite types, runtime lookup cannot find removed words, and allowlist drift fails.
+Integrate the removed-token lint into native lint-tools/full gate, STATUS, and focused positive/negative fixtures. Prove only STRUCTURE/;STRUCTURE and ENUM/;ENUM declare public composite types, runtime lookup cannot find removed words, and allowlist drift fails.

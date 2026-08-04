@@ -16,7 +16,7 @@ mint — new kernel work keeps minting trusted wrappers exactly as this dot
 predicts. The capability itself is unstarted; the 17-mint-core target stands,
 the retire count is now ~70.
 
-Claim: agent=phantom workspace=.jj-ws/fable-phantom (host lane, LEG 1: capability + pilot; lib/ptx/cg-mma.f + cg-matmul.f are FENCED to the wave3 lane - broad sweep is leg 2)
+LEG 1 (capability + pilot; lib/ptx/cg-mma.f + cg-matmul.f are FENCED to the wave3 lane - broad sweep is leg 2) is unclaimed: stale claim stripped 2026-08-04, workspace .jj-ws/fable-phantom no longer exists.
 
 LEG 1 LANDED 2026-07-17 (phantom lane, commit 0360af4a; leg-1 claim
 RELEASED). HONEST FINDING: the dot's premise was half-wrong - the checker's
@@ -59,7 +59,7 @@ output: ctx/load/reduce/stage families), category 2c rides the cp.async
 program, 2d (~17 mints) is the intended permanent core, 2e is
 cg-matmul.f:1 (unfenced once the decomp lane retired - now available).
 
-Claim: agent=leg2b workspace=.jj-ws/fable-leg2b (LEG 2B: the checked-mint / rep-provenance capability - owns src/core/checker.f + type-family.f this session)
+LEG 2B (the checked-mint / rep-provenance capability - owns src/core/checker.f + type-family.f) is unclaimed: stale claim stripped 2026-08-04, workspace .jj-ws/fable-leg2b no longer exists.
 
 LEG 2B LANDED 2026-07-17 (leg2b lane, commit a2a8386e; claim RELEASED).
 HONEST DESIGN FINDING: the checked-mint case is a CHECKER RULE, not a lib
@@ -91,7 +91,7 @@ STATE/SCORE/..., ACC-*) - this is the audited mint core, not debt;
 unchanged. One documented conservative boundary: VALUE-RECORD input mixed
 with a register mint is not sealed.
 
-Claim: agent=leg2c workspace=.jj-ws/fable-leg2c (LEG 2C: projection-load batch - tile.f/tile-v4.f/tile-v4a.f/tile-smem.f loads; land only if net trust <= -1)
+LEG 2C (projection-load batch - tile.f/tile-v4.f/tile-v4a.f/tile-smem.f loads; land only if net trust <= -1) is unclaimed: stale claim stripped 2026-08-04, workspace .jj-ws/fable-leg2c no longer exists.
 
 LEG 2C RESOLVED 2026-07-17 (leg2c lane, commit b34ac7ae; claim RELEASED).
 The batch's honest arithmetic: in-batch sharing was ZERO under nominal

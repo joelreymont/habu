@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "\"2026-07-26T22:54:38.097168+02:00\""
 blocks:
-  - habu-add-compiler-ir-21e976fc
   - habu-type-dsl-prove-93da83c4
 ---
 
@@ -25,3 +24,5 @@ surface, which helps the cutover rather than hindering it. Do not use any legacy
 definer.
 
 Full context: design sections 5.4-5.5 require explicit immutable target contract and numerical policy before table-bearing compiler stages. Define canonical STRUCTURE/ENUM records for architecture, ABI, features, endianness, pointer width, integer overflow, floating semantics, contraction, fast-math, and comparison policy, with deterministic digests. Acceptance: missing/illegal combinations reject; equal policies digest identically; every semantic field changes identity. Dependencies: compiler IR IDs and the unified type-DSL hard-cutover proof.
+
+BLOCKER RESOLVED 2026-08-04 (dot-purge): `habu-add-compiler-ir-21e976fc` is closed and its edge removed here. The IR-ID module landed - `src/compiler/ir/id.f`, `test/compiler/ir-id.f` and `test/compiler/ir-id-concurrency.f` are present on the `proofs` branch and `proofs@origin` is at the same revision (1bb76eab), which is exactly the close condition that dot recorded for itself. The dependency is satisfied, not dissolved.

@@ -1,6 +1,6 @@
 ---
 title: Load lint sources transactionally
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-26T21:36:15.306921+02:00"
@@ -9,3 +9,5 @@ created-at: "2026-07-26T21:36:15.306921+02:00"
 Problem: LINT-SOURCE replaces a process-wide source mapping in place. Its current growth path caps valid files at 16 MiB, overwrites the recorded pointer before releasing the old mapping, and can publish a partial read under the previous length. Required result: LINT-SOURCE:LOAD must accept every regular file whose byte length is representable and allocatable, with no policy ceiling. Validate zero, negative, rounding, and allocation domains through the existing memory and file-system contracts. Allocate a candidate mapping without changing BUF-A, CAP, or LEN; read the complete file through READ-ALL; on any stat, allocation, or read failure, release every candidate owner and leave the prior TEXT byte-for-byte unchanged; after a complete read, release the previous mapping and atomically publish the candidate pointer, exact allocation span, and file length. A successful LOAD invalidates the previous TEXT view; a failed LOAD does not. Keep raw setters private and do not add a second source authority. Owner: package LINT-SOURCE in tools/lint/text.f and its existing foundation suite. Acceptance: production-path fixtures prove a file larger than the removed 16 MiB ceiling loads completely, a larger successful replacement unmaps the previous address, and a caught real READ-ALL failure preserves the previous TEXT and does not retain the candidate mapping. Missing, unreadable, and non-regular paths retain named file-system errors for CLI attribution. The text foundation suite, exact consumers used by typed-local and package diff lint, memory suite, typed-local diff lint, and package diff lint pass. This leaf does not modify any consuming lint.
 
 Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `codex-lint-source` and workspace `.jj-ws/habu-load-lint-sources-a553610f` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `tools/lint/text.f` still loads in place through `ENSURE-CAPACITY` then `READ-ALL`, with no candidate buffer and no atomic publish. The dot stays active and is free to claim.
+
+REOPENED 2026-08-04 (dot-purge): this dot carried `status: active` with no live owner - no `agent=`/workspace claim, or a claim explicitly released. An active dot with no owner is invisible to `dot ready` and holds its id hostage, so the status is now `open` and the dot is free to claim.

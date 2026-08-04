@@ -4,8 +4,6 @@ status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-27T14:39:02.868347+02:00"
-blocks:
-  - habu-add-compiler-ir-21e976fc
 ---
 
 Claim: agent=proof_allocator workspace=.jj-ws/proof-allocator
@@ -21,4 +19,6 @@ Checkpoint:
 5. Interface: aligned cell, CAS result and pure transition, guarded next step, attempt result, interleaved runner, and named host-CAS/linearizability boundary.
 6. Forbidden: resettable or per-context serials, post-add overflow checks, wrapping, non-atomic transitions, hidden axioms, allocator theorems, Habu edits, or a committed assumptions report.
 7. Focused: run `rocq compile -Q formal Habu formal/Common/Ids.v`, then `rocq compile -Q formal Habu formal/Common/IdAllocator.v`.
-8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, file-map, stale-status, and dot dependency gates.
+8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, stale-status, and dot dependency gates.
+
+BLOCKER RESOLVED 2026-08-04 (dot-purge): `habu-add-compiler-ir-21e976fc` is closed and its edge removed here. The IR-ID module landed - `src/compiler/ir/id.f`, `test/compiler/ir-id.f` and `test/compiler/ir-id-concurrency.f` are present on the `proofs` branch and `proofs@origin` is at the same revision (1bb76eab), which is exactly the close condition that dot recorded for itself. The dependency is satisfied, not dissolved.

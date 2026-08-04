@@ -1,9 +1,11 @@
 ---
 title: Register formal Rocq build
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T09:10:35.870780+02:00"
+closed-at: "2026-08-04T20:24:43.807344+02:00"
+close-reason: "delivered and moot: formal/_CoqProject and formal/Makefile exist and build the four Rocq files, with the assumption manifest enforced by test/compiler/ir-id-proof.f; the FILEMAP.md half died with commit 85a9646fd, which deleted FILEMAP.md and filemap-lint. No dot depends on it."
 blocks:
   - habu-bind-compiler-id-596761f1
 ---

@@ -32,7 +32,7 @@ provider-authenticated destination-owner check. Forbidden alternatives are
 trust expansion, checker-mirror authority, runtime guards, value heuristics,
 or a public grant. Focused acceptance is the cast-negative, type-declaration,
 type-export, compiler-ID, and refine-lint suites; broader gates are trust,
-package, typed-local, file-map, Maki, PTX standard library, fixpoint, bootstrap,
+package, typed-local, Maki, PTX standard library, fixpoint, bootstrap,
 and the native publication gate.
 
 Acceptance covers A-as-B owner spoofing, visibility spoofing, foreign private

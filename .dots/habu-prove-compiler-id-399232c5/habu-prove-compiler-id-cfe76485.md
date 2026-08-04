@@ -21,4 +21,4 @@ Checkpoint:
 5. Interface: bounded pack, projection, injection, owner separation, reject, count scalar-identity, and pool-offset scalar-identity theorems plus focused counterexamples.
 6. Forbidden: changing `Ids.v`, runtime kind predicates, examples as theorem substitutes, missing boundary mutations, scalar proof only below bit 32, allocator/parity work, or Admitted.
 7. Focused: run `rocq compile -Q formal Habu formal/Common/Ids.v`, then `rocq compile -Q formal Habu formal/Common/IdLaws.v`.
-8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, file-map, stale-status, and dot dependency gates.
+8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, stale-status, and dot dependency gates.

@@ -4,8 +4,6 @@ status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-27T13:50:23.724542+02:00"
-blocks:
-  - habu-add-compiler-ir-21e976fc
 ---
 
 Claim: agent=proof_ids workspace=.jj-ws/proof-ids
@@ -21,4 +19,6 @@ Checkpoint:
 5. Interface: exact constants, one distinct structure per IR-0.1 family, packed-ID predicates/projections, and identity-preserving scalar constructors/projections.
 6. Forbidden: runtime kind tags, unguarded unbounded-integer claims, one generic ID type, packed scalar families, allocator state, theorem work, or Habu edits.
 7. Focused: `rocq compile -Q formal Habu formal/Common/Ids.v`.
-8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, file-map, stale-status, and dot dependency gates.
+8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, stale-status, and dot dependency gates.
+
+BLOCKER RESOLVED 2026-08-04 (dot-purge): `habu-add-compiler-ir-21e976fc` is closed and its edge removed here. The IR-ID module landed - `src/compiler/ir/id.f`, `test/compiler/ir-id.f` and `test/compiler/ir-id-concurrency.f` are present on the `proofs` branch and `proofs@origin` is at the same revision (1bb76eab), which is exactly the close condition that dot recorded for itself. The dependency is satisfied, not dissolved.

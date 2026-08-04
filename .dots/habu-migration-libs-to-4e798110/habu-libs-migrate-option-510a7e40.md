@@ -35,14 +35,13 @@ do not publish test-only type families.
 
 Exact files: `lib/adt/option.f`, `lib/adt/option-test.f`, `docs/forth.md`,
 `tools/package-diff-lint-core.f`, `tools/package-diff-lint-test.f`,
-`test/gate-stdlib-cases.f`, `tools/suite-coverage-lint-core.f`, and `FILEMAP.md`.
+`test/gate-stdlib-cases.f`, `tools/suite-coverage-lint-core.f`.
 The new test file raises the enum census's walked-file count from 1,266 to
 1,267, so the exact write set also includes `tools/enum-census-core.f` solely
 for that ratchet. Its declaration baseline stays unchanged at 111 plain and 88
 full sites. Do not edit `lib/std.manifest`, the enum-census baseline, RESULT, or
 any consumer. Acceptance: focused OPTION suite, exact owning standard-library
-suite including enum census, typed-local and package exact-diff lints,
-suite-coverage and file-map lints, an exact census proving 1,267 walked files
+suite including enum census, typed-local and package exact-diff lints, suite-coverage lint, an exact census proving 1,267 walked files
 with 111 plain and 88 full sites, an exact census proving 124 unchanged
 consumers and only the declaration changed in the 125-file universe, and
 scratch mutation kills for arm order, field name, compact mode, and

@@ -1,6 +1,6 @@
 ---
 title: Add unique bounded MEM byte borrow
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-13T16:44:00.233981+02:00"
@@ -9,7 +9,7 @@ blocks:
   - habu-use-non-reserved-67821d1c
 ---
 
-Problem: raw allocated pointers permit unchecked aliasing, copy/drop, out-of-bounds byte access, free-while-live, stale use, and ownership that escapes its mapping lifetime. Fix: reopen package MEM in new lib/memory-region.f and implement `WITH-REGION ( CAD-NUM:alloc-byte-len [ owner<q> -- S ] -- S )` on the existing `MEM:WITH-BYTES` cleanup primitive. Within that lexical scope, BORROW consumes owner<q> to produce one unique transient span<q,u8,e,unique,transient,g>, typed INDEX/C@/C! operate only through bounded evidence, ;BORROW consumes the span and returns the same owner, and FREE consumes logical ownership before callback return. `MEM:WITH-BYTES` performs the physical unmap after the checked callback and preserves its established cleanup and primary-error precedence. No owner, span, raw pointer, index, or generation token may escape the callback. Use PRODUCT values with concrete linear tokens; do not edit lib/memory.f in this leaf. Acceptance: raw index, cross-region, extent/generation mismatch, owner/span copy or drop, free while borrowed, callback return without FREE, post-;BORROW span use, escaped authority, and later-generation index reuse reject; first/last byte access works; negative/index=len throw E-MEM-BOUNDS without modifying sentinels; callback throws still unmap; nested scopes release in reverse order; allocation identity exhausts before reuse. Files: lib/memory-region.f, lib/memory-region-test.f, FILEMAP.md. Verify: exact test load, checker/linear/type-family suites, lib/memory-test.f, refine/trust/host/filemap/dot lints, typed-local diff lint, full native gate.
+Problem: raw allocated pointers permit unchecked aliasing, copy/drop, out-of-bounds byte access, free-while-live, stale use, and ownership that escapes its mapping lifetime. Fix: reopen package MEM in new lib/memory-region.f and implement `WITH-REGION ( CAD-NUM:alloc-byte-len [ owner<q> -- S ] -- S )` on the existing `MEM:WITH-BYTES` cleanup primitive. Within that lexical scope, BORROW consumes owner<q> to produce one unique transient span<q,u8,e,unique,transient,g>, typed INDEX/C@/C! operate only through bounded evidence, ;BORROW consumes the span and returns the same owner, and FREE consumes logical ownership before callback return. `MEM:WITH-BYTES` performs the physical unmap after the checked callback and preserves its established cleanup and primary-error precedence. No owner, span, raw pointer, index, or generation token may escape the callback. Use PRODUCT values with concrete linear tokens; do not edit lib/memory.f in this leaf. Acceptance: raw index, cross-region, extent/generation mismatch, owner/span copy or drop, free while borrowed, callback return without FREE, post-;BORROW span use, escaped authority, and later-generation index reuse reject; first/last byte access works; negative/index=len throw E-MEM-BOUNDS without modifying sentinels; callback throws still unmap; nested scopes release in reverse order; allocation identity exhausts before reuse. Files: lib/memory-region.f, lib/memory-region-test.f. Verify: exact test load, checker/linear/type-family suites, lib/memory-test.f, refine/trust/host/dot lints, typed-local diff lint, full native gate.
 
 Edge note 2026-07-17: blocker habu-tfam-11-linear-99fa9990 closed (core
 complete); edge repointed to its successor habu-tfam-11b-open-ee9c72c6
@@ -33,3 +33,5 @@ to bool. This leaf waits on habu-use-non-reserved-67821d1c; a MEM-local trusted
 constructor or retagging shim is forbidden.
 
 Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `mem-region` and workspace `.jj-ws/habu-add-unique-bounded-527e05ca` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `lib/memory-region.f` does not exist and `rg 'WITH-REGION'` finds nothing outside the dots. The dot stays active and is free to claim.
+
+REOPENED 2026-08-04 (dot-purge): this dot carried `status: active` with no live owner - no `agent=`/workspace claim, or a claim explicitly released. An active dot with no owner is invisible to `dot ready` and holds its id hostage, so the status is now `open` and the dot is free to claim.

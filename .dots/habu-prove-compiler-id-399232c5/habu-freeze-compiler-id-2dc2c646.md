@@ -4,8 +4,6 @@ status: active
 priority: 1
 issue-type: task
 created-at: "\"2026-07-27T13:50:14.622291+02:00\""
-blocks:
-  - habu-add-compiler-ir-21e976fc
 ---
 
 Claim: agent=freeze_manifest workspace=.jj-ws/habu-freeze-compiler-id-2dc2c646
@@ -21,4 +19,6 @@ Checkpoint:
 5. Interface: one ordered identity manifest, one SHA-256 digest over its canonical bytes, one ordered valid/hostile numeric vector artifact, and references to the existing wrong-family and replay fixtures; no runtime compiler API.
 6. Forbidden: runtime kind tags, copied Habu/Rocq vectors, numeric wrong-family or replay rows, packing either scalar family, or added trust.
 7. Focused: `bin/hb --load test/compiler/ir-id-manifest.f`.
-8. Broader: compiler-ID, typed-local, package, refine, error, suite coverage, file-map, host, stale-status, dot dependency, Maki, PTX standard library, and native publication gates.
+8. Broader: compiler-ID, typed-local, package, refine, error, suite coverage, host, stale-status, dot dependency, Maki, PTX standard library, and native publication gates.
+
+BLOCKER RESOLVED 2026-08-04 (dot-purge): `habu-add-compiler-ir-21e976fc` is closed and its edge removed here. The IR-ID module landed - `src/compiler/ir/id.f`, `test/compiler/ir-id.f` and `test/compiler/ir-id-concurrency.f` are present on the `proofs` branch and `proofs@origin` is at the same revision (1bb76eab), which is exactly the close condition that dot recorded for itself. The dependency is satisfied, not dissolved.
