@@ -1,9 +1,11 @@
 ---
 title: Add provisional KV row
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-30T06:31:39.269165+02:00"
+closed-at: "2026-08-05T01:34:24.973373+02:00"
+close-reason: Landed fixed-row provisional ADD with shared planner, exact rollback, and active-batch exclusion.
 blocks:
   - habu-open-provisional-kv-291eed23
 ---
