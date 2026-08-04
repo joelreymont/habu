@@ -128,16 +128,29 @@
 \ itself.
 \
 \ A BRANCH TO THE BLOCK LAID OUT NEXT IS NOT EMITTED, WHICH MAKES A TERMINATOR'S
-\ INSTRUCTION COUNT A PROPERTY OF THE LAYOUT AND NOT ONLY OF ITS FORM. Blocks are
-\ still laid out in the order the module records them and nothing here reorders
-\ them to manufacture a fall-through; but a terminator whose trailing
-\ unconditional branch names the very next block reaches that block by falling
-\ into it, so the branch is left out. That is four bytes and a jump for every one
-\ of them, and the fused compare-and-branch is wired to leave its unconditional
-\ half pointing at the next block precisely so this can delete it. The price is
-\ exact and worth naming: the layout order is now load-bearing. Moving a block
-\ changes what is emitted and not only where it lands, which is the property the
-\ full-branch emission used to buy.
+\ INSTRUCTION COUNT A PROPERTY OF THE LAYOUT AND NOT ONLY OF ITS FORM. A
+\ terminator whose trailing unconditional branch names the very next block
+\ reaches that block by falling into it, so the branch is left out. That is four
+\ bytes and a jump for every one of them, and the fused compare-and-branch is
+\ wired to leave its unconditional half pointing at the next block precisely so
+\ this can delete it. The price is exact and worth naming: the layout order is
+\ load-bearing. Moving a block changes what is emitted and not only where it
+\ lands, which is the property the full-branch emission used to buy.
+\
+\ AND SO THIS PASS CHOOSES THE ORDER RATHER THAN INHERITING IT. Which branches
+\ the rule above deletes is decided by which block is written next, and that used
+\ to be whatever order the elaborator happened to build the blocks in - so a
+\ `begin … while … repeat` loop, whose exit stub is built between the header and
+\ the body, kept two branches that nothing about the program required.
+\ ORDER-BLOCKS writes block zero first, the block control leaves the routine
+\ through last - the publication seam records a length that says the emission
+\ ends in the return - and between them follows each block with the successor its
+\ trailing branch names, falling back to the lowest block not yet written. The
+\ order is one permutation, held in one table, and the layout, the writer and the
+\ fall-through rule all read it - so there is one owner of "what comes next" and
+\ no second answer to drift from it. The module's own block order is untouched
+\ and still names every block: the label table, every branch and every other
+\ reader of the module go on speaking in ordinals.
 \
 \ SO THE RULE IS WRITTEN ONCE AND BOTH PASSES ASK IT. FALL-THRU? answers, from an
 \ operation and the ordinal of the block it terminates, whether that trailing
@@ -386,7 +399,20 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
 \ from the entry here. There is no relocation list, because there is nothing to
 \ patch afterwards - the layout is computed before the first byte is written, so
 \ every displacement is known when its instruction is encoded.
+\
+\ IT IS KEYED BY ORDINAL AND NOT BY POSITION, because a branch names an ordinal.
+\ Which POSITION a block is laid out at is the other two tables below.
 create B-START BMAX cells allot
+
+\ The order the blocks are laid out in, read both ways round. B-ORDER answers
+\ which block is written at a position and B-PLACE answers which position a block
+\ is written at, and they are one permutation held twice because both directions
+\ are asked in the inner loop of a pass: the layout and the writer walk positions
+\ and the fall-through rule asks where a branch's TARGET sits. Deriving either
+\ from the other by searching would put a scan of every block inside the
+\ per-operation question that rule is.
+create B-ORDER BMAX cells allot        \ position -> block ordinal
+create B-PLACE BMAX cells allot        \ block ordinal -> position
 
 \ ---- the dialect's operation family ------------------------------------------
 : SLOT-OF ( A64IR:opcode -- n )
@@ -835,14 +861,13 @@ create B-START BMAX cells allot
    k 1+ N-INS ! ;
 
 \ ---- the block layout --------------------------------------------------------
-\ Blocks are laid out in the order the module records them, which is the order
-\ they were built in. That is a decision and not an accident: it is the one order
-\ every reader of the module already agrees on, so the allocator, the validator
-\ and this pass number the same instruction the same way, and a fixture can
-\ assert exact offsets. Nothing here reorders blocks to put a branch's target
-\ next - which blocks fall through to which is whatever the module's own order
-\ made it, and choosing an order that makes more of them is a pass of its own
-\ with its own measurement (dot habu-order-blocks-to-f6d89653).
+\ Blocks are laid out in an order this pass CHOOSES, and the section after the
+\ next one is where it is chosen. The module's own order - the order the selector
+\ built the blocks in - is still the one every OTHER reader of the module numbers
+\ instructions by, and it still names every block: an ordinal is a block's name
+\ here as it is everywhere else, and the label table above is keyed by it. What
+\ this pass decides is only which block's instructions are WRITTEN next, which is
+\ what the fall-through rule below is a question about.
 \
 \ Which blocks there are to name. A block of the function being emitted is one
 \ this pass laid out, so an ordinal outside that range is a module this layout
@@ -900,6 +925,195 @@ create B-START BMAX cells allot
    k O-FCMPBRZ = if 1 exit then
    -1 ;
 
+\ ---- the chosen block order --------------------------------------------------
+\ WHICH BRANCHES GET DELETED IS A CHOICE, AND THIS IS WHERE IT IS MADE. The rule
+\ below deletes a terminator's trailing unconditional branch when its target is
+\ the block written next. Written next was, until this section existed, whatever
+\ the elaborator's build order happened to make it - so a loop written
+\ `begin … while … repeat` had its exit stub built between the header and the
+\ body, the header's trailing branch to the body could not fall through, and
+\ neither could the stub's branch to the block after the loop. Two branches, in
+\ every loop of that shape, deleted by nothing but laying the blocks out in a
+\ different order.
+\
+\ THE RULE, IN ONE SENTENCE. Block zero is written first, because it is the
+\ routine's entry - the caller enters at the first byte and the prologue is in it.
+\ The block control leaves the routine through is written last, because the
+\ record published for the routine says so - see RET-ORD below. After each block,
+\ write the block its trailing unconditional branch names, if that block has not
+\ been written yet; otherwise write the lowest-numbered block that has not been
+\ written yet.
+\
+\ WHY THE TRAILING SUCCESSOR AND NOT THE OTHER ONE. It is the only successor
+\ whose edge costs an instruction that laying it next would remove. A two-way
+\ branch's FIRST successor is reached by the conditional, which is emitted
+\ wherever that block sits; its second is reached by the unconditional below it,
+\ which is the instruction the rule deletes. So the likeliest successor, in the
+\ only sense this pass can pay for, is the one the trailing branch names - and
+\ nothing here has to guess which way a test will go, because whichever way the
+\ selection wired it, that is the arm the four bytes are on.
+\
+\ FOR AN UNFUSED LOOP TEST THAT IS THE BODY, and the loop comes out the shape a
+\ reader expects: the header falls into the body, the exit stub sinks below the
+\ latch, and the only unconditional branch left is the back edge. For a loop
+\ whose test FUSED into the branch it is the exit stub instead, because
+\ src/compiler/native/select.f wires the condition-holds arm first and staying in
+\ the loop is what the condition holding means - so the stub gets the
+\ fall-through, and the body and the back edge keep a branch each. That is one
+\ branch more than the shape needs and this pass cannot take it: laying the body
+\ next instead would mean inverting the conditional's condition, which is a
+\ decision about an instruction and not about an order (dot
+\ habu-choose-which-arm-ffe23e64).
+\
+\ WHY THE FALLBACK IS THE LOWEST BLOCK LEFT. A trace ends where its successor has
+\ already been written - at a back edge, or at a join two arms reach. What comes
+\ next then has to come from somewhere, and the module's own order is the one
+\ answer that is already agreed: taking the lowest block not yet written keeps
+\ the emission as close to the build order as the traces allow, so a routine
+\ whose build order was already the best order is written out unchanged.
+\
+\ WHY THIS IS THE SAME OWNER AS THE LAYOUT AND NOT A PASS BEFORE IT. Three
+\ readers ask the order: the layout asks which block to count next, the writer
+\ asks which block to write next, and the fall-through rule asks where a branch's
+\ TARGET sits relative to its own block. CURSOR-CK holds the first two against
+\ each other at every block boundary, and that check only means anything if all
+\ three are reading one table. Choosing the order also needs exactly what this
+\ file already holds and nothing else: the dialect binding that says which opcode
+\ a terminator is, and TAIL-SUCC, which says which successor the trailing branch
+\ names. A separate file would need a second binding over the same module and a
+\ second statement of TAIL-SUCC - the second authority on one rule this file
+\ refuses everywhere else.
+\
+\ AND IT CHANGES NO DISPLACEMENT'S REACH. Every branch between blocks of one
+\ routine is measured inside that routine, and INSN-MAX above bounds a routine at
+\ three instructions per operation over the value and block ceilings NFROZEN
+\ commits to. The narrowest field any of these branches has is the nineteen bits
+\ the conditional and the compare-against-zero forms carry, which reaches
+\ 2^18 instructions either way - two orders of magnitude past the longest routine
+\ that can exist here. So no permutation of the blocks can put a branch out of
+\ reach. The reach check stays where it is anyway, because it is about the
+\ encoder masking its field and not about the layout.
+\
+\ WHAT IT DOES NOT TOUCH. The register allocation. That is computed over the
+\ module's own block order, before this pass runs, and it is a function of the
+\ module and the register budget alone - no interference, no hull and no
+\ coalescing decision reads a byte offset or a layout position. This pass reads
+\ the accepted assignment (SELF-MOV? below) and never the other way round. So a
+\ value whose hull is stretched because the module records a loop's exit stub
+\ between its header and its body has exactly the same hull after this
+\ reordering: moving where the stub is WRITTEN does not move where it is
+\ RECORDED. That artefact belongs to whoever changes the recorded order or the
+\ coalescing, and nothing here can reach it.
+
+\ Where a block sits in the order, and which block sits at a position. A position
+\ is a number of the same range an ordinal is - the order is a permutation of the
+\ block ordinals - so one bound check serves both.
+: AT-POS ( n -- n )
+   BLK-ORD-CK cells B-ORDER + @ ;
+
+: POS-OF ( n -- n )
+   BLK-ORD-CK cells B-PLACE + @ ;
+
+\ Has this block been given a position yet? Every row starts below zero, so the
+\ question is answered by the table the answer is written into rather than by a
+\ second count that could disagree with it.
+: LAID? ( n -- bool )
+   BLK-ORD-CK cells B-PLACE + @ 0 >= ;
+
+: LAY ( n n -- )
+   {: b:n p:n :}
+   b BLK-ORD-CK {: bb:n :}
+   p BLK-ORD-CK {: pp:n :}
+   bb  pp cells B-ORDER + !
+   pp  bb cells B-PLACE + ! ;
+
+\ The block a terminator's trailing unconditional branch names, or -1 when the
+\ block ends in no such branch. It is TAIL-SUCC asked of a whole block, which is
+\ the form the ordering needs: the elision rule asks it of an operation.
+: TAIL-BLOCK ( IR-ID:ir-block-id -- n )
+   TERM-AT {: t:IR-ID:ir-op-id :}
+   t SLOT-AT TAIL-SUCC {: s:n :}
+   s 0 < if -1 exit then
+   t s SUCC-BLOCK ;
+
+\ The lowest-numbered block with no position yet, or -1 when every block has one.
+: NEXT-UNLAID ( -- n )
+   0 begin dup N-BLK @ < while
+      dup LAID? 0= if exit then
+      1+
+   repeat
+   drop -1 ;
+
+\ Which block follows this one: the one its trailing branch names when that block
+\ is still unwritten, and otherwise the lowest block left.
+: FOLLOWER ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT TAIL-BLOCK {: s:n :}
+   s 0 < if NEXT-UNLAID exit then
+   s LAID? if NEXT-UNLAID exit then
+   s ;
+
+\ THE LAST BLOCK WRITTEN IS THE ONE CONTROL LEAVES THE ROUTINE THROUGH, AND THAT
+\ IS NOT A PREFERENCE. src/compiler/native/publish.f records a word's code length
+\ as the emission LESS ONE INSTRUCTION, because the engine's records exclude a
+\ word's trailing return - that is the span its inliner copies into a caller
+\ (src/habu/habu2.f EM-COMPILE-FLUSH-PEND). So the emission's last instruction has
+\ to BE the return. Left to itself the trace above would happily end a routine on
+\ a loop's back edge, and the record published for it would then be a body with
+\ its last branch cut off: the routine still runs, because the return is reached
+\ in the middle, and every reader of the record - the inliner, the workload scan,
+\ the redirection seam - is one instruction wrong about it. The trace is
+\ therefore run over every block but this one, and this one is written last.
+\
+\ WHICH BLOCK THAT IS, RE-DERIVED HERE. The one whose terminator names no
+\ successor. src/compiler/native/regalloc.f decides the same thing the same way
+\ (MB-RET-ORD) and refuses a routine with none or with two, so a module that
+\ reached this pass has exactly one; it is measured again rather than taken on
+\ trust, because this pass is about to make the whole emission end in it.
+: RET-ORD ( IR-ID:ir-fun-id -- n )
+   {: f:IR-ID:ir-fun-id :}
+   -1
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT TERM-AT SUCCS-OF 0= if
+         dup 0 < 0= if E-A64EMIT-SHAPE throw then
+         drop i
+      then
+   loop
+   dup 0 < if E-A64EMIT-SHAPE throw then ;
+
+\ The order itself, decided before a single instruction is counted. The block
+\ count is established and bounded here rather than in LAYOUT below, because this
+\ is now the first word that reads it - and because a shape this pass cannot
+\ serve should be refused as that before any register assignment is read.
+\
+\ THE TWO ENDS ARE PINNED FIRST AND THE TRACE FILLS WHAT IS BETWEEN THEM. Block
+\ zero is the entry, so it takes the first position; the return block takes the
+\ last. A routine of one block is both, which is the only way they can be the
+\ same block - a longer routine whose entry is also its exit has no path to any
+\ of its other blocks, and it is refused here rather than emitted as a record the
+\ seam would mis-measure. The trace then fills the positions between, and the
+\ return block is already placed, so it is never picked up early.
+\
+\ LAY is what bounds the two numbers it writes, so a follower outside the
+\ function's blocks is E-A64EMIT-BLOCK here rather than a row written past the
+\ end of a table. It cannot happen: fewer than N-BLK blocks are laid when a
+\ position is still to be filled, so NEXT-UNLAID always has one to answer with.
+: ORDER-BLOCKS ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT {: n:n :}
+   n 1 < if E-A64EMIT-SHAPE throw then
+   n BMAX > if E-A64EMIT-CAP throw then
+   n N-BLK !
+   f RET-ORD {: r:n :}
+   n 0 ?do  -1 i cells B-PLACE + !  loop
+   r n 1- LAY
+   n 1 = if exit then
+   r 0= if E-A64EMIT-SHAPE throw then
+   0 0 LAY
+   n 1- 1 ?do
+      f  i 1- AT-POS  FOLLOWER  i LAY
+   loop ;
+
 \ THE RULE, WRITTEN ONCE. An operation's trailing unconditional branch is reached
 \ by falling into it when the block it names is the block laid out immediately
 \ after the one the operation terminates - and then it is not emitted at all.
@@ -907,14 +1121,17 @@ create B-START BMAX cells allot
 \ PUT-CMPBR leave out the same instruction by asking this same word, so there is
 \ no second statement of the rule that could come to disagree with the first.
 \
-\ The whole question is answered from block ordinals, which is why it can be
-\ asked during the layout: it needs to know which block comes next and not where
-\ any block starts, so nothing here depends on the offsets it is about to decide.
+\ IT IS ASKED IN POSITIONS AND ANSWERED ABOUT ORDINALS. The operation arrives
+\ with the ORDINAL of the block it terminates, because that is what every caller
+\ of it has, and the successor it names is an ordinal too; "immediately after" is
+\ a statement about where the two were laid out, so both go through the order.
+\ Nothing here depends on where any block STARTS, which is why it can still be
+\ asked during the layout that is about to decide exactly that.
 : FALL-THRU? ( IR-ID:ir-op-id n -- bool )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT TAIL-SUCC {: s:n :}
    s 0 < if false exit then
-   id s SUCC-BLOCK  home 1+ = ;
+   id s SUCC-BLOCK POS-OF  home POS-OF 1+ = ;
 
 \ THE SECOND RULE, ALSO WRITTEN ONCE. A copy whose source and destination are the
 \ same register moves that register into itself, which is no instruction at all,
@@ -974,20 +1191,22 @@ create B-START BMAX cells allot
 \ start of the routine. It is computed before a single byte is written, because a
 \ forward branch has to know where it is going before it can be encoded.
 \
+\ THE WALK IS OVER POSITIONS AND THE TABLE IS KEYED BY ORDINALS, which is the
+\ whole of what the chosen order changes here. Blocks are counted in the order
+\ they will be written - that is what makes each one's start the sum of the
+\ instructions written before it - and each one's start is filed under its own
+\ name, because a branch names a block and not a position.
+\
 \ Each block is counted knowing its own ordinal, because that is what its
 \ terminator's fall-through question is asked against. LAY-AT is left holding the
 \ whole routine's instruction count, which is what WALK holds its cursor against
 \ when it has emitted the last block.
 : LAYOUT ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   f BLOCK-COUNT {: n:n :}
-   n 1 < if E-A64EMIT-SHAPE throw then
-   n BMAX > if E-A64EMIT-CAP throw then
-   n N-BLK !
    0 LAY-AT !
-   n 0 ?do
-      LAY-AT @ i cells B-START + !
-      LAY-AT @  f i BLOCK-AT i BLOCK-INSNS  +  LAY-AT !
+   N-BLK @ 0 ?do
+      LAY-AT @ i AT-POS cells B-START + !
+      LAY-AT @  f i AT-POS BLOCK-AT  i AT-POS BLOCK-INSNS  +  LAY-AT !
    loop ;
 
 \ ---- the branches ------------------------------------------------------------
@@ -1448,11 +1667,14 @@ create B-START BMAX cells allot
 : CURSOR-CK ( n -- )
    START-AT N-INS @ <> if E-A64EMIT-LAYOUT throw then ;
 
+\ The blocks are written in the chosen order, which is the order the layout
+\ counted them in - and the cursor check below is what says so at every boundary
+\ rather than leaving it to the two loops looking alike.
 : WALK ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   f BLOCK-COUNT 0 ?do
-      i CURSOR-CK
-      f i BLOCK-AT i WALK-BLOCK
+   N-BLK @ 0 ?do
+      i AT-POS CURSOR-CK
+      f i AT-POS BLOCK-AT  i AT-POS  WALK-BLOCK
    loop
    N-INS @ LAY-AT @ <> if E-A64EMIT-LAYOUT throw then ;
 
@@ -1669,15 +1891,18 @@ public
 \ validator has accepted for it, into this package's buffers. Nothing is readable
 \ until this returns; a run that refuses leaves no sealed emission.
 \
-\ THE SHAPE IS STILL DECIDED FIRST AND THE LAYOUT IS NOT. Whether these
+\ THE SHAPE AND THE ORDER ARE DECIDED FIRST AND THE LAYOUT IS NOT. Whether these
 \ operations are something this leaf can emit at all is a question about the
 \ module alone, so SHAPE-CK is asked before any assignment is read - a module of
 \ a shape this pass cannot serve is refused as that, and not as a complaint
-\ about registers. But how many instructions the module IS depends on the
-\ assignment now, because a copy whose two ends are one register is no
-\ instruction (SELF-MOV? above), so the layout cannot be computed until the
-\ assignment has been accepted. ALLOC-CK therefore comes between them: the
-\ acceptance is probed, and only then are the blocks laid out and written.
+\ about registers. Which order the blocks are written in is a question about the
+\ module alone too: it reads terminators and successors and nothing else, so it
+\ is asked next, and a routine too big to lay out is refused there for the same
+\ reason. But how many instructions the module IS depends on the assignment,
+\ because a copy whose two ends are one register is no instruction (SELF-MOV?
+\ above), so the layout cannot be computed until the assignment has been
+\ accepted. ALLOC-CK therefore comes after the order and before the layout: the
+\ acceptance is probed, and only then are the blocks measured and written.
 : EMIT ( IR-CTX:ctx IR-BUILD:module -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    BND-TAKE
@@ -1693,6 +1918,7 @@ public
    m VIEWS!
    FUN-OF {: f:IR-ID:ir-fun-id :}
    f SHAPE-CK
+   f ORDER-BLOCKS
    m ALLOC-CK
    f LAYOUT
    f WALK
@@ -1727,6 +1953,13 @@ public
 
 : BLOCK-START@ ( n -- n )
    SEAL-CK BLK-ORD-CK cells B-START + @ ;
+
+\ And which block was written at a position, which is the order this pass chose.
+\ It is read back for the same reason the starts are: the order decides which
+\ branches exist at all, so a fixture that wants to say a routine was written in
+\ the order its blocks were built - or in some other one - has to be able to ask.
+: BLOCK-AT-POS@ ( n -- n )
+   SEAL-CK AT-POS ;
 
 : SIZE ( -- n )
    SEAL-CK N-INS @ INSN-BYTES * ;

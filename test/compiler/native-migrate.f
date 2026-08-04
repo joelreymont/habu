@@ -896,6 +896,184 @@ variable BRANCH-N
    s" 50 NMG-FOLDIV" EV-N 50 NMI-FOLDIV T=
    s" 91 NMG-FOLDIV" EV-N 91 NMI-FOLDIV T= ;
 
+\ ---- the order the blocks are written in -------------------------------------
+\ WHAT THESE CASES ARE ABOUT. src/compiler/native/emit.f chooses which block's
+\ instructions follow which, instead of writing them in the order the elaborator
+\ happened to build them. The choice is worth nothing except through one rule -
+\ a terminator's trailing unconditional branch is not emitted when its target is
+\ the block written next - so what it BUYS is branches that are not there, and
+\ that is what these cases count, in the published record, with the walk the
+\ redirection seam and the workload scan use.
+\
+\ THE SHAPE THE CHOICE WAS MADE FOR. A `begin … while … repeat` loop is built
+\ header, exit stub, body: the stub sits between the header and the loop body, so
+\ the header's branch to the body could not fall through and neither could the
+\ stub's branch to the block after the loop. Two unconditional branches, neither
+\ of which the program requires. Written body-first the header falls into the
+\ body and the stub falls into the block after the loop, and what is left is the
+\ ONE branch a loop cannot do without: the back edge. NMG-WCALL below held three
+\ of them before the order was chosen and holds one now.
+\
+\ WHY ITS TEST IS A CALL AND NOT A COMPARISON. A comparison standing above its
+\ branch FUSES into it, and the fused form names the condition-holds arm first -
+\ which for a `while` is staying in the loop - so its trailing half names the
+\ exit stub and the fall-through goes there instead of into the body. That loop
+\ keeps two branches, and taking the second needs the condition inverted rather
+\ than the blocks moved (dot habu-choose-which-arm-ffe23e64). NMG-WCALL's test is
+\ a call, so nothing fuses and the branch is the two-way one this case is about.
+\
+\ AND THE SHAPE IT MUST NOT DISTURB. A `begin … until` loop is built in an order
+\ that already falls through everywhere it can, so a chooser that shuffled blocks
+\ for the sake of shuffling would move its bytes for nothing. NMG-UNTIL pins that
+\ its order is the one the module recorded, block for block.
+\
+\ AND THE END OF THE ROUTINE, WHICH IS NOT THE CHOOSER'S TO MOVE.
+\ src/compiler/native/publish.f records a word's length as the emission LESS ONE
+\ INSTRUCTION, because the engine's records exclude a word's trailing return -
+\ that is the span its inliner copies. So the emission has to END in the return,
+\ and a chooser left to itself would happily end NMG-WGT on its back edge and
+\ publish a record with the last branch of the body cut off. NMG-WGT pins the
+\ two halves of that: the last instruction emitted is a return, and the recorded
+\ length is the emission less exactly that instruction.
+$02000000 constant B-BACK            \ the sign bit of a branch's displacement field
+$D65F03C0 constant RET-FORM          \ `ret`, the one instruction control leaves through
+
+variable UNCOND-N
+variable BACK-N
+
+\ The walk's callback again, counting only the branch that carries no condition -
+\ the one the fall-through rule can delete - and, of those, the ones that go
+\ backwards. A loop's back edge is the only backward branch a structured body
+\ builds, so "one unconditional branch and it goes backwards" is the statement
+\ that every forward one was deleted.
+: UNCOND-NOTE ( n n -- )
+   {: at:n w:n :}
+   w B-MASK and B-FORM = 0= if exit then
+   UNCOND-N @ 1+ UNCOND-N !
+   w B-BACK and 0<> if BACK-N @ 1+ BACK-N ! then ;
+
+: UNCOND-COUNT ( ptr u8 n -- )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   0 UNCOND-N !
+   0 BACK-N !
+   a u REC-START  a u REC-LEN  [: UNCOND-NOTE ;] NWALK:SPAN-EACH ;
+
+: UNCOND-IN ( ptr u8 n -- n )
+   UNCOND-COUNT UNCOND-N @ ;
+
+: BACKWARD-IN ( ptr u8 n -- n )
+   UNCOND-COUNT BACK-N @ ;
+
+\ How many blocks the chosen order left where the module recorded them. Equal to
+\ the block count means the order IS the module's order and nothing was moved.
+: SELF-PLACED ( -- n )
+   0
+   A64EMIT:BLOCKS 0 ?do
+      i A64EMIT:BLOCK-AT-POS@ i = if 1+ then
+   loop ;
+
+\ The loop whose exit test is a real call, which is the shape the measurement was
+\ taken on. Its test cannot fuse into the branch - the comparison is inside the
+\ callee - so the loop header ends in the two-way branch whose trailing half
+\ names the body, and that is the branch the order deletes. The callee's body
+\ names a local, which is not a token a recorded body may hold, so it is a call
+\ the elaboration cannot copy into the caller and the loop really does call it.
+: STEP-SRC ( -- ptr u8 n )
+   s" : NMG-STEP ( n -- n bool ) {: k:n :} k 1- dup 0 > ;" ;
+
+: WCALL-SRC ( -- ptr u8 n )
+   s" : NMG-WCALL ( n -- n ) begin NMG-STEP while repeat ;" ;
+
+: UNTIL-SRC ( -- ptr u8 n )
+   s" : NMG-UNTIL ( n -- n ) begin 1- dup 0 <= until ;" ;
+
+: WGT-SRC ( -- ptr u8 n )
+   s" : NMG-WGT ( n -- n ) begin dup 0 > while 1- repeat ;" ;
+
+: MIGRATE-STEP ( -- )
+   STEP-SRC 1 2 LOOP-REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-WCALL ( -- )
+   s" NMG-STEP"  s" NMG-STEP" GLOBAL-WID NPUB:NEW-START  1 2 NMIGRATE:CALLEE
+   WCALL-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
+: MIGRATE-UNTIL ( -- )
+   UNTIL-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-WGT ( -- )
+   WGT-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
+
+\ The interpreted twins, compiled by the engine from the same text, so the
+\ answers below are held against the emitter this chain replaces.
+: NMI-STEP ( n -- n bool ) {: k:n :}
+   k 1- dup 0 > ;
+
+: NMI-WCALL ( n -- n )
+   begin NMI-STEP while repeat ;
+
+: NMI-UNTIL ( n -- n )
+   begin 1- dup 0 <= until ;
+
+: NMI-WGT ( n -- n )
+   begin dup 0 > while 1- repeat ;
+
+: ORDER-CASE ( -- )
+   MIGRATE-STEP
+   MIGRATE-WCALL
+
+   s" the loop's body is written before its exit stub, not after it" T-LABEL
+   A64EMIT:BLOCKS 5 T=
+   SELF-PLACED 3 T=
+   2 A64EMIT:BLOCK-AT-POS@ 3 T=
+   3 A64EMIT:BLOCK-AT-POS@ 2 T=
+
+   s" so its record holds one unconditional branch, and that one is the back edge"
+   T-LABEL
+   s" NMG-WCALL" UNCOND-IN 1 T=
+   s" NMG-WCALL" BACKWARD-IN 1 T=
+
+   s" it is still a loop with a call and a two-way exit, not a straight line" T-LABEL
+   s" NMG-WCALL" BRANCHES-IN 3 T=
+
+   MIGRATE-UNTIL
+
+   s" a loop whose build order was already the best is written out unmoved" T-LABEL
+   A64EMIT:BLOCKS 4 T=
+   SELF-PLACED  A64EMIT:BLOCKS T=
+   A64EMIT:INSNS 12 T=
+
+   s" and it too keeps only its back edge" T-LABEL
+   s" NMG-UNTIL" UNCOND-IN 1 T=
+   s" NMG-UNTIL" BACKWARD-IN 1 T=
+
+   MIGRATE-WGT
+
+   s" the block control leaves through is written last, whatever the trace wanted"
+   T-LABEL
+   A64EMIT:BLOCKS 5 T=
+   SELF-PLACED  A64EMIT:BLOCKS T=
+   A64EMIT:INSNS 1- A64EMIT:WORD@ RET-FORM T=
+
+   s" so the recorded length is the emission less exactly that return" T-LABEL
+   s" NMG-WGT" REC-LEN  A64EMIT:SIZE INSN-BYTES - T=
+
+   s" and the two-armed body's join follows the arm that reaches it" T-LABEL
+   s" NMG-FOLDIV" UNCOND-IN 1 T=
+   s" NMG-FOLDIV" BACKWARD-IN 0 T=
+
+   s" every one of them answers what the engine's compilation of the same source answers"
+   T-LABEL
+   s" 5 NMG-WCALL" EV-N   5 NMI-WCALL T=
+   s" 1 NMG-WCALL" EV-N   1 NMI-WCALL T=
+   s" 0 NMG-WCALL" EV-N   0 NMI-WCALL T=
+   s" -3 NMG-WCALL" EV-N  -3 NMI-WCALL T=
+   s" 5 NMG-UNTIL" EV-N   5 NMI-UNTIL T=
+   s" 1 NMG-UNTIL" EV-N   1 NMI-UNTIL T=
+   s" 0 NMG-UNTIL" EV-N   0 NMI-UNTIL T=
+   s" 5 NMG-WGT" EV-N     5 NMI-WGT T=
+   s" 0 NMG-WGT" EV-N     0 NMI-WGT T=
+   s" -3 NMG-WGT" EV-N    -3 NMI-WGT T= ;
+
 \ maki/autograd.f:48 verbatim, which is the third corpus's MAX-F: the shape
 \ where the fused branch's arms carry the compared values themselves. What it
 \ adds to the cases above is that the value the branch ANSWERS is one of the two
@@ -1112,6 +1290,7 @@ variable BRANCH-N
    FCMP-FLAG-CASE
    FCMP-FUSED-CASE
    BRANCHLESS-CASE
+   ORDER-CASE
    MAXF-CASE
    SHAPE-CASE
    FLOAT-PLACE-CASES

@@ -650,11 +650,22 @@ create PL-VAL PLMAX cells allot
 \ is the allocation itself, and it is six steps.
 \
 \ ONE. A LINEAR ORDER AND GLOBAL POSITIONS. Blocks are numbered in the order the
-\ module records them - the order the selector built them in and the order the
-\ emitter lays them out in - so every pass in the chain numbers the same
-\ instruction the same way. Each block gets one position for its arguments and
-\ one per operation, so block b holds positions B-ST[b] (its arguments) through
-\ B-EN[b] (its last operation), and the next block starts one past that.
+\ module records them - the order the selector built them in - so every pass that
+\ reasons about the module numbers the same instruction the same way. Each block
+\ gets one position for its arguments and one per operation, so block b holds
+\ positions B-ST[b] (its arguments) through B-EN[b] (its last operation), and the
+\ next block starts one past that.
+\
+\ THE EMITTER WRITES THE BLOCKS OUT IN AN ORDER OF ITS OWN, and that changes
+\ nothing here. src/compiler/native/emit.f chooses which block's instructions
+\ follow which, because that is what decides whether a terminator's trailing
+\ branch can be left out; it makes that choice AFTER this allocation has been
+\ accepted, and it reads the assignment rather than being read by it. So every
+\ range, every hull and every interference below is a fact about the module and
+\ the register budget alone. It also means the conservatism named in step three
+\ is a fact about the RECORDED order: a value live across a block the module
+\ records inside a loop is held over that block whether or not the emitter writes
+\ it there, and no reordering downstream can shorten a hull.
 \
 \ TWO. LIVENESS BY BACKWARD DATAFLOW. use(b) is every value an operation of b
 \ reads that b did not already define; def(b) is b's block arguments together
