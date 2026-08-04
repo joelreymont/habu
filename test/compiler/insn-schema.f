@@ -72,11 +72,22 @@
 \     that `src/arch/arm64/icode.f` bounds first; and an ADR displacement is a
 \     word position times four, so it can never be misaligned. Each is stated
 \     here rather than left to be discovered.
-\   - The floating-point encoders bound their D-register operands too, through
-\     `DR2` and `DR3` in `src/arch/arm64/asm.f`, but they have no row here at
-\     all: the floating-point forms are not in the modelled vocabulary, which
-\     `formal/Common/Insn.v` records as a MODEL GAP with its own dot. When that
-\     gap closes, those bounds get rows like every other form's.
+\   - One floating-point form is in the modelled vocabulary and has rows like
+\     every other: `FCSEL,`, the conditional select of two doubles, which the
+\     chain emits for a selection whose answer is a double. Its rows are where
+\     the `DR3` field bound in `src/arch/arm64/asm.f` is asked about, one row
+\     per slot, because it is the only modelled form that reaches that word.
+\     The other floating-point encoders bound their D-register operands through
+\     `DR2` and `DR3` too and still have no row here: they are not in the
+\     modelled vocabulary, which `formal/Common/Insn.v` records as a MODEL GAP
+\     with its own dot. When that gap closes, those bounds get rows too.
+\   - `FCSEL,` has no refusing reserved-register row and three NON-refusing
+\     ones, and that is the statement rather than an omission: its operands name
+\     D registers, the D file has no platform-reserved member, and `DR3` does
+\     not call `XREG?`. `checked_regs` and `xregs` in the model are both empty
+\     for it, so a row that refused would contradict the shipped code and a
+\     model that listed the operands would fail these rows and
+\     `every_x_register_is_checked` at once.
 \   - `wf` calls a left shift of zero malformed and the shipped encoder does
 \     not refuse it. That is not a missing bound: zero is inside the six-bit
 \     shift field, and the reason the model excludes it is that the word is
@@ -141,6 +152,7 @@ s" CMP," s" n n --" TRUST
 s" CMPI," s" n n --" TRUST
 s" CSET," s" n n --" TRUST
 s" CSEL," s" n n n n --" TRUST
+s" FCSEL," s" n n n n --" TRUST
 s" B," s" n --" TRUST
 s" BL," s" n --" TRUST
 s" BCOND," s" n n --" TRUST
@@ -182,8 +194,8 @@ public
 39 constant F-SVC      40 constant F-RET      41 constant F-BRK
 42 constant F-NOP      43 constant F-DSB-ISH  44 constant F-ISB
 45 constant F-BLR      46 constant F-BR       47 constant F-ICIVAU
-48 constant F-DCCVAU
-49 constant FORMS
+48 constant F-DCCVAU  49 constant F-FCSEL
+50 constant FORMS
 
 \ The constructor name in `formal/Common/Insn.v`. It names the form in a
 \ failing row's label and in the generated Rocq obligation, so the two reports
@@ -206,7 +218,7 @@ public
       39 of s" Svc" endof      40 of s" Ret" endof     41 of s" Brk" endof
       42 of s" Nop" endof      43 of s" DsbIsh" endof  44 of s" Isb" endof
       45 of s" Blr" endof      46 of s" Br" endof      47 of s" IcIvau" endof
-      48 of s" DcCvau" endof
+      48 of s" DcCvau" endof   49 of s" Fcsel" endof
       E-CIE-FORM throw
    endcase ;
 
@@ -225,10 +237,11 @@ public
    k F-LDAR = k F-STLR = or k F-CMP = or k F-CMPI = or k F-CSET = or
    k F-BCOND = or k F-CBZ = or k F-CBNZ = or k F-ADR = or ;
 
-\ The one form with four: a conditional select names a destination, two
-\ sources and the condition that chooses between them.
+\ The two forms with four: a conditional select names a destination, two
+\ sources and the condition that chooses between them, and that is the same
+\ four whichever register file the three registers come out of.
 : QUATERNARY-FORM? ( n -- bool ) {: k:n :}
-   k F-CSEL = ;
+   k F-CSEL = k F-FCSEL = or ;
 
 : FORM-ARITY ( n -- n ) {: k:n :}
    k 0 < k FORMS >= or if E-CIE-FORM throw then
@@ -505,6 +518,21 @@ variable LIM-N
    F-CSEL 20 2 30 4 $9A9E4054 V4
    F-CSEL 31 31 31 15 $9A9FF3FF V4 ;
 
+\ The same select over two DOUBLES, operand for operand: the four fields sit at
+\ the same four positions and only the opcode differs, which is what the rows
+\ below say by carrying the same operands as the rows above. Its three register
+\ operands go through `DR3` and NOT through `XR3`, so unlike every row above it
+\ this form is where the plain five-bit field bound on a register is asked -
+\ there is no other modelled form that reaches `DR3`. The condition is bounded
+\ by `?COND` at this call site, exactly as the general select's is.
+: FLOAT-SELECT-VECTORS ( -- )
+   F-FCSEL 3 4 5 0 $1E650C83 V4
+   F-FCSEL 13 9 21 11 $1E75BD2D V4
+   F-FCSEL 0 1 2 1 $1E621C20 V4
+   F-FCSEL 7 8 9 12 $1E69CD07 V4
+   F-FCSEL 20 2 30 4 $1E7E4C54 V4
+   F-FCSEL 31 31 31 15 $1E7FFFFF V4 ;
+
 \ Branch rows carry the word-relative delta. A row with a delta at or below
 \ zero resolves against a label already bound, which is the immediate path in
 \ `BR-EMIT`; a positive delta records a fixup and is backpatched by `LBL,`,
@@ -577,7 +605,10 @@ variable LIM-N
    F-LDAR 32 15 0 OOR+
    F-LDAR 14 32 0 OOR+
    F-CSET 32 0 0 OOR+
-   F-BLR 32 0 0 OOR+ ;
+   F-BLR 32 0 0 OOR+
+   F-FCSEL 32 2 3 0 OOR4+                    \ `DR3`, the D file's own bound
+   F-FCSEL 1 32 3 0 OOR4+
+   F-FCSEL 1 2 32 0 OOR4+ ;
 
 \ Every operand that is not a register, one row per encoder that bounds it.
 : IMMEDIATE-RANGE-VECTORS ( -- )
@@ -602,6 +633,7 @@ variable LIM-N
    F-ASRI 1 2 64 OOR+
    F-CSET 1 16 0 OOR+                        \ was: cond 16 became cond eq
    F-CSEL 1 2 2 16 OOR4+                     \ was: cond 16 ran into the second source
+   F-FCSEL 1 2 2 16 OOR4+
    F-BCOND 16 0 0 OOR+ ;
 
 \ A byte operand the encoder divides by its access scale. Each was rounded down
@@ -675,11 +707,22 @@ variable LIM-N
    F-ICIVAU 18 0 0 X18
    F-DCCVAU 18 0 0 X18 ;
 
-\ The control: an immediate that happens to be 18 is not a register, so it
-\ still encodes. Without it a check that refused the number 18 everywhere,
-\ rather than the register x18, would look correct here.
+\ The controls: operands that hold 18 and still encode, because neither of them
+\ is the register x18. Without them a check that refused the NUMBER 18
+\ everywhere would look correct here.
+\
+\ The first is an immediate. The other three are d18, which is a register and
+\ an ordinary one: the reserved-register rule is about the X file, where the
+\ Darwin kernel zeroes x18 on a trap return, and the D file has no such member.
+\ So `DR3` bounds the field and does not call `XREG?`, `checked_regs` and
+\ `xregs` are both empty for `Fcsel` in the model, and these three rows are
+\ what says so on the shipped side - one per register slot, which is the same
+\ per-slot claim the refusing rows above make for the forms that do screen.
 : RESERVED-CONTROL ( -- )
-   F-LDR 1 2 144 0 0 $F9404841 RES+ ;
+   F-LDR 1 2 144 0 0 $F9404841 RES+
+   F-FCSEL 18 2 3 0 0 0 $1E630C52 RES4+
+   F-FCSEL 1 18 3 0 0 0 $1E630E41 RES4+
+   F-FCSEL 1 2 18 0 0 0 $1E720C41 RES4+ ;
 
 : RESERVED-VECTORS ( -- )
    RESERVED-MOVE-WIDE
@@ -710,6 +753,7 @@ variable LIM-N
    MEMORY-VECTORS
    COMPARE-VECTORS
    CONDITIONAL-SELECT-VECTORS
+   FLOAT-SELECT-VECTORS
    BRANCH-VECTORS
    SYSTEM-VECTORS
    REGISTER-RANGE-VECTORS

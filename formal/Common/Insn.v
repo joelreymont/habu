@@ -70,9 +70,19 @@
    instruction-relative delta in WORDS that src/arch/arm64/icode.f computes
    from the label.
 
-   MODEL GAPS.  The floating-point encoders (FMOVXD, FMOVDX, FMOVDD, FADD,
-   FSUB, FMUL, FDIV, FNEG, FABS, FSQRT, FCMP, FCMP0, SCVTF, FCVTZS) are not
-   modelled here; neither is `>LIMM`, the logical-immediate mask synthesis,
+   ONE FORM OF THE D FILE IS MODELLED, AND IT IS THE ONE THAT CHOOSES.  Fcsel
+   is here because the chain emits it for a selection whose answer is a double
+   (src/compiler/native/select.f), so a field of it that moved would be wrong
+   code with nothing to catch it.  It is also the form that makes the two
+   register lists below say something rather than repeat each other: its three
+   register operands are D registers, so `xregs` is empty for it and
+   `checked_regs` has to be empty too - a claim that the shipped ENC-FCSEL
+   screens them for the reserved register would be a claim about a file that
+   has no reserved member, and `every_x_register_is_checked` refuses it.
+
+   MODEL GAPS.  The remaining floating-point encoders (FMOVXD, FMOVDX, FMOVDD,
+   FADD, FSUB, FMUL, FDIV, FNEG, FABS, FSQRT, FCMP, FCMP0, SCVTF, FCVTZS) are
+   not modelled here; neither is `>LIMM`, the logical-immediate mask synthesis,
    whose packed result the Andi/Orri/Eori forms take as an operand.  The
    out-of-reach refusals for B/BL (?REL26) cannot be reached through the
    shipped 2 MB code window at all.  Each is recorded as a dot. *)
@@ -239,6 +249,7 @@ Inductive insn : Type :=
 | Cmpi (rn imm : Z)
 | Cset (rd cond : Z)
 | Csel (rd rn rm cond : Z)
+| Fcsel (rd rn rm cond : Z)
 | B (d : Z)
 | Bl (d : Z)
 | Bcond (cond d : Z)
@@ -291,6 +302,7 @@ Definition enc (i : insn) : Z :=
   | Cmpi rn imm => Z.lor 0xF100001F (Z.lor (fld (rn) 5) (fld (imm) 10))
   | Cset rd cond => Z.lor 0x9A9F07E0 (Z.lor (fld (rd) 0) (fld (Z.lxor cond 1) 12))
   | Csel rd rn rm cond => Z.lor 0x9A800000 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (Z.lor (fld (rm) 16) (fld (cond) 12))))
+  | Fcsel rd rn rm cond => Z.lor 0x1E600C00 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (Z.lor (fld (rm) 16) (fld (cond) 12))))
   | B d => Z.lor 0x14000000 (fld (low 26 d) 0)
   | Bl d => Z.lor 0x94000000 (fld (low 26 d) 0)
   | Bcond cond d => Z.lor 0x54000000 (Z.lor (fld (cond) 0) (fld (low 19 d) 5))
@@ -362,6 +374,7 @@ Definition wf (i : insn) : bool :=
   | Cmpi rn imm => rok rn && uok 12 imm
   | Cset rd cond => rok rd && uok 4 cond
   | Csel rd rn rm cond => rok rd && rok rn && rok rm && uok 4 cond
+  | Fcsel rd rn rm cond => rok rd && rok rn && rok rm && uok 4 cond
   | B d => sok 26 d
   | Bl d => sok 26 d
   | Bcond cond d => uok 4 cond && sok 19 d
@@ -387,7 +400,13 @@ Definition wf (i : insn) : bool :=
    the first, XR2 both, and the branch emitters in src/arch/arm64/icode.f
    reach it by building their base word with the asm.f encoder.  The second
    list is read off the operand roles.  They are written separately and
-   every_x_register_is_checked below is what makes them answer the same. *)
+   every_x_register_is_checked below is what makes them answer the same.
+
+   Fcsel's three registers appear in neither list, and the two reasons are
+   different statements about the same instruction.  It is out of `xregs`
+   because its operands name D registers; it is out of `checked_regs` because
+   ENC-FCSEL bounds them through DR3, which applies the field bound and not
+   XREG?.  The D file has no platform-reserved member, so the two agree. *)
 Definition checked_regs (i : insn) : list Z :=
   match i with
   | Movz rd imm hw => [rd]
@@ -423,6 +442,7 @@ Definition checked_regs (i : insn) : list Z :=
   | Cmpi rn imm => [rn]
   | Cset rd cond => [rd]
   | Csel rd rn rm cond => [rd; rn; rm]
+  | Fcsel rd rn rm cond => []
   | B d => []
   | Bl d => []
   | Bcond cond d => []
@@ -476,6 +496,7 @@ Definition xregs (i : insn) : list Z :=
   | Cmpi rn imm => [rn]
   | Cset rd cond => [rd]
   | Csel rd rn rm cond => [rd; rn; rm]
+  | Fcsel rd rn rm cond => []
   | B d => []
   | Bl d => []
   | Bcond cond d => []
@@ -539,6 +560,7 @@ Definition row_Cmp := R 0xFFE0FC1F 0xEB00001F (fun w => Cmp (get 5 5 w) (get 16 
 Definition row_Cmpi := R 0xFFC0001F 0xF100001F (fun w => Cmpi (get 5 5 w) (get 10 12 w)).
 Definition row_Cset := R 0xFFFF0FE0 0x9A9F07E0 (fun w => Cset (get 0 5 w) (Z.lxor (get 12 4 w) 1)).
 Definition row_Csel := R 0xFFE00C00 0x9A800000 (fun w => Csel (get 0 5 w) (get 5 5 w) (get 16 5 w) (get 12 4 w)).
+Definition row_Fcsel := R 0xFFE00C00 0x1E600C00 (fun w => Fcsel (get 0 5 w) (get 5 5 w) (get 16 5 w) (get 12 4 w)).
 Definition row_B := R 0xFC000000 0x14000000 (fun w => B (sext 26 (get 0 26 w))).
 Definition row_Bl := R 0xFC000000 0x94000000 (fun w => Bl (sext 26 (get 0 26 w))).
 Definition row_Bcond := R 0xFF000010 0x54000000 (fun w => Bcond (get 0 4 w) (sext 19 (get 5 19 w))).
@@ -597,6 +619,7 @@ Definition table : list row :=
   ; row_Cmpi
   ; row_Cset
   ; row_Csel
+  ; row_Fcsel
   ; row_B
   ; row_Bl
   ; row_Bcond
@@ -1104,6 +1127,17 @@ Proof.
   - cbv [row_Csel rmask rval enc]. lfields.
 Qed.
 
+Lemma dec_Fcsel : forall rd rn rm cond, wf (Fcsel rd rn rm cond) = true ->
+  decode (enc (Fcsel rd rn rm cond)) = Some (Fcsel rd rn rm cond).
+Proof.
+  intros rd rn rm cond H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_Fcsel).
+  - cbv [row_Fcsel rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Fcsel rmask rval enc]. lfields.
+Qed.
+
 Lemma dec_B : forall d, wf (B d) = true ->
   decode (enc (B d)) = Some (B d).
 Proof.
@@ -1343,6 +1377,7 @@ Proof.
   - apply dec_Cmpi.
   - apply dec_Cset.
   - apply dec_Csel.
+  - apply dec_Fcsel.
   - apply dec_B.
   - apply dec_Bl.
   - apply dec_Bcond.
@@ -1422,6 +1457,7 @@ Definition opmask (i : insn) : Z :=
   | Cmpi _ _ => 0xFFC0001F
   | Cset _ _ => 0xFFFF0FE0
   | Csel _ _ _ _ => 0xFFE00C00
+  | Fcsel _ _ _ _ => 0xFFE00C00
   | B _ => 0xFC000000
   | Bl _ => 0xFC000000
   | Bcond _ _ => 0xFF000010
@@ -1475,6 +1511,7 @@ Definition fldmask (i : insn) : Z :=
   | Cmpi _ _ => 0x003FFFE0
   | Cset _ _ => 0x0000F01F
   | Csel _ _ _ _ => 0x001FF3FF
+  | Fcsel _ _ _ _ => 0x001FF3FF
   | B _ => 0x03FFFFFF
   | Bl _ => 0x03FFFFFF
   | Bcond _ _ => 0x00FFFFEF

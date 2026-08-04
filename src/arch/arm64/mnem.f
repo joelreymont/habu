@@ -119,6 +119,8 @@
 
 : FCMP0, ( n -- )  ENC-FCMP0 EMITW ;
 
+: FCSEL, ( n n n n -- )  ENC-FCSEL EMITW ;
+
 : SCVTF, ( n n -- )  ENC-SCVTF EMITW ;
 
 : FCVTZS, ( n n -- )  ENC-FCVTZS EMITW ;

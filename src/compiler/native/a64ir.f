@@ -372,6 +372,8 @@ ENUM opcode DERIVE eq
    fflagz
    fcmpbr
    fcmpbrz
+   selzd
+   cmpseld
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -547,13 +549,14 @@ public
 : NAME ( -- ptr u8 n )
    s" a64" ;
 
-\ Version 0.4: the integer subset, the scalar floating forms, the four float
-\ comparison forms, and the two conditional selects. The major version stays at zero until the dialect is the
-\ whole machine; the minor version moves whenever the schema table gains a form,
-\ because a table with these forms in it and one without are two different tables
-\ and every consumer compares the version exactly.
+\ Version 0.5: the integer subset, the scalar floating forms, the four float
+\ comparison forms, and the four conditional selects - two that answer a cell
+\ and two that answer a double. The major version stays at zero until the
+\ dialect is the whole machine; the minor version moves whenever the schema
+\ table gains a form, because a table with these forms in it and one without are
+\ two different tables and every consumer compares the version exactly.
 0 constant MAJOR
-4 constant MINOR
+5 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 \ A pass that materialises a constant walks the halves of a register, and it asks
@@ -748,6 +751,8 @@ public
       fflagz   OF s" a64.fflagz" ENDOF
       fcmpbr   OF s" a64.fcmpbr" ENDOF
       fcmpbrz  OF s" a64.fcmpbrz" ENDOF
+      selzd    OF s" a64.selzd" ENDOF
+      cmpseld  OF s" a64.cmpseld" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -950,6 +955,8 @@ private
       fflagz   OF s" a64.rule.fflagz" ENDOF
       fcmpbr   OF s" a64.rule.fcmpbr" ENDOF
       fcmpbrz  OF s" a64.rule.fcmpbrz" ENDOF
+      selzd    OF s" a64.rule.selzd" ENDOF
+      cmpseld  OF s" a64.rule.cmpseld" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1007,6 +1014,8 @@ private
       fflagz   OF s" a64.render.fflagz" ENDOF
       fcmpbr   OF s" a64.render.fcmpbr" ENDOF
       fcmpbrz  OF s" a64.render.fcmpbrz" ENDOF
+      selzd    OF s" a64.render.selzd" ENDOF
+      cmpseld  OF s" a64.render.cmpseld" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1397,20 +1406,36 @@ private
 \ table for both.
 \
 \ AND THE CONDITION MEANS WHAT THE INSTRUCTION THAT WROTE THE FLAGS MADE IT
-\ MEAN. a64.cmpsel's flags come from a Cmp, so its condition is the integer
-\ relation the source comparison names. A float comparison is not fused into a
-\ select here: it materialises its Habu flag with a64.fflag - which already
-\ answers zero for a NaN, because the conditions that form is given are the
-\ three that are false when the unordered flag is set - and a64.selz then
-\ chooses on that number. So a compiled float selection takes the arm the
-\ interpreted word takes for a NaN, and it does so through the SAME flag the
-\ interpreted word computes rather than through a second NaN argument. The
+\ MEAN. Every select of this dialect takes its flags from a Cmp of two general
+\ registers or from a Cmp of one against the immediate zero, so its condition is
+\ the integer relation the source comparison names. A float comparison is not
+\ fused into a select here: it materialises its Habu flag with a64.fflag - which
+\ already answers zero for a NaN, because the conditions that form is given are
+\ the three that are false when the unordered flag is set - and a zero-test
+\ select then chooses on that number. So a compiled float selection takes the
+\ arm the interpreted word takes for a NaN, and it does so through the SAME flag
+\ the interpreted word computes rather than through a second NaN argument. The
 \ fused float select is dot habu-fuse-a-float-4545c786.
 \
-\ NEITHER FORM MOVES A DOUBLE. Csel writes a general register; the D-file
-\ answer is Fcsel, a different instruction with no encoder in the shipped
-\ assembler, so a selection whose answers are doubles is refused by the
-\ selector rather than lowered here - dot habu-select-between-two-98a15305.
+\ TWO OF THE FOUR MOVE A DOUBLE, AND THE ONLY THING THAT MAKES THEM A SECOND
+\ PAIR IS THE FILE THE ANSWER LIVES IN. Csel writes a general register and Fcsel
+\ writes a D register; the two instructions read the same flags under the same
+\ four-bit condition and differ in nothing else, so a64.selzd and a64.cmpseld
+\ are a64.selz and a64.cmpsel with the two chosen-between operands and the
+\ result moved to the floating file. They cannot be one form each with a
+\ file-polymorphic type, because a schema's operand types ARE how every reader
+\ downstream learns which file a value belongs to - which is the same reason the
+\ four crossing forms above are four and not one.
+\
+\ HOW THE FOUR ARE SPELLED, so a form added later has a name rather than an
+\ argument. A leading `f` says the values COMPARED are doubles, exactly as it
+\ does in a64.fflag and a64.fcmpbr. A trailing `d` says the value CHOSEN is,
+\ exactly as it does in a64.fmovxd. The two shipped pairs are the corner with
+\ neither - a general compare choosing between general registers - and the
+\ corner with only the trailing `d`. The other four names are spoken for and
+\ unused: a64.fcmpsel and a64.fcmpselz for the fused float comparison choosing
+\ between cells (dot habu-fuse-a-float-4545c786), and a64.fcmpseld and
+\ a64.fcmpselzd for the same comparison choosing between doubles.
 
 \ Selz: the value tested against zero, the answer when it is NOT zero, the
 \ answer when it is. Two instructions: compare the tested register against the
@@ -1810,6 +1835,64 @@ private
    c b A64IR-OPCODE:FCMPBRZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the two selects that answer a double ------------------------------------
+\ The conditional-select pair further up, with the two chosen-between operands
+\ and the result in the D file and everything else the same. They live here
+\ rather than beside their general partners because the floating type is in
+\ scope here and because they need the floating target: the machine they lower
+\ to is the machine with an Fcsel in it.
+\
+\ THE TWO FILES MEET IN ONE OPERATION, exactly as they do in a64.fflag, and the
+\ operand types are where the meeting is written down. What decides the arm is a
+\ GENERAL register - a value tested against zero, or two values compared - and
+\ what is chosen between is a pair of doubles. A form that put the tested value
+\ in the floating file would be asking the machine to Cmp a D register, which is
+\ not an instruction; a form that put the answers in the general file is
+\ a64.selz, which already exists.
+\
+\ AND THE NaN RULE COMES ACROSS UNTOUCHED, which is the whole reason these two
+\ need no NaN argument of their own. Neither form compares a double. The flags
+\ they select on were written by an integer Cmp over cells - a Habu flag, or two
+\ numbers - so a NaN cannot reach them, and where the tested cell IS the flag a
+\ float comparison left, that flag is the one a64.fflag or a64.fflagz computed
+\ under a condition already chosen to be false when the unordered flag is set.
+\ The select therefore picks on exactly the number the source branch tested, so
+\ it takes the arm the source branch took, NaN or not.
+
+\ Selzd: the cell tested against zero, the double taken when it is NOT zero, the
+\ double taken when it is. Two instructions: compare the tested register against
+\ the immediate zero, then Fcsel on `ne`.
+: DEF-SELZD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:SELZD OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:SELZD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Cmpseld: the two cells compared, the double taken when the named relation
+\ holds, the double taken when it does not. Two instructions: the Cmp, then the
+\ Fcsel under the condition the operation carries.
+: DEF-CMPSELD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:CMPSELD OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:CMPSELD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the table this dialect may fill -----------------------------------------
 \ Design line 229's closed world is per dialect, so an operation family may only
 \ be defined into the schema table of the dialect it belongs to. The table's
@@ -1899,7 +1982,9 @@ public
    c b f t DEF-FFLAG
    c b f t DEF-FFLAGZ
    c b f DEF-FCMPBR
-   c b f DEF-FCMPBRZ ;
+   c b f DEF-FCMPBRZ
+   c b t f DEF-SELZD
+   c b t f DEF-CMPSELD ;
 
 private
 get-current prot-wid-add

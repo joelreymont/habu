@@ -4894,3 +4894,46 @@ speculated and the branch survives. The lesson is that a fixture named after a
 SOURCE shape is hostage to every pass that learns to rewrite that shape; a
 fixture named after the PROPERTY it needs - here "an arm that may trap" - says
 why it still tests what it says it tests.
+
+## A refusal by TYPE can be hiding a refusal by POOL, and only one of them is real
+
+`src/compiler/native/select.f` refused to if-convert a selection whose join
+carried a double, and the reason written down was "the assembler has no Fcsel".
+Once the encoder existed the refusal came off, and the region promptly stopped
+converting anyway - because the routine contract the fixtures used declared no
+floating register writable, so there was no pool to hold an Fcsel's sources in.
+The type was never the constraint. The pool was, and it had been invisible
+underneath the type because the type refused first. Two things follow. Every
+count the transform holds against a pool has to be taken PER FILE, since d3 and
+x3 are two registers and a sum across the two is held against a pool neither
+half comes out of. And when a stated reason is removed, check what the next
+refusal is before believing the shape now converts: the suite went green on the
+old expectation with the new code, which is exactly what a hidden second
+refusal looks like.
+
+## The cell-only path was carrying a latent class bug the refusal kept unreachable
+
+While the join could only carry cells, `REGION-BR` copied every value across the
+region's one edge with a hard-coded "this is not a double", so the copy was
+always the general move. That was correct for as long as no double could reach
+it and wrong the instant one could - it would have moved eight bytes out of a
+register the double is not in. Nothing failed while the refusal stood, and no
+test could have caught it. A constant passed where a question belongs is a bug
+waiting for the guard in front of it to be lifted; when lifting a guard, grep
+the code the guard was protecting for constants that were only true because of
+it.
+
+## Four names for two axes: how a machine form family stops multiplying by accident
+
+A conditional select of this dialect is a pair - which instruction wrote the
+flags, and which register file the chosen value lives in - and the two axes are
+independent, so the family has eight members and not two. Shipping the second
+column (`a64.selzd`, `a64.cmpseld`) without a name for the other row would have
+left the next worker inventing a spelling that collided with the shipped one -
+the dot for the fused float select had already proposed `a64.fcmpfsel` for what
+this lane needed to call a Cmp feeding an Fcsel. The repair was to write the
+naming rule down beside the forms and reserve all four unused names: a leading
+`f` says the values COMPARED are doubles, as it does in `a64.fflag`, and a
+trailing `d` says the value CHOSEN is, as it does in `a64.fmovxd`. A family that
+grows along axes needs its axes named before its second member ships, or the
+third arrives with a name that has to be argued about.

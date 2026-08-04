@@ -116,7 +116,8 @@ private
 \ reach the caller's data stack are checked in DSTACK-SPELL-CASE below, the two
 \ addressed cell forms in ADDR-SHAPE-CASE, the two addressed byte forms in
 \ BYTE-SHAPE-CASE, the fused compare-and-branch in CMPBR-SHAPE-CASE, the two
-\ conditional selects in SELZ-SHAPE-CASE and CMPSEL-SHAPE-CASE, and the six
+\ conditional selects that answer a cell in SELZ-SHAPE-CASE and
+\ CMPSEL-SHAPE-CASE, the two that answer a double in FSEL-SHAPE-CASE, and the six
 \ bitwise and shift forms in BITWISE-CASE, and the count covers all of them.
 : COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
@@ -165,10 +166,10 @@ private
    rv wc IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the fifty-two machine opcodes" T-LABEL
+   s" registration defines exactly the fifty-four machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 52 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 54 T= ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one
@@ -216,7 +217,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   4 T= 0 T= TTRUE ;
+   5 T= 0 T= TTRUE ;
 
 \ The spellings themselves, because every reference this dialect stores is a
 \ symbol and a renamed opcode would still read back through the same accessor.
@@ -817,6 +818,76 @@ private
    BND [: FCMP-TERM-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TFALSE TFALSE TFALSE TTRUE TTRUE TFALSE TFALSE ;
 
+\ ---- the two selects that answer a double ------------------------------------
+\ Their shapes, and the one thing about them that is not their general partners'
+\ repeated: the two files meet inside one operation, and WHICH operand is in
+\ which file is the whole content of the form. What decides the arm is a CELL -
+\ one value tested against zero, or two values compared - because the flags a
+\ conditional select reads are written by a Cmp of general registers, and what
+\ is chosen between is a pair of DOUBLES. A form that took its tested value out
+\ of the floating file would be asking the machine to Cmp a D register, which is
+\ not an instruction; a form that answered a cell is a64.selz, which is a
+\ different operation that already exists.
+\
+\ AND NEITHER ENDS A BLOCK NOR TRAPS, which is what separates a select from the
+\ fused branch above it: this pair defines a value and names no successor where
+\ a64.fcmpbr names two and defines none.
+: FSEL-SHAPE-BODY ( IR-CTX:ctx -- bool bool n n n n n n bool bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:SELZD A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:CMPSELD A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-COND {: ck:IR-ID:ir-symbol-id :}
+   c b A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
+   c b A64IR:FPR-TYPE {: f:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv z s" a64.selzd" IR-SYM:FEQ?
+   pv yv p s" a64.cmpseld" IR-SYM:FEQ?
+   rv z IR-SCHEMA:FOPERANDS
+   rv z IR-SCHEMA:FATTRS
+   rv p IR-SCHEMA:FOPERANDS
+   rv p IR-SCHEMA:FATTRS
+   rv z IR-SCHEMA:FRESULTS
+   rv p IR-SCHEMA:FRESULTS
+   qv rv key z 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key z 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key z 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key z 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key p 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key p 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key p 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key p 3 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key p 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key p 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL = ;
+
+: FSEL-SHAPE-CASE ( -- )
+   s" the two float selects test a cell, choose between doubles and answer one" T-LABEL
+   BND [: FSEL-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   1 T= 1 T=  1 T= 4 T=  0 T= 3 T=
+   TTRUE TTRUE ;
+
+: FSEL-TERM-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:SELZD A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:CMPSELD A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv z IR-SCHEMA:FTERMINATOR?
+   rv p IR-SCHEMA:FTERMINATOR?
+   rv z IR-SCHEMA:FTRAPS?
+   rv p IR-SCHEMA:FTRAPS? ;
+
+: FSEL-TERM-CASE ( -- )
+   s" neither float select ends a block and neither traps" T-LABEL
+   BND [: FSEL-TERM-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TFALSE TFALSE TFALSE ;
+
 \ ---- the condition a float comparison is made under --------------------------
 \ THE ONE FACT THIS WHOLE LEAF RESTS ON, held as a number rather than described.
 \ `mi` is C-MI, the assembler's own code for it, and it is NOT `lt`. The
@@ -1317,7 +1388,9 @@ private
 : GROUP-FCMP ( IR-CTX:ctx -- )
    drop
    FCMP-SHAPE-CASE
-   FCMP-TERM-CASE ;
+   FCMP-TERM-CASE
+   FSEL-SHAPE-CASE
+   FSEL-TERM-CASE ;
 
 : GROUP-TIE ( IR-CTX:ctx -- )
    drop

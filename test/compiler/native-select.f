@@ -522,7 +522,8 @@ $1000 constant BUMP-ADDR
 
 \ The same selection with a join that carries a DOUBLE. Everything else about it
 \ is admissible, so it is the boundary itself: one type on one argument decides
-\ whether the branch survives.
+\ which file the select answers in - and, under a contract with no floating
+\ registers to hand out, whether the branch survives at all.
 : BUILD-SELECT-REAL ( -- )
    2 1 OPEN-FUN
    ARG+ {: xc:IR-ID:ir-value-id :}
@@ -530,6 +531,57 @@ $1000 constant BUMP-ADDR
    xc CROSS {: x:IR-ID:ir-value-id :}
    yc CROSS {: y:IR-ID:ir-value-id :}
    HIR-OPCODE:LT xc yc BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   x 3 BR1
+   BLOCK+
+   y 3 BR1
+   BLOCK+
+   FARG+ drop
+   xc RET1
+   CLOSE-FUN ;
+
+\ The same again with the arms handed over the other way round. A select whose
+\ two sources were swapped is the other arm on every unequal pair, and the two
+\ fixtures together are what makes the operand assertions below a statement
+\ about polarity rather than a restatement of the order they were written in.
+: BUILD-SELECT-REAL-SWAPPED ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   ARG+ {: yc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   yc CROSS {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:LT xc yc BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   y 3 BR1
+   BLOCK+
+   x 3 BR1
+   BLOCK+
+   FARG+ drop
+   xc RET1
+   CLOSE-FUN ;
+
+\ `: MAX-ISH ( r r -- r ) x y f< if y else x then ;` in the shape the elaborator
+\ leaves it: a FLOAT comparison deciding between two doubles. It is the other
+\ half of the pair, and the half that carries the NaN question.
+\
+\ THE COMPARISON IS NOT FUSED INTO THE SELECT AND THAT IS WHAT THE CASE READS.
+\ SEL-FUSE-OF admits only the comparison of two GENERAL registers, so this one
+\ materialises its Habu flag with a64.fflag - all bits set or none, and none for
+\ a NaN, because the three conditions that form is given are the three that are
+\ false when the unordered flag is set - and the select then tests THAT NUMBER
+\ against zero. So what the converted code chooses on is the very number the
+\ source `if` tested, and it takes the arm the source branch took on every
+\ input including a NaN. Fusing the float comparison in is a cost item and is
+\ dot habu-fuse-a-float-4545c786.
+: BUILD-SELECT-REAL-FLAG ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   ARG+ {: yc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   yc CROSS {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:FLT x y FCMP2 {: f:IR-ID:ir-value-id :}
    f 1 2 BRZ2
    BLOCK+
    x 3 BR1
@@ -570,6 +622,21 @@ $1000 constant BUMP-ADDR
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
+\ And the same with the whole FLOATING file to hand out as well, which is what
+\ src/compiler/native/abi.f declares for every routine the chain really
+\ compiles: both of its conventions name the whole D file as destroyed, so a
+\ compiled word's floating pool is all thirty-two registers. A selection whose
+\ join carries a DOUBLE is held against that pool exactly as a cell selection is
+\ held against the general one, so the cases about one run under this contract
+\ and the contract above is what the refusal case uses - a routine that may
+\ write no floating register at all cannot hold an Fcsel, whatever else is true
+\ of it.
+: POOLED-FP ( -- A64EFF:routine )
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
 \ Bind the source dialect while the module is still live, freeze it, and select.
 : SELECTED ( -- IR-BUILD:module )
    CC BB A64SEL:BIND-SOURCE
@@ -580,6 +647,11 @@ $1000 constant BUMP-ADDR
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m A64-BUILDER TXT TXT-N POOLED A64SEL:SELECT ;
+
+: SELECTED-POOL-FP ( -- IR-BUILD:module )
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m A64-BUILDER TXT TXT-N POOLED-FP A64SEL:SELECT ;
 
 \ ---- reading the selected module ---------------------------------------------
 1 TYPED-BUFFER R-KEY IR-ID:ir-module-key
@@ -833,27 +905,132 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: SELECT-SAME-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE 3 T= ;
 
+\ ---- the same selection over doubles ----------------------------------------
 \ THE ADMISSION BOUNDARY, BOTH SIDES OF IT. The fused-branch fixture above is
-\ this same selection with a division in one arm, and it still branches: FUSE-CASE
-\ reads a64.cmpbr out of it. This one is the same selection with a DOUBLE at the
-\ join, and it still branches too. Neither is a shape the conversion may take,
-\ and each is refused for its own reason - a division may raise on a path the
-\ program would not have taken, and a double is a choice this dialect has no
-\ instruction for.
-\ The entry block's first two operations are the crossings that read the two
-\ cells as doubles, so the terminator this case reads is the third.
-: SELECT-REAL-BODY ( IR-CTX:ctx -- n bool bool )
+\ this same selection with a division in one arm, and it still branches:
+\ FUSE-CASE reads a64.cmpbr out of it, because a division may raise on a path
+\ the program would not have taken. This one is the same selection with a DOUBLE
+\ at the join, and it converts: what a double changes is which register file the
+\ select answers in, not whether the region may be converted at all.
+\
+\ WHAT THE TYPE DECIDES, MEASURED. The entry block's first two operations are
+\ the crossings that read the two argument cells as doubles; the comparison is
+\ the general one, over the two CELLS, so it fuses into the select exactly as it
+\ does when the answers are cells; and the select that comes out is a64.cmpseld,
+\ which is a64.cmpsel with its two chosen-between operands and its result in the
+\ floating file. Reading the opcode by name is what separates the two: a
+\ conversion that chose the general form would be a Csel moving eight bytes out
+\ of a register that does not hold them.
+\
+\ THE OPERANDS SAY THE POLARITY IS RIGHT, and they say it here for the same
+\ reason SELECT-CASE reads four of them. A Csel and an Fcsel both write their
+\ FIRST source when the condition holds, and the arm a Habu `if` takes is the
+\ source branch's SECOND successor, so the second arm's value is the first
+\ source. The swapped fixture below is the control: it is the same module with
+\ the two arms exchanged, and it must answer the two crossings the other way
+\ round. Without it these assertions would hold for a pass that ignored the
+\ source order entirely.
+: SELECT-REAL-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool n )
+   HIR-MOD
+   BUILD-SELECT-REAL
+   SELECTED-POOL-FP READ!
+   BLOCKS
+   OPS
+   2 s" a64.cmpseld" OPCODE-IS?
+   2 s" a64.cmpsel" OPCODE-IS?
+   2 2 OPERAND@  1 0 RESULT@  SAME-VALUE?
+   2 3 OPERAND@  0 0 RESULT@  SAME-VALUE?
+   2 0 s" a64.cond" ATTR-KEY-IS?
+   2 0 ATTR-INT ;
+
+: SELECT-REAL-CASE ( -- )
+   s" a selection whose join carries a double becomes a select in the D file"
+   T-LABEL
+   WBND [: SELECT-REAL-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:LT A64IR:COND-CODE T=
+   TTRUE TTRUE TTRUE TFALSE TTRUE
+   5 T= 2 T= ;
+
+: SELECT-REAL-SWAPPED-BODY ( IR-CTX:ctx -- bool bool bool )
+   HIR-MOD
+   BUILD-SELECT-REAL-SWAPPED
+   SELECTED-POOL-FP READ!
+   2 s" a64.cmpseld" OPCODE-IS?
+   2 2 OPERAND@  0 0 RESULT@  SAME-VALUE?
+   2 3 OPERAND@  1 0 RESULT@  SAME-VALUE? ;
+
+: SELECT-REAL-SWAPPED-CASE ( -- )
+   s" exchanging the two arms exchanges the two sources of the float select"
+   T-LABEL
+   WBND [: SELECT-REAL-SWAPPED-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE ;
+
+\ The rest of the converted block, which is where the OTHER thing a double
+\ changes shows: the answer crosses the one edge that is left as an a64.fmovdd
+\ and not as the general move every cell selection copies with. A copy made with
+\ the wrong one moves the low eight bytes of a register the double is not in.
+: SELECT-REAL-REST-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   HIR-MOD
+   BUILD-SELECT-REAL
+   SELECTED-POOL-FP READ!
+   3 s" a64.fmovdd" OPCODE-IS?
+   3 s" a64.mov" OPCODE-IS?
+   4 s" a64.b" OPCODE-IS?
+   4 s" a64.cbz" OPCODE-IS? ;
+
+: SELECT-REAL-REST-CASE ( -- )
+   s" the double the region chose crosses its one edge as a floating copy"
+   T-LABEL
+   WBND [: SELECT-REAL-REST-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TFALSE TTRUE ;
+
+\ THE OTHER SIDE OF THE NEW BOUNDARY, AND IT IS A POOL AND NOT A TYPE. The very
+\ same module, selected under a contract that may write no floating register,
+\ keeps its branch: an Fcsel reads its two sources at one instant and a routine
+\ with no register of that file to hand out cannot hold one, whatever it puts
+\ away. That is the same floor the general pool has always been held against,
+\ asked of the file the answers live in - and a rule that admitted a double
+\ without asking it would hand the allocator a routine it must refuse, turning
+\ this optimisation into a compilation failure.
+: SELECT-REAL-REFUSE-BODY ( IR-CTX:ctx -- n bool bool )
    HIR-MOD
    BUILD-SELECT-REAL
    SELECTED-POOL READ!
    BLOCKS
    2 s" a64.cmpbr" OPCODE-IS?
-   2 s" a64.cmpsel" OPCODE-IS? ;
+   2 s" a64.cmpseld" OPCODE-IS? ;
 
-: SELECT-REAL-CASE ( -- )
-   s" a selection whose join carries a double keeps its branch" T-LABEL
-   WBND [: SELECT-REAL-BODY ;] IR-CTX:WITH-CONTEXT
+: SELECT-REAL-REFUSE-CASE ( -- )
+   s" a routine with no floating register to hand out keeps its branch" T-LABEL
+   WBND [: SELECT-REAL-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE 4 T= ;
+
+\ A FLOAT comparison deciding between two doubles, which is the shape both of
+\ the branching float bodies in the corpus have. Nothing fuses: the comparison
+\ materialises its Habu flag with a64.fflag and the select tests that number
+\ against zero, so what comes out is a64.selzd over the flag and the two
+\ doubles. That is the whole of the NaN argument in one shape - the number the
+\ select tests is the number the source branch tested, so the arm is the same
+\ arm on every input, unordered or not - and it is the shape the NaN rows of
+\ tools/codegen-compare-corpus3.f measure end to end.
+: SELECT-REAL-FLAG-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool )
+   HIR-MOD
+   BUILD-SELECT-REAL-FLAG
+   SELECTED-POOL-FP READ!
+   BLOCKS
+   OPS
+   2 s" a64.fflag" OPCODE-IS?
+   3 s" a64.selzd" OPCODE-IS?
+   3 0 OPERAND@  2 0 RESULT@  SAME-VALUE?
+   3 1 OPERAND@  1 0 RESULT@  SAME-VALUE?
+   3 2 OPERAND@  0 0 RESULT@  SAME-VALUE? ;
+
+: SELECT-REAL-FLAG-CASE ( -- )
+   s" a float comparison choosing between doubles is a flag and a zero-test select"
+   T-LABEL
+   WBND [: SELECT-REAL-FLAG-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE
+   6 T= 2 T= ;
 
 \ ---- the fused compare-and-branch --------------------------------------------
 \ The entry block of the branching shape holds ONE operation when the comparison
@@ -1481,6 +1658,10 @@ public
    SELECT-VALUE-CASE
    SELECT-SAME-CASE
    SELECT-REAL-CASE
+   SELECT-REAL-SWAPPED-CASE
+   SELECT-REAL-REST-CASE
+   SELECT-REAL-REFUSE-CASE
+   SELECT-REAL-FLAG-CASE
    FLAG-VALUE-CASE
    FFUSE-CASE
    FFUSE-REST-CASE

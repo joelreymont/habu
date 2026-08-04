@@ -742,6 +742,43 @@ $94000000 constant BL-OP
       CODE-PTR i 4 * + U32@ BL-MASK and BL-OP = if 1+ then
    loop ;
 
+\ ---- and how many of a word's branches a predictor can get wrong -------------
+\ The third exact number, and the one an if-conversion claim rests on. A
+\ conditional branch is B.cond, top eight bits 01010100 with bit 4 clear, which
+\ is the form formal/Common/Insn.v's row_Bcond decodes; a Cbz or Cbnz over a
+\ tested register is the other shape a two-way branch takes and is counted with
+\ it, because a conversion that turned one into the other would have removed
+\ nothing. A byte count can be explained away and a timing moves for host load;
+\ a branch is in the emitted code or it is not.
+\
+\ AND WHAT REPLACED IT, counted the same way, because "no branch" alone is also
+\ what a body that lost an arm would report. Fcsel is the D-file conditional
+\ select - src/arch/arm64/asm.f ENC-FCSEL, the same opcode mask
+\ formal/Common/Insn.v gives row_Fcsel - and a converted float selection has one
+\ per value it chooses.
+$FF000010 constant BCOND-MASK
+$54000000 constant BCOND-OP
+$7E000000 constant CBZ-MASK
+$34000000 constant CBZ-OP
+$FFE00C00 constant FCSEL-MASK
+$1E600C00 constant FCSEL-OP
+
+: FORM-COUNT ( ptr u8 n n n -- n ) {: a:ptr u:n mask:n op:n :}
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then
+   dup XREF-START CODE-AT !
+   XREF-LEN {: len:n :}
+   0
+   len 4 / 0 ?do
+      CODE-PTR i 4 * + U32@ mask and op = if 1+ then
+   loop ;
+
+: BCOND-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u BCOND-MASK BCOND-OP FORM-COUNT
+   a u CBZ-MASK CBZ-OP FORM-COUNT + ;
+
+: FCSEL-COUNT ( ptr u8 n -- n )
+   FCSEL-MASK FCSEL-OP FORM-COUNT ;
+
 \ ---- what each column spends on the caller's own data stack ------------------
 \ A COST is a measurement; a count of instructions is not. What the timing rows
 \ of this harness were really about is the traffic each column makes with the
@@ -1031,7 +1068,47 @@ $94000000 constant BL-OP
 
    s" and the NaN two different words produce is the same cell" T-LABEL
    s" CODEGEN-CORPUS3:RELU-F" 4 OLD-OUTPUT
-   s" CODEGEN-CORPUS3:T-REL-L2" 3 OLD-OUTPUT T= ;
+   s" CODEGEN-CORPUS3:T-REL-L2" 3 OLD-OUTPUT T=
+
+\ ---- the two branching float bodies, and what each of them hands its join ----
+\ Both are a float comparison with two arms meeting at one block, and they are
+\ NOT the same shape to this chain, which is what makes the pair worth pinning.
+\ MAX-F's arms hand on the two argument CELLS - the doubles are read out of them
+\ by the comparison and never cross the edge - so its join carries cells and a
+\ general Csel has always been able to choose between them. RELU-F's arms hand
+\ on a DOUBLE, the float literal against the argument, so its join carries one,
+\ and until src/compiler/native/select.f gained the D-file select there was no
+\ instruction to choose with and the region stayed branched. The counts below
+\ are that difference: RELU-F-N loses its branch and gains an Fcsel, and
+\ MAX-F-N, which never had a branch to lose, gains nothing - which is what says
+\ the cell path was left alone.
+\
+\ THE COMPARISON ITSELF IS NOT FOLDED INTO THE SELECT in either body. It
+\ materialises the Habu flag a64.fflag or a64.fflagz answers - zero for a NaN,
+\ because the conditions those forms are given are the three that are false
+\ under the unordered flag - and the select then tests THAT NUMBER against zero.
+\ So a converted body chooses on the very number the source `if` tested and
+\ takes the same arm on every input.
+\
+\ THAT LAST SENTENCE IS WHAT THE OUTPUT ROWS ABOVE MEASURE AND THESE COUNTS DO
+\ NOT. The corpus runs RELU-F on a NaN and on a negative zero, and MAX-F on a
+\ NaN in each position, and the report compares every recorded cell against the
+\ interpreted word's - so a conversion that took the other arm for an unordered
+\ comparison is a finding and not a slower row. What is pinned here is the other
+\ half: that the branch really left, and that what stands in its place is an
+\ Fcsel rather than an arm that was dropped.
+   s" the engine branches through both float selections and the chain does not" T-LABEL
+   s" CODEGEN-CORPUS3:RELU-F" BCOND-COUNT 1 T=
+   s" CODEGEN-CORPUS3:MAX-F" BCOND-COUNT 1 T=
+   s" CODEGEN-CORPUS3:RELU-F-N" BCOND-COUNT 0 T=
+   s" CODEGEN-CORPUS3:MAX-F-N" BCOND-COUNT 0 T=
+
+   s" and the body whose join carries a double chose it with the D-file select"
+   T-LABEL
+   s" CODEGEN-CORPUS3:RELU-F-N" FCSEL-COUNT 1 T=
+   s" CODEGEN-CORPUS3:MAX-F-N" FCSEL-COUNT 0 T=
+   s" CODEGEN-CORPUS3:RELU-F" FCSEL-COUNT 0 T=
+   s" CODEGEN-CORPUS3:MAX-F" FCSEL-COUNT 0 T= ;
 
 \ ---- the claim the second corpus's two respelled rows rest on ----------------
 \ tools/codegen-compare-migrated2.f compiles two of the second corpus's bodies

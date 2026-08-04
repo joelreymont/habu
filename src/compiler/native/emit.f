@@ -217,7 +217,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-52 constant OPCODES-N
+54 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -270,6 +270,8 @@ private
 49 constant O-FMOVDD
 50 constant O-SELZ
 51 constant O-CMPSEL
+52 constant O-SELZD
+53 constant O-CMPSELD
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -437,6 +439,8 @@ create B-START BMAX cells allot
       fflagz   OF O-FFLAGZ   ENDOF
       fcmpbr   OF O-FCMPBR   ENDOF
       fcmpbrz  OF O-FCMPBRZ  ENDOF
+      selzd    OF O-SELZD    ENDOF
+      cmpseld  OF O-CMPSELD  ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -493,6 +497,8 @@ create B-START BMAX cells allot
       O-FFLAGZ   of A64IR-OPCODE:FFLAGZ   endof
       O-FCMPBR   of A64IR-OPCODE:FCMPBR   endof
       O-FCMPBRZ  of A64IR-OPCODE:FCMPBRZ  endof
+      O-SELZD    of A64IR-OPCODE:SELZD    endof
+      O-CMPSELD  of A64IR-OPCODE:CMPSELD  endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -846,6 +852,8 @@ create B-START BMAX cells allot
    {: k:n :}
    k O-SELZ = if 2 exit then
    k O-CMPSEL = if 2 exit then
+   k O-SELZD = if 2 exit then
+   k O-CMPSELD = if 2 exit then
    k O-FLAG = if 3 exit then
    k O-FFLAG = if 3 exit then
    k O-FFLAGZ = if 3 exit then
@@ -1126,6 +1134,27 @@ create B-START BMAX cells allot
    id  id 0 RESULT-REG  id 2 OPERAND-REG  id 3 OPERAND-REG
        id COND-OF  ENC-CSEL  APPEND ;
 
+\ The same two, choosing between DOUBLES. Each is its partner above with the
+\ second instruction moved to the D file: the Cmp is unchanged, because what
+\ decides the arm is a cell either way, and the Csel becomes an Fcsel because
+\ the registers it moves are D registers. The operand positions are the same
+\ four, so the condition-holds answer is still the first source and the polarity
+\ argument above covers both pairs at once. The three register numbers a Csel
+\ names and the three an Fcsel names come out of the same allocation through the
+\ same door - REG-OF - and which FILE each one is a number in is a property of
+\ the value the operand names, which is what the schema's operand types settled.
+: PUT-SELZD ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG 0 ENC-CMPI  APPEND
+   id  id 0 RESULT-REG  id 1 OPERAND-REG  id 2 OPERAND-REG
+       A64IR-COND:NE A64IR:COND-CODE  ENC-FCSEL  APPEND ;
+
+: PUT-CMPSELD ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
+   id  id 0 RESULT-REG  id 2 OPERAND-REG  id 3 OPERAND-REG
+       id COND-OF  ENC-FCSEL  APPEND ;
+
 \ One division, which is three instructions: branch past the trap when the
 \ divisor is not zero, the trap, and the divide. It is the sequence the engine's
 \ own `/` compiles to - src/habu/habu1.f BDIV0? followed by BDIV - so a compiled
@@ -1304,6 +1333,8 @@ create B-START BMAX cells allot
       fflagz   OF id PUT-FFLAGZ ENDOF
       fcmpbr   OF id home PUT-FCMPBR ENDOF
       fcmpbrz  OF id home PUT-FCMPBRZ ENDOF
+      selzd    OF id PUT-SELZD ENDOF
+      cmpseld  OF id PUT-CMPSELD ENDOF
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
@@ -1508,6 +1539,8 @@ public
    c b A64IR-OPCODE:FFLAGZ   BIND1
    c b A64IR-OPCODE:FCMPBR   BIND1
    c b A64IR-OPCODE:FCMPBRZ  BIND1
+   c b A64IR-OPCODE:SELZD    BIND1
+   c b A64IR-OPCODE:CMPSELD  BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-SLOT   0 BND-SLOT !

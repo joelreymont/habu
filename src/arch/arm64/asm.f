@@ -413,6 +413,24 @@ variable LIE   variable LIONES
 
 : ENC-FCMP0 ( n -- n ) ?REG $1E602008 swap 5 lshift or MSK ;
 
+\ conditional select of two doubles ( rd rn rm cond -- w ): rd takes rn when the
+\ condition holds and rm when it does not, in one instruction and with no
+\ branch. It is the Csel above moved to the D file: the four operand fields sit
+\ at the same four positions and carry the same meanings, and the only thing
+\ that differs is the opcode - the ftype half of it says double, so no operand
+\ names the register width. NO OPERAND REACHES XREG? and that is not an omission
+\ but the file: d18 is an ordinary D register and holds no platform state, so
+\ only the field bound applies and DR3 is what applies it. The condition sits in
+\ the same four-bit field a conditional branch carries it in, so the four bits
+\ mean whatever the instruction that last wrote the flags made them mean - which
+\ is why this form after an Fcmp keeps the NaN rule the condition was chosen for
+\ and why it is equally correct after a plain Cmp.
+: ENC-FCSEL ( n n n n -- n )
+   ?COND ARM-IMM !
+   DR3 ARM-R3!
+   $1E600C00 ARM-RD @ or  ARM-RN @ 5 lshift or
+   ARM-RM @ 16 lshift or  ARM-IMM @ 12 lshift or MSK ;
+
 : ENC-SCVTF ( n n -- n ) DR2 XREG? $9E620000 RR ;
 
 : ENC-FCVTZS ( n n -- n ) DR2 XR2ND $9E780000 RR ;

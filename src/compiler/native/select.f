@@ -336,8 +336,10 @@ variable R-QN
 variable R-QI
 variable R-LIST-N
 variable R-SPEC                      \ operations the current try would speculate
+variable R-SPEC-D                    \ how many of them define a double
 variable R-JOIN                      \ the exit the current try has found, or -1
 variable R-WIDTH                     \ how many values the region hands its exit
+variable R-WIDTH-D                   \ how many of those values are doubles
 variable R-EXIT-BK                   \ the exit of the region being emitted
 variable R-NEXT                      \ the next machine block ordinal to hand out
 variable R-S0                        \ the successors of the branch being selected
@@ -1756,12 +1758,20 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \      topological order, which is what lets the emission below walk the members
 \      once, forwards for the operations and backwards for the values.
 \
-\ AND WHAT IT DOES NOT ADMIT, by name and with the reason. A join that carries a
-\ DOUBLE: choosing between two doubles is Fcsel, an instruction the shipped
-\ assembler has no encoder for, so the region stays branched and dot
-\ habu-select-between-two-98a15305 carries the form. The three bounds at the head
-\ of this file: a region wider, deeper or busier than a small selection is
-\ refused because the trade it makes stops paying.
+\ AND WHAT IT DOES NOT ADMIT, by name and with the reason. The three bounds at
+\ the head of this file: a region wider, deeper or busier than a small selection
+\ is refused because the trade it makes stops paying. And a region whose selects
+\ would not FIT: the two pool questions below, asked once per register file.
+\
+\ THE TYPE OF A CHOSEN VALUE IS NOT ONE OF THE REASONS, AND THAT IS THE POINT OF
+\ THE SPLIT. A join that carries a double used to be refused here because the
+\ only select this dialect had wrote a general register; it now carries one that
+\ writes a D register, so a double is admitted on exactly the same terms a cell
+\ is and the only thing its type decides is which pool its arms are counted
+\ against. What that costs is one more question rather than one more rule: every
+\ count below is taken per file, because a register number names a register of
+\ one file and a sum across the two would be held against a pool neither half
+\ comes out of.
 : TERM-OP ( IR-ID:ir-block-id -- IR-ID:ir-op-id )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
@@ -1818,13 +1828,32 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ ---- whether the routine has registers for the form at all -------------------
 \ A select reads every one of its sources AT ONE INSTANT, which is what makes
 \ this a question about the routine's POOL rather than about pressure anywhere.
-\ The fused form reads four registers and the zero-test form three, and a
-\ routine whose pool is smaller than that cannot hold the instruction whatever
+\ A routine whose pool is smaller than that cannot hold the instruction whatever
 \ it puts away: a spill frees a register by moving a value that is NOT wanted at
 \ that instant, and every one of a select's sources is. So the read count is a
 \ floor no allocation can get under, and a region that would need more than the
 \ routine has stays branched - refusing the conversion is always correct, where
 \ refusing the ROUTINE would turn an optimisation into a compilation failure.
+\
+\ THE FLOOR IS TWO NUMBERS AND NOT ONE, BECAUSE A REGISTER NUMBER NAMES A FILE.
+\ d3 and x3 are two registers, so a count that added a double to a cell would be
+\ holding a sum against a pool neither half comes out of. The read count
+\ therefore splits exactly the way the instruction does:
+\
+\   the COMPARE half is always general. It is one register for the zero test -
+\     the value the source branch tests - and two for the fused form, and it is
+\     general in both cases whichever file the answers live in, because what
+\     writes the flags a select reads is a Cmp over cells. (A float comparison
+\     is not fused into a select yet - SEL-FUSE-OF admits only the general kind
+\     - so no shape here compares two doubles. Dot habu-fuse-a-float-4545c786.)
+\
+\   the CHOSEN half is two registers of the file the position lives in, and a
+\     region may have positions in both files at once, so both counts get their
+\     two as soon as the region has one position of that file. They are not
+\     summed over the positions: the selects of one block run at one instant
+\     each and a register a select has finished with is free for the next, so
+\     the floor is the widest single instruction and not the whole row. What
+\     the whole row costs is pressure, which is the next question below.
 \
 \ THE ANSWER IS NOT COUNTED, and that is a statement about the allocator rather
 \ than a rounding down. A select's result may take the register of a source that
@@ -1833,17 +1862,32 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ exactly on the floor may still be refused, and that refusal is the allocator's
 \ own answer about the whole routine; this pass is not in a position to predict
 \ it and does not try.
-3 constant SELZ-REGS                 \ the value tested and the two chosen between
-4 constant CMPSEL-REGS               \ two compared and two chosen between
+1 constant SELZ-CMP-REGS             \ the value a zero-test select reads
+2 constant CMPSEL-CMP-REGS           \ the two a fused select compares
+2 constant SEL-ARM-REGS              \ the two either of them chooses between
 
 : GPR-POOL-N ( -- n )
    0 S-POOL @ A64EFF:GPRS-N BITS-N ;
 
-: SEL-NEED ( IR-ID:ir-block-id -- n )
+: FPR-POOL-N ( -- n )
+   0 S-FPOOL @ A64EFF:FPRS-N BITS-N ;
+
+\ What one block's selects read out of the general file: the compare, plus the
+\ arms of any position that is not a double. A block that does not end in a
+\ two-way branch emits no select and reads nothing.
+: SEL-NEED-G ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
    bk BRZ-TERM? 0= if 0 exit then
-   bk SEL-FUSE-OF 0 < if SELZ-REGS exit then
-   CMPSEL-REGS ;
+   bk SEL-FUSE-OF 0 < if SELZ-CMP-REGS else CMPSEL-CMP-REGS then
+   R-WIDTH @ R-WIDTH-D @ > if SEL-ARM-REGS + then ;
+
+\ And out of the floating file: the arms of any position that is a double, and
+\ nothing else, because nothing a select compares lives there.
+: SEL-NEED-F ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   bk BRZ-TERM? 0= if 0 exit then
+   R-WIDTH-D @ 0 > if SEL-ARM-REGS exit then
+   0 ;
 
 \ How many VALUES one block of the region would compute on a path the program
 \ would not have taken. It is the block's operations less its terminator, which
@@ -1855,6 +1899,30 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 1-
    bk SEL-FUSE-OF 0 >= if 1- then ;
+
+\ Does this operation define a double? An operation that defines nothing at all
+\ answers no, which is the right answer for the floating count and leaves it in
+\ the general one - where the total above already counts it, and where counting
+\ a value that needs no register is the conservative direction.
+: REAL-DEF? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id RESULTS-OF 1 < if false exit then
+   id 0 RESULT-AT REAL? ;
+
+\ How many of that block's speculated values are doubles. The two counts are
+\ taken over exactly the same operations - the same terminator and the same
+\ fused comparison are left out - so the general count is the difference and
+\ neither file's pressure can be counted twice or missed.
+: SPEC-DEFS-D ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   bk SEL-FUSE-OF {: fz:n :}
+   bk OP-COUNT 1- {: k:n :}
+   0
+   k 0 ?do
+      i fz <> if
+         bk i OP-AT REAL-DEF? if 1+ then
+      then
+   loop ;
 
 \ ---- the per-block rows, read and written ------------------------------------
 : R-PRED@ ( n -- n )     BLOCK-ORD-CK cells R-PRED + @ ;
@@ -1908,7 +1976,9 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    0 R-QI !
    0 R-LIST-N !
    0 R-SPEC !
+   0 R-SPEC-D !
    -1 R-JOIN !
+   0 R-WIDTH-D !
    NFROZEN:BMAX 0 ?do 0 i cells R-MARK + ! loop ;
 
 : R-PUSH ( n n -- )
@@ -1944,6 +2014,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    bk MEMBER-OK? 0= if false exit then
    b R-TAKE
    R-SPEC @  bk SPEC-DEFS +  R-SPEC !
+   R-SPEC-D @  bk SPEC-DEFS-D +  R-SPEC-D !
    bk TERM-OP {: t:IR-ID:ir-op-id :}
    t SUCCS-OF 0 ?do
       b  t i SUCC-IDX  R-PUSH
@@ -1964,18 +2035,30 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
 \ ---- what a grown region still has to satisfy --------------------------------
 \ The exit's arguments are the values the arms hand over, so their number is the
-\ width of the selection and their types are what decides whether this leaf can
-\ select them at all.
+\ width of the selection and their types say which FILE each chosen value lives
+\ in. Both are recorded here and nothing is refused for its type: a double is
+\ chosen between by an Fcsel exactly as a cell is chosen between by a Csel, so
+\ what a double changes is which pool the arms are held against and not whether
+\ the region converts. The pool question below is where that lands.
+\
+\ A POSITION IS ONE OF THREE THINGS AND THE COUNT SAYS SO. It is a double, and
+\ then it costs the floating file; it is the memory order, which holds no
+\ register at all; or it is a cell. The order is counted with the cells rather
+\ than given a third number, because counting a value that needs no register can
+\ only refuse a region that would have fitted, and the alternative - a third
+\ count - would be a bound the emission has no instruction to spend.
 : R-WIDTH-OK? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f R-JOIN @ BLOCK-AT {: jb:IR-ID:ir-block-id :}
    jb ARG-COUNT {: w:n :}
    w SEL-WIDTH-MAX > if false exit then
    w R-WIDTH !
-   true
+   0
    w 0 ?do
-      jb i ARG-AT REAL? if drop false leave then
-   loop ;
+      jb i ARG-AT REAL? if 1+ then
+   loop
+   R-WIDTH-D !
+   true ;
 
 \ Every two-way branch left inside the region has to land on blocks the region
 \ owns, because a two-way branch hands nothing over and the exit takes the
@@ -2000,13 +2083,21 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       f  i cells R-LIST + @  R-EDGE-OK? 0= if drop false leave then
    loop ;
 
-\ The widest select the region would emit, held against the pool. A region that
-\ hands its exit nothing selects nothing, so it needs no register at all.
-: R-NEED ( IR-ID:ir-fun-id n -- n )
+\ The widest select the region would emit, held against the pool - once per
+\ file, because the two floors are counts of two different sets of registers. A
+\ region that hands its exit nothing selects nothing, so it needs neither.
+: R-NEED-G ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id h:n :}
-   f h BLOCK-AT SEL-NEED
+   f h BLOCK-AT SEL-NEED-G
    R-LIST-N @ 0 ?do
-      f  i cells R-LIST + @  BLOCK-AT SEL-NEED  max
+      f  i cells R-LIST + @  BLOCK-AT SEL-NEED-G  max
+   loop ;
+
+: R-NEED-F ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id h:n :}
+   f h BLOCK-AT SEL-NEED-F
+   R-LIST-N @ 0 ?do
+      f  i cells R-LIST + @  BLOCK-AT SEL-NEED-F  max
    loop ;
 
 \ THE OTHER HALF OF THE POOL QUESTION IS PRESSURE, AND IT IS THE ONE THAT
@@ -2028,13 +2119,22 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ it the eight-deep early-exit ladder of tools/codegen-compare-corpus4.f does
 \ not. A routine that still runs out is refused by the allocator by name, which
 \ is the same refusal any too-tight pool has always given.
+\
+\ AND IT IS TWO PRESSURES FOR THE REASON IT IS TWO FLOORS: a speculated double
+\ and a speculated cell do not compete for the same register. The two counts
+\ partition the same set of values - every speculated operation is counted in
+\ exactly one of them, and every position of the join in exactly one of them -
+\ so a region that fits both pools has each file's live set inside that file.
 : R-PRESSURE-OK? ( -- bool )
-   GPR-POOL-N  R-SPEC @ R-WIDTH @ +  >= ;
+   GPR-POOL-N
+   R-SPEC @ R-SPEC-D @ -  R-WIDTH @ R-WIDTH-D @ -  +  >= 0= if false exit then
+   FPR-POOL-N  R-SPEC-D @ R-WIDTH-D @ +  >= ;
 
 : R-POOL-OK? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id h:n :}
    R-WIDTH @ 0= if true exit then
-   GPR-POOL-N  f h R-NEED  < if false exit then
+   GPR-POOL-N  f h R-NEED-G  < if false exit then
+   FPR-POOL-N  f h R-NEED-F  < if false exit then
    R-PRESSURE-OK? ;
 
 : R-BOUNDS-OK? ( -- bool )
@@ -2396,29 +2496,44 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : RSEL! ( IR-ID:ir-value-id n n -- )
    RSEL-SLOT RSEL ! ;
 
-\ The two machine selects. Each takes the answer the source branch reaches when
-\ the tested value is NOT zero first, because that is the arm a Habu `if` takes
-\ and because a Csel writes its first source when the condition holds.
-: EMIT-SELZ ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+\ The two machine select SHAPES, each in the two files it may answer in. Each
+\ takes the answer the source branch reaches when the tested value is NOT zero
+\ first, because that is the arm a Habu `if` takes and because both Csel and
+\ Fcsel write their first source when the condition holds.
+\
+\ THE FILE IS A PARAMETER AND NOT A SECOND WORD, because the two forms of a
+\ shape differ in exactly one thing: which opcode is staged. The operands, their
+\ order, the condition and the polarity are the same statement, so writing them
+\ twice would be two places for the polarity to be got right in.
+: SELZ-OPCODE ( bool -- A64IR:opcode )
+   if A64IR-OPCODE:SELZD else A64IR-OPCODE:SELZ then ;
+
+: CMPSEL-OPCODE ( bool -- A64IR:opcode )
+   if A64IR-OPCODE:CMPSELD else A64IR-OPCODE:CMPSEL then ;
+
+: SEL-RESULT+ ( bool -- )
+   if FRESULT+ else RESULT+ then ;
+
+: EMIT-SELZ ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id bool -- IR-ID:ir-value-id )
    {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id
-      tv:IR-ID:ir-value-id fv:IR-ID:ir-value-id :}
-   at A64IR-OPCODE:SELZ OPEN
+      tv:IR-ID:ir-value-id fv:IR-ID:ir-value-id d:bool :}
+   at d SELZ-OPCODE OPEN
    CTX BLD v IR-BUILD:ADD-OPERAND
    CTX BLD tv IR-BUILD:ADD-OPERAND
    CTX BLD fv IR-BUILD:ADD-OPERAND
-   RESULT+
+   d SEL-RESULT+
    CLOSE-VALUE
    ACC ;
 
-: EMIT-CMPSEL ( IR-ID:ir-op-id IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+: EMIT-CMPSEL ( IR-ID:ir-op-id IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id bool -- IR-ID:ir-value-id )
    {: at:IR-ID:ir-op-id cm:IR-ID:ir-op-id
-      tv:IR-ID:ir-value-id fv:IR-ID:ir-value-id :}
-   at A64IR-OPCODE:CMPSEL OPEN
+      tv:IR-ID:ir-value-id fv:IR-ID:ir-value-id d:bool :}
+   at d CMPSEL-OPCODE OPEN
    CTX BLD  cm 0 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  cm 1 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD tv IR-BUILD:ADD-OPERAND
    CTX BLD fv IR-BUILD:ADD-OPERAND
-   RESULT+
+   d SEL-RESULT+
    CTX BLD  CTX BLD A64IR:KEY-COND
    CTX BLD  cm COMPARE-COND  A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
    CLOSE-VALUE
@@ -2427,14 +2542,21 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ One position of the join, as the block ending in this two-way branch leaves
 \ it. The comparison, when the branch fuses with one, is read out of the block
 \ this walk is standing in - the same place the fused branch reads it.
+\
+\ WHICH FILE THE SELECT ANSWERS IN IS THE JOIN ARGUMENT'S OWN TYPE, asked
+\ through the same door every other class question in this pass goes through.
+\ Not the type of the value being chosen: the two are the same type - the freeze
+\ verifier matched the branch operands against the destination's arguments - and
+\ the argument is the one this pass is about to build a machine argument for.
 : REGION-PICK ( IR-ID:ir-op-id n n -- IR-ID:ir-value-id )
    {: t:IR-ID:ir-op-id fz:n i:n :}
    R-S1 @ i RSEL@ {: tv:IR-ID:ir-value-id :}
    R-S0 @ i RSEL@ {: fv:IR-ID:ir-value-id :}
    tv fv SAME-VALUE? if tv exit then
    0 R-JB @ i ARG-AT TOKEN? if E-A64SEL-SHAPE throw then
-   fz 0 < if  t  t 0 OPERAND  tv fv  EMIT-SELZ exit then
-   t  BLK fz OP-AT  tv fv  EMIT-CMPSEL ;
+   0 R-JB @ i ARG-AT REAL? {: d:bool :}
+   fz 0 < if  t  t 0 OPERAND  tv fv  d  EMIT-SELZ exit then
+   t  BLK fz OP-AT  tv fv  d  EMIT-CMPSEL ;
 
 \ ---- one block of the region ------------------------------------------------
 \ A member's arguments, bound to what its one predecessor handed over. A
@@ -2531,13 +2653,18 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ so the argument's register class holds one live value. The memory order is
 \ exempt for the reason EDGE-VALUE gives - it holds no register - and there is
 \ nothing to copy an ordering with.
+\
+\ WHICH COPY, is the argument's own type, exactly as it is in EDGE-VALUE. A
+\ double is copied with an Fmov of the D file and a cell with the general move,
+\ and a copy made with the wrong one would move eight bytes out of a register
+\ that does not hold them.
 : REGION-BR ( IR-ID:ir-op-id n -- )
    {: t:IR-ID:ir-op-id h:n :}
    R-WIDTH @ 0 ?do
       0 R-JB @ i ARG-AT TOKEN? if
          h i RSEL@
       else
-         t  h i RSEL@  false  EMIT-COPY
+         t  h i RSEL@  0 R-JB @ i ARG-AT REAL?  EMIT-COPY
       then
       i EDGE-V !
    loop

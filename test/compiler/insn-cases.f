@@ -112,10 +112,13 @@ private
    form F-CSET = if a b CSET, true exit then
    false ;
 
-\ The one form that carries four operands, which is why it has a branch of its
-\ own rather than a fourth argument on the word above.
+\ The two forms that carry four operands, which is why they have a branch of
+\ their own rather than a fourth argument on the word above. They take the same
+\ four in the same order; the file the three registers come out of is the whole
+\ of what separates them.
 : SELECT-CALL ( n n n n n -- bool ) {: form:n a:n b:n c:n d:n :}
    form F-CSEL = if a b c d CSEL, true exit then
+   form F-FCSEL = if a b c d FCSEL, true exit then
    false ;
 
 : SYSTEM-CALL ( n n -- bool ) {: form:n a:n :}
