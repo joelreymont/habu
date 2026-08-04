@@ -11,6 +11,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/runner.f
 require test/gate-stats.f
 
 package CANDIDATE-REBUILD-TEST
@@ -41,9 +42,7 @@ variable UNDER-U
 variable STAT-U
 variable SRC-EXE-U
 variable UNDER-EXE-U
-variable OUT-U
-variable ERR-U
-variable RC
+variable ARG-N
 variable OUT-I
 variable OUT-START
 
@@ -72,14 +71,6 @@ variable OUT-START
    UNDER$ MAKE-DIRS
    UNDER$ s" hb-under-test" UNDER-EXE JOIN-PATH UNDER-EXE-U ! ;
 
-: STORE ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-     ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-        o LEN>N OUT-U ! e LEN>N ERR-U ! 0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-        o LEN>N OUT-U ! e LEN>N ERR-U ! c RC>N RC ! ENDOF
-   ;MATCH ;
-
 : ARGS ( n -- ) {: imported:n :}
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -88,15 +79,49 @@ variable OUT-START
    imported 0 <> if
       s" --under" >LEN PROC-ARGV+
       SRC-EXE$ >LEN PROC-ARGV+
-   then ;
+   then
+   PROC-ARGV-N @ COUNT>N ARG-N ! ;
+
+: HB$ ( -- ptr u8 n )
+   s" bin/hb" ;
+
+: ARG$ ( n -- ptr u8 n )
+   1+ >IDX PROC-ARGV-SLOT @ dup ZLEN ;
+
+: ARGV. ( -- )
+   s" argv:" type cr
+   0 begin dup ARG-N @ < while
+      s"   " type dup ARG$ type cr
+      1+
+   repeat drop ;
+
+: FAIL ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   s" FAIL: " type label labelu type cr
+   s" executable: " type HB$ type cr
+   ARGV.
+   s" outcome exited: " type GT-EXITED @ .
+   s" outcome timed out: " type GT-TIMED-OUT @ .
+   s" outcome code: " type GT-CODE @ .
+   s" stdout bytes: " type GT-OUT-U @ GT-U-TYPE s"  / " type CAP GT-U-TYPE cr
+   s" stderr bytes: " type GT-ERR-U @ GT-U-TYPE s"  / " type CAP GT-U-TYPE cr
+   s" stdout:" type cr
+   OUT GT-OUT-U @ type cr
+   s" stderr:" type cr
+   ERR GT-ERR-U @ type cr
+   s" candidate gate failed" 1 die ;
+
+: LABEL$ ( n -- ptr u8 n )
+   0 <> if s" imported gate" exit then
+   s" ordinary gate" ;
 
 : RUN-GATE ( ptr u8 n n -- ) {: root:ptr rootu:n imported:n :}
    imported ARGS
    s" XDG_CACHE_HOME" >LEN XDG$ >LEN PROC-ENV+
    s" HB_TMP" >LEN root rootu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE STORE ;
+   HB$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME GT-STORE-RUN
+   GT-RC@ 0 <> if imported LABEL$ FAIL then ;
 
 : SCAN ( ptr u8 n -- ) {: root:ptr rootu:n :}
    root rootu s" gate-stats.tsv" STAT JOIN-PATH STAT-U !
@@ -115,7 +140,7 @@ variable OUT-START
 : OUT-LINE? ( ptr u8 n -- bool ) {: want:ptr wantu:n :}
    0 OUT-I !
    0 OUT-START !
-   begin OUT-I @ OUT-U @ < while
+   begin OUT-I @ GT-OUT-U @ < while
       OUT OUT-I @ + c@ STR-LF = if
          OUT OUT-START @ + OUT-I @ OUT-START @ - want wantu STR= if
             0 0= exit
@@ -124,14 +149,13 @@ variable OUT-START
       then
       OUT-I @ 1 + OUT-I !
    repeat
-   OUT-START @ OUT-U @ < if
-      OUT OUT-START @ + OUT-U @ OUT-START @ - want wantu STR= exit
+   OUT-START @ GT-OUT-U @ < if
+      OUT OUT-START @ + GT-OUT-U @ OUT-START @ - want wantu STR= exit
    then
    0 0= 0= ;
 
 : ORDINARY ( ptr u8 n -- ) {: root:ptr rootu:n :}
    root rootu 0 RUN-GATE
-   s" ordinary gate exits zero" T-LABEL RC @ 0 T=
    s" candidate=1" OUT-LINE? TTRUE
    s" candidate-validate=1" OUT-LINE? TTRUE
    root rootu SCAN
@@ -141,7 +165,7 @@ variable OUT-START
    s" ordinary candidate validated" T-LABEL GS-CANDIDATE-VALIDATE @ 1 T=
    s" ordinary phase 15 row" T-LABEL BUILD-ROW? TTRUE
    s" ordinary engine build passed" T-LABEL
-      OUT OUT-U @ s" PASS: native engine build slice (" CONTAINS? TTRUE ;
+      OUT GT-OUT-U @ s" PASS: native engine build slice (" CONTAINS? TTRUE ;
 
 : SOURCE-PREPARE ( -- )
    RUN1$ s" hb-under-test" SRC-EXE JOIN-PATH SRC-EXE-U !
@@ -162,7 +186,6 @@ variable OUT-START
 
 : IMPORTED ( -- )
    UNDER$ 1 RUN-GATE
-   s" imported gate exits zero" T-LABEL RC @ 0 T=
    s" candidate=0" OUT-LINE? TTRUE
    s" candidate-import=1" OUT-LINE? TTRUE
    s" candidate-ready=1" OUT-LINE? TTRUE
@@ -174,7 +197,7 @@ variable OUT-START
    s" imported candidate validated" T-LABEL GS-CANDIDATE-VALIDATE @ 1 T=
    s" imported phase 15 absent" T-LABEL BUILD-ROW? TFALSE
    s" imported engine build absent" T-LABEL
-      OUT OUT-U @ s" native engine build slice" CONTAINS? TFALSE
+      OUT GT-OUT-U @ s" native engine build slice" CONTAINS? TFALSE
    IMPORT-HASH ;
 
 : MAIN ( -- )
