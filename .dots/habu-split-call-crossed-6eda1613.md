@@ -121,3 +121,63 @@ on 756c7d06 AND on ee6463fc. The comparison's own measurement is clean in both
 listed as known, and it wants its own dot.
 
 RE-CUT (2026-08-05, after the mutation matrix in tools/codegen-spill-probe.f falsified the mechanism above): the wall is created UPSTREAM of the allocator. elaborate.f CROSS-STEP marks a local read after a call as call-surviving; LOCAL-ARGS+ then threads it as a block argument of every block on the loop path AND CALL-OPERANDS+ makes it an operand and result of the call — both exclusions from MB-SPILLABLE? originate there, and no single allocator-side relaxation moves the refusal (five mutations measured; relaxing two together produces code A64RAV correctly refuses). The fix is therefore an ELABORATOR change to the call-crossing protocol: split the value around the loop AT ELABORATION — store to its slot before the loop, do not thread it through the loop blocks or the call's operand list, reload after the exit — while honoring the contract elaborate.f:2223 states (a value left off the operand list must not stay in a register the callee destroys; here it lives in memory across the whole region, which satisfies it). Coordinate with habu-spill-from-a-4145325c BEFORE implementing: this sits close to its territory, and whichever leaf owns the elaborator protocol change must be the only one that does. tools/codegen-compare-new4.f's stale 'one refusal, two roads' paragraph is corrected as part of whichever fix lands (its correct replacement depends on the fix's shape).
+
+
+Ownership reconciliation (2026-08-05, agent=callsplit): this leaf owns the elaborator-side call-crossing protocol change, and habu-spill-from-a-4145325c keeps only the allocator-side middle-block frame-order redesign, which this fix neither touches nor needs.
+
+DESIGN MEASUREMENT (2026-08-05, agent=callsplit), before implementing the RE-CUT.
+Two facts about the tree change the shape of the fix, and both were checked
+rather than assumed. Reconciliation with habu-spill-from-a-4145325c is done and
+cross-referenced in both leaves.
+
+ONE. THE ELABORATOR CANNOT "STORE TO ITS SLOT". There is no frame at that level
+to store into. elaborate.f says so at its own head - "THE UNIT IS THE DEFINITION,
+AND THAT IS WHY THERE IS NO FRAME TO FIND" - and every FRAME/SLOT token in that
+file is the counted-loop control frame (DO-FRAME) or a data-stack slot, never a
+machine frame slot. A spill is not an IR operation at all: the allocator records
+it as a PLAN (regalloc.f P-STORE / P-RELOAD, lines 223-224, placed by
+MB-PLAN-STORES / MB-PLAN-LOADS), and src/compiler/native/spill.f is what reads
+that plan. The frame's layout has exactly two owners today
+(src/compiler/native/frame.f: the prologue's link slot, then the allocator's
+slots in the order it hands them out), and that file exists BECAUSE two passes
+once placed things in the frame without reading each other.
+
+So the split cannot be "elaborator stores, elaborator reloads" without either a
+new dialect operation for a frame access or a third owner of the frame. The
+smaller and better-shaped form is a DIRECTIVE rather than an emission: the
+elaborator stops threading the value (out of LOCAL-ARGS+, out of CALL-OPERANDS+,
+out of LOCAL-RESULTS@) and marks it must-spill; the allocator, which already owns
+NEW-SLOT, CL-SLOT and the store/reload planning, places it unconditionally
+instead of only under pressure. Every piece of machinery that needs to exist
+already does, in the pass that owns the frame.
+
+THE HAZARD THIS MUST CLEAR, AND IT IS THE ONE elaborate.f:2223 NAMES. Removing a
+value from the call's operand list is only safe if something else guarantees it
+is NOT in a register across the call. Nothing does that today: the allocator
+spills under pressure, at its discretion, and a value it chose to keep in a
+register would be destroyed by the callee with no diagnostic anywhere. That is
+why the mark has to make the spill MANDATORY, and why A64RAV has to check the
+slot exists rather than check that the threading is gone - the absence of
+threading is the dangerous half, and the slot is what makes it safe.
+
+TWO. "ACTIVATE ABOVE PRESSURE" CANNOT BE DECIDED WHERE THE SPLIT IS MADE.
+Register pressure is the allocator's discovery - MB-FIT finds it by scanning and
+re-scanning - and the elaborator runs two passes earlier. Any pressure test
+written into the elaborator would be an estimate, which the Fix Review Gate
+rejects on its face: a value heuristic standing where a structural fact is
+available. The structural trigger is a RETRY. Elaborate and allocate exactly as
+today; only when the allocation refuses with E-A64RA-SPILL, re-elaborate the same
+definition with the split enabled and run the chain again. Below-pressure bodies
+then emit byte-identical code BY CONSTRUCTION, because they never take the second
+pass - which is the acceptance constraint met exactly rather than approximated,
+and it needs no test to discover what a heuristic would have got wrong. The retry
+belongs in migrate.f WORK, which already rebuilds a module per run and already
+catches and rethrows the chain's refusals.
+
+WHAT THIS MEANS FOR THE LEAF. The work is four coordinated changes - elaborator
+threading suppression under a flag, an allocator mandatory-spill mark, a retry in
+the migration entry, and the A64RAV checks - across the pass boundary whose
+failure mode is silent wrong answers rather than a refusal. It is a bigger leaf
+than "split at elaboration" reads, and the RE-CUT's own wording ("store to its
+slot before the loop") is not available as written. Recorded here so the next
+lane starts from the tree's shape rather than re-deriving it.
