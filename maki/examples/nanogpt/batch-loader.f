@@ -64,7 +64,7 @@ private
 
 \ copy one window: corpus[s..s+t) into row block b of BL-IDS, and the shifted
 \ corpus[s+1..s+t] into BL-TGT (targets one token ahead of the inputs).
-: BL-WINDOW! ( ptr a n n n -- ) {: cb:ptr t:n b:n s:n :}   \ corpus t b s
+: BL-WINDOW! ( ptr r n n n -- ) {: cb:ptr t:n b:n s:n :}   \ corpus t b s
    t 0 ?do
       cb  s i +     T-GET   BL-IDS  b t * i +  T-SET
       cb  s i + 1+  T-GET   BL-TGT  b t * i +  T-SET
@@ -74,7 +74,7 @@ public
 
 \ Fill BL-IDS/BL-TGT with B windows of length T from corpus, B outermost. cb is a
 \ float-cell buffer of token ids; dim is the embedding width (the arena factor).
-: BL-LOAD ( ptr a n n n n n -- )              \ corpus corpus-len B T dim seed
+: BL-LOAD ( ptr r n n n n n -- )              \ corpus corpus-len B T dim seed
    {: cb:ptr clen:n b:n t:n dim:n seed:n :}
    clen b t dim BL-GUARD
    b BL-B !  t BL-T !

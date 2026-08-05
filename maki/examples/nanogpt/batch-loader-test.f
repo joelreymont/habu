@@ -31,7 +31,7 @@ create BLT-TGT0    BLT-ROWS cells allot   \ determinism snapshot: targets
 : BLT-LOAD ( -- )  BLT-CORPUS BLT-CLEN BLT-B BLT-T BLT-DIM BLT-SEED  BL-LOAD ;
 
 \ exact bit compare of n cells (targets/ids are small integers held as floats)
-: BLT-EQ? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}
+: BLT-EQ? ( ptr r ptr r n -- bool ) {: a:ptr b:ptr n:n :}
    n 0 ?do  a i T-GET  b i T-GET  f= 0= if false unloop exit then  loop  true ;
 
 \ contiguity + B-outermost layout + one-step target shift, all at once: for every
