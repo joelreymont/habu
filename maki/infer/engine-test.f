@@ -14,9 +14,20 @@ private
 
 : ENGINE-HOST-FAIL ( ptr u8 n -- ptr u8 n ) E-MEM-MAP throw ;
 
+: ENGINE-DEV-EXHAUST ( ptr a len -- rc )
+   {: out:ptr bytes:len :}
+   out bytes CUDA:CU-MEM-ALLOC RC>N {: code:n :}
+   code 0= if 1 MMAP-TEST:EXHAUST-CHILD then
+   code >RC ;
+
+: ENGINE-HOST-EXHAUST ( ptr u8 n -- ptr u8 n )
+   ALLOC-HOST-REAL
+   [: ENGINE-DEV-EXHAUST ;] MKD:CUMEMALLOC! ;
+
 public
 
 : ENGINE-HOST-FAIL! ( -- ) [: ENGINE-HOST-FAIL ;] is HOST-ALLOC ;
+: ENGINE-HOST-EXHAUST! ( -- ) [: ENGINE-HOST-EXHAUST ;] is HOST-ALLOC ;
 : ENGINE-HOST-REAL! ( -- ) HOST-USE-REAL ;
 
 ;package
@@ -113,7 +124,7 @@ PTR-VARIABLE SAVED-REC
    601 throw ;
 
 : TEST-EARLY-FAILURES ( -- )
-   s" zero capacities and record refusal precede GPU acquisition" T-LABEL
+   s" zero capacities precede GPU acquisition" T-LABEL
    0 OPEN-N !
    [: F-OPEN ;] MKD:OPEN!
    BAD-PATH 0 IC 128 IC E-KV-CONFIG START-ERR
@@ -121,26 +132,8 @@ PTR-VARIABLE SAVED-REC
    OPEN-N @ 0 T=
    MKD:USE-REAL ;
 
-: REC-FAIL-CHILD ( -- )
-   0 OPEN-N !
-   [: F-OPEN ;] MKD:OPEN!
-   I-REC-BYTES MMAP-TEST:EXHAUST-CHILD
-   I-REC-BYTES MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
-   BAD-PATH 2 IC 128 IC START-GPT2 MATCH result
-      err OF E-MEM-MAP <> if E-FIX throw then ENDOF
-      ok OF MUST-STOP E-FIX throw ENDOF
-   ;MATCH
-   OPEN-N @ 0<> if E-FIX throw then
-   s" " 0 die ;
-
-: TEST-REC-FAIL ( -- )
-   s" fixed engine record allocation failure acquires no device owner" T-LABEL
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if REC-FAIL-CHILD then
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
-
 : TEST-SESSION-FAIL ( -- )
-   s" session refusal releases the engine record" T-LABEL
+   s" driver-open refusal propagates" T-LABEL
    0 OPEN-N !
    [: F-OPEN ;] MKD:OPEN!
    BAD-PATH 2 IC 128 IC 601 START-ERR
@@ -177,6 +170,25 @@ PTR-VARIABLE SAVED-REC
    stream CUDA:CU-STREAM-SYNCHRONIZE RC>N {: real:n :}
    1 SYNC-N +!
    real 0<> if real >RC else 613 >RC then ;
+
+: REC-FAIL-CHILD ( -- )
+   0 FREE-N ! 0 SYNC-N !
+   KV:ENGINE-HOST-EXHAUST!
+   [: F-FREE-612 ;] MKD:CUMEMFREE!
+   [: F-SYNC-613 ;] MKD:STREAMSYNC!
+   MODEL-PATH 2 IC 128 IC START-GPT2 MATCH result
+      err OF E-MEM-MAP <> if E-FIX throw then ENDOF
+      ok OF MUST-STOP E-FIX throw ENDOF
+   ;MATCH
+   FREE-N @ 2 <> if E-FIX throw then
+   SYNC-N @ 1 <> if E-FIX throw then
+   s" " 0 die ;
+
+: TEST-REC-FAIL ( -- )
+   s" late engine record refusal releases every acquired owner" T-LABEL
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if REC-FAIL-CHILD then
+   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
 : TEST-CACHE-FAIL ( -- )
    s" cache refusal releases model and session but keeps the primary error" T-LABEL
@@ -303,11 +315,11 @@ PTR-VARIABLE SAVED-REC
    TEST-TYPES
    TEST-KV-CONFIG
    TEST-EARLY-FAILURES
-   TEST-REC-FAIL
    TEST-SESSION-FAIL
    SCRIPT-ARGC 0= if
       s" infer-engine: no model root argument -> device leg SKIPPED" type cr
    else
+      TEST-REC-FAIL
       TEST-MODEL-FAIL
       TEST-CONFIG-FAIL
       TEST-CACHE-FAIL

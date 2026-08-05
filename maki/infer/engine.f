@@ -57,19 +57,33 @@ TRUSTED: I-TAKE
 : I-ERR ( n -- result<INFER:engine,n> )
    RESULT:ERR ;
 
-: I-SESSION-FAIL ( MEM:block GPU:session n -- result<INFER:engine,n> )
+: I-SESSION-FAIL ( GPU:session n -- result<INFER:engine,n> )
    {: primary:n :}
    GPU:CLOSE I-CODE {: session-code:n :}
-   RELEASE
    primary session-code I-FIRST I-ERR ;
 
 : I-MODEL-FAIL
-   ( MEM:block GPU:session GPT2:model n -- result<INFER:engine,n> )
+   ( GPU:session GPT2:model n -- result<INFER:engine,n> )
    {: primary:n :}
    GPT2:CLOSE I-CODE {: model-code:n :}
    GPU:CLOSE I-CODE {: session-code:n :}
-   RELEASE
    primary model-code I-FIRST session-code I-FIRST I-ERR ;
+
+: I-CLOSE ( GPU:session GPT2:model KV:cache n -- n )
+   {: primary:n :}
+   swap >r
+   KV:CLOSE I-CODE {: cache-code:n :}
+   r>
+   GPT2:CLOSE I-CODE {: model-code:n :}
+   GPU:CLOSE I-CODE {: session-code:n :}
+   primary cache-code I-FIRST model-code I-FIRST session-code I-FIRST ;
+
+: I-PUBLISH ( GPU:session GPT2:model KV:cache -- result<INFER:engine,n> )
+   I-REC-LEN MEM:OPEN
+   MATCH result
+      err OF I-CLOSE I-ERR ENDOF
+      ok OF swap 2swap rot I-MINT RESULT:OK ENDOF
+   ;MATCH ;
 
 : I-KV-TRY ( n n n n n n n n -- n n n n n n n n )
    drop KV:CONFIG KV-CONFIG:UNMAKE ;
@@ -92,7 +106,7 @@ TRUSTED: I-TAKE
    knl knh khd kdb kpages kseq kctx kptok KV-CONFIG:MAKE RESULT:OK ;
 
 : I-START-CACHE
-   ( MEM:block GPU:session GPT2:model n n -- result<INFER:engine,n> )
+   ( GPU:session GPT2:model n n -- result<INFER:engine,n> )
    {: nseq:n npages:n :}
    GPT2:CONFIG@ nseq npages I-KV-CONFIG
    MATCH result
@@ -101,13 +115,13 @@ TRUSTED: I-TAKE
          swap >r KV:OPEN r> swap
          MATCH result
             err OF I-MODEL-FAIL ENDOF
-            ok OF I-MINT RESULT:OK ENDOF
+            ok OF I-PUBLISH ENDOF
          ;MATCH
       ENDOF
    ;MATCH ;
 
 : I-START-MODEL
-   ( MEM:block GPU:session FS:path n n -- result<INFER:engine,n> )
+   ( GPU:session FS:path n n -- result<INFER:engine,n> )
    {: nseq:n npages:n :}
    GPT2:OPEN
    MATCH result
@@ -116,14 +130,12 @@ TRUSTED: I-TAKE
    ;MATCH ;
 
 : I-START-SESSION
-   ( MEM:block FS:path n n -- result<INFER:engine,n> )
+   ( FS:path n n -- result<INFER:engine,n> )
    {: p nseq:n npages:n :} \ typed-local-lint: allow-bare-local - p is FS:path's two-cell structure.
    GPU:OPEN
    MATCH result
       err OF
-         {: code:n :}
-         RELEASE
-         code I-ERR
+         I-ERR
       ENDOF
       ok OF p nseq npages I-START-MODEL ENDOF
    ;MATCH ;
@@ -141,23 +153,12 @@ public
       drop E-KV-CONFIG I-ERR
       exit
    then
-   I-REC-LEN MEM:OPEN
-   MATCH result
-      err OF
-         {: code:n :}
-         FS-PATH:UNMAKE 2drop
-         code I-ERR
-      ENDOF
-      ok OF swap seqn pagesn I-START-SESSION ENDOF
-   ;MATCH ;
+   seqn pagesn I-START-SESSION ;
 
 : STOP ( INFER:engine -- result<n,n> )
    I-TAKE
-   swap >r KV:CLOSE I-CODE {: cache-code:n :}
-   r> GPT2:CLOSE I-CODE {: model-code:n :}
-   GPU:CLOSE I-CODE {: session-code:n :}
+   0 I-CLOSE {: code:n :}
    MEM:RELEASE
-   cache-code model-code I-FIRST session-code I-FIRST
-   dup 0= if RESULT:OK else RESULT:ERR then ;
+   code dup 0= if RESULT:OK else RESULT:ERR then ;
 
 ;package
