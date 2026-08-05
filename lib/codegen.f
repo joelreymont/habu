@@ -22,7 +22,7 @@ require lib/prelude.f
 \ -4499; the -4700..-4799 block is unclaimed there, so it is declared at the
 \ owning module instead. error-code-lint enforces global uniqueness across every
 \ source tree, so these stay distinct from every other E-*.
--4700 constant E-CG-CAP     \ an append would exceed a codegen buffer's capacity
+-4700 constant E-CG-CAP     \ invalid buffer capacity or overflowing append
 -4701 constant E-CG-VALUE   \ APPEND-DECIMAL was handed a negative value
 
 package CODEGEN
@@ -39,6 +39,7 @@ public
 
 \ Mint a codegen buffer. Defines NAME as a word pushing its descriptor.
 : BUFFER ( n -- )   \ cap --
+   dup 0 < if E-CG-CAP throw then
    create dup , 0 , allot  does> ( -- ptr n ) ;
 
 \ Discard a buffer's contents, keeping its capacity.

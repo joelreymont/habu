@@ -3,16 +3,21 @@
 \
 \ Proves the round trip (append-byte / append-string / append-decimal / contents),
 \ that RESET discards prior content, that a full buffer accepts exactly its capacity,
-\ and that overflow and negative decimal input throw the module-owned errors.
+\ and that negative capacity, overflow, and negative decimal input throw the
+\ module-owned errors.
 
 require lib/test.f
 require lib/codegen.f
 
 16 CODEGEN:BUFFER CGT-D
 
+\ The capacity guard must fire before the definer parses a name.
+-1 ' CODEGEN:BUFFER catch constant CGT-NEG-CAP-RC
+
 : CGT-CODES ( -- )
    E-CG-CAP -4700 T=
-   E-CG-VALUE -4701 T= ;
+   E-CG-VALUE -4701 T=
+   CGT-NEG-CAP-RC E-CG-CAP T= ;
 
 \ append-byte, append-string, and append-decimal compose into the contents.
 : CGT-BUILD ( -- )
