@@ -71,11 +71,11 @@ create SMT-B 16 cells allot           \ sampled id sequence B
 
 \ ---- (D/F) sampled id sequences ---------------------------------------------------
 \ plain multinomial: softmax row 0 once, then draw M ids at a fixed seed
-: SMT-SEQ-PLAIN ( n n ptr a -- ) {: seed:n m:n buf:ptr :}
+: SMT-SEQ-PLAIN ( n n ptr r -- ) {: seed:n m:n buf:ptr :}
    SMT-SOFT0  seed SC-SEED!
    m 0 ?do  SMT-PRB SREF-V SMP-SAMPLE s>f  buf i T-SET  loop ;
 \ via SMP-NEXT(temp=1,k=V,p=1): copy row 0, dispatch, draw M ids at a fixed seed
-: SMT-SEQ-NEXT ( n n ptr a -- ) {: seed:n m:n buf:ptr :}
+: SMT-SEQ-NEXT ( n n ptr r -- ) {: seed:n m:n buf:ptr :}
    seed SC-SEED!
    m 0 ?do
       SMT-CP0
