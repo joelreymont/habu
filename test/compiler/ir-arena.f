@@ -1,9 +1,9 @@
 \ ir-arena.f - checked compiler IR arena tests.
 \
 \ Proves the sections 6.2-6.3 arena contract of src/compiler/ir/arena.f:
-\ append-only cells behind nominal indices, mark/rollback, geometric growth
+\ append-only cells behind nominal indices, geometric growth
 \ under a committed ceiling with contents preserved, named overflow that
-\ leaves the arena usable, cross-owner rejection for indices, marks, and
+\ leaves the arena usable, cross-owner rejection for indices and
 \ contexts, ABORT and FREEZE consuming the builder, fail-closed staleness
 \ after context teardown, whole-range release through the owning context
 \ (shown by reusing the registry across more contexts than it has slots and
@@ -79,61 +79,6 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    s" a ceiling past the ordinal range is rejected at creation" T-LABEL
    [: CL-HUGE ;] E-IR-ARENA-CEIL TTHROWSQ ;
 
-\ ---- mark and rollback -------------------------------------------------------
-: MR-BODY ( IR-CTX:ctx -- n n n n n )
-   {: c:IR-CTX:ctx :}
-   c 16 IR-ARENA:NEW {: a:IR-ARENA:arena :}
-   c a 1 IR-ARENA:PUSH drop
-   c a 2 IR-ARENA:PUSH drop
-   c a 3 IR-ARENA:PUSH drop
-   a IR-ARENA:MARK {: m:IR-ARENA:mark :}
-   c a 4 IR-ARENA:PUSH drop
-   c a 5 IR-ARENA:PUSH drop
-   a IR-ARENA:USED
-   a m IR-ARENA:ROLLBACK
-   a IR-ARENA:USED
-   a a 2 IR-ARENA:NTH IR-ARENA:PEEK
-   c a 6 IR-ARENA:PUSH IR-ARENA:ORD
-   a IR-ARENA:USED ;
-
-: MR-CASE ( -- )
-   s" a rollback truncates to the mark and appends continue there" T-LABEL
-   BND [: MR-BODY ;] IR-CTX:WITH-CONTEXT
-   4 T= 3 T= 3 T= 3 T= 5 T= ;
-
-\ An index minted past the mark is dead after the rollback truncates it.
-: MR-DEAD-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c 16 IR-ARENA:NEW {: a:IR-ARENA:arena :}
-   c a 1 IR-ARENA:PUSH drop
-   a IR-ARENA:MARK {: m:IR-ARENA:mark :}
-   c a 2 IR-ARENA:PUSH {: x:IR-ARENA:cell-id :}
-   a m IR-ARENA:ROLLBACK
-   a x IR-ARENA:PEEK drop ;
-
-: MR-DEAD ( -- )
-   BND [: MR-DEAD-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-\ A mark whose cursor a deeper rollback already truncated cannot resurrect it.
-: MR-RESURRECT-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c 16 IR-ARENA:NEW {: a:IR-ARENA:arena :}
-   c a 1 IR-ARENA:PUSH drop
-   a IR-ARENA:MARK {: m1:IR-ARENA:mark :}
-   c a 2 IR-ARENA:PUSH drop
-   a IR-ARENA:MARK {: m2:IR-ARENA:mark :}
-   a m1 IR-ARENA:ROLLBACK
-   a m2 IR-ARENA:ROLLBACK ;
-
-: MR-RESURRECT ( -- )
-   BND [: MR-RESURRECT-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: MR-REJECT-CASES ( -- )
-   s" an index past the rollback cursor is dead" T-LABEL
-   [: MR-DEAD ;] E-IR-ARENA-BOUND TTHROWSQ
-   s" a truncated mark cannot resurrect cells" T-LABEL
-   [: MR-RESURRECT ;] E-IR-ARENA-MARK TTHROWSQ ;
-
 \ ---- geometric growth preserves contents -------------------------------------
 : GROW-FILL ( IR-CTX:ctx IR-ARENA:arena n -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena cnt:n :}
@@ -175,26 +120,23 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : OV-FIFTH ( IR-CTX:ctx IR-ARENA:arena -- IR-CTX:ctx IR-ARENA:arena )
    2dup 99 IR-ARENA:PUSH drop ;
 
-\ The ceiling hit mutates nothing: the arena stays readable and appendable
-\ after a rollback opens room (the file-documented usable-after-full choice).
-: OV-USABLE-BODY ( IR-CTX:ctx -- n n n n )
+\ The ceiling hit mutates nothing: the arena stays readable at the ceiling
+\ (the file-documented usable-after-full choice).
+: OV-USABLE-BODY ( IR-CTX:ctx -- n n n )
    {: c:IR-CTX:ctx :}
    c 4 IR-ARENA:NEW {: a:IR-ARENA:arena :}
-   a IR-ARENA:MARK {: m0:IR-ARENA:mark :}
    c a 4 GROW-FILL
    c a [: OV-FIFTH ;] catch {: c2:IR-CTX:ctx a2:IR-ARENA:arena rc:n :}
    rc
    a2 IR-ARENA:USED
-   a2 a2 3 IR-ARENA:NTH IR-ARENA:PEEK
-   a2 m0 IR-ARENA:ROLLBACK
-   c2 a2 77 IR-ARENA:PUSH IR-ARENA:ORD ;
+   a2 a2 3 IR-ARENA:NTH IR-ARENA:PEEK ;
 
 : OV-CASES ( -- )
    s" the fifth append into a four-cell ceiling is a named overflow" T-LABEL
    [: OV-RUN ;] E-IR-ARENA-FULL TTHROWSQ
-   s" a full arena stays usable: contents intact, rollback reopens room" T-LABEL
+   s" a full arena stays usable: contents intact and readable" T-LABEL
    BND [: OV-USABLE-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= 22 T= 4 T= E-IR-ARENA-FULL T= ;
+   22 T= 4 T= E-IR-ARENA-FULL T= ;
 
 \ ---- cross-owner rejection ---------------------------------------------------
 : XO-PEEK-BODY ( IR-CTX:ctx -- )
@@ -206,16 +148,6 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 
 : XO-PEEK ( -- )
    BND [: XO-PEEK-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: XO-MARK-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
-   c 8 IR-ARENA:NEW {: b:IR-ARENA:arena :}
-   a IR-ARENA:MARK {: m:IR-ARENA:mark :}
-   b m IR-ARENA:ROLLBACK ;
-
-: XO-MARK ( -- )
-   BND [: XO-MARK-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : XO-CTX-INNER ( IR-ARENA:arena IR-CTX:ctx -- )
    swap 5 IR-ARENA:PUSH drop ;
@@ -231,8 +163,6 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : XO-CASES ( -- )
    s" an index minted by arena A rejects on arena B" T-LABEL
    [: XO-PEEK ;] E-IR-ARENA-OWNER TTHROWSQ
-   s" a mark minted by arena A rejects on arena B" T-LABEL
-   [: XO-MARK ;] E-IR-ARENA-OWNER TTHROWSQ
    s" a foreign live context rejects as the growth allocator" T-LABEL
    [: XO-CTX ;] E-IR-ARENA-OWNER TTHROWSQ ;
 
@@ -322,17 +252,6 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : FZ-PUSH ( -- )
    BND [: FZ-PUSH-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-: FZ-ROLL-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
-   c a 1 IR-ARENA:PUSH drop
-   a IR-ARENA:MARK {: m:IR-ARENA:mark :}
-   a IR-ARENA:FREEZE drop
-   a m IR-ARENA:ROLLBACK ;
-
-: FZ-ROLL ( -- )
-   BND [: FZ-ROLL-BODY ;] IR-CTX:WITH-CONTEXT ;
-
 : FZ-ABORT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
@@ -352,20 +271,6 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : FZ-NTH ( -- )
    BND [: FZ-NTH-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ An index truncated by a rollback stays dead against the frozen count.
-: FZ-BOUND-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
-   c a 1 IR-ARENA:PUSH drop
-   a IR-ARENA:MARK {: m:IR-ARENA:mark :}
-   c a 2 IR-ARENA:PUSH {: x:IR-ARENA:cell-id :}
-   a m IR-ARENA:ROLLBACK
-   a IR-ARENA:FREEZE {: v:IR-ARENA:view :}
-   v x IR-ARENA:AT drop ;
-
-: FZ-BOUND ( -- )
-   BND [: FZ-BOUND-BODY ;] IR-CTX:WITH-CONTEXT ;
-
 : FZ-FOREIGN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
@@ -380,14 +285,10 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : FZ-REJECT-CASES ( -- )
    s" appending through a frozen builder handle rejects" T-LABEL
    [: FZ-PUSH ;] E-IR-ARENA-FROZEN TTHROWSQ
-   s" rolling back across a freeze rejects" T-LABEL
-   [: FZ-ROLL ;] E-IR-ARENA-FROZEN TTHROWSQ
    s" aborting across a freeze rejects" T-LABEL
    [: FZ-ABORT ;] E-IR-ARENA-FROZEN TTHROWSQ
    s" a frozen reader bounds-checks the ordinal" T-LABEL
    [: FZ-NTH ;] E-IR-ARENA-BOUND TTHROWSQ
-   s" a truncated index stays dead against the frozen count" T-LABEL
-   [: FZ-BOUND ;] E-IR-ARENA-BOUND TTHROWSQ
    s" a foreign index rejects on a frozen view" T-LABEL
    [: FZ-FOREIGN ;] E-IR-ARENA-OWNER TTHROWSQ ;
 
@@ -403,9 +304,6 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 
 : ST-USED ( -- )
    DEAD-ARENA IR-ARENA:USED drop ;
-
-: ST-MARK ( -- )
-   DEAD-ARENA IR-ARENA:MARK drop ;
 
 : ST-FREEZE ( -- )
    DEAD-ARENA IR-ARENA:FREEZE drop ;
@@ -432,8 +330,6 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    DEAD-ARENA IR-ARENA:LIVE? TFALSE
    s" reading after context teardown rejects" T-LABEL
    [: ST-USED ;] E-IR-ARENA-STALE TTHROWSQ
-   s" marking after context teardown rejects" T-LABEL
-   [: ST-MARK ;] E-IR-ARENA-STALE TTHROWSQ
    s" freezing after context teardown rejects" T-LABEL
    [: ST-FREEZE ;] E-IR-ARENA-STALE TTHROWSQ
    s" appending with a fresh live context still rejects the dead arena" T-LABEL
@@ -500,8 +396,6 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
       CHECK-QUIET-CANDIDATE! 0 T=
    s" IRA-VIEW-FORGE ( n -- IR-ARENA:view )"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" IRA-MARK-FORGE ( n -- IR-ARENA:mark )"
-      CHECK-QUIET-CANDIDATE! 0 T=
    s" IRA-VIEWLESS ( IR-ARENA:arena IR-ARENA:cell-id -- n ) IR-ARENA:AT"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" IRA-CTXLESS ( IR-ARENA:arena n -- IR-ARENA:cell-id ) IR-ARENA:PUSH"
@@ -518,8 +412,6 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    drop
    CREATE-CASE
    CEIL-CASES
-   MR-CASE
-   MR-REJECT-CASES
    GROW-CASE
    OV-CASES
    XO-CASES

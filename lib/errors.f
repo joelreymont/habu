@@ -336,10 +336,10 @@ public
 
 \ Compiler IR arena (package IR-ARENA): -6650..-6659
 -6650 constant E-IR-ARENA-STALE   \ an arena handle was used after abort or after its context's teardown
--6651 constant E-IR-ARENA-OWNER   \ an index, mark, or context was presented to an arena that did not mint it
+-6651 constant E-IR-ARENA-OWNER   \ an index or context was presented to an arena that did not mint it
 -6652 constant E-IR-ARENA-FULL    \ an append reached the arena's committed cell ceiling
 -6653 constant E-IR-ARENA-FROZEN  \ a mutation word ran against a frozen arena
--6654 constant E-IR-ARENA-MARK    \ a rollback target outside the arena's live appended range
+\ -6654 unassigned (arena rollback deleted 2026-08-05: no consumer)
 -6655 constant E-IR-ARENA-BOUND   \ an arena index at or past the readable cell count
 -6656 constant E-IR-ARENA-CEIL    \ an arena-creation cell ceiling outside the accepted range
 -6657 constant E-IR-ARENA-SLOTS   \ the live-arena registry has no free slot

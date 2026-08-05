@@ -8,10 +8,10 @@
    generic append-only cell store; every dialect table is an instance of it, and
    every arena lives in spans bump-allocated from its owning context.
 
-   This file models what those two words actually do, and proves the six arena
+   This file models what those two words actually do, and proves the five arena
    properties and four context properties the storage layer is relied on for.
-   Two of the proofs came out weaker than the code's own header comments claim.
-   Both places are written down below as findings rather than smoothed over.
+   Where a proof came out weaker than the code's own header comments claim,
+   the place is written down below as a finding rather than smoothed over.
 
    ------------------------------------------------------------------------
    MODEL GAPS
@@ -63,7 +63,7 @@
       that leaves uncovered.
 
    6. Failure is `None`, not a throw code.  Habu names every refusal
-      (E-IR-ARENA-FULL, E-IR-ARENA-BOUND, E-IR-ARENA-OWNER, E-IR-ARENA-MARK,
+      (E-IR-ARENA-FULL, E-IR-ARENA-BOUND, E-IR-ARENA-OWNER,
       E-IR-ARENA-FROZEN, E-IR-ARENA-STALE, E-IR-CTX-SCRATCH, E-IR-CTX-SERIALS,
       E-IR-CTX-DEPTH, E-IR-CTX-STALE).  The model has one refusal.  The shared
       vector rows in test/compiler/ir-storage-schema.f carry the throw code, so
@@ -127,16 +127,9 @@
        it fails the first, so the limit is pinned from both sides rather than
        only through the DEPTH-MAX literal.
 
-   B3. CLOSED for the mark comparison.  The `foreign_mark` row rolls one arena
-       back with a mark the other arena minted, requires E-IR-ARENA-OWNER, and
-       then shows the first arena's cursor and cells untouched and its own mark
-       still accepted.  Removing the generation compare from IR-ARENA:ROLLBACK
-       now fails that row on behaviour, not only the frozen guard body: with the
-       compare gone the first arena truncates to the other one's cursor.
-
    ------------------------------------------------------------------------
-   FINDINGS — three claims in the source comments that these proofs do not
-   support.  Each is exhibited as an executable example below.
+   FINDINGS — claims in the source comments that these proofs do not
+   support.  Each open finding is exhibited as an executable example below.
 
    FINDING 1.  arena.f:20-26 says every arena resolution "probes
    IR-CTX:SERIAL-LIVE? so an arena whose context tore down rejects with
@@ -151,15 +144,11 @@
    context.f:22-27 (no reachable handle survives the throw), not on the liveness
    probe — which is a different, weaker guarantee than the comment states.
 
-   FINDING 2.  IR-ARENA:ROLLBACK truncates the cursor and nothing else
-   (arena.f:323-330).  It does not bump the arena's generation, and an index
-   carries only (generation, ordinal).  So an index minted above a mark is dead
-   only while the cursor stays below it: push again and the SAME index becomes
-   valid and denotes a DIFFERENT cell, silently.
-   `arena_rollback_reuses_ordinal` below is that state.  The append-only
-   theorems in this file are therefore theorems about push alone; rollback is
-   not append-only, and the arena's users must not hold an index across a
-   rollback that could be re-passed.  Nothing in the code enforces that.
+   FINDING 2.  RESOLVED BY DELETION (2026-08-05).  IR-ARENA:ROLLBACK
+   restored only the count, so a reused ordinal aliased a stale ID onto the
+   new object's value.  The operation had no production consumer, so mark,
+   rollback, and their theorems were deleted rather than given a generation
+   epoch for a zero-consumer operation.
 
    FINDING 3.  arena.f:13-15 calls the abandoned-span discipline "bounded by
    the committed ceiling".  The real bound is the context's single 256K
@@ -231,11 +220,9 @@ Definition acount (a : arena) : nat := length (cells a).
    word does. *)
 Definition alive (a : arena) : bool := negb (Nat.eqb (agen a) 0).
 
-(* A minted index and a mark.  Both are (generation, ordinal) pairs that name
-   the arena that minted them: IR-ARENA:MINT-IDX (arena.f:206) and
-   IR-ARENA:MINT-MARK (arena.f:317-319). *)
+(* A minted index: a (generation, ordinal) pair that names the arena that
+   minted it, IR-ARENA:MINT-IDX. *)
 Record cell_id : Type := MkIdx { idx_gen : nat; idx_ord : nat }.
-Record amark : Type := MkMark { mk_gen : nat; mk_cur : nat }.
 
 (* The structural invariant an arena maintains: a live generation, a cursor
    inside the committed span, a span inside the committed ceiling. *)
@@ -302,18 +289,6 @@ Definition apeek (a : arena) (x : cell_id) : option nat :=
 
 Definition aat (a : arena) (x : cell_id) : option nat :=
   if afrozen a then aread a x else None.
-
-(* IR-ARENA:MARK (arena.f:317-319) and IR-ARENA:ROLLBACK (arena.f:323-330).
-   A mark from another arena and a cursor past the live count both reject. *)
-Definition amark_of (a : arena) : option amark :=
-  if afrozen a then None else Some (MkMark (agen a) (acount a)).
-
-Definition arollback (a : arena) (m : amark) : option arena :=
-  if afrozen a then None
-  else if negb (Nat.eqb (mk_gen m) (agen a)) then None
-  else if Nat.ltb (acount a) (mk_cur m) then None
-  else Some (MkArena (agen a) (aowner a) (firstn (mk_cur m) (cells a))
-                     (acap a) (aceil a) (afrozen a)).
 
 (* IR-ARENA:FREEZE (arena.f:336-339) and IR-ARENA:ABORT (arena.f:344-346). *)
 Definition afreeze (a : arena) : option arena :=
@@ -613,113 +588,7 @@ Definition apush_write_first (owner : nat) (a : arena) (v : nat)
     else if Nat.leb (aceil a) (acap a) then (a', None)
     else (a', Some (acount a)).
 
-(* ---- 4. MARK AND ROLLBACK --------------------------------------------- *)
-
-(* A mark is this arena's own cursor, stamped with this arena's generation. *)
-Theorem arena_mark_is_own_cursor :
-  forall a m,
-    amark_of a = Some m -> mk_gen m = agen a /\ mk_cur m = acount a.
-Proof.
-  intros a m Hmark.
-  unfold amark_of in Hmark.
-  destruct (afrozen a); [discriminate |].
-  inversion Hmark; subst m.
-  split; reflexivity.
-Qed.
-
-(* Rollback truncates exactly to the mark's cursor. *)
-Theorem arena_rollback_truncates :
-  forall a m a',
-    arollback a m = Some a' -> acount a' = mk_cur m.
-Proof.
-  intros a m a' Hroll.
-  unfold arollback in Hroll.
-  destruct (afrozen a); [discriminate |].
-  destruct (Nat.eqb (mk_gen m) (agen a)); simpl in Hroll; [| discriminate].
-  destruct (Nat.ltb (acount a) (mk_cur m)) eqn:Hstale; [discriminate |].
-  apply Nat.ltb_ge in Hstale.
-  inversion Hroll; subst a'.
-  unfold acount in *.
-  simpl.
-  rewrite length_firstn.
-  lia.
-Qed.
-
-(* Indices below the mark keep their values. *)
-Theorem arena_rollback_keeps_below_mark :
-  forall a m a' x n,
-    arollback a m = Some a' ->
-    idx_ord x < mk_cur m ->
-    aread a x = Some n ->
-    aread a' x = Some n.
-Proof.
-  intros a m a' x n Hroll Hbelow Hread.
-  unfold arollback in Hroll.
-  destruct (afrozen a); [discriminate |].
-  destruct (Nat.eqb (mk_gen m) (agen a)); simpl in Hroll; [| discriminate].
-  destruct (Nat.ltb (acount a) (mk_cur m)); [discriminate |].
-  inversion Hroll; subst a'.
-  unfold aread in *.
-  simpl in *.
-  destruct (Nat.eqb (idx_gen x) (agen a)); simpl in *; [| discriminate].
-  rewrite nth_error_firstn_lt by exact Hbelow.
-  exact Hread.
-Qed.
-
-(* An index minted above the mark is dead after the rollback. *)
-Theorem arena_rollback_kills_above_mark :
-  forall a m a' x,
-    arollback a m = Some a' ->
-    mk_cur m <= idx_ord x ->
-    aread a' x = None.
-Proof.
-  intros a m a' x Hroll Habove.
-  unfold arollback in Hroll.
-  destruct (afrozen a); [discriminate |].
-  destruct (Nat.eqb (mk_gen m) (agen a)); simpl in Hroll; [| discriminate].
-  destruct (Nat.ltb (acount a) (mk_cur m)); [discriminate |].
-  inversion Hroll; subst a'.
-  unfold aread.
-  simpl.
-  destruct (Nat.eqb (idx_gen x) (agen a)); [| reflexivity].
-  apply nth_error_firstn_ge.
-  exact Habove.
-Qed.
-
-(* A mark minted by a different arena is refused before the cursor moves.
-   IR-ARENA:ROLLBACK compares the mark's generation with this slot's
-   (arena.f:327) and throws E-IR-ARENA-OWNER. *)
-Theorem arena_rollback_foreign_mark_rejected :
-  forall a m, mk_gen m <> agen a -> arollback a m = None.
-Proof.
-  intros a m Hforeign.
-  unfold arollback.
-  destruct (afrozen a); [reflexivity |].
-  replace (Nat.eqb (mk_gen m) (agen a)) with false.
-  - reflexivity.
-  - symmetry.
-    apply Nat.eqb_neq.
-    exact Hforeign.
-Qed.
-
-(* A mark whose cursor is past the live count — one an earlier, deeper
-   rollback already invalidated — is refused too (arena.f:329,
-   E-IR-ARENA-MARK). *)
-Theorem arena_rollback_stale_mark_rejected :
-  forall a m, acount a < mk_cur m -> arollback a m = None.
-Proof.
-  intros a m Hstale.
-  unfold arollback.
-  destruct (afrozen a); [reflexivity |].
-  destruct (Nat.eqb (mk_gen m) (agen a)); simpl; [| reflexivity].
-  replace (Nat.ltb (acount a) (mk_cur m)) with true.
-  - reflexivity.
-  - symmetry.
-    apply Nat.ltb_lt.
-    exact Hstale.
-Qed.
-
-(* ---- 5. FREEZE --------------------------------------------------------- *)
+(* ---- 4. FREEZE --------------------------------------------------------- *)
 
 (* A frozen view answers exactly what the live arena answered at the moment it
    was frozen.  IR-ARENA:FREEZE flips the state cell and mints a view over the
@@ -755,8 +624,6 @@ Theorem arena_freeze_blocks_mutation :
   forall a a',
     afreeze a = Some a' ->
     (forall owner v, apush owner a' v = None)
-    /\ (forall m, arollback a' m = None)
-    /\ amark_of a' = None
     /\ afreeze a' = None
     /\ aabort a' = None.
 Proof.
@@ -764,7 +631,7 @@ Proof.
   unfold afreeze in Hfreeze.
   destruct (afrozen a); [discriminate |].
   inversion Hfreeze; subst a'.
-  unfold apush, arollback, amark_of, afreeze, aabort.
+  unfold apush, afreeze, aabort.
   simpl.
   repeat split; intros; reflexivity.
 Qed.
@@ -782,7 +649,7 @@ Proof.
   reflexivity.
 Qed.
 
-(* ---- 6. CROSS-OWNER ---------------------------------------------------- *)
+(* ---- 5. CROSS-OWNER ---------------------------------------------------- *)
 
 (* An index minted by one arena is refused by another.  IR-ARENA:IDX-AT
    compares the index's generation with the resolved slot's own
@@ -891,7 +758,7 @@ Definition cleave_no_truncate (s : cstate) (depth_at_entry : nat) : cstate :=
            (firstn depth_at_entry (reg s)
             ++ skipn (S depth_at_entry) (reg s)).
 
-(* ---- 7. GENERATION UNIQUENESS ----------------------------------------- *)
+(* ---- 6. GENERATION UNIQUENESS ----------------------------------------- *)
 
 (* The counter only ever moves up, and every issued generation is its new
    value, so generations are nonzero, strictly increasing and never reused. *)
@@ -986,7 +853,7 @@ Proof.
   lia.
 Qed.
 
-(* ---- 8. STALE REJECTION ------------------------------------------------ *)
+(* ---- 7. STALE REJECTION ------------------------------------------------ *)
 
 (* A handle that is not in the registry is refused.  IR-CTX:RESOLVE throws
    E-IR-CTX-STALE on a miss, before any mapping pointer is produced
@@ -1030,7 +897,7 @@ Proof.
     apply Nat.eqb_refl.
 Qed.
 
-(* ---- 9. NESTING AND TEARDOWN ------------------------------------------ *)
+(* ---- 8. NESTING AND TEARDOWN ------------------------------------------ *)
 
 (* Leaving truncates the registry to the depth saved at entry, so every context
    registered at or beyond that depth — this one and every child — becomes
@@ -1257,7 +1124,7 @@ Proof.
     exact Hfull.
 Qed.
 
-(* ---- 10. SCRATCH MONOTONICITY ----------------------------------------- *)
+(* ---- 9. SCRATCH MONOTONICITY ----------------------------------------- *)
 
 (* IR-CTX:ALIGN8 (context.f:397-398).  The cursor always advances by at least
    the requested size, which is what makes two spans disjoint. *)
@@ -1469,63 +1336,19 @@ Example arena_grow_write_first_leaves_partial_row :
        = MkArena 7 3 [1; 2; 3; 4] 8 4 false.
 Proof. split; vm_compute; reflexivity. Qed.
 
-(* 4. MARK AND ROLLBACK. *)
+(* Shared fixture for the example blocks below. *)
 Definition a3 : arena := MkArena 7 3 [11; 22; 33] 4 8 false.
 
-Example ex_rollback_truncates :
-  amark_of a3 = Some (MkMark 7 3)
-  /\ arollback (MkArena 7 3 [11; 22; 33; 44; 55] 8 8 false) (MkMark 7 3)
-       = Some (MkArena 7 3 [11; 22; 33] 8 8 false)
-  /\ aread (MkArena 7 3 [11; 22; 33] 8 8 false) (MkIdx 7 1) = Some 22
-  /\ aread (MkArena 7 3 [11; 22; 33] 8 8 false) (MkIdx 7 3) = None.
-Proof. repeat split; vm_compute; reflexivity. Qed.
-
-Example ex_rollback_rejects :
-  arollback a3 (MkMark 9 1) = None
-  /\ arollback a3 (MkMark 7 5) = None.
-Proof. split; vm_compute; reflexivity. Qed.
-
-(* COUNTEREXAMPLE 2 — and FINDING 2.  Rollback does not bump the generation,
-   so an index minted above a mark comes back to life when the cursor passes it
-   again, and it then denotes a DIFFERENT cell with no diagnostic. *)
-Example arena_rollback_reuses_ordinal :
-  amint (MkArena 7 3 [11; 22] 4 8 false) 1 = Some (MkIdx 7 1)
-  /\ aread (MkArena 7 3 [11; 22] 4 8 false) (MkIdx 7 1) = Some 22
-  /\ arollback (MkArena 7 3 [11; 22] 4 8 false) (MkMark 7 1)
-       = Some (MkArena 7 3 [11] 4 8 false)
-  /\ aread (MkArena 7 3 [11] 4 8 false) (MkIdx 7 1) = None
-  /\ apush 3 (MkArena 7 3 [11] 4 8 false) 99
-       = Some (MkArena 7 3 [11; 99] 4 8 false, 1)
-  /\ aread (MkArena 7 3 [11; 99] 4 8 false) (MkIdx 7 1) = Some 99.
-Proof. repeat split; vm_compute; reflexivity. Qed.
-
-(* COUNTEREXAMPLE 3.  A mark accepted from a foreign arena corrupts the cursor:
-   the real word refuses it, the mutation that skips the generation test
-   truncates this arena to the other arena's cursor and loses two cells. *)
-Definition arollback_no_owner_check (a : arena) (m : amark) : option arena :=
-  if afrozen a then None
-  else if Nat.ltb (acount a) (mk_cur m) then None
-  else Some (MkArena (agen a) (aowner a) (firstn (mk_cur m) (cells a))
-                     (acap a) (aceil a) (afrozen a)).
-
-Example arena_foreign_mark_corrupts_cursor :
-  arollback a3 (MkMark 9 1) = None
-  /\ arollback_no_owner_check a3 (MkMark 9 1)
-       = Some (MkArena 7 3 [11] 4 8 false)
-  /\ acount a3 = 3.
-Proof. repeat split; vm_compute; reflexivity. Qed.
-
-(* 5. FREEZE. *)
+(* 4. FREEZE. *)
 Example ex_freeze :
   afreeze a3 = Some (MkArena 7 3 [11; 22; 33] 4 8 true)
   /\ aat (MkArena 7 3 [11; 22; 33] 4 8 true) (MkIdx 7 2) = Some 33
   /\ apeek a3 (MkIdx 7 2) = Some 33
   /\ apeek (MkArena 7 3 [11; 22; 33] 4 8 true) (MkIdx 7 2) = None
-  /\ apush 3 (MkArena 7 3 [11; 22; 33] 4 8 true) 44 = None
-  /\ amark_of (MkArena 7 3 [11; 22; 33] 4 8 true) = None.
+  /\ apush 3 (MkArena 7 3 [11; 22; 33] 4 8 true) 44 = None.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
-(* 6. CROSS-OWNER. *)
+(* 5. CROSS-OWNER. *)
 Example ex_cross_owner :
   amint a3 1 = Some (MkIdx 7 1)
   /\ aread (MkArena 8 3 [90; 91; 92] 4 8 false) (MkIdx 7 1) = None
@@ -1560,7 +1383,7 @@ Example ex_ctx_leave_kills_children :
      = false.
 Proof. split; vm_compute; reflexivity. Qed.
 
-(* COUNTEREXAMPLE 4.  An exit that retires only its own slot and leaves the
+(* COUNTEREXAMPLE 2.  An exit that retires only its own slot and leaves the
    depth alone keeps the grandchild live after its owner is gone. *)
 Example ctx_no_truncation_leaves_live_handle :
   cserial_live
@@ -1571,7 +1394,7 @@ Example ctx_no_truncation_leaves_live_handle :
      = true.
 Proof. split; vm_compute; reflexivity. Qed.
 
-(* COUNTEREXAMPLE 5 — and FINDING 1.  A context abandoned by a throw keeps its
+(* COUNTEREXAMPLE 3 — and FINDING 1.  A context abandoned by a throw keeps its
    registry slot, so its serial still reports LIVE even though MEM:WITH-BYTES
    has already released its mapping.  Compare the normal exit directly beside
    it. *)
@@ -1580,7 +1403,7 @@ Example ctx_abandoned_context_still_reports_live :
   /\ cserial_live (cabandon (MkCState 2 [MkCtx 1 100; MkCtx 2 200])) 2 = true.
 Proof. split; vm_compute; reflexivity. Qed.
 
-(* 10. SCRATCH. *)
+(* 9. SCRATCH. *)
 Example ex_scratch_bumps :
   scratch_take 128 5 = Some (128, 136)
   /\ scratch_take 136 16 = Some (136, 152)
@@ -1630,12 +1453,6 @@ Print Assumptions arena_grow_ceiling_fail_closed.
 Print Assumptions arena_push_at_ceiling_fail_closed.
 Print Assumptions arena_push_preserves_wf.
 Print Assumptions arena_push_keeps_count_under_ceiling.
-Print Assumptions arena_mark_is_own_cursor.
-Print Assumptions arena_rollback_truncates.
-Print Assumptions arena_rollback_keeps_below_mark.
-Print Assumptions arena_rollback_kills_above_mark.
-Print Assumptions arena_rollback_foreign_mark_rejected.
-Print Assumptions arena_rollback_stale_mark_rejected.
 Print Assumptions arena_freeze_preserves_reads.
 Print Assumptions arena_freeze_preserves_count.
 Print Assumptions arena_freeze_blocks_mutation.

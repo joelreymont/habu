@@ -3,7 +3,7 @@
 \ It runs the Habu half of the storage parity binding: the frozen rows in
 \ `test/compiler/ir-storage-schema.f` asked of the shipped `IR-CTX` and
 \ `IR-ARENA`. That is the pinned capacity constants, the check-before-write
-\ ordering of the nine guarded storage paths, the frozen guard and teardown
+\ ordering of the eight guarded storage paths, the frozen guard and teardown
 \ bodies, the shape of the vector table, and every vector row driven through the
 \ real words.
 \

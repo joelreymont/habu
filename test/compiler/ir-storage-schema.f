@@ -51,7 +51,7 @@
 \
 \ Where the two sides are not literally the same shape, and why that is sound:
 \
-\   - A Habu index or mark is one packed cell holding (generation << 32 |
+\   - A Habu index is one packed cell holding (generation << 32 |
 \     ordinal); the model's is a pair. What the vector rows exchange is only
 \     ordinals, counts, values and refusals, so the packing never enters the
 \     comparison. The packing itself is `Habu.Common.IdLaws`.
@@ -165,9 +165,59 @@ public
       E-CST-ROW throw
    endcase ;
 
-9 constant ORDER-COUNT
+8 constant ORDER-COUNT
 
 : ORDER-FILE$ ( n -- ptr u8 n )
+   case
+      0 of s" src/compiler/ir/arena.f" endof
+      1 of s" src/compiler/ir/arena.f" endof
+      2 of s" src/compiler/ir/arena.f" endof
+      3 of s" src/compiler/ir/arena.f" endof
+      4 of s" src/compiler/ir/context.f" endof
+      5 of s" src/compiler/ir/context.f" endof
+      6 of s" src/compiler/ir/context.f" endof
+      7 of s" src/compiler/ir/context.f" endof
+      E-CST-ROW throw
+   endcase ;
+
+: ORDER-WORD$ ( n -- ptr u8 n )
+   case
+      0 of s" GROW" endof
+      1 of s" PUSH" endof
+      2 of s" NEW" endof
+      3 of s" FREEZE" endof
+      4 of s" SCRATCH-TAKE" endof
+      5 of s" CTX-ENTER" endof
+      6 of s" WITH-CONTEXT-BOUND" endof
+      7 of s" MINT-TAKE" endof
+      E-CST-ROW throw
+   endcase ;
+
+\ The throw code that is this word's guard. A definition carries the guard if it
+\ names the code or calls something that does.
+: ORDER-GUARD$ ( n -- ptr u8 n )
+   case
+      0 of s" E-IR-ARENA-FULL" endof
+      1 of s" E-IR-ARENA-FULL" endof
+      2 of s" E-IR-ARENA-CEIL" endof
+      3 of s" E-IR-ARENA-FROZEN" endof
+      4 of s" E-IR-CTX-SCRATCH" endof
+      5 of s" E-IR-CTX-DEPTH" endof
+      6 of s" E-IR-CTX-CEILING" endof
+      7 of s" E-IR-CTX-SERIALS" endof
+      E-CST-ROW throw
+   endcase ;
+
+\ ---- 3. the frozen guard bodies ----------------------------------------------
+\ Each of these is what makes one of the model's hypotheses true of the shipped
+\ code. `IR-CTX:CTX-ENTER` is frozen whole for a second reason: it is the
+\ place the proofs came out weaker than the source comments claim, so the
+\ exact text it was read against is pinned here. `Habu.Common.Storage`
+\ records it as a finding.
+
+9 constant GUARD-COUNT
+
+: GUARD-FILE$ ( n -- ptr u8 n )
    case
       0 of s" src/compiler/ir/arena.f" endof
       1 of s" src/compiler/ir/arena.f" endof
@@ -181,60 +231,6 @@ public
       E-CST-ROW throw
    endcase ;
 
-: ORDER-WORD$ ( n -- ptr u8 n )
-   case
-      0 of s" GROW" endof
-      1 of s" PUSH" endof
-      2 of s" NEW" endof
-      3 of s" ROLLBACK" endof
-      4 of s" FREEZE" endof
-      5 of s" SCRATCH-TAKE" endof
-      6 of s" CTX-ENTER" endof
-      7 of s" WITH-CONTEXT-BOUND" endof
-      8 of s" MINT-TAKE" endof
-      E-CST-ROW throw
-   endcase ;
-
-\ The throw code that is this word's guard. A definition carries the guard if it
-\ names the code or calls something that does.
-: ORDER-GUARD$ ( n -- ptr u8 n )
-   case
-      0 of s" E-IR-ARENA-FULL" endof
-      1 of s" E-IR-ARENA-FULL" endof
-      2 of s" E-IR-ARENA-CEIL" endof
-      3 of s" E-IR-ARENA-MARK" endof
-      4 of s" E-IR-ARENA-FROZEN" endof
-      5 of s" E-IR-CTX-SCRATCH" endof
-      6 of s" E-IR-CTX-DEPTH" endof
-      7 of s" E-IR-CTX-CEILING" endof
-      8 of s" E-IR-CTX-SERIALS" endof
-      E-CST-ROW throw
-   endcase ;
-
-\ ---- 3. the frozen guard bodies ----------------------------------------------
-\ Each of these is what makes one of the model's hypotheses true of the shipped
-\ code. `IR-ARENA:ROLLBACK` and `IR-CTX:CTX-ENTER` are frozen whole for a second
-\ reason: they are the two places the proofs came out weaker than the source
-\ comments claim, so the exact text they were read against is pinned here.
-\ `Habu.Common.Storage` records both as findings.
-
-10 constant GUARD-COUNT
-
-: GUARD-FILE$ ( n -- ptr u8 n )
-   case
-      0 of s" src/compiler/ir/arena.f" endof
-      1 of s" src/compiler/ir/arena.f" endof
-      2 of s" src/compiler/ir/arena.f" endof
-      3 of s" src/compiler/ir/arena.f" endof
-      4 of s" src/compiler/ir/arena.f" endof
-      5 of s" src/compiler/ir/arena.f" endof
-      6 of s" src/compiler/ir/context.f" endof
-      7 of s" src/compiler/ir/context.f" endof
-      8 of s" src/compiler/ir/context.f" endof
-      9 of s" src/compiler/ir/context.f" endof
-      E-CST-ROW throw
-   endcase ;
-
 : GUARD-WORD$ ( n -- ptr u8 n )
    case
       0 of s" IDX-AT" endof
@@ -242,11 +238,10 @@ public
       2 of s" OWN-CHECK" endof
       3 of s" CEIL-OK" endof
       4 of s" AGEN-NEXT-N" endof
-      5 of s" ROLLBACK" endof
-      6 of s" GEN-NEXT-N" endof
-      7 of s" ALIGN8" endof
-      8 of s" FIND-SLOT" endof
-      9 of s" CTX-ENTER" endof
+      5 of s" GEN-NEXT-N" endof
+      6 of s" ALIGN8" endof
+      7 of s" FIND-SLOT" endof
+      8 of s" CTX-ENTER" endof
       E-CST-ROW throw
    endcase ;
 
@@ -257,11 +252,10 @@ public
       2 of s" {: c:IR-CTX:ctx slot:n :} c IR-CTX:SERIAL slot AOWNER@ <> if E-IR-ARENA-OWNER throw then" endof
       3 of s" dup 1 < over CEIL-MAX > or if E-IR-ARENA-CEIL throw then drop" endof
       4 of s" dup 0 < over AGEN-MAX >= or if E-IR-ARENA-SERIALS throw then 1+" endof
-      5 of s" {: a:IR-ARENA:arena m:IR-ARENA:mark :} a LIVE-SLOT {: slot:n :} m MARK>N {: raw:n :} raw PACK-GEN slot AGEN@ <> if E-IR-ARENA-OWNER throw then raw PACK-LOCAL dup slot ACOUNT@ > if E-IR-ARENA-MARK throw then slot ACOUNT!" endof
-      6 of s" dup 0 < over GEN-MAX >= or if E-IR-CTX-SERIALS throw then 1+" endof
-      7 of s" 7 + 8 / 8 *" endof
-      8 of s" {: g:n :} -1 DEPTH @ 0 ?do g i GEN@ = if drop i leave then loop" endof
-      9 of s" drop DEPTH-ROOM DEPTH @ TAKE-GEN {: at:n g:n :} at CTX-INSTALL g at GEN! at 1+ DEPTH ! g MINT-CTX swap execute 0 at GEN! at DEPTH !" endof
+      5 of s" dup 0 < over GEN-MAX >= or if E-IR-CTX-SERIALS throw then 1+" endof
+      6 of s" 7 + 8 / 8 *" endof
+      7 of s" {: g:n :} -1 DEPTH @ 0 ?do g i GEN@ = if drop i leave then loop" endof
+      8 of s" drop DEPTH-ROOM DEPTH @ TAKE-GEN {: at:n g:n :} at CTX-INSTALL g at GEN! at 1+ DEPTH ! g MINT-CTX swap execute 0 at GEN! at DEPTH !" endof
       E-CST-ROW throw
    endcase ;
 
@@ -280,14 +274,12 @@ public
 0 constant OP-PUSH          \ append the argument; answers its ordinal
 1 constant OP-PEEK          \ read the cell at the argument ordinal
 2 constant OP-USED          \ the live cell count
-3 constant OP-MARK          \ take a mark into the argument slot; answers its cursor
-4 constant OP-ROLL          \ roll back to the mark in the argument slot
-5 constant OP-FREEZE        \ consume the builder; answers the published size
-6 constant OP-AT            \ read through the frozen view
-7 constant OP-KEEP          \ mint and keep the index at the argument ordinal
-8 constant OP-READ          \ read the kept index in this arena
-9 constant OP-ABORT         \ consume the builder without publishing; answers 0
-10 constant OP-COUNT
+3 constant OP-FREEZE        \ consume the builder; answers the published size
+4 constant OP-AT            \ read through the frozen view
+5 constant OP-KEEP          \ mint and keep the index at the argument ordinal
+6 constant OP-READ          \ read the kept index in this arena
+7 constant OP-ABORT         \ consume the builder without publishing; answers 0
+8 constant OP-COUNT
 
 0 constant COP-SCRATCH      \ bump-allocate the argument bytes; answers the used total
 1 constant COP-MINT         \ mint one module identity; answers the minted total
@@ -302,28 +294,24 @@ public
 
 0 constant ROLE-APPEND      \ appending never disturbs a published ordinal, across a growth step
 1 constant ROLE-CEILING     \ a full arena refuses a new cell and stays readable
-2 constant ROLE-ROLLBACK    \ mark, truncate, and the marks and indices that die with it
-3 constant ROLE-FREEZE      \ a frozen view answers what the live arena answered
-4 constant ROLE-CROSS       \ an index minted by one arena is refused by the other
-5 constant ROLE-SCRATCH     \ bump allocation is monotone and bounded by the mapping
-6 constant ROLE-BUDGET      \ the module-serial budget is spent exactly once
-7 constant ROLE-ABORT       \ aborting retires the arena, and every index dies with it
-8 constant ROLE-FMARK       \ one arena refuses a mark another arena minted
-9 constant ROLE-DEPTH       \ nesting contexts stops exactly at the registry depth
-10 constant ROLE-COUNT
+2 constant ROLE-FREEZE      \ a frozen view answers what the live arena answered
+3 constant ROLE-CROSS       \ an index minted by one arena is refused by the other
+4 constant ROLE-SCRATCH     \ bump allocation is monotone and bounded by the mapping
+5 constant ROLE-BUDGET      \ the module-serial budget is spent exactly once
+6 constant ROLE-ABORT       \ aborting retires the arena, and every index dies with it
+7 constant ROLE-DEPTH       \ nesting contexts stops exactly at the registry depth
+8 constant ROLE-COUNT
 
 : ROLE-NAME$ ( n -- ptr u8 n )
    case
       0 of s" append" endof
       1 of s" ceiling" endof
-      2 of s" rollback" endof
-      3 of s" freeze" endof
-      4 of s" cross_owner" endof
-      5 of s" scratch" endof
-      6 of s" budget" endof
-      7 of s" abort" endof
-      8 of s" foreign_mark" endof
-      9 of s" depth" endof
+      2 of s" freeze" endof
+      3 of s" cross_owner" endof
+      4 of s" scratch" endof
+      5 of s" budget" endof
+      6 of s" abort" endof
+      7 of s" depth" endof
       E-CST-ROW throw
    endcase ;
 
@@ -445,30 +433,6 @@ variable DSCN-N
       OP-PEEK 1 6 A-OK
    ROLE-CEILING 2 ;SEQ ;
 
-\ Mark, append past it, roll back. The index kept above the mark is dead while
-\ the cursor is below it, and the mark taken above the truncation point cannot
-\ resurrect anything. The last three steps are the finding recorded in
-\ `Habu.Common.Storage`: the rollback does not bump the generation, so the same
-\ kept index comes back to life over a DIFFERENT cell once the cursor passes it
-\ again. Both sides answer 99, and neither reports anything.
-: ROLLBACK-ROW ( -- )
-   SEQ
-      OP-PUSH 11 0 A-OK
-      OP-MARK 0 1 A-OK
-      OP-PUSH 22 1 A-OK
-      OP-KEEP 1 1 A-OK
-      OP-MARK 1 2 A-OK
-      OP-USED 0 2 A-OK
-      OP-ROLL 0 1 A-OK
-      OP-USED 0 1 A-OK
-      OP-READ 0 E-IR-ARENA-BOUND A-NO
-      OP-PEEK 1 E-IR-ARENA-BOUND A-NO
-      OP-ROLL 1 E-IR-ARENA-MARK A-NO
-      OP-PUSH 99 1 A-OK
-      OP-READ 0 99 A-OK
-      OP-USED 0 2 A-OK
-   ROLE-ROLLBACK 8 ;SEQ ;
-
 \ The frozen view answers what the live arena answered, and every builder word
 \ left holding the consumed handle is refused.
 : FREEZE-ROW ( -- )
@@ -481,7 +445,6 @@ variable DSCN-N
       OP-AT 2 E-IR-ARENA-BOUND A-NO
       OP-PEEK 1 E-IR-ARENA-FROZEN A-NO
       OP-PUSH 9 E-IR-ARENA-FROZEN A-NO
-      OP-MARK 0 E-IR-ARENA-FROZEN A-NO
       OP-USED 0 E-IR-ARENA-FROZEN A-NO
    ROLE-FREEZE 8 ;SEQ ;
 
@@ -513,33 +476,14 @@ variable DSCN-N
       OP-USED 0 1 B-OK
    ROLE-ABORT 8 ;SEQ ;
 
-\ A mark names the arena that minted it. Arena A refuses arena B's mark before
-\ the cursor moves, and A's own cursor and cells are exactly what they were; then
-\ A's own mark is accepted, so the refusal is the mark's owner and not the arena
-\ having stopped accepting rollbacks.
-: FMARK-ROW ( -- )
-   SEQ
-      OP-PUSH 11 0 A-OK
-      OP-PUSH 12 1 A-OK
-      OP-PUSH 21 0 B-OK
-      OP-MARK 1 1 B-OK
-      OP-ROLL 1 E-IR-ARENA-OWNER A-NO
-      OP-USED 0 2 A-OK
-      OP-PEEK 1 12 A-OK
-      OP-MARK 0 2 A-OK
-      OP-ROLL 0 2 A-OK
-   ROLE-FMARK 8 ;SEQ ;
-
 : BUILD-ARENA-ROWS ( -- )
    0 STEP-N !
    0 SCN-N !
    APPEND-ROW
    CEILING-ROW
-   ROLLBACK-ROW
    FREEZE-ROW
    CROSS-ROW
-   ABORT-ROW
-   FMARK-ROW ;
+   ABORT-ROW ;
 
 \ ---- context table builders --------------------------------------------------
 

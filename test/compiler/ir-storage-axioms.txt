@@ -61,24 +61,6 @@ closed
 theorem Habu.Common.Storage.arena_push_keeps_count_under_ceiling
 type forall owner a v a' i, arena_wf a -> apush owner a v = Some (a', i) -> acount a' <= aceil a'
 closed
-theorem Habu.Common.Storage.arena_mark_is_own_cursor
-type forall a m, amark_of a = Some m -> mk_gen m = agen a /\ mk_cur m = acount a
-closed
-theorem Habu.Common.Storage.arena_rollback_truncates
-type forall a m a', arollback a m = Some a' -> acount a' = mk_cur m
-closed
-theorem Habu.Common.Storage.arena_rollback_keeps_below_mark
-type forall a m a' x n, arollback a m = Some a' -> idx_ord x < mk_cur m -> aread a x = Some n -> aread a' x = Some n
-closed
-theorem Habu.Common.Storage.arena_rollback_kills_above_mark
-type forall a m a' x, arollback a m = Some a' -> mk_cur m <= idx_ord x -> aread a' x = None
-closed
-theorem Habu.Common.Storage.arena_rollback_foreign_mark_rejected
-type forall a m, mk_gen m <> agen a -> arollback a m = None
-closed
-theorem Habu.Common.Storage.arena_rollback_stale_mark_rejected
-type forall a m, acount a < mk_cur m -> arollback a m = None
-closed
 theorem Habu.Common.Storage.arena_freeze_preserves_reads
 type forall a a' x, afreeze a = Some a' -> aat a' x = apeek a x
 closed
@@ -86,7 +68,7 @@ theorem Habu.Common.Storage.arena_freeze_preserves_count
 type forall a a', afreeze a = Some a' -> acount a' = acount a
 closed
 theorem Habu.Common.Storage.arena_freeze_blocks_mutation
-type forall a a', afreeze a = Some a' -> (forall owner v, apush owner a' v = None) /\ (forall m, arollback a' m = None) /\ amark_of a' = None /\ afreeze a' = None /\ aabort a' = None
+type forall a a', afreeze a = Some a' -> (forall owner v, apush owner a' v = None) /\ afreeze a' = None /\ aabort a' = None
 closed
 theorem Habu.Common.Storage.arena_freeze_retires_live_reader
 type forall a a' x, afreeze a = Some a' -> apeek a' x = None

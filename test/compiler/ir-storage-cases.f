@@ -22,16 +22,15 @@
 \     write-only token.
 \
 \   - the frozen guard bodies. These are the words that make the model's
-\     hypotheses true of the shipped code, plus the two bodies the model records
-\     findings against: `IR-ARENA:ROLLBACK`, which truncates the cursor without
-\     bumping the generation, and `IR-CTX:CTX-ENTER`, whose registry truncation
-\     runs after the caller's quotation and is therefore skipped by a throw. Both
-\     are frozen whole and the ordering inside `CTX-ENTER` is read structurally.
+\     hypotheses true of the shipped code, plus the body the model records a
+\     finding against: `IR-CTX:CTX-ENTER`, whose registry truncation
+\     runs after the caller's quotation and is therefore skipped by a throw. It
+\     is frozen whole and the ordering inside it is read structurally.
 \
 \   - the shape of the vector table itself: a frozen operation must address a
-\     real arena, a read through the frozen view must follow a freeze, a read of
-\     a kept index must follow the keep, and a rollback must follow the mark it
-\     names. Without those a row could quietly ask nothing.
+\     real arena, a read through the frozen view must follow a freeze, and a
+\     read of a kept index must follow the keep. Without those a row could
+\     quietly ask nothing.
 \
 \   - every vector row, driven through the real `IR-CTX` and `IR-ARENA` words:
 \     the arena and context step rows, and the nesting depth rows, which open
@@ -68,11 +67,9 @@ variable NEWLY
 variable CUR
 variable CCUR
 
-\ The four handles a vector row carries between steps. They are sealed nominals,
+\ The two handles a vector row carries between steps. They are sealed nominals,
 \ so they cannot live in a raw cell; a typed variable is the sanctioned storage
 \ and it keeps the step dispatcher's stack shallow.
-TYPED-VARIABLE MK0 IR-ARENA:mark
-TYPED-VARIABLE MK1 IR-ARENA:mark
 TYPED-VARIABLE IX IR-ARENA:cell-id
 TYPED-VARIABLE VW IR-ARENA:view
 
@@ -344,10 +341,6 @@ private
    at STEP-OP@ OP-READ = if
       s" a read of the kept index follows the step that kept it" T-LABEL
       base at OP-KEEP -1 EARLIER? TTRUE
-   then
-   at STEP-OP@ OP-ROLL = if
-      s" a rollback follows the mark whose slot it names" T-LABEL
-      base at OP-MARK at STEP-ARG@ EARLIER? TTRUE
    then ;
 
 : ROW-SHAPE ( n -- ) {: s:n :}
@@ -394,27 +387,12 @@ private
 : PLACEHOLDERS ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
    c SCRATCH-CEIL IR-ARENA:NEW {: s:IR-ARENA:arena :}
    c s 0 IR-ARENA:PUSH IX !
-   s IR-ARENA:MARK MK0 !
-   s IR-ARENA:MARK MK1 !
    s IR-ARENA:FREEZE VW ! ;
 
 : SEL ( IR-ARENA:arena IR-ARENA:arena n -- IR-ARENA:arena )
    {: a:IR-ARENA:arena b:IR-ARENA:arena w:n :}
    w 0 = if a exit then
    b ;
-
-: MARK-DO ( IR-ARENA:arena n -- n ) {: t:IR-ARENA:arena st:n :}
-   t IR-ARENA:MARK {: m:IR-ARENA:mark :}
-   st STEP-ARG@ 0 = if m MK0 ! else m MK1 ! then
-   t IR-ARENA:USED ;
-
-: SLOT-MARK ( n -- IR-ARENA:mark ) {: st:n :}
-   st STEP-ARG@ 0 = if MK0 @ exit then
-   MK1 @ ;
-
-: ROLL-DO ( IR-ARENA:arena n -- n ) {: t:IR-ARENA:arena st:n :}
-   t st SLOT-MARK IR-ARENA:ROLLBACK
-   t IR-ARENA:USED ;
 
 : FREEZE-DO ( IR-ARENA:arena -- n )
    IR-ARENA:FREEZE {: v:IR-ARENA:view :}
@@ -443,8 +421,6 @@ private
    op OP-PUSH = if c t st PUSH-DO exit then
    op OP-PEEK = if t st PEEK-DO exit then
    op OP-USED = if t IR-ARENA:USED exit then
-   op OP-MARK = if t st MARK-DO exit then
-   op OP-ROLL = if t st ROLL-DO exit then
    op OP-FREEZE = if t FREEZE-DO exit then
    op OP-AT = if st AT-DO exit then
    op OP-KEEP = if t st KEEP-DO exit then

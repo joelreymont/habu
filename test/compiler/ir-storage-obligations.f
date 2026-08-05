@@ -14,8 +14,8 @@
 \ two sides are asked different questions, so one refuses.
 \
 \ How a row becomes an obligation. The file emits a small machine per table. The
-\ arena machine holds the two arenas a row addresses, the two mark slots, the
-\ kept index and the frozen view - the same six pieces of state the Habu runner
+\ arena machine holds the two arenas a row addresses, the
+\ kept index and the frozen view - the same pieces of state the Habu runner
 \ keeps in typed variables - and answers each step with a number or `None`, which
 \ is the model's whole vocabulary for a refusal while Habu names a throw code.
 \ The row carries the throw code, so the two sides stay bound at the step rather
@@ -114,24 +114,18 @@ variable PIN-N
 
 : EMIT-ARENA-MACHINE ( -- )
    s" Record avm : Type := MkAVM {" +$ +NL
-   s"   vA : arena; vB : arena; vM0 : amark; vM1 : amark;" +$ +NL
+   s"   vA : arena; vB : arena;" +$ +NL
    s"   vX : cell_id; vV : arena; vOwner : nat }." +$ +NL
    s" Definition asel (m : avm) (w : nat) : arena :=" +$ +NL
    s"   if Nat.eqb w 0 then vA m else vB m." +$ +NL
    s" Definition aput (m : avm) (w : nat) (a : arena) : avm :=" +$ +NL
    s"   if Nat.eqb w 0" +$ +NL
-   s"   then MkAVM a (vB m) (vM0 m) (vM1 m) (vX m) (vV m) (vOwner m)" +$ +NL
-   s"   else MkAVM (vA m) a (vM0 m) (vM1 m) (vX m) (vV m) (vOwner m)." +$ +NL
-   s" Definition aputm (m : avm) (slot : nat) (k : amark) : avm :=" +$ +NL
-   s"   if Nat.eqb slot 0" +$ +NL
-   s"   then MkAVM (vA m) (vB m) k (vM1 m) (vX m) (vV m) (vOwner m)" +$ +NL
-   s"   else MkAVM (vA m) (vB m) (vM0 m) k (vX m) (vV m) (vOwner m)." +$ +NL
-   s" Definition agetm (m : avm) (slot : nat) : amark :=" +$ +NL
-   s"   if Nat.eqb slot 0 then vM0 m else vM1 m." +$ +NL
+   s"   then MkAVM a (vB m) (vX m) (vV m) (vOwner m)" +$ +NL
+   s"   else MkAVM (vA m) a (vX m) (vV m) (vOwner m)." +$ +NL
    s" Definition aputx (m : avm) (x : cell_id) : avm :=" +$ +NL
-   s"   MkAVM (vA m) (vB m) (vM0 m) (vM1 m) x (vV m) (vOwner m)." +$ +NL
+   s"   MkAVM (vA m) (vB m) x (vV m) (vOwner m)." +$ +NL
    s" Definition aputv (m : avm) (v : arena) : avm :=" +$ +NL
-   s"   MkAVM (vA m) (vB m) (vM0 m) (vM1 m) (vX m) v (vOwner m)." +$ +NL ;
+   s"   MkAVM (vA m) (vB m) (vX m) v (vOwner m)." +$ +NL ;
 
 \ Every step resolves its arena first, exactly as IR-ARENA:RESOLVE does, and a
 \ retired slot - generation zero, which is what IR-ARENA:ABORT writes - refuses
@@ -154,29 +148,21 @@ variable PIN-N
    s"   else if Nat.eqb op 2 then" +$ +NL
    s"     (if afrozen a then (m, None) else (m, Some (acount a)))" +$ +NL
    s"   else if Nat.eqb op 3 then" +$ +NL
-   s"     match amark_of a with" +$ +NL
-   s"     | Some k => (aputm m arg k, Some (mk_cur k))" +$ +NL
-   s"     | None => (m, None) end" +$ +NL
-   s"   else if Nat.eqb op 4 then" +$ +NL
-   s"     match arollback a (agetm m arg) with" +$ +NL
-   s"     | Some a' => (aput m w a', Some (acount a'))" +$ +NL
-   s"     | None => (m, None) end" +$ +NL
-   s"   else if Nat.eqb op 5 then" +$ +NL
    s"     match afreeze a with" +$ +NL
    s"     | Some a' => (aputv (aput m w a') a', Some (acount a'))" +$ +NL
    s"     | None => (m, None) end" +$ +NL
-   s"   else if Nat.eqb op 6 then" +$ +NL
+   s"   else if Nat.eqb op 4 then" +$ +NL
    s"     (if afrozen (vV m)" +$ +NL
    s"      then match amint (vV m) arg with" +$ +NL
    s"           | Some x => (m, aat (vV m) x)" +$ +NL
    s"           | None => (m, None) end" +$ +NL
    s"      else (m, None))" +$ +NL
-   s"   else if Nat.eqb op 7 then" +$ +NL
+   s"   else if Nat.eqb op 5 then" +$ +NL
    s"     (if afrozen a then (m, None)" +$ +NL
    s"      else match amint a arg with" +$ +NL
    s"           | Some x => (aputx m x, Some (idx_ord x))" +$ +NL
    s"           | None => (m, None) end)" +$ +NL
-   s"   else if Nat.eqb op 8 then (m, apeek a (vX m))" +$ +NL
+   s"   else if Nat.eqb op 6 then (m, apeek a (vX m))" +$ +NL
    s"   else" +$ +NL
    s"     match aabort a with" +$ +NL
    s"     | Some a' => (aput m w a', Some 0)" +$ +NL
@@ -192,14 +178,14 @@ variable PIN-N
    s"   end." +$ +NL ;
 
 \ The placeholder arena is the third arena the Habu runner creates: one cell
-\ pushed, both marks taken from it, then frozen. Generations 1, 2 and 3 stand for
-\ three distinct slots of the one monotone counter.
+\ pushed, then frozen. Generations 1, 2 and 3 stand for three distinct slots
+\ of the one monotone counter.
 : EMIT-ARENA-INIT ( -- )
    s" Definition aplaceholder : arena := MkArena 3 1 [0] 1 1 true." +$ +NL
    s" Definition ainit (ceil : nat) : avm :=" +$ +NL
    s"   MkAVM (MkArena 1 1 [] (Nat.min ceil seed_cells) ceil false)" +$ +NL
    s"         (MkArena 2 1 [] (Nat.min ceil seed_cells) ceil false)" +$ +NL
-   s"         (MkMark 3 1) (MkMark 3 1) (MkIdx 3 0) aplaceholder 1." +$ +NL ;
+   s"         (MkIdx 3 0) aplaceholder 1." +$ +NL ;
 
 \ ---- the context machine -----------------------------------------------------
 

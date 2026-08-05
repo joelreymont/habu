@@ -2,7 +2,7 @@
 \
 \ `formal/Common/Storage.v` proves what the whole compiler IR rests on: an arena
 \ is append-only under a committed ceiling, growth is invisible to a reader, a
-\ ceiling hit mutates nothing, a rollback truncates exactly to its mark, a frozen
+\ ceiling hit mutates nothing, a frozen
 \ view answers what the live arena answered and refuses every mutation, an index
 \ minted by one arena is refused by another, context generations are nonzero and
 \ never reused, leaving a context retires it and every child in one step, and

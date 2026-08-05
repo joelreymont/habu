@@ -29,7 +29,7 @@
 \ error. The linear-ownership work removes the whole mechanism.
 \
 \ APPEND AT THE CEILING. E-IR-ARENA-FULL is thrown before any mutation, so a
-\ full arena stays usable: its contents, marks, and indices remain valid and
+\ full arena stays usable: its contents and indices remain valid and
 \ FREEZE still publishes them. Exhaustion never kills the arena.
 \
 \ CONCURRENCY. The generation counter is atomic; the registry is one
@@ -48,7 +48,6 @@ public
 NEWTYPE arena 0
 NEWTYPE view 0
 NEWTYPE cell-id 0
-NEWTYPE mark 0
 
 private
 
@@ -58,8 +57,6 @@ CAST: MINT-VIEW ( n -- IR-ARENA:view ) ;
 CAST: VIEW>N ( IR-ARENA:view -- n ) ;
 CAST: MINT-IDX ( n -- IR-ARENA:cell-id ) ;
 CAST: IDX>N ( IR-ARENA:cell-id -- n ) ;
-CAST: MINT-MARK ( n -- IR-ARENA:mark ) ;
-CAST: MARK>N ( IR-ARENA:mark -- n ) ;
 
 \ ---- capacities and packing --------------------------------------------------
 64 constant SLOT-MAX                \ live + frozen registry slots
@@ -71,7 +68,7 @@ LOCAL-MAX constant CEIL-MAX          \ a ceiling may commit the full ordinal ran
 1 constant ST-LIVE
 2 constant ST-FROZEN
 
-\ An index or mark packs (generation << 32 | ordinal), mirroring IR-ID PACK-N,
+\ An index packs (generation << 32 | ordinal), mirroring IR-ID PACK-N,
 \ so every minted value names the arena that minted it.
 : PACK ( n n -- n )
    {: g:n l:n :}
@@ -313,22 +310,6 @@ public
    slot AOWNER@ IR-CTX:SERIAL-LIVE?
    slot ASTATE@ ST-LIVE = and ;
 
-\ ---- mark and rollback -------------------------------------------------------
-: MARK ( IR-ARENA:arena -- IR-ARENA:mark )
-   LIVE-SLOT
-   dup AGEN@ swap ACOUNT@ PACK MINT-MARK ;
-
-\ Truncate back to a mark's cursor. A foreign arena's mark and a cursor past
-\ the live count (a mark invalidated by an earlier rollback) both reject.
-: ROLLBACK ( IR-ARENA:arena IR-ARENA:mark -- )
-   {: a:IR-ARENA:arena m:IR-ARENA:mark :}
-   a LIVE-SLOT {: slot:n :}
-   m MARK>N {: raw:n :}
-   raw PACK-GEN slot AGEN@ <> if E-IR-ARENA-OWNER throw then
-   raw PACK-LOCAL
-   dup slot ACOUNT@ > if E-IR-ARENA-MARK throw then
-   slot ACOUNT! ;
-
 \ ---- freeze and abort --------------------------------------------------------
 \ FREEZE consumes the builder into an immutable view over the same storage:
 \ published indices stay valid through the view, and every mutation word left
@@ -339,7 +320,7 @@ public
    slot AGEN@ MINT-VIEW ;
 
 \ ABORT consumes the builder without publishing: the registry slot is retired
-\ at once, so the handle and every index and mark it minted are stale; the
+\ at once, so the handle and every index it minted are stale; the
 \ abandoned spans die with the owning context's mapping.
 : ABORT ( IR-ARENA:arena -- )
    LIVE-SLOT {: slot:n :}
