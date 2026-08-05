@@ -3,11 +3,19 @@
 \ = [0.0819,-0.0220,-0.0599] (sums to 0). Checked vs central finite difference.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/softmax.f
 
 package MAKI
 
 T-RESET
+
+s" SM-R-FWD ( ptr r ptr r n -- ) SM-FWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" SM-N-FWD ( ptr n ptr r n -- ) SM-FWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" SM-U8-FWD ( ptr u8 ptr r n -- ) SM-FWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" SM-R-BWD ( ptr r ptr r ptr r n -- ) SM-BWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" SM-N-BWD ( ptr n ptr r ptr r n -- ) SM-BWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" SM-U8-BWD ( ptr u8 ptr r ptr r n -- ) SM-BWD" CHECK-QUIET-CANDIDATE! 0 T=
 
 create SX 3 cells allot   create SY 3 cells allot
 create SDY 3 cells allot  create SDX 3 cells allot
