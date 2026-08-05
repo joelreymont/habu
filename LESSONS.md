@@ -5305,3 +5305,16 @@ a stack round trip) the transform trades a win on wide frames for a loss on
 narrow ones. The pin that caught it stays exactly as written - widening a
 test to admit the code is how a measured regression becomes invisible.
 
+## A proof carries a stage with it (2026-08-05)
+
+hir.const is operand-free, pure, and non-trapping - in the HIR schema, where
+that was proved. Two lowerings later, where the register allocator runs, the
+same value is a movz/movk chain up to four instructions long, each movk
+READING the previous half, tied into one register class. A design quoted the
+HIR proof forward into the allocator stage and prescribed re-emission as
+always cheaper than a frame round trip; the corpus already carried the
+counterexample (BIG-CONSTS, four-chain literals at every use site).
+Re-derive an invariant at the stage that relies on it, never at the stage
+where it was convenient to prove - and when a cost claim says "always",
+look for the corpus row that says otherwise before believing it.
+
