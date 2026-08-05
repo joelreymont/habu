@@ -11,6 +11,8 @@ DEFLINEAR INFER:engine
 
 private
 
+using MEM
+
 0 constant I-SESSION
 1 cells constant I-MODEL
 2 cells constant I-CACHE
@@ -22,22 +24,23 @@ private
 CAST: IC>N ( CAD-NUM:item-count -- n ) ;
 
 : I-REC-LEN ( -- CAD-NUM:alloc-byte-len )
-   I-REC-BYTES MEM:BYTES-ALLOC-LEN ;
+   I-REC-BYTES BYTES-ALLOC-LEN ;
 
 \ The checker cannot tie three linear owners to their private record.
 \ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: I-MINT
    ( MEM:block GPU:session GPT2:model KV:cache -- INFER:engine )
-   {: rec:ptr session:GPU:session model:GPT2:model cache:KV:cache :}
+   {: session:GPU:session model:GPT2:model cache:KV:cache :}
+   BORROW {: rec:ptr recu:CAD-NUM:byte-len :}
+   recu I-REC-BYTES <> if E-MEM-SIZE throw then
    session rec I-SESSION + !
    model rec I-MODEL + !
-   cache rec I-CACHE + !
-   rec ;
+   cache rec I-CACHE + ! ;
 
 TRUSTED: I-TAKE
    ( INFER:engine -- MEM:block GPU:session GPT2:model KV:cache )
-   {: rec:ptr :}
-   rec
+   BORROW {: rec:ptr recu:CAD-NUM:byte-len :}
+   recu I-REC-BYTES <> if E-MEM-SIZE throw then
    rec I-SESSION + @
    rec I-MODEL + @
    rec I-CACHE + @ ;
@@ -57,7 +60,7 @@ TRUSTED: I-TAKE
 : I-SESSION-FAIL ( MEM:block GPU:session n -- result<INFER:engine,n> )
    {: primary:n :}
    GPU:CLOSE I-CODE {: session-code:n :}
-   MEM:RELEASE
+   RELEASE
    primary session-code I-FIRST I-ERR ;
 
 : I-MODEL-FAIL
@@ -65,7 +68,7 @@ TRUSTED: I-TAKE
    {: primary:n :}
    GPT2:CLOSE I-CODE {: model-code:n :}
    GPU:CLOSE I-CODE {: session-code:n :}
-   MEM:RELEASE
+   RELEASE
    primary model-code I-FIRST session-code I-FIRST I-ERR ;
 
 : I-KV-TRY ( n n n n n n n n -- n n n n n n n n )
@@ -119,11 +122,13 @@ TRUSTED: I-TAKE
    MATCH result
       err OF
          {: code:n :}
-         MEM:RELEASE
+         RELEASE
          code I-ERR
       ENDOF
       ok OF p nseq npages I-START-MODEL ENDOF
    ;MATCH ;
+
+;using
 
 public
 

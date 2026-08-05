@@ -298,4 +298,9 @@ public
 
 : WITH-BYTES ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
    WB-SCOPE ;
+
+private
+get-current prot-wid-add
+public
+get-current prot-wid-add
 ;package

@@ -29,6 +29,8 @@ DEFLINEAR GPT2:model
 
 private
 
+using MEM
+
 -5651 constant E-CATALOG
 -5654 constant E-DIGEST
 -5655 constant E-TOKEN
@@ -101,13 +103,15 @@ variable M-ATTN-H
 \ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 
 : M-REC-LEN ( -- CAD-NUM:alloc-byte-len )
-   R-BYTES MEM:BYTES-ALLOC-LEN ;
+   R-BYTES BYTES-ALLOC-LEN ;
 
 \ The checker cannot tie the opaque owner to its private host record.
 \ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: M-SAVE
    ( MEM:block GPU:buffer config n n n n n n n n n n n n n n n n n ptr a CAD-NUM:alloc-byte-len -- GPT2:model )
-   {: rec:ptr buf:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
+   {: buf:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
+   BORROW {: rec:ptr recu:CAD-NUM:byte-len :}
+   recu R-BYTES <> if E-SIZE throw then
    buf rec R-BUF + !
    dt rec R-DT + !
    cx rec R-CX + !
@@ -139,13 +143,12 @@ TRUSTED: M-SAVE
    residual rec R-RESIDUAL + !
    attn rec R-ATTN + !
    tokstate rec R-TOKSTATE + !
-   toklen rec R-TOKLEN + !
-   rec ;
+   toklen rec R-TOKLEN + ! ;
 
 TRUSTED: M-TAKE
    ( GPT2:model -- MEM:block GPU:buffer config n n n n n n n n n n n n n n n n n ptr a CAD-NUM:alloc-byte-len )
-   {: rec:ptr :}
-   rec
+   BORROW {: rec:ptr recu:CAD-NUM:byte-len :}
+   recu R-BYTES <> if E-SIZE throw then
    rec R-BUF + @
    rec R-DT + @
    rec R-CX + @
@@ -436,6 +439,8 @@ TRUSTED: M-TAKE
 : M-PIN-FRAME ( ptr u8 SAFET:mapping -- ptr u8 n SAFET:mapping )
    [: M-PIN-MAP ;] SAFET:WITH-MAPPING drop ;
 
+;using
+
 public
 
 : SPAN ( config tensor-id -- config CAD-NUM:byte-off CAD-NUM:byte-len )
@@ -449,6 +454,8 @@ public
    elems bytes CHECKED-MUL M-BYTE-LEN ;
 
 private
+
+using MEM
 
 : M-RESULT-CODE ( result<n,n> -- n )
    MATCH result
@@ -1052,7 +1059,7 @@ private
       code M-GPU-CLEAN
       tokstate drop toklen drop
       {: fail:n :}
-      swap MEM:RELEASE
+      swap RELEASE
       fail M-MODEL-ERR
       exit
    then
@@ -1062,7 +1069,7 @@ private
       build M-GPU-CLEAN
       tokstate drop toklen drop
       {: fail:n :}
-      swap MEM:RELEASE
+      swap RELEASE
       fail M-MODEL-ERR
       exit
    then
@@ -1082,7 +1089,7 @@ private
    drop drop
    code M-ALL-CLEAN
    {: fail:n :}
-   swap MEM:RELEASE
+   swap RELEASE
    fail M-MODEL-ERR ;
 
 : M-GPU-FLOW
@@ -1109,7 +1116,7 @@ private
          c scratch r> r> code M-SOURCE-CLEAN
          tokstate drop toklen drop
          {: fail:n :}
-         swap MEM:RELEASE
+         swap RELEASE
          fail M-MODEL-ERR
       ENDOF
       ok OF
@@ -1127,7 +1134,7 @@ private
          SAFET:RELEASE
          drop M-DROP-CFG
          tokstate drop toklen drop
-         swap MEM:RELEASE
+         swap RELEASE
          E-CATALOG M-MODEL-ERR
       ENDOF
       moved OF
@@ -1137,7 +1144,7 @@ private
             code M-SOURCE-CLEAN
             tokstate drop toklen drop
             {: fail:n :}
-            swap MEM:RELEASE
+            swap RELEASE
             fail M-MODEL-ERR
          else
             alloc tokstate toklen M-GPU
@@ -1157,7 +1164,7 @@ private
          {: code:n :}
          drop M-DROP-CFG
          tokstate drop toklen drop
-         swap MEM:RELEASE
+         swap RELEASE
          code M-MODEL-ERR
       ENDOF
       ok OF
@@ -1177,11 +1184,11 @@ private
    MATCH result
       err OF
          {: code:n :}
-         swap MEM:RELEASE
+         swap RELEASE
          code M-MODEL-ERR
       ENDOF
       ok OF
-         rot MEM:RELEASE RESULT:OK
+         rot RELEASE RESULT:OK
       ENDOF
    ;MATCH ;
 
@@ -1209,17 +1216,17 @@ private
          code M-MODEL-ERR
       ENDOF
       ok OF
-         FS-PATH-CAP MEM:BYTES-ALLOC-LEN MEM:OPEN
+         FS-PATH-CAP BYTES-ALLOC-LEN MEM:OPEN
          MATCH result
             err OF
                {: code:n :}
-               MEM:RELEASE
+               RELEASE
                c M-DROP-CFG
                tokstate drop toklen drop
                code M-MODEL-ERR
             ENDOF
             ok OF
-               MEM:BORROW
+               BORROW
                {: scratch:ptr scratchu:CAD-NUM:byte-len :}
                swap rot
                root rootu c alloc scratch scratchu tokstate toklen M-BODY
@@ -1241,7 +1248,7 @@ private
    ( GPU:session ptr u8 n config -- GPU:session result<GPT2:model,n> )
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: root:ptr rootu:n c :}
-   NULL$ drop 1 MEM:BYTES-ALLOC-LEN [: M-ALLOC-TOK ;] catch {: alloc-code:n :}
+   NULL$ drop 1 BYTES-ALLOC-LEN [: M-ALLOC-TOK ;] catch {: alloc-code:n :}
    alloc-code 0<> if
       2drop c M-DROP-CFG
       alloc-code M-MODEL-ERR
@@ -1261,6 +1268,8 @@ private
       err OF tokstate toklen T-FREE M-MODEL-ERR ENDOF
       ok OF RESULT:OK ENDOF
    ;MATCH ;
+
+;using
 
 public
 
