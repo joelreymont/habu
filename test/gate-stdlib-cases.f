@@ -259,8 +259,16 @@ SUITE compiler-native-immediate
 \ the same reason that entry is not: scheduling it would schedule a flake. What
 \ the member pins in their place is the data-stack traffic each column's
 \ emitted code makes, row by row, which is exact and moves for one reason.
+\ The third column and the second reference join the same member for the same
+\ reason: nothing either of them asserts reads a clock. The symbol reader is
+\ attacked on listings built to fool it, the chain baseline on fixtures built
+\ from a real measurement, and the reference column on the real corpora - where
+\ what is checked is that every row has a twin and every twin answers what the
+\ engine's word answered. A host without a C compiler runs the first two and
+\ says so about the third; it does not fail.
 SUITE codegen-compare
    tools/codegen-compare-test.f
+   tools/codegen-compare-clang-test.f
 ;SUITE
 
 \ The end-to-end workload measurement, and the same division of labour. Its

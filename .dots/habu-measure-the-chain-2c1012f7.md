@@ -1,6 +1,6 @@
 ---
 title: Measure the chain against clang
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-05T09:41:37.336250+02:00"
@@ -11,3 +11,5 @@ The parity target needs a measured reference: add a clang -O2 column to the code
 SECOND REFERENCE (user requirement): our own committed chain baseline, so improvement is measured against ourselves and not only against clang. Snapshot the chain column as it stands at the baseline commit (master 5dcb2867: bytes per row exactly, costs as recorded reference numbers with the harness's own timing caveats) into committed per-corpus tables using the same machinery the engine's old-column baselines already use, with an --update flow scoped per corpus. The report prints, per row, chain-now vs chain-baseline: the byte delta adjudicated exactly (a byte REGRESSION vs our own baseline is a finding — we never get bigger without saying so; an improvement is named so the baseline gets re-pinned deliberately), the time delta informational under the established bar discipline. Every optimization lane that follows reports both gaps: closed-vs-clang and gained-vs-baseline.
 
 Review alignment (CG review, measurement section): clang -O2 is an informational external reference — host-clang availability and FFI overhead are never part of correctness; record the new chain's own exact byte baseline per row; measure compile/publication latency separately from generated-code runtime; paired alternating samples for any timing verdict.
+
+Claim: agent=clang-bench workspace=.jj-ws/habu-measure-the-chain

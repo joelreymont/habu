@@ -32,9 +32,11 @@ private
 
 CORPUS-MAX NAME-MAX * BUFFER: NAME-BYTES
 CORPUS-MAX PATH-MAX * BUFFER: BASELINE-BYTES
+CORPUS-MAX PATH-MAX * BUFFER: CHAIN-BYTES
 CORPUS-MAX PATH-MAX * BUFFER: SOURCE-BYTES
 create NAME-LENS CORPUS-MAX cells allot
 create BASELINE-LENS CORPUS-MAX cells allot
+create CHAIN-LENS CORPUS-MAX cells allot
 create SOURCE-LENS CORPUS-MAX cells allot
 
 variable CORPUS-N
@@ -53,6 +55,9 @@ variable CORPUS-N
 : BASELINE-AT ( n -- ptr u8 )
    PATH-MAX * BASELINE-BYTES + ;
 
+: CHAIN-AT ( n -- ptr u8 )
+   PATH-MAX * CHAIN-BYTES + ;
+
 : SOURCE-AT ( n -- ptr u8 )
    PATH-MAX * SOURCE-BYTES + ;
 
@@ -66,17 +71,25 @@ variable CORPUS-N
 
 public
 
-\ Declare one corpus: the name --update takes for it, the committed table it is
-\ compared against, and the source file the table is the measurement of. Called
-\ once from the bottom of each corpus's case file, so that naming a corpus once
-\ brings everything about it with it.
-: DECLARE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n ba:ptr bu:n sa:ptr su:n :}
+\ Declare one corpus: the name --update takes for it, the ENGINE's committed
+\ table, the CHAIN's committed table, and the source file both tables are the
+\ measurement of. Called once from the bottom of each corpus's case file, so
+\ that naming a corpus once brings everything about it with it.
+\
+\ TWO TABLES, BECAUSE THERE ARE TWO REFERENCES. The engine's is a frozen
+\ artifact and the chain's is a baseline we are trying to beat; they move for
+\ different reasons and are rewritten by different commands, so each corpus
+\ names both here rather than one driver deriving the second path from the
+\ first by a spelling rule.
+: DECLARE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n ba:ptr bu:n ca:ptr cu:n sa:ptr su:n :}
    CORPUS-N @ CORPUS-MAX >= if E-CODEGEN-COMPARE-CAP throw then
    na nu  CORPUS-N @ NAME-AT NAME-MAX COPY-IN
    NAME-LENS CORPUS-N @ SLOT !
    ba bu  CORPUS-N @ BASELINE-AT PATH-MAX COPY-IN
    BASELINE-LENS CORPUS-N @ SLOT !
+   ca cu  CORPUS-N @ CHAIN-AT PATH-MAX COPY-IN
+   CHAIN-LENS CORPUS-N @ SLOT !
    sa su  CORPUS-N @ SOURCE-AT PATH-MAX COPY-IN
    SOURCE-LENS CORPUS-N @ SLOT !
    CORPUS-N @ 1+ CORPUS-N ! ;
@@ -93,6 +106,10 @@ public
 : BASELINE$ ( n -- ptr u8 n ) {: k:n :}
    k CORPUS-OK BASELINE-AT
    BASELINE-LENS k SLOT @ ;
+
+: CHAIN$ ( n -- ptr u8 n ) {: k:n :}
+   k CORPUS-OK CHAIN-AT
+   CHAIN-LENS k SLOT @ ;
 
 : SOURCE$ ( n -- ptr u8 n ) {: k:n :}
    k CORPUS-OK SOURCE-AT

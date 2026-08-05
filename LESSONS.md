@@ -5153,3 +5153,51 @@ scratch in one checked cell mapping while reading pinned source files through
 short-lived byte mappings. Build the complete private block, authenticate every
 pinned input, and set readiness last; then any failed allocation, read, digest,
 parse, or model open has one unpublished owner to release.
+
+## A benchmark reached through FFI needs one entry floor per call shape (2026-08-05)
+
+Adding a `clang -O2` reference column to the codegen comparison meant calling C
+through `lib/ffi-abi.f`, and the first honest-looking design measured one
+zero-argument floor for the whole column. Measured: an empty foreign call costs
+about 7 ns, a three-argument one about 22 ns, and the C body being measured
+costs about 2 ns. A single floor would have left every row carrying the
+marshalling of its own arity — `WIDE-ARITY` would have read as forty nanoseconds
+of C code. The fix is one empty C function per signature and a floor measured by
+running the row's *own* timing body against it: identical stores into identical
+registers, differing only in what the callee does. Subtract that and what is
+left is the emitted code.
+
+The same measurement said something about the marshalling itself: `FFI:VALUE!`
+bounds-checks a slot and clears a writable extent per argument, which is about
+eleven nanoseconds an argument. The floor subtracts it either way, but a floor
+four times the signal turns every small row into noise, so a benchmark's FFI
+boundary is worth writing as the store and nothing else.
+
+## An exact ranking must not be tie-broken by a measured one (2026-08-05)
+
+The cross-corpus table of largest chain-vs-clang gaps ranks twice, by bytes and
+by time. Bytes are exact and the table should be identical on every run; it was
+not — one run in ten came out in a different order — because ties in the byte
+gap were broken by the *time* gap. One noisy number in the tie-break made a
+column of exact numbers wobble with the host. Ties in an exact ranking fall
+through to a fixed order (measurement order) and nothing else.
+
+The time ranking cannot be made exact, and pretending otherwise would be worse
+than saying so: it is taken at the resolution it is printed at (whole
+nanoseconds), ties there are broken by the exact byte gap, and the table itself
+carries a line saying rows within a nanosecond of each other are not being
+claimed to differ. Ten consecutive runs keep the top of that table and shuffle
+the cluster below it, which is the honest result and is written down in
+`docs/codegen-parity.md`.
+
+## Tell "the tool is missing" from "the tool refused" by the exit code (2026-08-05)
+
+The reference column has to be absent on a host with no C compiler, and it has
+to be loud when the compiler is there and the reference does not build. Probing
+with `--version` is a heuristic and it lied immediately: Apple's `size` has no
+`--version` and refuses one, which reads as absence. What is structural is
+`/usr/bin/env`'s exit code — POSIX reserves 127 for "command not found" — so 127
+means the column is absent with the tool named, and any other nonzero code means
+a tool that was there and refused, which throws with its own diagnosis printed.
+The whole pipeline (compile, link, nm, size) is the probe, so what is asked is
+the question that matters: does the toolchain do the job.

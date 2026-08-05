@@ -52,12 +52,16 @@ require tools/codegen-compare-core.f
 require tools/codegen-compare-corpora.f
 require tools/codegen-compare-gap.f
 require tools/codegen-compare-baseline.f
+require tools/codegen-compare-clang.f
+require tools/codegen-compare-ns.f
 
 package CODEGEN-REPORT
 
 $2000 constant TEXT-CAP
 TEXT-CAP BUFFER: TEXT
 variable TEXT-U
+
+variable WRITE-PATH                  \ which column the committed table being written is of
 
 4 constant PATH-COL
 28 constant NAME-COL
@@ -161,7 +165,13 @@ variable TEXT-U
    s"            largely does not." LINE
    s"   outputs  the values the word left on the stack when it ran on its pinned" LINE
    s"            inputs, in the order the harness recorded them" LINE
-   NL
+   NL ;
+
+\ How a difference is adjudicated. It is the one part of the row prose that is
+\ NOT the same for the two tables - the engine's is a frozen artifact and the
+\ chain's is a baseline being beaten - so the shared part above stops here and
+\ each table says its own.
+: HOW-TO-JUDGE ( -- )
    s" Sizes and outputs are compared exactly: one byte or one value out of place" LINE
    s" is a finding. A cost is a measurement, so it is compared with a stated" LINE
    s" tolerance instead. A row is reported only when it measures more than" LINE
@@ -173,7 +183,7 @@ variable TEXT-U
    NL ;
 
 : TABLE-HEAD ( -- )
-   s" rows: " APPEND CODEGEN-COMPARE:PATH-OLD CODEGEN-COMPARE:ROWS-OF NUM NL
+   s" rows: " APPEND WRITE-PATH @ CODEGEN-COMPARE:ROWS-OF NUM NL
    NL
    s" path  word                          bytes    cost  outputs" LINE
    s" ----  ----------------------------  -----  ------  -------" LINE ;
@@ -188,7 +198,7 @@ variable TEXT-U
    repeat drop ;
 
 : ROW ( n -- ) {: k:n :}
-   CODEGEN-COMPARE:PATH-OLD$ PATH-COL PAD-RIGHT
+   WRITE-PATH @ CODEGEN-COMPARE:PATH$ PATH-COL PAD-RIGHT
    GAP-COL PAD
    k CODEGEN-COMPARE:NAME$ NAME-COL PAD-RIGHT
    GAP-COL PAD
@@ -200,9 +210,75 @@ variable TEXT-U
 
 : TABLE-ROWS ( -- )
    0 begin dup CODEGEN-COMPARE:ROWS < while
-      dup CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if dup ROW then
+      dup CODEGEN-COMPARE:PATH@ WRITE-PATH @ = if dup ROW then
       1+
    repeat drop ;
+
+\ ---- the chain's own committed table -----------------------------------------
+\ THE SECOND REFERENCE, AND WHY THERE IS ONE. The clang column says how far the
+\ chain is from a production compiler. It does not say whether the chain got
+\ better or worse since the last time anybody looked, and a lane that closed a
+\ gap by two bytes while opening another by ten would have shown up as neither.
+\ So the chain's own numbers are pinned too, in a table of their own per corpus,
+\ and every run is read against it: a row that grew is a regression against
+\ OURSELVES and a finding, a row that shrank is progress and is named so the
+\ baseline gets re-pinned deliberately.
+\
+\ WHY IT IS A SEPARATE FILE FROM THE ENGINE'S TABLE. They are two yardsticks
+\ measuring two different things and they move for two different reasons: the
+\ engine's table changes when bin/hb's emitter does, which is almost never, and
+\ the chain's changes whenever the chain gets better, which is the point of the
+\ work. One file with both in it would have made every improvement a diff
+\ against the frozen artifact as well.
+
+: CHAIN-TITLE ( -- )
+   s" habu code generator comparison - the chain's own baseline" LINE
+   s" =========================================================" LINE
+   NL ;
+
+: CHAIN-WHAT-IT-IS ( n -- ) {: k:n :}
+   s" What this file is" LINE
+   s" -----------------" LINE
+   s" This is the recorded measurement of the NATIVE CHAIN - the code generator" LINE
+   s" being built - over the pinned word corpus in " APPEND
+   k CODEGEN-CORPORA:SOURCE$ APPEND s" . It is the" LINE
+   s" second of the comparison's two references. The first is the clang column," LINE
+   s" which says how far the chain is from a production optimising compiler and is" LINE
+   s" measured live because it is a fact about the host's toolchain. This one says" LINE
+   s" how far the chain has come from where it was, and it is committed, because a" LINE
+   s" baseline you are trying to beat has to be a thing that does not move." LINE
+   NL
+   s" The bytes below were measured on master cd2d7cf6, and they are the chain as" LINE
+   s" it stood at the parity campaign's baseline commit, 5dcb2867. That second" LINE
+   s" sentence is a checkable claim and not a date. The four migrated corpora are" LINE
+   s" unchanged between the two commits, and the ONE difference in src/compiler is" LINE
+   s" the enum member rename in a64-effect.f - `result` became `delivered`, because" LINE
+   s" the old spelling collided with the result<T,E> family and stopped the file" LINE
+   s" loading. Re-measuring across that rename moved no byte count in this file," LINE
+   s" which is how the claim is checked rather than asserted: a rename that had" LINE
+   s" touched code generation would have shown up here as a row that grew or shrank," LINE
+   s" and the run that pinned these numbers would have said so." LINE
+   NL
+   s" Regenerate it, deliberately, with" LINE
+   NL
+   s"     bin/hb --load tools/codegen-compare.f -- --update-chain " APPEND
+   k CODEGEN-CORPORA:NAME$ APPEND NL
+   NL
+   s" How a difference is read, and it is not the way the engine's table is read:" LINE
+   NL
+   s"   bytes bigger   a REGRESSION against ourselves. It is a finding and the run" LINE
+   s"                  exits non-zero. We do not get bigger without saying so." LINE
+   s"   bytes smaller  progress. It is NAMED and not counted, so that re-pinning" LINE
+   s"                  this file is a decision somebody takes after reading the" LINE
+   s"                  diff rather than something that happens quietly." LINE
+   s"   cost           informational in both directions, under the tolerance the" LINE
+   s"                  engine's table states. A cost is a measurement." LINE
+   s"   a row missing  the chain no longer compiles a word it used to. A finding." LINE
+   s"   a row added    the chain compiles something new. Named, not counted." LINE
+   NL
+   s" Outputs are compared exactly in both tables: a row that answers something" LINE
+   s" else is not a smaller row, it is a wrong one." LINE
+   NL ;
 
 public
 
@@ -213,9 +289,24 @@ public
 \ path, so the file's own prose and the argument that regenerates it come from
 \ one declaration.
 : BASELINE$ ( n -- ptr u8 n ) {: k:n :}
+   CODEGEN-COMPARE:PATH-OLD WRITE-PATH !
    0 TEXT-U !
    TITLE
    k WHAT-IT-IS
+   HOW-TO-READ
+   HOW-TO-JUDGE
+   TABLE-HEAD
+   TABLE-ROWS
+   TEXT TEXT-U @ ;
+
+\ The chain's own committed table of one declared corpus, written by the same
+\ renderer over the same store with the column selector moved: two tables from
+\ one piece of machinery, so a change to how a row is written reaches both.
+: CHAIN-BASELINE$ ( n -- ptr u8 n ) {: k:n :}
+   CODEGEN-COMPARE:PATH-NEW WRITE-PATH !
+   0 TEXT-U !
+   CHAIN-TITLE
+   k CHAIN-WHAT-IT-IS
    HOW-TO-READ
    TABLE-HEAD
    TABLE-ROWS
@@ -317,15 +408,8 @@ private
 
 \ ---- the measurement detail ------------------------------------------------
 
-: FRACTION. ( n -- ) {: frac:n :}
-   frac 100 < if s" 0" type then
-   frac 10 < if s" 0" type then
-   frac FMT:.U ;
-
-: NANOS. ( n -- ) {: picos:n :}
-   picos CODEGEN-COMPARE:PICOS-PER-NS / FMT:.U
-   s" ." type
-   picos CODEGEN-COMPARE:PICOS-PER-NS mod FRACTION. ;
+: NANOS. ( n -- )
+   CODEGEN-NS:.NS ;
 
 : PRINT-OUTPUTS ( n -- ) {: k:n :}
    0 begin dup k CODEGEN-COMPARE:OUTPUTS < while
@@ -354,15 +438,16 @@ private
 : PATH-FLOOR ( n -- ) {: path:n :}
    path CODEGEN-COMPARE:PATH-PICOS NANOS. ;
 
-\ A row that measured faster than its own empty call is host noise, and it is
+\ A row that measured faster than its own floor is host noise, and it is
 \ printed as the negative number it is rather than clamped to zero: a reader who
 \ sees a minus sign knows the row is at the resolution of the measurement, and a
-\ clamp would have hidden exactly that.
+\ clamp would have hidden exactly that. Which floor a row is divided by is the
+\ store's decision and not this file's - the two habu columns share a path
+\ calibration and every reference row carries a floor of its own arity - so this
+\ prints what CODEGEN-COMPARE:BODY-PICOS answers and does no arithmetic of its
+\ own.
 : BODY-NS ( n -- ) {: k:n :}
-   k CODEGEN-COMPARE:PICOSECONDS
-   k CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-PICOS - {: d:n :}
-   d 0 < if s" -" type d negate NANOS. exit then
-   d NANOS. ;
+   k CODEGEN-COMPARE:BODY-PICOS NANOS. ;
 
 : BODY-ROW ( n n -- ) {: k:n j:n :}
    s"   " type
@@ -407,7 +492,12 @@ private
    s" floor and what is printed here is the row minus that floor." type cr
    s" empty call: old " type CODEGEN-COMPARE:PATH-OLD PATH-FLOOR
    s"  ns, new " type CODEGEN-COMPARE:PATH-NEW PATH-FLOOR
-   s"  ns" type cr
+   s"  ns" type
+   CODEGEN-COMPARE:PATH-CLANG CODEGEN-COMPARE:ROWS-OF 0 > if
+      s" , clang (an empty foreign call) " type
+      CODEGEN-COMPARE:PATH-CLANG PATH-FLOOR s"  ns" type
+   then
+   cr
    CODEGEN-COMPARE:ROWS 0 ?do
       i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
          CODEGEN-COMPARE:PATH-NEW i CODEGEN-COMPARE:NAME$
@@ -470,7 +560,8 @@ private
 : SAY-MISMATCH ( n -- ) {: j:n :}
    s" codegen-compare: RESULT " type
    j CODEGEN-COMPARE:NAME$ type
-   s"  compiled by the new chain produces" type j SAY-OUTPUTS
+   s"  in the " type j CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH$ type
+   s"  column produces" type j SAY-OUTPUTS
    s" , the old emitter produces" type
    j CODEGEN-COMPARE:PARTNER {: k:n :}
    k 0 < if s"  no row at all" type else k SAY-OUTPUTS then
@@ -478,12 +569,16 @@ private
 
 public
 
-\ Name every corpus word the two code generators disagree about, and answer how
-\ many there were.
+\ Name every corpus word a column disagrees with the engine about, and answer
+\ how many there were. EVERY column that is not the engine's is checked, not
+\ only the chain's: the clang reference is a reference exactly to the extent
+\ that it computes the same function on the same pinned inputs, and a twin that
+\ answered something else would be a faster number for a different program. A
+\ wrong answer is a finding in either column and the run exits non-zero on it.
 : SAY-MISMATCHES ( -- n )
    0
    CODEGEN-COMPARE:ROWS 0 ?do
-      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-NEW = if
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD <> if
          i CODEGEN-COMPARE:ROW-MATCH? 0= if i SAY-MISMATCH 1+ then
       then
    loop ;
@@ -678,6 +773,104 @@ EXPORT KNOWN-LOSS$
 : SAY-BYTE-LOSSES ( -- n )
    UNKNOWN-LOSSES STALE-ENTRIES + ;
 
+private
+
+\ ---- the chain against the reference -----------------------------------------
+\ The one question the third column exists to answer, per row: how far is the
+\ chain's code from what a production optimising compiler makes of the same
+\ program. It is printed and it is NOT counted - parity with clang is the goal
+\ being measured, not a gate - and the ranking over all four corpora, which is
+\ the priority list the optimisation lanes work from, is printed once at the end
+\ of a run by tools/codegen-compare-gaps.f.
+\
+\ THE TWO TIME COLUMNS ARE EACH DIVIDED BY THEIR OWN ENTRY. A reference row is
+\ reached through a foreign call and a chain row through an ordinary one, and
+\ the two cost very different amounts, so neither raw number means anything
+\ against the other. What is printed is each side's cost with its own floor
+\ taken off, which is the emitted code - and the reference's floor is the row's
+\ own arity, measured by running the row's own timing body against an empty C
+\ function of the same signature.
+
+: NS-COL ( n n -- ) {: picos:n width:n :}
+   picos CODEGEN-NS:NS$ {: a:ptr u:n :}
+   width u - PAD
+   a u APPEND ;
+
+: REF-HEAD ( -- )
+   s" word                          chain byt  clang byt    gap byt   chain ns   clang ns     gap ns" LINE
+   s" ----------------------------  ---------  ---------  ---------  ---------  ---------  ---------" LINE ;
+
+: REF-COVERED ( n n -- ) {: j:n c:n :}
+   j CODEGEN-COMPARE:SIZE WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   c CODEGEN-COMPARE:SIZE WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   j CODEGEN-COMPARE:SIZE c CODEGEN-COMPARE:SIZE - WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   j CODEGEN-COMPARE:BODY-PICOS WIDE-COL NS-COL
+   GAP-COL PAD
+   c CODEGEN-COMPARE:BODY-PICOS WIDE-COL NS-COL
+   GAP-COL PAD
+   j CODEGEN-COMPARE:BODY-PICOS c CODEGEN-COMPARE:BODY-PICOS -
+   WIDE-COL NS-COL ;
+
+\ A row the chain cannot compile yet still has a reference: what clang makes of
+\ a shape the chain has not reached is exactly the number that says how much is
+\ waiting on that capability, so the row is printed with dashes where the chain
+\ would be rather than dropped.
+: REF-UNCOVERED ( n -- ) {: c:n :}
+   DASH-COL
+   GAP-COL PAD
+   c CODEGEN-COMPARE:SIZE WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   DASH-COL
+   GAP-COL PAD
+   DASH-COL
+   GAP-COL PAD
+   c CODEGEN-COMPARE:BODY-PICOS WIDE-COL NS-COL
+   GAP-COL PAD
+   DASH-COL ;
+
+: REF-ROW ( n -- ) {: k:n :}
+   CODEGEN-COMPARE:PATH-CLANG k CODEGEN-COMPARE:NAME$
+   CODEGEN-COMPARE:FIND-ROW {: c:n :}
+   c 0 < if exit then
+   k CODEGEN-COMPARE:NAME$ NAME-COL PAD-RIGHT
+   GAP-COL PAD
+   CODEGEN-COMPARE:PATH-NEW k CODEGEN-COMPARE:NAME$
+   CODEGEN-COMPARE:FIND-ROW {: j:n :}
+   j 0 < if c REF-UNCOVERED else j c REF-COVERED then
+   NL ;
+
+: REF-ROWS ( -- )
+   0 begin dup CODEGEN-COMPARE:ROWS < while
+      dup CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if dup REF-ROW then
+      1+
+   repeat drop ;
+
+: REF$ ( -- ptr u8 n )
+   0 TEXT-U !
+   s" chain against the clang reference. Informational: a gap is a priority, not" LINE
+   s" a finding. clang flags: " APPEND CODEGEN-CLANG:FLAGS$ APPEND NL
+   s" reference object: " APPEND CODEGEN-CLANG:TEXT-BYTES NUM
+   s"  bytes of code, plus " APPEND CODEGEN-CLANG:POOL-BYTES NUM
+   s"  bytes of literal pool that belongs to no one twin" LINE
+   NL
+   REF-HEAD
+   REF-ROWS
+   TEXT TEXT-U @ ;
+
+public
+
+\ The reference column, or one line naming what this host has not got. An
+\ absent column is a result and says so; it is never silence.
+: SAY-REFERENCE ( -- )
+   CODEGEN-COMPARE:PATH-CLANG CODEGEN-COMPARE:ROWS-OF 0= if
+      s" codegen-compare: NO-REFERENCE there is no clang column on this host: " type
+      CODEGEN-CLANG:ABSENT-WHY$ type cr exit
+   then
+   REF$ type ;
+
 : PRINT ( -- )
    s" code generator comparison: old (the emitter bin/hb uses today)" type cr
    s"                            new (the native chain)" type cr
@@ -690,6 +883,8 @@ EXPORT KNOWN-LOSS$
    PAIRS$ type
    cr
    SAY-BIGGER
+   cr
+   SAY-REFERENCE
    cr
    0 begin dup CODEGEN-COMPARE:ROWS < while
       dup PRINT-ROW

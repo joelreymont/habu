@@ -746,6 +746,17 @@ public
 \ convention, where a result is a store into a slot and the validator re-derives
 \ every one of those stores against the contract.
 -8267 constant E-NSRC-CAP                 \ source text longer than the chain fixture's text buffer
+\ The comparison's third column is a clang -O2 build of a C twin of every corpus
+\ row: a measured reference the two habu code generators are read against. Three
+\ conditions stop it outright. A missing compiler is NOT one of them - the column
+\ is then absent and says so - but a compiler that was there and refused, a twin
+\ the comparison names that the reference object does not carry, and a symbol
+\ table whose sizes do not add up to the text section it came out of all mean the
+\ reference is not what the harness thinks it is, and a wrong reference is worse
+\ than none.
+-8268 constant E-CODEGEN-CLANG-TOOL       \ the host C toolchain was present and a tool refused
+-8269 constant E-CODEGEN-CLANG-SYMBOL     \ a C twin the comparison names is not in the reference object
+-8270 constant E-CODEGEN-CLANG-SIZE       \ the reference object's per-symbol sizes do not account for its text section
 
 \ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299
 \

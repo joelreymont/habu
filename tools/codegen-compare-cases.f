@@ -26,6 +26,7 @@ require tools/codegen-compare-corpora.f
 require tools/codegen-compare-calibrate.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-new.f
+require tools/codegen-compare-c1.f
 
 package CODEGEN-CASES
 
@@ -134,18 +135,20 @@ private
 
 public
 
-\ One measured pass over this corpus: the two columns of it, handed to the pass
-\ machinery that every corpus shares.
+\ One measured pass over this corpus: the three columns of it, handed to the
+\ pass machinery that every corpus shares.
 : RUN ( -- )
-   [: ALL-CASES ;] [: CODEGEN-NEW:RUN ;] CODEGEN-COMPARE:PASS ;
+   [: ALL-CASES ;] [: CODEGEN-NEW:RUN ;] [: CODEGEN-C1:RUN ;] CODEGEN-COMPARE:PASS ;
 
 ;package
 
-\ What this corpus is called, where its committed table lives, and which source
-\ file that table is the measurement of. Stated here, beside the cases, so that
-\ naming a corpus once brings everything about it with it; the drivers read it
-\ back out of the register rather than naming this corpus a second time.
+\ What this corpus is called, where its two committed tables live - the
+\ engine's, then the chain's - and which source file both are the measurement
+\ of. Stated here, beside the cases, so that naming a corpus once brings
+\ everything about it with it; the drivers read it back out of the register
+\ rather than naming this corpus a second time.
 s" corpus"
 s" test/compiler/codegen-compare-baseline.txt"
+s" test/compiler/codegen-chain-baseline.txt"
 s" tools/codegen-compare-corpus.f"
 CODEGEN-CORPORA:DECLARE

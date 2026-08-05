@@ -16,6 +16,23 @@
 \   bin/hb --load tools/codegen-compare.f -- --update all
 \       The same for every corpus, in one run.
 \
+\   bin/hb --load tools/codegen-compare.f -- --update-chain <corpus>|all
+\       The same for the CHAIN's committed table, which is a different yardstick
+\       and therefore a different command. The engine's table records an emitter
+\       that does not change; the chain's records where the chain had got to, and
+\       it is what a run reports a byte REGRESSION against. Rewriting it is how
+\       an improvement is re-pinned - deliberately, after reading the diff, and
+\       never as a side effect of --update, which would erase the very number
+\       that had just said the chain got smaller.
+\
+\ THREE COLUMNS AND TWO REFERENCES. A run measures the engine's emitter, the
+\ native chain, and - on a host with a C compiler - a clang -O2 build of a C
+\ twin of every row. The clang column is the parity target and is measured live,
+\ because what a host's toolchain emits is a fact about that host; the chain's
+\ committed table is the second reference, and says how far the chain has come
+\ from where it was. Every optimisation lane reports both: how much of the clang
+\ gap it closed, and how much it gained on our own baseline.
+\
 \ WHY A BARE --update IS REFUSED RATHER THAN TAKEN AS "all". It used to mean
 \ "all", and every regeneration therefore rewrote four pinned yardsticks when
 \ one had moved. A cost is a measurement, so the three untouched tables came
@@ -71,13 +88,18 @@ private
 : UPDATE-FLAG$ ( -- ptr u8 n )
    s" --update" ;
 
+: CHAIN-FLAG$ ( -- ptr u8 n )
+   s" --update-chain" ;
+
 : ALL$ ( -- ptr u8 n )
    s" all" ;
 
-\ Where --update appears on the command line, or -1.
-: UPDATE-AT ( -- n )
+\ Where a flag appears on the command line, or -1. The two update flags are
+\ matched whole rather than by prefix, so --update-chain is never read as
+\ --update with a corpus called "chain".
+: FLAG-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup SCRIPT-ARGC < while
-      dup SCRIPT-ARGV$ UPDATE-FLAG$ STR= if exit then
+      dup SCRIPT-ARGV$ a u STR= if exit then
       1+
    repeat drop -1 ;
 
@@ -109,10 +131,22 @@ private
    at 1+ SCRIPT-ARGV$ CODEGEN-COMPARE-CLI:UPDATE-NAMED if exit then
    at 1+ SCRIPT-ARGV$ REFUSE-NAME ;
 
+\ --update-chain with the word that follows it. Refused bare for the same reason
+\ --update is: naming the corpus is the sentence somebody has to type before a
+\ pinned yardstick is rewritten.
+: CHAIN-RUN ( n -- ) {: at:n :}
+   at 1+ SCRIPT-ARGC >= if REFUSE-BARE then
+   at 1+ SCRIPT-ARGV$ ALL$ STR= if CODEGEN-COMPARE-CLI:UPDATE-CHAIN-ALL exit then
+   at 1+ SCRIPT-ARGV$ CODEGEN-COMPARE-CLI:UPDATE-CHAIN-NAMED if exit then
+   at 1+ SCRIPT-ARGV$ REFUSE-NAME ;
+
 public
 
+\ The chain flag is looked for first, because it is the longer spelling and a
+\ run that named it means it.
 : MAIN ( -- )
-   UPDATE-AT dup 0 < if drop CODEGEN-COMPARE-CLI:CHECK exit then
+   CHAIN-FLAG$ FLAG-AT dup 0 >= if CHAIN-RUN exit then drop
+   UPDATE-FLAG$ FLAG-AT dup 0 < if drop CODEGEN-COMPARE-CLI:CHECK exit then
    UPDATE-RUN ;
 
 ;package

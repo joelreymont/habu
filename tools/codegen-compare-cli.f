@@ -34,6 +34,7 @@ require tools/codegen-compare-cases2.f
 require tools/codegen-compare-cases3.f
 require tools/codegen-compare-cases4.f
 require tools/codegen-compare-report.f
+require tools/codegen-compare-gaps.f
 require tools/codegen-compare-baseline.f
 require tools/codegen-compare-new.f
 require tools/codegen-compare-new2.f
@@ -71,12 +72,25 @@ private
    CODEGEN-BASELINE:COSTS-CHECKED? 0= if 0 exit then
    CODEGEN-REPORT:SAY-FLOOR-GAP ;
 
-\ One corpus measured, reported and compared with its own committed table.
+\ One corpus measured and read against BOTH committed tables: the engine's,
+\ which is a frozen artifact, and the chain's, which is the baseline the chain
+\ is trying to beat. Two loads over one store, one after the other, because the
+\ reader holds one table at a time and each is a separate yardstick.
+: CHAIN-FINDINGS ( n -- n ) {: k:n :}
+   CODEGEN-COMPARE:PATH-NEW CODEGEN-BASELINE:PATH!
+   k CODEGEN-CORPORA:CHAIN$ CODEGEN-BASELINE:LOAD
+   CODEGEN-BASELINE:COMPARE
+   CODEGEN-COMPARE:PATH-OLD CODEGEN-BASELINE:PATH! ;
+
+\ One corpus measured, reported and compared with its committed tables.
 : TABLE-FINDINGS ( n -- n ) {: k:n :}
    k RUN-PASS
    CODEGEN-REPORT:PRINT
+   CODEGEN-GAPS:TAKE
+   CODEGEN-COMPARE:PATH-OLD CODEGEN-BASELINE:PATH!
    k CODEGEN-CORPORA:BASELINE$ CODEGEN-BASELINE:LOAD
    CODEGEN-BASELINE:COMPARE
+   k CHAIN-FINDINGS +
    CODEGEN-REPORT:SAY-MISMATCHES +
    CODEGEN-REPORT:SAY-BYTE-LOSSES +
    FLOOR-FINDINGS + ;
@@ -85,11 +99,20 @@ private
 \ measured in a pass of its own - the store holds one corpus at a time, so each
 \ later pass resets it - and each is compared with its own committed table. The
 \ findings are added so that none can hide another.
+\
+\ The distance to the clang reference is collected as each corpus finishes and
+\ ranked once at the end, over all four: a ranking inside one pass could only
+\ rank a corpus against itself, and it is the ranking over everything that is
+\ the optimisation lanes' priority list. It is printed before the verdict and
+\ counts nothing, which is what "informational" means here.
 : RUN-CHECK ( -- n )
+   CODEGEN-GAPS:RESET
    0
    CODEGEN-CORPORA:COUNT 0 ?do
       i TABLE-FINDINGS +
-   loop ;
+   loop
+   CODEGEN-GAPS:SAY-TOP
+   CODEGEN-CC:REMOVE ;
 
 : VERDICT ( n -- ) {: findings:n :}
    cr
@@ -135,12 +158,35 @@ public
    k CODEGEN-REPORT:BASELINE$
    ATOMIC-WRITE-FILE
    cr s" codegen-compare: baseline rewritten: " type
-   k CODEGEN-CORPORA:BASELINE$ type cr ;
+   k CODEGEN-CORPORA:BASELINE$ type cr
+   CODEGEN-CC:REMOVE ;
 
 \ Every declared table rewritten from one run. A caller has to ask for this by
 \ name; see tools/codegen-compare.f for why it is not what a bare --update does.
 : UPDATE-ALL ( -- )
    CODEGEN-CORPORA:COUNT 0 ?do i UPDATE-ONE loop ;
+
+\ The same for the CHAIN's table, which is a different yardstick and therefore a
+\ different command. Rewriting it is how an improvement gets re-pinned, and it
+\ is deliberately not something --update does as a side effect: a run that had
+\ just been told the chain got smaller would otherwise erase the number that
+\ said so.
+: UPDATE-CHAIN-ONE ( n -- ) {: k:n :}
+   k RUN-PASS
+   CODEGEN-REPORT:PRINT
+   k CODEGEN-CORPORA:CHAIN$
+   k CODEGEN-REPORT:CHAIN-BASELINE$
+   ATOMIC-WRITE-FILE
+   cr s" codegen-compare: chain baseline rewritten: " type
+   k CODEGEN-CORPORA:CHAIN$ type cr
+   CODEGEN-CC:REMOVE ;
+
+: UPDATE-CHAIN-ALL ( -- )
+   CODEGEN-CORPORA:COUNT 0 ?do i UPDATE-CHAIN-ONE loop ;
+
+: UPDATE-CHAIN-NAMED ( ptr u8 n -- bool )
+   CODEGEN-CORPORA:FIND dup 0 < if drop false exit then
+   UPDATE-CHAIN-ONE true ;
 
 \ Rewrite the one table this name was declared for. Answers false, having
 \ written nothing, when no corpus goes by that name - the caller says so and

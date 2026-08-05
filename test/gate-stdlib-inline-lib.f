@@ -461,6 +461,10 @@ public
    \ parallel; see the note on the codegen-compare entry in
    \ test/gate-stdlib-cases.f, and run the timed check by hand.
    s" tools/codegen-compare-test.f" GSI-FORK-INCLUDE
+   \ And the third column beside it: the symbol reader the reference column's
+   \ bytes come out of, the chain's own committed baseline, and the twins
+   \ themselves on the real corpora. No assertion in it reads a clock either.
+   s" tools/codegen-compare-clang-test.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the end-to-end workload measurement - the engine's
    \ call-or-copy rule read off compiled code, each arm's wiring to its own code
    \ generator's word, and the answers the two arms compute. The deltas are

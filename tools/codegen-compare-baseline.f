@@ -58,13 +58,11 @@ require lib/fs.f
 require lib/fmt.f
 require lib/adt/option.f
 require tools/codegen-compare-core.f
+require tools/codegen-compare-text.f
 
 package CODEGEN-BASELINE
 
 $4000 constant FILE-CAP
-32 constant SPACE-BYTE
-10 constant NEWLINE-BYTE
-
 FILE-CAP BUFFER: FILE-TEXT
 variable FILE-U
 
@@ -81,10 +79,7 @@ variable DECLARED-ROWS
 variable FINDINGS
 variable REPORT?
 variable COSTS?                   \ compare the cost column, and with it the pass budget
-variable CURSOR
-variable TEXT-CURSOR
-PTR-VARIABLE LINE-A
-variable LINE-U
+variable WANT-PATH                \ which column's rows this table is the record of
 
 : SLOT ( ptr a n -- ptr a )
    cells + ;
@@ -115,43 +110,6 @@ variable LINE-U
 : FINDING ( ptr u8 n -- )
    s" codegen-compare: " SAY SAY
    s"  " SAY ;
-
-\ ---- line and token cursor -------------------------------------------------
-
-: LINE! ( ptr u8 n -- )
-   LINE-U ! LINE-A !
-   0 CURSOR ! ;
-
-: LINE$ ( -- ptr u8 n )
-   LINE-A @ LINE-U @ ;
-
-: SKIP-SPACES ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
-   start begin dup u < while
-      dup a + c@ SPACE-BYTE <> if exit then
-      1+
-   repeat ;
-
-: TOKEN ( ptr u8 n n -- ptr u8 n n bool ) {: a:ptr u:n start:n :}
-   a u start SKIP-SPACES {: from:n :}
-   from u >= if a 0 u FALSE? exit then
-   from begin dup u < while
-      dup a + c@ SPACE-BYTE = if
-         a from +  over from -  rot  TRUE? exit
-      then
-      1+
-   repeat drop
-   a from +  u from -  u  TRUE? ;
-
-: NEXT$ ( -- ptr u8 n bool )
-   LINE$ CURSOR @ TOKEN
-   swap CURSOR ! ;
-
-: NEXT-NUMBER ( -- n bool )
-   NEXT$ 0= if 2drop 0 FALSE? exit then
-   STR>NUMBER? MATCH option
-     none OF 0 FALSE? ENDOF
-     some OF TRUE? ENDOF
-   ;MATCH ;
 
 \ ---- parsed row store ------------------------------------------------------
 
@@ -208,7 +166,7 @@ variable LINE-U
 
 : OUTPUT-TAIL ( -- )
    begin
-      NEXT-NUMBER 0= if drop exit then
+      CODEGEN-TEXT:NEXT-NUMBER 0= if drop exit then
       OUTPUT+
    again ;
 
@@ -216,15 +174,15 @@ variable LINE-U
    ROW-N @ CODEGEN-COMPARE:ROW-MAX >= if E-CODEGEN-COMPARE-CAP throw then
    path PATHS ROW-N @ SLOT !
    0 OUT-COUNTS ROW-N @ SLOT !
-   NEXT$ 0= if
+   CODEGEN-TEXT:NEXT$ 0= if
       2drop s" a row with no word name" MALFORMED exit
    then
    NAME!
-   NEXT-NUMBER 0= if
+   CODEGEN-TEXT:NEXT-NUMBER 0= if
       drop ROW-N @ ROW-NAME$ MALFORMED exit
    then
    SIZES ROW-N @ SLOT !
-   NEXT-NUMBER 0= if
+   CODEGEN-TEXT:NEXT-NUMBER 0= if
       drop ROW-N @ ROW-NAME$ MALFORMED exit
    then
    COSTS ROW-N @ SLOT !
@@ -233,26 +191,23 @@ variable LINE-U
    ROW-N @ 1+ ROW-N ! ;
 
 : PARSE-DECLARED ( -- )
-   NEXT-NUMBER 0= if
+   CODEGEN-TEXT:NEXT-NUMBER 0= if
       drop s" the rows: line carries no number" MALFORMED exit
    then
    DECLARED-ROWS ! ;
 
 : SCAN-LINE ( ptr u8 n -- )
-   LINE!
-   NEXT$ 0= if 2drop exit then
+   CODEGEN-TEXT:LINE!
+   CODEGEN-TEXT:NEXT$ 0= if 2drop exit then
    2dup CODEGEN-COMPARE:PATH-OLD$ STR= if 2drop CODEGEN-COMPARE:PATH-OLD PARSE-ROW exit then
    2dup CODEGEN-COMPARE:PATH-NEW$ STR= if 2drop CODEGEN-COMPARE:PATH-NEW PARSE-ROW exit then
+   2dup CODEGEN-COMPARE:PATH-CLANG$ STR= if 2drop CODEGEN-COMPARE:PATH-CLANG PARSE-ROW exit then
    s" rows:" STR= if PARSE-DECLARED then ;
 
-: NEXT-LINE ( -- ptr u8 n bool )
-   FILE-TEXT FILE-U @ NEWLINE-BYTE TEXT-CURSOR @ SPLIT-NEXT
-   swap TEXT-CURSOR ! ;
-
 : SCAN-TEXT ( -- )
-   0 TEXT-CURSOR !
+   FILE-TEXT FILE-U @ CODEGEN-TEXT:TEXT!
    begin
-      NEXT-LINE 0= if 2drop exit then
+      CODEGEN-TEXT:NEXT-LINE 0= if 2drop exit then
       SCAN-LINE
    again ;
 
@@ -273,6 +228,21 @@ public
 
 : QUIET! ( -- )
    0 REPORT? ! ;
+
+\ WHICH COLUMN THIS TABLE IS THE RECORD OF, and it decides how a difference is
+\ adjudicated as well as which rows are read. A table of the ENGINE's rows is a
+\ frozen artifact: the emitter bin/hb uses does not change, so a size that moved
+\ in either direction is a finding. A table of the CHAIN's rows is a baseline we
+\ are trying to beat, so the two directions are not the same event - bigger is a
+\ regression against ourselves and a finding, smaller is progress, named so that
+\ the baseline gets re-pinned deliberately rather than drifting. A cost is a
+\ measurement in both, and against the chain baseline it is informational under
+\ the same tolerance the engine table states.
+: PATH! ( n -- ) {: path:n :}
+   path WANT-PATH ! ;
+
+: CHAIN? ( -- bool )
+   WANT-PATH @ CODEGEN-COMPARE:PATH-NEW = ;
 
 \ Compare the cost column and the pass budget, or leave both out. See the note
 \ at the head of this file for what a loaded host does to a timing.
@@ -316,19 +286,36 @@ private
 
 : FIND-BASELINE ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup ROW-N @ < while
-      dup ROW-PATH CODEGEN-COMPARE:PATH-OLD = if
+      dup ROW-PATH WANT-PATH @ = if
          dup ROW-NAME$ a u STR= if exit then
       then
       1+
    repeat drop -1 ;
 
-: SIZE-CHECK ( n n -- ) {: k:n b:n :}
-   k CODEGEN-COMPARE:SIZE b ROW-SIZE = if exit then
-   s" SIZE" FINDING
+: SAY-SIZE-DELTA ( n n -- ) {: k:n b:n :}
    k CODEGEN-COMPARE:NAME$ SAY
    s"  is " SAY k CODEGEN-COMPARE:SIZE SAY-NUM
    s"  bytes of machine code, baseline says " SAY b ROW-SIZE SAY-NUM
-   SAY-END FIND+ ;
+   SAY-END ;
+
+\ A chain row that got SMALLER than its committed baseline. Named, not counted:
+\ the run is not wrong, the baseline is now stale, and re-pinning it is a
+\ decision somebody takes with --update-chain after reading the diff. Left
+\ unsaid, an improvement would quietly widen the band a later regression could
+\ hide in.
+: SAY-IMPROVED ( n n -- ) {: k:n b:n :}
+   s" IMPROVED" FINDING
+   k b SAY-SIZE-DELTA ;
+
+: SIZE-CHECK ( n n -- ) {: k:n b:n :}
+   k CODEGEN-COMPARE:SIZE b ROW-SIZE = if exit then
+   CHAIN? if
+      k CODEGEN-COMPARE:SIZE b ROW-SIZE < if k b SAY-IMPROVED exit then
+      s" BIGGER-THAN-BASELINE" FINDING
+      k b SAY-SIZE-DELTA FIND+ exit
+   then
+   s" SIZE" FINDING
+   k b SAY-SIZE-DELTA FIND+ ;
 
 : OUTPUT-VALUE-CHECK ( n n n -- bool ) {: k:n b:n j:n :}
    k j CODEGEN-COMPARE:OUTPUT b j BASELINE-OUTPUT = ;
@@ -369,36 +356,61 @@ private
 : COST-CHECK ( n n -- ) {: k:n b:n :}
    b ROW-COST CODEGEN-COMPARE:COST-BAND * {: ceiling:n :}
    k CODEGEN-COMPARE:COST ceiling <= if exit then
-   s" SLOWER" FINDING
+   CHAIN? if s" SLOWER-THAN-BASELINE" else s" SLOWER" then FINDING
    k CODEGEN-COMPARE:NAME$ SAY
    s"  costs " SAY k CODEGEN-COMPARE:COST SAY-NUM
    s" , baseline " SAY b ROW-COST SAY-NUM
    s" , allowed up to " SAY ceiling SAY-NUM
-   SAY-END FIND+ ;
+   SAY-END
+   CHAIN? if exit then
+   FIND+ ;
 
-\ A new row is measured live and committed nowhere, so it has nothing to be
-\ compared with here. Its outputs are checked against the old row's by
-\ tools/codegen-compare-new.f, which is where the head-to-head comparison lives.
+\ A row of a column this table is not the record of has nothing to be compared
+\ with here and is skipped. The clang reference column is never committed at
+\ all - it is a measurement of the host's toolchain - so it is skipped by both
+\ tables, and its answers are checked live against the engine's by
+\ tools/codegen-compare-report.f, which is where the head-to-head comparison
+\ lives.
+: SAY-NEW-ROW ( n -- ) {: k:n :}
+   CHAIN? if s" NEW-ROW" else s" MISSING-ROW" then FINDING
+   k CODEGEN-COMPARE:NAME$ SAY
+   CHAIN? if
+      s"  was measured but the chain baseline has no row for it: the chain" SAY
+      s"  compiles something it did not, so re-pin with --update-chain" SAY
+   else
+      s"  was measured but the baseline has no row for it" SAY
+   then
+   SAY-END ;
+
 : MEASURED-ROW-CHECK ( n -- ) {: k:n :}
-   k CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD <> if exit then
+   k CODEGEN-COMPARE:PATH@ WANT-PATH @ <> if exit then
    k CODEGEN-COMPARE:NAME$ FIND-BASELINE {: b:n :}
    b 0 < if
-      s" MISSING-ROW" FINDING
-      k CODEGEN-COMPARE:NAME$ SAY
-      s"  was measured but the baseline has no row for it" SAY SAY-END
-      FIND+ exit
+      k SAY-NEW-ROW
+      CHAIN? 0= if FIND+ then
+      exit
    then
    k b SIZE-CHECK
    k b OUTPUT-CHECK
    COSTS? @ if k b COST-CHECK then ;
 
+\ A row the committed table carries that this run did not measure. It is a
+\ finding for BOTH tables and for opposite reasons: in the engine's table it is
+\ a row somebody deleted, and in the chain's it is a capability that has gone
+\ away - a word the chain used to compile and now cannot. Neither is allowed to
+\ pass quietly.
 : EXTRA-ROW-CHECK ( n -- ) {: b:n :}
-   b ROW-PATH CODEGEN-COMPARE:PATH-OLD = if
-      CODEGEN-COMPARE:PATH-OLD b ROW-NAME$ CODEGEN-COMPARE:FIND-ROW 0 >= if exit then
+   b ROW-PATH WANT-PATH @ = if
+      WANT-PATH @ b ROW-NAME$ CODEGEN-COMPARE:FIND-ROW 0 >= if exit then
    then
    s" EXTRA-ROW" FINDING
    b ROW-NAME$ SAY
-   s"  is in the baseline but was not measured" SAY SAY-END
+   CHAIN? if
+      s"  is in the chain baseline but the chain no longer compiles it" SAY
+   else
+      s"  is in the baseline but was not measured" SAY
+   then
+   SAY-END
    FIND+ ;
 
 : BUDGET-CHECK ( -- )
@@ -417,6 +429,15 @@ private
    s"  the tolerance band. The timed check is bin/hb --load tools/codegen-compare.f" SAY
    SAY-END ;
 
+\ What a run says about its own timings. An unchecked cost column says so; a
+\ checked one is held to the pass budget - but only against the engine's table,
+\ because the budget is measured once per pass and reporting it twice would
+\ count one slow host as two findings.
+: BUDGET-NOTE ( -- )
+   COSTS? @ 0= if COST-NOTE exit then
+   CHAIN? if exit then
+   BUDGET-CHECK ;
+
 public
 
 \ Compare the rows just measured with the rows LOAD parsed. Adds to the finding
@@ -430,7 +451,7 @@ public
       dup EXTRA-ROW-CHECK
       1+
    repeat drop
-   COSTS? @ if BUDGET-CHECK else COST-NOTE then
+   BUDGET-NOTE
    FINDINGS @ ;
 
 : FINDINGS@ ( -- n )
@@ -441,6 +462,7 @@ private
 : INIT ( -- )
    -1 REPORT? !
    -1 COSTS? !
+   CODEGEN-COMPARE:PATH-OLD WANT-PATH !
    0 FINDINGS !
    0 ROW-N ! ;
 

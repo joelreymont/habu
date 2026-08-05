@@ -1,0 +1,77 @@
+habu code generator comparison - the chain's own baseline
+=========================================================
+
+What this file is
+-----------------
+This is the recorded measurement of the NATIVE CHAIN - the code generator
+being built - over the pinned word corpus in tools/codegen-compare-corpus3.f. It is the
+second of the comparison's two references. The first is the clang column,
+which says how far the chain is from a production optimising compiler and is
+measured live because it is a fact about the host's toolchain. This one says
+how far the chain has come from where it was, and it is committed, because a
+baseline you are trying to beat has to be a thing that does not move.
+
+The bytes below were measured on master cd2d7cf6, and they are the chain as
+it stood at the parity campaign's baseline commit, 5dcb2867. That second
+sentence is a checkable claim and not a date. The four migrated corpora are
+unchanged between the two commits, and the ONE difference in src/compiler is
+the enum member rename in a64-effect.f - `result` became `delivered`, because
+the old spelling collided with the result<T,E> family and stopped the file
+loading. Re-measuring across that rename moved no byte count in this file,
+which is how the claim is checked rather than asserted: a rename that had
+touched code generation would have shown up here as a row that grew or shrank,
+and the run that pinned these numbers would have said so.
+
+Regenerate it, deliberately, with
+
+    bin/hb --load tools/codegen-compare.f -- --update-chain corpus3
+
+How a difference is read, and it is not the way the engine's table is read:
+
+  bytes bigger   a REGRESSION against ourselves. It is a finding and the run
+                 exits non-zero. We do not get bigger without saying so.
+  bytes smaller  progress. It is NAMED and not counted, so that re-pinning
+                 this file is a decision somebody takes after reading the
+                 diff rather than something that happens quietly.
+  cost           informational in both directions, under the tolerance the
+                 engine's table states. A cost is a measurement.
+  a row missing  the chain no longer compiles a word it used to. A finding.
+  a row added    the chain compiles something new. Named, not counted.
+
+Outputs are compared exactly in both tables: a row that answers something
+else is not a smaller row, it is a wrong one.
+
+How to read a row
+-----------------
+Every line that begins with the word old or new is a data row; every other
+line is prose. A row carries, in order:
+
+  path     which code generator produced the row
+  word     the corpus word that was compiled, executed and timed
+  bytes    how many bytes of machine code the word occupies, read from the
+           word's own dictionary record - the record holds its code start
+           address and its code length
+  cost     how long one call takes, in thousandths of the cost of calling
+           the empty word CODEGEN-CORPUS:NOOP in the same run. 1000 means
+           an ordinary empty call; 4000 means four times that. Absolute
+           nanoseconds are printed by the harness but not stored here,
+           because they differ from machine to machine while this ratio
+           largely does not.
+  outputs  the values the word left on the stack when it ran on its pinned
+           inputs, in the order the harness recorded them
+
+rows: 11
+
+path  word                          bytes    cost  outputs
+----  ----------------------------  -----  ------  -------
+new   CODEGEN-CORPUS:NOOP               0    1000
+new   CODEGEN-CORPUS3:SGD              44    1207  4606056518893174784 -4612248968380809216 0 -9223372036854775808
+new   CODEGEN-CORPUS3:SEG-1/SQRT       36    3194  4602678819172646912 4607182418800017408 4604544271217802188 9218868437227405312 9221120237041090560 4487450680906169292
+new   CODEGEN-CORPUS3:MAX-F            32    1466  4609434218613702656 4609434218613702656 0 -9223372036854775808 9221120237041090560 4609434218613702656
+new   CODEGEN-CORPUS3:RELU-F           36    1033  0 0 -9223372036854775808 4609434218613702656 9221120237041090560
+new   CODEGEN-CORPUS3:FROUND           76    1258  3 -3 0 2 9223372036854775807 0
+new   CODEGEN-CORPUS3:T-SUM           104    2639  -4618441417868443648 4845873199050653696 0
+new   CODEGEN-CORPUS3:T-DIST2         136    3264  4623683889309679616 0 0
+new   CODEGEN-CORPUS3:T-NORM2         112    2754  4621009877030928384 0 0
+new   CODEGEN-CORPUS3:T-SGD!          132    3228  4606056518893174784 -4615626668101337088 4607182418800017408 -4618441417868443648 4612811918334230528
+new   CODEGEN-CORPUS3:T-REL-L2         96    5653  4610649494512675773 0 9218868437227405312 9221120237041090560

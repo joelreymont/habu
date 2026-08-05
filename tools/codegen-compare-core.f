@@ -84,7 +84,12 @@ public
 \ The store's shape. These are public because the reader of a written table has
 \ to allocate the same shape to read it back, and two files guessing the same
 \ numbers separately is how a wider row silently loses its tail.
-32 constant ROW-MAX
+\
+\ ROW-MAX HOLDS THREE COLUMNS OF THE WIDEST CORPUS. The fourth corpus measures
+\ thirteen subjects, and a pass holds an engine row, a chain row and a clang
+\ reference row for each of them, so a store of thirty-two - which held two
+\ columns - would have refused the third the day it arrived.
+64 constant ROW-MAX
 64 constant NAME-MAX
 8 constant OUTPUT-MAX
 
@@ -93,6 +98,7 @@ public
 \ into the same code, so the two files cannot disagree about what a row is.
 0 constant PATH-OLD
 1 constant PATH-NEW
+2 constant PATH-CLANG
 
 \ How much slower than its recorded baseline a row may measure before the
 \ comparison calls it a regression.
@@ -116,7 +122,7 @@ public
 
 private
 
-2 constant PATH-N                 \ how many code generators a row can name
+3 constant PATH-N                 \ how many code generators a row can name
 
 1000000 constant NS-PER-MS
 $7FFFFFFFFFFFFFFF constant PICOS-MAX
@@ -136,6 +142,7 @@ create PATHS ROW-MAX cells allot
 create CALIBRATIONS PATH-N cells allot
 create SIZES ROW-MAX cells allot
 create PICOS ROW-MAX cells allot
+create FLOORS ROW-MAX cells allot
 create SPREADS ROW-MAX cells allot
 create COSTS ROW-MAX cells allot
 create OUT-COUNTS ROW-MAX cells allot
@@ -279,6 +286,7 @@ private
    FASTEST @ PICOS ROW-N @ SLOT !
    SPREAD-PERMILLE SPREADS ROW-N @ SLOT !
    0 COSTS ROW-N @ SLOT !
+   0 FLOORS ROW-N @ SLOT !
    ROW-N @ 1+ ROW-N ! ;
 
 public
@@ -288,6 +296,15 @@ public
 \ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
 : MEASURE ( ptr u8 n [ -- ] [ -- ] -- ) {: a:ptr u:n timing vectors :}
    a u PATH-OLD  a u SUBJECT-SIZE  timing vectors RECORD ;
+
+\ Measure a routine whose byte count cannot be read off a dictionary record
+\ because it is not a word of this dictionary: the clang reference column's C
+\ twins, whose size comes out of the object file clang wrote. The size is a
+\ parameter here for that reason and for no other - there is still exactly one
+\ authority for it, and it is not this file.
+\ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
+: MEASURE-CLANG ( ptr u8 n n [ -- ] [ -- ] -- ) {: a:ptr u:n size:n timing vectors :}
+   a u PATH-CLANG size timing vectors RECORD ;
 
 \ Measure a word the native chain compiled and the publication seam republished.
 \ The row is named after the corpus word it is the head-to-head partner of, and
@@ -307,6 +324,24 @@ public
 : CODE-ENTRY ( ptr u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if E-NPUB-NAME throw then
    XREF-START ;
+
+\ Time one body the way a row is timed - the same repetitions, the same number
+\ of runs, the same fastest-run rule - without recording a row. This is what the
+\ reference column measures its per-row entry floor with: the row's OWN timing
+\ body, run against an empty C function of the same signature, so what the
+\ subtraction leaves is the emitted code and not the marshalling.
+\ typed-local-lint: allow-bare-local - q is a timing body, as in RUN-ONCE.
+: TIME-ONLY ( [ -- ] -- n ) {: q :}
+   q TIME-RUNS
+   FASTEST @ ;
+
+\ What the row just measured has to have taken off it before its cost means the
+\ emitted code. Rows whose path enters every subject the same way leave this at
+\ zero and are divided by their path's calibration row instead; a row that is
+\ entered through a call shape of its own records that shape's floor here.
+: FLOOR! ( n -- ) {: picos:n :}
+   ROW-N @ 1- ROW-OK {: k:n :}
+   picos FLOORS k SLOT ! ;
 
 \ Declare the row just measured to be its path's calibration row: every other
 \ row of that path expresses its cost as a multiple of this one. Declared
@@ -343,37 +378,47 @@ public
    repeat drop
    -1 NORMALIZED ! ;
 
-\ ONE MEASURED PASS OVER ONE CORPUS, AND THE FIVE STEPS IT IS MADE OF: the store
-\ cleared, the clock started, the old column's cases, the new column's, the clock
-\ stopped, and the normalisation that turns picoseconds into costs. Every corpus
-\ needs all six in that order and none of them differ between corpora, so the
-\ order is stated here once and each case file hands in the two bodies that are
-\ its own. A pass assembled by hand could leave a step out, and the one that
-\ costs least to leave out - NORMALIZE - is the one that would hand every
-\ comparison a zero and fail nothing.
+\ ONE MEASURED PASS OVER ONE CORPUS, AND THE SIX STEPS IT IS MADE OF: the store
+\ cleared, the clock started, the old column's cases, the new column's, the
+\ clang reference column's, the clock stopped, and the normalisation that turns
+\ picoseconds into costs. Every corpus needs all of them in that order and none
+\ of them differ between corpora, so the order is stated here once and each case
+\ file hands in the three bodies that are its own. A pass assembled by hand could
+\ leave a step out, and the one that costs least to leave out - NORMALIZE - is
+\ the one that would hand every comparison a zero and fail nothing.
 \
 \ The old column runs before the new one because the new column checks every
-\ name it writes down against a row the old column measured.
-\ typed-local-lint: allow-bare-local - old and new are the two columns' bodies,
-\ and a local annotation cannot carry a quotation effect.
-: PASS ( [ -- ] [ -- ] -- ) {: old new :}
+\ name it writes down against a row the old column measured. The reference
+\ column runs last and is empty on a host with no C compiler, which is why a
+\ pass with two columns is a pass and not a failure.
+\ typed-local-lint: allow-bare-local - old, new and ref are the three columns'
+\ bodies, and a local annotation cannot carry a quotation effect.
+: PASS ( [ -- ] [ -- ] [ -- ] -- ) {: old new ref :}
    RESET
    PASS-BEGIN
    old execute
    new execute
+   ref execute
    PASS-END
    NORMALIZE ;
 
 \ The word that opens a data row in the baseline table, and names which code
-\ generator produced it.
+\ generator produced it. The reference column has a spelling too, so a report
+\ that prints a path never prints a number instead - but no committed table
+\ carries a clang row: what the host's C compiler emits is a measurement of that
+\ host's toolchain, and pinning it would turn a compiler upgrade into a red gate.
 : PATH-OLD$ ( -- ptr u8 n )
    s" old" ;
 
 : PATH-NEW$ ( -- ptr u8 n )
    s" new" ;
 
+: PATH-CLANG$ ( -- ptr u8 n )
+   s" clang" ;
+
 : PATH$ ( n -- ptr u8 n ) {: path:n :}
    path PATH-OK PATH-NEW = if PATH-NEW$ exit then
+   path PATH-CLANG = if PATH-CLANG$ exit then
    PATH-OLD$ ;
 
 : ROWS ( -- n )
@@ -391,6 +436,20 @@ public
 
 : PICOSECONDS ( n -- n ) {: k:n :}
    PICOS k ROW-OK SLOT @ ;
+
+\ What one call of this row costs with its entry taken off: the cost of the
+\ emitted code and nothing else. A row that recorded a floor of its own is
+\ divided by that; every other row is divided by its path's calibration, which
+\ is the same call every subject of that path is entered through. One reader, so
+\ the three columns' body costs are the same kind of number.
+\
+\ A row that measured faster than its own floor comes back negative rather than
+\ clamped: that is a row at the resolution of the measurement saying so.
+: BODY-PICOS ( n -- n ) {: k:n :}
+   k ROW-OK drop
+   FLOORS k SLOT @ {: own:n :}
+   own 0<> if k PICOSECONDS own - exit then
+   k PICOSECONDS  k PATH@ PATH-PICOS  - ;
 
 : SPREAD ( n -- n ) {: k:n :}
    SPREADS k ROW-OK SLOT @ ;

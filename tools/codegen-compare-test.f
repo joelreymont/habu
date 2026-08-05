@@ -263,10 +263,10 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 \ Two two-row passes over the production pass machinery: the calibration row
 \ every corpus shares, and one corpus word measured honestly or the slow way.
 : MEASURE-HONEST ( -- )
-   [: CODEGEN-CALIBRATE:OLD HONEST-ADD3-CASE ;] [: ;] CODEGEN-COMPARE:PASS ;
+   [: CODEGEN-CALIBRATE:OLD HONEST-ADD3-CASE ;] [: ;] [: ;] CODEGEN-COMPARE:PASS ;
 
 : MEASURE-SLOW ( -- )
-   [: CODEGEN-CALIBRATE:OLD SLOW-ADD3-CASE ;] [: ;] CODEGEN-COMPARE:PASS ;
+   [: CODEGEN-CALIBRATE:OLD SLOW-ADD3-CASE ;] [: ;] [: ;] CODEGEN-COMPARE:PASS ;
 
 \ ---- fixtures --------------------------------------------------------------
 
@@ -558,6 +558,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 : SHORT-COLUMN-PASS ( -- )
    [: CODEGEN-CALIBRATE:OLD HONEST-ADD3-CASE ;]
    [: SHORT-COLUMN-NEW ;]
+   [: ;]
    CODEGEN-COMPARE:PASS ;
 
 : NEW-COLUMN-CASES ( -- )

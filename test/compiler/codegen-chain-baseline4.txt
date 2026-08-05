@@ -1,0 +1,77 @@
+habu code generator comparison - the chain's own baseline
+=========================================================
+
+What this file is
+-----------------
+This is the recorded measurement of the NATIVE CHAIN - the code generator
+being built - over the pinned word corpus in tools/codegen-compare-corpus4.f. It is the
+second of the comparison's two references. The first is the clang column,
+which says how far the chain is from a production optimising compiler and is
+measured live because it is a fact about the host's toolchain. This one says
+how far the chain has come from where it was, and it is committed, because a
+baseline you are trying to beat has to be a thing that does not move.
+
+The bytes below were measured on master cd2d7cf6, and they are the chain as
+it stood at the parity campaign's baseline commit, 5dcb2867. That second
+sentence is a checkable claim and not a date. The four migrated corpora are
+unchanged between the two commits, and the ONE difference in src/compiler is
+the enum member rename in a64-effect.f - `result` became `delivered`, because
+the old spelling collided with the result<T,E> family and stopped the file
+loading. Re-measuring across that rename moved no byte count in this file,
+which is how the claim is checked rather than asserted: a rename that had
+touched code generation would have shown up here as a row that grew or shrank,
+and the run that pinned these numbers would have said so.
+
+Regenerate it, deliberately, with
+
+    bin/hb --load tools/codegen-compare.f -- --update-chain corpus4
+
+How a difference is read, and it is not the way the engine's table is read:
+
+  bytes bigger   a REGRESSION against ourselves. It is a finding and the run
+                 exits non-zero. We do not get bigger without saying so.
+  bytes smaller  progress. It is NAMED and not counted, so that re-pinning
+                 this file is a decision somebody takes after reading the
+                 diff rather than something that happens quietly.
+  cost           informational in both directions, under the tolerance the
+                 engine's table states. A cost is a measurement.
+  a row missing  the chain no longer compiles a word it used to. A finding.
+  a row added    the chain compiles something new. Named, not counted.
+
+Outputs are compared exactly in both tables: a row that answers something
+else is not a smaller row, it is a wrong one.
+
+How to read a row
+-----------------
+Every line that begins with the word old or new is a data row; every other
+line is prose. A row carries, in order:
+
+  path     which code generator produced the row
+  word     the corpus word that was compiled, executed and timed
+  bytes    how many bytes of machine code the word occupies, read from the
+           word's own dictionary record - the record holds its code start
+           address and its code length
+  cost     how long one call takes, in thousandths of the cost of calling
+           the empty word CODEGEN-CORPUS:NOOP in the same run. 1000 means
+           an ordinary empty call; 4000 means four times that. Absolute
+           nanoseconds are printed by the harness but not stored here,
+           because they differ from machine to machine while this ratio
+           largely does not.
+  outputs  the values the word left on the stack when it ran on its pinned
+           inputs, in the order the harness recorded them
+
+rows: 11
+
+path  word                          bytes    cost  outputs
+----  ----------------------------  -----  ------  -------
+new   CODEGEN-CORPUS:NOOP               0    1000
+new   CODEGEN-CORPUS4:CALL-FAN         48    1260  6 8 6 6
+new   CODEGEN-CORPUS4:CALL-FAN-BIG     88    1240  2306 605 362 62570
+new   CODEGEN-CORPUS4:CALL-LOOP-3     112    4012  2567 13 -2053
+new   CODEGEN-CORPUS4:TINY-CALLEE      96    3856  32 5 29
+new   CODEGEN-CORPUS4:WIDE-ARITY       52    1687  -3 3 0 3
+new   CODEGEN-CORPUS4:LADDER          164    1566  0 0 1 2 5 7 7 8
+new   CODEGEN-CORPUS4:BIG-CONSTS      156    5539  -6684231971589409744 0 3776157021978711687
+new   CODEGEN-CORPUS4:MANY-LOCALS     128    5188  288 0 32
+new   CODEGEN-CORPUS4:FLOAT-MIX        92    3846  12 0 -99
+new   CODEGEN-CORPUS4:STORE-LOAD       76    3756  124 124 -7 100
