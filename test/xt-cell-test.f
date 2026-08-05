@@ -3,7 +3,7 @@
 \   src/habu/verify-source.f test/checker-assert.f test/xt-cell-test.f
 \
 \ Pins the xt<effect> storage-cell capability: `TYPED-VARIABLE NAME [ in -- out ]`
-\ declares a persistent monomorphic code cell whose @ recovers xt<E> as a T-QUOT.
+\ declares a persistent code cell whose @ recovers xt<E> as a T-QUOT.
 \ A typed store (`[: W ;] NAME !`) fit-checks W's certified effect against E and
 \ rejects on mismatch; fetch+execute (`NAME @ execute`) fit-checks the row against
 \ E exactly like executing a literal xt<E> (reuses RSEXEC). Persistence beats the
@@ -26,6 +26,9 @@ package XT-CELL-TEST
 : SP ( n -- n ) 1 + ;
 : SP2 ( n -- n ) 2 + ;
 : DBL ( n -- n n ) dup ;
+
+\ implicit quotation tails are admissible for empty and concrete effects
+TYPED-VARIABLE HK0 [ -- ]
 
 \ the xt<( n -- n )> storage cell, plus an indexed xt<( n -- n )> buffer
 TYPED-VARIABLE HK [ n -- n ]
@@ -108,13 +111,15 @@ variable XC-A  variable XC-U
    s" TYPED-VARIABLE BADQ2 [ n -- n" XC-EVAL E-STORAGE T=
    \ bogus pointee type inside the quotation body
    s" TYPED-VARIABLE BADQ3 [ n -- zzz ]" XC-EVAL E-STORAGE T=
-   \ persistent quotation cells are monomorphic: open type vars are rejected
+   \ caller-declared type and row quantifiers are rejected
    s" TYPED-VARIABLE BADQ4 [ a -- a ]" XC-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE BADQ5 [ R -- R ]" XC-EVAL E-STORAGE T=
    \ none of the rejected names ever reached the dictionary
    s" BADQ1" 0 search-wl 0= TTRUE
    s" BADQ2" 0 search-wl 0= TTRUE
    s" BADQ3" 0 search-wl 0= TTRUE
-   s" BADQ4" 0 search-wl 0= TTRUE ;
+   s" BADQ4" 0 search-wl 0= TTRUE
+   s" BADQ5" 0 search-wl 0= TTRUE ;
 
 \ ---- STAGE-3: plain raw variable @ execute now REJECTS (E-EXEC-OPAQUE-XT) ------
 \ dot habu-checker-exec-of-5923c543 flipped the RSEXEC T-VAR branch: executing an

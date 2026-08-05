@@ -3297,12 +3297,14 @@ variable LBI-BAD
 \ everything LAYOUT-BUFFER does — an arity-0 nominal scalar family, or a closed
 \ non-linear addressable layout family — AND a CLOSED TYPED POINTER: a `ptr`
 \ whose pointee chain bottoms out at a nominal scalar or a closed non-linear
-\ layout family — AND a CLOSED xt<effect> QUOTATION CELL `[ in -- out ]` (dot
-\ habu-typed-xt-storage-ddad4af8): a persistent monomorphic code cell whose @
+\ layout family — AND an xt<effect> QUOTATION CELL `[ in -- out ]` (dot
+\ habu-typed-xt-storage-ddad4af8): a persistent code cell whose @
 \ recovers the declared T-QUOT so `HK @ execute` fit-checks the row against E and
-\ a typed store fit-checks a word's certified effect against E. A bare `ptr a`/
-\ `ptr n`, an open var/arg, a linear value, a hidden field, and any trailing token
-\ all reject; a malformed quotation body rejects through SGBAD. LAYOUT-BUFFER keeps
+\ a typed store fit-checks a word's certified effect against E. Parser-owned
+\ quotation tails are admitted; reachable caller-declared type or row quantifiers
+\ reject. A bare `ptr a`/`ptr n`, an open var/arg, a linear value, a hidden field,
+\ and any trailing token all reject; a malformed quotation body rejects through
+\ SGBAD. LAYOUT-BUFFER keeps
 \ its own narrower CHECKER-LAYOUT-INFO gate unchanged, so the two capabilities
 \ stay distinct. Width is CELL-uniform (1) for nominal scalars and typed
 \ pointers, and the registry width for a layout family.
@@ -3316,6 +3318,13 @@ variable LBI-BAD
 : STORAGE-TYPED-PTR? ( n -- bool )   \ resolved term is a closed typed pointer
    dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
    PTR>INNER T-RES STORAGE-PTR-POINTEE-OK? ;
+: SIG-HAS-DECL-VAR? ( -- bool )
+   0 BEGIN dup 26 < WHILE
+      dup cells NMAP + @ UNBOUND <>
+      over cells ROWMAP + @ UNBOUND <> or
+      IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
 : CHECKER-STORAGE-INFO ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    NEW
    SGBAD-CLEAR
@@ -3327,8 +3336,8 @@ variable LBI-BAD
    SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? IF 0 RES-FALSE EXIT THEN
    LBI-T @ TAG T-QUOT = IF
-      LBI-T @ TYPE-CLOSED? IF 1 RES-TRUE ELSE 0 RES-FALSE THEN EXIT
-   THEN                                                \ monomorphic xt<effect> cell
+      SIG-HAS-DECL-VAR? IF 0 RES-FALSE ELSE 1 RES-TRUE THEN EXIT
+   THEN
    LBI-T @ NOM-SCALAR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ STORAGE-TYPED-PTR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN
