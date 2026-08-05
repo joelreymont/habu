@@ -398,6 +398,11 @@ variable TC-SYMU
    SYM-N @ TC-SYMN @ = ;
 : TC-SYMU=? ( -- bool )
    SYM-STR-U @ TC-SYMU @ = ;
+: TC-IS-MATCH-DEPTH ( ptr u8 n ptr u8 n -- bool n )
+   2>r
+   CHECKER-FIND-ACTIVE-SIG FEP @ EFF-QUOT
+   2r> CHECKER-FIND-ACTIVE-SIG FEP @ EFF-QUOT
+   IS-MATCH? TWALK-D @ ;
 LOWER-CERT-HOOK:INSTALL
 TC-SNAP
 s" A ( n -- n ) 1+" CHECK-CANDIDATE! -1 T=
@@ -1455,23 +1460,34 @@ s" T-BKEEP" s" R a [ R a -- S ] -- S a" TRUST
 : T-IS-ID ( a -- a ) ;
 : T-IS-N ( n -- n ) 1+ ;
 : T-IS-SAME ( a a -- a ) drop ;
+: T-IS-DIST ( a b -- a b ) ;
 : T-IS-NONLIN ( a -- a ) dup drop ;
 : T-IS-RID ( R -- R ) ;
 : T-IS-QID ( [ R -- S ] -- [ R -- S ] ) ;
+TRUSTED: T-IS-TV-Q ( -- a [ a -- a ] ) ;
+TRUSTED: T-IS-RET-Q ( | -- [ -- | a -- ] | a ) ;
+TRUSTED: T-IS-RV-Q ( -- R [ R -- ] ) ;
+TRUSTED: T-IS-QQ ( -- [ R -- ] [ R -- ] ) ;
+TRUSTED: T-IS-CF-Q ( -- a [ a -- a ] bool ) ;
+TRUSTED: T-IS-DROP ( a -- ) drop ;
 defer T-IS-G ( a -- a )
 defer T-IS-ND ( n -- n )
 defer T-IS-PAIR ( a b -- a )
+defer T-IS-PAIR-SAME ( a a -- a a )
 defer T-IS-RG ( R -- R )
 defer T-IS-R2 ( R -- S )
-s" COK-IS-ID-N ( -- ) ['] T-IS-ID is T-IS-ND" T-CHECK-PASSES
-s" COK-IS-ID-G ( -- ) ['] T-IS-ID is T-IS-G" T-CHECK-PASSES
+defer T-IS-RN ( | n -- )
+defer T-IS-RDROP ( R -- )
+s" COK-IS-ID-N ( -- ) ['] T-IS-ID is T-IS-ND" CHECK-QUIET-CANDIDATE! -1 T=
+s" COK-IS-ID-G ( -- ) ['] T-IS-ID is T-IS-G" CHECK-QUIET-CANDIDATE! -1 T=
 s" CBAD-IS-N-G ( -- ) ['] T-IS-N is T-IS-G" T-CHECK-REJECTS
 s" CBAD-IS-ALIAS ( -- ) ['] T-IS-SAME is T-IS-PAIR" T-CHECK-REJECTS
+s" COK-IS-DIST-ALIAS ( -- ) ['] T-IS-DIST is T-IS-PAIR-SAME" CHECK-QUIET-CANDIDATE! -1 T=
 s" CBAD-IS-KIND ( -- ) ['] T-IS-NONLIN is T-IS-G" T-CHECK-REJECTS
 s" CBAD-IS-ESCAPE ( [ b -- b ] -- ) is T-IS-G" T-CHECK-REJECTS
 s" CBAD-IS-QID-ESCAPE ( [ b -- b ] -- ) T-IS-QID is T-IS-G" T-CHECK-REJECTS
 s" CBAD-IS-INFER ( -- ) is T-IS-G" T-CHECK-REJECTS
-s" COK-IS-ROW ( -- ) ['] T-IS-RID is T-IS-RG" T-CHECK-PASSES
+s" COK-IS-ROW ( -- ) ['] T-IS-RID is T-IS-RG" CHECK-QUIET-CANDIDATE! -1 T=
 s" CBAD-IS-ROW-CLOSE ( -- ) ['] T-IS-N is T-IS-RG" T-CHECK-REJECTS
 s" CBAD-IS-ROW-ALIAS ( -- ) ['] T-IS-RID is T-IS-R2" T-CHECK-REJECTS
 \ The body binds declared `a` to i64 before recurse, but the recursive call must
@@ -1482,6 +1498,16 @@ DIAG-BUFFER$ s" E-NONPARAMETRIC-EFFECT" T-HAS? -1 T=
 DIAG-BUFFER-OFF
 \ `a` binds to own before the first recurse; lazy inference must validate that
 \ live binding while retaining the declared variable's NONLIN kind in the cache.
+s" CBAD-IS-DATA-LIVE ( -- n ) T-IS-TV-Q is T-IS-ND" T-CHECK-REJECTS
+s" CBAD-IS-RET-LIVE ( | -- | n ) T-IS-RET-Q is T-IS-RN" T-CHECK-REJECTS
+s" CBAD-IS-ROW-LIVE ( -- R ) T-IS-RV-Q is T-IS-RDROP" T-CHECK-REJECTS
+s" CBAD-IS-LOCAL-LIVE ( -- n ) T-IS-TV-Q swap {: x :} is T-IS-ND x" T-CHECK-REJECTS
+s" CBAD-IS-RLOCAL-LIVE ( -- [ R -- ] ) T-IS-QQ swap {: x :} is T-IS-RDROP x" T-CHECK-REJECTS
+s" CBAD-IS-CF-LIVE ( -- ) T-IS-CF-Q if swap T-IS-DROP is T-IS-ND else T-IS-DROP T-IS-DROP then" T-CHECK-REJECTS
+s" IS generic-to-concrete walk balances depth" T-LABEL
+s" T-IS-ID" s" T-IS-ND" TC-IS-MATCH-DEPTH 0 T= -1 T=
+s" IS sibling walk balances depth" T-LABEL
+s" T-IS-DIST" s" T-IS-PAIR-SAME" TC-IS-MATCH-DEPTH 0 T= -1 T=
 s" CBAD-OWN-REC-T ( a -- a a ) T-FREE-OWN T-MAKE-OWN recurse" T-CHECK-REJECTS
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" CBAD-OWN-PRE ( a -- ) T-FREE-OWN 1 recurse" CHECK-CANDIDATE! 0 T=
