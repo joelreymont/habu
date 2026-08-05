@@ -8,6 +8,7 @@ require lib/memory.f
 require lib/test/outcome.f
 require lib/process-fork.f
 require lib/test/subject.f
+require lib/test/mmap-exhaust.f
 
 64 constant MEMT-BUFS
 16 constant MEMT-SPAN-BUFS
@@ -279,6 +280,56 @@ create RBT-ERR RBT-CAP allot
    then
    pid PROC-WAIT-OUTCOME ;
 
+: MBT-OPEN ( n -- MEM:block )
+   BYTES-ALLOC-LEN OPEN
+   MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: MBT-ENDS ( -- )
+   MEM-64K MBT-OPEN
+   BORROW {: buf:ptr len:CAD-NUM:byte-len :}
+   len BYTE-LEN>N MEM-64K <> if E-PRIMARY throw then
+   MEMT-MARK-A buf c!
+   MEMT-MARK-Z buf MEM-64K 1 - + c!
+   buf c@ MEMT-MARK-A <> if E-PRIMARY throw then
+   buf MEM-64K 1 - + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
+   RELEASE ;
+
+: MBT-UNMAP-CHILD ( -- )
+   MEM-64K MBT-OPEN
+   BORROW {: buf:ptr len:CAD-NUM:byte-len :}
+   len drop
+   RELEASE
+   2 close
+   buf c@ drop
+   MEMT-EXIT0 ;
+
+: MBT-OVERFLOW ( -- )
+   MEM-MAX-N BYTES-ALLOC-LEN OPEN
+   MATCH result
+      err OF E-MEM-SIZE <> if E-PRIMARY throw then ENDOF
+      ok OF RELEASE E-PRIMARY throw ENDOF
+   ;MATCH ;
+
+: MBT-MAP-ERR-CHILD ( -- )
+   MEM-64K MEM-CELL-BYTES + MMAP-TEST:EXHAUST-CHILD
+   MEM-64K BYTES-ALLOC-LEN OPEN
+   MATCH result
+      err OF E-MEM-MAP <> if E-PRIMARY throw then ENDOF
+      ok OF RELEASE E-PRIMARY throw ENDOF
+   ;MATCH
+   MEMT-EXIT0 ;
+
+: TEST-BLOCK ( -- )
+   T-RESET
+   MBT-ENDS
+   MBT-OVERFLOW
+   [: MBT-MAP-ERR-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
+   [: MBT-UNMAP-CHILD ;] MEMT-FORK MEMT-FAULT-RC T-OUTCOME-EXITED=
+   T-REPORT ;
+
 : RBT-RELEASED-BASE ( -- ptr u8 )
    MEM-64K 2 * BYTES-ALLOC-LEN ALLOC-BYTES
    over {: base:ptr :}
@@ -427,6 +478,7 @@ create RBT-ERR RBT-CAP allot
    T-REPORT ;
 
 TEST-ALLOC-ROLES
+TEST-BLOCK
 RBT-ACTION
 
 ;package
@@ -600,6 +652,18 @@ private
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-CELLS-ALLOC-COUNT ( n -- CAD-NUM:alloc-cell-count ) MEM:CELLS-ALLOC-COUNT"
       CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-BLOCK-OPEN ( CAD-NUM:alloc-byte-len -- result<MEM:block,n> ) MEM:OPEN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-BLOCK-BORROW ( MEM:block -- MEM:block ptr u8 CAD-NUM:byte-len ) MEM:BORROW"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-BLOCK-RELEASE ( MEM:block -- ) MEM:RELEASE"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" B-BLOCK-DUP ( MEM:block -- MEM:block MEM:block ) dup"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-BLOCK-DROP ( MEM:block -- ) drop"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-BLOCK-FORGE ( ptr u8 -- MEM:block )"
+      CHECK-QUIET-CANDIDATE! 0 T=
    \ negatives: a zero-admitting role at the sink, byte<->cell role swaps, raw n.
    s" B-ZEROABLE-ALLOC ( CAD-NUM:byte-len -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=

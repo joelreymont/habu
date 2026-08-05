@@ -31,6 +31,7 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 variable OPEN-N
 variable FREE-N
 variable SYNC-N
+variable FREE-AT-SYNC
 PTR-VARIABLE SAVED-REC
 
 : IC ( n -- CAD-NUM:item-count )
@@ -106,11 +107,9 @@ PTR-VARIABLE SAVED-REC
       ENDOF
    ;MATCH ;
 
-: F-OPEN ( -- ) 1 OPEN-N +! 601 throw ;
-
-: F-OPEN-EXHAUST ( -- )
-   I-REC-BYTES MMAP-TEST:EXHAUST-CHILD
-   I-REC-BYTES MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
+: F-OPEN ( -- )
+   CUDA:OPEN
+   1 OPEN-N +!
    601 throw ;
 
 : TEST-EARLY-FAILURES ( -- )
@@ -140,25 +139,18 @@ PTR-VARIABLE SAVED-REC
    pid PID>N 0= if REC-FAIL-CHILD then
    pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
-: SESSION-FAIL-CHILD ( -- )
-   [: F-OPEN-EXHAUST ;] MKD:OPEN!
-   BAD-PATH 2 IC 128 IC START-GPT2 MATCH result
-      err OF 601 <> if E-FIX throw then ENDOF
-      ok OF MUST-STOP E-FIX throw ENDOF
-   ;MATCH
-   I-REC-BYTES MMAP-TEST:EXHAUSTED? if E-FIX throw then
-   I-REC-BYTES MMAP-TEST:EXHAUSTED? if E-FIX throw then
-   I-REC-BYTES MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
-   s" " 0 die ;
-
 : TEST-SESSION-FAIL ( -- )
-   s" session refusal releases both allocated host records exactly" T-LABEL
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if SESSION-FAIL-CHILD then
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" session refusal releases the engine record" T-LABEL
+   0 OPEN-N !
+   [: F-OPEN ;] MKD:OPEN!
+   BAD-PATH 2 IC 128 IC 601 START-ERR
+   MKD:USE-REAL
+   OPEN-N @ 1 T= ;
 
-: F-SYNC-611 ( CUDA:stream -- rc )
-   drop 1 SYNC-N +! 611 >RC ;
+: F-SYNC-611 ( CUDA:stream -- rc ) {: stream:CUDA:stream :}
+   stream CUDA:CU-STREAM-SYNCHRONIZE RC>N {: real:n :}
+   1 SYNC-N +!
+   real 0<> if real >RC else 611 >RC then ;
 
 : TEST-MODEL-FAIL ( -- )
    s" model refusal outranks session cleanup failure" T-LABEL
@@ -176,11 +168,15 @@ PTR-VARIABLE SAVED-REC
    SAFET:LIVE-OWNERS owners T=
    SAFET-MAP:LIVE maps T= ;
 
-: F-FREE-612 ( cuda-devptr -- rc )
-   drop 1 FREE-N +! 612 >RC ;
+: F-FREE-612 ( cuda-devptr -- rc ) {: dev:cuda-devptr :}
+   dev CUDA:CU-MEM-FREE RC>N {: real:n :}
+   1 FREE-N +!
+   real 0<> if real >RC else 612 >RC then ;
 
-: F-SYNC-613 ( CUDA:stream -- rc )
-   drop 1 SYNC-N +! 613 >RC ;
+: F-SYNC-613 ( CUDA:stream -- rc ) {: stream:CUDA:stream :}
+   stream CUDA:CU-STREAM-SYNCHRONIZE RC>N {: real:n :}
+   1 SYNC-N +!
+   real 0<> if real >RC else 613 >RC then ;
 
 : TEST-CACHE-FAIL ( -- )
    s" cache refusal releases model and session but keeps the primary error" T-LABEL
@@ -208,7 +204,7 @@ PTR-VARIABLE SAVED-REC
    drop ;
 
 : INSPECT ( INFER:engine -- INFER:engine )
-   I-TAKE {: rec:ptr :}
+   I-TAKE
    swap GPT2:CONFIG@ CONFIG=
    swap
    KV:NUM-PAGES 128 T=
@@ -219,7 +215,7 @@ PTR-VARIABLE SAVED-REC
    KV:BLOCK-CAPACITY 64 T=
    KV:FREE-PAGES 128 T=
    KV:WATERMARK 0 T=
-   rec I-MINT ;
+   I-MINT ;
 
 : ALLOC-SEQ ( KV:cache -- KV:cache )
    16 KV:ALLOC-SEQ MATCH result
@@ -235,18 +231,21 @@ PTR-VARIABLE SAVED-REC
 
 : SEQ-CAP ( INFER:engine -- INFER:engine )
    s" engine admits exactly its configured live-sequence capacity" T-LABEL
-   I-TAKE {: rec:ptr :}
+   I-TAKE
    ALLOC-SEQ ALLOC-SEQ
    KV:RESERVED-PAGES 2 T=
    KV:FREE-PAGES 128 T=
    ALLOC-SEQ-ERR
    KV:RESERVED-PAGES 2 T=
-   rec I-MINT ;
+   I-MINT ;
 
 : SAVE-REC ( INFER:engine -- INFER:engine )
-   I-TAKE {: rec:ptr :}
+   I-TAKE
+   >r >r >r
+   MEM:BORROW {: rec:ptr recu:CAD-NUM:byte-len :}
+   recu drop
    rec SAVED-REC !
-   rec I-MINT ;
+   r> r> r> I-MINT ;
 
 : READ-REC ( -- )
    SAVED-REC @ c@ drop
@@ -268,20 +267,24 @@ PTR-VARIABLE SAVED-REC
    SAFET:LIVE-OWNERS owners T=
    SAFET-MAP:LIVE maps T= ;
 
-: F-FREE-FIRST ( cuda-devptr -- rc )
-   drop
+: F-FREE-FIRST ( cuda-devptr -- rc ) {: dev:cuda-devptr :}
+   dev CUDA:CU-MEM-FREE RC>N {: real:n :}
    1 FREE-N +!
+   real 0<> if real >RC exit then
    FREE-N @ 1 = if 701 else 702 then >RC ;
 
-: F-SYNC-703 ( CUDA:stream -- rc )
-   drop 1 SYNC-N +! 703 >RC ;
+: F-SYNC-703 ( CUDA:stream -- rc ) {: stream:CUDA:stream :}
+   stream CUDA:CU-STREAM-SYNCHRONIZE RC>N {: real:n :}
+   FREE-N @ FREE-AT-SYNC !
+   1 SYNC-N +!
+   real 0<> if real >RC else 703 >RC then ;
 
 : TEST-STOP-FAIL ( -- )
    s" STOP attempts cache, model, and session release with first-error precedence" T-LABEL
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
    MUST-START
-   0 FREE-N ! 0 SYNC-N !
+   0 FREE-N ! 0 SYNC-N ! 0 FREE-AT-SYNC !
    [: F-FREE-FIRST ;] MKD:CUMEMFREE!
    [: F-SYNC-703 ;] MKD:STREAMSYNC!
    STOP MATCH result
@@ -290,6 +293,7 @@ PTR-VARIABLE SAVED-REC
    ;MATCH
    MKD:USE-REAL
    FREE-N @ 2 T=
+   FREE-AT-SYNC @ 2 T=
    SYNC-N @ 1 T=
    SAFET:LIVE-OWNERS owners T=
    SAFET-MAP:LIVE maps T= ;

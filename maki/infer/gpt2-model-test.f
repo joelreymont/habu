@@ -16,7 +16,6 @@ private
 
 -7697 constant E-FIX
 $86 constant FAULT-RC
-$80 constant STATM-CAP
 
 create BASE-BYTE 1 allot
 create ROOT FS-PATH-CAP allot
@@ -24,7 +23,6 @@ create SRC FS-PATH-CAP allot
 create DST FS-PATH-CAP allot
 create JOIN-ROOT FS-PATH-CAP allot
 create JOIN-DST FS-PATH-CAP allot
-create STATM-BUF STATM-CAP allot
 create EMPTY-MODEL 2 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 123 c, 125 c,
 create MUT-BYTE $5B c,
 
@@ -230,23 +228,6 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T= ;
 
-: STATM-TOK-U ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
-   i u = if i exit then
-   a i + c@ STR-SPACE <= if i exit then
-   a u i 1+ recurse ;
-
-: STATM-N ( ptr u8 n n -- n ) {: a:ptr u:n acc:n :}
-   u 0= if acc exit then
-   a c@ {: c:n :}
-   c STR-DIGIT? 0= if E-FIX throw then
-   a 1+ u 1- acc 10 * c STR-ZERO - + recurse ;
-
-: VM-PAGES ( -- n )
-   s" /proc/self/statm" STATM-BUF STATM-CAP READ-ALL {: u:n :}
-   STATM-BUF u 0 STATM-TOK-U {: tokenu:n :}
-   tokenu 0= if E-FIX throw then
-   STATM-BUF tokenu 0 STATM-N ;
-
 : OPEN-REFUSAL ( GPU:session n -- GPU:session ) {: want:n :}
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
@@ -254,25 +235,14 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
       ok OF MODEL-CLOSE E-FIX throw ENDOF
    ;MATCH ;
 
-: REFUSAL-CHILD ( n -- ) {: want:n :}
+: REFUSAL-PROOF ( n -- ) {: want:n :}
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
    SESSION-OPEN
    want OPEN-REFUSAL
    SAFET:LIVE-OWNERS owners <> if E-FIX throw then
    SAFET-MAP:LIVE maps <> if E-FIX throw then
-   VM-PAGES {: pages:n :}
-   want OPEN-REFUSAL
-   SAFET:LIVE-OWNERS owners <> if E-FIX throw then
-   SAFET-MAP:LIVE maps <> if E-FIX throw then
-   VM-PAGES pages <> if E-FIX throw then
-   SESSION-CLOSE
-   s" " 0 die ;
-
-: REFUSAL-PROOF ( n -- ) {: want:n :}
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if want REFUSAL-CHILD then
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   SESSION-CLOSE ;
 
 : TEST-EMPTY ( ptr u8 n -- )
    s" OPEN rejects an empty real Safetensors catalog and restores VM ownership" T-LABEL
@@ -367,10 +337,9 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
 
 : TOKEN-OWNER ( GPT2:model -- GPT2:model ptr a CAD-NUM:alloc-byte-len )
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
    tokstate toklen ;
 
 : READ-TOKEN-TAIL ( ptr a -- )

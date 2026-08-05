@@ -4,6 +4,7 @@
 
 s" lib/errors.f" required
 require lib/cad-num-arithmetic.f
+require lib/adt/result.f
 
 $10000 constant MEM-64K
 $7FFFFFFFFFFFFFFF constant MEM-MAX-N
@@ -90,6 +91,11 @@ TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
 \ MEM-ALLOC-CELLS and the multi-64K conveniences are out of this B5 wave.
 
 package MEM
+
+public
+
+DEFLINEAR MEM:block
+
 private
 
 \ Internal invariant code (never reachable): a validator/narrowing arm proven
@@ -176,7 +182,46 @@ $47 constant UNMAP-EXIT
       s" memory: unmap failed" UNMAP-EXIT die
    then ;
 
+: B-ALLOC ( ptr u8 n -- ptr u8 n ) {: bytes:n :}
+   drop bytes MEM-ALLOC-PTR bytes ;
+
+: B-BYTE-LEN ( CAD-NUM:alloc-byte-len -- CAD-NUM:byte-len )
+   ALLOC-BYTES>N CAD-NUM:BYTE-LEN OK-BYTE-LEN ;
+
+\ The checker cannot bind the payload pointer and hidden validated extent to one
+\ linear owner. Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
+TRUSTED: B-MINT ( ptr u8 CAD-NUM:alloc-byte-len -- MEM:block )
+   over MEM-CELL-BYTES - ! ;
+
+TRUSTED: B-TAKE ( MEM:block -- ptr u8 CAD-NUM:alloc-byte-len )
+   dup MEM-CELL-BYTES - @ ;
+
 public
+
+: OPEN ( CAD-NUM:alloc-byte-len -- result<MEM:block,n> )
+   dup ALLOC-BYTES>N
+   dup MEM-MAX-N MEM-CELL-BYTES - > if
+      2drop E-MEM-SIZE RESULT:ERR
+      exit
+   then
+   MEM-CELL-BYTES +
+   NULL$ drop swap [: B-ALLOC ;] catch {: code:n :}
+   code 0 <> if
+      2drop drop code RESULT:ERR
+      exit
+   then
+   drop MEM-CELL-BYTES + swap B-MINT RESULT:OK ;
+
+\ The byte span is borrowed only until the returned owner is consumed; the
+\ checker cannot yet bind pointer lifetime to that owner.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
+: BORROW ( MEM:block -- MEM:block ptr u8 CAD-NUM:byte-len )
+   B-TAKE 2dup B-MINT -rot B-BYTE-LEN ;
+
+: RELEASE ( MEM:block -- )
+   B-TAKE
+   swap MEM-CELL-BYTES - swap
+   ALLOC-BYTES>N MEM-CELL-BYTES + RELEASE-RANGE ;
 
 \ ---- scalar sizing: typed compositions of the closed B5.2 algebra --------------
 : CELLS>BYTES ( CAD-NUM:cell-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
