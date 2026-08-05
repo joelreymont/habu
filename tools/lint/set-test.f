@@ -9,6 +9,9 @@ require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
+package LINT-INTERN
+private
+
 variable TEST-N
 : ASSERT  ( bool -- )
    0= if
@@ -34,72 +37,72 @@ $40 constant WALK-LIMIT
    KEY-BUF 2 ;
 
 : TEST-DUPLICATES  ( -- )
-   INTERN-RESET
-   s" alpha" INTERN 0 ASSERT=
-   s" beta" INTERN 1 ASSERT=
-   s" alpha" INTERN 0 ASSERT=
-   INTERN# 2 ASSERT=
-   0 INTERN$ s" alpha" ASSERT$
-   1 INTERN$ s" beta" ASSERT$ ;
+   LINT-INTERN:RESET
+   s" alpha" LINT-INTERN:ADD 0 ASSERT=
+   s" beta" LINT-INTERN:ADD 1 ASSERT=
+   s" alpha" LINT-INTERN:ADD 0 ASSERT=
+   LINT-INTERN:COUNT 2 ASSERT=
+   0 LINT-INTERN:TEXT s" alpha" ASSERT$
+   1 LINT-INTERN:TEXT s" beta" ASSERT$ ;
 
 : TEST-STORAGE  ( -- )
-   INTERN-RESET
-   97 MUT!  MUT-BUF 3 INTERN 0 ASSERT=
+   LINT-INTERN:RESET
+   97 MUT!  MUT-BUF 3 LINT-INTERN:ADD 0 ASSERT=
    120 MUT!
-   0 INTERN$ s" abc" ASSERT$
+   0 LINT-INTERN:TEXT s" abc" ASSERT$
    MUT-BUF 3 s" xbc" ASSERT$ ;
 
 : TEST-CASE  ( -- )
-   INTERN-RESET
-   s" Alpha" INTERN 0 ASSERT=
-   s" alpha" INTERN 1 ASSERT=
-   s" Alpha" INTERN-FIND 0 ASSERT=
-   s" ALPHA" INTERN-FIND -1 ASSERT=
-   s" ALPHA" INTERN? 0= ASSERT
-   INTERN-RESET
-   s" Alpha" INTERN-FOLD 0 ASSERT=
-   s" alpha" INTERN-FOLD 0 ASSERT=
-   s" ALPHA" INTERN-FOLD? ASSERT
-   0 INTERN$ s" alpha" ASSERT$ ;
+   LINT-INTERN:RESET
+   s" Alpha" LINT-INTERN:ADD 0 ASSERT=
+   s" alpha" LINT-INTERN:ADD 1 ASSERT=
+   s" Alpha" LINT-INTERN:FIND 0 ASSERT=
+   s" ALPHA" LINT-INTERN:FIND -1 ASSERT=
+   s" ALPHA" LINT-INTERN:HAS? 0= ASSERT
+   LINT-INTERN:RESET
+   s" Alpha" LINT-INTERN:ADD-FOLD 0 ASSERT=
+   s" alpha" LINT-INTERN:ADD-FOLD 0 ASSERT=
+   s" ALPHA" LINT-INTERN:HAS-FOLD? ASSERT
+   0 LINT-INTERN:TEXT s" alpha" ASSERT$ ;
 
 : TEST-MEMBERSHIP  ( -- )
-   INTERN-RESET
-   s" one" INTERN drop
-   s" two" INTERN drop
-   s" one" INTERN? ASSERT
-   s" two" INTERN-FIND 1 ASSERT=
-   s" nope" INTERN? 0= ASSERT
-   s" nope" INTERN-FIND -1 ASSERT= ;
+   LINT-INTERN:RESET
+   s" one" LINT-INTERN:ADD drop
+   s" two" LINT-INTERN:ADD drop
+   s" one" LINT-INTERN:HAS? ASSERT
+   s" two" LINT-INTERN:FIND 1 ASSERT=
+   s" nope" LINT-INTERN:HAS? 0= ASSERT
+   s" nope" LINT-INTERN:FIND -1 ASSERT= ;
 
 : FILL-WALK  {: limit :}  ( -- )
-   INTERN-RESET  0 SET-I !
+   LINT-INTERN:RESET  0 SET-I !
    begin SET-I @ limit < while
-      SET-I @ KEY$ INTERN SET-I @ ASSERT=
+      SET-I @ KEY$ LINT-INTERN:ADD SET-I @ ASSERT=
       SET-I @ 1+ SET-I !
    repeat ;
 : CHECK-WALK  {: limit :}  ( -- )
    0 SET-I !
    begin SET-I @ limit < while
-      SET-I @ KEY$ INTERN-FIND SET-I @ ASSERT=
+      SET-I @ KEY$ LINT-INTERN:FIND SET-I @ ASSERT=
       SET-I @ 1+ SET-I !
    repeat ;
 : TEST-WALK  ( -- )
    WALK-LIMIT FILL-WALK
-   INTERN# WALK-LIMIT ASSERT=
-   WALK-LIMIT 1- KEY$ INTERN? ASSERT
-   WALK-LIMIT KEY$ INTERN? 0= ASSERT
+   LINT-INTERN:COUNT WALK-LIMIT ASSERT=
+   WALK-LIMIT 1- KEY$ LINT-INTERN:HAS? ASSERT
+   WALK-LIMIT KEY$ LINT-INTERN:HAS? 0= ASSERT
    WALK-LIMIT CHECK-WALK ;
 
 : FILL-CAP  ( -- )
-   INTERN-RESET  0 SET-I !
-   begin SET-I @ INTERN-MAX < while
-      SET-I @ KEY$ INTERN SET-I @ ASSERT=
+   LINT-INTERN:RESET  0 SET-I !
+   begin SET-I @ MAX < while
+      SET-I @ KEY$ LINT-INTERN:ADD SET-I @ ASSERT=
       SET-I @ 1+ SET-I !
    repeat
-   INTERN# INTERN-MAX ASSERT= ;
-: COUNT-OVERFLOW  ( -- )  FILL-CAP  INTERN-MAX KEY$ INTERN drop ;
+   LINT-INTERN:COUNT MAX ASSERT= ;
+: COUNT-OVERFLOW  ( -- )  FILL-CAP  MAX KEY$ LINT-INTERN:ADD drop ;
 : TEST-CAPACITY  ( -- )
-   [: COUNT-OVERFLOW ;] catch E-LINT-INTERN-CAP ASSERT= ;
+   [: COUNT-OVERFLOW ;] catch LINT-INTERN:E-CAP ASSERT= ;
 
 \ a cap throw routed through LINT-MAIN prints an attribution line naming the
 \ tool and the code, and re-throws the same code (never a silent rc-only death)
@@ -107,12 +110,12 @@ $100 constant ATTR-CAP
 create ATTR-BUF ATTR-CAP allot
 
 : ATTR-THROW  ( -- )
-   s" set-test" E-LINT-INTERN-CAP LINT-MAIN ;
+   s" set-test" LINT-INTERN:E-CAP LINT-MAIN ;
 : TEST-ATTRIBUTION  ( -- )
    ATTR-BUF ATTR-CAP LINT-OUT-BUFFER!
    [: ATTR-THROW ;] catch
    LINT-OUT-BUFFER-OFF
-   E-LINT-INTERN-CAP ASSERT=
+   LINT-INTERN:E-CAP ASSERT=
    LINT-OUT$ s" set-test: threw " LINT-STARTS-WITH? ASSERT
    LINT-OUT$ s" (E-LINT-INTERN-CAP)" LINT-CONTAINS? ASSERT
    LINT-OUT$ 1- + c@ 10 = ASSERT ;
@@ -132,7 +135,9 @@ create ATTR-BUF ATTR-CAP allot
    TEST-CAPACITY
    TEST-ATTRIBUTION
    TEST-ATTRIBUTION-OK
-   INTERN-RESET
+   LINT-INTERN:RESET
    s" set-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 
 SET-TEST
+
+;package

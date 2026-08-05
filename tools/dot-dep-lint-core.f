@@ -20,11 +20,11 @@ create DDP-CHAR-BUF 1 allot
 create PATH-BUF DDP-FILE-CAP allot
 
 create ROOT-BUF FS-PATH-CAP allot
-create IDS VEC-HEADER-CELLS cells allot
-create ROW-IDS VEC-HEADER-CELLS cells allot
-create ROW-PATH-OFFSETS VEC-HEADER-CELLS cells allot
-create ROW-PATH-LENGTHS VEC-HEADER-CELLS cells allot
-create ROW-ORDER VEC-HEADER-CELLS cells allot
+create IDS VEC:HEADER-CELLS cells allot
+create ROW-IDS VEC:HEADER-CELLS cells allot
+create ROW-PATH-OFFSETS VEC:HEADER-CELLS cells allot
+create ROW-PATH-LENGTHS VEC:HEADER-CELLS cells allot
+create ROW-ORDER VEC:HEADER-CELLS cells allot
 
 variable DDP-BAD
 variable DDP-DOT#
@@ -38,6 +38,24 @@ variable INDEX-READY
 variable CMP-I
 variable PATH-FIRST
 variable PATH-U
+
+: DDP>ITEM ( n -- CAD-NUM:item-count )
+   CAD-NUM:ITEM-COUNT
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
+      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
+      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
+      misaligned OF E-VEC-CAPACITY throw ENDOF
+   ;MATCH ;
+
+: DDP>INDEX ( n -- CAD-NUM:index )
+   CAD-NUM:INDEX
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
+      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
+      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
+      misaligned OF E-VEC-BOUNDS throw ENDOF
+   ;MATCH ;
 
 : OUT ( ptr u8 n -- )
    1 -rot LINT-OUT-WRITE ;
@@ -111,39 +129,51 @@ variable PATH-U
    a u ROOT-ARCHIVE-PATH? IF LINT-FALSE exit THEN
    a u DDP-MD? ;
 
+: INDEX-INIT1 ( ptr h n -- ) {: vec:ptr step:n :}
+   step INDEX-READY @ < IF exit THEN
+   vec 8 DDP>ITEM VEC:INIT
+   step 1+ INDEX-READY ! ;
+
 : INDEX-INIT ( -- )
-   INDEX-READY @ IF exit THEN
-   IDS 8 >COUNT VEC-INIT
-   ROW-IDS 8 >COUNT VEC-INIT
-   ROW-PATH-OFFSETS 8 >COUNT VEC-INIT
-   ROW-PATH-LENGTHS 8 >COUNT VEC-INIT
-   ROW-ORDER 8 >COUNT VEC-INIT
-   1 INDEX-READY ! ;
+   INDEX-READY @ 5 = IF exit THEN
+   IDS              0 INDEX-INIT1
+   ROW-IDS          1 INDEX-INIT1
+   ROW-PATH-OFFSETS 2 INDEX-INIT1
+   ROW-PATH-LENGTHS 3 INDEX-INIT1
+   ROW-ORDER        4 INDEX-INIT1 ;
 
 : INDEX-RESET ( -- )
    INDEX-INIT
-   IDS VEC-CLEAR
-   ROW-IDS VEC-CLEAR
-   ROW-PATH-OFFSETS VEC-CLEAR
-   ROW-PATH-LENGTHS VEC-CLEAR
-   ROW-ORDER VEC-CLEAR
+   IDS VEC:CLEAR
+   ROW-IDS VEC:CLEAR
+   ROW-PATH-OFFSETS VEC:CLEAR
+   ROW-PATH-LENGTHS VEC:CLEAR
+   ROW-ORDER VEC:CLEAR
    0 PATH-U ! ;
 
 : INTERN-DOT-ID ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u INTERN-FIND dup 0 >= IF exit THEN drop
-   a u INTERN dup IDS VEC-PUSH-N drop ;
+   a u LINT-INTERN:FIND dup 0 >= IF exit THEN drop
+   IDS LINT-INTERN:COUNT 1+ DDP>ITEM VEC:ENSURE
+   a u LINT-INTERN:ADD dup IDS VEC:PUSH drop ;
 
-: STORE-PATH ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: RESERVE-ROW ( n -- ) {: pathu:n :}
    PATH-U @ pathu + DDP-FILE-CAP > IF
       s" dot-dep-lint: path index full" E-FS-CAPACITY die
    THEN
+   DDP-DOT# @ 1+ DDP>ITEM {: need:CAD-NUM:item-count :}
+   ROW-IDS          need VEC:ENSURE
+   ROW-PATH-OFFSETS need VEC:ENSURE
+   ROW-PATH-LENGTHS need VEC:ENSURE ;
+
+: STORE-PATH ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path PATH-BUF PATH-U @ + pathu BYTE-COPY
-   PATH-U @ ROW-PATH-OFFSETS VEC-PUSH-N drop
-   pathu ROW-PATH-LENGTHS VEC-PUSH-N drop
+   PATH-U @ ROW-PATH-OFFSETS VEC:PUSH drop
+   pathu ROW-PATH-LENGTHS VEC:PUSH drop
    PATH-U @ pathu + PATH-U ! ;
 
 : INDEX-DOT ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu DDP-DOT-ID$ INTERN-DOT-ID ROW-IDS VEC-PUSH-N drop
+   pathu RESERVE-ROW
+   path pathu DDP-DOT-ID$ INTERN-DOT-ID ROW-IDS VEC:PUSH drop
    path pathu STORE-PATH
    DDP-DOT+ ;
 
@@ -158,29 +188,30 @@ variable PATH-U
    u v < ;
 
 : ID-BEFORE? ( n n -- bool ) {: left:n right:n :}
-   left INTERN$ right INTERN$ TEXT< ;
+   left LINT-INTERN:TEXT right LINT-INTERN:TEXT TEXT< ;
 
 : ROW-PATH$ ( n -- ptr u8 n )
-   >IDX dup ROW-PATH-OFFSETS swap VEC-N@ PATH-BUF +
-   swap ROW-PATH-LENGTHS swap VEC-N@ ;
+   DDP>INDEX dup ROW-PATH-OFFSETS swap VEC:@ PATH-BUF +
+   swap ROW-PATH-LENGTHS swap VEC:@ ;
 
 : ROW-BEFORE? ( n n -- bool ) {: left:n right:n :}
    left ROW-PATH$ right ROW-PATH$ TEXT< ;
 
 : PREPARE-ORDER ( -- )
-   ROW-ORDER VEC-CLEAR
-   ROW-IDS VEC-LEN@ LEN>N 0 ?do i ROW-ORDER VEC-PUSH-N drop loop
-   IDS VEC-DATA@ IDS VEC-LEN@ LEN>N [: ID-BEFORE? ;] SORT:SORT!
-   ROW-ORDER VEC-DATA@ ROW-ORDER VEC-LEN@ LEN>N [: ROW-BEFORE? ;] SORT:SORT! ;
+   ROW-ORDER VEC:CLEAR
+   ROW-ORDER DDP-DOT# @ DDP>ITEM VEC:ENSURE
+   DDP-DOT# @ 0 ?do i ROW-ORDER VEC:PUSH drop loop
+   IDS VEC:DATA@ LINT-INTERN:COUNT [: ID-BEFORE? ;] SORT:SORT!
+   ROW-ORDER VEC:DATA@ DDP-DOT# @ [: ROW-BEFORE? ;] SORT:SORT! ;
 
 : ID-COUNT ( n -- n ) {: id:n :}
    0
-   ROW-IDS VEC-LEN@ LEN>N 0 ?do
-      ROW-IDS i >IDX VEC-N@ id = IF 1+ THEN
+   DDP-DOT# @ 0 ?do
+      ROW-IDS i DDP>INDEX VEC:@ id = IF 1+ THEN
    loop ;
 
 : REPORT-PATH ( n n -- ) {: row:n id:n :}
-   ROW-IDS row >IDX VEC-N@ id <> IF exit THEN
+   ROW-IDS row DDP>INDEX VEC:@ id <> IF exit THEN
    PATH-FIRST @ 0= IF s" , " OUT THEN
    row ROW-PATH$ OUT
    0 PATH-FIRST ! ;
@@ -188,19 +219,19 @@ variable PATH-U
 : REPORT-DUPLICATE ( n -- ) {: id:n :}
    id ID-COUNT 2 < IF exit THEN
    s" DOT-DEP-DUPLICATE " OUT
-   id INTERN$ OUT
+   id LINT-INTERN:TEXT OUT
    s" : " OUT
    1 PATH-FIRST !
-   ROW-ORDER VEC-LEN@ LEN>N 0 ?do
-      ROW-ORDER i >IDX VEC-N@ id REPORT-PATH
+   DDP-DOT# @ 0 ?do
+      ROW-ORDER i DDP>INDEX VEC:@ id REPORT-PATH
    loop
    DDP-NL
    DDP-BAD+ ;
 
 : REPORT-DUPLICATES ( -- )
    PREPARE-ORDER
-   IDS VEC-LEN@ LEN>N 0 ?do
-      IDS i >IDX VEC-N@ REPORT-DUPLICATE
+   LINT-INTERN:COUNT 0 ?do
+      IDS i DDP>INDEX VEC:@ REPORT-DUPLICATE
    loop ;
 
 : DDP-FM-MARK? ( ptr u8 n -- bool )
@@ -250,7 +281,7 @@ variable PATH-U
 
 : DDP-CHECK-BLOCKER ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n line:n id:ptr idu:n :}
    DDP-BLOCK+
-   id idu INTERN? 0= IF path pathu line id idu DDP-MISSING THEN ;
+   id idu LINT-INTERN:HAS? 0= IF path pathu line id idu DDP-MISSING THEN ;
 
 : DDP-SCAN-BLOCK-LINE ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n path:ptr pathu:n line:n :}
    a u DDP-BLOCKER-LINE? IF
@@ -289,7 +320,7 @@ variable PATH-U
    0 DDP-BAD !
    0 DDP-DOT# !
    0 DDP-BLOCK# !
-   INTERN-RESET
+   LINT-INTERN:RESET
    INDEX-RESET ;
 
 : SUMMARY ( -- )

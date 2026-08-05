@@ -283,9 +283,9 @@ s" ak2" SK-GET TTRUE 9 T=
 s" ak"  SK-GET TTRUE 5 T=
 SK-TAB-COUNT 2 T=
 
-\ (b) vector-growth refusal: reserving past VEC-MAX-CELLS entries makes the vector grow
+\ (b) vector-growth refusal: reserving past MEM-MAX-CELLS entries makes the vector grow
 \ path reject with E-VEC-CAPACITY before it grows; lengths + queries stay, retry commits.
-: TRY-VEC-OOM ( -- )  VEC-MAX-CELLS 1+ 0 SK-RESERVE ;
+: TRY-VEC-OOM ( -- )  MEM-MAX-CELLS 1+ 0 SK-RESERVE ;
 ' TRY-VEC-OOM E-VEC-CAPACITY TTHROWS
 s" ak"  SK-GET TTRUE 5 T=
 s" ak2" SK-GET TTRUE 9 T=

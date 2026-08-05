@@ -5,35 +5,33 @@ require lib/memory.f
 require lib/vector.f
 require tools/lint/text.f
 
-76 constant E-LINT-INTERN-CAP
-s" E-LINT-INTERN-CAP" E-LINT-INTERN-CAP LINT-CODE-NAME+
+package LINT-INTERN
+private
+
+public
+76 constant E-CAP
+private
+s" E-LINT-INTERN-CAP" E-CAP LINT-CODE-NAME+
 \ Shared by repository-scale lint tools; retain capacity for their largest
 \ interned path and token sets plus growth headroom.
-$800 constant INTERN-MAX   \ crossed $400 on 2026-07-21 as FILEMAP grew past 1024 interned paths (structure-decl/make, field-proj, enum suites)
+$800 constant MAX   \ crossed $400 on 2026-07-21 as FILEMAP grew past 1024 interned paths (structure-decl/make, field-proj, enum suites)
 $1000 constant INTERN-CHUNK-MIN
 $100 constant INTERN-FOLD-CAP
 8 constant INTERN-VEC-CAP
 2 constant INTERN-CHUNK-VEC-CAP
 
-create INTERN-ADDR-V VEC-HEADER-CELLS cells allot
-create INTERN-LEN-V VEC-HEADER-CELLS cells allot
-create INTERN-CHUNK-A-V VEC-HEADER-CELLS cells allot
-create INTERN-CHUNK-CAP-V VEC-HEADER-CELLS cells allot
-create INTERN-CHUNK-USED-V VEC-HEADER-CELLS cells allot
+create ADDR-V VEC:HEADER-CELLS cells allot
+create LEN-V VEC:HEADER-CELLS cells allot
+create CHUNK-A-V VEC:HEADER-CELLS cells allot
+create CHUNK-CAP-V VEC:HEADER-CELLS cells allot
+create CHUNK-USED-V VEC:HEADER-CELLS cells allot
 create INTERN-FOLD-BUF INTERN-FOLD-CAP allot
 variable INTERN-READY
 variable INTERN-CHUNK-I
+variable N
+variable CHUNK-N
 
-\ ---- raw table cell -> CAD-NUM role bridges for the typed VEC surface ---------
-\ The interner's parallel vectors store raw cells (string / chunk addresses,
-\ lengths, caps, used counts). The typed VEC surface (package VEC) reads a
-\ validated CAD-NUM role - a capacity is a `CAD-NUM:item-count`, an entry position
-\ is a `CAD-NUM:index` - so a count/index role swap at a VEC call is a checker
-\ reject. These lift a nonnegative cell to its role through the PUBLIC CAD-NUM
-\ validators (no laundering back to n, no reopened package); the refusal arms are
-\ unreachable invariants (a boot capacity and a bounds-checked id are nonnegative),
-\ an impossible negative surfaces the vector's own capacity / bounds code. This is
-\ the maki/sched-key.f SK>ITEM / SK>INDEX idiom, kept intern-local.
+\ Lift validated interner counts and indexes into VEC roles.
 : INTERN>ITEM ( n -- CAD-NUM:item-count )
    CAD-NUM:ITEM-COUNT
    MATCH CAD-NUM:numeric-result
@@ -52,43 +50,41 @@ variable INTERN-CHUNK-I
    ;MATCH ;
 
 : INTERN-READY? ( -- bool )
-   INTERN-READY @ 0 = IF LINT-FALSE ELSE LINT-TRUE THEN ;
+   INTERN-READY @ 5 = IF LINT-TRUE ELSE LINT-FALSE THEN ;
+
+: INIT1 ( ptr h n n -- ) {: vec:ptr cap:n step:n :}
+   step INTERN-READY @ < IF exit THEN
+   vec cap INTERN>ITEM VEC:INIT
+   step 1+ INTERN-READY ! ;
 
 : INTERN-INIT-ONCE ( -- )
    INTERN-READY? IF exit THEN
-   INTERN-ADDR-V INTERN-VEC-CAP INTERN>ITEM VEC:INIT
-   INTERN-LEN-V INTERN-VEC-CAP INTERN>ITEM VEC:INIT
-   INTERN-CHUNK-A-V INTERN-CHUNK-VEC-CAP INTERN>ITEM VEC:INIT
-   INTERN-CHUNK-CAP-V INTERN-CHUNK-VEC-CAP INTERN>ITEM VEC:INIT
-   INTERN-CHUNK-USED-V INTERN-CHUNK-VEC-CAP INTERN>ITEM VEC:INIT
-   1 INTERN-READY ! ;
+   ADDR-V       INTERN-VEC-CAP       0 INIT1
+   LEN-V        INTERN-VEC-CAP       1 INIT1
+   CHUNK-A-V    INTERN-CHUNK-VEC-CAP 2 INIT1
+   CHUNK-CAP-V  INTERN-CHUNK-VEC-CAP 3 INIT1
+   CHUNK-USED-V INTERN-CHUNK-VEC-CAP 4 INIT1 ;
 
-\ live interned count. RAW residual (maki/sched-key.f SK-N precedent): VEC:LEN@
-\ yields a CAD-NUM:item-count and the checker correctly refuses to launder a count
-\ back to n, but INTERN# is pinned to a raw n that drives the INTERN$/INTERN-FIND
-\ bounds and the INTERN-CHECK-NEW-ID compare, so the count is read through the raw
-\ VEC-LEN@ accessor for this word alone (no new projection). A typed
-\ item-count-bounded VEC iterator would retire it.
-: INTERN# ( -- n )
+public
+: COUNT ( -- n )
    INTERN-INIT-ONCE
-   INTERN-ADDR-V VEC-LEN@ LEN>N ;
+   N @ ;
+private
 
-\ live chunk count. RAW residual (same pin as INTERN#): drives the raw begin/while
-\ bounds in INTERN-RESET-CHUNKS / INTERN-ENSURE-CHUNK, so it stays on VEC-LEN@.
 : INTERN-CHUNK# ( -- n )
-   INTERN-CHUNK-A-V VEC-LEN@ LEN>N ;
+   CHUNK-N @ ;
 
 : INTERN-CHUNK-A@ ( n -- ptr u8 )
-   INTERN-CHUNK-A-V swap INTERN>INDEX VEC:@ ;
+   CHUNK-A-V swap INTERN>INDEX VEC:@ ;
 
 : INTERN-CHUNK-CAP@ ( n -- n )
-   INTERN-CHUNK-CAP-V swap INTERN>INDEX VEC:@ ;
+   CHUNK-CAP-V swap INTERN>INDEX VEC:@ ;
 
 : INTERN-CHUNK-USED@ ( n -- n )
-   INTERN-CHUNK-USED-V swap INTERN>INDEX VEC:@ ;
+   CHUNK-USED-V swap INTERN>INDEX VEC:@ ;
 
 : INTERN-CHUNK-USED! ( n n -- ) {: used k :}
-   used INTERN-CHUNK-USED-V k INTERN>INDEX VEC:! ;
+   used CHUNK-USED-V k INTERN>INDEX VEC:! ;
 
 : INTERN-RESET-CHUNKS ( -- )
    0 begin dup INTERN-CHUNK# < while
@@ -96,43 +92,54 @@ variable INTERN-CHUNK-I
       1+
    repeat drop ;
 
-: INTERN-RESET ( -- )
+public
+: RESET ( -- )
    INTERN-INIT-ONCE
-   INTERN-ADDR-V VEC:CLEAR
-   INTERN-LEN-V VEC:CLEAR
+   ADDR-V VEC:CLEAR
+   LEN-V VEC:CLEAR
+   0 N !
    0 INTERN-CHUNK-I !
    INTERN-RESET-CHUNKS ;
+private
 
-: INTERN-INIT ( -- )
-   INTERN-RESET ;
-
-: INTERN$ ( n -- ptr u8 n ) {: id :}
+public
+: TEXT ( n -- ptr u8 n ) {: id:n :}
    INTERN-INIT-ONCE
-   id 0 < IF E-LINT-INTERN-CAP throw THEN
-   id INTERN# >= IF E-LINT-INTERN-CAP throw THEN
-   INTERN-ADDR-V id INTERN>INDEX VEC:@
-   INTERN-LEN-V id INTERN>INDEX VEC:@ ;
+   id 0 < IF E-CAP throw THEN
+   id COUNT >= IF E-CAP throw THEN
+   ADDR-V id INTERN>INDEX VEC:@
+   LEN-V id INTERN>INDEX VEC:@ ;
 
-: INTERN-FIND ( ptr u8 n -- n ) {: a:ptr u :}
+: FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    INTERN-INIT-ONCE
-   0 begin dup INTERN# < while
-      dup INTERN$ a u STR= IF exit THEN
+   0 begin dup COUNT < while
+      dup TEXT a u STR= IF exit THEN
       1+
    repeat drop -1 ;
 
-: INTERN? ( ptr u8 n -- bool )
-   INTERN-FIND 0 >= ;
+: HAS? ( ptr u8 n -- bool )
+   FIND 0 >= ;
+private
 
 : INTERN-CHUNK-SIZE ( n -- n )
    dup INTERN-CHUNK-MIN < IF drop INTERN-CHUNK-MIN THEN ;
 
+: RESERVE1 ( ptr h n -- )  INTERN>ITEM VEC:ENSURE ;
+
+: RESERVE-CHUNK ( n -- ) {: need:n :}
+   CHUNK-A-V    need RESERVE1
+   CHUNK-CAP-V  need RESERVE1
+   CHUNK-USED-V need RESERVE1 ;
+
 : INTERN-STORE-CHUNK ( ptr u8 n -- ) {: a:ptr cap :}
-   a INTERN-CHUNK-A-V VEC:PUSH drop
-   cap INTERN-CHUNK-CAP-V VEC:PUSH drop
-   0 INTERN-CHUNK-USED-V VEC:PUSH drop ;
+   a CHUNK-A-V VEC:PUSH drop
+   cap CHUNK-CAP-V VEC:PUSH drop
+   0 CHUNK-USED-V VEC:PUSH drop
+   CHUNK-N @ 1+ CHUNK-N ! ;
 
 : INTERN-ADD-CHUNK ( n -- )
    INTERN-CHUNK-SIZE {: cap:n :}
+   CHUNK-N @ 1+ RESERVE-CHUNK
    cap MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop cap INTERN-STORE-CHUNK ;
 
 : INTERN-CHUNK-FREE ( n -- n ) {: k :}
@@ -157,7 +164,7 @@ variable INTERN-CHUNK-I
    k INTERN-CHUNK-USED@ u + k INTERN-CHUNK-USED! ;
 
 : INTERN-ALLOC-SPAN ( n -- ptr u8 ) {: u :}
-   u 0 < IF E-LINT-INTERN-CAP throw THEN
+   u 0 < IF E-CAP throw THEN
    u INTERN-ENSURE-CHUNK
    u INTERN-CHUNK-I @ INTERN-ALLOC-IN-CHUNK ;
 
@@ -169,23 +176,32 @@ variable INTERN-CHUNK-I
    a u u INTERN-ALLOC-SPAN INTERN-COPY-TO ;
 
 : INTERN-CHECK-NEW-ID ( -- n )
-   INTERN# dup INTERN-MAX >= IF drop E-LINT-INTERN-CAP throw THEN ;
+   COUNT dup MAX >= IF drop E-CAP throw THEN ;
 
-: INTERN-STORE-NEW ( ptr u8 n n -- n ) {: a:ptr u id :}
-   a u INTERN-COPY$ INTERN-ADDR-V VEC:PUSH drop
-   u INTERN-LEN-V VEC:PUSH drop
+: RESERVE-ENTRY ( n -- ) {: need:n :}
+   ADDR-V need RESERVE1
+   LEN-V  need RESERVE1 ;
+
+: STORE-NEW ( ptr u8 n n -- n ) {: a:ptr u:n id:n :}
+   id 1+ RESERVE-ENTRY
+   a u INTERN-COPY$ ADDR-V VEC:PUSH drop
+   u LEN-V VEC:PUSH drop
+   N @ 1+ N !
    id ;
 
-: INTERN ( ptr u8 n -- n ) {: a:ptr u :}
-   a u INTERN-FIND dup 0 >= IF exit THEN drop
-   a u INTERN-CHECK-NEW-ID INTERN-STORE-NEW ;
+public
+: ADD ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u FIND dup 0 >= IF exit THEN drop
+   a u INTERN-CHECK-NEW-ID STORE-NEW ;
 
-: INTERN-FOLD ( ptr u8 n -- n ) {: a:ptr u :}
-   u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
+: ADD-FOLD ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u INTERN-FOLD-CAP > IF E-CAP throw THEN
    a u INTERN-FOLD-BUF FOLD-TO
-   INTERN-FOLD-BUF u INTERN ;
+   INTERN-FOLD-BUF u ADD ;
 
-: INTERN-FOLD? ( ptr u8 n -- bool ) {: a:ptr u :}
-   u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
+: HAS-FOLD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u INTERN-FOLD-CAP > IF E-CAP throw THEN
    a u INTERN-FOLD-BUF FOLD-TO
-   INTERN-FOLD-BUF u INTERN? ;
+   INTERN-FOLD-BUF u HAS? ;
+
+;package

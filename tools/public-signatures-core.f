@@ -571,12 +571,12 @@ private
    PS-CONT-U @ PS-SIG-U ! ;
 
 : PS-COLLECT-EXPORTS ( -- )
-   INTERN-RESET
+   LINT-INTERN:RESET
    SRC$ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
          PS-TOK$ s" EXPORT" LINT-STR=CI IF
-            PS-NEXT-TOK IF PS-WORD? IF PS-TOK$ INTERN-FOLD drop THEN THEN
+            PS-NEXT-TOK IF PS-WORD? IF PS-TOK$ LINT-INTERN:ADD-FOLD drop THEN THEN
          THEN
       THEN
    repeat ;
@@ -616,7 +616,7 @@ private
    THEN ;
 
 : PS-EXPORTED? ( -- bool )
-   PS-NAME-A@ PS-NAME-U @ INTERN-FOLD? ;
+   PS-NAME-A@ PS-NAME-U @ LINT-INTERN:HAS-FOLD? ;
 
 : PS-PUBLIC? ( -- bool )
    PS-PKG-PUBLIC? IF PS-TRUE exit THEN

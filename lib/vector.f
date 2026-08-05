@@ -3,254 +3,134 @@
 require lib/errors.f
 require lib/memory.f
 
-BEGIN-STRUCTURE VEC-HEADER-BYTES
-   PTR-FIELD: VEC.DATA
-   CELL +FIELD VEC.LEN
-   CELL +FIELD VEC.CAP
-END-STRUCTURE
-
-VEC-HEADER-BYTES CELL / constant VEC-HEADER-CELLS
-
-2 constant VEC-GROWTH
-MEM-MAX-CELLS constant VEC-MAX-CELLS
-
-: VEC-COUNT ( n -- count )
-   dup 0 < if E-VEC-CAPACITY throw then
-   dup VEC-MAX-CELLS > if E-VEC-CAPACITY throw then
-   >COUNT ;
-
-: VEC-CAP-COUNT ( n -- count )
-   dup 0= if E-VEC-CAPACITY throw then
-   VEC-COUNT ;
-
-: VEC-LEN ( n -- len )
-   dup 0 < if E-VEC-BOUNDS throw then
-   dup VEC-MAX-CELLS > if E-VEC-CAPACITY throw then
-   >LEN ;
-
-: VEC-IDX ( n -- idx )
-   dup 0 < if E-VEC-BOUNDS throw then
-   >IDX ;
-
-: VEC-CHECK-NEED ( count -- ) {: need :}
-   need COUNT>N 0 < if E-VEC-CAPACITY throw then
-   need COUNT>N VEC-MAX-CELLS > if E-VEC-CAPACITY throw then ;
-
-: VEC-CHECK-CAP ( count -- )
-   dup VEC-CHECK-NEED
-   COUNT>N 0= if E-VEC-CAPACITY throw then ;
-
-: VEC-CHECK-LEN ( len -- ) {: len :}
-   len LEN>N 0 < if E-VEC-BOUNDS throw then
-   len LEN>N VEC-MAX-CELLS > if E-VEC-CAPACITY throw then ;
-
-: VEC-CELLS>BYTES ( count -- n )
-   dup VEC-CHECK-CAP
-   MEM-CELLS>BYTES ;
-
-: VEC-ALLOC-CELLS ( count -- ptr a )
-   dup VEC-CHECK-CAP
-   MEM-ALLOC-CELLS ;
-
-: VEC-CELL-FIELD ( ptr a n -- ptr a ) {: base:ptr off :}
-   off 0 < if E-VEC-BOUNDS throw then
-   base off cells + ;
-
-: VEC-DATA-FIELD ( ptr a -- ptr ptr a )
-   VEC.DATA ;
-
-: VEC-DATA@ ( ptr a -- ptr a )
-   VEC-DATA-FIELD @ ;
-
-: VEC-DATA! ( ptr a ptr a -- ) {: data:ptr vec:ptr :}
-   data vec VEC-DATA-FIELD ! ;
-
-: VEC-LEN-FIELD ( ptr a -- ptr a )
-   VEC.LEN ;
-
-: VEC-LEN@ ( ptr a -- len )
-   VEC-LEN-FIELD @ VEC-LEN ;
-
-: VEC-CAP-FIELD ( ptr a -- ptr a )
-   VEC.CAP ;
-
-: VEC-CAP@ ( ptr a -- count )
-   VEC-CAP-FIELD @ VEC-COUNT ;
-
-: VEC-CAP! ( count ptr a -- ) {: cap vec:ptr :}
-   cap VEC-CHECK-CAP
-   cap COUNT>N vec VEC-CAP-FIELD ! ;
-
-\ Ownership / liveness token. A positive VEC.CAP means the header owns a live
-\ mapping of that many cells at VEC.DATA; a zero VEC.CAP means no mapping is owned
-\ (a fresh all-zero header or a disposed one). VEC-DISPOSE clears the capacity to
-\ void ownership, so this single cell is the liveness marker every storage-touching
-\ use consults: touching a dead vector throws E-VEC-STATE instead of dereferencing
-\ freed storage. Reads the raw cell (VEC-CAP@ would refuse a zero elsewhere).
-: VEC-CHECK-LIVE ( ptr a -- ) {: vec:ptr :}
-   vec VEC-CAP-FIELD @ 0= if E-VEC-STATE throw then ;
-
-\ Init-time inverse of VEC-CHECK-LIVE: a positive VEC.CAP means the header already
-\ owns a live mapping, so initializing over it would overwrite VEC.DATA and orphan
-\ that mapping (the one remaining leak path after resize/dispose). Fail closed -
-\ callers dispose an owned vector before re-initializing it.
-: VEC-CHECK-DEAD ( ptr a -- ) {: vec:ptr :}
-   vec VEC-CAP-FIELD @ 0 <> if E-VEC-STATE throw then ;
-
-: VEC-LEN! ( len ptr a -- ) {: len vec:ptr :}
-   len VEC-CHECK-LEN
-   len LEN>N vec VEC-CAP@ COUNT>N > if E-VEC-BOUNDS throw then
-   len LEN>N vec VEC-LEN-FIELD ! ;
-
-: VEC-INIT ( ptr a count -- ) {: vec:ptr cap :}
-   vec VEC-CHECK-DEAD
-   cap VEC-ALLOC-CELLS vec VEC-DATA!
-   cap vec VEC-CAP!
-   0 VEC-LEN vec VEC-LEN! ;
-
-: VEC-CLEAR ( ptr a -- )
-   0 VEC-LEN swap VEC-LEN! ;
-
-: VEC-CHECK-INDEX ( ptr a idx -- ) {: vec:ptr ix :}
-   vec VEC-CHECK-LIVE
-   ix IDX>N 0 < if E-VEC-BOUNDS throw then
-   ix IDX>N vec VEC-LEN@ LEN>N >= if E-VEC-BOUNDS throw then ;
-
-: VEC@ ( ptr a idx -- a ) {: vec:ptr ix :}
-   vec ix VEC-CHECK-INDEX
-   vec VEC-DATA@ ix IDX>N VEC-CELL-FIELD @ ;
-
-: VEC! ( a ptr a idx -- ) {: value vec:ptr ix :}
-   vec ix VEC-CHECK-INDEX
-   value vec VEC-DATA@ ix IDX>N VEC-CELL-FIELD ! ;
-
-: VEC-N@ ( ptr a idx -- n )
-   VEC@ ;
-
-: VEC-N! ( n ptr a idx -- )
-   VEC! ;
-
-: VEC-A@ ( ptr a idx -- ptr u8 )
-   VEC@ ;
-
-: VEC-A! ( ptr u8 ptr a idx -- )
-   VEC! ;
-
-: VEC-COPY-CELLS ( ptr a ptr a len -- ) {: src:ptr dst:ptr len :}
-   len VEC-CHECK-LEN
-   len LEN>N 0 ?do
-      src i VEC-CELL-FIELD @ dst i VEC-CELL-FIELD !
-   loop ;
-
-\ Return a mapping the vector owns (data pointer + its cell capacity) to the OS via
-\ the typed munmap inverse: the capacity IS the mapping's cell length, so
-\ MEM-CELLS>BYTES projects it to the exact byte extent MEM-ALLOC-CELLS minted and
-\ MEM:BYTES-ALLOC-LEN narrows that to the alloc-byte-len MEM:RELEASE-BYTES demands.
-: VEC-RELEASE-STORAGE ( ptr a count -- ) {: data:ptr cap :}
-   data  cap MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN  MEM:RELEASE-BYTES ;
-
-\ Copy into the new mapping, install it, then release the prior one. The release is
-\ LAST and the caller allocates BEFORE this word runs, so a failed grow (the alloc
-\ throws upstream) never reaches here and leaves the old storage owned and intact.
-: VEC-INSTALL-RESIZE ( ptr a count ptr a -- ) {: vec:ptr cap data:ptr :}
-   vec VEC-DATA@ {: old:ptr :}
-   vec VEC-CAP@ {: oldcap :}
-   old data vec VEC-LEN@ VEC-COPY-CELLS
-   data vec VEC-DATA!
-   cap vec VEC-CAP!
-   old oldcap VEC-RELEASE-STORAGE ;
-
-: VEC-CHECK-RESIZE-CAP ( ptr a count -- ) {: vec:ptr cap :}
-   vec VEC-CHECK-LIVE
-   cap VEC-CHECK-CAP
-   cap COUNT>N vec VEC-LEN@ LEN>N < if E-VEC-BOUNDS throw then ;
-
-: VEC-RESIZE ( ptr a count -- ) {: vec:ptr cap :}
-   vec cap VEC-CHECK-RESIZE-CAP
-   vec cap cap VEC-ALLOC-CELLS VEC-INSTALL-RESIZE ;
-
-\ Release the owned mapping and void ownership. Following the cuda-scope
-\ consume-on-release discipline (a ledger row is zeroed before its release, so a
-\ repeated unwind is a proved no-op), DISPOSE clears the capacity-ownership cell
-\ BEFORE the munmap: a second DISPOSE observes cap==0 and returns without a second
-\ release, and a release that throws cannot double-free on retry. A dead header
-\ (cap==0, fresh or already disposed) is the proved no-op.
-: VEC-DISPOSE ( ptr a -- ) {: vec:ptr :}
-   vec VEC-CAP-FIELD @ {: cap :}
-   cap 0= if exit then
-   vec VEC-DATA@ {: data:ptr :}
-   0 vec VEC-CAP-FIELD !
-   0 vec VEC-LEN-FIELD !
-   data cap >COUNT VEC-RELEASE-STORAGE ;
-
-: VEC-GROW-CAP ( ptr a count -- count ) {: vec:ptr need :}
-   vec VEC-CHECK-LIVE
-   need VEC-CHECK-NEED
-   vec VEC-CAP@ COUNT>N
-   begin dup need COUNT>N < while
-      dup VEC-MAX-CELLS VEC-GROWTH / > if
-         drop need COUNT>N
-      else
-         VEC-GROWTH *
-      then
-   repeat VEC-COUNT ;
-
-: VEC-ENSURE ( ptr a count -- ) {: vec:ptr need :}
-   need VEC-CHECK-NEED
-   need COUNT>N vec VEC-CAP@ COUNT>N <= if exit then
-   vec vec need VEC-GROW-CAP VEC-RESIZE ;
-
-: VEC-PUSH-AT ( a ptr a n -- idx ) {: value vec:ptr old :}
-   old VEC-IDX drop
-   vec old 1 + VEC-COUNT VEC-ENSURE
-   value vec VEC-DATA@ old VEC-CELL-FIELD !
-   old 1 + VEC-LEN vec VEC-LEN!
-   old VEC-IDX ;
-
-: VEC-PUSH ( a ptr a -- idx ) {: value vec:ptr :}
-   value vec vec VEC-LEN@ LEN>N VEC-PUSH-AT ;
-
-: VEC-PUSH-N ( n ptr a -- idx )
-   VEC-PUSH ;
-
-: VEC-PUSH-A ( ptr u8 ptr a -- idx )
-   VEC-PUSH ;
-
-: VEC-EACH ( R ptr a [ R idx a -- R ] -- R ) {: vec:ptr q :}
-   vec VEC-LEN@ LEN>N 0 ?do
-      i VEC-IDX vec i VEC-IDX VEC@ q execute
-   loop ;
-
-\ ---- B5.5 typed VEC surface over CAD-NUM roles (MODEL-CAD-V2-PLAN.md B5.5) -----
-\
-\ The raw VEC-* words above conflate item counts, capacities, and indices on one
-\ interchangeable `n` and allocate through the raw MEM-ALLOC-CELLS sink. Package
-\ VEC re-states the same growable cell vector over CAD-NUM roles: a length or a
-\ capacity is a `CAD-NUM:item-count`, an element position is a `CAD-NUM:index`, and
-\ the ONLY allocation path is the private one-cell-per-item adapter, which produces
-\ a `cell-count` (one cell per item) then an `alloc-cell-count` and calls the
-\ packaged MEM:ALLOC-CELLS - so a count/index swap is a checker reject and a zero or
-\ overflowing capacity is refused at VALIDATION before mmap. Positive behavior is
-\ byte-identical to the raw words (same storage, same E-VEC-CAPACITY/E-VEC-BOUNDS
-\ throws); the raw words stay for their not-yet-migrated callers.
-\
-\ VEC owns exactly two audited representation projections (ITEM-COUNT>N, INDEX>N),
-\ mirroring MEM's ALLOC-CELLS>N: the raw vector header cell and the cell-address
-\ arithmetic still consume a bare `n`, so the typed boundary reads a validated
-\ role's cell here. Private, no public export, confined to lib/vector.f like the MEM
-\ pair; retire when TVK-RAW (habu-nominal-storage-raw-a3430ef2) lets the header and
-\ address primitives take the nominal role directly.
-\ Retirement owner: habu-epic-model-cad-70b629a9.
-
 package VEC
 private
 
+BEGIN-STRUCTURE HEADER-BYTES
+   PTR-FIELD: DATA-PTR
+   CELL +FIELD LEN-PTR
+   CELL +FIELD CAP-PTR
+END-STRUCTURE
+
+public
+HEADER-BYTES CELL / constant HEADER-CELLS
+private
+
+2 constant GROWTH
+MEM-MAX-CELLS constant MAX-CELLS
+
+: RAW-COUNT ( n -- count )
+   dup 0 < if E-VEC-CAPACITY throw then
+   dup MAX-CELLS > if E-VEC-CAPACITY throw then
+   >COUNT ;
+
+: RAW-LEN ( n -- len )
+   dup 0 < if E-VEC-BOUNDS throw then
+   dup MAX-CELLS > if E-VEC-CAPACITY throw then
+   >LEN ;
+
+: RAW-IDX ( n -- idx )
+   dup 0 < if E-VEC-BOUNDS throw then
+   >IDX ;
+
+: CHECK-NEED ( count -- ) {: need:count :}
+   need COUNT>N 0 < if E-VEC-CAPACITY throw then
+   need COUNT>N MAX-CELLS > if E-VEC-CAPACITY throw then ;
+
+: CHECK-CAP ( count -- )
+   dup CHECK-NEED
+   COUNT>N 0= if E-VEC-CAPACITY throw then ;
+
+: CHECK-LEN ( len -- ) {: len:len :}
+   len LEN>N 0 < if E-VEC-BOUNDS throw then
+   len LEN>N MAX-CELLS > if E-VEC-CAPACITY throw then ;
+
+: CELL-PTR ( ptr a n -- ptr a ) {: base:ptr off:n :}
+   off 0 < if E-VEC-BOUNDS throw then
+   base off cells + ;
+
+: RAW-DATA@ ( ptr h -- ptr a )
+   DATA-PTR @ ;
+
+: RAW-DATA! ( ptr a ptr h -- ) {: data:ptr vec:ptr :}
+   data vec DATA-PTR ! ;
+
+: RAW-LEN@ ( ptr h -- len )
+   LEN-PTR @ RAW-LEN ;
+
+: RAW-CAP@ ( ptr h -- count )
+   CAP-PTR @ RAW-COUNT ;
+
+: RAW-CAP! ( count ptr h -- ) {: cap:count vec:ptr :}
+   cap CHECK-CAP
+   cap COUNT>N vec CAP-PTR ! ;
+
+\ Capacity is the ownership token: zero means fresh or disposed.
+: CHECK-LIVE ( ptr h -- ) {: vec:ptr :}
+   vec CAP-PTR @ 0= if E-VEC-STATE throw then ;
+
+: CHECK-DEAD ( ptr h -- ) {: vec:ptr :}
+   vec CAP-PTR @ 0 <> if E-VEC-STATE throw then ;
+
+: RAW-LEN! ( len ptr h -- ) {: len:len vec:ptr :}
+   len CHECK-LEN
+   len LEN>N vec RAW-CAP@ COUNT>N > if E-VEC-BOUNDS throw then
+   len LEN>N vec LEN-PTR ! ;
+
+: CHECK-INDEX ( ptr h idx -- ) {: vec:ptr ix:idx :}
+   vec CHECK-LIVE
+   ix IDX>N 0 < if E-VEC-BOUNDS throw then
+   ix IDX>N vec RAW-LEN@ LEN>N >= if E-VEC-BOUNDS throw then ;
+
+: RAW@ ( ptr h idx -- a ) {: vec:ptr ix:idx :}
+   vec ix CHECK-INDEX
+   vec RAW-DATA@ ix IDX>N CELL-PTR @ ;
+
+: RAW! ( a ptr h idx -- ) {: value:a vec:ptr ix:idx :}
+   vec ix CHECK-INDEX
+   value vec RAW-DATA@ ix IDX>N CELL-PTR ! ;
+
+: COPY-CELLS ( ptr a ptr a len -- ) {: src:ptr dst:ptr len:len :}
+   len CHECK-LEN
+   len LEN>N 0 ?do
+      src i CELL-PTR @ dst i CELL-PTR !
+   loop ;
+
+\ Release the exact cell extent allocated for the backing store.
+: RELEASE-STORAGE ( ptr a count -- ) {: data:ptr cap:count :}
+   data  cap MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN  MEM:RELEASE-BYTES ;
+
+\ Allocation precedes this word, so failed growth leaves the old store intact.
+: INSTALL-RESIZE ( ptr h count ptr a -- ) {: vec:ptr cap:count data:ptr :}
+   vec RAW-DATA@ {: old:ptr :}
+   vec RAW-CAP@ {: oldcap:count :}
+   old data vec RAW-LEN@ COPY-CELLS
+   data vec RAW-DATA!
+   cap vec RAW-CAP!
+   old oldcap RELEASE-STORAGE ;
+
+: CHECK-RESIZE ( ptr h count -- ) {: vec:ptr cap:count :}
+   vec CHECK-LIVE
+   cap CHECK-CAP
+   cap COUNT>N vec RAW-LEN@ LEN>N < if E-VEC-BOUNDS throw then ;
+
+: GROW-CAP ( ptr h count -- count ) {: vec:ptr need:count :}
+   vec CHECK-LIVE
+   need CHECK-NEED
+   vec RAW-CAP@ COUNT>N
+   begin dup need COUNT>N < while
+      dup MAX-CELLS GROWTH / > if
+         drop need COUNT>N
+      else
+         GROWTH *
+      then
+   repeat RAW-COUNT ;
+
+\ Private proof erasure; VEC owns the checked role boundary.
 TRUSTED: ITEM-COUNT>N ( CAD-NUM:item-count -- n ) ;
 TRUSTED: INDEX>N ( CAD-NUM:index -- n ) ;
 
-\ ---- ok-extractors: the read/derived cell is provably nonnegative, so the -------
-\ refusal arms are unreachable invariants (E-VEC-BOUNDS; mirrors MEM's
-\ E-MEM-TOTALITY discipline of an exhaustive MATCH over an impossible result).
+\ Validated internal values make refusal arms unreachable.
 : OK-ITEM-COUNT ( CAD-NUM:numeric-result<CAD-NUM:item-count> -- CAD-NUM:item-count )
    MATCH CAD-NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
@@ -273,9 +153,6 @@ TRUSTED: INDEX>N ( CAD-NUM:index -- n ) ;
       misaligned OF E-VEC-BOUNDS throw ENDOF
    ;MATCH ;
 
-\ ---- capacity narrowing: the plan's named owner boundary. A zero-admitting ------
-\ cell-count becomes the positive alloc role, or maps zero/overflow explicitly to
-\ the existing named vector-capacity throw (byte-identical to raw VEC-CHECK-CAP).
 : OK-ALLOC-CELL-COUNT
       ( CAD-NUM:numeric-result<CAD-NUM:alloc-cell-count> -- CAD-NUM:alloc-cell-count )
    MATCH CAD-NUM:numeric-result
@@ -285,65 +162,70 @@ TRUSTED: INDEX>N ( CAD-NUM:index -- n ) ;
       misaligned OF E-VEC-CAPACITY throw ENDOF
    ;MATCH ;
 
-\ ---- the private one-cell-per-item allocation adapter --------------------------
-\ item-count -> cell-count (one cell per item) -> alloc-cell-count -> MEM:ALLOC-CELLS.
-\ (MEM:CELLS-ALLOC-COUNT has this shape but throws E-MEM-SIZE; the plan pins the
-\ vector-capacity refusal here, so the two narrowing steps are re-stated with the
-\ E-VEC-CAPACITY owner boundary.)
+\ One cell per item; VEC owns E-VEC-CAPACITY at this boundary.
 : CAP-ALLOC ( CAD-NUM:item-count -- CAD-NUM:alloc-cell-count )
-   ITEM-COUNT>N CAD-NUM:CELL-COUNT OK-CELL-COUNT      \ N items -> N cells (1 cell/item)
-   CAD-NUM:AS-ALLOC-CELL-COUNT OK-ALLOC-CELL-COUNT ;  \ positive alloc role or E-VEC-CAPACITY
+   ITEM-COUNT>N CAD-NUM:CELL-COUNT OK-CELL-COUNT
+   CAD-NUM:AS-ALLOC-CELL-COUNT OK-ALLOC-CELL-COUNT ;
 
-\ ---- role bridges between CAD-NUM roles, raw cells, and the legacy helpers ------
 : N>ITEM   ( n -- CAD-NUM:item-count )  CAD-NUM:ITEM-COUNT OK-ITEM-COUNT ;
 : N>INDEX  ( n -- CAD-NUM:index )       CAD-NUM:INDEX OK-INDEX ;
-: ITEM>RC  ( CAD-NUM:item-count -- count )  ITEM-COUNT>N >COUNT ;   \ role -> legacy count
-: IX>RI    ( CAD-NUM:index -- idx )         INDEX>N >IDX ;          \ role -> legacy index
+: ITEM>RC  ( CAD-NUM:item-count -- count )  ITEM-COUNT>N >COUNT ;
+: IX>RI    ( CAD-NUM:index -- idx )         INDEX>N >IDX ;
 
 public
 
-\ ---- init / clear -------------------------------------------------------------
-: INIT ( ptr a CAD-NUM:item-count -- ) {: vec:ptr cap:CAD-NUM:item-count :}
-   vec VEC-CHECK-DEAD                             \ reject re-init of a live header (no leak)
-   cap CAP-ALLOC MEM:ALLOC-CELLS vec VEC-DATA!   \ typed alloc; 0/overflow -> E-VEC-CAPACITY
-   cap ITEM>RC vec VEC-CAP!
-   0 VEC-LEN vec VEC-LEN! ;
-: CLEAR ( ptr a -- )  VEC-CLEAR ;
-: DISPOSE ( ptr a -- )  VEC-DISPOSE ;
+: INIT ( ptr h CAD-NUM:item-count -- ) {: vec:ptr cap:CAD-NUM:item-count :}
+   vec CHECK-DEAD
+   cap CAP-ALLOC MEM:ALLOC-CELLS vec RAW-DATA!
+   cap ITEM>RC vec RAW-CAP!
+   0 RAW-LEN vec RAW-LEN! ;
+: CLEAR ( ptr h -- )  0 RAW-LEN swap RAW-LEN! ;
 
-\ ---- length / capacity readers (raw cell -> item-count role) ------------------
-: LEN@ ( ptr a -- CAD-NUM:item-count )  VEC-LEN@ LEN>N N>ITEM ;
-: CAP@ ( ptr a -- CAD-NUM:item-count )  VEC-CAP@ COUNT>N N>ITEM ;
+\ Clear ownership before release so repeated disposal is a no-op and a failed
+\ release cannot double-free on retry.
+: DISPOSE ( ptr h -- ) {: vec:ptr :}
+   vec CAP-PTR @ {: cap:n :}
+   cap 0= if exit then
+   vec RAW-DATA@ {: data:ptr :}
+   0 vec CAP-PTR !
+   0 vec LEN-PTR !
+   data cap >COUNT RELEASE-STORAGE ;
 
-\ ---- resize / ensure (every allocation flows through the typed adapter) -------
-: RESIZE ( ptr a CAD-NUM:item-count -- ) {: vec:ptr cap:CAD-NUM:item-count :}
+: LEN@ ( ptr h -- CAD-NUM:item-count )  RAW-LEN@ LEN>N N>ITEM ;
+: CAP@ ( ptr h -- CAD-NUM:item-count )  RAW-CAP@ COUNT>N N>ITEM ;
+
+\ Invalidated by resize or disposal.
+: DATA@ ( ptr h -- ptr a )  dup CHECK-LIVE RAW-DATA@ ;
+
+: RESIZE ( ptr h CAD-NUM:item-count -- ) {: vec:ptr cap:CAD-NUM:item-count :}
    cap ITEM>RC {: rc:count :}
-   vec rc VEC-CHECK-RESIZE-CAP                     \ reject 0 / cap < active length
-   vec rc  cap CAP-ALLOC MEM:ALLOC-CELLS  VEC-INSTALL-RESIZE ;
-: ENSURE ( ptr a CAD-NUM:item-count -- ) {: vec:ptr need:CAD-NUM:item-count :}
+   vec rc CHECK-RESIZE
+   vec rc  cap CAP-ALLOC MEM:ALLOC-CELLS  INSTALL-RESIZE ;
+: ENSURE ( ptr h CAD-NUM:item-count -- ) {: vec:ptr need:CAD-NUM:item-count :}
    need ITEM-COUNT>N {: nn:n :}
-   nn >COUNT VEC-CHECK-NEED                        \ reject negative / above max
-   nn vec VEC-CAP@ COUNT>N <= if exit then         \ no-op ensure (need <= capacity)
-   vec  vec nn >COUNT VEC-GROW-CAP COUNT>N N>ITEM  RESIZE ;
+   nn >COUNT CHECK-NEED
+   nn vec RAW-CAP@ COUNT>N <= if exit then
+   vec  vec nn >COUNT GROW-CAP COUNT>N N>ITEM  RESIZE ;
 
-\ ---- append (returns the index the value landed at) ---------------------------
-: PUSH ( a ptr a -- CAD-NUM:index ) {: value:a vec:ptr :}
-   value vec VEC-PUSH IDX>N N>INDEX ;
+: PUSH ( a ptr h -- CAD-NUM:index ) {: value:a vec:ptr :}
+   vec RAW-LEN@ LEN>N {: old:n :}
+   vec old 1 + N>ITEM ENSURE
+   value vec RAW-DATA@ old CELL-PTR !
+   old 1 + RAW-LEN vec RAW-LEN!
+   old N>INDEX ;
 
-\ ---- iterate active cells, index-first (index lifted to the role) -------------
 \ typed-local-lint: allow-bare-local - q preserves the row-polymorphic quotation
 \ effect [ R CAD-NUM:index a -- R ], which a local annotation cannot express.
-: EACH ( R ptr a [ R CAD-NUM:index a -- R ] -- R ) {: vec:ptr q :}
-   vec VEC-LEN@ LEN>N 0 ?do
-      i N>INDEX  vec i VEC-IDX VEC@  q execute
+: EACH ( R ptr h [ R CAD-NUM:index a -- R ] -- R ) {: vec:ptr q :}
+   vec RAW-LEN@ LEN>N 0 ?do
+      i N>INDEX  vec i RAW-IDX RAW@  q execute
    loop ;
 
-\ ---- element access (index role -> checked raw cell) --------------------------
 \ Defined last: `@`/`!` name the package fetch/store VEC:@ / VEC:!, which would
 \ shadow the core cell primitives inside later VEC bodies.
-: @ ( ptr a CAD-NUM:index -- a ) {: vec:ptr ix:CAD-NUM:index :}
-   vec ix IX>RI VEC@ ;
-: ! ( a ptr a CAD-NUM:index -- ) {: value:a vec:ptr ix:CAD-NUM:index :}
-   value vec ix IX>RI VEC! ;
+: @ ( ptr h CAD-NUM:index -- a ) {: vec:ptr ix:CAD-NUM:index :}
+   vec ix IX>RI RAW@ ;
+: ! ( a ptr h CAD-NUM:index -- ) {: value:a vec:ptr ix:CAD-NUM:index :}
+   value vec ix IX>RI RAW! ;
 
 ;package

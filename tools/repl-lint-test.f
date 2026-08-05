@@ -15,4 +15,4 @@ require tools/repl-lint-core.f
 
 require tools/repl-lint-test-lib.f
 
-RLT-MAIN
+LINT-REPL:TEST
