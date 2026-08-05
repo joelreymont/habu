@@ -265,7 +265,7 @@ create CASEBUF DIGEST-BYTES U64W + U64W + allot \ [digest][seed][k] for CASE-ID
 : GEN-AT ( n n -- ptr u8 )  {: s:n k:n :}   s SET-CAP * k + CKW * GEN-COL + ;
 : REF-AT ( n n -- ptr u8 )  {: s:n k:n :}   s SET-CAP * k + CKW * REF-COL + ;
 : PROP-AT ( n n -- ptr u8 ) {: s:n k:n :}   s SET-CAP * k + CKW * PROP-COL + ;
-: BUDGET-CELL ( n n -- a )  {: s:n d:n :}   s BUDGET:DIM-COUNT * d + cells BUDGET-COL + ;
+: BUDGET-CELL ( n n -- ptr n )  {: s:n d:n :}   s BUDGET:DIM-COUNT * d + cells BUDGET-COL + ;
 
 : SLOT-ALLOC ( -- n )   POOL-NEXT @  dup 1+ SUITE-CAP mod POOL-NEXT ! ;
 
