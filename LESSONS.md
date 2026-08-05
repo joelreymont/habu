@@ -5250,3 +5250,18 @@ text search. When deleting a check, name what still observes its invariant;
 where the answer is nothing and the invariant is real, that is a new dot, not
 a silent deletion.
 
+## A rollback that runs after the counter moved is worse than none (2026-08-05)
+
+A rejected SUMTYPE left its family chained in the tail index and the next
+lookup of that tail died 76 - yet every watermark assertion passed, because
+every watermark was right. The declaration layer rewound the counters itself;
+the outer restore's retirement then ran against already-rewound counters,
+popped nothing, and stamped the index current - erasing the one rewind signal
+the index's ENSURE path heals itself with. A no-op retire is an assertion of
+cleanliness. The repair removes the second writer rather than guarding the
+first: one registry word retires the indexes and then moves every counter, it
+is the only thing in the tree that writes them, and retirement arriving after
+the fact refuses by name. When composing rollback participants, the ordering
+must be a property of the owner, never an agreement between callers - two
+individually-correct participants composed into this bug.
+
