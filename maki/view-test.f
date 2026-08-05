@@ -121,14 +121,14 @@ VST @ 0 0 TENSOR:TV-AT@ 0.5 f+ f>s 77 T=
    a b f- fabs   0.001  0.01 a fabs f* f+   f< ;
 
 \ L(V) = sum_m materialized-V[m] * W[m]  (a linear readout with weights W)
-: FD-LOSS ( tensor ptr a ptr a -- r ) {: v:tensor wp:ptr mp:ptr :}
+: FD-LOSS ( tensor ptr r ptr r -- r ) {: v:tensor wp:ptr mp:ptr :}
    v mp TENSOR:TV-MATERIALIZE
    v TENSOR:TV-ROWS@ ROWS-RAW  v TENSOR:TV-COLS@ COLS-RAW *  {: n:n :}
    0.0  n 0 ?do  mp i T-GET  wp i T-GET  f*  f+  loop ;
 
 \ central FD of L w.r.t. every storage element vs the analytic scatter-add adjoint.
 variable FD-OK
-: FD-CHECK ( tensor ptr a ptr a n ptr a ptr a -- bool )
+: FD-CHECK ( tensor ptr r ptr r n ptr r ptr r -- bool )
    {: v:tensor wp:ptr sp:ptr selems:n ap:ptr mp:ptr :}
    0.0 ap selems T-FILL
    v wp ap TENSOR:TV-VIEW-ADJOINT+                 \ analytic: A[k] = sum_{idx(m)=k} W[m]
@@ -149,7 +149,7 @@ create VT-COT 24 cells allot        \ transpose 6x4 cotangent
 create VH-COT 12 cells allot        \ head 4x3 cotangent
 create VG-COT  4 cells allot        \ general 2x2 cotangent
 \ non-uniform cotangents so a real (not identically-zero) gradient is exercised
-: COT-INIT ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  i 1+ 3 mod 1+ s>f  p i T-SET  loop ;
+: COT-INIT ( ptr r n -- ) {: p:ptr n:n :}  n 0 ?do  i 1+ 3 mod 1+ s>f  p i T-SET  loop ;
 VW-COT 12 COT-INIT   VT-COT 24 COT-INIT   VH-COT 12 COT-INIT   VG-COT 4 COT-INIT
 
 VW @ VW-COT VS 24 VA VM FD-CHECK TTRUE   \ WINDOW    adjoint gradchecks
