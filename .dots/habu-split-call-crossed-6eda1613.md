@@ -8,7 +8,7 @@ created-at: "2026-08-05T17:03:15.149470+02:00"
 
 CALL-PRESSURE road, from the spill lane's measurement (2026-08-05, bookmark spill): a value live across a CALLLESS loop already spills today (probe: 7 live across a callless loop compiles rc 0; the same 7 across a call in the loop refuses E-A64RA-SPILL -8508) — the refusal comes from MB-KEEP-BLOCK KEEPing every operand of the call site's data-stack saves in the middle block, NOT from loop residency. Fix: split the live range so the value is dead across the loop — store in the entry block, reload in the exit block — a placement ORDER-CK already permits; no middle-block frame redesign (that stays with habu-spill-from-a-4145325c and is NOT needed here). Also: correct tools/codegen-compare-new4.f's stale 'one refusal, two roads' paragraph, and promote the lane's probe (/private/tmp/claude-501/spill-probe-final.f) into tools/ as the regression instrument. Acceptance: CALL-PRESSURE compiles, answers match the engine bit-for-bit, the A64RAV validator checks the split slots, no previously-supported row changes bytes, both-gaps reported, corpus-4 baseline re-pinned deliberately.
 
-Claim: agent=callsplit2 workspace=.jj-ws/habu-split-call-crossed-6eda1613
+Claim: agent=callsplit3 workspace=.jj-ws/habu-split-call-crossed-6eda1613
 
 MEASURED 2026-08-05 (agent=callsplit). STOPPED BEFORE THE FIX, with the dot's
 headline finding CONFIRMED and its stated mechanism and prescribed fix both
@@ -259,3 +259,61 @@ the pieces are dropped for good.
 DESIGN CORRECTION (2026-08-05, measured against the tree; supersedes the RE-CUT's 'store to its slot before the loop' wording — the elaborator HAS no frame, by design: frame.f has exactly two owners): the split is a DIRECTIVE plus a RETRY. (1) Elaborator: under a flag, stop threading the call-surviving local (out of LOCAL-ARGS+, CALL-OPERANDS+, LOCAL-RESULTS@) and mark the value MUST-SPILL. (2) Allocator: a must-spill mark makes slot placement unconditional (NEW-SLOT/CL-SLOT + P-STORE/P-RELOAD planning as today) — mandatory, because the un-threaded value absent from the call operand list is safe ONLY if it provably lives in memory across the call (elaborate.f:2223's hazard; the failure mode of getting this wrong is silent wrong answers). (3) Trigger: structural, not estimated — migrate.f WORK retries once: elaborate/allocate exactly as today, and only on E-A64RA-SPILL re-elaborate with the split enabled and re-run the chain; below-pressure bodies are byte-identical BY CONSTRUCTION (they never take the second pass). (4) A64RAV checks the SLOT EXISTS and is stored before the region and reloaded after — the slot is what makes the missing threading safe, so the validator's primary object is the slot, not the absence. Probe suite tools/codegen-spill-probe.f is the regression floor. The rejected alternative branch (a dialect frame-access op so elaboration could emit stores directly) adds a cross-pass primitive with no second consumer — do not build it.
 
 GENERATION 4 (2026-08-05, measured; supersedes pieces 2 and 4 of the DESIGN CORRECTION): (1) the elaborator directive is ONE LINE and proven — every carrier asks CROSS-L for its count and the list is all-or-none (LOCAL-CK), so answering nought under the flag is the whole suppression; flag on, CALL-PRESSURE's shape compiles rc 0 through NMIGRATE:DEFINE-CALLING with answers bit-identical to the engine on all pinned rows plus MAX-INT/MIN-INT variants. (2)+(4) STRUCK: the 2223 hazard is already enforced twice — regalloc.f MB-CROSSES?/MB-FORBID bars each spanning class from every callee-destroyed register (asked of every class, not the operand list), and regalloc-verify.f:523-538 re-derives the rule independently off the callee's clobber record, barring the whole pool for a record-less callee. A mandatory spill would force a frame round-trip where a non-destroyed register already serves — worse code, no safety. Reinstatement experiment before striking forever: find a body where MB-FORBID plus A64RAV do NOT cover an un-threaded value (none found; none proven absent). (3) REMAINING WORK, the only unbuilt piece: the retry. migrate.f MODEL (:314) mints against CC BB IR-BUILD:MODULE-KEY and NELAB:COLON checks tape identity against the builder's module, so a second attempt needs a second builder AND model; naively moving MODEL after the publication prologue makes EVERY migration throw E-IR-BUILD-STALE. The retry must be a full second WORK-shaped pass — answer first: what in the publication prologue depends on the live builder. select.f's VMAP rebinding (:579-588) is the general obstacle to any elaborator-to-allocator per-value mark, recorded for future passes.
+
+GENERATION 5 (2026-08-05, agent=callsplit3): the retry's prologue question,
+ANSWERED, and the answer rules out the dispatched shape. No compiler code
+changed; migrate.f is byte-identical to master.
+
+WHAT IN THE PUBLICATION PROLOGUE DEPENDS ON THE LIVE BUILDER: exactly one word,
+and it is worse than a dependency. migrate.f RECORD (:337) is the only one -
+PUBLISHED-ONE, LATEST-WID, LATEST-NAME$, RESOLVES-TO-LATEST and KEEP-NAME touch
+neither BB nor CC nor MKEY, they read the engine dictionary. RECORD does three
+things bound to one unit: it mints the TAPE against CC BB IR-BUILD:MODULE-KEY,
+it opens the feed unit, and it runs SCAN - which is `SRC$ EV`, the ENGINE
+COMPILING AND PUBLISHING THE DEFINITION. PUBLISHED-ONE then asserts that exactly
+one dictionary record appeared.
+
+SO THE RETRY IS NOT "RE-RUN ELABORATE-THROUGH-EMIT". Attempt two needs a tape,
+the tape is keyed to a module, a module belongs to a builder, and the tape is
+made only by evaluating the source. Re-running from RECORD therefore evaluates
+the source a SECOND time and publishes the word a SECOND time; not re-running it
+leaves attempt two with a tape NELAB:COLON must refuse as another module's.
+
+THE THREE SHAPES, AND WHY EACH IS BIGGER THAN THE DISPATCH SAYS.
+
+  (A) SECOND BUILDER, SECOND MODEL, SECOND TAPE - the dispatched shape. It
+      requires a second RECORD, hence a second `SRC$ EV`, hence a duplicate
+      dictionary record. Habu forbids silent redefinition, so it needs the first
+      record retired (XREF-RETIRE, src/habu/xref.f:360) before re-evaluating -
+      which is available, but makes the migration compile every retried body
+      twice in the engine and leave a retired record behind per retry. That is a
+      dictionary-lifecycle change, not a migrate.f-local one.
+
+  (B) ONE BUILDER, ONE TAPE, TWO FUNCTIONS - elaborate the same tape twice into
+      the same module and allocate the second function. It needs no second tape,
+      model, RECORD or publication, which is why it fits the tree's grain best.
+      It is refused in FOUR places: regalloc.f:1931, regalloc-verify.f:251,
+      spill.f:920 and emit.f:1720 each throw *-SHAPE unless FUN-COUNT is exactly
+      one. IR-BUILD:ABANDON-FUN (build.f:927) abandons a function being STAGED,
+      not a completed one, so the refused first function cannot simply be
+      dropped: NELAB:COLON ends with END-FUN.
+
+  (C) MAKE A COMPLETED FUNCTION ABANDONABLE - a transactional rewind at the
+      builder, so attempt one leaves the module as it found it. This is what the
+      dispatch assumed CG-07 had landed; it has not. The only REWIND in the tree
+      is TFAM-REWIND in the checker's type-family registry (src/core/checker.f,
+      type-family.f, sumtype.f), which is a different registry and not a builder
+      facility.
+
+WHAT THE NEXT LANE SHOULD DECIDE FIRST, because it is a design choice and not a
+measurement: whether the retry pays a second engine compile plus a retired
+dictionary record (A), or the four one-function shape rules are relaxed to
+"allocate the LAST function" and a completed function becomes abandonable (B/C).
+(B) with (C) is the smaller runtime cost and the larger blast radius; (A) is
+migrate.f-plus-dictionary and touches no pass. Neither is a twenty-line change,
+and both fail in ways that corrupt the dictionary or leak a module, so neither
+should be attempted without deciding this first.
+
+STILL TRUE AND STILL UNBUILT: piece (1), one line in elaborate.f CROSS-L, proven
+in generation 4. It has no consumer until the retry exists, so it stays uncommitted.
+
