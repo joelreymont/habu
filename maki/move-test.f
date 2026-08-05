@@ -3,6 +3,7 @@
 \ float-cell buffers, plus every fail-closed extent / range / index path.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/move.f
 
 package MAKI
@@ -13,9 +14,9 @@ create MV-DST 8 cells allot
 create MV-B   4 cells allot
 create MV-IX  4 cells allot
 
-: MV-CELL ( ptr a n -- n )  T-GET 0.5 f+ f>s ;     \ read a float cell as an int
+: MV-CELL ( ptr r n -- n )  T-GET 0.5 f+ f>s ;     \ read a float cell as an int
 
-: MV-SEQ ( r ptr a n -- ) {: v0:r base:ptr n:n :}  \ fill base[i] = v0 + i
+: MV-SEQ ( r ptr r n -- ) {: v0:r base:ptr n:n :}  \ fill base[i] = v0 + i
    n 0 ?do  v0 i s>f f+  base i T-SET  loop ;
 
 \ ---- fail-closed probes (top level cannot push quotations) -----------------
@@ -25,10 +26,26 @@ create MV-IX  4 cells allot
 : TRY-MV-RANGE-HI ( -- )  MV-SRC 4 2 2 5 MV-DST MOVE-SLICE ;        \ r1 > rows
 : TRY-MV-RANGE-INV ( -- ) MV-SRC 4 2 3 1 MV-DST MOVE-SLICE ;        \ r0 > r1
 : TRY-MV-INDEX    ( -- )
-   3 MV-IX 0 cells + !  0 MV-IX 1 cells + !                          \ idx {3,0}, 3 >= rows
+   3.0 MV-IX 0 T-SET  0.0 MV-IX 1 T-SET                              \ idx {3,0}, 3 >= rows
    MV-SRC 3 2 MV-IX 2 MV-DST MOVE-GATHER ;
 
 T-RESET
+
+s" MV-R-RS ( ptr r n n ptr r n n -- ) MOVE-RESHAPE" CHECK-QUIET-CANDIDATE! -1 T=
+s" MV-N-RS ( ptr n n n ptr n n n -- ) MOVE-RESHAPE" CHECK-QUIET-CANDIDATE! 0 T=
+s" MV-U8-RS ( ptr u8 n n ptr u8 n n -- ) MOVE-RESHAPE" CHECK-QUIET-CANDIDATE! 0 T=
+s" MV-R-TR ( ptr r n n ptr r n n -- ) MOVE-TRANSPOSE" CHECK-QUIET-CANDIDATE! -1 T=
+s" MV-N-TR ( ptr n n n ptr n n n -- ) MOVE-TRANSPOSE" CHECK-QUIET-CANDIDATE! 0 T=
+s" MV-U8-TR ( ptr u8 n n ptr u8 n n -- ) MOVE-TRANSPOSE" CHECK-QUIET-CANDIDATE! 0 T=
+s" MV-R-SL ( ptr r n n n n ptr r -- ) MOVE-SLICE" CHECK-QUIET-CANDIDATE! -1 T=
+s" MV-N-SL ( ptr n n n n ptr n -- ) MOVE-SLICE" CHECK-QUIET-CANDIDATE! 0 T=
+s" MV-U8-SL ( ptr u8 n n n n ptr u8 -- ) MOVE-SLICE" CHECK-QUIET-CANDIDATE! 0 T=
+s" MV-R-CC ( ptr r n n ptr r n n ptr r -- ) MOVE-CONCAT" CHECK-QUIET-CANDIDATE! -1 T=
+s" MV-N-CC ( ptr n n n ptr n n n ptr n -- ) MOVE-CONCAT" CHECK-QUIET-CANDIDATE! 0 T=
+s" MV-U8-CC ( ptr u8 n n ptr u8 n n ptr u8 -- ) MOVE-CONCAT" CHECK-QUIET-CANDIDATE! 0 T=
+s" MV-R-GA ( ptr r n n ptr r n ptr r -- ) MOVE-GATHER" CHECK-QUIET-CANDIDATE! -1 T=
+s" MV-N-GA ( ptr n n n ptr n n ptr n -- ) MOVE-GATHER" CHECK-QUIET-CANDIDATE! 0 T=
+s" MV-U8-GA ( ptr u8 n n ptr u8 n ptr u8 -- ) MOVE-GATHER" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- reshape: 2x3 -> 3x2 is a straight copy (order preserved) ---------------
 1.0 MV-SRC 6 MV-SEQ                                 \ src = 1..6 row-major
@@ -60,7 +77,7 @@ MV-DST 5 MV-CELL 6 T=
 
 \ ---- gather: pick rows {2,0} of a 3x2 buffer -------------------------------
 7.0 MV-SRC 6 MV-SEQ                                 \ src = {7,8,9,10,11,12}
-2 MV-IX 0 cells + !  0 MV-IX 1 cells + !
+2.0 MV-IX 0 T-SET  0.0 MV-IX 1 T-SET
 MV-SRC 3 2 MV-IX 2 MV-DST MOVE-GATHER
 MV-DST 0 MV-CELL 11 T=                              \ row 2 = {11,12}
 MV-DST 2 MV-CELL 7 T=                               \ row 0 = {7,8}

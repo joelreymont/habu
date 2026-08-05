@@ -28,8 +28,8 @@
 \ planning, no gradients, no reporting. Fail closed: an op with no host reference
 \ (cast / decode) is E-EX-UNSUP; an unbound input is E-EX-UNBOUND; arena / index
 \ overflow is E-EX-CAP; a bad slot / node index is E-EX-SLOT / E-EX-NODE. Gather
-\ indices are read from the float operand (rounded to nearest) into an int scratch, so
-\ the exact move.f gather/scatter references run unchanged. maki -> habu; owns -5130..-5134.
+\ indices are read and rounded directly by move.f; scatter alone converts its float
+\ operand into EX-IDX integer scratch. maki -> habu; owns -5130..-5134.
 
 require lib/string.f
 require lib/float.f
@@ -86,7 +86,7 @@ $8000  constant EX-ARENA-CELLS \ node-buffer arena SEED (float cells); the arena
                                \ working size from the model at plan time and grows past this seed
 $80000 constant EX-ARENA-MAX   \ generous sanity ceiling (float cells): a plan needing more is an
                                \ absurd model and dies E-EX-CAP before any node runs (transactional)
-$400  constant EX-IDX-CAP     \ gather/scatter index scratch (rows)
+$400  constant EX-IDX-CAP     \ scatter index scratch (rows)
 
 create EX-ARENA  EX-ARENA-CELLS cells allot   \ seed node-buffer pool (EX-ARENA-P starts here)
 create EX-OFF    EX-OFF-SEED cells allot        \ per-node arena-offset table SEED (cells); EX-OFF-P starts here
@@ -102,7 +102,7 @@ variable EX-IN-PP                               \ current ptr-table base ptr
 variable EX-IN-SP                               \ current set-table base ptr
 variable EX-IN-CAP                              \ current input-table capacity (slots); grow-to-largest
 variable EX-IN-N                                \ live slot count of the last bind (exact)
-create EX-IDX    EX-IDX-CAP cells allot          \ int index scratch (gather/scatter)
+create EX-IDX    EX-IDX-CAP cells allot          \ int index scratch (scatter)
 
 \ The node-buffer arena, the per-node offset table, and the per-slot input tables are all model-
 \ proportional (design dot habu-size-model-proportional): each derives its working size from the model
@@ -322,7 +322,7 @@ private
    xr EX-REF-PTR  wr EX-REF-PTR  br EX-REF-PTR  nd EX-NODE-PTR
    nd EX-NODE-NROWS  xr EX-REF-NCOLS  nd EX-NODE-NCOLS  LINEAR ;
 
-\ ---- movement (attrs carry slice offsets; gather reads an int index scratch) -
+\ ---- movement (attrs carry slice offsets; gather reads float indices directly) -
 : EX-BUILD-IDX ( MIR:operand-ref -- n ) {: r:MIR:operand-ref :}   \ float index operand -> EX-IDX ints; count
    r EX-REF-ELEMS {: n:n :}
    n EX-IDX-CAP > if E-EX-CAP throw then
@@ -355,9 +355,8 @@ private
 : EX-GATHER ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd 0 MIR-INPUT-IDX MIR-IN@ {: rs:MIR:operand-ref :}
    nd 1 MIR-INPUT-IDX MIR-IN@ {: rix:MIR:operand-ref :}
-   rix EX-BUILD-IDX {: nix:n :}
    rs EX-REF-PTR  rs EX-REF-NROWS  rs EX-REF-NCOLS
-   EX-IDX  nix  nd EX-NODE-PTR  MOVE-GATHER ;
+   rix EX-REF-PTR  rix EX-REF-ELEMS  nd EX-NODE-PTR  MOVE-GATHER ;
 
 \ ---- reduce / scatter backward references ----------------------------------
 : EX-ROWSUM ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
