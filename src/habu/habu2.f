@@ -2161,7 +2161,7 @@ public
 \ unattributable. Emit the fixed label first, then the token + newline; the
 \ exit codes stay the deterministic contracts (dict full $4D=77, code space
 \ full $4C=76).
-: C-CAP-LABEL ( ptr a -- )
+: C-CAP-LABEL ( ptr n -- )
    0 2 MOVZ,
    LABEL@ 1 swap ADR,
    2 CAPMSG-LEN MOVZ,  NR-WRITE SYS, ;
@@ -3117,7 +3117,7 @@ variable BAD  variable MEM  variable FULL  variable DRIFT
 variable VDESC  variable DRIFT-FAIL
 4095 constant MAX-WIDTH
 
-: FAIL ( ptr a n -- ) {: msg:ptr len:n :}
+: FAIL ( ptr n n -- ) {: msg:ptr len:n :}
    0 2 MOVZ,  1 msg LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 76 MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -3454,7 +3454,7 @@ variable CFSK
 TRUSTED: EM-HXT-EXECUTE ( n -- )
    execute ;
 
-: CF-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt:n :}
+: CF-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt:n :}
    LBL CFSK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
@@ -3464,7 +3464,7 @@ TRUSTED: EM-HXT-EXECUTE ( n -- )
 
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
-: CFN-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt:n :}
+: CFN-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt:n :}
    LBL CFSK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
@@ -3485,7 +3485,7 @@ variable CFSK2
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
-: CFB-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm:n hxtr:n :}
+: CFB-ENTRY ( label ptr n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm:n hxtr:n :}
    LBL CFSK !  LBL CFSK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
@@ -3507,7 +3507,7 @@ variable CFSK2
 \ cfbn-entry: like CFB-ENTRY but the register path neither spills nor saves —
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ LVDROP (which only relabels the VS, no emission).
-: CFBN-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm:n hxtr:n :}
+: CFBN-ENTRY ( label ptr n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm:n hxtr:n :}
    LBL CFSK !  LBL CFSK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
@@ -5543,7 +5543,7 @@ public
 \ and emit the control, literal, operator, call, and reset paths.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 variable P2SK
-: P2W-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n k:n ext:n :}
+: P2W-ENTRY ( label ptr n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n k:n ext:n :}
    LBL P2SK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 P2SK LABEL@ CBZ,
@@ -5553,9 +5553,9 @@ variable P2SK
    ext JIT-XT-EXECUTE
    lmainlbl B,
    P2SK LABEL@ LBL, ;
-s" p2w-entry" s" label ptr a n n n --" TRUST
+s" p2w-entry" s" label ptr n n n n --" TRUST
 
-: P2F-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n ext:n :}
+: P2F-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n ext:n :}
    LBL P2SK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 P2SK LABEL@ CBZ,
@@ -5564,7 +5564,7 @@ s" p2w-entry" s" label ptr a n n n --" TRUST
    ext JIT-XT-EXECUTE
    lmainlbl B,
    P2SK LABEL@ LBL, ;
-s" p2f-entry" s" label ptr a n n --" TRUST
+s" p2f-entry" s" label ptr n n n --" TRUST
 
 \ op bodies: read the operand widths (P2W cells, pos 0 = stack top), compose
 \ sums into the helper args, BL the emit helper(s).
@@ -6040,12 +6040,9 @@ s" em-p2-start" s" --" TRUST
    nowide LBL, ;
 s" em-p2-trigger" s" --" TRUST
 
-\ EM-P2-CHECK-DEFINER: the sig'd-definition publish gate. Pass 1 runs the hook
-\ (which registers the certified signature) and then the pass-2 trigger. The
-\ pass-2 second ';' must NOT re-run the hook — a second CHECK! of the same name
-\ hits the checker's certified-duplicate guard (CHECKER-DUP-DEFINITION, throw
-\ $4E) — so it skips straight to the normal TRUST-PEND publish tail, giving the
-\ exact pass-1 registration sequence (one certify add + one trust row).
+\ EM-P2-CHECK-DEFINER: the sig'd-definition publish gate. Pass 1 runs the hook,
+\ which records the one certified effect, then starts pass 2 when needed. The
+\ pass-2 second ';' skips both re-check and TRUST publication.
 : EM-P2-CHECK-DEFINER ( -- )
    LBL {: p2sk:label :}
    9 DATA P2-CELL LDR,  9 p2sk CBNZ,
@@ -6057,9 +6054,8 @@ s" em-p2-trigger" s" --" TRUST
 s" em-p2-check-definer" s" --" TRUST
 
 \ EM-P2-FINISH: emitted on the publish tail — the pass-2 second ';' published
-\ through the ordinary trusted tail (hook re-check skipped), so resume the
-\ saved real input and clear the pass-2 state (dead pointers zeroed for image
-\ determinism).
+\ without re-checking or replacing the certified effect, so resume the saved
+\ real input and clear the pass-2 state (dead pointers zeroed for image determinism).
 : EM-P2-FINISH ( -- )
    LBL {: nop2:label :}
    9 DATA P2-CELL LDR,  9 nop2 CBZ,
@@ -6082,7 +6078,7 @@ s" em-p2-finish" s" --" TRUST
 s" em-compile-flush-pend" s" --" TRUST
 
 : EM-COMPILE-PUBLISH-TRUSTED ( label -- ) {: publish:label :}
-   LBL LBL LBL {: ttrusted ndhas ndchk :}
+   LBL LBL LBL LBL {: ttrusted ndhas ndchk checked :}
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
       \ hook-certified sig'd definition (TSIG holds the captured signature, so
       \ every checked `: NAME ( .. )` publishes HERE): a wider-than-cell width
@@ -6097,7 +6093,9 @@ s" em-compile-flush-pend" s" --" TRUST
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
    ndchk LBL,
-   C-CALL-TRUST-PEND
+   10 DATA TRUSTED-CELL LDR,  10 checked CBZ,
+      C-CALL-TRUST-PEND
+   checked LBL,
    publish B, ;
 s" em-compile-publish-trusted" s" label --" TRUST
 

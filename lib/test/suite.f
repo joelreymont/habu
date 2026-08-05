@@ -46,6 +46,8 @@ variable CUR-LABEL-U
 variable RUN-I
 variable RUN-N
 
+public
+
 defer SETUP ( -- )
 defer TEARDOWN ( -- )
 defer DRAIN ( -- )
@@ -54,6 +56,8 @@ defer ARG+ ( ptr u8 n -- )
 defer SELECT? ( -- bool )
 defer RUNNER ( ptr u8 n -- )
 defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
+
+private
 
 : TRUE ( -- bool )
    0 0= ;
@@ -316,39 +320,15 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 
 public
 
-: SETUP! ( [ -- ] -- )
-   is SETUP ;
-
-: TEARDOWN! ( [ -- ] -- )
-   is TEARDOWN ;
-
-: DRAIN! ( [ -- ] -- )
-   is DRAIN ;
-
-: ARGS-BEGIN! ( [ -- ] -- )
-   is ARGS-BEGIN ;
-
-: ARG+! ( [ ptr u8 n -- ] -- )
-   is ARG+ ;
-
-: SELECT?! ( [ -- bool ] -- )
-   is SELECT? ;
-
-: RUNNER! ( [ ptr u8 n -- ] -- )
-   is RUNNER ;
-
-: STDIN-RUNNER! ( [ ptr u8 n ptr u8 n -- ] -- )
-   is STDIN-RUNNER ;
-
 : DEFAULTS ( -- )
-   [: NOOP ;] SETUP!
-   [: NOOP ;] TEARDOWN!
-   [: NOOP ;] DRAIN!
-   [: NOOP ;] ARGS-BEGIN!
-   [: ARG-DROP ;] ARG+!
-   [: YES ;] SELECT?!
-   [: RUN-MISSING ;] RUNNER!
-   [: STDIN-RUN-MISSING ;] STDIN-RUNNER! ;
+   [: NOOP ;] is SETUP
+   [: NOOP ;] is TEARDOWN
+   [: NOOP ;] is DRAIN
+   [: NOOP ;] is ARGS-BEGIN
+   [: ARG-DROP ;] is ARG+
+   [: YES ;] is SELECT?
+   [: RUN-MISSING ;] is RUNNER
+   [: STDIN-RUN-MISSING ;] is STDIN-RUNNER ;
 
 : RESET ( -- )
    0 ITEM-N !

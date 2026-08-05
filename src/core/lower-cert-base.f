@@ -47,13 +47,9 @@ variable BODY-HASH
 \ reason CHECKER-CERT:PRODUCER-XT is: the cell holds an execution token, it is
 \ persisted in the DP heap, and only `defer`/`is` declare such a cell to the
 \ snapshot address-cell table (dot habu-declare-persisted-producer-76fbce09).
+public
 defer FULL-XT ( ptr u8 n n -- )
-
-\ Whether the full producer has been installed is a question DISPATCH has to
-\ ASK — with no full producer it must still emit a boot-safe empty certificate,
-\ and a dispatch cell cannot be interrogated. So the grant is recorded in an
-\ ordinary integer flag, which also keeps the single-assignment guard below.
-variable FULL-SET   0 FULL-SET !
+private
 
 : BUF ( -- ptr a ) BUF-P @ ;
 
@@ -101,20 +97,23 @@ variable FULL-SET   0 FULL-SET !
    idx 0 < idx BUF-N @ >= or if s" lowering certificate cell index" 76 die then
    idx cells BUF + @ ;
 
-: FULL-INSTALL ( [ ptr u8 n n -- ] -- )
-   FULL-SET @ 0 <> if s" lowering certificate full producer already installed" 76 die then
-   is FULL-XT
-   1 FULL-SET ! ;
-
-: DISPATCH ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
-   FULL-SET @ 0 <> if a u verdict FULL-XT exit then
+: FULL-DEFAULT ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
+   verdict drop
    WF-N@ 0 <> if s" lowering certificate facts before full producer" 76 die then
    a u EMPTY ;
+
+: FULL-DEFAULT-INSTALL ( -- )
+   [: FULL-DEFAULT ;] is FULL-XT ;
+
+FULL-DEFAULT-INSTALL
+
+: DISPATCH ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
+   a u verdict FULL-XT ;
 
 \ One-shot install seam. A quotation is a compile-time construct, so the
 \ producer is handed over from inside a definition rather than from the top
 \ level; the seal retires this word with the rest of the install surface.
-: DISPATCH-INSTALL ( -- ) [: DISPATCH ;] CHECKER-CERT:INSTALL ;
+: DISPATCH-INSTALL ( -- ) [: DISPATCH ;] is CHECKER-CERT:PRODUCER-XT ;
 
 public
 

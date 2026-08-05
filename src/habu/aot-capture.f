@@ -28,8 +28,7 @@ TRUSTED: AOT-DBASE ( -- ptr a ) dbase@ ;
 TRUSTED: AOT-A>U8 ( ptr a -- ptr u8 ) ;
 TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
 : AOT-LIVE-DATA ( -- ptr a ) data-base ;
-: AOT-CELL@ ( ptr a -- n ) @ ;
-s" AOT-CELL@" s" ptr a -- n" TRUST
+TRUSTED: AOT-CELL@ ( ptr a -- n ) @ ;
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes
    v p c!  v 8 rshift p 1+ c!  v 16 rshift p 2 + c!  v 24 rshift p 3 + c!
    v 32 rshift p 4 + c!  v 40 rshift p 5 + c!  v 48 rshift p 6 + c!  v 56 rshift p 7 + c! ;

@@ -158,7 +158,7 @@ variable DEV-FOUND    \ private dedup-scan hit marker
 
 \ raw arena realloc is the one memory boundary the checker cannot model here
 \ (relocating base held in a variable); everything above/below stays checked.
-TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
+TRUSTED: DEV-REG-GROW1 ( ptr ptr a n n -- ) REG-GROW1 ;
 
 : DEV-GROW ( n -- ) {: need:n :}
    need DEV-CAP-V @ 2 * max {: nc:n :}

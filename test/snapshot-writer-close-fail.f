@@ -6,7 +6,7 @@
 \ closes the snapshot output descriptor early. SNAP-WRITE-BYTES then runs its own
 \ close-rc on the now-invalid descriptor, which reports failure, so the writer
 \ must fail closed (die 74 "snap: output close failed") instead of accepting a
-\ half-written image. snap.f undefines INSTALL-TEST after this arm, so no normal
+\ half-written image. snap.f undefines BEFORE after this arm, so no normal
 \ or shipping build can reach the seam.
 
 require src/habu/snap-lib.f
@@ -17,7 +17,7 @@ package SNAP-WRITER-CLOSE-FAIL
    close ;
 
 : ARM ( -- )
-   [: CLOSE-EARLY ;] SNAP-CLOSE-SEAM:INSTALL-TEST ;
+   [: CLOSE-EARLY ;] is SNAP-CLOSE-SEAM:BEFORE ;
 
 ARM
 

@@ -5652,7 +5652,7 @@ variable P2SK
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL, ;
 
 : EMIT-COMPILE-PUBLISH-TRUSTED ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   LBL LBL LBL {: ttrusted ndhas ndchk :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL {: ttrusted ndhas ndchk checked :} \ typed-local-lint: allow-bare-local
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
       lmain EM-P2-CHECK-DEFINER
    ttrusted LBL,
@@ -5663,7 +5663,9 @@ variable P2SK
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
    ndchk LBL,
-   C-CALL-TRUST-PEND
+   10 DATA TRUSTED-CELL LDR,  10 checked CBZ,
+      C-CALL-TRUST-PEND
+   checked LBL,
    NDICT NDICT 1 ADDI,
    EM-REC-WIDE-PUBLISH
    [ also LOWER-TXN ] FINISH [ previous ]

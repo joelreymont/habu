@@ -264,30 +264,24 @@ underflows. A resource can neither be silently dropped nor duplicated.
 
 Conservation alone only sees linear *cons* on the stack, so it is blind to
 *polymorphic laundering* — a value duplicated or dropped while its type is still
-a polymorphic variable that only later unifies with a linear con. The required
-**linear kind discipline** is not implemented yet; it is tracked by
-`habu-infer-linear-kinds-1f77b4c4` and must close the gap on two fronts:
+a polymorphic variable that only later unifies with a linear con. `TVK-NONLIN`
+closes that gap as a durable type-variable constraint:
 
-- **Polarity-aware multiplicity at effect application.** When applying a word or
-  primitive, any type variable in its effect that binds to a linear con must
-  occur equally on the input and output sides across the *whole* effect,
-  **including quotation sub-effects** (a quotation argument's rows flip polarity:
-  the word supplies the quotation's inputs and receives its outputs). A move is
-  1-in / 1-out (`swap`, `DIP`, `>r`/`r>`, a passthrough `( own -- own )`); a copy
-  or drop is not. So `[: FREE ;] KEEP` rejects — `KEEP ( R a [R a -- S] -- S a )`
-  feeds `a` to the consumer quotation *and* returns it (1-in / 2-out) — and so do
-  `BI`/`TRI`, which fan `a` into several quotations.
-- **Deferred taint within one body.** A variable copied or dropped while still
-  polymorphic is tainted; if it later unifies with a linear con, the linear was
-  laundered and the definition is rejected. This catches `[: dup FREE ;] execute`
-  and `[: over FREE ;] execute`, where the copy happens before `FREE` binds the
-  variable to the linear.
+- A checked operation that copies, drops, fetches, stores, or captures an open
+  value raises its complete owned frontier `NONLIN`. Later unification with an
+  owner rejects at the central bind. Pointers, quotation values, atoms, row
+  variables, and phantom parameters do not own the types they mention; fields
+  and real layout arguments do.
+- A primitive, `TRUST`, or provisional recursive effect has no checked body from
+  which to earn the constraint, so its declared rows are inspected once when the
+  effect is built. An exposed variable activates the check; a second pass includes
+  nested quotation effects with input polarity reversed. Thus `KEEP` and `BI`
+  constrain `a`, while `DIP` remains balanced and copying a quote whose result is
+  an owner remains legal because the quote-only variable is not an owned value.
 
-The implementation must make both checks additive to concrete-count
-conservation and inert unless a `DEFLINEAR` type is in scope, so non-linear
-polymorphic code (`[: dup ;] execute` on a plain value, `KEEP`/`DIP` over
-non-linear data) remains unaffected. Until that dot lands, `KEEP`/`BI`/`TRI`
-and self-duplicating quotations are not sound linear capability boundaries.
+The bit follows unification chains, overload rollback, stored effects, recursion,
+exports, and snapshots. There is no call-time multiplicity pass or deferred taint
+list. Plain non-linear polymorphism remains unaffected.
 
 `VALUE-RECORD name field type ... END-VALUE-RECORD` declares a legacy by-value
 record token for signatures. The token expands to TOUCHABLE `field<rec,name,t>`
@@ -554,23 +548,23 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   effect (`a`, `ptr a`, …) is a promise that the word works for *every* type at
   that position. The body may not quietly break that promise. After a definition's
   body checks against its `( in -- out )`, the checker (`NP-CHECK` in
-  `src/core/checker.f`) re-inspects every declared quantifier and rejects two
+  `src/core/checker.f`) re-inspects every declared quantifier and rejects these
   laundering shapes with `E-NONPARAMETRIC-EFFECT` (repair class
   `fix_parametric_effect`):
-  1. **Specialization to a sealed family.** If a body forces a declared quantifier
-     to resolve to a sealed identity-bearing family — an arity-0 nominal scalar
-     (`CAD-KIND` target/toolchain/region/node) or a layout family — the checker
-     rejects and names the forged family, so `: F ( a -- a ) EFF-ID ;` (with
-     `EFF-ID ( region -- region )`) no longer launders `region` behind a generic
-     `a`. Plain-scalar widening (`a := n`/`u8`) stays legal, so the pervasive
-     `( ptr a -- n ) @` fetch corpus is untouched. The pointer instance
-     (`ptr family` erased to `ptr a`) is the same violation seen in pointee
-     position, already caught by the `NOMPTR-BLOCK` mismatch (which names the
-     family) before this pass runs.
+  1. **Concrete specialization.** Only a non-linear scalar `T-CON` may be
+     republished behind a declared quantifier, and that quantifier is published
+     `NONLIN`. Owners and structural terms (`ptr`, quotation, atom, field, or
+     family) reject: their internal identities or effects cannot be erased and
+     later reconstructed as arbitrary types. A scalar accessor declared
+     `( ptr a -- n )` may still specialize `a := n`, but the resulting kind makes
+     a later `ptr owner` call reject; pure pointer transport remains generic.
   2. **Quantifier aliasing.** If a body unifies two *distinct* declared
      quantifiers into one variable, injectivity of the quantifier map is broken;
      the checker rejects and names both letters, so `: F ( a b -- a ) MERGE ;`
      (with `MERGE ( g g -- g )`) no longer certifies under a two-variable face.
+  3. **Row specialization or aliasing.** Every named row quantifier must remain
+     an open, distinct row after the body checks, including rows nested inside a
+     quotation.
   The pass runs only when the body otherwise certified, makes no new bindings
   (the body's speculative binds already roll back on the trail, and the next
   definition's reset clears every specialization record), so a rejected signature
@@ -991,7 +985,7 @@ reuses (see `docs/type-families.md`):
   stack-effect binding does.
 - **Parametricity/forgery seal (the `NP-CHECK` / `NP-MINT-CHECK` analogue).**
   `NP-CHECK` re-inspects a definition's declared quantifiers after the body and
-  rejects a body that specialized a quantifier to a sealed family or minted
+  rejects a body that specialized a quantifier to a forbidden concrete type or minted
   input-unbound output vars (`E-NONPARAMETRIC-EFFECT`). The CAD row gets the same
   post-body discipline: the composed row of the body must satisfy the declared
   row — a body may not silently *add* an effect (a `( -- )`-declared word that

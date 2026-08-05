@@ -108,10 +108,13 @@ variable XC-A  variable XC-U
    s" TYPED-VARIABLE BADQ2 [ n -- n" XC-EVAL E-STORAGE T=
    \ bogus pointee type inside the quotation body
    s" TYPED-VARIABLE BADQ3 [ n -- zzz ]" XC-EVAL E-STORAGE T=
+   \ persistent quotation cells are monomorphic: open type vars are rejected
+   s" TYPED-VARIABLE BADQ4 [ a -- a ]" XC-EVAL E-STORAGE T=
    \ none of the rejected names ever reached the dictionary
    s" BADQ1" 0 search-wl 0= TTRUE
    s" BADQ2" 0 search-wl 0= TTRUE
-   s" BADQ3" 0 search-wl 0= TTRUE ;
+   s" BADQ3" 0 search-wl 0= TTRUE
+   s" BADQ4" 0 search-wl 0= TTRUE ;
 
 \ ---- STAGE-3: plain raw variable @ execute now REJECTS (E-EXEC-OPAQUE-XT) ------
 \ dot habu-checker-exec-of-5923c543 flipped the RSEXEC T-VAR branch: executing an

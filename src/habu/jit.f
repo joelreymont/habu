@@ -101,7 +101,7 @@ TRUSTED: JIT-XT-EXECUTE ( n -- )
 \ fold-entry: if the token is this operator AND the top two VS entries are
 \ constants, fold at JIT time (no code) and continue the main loop; else fall
 \ through to the generic dispatch (which spills + calls the prim).
-: FOLD-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n fxt:n :}
+: FOLD-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n fxt:n :}
    LBL FESK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK LABEL@ CBZ,
@@ -110,7 +110,7 @@ TRUSTED: JIT-XT-EXECUTE ( n -- )
    LVFOLDPUT LABEL@ BL,
    lmainlbl B,
    FESK LABEL@ LBL, ;
-s" fold-entry" s" label ptr a n n --" TRUST
+s" fold-entry" s" label ptr n n n --" TRUST
 
 : VF+ ( -- )
    11 11 12 ADD, ;   \ fold helpers -- NOT f+/f-/f*: those are the FLOAT prims
@@ -368,7 +368,7 @@ package ENGINE-EMIT
 variable FESK2
 
 \ vop-entry: fold when both con, register op when forceable, else fall through
-: VOP-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt:n emitxt:n :}
+: VOP-ENTRY ( label ptr n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt:n emitxt:n :}
    LBL FESK !  LBL FESK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK LABEL@ CBZ,
@@ -383,14 +383,14 @@ variable FESK2
       9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
    FESK LABEL@ LBL, ;
-s" vop-entry" s" label ptr a n n n --" TRUST
+s" vop-entry" s" label ptr n n n n --" TRUST
 
 variable FESK6
 
 \ vopi-entry: VOP-ENTRY plus small top-constant immediate lowering.
 package ENGINE-EMIT
 
-: VOPI-ENTRY ( label ptr a n n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt:n emitxt:n immxt:n max:n :}
+: VOPI-ENTRY ( label ptr n n n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt:n emitxt:n immxt:n max:n :}
    LBL FESK !  LBL FESK2 !  LBL FESK6 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK LABEL@ CBZ,
@@ -410,7 +410,7 @@ package ENGINE-EMIT
       9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
    FESK LABEL@ LBL, ;
-s" vopi-entry" s" label ptr a n n n n n --" TRUST
+s" vopi-entry" s" label ptr n n n n n n --" TRUST
 
 : FLSH ( -- )
    11 11 12 LSLV, ;
@@ -466,7 +466,7 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
 
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
 \ cmp rd,rm ; cset rd,cond ; sub rd,xzr,rd  (Forth flag 0/-1)
-: VCMP-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n cond:n :}
+: VCMP-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n cond:n :}
    LBL FESK !  LBL FESK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK LABEL@ CBZ,
@@ -647,7 +647,7 @@ variable FESK5
 
 \ FOP-ENTRY: float binop keyword -> FADD-class dd,dn,dm on the d-pool; anything
 \ not forceable falls through to the generic (spill + memory prim) path.
-: FOP-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n base:n :}
+: FOP-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n base:n :}
    LBL FESK5 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK5 LABEL@ CBZ,
@@ -826,7 +826,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 variable FESK3
 
 \ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory traffic
-: VSHUF-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n min:n sxt:n :}
+: VSHUF-ENTRY ( label ptr n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n min:n sxt:n :}
    LBL FESK3 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK3 LABEL@ CBZ,
@@ -835,7 +835,7 @@ variable FESK3
    13 FESK3 LABEL@ CBZ,
    lmainlbl B,
    FESK3 LABEL@ LBL, ;
-s" vshuf-entry" s" label ptr a n n n --" TRUST
+s" vshuf-entry" s" label ptr n n n n --" TRUST
 
 : XDUP ( -- )
    6 DATA VSP-CELL LDR,  5 6 1 SUBI,  LVCOPY LABEL@ BL, ;
@@ -857,7 +857,7 @@ variable FESK4
 
 \ vun-entry: unary op on the VS top — con folds at JIT time (no code); reg gets
 \ an in-place op (rd = rs, entry unchanged); empty VS falls through to the prim.
-: VUN-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt:n emitxt:n :}
+: VUN-ENTRY ( label ptr n n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt:n emitxt:n :}
    LBL FESK4 !  LBL FESK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK4 LABEL@ CBZ,
@@ -873,7 +873,7 @@ variable FESK4
       emitxt JIT-XT-EXECUTE
       lmainlbl B,
    FESK4 LABEL@ LBL, ;
-s" vun-entry" s" label ptr a n n n --" TRUST
+s" vun-entry" s" label ptr n n n n --" TRUST
 
 : FU1+ ( -- )
    11 11 1 ADDI, ;

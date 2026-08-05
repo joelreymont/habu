@@ -4,7 +4,7 @@ $4C constant STRUCT-RC
 
 variable STRUCT-ACTIVE
 
-: STRUCT-BYTE+ ( ptr a n -- ptr u8 )
+TRUSTED: STRUCT-BYTE+ ( ptr a n -- ptr u8 )
    + ;
 
 : STRUCT-REQUIRE-CLOSED ( -- )
@@ -13,7 +13,7 @@ variable STRUCT-ACTIVE
 : STRUCT-REQUIRE-OPEN ( -- )
    STRUCT-ACTIVE @ 0= if s" structure: no active structure" STRUCT-RC die then ;
 
-: BEGIN-STRUCTURE ( -- ptr a n )
+: BEGIN-STRUCTURE ( -- ptr n n )
    STRUCT-REQUIRE-CLOSED
    -1 STRUCT-ACTIVE !
    create here 0 , 0 does> ( -- n ) @ ;
@@ -34,7 +34,7 @@ variable STRUCT-ACTIVE
    STRUCT-REQUIRE-OPEN
    create dup , 1 + does> ( ptr a -- ptr u8 ) @ STRUCT-BYTE+ ;
 
-: END-STRUCTURE ( ptr a n -- )
+: END-STRUCTURE ( ptr n n -- )
    STRUCT-REQUIRE-OPEN
    0 STRUCT-ACTIVE !
    swap ! ;

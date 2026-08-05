@@ -107,6 +107,12 @@ s" S2=" type s" D2 ( ltok -- ltok ltok ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" S3=" type s" D3 ( ltok -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 cr
 
+\ A cell-family argument is phantom even inside a layout.
+NEWTYPE lcell 1
+s" LCOPY" s" lq2<lcell<a>,n> -- lq2<lcell<a>,n> lq2<lcell<a>,n>" TRUST
+s" P2=" type s" P2 ( lq2<lcell<ltok>,n> -- lq2<lcell<ltok>,n> lq2<lcell<ltok>,n> ) LCOPY" CHECK-QUIET-CANDIDATE! -1 T=
+cr
+
 \ ---------------------------------------------------------------------------
 \ item 9 slice 2: the `construct` form conserves exactly like the generated
 \ constructor words — same CHECKER-STEP accounting, no separate linear rules.

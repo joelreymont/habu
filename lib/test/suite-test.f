@@ -86,17 +86,17 @@ variable SELECT-SKIP-N
    label labelu s" stdin-case" STR= if 1 STDIN-LABEL-N +! then ;
 
 : INSTALL ( -- )
-   [: SETUP ;] TEST:SETUP!
-   [: TEARDOWN ;] TEST:TEARDOWN!
-   [: DRAIN ;] TEST:DRAIN!
-   [: ARGS-BEGIN ;] TEST:ARGS-BEGIN!
-   [: ARG+ ;] TEST:ARG+!
-   [: SELECT? ;] TEST:SELECT?!
-   [: RUNNER ;] TEST:RUNNER!
-   [: STDIN-RUNNER ;] TEST:STDIN-RUNNER! ;
+   [: SETUP ;] is TEST:SETUP
+   [: TEARDOWN ;] is TEST:TEARDOWN
+   [: DRAIN ;] is TEST:DRAIN
+   [: ARGS-BEGIN ;] is TEST:ARGS-BEGIN
+   [: ARG+ ;] is TEST:ARG+
+   [: SELECT? ;] is TEST:SELECT?
+   [: RUNNER ;] is TEST:RUNNER
+   [: STDIN-RUNNER ;] is TEST:STDIN-RUNNER ;
 
 : INSTALL-THROW ( -- )
-   [: THROW-RUNNER ;] TEST:RUNNER! ;
+   [: THROW-RUNNER ;] is TEST:RUNNER ;
 
 T-RESET
 RESET-COUNTS

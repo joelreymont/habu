@@ -107,7 +107,7 @@ variable FESK
 \ fold-entry: if the token is this operator AND the top two VS entries are
 \ constants, fold at JIT time (no code) and continue the main loop; else fall
 \ through to the generic dispatch (which spills + calls the prim).
-: FOLD-ENTRY ( n ptr a n n -- ) {: lmainlbl kwvar kwlen fxt :}
+: FOLD-ENTRY ( n ptr n n n -- ) {: lmainlbl kwvar kwlen fxt :}
    LBL FESK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK @ CBZ,
@@ -355,7 +355,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 variable FESK2
 
 \ vop-entry: fold when both con, register op when forceable, else fall through
-: VOP-ENTRY ( n ptr a n n n -- ) {: lmainlbl kwvar kwlen foldxt emitxt :}
+: VOP-ENTRY ( n ptr n n n n -- ) {: lmainlbl kwvar kwlen foldxt emitxt :}
    LBL FESK !  LBL FESK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK @ CBZ,
@@ -375,7 +375,7 @@ variable FESK6
 
 \ vopi-entry: VOP-ENTRY plus small top-constant immediate lowering.
 \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-: VOPI-ENTRY ( n ptr a n n n n n -- ) {: lmainlbl kwvar kwlen foldxt emitxt immxt max :}
+: VOPI-ENTRY ( n ptr n n n n n n -- ) {: lmainlbl kwvar kwlen foldxt emitxt immxt max :}
    LBL FESK !  LBL FESK2 !  LBL FESK6 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK @ CBZ,
@@ -434,7 +434,7 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
 
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
 \ cmp rd,rm ; cset rd,cond ; sub rd,xzr,rd  (Forth flag 0/-1)
-: VCMP-ENTRY ( n ptr a n n -- ) {: lmainlbl kwvar kwlen cond :}
+: VCMP-ENTRY ( n ptr n n n -- ) {: lmainlbl kwvar kwlen cond :}
    LBL FESK !  LBL FESK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK @ CBZ,
@@ -615,7 +615,7 @@ variable FESK5
 
 \ FOP-ENTRY: float binop keyword -> FADD-class dd,dn,dm on the d-pool; anything
 \ not forceable falls through to the generic (spill + memory prim) path.
-: FOP-ENTRY ( n ptr a n n -- ) {: lmainlbl kwvar kwlen base :}
+: FOP-ENTRY ( n ptr n n n -- ) {: lmainlbl kwvar kwlen base :}
    LBL FESK5 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK5 @ CBZ,
@@ -794,7 +794,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 variable FESK3
 
 \ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory traffic
-: VSHUF-ENTRY ( n ptr a n n n -- ) {: lmainlbl kwvar kwlen min sxt :}
+: VSHUF-ENTRY ( n ptr n n n n -- ) {: lmainlbl kwvar kwlen min sxt :}
    LBL FESK3 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK3 @ CBZ,
@@ -819,7 +819,7 @@ variable FESK4
 
 \ vun-entry: unary op on the VS top — con folds at JIT time (no code); reg gets
 \ an in-place op (rd = rs, entry unchanged); empty VS falls through to the prim.
-: VUN-ENTRY ( n ptr a n n n -- ) {: lmainlbl kwvar kwlen foldxt emitxt :}
+: VUN-ENTRY ( n ptr n n n n -- ) {: lmainlbl kwvar kwlen foldxt emitxt :}
    LBL FESK4 !  LBL FESK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 FESK4 @ CBZ,

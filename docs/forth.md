@@ -935,7 +935,7 @@ variable RUN-N
    1 RUN-N +! ;
 
 : INSTALL ( -- )
-   [: RUNNER ;] TEST:RUNNER! ;
+   [: RUNNER ;] is TEST:RUNNER ;
 
 T-RESET
 INSTALL
@@ -954,10 +954,10 @@ T-REPORT
 ;package
 ```
 
-  `lib/test.f` is the public framework interface: `T*` words are assertions,
-  `TEST:SETUP!`/`TEST:TEARDOWN!`/`TEST:DRAIN!`/`TEST:ARGS-BEGIN!`/
-  `TEST:ARG+!`/`TEST:SELECT?!`/`TEST:RUNNER!`/`TEST:STDIN-RUNNER!` install
-  typed hooks, `TEST:GROUP SEQ|PARA name` opens a named group (mode is a
+  `lib/test.f` is the public framework interface: `T*` words are assertions;
+  direct literal `is` binds `TEST:SETUP`, `TEST:TEARDOWN`, `TEST:DRAIN`,
+  `TEST:ARGS-BEGIN`, `TEST:ARG+`, `TEST:SELECT?`, `TEST:RUNNER`, and
+  `TEST:STDIN-RUNNER`; `TEST:GROUP SEQ|PARA name` opens a named group (mode is a
   mandatory positional token — `SEQ` sequential, `PARA` parallel — before the
   name), and `TEST:;GROUP`, `TEST:SUITE`, `TEST:SUITE-STDIN`, `TEST:;SUITE`, and
   `TEST:RUN` define and execute the suite. Do not publish helper globals like

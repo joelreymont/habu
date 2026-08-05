@@ -293,9 +293,16 @@ private
 \ events, one authority: the text a scan opens with, each token as it is
 \ consumed, and the verdict it ends with.
 : INSTALL ( -- )
-   [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-TAPE:INSTALL ;
+   [: ON-SCAN ;] is CHECKER-TAPE:SCAN-XT
+   [: ON-TOKEN ;] is CHECKER-TAPE:TOKEN-XT
+   [: ON-DONE ;] is CHECKER-TAPE:DONE-XT ;
 
 INSTALL
+
+undefine INSTALL
+undefine CHECKER-TAPE:SCAN-XT
+undefine CHECKER-TAPE:TOKEN-XT
+undefine CHECKER-TAPE:DONE-XT
 
 get-current prot-wid-add
 

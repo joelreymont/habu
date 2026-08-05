@@ -583,22 +583,13 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" [TMatch; TFamTok fmres; TVarTok 0; TOf]"
       V-REJECT MATCH-DEPTH-ROW ;
 
-\ Two rows about the per-step linear conservation count, which the three
-\ linear rows above do NOT reach: those are all decided by the deferred-taint
-\ rule, which rejects a polymorphic copy or drop the moment the variable it
-\ laundered resolves linear, and they answer the same either way if the count
-\ check itself stops deciding anything. The count is over the data row AND the
-\ return row together, so the case that only the count can decide is a value
-\ that is on NEITHER row at the moment the check runs. `>r` never produces one -
-\ it is its own rule and snapshots the whole transfer - but an ORDINARY word
-\ declared with the same effect does, because a call checks the count inside the
-\ data-row step, before the return rows move. The second row is the control: the
-\ same word and the same tokens with nothing linear in play certify, so what the
-\ first row records is the linear, not the transfer.
+\ Stored effects apply their data and return rows atomically. A word may move one
+\ owner between those rows exactly as the direct `>r` rule does; both the linear
+\ and non-linear instances below therefore certify.
 : BUILD-LINEAR-TRANSFER-VECTORS ( -- )
-   s" a_linear_on_neither_row_when_the_step_is_checked"
+   s" a_linear_moves_between_data_and_return_rows_atomically"
       s" CMV17 ( cmltok -- cmltok ) CHECKER-MODEL-CASES:TO-R-WORD r>"
-      s" sig [ltok] [ltok]" s" [TCall wToRAsWord; TFromR]" V-REJECT VEC-ROW
+      s" sig [ltok] [ltok]" s" [TCall wToRAsWord; TFromR]" V-CERT VEC-ROW
    s" the_same_transfer_with_nothing_linear_certifies"
       s" CMV18 ( i64 -- i64 ) CHECKER-MODEL-CASES:TO-R-WORD r>"
       s" sig [i64] [i64]" s" [TCall wToRAsWord; TFromR]" V-CERT VEC-ROW ;

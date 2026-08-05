@@ -75,10 +75,14 @@ variable HOOK-BUSY
 variable HOOK-PID
 variable EXEC-PATHZ
 
+public
+
 defer EXEC-HOOK ( ptr u8 n -- )
 defer FORK-HOOK ( ptr u8 n -- )
 defer CLEAR-HOOK ( -- )
 defer CHILD-HOOK ( -- )
+
+private
 
 : DROP-EVENT ( ptr u8 n -- )
    2drop ;
@@ -119,18 +123,6 @@ defer CHILD-HOOK ( -- )
 
 public
 
-: EXEC-HOOK! ( [ ptr u8 n -- ] -- )
-   is EXEC-HOOK ;
-
-: FORK-HOOK! ( [ ptr u8 n -- ] -- )
-   is FORK-HOOK ;
-
-: CLEAR-HOOK! ( [ -- ] -- )
-   is CLEAR-HOOK ;
-
-: CHILD-HOOK! ( [ -- ] -- )
-   is CHILD-HOOK ;
-
 : EXECUTED ( ptr u8 pid -- pid ) {: pathz:ptr pid:pid :}
    pid PID>N 0 >= if
       pid HOOK-BEGIN
@@ -159,10 +151,10 @@ public
 private
 
 : RESET ( -- )
-   [: DROP-EVENT ;] EXEC-HOOK!
-   [: DROP-EVENT ;] FORK-HOOK!
-   [: ;] CLEAR-HOOK!
-   [: ;] CHILD-HOOK!
+   [: DROP-EVENT ;] is EXEC-HOOK
+   [: DROP-EVENT ;] is FORK-HOOK
+   [: ;] is CLEAR-HOOK
+   [: ;] is CHILD-HOOK
    0 HOOK-BUSY !
    ROLE-DIRECT ROLE ! ;
 

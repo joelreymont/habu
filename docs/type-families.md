@@ -2303,7 +2303,7 @@ Each frame saves every mutable high-water mark. `checker.f` owns the core frame
 (`RBF-REC`, `RBF-PUSH`/`RBF-POP`):
 
 ```text
-UEND  NORET-END  SYM-N  SYM-STR-U  CTN  CT-STR-U  LIN-NDECL
+UEND  NORET-END  SYM-N  SYM-STR-U  CTN  CT-STR-U
 VREC-N  VREC-FIELD-N  VREC-NODE-N  VREC-STR-U  CHK-CAND  VSIG
 CHECKER-PACKAGE-MODE  CHECKER-PACKAGE-U  (+ package-name bytes)  DFER-END
 ```

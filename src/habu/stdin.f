@@ -31,9 +31,7 @@ s" HB@" s" -- ptr u8" TRUST
    HL @ 1 + HMAX > IF s" hb: repl sources exceed buffer" 74 die THEN
    10 HB@ HL @ + c!  HL @ 1 + HL ! ;
 
-: HLINE ( a u -- )  H+ HNL ;
-
-: RD-1 ( z -- )
+: RD-1 ( ptr u8 -- )
    0 0 open HFD !
    HFD @ 0 < IF s" hb: cannot open repl source" 74 die THEN
    BEGIN                                                 \ read() may return short

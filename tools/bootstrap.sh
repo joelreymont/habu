@@ -114,7 +114,7 @@ $2 constant BOOT-XREF-FLAGS-SLOT
 $3 constant BOOT-XREF-NAME-SLOT
 : BOOT-XREF-REC ( n -- ptr a )
    DREC * dbase@ + BOOT-N>REC ;
-: BOOT-XREF-CELL@ ( ptr a n -- n )
+TRUSTED: BOOT-XREF-CELL@ ( ptr a n -- n )
    cells + @ ;
 : BOOT-XREF-PTR@ ( ptr a n -- ptr u8 )
    BOOT-XREF-CELL@ BOOT-N>U8 ;

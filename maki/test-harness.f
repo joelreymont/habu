@@ -48,7 +48,7 @@ variable START-NS
    rc RUN-FAIL ;
 
 : INSTALL ( -- )
-   [: RUN-FILE ;] TEST:RUNNER! ;
+   [: RUN-FILE ;] is TEST:RUNNER ;
 
 INSTALL
 

@@ -419,7 +419,7 @@ variable DSUGE  variable DSUGA
    u BEGIN dup 0 > WHILE
       a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
    REPEAT drop a 0 ;
-: SIG-TRIM ( a u -- a u )  SIG-LTRIM SIG-RTRIM ;
+: SIG-TRIM ( ptr u8 n -- ptr u8 n )  SIG-LTRIM SIG-RTRIM ;
 : JEFFECT {: din dout rin rout hasr :}
    34 EMIT1
    din DROW  s" -- " DTXT  dout DROW
@@ -598,7 +598,7 @@ variable MDV-I   variable MDV-F
    ELSE
       RCUR @ R-RES  RBROW @ R-RES  <>
    THEN ;
-: REPAIR-CLASS ( -- a u )
+: REPAIR-CLASS ( -- ptr u8 n )
    IMMERR @ if IMM-CLASS$ exit then
    NPBAD @ IF s" fix_parametric_effect" EXIT THEN
    CAPREQ @ IF s" trusted_boundary_required" EXIT THEN
@@ -625,16 +625,18 @@ variable MDV-I   variable MDV-F
    s" fix_type" THEN THEN ;
 \ Short repair hint derived from the stable class. Raw stack rows stay in their
 \ own JSON fields; this text is only for LLM action selection.
-: SUGGEST-TEXT ( -- a u )
+: SUGGEST-TEXT ( -- ptr u8 n )
    IMMERR @ if IMM-SUGGEST$ exit then
    NPBAD @ IF
       NPBAD-KIND @ 0= IF
          s" Declare the concrete family in the signature, or keep the body polymorphic over the type variable."
       ELSE NPBAD-KIND @ 1 = IF
-         s" Keep each declared type variable distinct; do not unify two quantifiers in the body."
+         s" Keep each declared quantifier distinct; do not unify two quantifiers in the body."
+      ELSE NPBAD-KIND @ 3 = IF
+         s" Keep the declared row variable open; do not specialize it in the body."
       ELSE
          s" Bind the minted phantom's type arguments to the inputs, or mint it behind an audited TRUSTED: boundary."
-      THEN THEN EXIT
+      THEN THEN THEN EXIT
    THEN
    CAPREQ @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
@@ -700,14 +702,17 @@ variable JPOS  variable JLINE  variable JCOL
        s" ' is specialized to " DTXT  NP-FAM-REND
        s" ; a declared effect must stay parametric over its quantifier" DTXT
      ELSE NPBAD-KIND @ 1 = IF
-       s" : declared type variables '" DTXT  NPBAD-Q1 @ EMIT1
+       s" : declared quantifiers '" DTXT  NPBAD-Q1 @ EMIT1
        s" ' and '" DTXT  NPBAD-Q2 @ EMIT1
        s" ' are unified; each declared quantifier must stay a distinct variable" DTXT
+     ELSE NPBAD-KIND @ 3 = IF
+       s" : declared row variable '" DTXT  NPBAD-Q1 @ EMIT1
+       s" ' is specialized; each declared row quantifier must stay open" DTXT
      ELSE
        s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
        s" ' is minted into " DTXT  NP-FAM-REND
        s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type — use an audited TRUSTED: boundary" DTXT
-     THEN THEN EXIT
+     THEN THEN THEN EXIT
    THEN
    CAPREQ @ IF
      s" E-CAP-TRUSTED habu: in " DTXT  NMA @ NMU @ DTXT

@@ -40,7 +40,7 @@ s" ZPTR+" s" ptr u8 n -- ptr u8" TRUST
    0 begin 2dup ZBYTE@ 0= 0= while 1 + repeat swap drop ;
 s" ZLEN" s" ptr u8 -- n" TRUST
 
-: ARGV$ ( i -- a u )
+: ARGV$ ( n -- ptr u8 n )
    ARGV dup ZLEN ;
 s" ARGV$" s" n -- ptr u8 n" TRUST
 

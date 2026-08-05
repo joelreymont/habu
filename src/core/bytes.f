@@ -6,7 +6,7 @@ $4C constant E-BYTE-RANGE
    dup 0 < if s" byte: negative length" E-BYTE-RANGE die then
    drop ;
 
-: BYTE-VIEW ( ptr a -- ptr u8 ) ;
+TRUSTED: BYTE-VIEW ( ptr a -- ptr u8 ) ;
 
 : BYTE+ ( ptr u8 n -- ptr u8 )
    + ;

@@ -109,6 +109,21 @@ s" xpq:XP-HOF" CHECKER-EXPORT
 s" XPU6 ( n -- n ) [: 1 + ;] swap xpq2:XP-HOF" CHECK! -1 T=
 s" XPU7 ( n -- n ) [: + ;] swap xpq2:XP-HOF" CHECK! 0 T=
 
+\ A checked body's NONLIN kind survives export under the alias.
+DEFLINEAR xplown
+package XPNL
+public
+: XP-DROP ( a -- ) drop ;
+;package
+package XPNL2
+public
+EXPORT XPNL:XP-DROP
+;package
+s" XPNL-SRC-N ( n -- ) xpnl:XP-DROP" CHECK! -1 T=
+s" XPNL-SRC-OWN ( xplown -- ) xpnl:XP-DROP" CHECK! 0 T=
+s" XPNL-ALIAS-N ( n -- ) xpnl2:XP-DROP" CHECK! -1 T=
+s" XPNL-ALIAS-OWN ( xplown -- ) xpnl2:XP-DROP" CHECK! 0 T=
+
 \ ---------------------------------------------------------------------------
 \ 5. rejects. Every fail-closed path throws its named code; catch restores
 \    the pre-call ( a u ) under the code.

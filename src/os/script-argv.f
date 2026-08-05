@@ -53,10 +53,6 @@ s" SCRIPT-ARG-START" s" -- n" TRUST
    ARGC SCRIPT-ARG-START - dup 0 < if drop 0 then ;
 s" SCRIPT-ARGC" s" -- n" TRUST
 
-: SCRIPT-ARGV ( i -- z )
-   SCRIPT-ARG-START + ARGV ;
-s" SCRIPT-ARGV" s" n -- ptr u8" TRUST
-
-: SCRIPT-ARGV$ ( i -- a u )
-   SCRIPT-ARGV dup ZLEN ;
+: SCRIPT-ARGV$ ( n -- ptr u8 n )
+   SCRIPT-ARG-START + ARGV dup ZLEN ;
 s" SCRIPT-ARGV$" s" n -- ptr u8 n" TRUST

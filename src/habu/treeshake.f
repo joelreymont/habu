@@ -29,7 +29,7 @@ TRUSTED: SHK-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 : SHK-C@ ( ptr u8 n -- n )
    SHK-BYTE+ c@ ;
 
-: SHK-LC ( c -- c )  dup $40 > over $5B < and IF $20 + THEN ;
+: SHK-LC ( n -- n )  dup $40 > over $5B < and IF $20 + THEN ;
 
 : SHK-TRUE ( -- bool )
    0 0= ;
@@ -120,7 +120,7 @@ variable SCAN-MODE
    SHK-C ! KEEP-U ! KEEP-A !
    KEEP-U @ 2 = KEEP-A@ c@ SHK-C @ = and KEEP-A@ 1 SHK-C@ $22 = and ;
 
-: NEXT-TOK ( -- a u )                 \ next word token; 0 0 at end; skips \ ( s" ."
+: NEXT-TOK ( -- ptr u8 n )            \ next word token; 0 0 at end; skips \ ( s" ."
    BEGIN
       BEGIN TKP @ SHK-U @ < IF SHK-A@ TKP @ SHK-C@ $21 < ELSE 0 0= 0= THEN WHILE TKP @ 1+ TKP ! REPEAT
       TKP @ SHK-U @ < 0= IF SHK-A@ 0 EXIT THEN

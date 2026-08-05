@@ -479,6 +479,10 @@ package MEM
 private
 PTR-VARIABLE WBT-SAVED
 PTR-VARIABLE WBT-OUTER
+DEFLINEAR MEM:wbt-own
+
+s" WBT-OWN" s" ptr u8 CAD-NUM:alloc-byte-len -- MEM:wbt-own" TRUST
+s" WBT-DONE" s" MEM:wbt-own --" TRUST
 
 : WBT-PROBE-RELEASED ( -- )
    2 close
@@ -581,6 +585,12 @@ private
 
 : STAT ( -- )
    T-RESET
+   \ Real WITH-BYTES calls may mint or consume one linear owner through the
+   \ quotation's result row. WBT-OWN/WBT-DONE are checker-only fixture effects.
+   s" WBT-MINT ( -- MEM:wbt-own ) MEM-64K MEM:BYTES-ALLOC-LEN [: WBT-OWN ;] MEM:WITH-BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" WBT-CONSUME ( MEM:wbt-own -- ) MEM-64K MEM:BYTES-ALLOC-LEN [: 2drop WBT-DONE ;] MEM:WITH-BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
    \ positive signature controls: the exact B5.5-frozen effects resolve.
    s" G-CELLS>BYTES ( CAD-NUM:cell-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:CELLS>BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=

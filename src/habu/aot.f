@@ -23,7 +23,7 @@ AOT-CTOR-EVAL-INSTALL
 \ u64 hex, 16 chars per cell, bottom-of-stack first.
 \ src/habu/aot-lib.f EMIT-SEED materializes the cells before entry.
 variable AOT-HEXACC
-: AOT-HEXNIB ( c -- n ) {: c:n :}
+: AOT-HEXNIB ( n -- n ) {: c:n :}
    c 48 >= c 58 < and IF c 48 - EXIT THEN
    c 97 >= c 103 < and IF c 87 - EXIT THEN
    c 65 >= c 71 < and IF c 55 - EXIT THEN

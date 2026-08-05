@@ -295,11 +295,14 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 \ lets the snapshot-writer suite force the final close to fail and prove
 \ the writer's WRITE-BYTES fails closed (rc 74) instead of accepting a
 \ half-written image. BEFORE defaults to a no-op; only a test source injected ahead of the
-\ snap driver can arm it through INSTALL-TEST, and snap.f undefines that entry on
+\ snap driver can arm it, and snap.f undefines the target on
 \ every build so no normal or shipping path can reach it.
 package SNAP-CLOSE-SEAM
 
+public
 defer BEFORE ( n -- )
+
+private
 
 : NOOP ( n -- )
    drop ;
@@ -310,9 +313,6 @@ defer BEFORE ( n -- )
 RESET
 
 public
-
-: INSTALL-TEST ( [ n -- ] -- )
-   is BEFORE ;
 
 : RUN ( n -- )
    BEFORE ;

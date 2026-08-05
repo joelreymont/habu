@@ -698,9 +698,9 @@ fits.
   bind/ref site, not assumed covered by DCUR/RCUR counting.** Locals bypass
   `LIN-CHECK` (`LOC-REF?` re-pushes a tv with no step; a typed linear `LOC-BIND` sets
   `LINEXP=1` and skips the check), so `{: x:own :} x x` certified while stack `dup`
-  rejected. Reject binding any linear-resolving value into a local (`LIN-LOCAL-BIND-CHECK`)
-  + taint poly local refs (`LIN-LOCAL-REF-TAINT`), both gated on `LIN-ANY?` so the
-  no-`deflinear` self-build pays nothing. A layout PARAM hides its payload from the
+  rejected. `LIN-LOCAL-BIND-CHECK` rejects a concrete owner and raises an open local
+  type `NONLIN`, so later owner resolution rejects without a taint list or global
+  `DEFLINEAR` gate. A layout PARAM hides its payload from the
   linear count (`tdlin<own>` dup/dropped freely while `own drop` rejected) — transport
   binds reject any layout whose family args resolve linear OR are still unbound. When a
   fail-closed v1 guard sits in front of a general count/conservation path, RELAXING =

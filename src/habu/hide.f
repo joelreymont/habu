@@ -35,7 +35,7 @@ TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
 : BFR-REC ( n -- ptr a )
    BFR-REC-ADDR BFR-N>REC ;
 
-: BFR-CELL@ ( ptr a n -- n )
+TRUSTED: BFR-CELL@ ( ptr a n -- n )
    cells + @ ;
 
 : BFR-PTR@ ( ptr a n -- ptr u8 )

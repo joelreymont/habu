@@ -581,9 +581,7 @@ s" CBAD-SIG-TRAIL ( n -- n ) dup dup ( n -- n )" T-CHECK-REJECTS
 s" CBAD-SIG-MID ( n -- n ) dup ( n -- n ) dup" T-CHECK-REJECTS
 s" COK-SIG-MID-COMMENT ( n -- n ) dup ( scratch note ) drop" T-CHECK-PASSES
 \ REND-SIG contract: a certified word's declared effect renders after CHECK!.
-\ The certify epilogue persists the usig via USIG-ADD, whose NEW re-initialized
-\ BROW/DCUR and blanked every render to '--' (dot habu-rend-sig-blanked-b269786b);
-\ CERT-REPOINT-ROWS re-points the render rows at USIG-ADD's re-parsed sig. The
+\ The certify epilogue publishes the checked body's live rows directly. The
 \ prop-test round-trip amplifier (serial run NRT>0, 0 inconsistencies) is the
 \ second half of this regression.
 TRUSTED: ES-REND-SIG$ ( -- ptr u8 n ) REND-SIG ;   \ whitebox render-probe boundary
@@ -1441,8 +1439,43 @@ s" CBAD-NODE-LEN ( n -- len ) T->NODE" T-CHECK-REJECTS
 s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
 s" CBAD-UNKNOWN-ROLE ( n -- track ) T->NODE" T-CHECK-REJECTS
 DEFLINEAR own
+NEWTYPE pcell 1
 s" T-MAKE-OWN" s" -- own" TRUST
 s" T-FREE-OWN" s" own --" TRUST
+s" T-QDROP" s" [ -- a ] --" TRUST
+s" T-RDUP" s" a | -- | a a" TRUST
+s" T-PDUP" s" ptr a -- ptr a ptr a" TRUST
+s" T-CDUP" s" pcell<a> -- pcell<a> pcell<a>" TRUST
+s" T-BKEEP" s" R a [ R a -- S ] -- S a" TRUST
+: T-QCOPY ( [ R -- S ] -- [ R -- S ] [ R -- S ] ) dup ;
+: T-QEXEC ( [ -- a ] -- ) execute drop ;
+: T-RQ ( [ R -- S ] n -- [ R -- S ] [ R -- S ] )
+   dup 0= if drop dup else 1- recurse then ;
+: T-RKEEP ( R a [ R a -- S ] -- S a ) recurse ;
+: T-IS-ID ( a -- a ) ;
+: T-IS-N ( n -- n ) 1+ ;
+: T-IS-SAME ( a a -- a ) drop ;
+: T-IS-NONLIN ( a -- a ) dup drop ;
+: T-IS-RID ( R -- R ) ;
+: T-IS-QID ( [ R -- S ] -- [ R -- S ] ) ;
+defer T-IS-G ( a -- a )
+defer T-IS-ND ( n -- n )
+defer T-IS-PAIR ( a b -- a )
+defer T-IS-RG ( R -- R )
+defer T-IS-R2 ( R -- S )
+s" COK-IS-ID-N ( -- ) ['] T-IS-ID is T-IS-ND" T-CHECK-PASSES
+s" COK-IS-ID-G ( -- ) ['] T-IS-ID is T-IS-G" T-CHECK-PASSES
+s" CBAD-IS-N-G ( -- ) ['] T-IS-N is T-IS-G" T-CHECK-REJECTS
+s" CBAD-IS-ALIAS ( -- ) ['] T-IS-SAME is T-IS-PAIR" T-CHECK-REJECTS
+s" CBAD-IS-KIND ( -- ) ['] T-IS-NONLIN is T-IS-G" T-CHECK-REJECTS
+s" CBAD-IS-ESCAPE ( [ b -- b ] -- ) is T-IS-G" T-CHECK-REJECTS
+s" CBAD-IS-QID-ESCAPE ( [ b -- b ] -- ) T-IS-QID is T-IS-G" T-CHECK-REJECTS
+s" CBAD-IS-INFER ( -- ) is T-IS-G" T-CHECK-REJECTS
+s" COK-IS-ROW ( -- ) ['] T-IS-RID is T-IS-RG" T-CHECK-PASSES
+s" CBAD-IS-ROW-CLOSE ( -- ) ['] T-IS-N is T-IS-RG" T-CHECK-REJECTS
+s" CBAD-IS-ROW-ALIAS ( -- ) ['] T-IS-RID is T-IS-R2" T-CHECK-REJECTS
+s" CBAD-OWN-REC-T ( a -- a a ) T-FREE-OWN T-MAKE-OWN recurse" T-CHECK-REJECTS
+s" COK-N-REC-T ( a -- a a ) 1+ recurse" T-CHECK-PASSES
 s" COK-OWN-PASS ( own -- own )" T-CHECK-PASSES
 s" COK-OWN-MAKE ( -- own ) T-MAKE-OWN" T-CHECK-PASSES
 s" COK-OWN-FREE ( own -- ) T-FREE-OWN" T-CHECK-PASSES
@@ -1451,6 +1484,9 @@ s" CBAD-OWN-DROP ( own -- ) drop" T-CHECK-REJECTS
 s" CBAD-OWN-OVER ( own n -- own n own ) over" T-CHECK-REJECTS
 s" CBAD-OWN-FETCH ( ptr own -- own ) @" T-CHECK-REJECTS
 s" CBAD-OWN-STORE ( own ptr own -- ) !" T-CHECK-REJECTS
+\ Pointer pointees and phantom family arguments are type identity, not owners.
+s" COK-PTR-OWN-DUP-W ( ptr own -- ptr own ptr own ) T-PDUP" T-CHECK-PASSES
+s" COK-CELL-OWN-DUP-W ( pcell<own> -- pcell<own> pcell<own> ) T-CDUP" T-CHECK-PASSES
 \ execute (quotation application) enforces the same linear conservation as a
 \ direct step: a polymorphic quotation applied to a linear that copies or drops
 \ it is rejected; an explicit linear consumer/producer and a passthrough certify.
@@ -1461,6 +1497,15 @@ s" COK-N-EXEC-DUP ( n -- n n ) [: dup ;] execute" T-CHECK-PASSES
 s" CBAD-OWN-EXEC-DUP ( own -- own own ) [: dup ;] execute" T-CHECK-REJECTS
 s" CBAD-OWN-EXEC-DROP ( own -- ) [: drop ;] execute" T-CHECK-REJECTS
 s" CBAD-OWN-EXEC-NEST ( own -- own own ) [: [: dup ;] execute ;] execute" T-CHECK-REJECTS
+\ Quotation values are non-owning even when their effects mention an owner;
+\ executing and discarding the produced owner remains forbidden.
+s" COK-OWN-QDROP ( -- ) [: T-MAKE-OWN ;] T-QDROP" T-CHECK-PASSES
+s" COK-OWN-QCOPY ( -- [ -- own ] [ -- own ] ) [: T-MAKE-OWN ;] T-QCOPY" T-CHECK-PASSES
+s" CBAD-OWN-QEXEC ( -- ) [: T-MAKE-OWN ;] T-QEXEC" T-CHECK-REJECTS
+s" COK-OWN-QREC ( n -- [ -- own ] [ -- own ] ) [: T-MAKE-OWN ;] swap T-RQ" T-CHECK-PASSES
+\ A return-row copy is constrained in a stored effect.
+s" COK-N-R-DUP ( n -- n n ) T-RDUP r> r>" T-CHECK-PASSES
+s" CBAD-OWN-R-DUP ( own -- own own ) T-RDUP r> r>" T-CHECK-REJECTS
 \ acquire/release pairing proven through a work quotation: balanced certifies;
 \ leak (missing release) and double release are rejected.
 s" COK-OWN-FRAME-WORK ( -- ) T-MAKE-OWN [: ;] execute T-FREE-OWN" T-CHECK-PASSES
@@ -1471,11 +1516,16 @@ s" CBAD-OWN-FRAME-DOUBLE ( -- ) T-MAKE-OWN [: ;] execute T-FREE-OWN T-FREE-OWN" 
 \ an intra-quotation `dup`/`over`, before it binds linear — is rejected by the
 \ linear kind discipline, even though concrete-count conservation stays neutral
 \ at the call site. KEEP/BI copy `a` into a consumer quotation and also return it;
-\ the intra-quot cases copy the var, then FREE binds it linear (deferred taint).
+\ the intra-quot cases carry that body-earned kind until FREE binds it linear.
 s" CBAD-OWN-KEEP-LAUNDER ( own -- own ) [: T-FREE-OWN ;] KEEP" T-CHECK-REJECTS
 s" CBAD-OWN-BI-LAUNDER ( own -- own ) [: ;] [: T-FREE-OWN ;] BI" T-CHECK-REJECTS
+s" CBAD-OWN-TRUST-KEEP ( own -- own ) [: T-FREE-OWN ;] T-BKEEP" T-CHECK-REJECTS
+s" CBAD-OWN-REC-KEEP ( own -- own ) [: T-FREE-OWN ;] T-RKEEP" T-CHECK-REJECTS
 s" CBAD-OWN-QUOT-DUP-FREE ( own -- own ) [: dup T-FREE-OWN ;] execute" T-CHECK-REJECTS
 s" CBAD-OWN-QUOT-OVER-FREE ( own n -- own n ) [: over T-FREE-OWN ;] execute" T-CHECK-REJECTS
+\ Final signature unification may resolve a body-constrained variable last.
+s" CBAD-OWN-FINAL-DUP ( a -- own own ) dup" T-CHECK-REJECTS
+s" COK-N-FINAL-DUP ( n -- n n ) dup" T-CHECK-PASSES
 \ Positives the discipline must not touch: KEEP over non-linear data still
 \ certifies, and a sound DIP that only MOVES the linear (1-in / 1-out) certifies.
 s" COK-N-KEEP ( n -- n ) [: 1+ ;] KEEP drop" T-CHECK-PASSES
@@ -1495,8 +1545,8 @@ s" CBAD-OWN-LOCAL-ONCE ( own -- ) {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-UNTYPED ( own -- own own ) {: x :} x x" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-BRANCH ( bool own -- ) {: x:own :} if x T-FREE-OWN then" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-MAKE ( -- ) T-MAKE-OWN {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
-\ Deferred laundering: a local bound to a still-polymorphic var referenced twice,
-\ that only later resolves linear, must reject through the taint discipline.
+\ A local binding raises its still-polymorphic type NONLIN, so later owner
+\ resolution rejects even after multiple local references.
 s" CBAD-OWN-LOCAL-POLY-DUP ( a -- ) {: x :} x x T-FREE-OWN T-FREE-OWN" T-CHECK-REJECTS
 \ Positive controls: the linear kept on the stack still certifies, a non-linear
 \ local still binds/references (single AND duplicate), and a poly local that never
@@ -1545,6 +1595,7 @@ s" CBAD-POINT-DUP ( point -- point point ) dup" T-CHECK-REJECTS
 s" CBAD-POINT-PARTIAL ( n -- point )" T-CHECK-REJECTS
 s" CBAD-BOX-RECT ( box -- rect )" T-CHECK-REJECTS
 s" CBAD-HDL-DUP ( hdl -- hdl hdl ) over over" T-CHECK-REJECTS
+s" CBAD-HDL-DROP ( hdl -- ) drop" T-CHECK-REJECTS
 \ Value-record with an arity-6 family field type (dot habu-tfam-4-remainder):
 \ the field wrapper field<rec,q,tfam6r-big<6>> stores its 6-arg inner param in the
 \ VNARG pool; the roundtrip forces VREC-PUSH-FIELDS/VREC-INST to read it back.
@@ -2035,6 +2086,18 @@ s" generic LOAD wrapper certifies" T-LABEL
 s" ESNP-GEN-LOAD ( ptr a -- a ) @" CHECK-QUIET-CANDIDATE! -1 T=
 s" plain-scalar pointee fetch stays generic (no false positive)" T-LABEL
 s" ESNP-FETCH-N ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ Declared row quantifiers remain open and distinct, including inside quotes.
+s" row identity stays parametric" T-LABEL
+s" ESNP-RID ( R -- R )" CHECK-QUIET-CANDIDATE! -1 T=
+s" empty row specialization rejects" T-LABEL
+s" ESNP-REMPTY ( R -- S )" CHECK-QUIET-CANDIDATE! 0 T=
+s" consuming a declared row rejects" T-LABEL
+s" ESNP-RDROP ( R -- S ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" nested row identity stays parametric" T-LABEL
+s" ESNP-QRID ( [ R -- S ] -- [ R -- S ] )" CHECK-QUIET-CANDIDATE! -1 T=
+s" nested row aliasing rejects" T-LABEL
+s" ESNP-QRALIAS ( [ R -- S ] -- [ R -- R ] )" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ specialization diagnostic: E-NONPARAMETRIC-EFFECT, offending quantifier + family
 RSD-BUF RSD-CAP DIAG-BUFFER!

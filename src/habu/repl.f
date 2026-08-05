@@ -70,11 +70,11 @@ defer REPL-READ ( -- ptr u8 n )
 
 : EMITS ( ptr u8 n -- ) {: a u :}  1 a u write drop ;
 
-: REPL-EMIT1 ( c -- )
+: REPL-EMIT1 ( n -- )
    KB c!
    1 KB 1 write drop ;
 
-: KEY1 ( -- c )  0 KB 1 read drop  KB c@ ;
+: KEY1 ( -- n )  0 KB 1 read drop  KB c@ ;
 
 \ full-line redraw: CR, clear-to-eol, prompt, line, cursor back to LPOS
 : REDRAW ( -- )
@@ -99,7 +99,7 @@ defer REPL-READ ( -- ptr u8 n )
       LLEN @ 1 - LLEN !  LPOS @ 1 - LPOS ! THEN ;
 
 \ ---- history ring ----
-: HSLOT ( n -- a )  15 and 256 * HIST + ;
+: HSLOT ( n -- ptr u8 )  15 and 256 * HIST + ;
 
 : HSAVE ( -- )
    LLEN @ 0 > IF

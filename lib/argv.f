@@ -104,7 +104,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
       1 +
    repeat drop ;
 
-: ARGV-MSG-C+ ( c -- ) {: c :}
+: ARGV-MSG-C+ ( n -- ) {: c :}
    ARGV-MSG-L @ 1 + ARGV-MSG-CAP > if ARGV-BUF-FAIL then
    c ARGV-MSG ARGV-MSG-L @ + c!
    ARGV-MSG-L @ 1 + ARGV-MSG-L ! ;

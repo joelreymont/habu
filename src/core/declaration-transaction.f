@@ -74,16 +74,16 @@ $7FFFFFFFFFFFFFFF ROW-BYTES / constant MAX-ROWS
 12 cells constant ST.DIAGNOSTIC-OFF
 
 : ST.TABLE ( ptr a -- ptr ptr a ) ST.TABLE-OFF ptr-field ;
-: ST.CAP ( ptr a -- ptr a ) ST.CAP-OFF + ;
-: ST.N ( ptr a -- ptr a ) ST.N-OFF + ;
-: ST.DEPTH ( ptr a -- ptr a ) ST.DEPTH-OFF + ;
-: ST.SEALED ( ptr a -- ptr a ) ST.SEALED-OFF + ;
-: ST.POISON ( ptr a -- ptr a ) ST.POISON-OFF + ;
-: ST.CURRENT-PHASE ( ptr a -- ptr a ) ST.CURRENT-PHASE-OFF + ;
-: ST.CURRENT-PARTICIPANT ( ptr a -- ptr a ) ST.CURRENT-PARTICIPANT-OFF + ;
-: ST.FAILURE-PHASE ( ptr a -- ptr a ) ST.FAILURE-PHASE-OFF + ;
-: ST.FAILURE-PARTICIPANT ( ptr a -- ptr a ) ST.FAILURE-PARTICIPANT-OFF + ;
-: ST.CLEANUP-PARTICIPANT ( ptr a -- ptr a ) ST.CLEANUP-PARTICIPANT-OFF + ;
+TRUSTED: ST.CAP ( ptr a -- ptr n ) ST.CAP-OFF + ;
+TRUSTED: ST.N ( ptr a -- ptr n ) ST.N-OFF + ;
+TRUSTED: ST.DEPTH ( ptr a -- ptr n ) ST.DEPTH-OFF + ;
+TRUSTED: ST.SEALED ( ptr a -- ptr n ) ST.SEALED-OFF + ;
+TRUSTED: ST.POISON ( ptr a -- ptr n ) ST.POISON-OFF + ;
+TRUSTED: ST.CURRENT-PHASE ( ptr a -- ptr n ) ST.CURRENT-PHASE-OFF + ;
+TRUSTED: ST.CURRENT-PARTICIPANT ( ptr a -- ptr n ) ST.CURRENT-PARTICIPANT-OFF + ;
+TRUSTED: ST.FAILURE-PHASE ( ptr a -- ptr n ) ST.FAILURE-PHASE-OFF + ;
+TRUSTED: ST.FAILURE-PARTICIPANT ( ptr a -- ptr n ) ST.FAILURE-PARTICIPANT-OFF + ;
+TRUSTED: ST.CLEANUP-PARTICIPANT ( ptr a -- ptr n ) ST.CLEANUP-PARTICIPANT-OFF + ;
 TRUSTED: ST.ALLOCATOR ( ptr a -- ptr [ ptr a n n -- ptr a ] )
    ST.ALLOCATOR-OFF + ;
 TRUSTED: ST.DIAGNOSTIC ( ptr a -- ptr [ n n -- ] )
@@ -101,8 +101,8 @@ TRUSTED: ST.DIAGNOSTIC ( ptr a -- ptr [ n n -- ] )
 : ROW ( ptr a n -- ptr a ) {: state:ptr idx:n :}
    state TABLE@ idx ROW-CELLS * cells + ;
 
-: ROW.ID ( ptr a -- ptr a ) ROW.ID-OFF + ;
-: ROW.ORDER ( ptr a -- ptr a ) ROW.ORDER-OFF + ;
+TRUSTED: ROW.ID ( ptr a -- ptr n ) ROW.ID-OFF + ;
+TRUSTED: ROW.ORDER ( ptr a -- ptr n ) ROW.ORDER-OFF + ;
 TRUSTED: ROW.SNAPSHOT ( ptr a -- ptr [ n -- n ] ) ROW.SNAPSHOT-OFF + ;
 TRUSTED: ROW.PREPARE ( ptr a -- ptr [ n -- n ] ) ROW.PREPARE-OFF + ;
 TRUSTED: ROW.COMMIT ( ptr a -- ptr [ n -- n ] ) ROW.COMMIT-OFF + ;

@@ -48,7 +48,7 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 : XREF-FOUND? ( ptr a -- bool )
    XREF-NULL <> ;
 
-: XREF-CELL@ ( ptr a n -- n )
+TRUSTED: XREF-CELL@ ( ptr a n -- n )
    cells + @ ;
 
 : XREF-PTR@ ( ptr a n -- ptr u8 )

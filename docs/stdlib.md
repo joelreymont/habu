@@ -1305,13 +1305,14 @@ neither emits an event. A throwing successful exec/fork hook kills and reaps
 the new child before propagating the exact hook throw, so observation failure
 cannot orphan a process. `REAPER` classifies the next raw fork as reaper work,
 and every fork outcome resets that role. The package initializes all hooks to
-no-ops and the role to direct. Hook setters are checked quotation APIs:
+no-ops and the role to direct. Bind the public defer targets with direct literal
+`is`:
 
 ```forth
-PROCESS-TRACE:EXEC-HOOK!  ( [ ptr u8 n -- ] -- )
-PROCESS-TRACE:FORK-HOOK!  ( [ ptr u8 n -- ] -- )
-PROCESS-TRACE:CLEAR-HOOK! ( [ -- ] -- )
-PROCESS-TRACE:CHILD-HOOK! ( [ -- ] -- )
+PROCESS-TRACE:EXEC-HOOK   ( ptr u8 n -- )
+PROCESS-TRACE:FORK-HOOK   ( ptr u8 n -- )
+PROCESS-TRACE:CLEAR-HOOK  ( -- )
+PROCESS-TRACE:CHILD-HOOK  ( -- )
 PROCESS-TRACE:EXECUTED    ( ptr u8 pid -- pid )
 PROCESS-TRACE:FORKED      ( pid -- pid )
 PROCESS-TRACE:REAPER      ( -- )
@@ -1796,10 +1797,10 @@ still enforces its nominal phase limits. Both factors are clamped to 100..300
 percent; standalone runs without an exported factor self-calibrate. Declare
 budgets as named nominal constants behind the appropriate scaling word.
 
-`TEST:*` defines reusable suite/group/test orchestration. Project adapters
-install typed hooks with `TEST:SETUP!`, `TEST:TEARDOWN!`, `TEST:DRAIN!`,
-`TEST:ARGS-BEGIN!`, `TEST:ARG+!`, `TEST:SELECT?!`, `TEST:RUNNER!`, and
-`TEST:STDIN-RUNNER!`; test files declare named groups with
+`TEST:*` defines reusable suite/group/test orchestration. Project adapters bind
+the public defer targets `TEST:SETUP`, `TEST:TEARDOWN`, `TEST:DRAIN`,
+`TEST:ARGS-BEGIN`, `TEST:ARG+`, `TEST:SELECT?`, `TEST:RUNNER`, and
+`TEST:STDIN-RUNNER` with direct literal `is`; test files declare named groups with
 `TEST:GROUP SEQ name` or `TEST:GROUP PARA name` (the `SEQ`/`PARA` mode is a
 mandatory positional token before the group name), define `TEST:SUITE` or
 `TEST:SUITE-STDIN` entries, close each entry with `TEST:;SUITE`, close the group
