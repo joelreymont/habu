@@ -100,6 +100,15 @@ closed
 theorem Habu.Common.Storage.ctx_leave_kills_the_mapping_handle
 type forall s d c i, cgens_distinct s -> nth_error (reg s) i = Some c -> d <= i -> cresolve (cleave s d) c = None
 closed
+theorem Habu.Common.Storage.ctx_abandon_retires
+type forall s d c i, cgens_distinct s -> nth_error (reg s) i = Some c -> d <= i -> cserial_live (cabandon s d) (cgen c) = false /\ cresolve (cabandon s d) c = None
+closed
+theorem Habu.Common.Storage.ctx_abandon_frees_depth
+type forall s base s' c, center s base = Some (s', c) -> length (reg (cabandon s' (length (reg s)))) = length (reg s)
+closed
+theorem Habu.Common.Storage.ctx_abandon_times_keeps_depth
+type forall n s base, length (reg (cabandon_times n s base)) = length (reg s)
+closed
 theorem Habu.Common.Storage.ctx_depth_bounded
 type forall s base, depth_max <= length (reg s) -> center s base = None
 closed

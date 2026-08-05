@@ -126,6 +126,7 @@ variable DEPTH
 0 DEPTH !
 create GENS DEPTH-MAX cells allot
 create BASES DEPTH-MAX cells allot
+create BODIES DEPTH-MAX cells allot
 create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 
 : GEN@ ( n -- n )
@@ -133,6 +134,19 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 
 : GEN! ( n n -- )
    cells GENS + ! ;
+
+\ The quotation the context at this depth is running. It is parked beside that
+\ context's generation, in the registry's own stack, because the entry below has
+\ to catch the body and a checked catch takes a stack-neutral quotation while
+\ this body consumes the minted handle and leaves the caller's own result row.
+\ Parking it per depth rather than in one cell is what makes nesting need no
+\ save-and-restore ceremony: each level's body is written before the depth
+\ reaches it, exactly as its generation is.
+: BODY@ ( n -- n )
+   cells BODIES + @ ;
+
+: BODY! ( n n -- )
+   cells BODIES + ! ;
 
 : BASE-FIELD ( n -- ptr ptr u8 )
    cells BASES + 0 ptr-field ;
@@ -331,6 +345,59 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
    SLOT-UNBOUND over HF-WITNESS HDR!
    STAGE>HDR ;
 
+\ ---- leaving, on both paths ---------------------------------------------------
+\ RETIREMENT IS UNCONDITIONAL, AND THAT IS THE WHOLE OF THIS SECTION. These two
+\ writes used to sit after the body with nothing catching it, so a body that
+\ threw skipped both: MEM:WITH-BYTES released the mapping on its way out, and
+\ the registry went on reporting that serial LIVE over storage that was gone.
+\ IR-ARENA and IR-BUILD both decide whether their own handles are usable by
+\ asking IR-CTX:SERIAL-LIVE?, so that answer was the difference between a
+\ refusal and a read through a dangling pointer. The depth never came back
+\ either, so sixty-five caught failures filled the registry and every later
+\ entry answered E-IR-CTX-DEPTH instead of doing its work - the body's own error
+\ replaced by a capacity error about the previous sixty-five.
+\
+\ TRUNCATING THE DEPTH IS WHAT RELEASES THE CHILDREN. FIND-SLOT scans only below
+\ DEPTH, so putting it back to the entry depth stops every slot at or above it
+\ from resolving, in one step; the next install rewrites the slot it lands in
+\ before the depth reaches it again. That is why this is the same pair of writes
+\ the normal path always made, and not a second, larger cleanup.
+: CTX-RETIRE ( n -- ) {: at:n :}
+   0 at GEN!
+   at DEPTH ! ;
+
+\ Run the body of the context at the current depth, which is this scope's own
+\ frame: CTX-ENTER writes the depth one above the frame it installed and then
+\ calls CE-SCOPE, which calls this as the first thing inside the catch, so
+\ nothing runs in between that could have pushed another. The handle is minted
+\ here, out of the generation the registry already holds, so no sealed handle
+\ has to travel through the parking. Note that the RETIREMENT does not read the
+\ depth - CE-SCOPE holds its frame in a local - so a body that somehow left the
+\ depth elsewhere cannot make this word retire somebody else's frame.
+\
+\ Trusted for one reason: it executes a fetched execution token whose effect -
+\ the caller's own result row - the checker cannot state.
+\ Retirement owner: habu-epic-type-habu-a34713f0.
+TRUSTED: CE-RUN ( -- )
+   DEPTH @ 1- dup GEN@ MINT-CTX swap BODY@ execute ;
+
+\ Run it, retire this context whatever became of it, and then let the body's
+\ error out. Trusted for the catch alone: a checked catch takes a stack-neutral
+\ quotation and this one leaves the caller's result row. The retirement above it
+\ is ordinary checked code, and `at` is a local because a local is the only
+\ storage that survives both paths out of one frame - on the throw path the data
+\ stack is truncated to the catch point, and on the normal path the body's
+\ result row is sitting on top of anything that was left there.
+\ typed-local-lint: allow-bare-local - the caught code is the caller's, and its
+\ effect is the row-polymorphic one this word's own signature carries.
+TRUSTED: CE-SCOPE ( R [ R IR-CTX:ctx -- S ] n -- S )
+   {: at:n :}
+   at BODY!
+   [: CE-RUN ;] catch
+   at CTX-RETIRE
+   dup 0 <> if throw then
+   drop ;
+
 \ The WITH-BYTES body: build the context in the fresh mapping, run the caller's
 \ quotation with the minted handle, then retire this slot and every deeper one
 \ before the mapping is released.
@@ -341,9 +408,7 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
    at CTX-INSTALL
    g at GEN!
    at 1+ DEPTH !
-   g MINT-CTX swap execute
-   0 at GEN!
-   at DEPTH ! ;
+   at CE-SCOPE ;
 
 public
 

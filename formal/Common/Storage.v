@@ -81,9 +81,12 @@
       is covered by test/compiler/ir-context.f; this file models the mapping as
       a cursor and a module counter.
 
-   9. `abandon` models the throw path of IR-CTX:CTX-ENTER, and it is a real
-      difference from normal exit rather than a modelling convenience.  See
-      FINDING 1.
+   9. `cabandon` models the throw path of IR-CTX:CTX-ENTER, and it is now the
+      SAME retirement as normal exit rather than a different one.  The word
+      catches the body, retires, and rethrows (context.f, CE-SCOPE), so the two
+      paths leave the registry in the same state and the model says so with one
+      definition used twice.  `cabandon_no_retire` is kept beside it as the
+      mutation that was the old code.  See FINDING 1.
 
   10. Machine integers are `nat`.  IR-CTX:GEN-NEXT-N and IR-ARENA:AGEN-NEXT-N
       also reject a NEGATIVE counter (context.f:139, arena.f:145), which `nat`
@@ -127,22 +130,47 @@
        it fails the first, so the limit is pinned from both sides rather than
        only through the DEPTH-MAX literal.
 
+   B3. CLOSED.  The throw path is driven by two things at once.  The teardown
+       rows in test/compiler/ir-storage-cases.f read the shipped source: the
+       body is executed in exactly one word, that word is run inside exactly one
+       catch, the retirement's last position is after the catch's, and the
+       rethrow's is after the retirement's — so an edit that puts the
+       retirement back on one path only moves one of those positions and fails a
+       row.  test/compiler/ir-context.f then runs it: a caught top-level failure
+       must leave its serial not live, and depth_max + 1 of them must leave the
+       registry able to nest to its full depth again.  Checked the same way as
+       B1 and B2 — deleting the retirement from CE-SCOPE fails the ordering row,
+       the frozen body row, the liveness case and the nesting cases, and putting
+       it back makes all of them green.
+
    ------------------------------------------------------------------------
    FINDINGS — claims in the source comments that these proofs do not
    support.  Each open finding is exhibited as an executable example below.
 
-   FINDING 1.  arena.f:20-26 says every arena resolution "probes
-   IR-CTX:SERIAL-LIVE? so an arena whose context tore down rejects with
-   E-IR-ARENA-STALE before any pointer is touched".  That holds for a context
-   that LEAVES NORMALLY.  It does not hold for a context abandoned by a throw.
-   IR-CTX:CTX-ENTER retires its slot and truncates the depth in the two lines
-   AFTER the body runs (context.f:329-330), so a throw skips both, while
-   MEM:WITH-BYTES still releases the mapping.  The registry therefore reports
-   that serial LIVE while its storage is gone, until an enclosing context
-   leaves.  `ctx_abandoned_context_still_reports_live` below is that state.
-   The safety of the layer on that path rests on the sealed handle argument in
-   context.f:22-27 (no reachable handle survives the throw), not on the liveness
-   probe — which is a different, weaker guarantee than the comment states.
+   FINDING 1.  RESOLVED BY REPAIR (2026-08-05).  arena.f:20-26 says every arena
+   resolution "probes IR-CTX:SERIAL-LIVE? so an arena whose context tore down
+   rejects with E-IR-ARENA-STALE before any pointer is touched".  That used to
+   hold only for a context that LEAVES NORMALLY: IR-CTX:CTX-ENTER retired its
+   slot and truncated the depth in the two lines AFTER the body ran, so a throw
+   skipped both while MEM:WITH-BYTES still released the mapping, and the
+   registry reported that serial LIVE while its storage was gone.  Two things
+   rested on that being harmless, and only the first was true: no reachable
+   handle survives the throw (context.f:22-27), but the liveness probe is
+   ALSO consulted through a raw serial — IR-ARENA:LIVE? and IR-BUILD:LIVE? ask
+   IR-CTX:SERIAL-LIVE? about their owner, so a live answer over released
+   storage was the difference between a refusal and a read through a dangling
+   pointer.  The depth was not restored either, so 65 caught failures filled the
+   64-slot registry and every later entry answered E-IR-CTX-DEPTH instead of the
+   body's own error.
+
+   The repair is in context.f: CE-SCOPE catches the body, runs CTX-RETIRE
+   unconditionally, and rethrows the body's error.  The model now retires on
+   both paths with one definition (`cabandon` = `cleave`), and what was the
+   counterexample is a proven statement: `ctx_abandon_retires`,
+   `ctx_abandon_frees_depth` and `ctx_abandon_is_normal_exit` below.
+   `cabandon_no_retire` is kept as the mutation that was the old code, and
+   `ctx_no_retire_leaves_live_handle` is what it still admits — which is what
+   makes the repair load-bearing rather than a restatement.
 
    FINDING 2.  RESOLVED BY DELETION (2026-08-05).  IR-ARENA:ROLLBACK
    restored only the count, so a reused ordinal aliased a stale ID onto the
@@ -746,10 +774,17 @@ Definition center (s : cstate) (base : nat) : option (cstate * ctx) :=
 Definition cleave (s : cstate) (depth_at_entry : nat) : cstate :=
   MkCState (counter s) (firstn depth_at_entry (reg s)).
 
-(* The throw path of the same word.  MEM:WITH-BYTES releases the mapping, but
-   neither of those two lines runs, so the registry is left exactly as the body
-   left it.  This is FINDING 1. *)
-Definition cabandon (s : cstate) : cstate := s.
+(* The throw path of the same word, which is now the same retirement.  CE-SCOPE
+   catches the body, runs CTX-RETIRE, and only then rethrows, so the registry
+   is truncated to the entry depth exactly as a normal exit truncates it.  One
+   definition, used for both paths, because there is one behaviour. *)
+Definition cabandon (s : cstate) (depth_at_entry : nat) : cstate :=
+  cleave s depth_at_entry.
+
+(* The mutation that was the old code: the throw path left the registry exactly
+   as the body left it.  Kept so the results below say what the retirement buys
+   rather than restating a definition. *)
+Definition cabandon_no_retire (s : cstate) (_ : nat) : cstate := s.
 
 (* The mutation that shows the truncation is load-bearing: an exit that retires
    only its own slot and leaves the depth alone. *)
@@ -976,6 +1011,80 @@ Proof.
   intros s d c i Hdistinct Hnth Hdepth.
   apply ctx_stale_handle_rejected.
   apply (ctx_no_handle_survives_owner_exit s d c i Hdistinct Hnth Hdepth).
+Qed.
+
+(* ---- the throw path is the normal path --------------------------------- *)
+(* Everything above is about `cleave`, the exit a body that RETURNED takes.
+   IR-CTX:CE-SCOPE retires before it rethrows, so a body that THREW takes the
+   same exit and every result above holds of it as well.  These say that in the
+   three forms the layer depends on: the state is identical, no abandoned
+   handle stays live or resolves to a mapping, and the depth comes back. *)
+
+(* Machinery, not a published result: `cabandon` is DEFINED as `cleave`, so
+   this restates the definition and constrains nothing on its own.  What does
+   the work is the two results below, which are false of the old throw path. *)
+Lemma ctx_abandon_is_normal_exit :
+  forall s d, cabandon s d = cleave s d.
+Proof. reflexivity. Qed.
+
+Theorem ctx_abandon_retires :
+  forall s d c i,
+    cgens_distinct s ->
+    nth_error (reg s) i = Some c ->
+    d <= i ->
+    cserial_live (cabandon s d) (cgen c) = false
+    /\ cresolve (cabandon s d) c = None.
+Proof.
+  intros s d c i Hdistinct Hnth Hdepth.
+  split.
+  - apply (ctx_no_handle_survives_owner_exit s d c i Hdistinct Hnth Hdepth).
+  - apply (ctx_leave_kills_the_mapping_handle s d c i Hdistinct Hnth Hdepth).
+Qed.
+
+(* The depth half, which is what a caught failure used to spend.  Entering and
+   then abandoning leaves the registry exactly the length it was. *)
+Theorem ctx_abandon_frees_depth :
+  forall s base s' c,
+    center s base = Some (s', c) ->
+    length (reg (cabandon s' (length (reg s)))) = length (reg s).
+Proof.
+  intros s base s' c Henter.
+  unfold center in Henter.
+  destruct (Nat.leb depth_max (length (reg s))); [discriminate |].
+  destruct (ctake_gen (counter s)) as [g |] eqn:Htake; [| discriminate].
+  inversion Henter; subst s' c.
+  unfold cabandon, cleave.
+  simpl.
+  rewrite length_firstn.
+  rewrite length_app.
+  simpl.
+  lia.
+Qed.
+
+(* Enter-and-abandon, any number of times over.  This is the published form:
+   no number of caught context failures can fill the registry, so the error a
+   caller is told after sixty-five of them is still the sixty-sixth body's own
+   and never E-IR-CTX-DEPTH.  test/compiler/ir-context.f runs that count for
+   real against the shipped words. *)
+Fixpoint cabandon_times (n : nat) (s : cstate) (base : nat) : cstate :=
+  match n with
+  | 0 => s
+  | S k =>
+      match center s base with
+      | None => s
+      | Some (s', _) => cabandon_times k (cabandon s' (length (reg s))) base
+      end
+  end.
+
+Theorem ctx_abandon_times_keeps_depth :
+  forall n s base,
+    length (reg (cabandon_times n s base)) = length (reg s).
+Proof.
+  induction n as [| k IH]; intros s base; [reflexivity |].
+  simpl.
+  destruct (center s base) as [[s' c] |] eqn:Henter; [| reflexivity].
+  rewrite IH.
+  apply (ctx_abandon_frees_depth s base s' c Henter).
 Qed.
 
 (* Entering is bounded: IR-CTX:DEPTH-ROOM throws E-IR-CTX-DEPTH rather than
@@ -1394,13 +1503,14 @@ Example ctx_no_truncation_leaves_live_handle :
      = true.
 Proof. split; vm_compute; reflexivity. Qed.
 
-(* COUNTEREXAMPLE 3 — and FINDING 1.  A context abandoned by a throw keeps its
-   registry slot, so its serial still reports LIVE even though MEM:WITH-BYTES
-   has already released its mapping.  Compare the normal exit directly beside
-   it. *)
-Example ctx_abandoned_context_still_reports_live :
-  cserial_live (cleave (MkCState 2 [MkCtx 1 100; MkCtx 2 200]) 1) 2 = false
-  /\ cserial_live (cabandon (MkCState 2 [MkCtx 1 100; MkCtx 2 200])) 2 = true.
+(* COUNTEREXAMPLE 3 — what FINDING 1 was, kept as the mutation that shows the
+   retirement is load-bearing.  A throw path that leaves the registry as the
+   body left it keeps the abandoned serial LIVE even though MEM:WITH-BYTES has
+   already released its mapping; the shipped path beside it does not. *)
+Example ctx_no_retire_leaves_live_handle :
+  cserial_live (cabandon (MkCState 2 [MkCtx 1 100; MkCtx 2 200]) 1) 2 = false
+  /\ cserial_live
+       (cabandon_no_retire (MkCState 2 [MkCtx 1 100; MkCtx 2 200]) 1) 2 = true.
 Proof. split; vm_compute; reflexivity. Qed.
 
 (* 9. SCRATCH. *)
@@ -1466,6 +1576,9 @@ Print Assumptions ctx_gen_never_reused.
 Print Assumptions ctx_enter_registers_live.
 Print Assumptions ctx_no_handle_survives_owner_exit.
 Print Assumptions ctx_leave_kills_the_mapping_handle.
+Print Assumptions ctx_abandon_retires.
+Print Assumptions ctx_abandon_frees_depth.
+Print Assumptions ctx_abandon_times_keeps_depth.
 Print Assumptions ctx_depth_bounded.
 Print Assumptions ctx_enter_keeps_depth_bounded.
 Print Assumptions ctx_nesting_stops_at_depth_max.

@@ -272,21 +272,36 @@ private
    s" a storage guard still has its frozen body" T-LABEL
    row GUARD-WORD$ COMPILER-ID-SRC:BODY$ row GUARD-BODY$ T$= ;
 
-\ The registry truncation that releases a context and every child inside it runs
-\ AFTER the caller's quotation, which is why a throw never reaches it. That
-\ ordering is the model's first finding, so it is read here rather than trusted.
+\ The registry truncation that releases a context and every child inside it has
+\ to run whether the caller's quotation returned or threw. It used to sit after
+\ the quotation with nothing catching it, so a throw skipped it and left the
+\ registry reporting a serial LIVE over storage MEM:WITH-BYTES had already
+\ released; that was the model's first finding. The repair is read here rather
+\ than trusted: the body runs inside a catch, the retirement runs after that
+\ catch, and the body's error is rethrown after the retirement. Each of the
+\ three is a position in the shipped source, so an edit that puts the
+\ retirement back on one path only moves one of them and fails a row.
 : TEARDOWN-ORDER ( -- )
    CTX-FILE$ COMPILER-ID-SRC:SCAN-FILE
    s" the context body is invoked exactly once" T-LABEL
    BODY-CALL$ COMPILER-ID-SRC:RUNS 1 T=
    s" the registry truncation appears exactly once" T-LABEL
    TEARDOWN-RUN$ COMPILER-ID-SRC:RUNS 1 T=
-   s" CTX-ENTER" COMPILER-ID-SRC:BODY-SPAN {: b:n e:n :}
-   s" the context body is invoked exactly once inside CTX-ENTER" T-LABEL
-   b e s" execute" SPAN-COUNT 1 T=
-   s" the registry truncation runs after the context body, not before" T-LABEL
-   b e s" DEPTH" SPAN-LAST
-   b e s" execute" SPAN-LAST > TTRUE ;
+   s" CTX-ENTER" COMPILER-ID-SRC:BODY-SPAN {: eb:n ee:n :}
+   s" entering a context runs no body of its own" T-LABEL
+   eb ee s" execute" SPAN-COUNT 0 T=
+   s" CE-RUN" COMPILER-ID-SRC:BODY-SPAN {: rb:n re:n :}
+   s" the context body is invoked exactly once, in the caught word" T-LABEL
+   rb re s" execute" SPAN-COUNT 1 T=
+   s" CE-SCOPE" COMPILER-ID-SRC:BODY-SPAN {: b:n e:n :}
+   s" that word is run inside exactly one catch" T-LABEL
+   b e s" catch" SPAN-COUNT 1 T=
+   s" the retirement runs after the catch, so it runs on both paths" T-LABEL
+   b e s" CTX-RETIRE" SPAN-LAST
+   b e s" catch" SPAN-LAST > TTRUE
+   s" and the body's error is rethrown after the retirement, not before" T-LABEL
+   b e s" throw" SPAN-LAST
+   b e s" CTX-RETIRE" SPAN-LAST > TTRUE ;
 
 public
 

@@ -215,7 +215,7 @@ public
 \ exact text it was read against is pinned here. `Habu.Common.Storage`
 \ records it as a finding.
 
-9 constant GUARD-COUNT
+10 constant GUARD-COUNT
 
 : GUARD-FILE$ ( n -- ptr u8 n )
    case
@@ -228,6 +228,7 @@ public
       6 of s" src/compiler/ir/context.f" endof
       7 of s" src/compiler/ir/context.f" endof
       8 of s" src/compiler/ir/context.f" endof
+      9 of s" src/compiler/ir/context.f" endof
       E-CST-ROW throw
    endcase ;
 
@@ -242,6 +243,7 @@ public
       6 of s" ALIGN8" endof
       7 of s" FIND-SLOT" endof
       8 of s" CTX-ENTER" endof
+      9 of s" CE-SCOPE" endof
       E-CST-ROW throw
    endcase ;
 
@@ -255,19 +257,21 @@ public
       5 of s" dup 0 < over GEN-MAX >= or if E-IR-CTX-SERIALS throw then 1+" endof
       6 of s" 7 + 8 / 8 *" endof
       7 of s" {: g:n :} -1 DEPTH @ 0 ?do g i GEN@ = if drop i leave then loop" endof
-      8 of s" drop DEPTH-ROOM DEPTH @ TAKE-GEN {: at:n g:n :} at CTX-INSTALL g at GEN! at 1+ DEPTH ! g MINT-CTX swap execute 0 at GEN! at DEPTH !" endof
+      8 of s" drop DEPTH-ROOM DEPTH @ TAKE-GEN {: at:n g:n :} at CTX-INSTALL g at GEN! at 1+ DEPTH ! at CE-SCOPE" endof
+      9 of s" {: at:n :} at BODY! [: CE-RUN ;] catch at CTX-RETIRE dup 0 <> if throw then drop" endof
       E-CST-ROW throw
    endcase ;
 
 \ The token run that retires this context and truncates the registry back to the
 \ depth saved at entry. It is what makes leaving a context release every child
-\ context and every arena registered inside it in one step, and it sits AFTER
-\ the body runs, which is why a throw does not reach it.
+\ context and every arena registered inside it in one step. It sits in
+\ CTX-RETIRE, which CE-SCOPE runs after the catch around the body, so it is
+\ reached whether the body returned or threw.
 : TEARDOWN-RUN$ ( -- ptr u8 n )
    s" 0 at GEN! at DEPTH !" ;
 
 : BODY-CALL$ ( -- ptr u8 n )
-   s" g MINT-CTX swap execute" ;
+   s" MINT-CTX swap BODY@ execute" ;
 
 \ ---- 4 and 5. the operation vocabulary ---------------------------------------
 

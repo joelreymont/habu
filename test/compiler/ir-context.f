@@ -370,6 +370,48 @@ defer DEEP-STEP ( n IR-CTX:ctx -- n )
    s" the harness exit reclaims its abandoned subtree" T-LABEL
    40 DEEP-RUN 0 T= ;
 
+\ ---- a body that throws retires its context anyway ---------------------------
+\ These run at TOP LEVEL, outside every context, and that is the whole point.
+\ Every case above runs inside one outer context whose normal exit truncates the
+\ registry, so none of them can see a slot that was never given back; the
+\ failure path they miss is the one a compiler driver takes when it catches a
+\ compilation error and carries on.
+\
+\ Until the entry caught its own body, both of these were false. The registry
+\ went on reporting the abandoned serial LIVE although MEM:WITH-BYTES had
+\ already released its mapping - and IR-ARENA and IR-BUILD both decide whether
+\ their handles are usable by asking exactly that. The depth never came back
+\ either, so sixty-five caught failures filled the sixty-four-slot registry and
+\ every later entry answered E-IR-CTX-DEPTH instead of doing its work, which
+\ replaced the body's own error with a capacity error about the previous
+\ sixty-five.
+variable ABANDONED
+
+: THROW-BODY ( IR-CTX:ctx -- )
+   dup IR-CTX:SERIAL ABANDONED !
+   IR-CTX:SOURCES@ ;
+
+: THROW-RUN ( -- )
+   BND [: THROW-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ One more failure than the registry has slots, each caught where a driver would
+\ catch it: at the top level, with no enclosing context to clean up after them.
+: THROW-MANY ( -- )
+   TDEPTH-MAX 1+ 0 ?do
+      [: THROW-RUN ;] catch drop
+   loop ;
+
+: ABANDON-CASES ( -- )
+   s" a body that throws reports its own error" T-LABEL
+   [: THROW-RUN ;] E-IR-CTX-UNBOUND TTHROWSQ
+   s" and its context is retired anyway: the serial it named is not live" T-LABEL
+   ABANDONED @ IR-CTX:SERIAL-LIVE? TFALSE
+   s" more caught failures than the registry holds do not fill it" T-LABEL
+   THROW-MANY
+   TDEPTH-MAX DEEP-RUN 0 T=
+   s" and the error a body throws after them is still its own" T-LABEL
+   [: THROW-RUN ;] E-IR-CTX-UNBOUND TTHROWSQ ;
+
 \ ---- the checker seals the handle family -------------------------------------
 : CHECKER-CASES ( -- )
    s" IRC-FORGE ( n -- IR-CTX:ctx )"
@@ -414,6 +456,7 @@ public
    BND [: CASES-BODY ;] IR-CTX:WITH-CONTEXT
    s" the outer exit reclaims every retired slot" T-LABEL
    TDEPTH-MAX DEEP-RUN 0 T=
+   ABANDON-CASES
    CHECKER-CASES
    T-REPORT ;
 
