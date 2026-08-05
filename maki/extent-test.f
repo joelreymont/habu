@@ -55,7 +55,7 @@ s" #XNEG"  XR-ABSENT? -1 T=          \ nothing minted: bad names absent from the
 s" #XZERO" XR-ABSENT? -1 T=
 \ the shared decimal emitter itself fails closed on a negative (defense in depth).
 : TRY-XGI  ( -- ) -3 XG-INT ;
-' TRY-XGI  E-EXT-VALUE TTHROWS
+' TRY-XGI  E-CG-VALUE TTHROWS
 
 \ --- a mangling collision is a NAMED throw (E-TFAM-DUP), never a silent rename.
 \ #EA above minted family tail `extea`; the exact CHECKER-DEFFAMILY line EXTENT:

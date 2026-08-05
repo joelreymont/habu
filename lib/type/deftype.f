@@ -49,21 +49,19 @@
 \ certified through the check hook by NG-EVAL. Tested by test/deftype-suite.f.
 
 require lib/string.f                 \ ASCII-LOWER: fold the surface name to the family tail
-require lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer
+require lib/codegen.f                \ shared generated-source byte buffer
 
 package VNOM
 
 private
 
 -6001 constant E-VNOM-NAME     \ DEFTYPE given an empty name
--6002 constant E-VNOM-CAP      \ generated-source or mangle buffer capacity exceeded
 
 \ ---- generated-source codegen buffer (build the "TRUSTED: ... ;" converter text
 \ each declaration evaluates). The append mechanics live in package CODEGEN
-\ (lib/codegen.f); these thin words bind them to this file's NG-BUFFER instance,
-\ minted with the E-VNOM-CAP throw code its callers already expect. ------------
+\ (lib/codegen.f); these thin words bind them to this file's NG-BUFFER instance.
 $400 constant NG-CAP
-NG-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NG-BUFFER
+NG-CAP CODEGEN:BUFFER NG-BUFFER
 : NG-RESET ( -- )  NG-BUFFER CODEGEN:RESET ;
 : NG+ ( ptr u8 n -- )  NG-BUFFER CODEGEN:APPEND-STRING ;   \ append a string
 : NG$ ( -- ptr u8 n )  NG-BUFFER CODEGEN:CONTENTS ;
@@ -80,7 +78,7 @@ TRUSTED: NG-EVAL ( -- )  NG$ evaluate ;
 \ mangled tail out of here while EMIT-IN/EMIT-OUT build the converter text in
 \ NG-BUFFER. The tail fold is lib/string.f ASCII-LOWER.
 32 constant NM-CAP
-NM-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NM-BUFFER
+NM-CAP CODEGEN:BUFFER NM-BUFFER
 : MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    NM-BUFFER CODEGEN:RESET
    u 0 ?do  a i + c@ ASCII-LOWER NM-BUFFER CODEGEN:APPEND-BYTE  loop
