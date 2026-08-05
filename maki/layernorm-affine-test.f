@@ -55,7 +55,7 @@ variable LNA-RNG
 : LNA-SEED! ( n -- )  LNA-RNG ! ;
 : LNA-NEXT ( -- n )  LNA-RNG @ 1103515245 * 12345 + dup LNA-RNG ! ;
 : LNA-UNIT ( -- r )  LNA-NEXT $FFFF and s>f 65536.0 f/ 0.5 f- ;
-: LNA-FILL ( ptr a n -- ) {: p:ptr len:n :}  len 0 ?do  LNA-UNIT p i T-SET  loop ;
+: LNA-FILL ( ptr r n -- ) {: p:ptr len:n :}  len 0 ?do  LNA-UNIT p i T-SET  loop ;
 
 \ ---- Adam bookkeeping (self-contained; step count + running decay powers) -------
 : LNA-B1  ( -- r )  0.9 ;
@@ -83,7 +83,7 @@ variable LNA-B1T   variable LNA-B2T
    0.0 LNA-XM LNA-RC T-FILL  0.0 LNA-XV LNA-RC T-FILL ;
 
 \ ---- golden forward over all rows + mean-MSE loss --------------------------------
-: LNA-ROW ( ptr a n -- ptr a )  LNA-C * cells + ;   \ row base of an R x C buffer
+: LNA-ROW ( ptr r n -- ptr r )  LNA-C * cells + ;   \ row base of an R x C buffer
 : LNA-INV-N ( -- r )  1.0 LNA-RC s>f f/ ;
 : LNA-FWD! ( -- )
    LNA-R 0 ?do  LNA-X i LNA-ROW  LNA-Y i LNA-ROW  LNA-G  LNA-B  LNA-C  LN-AFFINE-FWD  loop ;
@@ -102,7 +102,7 @@ variable LNA-B1T   variable LNA-B2T
 
 \ ---- central finite difference of LNA-LOSS over a parameter buffer ---------------
 : LNA-FD-H ( -- r )  0.001 ;
-: LNA-FD! ( ptr a n ptr a -- ) {: pb:ptr len:n fdb:ptr :}
+: LNA-FD! ( ptr r n ptr r -- ) {: pb:ptr len:n fdb:ptr :}
    len 0 ?do
       pb i T-GET {: base:r :}
       base LNA-FD-H f+  pb i T-SET  LNA-LOSS {: yp:r :}
@@ -114,7 +114,7 @@ variable LNA-B1T   variable LNA-B2T
 : LNA-TOL ( -- r )  0.0001 ;   \ 1e-4 FD-vs-analytic rel-L2 (~100x the FD floor)
 
 \ one parameter: central FD vs the analytic gradient, rel-L2 < tol
-: LNA-CHECK ( ptr a n ptr a ptr a -- ) {: pb:ptr len:n fdb:ptr anb:ptr :}
+: LNA-CHECK ( ptr r n ptr r ptr r -- ) {: pb:ptr len:n fdb:ptr anb:ptr :}
    pb len fdb LNA-FD!
    fdb anb len T-REL-L2  LNA-TOL f<  TTRUE ;
 

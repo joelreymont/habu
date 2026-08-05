@@ -15,34 +15,34 @@ package MAKI
 
 : LN-EPS ( -- r )  0.00001 ;
 
-: LN-MEAN ( ptr a n -- r ) {: xb:ptr n:n :}  xb n T-SUM  n s>f f/ ;
+: LN-MEAN ( ptr r n -- r ) {: xb:ptr n:n :}  xb n T-SUM  n s>f f/ ;
 
 \ variance = mean( (x-mu)^2 ) given mu
-: LN-VAR ( ptr a n r -- r ) {: xb:ptr n:n mu:r :}
+: LN-VAR ( ptr r n r -- r ) {: xb:ptr n:n mu:r :}
    0.0  n 0 ?do  xb i T-GET  mu f-  dup f*  f+  loop  n s>f f/ ;
 
 \ standard deviation sqrt(var+eps)
-: LN-STD ( ptr a n r -- r ) {: xb:ptr n:n mu:r :}
+: LN-STD ( ptr r n r -- r ) {: xb:ptr n:n mu:r :}
    xb n mu LN-VAR  LN-EPS f+  fsqrt ;
 
 \ write normalized xhat_i = (x_i-mu)/std into yb
-: LN-NORM! ( ptr a ptr a n r r -- ) {: xb:ptr yb:ptr n:n mu:r std:r :}
+: LN-NORM! ( ptr r ptr r n r r -- ) {: xb:ptr yb:ptr n:n mu:r std:r :}
    n 0 ?do  xb i T-GET  mu f-  std f/  yb i T-SET  loop ;
 
 \ forward (recomputes mu twice / std once; clean over fast)
 public
 
-: LN-FWD ( ptr a ptr a n -- ) {: xb:ptr yb:ptr n:n :}
+: LN-FWD ( ptr r ptr r n -- ) {: xb:ptr yb:ptr n:n :}
    xb yb n  xb n LN-MEAN  xb n  xb n LN-MEAN  LN-STD  LN-NORM! ;
 
 private
 
 \ mean( dy_i * (x_i - mu) ) given mu
-: LN-MEAN-DYC ( ptr a ptr a n r -- r ) {: dyb:ptr xb:ptr n:n mu:r :}
+: LN-MEAN-DYC ( ptr r ptr r n r -- r ) {: dyb:ptr xb:ptr n:n mu:r :}
    0.0  n 0 ?do  dyb i T-GET  xb i T-GET mu f-  f*  f+  loop  n s>f f/ ;
 
 \ dx_i = (dy_i - mdy - xhat_i*mdyx)/std   (mdyx = mean(dy*xhat), xhat=(x-mu)/std)
-: LN-DX! ( ptr a ptr a ptr a n r r r r -- )
+: LN-DX! ( ptr r ptr r ptr r n r r r r -- )
    {: dyb:ptr xb:ptr dxb:ptr n:n mu:r std:r mdy:r mdyx:r :}
    n 0 ?do
       dyb i T-GET  mdy f-
@@ -54,7 +54,7 @@ private
 \ backward (recomputes the stats; mdyx = mean(dy*(x-mu)) / std = mean(dy*xhat))
 public
 
-: LN-BWD ( ptr a ptr a ptr a n -- ) {: dyb:ptr xb:ptr dxb:ptr n:n :}
+: LN-BWD ( ptr r ptr r ptr r n -- ) {: dyb:ptr xb:ptr dxb:ptr n:n :}
    dyb xb dxb n
    xb n LN-MEAN
    xb n  xb n LN-MEAN  LN-STD
@@ -66,11 +66,10 @@ public
 \ gamma/beta are per-feature (length n), SHARED across rows; xhat is the existing
 \ no-affine normalized value. Golden operates one ROW at a time; a multi-row caller
 \ loops the rows and the VJP accumulates the per-row parameter gradients (dot
-\ habu-affine-layernorm-gamma). Non-positive n is a fail-closed error (the no-affine
-\ LN-FWD/LN-BWD stay byte-for-byte, so existing callers are unchanged).
+\ habu-affine-layernorm-gamma). Non-positive n is a fail-closed error.
 
 \ forward: write xhat with LN-FWD, then scale-and-shift in place.
-: LN-AFFINE-FWD ( ptr a ptr a ptr a ptr a n -- )
+: LN-AFFINE-FWD ( ptr r ptr r ptr r ptr r n -- )
    {: xb:ptr yb:ptr gb:ptr bb:ptr n:n :}
    n 1 < if E-LN-DIM throw then
    xb yb n LN-FWD
@@ -81,7 +80,7 @@ public
 \ into xhat is dy*gamma, threaded through the existing normalization backward. xhb
 \ is caller scratch (length n): it first holds xhat (for dgamma), then is reused as
 \ dxhat (= dy*gamma) fed to LN-BWD. The caller zeros dgb/dbb before the row loop.
-: LN-AFFINE-BWD ( ptr a ptr a ptr a ptr a ptr a ptr a ptr a n -- )
+: LN-AFFINE-BWD ( ptr r ptr r ptr r ptr r ptr r ptr r ptr r n -- )
    {: dyb:ptr xb:ptr gb:ptr dxb:ptr dgb:ptr dbb:ptr xhb:ptr n:n :}
    n 1 < if E-LN-DIM throw then
    xb xhb n LN-FWD

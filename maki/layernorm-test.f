@@ -5,11 +5,25 @@
 \ invariance), checked vs a central finite difference on x[0].
 
 require lib/test.f
+require test/checker-assert.f
 require maki/layernorm.f
 
 package MAKI
 
 T-RESET
+
+s" LN-R-FWD ( ptr r ptr r n -- ) LN-FWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" LN-N-FWD ( ptr n ptr r n -- ) LN-FWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" LN-U8-FWD ( ptr u8 ptr r n -- ) LN-FWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" LN-R-BWD ( ptr r ptr r ptr r n -- ) LN-BWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" LN-N-BWD ( ptr n ptr r ptr r n -- ) LN-BWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" LN-U8-BWD ( ptr u8 ptr r ptr r n -- ) LN-BWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" LN-R-AFWD ( ptr r ptr r ptr r ptr r n -- ) LN-AFFINE-FWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" LN-N-AFWD ( ptr n ptr r ptr r ptr r n -- ) LN-AFFINE-FWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" LN-U8-AFWD ( ptr u8 ptr r ptr r ptr r n -- ) LN-AFFINE-FWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" LN-R-ABWD ( ptr r ptr r ptr r ptr r ptr r ptr r ptr r n -- ) LN-AFFINE-BWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" LN-N-ABWD ( ptr n ptr r ptr r ptr r ptr r ptr r ptr r n -- ) LN-AFFINE-BWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" LN-U8-ABWD ( ptr u8 ptr r ptr r ptr r ptr r ptr r ptr r n -- ) LN-AFFINE-BWD" CHECK-QUIET-CANDIDATE! 0 T=
 
 create NX 3 cells allot   create NY 3 cells allot
 create NDY 3 cells allot  create NDX 3 cells allot
