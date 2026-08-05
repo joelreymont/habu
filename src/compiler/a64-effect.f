@@ -266,18 +266,26 @@ private
 5 constant REG-BITS       \ a register operand is a five-bit field
 1 REG-BITS lshift constant FILE-N        \ registers per file, which is that field's reach
 18 constant RESERVED-N    \ x18, refused by XREG? in every X-register operand slot
-19 constant DSTACK-N      \ x19, the running engine's data-stack pointer (src/arch/arm64/mnem.f `19 constant XDS`)
 30 constant LINK-N        \ x30, the link register, which has its own contract field
 31 constant ZERO-N        \ operand 31: the zero register, or the stack pointer
 
-\ The general registers a routine can hold state in: the whole file less the
-\ four the schema gives another owner.
-1 FILE-N lshift 1 -
-   1 RESERVED-N lshift invert and
-   1 DSTACK-N lshift invert and
-   1 LINK-N lshift invert and
-   1 ZERO-N lshift invert and
-constant GPR-MASK
+\ The registers this TARGET gives another owner: the platform register and the
+\ two operand slots that are not general state. Everything the ENGINE occupies is
+\ not this file's to know - src/habu/layout.f declares its own register
+\ assignments and derives ENGINE-GPR:MASK from them, and that mask is the one
+\ authority. This file used to name x19 here as a fifth constant, which is
+\ exactly the second copy that let x20, x26, x27 and x28 through: the engine
+\ claimed four more registers and nothing propagated (CG-13).
+1 RESERVED-N lshift
+   1 LINK-N lshift or
+   1 ZERO-N lshift or
+constant TARGET-RESERVED-MASK
+
+\ Every register a routine may not hold state in, from both owners, in one place.
+TARGET-RESERVED-MASK ENGINE-GPR:MASK or constant RESERVED-MASK
+
+\ The general registers a routine CAN hold state in: the whole file less that.
+1 FILE-N lshift 1 -  RESERVED-MASK invert and  constant GPR-MASK
 
 1 FILE-N lshift 1 - constant FPR-MASK
 
@@ -555,8 +563,17 @@ public
 \ so the one place that says why no routine may hold state there is also the one
 \ place that says where it does appear. It is excluded from GPR-MASK above, so
 \ no general-register set and no place list can name it and no contract that
-\ hands it out can be built at all.
-: DSTACK-GPR ( -- n )     DSTACK-N ;
+\ hands it out can be built at all. The number itself comes from the engine's own
+\ declaration (src/arch/arm64/mnem.f XDS, which src/habu/layout.f folds into
+\ ENGINE-GPR:MASK): this file reports the engine's register, it does not decide it.
+: DSTACK-GPR ( -- n )     ENGINE-GPR:DSTACK ;
+
+\ Every register no routine may hold state in, from both owners at once - the
+\ target's platform/link/zero operands and everything the engine occupies. A
+\ consumer that wants to ask "may a routine use this register" asks here; there
+\ is no second list to consult and none to keep in step.
+: RESERVED-GPRS ( -- n )  RESERVED-MASK ;
+: ENGINE-GPRS ( -- n )    ENGINE-GPR:MASK ;
 
 \ The same operand number, named for what it means in the forms that reach a
 \ frame slot: there operand 31 is the stack pointer rather than the zero

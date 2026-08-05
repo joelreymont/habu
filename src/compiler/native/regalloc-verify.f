@@ -2146,10 +2146,14 @@ public
 \ the epilogue restores; A64EFF:SP-GPR, operand 31, which the frame accesses name
 \ as the stack pointer; and A64EFF:DSTACK-GPR, the register the running engine
 \ keeps its data-stack pointer in, which the entry, the exit and every call site
-\ step. The last three are excluded from A64EFF's GPR-MASK, so no routine
-\ contract can hand one to an allocator and no caller can be holding a value in
-\ one - which is why they are not in the answer here rather than being subtracted
-\ from it.
+\ step. The last three are members of the reserved set A64EFF's GPR-MASK
+\ excludes - which since CG-13 is the target's x18/x30/31 plus EVERY register
+\ the running engine occupies (src/habu/layout.f ENGINE-GPR:MASK - the
+\ data-stack pointer and, beside it, DATA/RBASE, DBASE, NDICT and CP, none of
+\ which reaches an emitted instruction at all) - so no routine contract can
+\ hand any of them to an allocator and no caller can be holding a value in
+\ one - which is why they are not in the answer here rather than being
+\ subtracted from it.
 \
 \ WHAT A CALLER MAY THEREFORE RELY ON. The data-stack pointer is not preserved
 \ and is not clobbered either: a routine moves it down over its arguments and up

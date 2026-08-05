@@ -147,7 +147,15 @@ private
    4 A64EFF:SLOT-REACH IMM12-LIM 1- 4 * T=
    1 A64EFF:SLOT-REACH IMM12-LIM 1- T=
    8 A64EFF:SLOT-REACH dup A64EFF:SP-ALIGN mod - A64EFF:FRAME-MAX T=
-   A64EFF:GPR-ALL A64EFF:GPRS-N $3FF3FFFF T=
+   \ The whole file less BOTH owners' claims: the target's x18/x30/x31 and the
+   \ five registers the running engine occupies (x19 data stack, x20 DATA/RBASE,
+   \ x26 DBASE, x27 NDICT, x28 CP). Written as the derivation rather than as one
+   \ hex number, so a register claimed in src/habu/layout.f moves this assertion
+   \ with it instead of reddening it.
+   A64EFF:GPR-ALL A64EFF:GPRS-N
+      1 A64EFF:FILE-SIZE lshift 1 -  A64EFF:RESERVED-GPRS invert and  T=
+   \ and the engine's half of that claim is the layout owner's, not this file's
+   A64EFF:ENGINE-GPRS ENGINE-GPR:MASK T=
    A64EFF:FPR-ALL A64EFF:FPRS-N $FFFFFFFF T= ;
 
 \ ---- 2a. the register vocabulary ---------------------------------------------
@@ -170,7 +178,9 @@ private
    [: 32 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: -1 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    17 A64EFF:GPR-REG A64EFF:GPRS-N 1 17 lshift T=
-   20 A64EFF:GPR-REG A64EFF:GPRS-N 1 20 lshift T=
+   \ x21: the first register past the engine's x20 claim, so the positive case
+   \ sits right against the refused neighbour instead of safely far from it
+   21 A64EFF:GPR-REG A64EFF:GPRS-N 1 21 lshift T=
    29 A64EFF:GPR-REG A64EFF:GPRS-N 1 29 lshift T=
    18 A64EFF:FPR-REG A64EFF:FPRS-N 1 18 lshift T=
    31 A64EFF:FPR-REG A64EFF:FPRS-N 1 31 lshift T=
@@ -290,24 +300,55 @@ private
    [: A64EFF:SEQ-SLOT-LIMIT 1+ DQ A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
    [: -1 DQ A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ ;
 
-\ ---- 2b4. the data-stack register is unbuildable ------------------------------
-\ The engine keeps the running data-stack pointer in one register, and no routine
-\ this schema can describe may hold state there: it is out of the general-register
-\ mask exactly as x18, x30 and 31 are, so every route into a contract refuses it
-\ and there is no contract that hands it out to be allocated from. Each of the
-\ five routes is tried, because a check that only closes the door a caller
-\ happens to use is not a closed door.
-: DSTACK-RESERVED ( -- )
-   A64EFF:DSTACK-GPR 19 T=
-   A64EFF:GPR-ALL A64EFF:GPRS-N  1 A64EFF:DSTACK-GPR lshift and  0 T=
-   [: A64EFF:DSTACK-GPR A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
-   [: 1 A64EFF:DSTACK-GPR lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;]
-      E-A64EFF-GPR TTHROWSQ
-   [: A64EFF:DSTACK-GPR SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
-   [: SQ-NONE SQ-NONE  1 A64EFF:DSTACK-GPR lshift A64EFF-GPRS:MAKE  R-GPR
+\ ---- 2b4. the engine's registers are unbuildable ------------------------------
+\ The running engine holds its data-stack pointer, DATA/RBASE, DBASE, NDICT and
+\ CP in general registers, and no routine this schema can describe may hold
+\ state in any of them: they are out of the general-register mask exactly as
+\ x18, x30 and 31 are, so every route into a contract refuses them and there is
+\ no contract that hands one out to be allocated from. Each register under test
+\ comes from src/habu/layout.f's own per-register constant - the emitters'
+\ authority - so the claim proved here is the engine's actual claim: dropping a
+\ register from ENGINE-GPR:MASK while the engine still occupies it reddens the
+\ route fixtures below, which is the drift the one-authority design must refuse.
+\ Each of the five routes into a contract is tried, because a check that only
+\ closes the door a caller happens to use is not a closed door.
+variable ER-REG
+
+: ER ( -- n )   ER-REG @ ;
+
+: ENGINE-ROUTES ( n -- )
+   ER-REG !
+   A64EFF:GPR-ALL A64EFF:GPRS-N  1 ER lshift and  0 T=
+   [: ER A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   [: 1 ER lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   [: ER SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
+   [: SQ-NONE SQ-NONE  1 ER lshift A64EFF-GPRS:MAKE  R-GPR
       DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ
-   [: SQ-NONE SQ-NONE  1 A64EFF:DSTACK-GPR lshift A64EFF-GPRS:MAKE  R-GPR
+   [: SQ-NONE SQ-NONE  1 ER lshift A64EFF-GPRS:MAKE  R-GPR
       A64EFF:GPR-WRITABLE A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ ;
+
+: ENGINE-RESERVED ( -- )
+   A64EFF:DSTACK-GPR ENGINE-GPR:DSTACK T=
+   A64EFF:DSTACK-GPR 19 T=
+   ENGINE-GPR:DSTACK ENGINE-ROUTES
+   XREG-RBASE ENGINE-ROUTES
+   DBASE ENGINE-ROUTES
+   NDICT ENGINE-ROUTES
+   CP ENGINE-ROUTES ;
+
+\ Every register in the file, against the published reserved set: the
+\ constructor accepts exactly the registers RESERVED-GPRS does not name, so the
+\ refusal rule and the set a consumer plans against cannot disagree about a
+\ single register.
+: SWEEP-REG ( n -- )
+   ER-REG !
+   1 ER lshift A64EFF:RESERVED-GPRS and 0<> if
+      [: ER A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+      exit then
+   ER A64EFF:GPR-REG A64EFF:GPRS-N  1 ER lshift  T= ;
+
+: FILE-SWEEP ( -- )
+   A64EFF:FILE-SIZE 0 ?do i SWEEP-REG loop ;
 
 \ What the two derived sets and the writable set answer. The writable set is the
 \ one an allocator hands registers out of, and it is asserted to hold the result
@@ -725,7 +766,8 @@ public
    ALGEBRA
    SEQUENCE
    PLACES
-   DSTACK-RESERVED
+   ENGINE-RESERVED
+   FILE-SWEEP
    DERIVED
    ROLE-REJECTS
    STACK-REJECTS

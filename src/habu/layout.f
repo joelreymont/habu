@@ -5,6 +5,41 @@
 27 constant NDICT
 28 constant CP
 
+\ ---- the general registers the running engine occupies -----------------------
+\ THE authority. A compiled routine that writes one of these destroys the engine
+\ underneath itself: a probe that allocated x20 as a scratch base replaced the
+\ DATA/RBASE value and the process died 134 (CG-13). The compiler's own machine
+\ contract (src/compiler/a64-effect.f) derives its GPR set by REMOVING this mask,
+\ so a register claimed here is refused by every GPR constructor, set, sequence,
+\ pool and allocation path in the chain without a second edit anywhere.
+\
+\ It is built from the register constants rather than written out as a list, so
+\ claiming a new engine register is one line here and nothing else.
+\
+\ ENGINE-GPR:DSTACK is declared HERE and not read from src/arch/arm64/mnem.f's
+\ XDS, even though mnem.f is that number's historic home. mnem.f is an
+\ emitter-side vocabulary the BUILD chain compiles; this file is also re-read by
+\ the booted engine at every `--load`, and mnem.f is not. A derivation through
+\ XDS therefore compiles during the build and dies E-UNDEFINED at runtime - which
+\ is exactly what happened when it was tried. The two must agree, and
+\ src/habu/rt.f - the first consumer of XDS, loaded after this file in both
+\ build chains - executes that agreement (RT:DSTACK-AGREE) and dies on mismatch,
+\ so a change to either stops the build rather than drifting.
+package ENGINE-GPR
+
+public
+
+19 constant DSTACK
+
+1 DSTACK lshift
+1 XREG-RBASE lshift or
+1 DBASE lshift or
+1 NDICT lshift or
+1 CP lshift or
+constant MASK
+
+;package
+
 $800000 constant REGION
 \ RBASE-VA: snapshot CANONICAL region base (a fixed portability sentinel, NOT the
 \ runtime map address). The live JIT region maps at __text base + REGION-OFF (see

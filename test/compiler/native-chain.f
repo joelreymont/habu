@@ -1317,6 +1317,25 @@ $54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused 
    s" a body that calls under a contract that does not is refused" T-LABEL
    [: LEAF-FACT ;] E-A64SEL-CALL TTHROWSQ ;
 
+\ ---- CG-13's crash shape is unrepresentable ----------------------------------
+\ The reviewed defect: a select -> allocate -> emit -> republish probe whose pool
+\ was based at x20 replaced the engine's DATA/RBASE value and the process died
+\ 134. The production convention builder is the only way the chain states a
+\ pool, so the regression is that NABI cannot build such a contract at all: the
+\ refusal fires at contract construction, with A64EFF's own code, before any
+\ module, selection or emission exists. Three doors: the exact crash register,
+\ a pool RANGE that merely straddles the engine's upper block (x26-x28), and
+\ the whole framed-leaf entry the chain's cases go through.
+: DROP-ROUTINE ( A64EFF:routine -- )
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop drop drop ;
+
+: POOL-CASES ( -- )
+   s" a pool naming an engine register is refused before selection" T-LABEL
+   [: 20 4 NABI:POOL A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   [: 24 4 NABI:POOL A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   [: 20 4 1 1 0 NABI:LEAF-FRAMED DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ ;
+
 public
 
 : RUN ( -- )
@@ -1344,6 +1363,7 @@ public
    SPILL-CASE
    RSPILL-CASE
    AGREE-CASES
+   POOL-CASES
    T-REPORT ;
 
 ;package

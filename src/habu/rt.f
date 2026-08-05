@@ -1,6 +1,27 @@
 \ rt.fs — native runtime routines for the ENGINE-BUILDER port. Emits stack and
 \ printer instruction sequences via mnem.fs. Keep this stage-source file
 \ local-free so the Gforth recovery compiler can check it.
+\ The engine's data-stack register is stated twice: src/arch/arm64/mnem.f's XDS,
+\ which every push and pop below emits through, and src/habu/layout.f's
+\ ENGINE-GPR:DSTACK, which the compiler chain derives its reserved-register mask
+\ from. The two cannot be one constant - mnem.f is build-side vocabulary the
+\ booted engine never re-reads, layout.f is re-read at every load - so agreement
+\ is EXECUTED here instead of assumed: both build chains (hb-build and the
+\ Gforth recovery) load mnem.f, then layout.f, then this file, the first
+\ consumer of XDS, and a build whose emitters and whose reserved mask disagree
+\ about the stack register dies here instead of shipping an engine whose
+\ allocator can be handed the register the stack lives in.
+package RT
+
+72 constant EXIT-RC
+
+: DSTACK-AGREE ( -- )
+   XDS ENGINE-GPR:DSTACK <>
+   if s" rt: mnem.f XDS and layout.f ENGINE-GPR:DSTACK disagree" EXIT-RC die then ;
+DSTACK-AGREE
+
+;package
+
 \ data-stack ops (XDS points just past TOS; full-ascending); regs live in mnem.fs
 : G-PUSH ( n -- )
    XDS 0 STR,  XDS XDS $8 ADDI, ;
