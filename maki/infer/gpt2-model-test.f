@@ -67,6 +67,10 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    MAKI-DATATYPE:DF32
    8 5 2 4 2 true 4 4 0.00001 true GPT2:BUILD ;
 
+: CFG-DEEP ( -- GPT2:config )
+   MAKI-DATATYPE:DF32
+   1 1 MAX-N 1 1 true 0 0 0.00001 true GPT2:BUILD ;
+
 : IDX ( n -- CAD-NUM:index )
    CAD-NUM:INDEX
    MATCH CAD-NUM:numeric-result
@@ -205,6 +209,9 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
 
 : DROP-RC0 ( a -- rc ) drop 0 >RC ;
 
+: SYNTH-OUT ( ptr n a -- rc )
+   drop 1 swap ! 0 >RC ;
+
 : SYNTH-CLOSE ( GPU:session -- )
    [: DROP-RC0 ;] MKD:CTXSET!
    [: DROP-RC0 ;] MKD:STREAMSYNC!
@@ -215,6 +222,31 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
 
 : MODEL-CLOSE ( GPU:session GPT2:model -- GPU:session )
    GPT2:CLOSE CLOSE-OK ;
+
+: LAYOUT-FIRST-CHILD ( -- )
+   [: ;] MKD:OPEN!
+   [: DROP-RC0 ;] MKD:CUINIT!
+   [: SYNTH-OUT ;] MKD:CUDEVICEGET!
+   [: SYNTH-OUT ;] MKD:CTXRETAIN!
+   [: DROP-RC0 ;] MKD:CTXSET!
+   [: SYNTH-OUT ;] MKD:STREAMCREATE!
+   SESSION-OPEN
+   FS-PATH-CAP MMAP-TEST:EXHAUST-CHILD
+   FS-PATH-CAP MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
+   s" /tmp" CFG-DEEP M-FROM-CFG
+   MATCH result
+      err OF E-SIZE <> if E-FIX throw then ENDOF
+      ok OF MODEL-CLOSE E-FIX throw ENDOF
+   ;MATCH
+   FS-PATH-CAP MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
+   SYNTH-CLOSE
+   s" " 0 die ;
+
+: TEST-LAYOUT-FIRST ( -- )
+   s" layout overflow precedes scratch allocation and preserves the session" T-LABEL
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if LAYOUT-FIRST-CHILD then
+   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
 : TEST-REFUSAL ( GPU:session -- GPU:session )
    s" OPEN refusal preserves the caller session and leaves no source owner" T-LABEL
@@ -382,6 +414,7 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    ;MATCH ;
 
 : TEST-DEVICE ( -- )
+   TEST-LAYOUT-FIRST
    SCRIPT-ARGC 0= if
       s" gpt2-model: no model root argument -> device leg SKIPPED" type cr
       exit
