@@ -1960,30 +1960,56 @@ cp@ ES-CPX-CP !
 6 ES-CPX-GOOD-EXTENDED-NAME 8 T=
 s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ 28 + T=
 
-\ Hash-index rollback churn must terminate. A rejected/evaluated candidate can
-\ roll NDICT and CP back while leaving stale HIDX slots. Inserts must reuse
-\ those stale slots instead of probing forever once the fixed table fills.
+\ Hash-index rollback churn must leave the index ALIVE, not merely terminate.
+\ Every cycle publishes a record, rolls NDICT and CP back by hand, and leaves a
+\ stale slot; the republish re-covers that slot's index, so the insert cannot
+\ reuse it and claims a fresh one - the exact leak that used to fill the fixed
+\ table and silently zero HIDXP-CELL, dropping the process to linear FIND for
+\ the rest of its life (CG-25). One full table of cycles (HIDX-SLOTS) crosses
+\ that old capacity whatever the boot dictionary's size, so on the old code
+\ this block reddens at the INDEXED assertion below; on the current code
+\ LHIDXADD compacts the table in place at HIDX:LOAD-MAX claims and the index
+\ never dies.
 \ Unchecked span: the churn rolls ndict/cp back by hand WITHOUT rolling the
 \ checker registries, so checked evaluate would re-register ES-HIDX-CHURNED
-\ 20000 times against a dictionary that forgot it - the raw-dictionary churn
+\ once per cycle against a dictionary that forgot it - the raw-dictionary churn
 \ is the mechanism under test. Queued owner: habu-seal-set-check-b3676b33
 \ migrates test set-check spans behind the friend latch.
-variable ES-HIDX-ND
-variable ES-HIDX-CP
-: ES-HIDX-SRC$ ( -- ptr u8 n )
-   s" : ES-HIDX-CHURNED 1 ;" ;
 0 set-check
-ndict@ ES-HIDX-ND !  cp@ ES-HIDX-CP !
-: ES-HIDX-ROLLBACK-CHURN ( -- )
-   20000 0 ?do
-      ES-HIDX-SRC$ evaluate
-      ES-HIDX-ND @ ndict!
-      ES-HIDX-CP @ cp!
+package ES-HIDX
+
+variable ND
+variable CP
+
+: SRC$ ( -- ptr u8 n )
+   s" : ES-HIDX-CHURNED 1 ;" ;
+
+public
+
+: CHURN ( -- )
+   ndict@ ND !  cp@ CP !
+   HIDX-SLOTS 0 ?do
+      SRC$ evaluate
+      ND @ ndict!
+      CP @ cp!
    loop ;
-ES-HIDX-ROLLBACK-CHURN
+
+: MINT ( -- )
+   SRC$ evaluate ;
+
+;package
+ES-HIDX:CHURN
+\ one more publish through the same evaluate path, NOT rolled back, while the
+\ span is still unchecked (the source carries no effect comment); executed at
+\ top level, so the minted word lands in the global wordlist
+ES-HIDX:MINT
 LOWER-CERT-HOOK:INSTALL
-s" hidx rollback churn terminates" T-LABEL
-7 7 T=
+s" hidx rollback churn crosses the old capacity and the index survives" T-LABEL
+data-base HIDXP-CELL + @ 0 <> -1 T=
+s" hidx rollback churn claims stay under the compaction bound" T-LABEL
+data-base HIDX:CLAIMS + @ HIDX:LOAD-MAX > 0 T=
+s" hidx a record published after the churn resolves" T-LABEL
+ES-HIDX-CHURNED 1 T=
 
 \ Candidate dictionary/hook smoke, folded from the former standalone GE-CAND-SMOKE
 \ candidate launch into this engine-suite run so the batch shares one HABU_UNDER_TEST
@@ -2662,15 +2688,17 @@ ES-SWL:CAPTURE  ES-SWL:N ES-SWL:BATTERY-N T=
 \ The engine reads an empty hash slot as PROOF that a name is absent, and that
 \ proof holds only while the table covers every record below NDICT. Every
 \ ndict! in the tree lowers the mark, but raising it re-exposes records whose
-\ index slots a later publication was free to reuse, so BNDSET drops the table
-\ on a raise rather than trusting its callers, and the linear scan answers from
-\ then on.
+\ index slots a later publication was free to reuse, so BNDSET rebuilds the
+\ table from the raised [0,NDICT) in place rather than trusting its callers -
+\ it used to DROP the table here instead, which silently downgraded every
+\ later lookup in the process to the linear scan (CG-25).
 \
-\ THIS BLOCK IS LAST IN THE FILE ON PURPOSE. It leaves the index dropped, so
-\ everything after it resolves names by the scan - which is why the cases that
-\ follow the raise are lookups: they are the assertion that the fallback still
-\ resolves what the index resolved, over the same shared tails the resolution
-\ block above pinned.
+\ THIS BLOCK IS LAST IN THE FILE ON PURPOSE. It leaves the index rebuilt, and
+\ the cases that follow the raise are lookups plus the battery re-run: they
+\ are the assertion that the rebuilt table answers exactly what the original
+\ table answered, over the same shared tails the resolution block above
+\ pinned - and the claim count is asserted EQUAL to ndict, which only a real
+\ from-scratch rebuild produces.
 package ES-NDX
 
 \ Whitebox: a fixed engine header cell, and the FORGET sink itself.
@@ -2713,24 +2741,27 @@ ES-NDX:INDEXED? -1 T=
 s" ndict!: a slot above a lowered mark reads as absent" T-LABEL
 s" FRESH" ES-SWL:NDX-WID@ search-wl 0 T=
 ES-NDX:RAISE
-s" ndict!: a raise drops the index" T-LABEL
-ES-NDX:INDEXED? 0 T=
-s" ndict!: the scan resolves the re-exposed record" T-LABEL
+s" ndict!: a raise rebuilds the index in place" T-LABEL
+ES-NDX:INDEXED? -1 T=
+s" ndict!: the rebuild claims exactly the live records" T-LABEL
+data-base HIDX:CLAIMS + @ ndict@ T=
+s" ndict!: the re-exposed record resolves through the rebuilt index" T-LABEL
 ES-NDX:FRESH 7 T=
-s" ndict!: the scan resolves the global tail" T-LABEL
+s" ndict!: the rebuilt index resolves the global tail" T-LABEL
 T-LABEL-CAP 256 T=
-s" ndict!: the scan resolves the qualified tail" T-LABEL
+s" ndict!: the rebuilt index resolves the qualified tail" T-LABEL
 ES-RESO:T-LABEL-CAP 3 T=
-s" ndict!: the scan still refuses a bare package public" T-LABEL
+s" ndict!: the rebuilt index still refuses a bare package public" T-LABEL
 s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
 
-\ The index is gone, so this capture is the linear scan's own answer to every
-\ question the indexed capture above answered. Row for row, or the two lookups
-\ do not agree about the dictionary they share.
+\ The table was rebuilt from scratch by the raise, so this capture is the
+\ rebuilt table's own answer to every question the original table answered.
+\ Row for row, or the rebuild changed a lookup somewhere in the dictionary
+\ they share.
 ES-SWL:CAPTURE-SECOND
-s" search-wl: the scan ran the same battery" T-LABEL
+s" search-wl: the rebuilt index ran the same battery" T-LABEL
 ES-SWL:N ES-SWL:BATTERY-N T=
-s" search-wl: the scan answers the battery the index answered" T-LABEL
+s" search-wl: the rebuilt index answers the battery the original answered" T-LABEL
 ES-SWL:DIFF -1 T=
 
 \ report: count + nonzero exit on failure

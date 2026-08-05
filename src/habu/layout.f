@@ -372,6 +372,20 @@ $37E0 constant LMAINP-CELL
 $3C88 constant TASK-TCB-CELL
 $3C90 constant TASKS-LIVE-CELL
 $3C98 constant HIDXP-CELL
+\ HIDX:CLAIMS: how many hash-index slots have ever been claimed - live rows
+\ plus the garbage that rollback churn leaves behind (a slot whose stale index
+\ is re-covered when NDICT regrows). LHIDXADD compacts the table in place the
+\ moment this count crosses HIDX:LOAD-MAX, so the count is exact by
+\ construction: C-HIDX-INS increments it exactly when it claims an EMPTY slot,
+\ and only the rebuild (which re-derives it from live [0,NDICT)) ever lowers
+\ it. Lives at $27C8 in the reclaimed $27C0..$27D8 PKG-* band (rg-verified
+\ unused repo-wide); engine-emitted code is its only writer. In a package for
+\ the same reason DICT-WL is: new names have no reason to join this file's
+\ global packaging debt.
+package HIDX
+public
+$27C8 constant CLAIMS
+;package
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (LEVALREC,
 \ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
 \ cannot name emit-time labels) can branch to it. It must sit in a DATA slot no
@@ -462,6 +476,17 @@ $4000 constant AOT-NAMES-CAP
 \ with LIT64), HIDX-BYTES $40000.
 $10000 constant HIDX-SLOTS
 $40000 constant HIDX-BYTES
+\ HIDX:LOAD-MAX: the claimed-slot count at which LHIDXADD compacts the table
+\ in place instead of letting chains grow toward a full wrap. Three quarters of
+\ the file: strictly above DICT-CAP ($8000), so a compaction always lands the
+\ count back at NDICT with room to spare and can never itself be at the bound,
+\ and strictly below HIDX-SLOTS, so an insert always meets an empty slot within
+\ its chain and the full-wrap path is structurally unreachable (it dies loudly
+\ if reached; nothing silently disables the index any more - CG-25).
+package HIDX
+public
+$C000 constant LOAD-MAX
+;package
 $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 $1D8 constant SSCR-CELL

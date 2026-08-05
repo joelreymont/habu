@@ -180,6 +180,15 @@ variable LAOTBOOTRUN
 variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)
 variable LPROTWIDQ
 variable LDPBAD   \ DP-CHECK out-of-range die target (defined in habu2.f EM-COMPILE-DIE; dot habu-dictionary-allot-past-4e5c3c2b)
+\ dict hash-index label ids: the in-place compaction BNDSET's raise leg BLs,
+\ and the cannot-maintain loud exit (both bound in EMIT-HIDX). In a package for
+\ the same reason layout.f's HIDX constants are: new names stay out of the
+\ global packaging debt.
+package HIDX
+public
+variable LREBUILD
+variable LFULL
+;package
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
@@ -1186,19 +1195,24 @@ variable SZA-I
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
 \ ndict! is a FORGET sink and every caller in the tree lowers the mark, but the
-\ name lookup now reads an empty hash slot as proof that a name is absent, and
+\ name lookup reads an empty hash slot as proof that a name is absent, and
 \ that proof only holds while every record below NDICT is in the table. Raising
 \ NDICT re-exposes records whose slots a later publication was free to reuse, so
 \ a raise is the one motion that can leave the table short of the dictionary.
 \ The lookup keeps its authority by construction rather than by trusting the
-\ callers: a raise drops the table, and the linear scan answers from then on.
+\ callers: a raise rebuilds the table from the raised [0,NDICT) in place
+\ (HIDX:LREBUILD), so the index stays authoritative instead of being silently
+\ dropped for the rest of the process (CG-25).
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
-   LBL {: keep:label :}
+   LBL LBL {: keep:label done:label :}
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    A NDICT CMP,  C-LE keep BCOND,
-      C 0 MOVZ,  C DATA HIDXP-CELL STR,
+      NDICT A 0 ADDI,                     \ raise first: the rebuild reads the new NDICT
+      HIDX:LREBUILD LABEL@ BL,
+      done B,
    keep LBL,
-   NDICT A 0 ADDI, ;
+   NDICT A 0 ADDI,
+   done LBL, ;
 
 : BEPOCHSECONDS ( -- )
    LBL TIME-OK !
@@ -2962,12 +2976,17 @@ variable LHIDXBUILD
 
 \ Emit: insert record index x3 into table x14. The dictionary rejects
 \ duplicate definitions, so the table is insert-once: probe to the first
-\ empty slot or stale rolled-back slot and store index+1 (no dedupe pass). If
-\ every slot has been consumed by live/stale entries, disable HIDX; linear FIND
-\ and duplicate checks remain authoritative. Clobbers x2 x4 x5 x6 x7 x8 x15
-\ x16 x17.
+\ empty slot or stale rolled-back slot and store index+1 (no dedupe pass).
+\ Claiming an EMPTY slot - and only that - raises the exact claimed-slot count
+\ HIDX:CLAIMS; overwriting a stale slot re-uses a claim that was already
+\ counted. LHIDXADD compacts the table when the count crosses HIDX:LOAD-MAX,
+\ so an insert always meets an empty slot within one wrap of its chain and the
+\ exhausted-wrap exit is structurally unreachable. It used to disable HIDX
+\ silently there - the process then ran linear FIND for the rest of its life
+\ with nothing said (CG-25) - so reaching it now dies loudly instead
+\ (HIDX:LFULL). Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
 : C-HIDX-INS ( -- )
-   LBL LBL LBL LBL LBL LBL {: iloop:label inext:label ifull:label idone:label iret:label rinl:label :}
+   LBL LBL LBL LBL LBL {: iloop:label inext:label iempty:label iput:label rinl:label :}
    5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
    2 5 40 LDR,
    16 5 24 ADDI,
@@ -2980,16 +2999,15 @@ variable LHIDXBUILD
    8 HIDX-SLOTS LIT64,
    iloop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
-      4 idone CBZ,
-      4 4 1 SUBI,  4 NDICT CMP,  C-GE idone BCOND,
+      4 iempty CBZ,
+      4 4 1 SUBI,  4 NDICT CMP,  C-GE iput BCOND,
    inext LBL,
-      8 8 1 SUBI,  8 ifull CBZ,
+      8 8 1 SUBI,  8 HIDX:LFULL LABEL@ CBZ,
       6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  iloop B,
-   ifull LBL,
-      4 0 MOVZ,  4 DATA HIDXP-CELL STR,  iret B,
-   idone LBL,
-      4 3 1 ADDI,  4 17 0 STRW,
-   iret LBL, ;
+   iempty LBL,
+      4 DATA HIDX:CLAIMS LDR,  4 4 1 ADDI,  4 DATA HIDX:CLAIMS STR,
+   iput LBL,
+      4 3 1 ADDI,  4 17 0 STRW, ;
 
 \ C-HIDX-DUP?: x14 = live table ptr (caller ensures != 0). Sets x13 = 1 when a
 \ live record with this definition's wordlist (DEF-WL-CELL) and folded name
@@ -3030,12 +3048,22 @@ variable LHIDXBUILD
    dfound LBL,  13 1 MOVZ,
    dret LBL, ;
 
-\ LHIDXADD: insert the just-published record (index NDICT-1). Called
-\ mid-publish, so it saves its whole clobber set. LHIDXBUILD: fresh
-\ zeroed mmap (anonymous pages are zero), then add every record
-\ [0,NDICT); a failed mmap is a startup failure, not a degraded mode.
+\ LHIDXADD: insert the just-published record (index NDICT-1), then compact the
+\ table in place the moment the claimed-slot count crosses HIDX:LOAD-MAX -
+\ which is how rollback churn's garbage (stale slots that NDICT regrowth
+\ re-covered) is swept before it can crowd the chains. Called mid-publish, so
+\ it saves its whole clobber set. LHIDXBUILD: fresh zeroed mmap (anonymous
+\ pages are zero), then the shared fill; a failed mmap is a startup failure,
+\ not a degraded mode. HIDX:LREBUILD: zero the existing table and claimed-slot
+\ count, then re-insert exactly the live records [0,NDICT) - the one operation
+\ that lowers HIDX:CLAIMS, and what the raise leg of ndict! (BNDSET) calls so a
+\ raise keeps an authoritative table instead of silently dropping it.
+\ HIDX:LFULL: the loud exit shared by every structurally-unreachable
+\ cannot-maintain state; nothing zeroes HIDXP-CELL any more.
 : EMIT-HIDX ( -- )
-   LBL LBL LBL LBL LBL {: aret:label bloop:label bdone:label bfail:label msg:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: aret:label bfail:label msg:label fmsg:label floop:label fdone:label
+      rret:label zloop:label zdone:label :}
    LHIDXADD LABEL@ LBL,
       SP SP 96 SUBI,
       30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
@@ -3044,6 +3072,9 @@ variable LHIDXBUILD
       14 DATA HIDXP-CELL LDR,  14 aret CBZ,
       3 NDICT 0 ADDI,  3 3 1 SUBI,
       C-HIDX-INS
+      \ the load bound: compact before chains can approach a full wrap
+      4 DATA HIDX:CLAIMS LDR,  5 HIDX:LOAD-MAX LIT64,  4 5 CMP,  C-LT aret BCOND,
+      HIDX:LREBUILD LABEL@ BL,
       aret LBL,
       30 SP 0 LDR,  2 SP 8 LDR,  3 SP 16 LDR,  4 SP 24 LDR,  5 SP 32 LDR,
       6 SP 40 LDR,  7 SP 48 LDR,  14 SP 56 LDR,  15 SP 64 LDR,  16 SP 72 LDR,  17 SP 80 LDR,
@@ -3061,11 +3092,8 @@ variable LHIDXBUILD
       3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,
       4 C-CS CSET,  4 bfail CBNZ,
       14 0 0 ADDI,  14 DATA HIDXP-CELL STR,
-      13 0 MOVZ,
-      bloop LBL,  13 NDICT CMP,  C-GE bdone BCOND,
-         3 13 0 ADDI,  C-HIDX-INS
-         13 13 1 ADDI,  bloop B,
-      bdone LBL,
+      4 0 MOVZ,  4 DATA HIDX:CLAIMS STR,             \ fresh pages hold no claims
+      HIDX:LREBUILD LABEL@ BL,                       \ zero (already zero) + fill [0,NDICT)
       30 SP 0 LDR,   0 SP 8 LDR,   1 SP 16 LDR,  2 SP 24 LDR,  3 SP 32 LDR,
       4 SP 40 LDR,   5 SP 48 LDR,  6 SP 56 LDR,  7 SP 64 LDR,  8 SP 72 LDR,
       13 SP 80 LDR,  14 SP 88 LDR, 15 SP 96 LDR, 16 SP 104 LDR, 17 SP 112 LDR,
@@ -3073,7 +3101,39 @@ variable LHIDXBUILD
       bfail LBL,                                     \ dict hash-index mmap failed: label fd 2 before exit 74
          0 2 MOVZ,  1 msg ADR,  2 33 MOVZ,  NR-WRITE SYS,   \ write(2,"hb: dictionary index alloc failed",33)
          0 74 MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  s" hb: dictionary index alloc failed" BYTES, ;
+      msg LBL,  s" hb: dictionary index alloc failed" BYTES,
+   HIDX:LREBUILD LABEL@ LBL,
+      \ register-transparent like LHIDXBUILD: BNDSET and LHIDXADD call it
+      \ mid-primitive with caller state live.
+      SP SP 160 SUBI,
+      30 SP 0 STR,   2 SP 8 STR,   3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
+      6 SP 40 STR,   7 SP 48 STR,  8 SP 56 STR,  13 SP 64 STR, 14 SP 72 STR,
+      15 SP 80 STR,  16 SP 88 STR, 17 SP 96 STR,
+      14 DATA HIDXP-CELL LDR,  14 rret CBZ,          \ pre-build window: nothing to compact
+      \ the dictionary must fit under the load bound or the compaction could
+      \ not restore it - impossible while DICT-CAP < HIDX:LOAD-MAX, loud if not
+      5 HIDX:LOAD-MAX LIT64,  NDICT 5 CMP,  C-GE HIDX:LFULL LABEL@ BCOND,
+      13 0 MOVZ,  4 0 MOVZ,  15 HIDX-BYTES LIT64,
+      zloop LBL,
+         13 15 CMP,  C-GE zdone BCOND,
+         17 14 13 ADD,  4 17 0 STR,
+         13 13 8 ADDI,  zloop B,
+      zdone LBL,
+      4 DATA HIDX:CLAIMS STR,                         \ zero claims (x4 = 0)
+      13 0 MOVZ,
+      floop LBL,  13 NDICT CMP,  C-GE fdone BCOND,
+         3 13 0 ADDI,  C-HIDX-INS
+         13 13 1 ADDI,  floop B,
+      fdone LBL,
+      rret LBL,
+      30 SP 0 LDR,   2 SP 8 LDR,   3 SP 16 LDR,  4 SP 24 LDR,  5 SP 32 LDR,
+      6 SP 40 LDR,   7 SP 48 LDR,  8 SP 56 LDR,  13 SP 64 LDR, 14 SP 72 LDR,
+      15 SP 80 LDR,  16 SP 88 LDR, 17 SP 96 LDR,
+      SP SP 160 ADDI,  RET,
+   HIDX:LFULL LABEL@ LBL,                             \ cannot maintain the index: loud, never a quiet downgrade
+      0 2 MOVZ,  1 fmsg ADR,  2 30 MOVZ,  NR-WRITE SYS,     \ write(2,"hb: dictionary index exhausted",30)
+      0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   fmsg LBL,  s" hb: dictionary index exhausted" BYTES, ;
 
 variable FIND-LINEAR
 variable FIND-HLOOP
