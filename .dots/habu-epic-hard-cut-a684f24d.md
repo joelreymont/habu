@@ -1,0 +1,9 @@
+---
+title: "EPIC: hard-cut native codegen onto production"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-05T10:36:19.485563+02:00"
+---
+
+The reviewed campaign (8af13d1e..5dcb2867) built a ~40,650-line checked compiler chain with zero production consumers; the decision (user-confirmed) is a hard cut: checked HIR becomes the sole colon compiler, the old emitter and every bridge built to compare or redirect it are deleted. Canonical program: /tmp/REVIEW-CODEGEN-1.md (copies also on spark:/tmp) (CG-01..CG-32, sequencing) and REVIEW-CODEGEN.md. End state: checked source elaborates to HIR; verified passes lower through the native IRs; one final publisher atomically installs code and exact relocation metadata; the compiler rebuilds itself to a byte-identical fixpoint; normal colon compilation, AOT, image, REPL, debugger, profiler, and inference builds all use that path; COMPILE-EMIT, NMIGRATE, NREACH, the replacement log, and the CODE-RECLAIM bridge watchers are deleted. No compatibility versions, no fallback dispatch, no adapters, no dual compilation, no second manifest. Sequencing (blocking order): 1 tip-green (CG-04/05/06 + rocq scheduling, in flight), 2 ownership/safety repairs (CG-07..CG-16, CG-22..CG-26; delete zero-consumer rollback/codec instead of fixing), 3 bulk atomic relocation-correct publisher, 4 the cut + deletions, 5 self-host/fixpoint and all gates through the sole path, 6 proof chain against production dispatch, 7 only then the optimization dots (tail calls, register args, folding, LICM/unroll, combining, spilling, NEON), each measured on the production compiler. Reconcile every child with existing owners before starting it: candidates habu-cut-over-staged-070d68c8, habu-self-host-staged-520ab588, habu-prove-hir-to-1be23c02, habu-check-successors-stay-10427498, habu-make-the-arena-0c0676db, habu-declare-an-attr-a14961ae, habu-give-successors-per-e2b5c60d, habu-linear-ownership-for-1d7e0b63.
