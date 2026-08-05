@@ -145,14 +145,14 @@ create MHA-dQKVF MHA-BT MHA-3C * cells allot   \ fused flat projection cotangent
 create MHA-dXT MHA-BT #MC * cells allot   \ dX contribution accumulator (fused proj.W^T)
 
 \ ---- host glue -----------------------------------------------------------------------
-: MHA-COPY ( ptr a ptr a n -- ) {: s:ptr d:ptr n:n :}  n 0 ?do  s i T-GET  d i T-SET  loop ;
+: MHA-COPY ( ptr r ptr r n -- ) {: s:ptr d:ptr n:n :}  n 0 ?do  s i T-GET  d i T-SET  loop ;
 
 \ yb[r,c] += bb[c] : add a length-C bias to every one of the B*T rows (row broadcast).
-: MHA-ROWBIAS ( ptr a n n ptr a -- ) {: yb:ptr rows:n cols:n bb:ptr :}
+: MHA-ROWBIAS ( ptr r n n ptr r -- ) {: yb:ptr rows:n cols:n bb:ptr :}
    rows 0 ?do  cols 0 ?do  yb j cols * i + T-GET  bb i T-GET f+  yb j cols * i + T-SET  loop  loop ;
 
 \ db[c] = sum_r sb[r,c] : the bias adjoint (column sum over the B*T rows).
-: MHA-COLSUM ( ptr a n n ptr a -- ) {: sb:ptr rows:n cols:n db:ptr :}
+: MHA-COLSUM ( ptr r n n ptr r -- ) {: sb:ptr rows:n cols:n db:ptr :}
    cols 0 ?do
       i {: c:n :}
       0.0  rows 0 ?do  sb  i cols * c +  T-GET  f+  loop
@@ -168,9 +168,9 @@ create MHA-dXT MHA-BT #MC * cells allot   \ dX contribution accumulator (fused p
    e #MD #MQ * / #MH mod {: h:n :}
    e #MD #MQ * #MH * / {: b:n :}
    b #MQ * t +  #MC *  h #MD * +  d + ;
-: MHA-FLAT>HM ( ptr a ptr a -- ) {: fb:ptr hb:ptr :}   \ hm[e] = flat[flatidx(e)]  (split)
+: MHA-FLAT>HM ( ptr r ptr r -- ) {: fb:ptr hb:ptr :}   \ hm[e] = flat[flatidx(e)]  (split)
    MHA-HM 0 ?do  fb i MHA-FLATIDX T-GET  hb i T-SET  loop ;
-: MHA-HM>FLAT ( ptr a ptr a -- ) {: hb:ptr fb:ptr :}   \ flat[flatidx(e)] = hm[e]  (merge; the split's inverse)
+: MHA-HM>FLAT ( ptr r ptr r -- ) {: hb:ptr fb:ptr :}   \ flat[flatidx(e)] = hm[e]  (merge; the split's inverse)
    MHA-HM 0 ?do  hb i T-GET  fb i MHA-FLATIDX T-SET  loop ;
 
 \ THE ONE QKV LAYOUT CONTRACT. head-major elem e=(b,h,t,d) -> its index in the FUSED
@@ -183,9 +183,9 @@ create MHA-dXT MHA-BT #MC * cells allot   \ dX contribution accumulator (fused p
    e #MD #MQ * / #MH mod {: h:n :}
    e #MD #MQ * #MH * / {: b:n :}
    b #MQ * t +  MHA-3C *  base +  h #MD * +  d + ;
-: MHA-QKV>HM ( ptr a ptr a n -- ) {: fb:ptr hb:ptr base:n :}   \ hm[e] = fused[qkvidx(e,base)] (split)
+: MHA-QKV>HM ( ptr r ptr r n -- ) {: fb:ptr hb:ptr base:n :}   \ hm[e] = fused[qkvidx(e,base)] (split)
    MHA-HM 0 ?do  fb i base MHA-QKVIDX T-GET  hb i T-SET  loop ;
-: MHA-HM>QKV ( ptr a ptr a n -- ) {: hb:ptr fb:ptr base:n :}   \ fused[qkvidx(e,base)] = hm[e] (merge)
+: MHA-HM>QKV ( ptr r ptr r n -- ) {: hb:ptr fb:ptr base:n :}   \ fused[qkvidx(e,base)] = hm[e] (merge)
    MHA-HM 0 ?do  hb i T-GET  fb i base MHA-QKVIDX T-SET  loop ;
 
 \ per-(b,h) T x T block base (elements) for the causal row softmax + its VJP.
@@ -194,7 +194,7 @@ create MHA-dXT MHA-BT #MC * cells allot   \ dX contribution accumulator (fused p
 \ the fused QKV projection: ONE X.Wqkv GEMM into the (B*T,3C) buffer, ONE combined-bias
 \ row broadcast, then split the three column blocks to head-major by offset arithmetic -
 \ no materialized Q/K/V copy beyond the single fused buffer. wb: Wqkv (C,3C); bb: bqkv (3C).
-: MHA-QKVPROJ ( ptr a ptr a ptr a -- ) {: xb:ptr wb:ptr bb:ptr :}
+: MHA-QKVPROJ ( ptr r ptr r ptr r -- ) {: xb:ptr wb:ptr bb:ptr :}
    xb wb MHA-QKVF  MHA-BT #MC MHA-3C  MATMUL     \ one fused contraction (X read once)
    MHA-QKVF MHA-BT MHA-3C bb MHA-ROWBIAS         \ one combined bias over all 3C columns
    MHA-QKVF MHA-QM 0        MHA-QKV>HM           \ Q = block [0,C)   -> head-major
@@ -216,7 +216,7 @@ public
 \ is batch b position t). wqkvb/bqkvb: the fused GPT-2 c_attn projection weight (C,3C) and
 \ combined bias (3C) - Q|K|V are its column blocks. wob/bob: output projection weight (C,C)
 \ and bias (C). yb: output Y (B*T,C) = residual(X) + attention. Saves the tape for MHA-BWD.
-: MHA-FWD ( ptr a ptr a ptr a ptr a ptr a ptr a -- )
+: MHA-FWD ( ptr r ptr r ptr r ptr r ptr r ptr r -- )
    {: xb:ptr wqkvb:ptr bqkvb:ptr wob:ptr bob:ptr yb:ptr :}
    xb wqkvb bqkvb MHA-QKVPROJ                   \ Q|K|V = X.Wqkv + bqkv (one GEMM) -> head-major
    MHA-QM MHA-Q-BIND  MHA-KM MHA-K-BIND  MHA-SM MHA-S-BIND  MHA-SCORE   \ S = Q.K^T per (b,h)
@@ -233,7 +233,7 @@ public
 \ (Wqkv, Wo) are the forward inputs the adjoints reference (biases are not needed - their
 \ adjoint is a column sum of the projection-output cotangent). dxb: dX (B*T,C). The grad
 \ outputs mirror the fused forward params: dwqkvb (C,3C), dbqkvb (3C), dwob, dbob.
-: MHA-BWD ( ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a -- )
+: MHA-BWD ( ptr r ptr r ptr r ptr r ptr r ptr r ptr r ptr r ptr r -- )
    {: xb:ptr wqkvb:ptr wob:ptr dyb:ptr dxb:ptr
       dwqkvb:ptr dbqkvb:ptr dwob:ptr dbob:ptr :}
    \ output projection backward (Y = O.Wo + bo + X): dbo, dWo, dO_flat

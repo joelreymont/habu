@@ -70,9 +70,9 @@ create MHAT-S  MHAT-SN cells allot   create MHAT-A  MHAT-SN cells allot   create
 create MHAT-OF MHAT-XN cells allot   create MHAT-RY MHAT-XN cells allot
 create MHAT-OSAVE MHAT-HDN cells allot   \ head-0 context snapshot (head isolation)
 
-: MHAT-ROWBIAS ( ptr a n n ptr a -- ) {: yb:ptr rows:n cols:n bb:ptr :}
+: MHAT-ROWBIAS ( ptr r n n ptr r -- ) {: yb:ptr rows:n cols:n bb:ptr :}
    rows 0 ?do  cols 0 ?do  yb j cols * i + T-GET  bb i T-GET f+  yb j cols * i + T-SET  loop  loop ;
-: MHAT-COPY ( ptr a ptr a n -- ) {: s:ptr d:ptr n:n :}  n 0 ?do  s i T-GET  d i T-SET  loop ;
+: MHAT-COPY ( ptr r ptr r n -- ) {: s:ptr d:ptr n:n :}  n 0 ?do  s i T-GET  d i T-SET  loop ;
 
 \ pack the three reference weights/biases into the fused Wqkv (C,3C) / bqkv (3C) as the
 \ column blocks [0,C)|[C,2C)|[2C,3C) - the exact arrangement MHA-QKVPROJ assumes. This is
@@ -116,13 +116,13 @@ create MHAT-OSAVE MHAT-HDN cells allot   \ head-0 context snapshot (head isolati
 \ ---- (A) independent replicated-loop reference ---------------------------------------
 \ Extract head (b,h)'s T x hd block from a flat (B*T,C) projection buffer into a
 \ contiguous temp: blk[t,d] = flat[(b*T+t)*C + h*hd + d].
-: MHAT-EXTRACT ( ptr a n n ptr a -- ) {: sf:ptr b:n h:n dt:ptr :}
+: MHAT-EXTRACT ( ptr r n n ptr r -- ) {: sf:ptr b:n h:n dt:ptr :}
    #MQ 0 ?do  #MD 0 ?do
       sf  b #MQ * j +  #MC *  h #MD * +  i +  T-GET
       dt  j #MD * i +  T-SET
    loop  loop ;
 \ store head (b,h)'s T x hd context back into the flat merged buffer MHAT-OF.
-: MHAT-STORE-OF ( ptr a n n -- ) {: oh:ptr b:n h:n :}
+: MHAT-STORE-OF ( ptr r n n -- ) {: oh:ptr b:n h:n :}
    #MQ 0 ?do  #MD 0 ?do
       oh j #MD * i + T-GET
       MHAT-OF  b #MQ * j +  #MC *  h #MD * +  i +  T-SET
@@ -155,14 +155,14 @@ MHAT-Y MHAT-RY MHAT-XN T-DIST2  1000000.0 f* 0.5 f+ f>s  0 T=      \ (A) forward
 
 \ ---- (B) gradcheck: analytic adjoint vs central FD, every param, every element --------
 \ perturb param buffer pb element e, rerun forward, return the seeded loss.
-: MHAT-FD ( ptr a n -- r ) {: pb:ptr e:n :}
+: MHAT-FD ( ptr r n -- r ) {: pb:ptr e:n :}
    pb e T-GET {: base:r :}
    base GC-H f+ pb e T-SET  MHAT-RUNF MHAT-LOSS {: lp:r :}
    base GC-H f- pb e T-SET  MHAT-RUNF MHAT-LOSS {: lm:r :}
    base pb e T-SET
    lp lm f-  GC-H 2.0 f* f/ ;
 \ every element of param pb (length n) agrees with its analytic grad gb.
-: MHAT-GC? ( ptr a n ptr a -- bool ) {: pb:ptr n:n gb:ptr :}
+: MHAT-GC? ( ptr r n ptr r -- bool ) {: pb:ptr n:n gb:ptr :}
    true
    n 0 ?do  gb i T-GET  pb i MHAT-FD  GC-CLOSE? 0= if drop false leave then  loop ;
 
