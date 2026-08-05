@@ -1936,6 +1936,189 @@ variable SZA-I
    9 SP 8 LDR,  C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 
+package NPUBWIN
+
+private
+
+\ ---- the bulk publication window ---------------------------------------------
+\ BPATCH32 above is the ISOLATED writer: one instruction, its own RW/RX pair, its
+\ own line flush. Publishing a compiled routine through it costs two protection
+\ syscalls per instruction, which is what the three primitives below replace. The
+\ window has to live in ENGINE text for the same reason BPATCH32 does - a
+\ JIT-resident caller that flipped the region to RW would remove execute
+\ permission from the very page it is running on - so "one RW, copy, one RX, one
+\ flush" cannot be composed out of smaller pieces by a Habu caller. It is one
+\ primitive or it is nothing.
+
+\ Guard one aligned SPAN of the writable code interval, the span-wise form of
+\ GUARD-CODE-WORD above: x9 = length, x10 = start. A zero length, a length or a
+\ start that is not a whole number of instructions, a span that wraps, and a span
+\ reaching outside [DBASE+DICT-SIZE, DBASE+REGION) all fail closed the way every
+\ other protected-memory violation does. Clobbers x12/x13.
+: GUARD-CODE-SPAN ( -- )
+   LBL LBL {: ok:label trap:label :}
+   9 trap CBZ,                                  \ a window of nothing is a caller bug
+   12 9 3 ANDI,  12 trap CBNZ,                  \ length is whole instructions
+   12 10 3 ANDI,  12 trap CBNZ,                 \ start is instruction aligned
+   12 10 9 ADD,                                 \ x12 = end
+   12 10 CMP,  C-CC trap BCOND,                 \ unsigned wrap
+   13 DICT-SIZE LIT64,  13 DBASE 13 ADD,
+   10 13 CMP,  C-CC trap BCOND,                 \ start below the code interval
+   13 REGION LIT64,  13 DBASE 13 ADD,
+   12 13 CMP,  C-HI trap BCOND,                 \ end past the region
+   ok B,
+   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+\ Clear the region-to-text call-map bit of every four-byte word in [x10, x10+x9).
+\ Freshly published code owns its own span of that map: whatever the words at
+\ these addresses meant before - a reclaimed routine's calls into engine text -
+\ is gone with the code, and a bit left set would make a snapshot restore
+\ relocate a displacement that is not a call any more. Clearing here is what
+\ makes "the map never describes code that no longer exists" a property of
+\ publication rather than of a later sweep. Clobbers x12-x15.
+: CLEAR-CALLMAP-SPAN ( -- )
+   LBL LBL {: loop:label done:label :}
+   12 10 DBASE SUB,                             \ x12 = region byte offset of the first word
+   13 12 9 ADD,                                 \ x13 = one past the last word's offset
+   7 0 MOVZ,  7 7 1 SUBI,                       \ x7 = all ones, for inverting one bit mask
+   loop LBL,
+   12 13 CMP,  C-CS done BCOND,
+   14 12 2 LSRI,  14 14 7 ANDI,                 \ x14 = bit number = word index & 7
+   15 12 5 LSRI,                                \ x15 = map byte index = offset >> 5
+   6 SNAP-RELOC:CALLMAP-OFF LIT64,  15 15 6 ADD,  15 DATA 15 ADD,
+   6 1 MOVZ,  6 6 14 LSLV,  6 6 7 EOR,          \ x6 = ~(1 << bit)
+   14 15 0 LDRB,  14 14 6 AND,  14 15 0 STRB,
+   12 12 4 ADDI,
+   loop B,
+   done LBL, ;
+
+public
+
+\ code-publish ( src dst len -- ): write a whole emission into the code arena in
+\ ONE protection window, and make the arena's own pointer say so.
+\
+\ WHAT IT DOES, IN ORDER. Guard the destination span; flip the region writable
+\ once; copy `len` bytes from the DATA-resident source to `dst`; flip it back to
+\ executable once; clear the call map over the span it just wrote; advance the
+\ code pointer past it; flush the instruction and data caches over that one
+\ range. Two protection syscalls for a routine of any length, where the
+\ per-instruction poke cost two per instruction and two more per record half.
+\
+\ WHY THE CODE POINTER MOVES HERE. A publication is an APPEND: the destination
+\ has to be the arena's free slot, and the slot stops being free the moment the
+\ bytes land. Splitting those two into a primitive and a following `cp!` would
+\ leave a window in which the arena's own pointer disagrees with its contents,
+\ and it is a window a throw could stop in. So the destination is held against CP
+\ - a publication anywhere else is a caller bug and fails closed - and CP is
+\ advanced inside the window. Rewriting an instruction that is already published
+\ is the other operation, and it is still `patch32`.
+\
+\ THE FLUSH IS THE LAST THING AND COVERS EXACTLY THE WRITTEN RANGE. LFLUSH walks
+\ [x9, CP) by cache-line stride, which is the range just written once CP has been
+\ advanced - the same order EM-SEED-AOT uses for the AOT blob.
+: BCODEPUBLISH ( -- )
+   A G-POP  B G-POP  C G-POP     \ x9 = len, x10 = dst, x11 = src
+   LBL LBL LBL {: loop:label done:label atcp:label :}
+   SP SP 48 SUBI,
+   A SP 8 STR,  B SP 16 STR,  C SP 24 STR,
+   GUARD-CODE-SPAN                               \ x9/x10 survive: it clobbers x12/x13
+   9 SP 8 LDR,  10 SP 16 LDR,
+   10 CP CMP,  C-EQ atcp BCOND,                 \ a publication is an append, or nothing
+      0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   atcp LBL,
+   2 3 MOVZ,  LPROT LABEL@ BL,                  \ region -> RW, once
+   9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+   12 0 MOVZ,                                    \ x12 = byte offset into the copy
+   loop LBL,
+   12 9 CMP,  C-CS done BCOND,
+   13 11 12 ADD,  14 13 0 LDRW,
+   13 10 12 ADD,  14 13 0 STRW,
+   12 12 4 ADDI,
+   loop B,
+   done LBL,
+   2 5 MOVZ,  LPROT LABEL@ BL,                  \ region -> RX, once
+   9 SP 8 LDR,  10 SP 16 LDR,
+   CLEAR-CALLMAP-SPAN                            \ the span's relocation record, reset with it
+   9 SP 8 LDR,  10 SP 16 LDR,
+   CP 10 9 ADD,                                  \ the slot is claimed
+   9 10 0 ADDI,  LFLUSH LABEL@ BL,              \ flush [dst, CP), once
+   SP SP 48 ADDI, ;
+
+\ callmap-set ( addr -- ): record the instruction at `addr` as a call whose
+\ callee lives in the engine's loaded __text.
+\
+\ WHY THE PUBLISHER SETS IT AND NOT A SCANNER. A call from one region address to
+\ another keeps its distance wherever the region is mapped; a call from the
+\ region into __text does not, so the second kind is the only kind a snapshot has
+\ to rewrite. Which kind a branch is, is known where the branch is BUILT and
+\ nowhere else afterwards: recognising one later means decoding region bytes, and
+\ a compiled word may carry data that decodes as a branch. habu2.f's EMIT-CEMITBL
+\ records it at the old emitter's call-emit chokepoint for exactly this reason;
+\ this is the same record, written by the other emitter's publisher, into the
+\ same map. Every word of a published span starts CLEARED by code-publish above,
+\ so a site that needs the bit says so here and a site that does not needs to say
+\ nothing.
+: BCALLMAPSET ( -- )
+   LBL LBL {: inreg:label bad:label :}
+   A G-POP                                       \ x9 = call-site address
+   \ The map is indexed by REGION OFFSET, so an address outside the region would
+   \ compute an offset that indexes past the map and into whatever DATA band sits
+   \ after it. The bound is the map's meaning and not a convenience: guard it.
+   10 9 3 ANDI,  10 bad CBNZ,                    \ a call site is a whole instruction
+   10 9 DBASE SUB,                               \ x10 = candidate region byte offset
+   9 DBASE CMP,  C-CC bad BCOND,                 \ below the region
+   11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND, \ at or past its end
+   inreg B,
+   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   inreg LBL,
+   9 9 DBASE SUB,                                \ x9 = region byte offset
+   10 9 2 LSRI,  10 10 7 ANDI,                   \ x10 = bit number
+   11 9 5 LSRI,                                  \ x11 = map byte index
+   12 SNAP-RELOC:CALLMAP-OFF LIT64,  11 11 12 ADD,  11 DATA 11 ADD,
+   12 1 MOVZ,  12 12 10 LSLV,
+   13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
+
+\ xref-retarget ( start len recidx -- ): point one dictionary record at one
+\ routine, in one protection window and one order.
+\
+\ WHY BOTH CELLS ARE WRITTEN BY ONE PRIMITIVE. A record's first two cells are the
+\ address a caller branches to and the number of bytes the inliner may copy from
+\ there, and they only mean anything together. Writing them as four 32-bit pokes
+\ - which is what a cell store built out of `patch32` is - tears each cell across
+\ two protection windows and leaves the pair inconsistent between them: a reader
+\ that arrived in the middle would see half of one address. One primitive writes
+\ both cells whole.
+\
+\ AND THE ORDER IS LENGTH FIRST, ADDRESS LAST, WITH RELEASE. The address is what
+\ makes the new routine reachable, so it is published last and published with
+\ STLR: every write before it - the length here, and the instruction bytes
+\ code-publish already flushed - is visible to any observer that acquires the
+\ address before the address itself is. A reader loads START with LDAR and the
+\ length it then reads belongs to that start. Writing START first would leave a
+\ window in which callers reach the new code with the old routine's length, which
+\ is the length the engine's inliner copies.
+: BXREFRETARGET ( -- )
+   LBL LBL {: live:label bad:label :}
+   A G-POP  B G-POP  C G-POP     \ x9 = record index, x10 = len, x11 = start
+   \ A record index names a row of the live dictionary or it names nothing. The
+   \ index arrives from a lookup that already found the record, so this is the
+   \ backstop rather than the path - but the write it guards lands anywhere in
+   \ the dictionary region, so it is worth the two comparisons.
+   \ One UNSIGNED comparison covers both ends: a negative index is a huge
+   \ unsigned one and fails the same test.
+   9 NDICT CMP,  C-CS bad BCOND,                 \ negative, or at or past the newest record
+   live B,
+   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   live LBL,
+   14 DREC MOVZ,  9 9 14 MUL,  9 DBASE 9 ADD,   \ x9 = &record[idx]
+   2 3 MOVZ,  LPROTREC LABEL@ BL,               \ the record's two pages -> RW
+   10 9 8 STR,                                   \ length first
+   11 9 STLR,                                    \ then release-publish the address
+   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
+
+;package
+
 : BCLOSE ( -- )
    0 G-POP  NR-CLOSE SYS, ;
 
@@ -2512,6 +2695,9 @@ package ENGINE-EMIT
    s" stat64" ['] BSTAT64 FPRIM   s" lstat64" ['] BLSTAT64 FPRIM
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
    s" patch32" ['] BPATCH32 2 GDEREF-F
+   s" code-publish" ['] NPUBWIN:BCODEPUBLISH 3 GDEREF-F
+   s" callmap-set" ['] NPUBWIN:BCALLMAPSET 1 GDEREF-F
+   s" xref-retarget" ['] NPUBWIN:BXREFRETARGET 3 GDEREF-F
    s" close" ['] BCLOSE FPRIM-L
    s" close-rc" ['] BCLOSE-RC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;

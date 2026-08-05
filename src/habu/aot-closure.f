@@ -115,12 +115,18 @@ s" MAIN" ENTRY-NAME!
 \ aot-lib.f). Only words that need machinery the stripped binary does not carry
 \ stay rejected — the closure walk distinguishes runtime use from compile-time
 \ definition, so `create` here means runtime dictionary creation (no dictionary),
-\ `compile,` means runtime compilation (no compiler), `patch32` writes the code
-\ region (stripped __text is r-x and not at RBASE-VA).
+\ `compile,` means runtime compilation (no compiler), and the four writers below
+\ all reach the code region or a live dictionary record (stripped __text is r-x
+\ and not at RBASE-VA). `patch32` is the isolated single-word poke;
+\ `code-publish` is the bulk publication window, `xref-retarget` points a record
+\ at a routine, and `callmap-set` records a call site's relocation class.
 : AOT-UNSAFE? {: r:ptr :} ( ptr a -- bool )
    r s" create" REC-NAME= IF 0 0= EXIT THEN
    r s" compile," REC-NAME= IF 0 0= EXIT THEN
    r s" patch32" REC-NAME= IF 0 0= EXIT THEN
+   r s" code-publish" REC-NAME= IF 0 0= EXIT THEN
+   r s" callmap-set" REC-NAME= IF 0 0= EXIT THEN
+   r s" xref-retarget" REC-NAME= IF 0 0= EXIT THEN
    0 0= 0= ;
 create AECH 1 allot
 : AE1 {: c:n :}  c AECH c!  2 AECH 1 write drop ;

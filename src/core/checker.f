@@ -5353,6 +5353,12 @@ PRIM: wait-rc       PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: wait-status   PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: patch32       PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary may emit machine code (F3)
+PRIM: code-publish  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ the bulk publication window is code injection too
+PRIM: callmap-set   PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
+PRIM: xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ points a live dictionary record at new code
 PRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: close         PE-N PE-IN PRIM;
