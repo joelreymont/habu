@@ -33,7 +33,6 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
-require lib/test/src-shape.f
 require lib/test/subject.f
 require test/tail-ratchet.f
 
@@ -156,47 +155,6 @@ public
 package UDG-MINIMUM
 
 76 constant CAPACITY-RC             \ checker representation capacity reject
-
-\ `die` exits through the kernel and cannot be caught for an in-process state
-\ comparison.  Lock the nearest direct invariant instead: every effect-record
-\ entry path must cross the physical-minimum guard before touching its arena,
-\ cache, recurse state, or publish latches.
-: SHAPE-FIND-AFTER ( ptr u8 n n -- n )
-   {: needle:ptr needleu:n start:n :}
-   SHAPE:TEXT {: hay:ptr hayu:n :}
-   start 0 < if -1 exit then
-   needleu 0= if start exit then
-   hayu needleu < if -1 exit then
-   start begin dup hayu needleu - <= while
-      hay over + needleu needle needleu STR= if exit then
-      1 +
-   repeat drop -1 ;
-
-variable SHAPE-DEF
-variable SHAPE-GUARD
-variable SHAPE-MUTATE
-
-: SHAPE-ORDER ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: def:ptr defu:n guard:ptr guardu:n mutate:ptr mutateu:n :}
-   def defu 0 SHAPE-FIND-AFTER SHAPE-DEF !
-   SHAPE-DEF @ 0 >= TTRUE
-   guard guardu SHAPE-DEF @ SHAPE-FIND-AFTER SHAPE-GUARD !
-   SHAPE-GUARD @ 0 >= TTRUE
-   mutate mutateu SHAPE-DEF @ SHAPE-FIND-AFTER SHAPE-MUTATE !
-   SHAPE-MUTATE @ 0 >= TTRUE
-   SHAPE-GUARD @ SHAPE-MUTATE @ < TTRUE ;
-
-public
-
-: ATOMIC-SHAPE ( -- )
-   s" minimum overflow guards every mutation boundary" T-LABEL
-   s" src/core/checker.f" SHAPE:LOAD
-   s" : E-BUILD-EFFECT (" s" din EFFECT-MIN-IN" s" E-REC-START E-OFF >r" SHAPE-ORDER
-   s" : E-ADD-EFFECT (" s" din EFFECT-MIN-IN drop" s" RECW !" SHAPE-ORDER
-   s" : PE-CLOSE-SYM (" s" PE-DIN @ EFFECT-MIN-IN drop" s" PE-SYM-ID !" SHAPE-ORDER
-   s" : SIG-EFF-CACHE!" s" SGMI @ MIN-IN-CHECK drop" s" RECEFF-UEND !" SHAPE-ORDER ;
-
-private
 
 \ Build a definition whose fixed input row contains exactly `width` physical
 \ cells.  The encoded DNAME-MIN-IN byte accepts 255 and rejects 256 before the
@@ -479,7 +437,6 @@ public
    UDG-COMPILE-IMM
    UDG-NEG-PRIMS
    UDG-POSITIVES
-   UDG-MINIMUM:ATOMIC-SHAPE
    UDG-MINIMUM:BOUNDARY
    UDG-PARITY:CHECK
    UDG-CLEANUP

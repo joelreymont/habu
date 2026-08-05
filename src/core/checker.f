@@ -1913,6 +1913,7 @@ variable DPOS    -1 DPOS !
 variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
 variable SGMI   \ declared input width captured before body bindings
+variable SGFV   \ type-var high-water captured with the declared signature
 variable SGA  variable SGU
 $1000 constant TOKBUF-INIT-CAP
 $10000 constant TOKBUF-GRAIN
@@ -4794,10 +4795,10 @@ variable LMI
       id MK-VAR NONLIN-TYPE! 0= IF 0 OK ! THEN
    ELSE id TVK-NONLIN! THEN ;
 
-: LIVE-INFER-NONLIN* ( n n n n bool bool -- )
-   {: din:n dout:n rin:n rout:n hasr:bool raise:bool :}
+: LIVE-INFER-NONLIN* ( n n n n bool n bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool limit:n raise:bool :}
    0 LMI !
-   BEGIN LMI @ FV @ < WHILE
+   BEGIN LMI @ limit < WHILE
       din dout rin rout hasr LMI @ RES-FALSE LIVE-MULT + 0 <> IF
          din dout rin rout hasr LMI @ RES-TRUE LIVE-MULT <> IF
             LMI @ raise LIVE-NONLIN!
@@ -4807,10 +4808,10 @@ variable LMI
    REPEAT ;
 
 : LIVE-INFER-NONLIN ( n n n n bool -- )
-   RES-FALSE LIVE-INFER-NONLIN* ;
+   FV @ RES-FALSE LIVE-INFER-NONLIN* ;
 
 : LIVE-RAISE-NONLIN ( n n n n bool -- )
-   RES-TRUE LIVE-INFER-NONLIN* ;
+   SGFV @ RES-TRUE LIVE-INFER-NONLIN* ;
 
 : E-BUILD-INFERRED ( n n n n bool -- n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
@@ -10209,7 +10210,7 @@ public
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
-   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGMI !  0 SGDBASE !  0 SGRBASE !
+   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGMI !  0 SGFV !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
@@ -10234,6 +10235,7 @@ public
          VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
            TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
            TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
+           FV @ SGFV !
            SGBAD-FAIL!
            PD-BASE @ SGDBASE !
            RR-SHARED @ SGRBASE !
