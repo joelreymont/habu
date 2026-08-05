@@ -5265,3 +5265,15 @@ the fact refuses by name. When composing rollback participants, the ordering
 must be a property of the owner, never an agreement between callers - two
 individually-correct participants composed into this bug.
 
+## Two load contexts that never coexist need an executed probe (2026-08-05)
+
+The engine's data-stack register is stated in mnem.f (build-side emitter
+vocabulary) and in layout.f (re-read by the booted engine at every load).
+They cannot share a constant - a derivation through XDS compiles during the
+build and dies E-UNDEFINED at runtime, which was tried and hit twice. The
+agreement check belongs as an EXECUTED probe in the first file where both
+names coexist (rt.f, loaded after both in both build chains), and it is not
+believed until mutation-proven in both directions - here by mutating the
+layout constant and watching a real hb-build die with the probe's own
+message. A text pin would have satisfied a comment; the probe kills builds.
+
