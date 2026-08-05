@@ -5277,3 +5277,14 @@ believed until mutation-proven in both directions - here by mutating the
 layout constant and watching a real hb-build die with the probe's own
 message. A text pin would have satisfied a comment; the probe kills builds.
 
+## A seeded engine is not a fixpoint engine (2026-08-05)
+
+A fresh workspace seeded with the main worktree's bin/hb was not at the
+compiler fixpoint - install --force changed the binary with zero source
+edits, then was stable. Any lane whose gates depend on engine bytes (size
+ratchets, published-code decoding, seal probes) is measuring a different
+engine than the tree describes until it refreshes. Refresh the seed before
+gating, and refresh the main worktree's engine immediately after merging
+any engine-text change - the stale-seed false-red class has now bitten
+from both directions.
+
