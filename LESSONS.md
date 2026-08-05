@@ -5318,3 +5318,17 @@ Re-derive an invariant at the stage that relies on it, never at the stage
 where it was convenient to prove - and when a cost claim says "always",
 look for the corpus row that says otherwise before believing it.
 
+## Record a resource where it is taken, and test outside the scope (2026-08-05)
+
+Two halves of one repair. A caller-side record of which arenas a builder had
+acquired recovered 12 of 13 leaked slots - the constructors each took two or
+three slots and handed them back together, so the caller could only see what
+came back. Moved into the allocator itself (a scope open across construction,
+released newest-first), the record recovers all 13: multi-resource
+construction must be recorded where the resource is allocated, because only
+the allocator sees what a constructor took before it threw. And the leak
+lived undetected because the context suite wrapped every case in an outer
+context WHOSE EXIT CLEANED UP THE LEAK - a test that wraps everything in the
+scope under test cannot see the failure path a real driver takes. The
+regression cases now run at top level, where the driver lives.
+
