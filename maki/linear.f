@@ -11,7 +11,7 @@ require maki/matmul.f
 package MAKI
 
 \ add bias b[c] to every row of Y (in place)
-: ADD-BIAS! ( ptr a ptr a n n -- ) {: yb:ptr bb:ptr rows:n cols:n :}
+: ADD-BIAS! ( ptr r ptr r n n -- ) {: yb:ptr bb:ptr rows:n cols:n :}
    rows 0 ?do
       cols 0 ?do                          \ r = j, c = i
          yb  j cols * i +  T-GET   bb i T-GET  f+   yb  j cols * i +  T-SET
@@ -21,7 +21,7 @@ package MAKI
 \ Y = X.W + b
 public
 
-: LINEAR ( ptr a ptr a ptr a ptr a n n n -- )
+: LINEAR ( ptr r ptr r ptr r ptr r n n n -- )
    {: xb:ptr wb:ptr bb:ptr yb:ptr rows:n inner:n cols:n :}
    xb wb yb  rows inner cols  MATMUL
    yb bb  rows cols  ADD-BIAS! ;
@@ -29,7 +29,7 @@ public
 private
 
 \ db[c] = sum_r dY[r,c]  (the bias gradient is the column sum of the cotangent)
-: LINEAR-DB ( ptr a ptr a n n -- ) {: dyb:ptr dbb:ptr rows:n cols:n :}
+: LINEAR-DB ( ptr r ptr r n n -- ) {: dyb:ptr dbb:ptr rows:n cols:n :}
    cols 0 ?do                             \ c = i (outer)
       0.0
       rows 0 ?do  dyb  i cols *  j +  T-GET  f+  loop   \ r = i, c = j
@@ -39,7 +39,7 @@ private
 \ dX = dY.W^T, dW = X^T.dY, db = colsum(dY)
 public
 
-: LINEAR-BWD ( ptr a ptr a ptr a ptr a ptr a ptr a n n n -- )
+: LINEAR-BWD ( ptr r ptr r ptr r ptr r ptr r ptr r n n n -- )
    {: dyb:ptr xb:ptr wb:ptr dxb:ptr dwb:ptr dbb:ptr rows:n inner:n cols:n :}
    dyb wb dxb  rows inner cols  MATMUL-DX
    xb dyb dwb  rows inner cols  MATMUL-DW

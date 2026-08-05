@@ -6,6 +6,7 @@
 \ finite difference on b.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/linear.f
 
 package MAKI
@@ -41,6 +42,14 @@ LDB 1 T-GET  0.5 f+ f>s   2 T=       \ db1 = rows = 2
  99.999 LB 0 T-SET  LX LW LB LY 2 2 2 LINEAR  LY 4 T-SUM
 f-  0.002 f/  0.5 f+ f>s   2 T=
 100.0 LB 0 T-SET                     \ restore
+
+\ public contracts accept only host floating-point buffers
+s" LNT-F-R ( ptr r ptr r ptr r ptr r n n n -- ) LINEAR" CHECK-QUIET-CANDIDATE! -1 T=
+s" LNT-F-N ( ptr n ptr n ptr n ptr n n n n -- ) LINEAR" CHECK-QUIET-CANDIDATE! 0 T=
+s" LNT-F-U ( ptr u8 ptr u8 ptr u8 ptr u8 n n n -- ) LINEAR" CHECK-QUIET-CANDIDATE! 0 T=
+s" LNT-B-R ( ptr r ptr r ptr r ptr r ptr r ptr r n n n -- ) LINEAR-BWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" LNT-B-N ( ptr n ptr n ptr n ptr n ptr n ptr n n n n -- ) LINEAR-BWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" LNT-B-U ( ptr u8 ptr u8 ptr u8 ptr u8 ptr u8 ptr u8 n n n -- ) LINEAR-BWD" CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 
