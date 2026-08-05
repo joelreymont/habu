@@ -71,4 +71,43 @@ NOT BUILT. This lane recorded the corrected design and stopped there; nothing in
 src/ or test/ changed. The next attempt starts from this text, not from the
 paragraph above it.
 
-Claim: agent=remat workspace=.jj-ws/habu-fold-constants-and-cbe4e25e
+DESIGN VERIFIED AGAINST THE TREE AT d3a9c848 (2026-08-05, remat2), and one
+question the design does not answer found. Every site the design names is still
+where it says, so the plan above is buildable as written: MB-COPY? :1210 with
+SAME-SYM?, MB-SPILLABLE? :1364/:1366, MB-FRAMED? :1508/:1511, MB-DUE?
+:1590/:1594, MB-EVICT :1763 with NEW-SLOT at :1766, MB-FINISH :1786/:1792,
+MB-PLAN-STORES :1814, MB-PLAN-LOADS :1822 with P-RELOAD planned at :1828,
+BIND-DIALECT :2003. A64IR-OPCODE:MOVZ/MOVK exist (a64ir.f DEF-MOVZ :1082,
+DEF-MOVK :1098) and the movk tie is stated at :251-259. spill.f already copies
+K-IMM and K-SHIFT (COPY-ATTRS), and EMIT-LOAD's shape - build a fresh value,
+RBIND it at the position - is exactly the shape EMIT-REMAT needs, with no slot
+and no memory token. Plan rows carry blk/kind/pos/val only (PLAN+ :402), so a
+P-REMAT row needs the immediate carried per class or re-read from the module.
+
+THE UNANSWERED QUESTION IS THE VALIDATOR'S LINK. The design says
+regalloc-verify.f "re-derives per site that the re-emitted chain computes the
+class's constant". A64RAV:VERIFY (:1982) is handed ONE function - the module as
+it stands - and FLOW-CK (:719) ties a reload to its store through the shared
+SLOT attribute. A remat site has no slot, so that link does not exist, and a
+movz carrying the WRONG immediate is still a well-formed module: standalone,
+the validator cannot tell it from the right one. Before building, decide which
+of these the link is - a class identity carried on the remat op (which risks
+the validator trusting the plan it is supposed to re-derive), the pre-spill
+module handed to VERIFY alongside the lowered one, or a rule that all movz ops
+reaching one reader must agree - because the mutation test the acceptance
+demands ("mutate the emission, the validator must refuse") is only meaningful
+once it exists.
+
+AND A FACT THAT CHANGES WHAT PIECE 1 BUYS: A64SPILL:REWRITE IS NOT ON THE
+PRODUCTION PATH. migrate.f EMITTED (:567-572) runs SELECTED, A64RA:ALLOCATE,
+A64RAV:ACCEPT, A64EMIT:EMIT and never rewrites; A64RA:SPILLS is read only by
+spill.f itself, test/compiler/native-regalloc.f and
+test/compiler/native-chain-fixture.f, and A64SPILL:REWRITE is called only from
+those fixtures. So on the corpus the allocator either fits or refuses, and no
+corpus row's bytes can move because of a spill or a remat. Remat's corpus
+effect is confined to turning refusals into compilations; the four-row CSE win
+does not depend on it, and RSPILL-CASE - which is what blocks the CSE - reaches
+remat through the fixture path. Confirm this before pricing piece 1 against the
+corpus, because the consolidation block prices it as if the two were coupled.
+
+Claim: agent=remat2 workspace=.jj-ws/habu-fold-constants-and-cbe4e25e

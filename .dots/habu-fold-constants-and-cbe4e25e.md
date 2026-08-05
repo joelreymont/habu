@@ -49,4 +49,4 @@ RSPILL pin to match it. The full evidence, including the corrected root cause of
 the -8042 the previous attempt reported, is in
 habu-literal-cse-trips-7e6d67bb.
 
-Claim: agent=remat workspace=.jj-ws/habu-fold-constants-and-cbe4e25e
+Claim: agent=remat2 workspace=.jj-ws/habu-fold-constants-and-cbe4e25e
