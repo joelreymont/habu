@@ -194,7 +194,7 @@ public
    s" : E-BUILD-EFFECT (" s" din EFFECT-MIN-IN" s" E-REC-START E-OFF >r" SHAPE-ORDER
    s" : E-ADD-EFFECT (" s" din EFFECT-MIN-IN drop" s" RECW !" SHAPE-ORDER
    s" : PE-CLOSE-SYM (" s" PE-DIN @ EFFECT-MIN-IN drop" s" PE-SYM-ID !" SHAPE-ORDER
-   s" : SIG-EFF-CACHE!" s" SGIN @ EFFECT-MIN-IN drop" s" RECEFF-UEND !" SHAPE-ORDER ;
+   s" : SIG-EFF-CACHE!" s" SGMI @ MIN-IN-CHECK drop" s" RECEFF-UEND !" SHAPE-ORDER ;
 
 private
 

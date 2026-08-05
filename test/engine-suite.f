@@ -661,7 +661,7 @@ DIAG-BUFFER$ s" rsv28" T-HAS? -1 T=
 s" rec-refuse diag names var-count reason" T-LABEL
 DIAG-BUFFER$ s" more than 26 type variables" T-HAS? -1 T=
 DIAG-BUFFER-OFF
-\ recurse checks against the cached declared sig (fresh instance per site)
+\ recurse lazily caches the immutable declared sig (fresh instance per site).
 s" recurse against declared sig certifies" T-LABEL
 s" CREC-OK ( n -- n ) dup 2 < if drop 1 exit then 1 - recurse 1 +" CHECK-QUIET-CANDIDATE! -1 T=
 s" wrong-effect recursion rejects" T-LABEL
@@ -1474,7 +1474,19 @@ s" CBAD-IS-INFER ( -- ) is T-IS-G" T-CHECK-REJECTS
 s" COK-IS-ROW ( -- ) ['] T-IS-RID is T-IS-RG" T-CHECK-PASSES
 s" CBAD-IS-ROW-CLOSE ( -- ) ['] T-IS-N is T-IS-RG" T-CHECK-REJECTS
 s" CBAD-IS-ROW-ALIAS ( -- ) ['] T-IS-RID is T-IS-R2" T-CHECK-REJECTS
+\ The body binds declared `a` to i64 before recurse, but the recursive call must
+\ still instantiate raw `( a -- )`; only the final parametricity seal rejects.
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" CBAD-REC-RAW ( a -- ) T-NEED-I64 true recurse" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" E-NONPARAMETRIC-EFFECT" T-HAS? -1 T=
+DIAG-BUFFER-OFF
+\ `a` binds to own before the first recurse; lazy inference must validate that
+\ live binding while retaining the declared variable's NONLIN kind in the cache.
 s" CBAD-OWN-REC-T ( a -- a a ) T-FREE-OWN T-MAKE-OWN recurse" T-CHECK-REJECTS
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" CBAD-OWN-PRE ( a -- ) T-FREE-OWN 1 recurse" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" at 'recurse'" T-HAS? -1 T=
+DIAG-BUFFER-OFF
 s" COK-N-REC-T ( n -- n n ) 1+ recurse" T-CHECK-PASSES
 s" COK-OWN-PASS ( own -- own )" T-CHECK-PASSES
 s" COK-OWN-MAKE ( -- own ) T-MAKE-OWN" T-CHECK-PASSES

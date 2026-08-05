@@ -1912,6 +1912,7 @@ variable CVLIVE  -1 CVLIVE !
 variable DPOS    -1 DPOS !
 variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
+variable SGMI   \ declared input width captured before body bindings
 variable SGA  variable SGU
 $1000 constant TOKBUF-INIT-CAP
 $10000 constant TOKBUF-GRAIN
@@ -4416,66 +4417,70 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : E-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
 
-: E-COPY* ( n -- n ) {: x:n :}
+: E-COPY-RES ( n bool -- n ) {: x:n raw:bool :}
+   raw IF x ELSE x E-RES THEN ;
+
+: E-COPY* ( n bool -- n ) {: x:n raw:bool :}
    x 0= if 0 exit then
-   x E-RES TAG case
+   x raw E-COPY-RES {: t:n :}
+   t TAG case
       T-CON of
          EN-CON E-NODE-NEW E-OFF >r
-         x E-RES PAY r@ E-PTR EN.A !
+         t PAY r@ E-PTR EN.A !
          r>
       endof
       T-VAR of
          EN-VAR E-NODE-NEW E-OFF >r
-         x E-RES PAY E-TV-ID r@ E-PTR EN.A !
-         x E-RES PAY TVK@ r@ E-PTR EN.B !   \ persist the var kind for freshening + snapshot
+         t PAY E-TV-ID r@ E-PTR EN.A !
+         t PAY TVK@ r@ E-PTR EN.B !   \ persist the var kind for freshening + snapshot
          r>
       endof
       S-ROW of
          EN-ROW E-NODE-NEW E-OFF >r
-         x E-RES PAY E-RV-ID r@ E-PTR EN.A !
+         t PAY E-RV-ID r@ E-PTR EN.A !
          r>
       endof
       T-PTR of
          EN-PTR E-NODE-NEW E-OFF >r
-         x E-RES PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
+         t PTR>INNER raw TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
          r>
       endof
       S-PUSH of
          EN-PUSH E-NODE-NEW E-OFF >r
-         x E-RES P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
-         x E-RES P>REST TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
+         t P>TYPE raw TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
+         t P>REST raw TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
          r>
       endof
       T-QUOT of
          EN-QUOT E-NODE-NEW E-OFF >r
-         x E-RES Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
-         x E-RES Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
-         x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.C !
-         x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.D !
-         x E-RES Q>XHAS r@ E-PTR EN.E !
-         x E-RES Q>XDEAD r@ E-PTR EN.F !
-         x E-RES Q>XDOUT r@ E-PTR EN.G !
-         x E-RES Q>XROUT r@ E-PTR EN.H !
+         t Q>DIN raw TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
+         t Q>DOUT raw TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
+         t Q>RIN raw TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.C !
+         t Q>ROUT raw TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.D !
+         t Q>XHAS r@ E-PTR EN.E !
+         t Q>XDEAD r@ E-PTR EN.F !
+         t Q>XDOUT r@ E-PTR EN.G !
+         t Q>XROUT r@ E-PTR EN.H !
          r>
       endof
       T-ATOM of
          EN-ATOM E-NODE-NEW E-OFF >r
-         x E-RES ATOM>A x E-RES ATOM>U r@ E-PTR E-COPY-STR
-         x E-RES ATOM>K r@ E-PTR EN.C !
+         t ATOM>A t ATOM>U r@ E-PTR E-COPY-STR
+         t ATOM>K r@ E-PTR EN.C !
          r>
       endof
       T-PARAM of
          EN-PARAM E-NODE-NEW E-OFF {: noff:n :}      \ node offset (stable across USIGS grow)
-         x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U noff E-PTR E-COPY-STR
-         x E-RES PARAM>ARGC {: argc:n :}
+         t PARAM>NAME-A t PARAM>NAME-U noff E-PTR E-COPY-STR
+         t PARAM>ARGC {: argc:n :}
          argc noff E-PTR EN.C !
-         x E-RES PARAM>FAM noff E-PTR EN.H !         \ resolved family-id (identity)
-         x E-RES PARAM>HID noff E-PTR EN.E !         \ hidden physical-field slot+1 (0 = logical; 0 in pre-3a snapshots)
+         t PARAM>FAM noff E-PTR EN.H !         \ resolved family-id (identity)
+         t PARAM>HID noff E-PTR EN.E !         \ hidden physical-field slot+1 (0 = logical; 0 in pre-3a snapshots)
          argc 0 > IF
             argc E-ARGS-RESERVE {: run:n :}          \ argc-cell run in USIGS
             run noff E-PTR EN.D !
             0 BEGIN dup argc < WHILE                 \ data-stack index (RECURSE-safe)
-               x E-RES over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER   \ ( i childoff )
+               t over PARAM>ARG raw TWALK-DEEPER RECURSE TWALK-SHALLOWER   \ ( i childoff )
                over cells run + E-PTR !                                     \ ( i )
                1 +
             REPEAT drop
@@ -4484,7 +4489,8 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       endof
       0 swap
    endcase ;
-: E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
+: E-COPY-WITH ( n bool -- n ) TWALK-RESET E-COPY* ;
+: E-COPY ( n -- n ) RES-FALSE E-COPY-WITH ;
 
 : USIG-NEXT ( ptr a -- ptr a )
    ER.NEXT @ E-PTR ;
@@ -4687,26 +4693,40 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
       P>REST
    REPEAT drop ;
 
+: MIN-IN-CHECK ( n -- n )
+   dup 255 > if s" checker: min-in exceeds record field" 76 die then ;
+
 : EFFECT-MIN-IN ( n -- n )
-   ROW-CELLS dup 255 > if s" checker: min-in exceeds record field" 76 die then ;
+   ROW-CELLS MIN-IN-CHECK ;
+
+: E-BUILD-ROWS ( n n n n bool bool n n -- )
+   {: din:n dout:n rin:n rout:n hasr:bool raw:bool minin:n off:n :}
+   E-COPY-MAPS-RESET
+   EFF-ACTIVE off E-PTR ER.ACTIVE !
+   din raw E-COPY-WITH off E-PTR ER.DIN !
+   dout raw E-COPY-WITH off E-PTR ER.DOUT !
+   hasr if
+      rin raw E-COPY-WITH off E-PTR ER.RIN !
+      rout raw E-COPY-WITH off E-PTR ER.ROUT !
+   then
+   hasr off E-PTR ER.HASR !
+   EC-TVN @ off E-PTR ER.TVN !
+   EC-RVN @ off E-PTR ER.RVN !
+   minin off E-PTR ER.MINI !
+   off E-PTR E-REC-FINISH ;
 
 : E-BUILD-EFFECT ( n n n n bool -- n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
    din EFFECT-MIN-IN {: minin:n :}
    E-REC-START E-OFF >r
-   E-COPY-MAPS-RESET
-   EFF-ACTIVE r@ E-PTR ER.ACTIVE !
-   din E-COPY r@ E-PTR ER.DIN !
-   dout E-COPY r@ E-PTR ER.DOUT !
-   hasr if
-      rin E-COPY r@ E-PTR ER.RIN !
-      rout E-COPY r@ E-PTR ER.ROUT !
-   then
-   hasr r@ E-PTR ER.HASR !
-   EC-TVN @ r@ E-PTR ER.TVN !
-   EC-RVN @ r@ E-PTR ER.RVN !
-   minin r@ E-PTR ER.MINI !
-   r@ E-PTR E-REC-FINISH
+   din dout rin rout hasr RES-FALSE minin r@ E-BUILD-ROWS
+   r> ;
+
+: E-BUILD-RAW ( n n n n bool n -- n )
+   {: din:n dout:n rin:n rout:n hasr:bool minin:n :}
+   minin MIN-IN-CHECK drop
+   E-REC-START E-OFF >r
+   din dout rin rout hasr RES-TRUE minin r@ E-BUILD-ROWS
    r> ;
 
 \ Bodyless effects have no checked body from which to earn NONLIN kinds. Infer
@@ -4768,17 +4788,29 @@ variable LMNEG  variable LMPOS  variable LMV
    LMNEG @ LMPOS @ ;
 
 variable LMI
-: LIVE-INFER-NONLIN ( n n n n bool -- )
-   {: din:n dout:n rin:n rout:n hasr:bool :}
+: LIVE-NONLIN! ( n bool -- ) {: id:n raise:bool :}
+   raise IF
+      id TVK-NONLIN-RAISE
+      id MK-VAR NONLIN-TYPE! 0= IF 0 OK ! THEN
+   ELSE id TVK-NONLIN! THEN ;
+
+: LIVE-INFER-NONLIN* ( n n n n bool bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool raise:bool :}
    0 LMI !
    BEGIN LMI @ FV @ < WHILE
       din dout rin rout hasr LMI @ RES-FALSE LIVE-MULT + 0 <> IF
          din dout rin rout hasr LMI @ RES-TRUE LIVE-MULT <> IF
-            LMI @ TVK-NONLIN!
+            LMI @ raise LIVE-NONLIN!
          THEN
       THEN
       LMI @ 1 + LMI !
    REPEAT ;
+
+: LIVE-INFER-NONLIN ( n n n n bool -- )
+   RES-FALSE LIVE-INFER-NONLIN* ;
+
+: LIVE-RAISE-NONLIN ( n n n n bool -- )
+   RES-TRUE LIVE-INFER-NONLIN* ;
 
 : E-BUILD-INFERRED ( n n n n bool -- n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
@@ -8355,12 +8387,15 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 \ so recurse sites instantiate it via E-INST instead of re-parsing the sig text.
 \ The record carries sym 0 so signature lookup never sees it.
 : SIG-EFF-CACHE!
+   RECEFF-ON? IF EXIT THEN
    SGBAD @ IF EXIT THEN
-   SGIN @ EFFECT-MIN-IN drop
+   SGMI @ MIN-IN-CHECK drop
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ LIVE-RAISE-NONLIN
+   OK @ 0= IF EXIT THEN
    UEND @ RECEFF-UEND !
    CHECKER-REC-SYM @ RECEFF-SYM !
    0 CHECKER-REC-SYM !
-   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ E-BUILD-INFERRED RECEFF !
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ SGMI @ E-BUILD-RAW RECEFF !
    RECEFF-SYM @ CHECKER-REC-SYM !
    -1 RECEFF-ON ! ;
 
@@ -8380,8 +8415,9 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    RHAS @ 0 <> IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN ;
 
 : CF-RECURSE
+   VSIG-ON? SGSEEN? and RECEFF-ON? 0= and IF SIG-EFF-CACHE! THEN
    RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF
-   ELSE -1 UNCK ! THEN ;
+   ELSE OK @ IF -1 UNCK ! THEN THEN ;
 
 \ M5b uniform-branch acceptance. `if` normally consumes a plain `bool`. A GPU
 \ predicate that is provably identical across every lane of the block is a
@@ -10173,7 +10209,7 @@ public
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
-   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
+   0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGMI !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
@@ -10206,7 +10242,7 @@ public
            ELSE
              2drop  SGOUT !  dup SGIN !  DCUR !
            THEN  -1 SGSEEN !
-           SIG-EFF-CACHE!
+           SGBAD @ 0= IF SGIN @ EFFECT-MIN-IN SGMI ! THEN
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
        ELSE
