@@ -73,49 +73,49 @@ $7FFFFFFFFFFFFFFF ROW-BYTES / constant MAX-ROWS
 11 cells constant ST.ALLOCATOR-OFF
 12 cells constant ST.DIAGNOSTIC-OFF
 
-: ST.TABLE ( ptr a -- ptr ptr a ) ST.TABLE-OFF ptr-field ;
-TRUSTED: ST.CAP ( ptr a -- ptr n ) ST.CAP-OFF + ;
-TRUSTED: ST.N ( ptr a -- ptr n ) ST.N-OFF + ;
-TRUSTED: ST.DEPTH ( ptr a -- ptr n ) ST.DEPTH-OFF + ;
-TRUSTED: ST.SEALED ( ptr a -- ptr n ) ST.SEALED-OFF + ;
-TRUSTED: ST.POISON ( ptr a -- ptr n ) ST.POISON-OFF + ;
-TRUSTED: ST.CURRENT-PHASE ( ptr a -- ptr n ) ST.CURRENT-PHASE-OFF + ;
-TRUSTED: ST.CURRENT-PARTICIPANT ( ptr a -- ptr n ) ST.CURRENT-PARTICIPANT-OFF + ;
-TRUSTED: ST.FAILURE-PHASE ( ptr a -- ptr n ) ST.FAILURE-PHASE-OFF + ;
-TRUSTED: ST.FAILURE-PARTICIPANT ( ptr a -- ptr n ) ST.FAILURE-PARTICIPANT-OFF + ;
-TRUSTED: ST.CLEANUP-PARTICIPANT ( ptr a -- ptr n ) ST.CLEANUP-PARTICIPANT-OFF + ;
-TRUSTED: ST.ALLOCATOR ( ptr a -- ptr [ ptr a n n -- ptr a ] )
+: ST.TABLE ( ptr n -- ptr ptr n ) ST.TABLE-OFF ptr-field ;
+: ST.CAP ( ptr n -- ptr n ) ST.CAP-OFF + ;
+: ST.N ( ptr n -- ptr n ) ST.N-OFF + ;
+: ST.DEPTH ( ptr n -- ptr n ) ST.DEPTH-OFF + ;
+: ST.SEALED ( ptr n -- ptr n ) ST.SEALED-OFF + ;
+: ST.POISON ( ptr n -- ptr n ) ST.POISON-OFF + ;
+: ST.CURRENT-PHASE ( ptr n -- ptr n ) ST.CURRENT-PHASE-OFF + ;
+: ST.CURRENT-PARTICIPANT ( ptr n -- ptr n ) ST.CURRENT-PARTICIPANT-OFF + ;
+: ST.FAILURE-PHASE ( ptr n -- ptr n ) ST.FAILURE-PHASE-OFF + ;
+: ST.FAILURE-PARTICIPANT ( ptr n -- ptr n ) ST.FAILURE-PARTICIPANT-OFF + ;
+: ST.CLEANUP-PARTICIPANT ( ptr n -- ptr n ) ST.CLEANUP-PARTICIPANT-OFF + ;
+TRUSTED: ST.ALLOCATOR ( ptr n -- ptr [ ptr n n n -- ptr n ] )
    ST.ALLOCATOR-OFF + ;
-TRUSTED: ST.DIAGNOSTIC ( ptr a -- ptr [ n n -- ] )
+TRUSTED: ST.DIAGNOSTIC ( ptr n -- ptr [ n n -- ] )
    ST.DIAGNOSTIC-OFF + ;
 
-: TABLE@ ( ptr a -- ptr a ) ST.TABLE @ ;
-: CAP@ ( ptr a -- n ) ST.CAP @ ;
-: N@ ( ptr a -- n ) ST.N @ ;
-: DEPTH@ ( ptr a -- n ) ST.DEPTH @ ;
-: SEALED@ ( ptr a -- n ) ST.SEALED @ ;
-: POISON@ ( ptr a -- n ) ST.POISON @ ;
-: ALLOCATOR@ ( ptr a -- [ ptr a n n -- ptr a ] ) ST.ALLOCATOR @ ;
-: DIAGNOSTIC@ ( ptr a -- [ n n -- ] ) ST.DIAGNOSTIC @ ;
+: TABLE@ ( ptr n -- ptr n ) ST.TABLE @ ;
+: CAP@ ( ptr n -- n ) ST.CAP @ ;
+: N@ ( ptr n -- n ) ST.N @ ;
+: DEPTH@ ( ptr n -- n ) ST.DEPTH @ ;
+: SEALED@ ( ptr n -- n ) ST.SEALED @ ;
+: POISON@ ( ptr n -- n ) ST.POISON @ ;
+: ALLOCATOR@ ( ptr n -- [ ptr n n n -- ptr n ] ) ST.ALLOCATOR @ ;
+: DIAGNOSTIC@ ( ptr n -- [ n n -- ] ) ST.DIAGNOSTIC @ ;
 
-: ROW ( ptr a n -- ptr a ) {: state:ptr idx:n :}
+: ROW ( ptr n n -- ptr n ) {: state:ptr idx:n :}
    state TABLE@ idx ROW-CELLS * cells + ;
 
-TRUSTED: ROW.ID ( ptr a -- ptr n ) ROW.ID-OFF + ;
-TRUSTED: ROW.ORDER ( ptr a -- ptr n ) ROW.ORDER-OFF + ;
-TRUSTED: ROW.SNAPSHOT ( ptr a -- ptr [ n -- n ] ) ROW.SNAPSHOT-OFF + ;
-TRUSTED: ROW.PREPARE ( ptr a -- ptr [ n -- n ] ) ROW.PREPARE-OFF + ;
-TRUSTED: ROW.COMMIT ( ptr a -- ptr [ n -- n ] ) ROW.COMMIT-OFF + ;
-TRUSTED: ROW.ROLLBACK ( ptr a -- ptr [ n -- n ] ) ROW.ROLLBACK-OFF + ;
-TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
+: ROW.ID ( ptr n -- ptr n ) ROW.ID-OFF + ;
+: ROW.ORDER ( ptr n -- ptr n ) ROW.ORDER-OFF + ;
+TRUSTED: ROW.SNAPSHOT ( ptr n -- ptr [ n -- n ] ) ROW.SNAPSHOT-OFF + ;
+TRUSTED: ROW.PREPARE ( ptr n -- ptr [ n -- n ] ) ROW.PREPARE-OFF + ;
+TRUSTED: ROW.COMMIT ( ptr n -- ptr [ n -- n ] ) ROW.COMMIT-OFF + ;
+TRUSTED: ROW.ROLLBACK ( ptr n -- ptr [ n -- n ] ) ROW.ROLLBACK-OFF + ;
+TRUSTED: ROW.RELEASE ( ptr n -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
 
-: ID@ ( ptr a n -- n ) ROW ROW.ID @ ;
-: ORDER@ ( ptr a n -- n ) ROW ROW.ORDER @ ;
-: SNAPSHOT@ ( ptr a n -- [ n -- n ] ) ROW ROW.SNAPSHOT @ ;
-: PREPARE@ ( ptr a n -- [ n -- n ] ) ROW ROW.PREPARE @ ;
-: COMMIT@ ( ptr a n -- [ n -- n ] ) ROW ROW.COMMIT @ ;
-: ROLLBACK@ ( ptr a n -- [ n -- n ] ) ROW ROW.ROLLBACK @ ;
-: RELEASE@ ( ptr a n -- [ -- ] ) ROW ROW.RELEASE @ ;
+: ID@ ( ptr n n -- n ) ROW ROW.ID @ ;
+: ORDER@ ( ptr n n -- n ) ROW ROW.ORDER @ ;
+: SNAPSHOT@ ( ptr n n -- [ n -- n ] ) ROW ROW.SNAPSHOT @ ;
+: PREPARE@ ( ptr n n -- [ n -- n ] ) ROW ROW.PREPARE @ ;
+: COMMIT@ ( ptr n n -- [ n -- n ] ) ROW ROW.COMMIT @ ;
+: ROLLBACK@ ( ptr n n -- [ n -- n ] ) ROW ROW.ROLLBACK @ ;
+: RELEASE@ ( ptr n n -- [ -- ] ) ROW ROW.RELEASE @ ;
 
 \ The five callback cells of a row, and the two callback cells of the state
 \ record below, hold an execution token: an address inside the JIT region, which
@@ -128,23 +128,23 @@ TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
 \ base at run time. These seven store words are the code that decides the cell
 \ will hold a token, so they are where the declaration belongs, and `xt!` makes
 \ the store and the declaration one step.
-: ID! ( n ptr a n -- ) ROW ROW.ID ! ;
-: ORDER! ( n ptr a n -- ) ROW ROW.ORDER ! ;
-: SNAPSHOT! ( [ n -- n ] ptr a n -- ) ROW ROW.SNAPSHOT xt! ;
-: PREPARE! ( [ n -- n ] ptr a n -- ) ROW ROW.PREPARE xt! ;
-: COMMIT! ( [ n -- n ] ptr a n -- ) ROW ROW.COMMIT xt! ;
-: ROLLBACK! ( [ n -- n ] ptr a n -- ) ROW ROW.ROLLBACK xt! ;
-: RELEASE! ( [ -- ] ptr a n -- ) ROW ROW.RELEASE xt! ;
+: ID! ( n ptr n n -- ) ROW ROW.ID ! ;
+: ORDER! ( n ptr n n -- ) ROW ROW.ORDER ! ;
+: SNAPSHOT! ( [ n -- n ] ptr n n -- ) ROW ROW.SNAPSHOT xt! ;
+: PREPARE! ( [ n -- n ] ptr n n -- ) ROW ROW.PREPARE xt! ;
+: COMMIT! ( [ n -- n ] ptr n n -- ) ROW ROW.COMMIT xt! ;
+: ROLLBACK! ( [ n -- n ] ptr n n -- ) ROW ROW.ROLLBACK xt! ;
+: RELEASE! ( [ -- ] ptr n n -- ) ROW ROW.RELEASE xt! ;
 
-TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
+TRUSTED: TABLE-ARENA-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
 
-: DEFAULT-ALLOCATE ( ptr a n n -- ptr a )
+: DEFAULT-ALLOCATE ( ptr n n n -- ptr n )
    TABLE-ARENA-GROW ;
 
 : NO-DIAGNOSTIC ( n n -- )
    2drop ;
 
-: INIT-STATE ( ptr a ptr a n [ ptr a n n -- ptr a ] [ n n -- ] -- )
+: INIT-STATE ( ptr n ptr n n [ ptr n n n -- ptr n ] [ n n -- ] -- )
    {: state:ptr table:ptr cap:n allocator diagnostic :} \ typed-local-lint: allow-bare-local
    cap 1 < cap MAX-ROWS > or if E-PARTICIPANT-CAPACITY throw then
    table state ST.TABLE !
@@ -161,7 +161,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    allocator state ST.ALLOCATOR xt!
    diagnostic state ST.DIAGNOSTIC xt! ;
 
-: DUPLICATE? ( ptr a n -- bool ) {: state:ptr id:n :}
+: DUPLICATE? ( ptr n n -- bool ) {: state:ptr id:n :}
    0
    BEGIN dup state N@ < WHILE
       state over ID@ id = IF drop 0 0= EXIT THEN
@@ -169,20 +169,20 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    REPEAT
    drop 0 0= 0= ;
 
-: REQUIRE-REGISTRATION ( ptr a n -- ) {: state:ptr id:n :}
+: REQUIRE-REGISTRATION ( ptr n n -- ) {: state:ptr id:n :}
    state DEPTH@ 0 <> IF E-REGISTRATION-ACTIVE throw THEN
    state SEALED@ 0 <> IF E-REGISTRATION-SEALED throw THEN
    state N@ MAX-ROWS >= if E-PARTICIPANT-CAPACITY throw then
    state id DUPLICATE? IF E-PARTICIPANT-DUP throw THEN ;
 
-: INSERT-AT ( ptr a n -- n ) {: state:ptr order:n :}
+: INSERT-AT ( ptr n n -- n ) {: state:ptr order:n :}
    0
    BEGIN dup state N@ < WHILE
       state over ORDER@ order > IF EXIT THEN
       1 +
    REPEAT ;
 
-: MOVE-ROW ( ptr a n n -- ) {: state:ptr from:n to:n :}
+: MOVE-ROW ( ptr n n n -- ) {: state:ptr from:n to:n :}
    state from ID@ state to ID!
    state from ORDER@ state to ORDER!
    state from SNAPSHOT@ state to SNAPSHOT!
@@ -191,7 +191,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    state from ROLLBACK@ state to ROLLBACK!
    state from RELEASE@ state to RELEASE! ;
 
-: GROW-TABLE ( ptr a -- ) {: state:ptr :}
+: GROW-TABLE ( ptr n -- ) {: state:ptr :}
    state CAP@ {: oldcap:n :}
    oldcap NEXT-CAP {: newcap:n :}
    state TABLE@ oldcap ROWS>BYTES newcap ROWS>BYTES
@@ -199,11 +199,11 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    grown state ST.TABLE !
    newcap state ST.CAP ! ;
 
-: ENSURE-ROOM ( ptr a -- ) {: state:ptr :}
+: ENSURE-ROOM ( ptr n -- ) {: state:ptr :}
    state N@ state CAP@ < IF EXIT THEN
    state GROW-TABLE ;
 
-: OPEN-SLOT ( ptr a n -- n ) {: state:ptr order:n :}
+: OPEN-SLOT ( ptr n n -- n ) {: state:ptr order:n :}
    state ENSURE-ROOM
    state order INSERT-AT {: idx:n :}
    state N@
@@ -216,7 +216,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    idx ;
 
 : REGISTER-ROW
-   ( ptr a n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
+   ( ptr n n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
    {: state:ptr id:n order:n snapshot prepare commit rollback release :} \ typed-local-lint: allow-bare-local
    state id REQUIRE-REGISTRATION
    state order OPEN-SLOT {: idx:n :}
@@ -229,14 +229,14 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    release state idx RELEASE!
    state N@ 1 + state ST.N ! ;
 
-: ENTER-PHASE ( ptr a n n -- ) {: state:ptr phase:n idx:n :}
+: ENTER-PHASE ( ptr n n n -- ) {: state:ptr phase:n idx:n :}
    phase state ST.CURRENT-PHASE !
    state idx ID@ state ST.CURRENT-PARTICIPANT ! ;
 
-: POISON ( ptr a n -- ) {: state:ptr code:n :}
+: POISON ( ptr n n -- ) {: state:ptr code:n :}
    state POISON@ 0= IF code state ST.POISON ! THEN ;
 
-: CALL-PARTICIPANT ( ptr a n n [ n -- n ] -- n )
+: CALL-PARTICIPANT ( ptr n n n [ n -- n ] -- n )
    {: state:ptr phase:n idx:n callback :} \ typed-local-lint: allow-bare-local
    state phase idx ENTER-PHASE
    state DEPTH@ {: expected:n :}
@@ -248,10 +248,10 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    THEN
    0 ;
 
-: SNAPSHOT-ONE ( ptr a n -- n ) {: state:ptr idx:n :}
+: SNAPSHOT-ONE ( ptr n n -- n ) {: state:ptr idx:n :}
    state PHASE-SNAPSHOT idx state idx SNAPSHOT@ CALL-PARTICIPANT ;
 
-: SNAPSHOT-ALL ( ptr a -- n n ) {: state:ptr :}
+: SNAPSHOT-ALL ( ptr n -- n n ) {: state:ptr :}
    0
    BEGIN dup state N@ < WHILE
       dup state swap SNAPSHOT-ONE
@@ -260,13 +260,13 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    REPEAT
    0 ;
 
-: FORWARD-ONE ( ptr a n n -- n ) {: state:ptr phase:n idx:n :}
+: FORWARD-ONE ( ptr n n n -- n ) {: state:ptr phase:n idx:n :}
    phase PHASE-PREPARE = IF
       state phase idx state idx PREPARE@ CALL-PARTICIPANT EXIT
    THEN
    state phase idx state idx COMMIT@ CALL-PARTICIPANT ;
 
-: RUN-FORWARD ( ptr a n -- n ) {: state:ptr phase:n :}
+: RUN-FORWARD ( ptr n n -- n ) {: state:ptr phase:n :}
    0
    BEGIN dup state N@ < WHILE
       dup state phase rot FORWARD-ONE
@@ -279,17 +279,17 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    prior 0 <> IF prior EXIT THEN
    code ;
 
-: REMEMBER-CLEANUP ( ptr a n n -- n ) {: state:ptr prior:n code:n :}
+: REMEMBER-CLEANUP ( ptr n n n -- n ) {: state:ptr prior:n code:n :}
    prior 0= code 0 <> and IF
       state ST.CURRENT-PARTICIPANT @ state ST.CLEANUP-PARTICIPANT !
    THEN
    code 0 <> IF state code POISON THEN
    prior code FIRST-ERROR ;
 
-: ROLLBACK-ONE ( ptr a n -- n ) {: state:ptr idx:n :}
+: ROLLBACK-ONE ( ptr n n -- n ) {: state:ptr idx:n :}
    state PHASE-ROLLBACK idx state idx ROLLBACK@ CALL-PARTICIPANT ;
 
-: ROLLBACK-ALL ( ptr a n -- n ) {: state:ptr active:n :}
+: ROLLBACK-ALL ( ptr n n -- n ) {: state:ptr active:n :}
    0
    active 0 ?do
       state active 1 - i - ROLLBACK-ONE
@@ -300,10 +300,10 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 \ already succeeded, so there is nothing left to restore and nothing a failure
 \ could mean: the callback is required to be total, is executed directly, and is
 \ deliberately NOT wrapped in `catch`.
-: RELEASE-ONE ( ptr a n -- ) {: state:ptr idx:n :}
+: RELEASE-ONE ( ptr n n -- ) {: state:ptr idx:n :}
    state idx RELEASE@ execute ;
 
-: RELEASE-ALL ( ptr a -- ) {: state:ptr :}
+: RELEASE-ALL ( ptr n -- ) {: state:ptr :}
    state N@ 0 ?do
       state state N@ 1 - i - RELEASE-ONE
    loop ;
@@ -316,13 +316,13 @@ TRUSTED: CATCH-DIAGNOSTIC ( n n [ n n -- ] -- )
    dup 0 <> IF 2drop 2drop EXIT THEN
    2drop ;
 
-: REPORT-FAILURE ( ptr a n n -- ) {: state:ptr primary:n cleanup:n :}
+: REPORT-FAILURE ( ptr n n n -- ) {: state:ptr primary:n cleanup:n :}
    primary cleanup state DIAGNOSTIC@ CATCH-DIAGNOSTIC ;
 
-: LEAVE-TRANSACTION ( ptr a -- ) {: state:ptr :}
+: LEAVE-TRANSACTION ( ptr n -- ) {: state:ptr :}
    state DEPTH@ 1 - state ST.DEPTH ! ;
 
-: FAIL ( ptr a n n -- ) {: state:ptr active:n primary:n :}
+: FAIL ( ptr n n n -- ) {: state:ptr active:n primary:n :}
    state ST.CURRENT-PHASE @ state ST.FAILURE-PHASE !
    state ST.CURRENT-PARTICIPANT @ state ST.FAILURE-PARTICIPANT !
    -1 state ST.CLEANUP-PARTICIPANT !
@@ -331,7 +331,7 @@ TRUSTED: CATCH-DIAGNOSTIC ( n n [ n n -- ] -- )
    state primary cleanup REPORT-FAILURE
    primary throw ;
 
-: RUN-TRANSACTION ( ptr a [ -- ] -- )
+: RUN-TRANSACTION ( ptr n [ -- ] -- )
    {: state:ptr body :} \ typed-local-lint: allow-bare-local
    state POISON@ 0 <> IF E-TRANSACTION-POISONED throw THEN
    state DEPTH@ 1 + state ST.DEPTH !
@@ -351,30 +351,30 @@ TRUSTED: CATCH-DIAGNOSTIC ( n n [ n n -- ] -- )
 
 public
 
-: INIT ( ptr a ptr a n [ ptr a n n -- ptr a ] [ n n -- ] -- )
+: INIT ( ptr n ptr n n [ ptr n n n -- ptr n ] [ n n -- ] -- )
    INIT-STATE ;
 
 : REGISTER
-   ( ptr a n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
+   ( ptr n n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
    REGISTER-ROW ;
 
-: SEAL ( ptr a -- )
+: SEAL ( ptr n -- )
    -1 swap ST.SEALED ! ;
 
-: RUN ( ptr a [ -- ] -- )
+: RUN ( ptr n [ -- ] -- )
    RUN-TRANSACTION ;
 
-: COUNT ( ptr a -- n ) N@ ;
-: CAPACITY ( ptr a -- n ) CAP@ ;
-: TABLE ( ptr a -- ptr a ) TABLE@ ;
-: DEPTH ( ptr a -- n ) DEPTH@ ;
-: SEALED? ( ptr a -- bool ) SEALED@ 0 <> ;
-: POISONED? ( ptr a -- bool ) POISON@ 0 <> ;
-: LAST-FAILURE-PHASE ( ptr a -- n ) ST.FAILURE-PHASE @ ;
-: LAST-FAILURE-PARTICIPANT ( ptr a -- n ) ST.FAILURE-PARTICIPANT @ ;
-: LAST-CLEANUP-PARTICIPANT ( ptr a -- n ) ST.CLEANUP-PARTICIPANT @ ;
+: COUNT ( ptr n -- n ) N@ ;
+: CAPACITY ( ptr n -- n ) CAP@ ;
+: TABLE ( ptr n -- ptr n ) TABLE@ ;
+: DEPTH ( ptr n -- n ) DEPTH@ ;
+: SEALED? ( ptr n -- bool ) SEALED@ 0 <> ;
+: POISONED? ( ptr n -- bool ) POISON@ 0 <> ;
+: LAST-FAILURE-PHASE ( ptr n -- n ) ST.FAILURE-PHASE @ ;
+: LAST-FAILURE-PARTICIPANT ( ptr n -- n ) ST.FAILURE-PARTICIPANT @ ;
+: LAST-CLEANUP-PARTICIPANT ( ptr n -- n ) ST.CLEANUP-PARTICIPANT @ ;
 
-: DEFAULT-ALLOCATOR ( ptr a n n -- ptr a ) DEFAULT-ALLOCATE ;
+: DEFAULT-ALLOCATOR ( ptr n n n -- ptr n ) DEFAULT-ALLOCATE ;
 : DEFAULT-DIAGNOSTIC ( n n -- ) NO-DIAGNOSTIC ;
 
 ;package

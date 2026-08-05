@@ -545,7 +545,7 @@ package CHECKER-DECL-FRAME
 
 public
 
-: INSTALL ( ptr a -- )
+: INSTALL ( ptr n -- )
    PARTICIPANT ORDER
    [: PART-SNAPSHOT ;]
    [: PART-PREPARE ;]
