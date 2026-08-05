@@ -188,13 +188,20 @@ STRUCTURE placeseq 0 DERIVE eq
 \ routine has.
 \   untouched      - neither read nor written
 \   clobbered      - written, and what is left behind means nothing to the caller
-\   result         - written, and the caller may branch on what is left
+\   delivered      - written, and the caller may branch on what is left
 \   read-preserved - read at entry and left as it was found
 \   read-clobbered - read at entry and then destroyed
+\
+\ `delivered` and not `result`: a variant name becomes a constructor word, so the
+\ declaration gate (src/core/generated-declaration.f, throw 7110) refuses a
+\ variant that collides with a visible type family, and `result` is the family
+\ lib/adt/result.f declares. The old spelling made this whole file - and every
+\ codegen suite downstream of it - fail to load the moment anything on the same
+\ command line required result<T,E>.
 ENUM nzcv DERIVE eq
    untouched
    clobbered
-   result
+   delivered
    read-preserved
    read-clobbered
 ;ENUM
@@ -329,7 +336,7 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    MATCH nzcv
       untouched      OF 0 ENDOF
       clobbered      OF 1 ENDOF
-      result         OF 2 ENDOF
+      delivered      OF 2 ENDOF
       read-preserved OF 3 ENDOF
       read-clobbered OF 4 ENDOF
    ;MATCH ;
@@ -500,7 +507,7 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    {: gres:n fres:n z:nzcv c:control :}
    c RETURNING? if exit then
    gres 0<> fres 0<> or
-   z A64EFF-NZCV:RESULT A64EFF-NZCV:EQ or
+   z A64EFF-NZCV:DELIVERED A64EFF-NZCV:EQ or
    if E-A64EFF-CONTROL throw then ;
 
 \ ---- canonical preimage ------------------------------------------------------

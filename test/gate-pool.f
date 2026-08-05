@@ -83,6 +83,22 @@ variable GT-POOL-DEATH-RD
 variable GT-POOL-DEATH-WR
 variable GT-POOL-DEATH-MADE
 
+\ Scheduled-versus-ran accounting. A member that is listed but never reaches a
+\ verdict used to leave no trace at all: the group printed one fewer PASS line
+\ among a hundred and read as green. STARTED counts the members this pool
+\ launched, REAPED the members that reported one - and GT-POOL-REAP is the only
+\ word that reports one, so the two can only differ if a launched member vanished.
+\ Both are pool state, not a list anyone maintains: adding or deleting a member
+\ moves both numbers together and neither has to be written down anywhere.
+variable GT-POOL-STARTED
+variable GT-POOL-REAPED
+
+: GT-POOL-STARTED# ( -- n )
+   GT-POOL-STARTED @ ;
+
+: GT-POOL-REAPED# ( -- n )
+   GT-POOL-REAPED @ ;
+
 : GT-POOL-RED# ( -- n )
    GT-POOL-RED-N @ ;
 
@@ -474,6 +490,8 @@ GT-POOL-ABORT-KILL!
    GT-POOL-ALLOC-BUFFERS
    GT-POOL-LIMIT-SELECT GT-POOL-LIMIT !
    0 GT-POOL-LIVE !
+   0 GT-POOL-STARTED !
+   0 GT-POOL-REAPED !
    GT-POOL-DEATH-MAKE
    0 begin dup GT-POOL-MAX < while
       dup >IDX GT-POOL-RESET-SLOT
@@ -742,6 +760,7 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-CAPTURE-START ( idx -- ) {: idx:idx :}
    GT-POOL-SEQ @ 1+ GT-POOL-SEQ !
    GT-POOL-SEQ @ idx GT-POOL-SEQ-PTR !
+   GT-POOL-STARTED @ 1+ GT-POOL-STARTED !
    idx 0 GT-POOL-CAPTURE-PATH!
    idx 1 GT-POOL-CAPTURE-PATH!
    idx 0 GT-POOL-CAPTURE-FD!
@@ -1034,6 +1053,7 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-CLOSE-CAPTURE
    1 idx GT-POOL-DONE-PTR !
    GT-POOL-LIVE @ 1- GT-POOL-LIVE !
+   GT-POOL-REAPED @ 1+ GT-POOL-REAPED !
    idx GT-POOL-OK? if idx GT-POOL-PASS-LINE exit then
    idx GT-POOL-FAIL ;
 
@@ -1111,6 +1131,25 @@ GT-POOL-ABORT-KILL!
    GT-POOL-RED-REPORT
    s" test pool phases failed" 1 die ;
 
+\ Every member this pool launched has to have reported a verdict. The soft drain
+\ only waits for the live count to reach zero, and a slot can reach zero without
+\ ever passing through GT-POOL-REAP - so this is the check that says a scheduled
+\ member went dark, instead of the group quietly running fewer tests than it
+\ listed.
+: GT-POOL-SCHEDULE-DIE ( -- )
+   s" test pool: " type
+   GT-POOL-STARTED# GT-POOL-REAPED# - GT-POOL-N-TYPE
+   s"  scheduled member(s) never reported a verdict (started " type
+   GT-POOL-STARTED# GT-POOL-N-TYPE
+   s" , reported " type GT-POOL-REAPED# GT-POOL-N-TYPE
+   s" )" type cr
+   s" test pool schedule incomplete" 1 die ;
+
+: GT-POOL-SCHEDULE-CHECK ( -- )
+   GT-POOL-REAPED# GT-POOL-STARTED# = if exit then
+   GT-POOL-SCHEDULE-DIE ;
+
 : GT-POOL-DRAIN ( -- )
    GT-POOL-DRAIN-SOFT
-   GT-POOL-RED# 0 > if GT-POOL-RED-DIE then ;
+   GT-POOL-RED# 0 > if GT-POOL-RED-DIE then
+   GT-POOL-SCHEDULE-CHECK ;
