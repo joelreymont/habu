@@ -14,6 +14,15 @@ artifacts under `HB_TMP`; those artifacts exist only to produce `bin/hb`.
   ioctls must be available to the user running the gate.
 - Gforth with `{:` locals support. Homebrew `gforth` 0.7.3 is too old.
   A current Gforth snapshot such as `0.7.9_20260610` works.
+- The Rocq proof assistant on `PATH`, version 9.2 or newer (`rocq --version`).
+  The seven parity gates under `test/compiler/*-proof.f` compile `formal/` through
+  `/usr/bin/env rocq` and assert what the run printed, so a host without it fails
+  the gate outright. That is deliberate: the proofs are the only thing standing
+  between the generated obligations and "nobody checked", and a gate that skipped
+  itself on a host missing the toolchain would report green for a machine that
+  proved nothing. Install it the way the host installs toolchains (`brew install
+  rocq` on macOS) and re-run; do not add skip logic. Verify with
+  `bin/hb --load test/compiler/ir-id-proof.f`, which must print `test: ok`.
 - GB10 device gates (sm_121a) **require** the pinned 13.3 `ptxas` in
   `~/.habu/toolchain/ptxas-13.3.33`: since `habu-enforce-pinned-ptxas-4598a743`,
   an sm_121 assemble fails closed (`E-PTXTC-STALE`/`E-PTXTC-DIGEST`) unless the
