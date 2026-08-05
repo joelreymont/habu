@@ -150,7 +150,7 @@ public
 \ Re-run MHA-FWD from THIS backward node's own five forward inputs so MHA-BWD differentiates
 \ its OWN forward, not whichever MHA node ran last. The executor calls this immediately before
 \ MHA-BWD; the recomputed Y is discarded (the saved tape is what MHA-BWD reads).
-: MHA-BWD-RECOMPUTE ( ptr a ptr a ptr a ptr a ptr a -- )   \ ( xb wqkvb bqkvb wob bob -- )
+: MHA-BWD-RECOMPUTE ( ptr r ptr r ptr r ptr r ptr r -- )   \ ( xb wqkvb bqkvb wob bob -- )
    MHA-RECOMP-Y MHA-FWD ;
 
 ;package

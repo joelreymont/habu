@@ -69,7 +69,7 @@ create MHO-PWQ MHO-PWQN cells allot   create MHO-PBQ 24 cells allot
 create MHO-PWO 64 cells allot         create MHO-PBO 8 cells allot
 
 \ deterministic non-degenerate fill: distinct gentle source per buffer (finite softmax, no NaN)
-: MHO-FILL1 ( ptr a n n -- ) {: b:ptr n:n s:n :}
+: MHO-FILL1 ( ptr r n n -- ) {: b:ptr n:n s:n :}
    n 0 ?do  i s + 1 + s>f  s 13 + s>f  f/  0.15 f*  b i T-SET  loop ;
 : MHO-FILL ( -- )
    MHO-X    MHO-XN    3 MHO-FILL1
@@ -78,10 +78,10 @@ create MHO-PWO 64 cells allot         create MHO-PBO 8 cells allot
    MHO-WO   MHO-WON  11 MHO-FILL1
    MHO-BO   #MC      17 MHO-FILL1 ;
 
-: MHO-SNAP ( ptr a ptr a n -- ) {: sa:ptr da:ptr n:n :}  n 0 ?do  sa i T-GET  da i T-SET  loop ;
-: MHO-CLOSE? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}
+: MHO-SNAP ( ptr r ptr r n -- ) {: sa:ptr da:ptr n:n :}  n 0 ?do  sa i T-GET  da i T-SET  loop ;
+: MHO-CLOSE? ( ptr r ptr r n -- bool ) {: a:ptr b:ptr n:n :}
    n 0 ?do  a i T-GET  b i T-GET  GC-CLOSE? 0= if false unloop exit then  loop  true ;
-: MHO-EXACT? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}
+: MHO-EXACT? ( ptr r ptr r n -- bool ) {: a:ptr b:ptr n:n :}
    n 0 ?do  a i T-GET  b i T-GET  f= 0= if false unloop exit then  loop  true ;
 
 \ bind the five inputs to slots 0..4 and run the whole IR (forward node only for parity)
