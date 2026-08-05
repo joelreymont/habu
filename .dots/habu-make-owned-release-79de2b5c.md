@@ -1,6 +1,6 @@
 ---
 title: Make owned release uncatchably fatal
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:16:26.896717+02:00"
@@ -58,4 +58,6 @@ recoverable state after ownership failure. The later hard rename to
 `MEM:RELEASE` is behavior-identical and remains blocked only by raw-vector
 package migration; this leaf adds no alias.
 
-Claim: agent=codex-mem-fatal-r2 workspace=.jj-ws/habu-mem-fatal-r2
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `codex-mem-fatal-r2` and workspace `.jj-ws/habu-mem-fatal-r2` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `lib/memory.f:202` still throws `E-MEM-UNMAP` instead of failing fatally, and no `MEM:UNMAP` word exists anywhere. The dot stays active and is free to claim.
+
+REOPENED 2026-08-04 (dot-purge): this dot carried `status: active` with no live owner - no `agent=`/workspace claim, or a claim explicitly released. An active dot with no owner is invisible to `dot ready` and holds its id hostage, so the status is now `open` and the dot is free to claim.

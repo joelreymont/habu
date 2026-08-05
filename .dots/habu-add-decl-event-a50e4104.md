@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-07-21T06:59:26.054283+02:00"
 ---
 
-Why: `BF-APPEND-DECL-FILES` already builds `src/core/decl-event.f`,
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `decl_event_manifest` and workspace `.jj-ws/habu-add-decl-event-a50e4104` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `tools/build-fixpoint.f` still hardcodes the four declaration source literals in `BF-APPEND-DECL-FILES`. The dot stays active and is free to claim.
 `src/core/structure-make.f`, `src/core/structure-decl.f`, and
 `src/core/enum-decl.f`, but `TR-UNDER-SOURCE-FILES` omits them. The candidate
 cache can therefore reuse an engine built from stale declaration code.

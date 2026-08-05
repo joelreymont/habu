@@ -289,3 +289,9 @@ owned here.
 
 REMAINING SCOPE OF THIS DOT: intra-definition recovery only (blocked on
 reusable per-token checkpoint/restore machinery, as analyzed above).
+
+GROOMED 2026-08-04 (dot-groom). Stale reference corrected. The minted dot named above,
+habu-native-file-relative-e0438cd1, is no longer in the graph: it was closed and archived by
+commit 8c97e26b1 "Audit dot ledger: close done, refresh stale". It was a pointer to
+follow-on work, not a blocker; habu-evaluator-result-obj-2cf9b484 still exists and is
+untouched.

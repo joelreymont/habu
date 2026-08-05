@@ -9,4 +9,4 @@ blocks:
   - habu-prove-hir-to-1be23c02
 ---
 
-Full context: prove stable SIR transformations used by covered native slices, including exact integer folding, dead pure elimination, CFG simplification, and retained deterministic structural rewrites. Acceptance: explicit overflow/numeric premises, per-pass theorems/vectors, corrupted witness rejection, and assumptions report pass.
+Full context: prove stable SIR transformations used by covered native slices, including exact integer folding, dead pure elimination, CFG simplification, and retained deterministic structural rewrites. Consume `Common/Separation.v`: every removal, forwarding, or reordering uses declared footprints, sound alias/effect classes, locality, and the frame theorem; volatile, atomic, fence, and unknown effects are never inferred pure. Acceptance: explicit overflow/numeric/memory premises, per-pass theorems/vectors, corrupted footprint/alias witness rejection, and assumptions report pass with no Admitted.

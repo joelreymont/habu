@@ -1,6 +1,6 @@
 ---
 title: "Committed autotune: menu, prune, stopwatch, winners"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-19T14:24:06.440579+02:00\""
@@ -15,3 +15,5 @@ Parity-plan phase 4 - Habu's answer to @triton.autotune, each mechanic upgraded 
 2026-07-19 DESTRUCTION REVIEW: the landed "record" is still a raw 15-cell positional array duplicated across defaults, apply/save, and winner rows. Worse, AT-LEGAL? is not independent of ambient emitter state: lib/ptx/cg-mma.f:166 declares MMA-ABLATE and MMA-CHECK-DTYPE at 1316-1324 reads it, but tools/ptx/autotune.f:107-116 does not save or restore it. Structural correction is owned by optimization child habu-structure-mma-autotune-e02d3197; this dot retains stopwatch, drift, and live-wiring scope and must consume the corrected typed config rather than extend the raw array.
 
 The same review found that MENU exposes only 6 of 15 config fields and cannot generate committed winners that use non-default pad, dynamic, epilogue, load, group, feed, or B-pad settings. AT-LEGAL? masks every throw as ordinary illegality, while AT-SELECT accepts unchecked product-only raw shapes and returns a mutable pointer into the winner table. The remaining stopwatch/drift work must not consume or extend this surface; it depends on habu-structure-mma-autotune-e02d3197 replacing it.
+
+REOPENED 2026-08-04 (dot-purge): this dot carried `status: active` with no live owner - no `agent=`/workspace claim, or a claim explicitly released. An active dot with no owner is invisible to `dot ready` and holds its id hostage, so the status is now `open` and the dot is free to claim.

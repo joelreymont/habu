@@ -17,4 +17,4 @@ existing AOT-BRANCH:DIRECT? and AOT-BRANCH:TARGET calls with bare DIRECT? and
 TARGET calls inside the already-open AOT-LINK package. No other linker hunk is
 owned by this leaf.
 
-Claim: agent=aot-closure-pkg workspace=.jj-ws/habu-pkg-aot-closure-e8852de1.
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `aot-closure-pkg` and workspace `.jj-ws/habu-pkg-aot-closure-e8852de1` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `src/habu/aot-closure.f:39` still opens `package AOT-BRANCH`, the closure words are still ambient globals, and `src/habu/aot-lib.f:285` still calls `AOT-BRANCH:DIRECT?`. The dot stays active and is free to claim.

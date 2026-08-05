@@ -1,6 +1,6 @@
 ---
 title: Add shared family pointer query
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:41:07.304435+02:00"
@@ -83,4 +83,6 @@ gates pass. Mutating each recursion edge, owner filter, legacy route,
 confinement route, logical rollback mark, or executable enrollment makes its
 exact test fail.
 
-Claim: agent=famschema5 workspace=.jj-ws/habu-validate-family-schema (three-commit revision on 5acf8157 per the landed contracts; prior stack 331311f3/d64e51b8/8223af92 retained as reference evidence only)
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `famschema5` and workspace `.jj-ws/habu-validate-family-schema` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - there is no `package FAMILY-SCHEMA` and `rg TFAM-PTR-XT` returns nothing. The reference stack named in the old claim is also gone: only base `5acf8157cb3c` "Freeze repair control contracts" still exists, while `331311f3`, `d64e51b8` and `8223af92` all report "Revision doesn't exist", so the next owner starts from the frozen contracts rather than from that evidence. The dot stays active and is free to claim.
+
+REOPENED 2026-08-04 (dot-purge): this dot carried `status: active` with no live owner - no `agent=`/workspace claim, or a claim explicitly released. An active dot with no owner is invisible to `dot ready` and holds its id hostage, so the status is now `open` and the dot is free to claim.

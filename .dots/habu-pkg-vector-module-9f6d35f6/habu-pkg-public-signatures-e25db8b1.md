@@ -1,6 +1,6 @@
 ---
 title: Package public-signatures core module
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-27T08:47:43.798709+02:00"
@@ -43,8 +43,10 @@ Exact write set: `tools/public-signatures-core.f`,
 resolver that PUBSIG's public wordlist is exactly `MAIN`; every retired
 `PS-*` and test `PST-*` global is unresolved; representative private tails
 are unresolved outside PUBSIG; the CLI fixture and both pinned good-file modes
-pass; the standalone, diagnostics, standard-library-manifest, host, file-map,
+pass; the standalone, diagnostics, standard-library-manifest, host,
 typed-local, and package gates pass. The long-term solution is package
 ownership with one command boundary, not a namespace veneer.
 
-Claim: agent=claude-pubsig-r2 workspace=.jj-ws/habu-pubsig-r2
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `claude-pubsig-r2` and workspace `.jj-ws/habu-pubsig-r2` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `rg PUBSIG tools test` returns nothing and `tools/public-signatures-core.f` still defines its `PS-` words at global scope with no `package` line. The dot stays active and is free to claim.
+
+REOPENED 2026-08-04 (dot-purge): this dot carried `status: active` with no live owner - no `agent=`/workspace claim, or a claim explicitly released. An active dot with no owner is invisible to `dot ready` and holds its id hostage, so the status is now `open` and the dot is free to claim.

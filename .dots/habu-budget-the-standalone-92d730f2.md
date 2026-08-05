@@ -1,0 +1,21 @@
+---
+title: Budget the standalone lint entry load guard
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-29T23:05:25.670756+02:00"
+---
+
+Static invariant: test/lint-cli-standalone-load.f proves a static property - that every 'tools/<name>-lint.f' entry requires its own complete dependency closure - by measuring a runtime property, namely 'the child process exited on its own within 20000 milliseconds'. Nothing ties that budget to how long an entry's real work takes, so a lint that is merely slow is indistinguishable from a lint that never finished loading, and the guard reports both as the same anonymous failure.
+
+Full context: the stdlib-process-fixtures suite (test/gate-stdlib-cases.f:634) is red on the proofs base because of exactly one of its six files. Measured 2026-07-29, tools/hb-cli-contracts-test.f, tools/standalone-load-test.f, lib/process-test.f, lib/process-command-test.f and lib/process-pty-handle-test.f all pass standalone; test/lint-cli-standalone-load.f fails one assertion, labelled 'tools/refine-lint.f', reporting only 'expected true got false'. It was assertion 18 when measured; it is 17 since tools/stale-status-lint.f was deleted (habu-retire-status-md-0ae9b261), which is itself an illustration of the anonymous-failure complaint: the index is not a stable identity, only the label is. That is the 'EXITED @ TTRUE' leg of LOADS at test/lint-cli-standalone-load.f:124, so the child did not exit on its own: it hit TIMEOUT-MS, declared as 20000 at test/lint-cli-standalone-load.f:41. Red twice in a row on an otherwise idle machine.
+
+Root cause with evidence. 'bin/hb --load tools/refine-lint.f' with empty stdin SUCCEEDS - it prints 'refine-lint: 95 boundary word(s), 0 finding(s)' and exits 0 - but it is slow and its runtime varies widely: three consecutive isolated runs took 65.7 s, 30.1 s and 16.5 s of wall clock. Only about 2.1 s of that is the require closure; loading the same first 15 lines of tools/refine-lint.f without the final 'RFL:MAIN' call takes 2.1 s twice in a row. The rest is RFL:RUN (tools/refine-lint-core.f:1052), which runs INVENTORY and then SCAN-ROOT over maki, lib, src, tools and test - the whole repository. Decisive check: copy test/lint-cli-standalone-load.f to a scratch path, change TIMEOUT-MS from 20000 to 120000 and nothing else, and the file is fully green ('lint-cli-standalone-load-test: ok'). So the guard is measuring the lint's work, not its load.
+
+Ownership note: dot habu-restore-dead-standalone-a362cb77 (active, agent deadcli) created this guard on 2026-07-26 and owns the file. tools/refine-lint.f has existed since 2026-07-13, so the entry predates the guard; this investigation did not measure whether it fit inside 20 s on the day the guard landed, so do not assume a later slowdown without measuring.
+
+Required result: the guard proves the load closure without being a stopwatch on each lint's work, and a timeout is never again reported as a bare 'expected true got false'. Decide between: (a) give every lint entry a way to stop right after its requires (an argument or an environment flag the entry honours) and have the guard use it, so the verdict is a load verdict and the budget can be small and uniform; (b) keep running the entries but derive the per-entry budget from measurement with real headroom, and emit a named diagnostic that distinguishes 'timed out while running' from 'died while loading'; (c) make the refine lint's whole-repository scan fast enough to fit one uniform budget. Option (a) is the one that makes the guard measure the property it claims to prove.
+
+Forbidden: quietly raising TIMEOUT-MS without splitting the two verdicts, and adding tools/refine-lint.f to any exclusion table - the guard is deliberately exclusion-free by design (test/lint-cli-standalone-load.f lines 22 to 27) and an exclusion would let a genuinely dead entry hide.
+
+Acceptance: test/lint-cli-standalone-load.f green through 'bin/hb --load' and inside the stdlib-process-fixtures suite while the gate pool is running its parallel slots; a mutation that deletes a require from a lint entry still reds the guard; a forced timeout produces a message naming the entry and the budget it exceeded, clearly different from a dead load. Found by investigation dot habu-attr-three-unowned-3e144928.

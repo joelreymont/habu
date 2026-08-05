@@ -1,9 +1,11 @@
 ---
 title: Bind trusted-base rows to live retiring dots
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-25T14:42:11.641589+02:00"
+closed-at: "2026-08-04T00:22:52.622265+02:00"
+close-reason: ledger retired with the governance mirror
 ---
 
 Why this is needed: every TRUST row is a soundness cliff that exists because the checker cannot yet express something, and the repository rule is that the missing capability must be tracked by a dot and the trusted row removed when that capability lands. TRUSTED.md carries an Owner column for exactly that purpose, but nothing checks it, so the column has quietly rotted.

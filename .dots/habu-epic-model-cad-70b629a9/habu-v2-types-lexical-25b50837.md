@@ -14,3 +14,9 @@ Edge note 2026-07-17: blocker habu-tfam-11-linear-99fa9990 closed (core
 complete); edge repointed to its successor habu-tfam-11b-open-ee9c72c6
 (the open-arg lift) conservatively - if this dot only needed the landed
 TFAM-11 core, drop the edge at claim time.
+
+GROOMED 2026-08-04 (dot-groom). Dangling blocker repointed. habu-tfam-11-linear-99fa9990 is no
+longer in the graph: commit 39c72fb24 "Close TFAM 11 per its completion record; mint 11b lift
+dot" closed it and minted habu-tfam-11b-open-ee9c72c6 as the live successor, which is still
+in the graph and currently active. Read the remaining lift work there rather than at the
+closed TFAM 11 dot.

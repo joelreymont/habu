@@ -66,7 +66,7 @@ DISCIPLINE (non-negotiable, proven over ~20 merged lanes):
   tools/build-fixpoint-main.f -- install --force; NEVER bare --load
   tools/build-fixpoint.f), full gate test/run.f (lib/process-test flakes —
   retry once), maki/test.f, seven type suites, error-code/namespace/host/
-  filemap/dot-dep lints, trusted-inventory strict, typed-local-diff-lint,
+  dot-dep lints, trusted-inventory strict, typed-local-diff-lint,
   TRUSTED.md pins, prop census for new prims.
 - Two-commit staging for engine + running-engine-tool changes (each commit
   one-refresh buildable from its parent's binary). checker.f is a boot-time

@@ -42,3 +42,8 @@ LOC-BUNDLE-BIND storage already handles the width; only the annotation-side
 assert is missing); (3) arity>0 cell tails; (4) the allow-bare-local
 exceptions in test/type-layout-lower-pending.f stay until (1)+(2) land (their
 sites are W=2 parametric bundles).
+
+GROOMED 2026-08-04 (dot-groom). Dangling reference repointed. habu-cad-adt-swap-7bf0bb1f, the
+Model IR migration named above, is no longer in the graph: it was closed and archived by
+commit 1371c5bda "Close R3 merge + swap dots; queue tail; status". That migration is landed,
+so the sequencing constraint it imposed is satisfied.

@@ -1,9 +1,11 @@
 ---
 title: Package filemap lint tool
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-27T08:57:58.808184+02:00\""
+created-at: "2026-07-27T08:57:58.808184+02:00"
+closed-at: "2026-08-04T16:22:13.947594+02:00"
+close-reason: "Moot: the file to package, tools/filemap-lint.f, was deleted by commit 85a9646fd 'Delete FILEMAP and census gates', together with its consumer tools/filemap-lint-test.f and the FILEMAP.md gate the acceptance criteria measured. The in-lane commit 2b87f9df stays unreachable evidence. Blocker edge from habu-pkg-intern-lint-e735c0f6 removed in the same change."
 blocks:
   - habu-own-nominal-linear-491d11e4
 ---

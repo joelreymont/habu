@@ -8,4 +8,4 @@ blocks:
   - habu-lowering-hash-unified-586f7881
 ---
 
-Own generated Forth declaration strings and tool fixtures outside check-core/public-signatures. Convert each live legacy declaration to STRUCTURE or ENUM with named fields, preserving fixture intent and exact negative coverage; update tool manifests/filemap rows without adding host-language logic.
+Own generated Forth declaration strings and tool fixtures outside check-core/public-signatures. Convert each live legacy declaration to STRUCTURE or ENUM with named fields, preserving fixture intent and exact negative coverage; update tool manifests rows without adding host-language logic.

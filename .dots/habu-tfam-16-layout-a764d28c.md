@@ -123,7 +123,7 @@ downstream of `habu-aot-protected-wid-08716547`). Private families exercise the
 POLICY parse fully (visibility-independent) without touching the cap.
 
 Gates green: byte-fixpoint x2 stable; test/run.f PASS (37.5s, stray-unexpected 0,
-label-dup 0); seven type suites ok; maki ok; error-code/filemap/host-lint 0
+label-dup 0); seven type suites ok; maki ok; error-code/host-lint 0
 findings; trusted-inventory strict + typed-local-diff-lint exit 0; no new trust
 rows. Follow-on slices unchanged: packed-tag (maki store/fetch upstream key),
 niche-null, boxed (+ the recursive-sum reject).
@@ -329,7 +329,7 @@ idiom (variable + `X 0 ptr-field`). Unit-tested directly in `lib/layout/box-test
 growth survival, arena reset) — no boxed SUMTYPE declaration involved. Placed in
 the `lib/layout/` SUBDIR so it is internal boxed-policy runtime, correctly exempt
 from the published-stdlib manifest coverage walk (which only requires module rows
-for flat `lib/*.f`), like `lib/ptx/`. Registered in FILEMAP + the stdlib gate
+for flat `lib/*.f`), like `lib/ptx/`. Registered in the stdlib gate
 (tail-pure-fixtures suite). No engine/prim change → lighter gate (no byte-fixpoint
 from this change; bin/hb refreshed only because fable's engine moved under the
 lane). Remaining boxed sub-slices 3-6 (heap-alloc/ctor codegen, MATCH deref,
@@ -368,7 +368,7 @@ ABI conventions are live; their buffer store/fetch capability consumes them.
 REMAINING: niche-null, boxed (+ recursive-sum reject), optional mixed
 narrow-width payload tier (payload-offsets LAY field).
 
-Claim: agent=tfam16 workspace=.jj-ws/fable-tfam16 (checker lane - owns src/core/type-family.f + checker.f + layout fixtures this session)
+Claim: unassigned (stale claim stripped 2026-08-04: the named workspace no longer exists on disk or in `jj workspace list`). Checker lane: owns src/core/type-family.f + checker.f + layout fixtures.
 
 SLICES LANDED 2026-07-17 (tfam16 lane, commits ed7a3ca6/74991b10/
 f007e9ed/001a13d9; claim RELEASED): survey confirmed the audit accurate

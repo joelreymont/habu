@@ -8,4 +8,4 @@ blocks:
   - habu-prove-a64-obj-92f2ae05
 ---
 
-Full context: compose source/checker binding, HIR, SIR, stable passes, LIR, A64IR, allocation, encoding, HBOBJ 2, and loaded-image proofs for each covered native wave. Acceptance: theorem manifests bind exact schemas/versions; candidate fixpoint consumes the proved chain; uncovered language remains named, never assumed.
+Full context: compose source/checker binding, HIR, SIR, stable passes, typed heap/separation/arena ownership, native memory refinement, LIR, A64IR, allocation, encoding, HBOBJ 2, and loaded-image proofs for each covered native wave. Acceptance: theorem manifests bind exact schemas/versions and memory assumptions; candidate fixpoint consumes the proved chain; allocation identity, bounds, alignment, lifetime, permissions, frame preservation, and release obligations have no unbound gap; uncovered language remains named, never assumed.

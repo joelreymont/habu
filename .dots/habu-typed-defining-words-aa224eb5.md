@@ -11,15 +11,15 @@ Two S/M capabilities retiring ~48 TRUSTED: sites: (1) role-typed variable/consta
 ## Adopted rows (2026-07-06 ledger audit)
 
 This dot is now owner-of-record for two generated-definition `evaluate`
-boundaries whose original owner dots were archived with the rows still live
-(trusted-inventory strict was red on missing owners):
+boundaries whose original owner dots were archived with the boundaries still
+live:
 
-- TRUSTED.md `src/core/roles.f:DTC-EVAL prim-axiom` (from archived
+- `src/core/roles.f:DTC-EVAL` (from archived
   habu-declarable-nominal-int-3b0721cc): DTC-EVAL evaluates the auto-derived
   deftype converter pair built as TRUSTED: source text (roles.f:32-41). A typed
   defining-word capability mints the converters directly and retires the
   evaluate boundary.
-- TRUSTED.md `lib/ffi.f:FDEF-EVAL stdlib-boundary` (from archived
+- `lib/ffi.f:FDEF-EVAL` (from archived
   habu-role-typed-ffi-08f99d18): FDEF-EVAL evaluates generated FFI binding
   definitions (ffi.f:244). Same capability class: a checked defining word for
   FFI: bindings retires it.
@@ -59,9 +59,8 @@ new CPR-EVAL/CPR-HOOK rows are checker-hook boundaries, NOT the redundant
 raw-cell class - no scope change). Re-proven on the rebased tree: fixpoint
 x2 byte-identical b09ed0ea (and re-verified identical on the final
 integration tree - the proven->final delta was doc/ptx-tool only, engine
-prefix clean); old-binary boot ok both directions; trust-lint,
-trusted-inventory strict, PEINV strict (298 axioms, no PRIM movement),
-seal-absence, boot-pin, maki, gate-stdlib all green. PERF BRACKET: tree
+prefix clean); old-binary boot ok both directions; seal-absence, boot-pin,
+maki, gate-stdlib all green. PERF BRACKET: tree
 pass admissible (e=54706 b=76300) AND master baseline pass admissible
 (e=55245 b=77000) in the same quiet window - the batch is perf-neutral and
 the prior held-state hard-fail (0.04% over at load 8.6) is retroactively

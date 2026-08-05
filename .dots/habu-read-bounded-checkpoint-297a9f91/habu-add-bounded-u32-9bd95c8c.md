@@ -9,7 +9,7 @@ blocks:
   - habu-build-weight-table-46c9e181
 ---
 
-Why: model forward needs one value-level read from an immutable weight slot; the current callback API can leak its scoped pointer.
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `codex-wstore-u32` and workspace `.jj-ws/habu-add-bounded-u32-9bd95c8c` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `rg 'U32-LE@' maki/infer/weight-store.f` returns nothing and the `RUN-PARKED`/`PARK` trust rows are still in `TRUSTED.md`. The dot stays active and is free to claim.
 
 Result: after TABLE-FROM-PAIRS replaces the public builder, package WSTORE adds U32-LE@? ( WSTORE:store CAD-NUM:index CAD-NUM:byte-off -- WSTORE:store option<n> ). The index is a slot ordinal and the offset is relative to that slot. Validate the index, offset arithmetic, and the complete four-byte window before reading. The mapped arm delegates the resulting absolute offset to SAFET:U32-LE@?; the allocated arm reads exactly four little-endian bytes. Delete WITH-SLOT, PARK, RUN-PARKED, their frame cells, tests, TRUSTED rows, and stale prose. No builder or SLOT! migration remains in this leaf because the table cut already deletes that surface.
 
