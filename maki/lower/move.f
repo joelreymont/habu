@@ -64,7 +64,11 @@ private
 2    constant LMV-MAX-IN      \ copy kernels read at most two buffers (concat A/B, gather src/idx)
 4096 constant LMV-ARENA       \ v1 buffer element cap (mirrors lower-launch LLA-NCAP: 16 KB f32)
 
-create LMV-INS   LMV-MAX-IN cells allot   \ ordered buffer-operand refs (must be input slots)
+\ ordered buffer-operand refs (must be input slots). A typed layout buffer, not a
+\ raw `create` array: an operand ref is a nominal cell (MIR:operand-ref), and the
+\ checker only lets a nominal reach memory through storage whose element type is
+\ that nominal.
+LMV-MAX-IN LAYOUT-BUFFER LMV-INS MIR:operand-ref
 variable LMV-NIN                           \ buffer-operand count (1 or 2)
 1 LAYOUT-BUFFER LMV-NODE CAD-KIND:node-id  \ the movement node (typed 1-slot cell)
 1 LAYOUT-BUFFER LMV-RID CAD-KIND:region    \ region id being lowered (typed 1-slot cell)
@@ -72,10 +76,10 @@ variable LMV-PA  variable LMV-PB  variable LMV-PN   \ kernel u32 params
 variable LMV-BUILT?
 
 : LMV-REF! ( MIR:operand-ref n -- )
-   cells LMV-INS + ! ;
+   LMV-INS ! ;
 
 : LMV-REF@ ( n -- MIR:operand-ref )
-   cells LMV-INS + @ ;
+   LMV-INS @ ;
 
 : LMV-NODE! ( CAD-KIND:node-id -- )
    0 LMV-NODE ! ;

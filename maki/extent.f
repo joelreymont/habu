@@ -24,7 +24,14 @@
 \ dot habu-checked-cast-primitive): the checker certifies the single-cell
 \ identity retype of a parametric family cell directly, so they are no longer
 \ trust rows - the same sanctioned nominal-cast pattern src/core/roles.f uses
-\ for idx/len/fd (one cell at runtime, retyped for the checker).
+\ for idx/len/fd (one cell at runtime, retyped for the checker). Both of those
+\ casts live in lib/type/extent-role.f, NOT here: `ix`, `extprod` and `redx` are
+\ one core-registered substrate (src/core/type-family.f), and introducing a value
+\ into a cell family is authorized only from that family's declaring package
+\ (src/core/checker.f CAST-OWNER?). Declaring `>RED` inside package MAKI made an
+\ application package mint a core-owned nominal, and the checker rejected it with
+\ 7135 E-CAST-OWNER on every load of this file. This file consumes the substrate;
+\ it does not own it.
 \
 \ WHAT THE CROSSING DOES AND DOES NOT GUARANTEE (be honest here):
 \   - Explicit: a bare n is never an ix<extm> without a `>#name` call
@@ -48,6 +55,7 @@ require lib/string.f                 \ STR=, BYTE-COPY, ASCII-LOWER: registry na
 require lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer
 require lib/adt/option.f             \ option<xr-slot>: XR-FIND returns a present/absent slot
 require lib/type/deftype.f           \ DEFTYPE: the registry slot index + length columns are their own types
+require lib/type/extent-role.f       \ IX>N / >RED: the core extent-index substrate's converter pair
 
 -5031 constant E-EXT-NAME     \ EXTENT: surface name missing, empty, or not '#'-prefixed
 -5032 constant E-EXT-UNDECL   \ TENSOR:/ITENSOR: referenced an extent no EXTENT: declared
@@ -61,14 +69,11 @@ package MAKI
 
 public
 
-\ ix<extent> is the index value family: arity 1, one cell, the extent a phantom arg.
-NEWTYPE ix 1
-
-\ IX>N projects any index value back to a plain cell. Generic over the extent
-\ (type var `e`), so one word serves every extent - the projection direction is
-\ always sound (a nominal cell IS a cell). The reverse `>#name` is per-extent so
-\ the target extent is pinned, never inferred.
-CAST: IX>N ( ix<e> -- n ) ;
+\ ix<extent> - the index value family (arity 1, one cell, the extent a phantom
+\ arg) - is registered by the engine alongside its `extprod` and `redx` siblings
+\ (src/core/type-family.f), and its converter pair IX>N / >RED is declared at
+\ global scope in lib/type/extent-role.f, required above. Every `ix<...>` and
+\ `redx<...>` spelling below resolves to those core families.
 
 \ Registry data-layer nominals (deftype.f). The extent registry is a set of
 \ parallel arrays; making its slot index and its two string-length columns their
@@ -232,14 +237,9 @@ public
 \ checker-expressible); factorization arithmetic and the free/inner legality are the
 \ new work over that representation. maki -> habu only.
 
-\ >RED ( ix<e> -- redx<e> ): contraction-entry cast — mark an extent index as a
-\ summation (reduction) axis. A CHECKED identity retype (CAST:, like IX>N): the
-\ single-cell parametric retype is certifiable, so this is no longer a trust row.
-\ It cannot launder a free factor into a contraction: a word whose DECLARED
-\ signature carries redx<#B> (or redx over a whole product) is a load-time reject
-\ (the checker's SIG-END-PARAM rule, independent of this cast), so a free #B can
-\ never name a summable axis.
-CAST: >RED ( ix<e> -- redx<e> ) ;
+\ The contraction-entry cast `>RED ( ix<e> -- redx<e> )` that the words below use
+\ is declared in lib/type/extent-role.f: `redx` is a core-registered family, and
+\ only its declaring package may introduce a value into it.
 
 private
 

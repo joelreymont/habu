@@ -104,7 +104,7 @@ Habu consists of three layers:
 Habu core
   self-hosted checked Forth: row-polymorphic stack-effect checking, native
   ARM64 engine (macOS + Linux), JIT, AOT with tree shaking, byte-for-byte
-  fixpoint rebuild, native test gate, explicit trust manifest (TRUSTED.md)
+  fixpoint rebuild, native test gate, explicit source-local trust boundaries
 
 Habu-PTX
   checked GPU kernel DSL (lib/ptx/): typed tile/span/matrix vocabulary,
@@ -308,8 +308,8 @@ what makes automatic fusion, coalescing, and tiling decisions safe to
 generate, and safe for agents to propose.
 
 Words that cross compiler/runtime boundaries are explicit `TRUSTED:` or
-`TRUST` sites tracked in [`TRUSTED.md`](TRUSTED.md). New Forth is checked
-unless the boundary is deliberately documented and tested.
+`TRUST` sites with source-local rationale and focused production-path tests.
+New Forth is checked unless the boundary is deliberately documented and tested.
 
 These internals matter because they make automatic optimization safe. They are
 not the headline.
@@ -367,7 +367,6 @@ skills/           operational recipes for agents and humans
 - [`docs/debugging.md`](docs/debugging.md) — stepper, debugger, breakpoints,
   watchpoints, image dumpers, JIT dumpers, and native fallback boundaries.
 - [`maki/README.md`](maki/README.md) — the Maki framework layer.
-- [`STATUS.md`](STATUS.md) — current gate status.
 - [`LESSONS.md`](LESSONS.md) — concise project memory.
 - `.dots/` — active implementation tasks.
 

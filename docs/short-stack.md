@@ -66,8 +66,8 @@ version of "simple" keeps directness and adds machine-checked contracts:
 - Linear owner types made "two model loads sharing one mapping" a
   compile-time error, not a runtime heisenbug (the safetensors session
   rework, same day).
-- The release-inventory gate made "cleanup cannot fail after publication"
-  a fact checked against the source of every release callback, not a
+- Declaration-transaction typing made "cleanup cannot fail after
+  publication" a fact the release phase's own contract carries, not a
   convention.
 
 The wager underneath the wager: you do not need four layers of IR

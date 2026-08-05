@@ -7,7 +7,7 @@
 \ validator boundary matrix, not library authority. Permanent sealing is dot
 \ habu-seal-cad-num-36dbeec6; the MODEL-CAD-V2-PLAN.md B5.5 final-integration dot
 \ (ba510e2e) wires this test into a scheduled gate suite. Until then it is not in
-\ test/gate-stdlib-cases.f, so suite-coverage-lint has nothing to schedule.
+\ test/gate-stdlib-cases.f, so no gate slice schedules it.
 \
 \ numeric-result<a> has no polymorphic eliminator yet (whole-bundle MATCH, dot
 \ habu-typestate-result-drop-5ae048a7), so a caller MATCHes the concrete

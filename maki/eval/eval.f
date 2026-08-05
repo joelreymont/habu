@@ -9,7 +9,7 @@
 \
 \ EVAL:CHECK-PASSES? is a metaprogramming boundary (it drives the checker over a
 \ source string and reads the verdict) - hence TRUSTED:, like lib/array-test.f's
-\ harness. The repository trust audit covers maki/, so TRUSTED.md owns this row.
+\ harness. It suppresses diagnostics only around the raw checker-state mutation.
 
 package EVAL
 

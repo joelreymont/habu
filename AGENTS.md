@@ -3,8 +3,7 @@
 Habu is a Forth with a type checker. Every word (function) declares what it
 takes and leaves on the stack, and the checker proves the body matches the
 declaration — so Forth written by an LLM is verified instead of trusted. The
-system builds itself through `bin/hb`. Open work is tracked in dots; the
-current verification state is in `STATUS.md`.
+system builds itself through `bin/hb`. Open work is tracked in dots.
 
 ## Orchestrator Role (BLOCKING)
 
@@ -53,6 +52,22 @@ current verification state is in `STATUS.md`.
   text hidden in a comment or a string, duplicated, reordered, or in the
   wrong role. "The file contains this substring" is not proof.
 
+## Proof Integrity (BLOCKING)
+
+- Worth test for a published result: could a plausible change to the Habu code
+  falsify it? If not, it does no work. Mutate the CODE to decide — a result
+  that only breaks when the model is edited with it has no independent content.
+- A result that restates the model's own definition (proving `push` appends
+  when `push` is defined as appending) constrains nothing. Demote to `Lemma`
+  or delete; never publish it in a manifest, which inflates apparent coverage.
+- A family of concrete examples failing under one mutation is one result under
+  many names. Generalise to a universal statement or keep a representative few.
+- Every model carries counterexamples and negative results (a guard's removal
+  admits a bad state). A model with none is suspect.
+- Unprovable is a RESULT: record it in MODEL GAPS. Never weaken a statement
+  until it passes.
+- Falsify every parity-gate clause by mutation before believing the gate.
+
 ## Habu Only (BLOCKING)
 
 - Prefer Habu to write new tooling.
@@ -94,7 +109,7 @@ current verification state is in `STATUS.md`.
   whose gates haven't passed. Work on your own branch and push there freely;
   fast-forward `master` only after, on the exact tree being merged, all of
   these are green: the maki suite (`bin/hb --load maki/test.f`), the
-  ptx-stdlib slice plus any native slices you touched, and `host-lint`.
+  ptx-stdlib slice plus any native slices you touched.
   Red, skipped, or unrun means no merge. A red master is a stop-everything
   incident, and nobody commits to `master` directly.
 - Forth commit gate (BLOCKING): `docs/forth.md` § Commit gate.

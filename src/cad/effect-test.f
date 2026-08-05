@@ -5,8 +5,8 @@
 \
 \ Direct-loaded gate home following the lib/nominal + lib/cad-num-types precedent:
 \ CAD-EFFECT has no production consumer yet (the checker/registry/fusion owners are
-\ later dots), so this file is NOT in test/gate-stdlib-cases.f and suite-coverage-
-\ lint has nothing to schedule. It reopens package NOM to forge / fabricate the
+\ later dots), so this file is NOT in test/gate-stdlib-cases.f and no gate slice
+\ schedules it. It reopens package NOM to forge / fabricate the
 \ boundary inputs the public API never mints, and package CAD-EFFECT to reach the
 \ private wire classifier for direct binding-field assertions.
 

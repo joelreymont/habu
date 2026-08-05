@@ -142,16 +142,16 @@ new-side hunk line against the current file, reconstructs the complete old side
 from those canonical diff events, and lexes both complete sources. A package
 opener outside the hunk is therefore authoritative, while comment, string,
 definition-body, or diff-header text on either side cannot forge a boundary.
-Its publication inventory is derived from the native dictionary definers, the
+The shared `tools/lint/def.f` inventory classifies native dictionary definers,
 checker-owned type and storage declarers, every repository defining word that
 executes `create`, and every repository declarer that generates definitions
-through the audited `evaluate` boundaries. The focused fixture names every form
-in that inventory. Parser grammars that only add rows to an owning registry are
-not word definitions: `PRIM:` and `PPRIM:` add checker axioms; `SUITE`, `GROUP`,
-and `SUITE-STDIN` add test-runner rows; `VJP:` adds an automatic-differentiation
+through the audited `evaluate` boundaries. Its focused fixture names all 57
+forms; package and authority lints consume that one structural classifier.
+Parser grammars that only add rows to an owning registry are not word
+definitions: `PRIM:` and `PPRIM:` add checker axioms; `SUITE`, `GROUP`, and
+`SUITE-STDIN` add test-runner rows; `VJP:` adds an automatic-differentiation
 row; and `GRID:` and `WHERE` consume kernel-header metadata. Their labels do not
-become callable dictionary words, so the package-definition lint deliberately
-does not classify them as definers.
+become callable dictionary words, so the shared classifier omits them.
 
 The complete-file global exceptions are exact paths, not directory rules:
 
@@ -190,6 +190,35 @@ when it leaves one of these constants unpackaged where the scan reaches it, so a
 deleted or moved boundary still loses ownership; adding a complete block whose
 opener and closer both arrive together moves nothing in or out of a package and
 stays clean.
+
+The stage0 recovery fixtures carry a global surface on the same terms — by exact
+path plus declaration shape, not by whole file. `tools/bootstrap.sh` builds these
+sources for its `using` gate by handing each one to Gforth, which compiles it
+with the recovery emitter in `bootstrap/cg/forth.fs` into a standalone binary;
+the script then runs that binary and compares the whole of stdout and the first
+stderr line against exact expected text. `bin/hb` never loads them, so the
+fixture is the gate's own input and the whole-stream comparison is its
+correctness authority. Two of them need a word at genuine global top level, and
+a package there would delete the proof rather than satisfy the rule:
+
+- `test/bootstrap-using-checker-hook-src.f` defines a stand-in `CHECKER-USING`.
+  The emitter looks that hook up by the bare 13-byte name `checker-using`, the
+  same way the real global `CHECKER-USING` in `src/core/checker.f` is found. In a
+  package the tail would be invisible to that bare lookup, the mirror call would
+  find nothing, and the case would stop testing the mirror.
+- `test/bootstrap-using-src.f` defines `BUS-SHADOW` and `BUS-CALLER` at top level
+  because top-level bare visibility is the property under test. `BUS-SHADOW` is
+  the name that must already resolve before `using BUS-A` opens; `BUS-CALLER` is
+  compiled while the import is open, from the real top-level position a recovery
+  build's own source occupies.
+
+Only the plain lower-case `:` definer is admitted there, and only at those two
+exact paths, which additionally must start with `test/` and end with `-src.f`. A
+global `variable`, `create`, `constant`, `CHECKED:`, `TRUSTED:` or type
+declaration in a listed fixture still reports, and so does a global colon word in
+any fixture that is not listed. Unlike the interim core-surface entries this
+category has no retirement condition: while `using` exists in the stage0 engine
+the recovery gate has to keep proving what a real top-level user program sees.
 
 Four declarations receive narrower exact-definition exceptions: only `DEFTYPE`
 may be global in `lib/type/deftype.f`, only `STRUCTURE` may be global in
@@ -435,14 +464,29 @@ TEST:COMPLETE
   the reference site, so it holds for every checked body; the engine's raw
   interpret / `0 set-check` resolution keeps the global-first order as the
   explicit unchecked boundary.
+- The colliding global does NOT have to be one the checker knows. Every
+  engine-prefix colon word with no signature and no primitive axiom is a global
+  the checker has no symbol for, and a `0 set-check` definition adds more. The
+  reference site asks the ENGINE's wordlists — `search-wl`, the same scan and
+  case fold the engine's own lookup uses — before a used public may bind, so the
+  refusal covers signed and unsigned globals alike (dot
+  `habu-reject-a-bare-1f43a9a6`, where a package public `FRESH` bound the
+  checker's internal global `FRESH` and ran it: exit 0, wrong values). The same
+  question decides the open-package leg: a word in the open package's own
+  wordlist wins over a used public even when the checker never recorded it, and
+  because it has no signature the reference is then uncheckable
+  (`E-UNDEFINED`) rather than certified against the used public's effect.
 - Qualified `NAME:WORD` lookup is unchanged and always available regardless of
   any `using`.
 - Resolution happens at compile/certify time: a call compiled inside a `using`
   scope keeps resolving after `;using`, and the AOT/baked image needs no runtime
-  using-state. The checker resolves a bare tail through the used publics
-  identically to the runtime — a checked body that reads a used public certifies,
-  a used private or an ambiguous tail is rejected before runtime — so
-  certification and execution always agree.
+  using-state. Which scope claims a bare tail has ONE authority, the engine's
+  wordlists; the checker's symbol table answers only what a word's effect is. So
+  a checked body that reads a used public certifies, a used private or an
+  ambiguous tail is rejected before runtime, and certification and execution
+  always name the same word. A global that appears AFTER a reference was
+  certified does not change what that reference runs — it was resolved when the
+  body was compiled — while the next reference to the same tail is refused.
 - `using` state is file-local: it is snapshotted per eval frame and per REPL
   line and rolled back with the open-package scope, so a `using` left open in an
   included file (or aborted by a throw) never leaks to the caller.
@@ -511,18 +555,25 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
   after the checker hook, so these definitions publish their checked effects
   directly; no boot path loads the retained pre-hook effect mirror. Prefer the
   typed families above and reserve this form for raw layout (e.g. `lib/vector.f`).
+- `CAST: NAME ( source -- destination ) body ;` may introduce a resolved
+  scalar-cell family destination, including a parametric `NEWTYPE` instance,
+  only while the engine's live namespace record and actual public/private
+  definition wordlist identify that family's declaring package. Mutable
+  `CHECKER-PACKAGE-*` parser mirror state is not authority. Projection casts
+  from such a family remain unrestricted.
 - `ENUM+` / `ENUM4+` are the legacy numeric counter definers: `n ENUM+ NAME`
   defines `NAME = n` and leaves `n+1` (`ENUM4+` leaves `n+4`).
 - Type, field, and variant names are lowercase; generated and project-defined
   words are uppercase.
 
-No unified `STRUCTURE … ;STRUCTURE` opener exists in the shipped engine. It is
-the planned MODEL-CAD-V2 replacement described in
-[type-families.md](type-families.md) and `MODEL-CAD-V2-PLAN.md`, and is **not yet
-implemented**: loading a `STRUCTURE` declaration fails with
-`E-UNDEFINED: STRUCTURE` (exit 70), not a tombstone. The `E-REMOVED-TYPE-SYNTAX`
-code named by those plan docs exists nowhere in the engine, and none of the
-words above are removed.
+The unified `STRUCTURE … ;STRUCTURE` and `ENUM … ;ENUM` openers **do ship**
+(`src/core/structure-decl.f`, `src/core/enum-decl.f`), and the tree uses them
+widely — around 71 `STRUCTURE` and 207 `ENUM` declaration sites. A declaration
+such as `STRUCTURE zpoint 0 FIELD x n ;STRUCTURE` loads clean. What has *not*
+happened is the removal half of the MODEL-CAD-V2 plan described in
+[type-families.md](type-families.md) and `MODEL-CAD-V2-PLAN.md`: the
+`E-REMOVED-TYPE-SYNTAX` code named by those plan docs exists nowhere in the
+engine, and none of the older words above are removed.
 
 - `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
   `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
@@ -726,10 +777,9 @@ address arithmetic at the public boundary.
   consistency; user builds verify the body against the declared `( in -- out )`
   and make rejection fatal. Tests for bad programs must assert build rejection,
   not just runtime failure.
-- **Every `TRUST` has a same-change audit row.** Add or update the matching
-  `TRUSTED.md` row with effect, reason, and focused tests. Adding lines above a
-  trust site drifts the manifest; rerun `trust-lint` and fix exact line numbers
-  before commit.
+- **Every `TRUST` has source-local rationale and proof.** Document why the
+  checker cannot express the boundary, name its retirement owner, and exercise
+  its asserted effect through a focused production-path test in the same change.
 - **Typed booleans are real `bool` values.** Produce true/false with typed
   producers such as `0 0=` and `0 0= 0=` or domain helpers. Do not store raw
   `0`/`-1` into a `ptr bool` cell, and do not compare bools with numeric `=`.
@@ -964,6 +1014,16 @@ T-REPORT
   the right reason, update checker semantics, compiler metadata, primitive
   effects, or boundary typing, then repair any downstream code.
 
+## Commit gate (BLOCKING)
+
+Run on the exact tree that is being landed, from the repository root. Red,
+skipped, or unrun means the bookmark does not move.
+
+1. The behaviour suites the change touched, plus `bin/hb --load maki/test.f`.
+2. The two checked diff linters over one Jujutsu artifact
+   (`docs/forth.md` § Packages), plus `tools/error-code-lint.f` and the dot
+   lint.
+
 ## Comments & hygiene
 
 - `\` line comments, terse. No restating what the code obviously does.
@@ -1008,8 +1068,9 @@ T-REPORT
   and the boolean/float conveniences (`true`, `false`, `fdup`, `fover`, `fdrop`,
   `f<=`, `f>=`) are not in core either — `require lib/prelude.f` for them instead
   of re-deriving `0 0=` / `0 0= 0=` by hand.
-- **Trust is audited, not permanent.** `TRUST` records asserted effects so callers
-  can be checked, but audit rows must stay current and stale dates must fail lint.
+- **Trust is asserted, not proved.** `TRUST` records asserted effects so callers
+  can be checked; the assertion is the boundary's own contract, and the file
+  that declares it is where the reason for it is written.
 - **Typed pointer fields use cell indexes.** When a variable or record cell
   stores a pointer, construct a `ptr ptr x` field with `ptr-field`, then use
   normal `@`/`!`. Do not multiply indexes by cell size before `ptr-field`; use a

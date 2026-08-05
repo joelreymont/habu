@@ -29,8 +29,8 @@
 \
 \ Raw blocks cannot hold linear owners in a checker-visible form. The
 \ package-private TRUSTED conversions below store those owners as cells until
-\ the next state transition. TRUSTED.md inventories every conversion,
-\ refine-lint confines each inverse to this file, and the tests assert that
+\ the next state transition. Refine-lint confines each inverse to this file,
+\ and the tests assert that
 \ private conversion names remain unreachable from outside the package. The
 \ linear-scope and pointer-lifetime dots own removal of these boundaries.
 \

@@ -13,7 +13,7 @@
 \ machinery - no checker.f change, no fixpoint rebuild.
 \
 \ TRUSTED: because the emit (unroll) lowers to PTX the checker cannot infer; the declared
-\ effect is the contract (see TRUSTED.md). In emit-mode the body is applied `n` times,
+\ effect is the contract. In emit-mode the body is applied `n` times,
 \ unrolling the reduction exactly as cg-matmul.f's hand-written K-loop does. Load after
 \ lib/ptx/tile.f.
 

@@ -136,8 +136,8 @@ Rejects and throws:
 the window tier 2 degrades to tier-1 warnings; on re-arm (`' HOOK
 set-check` / `check@ set-check` restore) the tracker reseeds from live
 depth. No new escape mechanism, no per-line pragma: the audited
-unchecked-boundary window — already surfaced by the checked-boundary lint
-and `TRUSTED.md` culture — is the only hatch. The friend-latch precedent
+unchecked-boundary window — already surfaced by the checked-boundary lint and
+source-local rationale — is the only hatch. The friend-latch precedent
 applies: an escape is a sealed, enumerable, lintable site, not an ambient
 mode.
 
@@ -249,7 +249,7 @@ mains, prelude/whitebox scripts, eval fixtures):
 |---|---|---|
 | `require`/`include` lines | every file | unaffected (keyword) |
 | definitions + definers (`:` `TRUSTED:` SUMTYPE/ENUM/PRODUCT `variable` `create` `constant` `defer` DEFTYPE KERNEL:) | everywhere | unaffected; `constant`/`allot` get keyword effects `( n -- )` |
-| single trailing MAIN call | `test/engine-suite.f` REPORT, `tools/host-lint.f` HOST-LINT, `maki/test.f` TEST:RUN, `tools/stale-status-lint.f` STALE-STATUS-LINT:MAIN | unaffected `( -- )` |
+| single trailing MAIN call | `test/engine-suite.f` REPORT, `maki/test.f` TEST:RUN | unaffected `( -- )` |
 | literal → certified-call lines | `maki/eval/fixture.f` (`s" K …" EVAL:CHECK-PASSES? TTRUE`), `5 FOO2 + . cr` | unaffected; now fully checked |
 | `CHECK!` probe idiom | `s" : X … ;" CHECK! . cr` (underdepth-gate positive) | unaffected (TRUST `ptr u8 n -- n`) |
 | `' HOOK set-check` installs | `tools/lint/text.f:17`, `tools/check-core.f:24`, `test/engine-suite.f:1436,1525` | unaffected after `set-check`/`check@` retype (§3); `0 set-check` special-cased |

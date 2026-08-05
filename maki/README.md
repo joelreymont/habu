@@ -62,8 +62,8 @@ subsystem name.
     canonical future internal module — a future `package PTX`.
   - Cross-package calls use the qualified `PKG:WORD` form (or reopen the package for bare
     names). Cross-cutting error constants keep the global `E-MK-*` form.
-- **Audited application layer.** `maki/` is scanned by the repository trust lint
-  and every `TRUSTED:` boundary requires a `TRUSTED.md` row. It remains outside
+- **Audited application layer.** Every `TRUSTED:` boundary in `maki/` requires
+  source-local rationale and a focused production-path test. It remains outside
   the byte-for-byte engine fixpoint and is not a native-engine gate dependency.
 - **Strictly checked/typed Habu.** Maki definitions use real typed effects and
   are verified through maki's own `bin/hb --load` path.
@@ -210,8 +210,3 @@ The Habu-PTX-side metric machinery — checker-as-judge pass@k, device-golden
 grading (task-general), repair-rounds, tokens-to-green, GB/s, and the real-Triton
 eval matrix snapshot — has run on hardware. Remaining follow-up work is the durable
 in-tree device-grader cleanup and live sampled matrix expansion.
-
-## Status
-
-See [`STATUS.md`](STATUS.md). Active work is in the root dot chain (`maki-*` /
-`habu-maki-*` dots).

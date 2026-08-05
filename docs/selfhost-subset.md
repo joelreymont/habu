@@ -98,6 +98,6 @@ breaks the subset, native codegen, or the fixpoint fails `test/run.f`.
 
 The engine exposes `epoch-seconds ( -- n )` for UTC Unix time and `mono-ns
 ( -- n )` for monotonic timing. Shared checked date helpers live in
-`tools/date.f`: `PARSE-YMD`, `FORMAT-YMD`, and `FORMAT-EPOCH-UTC`. Tool bundles
-that need date validation load `tools/date.f` before unchecked lint/JSON driver
-scaffolding so the date code remains checked.
+`lib/date.f`: `DATE:PARSE-YMD`, `DATE:FORMAT-YMD`, and `DATE:FORMAT-EPOCH-UTC`.
+Tool bundles that need date validation load `lib/date.f` before unchecked
+lint/JSON driver scaffolding so the date code remains checked.

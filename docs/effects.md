@@ -9,40 +9,154 @@ effects are built structurally, not reparsed from strings.
 
 ## Grammar
 
+The parser is `PSIG` / `PSIDE` / `PSTACK` / `SIG-TYPE` in `src/core/checker.f`.
+
 ```
-sig    = stack '--' stack ( '|' stack '--' stack )?
-stack  = rowvar? type*
-type   = conname | role | declared-role | tyvar | 'ptr' type | '[' stack '--' stack ']'
-conname= i64 u8 u32 cell bool char str addr
-role   = idx len count off fd rc pid ms ns tok reg label va symidx asm img snap
-declared-role = a multi-character token declared by `DEFTYPE` or `DEFLINEAR`
-tyvar  = a..z          (same letter → same type var, per signature)
-rowvar = A..Z          (same letter → same row var; leading = the stack tail)
+sig      = side '--' side
+side     = stack ( '|' stack )?
+stack    = rowvar? type*
+type     = conname | role | linear-name | family | tyvar
+         | 'ptr' type
+         | '[' quot-sig ']'
+quot-sig = stack '--' stack ( '|' stack '--' stack )?
+family   = ( package ':' )? tail ( '<' type ( ',' type )* '>' )?
+conname  = n f r i64 u8 u16 u32 cell char bool addr str f32
+role     = idx len count off fd rc pid ms ns tok reg label va symidx asm img snap
+linear-name = the exact token given to `DEFLINEAR`
+tyvar    = a..z, except the reserved `n`, `f`, `r`
+rowvar   = A..Z          (same letter → same row var; leading position only)
 ```
 
-- The part before `|` is the **data** stack; the optional part after `|` is the
-  **return** stack. Four rows total: `( Din Rin -- Dout Rout )`.
+### The two return-stack conventions
+
+There are two of them, and they are not the same shape. Getting them backwards
+is the single most damaging mistake in this grammar, so both are spelled out.
+
+**Top level — the bar goes inside each side.** `PSIDE` parses one side as
+`data-stack ( '|' return-stack )?`, and the top-level `--` separates the two
+sides:
+
+```
+( Din | Rin -- Dout | Rout )
+>R  ( R a | S -- R | S a )      \ certifies
+R>  ( R | S a -- R a | S )      \ certifies
+```
+
+A signature with no bar anywhere has no return-stack clause at all, and the
+checker ignores those rows — that is the ordinary case.
+
+**If you use the return clause, put a bar on both sides.** The grammar lets you
+write only one, and the declaration is accepted, but the result is an
+unusable word. With a bar on just one side the checker allocates a *fresh,
+unrelated* row for the missing end, so the declared return effect goes from one
+row to a different row that nothing can satisfy. Both `( R n | S -- R )` and
+`( R n -- R | S )` declare at exit 0 and then reject at every call site with
+exit 70 — the same silent-acceptance failure shape as the truncation trap below.
+`( R n | S -- R | S )` is the return-stack-neutral spelling you actually want.
+
+**Quotations — the bar separates two full `in -- out` pairs.** Inside `[ … ]`,
+`SIG-PARSE-QUOT` parses `in -- out` and then optionally `| rin -- rout`:
+
+```
+[ in -- out ]                   \ return-stack neutral
+[ in -- out | rin -- rout ]
+( R a [ R a -- R | S -- S a ] -- R )    \ certifies
+```
+
+**Do not write the quotation shape at the top level.** `( R a -- R | S -- S a )`
+does not mean "moves `a` to the return stack". It **parses silently** and means
+something else: `PSIG` reads `Din = R a`, the top-level `--`, then `Dout = R`,
+`Rout = S`, and stops — the trailing `-- S a` is never consumed and no error is
+raised. Declaring such a word exits 0; the first checked word that *calls* it
+fails with exit 70 at the call site. Writing the top-level shape inside a
+quotation is the safer error: `[ R a | S -- R | S a ]` is a hard syntax reject
+(`checker: bad stored signature`, exit 76).
+
+### Rows, variables, and lexing
+
 - A **row var** (`R`, `S`, …) at the front of a stack stands for "the rest of the
-  stack below" — row polymorphism. Stacks with no leading row var share one
-  implicit data row (and one implicit return row).
+  stack below" — row polymorphism. It is only recognised in leading position; an
+  upper-case token anywhere else is looked up as a type name and rejects with
+  `unknown type 'R' in signature`. Row vars and type vars are separate
+  namespaces (case decides which), and both are scoped to one signature.
+- Stacks with no leading row var share one implicit data row (and one implicit
+  return row).
 - The implicit row in a checked definition is sealed for the body: callees may
   preserve it, but may not bind it by consuming below the declared inputs. This
   rejects hidden underflow such as a trusted `img -- img` boundary called from a
   word declared `( -- )`.
 - A **type var** (`a`, `b`, …) is a fresh polymorphic type; reusing the same
-  letter in one signature means the same type.
-- Whitespace-delimited. Don't nest `( )` (the inner `)` closes the comment).
+  letter in one signature means the same type. `n`, `f`, and `r` are **not**
+  type vars — they are the reserved single-letter concrete types below.
+- Type, role, and family names are **lower case and case-sensitive**. `I64` and
+  `IDX` are not spellings of `i64` and `idx`; they reject as bad signatures.
+- Tokens are whitespace-separated, but `<`, `>`, and `,` are also single-token
+  delimiters, so a family application may be written with or without spaces
+  (`pkg:result<pkg:index>` and `pkg:result < pkg:index >` parse identically).
+- Don't nest `( )` — the inner `)` closes the comment.
 
 ## Types
 
-| type | meaning |
-| ---- | ------- |
-| `i64 u8 u32 cell` | integers of given width (`cell` = machine word) |
-| `bool` | a flag (distinct from `i64` — comparisons return `bool`) |
-| `char str addr` | character, string body (`c-addr u` as one value), raw address |
-| `idx len count off fd rc pid ms ns tok reg label va symidx asm img snap` | nominal roles; distinct from each other and from plain `n` |
-| `ptr<τ>` written `ptr τ` | typed pointer; `@`/`!` move `τ` |
-| `[ S -- S' ]` | a quotation / `xt` carrying its own effect |
+The built-in type table is `CT-INIT` in `src/core/checker.f`. It has thirty
+entries and this is all of them.
+
+| type | class | width | sign class | meaning |
+| ---- | ----- | ----- | ---------- | ------- |
+| `n` | int | 64 | generic | the unconstrained integer; interchangeable with every integer type in both directions |
+| `cell` | int | 64 | generic | machine word |
+| `i64` | int | 64 | signed | signed 64-bit |
+| `u8` | int | 8 | unsigned | unsigned byte |
+| `u16` | int | 16 | unsigned | unsigned halfword |
+| `u32` | int | 32 | unsigned | unsigned word |
+| `char` | int | 8 | unsigned | character cell |
+| `addr` | int | 64 | **addr** | raw address; its own sign class (see the lattice below) |
+| `bool` | bool | 1 | — | a flag; comparisons return this, not an integer |
+| `f` | bool | 1 | — | **an alias for `bool`**, not a type variable; it parses to `bool` and renders as `bool` |
+| `r` | float | 64 | — | double-precision float; not a type variable |
+| `f32` | float | 32 | — | single-precision float; does **not** unify or widen with `r` |
+| `str` | object | — | — | declarable, but no shipped primitive produces or consumes it, and no signature in the tree names it. A string literal is `ptr u8 n`, not `str`. |
+| `idx len count off fd rc pid ms ns tok reg label va symidx asm img snap` | role | 64 | — | seventeen nominal roles; distinct from each other and from every integer type |
+| `ptr τ` | — | 1 | — | typed pointer; `@`/`!` move `τ`. Also spelled `ptr<space,elem>` as a family application. |
+| `[ in -- out ]`, `[ in -- out \| rin -- rout ]` | — | 1 | — | a quotation / execution token carrying its own effect. Prose elsewhere in this document writes this as `xt<E>`; that is notation, not a spelling the parser accepts. |
+| `pkg:tail`, `pkg:tail<arg,…>` | — | varies | — | a declared type family: `NEWTYPE`, `ENUM`, `STRUCTURE`, `PRODUCT`, `SUMTYPE`, `LAYOUT-BUFFER`, and `DEFTYPE` all mint these |
+| the token given to `DEFLINEAR` | linear | 64 | — | a linear-once cell type (see below) |
+
+### Integer widening
+
+Widening is `INT-WIDENS?` / `CON-OK?` in `src/core/checker.f`. It applies only
+to **integer-class** types (the first eight rows above), only at the **top level
+of a stack cell**, and only in an input or coercion position (`UNIFY-IN` /
+`UNIFY-COERCE`) — never inside a `ptr` pointee, never between roles, never
+between `bool` and an integer, and never between `r` and `f32`.
+
+`n` is outside the lattice: it unifies with every integer type in either
+direction unconditionally. For the other seven, `got` flows into `want` when
+`width(got) <= width(want)` **and** one of: either sign class is `generic`
+(`cell`); the sign classes are equal; or `got` is unsigned, `want` is signed,
+and `got` is strictly narrower.
+
+`addr` sits in a sign class of its own. That is the whole point: `n` and `cell`
+reach `addr` (both are generic), but `u8`, `u16`, `u32`, `char`, and `i64` do
+not, so a byte or a signed count cannot drift into an address, and an address
+cannot drift back into `i64`.
+
+Measured, `Y` = the row type is accepted where the column type is declared:
+
+```
+got \ want   n  i64  u8  u16  u32  cell  char  addr
+n            Y   Y   Y    Y    Y    Y     Y     Y
+i64          Y   Y   .    .    .    Y     .     .
+u8           Y   Y   Y    Y    Y    Y     Y     .
+u16          Y   Y   .    Y    Y    Y     .     .
+u32          Y   Y   .    .    Y    Y     .     .
+cell         Y   Y   .    .    .    Y     .     Y
+char         Y   Y   Y    Y    Y    Y     Y     .
+addr         Y   .   .    .    .    Y     .     Y
+```
+
+`bool` and `f` interconvert (they are the same type). Nothing else in the type
+table widens at all: every role, every family, every linear type, `str`, `r`,
+and `f32` unify only with themselves.
 
 Nominal roles are for same-representation values whose meanings must not mix:
 array indexes vs lengths, file descriptors vs return codes, elapsed milliseconds
@@ -56,31 +170,83 @@ role. Unchecked native emitters should still expose these roles in their `TRUST`
 effects, so checked callers reject register/fd/label swaps and out-of-order
 build phases before raw codegen.
 
-`DEFTYPE name` declares a new nominal cell type for later signatures. The name is
-global, explicit, and fail-closed: it cannot reuse a built-in type, parametric
-constructor, atom prefix, or one-letter type variable. Unknown type tokens still
-reject with `E-UNKNOWN-SIGNATURE-TYPE`; Habu does not silently intern typos.
+An unknown type token is never silently interned. It rejects the definition with
+`unknown type 'tok' in signature` on stderr, carrying the structured code
+`E-UNKNOWN-SIGNATURE-TYPE`; the other signature-syntax codes are
+`E-BARE-PTR-SIGNATURE` (`ptr` with no element type), `E-WRONG-ARITY` (a family
+applied to the wrong number of arguments), and `E-BAD-SIGNATURE` (a missing or
+misplaced `--`, `|`, or `]`).
 
-A user-declared nominal gets the **same** strict treatment as the built-in roles:
-it is distinct from `n` and from every other nominal, and never widens either
-direction. `DEFTYPE` auto-derives its explicit converter pair — `>NAME
-( n -- NAME )` and `NAME>N ( NAME -- n )` — as no-op identity casts, exactly like
-`>IDX`/`IDX>N`. Those converters are the only way across the boundary; there is no
-implicit collapse to `n`. So `deftype frame-idx` immediately yields checked
-`>FRAME-IDX`/`FRAME-IDX>N`, and a mismatch renders the declared name (e.g.
-`expected: n actual: frame-idx`), not `?`. This gives application code (camera
-serials, frame indexes, exposure-µs, GMSL channels) compile-checked distinct
-integers at zero runtime cost, without an engine edit or fixpoint rebuild.
+## Declaring your own scalar types
 
-`DEFLINEAR name` declares a nominal noncopyable cell type — a **linear-once**
-resource that must be used (consumed or passed on) exactly once. Use it for owner
-or lifetime tokens around arena-backed records, and for acquire/release framing
-(evaluate/include frames, mmap slots, snapshot phases).
+`DEFTYPE` and `DEFLINEAR` look like a pair. They are not: they use different
+substrates, scope differently, spell differently in a signature, and produce
+different diagnostics. Read both before choosing.
+
+### `DEFTYPE NAME` — a package-scoped value nominal
+
+`DEFTYPE` lives in `lib/type/deftype.f` (package `VNOM`); a file that uses it
+must `require lib/type/deftype.f` first. The substrate is a **package-scoped
+arity-0 type family** — the same machinery as `NEWTYPE` and `maki/extent.f`, not
+the built-in type table.
+
+Three consequences follow directly from that substrate.
+
+- **The signature spells a lower-case tail, not the surface name.** The surface
+  name is upper case by project convention and `DEFTYPE` folds it to lower case
+  to form the family tail. `DEFTYPE FRAME-IDX` declares the type you name as
+  `frame-idx` inside the declaring package and `PKG:frame-idx` outside it.
+- **It is package-scoped.** `DEFTYPE SERIAL` in package `CAMERA` and `DEFTYPE
+  SERIAL` in package `FRAME` are two unrelated types with no collision.
+- **A mismatch renders the family application, with its empty argument list.**
+  `: F ( n -- frame-idx ) ;` rejects with
+  `expected: frame-idx<> actual: n` — the `<>` is part of the rendering.
+
+`DEFTYPE` auto-derives the explicit converter pair `>NAME ( n -- name )` and
+`NAME>N ( name -- n )` as no-op identity casts, exactly like `>IDX`/`IDX>N`.
+Those converters are the only way across the boundary; there is no implicit
+collapse to `n`. They obey ordinary package visibility, so declaring inside a
+package without `public` keeps them private and `PKG:>NAME` is `E-UNDEFINED`
+from outside.
+
+The name is fail-closed: it cannot reuse a built-in type, a live family, a role,
+an atom prefix, or a one-letter type variable. `DEFTYPE IDX` and `DEFTYPE A`
+both reject with `bad newtype declaration '…': reserved name` (throw 7110, exit
+67). This gives application code (camera serials, frame indexes, exposure-µs,
+GMSL channels) compile-checked distinct integers at zero runtime cost, without
+an engine edit or fixpoint rebuild.
+
+### `DEFLINEAR name` — a global linear cell type
+
+`DEFLINEAR` is a core word (`src/core/roles.f`, driving `CHECKER-DEFLINEAR`);
+nothing has to be required. Its substrate is the **built-in type table itself**:
+the declaration appends a `CT-LINEAR` row, exactly beside `idx` and `i64`.
+
+- **The signature spells the name exactly as declared, case-sensitively.**
+  `DEFLINEAR own` gives you `own`; writing `OWN` in a signature is
+  `unknown type 'OWN' in signature`. Because signature types are lower case
+  everywhere else, declare these lower case — as the tree does
+  (`nom-builder`, `process-pty-handle`).
+- **It is global, not package-scoped.** A second declaration of the same name
+  anywhere, or of a name already in the type table, is
+  `checker: bad or duplicate signature type` (exit 70).
+- **A mismatch renders the bare name.** `: F ( n -- own ) ;` rejects with
+  `expected: own actual: n` — no `<>`, because this is a table entry, not a
+  family application.
+- **No converters are derived.** Producers and consumers are yours to declare;
+  they are what makes the type usable at all.
+- It is top-level-interpret-only and is rejected inside a checked body.
+
+What the type *means* is the rest of this section. A `DEFLINEAR` type is
+noncopyable — a **linear-once** resource that must be used (consumed or passed
+on) exactly once. Use it for owner or lifetime tokens around arena-backed
+records, and for acquire/release framing (evaluate/include frames, mmap slots,
+snapshot phases).
 
 The checker enforces this by **conservation**: at every step whose declared
 effect does *not* itself name a linear type, the number of live linear values on
 the combined data+return stack may not change. So a generic word that would
-duplicate a linear (`dup`, `over`, `tuck`, `2dup`, a `PICK`/`ROLL` copy), drop it
+duplicate a linear (`dup`, `over`, `tuck`, `2dup`), drop it
 (`drop`, `nip`), or move it through untyped memory (`@`/`!`/`c@`/`c!`) or a
 value-record copy is rejected, because the linear count would rise or fall. Only a
 word (or quotation) whose declared effect *explicitly* names the linear type is an
@@ -162,18 +328,23 @@ pointer cannot be laundered into a cell pointer and then cell-loaded. The checke
 enforces this by unifying pointer pointees strictly (equality plus type-variable
 binding, no widening) while still widening top-level scalar cells.
 
-## Examples (from `src/prims.fs`)
+## Examples
+
+Primitive effects are the `PRIM:` axiom rows in `src/core/checker.f`; the
+higher-order combinators are ordinary definitions in `src/core/combinators.f`.
+(The `src/prims.fs`, `src/control.fs`, and `src/pickroll.fs` this section used
+to cite are the *Gforth bootstrap* sources, now under `bootstrap/src/`. They
+model a different, older word set and are not what `bin/hb` runs.)
 
 ```
 DUP    ( R a -- R a a )            \ row-polymorphic: any one value, duplicated
 SWAP   ( R a b -- R b a )
-+      ( R i64 i64 -- R i64 )
-<      ( R i64 i64 -- R bool )     \ comparisons yield bool, not i64
++      ( R n n -- R n )            \ also ( R ptr a n -- R ptr a ) and ( R n ptr a -- R ptr a )
+<      ( R n n -- R bool )         \ also ( R ptr a ptr a -- R bool ); comparisons yield bool
 @      ( R ptr a -- R a )
 DEPTH  ( R -- R n )
-WITHIN ( R i64 i64 i64 -- R bool )
->R     ( R a -- R | S -- S a )     \ moves a value data→return stack
-R>     ( R -- R a | S a -- S )
+>R     ( R a | S -- R | S a )      \ moves a value data→return stack
+R>     ( R | S a -- R a | S )
 EXECUTE( R [ R -- S ] -- S )       \ run a quotation
 DIP    ( R a [ R -- S ] -- S a )   \ run a quotation under the top item
 KEEP   ( R a [ R a -- S ] -- S a ) \ run with a copy, keep original
@@ -183,19 +354,26 @@ TIMES  ( R i64 [ R -- R ] -- R )   \ counted iterate (trusted runtime boundary)
 EACH   ( R ptr a i64 [ R a -- R ] -- R )
 MAP    ( R ptr a i64 [ R a -- R a ] -- R )
 FOLD   ( R ptr a i64 b [ R b a -- R b ] -- R b )
-?DUP-IF( R a [ R a -- R ] -- R )   \ typeable fusion of `?DUP IF … THEN`
 ```
 
-`?DUP-IF` is the checkable form of the idiom `?DUP IF … THEN`: it consumes the
-value and a quotation over it, and the run (nonzero) and skip (zero) paths both
-converge to `R`. The naked `?DUP` stays untypeable (its arity depends on the
-runtime value). A quotation that leaves an extra item is rejected by the
-occurs-check (the output row would have to contain itself).
+Two notes on that list. The arithmetic and comparison axioms are declared over
+plain `n`, not `i64`; because `n` unifies with every integer type, writing
+`: F ( i64 i64 -- i64 ) + ;` still certifies — but `n` is what the axiom says,
+and it is what a diagnostic will print. And `>R`/`R>` are not `PRIM:` rows at
+all: the checker models the return-stack transfer structurally, and the
+signatures above are how you would spell that transfer for a `TRUSTED:` word of
+your own.
+
+`WITHIN`, `?DUP`, `?DUP-IF`, `PICK`, and `ROLL` are **not defined in `bin/hb`**.
+They exist only in the Gforth bootstrap word set; naming any of them in checked
+source is `E-UNDEFINED`. Use `IF`/`ELSE`/`THEN` and named factors instead of a
+value-dependent `?DUP`, and `DUP`/`OVER`/`SWAP`/`ROT` or locals instead of a
+counted shuffle.
 
 User-level: `: ABSV ( i64 -- i64 ) DUP 0< IF NEGATE THEN ;` — the surface form
 omits the leading `R` and the return clause; the checker supplies fresh rows.
 
-## Control flow (modeled by the checker, `src/control.fs`)
+## Control flow (modeled by the checker, `src/core/checker.f`)
 
 `IF/ELSE/THEN`, `BEGIN/UNTIL/AGAIN/WHILE/REPEAT`, `DO/?DO/LOOP/+LOOP`, `I`/`J`
 (valid at loop depth ≥1 / ≥2), `EXIT` (asserts current = declared output),
@@ -228,9 +406,15 @@ catchable `throw` paths:
 This model is the reason a checked guard may be written directly:
 
 ```
-: REQUIRE-NONEMPTY ( len -- ) dup 0 <= if E-A-EMPTY throw then drop ;
+: REQUIRE-NONEMPTY ( len -- ) LEN>N 0 <= if E-A-EMPTY throw then ;
 : HEAD ( ptr i64 len -- i64 ) REQUIRE-NONEMPTY @ ;
 ```
+
+Note the `LEN>N`. `<=` is declared over `n`, and `len` is a nominal role that
+does not unify with `n` in either direction, so a guard on a role-typed value
+must cross the boundary through the role's explicit converter. Writing
+`dup 0 <=` here instead rejects with `expected: a n n actual: len len n` — the
+role discipline described above applies to the guard just like anywhere else.
 
 No dummy value should be pushed after `throw` merely to satisfy a branch join.
 If a branch only throws, it contributes no normal output to the join.
@@ -287,16 +471,39 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   `TVK-RAW` — and marks the cells these definers publish `TVK-RAW`. A `TVK-RAW`
   var admits a plain scalar (and a plain pointer, checked recursively), and a
   fetch/store meets the kind through unification (with rollback + snapshot
-  persistence), but it **rejects a nominal-family or layout value** — so
-  `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` no longer certifies, while a
-  numeric `variable`/`constant`/`here` round-trip still does. This is the
-  value-position mirror of the pointee-side `ptr family` seal. Nominal *role*
-  atoms (`idx`/`len`/`label`/… and `DEFTYPE` names) and execution tokens stay
-  admitted in raw storage for now, because the engine's own codegen keeps labels
-  and xts in raw scratch cells; fencing those out as well needs that role/xt
-  scratch migrated to typed cells first (tracked follow-on). The `here` seal is a
-  baked primitive effect; `create`/`variable`/`constant` are sealed through the
-  verify-source definer registration (`RAW-TRUST-NEXT`).
+  persistence), but it **rejects a nominal-family or layout value**, while a
+  numeric round-trip still certifies. This is the value-position mirror of the
+  pointee-side `ptr family` seal. Nominal *role* atoms (`idx`/`len`/`label`/…
+  and `DEFTYPE` names) and execution tokens stay admitted in raw storage for now,
+  because the engine's own codegen keeps labels and xts in raw scratch cells;
+  fencing those out as well needs that role/xt scratch migrated to typed cells
+  first (tracked follow-on).
+
+  **The seal holds on every path, because it is applied where the cell is
+  defined.** `here` is sealed by a baked primitive effect, so it has always held
+  everywhere: `: N>ID2 ( n -- CAD-KIND:region ) here ! here @ ;` rejects with
+  `expected: CAD-KIND:region<> actual: a` under a plain `bin/hb --load`. The
+  defining words are now sealed the same way. Whenever the engine publishes a
+  word that owns a cell of raw dictionary storage it registers that word's
+  effect through `trust-raw` (`TRUST-RAW`, `src/core/checker.f`) instead of
+  `trust`, and `TRUST-RAW` parses the effect in raw-definer mode so every type
+  variable in it is minted `TVK-RAW`. That covers all three publication sites in
+  `src/habu/habu2.f`: `-- ptr a` for `create` and `variable`
+  (`C-CALL-TRUST-LASTC-PTR-A`), `-- a` for `constant` (`C-CALL-TRUST-LASTC-A`),
+  and the `does>`-declared created-word effect (`C-CALL-TRUST-LASTC`), which is
+  what seals `PTR-VARIABLE` and every user-written `create ... does>` definer.
+  So `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` over a `variable V` rejects
+  under `bin/hb --load` with `expected: CAD-KIND:region<> actual: a`, and so
+  does the same forge through `create`, `constant`, or a definer whose `does>`
+  clause declares a free type variable such as `( -- a )`.
+
+  The point of moving the seal into the registration word is that it can no
+  longer depend on which front end ran. It used to be the caller's job: the
+  shared source pre-verifier bracketed its own registration with the raw mode
+  (`RAW-TRUST-NEXT`, `src/habu/verify-source.f`), and the native `--load` path,
+  which is the path every tool and gate actually uses, published created words
+  unsealed. `RAW-TRUST-NEXT` still brackets its registration, so it now confirms
+  the seal a second time rather than being the only thing that applies it.
 - **`xt<effect>` storage cells are the typed alternative to raw xt scratch.**
   `TYPED-VARIABLE HK [ in -- out ]` (and `n TYPED-BUFFER HK [ in -- out ]`)
   declares a persistent monomorphic *code cell*: the generated accessor's declared
@@ -368,13 +575,12 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   (the body's speculative binds already roll back on the trail, and the next
   definition's reset clears every specialization record), so a rejected signature
   never persists and multi-error checking continues cleanly.
-- **Literal-argument `PICK`/`ROLL` are folded** to a concrete shuffle at check
-  time: `0 PICK`≡`DUP`, `1 PICK`≡`OVER`, `2 PICK ( a b c -- a b c a )`;
-  `1 ROLL`≡`SWAP`, `2 ROLL`≡`ROT`. A **dynamic** (runtime-computed) index can't be
-  folded and stays untypeable; keep it outside checked code or behind a named,
-  tested `TRUSTED:` boundary. See `src/pickroll.fs`.
-- Words the checker can't type (variadic `?DUP`, dynamic `PICK`/`ROLL`)
-  must stay outside checked code or behind `TRUSTED:`.
+- **`PICK`, `ROLL`, and `?DUP` are not defined in `bin/hb` at all**, so the
+  question of typing them does not arise in checked source: naming one is
+  `E-UNDEFINED`. The literal-argument folding described here
+  (`0 PICK`≡`DUP`, `1 ROLL`≡`SWAP`, and so on) belongs to the Gforth bootstrap
+  engine in `bootstrap/src/pickroll.fs`. Write the shuffle you mean with
+  `DUP`/`OVER`/`SWAP`/`ROT`, or name the values with `{: :}` locals.
 
 ### Rigid host-allocation identity domains
 
@@ -466,45 +672,8 @@ The axiom set is audited two ways:
   `schema-root-n@`) are pure variable reads and ARE difftested, matching
   `ndict@`/`cp@`.
 
-Axiom-set size is tracked separately from discharged `TRUSTED`: the census
-prints the live `PES` row count (`prim-axiom: N axioms (D difftested, X
-noexec)`), and the trusted-inventory `prim-axiom` class (`TRUSTED.md`) counts the
-checker's axiom-model trust sites (nominal role casts, structure/record effects,
-and the census readers) apart from the general `TRUSTED`/`TRUST` ratchet.
-
-### Inventory ratchet (`tools/primitive-effect-inventory.f`)
-
-The census proves each live axiom's arity is honest and classified, and the
-trusted-inventory `prim-axiom` class counts the *trust sites* that read the table.
-Neither ratchets the authoritative rows themselves, so an axiom could be added,
-deleted, duplicated, or reordered with no audited migration. `PEINV` closes that
-gap. It streams the three `PRIM:`/`PPRIM:`-bearing boot-prefix sources
-(`src/core/checker.f`, `src/core/sumtype.f`, `src/core/layout-buffer.f`, in
-`tools/boot-pin.f` `BP-EACH` load order — which is the live table order) and gives
-each row a **stable identity**: the canonical tuple
-`<kind> <defining-package> <word-spelling> <flags> <normalized-effect-tokens>`
-(`kind` `prim`|`pprim`; package `-` for a bare `PRIM:`; spelling and effect tokens
-folded lowercase; flags `trusted-only` when `PRIM-TRUSTED-ONLY!` marks the row).
-Identity never depends on a path, line, ordinal, or `PES` address, so
-case/whitespace/comment-only edits preserve it.
-
-- **`baseline TRUSTED.md`** compares the parsed rows against the committed
-  `primitive-effect-inventory-manifest` block (an ordered list — *not* sorted, so
-  a pure reorder is detectable and the exact row can be named). Comparison is
-  occurrence-aware (multiset): an identical axiom may repeat legitimately
-  (`path0`/`PATH0` — the same case-insensitive symbol with an identical effect is
-  declared in two `checker.f` sections), and the manifest records the repeat, so
-  the ratchet fails only on an occurrence beyond the committed multiplicity (an
-  added or duplicated row), a shortfall (a deleted row), or a reordered position.
-- **`strict`** additionally cross-checks the parsed rows against the live `#PE`
-  registry — package/name, declared in/out arity, and the `PE-TRUSTED-ONLY` flag —
-  row-for-row, proving the source parse is faithful to the in-image table.
-- **`manifest`** emits the canonical block; regenerating it is the explicit
-  migration a legitimate axiom-set change must commit.
-
-This count of authoritative axiom rows stays distinct from the trust-site classes,
-so permanent trust owners and the primitive rows they read remain separate
-quantities.
+Axiom-set size is reported by the census, which prints the live `PES` row count
+(`prim-axiom: N axioms (D difftested, X noexec)`).
 
 ### ARM64 contract link (`PRIM-LINK`, `src/core/checker.f`)
 
@@ -543,12 +712,14 @@ link a staleness ratchet against axiom drift. Regression: `test/prim-link-test.f
 ## Typed depth introspection
 
 Stack-snapshot assertions historically could not be typed: `T{ code -> expected
-}T` captures an arbitrary-length stack tail whose size is a runtime `depth`
-value, so `T{`/`->`/`}T` are trusted words with no checked contract on the
-asserted computation or its shape.
+}T` captured an arbitrary-length stack tail whose size is a runtime `depth`
+value, so `T{`/`->`/`}T` were trusted words with no checked contract on the
+asserted computation or its shape. That migration has landed — those three words
+no longer exist in `bin/hb`, and naming one is `E-UNDEFINED`.
 
 The checked replacement expresses the actual and expected computations as two
-quotations that must leave the **same row shape**:
+quotations that must leave the **same row shape**. It lives in
+`lib/test/snap.f`, so a file that uses it must `require lib/test/snap.f` first:
 
 ```
 SNAP= ( [ R -- S ] [ R -- S ] -- )
@@ -568,25 +739,28 @@ surprise:
 Because a quotation is compile-only, `SNAP=` assertions live inside a checked
 test word — which is exactly what subjects the asserted code and its shape to the
 checker. At runtime `SNAP=` executes each quotation and compares the produced
-cells through the same judge path as `T{ }T`. Only the depth-marked drain of each
-quotation's output row stays trusted (one word reusing the existing `->`/`}T`
-drains), so the comparator adds no new drain primitive while making every
-asserted computation and its shape checkable.
+cells through the same judge path the old `T{ }T` used. Only the depth-marked
+drain of each quotation's output row stays trusted, so the comparator adds no new
+drain primitive while making every asserted computation and its shape checkable.
 
-Migration: rewriting `T{ code -> expected }T` to `[: code ;] [: expected ;]
-SNAP=` inside checked test words retires the three untyped `T{`/`->`/`}T` words
-for a net trusted-count drop and upgrades every snapshot assertion from
-runtime-only to shape-checked (tracked as habu-shared-t-t-470833e6).
+Every snapshot assertion is therefore shape-checked rather than runtime-only
+(the migration was tracked as habu-shared-t-t-470833e6).
 
 ## Notes
 
-- `CHECKING-ON?` toggles the override; with it off, `:` is the plain native colon
-  (used to load infrastructure that isn't checkable habu).
-- A body using a word with no charted effect raises `E-UNCHECKED`; checked
-  build paths must treat that as a refusal unless the call is behind a named,
-  tested `TRUSTED:` boundary. A genuine type error also refuses the definition.
-- `EFFECT-OF ( a u -- ea eu | 0 )` returns the canonical effect string for a
-  charted name, or a single `0` if absent (note the asymmetric stack effect).
+- **Turning checking off and on again.** `0 set-check` disables the check hook
+  for the rest of the load, so `:` becomes the plain native colon — this is how
+  infrastructure that isn't checkable habu gets loaded. Re-enable it by
+  reinstalling the hook with `LOWER-CERT-HOOK:INSTALL` (`src/core/check-hook.f`).
+  There is no `CHECKING-ON?` word; naming it is `E-UNDEFINED`.
+- A body that reaches a word the checker cannot model (`evaluate` and the other
+  metaprogramming words) fails the definition; the structured verdict is
+  `E-UNCHECKABLE`. Checked build paths must treat that as a refusal unless the
+  call is behind a named, tested `TRUSTED:` boundary. A genuine type error also
+  refuses the definition.
+- There is no `EFFECT-OF` word in `bin/hb`; it belongs to the Gforth bootstrap
+  engine (`bootstrap/src/db.fs`) and naming it in checked source is
+  `E-UNDEFINED`.
 
 ## CAD semantic effect vocabulary (package `CAD-EFFECT`)
 

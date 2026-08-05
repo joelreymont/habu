@@ -74,7 +74,10 @@ private
 4   constant LEW-MAX-IN       \ v1 input cap (documented): >4 region inputs fails closed
 128 constant LEW-NCAP         \ node register-map size (mirrors model-ir MIR-CAP)
 
-create LEW-INS    LEW-MAX-IN cells allot   \ ordered external-input operand refs
+\ ordered external-input operand refs. A typed layout buffer, not a raw `create`
+\ array: an operand ref is a nominal cell (MIR:operand-ref), and the checker only
+\ lets a nominal reach memory through storage whose element type is that nominal.
+LEW-MAX-IN LAYOUT-BUFFER LEW-INS MIR:operand-ref
 create LEW-IN-REG LEW-MAX-IN cells allot   \ loaded %f tile register per external input
 create LEW-IN-BC  LEW-MAX-IN cells allot   \ broadcast class per external input (maki/bcast.f)
 create LEW-NODE-REG LEW-NCAP cells allot   \ result %f register per region-member node
@@ -83,10 +86,10 @@ variable LEW-NIN                            \ region input count
 1 LAYOUT-BUFFER LEW-RID CAD-KIND:region     \ region id being lowered (typed 1-slot cell)
 
 : LEW-REF! ( MIR:operand-ref n -- )
-   cells LEW-INS + ! ;
+   LEW-INS ! ;
 
 : LEW-REF@ ( n -- MIR:operand-ref )
-   cells LEW-INS + @ ;
+   LEW-INS @ ;
 
 : LEW-OUTNODE! ( CAD-KIND:node-id -- )
    0 LEW-OUTNODE ! ;

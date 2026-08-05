@@ -82,6 +82,198 @@ search. `src/habu/xref.f` is baked into `bin/hb` and exposes `LATEST`,
 when debugging dictionary ownership. `XREF word-name` prints the latest matching
 record name, start, length, flags, and wordlist.
 
+## Who owns a persisted DATA cell — `tools/snap-heap-owner.f`
+
+When two builds of the same snapshot image differ, the differing byte offsets say
+*where* a stale pointer sits but not *whose* it is, and guessing an owner from
+what the cell contains is how this class of bug gets papered over. This tool
+answers the question from the dictionary instead. It prints two maps:
+
+- `SNAP-HEAP-OWNER:DUMP` — `<heap offset> <name>` for every word that owns a
+  piece of the DP heap. The owner of a drifting offset is the last line whose
+  offset is not greater than it. A word is recognised as a heap owner by the one
+  fixed shape `create`/`variable` compiles (the four-instruction MOVZ/MOVK x9
+  address chain, the push stencil, a return, code length 24), and the address it
+  owns is read out of the chain's immediate fields.
+- `SNAP-HEAP-OWNER:CODE-MAP` — `<JIT region offset> <code length> <name>` for
+  every word that has code, headed by the region base and heap top this run got,
+  so a program counter caught by a debugger watchpoint turns into a name.
+
+It has to run inside a process that has the source under investigation loaded and
+has not retired its dictionary, because that is the only place the names exist.
+The way to get one is to add two lines to `src/habu/snap.f` just above the final
+`SNAP-RETIRE-GO`, run a snapshot build, and take the lines off again:
+
+```
+require tools/snap-heap-owner.f
+SNAP-HEAP-OWNER:DUMP
+```
+
+```sh
+HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap > owners.txt
+```
+
+The heap map that produced the owner table in dot
+`habu-fix-persisted-dangling-a520f7b4` had 1793 owners; pairing it against the
+offsets `cmp -l` reports between two images built from one `hb-stdin` and one
+`hb-snap-src` named every drifting cell above the engine-reserved band.
+
+For the same reason it cannot be loaded on its own: it reads the dictionary
+through `src/habu/xref.f` and the instruction encodings through
+`src/habu/habu1.f`, and the snapshot builder inlines both rather than
+`require`-ing them, so the tool must not `require` them either.
+
+## Stage0 mirror vs native engine — which engine is actually running
+
+Two independent engines compile the prefix, and a defect can live in one and be
+invisible to the other. `src/habu/habu2.f` is the native engine, baked into an
+installed `bin/hb`. `bootstrap/cg/forth.fs` is the Gforth-hosted mirror that
+builds `hb-stage0` during recovery. The mirror is meant to stay byte-for-byte
+equivalent to the native engine, and nothing currently proves that it does.
+
+This matters because `tools/bootstrap.sh` builds `hb-stage0` with the mirror at
+line 315 and runs it at line 318. That run is the first time a native binary
+loads the prefix, and it happens before any natively built engine exists. So a
+mirror-only defect stops the bootstrap outright, while every test that boots a
+child engine from an installed `bin/hb` keeps passing — those tests exercise the
+native engine and structurally cannot see the mirror.
+
+When a failure appears during `tools/bootstrap.sh` but the matching test suite is
+green, suspect this split before suspecting the checker. Identify the engine by
+where the failure lands: a diagnostic printed by `hb-stage0` (bootstrap.sh line
+318, before any `stage2:` message) is the mirror; the same source failing under
+`bin/hb --load` is the native engine.
+
+### Reproducing a mirror-only prefix defect
+
+Patch the working tree and let `tools/bootstrap.sh` drive it. No separate seed
+builder is needed — the script already assembles the prefix in the right order,
+and the failure surfaces about five seconds in, at the `hb-stage0` run.
+
+The worked example below is the pre-trust deferred-word replay (dot
+`habu-fix-stage0-pre-88a4297e`). A `defer` declared before `: TRUST` in
+`src/core/checker.f` is copied into the pending table described in
+`src/habu/layout.f` (the `PD-*` constants) and replayed by `DRAIN-PRETRUST`. The
+replay is what teaches the checker the name, so a later checked `is` on that
+deferred word can compare the quotation against the declared effect.
+
+Append a pre-trust deferred word to `src/core/exec-vector.f`, the earliest
+prefix file where a `defer` is legal:
+
+    defer ZZ-PRETRUST-XT ( -- n )
+
+and a checked round-trip to the end of `src/core/check-hook.f`, which is the
+first file that compiles with the check hook installed:
+
+    : ZZ-PRETRUST-SELFTEST ( -- )
+       [: 42 ;] is ZZ-PRETRUST-XT
+       ZZ-PRETRUST-XT 42 <> IF s" zz: pre-trust round-trip failed" 76 die THEN ;
+    ZZ-PRETRUST-SELFTEST
+
+Then run the recovery launcher and restore the two files afterwards:
+
+    HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth tools/bootstrap.sh
+
+Under a working mirror this completes with `bootstrap OK: bin/hb`. While the
+mirror replay is broken it exits 70 in about five seconds with
+
+    hook: non-certified definition: zz-pretrust-selftest at 'is'
+
+The same two patches applied through `test/pre-trust-defer.f`, which boots child
+engines from an installed `bin/hb`, pass — that contrast is the evidence that the
+defect is in the mirror and not in the checker, the prefix source, or `is`.
+
+### Censusing what the checker actually learned
+
+`is NAME` needs two separate checker rows: the deferred-word row that
+`CHECKER-FIND-ACTIVE-DEFER` reports, and the signature row that
+`CHECKER-DEFINED?` reports. `DRAIN-PRETRUST` is supposed to produce the first
+through `checker-defer` and the second through `trust`. Ask for both by name
+immediately after the bare `DRAIN-PRETRUST` token in `src/core/checker.f`:
+
+    s" NAME dfr=" type s" NAME" CHECKER-FIND-ACTIVE-DEFER .
+    s" sig="      type s" NAME" CHECKER-DEFINED? .
+
+Use the lower-case spelling; the lookup folds the token. Run the same census
+under both engines and compare — an installed `bin/hb` re-reads the prefix from
+disk at boot, so patching `src/core/checker.f` and running any
+`bin/hb --load <file>` prints the native answer without a rebuild.
+
+On 2026-07-28 that census read `dfr=-1 sig=-1` for every pre-trust deferred word
+under the native engine and `dfr=0 sig=0` under the mirror. The conclusion drawn
+at the time — that the mirror's replay of `trust` produces no signature row —
+was WRONG, and it cost a lane. Both halves of the replay run and both reach the
+checker; what differed was WHICH checker they reached. Read the next section
+before trusting a census: a recovery engine loads `src/core/checker.f` twice in
+one process, so a census printed right after `DRAIN-PRETRUST` answers about
+whichever load is running, and the two loads give opposite answers.
+
+### Reading the replay from inside the engine
+
+Instrumenting `src/core/checker.f` changes what `test/bootstrap-wide-memory.fs`
+measures, so `tools/bootstrap.sh` then stops in its first gate with `bootstrap
+wide memory mismatch` and never reaches the stage0 run. Instrumented runs must
+therefore skip the launcher and build the seed directly. The seed is exactly the
+file `tools/bootstrap.sh` writes to `$HB_TMP/stage2-src`, used as written —
+`emit_src` gives every consumer the same text, boot-hide prologue included, and
+that prologue is load-bearing: strip it and the boot dies at exit 70 before you
+see any of your instrumentation (see below). Build and boot it with:
+
+    HABU_TARGET=<target> gforth -e 'require test/nf.fs s" <seed>" slurp-file s" <out>" FORTH-BUILD-EXE bye'
+    HB_TMP=<dir> <out> -- <dir>
+
+A boot that reaches `stage2: cannot open source` (exit 74) got through the whole
+prefix; that message is success for this purpose.
+
+### The recovery engine reads the prefix twice
+
+This is the fact that made the 2026-07-28 census misleading, so keep it in mind
+for any probe placed in the boot prefix. The emitted engine reads every prefix
+file from disk when it starts — `PFX-LOAD-CHECKER-FILES` and its siblings in
+`bootstrap/cg/forth.fs` emit `LSRCRD` calls on baked path strings — and then
+interprets its baked program, which for a `FORTH-BUILD-EXE` binary is the whole
+prefix again plus a driver. So every top-level action in `src/core/checker.f`
+happens twice, in two different checker instances. Two markers tell the loads
+apart in a trace: only the startup load runs `src/core/include.f`, and only the
+baked program runs `src/habu/habu1.f`.
+
+The second load must not inherit the first load's words. That is the job of the
+boot-hide prologue `emit_boot_hide` in `tools/bootstrap.sh`, which hides the
+startup load's dictionary and clears its recorded effects, and it is why
+instrumented seeds built by hand (above) drop it deliberately. When it is
+missing, `trust` and `checker-defer` from the startup load are still resolvable
+while `checker.f` is being re-read, so `C-PRETRUST-READY?` says "ready" and
+every defer declared before `: TRUST` publishes into the checker that is being
+replaced; nothing is captured, the drain replays nothing, and the first checked
+`is` on such a defer fails with `hook: non-certified definition: ... at 'is'`
+and exit 70 (dot habu-fix-stage0-pre-88a4297e).
+
+To see this directly, put the engine-side probe and the checker-side probe on
+the SAME file descriptor so their order is evidence: write the slot name from
+inside the `BDRAINPRETRUST` loop to fd 1, and `type` the name at the head of
+`: TRUST` and `: CHECKER-DEFER`. Interleaved output of the form
+`[NAME><tr:NAME><cd:NAME>]` proves the replay reached the checker; a second
+`is NAME` later in the same stream answering differently from the first proves
+you are looking at two loads, not at a broken replay.
+
+
+The pending table and its replay are assembly in both engines, so ordinary
+`type`/`.` probes cannot reach them. Two techniques cover it without
+print-bisecting:
+
+- Instrument the checker end in Habu. Add a `type` of the name to `: TRUST` and
+  to `: CHECKER-DEFER` in `src/core/checker.f`, then bracket the bare
+  `DRAIN-PRETRUST` token with markers. If the markers print with nothing between
+  them, the replay never reached the checker.
+- Instrument the engine end by making an existing fail-closed exit fire where you
+  want a probe. Calling `C-PD-DIE-FULL` at the top of `C-PD-CAPTURE` proves the
+  capture branch was taken and names the deferred word; the same call inside the
+  `BDRAINPRETRUST` loop body proves the table was non-empty at replay time. Both
+  print the current token and exit 72, so they need no new string labels.
+
+Copy `bootstrap/` and `test/nf.fs` into a scratch directory before instrumenting
+the mirror, and point Gforth at the copy, so the repository tree stays clean.
+
 ## External disassembly — last resort
 Use external disassemblers only when the native disassembler lacks an encoding.
 On Linux, `objdump -d` or `readelf -l` can inspect ELF text and load segments.
@@ -120,6 +312,44 @@ regression generates both REPL and AOT `hb-maker-src` inputs and proves their li
 maximum retains the required headroom under that shared power of two. Native
 layout and Gforth recovery carry matching owner tokens; stage2 and maker alias
 that owner rather than carrying independent numeric ceilings.
+
+## A child-process fixture disagrees with itself — `tools/launch-context.f`
+
+A fixture that spawns a child and asserts its exit code reports a bare number
+when it fails (`expected 73 got 70`), which is what makes this class look
+environmental: the child printed the reason and the fixture threw it away. Get
+the reason before theorising about the launcher.
+
+- `lib/test/spawn-report.f` is the reporter. `SPAWN-REPORT:CHILD
+  ( ptr u8 n n n ptr u8 n ptr u8 n -- )` takes a label, the wanted and the got
+  rc, and the captured stdout/stderr, and prints all of it plus the launch
+  context. Wire every child-rc assertion in a fixture through a helper that
+  calls it on a mismatch — `test/pre-trust-defer.f` `CHILD-RC` is the pattern.
+  The exit-70-vs-73 disagreement that stood for a day was one line of the
+  child's own stderr.
+- `bin/hb --load tools/launch-context.f` prints only the context, so the same
+  report can be taken under different launchers and diffed. Every line starts
+  `ctx `: pid, script argv, whether `bin/hb` is reachable from the process's cwd
+  and from its inherited `PWD` (a stale `PWD` shows up as a yes/no split), fds
+  0/1/2 with open state, status flags and tty-ness, and the environment.
+
+```sh
+bin/hb --load tools/launch-context.f | grep '^ctx ' | sort > /tmp/pipe.txt
+script -q /tmp/tty.log bin/hb --load tools/launch-context.f >/dev/null
+grep '^ctx ' /tmp/tty.log | sort > /tmp/tty.txt
+diff /tmp/pipe.txt /tmp/tty.txt
+```
+
+tty-ness is read with the host's own terminal-attributes ioctl, selected by
+`HB-TARGET-MACOS?`/`HB-TARGET-LINUX?`. The two hosts' request numbers are not
+interchangeable — issuing Linux `TCGETS` on macOS kills the process (exit 83) —
+so an unrecognised host throws `E-PROC-HOST` instead of trying both.
+
+Before concluding "environment", check the cheaper explanations the same way
+this class was mis-filed once already: the suite may not be selected by the
+slice that looked green (`SUITE-RUN?` in `test/gate-stdlib-lib.f`), and a
+fixture that asserts a specific exit code may simply be asserting a code the
+tree stopped producing.
 
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).

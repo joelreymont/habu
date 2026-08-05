@@ -1,7 +1,7 @@
 \ argv.f -- checked argv parser for `bin/hb script.f args...` scripts.
 \
-\ The module lives in `package ARGV`; `tools/argv.f` is a symlink to this file, so
-\ the tool CLIs and the stdlib share one packaged module. External callers drive
+\ The module lives in `package ARGV`; the tool CLIs and the stdlib share this one
+\ packaged module. External callers drive
 \ it through the qualified public API: ARGV:USAGE! / ARGV:QUIET! configure the
 \ usage text and diagnostic writes, ARGV:PARSE reads SCRIPT-ARGC / SCRIPT-ARGV$
 \ (or a mock set installed with ARGV:MOCK-CLEAR / ARGV:MOCK+ / ARGV:USE-SCRIPT),

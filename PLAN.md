@@ -13,10 +13,10 @@ interfere with the independent Spark vLLM-replacement work.
 
 - Design: `docs/compiler-ir-design.md`
 - Design SHA-256:
-  `7a639bbc638d2c5ccf5938810168f85fa01773ce805ba1de3b9f4de9b6919cef`
+  `78b3fa8b2c9290d9416c94e556e2b0977b8d4b83e403c4abc30f199f5348d7c3`
 - Design audit commit: `eb5742e916978d5c9067218737ce9c62a1af25a4`
 - Reviewed remote base:
-  `59202f9b73bdb5fc2975908dc063f4e51be9e01a`
+  `197fb07d55b3395cdf9bfd007aac999eb6895473`
 - Re-fetch before every claim and integration. The Spark agents publish through
   `master`; this campaign does not use `.blackboard`.
 
@@ -46,32 +46,35 @@ an owner.
 - A process-wide allocator issues nonzero module serials monotonically and never
   reuses them.
 - A referential ID is `(module-serial << 32) | local-u32-index`.
-- `ir-module-id` carries a module serial. `ir-count` and `ir-pool-offset` are
-  scalar roles and are never packed IDs.
+- `IR-ID:ir-module-id` carries a module serial. `IR-ID:ir-count` and
+  `IR-ID:ir-pool-offset` are scalar roles and are never packed IDs.
 - A dereference checks owner equality before the kind-specific committed bound.
 - Runtime serials are not serialized. Canonical encoding remaps references to
   module-local unsigned indices, so construction history cannot change bytes or
   digests.
-- Module-serial allocation and exhaustion belong to context lifecycle, not the
-  pure ID leaf.
+- The ID owner allocates module serials through one process-wide aligned atomic
+  CAS cell. Allocation is monotonic, nonzero, fail-closed at exhaustion, and is
+  not reset by replaying `require`.
 - Source bytes may be cached by the context, but every frozen module owns its
-  source table and `ir-source-id` values. Import remaps equal source digests into
-  module-local source IDs.
+  source table and `IR-ID:ir-source-id` values. Import remaps equal source
+  digests into module-local source IDs.
 
 ### Package boundary
 
 `DERIVED` — Raw conversion authority must have one owner.
 
-- `src/compiler/ir/id.f` opens `IR-ID` only to declare the public ID families
-  with exact tails `ir-module-id` through `ir-count`. It then owns separate
-  package `IR-RAW`, whose private checked `CAST:` mint/projection words cannot
-  be reached by reopening the public type owner or the later `IR` facade.
-- Only `id.f`, `arena.f`, the focused ID test, and the codec projection owner may
-  open `IR-RAW`; package/refine lints enforce that closed list.
+- `src/compiler/ir/id.f` owns one package, `IR-ID`. Its public window declares
+  the ID families and semantic operations; its private window owns every
+  checked `CAST:` mint/projection. Both wordlists are protected after
+  definition, so later source cannot reopen either authority.
+- A cast into a resolved scalar-cell family, including a parametric `NEWTYPE`
+  instance, is legal only in the destination family's declaring package.
+  Projections out remain unrestricted. This structural owner rule is what lets
+  `IR-ID` contain its casts without a second authority package.
 - Other substrate concerns use `IR-SOURCE`, `IR-TYPE`, `IR-ATTR`, `IR-SCHEMA`,
   `IR-BUILD`, `IR-VERIFY`, `IR-CODEC`, and `IR-PASS`.
-- `src/compiler/ir.f` may reopen `IR` only to publish semantic facade words over
-  public substrate operations. The facade has no `IR-RAW` authority.
+- `src/compiler/ir.f` may open `IR` only to publish semantic facade words over
+  public substrate operations. The facade has no `IR-ID` mint authority.
 - `refine-lint` inventories and confines every mint. The complete assembly
   protects package wordlists only after a closed schema has passed through the
   real builder/freeze path without reopening `IR`.
@@ -108,9 +111,9 @@ CONTEXT-DISPOSE   ( compiler-context -- )
 NEW-BUILDER       ( compiler-context dialect-schema -- ir-builder )
 ABORT             ( ir-builder -- compiler-context )
 FREEZE            ( ir-builder -- freeze-result )
-MODULE-RETIRE     ( compiler-context ir-module-id -- compiler-context )
+MODULE-RETIRE     ( compiler-context IR-ID:ir-module-id -- compiler-context )
 PASS-VALIDATE     ( compiler-context pass-result -- compiler-context pass-validation-result )
-PASS-ACCEPT       ( compiler-context validated-pass-result -- compiler-context ir-module-id )
+PASS-ACCEPT       ( compiler-context validated-pass-result -- compiler-context IR-ID:ir-module-id )
 PASS-RELEASE      ( compiler-context pass-result -- compiler-context )
 ```
 
@@ -173,7 +176,8 @@ representative native/GPU measurements required by design section 14, Wave 0.
 
 `CORE` — Implement in this order:
 
-1. `IR-0.1` pure ID families and pack/project/owner/bound checks.
+1. `IR-0.1` ID families, monotonic module authority, and
+   pack/project/owner/bound checks.
 2. Target contract and numeric policy records plus canonical digests.
 3. Context registry, module serial allocation, stale-handle state, and total
    teardown.
@@ -197,10 +201,25 @@ representative native/GPU measurements required by design section 14, Wave 0.
 18. One closed schema through the real generic builder/freeze path, then facade
     assembly and package protection.
 
+Implementation/proof synchronization is stage-local: each stable schema leaf
+may start its proof at the provider instead of waiting for the sealed facade.
+Immediately after IR-0.1, `habu-prove-compiler-id-399232c5` owns
+`formal/Common/Ids.v`, the ID manifest/digest, parity checks, and shared
+valid/hostile vectors while substrate items 2-18 continue.
+
+Memory proof is also stage-local and does not delay the ID proof leaves:
+`habu-model-compiler-heaps-dfef07ae` starts after target policy and compiler
+types, `habu-prove-compiler-separation-db458ea0` starts after that heap model and
+the dialect effect schema, and `habu-prove-compiler-arena-59a8a885` starts after
+separation plus the executable IR arena and freeze lifecycle. Later shared,
+native, and GPU proofs consume those exact memory, frame, ownership, and
+race-freedom obligations.
+
 `habu-type-dsl-prove-93da83c4` is a prerequisite for items 2-18 and every
-dialect leaf. IR-0.1 uses only `NEWTYPE` plus checked `CAST:` and may proceed
-before that hard-cutover proof. `habu-make-owned-release-79de2b5c` is a
-prerequisite for context/arena disposal in items 3-4.
+dialect leaf. IR-0.1 uses `NEWTYPE`, checked `CAST:`, and one atomic allocator;
+it may proceed before that hard-cutover proof.
+`habu-make-owned-release-79de2b5c` is a prerequisite for context/arena disposal
+in items 3-4.
 
 Exit: equivalent modules built in different insertion orders have identical
 bytes and digests when only unordered intern-table insertion differs; every
@@ -285,28 +304,54 @@ GPU work does not edit `maki/infer/` while the Spark agents are active.
 
 ## First implementation leaf: IR-0.1
 
-`CORE` — This leaf is pure representation; it does not allocate module serials,
-create contexts, dereference arenas, or add sources/builders/codecs.
+`CORE` — This leaf owns ID representation and process-wide module serial
+allocation. It does not create contexts, dereference arenas, or add
+sources/builders/codecs.
 
 Files:
 
 ```text
 src/compiler/ir/id.f
+test/compiler/ir-id-concurrency.f
 test/compiler/ir-id.f
 lib/errors.f
-tools/refine-lint-core.f
-tools/refine-lint-test.f
-test/gate-stdlib-cases.f
-test/gate-stdlib-inline-lib.f
 ```
 
+The active prerequisite `habu-cast-v2-family-741e7bae` owns the shared
+package-authority repair and its gates:
+
+```text
+src/core/checker.f
+src/core/enum-decl.f
+src/core/structure-decl.f
+src/core/sumtype.f
+src/core/type-family.f
+src/habu/verify-source.f
+src/habu/xref.f
+test/cast-negative-suite.f
+test/type-decl-suite.f
+test/type-export-suite.f
+tools/check-core.f
+tools/refine-lint-core.f
+tools/refine-lint-test.f
+docs/forth.md
+```
+
+`PLAN.md`, `FILEMAP.md`, `LESSONS.md`, and the two dot records are shared
+integration records updated only after both contracts are reconciled.
+
+IR-0.1 changes no task, manifest, loader, fixpoint, AOT, or public-signature
+source. Its CAST prerequisite changes the shared checker, declaration,
+verification, and structural-lint sources listed above; those changes are not
+owned by the ID implementation leaf.
+
 It declares public `NEWTYPE` identities in package `IR-ID` with exact tails
-`ir-module-id`, `ir-source-id`, `ir-function-id`, `ir-block-id`,
-`ir-operation-id`, `ir-value-id`, `ir-type-id`, `ir-attribute-id`,
+`ir-module-key`, `ir-module-id`, `ir-source-id`, `ir-fun-id`, `ir-block-id`,
+`ir-op-id`, `ir-value-id`, `ir-type-id`, `ir-attr-id`,
 `ir-symbol-id`, `ir-span-id`, `ir-pool-offset`, and `ir-count`. Private checked
-`CAST:` words in package `IR-RAW` implement three separate contracts: module
-serials, packed referential IDs, and scalar count/offset roles. No new
-`TRUSTED:` declaration or `TRUSTED.md` row is permitted.
+`CAST:` words in that same owner package implement module capabilities, packed
+referential IDs, and scalar count/offset roles. `NEW-MODULE` is the sole public
+module-key constructor. No raw `n -> ir-module-key` path is public.
 
 The frozen representation contract is:
 
@@ -317,9 +362,11 @@ packed referential:   (serial << 32) | local
 count/pool offset:    0 .. 0x7fffffffffffffff, never packed
 ```
 
-The exact private `IR-RAW` representation casts are:
+The exact 26 private `IR-ID` representation casts are:
 
 ```text
+MINT-KEY           ( n -- IR-ID:ir-module-key )
+KEY>N              ( IR-ID:ir-module-key -- n )
 MINT-MODULE        ( n -- IR-ID:ir-module-id )
 MODULE>N           ( IR-ID:ir-module-id -- n )
 MINT-COUNT         ( n -- IR-ID:ir-count )
@@ -330,22 +377,23 @@ MINT-{KIND}        ( n -- IR-ID:ir-{kind}-id )
 {KIND}>N           ( IR-ID:ir-{kind}-id -- n )
 ```
 
-Packing, projection, and validation are ordinary checked `IR-RAW` words that
-compose only those identity-shaped casts:
+Packing, projection, and validation are public checked `IR-ID` words that
+compose only those private identity-shaped casts:
 
 ```text
-PACK-{KIND}        ( IR-ID:ir-module-id n -- IR-ID:ir-{kind}-id )
+PACK-{KIND}        ( IR-ID:ir-module-key n -- IR-ID:ir-{kind}-id )
 {KIND}-OWNER       ( IR-ID:ir-{kind}-id -- IR-ID:ir-module-id )
 {KIND}-LOCAL       ( IR-ID:ir-{kind}-id -- n )
-{KIND}-CHECK       ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-{kind}-id
+{KIND}-CHECK       ( IR-ID:ir-module-key IR-ID:ir-count IR-ID:ir-{kind}-id
                      -- IR-ID:ir-{kind}-id )
 ```
 
-`{KIND}` expands exactly to `SOURCE`, `FUNCTION`, `BLOCK`, `OPERATION`, `VALUE`,
-`TYPE`, `ATTRIBUTE`, `SYMBOL`, and `SPAN`. The later arena/builder is the only
+`{KIND}` expands exactly to `SOURCE`, `FUN`, `BLOCK`, `OP`, `VALUE`,
+`TYPE`, `ATTR`, `SYMBOL`, and `SPAN`. The later arena/builder is the only
 semantic caller of `PACK-*`; the codec is the only semantic caller of `*-LOCAL`.
-`refine-lint` confines these private words to `id.f`, `arena.f`, their focused
-test, and the later codec owner.
+`refine-lint` confines private raw definitions to `id.f`'s private `IR-ID`
+window and rejects direct definitions, qualified references, and `EXPORT`
+aliases across the complete 19-package compiler API set.
 
 The exact block and named errors reserved in `lib/errors.f` are:
 
@@ -358,22 +406,63 @@ The exact block and named errors reserved in `lib/errors.f` are:
 -6603 E-IR-INDEX-BOUND
 -6604 E-IR-OWNER
 -6605 E-IR-SCALAR-RANGE
+-6606 E-IR-MODULE-EXHAUSTED
 ```
+
+That block is now full and closed: its last free code went to the attribute
+table. Every compiler stage from the dialect schemas onward mints from the
+compiler growth region, `-8000 E-COMP-FIRST` to `-8999 E-COMP-LAST`, whose
+sub-block map lives at the end of `lib/errors.f`. A lane takes the 20-code
+sub-block named for its stage and records the codes it mints under it. Nothing
+in `-6600..-6699` moves.
 
 Acceptance:
 
-- explicit valid module serial/local index inputs round-trip each referential ID;
+- `NEW-MODULE` yields a nonforgeable key plus matching public module ID;
+- an outcome-bounded fresh child starts every task over a disjoint slice; each
+  worker atomically publishes `READY`, waits without a scheduler-dependent spin
+  limit for the parent `GO`, allocates its slice, validates its typed key/owner
+  pair, and publishes completion;
+- one private test-only erase-only `CAST:` projects a validated module owner to
+  its raw serial for process-shared `create` storage; it is outside `IR-ID`,
+  cannot mint a nominal, is absent from every compiler API and production load
+  path, and does not change the exact 26-cast production inventory;
+- the parent releases `GO` only after all workers are live, verifies every
+  stored serial is nonzero and globally unique, and attempts to kill/release
+  every prepared task on success or caught failure;
+- an activation-failure case catches exact `E-TASK-STATE`, then reruns the
+  normal case with the same four task objects in the same child; deleting
+  cleanup makes reuse fail;
+- deleting the `READY`/`GO` protocol makes the overlap witness fail, while the
+  process outcome timeout owns genuine stalls;
+- require replay in a fresh child does not reset the serial;
+- explicit valid key/local index inputs round-trip each referential ID;
 - scalar count/offset roles never acquire module bits;
-- zero/overflow module serial, negative/equal-to-bound/overflow index, and
-  foreign owner throw named errors before memory access;
+- negative/equal-to-bound/overflow index and foreign owner throw named errors
+  before memory access;
+- `E-IR-MODULE-ZERO`, `E-IR-MODULE-RANGE`, and
+  `E-IR-MODULE-EXHAUSTED` guard private states unreachable through the sole
+  public key/allocator path; the allocator transition and law proof leaves own
+  executable defensive-state coverage plus monotonic, nonzero, unique, and
+  exhaustion-before-wrap unreachability proofs;
 - checker fixtures reject wrong-family substitutions;
+- the CAST owner gate binds the destination package to the engine's live
+  namespace record and actual public/private definition WID; callable
+  `CHECKER-PACKAGE` and direct checker-mirror mutation cannot authorize a mint;
 - canonical local projection excludes the runtime owner;
 - no public raw converter or dialect-specific cast resolves;
+- the 26 package-qualified raw authority tails are definable only as private
+  `CAST:` words in `src/compiler/ir/id.f`'s `IR-ID` window; unrelated/global
+  same-tail role APIs such as global `COUNT>N ( count -- n )` remain distinct;
+- `refine-lint` rejects direct definitions and `EXPORT` aliases of those raw
+  tails in all 19 compiler API packages, plus compiler-qualified raw references
+  outside the owner;
+- both `IR-ID` wordlists reject reopen, qualified publication, direct WID
+  publication, and source replay;
 - every cast is checker-certified and confined by `refine-lint`;
 - `bin/hb --load test/compiler/ir-id.f` passes;
-- the `compiler-ir-id` suite is declared and scheduled by the inline stdlib
   dispatcher, and error, trust, refine, package, typed-local, and suite
-  coverage gates pass.
+  file-map, package, typed-local, and suite coverage gates pass.
 
 ## Dot and worker rules
 
@@ -383,9 +472,10 @@ created.
 
 Before dispatch, follow the parallel-work and dot-dispatch rules in `AGENTS.md`: establish an active claim
 on an immutable base and use an isolated `.jj-ws/<dot-id>`. Separate workspaces
-may edit overlapping files concurrently; overlap alone does not block coding.
-Each leaf gets its focused test, required diff/lint gates, independent
-destruction review, and exact owning integration gate before closure.
+may edit overlapping files concurrently; never assign overlapping files to
+concurrent editors in the same workspace. Each leaf gets its focused test,
+required diff/lint gates, independent destruction review, and exact owning
+integration gate before closure.
 
 Before IR-0.1 integrates or pushes, fetch, rebase, and reconcile every
 overlapping change; verify remotely valid ownership; then run the exact focused
@@ -405,3 +495,4 @@ Pre-distillation version: `PLAN.md` SHA-256
 | Fixed first-version file layout for every later dialect | Premature detail not required to start the dependency-ordered substrate |
 | Generic per-leaf gate checklist | Repository workflow already owns it; only the first leaf needs exact routing now |
 | Blackboard lifecycle text | Explicitly disabled by the user for the remote Spark agents |
+| Automated Wave 0 semantic rediscovery | The design requires a source-pinned inventory, not a new call-graph/provenance analyzer; audit hashes plus structural review force re-audit without delaying compiler work. Rejected split: `b776cdd872ce25da8dd0c0fc0e8cb09f5c4ca564`. |

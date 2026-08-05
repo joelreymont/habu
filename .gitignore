@@ -26,6 +26,28 @@ gpt2-vocab/
 # runtime-fetched GPT-2 safetensors weights (fetch-gpt2-model.sh; never committed)
 gpt2-model/
 
+# Rocq proof build outputs (rebuild locally with `make -C formal`).
+# Scoped to formal/ so these extensions stay meaningful everywhere else.
+formal/**/*.vo
+formal/**/*.vok
+formal/**/*.vos
+formal/**/*.glob
+formal/**/*.aux
+# The generated makefile's `cleanall` also removes these: per-file timing
+# reports and the native-compilation output directory.
+formal/**/*.timing
+formal/**/*.timing.diff
+formal/**/*.before-timing
+formal/**/*.after-timing
+formal/**/.coq-native/
+formal/.lia.cache
+# `lia` writes its cache into the working directory; the parity gate in
+# test/compiler/ir-id-proof.f compiles the proofs from the repository root.
+/.lia.cache
+formal/Makefile.rocq
+formal/Makefile.rocq.conf
+formal/.Makefile.rocq.d
+
 # generated benchmark evidence and reports stay outside git
 bench/llm/RESULTS*.md
 bench/llm/*.json

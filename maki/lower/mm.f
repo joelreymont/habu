@@ -103,7 +103,11 @@ private
 256  constant LMM-KCAP         \ v1 accumulation cap (documented): K <= 256
 4096 constant LMM-ARENA        \ v1 buffer element cap (mirrors lower-launch LLA-NCAP: 16 KB f32)
 
-create LMM-INS      LMM-MAX-IN cells allot   \ ordered contraction operand refs (A, B, [bias])
+\ ordered contraction operand refs (A, B, [bias]). A typed layout buffer, not a
+\ raw `create` array: an operand ref is a nominal cell (MIR:operand-ref), and the
+\ checker only lets a nominal reach memory through storage whose element type is
+\ that nominal.
+LMM-MAX-IN LAYOUT-BUFFER LMM-INS MIR:operand-ref
 create LMM-NODE-REG LMM-NCAP cells allot     \ result %f register per region-member node
 variable LMM-NIN                              \ contraction operand count (2 or 3)
 1 LAYOUT-BUFFER LMM-MMNODE CAD-KIND:node-id   \ the single contraction node (matmul / linear; typed 1-slot cell)
@@ -112,8 +116,8 @@ variable LMM-NIN                              \ contraction operand count (2 or 
 variable LMM-M  variable LMM-N  variable LMM-K \ C = A(MxK) . B(KxN)
 variable LMM-BLK                               \ 1 = shape fits the register-blocked 64x64 tile
 
-: LMM-REF! ( MIR:operand-ref n -- )  cells LMM-INS + ! ;
-: LMM-REF@ ( n -- MIR:operand-ref )  cells LMM-INS + @ ;
+: LMM-REF! ( MIR:operand-ref n -- )  LMM-INS ! ;
+: LMM-REF@ ( n -- MIR:operand-ref )  LMM-INS @ ;
 : LMM-MMNODE! ( CAD-KIND:node-id -- )  0 LMM-MMNODE ! ;
 : LMM-MMNODE@ ( -- CAD-KIND:node-id )  0 LMM-MMNODE @ ;
 : LMM-OUTNODE! ( CAD-KIND:node-id -- )  0 LMM-OUTNODE ! ;

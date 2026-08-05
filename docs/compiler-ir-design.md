@@ -322,17 +322,21 @@ Define sealed nominal single-cell families:
 
 ```text
 ir-module-id
-ir-function-id
+ir-source-id
+ir-fun-id
 ir-block-id
-ir-operation-id
+ir-op-id
 ir-value-id
 ir-type-id
-ir-attribute-id
+ir-attr-id
 ir-symbol-id
 ir-span-id
 ir-pool-offset
 ir-count
 ```
+
+`ir-module-key` is a separate opaque authority returned only by the module
+allocator; it is not an ordinary public ID or serialized identity.
 
 Raw index conversion is private to the owning package. The conversion authority should be concentrated in one generic indexed-arena implementation rather than repeated as trusted casts in every dialect.
 
@@ -381,7 +385,7 @@ symbol-id
 signature-type-id
 first-block
 block-count
-attribute-window
+attr-window
 source-span
 linkage
 calling-convention
@@ -393,10 +397,10 @@ flags
 Each block record contains:
 
 ```text
-parent-function
+parent-fun
 argument-window
-operation-window
-terminator-operation
+op-window
+terminator-op
 predecessor-count
 successor-count
 source-span
@@ -414,7 +418,7 @@ dialect-opcode
 parent-block
 operand-window
 result-window
-attribute-window
+attr-window
 successor-window
 source-span
 effect-class
@@ -495,8 +499,8 @@ parent-span
 The common builder API should be small:
 
 ```text
-BEGIN-FUNCTION
-END-FUNCTION
+BEGIN-FUN
+END-FUN
 
 BEGIN-BLOCK
 ADD-BLOCK-ARG
@@ -506,11 +510,11 @@ ADD-OP
 ADD-OPERAND
 ADD-RESULT
 ADD-SUCCESSOR
-ADD-ATTRIBUTE
+ADD-ATTR
 
 INTERN-TYPE
 INTERN-SYMBOL
-INTERN-ATTRIBUTE
+INTERN-ATTR
 ADD-SPAN
 ```
 
@@ -573,6 +577,16 @@ IR:DIFF
 
 `IR:RENDER` is diagnostic text. It is not parsed by the compiler.
 
+Serialization is built as two stages with one authority each, because the list above mixes two different decisions: which order a module's interned rows belong in, and how a sequence of fields becomes bytes. **Canonicalization** (`src/compiler/ir/canon.f`, package `IR-CANON`) owns the first. Given a frozen module it decides the canonical ordinal of every interned symbol, type, attribute and source row, and produces a canonical table: the ordinal of every row, plus a cell stream that is the table order above with every stored reference already rewritten into canonical numbering. **Encoding** (`src/compiler/ir/encode.f`, package `IR-ENCODE`) owns the second. It frames that stream into bytes, adding the magic, the format major and minor version, the eight-byte little-endian field width, the counts and lengths, the full-input consumption rule, and the SHA-256 content digest. So a module's canonical content has exactly one owner and its canonical bytes have exactly one owner, and neither can disagree with the other about what the module is. The encoder never reads inside the payload, so a change to a table's row shape is canonicalization's alone and a change to framing or versioning is the encoder's alone.
+
+Renumbering is the load-bearing part, and a bare permutation is not enough: a pointer type row stores its pointee's module-local ordinal and an attribute row can store a symbol or type ordinal, so sorting the rows without rewriting their contents leaves two equivalent modules with row lists that are not even permutations of each other. `formal/Common/Interning.v` carries that counterexample machine-checked. Only build orders that intern a row after everything it references are admissible, so "the same bytes for any two build orders" means "for any two topological orders of the reference graph".
+
+The alternative reading, in which canonicalization re-materializes a second module whose tables are already in canonical order, was rejected structurally rather than for convenience: the builder interns the dialect's own name before any caller can intern anything, so a re-materialized module's symbol table always begins with the dialect name and can never be in sorted order. It would also mint a second module identity, re-run the freeze verifier over content already verified, and cost a second full set of arena registry slots per module.
+
+A canonical table is a resource with a committed ceiling of **eight canonical tables per live context**, released explicitly or reclaimed when the context tears down; a ninth is a named refusal rather than a silent allocation. A frame is not a resource but a value, so the encoder writes into a byte span the caller already owns, tells the caller the exact length beforehand, and holds no registry of its own — encoding a module can never be the thing that exhausts a context.
+
+One field named above cannot appear in a canonical frame. A dialect's schema-table digest folds each schema record's stored operand, result and attribute-key lists, and those hold module-local insertion ordinals, so two equivalent modules built along two intern orders have two different schema-table digests. The frame therefore states the dialect's canonical name ordinal and its schema major and minor version — the "dialect/schema versions" of the list above — and the schema digest belongs to the witness header of section 6.7, which binds one pass over one module in one process and may use a non-canonical digest. A canonical schema-table digest is a missing capability; it is owned by the schema table or by a canonicalized schema section, never recomputed inside the encoder.
+
 ### 6.7 Pass result and witness header
 
 Every pass returns:
@@ -633,6 +647,116 @@ Compile-time immediate words divide into three classes:
 
 No immediate word receives access to AArch64 emission in the new path.
 
+#### As implemented
+
+`src/compiler/native/tape.f` (package `NTAPE`) owns the tape and
+`src/compiler/native/immediate.f` (package `NIMM`) owns the three classes.
+Four decisions were taken while building them, and each one is a commitment
+later stages inherit.
+
+**The resolved spelling is an interned symbol, not a second byte slice.** The
+byte span already says where the token was read from. Storing a second byte
+range would say that twice and would still leave every reader to re-lex the
+bytes to learn the name. An `IR-SYM` symbol id is module-owned, deduplicates
+equal spellings, and lets the elaborator compare two names without touching
+bytes. A string literal's spelling is its body, which is exactly the slice a
+raw span cannot tell apart from the quoting syntax around it.
+
+**Origin is the expansion parent token, not the parent source.** `IR-SOURCE`
+already records the include or expansion parent of a whole source; the tape
+records the same relation one level down, between tokens, so a diagnostic can
+walk back to the token the programmer wrote. It is acyclic by construction for
+the same reason: a parent must already be appended, so its ordinal is strictly
+below its child's.
+
+**Whether a token carries a literal is a property of its kind.** There is no
+stored "has a literal" flag, so no second piece of state can contradict the
+first, and there are four minting words rather than one, so a name token that
+carries a value cannot be asked for. Reading a literal from a kind that has
+none is refused rather than answered with the zero the row stores.
+
+**The digest excludes the module serial.** Module serials are allocated per
+process. A tape digest that moved between runs could not key a cache or bind a
+certificate, so two structurally identical tapes digest identically, and the
+per-token record digests are chained the way `IR-SCHEMA` chains its schema
+table so no buffer grows with the tape. The digest covers the cells the tape
+owns; the bytes behind a span and behind a spelling are the source registry's
+and the interner's own content digests, and a stage that needs content
+identity binds both.
+
+The compile-time class of section 7.1 is recorded but not yet sealed: the
+guarantee that such an immediate reaches the program only through the builder
+is the HIR builder's to enforce, and there is no builder yet. Dot
+`habu-seal-the-compile-5f56e5e9` tracks that capability.
+
+#### As implemented: the producer
+
+`src/compiler/native/feed.f` (package `NFEED`) fills a tape from the reader the
+engine already runs over every checked definition, and answers the sealed tape
+and the verdict the scan reached.
+
+**The producer hangs on the checker's reader, not on a second lexer.** The
+migration sentence above allows the checker to keep running over source text as
+long as its result binds the tape digest. If a different reader filled the tape,
+that binding would be a convention between two lexers that happen to agree; the
+tape is filled by `src/core/checker.f` `CHECK-SCAN` itself, as it consumes each
+token, so the verdict belongs to the token stream the checker actually read. The
+seam is package `CHECKER-TAPE` in that file: three events - the text a scan
+opens with, each token as it is consumed, and the verdict it ends with - reached
+through declared dispatch cells and disarmed by default, so an unarmed checker
+pays one load and a branch per token. An observer is called before a token is
+judged and its answer is never read: it can abort a compilation by throwing, and
+it can never turn a rejected definition into an accepted one.
+
+**A unit is one scan.** The checker scans text for reasons other than the
+definition in front of it - a candidate probe, a `does>` body, a preflight check
+of an immediate - so an open unit accepts exactly one scan and refuses a second
+by name. "One row per token, exactly once, in order" is then a property of the
+state machine rather than of the caller's care.
+
+**A unit answers the sealed tape and the verdict, and nothing else.** Identity
+implies content inside one process: a stage holding the tape handle the unit
+sealed is holding the tape the checker filled, so there is no certificate value
+to carry a digest of it. The tape digest deliberately cannot see spellings - a
+module numbers its own symbols, so two definitions differing only inside a name
+digest identically - and the authority on the bytes is the source registry's
+per-source content digest, which instruction selection already checks in
+production (`A64SEL:SOURCE!`); `test/compiler/native-feed.f` pins which one-byte
+edits each of the two digests can and cannot see. A cross-process consumer would
+need a value that binds both, and none exists today.
+
+**What the reader hands over is the reconstructed definition.** The engine gives
+the check hook the definition it rebuilt - name, declared signature, body - with
+the opening `:` and closing `;` already consumed, backslash comments gone and
+whitespace runs collapsed. So the tape's source is that text, spans are offsets
+into it, a parenthesised comment is not a token, and a string or character
+literal's payload is not a token either, because the reader steps over both. The
+consequence for section 7.2 is settled rather than open: a produced tape has no
+frame rows at all, so the elaborator stopped looking for them and reads the
+definition frame off the recorded modes instead - `:` parses the defined name
+from the outer interpreter before switching, so the name is the one token
+recorded as consumed while INTERPRETING and every body token as consumed while
+COMPILING. Two consequences are still open work: literal payloads never reach the
+tape's `string-literal` and `char-literal` kinds (`habu-put-str-and-0750ac90`),
+and a recorded unit is not yet tied to the file it came from
+(`habu-bind-a-recorded-78d51725`). A literal's value is read back from its
+spelling and every spelling that reader declines is refused rather than recorded
+as something else, until the engine's own parser is reachable
+(`habu-record-the-engine-79c570ed`).
+
+**A unit keeps the text it recorded, because nothing else does.** `IR-SOURCE`
+stores a source's length and the digest of its bytes, never the bytes, and the
+buffer the checker read from is the engine's own scratch - refilled by the next
+definition the process compiles. A later stage that must present the same text
+again, as instruction selection does when it carries spans into a second module,
+would otherwise have to reconstruct it and hope. So a unit is opened with a byte
+buffer the caller owns and the scan is copied into it as it opens; the caller
+reads the recorded length back off the frozen source registry, and every stage
+that presents those bytes is checked against the registry's content digest, so
+the copy is proved rather than trusted. A definition whose text is longer than
+the committed buffer is refused (`E-NFEED-TEXT`) rather than truncated, on the
+same terms as a tape too small for its tokens.
+
 ### 7.2 Stage N1: HIR — resolved Habu IR
 
 HIR preserves Habu's structured source semantics.
@@ -681,6 +805,109 @@ HIR validation checks the structured language rules but does not repeat the full
 #### Definition publication
 
 A colon definition is provisional while HIR is built. Its symbol may be referenced by `RECURSE`, but no dictionary record points to executable code until all later stages succeed.
+
+#### As implemented: the straight-line subset
+
+`src/compiler/native/hir.f` (package `HIR`) owns the operation family and
+`src/compiler/native/hir-word.f` (package `HIR-WORD`) owns the source-word
+model. Together they are the dialect for a colon body that only computes with
+integers, which is the first program the native chain has to compile end to end.
+Four decisions, each one a commitment later leaves inherit.
+
+**Five opcodes, and no promises.** `hir.const`, `hir.add`, `hir.sub`, `hir.mul`
+and `hir.return`. The rest of the list above - `if`, `loop`, `quotation`,
+`execute`, `catch` and the others - are later leaves of the same chain. An
+opcode with no elaborator, no lowering and no test would be a promise rather
+than a schema, so none is declared. The family is an `ENUM`, not a list of
+names, which makes the closed world of section 5.3 a property of the type: a
+later stage cannot name an operation this dialect does not have, and every
+`MATCH` over the family has to answer for all five.
+
+**`DUP`, `DROP`, `SWAP`, `OVER`, `NIP` and `ROT` are not operations.** Section
+7.3 already says they produce no SIR operation and therefore no runtime
+instruction. An `hir.dup` opcode would create an operation whose only job is to
+be deleted one stage later, and the stack traffic the old emitter generates is
+exactly what this pipeline exists to stop emitting. They are modeled instead as
+compile-time stack renames: a row records how many values the word consumes off
+the top of the value vector and which of them it puts back, in order, so the
+stack-to-SSA converter applies a rename by reading it rather than by carrying
+its own copy of what `OVER` means. The one rule is that a rename can only put
+back a value it consumed; repeating one, as `DUP` and `OVER` do, and dropping
+one, as `DROP` and `NIP` do, are both ordinary. The pick list is read off the
+stack comment bottom first, naming each value by its depth in the consumed
+window with zero being the top, so `ROT` ( a b c -- b c a ) is 1 0 2 and the two
+orders next to it are not: `-ROT` would be 0 2 1 and leaving the three values
+alone would be 2 1 0.
+
+**The may-trap flag is the compilation unit's numeric policy.** Design line 240
+records whether an operation may trap, and section 5.5 puts the numerical policy
+on the unit. Whether integer overflow traps is therefore not a fact about
+addition; it is a fact about the binding the context was created with, so
+registration reads `CNUM:OVERFLOW@` off the bound policy and the same three
+arithmetic opcodes register as may-trap under a trapping policy and as total
+under a wrapping one.
+
+**A source word means one of four things, and a refusal names its capability.**
+The word model answers `literal` for an integer-literal token, `op` for a word
+that elaborates to one operation, `rename` for a word that only rearranges the
+value vector, and refuses everything else. A refused word is either a declared
+boundary, which names the capability that has to land before it can be retired,
+or a word the model never declared at all; to checked source those are the same
+event. A character or string literal is a token kind the subset does not model
+and is refused as such rather than resolved as a name.
+
+The two halves cannot yet meet on one module. `IR-BUILD` hands out no live
+reader for a module's tables, so the source tape - which needs the module's live
+source registry and symbol rows to append a token - and the HIR module built
+from it cannot today be two halves of the same module, and the word model cannot
+ask the interner whether a presented symbol was really interned. Dot
+`habu-expose-live-ir-f0eaed6b` tracks the live readers that close all of that;
+the elaborator needs them.
+
+#### As implemented: the elaborator
+
+`src/compiler/native/elaborate.f` (package `NELAB`) walks one sealed source tape
+and builds the operations of a colon definition into a module under
+construction. Two decisions govern what it may read.
+
+**The definition frame is the recorded parser mode, not a spelling.** A produced
+tape has no `:` row and no `;` row - the engine consumed both before the checker
+saw anything - so an elaborator that matched those spellings could only ever
+elaborate tapes a test had built for it. What the tape does record is the mode
+each token was consumed in, and that draws the boundary exactly: `:` parses the
+defined name from the outer interpreter before switching the parser to
+compiling, so the name is the one token read while INTERPRETING and every body
+token was read while COMPILING. The elaborator therefore reads row zero as the
+name, walks every later row as the body, and ends the body where the tape ends -
+because the tape IS one definition, the unit `NFEED` opened and sealed around one
+scan. It holds no spelling of its own, so a compiler that spells its definition
+frame differently produces the same tape and elaborates the same way. Every row
+is mode-checked, not sampled: a second interpreting row is a tape of something
+other than one definition and is refused (`E-NELAB-MODE`). Two refusals retired
+with the frame: there is no frame word left whose immediate contract could be
+wrong, and no token can follow the definition.
+
+**The declared arity is still the caller's, at one seam.** Section 7.2 requires
+the elaborated operations to correspond to an accepted, source-bound checker
+certificate, and the checker does parse the declared signature during the very
+scan the tape was recorded from. But it publishes an effect only through a
+lookup by NAME into its live effect store (`EFFECT-QUERY` and the `EFFECT-*`
+readers in `src/core/checker.f`), which answers about whichever word carries that
+name at the moment of the call rather than about the definition a given tape is -
+a binding by lucky timing, not by structure. Binding the accepted effect to the
+recorded unit belongs to the frozen checker environment,
+`habu-bind-checker-env-ed4f9f87`, reached through `habu-bind-the-colon-ea509e61`;
+the same dot owns the definition's visibility, which is fixed to exported here
+while the package system is its real authority. Until then `NELAB:COLON` takes
+the two counts as its last two arguments and checks the body against them, so a
+body that leaves the wrong number of values is refused at elaboration rather than
+discovered later.
+
+`test/compiler/native-chain.f` is the acceptance for both: it hands one colon
+definition to `evaluate`, takes the tape the engine's own check hook produced,
+and carries it through elaboration, selection, allocation, validation and
+emission to instruction words it then publishes and calls, comparing the routine's
+answer with the interpreted word's. Nothing in that run is hand-built.
 
 ### 7.3 Stage N2: SIR — stack SSA
 
@@ -1582,6 +1809,9 @@ formal/
     Tables.v
     Digest.v
     Trace.v
+    Memory.v
+    Separation.v
+    Arena.v
   Habu/
     Source.v
     HIR.v
@@ -1630,6 +1860,34 @@ validate-pass input output witness = true
 ```
 
 The end-to-end theorem composes these refinements.
+
+#### Memory, separation, and arena obligations
+
+`Common/Memory.v` models allocation identity, address space, typed contents,
+byte bounds, alignment, permissions, and lifetime, with executable
+load/store/allocate/free semantics. A pointer is valid only for the named live
+allocation, address space, range, alignment, and access permission.
+
+`Common/Separation.v` defines disjoint heap union, shared-read and unique-write
+permissions, operation footprints, and alias/effect composition. It proves
+locality and a frame theorem: an operation changes only its declared footprint,
+and disjoint framed memory remains unchanged. Compiler alias classes and effect
+summaries are sound only when they imply these footprint facts.
+
+`Common/Arena.v` applies the resource model to compiler contexts, builders,
+arenas, marks, growth, abort, freeze, and release. Mutable ownership is unique;
+growth preserves published identities; abort and release consume owned storage
+exactly once; freeze removes mutation authority and produces shareable
+read-only storage.
+
+Native lowering proves refinement from typed source/IR heap actions through the
+target memory model, including allocation identity, bounds, alignment, lifetime,
+and ABI-visible address behavior. GPU proofs keep global, shared, local, and
+parameter spaces distinct, index ownership by thread or block where required,
+and permit overlapping writes only through a declared atomic or reduction
+semantics. Barrier proofs state the ownership transfer across phases; every
+covered kernel proves disjoint writes or the declared synchronization rule and
+therefore race-freedom.
 
 ### 10.3 Refinement direction
 
@@ -1807,7 +2065,7 @@ src/compiler/ir/context.f
 src/compiler/ir/arena.f
 src/compiler/ir/source.f
 src/compiler/ir/type.f
-src/compiler/ir/attribute.f
+src/compiler/ir/attr.f
 src/compiler/ir/schema.f
 src/compiler/ir/builder.f
 src/compiler/ir/freeze.f
@@ -1841,6 +2099,9 @@ NUMERIC-POLICY
 ### 13.2 Native pipeline
 
 ```text
+src/compiler/native/tape.f
+src/compiler/native/immediate.f
+
 src/compiler/hir/op.f
 src/compiler/hir/builder.f
 src/compiler/hir/elaborate.f
@@ -2419,14 +2680,37 @@ These are the first bounded leaves. They deliberately stop before any source is 
 
 #### IR-0.1 — ID families
 
-Add nominal IDs and private raw conversion in one package.
+Add nominal IDs and private raw conversion in one package, `IR-ID`. The package
+declares an opaque `ir-module-key`, a public `ir-module-id`, nine packed
+referential ID families, and the scalar `ir-count`/`ir-pool-offset` roles. Its
+private window owns the exact 26 representation `CAST:` words; no `IR-RAW`
+package exists. Both `IR-ID` wordlists are protected after definition.
+
+`NEW-MODULE` is the sole public module-key constructor. It allocates one
+nonzero process-wide serial through an aligned atomic CAS cell and returns the
+key plus its observable module ID. Packing and owner/bound checks require the
+key; projections return only the public module ID or module-local index.
+Require replay does not reset or reuse the allocator.
 
 Acceptance:
 
-- valid refinement/projection round trip;
+- valid key-based pack/projection round trip for all nine referential families;
+- a fresh-process `READY`/`GO` task fixture proves concurrent allocation yields
+  unique nonzero owners; its private test-only erase projection cannot mint an
+  identity or enter a production compiler package, and removing the barrier
+  fails the overlap witness; its activation-failure case catches exact
+  `E-TASK-STATE` and then reuses all four task objects in the same child, so
+  deleting cleanup fails;
+- replay preserves the monotonic allocator;
 - wrong-family use rejected by the checker;
-- out-of-bound refinement throws a named code;
-- no per-dialect trusted cast.
+- negative/equal-to-bound/overflow local indices and foreign owners throw named
+  codes;
+- no public raw converter, key mint, legacy `IR-RAW`, or per-dialect cast;
+- `CAST:` declarations into resolved scalar-cell families, including
+  parametric `NEWTYPE` instances, are accepted only in the destination family's
+  declaring package; the owner check uses the engine's live namespace record
+  and actual definition wordlist rather than mutable checker mirror state;
+  projection casts remain unrestricted.
 
 #### IR-0.2 — source registry and spans
 

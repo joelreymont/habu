@@ -354,8 +354,8 @@ TRUSTED: WRITE-ONE ( ptr a n -- n ) {: out:ptr value:n :}
 ```
 
 The wrapper's checked callers cannot reclassify `out` or change its eight-byte
-extent. The `TRUSTED.md` row owns the symbol contract; focused tests cover the
-writer guard and the checked public effect.
+extent. The boundary's source-local rationale owns the symbol contract; focused
+tests cover the writer guard and the checked public effect.
 
 ```forth
 FFI:RESET         ( -- )
@@ -1619,9 +1619,9 @@ day, or `NONE` on malformed input. `DATE:FORMAT-YMD` writes `YYYY-MM-DD`; `DATE:
 ## Argv
 
 `lib/argv.f` provides checked command-line parsing for `hb script.f args...`
-scripts and multi-source tools. `lib/argv.f` is a symlink to `lib/argv.f`, so
-the tool CLIs and the stdlib share one packaged module and call it through the
-qualified `ARGV:` API. The parser reads `SCRIPT-ARGC` and `SCRIPT-ARGV$` by
+scripts and multi-source tools. The tool CLIs and the stdlib share this one
+packaged module and call it through the qualified `ARGV:` API. The parser reads
+`SCRIPT-ARGC` and `SCRIPT-ARGV$` by
 default, or an
 in-memory mock argv set for focused tests. `ARGV:PARSE` recognizes `--json`,
 `--json-errors`, `--label NAME`, `--strict-signatures`, `--all-errors`,
@@ -1986,11 +1986,5 @@ bin/hb --load \
   tools/public-signatures.f -- lib/<module>.f
 ```
 
-The manifest, docs, source coverage, and signature drift are validated by
-`tools/stdlib-manifest-test.f`.
-
-Run the focused check with:
-
-```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/stdlib-manifest-test.f
-```
+The `effect` field is kept honest by re-running the signature emitter above and
+comparing its output with the recorded row.

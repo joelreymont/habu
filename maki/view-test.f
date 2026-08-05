@@ -21,7 +21,7 @@ TENSOR:TV-RESET
 create VS 24 cells allot
 : VS-INIT ( -- )  24 0 ?do  i 1+ s>f  VS i T-SET  loop ;
 VS-INIT
-variable VST   VS 4 6 SHAPE TENSOR:TV-NEW  VST !
+TYPED-VARIABLE VST TENSOR:tensor   VS 4 6 SHAPE TENSOR:TV-NEW  VST !
 
 \ ===========================================================================
 \ SV-1: representation - the degenerate view IS the old contiguous path.
@@ -37,7 +37,7 @@ VST @ TENSOR:TV-STORE@ VST @ TENSOR:TV-EQUAL? TTRUE   \ storage-ref = self
 VST @ TENSOR:TV-DATA@ VS =  TTRUE            \ flat buffer accessor unchanged (bit-identical)
 
 \ col-major degenerate: natural strides (1, rows) => classified contiguous-col
-variable VC   VS 4 6 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:COL TENSOR:TV-NEW-HOST  VC !
+TYPED-VARIABLE VC TENSOR:tensor   VS 4 6 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:COL TENSOR:TV-NEW-HOST  VC !
 VC @ TENSOR:TV-RSTR@  1 T=
 VC @ TENSOR:TV-CSTR@  4 T=
 VC @ TENSOR:TV-CONTIG-COL? TTRUE
@@ -48,7 +48,7 @@ VC @ TENSOR:TV-STRIDED?    TFALSE
 \ SV-2: constructors - extents, strides, and strided reads.
 \ ===========================================================================
 \ WINDOW rows [1,3): 2x6, offset 6, base strides inherited, off!=0 => strided.
-variable VW   VST @ 1 3 TENSOR:TV-WINDOW  VW !
+TYPED-VARIABLE VW TENSOR:tensor   VST @ 1 3 TENSOR:TV-WINDOW  VW !
 VW @ TENSOR:TV-ROWS@ ROWS-RAW 2 T=
 VW @ TENSOR:TV-COLS@ COLS-RAW 6 T=
 VW @ TENSOR:TV-OFF@  6 T=
@@ -59,7 +59,7 @@ VW @ 0 0 TENSOR:TV-AT@  0.5 f+ f>s  7 T=          \ S[6]  = 7
 VW @ 1 5 TENSOR:TV-AT@  0.5 f+ f>s 18 T=          \ S[17] = 18
 
 \ TRANSPOSE-VIEW of a row-major 4x6 => a contiguous col-major 6x4 (strides swapped).
-variable VT   VST @ TENSOR:TV-TRANSPOSE-VIEW  VT !
+TYPED-VARIABLE VT TENSOR:tensor   VST @ TENSOR:TV-TRANSPOSE-VIEW  VT !
 VT @ TENSOR:TV-ROWS@ ROWS-RAW 6 T=
 VT @ TENSOR:TV-COLS@ COLS-RAW 4 T=
 VT @ TENSOR:TV-CONTIG-COL? TTRUE                  \ classification: contiguous-col
@@ -69,7 +69,7 @@ VT @ 0 1 TENSOR:TV-AT@  0.5 f+ f>s  7 T=          \ S[6]  = 7  (transpose)
 VT @ 2 3 TENSOR:TV-AT@  0.5 f+ f>s 21 T=          \ S[20] = 21
 
 \ HEAD-SPLIT head 1 of a 4x(H*hd)=4x6 buffer (H=2, hd=3): 4x3, offset 3.
-variable VH   VST @ 1 2 3 TENSOR:TV-HEAD-SPLIT  VH !
+TYPED-VARIABLE VH TENSOR:tensor   VST @ 1 2 3 TENSOR:TV-HEAD-SPLIT  VH !
 VH @ TENSOR:TV-ROWS@ ROWS-RAW 4 T=
 VH @ TENSOR:TV-COLS@ COLS-RAW 3 T=
 VH @ TENSOR:TV-OFF@  3 T=
@@ -78,7 +78,7 @@ VH @ 0 0 TENSOR:TV-AT@  0.5 f+ f>s  4 T=          \ S[3]  = 4  (head 1, col 0)
 VH @ 3 2 TENSOR:TV-AT@  0.5 f+ f>s 24 T=          \ S[23] = 24
 
 \ general VIEW: offset 1, 2x2, row stride 6, col stride 2.
-variable VG   VST @ 1 2 2 6 2 TENSOR:TV-VIEW  VG !
+TYPED-VARIABLE VG TENSOR:tensor   VST @ 1 2 2 6 2 TENSOR:TV-VIEW  VG !
 VG @ 0 0 TENSOR:TV-AT@  0.5 f+ f>s  2 T=          \ S[1]  = 2
 VG @ 0 1 TENSOR:TV-AT@  0.5 f+ f>s  4 T=          \ S[3]  = 4
 VG @ 1 0 TENSOR:TV-AT@  0.5 f+ f>s  8 T=          \ S[7]  = 8
@@ -168,8 +168,8 @@ VA 7 T-GET  VW-COT 1 T-GET  f- f>s 0 T=           \ S[7] gets W(0,1)
 \ ---- fan-out accumulation: two overlapping windows sum into one adjoint --------
 \ W1=[0,2) rows{0,1} at offset 0 ; W2=[1,3) rows{1,2} at offset 6 ; row 1 (S[6..11])
 \ is shared, so its adjoint accumulates BOTH cotangents (all 1.0 here).
-variable VW1   VST @ 0 2 TENSOR:TV-WINDOW  VW1 !
-variable VW2   VST @ 1 3 TENSOR:TV-WINDOW  VW2 !
+TYPED-VARIABLE VW1 TENSOR:tensor   VST @ 0 2 TENSOR:TV-WINDOW  VW1 !
+TYPED-VARIABLE VW2 TENSOR:tensor   VST @ 1 3 TENSOR:TV-WINDOW  VW2 !
 create VONES 12 cells allot
 : ONES ( -- )  12 0 ?do  1.0 VONES i T-SET  loop ;   ONES
 0.0 VA 24 T-FILL

@@ -21,8 +21,8 @@
 \
 \ The raw self-path read (apple[] pointer walk / readlink syscall) is the one
 \ boundary the checker cannot express (ptr-NULL tests, indexing the startup image
-\ past envp); it lives in the two TRUSTED helpers below, each with a TRUSTED.md
-\ row. Everything public is checked.
+\ past envp); it lives in the two TRUSTED helpers below. Everything public is
+\ checked.
 
 require lib/errors.f
 require lib/string.f

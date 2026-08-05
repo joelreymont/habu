@@ -8,7 +8,6 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - `AGENTS.md` — conventions and the gate.
 - `docs/forth.md` — Forth style rules (BLOCKING).
 - `LESSONS.md` (top) — the project's running memory; the latest findings.
-- `STATUS.md` — the current self-check counts and known gaps.
 
 ## 1. Conventions (BLOCKING)
 - **Our words UPPER-CASE** (`SQUARE`, `AVG2`); built-in Forth words stay
@@ -34,7 +33,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   An accepted def is silently added; a rejected one is dropped. For interactive
   **verify mode** (body vs declared sig), prepend `' CHECK! set-check`.
 - For repair loops, run the native checker script:
-  `bin/hb --load lib/date.f lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f tools/json-only-core.f tools/signature-lint-core.f tools/checked-boundary-lint-core.f tools/trust-lint-core.f tools/check-all-errors-core.f lib/argv.f tools/check.f -- --json-errors --all-errors file.f`.
+  `bin/hb --load lib/date.f lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f tools/json-only-core.f tools/signature-lint-core.f tools/checked-boundary-lint-core.f tools/check-all-errors-core.f lib/argv.f tools/check.f -- --json-errors --all-errors file.f`.
   It exits nonzero on checker failure and emits one schema-versioned JSON object
   per failed top-level definition with file/line/column/byte spans. Use
   `docs/repair-diagnostics.md` as the Repair diagnostic schema, and use
@@ -44,8 +43,8 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 - Authoritative verdict (-1 certified / 0 rejected / 1 uncheckable) is native:
   use `bin/hb` for quick checks and `tools/check.f` under `bin/hb --load ... --`
   for files. `CHECK` infers the body's effect; `CHECK!` verifies the body
-  against its declared `( in -- out )`. No-binary recovery uses
-  `tools/seed.sh /path/to/hb-seed`.
+  against its declared `( in -- out )`. No-binary recovery is `docs/bootstrap.md`;
+  a trusted native seed is `docs/seed.md`.
 
 ## 4. On checker rejection: FIX THE BODY, NOT THE SIGNATURE
 - A rejection means the body's real effect ≠ the declared `( in -- out )`. The
@@ -56,10 +55,9 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 ## 5. TRUST is the last resort (audited)
 - `TRUST` declares an effect without checking the body (FFI, metaprogramming,
   `create…does>`): `s" MYWORD" s" n -- n" trust`. Callers are still checked.
-- **Never use TRUST without:** (a) a `TRUSTED.md` audit entry — word, asserted
-  effect, why it can't be inferred, who verified it; and (b) a `T{ … -> … }T`
-  test proving the runtime behavior matches the asserted effect.
-  `tools/trust-lint.f` enforces this.
+- **Never use TRUST without:** (a) source-local rationale stating the asserted
+  effect, why it cannot be inferred, and the retirement owner; and (b) a focused
+  production-path test proving the runtime behavior matches the asserted effect.
 
 ## 6. Test every word
 - Add a `T{ … -> … }T` for each word as you write it — happy path plus each
@@ -69,9 +67,9 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 
 ## 7. Run the gate
 - `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test/runner.f test/gate-pool.f test/run.f` — habu-native, no gforth. Must be green.
-- If `bin/hb` is missing, install a trusted native seed with
-  `tools/seed.sh /path/to/hb-seed`; the seed immediately rebuilds current source
-  through the native build-fixpoint installer.
+- If `bin/hb` is missing, install a trusted native seed with the checked command
+  in `docs/seed.md`; the seed immediately rebuilds current source through the
+  native build-fixpoint installer.
 
 ## 8. Record lessons
 - On any new finding, mistake, or insight, add a lesson to `LESSONS.md` (lessons

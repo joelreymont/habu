@@ -98,9 +98,7 @@ Single-value `-- <one> bool` (65 total; biggest option<scalar> class):
 - Parsers → option<n>: `lib/string.f:214 STR-PARSE-POS`, `:222 STR-PARSE-NEG`,
   `:230 STR>NUMBER?` (radius **16**); `lib/date.f:125 DATE-N`, `:134
   PARSE-YMD`; `tools/date.f:126,135`; `tools/imgdump.f:268,280,292`,
-  `tools/imagedisasm.f:70,96`, `tools/trusted-inventory.f:689 PARSE-COUNT`,
-  `tools/gate-json-assert-core.f:124 GJA-U?`,
-  `tools/stdlib-manifest-test.f:786`.
+  `tools/imagedisasm.f:70,96`, `tools/gate-json-assert-core.f:124 GJA-U?`.
 - Floats → option<r>: `lib/float.f:41 FL-DIGITS>F`, `:63 FL-SIG`,
   `:87 STR>FLOAT`.
 - Lookups → option<val>: `lib/map.f:206 MAP-GET ( … -- n bool )` (radius
@@ -190,26 +188,25 @@ vs typed compat layer; straight migration flips ~7 fixtures.
 
 ## 4. Trusted boundaries that shrink once ADTs land
 
-Correction to the premise: the formally-tagged `discharge-candidate` rows in
-TRUSTED.md (checker self-typing `*-RC>PTR`/`USIGS-CELL-AT`, combinators) are
+The checker self-typing boundaries (`*-RC>PTR`/`USIGS-CELL-AT`, combinators) are
 NOT sum/option-dischargeable — they are rc>ptr self-casts and combinator
 boundaries owned by other capability dots.
 
-The ADT-dischargeable rows are the null/unset-sentinel rows (currently
-`builder-emit`/`stdlib-boundary`/`prim-axiom`), which exist only because the
-checker has no option/null-literal:
-- `TRUSTED.md:82 BP-NULL -- ptr u8` (null code-pointer sentinel) → option<ptr>
-- `TRUSTED.md:325 TASK-NULL -- ptr a` → option<ptr> (`lib/task.f`)
-- `TRUSTED.md:135-136 c-defer-find-unset / c-defer-cell` (unset sentinel xt)
+The ADT-dischargeable boundaries are the null/unset-sentinel ones, which exist
+only because the checker has no option/null-literal:
+- `BP-NULL -- ptr u8` (null code-pointer sentinel) → option<ptr>
+- `TASK-NULL -- ptr a` → option<ptr> (`lib/task.f`)
+- `c-defer-find-unset` / `c-defer-cell` (unset sentinel xt)
   → option<xt> / typed defer (`src/habu/habu2.f`; DEFER-UNSET is option<xt>)
-- `TRUSTED.md:403 NULL$ -- ptr u8 n` (absent env values) → option<str>
-  (`src/os/env-base.f`; also `:401 ENV-FALSE`)
-- `TRUSTED.md:89 BFR-USIG-END-PTR` reset sentinel — weaker candidate.
+- `NULL$ -- ptr u8 n` (absent env values) → option<str>
+  (`src/os/env-base.f`; also `ENV-FALSE`)
+- `BFR-USIG-END-PTR` reset sentinel — weaker candidate.
 
-Classification: ~6–8 rows discharge once option/sum land; the overwhelming
-majority (engine/asm builder-emit rows, raw-syscall rows, prim-axiom nominal
-casts, FFI boundaries) are genuinely unexpressible and stay. The ADT campaign
-itself adds zero trust rows; discharges are separate follow-on dots.
+Classification: ~6–8 boundaries discharge once option/sum land; the overwhelming
+majority (engine/asm emitter boundaries, raw-syscall boundaries, prim-axiom
+nominal casts, FFI boundaries) are genuinely unexpressible and stay. The ADT
+campaign itself adds zero trust boundaries; discharges are separate follow-on
+dots.
 
 ## 5. Dependency-ordered migration waves
 
@@ -220,7 +217,7 @@ Nothing migrates on item 8 alone.
 - **Wave A (after 8+9+12)** — option<scalar>: the 65 single-value+flag
   parser/lookup words + the ~15 `-1`-index finders. ~80 sites across
   lib/string,date,float,map,process-env + tools/{imgdump,imagedisasm,date,
-  json,trusted-inventory}. FIND-SUB/INDEX-OF have the widest caller edits.
+  json}. FIND-SUB/INDEX-OF have the widest caller edits.
 - **Wave B (multi-cell proven)** — option<tuple>/result: 25 multi-value+flag
   words (SPLIT-NEXT, NEXT-LINE, RX-FIND*, LOAD, JSONL rows) + the 34-site
   process rc family → result<T,errno>; raw emitters stay sentinel at the
