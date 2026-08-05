@@ -84,11 +84,11 @@ create SBT-DQ2 #BB #BH * #BI * #BK * cells allot       \ dQ after a cross-batch 
 
 \ plain replicated-loop reference: per (b,h) block, the Q.K^T score; distinct locals so the
 \ position args never collide with the loop-index words i/j (a real batched-code footgun).
-: SBT-QIDX ( b h p k -- n ) {: b:n h:n p:n k:n :}  b #BH * h + #BI * p + #BK * k + ;
-: SBT-REF-EL ( b h p q -- r ) {: b:n h:n p:n q:n :}
+: SBT-QIDX ( n n n n -- n ) {: b:n h:n p:n k:n :}  b #BH * h + #BI * p + #BK * k + ;
+: SBT-REF-EL ( n n n n -- r ) {: b:n h:n p:n q:n :}
    0.0 #BK 0 ?do  SBT-BQ b h p i SBT-QIDX T-GET  SBT-BK b h q i SBT-QIDX T-GET  f* f+  loop ;
-: SBT-SIDX ( b h p q -- n ) {: b:n h:n p:n q:n :}  b #BH * h + #BI * p + #BJ * q + ;
-: SBT-REF-BLK ( b h -- ) {: b:n h:n :}
+: SBT-SIDX ( n n n n -- n ) {: b:n h:n p:n q:n :}  b #BH * h + #BI * p + #BJ * q + ;
+: SBT-REF-BLK ( n n -- ) {: b:n h:n :}
    #BI 0 ?do #BJ 0 ?do  b h j i SBT-REF-EL  SBT-RS b h j i SBT-SIDX T-SET  loop loop ;
 : SBT-REF ( -- )  #BB 0 ?do #BH 0 ?do  j i SBT-REF-BLK  loop loop ;
 
