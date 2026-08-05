@@ -7,7 +7,8 @@
 \   UNTERMINATED-QUOTE MALFORMED-REGISTRY   diagnostic kinds from ERROR-KIND@
 \   SOURCE ( ptr u8 n -- )             scan a buffer; clears all prior state first
 \   COUNT ( -- n )                     tokens produced by the last SOURCE
-\   TOKEN CONTENT ( n -- ptr u8 n )    token span / paren-comment body span
+\   TOKEN CONTENT ( n -- ptr u8 n )    token span / paren-comment body or
+\                                      string-literal payload span
 \   KIND@ BYTE@ LINE@ COL@ ( n -- n )  kind, 0-based byte, 1-based line, 1-based column
 \   ERROR? ( -- bool )                 the last scan hit malformed input
 \   ERROR-KIND@ ERROR-BYTE@ ERROR-LINE@ ERROR-COL@ ( -- n )
@@ -144,7 +145,7 @@ create CLEN-V VEC-HEADER-CELLS cells allot
 public
 
 1 constant WORD                 \ KIND@: whitespace-delimited word token
-2 constant COMMENT              \ KIND@: `( ... )` comment token, body read via CONTENT
+2 constant COMMENT              \ KIND@: `( ... )` or `.( ... )` comment, body via CONTENT
 3 constant REGISTRY             \ KIND@: one complete PRIM:/PPRIM: primitive-axiom row
 
 1 constant UNTERMINATED-QUOTE   \ ERROR-KIND@: a string literal ran past end of input
@@ -256,14 +257,35 @@ private
    POS @ 1+ SRC-U @ >= if LINT-TRUE exit then
    SRC@ POS @ 1+ + c@ ENGINE-DELIM? ;
 
-: PAREN-COMMENT ( -- )
-   ADV drop
+\ Emit one COMMENT token for a paren-delimited inert span whose opener is already
+\ consumed, so POS sits on the first body byte. The token spans from the opener
+\ site the caller recorded in START through the closing `)`; an opener that never
+\ closes ends the span at end of input, which is not a diagnostic because the
+\ unread text is inert either way.
+: PAREN-BODY ( -- )
    POS @ CSTART !
    TO-PAREN
    POS @ CSTART @ - CLEN !
    END? 0= if ADV drop then
    COMMENT CUR$ START @ START-LINE @ START-COL @
    BODY-A BODY-U ADD ;
+
+: PAREN-COMMENT ( -- )
+   ADV drop PAREN-BODY ;
+
+\ `.( ... )` is the printing comment. The engine reads its opener with
+\ `parse-name`, so the opener is the whole token `.(` rather than the `(` inside
+\ it: it arrives on the word path and is recognised there by exact spelling. That
+\ is what makes `.(X)` an ordinary word, for the same reason `(CMP)` is one, and
+\ it needs no separate standalone test because a word IS the standalone unit.
+\ The body is inert source exactly like a `( ... )` body, so it becomes a COMMENT
+\ token whose CONTENT is that body; the printing is a runtime effect no lexer
+\ models. Without this rule a word-at-a-time reader hands the body out as
+\ ordinary tokens, and a consumer that counts declarations reads a declaration
+\ the engine never performs - test/bootstrap-wide-memory.fs really does open a
+\ file with one.
+: PRINT-OPEN? ( ptr u8 n -- bool )
+   s" .(" LINT-STR= ;
 
 \ ---- primitive-axiom rows (`PRIM: ... PRIM;`, `PPRIM: pkg ... PPRIM;`) ---------
 \ The engine reads a row's name (and a package row's package) with `parse-name`,
@@ -332,7 +354,7 @@ private
 : PRIVATE-CLOSE? ( ptr u8 n -- bool )
    s" CLOSE-PRIVATE" LINT-STR=CI ;
 
-\ Closer roles follow tools/primitive-effect-inventory.f: `PRIM;` closes a bare
+\ Closer roles: `PRIM;` closes a bare
 \ row; a package row closes with `PPRIM;` (public wordlist) or `CLOSE-PRIVATE`
 \ (package private wordlist). A bare row has no package wordlist, so
 \ `CLOSE-PRIVATE` there is an ordinary effect field, not a closer.
@@ -390,10 +412,19 @@ private
    HALTED @ if exit then
    FAM @ ROW-PKG = if HDR-FIELD then ;
 
+\ A row body is interpreted, so `.( ... )` there parses its own text exactly like
+\ `s" ... "` does: a closer spelled inside a print body is that text and not this
+\ row's closer. false = the print body ran past end of input.
+: SKIP-PRINT ( -- bool )
+   TO-PAREN
+   END? if LINT-FALSE exit then
+   ADV drop LINT-TRUE ;
+
 \ false = the operand ran past end of input, so the row can never close.
 : FIELD-OPERAND ( -- bool )
    F$ LINT-ESC-STRING-OPENER? if SKIP-ESC-QUOTE exit then
    F$ LINT-NORMAL-STRING-OPENER? if SKIP-QUOTE exit then
+   F$ PRINT-OPEN? if SKIP-PRINT exit then
    F$ PARSE-NEXT? if NEXT-FIELD FLEN @ 0 <> exit then
    LINT-TRUE ;
 
@@ -428,7 +459,7 @@ private
    COUNT 0= if LINT-FALSE exit then
    COUNT 1- KIND@ WORD = ;
 
-\ The same name-position set tools/primitive-effect-inventory.f uses: after one
+\ The engine's parsed-name positions: after one
 \ of these the engine consumes the next word as a parsed name and never executes
 \ it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in src/core/checker.f declares the
 \ opener rather than opening a row.
@@ -444,20 +475,52 @@ private
    CUR$ ROW-OPEN? 0= if LINT-FALSE exit then
    NAME-POS? LINT-NOT ;
 
+\ The same name-position rule a row opener obeys: after `:` or `'` the engine
+\ parses the next word as a name and never executes it, so `: .( ( -- ) ;`
+\ DEFINES a word spelled `.(` instead of opening a printing comment.
+: PRINT-START? ( -- bool )
+   CUR$ PRINT-OPEN? 0= if LINT-FALSE exit then
+   NAME-POS? LINT-NOT ;
+
+\ Swallow the literal and answer the bytes it held, together with whether it
+\ closed. The payload starts one byte past the opener, because the opener is
+\ followed by exactly one delimiter; it ends at the byte before the closing
+\ quote, which is where POS now sits minus one. An unterminated literal has no
+\ payload to report.
+: STRING-PAYLOAD ( bool -- ptr u8 n bool ) {: esc:bool :}
+   POS @ 1+ {: pstart:n :}
+   esc if SKIP-ESC-QUOTE else SKIP-QUOTE then {: closed:bool :}
+   closed 0= if SRC@ 0 closed exit then
+   SRC@ pstart + POS @ 1- pstart - closed ;
+
+: STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u LINT-ESC-STRING-OPENER? if LINT-TRUE exit then
+   a u LINT-NORMAL-STRING-OPENER? ;
+
+\ A string-literal token carries its payload in CONTENT, exactly as a paren
+\ comment carries its body there. The payload is deliberately never tokenized -
+\ that is what stops a quoted word being mistaken for code - so without this a
+\ consumer that has to reason about a quoted NAME has no route to it but
+\ substring search over the raw source, which is the evasion route this lexer
+\ exists to close. The checker's own concrete type table is written that way
+\ (`s" n" CC-N CT-INT 64 CS-GENERIC CT-SET`), and the type names in it are only
+\ reachable here.
 : SCAN-WORD ( -- )
    begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
    ROW-START? if
       CUR$ PPRIM-OPEN? if ROW-PKG else ROW-BARE then SCAN-ROW
       exit
    then
-   WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD
-   COUNT 1- dup TOKEN LINT-ESC-STRING-OPENER? if
-      SKIP-ESC-QUOTE 0= if dup MARK-UNTERM then
-   else
-      dup TOKEN LINT-NORMAL-STRING-OPENER? if
-         SKIP-QUOTE 0= if dup MARK-UNTERM then
-      then
-   then drop ;
+   \ `.(` is already consumed by the word scan, so the print body starts at POS.
+   PRINT-START? if PAREN-BODY exit then
+   CUR$ {: a:ptr u:n :}
+   START @ START-LINE @ START-COL @ {: byte:n line:n col:n :}
+   a u STRING-OPENER? 0= if
+      WORD a u byte line col SRC@ 0 ADD exit
+   then
+   a u LINT-ESC-STRING-OPENER? STRING-PAYLOAD {: pa:ptr pu:n closed:bool :}
+   WORD a u byte line col pa pu ADD
+   closed 0= if COUNT 1- MARK-UNTERM then ;
 
 public
 

@@ -6,7 +6,8 @@ require tools/lint/text.f
 require tools/lint/intern.f
 require tools/event-closure-lib.f
 
-$10000 constant PS-FILE-CAP
+package PS
+
 256 constant PS-WORD-CAP
 1024 constant PS-SIG-CAP
 32 constant PS-NUM-CAP
@@ -32,8 +33,17 @@ $10000 constant PS-FILE-CAP
 1 constant PS-WORD
 2 constant PS-COMMENT
 
-create PS-FILE-BUF PS-FILE-CAP allot
-create PS-CLOSURE-BUF PS-FILE-CAP allot
+\ Two live sources at once: the entry file, whose bytes have to survive the
+\ closure prescan that renders before them, and the dependency being prescanned.
+\ Both grow with the stdlib - lib/errors.f alone is past 80 KB - so each gets a
+\ slab sized from the file rather than a fixed arena that the next error block
+\ overruns.
+create SRC-SLAB LINT-SLAB:CELLS cells allot
+create DEP-SLAB LINT-SLAB:CELLS cells allot
+
+: SRC$ ( -- ptr u8 n )
+   SRC-SLAB LINT-SLAB:TEXT ;
+
 create PS-WORD-BUF PS-WORD-CAP allot
 create PS-PKG-BUF PS-WORD-CAP allot
 create PS-SIG-BUF PS-SIG-CAP allot
@@ -42,7 +52,6 @@ create PS-NUM-BUF PS-NUM-CAP allot
 create PS-ONE 1 allot
 
 variable PS-I
-variable PS-CLOSURE-TU
 variable PS-CLOSURE-I
 variable PS-NUM-I
 variable PS-FIRST?
@@ -77,7 +86,9 @@ variable PS-NAME-LINE
 variable PS-NAME-COL
 variable PS-SIG-A
 variable PS-SIG-U
+public
 variable PS-TRUST
+private
 variable PS-ARG-I
 variable PS-OUT-A
 variable PS-OUT-CAP
@@ -180,6 +191,7 @@ variable PS-DEF-SIG-U
 
 : PS-DIE ( ptr u8 n -- )  76 die ;
 
+public
 : PS-OUT-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
    a PS-OUT-A!
    cap PS-OUT-CAP !
@@ -204,6 +216,7 @@ variable PS-DEF-SIG-U
 : PS-ERR$ ( -- ptr u8 n )
    PS-ERR-A@ PS-ERR-U @ ;
 
+private
 : PS-WRITE-BUFFERED ( n ptr u8 n -- bool ) {: fd:n a:ptr u:n :}
    fd 1 = PS-OUT-A@ 0= 0= and IF
       a u STR:LENGTH PS-OUT-A@ PS-OUT-CAP @ STR:LENGTH PS-OUT-U STR:BUF-APPEND
@@ -238,10 +251,12 @@ variable PS-DEF-SIG-U
    2 a u PS-WRITE
    PS-LF-C PS-ERR-C ;
 
+public
 : PS-USAGE ( -- )
    s" usage: tools/public-signatures.f [--trust] file ..." PS-ERRLN
    64 throw ;
 
+private
 : PS-U$ ( n -- ptr u8 n ) {: u:n :}
    PS-NUM-CAP PS-NUM-I !
    u 0= IF
@@ -526,8 +541,8 @@ variable PS-DEF-SIG-U
    PS-TOK-A@ PS-TOK-U @ LINT-NORMAL-STRING-OPENER? IF PS-SKIP-QUOTE THEN THEN ;
 
 \ `(` opens a comment only as a STANDALONE token (next byte is whitespace or
-\ EOF); a paren-initial word name like `(CMP)` lexes as a WORD. Mirrors the
-\ trusted-inventory PAREN-STANDALONE? rule so both lexers agree.
+\ EOF); a paren-initial word name like `(CMP)` lexes as a WORD. This is the
+\ canonical source-token rule shared with the repository lints.
 : PS-PAREN-STANDALONE? ( -- bool )
    PS-X @ 1+ PS-SRC-U @ >= IF PS-TRUE exit THEN
    PS-SRC-A@ PS-X @ 1+ + c@ PS-WS? ;
@@ -557,7 +572,7 @@ variable PS-DEF-SIG-U
 
 : PS-COLLECT-EXPORTS ( -- )
    INTERN-RESET
-   PS-FILE-BUF PS-TU @ PS-LEX-START
+   SRC$ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
          PS-TOK$ s" EXPORT" LINT-STR=CI IF
@@ -665,7 +680,7 @@ variable PS-DEF-SIG-U
    PS-PUBLIC? IF PS-EXPORTED-FLAG file-a file-u PS-EMIT-PUBLIC THEN ;
 
 \ Copy the package name into a stable buffer: the token bytes live in the
-\ transient PS-CLOSURE-BUF / PS-FILE-BUF, which the next dep read or the entry
+\ transient closure and entry slabs, which the next dep read or the entry
 \ scan overwrites. Storing a raw pointer there dangles once the opener is not the
 \ last file processed - which is exactly the nested-unclosed-package case under
 \ true load order. PS-PKG-BUF is owned bytes, so the residual name survives.
@@ -695,7 +710,7 @@ variable PS-DEF-SIG-U
    0 PS-PKG-U ! ;
 
 : PS-SCAN-DEFS-BODY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
-   PS-FILE-BUF PS-TU @ PS-LEX-START
+   SRC$ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
          PS-TOK$ PS-SCOPE-TOKEN? IF
@@ -719,8 +734,8 @@ variable PS-DEF-SIG-U
 \ replayed; balanced packages leave no residual and self-contained files see an
 \ empty closure, so their output is unchanged.
 : PS-PRESCAN-DEP ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u PS-CLOSURE-BUF PS-FILE-CAP READ-FILE nip PS-CLOSURE-TU !
-   PS-CLOSURE-BUF PS-CLOSURE-TU @ PS-LEX-START
+   a u DEP-SLAB LINT-SLAB:LOAD
+   DEP-SLAB LINT-SLAB:TEXT PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF PS-TOK$ PS-SCOPE-TOKEN? drop THEN
    repeat ;
@@ -748,19 +763,24 @@ variable PS-DEF-SIG-U
 3 constant PS-TK-ENUM                    \ TK-ENUM: payload-free sum
 create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
 
+public
 : PS-CSIG-RESET ( -- ) 0 PS-CSIG-W ! ;
+private
 : PS-CSIG-C, ( n -- )
    PS-CSIG-W @ PS-SIG-CAP >= IF s" public-signatures: constructor signature too long" PS-DIE THEN
    PS-CSIG-BUF PS-CSIG-W @ + c!  PS-CSIG-W @ 1+ PS-CSIG-W ! ;
 : PS-CSIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do  a i + c@ PS-CSIG-C,  loop ;
+public
 : PS-CSIG$ ( -- ptr u8 n ) PS-CSIG-BUF PS-CSIG-W @ ;
 
+private
 : PS-PARAM-CHAR ( n -- n )
    TFAM-DECL-PARAM>CHAR 0= IF
       drop s" public-signatures: declaration parameter index out of range" PS-DIE
    THEN ;
 
+public
 : PS-FAM-ARGS ( n -- )                   \ append `<a,b,..>` for arity>0 (nothing at 0)
    dup 0= IF drop EXIT THEN {: ar:n :}
    60 PS-CSIG-C,                          \ '<'
@@ -770,6 +790,7 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
    loop
    62 PS-CSIG-C, ;                        \ '>'
 
+private
 : PS-CTOR-SIG$ ( n -- ptr u8 n ) {: fam:n :}   \ "-- family<args>"
    PS-CSIG-RESET
    45 PS-CSIG-C,  45 PS-CSIG-C,  32 PS-CSIG-C,   \ "-- "
@@ -863,8 +884,9 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
       i PS-DRV-PUBLIC? IF i file-a file-u PS-EMIT-FAM-DRV THEN
    loop ;
 
+public
 : PS-SCAN-FILE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
-   file-a file-u PS-FILE-BUF PS-FILE-CAP READ-FILE nip PS-TU !
+   file-a file-u SRC-SLAB LINT-SLAB:LOAD
    PS-COLLECT-EXPORTS
    PS-RESET-SCOPE
    file-a file-u PS-PRESCAN-CLOSURE
@@ -884,6 +906,7 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
    PS-JSON-OBJECT-END
    PS-LF-C PS-C ;
 
+private
 : PS-PARSE-ARGS ( -- )
    0 PS-TRUST !
    0 PS-ARG-I !
@@ -894,6 +917,7 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
    THEN
    PS-ARG-I @ SCRIPT-ARGC >= IF PS-USAGE THEN ;
 
+public
 : PS-MAIN ( -- )
    PS-PARSE-ARGS
    PS-JSON-DOC-START
@@ -902,3 +926,5 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
       PS-ARG-I @ 1+ PS-ARG-I !
    repeat
    PS-JSON-DOC-END ;
+
+;package

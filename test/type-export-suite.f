@@ -1,7 +1,7 @@
 \ type-export-suite.f — checker-level EXPORT alias suite (CHECKER-EXPORT, dot
 \ habu-compiler-pkg-re-688212c1). Run BY THE ENGINE over stdin, exactly like
-\ test/type-family-rollback-suite.f (checker words resolve at top-level
-\ interpret only):
+\ test/type-family-rollback-suite.f. Direct checker operations execute inside
+\ real engine package blocks so package authority comes from the live package:
 \     bin/hb < test/type-export-suite.f
 \ Covers: cross-package alias fidelity (one scheme, two names, source
 \ untouched), private->public promotion, defer + control-flag copy, quotation
@@ -43,13 +43,15 @@ TRUSTED: TWX-NORET-ADD ( ptr u8 n n -- ) NORET-ADD ;
 \    SAME scheme under xpd:XP-INC; the source record is untouched; a wrong
 \    declared sig through the alias still rejects.
 \ ---------------------------------------------------------------------------
-s" xps" CHECKER-PACKAGE   CHECKER-PUBLIC
+package XPS
+public
 s" n -- n" s" XP-INC" TWX-USIG-ADD
-CHECKER-END-PACKAGE
+;package
 
-s" xpd" CHECKER-PACKAGE   CHECKER-PUBLIC
+package XPD
+public
 s" xps:XP-INC" CHECKER-EXPORT
-CHECKER-END-PACKAGE
+;package
 
 s" xpd:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" xps:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
@@ -62,11 +64,11 @@ s" XPU4 ( n -- n n ) xpd:XP-INC" CHECK! 0 T=
 \ 2. private->public promotion: a bare-name source resolves through the open
 \    package's private scope and publishes under the public tail.
 \ ---------------------------------------------------------------------------
-s" xpp" CHECKER-PACKAGE
+package XPP
 s" n -- n" s" XP-HID" TWX-USIG-ADD
-CHECKER-PUBLIC
+public
 s" XP-HID" CHECKER-EXPORT
-CHECKER-END-PACKAGE
+;package
 s" xpp:XP-HID" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" XPU5 ( n -- n ) xpp:XP-HID" CHECK! -1 T=
 
@@ -74,17 +76,19 @@ s" XPU5 ( n -- n ) xpp:XP-HID" CHECK! -1 T=
 \ 3. defer flag + control-effect flags ride the alias; a plain alias carries
 \    neither.
 \ ---------------------------------------------------------------------------
-s" xpf" CHECKER-PACKAGE   CHECKER-PUBLIC
+package XPF
+public
 s" n -- n" s" XP-DEF" TWX-USIG-ADD
 s" XP-DEF" CHECKER-DEFER
 s" --" s" XP-THR" TWX-USIG-ADD
 s" XP-THR" CTL-THROW TWX-NORET-ADD
-CHECKER-END-PACKAGE
+;package
 
-s" xpf2" CHECKER-PACKAGE   CHECKER-PUBLIC
+package XPF2
+public
 s" xpf:XP-DEF" CHECKER-EXPORT
 s" xpf:XP-THR" CHECKER-EXPORT
-CHECKER-END-PACKAGE
+;package
 s" xpf2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
 s" xpf2:XP-THR" TWX-CTL-FLAGS CTL-THROW T=
 s" xpf2:XP-DEF" TWX-CTL-FLAGS 0 T=
@@ -94,12 +98,14 @@ s" xpf2:XP-THR" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
 \ 4. quotation scheme fidelity: a higher-order sig survives the alias copy;
 \    a wrong quotation argument through the alias rejects.
 \ ---------------------------------------------------------------------------
-s" xpq" CHECKER-PACKAGE   CHECKER-PUBLIC
+package XPQ
+public
 s" [ n -- n ] n -- n" s" XP-HOF" TWX-USIG-ADD
-CHECKER-END-PACKAGE
-s" xpq2" CHECKER-PACKAGE   CHECKER-PUBLIC
+;package
+package XPQ2
+public
 s" xpq:XP-HOF" CHECKER-EXPORT
-CHECKER-END-PACKAGE
+;package
 s" XPU6 ( n -- n ) [: 1 + ;] swap xpq2:XP-HOF" CHECK! -1 T=
 s" XPU7 ( n -- n ) [: + ;] swap xpq2:XP-HOF" CHECK! 0 T=
 
@@ -109,7 +115,8 @@ s" XPU7 ( n -- n ) [: + ;] swap xpq2:XP-HOF" CHECK! 0 T=
 \ ---------------------------------------------------------------------------
 \ no open package.
 s" XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-NO-PACKAGE T=
-s" xpr" CHECKER-PACKAGE   CHECKER-PUBLIC
+package XPR
+public
 \ undefined bare + qualified names.
 s" XP-NOPE" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
 s" xps:XP-NOPE" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
@@ -130,22 +137,24 @@ s" dup" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-PRIM T=
 \ duplicate tail in the current section.
 s" xps:XP-INC" CHECKER-EXPORT
 s" xps:XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
-CHECKER-END-PACKAGE
+;package
 \ self-export in the same section is the duplicate case.
-s" xpz" CHECKER-PACKAGE   CHECKER-PUBLIC
+package XPZ
+public
 s" n -- n" s" XP-SELF" TWX-USIG-ADD
 s" XP-SELF" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
-CHECKER-END-PACKAGE
+;package
 
 \ the private source used by the closed-package reject above really is private:
 \ record it AFTER the reject probes so the earlier lookup could not see it, then
 \ prove a private record still does not resolve via the public qualifier.
-s" xps" CHECKER-PACKAGE
+package XPS
 s" n -- n" s" XP-PRIV" TWX-USIG-ADD
-CHECKER-END-PACKAGE
-s" xpr2" CHECKER-PACKAGE   CHECKER-PUBLIC
+;package
+package XPR2
+public
 s" xps:XP-PRIV" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
-CHECKER-END-PACKAGE
+;package
 
 \ ---------------------------------------------------------------------------
 \ 6. scope rollback: the alias's sym/effect rows retire with the frame; the
@@ -153,9 +162,11 @@ CHECKER-END-PACKAGE
 \ ---------------------------------------------------------------------------
 SYM-N @ P-SYMN !   SYM-STR-U @ P-SYMU !
 CHECKER-SCOPE-START
-   s" xrb" CHECKER-PACKAGE   CHECKER-PUBLIC
+   package XRB
+   public
    s" xps:XP-INC" CHECKER-EXPORT
    s" xrb:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+   ;package
 CHECKER-SCOPE-DONE
 SYM-N @ P-SYMN @ T=
 SYM-STR-U @ P-SYMU @ T=
@@ -167,11 +178,13 @@ s" xrb:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
 \ ---------------------------------------------------------------------------
 RBF-DEPTH @ P-DEPTH !
 TWX-CAND-START
-   s" xrb2" CHECKER-PACKAGE   CHECKER-PUBLIC
+   package XRB2
+   public
    s" xpf:XP-DEF" CHECKER-EXPORT
    s" xpf:XP-THR" CHECKER-EXPORT
    s" xrb2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
    s" xrb2:XP-THR" TWX-CTL-FLAGS CTL-THROW T=
+   ;package
 0 TWX-CAND-DONE drop
 RBF-DEPTH @ P-DEPTH @ T=
 s" xrb2:XP-DEF" TWX-FIND-USIG FOUNDF !  FOUNDF @ 0 T=

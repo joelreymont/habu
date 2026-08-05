@@ -424,6 +424,113 @@ s" public resolves qualified outside the package" T-LABEL
 s" COK-PRES-QUAL ( -- n ) ES-PRES:ES-PRES-PUB" CHECK-QUIET-CANDIDATE! -1 T=
 s" public does not resolve bare outside the package" T-LABEL
 s" CUNK-PRES-BARE ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! 1 T=
+
+\ ---- what the ENGINE's name lookup resolves ---------------------------------
+\ The block above is the checker's answer. This one is the engine's: which BODY
+\ a token binds to when LFIND resolves it. That order is a compile-time fact -
+\ bind a token to the wrong wordlist and the program runs code nobody wrote for
+\ it - so it is pinned by EXECUTION rather than by a verdict: every case below
+\ calls the word the engine resolved and reads back the number it returns.
+\
+\ THE SHARED TAIL IS T-LABEL-CAP, the global constant this file declares at the
+\ top and T-LABEL really reads. The fixture does not mint a global of its own:
+\ it SHADOWS that one from inside a package, in the package's private wordlist
+\ and in its public wordlist at once, which is the shape a real package has and
+\ also proves the shadow does not leak back to the word already compiled
+\ against the global. References differ from definitions only in case, which
+\ the dictionary folds. The refusals matter as much as the hits: a lookup that
+\ answers "absent" for a name that IS there compiles a program the author did
+\ not write just as surely as one that answers with the wrong row, so each one
+\ is a source the engine's own load path must refuse, with the engine's own
+\ code for refusing it.
+package ES-RESO
+
+2 constant T-LABEL-CAP
+: ES-RES-PRIV ( -- n ) 5 ;
+
+s" engine resolution: private tail beats the global one" T-LABEL
+T-LABEL-CAP 2 T=
+s" engine resolution: private tail resolves bare in the package" T-LABEL
+ES-RES-PRIV 5 T=
+
+public
+
+3 constant T-LABEL-CAP
+: ES-RES-PUB ( -- n ) 4 ;
+
+s" engine resolution: private tail still beats the public one" T-LABEL
+T-LABEL-CAP 2 T=
+s" engine resolution: public tail resolves bare in the package" T-LABEL
+ES-RES-PUB 4 T=
+
+\ A retired row must give way to its replacement rather than to nothing: the
+\ name is published twice with different bodies and the second one is what the
+\ engine has to resolve.
+: ES-RES-U ( -- n ) 1 ;
+undefine ES-RES-U
+: ES-RES-U ( -- n ) 2 ;
+s" engine resolution: a retired tail gives way to its replacement" T-LABEL
+ES-RES-U 2 T=
+
+;package
+
+s" engine resolution: the global tail is back outside the package" T-LABEL
+T-LABEL-CAP 256 T=
+\ T-LABEL was compiled against the global cap and is still reading it: a label
+\ this long could not have been stored under the package's shadowed 2.
+s" engine resolution: shadow did not reach the compiled reader" T-LABEL
+T-LABEL$ nip 59 T=
+s" engine resolution: the reference spelling is case-folded" T-LABEL
+t-label-cap 256 T=
+T-Label-Cap 256 T=
+s" engine resolution: a qualified tail names the public row" T-LABEL
+ES-RESO:T-LABEL-CAP 3 T=
+ES-RESO:ES-RES-PUB 4 T=
+s" engine resolution: qualifier and tail fold independently" T-LABEL
+es-reso:T-LABEL-CAP 3 T=
+ES-RESO:t-label-cap 3 T=
+es-reso:t-label-cap 3 T=
+
+package ES-RES-REFUSE
+
+\ Whitebox: the engine's load path, so what a case measures is the engine
+\ refusing a source rather than a test deciding it should have.
+TRUSTED: EV ( ptr u8 n -- ) evaluate ;
+
+public
+
+\ The engine's own exit codes for the two refusals, which inside evaluate
+\ arrive as catchable throws of the same code.
+70 constant UNDEFINED
+78 constant DUPLICATE
+
+\ The source travels through the quotation and back out, because a quotation
+\ cannot read the enclosing word's locals.
+: OUTCOME ( ptr u8 n -- n )
+   [: 2dup EV ;] catch {: rc:n :}
+   2drop rc ;
+
+;package
+
+1 DIAG-QUIET +!
+s" engine resolution: an accepted source is the control" T-LABEL
+s" : ES-RES-CONTROL ( -- n ) T-LABEL-CAP ;" ES-RES-REFUSE:OUTCOME 0 T=
+s" engine resolution: the control resolved the global row" T-LABEL
+ES-RES-CONTROL 256 T=
+s" engine resolution: a public tail is refused bare outside" T-LABEL
+s" : ES-RES-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" engine resolution: a private tail is refused qualified" T-LABEL
+s" : ES-RES-P2 ( -- n ) ES-RESO:ES-RES-PRIV ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" engine resolution: a private tail is refused bare outside" T-LABEL
+s" : ES-RES-P3 ( -- n ) ES-RES-PRIV ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" engine resolution: an unknown package qualifier is refused" T-LABEL
+s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" engine resolution: a duplicate tail is refused case-folded" T-LABEL
+s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:DUPLICATE T=
+s" engine resolution: the global row survived the refusals" T-LABEL
+T-LABEL-CAP 256 T=
+-1 DIAG-QUIET +!
+
 \ mid-body ( ... ) comments are comments (EM-COMMENT parity), never a second
 \ signature: they must not clobber declared-sig state or flip the verdict.
 s" CBAD-SIG-TRAIL ( n -- n ) dup dup ( n -- n )" T-CHECK-REJECTS
@@ -837,7 +944,6 @@ TR-SYMS-WHITEBOX
 \ Registry internals predate the checker hook. These trusted leaves expose only
 \ measured metadata, predicates, and transaction operations; all assertions and
 \ orchestration below remain checked.
-create TR-REG-REC 11 cells allot
 variable TR-REG-SYM-MARK
 variable TR-REG-UEND-MARK
 variable TR-REG-DFER-MARK
@@ -847,6 +953,15 @@ variable TR-VREC-FIELD-MARK
 variable TR-VREC-NODE-MARK
 variable TR-VNARG-MARK
 variable TR-VREC-STR-MARK
+
+\ The pre-checker record layouts, probed explicitly: this package owns the probe
+\ base and the six raw readers, and reopens below for the assertions that read
+\ them. TR-REG-REC is only an address the field accessors are compared against —
+\ it is never read through — and it is as wide as the widest record, so every
+\ probe stays inside it.
+package ES-LAYOUT
+
+create TR-REG-REC 12 cells allot
 
 TRUSTED: TR-SYM-LAYOUT-RAW ( -- n n n bool )
    SYM-REC SYM-REC-ALIGN SYM-REC-PTR-MASK
@@ -859,7 +974,8 @@ TRUSTED: TR-SYM-LAYOUT-RAW ( -- n n n bool )
 TRUSTED: TR-EFF-REC-LAYOUT-RAW ( -- n n n bool )
    EFF-REC EFF-REC-ALIGN EFF-REC-PTR-MASK
    TR-REG-REC ER.NEXT TR-REG-REC ER-NEXT-OFF + =
-   TR-REG-REC ER.MINI TR-REG-REC ER-MINI-OFF + = and ;
+   TR-REG-REC ER.MINI TR-REG-REC ER-MINI-OFF + = and
+   TR-REG-REC ER.SYMPREV TR-REG-REC ER-SYMPREV-OFF + = and ;
 
 TRUSTED: TR-EFF-NODE-LAYOUT-RAW ( -- n n n bool )
    EFF-NODE EFF-NODE-ALIGN EFF-NODE-PTR-MASK
@@ -879,7 +995,10 @@ TRUSTED: TR-DFER-LAYOUT-RAW ( -- n n n bool )
 TRUSTED: TR-NORET-LAYOUT-RAW ( -- n n n bool )
    NORET-ENTRY NORET-ENTRY-ALIGN NORET-ENTRY-PTR-MASK
    TR-REG-REC NORET.SYM TR-REG-REC NORET-SYM-OFF + =
-   TR-REG-REC NORET.FLAG TR-REG-REC NORET-FLAG-OFF + = and ;
+   TR-REG-REC NORET.FLAG TR-REG-REC NORET-FLAG-OFF + = and
+   TR-REG-REC NORET.SYMPREV TR-REG-REC NORET-SYMPREV-OFF + = and ;
+
+;package
 
 TRUSTED: TR-CORE-MARKS@ ( -- n n n n )
    SYM-N @ UEND @ DFER-END @ NORET-END @ ;
@@ -900,6 +1019,9 @@ TRUSTED: TR-NORET-ADD ( -- )
 : TR-BOOL= ( bool -- )
    if -1 else 0 then -1 T= ;
 
+package ES-LAYOUT
+public
+
 : TR-SYM-LAYOUT ( -- )
    TR-SYM-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" sym-record-layout" T-LABEL
@@ -911,7 +1033,7 @@ TRUSTED: TR-NORET-ADD ( -- )
 : TR-EFF-REC-LAYOUT ( -- )
    TR-EFF-REC-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" effect-record-layout" T-LABEL
-   stride 11 cells T=  align $8 T=  mask 0 T=
+   stride 12 cells T=  align $8 T=  mask 0 T=
    ok TR-BOOL= ;
 
 : TR-EFF-NODE-LAYOUT ( -- )
@@ -935,8 +1057,10 @@ TRUSTED: TR-NORET-ADD ( -- )
 : TR-NORET-LAYOUT ( -- )
    TR-NORET-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" control-record-layout" T-LABEL
-   stride 2 cells T=  align $8 T=  mask 0 T=
+   stride 3 cells T=  align $8 T=  mask 0 T=
    ok TR-BOOL= ;
+
+;package
 
 : TR-CORE-MARKS! ( -- )
    TR-CORE-MARKS@
@@ -998,12 +1122,12 @@ TRUSTED: TR-NORET-ADD ( -- )
    TR-REG-GROW-PROBE
    TR-REG-ROLLBACK-PROBE ;
 
-TR-SYM-LAYOUT
-TR-EFF-REC-LAYOUT
-TR-EFF-NODE-LAYOUT
-TR-PE-LAYOUT
-TR-DFER-LAYOUT
-TR-NORET-LAYOUT
+ES-LAYOUT:TR-SYM-LAYOUT
+ES-LAYOUT:TR-EFF-REC-LAYOUT
+ES-LAYOUT:TR-EFF-NODE-LAYOUT
+ES-LAYOUT:TR-PE-LAYOUT
+ES-LAYOUT:TR-DFER-LAYOUT
+ES-LAYOUT:TR-NORET-LAYOUT
 TR-REG-ROLLBACK
 \ --- unification trail: prim-overload trials (TRY-EFF) undo speculative binds by
 \ popping the trail, not by copying the whole TVT/RVT pool. Crossing the trail
@@ -2307,6 +2431,260 @@ S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
    ;
 TX18-DA TX18-DB TX18-DC TX18-DD TX18-DE TX18-DF TX18-DG TX18-DH TX18-DI TX18-DJ TX18-DK TX18-DL
 TX18-DM TX18-DN TX18-DO TX18-DP TX18-DQ TX18-DR TX18-DS TX18-DT TX18-DU TX18-DV TX18-DW TX18-DX
+
+\ ---- search-wl: the answer, and the ORDER it is the answer of ---------------
+\ `search-wl` names the LAST row of one wordlist whose folded name matches. That
+\ is a different rule from "the matching row", and the difference is invisible
+\ until a key holds two rows. The definer's duplicate wall keeps every real
+\ wordlist at one live row per folded tail, so there last and first coincide;
+\ `undefine` does NOT, because it stamps every row it retires with one shared
+\ value that is no wordlist, and retiring a tail twice leaves two rows under it.
+\ Both halves are pinned below, by ROW IDENTITY - each case says which row, by
+\ the index the row was published at - so a lookup that returned the other row
+\ of a pair fails here rather than passing on a non-zero answer.
+\
+\ The whole battery is then answered TWICE: once here, and once at the very end
+\ of this file, after the ndict! block has dropped the hash index and left the
+\ linear scan answering alone. The two captures must agree row for row.
+\
+\ NO CASE WRITES A WID DOWN. Every wid is read out of the dictionary row that
+\ owns it, so what a case asserts is what the engine wrote there - and the file
+\ still loads on an engine built before there was a constant for it.
+package ES-SWL
+
+\ Whitebox: a row by index. A row's index is ndict@ in the instant before it is
+\ published, which is how a case here can name a row without searching for it -
+\ searching for it being the thing under test.
+: REC-ADDR ( n -- n )   DREC * dbase@ + ;
+TRUSTED: N>REC ( n -- ptr a ) ;
+
+0 constant XT-SLOT          \ a word's code address; a package row's PUBLIC wid
+1 constant PRI-WID-SLOT     \ a package row's PRIVATE wid
+5 constant WL-SLOT
+
+2 constant OWNER-PRIVATE-WID     \ the reserved wordlist search-wl reports empty
+$7FFFFF constant NO-SUCH-WID     \ never allocated: wids count up from FIRST-DYNAMIC-WID
+
+24 constant ANS-CAP
+create ANS-A ANS-CAP cells allot
+create ANS-B ANS-CAP cells allot
+variable ANS-I
+variable ANS-SECOND
+
+variable NS-IDX
+variable RET1-IDX
+variable RET2-IDX
+variable NDX-WID
+
+: ANS+ ( n -- ) {: v:n :}
+   ANS-I @ ANS-CAP >= if s" engine-suite: search-wl battery overflow" 1 die then
+   ANS-SECOND @ 0= if
+      v ANS-I @ cells ANS-A + !
+   else
+      v ANS-I @ cells ANS-B + !
+   then
+   ANS-I @ 1+ ANS-I ! ;
+
+: PROBE ( ptr u8 n n -- ) {: a:ptr u:n w:n :}
+   a u w search-wl ANS+ ;
+
+public
+
+: ROW-CELL ( n n -- n ) {: idx:n slot:n :}
+   idx REC-ADDR N>REC slot cells + @ ;
+
+: ROW-XT ( n -- n )    XT-SLOT ROW-CELL ;
+: ROW-WID ( n -- n )   WL-SLOT ROW-CELL ;
+
+: MARK-NS ( -- )    ndict@ NS-IDX ! ;
+: MARK-RET1 ( -- )  ndict@ RET1-IDX ! ;
+: MARK-RET2 ( -- )  ndict@ RET2-IDX ! ;
+
+\ The wordlist the ndict! block below defines its row into, so a case there can
+\ ask this word about a row the mark has taken out of the dictionary.
+: SET-NDX-WID ( n -- )  NDX-WID ! ;
+: NDX-WID@ ( -- n )     NDX-WID @ ;
+
+\ A package's own row carries its public wid in the cell a word's row carries
+\ its code address in, its private wid in the next one, and the namespace
+\ marker where a word carries its wordlist.
+: NS-WID ( -- n )       NS-IDX @ ROW-WID ;
+: PKG-PUB-WID ( -- n )  NS-IDX @ ROW-XT ;
+: PKG-PRI-WID ( -- n )  NS-IDX @ PRI-WID-SLOT ROW-CELL ;
+: NS-XT ( -- n )        NS-IDX @ ROW-XT ;
+: RET-WID ( -- n )      RET1-IDX @ ROW-WID ;
+: RET1-XT ( -- n )      RET1-IDX @ ROW-XT ;
+: RET2-XT ( -- n )      RET2-IDX @ ROW-XT ;
+
+17 constant BATTERY-N
+
+: CAPTURE ( -- )
+   0 ANS-I !
+   s" T-LABEL-CAP"          0 PROBE
+   s" t-label-cap"          0 PROBE
+   s" T-Label-Cap"          0 PROBE
+   s" ES-SWL-NO-SUCH-NAME"  0 PROBE
+   s" T-LABEL-CA"           0 PROBE
+   s" T-LABEL-CAPX"         0 PROBE
+   s" ES-SWL-NS"            NS-WID PROBE
+   s" ES-SWL-NS"            0 PROBE
+   s" ES-SWL-PUB"           PKG-PUB-WID PROBE
+   s" ES-SWL-PUB"           PKG-PRI-WID PROBE
+   s" ES-SWL-PUB"           0 PROBE
+   s" ES-SWL-PRIV"          PKG-PRI-WID PROBE
+   s" ES-SWL-PRIV"          PKG-PUB-WID PROBE
+   s" ES-SWL-U"             0 PROBE
+   s" ES-SWL-U"             RET-WID PROBE
+   s" (PROT-SPAN)"          OWNER-PRIVATE-WID PROBE
+   s" ES-SWL-PUB"           NO-SUCH-WID PROBE ;
+
+: CAPTURE-SECOND ( -- )
+   -1 ANS-SECOND !
+   CAPTURE ;
+
+: N ( -- n )  ANS-I @ ;
+
+\ The first battery index the two captures disagree at, or -1 for none.
+: DIFF ( -- n )
+   0 begin dup ANS-I @ < while
+      dup cells ANS-A + @  over cells ANS-B + @ <> if exit then
+      1+
+   repeat drop -1 ;
+
+;package
+
+ES-SWL:MARK-NS
+package ES-SWL-NS
+: ES-SWL-PRIV ( -- n ) 6 ;
+public
+: ES-SWL-PUB ( -- n ) 7 ;
+;package
+
+s" search-wl: a package row carries the namespace marker" T-LABEL
+ES-SWL:NS-WID -1 T=
+s" search-wl: the namespace key names the package row" T-LABEL
+s" ES-SWL-NS" ES-SWL:NS-WID search-wl  ES-SWL:NS-XT T=
+s" search-wl: a package name is not a global tail" T-LABEL
+s" ES-SWL-NS" 0 search-wl 0 T=
+s" search-wl: a public tail lives in the public wordlist only" T-LABEL
+s" ES-SWL-PUB" ES-SWL:PKG-PRI-WID search-wl 0 T=
+s" ES-SWL-PUB" 0 search-wl 0 T=
+s" search-wl: a private tail lives in the private wordlist only" T-LABEL
+s" ES-SWL-PRIV" ES-SWL:PKG-PUB-WID search-wl 0 T=
+s" search-wl: the reference spelling is case-folded" T-LABEL
+s" T-LABEL-CAP" 0 search-wl  s" t-label-cap" 0 search-wl T=
+s" search-wl: a prefix of a live tail is not that tail" T-LABEL
+s" T-LABEL-CA" 0 search-wl 0 T=
+s" T-LABEL-CAPX" 0 search-wl 0 T=
+
+\ The retired key, which is the one key a wordlist's one-row-per-tail rule does
+\ not cover: `undefine` stamps it on a row that is already published, and doing
+\ it twice to one tail leaves two rows under it. The last of the two is the
+\ answer, and that is the whole of the ordering rule stated as a fact about the
+\ engine rather than about this word's implementation.
+\ Both rows are published through the engine's own evaluate path (the whitebox
+\ ES-RES-REFUSE:OUTCOME above), which is where every other source in this file
+\ that has to land in the GLOBAL wordlist comes from. A row's index is still
+\ ndict@ in the instant before it: evaluating a source publishes what the source
+\ defines and nothing else.
+ES-SWL:MARK-RET1
+s" : ES-SWL-U ( -- n ) 1 ;" ES-RES-REFUSE:OUTCOME 0 T=
+s" search-wl: a live global tail is its own row" T-LABEL
+s" ES-SWL-U" 0 search-wl  ES-SWL:RET1-XT T=
+undefine ES-SWL-U
+s" search-wl: a retired row leaves the wordlist it was published in" T-LABEL
+s" ES-SWL-U" 0 search-wl 0 T=
+s" search-wl: the retired key still names it" T-LABEL
+s" ES-SWL-U" ES-SWL:RET-WID search-wl  ES-SWL:RET1-XT T=
+ES-SWL:MARK-RET2
+s" : ES-SWL-U ( -- n ) 2 ;" ES-RES-REFUSE:OUTCOME 0 T=
+s" search-wl: the replacement owns the tail" T-LABEL
+s" ES-SWL-U" 0 search-wl  ES-SWL:RET2-XT T=
+s" search-wl: one retired row is still the retired key's answer" T-LABEL
+s" ES-SWL-U" ES-SWL:RET-WID search-wl  ES-SWL:RET1-XT T=
+undefine ES-SWL-U
+s" search-wl: with both rows retired the LAST one is the answer" T-LABEL
+s" ES-SWL-U" ES-SWL:RET-WID search-wl  ES-SWL:RET2-XT T=
+s" search-wl: and the tail is gone from the wordlist" T-LABEL
+s" ES-SWL-U" 0 search-wl 0 T=
+
+s" search-wl: the battery ran with the index live" T-LABEL
+ES-SWL:CAPTURE  ES-SWL:N ES-SWL:BATTERY-N T=
+
+\ ---- ndict! and the authority of the lookup index ---------------------------
+\ The engine reads an empty hash slot as PROOF that a name is absent, and that
+\ proof holds only while the table covers every record below NDICT. Every
+\ ndict! in the tree lowers the mark, but raising it re-exposes records whose
+\ index slots a later publication was free to reuse, so BNDSET drops the table
+\ on a raise rather than trusting its callers, and the linear scan answers from
+\ then on.
+\
+\ THIS BLOCK IS LAST IN THE FILE ON PURPOSE. It leaves the index dropped, so
+\ everything after it resolves names by the scan - which is why the cases that
+\ follow the raise are lookups: they are the assertion that the fallback still
+\ resolves what the index resolved, over the same shared tails the resolution
+\ block above pinned.
+package ES-NDX
+
+\ Whitebox: a fixed engine header cell, and the FORGET sink itself.
+TRUSTED: HIDXP@ ( -- n )  data-base HIDXP-CELL + @ ;
+TRUSTED: ND! ( n -- )     ndict! ;
+
+variable LO
+variable HI
+
+public
+
+: MARK-LOW ( -- )   ndict@ LO ! ;
+: MARK-HIGH ( -- )  ndict@ HI ! ;
+: LOWER ( -- )      LO @ ND! ;
+: RAISE ( -- )      HI @ ND! ;
+: INDEXED? ( -- bool )  HIDXP@ 0 <> ;
+
+;package
+
+s" ndict!: the lookup index is live to begin with" T-LABEL
+ES-NDX:INDEXED? -1 T=
+
+package ES-NDX
+MARK-LOW
+public
+get-current ES-SWL:SET-NDX-WID
+: FRESH ( -- n ) 7 ;
+;package
+ES-NDX:MARK-HIGH
+
+s" ndict!: the fresh record resolves through the index" T-LABEL
+ES-NDX:FRESH 7 T=
+ES-NDX:LOWER
+\ Lowering keeps the table: the slot for the row above the mark is still
+\ occupied and still holds its index. What makes the row absent is that the
+\ index is out of range, which a lookup has to notice - the row's own bytes are
+\ untouched and would still match on wid and name.
+s" ndict!: a lowered mark keeps the index live" T-LABEL
+ES-NDX:INDEXED? -1 T=
+s" ndict!: a slot above a lowered mark reads as absent" T-LABEL
+s" FRESH" ES-SWL:NDX-WID@ search-wl 0 T=
+ES-NDX:RAISE
+s" ndict!: a raise drops the index" T-LABEL
+ES-NDX:INDEXED? 0 T=
+s" ndict!: the scan resolves the re-exposed record" T-LABEL
+ES-NDX:FRESH 7 T=
+s" ndict!: the scan resolves the global tail" T-LABEL
+T-LABEL-CAP 256 T=
+s" ndict!: the scan resolves the qualified tail" T-LABEL
+ES-RESO:T-LABEL-CAP 3 T=
+s" ndict!: the scan still refuses a bare package public" T-LABEL
+s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+
+\ The index is gone, so this capture is the linear scan's own answer to every
+\ question the indexed capture above answered. Row for row, or the two lookups
+\ do not agree about the dictionary they share.
+ES-SWL:CAPTURE-SECOND
+s" search-wl: the scan ran the same battery" T-LABEL
+ES-SWL:N ES-SWL:BATTERY-N T=
+s" search-wl: the scan answers the battery the index answered" T-LABEL
+ES-SWL:DIFF -1 T=
 
 \ report: count + nonzero exit on failure
 : REPORT ( -- )

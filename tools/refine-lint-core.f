@@ -1,4 +1,4 @@
-\ refine-lint-core.f - confine raw->nominal refinement mints to their owning files.
+\ refine-lint-core.f - confine nominal representation boundaries to owning files.
 \
 \ Refinement mints (declared `TRUSTED: NAME ( n -- <nominal family> )` or, once
 \ migrated, `CAST: NAME ( ... )`, e.g. ROWS-REFINE `n -- CAD-KIND:rows`) forge
@@ -14,41 +14,68 @@
 \ The mint set is a seed list of (name, owner) pairs. Its liveness is
 \ source-derived: each seed must be declared in its owner file via CAST: or
 \ TRUSTED:, else STALE-SEED fires (the declaration was retired or moved - retire
-\ or update the seed). A signature-shape scan over TRUSTED.md flags NEW
-\ mint-shaped manifest rows (a raw `n` input producing a colon-qualified
-\ nominal-family output) that are missing from the seed list (NEW-MINT), so the
-\ seed list cannot silently rot as TRUSTED: mints are added. Bare-nominal mints
-\ such as RAW>TENSOR (`n -- tensor`) and the importer projections are seed-only:
-\ the shape scan covers the qualified CAD-KIND:/MIR: family namespace.
+\ or update the seed). A new mint is added to the seed list by the dot that
+\ declares it; nothing here reads a repository-wide manifest.
 \
 \ INTERIM enforcement only: the principled endpoint is the TVK-RAW checker
 \ capability (dot habu-nominal-storage-raw-a3430ef2), which closes the mint
 \ direction at unification. Retire this lint's mint class when that lands.
 \
-\ Scan discipline: whole-token matching over the shared PAT-* scanner, so `\`
-\ and `( )` comments and string-literal bodies are excluded; matching is
+\ IR-ID's private CAST tails use common names such as COUNT>N that cannot be
+\ identified by a bare token alone. Runtime protection of both IR-ID wordlists
+\ is the authority boundary. This lint independently audits that every raw
+\ definition remains in id.f's private IR-ID section and that no compiler
+\ package publishes, aliases, or qualifies one.
+\
+\ Scan discipline: one whole-source LINT-LEX token stream per file, so multiline
+\ comments and strings cannot forge or hide package/public state. Matching is
 \ case-insensitive (the dictionary is case-insensitive) and also catches
-\ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ tools/.
-\ Owner liveness reads the owner source; NEW-MINT rows are read through
-\ tools/trust-lint-core.f (TL-M-*).
+\ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ tools/ test/.
+\ Owner liveness reads the owner source.
 \
 \ Load after lib/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
-\ tools/trust-lint-core.f.
+\ tools/lint/source-lex.f.
+
+require lib/vector.f
+require tools/lint/source-lex.f
+require tools/lint/def.f
 
 package RFL
 
 private
 
-$40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
-69 constant SEED#
+69 constant TOKEN-SEED#
+95 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
+26 constant RAW-NAME#
 
 10 constant LF
 48 constant ZERO
 58 constant COLON
+
+0 constant PKG-OTHER
+1 constant PKG-IR-ID
+2 constant PKG-IR
+3 constant PKG-HIR
+4 constant PKG-SIR
+5 constant PKG-LIR
+6 constant PKG-A64IR
+7 constant PKG-GPU-RIR
+8 constant PKG-GPU-KIR
+9 constant PKG-GPU-GIR
+10 constant PKG-GPU-PTXIR2
+11 constant PKG-GPU-IR
+12 constant PKG-IR-SOURCE
+13 constant PKG-IR-TYPE
+14 constant PKG-IR-ATTR
+15 constant PKG-IR-SCHEMA
+16 constant PKG-IR-BUILD
+17 constant PKG-IR-VERIFY
+18 constant PKG-IR-CODEC
+19 constant PKG-IR-RAW
 
 create NUM-BUF NUM-CAP allot
 create ONE 1 allot
@@ -58,54 +85,38 @@ create ALW-NU ALLOW-MAX cells allot
 create ALW-PO ALLOW-MAX cells allot
 create ALW-PU ALLOW-MAX cells allot
 
-variable STR-A
 variable FILE-A
 variable BAD
 variable ALLOW#
 variable REPORT?
 variable NUM-L
 variable LINE
+variable TOK-I
 variable CUR-A
 variable CUR-U
-variable LA
-variable LU
-variable LX
-variable LS
-variable LE
+variable PACKAGE-LINE
+variable PACKAGE-KIND
+variable PACKAGE-OPEN
+variable PACKAGE-PUBLIC
+variable DEF-OPEN
+variable DEF-KIND
+variable DEF-LINE
 
-: STR-A-FIELD ( -- ptr ptr u8 ) STR-A 0 ptr-field ;
 : FILE-A-FIELD ( -- ptr ptr u8 ) FILE-A 0 ptr-field ;
 : CUR-A-FIELD ( -- ptr ptr u8 ) CUR-A 0 ptr-field ;
-: LA-FIELD ( -- ptr ptr u8 ) LA 0 ptr-field ;
 : ALW-NO-FIELD ( n -- ptr ptr u8 ) cells ALW-NO + 0 ptr-field ;
 : ALW-PO-FIELD ( n -- ptr ptr u8 ) cells ALW-PO + 0 ptr-field ;
 
 : CUR$ ( -- ptr u8 n ) CUR-A-FIELD @ CUR-U @ ;
 : CUR! ( ptr u8 n -- ) CUR-U ! CUR-A-FIELD ! ;
-: LA@ ( -- ptr u8 ) LA-FIELD @ ;
-: LA! ( ptr u8 -- ) LA-FIELD ! ;
 
 : FAIL ( ptr u8 n -- ) 76 die ;
-
-: STR-BUF ( -- ptr u8 )
-   STR-A @ 0= if
-      STR-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop STR-A-FIELD !
-   then
-   STR-A-FIELD @ ;
 
 : FILE-BUF ( -- ptr u8 )
    FILE-A @ 0= if
       FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FILE-A-FIELD !
    then
    FILE-A-FIELD @ ;
-
-public
-
-: BUFFERS ( -- )
-   STR-BUF STR-CAP
-   FILE-BUF FILE-CAP
-   TRUST-LINT-BUFFERS! ;
-private
 
 
 \ ---- output ----------------------------------------------------------------
@@ -213,10 +224,10 @@ private
       54 of s" RAW>OBLIGATION-ID" endof   \ content-addressed by the canonical obligation encoding
       55 of s" RAW>EVIDENCE-ID" endof     \ content-addressed evidence descriptor
       \ § 23.9 machine-facing action registry (dot habu-v2-machine-action-a7357409); the
-      \ RAW>OBLIGATION-ID shape. Seeded here to close the NEW-MINT gap its TRUSTED.md row left.
+      \ RAW>OBLIGATION-ID shape.
       56 of s" RAW>ACTION-ID" endof       \ content-addressed by the canonical action name
       \ § 23 capability + budget enforcement (dot habu-v2-capability-and-0970a96d). A package-local
-      \ CAPTOK:grant nominal (not CAD-KIND), so seed-only - the shape scan covers CAD-KIND:/MIR: only.
+      \ CAPTOK:grant nominal (not CAD-KIND), so it is package-local rather than a CAD-KIND family.
       57 of s" RAW>GRANT" endof           \ append-only capability authority-slot refinement
       \ § 23.4 experiment registry (dot habu-v2-experiment-run-7c1d1906); the
       \ RAW>ARTIFACT-ID shape - content-addressed by the canonical run-key digest.
@@ -260,6 +271,35 @@ private
       65 of s" MINT-CFG-PROOF" endof       \ seals a validated MDLCFG:mcfg
       66 of s" MINT-LAYER-PROOF" endof      \ seals an authenticated GPT2TENSOR:layer-id
       67 of s" MAKE-MODEL-PROOF" endof     \ seals a loaded GPT2LOAD:gpt2-model
+      \ Shared compiler IR representation casts. Several tails are deliberately
+      \ ordinary (COUNT>N, TYPE>N), so token confinement would collide with
+      \ unrelated packages. The structural IR-ID private-window scan owns them.
+      69 of s" MINT-MODULE" endof
+      70 of s" MODULE>N" endof
+      71 of s" MINT-COUNT" endof
+      72 of s" COUNT>N" endof
+      73 of s" MINT-POOL-OFF" endof
+      74 of s" POOL-OFF>N" endof
+      75 of s" MINT-SOURCE" endof
+      76 of s" SOURCE>N" endof
+      77 of s" MINT-FUN" endof
+      78 of s" FUN>N" endof
+      79 of s" MINT-BLOCK" endof
+      80 of s" BLOCK>N" endof
+      81 of s" MINT-OP" endof
+      82 of s" OP>N" endof
+      83 of s" MINT-VALUE" endof
+      84 of s" VALUE>N" endof
+      85 of s" MINT-TYPE" endof
+      86 of s" TYPE>N" endof
+      87 of s" MINT-ATTR" endof
+      88 of s" ATTR>N" endof
+      89 of s" MINT-SYMBOL" endof
+      90 of s" SYMBOL>N" endof
+      91 of s" MINT-SPAN" endof
+      92 of s" SPAN>N" endof
+      93 of s" MINT-KEY" endof
+      94 of s" KEY>N" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -334,14 +374,49 @@ private
       66 of s" maki/infer/gpt2-tensor.f" endof
       67 of s" maki/infer/gpt2-load.f" endof
       68 of s" maki/infer/gpt2-load.f" endof
+      69 of s" src/compiler/ir/id.f" endof
+      70 of s" src/compiler/ir/id.f" endof
+      71 of s" src/compiler/ir/id.f" endof
+      72 of s" src/compiler/ir/id.f" endof
+      73 of s" src/compiler/ir/id.f" endof
+      74 of s" src/compiler/ir/id.f" endof
+      75 of s" src/compiler/ir/id.f" endof
+      76 of s" src/compiler/ir/id.f" endof
+      77 of s" src/compiler/ir/id.f" endof
+      78 of s" src/compiler/ir/id.f" endof
+      79 of s" src/compiler/ir/id.f" endof
+      80 of s" src/compiler/ir/id.f" endof
+      81 of s" src/compiler/ir/id.f" endof
+      82 of s" src/compiler/ir/id.f" endof
+      83 of s" src/compiler/ir/id.f" endof
+      84 of s" src/compiler/ir/id.f" endof
+      85 of s" src/compiler/ir/id.f" endof
+      86 of s" src/compiler/ir/id.f" endof
+      87 of s" src/compiler/ir/id.f" endof
+      88 of s" src/compiler/ir/id.f" endof
+      89 of s" src/compiler/ir/id.f" endof
+      90 of s" src/compiler/ir/id.f" endof
+      91 of s" src/compiler/ir/id.f" endof
+      92 of s" src/compiler/ir/id.f" endof
+      93 of s" src/compiler/ir/id.f" endof
+      94 of s" src/compiler/ir/id.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
-: SEEDED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup SEED# < while
-      dup SEED-NAME$ a u LINT-STR=CI if drop LINT-TRUE exit then
-      1+
-   repeat drop LINT-FALSE ;
+public
+
+\ The token-matched part of the seed list, read back by the module suite so it can
+\ sweep every seed through the confinement scan instead of spot-checking a few
+\ names. The count stops at TOKEN-SEED# because the rows past it are seed-only
+\ boundaries the structural IR-ID scan owns, not token matches.
+: TOKEN-SEED-COUNT ( -- n )
+   TOKEN-SEED# ;
+
+: TOKEN-SEED$ ( n -- ptr u8 n )
+   dup 0 < over TOKEN-SEED# >= or if E-TBL-BOUNDS throw then
+   SEED-NAME$ ;
+
+private
 
 \ ---- allowlist: documented (mint, caller file) exceptions --------------------
 \ Empty today. Entries must cite the review that documented the exception.
@@ -374,57 +449,13 @@ private
       1+
    repeat drop LINT-FALSE ;
 
-\ ---- inventory: manifest cross-check + mint-shape scan ----------------------
-
-: FAMILY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u COLON LINT-INDEX-OF MATCH option
-     none OF LINT-FALSE ENDOF
-     some OF {: i:n :} i 0 >  i u 1- <  and ENDOF
-   ;MATCH ;
-
-: EFF-DASH-IDX ( -- n )
-   0 begin dup SN# @ < while
-      dup S@ s" --" LINT-STR= if exit then
-      1+
-   repeat drop -1 ;
-
-: EFF-RAW-IN? ( n -- bool ) {: dash:n :}
-   0 begin dup dash < while
-      dup S@ s" n" LINT-STR= if drop LINT-TRUE exit then
-      1+
-   repeat drop LINT-FALSE ;
-
-: EFF-FAMILY-OUT? ( n -- bool ) {: dash:n :}
-   dash 1+ begin dup SN# @ < while
-      dup S@ FAMILY-TOK? if drop LINT-TRUE exit then
-      1+
-   repeat drop LINT-FALSE ;
-
-public
-
-: MINT-SHAPE? ( ptr u8 n -- bool )
-   SPLIT-WHITESPACE
-   EFF-DASH-IDX dup 0 < if drop LINT-FALSE exit then
-   {: dash:n :}
-   dash EFF-RAW-IN? 0= if LINT-FALSE exit then
-   dash EFF-FAMILY-OUT? ;
-
-private
+\ ---- seed liveness ---------------------------------------------------------
 
 : STALE-SEED ( n -- ) {: k:n :}
    REPORT? @ if
       s" STALE-SEED refine-lint: `" OUT k SEED-NAME$ OUT
       s" ` is not declared (CAST:/TRUSTED:) in owner " OUT k SEED-OWNER$ OUT
       s" ; retire or update the seed list" OUT NL
-   then
-   BAD+ ;
-
-: NEW-MINT ( n -- ) {: m:n :}
-   REPORT? @ if
-      s" NEW-MINT TRUSTED.md " OUT m TL-M-KEY-PATH$ OUT
-      s" : `" OUT m TL-M-NAME$ OUT
-      s" ` `" OUT m TL-M-EFF$ OUT
-      s" ` is mint-shaped but not in the refine-lint seed list" OUT NL
    then
    BAD+ ;
 
@@ -471,22 +502,85 @@ private
 
 public
 
-: SHAPE-SCAN ( -- )
-   0 begin dup TL-M# @ < while
-      dup TL-M-EFF$ MINT-SHAPE? if
-         dup TL-M-NAME$ SEEDED? 0= if dup NEW-MINT then
-      then
-      1+
-   repeat drop ;
+: LIVENESS ( -- )
+   SELECT ;
+
+\ ---- compiler IR raw authority ----------------------------------------------
+
+\ Exact private representation surface from PLAN.md IR-0.1: key/module/scalar
+\ casts, then mint/projection for each referential kind. Semantic pack,
+\ observation, and validation words are public IR-ID APIs and are not raw names.
+: RAW-NAME$ ( n -- ptr u8 n )
+   case
+      0 of s" MINT-KEY" endof
+      1 of s" KEY>N" endof
+      2 of s" MINT-MODULE" endof
+      3 of s" MODULE>N" endof
+      4 of s" MINT-COUNT" endof
+      5 of s" COUNT>N" endof
+      6 of s" MINT-POOL-OFF" endof
+      7 of s" POOL-OFF>N" endof
+      8 of s" MINT-SOURCE" endof
+      9 of s" SOURCE>N" endof
+      10 of s" MINT-FUN" endof
+      11 of s" FUN>N" endof
+      12 of s" MINT-BLOCK" endof
+      13 of s" BLOCK>N" endof
+      14 of s" MINT-OP" endof
+      15 of s" OP>N" endof
+      16 of s" MINT-VALUE" endof
+      17 of s" VALUE>N" endof
+      18 of s" MINT-TYPE" endof
+      19 of s" TYPE>N" endof
+      20 of s" MINT-ATTR" endof
+      21 of s" ATTR>N" endof
+      22 of s" MINT-SYMBOL" endof
+      23 of s" SYMBOL>N" endof
+      24 of s" MINT-SPAN" endof
+      25 of s" SPAN>N" endof
+      E-TBL-BOUNDS throw
+   endcase ;
 
 public
 
-: INVENTORY ( -- )
-   s" ." TRUST-LINT-ROOT!
-   TRUST-LINT-RESET
-   TL-SCAN-MANIFEST
-   SELECT
-   SHAPE-SCAN ;
+: RAW-NAME-COUNT ( -- n )
+   RAW-NAME# ;
+
+: RAW-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup RAW-NAME# < while
+      dup RAW-NAME$ a u LINT-STR=CI if drop LINT-TRUE exit then
+      1+
+   repeat drop LINT-FALSE ;
+
+private
+
+: PACKAGE-KIND-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" IR-ID" LINT-STR=CI if PKG-IR-ID exit then
+   a u s" IR" LINT-STR=CI if PKG-IR exit then
+   a u s" HIR" LINT-STR=CI if PKG-HIR exit then
+   a u s" SIR" LINT-STR=CI if PKG-SIR exit then
+   a u s" LIR" LINT-STR=CI if PKG-LIR exit then
+   a u s" A64IR" LINT-STR=CI if PKG-A64IR exit then
+   a u s" GPU-RIR" LINT-STR=CI if PKG-GPU-RIR exit then
+   a u s" GPU-KIR" LINT-STR=CI if PKG-GPU-KIR exit then
+   a u s" GPU-GIR" LINT-STR=CI if PKG-GPU-GIR exit then
+   a u s" GPU-PTXIR2" LINT-STR=CI if PKG-GPU-PTXIR2 exit then
+   a u s" GPU-IR" LINT-STR=CI if PKG-GPU-IR exit then
+   a u s" IR-SOURCE" LINT-STR=CI if PKG-IR-SOURCE exit then
+   a u s" IR-TYPE" LINT-STR=CI if PKG-IR-TYPE exit then
+   a u s" IR-ATTR" LINT-STR=CI if PKG-IR-ATTR exit then
+   a u s" IR-SCHEMA" LINT-STR=CI if PKG-IR-SCHEMA exit then
+   a u s" IR-BUILD" LINT-STR=CI if PKG-IR-BUILD exit then
+   a u s" IR-VERIFY" LINT-STR=CI if PKG-IR-VERIFY exit then
+   a u s" IR-CODEC" LINT-STR=CI if PKG-IR-CODEC exit then
+   a u s" IR-RAW" LINT-STR=CI if PKG-IR-RAW exit then
+   PKG-OTHER ;
+
+: IR-API-PKG? ( n -- bool )
+   dup PKG-IR-ID >= swap PKG-IR-CODEC <= and ;
+
+: COMPILER-PKG? ( ptr u8 n -- bool )
+   PACKAGE-KIND-OF PKG-OTHER <> ;
 
 \ ---- confinement scan --------------------------------------------------------
 
@@ -514,15 +608,11 @@ public
    k STEM-TEST? if LINT-TRUE exit then
    k ALLOW-LISTED? ;
 
-: QUAL-TOK? ( n -- bool ) {: k:n :}
-   k SEED-NAME$ {: na:ptr nu:n :}
-   PTU @ nu 2 + < if LINT-FALSE exit then
-   PTA@ PTU @ nu - +  nu  na nu LINT-STR=CI 0= if LINT-FALSE exit then
-   PTA@ PTU @ nu - 1- + c@ COLON = ;
+: TOK$ ( -- ptr u8 n )
+   TOK-I @ LINT-LEX:TOKEN ;
 
-: TOK-MINT? ( n -- bool ) {: k:n :}
-   PAT-TOK$ k SEED-NAME$ LINT-STR=CI if LINT-TRUE exit then
-   k QUAL-TOK? ;
+: TOK=CI ( ptr u8 n -- bool )
+   TOK$ 2swap LINT-STR=CI ;
 
 : HIT ( n -- ) {: k:n :}
    REPORT? @ if
@@ -533,48 +623,401 @@ public
    then
    BAD+ ;
 
-: MATCH-TOKEN ( -- )
-   0 begin dup SEED# < while
-      dup TOK-MINT? if
-         dup ALLOWED? 0= if dup HIT then
-      then
+\ ---- token-seed index --------------------------------------------------------
+\ MATCH-TOKEN asks "does this token name a confined mint?" once per word token in
+\ the scanned tree - 1.14M times over maki/ lib/ src/ tools/ test/. It used to ask
+\ that question once per (token, seed) PAIR, re-deriving both operands inside the
+\ inner loop: SEED-NAME$ is a `case` chain, so reading seed k costs k comparisons,
+\ and TOK$ re-reads the lexer's bounds-checked vectors. With 69 token seeds that
+\ is ~138 case walks and ~276 checked vector reads for every token, and the
+\ per-token cost grows with the seed list, which every new mint lengthens. That
+\ is why this lint cost 7.7x its whole-tree peers over the same 1419 files.
+\ The seed set is fixed for a run, so it is cached and ordered once at load and
+\ each token asks it one binary search.
+
+create SEED-NA TOKEN-SEED# cells allot   \ seed name pointer, by token-seed index
+create SEED-NU TOKEN-SEED# cells allot   \ seed name length, by token-seed index
+create SEED-ORD TOKEN-SEED# cells allot  \ token-seed indices, ordered by folded name
+variable ORD-N
+variable SEED-MIN-U                      \ shortest and longest seed name, both derived
+variable SEED-MAX-U
+variable LO  variable HI  variable MID
+
+: SEED-NA-FIELD ( n -- ptr ptr u8 ) cells SEED-NA + 0 ptr-field ;
+
+: SEED-U@ ( n -- n ) cells SEED-NU + @ ;
+
+: SEED-AT$ ( n -- ptr u8 n )                \ one token seed's cached name
+   dup SEED-NA-FIELD @ swap SEED-U@ ;
+
+: ORD@ ( n -- n ) cells SEED-ORD + @ ;
+
+: ORD$ ( n -- ptr u8 n ) ORD@ SEED-AT$ ;
+
+: SEED-CACHE ( n -- ) {: k:n :}
+   k SEED-NAME$ {: na:ptr nu:n :}
+   na k SEED-NA-FIELD !
+   nu k cells SEED-NU + ! ;
+
+\ A mint name carrying a `:` would break the split MATCH-TOKEN relies on, and two
+\ seeds sharing a name would make confinement ambiguous - the reference would be
+\ inside one owner and outside the other. Both are refused where the list is read,
+\ so neither can be introduced silently by a later seed.
+: SEED-COLON-FREE ( n -- ) {: k:n :}
+   k SEED-AT$ COLON LINT-COUNT-CHAR 0 > if
+      s" refine-lint: a mint name may not contain `:`" FAIL
+   then ;
+
+: ORD-SHIFT ( n -- ) {: j:n :}              \ open a hole at order position j
+   ORD-N @ begin dup j > while
+      dup 1- ORD@ over cells SEED-ORD + !
+      1-
+   repeat drop ;
+
+: ORD-SLOT ( n -- n ) {: k:n :}             \ where seed k belongs in the order
+   0 begin dup ORD-N @ < while
+      dup ORD$ k SEED-AT$ LINT-ORDER:CMP-CI
+      dup 0= if s" refine-lint: duplicate mint name in the seed list" FAIL then
+      0 > if exit then
+      1+
+   repeat ;
+
+: ORD+ ( n -- ) {: k:n :}
+   k ORD-SLOT {: j:n :}
+   j ORD-SHIFT
+   k j cells SEED-ORD + !
+   ORD-N @ 1+ ORD-N ! ;
+
+: BUILD-BOUNDS ( -- )
+   0 SEED-U@ dup SEED-MIN-U ! SEED-MAX-U !
+   1 begin dup TOKEN-SEED# < while
+      dup SEED-U@ SEED-MIN-U @ < if dup SEED-U@ SEED-MIN-U ! then
+      dup SEED-U@ SEED-MAX-U @ > if dup SEED-U@ SEED-MAX-U ! then
       1+
    repeat drop ;
 
-: STRING-OPENER? ( -- bool )
-   PAT-TOK$ LINT-NORMAL-STRING-OPENER? if LINT-TRUE exit then
-   PAT-TOK$ LINT-ESC-STRING-OPENER? ;
+: BUILD-INDEX ( -- )
+   0 ORD-N !
+   0 begin dup TOKEN-SEED# < while
+      dup SEED-CACHE
+      dup SEED-COLON-FREE
+      dup ORD+
+      1+
+   repeat drop
+   BUILD-BOUNDS ;
 
-: SCAN-LINE ( ptr u8 n -- )
-   PAT-RESET
-   begin PAT-READ-TOKEN while
-      STRING-OPENER? if PAT-SKIP-STRING-BODY else MATCH-TOKEN then
+BUILD-INDEX
+
+: SEED-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}   \ the token seed named a/u, or -1
+   0 LO !  ORD-N @ 1- HI !
+   begin LO @ HI @ <= while
+      LO @ HI @ + 2 / MID !
+      MID @ ORD$ a u LINT-ORDER:CMP-CI
+      dup 0= if drop MID @ ORD@ exit then
+      0 < if MID @ 1+ LO ! else MID @ 1- HI ! then
+   repeat -1 ;
+
+: LAST-COLON ( ptr u8 n -- n ) {: a:ptr u:n :}   \ index of the last `:`, or -1
+   u 1- begin dup 0 >= while
+      dup a + c@ COLON = if exit then
+      1-
    repeat ;
 
-: LINE-LEN ( ptr u8 n -- ptr u8 n )
-   dup 0 > IF
-      2dup + 1- c@ 13 = IF 1- THEN
-   THEN ;
+: CANDIDATE ( ptr u8 n -- )                 \ report the mint this span names, if any
+   {: ca:ptr cu:n :}
+   cu SEED-MIN-U @ < if exit then
+   cu SEED-MAX-U @ > if exit then
+   ca cu SEED-FIND {: k:n :}
+   k 0 < if exit then
+   k ALLOWED? 0= if k HIT then ;
 
-: DO-LINE ( n -- )
-   LE !
-   LINE @ 1+ LINE !
-   LA@ LS @ +  LE @ LS @ -  LINE-LEN
-   SCAN-LINE
-   LE @ 1+ LS ! ;
+\ The two reference forms are the bare mint name and a package-qualified
+\ `PKG:NAME`, and no mint name contains a `:`, so a token's LAST `:` splits off
+\ its only candidate and a token without one is its own candidate. A token
+\ shorter than the shortest seed name can be neither: an exact reference needs
+\ the same length, and a qualified one is strictly longer than the name it ends
+\ with. `:NAME` with nothing before the colon is not a qualified reference,
+\ which is the old `u >= nu + 2` guard.
+: MATCH-TOKEN ( -- )
+   TOK$ {: a:ptr u:n :}
+   u SEED-MIN-U @ < if exit then
+   a u LAST-COLON {: c:n :}
+   c 0= if exit then
+   c 0 < if a u CANDIDATE exit then
+   a c 1+ +  u c - 1-  CANDIDATE ;
 
-: FOR-LINES ( ptr u8 n -- )
-   LU ! LA!
-   0 LINE !  0 LX !  0 LS !
-   begin LX @ LU @ < while
-      LA@ LX @ + c@ LF = IF LX @ DO-LINE THEN
-      LX @ 1+ LX !
+: PACKAGE-TOK? ( -- bool )
+   s" package" TOK=CI ;
+
+: PACKAGE-END-TOK? ( -- bool )
+   s" ;package" TOK=CI ;
+
+: PUBLIC-TOK? ( -- bool )
+   s" public" TOK=CI ;
+
+: PRIVATE-TOK? ( -- bool )
+   s" private" TOK=CI ;
+
+: CAST-TOK? ( -- bool )
+   s" CAST:" TOK=CI ;
+
+: QUALIFIED-RAW? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u COLON LINT-COUNT-CHAR 1 <> if LINT-FALSE exit then
+   a u COLON LINT-INDEX-OF
+   MATCH option
+      none OF LINT-FALSE ENDOF
+      some OF {: i:n :}
+         i 0= i u 1- = or if LINT-FALSE exit then
+         a i COMPILER-PKG? 0= if LINT-FALSE exit then
+         a i 1+ + u i - 1- RAW-NAME?
+      ENDOF
+   ;MATCH ;
+
+: IR-RAW-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : legacy package IR-RAW is forbidden; IR-ID owns sealed authority" OUT NL
+   then
+   BAD+ ;
+
+: RAW-AUTHORITY-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-IR-RAW " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : `" OUT TOK$ OUT
+      s" ` defines or qualifies a frozen raw IR authority name" OUT NL
+   then
+   BAD+ ;
+
+: MISSING-PACKAGE-NAME-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-NAME " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : package has no atomic name" OUT NL
+   then
+   BAD+ ;
+
+: PACKAGE-NAME-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-NAME " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : package name is a delimiter or contains `:`" OUT NL
+   then
+   BAD+ ;
+
+: NESTED-PACKAGE-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-NEST " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : nested package opener is forbidden" OUT NL
+   then
+   BAD+ ;
+
+: STRAY-PACKAGE-END-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-STRAY " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : stray ;package has no open package" OUT NL
+   then
+   BAD+ ;
+
+: STRAY-PACKAGE-MODE-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-STRAY " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : public or private appears outside a package" OUT NL
+   then
+   BAD+ ;
+
+: UNCLOSED-PACKAGE-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-END " OUT
+      CUR$ OUT COLON C PACKAGE-LINE @ U.
+      s" : package is unclosed at file boundary" OUT NL
+   then
+   BAD+ ;
+
+: DEFINITION-SYNTAX-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-DEFINITION " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : defining word or EXPORT lacks its atomic operand" OUT NL
+   then
+   BAD+ ;
+
+: UNCLOSED-DEFINITION-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-DEFINITION " OUT
+      CUR$ OUT COLON C DEF-LINE @ U.
+      s" : definition is unclosed at file boundary" OUT NL
+   then
+   BAD+ ;
+
+: SOURCE-LEX-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-LEX " OUT
+      CUR$ OUT COLON C LINT-LEX:ERROR-LINE@ U.
+      s" : malformed source prevents complete confinement scan" OUT NL
+   then
+   BAD+ ;
+
+: BAD-PACKAGE-NAME? ( -- bool )
+   PACKAGE-TOK? if LINT-TRUE exit then
+   PACKAGE-END-TOK? if LINT-TRUE exit then
+   TOK$ COLON LINT-COUNT-CHAR 0= 0= ;
+
+: PACKAGE-START ( -- )
+   PACKAGE-OPEN @ {: nested:bool :}
+   nested if NESTED-PACKAGE-HIT then
+   TOK-I @ 1+ dup LINT-LEX:COUNT >= if
+      drop MISSING-PACKAGE-NAME-HIT
+      exit
+   then
+   TOK-I !
+   TOK-I @ LINT-LEX:LINE@ LINE !
+   TOK-I @ LINT-LEX:KIND@ LINT-LEX:WORD <> if
+      PACKAGE-NAME-HIT
+      exit
+   then
+   BAD-PACKAGE-NAME? if PACKAGE-NAME-HIT exit then
+   nested if exit then
+   TOK$ PACKAGE-KIND-OF PACKAGE-KIND !
+   LINT-TRUE PACKAGE-OPEN !
+   LINT-FALSE PACKAGE-PUBLIC !
+   LINE @ PACKAGE-LINE !
+   PACKAGE-KIND @ PKG-IR-RAW = if
+      IR-RAW-HIT
+   then ;
+
+: PACKAGE-END ( -- )
+   PACKAGE-OPEN @ 0= if
+      STRAY-PACKAGE-END-HIT
+      exit
+   then
+   LINT-FALSE PACKAGE-OPEN !
+   LINT-FALSE PACKAGE-PUBLIC !
+   PKG-OTHER PACKAGE-KIND ! ;
+
+: RAW-DEFINITION-ALLOWED? ( -- bool )
+   CUR$ s" src/compiler/ir/id.f" FS-PATH= 0= if LINT-FALSE exit then
+   PACKAGE-KIND @ PKG-IR-ID = PACKAGE-PUBLIC @ 0= and ;
+
+: RAW-ALIAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u COLON LINT-COUNT-CHAR
+   dup 0= if drop a u RAW-NAME? exit then
+   1 <> if LINT-FALSE exit then
+   a u COLON LINT-INDEX-OF
+   MATCH option
+      none OF LINT-FALSE ENDOF
+      some OF {: i:n :}
+         i 0= i u 1- = or if LINT-FALSE exit then
+         a i 1+ + u i - 1- RAW-NAME?
+      ENDOF
+   ;MATCH ;
+
+: START-DEFINITION ( n bool -- ) {: kind:n cast:bool :}
+   TOK-I @ LINT-DEF:NAME-I
+   MATCH option
+      none OF
+         PACKAGE-OPEN @ if DEFINITION-SYNTAX-HIT then
+      ENDOF
+      some OF {: namei:n :}
+         namei TOK-I !
+         namei LINT-LEX:LINE@ LINE !
+         MATCH-TOKEN
+         TOK$ QUALIFIED-RAW? if RAW-AUTHORITY-HIT then
+         PACKAGE-KIND @ IR-API-PKG? if
+            TOK$ RAW-NAME? if
+               cast RAW-DEFINITION-ALLOWED? and 0=
+               if RAW-AUTHORITY-HIT then
+            else
+               cast PACKAGE-KIND @ PKG-IR-ID = and
+               if RAW-AUTHORITY-HIT then
+            then
+         then
+         kind LINT-DEF:DATA <> if
+            kind DEF-KIND !
+            LINE @ DEF-LINE !
+            LINT-TRUE DEF-OPEN !
+         then
+      ENDOF
+   ;MATCH ;
+
+: MATCH-EXPORT ( -- )
+   TOK-I @ LINT-DEF:EXPORT-I
+   MATCH option
+      none OF DEFINITION-SYNTAX-HIT ENDOF
+      some OF {: namei:n :}
+         namei TOK-I !
+         namei LINT-LEX:LINE@ LINE !
+         PACKAGE-OPEN @ 0= if exit then
+         MATCH-TOKEN
+         TOK$ QUALIFIED-RAW? if
+            RAW-AUTHORITY-HIT
+         else
+            PACKAGE-KIND @ IR-API-PKG? if
+               TOK$ RAW-ALIAS? if RAW-AUTHORITY-HIT then
+            then
+         then
+      ENDOF
+   ;MATCH ;
+
+: MATCH-DEFINITION-BODY ( -- )
+   TOK$ QUALIFIED-RAW? if RAW-AUTHORITY-HIT else MATCH-TOKEN then
+   TOK-I @ DEF-KIND @ LINT-DEF:CLOSE? if LINT-FALSE DEF-OPEN ! then ;
+
+: MATCH-WORD ( -- )
+   DEF-OPEN @ if
+      MATCH-DEFINITION-BODY
+      exit
+   then
+   PACKAGE-TOK? if
+      PACKAGE-START
+      exit
+   then
+   PACKAGE-END-TOK? if
+      PACKAGE-END
+      exit
+   then
+   PUBLIC-TOK? if
+      PACKAGE-OPEN @ 0= if STRAY-PACKAGE-MODE-HIT exit then
+      LINT-TRUE PACKAGE-PUBLIC !
+      exit
+   then
+   PRIVATE-TOK? if
+      PACKAGE-OPEN @ 0= if STRAY-PACKAGE-MODE-HIT exit then
+      LINT-FALSE PACKAGE-PUBLIC !
+      exit
+   then
+   TOK$ QUALIFIED-RAW? if RAW-AUTHORITY-HIT exit then
+   TOK-I @ LINT-DEF:EXPORT? if MATCH-EXPORT exit then
+   TOK-I @ LINT-DEF:DIRECT-KIND dup LINT-DEF:NONE <> if
+      CAST-TOK? START-DEFINITION exit
+   then
+   drop
+   MATCH-TOKEN ;
+
+: SCAN-SOURCE ( ptr u8 n -- )
+   LINT-FALSE PACKAGE-OPEN !
+   LINT-FALSE PACKAGE-PUBLIC !
+   LINT-FALSE DEF-OPEN !
+   PKG-OTHER PACKAGE-KIND !
+   0 PACKAGE-LINE !
+   LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if SOURCE-LEX-HIT exit then
+   0 TOK-I !
+   begin TOK-I @ LINT-LEX:COUNT < while
+      TOK-I @ LINT-LEX:LINE@ LINE !
+      TOK-I @ LINT-LEX:KIND@ LINT-LEX:WORD = if MATCH-WORD then
+      TOK-I @ 1+ TOK-I !
    repeat
-   LS @ LU @ < IF LU @ DO-LINE THEN ;
+   DEF-OPEN @ if UNCLOSED-DEFINITION-HIT then
+   PACKAGE-OPEN @ if UNCLOSED-PACKAGE-HIT then ;
 
 : SCAN-STR ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
    pa pu CUR!
-   a u FOR-LINES ;
+   a u SCAN-SOURCE ;
 
 \ findings from one string scanned in isolation under the given path
 \ (reset -> scan -> count); leaves the run counters untouched.
@@ -604,7 +1047,7 @@ public
 : SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u SRC? 0= if exit then
    a u CUR!
-   a u FILE-BUF FILE-CAP READ-FILE FOR-LINES ;
+   a u FILE-BUF FILE-CAP READ-FILE SCAN-SOURCE ;
 
 : SCAN-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
    a u DIR? 0= if s" refine-lint: missing scan root" FAIL then
@@ -631,21 +1074,21 @@ private
    s" MINT-ROW"     s" lib/nominal/nominal-test.f"      ALLOW+ ;
 
 : REPORT ( -- )
-   s" refine-lint: " OUT SEED# U. s"  mint(s), " OUT
+   s" refine-lint: " OUT SEED# U. s"  boundary word(s), " OUT
    BAD @ U. s"  finding(s)" OUT NL
    BAD @ 0 > IF 1 throw THEN ;
 
 public
 
 : RUN ( -- )
-   BUFFERS
    RESET
    ALLOW-SEED
-   INVENTORY
+   LIVENESS
    s" maki" SCAN-ROOT
    s" lib" SCAN-ROOT
    s" src" SCAN-ROOT
    s" tools" SCAN-ROOT
+   s" test" SCAN-ROOT
    REPORT ;
 
 \ How many findings the last run recorded, and a way to start a fresh count. The

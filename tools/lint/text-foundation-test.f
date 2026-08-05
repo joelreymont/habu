@@ -190,6 +190,17 @@ variable BIG-LEX-U
    s"  c ;" ESC-FIX+
    ESC-FIX$ ;
 
+\ `: Q s" : FORGED ;" s" " dup ;` - two literals, the first holding text that
+\ would be a definition if it were ever tokenized and the second holding
+\ nothing at all.
+: PAYLOAD-FIX$  ( -- ptr u8 n )
+   ESC-FIX-RESET
+   s" : Q s" ESC-FIX+  DQUOTE ESC-FIX-C+
+   s"  : FORGED ;" ESC-FIX+  DQUOTE ESC-FIX-C+
+   s"  s" ESC-FIX+  DQUOTE ESC-FIX-C+  $20 ESC-FIX-C+  DQUOTE ESC-FIX-C+
+   s"  dup ;" ESC-FIX+
+   ESC-FIX$ ;
+
 : INIT-TOK-FIX  ( -- )
    TOK-LEN STR:BUF-RESET
    s" : X ( n -- n ) dup " STR:LENGTH TOK-FIX FIX-CAP STR:LENGTH TOK-LEN STR:BUF-APPEND
@@ -388,6 +399,64 @@ variable REG-I
    0 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
    0 LINT-LEX:CONTENT nip 0 ASSERT= ;
 
+\ A parenthesized name lexes as one WORD wherever it stands, not only where a
+\ definer just parsed it. In call position nothing precedes it, so only the
+\ attached-paren rule itself keeps `(X)` out of the comment path.
+: TEST-LEXER-PAREN-CALL ( -- )
+   s" : USE (CMP) (X) 2drop ;" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 6 ASSERT=
+   0 LINT-LEX:TOKEN s" :" ASSERT$
+   1 LINT-LEX:TOKEN s" USE" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   2 LINT-LEX:TOKEN s" (CMP)" ASSERT$
+   3 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   3 LINT-LEX:TOKEN s" (X)" ASSERT$
+   4 LINT-LEX:TOKEN s" 2drop" ASSERT$
+   5 LINT-LEX:TOKEN s" ;" ASSERT$ ;
+
+\ `.( ... )` is the printing comment. Its body is text the engine prints, never
+\ code, so the whole span is one inert COMMENT token and the declaration spelled
+\ inside it must not reach a consumer - the exact case tools/error-code-lint.f
+\ depends on. `.(X)` has no delimiter after the opener, so `parse-name` returns
+\ one ordinary word instead, and an opener that never closes ends at end of input.
+: TEST-LEXER-PRINT-PAREN ( -- )
+   s" .( -9001 constant E-XA )  -9001 constant E-XB" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 4 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   0 LINT-LEX:TOKEN s" .( -9001 constant E-XA )" ASSERT$
+   0 LINT-LEX:CONTENT s"  -9001 constant E-XA " ASSERT$
+   0 LINT-LEX:BYTE@ 0 ASSERT=  0 LINT-LEX:LINE@ 1 ASSERT=  0 LINT-LEX:COL@ 1 ASSERT=
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   1 LINT-LEX:TOKEN s" -9001" ASSERT$
+   2 LINT-LEX:TOKEN s" constant" ASSERT$
+   3 LINT-LEX:TOKEN s" E-XB" ASSERT$
+   s" .(X) drop" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 2 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   0 LINT-LEX:TOKEN s" .(X)" ASSERT$
+   1 LINT-LEX:TOKEN s" drop" ASSERT$
+   s" dup .(" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 2 ASSERT=
+   0 LINT-LEX:TOKEN s" dup" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   1 LINT-LEX:TOKEN s" .(" ASSERT$
+   1 LINT-LEX:CONTENT nip 0 ASSERT= ;
+
+\ After a definer the engine parses the next word as a name and never executes
+\ it, so `: .( ( -- ) cr ;` DEFINES a word spelled `.(` and the `( -- )` after it
+\ is that definition's own stack comment. The later `.( hi )` still prints.
+: TEST-LEXER-PRINT-NAME-POS ( -- )
+   s" : .( ( -- ) cr ; .( hi ) dup" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 7 ASSERT=
+   0 LINT-LEX:TOKEN s" :" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    1 LINT-LEX:TOKEN s" .(" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  -- " ASSERT$
+   3 LINT-LEX:TOKEN s" cr" ASSERT$
+   4 LINT-LEX:TOKEN s" ;" ASSERT$
+   5 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 5 LINT-LEX:CONTENT s"  hi " ASSERT$
+   6 LINT-LEX:TOKEN s" dup" ASSERT$ ;
+
 : TEST-ONE-ENGINE-DELIM ( n -- ) {: c:n :}
    ROW-RESET
    s" LEFT" ROW+  c ROW-C+
@@ -472,6 +541,30 @@ variable REG-I
    3 LINT-LEX:BYTE@ 11 ASSERT=  3 LINT-LEX:COL@ 12 ASSERT=
    4 LINT-LEX:TOKEN s" ;" ASSERT$
    4 LINT-LEX:BYTE@ 13 ASSERT= ;
+
+\ A string literal's payload is reported through CONTENT, the same reader a
+\ paren comment's body uses, and it is still not tokenized: the token count and
+\ the token after each literal pin that. Reporting the bytes is what lets a
+\ consumer reason about a quoted NAME - the checker's concrete type table is
+\ written that way - without falling back to substring search over the source.
+: TEST-LEXER-STRING-PAYLOAD ( -- )
+   PAYLOAD-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 6 ASSERT=
+   2 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=
+   2 LINT-LEX:CONTENT s" : FORGED ;" ASSERT$
+   3 LINT-LEX:CONTENT nip 0 ASSERT=
+   4 LINT-LEX:TOKEN s" dup" ASSERT$
+   4 LINT-LEX:CONTENT nip 0 ASSERT=
+   0 LINT-LEX:CONTENT nip 0 ASSERT=
+   ESC-OPENER$ LINT-LEX:SOURCE
+   2 LINT-LEX:CONTENT nip 5 ASSERT=
+   2 LINT-LEX:CONTENT drop c@ [char] a ASSERT=
+   PLAIN-OPENER$ LINT-LEX:SOURCE
+   2 LINT-LEX:CONTENT nip 2 ASSERT=
+   UNTERM-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? ASSERT
+   2 LINT-LEX:CONTENT nip 0 ASSERT= ;
 
 \ ---- primitive-axiom rows ---------------------------------------------------
 \ src/core/checker.f names primitives `s"`, `c"`, `."`, `s\"`, `c\"`, `.\"`, `[']`
@@ -623,6 +716,26 @@ variable REG-I
    2 LINT-LEX:TOKEN s" REAL" ASSERT$
    4 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
+\ A row body is interpreted, so a `.( ... )` there parses its own text just like
+\ `s" ... "` does. The closer spelled inside the print body is that text, and the
+\ row must run on to the later real closer. A print body that never closes means
+\ the row can never close either, which is the malformed-row diagnostic.
+: TEST-ROW-PRINT-BODY ( -- )
+   ROW-RESET
+   s" PRIM: FOO .( PRIM; package FAKE ) PE-N PRIM;" ROW+
+   ROW$ nip {: rowu:n :}
+   ROW-NL  s" : REAL dup ;" ROW+
+   LEX-ROW
+   LINT-LEX:ERROR? LINT-NOT ASSERT
+   LINT-LEX:COUNT 5 ASSERT=
+   REG-COUNT 1 ASSERT=
+   0 LINT-LEX:TOKEN nip rowu ASSERT=
+   1 LINT-LEX:TOKEN s" :" ASSERT$
+   2 LINT-LEX:TOKEN s" REAL" ASSERT$
+   4 LINT-LEX:TOKEN s" ;" ASSERT$
+   ROW-RESET  s" PRIM: FOO .( PE-N PRIM;" ROW+
+   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT= ;
+
 \ Openers and closers spelled in a top-level comment or string body never reach
 \ the row scanner at all, so no registry token appears and the paren comment
 \ stays one COMMENT token.
@@ -770,25 +883,26 @@ variable REG-I
    11 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
 \ End-to-end acceptance on the two real axiom sources. The row counts are a
-\ ratchet on the live primitive-effect table: src/core/checker.f holds 278 lines
-\ opening `PRIM: ` plus 55 opening `PPRIM: `, and src/core/sumtype.f holds 3. A
+\ ratchet on the live primitive-effect table: src/core/checker.f holds 284 rows
+\ opening `PRIM: ` plus 61 opening `PPRIM: `, and src/core/sumtype.f holds 3. A
 \ new primitive changes these numbers, and the number is meant to be updated
 \ deliberately with the axiom that caused it. The two counts move independently,
-\ one per file. In src/core/checker.f the eight `TYPE-FIELD-OWNER` package axioms
-\ moved its count from 322 to 330 and the four `CHECKER-DECL-FRAME` rows — the
-\ ones closed with `CLOSE-PRIVATE` — moved it to 334; deleting the
-\ `checker-defenum` row took one away, leaving 333. In src/core/sumtype.f the
-\ four block openers were `NEWTYPE`, `SUMTYPE`, `ENUM` and `PRODUCT`; deleting
-\ the `ENUM` row leaves 3. Both deletions have the same cause: the global ENUM
-\ keyword is an ordinary checked ( -- ) definition over ENUM-DECL:ED-RUN now, so
-\ it needs no axiom of its own, and the metadata-only `checker-defenum` entry it
-\ used went with it.
+\ one per file. In src/core/checker.f the count reached 338 through the eight
+\ `TYPE-FIELD-OWNER` package axioms and the four `CHECKER-DECL-FRAME` rows closed
+\ with `CLOSE-PRIVATE`, less the deleted `checker-defenum` row; it moved to 345
+\ when persisted callback cells added `xt!` and the checker's source-tape observer
+\ seam added the six `CHECKER-TAPE` rows `INSTALL`, `ARM`, `DISARM`, `K-NAME`,
+\ `K-INT` and `K-REAL`. In src/core/sumtype.f the four block openers were
+\ `NEWTYPE`, `SUMTYPE`, `ENUM` and `PRODUCT`; deleting the `ENUM` row leaves 3,
+\ because the global ENUM keyword is an ordinary checked ( -- ) definition over
+\ ENUM-DECL:ED-RUN now, so it needs no axiom of its own, and the metadata-only
+\ `checker-defenum` entry it used went with it.
 : TEST-REAL-REGISTRY-FILES ( -- )
    s" src/core/checker.f" LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   REG-COUNT 333 ASSERT=
+   REG-COUNT 345 ASSERT=
    \ Line 5116's `PRIM: s"` row is the one that broke the old lexer: its name is a
    \ live string opener, so the word path consumed source through the quote in the
    \ next row. Name that row and pin that it is one token ending at its own closer.
@@ -839,17 +953,61 @@ variable REG-I
    largesourceu largesize ASSERT=
    largesource largesourceu s" LABEL@" LINT-CONTAINS? ASSERT ;
 
+\ CMP-CI is an ORDER, and a caller only gets to replace a scan with a binary
+\ search if it is a total one whose 0 answer is exactly LINT-STR=CI's true. The
+\ three laws are checked directly: sign, antisymmetry, and agreement with the
+\ equality the scan used - including the case where one name is a prefix of the
+\ other, which is where a compare that only walked the shared bytes would call
+\ two different names equal.
+: CMP-SIGN ( n -- n )
+   dup 0 < if drop -1 exit then
+   0 > if 1 exit then
+   0 ;
+
+: BOOL>N ( bool -- n )
+   IF 1 ELSE 0 THEN ;
+
+: ASSERT-CMP ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n b:ptr v:n want:n :}
+   a u b v LINT-ORDER:CMP-CI CMP-SIGN want ASSERT=
+   b v a u LINT-ORDER:CMP-CI CMP-SIGN 0 want - ASSERT=          \ antisymmetric
+   a u b v LINT-STR=CI BOOL>N  want 0= BOOL>N  ASSERT= ;        \ 0 iff LINT-STR=CI
+
+: TEST-CMP-CI ( -- )
+   s" abc" s" abd" -1 ASSERT-CMP
+   s" abd" s" abc" 1 ASSERT-CMP
+   s" abc" s" abc" 0 ASSERT-CMP
+   s" ABC" s" abc" 0 ASSERT-CMP                                 \ folded, like the dictionary
+   s" aBc" s" AbC" 0 ASSERT-CMP
+   s" ab" s" abc" -1 ASSERT-CMP                                 \ prefix sorts first
+   s" abc" s" ab" 1 ASSERT-CMP
+   s" " s" " 0 ASSERT-CMP
+   s" " s" a" -1 ASSERT-CMP
+   s" RAW>NODE" s" RAW>SLOT" -1 ASSERT-CMP                      \ real mint names
+   s" MINT-ROW" s" MINT-PATH" 1 ASSERT-CMP
+   s" raw>node" s" RAW>NODE" 0 ASSERT-CMP ;
+
+: TEST-CMP-CI-TRANSITIVE ( -- )                                 \ a<b and b<c imply a<c
+   s" MINT-BYTE-LEN" s" MINT-CELL-OFF" -1 ASSERT-CMP
+   s" MINT-CELL-OFF" s" MINT-INDEX" -1 ASSERT-CMP
+   s" MINT-BYTE-LEN" s" MINT-INDEX" -1 ASSERT-CMP ;
+
 : RUN  ( -- )
    1 TEST-N !
+   TEST-CMP-CI
+   TEST-CMP-CI-TRANSITIVE
    INIT-FIXTURES
    TEST-STRINGS
    TEST-SCANNERS
    TEST-SIGS
    TEST-LEXER
    TEST-LEXER-PAREN-NAME
+   TEST-LEXER-PAREN-CALL
+   TEST-LEXER-PRINT-PAREN
+   TEST-LEXER-PRINT-NAME-POS
    TEST-LEXER-ENGINE-DELIMS
    TEST-LEXER-NO-ERROR
    TEST-LEXER-ESC-QUOTE
+   TEST-LEXER-STRING-PAYLOAD
    TEST-LEXER-UNTERM-QUOTE
    TEST-LEXER-REUSE-AFTER-ERROR
    TEST-ROW-QUOTE-NAMES
@@ -858,6 +1016,7 @@ variable REG-I
    TEST-ROW-COMMENTS-INERT
    TEST-ROW-ATTACHED-PAREN
    TEST-ROW-CONTROL-COMMENT
+   TEST-ROW-PRINT-BODY
    TEST-ROW-FAKE-IN-COMMENT-AND-STRING
    TEST-ROW-PRIVATE-CLOSER
    TEST-ROW-CASE-FOLD

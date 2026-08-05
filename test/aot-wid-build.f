@@ -3,23 +3,43 @@
 \ Run as `bin/hb --load test/aot-wid-build.f` with HB_TMP pointing at a private
 \ directory; on success it writes an `hb-pwid` engine into that directory. The
 \ variant is identical to the shipped `bin/hb` except that its ahead-of-time
-\ (AOT) section carries a protected-WID registry with two entries (word-list ids
-\ 300 and 70000). Nothing in production is touched: the registry is baked ONLY
-\ into this throwaway variant, through the same capture-buffer serialize the real
-\ metabuild uses (aot-capture.f ACAP-PWID-PUT), so the shipped engine keeps an
-\ empty registry.
+\ (AOT) section carries a protected-WID bitmap with two extra wordlist ids set
+\ (300 and 8000) on top of whatever the metabuild host itself protects. Nothing
+\ in production is touched: the extra bits are set ONLY in this throwaway
+\ variant, through the same capture-buffer word the real metabuild uses
+\ (aot-capture.f ACAP-PWID-SET), so the shipped engine bakes exactly the band
+\ its own build produced.
 \
-\ How the registry is injected without editing production source: the stdin
-\ metabuild driver src/habu/stdin.f ends with a single top-level `GO` call. This
-\ builder reads that file, verifies it still ends with that `GO` call (and dies
-\ with a clear message if the tail ever drifts), drops the `GO` call, and appends
-\ a `PWID-GO` that mirrors `GO` but writes two protected word-list ids into the
-\ capture buffer between capturing the REPL and emitting the image. The rest of
-\ the build reuses tools/build-fixpoint.f exactly as the normal stdin build does.
+\ How the bits are injected without editing production source: the stdin
+\ metabuild driver src/habu/stdin.f ends with a single top-level `STDIN-DRV:GO`
+\ call. This builder reads that file, verifies it still ends with that call (and
+\ dies with a clear message if the tail ever drifts), drops the call, and appends
+\ a `PWID-GO` that mirrors `GO` but works on the capture buffer between capturing
+\ the REPL and emitting the image. The rest of the build reuses
+\ tools/build-fixpoint.f exactly as the normal stdin build does.
+\
+\ Four modes, selected by environment so one builder serves every case its
+\ companion test/aot-wid-suite.f needs:
+\
+\   (default)          bake the two fixture ids, after checking the capture's own
+\                      shape contract on the live host: the band carries
+\                      PROT-REG-TAG, the captured buffer is a bit-for-bit image
+\                      of the live band, and the table-era conversion leg accepts
+\                      an empty registry without setting a bit.
+\   HABU_PWID_OOR=N    hand N to ACAP-PWID-SET instead. The capture must refuse
+\                      any id at or above the bitmap's bound rather than write
+\                      outside the band, so the build dies named and no engine
+\                      appears.
+\   HABU_PWID_LEGACY_N=N  hand N to ACAP-PWID-LEGACY as a table-era row count.
+\                      A count outside [0, PROT-WID-LEGACY-MAX] is not a legacy
+\                      registry at all, so the build dies named rather than
+\                      walking the read loop out of the band.
+\   HABU_AOT_SPAN=N    overwrite the captured AOT DATA span (the sibling
+\                      test/aot-data-span-forge.f forge; see SPAN-FORGE-LINE).
 \
 \ Its companion test/aot-wid-suite.f spawns this builder in a child process and
-\ then probes the resulting hb-pwid to prove the protected-WID registry is
-\ restored at engine startup, before any batch program runs.
+\ then probes the resulting hb-pwid to prove the protected-WID bitmap is restored
+\ at engine startup, before any batch program runs.
 
 require lib/errors.f
 require lib/string.f
@@ -70,17 +90,19 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    repeat ;
 
 : TAIL-BAD ( -- )
-   s" aot-wid-build: src/habu/stdin.f no longer ends with a top-level GO call" BF-BUILD-RC die ;
+   s" aot-wid-build: src/habu/stdin.f no longer ends with a top-level STDIN-DRV:GO call" BF-BUILD-RC die ;
 
-\ Length of stdin.f to keep: everything up to (not including) the trailing `GO`.
-\ Fail closed if the file does not end with a standalone `GO` token.
+: GO-TAIL$ ( -- ptr u8 n ) s" STDIN-DRV:GO" ;
+
+\ Length of stdin.f to keep: everything up to (not including) the trailing
+\ `STDIN-DRV:GO`. Fail closed if the file does not end with that standalone token.
 : GO-KEEP ( -- n )
    SRC-LAST {: l:n :}
-   l 1 < if TAIL-BAD then
-   l SRC-BUF + c@ [char] O <> if TAIL-BAD then
-   l 1- SRC-BUF + c@ [char] G <> if TAIL-BAD then
-   l 2 >= if l 2 - SRC-BUF + c@ WS? 0= if TAIL-BAD then then
-   l 1- ;
+   GO-TAIL$ {: t:ptr tu:n :}
+   l 1+ tu < if TAIL-BAD then
+   l 1+ tu - SRC-BUF + tu t tu STR= 0= if TAIL-BAD then
+   l 1+ tu > if l tu - SRC-BUF + c@ WS? 0= if TAIL-BAD then then
+   l 1+ tu - ;
 
 : DRV-RESET ( -- )
    0 DRV-U ! ;
@@ -94,34 +116,107 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    10 DRV-BUF DRV-U @ + c!
    DRV-U @ 1+ DRV-U ! ;
 
+: DRV-LINE ( ptr u8 n -- ) DRV+ DRV-NL ;
+
 \ Optional AOT DATA-span forge (dot habu-guard-aot-data-49de2ee6). The reserve in
 \ EM-AOT-RELOC-DATA advances DP by the baked LAOTDATASIZE span read straight from
 \ the image; test/aot-data-span-forge.f probes that guard by baking a forged span.
 \ When HABU_AOT_SPAN is set to a decimal, that value overwrites the captured span
-\ AFTER CAPTURE-REPL and BEFORE EMIT-FORTH, so LAOTDATASIZE carries the forged value
+\ AFTER CAPTURE-REPL and BEFORE ENGINE-BUILD:EMIT-FORTH, so LAOTDATASIZE carries the forged value
 \ (the forge test passes 2*DATA-SIZE, unambiguously past the seed headroom). No env
 \ leaves the real capture untouched (the plain protected-WID build path).
 : SPAN-FORGE-LINE ( -- )
    s" HABU_AOT_SPAN" GETENV {: v:ptr vu:n :}
    vu 0 > if
-      s"    " DRV+  v vu DRV+  s"  AOT-DATA-SIZE !" DRV+ DRV-NL
+      s"    " DRV+  v vu DRV+  s"  AOT-DATA-SIZE !" DRV-LINE
    then ;
 
-\ Append PWID-GO: mirror stdin.f GO, injecting two protected word-list ids
-\ (300, one slot for WID > 255; and 70000, one slot for WID > 65535) into the
-\ capture buffer after CAPTURE-REPL. These two literal ids are the fixture
-\ contract: test/aot-wid-suite.f asserts exactly 300 and 70000 are restored, so
-\ any drift here turns that suite red (it is self-checking) - keep the two in step.
+\ --- the fixture contract -----------------------------------------------------
+\ These two ids are what test/aot-wid-suite.f probes for in the built engine, so
+\ any drift here turns that suite red (it is self-checking) - keep the two in
+\ step. 300 is above the u8 ceiling the old u32-row table existed to clear; 8000
+\ sits high in the band, far above any wordlist a boot allocates, so the suite can
+\ also assert that its NEIGHBOUR 8001 came back unprotected - a restore that
+\ smeared or mis-shifted the band would set it.
+: FIXTURE-A$ ( -- ptr u8 n ) s" 300" ;
+: FIXTURE-B$ ( -- ptr u8 n ) s" 8000" ;
+
+\ --- shape and conversion checks emitted into the driver ----------------------
+\ These run in the METABUILD HOST, where the live band and the capture buffer both
+\ exist, and they use the very words the real capture uses. They are the only
+\ place the capture's format contract can be checked against a live band.
+: SHAPE-CHECK-DEF ( -- )
+   s" : PWID-SHAPE-CHECK ( -- )" DRV-LINE
+   s"    ACAP-PWID-TAG@ PROT-REG-TAG <> if" DRV-LINE
+   S\"       s\" aot-wid-build: metabuild host band carries no bitmap tag\" 74 die then" DRV-LINE
+   s"    PROT-BITS-BYTES 0 ?do" DRV-LINE
+   s"       AOT-LIVE-DATA PROT-BITS-OFF + i + AOT-A>U8 c@  AOT-PWID-BUF@ i + c@ <> if" DRV-LINE
+   S\"          s\" aot-wid-build: capture is not a bit-for-bit image of the live band\" 74 die" DRV-LINE
+   s"       then" DRV-LINE
+   s"    loop ;" DRV-LINE ;
+
+\ The table-era leg converts u32 rows read from a FIXED live address into bits, so
+\ it cannot be handed a fabricated table: on a bitmap-era host that address holds
+\ the bitmap, and reading it as rows yields whatever ids the host's own bits happen
+\ to spell. What CAN be checked here without forging live memory is the empty
+\ table-era registry - count 0, which is exactly the shape every shipped
+\ table-era engine carried, and the shape the real changeover fed this leg. It must
+\ be accepted (not mistaken for an unknown lineage) and must leave no bit set.
+\ Its opposite, a count that is not a legacy registry at all, is the
+\ HABU_PWID_LEGACY_N refusal build.
+\
+\ NOT covered here, and recorded as a gap rather than faked: the row->bit mapping
+\ for a NON-empty table. It needs a table-era host, which no longer exists; its
+\ only evidence is the one-time changeover measurement (an old-table host and a
+\ new-bitmap host both building bin/hb to the same bytes). That is a reason to
+\ retire the leg, not to keep it untested - dot habu-retire-the-legacy-31ad57bc.
+: LEGACY-CHECK-DEF ( -- )
+   s" : PWID-LEGACY-CHECK ( -- )" DRV-LINE
+   s"    ACAP-PWID-CLEAR" DRV-LINE
+   s"    0 ACAP-PWID-LEGACY" DRV-LINE
+   s"    ACAP-PWID-COUNT 0 <> if" DRV-LINE
+   S\"       s\" aot-wid-build: empty legacy registry set a bit\" 74 die then" DRV-LINE
+   s"    ACAP-PWID-CAPTURE ;" DRV-LINE ;
+
+\ --- the body of PWID-GO between CAPTURE-REPL and the image emit ---------------
+: OOR-ENV$ ( -- ptr u8 n )       s" HABU_PWID_OOR" GETENV ;
+: LEGACY-ENV$ ( -- ptr u8 n )    s" HABU_PWID_LEGACY_N" GETENV ;
+
+: REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
+   s"    " DRV+  v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
+
+: FIXTURE-BODY ( -- )
+   s"    PWID-SHAPE-CHECK" DRV-LINE
+   s"    PWID-LEGACY-CHECK" DRV-LINE
+   s"    " DRV+  FIXTURE-A$ DRV+  s"  ACAP-PWID-SET" DRV-LINE
+   s"    " DRV+  FIXTURE-B$ DRV+  s"  ACAP-PWID-SET" DRV-LINE ;
+
+: PWID-BODY ( -- )
+   OOR-ENV$ {: o:ptr ou:n :}
+   ou 0 > if o ou s" ACAP-PWID-SET" REFUSE-BODY exit then
+   LEGACY-ENV$ {: l:ptr lu:n :}
+   lu 0 > if l lu s" ACAP-PWID-LEGACY" REFUSE-BODY exit then
+   FIXTURE-BODY ;
+
+\ Append the checks PWID-GO needs, then PWID-GO itself: stdin.f's GO with the
+\ protected-WID work spliced in after CAPTURE-REPL.
+: CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
+   OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and ;
+
 : INJECT ( -- )
-   s" : PWID-GO ( -- )" DRV+ DRV-NL
-   s"    CAPTURE-REPL" DRV+ DRV-NL
-   s"    300 0 ACAP-PWID-PUT   70000 1 ACAP-PWID-PUT   2 AOT-PWID-N !" DRV+ DRV-NL
+   CHECKS-WANTED? if
+      SHAPE-CHECK-DEF
+      LEGACY-CHECK-DEF
+   then
+   s" : PWID-GO ( -- )" DRV-LINE
+   s"    CAPTURE-REPL" DRV-LINE
+   PWID-BODY
    SPAN-FORGE-LINE
-   s"    0 0= STDIN? !" DRV+ DRV-NL
-   s"    HB@ 0 EMIT-FORTH" DRV+ DRV-NL
-   S\"    s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV+ DRV-NL
-   s"    DRV-EXIT-OK ;" DRV+ DRV-NL
-   s" PWID-GO" DRV+ DRV-NL ;
+   s"    0 0= STDIN? !" DRV-LINE
+   s"    HB@ 0 ENGINE-BUILD:EMIT-FORTH" DRV-LINE
+   S\"    s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV-LINE
+   s"    DRV-EXIT-OK ;" DRV-LINE
+   s" PWID-GO" DRV-LINE ;
 
 : GEN-DRIVER ( -- )
    DRV-PATH!
@@ -129,7 +224,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    GO-KEEP {: keep:n :}
    DRV-RESET
    SRC-BUF keep DRV+                \ stdin.f minus its trailing GO call
-   INJECT                           \ ... plus the registry-baking PWID-GO
+   INJECT                           \ ... plus the bitmap-working PWID-GO
    DRV-PATH$ DRV-BUF DRV-U @ WRITE-ALL ;
 
 : EMIT-PWID-STDIN ( -- )

@@ -19,7 +19,7 @@ private
    k case
       0 of s" src/core/check-hook.f" s" HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
       1 of s" src/habu/aot.f" s" USER-HOOK" s" builder-emit" s" cap:checker-hook-identity" KIND-CHECK endof
-      2 of s" src/habu/snap-lib.f" s" SNAP-CHECK-HOOK" s" builder-emit" s" cap:checker-hook-identity" KIND-CHECK endof
+      2 of s" src/habu/snap-lib.f" s" CHECK-HOOK" s" builder-emit" s" cap:checker-hook-identity" KIND-CHECK endof
       3 of s" test/compile-preflight-recovery.f" s" CPR-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
       4 of s" test/engine-suite.f" s" ES-VERDICT-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
       5 of s" test/prop-test-core.f" s" PROP-CHECK-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof

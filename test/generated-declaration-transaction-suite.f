@@ -2,6 +2,7 @@
 \ Run: bin/hb --load test/generated-declaration-transaction-suite.f
 
 require lib/test.f
+require tools/prot-wid-probe.f
 require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 
@@ -65,6 +66,12 @@ variable SCHEMA-ROOT-N0
 variable LAYOUT-N0
 variable STRING-N0
 variable EVENT-N0
+\ The observable for "the protection owner did not publish" is the size of the
+\ protected SET, not prot-wid-room. Room used to count free registry slots, which a
+\ rollback restored; it now counts free wordlist IDS, and a rolled-back declaration
+\ has still consumed the ids it allocated -- ids are never recycled. Reading the set
+\ separates the property under test (nothing was published) from an unrelated fact
+\ about the allocator, which the old proxy silently conflated.
 variable PROTECTION-ROOM-N0
 variable GENERATED-N
 variable GENERATED-NAME-PREFLIGHT-N
@@ -356,7 +363,7 @@ package GENERATED-DECLARATION-TXN-TEST
    \ global ENUM keyword is the unified front end now, so the honest observable at
    \ this instant is that the events are staged, not that they are absent.
    DECL-EVENT:COUNT EVENT-N0 @ > GENERATED-EVENT-STAGED !
-   prot-wid-room PROTECTION-ROOM-N0 @ = GENERATED-PROTECTION-UNPUBLISHED !
+   PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 @ = GENERATED-PROTECTION-UNPUBLISHED !
    ndict@ NATIVE-NDICT-N0 @ =
    cp@ NATIVE-CP-N0 @ = and
    here NATIVE-DP-N0 @ = and GENERATED-DICTIONARY-UNPUBLISHED ! ;
@@ -444,7 +451,7 @@ package GENERATED-DECLARATION-TXN-TEST
    LAY-N@ LAYOUT-N0 !
    TF-STR-U@ STRING-N0 !
    DECL-EVENT:COUNT EVENT-N0 !
-   prot-wid-room PROTECTION-ROOM-N0 ! ;
+   PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 ! ;
 
 : RECORD-OWNER-DEPTHS ( -- )
    CHECKER-SCOPE-DEPTH CHECKER-DEPTH-N0 !
@@ -482,7 +489,7 @@ package GENERATED-DECLARATION-TXN-TEST
    LAY-N@ LAYOUT-N0 @ T=
    TF-STR-U@ STRING-N0 @ T=
    DECL-EVENT:COUNT EVENT-N0 @ T=
-   prot-wid-room PROTECTION-ROOM-N0 @ T= ;
+   PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 @ T= ;
 
 : APPEND-DIGIT ( n ptr a -- ) {: digit:n trace:ptr :}
    TRACE-ON @ 0= IF EXIT THEN
@@ -806,9 +813,9 @@ INSTALL-NESTED
    \ E-DEV-TX with the depths restored), which test/decl-event-suite.f §19e
    \ already pins including the failing phase. Swapping RELEASE for the ordinary
    \ CHECKER-SCOPE-FINALIZE would therefore survive every behavioural suite in the
-   \ repository. test/declaration-release-inventory.f is what makes that swap
-   \ fail: it reads the production sources and rejects any throw, catch,
-   \ allocation, lookup, validation, or publication reachable from a registered
+   \ repository. What makes that swap fail is the release phase's own
+   \ contract: it may not reach any throw, catch,
+   \ allocation, lookup, validation, or publication from a registered
    \ release callback. The rows below stay as the second guard, because they fail
    \ the moment anyone opens a public seam onto the frame words.
    s" CHECKER-DECL-FRAME:START" QUALIFIED-ABSENT? TTRUE
@@ -1302,9 +1309,9 @@ INSTALL-GROW-NESTED
 
 : TEST-SUCCESS-PUBLICATION ( -- )
    RESET-CONTROLS RESET-TRACES RESET-DIAGNOSTIC
-   prot-wid-room PROTECTION-ROOM-N0 !
+   PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 !
    s" PRODUCT gdok 0 FIELD x n ;PRODUCT" EVALUATE-CATCH 0 T=
-   prot-wid-room PROTECTION-ROOM-N0 @ 1 - T=
+   PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 @ 1 + T=
    s" GDOK-USE ( n -- gdok ) GDOK:MAKE"
       CHECK-QUIET-CANDIDATE! 0 <> TTRUE
    s" package gdok ;package" EVALUATE-CATCH 7111 T=

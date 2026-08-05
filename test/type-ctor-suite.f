@@ -12,6 +12,7 @@
 \ generate nothing until item 9's construct form.
 
 require test/checker-assert.f
+require tools/prot-wid-probe.f
 
 variable #FAIL
 variable #CASE
@@ -66,13 +67,17 @@ variable BEFORE
 public
 
 : START ( -- )
-   data-base PROT-WID-N-CELL + @ BEFORE ! ;
+   PROT-WID-PROBE:COUNT BEFORE ! ;
 
+\ One constructor package protects exactly one wordlist, and protecting the same
+\ constructor again is a no-op. The registry is a SET now, so the second half is
+\ structural rather than a dedup scan -- but it is still the property callers rely
+\ on, and a re-add that landed on a different bit would show up here.
 : FINISH ( -- )
-   data-base PROT-WID-N-CELL + @ BEFORE @ 1+ T=
-   data-base PROT-WID-N-CELL + @ {: before:n :}
+   PROT-WID-PROBE:COUNT BEFORE @ 1+ T=
+   PROT-WID-PROBE:COUNT {: before:n :}
    s" ZRES:OK" PROT-WID-CTOR-ADD
-   data-base PROT-WID-N-CELL + @ before T= ;
+   PROT-WID-PROBE:COUNT before T= ;
 
 ;package
 
@@ -301,7 +306,7 @@ s" UNDEF-SAFE" type cr
 : ZDOOMED ( -- n ) 5 ;
 s" undefine ZDOOMED" TCE-CATCH 0 T=
 \ native producer populated the protected-WID registry for constructor packages.
-data-base PROT-WID-N-CELL + @ 0 > -1 T=
+PROT-WID-PROBE:COUNT 0 > -1 T=
 
 \ ---------------------------------------------------------------------------
 \ item 9 slice 2: `construct family variant` — the checker-owned token

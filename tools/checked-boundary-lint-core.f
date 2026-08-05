@@ -2,6 +2,8 @@
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, and
 \ tools/lint/json-writer.f.
 
+require tools/hook-sites.f                     \ single registry of audited hook identities
+
 package CHECKED-BOUNDARY-LINT
 
 private
@@ -65,6 +67,9 @@ variable UB-OUT-FD
 
 : UB-FILE-A@ ( -- ptr u8 )
    UB-FILE-A-FIELD @ ;
+
+: UB-FILE$ ( -- ptr u8 n )
+   UB-FILE-A@ UB-FILE-U @ ;
 
 : UB-SRC-A@ ( -- ptr u8 )
    UB-SRC-A-FIELD @ ;
@@ -277,29 +282,27 @@ private
 
 \ The tier-2 top-level reject enforcer is installed through `set-top-check`
 \ (src/core/top-row.f TR-INSTALL, dot habu-typed-top-tier-589c550f). It is the
-\ audited escape window for the whole top-row tracker: only the tracker's own
-\ TR-HOOK may be installed; any other name would divert the pre-execution reject
-\ enforcement and is a finding. Same `' NAME set-top-check` / `['] NAME
-\ set-top-check` shape as the set-check installs above.
+\ audited escape window for the whole top-row tracker: any name installed there
+\ diverts the pre-execution reject enforcement unless the registry authorizes it
+\ for this exact file. Same `' NAME set-top-check` / `['] NAME set-top-check`
+\ shape as the set-check installs above.
 : UB-SET-TOP-CHECK-INSTALL? ( -- bool )
    s" set-top-check" UB-TOK=CI UB-TICK-PREV2? and ;
 
-\ Audited checker hooks: the names installed at the ratcheted HOOK-INSTALL sites
-\ (TRUSTED.md trusted-inventory baseline). Any other installed name neuters
-\ verification and is a finding.
+\ Audited checker hooks. tools/hook-sites.f is the single registry of legitimate
+\ hook identities, and a row names a file as well as a word. The installed name alone proves nothing - any
+\ file may define a word called CHECK-HOOK - so an install is audited only when
+\ the file being scanned and the installed name together match a registry row.
+\ Registry paths are the committed repo-relative spellings and are compared
+\ exactly, so `./path`, an absolute path, or a workspace-prefixed path fails
+\ closed here just as it does in the census.
 : UB-HOOK-ALLOWED? ( -- bool )
-   s" HOOK" UB-PREV=CI
-   s" USER-HOOK" UB-PREV=CI or
-   s" SNAP-CHECK-HOOK" UB-PREV=CI or
-   s" CHK-CHECK-HOOK" UB-PREV=CI or
-   s" LINT-CHECK-HOOK" UB-PREV=CI or
-   s" ES-VERDICT-HOOK" UB-PREV=CI or
-   s" PROP-CHECK-HOOK" UB-PREV=CI or ;
+   UB-FILE$ UB-PREV$ HOOK-SITES:CHECK-MATCH? ;
 
-\ Audited top-row hook: the single enforcer TR-INSTALL installs. The escape-window
-\ audit row is deliberately a one-name allowlist - the tracker owns the only hook.
+\ Same registry, top-row rows: `set-top-check` installs are authorized by the
+\ (file, installed name) pair the registry records for that enforcer.
 : UB-TOP-HOOK-ALLOWED? ( -- bool )
-   s" TR-HOOK" UB-PREV=CI ;
+   UB-FILE$ UB-PREV$ HOOK-SITES:TOP-MATCH? ;
 
 : UB-CHECKER-MUTATION? ( -- bool )
    s" set-check" UB-TOK=CI ;
@@ -339,7 +342,7 @@ private
 : UB-JSON-ORIGIN ( -- )
    s" token" LJW-KEY UB-TOK$ LJW-STRING LJW-COMMA
    s" token_index" LJW-KEY 0 LJW-U LJW-COMMA
-   s" file" LJW-KEY UB-FILE-A@ UB-FILE-U @ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY UB-FILE$ LJW-STRING LJW-COMMA
    s" line" LJW-KEY UB-TOK-LINE @ LJW-U LJW-COMMA
    s" column" LJW-KEY UB-TOK-COL @ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY UB-TOK-BYTE @ LJW-U LJW-COMMA
@@ -390,7 +393,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if name nu UB-JSON-DEFINITION exit then
    s" UNCHECKED-DEFINITION " UB-OUT
-   UB-FILE-A@ UB-FILE-U @ UB-OUT
+   UB-FILE$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : `" UB-OUT name nu UB-OUT
@@ -400,7 +403,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-MUTATION exit then
    s" CHECKER-MUTATION " UB-OUT
-   UB-FILE-A@ UB-FILE-U @ UB-OUT
+   UB-FILE$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : `" UB-OUT UB-TOK$ UB-OUT
@@ -410,7 +413,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-PREFLIGHT exit then
    s" MISSING-PREFLIGHT-REARM " UB-OUT
-   UB-FILE-A@ UB-FILE-U @ UB-OUT
+   UB-FILE$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : use `LOWER-CERT-HOOK:INSTALL` before replacing the checker hook" UB-OUT UB-NL ;
@@ -419,7 +422,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-ROGUE-HOOK exit then
    s" UNAUDITED-HOOK " UB-OUT
-   UB-FILE-A@ UB-FILE-U @ UB-OUT
+   UB-FILE$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : `" UB-OUT UB-PREV$ UB-OUT
@@ -429,7 +432,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-ROGUE-TOP-HOOK exit then
    s" UNAUDITED-TOP-HOOK " UB-OUT
-   UB-FILE-A@ UB-FILE-U @ UB-OUT
+   UB-FILE$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : `" UB-OUT UB-PREV$ UB-OUT
@@ -522,7 +525,7 @@ private
    repeat ;
 
 : UB-MAPPED-SCAN ( -- )
-   UB-FILE-A@ UB-FILE-U @ UB-SRC-A@ UB-SRC-CAP @ READ-ALL {: used:n :}
+   UB-FILE$ UB-SRC-A@ UB-SRC-CAP @ READ-ALL {: used:n :}
    used UB-SRC-U !
    UB-SCAN ;
 
@@ -535,7 +538,7 @@ private
    rc 0 <> if rc throw then ;
 
 : UB-FILE-ACT ( -- )
-   UB-FILE-A@ UB-FILE-U @ FILE-SIZE {: bytes:n :}
+   UB-FILE$ FILE-SIZE {: bytes:n :}
    bytes 0= if
       UB-NUM UB-SRC-A!
       UB-SCAN

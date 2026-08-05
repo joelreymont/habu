@@ -15,7 +15,6 @@ package GATE-RUNNER
 3 constant ID-TOOL-REPAIR-PACKET
 4 constant ID-TOOL-DOC
 5 constant ID-TOOL-DOC-PUBLIC
-6 constant ID-TOOL-DOC-STATUS
 7 constant ID-TOOL-DOC-SCHEMA
 8 constant ID-TOOL-LINTS
 9 constant ID-TOOL-LINT-REPL
@@ -27,30 +26,29 @@ package GATE-RUNNER
 15 constant ID-CHECK-CLI
 16 constant ID-TAIL
 17 constant ID-LINT-TOOLS
-18 constant ID-LINT-MANIFEST
-19 constant ID-LINT-ARTIFACTS
-20 constant ID-LINT-LIBS
-21 constant ID-REPAIR
-22 constant ID-FIXTURES
-23 constant ID-RUNTIME
-24 constant ID-VALIDATE
-25 constant ID-DIAG-REPAIR
-26 constant ID-DIAG-UNDEF-PRIMARY
-27 constant ID-DIAG-ALL-STRICT
-28 constant ID-DIAG-FILE-UNSAFE
-29 constant ID-DICTIONARY
-30 constant ID-DEBUG
-31 constant ID-TAIL-FAST
-32 constant ID-TAIL-PURE
-33 constant ID-TAIL-RUNNER
-34 constant ID-TAIL-BUILD
-36 constant ID-LINT-LIBS-CORE
-37 constant ID-LINT-LIBS-PTX
-38 constant ID-LINT-LIBS-PTX-NEG
-39 constant ID-LINT-LIBS-PTX-TOOL
-40 constant ID-LINT-ARTIFACTS-FAST
-41 constant ID-TAIL-PROCESS
-42 constant ID-DIAG-LABEL-COPY
+18 constant ID-LINT-ARTIFACTS
+19 constant ID-LINT-LIBS
+20 constant ID-REPAIR
+21 constant ID-FIXTURES
+22 constant ID-RUNTIME
+23 constant ID-VALIDATE
+24 constant ID-DIAG-REPAIR
+25 constant ID-DIAG-UNDEF-PRIMARY
+26 constant ID-DIAG-ALL-STRICT
+27 constant ID-DIAG-FILE-UNSAFE
+28 constant ID-DICTIONARY
+29 constant ID-DEBUG
+30 constant ID-TAIL-FAST
+31 constant ID-TAIL-PURE
+32 constant ID-TAIL-RUNNER
+33 constant ID-TAIL-BUILD
+35 constant ID-LINT-LIBS-CORE
+36 constant ID-LINT-LIBS-PTX
+37 constant ID-LINT-LIBS-PTX-NEG
+38 constant ID-LINT-LIBS-PTX-TOOL
+39 constant ID-LINT-ARTIFACTS-FAST
+40 constant ID-TAIL-PROCESS
+41 constant ID-DIAG-LABEL-COPY
 variable START-NS
 variable ARG-I
 
@@ -110,7 +108,6 @@ variable ARG-I
    s" tool-repair-packet" ARG0= if ID-TOOL-REPAIR-PACKET exit then
    s" tool-doc" ARG0= if ID-TOOL-DOC exit then
    s" tool-doc-public" ARG0= if ID-TOOL-DOC-PUBLIC exit then
-   s" tool-doc-status" ARG0= if ID-TOOL-DOC-STATUS exit then
    s" tool-doc-schema" ARG0= if ID-TOOL-DOC-SCHEMA exit then
    s" tool-lints" ARG0= if ID-TOOL-LINTS exit then
    s" tool-lint-repl" ARG0= if ID-TOOL-LINT-REPL exit then
@@ -122,7 +119,6 @@ variable ARG-I
    s" check-cli" ARG0= if ID-CHECK-CLI exit then
    s" tail" ARG0= if ID-TAIL exit then
    s" lint-tools" ARG0= if ID-LINT-TOOLS exit then
-   s" lint-manifest" ARG0= if ID-LINT-MANIFEST exit then
    s" lint-artifacts" ARG0= if ID-LINT-ARTIFACTS exit then
    s" lint-libs" ARG0= if ID-LINT-LIBS exit then
    s" repair" ARG0= if ID-REPAIR exit then
@@ -157,13 +153,12 @@ variable ARG-I
 
 : DISPATCH-ID ( n -- )
    case
-      ID-TOOL of GSI-TOOL-TRUST endof
+      ID-TOOL of AOT-CALL-GATE:RUN endof
       ID-TOOL-REPAIR of GSI-TOOL-REPAIR endof
       ID-TOOL-REPAIR-CHECK of GSI-TOOL-REPAIR-CHECK endof
       ID-TOOL-REPAIR-PACKET of GSI-TOOL-REPAIR-PACKET endof
-      ID-TOOL-DOC of GSI-TOOL-DOC endof
+      ID-TOOL-DOC of TOOL-SEMANTICS:DOC endof
       ID-TOOL-DOC-PUBLIC of GSI-TOOL-DOC-PUBLIC endof
-      ID-TOOL-DOC-STATUS of GSI-TOOL-DOC-STATUS endof
       ID-TOOL-DOC-SCHEMA of GSI-TOOL-DOC-SCHEMA endof
       ID-TOOL-LINTS of GSI-TOOL-LINT-PHASE endof
       ID-TOOL-LINT-REPL of GSI-TOOL-LINT-REPL-PHASE endof
@@ -171,11 +166,10 @@ variable ARG-I
       ID-TOOL-LINT-NAMES of GSI-TOOL-LINT-NAMES endof
       ID-TOOL-LINT-BUNDLE of GSI-TOOL-LINT-BUNDLE endof
       ID-TOOL-TYPED of GSI-TOOL-TYPED endof
-      ID-TOOL-SEMANTICS of GSI-TOOL-SEMANTICS endof
+      ID-TOOL-SEMANTICS of TOOL-SEMANTICS:RUN endof
       ID-CHECK-CLI of CHECK-CLI-GATE:RUN endof
       ID-TAIL of STDLIB endof
       ID-LINT-TOOLS of GSI-LINT-TOOLS endof
-      ID-LINT-MANIFEST of GSI-LINT-MANIFEST endof
       ID-LINT-ARTIFACTS of STDLIB endof
       ID-LINT-LIBS of STDLIB endof
       ID-LINT-LIBS-CORE of GSI-LINT-LIBS-CORE endof
@@ -234,7 +228,6 @@ variable ARG-I
       ID-TOOL-REPAIR-PACKET of 0 0= endof
       ID-TOOL-DOC of 0 0= endof
       ID-TOOL-DOC-PUBLIC of 0 0= endof
-      ID-TOOL-DOC-STATUS of 0 0= endof
       ID-TOOL-DOC-SCHEMA of 0 0= endof
       ID-TOOL-LINTS of 0 0= endof
       ID-TOOL-LINT-REPL of 0 0= endof
@@ -245,7 +238,6 @@ variable ARG-I
       ID-TOOL-SEMANTICS of 0 0= endof
       ID-CHECK-CLI of 0 0= endof
       ID-LINT-TOOLS of 0 0= endof
-      ID-LINT-MANIFEST of 0 0= endof
       ID-LINT-LIBS-CORE of 0 0= endof
       ID-LINT-LIBS-PTX of 0 0= endof
       ID-LINT-LIBS-PTX-NEG of 0 0= endof

@@ -7,7 +7,7 @@
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
 \ tools/reserved-name-lint-core.f
-\ tools/trust-lint-core.f tools/check-all-errors-core.f lib/argv.f
+\ tools/check-all-errors-core.f lib/argv.f
 \ tools/check-core.f tools/check-test.f
 
 require lib/date.f
@@ -34,7 +34,6 @@ require tools/json-only-core.f
 require tools/signature-lint-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
-require tools/trust-lint-core.f
 require tools/check-all-errors-core.f
 require lib/argv.f
 require tools/check-core.f
@@ -49,6 +48,34 @@ private
 $4000 constant BUF-CAP
 $100001 constant OVERCAP-SOURCE-LEN
 128 constant LIST-ENTRY-CAP
+
+\ What the child cases here prove is the standalone command line: the exit status
+\ of `bin/hb tools/check.f ...`, the diagnostics it writes, and the temporary
+\ files it removes. None of that gets slower when the host is busy, so the
+\ millisecond budget handed to every capture is a deadlock guard and nothing
+\ else. It exists so a child that never exits cannot hang the gate forever, and
+\ it must never be reachable by a child that is merely slow.
+\
+\ Measured 2026-07-30 on a 12-core machine. The heaviest child is the cleanup
+\ child, 4.7 to 5.0 s at an ambient load average of 13 and 11.2 to 13.4 s while
+\ eight gate pool slots are busy; the `--load tools/check.f` children are 2.0 to
+\ 3.2 s and 7.5 to 8.7 s under the same two conditions. WORST-CHILD-MS records
+\ the busiest measurement. HANG-MARGIN is 4 rather than the order of magnitude
+\ the cheaper fixtures can afford, because the product is bounded from above as
+\ well: the gate gives this whole phase 120 s (SUITE-TIMEOUT-MS in
+\ test/gate-stdlib-lib.f), and a guard above that would always lose the race to
+\ the phase guard and never get to name anything. Between those two bounds the
+\ guard is unreachable by load, since a host slow enough to stretch one child to
+\ 54 s would have blown the phase guard on the earlier cases already.
+13500 constant WORST-CHILD-MS
+4 constant HANG-MARGIN
+WORST-CHILD-MS HANG-MARGIN * constant CHILD-HANG-MS
+
+\ Exit status for the deadlock verdict, kept distinct from every status a case
+\ compares against: 64 is this fixture's usage error, 67 is the engine's
+\ uncaught throw, 70 is the check tool's own failure, and 83 upwards belong to
+\ the engine failure ABI in src/core/engine-error.f.
+79 constant HANG-RC
 
 create TMP-ROOT FS-PATH-CAP allot
 create BAD-PATH FS-PATH-CAP allot
@@ -306,14 +333,14 @@ variable START-NS
 
 : CHECK-CAPTURE ( -- n n n )
    HB$ >LEN CAP-OUT BUF-CAP >LEN
-   CAP-ERR BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
+   CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS RUN-ARGV-CAPTURE
    CAPTURE>N ;
 
 : CHECK-STDIN-CAPTURE ( ptr u8 n -- n n n )
    {: src:ptr srcu:n :}
    HB$ >LEN src srcu >LEN
    CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
-   $2710 >MS RUN-ARGV-STDIN-CAPTURE
+   CHILD-HANG-MS >MS RUN-ARGV-STDIN-CAPTURE
    CAPTURE>N ;
 
 \ ---- command-line drivers ---------------------------------------------------
@@ -416,7 +443,7 @@ variable START-NS
    s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    CLI-HB$ >LEN CLI-ROOT$ >LEN
-   CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN $2710 >MS
+   CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    CAPTURE>N ;
 
@@ -443,7 +470,7 @@ variable START-NS
    s" TMPDIR" >LEN CLEANUP-TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
-   $2710 >MS RUN-ARGV-ENV-CAPTURE
+   CHILD-HANG-MS >MS RUN-ARGV-ENV-CAPTURE
    CAPTURE>N ;
 
 : CLEANUP-CHILD-ERR ( ptr u8 n n -- )
@@ -471,7 +498,7 @@ variable START-NS
    s" --load" >LEN PROC-ARGV+
    BAD$ >LEN PROC-ARGV+
    HB$ >LEN CAP-OUT BUF-CAP >LEN
-   CAP-ERR BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
+   CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS RUN-ARGV-CAPTURE
    CAPTURE>N ;
 
 : DUP$SRC ( -- ptr u8 n )
@@ -1616,7 +1643,7 @@ create BIG $2000 allot   variable BIG-U
    BAD$ >LEN PROC-ARGV+
    HB$ >LEN s" " >LEN
    CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
-   $2710 >MS RUN-ARGV-STDIN-CAPTURE
+   CHILD-HANG-MS >MS RUN-ARGV-STDIN-CAPTURE
    CAPTURE>N ;
 
 : ENUM-CLI-TEST ( -- )
@@ -1760,10 +1787,28 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" ckt-good-use" CONTAINS? TFALSE
    CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
 
+\ A capture whose deadlock guard expires throws E-PROC-TIMEOUT from inside the
+\ process library, which used to leave the run with nothing but `hb: uncaught
+\ throw code -2502`: it named no case, no child and no budget, so a hung child
+\ and a slow one looked identical from the gate log. CASE-RUN is the one place
+\ that knows which case is running, so it is where that verdict gets its name.
+\ Only the deadlock code is claimed here; every other throw keeps propagating
+\ untouched.
+: CASE-HUNG ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   s" FAIL: " type label labelu type
+   s"  - child never exited; deadlock guard ms: " type CHILD-HANG-MS .
+   s" check-test: child deadlock guard expired" HANG-RC die ;
+
+: CASE-THREW ( ptr u8 n n -- ) {: label:ptr labelu:n rc:n :}
+   rc 0= if exit then
+   rc E-PROC-TIMEOUT <> if rc throw then
+   label labelu CASE-HUNG ;
+
 \ typed-local-lint: allow-bare-local - CASE-RUN q preserves its quotation effect.
 : CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns START-NS !
-   q execute
+   q catch {: rc:n :}
+   label labelu rc CASE-THREW
    s" PASS: " type label labelu type
    s"  (" type mono-ns START-NS @ - PROC-NS-PER-MS / . s" ms)" type cr ;
 
@@ -1845,9 +1890,94 @@ private
    TA-GLOBAL-MUTATION-REJECTED TTRUE
    TA-RETIRED-GLOBALS? TTRUE ;
 
+\ --- package-owned caller: the checker's replay scopes must start neutral ---
+\
+\ Every scope tools/check-core.f opens around a replay of the SUBJECT source
+\ has to start at neutral top level. If it inherited the caller's package
+\ instead, the subject file would be checked as if it were part of that
+\ package. The three runs below drive CHECK:RUN, the real entry point, and each
+\ one is shaped to fail at a different scope if that scope inherits:
+\
+\   NEU-FAMILY-SRC$  a top-level family declaration whose tail this package
+\                    already owns (the `NEWTYPE ckneub 0` line below). The
+\                    nominal pass is the first pass that registers
+\                    declarations, so an inherited CHK-RUN-NOMINAL-LINTS scope
+\                    files the subject's family under CHECK-TEST and collides
+\                    with the one already there; declared at top level, where
+\                    the subject really is, there is no collision at all.
+\   NEU-EXPORT-SRC$  a top-level EXPORT directive. The nominal pass ignores
+\                    EXPORT, so this one reaches CHK-RUN-PREVERIFY; an
+\                    inherited scope there reads the directive as an in-package
+\                    re-export of a word that package already has.
+\   BAD$SRC          a rejecting source, so the run leaves CHK-RUN-SCOPED by
+\                    the throwing path.
+\
+\ After the clean runs and after the throwing one, VERIFY:SOURCE-BUF proves the
+\ caller's package was put back exactly: it opens an INHERITING scope, which
+\ fails closed unless the checker's package mirror still matches the engine's
+\ live package record in mode, in length, and in name bytes.
+\
+\ These runs are made HERE, in the package body, because this is the only place
+\ where the checker's package really is CHECK-TEST's; a case word runs with no
+\ package open and cannot reproduce the fault. The case word below only asserts
+\ what these runs recorded.
+
+\ The tail the subject source below also declares, owned here by CHECK-TEST.
+NEWTYPE ckneub 0
+
+using CHECK
+
+: NEU-FAMILY-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" NEWTYPE ckneub 0" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-NEU-B ( ckneub -- ckneub ) ;" SB-APPEND
+   SB$ ;
+
+: NEU-EXPORT-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-NEU-A ( i64 -- i64 ) 1 + ;" SB-APPEND $0a SB-APPEND-C
+   s" EXPORT CKT-NEU-A" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-NEU-A-USE ( i64 -- i64 ) CKT-NEU-A ;" SB-APPEND
+   SB$ ;
+
+variable NEU-FAMILY-RC
+variable NEU-EXPORT-RC
+variable NEU-THROW-RC
+variable NEU-CLEAN-PKG-RC
+variable NEU-THROW-PKG-RC
+
+: NEU-RUN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   RESET
+   a u s" ckt-neutral.f" SOURCE
+   [: RUN-ACT ;] IN-PROC {: outu:n erru:n rc:n :}
+   rc ;
+
+: NEU-PKG-RESTORED ( -- n )   \ 0 only when the caller's package came back exact
+   [: GOOD$ VERIFY:SOURCE-BUF ;] catch ;
+
+: NEU-RECORD ( -- )
+   NEU-FAMILY-SRC$ NEU-RUN NEU-FAMILY-RC !
+   NEU-EXPORT-SRC$ NEU-RUN NEU-EXPORT-RC !
+   NEU-PKG-RESTORED NEU-CLEAN-PKG-RC !
+   BAD$SRC NEU-RUN NEU-THROW-RC !
+   NEU-PKG-RESTORED NEU-THROW-PKG-RC !
+   RESET ;
+
+PREPARE
+NEU-RECORD
+
+;using
+
+: TEST-NEUTRAL-SCOPE ( -- )
+   NEU-FAMILY-RC @ 0 T=
+   NEU-EXPORT-RC @ 0 T=
+   NEU-THROW-RC @ 70 T=
+   NEU-CLEAN-PKG-RC @ 0 T=
+   NEU-THROW-PKG-RC @ 0 T= ;
+
 : TEST-MAIN ( -- )
    T-RESET
-   PREPARE
+   s" check/package-caller-neutral" [: TEST-NEUTRAL-SCOPE ;] CASE-RUN
    s" check/public-api" [: TEST-CHECK-PUBLIC ;] CASE-RUN
    s" check/test-public-api" [: TEST-CHECK-TEST-PUBLIC ;] CASE-RUN
    s" check/retired-globals" [: TEST-RETIRED-GLOBALS ;] CASE-RUN

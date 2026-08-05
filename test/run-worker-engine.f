@@ -31,7 +31,7 @@ variable TRWE-FORK-ID
       5 of GENG-REPAIR-SLICE endof
       9 of GENG-FIXTURES-SLICE endof
       16 of GENG-RUNTIME-SLICE endof
-      21 of GENG-VALIDATE-SLICE endof
+      20 of GENG-VALIDATE-SLICE endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -43,7 +43,7 @@ variable TRWE-FORK-ID
       5 of s" native engine repair slice" endof
       9 of s" native engine fixture slice" endof
       16 of s" native engine runtime slice" endof
-      21 of s" native engine candidate validation slice" endof
+      20 of s" native engine candidate validation slice" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -58,7 +58,7 @@ public
    TR-PRE-REPAIR @ 0= if 5 >IDX TRWE-START-FORK then
    9 >IDX TRWE-START-FORK
    16 >IDX TRWE-START-FORK
-   21 >IDX TRWE-START-FORK
+   20 >IDX TRWE-START-FORK
    GT-POOL-DRAIN ;
 
 : TRWE-RUN ( -- )
@@ -66,7 +66,7 @@ public
       9 of TRWE-POST-CANDIDATE endof
       5 of 5 >IDX TRWE-RUN-ID endof
       16 of 16 >IDX TRWE-RUN-ID endof
-      21 of 21 >IDX TRWE-RUN-ID endof
+      20 of 20 >IDX TRWE-RUN-ID endof
       E-TBL-BOUNDS throw
    endcase ;
 

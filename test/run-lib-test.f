@@ -27,7 +27,27 @@ private
 : SPARK ( -- )                               \ pin the runner to the spark profile
    PROFILE-DGX-SPARK-10X2 PROFILE! ;
 
+: EARLY-COUNT ( idx -- n ) {: phase:idx :}
+   0
+   0 begin dup EARLY-HOST-PHASES < while
+      dup >IDX EARLY-HOST-ORDER@ IDX>N phase IDX>N = if swap 1+ swap then
+      1+
+   repeat drop ;
+
+: EARLY-GROUPS ( -- )
+   s" early schedule runs tool-repair once" T-LABEL
+   21 >IDX EARLY-COUNT 1 T=
+   s" early schedule runs tool-doc once" T-LABEL
+   22 >IDX EARLY-COUNT 1 T=
+   s" early schedule runs every tool-lint split once" T-LABEL
+   36 >IDX EARLY-COUNT 1 T=
+   37 >IDX EARLY-COUNT 1 T=
+   38 >IDX EARLY-COUNT 1 T=
+   39 >IDX EARLY-COUNT 1 T= ;
+
 : RUN-LIB-TEST ( -- )
+   EARLY-GROUPS
+
    \ ---- host-independent profile mapping ----------------------------------
    PROFILE-DGX-SPARK-10X2 4 T=
    CAL-REF-SPARK-MS 87 T=

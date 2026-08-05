@@ -185,6 +185,10 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" tools" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ holds the stage0 hostile that ends in a listed path from outside test/,
+   \ tools/test/<name>
+   TEST-ROOT$ s" tools/test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" test/lib" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
@@ -193,6 +197,19 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-ROOT$ s" test/test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" src/core" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   TEST-ROOT$ s" src/habu" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ the ARM64 encoder prefix, which the entry names file by file rather than by
+   \ directory, so the disassembler beside them is a negative
+   TEST-ROOT$ s" src/arch/arm64" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ the Gforth recovery mirror's own directory, plus a same-basename neighbour
+   \ one level up and a copy of the whole path under test/, which is what a
+   \ suffix comparison would wrongly admit
+   TEST-ROOT$ s" bootstrap/cg" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   TEST-ROOT$ s" test/bootstrap/cg" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS ;
 
 : TEST-GLOBAL-SOURCE ( ptr u8 n -- )
@@ -498,6 +515,71 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-OLD-SIDE-ROW
    TEST-ROW-QUOTE-DEFECT ;
 
+\ ---- paren-named definitions and nameless definers ---------------------------
+\ A word may legitimately be NAMED with a leading paren - src/habu/habu1.f
+\ defines `: (CMP) ( n -- ) ... ;` - so the lexer hands `(CMP)` over as the
+\ definition name and a packaged paren-named definition lints clean. Before the
+\ standalone-`(` rule the name lexed as a comment, the definer had no name, and
+\ every diff touching that file was refused as a broken artifact.
+: TEST-PAREN-NAMED-DEFINITION ( -- )
+   TEST-SOURCE-RESET
+   s" package PARENPKG" TEST-SOURCE-LINE
+   s" : (CMP) ( n -- ) drop ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/paren-name.f" TEST-ADD-SOURCE-SECTION
+   s" a definition named with a leading paren keeps its package owner" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+\ A definer whose name never arrives - the definer stands at the end of the
+\ scan, or a comment follows it - is a defect of the FILE, not of the diff
+\ artifact, so it must carry its own source-defect code and never the artifact
+\ code E-DIFF-SYNTAX.
+: TEST-NONAME-AT-END ( -- )
+   TEST-SOURCE-RESET
+   s" package NONAME" TEST-SOURCE-LINE
+   s" : OK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" :" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/noname-end.f" TEST-ADD-SOURCE-SECTION
+   s" a definer at the end of the scan is a named source defect" T-LABEL
+   [: TEST-RUN-DIRECT ;] E-PKGDIFF-NONAME TTHROWSQ ;
+
+: TEST-NONAME-BEFORE-COMMENT ( -- )
+   TEST-SOURCE-RESET
+   s" : ( n -- ) drop ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/noname-comment.f" TEST-ADD-SOURCE-SECTION
+   s" a definer followed by a comment is a named source defect" T-LABEL
+   [: TEST-RUN-DIRECT ;] E-PKGDIFF-NONAME TTHROWSQ ;
+
+: TEST-WRITE-NONAME-OLD-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" package NONAME" TEST-SOURCE-LINE
+   s" : OK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" test/noname-old.f" TEST-WRITE-SOURCE ;
+
+\ The deleted nameless definer exists only in the reconstructed old source, so
+\ this reaches OLD-START-DEFINITION and never START-DEFINITION.
+: TEST-NONAME-OLD-DIFF ( -- )
+   s" test/noname-old.f" TEST-MODIFY-HEAD
+   s" @@ -1,4 +1,3 @@" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C TEST-DIFF-C s" package NONAME" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C TEST-DIFF-C s" : OK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C TEST-DIFF-C s" ;package" TEST-DIFF+ TEST-LF
+   TEST-MINUS-C TEST-DIFF-C s" : ( -- n )" TEST-DIFF+ TEST-LF ;
+
+: TEST-OLD-SIDE-NONAME ( -- )
+   TEST-WRITE-NONAME-OLD-SOURCE
+   TEST-DIFF-RESET TEST-NONAME-OLD-DIFF
+   s" a nameless definer in the reconstructed old source rejects too" T-LABEL
+   [: TEST-RUN-DIRECT ;] E-PKGDIFF-NONAME TTHROWSQ ;
+
+: TEST-PAREN-NAMES ( -- )
+   TEST-PAREN-NAMED-DEFINITION
+   TEST-NONAME-AT-END
+   TEST-NONAME-BEFORE-COMMENT
+   TEST-OLD-SIDE-NONAME ;
+
 : TEST-ADD-WHOLE-CORE-EXEMPTION ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n path:ptr pathu:n :}
    name nameu TEST-GLOBAL-SOURCE
    path pathu TEST-ADD-SOURCE-SECTION ;
@@ -514,6 +596,24 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-SOURCE-RESET
    s" : DEFTYPE ( -- ) ;" TEST-SOURCE-LINE
    s" : UNRELATED ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" lib/type/deftype.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   \ The extent-index converter surface carries a TWO-name exception in its own
+   \ file: both converters are exempt there, a third global beside them is not,
+   \ and neither name is exempt anywhere else.
+   TEST-SOURCE-RESET
+   s" : IX>N ( -- ) ;" TEST-SOURCE-LINE
+   s" : >RED ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" lib/type/extent-role.f" TEST-ADD-SOURCE-SECTION
+   s" the extent-index converters are admitted at their own path" T-LABEL
+   TEST-EXPECT-CLEAN
+   TEST-SOURCE-RESET
+   s" : IX>N ( -- ) ;" TEST-SOURCE-LINE
+   s" : UNRELATED ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" lib/type/extent-role.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   TEST-SOURCE-RESET
+   s" : >RED ( -- ) ;" TEST-SOURCE-LINE
    TEST-DIFF-RESET s" lib/type/deftype.f" TEST-ADD-SOURCE-SECTION
    1 TEST-EXPECT-FINDINGS
    TEST-SOURCE-RESET
@@ -981,6 +1081,131 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    1 TEST-EXPECT-FINDINGS
    s" pdlfam" TEST-NAMES ;
 
+\ ---- stage0 recovery fixtures -------------------------------------------------
+\ The fourth principled category, and the narrowest path list in the lint.  A
+\ stage0 recovery fixture is a source tools/bootstrap.sh hands to Gforth, which
+\ compiles it with the recovery emitter into a standalone binary the script then
+\ runs and compares whole-stream against exact expected output.  Two of those
+\ fixtures need a word at genuine global top level - one so the emitter's bare
+\ 13-byte `checker-using` lookup can find the stand-in hook, one because
+\ top-level bare visibility around `using` is the property under test - so a
+\ package there would delete the proof instead of satisfying the rule.
+\
+\ The pins below fix the row list, fix the admitted shape, and prove the category
+\ cannot spread in either direction.  Admission needs three things: the exact
+\ path, a path under test/ ending in -src.f, and the plain lower-case `:`
+\ definer.  The last two constrain a FUTURE row rather than today's two paths, so
+\ they are pinned by hostile paths that a weakened comparison would let through.
+2 constant TEST-STAGE0-PATH#     \ rows in the stage0 fixture path table
+
+: TEST-STAGE0-PATH$ ( n -- ptr u8 n ) {: p:n :}
+   p 0 = if s" test/bootstrap-using-src.f" exit then
+   s" test/bootstrap-using-checker-hook-src.f" ;
+
+: TEST-STAGE0-COLON-AT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   s" PDL-STAGE0" TEST-GLOBAL-SOURCE
+   TEST-DIFF-RESET path pathu TEST-ADD-SOURCE-SECTION ;
+
+\ The production row table is pinned directly, its length against the expected
+\ count and every row's path against this suite's own literal, so a wrong edit on
+\ either side cannot quietly agree with itself.
+: TEST-STAGE0-ROW? ( n -- bool ) {: p:n :}
+   p STAGE0-PATH$ p TEST-STAGE0-PATH$ LINT-STR= ;
+
+: TEST-STAGE0-TABLE ( -- )
+   s" the stage0 row table holds exactly the rows this suite pins" T-LABEL
+   STAGE0-ROW# @ TEST-STAGE0-PATH# T=
+   0 TEST-ROW-BAD !
+   0 begin dup TEST-STAGE0-PATH# < while
+      dup TEST-STAGE0-ROW? 0= if TEST-ROW-BAD @ 1+ TEST-ROW-BAD ! then
+      1+
+   repeat drop
+   s" every stage0 row carries this suite's own path" T-LABEL
+   TEST-ROW-BAD @ 0 T= ;
+
+: TEST-STAGE0-LIST ( -- )
+   s" both listed stage0 fixtures admit a global colon word" T-LABEL
+   TEST-DIFF-RESET
+   s" PDL-STAGE0" TEST-GLOBAL-SOURCE
+   0 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   1 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   TEST-EXPECT-CLEAN ;
+
+\ The narrowing.  The five ordinary globals stand in a LISTED stage0 fixture and
+\ exactly one of them - the plain colon word - is admitted; the other four report
+\ by name.  Under a file-wide admission all five would pass.
+: TEST-STAGE0-NARROW ( -- )
+   s" only the plain colon word is admitted in a listed fixture" T-LABEL
+   TEST-SOURCE-RESET TEST-ADD-ORDINARY-GLOBALS
+   TEST-DIFF-RESET 0 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   4 TEST-EXPECT-FINDINGS
+   s" PDL-WRAPPER" TEST-NAMES
+   s" PDL-STATE" TEST-NAMES
+   s" PDL-LIMIT" TEST-NAMES
+   s" PDL-CELL" TEST-NAMES
+   s" PDL-HELPER" TEST-NOT-NAMES
+   s" a CHECKED: global in a listed fixture is not a plain colon word" T-LABEL
+   TEST-SOURCE-RESET
+   s" CHECKED: PDL-CHECKED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET 1 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   s" PDL-CHECKED" TEST-NAMES
+   s" a stage0 row does not inherit the grammar category's openers" T-LABEL
+   s" pdlfam" TEST-FIXTURE-FAMILY-SOURCE
+   TEST-DIFF-RESET 0 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   s" pdlfam" TEST-NAMES ;
+
+: TEST-STAGE0-HOSTILE ( -- )
+   s" an unlisted fixture of the same family still reports its global" T-LABEL
+   s" test/bootstrap-using-scope-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" PDL-STAGE0" TEST-NAMES
+   s" a listed basename under another directory is not the listed path" T-LABEL
+   s" tools/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a listed basename in a deeper directory is not the listed path" T-LABEL
+   s" test/lib/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   \ These two carry the listed path as a whole trailing SUFFIX, which is what a
+   \ suffix or basename comparison would accept.  The nested one satisfies both
+   \ narrowing guards, so only the exact comparison keeps it reported; the second
+   \ is what the `test/` guard alone refuses once that comparison is weakened.
+   s" a listed path nested under a repeated test/ is not the listed path" T-LABEL
+   s" test/test/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a path ending in the listed path from outside test/ is not admitted" T-LABEL
+   s" tools/test/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   \ The path list matches case-sensitively while the definer list does not: a
+   \ path is a filename, a definer is a Forth word.  This hostile varies case only
+   \ BETWEEN the guarded `test/` head and the guarded `-src.f` tail, because those
+   \ two guards compare case-sensitively themselves and would otherwise refuse the
+   \ path for the wrong reason and hide a case-folded row comparison.
+   s" a listed path spelled in another case is not the listed path" T-LABEL
+   s" test/Bootstrap-Using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a listed path extended past its -src.f tail is not the listed path" T-LABEL
+   s" test/bootstrap-using-src.fs" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   \ The other direction: a path that BEGINS with a listed path and still satisfies
+   \ both narrowing guards, so only the exact comparison keeps it reported.
+   s" a listed path extended into a longer -src.f name is not admitted" T-LABEL
+   s" test/bootstrap-using-src.f-more-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" the category never admits a library source, however it is spelled" T-LABEL
+   s" lib/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a global colon word in an ordinary test file still reports" T-LABEL
+   s" test/bootstrap-plain.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-STAGE0-FIXTURES ( -- )
+   TEST-STAGE0-TABLE
+   TEST-STAGE0-LIST
+   TEST-STAGE0-NARROW
+   TEST-STAGE0-HOSTILE ;
+
 : TEST-GRAMMAR-FIXTURES ( -- )
    TEST-TABLE
    TEST-GRAMMAR-FIXTURE-LIST
@@ -1121,6 +1346,662 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-DIFF-RESET TEST-CHECKER-OWNER-LOSS-DIFF
    s" deleted package boundary in checker.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-RENDER-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : FAM-QNAME-REND ( n -- ) drop ;" TEST-SOURCE-LINE
+   s" src/core/render.f" TEST-WRITE-SOURCE ;
+
+: TEST-RENDER-OWNER-LOSS-DIFF ( -- )
+   s" src/core/render.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package RENDER-DIAG" TEST-DIFF+ TEST-LF
+   s"  : FAM-QNAME-REND ( n -- ) drop ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-RENDER-EXEMPTION ( -- )
+   \ Positive: the renderer is the checker's other half and is admitted the same
+   \ way.  Before this entry a comment-only change to an existing global body in
+   \ render.f red the gate, so no change to the diagnostic renderer could land.
+   s" src/core/render.f" TEST-CHECKER-COMMENT-CASE
+   s" render core surface exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: a new global word in the renderer is admitted too (RFOLD, the
+   \ case-folding emitter, is exactly this shape).
+   s" src/core/render.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" render core surface exempts a new global definition" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling carrying the allowlist path as a prefix is not an exact
+   \ match and must still fail (not a startswith match).
+   s" src/core/render-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" sibling src/core/render-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename elsewhere carries the allowlist path as a suffix
+   \ but is not exact, so it must still fail (full path, not suffix).
+   s" lib/render.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" lib/render.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): deleting a package/;package boundary inside the
+   \ allowlisted render.f still reports lost ownership.  The exemption suppresses
+   \ a plain global body or definition change, never a scope change.
+   TEST-WRITE-RENDER-OWNER-LOSS
+   TEST-DIFF-RESET TEST-RENDER-OWNER-LOSS-DIFF
+   s" deleted package boundary in render.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
+\ ---- src/arch/arm64/{asm,icode,mnem}.f: the ARM64 encoder prefix ----
+\ Same category and same fixtures as the checker and render entries: the three
+\ files carry no package at all, they load ahead of the compiler that defines
+\ packages, and their names are resolved bare by every later engine source. The
+\ positive is the shape that measured the problem - adding the operand bounds to
+\ asm.f - and the negatives pin the match as an exact path and keep every scope
+\ change reported.
+
+: TEST-WRITE-ARM64-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : ENC-RET ( -- n ) 3596550080 ;" TEST-SOURCE-LINE
+   s" src/arch/arm64/asm.f" TEST-WRITE-SOURCE ;
+
+: TEST-ARM64-OWNER-LOSS-DIFF ( -- )
+   s" src/arch/arm64/asm.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package ARM64-ASM" TEST-DIFF+ TEST-LF
+   s"  : ENC-RET ( -- n ) 3596550080 ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-ARM64-EXEMPTION ( -- )
+   \ Positive: a body change to an existing global encoder is admitted, for all
+   \ three files, because the whole surface of each is global by construction.
+   s" src/arch/arm64/asm.f" TEST-CHECKER-COMMENT-CASE
+   s" the ARM64 encoder prefix exempts a body change in asm.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   s" src/arch/arm64/icode.f" TEST-CHECKER-COMMENT-CASE
+   s" the ARM64 encoder prefix exempts a body change in icode.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   s" src/arch/arm64/mnem.f" TEST-CHECKER-COMMENT-CASE
+   s" the ARM64 encoder prefix exempts a body change in mnem.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: a new global word is admitted too. This is the exact shape of the
+   \ operand bounds - ?REG, ?IMM12, SCALE/ - added beside the encoders.
+   s" src/arch/arm64/asm.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" the ARM64 encoder prefix exempts a new global bound in asm.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling carrying the allowlist path as a prefix is not an exact
+   \ match and must still fail.
+   s" src/arch/arm64/asm-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" sibling src/arch/arm64/asm-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the allowlist path
+   \ as a suffix but is not exact, so it must still fail.
+   s" lib/asm.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" lib/asm.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the disassembler shares the directory and is NOT in the entry, so
+   \ a new global there is still reported - the category is three named files,
+   \ not the src/arch/arm64 tree.
+   s" src/arch/arm64/disasm.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" src/arch/arm64/disasm.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): deleting a package boundary inside an allowlisted
+   \ file still reports lost ownership. The entry suppresses a plain global body
+   \ or definition change, never a scope change.
+   TEST-WRITE-ARM64-OWNER-LOSS
+   TEST-DIFF-RESET TEST-ARM64-OWNER-LOSS-DIFF
+   s" deleted package boundary in asm.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
+\ ---- src/habu/habu2.f: the engine emitter's body-edit admission ----
+\ This is the narrowest of the three principled categories, so its fixtures pin
+\ BOTH halves: the one shape it admits, and the shape it must keep reporting.
+\ The positive is the exact probe that measured the problem -- one trailing
+\ comment on an existing global body -- and the first negative is the new global
+\ word, which the checker and render entries DO admit and this one must not.
+
+: TEST-WRITE-ENGINE-BODY ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : EM-SNAPSHOT-RX-FLUSH ( -- )" TEST-SOURCE-LINE
+   s"    LPROT-RX   \ gate probe comment" TEST-SOURCE-LINE
+   s" ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-ENGINE-BODY-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1,3 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  : EM-SNAPSHOT-RX-FLUSH ( -- )" TEST-DIFF+ TEST-LF
+   s" -   LPROT-RX" TEST-DIFF+ TEST-LF
+   s" +   LPROT-RX   \ gate probe comment" TEST-DIFF+ TEST-LF
+   s"  ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-ENGINE-BODY-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-ENGINE-BODY
+   TEST-DIFF-RESET path pathu TEST-ENGINE-BODY-DIFF ;
+
+: TEST-WRITE-ENGINE-NEW-GLOBAL ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : EM-SNAPSHOT-RX-FLUSH ( -- ) LPROT-RX ;" TEST-SOURCE-LINE
+   s" : EM-SMUGGLED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-ENGINE-NEW-GLOBAL-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1 +1,2 @@" TEST-DIFF+ TEST-LF
+   s"  : EM-SNAPSHOT-RX-FLUSH ( -- ) LPROT-RX ;" TEST-DIFF+ TEST-LF
+   s" +: EM-SMUGGLED ( -- n ) 1 ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-ENGINE-NEW-GLOBAL-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-ENGINE-NEW-GLOBAL
+   TEST-DIFF-RESET path pathu TEST-ENGINE-NEW-GLOBAL-DIFF ;
+
+: TEST-WRITE-ENGINE-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : LOOP-EMIT-TAIL ( -- ) ;" TEST-SOURCE-LINE
+   s" src/habu/habu2.f" TEST-WRITE-SOURCE ;
+
+: TEST-ENGINE-OWNER-LOSS-DIFF ( -- )
+   s" src/habu/habu2.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package LOOP-EMIT" TEST-DIFF+ TEST-LF
+   s"  : LOOP-EMIT-TAIL ( -- ) ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-WRITE-ENGINE-ARRIVAL ( -- )
+   TEST-SOURCE-RESET
+   s" : EM-ARRIVED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" src/habu/habu2.f" TEST-WRITE-SOURCE ;
+
+: TEST-ENGINE-ARRIVAL-DIFF ( -- )
+   s" diff --git a/src/habu/engine-old.f b/src/habu/habu2.f" TEST-DIFF+ TEST-LF
+   s" similarity index 100%" TEST-DIFF+ TEST-LF
+   s" rename from src/habu/engine-old.f" TEST-DIFF+ TEST-LF
+   s" rename to src/habu/habu2.f" TEST-DIFF+ TEST-LF ;
+
+: TEST-ENGINE-EXEMPTION ( -- )
+   \ Positive: the measured control probe.  Before this entry, one trailing
+   \ comment on an existing global body in src/habu/habu2.f reported
+   \ E-PACKAGE-OWNERSHIP, so no change at all to the native engine emitter could
+   \ pass the commit gate.
+   s" src/habu/habu2.f" TEST-ENGINE-BODY-CASE
+   s" engine emitter exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a genuinely new global word added beside an existing one is still
+   \ reported.  This is where the engine entry is narrower than the checker and
+   \ render entries, which admit new globals: habu2.f already carries real
+   \ packages, so a new engine word has an owner to join.
+   s" src/habu/habu2.f" TEST-ENGINE-NEW-GLOBAL-CASE
+   s" new global in the engine emitter still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling whose name carries the allowlist path as a prefix is not
+   \ an exact match, so its body edit must still fail (not a startswith match).
+   s" src/habu/habu2-extra.f" TEST-ENGINE-BODY-CASE
+   s" sibling src/habu/habu2-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the allowlist path
+   \ as a suffix but is not exact, so it must still fail (full path, not suffix).
+   s" lib/habu2.f" TEST-ENGINE-BODY-CASE
+   s" lib/habu2.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): deleting a package/;package boundary inside the
+   \ allowlisted engine file still reports lost ownership.  FINISH-DEFINITION
+   \ checks SCOPE-DELTA before it consults the admission, so an engine word
+   \ pushed out of LOOP-EMIT is reported even though its own body line is
+   \ unchanged.
+   TEST-WRITE-ENGINE-OWNER-LOSS
+   TEST-DIFF-RESET TEST-ENGINE-OWNER-LOSS-DIFF
+   s" deleted package boundary in habu2.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (hostile): a pure rename that makes some OTHER file arrive at
+   \ src/habu/habu2.f marks no line as added, so the added-head test alone would
+   \ admit every global in it.  A whole-file change is not a body edit of an
+   \ existing engine word and is reported.
+   TEST-WRITE-ENGINE-ARRIVAL
+   TEST-DIFF-RESET TEST-ENGINE-ARRIVAL-DIFF
+   s" file renamed onto habu2.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ The second engine-trunk row, src/habu/layout.f, is pinned in both directions
+   \ by the same fixtures, because it is admitted by the same rule and must be
+   \ narrow in the same way.  The positive is the measured probe: changing the
+   \ value of an existing layout constant reported E-PACKAGE-OWNERSHIP before
+   \ this row, so the snapshot format version could not be bumped at all.
+   s" src/habu/layout.f" TEST-ENGINE-BODY-CASE
+   s" layout exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a new unpackaged constant in layout.f is still reported by name,
+   \ which is what keeps the row from becoming a licence to grow the file's
+   \ global surface -- new layout bands have to open a package.
+   s" src/habu/layout.f" TEST-ENGINE-NEW-GLOBAL-CASE
+   s" new global in layout still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling carrying the row's path as a prefix is not an exact
+   \ match, so its body edit still fails.
+   s" src/habu/layout-extra.f" TEST-ENGINE-BODY-CASE
+   s" sibling src/habu/layout-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the row's path as
+   \ a suffix but is not exact, so it still fails.  The per-target layout files
+   \ src/os/macos/layout.f and src/os/linux/layout.f are the real words this
+   \ guards: they are NOT engine trunk and must keep reporting.
+   s" lib/layout.f" TEST-ENGINE-BODY-CASE
+   s" lib/layout.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ The third engine-trunk row, src/habu/xref.f, is pinned by the same fixtures
+   \ in both directions.  The positive is its measured probe: adding the
+   \ code-reclamation notice to the last line of the existing global
+   \ FORGET-DEFS-FROM reported E-PACKAGE-OWNERSHIP before this row, so the
+   \ dictionary-truncation path could not be changed at all.
+   s" src/habu/xref.f" TEST-ENGINE-BODY-CASE
+   s" xref exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a new unpackaged word in xref.f is still reported.  The file
+   \ already opens PKG-AUTH, GENERATED-DECL-NAME-PREFLIGHT and CODE-RECLAIM, so a
+   \ new dictionary word has an owner it can join -- which is what keeps this row
+   \ from becoming a licence to grow the file's global surface.
+   s" src/habu/xref.f" TEST-ENGINE-NEW-GLOBAL-CASE
+   s" new global in xref still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling carrying the row's path as a prefix is not an exact
+   \ match, so its body edit still fails.
+   s" src/habu/xref-extra.f" TEST-ENGINE-BODY-CASE
+   s" sibling src/habu/xref-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the row's path as a
+   \ suffix but is not exact, so it still fails.
+   s" lib/xref.f" TEST-ENGINE-BODY-CASE
+   s" lib/xref.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ The fourth engine-trunk row, src/habu/habu1.f, is pinned by the same
+   \ fixtures in both directions.  The positive is its measured probe: adding a
+   \ trailing comment to the body of the existing global EMIT-FLUSH reported
+   \ E-PACKAGE-OWNERSHIP before this row, so the engine's primitive emitters
+   \ could not be changed at all.
+   s" src/habu/habu1.f" TEST-ENGINE-BODY-CASE
+   s" habu1 exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a new unpackaged word in habu1.f is still reported.  The file
+   \ already opens ENGINE-BUILD, ENGINE-HELPER, GUARD, PROT-GUARD and
+   \ OWNER-WID-EMIT, so a new emitter has an owner it can join.
+   s" src/habu/habu1.f" TEST-ENGINE-NEW-GLOBAL-CASE
+   s" new global in habu1 still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling carrying the row's path as a prefix is not an exact
+   \ match, so its body edit still fails.
+   s" src/habu/habu1-extra.f" TEST-ENGINE-BODY-CASE
+   s" sibling src/habu/habu1-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the row's path as a
+   \ suffix but is not exact, so it still fails.
+   s" lib/habu1.f" TEST-ENGINE-BODY-CASE
+   s" lib/habu1.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
+\ ---- bootstrap/cg/forth.fs: the Gforth recovery mirror ------------------------
+\ This is the one category where the ownership rule cannot be satisfied at all.
+\ The file is compiled by Gforth, which has no `package` word, so writing one
+\ would abort the no-binary recovery.  Both definition directions are therefore
+\ admitted, and every negative below is about the PATH rather than about the shape
+\ of the definition -- which is the exact opposite of the engine-trunk fixtures
+\ above, where the shape is what decides.
+\
+\ The positive is the measured probe: adding one trailing comment to the existing
+\ global BCOUNT reported `E-PACKAGE-OWNERSHIP bootstrap/cg/forth.fs:811:3` before
+\ this row existed, so no change at all to the recovery emitter could pass the
+\ commit gate.  The fixtures use the mirror's own idiom (bare register words and
+\ an emitter body) so the source they lex is the kind of text the real file holds.
+
+: TEST-WRITE-MIRROR-BODY ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : BCOUNT ( -- )" TEST-SOURCE-LINE
+   s"    A G-POP  B A 0 LDRB   \ gate probe comment" TEST-SOURCE-LINE
+   s" ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-MIRROR-BODY-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1,3 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  : BCOUNT ( -- )" TEST-DIFF+ TEST-LF
+   s" -   A G-POP  B A 0 LDRB" TEST-DIFF+ TEST-LF
+   s" +   A G-POP  B A 0 LDRB   \ gate probe comment" TEST-DIFF+ TEST-LF
+   s"  ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-MIRROR-BODY-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-MIRROR-BODY
+   TEST-DIFF-RESET path pathu TEST-MIRROR-BODY-DIFF ;
+
+\ The direction the engine trunk reports and this category admits: a brand-new
+\ global word beside an existing one.  `BUSING` is the real shape the stage-0
+\ `using` work adds -- a new keyword handler in the emitter.
+: TEST-WRITE-MIRROR-NEW ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : BCOUNT ( -- ) A G-POP ;" TEST-SOURCE-LINE
+   s" : BUSING ( -- ) A G-POP ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-MIRROR-NEW-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1 +1,2 @@" TEST-DIFF+ TEST-LF
+   s"  : BCOUNT ( -- ) A G-POP ;" TEST-DIFF+ TEST-LF
+   s" +: BUSING ( -- ) A G-POP ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-MIRROR-NEW-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-MIRROR-NEW
+   TEST-DIFF-RESET path pathu TEST-MIRROR-NEW-DIFF ;
+
+: TEST-WRITE-MIRROR-ARRIVAL ( -- )
+   TEST-SOURCE-RESET
+   s" : BARRIVED ( -- ) A G-POP ;" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-MIRROR-ARRIVAL-DIFF ( -- )
+   s" diff --git a/bootstrap/cg/mirror-old.fs b/bootstrap/cg/forth.fs"
+   TEST-DIFF+ TEST-LF
+   s" similarity index 100%" TEST-DIFF+ TEST-LF
+   s" rename from bootstrap/cg/mirror-old.fs" TEST-DIFF+ TEST-LF
+   s" rename to bootstrap/cg/forth.fs" TEST-DIFF+ TEST-LF ;
+
+\ Gforth would refuse this file, so the shape cannot occur in the real mirror.
+\ It is pinned anyway: the admission must sit behind FINISH-DEFINITION's
+\ SCOPE-DELTA test like every other category, so that a boundary appearing or
+\ disappearing in the mirror is reported instead of quietly admitted.
+: TEST-WRITE-MIRROR-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : BCOUNT ( -- ) A G-POP ;" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-MIRROR-OWNER-LOSS-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package BCG" TEST-DIFF+ TEST-LF
+   s"  : BCOUNT ( -- ) A G-POP ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-MIRROR-ADMITTED ( -- )
+   \ Positive: the measured control probe, a comment-only change to an existing
+   \ global emitter body.
+   s" bootstrap/cg/forth.fs" TEST-MIRROR-BODY-CASE
+   s" the Gforth mirror exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive, and the direction that separates this category from the engine
+   \ trunk: a genuinely new global word is admitted too.  The trunk reports it
+   \ because habu2.f and layout.f are compiled by `bin/hb` and already open real
+   \ packages, so a new engine word has an owner to join.  The mirror has none and
+   \ can have none while Gforth compiles it, so reporting here would report a
+   \ fault whose only repair breaks the recovery path.
+   s" bootstrap/cg/forth.fs" TEST-MIRROR-NEW-CASE
+   s" the Gforth mirror exempts a new global definition too" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+: TEST-MIRROR-OTHER-PATHS ( -- )
+   \ Negative: a sibling in the same directory whose stem carries the row's stem
+   \ as a prefix is not an exact match and still fails.
+   s" bootstrap/cg/forth-extra.fs" TEST-MIRROR-BODY-CASE
+   s" sibling bootstrap/cg/forth-extra.fs still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative: the same basename one directory up shares only the last component
+   \ and still fails.
+   s" bootstrap/forth.fs" TEST-MIRROR-BODY-CASE
+   s" bootstrap/forth.fs basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative, and the case a suffix comparison would wrongly admit: the whole
+   \ row path repeated under test/.  Nothing but a whole-path comparison rejects
+   \ this one, so it is the fixture that dies first if the comparison is loosened.
+   s" test/bootstrap/cg/forth.fs" TEST-MIRROR-BODY-CASE
+   s" test/bootstrap/cg/forth.fs path suffix still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative: the same stem with the habu extension.  The key is the exact path,
+   \ never the `.fs` extension: a `.f` twin is compiled by `bin/hb`, can open a
+   \ package, and must.
+   s" bootstrap/cg/forth.f" TEST-MIRROR-BODY-CASE
+   s" the .f twin bootstrap/cg/forth.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative: a differently-cased spelling of the row path.  A case-insensitive
+   \ path comparison would admit it; file paths are bytes and this is a different
+   \ file.
+   s" bootstrap/cg/FORTH.fs" TEST-MIRROR-BODY-CASE
+   s" bootstrap/cg/FORTH.fs case variant still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative: a sibling Gforth mirror source.  Every one of the 63 other
+   \ Gforth-hosted `.fs` files in the tree was measured to report, and they are
+   \ left reporting on purpose: a row is added only when a real change is blocked
+   \ and that file's own compensating parity authority can be named.
+   s" bootstrap/cg/jit.fs" TEST-MIRROR-NEW-CASE
+   s" sibling mirror bootstrap/cg/jit.fs still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BUSING" TEST-NAMES ;
+
+: TEST-MIRROR-STRUCTURAL ( -- )
+   \ Negative (hostile): a pure rename that makes some OTHER file arrive at the
+   \ mirror path marks no line as added, so without WHOLE-CHANGED every global in
+   \ the arriving file would ride in unread.  The mirror is one committed file
+   \ whose content the parity gates know, and a wholesale replacement of it is
+   \ exactly where that authority has not looked yet, so it is reported -- the
+   \ same decision the engine trunk makes.
+   TEST-WRITE-MIRROR-ARRIVAL
+   TEST-DIFF-RESET TEST-MIRROR-ARRIVAL-DIFF
+   s" a file renamed onto the mirror path still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BARRIVED" TEST-NAMES
+   \ Negative (structural): the admission sits behind SCOPE-DELTA, so a deleted
+   \ package boundary is reported in the mirror like anywhere else.
+   TEST-WRITE-MIRROR-OWNER-LOSS
+   TEST-DIFF-RESET TEST-MIRROR-OWNER-LOSS-DIFF
+   s" a deleted package boundary in the mirror still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES ;
+
+: TEST-MIRROR-EXEMPTION ( -- )
+   TEST-MIRROR-ADMITTED
+   TEST-MIRROR-OTHER-PATHS
+   TEST-MIRROR-STRUCTURAL ;
+
+\ ---- one-line definitions, where line position decides nothing ----------------
+\ Every fixture above changes a colon word, whose head and body sit on different
+\ lines.  A `constant` puts the definer, the name and the value on ONE line, so
+\ every edit to it touches the head line and a value change is byte for byte the
+\ same shape as a brand-new constant.  layout.f is nothing but constants, which
+\ is why these are the cases the entry was minted for and the cases no rule about
+\ WHICH LINES CHANGED can decide.  What decides them is whether the file already
+\ defined the name, so each fixture below varies exactly that: same shape, same
+\ line, one name that the pre-image had and one it did not.  The subject is read
+\ back by name every time a finding is expected, because a count alone cannot
+\ tell a report about the intended constant from one about its neighbour.
+
+: TEST-WRITE-CONST-VALUE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" 5 constant SNAP-FORMAT-VERSION" TEST-SOURCE-LINE
+   s" 0 constant DATA-START" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-CONST-VALUE-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1,2 +1,2 @@" TEST-DIFF+ TEST-LF
+   s" -4 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s" +5 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s"  0 constant DATA-START" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-VALUE-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-CONST-VALUE
+   TEST-DIFF-RESET path pathu TEST-CONST-VALUE-DIFF ;
+
+: TEST-WRITE-CONST-NEW ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" 4 constant SNAP-FORMAT-VERSION" TEST-SOURCE-LINE
+   s" 64 constant SNAP-SMUGGLED-BAND" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-CONST-NEW-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1 +1,2 @@" TEST-DIFF+ TEST-LF
+   s"  4 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s" +64 constant SNAP-SMUGGLED-BAND" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-NEW-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-CONST-NEW
+   TEST-DIFF-RESET path pathu TEST-CONST-NEW-DIFF ;
+
+\ A rename in place: one constant leaves under its old name and arrives under a
+\ new one, so the file's definition COUNT is unchanged and nothing but the name
+\ itself distinguishes this from the value change above.
+: TEST-WRITE-CONST-RENAME ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" 4 constant SNAP-VERSION" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-CONST-RENAME-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1 +1 @@" TEST-DIFF+ TEST-LF
+   s" -4 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s" +4 constant SNAP-VERSION" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-RENAME-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-CONST-RENAME
+   TEST-DIFF-RESET path pathu TEST-CONST-RENAME-DIFF ;
+
+\ The name existed in the old file, but inside a package.  Moving it out to top
+\ level grows the file's GLOBAL surface, which is the surface this entry guards,
+\ so it must be reported even though the spelling is not new to the file.
+: TEST-WRITE-CONST-PROMOTED ( -- )
+   TEST-SOURCE-RESET
+   s" 96 constant XTCELL-END" TEST-SOURCE-LINE
+   s" package SNAP-RELOC" TEST-SOURCE-LINE
+   s" 4 constant XTCELL-N" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" src/habu/layout.f" TEST-WRITE-SOURCE ;
+
+: TEST-CONST-PROMOTED-DIFF ( -- )
+   s" src/habu/layout.f" TEST-MODIFY-HEAD
+   s" @@ -1,4 +1,4 @@" TEST-DIFF+ TEST-LF
+   s" +96 constant XTCELL-END" TEST-DIFF+ TEST-LF
+   s"  package SNAP-RELOC" TEST-DIFF+ TEST-LF
+   s"  4 constant XTCELL-N" TEST-DIFF+ TEST-LF
+   s" -96 constant XTCELL-END" TEST-DIFF+ TEST-LF
+   s"  ;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-VALUE-DIRECTIONS ( -- )
+   \ Positive: the measured case.  Bumping an existing layout constant's value
+   \ reported E-PACKAGE-OWNERSHIP on SNAP-FORMAT-VERSION before the name key
+   \ existed, so the snapshot format could not be versioned at all.
+   s" src/habu/layout.f" TEST-CONST-VALUE-CASE
+   s" layout exempts a value change to an existing constant" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ The same shape on the other trunk row, because both rows are admitted by the
+   \ one predicate and must move together.
+   s" src/habu/habu2.f" TEST-CONST-VALUE-CASE
+   s" the engine emitter exempts the same value change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling carrying the row's path as a prefix is not an exact
+   \ match, so the identical value change still fails there.
+   s" src/habu/layout-extra.f" TEST-CONST-VALUE-CASE
+   s" sibling layout-extra.f still fails a constant value change" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-FORMAT-VERSION" TEST-NAMES
+   \ Negative: the same basename elsewhere carries the row's path as a suffix and
+   \ is not exact, so it still fails.
+   s" lib/layout.f" TEST-CONST-VALUE-CASE
+   s" lib/layout.f still fails a constant value change" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-FORMAT-VERSION" TEST-NAMES ;
+
+: TEST-CONST-NEW-DIRECTIONS ( -- )
+   \ Negative: a brand-new constant beside an existing one is reported by name in
+   \ both trunk rows.  This is what keeps the entry from becoming a licence to
+   \ grow the file's global surface: new layout bands open a package.
+   s" src/habu/layout.f" TEST-CONST-NEW-CASE
+   s" a new constant in layout still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-SMUGGLED-BAND" TEST-NAMES
+   s" src/habu/habu2.f" TEST-CONST-NEW-CASE
+   s" a new constant in the engine emitter still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-SMUGGLED-BAND" TEST-NAMES ;
+
+: TEST-CONST-RENAME-DIRECTIONS ( -- )
+   \ Negative: a rename keeps the definition count and touches one line, exactly
+   \ like the admitted value change, and differs only in that the arriving name
+   \ is one this file never defined.  It is a new global word and is reported.
+   s" src/habu/layout.f" TEST-CONST-RENAME-CASE
+   s" renaming a layout constant in place still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-VERSION" TEST-NAMES
+   s" src/habu/habu2.f" TEST-CONST-RENAME-CASE
+   s" renaming an engine constant in place still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-VERSION" TEST-NAMES ;
+
+: TEST-CONST-PROMOTED-DIRECTION ( -- )
+   TEST-WRITE-CONST-PROMOTED
+   TEST-DIFF-RESET TEST-CONST-PROMOTED-DIFF
+   s" a package-local constant moved to top level fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" XTCELL-END" TEST-NAMES ;
+
+\ Forth word identity, not byte identity: `bin/hb` resolves `foo` to `FOO`, so
+\ respelling an existing global in another case publishes no name the file did
+\ not already have and is a body edit like any other.  An exact-byte lookup would
+\ report this as a new global word, which is a claim about the dictionary that
+\ the dictionary does not make.
+: TEST-WRITE-CONST-SPELLING ( -- )
+   TEST-SOURCE-RESET
+   s" 4 constant snap-format-version" TEST-SOURCE-LINE
+   s" src/habu/layout.f" TEST-WRITE-SOURCE ;
+
+: TEST-CONST-SPELLING-DIFF ( -- )
+   s" src/habu/layout.f" TEST-MODIFY-HEAD
+   s" @@ -1 +1 @@" TEST-DIFF+ TEST-LF
+   s" -4 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s" +4 constant snap-format-version" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-SPELLING-DIRECTION ( -- )
+   TEST-WRITE-CONST-SPELLING
+   TEST-DIFF-RESET TEST-CONST-SPELLING-DIFF
+   s" respelling a layout constant's case defines no new word" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+\ The hostile that decides the key.  In the old file this definition sits inside
+\ a `( ... )` comment, so the file never defined the word; the diff uncomments it
+\ and edits one line of its body.  The definition therefore has a changed line
+\ and is judged, but its own opener and name line are untouched, so a key that
+\ asked "was the head line touched?" reads it as a body edit and admits a global
+\ word this file has never had.  Nothing here is a body edit of an existing
+\ engine word, and the report must say so by name.
+: TEST-WRITE-UNCOMMENTED ( -- )
+   TEST-SOURCE-RESET
+   s" \ disabled block" TEST-SOURCE-LINE
+   s" : EM-UNCOMMENTED ( -- n )" TEST-SOURCE-LINE
+   s"    1 ;" TEST-SOURCE-LINE
+   s" \ )" TEST-SOURCE-LINE
+   s" : EM-SNAPSHOT-RX-FLUSH ( -- ) LPROT-RX ;" TEST-SOURCE-LINE
+   s" src/habu/habu2.f" TEST-WRITE-SOURCE ;
+
+: TEST-UNCOMMENTED-DIFF ( -- )
+   s" src/habu/habu2.f" TEST-MODIFY-HEAD
+   s" @@ -1,5 +1,5 @@" TEST-DIFF+ TEST-LF
+   s" -( disabled block" TEST-DIFF+ TEST-LF
+   s" +\ disabled block" TEST-DIFF+ TEST-LF
+   s"  : EM-UNCOMMENTED ( -- n )" TEST-DIFF+ TEST-LF
+   s" -   0 ;" TEST-DIFF+ TEST-LF
+   s" +   1 ;" TEST-DIFF+ TEST-LF
+   s" -)" TEST-DIFF+ TEST-LF
+   s" +\ )" TEST-DIFF+ TEST-LF
+   s"  : EM-SNAPSHOT-RX-FLUSH ( -- ) LPROT-RX ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-UNCOMMENTED-DIRECTION ( -- )
+   TEST-WRITE-UNCOMMENTED
+   TEST-DIFF-RESET TEST-UNCOMMENTED-DIFF
+   s" a commented-out engine word arriving as a global fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" EM-UNCOMMENTED" TEST-NAMES ;
+
+: TEST-CONST-DEFINITIONS ( -- )
+   TEST-CONST-VALUE-DIRECTIONS
+   TEST-CONST-NEW-DIRECTIONS
+   TEST-CONST-RENAME-DIRECTIONS
+   TEST-CONST-PROMOTED-DIRECTION
+   TEST-CONST-SPELLING-DIRECTION
+   TEST-UNCOMMENTED-DIRECTION ;
 
 : TEST-WRITE-OUTSIDE-HUNK-SOURCE ( -- )
    TEST-SOURCE-RESET
@@ -1404,7 +2285,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-DIFF-RESET TEST-STALE-DIFF
    [: TEST-RUN-DIRECT ;] E-DIFF-SYNTAX TTHROWSQ
    LIVE-MAPPING# 0 T=
-   MAPPING-PEAK @ 3 T=
+   \ new source, mark table, reconstructed old source, old-side name table
+   MAPPING-PEAK @ 4 T=
    TEST-REUSE-AFTER-ERROR ;
 
 : TEST-MALFORMED-REUSE ( -- )
@@ -1449,6 +2331,45 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    [: TEST-RUN-TWO-ALLOCATION-FAULT ;] E-MEM-SIZE TTHROWSQ
    LIVE-MAPPING# 0 T=
    MAPPING-PEAK @ 2 T=
+   TEST-REUSE-AFTER-ERROR ;
+
+: TEST-RUN-THREE-ALLOCATION-FAULT ( -- )
+   PACKAGE-DIFF:RESET
+   TEST-ROOT$ PACKAGE-DIFF:ROOT!
+   true FAIL-NEXT-NAME-ALLOC !
+   TEST-DIFF$ PACKAGE-DIFF:SOURCE
+   PACKAGE-DIFF:FINISH ;
+
+: TEST-THREE-ALLOCATION-REUSE ( -- )
+   TEST-SOURCE-RESET
+   s" package NEVER" TEST-SOURCE-LINE
+   s" : WORD ( -- ) ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" tools/name-allocation-fault.f" TEST-ADD-SOURCE-SECTION
+   [: TEST-RUN-THREE-ALLOCATION-FAULT ;] E-MEM-SIZE TTHROWSQ
+   LIVE-MAPPING# 0 T=
+   MAPPING-PEAK @ 3 T=
+   TEST-REUSE-AFTER-ERROR ;
+
+\ The name table is sized so that a well-formed source cannot fill it, so this
+\ fixture lowers the bound to make the full table happen on purpose.  What is
+\ under test is the refusal: the run must stop with the table's own code, and it
+\ must stop even though the file it is reading is a perfectly ordinary global
+\ body edit that the entry would otherwise admit.  A table that truncated instead
+\ would answer "this name is new" and turn the admission into a report -- or, on
+\ the next diff, hide a global behind a name it failed to record.
+: TEST-RUN-NAME-OVERFLOW ( -- )
+   PACKAGE-DIFF:RESET
+   TEST-ROOT$ PACKAGE-DIFF:ROOT!
+   1 FORCE-NAME-LIMIT !
+   TEST-DIFF$ PACKAGE-DIFF:SOURCE
+   PACKAGE-DIFF:FINISH ;
+
+: TEST-NAME-OVERFLOW ( -- )
+   s" src/habu/layout.f" TEST-CONST-VALUE-CASE
+   s" a full old-side name table stops the scan by name" T-LABEL
+   [: TEST-RUN-NAME-OVERFLOW ;] E-PKGDIFF-NAMETAB TTHROWSQ
+   LIVE-MAPPING# 0 T=
    TEST-REUSE-AFTER-ERROR ;
 
 \ ---- lib/errors.f error-vocabulary admission ------------------------------
@@ -1674,11 +2595,18 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-DEFINER-INVENTORY
    TEST-REGISTRY-LANGUAGE
    TEST-REGISTRY-ROWS
+   TEST-PAREN-NAMES
    TEST-CORE-EXEMPTIONS
    TEST-OPTION-GLOBAL
    TEST-GRAMMAR-FIXTURES
+   TEST-STAGE0-FIXTURES
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION
+   TEST-RENDER-EXEMPTION
+   TEST-ARM64-EXEMPTION
+   TEST-ENGINE-EXEMPTION
+   TEST-MIRROR-EXEMPTION
+   TEST-CONST-DEFINITIONS
    TEST-ERROR-VOCABULARY
    TEST-POSITIVES
    TEST-PAREN-NAME-REPLAY
@@ -1694,6 +2622,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-MALFORMED-REUSE
    TEST-ONE-ALLOCATION-REUSE
    TEST-TWO-ALLOCATION-REUSE
+   TEST-THREE-ALLOCATION-REUSE
+   TEST-NAME-OVERFLOW
    CLEANUP-RUN
    TEST-ROOT$ EXISTS? TFALSE
    T-REPORT

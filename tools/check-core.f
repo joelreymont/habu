@@ -5,8 +5,8 @@
 \ tools/lint/json-writer.f, tools/lint/source-lex.f,
 \ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
 \ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
-\ tools/reserved-name-lint-core.f, tools/trust-lint-core.f,
-\ tools/check-all-errors-core.f (which loads verify-source.f), and tools/argv.f.
+\ tools/reserved-name-lint-core.f,
+\ tools/check-all-errors-core.f (which loads verify-source.f), and lib/argv.f.
 \ The dependency-closure producer (whole-file ordered loader events) and its
 \ dynamic-tail manifest are required below.
 
@@ -22,6 +22,7 @@ s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
 s" CHECKER-DEFLINEAR" s" ptr u8 n --" TRUST
 s" CHECKER-DEFRECORD" s" ptr u8 n ptr u8 n --" TRUST
 s" CHECKER-SCOPE-START" s" --" TRUST
+s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
 
 package CHECK
@@ -1059,6 +1060,13 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    CHK-DEP-ORDER-N @ 0 > if CHK-RUN-NOMINAL-ORDER exit then
    CHK-SOURCE CHK-RUN-NOMINAL-FILE ;
 
+TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
+   CHECKER-VERIFY-PKG-START
+   [: CHK-RUN-NOMINAL ;] catch
+   CHECKER-VERIFY-PKG-DONE
+   dup 0= if drop exit then
+   throw ;
+
 : CHK-LABEL-DQ? ( -- bool )
    CHK-LABEL CHK-DQ LINT-INDEX-OF MATCH option
      none OF 0 0= 0= ENDOF
@@ -1169,38 +1177,6 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    CHK-JSON @ RESERVED-NAME-LINT:JSON!
    CHK-LINT-SOURCE CHK-LINT-LABEL RESERVED-NAME-LINT:FILE-AS
    RESERVED-NAME-LINT:FINISH ;
-
-: CHK-TRUST-SETUP ( -- )
-   CHK-RUN-BUF CHK-RUN-CAP CHK-ORIGIN-BUF CHK-ORIGIN-CAP TRUST-LINT-BUFFERS!
-   2 >FD TL-OUT-FD!
-   TL-FALSE TL-REPORT-SUCCESS!
-   s" ." TRUST-LINT-ROOT!
-   TRUST-LINT-TODAY-NOW ;
-
-: CHK-RUN-TRUST-SOURCE-CURRENT ( -- )
-   CHK-TRUST-SETUP
-   CHK-LINT-SOURCE TRUST-LINT-SOURCE-FILE ;
-
-: CHK-RUN-TRUST-LIST-CURRENT ( -- )
-   CHK-TRUST-SETUP
-   TRUST-LINT-RESET
-   0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$ TRUST-LINT-SOURCE+
-      1+
-   repeat drop
-   TRUST-LINT-SOURCES-FINISH ;
-
-: CHK-RUN-TRUST-SOURCE ( -- )
-   [: CHK-RUN-TRUST-SOURCE-CURRENT ;] catch dup 0= if drop exit then
-   CHK-THROW ;
-
-: CHK-RUN-TRUST-LIST ( -- )
-   [: CHK-RUN-TRUST-LIST-CURRENT ;] catch dup 0= if drop exit then
-   CHK-THROW ;
-
-: CHK-RUN-TRUST ( -- )
-   CHK-SEL-MODE @ CHK-SEL-LIST = if CHK-RUN-TRUST-LIST exit then
-   CHK-RUN-TRUST-SOURCE ;
 
 \ Source-list all-errors redrive: run all-errors per ORIGINAL file in
 \ dependency order, registering each verified file as cross-file support so
@@ -1313,11 +1289,13 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    CHK-PREVERIFY-DIAG-FLUSH
    rc CHK-THROW ;
 
+\ The preverified files are standalone sources, not a continuation of whatever
+\ package this tool was called from, so the scope starts at neutral top level.
 : CHK-RUN-PREVERIFY ( -- )
    CHK-JSON @ {: old-json:bool :}
    CHK-PREVERIFY-DIAG-START
    LINT-TRUE CHK-JSON !
-   CHECKER-SCOPE-START
+   CHECKER-SCOPE-START-NEUTRAL
    [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
    old-json CHK-JSON !
@@ -1353,13 +1331,15 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    then
    CHK-CHILD-RC @ CHK-THROW ;
 
+\ The nominal pass registers the declarations it finds in the subject source.
+\ Those declarations belong to the packages that source declares, so the scope
+\ starts at neutral top level instead of adopting the caller's package.
 : CHK-RUN-NOMINAL-LINTS ( -- )
-   CHECKER-SCOPE-START
+   CHECKER-SCOPE-START-NEUTRAL
    [:
-      CHK-RUN-NOMINAL
+      CHK-RUN-NOMINAL-AUTH
       CHK-RUN-RESERVED-NAMES
       CHK-RUN-BOUNDARY
-      CHK-RUN-TRUST
       CHK-RUN-STRICT
    ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
@@ -1379,8 +1359,11 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    CHK-RUN-HB
    CHK-HANDLE-HB ;
 
+\ Outermost boundary of one check run. Everything inside it is work on the
+\ subject source, so the whole run starts at neutral top level and the caller's
+\ package is restored when the run ends, however it ends.
 : CHK-RUN-SCOPED ( -- )
-   CHECKER-SCOPE-START
+   CHECKER-SCOPE-START-NEUTRAL
    [: CHK-RUN-CURRENT ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
    rc 0 <> if rc throw then ;

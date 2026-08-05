@@ -2,8 +2,6 @@
 \
 \ Load after test/gate-stdlib-lib.f in the resident test runner.
 
-require lib/memory.f
-
 variable GSI-TIMINGS
 variable GSI-PATH-A
 variable GSI-PATH-U
@@ -13,38 +11,7 @@ variable GSI-SETUP
 variable GSI-TEST-READY
 variable GSI-TOOL-BASE-READY
 
-\ Trust-lint scratch: the file buffer must hold the largest scanned source
-\ (src/core/checker.f outgrew the old $20000 cap); runtime-sized buffers are
-\ lib/memory allocations, not dictionary allot, and grow by constant only.
-\ Reads through the buffer stay fail-closed: READ-FILE dies on overflow, so
-\ outgrowing the cap is a loud gate failure, never truncation.
-$80000 constant GSI-TL-STR-CAP
-$80000 constant GSI-TL-FILE-CAP   \ checker.f grew past $40000 (EXPORT alias, 2026-07-10)
 600000 constant GSI-FORK-TIMEOUT-MS
-
-variable GSI-TL-READY
-variable GSI-TL-STR-A
-variable GSI-TL-FILE-A
-
-: GSI-TL-STR-A-FIELD ( -- ptr ptr u8 )
-   GSI-TL-STR-A 0 ptr-field ;
-
-: GSI-TL-FILE-A-FIELD ( -- ptr ptr u8 )
-   GSI-TL-FILE-A 0 ptr-field ;
-
-: GSI-TL-ALLOC ( -- )
-   GSI-TL-READY @ 0 <> if exit then
-   GSI-TL-STR-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop GSI-TL-STR-A-FIELD !
-   GSI-TL-FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop GSI-TL-FILE-A-FIELD !
-   -1 GSI-TL-READY ! ;
-
-: GSI-TL-STR-BUF ( -- ptr u8 )
-   GSI-TL-ALLOC
-   GSI-TL-STR-A-FIELD @ ;
-
-: GSI-TL-FILE-BUF ( -- ptr u8 )
-   GSI-TL-ALLOC
-   GSI-TL-FILE-A-FIELD @ ;
 
 0 constant GSI-GROUP-SEQ
 1 constant GSI-GROUP-PAR
@@ -195,7 +162,6 @@ variable GSI-TL-FILE-A
    s" tools/signature-lint-core.f" GSI-REQUIRE
    s" tools/checked-boundary-lint-core.f" GSI-REQUIRE
    s" tools/reserved-name-lint-core.f" GSI-REQUIRE
-   s" tools/trust-lint-core.f" GSI-REQUIRE
    s" tools/duplicate-definition-lint-core.f" GSI-REQUIRE
    s" tools/bundle-lib-core.f" GSI-REQUIRE
    GSI-TOOL-BASE-READY! ;
@@ -215,11 +181,15 @@ variable GSI-TL-FILE-A
    GSI-TOOL-SETUP
    s" tools/check-all-errors-test.f" GSI-INCLUDE ;
 
-: GSI-TOOL-TRUST ( -- )
-   s" stdlib/tool-trust" GSI-GROUP-SEQ GSI-GROUP-HEADER
+package AOT-CALL-GATE
+public
+
+: RUN ( -- )
+   s" stdlib/tool-aot-call" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-SETUP
-   s" tools/trust-lint-test.f" GSI-INCLUDE
    s" tools/aot-call-report-test.f" GSI-INCLUDE ;
+
+;package
 
 package CHECK-CLI-GATE
 
@@ -250,12 +220,6 @@ public
    GSI-TOOL-SETUP
    s" tools/public-signatures-core.f" GSI-TOOL-SETUP-FILE
    s" tools/public-signatures-test.f" GSI-INCLUDE ;
-
-: GSI-TOOL-DOC-STATUS ( -- )
-   s" stdlib/tool-doc/stale-status" GSI-GROUP-SEQ GSI-GROUP-HEADER
-   GSI-TOOL-SETUP
-   s" tools/stale-status-lint-core.f" GSI-TOOL-SETUP-FILE
-   s" tools/stale-status-lint-test.f" GSI-INCLUDE ;
 
 : GSI-TOOL-DOC-SCHEMA ( -- )
    s" stdlib/tool-doc/schema-examples" GSI-GROUP-SEQ GSI-GROUP-HEADER
@@ -300,16 +264,19 @@ public
    s" tools/check-all-errors-test.f" GSI-INCLUDE
    s" tools/repair-packet-test.f" GSI-INCLUDE ;
 
-: GSI-TOOL-DOC-SETUP ( -- )
-   GSI-TOOL-SETUP
-   s" tools/public-signatures-core.f" GSI-TOOL-SETUP-FILE
-   s" tools/stale-status-lint-core.f" GSI-TOOL-SETUP-FILE ;
+package TOOL-SEMANTICS
+private
 
-: GSI-TOOL-DOC-BODY ( -- )
+: SETUP ( -- )
+   GSI-TOOL-SETUP
+   s" tools/public-signatures-core.f" GSI-TOOL-SETUP-FILE ;
+
+: BODY ( -- )
    s" tools/public-signatures-test.f" GSI-INCLUDE
-   s" tools/stale-status-lint-test.f" GSI-INCLUDE
    s" tools/repair-schema-doc-test.f" GSI-INCLUDE
    s" tools/examples-test.f" GSI-INCLUDE ;
+
+;package
 
 : GSI-TOOL-LINT-SETUP ( -- )
    GSI-TOOL-SETUP
@@ -337,10 +304,15 @@ public
    GSI-TOOL-REPAIR-SETUP
    GSI-TOOL-REPAIR-BODY ;
 
-: GSI-TOOL-DOC ( -- )
+package TOOL-SEMANTICS
+public
+
+: DOC ( -- )
    s" stdlib/tool-doc" GSI-GROUP-PAR GSI-GROUP-HEADER
-   GSI-TOOL-DOC-SETUP
-   GSI-TOOL-DOC-BODY ;
+   SETUP
+   BODY ;
+
+;package
 
 : GSI-TOOL-LINT-PHASE ( -- )
    s" stdlib/tool-lints" GSI-GROUP-PAR GSI-GROUP-HEADER
@@ -352,14 +324,17 @@ public
    GSI-TOOL-TYPED-SETUP
    GSI-TOOL-TYPED-BODY ;
 
-: GSI-TOOL-SEMANTICS ( -- )
+package TOOL-SEMANTICS
+public
+
+: RUN ( -- )
    s" stdlib/tool-semantics" GSI-GROUP-SEQ GSI-GROUP-HEADER
    s" stdlib/tool-repair" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-REPAIR-SETUP
    GSI-TOOL-REPAIR-BODY
    s" stdlib/tool-doc" GSI-GROUP-SEQ GSI-GROUP-HEADER
-   GSI-TOOL-DOC-SETUP
-   GSI-TOOL-DOC-BODY
+   SETUP
+   BODY
    s" stdlib/tool-lints" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-LINT-SETUP
    GSI-TOOL-LINT-BODY
@@ -367,19 +342,17 @@ public
    GSI-TOOL-TYPED-SETUP
    GSI-TOOL-TYPED-BODY ;
 
+;package
+
 : GSI-LINT-TOOLS-SETUP ( -- )
    GSI-SETUP!
    GSI-TOOL-BASE
    s" tools/repl-lint-core.f" GSI-REQUIRE
-   s" tools/trust-lint-core.f" GSI-REQUIRE
-   s" tools/stale-status-lint-core.f" GSI-REQUIRE
    s" tools/dot-dep-lint-core.f" GSI-REQUIRE
    s" tools/maki-dep-lint-core.f" GSI-REQUIRE
    s" tools/refine-lint-core.f" GSI-REQUIRE
-   s" tools/suite-coverage-lint-core.f" GSI-REQUIRE
    s" tools/namespace-lint-core.f" GSI-REQUIRE
    s" tools/error-code-lint-core.f" GSI-REQUIRE
-   s" tools/nanogpt-inventory-lint-core.f" GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-LINT-TOOLS ( -- )
@@ -443,9 +416,62 @@ public
    s" lib/memory-test.f" GSI-FORK-INCLUDE
    s" lib/vector-test.f" GSI-FORK-INCLUDE
    s" lib/byte-buffer-test.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-id.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-id-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-intern-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-structure-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-storage-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/checker-model-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/insn-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/reloc-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-schema.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-op.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-fun.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-build.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-verify.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-canon.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-encode.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-render.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-diff.f" GSI-FORK-INCLUDE
+   s" test/compiler/target-policy.f" GSI-FORK-INCLUDE
+   s" test/compiler/a64-effect.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-arena.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-attr.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-context.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-source.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-symbol.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-type.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-tape.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-feed.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-immediate.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-hir.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-elaborate.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-a64ir.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-select.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-regalloc.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-emit.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-publish.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-migrate.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-clobber.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-inline.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-vocab.f" GSI-FORK-INCLUDE
+   \ Runs the exact half of the code generator comparison - bytes, computed
+   \ values, the two generators head to head, the committed table's structure.
+   \ The timing column is left out here because this group runs its members in
+   \ parallel; see the note on the codegen-compare entry in
+   \ test/gate-stdlib-cases.f, and run the timed check by hand.
+   s" tools/codegen-compare-test.f" GSI-FORK-INCLUDE
+   \ Runs the exact half of the end-to-end workload measurement - the engine's
+   \ call-or-copy rule read off compiled code, each arm's wiring to its own code
+   \ generator's word, and the answers the two arms compute. The deltas are
+   \ timings and are left out here for the same reason; run
+   \ bin/hb --load tools/codegen-workload.f by hand.
+   s" tools/codegen-workload-test.f" GSI-FORK-INCLUDE
    s" test/pointer-storage-test.f" GSI-FORK-INCLUDE
    s" test/ptr-elem-test.f" GSI-FORK-INCLUDE
    s" test/typed-storage-test.f" GSI-FORK-INCLUDE
+   s" test/raw-storage-load-seal-test.f" GSI-FORK-INCLUDE
    s" lib/fs-test.f" GSI-FORK-INCLUDE
    s" tools/bootstrap-codegen-test.f" GSI-FORK-INCLUDE
    s" tools/asm-src-test.f" GSI-FORK-INCLUDE
@@ -499,8 +525,8 @@ public
    s" test/engine-error-package.f" GSI-FORK-INCLUDE
    s" test/catch-frame.f" GSI-FORK-INCLUDE
    \ test/pre-trust-defer.f is deliberately NOT fork-included: four child-engine
-   \ boots (~1s) measured over the fast-tier budget; it is a documented
-   \ manual-gate member (tools/suite-coverage-lint-core.f SC-MANUAL-TABLE).
+   \ boots (~1s) measured over the fast-tier budget; the standalone stdlib gate
+   \ runs its registered suite.
    s" test/export-package.f" GSI-FORK-INCLUDE
    s" test/gate-runner-entry-test.f" GSI-FORK-INCLUDE
    s" lib/process-test.f" GSI-FORK-INCLUDE
@@ -518,8 +544,10 @@ public
    s" test/top-row-warn-test.f" GSI-FORK-INCLUDE
    s" test/xt-effect-test.f" GSI-FORK-INCLUDE
    s" test/xt-cell-test.f" GSI-FORK-INCLUDE
+   s" test/snapshot-xt-cell-decl.f" GSI-FORK-INCLUDE
    s" test/effect-read-api-test.f" GSI-FORK-INCLUDE
    s" test/checker-assert-test.f" GSI-FORK-INCLUDE
+   s" test/checker-verify-pkg-scope.f" GSI-FORK-INCLUDE
    s" test/prim-link-test.f" GSI-FORK-INCLUDE
    s" test/verify-prim-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
@@ -619,10 +647,6 @@ public
 \ image with clean argv. The spawned list stays a superset. Retire the duplication
 \ + give the bench compile-checks a scheduled runner per
 \ habu-derive-inprocess-spawned-a54e760d.
-
-: GSI-LINT-MANIFEST ( -- )
-   s" stdlib/lint-manifest" GSI-GROUP-SEQ GSI-GROUP-HEADER
-   s" tools/stdlib-manifest-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-ARTIFACTS-FAST ( -- )
    s" stdlib/lint-artifacts/fast" GSI-GROUP-SEQ GSI-GROUP-HEADER

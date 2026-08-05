@@ -38,7 +38,6 @@ require tools/aot-lint-core.f
 require tools/signature-lint-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
-require tools/trust-lint-core.f
 require tools/duplicate-definition-lint-core.f
 require tools/bundle-lib-core.f
 require tools/check-core.f

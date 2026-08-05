@@ -191,11 +191,27 @@ emit_decl_src() {
 emit_src() {
   local out="$1"
   local driver="$2"
-  local mode="${3:-seed}"
   : > "$out"
-  if [[ "$mode" == "native" ]]; then
-    emit_boot_hide "$out"
-  fi
+  # Every engine built from this file re-reads the boot prefix from disk when it
+  # starts, and then interprets this file, which loads the whole prefix a second
+  # time. The second load must not inherit the first load's words. If it does,
+  # `trust` and `checker-defer` from the startup load are still resolvable while
+  # this file is being read, so a `defer NAME` declared before this file's own
+  # `: TRUST` registers its effect row and its defer row into the startup load's
+  # checker -- the one this file is in the middle of replacing. Those rows are
+  # then invisible, the pending pre-trust defer table stays empty, and
+  # DRAIN-PRETRUST has nothing to replay, so a later checked `is NAME` on that
+  # defer cannot certify.
+  #
+  # The prologue below hides the startup load's dictionary and clears its
+  # recorded effects, which is what makes the second load capture its pre-trust
+  # defers and replay them into the checker that is actually live. It used to be
+  # emitted only for the stage builds; the recovery seed that Gforth compiles
+  # into hb-stage0 went without it, so the whole no-binary recovery path died at
+  # src/habu/xref.f INSTALL with `hook: non-certified definition: install at
+  # 'is'` and exit 70. There is one compiler source, so there is one prologue:
+  # every consumer of this function gets it.
+  emit_boot_hide "$out"
   printf "0 set-check\n" >> "$out"
   cat src/core/util.f >> "$out"
   printf '\n' >> "$out"
@@ -311,10 +327,66 @@ bootstrap_preflight_recovery_gate() {
 
 bootstrap_preflight_recovery_gate
 
+# `using NAME` must import a package's public words in the recovery engine exactly
+# as the native engine does: bare resolution while the import is open, nothing
+# left visible after `;using`, and the two named failures (unknown package,
+# ambiguous tail) exiting with their engine-error status. Each case compares the
+# whole of stdout and the first stderr line, so a silent no-op import or a
+# different diagnostic fails the recovery run.
+bootstrap_using_case() {
+  local name="$1"
+  local want_rc="$2"
+  local want_out="$3"
+  local want_diag="$4"
+  local bin="$T/$name"
+  local out="$T/$name.out"
+  local err="$T/$name.err"
+  local diag=""
+  local got=""
+  local rc=0
+
+  "$GF" -e "require $ROOT/test/nf.fs s\" $ROOT/test/$name-src.f\" slurp-file s\" $bin\" FORTH-EXE bye"
+  set +e
+  "$bin" >"$out" 2>"$err"
+  rc=$?
+  set -e
+  # Compare whole streams: the undefined-word diagnostic has no trailing newline,
+  # so a line-at-a-time read would silently see an empty string.
+  got="$(cat "$out")"
+  diag="$(cat "$err")"
+  if [[ "$rc" -ne "$want_rc" || "$got" != "$want_out" || "$diag" != "$want_diag" ]]; then
+    printf '%s: expected rc=%s stdout=%s diagnostic=%s; got rc=%s stdout=%s diagnostic=%s\n' \
+      "$name" "$want_rc" "$want_out" "$want_diag" "$rc" "$got" "$diag" >&2
+    exit 75
+  fi
+}
+
+bootstrap_using_gate() {
+  bootstrap_using_case bootstrap-using 0 \
+    "$(printf '7\n7\n7\n3\n9\nBOOTSTRAP-USING-OK')" ""
+  bootstrap_using_case bootstrap-using-unknown 91 \
+    "BOOTSTRAP-USING-ARMED" "hb: using: unknown package: NOSUCH-PACKAGE"
+  bootstrap_using_case bootstrap-using-ambiguous 94 \
+    "BOOTSTRAP-USING-ARMED" "hb: ambiguous bare word resolves in multiple used packages: BUS-BOTH"
+  # `;package` and the end of an evaluate frame both close the imports opened
+  # inside them, so the bare name is undefined again. Stage0's undefined-word
+  # diagnostic is the bare token (the native engine prefixes `E-UNDEFINED: `).
+  bootstrap_using_case bootstrap-using-scope 70 \
+    "BOOTSTRAP-USING-ARMED" "BUS-VALUE"
+  # The engine hands the package name to the checker's CHECKER-USING, so the
+  # checker resolves the same used publics as the engine once a recovery build
+  # compiles src/core/checker.f.
+  bootstrap_using_case bootstrap-using-checker-hook 0 \
+    "$(printf 'checker-using: BUS-A\n7\nBOOTSTRAP-USING-HOOK-OK')" ""
+}
+
+bootstrap_using_gate
+
+# One emission serves both steps: Gforth compiles this text into hb-stage0, and
+# hb-stage0 then compiles the same text into the first native stage.
 emit_src "$T/stage2-src" src/habu/stage2.f
 "$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-BUILD-EXE bye"
 
-emit_src "$T/stage2-src" src/habu/stage2.f native
 env HB_TMP="$T" "$T/hb-stage0" -- "$T"
 test -f "$T/stage2-got"
 mv "$T/stage2-got" "$T/hb-stage"
@@ -338,7 +410,7 @@ if [[ "$found" != "1" ]]; then
   exit 74
 fi
 
-emit_src "$T/stage2-src" src/habu/stdin.f native
+emit_src "$T/stage2-src" src/habu/stdin.f
 rm -f "$T/stage2-got" "$T/hb-stdin-got"
 env HB_TMP="$T" "$T/hb-stage" -- "$T"
 test -f "$T/stage2-got"

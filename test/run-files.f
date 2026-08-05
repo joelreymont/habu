@@ -57,8 +57,7 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
 \ that can change the phase verdict; test/run-result-cache-test.f enforces
 \ that each declared set is closed over require/include lines and existing
 \ s" source literals (src/ members are keyed but not scanned). Phases with
-\ no declared set are never result-cached. Date-sensitive phases (the
-\ stale-status lint slice) must stay undeclared.
+\ no declared set are never result-cached.
 
 TR-FILES: TR-GATE-HARNESS-FILES
    test/run.f test/run-support.f test/run-lib.f test/run-files.f
@@ -80,7 +79,7 @@ TR-FILES: TR-GATE-COMMON-FILES
    tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
    tools/json-only-core.f tools/signature-lint-core.f
    tools/checked-boundary-lint-core.f tools/reserved-name-lint-core.f
-   tools/trust-lint-core.f tools/check-all-errors-core.f lib/argv.f
+   tools/check-all-errors-core.f lib/argv.f
    tools/dynamic-tail-manifest.f tools/source-discovery.f
    tools/check-core.f tools/check-main.f src/habu/verify-source.f
 ;TR-FILES

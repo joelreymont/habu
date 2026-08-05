@@ -14,7 +14,8 @@ require lib/test/outcome.f
 require lib/process-argv.f
 require lib/process-env.f
 
-65536 constant EXT-COPY-CAP
+package EXAMPLES-TEST
+
 8192 constant EXT-CAPTURE-CAP
 10000 constant EXT-TIMEOUT-MS
 
@@ -24,6 +25,7 @@ variable EXT-TEMP-A
 variable EXT-FILES-A
 variable EXT-PATH-A
 variable EXT-COPY-A
+variable EXT-COPY-CAP
 variable EXT-OUT-A
 variable EXT-ERR-A
 
@@ -56,8 +58,20 @@ variable EXT-ERR-A
 : EXT-PATH-BUF ( -- ptr u8 )
    FS-PATH-CAP EXT-PATH-A EXT-ALLOC-BUF ;
 
+\ The copy buffer holds one bundled source at a time, and the stdlib sources
+\ these bundles are built from grow with the system - lib/errors.f alone is past
+\ 80 KB. So it is sized from the file about to be copied instead of from a
+\ constant, which would have to be raised every time a library outgrew it and
+\ would fail the whole fixture mid-run when nobody did.
+: EXT-COPY-ENSURE ( n -- ) {: need:n :}
+   need 1 max {: want:n :}
+   want EXT-COPY-CAP @ > if
+      want MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop EXT-COPY-A EXT-PTR-U8!
+      want EXT-COPY-CAP !
+   then ;
+
 : EXT-COPY-BUF ( -- ptr u8 )
-   EXT-COPY-CAP EXT-COPY-A EXT-ALLOC-BUF ;
+   EXT-COPY-A EXT-PTR-U8@ ;
 
 : EXT-OUT ( -- ptr u8 )
    EXT-CAPTURE-CAP EXT-OUT-A EXT-ALLOC-BUF ;
@@ -108,7 +122,9 @@ variable EXT-ERR-A
 
 : EXT-ADD-SOURCE ( ptr u8 n ptr u8 n -- ) {: bundle:ptr bundleu src:ptr srcu :}
    src srcu EXT-REQUIRE-FILE
-   src srcu EXT-COPY-BUF EXT-COPY-CAP READ-ALL {: u :}
+   src srcu FILE-SIZE {: size:n :}
+   size EXT-COPY-ENSURE
+   src srcu EXT-COPY-BUF EXT-COPY-CAP @ READ-ALL {: u:n :}
    bundle bundleu EXT-COPY-BUF u APPEND-FILE ;
 
 : EXT-PROVIDED$ ( ptr u8 n -- ptr u8 n ) {: src:ptr srcu:n :}
@@ -261,3 +277,5 @@ variable EXT-ERR-A
    s" examples-test: ok" type cr ;
 
 EXT-MAIN
+
+;package

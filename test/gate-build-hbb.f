@@ -7,12 +7,6 @@
    GB-SRC$ GB-OUT$ HBB-PATHS!
    GT-ROOT BF-TMP! ;
 
-: GB-HBB-PREPARE-REPL ( -- )
-   HBB-RESET-OPTIONS
-   HBB-REPL-ON
-   GB-SRC$ GB-OUT$ HBB-PATHS!
-   GT-ROOT BF-TMP! ;
-
 : GB-HBB-BUILD-OUT ( ptr u8 n -- ) {: label:ptr labelu :}
    HBB-BUILD
    HB-BUILD:ARTIFACT-HIT? if s" artifact-cache-hit" GS-EVENT else s" artifact-cache-miss" GS-EVENT then
@@ -32,9 +26,4 @@
    GB-WRITE-SRC
    GB-HBB-PREPARE
    HBB-STRICT-ON
-   GB-HBB-BUILD-OUT ;
-
-: GB-HBB-BUILD-REPL ( ptr u8 n -- )
-   GB-WRITE-SRC
-   GB-HBB-PREPARE-REPL
    GB-HBB-BUILD-OUT ;

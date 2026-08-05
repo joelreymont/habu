@@ -6,26 +6,16 @@ require test/golden.f
 
 package GATE-DIAGNOSTICS
 
+using PS
+
 64 constant USAGE-RC
 
 create PATH-BUF FS-PATH-CAP allot
 create PATH2-BUF FS-PATH-CAP allot
 create LABEL-BUF FS-PATH-CAP allot
-create TR-ROOT-BUF FS-PATH-CAP allot
-create TR-DIR-BUF FS-PATH-CAP allot
-create TR-SRC-BUF FS-PATH-CAP allot
-create TR-MAN-BUF FS-PATH-CAP allot
-$40000 constant TL-STR-CAP
-$30000 constant TL-FILE-CAP
-create TL-STR-BUF TL-STR-CAP allot
-create TL-FILE-BUF TL-FILE-CAP allot
 variable PATH-U
 variable PATH2-U
 variable LABEL-U
-variable TR-ROOT-U
-variable TR-DIR-U
-variable TR-SRC-U
-variable TR-MAN-U
 
 : USAGE ( -- )
    s" usage: test/gate-diagnostics.f [diag-repair|diag-undef-primary|diag-all-strict|diag-file-unsafe|diag-label-copy]" USAGE-RC die ;
@@ -109,49 +99,6 @@ variable TR-MAN-U
 
 : LABEL! ( ptr u8 n -- )
    LABEL-BUF LABEL-U GE-COPY! ;
-
-: TR-ROOT$ ( -- ptr u8 n )
-   TR-ROOT-BUF TR-ROOT-U @ ;
-
-: TR-DIR$ ( -- ptr u8 n )
-   TR-DIR-BUF TR-DIR-U @ ;
-
-: TR-SRC$ ( -- ptr u8 n )
-   TR-SRC-BUF TR-SRC-U @ ;
-
-: TR-MAN$ ( -- ptr u8 n )
-   TR-MAN-BUF TR-MAN-U @ ;
-
-: TRUST-PATHS ( -- )
-   GT-ROOT s" trust-stale" TR-ROOT-BUF JOIN-PATH TR-ROOT-U !
-   TR-ROOT$ s" src" TR-DIR-BUF JOIN-PATH TR-DIR-U !
-   TR-DIR$ s" trust.f" TR-SRC-BUF JOIN-PATH TR-SRC-U !
-   TR-ROOT$ s" TRUSTED.md" TR-MAN-BUF JOIN-PATH TR-MAN-U ! ;
-
-: TR-SRC-TEXT$ ( -- ptr u8 n )
-   SB-RESET
-   s" TRUSTED: foo ( n -- n )" SB-APPEND GE-SB-LF
-   s"    dup ;" SB-APPEND GE-SB-LF
-   SB$ ;
-
-: TR-MAN-TEXT$ ( -- ptr u8 n )
-   SB-RESET
-   s" | Word | Effect | Reason | Tests | Site | Last audited |" SB-APPEND GE-SB-LF
-   s" |------|--------|--------|-------|------|--------------|" SB-APPEND GE-SB-LF
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:1 | 2026-06-13 |" SB-APPEND GE-SB-LF
-   SB$ ;
-
-: TRUST-FIXTURE ( -- )
-   TRUST-PATHS
-   TR-DIR$ MAKE-DIRS
-   TR-ROOT$ s" lib" PATH-BUF JOIN-PATH PATH-U !
-   PATH$ MAKE-DIRS
-   TR-ROOT$ s" maki" PATH-BUF JOIN-PATH PATH-U !
-   PATH$ MAKE-DIRS
-   TR-ROOT$ s" tools" PATH-BUF JOIN-PATH PATH-U !
-   PATH$ MAKE-DIRS
-   TR-SRC$ TR-SRC-TEXT$ WRITE-ALL
-   TR-MAN$ TR-MAN-TEXT$ WRITE-ALL ;
 
 : ARG+ ( ptr u8 n -- )
    GE-ARG+ ;
@@ -810,27 +757,6 @@ variable TR-MAN-U
    PS-BUFFERS-OFF
    s" public-signatures" s" public-signatures.json" s" public signatures output" GJA1 ;
 
-: LINT-TODAY ( -- )
-   s" 2026-10-01" DATE:PARSE-YMD MATCH option
-     none OF s" trust-lint fixture today" GE-FAIL ENDOF
-     some OF ENDOF
-   ;MATCH
-   TRUST-LINT-TODAY! ;
-
-: LINT-STALE-ACT ( -- )
-   TL-STR-BUF TL-STR-CAP
-   TL-FILE-BUF TL-FILE-CAP TRUST-LINT-BUFFERS!
-   TL-TRUE TL-REPORT-SUCCESS!
-   TR-ROOT$ TRUST-LINT-ROOT!
-   LINT-TODAY
-   TRUST-LINT ;
-
-: LINT-STALE ( -- )
-   TRUST-FIXTURE
-   [: LINT-STALE-ACT ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC
-   TL-BAD @ 0= if s" trust-lint accepted stale audit dates" GE-FAIL then
-   s" STALE-AUDIT" s" trust-lint stale audit diagnostic" GE-EXPECT-ERR-HAS ;
-
 public
 
 : LABEL-COPY-SLICE ( -- )
@@ -843,7 +769,6 @@ public
    s" hb-gate-diagnostics-repair" GT-START
    REPAIR-CLASSES
    PUBLIC-SIGNATURES
-   LINT-STALE
    GT-CLEANUP
    s" PASS: native checker diagnostics repair slice" type cr ;
 

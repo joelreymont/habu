@@ -13,8 +13,7 @@
 \         prompt and exit 0 -- the maximal legal reserve must not be over-rejected.
 \
 \ Spawn-only helper: test/aot-wid-suite.f runs it as a child and gates on its exit
-\ code; it is not a TEST:SUITE member (so suite-coverage-lint does not scan it,
-\ like test/aot-wid-build.f). The PTY primitives below mirror test/proc-pty.f
+\ code; it is not a TEST:SUITE member, like test/aot-wid-build.f. The PTY primitives below mirror test/proc-pty.f
 \ verbatim; factoring them into a shared lib is out of this dot's scope. Linux gate
 \ hosts provide /dev/ptmx + a mounted /dev/pts (docs/process-pty.md).
 \

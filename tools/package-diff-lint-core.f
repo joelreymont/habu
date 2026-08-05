@@ -27,20 +27,13 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require tools/lint/def.f
 require tools/lint/diff.f
 
 package PACKAGE-DIFF
 private
 
 32 constant NUM-CAP
-1 constant COLON-BLOCK
-2 constant SUMTYPE-BLOCK
-3 constant PRODUCT-BLOCK
-4 constant ENUM-BLOCK
-5 constant STRUCTURE-BLOCK
-6 constant VALUE-RECORD-BLOCK
-7 constant LOW-STRUCTURE-BLOCK
-8 constant DATA-DEFINITION
 10 constant LF-C
 45 constant DASH-C
 47 constant SLASH-C
@@ -72,8 +65,25 @@ private
 \ The grammar-fixture row table is built once at load time from fixed rows, so
 \ overflowing it means a row was added without raising its capacity.  That must
 \ stop the load rather than silently drop the row and quietly stop admitting the
-\ suite it belongs to.
+\ suite it belongs to.  The engine-trunk and Gforth-mirror tables further down
+\ are read by index too, and an index past the end of either one would answer
+\ with some other row's path, so they raise this same code.
 -4806 constant E-PKGDIFF-ROWTAB  \ a fixture row, or a row index, fell outside the table
+\ A definer whose name never arrives - the definer token stands at the end of
+\ the scan, or the next token is not a WORD (a comment, say) - is a defect of
+\ the FILE being linted, not of the diff artifact, so it must not be reported
+\ as E-DIFF-SYNTAX either.
+-4807 constant E-PKGDIFF-NONAME  \ a definition-opening token has no name word after it
+\ The old-side name table (see "the old file's global definition names" below)
+\ is sized from the reconstructed pre-image by a bound that holds for every
+\ well-formed source, so it should never fill.  If it ever does, or if a record
+\ turns up without its terminator, the table no longer describes the old file,
+\ and a table that quietly stopped recording would start answering "this name is
+\ new" for words the file already had -- which is the one answer that admits a
+\ new global.  So it stops instead.
+\ -4808..-4810 went to tools/error-code-lint-core.f while this block was being
+\ written, so this code continues after them rather than beside its neighbours.
+-4811 constant E-PKGDIFF-NAMETAB \ the old-side name table overflowed or lost a record
 
 create NUM NUM-CAP allot
 create ONE 1 allot
@@ -92,6 +102,10 @@ variable SOURCE-CAP
 variable OLD-A
 variable OLD-U
 variable OLD-CAP
+variable NAME-A
+variable NAME-U
+variable NAME-CAP                  \ the mapped span, which only the release uses
+variable NAME-LIMIT                \ the proven bound the recorder may fill
 variable MARK-A
 variable MARK-CAP
 variable MARK-U
@@ -100,10 +114,14 @@ variable OLD-SLOTS
 variable MAPPING-PEAK
 variable FAIL-NEXT-MARK-ALLOC
 variable FAIL-NEXT-OLD-ALLOC
+variable FAIL-NEXT-NAME-ALLOC
+variable FORCE-NAME-LIMIT          \ lowers the next name-table bound, for the overflow fixture
 variable BAD
 variable SECTION-ACTIVE
 variable SECTION-SEEN
 variable WHOLE-CHANGED
+variable TRUNK-HIT                 \ engine-trunk path match, accumulated over the row table
+variable MIRROR-HIT                \ gforth-mirror path match, accumulated the same way
 variable SOURCE-LINE
 variable SOURCE-OFF
 variable NEW-LINE
@@ -143,6 +161,9 @@ variable FILE-USED
 : OLD-PTR ( -- ptr ptr u8 )
    OLD-A PTR-SLOT ;
 
+: NAME-PTR ( -- ptr ptr u8 )
+   NAME-A PTR-SLOT ;
+
 : INPUT-PTR ( -- ptr ptr u8 )
    INPUT-A PTR-SLOT ;
 
@@ -154,6 +175,9 @@ variable FILE-USED
 
 : OLD-A@ ( -- ptr u8 )
    OLD-PTR @ ;
+
+: NAME-A@ ( -- ptr u8 )
+   NAME-PTR @ ;
 
 : ROOT$ ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
@@ -180,7 +204,8 @@ variable FILE-USED
    0
    SOURCE-CAP @ 0<> if 1+ then
    MARK-CAP @ 0<> if 1+ then
-   OLD-CAP @ 0<> if 1+ then ;
+   OLD-CAP @ 0<> if 1+ then
+   NAME-CAP @ 0<> if 1+ then ;
 
 : NOTE-MAPPING-PEAK ( -- )
    LIVE-MAPPING# MAPPING-PEAK @ max MAPPING-PEAK ! ;
@@ -238,6 +263,32 @@ variable FILE-USED
 \ exists -- so it is admitted the way sumtype.f, roles.f, structures.f and
 \ enums.f are, and it must be removed once the checker sealing work (dot
 \ habu-seal-the-checker-5314c0ab) gives those seams real package owners.
+\ src/core/render.f is the third interim entry, admitted on exactly the same
+\ terms and for the same subsystem: by its own header it is "the render half of
+\ the native sigparse/checker", split out only to keep one concern per file. It
+\ contains no `package` at all, it loads as part of the compiler prefix before
+\ any package exists, and checker.f resolves the words it defines (EMIT1, RSTR,
+\ DIAG-BUFFER!, FAM-QNAME-REND) bare. Measured: with no entry here, changing one
+\ line of an existing global body in render.f reds the gate, so the gate
+\ rejected every possible change to the diagnostic renderer. Packaging one new
+\ word while its ~100 neighbours stay global would split the surface rather than
+\ seal it, so this entry is interim and is retired by the render sealing dot
+\ alongside the checker sealing work.
+\ src/arch/arm64/asm.f, src/arch/arm64/icode.f and src/arch/arm64/mnem.f are the
+\ fourth entry, on the same terms and for one subsystem: the ARM64 encoder
+\ prefix.  None of the three contains a `package` at all.  They are the third,
+\ fourth and fifth files tools/srclist.f puts in the engine source prefix, ahead
+\ of the compiler that defines packages in the first place, and every later
+\ prefix file resolves their names bare -- src/habu/jit.f, src/habu/habu1.f and
+\ src/habu/habu2.f call `LDR,`, `CBZ,`, `MOVZHW` and the rest with no qualifier,
+\ as do tools/asm-src-test.f and test/compiler/insn-schema.f.  Their own headers
+\ say why: they are written in the STANDALONE's Forth so the Gforth recovery
+\ compiler can read them before the native checker exists.  Measured on
+\ 2026-07-30: with no entry here, adding the operand bounds to asm.f reported ten
+\ ownership faults for words the encoders already published, so the gate rejected
+\ every possible change to the ARM64 assembler.  Interim, exactly like the
+\ checker and render entries, and retired by dot habu-pkg-the-arm64-ffabc063,
+\ which gives the three files real package owners and migrates their callers.
 \ Package-boundary changes are still reported for every file here
 \ (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files with only
 \ one global declarer are handled by GLOBAL-SURFACE? below, so an unrelated
@@ -250,6 +301,10 @@ variable FILE-USED
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then
    FILE$ s" src/core/type-family.f" LINT-STR= if true exit then  \ core surface, interim; see header
    FILE$ s" src/core/checker.f" LINT-STR= if true exit then      \ core surface, interim; see header
+   FILE$ s" src/core/render.f" LINT-STR= if true exit then       \ checker's render half, interim; see header
+   FILE$ s" src/arch/arm64/asm.f" LINT-STR= if true exit then    \ ARM64 encoder prefix, interim; see header
+   FILE$ s" src/arch/arm64/icode.f" LINT-STR= if true exit then  \ ARM64 encoder prefix, interim; see header
+   FILE$ s" src/arch/arm64/mnem.f" LINT-STR= if true exit then   \ ARM64 encoder prefix, interim; see header
    FILE$ s" src/core/enums.f" LINT-STR= ;
 
 \ Declaration-grammar fixture suites.  The second principled category, built on
@@ -444,6 +499,26 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    SOURCE-ALLOC-NEED MEM-ALLOC-64K-SPAN OLD-CAP ! OLD-PTR !
    NOTE-MAPPING-PEAK ;
 
+\ The recorder is bounded by the requested size, not by the span the allocator
+\ rounded it up to: the request is the bound the table's correctness argument is
+\ written against, and the rounding is an accident of the allocator.  Keeping the
+\ two apart also lets the overflow fixture lower the bound without ever putting a
+\ write outside the mapping, and leaves the release with the real span.
+: NAME-ALLOC ( n -- ) {: need:n :}
+   FAIL-NEXT-NAME-ALLOC @ if
+      false FAIL-NEXT-NAME-ALLOC !
+      E-MEM-SIZE throw
+   then
+   need SOURCE-ALLOC-NEED {: want:n :}
+   want MEM-ALLOC-64K-SPAN NAME-CAP ! NAME-PTR !
+   want NAME-LIMIT !
+   FORCE-NAME-LIMIT @ {: forced:n :}
+   forced 0 > if
+      0 FORCE-NAME-LIMIT !
+      forced want < if forced NAME-LIMIT ! then
+   then
+   NOTE-MAPPING-PEAK ;
+
 : SOURCE-RELEASE ( -- )
    SOURCE-CAP @ 0= if exit then
    SOURCE-A@ {: a:ptr :}
@@ -465,6 +540,14 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    0 OLD-CAP !
    a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
+: NAME-RELEASE ( -- )
+   NAME-CAP @ 0= if exit then
+   NAME-A@ {: a:ptr :}
+   NAME-CAP @ {: cap:n :}
+   0 NAME-CAP !
+   0 NAME-LIMIT !
+   a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
 : CLEANUP-COMBINE ( n n -- n )
    over 0 <> if drop exit then nip ;
 
@@ -473,6 +556,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    [: SOURCE-RELEASE ;] catch CLEANUP-COMBINE
    [: MARK-RELEASE ;] catch CLEANUP-COMBINE
    [: OLD-RELEASE ;] catch CLEANUP-COMBINE
+   [: NAME-RELEASE ;] catch CLEANUP-COMBINE
    dup 0 <> if throw then drop ;
 
 : MARK-CLEAR ( n -- ) {: need:n :}
@@ -491,6 +575,65 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    dup MEM-MAX-N 2 / > if drop E-MEM-SIZE throw then
    2 * ;
 
+\ ---- the old file's global definition names ----------------------------------
+\ ENGINE-BODY-EDIT? below has to answer "did this file already define this name
+\ at global scope?", and the only place that fact exists is the pre-image the
+\ lint reconstructs into OLD$.  SCAN-OLD-BOUNDARIES walks that pre-image before
+\ SCAN-DEFINITIONS starts and the two scans share one lexer, so by the time a
+\ definition is judged the old token table is gone and the old text cannot be
+\ re-lexed.  The old-side scan therefore copies each global definition's name
+\ into this table as it passes it.
+\
+\ A record is the name bytes followed by one LF.  A definition name is a WORD
+\ token and nothing else (tools/lint/def.f NAME-I admits no other kind), and a
+\ WORD token is whitespace-delimited, so an LF can never occur inside a record:
+\ the delimiter needs no escape and no length field.
+\
+\ The bound is proven, not guessed.  In the old text each definition contributes
+\ its own name token plus at least the one delimiter byte in front of it; those
+\ spans are disjoint across definitions, because two distinct tokens cannot begin
+\ at the same offset and a name holds no whitespace.  So the sum of (name + 1)
+\ over all definitions is at most the old text's length, which is what the table
+\ is sized to.  The capacity test still stands and it throws, because a table
+\ that silently stopped recording would report every later definition as new.
+\
+\ Only definitions at global scope are recorded.  The question is about the
+\ file's GLOBAL surface, so a name that used to sit inside a package and now
+\ stands at top level is new to that surface and must be reported.
+: OLD-NAME+ ( n -- ) {: namei:n :}
+   namei LINT-LEX:TOKEN {: a:ptr u:n :}
+   NAME-U @ u ADD-SIZE 1 ADD-SIZE NAME-LIMIT @ > if E-PKGDIFF-NAMETAB throw then
+   a NAME-A@ NAME-U @ + u BYTE-COPY
+   LF-C NAME-A@ NAME-U @ + u + c!
+   NAME-U @ u + 1+ NAME-U ! ;
+
+\ Offset of the LF that ends the record starting here.  Every record is written
+\ with its terminator, so a record without one means the table is not the thing
+\ this scan wrote and no answer read out of it can be trusted.
+: NAME-REC-END ( n -- n ) {: start:n :}
+   start begin dup NAME-U @ < while
+      NAME-A@ over + c@ LF-C = if exit then
+      1+
+   repeat drop E-PKGDIFF-NAMETAB throw ;
+
+\ Whole name, and case-insensitively, because that is what "the same word" means
+\ to the dictionary being described: `bin/hb` resolves `foo` to `FOO`, so
+\ respelling an existing global in another case publishes no name the file did
+\ not already have.  This is NOT the case fold the row table below warns about --
+\ that one would loosen an exact FILE PATH, which is not an identity relation the
+\ engine has any opinion about.  A name that differs by anything other than case
+\ is a different word and is not found here.
+: NAME-REC= ( n n ptr u8 n -- bool ) {: start:n end:n a:ptr u:n :}
+   end start - u <> if false exit then
+   NAME-A@ start + u a u LINT-STR=CI ;
+
+: OLD-GLOBAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup NAME-U @ < while
+      dup NAME-REC-END
+      2dup a u NAME-REC= if 2drop true exit then
+      nip 1+
+   repeat drop false ;
+
 : BUILD-FULL-PATH ( -- )
    ROOT$ FILE$ FULL-BUF JOIN-PATH FULL-U ! ;
 
@@ -506,7 +649,9 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    SOURCE-U @ size <> if E-DIFF-SYNTAX throw then
    MARK-U @ dup MARK-ALLOC MARK-CLEAR
    OLD-SLOTS @ 2 - OLD-ALLOC
-   0 OLD-U ! ;
+   0 OLD-U !
+   OLD-SLOTS @ 2 - NAME-ALLOC
+   0 NAME-U ! ;
 
 : LINE-OFF ( n -- n ) {: line:n :}
    line 0 <= if E-DIFF-SYNTAX throw then
@@ -682,108 +827,6 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    k WORD? 0= if false exit then
    k LINT-LEX:TOKEN a u LINT-STR= ;
 
-\ Audited publication inventory.  The native forms come from the engine's
-\ dictionary definers and docs/typed-top-level.md.  The type/storage forms are
-\ the complete UNSAFE-TOK?/top-level declaration set in checker.f.  The
-\ remaining project forms are the transitive defining words found by auditing
-\ every executable `create` and generated-definition `evaluate` owner in the
-\ Forth tree.  Registry grammars that do not publish dictionary words (PRIM:,
-\ PPRIM:, SUITE/GROUP, VJP:, GRID:/WHERE) are intentionally absent.
-: COLON-DEFINER? ( n -- bool ) {: k:n :}
-   k s" :" TOK=CI if true exit then
-   k s" +:" TOK=CI if true exit then
-   k s" CHECKED:" TOK=CI if true exit then
-   k s" TRUSTED:" TOK=CI if true exit then
-   k s" KERNEL:" TOK=CI if true exit then
-   k s" CAST:" TOK=CI if true exit then
-   k s" MODEL:" TOK=CI ;
-
-: BLOCK-DEFINER-KIND ( n -- n ) {: k:n :}
-   k s" SUMTYPE" TOK=CI if SUMTYPE-BLOCK exit then
-   k s" PRODUCT" TOK=CI if PRODUCT-BLOCK exit then
-   k s" ENUM" TOK=CI if ENUM-BLOCK exit then
-   k s" STRUCTURE" TOK=CI if STRUCTURE-BLOCK exit then
-   k s" VALUE-RECORD" TOK=CI if VALUE-RECORD-BLOCK exit then
-   k s" BEGIN-STRUCTURE" TOK=CI if LOW-STRUCTURE-BLOCK exit then
-   0 ;
-
-: NATIVE-DATA-DEFINER? ( n -- bool ) {: k:n :}
-   k s" constant" TOK=CI if true exit then
-   k s" 2constant" TOK=CI if true exit then
-   k s" fconstant" TOK=CI if true exit then
-   k s" variable" TOK=CI if true exit then
-   k s" 2variable" TOK=CI if true exit then
-   k s" fvariable" TOK=CI if true exit then
-   k s" create" TOK=CI if true exit then
-   k s" value" TOK=CI if true exit then
-   k s" defer" TOK=CI ;
-
-: STORAGE-DEFINER? ( n -- bool ) {: k:n :}
-   k s" LAYOUT-BUFFER" TOK=CI if true exit then
-   k s" DEFER-LAYOUT-BUFFER" TOK=CI if true exit then
-   k s" TYPED-BUFFER" TOK=CI if true exit then
-   k s" TYPED-VARIABLE" TOK=CI if true exit then
-   k s" PTR-VARIABLE" TOK=CI if true exit then
-   k s" PTR-FIELD:" TOK=CI if true exit then
-   k s" CFIELD:" TOK=CI if true exit then
-   k s" +FIELD" TOK=CI ;
-
-: TYPE-DEFINER? ( n -- bool ) {: k:n :}
-   k s" NEWTYPE" TOK=CI if true exit then
-   k s" DEFTYPE" TOK=CI if true exit then
-   k s" DEFLINEAR" TOK=CI if true exit then
-   k s" ENUM+" TOK=CI if true exit then
-   k s" ENUM4+" TOK=CI ;
-
-: PROJECT-DATA-DEFINER? ( n -- bool ) {: k:n :}
-   k s" BUFFER:" TOK=CI if true exit then
-   k s" BUFFER" TOK=CI if true exit then
-   k s" BUFFER-E" TOK=CI if true exit then
-   k s" CODEGEN:BUFFER" TOK=CI if true exit then
-   k s" CODEGEN:BUFFER-E" TOK=CI if true exit then
-   k s" TASK" TOK=CI if true exit then
-   k s" +USER" TOK=CI if true exit then
-   k s" FACILITY" TOK=CI if true exit then
-   k s" TASK:TASK" TOK=CI if true exit then
-   k s" TASK:+USER" TOK=CI if true exit then
-   k s" TASK:FACILITY" TOK=CI if true exit then
-   k s" TR-FILES:" TOK=CI if true exit then
-   k s" GE-FILES:" TOK=CI if true exit then
-   k s" IOP:" TOK=CI if true exit then
-   k s" CONST" TOK=CI if true exit then
-   k s" ARR" TOK=CI ;
-
-: MAKI-DEFINER? ( n -- bool ) {: k:n :}
-   k s" EXTENT:" TOK=CI if true exit then
-   k s" FREE-EXTENT:" TOK=CI if true exit then
-   k s" EXTPROD:" TOK=CI if true exit then
-   k s" TENSOR:" TOK=CI if true exit then
-   k s" ITENSOR:" TOK=CI if true exit then
-   k s" SPEC:" TOK=CI ;
-
-: DATA-DEFINER? ( n -- bool ) {: k:n :}
-   k NATIVE-DATA-DEFINER? if true exit then
-   k STORAGE-DEFINER? if true exit then
-   k TYPE-DEFINER? if true exit then
-   k PROJECT-DATA-DEFINER? if true exit then
-   k MAKI-DEFINER? ;
-
-: DEFINER-KIND ( n -- n ) {: k:n :}
-   k COLON-DEFINER? if COLON-BLOCK exit then
-   k BLOCK-DEFINER-KIND dup 0<> if exit then drop
-   k DATA-DEFINER? if DATA-DEFINITION exit then
-   0 ;
-
-: CLOSE? ( n n -- bool ) {: k:n kind:n :}
-   kind COLON-BLOCK = if k s" ;" TOK=CI exit then
-   kind SUMTYPE-BLOCK = if k s" ;SUMTYPE" TOK=CI exit then
-   kind PRODUCT-BLOCK = if k s" ;PRODUCT" TOK=CI exit then
-   kind ENUM-BLOCK = if k s" ;ENUM" TOK=CI exit then
-   kind STRUCTURE-BLOCK = if k s" ;STRUCTURE" TOK=CI exit then
-   kind VALUE-RECORD-BLOCK = if k s" END-VALUE-RECORD" TOK=CI exit then
-   kind LOW-STRUCTURE-BLOCK = if k s" END-STRUCTURE" TOK=CI exit then
-   false ;
-
 : ADDED-RANGE? ( n n -- bool ) {: first:n last:n :}
    first begin dup last <= while
       dup ADDED? if drop true exit then
@@ -895,16 +938,374 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    bit 0= if false exit then
    allowed bit and 0<> ;
 
+\ The engine trunk -- src/habu/habu2.f and src/habu/layout.f -- is the third
+\ principled category and the narrowest of the three.  It is admitted for exactly
+\ one shape: a change to the BODY of a global word that already exists.  Adding a
+\ new global word to either file is still reported, which is what separates this
+\ entry from the interim entries in GLOBAL-IMPLEMENTATION? above.
+\ the whole of stdout and the first stderr line against exact expected text.  The
+\ fixture is the gate's own input and its correctness authority is that
+\ whole-stream comparison, not a load through a package boundary.
+\
+\ Why packaging these two would delete the proof instead of satisfying the rule.
+\ Both reasons are engine contracts and both were measured before this entry was
+\ written.
+\
+\ test/bootstrap-using-checker-hook-src.f defines a stand-in CHECKER-USING so the
+\ engine's mirror call is observable.  The emitter's C-USING-CHECK-CALL looks that
+\ hook up by the bare 13-byte name `checker-using`, the same way the real global
+\ CHECKER-USING in src/core/checker.f is found, and calls it with the package-name
+\ token.  A package would put the tail in that package's wordlist, where a bare
+\ lookup cannot see it: the mirror call would find nothing, the fixture's
+\ `checker-using: BUS-A` line would disappear, and the case would stop testing the
+\ mirror.
+\
+\ test/bootstrap-using-src.f defines BUS-SHADOW and BUS-CALLER at top level
+\ because top-level bare visibility is the property under test.  BUS-SHADOW is the
+\ name that must already resolve before `using BUS-A` opens, so the fixture can
+\ prove an import never shadows a name that already resolves; from inside a
+\ package nothing would resolve bare at the use site and the check would be
+\ vacuous.  BUS-CALLER is compiled while the import is open, from the real
+\ top-level position a recovery build's own source occupies; wrapping it in a
+\ package would quietly change the subject to whether an outer import survives
+\ into a newly opened package, which is a different question this fixture does not
+\ answer.
+\
+\ The category is narrow in three structural ways.  Entries are exact whole paths,
+\ so a global in any other fixture still reports.  Admission is also by shape:
+\ only the plain lower-case `:` definer, because what these fixtures need is a
+\ word the stage0 engine resolves by bare lookup.  A global `variable`, `create`,
+\ `constant`, `CHECKED:`, `TRUSTED:` or type declaration in a listed fixture
+\ reports like any other unpackaged global.  FINISH-DEFINITION checks SCOPE-DELTA
+\ before this admission, so adding or deleting a package boundary around one of
+\ these words is still reported.
+\
+\ The third narrowing is the pair of guards below: the path must start with `test/`
+\ and end with `-src.f`, which is exactly how tools/bootstrap.sh composes the path
+\ it builds (`test/$name-src.f`).  Be honest about what they do.  Against the exact
+\ comparison and today's two rows they are redundant - removing either one alone
+\ changes no verdict.  They exist for the edits that come later: they keep a future
+\ row from admitting a library, tool or engine source, and they are what refuses a
+\ hostile sibling if the path comparison itself is ever weakened.  Measured on
+\ 2026-07-30: weaken STAGE0-PATH= to a suffix, prefix or case-folded comparison and
+\ each of those weakenings is refused by one of these guards or reported by a named
+\ hostile in tools/package-diff-lint-test.f; weaken the comparison AND drop the
+\ matching guard and the hostile flips, which is how the unit test proves each
+\ guard carries real weight rather than decoration.
+\
+\ There is no retirement condition.  Unlike the interim core-surface entries above
+\ this is not debt waiting for a sealing pass: the recovery gate has to keep
+\ proving what a real top-level user program sees, so while `using` exists in the
+\ stage0 engine these fixtures have to define at top level.
+4 constant STAGE0-ROW-CAP        \ headroom for the next fixture that needs a top-level word
+256 constant STAGE0-TEXT-CAP     \ arena holding the row paths
+create STAGE0-TEXT STAGE0-TEXT-CAP allot
+create STAGE0-PATH-A STAGE0-ROW-CAP cells allot
+create STAGE0-PATH-U STAGE0-ROW-CAP cells allot
+variable STAGE0-ROW#
+variable STAGE0-TEXT-U
+
+: STAGE0-PATH$ ( n -- ptr u8 n ) {: i:n :}
+   i 0 < i STAGE0-ROW# @ >= or if E-PKGDIFF-ROWTAB throw then
+   i cells STAGE0-PATH-A + @   i cells STAGE0-PATH-U + @ ;
+
+\ Rows are appended once at load time.  The path bytes are copied into the arena
+\ because a source string literal is transient; storing its address would leave
+\ every row pointing at whatever text was parsed last.
+: STAGE0-ROW+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   STAGE0-ROW# @ STAGE0-ROW-CAP >= if E-PKGDIFF-ROWTAB throw then
+   STAGE0-TEXT-U @ u + STAGE0-TEXT-CAP > if E-PKGDIFF-ROWTAB throw then
+   STAGE0-TEXT STAGE0-TEXT-U @ + {: dst:ptr :}
+   a dst u BYTE-COPY
+   dst STAGE0-ROW# @ cells STAGE0-PATH-A + !
+   u STAGE0-ROW# @ cells STAGE0-PATH-U + !
+   STAGE0-TEXT-U @ u + STAGE0-TEXT-U !
+   STAGE0-ROW# @ 1+ STAGE0-ROW# ! ;
+
+\ THE path comparison for this category.  Every row is admitted or refused by
+\ this one word, so "is this the listed fixture?" is decided in a single place:
+\ whole path, exact bytes, no suffix match and no case folding.
+: STAGE0-PATH= ( n ptr u8 n -- bool ) {: i:n a:ptr u:n :}
+   a u i STAGE0-PATH$ LINT-STR= ;
+
+: STAGE0-LISTED? ( -- bool )
+   0 begin dup STAGE0-ROW# @ < while
+      dup FILE$ STAGE0-PATH= if drop true exit then
+      1+
+   repeat drop false ;
+
+\ One line per fixture that needs a word at global top level.
+s" test/bootstrap-using-src.f" STAGE0-ROW+
+s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
+
+: STAGE0-FIXTURE? ( -- bool )
+   FILE$ s" test/" LINT-STARTS-WITH? 0= if false exit then
+   FILE$ s" -src.f" LINT-ENDS-WITH? 0= if false exit then
+   STAGE0-LISTED? 0= if false exit then
+   DEF-DEFINER-I @ s" :" TOK= ;
+
+\ The native engine emitter, src/habu/habu2.f, is the third principled category
+\ and the narrowest of the three.  It is admitted for exactly one shape: a change
+\ to the BODY of a global word that already exists.  Adding a new global word to
+\ that file is still reported, which is what separates this entry from the
+\ interim entries in GLOBAL-IMPLEMENTATION? above.
+\
+\ Why the file needs an entry at all.  habu2.f is about 7,300 lines of code that
+\ emits the machine code of the engine itself.  Almost all of it is global by
+\ construction: it runs while the engine is being built, before any package
+\ exists, and the assembler words, register names, label helpers and emit passes
+\ resolve each other bare in one flat namespace.  Measured on 2026-07-29: adding
+\ a single trailing comment to the body of EM-SNAPSHOT-RX-FLUSH -- defining no
+\ new word and changing no behaviour -- reported
+\ `E-PACKAGE-OWNERSHIP src/habu/habu2.f:4134:3`, so as configured the gate
+\ rejected every possible change to the engine emitter, including the repair of
+\ the snapshot relocation regression that found this.
+\
+\ Why it is narrower than the core-surface entries.  Unlike checker.f and
+\ render.f, habu2.f is not a growing language surface; it is a body of existing
+\ code being packaged file-region by file-region.  The packaging seams are real
+\ and already present -- OWNER-WID-EMIT, KWDATA, LOOP-EMIT, LASTC-TRUST,
+\ DOESPATCH, INTERP-EMIT, COMPILE-EMIT, LABELS, ENGINE-BUILD, LOWER-TXN and the
+\ rest all open in this same file -- so a genuinely new engine word has a package
+\ to join and must join one.  The distinction is structural, not a value guess:
+\ what separates the two shapes is whether the file already defined this NAME at
+\ global scope, and that is a fact read out of the diff's own pre-image.
+\
+\ Why src/habu/layout.f is the second member.  It is the same kind of file for
+\ the same reason: about 240 constants that name the image, dictionary and DATA
+\ layout, all global by construction because every engine source reads them bare
+\ while the engine is being built, and its packaging is blocked on the stage0
+\ recovery compiler learning the `using` keyword (dot habu-add-using-to-d815f0ab).
+\ Without this entry the gate rejects any change to an existing layout constant's
+\ value -- measured 2026-07-29: bumping SNAP-FORMAT-VERSION from 4 to 5 and
+\ deriving DATA-START from the new relocation bands reported E-PACKAGE-OWNERSHIP
+\ on both, so the snapshot format could not be versioned at all.  New layout
+\ constants still have to join a package, which is what the relocation bands did.
+\
+\ The key, and the one it replaced.  This entry first asked whether the diff had
+\ touched the line the definition's opener or name sits on (DEF-TAIL-ADDED, which
+\ CHECK-PREFIX still uses).  For a colon word that separates a body edit from a
+\ new definition exactly, because the body is on other lines.  For a `constant`
+\ it cannot: the definer, the name and the value share one line, so changing the
+\ VALUE necessarily marks the head as added, and `4 constant SNAP-FORMAT-VERSION`
+\ becoming `5 constant SNAP-FORMAT-VERSION` looks byte for byte like a brand-new
+\ constant.  layout.f is nothing but constants, so keyed on that this entry
+\ admitted nothing it was minted for: both real findings above survived it.
+\
+\ The key is now the fact that question was standing in for -- was this NAME
+\ already defined at global scope in this file's pre-image (OLD-GLOBAL? above).
+\ It is one structural fact rather than a line-position proxy, and it is strictly
+\ narrower than "the head line is unchanged OR the name is old".  Measured: the
+\ head-line test admits nothing the name test rejects EXCEPT one shape, and it
+\ decides that shape wrongly.  A definition the old file kept inside a `( ... )`
+\ comment becomes a real global word the moment the diff changes the comment's
+\ opening line, without one byte of the definition's own line changing: the
+\ head-line test sees an untouched head and admits a word the file never had,
+\ and the name test reports it.  A disjunct whose only distinguishing case is one
+\ it gets wrong is not a second opinion, so it is gone rather than kept for
+\ safety.  tools/package-diff-lint-test.f pins that shape.
+\
+\ Three consequences are deliberate.  A definition of an EXISTING global name
+\ whose head line was deleted and rewritten -- moved within the file, resplit, or
+\ retyped from `:` to `CHECKED:` -- is admitted, because afterwards the file's
+\ global surface is the same set of names, and that surface is precisely what
+\ this entry guards.  A SECOND definition of a name the file already defines is
+\ admitted for the same reason: it publishes no name the file did not already
+\ publish.  Whether a trunk file should carry two definitions of one word is a
+\ real question, but it is a question about redefinition, not about who owns the
+\ name.  And a rename is admitted in neither direction: the arriving spelling is
+\ a name this file never had, so it is reported, while the departing one's
+\ deletion is the packaging dot's business rather than this entry's.
+\
+\ Why src/habu/xref.f is the third member.  Same kind of file and same rule: it
+\ is the live-dictionary surface of the cold prefix - the record readers, the
+\ lookup helpers, the retirement and truncation entries - and every one of those
+\ names is resolved bare by later prefix sources and by the REPL.  Its packaging
+\ census is already written down (dot habu-pkg-dictionary-cross-73f449d9: 88
+\ unowned definitions, to be split into a read package and a lifecycle package),
+\ so like habu2.f and layout.f it is a body of existing code waiting to be
+\ packaged rather than a growing language surface.  Measured 2026-08-03: adding
+\ the code-reclamation notice to the last line of the existing global
+\ FORGET-DEFS-FROM - one call, publishing no new name - reported
+\ `E-PACKAGE-OWNERSHIP src/habu/xref.f:504:3`, so as configured the gate rejected
+\ every possible change to the dictionary-truncation path, including the repair
+\ of the stale-row miscompiles that found this.  The asymmetry is earned here for
+\ the same structural reason it is earned for habu2.f: xref.f already opens real
+\ packages (PKG-AUTH, GENERATED-DECL-NAME-PREFLIGHT, CODE-RECLAIM), so a
+\ genuinely new word in it has an owner it can join and must join one - and the
+\ notice's own package is exactly that shape.
+\
+\ Why src/habu/habu1.f is the fourth member.  It is habu2.f's other half and the
+\ same kind of file: the arm64 assembler vocabulary, the register aliases, the
+\ label helpers and the primitive emitters that habu2.f's passes call bare while
+\ the engine is being built.  Measured 2026-08-04: adding a single trailing
+\ comment to the body of the existing global EMIT-FLUSH -- defining no new word
+\ and changing no behaviour -- reported
+\ `E-PACKAGE-OWNERSHIP src/habu/habu1.f:2714:3`, so as configured the gate
+\ rejected every possible change to the engine's primitive emitters, including
+\ the dictionary-lookup repair that found this (dot
+\ habu-compile-shaped-cost-4e74a181, which had to change the bodies of the
+\ existing global BNDSET and EMIT-FIND and nothing else).  The asymmetry is
+\ earned on the same structural fact as the other three: habu1.f already opens
+\ ENGINE-BUILD, ENGINE-HELPER, GUARD, PROT-GUARD and OWNER-WID-EMIT, so a
+\ genuinely new word in it has an owner it can join and must join one -- which
+\ is what the repair above did with its five new labels, keeping them lexical
+\ inside the word that emits them rather than adding five globals.
+\
+\ Retirement condition.  The habu2.f half is removed when the continuing habu2
+\ packaging work (dot habu-cont-habu2-emitter-493363e7) extends those seams over
+\ the remaining global surface, the layout.f half when dot
+\ habu-give-layout-f-315df2ca finishes packaging that file, the xref.f half
+\ when dot habu-pkg-dictionary-cross-73f449d9 splits that file into its read and
+\ lifecycle packages, and the habu1.f half when dot
+\ habu-pkg-the-engine-842acca7 packages the primitive emitters - exactly as the
+\ checker and render entries are removed by their own sealing dots.
+\ FINISH-DEFINITION
+\ checks SCOPE-DELTA before it consults this admission, so adding or deleting a
+\ package boundary around an engine word is still reported here like anywhere
+\ else.  A rename or copy that makes some other file arrive AT one of these paths
+\ is not a body edit of an existing engine word -- every definition in it is new
+\ here even though no line of it is marked added -- so WHOLE-CHANGED closes that
+\ hole and reports the whole file.
+\
+\ The three paths are rows reached through ONE comparison site, for the reason the
+\ fixture row table below gives: a weakening -- a suffix match, a case fold, a
+\ prefix test -- then has exactly one place to live and changes every row at once,
+\ so the hostile fixtures kill it on all of them.
+4 constant ENGINE-TRUNK-N
+
+: ENGINE-TRUNK-AT ( n -- ptr u8 n ) {: row:n :}
+   row 0= if s" src/habu/habu2.f" exit then
+   row 1 = if s" src/habu/layout.f" exit then
+   row 2 = if s" src/habu/xref.f" exit then
+   s" src/habu/habu1.f" ;
+
+: ENGINE-TRUNK-PATH? ( -- bool )
+   0 TRUNK-HIT !
+   ENGINE-TRUNK-N 0 ?do
+      FILE$ i ENGINE-TRUNK-AT LINT-STR= if 1 TRUNK-HIT ! then
+   loop
+   TRUNK-HIT @ 0 <> ;
+
+: ENGINE-BODY-EDIT? ( -- bool )
+   ENGINE-TRUNK-PATH? 0= if false exit then
+   WHOLE-CHANGED @ if false exit then
+   DEF-NAME-I @ LINT-LEX:TOKEN OLD-GLOBAL? ;
+
+\ The Gforth recovery mirror -- bootstrap/cg/forth.fs -- is the fourth principled
+\ category, and the only one where satisfying the ownership rule is not merely
+\ inconvenient but impossible.
+\
+\ What the file is.  It is the stage-0 code generator that emits a standalone
+\ native Forth without any habu binary, and it is compiled by GFORTH, not by
+\ `bin/hb`.  `package`, `public`, `private` and `;package` are habu engine words:
+\ Gforth does not have them, so a `package NAME` line in this file would abort the
+\ no-binary recovery documented in docs/bootstrap.md before it emitted anything.
+\ Every definition in it is therefore global by necessity.  The one occurrence of
+\ the bytes `;package` in the file is a string literal in the keyword table this
+\ emitter WRITES for the engine it builds, which is the opposite of the file
+\ opening a scope of its own.
+\
+\ Why the file needs an entry at all.  Measured 2026-07-30: adding a single
+\ trailing comment to the body of the existing global BCOUNT -- defining no new
+\ word and changing no behaviour -- reported
+\ `E-PACKAGE-OWNERSHIP bootstrap/cg/forth.fs:811:3`, so as configured the gate
+\ rejected every possible change to the recovery emitter.  The stage-0 `using`
+\ work (dot habu-add-using-to-d815f0ab) is the live consumer: 40 of the 44
+\ findings on that commit are this one gap.
+\
+\ Why BOTH directions are admitted, unlike the engine trunk.  ENGINE-BODY-EDIT?
+\ above admits a body edit and still reports a NEW global, and that asymmetry is
+\ earned by a fact about the trunk files: habu2.f and layout.f are compiled by
+\ `bin/hb` and already open real packages, so a genuinely new engine word has an
+\ owner it CAN join and must join.  Here there is no such owner and there never
+\ will be while the file is Gforth-hosted, so reporting a new global would be
+\ reporting a fault whose only repair breaks the recovery path.  The category
+\ therefore admits changed and new definitions alike.
+\
+\ What owns the mirror's correctness instead.  Not package scope -- the parity
+\ gates.  tools/bootstrap-codegen-test.f loads this exact path and asserts over
+\ its text at eighteen sites, tools/bootstrap-mirror-lint.f names it as the file
+\ whose absent width-aware pass makes the src/ declaration boundary a red gate,
+\ and the recovery fixtures driven by tools/bootstrap.sh run it end to end.  A
+\ definition added here is reviewed by those gates, which read what the emitter
+\ produces, and that is a stronger statement about this file than a wordlist name
+\ would be.
+\
+\ Why this exact path and not its neighbours.  There are 63 other Gforth-hosted
+\ `.fs` sources in the tree (bootstrap/cg, bootstrap/src, the bootstrap load
+\ drivers, and the two Gforth test harnesses test/nf.fs and
+\ test/bootstrap-wide-memory.fs), and all 64 were measured on 2026-07-30 by
+\ appending one global definition to each and running this lint: every one of them
+\ reports E-PACKAGE-OWNERSHIP, so the gate does scan them and none of them is
+\ admitted by accident.  They are left reporting on purpose.  The argument above
+\ has two halves -- packaging is impossible, AND named parity gates own the file's
+\ correctness instead -- and only bootstrap/cg/forth.fs has the second half today.
+\ A row is added for a sibling when a real change to it is blocked and its own
+\ compensating authority can be named, one measurement per row, which is what the
+\ exact-path rule in docs/forth.md is for.  The extension is deliberately NOT the
+\ key: `.fs` alone would admit any future file that happened to be named that way.
+\
+\ A rename or copy that makes some other file arrive AT this path is reported, the
+\ same way the trunk reports it.  The mirror is one committed file whose content
+\ the parity gates know; a wholesale replacement arriving at its path is exactly
+\ the event where that authority has not yet looked, and WHOLE-CHANGED marks no
+\ line as added, so without this the whole arriving file would ride in unread.
+\ FINISH-DEFINITION also checks SCOPE-DELTA before it consults this admission, so
+\ the impossible-but-attempted case of a `package` boundary appearing in the
+\ mirror is still reported.
+\
+\ Retirement condition.  Unlike the interim entries above this one has no
+\ packaging dot to wait for, because there is nothing to package: it retires when
+\ the recovery path stops being Gforth-hosted, that is, when bootstrap/cg/forth.fs
+\ is replaced by checked habu source that `bin/hb` compiles.
+\
+\ The path is a row table reached through ONE comparison site, for the reason the
+\ fixture row table gives: a weakening -- a suffix match, a case fold, a prefix
+\ test -- then has exactly one place to live and moves every row at once, so the
+\ hostile fixtures in tools/package-diff-lint-test.f kill it.
+1 constant MIRROR-N
+
+: MIRROR-AT ( n -- ptr u8 n ) {: row:n :}
+   row 0 < row MIRROR-N >= or if E-PKGDIFF-ROWTAB throw then
+   s" bootstrap/cg/forth.fs" ;
+
+: MIRROR-PATH? ( -- bool )
+   0 MIRROR-HIT !
+   MIRROR-N 0 ?do
+      FILE$ i MIRROR-AT LINT-STR= if 1 MIRROR-HIT ! then
+   loop
+   MIRROR-HIT @ 0 <> ;
+
+: MIRROR-EDIT? ( -- bool )
+   MIRROR-PATH? 0= if false exit then
+   WHOLE-CHANGED @ 0= ;
+
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
    GRAMMAR-FIXTURE? if true exit then
+   STAGE0-FIXTURE? if true exit then
    ERR-VOCAB? if true exit then
+   ENGINE-BODY-EDIT? if true exit then
+   MIRROR-EDIT? if true exit then
    FILE$ s" lib/adt/option.f" LINT-STR= if
       DEF-DEFINER-I @ s" ENUM" TOK=CI
       DEF-NAME-I @ s" option" TOK=CI and exit
    then
    FILE$ s" lib/type/deftype.f" LINT-STR= if
       DEF-NAME-I @ s" DEFTYPE" TOK=CI exit
+   then
+   \ Same shape and same reason as DEFTYPE above, forced by the checker rather
+   \ than chosen: `ix`, `extprod` and `redx` are engine-registered cell families
+   \ (src/core/type-family.f) declared in the global, empty package, and a CHECKED
+   \ cast that INTRODUCES a value into a cell family is authorized only from that
+   \ family's declaring package (src/core/checker.f CAST-OWNER?). The converter
+   \ pair for those families therefore cannot live in a package at all. These are
+   \ the only two names the file defines; a third global added beside them is
+   \ still reported.
+   FILE$ s" lib/type/extent-role.f" LINT-STR= if
+      DEF-NAME-I @ s" IX>N" TOK=CI
+      DEF-NAME-I @ s" >RED" TOK=CI or exit
    then
    FILE$ s" src/core/structure-decl.f" LINT-STR= if
       DEF-NAME-I @ s" STRUCTURE" TOK=CI exit
@@ -938,19 +1339,24 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    false DEF-OPEN ! ;
 
 : START-DEFINITION ( n n -- ) {: k:n kind:n :}
-   k 1+ dup WORD? 0= if drop E-DIFF-SYNTAX throw then {: namei:n :}
-   kind DEF-KIND !
-   k DEF-DEFINER-I !
-   namei DEF-NAME-I !
-   k LINT-LEX:LINE@ DEF-START-LINE !
-   PACKAGE-OPEN @ DEF-PACKAGED !
-   k LINT-LEX:LINE@ ADDED? namei LINT-LEX:LINE@ ADDED? or DEF-TAIL-ADDED !
-   kind DATA-DEFINITION = if
-      namei LINT-LEX:LINE@ FINISH-DEFINITION
-   else
-      true DEF-OPEN !
-   then
-   namei 1+ LEX-I ! ;
+   k LINT-DEF:NAME-I
+   MATCH option
+      none OF E-PKGDIFF-NONAME throw ENDOF
+      some OF {: namei:n :}
+         kind DEF-KIND !
+         k DEF-DEFINER-I !
+         namei DEF-NAME-I !
+         k LINT-LEX:LINE@ DEF-START-LINE !
+         PACKAGE-OPEN @ DEF-PACKAGED !
+         k LINT-LEX:LINE@ ADDED? namei LINT-LEX:LINE@ ADDED? or DEF-TAIL-ADDED !
+         kind LINT-DEF:DATA = if
+            namei LINT-LEX:LINE@ FINISH-DEFINITION
+         else
+            true DEF-OPEN !
+         then
+         namei 1+ LEX-I !
+      ENDOF
+   ;MATCH ;
 
 : PACKAGE-SET ( n -- ) {: namei:n :}
    namei WORD? 0= if E-DIFF-SYNTAX throw then
@@ -981,13 +1387,13 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 : SCAN-TOKEN ( n -- ) {: k:n :}
    k OPAQUE? if k 1+ LEX-I ! exit then
    DEF-OPEN @ if
-      k DEF-KIND @ CLOSE? if
+      k DEF-KIND @ LINT-DEF:CLOSE? if
          k LINT-LEX:LINE@ FINISH-DEFINITION
       then
       k 1+ LEX-I ! exit
    then
    k PACKAGE-TOKEN if exit then
-   k DEFINER-KIND dup 0= if drop k 1+ LEX-I ! exit then
+   k LINT-DEF:DIRECT-KIND dup LINT-DEF:NONE = if drop k 1+ LEX-I ! exit then
    k swap START-DEFINITION ;
 
 : APPLY-DELETED-DELTA ( n -- ) {: line:n :}
@@ -1029,23 +1435,34 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    then
    false ;
 
+\ The old scan's second job: every definition it passes at global scope leaves its
+\ name in the table ENGINE-BODY-EDIT? reads.  PACKAGE-OPEN is the old side's own
+\ scope, tracked by OLD-PACKAGE-TOKEN, so a definition that was owned then does
+\ not count as part of the old global surface now.
 : OLD-START-DEFINITION ( n n -- ) {: k:n kind:n :}
-   k 1+ dup WORD? 0= if drop E-DIFF-SYNTAX throw then {: namei:n :}
-   kind DATA-DEFINITION = if
-      namei 1+ LEX-I ! exit
-   then
-   kind DEF-KIND !
-   true DEF-OPEN !
-   namei 1+ LEX-I ! ;
+   k LINT-DEF:NAME-I
+   MATCH option
+      none OF E-PKGDIFF-NONAME throw ENDOF
+      some OF {: namei:n :}
+         PACKAGE-OPEN @ 0= if namei OLD-NAME+ then
+         kind LINT-DEF:DATA = if
+            namei 1+ LEX-I !
+         else
+            kind DEF-KIND !
+            true DEF-OPEN !
+            namei 1+ LEX-I !
+         then
+      ENDOF
+   ;MATCH ;
 
 : OLD-SCAN-TOKEN ( n -- ) {: k:n :}
    k OPAQUE? if k 1+ LEX-I ! exit then
    DEF-OPEN @ if
-      k DEF-KIND @ CLOSE? if false DEF-OPEN ! then
+      k DEF-KIND @ LINT-DEF:CLOSE? if false DEF-OPEN ! then
       k 1+ LEX-I ! exit
    then
    k OLD-PACKAGE-TOKEN if exit then
-   k DEFINER-KIND dup 0= if drop k 1+ LEX-I ! exit then
+   k LINT-DEF:DIRECT-KIND dup LINT-DEF:NONE = if drop k 1+ LEX-I ! exit then
    k swap OLD-START-DEFINITION ;
 
 : SCAN-OLD-BOUNDARIES ( -- )
@@ -1203,6 +1620,8 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    false SECTION-ACTIVE !
    false FAIL-NEXT-MARK-ALLOC !
    false FAIL-NEXT-OLD-ALLOC !
+   false FAIL-NEXT-NAME-ALLOC !
+   0 FORCE-NAME-LIMIT !
    DIFF:RESET
    rc RELEASE-BUFFERS ;
 
@@ -1251,6 +1670,8 @@ public
    0 MAPPING-PEAK !
    false FAIL-NEXT-MARK-ALLOC !
    false FAIL-NEXT-OLD-ALLOC !
+   false FAIL-NEXT-NAME-ALLOC !
+   0 FORCE-NAME-LIMIT !
    0 FILE-U !
    false FILE-USED !
    false SECTION-ACTIVE ! ;

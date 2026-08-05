@@ -153,9 +153,136 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 2026-07-21 ENUM front end landed (src/core/enum-decl.f): parser source is
 \ prelude-loaded from disk; the +40 baked delta is its habu2.f label wiring.
 \ Candidate ratchet measured 114484.
-114484 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-28 loop-family opener guard landed (src/habu/habu2.f, dot
+\ habu-fix-loop-closer-9e5d012e), composed with the macOS re-measure this row was
+\ owed. Two separate amounts make up the +492, and they are not the same lane's
+\ work. 444 of it arrived before this change: the lanes that landed between the
+\ ENUM front-end row above and this one were measured on Linux and left the macOS
+\ row stale, which the reconstruction proves - the committed MACOS-TOTAL 148855
+\ already counted those bytes, so the old 114484 row modelled the file 444 short.
+\ The remaining 48 belong to this change: the `J-LVREQUIRE` guard emitted at the
+\ three loop-family compile sites, all of it inside `compile/keywords`, which the
+\ live map shows moving 9680 -> 9728. Nothing else moves. The __TEXT pad absorbs
+\ the whole 492 (container/text-pad 12048 -> 12000), so the file stays inside the
+\ same 16 KiB page and MACOS-SIGNATURE, MACOS-DATA-CONST, MACOS-LINKEDIT and
+\ MACOS-TOTAL are unchanged; with the new row the model sum reconstructs 148855
+\ exactly. Candidate ratchet measured 114976, floor 3892 -> 4384. The linux row
+\ below is owed a linux-host re-measure for the 48-byte guard.
+\ 2026-07-28 raw-storage load-path seal landed (dot habu-seal-raw-storage): the
+\ engine now registers every created word's effect through `trust-raw`, which
+\ adds the C-FIND-TRUST-RAW resolver, its `trust-raw` keyword string, and the
+\ three rewritten publication call sites to baked __text. On its own base it
+\ measured +456 over the 114484 row - that is the 444-byte stale-row
+\ correction the loop entry above documents plus 12 bytes of its own. Merged
+\ here with the loop-family opener guard (+48), the fixpoint measures 114988
+\ (floor 4384 -> 4396); the __TEXT pad absorbs the 12. Whole file,
+\ signature, and page count unchanged; the linux row below is owed a
+\ linux-host re-measure for both deltas.
+\ 2026-07-31 re-measured live at the macOS-aarch64 byte fixpoint (install --force
+\ run twice to a byte-identical bin/hb, then HABU_ENGINE_SIZE_MAP=1 captured off
+\ the metabuild host and reconciled with zero residue). The snapshot-relocation
+\ stack grew baked __text by 1680 bytes: CODELEN 114988 -> 116668, floor
+\ 4396 -> 6076. The base of that growth is the tree that set the 114988 row
+\ (`Seal raw storage nominals on the load path`), which re-measures to exactly
+\ 114988 here, so no stale drift from an unmeasured lane is folded into this bump.
+\ Four commits carry all of it, each measured at its own byte fixpoint:
+\   +8   Validating snapshot names against RBASE-VA. The two dictionary-name
+\        bounds checks in the owner-record scan now load the canonical RBASE-VA
+\        into x13 instead of comparing against the live DBASE, which costs one
+\        extra LIT64 per check. All 8 bytes are main/startup (5492 -> 5500).
+\   +856 Declaring persisted region-address cells. The address-cell table and its
+\        emitters (MARK-CELL, EMIT-CALLS, EMIT-MARK, EMIT-XT), the declaration
+\        calls added at the `defer` cell site and the `is` store site, the
+\        call-site bitmap the AOT patch loop now records into, and the
+\        mmap-code rework that accepts whatever base the kernel returns instead
+\        of demanding the hint. Regions: dictionary-code +472, main/startup +92,
+\        primitives/cemitbl +72, runtime +72, compile/exit +68,
+\        interpret/string +20, primitives/extra +20, interpret/define +16,
+\        compile/keywords +12, primitives/base +12.
+\   +708 Relocating persisted region address literals. MARK-SITE, EMIT-ADDR-SITE
+\        and EMIT-ADDRS, plus the rewritten C-CODE-ADDR, C-DATA-ADDR and
+\        C-DATA-ADDR-RAW that record every emitted region-address literal so the
+\        loader can move it. Regions: dictionary-code +520, main/startup +64,
+\        compile/exit +56, runtime +40, primitives/extra +16,
+\        compile/keywords +12.
+\   +108 Declaring persisted callback table cells. The `xt!` primitive
+\        (SNAP-RELOC:BXTSTORE) stores an execution token and declares its cell in
+\        one step, for the seven declaration-transaction store words whose cell
+\        address is only worked out at run time. Regions: primitives/extra +60,
+\        seed-dictionary +48.
+\ The four amounts sum to exactly 1680 and every byte lands in a region that
+\ already existed - none appeared and none vanished: main/startup +164,
+\ interpret/define +16, interpret/string +20, compile/keywords +24,
+\ compile/exit +124, primitives/base +12, primitives/extra +96,
+\ primitives/cemitbl +72, dictionary-code +992, runtime +112, seed-dictionary +48.
+\ The 16 KiB __TEXT page is NOT crossed: header + code is 120764 bytes, still
+\ inside the same eight 16 KiB pages, and the text pad absorbs the whole 1680
+\ (11988 -> 10308). MACOS-SIGNATURE, MACOS-DATA-CONST, MACOS-LINKEDIT and
+\ MACOS-TOTAL are therefore unchanged, the model sum reconstructs 148855 exactly,
+\ and MACOS-TOTAL still equals GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
+\ The other ten commits on this stack that touch assembled engine source were each
+\ measured too and move zero baked __text: the encode-time ARM64 operand guards,
+\ the checker's source-tape observer seam, the persisted producer-xt cells, the
+\ absent-package-context reject, and the two master merges all measure the same
+\ CODELEN as the commit before them. Definitions added to boot-time source the
+\ engine re-reads at launch cost nothing here, which is why the census grew by 33
+\ while only four of those changes moved a byte of __text. The native compiler
+\ chain under src/compiler/ is not assembled engine source and contributes
+\ nothing. The linux row below is owed a linux-host re-measure for all 1680.
+\ 2026-08-01 re-measured live at the macOS-aarch64 byte fixpoint after the
+\ protected-WID registry became a WID-indexed bitmap (dot
+\ habu-replace-the-protected-ca920a8f). Procedure: install --force to a
+\ byte-identical bin/hb (sha c81c2ca8), then HABU_ENGINE_SIZE_MAP=1 captured on
+\ the same tree and reconciled through tools/size-report.f with zero residue
+\ (attributed 148855 = engine-file 148855). The base of the change was measured
+\ the same way and reproduces this row's previous value 116668 exactly, so no
+\ unmeasured lane's drift is folded into the bump. CODELEN 116668 -> 117740
+\ (+1072), floor 6076 -> 7148. Five regions move and the five deltas sum to
+\ exactly 1072; no region appeared and none vanished:
+\   +896 aot-seed (22608 -> 23504). Two opposite amounts. The baked
+\        protected-WID frame grows by exactly 1024: it was an 8-byte count
+\        followed by zero rows (the shipped engine protects nothing at build
+\        time) and is now an 8-byte shape tag followed by the full
+\        PROT-BITS-BYTES image, always emitted at full width so the owner frame
+\        behind it sits at a constant offset. The stage self-rebuild
+\        generations, whose seed is frame-only, show that 1024 undiluted
+\        (aot-seed 124 -> 1148). Against it, the captured AOT-REPL blob shrinks
+\        128: LIT64, emits one move-wide word per 16-bit chunk that is neither
+\        0 nor all-ones (src/arch/arm64/icode.f), so the absolute-address
+\        literals inside the captured blob re-encode in 32 fewer instructions
+\        once the 1072-byte layout shift moves the addresses they carry.
+\   +84  main/startup (5656 -> 5740). EM-STARTUP-RUNTIME-STATE's cold init:
+\        "the registry starts empty" was one store of 0 into the count cell and
+\        is now a full zeroing loop over the band plus the release-publish of
+\        the shape tag. Same region, the AOT restore and the snapshot-image
+\        validator: EM-AOT-REGISTER-PROT-WIDS copies a fixed-width blob and
+\        finds the highest set bit instead of walking rows, and the snapshot
+\        validator's row scan with its nested duplicate check becomes a tag
+\        compare plus a bit test.
+\   +52  primitives/protected-wid (1524 -> 1576). EMIT-PROTWID loses its scan
+\        loop and gains the bound check, the address computation and the
+\        acquire-load — fewer executed instructions per membership test, very
+\        slightly more emitted text.
+\   +24  primitives/aot-owner (1384 -> 1408). The owner-restore's "is this WID
+\        already protected" test: two bit tests where two full table scans stood.
+\   +16  primitives/base (13740 -> 13756). The prot-wid-add and prot-wid-room
+\        bodies: the former trades the count load and row store for the range
+\        check and the read-modify-write of one word, the latter reports room
+\        against WIDN rather than the count cell.
+\ The 16 KiB __TEXT page is NOT crossed: header + code is 121836 bytes, still
+\ inside the same eight 16 KiB pages, and the text pad absorbs the whole 1072
+\ (10308 -> 9236). MACOS-SIGNATURE, MACOS-DATA-CONST, MACOS-LINKEDIT and
+\ MACOS-TOTAL are unchanged, the model sum reconstructs 148855 exactly, and
+\ MACOS-TOTAL still equals GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
+\ The registry-exhaustion diagnostic that rides the same rebuild (dot
+\ habu-name-registry-exhaustion-bdd23c70) was measured separately on top of the
+\ bitmap tree and moves zero bytes here: its REASON-PROTECTION row lives in
+\ src/core/generated-declaration.f, boot-time source the engine re-reads at
+\ launch rather than baked __text. The linux row below is owed a linux-host
+\ re-measure for all 1072.
+117740 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-3892 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+7148 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
@@ -302,8 +429,8 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 122584 -> 122592 and floor 3800 -> 3808. The text pad absorbs the 8 bytes
 \ (296 -> 288), so the whole file remains exactly 127168 and LINUX-TOTAL is
 \ unchanged. src/core/enum-decl.f moves no engine bytes: it gains no definition,
-\ only a call to the participant's gate. tools/decl-gen-probe.f, TRUSTED.md,
-\ STATUS.md and the four test files are not part of the assembled
+\ only a call to the participant's gate. tools/decl-gen-probe.f and
+\ the four test files are not part of the assembled
 \ stage2 engine source.
 122592 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)

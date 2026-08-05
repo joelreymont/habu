@@ -19,18 +19,6 @@ SUITE repl-lint
    tools/repl-lint.f
 ;SUITE
 
-SUITE trust-lint
-   tools/trust-lint.f
-;SUITE
-
-SUITE stale-status-lint
-   tools/stale-status-lint.f
-;SUITE
-
-SUITE host-lint
-   tools/host-lint.f
-;SUITE
-
 SUITE ptx-emitter-lint
    tools/lint/ptx-emitter-lint.f
    tools/lint/ptx-emitter-lint-test.f
@@ -52,14 +40,6 @@ SUITE dot-dep-lint-fixtures
    tools/dot-dep-lint-test.f
 ;SUITE
 
-SUITE nanogpt-inventory-lint
-   tools/nanogpt-inventory-lint.f
-;SUITE
-
-SUITE nanogpt-inventory-lint-fixtures
-   tools/nanogpt-inventory-lint-test.f
-;SUITE
-
 SUITE maki-dep-lint
    tools/maki-dep-lint.f
 ;SUITE
@@ -74,11 +54,6 @@ SUITE refine-lint
 
 SUITE refine-lint-fixtures
    tools/refine-lint-test.f
-;SUITE
-
-SUITE suite-coverage-lint
-   tools/suite-coverage-lint.f
-   tools/suite-coverage-lint-test.f
 ;SUITE
 
 SUITE namespace-lint
@@ -105,6 +80,10 @@ SUITE text-foundation-fixtures
    tools/lint/text-foundation-test.f
 ;SUITE
 
+SUITE lint-def-fixtures
+   tools/lint/def-test.f
+;SUITE
+
 SUITE lint-intern-set
    tools/lint/set-test.f
 ;SUITE
@@ -115,22 +94,6 @@ SUITE diff-parser
 
 SUITE diff-frame-codec
    tools/lint/diff-frame-test.f
-;SUITE
-
-SUITE stdlib-manifest
-   tools/stdlib-manifest-test.f
-;SUITE
-
-SUITE host-lint-fixtures
-   tools/host-lint-test.f
-;SUITE
-
-SUITE trusted-inventory
-   tools/trusted-inventory-test.f
-;SUITE
-
-SUITE primitive-effect-inventory
-   tools/primitive-effect-inventory-test.f
 ;SUITE
 
 SUITE json-file-cursor
@@ -145,8 +108,7 @@ SUITE imagedisasm-tool
    tools/imagedisasm-test.f
 ;SUITE
 
-SUITE tool-boundary-trust
-   tools/trust-lint-test.f
+SUITE tool-boundary-aot-call
    tools/aot-call-report-test.f
 ;SUITE
 
@@ -157,7 +119,6 @@ SUITE tool-boundary-check-repair
 
 SUITE tool-boundary-doc-public
    tools/public-signatures-test.f
-   tools/stale-status-lint-test.f
    tools/repair-schema-doc-test.f
    tools/examples-test.f
 ;SUITE
@@ -192,6 +153,284 @@ SUITE content-key-cache
 
 SUITE engine-identity
    lib/engine-id-test.f
+;SUITE
+
+SUITE compiler-ir-id
+   test/compiler/ir-id.f
+;SUITE
+
+SUITE compiler-ir-id-manifest
+   test/compiler/ir-id-manifest.f
+;SUITE
+
+SUITE compiler-ir-intern-manifest
+   test/compiler/ir-intern-manifest.f
+;SUITE
+
+SUITE compiler-ir-schema
+   test/compiler/ir-schema.f
+;SUITE
+
+SUITE compiler-ir-op
+   test/compiler/ir-op.f
+;SUITE
+
+SUITE compiler-ir-fun
+   test/compiler/ir-fun.f
+;SUITE
+
+SUITE compiler-ir-build
+   test/compiler/ir-build.f
+;SUITE
+
+SUITE compiler-ir-verify
+   test/compiler/ir-verify.f
+;SUITE
+
+SUITE compiler-ir-canon
+   test/compiler/ir-canon.f
+;SUITE
+
+SUITE compiler-ir-encode
+   test/compiler/ir-encode.f
+;SUITE
+
+SUITE compiler-ir-render
+   test/compiler/ir-render.f
+;SUITE
+
+SUITE compiler-ir-diff
+   test/compiler/ir-diff.f
+;SUITE
+
+SUITE compiler-ir-arena
+   test/compiler/ir-arena.f
+;SUITE
+
+SUITE compiler-ir-attr
+   test/compiler/ir-attr.f
+;SUITE
+
+SUITE compiler-ir-context
+   test/compiler/ir-context.f
+;SUITE
+
+SUITE compiler-ir-source
+   test/compiler/ir-source.f
+;SUITE
+
+SUITE compiler-ir-symbol
+   test/compiler/ir-symbol.f
+;SUITE
+
+SUITE compiler-ir-type
+   test/compiler/ir-type.f
+;SUITE
+
+SUITE compiler-native-tape
+   test/compiler/native-tape.f
+;SUITE
+
+SUITE compiler-native-feed
+   test/compiler/native-feed.f
+;SUITE
+
+SUITE compiler-native-immediate
+   test/compiler/native-immediate.f
+;SUITE
+
+\ The code generator comparison harness, and what a gate can honestly ask of it.
+\ Its member checks the exact half of ALL THREE pinned corpora - the original
+\ eleven shapes, the seven surveyed hot words of
+\ tools/codegen-compare-corpus2.f, and the ten float words of
+\ tools/codegen-compare-corpus3.f, whose whole new column is a gap today -
+\ in one run: machine-code bytes, the values each compiled word computes, the
+\ head-to-head agreement of the two code generators, and the structure of each
+\ committed table. The timing column is deliberately left out
+\ of every gate, here and in the resident group below. A cost is a measurement
+\ compared with a number recorded on an idle machine, and a loaded host reaches
+\ the tolerance band on its own - eight competing processes per core left two
+\ per cent of it, sixteen went through it and reported four words that no
+\ compiler change had touched. Those measurements, and what the band does and
+\ does not buy, are written at the head of tools/codegen-compare-baseline.f.
+\ The scheduled run prints one line naming the comparison it did not make, and
+\ the timed check is bin/hb --load tools/codegen-compare.f, run by hand before a
+\ change that is meant to move the numbers. The member is mirrored into the
+\ resident stdlib/tail-pure fork group, so it is scheduled rather than run by
+\ hand.
+\
+\ NO ASSERTION THE MEMBER RUNS READS A CLOCK, and that is deliberate rather than
+\ incidental: a cost-direction assertion on the third corpus's T-SUM row failed
+\ one scheduled run in ten (dot habu-retire-the-flaky-25a37a74). The claims that
+\ are about a cost live in tools/codegen-compare-timed-test.f, which is run by
+\ hand on a quiet machine beside the entry above and is listed in no suite for
+\ the same reason that entry is not: scheduling it would schedule a flake. What
+\ the member pins in their place is the data-stack traffic each column's
+\ emitted code makes, row by row, which is exact and moves for one reason.
+SUITE codegen-compare
+   tools/codegen-compare-test.f
+;SUITE
+
+\ The end-to-end workload measurement, and the same division of labour. Its
+\ member checks the facts the measurement's numbers would be meaningless
+\ without: the engine's own call-or-copy rule, read off compiled code and pinned
+\ REASON BY REASON - a straight-line body at the size limit and one instruction
+\ over it, on both sides of the two separate size tests C-CALL makes; a patched
+\ return slot against an unpatched one compiled from the same six instructions;
+\ and one body per refusal class whose only unmovable instruction is of that
+\ class; that each arm's driver enters ITS OWN code generator's word and not the
+\ other one's - the mutation a two-arm timing turns on, because an after-arm
+\ still calling the before-arm's record reports a delta of nothing and looks
+\ healthy; that the two arms of every workload compute the same pinned answer;
+\ that the two arms of one workload body come out the same number of bytes,
+\ because a name lives in a dictionary record and not in a compiled body; and
+\ that a row's delta keeps its sign while a row's two columns keep their arms.
+\
+\ NO ASSERTION THE MEMBER RUNS READS A CLOCK, for the reason the entry above
+\ gives. It does measure a small family of rows of its own, through the store
+\ every reported row goes through, but it reads their ANSWERS, their kinds and
+\ the shape of their runs, never their times. The deltas themselves - what the
+\ new code generator is worth to a program, and which of them clear the bar
+\ their own family's null draws set - are printed by
+\ bin/hb --load tools/codegen-workload.f, run by hand on a quiet machine. The
+\ one claim that genuinely needs two arms to have taken measurably different
+\ times - that the column a row calls old holds the arm handed to it as old - is
+\ in tools/codegen-workload-timed-test.f, run by hand beside that entry and
+\ listed in no suite, exactly as tools/codegen-compare-timed-test.f is. The
+\ member is mirrored into the resident stdlib/tail-pure fork group, so it is
+\ scheduled rather than run by hand.
+SUITE codegen-workload
+   tools/codegen-workload-test.f
+;SUITE
+
+SUITE compiler-native-hir
+   test/compiler/native-hir.f
+;SUITE
+
+SUITE compiler-native-elaborate
+   test/compiler/native-elaborate.f
+;SUITE
+
+SUITE compiler-native-a64ir
+   test/compiler/native-a64ir.f
+;SUITE
+
+SUITE compiler-native-select
+   test/compiler/native-select.f
+;SUITE
+
+SUITE compiler-native-regalloc
+   test/compiler/native-regalloc.f
+;SUITE
+
+SUITE compiler-native-emit
+   test/compiler/native-emit.f
+;SUITE
+
+\ The publication seam: what a republished dictionary record holds, and what the
+\ seam refuses. It runs before the chain's own end-to-end suite because a
+\ republication it got wrong would show up there as a word that computes the
+\ wrong thing several stages away from the cause.
+SUITE compiler-native-publish
+   test/compiler/native-publish.f
+;SUITE
+
+\ The production entry: a definition the engine compiles, recompiled by the
+\ chain and republished under its own name, plus what happens to a word the
+\ chain cannot compile.
+SUITE compiler-native-migrate
+   test/compiler/native-migrate.f
+;SUITE
+
+\ What a published routine destroys, and what a call site does with the answer.
+\ It runs after the migration entry because the measurement it makes is over two
+\ words the migration published.
+SUITE compiler-native-clobber
+   test/compiler/native-clobber.f
+;SUITE
+
+\ The body of a small routine, recorded when it is published and copied into
+\ every later caller instead of being called. It runs after the migration entry
+\ for the reason the clobber suite does: what it measures is the code of words
+\ the migration published.
+SUITE compiler-native-inline
+   test/compiler/native-inline.f
+;SUITE
+
+\ Carrying a migration back to the callers that were compiled before it: the
+\ call instructions already in the image, moved onto the routine the chain
+\ published, and every reason a move is refused. It runs after the publication
+\ and clobber suites because what decides whether a site may be moved at all is
+\ the row the publication seam recorded for the routine it is moved onto.
+SUITE compiler-native-reach
+   test/compiler/native-reach.f
+;SUITE
+
+\ The native chain's end-to-end run: source text through the real compile path
+\ to executed machine code. It runs after the leaves it composes, so a red here
+\ with green leaves means the leaves disagree with each other.
+SUITE compiler-native-chain
+   test/compiler/native-chain.f
+;SUITE
+
+\ The same end-to-end run over the comparison and bitwise vocabulary, word by
+\ word, each answer compared with the interpreted word's. It runs beside the
+\ chain suite because it is the same path with a wider source vocabulary.
+SUITE compiler-native-vocab
+   test/compiler/native-vocab.f
+;SUITE
+
+\ The identity parity gate compiles formal/Common with the Rocq proof assistant
+\ and spawns child engines, so it runs here in the standalone stdlib gate and is
+\ not mirrored into the resident fast tier.
+SUITE compiler-ir-id-proof
+   test/compiler/ir-id-proof.f
+;SUITE
+
+\ The interning parity gate compiles formal/Common/Interning.v with the Rocq
+\ proof assistant for the same reason, so it runs here alongside its sibling.
+SUITE compiler-ir-intern-proof
+   test/compiler/ir-intern-proof.f
+;SUITE
+
+\ The structure parity gate compiles formal/Common/Structure.v with the Rocq
+\ proof assistant for the same reason, so it runs here alongside its two
+\ siblings.
+SUITE compiler-ir-structure-proof
+   test/compiler/ir-structure-proof.f
+;SUITE
+
+\ The storage and lifetime parity gate compiles formal/Common/Storage.v with the
+\ Rocq proof assistant for the same reason, so it runs here alongside its two
+\ siblings.
+SUITE compiler-ir-storage-proof
+   test/compiler/ir-storage-proof.f
+;SUITE
+
+\ The checker model parity gate compiles formal/Common/Effects.v and
+\ formal/Common/Control.v with the Rocq proof assistant for the same reason, so
+\ it runs here alongside its three siblings.
+SUITE checker-model-proof
+   test/compiler/checker-model-proof.f
+;SUITE
+
+\ The snapshot relocation parity gate compiles formal/Common/Reloc.v with the
+\ Rocq proof assistant for the same reason, so it runs here alongside its
+\ siblings.
+SUITE compiler-reloc-proof
+   test/compiler/reloc-proof.f
+;SUITE
+
+\ The instruction-encoding parity gate compiles formal/Common/Insn.v with the
+\ Rocq proof assistant and spawns child engines for the encodings the shipped
+\ assembler refuses by ending the process, so it runs here in the standalone
+\ stdlib gate alongside its four siblings.
+SUITE compiler-insn-proof
+   test/compiler/insn-proof.f
+;SUITE
+
+SUITE raw-storage-load-seal
+   test/raw-storage-load-seal-test.f
 ;SUITE
 
 SUITE object-record-codec
@@ -603,12 +842,20 @@ SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE
 
+SUITE checker-verify-pkg-scope
+   test/checker-verify-pkg-scope.f
+;SUITE
+
 SUITE prim-link
    test/prim-link-test.f
 ;SUITE
 
 SUITE verify-prim
    test/verify-prim-test.f
+;SUITE
+
+SUITE checker-scan-index
+   test/checker-scan-index-suite.f
 ;SUITE
 
 SUITE owner-wid-internal
@@ -643,12 +890,20 @@ SUITE pre-trust-defer
    test/pre-trust-defer.f
 ;SUITE
 
+SUITE snapshot-xt-cell-decl
+   test/snapshot-xt-cell-decl.f
+;SUITE
+
 SUITE catch-frame
    test/catch-frame.f
 ;SUITE
 
 SUITE export-keyword-package
    test/export-package.f
+;SUITE
+
+SUITE using-import
+   test/using-test.f
 ;SUITE
 
 SUITE gate-runner-entry-load

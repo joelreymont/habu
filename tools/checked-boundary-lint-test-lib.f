@@ -1,13 +1,16 @@
 \ checked-boundary-lint-test.f - checked fixtures for tools/checked-boundary-lint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ tools/cli-run.f tools/checked-boundary-lint-core.f
+\ tools/cli-run.f tools/hook-sites.f tools/checked-boundary-lint-core.f
 \ tools/checked-boundary-lint-test.f
+\ The registry sweeps below read the committed hook-site files, so this test
+\ must run with the repository root as the working directory.
 
 package CBLT
 
-4096 constant BUF-CAP
+8192 constant BUF-CAP                  \ holds the whole registry sweep below
 1400 constant LARGE-LINES
+512 constant SITE-CAP
 
 variable ROOT-U
 variable GOOD-U
@@ -19,8 +22,11 @@ variable LARGE-U
 variable TRUSTED-U
 variable ROGUE-U
 variable TOPROGUE-U
-variable TOPGOOD-U
+variable TOPNAME-U
+variable NAMEONLY-U
+variable QUIET-U
 variable EMPTY-U
+variable SITE-U
 
 create ROOT-BUF FS-PATH-CAP allot
 create GOOD-BUF FS-PATH-CAP allot
@@ -32,8 +38,11 @@ create LARGE-BUF FS-PATH-CAP allot
 create TRUSTED-BUF FS-PATH-CAP allot
 create ROGUE-BUF FS-PATH-CAP allot
 create TOPROGUE-BUF FS-PATH-CAP allot
-create TOPGOOD-BUF FS-PATH-CAP allot
+create TOPNAME-BUF FS-PATH-CAP allot
+create NAMEONLY-BUF FS-PATH-CAP allot
+create QUIET-BUF FS-PATH-CAP allot
 create EMPTY-BUF FS-PATH-CAP allot
+create SITE-BUF SITE-CAP allot
 create OUT BUF-CAP allot
 create LF-BYTE 10 c,
 
@@ -71,11 +80,30 @@ create LF-BYTE 10 c,
 : TOPROGUE ( -- ptr u8 n )
    TOPROGUE-BUF TOPROGUE-U @ ;
 
-: TOPGOOD ( -- ptr u8 n )
-   TOPGOOD-BUF TOPGOOD-U @ ;
+: TOPNAME ( -- ptr u8 n )
+   TOPNAME-BUF TOPNAME-U @ ;
+
+: NAMEONLY ( -- ptr u8 n )
+   NAMEONLY-BUF NAMEONLY-U @ ;
+
+: QUIET ( -- ptr u8 n )
+   QUIET-BUF QUIET-U @ ;
 
 : EMPTY ( -- ptr u8 n )
    EMPTY-BUF EMPTY-U @ ;
+
+: SITE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   SITE-U @ u + SITE-CAP > if E-STR-CAPACITY throw then
+   a SITE-BUF SITE-U @ + u BYTE-COPY
+   SITE-U @ u + SITE-U ! ;
+
+\ `./` in front of a committed registry path: the same file, spelled the way the
+\ registry does not record it.
+: DOT-SITE$ ( n -- ptr u8 n ) {: k:n :}
+   0 SITE-U !
+   s" ./" SITE+
+   k HOOK-SITES:PATH$ SITE+
+   SITE-BUF SITE-U @ ;
 
 : LF ( -- )
    10 SB-APPEND-C ;
@@ -83,13 +111,18 @@ create LF-BYTE 10 c,
 : APPEND-LF ( ptr u8 n -- )
    LF-BYTE 1 APPEND-FILE ;
 
+\ These fixtures live under a temporary directory, which is never a registry
+\ hook site, so they re-arm the checker with `check@ set-check` (reinstall the
+\ live hook - the shape src/core/top-row.f and test/engine-suite.f use). A
+\ `' NAME set-check` install here would be an unaudited hook by construction and
+\ is exercised on purpose by NAMEONLY$ below.
 : GOOD$ ( -- ptr u8 n )
    SB-RESET
    s" 0 set-check" SB-APPEND LF
    s" variable RAW-CELL" SB-APPEND LF
    s" : LINT-CHECK-HOOK ( -- ) CHECK! ;" SB-APPEND LF
    s" LOWER-CERT-HOOK:INSTALL" SB-APPEND LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" check@ set-check" SB-APPEND LF
    s" : GOOD ( n -- n ) dup ;" SB-APPEND LF
    SB$ ;
 
@@ -97,23 +130,23 @@ create LF-BYTE 10 c,
    SB-RESET
    s" 0 set-check" SB-APPEND LF
    s" TRUSTED: PREP ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" check@ set-check" SB-APPEND LF
    s" : SHOULD-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
    s" 0 set-check" SB-APPEND LF
    s" KERNEL: PREP-K ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" check@ set-check" SB-APPEND LF
    s" : KERNEL-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
    s" 0 set-check" SB-APPEND LF
    s" CHECKED: PREP-C ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" check@ set-check" SB-APPEND LF
    s" : CHECKED-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
    s" 0 set-check" SB-APPEND LF
    s" +: PREP-P ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" check@ set-check" SB-APPEND LF
    s" : PLUS-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
    s" 0 set-check" SB-APPEND LF
    s" :noname ( -- ) LOWER-CERT-HOOK:INSTALL ; drop" SB-APPEND LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" check@ set-check" SB-APPEND LF
    s" : ANON-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
    s" LOWER-CERT-HOOK:INSTALL" SB-APPEND LF
    s" TRUSTED: NEVER-RUN ( -- ) 0 set-check ;" SB-APPEND LF
@@ -128,16 +161,43 @@ create LF-BYTE 10 c,
    SB$ ;
 
 \ Tier-2 escape-window audit rows (dot habu-typed-top-tier-589c550f): a
-\ set-top-check install of any name but TR-HOOK is UNAUDITED-TOP-HOOK; the TR-HOOK
-\ install (top-row.f TR-INSTALL) is the sole allowed enforcer and stays clean.
+\ set-top-check install is authorized only where tools/hook-sites.f records that
+\ (file, name) pair. An unknown name is UNAUDITED-TOP-HOOK ...
 : TOPROGUE$ ( -- ptr u8 n )
    SB-RESET
    s" ['] EVIL-TOP-HOOK set-top-check" SB-APPEND LF
    SB$ ;
 
-: TOPGOOD$ ( -- ptr u8 n )
+\ ... and so is the real enforcer's own name outside the file the registry names
+\ for it. Borrowing TR-HOOK diverts pre-execution reject enforcement exactly as a
+\ made-up name would.
+: TOPNAME$ ( -- ptr u8 n )
    SB-RESET
    s" ['] TR-HOOK set-top-check" SB-APPEND LF
+   SB$ ;
+
+\ Every checker-hook name the registry authorizes somewhere, installed in a file
+\ the registry does not name. Each one is a hook the boundary lint must reject:
+\ the name is public, so it proves nothing about who is installing it.
+: NAMEONLY$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CHECK-HOOK ( ptr u8 n -- n ) CHECK! ;" SB-APPEND LF
+   s" ' CHECK-HOOK set-check" SB-APPEND LF
+   s" ['] HOOK set-check" SB-APPEND LF
+   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   SB$ ;
+
+\ The scan is structural, not textual: an install spelled inside a line comment,
+\ a paren comment, or a string literal is text, not an install, and must not
+\ raise a finding. Each line keeps whitespace before its closing delimiter, so
+\ the install shape survives naive tokenization - drop the comment or string
+\ skipping and every line below becomes a finding.
+: QUIET$ ( -- ptr u8 n )
+   SB-RESET
+   s" \ ' CHECK-HOOK set-check" SB-APPEND LF
+   s" ( ' CHECK-HOOK set-check )" SB-APPEND LF
+   S\" : QUIET-NOTE ( -- ptr u8 n ) s\q ' CHECK-HOOK set-check \q ;" SB-APPEND LF
+   S\" : QUIET-ESC ( -- ptr u8 n ) s\\\q ' TR-HOOK set-top-check \\n\q ;" SB-APPEND LF
    SB$ ;
 
 : BAD$ ( -- ptr u8 n )
@@ -152,6 +212,9 @@ create LF-BYTE 10 c,
 : CROSS$ ( -- ptr u8 n )
    s" : CROSS-BAD ( n -- n ) dup ;" ;
 
+\ A TRUSTED: wrapper exempts the install from the strict-mode CHECKER-MUTATION
+\ rule, but it cannot launder the hook identity: this file is not the registry
+\ site for USER-HOOK, so the install itself is still unaudited.
 : TRUSTED$ ( -- ptr u8 n )
    SB-RESET
    s" TRUSTED: USER-HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ;" SB-APPEND LF
@@ -192,7 +255,9 @@ create LF-BYTE 10 c,
    ROOT s" trusted.f" TRUSTED-BUF JOIN-PATH TRUSTED-U !
    ROOT s" rogue.f" ROGUE-BUF JOIN-PATH ROGUE-U !
    ROOT s" toprogue.f" TOPROGUE-BUF JOIN-PATH TOPROGUE-U !
-   ROOT s" topgood.f" TOPGOOD-BUF JOIN-PATH TOPGOOD-U !
+   ROOT s" topname.f" TOPNAME-BUF JOIN-PATH TOPNAME-U !
+   ROOT s" nameonly.f" NAMEONLY-BUF JOIN-PATH NAMEONLY-U !
+   ROOT s" quiet.f" QUIET-BUF JOIN-PATH QUIET-U !
    ROOT s" empty.f" EMPTY-BUF JOIN-PATH EMPTY-U !
    GOOD CLEANUP+
    BAD CLEANUP+
@@ -203,7 +268,9 @@ create LF-BYTE 10 c,
    TRUSTED CLEANUP+
    ROGUE CLEANUP+
    TOPROGUE CLEANUP+
-   TOPGOOD CLEANUP+
+   TOPNAME CLEANUP+
+   NAMEONLY CLEANUP+
+   QUIET CLEANUP+
    EMPTY CLEANUP+
    GOOD GOOD$ WRITE-ALL
    BAD BAD$ WRITE-ALL
@@ -213,7 +280,9 @@ create LF-BYTE 10 c,
    TRUSTED TRUSTED$ WRITE-ALL
    ROGUE ROGUE$ WRITE-ALL
    TOPROGUE TOPROGUE$ WRITE-ALL
-   TOPGOOD TOPGOOD$ WRITE-ALL
+   TOPNAME TOPNAME$ WRITE-ALL
+   NAMEONLY NAMEONLY$ WRITE-ALL
+   QUIET QUIET$ WRITE-ALL
    EMPTY EMPTY$ WRITE-ALL
    WRITE-LARGE ;
 
@@ -231,17 +300,13 @@ create LF-BYTE 10 c,
    LINT-FALSE CORE-SETUP
    s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/json-file.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/host-lint.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/checked-boundary-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/hook-sites.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/signature-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/signature-lint.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/typed-local-diff-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/typed-local-diff-lint.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/typed-local-diff-lint-test.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/stale-status-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/stale-status-lint.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/trust-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/trust-lint.f" CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;
 
 : RUN-CORE-FILE ( ptr u8 n bool -- n n outcome ) {: path:ptr pathu:n strict:bool :}
@@ -273,8 +338,26 @@ create LF-BYTE 10 c,
 : RUN-CORE-TOPROGUE ( -- n n outcome )
    TOPROGUE LINT-FALSE RUN-CORE-FILE ;
 
-: RUN-CORE-TOPGOOD ( -- n n outcome )
-   TOPGOOD LINT-FALSE RUN-CORE-FILE ;
+: RUN-CORE-TOPNAME ( -- n n outcome )
+   TOPNAME LINT-FALSE RUN-CORE-FILE ;
+
+: RUN-CORE-NAMEONLY ( -- n n outcome )
+   NAMEONLY LINT-FALSE RUN-CORE-FILE ;
+
+: RUN-CORE-QUIET ( -- n n outcome )
+   QUIET LINT-FALSE RUN-CORE-FILE ;
+
+\ Lint every file the registry names, through its own committed path.
+: RUN-SITES ( -- n n outcome )
+   LINT-FALSE CORE-SETUP
+   HOOK-SITES:COUNT 0 ?do i HOOK-SITES:PATH$ CHECKED-BOUNDARY-LINT:FILE loop
+   CORE-FINISH ;
+
+\ The same files, addressed as `./path`, which is not what the registry records.
+: RUN-DOT-SITES ( -- n n outcome )
+   LINT-FALSE CORE-SETUP
+   HOOK-SITES:COUNT 0 ?do i DOT-SITE$ CHECKED-BOUNDARY-LINT:FILE loop
+   CORE-FINISH ;
 
 : RUN-CORE-CROSS ( -- n n outcome )
    LINT-FALSE CORE-SETUP
@@ -326,8 +409,13 @@ create LF-BYTE 10 c,
    OUT outu s" CHECKER-MUTATION" CONTAINS? TTRUE
    OUT outu s" set-check" CONTAINS? TTRUE ;
 
+\ TRUSTED: suppresses the strict-mode mutation finding and nothing else.
 : TEST-STRICT-TRUSTED ( -- )
-   RUN-CORE-STRICT-TRUSTED ASSERT-CLEAN ;
+   RUN-CORE-STRICT-TRUSTED 1 EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   OUT outu s" CHECKER-MUTATION" CONTAINS? TFALSE
+   OUT outu s" UNAUDITED-HOOK" CONTAINS? TTRUE
+   OUT outu s" USER-HOOK" CONTAINS? TTRUE ;
 
 : TEST-ROGUE ( -- )
    RUN-CORE-ROGUE 1 EXPECT-EXIT {: outu:n erru:n :}
@@ -341,8 +429,42 @@ create LF-BYTE 10 c,
    OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TTRUE
    OUT outu s" EVIL-TOP-HOOK" CONTAINS? TTRUE ;
 
-: TEST-TOPGOOD ( -- )                  \ ['] TR-HOOK set-top-check -> allowed, clean
-   RUN-CORE-TOPGOOD ASSERT-CLEAN ;
+: TEST-TOPNAME ( -- )                  \ TR-HOOK outside src/core/top-row.f -> finding
+   RUN-CORE-TOPNAME 1 EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TTRUE
+   OUT outu s" TR-HOOK" CONTAINS? TTRUE ;
+
+\ The regression this file exists for: before the registry drove the allowlist,
+\ any file could install a word it had named CHECK-HOOK / HOOK / LINT-CHECK-HOOK
+\ and the lint passed it.
+: TEST-NAMEONLY ( -- )
+   RUN-CORE-NAMEONLY 1 EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   OUT outu s" `CHECK-HOOK` is not an audited checker hook" CONTAINS? TTRUE
+   OUT outu s" `HOOK` is not an audited checker hook" CONTAINS? TTRUE
+   OUT outu s" `LINT-CHECK-HOOK` is not an audited checker hook" CONTAINS? TTRUE ;
+
+: TEST-QUIET ( -- )
+   RUN-CORE-QUIET ASSERT-CLEAN ;
+
+\ Every committed hook site is accepted through its own registry path. Two of
+\ those files are deliberately unchecked fixtures, so the sweep still reports
+\ their unrelated findings and exits 1; the hook verdict is what is pinned here.
+: TEST-SITES ( -- )
+   RUN-SITES 1 EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   OUT outu s" UNAUDITED-HOOK" CONTAINS? TFALSE
+   OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TFALSE ;
+
+\ Registry paths are the committed repo-relative spellings and are matched
+\ exactly. A `./`-prefixed spelling of a real site is therefore unaudited, not
+\ silently normalized.
+: TEST-DOT-SITES ( -- )
+   RUN-DOT-SITES 1 EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   OUT outu s" UNAUDITED-HOOK" CONTAINS? TTRUE
+   OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TTRUE ;
 
 \ The public FILE wrapper propagates a scan failure and remains reusable.
 : TEST-MAP-THROW ( -- )
@@ -401,7 +523,7 @@ variable TP-PRIV-WID
    TP-ROOT s" good.f" TP-GOOD-BUF JOIN-PATH TP-GOOD-U !
    TP-ROOT s" bad.f" TP-BAD-BUF JOIN-PATH TP-BAD-U !
    TP-ROOT s" empty.f" TP-EMPTY-BUF JOIN-PATH TP-EMPTY-U !
-   TP-GOOD s\" 0 set-check\nvariable TP-RAW\n: LINT-CHECK-HOOK ( -- ) CHECK! ;\nLOWER-CERT-HOOK:INSTALL\n' LINT-CHECK-HOOK set-check\n: TP-GOOD ( n -- n ) dup ;\n" WRITE-ALL
+   TP-GOOD s\" 0 set-check\nvariable TP-RAW\n: LINT-CHECK-HOOK ( -- ) CHECK! ;\nLOWER-CERT-HOOK:INSTALL\ncheck@ set-check\n: TP-GOOD ( n -- n ) dup ;\n" WRITE-ALL
    TP-BAD s\" 0 set-check\n: TP-BAD ( n -- n ) dup ;\n" WRITE-ALL
    SB-RESET
    TP-EMPTY SB$ WRITE-ALL ;
@@ -547,7 +669,11 @@ public
    TEST-STRICT-TRUSTED
    TEST-ROGUE
    TEST-TOPROGUE
-   TEST-TOPGOOD
+   TEST-TOPNAME
+   TEST-NAMEONLY
+   TEST-QUIET
+   TEST-SITES
+   TEST-DOT-SITES
    CLEANUP-RUN
    ROOT EXISTS? TFALSE
    T-REPORT

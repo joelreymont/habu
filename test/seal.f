@@ -420,20 +420,22 @@ public
    SLV-EXITED @ TTRUE
    SLV-RC @ 0 T= ;
 
-\ --- protected-WID table capacity (dot habu-seal-protwid-cap-6f1c9d2b) --------------
-\ Each PUBLIC ADT family registers one protected WID (xref.f PROT-WID-CTOR-ADD ->
-\ prot-wid-add); the table holds PROT-WID-MAX (256, raised from 16) entries. A batch
-\ child declaring K public families is generated with unique letter-pair names (each
-\ family scopes its own 'foo' variant, so the variant name may repeat). The
-\ protected system packages occupy rows before user source loads. Probe that
-\ clean-process baseline so the test fills every remaining row exactly.
-\ The generated-declaration protection owner preflights prot-wid-room before the
-\ transactional evaluator crosses its publication boundary.  One family past
-\ capacity therefore throws E-PROTECTION-CAP (7169), which the top-level engine
-\ boundary reports and maps to UNCAUGHT-RC; reaching the irreversible
-\ prot-wid-add overflow (exit 84) would violate the atomic publication design.
-\ Driven via SLV-RUN-LOAD (a file), not stdin: 257 families exceed the 2 KB
-\ SLV-IN buffer.
+\ --- protected-WID capacity (dots habu-seal-protwid-cap-6f1c9d2b, ------------------
+\ habu-replace-the-protected-ca920a8f). Each PUBLIC ADT family protects one wordlist
+\ (xref.f PROT-WID-CTOR-ADD -> prot-wid-add). The registry is a WID-indexed bitmap,
+\ so the ceiling is no longer a count of table rows but the wordlist-id bound
+\ PROT-WID-MAX, and prot-wid-room reports exactly how many ids are left.
+\
+\ The old shape of this test declared enough families to fill every remaining row and
+\ then one more. That is not reachable against an id bound -- it would need thousands
+\ of families -- and it was really testing arithmetic. The property that matters is
+\ the boundary itself: at zero room the declaration is rejected at the preflight with
+\ E-PROTECTION-CAP (7169), which the top-level engine boundary maps to UNCAUGHT-RC,
+\ and NOT at the irreversible prot-wid-add (exit 84), which would violate the atomic
+\ publication design. So the child drives room to a known value with the `wordlist`
+\ primitive -- the same allocator a declaration consumes -- and then declares. It is
+\ self-calibrating: it reads prot-wid-room rather than assuming a baseline, so it
+\ cannot rot as the system prefix grows.
 16384 constant PWG-CAP                       \ room for 256+ families at ~46 bytes each
 create PWG-BUF PWG-CAP allot
 variable PWG-U
@@ -459,32 +461,52 @@ variable PWG-U
    0 begin dup k < while dup PWG-FAMILY 1+ repeat drop
    PWG$ ;
 
+\ Burn `prot-wid-room - spare` wordlist ids in the child, leaving exactly `spare`,
+\ then declare one public family. `wordlist` is the real allocator; nothing here
+\ simulates the shortage.
+: PWG-BURN ( n -- ptr u8 n ) {: spare:n :}
+   PWG-RESET
+   s" : PWG-BURN-N ( n -- ) 0 ?do wordlist drop loop ;" PWG-APPEND  10 PWG-C
+   s" prot-wid-room " PWG-APPEND
+   $30 spare 10 / + PWG-C  $30 spare 10 mod + PWG-C
+   s"  - PWG-BURN-N" PWG-APPEND  10 PWG-C
+   \ An ENUM, not a SUMTYPE: the unified ENUM front end renders the declaration
+   \ diagnostic packet, which is where the reason text under test appears.
+   s" ENUM zz DERIVE eq" PWG-APPEND  10 PWG-C
+   s"    z-a" PWG-APPEND  10 PWG-C
+   s"    z-b" PWG-APPEND  10 PWG-C
+   s" ;ENUM" PWG-APPEND  10 PWG-C
+   PWG$ ;
+
 UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
 : SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
 : SLV-ASSERT-PWID-PREFLIGHT ( -- )
    SLV-EXITED @ TTRUE
    SLV-RC @ SLV-PWID-PREFLIGHT-RC T=
-   SLV-ERR$ s" hb: uncaught throw code 7169" CONTAINS? TTRUE ;
+   SLV-ERR$ s" hb: uncaught throw code 7169" CONTAINS? TTRUE
+   \ dot habu-name-registry-exhaustion-bdd23c70: the diagnostic must name the
+   \ registry, not blame the family that happened to declare next.
+   SLV-ERR$ s" the protected-wordlist registry is full" CONTAINS? TTRUE ;
 
-: PWG-BASE-FORGE$ ( -- ptr u8 n )
-   s" data-base PROT-WID-N-CELL + @ ." ;
-
-: PWG-BASE@ ( -- n )
-   PWG-BASE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
-   SLV-OUT SLV-OUT-U @ TRIM STR>NUMBER? MATCH option
-     some OF ENDOF
-     none OF T-FAIL 0 ENDOF
-   ;MATCH ;
+\ The irreversible sink refuses an id it has no bit for, names the bound, and exits
+\ 84 rather than writing outside the band. That range check is the whole
+\ memory-safety argument for a primitive that takes a caller-supplied index.
+: PWG-OOR-FORGE$ ( -- ptr u8 n )
+   s" PROT-WID-MAX prot-wid-add" ;
+: SLV-ASSERT-PWID-OOR ( -- )
+   SLV-EXITED @ TTRUE
+   SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
+   SLV-ERR$ s" hb: protected-WID id above the bound" CONTAINS? TTRUE ;
 
 : SLV-PWID-CAP ( -- )
-   PROT-WID-MAX PWG-BASE@ - {: cap:n :}
-   cap 0 > TTRUE
    s" 17 public ADT families succeed past the old 16 cap" T-LABEL
    17 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
-   s" public families fill every non-system protected-WID row" T-LABEL
-   cap PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
-   s" one family past capacity is rejected before protected-WID publication" T-LABEL
-   cap 1+ PWG-GEN SLV-RUN-LOAD SLV-ASSERT-PWID-PREFLIGHT ;
+   s" a public family succeeds while protected-WID room remains" T-LABEL
+   8 PWG-BURN SLV-RUN-LOAD SLV-ASSERT-OK
+   s" a public family at zero room is rejected before protected-WID publication" T-LABEL
+   0 PWG-BURN SLV-RUN-LOAD SLV-ASSERT-PWID-PREFLIGHT
+   s" prot-wid-add refuses an id at the bitmap bound and names it" T-LABEL
+   PWG-OOR-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PWID-OOR ;
 
 \ --- publish-into-protected-word guard (dot habu-label-two-silent-bd8e5d09) -----------
 \ Once the friend latch is sealed, publishing a definition into a protected WID (a public
@@ -557,14 +579,18 @@ variable USED
    s" require lib/test.f" $+ LF
    s" T-RESET" $+ LF
    s" package OWNER-WID-CHECK" $+ LF
+   \ This child runs through SLV-EXEC:SUBJECT (stdin), which cannot `require` the
+   \ shared tools/prot-wid-probe.f, so the two-line bitmap read is inlined here.
+   s" : PROT-BIT? ( n -- bool ) dup 6 rshift 8 * data-base PROT-BITS-OFF + + @ swap 63 and rshift 1 and 0= 0= ;" $+ LF
+   s" : PROT-COUNT ( -- n ) 0 PROT-WID-MAX 0 ?do i PROT-BIT? if 1 + then loop ;" $+ LF
    s" variable PROT0" $+ LF
-   s" data-base PROT-WID-N-CELL + @ PROT0 !" $+ LF
+   s" PROT-COUNT PROT0 !" $+ LF
    s" public" $+ LF
    s" : PREFLIGHT ( n n n -- bool ) owner-wid-preflight? ;" $+ LF
    s" : PUBLIC? ( n -- bool ) owner-wid-public? ;" $+ LF
    s" : PRIVATE? ( n -- bool ) owner-wid-private? ;" $+ LF
    s" : MEMBER? ( n -- bool ) owner-wid? ;" $+ LF
-   s" : CONSTRUCTOR-ADDED? ( -- bool ) data-base PROT-WID-N-CELL + @ PROT0 @ 1+ = ;" $+ LF
+   s" : CONSTRUCTOR-ADDED? ( -- bool ) PROT-COUNT PROT0 @ 1+ = ;" $+ LF
    s" ;package" $+ LF
    s" data-base OWNER-WID-N-CELL + @ 0 T=" $+ LF
    s" $1000 $2000 1 OWNER-WID-CHECK:PREFLIGHT TTRUE" $+ LF
