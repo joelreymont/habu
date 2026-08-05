@@ -29,7 +29,7 @@ public
 
 private
 
-57 constant FORM#
+55 constant FORM#
 
 : WORD? ( n -- bool )
    LINT-LEX:KIND@ LINT-LEX:WORD = ;
@@ -82,26 +82,24 @@ private
       34 of s" ENUM4+" endof
       35 of s" BUFFER:" endof
       36 of s" BUFFER" endof
-      37 of s" BUFFER-E" endof
-      38 of s" CODEGEN:BUFFER" endof
-      39 of s" CODEGEN:BUFFER-E" endof
-      40 of s" TASK" endof
-      41 of s" +USER" endof
-      42 of s" FACILITY" endof
-      43 of s" TASK:TASK" endof
-      44 of s" TASK:+USER" endof
-      45 of s" TASK:FACILITY" endof
-      46 of s" TR-FILES:" endof
-      47 of s" GE-FILES:" endof
-      48 of s" IOP:" endof
-      49 of s" CONST" endof
-      50 of s" ARR" endof
-      51 of s" EXTENT:" endof
-      52 of s" FREE-EXTENT:" endof
-      53 of s" EXTPROD:" endof
-      54 of s" TENSOR:" endof
-      55 of s" ITENSOR:" endof
-      56 of s" SPEC:" endof
+      37 of s" CODEGEN:BUFFER" endof
+      38 of s" TASK" endof
+      39 of s" +USER" endof
+      40 of s" FACILITY" endof
+      41 of s" TASK:TASK" endof
+      42 of s" TASK:+USER" endof
+      43 of s" TASK:FACILITY" endof
+      44 of s" TR-FILES:" endof
+      45 of s" GE-FILES:" endof
+      46 of s" IOP:" endof
+      47 of s" CONST" endof
+      48 of s" ARR" endof
+      49 of s" EXTENT:" endof
+      50 of s" FREE-EXTENT:" endof
+      51 of s" EXTPROD:" endof
+      52 of s" TENSOR:" endof
+      53 of s" ITENSOR:" endof
+      54 of s" SPEC:" endof
       E-TBL-BOUNDS throw
    endcase ;
 

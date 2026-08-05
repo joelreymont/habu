@@ -58,7 +58,7 @@ surface; planned contracts here define the target API shape for implementation
 dots and benchmark prompts.
 
 Typed examples in prompts must use the current checked grammar exactly. Array
-views and cell-backed map storage use `ptr a n`; byte strings, regex bytecode
+views use `ptr a n`; map storage uses `ptr n count`; byte strings, regex bytecode
 buffers, map keys, paths, and capture buffers use `ptr u8 n`. Quotation effects
 are written in brackets, for example `[ ptr u8 n -- ]`.
 
@@ -78,17 +78,15 @@ through zero.
 The checker currently has pointer types, not nominal handle types. Byte-oriented
 v1 memory-backed handles use `ptr u8 n`: the pointer is the storage base and
 `n` is the byte capacity or active length specified by the owning module.
-Cell-oriented storage such as arrays and fixed-capacity map slot storage uses
-`ptr a n`: the pointer is the cell storage base and `n` is the element or slot
-capacity. Public signatures must keep that representation visible until
-dedicated concrete handle types exist.
+Generic cell arrays use `ptr a n`; fixed-capacity map numeric storage uses
+`ptr n count`. Public signatures keep those concrete representations visible.
 
 Opaque `addr` values are boundary-only. A module may use `addr` only for values
 that checked code never dereferences. When the checker cannot express a
 boundary, add a checker-owned `PRIM:` axiom; unchecked colon bodies are
 forbidden. Regex prose may call values `rx`, but source signatures remain typed
 as `ptr u8 n`; map prose may call values `map`, but source signatures remain
-typed as `ptr a n` for storage and `ptr u8 n` for keys.
+typed as `ptr n count` for storage and `ptr u8 len` for keys.
 
 ## PTX
 
@@ -570,6 +568,21 @@ at the matching object close; array, top-level scalar, and after-key phases
 throw `E-JR-STATE`. Key comparison streams decoded bytes through the same
 unescape path as `STR`, so valid key length is not bounded by reader storage.
 
+## Codegen
+
+`lib/codegen.f` provides one bounded generated-source buffer descriptor:
+`[cap][len][bytes...]`, exposed as `ptr n`. `BUFFER` is its sole definer.
+Overflow throws `E-CG-CAP`; a negative decimal throws `E-CG-VALUE`.
+
+```forth
+CODEGEN:BUFFER         ( n -- )
+CODEGEN:RESET          ( ptr n -- )
+CODEGEN:APPEND-BYTE    ( n ptr n -- )
+CODEGEN:APPEND-STRING  ( ptr u8 n ptr n -- )
+CODEGEN:APPEND-DECIMAL ( n ptr n -- )
+CODEGEN:CONTENTS       ( ptr n -- ptr u8 n )
+```
+
 ## Regex
 
 `lib/regex.f` exposes a bounded capture-free regex scanner and matcher for LLM
@@ -650,10 +663,11 @@ matches, advancing one byte after zero-length matches to avoid hangs.
 ## Map
 
 `lib/map.f` provides a fixed-capacity open-addressed string-key map.
-The source-backed surface uses caller-owned `ptr a` cell storage. Capacities and
+The source-backed surface uses caller-owned `ptr n` cell storage. Capacities and
 stored counts are `count`, slot indexes are `idx`, slot field offsets are `off`,
 and key lengths are `len`. `MAP-CELLS` returns the cell count to allocate for a
-capacity, and `MAP-INIT` initializes that storage. Key strings use `ptr u8 len`.
+capacity, and `MAP-INIT` initializes that storage. Values are `n`. Key strings
+use `ptr u8 len`; their address cells are accessed through `ptr-field`.
 
 Per-slot lifecycle state is the `slot-state` enum family (`empty`, `deleted`,
 `occupied`) with generated constructors `SLOT--STATE:EMPTY`,
@@ -679,42 +693,42 @@ MAP-CELLS           ( count -- count )
 MAP-EMPTY?          ( slot-state -- bool )
 MAP-DELETED?        ( slot-state -- bool )
 MAP-OCCUPIED?       ( slot-state -- bool )
-MAP-CAP@            ( ptr a -- count )
-MAP-CAP!            ( count ptr a -- )
-MAP-CHECK-HANDLE    ( ptr a count -- )
-MAP-COUNT@          ( ptr a -- count )
-MAP-DELETED@        ( ptr a -- count )
-MAP-COUNT!          ( count ptr a -- )
-MAP-DELETED!        ( count ptr a -- )
-MAP-SLOTS           ( ptr a -- ptr a )
-MAP-CHECK-INDEX     ( ptr a idx -- )
-MAP-SLOT            ( ptr a idx -- ptr a )
-MAP-SLOT-FIELD      ( ptr a idx off -- ptr a )
-MAP-SLOT-STATE@     ( ptr a idx -- slot-state )
-MAP-SLOT-STATE!     ( slot-state ptr a idx -- )
-MAP-SLOT-HASH@      ( ptr a idx -- n )
-MAP-SLOT-HASH!      ( n ptr a idx -- )
-MAP-SLOT-KEY-A@     ( ptr a idx -- ptr u8 )
-MAP-SLOT-KEY-A!     ( ptr u8 ptr a idx -- )
-MAP-SLOT-KEY-U@     ( ptr a idx -- len )
-MAP-SLOT-KEY-U!     ( len ptr a idx -- )
-MAP-SLOT-VALUE@     ( ptr a idx -- a )
-MAP-SLOT-VALUE!     ( a ptr a idx -- )
-MAP-SLOT-CLEAR      ( ptr a idx -- )
-MAP-CLEAR           ( ptr a -- )
-MAP-INIT            ( ptr a count -- )
+MAP-CAP@            ( ptr n -- count )
+MAP-CAP!            ( count ptr n -- )
+MAP-CHECK-HANDLE    ( ptr n count -- )
+MAP-COUNT@          ( ptr n -- count )
+MAP-DELETED@        ( ptr n -- count )
+MAP-COUNT!          ( count ptr n -- )
+MAP-DELETED!        ( count ptr n -- )
+MAP-SLOTS           ( ptr n -- ptr n )
+MAP-CHECK-INDEX     ( ptr n idx -- )
+MAP-SLOT            ( ptr n idx -- ptr n )
+MAP-SLOT-FIELD      ( ptr n idx off -- ptr n )
+MAP-SLOT-STATE@     ( ptr n idx -- slot-state )
+MAP-SLOT-STATE!     ( slot-state ptr n idx -- )
+MAP-SLOT-HASH@      ( ptr n idx -- n )
+MAP-SLOT-HASH!      ( n ptr n idx -- )
+MAP-SLOT-KEY-A@     ( ptr n idx -- ptr u8 )
+MAP-SLOT-KEY-A!     ( ptr u8 ptr n idx -- )
+MAP-SLOT-KEY-U@     ( ptr n idx -- len )
+MAP-SLOT-KEY-U!     ( len ptr n idx -- )
+MAP-SLOT-VALUE@     ( ptr n idx -- n )
+MAP-SLOT-VALUE!     ( n ptr n idx -- )
+MAP-SLOT-CLEAR      ( ptr n idx -- )
+MAP-CLEAR           ( ptr n -- )
+MAP-INIT            ( ptr n count -- )
 MAP-HASH            ( ptr u8 len -- n )
 MAP-INDEX           ( n count -- idx )
 MAP-PROBE           ( n count count -- idx )
-MAP-SLOT-MATCH?     ( ptr a idx n ptr u8 len -- bool )
+MAP-SLOT-MATCH?     ( ptr n idx n ptr u8 len -- bool )
 MAP-REMEMBER-FREE   ( n idx -- n )
-MAP-LOCATE-SLOT     ( n ptr a idx ptr u8 len n -- n map-loc )
-MAP-LOCATE          ( ptr a count ptr u8 len -- map-loc n )
-MAP-SLOT-INSERT     ( a ptr a idx n ptr u8 len -- )
-MAP-HAS?    ( ptr a count ptr u8 len -- bool )
-MAP-GET     ( ptr a count ptr u8 len -- option<n> )
-MAP-SET     ( n ptr a count ptr u8 len -- )
-MAP-EACH    ( ptr a count [ ptr u8 len n -- ] -- )
+MAP-LOCATE-SLOT     ( n ptr n idx ptr u8 len n -- n map-loc )
+MAP-LOCATE          ( ptr n count ptr u8 len -- map-loc n )
+MAP-SLOT-INSERT     ( n ptr n idx n ptr u8 len -- )
+MAP-HAS?    ( ptr n count ptr u8 len -- bool )
+MAP-GET     ( ptr n count ptr u8 len -- option<n> )
+MAP-SET     ( n ptr n count ptr u8 len -- )
+MAP-EACH    ( ptr n count [ ptr u8 len n -- ] -- )
 ```
 
 `MAP-GET` returns `SOME` with the stored value when the key is present, else

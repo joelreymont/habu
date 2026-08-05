@@ -145,7 +145,7 @@ definition-body, or diff-header text on either side cannot forge a boundary.
 The shared `tools/lint/def.f` inventory classifies native dictionary definers,
 checker-owned type and storage declarers, every repository defining word that
 executes `create`, and every repository declarer that generates definitions
-through the audited `evaluate` boundaries. Its focused fixture names all 57
+through the audited `evaluate` boundaries. Its focused fixture names all 55
 forms; package and authority lints consume that one structural classifier.
 Parser grammars that only add rows to an owning registry are not word
 definitions: `PRIM:` and `PPRIM:` add checker axioms; `SUITE`, `GROUP`, and

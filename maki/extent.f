@@ -52,16 +52,16 @@
 require lib/prelude.f                 \ true/false
 require maki/array.f                 \ T-AT: the ptr+offset address word the accessors reuse
 require lib/string.f                 \ STR=, BYTE-COPY, ASCII-LOWER: registry name storage + tail fold
-require lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer
+require lib/codegen.f                \ shared generated-source byte buffer
 require lib/adt/option.f             \ option<xr-slot>: XR-FIND returns a present/absent slot
 require lib/type/deftype.f           \ DEFTYPE: the registry slot index + length columns are their own types
 require lib/type/extent-role.f       \ IX>N / >RED: the core extent-index substrate's converter pair
 
 -5031 constant E-EXT-NAME     \ EXTENT: surface name missing, empty, or not '#'-prefixed
 -5032 constant E-EXT-UNDECL   \ TENSOR:/ITENSOR: referenced an extent no EXTENT: declared
--5033 constant E-EXT-CAP      \ extent registry or generated-source buffer capacity exceeded
+-5033 constant E-EXT-CAP      \ extent registry capacity exceeded
 -5034 constant E-EXT-RANGE    \ a crossing into an extent's index space is outside [0, extent)
--5035 constant E-EXT-VALUE    \ extent size below 1, or a negative value handed to the decimal emitter
+-5035 constant E-EXT-VALUE    \ extent size below 1
 -5064 constant E-EXT-FACTOR   \ EXTPROD: a folded-rows extent's size != free x inner factor product
 \ (-5036..-5063 are claimed by other maki files; -5064 is the free slot in maki's fence)
 
@@ -91,14 +91,13 @@ private
 \ ---- generated-source codegen buffer (build the ": ... ;" / "TRUSTED: ... ;"
 \ text each definer evaluates). Shared by EXTENT: and the tensor accessor definers
 \ (maki/extent-tensor.f, same package). The append mechanics live in package CODEGEN
-\ (lib/codegen.f); these thin words bind them to this file's XG-BUFFER instance,
-\ minted with the E-EXT-CAP / E-EXT-VALUE throw codes its callers already expect. ---
+\ (lib/codegen.f); these thin words bind them to this file's XG-BUFFER instance.
 $1000 constant XG-CAP                              \ headroom for SPEC:-generated word bodies
-XG-CAP E-EXT-CAP E-EXT-VALUE CODEGEN:BUFFER-E XG-BUFFER
+XG-CAP CODEGEN:BUFFER XG-BUFFER
 
 : XG-RESET ( -- )  XG-BUFFER CODEGEN:RESET ;
 : XG+ ( ptr u8 n -- )  XG-BUFFER CODEGEN:APPEND-STRING ;   \ append a string
-: XG-INT ( n -- )  XG-BUFFER CODEGEN:APPEND-DECIMAL ;      \ append a non-negative decimal (negative -> E-EXT-VALUE)
+: XG-INT ( n -- )  XG-BUFFER CODEGEN:APPEND-DECIMAL ;
 : XG$ ( -- ptr u8 n )  XG-BUFFER CODEGEN:CONTENTS ;
 
 \ the one metaprogramming boundary: `evaluate` cannot be checker-typed, so the
@@ -168,10 +167,9 @@ private
 
 \ ---- #name -> lowercase family tail (extm/extk/...) --------------------------
 \ A second CODEGEN buffer, kept separate from XG-BUFFER because EXTENT: reads the
-\ mangled tail out of here while it builds the generated word text in XG-BUFFER. The
-\ capacity throw stays E-EXT-NAME (a surface name too long for the tail buffer), the
-\ code the old hand-rolled append raised. The tail fold is lib/string.f ASCII-LOWER.
-XR-NAME-CAP E-EXT-NAME E-EXT-NAME CODEGEN:BUFFER-E XM-BUFFER
+\ mangled tail out of here while it builds the generated word text in XG-BUFFER.
+\ The tail fold is lib/string.f ASCII-LOWER.
+XR-NAME-CAP CODEGEN:BUFFER XM-BUFFER
 
 : X-MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u 2 < if E-EXT-NAME throw then                  \ need '#' + at least one char
