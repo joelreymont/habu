@@ -9,14 +9,12 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/build.f
 
-\ White-box test: reopen the module's package so the fixtures reach build's
-\ private record-cell plumbing (BUILD-STEP-CELLS, BUILD-STEP-FIELD) and its
-\ private artifact-expect helper (BUILD-EXPECT), and call the public builders by
-\ their bare package-local tails.
+\ White-box test: reopen the module's package so the fixtures reach the private
+\ artifact-expect helper (BUILD-EXPECT), and call the public builders by their
+\ bare package-local tails.
 package BUILD
 
 create BUILD-TEST-PATH FS-PATH-CAP allot
-create BUILD-TEST-STEP BUILD-STEP-CELLS cells allot
 
 variable BT-ROOT-U
 variable BT-SRC-U
@@ -170,22 +168,6 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
    BT-ROOT s" artifact.bin" BUILD-TEST-PATH JOIN-PATH {: wantu :}
    got gotu BUILD-TEST-PATH wantu T$= ;
 
-: BT-FILL-STEP ( -- )
-   BUILD-TEST-STEP STEP-CLEAR
-   s" make-artifact" BUILD-TEST-STEP STEP-NAME!
-   BT-CMD-OK BUILD-TEST-STEP STEP-COMMAND!
-   s" --emit-artifact" BUILD-TEST-STEP STEP-ARGV!
-   BT-ROOT BUILD-TEST-STEP STEP-TMP!
-   BT-ART BUILD-TEST-STEP STEP-ARTIFACT! ;
-
-: BT-FILL-STEP-NOART ( -- )
-   BUILD-TEST-STEP STEP-CLEAR
-   s" no-artifact" BUILD-TEST-STEP STEP-NAME!
-   BT-CMD-NOART BUILD-TEST-STEP STEP-COMMAND!
-   s" --missing-artifact" BUILD-TEST-STEP STEP-ARGV!
-   BT-ROOT BUILD-TEST-STEP STEP-TMP!
-   BT-NOART BUILD-TEST-STEP STEP-ARTIFACT! ;
-
 : BT-OK-STEP ( -- n )
    0 ;
 
@@ -222,24 +204,6 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
 : BT-FAIL-COMMAND ( -- )
    BT-CMD-FAIL BT-ART RUN drop ;
 
-: BT-BAD-STEP-FIELD ( -- )
-   BUILD-TEST-STEP BUILD-STEP-CELLS BUILD-STEP-FIELD drop ;
-
-: BT-MISSING-STEP-COMMAND ( -- )
-   BUILD-TEST-STEP STEP-CLEAR
-   s" bad" BUILD-TEST-STEP STEP-NAME!
-   s" --none" BUILD-TEST-STEP STEP-ARGV!
-   BT-ROOT BUILD-TEST-STEP STEP-TMP!
-   BT-ART BUILD-TEST-STEP STEP-ARTIFACT!
-   BUILD-TEST-STEP STEP-RUN drop ;
-
-: BT-EMPTY-STEP-TMP ( -- )
-   s" " BUILD-TEST-STEP STEP-TMP! ;
-
-: BT-NOART-STEP-RUN ( -- )
-   BT-FILL-STEP-NOART
-   BUILD-TEST-STEP STEP-RUN drop ;
-
 : BUILD-TEST-PATHS ( -- )
    BT-SRC CHECK
    BT-TOP-DIE-SRC CHECK
@@ -262,29 +226,12 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
    [: BT-NO-ARTIFACT ;] E-BUILD-PATH TTHROWSQ
    [: BT-FAIL-COMMAND ;] E-BUILD-STATUS TTHROWSQ ;
 
-: BUILD-TEST-RECORDS ( -- )
-   BT-FILL-STEP
-   BUILD-TEST-STEP STEP-NAME$ s" make-artifact" T$=
-   BUILD-TEST-STEP STEP-COMMAND$ BT-CMD-OK T$=
-   BUILD-TEST-STEP STEP-ARGV$ s" --emit-artifact" T$=
-   BUILD-TEST-STEP STEP-TMP$ BT-ROOT T$=
-   BUILD-TEST-STEP STEP-ARTIFACT$ BT-ART T$=
-   BUILD-TEST-STEP STEP-VALIDATE
-   BUILD-TEST-STEP STEP-RUN 0 T=
-   BUILD-TEST-STEP STEP-RC@ 0 T=
-   BT-ART FILE? TTRUE
-   [: BT-BAD-STEP-FIELD ;] E-BUILD-PATH TTHROWSQ
-   [: BT-MISSING-STEP-COMMAND ;] E-BUILD-COMMAND TTHROWSQ
-   [: BT-EMPTY-STEP-TMP ;] E-BUILD-PATH TTHROWSQ
-   [: BT-NOART-STEP-RUN ;] E-BUILD-PATH TTHROWSQ ;
-
 : BUILD-TEST-MAIN ( -- )
    T-RESET
    BT-PREPARE
    BUILD-TEST-PATHS
    BUILD-TEST-STEPS
    BUILD-TEST-RUNS
-   BUILD-TEST-RECORDS
    BT-CLEANUP
    T-REPORT
    s" build-test: ok" type cr ;

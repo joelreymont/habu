@@ -521,10 +521,6 @@ SUITE float-stats
    lib/stats-test.f
 ;SUITE
 
-SUITE hashmap
-   lib/hashmap-test.f
-;SUITE
-
 SUITE prelude
    lib/prelude-test.f
 ;SUITE
@@ -543,10 +539,6 @@ SUITE adt-result
 
 SUITE cad-num-arithmetic
    lib/cad-num-arithmetic-test.f
-;SUITE
-
-SUITE table-stdlib
-   lib/table-test.f
 ;SUITE
 
 SUITE regex-stdlib
@@ -758,8 +750,6 @@ SUITE tail-pure-fixtures
    lib/json-read-perf-contract-test.f
    lib/memory-test.f
    lib/vector-test.f
-   lib/byte-buffer-test.f
-   lib/layout/box-test.f
    lib/fs-test.f
    tools/bootstrap-codegen-test.f
    tools/asm-src-test.f

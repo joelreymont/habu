@@ -414,7 +414,6 @@ public
    s" lib/json-read-perf-contract-test.f" GSI-FORK-INCLUDE
    s" lib/memory-test.f" GSI-FORK-INCLUDE
    s" lib/vector-test.f" GSI-FORK-INCLUDE
-   s" lib/byte-buffer-test.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-id.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-id-manifest.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-intern-manifest.f" GSI-FORK-INCLUDE
@@ -568,7 +567,6 @@ public
    s" lib/float32-test.f" GSI-FORK-INCLUDE
    s" lib/float32-buffer-test.f" GSI-FORK-INCLUDE
    s" lib/array-test.f" GSI-FORK-INCLUDE
-   s" lib/table-test.f" GSI-FORK-INCLUDE
    s" lib/codegen-test.f" GSI-FORK-INCLUDE
    s" lib/regex-test.f" GSI-FORK-INCLUDE
    s" lib/map-test.f" GSI-FORK-INCLUDE

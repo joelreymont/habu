@@ -204,7 +204,6 @@ private
    s" string-helpers" SUITE-LABEL= if SUITE-TRUE exit then
    s" utf8-scalar" SUITE-LABEL= if SUITE-TRUE exit then
    s" array-helpers" SUITE-LABEL= if SUITE-TRUE exit then
-   s" table-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" regex-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" map-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" ffi-abi" SUITE-LABEL= if SUITE-TRUE exit then

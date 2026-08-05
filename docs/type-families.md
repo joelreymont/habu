@@ -2527,15 +2527,8 @@ Use this for recursive or large ADTs.
 Do not start with boxed layout.
 
 **Checker status.** `TFAM-WIDTH@` reports width 1 for a `TL-BOXED` family (§18),
-and the runtime record library `lib/layout/box.f` (`BOX-ALLOC` / `BOX-TAG!` /
-`BOX-DEREF-TAG` / `BOX-PAY!` / `BOX-PAY@`, a grow-only arena over
-`MEM-ALLOC-CELLS`) is the reusable runtime half the ctor/`MATCH` codegen will
-call. `POLICY boxed` still REJECTS at the declaration (`layout policy not yet
-supported`, §22.0/§24): the remaining COUPLED accept block — accept the policy,
-invert the §24 self-reference reject to a pointer layout, generate the alloc/
-store/return-ptr constructor, and lower `MATCH` to deref-then-tag — is not
-incrementally mergeable and lands with the full constructor/match/stack-op/
-invalid-tag tests PLAN item 16 requires before public exposure.
+but `POLICY boxed` rejects at the declaration (`layout policy not yet supported`,
+§22.0/§24). No boxed runtime is published.
 
 ---
 

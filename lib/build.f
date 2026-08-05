@@ -5,13 +5,8 @@
 \ counted source file, BUILD:ARTIFACT builds a bounded artifact path under a
 \ root, BUILD:RUN runs a counted command and requires its expected artifact, and
 \ BUILD:STEP runs one checked step quotation and throws on a nonzero result code.
-\ A build-step record is assembled and executed through BUILD:STEP-CLEAR, the
-\ BUILD:STEP-NAME! / STEP-COMMAND! / STEP-ARGV! / STEP-TMP! / STEP-ARTIFACT!
-\ setters, the matching STEP-NAME$ / STEP-COMMAND$ / STEP-ARGV$ / STEP-TMP$ /
-\ STEP-ARTIFACT$ readers, STEP-RC@ / STEP-RC!, BUILD:STEP-VALIDATE, and
-\ BUILD:STEP-RUN. The source scanner, the record cell plumbing, the CHECK! trust
-\ boundary (BUILD-CHECK-RAW), and every buffer and state variable are
-\ package-private.
+\ The source scanner, the CHECK! trust boundary (BUILD-CHECK-RAW), and every
+\ buffer and state variable are package-private.
 \
 require lib/errors.f
 require lib/string.f
@@ -26,19 +21,6 @@ package BUILD
 32 constant BUILD-SP
 58 constant BUILD-COLON
 59 constant BUILD-SEMI
-
-0 constant BUILD-STEP-NAME-A
-1 constant BUILD-STEP-NAME-U
-2 constant BUILD-STEP-CMD-A
-3 constant BUILD-STEP-CMD-U
-4 constant BUILD-STEP-ARGV-A
-5 constant BUILD-STEP-ARGV-U
-6 constant BUILD-STEP-TMP-A
-7 constant BUILD-STEP-TMP-U
-8 constant BUILD-STEP-ART-A
-9 constant BUILD-STEP-ART-U
-10 constant BUILD-STEP-RC-OFF
-11 constant BUILD-STEP-CELLS
 
 create BUILD-SOURCE-BUF BUILD-SOURCE-CAP allot
 create BUILD-PATH-BUF FS-PATH-CAP allot
@@ -59,95 +41,6 @@ variable BUILD-END
    c BUILD-SP = if BUILD-TRUE exit then
    c BUILD-LF = if BUILD-TRUE exit then
    c BUILD-CR = ;
-
-: BUILD-STEP-CHECK-OFF ( n -- ) {: off :}
-   off 0 < if E-BUILD-PATH throw then
-   off BUILD-STEP-CELLS >= if E-BUILD-PATH throw then ;
-
-: BUILD-STEP-FIELD ( ptr a n -- ptr a ) {: rec:ptr off :}
-   off BUILD-STEP-CHECK-OFF
-   rec off cells + ;
-
-: BUILD-STEP-A! ( ptr u8 ptr a n -- ) {: a:ptr rec:ptr off :}
-   a rec off BUILD-STEP-FIELD ! ;
-
-: BUILD-STEP-N! ( n ptr a n -- ) {: n rec:ptr off :}
-   n rec off BUILD-STEP-FIELD ! ;
-
-: BUILD-STEP-A@ ( ptr a n -- ptr u8 )
-   BUILD-STEP-FIELD @ ;
-
-: BUILD-STEP-N@ ( ptr a n -- n )
-   BUILD-STEP-FIELD @ ;
-
-: BUILD-STEP-PAIR! ( ptr u8 n ptr a n -- ) {: a:ptr u rec:ptr off :}
-   u 0 < if E-BUILD-PATH throw then
-   a rec off BUILD-STEP-A!
-   u rec off 1 + BUILD-STEP-N! ;
-
-: BUILD-STEP-PAIR$ ( ptr a n -- ptr u8 n ) {: rec:ptr off :}
-   rec off BUILD-STEP-A@
-   rec off 1 + BUILD-STEP-N@ ;
-
-: BUILD-STEP-EMPTY! ( ptr a n -- ) {: rec:ptr off :}
-   BUILD-SOURCE-BUF 0 rec off BUILD-STEP-PAIR! ;
-
-public
-
-\ Cell count of a caller-owned build-step record, so external callers can size
-\ their own `create ... cells allot` storage before STEP-CLEAR.
-: STEP-CELLS ( -- n )
-   BUILD-STEP-CELLS ;
-
-: STEP-CLEAR ( ptr a -- ) {: rec:ptr :}
-   rec BUILD-STEP-NAME-A BUILD-STEP-EMPTY!
-   rec BUILD-STEP-CMD-A BUILD-STEP-EMPTY!
-   rec BUILD-STEP-ARGV-A BUILD-STEP-EMPTY!
-   rec BUILD-STEP-TMP-A BUILD-STEP-EMPTY!
-   rec BUILD-STEP-ART-A BUILD-STEP-EMPTY!
-   -1 rec BUILD-STEP-RC-OFF BUILD-STEP-FIELD ! ;
-
-: STEP-NAME! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
-   u 0 <= if E-BUILD-COMMAND throw then
-   a u rec BUILD-STEP-NAME-A BUILD-STEP-PAIR! ;
-
-: STEP-COMMAND! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
-   u 0 <= if E-BUILD-COMMAND throw then
-   a u rec BUILD-STEP-CMD-A BUILD-STEP-PAIR! ;
-
-: STEP-ARGV! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
-   a u rec BUILD-STEP-ARGV-A BUILD-STEP-PAIR! ;
-
-: STEP-TMP! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
-   u 0 <= if E-BUILD-PATH throw then
-   a u rec BUILD-STEP-TMP-A BUILD-STEP-PAIR! ;
-
-: STEP-ARTIFACT! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
-   u 0 <= if E-BUILD-PATH throw then
-   a u rec BUILD-STEP-ART-A BUILD-STEP-PAIR! ;
-
-: STEP-NAME$ ( ptr a -- ptr u8 n )
-   BUILD-STEP-NAME-A BUILD-STEP-PAIR$ ;
-
-: STEP-COMMAND$ ( ptr a -- ptr u8 n )
-   BUILD-STEP-CMD-A BUILD-STEP-PAIR$ ;
-
-: STEP-ARGV$ ( ptr a -- ptr u8 n )
-   BUILD-STEP-ARGV-A BUILD-STEP-PAIR$ ;
-
-: STEP-TMP$ ( ptr a -- ptr u8 n )
-   BUILD-STEP-TMP-A BUILD-STEP-PAIR$ ;
-
-: STEP-ARTIFACT$ ( ptr a -- ptr u8 n )
-   BUILD-STEP-ART-A BUILD-STEP-PAIR$ ;
-
-: STEP-RC@ ( ptr a -- n )
-   BUILD-STEP-RC-OFF BUILD-STEP-FIELD @ ;
-
-: STEP-RC! ( n ptr a -- ) {: rc:n rec:ptr :}
-   rc rec BUILD-STEP-RC-OFF BUILD-STEP-N! ;
-
-private
 
 : BUILD-FIND-CHAR ( n n -- n ) {: start ch :}
    start begin dup BUILD-SOURCE-LEN @ < while
@@ -249,18 +142,6 @@ public
      err OF drop E-BUILD-STATUS throw ENDOF              \ nonzero exit / signal -> build failure
    ;MATCH {: rc:n :}
    artifact artifactu BUILD-EXPECT
-   rc ;
-
-: STEP-VALIDATE ( ptr a -- ) {: rec:ptr :}
-   rec STEP-NAME$ nip 0 <= if E-BUILD-COMMAND throw then
-   rec STEP-COMMAND$ FILE? 0= if E-BUILD-COMMAND throw then
-   rec STEP-TMP$ DIR? 0= if E-BUILD-PATH throw then
-   rec STEP-ARTIFACT$ nip 0 <= if E-BUILD-PATH throw then ;
-
-: STEP-RUN ( ptr a -- n ) {: rec:ptr :}
-   rec STEP-VALIDATE
-   rec STEP-COMMAND$ rec STEP-ARTIFACT$ RUN {: rc:n :}
-   rc rec STEP-RC!
    rc ;
 
 ;package

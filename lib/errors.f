@@ -259,12 +259,6 @@ public
 -5702 constant E-BUF-STATE       \ touch of a disposed buffer, or re-init of a live one
 -5703 constant E-BUF-OVERLAP     \ source and destination byte ranges overlap
 
-\ Open-addressing integer-key hash probe: -5800..-5899
--5800 constant E-HM-FIRST
--5899 constant E-HM-LAST
--5800 constant E-HM-CAP     \ probe capacity is not a nonzero power of two
--5801 constant E-HM-FULL    \ probe scanned every slot without an empty slot or the key
-
 \ Number formatting: -5900..-5999
 -5900 constant E-FMT-FIRST
 -5999 constant E-FMT-LAST

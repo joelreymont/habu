@@ -11,7 +11,6 @@ Planned module files:
 
 - `lib/errors.f`
 - `lib/array.f`
-- `lib/table.f`
 - `lib/vector.f`
 - `lib/string.f`
 - `lib/json-write.f`
@@ -192,39 +191,6 @@ For ordinary collections, use arrays or maps. For fixed layout nodes, use the
 structure DSL and publish checked accessors. For dispatch tables, use checked
 `case/of/endof/endcase` or checked execution vectors; do not encode dispatch as
 raw relative dictionary links.
-
-## Table
-
-`lib/table.f` provides checked helpers for fixed-capacity cell tables. A table is
-plain `ptr a` storage with an explicit row count and field count supplied to each
-operation. Row and field capacities are `count`; row and field positions are
-`idx`; counted byte-string lengths are `len`. `TBL-FIELD ( ptr a count count idx idx -- ptr a )`
-returns the checked address for `table[row][field]`; rows outside `[0, rows)`
-throw `E-TBL-BOUNDS`, and fields outside `[0, fields)` throw `E-TBL-FIELD`.
-
-Typed accessors make common tool records explicit without inventing nominal
-handles yet: numeric fields use `TBL-N@` / `TBL-N!`, booleans use `TBL-BOOL@` /
-`TBL-BOOL!`, byte pointers use `TBL-A@` / `TBL-A!`, and counted byte-string
-pairs use `TBL-PAIR$` / `TBL-PAIR!`. Pair fields occupy two adjacent cells and
-are rejected unless both cells fit in the record width.
-
-```forth
-TBL-CHECK-ROW    ( count idx -- )
-TBL-CHECK-FIELD  ( count idx -- )
-TBL-CHECK-PAIR   ( count idx -- )
-TBL-CELLS        ( count count -- count )
-TBL-FIELD        ( ptr a count count idx idx -- ptr a )
-TBL-CELL@        ( ptr a count count idx idx -- a )
-TBL-CELL!        ( a ptr a count count idx idx -- )
-TBL-N@           ( ptr a count count idx idx -- n )
-TBL-N!           ( n ptr a count count idx idx -- )
-TBL-BOOL@        ( ptr a count count idx idx -- bool )
-TBL-BOOL!        ( bool ptr a count count idx idx -- )
-TBL-A@           ( ptr a count count idx idx -- ptr u8 )
-TBL-A!           ( ptr u8 ptr a count count idx idx -- )
-TBL-PAIR!        ( ptr u8 len ptr a count count idx idx -- )
-TBL-PAIR$        ( ptr a count count idx idx -- ptr u8 len )
-```
 
 ## Vector
 
@@ -1760,22 +1726,6 @@ BUILD:CHECK          ( ptr u8 n -- )
 BUILD:ARTIFACT       ( ptr u8 n ptr u8 n -- ptr u8 n )
 BUILD:STEP           ( ptr u8 n [ -- n ] -- )
 BUILD:RUN            ( ptr u8 n ptr u8 n -- n )
-BUILD:STEP-CELLS     ( -- n )
-BUILD:STEP-CLEAR     ( ptr a -- )
-BUILD:STEP-NAME!     ( ptr u8 n ptr a -- )
-BUILD:STEP-COMMAND!  ( ptr u8 n ptr a -- )
-BUILD:STEP-ARGV!     ( ptr u8 n ptr a -- )
-BUILD:STEP-TMP!      ( ptr u8 n ptr a -- )
-BUILD:STEP-ARTIFACT! ( ptr u8 n ptr a -- )
-BUILD:STEP-NAME$     ( ptr a -- ptr u8 n )
-BUILD:STEP-COMMAND$  ( ptr a -- ptr u8 n )
-BUILD:STEP-ARGV$     ( ptr a -- ptr u8 n )
-BUILD:STEP-TMP$      ( ptr a -- ptr u8 n )
-BUILD:STEP-ARTIFACT$ ( ptr a -- ptr u8 n )
-BUILD:STEP-RC@       ( ptr a -- n )
-BUILD:STEP-RC!       ( n ptr a -- )
-BUILD:STEP-VALIDATE  ( ptr a -- )
-BUILD:STEP-RUN       ( ptr a -- n )
 ```
 
 `lib/test.f` is the public checked test framework interface. It loads assertion
@@ -1894,9 +1844,9 @@ replace the owning `E-BUILD-PATH` failure with a string-capacity error.
 Text mode JSON-quotes the root, escaping control characters so one failure is
 always exactly one labelled output line.
 
-`lib/build.f` lives in `package BUILD` and owns build step modeling, checked
-source certification, artifact path construction, and fail-closed status
-reporting. `BUILD:CHECK` requires a counted source path that names a file, scans
+`lib/build.f` lives in `package BUILD` and owns checked source certification,
+artifact path construction, and fail-closed status reporting. `BUILD:CHECK`
+requires a counted source path that names a file, scans
 colon definitions in bounded module storage, and certifies each definition with
 `CHECK!`; missing, malformed, or uncheckable source throws `E-BUILD-SOURCE`.
 `BUILD:ARTIFACT` joins a build root and artifact name into the module-owned
@@ -1908,15 +1858,6 @@ on nonzero rc, and throws `E-BUILD-PATH` if the expected artifact file is absent
 after a successful command. The artifact-existence check, the source scanner,
 the `CHECK!` trust boundary, and every buffer and state cell are package-private.
 Raw process exits are only allowed at the final CLI/script boundary.
-
-Build step records are `BUILD:STEP-CELLS cells` caller-owned storage with counted
-fields for name, executable command path, argv metadata, private temp path,
-required artifact path, and last rc. `BUILD:STEP-VALIDATE` rejects missing command
-files, missing temp directories, and empty artifact paths before execution.
-`BUILD:STEP-RUN` validates the record, runs the command path through `BUILD:RUN`,
-requires the artifact, stores the rc, and returns it. Argv is modeled as metadata
-until the process layer grows argv-vector spawning; it is still part of the
-checked build contract so drivers can preserve intended command arguments.
 
 `lib/codesign.f` owns checked executable promotion and target signing policy for
 build drivers that already produced an artifact. On macOS it runs
