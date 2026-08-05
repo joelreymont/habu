@@ -1229,10 +1229,9 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ therefore admits changed and new definitions alike.
 \
 \ What owns the mirror's correctness instead.  Not package scope -- the parity
-\ gates.  tools/bootstrap-codegen-test.f loads this exact path and asserts over
-\ its text at eighteen sites, tools/bootstrap-mirror-lint.f names it as the file
-\ whose absent width-aware pass makes the src/ declaration boundary a red gate,
-\ and the recovery fixtures driven by tools/bootstrap.sh run it end to end.  A
+\ gates.  tools/bootstrap-mirror-lint.f names it as the file whose absent
+\ width-aware pass makes the src/ declaration boundary a red gate, and the
+\ recovery fixtures driven by tools/bootstrap.sh run it end to end.  A
 \ definition added here is reviewed by those gates, which read what the emitter
 \ produces, and that is a stronger statement about this file than a wordlist name
 \ would be.

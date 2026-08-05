@@ -23,9 +23,8 @@ TRUSTED: BFR-NDICT! ( n -- ) ndict! ;
 \ Named refresh-prelude boundary (staged fixpoint source checking,
 \ habu-staged-fixpoint-src-0b5fc6e6): the stage compile loads the checker-boot
 \ region with the hook silenced, but the blocking pre-pass (tools/
-\ build-fixpoint.f BF-CERTIFY-*) statically checks THROUGH the window, and
-\ BF-AUDIT-BOUNDARY pins this call as the only check-off line a generated
-\ stage source may carry.
+\ build-fixpoint.f BF-CERTIFY-*) statically checks THROUGH the window, so the
+\ window's only effect is stage-compile hook silence.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
 

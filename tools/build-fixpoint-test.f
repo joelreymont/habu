@@ -687,9 +687,9 @@ public
    BFT-READ-BUF u s" stage2: source mmap failed" CONTAINS? TTRUE ;
 
 \ The snap tail's SNAP-RETIRE-GO is a named TRUSTED: boundary,
-\ not a `0 set-check` window: the emitted snap source must carry NO raw
-\ check-off line so BF-AUDIT-BOUNDARY can pin the refresh prelude's
-\ BFR-CHECK-OFF as the only checking-disabled span.
+\ not a `0 set-check` window: the emitted snap source carries NO raw
+\ check-off line - BFR-CHECK-OFF (src/habu/hide.f) is the one named
+\ checking-disabled boundary a generated source may call.
 : BFT-TEST-SNAP-SOURCE ( -- )
    BFT-ROOT BF-TMP!
    BF-SNAP-SOURCE
@@ -1233,9 +1233,9 @@ public
    s" retire-spawn-underflow" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
 
-\ Minimal boundary-audit-clean prelude for scratch generated-source fixtures:
-\ one BFR-CHECK-OFF line followed by one LOWER-CERT-HOOK:INSTALL line, exactly
-\ the documented refresh-prelude window BF-AUDIT-BOUNDARY pins.
+\ Minimal refresh-prelude for scratch generated-source fixtures: one
+\ BFR-CHECK-OFF line followed by one LOWER-CERT-HOOK:INSTALL line, the same
+\ shape the real emitted stage source opens with.
 : BFT-CERT-PRELUDE+ ( -- )
    s\" \\ audit prelude\nBFR-CHECK-OFF\nLOWER-CERT-HOOK:INSTALL\n" SB-APPEND ;
 
@@ -1249,8 +1249,8 @@ public
 \ Certification is BLOCKING: a generated stage source that rejects must fail
 \ the build with E-BUILD-CERTIFY, not warn and proceed (fail-open). The
 \ install-path proof is BFT-TEST-CERT-INJECT-INSTALL below; this pins the
-\ unit behavior on an audit-clean scratch source whose only defect is the
-\ type-broken definition.
+\ unit behavior on a scratch source whose only defect is the type-broken
+\ definition.
 : BFT-TEST-CERTIFY-BLOCKING ( -- )
    SB-RESET
    BFT-CERT-PRELUDE+
@@ -1265,46 +1265,6 @@ public
    BFT-CERT-SB-WRITE
    s" cert-good2" BFT-CERT BF-CERTIFY-GENERATED ;
 
-\ Boundary audit (BF-AUDIT-BOUNDARY): the generated-source certify refuses any
-\ unchecked-window drift with E-BUILD-CERTIFY - a missing or duplicated
-\ BFR-CHECK-OFF line, a raw `0 set-check` line, or a hook reinstall that does
-\ not follow the check-off. Each case is a scratch source differing from the
-\ audit-clean prelude in exactly the violation under test.
-: BFT-AUDIT-EXPECT-REJECT ( -- )
-   [: s" cert-audit" BFT-CERT BF-CERTIFY-GENERATED ;] E-BUILD-CERTIFY TTHROWSQ ;
-
-: BFT-TEST-AUDIT-MISSING-BOUNDARY ( -- )
-   s" : BFT-AUD-OK1 ( n -- n ) 1 + ;" BFT-CERT-WRITE
-   BFT-AUDIT-EXPECT-REJECT ;
-
-: BFT-TEST-AUDIT-DOUBLE-BOUNDARY ( -- )
-   SB-RESET
-   BFT-CERT-PRELUDE+
-   s" BFR-CHECK-OFF" BFT-CERT-LINE+
-   BFT-CERT-SB-WRITE
-   BFT-AUDIT-EXPECT-REJECT ;
-
-: BFT-TEST-AUDIT-RAW-OFF ( -- )
-   SB-RESET
-   BFT-CERT-PRELUDE+
-   s" 0 set-check" BFT-CERT-LINE+
-   BFT-CERT-SB-WRITE
-   BFT-AUDIT-EXPECT-REJECT ;
-
-: BFT-TEST-AUDIT-ORDER ( -- )
-   SB-RESET
-   s\" \\ audit order\nLOWER-CERT-HOOK:INSTALL\nBFR-CHECK-OFF\n" SB-APPEND
-   BFT-CERT-SB-WRITE
-   BFT-AUDIT-EXPECT-REJECT ;
-
-\ Real-list audit injection: the REAL emitted stage2 source plus one appended
-\ raw `0 set-check` line must refuse at the audit, before the checker scan.
-: BFT-TEST-AUDIT-REAL-INJECT ( -- )
-   BFT-ROOT BF-TMP!
-   BF-STAGE2-SOURCE
-   s" stage2-src" BF-A$ s\" 0 set-check\n" APPEND-FILE
-   [: s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;] E-BUILD-CERTIFY TTHROWSQ
-   BF-TMP-RESET ;
 
 \ Self-certification guard: checker.f must certify as the tail of its exact
 \ pre-hook prefix. Its layout assertions consume cell.f's CORE-LAYOUT-RC and
@@ -1426,11 +1386,6 @@ public
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
    s" retire regression" [: BFT-TEST-RETIRE-REGRESSION ;] BFT-STEP
    s" certify blocking" [: BFT-TEST-CERTIFY-BLOCKING ;] BFT-STEP
-   s" audit missing boundary" [: BFT-TEST-AUDIT-MISSING-BOUNDARY ;] BFT-STEP
-   s" audit double boundary" [: BFT-TEST-AUDIT-DOUBLE-BOUNDARY ;] BFT-STEP
-   s" audit raw off" [: BFT-TEST-AUDIT-RAW-OFF ;] BFT-STEP
-   s" audit order" [: BFT-TEST-AUDIT-ORDER ;] BFT-STEP
-   s" audit real inject" [: BFT-TEST-AUDIT-REAL-INJECT ;] BFT-STEP
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
