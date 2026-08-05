@@ -909,7 +909,7 @@ create EQ-FWD-SRC SP-SRC-CAP allot  variable EQ-FWD-SRC-U   \ forward body, to r
    SP-FAC-N @ 0 ?do  i FAC-HAS-GATHER? if true unloop exit then  loop  false ;
 
 \ factor a's index list is a trailing SUFFIX of factor b's (same vars, same order, tail-aligned).
-: FAC-SUFFIX? ( a b -- bool ) {: fa:n fb:n :}
+: FAC-SUFFIX? ( n n -- bool ) {: fa:n fb:n :}
    fa SPEC-FAC-RANK@  fb SPEC-FAC-RANK@  {: ra:n rb:n :}
    ra rb > if false exit then
    rb ra -  {: base:n :}
