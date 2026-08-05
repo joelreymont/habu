@@ -68,7 +68,7 @@ variable E0   variable E1   variable E2
 : CHECK-C ( r n -- ) {: x:r n:n :}
    n 0 ?do P3 i U32@ WIDEN x NEAR? TTRUE loop ;
 
-: PSET ( cuda-fn n ptr u8 n -- ) {: fn:cuda-fn off:n p:ptr bytes:n :}
+: PSET ( cuda-fn n ptr a n -- ) {: fn:cuda-fn off:n p:ptr bytes:n :}
    fn off >IDX p bytes >LEN CUDA:CU-PARAM-SET-V CUDA:RC0 ;
 
 : GO ( cuda-fn n -- ) {: fn:cuda-fn grid:n :}
@@ -134,7 +134,7 @@ variable E0   variable E1   variable E2
    fn 0 D0 8 PSET  fn 8 D1 8 PSET  fn 16 D3 8 PSET  fn 24 E0 4 PSET
    fn E0 @ GRID GO ;
 
-: ALLOC ( ptr a n -- ) {: dst:ptr bytes:n :}
+: ALLOC ( ptr n n -- ) {: dst:ptr bytes:n :}
    dst bytes >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
    dst @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR ;
 

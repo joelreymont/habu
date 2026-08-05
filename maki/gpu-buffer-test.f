@@ -87,7 +87,7 @@ create BT-DST BT-BUF-LEN allot
    0 BT-FREE-X !
    NULL$ drop dup BT-BUF-P ! dup BT-OWN-ST ! BT-OWN-BUF ! ;
 
-: BT-FALLOC ( ptr a len -- rc ) {: out:ptr len:len :}
+: BT-FALLOC ( ptr n len -- rc ) {: out:ptr len:len :}
    BT-ALLOC len LEN>N FT-LOG
    out BT-BUF-P !
    BT-ALLOC-H @ out !

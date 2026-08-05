@@ -107,13 +107,13 @@ variable FT-RELEASE-X
    FT-INIT-X @ FT-X
    FT-INIT-RC @ >RC ;
 
-: FT-FGET ( ptr a idx -- rc ) {: out:ptr idx:idx :}
+: FT-FGET ( ptr n idx -- rc ) {: out:ptr idx:idx :}
    FT-GET idx IDX>N FT-LOG
    FT-GET-X @ FT-X
    FT-DEV out !
    FT-GET-RC @ >RC ;
 
-: FT-FRETAIN ( ptr a cuda-dev -- rc ) {: out:ptr dev:cuda-dev :}
+: FT-FRETAIN ( ptr n cuda-dev -- rc ) {: out:ptr dev:cuda-dev :}
    FT-RETAIN dev CUDA-DEV>N FT-LOG
    FT-RETAIN-X @ FT-X
    FT-CTX @ out !
@@ -128,7 +128,7 @@ variable FT-RELEASE-X
       FT-SET-RC @
    else 0 then >RC ;
 
-: FT-FCREATE ( ptr a n -- rc ) {: out:ptr flags:n :}
+: FT-FCREATE ( ptr n n -- rc ) {: out:ptr flags:n :}
    FT-CREATE flags FT-LOG
    FT-CREATE-X @ FT-X
    FT-STREAM @ out !

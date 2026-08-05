@@ -421,7 +421,7 @@ variable KVT-DEV-CALLS
    bytes LEN>N KVT-DTOD-N !
    KVT-DTOD-RC @ >RC ;
 
-: KVT-FALLOC ( ptr a len -- rc )
+: KVT-FALLOC ( ptr n len -- rc )
    1 KVT-GPU-ALLOC-CALLS +!
    2drop 701 >RC ;
 

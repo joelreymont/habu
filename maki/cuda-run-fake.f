@@ -19,7 +19,7 @@ package MKDF
 public
 
 100 constant DEV-H   200 constant CTX-H   300 constant MOD-H   400 constant FUNC-H
-: ALLOC-H ( i -- n )  100 * 500 + ;   \ i-th successful allocation's fake handle
+: ALLOC-H ( n -- n )  100 * 500 + ;   \ i-th successful allocation's fake handle
 
 private
 
@@ -38,12 +38,27 @@ private
 
 : F-OPEN    ( -- )  ;
 : F-CUINIT  ( n -- rc ) {: f:n :}  CUINIT-RC @ >RC ;
-: F-DEVGET  ( ptr a idx -- rc ) {: out:ptr idx:idx :}  DEV-H out !  DEVGET-RC @ >RC ;
-: F-CTXRET  ( ptr a cuda-dev -- rc ) {: out:ptr dev:cuda-dev :}  CTX-H out !  CTXRET-RC @ >RC ;
+
+: F-DEVGET ( ptr n idx -- rc ) {: out:ptr idx:idx :}
+   DEV-H out !
+   DEVGET-RC @ >RC ;
+
+: F-CTXRET ( ptr n cuda-dev -- rc ) {: out:ptr dev:cuda-dev :}
+   CTX-H out !
+   CTXRET-RC @ >RC ;
+
 : F-CTXSET  ( cuda-ctx -- rc ) {: c:cuda-ctx :}  CTXSET-RC @ >RC ;
-: F-MODLOAD ( ptr a ptr u8 -- rc ) {: out:ptr p:ptr :}  MOD-H out !  MODLOAD-RC @ >RC ;
-: F-MODFUNC ( ptr a cuda-mod ptr u8 -- rc ) {: out:ptr m:cuda-mod nm:ptr :}  FUNC-H out !  FUNC-RC @ >RC ;
-: F-ALLOC   ( ptr a len -- rc ) {: out:ptr len:len :}
+
+: F-MODLOAD ( ptr n ptr u8 -- rc ) {: out:ptr p:ptr :}
+   MOD-H out !
+   MODLOAD-RC @ >RC ;
+
+: F-MODFUNC ( ptr n cuda-mod ptr u8 -- rc )
+   {: out:ptr m:cuda-mod nm:ptr :}
+   FUNC-H out !
+   FUNC-RC @ >RC ;
+
+: F-ALLOC ( ptr n len -- rc ) {: out:ptr len:len :}
    NA @ FAIL-A @ = if  1 NA +!  A-RC @ >RC  exit  then
    NA @ ALLOC-H  out !  1 NA +!  0 >RC ;
 : F-MEMSET  ( cuda-devptr n count -- rc ) {: d:cuda-devptr v:n c:count :}  MEMSET-RC @ >RC ;
@@ -78,6 +93,6 @@ public
    CUDA-SCOPE:RESET ;
 
 : RN@  ( -- n )    RN @ ;             \ number of releases recorded
-: REL@ ( i -- n )  cells RLOG + @ ;   \ i-th released handle (release order)
+: REL@ ( n -- n )  cells RLOG + @ ;   \ i-th released handle (release order)
 
 ;package

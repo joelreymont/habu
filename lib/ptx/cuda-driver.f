@@ -34,9 +34,6 @@ create CD-LIB 16 allot
 create CD-SYM 64 allot
 variable CD-H
 
-: OUT ( -- ptr a )
-   FFI:ARGS 15 cells + ;
-
 : TRUE ( -- bool )
    0 0= ;
 
@@ -82,20 +79,20 @@ TRUSTED: CU-INIT ( n -- rc ) {: flags:n :}
    FFI:RESET  flags 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
 
-TRUSTED: CU-DEVICE-GET ( ptr a idx -- rc ) {: out:ptr idx:idx :}
+TRUSTED: CU-DEVICE-GET ( ptr n idx -- rc ) {: out:ptr idx:idx :}
    s" cuDeviceGet" SYMBOL {: call:n :}
    FFI:RESET  out 4 0 FFI:WRITABLE!  idx 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
 
 \ read an integer device attribute (e.g. 75 = COMPUTE_CAPABILITY_MAJOR,
 \ 76 = COMPUTE_CAPABILITY_MINOR) into the caller's 4-byte int slot.
-TRUSTED: CU-DEVICE-GET-ATTRIBUTE ( ptr a n cuda-dev -- rc )
+TRUSTED: CU-DEVICE-GET-ATTRIBUTE ( ptr n n cuda-dev -- rc )
    {: out:ptr attr:n dev:cuda-dev :}
    s" cuDeviceGetAttribute" SYMBOL {: call:n :}
    FFI:RESET  out 4 0 FFI:WRITABLE!  attr 1 FFI:VALUE!  dev 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
 
-TRUSTED: CU-DEVICE-PRIMARY-CTX-RETAIN ( ptr a cuda-dev -- rc )
+TRUSTED: CU-DEVICE-PRIMARY-CTX-RETAIN ( ptr n cuda-dev -- rc )
    {: out:ptr dev:cuda-dev :}
    s" cuDevicePrimaryCtxRetain" SYMBOL {: call:n :}
    FFI:RESET  out 8 0 FFI:WRITABLE!  dev 1 FFI:VALUE!
@@ -106,7 +103,7 @@ TRUSTED: CU-CTX-SET-CURRENT ( cuda-ctx -- rc ) {: ctx:cuda-ctx :}
    FFI:RESET  ctx 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
 
-TRUSTED: CU-STREAM-CREATE ( ptr a n -- rc ) {: out:ptr flags:n :}
+TRUSTED: CU-STREAM-CREATE ( ptr n n -- rc ) {: out:ptr flags:n :}
    s" cuStreamCreate" SYMBOL {: call:n :}
    FFI:RESET  out 8 0 FFI:WRITABLE!  flags 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
@@ -121,18 +118,18 @@ TRUSTED: CU-STREAM-DESTROY ( stream -- rc ) {: stream:stream :}
    FFI:RESET  stream 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
 
-TRUSTED: CU-MODULE-LOAD ( ptr a ptr u8 -- rc ) {: out:ptr path:ptr :}
+TRUSTED: CU-MODULE-LOAD ( ptr n ptr u8 -- rc ) {: out:ptr path:ptr :}
    s" cuModuleLoad" SYMBOL {: call:n :}
    FFI:RESET  out 8 0 FFI:WRITABLE!  path 1 FFI:READABLE!
    FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
 
-TRUSTED: CU-MODULE-GET-FUNCTION ( ptr a cuda-mod ptr u8 -- rc )
+TRUSTED: CU-MODULE-GET-FUNCTION ( ptr n cuda-mod ptr u8 -- rc )
    {: out:ptr mod:cuda-mod name:ptr :}
    s" cuModuleGetFunction" SYMBOL {: call:n :}
    FFI:RESET  out 8 0 FFI:WRITABLE!  mod 1 FFI:VALUE!  name 2 FFI:READABLE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
 
-TRUSTED: CU-MEM-ALLOC ( ptr a len -- rc ) {: out:ptr len:len :}
+TRUSTED: CU-MEM-ALLOC ( ptr n len -- rc ) {: out:ptr len:len :}
    s" cuMemAlloc_v2" SYMBOL {: call:n :}
    FFI:RESET  out 8 0 FFI:WRITABLE!  len 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
@@ -176,7 +173,7 @@ TRUSTED: CU-MEM-HOST-REGISTER ( n len n -- rc )
    FFI:RESET  p 0 FFI:VALUE!  bytes 1 FFI:VALUE!  flags 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
 
-TRUSTED: CU-MEM-HOST-GET-DEVICE-POINTER ( ptr a n n -- rc )
+TRUSTED: CU-MEM-HOST-GET-DEVICE-POINTER ( ptr n n n -- rc )
    {: out:ptr p:n flags:n :}
    s" cuMemHostGetDevicePointer_v2" SYMBOL {: call:n :}
    FFI:RESET  out 8 0 FFI:WRITABLE!  p 1 FFI:VALUE!  flags 2 FFI:VALUE!
@@ -214,7 +211,7 @@ TRUSTED: CU-FUNC-SET-ATTRIBUTE ( cuda-fn n n -- rc ) {: fn:cuda-fn attr:n val:n 
    FFI:RESET  fn 0 FFI:VALUE!  attr 1 FFI:VALUE!  val 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
 
-TRUSTED: CU-PARAM-SET-V ( cuda-fn idx ptr u8 len -- rc )
+TRUSTED: CU-PARAM-SET-V ( cuda-fn idx ptr a len -- rc )
    {: fn:cuda-fn off:idx src:ptr len:len :}
    s" cuParamSetv" SYMBOL {: call:n :}
    FFI:RESET  fn 0 FFI:VALUE!  off 1 FFI:VALUE!  src 2 FFI:READABLE!  len 3 FFI:VALUE!
@@ -241,7 +238,7 @@ TRUSTED: CU-DEVICE-PRIMARY-CTX-RELEASE ( cuda-dev -- rc ) {: dev:cuda-dev :}
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
 
 \ ---- events (GPU-side elapsed-time measurement) ----------------------------
-TRUSTED: CU-EVENT-CREATE ( ptr a n -- rc ) {: out:ptr flags:n :}
+TRUSTED: CU-EVENT-CREATE ( ptr n n -- rc ) {: out:ptr flags:n :}
    s" cuEventCreate" SYMBOL {: call:n :}
    FFI:RESET  out 8 0 FFI:WRITABLE!  flags 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
@@ -261,26 +258,13 @@ TRUSTED: CU-EVENT-SYNCHRONIZE ( cuda-event -- rc ) {: event:cuda-event :}
    FFI:RESET  event 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
 
-TRUSTED: CU-EVENT-ELAPSED-TIME ( ptr a cuda-event cuda-event -- rc )
+TRUSTED: CU-EVENT-ELAPSED-TIME ( ptr n cuda-event cuda-event -- rc )
    {: out:ptr start:cuda-event stop:cuda-event :}
    s" cuEventElapsedTime" SYMBOL {: call:n :}
    FFI:RESET  out 4 0 FFI:WRITABLE!  start 1 FFI:VALUE!  stop 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
 
-\ ---- typed convenience helpers (named throws via HANDLE0 / RC0) -------------
-
-: LOAD-MODULE ( ptr u8 -- cuda-mod )              \ path-cstr -> loaded module handle
-   OUT swap CU-MODULE-LOAD RC0
-   OUT @ HANDLE0 >CUDA-MOD ;
-
-: GET-FUNCTION ( cuda-mod ptr u8 -- cuda-fn )     \ module + name-cstr -> kernel function
-   {: m:cuda-mod name:ptr :}
-   OUT m name CU-MODULE-GET-FUNCTION RC0
-   OUT @ HANDLE0 >CUDA-FN ;
-
-: DEVICE-ALLOC ( len -- cuda-devptr )             \ allocate len device bytes
-   OUT swap CU-MEM-ALLOC RC0
-   OUT @ HANDLE0 >CUDA-DEVPTR ;
+\ ---- typed convenience helpers ---------------------------------------------
 
 : HTOD ( cuda-devptr ptr u8 len -- )              \ copy host bytes -> device
    CU-MEMCPY-HTOD RC0 ;

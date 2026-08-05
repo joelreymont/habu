@@ -867,7 +867,7 @@ using MEM
    PTXTC:ASM-REPORT dup 0<> if throw then
    drop ;
 
-: M-MOD-LOAD ( ptr a -- ) {: out:ptr :}
+: M-MOD-LOAD ( ptr n -- ) {: out:ptr :}
    PTXTC:CUBIN$ M-CUBIN FFI:CSTR
    0 out !
    out M-CUBIN MKD:CUMODULELOAD RC>N dup 0<> if
@@ -877,7 +877,7 @@ using MEM
    drop
    out @ CUDA:HANDLE0 drop ;
 
-: M-FN-LOAD ( n ptr a ptr u8 n -- )
+: M-FN-LOAD ( n ptr n ptr u8 n -- )
    {: mod:n out:ptr name:ptr nameu:n :}
    name nameu M-KNAME FFI:CSTR
    0 out !
@@ -924,7 +924,7 @@ using MEM
    over 0= if nip exit then
    [: M-UNLOAD-BODY ;] catch M-FIRST nip ;
 
-: M-H-UNLOAD ( ptr a n -- n ) {: hp:ptr first:n :}
+: M-H-UNLOAD ( ptr n n -- n ) {: hp:ptr first:n :}
    hp @ first M-UNLOAD {: code:n :}
    0 hp !
    code ;

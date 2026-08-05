@@ -46,6 +46,8 @@ SUMTYPE lqmix 2
 \ accepted: construction, minting, pass-through, deeper-row flow, wrappers.
 \ ---------------------------------------------------------------------------
 s" A1=" type s" C1 ( ltok -- lq2<ltok,n> ) LQ2:OK" CHECK-QUIET-CANDIDATE! -1 T=
+\ A2 has no recurse: declared-row NONLIN inference must not taint the inactive
+\ linear family argument before the generated ERR constructor is checked.
 s" A2=" type s" C2 ( n -- lq2<ltok,n> ) LQ2:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 s" A3=" type s" C3 ( lq2<ltok,n> -- lq2<ltok,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 \ transports beside the bundle stay legal: the reject targets the bundle only.

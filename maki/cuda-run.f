@@ -26,16 +26,16 @@ package MKD
 \ ---- real-driver wrappers (the default arming target for each defer) ---------
 : R-OPEN        ( -- )                        CUDA:OPEN ;
 : R-CUINIT      ( n -- rc )                   CUDA:CU-INIT ;
-: R-DEVGET      ( ptr a idx -- rc )           CUDA:CU-DEVICE-GET ;
-: R-CTXRETAIN   ( ptr a cuda-dev -- rc )      CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN ;
+: R-DEVGET      ( ptr n idx -- rc )           CUDA:CU-DEVICE-GET ;
+: R-CTXRETAIN   ( ptr n cuda-dev -- rc )      CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN ;
 : R-CTXRELEASE  ( cuda-dev -- rc )            CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE ;
 : R-CTXSET      ( cuda-ctx -- rc )            CUDA:CU-CTX-SET-CURRENT ;
-: R-STREAMCREATE ( ptr a n -- rc )            CUDA:CU-STREAM-CREATE ;
+: R-STREAMCREATE ( ptr n n -- rc )            CUDA:CU-STREAM-CREATE ;
 : R-STREAMSYNC  ( CUDA:stream -- rc )          CUDA:CU-STREAM-SYNCHRONIZE ;
 : R-STREAMDESTROY ( CUDA:stream -- rc )       CUDA:CU-STREAM-DESTROY ;
-: R-MODLOAD     ( ptr a ptr u8 -- rc )        CUDA:CU-MODULE-LOAD ;
-: R-MODFUNC     ( ptr a cuda-mod ptr u8 -- rc ) CUDA:CU-MODULE-GET-FUNCTION ;
-: R-MEMALLOC    ( ptr a len -- rc )           CUDA:CU-MEM-ALLOC ;
+: R-MODLOAD     ( ptr n ptr u8 -- rc )        CUDA:CU-MODULE-LOAD ;
+: R-MODFUNC     ( ptr n cuda-mod ptr u8 -- rc ) CUDA:CU-MODULE-GET-FUNCTION ;
+: R-MEMALLOC    ( ptr n len -- rc )           CUDA:CU-MEM-ALLOC ;
 : R-MEMFREE     ( cuda-devptr -- rc )          CUDA:CU-MEM-FREE ;
 : R-MEMSET      ( cuda-devptr n count -- rc ) CUDA:CU-MEMSET-D32 ;
 : R-HTOD        ( cuda-devptr ptr u8 len -- rc ) CUDA:CU-MEMCPY-HTOD ;
@@ -47,16 +47,16 @@ public
 \ ---- injectable driver table (one defer per reachable acquire/body call) -----
 defer OPEN                     ( -- )
 defer CUINIT                   ( n -- rc )
-defer CUDEVICEGET              ( ptr a idx -- rc )
-defer CUDEVICEPRIMARYCTXRETAIN ( ptr a cuda-dev -- rc )
+defer CUDEVICEGET              ( ptr n idx -- rc )
+defer CUDEVICEPRIMARYCTXRETAIN ( ptr n cuda-dev -- rc )
 defer CUDEVICEPRIMARYCTXRELEASE ( cuda-dev -- rc )
 defer CUCTXSETCURRENT          ( cuda-ctx -- rc )
-defer CUSTREAMCREATE           ( ptr a n -- rc )
+defer CUSTREAMCREATE           ( ptr n n -- rc )
 defer CUSTREAMSYNCHRONIZE      ( CUDA:stream -- rc )
 defer CUSTREAMDESTROY          ( CUDA:stream -- rc )
-defer CUMODULELOAD             ( ptr a ptr u8 -- rc )
-defer CUMODULEGETFUNCTION      ( ptr a cuda-mod ptr u8 -- rc )
-defer CUMEMALLOC               ( ptr a len -- rc )
+defer CUMODULELOAD             ( ptr n ptr u8 -- rc )
+defer CUMODULEGETFUNCTION      ( ptr n cuda-mod ptr u8 -- rc )
+defer CUMEMALLOC               ( ptr n len -- rc )
 defer CUMEMFREE                ( cuda-devptr -- rc )
 defer CUMEMSETD32              ( cuda-devptr n count -- rc )
 defer CUMEMCPYHTOD             ( cuda-devptr ptr u8 len -- rc )
@@ -85,16 +85,16 @@ defer CUMEMCPYDTOD             ( cuda-devptr cuda-devptr len -- rc )
 \ ---- per-op injection setters (host-only tests) -----------------------------
 : OPEN!        ( [ -- ] -- )                        is OPEN ;
 : CUINIT!      ( [ n -- rc ] -- )                   is CUINIT ;
-: CUDEVICEGET! ( [ ptr a idx -- rc ] -- )           is CUDEVICEGET ;
-: CTXRETAIN!   ( [ ptr a cuda-dev -- rc ] -- )      is CUDEVICEPRIMARYCTXRETAIN ;
+: CUDEVICEGET! ( [ ptr n idx -- rc ] -- )           is CUDEVICEGET ;
+: CTXRETAIN!   ( [ ptr n cuda-dev -- rc ] -- )      is CUDEVICEPRIMARYCTXRETAIN ;
 : CTXRELEASE!  ( [ cuda-dev -- rc ] -- )            is CUDEVICEPRIMARYCTXRELEASE ;
 : CTXSET!      ( [ cuda-ctx -- rc ] -- )            is CUCTXSETCURRENT ;
-: STREAMCREATE! ( [ ptr a n -- rc ] -- )            is CUSTREAMCREATE ;
+: STREAMCREATE! ( [ ptr n n -- rc ] -- )            is CUSTREAMCREATE ;
 : STREAMSYNC!  ( [ CUDA:stream -- rc ] -- )          is CUSTREAMSYNCHRONIZE ;
 : STREAMDESTROY! ( [ CUDA:stream -- rc ] -- )       is CUSTREAMDESTROY ;
-: MODLOAD!     ( [ ptr a ptr u8 -- rc ] -- )        is CUMODULELOAD ;
-: MODFUNC!     ( [ ptr a cuda-mod ptr u8 -- rc ] -- ) is CUMODULEGETFUNCTION ;
-: CUMEMALLOC!  ( [ ptr a len -- rc ] -- )           is CUMEMALLOC ;
+: MODLOAD!     ( [ ptr n ptr u8 -- rc ] -- )        is CUMODULELOAD ;
+: MODFUNC!     ( [ ptr n cuda-mod ptr u8 -- rc ] -- ) is CUMODULEGETFUNCTION ;
+: CUMEMALLOC!  ( [ ptr n len -- rc ] -- )           is CUMEMALLOC ;
 : CUMEMFREE!   ( [ cuda-devptr -- rc ] -- )          is CUMEMFREE ;
 : CUMEMSETD32! ( [ cuda-devptr n count -- rc ] -- ) is CUMEMSETD32 ;
 : HTOD!        ( [ cuda-devptr ptr u8 len -- rc ] -- ) is CUMEMCPYHTOD ;
