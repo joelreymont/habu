@@ -6,6 +6,7 @@
 \ a central finite difference on L.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/matmul.f
 
 package MAKI
@@ -46,6 +47,17 @@ f-  0.002 f/  0.5 f+ f>s  11 T=
 6.999 MW 2 T-SET  MMX MW MMY 2 2 2 MATMUL  MMY 4 T-SUM
 f-  0.002 f/  0.5 f+ f>s   6 T=
 7.0 MW 2 T-SET                        \ restore
+
+\ public contracts accept only host floating-point buffers
+s" MMT-F-R ( ptr r ptr r ptr r n n n -- ) MATMUL" CHECK-QUIET-CANDIDATE! -1 T=
+s" MMT-F-N ( ptr n ptr n ptr n n n n -- ) MATMUL" CHECK-QUIET-CANDIDATE! 0 T=
+s" MMT-F-U ( ptr u8 ptr u8 ptr u8 n n n -- ) MATMUL" CHECK-QUIET-CANDIDATE! 0 T=
+s" MMT-X-R ( ptr r ptr r ptr r n n n -- ) MATMUL-DX" CHECK-QUIET-CANDIDATE! -1 T=
+s" MMT-X-N ( ptr n ptr n ptr n n n n -- ) MATMUL-DX" CHECK-QUIET-CANDIDATE! 0 T=
+s" MMT-X-U ( ptr u8 ptr u8 ptr u8 n n n -- ) MATMUL-DX" CHECK-QUIET-CANDIDATE! 0 T=
+s" MMT-W-R ( ptr r ptr r ptr r n n n -- ) MATMUL-DW" CHECK-QUIET-CANDIDATE! -1 T=
+s" MMT-W-N ( ptr n ptr n ptr n n n n -- ) MATMUL-DW" CHECK-QUIET-CANDIDATE! 0 T=
+s" MMT-W-U ( ptr u8 ptr u8 ptr u8 n n n -- ) MATMUL-DW" CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 
