@@ -41,6 +41,13 @@ create PARAM-DIAG PARAM-DIAG-CAP allot
    s" CDTP-RAW ( cuda-fn idx n len -- rc ) CUDA:CU-PARAM-SET-V" CHECK-CANDIDATE! 0 T=
    DIAG-BUFFER-OFF ;
 
+: OUTPUT-TYPES ( -- )
+   s" CDTO-N ( ptr n idx -- rc ) CUDA:CU-DEVICE-GET" CHECK-CANDIDATE! -1 T=
+   PARAM-DIAG PARAM-DIAG-CAP DIAG-BUFFER!
+   s" CDTO-U8 ( ptr u8 idx -- rc ) CUDA:CU-DEVICE-GET" CHECK-CANDIDATE! 0 T=
+   s" CDTO-RAW ( n idx -- rc ) CUDA:CU-DEVICE-GET" CHECK-CANDIDATE! 0 T=
+   DIAG-BUFFER-OFF ;
+
 : RUN ( -- )
    T-RESET
    OPEN-SMOKE
@@ -48,6 +55,7 @@ create PARAM-DIAG PARAM-DIAG-CAP allot
    RC-OK
    RC-BAD
    PARAM-TYPES
+   OUTPUT-TYPES
    T-REPORT ;
 
 RUN

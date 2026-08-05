@@ -68,7 +68,7 @@ variable E0   variable E1   variable E2
 : CHECK-C ( r n -- ) {: x:r n:n :}
    n 0 ?do P3 i U32@ WIDEN x NEAR? TTRUE loop ;
 
-: PSET ( cuda-fn n ptr u8 n -- ) {: fn:cuda-fn off:n p:ptr bytes:n :}
+: PSET ( cuda-fn n ptr a n -- ) {: fn:cuda-fn off:n p:ptr bytes:n :}
    fn off >IDX p bytes >LEN CUDA:CU-PARAM-SET-V CUDA:RC0 ;
 
 : GO ( cuda-fn n -- ) {: fn:cuda-fn grid:n :}
