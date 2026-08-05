@@ -5220,3 +5220,18 @@ statement asserts the tool is broken, reproduce and re-derive before accepting
 it - here the premise arrived exactly inverted, survived one merge, and cost a
 second investigation.
 
+## fork without exec cannot dlopen on macOS, and only the wrapper knows (2026-08-05)
+
+Two codegen-compare members exited 134 under the gate pool and passed
+standalone. Not concurrency: reducing to ONE forked member with no siblings
+reproduced it at the same pc, inside /usr/lib/dyld. dyld is not fork-safe -
+asking it to map an image that is not already mapped faults inside the loader
+in a forked child, a signal with no error to catch - so anything a forked
+child will call into must be mapped by the process it was forked from. The fix
+maps the clang reference in the exec'd gate root before any fork and turns the
+abort into a named refusal. Two portability facts worth keeping: a pid
+captured at load time cannot detect the fork when the child loads the file
+itself, so the fork wrapper is the only honest place to record "entered by
+fork"; and "passes standalone, dies in the pool" does not imply a race -
+reduce to one member before theorising about siblings.
+
