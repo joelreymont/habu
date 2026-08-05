@@ -1,6 +1,6 @@
 ---
 title: Rematerialize the loop-invariant loads
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-08-05T17:03:15.160104+02:00"
@@ -32,4 +32,6 @@ investigated in this lane.
 
 NOT BUILT. Nothing in src/ or test/ changed for this leaf.
 
-Claim: agent=remat2 workspace=.jj-ws/habu-fold-constants-and-cbe4e25e
+Claim: unassigned
+
+Claim released 2026-08-05 (remat2): deferred behind the production rewrite loop and the constants leaf, see habu-rematerialize-constants-cdce9a24.

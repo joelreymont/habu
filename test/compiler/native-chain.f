@@ -798,8 +798,22 @@ $54000000 constant BCOND-FORM
 \ allocator's slots above it, both derived from the contract's own trait. A
 \ spilled value on top of the return address returns to its own data rather than
 \ to its caller, and this case is what would find that.
+\ WHY NO LITERAL REPEATS IN THE ENTRY BLOCK. What this case pins is the frame
+\ layout - one spilled value sitting above the link slot - so its body has to
+\ need exactly one spill for a reason that is about REGISTERS, not about how many
+\ times a number is written. The body used to open `a 1 + a 2 + a 3 + a 4 +` and
+\ then guard with `1 a <`, which put the literal 1 in this block twice; block-
+\ local literal CSE (src/compiler/native/elaborate.f EMIT-LIT) collapses such a
+\ pair into one value whose live range then spans the whole add chain, and in a
+\ frame this deliberately starved that turns one spilled value into two. The pin
+\ would have had to move to admit it, which would have thrown away the very fact
+\ it exists to hold. So the literals in this block are distinct instead: 5, 2, 3,
+\ 4 and the guard's 1 are five different numbers, no memo can fold any two of
+\ them, and the case's pressure character is the same whether the CSE runs or
+\ not. The `1` in `a 1-` is in the THEN block and the memo is block-local, so it
+\ is not a repeat of the guard's.
 : SRC13 ( -- ptr u8 n )
-   s" : NCH-RSPILL ( n -- n ) {: a:n :} a 1 + a 2 + a 3 + a 4 + + + + 1 a < if a 1- RECURSE + then ;" ;
+   s" : NCH-RSPILL ( n -- n ) {: a:n :} a 5 + a 2 + a 3 + a 4 + + + + 1 a < if a 1- RECURSE + then ;" ;
 
 1 constant RSPILL-SLOTS              \ one slot above the link slot
 4 constant RSPILL-REGS               \ fewer than the definition above needs
@@ -828,7 +842,7 @@ $54000000 constant BCOND-FORM
    s" a definition that calls itself and does not fit spills above the link slot"
    T-LABEL
    NFIX:BINDING [: RSPILL-BODY ;] IR-CTX:WITH-CONTEXT
-   54 T= 54 T= 14 T= 1 T= ;
+   66 T= 66 T= 18 T= 1 T= ;
 
 \ ---- the two comparisons that must NOT fuse ----------------------------------
 \ Fusing a comparison into the branch below it is only legal when the branch is
