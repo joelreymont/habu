@@ -486,8 +486,18 @@ variable TFX-CUR              \ private bucket-walk cursor
 
 \ TFX-RETIRE ( n -- ) : pop rows [newn, TFAM-N) before TFAM-N rewinds to newn.
 \ Newest first, so each popped row is at its bucket head.
+\
+\ AND IT REFUSES TO RUN AFTER THE COUNTER HAS ALREADY REWOUND. Rows in
+\ [TFAM-N, TFX-HI) are chained under ids the store no longer holds, which can
+\ only mean somebody rewound TFAM-N without retiring first. Retiring then is
+\ worse than useless: the loop pops nothing, and the stamp below tells the index
+\ it is current, which erases the one signal TFX-ENSURE has for rebuilding a
+\ store that shrank under it. The chained row survives every later lookup until
+\ one walks it and TF-REC@ dies on an id past the end. Dying here instead names
+\ the caller that broke the order.
 : TFX-RETIRE ( n -- ) {: newn:n :}
    TFX-READY @ 0= IF EXIT THEN
+   TFX-HI @ TFAM-N @ > IF s" tfam: tail index retired after its rows went" 76 die THEN
    TFAM-N @ 1 -
    BEGIN dup newn >= WHILE
       dup TFX-POP
@@ -752,9 +762,13 @@ variable SVX-I
    SVX-SYNC
    SVX-GEN @ HIDX-GEN @ <> IF SVX-BUILD THEN ;
 
-\ SVX-TRUNCATE ( n -- ) : called before SUMV-N rewinds to `newn`.
+\ SVX-TRUNCATE ( n -- ) : called before SUMV-N rewinds to `newn`. It refuses to
+\ run after the fact for the reason TFX-RETIRE gives: SVX-HI above SUMV-N means
+\ the store already shrank under the index, and stamping SVX-HI down then would
+\ throw away the rewind SVX-SYNC exists to catch.
 : SVX-TRUNCATE ( n -- ) {: newn:n :}
    SVX-GEN @ HIDX-GEN @ <> IF EXIT THEN
+   SVX-HI @ SUMV-N @ > IF s" tfam: ctor index retired after its rows went" 76 die THEN
    newn SVX-I !
    BEGIN SVX-I @ SUMV-N @ < WHILE
       SVX-I @ SUMV-CTOR-SYM@ {: sym:n :}
@@ -2055,6 +2069,40 @@ variable LAY-N   0 LAY-N !   REG-PROTECT
 TFAM-RESET
 
 \ ---------------------------------------------------------------------------
+\ THE registry rewind. Every caller that puts the family and variant stores back
+\ to an earlier mark goes through here, and there is nowhere else that writes
+\ those counters down.
+\
+\ WHY IT IS ONE WORD AND NOT FIVE STORES AT EACH CALL SITE. Two of these stores
+\ are read through an index — TFAM-FIND-IN through the tail index, and
+\ SUMV-FROM-CTOR-SYM through the constructor-symbol index — and an index chains
+\ rows by id. A row whose id has gone out of range but is still chained is found
+\ by the next lookup, which then reads a record past the end of the store and
+\ dies. So the rows must be unchained BEFORE the counters move, and that
+\ ordering is a property of the registry, not of whoever is rolling back.
+\
+\ The declaration layer used to write these counters itself (src/core/sumtype.f,
+\ TDECL-RESTORE) and skipped both retirements. What made that so hard to see is
+\ that it did not merely leave the index stale — the OUTER restore then ran its
+\ retirement against a counter that had already rewound, so the loops popped
+\ nothing and the stamps declared the index current. The rewind signal the two
+\ ENSURE paths rely on was erased, the chained rows became permanent, and the
+\ first lookup of that tail died 76 in TF-REC@. Every watermark assertion passed
+\ the whole time, because the watermarks were right; only the indexes were not.
+\
+\ WHAT THIS DOES NOT OWN. Product-field rows (PF-*) and schema nodes (SCH-*) are
+\ other participants with their own frames; a caller that also owns those rewinds
+\ them itself, after this.
+: TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
+   tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
+   sumvn SVX-TRUNCATE                    \ and the constructor heads those rows own
+   tfamn TFAM-N !
+   stru TF-STR-U !
+   pkn TF-PK-N !
+   sumvn SUMV-N !
+   layn LAY-N ! ;
+
+\ ---------------------------------------------------------------------------
 \ rollback frame stack (TFAM half of the checker's transactional rollback).
 \ Each checker scope/candidate saves the family/variant/field/layout registry
 \ high-water marks plus the string-pool and param-kind pool ends; rejecting a
@@ -2152,16 +2200,11 @@ package CHECKER-DECL-FRAME
 : TF-RESTORE-TOP ( ptr a -- )
    TF-RELEASE
    {: r:ptr :}
-   r TFRB.TFAMN @ TFX-RETIRE             \ unchain the rows before their ids go out of range
-   r TFRB.TFAMN @ TFAM-N !
-   r TFRB.STRU @ TF-STR-U !
-   r TFRB.PKN @ TF-PK-N !
-   r TFRB.SUMVN @ SVX-TRUNCATE           \ retire the constructor heads the rows own
-   r TFRB.SUMVN @ SUMV-N !
+   r TFRB.TFAMN @  r TFRB.STRU @  r TFRB.PKN @  r TFRB.SUMVN @  r TFRB.LAYN @
+   TFAM-REWIND                        \ retires the two indexes, then moves the counters
    r TFRB.PFN @ PF-N @ PF-SCRUB       \ scrub product-field rows this rejected declaration retires
    r TFRB.PFN @ PF-N !
-   r TFRB.PFCOMMITN @ PF-COMMIT-N !
-   r TFRB.LAYN @ LAY-N ! ;
+   r TFRB.PFCOMMITN @ PF-COMMIT-N ! ;
 
 : TF-RESTORE ( -- )
    TF-RBF-TOP PF-DEPTH=

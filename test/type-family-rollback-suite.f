@@ -58,6 +58,16 @@ TRUSTED: TWX-SCHEMA-C@ ( n -- n ) SCHEMA-C@ ;
 TRUSTED: TWX-LAY-N@ ( -- n ) LAY-N@ ;
 TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
 
+\ The constructor-symbol half of the registry rewind, and the cells the case
+\ below carries its ids in. Package-owned because they are new module words.
+package RB-SVX
+public
+variable SYM   variable FAM   variable VID   variable GOT
+TRUSTED: CTOR-SYM! ( n n -- ) SUMV-CTOR-SYM! ;
+TRUSTED: FROM-CTOR-SYM ( n -- n bool ) SUMV-FROM-CTOR-SYM ;
+TRUSTED: RECORD-SYM ( ptr u8 n -- n ) CHECKER-RECORD-SYM ;
+;package
+
 package RB-FIELD
 public
 TRUSTED: OPEN ( -- n ) TYPE-FIELD-OWNER:OPEN ;
@@ -351,6 +361,36 @@ QD-QA @ TWX-SCHEMA-A@ -1 T=               \ explicit clause canonicalizes hasr t
 TWX-SCHEMA-RESET  QD-BUILD QD-QB !
 QD-QB @ QD-QA @ T=                        \ same node id from the same baseline
 QD-CMP                                     \ byte-identical node arena + root pool
+
+\ ---------------------------------------------------------------------------
+\ N. The CONSTRUCTOR-SYMBOL index retires with the variant rows it points at.
+\
+\ SUMV-FROM-CTOR-SYM runs on every resolved call token and answers from a
+\ per-symbol head, so a head left pointing at a variant the store has rewound
+\ past answers with a row that is no longer there. The head is cleared by the
+\ registry's own rewind, on the same call that moves the counters, and this is
+\ the case that says so: a variant carrying a real constructor symbol is added
+\ inside a candidate, the symbol resolves to it, the candidate is rejected, and
+\ the symbol must stop resolving.
+\
+\ WHY THE MARK IS NOT THE EVIDENCE HERE, unlike the tail index. SVX-HI is
+\ stamped when the index is BUILT, so a variant added after that build raises no
+\ mark to rewind, and a rollback that cleared nothing would leave SVX-HI exactly
+\ where a correct one does. What only the correct one does is forget the symbol.
+\ ---------------------------------------------------------------------------
+TFAM-N@ P-TFAM !   SUMV-N@ P-SUMV !
+s" RBSVX-MAKE" RB-SVX:RECORD-SYM RB-SVX:SYM !
+TWX-CAND-START
+   s" rbsvx" CHECKER-PACKAGE-PUBLIC s" holder" 0 TK-SUM TWX-TFAM-DECL RB-SVX:FAM !
+   RB-SVX:FAM @ s" only" 0 0 0 0 TWX-SUMV-ADD RB-SVX:VID !
+   RB-SVX:VID @ RB-SVX:SYM @ RB-SVX:CTOR-SYM!
+   RB-SVX:SYM @ RB-SVX:FROM-CTOR-SYM FOUNDF ! RB-SVX:GOT !
+   FOUNDF @ -1 T=                                    \ the symbol resolves inside
+   RB-SVX:GOT @ RB-SVX:VID @ T=                                \ ... to the variant that owns it
+0 TWX-CAND-DONE drop
+SUMV-N@ P-SUMV @ T=                                  \ the variant row is gone
+RB-SVX:SYM @ RB-SVX:FROM-CTOR-SYM FOUNDF ! drop
+FOUNDF @ 0 T=                                        \ and so is the head that named it
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

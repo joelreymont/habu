@@ -161,6 +161,16 @@ TRUSTED: TWX-TFAM-SCH-ARITY ( n n -- n ) TFAM-SCH-ARITY ;
    a u TDT-EVAL-CATCH code T=
    TDT-BASE= ;
 
+\ The two registry index marks, read straight after a rejected declaration and
+\ before anything can rebuild them. Package-owned because they are new module
+\ words; the whitebox reach into the checker's internals is the TWX- shim rule
+\ this file already follows.
+package TDIDX
+public
+TRUSTED: TFX-HI@ ( -- n ) TFX-HI @ ;
+TRUSTED: SVX-HI@ ( -- n ) SVX-HI @ ;
+;package
+
 variable TDF    variable TDOK   variable TDV0
 variable TDX    variable TDY    variable TDTC
 
@@ -1183,9 +1193,30 @@ s" TPC-OWN-PRIVATE ( tier<n> -- MEM:tier<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" NEWTYPE span 6" E-TFAM-DUP TDT-NEG
 \ This failure creates a family and one variant before the duplicate variant
 \ rejects; the declaration transaction must retire every provisional row.
+\
+\ THE MARKS ARE READ BEFORE ANY LOOKUP, and that is the point of these two
+\ lines rather than an ornament on them. Both registry indexes rebuild
+\ themselves when they notice the store rewound under them, so a find that
+\ answers correctly proves the REBUILD and says nothing about the retirement.
+\ What the retirement leaves behind is the mark, so the mark is what is read,
+\ and it is read while the store is still exactly as the rejected declaration
+\ left it. When src/core/sumtype.f rewound the counters itself, TFX-HI came
+\ back equal to TFAM-N here — the outer restore's retirement had run against an
+\ already-rewound counter, retired nothing, and stamped the index current — and
+\ the next line died 76 `tfam: bad family id` walking a bucket that still
+\ chained the retired row.
 s" SUMTYPE rolled-span 6 VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
+TDIDX:TFX-HI@ TFAM-N@ <= TDOK ! TDOK @ -1 T=
+TDIDX:SVX-HI@ SUMV-N@ <= TDOK ! TDOK @ -1 T=
 s" mem" s" rolled-span" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
+\ And the tail is free again: the same name declares cleanly afterwards, which
+\ is the half a stranded index row breaks in the OTHER direction - the bucket
+\ walk reaches a row the store no longer holds.
+SUMTYPE rolled-span 6 VARIANT ok a ;VARIANT VARIANT other b ;VARIANT ;SUMTYPE
+s" mem" s" rolled-span" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TWX-TFAM-SUM? TDOK ! TDOK @ -1 T=
 ;package
 
 package OTHER

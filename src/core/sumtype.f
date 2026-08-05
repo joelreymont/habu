@@ -51,9 +51,24 @@ variable TDECL-CUR-FAM              \ family id being declared (-1 outside a bod
    wa wu TDECL-WHY!
    code throw ;
 
-\ --- transactional mark/restore over every store a declaration can grow. The
-\ registries retire by counter (linear scans, interned offsets), so restoring
-\ the high-water marks fully removes a failed declaration's rows.
+\ --- transactional mark/restore over every store a declaration can grow.
+\
+\ THE FAMILY AND VARIANT STORES ARE PUT BACK BY THE REGISTRY, NOT HERE. Most of
+\ these registries retire by counter — the lookups are linear scans over [0, N)
+\ and names intern fresh at the restored pool end — but the family store and the
+\ variant store are each read through an index that chains rows by id, and a
+\ chained row whose id has gone out of range kills the next lookup that walks it.
+\ Unchaining has to happen before the counters move, so TFAM-REWIND
+\ (src/core/type-family.f) owns that order and this layer asks for it.
+\
+\ This file used to write those counters itself, and the bug it caused is the
+\ reason the rule is now stated in one place: a SUMTYPE that registered its
+\ family and then rejected on a duplicate variant left the family chained in the
+\ tail index under an id past the end of the store, and the very next lookup of
+\ that tail died 76 `tfam: bad family id`. The high-water marks were all exactly
+\ right, which is why the suite's own base-state assertions passed either way.
+\
+\ The schema store is not the registry's, so its two marks are restored here.
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
 variable TDM-SUMV   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
@@ -70,8 +85,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    SUMV-N @ TDM-SUMV !   LAY-N @ TDM-LAY !
    SCH-N @ TDM-SCH !     SCH-ROOT-N @ TDM-ROOT ! ;
 : TDECL-RESTORE ( -- )
-   TDM-TFAM @ TFAM-N !   TDM-STR @ TF-STR-U !   TDM-PK @ TF-PK-N !
-   TDM-SUMV @ SUMV-N !   TDM-LAY @ LAY-N !
+   TDM-TFAM @  TDM-STR @  TDM-PK @  TDM-SUMV @  TDM-LAY @  TFAM-REWIND
    TDM-SCH @ SCH-N !     TDM-ROOT @ SCH-ROOT-N ! ;
 
 : TDECL-REPORT ( -- )

@@ -1963,10 +1963,56 @@ variable NEU-THROW-PKG-RC
    NEU-PKG-RESTORED NEU-THROW-PKG-RC !
    RESET ;
 
+\ --- a rejected declaration must not poison the tail it half-registered ---
+\
+\ The registry reads families through an index that chains rows by id, so a row
+\ left chained after its id goes out of range is found by the next lookup of
+\ that tail, which then reads a record past the end of the store. The
+\ declaration layer used to rewind the family and variant counters itself, and
+\ the retirement the outer restore ran afterwards was a no-op that told the
+\ index it was current, so the row stayed chained for the rest of the process.
+\
+\ The shape below is the one that showed it. The first source declares a sum,
+\ registers the family, and then rejects on a duplicate variant name: a clean
+\ reject, exit 70. The SECOND source declares the same tail correctly. Before
+\ the fix that second run died 76 `tfam: bad family id` — not a checker verdict
+\ at all, a hard exit out of the registry — because the duplicate-detection
+\ lookup at the head of TFAM-DECL walked the bucket the first run left behind.
+\
+\ Both runs go through CHECK:RUN, which is what the command line runs. A test
+\ that called TFAM-DECL directly would prove the registry and miss the seam the
+\ two runs share, which is where the state survived from one to the other.
+: POISON-BAD-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" SUMTYPE cktpois 1 VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
+   SB$ ;
+
+: POISON-GOOD-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" SUMTYPE cktpois 1 VARIANT one a ;VARIANT VARIANT two a ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-POIS-USE ( cktpois<i64> -- cktpois<i64> ) ;" SB-APPEND
+   SB$ ;
+
+variable POISON-BAD-RC
+variable POISON-GOOD-RC
+
+: POISON-RECORD ( -- )
+   POISON-BAD-SRC$ NEU-RUN POISON-BAD-RC !
+   POISON-GOOD-SRC$ NEU-RUN POISON-GOOD-RC !
+   RESET ;
+
 PREPARE
 NEU-RECORD
+POISON-RECORD
 
 ;using
+
+\ The rejected declaration is a verdict (70) and the valid one that reuses its
+\ tail is a clean run (0). A 76 in either slot is the registry dying, not the
+\ checker answering.
+: TEST-DECL-REJECT-FREES-TAIL ( -- )
+   POISON-BAD-RC @ 70 T=
+   POISON-GOOD-RC @ 0 T= ;
 
 : TEST-NEUTRAL-SCOPE ( -- )
    NEU-FAMILY-RC @ 0 T=
@@ -1978,6 +2024,7 @@ NEU-RECORD
 : TEST-MAIN ( -- )
    T-RESET
    s" check/package-caller-neutral" [: TEST-NEUTRAL-SCOPE ;] CASE-RUN
+   s" check/decl-reject-frees-tail" [: TEST-DECL-REJECT-FREES-TAIL ;] CASE-RUN
    s" check/public-api" [: TEST-CHECK-PUBLIC ;] CASE-RUN
    s" check/test-public-api" [: TEST-CHECK-TEST-PUBLIC ;] CASE-RUN
    s" check/retired-globals" [: TEST-RETIRED-GLOBALS ;] CASE-RUN
