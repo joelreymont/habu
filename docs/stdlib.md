@@ -724,16 +724,17 @@ storage, and full-table states throw named errors such as `E-MAP-BAD-CAP` and
 
 ## Memory
 
-`lib/memory.f` provides checked OS-backed byte buffers for large composed tools.
+`lib/memory.f` provides checked OS-backed typed storage for large composed tools.
 Use this module when a tool needs source bundles, JSONL streams, report tables,
 or many 64K scratch buffers. Do not split tools merely to avoid DATA pressure:
 `create ... allot` is for dictionary-sized static storage, while `MEM-*`
 allocation is for runtime-sized storage backed by anonymous `mmap`.
 
 The raw `mmap` primitive remains a boundary because it can return `-1`. The
-published allocation words validate sizes, convert successful mappings to typed
-`ptr u8` storage through the audited internal `MEM-ALLOC-PTR` boundary, and
-throw `E-MEM-SIZE` or `E-MEM-MAP` on failure.
+published allocation words validate sizes and refine successful mappings through
+the audited polymorphic `MEM-ALLOC-PTR ( n -- ptr a )` boundary. Byte allocators
+instantiate `a` as `u8`; cell-count allocators preserve the caller-selected
+pointee type. Allocation throws `E-MEM-SIZE` or `E-MEM-MAP` on failure.
 
 ```forth
 MEM-CHECK-SIZE        ( n -- )
@@ -751,15 +752,20 @@ MEM-ALLOC-64K-SPAN    ( n -- ptr u8 n )
 MEM-ALLOC-64K         ( -- ptr u8 n )
 
 MEM:ALLOC-BYTES       ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len )
-MEM:RELEASE-BYTES     ( ptr u8 CAD-NUM:alloc-byte-len -- )
-MEM:UNMAP             ( ptr u8 CAD-NUM:byte-len -- )
+MEM:ALLOC-CELLS       ( CAD-NUM:alloc-cell-count -- ptr a )
+MEM:RELEASE-BYTES     ( ptr a CAD-NUM:alloc-byte-len -- )
+MEM:UNMAP             ( ptr a CAD-NUM:byte-len -- )
 MEM:WITH-BYTES        ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
 ```
 
-`MEM:RELEASE-BYTES` consumes the exact extent returned by `MEM:ALLOC-BYTES`.
-`MEM:UNMAP` releases a validated mapped byte range without fabricating an
-allocation extent. Both use one private `munmap` sink; kernel refusal writes
-`memory: unmap failed` to standard error and exits 71, bypassing `catch`.
+`ptr a` admits concrete instantiations such as `ptr u8`, `ptr bool`, and
+`ptr ptr u8`; a raw `n` address is not a pointer instantiation.
+`MEM:RELEASE-BYTES` consumes a typed mapping pointer with its exact validated
+allocation extent. `MEM:UNMAP` releases a typed pointer over a validated mapped
+byte range without fabricating an allocation extent. The checker models the
+shared primitive as `munmap ( ptr a n -- n )`: pointee type is irrelevant to the
+kernel call, while the public words retain distinct length roles. Kernel refusal
+writes `memory: unmap failed` to standard error and exits 71, bypassing `catch`.
 `MEM:WITH-BYTES` releases after normal return or a body throw, restores its
 outer frame after successful release, then rethrows the body code.
 
@@ -767,7 +773,9 @@ outer frame after successful release, then rethrows the body code.
 mappings that use the raw `mmap` primitive directly.
 
 `MEM-ALLOC-CELLS` validates a positive checked `count`, computes the byte size
-with overflow bounded by `MEM-MAX-N`, and returns a typed cell span. Use it for
+with overflow bounded by `MEM-MAX-N`, and returns the mapping base at the
+caller-selected pointer type. Reusing one result preserves that single pointee
+type; it cannot simultaneously satisfy incompatible pointer types. Use it for
 tables or vectors that store normal cells; use `ptr-field` when the table handle
 itself is stored in another cell.
 

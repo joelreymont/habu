@@ -51,9 +51,9 @@ $1002 constant MEM-MAP-PRIVATE-ANON
    bytes MEM-CHECK-SIZE
    MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap ;
 
-\ Refines a validated successful mmap result to a byte pointer; syscall-result
+\ Refines a validated successful mmap result to a polymorphic pointer; syscall-result
 \ refinement is not expressible. Retirement owner: habu-typed-defining-words-aa224eb5.
-TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
+TRUSTED: MEM-ALLOC-PTR ( n -- ptr a )
    MEM-MMAP-RC dup 0 < if E-MEM-MAP throw then ;
 
 : MEM-ALLOC-BYTES ( n -- ptr u8 n ) {: bytes :}
@@ -171,7 +171,7 @@ TRUSTED: BYTE-LEN>N ( CAD-NUM:byte-len -- n ) ;
 
 $47 constant UNMAP-EXIT
 
-: RELEASE-RANGE ( ptr u8 n -- )
+: RELEASE-RANGE ( ptr a n -- )
    munmap 0 < if
       s" memory: unmap failed" UNMAP-EXIT die
    then ;
@@ -202,10 +202,10 @@ public
    64K-ALLOC-LEN ALLOC-BYTES ;
 
 \ ---- release: return an ALLOC-BYTES mapping to the OS ---------------------------
-: RELEASE-BYTES ( ptr u8 CAD-NUM:alloc-byte-len -- )
+: RELEASE-BYTES ( ptr a CAD-NUM:alloc-byte-len -- )
    ALLOC-BYTES>N RELEASE-RANGE ;
 
-: UNMAP ( ptr u8 CAD-NUM:byte-len -- )
+: UNMAP ( ptr a CAD-NUM:byte-len -- )
    BYTE-LEN>N RELEASE-RANGE ;
 
 \ ---- caller-facing size narrowing: raw n -> validated alloc role --------------

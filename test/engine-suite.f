@@ -1604,6 +1604,13 @@ VALUE-RECORD tfam6r-vr q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
 : T-BIG6VR> ( tfam6r-vr -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6VR-ID ( tfam6r-vr -- tfam6r-vr )" T-CHECK-PASSES
 s" COK-BIG6VR-ROUNDTRIP ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) T->BIG6VR T-BIG6VR>" T-CHECK-PASSES
+\ A record input exempts only output roots actually carried by its FIELD-INNER.
+s" free cell mint rejects" T-LABEL
+s" NP-MINT-DIRECT ( -- pcell<a> ) T-V14 2drop 2drop 2drop 2drop 2drop 2drop drop" CHECK! 0 T=
+s" unrelated record cannot authorize a cell mint" T-LABEL
+s" NP-MINT-UNRELATED ( point -- pcell<a> ) 2drop T-V14 2drop 2drop 2drop 2drop 2drop 2drop drop" CHECK! 0 T=
+s" real field accessor stays accepted" T-LABEL
+s" NP-MINT-FIELD ( tfam6r-vr -- tfam6r-big<a,b,c,d,e,f> )" CHECK! -1 T=
 \ Value-record with a quotation-family (SC-QUOT) field type: VREC-COPY persists the
 \ field's T-QUOT arg subtree (VR-QUOT node) and VREC-INST reads it back on roundtrip.
 VALUE-RECORD scq-vr q scq-fam<[ n -- n ],f32> END-VALUE-RECORD
