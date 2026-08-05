@@ -61,7 +61,7 @@ create SEG-SCRATCH  SEG-TT 4 * cells allot \ sb | ab | dab | dsb
 : SEG-1/SQRT ( n -- r ) {: d:n :}  1.0 d s>f fsqrt f/ ;   \ 1/sqrt(d) attention scale
 
 \ one block's scaled + (causal) softmaxed scores A into SEG-AB (T x T)
-: SEG-ATTN! ( ptr a ptr a n n bool -- ) {: qb:ptr kb:ptr t:n d:n causal:bool :}
+: SEG-ATTN! ( ptr r ptr r n n bool -- ) {: qb:ptr kb:ptr t:n d:n causal:bool :}
    qb kb SEG-SB  t t d  MM-NT
    SEG-SB  t t *  d SEG-1/SQRT  ATTN-SCALE!
    causal if SEG-SB SEG-AB t CAUSAL-SOFTMAX-ROWS
@@ -71,7 +71,7 @@ public
 
 \ O = segment attention over rows = B*T, block width T, head dim d. Each block
 \ [b*T,b*T+T) is an independent single-block attention; nothing crosses a boundary.
-: SEG-ATTN-FWD ( ptr a ptr a ptr a ptr a n n n bool -- )
+: SEG-ATTN-FWD ( ptr r ptr r ptr r ptr r n n n bool -- )
    {: qb:ptr kb:ptr vb:ptr ob:ptr rows:n t:n d:n causal:bool :}
    rows t SEG-GUARD
    rows t / 0 ?do
@@ -85,7 +85,7 @@ private
 \ one block's VJP: recompute A, then dV=A^T.dO, dA=dO.V^T, dS=softmax-jvp(dA,A) (causal
 \ when masked), dS/sqrt(d), dQ=dS.K, dK=dS^T.Q. Mirrors attention.f ATTN-BWD block by
 \ block; masked positions carry zero cotangent structurally via CAUSAL-SMBWD-ROWS.
-: SEG-BWD! ( ptr a ptr a ptr a ptr a  ptr a ptr a ptr a  n n bool -- )
+: SEG-BWD! ( ptr r ptr r ptr r ptr r  ptr r ptr r ptr r  n n bool -- )
    {: qb:ptr kb:ptr vb:ptr dob:ptr  dqb:ptr dkb:ptr dvb:ptr  t:n d:n causal:bool :}
    qb kb t d causal  SEG-ATTN!                       \ recompute A into SEG-AB
    SEG-AB dob dvb  t t d  MM-TN                        \ dV = A^T . dO
@@ -100,7 +100,7 @@ public
 
 \ VJP of SEG-ATTN-FWD. gb is the combined gradient buffer 3*rows x d holding
 \ [dQ ; dK ; dV] as three row regions, so the IR backward slices one grad per input.
-: SEG-ATTN-BWD ( ptr a ptr a ptr a ptr a  ptr a  n n n bool -- )
+: SEG-ATTN-BWD ( ptr r ptr r ptr r ptr r  ptr r  n n n bool -- )
    {: qb:ptr kb:ptr vb:ptr dob:ptr  gb:ptr  rows:n t:n d:n causal:bool :}
    rows t SEG-GUARD
    gb                {: dqreg:ptr :}

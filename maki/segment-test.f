@@ -41,7 +41,7 @@ create SGT-DAB SGT-TT cells allot  create SGT-DSB SGT-TT cells allot    \ dA / d
 
 \ ---- helpers ----------------------------------------------------------------
 \ exact bit-for-bit element compare (equivalence + cross-sequence invariance)
-: SGT-EQ? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}
+: SGT-EQ? ( ptr r ptr r n -- bool ) {: a:ptr b:ptr n:n :}
    n 0 ?do  a i T-GET b i T-GET f= 0= if false unloop exit then  loop  true ;
 
 : SGT-BLK ( ptr a n -- ptr a )  SGT-BD * T-AT ;    \ block n of a (B*T x d) buffer
@@ -49,7 +49,7 @@ create SGT-DAB SGT-TT cells allot  create SGT-DSB SGT-TT cells allot    \ dA / d
 : SGT-VREG ( ptr a -- ptr a )  SGT-RC 2 * T-AT ;   \ dV region (dQ region is offset 0)
 
 \ deterministic varied positive fill (distinct per buffer via the seed)
-: SGT-FILL ( ptr a n -- ) {: p:ptr seed:n :}
+: SGT-FILL ( ptr r n -- ) {: p:ptr seed:n :}
    SGT-RC 0 ?do  i seed + 7 * 11 mod s>f 0.1 f* 0.15 f+  p i T-SET  loop ;
 
 : SGT-FILL-INPUTS ( -- )
@@ -57,7 +57,7 @@ create SGT-DAB SGT-TT cells allot  create SGT-DSB SGT-TT cells allot    \ dA / d
 
 \ one block's single-block causal reference, composed from the checked primitives
 \ (the causal analogue of ATTN-FWD, swapping CAUSAL-SOFTMAX-ROWS for the plain softmax)
-: SGT-CREF ( ptr a ptr a ptr a ptr a -- ) {: q:ptr k:ptr v:ptr o:ptr :}
+: SGT-CREF ( ptr r ptr r ptr r ptr r -- ) {: q:ptr k:ptr v:ptr o:ptr :}
    q k SGT-SB  SGT-T SGT-T SGT-D  MM-NT
    SGT-SB  SGT-T SGT-T *  SGT-D SEG-1/SQRT  ATTN-SCALE!
    SGT-SB SGT-AB SGT-T  CAUSAL-SOFTMAX-ROWS
