@@ -182,6 +182,10 @@ fits.
 
 ## Checker Soundness
 
+- **Quotation shape is not binder provenance.** Stamp only implicit rows minted
+  by the signature parser; during scheme matching, alpha-rename a stamped row
+  only when its alias class belongs solely to the consumed quotation and no
+  named signature row or retained checker root shares it.
 - **Deleting a word does not retire it; only an always-reject token row does.**
   Removing a name from the dictionary makes `CHECK` answer 1 (uncheckable), not
   0 (rejected), because an unknown token is simply unmodelled — and any later

@@ -79,6 +79,8 @@ create VRC-TV-BOOT MAXTV-INIT cells allot    create VRC-RV-BOOT MAXTV-INIT cells
 create VRI-TV-BOOT MAXTV-INIT cells allot     create VRI-RV-BOOT MAXTV-INIT cells allot
 create EC-TV-BOOT MAXTV-INIT cells allot      create EC-RV-BOOT MAXTV-INIT cells allot
 create EI-TV-BOOT MAXTV-INIT cells allot      create EI-RV-BOOT MAXTV-INIT cells allot
+create IS-RMETA-BOOT MAXTV-INIT cells allot
+create IS-TOUCH-BOOT MAXTV-INIT cells allot
 \ TVK: per-type-variable KIND. FRESH gives type and row vars one global id
 \ space, but row ids remain TVK-ANY and are never kind-constrained.
 \ 0 = TVK-ANY (an ordinary polymorphic var); bit 0 = TVK-RAW (a var minted by a raw
@@ -91,7 +93,7 @@ create TVK-BOOT MAXTV-INIT cells allot
 variable TVT-P     variable RVT-P
 variable VRC-TV-P  variable VRC-RV-P   variable VRI-TV-P  variable VRI-RV-P
 variable EC-TV-P   variable EC-RV-P    variable EI-TV-P   variable EI-RV-P
-variable TVK-P
+variable IS-RMETA-P   variable IS-TOUCH-P   variable TVK-P
 
 : TV-ARENA-BOOT ( -- )         \ point every var-id store at its boot buffer
    TVT-BOOT TVT-P !            RVT-BOOT RVT-P !
@@ -99,6 +101,8 @@ variable TVK-P
    VRI-TV-BOOT VRI-TV-P !      VRI-RV-BOOT VRI-RV-P !
    EC-TV-BOOT EC-TV-P !        EC-RV-BOOT EC-RV-P !
    EI-TV-BOOT EI-TV-P !        EI-RV-BOOT EI-RV-P !
+   IS-RMETA-BOOT IS-RMETA-P !
+   IS-TOUCH-BOOT IS-TOUCH-P !
    TVK-BOOT TVK-P ! ;
 TV-ARENA-BOOT
 
@@ -108,6 +112,8 @@ TV-ARENA-BOOT
 : VRI-TV ( -- ptr a ) VRI-TV-P @ ;   : VRI-RV ( -- ptr a ) VRI-RV-P @ ;
 : EC-TV ( -- ptr a ) EC-TV-P @ ;     : EC-RV ( -- ptr a ) EC-RV-P @ ;
 : EI-TV ( -- ptr a ) EI-TV-P @ ;     : EI-RV ( -- ptr a ) EI-RV-P @ ;
+: IS-RMETA ( -- ptr a ) IS-RMETA-P @ ;
+: IS-TOUCH ( -- ptr a ) IS-TOUCH-P @ ;
 
 : TV-GROW-ONE ( ptr ptr a n n -- ) {: pv:ptr oc:n nc:n :}   \ pv holds base; grow to nc cells
    nc cells ARENA-ALLOC {: nb:ptr :}
@@ -131,6 +137,8 @@ TV-ARENA-BOOT
    VRI-TV-P oc nc TV-GROW-ONE    VRI-RV-P oc nc TV-GROW-ONE
    EC-TV-P oc nc TV-GROW-ONE     EC-RV-P oc nc TV-GROW-ONE
    EI-TV-P oc nc TV-GROW-ONE     EI-RV-P oc nc TV-GROW-ONE
+   IS-RMETA-P oc nc TVK-GROW-ONE
+   IS-TOUCH-P oc nc TVK-GROW-ONE
    TVK-P oc nc TVK-GROW-ONE
    nc TV-CAP ! ;
 
@@ -138,10 +146,33 @@ TV-ARENA-BOOT
    need TV-CAP @ <= IF exit THEN
    need TV-GROW ;
 
+\ IS-RMETA is per-`is` row-class scratch. Its lockstep touched-id array clears
+\ exactly the preceding match's cells; unique touched ids can never exceed the
+\ shared TV-CAP that bounds both arrays.
+variable IS-TOUCH-N   0 IS-TOUCH-N !
+: IS-TOUCH+ ( n -- ) {: id:n :}
+   IS-TOUCH-N @ TV-CAP @ >= IF s" checker: is row scratch full" 76 die THEN
+   id IS-TOUCH-N @ cells IS-TOUCH + !
+   IS-TOUCH-N @ 1 + IS-TOUCH-N ! ;
+: IS-META@ ( n -- n ) cells IS-RMETA + @ ;
+: IS-META! ( n n -- ) {: val:n id:n :}
+   id IS-META@ 0= IF id IS-TOUCH+ THEN
+   val id cells IS-RMETA + ! ;
+: IS-META+ ( n n -- ) {: bit:n id:n :}
+   id IS-META@ bit or id IS-META! ;
+: IS-META-CLEAR ( -- )
+   0 BEGIN dup IS-TOUCH-N @ < WHILE
+      0 over cells IS-TOUCH + @ cells IS-RMETA + !
+      1 +
+   REPEAT drop
+   0 IS-TOUCH-N ! ;
+
 : TVINIT   \ unbind every type and row var (one-time load init; NEW uses TV-RESET)
    0 BEGIN
      dup cells TVT + UNBOUND swap !
      dup cells RVT + UNBOUND swap !
+     dup cells IS-RMETA + 0 swap !
+     dup cells IS-TOUCH + 0 swap !
      dup cells TVK + 0 swap !
      1 + dup MAXTV 1 - >
    UNTIL drop ;
@@ -264,8 +295,9 @@ variable TKIND                           \ kind union along one permanent type p
 : RV@ cells RVT + @ ;
 
 : RV! ( n n -- ) dup 1 TRAIL-PUSH  cells RVT + ! ;
-256 constant MAXQE-INIT        \ quotation effects (din dout rin rout per record); grows on demand
-create QEA-BOOT MAXQE-INIT 32 * allot
+256 constant MAXQE-INIT        \ quotation effects; grows on demand
+48 constant QE-BYTES          \ din, dout, rin, rout, parser data/return bases
+create QEA-BOOT MAXQE-INIT QE-BYTES * allot
 create QXDA-BOOT MAXQE-INIT cells allot   create QXRA-BOOT MAXQE-INIT cells allot
 create QXHA-BOOT MAXQE-INIT cells allot   create QXNA-BOOT MAXQE-INIT cells allot   variable QEN
 variable QEA-P   variable QXDA-P   variable QXRA-P   variable QXHA-P   variable QXNA-P
@@ -279,7 +311,7 @@ QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
 : QE-ENSURE ( n -- ) {: need:n :}
    need QE-CAP @ <= IF exit THEN
    need QE-CAP @ 2 * max {: nc:n :}
-   QEA-P @ QE-CAP @ 32 * nc 32 * ARENA-BYTES-GROW QEA-P !
+   QEA-P @ QE-CAP @ QE-BYTES * nc QE-BYTES * ARENA-BYTES-GROW QEA-P !
    QXDA-P @ QE-CAP @ cells nc cells ARENA-BYTES-GROW QXDA-P !
    QXRA-P @ QE-CAP @ cells nc cells ARENA-BYTES-GROW QXRA-P !
    QXHA-P @ QE-CAP @ cells nc cells ARENA-BYTES-GROW QXHA-P !
@@ -288,17 +320,20 @@ QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
 
 : MK-QUOT {: din dout rin rout :}   \ ( -- t ) allocate a quot<effect> term
    QEN @ 1 + QE-ENSURE
-   QEN @ 32 * QEA + {: a :}
+   QEN @ QE-BYTES * QEA + {: a :}
    din a !  dout a 8 + !  rin a 16 + !  rout a 24 + !
+   0 a 32 + !  0 a 40 + !
    0 QEN @ cells QXHA + !
    0 QEN @ cells QXNA + !
    0 QEN @ cells QXDA + !
    0 QEN @ cells QXRA + !
    QEN @ 3 lshift T-QUOT or  QEN @ 1 + QEN ! ;
-: Q>DIN  PAY 32 * QEA + @ ;
-: Q>DOUT PAY 32 * QEA + 8 + @ ;
-: Q>RIN  PAY 32 * QEA + 16 + @ ;
-: Q>ROUT PAY 32 * QEA + 24 + @ ;
+: Q>DIN  PAY QE-BYTES * QEA + @ ;
+: Q>DOUT PAY QE-BYTES * QEA + 8 + @ ;
+: Q>RIN  PAY QE-BYTES * QEA + 16 + @ ;
+: Q>ROUT PAY QE-BYTES * QEA + 24 + @ ;
+: Q>DBASE PAY QE-BYTES * QEA + 32 + @ ;
+: Q>RBASE PAY QE-BYTES * QEA + 40 + @ ;
 : Q>XHAS PAY cells QXHA + @ ;
 : Q>XDEAD PAY cells QXNA + @ ;
 : Q>XDOUT PAY cells QXDA + @ ;
@@ -308,6 +343,9 @@ QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    xdead q PAY cells QXNA + !
    xd q PAY cells QXDA + !
    xr q PAY cells QXRA + ! ;
+: QB! ( n n n -- ) {: q:n d:n r:n :}
+   d q PAY QE-BYTES * QEA + 32 + !
+   r q PAY QE-BYTES * QEA + 40 + ! ;
 
 512 constant MAXATOM-INIT       \ atom terms (grows on demand)
 create ATOMA-BOOT MAXATOM-INIT cells allot
@@ -1320,40 +1358,92 @@ variable TWALK-D
    TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" 76 die THEN ;
 : TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
 
-\ TYPE-VAR?* ( q term-or-row any? -- bool ) : one resolved term/row variable
-\ walk. With any? false, find the encoded type or row variable q.
-\ With any? true, find any unresolved type OR row variable for closedness.
-\ Descend pointer pointees, all quotation effect rows, and family arguments.
-: TYPE-VAR?* ( n n bool -- bool ) {: q:n t:n any:bool :}
-   t R-RES dup TAG S-PUSH = IF
+1 constant IS-QOTHER
+2 constant IS-QOWN
+3 constant IS-RMARK
+
+1 constant IS-C-OWN
+2 constant IS-C-MULTI
+4 constant IS-C-OTHER
+8 constant IS-C-NAMED
+16 constant IS-C-LIVE
+32 constant IS-C-DST
+64 constant IS-C-USED
+
+variable IS-QTARGET
+variable IS-RBIT
+
+: IS-QMODE? ( n -- bool )
+   dup IS-QOTHER = swap IS-QOWN = or ;
+
+: IS-RAW-TAIL ( n -- n )
+   BEGIN dup TAG S-PUSH = WHILE P>REST REPEAT ;
+
+: IS-C-OWNER+ ( n -- ) {: id:n :}
+   id IS-META@ IS-C-OWN and IF IS-C-MULTI id IS-META+ ELSE IS-C-OWN id IS-META+ THEN ;
+
+: IS-QRAW+ ( n n -- ) {: raw:n mode:n :}
+   raw TAG S-ROW <> IF EXIT THEN
+   raw R-RES dup ISROW 0= IF drop EXIT THEN
+   PAY {: id:n :}
+   mode IS-QOWN = IF id IS-C-OWNER+ ELSE IS-C-OTHER id IS-META+ THEN ;
+
+: IS-QBASE+ ( n n n n -- ) {: in:n out:n base:n mode:n :}
+   base 0= IF EXIT THEN
+   in IS-RAW-TAIL base =
+   out IS-RAW-TAIL base = or IF base mode IS-QRAW+ THEN ;
+
+: IS-QUOT+ ( n n -- ) {: q:n mode:n :}
+   q Q>DIN q Q>DOUT q Q>DBASE mode IS-QBASE+
+   q Q>RIN q Q>ROUT q Q>RBASE mode IS-QBASE+ ;
+
+: IS-QMODE ( n n -- n ) {: q:n mode:n :}
+   mode IS-QOWN = q IS-QTARGET @ = or IF IS-QOWN ELSE IS-QOTHER THEN ;
+
+\ TYPE-VAR?* is the single term/row walker. Exact/any modes retain their old
+\ resolved query semantics. IS-QOTHER/IS-QOWN walk immutable raw signature
+\ terms and classify parser quotation binders; IS-RMARK walks resolved terms
+\ and marks each row alias class with IS-RBIT.
+: TYPE-VAR?* ( n n n -- bool ) {: q:n t:n mode:n :}
+   mode IS-QMODE? IF t ELSE t R-RES THEN
+   dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE q swap any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
-         P>REST R-RES
+         dup P>TYPE q swap mode TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST
+         mode IS-QMODE? 0= IF R-RES THEN
       REPEAT
       dup ISROW IF
-         any IF drop RES-TRUE ELSE PAY q PAY = q ISROW and THEN
+         mode IS-RMARK = IF PAY IS-RBIT @ swap IS-META+ RES-FALSE ELSE
+         mode IS-QMODE? IF drop RES-FALSE ELSE
+         mode IF drop RES-TRUE ELSE PAY q PAY = q ISROW and THEN THEN THEN
       ELSE drop RES-FALSE THEN
       EXIT
    THEN
    dup ISROW IF
-      any IF drop RES-TRUE ELSE PAY q PAY = q ISROW and THEN
+      mode IS-RMARK = IF PAY IS-RBIT @ swap IS-META+ RES-FALSE ELSE
+      mode IS-QMODE? IF drop RES-FALSE ELSE
+      mode IF drop RES-TRUE ELSE PAY q PAY = q ISROW and THEN THEN THEN
       EXIT
    THEN
    drop
-   t T-RES {: x:n :}
-   x TAG T-VAR = IF any IF RES-TRUE ELSE x PAY q PAY = q ISVAR and THEN EXIT THEN
-   x TAG T-PTR = IF q x PTR>INNER any TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   mode IS-QMODE? IF t ELSE t T-RES THEN {: x:n :}
+   x TAG T-VAR = IF
+      mode IS-RMARK = mode IS-QMODE? or IF RES-FALSE ELSE
+      mode IF RES-TRUE ELSE x PAY q PAY = q ISVAR and THEN THEN EXIT
+   THEN
+   x TAG T-PTR = IF q x PTR>INNER mode TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
-      q x Q>DIN any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      q x Q>DOUT any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      q x Q>RIN any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      q x Q>ROUT any TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      mode IS-QMODE? IF x mode IS-QMODE dup x swap IS-QUOT+ ELSE mode THEN {: child:n :}
+      q x Q>DIN child TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      q x Q>DOUT child TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      q x Q>RIN child TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      q x Q>ROUT child TWALK-DEEPER RECURSE TWALK-SHALLOWER
       EXIT
    THEN
    x TAG T-PARAM = IF
       0 BEGIN dup x PARAM>ARGC < WHILE       \ data-stack index (RECURSE-safe)
          x over PARAM>ARG                    \ ( i arg )
-         q swap any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         q swap mode TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
       RES-FALSE EXIT
@@ -1904,7 +1994,7 @@ variable DEADERR  variable DEADTA  variable DEADTU
    NONLIN-TYPE! 0= IF 0 OK ! THEN ;
 
 : NEW ( -- )
-   -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
+   -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! IS-META-CLEAR TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
    0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
    TRAIL-RESET   0 TRIAL-DEPTH !
    RIGID-RESET
@@ -3191,31 +3281,7 @@ create ROWMAP 26 cells allot
      NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN        \ ( row a u )->PK!->( row ), return
      2dup s" [" CORE-STR= IF
         2drop
-        FRESH MK-ROW                                  \ q data row
-        FRESH MK-ROW                                  \ q return row
-        over RECURSE                                  \ row qd qr qin
-        s" --" EXPECT-SIG
-        >r >r                                         \ park qin qr
-        RECURSE                                       \ row qout
-        r>
-        NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
-           2drop
-           dup RECURSE                                \ row qout qr qrin
-           s" --" EXPECT-SIG
-           >r dup RECURSE                             \ row qout qr qrout
-           s" ]" EXPECT-SIG
-           swap drop                                  \ row qout qrout
-           r> r> 2swap >r rot r>                      \ row qin qout qrin qrout
-        ELSE
-           2dup s" ]" CORE-STR= IF
-              2drop
-           ELSE
-              SGBAD-SYNTAX!
-           THEN
-           r> swap >r swap r> dup                     \ row qin qout qrin qrout
-        THEN
-        MK-QUOT
-        swap MK-PUSH
+        SIG-QUOT-XT swap MK-PUSH
      ELSE
         2dup VREC-FIND IF
            >r 2drop r> VREC-PUSH-FIELDS
@@ -3244,10 +3310,10 @@ create ROWMAP 26 cells allot
       s" --" EXPECT-SIG
       qrbase PSTACK {: qrout:n :}
       s" ]" EXPECT-SIG
-      qin qout qrin qrout MK-QUOT
+      qin qout qrin qrout MK-QUOT dup qdbase qrbase QB!
    ELSE
       2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
-      qin qout qrbase qrbase MK-QUOT         \ no return clause: rin = rout = base
+      qin qout qrbase qrbase MK-QUOT dup qdbase qrbase QB!   \ no return clause: neutral return
    THEN ;
 : SIG-QUOT-INSTALL ( -- ) [: SIG-PARSE-QUOT ;] is SIG-QUOT-XT ;
 SIG-QUOT-INSTALL
@@ -6806,7 +6872,10 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    0 FV !
    TVT-BOOT 0 MAXTV-INIT ARENA-CELLS-UNBOUND   \ FV=0 means TV-RESET clears nothing,
    RVT-BOOT 0 MAXTV-INIT ARENA-CELLS-UNBOUND   \ so unbind the boot pool ourselves
+   IS-RMETA-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO
+   IS-TOUCH-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO
    TVK-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO      \ and reset var kinds to TVK-ANY
+   0 IS-TOUCH-N !
    EC-TV MAXTV-INIT E-MAP-CLEAR   0 EC-TV-HW !
    EC-RV MAXTV-INIT E-MAP-CLEAR   0 EC-RV-HW ! ;
 
@@ -9553,65 +9622,125 @@ variable IS-TU
    REPEAT drop RES-FALSE ;
 
 : IS-DEFER-RV? ( n -- bool ) {: id:n :}
-   0 BEGIN dup FEP @ ER.RVN @ < WHILE
-      dup cells EI-RV + @ PAY id = IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
+   id IS-META@ IS-C-DST and 0 <> ;
 
-: IS-ROWS? ( n n n -- bool ) {: q:n d:n r:n :}
-   q d VAR-OCC* IF RES-TRUE EXIT THEN
-   q r VAR-OCC* ;
+\ Q>DBASE/Q>RBASE retain parser binder identity while RVT carries aliases.
+\ One prepass classifies each resolved row class before matching: exactly
+\ one binder in the consumed quotation may rename, provided no other quotation
+\ binder, named ROWMAP binder, or retained root shares the class.
+: IS-RSCAN ( n -- )
+   0 swap IS-RMARK TYPE-VAR?* drop ;
 
-: IS-STATE? ( n -- bool ) {: q:n :}
-   q DCUR @ RCUR @ IS-ROWS? IF RES-TRUE EXIT THEN
-   q BROW @ RBROW @ IS-ROWS? IF RES-TRUE EXIT THEN
-   SGSEEN? IF
-      q SGIN @ SGOUT @ IS-ROWS? IF RES-TRUE EXIT THEN
-      SGHASR @ IF q SGRIN @ SGROUT @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
-   THEN
-   XSET @ IF q XROW @ XRROW @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
-   THSET @ IF q THDROW @ THRROW @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
-   RES-FALSE ;
+0 constant IS-SIG-NONE
+1 constant IS-SIG-OUT
+2 constant IS-SIG-ALL
+variable IS-FIND
+variable IS-HIT
+variable IS-MARK
 
-: IS-LOC? ( n -- bool ) {: q:n :}
-   0 BEGIN dup #LOC @ < WHILE
-      q over cells LOCTV + @ VAR-OCC* IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
+: IS-VISIT ( n -- )
+   IS-HIT @ IF drop EXIT THEN
+   IS-MARK @ IF IS-RSCAN EXIT THEN
+   IS-FIND @ swap VAR-OCC* IF -1 IS-HIT ! THEN ;
 
-: IS-CF-REC? ( n ptr a -- bool ) {: q:n r:ptr :}
-   q r CF.SA @ r CF.RA @ IS-ROWS? IF RES-TRUE EXIT THEN
-   r CF.SB @ dup 0 <> IF q swap VAR-OCC* IF RES-TRUE EXIT THEN ELSE drop THEN
-   r CF.RB @ dup 0 <> IF q swap VAR-OCC* IF RES-TRUE EXIT THEN ELSE drop THEN
+: IS-VISIT2 ( n n -- )
+   swap IS-VISIT IS-VISIT ;
+
+: IS-CF-VISIT ( ptr a -- ) {: r:ptr :}
+   r CF.SA @ r CF.RA @ IS-VISIT2
+   r CF.SB @ dup 0 <> IF IS-VISIT ELSE drop THEN
+   r CF.RB @ dup 0 <> IF IS-VISIT ELSE drop THEN
    r CF.KND @ 6 = IF
-      r CF.XST @ IF q r CF.XRO @ r CF.XRR @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
-      r CF.TXS @ IF q r CF.TXD @ r CF.TXR @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
+      r CF.XST @ IF r CF.XRO @ r CF.XRR @ IS-VISIT2 THEN
+      r CF.TXS @ IF r CF.TXD @ r CF.TXR @ IS-VISIT2 THEN
+   THEN ;
+
+: IS-MF-VISIT ( ptr a -- ) {: r:ptr :}
+   r MF.TERM @ IS-VISIT
+   r MF.BASE @ r MF.RBASE @ IS-VISIT2
+   r MF.HAS @ IF r MF.OUT @ r MF.ROUT @ IS-VISIT2 THEN ;
+
+: IS-ROOTS ( n -- ) {: sig:n :}
+   DCUR @ RCUR @ IS-VISIT2
+   \ The raw-signature scan classifies the input without treating the consumed
+   \ quotation itself as retained; ordinary liveness queries still include it.
+   IS-MARK @ 0= IF BROW @ RBROW @ IS-VISIT2 THEN
+   XSET @ IF XROW @ XRROW @ IS-VISIT2 THEN
+   THSET @ IF THDROW @ THRROW @ IS-VISIT2 THEN
+   SGSEEN? IF
+      sig IS-SIG-ALL = IF SGIN @ IS-VISIT SGHASR @ IF SGRIN @ IS-VISIT THEN THEN
+      sig IS-SIG-NONE <> IF SGOUT @ IS-VISIT SGHASR @ IF SGROUT @ IS-VISIT THEN THEN
    THEN
-   RES-FALSE ;
-
-: IS-CF? ( n -- bool ) {: q:n :}
+   0 BEGIN dup #LOC @ < WHILE
+      dup cells LOCTV + @ IS-VISIT
+      1 +
+   REPEAT drop
    0 BEGIN dup #CFC @ < WHILE
-      q over CF-ROW IS-CF-REC? IF drop RES-TRUE EXIT THEN
+      dup CF-ROW IS-CF-VISIT
       1 +
-   REPEAT drop RES-FALSE ;
-
-: IS-MF-REC? ( n ptr a -- bool ) {: q:n r:ptr :}
-   q r MF.TERM @ VAR-OCC* IF RES-TRUE EXIT THEN
-   q r MF.BASE @ r MF.RBASE @ IS-ROWS? IF RES-TRUE EXIT THEN
-   r MF.HAS @ IF q r MF.OUT @ r MF.ROUT @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
-   RES-FALSE ;
-
-: IS-MF? ( n -- bool ) {: q:n :}
+   REPEAT drop
    0 BEGIN dup MF-DEPTH @ < WHILE
-      q over MF-REC * MF-ARENA + IS-MF-REC? IF drop RES-TRUE EXIT THEN
+      dup MF-REC * MF-ARENA + IS-MF-VISIT
       1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop ;
 
-: IS-LIVE? ( n -- bool ) {: q:n :}
-   q IS-STATE? IF RES-TRUE EXIT THEN
-   q IS-LOC? IF RES-TRUE EXIT THEN
-   q IS-CF? IF RES-TRUE EXIT THEN
-   q IS-MF? ;
+: IS-LIVE? ( n -- bool )
+   IS-FIND !
+   0 IS-HIT !  0 IS-MARK !
+   IS-SIG-ALL IS-ROOTS
+   IS-HIT @ ;
+
+: IS-LIVE+ ( -- )
+   0 IS-HIT !  -1 IS-MARK !
+   IS-C-LIVE IS-RBIT !
+   IS-SIG-OUT IS-ROOTS ;
+
+: IS-QSCAN ( n -- )
+   0 swap IS-QOTHER TYPE-VAR?* drop ;
+
+: IS-NAMED+ ( -- )
+   0 BEGIN dup 26 < WHILE
+      dup cells ROWMAP + @ dup UNBOUND <> IF
+         MK-ROW R-RES dup ISROW IF PAY IS-C-NAMED swap IS-META+ ELSE drop THEN
+      ELSE drop THEN
+      1 +
+   REPEAT drop ;
+
+: IS-SIG-Q+ ( -- )
+   SGSEEN? 0= IF EXIT THEN
+   SGIN @ IS-QSCAN
+   SGOUT @ IS-QSCAN
+   SGHASR @ IF SGRIN @ IS-QSCAN SGROUT @ IS-QSCAN THEN ;
+
+: IS-DST+ ( n -- )
+   IS-C-DST IS-RBIT !
+   0 swap IS-RMARK TYPE-VAR?* drop ;
+
+: IS-PREP ( n n -- ) {: target:n defer:n :}
+   IS-META-CLEAR
+   TWALK-RESET
+   target T-RES dup TAG T-QUOT = IF IS-QTARGET ! ELSE drop 0 IS-QTARGET ! THEN
+   IS-SIG-Q+
+   IS-NAMED+
+   IS-LIVE+
+   defer IS-DST+ ;
+
+: IS-QOWNER? ( n -- bool )
+   IS-META@ IS-C-OWN and 0 <> ;
+
+: IS-QCLASS? ( n -- bool )
+   IS-META@ IS-C-OWN IS-C-MULTI or IS-C-OTHER or IS-C-NAMED or IS-C-LIVE or and
+   IS-C-OWN = ;
+
+: IS-QBIND? ( n n -- bool ) {: id:n want0:n :}
+   id IS-QCLASS? 0= IF RES-FALSE EXIT THEN
+   want0 R-RES dup ISROW 0= IF drop RES-FALSE EXIT THEN
+   dup PAY {: wid:n :}
+   wid IS-META@ dup IS-C-DST and 0= IF drop drop RES-FALSE EXIT THEN
+   IS-C-USED and IF drop RES-FALSE EXIT THEN
+   IS-C-USED wid IS-META+
+   id RV!
+   RES-TRUE ;
 
 : IS-FLEX-TV? ( n -- bool ) {: id:n :}
    id IS-DEFER-TV? IF RES-FALSE EXIT THEN
@@ -9646,6 +9775,7 @@ variable IS-TU
       target0 PAY RV@ dup UNBOUND <> IF
          defer0 TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
       THEN drop
+      target0 PAY IS-QOWNER? IF target0 PAY defer0 IS-QBIND? EXIT THEN
       target0 PAY IS-FLEX-RV? 0= IF target0 R-RES defer0 R-RES = EXIT THEN
       target0 PAY defer0 RV-OCC* IF RES-FALSE EXIT THEN
       defer0 target0 PAY RV!
@@ -9692,6 +9822,7 @@ variable IS-TU
    endcase ;
 
 : IS-MATCH? ( n n -- bool )
+   2dup IS-PREP
    TWALK-RESET IS-MATCH* ;
 
 : IS-APPLY ( n -- )
