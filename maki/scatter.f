@@ -21,31 +21,31 @@ package MAKI
 private
 
 \ copy one cols-wide row: ct row cr -> dst row dr (both cols wide, row-major)
-: SC-COPY-ROW ( ptr a n ptr a n n -- ) {: c:ptr cr:n d:ptr dr:n cols:n :}
+: SC-COPY-ROW ( ptr r n ptr r n n -- ) {: c:ptr cr:n d:ptr dr:n cols:n :}
    cols 0 ?do  c cr cols * i +  T-GET   d dr cols * i +  T-SET  loop ;
 
 \ add one cols-wide row in place: dst row dr += ct row cr (both cols wide)
-: SC-ADD-ROW ( ptr a n ptr a n n -- ) {: c:ptr cr:n d:ptr dr:n cols:n :}
+: SC-ADD-ROW ( ptr r n ptr r n n -- ) {: c:ptr cr:n d:ptr dr:n cols:n :}
    cols 0 ?do
       d dr cols * i +  T-GET   c cr cols * i +  T-GET  f+   d dr cols * i +  T-SET
    loop ;
 
-\ fetch + validate one gather index; fail closed outside [0, dr)
-: SC-IDX@ ( ptr a n n -- n ) {: ix:ptr k:n dr:n :}
-   ix k cells + @  dup 0 < over dr >= or if E-SC-INDEX throw then ;
+\ fetch, round, and validate one gather index; fail closed outside [0, dr)
+: SC-IDX@ ( ptr r n n -- n ) {: ix:ptr k:n dr:n :}
+   ix k T-GET 0.5 f+ f>s  dup 0 < over dr >= or if E-SC-INDEX throw then ;
 
 public
 
 \ PAD-SCATTER: zero a dr x sc destination, then copy the cr x sc cotangent into rows
 \ [r0, r0+cr). The slice adjoint: cr = r1-r0, r0 = the forward slice offset.
-: PAD-SCATTER ( ptr a n n n n ptr a -- ) {: ct:ptr cr:n sc:n r0:n dr:n d:ptr :}
+: PAD-SCATTER ( ptr r n n n n ptr r -- ) {: ct:ptr cr:n sc:n r0:n dr:n d:ptr :}
    r0 0 < r0 cr + dr > or if E-SC-RANGE throw then
    0.0 d dr sc * T-FILL
    cr 0 ?do  ct i  d  r0 i +  sc  SC-COPY-ROW  loop ;
 
 \ SCATTER-ADD: zero a dr x sc destination, then add each of the k cotangent rows
 \ into destination row idx[k]; duplicate indices accumulate. The gather adjoint.
-: SCATTER-ADD ( ptr a n n ptr a n ptr a -- ) {: ct:ptr k:n sc:n ix:ptr dr:n d:ptr :}
+: SCATTER-ADD ( ptr r n n ptr r n ptr r -- ) {: ct:ptr k:n sc:n ix:ptr dr:n d:ptr :}
    0.0 d dr sc * T-FILL
    k 0 ?do  ct i  d  ix i dr SC-IDX@  sc  SC-ADD-ROW  loop ;
 

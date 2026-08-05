@@ -112,12 +112,12 @@ s" FROMA:"                      LMVT-IN
 s" AFTER:"                      LMVT-IN
 s" cvt.rzi"                     LMVT-ABSENT  \ no index rounding here
 
-\ ---- GATHER 8x8 by 4x1: f32 index rounded EXACTLY like EX-BUILD-IDX, then indexed rows.
+\ ---- GATHER 8x8 by 4x1: f32 index rounded EXACTLY like host T-GET 0.5 f+ f>s, then indexed rows.
 MODEL: GA ( x:8x8 i:4x1 -- y ) GATHER ;
 FP-BUILD
 LMVT-CAP-MV
 s" .param .u64 p_in1"           LMVT-IN      \ the f32 index buffer
-s" add.f32 %f3, %f2, 0f3F000000" LMVT-IN     \ + 0.5 (mirror EX-BUILD-IDX)
+s" add.f32 %f3, %f2, 0f3F000000" LMVT-IN     \ + 0.5 (mirror host T-GET 0.5 f+ f>s)
 s" cvt.rzi.s32.f32 %r10, %f3"   LMVT-IN      \ truncate toward zero
 s" mad.lo.u32 %r11, %r10, %r1"  LMVT-IN      \ src = idx*C + c
 
