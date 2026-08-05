@@ -1,5 +1,26 @@
 \ maki/infer/kv-cache-test.f - linear device KV cache contract.
-\ Run: bin/hb --load maki/infer/kv-cache-test.f
+\ Run: bin/hb --load maki/infer/kv-cache-test.f   (DEVICE-REQUIRED - see below)
+\
+\ DEVICE-REQUIRED SUITE. Every case here opens a real GPU session
+\ (KVT-MUST-SESSION -> GPU:OPEN -> maki/gpu-session.f GS-ACQUIRE -> MKD -> the
+\ CUDA driver), allocates real device memory, and moves real bytes through
+\ GPU:UPLOAD / GPU:DOWNLOAD / GPU:COPY; one failure-injection fake even calls
+\ CUDA:CU-MEM-FREE directly. lib/ptx/cuda-driver.f CUDA:OPEN? reaches the driver
+\ by dlopen("libcuda.so.1"), so a host with no CUDA driver cannot run this suite
+\ at all: GPU:OPEN returns E-CUDA (-5002) and every case that needs a session
+\ fails. That is a missing precondition, not a KV defect, and REQUIRE-DEVICE
+\ below says so once by name instead of leaving 37 anonymous assertion failures
+\ behind.
+\
+\ It is still listed in maki/test.f and its maki/test-core.f slice, and it is not
+\ the only device-required suite there: with this one removed the same -5002
+\ stops the run at maki/gpu-buffer-test.f. Whether maki/test.f should carry
+\ device-required suites at all - the *-device-test.f family in docs/ablation.md
+\ is kept out of it and run explicitly on a device host - is a decision about the
+\ whole family, not about this file, so this suite's membership is left alone.
+\ The sibling off-device suites reach the driver only through the MKD injection
+\ seam (maki/cuda-run-fake.f); this suite deliberately does not, because it is
+\ asserting real device bytes.
 
 require lib/test.f
 require lib/process-fork.f
@@ -1240,7 +1261,17 @@ variable KVT-RELEASE-EVENT
    s" KVT-ADD-CALL ( KV:cache KV:batch KV:seq -- KV:add-result ) KV:ADD"
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
+\ The suite's one precondition. CUDA:OPEN? answers whether the driver loaded
+\ without throwing, so the diagnostic names the missing host capability at the
+\ top of the run rather than letting each case report a downstream assertion.
+\ This is a hard stop, not a skip: a device suite on a device-less host has not
+\ passed, and the exit code plus message say exactly why.
+: KVT-REQUIRE-DEVICE ( -- )
+   CUDA:OPEN? if exit then
+   s" kv-cache-test: no CUDA driver (dlopen libcuda.so.1 failed); this suite is device-required - run it on a host with a CUDA driver" 74 die ;
+
 : KVT-RUN ( -- )
+   KVT-REQUIRE-DEVICE
    T-RESET
    s" post-open operations require no host allocation" T-LABEL [: KVT-NO-ALLOC ;] 0 TTHROWSQ
    s" exact geometry and footprint" T-LABEL [: KVT-GEOMETRY ;] 0 TTHROWSQ
