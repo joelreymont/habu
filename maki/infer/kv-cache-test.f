@@ -249,7 +249,7 @@ create KVT-H-GEN  KVT-H-CAP cells allot
    h cid slot gen LOAD-SEQ pageix SEQ-PAGE-INNER {: pid:n :}
    h KC-MINT pid ;
 
-: KVT-HOST-ID ( KV:cache -- KV:cache ptr u8 )
+: KVT-HOST-ID ( KV:cache -- KV:cache ptr n )
    KC-TAKE {: h:ptr :}
    h KC-MINT h ;
 
@@ -314,7 +314,7 @@ variable KVT-SNAP-N
    KC-TAKE {: h:ptr :}
    h HOSTB-OFF H@ {: bytes:n :}
    bytes KVT-SNAP-CAP > if E-KV-BOUNDS throw then
-   h 1 cells + KVT-SNAP bytes 1 cells - BYTE-COPY
+   h 1 cells + BYTE-VIEW KVT-SNAP bytes 1 cells - BYTE-COPY
    bytes 1 cells - KVT-SNAP-N !
    h KC-MINT ;
 
@@ -322,7 +322,7 @@ variable KVT-SNAP-N
    KC-TAKE {: h:ptr :}
    true
    h HOSTB-OFF H@ 1 cells - KVT-SNAP-N @ = and
-   KVT-SNAP-N @ 0 ?do h 1 cells + i + c@ KVT-SNAP i + c@ = and loop
+   KVT-SNAP-N @ 0 ?do h 1 cells + BYTE-VIEW i + c@ KVT-SNAP i + c@ = and loop
    {: same:bool :}
    h KC-MINT same ;
 
@@ -336,7 +336,7 @@ variable KVT-SNAP-N
    h HOSTB-OFF H@ 1 cells - KVT-SNAP-N @ = and
    KVT-SNAP-N @ 0 ?do
       i KVT-HIGH-BYTE? 0= if
-         h 1 cells + i + c@ KVT-SNAP i + c@ = and
+         h 1 cells + BYTE-VIEW i + c@ KVT-SNAP i + c@ = and
       then
    loop
    {: same:bool :}
@@ -434,7 +434,7 @@ variable KVT-DEV-CALLS
 
 : KVT-HOST-THROW ( -- )  E-MEM-MAP throw ;
 
-: KVT-FHOST ( ptr u8 n -- ptr u8 n )
+: KVT-FHOST ( ptr n n -- ptr n n )
    KVT-HOST-THROW ;
 
 variable KVT-HOST-CALLS
@@ -447,15 +447,15 @@ variable KVT-EVENT
 variable KVT-FREE-EVENT
 variable KVT-RELEASE-EVENT
 
-: KVT-FCOUNT-HOST ( ptr u8 n -- ptr u8 n )
+: KVT-FCOUNT-HOST ( ptr n n -- ptr n n )
    1 KVT-HOST-CALLS +!
    KVT-HOST-THROW ;
 
-: KVT-FCOUNT-REAL-HOST ( ptr u8 n -- ptr u8 n )
+: KVT-FCOUNT-REAL-HOST ( ptr n n -- ptr n n )
    1 KVT-HOST-CALLS +!
    ALLOC-HOST-REAL ;
 
-: KVT-FTRACK-HOST ( ptr u8 n -- ptr u8 n )
+: KVT-FTRACK-HOST ( ptr n n -- ptr n n )
    ALLOC-HOST-REAL {: h:ptr bytes:n :}
    h KVT-ALLOC-P !
    bytes KVT-ALLOC-B !
@@ -469,13 +469,13 @@ variable KVT-RELEASE-EVENT
    0 KVT-FREE-EVENT !
    0 KVT-RELEASE-EVENT ! ;
 
-: KVT-RELEASE-RECORD ( ptr u8 n -- )
+: KVT-RELEASE-RECORD ( ptr n n -- )
    {: h:ptr bytes:n :}
    h KVT-RELEASE-P !
    bytes KVT-RELEASE-B !
    1 KVT-RELEASE-N +! ;
 
-: KVT-FRELEASE ( ptr u8 n -- )
+: KVT-FRELEASE ( ptr n n -- )
    1 KVT-EVENT +!
    KVT-EVENT @ KVT-RELEASE-EVENT !
    2dup KVT-RELEASE-RECORD

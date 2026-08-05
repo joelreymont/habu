@@ -12,15 +12,15 @@ require maki/infer/engine.f
 package KV
 private
 
-: ENGINE-HOST-FAIL ( ptr u8 n -- ptr u8 n ) E-MEM-MAP throw ;
+: ENGINE-HOST-FAIL ( ptr n n -- ptr n n ) E-MEM-MAP throw ;
 
-: ENGINE-DEV-EXHAUST ( ptr a len -- rc )
+: ENGINE-DEV-EXHAUST ( ptr n len -- rc )
    {: out:ptr bytes:len :}
    out bytes CUDA:CU-MEM-ALLOC RC>N {: code:n :}
    code 0= if 1 MMAP-TEST:EXHAUST-CHILD then
    code >RC ;
 
-: ENGINE-HOST-EXHAUST ( ptr u8 n -- ptr u8 n )
+: ENGINE-HOST-EXHAUST ( ptr n n -- ptr n n )
    ALLOC-HOST-REAL
    [: ENGINE-DEV-EXHAUST ;] MKD:CUMEMALLOC! ;
 
