@@ -188,6 +188,9 @@ TENSOR:PLAN-N@ 3 T=
 \ dtype<->layout swap rejects both ways, the typed rows/cols kinds reject a raw
 \ or transposed extent, and no raw-n public handle conversion exists (the old
 \ TENSOR:tensor>N inspection cast is gone; identity is TENSOR:TV-EQUAL?).
+s" TVT-RAW-N  ( n n ptr n ptr n -- ) MAKI:RAW-ENSURE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TVT-RAW-R  ( n n ptr r ptr r -- ) MAKI:RAW-ENSURE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TVT-RAW-U8 ( n n ptr u8 ptr u8 -- ) MAKI:RAW-ENSURE" CHECK-QUIET-CANDIDATE! 0 T=
 s" TVT-OK-NEW   ( ptr a CAD-KIND:rows CAD-KIND:cols datatype layout -- tensor ) TENSOR:TV-NEW-HOST" CHECK-QUIET-CANDIDATE! -1 T=
 s" TVT-N-ROWS   ( ptr a n n datatype layout -- tensor ) TENSOR:TV-NEW-HOST"                         CHECK-QUIET-CANDIDATE! 0 T=
 s" TVT-N-DT     ( ptr a CAD-KIND:rows CAD-KIND:cols n layout -- tensor ) TENSOR:TV-NEW-HOST"     CHECK-QUIET-CANDIDATE! 0 T=
