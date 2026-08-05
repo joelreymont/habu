@@ -91,23 +91,23 @@ create T-BYTE-ID
    170 , 171 , 172 , 173 , 174 , 175 , 176 , 177 , 178 , 179 , 180 , 181 ,
    182 , 183 , 184 , 185 , 186 , 187 ,
 
-: T-AT ( ptr a n -- ptr a ) cells + ;
-: T@ ( ptr a n -- n ) T-AT @ ;
-: T! ( n ptr a n -- ) T-AT ! ;
-: TV@ ( ptr a n n -- n ) + T@ ;
-: TV! ( n ptr a n n -- ) + T! ;
+: T-AT ( ptr n n -- ptr n ) cells + ;
+: T@ ( ptr n n -- n ) T-AT @ ;
+: T! ( n ptr n n -- ) T-AT ! ;
+: TV@ ( ptr n n n -- n ) + T@ ;
+: TV! ( n ptr n n n -- ) + T! ;
 
 : T-TRUE ( -- bool ) 0 0= ;
 : T-FALSE ( -- bool ) T-TRUE 0= ;
 
-: T-NEW ( -- ptr a CAD-NUM:alloc-byte-len )
+: T-NEW ( -- ptr n CAD-NUM:alloc-byte-len )
    T-CELLS >COUNT MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN
    T-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS swap ;
 
-: T-FREE ( ptr a CAD-NUM:alloc-byte-len -- )
+: T-FREE ( ptr n CAD-NUM:alloc-byte-len -- )
    MEM:RELEASE-BYTES ;
 
-: T-READY? ( ptr a -- )
+: T-READY? ( ptr n -- )
    T-READY T@ 0= if E-TOK-VOCAB throw then ;
 
 \ bytes_to_unicode: byte -> codepoint, with non-printable bytes assigned in order.
@@ -115,13 +115,13 @@ create T-BYTE-ID
    b 33 >= b 126 <= and  b 161 >= b 172 <= and or
    b 174 >= b 255 <= and or ;
 
-: T-CP ( ptr a n -- n ) {: t:ptr b:n :}
+: T-CP ( ptr n n -- n ) {: t:ptr b:n :}
    b T-PRINT? if b exit then
    t T-NP T@ {: n:n :}
    n 1+ t T-NP T!
    256 n + ;
 
-: T-AUTF8 ( n ptr a n -- n ) {: cp:n t:ptr off:n :}
+: T-AUTF8 ( n ptr n n -- n ) {: cp:n t:ptr off:n :}
    cp 128 < if cp t T-ARENA off + T! 1 exit then
    cp 6 rshift 192 or t T-ARENA off + T!
    cp 63 and 128 or t T-ARENA off 1+ + T!
@@ -135,47 +135,47 @@ create T-BYTE-ID
 : T-SHASH ( ptr u8 n -- n )
    0 T-FNV-OFF T-SHASH-STEP ;
 
-: T-AHASH-STEP ( ptr a n n n n -- n ) {: t:ptr off:n u:n i:n h:n :}
+: T-AHASH-STEP ( ptr n n n n n -- n ) {: t:ptr off:n u:n i:n h:n :}
    i u = if h exit then
    t T-ARENA off i + + T@ h xor T-FNV-PRIME * {: next:n :}
    t off u i 1+ next recurse ;
 
-: T-AHASH ( ptr a n n -- n )
+: T-AHASH ( ptr n n n -- n )
    0 T-FNV-OFF T-AHASH-STEP ;
 
-: T-SEQ-STEP ( ptr a ptr u8 n n n -- bool ) {: t:ptr a:ptr u:n off:n i:n :}
+: T-SEQ-STEP ( ptr n ptr u8 n n n -- bool ) {: t:ptr a:ptr u:n off:n i:n :}
    i u = if T-TRUE exit then
    a i + c@ t T-ARENA off i + + T@ <> if T-FALSE exit then
    t a u off i 1+ recurse ;
 
-: T-SEQ? ( ptr a ptr u8 n n n -- bool ) {: t:ptr a:ptr u:n off:n len:n :}
+: T-SEQ? ( ptr n ptr u8 n n n -- bool ) {: t:ptr a:ptr u:n off:n len:n :}
    u len <> if T-FALSE exit then
    t a u off 0 T-SEQ-STEP ;
 
-: T-AEQ-STEP ( ptr a n n n n -- bool ) {: t:ptr aoff:n boff:n u:n i:n :}
+: T-AEQ-STEP ( ptr n n n n n -- bool ) {: t:ptr aoff:n boff:n u:n i:n :}
    i u = if T-TRUE exit then
    t T-ARENA aoff i + + T@ t T-ARENA boff i + + T@ <> if T-FALSE exit then
    t aoff boff u i 1+ recurse ;
 
-: T-SFIND-STEP ( ptr a ptr u8 n n -- n ) {: t:ptr a:ptr u:n slot:n :}
+: T-SFIND-STEP ( ptr n ptr u8 n n -- n ) {: t:ptr a:ptr u:n slot:n :}
    t T-SUSED slot TV@ 0= if slot exit then
    t a u t T-SOFF slot TV@ t T-SLEN slot TV@ T-SEQ? if slot exit then
    t a u slot 1+ T-SCAP 1- and recurse ;
 
-: T-SFIND ( ptr a ptr u8 n -- n ) {: t:ptr a:ptr u:n :}
+: T-SFIND ( ptr n ptr u8 n -- n ) {: t:ptr a:ptr u:n :}
    t a u a u T-SHASH T-SCAP 1- and T-SFIND-STEP ;
 
-: T-AFIND-STEP ( ptr a n n n -- n ) {: t:ptr off:n u:n slot:n :}
+: T-AFIND-STEP ( ptr n n n n -- n ) {: t:ptr off:n u:n slot:n :}
    t T-SUSED slot TV@ 0= if slot exit then
    t T-SLEN slot TV@ u = if
       t off t T-SOFF slot TV@ u 0 T-AEQ-STEP if slot exit then
    then
    t off u slot 1+ T-SCAP 1- and recurse ;
 
-: T-AFIND ( ptr a n n -- n ) {: t:ptr off:n u:n :}
+: T-AFIND ( ptr n n n -- n ) {: t:ptr off:n u:n :}
    t off u t off u T-AHASH T-SCAP 1- and T-AFIND-STEP ;
 
-: T-SPUT-A ( ptr a n n n -- ) {: t:ptr off:n u:n id:n :}
+: T-SPUT-A ( ptr n n n n -- ) {: t:ptr off:n u:n id:n :}
    t off u T-AFIND {: s:n :}
    t T-SUSED s TV@ 0<> if E-TOK-VOCAB throw then
    1 t T-SUSED s TV!
@@ -183,12 +183,12 @@ create T-BYTE-ID
    u t T-SLEN s TV!
    id t T-SVAL s TV! ;
 
-: T-SGET ( ptr a ptr u8 n -- n ) {: t:ptr a:ptr u:n :}
+: T-SGET ( ptr n ptr u8 n -- n ) {: t:ptr a:ptr u:n :}
    t a u T-SFIND {: s:n :}
    t T-SUSED s TV@ 0= if E-TOK-VOCAB throw then
    t T-SVAL s TV@ ;
 
-: T-SEED-STEP ( ptr a n -- ) {: t:ptr b:n :}
+: T-SEED-STEP ( ptr n n -- ) {: t:ptr b:n :}
    b T-BYTE-N = if exit then
    t T-AN T@ {: off:n :}
    t b T-CP t off T-AUTF8 {: u:n :}
@@ -196,7 +196,7 @@ create T-BYTE-ID
    off u + t T-AN T!
    t b 1+ recurse ;
 
-: T-SEED ( ptr a -- ) {: t:ptr :}
+: T-SEED ( ptr n -- ) {: t:ptr :}
    0 t T-NP T! 0 t T-AN T!
    t 0 T-SEED-STEP ;
 
@@ -213,28 +213,28 @@ create T-BYTE-ID
 : T-HKEY ( n n -- n ) {: a:n b:n :}
    a T-KSTRIDE * b + T-HMIX * ;
 
-: T-HPROBE ( ptr a n n -- n ) {: t:ptr key:n slot:n :}
+: T-HPROBE ( ptr n n n -- n ) {: t:ptr key:n slot:n :}
    t T-HU slot TV@ 0= if slot exit then
    t T-HK slot TV@ key = if slot exit then
    t key slot 1+ T-HCAP 1- and recurse ;
 
-: T-HSLOT ( ptr a n n -- n ) {: t:ptr a:n b:n :}
+: T-HSLOT ( ptr n n n -- n ) {: t:ptr a:n b:n :}
    a b T-HKEY {: key:n :}
    t key key T-HCAP 1- and T-HPROBE ;
 
-: T-HPUT ( ptr a n n n -- ) {: t:ptr a:n b:n rank:n :}
+: T-HPUT ( ptr n n n n -- ) {: t:ptr a:n b:n rank:n :}
    t a b T-HSLOT {: s:n :}
    t T-HU s TV@ 0<> if E-TOK-VOCAB throw then
    a b T-HKEY t T-HK s TV!
    rank t T-HV s TV!
    1 t T-HU s TV! ;
 
-: T-RANK ( ptr a n n -- n ) {: t:ptr a:n b:n :}
+: T-RANK ( ptr n n n -- n ) {: t:ptr a:n b:n :}
    t a b T-HSLOT {: s:n :}
    t T-HU s TV@ 0= if -1 exit then
    t T-HV s TV@ ;
 
-: T-LINE-COPY ( ptr a ptr u8 n n n n -- )
+: T-LINE-COPY ( ptr n ptr u8 n n n n -- )
    {: t:ptr a:ptr ls:n sp:n le:n off:n :}
    sp ls - {: la:n :}
    le sp 1+ - {: lb:n :}
@@ -249,7 +249,7 @@ create T-BYTE-ID
       byte t dst T!
    loop ;
 
-: T-LINE ( ptr a ptr u8 n n n -- ) {: t:ptr a:ptr ls:n le:n rank:n :}
+: T-LINE ( ptr n ptr u8 n n n -- ) {: t:ptr a:ptr ls:n le:n rank:n :}
    a ls le T-SP {: sp:n :}
    sp le >= if E-TOK-VOCAB throw then
    t a ls + sp ls - T-SGET {: ia:n :}
@@ -267,7 +267,7 @@ create T-BYTE-ID
    t off la lb + T-BYTE-N rank + T-SPUT-A
    off la + lb + t T-AN T! ;
 
-: T-PARSE-STEP ( ptr a ptr u8 n n n -- n )
+: T-PARSE-STEP ( ptr n ptr u8 n n n -- n )
    {: t:ptr a:ptr u:n p:n rank:n :}
    p u >= if rank exit then
    a u p T-NL {: le:n :}
@@ -279,7 +279,7 @@ create T-BYTE-ID
    le 1+ u min {: np:n :}
    t a u np next recurse ;
 
-: T-PARSE ( ptr a ptr u8 n -- ) {: t:ptr a:ptr u:n :}
+: T-PARSE ( ptr n ptr u8 n -- ) {: t:ptr a:ptr u:n :}
    t T-SEED
    a u 0 T-NL {: h:n :}
    h u >= if E-TOK-VOCAB throw then
@@ -311,7 +311,7 @@ create T-BYTE-ID
    2drop ;
 
 : T-MERGES-BODY
-   ( ptr a ptr u8 n ptr u8 CAD-NUM:alloc-byte-len -- ptr a ptr u8 n )
+   ( ptr n ptr u8 n ptr u8 CAD-NUM:alloc-byte-len -- ptr n ptr u8 n )
    {: t:ptr root:ptr rootu:n buf:ptr alen:CAD-NUM:alloc-byte-len :}
    buf GPT2PIN:MERGES-LEN T-DIGEST-CAP + + {: path:ptr :}
    root rootu GPT2PIN:MERGES-NAME$ path JOIN-PATH {: pathu:n :}
@@ -321,13 +321,13 @@ create T-BYTE-ID
    t buf u T-PARSE
    t root rootu ;
 
-: T-MERGES ( ptr a ptr u8 n -- ) {: t:ptr root:ptr rootu:n :}
+: T-MERGES ( ptr n ptr u8 n -- ) {: t:ptr root:ptr rootu:n :}
    t root rootu
    GPT2PIN:MERGES-LEN T-DIGEST-CAP + FS-PATH-CAP + MEM:BYTES-ALLOC-LEN
    [: T-MERGES-BODY ;] MEM:WITH-BYTES
    2drop drop ;
 
-: T-IDMAP ( ptr a -- ) {: t:ptr :}
+: T-IDMAP ( ptr n -- ) {: t:ptr :}
    T-VOCAB-N 0 ?do -1 t T-R2I i TV! loop
    T-BYTE-N 0 ?do
       T-BYTE-ID i cells + @ {: id:n :}
@@ -340,7 +340,7 @@ create T-BYTE-ID
       id t T-R2I id TV!
    loop ;
 
-: T-BUILD ( ptr a ptr u8 n -- ) {: t:ptr root:ptr rootu:n :}
+: T-BUILD ( ptr n ptr u8 n -- ) {: t:ptr root:ptr rootu:n :}
    root rootu T-VOCAB
    t root rootu T-MERGES
    t T-IDMAP
@@ -442,7 +442,7 @@ create T-BYTE-ID
    len 0 <= if T-FALSE exit then
    a u p len + recurse ;
 
-: T-STAGE ( ptr a ptr u8 n n -- ) {: t:ptr a:ptr p:n u:n :}
+: T-STAGE ( ptr n ptr u8 n n -- ) {: t:ptr a:ptr p:n u:n :}
    t T-OUTN T@ u + T-ID-CAP > if E-TOK-CAP throw then
    u 0 ?do
       a p + i + c@ {: byte:n :}
@@ -450,13 +450,13 @@ create T-BYTE-ID
    loop
    u t T-WLEN T! ;
 
-: T-SYM@ ( ptr a n -- n ) {: t:ptr i:n :}
+: T-SYM@ ( ptr n n -- n ) {: t:ptr i:n :}
    t T-OUT t T-OUTN T@ i + TV@ ;
 
-: T-SYM! ( n ptr a n -- ) {: value:n t:ptr i:n :}
+: T-SYM! ( n ptr n n -- ) {: value:n t:ptr i:n :}
    value t T-OUT t T-OUTN T@ i + TV! ;
 
-: T-MIN-STEP ( ptr a n n -- n ) {: t:ptr i:n best:n :}
+: T-MIN-STEP ( ptr n n n -- n ) {: t:ptr i:n best:n :}
    i t T-WLEN T@ 1- >= if best exit then
    t t i T-SYM@ t i 1+ T-SYM@ T-RANK {: rank:n :}
    rank 0 >= if
@@ -464,10 +464,10 @@ create T-BYTE-ID
    else best then {: next:n :}
    t i 1+ next recurse ;
 
-: T-MIN ( ptr a -- n )
+: T-MIN ( ptr n -- n )
    0 -1 T-MIN-STEP ;
 
-: T-APPLY-STEP ( ptr a n n n n -- n )
+: T-APPLY-STEP ( ptr n n n n n -- n )
    {: t:ptr rank:n a:n b:n ri:n :}
    ri t T-WLEN T@ >= if t T-WI T@ exit then
    ri t T-WLEN T@ 1- <
@@ -482,19 +482,19 @@ create T-BYTE-ID
    t T-WI T@ 1+ t T-WI T!
    t rank a b next recurse ;
 
-: T-APPLY ( ptr a n -- ) {: t:ptr rank:n :}
+: T-APPLY ( ptr n n -- ) {: t:ptr rank:n :}
    0 t T-WI T!
    t rank t T-A rank TV@ t T-B rank TV@ 0 T-APPLY-STEP
    t T-WLEN T! ;
 
-: T-MERGE ( ptr a -- ) {: t:ptr :}
+: T-MERGE ( ptr n -- ) {: t:ptr :}
    t T-WLEN T@ 2 < if exit then
    t T-MIN {: rank:n :}
    rank 0 < if exit then
    t rank T-APPLY
    t recurse ;
 
-: T-ENC-STEP ( ptr a ptr u8 n n -- ) {: t:ptr a:ptr u:n p:n :}
+: T-ENC-STEP ( ptr n ptr u8 n n -- ) {: t:ptr a:ptr u:n p:n :}
    p u >= if exit then
    a u p T-CHUNK {: len:n :}
    len 0 <= if E-TOK-VOCAB throw then
@@ -503,7 +503,7 @@ create T-BYTE-ID
    t T-OUTN T@ t T-WLEN T@ + t T-OUTN T!
    t a u p len + recurse ;
 
-: T-ENCODE ( ptr a ptr u8 n -- n ) {: t:ptr a:ptr u:n :}
+: T-ENCODE ( ptr n ptr u8 n -- n ) {: t:ptr a:ptr u:n :}
    t T-READY?
    u 0 < u T-ID-CAP > or if E-TOK-CAP throw then
    0 t T-OUTN T!
@@ -514,16 +514,16 @@ create T-BYTE-ID
    loop
    n ;
 
-: T-ID@ ( ptr a n -- n ) {: t:ptr i:n :}
+: T-ID@ ( ptr n n -- n ) {: t:ptr i:n :}
    i 0 < i T-ID-CAP >= or if E-TOK-RANGE throw then
    t T-IDS i TV@ ;
 
-: T-ID! ( ptr a n n -- ) {: t:ptr id:n i:n :}
+: T-ID! ( ptr n n n -- ) {: t:ptr id:n i:n :}
    i 0 < i T-ID-CAP >= or if E-TOK-RANGE throw then
    id 0 < id T-VOCAB-N >= or if E-TOK-RANGE throw then
    id t T-IDS i TV! ;
 
-: T-EMIT ( ptr a n n -- n ) {: t:ptr id:n ix:n :}
+: T-EMIT ( ptr n n n -- n ) {: t:ptr id:n ix:n :}
    id T-BYTE-N < if
       ix T-DEC-CAP >= if E-TOK-CAP throw then
       id t T-DEC ix TV!
@@ -534,7 +534,7 @@ create T-BYTE-ID
    t t T-A rank TV@ ix recurse {: next:n :}
    t t T-B rank TV@ next recurse ;
 
-: T-DECODE-STAGE ( ptr a n n -- n ) {: t:ptr count:n i:n :}
+: T-DECODE-STAGE ( ptr n n n -- n ) {: t:ptr count:n i:n :}
    i count = if t T-DECN T@ exit then
    t i T-ID@ {: real:n :}
    real T-EOT = if E-TOK-RANGE throw then
@@ -543,18 +543,18 @@ create T-BYTE-ID
    t id t T-DECN T@ T-EMIT t T-DECN T!
    t count i 1+ recurse ;
 
-: T-DECODE-COPY ( ptr a ptr u8 n n -- ) {: t:ptr out:ptr u:n i:n :}
+: T-DECODE-COPY ( ptr n ptr u8 n n -- ) {: t:ptr out:ptr u:n i:n :}
    i u = if exit then
    t T-DEC i TV@ out i + c!
    t out u i 1+ recurse ;
 
-: T-DECODE-LEN ( ptr a n -- n ) {: t:ptr count:n :}
+: T-DECODE-LEN ( ptr n n -- n ) {: t:ptr count:n :}
    t T-READY?
    count 0 < count T-ID-CAP > or if E-TOK-CAP throw then
    0 t T-DECN T!
    t count 0 T-DECODE-STAGE ;
 
-: T-DECODE-OUT ( ptr a ptr u8 n -- )
+: T-DECODE-OUT ( ptr n ptr u8 n -- )
    0 T-DECODE-COPY ;
 
 ;package

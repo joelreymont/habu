@@ -105,7 +105,7 @@ using RESULT
    {: tok:n :}
    M-TAKE
    {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
-   tokstate T-LOGITS cells + {: row:ptr :}
+   tokstate T-LOGITS cells + BYTE-VIEW {: row:ptr :}
    ROW-LEN {: bytes:CAD-NUM:byte-len :}
    tok pos bytes M-VALIDATE {: valid:n :}
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.

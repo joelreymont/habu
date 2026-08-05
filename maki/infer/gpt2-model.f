@@ -108,7 +108,7 @@ variable M-ATTN-H
 \ The checker cannot tie the opaque owner to its private host record.
 \ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: M-SAVE
-   ( MEM:block GPU:buffer config n n n n n n n n n n n n n n n n n ptr a CAD-NUM:alloc-byte-len -- GPT2:model )
+   ( MEM:block GPU:buffer config n n n n n n n n n n n n n n n n n ptr n CAD-NUM:alloc-byte-len -- GPT2:model )
    {: buf:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    BORROW {: rec:ptr recu:CAD-NUM:byte-len :}
    recu R-BYTES <> if E-SIZE throw then
@@ -146,7 +146,7 @@ TRUSTED: M-SAVE
    toklen rec R-TOKLEN + ! ;
 
 TRUSTED: M-TAKE
-   ( GPT2:model -- MEM:block GPU:buffer config n n n n n n n n n n n n n n n n n ptr a CAD-NUM:alloc-byte-len )
+   ( GPT2:model -- MEM:block GPU:buffer config n n n n n n n n n n n n n n n n n ptr n CAD-NUM:alloc-byte-len )
    BORROW {: rec:ptr recu:CAD-NUM:byte-len :}
    recu R-BYTES <> if E-SIZE throw then
    rec R-BUF + @
@@ -1052,7 +1052,7 @@ using MEM
    first2 M-GPU-CLEAN ;
 
 : M-FINISH
-   ( MEM:block GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   ( MEM:block GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr n CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
    {: tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    SAFET:UNMAP-MAPPING M-RESULT-CODE {: code:n :}
    drop
@@ -1089,7 +1089,7 @@ using MEM
    RESULT:OK ;
 
 : M-GPU-FAIL
-   ( MEM:block GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a CAD-NUM:alloc-byte-len n -- GPU:session result<GPT2:model,n> )
+   ( MEM:block GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr n CAD-NUM:alloc-byte-len n -- GPU:session result<GPT2:model,n> )
    {: code:n :}
    drop drop
    code M-ALL-CLEAN
@@ -1098,7 +1098,7 @@ using MEM
    fail M-MODEL-ERR ;
 
 : M-GPU-FLOW
-   ( MEM:block GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   ( MEM:block GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr n CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
    >r >r
    M-UPLOAD-FRAME
    >r {: code:n :}
@@ -1109,7 +1109,7 @@ using MEM
    then ;
 
 : M-GPU
-   ( MEM:block GPU:session config ptr u8 SAFET:file SAFET:mapping CAD-NUM:alloc-byte-len ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   ( MEM:block GPU:session config ptr u8 SAFET:file SAFET:mapping CAD-NUM:alloc-byte-len ptr n CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
    {: alloc:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    >r >r
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
@@ -1131,7 +1131,7 @@ using MEM
    ;MATCH ;
 
 : M-FILE
-   ( MEM:block GPU:session config ptr u8 SAFET:file CAD-NUM:alloc-byte-len ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   ( MEM:block GPU:session config ptr u8 SAFET:file CAD-NUM:alloc-byte-len ptr n CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
    {: alloc:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    SAFET:DETACH-MAPPING
    MATCH SAFET:map-take
@@ -1158,7 +1158,7 @@ using MEM
    ;MATCH ;
 
 : M-BODY
-   ( MEM:block GPU:session ptr u8 n config CAD-NUM:alloc-byte-len ptr u8 CAD-NUM:byte-len ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   ( MEM:block GPU:session ptr u8 n config CAD-NUM:alloc-byte-len ptr u8 CAD-NUM:byte-len ptr n CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
    {: root:ptr rootu:n c alloc:CAD-NUM:alloc-byte-len scratch:ptr scratchu:CAD-NUM:byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len :} \ typed-local-lint: allow-bare-local
    scratchu drop
    c scratch
@@ -1198,7 +1198,7 @@ using MEM
    ;MATCH ;
 
 : M-OPEN-CFG
-   ( GPU:session ptr u8 n config ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   ( GPU:session ptr u8 n config ptr n CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
    {: root:ptr rootu:n c tokstate:ptr toklen:CAD-NUM:alloc-byte-len :} \ typed-local-lint: allow-bare-local - c preserves GPT2:config's W>1 layout, which locals cannot annotate.
    root rootu GPT2PIN:MODEL-NAME$ nip M-JOIN-LEN
    FS-PATH-CAP > if
@@ -1241,10 +1241,10 @@ using MEM
       ENDOF
    ;MATCH ;
 
-: M-ALLOC-TOK ( ptr u8 CAD-NUM:alloc-byte-len -- ptr a CAD-NUM:alloc-byte-len )
+: M-ALLOC-TOK ( ptr n CAD-NUM:alloc-byte-len -- ptr n CAD-NUM:alloc-byte-len )
    2drop T-NEW ;
 
-: M-BUILD-TOK ( ptr a CAD-NUM:alloc-byte-len ptr u8 n -- ptr a CAD-NUM:alloc-byte-len ptr u8 n )
+: M-BUILD-TOK ( ptr n CAD-NUM:alloc-byte-len ptr u8 n -- ptr n CAD-NUM:alloc-byte-len ptr u8 n )
    {: tokstate:ptr toklen:CAD-NUM:alloc-byte-len root:ptr rootu:n :}
    tokstate root rootu T-BUILD
    tokstate toklen root rootu ;
@@ -1253,7 +1253,7 @@ using MEM
    ( GPU:session ptr u8 n config -- GPU:session result<GPT2:model,n> )
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: root:ptr rootu:n c :}
-   NULL$ drop 1 BYTES-ALLOC-LEN [: M-ALLOC-TOK ;] catch {: alloc-code:n :}
+   M-PARAM 1 BYTES-ALLOC-LEN [: M-ALLOC-TOK ;] catch {: alloc-code:n :}
    alloc-code 0<> if
       2drop c M-DROP-CFG
       alloc-code M-MODEL-ERR
