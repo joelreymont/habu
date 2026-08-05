@@ -248,7 +248,78 @@ SLOTS-CLEAR
    loop
    dup 0 < if E-IR-ARENA-SLOTS throw then ;
 
+\ ---- allocation scopes --------------------------------------------------------
+\ A caller that needs SEVERAL arenas for one object needs all of them or none.
+\ IR-BUILD:NEW-BUILDER takes seventeen and publishes the builder's generation
+\ only after the last one, so until this record existed a refusal part-way
+\ through left every arena already taken with no handle anybody could ABORT: the
+\ builder did not exist, so nothing could name them, and SWEEP only reclaims a
+\ slot when the whole owning context tears down. Three builders and a fourth
+\ that ran out took thirteen slots and held them for the rest of the context.
+\
+\ THE RECORD BELONGS HERE, WHERE THE SLOT IS TAKEN. Those seventeen tables are
+\ made by seven other packages, and each of them takes two or three arenas of
+\ its own and hands them back together. A record kept by the CALLER can only see
+\ the arenas that were handed back; the ones a constructor took before throwing
+\ half way through its own group are invisible to it - which is exactly the
+\ residue a caller-side count left behind when this was first written. NEW is
+\ the one word that takes a slot, so NEW is the one place that can see all of
+\ them.
+\
+\ SCOPES DO NOT NEST. One is open at a time and a second is refused by name; the
+\ one consumer builds one module at a time and nothing else allocates while it
+\ does. A scope releases newest first, which is the reverse of the order the
+\ arenas were taken.
+variable SCOPE-OPEN
+variable SCOPE-N
+create SCOPE-SLOTS SLOT-MAX cells allot
+0 SCOPE-OPEN !
+0 SCOPE-N !
+
+: SCOPE-CLOSE ( -- )
+   0 SCOPE-N !
+   0 SCOPE-OPEN ! ;
+
+: SCOPE-LIVE-CK ( -- )
+   SCOPE-OPEN @ 0= if E-IR-ARENA-STATE throw then ;
+
+\ Note that a slot was taken while a scope is open. Called by NEW after the
+\ generation is installed, which is the instant the slot becomes taken: a NEW
+\ that throws before that line leaves the slot free and has nothing to record.
+: SCOPE-RECORD ( n -- ) {: slot:n :}
+   SCOPE-OPEN @ 0= if exit then
+   SCOPE-N @ SLOT-MAX >= if E-IR-ARENA-STATE throw then
+   slot SCOPE-N @ cells SCOPE-SLOTS + !
+   SCOPE-N @ 1+ SCOPE-N ! ;
+
+: SCOPE-POP ( -- )
+   SCOPE-N @ 1- {: k:n :}
+   0 k cells SCOPE-SLOTS + @ AGEN!
+   k SCOPE-N ! ;
+
 public
+
+\ Open the scope this package records new arenas into. The caller releases or
+\ commits it on every path out of the work it wraps.
+: SCOPE-BEGIN ( -- )
+   SCOPE-OPEN @ 0<> if E-IR-ARENA-STATE throw then
+   0 SCOPE-N !
+   1 SCOPE-OPEN ! ;
+
+\ Retire every arena taken since SCOPE-BEGIN, newest first, and close the scope.
+\ Retiring is what ABORT does to one arena - the registry slot is freed and
+\ every index it minted goes stale - reached here by slot because a caller that
+\ never received a handle cannot present one.
+: SCOPE-RELEASE ( -- )
+   SCOPE-LIVE-CK
+   begin SCOPE-N @ 0 > while SCOPE-POP repeat
+   SCOPE-CLOSE ;
+
+\ Close the scope and keep every arena it recorded: the object they were taken
+\ for exists now and owns them.
+: SCOPE-COMMIT ( -- )
+   SCOPE-LIVE-CK
+   SCOPE-CLOSE ;
 
 \ Create an arena owned by ctx with a committed ceiling of n cells; production
 \ callers pass their table's named ceiling constant. The data span is taken
@@ -269,6 +340,7 @@ public
    ceil slot ACEIL!
    ST-LIVE slot ASTATE!
    g slot AGEN!
+   slot SCOPE-RECORD
    g MINT-ARENA ;
 
 \ ---- append ------------------------------------------------------------------

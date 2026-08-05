@@ -640,6 +640,55 @@ create VW-BUF VW-CAP allot
    s" the abandoned arenas far outnumber the arena registry" T-LABEL
    TSLOTS TTABLES * TARENA-SLOTS > TTRUE ;
 
+\ ---- a builder that runs out part-way gives back what it took ----------------
+\ Three modules hold fifty-one of the arena registry's sixty-four slots, which
+\ leaves less than a fourth module needs, so a fourth runs out part-way through
+\ its tables. Everything it took before that used to stay taken: the builder is
+\ published last, so nothing existed that could ABORT them, and only the whole
+\ context tearing down would have reclaimed them. Measured on the old code, the
+\ context could not take ONE more one-cell arena afterwards; the thirteen the
+\ failed builder had taken were gone for good.
+\
+\ THE MEASUREMENT IS THE FREE SLOTS, TAKEN THROUGH THE REAL ENTRY. The count
+\ below asks the arena registry for one-cell arenas until it refuses, so what it
+\ answers is how many slots the failed NEW-BUILDER left behind. The expected
+\ number is the registry's capacity less what the three live modules hold, both
+\ of them pinned constants of this file rather than a number somebody wrote
+\ down: the whole of what the fourth took has to come back.
+variable PART-FREE
+
+: PART-ARENA ( IR-CTX:ctx n -- IR-CTX:ctx n )
+   2dup IR-ARENA:NEW drop ;
+
+: PART-COUNT-FREE ( IR-CTX:ctx -- n )
+   0 PART-FREE !
+   1
+   begin
+      [: PART-ARENA ;] catch 0=
+   while
+      PART-FREE @ 1+ PART-FREE !
+   repeat
+   2drop PART-FREE @ ;
+
+: PART-MK ( IR-CTX:ctx -- IR-CTX:ctx )
+   dup MK drop ;
+
+: PART-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   c MK drop
+   c MK drop
+   c MK drop
+   c [: PART-MK ;] catch nip
+   c PART-COUNT-FREE ;
+
+: PART-CASE ( -- )
+   s" three modules leave the registry short of a fourth" T-LABEL
+   TARENA-SLOTS 3 TTABLES * - TTABLES < TTRUE
+   s" a builder that runs out of arenas gives back every one it took" T-LABEL
+   BND [: PART-BODY ;] IR-CTX:WITH-CONTEXT
+   TARENA-SLOTS 3 TTABLES * - T=
+   E-IR-ARENA-SLOTS T= ;
+
 \ An aborted builder answers with its own name, not merely as unknown, and the
 \ tables it held are gone with it.
 : AB-READ-BODY ( IR-CTX:ctx -- )
@@ -1271,6 +1320,7 @@ public
    BND [: HARNESS-LIVE-REFUSE-F ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-LIVE-REFUSE-G ;] IR-CTX:WITH-CONTEXT
    AB-RELEASE-CASE
+   PART-CASE
    STALE-CASES
    CHECKER-CASES
    T-REPORT ;

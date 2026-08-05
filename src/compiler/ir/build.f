@@ -226,13 +226,92 @@ SLOT-MAX TYPED-BUFFER BMID IR-ID:ir-module-id
 : BCEIL! ( n n n -- )
    CEIL-IDX cells BCEILS + ! ;
 
+\ ---- the table transaction ----------------------------------------------------
+\ Creating a builder is seventeen arena allocations followed by one publication,
+\ and it has to be all of them or none. WHO GIVES THE ARENAS BACK is
+\ IR-ARENA:SCOPE-RELEASE, not this file: the slot is the arena registry's
+\ resource, the seven packages that build these tables each take two or three
+\ slots of their own before handing them over, and a record kept here could only
+\ ever see the ones that were handed over. The account of that is at the arena
+\ scope itself.
+\
+\ WHAT THIS RECORD IS FOR is the other half: the table array. TAB! is the only
+\ word that puts an arena into a slot's table array, so it is the only place
+\ that can know a table exists, and it now records that as it writes. Nothing
+\ here retires anything - the count decides only whether the builder may be
+\ published - so the two records can never disagree about who cleans up. That
+\ separation is the type-family lesson applied forwards: a second writer of the
+\ same state is how a rollback ends up running against state somebody else
+\ already moved (src/core/type-family.f, TFAM-REWIND).
+\
+\ THE COUNT IS ALSO THE NEXT INDEX. The seventeen tables are created in
+\ ascending index order - T-SP first, T-ER last - so a write whose index is not
+\ the current count is a caller that reordered, repeated or skipped one, and it
+\ is refused by name here rather than letting a module carry a table left over
+\ from whoever held the slot before. The build's own inputs are parked here too,
+\ because the release has to run on the throw path and a checked catch takes a
+\ stack-neutral quotation.
+-1 constant TX-NONE                  \ no builder is being built
+
+variable TX-SLOT
+variable TX-N                        \ tables of TX-SLOT that exist
+variable TX-U
+variable TX-MAJOR
+variable TX-MINOR
+PTR-VARIABLE TX-DIA
+1 TYPED-BUFFER TX-CTX IR-CTX:ctx
+
+TX-NONE TX-SLOT !
+
+: TX-SLOT@ ( -- n )
+   TX-SLOT @ dup TX-NONE = if E-IR-BUILD-STATE throw then ;
+
+: TX-CTX@ ( -- IR-CTX:ctx )
+   0 TX-CTX @ ;
+
+: TX-OPEN ( IR-CTX:ctx n ptr u8 n n n -- )
+   {: c:IR-CTX:ctx slot:n p u:n major:n minor:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   TX-SLOT @ TX-NONE <> if E-IR-BUILD-STATE throw then
+   c 0 TX-CTX !
+   p TX-DIA !
+   u TX-U !
+   major TX-MAJOR !
+   minor TX-MINOR !
+   slot TX-SLOT !
+   0 TX-N !
+   IR-ARENA:SCOPE-BEGIN ;
+
+: TX-CLOSE ( -- )
+   TX-NONE TX-SLOT !
+   0 TX-N ! ;
+
 : TAB@ ( n n -- IR-ARENA:arena )
    {: slot:n k:n :}
    slot TABLES# * k + BTAB @ ;
 
+\ The one writer of a table entry, and therefore the one place that knows a
+\ table exists. A write outside the open transaction, or out of order, is
+\ refused: either would leave the release below with a count that does not name
+\ what was taken.
 : TAB! ( IR-ARENA:arena n n -- )
    {: slot:n k:n :}
-   slot TABLES# * k + BTAB ! ;
+   slot TX-SLOT@ <> if E-IR-BUILD-STATE throw then
+   k TX-N @ <> if E-IR-BUILD-STATE throw then
+   slot TABLES# * k + BTAB !
+   k 1+ TX-N ! ;
+
+\ Publishing is allowed only when every table exists. A count short of seventeen
+\ means a table-building word returned without writing its table down, and the
+\ module would then carry whatever arena the previous holder of this slot left
+\ in that entry.
+: TX-ABANDON ( -- )
+   IR-ARENA:SCOPE-RELEASE
+   TX-CLOSE ;
+
+: TX-COMMIT ( -- )
+   TX-N @ TABLES# <> if TX-ABANDON E-IR-BUILD-STATE throw then
+   IR-ARENA:SCOPE-COMMIT
+   TX-CLOSE ;
 
 : VIEW@ ( n n -- IR-ARENA:view )
    {: slot:n k:n :}
@@ -599,20 +678,35 @@ private
    p slot T-EP TAB!
    r slot T-ER TAB! ;
 
-\ Build all fifteen tables into one slot. The symbol interner comes first
-\ because the dialect name is a symbol of this module, and the schema table
-\ cannot be created without it.
-: TABLES-BUILD ( IR-CTX:ctx n ptr u8 n n n -- )
-   {: c:IR-CTX:ctx slot:n p u:n major:n minor:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+\ Build all fifteen tables into the open transaction's slot. The symbol interner
+\ comes first because the dialect name is a symbol of this module, and the
+\ schema table cannot be created without it. It takes nothing from the stack:
+\ its inputs are the transaction's, so the caller below can run it under a
+\ checked catch, which takes a stack-neutral quotation.
+: TABLES-BUILD ( -- )
+   TX-CTX@ {: c:IR-CTX:ctx :}
+   TX-SLOT@ {: slot:n :}
    c slot SYM-TABLES
    c slot TYPE-TABLES
    c slot ATTR-TABLES
    c slot SRC-TABLE
-   c  slot T-SP TAB@  slot T-SR TAB@  slot KEY@  p u IR-SYM:INTERN {: dia:IR-ID:ir-symbol-id :}
-   c slot dia major minor SCHEMA-TABLES
+   c  slot T-SP TAB@  slot T-SR TAB@  slot KEY@
+   TX-DIA @ TX-U @ IR-SYM:INTERN {: dia:IR-ID:ir-symbol-id :}
+   c slot dia TX-MAJOR @ TX-MINOR @ SCHEMA-TABLES
    c slot OP-TABLES
    c slot FUN-TABLES
    c slot EDGE-TABLES ;
+
+\ Every table, or none. A component that refuses - the arena registry being
+\ full is the one that bit - releases the components already taken, in the
+\ reverse of the order they were taken, and the ORIGINAL refusal is what the
+\ caller is told: a caller that asked for a module it cannot have needs to know
+\ why, not that the unwind worked.
+: TABLES-TRY ( -- )
+   [: TABLES-BUILD ;] catch {: rc:n :}
+   rc 0= if TX-COMMIT exit then
+   TX-ABANDON
+   rc throw ;
 
 public
 
@@ -621,7 +715,14 @@ public
 \ is consumed here and becomes this module's committed ceilings. The module
 \ identity is minted from the context, so it counts against the context's own
 \ module ceiling; the generation is installed last, so a failure anywhere in
-\ table creation leaves no half-installed slot behind.
+\ table creation leaves no half-installed slot behind - and the tables that
+\ failure had already taken are given back before it is rethrown, so a builder
+\ nobody got costs the arena registry nothing.
+\
+\ WHAT A FAILED CREATION DOES CONSUME, honestly: the module serial this context
+\ minted, which is never reused by design, and the scratch bytes each released
+\ table took from the mapping, which is a bump allocator with no free. Neither
+\ is a registry slot and neither stops the next builder.
 : NEW-BUILDER ( IR-CTX:ctx ptr u8 n n n -- IR-BUILD:builder )
    {: c:IR-CTX:ctx p u:n major:n minor:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
    PLAN-OPEN-CK
@@ -632,7 +733,8 @@ public
    c IR-CTX:NEW-MODULE {: key:IR-ID:ir-module-key mid:IR-ID:ir-module-id :}
    key slot KEY!
    mid slot BMID !
-   c slot p u major minor TABLES-BUILD
+   c slot p u major minor TX-OPEN
+   TABLES-TRY
    c IR-CTX:SERIAL slot BOWNER!
    ST-LIVE slot BSTATE!
    g slot BGEN!
