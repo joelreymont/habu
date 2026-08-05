@@ -56,7 +56,7 @@ create LNAO-BM LNAO-C  cells allot   create LNAO-BV LNAO-C  cells allot
 variable LNAO-RNG
 : LNAO-NEXT ( -- n )  LNAO-RNG @ 1103515245 * 12345 + dup LNAO-RNG ! ;
 : LNAO-UNIT ( -- r )  LNAO-NEXT $FFFF and s>f 65536.0 f/ 0.5 f- ;
-: LNAO-FILL ( ptr a n -- ) {: p:ptr len:n :}  len 0 ?do  LNAO-UNIT p i T-SET  loop ;
+: LNAO-FILL ( ptr r n -- ) {: p:ptr len:n :}  len 0 ?do  LNAO-UNIT p i T-SET  loop ;
 
 \ Adam bookkeeping (self-contained; step count folds into the running decay powers)
 : LNAO-B1 ( -- r )  0.9 ;   : LNAO-B2 ( -- r )  0.999 ;
