@@ -244,15 +244,32 @@ using CODEGEN-SCAN
    a u 0 WORD-INSN-AT C-CALL-PROLOGUE-INSTR T=
    want INL-MAX FRAME-BYTES + > TTRUE ;
 
-: FITS-BARE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
-   a u WORD-BYTES want T=
+\ The same two measurements for a subject this file did not compile.
+\
+\ Only the engine's own primitive emitter produces a record with no prologue:
+\ every colon definition gets one (src/habu/habu2.f emits `sub sp, sp, #16` at
+\ entry), so there is no way for a test to publish a frameless word of a size it
+\ chose. The bare half of the rule can therefore only be exercised against engine
+\ words - and a fixture that also states their byte count is stating something it
+\ does not own. `emit` was pinned at INL-MAX + one instruction and grew to 52,
+\ which is the whole of why this suite was red.
+\
+\ So these MEASURE the subject and assert the rule against the measurement. What
+\ is claimed is what the engine's bare comparison must do at whatever size the
+\ word actually has; a word that changes size keeps its case, and only a word
+\ that CROSSES the limit changes which case it belongs in - at which point the
+\ case says so by name instead of reporting a number nobody can read.
+: BARE-FITS ( ptr u8 n -- ) {: a:ptr u:n :}
    a u 0 WORD-INSN-AT C-CALL-PROLOGUE-INSTR T<>
-   want INL-MAX <= TTRUE ;
+   a u WORD-BYTES INL-MAX <= TTRUE ;
 
-: OVER-BARE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
-   a u WORD-BYTES want T=
+: BARE-OVER ( ptr u8 n -- ) {: a:ptr u:n :}
    a u 0 WORD-INSN-AT C-CALL-PROLOGUE-INSTR T<>
-   want INL-MAX > TTRUE ;
+   a u WORD-BYTES INL-MAX > TTRUE ;
+
+: FRAMED-FITS ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u 0 WORD-INSN-AT C-CALL-PROLOGUE-INSTR T=
+   a u WORD-BYTES INL-MAX FRAME-BYTES + <= TTRUE ;
 
 \ For a subject this file did not publish, whose other callers it does not own:
 \ the engine copied it into THIS caller, which is the whole claim. A count of
@@ -290,13 +307,13 @@ using CODEGEN-SCAN
    s" FIXTURE:FX-CALLER2" s" FIXTURE:FX-OVER" CALLED-NOT-COPIED
 
    s" a record with no frame is measured against the bare limit" T-LABEL
-   s" over" INL-MAX FITS-BARE
+   s" over" BARE-FITS
    s" over" UNMOVABLE-IN 0 T=
-   s" over" COPY-BYTES INL-MAX T=
+   s" over" COPY-BYTES  s" over" WORD-BYTES T=
    s" FIXTURE:FX-USES-OVER" s" over" COPIED-NOT-CALLED-BY
 
-   s" and one instruction over that limit is called, on size alone" T-LABEL
-   s" emit" INL-MAX INSN-BYTES + OVER-BARE
+   s" and a bare record past that limit is called, on size alone" T-LABEL
+   s" emit" BARE-OVER
    s" emit" UNMOVABLE-IN 0 T=
    s" FIXTURE:FX-USES-EMIT" s" emit" CALLED-NOT-COPIED ;
 
@@ -368,18 +385,22 @@ using CODEGEN-SCAN
    s" FIXTURE:FX-B" BLS-IN 0 T=
    s" FIXTURE:FX-CALLER2" s" FIXTURE:FX-B" CALLED-NOT-COPIED
 
+   \ These three are engine words, so the size line says only what this file has
+   \ to establish for the case to mean anything - that the subject FITS, and so
+   \ its refusal is the branch it holds and not its length. Their byte counts
+   \ belong to the engine, not to this suite.
    s" the engine's own abs holds one conditional branch and is called" T-LABEL
-   s" abs" 28 FITS-BARE                    \ a bare record, all 28 bytes of it body
+   s" abs" BARE-FITS
    s" abs" UNMOVABLE-IN 1 T=
    s" FIXTURE:FX-BL" s" abs" CALLED-NOT-COPIED
 
    s" its divide holds one compare-and-branch and is called" T-LABEL
-   s" /" 36 FITS-BARE                      \ the same, four bytes off the limit
+   s" /" BARE-FITS
    s" /" UNMOVABLE-IN 1 T=
    s" FIXTURE:FX-DIV" s" /" CALLED-NOT-COPIED
 
    s" and execute holds one register branch and is called" T-LABEL
-   s" execute" 44 FITS-FRAMED              \ 28 bytes of body inside its frame
+   s" execute" FRAMED-FITS
    s" execute" UNMOVABLE-IN 1 T=
    s" FIXTURE:FX-EXEC" s" execute" CALLED-NOT-COPIED ;
 
