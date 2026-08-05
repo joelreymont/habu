@@ -288,6 +288,18 @@ SUITE codegen-workload
    tools/codegen-workload-test.f
 ;SUITE
 
+\ Where the register allocator's spill wall is, measured through the real
+\ migration entry. It is its OWN member and not one of codegen-compare's,
+\ because it migrates definitions of its own and requires the fourth corpus's
+\ cases to get a callee: sharing a process with the comparison would leave the
+\ comparison measuring the fourth corpus against the third corpus's baseline,
+\ which is exactly what happened when it was first listed there. No assertion it
+\ makes reads a clock - every one of them is a throw code from the chain - so
+\ scheduling it schedules no flake.
+SUITE codegen-spill-probe
+   tools/codegen-spill-probe.f
+;SUITE
+
 SUITE compiler-native-hir
    test/compiler/native-hir.f
 ;SUITE
