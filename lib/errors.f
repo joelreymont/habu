@@ -757,6 +757,7 @@ public
 -8268 constant E-CODEGEN-CLANG-TOOL       \ the host C toolchain was present and a tool refused
 -8269 constant E-CODEGEN-CLANG-SYMBOL     \ a C twin the comparison names is not in the reference object
 -8270 constant E-CODEGEN-CLANG-SIZE       \ the reference object's per-symbol sizes do not account for its text section
+-8271 constant E-CODEGEN-CLANG-FORK       \ a forked child asked dyld to map the reference library, which only the process that built it may do
 
 \ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299
 \

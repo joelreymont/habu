@@ -269,6 +269,7 @@ SUITE compiler-native-immediate
 SUITE codegen-compare
    tools/codegen-compare-test.f
    tools/codegen-compare-clang-test.f
+   test/codegen-fork-reference-test.f
 ;SUITE
 
 \ The end-to-end workload measurement, and the same division of labour. Its
