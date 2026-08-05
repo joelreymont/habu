@@ -1287,6 +1287,16 @@ public
    tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
    eos ;
 
+: CONFIG@ ( GPT2:model -- GPT2:model config )
+   M-TAKE
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
+   tokbytes drop
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c :}
+   c x a b logits token k v pos
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   c ;
+
 : LOGITS
    ( GPU:session GPT2:model n ptr u8 CAD-NUM:byte-len -- GPU:session GPT2:model result<n,n> )
    {: tok:n dst:ptr outu:CAD-NUM:byte-len :}
