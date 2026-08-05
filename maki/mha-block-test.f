@@ -71,18 +71,18 @@ create BK-DZ  BK-XN cells allot   create BK-DM BK-XN cells allot
 create BK-DA  BKT BKH * cells allot   create BK-DHID BKT BKH * cells allot
 create BK-DHM BK-XN cells allot   create BK-DH BK-XN cells allot
 
-: BK-ROWBIAS ( ptr a n n ptr a -- ) {: yb:ptr rows:n cols:n bb:ptr :}
+: BK-ROWBIAS ( ptr r n n ptr r -- ) {: yb:ptr rows:n cols:n bb:ptr :}
    rows 0 ?do  cols 0 ?do  yb j cols * i + T-GET  bb i T-GET f+  yb j cols * i + T-SET  loop  loop ;
-: BK-COLSUM ( ptr a n n ptr a -- ) {: sb:ptr rows:n cols:n db:ptr :}
+: BK-COLSUM ( ptr r n n ptr r -- ) {: sb:ptr rows:n cols:n db:ptr :}
    cols 0 ?do  i {: c:n :}  0.0  rows 0 ?do  sb i cols * c + T-GET  f+  loop  db c T-SET  loop ;
-: BK-COPY ( ptr a ptr a n -- ) {: s:ptr d:ptr n:n :}  n 0 ?do  s i T-GET  d i T-SET  loop ;
-: BK-ADD ( ptr a ptr a ptr a n -- ) {: a:ptr b:ptr d:ptr n:n :}  n 0 ?do  a i T-GET  b i T-GET  f+  d i T-SET  loop ;
+: BK-COPY ( ptr r ptr r n -- ) {: s:ptr d:ptr n:n :}  n 0 ?do  s i T-GET  d i T-SET  loop ;
+: BK-ADD ( ptr r ptr r ptr r n -- ) {: a:ptr b:ptr d:ptr n:n :}  n 0 ?do  a i T-GET  b i T-GET  f+  d i T-SET  loop ;
 
 \ ---- deterministic LCG init ----------------------------------------------------------
 variable BK-RNG
 : BK-NEXT ( -- r )  BK-RNG @ 1664525 * 1013904223 + $FFFFFFFF and dup BK-RNG !  s>f 4294967296.0 f/ ;
 : BK-UNIT ( -- r )  BK-NEXT 2.0 f* 1.0 f- ;
-: BK-SMALL ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  BK-UNIT 0.1 f*  p i T-SET  loop ;
+: BK-SMALL ( ptr r n -- ) {: p:ptr n:n :}  n 0 ?do  BK-UNIT 0.1 f*  p i T-SET  loop ;
 \ fill the (C,C) column block at `base` of the fused (C,3C) weight with C*C draws in the
 \ SAME row-major order BK-SMALL uses on a standalone (C,C) weight, so the Q/K/V blocks get
 \ element-for-element the values the three separate weights got - the fused init is a bit-
@@ -166,12 +166,12 @@ create BK-DWQKV-SUM  BK-WQKVN cells allot
 BK-ACCUM? TTRUE
 
 \ ============ (B) block gradcheck: analytic vs central FD on representative params =====
-: BK-FD ( ptr a n -- r ) {: pb:ptr e:n :}
+: BK-FD ( ptr r n -- r ) {: pb:ptr e:n :}
    pb e T-GET {: base:r :}
    base GC-H f+ pb e T-SET  BK-FWD BK-LOSS {: lp:r :}
    base GC-H f- pb e T-SET  BK-FWD BK-LOSS {: lm:r :}
    base pb e T-SET  lp lm f- GC-H 2.0 f* f/ ;
-: BK-GC? ( ptr a n ptr a -- bool ) {: pb:ptr n:n gb:ptr :}
+: BK-GC? ( ptr r n ptr r -- bool ) {: pb:ptr n:n gb:ptr :}
    true  n 0 ?do  gb i T-GET  pb i BK-FD  GC-CLOSE? 0= if drop false leave then  loop ;
 BK-INIT  BK-FWD  BK-LOSS drop  BK-BWD          \ analytic grads for the block loss
 BK-X  BK-XN BK-DX  BK-GC? TTRUE                 \ dX flows through the whole block
@@ -190,9 +190,9 @@ variable BK-T  variable BK-B1T  variable BK-B2T
 
 \ 10 params (fused c_attn folds Q/K/V into one weight + one bias): buffer, grad, length, moment m, moment v.
 create BK-MBUF 2400 cells allot   variable BK-MOFF
-: BK-M+ ( n -- ptr a )  {: n:n :}  BK-MOFF @ {: o:n :}  o n + BK-MOFF !  BK-MBUF o cells + ;
+: BK-M+ ( n -- ptr r )  {: n:n :}  BK-MOFF @ {: o:n :}  o n + BK-MOFF !  BK-MBUF o cells + ;
 create BK-VBUF 2400 cells allot   variable BK-VOFF
-: BK-V+ ( n -- ptr a )  {: n:n :}  BK-VOFF @ {: o:n :}  o n + BK-VOFF !  BK-VBUF o cells + ;
+: BK-V+ ( n -- ptr r )  {: n:n :}  BK-VOFF @ {: o:n :}  o n + BK-VOFF !  BK-VBUF o cells + ;
 \ the moment slabs (assigned once, in param order)
 0 BK-MOFF !  0 BK-VOFF !
 BK-XN BK-M+ constant MBX   BK-XN BK-V+ constant VBX
@@ -205,7 +205,7 @@ BKC BKV * BK-M+ constant MBWL  BKC BKV * BK-V+ constant VBWL   BKV BK-M+ constan
 : BK-ARESET ( -- )
    0 BK-T !  1.0 BK-B1T !  1.0 BK-B2T !
    0.0 BK-MBUF BK-MOFF @ T-FILL  0.0 BK-VBUF BK-VOFF @ T-FILL ;
-: BK-UPD ( ptr a ptr a ptr a ptr a n -- ) {: p:ptr g:ptr m:ptr v:ptr n:n :}
+: BK-UPD ( ptr r ptr r ptr r ptr r n -- ) {: p:ptr g:ptr m:ptr v:ptr n:n :}
    BK-LR BK-BET1 BK-BET2 BK-EPS BK-C1 BK-C2  p g m v n  OPTIM:TT-ADAM! ;
 : BK-STEP ( -- r )
    BK-FWD  BK-LOSS {: loss:r :}  BK-BWD  BK-TICK       \ X is the fixed block input (frozen); train the weights
