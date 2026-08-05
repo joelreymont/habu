@@ -92,10 +92,10 @@ public
 : INIT-RESID-STD ( n -- r ) {: nlayer:n :}        \ 0.02 / sqrt(2 * n_layer)
    INIT-STD  2 nlayer * s>f fsqrt  f/ ;
 
-: INIT-GFILL ( ptr a n r -- ) {: base:ptr len:n std:r :}   \ fill base with N(0,std^2)
+: INIT-GFILL ( ptr r n r -- ) {: base:ptr len:n std:r :}   \ fill base with N(0,std^2)
    len 0 ?do  SC-GAUSS std f*  base i T-SET  loop ;
 
-: INIT-FILL ( ptr a n n n -- ) {: base:ptr len:n nlayer:n role:n :}
+: INIT-FILL ( ptr r n n n -- ) {: base:ptr len:n nlayer:n role:n :}
    role IR-NORMAL   = if  base len INIT-STD              INIT-GFILL  exit then
    role IR-RESID    = if  base len nlayer INIT-RESID-STD INIT-GFILL  exit then
    role IR-LN-GAMMA = if  1.0 base len T-FILL  exit then
@@ -188,7 +188,7 @@ public
    clip 0.0 f> 0=  if E-GRAD-CLIP throw then   \ clip <= 0
    clip  norm CLIP-EPS f+  f/ ;
 
-: GCLIP-SCALE! ( r ptr a n -- ) {: coef:r base:ptr len:n :}   \ in-place rescale by coef when coef<1
+: GCLIP-SCALE! ( r ptr r n -- ) {: coef:r base:ptr len:n :}   \ in-place rescale by coef when coef<1
    coef 1.0 f< 0= if exit then                 \ not clipping -> buffer bit-unchanged
    len 0 ?do  base i T-GET coef f*  base i T-SET  loop ;
 
