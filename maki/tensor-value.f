@@ -256,8 +256,8 @@ TRUSTED: TENSOR>RAW ( tensor -- n ) ;
 \ never enter or leave a descriptor cell either way. A fresh column reads as
 \ id 0 of its family (LAYOUT-BUFFER zero image); TV-U guards liveness.
 \ The typed columns are DEFER-LAYOUT-BUFFER (deferred-offset: bound at load to
-\ TV-SEED, grown per model); the family-less siblings (data pointer, has-flag, and
-\ the view offset + row/col strides - all raw n) hand-defer via base+cap vars and
+\ TV-SEED, grown per model); the data-pointer cells (`ptr r`) and the raw-n has-flag,
+\ view-offset, and row/col-stride siblings hand-defer via base+cap vars and
 \ RAW-ENSURE. TV-STORE-AT (the storage-ref handle) is a typed DEFER column. All grow
 \ in LOCKSTEP off TV-BOUND (the live column extent) so a single TV-ENSURE keeps them
 \ parallel. A fresh column reads as id 0 of its family (DEFER zero image); TV-U
@@ -275,10 +275,10 @@ create TV-OFF  TV-SEED cells allot   variable TV-OFF-P   TV-OFF  data-base - TV-
 create TV-RSTR TV-SEED cells allot   variable TV-RSTR-P  TV-RSTR data-base - TV-RSTR-P !   variable TV-RSTR-CAP  TV-SEED cells TV-RSTR-CAP !  \ view row stride (elements) sibling
 create TV-CSTR TV-SEED cells allot   variable TV-CSTR-P  TV-CSTR data-base - TV-CSTR-P !   variable TV-CSTR-CAP  TV-SEED cells TV-CSTR-CAP !  \ view col stride (elements) sibling
 : TV-DATA-BASE ( -- ptr ptr r )  data-base TV-DATA-P @ + ;   \ reconstruct the live base
-: TV-HAS-BASE  ( -- ptr a )  data-base TV-HAS-P  @ + ;
-: TV-OFF-BASE  ( -- ptr a )  data-base TV-OFF-P  @ + ;
-: TV-RSTR-BASE ( -- ptr a )  data-base TV-RSTR-P @ + ;
-: TV-CSTR-BASE ( -- ptr a )  data-base TV-CSTR-P @ + ;
+: TV-HAS-BASE  ( -- ptr n )  data-base TV-HAS-P  @ + ;
+: TV-OFF-BASE  ( -- ptr n )  data-base TV-OFF-P  @ + ;
+: TV-RSTR-BASE ( -- ptr n )  data-base TV-RSTR-P @ + ;
+: TV-CSTR-BASE ( -- ptr n )  data-base TV-CSTR-P @ + ;
 variable TV-U                          \ free counter / live count
 variable TV-GEN                        \ store generation encoded into every handle
 variable TV-BOUND                      \ live column extent (grow-to-largest high-water)
@@ -357,7 +357,7 @@ $FFFFFFFFFF constant TV-GEN-MAX   \ lowered so TV-GEN-MAX * TV-CAP fits a signed
    TV-GEN @ 1+ TV-GEN ! ;
 
 \ ---- generic n-field read (data pointer handled separately) ----------------
-: TV-N@ ( tensor ptr a -- n ) {: t:tensor base:ptr :}
+: TV-N@ ( tensor ptr n -- n ) {: t:tensor base:ptr :}
    base t TV-IX cells + @ ;
 
 public
@@ -577,9 +577,9 @@ DEFER-LAYOUT-BUFFER P-OUT-AT tensor  \ output tensor column ( n -- ptr tensor )
 create P-INOFF PLAN-SEED cells allot  variable P-INOFF-P  P-INOFF data-base - P-INOFF-P !  variable P-INOFF-CAP  PLAN-SEED cells P-INOFF-CAP !  \ input window start (offset)
 create P-INCNT PLAN-SEED cells allot  variable P-INCNT-P  P-INCNT data-base - P-INCNT-P !  variable P-INCNT-CAP  PLAN-SEED cells P-INCNT-CAP !  \ input window length (offset)
 create P-ATTR  PLAN-SEED cells allot  variable P-ATTR-P   P-ATTR  data-base - P-ATTR-P  !  variable P-ATTR-CAP   PLAN-SEED cells P-ATTR-CAP  !  \ movement attrs (offset)
-: P-INOFF-BASE ( -- ptr a )  data-base P-INOFF-P @ + ;   \ reconstruct the live bases
-: P-INCNT-BASE ( -- ptr a )  data-base P-INCNT-P @ + ;
-: P-ATTR-BASE  ( -- ptr a )  data-base P-ATTR-P  @ + ;
+: P-INOFF-BASE ( -- ptr n )  data-base P-INOFF-P @ + ;   \ reconstruct the live bases
+: P-INCNT-BASE ( -- ptr n )  data-base P-INCNT-P @ + ;
+: P-ATTR-BASE  ( -- ptr n )  data-base P-ATTR-P  @ + ;
 variable P-N                            \ committed op count
 variable P-BOUND                        \ live op-column extent (grow-to-largest)
 DEFER-LAYOUT-BUFFER P-INS-AT tensor  \ flat input-tensor pool ( n -- ptr tensor )
