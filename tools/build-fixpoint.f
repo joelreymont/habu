@@ -101,9 +101,6 @@ variable BF-CERT-LAB-A
 variable BF-CERT-LAB-U
 variable BF-CERT-PATH-A
 variable BF-CERT-PATH-U
-variable BF-CERT-AUDIT?
-variable BF-AUD-I
-variable BF-AUD-N
 
 : BF-TMP-A-FIELD ( -- ptr ptr u8 )
    BF-TMP-A 0 ptr-field ;
@@ -1053,71 +1050,12 @@ public
    BF-CERT-LAB-U !
    BF-CERT-LAB-A! ;
 
-\ ---------------------------------------------------------------------------
-\ Named unchecked-boundary audit for generated stage sources.
-\
-\ The ONLY checking-disabled span a generated stage source may carry is the
-\ documented refresh-prelude boundary: one BFR-CHECK-OFF line (hide.f's
-\ audited TRUSTED: wrapper around `0 set-check`) closed by the checker-boot
-\ region's hook reinstall (check-hook.f's own INSTALL plus the one appended
-\ LOWER-CERT-HOOK:INSTALL line). The static certify below deliberately checks
-\ THROUGH that window - checker-boot definitions are certified even though
-\ the stage compile loads them unchecked - so the window's only effect is
-\ stage-compile hook silence, and this audit pins its extent: exactly one
-\ BFR-CHECK-OFF line, exactly one LOWER-CERT-HOOK:INSTALL line after it, and
-\ no raw `0 set-check` line anywhere. A generated source that grows a second
-\ check-off site fails the build with E-BUILD-CERTIFY before any stage runs.
-: BF-BOUNDARY-CHECK-OFF$ ( -- ptr u8 n )
-   s\" \nBFR-CHECK-OFF\n" ;
-
+\ The one raw checking-disabled line a generated source must never carry: the
+\ generated-output tests (tools/build-fixpoint-test.f) pin its absence in the
+\ real emitted stage2 and snap sources, and BFR-CHECK-OFF (src/habu/hide.f) is
+\ the named boundary those sources call instead.
 : BF-BOUNDARY-RAW-OFF$ ( -- ptr u8 n )
    s\" \n0 set-check\n" ;
-
-: BF-BOUNDARY-REINSTALL$ ( -- ptr u8 n )
-   s\" \nLOWER-CERT-HOOK:INSTALL\n" ;
-
-: BF-SUB-STEP ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n nd:ptr ndu:n :}
-   a BF-AUD-I @ BYTE+ u BF-AUD-I @ - nd ndu BF-FIND MATCH option
-     none OF BF-FALSE exit ENDOF
-     some OF IDX>N ENDOF
-   ;MATCH {: off:n :}
-   BF-AUD-I @ off + 1 + BF-AUD-I !
-   BF-AUD-N @ 1 + BF-AUD-N !
-   BF-TRUE ;
-
-: BF-COUNT-SUB ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n nd:ptr ndu:n :}
-   0 BF-AUD-N !
-   0 BF-AUD-I !
-   begin BF-AUD-I @ u < while
-      a u nd ndu BF-SUB-STEP 0= if BF-AUD-N @ exit then
-   repeat
-   BF-AUD-N @ ;
-
-: BF-FIRST-SUB ( ptr u8 n ptr u8 n -- n )
-   BF-FIND MATCH option
-     none OF -1 ENDOF
-     some OF IDX>N ENDOF
-   ;MATCH ;
-
-: BF-AUDIT-FAIL ( ptr u8 n -- ) {: msg:ptr msgu:n :}
-   s" certify: " type BF-CERT-LABEL$ type
-   s"  boundary audit: " type msg msgu type cr
-   E-BUILD-CERTIFY throw ;
-
-: BF-AUDIT-ORDERED ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u BF-BOUNDARY-CHECK-OFF$ BF-FIRST-SUB
-   a u BF-BOUNDARY-REINSTALL$ BF-FIRST-SUB < 0= if
-      s" hook reinstall precedes BFR-CHECK-OFF" BF-AUDIT-FAIL
-   then ;
-
-: BF-AUDIT-BOUNDARY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u BF-BOUNDARY-RAW-OFF$ BF-COUNT-SUB 0 <> if
-      s" raw 0 set-check line present" BF-AUDIT-FAIL then
-   a u BF-BOUNDARY-CHECK-OFF$ BF-COUNT-SUB 1 <> if
-      s" BFR-CHECK-OFF line count is not 1" BF-AUDIT-FAIL then
-   a u BF-BOUNDARY-REINSTALL$ BF-COUNT-SUB 1 <> if
-      s" LOWER-CERT-HOOK:INSTALL line count is not 1" BF-AUDIT-FAIL then
-   a u BF-AUDIT-ORDERED ;
 
 : BF-CERTIFY-ACT ( -- )
    BF-CERT-LABEL$ DIAG-FILE!
@@ -1125,7 +1063,6 @@ public
    BF-CERT-DIAG BF-CERT-DIAG-CAP DIAG-BUFFER!
    BF-CERT-PATH$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
    BF-CERT-PATH$ buf cap READ-ALL {: u:n :}
-   BF-CERT-AUDIT? @ 0 <> if buf u BF-AUDIT-BOUNDARY then
    buf u VERIFY:SOURCE-BUF ;
 
 : BF-CERTIFY-RC ( ptr u8 n ptr u8 n -- n )
@@ -1141,9 +1078,8 @@ public
    s"  rejected rc " type BF-CERT-RC @ . s" (blocking)" type cr
    BF-CERT-DIAG-U @ 0 > IF BF-CERT-DIAG BF-CERT-DIAG-U @ type cr THEN ;
 
-\ BLOCKING: a generated stage source that fails the boundary audit or
-\ VERIFY:SOURCE-BUF kills the build (E-BUILD-CERTIFY) after reporting the
-\ diagnostic. This is the staged trust induction (dot
+\ BLOCKING: a generated stage source that fails VERIFY:SOURCE-BUF kills the
+\ build (E-BUILD-CERTIFY) after reporting the diagnostic. This is the staged trust induction (dot
 \ habu-staged-fixpoint-src-0b5fc6e6): the RUNNING stage-N engine certifies the
 \ full assembled stage-N+1 source - the exact bytes the build consumes,
 \ checker-boot prelude included - before any stage compile, so a type error in
@@ -1152,9 +1088,7 @@ public
 \ native refresh only after a working bin/hb exists, and a tree whose
 \ generated sources reject must be repaired, not installed.
 : BF-CERTIFY-GENERATED ( ptr u8 n ptr u8 n -- )
-   -1 BF-CERT-AUDIT? !
    BF-CERTIFY-RC
-   0 BF-CERT-AUDIT? !
    0= IF exit THEN
    BF-CERT-LABEL$ BF-CERTIFY-REPORT
    E-BUILD-CERTIFY throw ;

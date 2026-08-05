@@ -20,9 +20,9 @@
 \ PREPARE/INCLUDE-SNAPSHOT-PREPARE are prefix-internal words with no charted
 \ effects. The word never survives into the image (its own entry and code sit
 \ above the retired marker). It was previously a `0 set-check` window; the
-\ trusted form keeps the emitted snap source free of raw check-off lines so
-\ the pre-pass boundary audit (tools/build-fixpoint.f BF-AUDIT-BOUNDARY) can
-\ pin the refresh prelude's BFR-CHECK-OFF as the only one.
+\ trusted form keeps the emitted snap source free of raw check-off lines -
+\ BFR-CHECK-OFF (src/habu/hide.f) stays the one named checking-disabled
+\ boundary a generated source calls.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 
 require src/habu/snap-lib.f
