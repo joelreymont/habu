@@ -111,3 +111,5 @@ remat through the fixture path. Confirm this before pricing piece 1 against the
 corpus, because the consolidation block prices it as if the two were coupled.
 
 Claim: agent=remat2 workspace=.jj-ws/habu-fold-constants-and-cbe4e25e
+
+DEFERRED (2026-08-05, generation 3): remat is premature until the spill rewrite loop is on the production path (see the cut dot — production currently fits-or-refuses; A64SPILL:REWRITE is fixture-only, so corpus remat effects are confined to refusal-flips). Also unresolved and BLOCKING the acceptance's mutation test: the validator has no link from a remat site to the class's constant (FLOW-CK ties reload to store through the slot attribute; a remat site has no slot — a wrong-immediate movz is a well-formed module). Three candidate links recorded by the lane: class identity on the remat op (validator would trust the plan it should re-derive — weakest), handing VERIFY the pre-spill module too (honest independent re-derivation — orchestrator's leaning), or an all-movz-to-one-reader-must-agree rule. Decide when the rewrite loop lands; do not build remat before both.

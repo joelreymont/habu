@@ -50,3 +50,5 @@ the -8042 the previous attempt reported, is in
 habu-literal-cse-trips-7e6d67bb.
 
 Claim: agent=remat2 workspace=.jj-ws/habu-fold-constants-and-cbe4e25e
+
+UNBLOCKED WITHOUT REMAT (2026-08-05): the RSPILL-CASE blocker is a FIXTURE-owned body on the fixture-only rewrite path; production fits-or-refuses, and the corpus measured 4 improved / 0 regressed with zero new refusals. The pin ('exactly 1 spilled value') guards the spill machinery's one-spill contract on a body the TEST owns — CSE changed that body's character, so the evidence-preserving fix is to adjust the fixture body to one that still produces exactly one spill under CSE (e.g. distinct literals so the memo cannot collapse them), keeping the pin's value and intent intact. NEVER widen the pin. Then land the CSE: re-derive the four-row floor on current master (do not inherit the measurement), all 41 answers bit-for-bit, both-gaps per improved row, deliberate re-pin, known-loss survives at 56.
