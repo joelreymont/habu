@@ -179,22 +179,6 @@ SUITE compiler-ir-verify
    test/compiler/ir-verify.f
 ;SUITE
 
-SUITE compiler-ir-canon
-   test/compiler/ir-canon.f
-;SUITE
-
-SUITE compiler-ir-encode
-   test/compiler/ir-encode.f
-;SUITE
-
-SUITE compiler-ir-render
-   test/compiler/ir-render.f
-;SUITE
-
-SUITE compiler-ir-diff
-   test/compiler/ir-diff.f
-;SUITE
-
 SUITE compiler-ir-arena
    test/compiler/ir-arena.f
 ;SUITE

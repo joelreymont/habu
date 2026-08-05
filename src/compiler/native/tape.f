@@ -62,8 +62,8 @@
 \ for the bytes behind a spelling. Those tables carry their own content digests
 \ (IR-SOURCE:DIGEST@ per source), and a stage that needs content identity binds
 \ both. Reading inside another table's rows to digest them here would give this
-\ file an opinion about their row shape, which is the authority split
-\ src/compiler/ir/encode.f already settled for the wire frame.
+\ file an opinion about their row shape, an authority that stays with the table
+\ that owns the rows.
 
 require lib/prelude.f
 require lib/errors.f

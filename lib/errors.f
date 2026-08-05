@@ -509,11 +509,7 @@ public
 \   -8040..-8059  function and block structure, parents, and windows
 \   -8060..-8079  builder, abort, and freeze lifecycle (package IR-BUILD)
 \   -8080..-8099  structural freeze verifier (package IR-VERIFY)
-\   -8100..-8119  canonical table reindexing and reference remap (package IR-CANON)
-\   -8120..-8139  deterministic renderer (package IR-RENDER) and structural
-\                 diff (package IR-DIFF)
-\   -8140..-8159  canonical wire frame and digest (package IR-ENCODE), and the
-\                 decoder that rebuilds a module from a frame when it lands
+\   -8100..-8159  unassigned (canonical codec stack deleted 2026-08-05: no consumer)
 \   -8160..-8179  unassigned (pass witnesses retired 2026-07-30: no consumer)
 \   -8180..-8199  IR facade assembly and package protection (package IR)
 \   -8200..-8219  ARM64 routine machine-effect contracts (package A64EFF)
@@ -628,47 +624,6 @@ public
 -8097 constant E-IR-VERIFY-SYMBOL  \ a symbol a record names that this module's interner never interned, or a function name defined twice
 -8098 constant E-IR-VERIFY-SPAN    \ a source span that is not a valid slice of a registered source
 -8099 constant E-IR-VERIFY-TARGET  \ an operation the context's bound target contract cannot execute
-
-\ Compiler canonical table order and reference remap (package IR-CANON): -8100..-8119
--8100 constant E-IR-CANON-STATE    \ a canonical table's own store failed its header, magic, or module-binding recheck
--8101 constant E-IR-CANON-OWNER    \ an identity presented to a canonical table that another module minted
--8102 constant E-IR-CANON-BOUND    \ a canonical-stream index or a table ordinal at or past the count this canonical table records
--8103 constant E-IR-CANON-CAP      \ a module with more interned rows, a longer name or string, or a wider keyed list than the canonicalizer's committed working set
--8104 constant E-IR-CANON-ORDER    \ a table whose stored references admit no dependency order, so no canonical numbering exists
--8105 constant E-IR-CANON-STALE    \ a module that is not a live frozen one, or a canonical-table handle this registry never minted or whose owning context has torn down
--8106 constant E-IR-CANON-RELEASED \ any use of a canonical table RELEASE already retired
--8107 constant E-IR-CANON-SLOTS    \ the canonical-table registry has no free slot
--8108 constant E-IR-CANON-SERIALS  \ canonical-table generation serials reached their ceiling
-
-\ Compiler deterministic renderer and structural diff: -8120..-8139
-\ The map's renderer sub-block, taken by the two packages that stage is built
-\ from: src/compiler/ir/render.f (package IR-RENDER) turns one frozen module into
-\ diagnostic text with canonical names, and src/compiler/ir/diff.f (package
-\ IR-DIFF) compares two frozen modules and reports what differs. They are split
-\ because rendering one module and comparing two modules are different decisions,
-\ so the renderer takes -8120..-8129 and the diff takes -8130..-8139.
--8120 constant E-IR-RENDER-STALE   \ a module presented to the renderer that is not a live frozen one
--8121 constant E-IR-RENDER-ROOM    \ a destination byte span shorter than the text the presented module renders to
--8122 constant E-IR-RENDER-CAP     \ a module with more interned rows, a longer name, or a wider keyed list than the renderer's committed working set
--8123 constant E-IR-RENDER-STATE   \ a stored code or table selector outside the vocabulary the renderer spells
-
--8130 constant E-IR-DIFF-STALE     \ a module presented to the diff that is not a live frozen one
--8131 constant E-IR-DIFF-ROOM      \ a destination byte span shorter than the report the two presented modules differ by
--8132 constant E-IR-DIFF-CAP       \ a module pair with more rows or a wider keyed list than the diff's committed working set
--8133 constant E-IR-DIFF-STATE     \ a stored code outside the vocabulary the diff compares
-
-\ Compiler canonical wire frame and content digest (package IR-ENCODE): -8140..-8159
-\ This is the sub-block the map above already reserves for the wire codec and
-\ digest, and the renderer and diff stage above owns -8120..-8139. The
-\ package that took the block is IR-ENCODE, which is the encoding half of the
-\ codec the map named; a decoder that rebuilds a module from a frame is a
-\ separate stage and takes the rest of this sub-block when it lands.
--8140 constant E-IR-ENCODE-STATE   \ a presented frame whose leading bytes are not a canonical module frame at all
--8141 constant E-IR-ENCODE-VERSION \ a frame whose format major or minor version this encoder does not read
--8142 constant E-IR-ENCODE-FRAME   \ a frame whose byte length is not exactly its header plus the payload slots its header states
--8143 constant E-IR-ENCODE-CAP     \ a payload past the committed frame ceiling, or a stated canonical row count larger than the payload could hold
--8144 constant E-IR-ENCODE-ROOM    \ a destination byte span shorter than the frame the presented module encodes to
--8145 constant E-IR-ENCODE-BOUND   \ a payload slot index at or past the slot count the frame states
 
 \ ARM64 routine machine-effect contracts (package A64EFF): -8200..-8219
 \ The first sub-block of the dialect range the map above reserves. It belongs to

@@ -139,22 +139,18 @@
       it.
 
   12. Canonicalisation is modelled for the type table only, and its order
-      independence is an INSTANCE.  `Types.canonize` is the model of
-      src/compiler/ir/canon.f's selection rule - repeatedly take the smallest
-      canonical key among the rows whose references are already numbered - and
+      independence is an INSTANCE.  `Types.canonize` is the selection rule a
+      canonical type encoder needs - repeatedly take the smallest canonical
+      key among the rows whose references are already numbered - and
       `Types.ty_canonize_needs_renumbering` proves that dropping the
-      renumbering costs the module its canonical form.  What is proved about
-      agreement is `Types.ty_canonize_orders_agree`, which is the
-      counterexample instance and not the general statement "any two
-      topological orders of any reference graph canonicalise alike"; that
-      general statement is unproved here and is the reason
-      test/compiler/ir-canon.f measures whole modules through the shipped
-      IR-CANON instead.  Three further parts of the shipped stage are outside
-      this model: the attribute table's renumbering under three permutations at
-      once, the source table's content merge (two registrations of the same
-      bytes share one canonical ordinal, which makes the canonical map
-      non-injective there), and the canonical cell stream itself, which is
-      IR-CANON's product and the encoder's input.
+      renumbering costs the module its canonical form.  (The shipped
+      canonical codec stage was deleted 2026-08-05 for having no consumer;
+      the design constraint the model pins is type.f:88's surviving claim
+      that any canonical encoder must sort structurally AND renumber.)
+      What is proved about agreement is `Types.ty_canonize_orders_agree`,
+      which is the counterexample instance and not the general statement
+      "any two topological orders of any reference graph canonicalise
+      alike"; that general statement is unproved here.
    ------------------------------------------------------------------------
    BINDING GAPS
 
@@ -1661,16 +1657,15 @@ Proof. split; vm_compute; reflexivity. Qed.
 
 (* ---- what canonicalisation has to compute ------------------------------ *)
 
-(* src/compiler/ir/canon.f is the stage that answers the FINDING above: it
-   numbers a frozen module's rows in a canonical order and rewrites every
-   stored reference under that numbering.  What follows models both halves of
-   that job, and shows that the second half cannot be dropped.
+(* A canonical encoder is what answers the FINDING above: it numbers a frozen
+   module's rows in a canonical order and rewrites every stored reference
+   under that numbering.  What follows models both halves of that job, and
+   shows that the second half cannot be dropped.
 
    A row's canonical key under a partial numbering `m` is its own content with
    every reference replaced by the referent's CANONICAL ordinal.  A row whose
    pointee has no canonical ordinal yet has no key yet, which is how the model
-   states readiness: IR-CANON:TY-READY? and IR-CANON:TY-CMP are two words there
-   and one function here. *)
+   states readiness. *)
 Definition canon_key (m : list (option nat)) (k : ty) : option ty :=
   match k with
   | TInt w s => Some (TInt w s)
@@ -1697,8 +1692,8 @@ Definition stored_key (m : list (option nat)) (k : ty) : option ty :=
   end.
 
 (* A total order on keys: integer rows before pointer rows, then field by
-   field.  This is IR-CANON:TY-CMP's order - the kind's wire code first, then
-   the fields with references already in canonical numbering. *)
+   field - the kind's wire code first, then the fields with references
+   already in canonical numbering. *)
 Definition ty_ltb (a b : ty) : bool :=
   match a, b with
   | TInt w1 s1, TInt w2 s2 =>
@@ -1712,8 +1707,8 @@ Definition ty_ltb (a b : ty) : bool :=
 Definition assign (m : list (option nat)) (i c : nat) : list (option nat) :=
   firstn i m ++ Some c :: skipn (S i) m.
 
-(* One round of IR-CANON:PICK-READY: the smallest key among the rows that are
-   not numbered yet and whose references already are. *)
+(* One selection round: the smallest key among the rows that are not
+   numbered yet and whose references already are. *)
 Definition pick (key : list (option nat) -> ty -> option ty)
                 (rws : list ty) (m : list (option nat)) : option (nat * ty) :=
   fold_left
@@ -1732,9 +1727,9 @@ Definition pick (key : list (option nat) -> ty -> option ty)
        end)
     (seq 0 (length rws)) None.
 
-(* IR-CANON:ORDER: one round per row, and no ready row left with rows still
-   unnumbered is IR-CANON's E-IR-CANON-ORDER refusal rather than a partial
-   answer. *)
+(* One round per row, and no ready row left with rows still unnumbered is a
+   refusal (a reference graph with no admissible order) rather than a
+   partial answer. *)
 Fixpoint canon_rounds (key : list (option nat) -> ty -> option ty)
                       (rws : list ty) (fuel : nat)
                       (m : list (option nat)) (next : nat)
@@ -1768,9 +1763,8 @@ Example ty_rows_are_the_built_tables :
   /\ build order_b (empty 8) = Some (MkTable rows_b 8).
 Proof. split; vm_compute; reflexivity. Qed.
 
-(* The two admissible orders canonicalise to one row list, references and all.
-   This is the property src/compiler/ir/canon.f claims and the one
-   test/compiler/ir-canon.f measures over a whole module. *)
+(* The two admissible orders canonicalise to one row list, references and
+   all - the property any canonical encoder over this table must have. *)
 Example ty_canonize_orders_agree :
   canonize rows_a = Some rows_a /\ canonize rows_b = Some rows_a.
 Proof. split; vm_compute; reflexivity. Qed.
@@ -1788,9 +1782,8 @@ Proof. vm_compute. reflexivity. Qed.
 (* The renumbering is load-bearing, not bookkeeping.  Drop it - keep the
    canonical ORDER and emit the stored ordinal - and the same module built
    along the two admissible orders no longer has one canonical form.  This is
-   the machine-checked form of the mutation the Habu test carries: leaving a
-   pointer's pointee unrewritten in IR-CANON:PUT-TYPE turns the
-   two-build-orders fixture red. *)
+   the counterexample that rejects the "sort the rows and emit them"
+   encoder. *)
 Theorem ty_canonize_needs_renumbering :
   canonize_stored rows_a <> canonize_stored rows_b.
 Proof. vm_compute. discriminate. Qed.
