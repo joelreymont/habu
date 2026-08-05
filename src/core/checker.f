@@ -1359,10 +1359,16 @@ variable TWALK-D
       RES-FALSE EXIT
    THEN
    RES-FALSE ;
-: TY-OCC? ( n n -- bool ) {: id:n t:n :}
-   TWALK-RESET id MK-VAR t RES-FALSE TYPE-VAR?* ;
-: RV-OCC? ( n n -- bool ) {: id:n t:n :}
-   TWALK-RESET id MK-ROW t RES-FALSE TYPE-VAR?* ;
+: VAR-OCC* ( n n -- bool )
+   RES-FALSE TYPE-VAR?* ;
+: TY-OCC* ( n n -- bool ) {: id:n t:n :}
+   id MK-VAR t VAR-OCC* ;
+: RV-OCC* ( n n -- bool ) {: id:n t:n :}
+   id MK-ROW t VAR-OCC* ;
+: TY-OCC? ( n n -- bool )
+   TWALK-RESET TY-OCC* ;
+: RV-OCC? ( n n -- bool )
+   TWALK-RESET RV-OCC* ;
 : TYPE-CLOSED? ( n -- bool ) TWALK-RESET 0 swap RES-TRUE TYPE-VAR?* 0= ;
 
 \ --- item 7 (docs/type-families.md §10-11, PLAN item 7, reject-only): a logical
@@ -1642,16 +1648,19 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    RES-TRUE ;
 
 \ NONLIN is a structural kind: the complete owned frontier of a bound type term
-\ must contain no linear value. The same walker checks first and marks open
-\ vars only after the check succeeds, so a failed composite bind leaves no
-\ partial constraint outside the ordinary unification trail. Quotations,
+\ must contain no linear value. The same walker checks, marks, or requires the
+\ fact, so a failed composite bind leaves no partial constraint outside the
+\ ordinary unification trail. Quotations,
 \ pointers, atoms, and non-layout cell-family parameters are values without
 \ ownership of the types they mention. Fields are transparent; logical layouts
 \ and their sampled hidden tag own their value-bearing arguments and schemas.
-: NONLIN-TYPE* ( n bool -- bool ) {: t0:n mark:bool :}
+1 constant KIND-NEED
+
+: NONLIN-TYPE* ( n n -- bool ) {: t0:n mode:n :}
    t0 T-RES {: t:n :}
    t TAG T-VAR = IF
-      mark IF t PAY TVK-NONLIN-RAISE THEN
+      mode KIND-NEED = IF t PAY TVK-NONLIN? EXIT THEN
+      mode IF t PAY TVK-NONLIN-RAISE THEN
       RES-TRUE EXIT
    THEN
    t TAG T-CON = IF t PAY CT-LINEAR? 0= EXIT THEN
@@ -1660,13 +1669,13 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    t TAG T-ATOM = IF RES-TRUE EXIT THEN
    t TAG T-PARAM = IF
       t FIELD-PARAM? IF
-         t FIELD-INNER mark TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+         t FIELD-INNER mode TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
       THEN
       t LAYOUT-PARAM? 0= IF RES-TRUE EXIT THEN
       t LAYOUT-OWNS? 0= IF RES-TRUE EXIT THEN
       t PARAM>FAM TFAM-CON-LIN-XT IF RES-FALSE EXIT THEN
       0 BEGIN dup t PARAM>ARGC < WHILE
-         t over PARAM>ARG mark TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF
+         t over PARAM>ARG mode TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF
             drop RES-FALSE EXIT
          THEN
          1 +
@@ -1696,13 +1705,20 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ nominal ROLE atoms (idx/len) out of raw storage too needs that role/xt
 \ scratch migrated to typed cells first, so it is a documented follow-on; this
 \ dot closes the arity-0 nominal-family / layout mint, the epic's forgery target.
-: RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var/pointee RAW)
-   T-RES
-   dup ISVAR IF PAY TVK-RAISE RES-TRUE EXIT THEN     \ var: meet -> RAW (trailed)
-   dup TAG T-PARAM = IF drop RES-FALSE EXIT THEN     \ nominal family / layout -> reject (the mint)
-   dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN    \ plain scalar / role OK; linear con NO
-   dup TAG T-PTR = IF PTR>INNER RECURSE EXIT THEN    \ ptr: pointee must also be RAW-admissible
-   drop RES-TRUE ;                                    \ atom / xt / row: engine raw-stores these -> admit
+: RAW-OK* ( n n -- bool ) {: t0:n mode:n :}
+   t0 T-RES {: t:n :}
+   t ISVAR IF
+      mode KIND-NEED = IF t PAY TVK-RAW? EXIT THEN
+      t PAY TVK-RAISE RES-TRUE EXIT
+   THEN
+   t TAG T-PARAM = IF RES-FALSE EXIT THEN             \ nominal family / layout -> reject (the mint)
+   t TAG T-CON = IF t PAY CT-LINEAR? 0= EXIT THEN     \ plain scalar / role OK; linear con NO
+   t TAG T-PTR = IF
+      t PTR>INNER mode TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   RES-TRUE ;                                          \ atom / xt / row: engine raw-stores these -> admit
+: RAW-OK? ( n -- bool )
+   RES-TRUE RAW-OK* ;
 : RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates the RAW cell discipline?
    over TVK-RAW? 0= IF 2drop RES-FALSE EXIT THEN     \ ordinary var: never blocks
    nip RAW-OK? 0= ;                                   \ RAW var: `term` must be RAW-admissible
@@ -9485,85 +9501,160 @@ variable IS-TU
    0 OK !
    -1 FAILSET ! ;
 
-variable IS-I
-variable IS-J
+: IS-DEFER-TV? ( n -- bool ) {: id:n :}
+   0 BEGIN dup FEP @ ER.TVN @ < WHILE
+      dup cells EI-TV + @ PAY id = IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
 
-: IS-TV@ ( n -- n ) cells EI-TV + @ T-RES ;
-: IS-RV@ ( n -- n ) cells EI-RV + @ R-RES ;
+: IS-DEFER-RV? ( n -- bool ) {: id:n :}
+   0 BEGIN dup FEP @ ER.RVN @ < WHILE
+      dup cells EI-RV + @ PAY id = IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
 
-: IS-ORIG-KIND@ ( n -- n )
-   cells EC-TV + @ ;
+: IS-ROWS? ( n n n -- bool ) {: q:n d:n r:n :}
+   q d VAR-OCC* IF RES-TRUE EXIT THEN
+   q r VAR-OCC* ;
 
-: IS-SCHEME-SAVE ( ptr a -- ) {: h:ptr :}
-   E-COPY-MAPS-RESET
-   0 IS-I !
-   BEGIN IS-I @ h ER.TVN @ < WHILE
-      IS-I @ IS-TV@ PAY TVK@ IS-I @ cells EC-TV + !
-      IS-I @ 1 + IS-I !
-   REPEAT ;
+: IS-STATE? ( n -- bool ) {: q:n :}
+   q DCUR @ RCUR @ IS-ROWS? IF RES-TRUE EXIT THEN
+   q BROW @ RBROW @ IS-ROWS? IF RES-TRUE EXIT THEN
+   SGSEEN? IF
+      q SGIN @ SGOUT @ IS-ROWS? IF RES-TRUE EXIT THEN
+      SGHASR @ IF q SGRIN @ SGROUT @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
+   THEN
+   XSET @ IF q XROW @ XRROW @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
+   THSET @ IF q THDROW @ THRROW @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
+   RES-FALSE ;
 
-: IS-SCHEME-CLEAR ( ptr a -- )
-   ER.TVN @ EC-TV swap E-MAP-CLEAR ;
+: IS-LOC? ( n -- bool ) {: q:n :}
+   0 BEGIN dup #LOC @ < WHILE
+      q over cells LOCTV + @ VAR-OCC* IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
 
-: IS-TV-OPEN? ( n -- bool ) {: i:n :}
-   i IS-TV@ dup ISVAR 0= IF drop RES-FALSE EXIT THEN
-   PAY TVK@ i IS-ORIG-KIND@ = ;
+: IS-CF-REC? ( n ptr a -- bool ) {: q:n r:ptr :}
+   q r CF.SA @ r CF.RA @ IS-ROWS? IF RES-TRUE EXIT THEN
+   r CF.SB @ dup 0 <> IF q swap VAR-OCC* IF RES-TRUE EXIT THEN ELSE drop THEN
+   r CF.RB @ dup 0 <> IF q swap VAR-OCC* IF RES-TRUE EXIT THEN ELSE drop THEN
+   r CF.KND @ 6 = IF
+      r CF.XST @ IF q r CF.XRO @ r CF.XRR @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
+      r CF.TXS @ IF q r CF.TXD @ r CF.TXR @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
+   THEN
+   RES-FALSE ;
 
-: IS-RV-OPEN? ( n -- bool ) IS-RV@ ISROW ;
+: IS-CF? ( n -- bool ) {: q:n :}
+   0 BEGIN dup #CFC @ < WHILE
+      q over CF-ROW IS-CF-REC? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
 
-: IS-ROOT@ ( n bool -- n ) {: i:n row:bool :}
-   row IF i IS-RV@ ELSE i IS-TV@ THEN PAY ;
+: IS-MF-REC? ( n ptr a -- bool ) {: q:n r:ptr :}
+   q r MF.TERM @ VAR-OCC* IF RES-TRUE EXIT THEN
+   q r MF.BASE @ r MF.RBASE @ IS-ROWS? IF RES-TRUE EXIT THEN
+   r MF.HAS @ IF q r MF.OUT @ r MF.ROUT @ IS-ROWS? IF RES-TRUE EXIT THEN THEN
+   RES-FALSE ;
 
-: IS-DISTINCT? ( n bool -- bool ) {: n:n row:bool :}
-   0 IS-I !
-   BEGIN IS-I @ n < WHILE
-      IS-I @ 1 + IS-J !
-      BEGIN IS-J @ n < WHILE
-         IS-I @ row IS-ROOT@ IS-J @ row IS-ROOT@ = IF RES-FALSE EXIT THEN
-         IS-J @ 1 + IS-J !
-      REPEAT
-      IS-I @ 1 + IS-I !
-   REPEAT RES-TRUE ;
+: IS-MF? ( n -- bool ) {: q:n :}
+   0 BEGIN dup MF-DEPTH @ < WHILE
+      q over MF-REC * MF-ARENA + IS-MF-REC? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
 
-: IS-IN-DROW ( -- n )
-   QDEPTH @ 0 > IF BROW @ EXIT THEN
-   VSIG-ON? SGSEEN? and IF SGIN @ ELSE BROW @ THEN ;
+: IS-LIVE? ( n -- bool ) {: q:n :}
+   q IS-STATE? IF RES-TRUE EXIT THEN
+   q IS-LOC? IF RES-TRUE EXIT THEN
+   q IS-CF? IF RES-TRUE EXIT THEN
+   q IS-MF? ;
 
-: IS-IN-RROW ( -- n )
-   QDEPTH @ 0 > IF RBROW @ EXIT THEN
-   VSIG-ON? SGSEEN? and SGHASR @ and IF SGRIN @ ELSE RBROW @ THEN ;
+: IS-FLEX-TV? ( n -- bool ) {: id:n :}
+   id IS-DEFER-TV? IF RES-FALSE EXIT THEN
+   id MK-VAR IS-LIVE? 0= ;
 
-: IS-OCC? ( n n bool -- bool ) IF RV-OCC? ELSE TY-OCC? THEN ;
+: IS-FLEX-RV? ( n -- bool ) {: id:n :}
+   id IS-DEFER-RV? IF RES-FALSE EXIT THEN
+   id MK-ROW IS-LIVE? 0= ;
 
-: IS-INPUT-SHARED? ( n bool -- bool ) {: i:n row:bool :}
-   i row IS-ROOT@ {: root:n :}
-   root IS-IN-DROW row IS-OCC? IF RES-TRUE EXIT THEN
-   root IS-IN-RROW row IS-OCC? ;
+: IS-KIND-GUARANTEE? ( n n -- bool ) {: mask:n t:n :}
+   mask TVK-RAW and 0 <> IF t KIND-NEED RAW-OK* 0= IF RES-FALSE EXIT THEN THEN
+   mask TVK-NONLIN and 0 <> IF t KIND-NEED NONLIN-TYPE* 0= IF RES-FALSE EXIT THEN THEN
+   RES-TRUE ;
 
-: IS-SCHEME-OK? ( ptr a -- bool ) {: h:ptr :}
-   0 IS-I !
-   BEGIN IS-I @ h ER.TVN @ < WHILE
-      IS-I @ IS-TV-OPEN? 0= IF RES-FALSE EXIT THEN
-      IS-I @ RES-FALSE IS-INPUT-SHARED? IF RES-FALSE EXIT THEN
-      IS-I @ 1 + IS-I !
-   REPEAT
-   0 IS-I !
-   BEGIN IS-I @ h ER.RVN @ < WHILE
-      IS-I @ IS-RV-OPEN? 0= IF RES-FALSE EXIT THEN
-      IS-I @ RES-TRUE IS-INPUT-SHARED? IF RES-FALSE EXIT THEN
-      IS-I @ 1 + IS-I !
-   REPEAT
-   h ER.TVN @ RES-FALSE IS-DISTINCT? 0= IF RES-FALSE EXIT THEN
-   h ER.RVN @ RES-TRUE IS-DISTINCT? ;
+\ One-way scheme subsumption: only target variables absent from every retained
+\ checker root may bind. The defer's fresh variables are rigid, so successful
+\ matching means exactly that the defer scheme is an instance of the target.
+: IS-MATCH* ( n n -- bool ) {: target0:n defer0:n :}
+   target0 ISVAR IF
+      target0 T-RES defer0 T-RES = IF RES-TRUE EXIT THEN
+      target0 PAY TV@ dup UNBOUND <> IF
+         defer0 TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+      THEN drop
+      target0 PAY IS-FLEX-TV? 0= IF target0 T-RES defer0 T-RES = EXIT THEN
+      target0 PAY TVK@ defer0 IS-KIND-GUARANTEE? 0= IF RES-FALSE EXIT THEN
+      target0 PAY defer0 TY-OCC* IF RES-FALSE EXIT THEN
+      defer0 target0 PAY TV!
+      RES-TRUE EXIT
+   THEN
+   target0 ISROW IF
+      target0 R-RES defer0 R-RES = IF RES-TRUE EXIT THEN
+      target0 PAY RV@ dup UNBOUND <> IF
+         defer0 TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+      THEN drop
+      target0 PAY IS-FLEX-RV? 0= IF target0 R-RES defer0 R-RES = EXIT THEN
+      target0 PAY defer0 RV-OCC* IF RES-FALSE EXIT THEN
+      defer0 target0 PAY RV!
+      RES-TRUE EXIT
+   THEN
+   target0 T-RES {: target:n :}
+   defer0 T-RES {: want:n :}
+   target TAG want TAG <> IF RES-FALSE EXIT THEN
+   target TAG case
+      T-CON of target PAY want PAY = endof
+      T-PTR of
+         target PTR>INNER want PTR>INNER
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      endof
+      S-PUSH of
+         target P>TYPE want P>TYPE
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+         target P>REST want P>REST
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      endof
+      T-QUOT of
+         target Q>DIN want Q>DIN
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+         target Q>DOUT want Q>DOUT
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+         target Q>RIN want Q>RIN
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+         target Q>ROUT want Q>ROUT
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      endof
+      T-ATOM of target want ATOM-OK? endof
+      T-PARAM of
+         target PARAM>FAM want PARAM>FAM <> IF RES-FALSE EXIT THEN
+         target PARAM>HID want PARAM>HID <> IF RES-FALSE EXIT THEN
+         target PARAM>ARGC want PARAM>ARGC <> IF RES-FALSE EXIT THEN
+         target PARAM>ARGC 0 ?do
+            target i PARAM>ARG want i PARAM>ARG
+            TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF
+               RES-FALSE unloop EXIT
+            THEN
+         loop RES-TRUE
+      endof
+      RES-FALSE swap
+   endcase ;
+
+: IS-MATCH? ( n n -- bool )
+   TWALK-RESET IS-MATCH* ;
 
 : IS-APPLY ( n -- )
    ISQ !
-   FRESH MK-ROW {: rest:n :}
-   FEP @ IS-SCHEME-SAVE
-   DCUR @ ISQ @ rest MK-PUSH UNIFY OK @ and OK !
-   rest DCUR !
-   OK @ IF FEP @ IS-SCHEME-OK? 0= IF IS-FAIL THEN THEN
-   FEP @ IS-SCHEME-CLEAR ;
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop IS-FAIL EXIT THEN
+   dup P>TYPE {: target:n :}
+   P>REST DCUR !
+   target ISQ @ IS-MATCH? 0= IF IS-FAIL THEN ;
 
 : IS-TARGET-TOK? ( -- bool )
    IS-NEXT-TOKEN 0= IF 2drop RES-FALSE EXIT THEN
