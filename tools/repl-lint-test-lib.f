@@ -3,6 +3,9 @@
 \ lib/fs-mutate.f tools/lint/text.f tools/lint/intern.f tools/lint/token.f
 \ tools/lint/lib.f tools/repl-lint-core.f tools/repl-lint-test.f
 
+package LINT-REPL
+private
+
 4096 constant RLT-CAP
 
 variable RLT-ROOT-U
@@ -112,9 +115,9 @@ create RLT-ERR RLT-CAP allot
    RLT-DEBUG RLT-EMPTY$ WRITE-ALL ;
 
 : RLT-RUN-CORE ( -- n n n )
-   RLT-ROOT REPL-ROOT!
+   RLT-ROOT ROOT!
    RLT-OUT RLT-CAP LINT-OUT-BUFFER!
-   REPL-LINT-CHECK {: bad:n :}
+   CHECK {: bad:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    0 bad 0 > if 1 else 0 then ;
 
@@ -136,7 +139,8 @@ create RLT-ERR RLT-CAP allot
    RLT-OUT outu RLT-BAD-ADVICE$ CONTAINS? TTRUE
    RLT-OUT outu RLT-BAD-SUMMARY$ CONTAINS? TTRUE ;
 
-: RLT-MAIN ( -- )
+public
+: TEST ( -- )
    T-RESET
    RLT-PREPARE
    RLT-TEST-GOOD
@@ -145,3 +149,5 @@ create RLT-ERR RLT-CAP allot
    RLT-ROOT EXISTS? TFALSE
    T-REPORT
    s" repl-lint-test: ok" type cr ;
+
+;package

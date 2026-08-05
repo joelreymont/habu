@@ -391,10 +391,11 @@ $2000 constant SK-ARENA-CAP0         \ boot key-arena bytes (~32 facts-based key
       misaligned OF E-VEC-BOUNDS throw ENDOF
    ;MATCH ;
 
-create SK-KO-VEC  VEC-HEADER-CELLS cells allot   \ per-entry key offset
-create SK-KL-VEC  VEC-HEADER-CELLS cells allot   \ per-entry key length
-create SK-SEL-VEC VEC-HEADER-CELLS cells allot   \ per-entry selection (candidate index)
-variable SK-VECS?                    \ nonzero once the entry vectors are allocated
+create SK-KO-VEC  VEC:HEADER-CELLS cells allot   \ per-entry key offset
+create SK-KL-VEC  VEC:HEADER-CELLS cells allot   \ per-entry key length
+create SK-SEL-VEC VEC:HEADER-CELLS cells allot   \ per-entry selection (candidate index)
+variable SK-VECS?                    \ number of entry vectors allocated; 3 means ready
+variable SK-ENTRY-N
 variable SK-ARENA-A                  \ interned key bytes (lazy mmap; grows)
 variable SK-ARENA-CAP
 variable SK-ARENA-U
@@ -402,23 +403,19 @@ variable SK-ARENA-U
 : SK-ARENA-FIELD ( -- ptr ptr u8 )  SK-ARENA-A 0 ptr-field ;
 : SK-ARENA@ ( -- ptr u8 )  SK-ARENA-FIELD @ ;
 
-: SK-VEC-INIT1 ( ptr a -- )          \ back one entry vector at boot capacity, once
-   dup VEC-DATA@ 0= if SK-TAB-CAP0 SK>ITEM VEC:INIT else drop then ;
+: SK-VEC-INIT1 ( ptr h n -- ) {: vec:ptr step:n :}
+   step SK-VECS? @ < if exit then
+   vec SK-TAB-CAP0 SK>ITEM VEC:INIT
+   step 1+ SK-VECS? ! ;
 
 \ Atomic lazy entry-vector allocation (first PUT). The three entry vectors are ONE
-\ owned resource: SK-VECS? (the READY flag every reader observes through SK-N) is
-\ published exactly once, only after all three carry storage. Each per-vector init is
-\ idempotent - it skips a vector already backed - so a mid-init allocation failure
-\ leaves the backed vectors in place, the flag clear (SK-N reads 0: the table is
-\ invisibly empty, never half-published), and re-entry finishes the rest without
-\ re-allocating what it already has. No munmap exists in this arena/vector model, so
-\ that leak-free retry is the strongest recovery it admits.
+\ owned resource: readiness is published only after all three carry storage. The
+\ progress count makes retry resume after the last successful allocation.
 : SK-TAB-ENSURE ( -- )
-   SK-VECS? @ 0<> if exit then
-   SK-KO-VEC  SK-VEC-INIT1
-   SK-KL-VEC  SK-VEC-INIT1
-   SK-SEL-VEC SK-VEC-INIT1
-   -1 SK-VECS? ! ;
+   SK-VECS? @ 3 = if exit then
+   SK-KO-VEC  0 SK-VEC-INIT1
+   SK-KL-VEC  1 SK-VEC-INIT1
+   SK-SEL-VEC 2 SK-VEC-INIT1 ;
 
 : SK-ARENA-COPY-OLD ( ptr u8 -- ) {: dst:ptr :}
    SK-ARENA-U @ 0 > if SK-ARENA@ dst SK-ARENA-U @ BYTE-COPY then ;
@@ -441,14 +438,9 @@ variable SK-ARENA-U
    off u + SK-ARENA-U !
    off u ;
 
-\ live entry count (0 before first PUT). RAW residual: VEC:LEN@ yields a
-\ CAD-NUM:item-count and the checker (correctly) refuses to launder a count back
-\ to n, but SK-TAB-COUNT is pinned to a raw n and this count also drives SK-FIND's
-\ ?do bound, so the count is read through the raw VEC-LEN@ accessor for THIS word
-\ alone (no new projection). A typed item-count-bounded VEC iterator would retire it.
 : SK-N ( -- n )
-   SK-VECS? @ 0= if 0 exit then
-   SK-KO-VEC VEC-LEN@ LEN>N ;
+   SK-VECS? @ 3 <> if 0 exit then
+   SK-ENTRY-N @ ;
 
 : SK-ENTRY$ ( n -- ptr u8 n ) {: i:n :}
    SK-ARENA@ SK-KO-VEC i SK>INDEX VEC:@ +  SK-KL-VEC i SK>INDEX VEC:@ ;
@@ -482,7 +474,8 @@ variable SK-ARENA-U
    a u SK-INTERN {: off:n len:n :}               \ arena room reserved -> the copy cannot grow
    off SK-KO-VEC  VEC:PUSH drop                  \ vector capacity reserved -> the pushes cannot grow
    len SK-KL-VEC  VEC:PUSH drop
-   sel SK-SEL-VEC VEC:PUSH drop ;
+   sel SK-SEL-VEC VEC:PUSH drop
+   SK-ENTRY-N @ 1+ SK-ENTRY-N ! ;
 
 : SK-PLACE ( ptr u8 n n n -- ) {: a:ptr u:n sel:n e:n :}  \ e>=0: update slot; e<0: append (reserved)
    e 0 < 0= if sel SK-SEL-VEC e SK>INDEX VEC:! exit then
@@ -501,7 +494,8 @@ public
 
 : SK-TAB-RESET ( -- )                \ empty the table; grown capacity persists
    0 SK-ARENA-U !
-   SK-VECS? @ 0<> if
+   0 SK-ENTRY-N !
+   SK-VECS? @ 3 = if
       SK-KO-VEC VEC:CLEAR  SK-KL-VEC VEC:CLEAR  SK-SEL-VEC VEC:CLEAR
    then ;
 : SK-TAB-COUNT ( -- n )  SK-N ;

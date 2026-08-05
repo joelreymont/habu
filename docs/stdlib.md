@@ -196,65 +196,31 @@ raw relative dictionary links.
 
 `lib/vector.f` provides growable cell-vector storage backed by `lib/memory.f`.
 A vector handle is caller-owned header storage: allocate
-`VEC-HEADER-CELLS cells` in DATA or another cell area, then initialize it with
-`VEC-INIT ( ptr a count -- )`. Capacity arguments are `count`, active lengths
-are `len`, and element positions are `idx`.
+`VEC:HEADER-CELLS cells` in DATA or another cell area, then initialize it with
+`VEC:INIT`. `package VEC` is the only public surface. Capacities and active
+lengths are `CAD-NUM:item-count`; positions are `CAD-NUM:index`, so count/index
+swaps reject in the checker.
 
-Vectors store generic cells. Numeric values use `VEC-N@` / `VEC-N!`, byte
-pointers use `VEC-A@` / `VEC-A!`, and generic cell code can use `VEC@` /
-`VEC!`. `VEC-PUSH` grows by doubling capacity when the active length reaches
-the current capacity; it throws `E-VEC-CAPACITY` only for invalid or overflowing
-capacity requests and `E-VEC-BOUNDS` for invalid indexes or impossible lengths.
-
-Use `VEC-COUNT`, `VEC-CAP-COUNT`, `VEC-LEN`, and `VEC-IDX` to refine raw
-integers before calling role-typed vector words. `VEC-CAP-COUNT` rejects zero
-because allocation and initialization require positive capacity; `VEC-COUNT`
-allows zero for requested active length.
-
-The data pointer field is checked with the structure DSL's `PTR-FIELD:`, which
-constructs the typed `ptr ptr x` address used by normal `@` and `!`. Numeric
-header fields and vector slots use `VEC-CELL-FIELD` so indexed cell addresses
-remain typed as `ptr a`. Bounds, growth, copying, length, capacity, and
-iteration behavior are checked Forth.
+Vectors store generic cells through `VEC:PUSH`, `VEC:@`, and `VEC:!`.
+`VEC:PUSH` doubles capacity when full. `VEC:DATA@` borrows the backing cell array
+for existing array algorithms such as `SORT:SORT!`; callers must not retain it
+across resize or disposal. `E-VEC-CAPACITY` reports invalid or overflowing
+capacity and `E-VEC-BOUNDS` reports invalid indexes or lengths.
 
 ```forth
-VEC-COUNT           ( n -- count )
-VEC-CAP-COUNT       ( n -- count )
-VEC-LEN             ( n -- len )
-VEC-IDX             ( n -- idx )
-VEC-CHECK-NEED      ( count -- )
-VEC-CHECK-CAP       ( count -- )
-VEC-CHECK-LEN       ( len -- )
-VEC-CELLS>BYTES     ( count -- n )
-VEC-ALLOC-CELLS     ( count -- ptr a )
-VEC-CELL-FIELD      ( ptr a n -- ptr a )
-VEC-DATA-FIELD      ( ptr a -- ptr ptr a )
-VEC-DATA@           ( ptr a -- ptr a )
-VEC-DATA!           ( ptr a ptr a -- )
-VEC-LEN@            ( ptr a -- len )
-VEC-CAP@            ( ptr a -- count )
-VEC-CAP!            ( count ptr a -- )
-VEC-LEN!            ( len ptr a -- )
-VEC-INIT            ( ptr a count -- )
-VEC-CLEAR           ( ptr a -- )
-VEC-CHECK-INDEX     ( ptr a idx -- )
-VEC@                ( ptr a idx -- a )
-VEC!                ( a ptr a idx -- )
-VEC-N@              ( ptr a idx -- n )
-VEC-N!              ( n ptr a idx -- )
-VEC-A@              ( ptr a idx -- ptr u8 )
-VEC-A!              ( ptr u8 ptr a idx -- )
-VEC-COPY-CELLS      ( ptr a ptr a len -- )
-VEC-INSTALL-RESIZE  ( ptr a count ptr a -- )
-VEC-CHECK-RESIZE-CAP ( ptr a count -- )
-VEC-RESIZE          ( ptr a count -- )
-VEC-GROW-CAP        ( ptr a count -- count )
-VEC-ENSURE          ( ptr a count -- )
-VEC-PUSH-AT         ( a ptr a n -- idx )
-VEC-PUSH            ( a ptr a -- idx )
-VEC-PUSH-N          ( n ptr a -- idx )
-VEC-PUSH-A          ( ptr u8 ptr a -- idx )
-VEC-EACH            ( R ptr a [ R idx a -- R ] -- R )
+VEC:HEADER-CELLS ( -- n )
+VEC:INIT         ( ptr h CAD-NUM:item-count -- )
+VEC:CLEAR        ( ptr h -- )
+VEC:DISPOSE      ( ptr h -- )
+VEC:LEN@         ( ptr h -- CAD-NUM:item-count )
+VEC:CAP@         ( ptr h -- CAD-NUM:item-count )
+VEC:DATA@        ( ptr h -- ptr a )
+VEC:RESIZE       ( ptr h CAD-NUM:item-count -- )
+VEC:ENSURE       ( ptr h CAD-NUM:item-count -- )
+VEC:PUSH         ( a ptr h -- CAD-NUM:index )
+VEC:EACH         ( R ptr h [ R CAD-NUM:index a -- R ] -- R )
+VEC:@            ( ptr h CAD-NUM:index -- a )
+VEC:!            ( a ptr h CAD-NUM:index -- )
 ```
 
 ## FFI ABI

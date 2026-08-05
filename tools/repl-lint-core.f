@@ -2,6 +2,9 @@
 \ Load after lib/errors.f, lib/memory.f, lib/vector.f, tools/lint/text.f,
 \ tools/lint/intern.f, tools/lint/token.f, and tools/lint/lib.f.
 
+package LINT-REPL
+private
+
 $8000 constant REPL-FILE-CAP
 $400 constant REPL-PATH-CAP
 $80 constant REPL-PATH-MAX
@@ -75,7 +78,7 @@ variable REPL-ROOT-U
 : REPL-EM-DASH ( -- )
    $E2 REPL-C $80 REPL-C $94 REPL-C ;
 
-: REPL-U  ( u -- )
+: PRINT-U  ( n -- )
    0 REPL-NUM-L !
    dup 0 = if drop 48 REPL-C exit then
    begin dup 0 > while
@@ -93,9 +96,11 @@ variable REPL-ROOT-U
    REPL-FD @ 0 < if LINT-FALSE exit then
    REPL-FD @ close  LINT-TRUE ;
 
-: REPL-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
+public
+: ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a REPL-ROOT-A!
    u REPL-ROOT-U ! ;
+private
 
 : REPL-ROOT-SELF? ( -- bool )
    REPL-ROOT-U @ 0= if LINT-TRUE exit then
@@ -134,9 +139,9 @@ variable REPL-ROOT-U
 : PATH-ID!  ( n n -- )  REPL-PATH-IDS swap cells + ! ;
 
 : ADD-REPL-PATH  ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u INTERN-FIND dup 0 >= if drop exit then drop
+   a u LINT-INTERN:FIND dup 0 >= if drop exit then drop
    REPL-PATH# @ REPL-PATH-MAX >= if s" repl-lint: too many source paths" 1 die then
-   a u INTERN  REPL-PATH# @ PATH-ID!
+   a u LINT-INTERN:ADD  REPL-PATH# @ PATH-ID!
    REPL-PATH# @ 1+ REPL-PATH# ! ;
 
 : ADD-BACKSTOP-PATHS  ( -- )
@@ -156,7 +161,7 @@ variable REPL-ROOT-U
    u v < ;
 
 : PATH-ID<  ( n n -- bool ) {: left:n right:n :}
-   left INTERN$  right INTERN$  STR< ;
+   left LINT-INTERN:TEXT  right LINT-INTERN:TEXT  STR< ;
 
 : SWAP-PATH-IDS  ( n n -- ) {: left:n right:n :}
    left PATH-ID@ REPL-TMP !
@@ -192,7 +197,7 @@ variable REPL-ROOT-U
    repeat ;
 
 : COLLECT-REPL-PATHS  ( -- )
-   INTERN-RESET
+   LINT-INTERN:RESET
    0 REPL-PATH# !
    ADD-STDIN-SOURCES
    ADD-BACKSTOP-PATHS
@@ -267,7 +272,7 @@ variable REPL-ROOT-U
    LINT-TRUE ;
 
 : REPL-FINDING  ( ptr u8 n ptr u8 n n -- ) {: fa:ptr fu:n ta:ptr tu:n line:n :}
-   s" FATAL-IN-REPL " REPL-OUT fa fu REPL-OUT 58 REPL-C line REPL-U s" : `" REPL-OUT
+   s" FATAL-IN-REPL " REPL-OUT fa fu REPL-OUT 58 REPL-C line PRINT-U s" : `" REPL-OUT
    ta tu REPL-OUT s" ` exits the session " REPL-OUT REPL-EM-DASH
    s"  use `throw` (the REPL recovers); `die` is for build-time makers only" REPL-OUT REPL-NL ;
 
@@ -285,18 +290,21 @@ variable REPL-ROOT-U
    pa pu REPL-ROOTED$ REPL-FB REPL-FILE-CAP READ-FILE  P2U ! P2A!
    pa pu  P2A@ P2U @  LINT-REPL-SOURCE ;
 
-: REPL-LINT-CHECK  ( -- n )
+public
+: CHECK  ( -- n )
    0 REPL-BAD !
    COLLECT-REPL-PATHS
    0 REPL-I !
    begin REPL-I @ REPL-PATH# @ < while
-      REPL-I @ PATH-ID@ INTERN$ LINT-REPL-FILE
+      REPL-I @ PATH-ID@ LINT-INTERN:TEXT LINT-REPL-FILE
       REPL-I @ 1+ REPL-I !
    repeat
-   s" repl-lint: " REPL-OUT REPL-BAD @ REPL-U 32 REPL-C s" finding(s)" REPL-OUT REPL-NL
+   s" repl-lint: " REPL-OUT REPL-BAD @ PRINT-U 32 REPL-C s" finding(s)" REPL-OUT REPL-NL
    REPL-BAD @ ;
 
-: REPL-LINT  ( -- )
-   REPL-LINT-CHECK 0 > if s" " 1 die then ;
+: LINT  ( -- )
+   CHECK 0 > if s" " 1 die then ;
 
 1 >FD REPL-OUT-FD!
+
+;package

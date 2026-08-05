@@ -36,8 +36,8 @@ private
 REQUIRE-HARNESS
 
 : REPL ( -- )
-   s" ." REPL-ROOT!
-   REPL-LINT ;
+   s" ." LINT-REPL:ROOT!
+   LINT-REPL:LINT ;
 
 : CLOBBER ( -- )
    s" tools/lint/clobber-lint.f" GSI-REQUIRE

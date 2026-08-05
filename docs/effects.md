@@ -437,10 +437,9 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   semantic role changes explicit to the checker. A `DEFTYPE`-declared nominal gets
   the same pair auto-derived (`>NAME NAME>N`) at declaration time.
 - Library boundaries should prefer checked refinement constructors over raw
-  role casts. Examples: `A-LEN`, `A-IDX`, `A-COUNT`, `VEC-LEN`, `VEC-IDX`,
-  `VEC-COUNT`, `STR-LEN`, `STR-OFF`, `STR-COUNT`, `JW-LEN`, `M-LEN`, and
-  `M-OFF`. These constructors reject negative, overflowing, or out-of-capacity
-  inputs before the nominal role reaches checked code.
+  role casts. Examples: `A-LEN`, `A-IDX`, `A-COUNT`, `STR-LEN`, `STR-OFF`,
+  `STR-COUNT`, `JW-LEN`, `M-LEN`, and `M-OFF`. These constructors reject negative,
+  overflowing, or out-of-capacity inputs before the nominal role reaches checked code.
 - Phase roles (`asm`, `img`, `snap`) are nominal ordering cells whose payload is
   ignored. `ASM-CODE` produces `asm`; `BUILD-IMAGE` consumes it and produces
   `img`; `CODESIG2` preserves `img`; `DRV-WRITE-IMAGE` consumes `img` when the

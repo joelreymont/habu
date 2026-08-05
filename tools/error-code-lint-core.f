@@ -241,8 +241,8 @@ variable JX
 
 \ record one FIRST/LAST sentinel into its (stem,file) reservation row
 : RES+ ( n ptr u8 n -- ) {: code:n a:ptr u:n :}
-   a u STEM$ INTERN {: stem:n :}
-   PATH$ INTERN {: file:n :}
+   a u STEM$ LINT-INTERN:ADD {: stem:n :}
+   PATH$ LINT-INTERN:ADD {: file:n :}
    stem file RES-ROW {: k:n :}
    a u FIRST-TOK? if code k cells RES-LO + !
                   else code k cells RES-HI + ! then ;
@@ -284,7 +284,7 @@ variable JX
    k LINT-LEX:TOKEN NEG? {: code:n ok:bool :}
    ok 0= if exit then
    na nu SENTINEL? if code na nu RES+ exit then
-   code  na nu INTERN  PATH$ INTERN  CLAIM+ ;
+   code  na nu LINT-INTERN:ADD  PATH$ LINT-INTERN:ADD  CLAIM+ ;
 
 : UNKNOWN-KIND ( n -- ) {: k:n :}
    s" error-code-lint: " type PATH$ type
@@ -328,10 +328,10 @@ variable JX
 : HIT ( n n -- ) {: i:n j:n :}
    SHOW? @ if
       s" ERROR-CODE " type i CODE@ EMIT-N
-      s"  claimed by '" type i NAME@ INTERN$ type
-      s" ' (" type i OWNER@ INTERN$ type
-      s" ) and '" type j NAME@ INTERN$ type
-      s" ' (" type j OWNER@ INTERN$ type
+      s"  claimed by '" type i NAME@ LINT-INTERN:TEXT type
+      s" ' (" type i OWNER@ LINT-INTERN:TEXT type
+      s" ) and '" type j NAME@ LINT-INTERN:TEXT type
+      s" ' (" type j OWNER@ LINT-INTERN:TEXT type
       s" )" type NL
    then
    BAD @ 1+ BAD ! ;
@@ -371,10 +371,10 @@ variable JX
 : RES-HIT ( n n -- ) {: ci:n ri:n :}
    SHOW? @ if
       s" ERROR-CODE " type ci CODE@ EMIT-N
-      s"  claimed by '" type ci NAME@ INTERN$ type
-      s" ' (" type ci OWNER@ INTERN$ type
-      s" ) inside reserved range " type ri RES-STEM@ INTERN$ type
-      s" -FIRST..-LAST owned by (" type ri RES-OWNER@ INTERN$ type
+      s"  claimed by '" type ci NAME@ LINT-INTERN:TEXT type
+      s" ' (" type ci OWNER@ LINT-INTERN:TEXT type
+      s" ) inside reserved range " type ri RES-STEM@ LINT-INTERN:TEXT type
+      s" -FIRST..-LAST owned by (" type ri RES-OWNER@ LINT-INTERN:TEXT type
       s" )" type NL
    then
    BAD @ 1+ BAD ! ;

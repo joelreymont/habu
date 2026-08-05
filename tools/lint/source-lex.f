@@ -33,7 +33,7 @@ private
 0 constant ROW-BARE             \ FAM: bare `PRIM:` row, closed by `PRIM;`
 1 constant ROW-PKG              \ FAM: `PPRIM:` row, closed by `PPRIM;` or `CLOSE-PRIVATE`
 
-variable CAP
+variable INIT-N
 variable TOK-N   variable SRC-A   variable SRC-U   variable POS
 variable LINE-N  variable COL-N  variable START  variable START-LINE  variable START-COL
 variable CSTART
@@ -47,25 +47,16 @@ variable FAM                    \ family of the row being scanned
 variable FOFF   variable FLEN   \ current row field: offset into the source, length
 variable R-BYTE variable R-LINE variable R-COL   \ opener site of the row being scanned
 
-create KIND-V VEC-HEADER-CELLS cells allot
-create ADDR-V VEC-HEADER-CELLS cells allot
-create LEN-V VEC-HEADER-CELLS cells allot
-create BYTE-V VEC-HEADER-CELLS cells allot
-create LINE-V VEC-HEADER-CELLS cells allot
-create COL-V VEC-HEADER-CELLS cells allot
-create CADDR-V VEC-HEADER-CELLS cells allot
-create CLEN-V VEC-HEADER-CELLS cells allot
+create KIND-V VEC:HEADER-CELLS cells allot
+create ADDR-V VEC:HEADER-CELLS cells allot
+create LEN-V VEC:HEADER-CELLS cells allot
+create BYTE-V VEC:HEADER-CELLS cells allot
+create LINE-V VEC:HEADER-CELLS cells allot
+create COL-V VEC:HEADER-CELLS cells allot
+create CADDR-V VEC:HEADER-CELLS cells allot
+create CLEN-V VEC:HEADER-CELLS cells allot
 
-\ ---- raw table cell -> CAD-NUM role bridges for the typed VEC surface ---------
-\ The lexer's parallel record columns store raw cells (token / content addresses,
-\ lengths, kinds, byte/line/col positions). The typed VEC surface (package VEC)
-\ reads a validated CAD-NUM role - a capacity is a `CAD-NUM:item-count`, a record
-\ position is a `CAD-NUM:index` - so a count/index role swap at a VEC call is a
-\ checker reject. These lift a nonnegative cell to its role through the PUBLIC
-\ CAD-NUM validators (no laundering back to n, no reopened package); the refusal
-\ arms are unreachable invariants (MIN-CAP and a live record index are
-\ nonnegative), an impossible negative surfaces the vector's own capacity / bounds
-\ code. This is the maki/sched-key.f SK>ITEM / SK>INDEX idiom, kept lexer-local.
+\ Lift validated lexer counts and indexes into VEC roles.
 : N>ITEM ( n -- CAD-NUM:item-count )
    CAD-NUM:ITEM-COUNT
    MATCH CAD-NUM:numeric-result
@@ -92,22 +83,23 @@ create CLEN-V VEC-HEADER-CELLS cells allot
 : SRC! ( ptr u8 -- )
    SRC-FIELD ! ;
 
-: INIT-ONE ( ptr a -- )
-   MIN-CAP N>ITEM VEC:INIT ;
+: INIT-ONE ( ptr h n -- ) {: vec:ptr step:n :}
+   step INIT-N @ < if exit then
+   vec MIN-CAP N>ITEM VEC:INIT
+   step 1+ INIT-N ! ;
 
-: CLEAR-ONE ( ptr a -- )
+: CLEAR-ONE ( ptr h -- )
    VEC:CLEAR ;
 
 : INIT-VECTORS ( -- )
-   KIND-V INIT-ONE
-   ADDR-V INIT-ONE
-   LEN-V INIT-ONE
-   BYTE-V INIT-ONE
-   LINE-V INIT-ONE
-   COL-V INIT-ONE
-   CADDR-V INIT-ONE
-   CLEN-V INIT-ONE
-   MIN-CAP CAP ! ;
+   KIND-V  0 INIT-ONE
+   ADDR-V  1 INIT-ONE
+   LEN-V   2 INIT-ONE
+   BYTE-V  3 INIT-ONE
+   LINE-V  4 INIT-ONE
+   COL-V   5 INIT-ONE
+   CADDR-V 6 INIT-ONE
+   CLEN-V  7 INIT-ONE ;
 
 : CLEAR-VECTORS ( -- )
    KIND-V CLEAR-ONE
@@ -120,18 +112,24 @@ create CLEN-V VEC-HEADER-CELLS cells allot
    CLEN-V CLEAR-ONE ;
 
 : RESET-TABLES ( -- )
-   CAP @ 0= if INIT-VECTORS else CLEAR-VECTORS then
+   INIT-N @ 8 = if CLEAR-VECTORS else INIT-VECTORS then
    0 TOK-N ! ;
 
-\ RAW residual (maki/sched-key.f SK-N precedent): VEC:LEN@ yields a
-\ CAD-NUM:item-count and the checker correctly refuses to launder it back to n, but
-\ TOK-N is a raw n cache that drives the lexer's raw token arithmetic
-\ (COUNT 1- ...), so the count is read through the raw VEC-LEN@ accessor for this
-\ word alone.
-: SYNC-COUNT ( -- )
-   KIND-V VEC-LEN@ LEN>N TOK-N ! ;
+: RESERVE-ONE ( ptr h n -- )  N>ITEM VEC:ENSURE ;
+
+: RESERVE-ROW ( -- )
+   TOK-N @ 1+ {: need:n :}
+   KIND-V  need RESERVE-ONE
+   ADDR-V  need RESERVE-ONE
+   LEN-V   need RESERVE-ONE
+   BYTE-V  need RESERVE-ONE
+   LINE-V  need RESERVE-ONE
+   COL-V   need RESERVE-ONE
+   CADDR-V need RESERVE-ONE
+   CLEN-V  need RESERVE-ONE ;
 
 : ADD ( n ptr u8 n n n n ptr u8 n -- ) {: kind:n a:ptr u:n byte:n line:n col:n ca:ptr cu:n :}
+   RESERVE-ROW
    kind KIND-V VEC:PUSH drop
    a ADDR-V VEC:PUSH drop
    u LEN-V VEC:PUSH drop
@@ -140,7 +138,7 @@ create CLEN-V VEC-HEADER-CELLS cells allot
    col COL-V VEC:PUSH drop
    ca CADDR-V VEC:PUSH drop
    cu CLEN-V VEC:PUSH drop
-   SYNC-COUNT ;
+   TOK-N @ 1+ TOK-N ! ;
 
 public
 
