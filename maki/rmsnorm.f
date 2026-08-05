@@ -13,37 +13,37 @@ package MAKI
 : RMS-EPS ( -- r )  0.00001 ;
 
 \ mean square = mean( x_i^2 )
-: RMS-MS ( ptr a n -- r ) {: xb:ptr n:n :}
+: RMS-MS ( ptr r n -- r ) {: xb:ptr n:n :}
    0.0  n 0 ?do  xb i T-GET  dup f*  f+  loop  n s>f f/ ;
 
 \ root-mean-square scale r = sqrt(mean(x^2) + eps)
-: RMS-RMS ( ptr a n -- r ) {: xb:ptr n:n :}
+: RMS-RMS ( ptr r n -- r ) {: xb:ptr n:n :}
    xb n RMS-MS  RMS-EPS f+  fsqrt ;
 
 \ write y_i = x_i / r into yb
-: RMS-NORM! ( ptr a ptr a n r -- ) {: xb:ptr yb:ptr n:n r:r :}
+: RMS-NORM! ( ptr r ptr r n r -- ) {: xb:ptr yb:ptr n:n r:r :}
    n 0 ?do  xb i T-GET  r f/  yb i T-SET  loop ;
 
 public
 
-: RMS-FWD ( ptr a ptr a n -- ) {: xb:ptr yb:ptr n:n :}
+: RMS-FWD ( ptr r ptr r n -- ) {: xb:ptr yb:ptr n:n :}
    xb yb n  xb n RMS-RMS  RMS-NORM! ;
 
 private
 
 \ S = sum_i dy_i * x_i  (the row coupling term)
-: RMS-DOT ( ptr a ptr a n -- r ) {: dyb:ptr xb:ptr n:n :}
+: RMS-DOT ( ptr r ptr r n -- r ) {: dyb:ptr xb:ptr n:n :}
    0.0  n 0 ?do  dyb i T-GET  xb i T-GET  f*  f+  loop ;
 
 \ dx_j = (dy_j - x_j*coef)/r , coef = S/(n*r^2)
-: RMS-DX! ( ptr a ptr a ptr a n r r -- ) {: dyb:ptr xb:ptr dxb:ptr n:n r:r coef:r :}
+: RMS-DX! ( ptr r ptr r ptr r n r r -- ) {: dyb:ptr xb:ptr dxb:ptr n:n r:r coef:r :}
    n 0 ?do
       dyb i T-GET  xb i T-GET coef f*  f-  r f/  dxb i T-SET
    loop ;
 
 public
 
-: RMS-BWD ( ptr a ptr a ptr a n -- ) {: dyb:ptr xb:ptr dxb:ptr n:n :}
+: RMS-BWD ( ptr r ptr r ptr r n -- ) {: dyb:ptr xb:ptr dxb:ptr n:n :}
    xb n RMS-RMS {: r:r :}
    dyb xb n RMS-DOT  n s>f f/  r f/  r f/  {: coef:r :}
    dyb xb dxb n  r  coef  RMS-DX! ;
