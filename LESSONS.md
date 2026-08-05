@@ -5342,3 +5342,15 @@ every time; a number carried across masters is a claim about a tree that no
 longer exists. Same discipline as re-pinning: measurements are dated, and
 the date is part of the number.
 
+## Brick the fallback to prove the fast path, and never pin a downgrade (2026-08-05)
+
+Two keepers from the lookup lane. Proving an indexed fast path is COMPLETE -
+not merely present - cost one hostile falsification: replace the linear
+fallbacks with BRK and re-run the real suites; everything passing means every
+lookup went through the probe. Cheap, decisive, reusable. And the old churn
+test asserted the defect: 'a raise drops the index' pinned the silent
+downgrade as expected behavior, which is why the defect survived review for
+its whole life. A test that pins a silent downgrade is a bug preservation
+order - when the downgrade is the defect, the pin must flip in the same
+change that fixes it.
+
