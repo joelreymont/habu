@@ -3,16 +3,17 @@
 \ Needs asm.fs + icode.fs (EMITW). One concern: mnemonic -> encode+emit.
 9 constant T0   10 constant T1   11 constant T2
 19 constant XDS  31 constant SP
- 0 constant C-EQ   1 constant C-NE   2 constant C-CS   3 constant C-CC
- 4 constant C-MI   5 constant C-PL   6 constant C-VS   7 constant C-VC
- 8 constant C-HI   9 constant C-LS  10 constant C-GE  11 constant C-LT
-12 constant C-GT  13 constant C-LE  14 constant C-AL
+\ The condition-code names this layer used to define are asm.fs's now: they are
+\ the vocabulary of the four-bit field ?COND bounds, so they belong beside it,
+\ and this file loads after it.
 
 : MOVZ, ( n n -- )  0 MOVZHW EMITW ;
 
 : MOVN, ( n n -- )  0 MOVNHW EMITW ;
 
-: MOVK, ( n n n -- )  $10 / MOVKHW EMITW ;
+\ MOVK, takes the shift in BITS and selects the shifted half with it, so a
+\ shift that is not a whole half is refused rather than rounded down.
+: MOVK, ( n n n -- )  $10 SCALE/ MOVKHW EMITW ;
 
 : ADD, ( n n n -- )  ENC-ADD EMITW ;
 
@@ -55,6 +56,8 @@
 : CMPI, ( n n -- )  ENC-CMPI EMITW ;
 
 : CSET, ( n n -- )  ENC-CSET EMITW ;
+
+: CSEL, ( n n n n -- )  ENC-CSEL EMITW ;
 
 : LDR, ( n n n -- )  ENC-LDR EMITW ;
 
@@ -115,6 +118,8 @@
 : FCMP, ( n n -- )  ENC-FCMP EMITW ;
 
 : FCMP0, ( n -- )  ENC-FCMP0 EMITW ;
+
+: FCSEL, ( n n n n -- )  ENC-FCSEL EMITW ;
 
 : SCVTF, ( n n -- )  ENC-SCVTF EMITW ;
 

@@ -1,0 +1,63 @@
+# What the instruction-encoding proofs state, and what they rest on.
+#
+# One `theorem` row per published result in formal/Common/Insn.v - every
+# `Theorem` and `Corollary` it declares - in the order the file declares them,
+# which is also the order the file's own `Print Assumptions` commands query
+# them. Every `theorem` row is followed by exactly one `type` row and then by
+# its assumption rows.
+#
+# There is one assumption row per result and it is always `closed`, which is
+# Rocq reporting "Closed under the global context". That is the point of this
+# file: the instruction-encoding proofs rest on nothing, and the gate in
+# test/compiler/insn-proof.f reads this manifest with assumption rows
+# FORBIDDEN, so an `axiom` row cannot be written here at all. The observed set
+# is therefore checked twice: once when this file is read, and once against
+# what Rocq printed.
+#
+# A `type` row is this file's copy of what that result states, written as Rocq
+# prints the statement in the environment the generated obligations file sets
+# up: Stdlib ZArith, Bool, List, Lia and Btauto imported, list notations
+# imported, Habu.Common.Insn imported, and the Z scope open so a bare numeral
+# is an integer. The parity gate turns each row into
+# `Definition pinned_statement_<k> : <type row> := @<theorem name>.` in the file
+# it asks Rocq to compile, so Rocq's own type checker decides whether the
+# statement in the proof file still is the statement written here. It decides
+# that up to conversion, so renaming a bound variable is not a change but
+# weakening, strengthening, or trivialising a statement is. These rows are the
+# authority: the generated file is a build output and never reads a statement
+# out of the proof source, so changing the proof file alone cannot move the
+# target it is checked against.
+#
+# Lines starting with `#`, and blank lines, are commentary. A `type` row is
+# handed to Rocq. Every other row is compared byte for byte.
+
+theorem Habu.Common.Insn.decode_encode
+type forall i : insn, wf i = true -> decode (enc i) = Some i
+closed
+theorem Habu.Common.Insn.enc_injective
+type forall i j : insn, wf i = true -> wf j = true -> enc i = enc j -> i = j
+closed
+theorem Habu.Common.Insn.decoder_rows_exclusive
+type all_excl table = true
+closed
+theorem Habu.Common.Insn.mask_never_truncates
+type forall i : insn, wf i = true -> emit i = enc i
+closed
+theorem Habu.Common.Insn.opcode_and_operands_tile_the_word
+type forall i : insn, Z.lor (opmask i) (fldmask i) = 4294967295 /\ Z.land (opmask i) (fldmask i) = 0
+closed
+theorem Habu.Common.Insn.every_x_register_is_checked
+type forall i : insn, checked_regs i = xregs i
+closed
+theorem Habu.Common.Insn.overflow_aliases_another_instruction
+type wf (Movz 0 65536 0) = false /\ emit (Movz 0 65536 0) = enc (Movz 0 0 1) /\ wf (Cset 1 16) = false /\ emit (Cset 1 16) = enc (Cset 1 0)
+closed
+theorem Habu.Common.Insn.truncating_scale_aliases_another_offset
+type wf (Movk 5 4660 8) = false /\ emit (Movk 5 4660 8) = enc (Movk 5 4660 0) /\ wf (Ldr 1 2 12) = false /\ emit (Ldr 1 2 12) = enc (Ldr 1 2 8)
+closed
+theorem Habu.Common.Insn.overflow_escapes_the_vocabulary
+type wf (Addi 1 2 4096) = false /\ decode (emit (Addi 1 2 4096)) = None /\ wf (Add 1 2 32) = false /\ decode (emit (Add 1 2 32)) = None
+closed
+theorem Habu.Common.Insn.lsli_lsri_alias_at_zero
+type wf (Lsli 3 4 0) = false /\ enc (Lsli 3 4 0) = enc (Lsri 3 4 0)
+closed

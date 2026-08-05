@@ -1,0 +1,16 @@
+# Logical root for the Rocq proofs: this directory is the Habu namespace,
+# so Common/Ids.v is Habu.Common.Ids.
+-Q . Habu
+
+# Sources in dependency order.
+Common/Ids.v
+Common/IdAllocator.v
+Common/IdLaws.v
+Common/IdAllocatorLaws.v
+Common/Interning.v
+Common/Structure.v
+Common/Storage.v
+Common/Reloc.v
+Common/Effects.v
+Common/Control.v
+Common/Insn.v
