@@ -252,17 +252,17 @@ BC-BIND-HAD    BC-HAD    BC-REF-HAD    BC-DIST0? -1 T=      \ hadamard mul == re
 \ cotangent; the bias's dBVEC is the column-sum; the hadamard applies the product rule.
 : BC-LOSS ( -- r )  0.0 #BM #BN * 0 ?do  BCDO i T-GET  BCO i T-GET  f*  f+  loop ;
 : BC-H ( -- r )  0.001 ;
-: BC-FD-BIAS  ( ptr a n -- r ) {: p:ptr e:n :}
+: BC-FD-BIAS  ( ptr r n -- r ) {: p:ptr e:n :}
    p e T-GET {: base:r :}
    base BC-H f+ p e T-SET  BC-BIND-BIAS BC-BIAS BC-LOSS {: yp:r :}
    base BC-H f- p e T-SET  BC-BIND-BIAS BC-BIAS BC-LOSS {: ym:r :}
    base p e T-SET  yp ym f- BC-H 2.0 f* f/ ;
-: BC-FD-RESID ( ptr a n -- r ) {: p:ptr e:n :}
+: BC-FD-RESID ( ptr r n -- r ) {: p:ptr e:n :}
    p e T-GET {: base:r :}
    base BC-H f+ p e T-SET  BC-BIND-RESID BC-RESID BC-LOSS {: yp:r :}
    base BC-H f- p e T-SET  BC-BIND-RESID BC-RESID BC-LOSS {: ym:r :}
    base p e T-SET  yp ym f- BC-H 2.0 f* f/ ;
-: BC-FD-HAD   ( ptr a n -- r ) {: p:ptr e:n :}
+: BC-FD-HAD   ( ptr r n -- r ) {: p:ptr e:n :}
    p e T-GET {: base:r :}
    base BC-H f+ p e T-SET  BC-BIND-HAD BC-HAD BC-LOSS {: yp:r :}
    base BC-H f- p e T-SET  BC-BIND-HAD BC-HAD BC-LOSS {: ym:r :}
@@ -365,7 +365,7 @@ SPEC: BC-FRED  BSCL[] = BXA[bm bn] · BXB[bm bn] +SUM bm bn ;
 : BC-FRED-REF ( -- )  0.0 #BM #BN * 0 ?do  BCA i T-GET  BCB i T-GET  f* f+  loop  FRSR 0 T-SET ;
 BC-FILL  BCA BXA-BIND  BCB BXB-BIND  FRSB BSCL-BIND  BC-FRED  BC-FRED-REF
 FRSB FRSR 1 T-DIST2  1000000.0 f* 0.5 f+ f>s  0 T=      \ full-reduction golden == plain summed reference
-: BC-FD-FRED ( ptr a n -- r ) {: p:ptr e:n :}          \ central FD of s wrt element e of buffer p
+: BC-FD-FRED ( ptr r n -- r ) {: p:ptr e:n :}          \ central FD of s wrt element e of buffer p
    p e T-GET {: base:r :}
    base BC-H f+ p e T-SET  BCA BXA-BIND BCB BXB-BIND FRSB BSCL-BIND BC-FRED  FRSB 0 T-GET {: yp:r :}
    base BC-H f- p e T-SET  BCA BXA-BIND BCB BXB-BIND FRSB BSCL-BIND BC-FRED  FRSB 0 T-GET {: ym:r :}
