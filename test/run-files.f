@@ -78,7 +78,8 @@ TR-FILES: TR-GATE-COMMON-FILES
    tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
    tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
    tools/json-only-core.f tools/signature-lint-core.f
-   tools/checked-boundary-lint-core.f tools/reserved-name-lint-core.f
+   tools/checked-boundary-lint-core.f tools/hook-sites.f
+   tools/reserved-name-lint-core.f
    tools/check-all-errors-core.f lib/argv.f
    tools/dynamic-tail-manifest.f tools/source-discovery.f
    tools/check-core.f tools/check-main.f src/habu/verify-source.f
