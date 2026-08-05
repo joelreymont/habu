@@ -81,11 +81,11 @@ variable ST-QP-U
 : ST-READ-STDIN-ALL ( ptr u8 n -- n )
    >LEN READ-STDIN-ALL LEN>N ;
 
-: ST-CONCAT-FILES ( ptr a ptr a n ptr u8 n -- n )
+: ST-CONCAT-FILES ( ptr ptr u8 ptr n n ptr u8 n -- n )
    {: paths:ptr lens:ptr count dst:ptr cap :}
    paths lens count >COUNT dst cap >LEN CONCAT-FILES LEN>N ;
 
-: ST-WRITE-SOURCE-LIST ( ptr a ptr a n ptr u8 n -- )
+: ST-WRITE-SOURCE-LIST ( ptr ptr u8 ptr n n ptr u8 n -- )
    {: paths:ptr lens:ptr count out:ptr outu :}
    paths lens count >COUNT out outu >LEN WRITE-SOURCE-LIST ;
 

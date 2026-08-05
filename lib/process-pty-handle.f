@@ -386,13 +386,13 @@ TRUSTED: SUP-WATCH>FD ( sup-watch -- fd ) ;
 : TEARDOWN-TARGET@ ( process-pty-teardown -- process-pty-teardown target-pid )
    TEARDOWN-IDX TARGET@ ;
 
-: TEARDOWN-FD-TAKE ( process-pty-teardown ptr a -- process-pty-teardown fd )
+: TEARDOWN-FD-TAKE ( process-pty-teardown ptr fd -- process-pty-teardown fd )
    {: slot:ptr :}
    OPEN-TEARDOWN {: raw:n :}
    raw N>TEARDOWN
    raw UNPACK-IDX {: idx:idx :}
-   slot idx CELL-AT @ >FD {: fd:fd :}
-   -1 slot idx CELL-AT !
+   slot idx CELL-AT @ {: fd:fd :}
+   -1 >FD slot idx CELL-AT !
    fd ;
 
 : TEARDOWN-MASTER-TAKE ( process-pty-teardown -- process-pty-teardown fd )

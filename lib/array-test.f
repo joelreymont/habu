@@ -50,9 +50,6 @@ create AT-WORK 5 cells allot
 : AT-A! ( a ptr a n n -- ) {: value arr:ptr len ix :}
    value arr len A-LEN ix A-IDX A! ;
 
-: AT-A+! ( n ptr a n n -- ) {: delta arr:ptr len ix :}
-   delta arr len A-LEN ix A-IDX A+! ;
-
 : AT-A-SWAP ( ptr a n n n -- ) {: arr:ptr len ix jx :}
    arr len A-LEN ix A-IDX jx A-IDX A-SWAP ;
 
@@ -201,9 +198,6 @@ create AT-WORK 5 cells allot
 : AT-ASTORE-HIGH ( -- )
    9 AT-WORK 5 5 AT-A! ;
 
-: AT-APLUS-HIGH ( -- )
-   1 AT-WORK 5 5 AT-A+! ;
-
 : AT-ASWAP-HIGH ( -- )
    AT-WORK 5 0 5 AT-A-SWAP ;
 
@@ -288,9 +282,6 @@ create AT-WORK 5 cells allot
 
 : AT-TEST-PROMOTED-HELPERS ( -- )
    1 2 3 4 AT-WORK4
-   5 AT-WORK 4 1 AT-A+!
-   AT-WORK 4 1 AT-A@ 7 T=
-   [: AT-APLUS-HIGH ;] catch E-A-BOUNDS T=
    AT-WORK 4 0 3 AT-A-SWAP
    AT-WORK 4 0 AT-A@ 4 T=
    AT-WORK 4 3 AT-A@ 1 T=

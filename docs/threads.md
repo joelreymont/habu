@@ -48,12 +48,12 @@ TASK:DONE?           ( ptr a -- bool )
 
 TASK:#USER           ( -- n )
 TASK:+USER           ( n n -- n )      \ define task-local user variable
-TASK:HIS             ( ptr a ptr a -- ptr a )
+TASK:HIS             ( ptr h ptr a -- ptr a )
 
 TASK:FACILITY        ( -- )            \ define pthread mutex storage
-TASK:FACILITY-INIT   ( ptr a -- )
-TASK:GET             ( ptr a -- )
-TASK:RELEASE         ( ptr a -- )
+TASK:FACILITY-INIT   ( ptr n -- )
+TASK:GET             ( ptr n -- )
+TASK:RELEASE         ( ptr n -- )
 ```
 
 Use `TASK:KILL` for teardown. A task that loops must call `TASK:PAUSE` or block

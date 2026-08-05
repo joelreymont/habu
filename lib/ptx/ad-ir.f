@@ -31,7 +31,7 @@ variable ADIR-OP-N
    2dup s" PTX:B/"    STR= if 2drop OP-BDIV exit then
    E-PTX-AD-UNKNOWN throw ;
 
-: ADIR-BODY>OPS ( ptr u8 n -- ptr a n ) {: a:ptr u:n :}
+: ADIR-BODY>OPS ( ptr u8 n -- ptr n n ) {: a:ptr u:n :}
    a u AD-TOKENIZE
    AD-TOK-N @ ADIR-SOFTMAX-LEN <> if E-PTX-AD-UNKNOWN throw then
    0 ADIR-OP-N !
@@ -40,14 +40,14 @@ variable ADIR-OP-N
    loop
    ADIR-OPS ADIR-OP-N @ ;
 
-: ADIR-OP@ ( ptr a n -- n ) {: ops:ptr idx:n :}
+: ADIR-OP@ ( ptr n n -- n ) {: ops:ptr idx:n :}
    idx 0 < if E-PTX-AD-UNKNOWN throw then
    ops idx cells + @ ;
 
-: ADIR-EXPECT ( ptr a n n -- ) {: ops:ptr idx:n want:n :}
+: ADIR-EXPECT ( ptr n n n -- ) {: ops:ptr idx:n want:n :}
    ops idx ADIR-OP@ want <> if E-PTX-AD-UNKNOWN throw then ;
 
-: ADIR-SOFTMAX-OPS-CHECK ( ptr a n -- ) {: ops:ptr len:n :}
+: ADIR-SOFTMAX-OPS-CHECK ( ptr n n -- ) {: ops:ptr len:n :}
    len ADIR-SOFTMAX-LEN <> if E-PTX-AD-UNKNOWN throw then
    ops 0 OP-DUP  ADIR-EXPECT
    ops 1 OP-BMAX ADIR-EXPECT
@@ -57,7 +57,7 @@ variable ADIR-OP-N
    ops 5 OP-BSUM ADIR-EXPECT
    ops 6 OP-BDIV ADIR-EXPECT ;
 
-: ADIR-SOFTMAX-BWD-IR ( ptr a n -- n )
+: ADIR-SOFTMAX-BWD-IR ( ptr n n -- n )
    ADIR-SOFTMAX-OPS-CHECK
    PTXIR-RESET
    0 PTXIR-INPUT# {: y:n :}
@@ -65,7 +65,7 @@ variable ADIR-OP-N
    dy y PTXIR-MUL PTXIR-BSUM {: s:n :}
    dy s PTXIR-BSUB y PTXIR-MUL ;
 
-: ADIR-SOFTMAX-BWD$ ( ptr a n -- ptr u8 n )
+: ADIR-SOFTMAX-BWD$ ( ptr n n -- ptr u8 n )
    ADIR-SOFTMAX-BWD-IR PTXIR-RENDER ;
 
 : ADIR-SOFTMAX-BWD-BODY$ ( ptr u8 n -- ptr u8 n )
@@ -77,7 +77,7 @@ variable ADIR-OP-N
    dy s EMIT-B- {: dms:n :}
    dms y EMIT-MUL ;
 
-: ADIR-EMIT-SOFTMAX-BWD-FROM ( ptr a n n n -- n ) {: ops:ptr len:n y:n dy:n :}
+: ADIR-EMIT-SOFTMAX-BWD-FROM ( ptr n n n n -- n ) {: ops:ptr len:n y:n dy:n :}
    ops len ADIR-SOFTMAX-OPS-CHECK
    y dy ADIR-EMIT-SOFTMAX-BWD ;
 

@@ -17,9 +17,9 @@ tracking; it is not a copy of the manual.
 | `KILL` | `addr --` | `TASK:KILL` | `ptr a --` |
 | `#USER` | `-- n` | `TASK:#USER` | `-- n` |
 | `+USER` | `n --` style defining word | `TASK:+USER` | `n n -- n` |
-| `HIS` | `addr1 addr2 -- addr3` | `TASK:HIS` | `ptr a ptr a -- ptr a` |
-| `GET` | `addr --` | `TASK:GET` | `ptr a --` |
-| `RELEASE` | `addr --` | `TASK:RELEASE` | `ptr a --` |
+| `HIS` | `addr1 addr2 -- addr3` | `TASK:HIS` | `ptr h ptr a -- ptr a` |
+| `GET` | `addr --` | `TASK:GET` | `ptr n --` |
+| `RELEASE` | `addr --` | `TASK:RELEASE` | `ptr n --` |
 
 ## Habu Deliberate Differences
 

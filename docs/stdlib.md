@@ -145,8 +145,8 @@ cells with an accumulator, `A-SCAN!` writes a prefix scan from an explicit seed,
 `A-FIND-INDEXI` return the first matching index or `-1`. Index-aware quotations
 receive the zero-based index before the value.
 
-Convenience helpers keep common index math checked: `A+!` adds to one element,
-`A-SWAP` swaps two checked indexes, `LAST-INDEX` returns `len - 1` for a
+Convenience helpers keep common index math checked: `A-SWAP` swaps two checked
+indexes, `LAST-INDEX` returns `len - 1` for a
 non-empty array, `MIRROR-INDEX` returns `len - 1 - index`, and `EVEN?` returns a
 Forth boolean for integer parity.
 
@@ -160,7 +160,6 @@ A-CHECK-NONEMPTY  ( len -- )
 A-CHECK-WHOLE     ( len -- )
 A@                ( ptr a len idx -- a )
 A!                ( a ptr a len idx -- )
-A+!               ( n ptr a len idx -- )
 A-SWAP            ( ptr a len idx idx -- )
 LAST-INDEX        ( len -- idx )
 MIRROR-INDEX      ( len idx -- idx )
@@ -1147,13 +1146,13 @@ SOURCE-READ-PROBE              ( -- )
 READ-STDIN-ALL                 ( ptr u8 len -- len )
 SOURCE-APPEND-BYTES            ( ptr u8 len ptr u8 len ptr len -- )
 SOURCE-APPEND-C                ( n ptr u8 len ptr len -- )
-SOURCE-PATH-A@                 ( ptr a idx -- ptr u8 )
-SOURCE-PATH-U@                 ( ptr a idx -- len )
+SOURCE-PATH-A@                 ( ptr ptr u8 idx -- ptr u8 )
+SOURCE-PATH-U@                 ( ptr n idx -- len )
 SOURCE-APPEND-FILE             ( ptr u8 len ptr u8 len ptr len -- )
 SOURCE-APPEND-PROVIDED         ( ptr u8 len ptr u8 len ptr len -- )
 SOURCE-APPEND-SOURCE-FILE      ( ptr u8 len ptr u8 len ptr len -- )
-CONCAT-FILES                   ( ptr a ptr a count ptr u8 len -- len )
-WRITE-SOURCE-LIST              ( ptr a ptr a count ptr u8 len -- )
+CONCAT-FILES                   ( ptr ptr u8 ptr n count ptr u8 len -- len )
+WRITE-SOURCE-LIST              ( ptr ptr u8 ptr n count ptr u8 len -- )
 SOURCE-FINAL-LINE-START        ( ptr u8 len -- off )
 INSERT-BEFORE-FINAL-LINE       ( ptr u8 len ptr u8 len ptr u8 len -- len )
 SOURCE-LINE-END                ( ptr u8 len off -- off )
@@ -1242,8 +1241,8 @@ PROC-REAP-CAPTURE        ( -- )
 PROC-REAP-CAPTURE-TIMEOUT ( -- )
 PROC-KILL-CAPTURE        ( -- )
 PROC-THROW-CAPTURE       ( n -- )
-PROC-OPEN-PIPE           ( ptr a ptr a -- )
-PROC-CLOEXEC-CELL        ( ptr a -- )
+PROC-OPEN-PIPE           ( ptr fd ptr fd -- )
+PROC-CLOEXEC-CELL        ( ptr fd -- )
 PROC-SETUP-CAPTURE-FDS   ( -- )
 PROC-CAPTURE-DEADLINE!   ( ms -- )
 PROC-REMAINING-MS        ( -- ms )
@@ -1536,11 +1535,11 @@ TASK:KILL          ( ptr a -- )
 TASK:DONE?         ( ptr a -- bool )
 TASK:#USER         ( -- n )
 TASK:+USER         ( n n -- n )
-TASK:HIS           ( ptr a ptr a -- ptr a )
+TASK:HIS           ( ptr h ptr a -- ptr a )
 TASK:FACILITY      ( -- )
-TASK:FACILITY-INIT ( ptr a -- )
-TASK:GET           ( ptr a -- )
-TASK:RELEASE       ( ptr a -- )
+TASK:FACILITY-INIT ( ptr n -- )
+TASK:GET           ( ptr n -- )
+TASK:RELEASE       ( ptr n -- )
 ```
 
 Tasks execute precompiled XTs only. Dictionary/code mutation while tasks are

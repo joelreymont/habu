@@ -123,7 +123,7 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 : APP-BAD+ ( -- )
    1 APP-BAD atomic-add drop ;
 
-: APP-WAIT-CELL ( ptr a n -- ) {: cell:ptr want:n :}
+: APP-WAIT-CELL ( ptr n n -- ) {: cell:ptr want:n :}
    begin cell atomic@ want < while TASK:PAUSE repeat ;
 
 : APP-WAIT-DONE ( ptr a -- ) {: tcb:ptr :}
