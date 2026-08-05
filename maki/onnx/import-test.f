@@ -60,8 +60,8 @@ package ONNX-IMPORT-TEST
 using ONNX
 
 \ ---- readers (executor-test pattern) -----------------------------------------
-: >I ( ptr a n -- n )  T-GET 0.5 f+ f>s ;             \ cell as nearest int (>= 0)
-: >M ( ptr a n -- n )  T-GET 1000.0 f* 0.5 f+ f>s ;   \ cell as milliunits (>= 0)
+: >I ( ptr r n -- n )  T-GET 0.5 f+ f>s ;             \ cell as nearest int (>= 0)
+: >M ( ptr r n -- n )  T-GET 1000.0 f* 0.5 f+ f>s ;   \ cell as milliunits (>= 0)
 
 create XB 8 cells allot                        \ runtime input buffer
 create X2B 8 cells allot
