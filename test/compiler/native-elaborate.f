@@ -41,6 +41,7 @@
 \ compile is E-HIR-UNMODELED, a token kind the subset does not model is
 \ E-HIR-KIND, and a tape of another module is E-NTAPE-OWNER.
 
+require lib/errors.f
 require lib/test.f
 require src/compiler/native/elaborate.f
 require test/compiler/native-source-fixture.f
@@ -112,6 +113,38 @@ using NSRC
    m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY op IR-OP:FOPCODE@
    a u IR-SYM:FEQ? ;
 
+\ ---- naming an operation by what it IS ---------------------------------------
+\ A fixture that reads `block op 7` pins the arithmetic of the operation list,
+\ not the semantics of the body, so any legal transform that changes the count
+\ reads as an IR invariant violation. That mis-directed a whole lane once: the
+\ literal memo collapsed two address constants, index 8 stopped existing, and
+\ IR-FUN:FOP@ threw the generic out-of-range code from the TEST while the module
+\ froze cleanly. The three readers below let a case say which operation it means
+\ - the first store, the only load, how many constants there are - so the suite
+\ constrains what the body computes and stays silent about how many operations
+\ express it.
+: F-OPC-N ( IR-BUILD:module IR-ID:ir-block-id ptr u8 n -- n )
+   {: m:IR-BUILD:module blk:IR-ID:ir-block-id a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   0
+   m blk F-OPS 0 ?do
+      m  m blk i F-OP  a u F-OPC? if 1+ then
+   loop ;
+
+\ The k-th operation of this block carrying this opcode, counting from zero. A
+\ case that asks for one that is not there gets a refusal rather than a wrong
+\ operation, because "the second store" not existing is exactly the kind of
+\ change a fixture is here to catch.
+: F-OPC-AT ( IR-BUILD:module IR-ID:ir-block-id ptr u8 n n -- IR-ID:ir-op-id )
+   {: m:IR-BUILD:module blk:IR-ID:ir-block-id a u:n k:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   k
+   m blk F-OPS 0 ?do
+      m  m blk i F-OP  a u F-OPC? if
+         dup 0= if drop m blk i F-OP unloop exit then
+         1-
+      then
+   loop
+   drop E-NELAB-UNDER throw ;
+
 : F-IN ( IR-BUILD:module IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: m:IR-BUILD:module op:IR-ID:ir-op-id i:n :}
    m IR-BUILD:FOP-POOL m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY op i
@@ -125,6 +158,10 @@ using NSRC
    {: m:IR-BUILD:module op:IR-ID:ir-op-id i:n :}
    m IR-BUILD:FOP-POOL m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY op i
    IR-OP:FRESULT@ ;
+
+: F-OUTS ( IR-BUILD:module IR-ID:ir-op-id -- n )
+   {: m:IR-BUILD:module op:IR-ID:ir-op-id :}
+   m IR-BUILD:FOP-ROWS op IR-OP:FRESULTS ;
 
 : F-ATTR ( IR-BUILD:module IR-ID:ir-op-id n -- n )
    {: m:IR-BUILD:module op:IR-ID:ir-op-id i:n :}
@@ -141,6 +178,22 @@ using NSRC
 : SAME? ( IR-ID:ir-value-id IR-ID:ir-value-id -- bool )
    {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
    x IR-ID:VALUE-LOCAL y IR-ID:VALUE-LOCAL = ;
+
+\ Is the value this operand names defined by an operation of this opcode? Says
+\ "the address a store writes through is a constant" without saying WHICH
+\ constant operation computed it, so it reads the same whether or not two equal
+\ literals in the block were folded into one value.
+: F-FROM? ( IR-BUILD:module IR-ID:ir-block-id IR-ID:ir-value-id ptr u8 n -- bool )
+   {: m:IR-BUILD:module blk:IR-ID:ir-block-id v:IR-ID:ir-value-id a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   false
+   m blk F-OPS 0 ?do
+      m blk i F-OP {: op:IR-ID:ir-op-id :}
+      m op F-OUTS 0 > if
+         m op 0 F-OUT v SAME? if
+            drop m op a u F-OPC? leave
+         then
+      then
+   loop ;
 
 \ How many blocks the function has, which block a terminator's successor names,
 \ and how many successors it has. The control-flow cases below are about exactly
@@ -255,7 +308,7 @@ using NSRC
    c LEX
    b p r  tp NTAPE:SEAL ;
 
-: BUMP-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool )
+: BUMP-BODY ( IR-CTX:ctx -- n n n n bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    s" BUMP CELL-A ! CELL-A @ 1+ dup CELL-A !" TEXT!
    c SEALED-DATA
@@ -263,30 +316,26 @@ using NSRC
    c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m f F-BLK {: blk:IR-ID:ir-block-id :}
-   m blk 0 F-OP {: mem:IR-ID:ir-op-id :}
-   m blk 1 F-OP {: a0:IR-ID:ir-op-id :}
-   m blk 2 F-OP {: st0:IR-ID:ir-op-id :}
-   m blk 3 F-OP {: a1:IR-ID:ir-op-id :}
-   m blk 4 F-OP {: ld:IR-ID:ir-op-id :}
-   m blk 7 F-OP {: a2:IR-ID:ir-op-id :}
-   m blk 8 F-OP {: st1:IR-ID:ir-op-id :}
-   m blk F-OPS
-   m mem s" hir.mem" F-OPC?
-   m st0 s" hir.store" F-OPC?
-   m ld s" hir.load" F-OPC?
-   m a2 s" hir.const" F-OPC?
+   m blk s" hir.mem" 0 F-OPC-AT {: mem:IR-ID:ir-op-id :}
+   m blk s" hir.store" 0 F-OPC-AT {: st0:IR-ID:ir-op-id :}
+   m blk s" hir.load" 0 F-OPC-AT {: ld:IR-ID:ir-op-id :}
+   m blk s" hir.store" 1 F-OPC-AT {: st1:IR-ID:ir-op-id :}
+   m blk s" hir.mem" F-OPC-N
+   m blk s" hir.store" F-OPC-N
+   m blk s" hir.load" F-OPC-N
+   m blk s" hir.add" F-OPC-N
    m st0 0 F-IN  m blk 0 F-ARG SAME?
-   m st0 1 F-IN  m a0 0 F-OUT SAME?
    m st0 2 F-IN  m mem 0 F-OUT SAME?
-   m ld 0 F-IN  m a1 0 F-OUT SAME?
    m ld 1 F-IN  m st0 0 F-OUT SAME?
-   m st1 2 F-IN  m ld 1 F-OUT SAME? ;
+   m st1 2 F-IN  m ld 1 F-OUT SAME?
+   m blk  m st0 1 F-IN  s" hir.const" F-FROM?
+   m blk  m ld 0 F-IN   s" hir.const" F-FROM? ;
 
 : BUMP-CASE ( -- )
    s" a store and a load compile to one order, threaded link by link" T-LABEL
    BND [: BUMP-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE 10 T= ;
+   1 T= 1 T= 2 T= 1 T= ;
 
 \ ---- a word with two outputs -------------------------------------------------
 \ `over + swap` leaves the sum and the first input, in that order. Two
