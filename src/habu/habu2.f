@@ -4893,7 +4893,35 @@ s" c-end-package" s" --" TRUST
 s" c-using-name-guard" s" --" TRUST
 
 : C-USING-WID ( -- )   \ TKA/TKL name a package -> x2 = its public WID; die unknown otherwise
-   LBL LBL LBL LBL LBL LBL {: loop:label miss:label hit:label notfound:label umsg:label done:label :}
+   \ The namespace rows (wid DICT-WL:NAMESPACE) are ordinary published records,
+   \ inserted by the same LHIDXADD as every definition and dup-walled by
+   \ C-PACKAGE-ENSURE (one record per package name), so `using` resolves its
+   \ package through the same one-wordlist hash probe the name lookup uses
+   \ (CG-26): hash the token once, walk the (name XOR -1) chain, and let
+   \ C-PACKAGE-RECORD-MATCH - the same word the scan judges a candidate with -
+   \ judge each probed record. An empty slot is the scan's own "no such
+   \ package". The scan below stays authoritative for the pre-LHIDXBUILD
+   \ window and the full-wrap chain, exactly as in LFIND.
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: loop:label miss:label hit:label notfound:label umsg:label done:label
+      lscan:label plp:label pnx:label :}
+   14 DATA HIDXP-CELL LDR,  14 lscan CBZ,          \ no table -> the scan answers
+   16 DATA TKA-CELL LDR,  15 DATA TKL-CELL LDR,
+   16 15 3 4 5 7 C-HIDX-HASH                       \ x3 = folded-name hash
+   4 0 MOVN,
+   6 3 4 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND, \ x6 = slot = (hash XOR NAMESPACE) & mask
+   8 HIDX-SLOTS LIT64,                             \ x8 = step budget
+   plp LBL,
+      5 6 2 LSLI,  5 14 5 ADD,  7 5 0 LDRW,        \ x7 = slot value (index+1)
+      7 notfound CBZ,                              \ empty slot -> no such package
+      7 7 1 SUBI,  7 NDICT CMP,  C-GE pnx BCOND,   \ stale (truncated) index
+      5 DREC MOVZ,  5 7 5 MUL,  5 DBASE 5 ADD,     \ x5 = candidate record
+      hit pnx C-PACKAGE-RECORD-MATCH               \ hit iff wid==-1 && name==token
+   pnx LBL,
+      14 DATA HIDXP-CELL LDR,                      \ the match word used x14 as scratch
+      8 8 1 SUBI,  8 lscan CBZ,                    \ full wrap -> the scan answers
+      6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  plp B,
+   lscan LBL,
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    loop LBL,
       6 notfound CBZ,
@@ -4943,16 +4971,29 @@ s" c-end-using" s" --" TRUST
 
 \ EMIT-FIND-USED (LFINDUSED leaf): searched only after the open-scope + global chain
 \ misses. Input x9=token addr, x10=token len; output x13=0 (miss) or FIND-shaped flags
-\ (hit) with x11=code x12=body-len. A single-pass dictionary scan collects records whose
-\ WID is one of the live USE-WIDS[0..depth) and whose folded name equals the token; a
-\ second distinct match is the ambiguity hard error. Qualified tokens (containing ':')
-\ never resolve here. Register/name-fold conventions mirror EMIT-FIND's authoritative
-\ linear scan; preserves x9/x10/x19(XDS)/x20(DATA).
+\ (hit) with x11=code x12=body-len. The token is hashed once and each live
+\ USE-WIDS[0..depth) public wordlist is asked through the same one-wordlist hash
+\ probe LFIND and search-wl answer from - O(depth) chain walks instead of the
+\ O(NDICT * depth) whole-dictionary scan this leaf used to make (CG-26). The
+\ probe reproduces the scan exactly on these wids for BSWL's reason: a package
+\ public wordlist is guarded by the definer's duplicate wall, so it holds at
+\ most one live row per folded name. The same package used twice probes the
+\ same wid to the same record, which the record-identity dedupe counts once -
+\ the scan's own rule. A second DISTINCT record is the ambiguity hard error,
+\ exactly as in the scan. The scan is kept below as the authoritative answer
+\ for the two windows the probe cannot serve: no table yet (pre-LHIDXBUILD
+\ startup), and a chain walked through every slot without meeting an empty one.
+\ Qualified tokens (containing ':') never resolve here. Register/name-fold
+\ conventions mirror EMIT-FIND's authoritative linear scan; preserves
+\ x9/x10/x19(XDS)/x20(DATA).
 : EMIT-FIND-USED ( -- )
    LFINDUSED LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan:label qnone:label ret:label uloop:label mloop:label member:label
-      ninl:label ncmp:label nmatch:label unext:label udone:label amb:label ambmsg:label :}
+      ninl:label ncmp:label nmatch:label unext:label udone:label amb:label ambmsg:label
+      lscan:label kloop:label knext:label ploop:label pnext:label pinl:label
+      pcmp:label pmatch:label :}
    13 0 MOVZ,
    17 0 MOVZ,
    qscan LBL,
@@ -4963,6 +5004,51 @@ s" c-end-using" s" --" TRUST
    14 USE-DEPTH-CELL LIT64,  14 DATA 14 ADD,  8 14 0 LDR,          \ x8 = depth
    8 ret CBZ,                                                       \ no usings -> miss
    7 USE-WIDS-OFF LIT64,  7 DATA 7 ADD,                            \ x7 = &USE-WIDS[0]
+   14 DATA HIDXP-CELL LDR,  14 lscan CBZ,                          \ no table -> the scan answers
+   9 10 15 4 5 17 C-HIDX-HASH                                      \ x15 = folded-name hash, once
+   16 0 MOVZ,  6 0 MOVZ,                                            \ x16 = matched record (0=none), x6 = match count
+   3 0 MOVZ,                                                        \ x3 = used-wid index
+   kloop LBL,
+      3 8 CMP,  C-GE udone BCOND,                                  \ every wid asked -> shared verdict
+      2 3 3 LSLI,  2 7 2 ADD,  2 2 0 LDR,                          \ x2 = USE-WIDS[x3]
+      5 15 2 EOR,  4 HIDX-SLOTS 1 - LIT64,  5 5 4 AND,             \ x5 = slot = (hash XOR wid) & mask
+      4 HIDX-SLOTS LIT64,                                          \ x4 = step budget
+   ploop LBL,
+      12 5 2 LSLI,  12 14 12 ADD,  11 12 0 LDRW,                   \ x11 = slot value (index+1)
+      11 knext CBZ,                                                \ empty slot -> absent from this wid
+      11 11 1 SUBI,  11 NDICT CMP,  C-GE pnext BCOND,              \ stale (truncated) index
+      12 DREC MOVZ,  12 11 12 MUL,  12 DBASE 12 ADD,               \ x12 = record ptr
+      11 12 40 LDR,  11 2 CMP,  C-NE pnext BCOND,                  \ wid mismatch
+      11 12 16 LDR,  11 11 12 LSLI,  11 11 12 LSRI,  11 10 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      17 12 24 ADDI,
+      11 12 16 LDR,  11 11 DNAME-EXT ANDI,  11 pinl CBZ,
+         17 12 24 LDR,
+      pinl LBL,
+      13 0 MOVZ,
+      pcmp LBL,
+         \ x2 and x11 carry the two bytes, x12 is the shared fold scratch; the
+         \ record pointer is recomputed from the slot at pmatch and the wid is
+         \ reloaded from USE-WIDS[x3] at pnext, so both survive by re-derivation
+         13 10 CMP,  C-GE pmatch BCOND,
+         11 17 13 ADD,  11 11 0 LDRB,
+         12 11 $41 SUBI,  12 $1A CMPI,  12 C-CC CSET,  12 12 5 LSLI,  11 11 12 ORR,
+         2 9 13 ADD,  2 2 0 LDRB,
+         12 2 $41 SUBI,  12 $1A CMPI,  12 C-CC CSET,  12 12 5 LSLI,  2 2 12 ORR,
+         11 2 CMP,  C-NE pnext BCOND,
+         13 13 1 ADDI,  pcmp B,
+      pmatch LBL,
+         12 5 2 LSLI,  12 14 12 ADD,  12 12 0 LDRW,                \ x12 = this slot's record again
+         12 12 1 SUBI,  11 DREC MOVZ,  12 12 11 MUL,  12 DBASE 12 ADD,
+         12 16 CMP,  C-EQ knext BCOND,                             \ same record again (same package used twice)
+         16 12 0 ADDI,
+         6 6 1 ADDI,  6 2 CMPI,  C-GE amb BCOND,                   \ 2nd distinct record -> ambiguous
+   knext LBL,
+      3 3 1 ADDI,  kloop B,
+   pnext LBL,
+      2 3 3 LSLI,  2 7 2 ADD,  2 2 0 LDR,                          \ reload x2 = USE-WIDS[x3]
+      4 4 1 SUBI,  4 lscan CBZ,                                    \ full wrap -> the scan answers
+      5 5 1 ADDI,  12 HIDX-SLOTS 1 - LIT64,  5 5 12 AND,  ploop B,
+   lscan LBL,
    16 0 MOVZ,  6 0 MOVZ,                                            \ x16 = matched record (0=none), x6 = match count
    5 DBASE 0 ADDI,  4 NDICT 0 ADDI,
    uloop LBL,
@@ -4994,6 +5080,7 @@ s" c-end-using" s" --" TRUST
             6 2 CMPI,  C-GE amb BCOND,                             \ 2nd distinct match -> ambiguous
       unext LBL,  5 5 DREC ADDI,  4 4 1 SUBI,  uloop B,
    udone LBL,
+   13 0 MOVZ,                                                      \ the probes used x13 as a byte index
    16 ret CBZ,                                                     \ no match -> x13=0 miss
    5 16 0 ADDI,
    11 5 0 LDR,  12 5 8 LDR,

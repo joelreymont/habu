@@ -308,9 +308,20 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ (was 114236), +792. Floor follows from the same number: 3644 -> 4436, inside
 \ the same 16 KiB page, so the text pad absorbs it and neither MACOS-SIGNATURE
 \ nor MACOS-TOTAL moves.
-115028 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-05, the dictionary-index lifetime window (dots
+\ habu-keep-the-dictionary-7fb71873 / habu-idx-imported-name-ab38fcac): the
+\ hash-index insert now counts claimed slots and LHIDXADD compacts the table in
+\ place at the load bound instead of ever silently zeroing HIDXP (the new
+\ HIDX:LREBUILD body, the claims counting, and the HIDX:LFULL loud exit), the
+\ raise leg of ndict! calls the same compaction, and the used-public and
+\ using-package lookups gained the per-wid hash probes in front of their
+\ retained linear scans. The exact-CODELEN ratchet measured the candidate at
+\ 116052 (was 115028), +1024. Floor follows from the same number: 4436 -> 5460,
+\ inside the same 16 KiB page, so the text pad absorbs it and neither
+\ MACOS-SIGNATURE nor MACOS-TOTAL moves (FILE-SIZE bin/hb still 148855).
+116052 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-4436 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+5460 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
