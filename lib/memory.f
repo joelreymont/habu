@@ -266,10 +266,20 @@ public
    CAD-NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
 
 \ ---- quotation-scoped owned mapping --------------------------------------------
-\ The private trusted word parks the body and mapping off-stack because checked
-\ catch cannot carry an arbitrary result row through a fetched execution token.
-\ Release is fatal on failure, so the outer frame is restored only after success.
-\ Retirement owner: habu-epic-type-habu-a34713f0.
+\ WITH-BYTES is a CHECKED composition of MEM:block ownership: OPEN mints the
+\ owner (and refuses an oversize length as E-MEM-SIZE before any syscall, while
+\ an ordinary mapping failure keeps its E-MEM-MAP code), BORROW lends the span
+\ for the body, and RELEASE returns the mapping on the normal path. The scope
+\ therefore holds exactly one owner from mint to release, and no raw pointer or
+\ raw length is carried across the body.
+\
+\ One window stays trusted, and only one: running a body whose row is arbitrary.
+\ Checked catch cannot carry an arbitrary result row through a fetched execution
+\ token, so WB-GUARD parks the borrowed span and the body off-stack, runs the
+\ body under catch, and - on a throw - releases the owner and rethrows the
+\ body's code. The owner is named IN and OUT of WB-GUARD's own effect, so the
+\ block never sits under the body's row and cannot be absorbed by it.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 private
 PTR-VARIABLE WB-CUR-BUF
 variable WB-CUR-LEN
@@ -277,27 +287,37 @@ variable WB-CUR-BODY
 
 TRUSTED: WB-RUN-CUR ( -- )
    WB-CUR-BUF @ WB-CUR-LEN @ WB-CUR-BODY @ execute ;
-TRUSTED: WB-REL-CUR ( -- )
-   WB-CUR-BUF @ WB-CUR-LEN @ RELEASE-BYTES
-   NULL$ drop WB-CUR-BUF !  0 WB-CUR-LEN ! ;
 
 \ typed-local-lint: allow-bare-local - `body` carries the row-polymorphic quotation
 \ effect [ R ptr u8 CAD-NUM:alloc-byte-len -- S ], which a local annotation cannot express.
-TRUSTED: WB-SCOPE ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+TRUSTED: WB-GUARD ( R MEM:block ptr u8 CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S MEM:block )
    {: body :}
    WB-CUR-BUF @ {: sb:ptr :} WB-CUR-LEN @ {: sl:n :} WB-CUR-BODY @ {: sbody:n :}
-   ALLOC-BYTES {: fbuf:ptr flen :}
+   {: blk:MEM:block fbuf:ptr flen:CAD-NUM:alloc-byte-len :}
    fbuf WB-CUR-BUF ! flen WB-CUR-LEN ! body WB-CUR-BODY !
-   [: WB-RUN-CUR ;] catch
-   WB-REL-CUR
+   [: WB-RUN-CUR ;] catch {: code:n :}
    sb WB-CUR-BUF ! sl WB-CUR-LEN ! sbody WB-CUR-BODY !
-   dup 0 <> if throw then
-   drop ;
+   code 0 <> if blk RELEASE code throw then
+   blk ;
 
 public
 
+\ typed-local-lint: allow-bare-local - `body` carries the row-polymorphic quotation
+\ effect [ R ptr u8 CAD-NUM:alloc-byte-len -- S ], which a local annotation cannot express.
 : WITH-BYTES ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
-   WB-SCOPE ;
+   {: body :}
+   OPEN
+   MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH
+   BORROW
+   \ The borrowed extent is the owner's own allocation length, so the alloc
+   \ narrowing cannot refuse here; OK-ALLOC-BYTE-LEN reports a refusal as the
+   \ internal invariant failure it would be.
+   CAD-NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN
+   body WB-GUARD
+   RELEASE ;
 
 private
 get-current prot-wid-add
