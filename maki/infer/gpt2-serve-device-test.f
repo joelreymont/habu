@@ -193,7 +193,7 @@ variable T-PID
    T-OUT-R @ T-BUF 1 read 0 T=
    T-ERR-R @ T-BUF T-CAP read {: erru:n :}
    erru 0 > TTRUE
-   T-BUF erru s" -5324" CONTAINS? TTRUE
+   T-BUF erru s" -5667" CONTAINS? TTRUE
    T-OUT-R @ close
    T-ERR-R @ close ;
 
@@ -223,12 +223,12 @@ variable T-PID
    0 s" Hello" T-SEND
    T-WAIT-WRITE-FAIL ;
 
-: T-GENERATE-FAILURE ( -- )
-   s" real GENERATE tokenizer refusal is tagged exactly and terminates" T-LABEL
+: T-CONTEXT-LIMIT-FAILURE ( -- )
+   s" real GENERATE context-limit failure is tagged exactly and terminates" T-LABEL
    s" tools/gpt2-serve.f" T-SPAWN
    BODY-CAP U32-N - 0 ?do 0 T-BUF i + c! loop
    1 T-BUF BODY-CAP U32-N - T-SEND
-   $34 $EB T-READ-REFUSAL
+   $DD $E9 T-READ-REFUSAL
    T-WAIT-GENERATE-FAIL ;
 
 : T-RUN ( -- )
@@ -240,7 +240,7 @@ variable T-PID
    s" maki/infer/gpt2-serve-close-test.f" T-SPAWN
    T-SESSION
    T-WRITE-FAILURE
-   T-GENERATE-FAILURE
+   T-CONTEXT-LIMIT-FAILURE
    CLEANUP-RUN
    T-REPORT ;
 
