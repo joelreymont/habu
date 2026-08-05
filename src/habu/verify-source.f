@@ -724,7 +724,7 @@ variable STG-START
       \ the `ptr-field` primitive itself is `( ptr a n -- ptr ptr b )`.
       2dup STRUCTURE-PTR-FIELD? IF 2drop s" ptr a -- ptr ptr b" RECORD-STRUCTURE-FIELD ELSE
       2dup STRUCTURE-CFIELD? IF 2drop s" ptr a -- ptr u8" RECORD-STRUCTURE-FIELD ELSE
-      2dup STRUCTURE-CELL-FIELD? IF 2drop s" ptr a -- ptr a" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-CELL-FIELD? IF 2drop s" ptr h -- ptr n" RECORD-STRUCTURE-FIELD ELSE
       2drop
       THEN THEN THEN
    AGAIN ;

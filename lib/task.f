@@ -49,7 +49,7 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.CP
    CELL +FIELD TCB.STATUS
    CELL +FIELD TCB.STOP
-   CELL +FIELD TCB.RET
+   PTR-FIELD: TCB.RET
    CELL +FIELD TCB.USER-XT
 END-STRUCTURE
 
@@ -148,7 +148,7 @@ TRUSTED: PTHREAD-CREATE-CALL ( ptr a n n ptr a -- n )
    arg 3 FFI:READABLE!
    FFI:ARGS FFI:REG-LENS 4 PTHREAD-CREATE-XT ffi-call-bounded ;
 
-TRUSTED: PTHREAD-JOIN-CALL ( n ptr a -- n ) {: thread:n out:ptr :}
+TRUSTED: PTHREAD-JOIN-CALL ( n ptr ptr a -- n ) {: thread:n out:ptr :}
    FFI:RESET
    thread 0 FFI:VALUE!
    out 8 1 FFI:WRITABLE!

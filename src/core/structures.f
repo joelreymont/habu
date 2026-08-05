@@ -20,7 +20,7 @@ TRUSTED: STRUCT-BYTE+ ( ptr a n -- ptr u8 )
 
 : +FIELD ( ptr a n n -- ptr a n )
    STRUCT-REQUIRE-OPEN
-   create over , + does> ( ptr a -- ptr a ) @ + ;
+   create over , + does> ( ptr h -- ptr n ) @ + ;
 
 : PTR-FIELD: ( ptr a n -- ptr a n )
    STRUCT-REQUIRE-OPEN

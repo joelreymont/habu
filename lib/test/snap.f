@@ -51,7 +51,7 @@ create TS-ACTUAL TS-CAP cells allot
    TS-EXPECT# @ TS-ACTUAL# @ <> if 0 0= 0= exit then
    TS-CELLS= ;
 
-: TS-CELLS. ( ptr a n -- ) {: buf:ptr cnt:n :}
+: TS-CELLS. ( ptr n n -- ) {: buf:ptr cnt:n :}
    cnt begin dup 0 > while
       1-
       STR-SPACE emit

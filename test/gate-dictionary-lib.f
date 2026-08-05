@@ -977,7 +977,7 @@ variable START-NS
    s" GD-POINT POINT.FLAGS c@ ." GE-SRC-LINE
    s" GD-POINT POINT.NAME @ 2 type cr" GE-SRC-LINE
    s" GD-PTR @ 2 type cr" GE-SRC-LINE
-   s" : GD-USE-X ( ptr a -- ptr a ) POINT.X ;" GE-SRC-LINE
+   s" : GD-USE-X ( ptr h -- ptr n ) POINT.X ;" GE-SRC-LINE
    s" : GD-USE-NAME ( ptr a -- ptr ptr u8 ) POINT.NAME ;" GE-SRC-LINE
    s" : GD-USE-PTR ( -- ptr ptr u8 ) GD-PTR ;" GE-SRC-LINE
    s" : GD-USE-FLAGS ( ptr a -- ptr u8 ) POINT.FLAGS ;" GE-SRC-LINE ;
