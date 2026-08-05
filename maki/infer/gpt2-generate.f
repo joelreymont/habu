@@ -48,9 +48,14 @@ using CAD-NUM
 
 public
 
-4096 BYTE-CAP constant PROMPT-CAP
-8192 BYTE-CAP constant OUTPUT-CAP
-4096 TOKEN-CAP constant MAX-TOKENS
+: PROMPT-CAP ( -- CAD-NUM:byte-len )
+   4096 BYTE-CAP ;
+
+: OUTPUT-CAP ( -- CAD-NUM:byte-len )
+   8192 BYTE-CAP ;
+
+: MAX-TOKENS ( -- CAD-NUM:item-count )
+   4096 TOKEN-CAP ;
 
 private
 
