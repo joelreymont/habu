@@ -38,7 +38,7 @@ package MAKI
 
 \ float equality within a hair (the rows are exact powers of ten times a mantissa)
 : PA-TR= ( r r -- )  f- fabs 0.000000000001 f< TTRUE ;
-: PA-I ( ptr a n -- n )  T-GET 0.5 f+ f>s ;   \ read cell as nearest int
+: PA-I ( ptr r n -- n )  T-GET 0.5 f+ f>s ;   \ read cell as nearest int
 
 \ ---- fail-closed probes (top level cannot push quotations) -------------------
 : TRY-PACK-BAD      ( -- )  0 CPREC-N CPREC-PACK drop ;
