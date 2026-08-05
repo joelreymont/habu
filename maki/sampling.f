@@ -65,13 +65,13 @@ variable SMP-CUM               \ top-p scratch: running cumulative probability
 variable SMP-TAU               \ top-p scratch: nucleus boundary probability
 
 \ count row entries strictly greater than v (rank of v within the row)
-: SMP-GT# ( ptr a n r -- n ) {: a:ptr n:n v:r :}
+: SMP-GT# ( ptr r n r -- n ) {: a:ptr n:n v:r :}
    0  n 0 ?do  a i T-GET v f> if 1+ then  loop ;
 
 public
 
 \ index of the largest entry; the FIRST index wins ties (strict f>)
-: SMP-ARGMAX ( ptr a n -- n ) {: a:ptr n:n :}
+: SMP-ARGMAX ( ptr r n -- n ) {: a:ptr n:n :}
    0 SMP-BI !   a 0 T-GET SMP-BV !
    n 1 ?do
       a i T-GET SMP-BV @ f> if  i SMP-BI !  a i T-GET SMP-BV !  then
@@ -79,13 +79,13 @@ public
    SMP-BI @ ;
 
 \ scale each logit by 1/temp in place (temp>0; the greedy paths short-circuit at 0)
-: SMP-TEMP! ( ptr a n r -- ) {: a:ptr n:n t:r :}
+: SMP-TEMP! ( ptr r n r -- ) {: a:ptr n:n t:r :}
    n 0 ?do  a i T-GET t f/  a i T-SET  loop ;
 
 \ keep the k largest logits; mask the rest to (rowmax - 50) so the row softmax
 \ excludes them. Ties at the threshold are all kept (may exceed k). k>=n is a
 \ no-op (nothing is below the minimum).
-: SMP-TOPK! ( ptr a n n -- ) {: a:ptr n:n k:n :}
+: SMP-TOPK! ( ptr r n n -- ) {: a:ptr n:n k:n :}
    a n SMP-ARGMAX {: mi:n :}   a mi T-GET {: mx:r :}      \ rowmax (always kept)
    mx SMP-THR !                                           \ threshold starts at the max
    n 0 ?do
@@ -100,18 +100,18 @@ private
 
 \ larger of node l's two children within the live heap (assumes l < size); the
 \ left child wins ties (strict f>), matching the deterministic argmax rule.
-: SMP-BIGGER ( ptr a n n -- n ) {: sc:ptr size:n l:n :}
+: SMP-BIGGER ( ptr r n n -- n ) {: sc:ptr size:n l:n :}
    l 1+ {: rc:n :}
    rc size < if
       sc rc T-GET  sc l T-GET  f>  if rc else l then
    else l then ;
 
 \ swap heap cells i and j
-: SMP-SWAP ( ptr a n n -- ) {: sc:ptr i:n j:n :}
+: SMP-SWAP ( ptr r n n -- ) {: sc:ptr i:n j:n :}
    sc i T-GET  sc j T-GET   sc i T-SET  sc j T-SET ;
 
 \ max-heap sift-down of node ROOT within the first SIZE cells of sc
-: SMP-SIFT ( ptr a n n -- ) {: sc:ptr size:n root:n :}
+: SMP-SIFT ( ptr r n n -- ) {: sc:ptr size:n root:n :}
    root SMP-SI !
    begin
       SMP-SI @ 2 * 1+ {: l:n :}                          \ left child index
@@ -123,7 +123,7 @@ private
    again ;
 
 \ build a max-heap over the first n cells of sc (bottom-up, O(n))
-: SMP-HEAPIFY ( ptr a n -- ) {: sc:ptr n:n :}
+: SMP-HEAPIFY ( ptr r n -- ) {: sc:ptr n:n :}
    n 2 / 0 ?do  sc n  n 2 / 1- i -  SMP-SIFT  loop ;
 
 public
@@ -133,7 +133,7 @@ public
 \ cumulative reaches pp, zero the rest, and renormalise. pp in (0,1]; pp>=1 is a
 \ no-op at the call site. Ties at the boundary are all kept (keep p_i >= tau);
 \ the kept mass is always >= pp, and at least the top token survives.
-: SMP-TOPP! ( ptr a ptr a n r -- ) {: p:ptr sc:ptr n:n pp:r :}
+: SMP-TOPP! ( ptr r ptr r n r -- ) {: p:ptr sc:ptr n:n pp:r :}
    n 0 ?do  p i T-GET  sc i T-SET  loop                  \ scratch = copy of the probs
    sc n SMP-HEAPIFY
    0.0 SMP-CUM !   n SMP-HS !
@@ -155,7 +155,7 @@ public
 \ draw u in [0,1), return the first index whose running cumulative exceeds u. The
 \ final bucket absorbs rounding so u (just under 1, sum a hair under 1) stays in
 \ range.
-: SMP-SAMPLE ( ptr a n -- n ) {: p:ptr n:n :}
+: SMP-SAMPLE ( ptr r n -- n ) {: p:ptr n:n :}
    SC-NEXT {: u:r :}
    0.0
    n 0 ?do
@@ -171,7 +171,7 @@ public
 \ cases (no divide, no RNG). Otherwise: temperature-scale, optional top-k mask,
 \ f64 softmax, optional top-p/nucleus filter, multinomial draw. The row a is
 \ consumed in place (scaled then softmaxed).
-: SMP-NEXT ( ptr a ptr a n n r r -- n ) {: a:ptr sc:ptr n:n k:n temp:r pp:r :}
+: SMP-NEXT ( ptr r ptr r n n r r -- n ) {: a:ptr sc:ptr n:n k:n temp:r pp:r :}
    temp f0<                     if E-SMP-TEMP throw then
    k 1 <  k n >  or             if E-SMP-TOPK throw then
    pp 0.0 f<=  pp 1.0 f>  or    if E-SMP-TOPP throw then
