@@ -20,13 +20,13 @@ public
    src 2 + c@ 16 lshift or
    src 3 + c@ 24 lshift or ;
 
-: PACK ( ptr a n ptr u8 -- ) {: src:ptr count:n dst:ptr :}
+: PACK ( ptr r n ptr u8 -- ) {: src:ptr count:n dst:ptr :}
    count 0 ?do
       src i cells + @ NARROW
       dst i 4 * + STORE
    loop ;
 
-: UNPACK ( ptr u8 n ptr a -- ) {: src:ptr count:n dst:ptr :}
+: UNPACK ( ptr u8 n ptr r -- ) {: src:ptr count:n dst:ptr :}
    count 0 ?do
       src i 4 * + LOAD WIDEN
       dst i cells + !

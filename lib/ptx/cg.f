@@ -145,7 +145,7 @@ TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> 
 : SF-ST16 ( n ptr u8 -- ) {: v:n p:ptr :}          \ store low 16 bits of v LE at p
    v          $FF and  p     c!
    v 8 rshift $FF and  p 1 + c! ;
-: F16-PACK ( ptr a n ptr u8 -- ) {: src:ptr cnt:n dst:ptr :}   \ n f64 cells -> f16
+: F16-PACK ( ptr r n ptr u8 -- ) {: src:ptr cnt:n dst:ptr :}   \ n f64 cells -> f16
    cnt 0 ?do  src i cells + @ F64>F16  dst i 2 * +  SF-ST16  loop ;
 
 \ --- bf16 (brain float) narrowing for the bf16 mma tile (dot habu-bf16-m16n8k16-tile). bf16 is
@@ -187,7 +187,7 @@ TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> 
    x 7 lshift mt or inc + {: v:n :}                       \ carry from mantissa bumps exponent
    v $7F7F > if s $7F80 or exit then                      \ carry overflowed to inf
    s v or ;
-: BF16-PACK ( ptr a n ptr u8 -- ) {: src:ptr cnt:n dst:ptr :}   \ n f64 cells -> bf16
+: BF16-PACK ( ptr r n ptr u8 -- ) {: src:ptr cnt:n dst:ptr :}   \ n f64 cells -> bf16
    cnt 0 ?do  src i cells + @ F64>BF16  dst i 2 * +  SF-ST16  loop ;
 
 \ --- per-op emitters (operate on register numbers) ---

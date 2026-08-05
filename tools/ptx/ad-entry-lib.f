@@ -65,7 +65,7 @@ ADE-INIT
    s" .visible .entry AD_BWD(.param .u64 p_x, .param .u64 p_dy, .param .u64 p_out, .param .u32 p_k)" PTX-L ;
 
 \ AD_FWD(in, out, k): out[row][col] = f(x)[col], f = the op-list forward
-: ADE-FWD ( ptr a n -- ) {: ops:ptr len:n :}
+: ADE-FWD ( ptr n n -- ) {: ops:ptr len:n :}
    CG-SM-RESET  CG-HEADER ADE-FWD-ENTRY CG-SM-OPEN CG-SM-PARAMS
    EMIT-ROW              {: r:n :}
    1 r EMIT-ROW-SPAN     {: xsp:n :}
@@ -79,7 +79,7 @@ ADE-INIT
    CG-SM-RET CG-SM-CLOSE ;
 
 \ AD_BWD(x, dy, out, k): out = the auto-derived backward dx
-: ADE-BWD ( ptr a n -- ) {: ops:ptr len:n :}
+: ADE-BWD ( ptr n n -- ) {: ops:ptr len:n :}
    CG-BW-RESET  CG-HEADER ADE-BWD-ENTRY CG-SM-OPEN CG-BW-PARAMS
    EMIT-ROW              {: r:n :}
    1 r EMIT-ROW-SPAN     {: xsp:n :}

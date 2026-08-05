@@ -112,10 +112,10 @@ variable SOURCE-LS-LINE#
    path pathu dst cap lenp SOURCE-APPEND-BYTES
    SOURCE-DQ dst cap lenp SOURCE-APPEND-C ;
 
-: SOURCE-PATH-A@ ( ptr a idx -- ptr u8 ) {: table:ptr idx :}
+: SOURCE-PATH-A@ ( ptr ptr u8 idx -- ptr u8 ) {: table:ptr idx :}
    idx IDX>N cells table + @ ;
 
-: SOURCE-PATH-U@ ( ptr a idx -- len ) {: table:ptr idx :}
+: SOURCE-PATH-U@ ( ptr n idx -- len ) {: table:ptr idx :}
    idx IDX>N cells table + @ >LEN ;
 
 : SOURCE-APPEND-FILE ( ptr u8 len ptr u8 len ptr len -- )
@@ -136,7 +136,7 @@ variable SOURCE-LS-LINE#
    path pathu dst cap lenp SOURCE-APPEND-FILE
    SOURCE-LF dst cap lenp SOURCE-APPEND-C ;
 
-: CONCAT-FILES ( ptr a ptr a count ptr u8 len -- len )
+: CONCAT-FILES ( ptr ptr u8 ptr n count ptr u8 len -- len )
    {: paths:ptr lens:ptr count dst:ptr cap :}
    count COUNT>N 0 < if E-FS-CAPACITY throw then
    cap LEN>N 0 < if E-FS-CAPACITY throw then
@@ -148,7 +148,7 @@ variable SOURCE-LS-LINE#
    repeat drop
    SOURCE-LEN @ ;
 
-: WRITE-SOURCE-LIST ( ptr a ptr a count ptr u8 len -- )
+: WRITE-SOURCE-LIST ( ptr ptr u8 ptr n count ptr u8 len -- )
    {: paths:ptr lens:ptr count out:ptr outu :}
    count COUNT>N 0 < if E-FS-CAPACITY throw then
    0 >LEN SOURCE-LEN !

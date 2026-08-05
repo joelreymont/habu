@@ -47,11 +47,11 @@ variable AD-VSP
    dup -1 = if drop exit then
    AD-ID-CHECK ;
 
-: AD-SLOT-CELL ( ptr a n -- ptr a ) {: base:ptr idx:n :}
+: AD-SLOT-CELL ( ptr n n -- ptr n ) {: base:ptr idx:n :}
    idx AD-SLOT-CHECK
    base idx cells + ;
 
-: AD-ID-CELL ( ptr a n -- ptr a ) {: base:ptr id:n :}
+: AD-ID-CELL ( ptr n n -- ptr n ) {: base:ptr id:n :}
    id AD-ID-CHECK
    base id cells + ;
 
@@ -151,7 +151,7 @@ variable AD-VSP
    dup 0 < if E-PTX-AD-UNKNOWN throw then
    drop ;
 
-: AD-BUILD ( ptr a n -- ) {: ops:ptr len:n :}
+: AD-BUILD ( ptr n n -- ) {: ops:ptr len:n :}
    len AD-LEN-CHECK
    0 AD-N !  0 AD-VSP !
    OP-LEAF -1 -1 AD-NODE AD-VPUSH              \ node 0 = the input tile
@@ -232,7 +232,7 @@ variable AD-VSP
    0 AD-CT@ ;                                  \ dx = input node's accumulated cotangent
 
 \ --- top: build + emit the backward compute (x,dy registers -> dx register) ---
-: AD-EMIT-BWD ( ptr a n n n -- n ) {: ops len xreg dyreg :}
+: AD-EMIT-BWD ( ptr n n n n -- n ) {: ops len xreg dyreg :}
    ops len AD-BUILD
    xreg AD-EMIT-FWD
    dyreg AD-DAG-EMIT-REV ;

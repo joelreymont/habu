@@ -34,7 +34,7 @@ create ADE-CBUF ADE-CELLS cells allot        \ per-node,per-lane accumulated cot
    drop ;
 
 \ --- typed cell addressing (node id checked by ad-dag.f AD-ID-CHECK) ---
-: ADE-CELL ( ptr a n n -- ptr a ) {: base:ptr nd:n l:n :}
+: ADE-CELL ( ptr r n n -- ptr r ) {: base:ptr nd:n l:n :}
    nd AD-ID-CHECK  l ADE-LANE-CHECK
    base nd ADE-MAXW * l + cells + ;
 
@@ -44,8 +44,8 @@ create ADE-CBUF ADE-CELLS cells allot        \ per-node,per-lane accumulated cot
 : ADE-C! ( r n n -- ) {: nd:n l:n :}  ADE-CBUF nd l ADE-CELL ! ;
 
 \ external row buffers (W host floats) supplied by the caller
-: ADE-ROW@ ( ptr a n -- r )  cells + @ ;
-: ADE-ROW! ( r ptr a n -- )  cells + ! ;
+: ADE-ROW@ ( ptr r n -- r )  cells + @ ;
+: ADE-ROW! ( r ptr r n -- )  cells + ! ;
 
 \ --- reductions over the ACTIVE lanes (device: smem fold + broadcast) ---
 : ADE-FMAX ( r r -- r )  2dup f< if nip else drop then ;
@@ -88,7 +88,7 @@ create ADE-CBUF ADE-CELLS cells allot        \ per-node,per-lane accumulated cot
       drop E-PTX-AD-UNKNOWN throw
    endcase ;
 
-: ADE-LOAD-X ( ptr a -- ) {: x:ptr :}            \ node 0 forward = the input row
+: ADE-LOAD-X ( ptr r -- ) {: x:ptr :}            \ node 0 forward = the input row
    ADE-W @ 0 ?do  x i ADE-ROW@  0 i ADE-F!  loop ;
 
 : ADE-FWD-RUN ( -- )                             \ recompute nodes 1..N-1 (node 0 given)
@@ -156,21 +156,21 @@ create ADE-CBUF ADE-CELLS cells allot        \ per-node,per-lane accumulated cot
 
 : ADE-CT-ZERO ( -- )                             \ clear every cotangent cell
    ADE-CELLS 0 ?do  0.0  ADE-CBUF i cells + !  loop ;
-: ADE-SEED ( ptr a -- ) {: dy:ptr :}             \ output cotangent = dy
+: ADE-SEED ( ptr r -- ) {: dy:ptr :}             \ output cotangent = dy
    AD-OUT @ {: o:n :}
    ADE-W @ 0 ?do  dy i ADE-ROW@  o i ADE-C!  loop ;
 : ADE-REV-RUN ( -- )                             \ VJP nodes high..1 (leaf 0 has none)
    AD-N @ 1 ?do  AD-N @ i -  ADE-VJP  loop ;
 
 \ --- public entries: run over the currently built DAG (AD-BUILD) at width ADE-W ---
-: ADE-FWD ( ptr a ptr a -- ) {: x:ptr y:ptr :}   \ x row -> y = output row
+: ADE-FWD ( ptr r ptr r -- ) {: x:ptr y:ptr :}   \ x row -> y = output row
    ADE-W-CHECK
    x ADE-LOAD-X
    ADE-FWD-RUN
    AD-OUT @ {: o:n :}
    ADE-W @ 0 ?do  o i ADE-F@  y i ADE-ROW!  loop ;
 
-: ADE-GRAD ( ptr a ptr a ptr a -- ) {: x:ptr dy:ptr dx:ptr :}   \ x,dy -> dx
+: ADE-GRAD ( ptr r ptr r ptr r -- ) {: x:ptr dy:ptr dx:ptr :}   \ x,dy -> dx
    ADE-W-CHECK
    x ADE-LOAD-X
    ADE-FWD-RUN

@@ -96,14 +96,14 @@ variable TASK-USER-NEXT
 FFI:SCRATCH-END constant TASK-USER-BASE
 TASK-USER-BASE TASK-USER-NEXT !
 
-: TASK-NULL ( -- ptr a )
-   NULL$ drop ;
-
 \ TCB raw-cell pointer refinement and pointer-slot reinterpretation are outside
 \ checker inference. Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: TASK-N>PTR ( n -- ptr a ) ;
 
-TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
+: TASK-NULL ( -- ptr a )
+   0 TASK-N>PTR ;
+
+TRUSTED: TASK-CELL>PTR-SLOT ( ptr h -- ptr ptr a ) ;
 
 : TASK-ALIGN8 ( -- )
    here FFI:>CELL 7 and dup 0= if drop exit then
@@ -139,7 +139,7 @@ TRUSTED: MUNMAP-CALL ( ptr a n -- n ) {: a:ptr len:n :}
    len 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 MUNMAP-XT ffi-call-bounded ;
 
-TRUSTED: PTHREAD-CREATE-CALL ( ptr a n n ptr a -- n )
+TRUSTED: PTHREAD-CREATE-CALL ( ptr n n n ptr h -- n )
    {: thread:ptr attr:n entry:n arg:ptr :}
    FFI:RESET
    thread 8 0 FFI:WRITABLE!
@@ -218,13 +218,13 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
    {: src:ptr dst:ptr off:n :}
    src off + @ dst off + ! ;
 
-: TASK-PTR-SLOT ( ptr a n -- ptr ptr a )
+: TASK-PTR-SLOT ( ptr h n -- ptr ptr a )
    + TASK-CELL>PTR-SLOT ;
 
-: TASK-PTR! ( ptr a ptr a n -- )
+: TASK-PTR! ( ptr a ptr h n -- )
    TASK-PTR-SLOT ! ;
 
-: TASK-PTR@ ( ptr a n -- ptr a )
+: TASK-PTR@ ( ptr h n -- ptr a )
    TASK-PTR-SLOT @ ;
 
 : TASK-REGION-INIT ( ptr a -- ) {: tcb:ptr :}
@@ -430,7 +430,7 @@ TRUSTED: +USER ( n n -- n )
    >r drop create , r>
    does> ( -- ptr a ) @ data-base + ;
 
-: HIS ( ptr a ptr a -- ptr a ) {: tcb:ptr cur:ptr :}
+: HIS ( ptr h ptr a -- ptr a ) {: tcb:ptr cur:ptr :}
    cur data-base - tcb TCB.REGION @ + ;
 
 \ CREATE/DOES> publishes owner-tracked pthread mutex storage.
@@ -449,23 +449,23 @@ TRUSTED: FACILITY ( -- )
 : TASK-OWNER ( -- n )
    TASK-SELF-N dup 0= if drop data-base FFI:>CELL then ;
 
-: FACILITY-OWNER@ ( ptr a -- n )
+: FACILITY-OWNER@ ( ptr n -- n )
    FACILITY-OWNER atomic@ ;
 
-: FACILITY-OWNER! ( n ptr a -- )
+: FACILITY-OWNER! ( n ptr n -- )
    FACILITY-OWNER atomic! ;
 
-: FACILITY-INIT ( ptr a -- )
+: FACILITY-INIT ( ptr n -- )
    0 over FACILITY-OWNER!
    FACILITY-MUTEX 0 MUTEX-INIT-CALL TASK-RC0 ;
 
-: GET ( ptr a -- ) {: f:ptr :}
+: GET ( ptr n -- ) {: f:ptr :}
    TASK-OWNER {: owner:n :}
    f FACILITY-OWNER@ owner = if exit then
    f FACILITY-MUTEX MUTEX-LOCK-CALL TASK-RC0
    owner f FACILITY-OWNER! ;
 
-: RELEASE ( ptr a -- ) {: f:ptr :}
+: RELEASE ( ptr n -- ) {: f:ptr :}
    TASK-OWNER {: owner:n :}
    f FACILITY-OWNER@ owner <> if exit then
    0 f FACILITY-OWNER!
@@ -508,19 +508,19 @@ TASK-MIN-STACK constant MIN-STACK
 : +USER ( n n -- n )
    +USER ;
 
-: HIS ( ptr a ptr a -- ptr a )
+: HIS ( ptr h ptr a -- ptr a )
    HIS ;
 
 : FACILITY ( -- )
    FACILITY ;
 
-: FACILITY-INIT ( ptr a -- )
+: FACILITY-INIT ( ptr n -- )
    FACILITY-INIT ;
 
-: GET ( ptr a -- )
+: GET ( ptr n -- )
    GET ;
 
-: RELEASE ( ptr a -- )
+: RELEASE ( ptr n -- )
    RELEASE ;
 
 private

@@ -46,10 +46,6 @@ public
    len ix A-CHECK-INDEX
    value arr ix IDX>N cells + ! ;
 
-: A+! ( n ptr a len idx -- ) {: delta arr:ptr len ix :}
-   arr len ix A@ delta +
-   arr len ix A! ;
-
 : A-SWAP ( ptr a len idx idx -- ) {: arr:ptr len ix jx :}
    arr len ix A@
    arr len jx A@

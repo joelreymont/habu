@@ -31,7 +31,7 @@ create ADET-Y  ADE-MAXW cells allot          \ forward output scratch
 : ADET-CLOSE? ( r r -- bool ) {: a:r b:r :}
    a b f- fabs   0.01  0.01 a fabs f* f+   f< ;
 
-: ADET-DOT ( ptr a ptr a -- r ) {: p:ptr q:ptr :}   \ sum_l p[l]*q[l] over active lanes
+: ADET-DOT ( ptr r ptr r -- r ) {: p:ptr q:ptr :}   \ sum_l p[l]*q[l] over active lanes
    0.0  ADE-W @ 0 ?do  p i ADE-ROW@  q i ADE-ROW@  f*  f+  loop ;
 
 : ADET-LOSS ( -- r )                         \ forward ADET-X -> ADET-Y, dot with ADET-DY
@@ -58,7 +58,7 @@ create ADET-Y  ADE-MAXW cells allot          \ forward output scratch
       ADET-DX i ADE-ROW@   i ADET-FD   ADET-CLOSE? 0= if  0 0= 0= unloop exit  then
    loop  0 0= ;
 
-: ADET-RUN ( ptr a n -- bool ) {: ops:ptr len:n :}   \ build + fill at width 8, gradcheck
+: ADET-RUN ( ptr n n -- bool ) {: ops:ptr len:n :}   \ build + fill at width 8, gradcheck
    8 ADE-W !
    ops len AD-BUILD
    ADET-FILL-X  ADET-FILL-DY

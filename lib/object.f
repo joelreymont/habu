@@ -87,7 +87,7 @@ variable LOAD-OFF
    s" HBOBJ" BYTES+
    LF+ ;
 
-: FLAG! ( ptr a -- ) {: flag:ptr :}
+: FLAG! ( ptr n -- ) {: flag:ptr :}
    flag @ 0 <> if E-OBJ-SCHEMA throw then
    -1 flag ! ;
 

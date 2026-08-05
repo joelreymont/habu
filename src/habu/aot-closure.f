@@ -173,7 +173,7 @@ create AENB 20 allot  variable AENV  variable AENN
 variable FX
 : REC-CODE-PTR ( ptr a -- ptr ptr u8 ) {: r:ptr :}  r 0 ptr-field ;
 : REC-CODE-PTR@ ( ptr a -- ptr u8 )  REC-CODE-PTR @ ;
-: REC-WID@ ( ptr a -- n ) {: r:ptr :}  r 40 + @ ;
+: REC-WID@ ( ptr a -- n ) {: r:ptr :}  r REC>IX REC 40 + @ ;
 
 : FINDMAIN ( -- ptr a )  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;

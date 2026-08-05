@@ -98,10 +98,10 @@ create FD-OFF    MAX-FIELDS cells allot     \ .param byte offset; -1 when not a 
 create FD-EX-OFF MAX-FIELDS cells allot     \ extent dedup token; empty when none
 create FD-EX-U   MAX-FIELDS cells allot
 
-: KB@ ( ptr a n -- n ) {: a:ptr i:n :}
+: KB@ ( ptr n n -- n ) {: a:ptr i:n :}
    a i cells + @ ;
 
-: KB! ( n ptr a n -- ) {: v:n a:ptr i:n :}
+: KB! ( n ptr n n -- ) {: v:n a:ptr i:n :}
    v a i cells + ! ;
 
 : TOKEN-CHECK ( n -- ) {: u:n :}
@@ -120,7 +120,7 @@ create FD-EX-U   MAX-FIELDS cells allot
    FPOOL-U @ u
    FPOOL-U @ u + FPOOL-U ! ;
 
-: LP-STR! ( ptr u8 n ptr a ptr a -- ) {: a:ptr u:n offa:ptr ua:ptr :}
+: LP-STR! ( ptr u8 n ptr n ptr n -- ) {: a:ptr u:n offa:ptr ua:ptr :}
    a u LPOOL+ {: o:n l:n :}
    o offa NLP @ KB!
    l ua NLP @ KB! ;
