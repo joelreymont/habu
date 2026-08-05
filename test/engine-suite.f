@@ -403,6 +403,23 @@ variable TC-SYMU
    CHECKER-FIND-ACTIVE-SIG FEP @ EFF-QUOT
    2r> CHECKER-FIND-ACTIVE-SIG FEP @ EFF-QUOT
    IS-MATCH? TWALK-D @ ;
+: TC-VREC-Q-SEALED? ( ptr u8 n ptr u8 n -- bool bool bool )
+   2>r
+   VREC-FIND 0= IF
+      drop 2r> 2drop RES-FALSE RES-FALSE RES-FALSE EXIT
+   THEN {: id:n :}
+   TRIAL-DEPTH @ 1 + TRIAL-DEPTH !
+   TRIAL-SAVE
+   FRESH MK-ROW {: tail:n :}
+   tail id VREC-PUSH-FIELDS {: row:n :}
+   row R-RES P>TYPE T-RES FIELD-INNER T-RES {: q:n :}
+   q Q>DBASE 0= q Q>RBASE 0=
+   -1 SGSEEN !  0 SGHASR !  row SGIN !  tail SGOUT !
+   2r> CHECKER-FIND-ACTIVE-SIG FEP @ EFF-QUOT
+   q swap IS-MATCH? 0=
+   IS-META-CLEAR
+   TRIAL-REST
+   TRIAL-DEPTH @ 1 - TRIAL-DEPTH ! ;
 LOWER-CERT-HOOK:INSTALL
 TC-SNAP
 s" A ( n -- n ) 1+" CHECK-CANDIDATE! -1 T=
@@ -1472,19 +1489,34 @@ TRUSTED: T-IS-CF-Q ( -- a [ a -- a ] bool ) ;
 TRUSTED: T-IS-DROP ( a -- ) drop ;
 defer T-IS-G ( a -- a )
 defer T-IS-ND ( n -- n )
+defer T-IS-D2 ( n n -- n n )
 defer T-IS-PAIR ( a b -- a )
 defer T-IS-PAIR-SAME ( a a -- a a )
 defer T-IS-RG ( R -- R )
 defer T-IS-R2 ( R -- S )
+defer T-IS-XALIAS ( R | R -- R | R )
+defer T-IS-QN ( [ n -- n ] -- )
+defer T-IS-DR ( n | n -- n | n )
 defer T-IS-RN ( | n -- )
 defer T-IS-RDROP ( R -- )
 s" COK-IS-ID-N ( -- ) ['] T-IS-ID is T-IS-ND" CHECK-QUIET-CANDIDATE! -1 T=
 s" COK-IS-ID-G ( -- ) ['] T-IS-ID is T-IS-G" CHECK-QUIET-CANDIDATE! -1 T=
+s" COK-Q-MIX-D ( [ n -- R n ] -- ) drop" T-CHECK-PASSES
+s" COK-Q-MIX-R ( [ n -- n | -- R ] -- ) drop" T-CHECK-PASSES
+s" COK-IS-QPARAM ( [ n -- n ] -- ) is T-IS-ND" T-CHECK-PASSES
+s" COK-IS-QNEST ( [ [ n -- n ] -- ] -- ) is T-IS-QN" T-CHECK-PASSES
+s" COK-IS-QRET ( [ n -- n | n -- n ] -- ) is T-IS-DR" T-CHECK-PASSES
+s" CBAD-IS-QTAIL ( [ n -- n ] -- ) is T-IS-D2" T-CHECK-REJECTS
+s" CBAD-IS-QALIAS ( [ -- | -- ] -- ) is T-IS-XALIAS" T-CHECK-REJECTS
 s" CBAD-IS-N-G ( -- ) ['] T-IS-N is T-IS-G" T-CHECK-REJECTS
 s" CBAD-IS-ALIAS ( -- ) ['] T-IS-SAME is T-IS-PAIR" T-CHECK-REJECTS
 s" COK-IS-DIST-ALIAS ( -- ) ['] T-IS-DIST is T-IS-PAIR-SAME" CHECK-QUIET-CANDIDATE! -1 T=
 s" CBAD-IS-KIND ( -- ) ['] T-IS-NONLIN is T-IS-G" T-CHECK-REJECTS
 s" CBAD-IS-ESCAPE ( [ b -- b ] -- ) is T-IS-G" T-CHECK-REJECTS
+s" CBAD-IS-QROW ( [ R n -- R n ] -- ) is T-IS-ND" T-CHECK-REJECTS
+s" CBAD-IS-Q-LIVE ( [ n -- n ] -- [ n -- n ] ) dup is T-IS-ND" T-CHECK-REJECTS
+s" CBAD-IS-Q-COLLAPSE ( [ n -- n ] [ n -- n ] -- ) T-IS-SAME is T-IS-ND" T-CHECK-REJECTS
+s" CBAD-IS-Q-CAPTURE ( [ R n -- R n ] [ n -- n ] -- ) T-IS-SAME is T-IS-ND" T-CHECK-REJECTS
 s" CBAD-IS-QID-ESCAPE ( [ b -- b ] -- ) T-IS-QID is T-IS-G" T-CHECK-REJECTS
 s" CBAD-IS-INFER ( -- ) is T-IS-G" T-CHECK-REJECTS
 s" COK-IS-ROW ( -- ) ['] T-IS-RID is T-IS-RG" CHECK-QUIET-CANDIDATE! -1 T=
@@ -1603,6 +1635,7 @@ VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD
 VALUE-RECORD hdl owner own raw ptr u8 END-VALUE-RECORD
+VALUE-RECORD is-q-vr q [ n -- n ] END-VALUE-RECORD
 : T->POINT ( n n -- point ) ;
 : T-POINT> ( point -- n n ) ;
 : T-POINT-DUP ( point -- point point ) over over ;
@@ -1634,6 +1667,12 @@ s" CBAD-POINT-PARTIAL ( n -- point )" T-CHECK-REJECTS
 s" CBAD-BOX-RECT ( box -- rect )" T-CHECK-REJECTS
 s" CBAD-HDL-DUP ( hdl -- hdl hdl ) over over" T-CHECK-REJECTS
 s" CBAD-HDL-DROP ( hdl -- ) drop" T-CHECK-REJECTS
+\ A record field wrapper is not itself a quotation for `is`.
+s" CBAD-IS-VREC-Q ( is-q-vr -- ) is T-IS-ND" T-CHECK-REJECTS
+s" is-q-vr" s" T-IS-ND" TC-VREC-Q-SEALED?
+s" VREC quotation has no binder authority" T-LABEL  -1 T=
+s" VREC quotation return base is zero" T-LABEL  -1 T=
+s" VREC quotation data base is zero" T-LABEL  -1 T=
 \ Value-record with an arity-6 family field type (dot habu-tfam-4-remainder):
 \ the field wrapper field<rec,q,tfam6r-big<6>> stores its 6-arg inner param in the
 \ VNARG pool; the roundtrip forces VREC-PUSH-FIELDS/VREC-INST to read it back.
