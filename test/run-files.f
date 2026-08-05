@@ -59,6 +59,11 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
 \ s" source literals (src/ members are keyed but not scanned). Phases with
 \ no declared set are never result-cached.
 
+\ test/run.f maps the clang reference column before it forks anything (dyld is
+\ not fork-safe), so the bindings it maps through are files this phase reads:
+\ lib/process-command.f, lib/ffi-abi.f and the two codegen-compare-c* sources.
+\ NOTE: a TR-FILES: body is a bare token list -- it has no comment syntax, so a
+\ `\` line inside the block becomes four members named after its own words.
 TR-FILES: TR-GATE-HARNESS-FILES
    test/run.f test/run-support.f test/run-lib.f test/run-files.f
    test/run-result-cache.f test/run-resident.f test/run-worker.f
@@ -68,6 +73,8 @@ TR-FILES: TR-GATE-HARNESS-FILES
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
    lib/process-fork.f lib/test/record.f lib/test/runner.f lib/test/budget.f
    lib/sort.f lib/content-key.f tools/cli-run.f
+   lib/process-command.f lib/ffi-abi.f
+   tools/codegen-compare-cc.f tools/codegen-compare-cabi.f
    test/gate-pool.f test/gate-stats.f tools/why-threw.f
    test/json-read-perf-phase.f test/cal-spin-lib.f
    lib/json-read-perf-test.f lib/json-read.f lib/test/assert.f

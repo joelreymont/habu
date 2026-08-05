@@ -46,6 +46,27 @@
 \ not three, which is a result; a run that quietly printed two columns would be
 \ a comparison nobody could tell had lost its reference.
 \
+\ THE OWNER OF THE TREE, AND WHY A FORKED CHILD IS NOT IT. The gate runs this
+\ harness as a forked pool member, and fork copies the whole address space:
+\ a child inherits ROOT-U, the built tree's path, and the mapped library,
+\ having built none of them. Two rules follow, and both are enforced rather
+\ than assumed.
+\
+\ It may not REMOVE. The tree holds the library other processes have mapped,
+\ so a child unlinking it is a child deciding for everyone. REMOVE therefore
+\ asks OWNER? -- the recorded pid against this one, because fork copies a flag
+\ and does not copy a pid -- and does nothing in a process that did not build.
+\
+\ It may not MAP a library the parent did not map. dlopen of an image that is
+\ not already loaded runs dyld's loader, and dyld is not fork-safe: measured on
+\ macOS 26.5.1, a forked child that dlopens the freshly built twins.dylib takes
+\ SIGBUS inside /usr/lib/dyld and the member exits 134, while the identical
+\ call in the parent, or in the child when the parent had already mapped it,
+\ returns normally. So the mapping is the FORKING process's job:
+\ CODEGEN-CABI:PREPARE builds and maps before the fork, children inherit both,
+\ and CODEGEN-CABI:OPEN refuses -- named, not aborted -- if it is ever reached
+\ in a process that would have to load the image itself.
+\
 \ THE HOST THIS READS. The byte column comes out of a Mach-O object, through
 \ nm and size, so the reference column is built on a Mach-O host. On any other
 \ host the column is absent for that reason, named the same way a missing
@@ -85,6 +106,7 @@ variable WHY-U
 variable NM-U
 variable SIZE-U
 variable READY-FLAG                   \ -1 ready, 0 absent, 1 not yet decided
+variable OWNER-PID                    \ pid of the process that built the tree (0 before MAKE-ROOT)
 
 : TRUE? ( -- bool )
    0 0= ;
@@ -187,6 +209,7 @@ public
 private
 
 : MAKE-ROOT ( -- )
+   getpid OWNER-PID !
    s" habu-ccref" TMPDIR-MKDIR ROOT-BYTES PATH-CAP ROOT-U COPY-INTO
    ROOT$ s" twins.o" OBJ-BYTES JOIN-PATH OBJ-U !
    ROOT$ s" twins.dylib" LIB-BYTES JOIN-PATH LIB-U ! ;
@@ -265,10 +288,23 @@ public
    READY-FLAG @ 0 <= if READY-FLAG @ 0<> exit then
    DECIDE dup if -1 else 0 then READY-FLAG ! ;
 
-\ Take the temporary tree away again. The library stays open until the process
-\ ends, so this is called after the last measured pass and not before.
+\ Did THIS process build the tree? A forked child inherits ROOT-U and the
+\ mapped library but built neither, so it answers false and must not touch
+\ either. The question is the pid rather than a flag because fork copies flags
+\ and does not copy a pid.
+: OWNER? ( -- bool )
+   ROOT-U @ 0= if 0 0= 0= exit then
+   OWNER-PID @ getpid = ;
+
+\ Take the temporary tree away again, and only the process that made it may.
+\ The tree carries the library a caller has mapped; a forked child shares that
+\ mapping and would be pulling the file out from under every process that holds
+\ it, so REMOVE in a child is a no-op rather than a race. In the process that
+\ DID build it this is called after the last measured pass: unlinking a mapped
+\ file leaves the mapping valid, so the ordering is about the tree's other
+\ contents, not about the library.
 : REMOVE ( -- )
-   ROOT-U @ 0= if exit then
+   OWNER? 0= if exit then
    ROOT$ EXISTS? 0= if exit then
    ROOT$ REMOVE-TREE ;
 
@@ -276,6 +312,7 @@ private
 
 : INIT ( -- )
    1 READY-FLAG !
+   0 OWNER-PID !
    0 ROOT-U !
    0 WHY-U !
    0 NM-U !

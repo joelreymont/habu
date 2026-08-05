@@ -1,7 +1,7 @@
 \ gate-stdlib-inline-lib.f - in-process stdlib gate slices for resident runners.
 \
 \ Load after test/gate-stdlib-lib.f in the resident test runner.
-
+\
 variable GSI-TIMINGS
 variable GSI-PATH-A
 variable GSI-PATH-U
@@ -398,6 +398,11 @@ package TAIL-PURE
 
 private
 
+\ Two members of this group reach the clang reference column, and they run as
+\ forked children. The image that column calls into is mapped by test/run.f in
+\ the process the gate was EXEC'd into, before any fork; this group runs inside
+\ a forked worker and so cannot map it either (tools/codegen-compare-cc.f, THE
+\ OWNER OF THE TREE). Nothing to do here: the mapping arrives by inheritance.
 : SETUP ( -- )
    GSI-TEST-SETUP
    s" lib/json-write.f" GSI-REQUIRE

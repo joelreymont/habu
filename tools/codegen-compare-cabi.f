@@ -40,6 +40,7 @@ require lib/errors.f
 require lib/prelude.f
 require lib/string.f
 require lib/ffi-abi.f
+require lib/process-fork.f
 require tools/codegen-compare-cc.f
 
 package CODEGEN-CABI
@@ -57,12 +58,31 @@ variable LIB-HANDLE
 public
 
 \ Open the reference library. Called once, after the toolchain has built it.
+\
+\ Mapping it is the BUILDING process's job and nobody else's. dyld is not
+\ fork-safe: loading an image that is not already mapped runs its loader, and
+\ in a forked child that takes SIGBUS inside dyld itself rather than returning
+\ an error (tools/codegen-compare-cc.f, THE OWNER OF THE TREE). An inherited
+\ handle is fine and is the supported shape -- the parent maps, the children
+\ share the mapping and take this word's first branch -- so what is refused is
+\ exactly the case that would have to load: no handle, and not the builder.
+\ A gate that forks members which reach the reference column calls
+\ CODEGEN-CABI:PREPARE before it forks.
 : OPEN ( -- )
    LIB-HANDLE @ 0<> if exit then
+   PROC-FORK:CHILD? if E-CODEGEN-CLANG-FORK throw then
    CODEGEN-CC:LIB$ PATH-BYTES FFI:CSTR
    PATH-BYTES FFI:NOW FFI:DLOPEN dup LIB-HANDLE !
    0= if E-CODEGEN-CLANG-SYMBOL throw then
    FFI:RESET ;
+
+\ Build the reference and map it, in THIS process, so that processes forked
+\ from here inherit a library they never have to load. Answers whether there is
+\ a reference column at all, so a host without a C compiler prepares nothing
+\ and every child still reports the column absent for the usual reason.
+: PREPARE ( -- bool )
+   CODEGEN-CC:READY? dup 0= if exit then
+   OPEN ;
 
 \ Where the twin of this name starts. A name the library does not carry is a
 \ claim the comparison made and did not keep, so it throws rather than answering
