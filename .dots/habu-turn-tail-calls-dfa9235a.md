@@ -1,0 +1,9 @@
+---
+title: Turn tail calls into jumps
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-05T09:41:37.347021+02:00"
+---
+
+A routine whose last operation is a call pays bl + frame + ret where a b would do: reuse the caller's frame, jump, let the callee return to the original caller. Forth words end in calls constantly, so this is disproportionately large for call chains (A->B->C->D shapes) and cheap: the elaborator already knows when a call is the final operation with results passing straight through; selection emits the tail form; the verifier refuses a tail jump whose stack shape differs from a return (same out-arity, pointer at the return position — the placement machinery already computes both). Watch NREACH: a redirected tail jump is still a branch into the old routine — the site decoder must recognize b-as-call targets or redirect will miss them; extend NBR/NWALK accordingly with tests. Acceptance: the call-chain corpus row (A-to-D) loses its intermediate frames, measured bytes and ns both drop, answers identical, redirect still finds and moves tail sites. Sequence AFTER the clang column so the win is measured against the reference.
