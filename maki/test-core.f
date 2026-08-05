@@ -163,8 +163,6 @@ SUITE maki/onnx/deploy-test.f
 ;SUITE
 SUITE maki/onnx/ort-ref-test.f
 ;SUITE
-SUITE maki/infer/kv-cache-test.f
-;SUITE
 SUITE maki/fusion-test.f
 ;SUITE
 SUITE maki/ablate-fusion-test.f
@@ -296,8 +294,6 @@ SUITE maki/maki-test.f
 SUITE maki/gpu-emit-test.f
 ;SUITE
 SUITE maki/gpu-leak-test.f
-;SUITE
-SUITE maki/gpu-buffer-test.f
 ;SUITE
 SUITE maki/device-smoke.f
 ;SUITE

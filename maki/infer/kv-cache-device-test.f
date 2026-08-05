@@ -1,5 +1,5 @@
-\ maki/infer/kv-cache-test.f - linear device KV cache contract.
-\ Run: bin/hb --load maki/infer/kv-cache-test.f   (DEVICE-REQUIRED - see below)
+\ maki/infer/kv-cache-device-test.f - linear device KV cache contract.
+\ Run: bin/hb --load maki/infer/kv-cache-device-test.f   (DEVICE-REQUIRED - see below)
 \
 \ DEVICE-REQUIRED SUITE. Every case here opens a real GPU session
 \ (KVT-MUST-SESSION -> GPU:OPEN -> maki/gpu-session.f GS-ACQUIRE -> MKD -> the
@@ -12,14 +12,10 @@
 \ below says so once by name instead of leaving 37 anonymous assertion failures
 \ behind.
 \
-\ It is still listed in maki/test.f and its maki/test-core.f slice, and it is not
-\ the only device-required suite there: with this one removed the same -5002
-\ stops the run at maki/gpu-buffer-test.f. Whether maki/test.f should carry
-\ device-required suites at all - the *-device-test.f family in docs/ablation.md
-\ is kept out of it and run explicitly on a device host - is a decision about the
-\ whole family, not about this file, so this suite's membership is left alone.
-\ The sibling off-device suites reach the driver only through the MKD injection
-\ seam (maki/cuda-run-fake.f); this suite deliberately does not, because it is
+\ It is a member of the *-device-test.f family (docs/ablation.md): kept out of
+\ maki/test.f and its slices, run explicitly on a device host. The sibling
+\ off-device suites reach the driver only through the MKD injection seam
+\ (maki/cuda-run-fake.f); this suite deliberately does not, because it is
 \ asserting real device bytes.
 
 require lib/test.f
@@ -1268,7 +1264,7 @@ variable KVT-RELEASE-EVENT
 \ passed, and the exit code plus message say exactly why.
 : KVT-REQUIRE-DEVICE ( -- )
    CUDA:OPEN? if exit then
-   s" kv-cache-test: no CUDA driver (dlopen libcuda.so.1 failed); this suite is device-required - run it on a host with a CUDA driver" 74 die ;
+   s" kv-cache-device-test: no CUDA driver (dlopen libcuda.so.1 failed); this suite is device-required - run it on a host with a CUDA driver" 74 die ;
 
 : KVT-RUN ( -- )
    KVT-REQUIRE-DEVICE

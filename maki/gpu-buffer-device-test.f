@@ -1,4 +1,19 @@
-\ gpu-buffer-test.f - persistent GPU buffer lifetime.
+\ maki/gpu-buffer-device-test.f - persistent GPU buffer lifetime.
+\ Run: bin/hb --load maki/gpu-buffer-device-test.f   (DEVICE-REQUIRED - see below)
+\
+\ DEVICE-REQUIRED SUITE. The fake matrix (BT-ON installs MKD fakes for
+\ cuMemAlloc/HtoD/DtoH/DtoD/cuMemFree) is host-independent, but BT-REAL-TWO
+\ runs after BT-OFF with the fakes removed: FT-MUST-OPEN -> GPU:OPEN ->
+\ maki/gpu-session.f GS-ACQUIRE -> MKD -> the CUDA driver, then real
+\ allocate/copy/span/free through real device memory. lib/ptx/cuda-driver.f
+\ CUDA:OPEN? reaches the driver by dlopen("libcuda.so.1"), so a host with no
+\ CUDA driver cannot run this suite: GPU:OPEN returns E-CUDA (-5002) and the
+\ real leg fails. That is a missing precondition, not a buffer defect, and
+\ BT-REQUIRE-DEVICE below says so once by name at the top of the run instead
+\ of leaving an uncaught -5002 behind.
+\
+\ It is a member of the *-device-test.f family (docs/ablation.md): kept out of
+\ maki/test.f and its slices, run explicitly on a device host.
 
 require maki/gpu-session-test.f
 require maki/gpu-buffer.f
@@ -684,7 +699,16 @@ create BT-DST BT-BUF-LEN allot
    BT-REAL-SPAN swap BT-REAL-BUF
    FT-MUST-CLOSE FT-MUST-CLOSE ;
 
+\ The suite's one precondition, same shape as kv-cache-device-test.f
+\ KVT-REQUIRE-DEVICE: a hard stop that names the missing host capability at the
+\ top of the run, not a skip - a device suite on a device-less host has not
+\ passed, and the exit code plus message say exactly why.
+: BT-REQUIRE-DEVICE ( -- )
+   CUDA:OPEN? if exit then
+   s" gpu-buffer-device-test: no CUDA driver (dlopen libcuda.so.1 failed); this suite is device-required - run it on a host with a CUDA driver" 74 die ;
+
 : BT-RUN ( -- )
+   BT-REQUIRE-DEVICE
    T-RESET
    BT-ON
    BT-BUF-ALLOC-ERRORS
@@ -707,4 +731,4 @@ BT-RUN
 ;using
 
 ;package
-s" gpu-buffer-test: ok" type cr
+s" gpu-buffer-device-test: ok" type cr

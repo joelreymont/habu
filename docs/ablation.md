@@ -86,6 +86,21 @@ lower-golden: REGION_0 mismatch beyond f32 tol at elem 0
 test: ok
 ```
 
+## Device-required suite family (run explicitly on a device host)
+
+The `*-device-test.f` family is kept out of `maki/test.f` and its slices so the
+host gate stays host-independent; each member is run explicitly on a CUDA host
+(Orin / spark) with `bin/hb --load <file>`. A member refuses a driverless host
+loudly: its named precondition (the `KVT-REQUIRE-DEVICE` shape) probes
+`CUDA:OPEN?` and dies 74 naming the missing capability, so a bare load never
+decays into anonymous assertion failures. Members moved out of `maki/test.f` by
+dot `habu-move-device-suites-b4fff868`:
+
+| Member | Contract | Rerun |
+|--------|----------|-------|
+| `maki/infer/kv-cache-device-test.f` | linear device KV cache (real sessions, real device bytes, COW/batch lifetime) | `bin/hb --load maki/infer/kv-cache-device-test.f` (device host) |
+| `maki/gpu-buffer-device-test.f` | persistent GPU buffer lifetime (MKD fake matrix + real alloc/copy/span/free leg) | `bin/hb --load maki/gpu-buffer-device-test.f` (device host) |
+
 ## Pending rows and their blockers
 
 - **2a predicted-vs-measured traffic**, **2b latency**: need on-device timing / measured
