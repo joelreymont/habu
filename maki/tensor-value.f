@@ -1,7 +1,7 @@
 \ maki/tensor-value.f - the unified single-slot tensor value + its plan mode.
 \
 \ docs/archive/cad-plan.md section 3 prerequisite. Today's eager maki ops pass a tensor as many
-\ stack cells (maki/linear.f: LINEAR ( ptr a ptr a ptr a ptr a n n n -- ); data,
+\ stack cells (maki/linear.f: LINEAR ( ptr r ptr r ptr r ptr r n n n -- ); data,
 \ shape and dtype travel apart), so they cannot be re-typed onto descriptors. A
 \ `tensor` is instead ONE stack slot: an opaque nominal handle indexing a
 \ module-owned record table that carries data pointer, 2D shape (rows cols),
@@ -196,7 +196,7 @@ ENUM align DERIVE eq
    off 0=  rstr 1 =  and  cstr r ROWS-RAW =  and ;
 
 \ materialize a rows x cols view into a contiguous row-major dst (the §3 COPY body).
-: VIEW-MAT ( ptr a n n n CAD-KIND:rows CAD-KIND:cols ptr a -- ) {: p:ptr off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols dst:ptr :}
+: VIEW-MAT ( ptr r n n n CAD-KIND:rows CAD-KIND:cols ptr r -- ) {: p:ptr off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols dst:ptr :}
    r ROWS-RAW c COLS-RAW {: R:n C:n :}
    R C * 0 ?do
       i C / {: row:n :}   i C mod {: col:n :}
@@ -208,7 +208,7 @@ ENUM align DERIVE eq
 \ storage sum their scatter-adds (fan-out), the calculus of a read that fans out
 \ (docs/strided-views.md §4). Every index off+row*rstr+col*cstr < storage-elems was
 \ PROVEN at construction (VIEW-BOUNDS-CK), so no per-element bound is re-checked.
-: VIEW-SCATTER+ ( ptr a n n n CAD-KIND:rows CAD-KIND:cols ptr a -- ) {: g:ptr off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols adj:ptr :}
+: VIEW-SCATTER+ ( ptr r n n n CAD-KIND:rows CAD-KIND:cols ptr r -- ) {: g:ptr off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols adj:ptr :}
    r ROWS-RAW c COLS-RAW {: R:n C:n :}
    R C * 0 ?do
       i C / {: row:n :}   i C mod {: col:n :}
@@ -274,7 +274,7 @@ create TV-HAS  TV-SEED cells allot   variable TV-HAS-P   TV-HAS  data-base - TV-
 create TV-OFF  TV-SEED cells allot   variable TV-OFF-P   TV-OFF  data-base - TV-OFF-P  !   variable TV-OFF-CAP   TV-SEED cells TV-OFF-CAP  !  \ view offset (elements) sibling
 create TV-RSTR TV-SEED cells allot   variable TV-RSTR-P  TV-RSTR data-base - TV-RSTR-P !   variable TV-RSTR-CAP  TV-SEED cells TV-RSTR-CAP !  \ view row stride (elements) sibling
 create TV-CSTR TV-SEED cells allot   variable TV-CSTR-P  TV-CSTR data-base - TV-CSTR-P !   variable TV-CSTR-CAP  TV-SEED cells TV-CSTR-CAP !  \ view col stride (elements) sibling
-: TV-DATA-BASE ( -- ptr a )  data-base TV-DATA-P @ + ;   \ reconstruct the live base
+: TV-DATA-BASE ( -- ptr ptr r )  data-base TV-DATA-P @ + ;   \ reconstruct the live base
 : TV-HAS-BASE  ( -- ptr a )  data-base TV-HAS-P  @ + ;
 : TV-OFF-BASE  ( -- ptr a )  data-base TV-OFF-P  @ + ;
 : TV-RSTR-BASE ( -- ptr a )  data-base TV-RSTR-P @ + ;
@@ -321,7 +321,7 @@ $FFFFFFFFFF constant TV-GEN-MAX   \ lowered so TV-GEN-MAX * TV-CAP fits a signed
    TV-U @ TV-ENSURE                                \ derive column size from the model
    TV-U @ dup 1+ TV-U ! ;
 
-: TV-FIELDS! ( ptr a CAD-KIND:rows CAD-KIND:cols n n -- )   \ data rows cols has idx
+: TV-FIELDS! ( ptr r CAD-KIND:rows CAD-KIND:cols n n -- )   \ data rows cols has idx
    {: base:ptr rows:CAD-KIND:rows cols:CAD-KIND:cols has:n idx:n :}
    base  TV-DATA-BASE idx cells + !
    rows  idx TV-ROWS-AT !
@@ -366,10 +366,10 @@ public
 \ dtype/layout arrive as family values and store from the stack into the typed
 \ slots before the cell fields bind; a bad tag is a checker reject, so the old
 \ E-MK-DTYPE/E-TV-LAYOUT validation is unrepresentable here. Alignment is
-\ measured from the real data pointer. Untyped eager pointers originate on the
+\ measured from the real data pointer. Eager float pointers originate on the
 \ host; device-space constructors must require provenance-bearing allocator
 \ results, not a caller-selected label.
-: TV-NEW-HOST ( ptr a CAD-KIND:rows CAD-KIND:cols datatype layout -- tensor )
+: TV-NEW-HOST ( ptr r CAD-KIND:rows CAD-KIND:cols datatype layout -- tensor )
    TV-SLOT+ {: idx:n :}
    idx TV-LAY-AT !                      \ layout (top)
    idx TV-DT-AT !                       \ dtype
@@ -383,7 +383,7 @@ public
    self ;
 
 \ TV-NEW defaults dtype f32 + row-major (the eager host-array convention).
-: TV-NEW ( ptr a CAD-KIND:rows CAD-KIND:cols -- tensor )
+: TV-NEW ( ptr r CAD-KIND:rows CAD-KIND:cols -- tensor )
    MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW TV-NEW-HOST ;
 
 \ TV-DESC builds a planning descriptor: typed facts only, no buffer.
@@ -427,7 +427,7 @@ public
 \ TV-DATA@ hands out the FLAT contiguous buffer, so it fails closed on a view (a
 \ view has no flat buffer of its own extents; §3 - remedy = the COPY op / TV-MATERIALIZE).
 \ The degenerate (non-view) path is unchanged - bit-identical to before SV-1.
-: TV-DATA@ ( tensor -- ptr a ) {: t:tensor :}
+: TV-DATA@ ( tensor -- ptr r ) {: t:tensor :}
    t TV-HAS-DATA? 0= if E-TV-NODATA throw then
    t TV-VIEW? if E-TV-VIEW throw then
    TV-DATA-BASE t TV-IX cells + @ ;
@@ -439,12 +439,12 @@ public
 private
 \ raw storage data pointer, UNGUARDED (= the storage base for a view). Internal to
 \ the strided read/write/scatter seam; TV-DATA@ is the guarded public flat accessor.
-: TV-STORE-PTR@ ( tensor -- ptr a ) {: t:tensor :}  TV-DATA-BASE t TV-IX cells + @ ;
+: TV-STORE-PTR@ ( tensor -- ptr r ) {: t:tensor :}  TV-DATA-BASE t TV-IX cells + @ ;
 
 \ install a view slot: data = storage ptr, extents/dtype/layout/space recorded, and
 \ the view descriptor (storage-ref, offset, strides) set. The high-level
 \ constructors prove the bounds BEFORE calling this, so it does not re-check.
-: TV-NEW-VIEW ( ptr a tensor CAD-KIND:rows CAD-KIND:cols datatype layout CAD-KIND:address-space n n n -- tensor )
+: TV-NEW-VIEW ( ptr r tensor CAD-KIND:rows CAD-KIND:cols datatype layout CAD-KIND:address-space n n n -- tensor )
    {: base:ptr store:tensor rows:CAD-KIND:rows cols:CAD-KIND:cols dt:datatype lay:layout sp:CAD-KIND:address-space off:n rstr:n cstr:n :}
    TV-SLOT+ {: idx:n :}
    sp  idx TV-SPACE-AT !
@@ -531,14 +531,14 @@ public
 
 \ ---- materialize (§3 COPY remedy) + scatter-add adjoint (SV-4) --------------
 \ TV-MATERIALIZE strided-reads the view into a caller-owned contiguous row-major dst.
-: TV-MATERIALIZE ( tensor ptr a -- ) {: t:tensor dst:ptr :}
+: TV-MATERIALIZE ( tensor ptr r -- ) {: t:tensor dst:ptr :}
    t TV-STORE-PTR@ t TV-OFF@ t TV-RSTR@ t TV-CSTR@ t TV-ROWS@ t TV-COLS@ dst MAKI:VIEW-MAT ;
 
 \ TV-VIEW-ADJOINT+ scatter-ADDS the view's cotangent g (contiguous, the view's
 \ extents) into the storage adjoint adj at the view's (offset,strides). ACCUMULATES
 \ (fan-out: multiple views of one storage sum); the out-of-view contribution is
 \ structurally zero (only footprint indices are touched). docs/strided-views.md §4.
-: TV-VIEW-ADJOINT+ ( tensor ptr a ptr a -- ) {: t:tensor g:ptr adj:ptr :}
+: TV-VIEW-ADJOINT+ ( tensor ptr r ptr r -- ) {: t:tensor g:ptr adj:ptr :}
    g t TV-OFF@ t TV-RSTR@ t TV-CSTR@ t TV-ROWS@ t TV-COLS@ adj MAKI:VIEW-SCATTER+ ;
 
 \ ---- store lifecycle -------------------------------------------------------
@@ -702,7 +702,7 @@ private
 \ Typed descriptor facts cross into the legacy eager array kernel only here.
 \ The checked caller validates every nominal role before this adapter.
 \ Retirement owner: habu-epic-model-cad-70b629a9.
-TRUSTED: TYPED-LINEAR ( ptr a ptr a ptr a ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:cols -- )
+TRUSTED: TYPED-LINEAR ( ptr r ptr r ptr r ptr r CAD-KIND:rows CAD-KIND:cols CAD-KIND:cols -- )
    MAKI:LINEAR ;
 
 public
