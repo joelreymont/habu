@@ -5288,3 +5288,20 @@ gating, and refresh the main worktree's engine immediately after merging
 any engine-text change - the stale-seed false-red class has now bitten
 from both directions.
 
+## An error code is not a location, and CSE's prize is its cost (2026-08-05)
+
+Two lessons from one lane. A predecessor pinned E-IR-FUN-BOUND to a specific
+bound check and designed a fix for it; the code has twenty-plus throw sites
+in one file, a one-line probe on the suspected line never fired, and the real
+raiser was the test reading operations by absolute index - a legitimate
+optimization changed the count and the fixture called it an invariant
+violation. Probe the suspected line before designing against it. Second: the
+literal CSE measured 4 corpus rows improved and 0 regressed, and still did
+not land - collapsing repeated constants EXTENDS the constant's live range,
+and in a starved frame that turned one spill into two, minus one movz plus a
+store, a load, and a slot. CSE's benefit is live-range extension and its cost
+is the same thing; without rematerialization (re-emitting the movz instead of
+a stack round trip) the transform trades a win on wide frames for a loss on
+narrow ones. The pin that caught it stays exactly as written - widening a
+test to admit the code is how a measured regression becomes invisible.
+
