@@ -8,7 +8,7 @@ created-at: "2026-08-05T17:03:15.149470+02:00"
 
 CALL-PRESSURE road, from the spill lane's measurement (2026-08-05, bookmark spill): a value live across a CALLLESS loop already spills today (probe: 7 live across a callless loop compiles rc 0; the same 7 across a call in the loop refuses E-A64RA-SPILL -8508) — the refusal comes from MB-KEEP-BLOCK KEEPing every operand of the call site's data-stack saves in the middle block, NOT from loop residency. Fix: split the live range so the value is dead across the loop — store in the entry block, reload in the exit block — a placement ORDER-CK already permits; no middle-block frame redesign (that stays with habu-spill-from-a-4145325c and is NOT needed here). Also: correct tools/codegen-compare-new4.f's stale 'one refusal, two roads' paragraph, and promote the lane's probe (/private/tmp/claude-501/spill-probe-final.f) into tools/ as the regression instrument. Acceptance: CALL-PRESSURE compiles, answers match the engine bit-for-bit, the A64RAV validator checks the split slots, no previously-supported row changes bytes, both-gaps reported, corpus-4 baseline re-pinned deliberately.
 
-Claim: agent=callsplit workspace=.jj-ws/habu-split-call-crossed-6eda1613
+Claim: agent=callsplit2 workspace=.jj-ws/habu-split-call-crossed-6eda1613
 
 MEASURED 2026-08-05 (agent=callsplit). STOPPED BEFORE THE FIX, with the dot's
 headline finding CONFIRMED and its stated mechanism and prescribed fix both
@@ -181,5 +181,79 @@ failure mode is silent wrong answers rather than a refusal. It is a bigger leaf
 than "split at elaboration" reads, and the RE-CUT's own wording ("store to its
 slot before the loop") is not available as written. Recorded here so the next
 lane starts from the tree's shape rather than re-deriving it.
+
+BUILD MEASUREMENT (2026-08-05, agent=callsplit2), against the DESIGN CORRECTION.
+Four of its statements were checked by building them. One holds and is much
+smaller than written; two are wrong about the tree; one is a shape the tree
+refuses. No compiler code is committed - src/compiler/native/elaborate.f and
+migrate.f are byte-identical to bd7832fc - because a half-built version of this
+is the silent miscompilation the leaf exists to avoid.
+
+ONE, AND IT HOLDS. THE DIRECTIVE IS A SINGLE LINE. Every carrier of a crossing
+local asks elaborate.f CROSS-L (:909) for its count - the block arguments
+(LOCAL-ARGS+ via OPEN-ARGS :1171, TERM-BR :1248, STUB :1275, the loop head :2148
+and exit :2181), the call's operands (CALL-OPERANDS+ :2287), its result count
+(CROSS-RESULTS :2297) and its take-back (LOCAL-RESULTS@ :2342) - because the list
+is all of them or none and LOCAL-CK (:951) refuses anything between. So answering
+nought under a flag IS "stop threading", stated once. MEASURED through the real
+chain: with the flag off the probe's POST7 shape refuses -8508 as today; with it
+on the same source compiles rc 0. Nothing else in either file had to change.
+
+TWO. THE MUST-SPILL MARK CANNOT CROSS THE PASS BOUNDARY AS WRITTEN. The allocator
+never sees a HIR value. src/compiler/native/select.f rebinds every one of them to
+a fresh a64 value through VMAP (VBIND/VOF :579-588, called at some twenty sites),
+so an elaborator-side per-value mark reaches the allocator only if select.f
+translates it - a fifth coordinated change, in the pass the correction does not
+name.
+
+THREE, AND THIS IS THE ONE THAT CHANGES THE WORK: THE MARK IS NOT NEEDED, BECAUSE
+THE HAZARD elaborate.f:2223 NAMES IS ALREADY ENFORCED, STRUCTURALLY, FOR EVERY
+VALUE. The correction says "nothing does that today: the allocator spills under
+pressure, at its discretion, and a value it chose to keep in a register would be
+destroyed by the callee with no diagnostic anywhere." The tree says otherwise in
+two independent places:
+
+  - regalloc.f MB-CROSSES? (:1563) and MB-FORBID (:1572) walk every position,
+    and at each CALL operation a class genuinely spans - a member defined before
+    the branch and last read after it - bar that callee's whole destroyed set
+    from the class's register. It is asked of every class, not of the call's
+    operand list. Its own prose already names this exact shape: "A class live
+    from before a loop to after it crosses every call inside that loop, which is
+    exactly the shape a local read after a loop of calls has" (:1548-1550).
+  - regalloc-verify.f (:523-538) re-derives the same rule independently, off the
+    callee's address and its clobber record rather than off the selector, and for
+    a callee with no record bars the entire pool - "nothing may cross the call in
+    a register at all".
+
+MEASURED: with the threading suppressed and NO mark and NO mandatory spill,
+CALL-PRESSURE's body compiles and its answers match the engine bit-for-bit on all
+three pinned rows (eight turns, length zero, all-negative), and a one-crossing-
+local variant matches on 5, MAX-INT and MIN-INT. So pieces (2) and (4) are not
+this leaf's work: forcing a frame round-trip where a non-destroyed register
+already serves would be strictly worse code for no safety gained, and A64RAV
+already owns the check the correction asks it to grow.
+
+THE DISPATCHED MUTATION FIRES ITS OWN STOP RULE, and it is recorded rather than
+worked around. "Remove the MUST-SPILL mark while keeping the threading
+suppression, and show A64RAV refuses; if it stays green, STOP." It stays green.
+The reading is not that the validator check is wrong - it is that the premise
+that A64RAV needs a new check is wrong.
+
+FOUR. THE RETRY IS NOT A RE-RUN OF THE TAIL OF WORK. migrate.f MODEL (:314) mints
+the word model against `CC BB IR-BUILD:MODULE-KEY`, and NELAB:COLON checks every
+identity read off the tape against the builder's module - so a second attempt
+needs a second builder AND a second model, not just a second builder. Moving
+MODEL inside the retried part puts it after the publication prologue, and every
+migration then throws E-IR-BUILD-STALE (-8060), including ones that never retry -
+the ordinary probe suite goes red. Which of RECORD / PUBLISHED-ONE /
+RESOLVES-TO-LATEST / KEEP-NAME depends on the live builder is the next lane's
+first measurement, and it is a measurement and not a reading.
+
+WHAT THE LEAF LOOKS LIKE NOW. Piece (1) is one line and is proven. Piece (3) is
+the open problem and it is a migrate.f lifecycle question, not an allocator one.
+Pieces (2) and (4) should be struck unless the next lane can produce a body where
+MB-FORBID and A64RAV together do NOT already cover the un-threaded value - which
+is the one experiment that would reinstate them, and it is worth running before
+the pieces are dropped for good.
 
 DESIGN CORRECTION (2026-08-05, measured against the tree; supersedes the RE-CUT's 'store to its slot before the loop' wording — the elaborator HAS no frame, by design: frame.f has exactly two owners): the split is a DIRECTIVE plus a RETRY. (1) Elaborator: under a flag, stop threading the call-surviving local (out of LOCAL-ARGS+, CALL-OPERANDS+, LOCAL-RESULTS@) and mark the value MUST-SPILL. (2) Allocator: a must-spill mark makes slot placement unconditional (NEW-SLOT/CL-SLOT + P-STORE/P-RELOAD planning as today) — mandatory, because the un-threaded value absent from the call operand list is safe ONLY if it provably lives in memory across the call (elaborate.f:2223's hazard; the failure mode of getting this wrong is silent wrong answers). (3) Trigger: structural, not estimated — migrate.f WORK retries once: elaborate/allocate exactly as today, and only on E-A64RA-SPILL re-elaborate with the split enabled and re-run the chain; below-pressure bodies are byte-identical BY CONSTRUCTION (they never take the second pass). (4) A64RAV checks the SLOT EXISTS and is stored before the region and reloaded after — the slot is what makes the missing threading safe, so the validator's primary object is the slot, not the absence. Probe suite tools/codegen-spill-probe.f is the regression floor. The rejected alternative branch (a dialect frame-access op so elaboration could emit stores directly) adds a cross-pass primitive with no second consumer — do not build it.
