@@ -1469,6 +1469,7 @@ s" T-RDUP" s" a | -- | a a" TRUST
 s" T-PDUP" s" ptr a -- ptr a ptr a" TRUST
 s" T-CDUP" s" pcell<a> -- pcell<a> pcell<a>" TRUST
 s" T-BKEEP" s" R a [ R a -- S ] -- S a" TRUST
+s" T-ROW-RELAY" s" R -- S" TRUST
 : T-QCOPY ( [ R -- S ] -- [ R -- S ] [ R -- S ] ) dup ;
 : T-QEXEC ( [ -- a ] -- ) execute drop ;
 : T-RQ ( [ R -- S ] n -- [ R -- S ] [ R -- S ] )
@@ -1487,6 +1488,7 @@ TRUSTED: T-IS-RV-Q ( -- R [ R -- ] ) ;
 TRUSTED: T-IS-QQ ( -- [ R -- ] [ R -- ] ) ;
 TRUSTED: T-IS-CF-Q ( -- a [ a -- a ] bool ) ;
 TRUSTED: T-IS-DROP ( a -- ) drop ;
+s" T-IS-QDROP" s" -- [ R -- ]" TRUST
 defer T-IS-G ( a -- a )
 defer T-IS-ND ( n -- n )
 defer T-IS-D2 ( n n -- n n )
@@ -1499,6 +1501,7 @@ defer T-IS-QN ( [ n -- n ] -- )
 defer T-IS-DR ( n | n -- n | n )
 defer T-IS-RN ( | n -- )
 defer T-IS-RDROP ( R -- )
+defer T-IS-OWN-DROP ( own -- )
 s" COK-IS-ID-N ( -- ) ['] T-IS-ID is T-IS-ND" CHECK-QUIET-CANDIDATE! -1 T=
 s" COK-IS-ID-G ( -- ) ['] T-IS-ID is T-IS-G" CHECK-QUIET-CANDIDATE! -1 T=
 s" COK-Q-MIX-D ( [ n -- R n ] -- ) drop" T-CHECK-PASSES
@@ -1522,6 +1525,8 @@ s" CBAD-IS-INFER ( -- ) is T-IS-G" T-CHECK-REJECTS
 s" COK-IS-ROW ( -- ) ['] T-IS-RID is T-IS-RG" CHECK-QUIET-CANDIDATE! -1 T=
 s" CBAD-IS-ROW-CLOSE ( -- ) ['] T-IS-N is T-IS-RG" T-CHECK-REJECTS
 s" CBAD-IS-ROW-ALIAS ( -- ) ['] T-IS-RID is T-IS-R2" T-CHECK-REJECTS
+s" CBAD-IS-ROW-KIND-TICK ( -- ) ['] T-IS-RDROP is T-IS-OWN-DROP" T-CHECK-REJECTS
+s" CBAD-IS-ROW-KIND-Q ( -- ) T-IS-QDROP is T-IS-OWN-DROP" T-CHECK-REJECTS
 \ The body binds declared `a` to i64 before recurse, but the recursive call must
 \ still instantiate raw `( a -- )`; only the final parametricity seal rejects.
 RSD-BUF RSD-CAP DIAG-BUFFER!
@@ -1573,6 +1578,9 @@ s" COK-OWN-QDROP ( -- ) [: T-MAKE-OWN ;] T-QDROP" T-CHECK-PASSES
 s" COK-OWN-QCOPY ( -- [ -- own ] [ -- own ] ) [: T-MAKE-OWN ;] T-QCOPY" T-CHECK-PASSES
 s" CBAD-OWN-QEXEC ( -- ) [: T-MAKE-OWN ;] T-QEXEC" T-CHECK-REJECTS
 s" COK-OWN-QREC ( n -- [ -- own ] [ -- own ] ) [: T-MAKE-OWN ;] swap T-RQ" T-CHECK-PASSES
+\ Independent row tails in a bodyless effect cannot erase an owner.
+s" CBAD-OWN-ROW-RELAY ( own -- ) T-ROW-RELAY" T-CHECK-REJECTS
+s" CBAD-OWN-ROW-MINT ( -- own ) T-ROW-RELAY" T-CHECK-REJECTS
 \ A return-row copy is constrained in a stored effect.
 s" COK-N-R-DUP ( n -- n n ) T-RDUP r> r>" T-CHECK-PASSES
 s" CBAD-OWN-R-DUP ( own -- own own ) T-RDUP r> r>" T-CHECK-REJECTS

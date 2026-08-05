@@ -81,8 +81,7 @@ create EC-TV-BOOT MAXTV-INIT cells allot      create EC-RV-BOOT MAXTV-INIT cells
 create EI-TV-BOOT MAXTV-INIT cells allot      create EI-RV-BOOT MAXTV-INIT cells allot
 create IS-RMETA-BOOT MAXTV-INIT cells allot
 create IS-TOUCH-BOOT MAXTV-INIT cells allot
-\ TVK: per-type-variable KIND. FRESH gives type and row vars one global id
-\ space, but row ids remain TVK-ANY and are never kind-constrained.
+\ TVK: per-variable KIND. FRESH gives type and row vars one global id space.
 \ 0 = TVK-ANY (an ordinary polymorphic var); bit 0 = TVK-RAW (a var minted by a raw
 \ storage definer -- here/,/create/variable/constant -- whose cell admits only a
 \ plain scalar representation and must NEVER absorb a nominal atom, arity-0
@@ -1778,6 +1777,26 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    TWALK-RESET t RES-FALSE NONLIN-TYPE* 0= IF RES-FALSE EXIT THEN
    TWALK-RESET t RES-TRUE NONLIN-TYPE* ;
 
+: NONLIN-ROW! ( n -- bool ) {: row:n :}
+   row
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE NONLIN-TYPE! 0= IF drop RES-FALSE EXIT THEN
+      P>REST
+   REPEAT
+   dup ISROW IF PAY TVK-NONLIN-RAISE ELSE drop THEN
+   RES-TRUE ;
+
+: ROW-BIND! ( n n -- bool ) {: row0:n id:n :}
+   row0 R-RES {: row:n :}
+   row ISROW IF
+      row PAY TVK-NONLIN? IF id TVK-NONLIN-RAISE THEN
+   THEN
+   id TVK-NONLIN? IF
+      row NONLIN-ROW! 0= IF RES-FALSE EXIT THEN
+   THEN
+   row id RV!
+   RES-TRUE ;
+
 \ --- nominal-storage RAW value discipline (habu-nominal-storage-raw). A RAW type
 \ var is minted by a raw storage definer (here/create/variable/constant); a fetch
 \ from that cell yields the SAME (RAW) var, so `RAW-var ~ nominal-family` in value
@@ -1934,11 +1953,11 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 : U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
    over ISROW IF
       over PAY over RV-OCC? IF 2drop RES-FALSE UOK ! ELSE
-      swap PAY RV! THEN
+      swap PAY ROW-BIND! 0= IF RES-FALSE UOK ! THEN THEN
    ELSE
    dup ISROW IF
       2dup PAY swap RV-OCC? IF 2drop RES-FALSE UOK ! ELSE
-      PAY RV! THEN
+      PAY ROW-BIND! 0= IF RES-FALSE UOK ! THEN THEN
    ELSE
    2dup LOGHID-AT? IF -1 CUR-UPOS ! LOGHID-EXPAND ELSE
    2dup swap LOGHID-AT? IF -1 CUR-UPOS ! swap LOGHID-EXPAND ELSE
@@ -4521,6 +4540,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       S-ROW of
          EN-ROW E-NODE-NEW E-OFF >r
          t PAY E-RV-ID r@ E-PTR EN.A !
+         t PAY TVK@ r@ E-PTR EN.B !
          r>
       endof
       T-PTR of
@@ -4814,11 +4834,11 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
 
 \ Bodyless effects have no checked body from which to earn NONLIN kinds. Infer
 \ them on the live parsed rows, then let E-COPY persist each kind. The first
-\ pass counts exposed ownership positions. Only a variable found there gets a
-\ second pass through nested quotation effects, whose input rows reverse
-\ polarity. Pointer and phantom variables stay opaque while quotation effects
-\ nested beneath them remain visible. Fields and real layouts carry ownership.
-variable LMNEG  variable LMPOS  variable LMV
+\ Type variables first count exposed ownership positions, then descend through
+\ nested quotation effects with input polarity reversed. Row variables take the
+\ full quotation-aware pass directly because a quotation body owns its rows.
+\ Pointer and phantom variables stay opaque. Fields and real layouts own values.
+variable LMNEG  variable LMPOS  variable LMV  variable LMROW
 
 : LM+ ( bool -- )
    IF LMPOS @ 1 + LMPOS ! ELSE LMNEG @ 1 + LMNEG ! THEN ;
@@ -4829,9 +4849,18 @@ variable LMNEG  variable LMPOS  variable LMV
       BEGIN dup TAG S-PUSH = WHILE
          dup P>TYPE pol quotes active TWALK-DEEPER RECURSE TWALK-SHALLOWER
          P>REST
-      REPEAT drop EXIT
+      REPEAT
+      dup ISROW LMROW @ and IF
+         active over PAY LMV @ = and IF pol LM+ THEN
+      THEN
+      drop EXIT
    THEN
-   t ISVAR IF active t PAY LMV @ = and IF pol LM+ THEN EXIT THEN
+   t ISROW IF
+      LMROW @ active and t PAY LMV @ = and IF pol LM+ THEN EXIT
+   THEN
+   t ISVAR IF
+      LMROW @ 0= active and t PAY LMV @ = and IF pol LM+ THEN EXIT
+   THEN
    t TAG T-PTR = IF
       quotes IF t PTR>INNER pol quotes RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER THEN
       EXIT
@@ -4859,9 +4888,9 @@ variable LMNEG  variable LMPOS  variable LMV
       1 +
    REPEAT drop ;
 
-: LIVE-MULT ( n n n n bool n bool -- n n )
-   {: din:n dout:n rin:n rout:n hasr:bool v:n quotes:bool :}
-   v LMV !  0 LMNEG !  0 LMPOS !
+: LIVE-MULT ( n n n n bool n bool bool -- n n )
+   {: din:n dout:n rin:n rout:n hasr:bool v:n quotes:bool rows:bool :}
+   v LMV !  rows LMROW !  0 LMNEG !  0 LMPOS !
    TWALK-RESET din RES-FALSE quotes RES-TRUE LIVE-MULT-NODE
    TWALK-RESET dout RES-TRUE quotes RES-TRUE LIVE-MULT-NODE
    hasr IF
@@ -4877,23 +4906,36 @@ variable LMI
       id MK-VAR NONLIN-TYPE! 0= IF 0 OK ! THEN
    ELSE id TVK-NONLIN! THEN ;
 
-: LIVE-INFER-NONLIN* ( n n n n bool n bool -- )
-   {: din:n dout:n rin:n rout:n hasr:bool limit:n raise:bool :}
+: LIVE-ROW-NONLIN! ( n -- ) {: id:n :}
+   id TVK-NONLIN!
+   id MK-ROW NONLIN-ROW! 0= IF 0 OK ! THEN ;
+
+: LIVE-INFER-NONLIN* ( n n n n bool n bool bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool limit:n raise:bool rows:bool :}
    0 LMI !
    BEGIN LMI @ limit < WHILE
-      din dout rin rout hasr LMI @ RES-FALSE LIVE-MULT + 0 <> IF
-         din dout rin rout hasr LMI @ RES-TRUE LIVE-MULT <> IF
-            LMI @ raise LIVE-NONLIN!
+      rows IF
+         din dout rin rout hasr LMI @ RES-TRUE rows LIVE-MULT
+         2dup + 0 <> IF
+            <> IF LMI @ LIVE-ROW-NONLIN! THEN
+         ELSE 2drop THEN
+      ELSE
+         din dout rin rout hasr LMI @ RES-FALSE rows LIVE-MULT + 0 <> IF
+            din dout rin rout hasr LMI @ RES-TRUE rows LIVE-MULT <> IF
+               LMI @ raise LIVE-NONLIN!
+            THEN
          THEN
       THEN
       LMI @ 1 + LMI !
    REPEAT ;
 
 : LIVE-INFER-NONLIN ( n n n n bool -- )
-   FV @ RES-FALSE LIVE-INFER-NONLIN* ;
+   {: din:n dout:n rin:n rout:n hasr:bool :}
+   din dout rin rout hasr FV @ RES-FALSE RES-FALSE LIVE-INFER-NONLIN*
+   din dout rin rout hasr FV @ RES-FALSE RES-TRUE LIVE-INFER-NONLIN* ;
 
 : LIVE-RAISE-NONLIN ( n n n n bool -- )
-   SGFV @ RES-TRUE LIVE-INFER-NONLIN* ;
+   SGFV @ RES-TRUE RES-FALSE LIVE-INFER-NONLIN* ;
 
 : E-BUILD-INFERRED ( n n n n bool -- n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
@@ -5119,6 +5161,7 @@ variable FMEND
       endof
       EN-ROW of
          r@ EN.A @ E-I-RV
+         r@ EN.B @ over PAY TVK-MASK-RAISE
          r> drop
       endof
       EN-PTR of r@ EN.A @ RECURSE MK-PTR r> drop endof
@@ -9739,8 +9782,7 @@ variable IS-MARK
    wid IS-META@ dup IS-C-DST and 0= IF drop drop RES-FALSE EXIT THEN
    IS-C-USED and IF drop RES-FALSE EXIT THEN
    IS-C-USED wid IS-META+
-   id RV!
-   RES-TRUE ;
+   id ROW-BIND! ;
 
 : IS-FLEX-TV? ( n -- bool ) {: id:n :}
    id IS-DEFER-TV? IF RES-FALSE EXIT THEN
@@ -9778,8 +9820,7 @@ variable IS-MARK
       target0 PAY IS-QOWNER? IF target0 PAY defer0 IS-QBIND? EXIT THEN
       target0 PAY IS-FLEX-RV? 0= IF target0 R-RES defer0 R-RES = EXIT THEN
       target0 PAY defer0 RV-OCC* IF RES-FALSE EXIT THEN
-      defer0 target0 PAY RV!
-      RES-TRUE EXIT
+      defer0 target0 PAY ROW-BIND! EXIT
    THEN
    target0 T-RES {: target:n :}
    defer0 T-RES {: want:n :}

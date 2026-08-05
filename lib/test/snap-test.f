@@ -4,6 +4,9 @@
 require lib/test.f
 require test/checker-assert.f
 
+DEFLINEAR snt-own
+s" SNT-MINT" s" -- snt-own" TRUST
+
 : SNT-PAIR ( -- n n )
    3 4 ;
 
@@ -53,6 +56,7 @@ T-RESET
 s" SNT-EQ-OK ( -- ) [: 1 2 ;] [: 3 4 ;] SNAP=" CHECK-QUIET-CANDIDATE! -1 T=
 s" SNT-EQ-BAD ( -- ) [: 1 2 ;] [: 3 ;] SNAP=" SNT-EQ-REJECTS
 s" SNT-EQ-BAD2 ( -- ) [: 1 ;] [: 3 4 ;] SNAP=" SNT-EQ-REJECTS
+s" SNT-OWN-BAD ( -- ) [: SNT-MINT ;] [: SNT-MINT ;] SNAP=" SNT-EQ-REJECTS
 T-FAILURES 0 T=
 
 \ labels apply to snapshot cases and clear after judging
