@@ -30,7 +30,7 @@ package MAKI
 private
 
 \ zero the masked suffix yb[v..n) (columns j>i for query row i, valid count v=i+1)
-: SM-ZERO-TAIL! ( ptr a n n -- ) {: yb:ptr n:n v:n :}
+: SM-ZERO-TAIL! ( ptr r n n -- ) {: yb:ptr n:n v:n :}
    n v ?do  0.0 yb i T-SET  loop ;
 
 \ the valid prefix count must be a real prefix of the row: 1..n inclusive
@@ -41,28 +41,28 @@ public
 
 \ y = causal-masked row softmax: softmax over the valid prefix [0,v) of x, y[j]=0
 \ for j in [v,n). v = i+1 for query row i. Composes the checked SM-FWD over the prefix.
-: SM-FWD-CAUSAL ( ptr a ptr a n n -- ) {: xb:ptr yb:ptr n:n v:n :}
+: SM-FWD-CAUSAL ( ptr r ptr r n n -- ) {: xb:ptr yb:ptr n:n v:n :}
    n v CAUSAL-GUARD
    xb yb v SM-FWD
    yb n v SM-ZERO-TAIL! ;
 
 \ VJP of SM-FWD-CAUSAL: dx over the valid prefix via SM-BWD (reads the saved y),
 \ dx[j]=0 for j in [v,n). Masked positions carry zero cotangent with no stored mask.
-: SM-BWD-CAUSAL ( ptr a ptr a ptr a n n -- ) {: dyb:ptr yb:ptr dxb:ptr n:n v:n :}
+: SM-BWD-CAUSAL ( ptr r ptr r ptr r n n -- ) {: dyb:ptr yb:ptr dxb:ptr n:n v:n :}
    n v CAUSAL-GUARD
    dyb yb dxb v SM-BWD
    dxb n v SM-ZERO-TAIL! ;
 
 \ per-row causal softmax over an lc x lc score matrix (row-major): row i masks
 \ columns j>i, i.e. runs softmax over its valid prefix i+1. Mirrors ATTN-SOFTMAX-ROWS.
-: CAUSAL-SOFTMAX-ROWS ( ptr a ptr a n -- ) {: sb:ptr ab:ptr lc:n :}
+: CAUSAL-SOFTMAX-ROWS ( ptr r ptr r n -- ) {: sb:ptr ab:ptr lc:n :}
    lc 0 ?do
       sb i lc * cells +   ab i lc * cells +   lc  i 1+  SM-FWD-CAUSAL
    loop ;
 
 \ per-row causal softmax VJP over an lc x lc matrix: dS[i,:] = causal_softmax_JVP of
 \ (dA[i,:], A[i,:]); masked columns j>i carry zero cotangent. Mirrors ATTN-SMBWD-ROWS.
-: CAUSAL-SMBWD-ROWS ( ptr a ptr a ptr a n -- ) {: dab:ptr ab:ptr dsb:ptr lc:n :}
+: CAUSAL-SMBWD-ROWS ( ptr r ptr r ptr r n -- ) {: dab:ptr ab:ptr dsb:ptr lc:n :}
    lc 0 ?do
       dab i lc * cells +   ab i lc * cells +   dsb i lc * cells +   lc  i 1+  SM-BWD-CAUSAL
    loop ;

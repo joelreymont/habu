@@ -21,7 +21,7 @@ package MAKI
 T-RESET
 
 \ exact bit-for-bit element compare (perturb-invariance + unmasked degeneracy)
-: MSK-EQ? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}
+: MSK-EQ? ( ptr r ptr r n -- bool ) {: a:ptr b:ptr n:n :}
    n 0 ?do  a i T-GET b i T-GET f= 0= if false unloop exit then  loop  true ;
 
 \ ---- forward golden: causal-masked softmax of MM-NT scores ------------------
