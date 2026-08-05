@@ -1,10 +1,8 @@
 # Where a routine lands, and what it costs
 
-Measured by `tools/codegen-align-sweep.f` (hand-run, unscheduled):
-
-```sh
-bin/hb --load tools/codegen-align-sweep.f
-```
+Measured by `tools/codegen-align-sweep.f`, a hand-run one-off deleted after
+these results landed (dot habu-collapse-the-comparison-b7ada325); the sweep's
+design is described under "What the sweep does" and is reproducible from it.
 
 Host: Apple M2 Max, `hw.cachelinesize` 128, `hw.pagesize` 16384, `hw.l1icachesize`
 131072. The machine was **not** quiet during these runs (an unrelated build was

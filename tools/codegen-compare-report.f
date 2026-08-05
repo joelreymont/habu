@@ -618,62 +618,38 @@ private
    j 0 < if false exit then
    k j BIGGER-ROW? ;
 
-\ ---- the rows that lose on bytes today, and why each one is allowed to --------
-\ ONE row of the four corpora is bigger in the new column right now. A row gets
-\ on this list for one of two reasons - a capability the chain has not got yet,
-\ or a trade a rule of the chain makes deliberately and states - and either way
-\ it is written down HERE, by name, with which of the two it is, and the check
-\ subtracts it. A gate that went red on it would be red for work that is already
-\ scheduled, or for a decision that has already been made and argued.
-\
-\ THE LIST WAS TWO ROWS AND IS NOW ONE. CODEGEN-CORPUS2:T-RES-WALK - the loop
-\ whose test is a call - came off it when the three mechanisms its diagnosis
-\ named landed: the pass-through residency (habu-keep-a-pass-8025401f), the block
-\ order (habu-order-blocks-to-f6d89653) and the data-stack placement
-\ (habu-place-the-data-9f128e58). It compiles to 36 bytes, which is the engine's
-\ own number for the same body, instruction for instruction.
-\
-\ AND THE ONE THAT IS LEFT IS OF THE SECOND KIND, WHICH IS WHY IT HAS NO DOT.
-\ CODEGEN-CORPUS4:CALL-FAN-BIG was on this list waiting for
-\ habu-measure-inline-cost-031e817e to re-derive the inliner's size rule. That
-\ landed, and the honest re-derivation kept the row: a copy costs the callee's
-\ body and a call site costs anything from the branch alone to the whole of what
-\ its arity allows, so no rule read while the CALLEE is published can promise
-\ that a copy is never bigger - the only bound that would is a one-instruction
-\ body, which refuses
-\ every routine these corpora show copying wins on. The rule therefore bounds
-\ what a copy ADDS and says so, and this row is that bound at its widest: five
-\ sites whose calls are one instruction each against copies of four, 88 bytes
-\ against 36, in about a twentieth of the time. src/compiler/native/inline.f carries
-\ the derivation. The row comes off this list if the rule ever tightens past
+\ ---- the one row that loses on bytes today, and why it is allowed to ----------
+\ ONE row of the four corpora is bigger in the new column, and it is a stated
+\ trade, not a waiting capability. CODEGEN-CORPUS4:CALL-FAN-BIG was on this
+\ list waiting for habu-measure-inline-cost-031e817e to re-derive the inliner's
+\ size rule. That landed, and the honest re-derivation kept the row: a copy
+\ costs the callee's body and a call site costs anything from the branch alone
+\ to the whole of what its arity allows, so no rule read while the CALLEE is
+\ published can promise that a copy is never bigger. The rule bounds what a
+\ copy ADDS and says so, and this row is that bound at its widest: five sites
+\ whose calls are one instruction each against copies of four, 88 bytes against
+\ 36, in about a twentieth of the time. src/compiler/native/inline.f carries
+\ the derivation. The fact comes off this file if the rule ever tightens past
 \ C-MAD's body, and the stale check below is what would say so.
 \
-\ WHY A LIST OF ROWS AND NOT A TOLERANCE. A tolerance - "a row may be up to so
-\ much bigger" - would also absorb the next loss, and the next loss is the whole
-\ reason this check exists. A named row absorbs itself and nothing else.
-\
-\ AND WHY AN ENTRY THAT HAS STOPPED LOSING IS ITSELF A FINDING. Without that the
-\ list would outlive the defect: the day the dot lands the row stops being bigger,
-\ the entry stays, and the row is free to lose again with nobody told. So the
-\ list is checked in both directions and empties itself - which is exactly how
-\ the entry above came off.
-1 constant KNOWN-LOSSES
+\ WHY A NAMED ROW AND NOT A TOLERANCE. A tolerance - "a row may be up to so
+\ much bigger" - would also absorb the next loss, and the next loss is the
+\ whole reason this check exists. The named row absorbs itself and nothing
+\ else, and it is checked in BOTH directions: a new loss is a finding, and this
+\ row ceasing to lose is a finding too, so the fact cannot outlive the trade
+\ (the list's previous entry, CODEGEN-CORPUS2:T-RES-WALK, came off through
+\ exactly that finding).
 
-: KNOWN-LOSS$ ( n -- ptr u8 n ) {: e:n :}
-   e 0 = if s" CODEGEN-CORPUS4:CALL-FAN-BIG" exit then
-   E-CODEGEN-COMPARE-ROW throw ;
+: KNOWN-LOSS$ ( -- ptr u8 n )
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" ;
 
-\ Why each entry is allowed to lose, printed beside the row so a reader of a
-\ report does not have to come here to find out.
-: KNOWN-WHY$ ( n -- ptr u8 n ) {: e:n :}
-   e 0 = if s" five copies of a callee the engine calls; the inline size rule's stated trade, src/compiler/native/inline.f" exit then
-   E-CODEGEN-COMPARE-ROW throw ;
+\ Why the row is allowed to lose, printed beside it so a reader of a report
+\ does not have to come here to find out.
+: KNOWN-WHY$ ( -- ptr u8 n )
+   s" five copies of a callee the engine calls; the inline size rule's stated trade, src/compiler/native/inline.f" ;
 
-: KNOWN-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0 begin dup KNOWN-LOSSES < while
-      dup KNOWN-LOSS$ a u STR= if exit then
-      1+
-   repeat drop -1 ;
+: KNOWN? ( ptr u8 n -- bool )
+   KNOWN-LOSS$ STR= ;
 
 \ ---- the printed adjudication ------------------------------------------------
 \ The byte column's own version of the line SAY-COSTLIER prints for the cost
@@ -685,9 +661,8 @@ private
    s"   " type k CODEGEN-COMPARE:NAME$ type
    s"  " type k NEW-PARTNER CODEGEN-COMPARE:SIZE FMT:.U
    s"  bytes against " type k CODEGEN-COMPARE:SIZE FMT:.U
-   k CODEGEN-COMPARE:NAME$ KNOWN-AT {: e:n :}
-   e 0 < if cr exit then
-   s"  (known: " type e KNOWN-WHY$ type s" )" type cr ;
+   k CODEGEN-COMPARE:NAME$ KNOWN? 0= if cr exit then
+   s"  (known: " type KNOWN-WHY$ type s" )" type cr ;
 
 : BIGGER-ROWS ( -- n )
    0
@@ -722,31 +697,28 @@ private
    CODEGEN-COMPARE:ROWS 0 ?do
       i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
          i BIGGER-PAIR? if
-            i CODEGEN-COMPARE:NAME$ KNOWN-AT 0 < if i SAY-LOSS 1+ then
+            i CODEGEN-COMPARE:NAME$ KNOWN? 0= if i SAY-LOSS 1+ then
          then
       then
    loop ;
 
-\ A known loss this pass measured in both columns and that is no longer bigger.
-\ A pass that does not hold the row at all says nothing about it: the store holds
-\ one corpus at a time and the two entries belong to two of them.
-: STALE-ENTRY? ( n -- bool ) {: e:n :}
-   CODEGEN-COMPARE:PATH-OLD e KNOWN-LOSS$ CODEGEN-COMPARE:FIND-ROW {: k:n :}
+\ The known loss, measured in both columns by this pass and no longer bigger.
+\ A pass that does not hold the row at all says nothing about it: the store
+\ holds one corpus at a time and the row belongs to the fourth.
+: STALE-LOSS? ( -- bool )
+   CODEGEN-COMPARE:PATH-OLD KNOWN-LOSS$ CODEGEN-COMPARE:FIND-ROW {: k:n :}
    k 0 < if false exit then
    k NEW-PARTNER 0 < if false exit then
    k BIGGER-PAIR? 0= ;
 
-: SAY-STALE ( n -- ) {: e:n :}
+: SAY-STALE ( -- )
    s" codegen-compare: KNOWN-LOSS " type
-   e KNOWN-LOSS$ type
-   s"  is no longer bigger than the old emitter's code: take its entry off the" type
-   s"  known-loss list in tools/codegen-compare-report.f" type cr ;
+   KNOWN-LOSS$ type
+   s"  is no longer bigger than the old emitter's code: take its fact out of" type
+   s"  tools/codegen-compare-report.f" type cr ;
 
 : STALE-ENTRIES ( -- n )
-   0
-   KNOWN-LOSSES 0 ?do
-      i STALE-ENTRY? if i SAY-STALE 1+ then
-   loop ;
+   STALE-LOSS? if SAY-STALE 1 exit then 0 ;
 
 public
 
@@ -759,12 +731,10 @@ public
    k 0 < if false exit then
    k BIGGER-PAIR? ;
 
-\ How many rows the known-loss list holds, and what each one is. Published so
-\ that the scheduled test can pin the list itself: an entry added to buy a gate a
-\ quiet life then has to survive an assertion that names it. They are the private
-\ words themselves rather than wrappers around them, so the list the report reads
-\ and the list the test reads cannot become two lists.
-EXPORT KNOWN-LOSSES
+\ The one known loss, published so the scheduled test can pin the fact itself:
+\ a row added to buy a gate a quiet life then has to survive an assertion that
+\ names it. It is the private word itself rather than a wrapper, so the fact
+\ the report reads and the fact the test reads cannot become two facts.
 EXPORT KNOWN-LOSS$
 
 \ Name every row the new chain compiled into more bytes than the engine's

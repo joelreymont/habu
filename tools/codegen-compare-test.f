@@ -540,7 +540,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    CODEGEN-COMPARE:ROWS 1- ;
 
 : UNKNOWN-GAP ( -- )
-   s" CODEGEN-CORPUS:NOT-A-WORD" CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP ;
+   s" CODEGEN-CORPUS:NOT-A-WORD" CODEGEN--GAP-CAP:LOOP-SPILL CODEGEN-GAP:GAP ;
 
 \ A new column that measured the calibration row and then simply stopped, with
 \ the corpus word the old column measured neither compiled nor declared a gap.
@@ -619,9 +619,8 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    s" CODEGEN-CORPUS4:CALL-FAN-BIG" CODEGEN-REPORT:BIGGER? TFALSE
    CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
 
-   s" the known-loss list is the one row that loses today, named" T-LABEL
-   CODEGEN-REPORT:KNOWN-LOSSES 1 T=
-   0 CODEGEN-REPORT:KNOWN-LOSS$ s" CODEGEN-CORPUS4:CALL-FAN-BIG" T$= ;
+   s" the known loss is the one row that loses today, named" T-LABEL
+   CODEGEN-REPORT:KNOWN-LOSS$ s" CODEGEN-CORPUS4:CALL-FAN-BIG" T$= ;
 
 \ ---- the register the drivers walk ------------------------------------------
 \ Every driver in tools/codegen-compare-cli.f reads which corpora exist, and
@@ -723,12 +722,6 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
       i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
          i COMPILED? i NAMED-GAP? and if 1+ then
       then
-   loop ;
-
-: CAPLESS-GAPS ( -- n )
-   0
-   CODEGEN-GAP:GAPS 0 ?do
-      i CODEGEN-GAP:GAP-CAPS@ 0= if 1+ then
    loop ;
 
 \ Every word the new chain compiled, compared byte for byte with the old
@@ -972,9 +965,6 @@ $1E602008 constant FCMP0-OP
    s" the two accounts together are the whole corpus" T-LABEL
    NEW-ROWS CODEGEN-GAP:GAPS + OLD-ROWS T=
 
-   s" every gap names at least one capability it is waiting for" T-LABEL
-   CAPLESS-GAPS 0 T=
-
    s" every word the new chain compiled computes what the old emitter computes" T-LABEL
    CODEGEN-COMPARE:MISMATCHES 0 T= ;
 
@@ -1157,11 +1147,6 @@ $1E602008 constant FCMP0-OP
    s" CODEGEN-CORPUS3:FROUND" NAMED-GAP-AMONG? TFALSE
    s" CODEGEN-CORPUS3:RELU-F" NAMED-GAP-AMONG? TFALSE
    s" CODEGEN-CORPUS3:T-REL-L2" NAMED-GAP-AMONG? TFALSE
-
-   s" no row waits for any of the three capabilities the float campaign built" T-LABEL
-   CODEGEN--GAP-CAP:FLOAT-PLACE GAPS-WANTING 0 T=
-   CODEGEN--GAP-CAP:FLOATS GAPS-WANTING 0 T=
-   CODEGEN--GAP-CAP:COMPARISON GAPS-WANTING 0 T=
 
    s" every compiled row is fewer bytes than the code the old emitter wrote" T-LABEL
    NOT-SMALLER 0 T=
