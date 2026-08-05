@@ -5201,3 +5201,22 @@ means the column is absent with the tool named, and any other nonzero code means
 a tool that was there and refused, which throws with its own diagnosis printed.
 The whole pipeline (compile, link, nm, size) is the probe, so what is asked is
 the question that matters: does the toolchain do the job.
+
+## A lint that says "missing X" must say missing from what (2026-08-05)
+
+The stdlib gate went red with `result-cache closure:
+tools/checked-boundary-lint-core.f -> missing tools/hook-sites.f`, the file
+plainly existed on disk, and the finding was filed across a merge as a scanner
+bug. The scanner was right: "missing" meant missing from the declared phase
+file set in test/run-files.f, which had gone stale when 04a7ee9c added the
+require edge without keying the file. Two changes close the class, and neither
+is the fix itself: the diagnostic now names the set it means (`...which the
+phase file set in test/run-files.f does not list`), and the scanner - which had
+no fixtures at all - now has sixteen, each pinned by a mutation that turns
+exactly its own case red. A lint with no hostile fixtures cannot be trusted the
+first time it fires, because the only way to answer "is the tool wrong?" is to
+read the tool; give a lint its fixtures the day it is written. And when a task
+statement asserts the tool is broken, reproduce and re-derive before accepting
+it - here the premise arrived exactly inverted, survived one merge, and cost a
+second investigation.
+
