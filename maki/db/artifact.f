@@ -275,8 +275,8 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
 
 \ Content-key set elements are 32 fixed bytes each; the per-slot accessor yields the
 \ element's byte address (BYTE-COPY / c@ move it), never a cell value.
-: DEP-AT ( s k -- ptr u8 ) {: s:n k:n :}   s DEP-CAP * k +  CKW *  P-DEP + ;
-: SREV-AT ( s k -- ptr u8 ) {: s:n k:n :}   s SREV-CAP * k +  CKW *  P-SREV + ;
+: DEP-AT ( n n -- ptr u8 ) {: s:n k:n :}   s DEP-CAP * k +  CKW *  P-DEP + ;
+: SREV-AT ( n n -- ptr u8 ) {: s:n k:n :}   s SREV-CAP * k +  CKW *  P-SREV + ;
 
 \ The envelope's own identity is the whole nominal id in a typed column (like the
 \ foreign ids); it serialises as ARTIFACT:KEY>WIRE / WIRE>KEY, never a raw cast.
@@ -770,7 +770,7 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
 \ DEPS-RESET / DEP+ are the public build protocol BUILD-WEIGHT documents (the caller
 \ populates the pending dependency set before BUILD); the scratch address helper stays
 \ private.
-: DSCR-AT ( k -- ptr u8 )   CKW * DSCR + ;         \ element k byte address in DSCR
+: DSCR-AT ( n -- ptr u8 )   CKW * DSCR + ;         \ element k byte address in DSCR
 
 public
 : DEPS-RESET ( -- )   0 DSCR-N ! ;
@@ -839,7 +839,7 @@ variable DEDUP-W
 \ rev content key.
 \ SREVS-RESET / SREV+ are the public source-revision build protocol (mirror DEPS-RESET /
 \ DEP+); the scratch address helper stays private.
-: SSCR-AT ( k -- ptr u8 )   CKW * SSCR + ;         \ element k byte address in SSCR
+: SSCR-AT ( n -- ptr u8 )   CKW * SSCR + ;         \ element k byte address in SSCR
 
 public
 : SREVS-RESET ( -- )   0 SSCR-N ! ;
