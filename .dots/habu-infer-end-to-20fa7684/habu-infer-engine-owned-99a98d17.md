@@ -1,6 +1,6 @@
 ---
-title: "Own inference engine"
-status: open
+title: Own inference engine
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:41:52.395660+02:00"
@@ -127,4 +127,4 @@ lifetime.
 Owned result: the hard-cut shared session lifetime and the sole engine/model/KV
 aggregate only.
 
-Claim: unassigned.
+Claim: agent=codex-engine workspace=.jj-ws/habu-infer-engine-owned-99a98d17.
