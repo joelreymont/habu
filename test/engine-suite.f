@@ -1475,7 +1475,7 @@ s" COK-IS-ROW ( -- ) ['] T-IS-RID is T-IS-RG" T-CHECK-PASSES
 s" CBAD-IS-ROW-CLOSE ( -- ) ['] T-IS-N is T-IS-RG" T-CHECK-REJECTS
 s" CBAD-IS-ROW-ALIAS ( -- ) ['] T-IS-RID is T-IS-R2" T-CHECK-REJECTS
 s" CBAD-OWN-REC-T ( a -- a a ) T-FREE-OWN T-MAKE-OWN recurse" T-CHECK-REJECTS
-s" COK-N-REC-T ( a -- a a ) 1+ recurse" T-CHECK-PASSES
+s" COK-N-REC-T ( n -- n n ) 1+ recurse" T-CHECK-PASSES
 s" COK-OWN-PASS ( own -- own )" T-CHECK-PASSES
 s" COK-OWN-MAKE ( -- own ) T-MAKE-OWN" T-CHECK-PASSES
 s" COK-OWN-FREE ( own -- ) T-FREE-OWN" T-CHECK-PASSES
@@ -2060,9 +2060,9 @@ s" check@ round-trip: hook still fires" T-LABEL 5 ES-CHK-RT 10 T=
 
 \ --- declared-effect parametricity seal (dot habu-nominal-storage-effect-a60ba885).
 \ After body checking, every declared type-variable quantifier must still resolve
-\ to a DISTINCT variable. Specializing a quantifier to a sealed nominal/layout
-\ family, and unifying two declared quantifiers, both reject E-NONPARAMETRIC-EFFECT
-\ (fix_parametric_effect). Plain-scalar widening and genuine generics still certify.
+\ to a DISTINCT variable. Specializing a quantifier to any concrete type, and
+\ unifying two declared quantifiers, both reject E-NONPARAMETRIC-EFFECT
+\ (fix_parametric_effect). Genuine generics still certify.
 \ Verdict 0 = rejected, -1 = certified. `esnp` is an arity-0 nominal-scalar family;
 \ ESNP-AT is its generated LAYOUT-BUFFER pointee accessor (the only checked source
 \ of `ptr esnp`). All scaffolding is checked Habu — no trust surface is added.
@@ -2079,13 +2079,15 @@ s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-QUIET-CANDIDATE! 0 T=
 s" aliasing two declared quantifiers rejects" T-LABEL
 s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ positives — genuine polymorphism and plain-scalar widening still certify
+\ positives — genuine polymorphism and honestly concrete access still certify
 s" generic ID wrapper certifies" T-LABEL
 s" ESNP-GEN-ID ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
 s" generic LOAD wrapper certifies" T-LABEL
 s" ESNP-GEN-LOAD ( ptr a -- a ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" plain-scalar pointee fetch stays generic (no false positive)" T-LABEL
-s" ESNP-FETCH-N ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" concrete result cannot specialize a pointee quantifier" T-LABEL
+s" ESNP-FETCH-N-BAD ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" concrete pointee fetch certifies" T-LABEL
+s" ESNP-FETCH-N ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ Declared row quantifiers remain open and distinct, including inside quotes.
 s" row identity stays parametric" T-LABEL
@@ -2134,8 +2136,8 @@ s" reject then re-reject is stable" T-LABEL
 s" ESNP-SPEC-2 ( a -- a ) ESNP-ID" CHECK-QUIET-CANDIDATE! 0 T=
 s" clean generic check after a reject certifies (state rolled back)" T-LABEL
 s" ESNP-GEN-ID-2 ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
-s" plain-scalar fetch after a reject certifies" T-LABEL
-s" ESNP-FETCH-N-2 ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" concrete fetch after a reject certifies" T-LABEL
+s" ESNP-FETCH-N-2 ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ x18 Darwin-reserved regressions (dot habu-rca-engine-sigsegv-ba81a08c):
 \ XNU zeroes x18 on any trap return; pre-fix, interpret-mode escaped

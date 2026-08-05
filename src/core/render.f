@@ -629,7 +629,7 @@ variable MDV-I   variable MDV-F
    IMMERR @ if IMM-SUGGEST$ exit then
    NPBAD @ IF
       NPBAD-KIND @ 0= IF
-         s" Declare the concrete family in the signature, or keep the body polymorphic over the type variable."
+         s" State the concrete type in the signature, or keep the body polymorphic over the type variable."
       ELSE NPBAD-KIND @ 1 = IF
          s" Keep each declared quantifier distinct; do not unify two quantifiers in the body."
       ELSE NPBAD-KIND @ 3 = IF

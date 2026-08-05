@@ -551,13 +551,11 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   `src/core/checker.f`) re-inspects every declared quantifier and rejects these
   laundering shapes with `E-NONPARAMETRIC-EFFECT` (repair class
   `fix_parametric_effect`):
-  1. **Concrete specialization.** Only a non-linear scalar `T-CON` may be
-     republished behind a declared quantifier, and that quantifier is published
-     `NONLIN`. Owners and structural terms (`ptr`, quotation, atom, field, or
-     family) reject: their internal identities or effects cannot be erased and
-     later reconstructed as arbitrary types. A scalar accessor declared
-     `( ptr a -- n )` may still specialize `a := n`, but the resulting kind makes
-     a later `ptr owner` call reject; pure pointer transport remains generic.
+  1. **Concrete specialization.** Any declared quantifier that resolves to a
+     concrete type rejects. Otherwise integer-only code such as `( a -- a ) 1+`
+     could be republished as generic and called with a float, pointer, quotation,
+     or owner. Raw heterogeneous-record accessors must state the actual field
+     type or cross one explicit trusted cast boundary; they are not polymorphic.
   2. **Quantifier aliasing.** If a body unifies two *distinct* declared
      quantifiers into one variable, injectivity of the quantifier map is broken;
      the checker rejects and names both letters, so `: F ( a b -- a ) MERGE ;`
@@ -985,7 +983,7 @@ reuses (see `docs/type-families.md`):
   stack-effect binding does.
 - **Parametricity/forgery seal (the `NP-CHECK` / `NP-MINT-CHECK` analogue).**
   `NP-CHECK` re-inspects a definition's declared quantifiers after the body and
-  rejects a body that specialized a quantifier to a forbidden concrete type or minted
+  rejects a body that specialized a quantifier to any concrete type or minted
   input-unbound output vars (`E-NONPARAMETRIC-EFFECT`). The CAD row gets the same
   post-body discipline: the composed row of the body must satisfy the declared
   row — a body may not silently *add* an effect (a `( -- )`-declared word that

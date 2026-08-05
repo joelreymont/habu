@@ -2808,8 +2808,7 @@ variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
 \ --- declared-effect parametricity seal (habu-nominal-storage-effect). A rejected
-\ definition specialized a quantifier beyond a qualified non-linear scalar or
-\ unified two declared quantifiers. Set by NP-CHECK post-body.
+\ definition concretized or unified declared quantifiers. Set by NP-CHECK post-body.
 variable NPBAD               \ non-parametric declared effect detected?
 variable NPBAD-KIND          \ 0 = concrete type; 1 = alias; 2 = free mint; 3 = closed row
 variable NPBAD-Q1            \ offending quantifier's source letter (char code)
