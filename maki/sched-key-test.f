@@ -73,12 +73,12 @@ T-RESET
 \ pair's equality is EXACTLY the render's text equality across the bucket-domain
 \ boundaries (63/64/65, 128, non-pow2 tail, 0/unbound). This is what licenses the
 \ text-keyed replay table as the durable in-memory mirror of the typed key.
-: DIM-MAG ( e -- n )        DIM>CLASS nip ;              \ magnitude (drop the class)
-: DIM-CLS ( e -- dimclass ) DIM>CLASS drop ;            \ class (drop the magnitude)
-: DIM-FEQ ( e e -- bool ) {: a:n b:n :}                 \ typed field equality
+: DIM-MAG ( n -- n )        DIM>CLASS nip ;              \ magnitude (drop the class)
+: DIM-CLS ( n -- dimclass ) DIM>CLASS drop ;            \ class (drop the magnitude)
+: DIM-FEQ ( n n -- bool ) {: a:n b:n :}                 \ typed field equality
    a DIM-CLS b DIM-CLS MAKI-DIMCLASS:EQ
    a DIM-MAG b DIM-MAG = and ;
-: DIM-TXT= ( e e -- bool ) {: a:n b:n :}                 \ rendered single-dim text equality
+: DIM-TXT= ( n n -- bool ) {: a:n b:n :}                 \ rendered single-dim text equality
    a 1 SHAPE SK-SHAPE-CLASS$ KT-COPY  b 1 SHAPE SK-SHAPE-CLASS$ KT-BUF$ STR= ;
 \ field-eq and text-eq return the SAME verdict on both sides of every bucket
 \ boundary -> the (dimclass, magnitude) encoding IS rendered-text identity:
