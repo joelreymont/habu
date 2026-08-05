@@ -573,20 +573,75 @@ variable OPJ                         \ general operands taken so far by the open
       then
    loop ;
 
+\ ---- the block-local literal memo ---------------------------------------------
+\ One number written twice in one block is one value. A body that says `3` in two
+\ places used to get two hir.const operations and, two lowerings later, two
+\ move-wide chains; the second computes what the first already holds. This memo
+\ makes the second reference read the first value instead.
+\
+\ WHY IT IS BLOCK-LOCAL, WHICH IS THE WHOLE SOUNDNESS ARGUMENT. Reusing a value
+\ is only legal where its definition dominates the reference. Every entry here
+\ was defined by an operation staged into the block being built, and a later
+\ position in that same block is dominated by it - so the rule needs no dominance
+\ query and no verifier licence. The memo is cleared at every BEGIN-BLOCK, so it
+\ can never name a value from a block that does not dominate the reader. That is
+\ conservative at OPEN-PLAIN, which keeps the value vector it inherits and could
+\ in principle keep the memo too; it costs missed folds and buys a rule this file
+\ can state in one sentence.
+\
+\ WHAT IT COSTS, MEASURED, SO NOBODY REDISCOVERS IT. Folding two references
+\ EXTENDS the surviving value's live range, and a longer live range is more
+\ register pressure. On the corpus that is a win; in a deliberately starved frame
+\ it can turn one spilled value into two, which is what
+\ test/compiler/native-chain.f RSPILL-CASE guards - see the note on its body.
+\
+\ Only integer literals reach here; a real literal is its own path. Overflowing
+\ the memo stops it remembering more, which loses folds and changes nothing else:
+\ this is a cache, and a body with more than LITMAX distinct literals in one block
+\ is past anything the corpus or hand-written Forth reaches.
+64 constant LITMAX
+
+create LIT-VAL LITMAX cells allot     \ the number
+LITMAX TYPED-BUFFER LIT-ID IR-ID:ir-value-id
+variable LIT-N
+
+: LIT-RESET ( -- )
+   0 LIT-N ! ;
+
+\ Which memo row holds this number, or -1.
+: LIT-FIND ( n -- n )
+   {: val:n :}
+   -1
+   LIT-N @ 0 ?do
+      i cells LIT-VAL + @ val = if drop i leave then
+   loop ;
+
+: LIT-REMEMBER ( n IR-ID:ir-value-id -- )
+   {: val:n id:IR-ID:ir-value-id :}
+   LIT-N @ LITMAX >= if exit then
+   val LIT-N @ cells LIT-VAL + !
+   id LIT-N @ LIT-ID !
+   LIT-N @ 1+ LIT-N ! ;
+
 \ ---- the things a body token becomes -----------------------------------------
 \ One integer literal, staged at the span of the token named. The value is the
 \ whole content of a constant, so it rides as the attribute the opcode's schema
 \ requires. It takes the value rather than reading it off the token, because a
 \ constant-and-operation word's constant is the word model's and not the tape's.
+\ A number this block has already staged is not staged again: the memo above
+\ answers with the value the first one defined.
 : EMIT-LIT ( n n -- )
    {: ix:n val:n :}
+   val LIT-FIND {: j:n :}
+   j 0 >= if j LIT-ID @ VPUSH exit then
    CTX BLD HIR-OPCODE:CONST HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
    CTX BLD op RESULTS+
    CTX BLD  CTX BLD HIR:KEY-VALUE  CTX BLD val IR-BUILD:INTERN-INT-ATTR
    IR-BUILD:ADD-ATTR
-   CTX BLD op CLOSE ;
+   CTX BLD op CLOSE
+   val  VN @ 1- VAT  LIT-REMEMBER ;
 
 \ The memory the definition is entered with, staged at the span of the token that
 \ first needed it. It takes nothing and answers the order every later access
@@ -1158,6 +1213,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN
    VRESET
+   LIT-RESET
    n 0 ?do
       CTX BLD  NB @ i ARG-T@  IR-BUILD:ADD-BLOCK-ARG VPUSH
    loop
@@ -1178,7 +1234,8 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 : OPEN-PLAIN ( n -- )
    {: ix:n :}
    CTX BLD IR-BUILD:BEGIN-BLOCK
-   CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN ;
+   CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN
+   LIT-RESET ;
 
 \ ---- what one edge really hands over -----------------------------------------
 \ One vector position, as the type the destination's argument has. A value
@@ -2715,6 +2772,7 @@ variable IX                          \ the body token the walk stands on
    c b IR-BUILD:BEGIN-BLOCK
    c b  v key 0 NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN
    VRESET
+   LIT-RESET
    in 0 ?do
       c b  c b CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG VPUSH
    loop ;
