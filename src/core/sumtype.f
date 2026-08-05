@@ -149,15 +149,15 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
 \ the top-level and in-package verdicts for the same token agree.
 : TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    s" " a u TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
-   CHECKER-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ a u TFAM-FIND-IN nip ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
 
 variable TDECL-NI
 : TDECL-VAR-SCOPE? ( n -- bool )
    SUMV-FAM@ TFAM-PKG$ {: pa:ptr pu:n :}
    pu 0= IF RES-TRUE EXIT THEN
-   CHECKER-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   pa pu CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CORE-STR= ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   pa pu CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
 
 : TDECL-VAR-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 TDECL-NI !
@@ -222,8 +222,8 @@ variable TDA-I
 \ the active visibility (TFAM-ACTIVE-PKG$, type-family.f); top level is the
 \ global scope, public.
 : TDECL-VIS ( -- n )
-   CHECKER-PACKAGE-ACTIVE? 0= IF CHECKER-PACKAGE-PUBLIC EXIT THEN
-   CHECKER-PACKAGE-MODE @ ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-PACKAGE-PUBLIC EXIT THEN
+   CHECKER-AUTH-PACKAGE-MODE@ ;
 
 : TDECL-FAMILY ( n n -- n ) {: ar:n kind:n :}   \ register the family row
    TDN-A @ TDN-U @ TDECL-TOK!

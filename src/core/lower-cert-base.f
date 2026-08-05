@@ -42,7 +42,18 @@ variable BUF-CAP BUF-INIT BUF-CAP !
 variable BUF-N
 variable BODY-LEN
 variable BODY-HASH
-variable FULL-XT   0 FULL-XT !
+
+\ The full producer is reached through a DECLARED dispatch cell for the same
+\ reason CHECKER-CERT:PRODUCER-XT is: the cell holds an execution token, it is
+\ persisted in the DP heap, and only `defer`/`is` declare such a cell to the
+\ snapshot address-cell table (dot habu-declare-persisted-producer-76fbce09).
+defer FULL-XT ( ptr u8 n n -- )
+
+\ Whether the full producer has been installed is a question DISPATCH has to
+\ ASK — with no full producer it must still emit a boot-safe empty certificate,
+\ and a dispatch cell cannot be interrogated. So the grant is recorded in an
+\ ordinary integer flag, which also keeps the single-assignment guard below.
+variable FULL-SET   0 FULL-SET !
 
 : BUF ( -- ptr a ) BUF-P @ ;
 
@@ -90,15 +101,20 @@ variable FULL-XT   0 FULL-XT !
    idx 0 < idx BUF-N @ >= or if s" lowering certificate cell index" 76 die then
    idx cells BUF + @ ;
 
-: FULL-INSTALL ( n -- )
-   FULL-XT @ 0 <> if s" lowering certificate full producer already installed" 76 die then
-   FULL-XT ! ;
+: FULL-INSTALL ( [ ptr u8 n n -- ] -- )
+   FULL-SET @ 0 <> if s" lowering certificate full producer already installed" 76 die then
+   is FULL-XT
+   1 FULL-SET ! ;
 
 : DISPATCH ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
-   FULL-XT @ {: xt:n :}
-   xt 0 <> if a u verdict xt CHECKER-CERT-CALL exit then
+   FULL-SET @ 0 <> if a u verdict FULL-XT exit then
    WF-N@ 0 <> if s" lowering certificate facts before full producer" 76 die then
    a u EMPTY ;
+
+\ One-shot install seam. A quotation is a compile-time construct, so the
+\ producer is handed over from inside a definition rather than from the top
+\ level; the seal retires this word with the rest of the install surface.
+: DISPATCH-INSTALL ( -- ) [: DISPATCH ;] CHECKER-CERT:INSTALL ;
 
 public
 
@@ -128,6 +144,6 @@ public
 : CELL@ ( n -- n ) CERT-CELL@ ;
 : BYTES ( -- ptr u8 n ) CERT-BYTES ;
 
-' DISPATCH CHECKER-CERT:INSTALL
+DISPATCH-INSTALL
 
 ;package

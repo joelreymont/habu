@@ -31,12 +31,9 @@
 : C-ADDR-PUSH ( -- )
    C-ADDR-RAW
    9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
-\ push a DATA-region address (create/variable data field).
-: C-DATA-ADDR ( -- )  C-ADDR-PUSH ;
-\ raw DATA-region address into x9, no push (the defer dispatch-cell address).
-: C-DATA-ADDR-RAW ( -- )  C-ADDR-RAW ;
-\ push a CODE-region address (quotation entry xt, ['] / postpone target xt).
-: C-CODE-ADDR ( -- )  C-ADDR-PUSH ;
+\ The three words that NAME the relocation kind of a chain are defined further
+\ down, right after the snapshot-relocation labels, because the code-address one
+\ has to record its site through SNAP-RELOC:MARK-SITE.
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
 $28 constant INL-MAX
 $D10043FF constant C-CALL-PROLOGUE-INSTR
@@ -152,6 +149,72 @@ variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-r
 variable LSNAPBAD   variable LSNAPVER   \ snapshot-loader labeled-exit messages (corrupt trailer 79 / unsupported version 80)
 29 constant SNAPBAD-MSG-LEN   \ byte length of "hb: snapshot trailer corrupt\n" (LSNAPBAD)
 40 constant SNAPVER-MSG-LEN   \ byte length of "hb: snapshot format version unsupported\n" (LSNAPVER)
+\ Snapshot relocation: the labels, the message lengths and the one instruction
+\ constant its two relocation passes need. The band offsets and exit statuses of
+\ the same subsystem are declared in src/habu/layout.f, which opens this package
+\ first; src/habu/snap-lib.f reopens it again for the writer's half.
+package SNAP-RELOC
+public
+variable LCALLMSG   \ a recorded call site does not hold a call instruction (CALLMAP-RC)
+31 constant CALLMSG-LEN   \ byte length of "hb: snapshot call map mismatch\n" (LCALLMSG)
+variable LXTMSG     \ more address cells were declared than the table can hold (XTCELL-RC)
+32 constant XTMSG-LEN     \ byte length of "hb: snapshot address table full\n" (LXTMSG)
+variable LADDRMSG   \ a recorded address-literal site does not hold the MOVZ/MOVK chain (ADDRMAP-RC)
+34 constant ADDRMSG-LEN   \ byte length of "hb: snapshot address map mismatch\n" (LADDRMSG)
+variable LCALLS     \ region-to-text call relocation routine (snapshot write + restore)
+variable LXT        \ declared-address-cell relocation routine (snapshot restore)
+variable LMARK      \ declare one DATA cell as holding a region address
+variable LADDRS     \ address-literal relocation routine (snapshot write + restore)
+variable LADDRSITE  \ record the chain about to be emitted at CP as an address literal
+\ The six opcode bits of an AArch64 BL, i.e. $94000000 >> 26. The call relocation
+\ pass reads them with one shift rather than a mask-and-compare against a 64-bit
+\ literal.
+$25 constant BL-OP-HI
+
+\ The shape of the four-instruction address chain habu2.f C-ADDR-RAW emits, as the
+\ relocation pass has to read it back. ADDR-OPC-MASK keeps everything in a MOVZ or
+\ MOVK word except its 16-bit immediate, so masking a site word and comparing it
+\ against W-MOVZ0/W-MOVK1/W-MOVK2/W-MOVK3 checks the destination register and the
+\ shift as well as the opcode. ADDR-IMM-MASK is that immediate once it has been
+\ shifted down by five, and ADDR-CHAIN-BYTES is the whole chain.
+$FFE0001F constant ADDR-OPC-MASK
+$FFFF constant ADDR-IMM-MASK
+16 constant ADDR-CHAIN-BYTES
+
+\ Emit "declare the engine cell at OFFSET as holding a region address". The three
+\ engine hook cells are named this way at cold boot; the dispatch cell of a
+\ deferred word is declared from a register instead, because its address is only
+\ known while `defer` or `is` is running. Defined here beside the labels so the
+\ compile handlers further down this file can already use it.
+: MARK-CELL ( n -- ) {: cell:n :}
+   9 cell LIT64,  9 DATA 9 ADD,  LMARK LABEL@ BL, ;
+
+\ Emit "the four-instruction chain that starts at the current CP is an address of
+\ code". The recorder reads CP itself, so the compile handler has nothing to pass
+\ and the site can never be off by an instruction.
+: MARK-SITE ( -- )
+   LADDRSITE LABEL@ BL, ;
+
+;package
+
+\ ---- the three words that name a chain's relocation kind ---------------------
+\ Same instruction shape for all three; what differs is what the address means,
+\ which is why the kind is decided here, at the emit site, and never later by
+\ looking at the bytes.
+\ push a DATA-region address (create/variable data field). DATA is mapped at a
+\ fixed address in every run, so a persisted DATA literal is already correct in
+\ the run that restores it and is deliberately not recorded.
+: C-DATA-ADDR ( -- )  C-ADDR-PUSH ;
+\ raw DATA-region address into x9, no push (the defer dispatch-cell address).
+: C-DATA-ADDR-RAW ( -- )  C-ADDR-RAW ;
+\ push a CODE address (quotation entry xt, ['] / postpone target xt). The word it
+\ names lives in the JIT region or in the engine's loaded __text, and neither of
+\ those is at the same address in the run that restores a snapshot image, so the
+\ site goes in the address-literal map for the relocation pass to rewrite.
+: C-CODE-ADDR ( -- )
+   SNAP-RELOC:MARK-SITE
+   C-ADDR-PUSH ;
+
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
 30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL IBUFSZ overflow)
 23 constant SRCREAD-MSG-LEN   \ byte length of "hb: cannot read source\n" (LSRCREAD; source read syscall error)
@@ -368,6 +431,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
+   SNAP-RELOC:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ SNAP-RELOC:CALLMSG-LEN bytes incl. newline
+   SNAP-RELOC:LXTMSG LABEL@ LBL, s" hb: snapshot address table full" BYTES,  NL-KW 1 BYTES,      \ SNAP-RELOC:XTMSG-LEN bytes incl. newline
+   SNAP-RELOC:LADDRMSG LABEL@ LBL, s" hb: snapshot address map mismatch" BYTES,  NL-KW 1 BYTES,   \ SNAP-RELOC:ADDRMSG-LEN bytes incl. newline
    LSRCFULL LABEL@ LBL, s" hb: source prefix buffer full" BYTES,  NL-KW 1 BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
    LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
    LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES,                       \ BADSTR-MSG-LEN bytes incl. newline
@@ -386,8 +452,16 @@ s" c-bp-watch-dump" s" label label --" TRUST
 \ emission still fails closed on that window: a future layout that broke it would otherwise
 \ encode a wild displacement into live code. Builds x9 = BL opcode | imm26, then tails into
 \ LCEMIT (CP guard + word store + CP += 4).
+\ Before encoding it records the site in the region-to-text call map when the callee lies
+\ OUTSIDE the mapped region (layout.f CALLMAP-OFF). That test is the region's own extent,
+\ not a guess about the value: a callee either is inside [DBASE, DBASE+REGION) or it is in
+\ the engine's loaded __text. Only the second kind changes distance between the run that
+\ writes a snapshot image and the run that restores it, so only the second kind is recorded
+\ and later relocated (EM-SNAPSHOT-REBASE-CALLS).
+\ x11 (the callee) is dead once the map bit is set, so it doubles as scratch; x5/x6/x9/x10
+\ are the registers this primitive already clobbers.
 : EMIT-CEMITBL ( -- )
-   LBL {: rok:label :}
+   LBL LBL {: rok:label nomark:label :}
    LCEMITBL LABEL@ LBL,
    10 11 CP SUB,                                       \ x10 = disp = target - CP (signed byte distance)
    5 BL-REACH LIT64,  6 10 5 ADD,  5 5 1 LSLI,  6 5 CMP,    \ (disp + BL-REACH) vs 2*BL-REACH (unsigned window)
@@ -395,6 +469,14 @@ s" c-bp-watch-dump" s" label label --" TRUST
       1 LBLRANGE LABEL@ ADR,  0 2 MOVZ,  2 BLRANGE-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 BL-RANGE-RC MOVZ,  NR-EXIT-GROUP SYS,
    rok LBL,
+   6 11 DBASE SUB,  5 REGION LIT64,  6 5 CMP,          \ callee inside the region?
+   C-CC nomark BCOND,                                  \ yes: distance is position independent, nothing to record
+      11 CP DBASE SUB,                                 \ x11 = this site's byte offset within the region
+      9 11 0 ADDI,  9 9 2 LSRI,  9 9 7 ANDI,           \ x9 = bit number = word index & 7
+      6 11 0 ADDI,  6 6 5 LSRI,                        \ x6 = map byte index = offset >> 5
+      5 SNAP-RELOC:CALLMAP-OFF LIT64,  6 6 5 ADD,  6 DATA 6 ADD,  \ x6 = map byte address
+      5 1 MOVZ,  5 5 9 LSLV,  9 6 0 LDRB,  9 9 5 ORR,  9 6 0 STRB,
+   nomark LBL,
    10 10 2 ASRI,  5 $03FFFFFF LIT64,  10 10 5 AND,      \ imm26 = (disp >> 2) & 0x03FFFFFF (sign-preserving)
    9 $94000000 LIT64,  9 9 10 ORR,                     \ x9 = BL opcode | imm26
    LCEMIT LABEL@ B, ;                                  \ tail: LCEMIT guards CP, stores x9, advances CP += 4, RET
@@ -1316,6 +1398,11 @@ variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (C-
 variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
+
+\ Keyword string data section: the baked name table every LKW*/LCHK* label
+\ points into, plus the sealed reserved-name table it embeds.
+package KWDATA
+
 \ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
 \ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
 \ This ONE native table is the reserved-name set: the guards fold each candidate
@@ -1340,7 +1427,15 @@ create RESTAB-BUF
    0 c,                                           \ terminator
 here RESTAB-BUF - constant RESTAB-LEN
 
-: EMIT-KWDATA ( -- )
+public
+
+\ Label cell for the baked `trust-raw` keyword string. Declared here rather
+\ than in the habu1.f global label chain because the raw-storage seal is a
+\ habu2.f concern: the keyword row below bakes the string, LASTC-TRUST:FIND-RAW
+\ resolves it, and the LABELS allocator mints its id.
+variable LKWTRUSTRAW
+
+: EMIT ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
    LKWELSE LABEL@ LBL,   s" else"   BYTES,    LKWBEGIN LABEL@ LBL,  s" begin"  BYTES,
    LKWUNTIL LABEL@ LBL,  s" until"  BYTES,    LKWAGAIN LABEL@ LBL,  s" again"  BYTES,
@@ -1370,7 +1465,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    LKWDOES LABEL@ LBL,  s" does>" BYTES,
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
-   LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
+   LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
@@ -1382,6 +1477,8 @@ here RESTAB-BUF - constant RESTAB-LEN
    s" ' CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
    NL-KW 1 BYTES,
    PFX-PATH-FILES ;
+
+;package
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : C-EMITW ( n -- ) {: w:n :}  9 w LIT64,  LCEMIT LABEL@ BL, ;
@@ -1503,7 +1600,13 @@ here RESTAB-BUF - constant RESTAB-LEN
    4181780107 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW ;
 
-: J-LVOPEN ( -- )                               \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
+\ The loop-emit family: the DO/LEAVE level stack (open a level, prove one is
+\ open, chain a LEAVE placeholder onto the innermost one) and the loop keyword
+\ handlers built on it. The loop keyword dispatch rows reopen this package
+\ further down so they resolve the handlers bare.
+package LOOP-EMIT
+
+: LVOPEN ( -- )                                 \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
    9 DATA LVD-CELL LDR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
@@ -1511,7 +1614,30 @@ here RESTAB-BUF - constant RESTAB-LEN
    12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
-: J-LVLEAVE ( -- )                              \ chain a B placeholder on the current level
+\ The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF level arrays) is the
+\ loop family's opener record: `do`/`?do` open a level in LVOPEN, `loop`/
+\ `+loop` close one in J-LOOPEND, and `leave` chains onto the innermost open
+\ one. LCFPOP's orphan guard covers only the CF stack, so it does not see this
+\ stack at all: a loop-family word with no open `do` indexed level -1, and
+\ LVH-OFF's cell -1 IS LVD-CELL itself (they are adjacent, $578/$580). `loop`
+\ and `+loop` then handed that junk head offset to LBCHAIN, which dereferenced
+\ DBASE + junk and took SIGSEGV (rc 134); `leave` silently stored a code offset
+\ into LVD-CELL, forging a non-zero "open level" count out of nothing. Every
+\ consumer of the level stack now proves a level exists BEFORE reading or
+\ writing it, and otherwise takes the shared closer-without-opener reject, the
+\ exact sibling of LCFPOP's underflow guard (dot habu-fix-loop-closer-9e5d012e).
+\ Guarding `leave` is what keeps LVD-CELL a sole-writer count of open `do`
+\ levels, so the `loop`/`+loop` guard is an existence check and not a value
+\ test an earlier stray `leave` could defeat.
+\ Clobbers x9 only; every call site reloads or overwrites x9 immediately after.
+: LVREQUIRE ( -- )                              \ reject a loop-family word with no open DO level
+   LBL {: ok:label :}
+   9 DATA LVD-CELL LDR,  9 ok CBNZ,
+      LORPHAN LABEL@ B,                  \ TKA/TKL still hold the offending token
+   ok LBL, ;
+
+: LVLEAVE ( -- )                                \ chain a B placeholder on the current level
+   LVREQUIRE
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
    14 10 0 LDR,  15 DATA LOCF-CELL LDR,  12 15 14 SUB,  C-EMIT-DROP-X12
@@ -1522,16 +1648,16 @@ here RESTAB-BUF - constant RESTAB-LEN
    LCEMIT LABEL@ BL, ;
 
 : J-DO ( -- )
-   J-FRAME  J-LVOPEN  C-PUSHCP ;
+   J-FRAME  LVOPEN  C-PUSHCP ;
 
 : J-?DO ( -- )                                  \ DO, but skip the loop when limit = start
-   J-FRAME  J-LVOPEN
+   J-FRAME  LVOPEN
    $EB0A013F C-EMITW                     \ cmp x9,x10  (start/limit still live)
    $54000041 C-EMITW                     \ b.ne +8 (over the skip placeholder)
-   J-LVLEAVE
+   LVLEAVE
    C-PUSHCP ;
 
-: J-LEAVE ( -- )  J-LVLEAVE ;
+: J-LEAVE ( -- )  LVLEAVE ;
 
 : J-UNLOOP ( -- )                               \ pop one loop frame, no branch
    4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW ;
@@ -1544,6 +1670,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    LBCHAIN LABEL@ BL, ;
 
 : J-LOOP ( -- )
+   LVREQUIRE                             \ no open DO level: reject before emitting or popping
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP LABEL@ BL,
@@ -1552,6 +1679,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    J-LOOPEND ;
 
 : J-+LOOP ( -- )                                \ index += n; loop while (old-limit) and
+   LVREQUIRE                             \ no open DO level: reject before emitting or popping
    $D1002273 C-EMITW  $F9400269 C-EMITW  \ (new-limit) agree in sign (ANS crossing)
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
@@ -1566,6 +1694,8 @@ here RESTAB-BUF - constant RESTAB-LEN
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000A LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL,       \ b.ge loop-top
    J-LOOPEND ;
+
+;package
 
 : J-I ( -- )
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
@@ -1647,34 +1777,67 @@ s" c-task-live-guard" s" --" TRUST
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
 
-: C-CALL-TRUST-LASTC ( -- )
+\ ---- created-word effect publication -----------------------------------------
+\ The three public words below are every place the engine gives a defining
+\ word's creation an effect the checker will believe. All three publish a cell
+\ of raw dictionary storage, so all three register through `trust-raw`: the
+\ type variables in the published effect are minted raw and cannot bind a
+\ nominal family, which is what stops a plain integer stored into the cell from
+\ being read back out as a sealed nominal with no converter in between.
+\
+\ LASTC-TRUST:PUBLISH publishes the runtime effect a `does>` clause declared
+\ for the words its defining word creates, so it covers user-written defining
+\ words as well as PTR-VARIABLE. LASTC-TRUST:PUBLISH-PTR-A publishes `-- ptr a`
+\ for create and variable, and LASTC-TRUST:PUBLISH-A publishes `-- a` for
+\ constant.
+package LASTC-TRUST
+
+\ Resolve `trust-raw`, the checker's raw-storage effect registrar (checker.f
+\ TRUST-RAW). Every word the engine publishes from a defining word owns a cell
+\ of raw dictionary storage, so its effect must be registered with raw type
+\ variables that cannot bind a nominal family; the publish words below all
+\ route here instead of at `trust`. Same fail-closed shape as C-FIND-TRUST: a
+\ missing registrar names itself on fd 2 and exits 70 rather than publishing
+\ the word unsealed.
+: FIND-RAW ( -- )  LBL {: ok:label :}
+   9 KWDATA:LKWTRUSTRAW LABEL@ ADR,  10 9 MOVZ,  LFIND LABEL@ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 KWDATA:LKWTRUSTRAW LABEL@ ADR,  2 9 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+public
+
+: PUBLISH ( -- )
    LBL {: nohook:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST
+   FIND-RAW
    C-PUSH-DREC-NAME
    CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
    nohook LBL, ;
 
-: C-CALL-TRUST-LASTC-PTR-A ( -- )
+: PUBLISH-PTR-A ( -- )
    LBL {: nohook:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST
+   FIND-RAW
    C-PUSH-DREC-NAME
    9 LSIGPTRA LABEL@ ADR,  9 G-PUSH
    9 8 MOVZ,  9 G-PUSH
    C-CALL-X11-SAVED
    nohook LBL, ;
 
-: C-CALL-TRUST-LASTC-A ( -- )
+: PUBLISH-A ( -- )
    LBL {: nohook:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST
+   FIND-RAW
    C-PUSH-DREC-NAME
    9 LSIGA LABEL@ ADR,  9 G-PUSH
    9 4 MOVZ,  9 G-PUSH
    C-CALL-X11-SAVED
    nohook LBL, ;
+
+;package
 
 : C-FIND-GLOBAL? ( ptr n n -- ) {: name:ptr len:n :}
    SP SP 16 SUBI,
@@ -1938,7 +2101,13 @@ s" c-call-checker-defer" s" --" TRUST
    11 DATA QENT-CELL LDR,  C-CODE-ADDR             \ push the xt in the outer word (relocatable code addr)
    12 0 MOVZ,  12 DATA QPATCH-CELL STR, ;
 
-: EMIT-DOESPATCH ( -- )
+\ The does>-patch runtime routine emitter (LDOESPATCH): patches the created
+\ word's RET into a branch and publishes the declared runtime effect.
+package DOESPATCH
+
+public
+
+: EMIT ( -- )
    LBL {: nocr :}
    LDOESPATCH LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
@@ -1955,10 +2124,12 @@ s" c-call-checker-defer" s" --" TRUST
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
-      C-CALL-TRUST-LASTC
+      LASTC-TRUST:PUBLISH
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
+;package
 
 \ ---- interpret-mode defining words ----
 \ record defining words for the checker: append the kind token + run the hook
@@ -2293,16 +2464,20 @@ s" c-store-def-name" s" --" TRUST
    nokind LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+\ Interpret-mode defining-word handlers. The interpret define-keyword dispatch
+\ rows reopen this package further down and resolve them bare.
+package INTERP-EMIT
+
 : C-CREATE ( -- )
    C-TASK-LIVE-GUARD
    15 1 MOVZ,  LCREATE LABEL@ BL,
-   C-CALL-TRUST-LASTC-PTR-A ;
+   LASTC-TRUST:PUBLISH-PTR-A ;
 
 : C-VARIABLE ( -- )  C-CREATE
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 \ `constant` pops ONE physical cell and records the one-cell `-- a` trust
-\ (C-CALL-TRUST-LASTC-A) — the permanent contract (TFAM 12 verdict 2026-07-09):
+\ (LASTC-TRUST:PUBLISH-A) — the permanent contract (TFAM 12 verdict 2026-07-09):
 \ the interpret stack is untyped, so no shape source exists here, and a
 \ wider-than-cell layout value never lands on it (DNAME-WIDE dispatch gate).
 \ Parity with verify-source / public-signatures / all-errors is locked by the
@@ -2324,7 +2499,9 @@ s" c-store-def-name" s" --" TRUST
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
    LKWCONST 8 C-DEFHOOK
-   C-CALL-TRUST-LASTC-A ;
+   LASTC-TRUST:PUBLISH-A ;
+
+;package
 
 : C-CLEAR-TRUSTED-STATE ( -- )
    9 0 MOVZ,
@@ -2399,13 +2576,19 @@ s" c-defer-die-token" s" n --" TRUST
    found LBL, ;
 s" c-defer-find-unset" s" --" TRUST
 
+\ The dispatch cell of a deferred word holds an execution token, which is an
+\ address in the JIT region, and it lives in the DP heap, which a snapshot
+\ persists byte for byte. Declare it here, where the cell is created and its kind
+\ is therefore known, so the snapshot writer and loader can move it with the
+\ region (dot habu-relocate-persisted-defer-7aa681c4).
 : C-DEFER-CELL ( -- )
    C-DEFER-FIND-UNSET
    7 DATA DP-CELL LDR,
    7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,
    11 7 0 STR,
    7 DATA DEFER-XT-CELL STR,
-   7 7 8 ADDI,  7 DP-CHECK  7 DATA DP-CELL STR, ;
+   7 7 8 ADDI,  7 DP-CHECK  7 DATA DP-CELL STR,
+   9 DATA DEFER-XT-CELL LDR,  SNAP-RELOC:LMARK LABEL@ BL, ;
 s" c-defer-cell" s" --" TRUST
 
 : C-DEFER-EMIT-CODE ( -- )
@@ -2547,11 +2730,18 @@ s" c-defer" s" --" TRUST
    14 DATA DEFER-META-CELL STR, ;
 s" c-defer-target-meta" s" --" TRUST
 
+\ `is` is the store site for a deferred word's execution token, so it is also the
+\ point at which that cell's kind is declared: whatever else the cell has held, it
+\ holds a JIT-region address from here on, and a snapshot must move it with the
+\ region (dot habu-relocate-persisted-defer-7aa681c4). The declaration is made
+\ once per `is`, not once per store, and the table refuses duplicates, so a defer
+\ that is re-pointed a thousand times is still one row.
 : J-IS ( -- )
    C-DEFER-TARGET-META
    LVSPILL LABEL@ BL,
    C-POP-X16
    11 DATA DEFER-META-CELL LDR,
+   9 11 0 ADDI,  SNAP-RELOC:LMARK LABEL@ BL,
    C-DATA-ADDR-RAW                                  \ movz/movk x9 = dispatch-cell addr (relocatable data addr)
    16 9 0 W-STRX C-EMITW ;
 s" j-is" s" --" TRUST
@@ -3410,21 +3600,36 @@ s" c-local-ref" s" label label --" TRUST
 
 : EM-MMAP-CODE-REGION ( -- )
    LBL LBL {: rok:label rvok:label :}
-   \ Hint the region at the runtime-discovered __text base (XREG-RBASE/x20) + REGION-OFF,
-   \ rounded UP to PROT-PAGE-MAX (64 KiB) so the base matches the granularity LPROT flips
-   \ protection at (an unaligned base lets a poke's page-align land below the mapping and
-   \ mprotect fault). Then every call site and callee sit inside BL's +/-128 MiB reach.
-   \ NO MAP_FIXED: the kernel never clobbers an existing mapping, so a returned address !=
-   \ hint proves a collision -> fail closed. Uniform across targets; on PIE (macOS) x20 is
-   \ the runtime-slid __text base, on Linux the fixed VMBASE content base -- one code path.
-   6 REGION-OFF LIT64,  6 XREG-RBASE 6 ADD,  9 PROT-PAGE-MAX 1 - MOVZ,  6 6 9 ADD,  6 6 16 LSRI,  6 6 16 LSLI,   \ x6 = 64KB-aligned hint (survives the syscall)
-   0 6 0 ADDI,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
+   \ Hint the region at the runtime-discovered __text base (XREG-RBASE/x20) + REGION-OFF
+   \ and then take whatever base the kernel gives back.
+   \ It used to demand that exact address and exit 78 otherwise, because a snapshot
+   \ image's region-to-text call displacements were baked in by the writing run and only
+   \ survived if the reading run reproduced the same distance. That was never reliable:
+   \ the address is not ours to reserve. Measured on macOS 26.5.1 over 200 bare runs of a
+   \ snapshot image, the runtime places about 1.1 MiB of its own mappings at a randomised
+   \ offset after the loaded image -- observed starts +0xE90000 through +0x1214000 against
+   \ a hint at about +0x100B000 -- so the hint was occupied in 182 of the 200 runs and the
+   \ engine refused to start. No fixed offset from __text avoids that, because the cluster
+   \ simply re-straddles the new one.
+   \ Those displacements are now relocated instead (SNAP-RELOC:EMIT-CALLS), so the base
+   \ no longer has to be any particular value -- it only has to be near enough to __text
+   \ that BL can reach, which the assertion below still requires and which is a property of
+   \ the address rather than a wish about it.
+   \ We ask for PROT-PAGE-MAX extra bytes and round the base up, so the region base keeps
+   \ the 64 KiB alignment LPROT flips protection at even when the kernel moves us to an
+   \ address that is only page aligned.
+   6 REGION-OFF LIT64,  6 XREG-RBASE 6 ADD,  9 PROT-PAGE-MAX 1 - MOVZ,  6 6 9 ADD,  6 6 16 LSRI,  6 6 16 LSLI,   \ x6 = 64KB-aligned hint
+   0 6 0 ADDI,  1 REGION PROT-PAGE-MAX + LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   0 6 CMP,
-   C-EQ rok BCOND,
-      1 LMMAPCODE LABEL@ ADR,  0 2 MOVZ,  2 MMAPCODE-MSG-LEN MOVZ,  NR-WRITE SYS,   \ collision / mmap fault named on fd 2 (bytes in loaded __text) before exit; argc/argv/envp in x13/x14/x15 untouched
+   \ SYS, leaves the same syscall-error convention on both targets -- Darwin sets the
+   \ carry flag, and the Linux emitter reconciles -errno into it -- so a failed mapping
+   \ is read from the flag the kernel set, not guessed from the shape of x0. Name the
+   \ fault on fd 2 before exit 78, exactly as the DATA region does.
+   C-CC rok BCOND,
+      1 LMMAPCODE LABEL@ ADR,  0 2 MOVZ,  2 MMAPCODE-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    rok LBL,
+   9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,  0 0 16 LSRI,  0 0 16 LSLI,   \ x0 = 64KB-aligned region base inside the mapping
    \ Boot BL-range assertion (permanent guarantee stage C's direct BL relies on): the
    \ whole region must lie within +/-128 MiB of __text. region_end - __text base is the
    \ farthest displacement; die named if it reaches BL-REACH. x0 (region base) survives.
@@ -3512,43 +3717,65 @@ s" c-local-ref" s" label label --" TRUST
       9 9 AOT-CREC-ROW ADDI,  12 12 1 ADDI,  rloop B,
    rdone LBL, ;
 
-\ Restore the baked protected-WID registry (TFAM 2b-v). Copies the LAOTPWID u32
-\ WIDs into the friend-arena registry table (direct STR into the sealed band, same
-\ as the WIDN advance below -- the AOT seed pass is trusted boot machinery), release-
-\ publishes PROT-WID-N-CELL after the rows, and advances WIDN past each restored WID so
-\ a post-restore wordlist/package allocation cannot reuse a protected WID. Full u32
-\ per entry: a WID above 255 restores without truncation. N (bounded by PROT-WID-MAX
-\ at capture) needs no runtime cap check. Runs after EM-AOT-REGISTER-RECS.
+\ Restore the baked protected-WID bitmap (TFAM 2b-v). Copies the fixed
+\ PROT-BITS-BYTES LAOTPWID blob into the friend-arena band (direct STR into the
+\ sealed band, same as the WIDN advance below -- the AOT seed pass is trusted boot
+\ machinery), advances WIDN past the highest protected WID so a post-restore
+\ wordlist/package allocation cannot reuse one, and release-publishes PROT-REG-TAG
+\ last so nothing observes a half-copied band as a bitmap. The blob is a fixed-size
+\ image of a SET, so the restored bytes do not depend on the order the writing run
+\ protected its WIDs -- which is what lets install --force reach a byte-identical
+\ fixpoint across the table-era/bitmap-era changeover. Runs after EM-AOT-REGISTER-RECS.
 : EM-AOT-REGISTER-PROT-WIDS ( -- )
-   LBL LBL LBL {: ploop:label pdone:label pwok:label :}
-   9 LAOTPWID LABEL@ ADR,                           \ x9 = baked u32 WID src
-   11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,           \ x11 = restored count N
-   10 PROT-WID-OFF MOVZ,  10 DATA 10 ADD,           \ x10 = &registry[0] (offset > imm12: materialize + add)
-   12 0 MOVZ,                                       \ x12 = i
-   ploop LBL,  12 11 CMP,  C-GE pdone BCOND,
-      3 9 0 LDRW,                                   \ x3 = baked wid (full u32)
-      3 10 0 STRW,                                  \ registry[i] = wid
-      4 3 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE pwok BCOND,   \ WIDN = max(WIDN, wid+1)
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: cloop:label cdone:label sloop:label sdone:label shi:label
+      bloop:label bdone:label tagpub:label :}
+   9 LAOTPWID LABEL@ ADR,                           \ x9  = baked bitmap src
+   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,          \ x10 = &band[0] (offset > imm12: materialize + add)
+   11 PROT-BITS-BYTES MOVZ,                         \ x11 = bytes left
+   cloop LBL,  11 cdone CBZ,
+      3 9 0 LDR,  3 10 0 STR,
+      9 9 8 ADDI,  10 10 8 ADDI,  11 11 8 SUBI,  cloop B,
+   cdone LBL,
+   \ WIDN = max(WIDN, highest protected WID + 1). Scan words downward for the top
+   \ non-zero one, then shift its bits out to find the highest index within it.
+   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
+   11 PROT-BITS-BYTES MOVZ,
+   sloop LBL,  11 sdone CBZ,
+      11 11 8 SUBI,
+      3 10 11 ADD,  3 3 0 LDR,
+      3 shi CBNZ,
+      sloop B,
+   sdone LBL,  tagpub B,                            \ nothing protected: leave WIDN alone
+   shi LBL,
+      4 11 3 LSLI,                                  \ x4 = WID of bit 0 of that word
+      5 0 MOVZ,
+      bloop LBL,  3 bdone CBZ,
+         3 3 1 LSRI,  5 5 1 ADDI,  bloop B,
+      bdone LBL,                                    \ x5 = highest set bit index + 1
+      4 4 5 ADD,                                    \ x4 = highest protected WID + 1
+      5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LS tagpub BCOND,
          4 DATA WIDN-CELL STR,
-      pwok LBL,
-      9 9 4 ADDI,  10 10 4 ADDI,  12 12 1 ADDI,  ploop B,
-   pdone LBL,
-   5 PROT-WID-N-CELL MOVZ,  5 DATA 5 ADD,
-   11 5 STLR, ;                                      \ release-publish N after every row
+   tagpub LBL,
+   5 PROT-REG-TAG-CELL MOVZ,  5 DATA 5 ADD,
+   4 PROT-REG-TAG LIT64,
+   4 5 STLR, ;                                       \ release-publish the shape tag last
 
-\ Validate both baked WID registries before either is restored. The owner frame
-\ starts immediately after the bounded protected-WID rows, carries its own shape,
-\ and ends with an independent marker so count corruption cannot widen the copy.
+\ Validate both baked WID registries before either is restored. The protected-WID
+\ frame is a fixed-size bitmap behind its own shape tag, so the owner frame sits at a
+\ CONSTANT offset past it -- where the old row array made the owner magic double as
+\ the protected section's only terminator, and a corrupted count could walk the copy
+\ into it. The owner frame still carries its own shape and end marker.
 : EM-AOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: pool-loop:label pool-done:label prot-loop:label prot-inner:label
-      prot-next:label owner-loop:label owner-prot:label owner-prev:label
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: pool-loop:label pool-done:label opub-ok:label opri-ok:label
+      owner-loop:label owner-prev:label
       owner-next:label name-loop:label name-hit:label name-valid:label
-      valid:label owner-prot-done:label owner-prev-done:label :}
+      valid:label owner-prev-done:label :}
    11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,
-   11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
+   5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND, \ protected-WID frame shape tag
    12 LAOTPWID LABEL@ ADR,
-   4 11 2 LSLI,  9 12 4 ADD,                       \ x9 = owner frame
+   9 12 PROT-BITS-BYTES ADDI,                      \ x9 = owner frame (fixed offset)
    2 9 0 LDR,  5 AOT-OWNER-MAGIC LIT64,  2 5 CMP,  C-NE bad BCOND,
    2 9 8 LDR,  2 AOT-OWNER-VERSION CMPI,  C-NE bad BCOND,
    6 9 16 LDR,  6 OWNER-WID-MAX CMPI,  C-HI bad BCOND,
@@ -3570,16 +3797,11 @@ s" c-local-ref" s" label label --" TRUST
    pool-done LBL,
       4 21 CMP,  C-NE bad BCOND,
 
-   8 0 MOVZ,  10 12 0 ADDI,
-   prot-loop LBL,  8 11 CMP,  C-GE owner-loop BCOND,
-      14 10 0 LDRW,  14 bad CBZ,
-      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
-      4 0 MOVZ,  5 12 0 ADDI,
-      prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
-         2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
-         5 5 4 ADDI,  4 4 1 ADDI,  prot-inner B,
-   prot-next LBL,
-      10 10 4 ADDI,  8 8 1 ADDI,  prot-loop B,
+   \ The row scan this replaces proved three things about the baked WIDs: none was 0,
+   \ none exceeded OWNER-WID-LIMIT, and none repeated. A bitmap makes the last two
+   \ structural -- a bit has one index and the index cannot leave [0, PROT-WID-MAX) --
+   \ so only "WID 0 is not a wordlist" is left to check, and it is one bit.
+   2 12 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,
 
    owner-loop LBL,
    8 0 MOVZ,  10 9 0 ADDI,
@@ -3606,12 +3828,17 @@ s" c-local-ref" s" label label --" TRUST
       14 5 CMP,  C-HI bad BCOND,  15 5 CMP,  C-HI bad BCOND,
       14 15 CMP,  C-EQ bad BCOND,
 
-      4 0 MOVZ,  5 12 0 ADDI,
-      owner-prot LBL,  4 11 CMP,  C-GE owner-prot-done BCOND,
-         2 5 0 LDRW,
-         14 2 CMP,  C-EQ bad BCOND,  15 2 CMP,  C-EQ bad BCOND,
-         5 5 4 ADDI,  4 4 1 ADDI,  owner-prot B,
-      owner-prot-done LBL,
+      \ Neither owner WID may also be protected: one bit test each, where the row
+      \ array needed a full scan per owner row. A WID at or above the bound has no
+      \ bit, so it cannot be protected and needs no test.
+      2 PROT-WID-MAX MOVZ,  14 2 CMP,  C-CS opub-ok BCOND,
+         12 14 5 3 2 PROT-BITS-AT,
+         5 5 0 LDR,  5 5 3 AND,  5 bad CBNZ,
+      opub-ok LBL,
+      2 PROT-WID-MAX MOVZ,  15 2 CMP,  C-CS opri-ok BCOND,
+         12 15 5 3 2 PROT-BITS-AT,
+         5 5 0 LDR,  5 5 3 AND,  5 bad CBNZ,
+      opri-ok LBL,
 
       4 0 MOVZ,  5 9 0 ADDI,
       owner-prev LBL,  4 8 CMP,  C-GE owner-prev-done BCOND,
@@ -3629,8 +3856,7 @@ s" c-local-ref" s" label label --" TRUST
       found:label prot:label prot-done:label prev:label prev-done:label
       copy-loop:label copy-done:label pub-widn:label pri-widn:label
       bad:label msg:label ret:label :}
-   11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,
-   21 LAOTPWID LABEL@ ADR,  4 11 2 LSLI,  21 21 4 ADD,
+   21 LAOTPWID LABEL@ ADR,  21 21 PROT-BITS-BYTES ADDI,   \ owner frame: fixed offset past the bitmap
    23 21 16 LDR,  21 21 AOT-OWNER-HEADER ADDI,      \ x21=identity rows, x23=count
    25 LAOTNAMES LABEL@ ADR,
    SP SP 2048 SUBI,
@@ -3684,13 +3910,15 @@ s" c-local-ref" s" label label --" TRUST
          3 DATA WIDN-CELL STR,
       pri-widn LBL,
 
-      2 DATA PROT-WID-N-CELL LDR,
-      3 PROT-WID-OFF MOVZ,  3 DATA 3 ADD,
-      4 0 MOVZ,
-      prot LBL,  4 2 CMP,  C-GE prot-done BCOND,
-         5 3 0 LDRW,
-         14 5 CMP,  C-EQ bad BCOND,  15 5 CMP,  C-EQ bad BCOND,
-         3 3 4 ADDI,  4 4 1 ADDI,  prot B,
+      \ Neither restored owner WID may already be protected in the LIVE band: one bit
+      \ test each against DATA, where the row array needed a scan of the whole table.
+      2 PROT-WID-MAX MOVZ,  14 2 CMP,  C-CS prot BCOND,
+         DATA 14 3 5 4 PROT-BITS-ADDR,
+         3 3 0 LDR,  3 3 5 AND,  3 bad CBNZ,
+      prot LBL,
+      2 PROT-WID-MAX MOVZ,  15 2 CMP,  C-CS prot-done BCOND,
+         DATA 15 3 5 4 PROT-BITS-ADDR,
+         3 3 0 LDR,  3 3 5 AND,  3 bad CBNZ,
       prot-done LBL,
 
       4 0 MOVZ,  5 SP 0 ADDI,
@@ -3766,8 +3994,12 @@ EM-AOT-RESTORE-HOOK-INIT
 \ (disp = callee - site, in BL range by the boot region assertion); the BL opcode
 \ (the callee is named, not embedded) is preserved. A missing name is a build/seed
 \ inconsistency: fail closed. Rows are 4B-aligned so each loads with a single LDRW.
+\ The AOT seed writes call immediates straight into the region, so it is the second
+\ producer of region-to-text calls and records its sites in the same map as
+\ EMIT-CEMITBL, by the same region-extent test. It runs from EM-COMPILE-EXIT, after
+\ the DATA region is mapped, so the map is writable here.
 : EM-AOT-PATCH-SITES ( -- )
-   LBL LBL LBL {: ploop:label pdone:label pnf:label :}
+   LBL LBL LBL LBL {: ploop:label pdone:label pnf:label pnomark:label :}
    21 LAOTSITES LABEL@ ADR,                          \ x21 = row cursor (4B rows)
    23 LAOTNSITE LABEL@ ADR,  23 23 0 LDR,            \ x23 = site count M
    22 0 MOVZ,                                        \ x22 = site index
@@ -3784,6 +4016,14 @@ EM-AOT-RESTORE-HOOK-INIT
       9 CP 24 ADD,                                   \ x9 = site addr = CP + blob offset
       10 11 9 SUB,  10 10 2 ASRI,  5 $3FFFFFF LIT64,  10 10 5 AND,   \ x10 = imm26 = (callee - site) >> 2, masked
       14 9 0 LDRW,  5 $FC000000 LIT64,  14 14 5 AND,  14 14 10 ORR,  14 9 0 STRW,   \ keep BL opcode, write imm26
+      13 11 DBASE SUB,  5 REGION LIT64,  13 5 CMP,     \ callee inside the region?
+      C-CC pnomark BCOND,                              \ yes: position independent, nothing to record
+         14 9 DBASE SUB,                               \ x14 = site byte offset within the region
+         4 14 0 ADDI,  4 4 2 LSRI,  4 4 7 ANDI,        \ x4 = bit number = word index & 7
+         14 14 5 LSRI,                                 \ x14 = map byte index = offset >> 5
+         5 SNAP-RELOC:CALLMAP-OFF LIT64,  14 14 5 ADD,  14 DATA 14 ADD,
+         5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
+      pnomark LBL,
       21 21 4 ADDI,  22 22 1 ADDI,  ploop B,
    pnf LBL,  0 $51 MOVZ,  NR-EXIT-GROUP SYS,
    pdone LBL, ;
@@ -3858,6 +4098,15 @@ EM-AOT-RESTORE-HOOK-INIT
       10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
       10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
+      \ This pass is the second producer of code-address chains, so it records its
+      \ sites in the same map C-CODE-ADDR writes. It knows the literal is an
+      \ address of code without decoding anything: the offset came off the captured
+      \ CODE-site list, and the DATA-site list is walked by a different word.
+      14 9 DBASE SUB,                                \ x14 = chain byte offset within the region
+      4 14 0 ADDI,  4 4 2 LSRI,  4 4 7 ANDI,         \ x4 = bit number = word index & 7
+      14 14 5 LSRI,                                  \ x14 = map byte index = offset >> 5
+      5 SNAP-RELOC:ADDRMAP-OFF LIT64,  14 14 5 ADD,  14 DATA 14 ADD,
+      5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
       21 21 2 ADDI,  22 22 1 ADDI,  cloop B,
    crdone LBL, ;
 
@@ -3992,6 +4241,237 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       srn LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
    sdn2 LBL,  RET, ;
 
+\ ---- snapshot relocation: the two emitted passes -----------------------------
+\ Reopens the package src/habu/layout.f declares the bands in and this file
+\ declares the labels in.
+package SNAP-RELOC
+public
+
+\ Region-to-text call relocation, the BL-shaped counterpart of the dictionary walk
+\ above and the other half of what makes a snapshot image portable.
+\ A call that stays inside the region keeps its distance wherever the region lands,
+\ so it needs nothing. A call from the region into the engine's loaded __text does
+\ not, because the run that writes an image and the run that restores it get their
+\ region base from the kernel and their image base from the loader independently.
+\ The sites are not searched for; they were recorded when the calls were created
+\ (CALLMAP-OFF, written by EMIT-CEMITBL and EM-AOT-PATCH-SITES), because a compiled
+\ word may carry inline non-instruction data and no decode of region bytes could
+\ tell a call from a data word that happens to look like one.
+\ Parameterized exactly like the dictionary walk so the writer (scratch copy, live
+\ distance -> canonical distance) and the loader (live region, canonical distance
+\ -> live distance) share ONE implementation:
+\   x8  = base of the region image being patched
+\   x11 = its byte length (the map is scanned only that far)
+\   x10 = signed byte amount to add to every recorded call displacement
+\ The added amount is always a multiple of four, so it is applied in instruction
+\ units and re-masked into imm26; the boot assertion in EM-MMAP-CODE-REGION is what
+\ guarantees the result is still inside BL's reach.
+\ Clobbers x3..x7, x9, x12..x14; x8/x10/x11 survive for the caller.
+: EMIT-CALLS ( -- )
+   LBL LBL LBL LBL LBL LBL {: scl:label scdone:label scnext:label
+                              scbit:label scbnext:label scbad:label :}
+   LCALLS LABEL@ LBL,
+   6 CALLMAP-OFF LIT64,  6 DATA 6 ADD,              \ x6 = call-site map base
+   13 11 31 ADDI,  13 13 5 LSRI,                    \ x13 = map bytes covering the image (rounded up)
+   12 0 MOVZ,                                       \ x12 = map byte index
+   7 10 2 ASRI,                                     \ x7 = the delta in instruction units
+   scl LBL,  12 13 CMP,  C-GE scdone BCOND,
+      5 6 12 ADD,  5 5 0 LDRB,                      \ x5 = map byte, consumed one bit at a time
+      5 scnext CBZ,                                 \ no site recorded in these eight words
+      4 12 3 LSLI,                                  \ x4 = region word index of this byte's first bit
+      scbit LBL,  5 scnext CBZ,                     \ every remaining bit is clear
+         14 5 1 ANDI,  14 scbnext CBZ,
+            14 4 2 LSLI,                            \ x14 = site byte offset within the region
+            14 11 CMP,  C-GE scbnext BCOND,         \ past this payload: not part of the image being patched
+            14 8 14 ADD,                            \ x14 = site address
+            9 14 0 LDRW,
+            \ a recorded site must still be a call. Anything else means the map and
+            \ the region disagree, which is a corrupt image, so refuse to run it.
+            3 9 26 LSRI,  3 BL-OP-HI CMPI,  C-NE scbad BCOND,
+            3 9 38 LSLI,  3 3 38 LSRI,              \ x3 = current displacement, in instructions
+            3 3 7 ADD,  3 3 38 LSLI,  3 3 38 LSRI,  \ shifted by the delta, back into 26 bits
+            9 9 26 LSRI,  9 9 26 LSLI,  9 9 3 ORR,  9 14 0 STRW,
+         scbnext LBL,
+         5 5 1 LSRI,  4 4 1 ADDI,  scbit B,
+   scnext LBL,  12 12 1 ADDI,  scl B,
+   scbad LBL,
+      1 LCALLMSG LABEL@ ADR,  0 2 MOVZ,  2 CALLMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 CALLMAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+   scdone LBL,  RET, ;
+
+\ Declare one persisted DATA cell as holding a JIT-region address, so the snapshot
+\ writer canonicalises it and the loader maps it back onto the live region.
+\   x9 = the cell's address, unchanged on return.
+\ Membership is a set: `defer` registers a dispatch cell when it allocates it,
+\ `is` registers the cell it is about to store into, and the `xt!` primitive
+\ registers a cell whose address its caller worked out at run time, so the same
+\ cell arrives here more than once and must be listed once. The table is short
+\ (one row per deferred word plus one per declared table cell in the image), the
+\ walk runs while `defer`/`is` is being compiled or while a dispatch table is
+\ being filled in, and the alternative -- letting a cell in twice -- would apply
+\ the relocation twice and produce an address that points nowhere.
+\ Overflow is a hard stop: dropping a row would leave a stale writer-run address in
+\ a restored image, which is exactly the failure this table exists to prevent.
+\ Every register it uses is saved and restored, because the compile-handler call
+\ sites are in the middle of a handler with its own live values and the `xt!` call
+\ site is in the middle of a running checked word.
+: EMIT-MARK ( -- )
+   LBL LBL LBL LBL {: scan:label add:label full:label ret:label :}
+   LMARK LABEL@ LBL,
+   SP SP 48 SUBI,
+   5 SP 0 STR,  6 SP 8 STR,  12 SP 16 STR,  13 SP 24 STR,  14 SP 32 STR,
+   12 9 DATA SUB,                                   \ x12 = the cell's offset within DATA
+   5 XTCELL-ROWS-OFF LIT64,  5 DATA 5 ADD,          \ x5 = row base
+   6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 LDR,   \ x13 = rows in use
+   14 0 MOVZ,                                       \ x14 = row index
+   scan LBL,  14 13 CMP,  C-GE add BCOND,
+      6 14 3 LSLI,  6 5 6 ADD,  6 6 0 LDR,
+      6 12 CMP,  C-EQ ret BCOND,                    \ already declared: nothing to do
+      14 14 1 ADDI,  scan B,
+   add LBL,
+      6 XTCELL-CAP MOVZ,  13 6 CMP,  C-GE full BCOND,
+      6 13 3 LSLI,  6 5 6 ADD,  12 6 0 STR,
+      13 13 1 ADDI,
+      6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 STR,
+      ret B,
+   full LBL,
+      1 LXTMSG LABEL@ ADR,  0 2 MOVZ,  2 XTMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 XTCELL-RC MOVZ,  NR-EXIT-GROUP SYS,
+   ret LBL,
+   5 SP 0 LDR,  6 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,  14 SP 32 LDR,
+   SP SP 48 ADDI,  RET, ;
+
+\ xt! ( q ptr q -- ): store an execution token into a persisted cell and declare
+\ that cell to the table above, in one step.
+\ `defer` and `is` can only declare a cell whose address is known while they are
+\ being COMPILED. A TABLE of dispatch cells picks its cell at RUN time, from a
+\ base pointer and a row index, so no compile handler ever sees that address, and
+\ the store word is the only code that knows a JIT-region address is going into a
+\ persisted cell (dot habu-declare-persisted-cb-b150b5d5). Storing and declaring
+\ are one primitive rather than two words so neither half can be done without the
+\ other and the declaration cannot drift away from the store it describes.
+\ The store itself is habu1.f BSTORE's, protection guard and all: x10 is the cell,
+\ x9 the token, and the guard leaves both alone. Then the cell address moves into
+\ x9 for the declarer above, which preserves x9 and saves every other register it
+\ touches. Registered framed, because the guard and LMARK are both BL.
+: BXTSTORE ( -- )
+   B G-POP  A G-POP
+   7 8 MOVZ,  B 7 PROT-GUARD:CALL
+   A B 0 STR,
+   A B 0 ADDI,
+   LMARK LABEL@ BL, ;
+
+\ Move every declared address cell by one signed amount.
+\   x10 = the amount to add
+\ The loader is the only caller: the writer's half of this pass is checked Habu in
+\ src/habu/snap-lib.f, because it works on a scratch copy of DATA rather than on
+\ the live region. A zero cell means "nothing installed here yet" and stays zero,
+\ which is why a cleared hook survives a snapshot as a cleared hook.
+\ Clobbers x5, x6, x9, x13, x14.
+: EMIT-XT ( -- )
+   LBL LBL LBL {: loop:label skip:label done:label :}
+   LXT LABEL@ LBL,
+   5 XTCELL-ROWS-OFF LIT64,  5 DATA 5 ADD,
+   6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 LDR,
+   14 0 MOVZ,
+   loop LBL,  14 13 CMP,  C-GE done BCOND,
+      6 14 3 LSLI,  6 5 6 ADD,  6 6 0 LDR,          \ x6 = the cell's offset within DATA
+      6 DATA 6 ADD,
+      9 6 0 LDR,  9 skip CBZ,
+         9 9 10 ADD,  9 6 0 STR,
+      skip LBL,
+      14 14 1 ADDI,  loop B,
+   done LBL,  RET, ;
+
+\ Record the four-instruction MOVZ/MOVK chain that is about to be written at CP as
+\ an address of code, so the two relocation passes can find it again without ever
+\ decoding region bytes. Called from C-CODE-ADDR before the chain is emitted, so
+\ CP is exactly the chain's first word.
+\ x11 holds the address the caller is about to compile in and must survive; x30 is
+\ already dead here, because the chain emission itself calls LCEMIT four times.
+\ Clobbers x5, x6, x9.
+: EMIT-ADDR-SITE ( -- )
+   LADDRSITE LABEL@ LBL,
+   6 CP DBASE SUB,                                  \ x6 = chain's byte offset within the region
+   9 6 0 ADDI,  9 9 2 LSRI,  9 9 7 ANDI,            \ x9 = bit number = word index & 7
+   6 6 5 LSRI,                                      \ x6 = map byte index = offset >> 5
+   5 ADDRMAP-OFF LIT64,  6 6 5 ADD,  6 DATA 6 ADD,  \ x6 = map byte address
+   5 1 MOVZ,  5 5 9 LSLV,  9 6 0 LDRB,  9 9 5 ORR,  9 6 0 STRB,
+   RET, ;
+
+\ Address-literal relocation: the MOVZ/MOVK-shaped counterpart of the dictionary
+\ walk and of the call pass, and the third and last thing that has to move when a
+\ snapshot image is restored at addresses the writing run never saw.
+\ The chain a `[: ... ;]`, a `[']` or a `postpone` pushes names a word's code, and
+\ that code sits either inside the JIT region or in the engine's loaded __text.
+\ Both move independently between the writing and the restoring run, so the pass
+\ is parameterized exactly like the dictionary walk and is CALLED ONCE PER BAND,
+\ with the same triple that walk is given:
+\   x21 = base of the band being moved
+\   x22 = its length
+\   x25 = the base those addresses are moving to  (value - x21 + x25)
+\ and, like the call pass, with the image it is scanning:
+\   x8  = base of the region image being patched
+\   x11 = its byte length (the map is scanned only that far)
+\ The two bands are disjoint at both write and restore time -- the live region sits
+\ REGION-OFF above __text, and canonical text offsets are far below the RBASE-VA
+\ sentinel -- so a chain is rewritten by exactly one of the two calls, and a chain
+\ that names neither band (there is no such kind today) is left alone rather than
+\ guessed at.
+\ The sites are not searched for. They were recorded when the chain was created
+\ (ADDRMAP-OFF, written by EMIT-ADDR-SITE from C-CODE-ADDR and by the AOT seed's
+\ code-literal rebase), because a compiled word may carry inline non-instruction
+\ data and the sibling DATA literals share the chain's exact shape, so no decode of
+\ region bytes could tell the three apart.
+\ Clobbers x2, x3, x4, x5, x6, x7, x9, x10, x12, x13, x14; x8, x11, x21, x22 and
+\ x25 survive for the caller.
+: EMIT-ADDRS ( -- )
+   LBL LBL LBL LBL LBL LBL {: sal:label sadone:label sanext:label
+                              sabit:label sabnext:label sabad:label :}
+   LADDRS LABEL@ LBL,
+   6 ADDRMAP-OFF LIT64,  6 DATA 6 ADD,              \ x6 = address-literal map base
+   13 11 31 ADDI,  13 13 5 LSRI,                    \ x13 = map bytes covering the image (rounded up)
+   12 0 MOVZ,                                       \ x12 = map byte index
+   7 ADDR-OPC-MASK LIT64,                           \ x7 = an instruction word minus its immediate
+   2 ADDR-IMM-MASK LIT64,                           \ x2 = one 16-bit immediate field
+   sal LBL,  12 13 CMP,  C-GE sadone BCOND,
+      5 6 12 ADD,  5 5 0 LDRB,                      \ x5 = map byte, consumed one bit at a time
+      5 sanext CBZ,                                 \ no site recorded in these eight words
+      4 12 3 LSLI,                                  \ x4 = region word index of this byte's first bit
+      sabit LBL,  5 sanext CBZ,                     \ every remaining bit is clear
+         14 5 1 ANDI,  14 sabnext CBZ,
+            14 4 2 LSLI,                            \ x14 = chain's byte offset within the region
+            3 14 ADDR-CHAIN-BYTES ADDI,             \ the whole chain has to be inside the payload
+            3 11 CMP,  C-HI sabnext BCOND,          \ past this payload: not part of the image being patched
+            14 8 14 ADD,                            \ x14 = chain address
+            \ a recorded site must still be the chain. Anything else means the map
+            \ and the region disagree, which is a corrupt image, so refuse to run it.
+            9 14 0 LDRW,   9 9 7 AND,  10 W-MOVZ0 LIT64,  9 10 CMP,  C-NE sabad BCOND,
+            9 14 4 LDRW,   9 9 7 AND,  10 W-MOVK1 LIT64,  9 10 CMP,  C-NE sabad BCOND,
+            9 14 8 LDRW,   9 9 7 AND,  10 W-MOVK2 LIT64,  9 10 CMP,  C-NE sabad BCOND,
+            9 14 12 LDRW,  9 9 7 AND,  10 W-MOVK3 LIT64,  9 10 CMP,  C-NE sabad BCOND,
+            \ x3 = the address the four immediates spell out
+            9 14 0 LDRW,   9 9 5 LSRI,  9 9 2 AND,  3 9 0 ADDI,
+            9 14 4 LDRW,   9 9 5 LSRI,  9 9 2 AND,  9 9 16 LSLI,  3 3 9 ORR,
+            9 14 8 LDRW,   9 9 5 LSRI,  9 9 2 AND,  9 9 32 LSLI,  3 3 9 ORR,
+            9 14 12 LDRW,  9 9 5 LSRI,  9 9 2 AND,  9 9 48 LSLI,  3 3 9 ORR,
+            3 21 CMP,  C-CC sabnext BCOND,          \ below this band: the other call owns it
+            10 21 22 ADD,  3 10 CMP,  C-CS sabnext BCOND,
+            3 3 21 SUB,  3 3 25 ADD,                \ x3 = the same code at its new base
+            9 14 0 LDRW,   9 9 7 AND,  10 3 0 ADDI,   10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 0 STRW,
+            9 14 4 LDRW,   9 9 7 AND,  10 3 16 LSRI,  10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 4 STRW,
+            9 14 8 LDRW,   9 9 7 AND,  10 3 32 LSRI,  10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 8 STRW,
+            9 14 12 LDRW,  9 9 7 AND,  10 3 48 LSRI,  10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 12 STRW,
+         sabnext LBL,
+         5 5 1 LSRI,  4 4 1 ADDI,  sabit B,
+   sanext LBL,  12 12 1 ADDI,  sal B,
+   sabad LBL,
+      1 LADDRMSG LABEL@ ADR,  0 2 MOVZ,  2 ADDRMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 ADDRMAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+   sadone LBL,  RET, ;
+
+;package
+
 \ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). x11 = resolved xt on entry;
 \ re-derive its record WID (scan dict for [0]==xt, read [40]) and, if that WID is in
 \ the protected-WID registry, fail-closed (exit ENGINE-ERROR:SEAL-PACKAGE) -- so a captured
@@ -4035,8 +4515,23 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
    11 16 8 SUB,  8 11 PROT-GUARD:CALL
    LSNAPRBD LABEL@ BL,
+   \ address-literal pass, text band: an xt a `[']` or a `postpone` compiled in may
+   \ name a primitive, whose code is in __text, so the same (x21,x22,x25) triple
+   \ pass 1 just used for dictionary cells applies to those chains too.
+   11 16 8 SUB,                                         \ x11 = region payload length
+   SNAP-RELOC:LADDRS LABEL@ BL,
+   \ call pass: rewrite every recorded region-to-text call from the distance this
+   \ run happens to have to the distance it would have if the region sat exactly
+   \ REGION-OFF above __text. x21 still holds the live text base from pass 1.
+   10 DBASE 21 SUB,  9 REGION-OFF LIT64,  10 10 9 SUB,  \ x10 = live distance - REGION-OFF
+   11 16 8 SUB,                                         \ x11 = region payload length
+   SNAP-RELOC:LCALLS LABEL@ BL,
    21 DBASE 0 ADDI,  22 16 8 SUB,  25 RBASE-VA LIT64,   \ pass 2: live region -> RBASE-VA sentinel
-   LSNAPRBD LABEL@ BL, ;
+   LSNAPRBD LABEL@ BL,
+   \ address-literal pass, region band: the quotation entries and the xts that name
+   \ a word compiled into the region, folded to the same sentinel pass 2 uses.
+   11 16 8 SUB,
+   SNAP-RELOC:LADDRS LABEL@ BL, ;
 
 : EM-SNAPSHOT-RX-FLUSH ( -- )
    2 5 MOVZ,  LPROT LABEL@ BL,
@@ -4052,25 +4547,29 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       owner-next:label widn:label name-inline:label name-ready:label
       name-loop:label name-ok:label pkg-scan:label pkg-inline:label
       pkg-ready:label pkg-bytes:label pkg-hit:label pkg-next:label pkg-done:label :}
-   5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+   5 PROT-BITS-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,                                     \ x10 = snapshot DATA source
    25 10 6 SUB,                                     \ x25 = snapshot dictionary source
    16 15 0 ADDI,                                    \ x16 = snapshot dictionary record count
-   11 10 PROT-WID-N-CELL LDR,
-   11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
-   12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
-   17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
-   prot-loop LBL,  8 11 CMP,  C-GE owners BCOND,
-      14 9 0 LDRW,  14 bad CBZ,
-      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
-      14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
+   11 10 PROT-REG-TAG-CELL LDR,
+   5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND, \ the image's band must be a bitmap
+   12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,            \ x12 = &image bitmap[0]
+   2 12 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,            \ WID 0 is never a wordlist
+   \ x17 = highest protected WID (0 if none): find the top non-zero word, then shift
+   \ its bits out. Replaces a per-row running max plus an O(rows^2) duplicate scan --
+   \ a bitmap cannot repeat an index, so only the maximum is still worth computing.
+   17 0 MOVZ,  8 PROT-BITS-BYTES MOVZ,
+   prot-loop LBL,  8 owners CBZ,
+      8 8 8 SUBI,
+      9 12 8 ADD,  9 9 0 LDR,
+      9 prot-max CBNZ,
+      prot-loop B,
    prot-max LBL,
-      4 0 MOVZ,  5 12 0 ADDI,
-   prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
-      2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
-      5 5 4 ADDI,  4 4 1 ADDI,  prot-inner B,
+      17 8 3 LSLI,  5 0 MOVZ,
+   prot-inner LBL,  9 prot-next CBZ,
+      9 9 1 LSRI,  5 5 1 ADDI,  prot-inner B,
    prot-next LBL,
-      9 9 4 ADDI,  8 8 1 ADDI,  prot-loop B,
+      17 17 5 ADD,  17 17 1 SUBI,
 
    owners LBL,
    5 OWNER-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
@@ -4110,8 +4609,9 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       3 2 DNAME-EXT ANDI,  3 name-inline CBZ,
          0 DNAME-INL CMPI,  C-LE bad BCOND,
          21 1 24 LDR,
-         21 DBASE CMP,  C-LT bad BCOND,
-         21 21 DBASE SUB,  21 21 25 ADD,
+         13 RBASE-VA LIT64,                              \ BSNAPREBASE canonicalized region pointers to RBASE-VA, not to the live DBASE
+         21 13 CMP,  C-LT bad BCOND,
+         21 21 13 SUB,  21 21 25 ADD,
          21 25 CMP,  C-LT bad BCOND,  21 10 CMP,  C-HI bad BCOND,
          2 10 21 SUB,  0 2 CMP,  C-HI bad BCOND,
          name-ready B,
@@ -4133,8 +4633,9 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
          2 3 DNAME-EXT ANDI,  2 pkg-inline CBZ,
             0 DNAME-INL CMPI,  C-LE bad BCOND,
             4 22 24 LDR,
-            4 DBASE CMP,  C-LT bad BCOND,
-            4 4 DBASE SUB,  4 4 25 ADD,
+            13 RBASE-VA LIT64,                           \ same canonical base as the owner-record name above
+            4 13 CMP,  C-LT bad BCOND,
+            4 4 13 SUB,  4 4 25 ADD,
             4 25 CMP,  C-LT bad BCOND,  4 10 CMP,  C-HI bad BCOND,
             2 10 4 SUB,  0 2 CMP,  C-HI bad BCOND,
             pkg-ready B,
@@ -4156,11 +4657,15 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       pkg-done LBL,
          24 1 CMPI,  C-NE bad BCOND,
 
-      4 0 MOVZ,  12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
-   owner-prot LBL,  4 11 CMP,  C-GE owner-prev-start BCOND,
-      2 12 0 LDRW,
-      14 2 CMP,  C-EQ bad BCOND,  15 2 CMP,  C-EQ bad BCOND,
-      12 12 4 ADDI,  4 4 1 ADDI,  owner-prot B,
+      \ Neither owner WID may also be protected in the image: one bit test each.
+      12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,
+      2 PROT-WID-MAX MOVZ,  14 2 CMP,  C-CS owner-prot BCOND,
+         12 14 4 3 2 PROT-BITS-AT,
+         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
+   owner-prot LBL,
+      2 PROT-WID-MAX MOVZ,  15 2 CMP,  C-CS owner-prev-start BCOND,
+         12 15 4 3 2 PROT-BITS-AT,
+         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
    owner-prev-start LBL,
       4 0 MOVZ,  12 9 0 ADDI,
    owner-prev LBL,  4 8 CMP,  C-GE owner-next BCOND,
@@ -4255,16 +4760,42 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    \ slides with __text). x6 = region payload len.
    21 RBASE-VA LIT64,  22 6 0 ADDI,  25 DBASE 0 ADDI,
    LSNAPRBD LABEL@ BL,
+   \ The address-literal pass runs once per band, right behind the dictionary walk
+   \ that band belongs to, and takes the same (x21,x22,x25) triple. It scans the
+   \ live region, so it needs x8 and the payload length in x11 -- and x11 still
+   \ holds the snapshot text size the text pass below has to have, so the three
+   \ values that pass clobbers are parked on the machine stack across both calls.
+   SP SP 32 SUBI,  6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,
+   11 6 0 ADDI,
+   SNAP-RELOC:LADDRS LABEL@ BL,
+   6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,
    \ text pass: canonical base 0 -> live text base. x22 = engine text len; x25 reloaded.
    21 0 MOVZ,  22 11 6 SUB,  22 22 7 SUB,  22 22 48 SUBI,  25 DATA RBASE-CELL LDR,
    LSNAPRBD LABEL@ BL,
+   11 6 0 ADDI,  8 DBASE 0 ADDI,
+   SNAP-RELOC:LADDRS LABEL@ BL,
+   6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,
+   SP SP 32 ADDI,
+   \ call pass, the inverse of the writer's: the image carries every region-to-text
+   \ call at the canonical REGION-OFF distance, so add back the difference between
+   \ that and the distance this run actually got. The call map itself arrived with
+   \ the DATA copy above and is indexed by region offset, so it needs no rebasing.
+   10 REGION-OFF LIT64,  9 DBASE 25 SUB,  10 10 9 SUB,  \ x10 = REGION-OFF - live distance
+   11 6 0 ADDI,  8 DBASE 0 ADDI,                        \ x11 = region payload length, x8 = live region
+   SNAP-RELOC:LCALLS LABEL@ BL,
+   \ address-cell pass: every DATA cell that was declared to hold a region address
+   \ arrived relative to the RBASE-VA sentinel (snap-lib.f canonicalised it on the
+   \ way out), so map it onto the region this run actually got. DATA is copied
+   \ verbatim, so nothing else would ever move these cells.
+   10 DBASE 0 ADDI,  9 RBASE-VA LIT64,  10 10 9 SUB,
+   SNAP-RELOC:LXT LABEL@ BL,
    EM-SNAPSHOT-RX-FLUSH
    24 1 MOVZ,
    24 DATA SNAP-CELL STR,
    snomag LBL, ;
 
 : EM-STARTUP-RUNTIME-STATE ( -- )
-   LBL {: cwok :}
+   LBL LBL LBL {: cwok:label pwclr:label pwclrd:label :}
    9 0 MOVZ,  9 DATA HND-CELL STR,
    9 DATA SNAP-CELL LDR,
    9 cwok CBNZ,
@@ -4273,7 +4804,25 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,
-   9 0 MOVZ,  9 DATA PROT-WID-N-CELL STR,  \ constructor registry starts empty
+   \ The three engine hook cells hold execution tokens once something installs
+   \ them, so they are address cells like a deferred word's dispatch cell. They are
+   \ declared here, by name, on the cold path only: a restored image already
+   \ carries the declarations the writing run made, and re-declaring is not the
+   \ same thing as declaring twice only because the table refuses duplicates.
+   HOOK-CELL SNAP-RELOC:MARK-CELL
+   COMPILE-PREFLIGHT-CELL SNAP-RELOC:MARK-CELL
+   TOP-HOOK-CELL SNAP-RELOC:MARK-CELL
+   \ Constructor registry starts empty: clear the whole bitmap, then publish the shape
+   \ tag. The old count cell made "empty" a single store; a bitmap has to be zeroed in
+   \ full, and a cold boot is the only path that may do it (a restored image carries
+   \ the declarations its writing run made).
+   9 0 MOVZ,
+   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
+   11 PROT-BITS-BYTES MOVZ,
+   pwclr LBL,  11 pwclrd CBZ,
+      9 10 0 STR,  10 10 8 ADDI,  11 11 8 SUBI,  pwclr B,
+   pwclrd LBL,
+   9 PROT-REG-TAG LIT64,  9 DATA PROT-REG-TAG-CELL STR,
    OWNER-WID-EMIT:COLD-LABEL@ BL,
    cwok LBL,  9 0 MOVZ,
    9 DATA ENGINE-SNAP-XT-CELL STR,
@@ -4867,6 +5416,10 @@ s" c-export-tail!" s" --" TRUST
    done LBL, ;
 s" c-export" s" --" TRUST
 
+\ Interpret-state dispatch assembly: the keyword/number/find emitters and the
+\ EM-INTERPRET entry that EMIT-MAIN wires into the main loop.
+package INTERP-EMIT
+
 : EM-INTERPRET-DEFINE-KEYWORDS ( -- )
    s" package" KEEP? IF LMAIN LABEL@ LKWPACKAGE 7 ['] C-PACKAGE CF-ENTRY THEN
    s" public" KEEP? IF LMAIN LABEL@ LKWPUBLIC 6 ['] C-PUBLIC CF-ENTRY THEN
@@ -4932,11 +5485,15 @@ s" em-interpret-find" s" --" TRUST
    EM-INTERPRET-FIND          s" interpret/find" ENGINE-SIZE:MARK ;
 s" em-interpret-words" s" --" TRUST
 
+public
+
 : EM-INTERPRET ( -- )
    LBL {: lnotcolon :}
    lnotcolon EM-INTERPRET-COLON s" interpret/colon" ENGINE-SIZE:MARK
    EM-INTERPRET-WORDS ;
 s" em-interpret" s" --" TRUST
+
+;package
 
 : EM-COMPILE-DROP-LOCALS ( -- )
    LBL {: done :}
@@ -5938,6 +6495,11 @@ s" em-compile-string-keywords" s" --" TRUST
    s" ;]" KEEP? IF LMAIN LABEL@ LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY THEN ;
 s" em-compile-meta-keywords" s" --" TRUST
 
+\ The loop keyword dispatch rows belong to the loop-emit family above: they
+\ resolve its handlers bare, so the package is reopened here.
+package LOOP-EMIT
+public
+
 : EM-COMPILE-LOOP-KEYWORDS ( -- )
    s" do" KEEP? IF LMAIN LABEL@ LKWDO     2 ['] J-DO     CF-ENTRY THEN
    s" loop" KEEP? IF LMAIN LABEL@ LKWLOOP   4 ['] J-LOOP   CF-ENTRY THEN
@@ -5955,13 +6517,21 @@ s" em-compile-meta-keywords" s" --" TRUST
    s" {:" KEEP? IF LMAIN LABEL@ LKWLBRACE 2 ['] C-LBRACE CF-ENTRY THEN ;
 s" em-compile-loop-keywords" s" --" TRUST
 
+;package
+
+\ Compile-state dispatch assembly: the keyword-table aggregator and the
+\ EM-COMPILE entry that EMIT-MAIN wires into the main loop (reopened below).
+package COMPILE-EMIT
+
 : EM-COMPILE-KEYWORDS ( -- )
    LBCAP LABEL@ BL,
    EM-COMPILE-CONTROL-KEYWORDS
    EM-COMPILE-STRING-KEYWORDS
    EM-COMPILE-META-KEYWORDS
-   EM-COMPILE-LOOP-KEYWORDS ;
+   LOOP-EMIT:EM-COMPILE-LOOP-KEYWORDS ;
 s" em-compile-keywords" s" --" TRUST
+
+;package
 
 : EM-COMPILE-LOCAL ( -- )
    LBL {: notloc :}
@@ -6711,6 +7281,9 @@ s" em-adt-match-of" s" --" TRUST
    s5 LBL,  EM-ADT-MATCH-OF
    off LBL, ;
 s" em-compile-adt-mode" s" --" TRUST
+package COMPILE-EMIT
+public
+
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
@@ -6728,14 +7301,22 @@ s" em-compile-adt-mode" s" --" TRUST
    EM-EVAL-THROW-RECOVER      s" compile/eval-recover" ENGINE-SIZE:MARK ;
 s" em-compile" s" --" TRUST
 
+;package
+
+\ The main-loop emitter entry belongs to the build sequencing package: its
+\ caller EMIT-CODE-SECTIONS resolves it bare in the reopened block below.
+package ENGINE-BUILD
+
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
    EM-STARTUP                 s" main/startup" ENGINE-SIZE:MARK
    EM-COMMENT                 s" main/comment" ENGINE-SIZE:MARK
-   EM-INTERPRET
-   EM-COMPILE
+   INTERP-EMIT:EM-INTERPRET
+   COMPILE-EMIT:EM-COMPILE
    EM-INTERPRET-UNDERFLOW     s" main/underflow" ENGINE-SIZE:MARK ;
 s" emit-main" s" --" TRUST
+
+;package
 
 \ Pre-execution arity guard (LARITY). A deref/execute/dispatch primitive (@ !
 \ +! c@ c! atomic@ atomic! atomic-add atomic-cas count type execute
@@ -6777,7 +7358,11 @@ s" SRCA@" s" -- ptr u8" TRUST
    SRCN !  SRCA !
    ASM-INIT  0 #PL !  0 PNP ! ;
 
-: EMIT-LABEL-CORE ( -- )
+\ Label allocation for the emitter: one private allocator per engine region,
+\ one public entry that reserves every label a build uses.
+package LABELS
+
+: CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
@@ -6788,11 +7373,13 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LPROTWIDQ !  OWNER-WID-EMIT:LABELS
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
+   LBL SNAP-RELOC:LCALLS !  LBL SNAP-RELOC:LXT !  LBL SNAP-RELOC:LMARK !
+   LBL SNAP-RELOC:LADDRS !  LBL SNAP-RELOC:LADDRSITE !
    LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !
    LBL LAOTWIDGATE !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
 
-: EMIT-LABEL-CONTROL ( -- )
+: CONTROL ( -- )
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
    LBL LKWCASE !  LBL LKWOF !  LBL LKWENDOF !  LBL LKWENDCASE !
@@ -6807,7 +7394,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
-   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
+   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
@@ -6820,7 +7407,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LTFLCONFAM !  LBL LTFLCVAR !
    LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
 
-: EMIT-LABEL-RUNTIME ( -- )
+: RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
@@ -6838,13 +7425,14 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
+   LBL SNAP-RELOC:LCALLMSG !  LBL SNAP-RELOC:LXTMSG !  LBL SNAP-RELOC:LADDRMSG !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LPROTPUB !  LBL LPROTAOT !
    LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 
-: EMIT-LABEL-SOURCES ( -- )
+: SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
@@ -6860,7 +7448,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
    LBL LPTOPROW !  LBL LCHKSNAPTOKEN ! ;
 
-: EMIT-LABEL-JIT ( -- )
+: JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !
@@ -6870,7 +7458,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
    LBL LVSNAP !  LBL LVRECON ! ;
 
-: EMIT-LABEL-OPS ( -- )
+: OPS ( -- )
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !
    LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !
    LBL LKWDUP2 !  LBL LKWDROP2 !  LBL LKWSWAP2 !
@@ -6880,7 +7468,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWINC !  LBL LKWDEC !  LBL LKWZEQ !
    LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
 
-: EMIT-LABEL-P2 ( -- )
+: P2 ( -- )
    LBL LCERTBYTES !  LBL LP2CWAT !  LBL LP2CDESC !
    LBL LKWTUCK3 !  LBL LKWROT3 !  LBL LKWMROT3 !
    LBL LKW2DUP3 !  LBL LKW2DROP3 !  LBL LKW2SWAP3 !  LBL LKW2OVER3 !
@@ -6892,14 +7480,18 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LOWER-TXN-CODE:FULL !  LBL LOWER-TXN-CODE:DRIFT !
    LBL LOWER-TXN-CODE:VDESC !  LBL LOWER-TXN-CODE:DRIFT-FAIL ! ;
 
-: EMIT-LABELS ( -- )
-   EMIT-LABEL-CORE
-   EMIT-LABEL-CONTROL
-   EMIT-LABEL-RUNTIME
-   EMIT-LABEL-SOURCES
-   EMIT-LABEL-JIT
-   EMIT-LABEL-OPS
-   EMIT-LABEL-P2 ;
+public
+
+: INIT ( -- )
+   CORE
+   CONTROL
+   RUNTIME
+   SOURCES
+   JIT
+   OPS
+   P2 ;
+
+;package
 
 \ ---- AOT M2: N-word capture buffers (host-only build scratch; `allot` DATA, NOT
 \ baked into bin/hb). aot-capture.f fills them from the metabuild host's compiled
@@ -6941,15 +7533,14 @@ variable AOT-CODE-B0
 $400 constant AOT-BOOTRUN-CAP
 create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
-\ protected-WID registry AOT image (TFAM 2b-v): the u32 WIDs of sealed system /
-\ generated constructor packages, captured from the live friend-arena registry and
-\ baked so EM-AOT-REGISTER-PROT-WIDS can restore them at boot -- advancing WIDN past
-\ each so a post-restore wordlist alloc cannot collide with a restored protected WID.
-\ u32 entries (matching the registry's checked u32 domain) so wordlist IDs above 255
-\ round-trip through the seed with no u8 truncation. Capacity = PROT-WID-MAX so a full
-\ registry always fits.
-PROT-WID-MAX constant AOT-PWID-MAX
-create AOT-PWID-BUF AOT-PWID-MAX 4 * allot    variable AOT-PWID-N
+\ protected-WID registry AOT image (TFAM 2b-v): a bit-for-bit image of the live
+\ friend-arena bitmap, baked so EM-AOT-REGISTER-PROT-WIDS can restore it at boot --
+\ advancing WIDN past the highest restored WID so a post-restore wordlist alloc
+\ cannot collide with a protected one. The blob is a fixed PROT-BITS-BYTES image of
+\ a SET, so it does not depend on the order the writing run protected its WIDs and
+\ the owner frame that follows sits at a constant offset. It is always emitted at
+\ full width, which is what lets the shape tag in front of it be the frame's version.
+create AOT-PWID-BUF PROT-BITS-BYTES allot
 
 package AOT-OWNER
 
@@ -7047,9 +7638,9 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    LAOTNCSITE LABEL@ LBL,  AOT-CSITE-N @ DCQ,
    LAOTCSITES LABEL@ LBL,  EMIT-AOT-CSITES
    LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
-   LAOTNPWID LABEL@ LBL,  AOT-PWID-N @ DCQ,                                  \ protected-WID registry: count
-   LAOTPWID LABEL@ LBL,                                                      \ then N u32 WIDs (TFAM 2b-v)
-   AOT-PWID-N @ 0 > if AOT-PWID-BUF@ AOT-PWID-N @ 4 * BYTES, then
+   LAOTNPWID LABEL@ LBL,  PROT-REG-TAG DCQ,                                  \ protected-WID frame: shape tag
+   LAOTPWID LABEL@ LBL,                                                      \ then the fixed-width bitmap (TFAM 2b-v)
+   AOT-PWID-BUF@ PROT-BITS-BYTES BYTES,
    AOT-OWNER:BAKE ;
 
 \ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
@@ -7064,12 +7655,17 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    9 13 2 ANDI,
    A G-PUSH ;
 
+\ Build sequencing: the section emitters and EMIT-FORTH belong to the engine
+\ build package; BUILD below resolves EMIT-FORTH bare across reopened blocks.
+package ENGINE-BUILD
+
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS  OWNER-WID-EMIT:PRIMS s" primitives/base" ENGINE-SIZE:MARK
    EMIT-ARITY-GUARD             s" primitives/arity" ENGINE-SIZE:MARK
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
-   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F s" primitives/extra" ENGINE-SIZE:MARK
+   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
+   s" xt!" ['] SNAP-RELOC:BXTSTORE 2 GDEREF-F  s" primitives/extra" ENGINE-SIZE:MARK
    EMIT-PROF-PRIMS            s" primitives/prof" ENGINE-SIZE:MARK
    EMIT-FP-PRIMS              s" primitives/float" ENGINE-SIZE:MARK
    EMIT-CEMIT                 s" primitives/cemit" ENGINE-SIZE:MARK
@@ -7090,11 +7686,13 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
-   EMIT-DOESPATCH
+   DOESPATCH:EMIT
    EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
    EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE
+   SNAP-RELOC:EMIT-CALLS  SNAP-RELOC:EMIT-MARK  SNAP-RELOC:EMIT-XT
+   SNAP-RELOC:EMIT-ADDR-SITE  SNAP-RELOC:EMIT-ADDRS
    EMIT-LOC-FIND
-   EMIT-KWDATA
+   KWDATA:EMIT
    EMIT-FOLDKW
    EMIT-SHUFKW
    EMIT-CMPKW
@@ -7125,6 +7723,8 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 : EMIT-SOURCE-BYTES ( -- )
    LSRC LABEL@ LBL,  SRCA@ SRCN @ BYTES, ;
 
+public
+
 \ Records one region row per emitter phase; the container rows (header, page pad,
 \ and the target tail) and the HABU_ENGINE_SIZE_MAP report are added post-sign by
 \ src/habu/driver-io.f DRV-SIZE-MAP, once the image length is final and the map
@@ -7132,10 +7732,12 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 : EMIT-FORTH ( ptr u8 n -- )
    ENGINE-SIZE:RESET
    EMIT-RESET-BUILDER
-   EMIT-LABELS
+   LABELS:INIT
    EMIT-CODE-SECTIONS
    EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK ;
 s" emit-forth" s" ptr u8 n --" TRUST
+
+;package
 
 package ENGINE-BUILD
 public

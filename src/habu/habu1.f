@@ -1210,8 +1210,19 @@ variable SZA-I
 \ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
+\ ndict! is a FORGET sink and every caller in the tree lowers the mark, but the
+\ name lookup now reads an empty hash slot as proof that a name is absent, and
+\ that proof only holds while every record below NDICT is in the table. Raising
+\ NDICT re-exposes records whose slots a later publication was free to reuse, so
+\ a raise is the one motion that can leave the table short of the dictionary.
+\ The lookup keeps its authority by construction rather than by trusting the
+\ callers: a raise drops the table, and the linear scan answers from then on.
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
+   LBL {: keep:label :}
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
+   A NDICT CMP,  C-LE keep BCOND,
+      C 0 MOVZ,  C DATA HIDXP-CELL STR,
+   keep LBL,
    NDICT A 0 ADDI, ;
 
 : BEPOCHSECONDS ( -- )
@@ -2259,32 +2270,112 @@ SOURCE-INIT
    C A 16 LDR,  C C B ORR,  C A 16 STR,
    2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
+\ PROT-BITS-ADDR, ( base w a m scratch -- ): emit the bitmap addressing sequence.
+\ xbase holds the region base (DATA live, or a snapshot/AOT image's DATA source) and
+\ xw the WID; xa comes back holding &word-containing-the-bit and xm that bit's mask.
+\ The band is PROT-BITS-BYTES of u64 words, so word index = w>>6 (scaled to a byte
+\ offset by <<3) and bit index = w&63. Callers must have proved w < PROT-WID-MAX
+\ first; that bound is what keeps the computed address inside the band. xscratch is
+\ clobbered; xw is preserved.
+\ PROT-BITS-AT, is the same for a bitmap whose base register already points at bit 0
+\ -- the AOT seed blob and a snapshot image carry the band that way.
+: PROT-BITS-AT, ( n n n n n -- ) {: bits:n w:n a:n m:n scratch:n :}
+   scratch w 6 LSRI,  scratch scratch 3 LSLI,
+   a bits scratch ADD,
+   m w 63 ANDI,
+   scratch 1 MOVZ,  m scratch m LSLV, ;
+
+: PROT-BITS-ADDR, ( n n n n n -- ) {: base:n w:n a:n m:n scratch:n :}
+   a PROT-BITS-OFF MOVZ,  a base a ADD,
+   a w a m scratch PROT-BITS-AT, ;
+
+\ prot-wid-add ( wid -- ): mark wid protected. Idempotent (an already-protected wid
+\ returns untouched), and fail-closed at the WID bound: a wid at or above
+\ PROT-WID-MAX has no bit in the band, so protecting it is impossible rather than
+\ approximate, and the engine names the bound and exits rather than writing outside
+\ the band. That range check is the whole memory-safety argument for a prim that
+\ takes a caller-supplied index -- do not weaken it. Publication is acquire-load /
+\ release-store on the containing word, the same single-writer discipline the
+\ append-and-publish-count sequence had; concurrent adders were never supported.
 : BPROTWIDADD ( -- )
-   LBL LBL LBL {: room:label done:label msg:label :}
+   LBL LBL LBL {: ok:label done:label msg:label :}
    9 G-POP
    LPROTWIDQ LABEL@ BL,
    13 done CBNZ,
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 LDAR,
-   14 PROT-WID-MAX CMPI,  C-LT room BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,    \ registry full: name the cap on fd 2 before exit 84
+   15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 36 MOVZ,  NR-WRITE SYS,    \ name the exhausted bound on fd 2 before exit 84
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  s" hb: protected-WID table full" BYTES,   \ 28 bytes; data reached only via ADR
-   room LBL,
-   15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
-   16 14 2 LSLI,  15 15 16 ADD,
-   9 15 0 STRW,                                      \ initialize row before release-publishing count
-   14 14 1 ADDI,
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 STLR,
+      msg LBL,  s" hb: protected-WID id above the bound" BYTES,   \ 36 bytes; data reached only via ADR
+   ok LBL,
+   DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask
+   16 15 LDAR,
+   16 16 14 ORR,
+   16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
 
+\ prot-wid-room ( -- n ): how many more wordlists may still be allocated AND
+\ protected. Every WID below PROT-WID-MAX has a bit, so the only thing that can run
+\ out is WID ids themselves -- the resource a declaration actually consumes. Clamped
+\ at 0 so a caller's `room 0=` and `need room >` tests stay meaningful if WIDN ever
+\ passes the bound (unprotected wordlists may be allocated beyond it).
 : BPROTWIDROOM ( -- )
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 LDAR,
+   LBL {: pos:label :}
+   14 DATA WIDN-CELL LDR,
    9 PROT-WID-MAX MOVZ,  9 9 14 SUB,
+   14 0 MOVZ,  9 14 CMP,  C-GT pos BCOND,
+      9 0 MOVZ,
+   pos LBL,
    9 G-PUSH ;
 
+\ Emit the FNV-1a fold+hash of the name at reg `nr` (ptr), length `lr`,
+\ into reg `hr`; clobbers c3 c4 (byte/fold scratch) and c7 (cursor). The
+\ fold is the same A-Z|0x20 idiom the FIND compare uses.
+\
+\ This is the dictionary hash index's KEY DERIVATION and every user of the table
+\ shares it: the inserter and the duplicate wall further down this file, LFIND's
+\ two probes, and BSWL just below. It sits here rather than beside them because
+\ BSWL is the earliest of those and a name must be defined before it is used.
+: C-HIDX-HASH ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
+   LBL LBL {: hl:label hd:label :}
+   hr $CBF29CE484222325 LIT64,
+   c7 0 MOVZ,
+   hl LBL,  c7 lr CMP,  C-GE hd BCOND,
+      c4 nr c7 ADD,  c4 c4 0 LDRB,
+      c3 c4 $41 SUBI,  c3 $1A CMPI,  c3 C-CC CSET,  c3 c3 5 LSLI,  c4 c4 c3 ORR,
+      hr hr c4 EOR,
+      c3 $100000001B3 LIT64,
+      hr hr c3 MUL,
+      c7 c7 1 ADDI,  hl B,
+   hd LBL, ;
+
+\ BSWL is the `search-wl` primitive: the name's row in ONE wordlist, or 0.
+\
+\ ITS ANSWER IS THE LAST MATCHING ROW, and that is not the same rule as "the
+\ matching row". The scan below runs record 0 upwards and overwrites its result
+\ on every hit, so where a wordlist held two rows for one folded name the higher
+\ index would win. The hash probe cannot express that rule - the table is
+\ insert-once, one slot per (name, wid), and a chain walk stops at the FIRST
+\ validated row it meets. The two rules coincide only where a wid holds at most
+\ one live row per folded name, and that is a property of the wid, not of this
+\ word:
+\   - a real wordlist (0, a package's private or public wid, and the
+\     DICT-WL:NAMESPACE that package rows carry) is guarded by the definer's
+\     duplicate wall (habu2.f C-REJECT-DUP-DEF), which refuses a second
+\     definition of a tail already live in the wordlist being defined into. At
+\     most one row, so first and last are the same row and the probe reproduces
+\     the scan exactly;
+\   - DICT-WL:RETIRED is not a wordlist. xref.f XREF-RETIRE stamps it onto rows
+\     that are ALREADY in the table under the wid they were published in, so
+\     those rows sit on another chain entirely and this key's chain is empty -
+\     and retiring one name twice puts two rows under the key, which is the
+\     duplicate case the probe has no shape for. Both failures point the same
+\     way, so the probe is not consulted for that wid at all and the scan, which
+\     answers it correctly today, keeps answering it.
+\ The remaining two exits are the ones LFIND keeps the scan for and they carry
+\ the same reasoning as its FIND-START comment: no table at all, and a chain
+\ walked through every slot without meeting an empty one. An empty slot IS the
+\ answer "absent from this wordlist", because every record below NDICT is in the
+\ table and slots only ever go empty -> occupied.
 : BSWL ( -- )
    LBL SWL-LOOP !
    LBL SWL-END !
@@ -2294,6 +2385,7 @@ SOURCE-INIT
    LBL SWL-F1 !
    LBL SWL-F2 !
    LBL SWL-INL !
+   LBL LBL LBL LBL LBL LBL {: plin:label ploop:label pnext:label pinl:label pcmp:label pmatch:label :}
    2 G-POP  1 G-POP  0 G-POP
    11 0 MOVZ,                                              \ result defaults to absent
    \ search-wl short-circuits WID OWNER-API-PRI-WID to absent: WID 2 is the
@@ -2302,6 +2394,39 @@ SOURCE-INIT
    \ start at FIRST-DYNAMIC-WID), and test/engine-suite.f pins that (PROT-SPAN)
    \ stays hidden from every wordlist.
    2 OWNER-API-PRI-WID CMPI,  C-EQ SWL-END LABEL@ BCOND,   \ reserved OWNER-API-private WID is never raw-searchable
+   \ Hash probe. x0 (name), x1 (len), x2 (wid) and x11 (result) are preserved
+   \ across it for the scan the two fallbacks reach.
+   4 DICT-WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,   \ not a wordlist key -> scan
+   14 DATA HIDXP-CELL LDR,  14 plin CBZ,                   \ no table -> scan
+   0 1 15 4 16 7 C-HIDX-HASH
+   6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
+   8 HIDX-SLOTS LIT64,
+   ploop LBL,
+      17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,            \ x3 = slot value (index+1)
+      3 SWL-END LABEL@ CBZ,                                \ empty slot -> absent from this wordlist
+      4 3 1 SUBI,  4 NDICT CMP,  C-GE pnext BCOND,         \ stale (truncated) index
+      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,             \ x5 = record ptr
+      16 5 40 LDR,  16 2 CMP,  C-NE pnext BCOND,           \ wid mismatch (retired / other wordlist)
+      16 5 16 LDR,  16 16 12 LSLI,  16 16 12 LSRI,  16 1 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      16 5 24 ADDI,
+      3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 pinl CBZ,
+         16 5 24 LDR,
+      pinl LBL,
+      7 0 MOVZ,
+      pcmp LBL,
+         7 1 CMP,  C-GE pmatch BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 0 7 ADD,     4 4 0 LDRB,
+         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE pnext BCOND,
+         7 7 1 ADDI,  pcmp B,
+      pmatch LBL,
+         11 5 0 LDR,  SWL-END LABEL@ B,
+      pnext LBL,
+         8 8 1 SUBI,  8 plin CBZ,
+         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  ploop B,
+   plin LBL,
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
@@ -2605,8 +2730,8 @@ SOURCE-INIT
 \ The shared runtime lowering guard body ( x10=address, x11=byte length ). It is
 \ registered as the sealed (PROT-SPAN) engine helper so a guarded primitive that
 \ reaches it by a direct branch is carried into an ahead-of-time image and
-\ relocated. The label is reserved in EMIT-LABEL-CORE so the record spans exactly
-\ [start, end).
+\ relocated. The label is reserved in the habu2.f LABELS allocator (its CORE
+\ block) so the record spans exactly [start, end).
 : EMIT-PROT-SPAN ( -- )
    LPROTSPAN LABEL@ {: start:label :}
    LBL {: end:label :}
@@ -2643,26 +2768,28 @@ SOURCE-INIT
 \ init, AOT-REPL restore, snapshot restore); a single membership rule protects
 \ them uniformly and unforgeably. Dynamic package wordlists start at
 \ FIRST-DYNAMIC-WID (3), so the reserved pins never shadow a real allocation.
-\ Beyond the two pins, the sealed system + generated constructor package WIDs are
-\ found by a linear scan of the PROT-WID-N-CELL entries of the u32 PROT-WID-OFF
-\ table (both inside the sealed friend arena). Preserves x5 x6 x7 x9 x14; x13 is
+\ Beyond the two pins, membership is one bit in the PROT-BITS-OFF bitmap (inside the
+\ sealed friend arena): O(1), where the u32 table this replaced cost a linear scan of
+\ up to PROT-WID-LEGACY-MAX entries on EVERY guarded operation. A WID at or above
+\ PROT-WID-MAX has no bit and answers "not protected", which is sound because
+\ prot-wid-add refuses to protect one -- an unprotected wordlist can exist above the
+\ bound, a silently-unprotected one cannot. Preserves x5 x6 x7 x9 x14; x13 is
 \ the result. Called by the sealed-WID guards (record publish, AOT
 \ relocation/bootrun, snap-rebase) and the AOT registry restore's dedup.
 : EMIT-PROTWID ( -- )
-   LBL LBL LBL LBL {: qloop:label qnext:label qdone:label qhit:label :}
+   LBL LBL {: qdone:label qhit:label :}
    LPROTWIDQ LABEL@ LBL,
    SP SP 32 SUBI,
    5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  14 SP 24 STR,
    13 0 MOVZ,                                   \ result = 0 (not protected)
    9 OWNER-API-PUB-WID CMPI,  C-EQ qhit BCOND,  \ engine-reserved public API wordlist
    9 OWNER-API-PRI-WID CMPI,  C-EQ qhit BCOND,  \ engine-reserved private wordlist (helper marker)
-   6 DATA PROT-WID-N-CELL LDR,                  \ x6 = registry count
-   7 0 MOVZ,                                    \ x7 = i
-   5 PROT-WID-OFF MOVZ,  5 DATA 5 ADD,          \ x5 = &table[0] (offset > imm12: materialize + add)
-   qloop LBL,  7 6 CMP,  C-GE qdone BCOND,
-      14 5 0 LDRW,  14 9 CMP,  C-NE qnext BCOND, \ table[i] == wid?
-      qhit LBL,  13 1 MOVZ,  qdone B,            \ reserved pin or table hit -> protected
-      qnext LBL,  5 5 4 ADDI,  7 7 1 ADDI,  qloop B,
+   5 PROT-WID-MAX MOVZ,  9 5 CMP,  C-CS qdone BCOND,   \ above the bound: no bit, never protected
+   DATA 9 5 14 6 PROT-BITS-ADDR,                \ x5 = &word, x14 = mask
+   7 5 LDAR,                                    \ acquire-load the containing word
+   7 7 14 AND,
+   7 qdone CBZ,
+   qhit LBL,  13 1 MOVZ,                        \ reserved pin or set bit -> protected
    qdone LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
    SP SP 32 ADDI,  RET, ;
@@ -2684,22 +2811,6 @@ SOURCE-INIT
 
 variable LHIDXADD
 variable LHIDXBUILD
-
-\ Emit the FNV-1a fold+hash of the name at reg `nr` (ptr), length `lr`,
-\ into reg `hr`; clobbers c3 c4 (byte/fold scratch) and c7 (cursor). The
-\ fold is the same A-Z|0x20 idiom the FIND compare uses.
-: C-HIDX-HASH ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
-   LBL LBL {: hl:label hd:label :}
-   hr $CBF29CE484222325 LIT64,
-   c7 0 MOVZ,
-   hl LBL,  c7 lr CMP,  C-GE hd BCOND,
-      c4 nr c7 ADD,  c4 c4 0 LDRB,
-      c3 c4 $41 SUBI,  c3 $1A CMPI,  c3 C-CC CSET,  c3 c3 5 LSLI,  c4 c4 c3 ORR,
-      hr hr c4 EOR,
-      c3 $100000001B3 LIT64,
-      hr hr c3 MUL,
-      c7 c7 1 ADDI,  hl B,
-   hd LBL, ;
 
 \ Emit: insert record index x3 into table x14. The dictionary rejects
 \ duplicate definitions, so the table is insert-once: probe to the first
@@ -2824,6 +2935,10 @@ variable FIND-HCMP
 variable FIND-HMATCH
 
 : EMIT-FIND ( -- )
+   \ The qualifier probe's labels are lexical: the file's older passes keep
+   \ theirs in variables, but a label only has to reach the emit it names, and
+   \ these five never leave this word.
+   LBL LBL LBL LBL LBL {: qlin:label qhloop:label qhnext:label qhinl:label qhcmp:label :}
    LFIND LABEL@ LBL,
    LBL FIND-QSCAN !
    LBL FIND-QNONE !
@@ -2870,6 +2985,43 @@ variable FIND-HMATCH
       15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ FIND-QBAD LABEL@ BCOND,
       14 14 1 ADDI,  FIND-QTAIL LABEL@ B,
    FIND-QTAILOK LABEL@ LBL,
+      \ NAME:tail - resolve the qualifier. A wordlist is a dictionary record
+      \ like any other, distinguished only by carrying the wordlist marker -1
+      \ where a word carries its wordlist, so it is in the same hash table under
+      \ the same key rule and the same probe finds it: the head of the token as
+      \ the name and -1 as the wid. x17 is the head's length (the tail follows
+      \ the colon), and x9/x10/x13/x17 all survive the probe for the linear
+      \ fallback and for FIND-NMATCH. An empty slot means no wordlist by that
+      \ name, which is the same answer the scan's own end returns.
+      14 DATA HIDXP-CELL LDR,  14 qlin CBZ,                    \ no table -> linear
+      2 0 MOVN,                                                \ wordlist records carry wid -1
+      9 17 15 4 16 7 C-HIDX-HASH
+      6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
+      8 HIDX-SLOTS LIT64,
+   qhloop LBL,
+      16 6 2 LSLI,  16 14 16 ADD,  3 16 0 LDRW,                \ x3 = slot value (index+1)
+      3 FIND-NEND LABEL@ CBZ,                                  \ empty slot -> no such wordlist
+      4 3 1 SUBI,  4 NDICT CMP,  C-GE qhnext BCOND,            \ stale (truncated) index
+      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                 \ x5 = record ptr
+      16 5 40 LDR,  16 2 CMP,  C-NE qhnext BCOND,              \ not a wordlist record
+      16 5 16 LDR,  16 16 12 LSLI,  16 16 12 LSRI,  16 17 CMP,  C-NE qhnext BCOND,  \ name-len mismatch
+      16 5 24 ADDI,
+      3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 qhinl CBZ,
+         16 5 24 LDR,
+      qhinl LBL,
+      7 0 MOVZ,
+      qhcmp LBL,
+         7 17 CMP,  C-GE FIND-NMATCH LABEL@ BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 9 7 ADD,     4 4 0 LDRB,
+         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE qhnext BCOND,
+         7 7 1 ADDI,  qhcmp B,
+      qhnext LBL,
+         8 8 1 SUBI,  8 qlin CBZ,
+         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  qhloop B,
+   qlin LBL,
       5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    FIND-NLOOP LABEL@ LBL,
       6 FIND-NEND LABEL@ CBZ,
@@ -2897,18 +3049,35 @@ variable FIND-HMATCH
    FIND-NEND LABEL@ LBL,  RET,
    FIND-QBAD LABEL@ LBL,  RET,
    FIND-START LABEL@ LBL,
-      \ hash probe (fast path): fold+hash the name once, walk the open-addressed
-      \ chain for (name XOR wid). A validated slot (index<NDICT, wid==x2, name
-      \ equal) returns immediately; an empty slot is a probe miss and falls
-      \ through to the linear scan, which stays the authoritative fallback. x2
-      \ (wid), x9/x10 (name), x13 (result) are preserved for that fallback.
-      14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table yet -> linear
+      \ Hash probe: fold+hash the name once, walk the open-addressed chain for
+      \ (name XOR wid). A validated slot (index<NDICT, wid==x2, name equal)
+      \ returns immediately.
+      \
+      \ AN EMPTY SLOT IS AN ANSWER, NOT A GUESS: this wordlist holds no such
+      \ name, and the search moves straight to FIND-DONE - the same place the
+      \ linear scan's own miss goes, so every downstream decision (the open
+      \ package's private -> public -> global retry chain, and the final RET
+      \ with x13=0) is reached by the identical path it was reached by before.
+      \ That rests on ONE invariant: every record in [0,NDICT) is in the table.
+      \ LHIDXBUILD indexes the whole dictionary once NDICT is final at startup,
+      \ every publishing site increments NDICT and calls LHIDXADD in the same
+      \ breath, and no entry is ever removed - a truncated record's slot keeps
+      \ its stale index and is skipped, so no chain is ever cut. Slots therefore
+      \ only ever go empty -> occupied, and an insert takes the FIRST empty or
+      \ stale slot on its own chain, so nothing can hide behind an empty one.
+      \ The two ways the invariant can lapse both keep the linear scan: no table
+      \ (a failed insert cleared HIDXP-CELL, or ndict! raised NDICT over records
+      \ the table never saw - see BNDSET), and a chain walked for every slot
+      \ without meeting an empty one.
+      \
+      \ x2 (wid), x9/x10 (name), x13 (result) are preserved for that fallback.
+      14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table -> linear
       9 10 15 4 16 7 C-HIDX-HASH
       6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
       8 HIDX-SLOTS LIT64,
    FIND-HLOOP LABEL@ LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,               \ x3 = slot value (index+1)
-      3 FIND-LINEAR LABEL@ CBZ,                               \ empty slot -> probe miss
+      3 FIND-DONE LABEL@ CBZ,                                 \ empty slot -> absent from this wordlist
       4 3 1 SUBI,  4 NDICT CMP,  C-GE FIND-HNEXT LABEL@ BCOND, \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ wid mismatch (retired=-2 / other wl)

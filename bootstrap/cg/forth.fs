@@ -97,6 +97,15 @@ $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii
 86 constant ENGINE-ERROR:CALLABLE-ABI
 87 constant ENGINE-ERROR:CATCH-STACK
 88 constant ENGINE-ERROR:CODE-CERT
+\ `using` / `;using` exits (mirror of src/core/engine-error.f). Native turns these
+\ into catchable compile-dies; stage0 has no compile-die path, so each one is a
+\ named diagnostic plus the same exit status.
+89 constant ENGINE-ERROR:USING-NO-NAME    \ `using` with no following token
+90 constant ENGINE-ERROR:USING-BAD-NAME   \ `using` package name contains ':'
+91 constant ENGINE-ERROR:USING-UNKNOWN    \ `using` names no known package
+92 constant ENGINE-ERROR:USING-OVERFLOW   \ more than USE-MAX concurrent usings
+93 constant ENGINE-ERROR:USING-UNBALANCED \ `;using` with no using open
+94 constant ENGINE-ERROR:USING-AMBIGUOUS  \ bare tail resolves in more than one used public wordlist
 $D2800010 constant C-CALL-MOVZ-X16
 $F2A00010 constant C-CALL-MOVK-X16-16
 $F2C00010 constant C-CALL-MOVK-X16-32
@@ -107,12 +116,14 @@ $D63F0200 constant C-CALL-BLR-X16
 \ Second guarded band (TFAM 2b-v): protected package WID registry plus uncaught
 \ hook. Stage0 now owns the same registry shape as native so package reopen is
 \ guarded by WID identity rather than a second hard-coded package-name list.
-$3CB8 constant PROT-WID-N-CELL
-$3CC0 constant PROT-WID-OFF
-256 constant PROT-WID-MAX
-PROT-WID-OFF PROT-WID-MAX 4 * + constant PROT-WID-END
-PROT-WID-N-CELL constant PROT-REG-OFF
-$410 constant PROT-REG-LEN
+$3CB8 constant PROT-REG-TAG-CELL
+$50574249544D4150 constant PROT-REG-TAG
+$3CC0 constant PROT-BITS-OFF
+8192 constant PROT-WID-MAX
+PROT-WID-MAX 8 / constant PROT-BITS-BYTES
+PROT-BITS-OFF PROT-BITS-BYTES + constant PROT-BITS-END
+PROT-REG-TAG-CELL constant PROT-REG-OFF
+$410 constant PROT-REG-LEN   \ = PROT-BITS-END 1 cells + PROT-REG-OFF - ; band unchanged by the bitmap
 $47C0 constant OWNER-WID-N-CELL
 $47C8 constant OWNER-WID-OFF
 8 constant OWNER-WID-ROW
@@ -305,8 +316,23 @@ $40 constant PKGSNAP-STRIDE
 16 constant PKGSNAP-PRI
 24 constant PKGSNAP-PARENT
 32 constant PKGSNAP-REC
+40 constant PKGSNAP-USE                   \ in-slot: `using`-scope depth at evaluate entry
 PKGSNAP-OFF EVAL-MAX-DEPTH PKGSNAP-STRIDE * + constant PKGSNAP-END
-PKGSNAP-END constant DATA-START \ user DP begins above engine-reserved state
+\ --- `using`-scope import band. MIRROR of src/habu/layout.f, byte-for-byte: the
+\ checker (src/core/checker.f CK-USE-DEPTH-OFF) hard-codes USE-DEPTH-CELL as a
+\ DATA-relative offset and reads it in whatever engine compiled it, so a stage0
+\ engine whose band sits elsewhere would feed the checker heap bytes instead of a
+\ depth. `using NAME` pushes NAME's public wordlist id here; `;using`, `;package`
+\ and the end of an evaluate frame pop back. The depth is 0 at rest, so the band
+\ is transient like PKGSNAP. Offset +16 is native's REPL-line save slot: stage0
+\ takes no REPL package/using snapshot, so it stays reserved and unread here.
+16 constant USE-MAX                       \ concurrent `using` capacity (exit on overflow)
+PKGSNAP-END constant USE-BAND-OFF
+USE-BAND-OFF          constant USE-DEPTH-CELL    \ live using depth (u64)
+USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL \ depth saved at `package` open (`;package` restores)
+USE-BAND-OFF 24 +     constant USE-WIDS-OFF      \ public-wid array base (USE-MAX u64 cells)
+USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
+USE-BAND-END constant DATA-START \ user DP begins above engine-reserved state
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
 create DOTQ-KW 46 c, 34 c,
@@ -420,6 +446,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
 variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
+variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
 variable LRESCHECKCERT variable LRESLOWERCERT variable LRESLOWERHOOK variable LRESENGINEERROR
 variable LKWAT2 variable LKWSTORE2 variable LP2FETCH variable LP2STORE
@@ -630,6 +657,7 @@ previous definitions
    13 DATA PKG-PRI-CELL LDR,    13 12 PKGSNAP-PRI STR,
    13 DATA PKG-PARENT-CELL LDR, 13 12 PKGSNAP-PARENT STR,
    13 DATA PKG-REC-CELL LDR,    13 12 PKGSNAP-REC STR,
+   13 USE-DEPTH-CELL LIT64,  13 DATA 13 ADD,  13 13 0 LDR,  13 12 PKGSNAP-USE STR,   \ usings are frame-local
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
    9 DATA INP-CELL STR,                              \ INP = a
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
@@ -1052,30 +1080,41 @@ previous definitions
    10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROTREC @ BL, ;
 \ Recovery and native use the same protected-WID registry contract.
+\ xw = WID -> xa = &bitmap word holding its bit, xm = that bit's mask; xscratch dies.
+\ Callers must have proved w < PROT-WID-MAX, which is what keeps xa inside the band.
+: PROT-BITS-AT, ( bits w a m scratch -- ) {: bits w a m scratch :} \ typed-local-lint: allow-bare-local
+   scratch w 6 LSRI,  scratch scratch 3 LSLI,
+   a bits scratch ADD,
+   m w 63 ANDI,
+   scratch 1 MOVZ,  m scratch m LSLV, ;
+
+: PROT-BITS-ADDR, ( base w a m scratch -- ) {: base w a m scratch :} \ typed-local-lint: allow-bare-local
+   a PROT-BITS-OFF MOVZ,  a base a ADD,
+   a w a m scratch PROT-BITS-AT, ;
+
 : BPROTWIDADD ( -- )
-   LBL LBL LBL {: room done msg :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: ok done msg :} \ typed-local-lint: allow-bare-local
    9 G-POP
    LPROTWIDQ @ BL,
    13 done CBNZ,
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 LDAR,
-   14 PROT-WID-MAX CMPI,  C-LT room BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,
+   15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 36 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  s" hb: protected-WID table full" BYTES,
-   room LBL,
-   15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
-   16 14 2 LSLI,  15 15 16 ADD,
-   9 15 0 STRW,                                      \ initialize row before release-publishing count
-   14 14 1 ADDI,
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 STLR,
+      msg LBL,  s" hb: protected-WID id above the bound" BYTES,
+   ok LBL,
+   DATA 9 15 14 16 PROT-BITS-ADDR,
+   16 15 LDAR,
+   16 16 14 ORR,
+   16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
 
 : BPROTWIDROOM ( -- )
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 LDAR,
+   LBL {: pos :} \ typed-local-lint: allow-bare-local
+   14 DATA WIDN-CELL LDR,
    9 PROT-WID-MAX MOVZ,  9 9 14 SUB,
+   14 0 MOVZ,  9 14 CMP,  C-GT pos BCOND,
+      9 0 MOVZ,
+   pos LBL,
    9 G-PUSH ;
 
 \ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
@@ -1146,8 +1185,16 @@ previous definitions
    s" 2dup" ['] B2DUP FPRIM-L   s" 2drop" ['] B2DROP FPRIM-L
    s" 2swap" ['] B2SWAP FPRIM-L  s" 2over" ['] B2OVER FPRIM-L  s" ?dup" ['] BQDUP FPRIM-L ;
 
+\ xt! ( q ptr q -- ): in the native engine this stores an execution token AND
+\ declares the cell to the snapshot address-cell table (src/habu/habu2.f
+\ BXTSTORE). This recovery seed has no address-cell table and no relocating
+\ snapshot format of its own -- it carries SNAP-FORMAT-VERSION 3 and each build
+\ path relocates its own format -- so here the word is exactly the store, which
+\ is what src/core/declaration-transaction.f needs from it while the seed
+\ compiles the sources that build the real bin/hb.
 : EMIT-MEMORY-PRIMS ( -- )
    s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" xt!"  ['] BSTORE FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
@@ -1344,18 +1391,17 @@ previous definitions
    RET, ;
 
 : EMIT-PROTWID ( -- )
-   LBL LBL LBL {: loop next done :} \ typed-local-lint: allow-bare-local
+   LBL {: done :} \ typed-local-lint: allow-bare-local
    LPROTWIDQ @ LBL,
    SP SP 32 SUBI,
    5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  14 SP 24 STR,
    13 0 MOVZ,
-   6 DATA PROT-WID-N-CELL LDR,
-   7 0 MOVZ,
-   5 PROT-WID-OFF MOVZ,  5 DATA 5 ADD,
-   loop LBL,  7 6 CMP,  C-GE done BCOND,
-      14 5 0 LDRW,  14 9 CMP,  C-NE next BCOND,
-         13 1 MOVZ,  done B,
-      next LBL,  5 5 4 ADDI,  7 7 1 ADDI,  loop B,
+   5 PROT-WID-MAX MOVZ,  9 5 CMP,  C-CS done BCOND,
+   DATA 9 5 14 6 PROT-BITS-ADDR,
+   7 5 LDAR,
+   7 7 14 AND,
+   7 done CBZ,
+   13 1 MOVZ,
    done LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
    SP SP 32 ADDI,  RET, ;
@@ -1460,6 +1506,84 @@ previous definitions
       15 15 8 ORR,
       13 1 MOVZ,  13 13 15 ORR,
       11 5 0 LDR,  RET, ;
+
+\ Labeled fd-2 diagnostic tail shared by the `using` failure legs: the caller has
+\ already written its message, so this appends the offending token, a newline and
+\ exits rc. Native routes the same failures through C-DIE-TOKEN-NL, which can be
+\ caught inside evaluate; stage0 has no compile-die path and exits.
+: C-USING-DIE-TOKEN ( n -- ) {: rc :} \ typed-local-lint: allow-bare-local
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ ---- FIND-USED ( x9=tka x10=tkl -- x11=addr x12=clen x13=found|imm<<1|wide<<3 ) ----
+\ Mirror of src/habu/habu2.f EMIT-FIND-USED. Searched ONLY after the open-scope +
+\ global FIND above has missed, so a `using` import is purely additive and can
+\ never shadow a name that already resolves. One dictionary pass collects records
+\ whose wid is one of the live USE-WIDS[0..depth) and whose folded name equals the
+\ token; a second distinct match is the ambiguity hard error. Qualified tokens
+\ (containing ':') never resolve here — they already searched their own package.
+\ x9/x10 and XDS/DATA are preserved; the flag word is assembled exactly like
+\ EMIT-FIND's `have` leg (stage0 records carry no DNAME-INT / min-in band).
+: EMIT-FIND-USED ( -- )
+   LFINDUSED @ LBL,
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: qscan qnone ret uloop mloop member ninl ncmp nmatch unext udone amb ambmsg :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   13 0 MOVZ,
+   17 0 MOVZ,
+   qscan LBL,
+      17 10 CMP,  C-GE qnone BCOND,
+      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ ret BCOND,   \ colon -> not a bare tail; miss
+      17 17 1 ADDI,  qscan B,
+   qnone LBL,
+   14 USE-DEPTH-CELL LIT64,  14 DATA 14 ADD,  8 14 0 LDR,          \ x8 = live using depth
+   8 ret CBZ,                                                      \ no usings -> miss
+   7 USE-WIDS-OFF LIT64,  7 DATA 7 ADD,                            \ x7 = &USE-WIDS[0]
+   16 0 MOVZ,  6 0 MOVZ,                                           \ x16 = matched record (0=none), x6 = match count
+   5 DBASE 0 ADDI,  4 NDICT 0 ADDI,
+   uloop LBL,
+      4 udone CBZ,
+      14 5 40 LDR,                                                 \ x14 = record wid
+      3 0 MOVZ,
+      mloop LBL,
+         3 8 CMP,  C-GE unext BCOND,                               \ record wid not among used wids -> skip
+         2 3 3 LSLI,  2 7 2 ADD,  15 2 0 LDR,                      \ x15 = USE-WIDS[x3]
+         15 14 CMP,  C-EQ member BCOND,
+         3 3 1 ADDI,  mloop B,
+      member LBL,
+         15 5 16 LDR,  15 15 12 LSLI,  15 15 12 LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
+         2 5 24 ADDI,
+         14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
+            2 5 24 LDR,
+         ninl LBL,
+         17 0 MOVZ,
+         ncmp LBL,
+            17 10 CMP,  C-GE nmatch BCOND,
+            15 2 17 ADD,  15 15 0 LDRB,
+            3 15 $41 SUBI,  3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+            14 9 17 ADD,  14 14 0 LDRB,
+            3 14 $41 SUBI,  3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  14 14 3 ORR,
+            15 14 CMP,  C-NE unext BCOND,
+            17 17 1 ADDI,  ncmp B,
+         nmatch LBL,
+            6 6 1 ADDI,  16 5 0 ADDI,                              \ count++, remember record
+            6 2 CMPI,  C-GE amb BCOND,                             \ 2nd distinct match -> ambiguous
+      unext LBL,  5 5 DREC ADDI,  4 4 1 SUBI,  uloop B,
+   udone LBL,
+   16 ret CBZ,                                                     \ no match -> x13=0 miss
+   5 16 0 ADDI,
+   11 5 0 LDR,  12 5 8 LDR,
+   14 5 16 LDR,
+   15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
+   14 14 DNAME-IMM ANDI,   14 14 59 LSRI,
+   14 14 15 ORR,
+   13 1 MOVZ,  13 13 14 ORR,
+   ret LBL,  RET,
+   amb LBL,
+      0 2 MOVZ,  1 ambmsg ADR,  2 60 MOVZ,  NR-WRITE SYS,
+      ENGINE-ERROR:USING-AMBIGUOUS C-USING-DIE-TOKEN     \ exit_group: no caller resumes, so the compile
+                                                        \ loop's RW code region needs no flip back to RX
+   ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
 
 \ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok ) ----
 \ Accepts decimal and $hex, each with an optional leading '-'.  x6=base, x7=digit.
@@ -2474,6 +2598,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWPACKAGE @ LBL, s" package" BYTES,  LKWPUBLIC @ LBL, s" public" BYTES,
    LKWPRIVATE @ LBL, s" private" BYTES,  LKWSEMIPACKAGE @ LBL, s" ;package" BYTES,
+   LKWUSING @ LBL, s" using" BYTES,  LKWSEMIUSING @ LBL, s" ;using" BYTES,
+   LCHKUSING @ LBL, s" checker-using" BYTES,
    LCHKPACKAGE @ LBL, s" checker-package" BYTES,  LCHKPUB @ LBL, s" checker-public" BYTES,
    LCHKPRI @ LBL, s" checker-private" BYTES,  LCHKENDPKG @ LBL, s" checker-end-package" BYTES,
    LCHKDEFER @ LBL, s" checker-defer" BYTES,
@@ -2598,7 +2724,27 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
+\ Recovery-seed mirror of the native J-LVREQUIRE (dot habu-fix-loop-closer-
+\ 9e5d012e). The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF level
+\ arrays) is the loop family's opener record, and LCFPOP's orphan guard does
+\ not cover it: with no open `do` the family indexed level -1, and LVH-OFF's
+\ cell -1 IS LVD-CELL itself (adjacent, $578/$580). `loop`/`+loop` then handed
+\ that junk head offset to LBCHAIN and took SIGSEGV; `leave` silently stored a
+\ code offset into LVD-CELL, forging an open-level count out of nothing.
+\ Guarding `leave` as well is what keeps LVD-CELL a sole-writer count of open
+\ `do` levels, so the loop guard is an existence check rather than a value test
+\ a stray earlier `leave` could defeat. Fail closed on the offending token
+\ exactly like the inline LCFPOP orphan reject above.
+: J-LVREQUIRE ( -- )                    \ reject a loop-family word with no open DO level
+   LBL {: lvok :}   \ typed-local-lint: allow-bare-local (gforth-hosted control-flow label id, like cfok in LCFPOP)
+   9 DATA LVD-CELL LDR,  9 lvok CBNZ,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,   \ write the offending token
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   lvok LBL, ;
+
 : J-LVLEAVE ( -- )                      \ chain a B placeholder on the current level
+   J-LVREQUIRE
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
    14 10 0 LDR,  15 DATA LOCF-CELL LDR,  12 15 14 SUB,  C-EMIT-DROP-X12
@@ -2631,6 +2777,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBCHAIN @ BL, ;
 
 : J-LOOP ( -- )
+   J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP @ BL,                                        \ x9 = loop-top
@@ -2639,6 +2786,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    J-LOOPEND ;
 
 : J-+LOOP ( -- )                   \ index += n; loop while (old-limit) and
+   J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
    $D1002273 C-EMITW  $F9400269 C-EMITW  \ (new-limit) agree in sign (ANS crossing)
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
@@ -3193,11 +3341,16 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
 : C-TICK ( -- )
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   LBL {: tk :}  13 tk CBZ, \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL {: twide :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL LBL {: tk twide usedtry found :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   13 usedtry CBZ,                      \ open-scope + global miss -> try the used publics (` ' SUITE` under a `using`)
+   found LBL,
    14 13 8 ANDI,  14 twide CBNZ,        \ DNAME-WIDE gate (mirror of native C-TICK; inert in stage0)
    11 G-PUSH  tk B,
    twide LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   usedtry LBL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED @ BL,
+      13 tk CBZ,                        \ undefined `' X` stays the pre-existing no-op
+      found B,
    tk LBL, ;
 
 : C-BTICK ( -- )
@@ -3376,6 +3529,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    2 3 MOVZ,  LPROT @ BL,
    C-PACKAGE-ENSURE
    2 5 MOVZ,  LPROT @ BL,
+   \ remember the using-scope depth at package open; `;package` restores it so
+   \ usings opened inside this package block end at ;package (x9/x10 scratch;
+   \ x11/x12/x5 hold the package wids/record and stay live for the stores below).
+   9 USE-DEPTH-CELL LIT64,  9 DATA 9 ADD,  10 9 0 LDR,
+   9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  10 9 0 STR,
    9 DATA CUR-CELL LDR,  9 DATA PKG-PARENT-CELL STR,
    11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
    5 DATA PKG-REC-CELL STR,
@@ -3406,7 +3564,87 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 DATA PKG-PARENT-CELL LDR,  9 DATA CUR-CELL STR,
    9 0 MOVZ,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,
-   9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR, ;
+   9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
+   \ restore the using-scope depth to the package-open boundary: usings opened
+   \ inside this package block end here (mirrors habu2.f C-END-PACKAGE).
+   9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  10 9 0 LDR,
+   9 USE-DEPTH-CELL LIT64,  9 DATA 9 ADD,  10 9 0 STR, ;
+
+\ ---- `using NAME` / `;using`: consumer-side package import. Mirror of
+\ src/habu/habu2.f C-USING / C-END-USING. `using NAME` makes package NAME's
+\ PUBLIC wordlist visible to bare lookup until the matching `;using`, the
+\ enclosing `;package`, or the end of the evaluate frame that opened it. Only the
+\ public wid joins the search (privates stay invisible), definitions still land in
+\ the current scope's wordlist, and qualified NAME:WORD is unchanged.
+: C-USING-CHECK-CALL ( -- )   \ mirror the name into checker.f CHK-USE-NAMES when the checker is loaded
+   LBL {: done :} \ typed-local-lint: allow-bare-local
+   LCHKUSING 13 done C-P2-FIND-CHECKER            \ 13 = len "checker-using"
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   done LBL, ;
+
+: C-USING-NAME-GUARD ( -- )   \ consume the next token; reject a missing name / a ':' in it
+   LBL LBL LBL LBL LBL LBL {: mmiss hastok cscan cbad cmsg cok :} \ typed-local-lint: allow-bare-local
+   LTOK @ BL,  0 hastok CBNZ,
+      0 2 MOVZ,  1 mmiss ADR,  2 31 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:USING-NO-NAME MOVZ,  NR-EXIT-GROUP SYS,
+   mmiss LBL,  s" hb: using: missing package name" BYTES,
+   hastok LBL,
+   14 0 MOVZ,
+   cscan LBL,
+      15 DATA TKL-CELL LDR,  14 15 CMP,  C-GE cok BCOND,
+      15 DATA TKA-CELL LDR,  15 15 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ cbad BCOND,
+      14 14 1 ADDI,  cscan B,
+   cbad LBL,
+      0 2 MOVZ,  1 cmsg ADR,  2 46 MOVZ,  NR-WRITE SYS,
+      ENGINE-ERROR:USING-BAD-NAME C-USING-DIE-TOKEN
+   cmsg LBL,  s" hb: using: package name must not contain ':': " BYTES,
+   cok LBL, ;
+
+: C-USING-WID ( -- )   \ TKA/TKL name a package -> x2 = its public WID; die unknown otherwise
+   LBL LBL LBL LBL LBL LBL {: loop miss hit notfound umsg done :} \ typed-local-lint: allow-bare-local
+   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   loop LBL,
+      6 notfound CBZ,
+      hit miss C-PACKAGE-RECORD-MATCH            \ x5 = candidate; hit iff wid==-1 && name==token
+      hit LBL,  2 5 0 LDR,  done B,              \ x2 = record[0] = package public WID
+      miss LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
+   notfound LBL,
+      0 2 MOVZ,  1 umsg ADR,  2 28 MOVZ,  NR-WRITE SYS,
+      ENGINE-ERROR:USING-UNKNOWN C-USING-DIE-TOKEN
+   umsg LBL,  s" hb: using: unknown package: " BYTES,
+   done LBL, ;
+
+: C-USING-PUSH ( -- )   \ x2 = public WID; push it onto the using stack (overflow -> die)
+   LBL LBL {: fmsg pushok :} \ typed-local-lint: allow-bare-local
+   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (overflow test)
+   14 USE-MAX MOVZ,  8 14 CMP,  C-LT pushok BCOND,
+      0 2 MOVZ,  1 fmsg ADR,  2 39 MOVZ,  NR-WRITE SYS,
+      ENGINE-ERROR:USING-OVERFLOW C-USING-DIE-TOKEN
+   fmsg LBL,  s" hb: using: too many concurrent usings: " BYTES,
+   pushok LBL,
+      7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,   \ reload depth on the accepted path
+      14 USE-WIDS-OFF LIT64,  14 DATA 14 ADD,  15 8 3 LSLI,  14 14 15 ADD,  2 14 0 STR,   \ USE-WIDS[depth] = wid
+      C-USING-CHECK-CALL                                   \ reads the pre-increment depth
+      7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 ADDI,  8 7 0 STR, ;      \ depth++
+
+: C-USING ( -- )
+   C-USING-NAME-GUARD
+   C-USING-WID
+   C-USING-PUSH ;
+
+: C-END-USING ( -- )
+   LBL LBL {: ok umsg :} \ typed-local-lint: allow-bare-local
+   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (underflow test)
+   8 ok CBNZ,
+      0 2 MOVZ,  1 umsg ADR,  2 32 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:USING-UNBALANCED MOVZ,  NR-EXIT-GROUP SYS,
+   umsg LBL,  s" hb: ;using without an open using" BYTES,
+   ok LBL,
+   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ depth--
 
 : EM-REC-WIDE-PUBLISH ( -- )
    LBL {: nohook :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
@@ -4151,25 +4389,26 @@ variable CFSK2
       oscan onext odone owner-prot owner-prev-start owner-prev owner-next widn \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
       name-inline name-ready name-loop name-ok pkg-scan pkg-inline \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
       pkg-ready pkg-bytes pkg-hit pkg-next pkg-done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+   5 PROT-BITS-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,
    25 10 6 SUB,
    16 15 0 ADDI,
-   11 10 PROT-WID-N-CELL LDR,
-   11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
-   12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
-   17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
-   prot-loop LBL,  8 11 CMP,  C-GE owners BCOND,
-      14 9 0 LDRW,  14 bad CBZ,
-      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
-      14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
+   11 10 PROT-REG-TAG-CELL LDR,
+   5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND,
+   12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,
+   2 12 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,
+   17 0 MOVZ,  8 PROT-BITS-BYTES MOVZ,
+   prot-loop LBL,  8 owners CBZ,
+      8 8 8 SUBI,
+      9 12 8 ADD,  9 9 0 LDR,
+      9 prot-max CBNZ,
+      prot-loop B,
    prot-max LBL,
-      4 0 MOVZ,  5 12 0 ADDI,
-   prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
-      2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
-      5 5 4 ADDI,  4 4 1 ADDI,  prot-inner B,
+      17 8 3 LSLI,  5 0 MOVZ,
+   prot-inner LBL,  9 prot-next CBZ,
+      9 9 1 LSRI,  5 5 1 ADDI,  prot-inner B,
    prot-next LBL,
-      9 9 4 ADDI,  8 8 1 ADDI,  prot-loop B,
+      17 17 5 ADD,  17 17 1 SUBI,
 
    owners LBL,
    5 OWNER-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
@@ -4250,11 +4489,14 @@ variable CFSK2
          22 22 DREC ADDI,  23 23 1 SUBI,  pkg-scan B,
       pkg-done LBL,
          24 1 CMPI,  C-NE bad BCOND,
-      4 0 MOVZ,  12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
-   owner-prot LBL,  4 11 CMP,  C-GE owner-prev-start BCOND,
-      2 12 0 LDRW,
-      14 2 CMP,  C-EQ bad BCOND,  15 2 CMP,  C-EQ bad BCOND,
-      12 12 4 ADDI,  4 4 1 ADDI,  owner-prot B,
+      12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,
+      2 PROT-WID-MAX MOVZ,  14 2 CMP,  C-CS owner-prot BCOND,
+         12 14 4 3 2 PROT-BITS-AT,
+         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
+   owner-prot LBL,
+      2 PROT-WID-MAX MOVZ,  15 2 CMP,  C-CS owner-prev-start BCOND,
+         12 15 4 3 2 PROT-BITS-AT,
+         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
    owner-prev-start LBL,
       4 0 MOVZ,  12 9 0 ADDI,
    owner-prev LBL,  4 8 CMP,  C-GE owner-next BCOND,
@@ -4335,15 +4577,21 @@ variable CFSK2
    snomag LBL, ;
 
 : EMIT-STARTUP-RUNTIME-STATE ( -- )
-   LBL {: cwok :}
+   LBL LBL LBL {: cwok pwclr pwclrd :} \ typed-local-lint: allow-bare-local
    9 0 MOVZ,  9 DATA HND-CELL STR,
    9 DATA SNAP-CELL LDR,
    9 cwok CBNZ,
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
-   9 DATA PROT-WID-N-CELL STR,
    9 DATA OWNER-WID-N-CELL STR,
+   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
+   11 PROT-BITS-BYTES MOVZ,
+   pwclr LBL,  11 pwclrd CBZ,
+      9 10 0 STR,  10 10 8 ADDI,  11 11 8 SUBI,  pwclr B,
+   pwclrd LBL,
+   9 PROT-REG-TAG LIT64,  9 DATA PROT-REG-TAG-CELL STR,
+   9 0 MOVZ,
    cwok LBL,
    9 0 MOVZ,  9 DATA REPLH-CELL STR,
    9 DATA LOOPSP-CELL STR,
@@ -5462,6 +5710,8 @@ variable P2SK
    lmain LKWPUBLIC 6 ['] C-PUBLIC CF-ENTRY
    lmain LKWPRIVATE 7 ['] C-PRIVATE CF-ENTRY
    lmain LKWSEMIPACKAGE 8 ['] C-END-PACKAGE CF-ENTRY
+   lmain LKWUSING 5 ['] C-USING CF-ENTRY
+   lmain LKWSEMIUSING 6 ['] C-END-USING CF-ENTRY
    lmain LKWCREATE 6 ['] C-CREATE   CF-ENTRY
    lmain LKWVAR    8 ['] C-VARIABLE CF-ENTRY
    lmain LKWCONST  8 ['] C-CONSTANT CF-ENTRY
@@ -5479,11 +5729,16 @@ variable P2SK
    12 lnotnum CBZ,  11 G-PUSH  lmain B,
    lnotnum LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   13 lundef CBZ,
-   LBL {: lwide :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL {: lwide usedtry found :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   13 usedtry CBZ,                      \ open-scope + global miss -> try the used publics
+   found LBL,
    14 13 8 ANDI,  14 lwide CBNZ,        \ DNAME-WIDE gate (mirror of EM-INTERPRET-FIND; inert in stage0)
    11 BLR,  lmain B,
-   lwide LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
+   lwide LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   usedtry LBL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED @ BL,
+      13 lundef CBZ,                    \ still nothing -> undefined
+      found B, ;                        \ resolved via a used package: rejoin the normal dispatch
 
 : EMIT-INTERPRET ( n n -- ) {: lmain lundef :}
    LBL {: lnotcolon :}
@@ -5719,7 +5974,9 @@ variable P2SK
    noxc LBL,
    LVSPILL @ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   13 lundef CBZ,
+   LBL LBL {: usedtry found :} \ typed-local-lint: allow-bare-local - Gforth label ids
+   13 usedtry CBZ,                                \ open-scope + global miss -> try the used publics
+   found LBL,
    14 13 2 ANDI,  14 notimm CBZ,
       SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
       2 5 MOVZ,  LPROT @ BL,
@@ -5737,7 +5994,11 @@ variable P2SK
       30 SP 0 LDR,  SP SP 32 ADDI,
       lmain B,
    notimm LBL,
-   C-CALL  lmain B, ;
+   C-CALL  lmain B,
+   usedtry LBL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED @ BL,   \ used-publics resolution (ambiguity dies)
+      13 lundef CBZ,                              \ still nothing -> undefined in this body
+      found B, ;                                  \ resolved via a used package: rejoin the normal compile path
 
 \ construct lowering (TFAM 10 slice 2; mirrors habu2.f C-FIND-GLOBAL and the
 \ EM-ADT-CON-* operand steps. The bridge names are global compiler services, so
@@ -6014,6 +6275,16 @@ variable P2SK
    9 DATA CMFRD-CELL STR,  9 DATA CMBK-CELL STR,
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
 
+\ Restore the using-scope depth to the entry snapshot of the frame being left
+\ (PKGSNAP[EVALD].PKGSNAP-USE; both callers have already decremented EVALD).
+\ Usings are file-local: leaving an evaluate closes whatever it opened, on the
+\ clean path and on the error path alike. x9/x15 scratch; x14 (frame addr) kept.
+: EMIT-USE-DEPTH-RESTORE ( -- )
+   9 DATA EVALD-CELL LDR,
+   15 PKGSNAP-OFF LIT64,  9 9 PKGSNAP-SHIFT LSLI,  15 15 9 ADD,  15 DATA 15 ADD,
+   9 15 PKGSNAP-USE LDR,
+   15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR, ;
+
 : EMIT-EVAL-UNDEF-ROLLBACK ( -- )
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
    9 14 15 C-EVAL-FRAME-ADDR
@@ -6023,6 +6294,7 @@ variable P2SK
    9 14 0 LDR,  9 DATA INP-CELL STR,
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 1 MOVZ,  9 DATA EVALERR-CELL STR,
+   EMIT-USE-DEPTH-RESTORE
    9 14 24 LDR,  SP 9 0 ADDI,
    9 14 16 LDR,  9 BR, ;
 
@@ -6059,6 +6331,8 @@ variable P2SK
       12 10 PKGSNAP-PRI LDR,     12 DATA PKG-PRI-CELL STR,
       12 10 PKGSNAP-PARENT LDR,  12 DATA PKG-PARENT-CELL STR,
       12 10 PKGSNAP-REC LDR,     12 DATA PKG-REC-CELL STR,
+      12 10 PKGSNAP-USE LDR,                                  \ roll the using-scope depth back too
+      10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  12 10 0 STR,
       12 1 MOVZ,  12 DATA PKGRESYNC-CELL STR,
       15 DATA EVALERR-CELL STR,
       9 DATA EVALD-CELL STR,
@@ -6092,6 +6366,7 @@ variable P2SK
    9 14 0 LDR,  9 DATA INP-CELL STR,
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 0 MOVZ,  9 DATA EVALERR-CELL STR,
+   EMIT-USE-DEPTH-RESTORE                             \ end of load file: usings do not leak to the caller
    9 14 16 LDR,  9 BR, ;
 
 : EMIT-REPL-READ ( n -- ) {: lmain :}
@@ -6137,7 +6412,7 @@ variable P2SK
    ICODE-RESET  CF-RESET  0 #PL !  0 PNP ! ;
 
 : EMIT-LABEL-CORE ( -- )
-   LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
@@ -6166,6 +6441,7 @@ variable P2SK
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
+   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !
    LBL LRESCHECKCERT !  LBL LRESLOWERCERT !  LBL LRESLOWERHOOK !  LBL LRESENGINEERROR !
    LBL LKWQUOT !  LBL LKWSEMIQ !
@@ -6252,6 +6528,7 @@ variable P2SK
    EMIT-PROTWID
    EMIT-FLUSH
    EMIT-FIND
+   EMIT-FIND-USED
    EMIT-NUM ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )

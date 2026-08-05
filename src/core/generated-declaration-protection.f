@@ -119,6 +119,11 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
       data-base WIDN-CELL + @ dup 0 < swap WID-MAX > or
          IF E-PROTECTION-CAP throw THEN
    THEN
+   \ `words` counts the dictionary entries this declaration generates, NOT the
+   \ wordlists it protects -- a family generating twenty words still protects one
+   \ constructor wordlist. So the early gate is "generates anything at all, and the
+   \ registry has no room", and PREPARE does the exact arithmetic later against the
+   \ STAGED wordlist count, which is the quantity that matches prot-wid-room.
    words 0 > prot-wid-room 0= and IF E-PROTECTION-CAP throw THEN
    STAGE-ENSURE ;
 

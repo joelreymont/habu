@@ -14,8 +14,8 @@
 \ this process, which is all SNAPGO needs; the REPL hook in the image is the
 \ standard HOOK from the retained check-hook.f.
 \
-\ SNAP-RETIRE-GO is a named TRUSTED: build-driver boundary (audited in
-\ TRUSTED.md): SNAPGO lives in require'd snap-lib.f outside the assembled
+\ SNAP-RETIRE-GO is a named TRUSTED: build-driver boundary: SNAPGO lives in
+\ require'd snap-lib.f outside the assembled
 \ snap source the staged fixpoint pre-pass certifies, and CHECKER-SNAPSHOT-
 \ PREPARE/INCLUDE-SNAPSHOT-PREPARE are prefix-internal words with no charted
 \ effects. The word never survives into the image (its own entry and code sit
@@ -25,6 +25,11 @@
 \ pin the refresh prelude's BFR-CHECK-OFF as the only one.
 
 require src/habu/snap-lib.f
+
+\ The image writer lives in package SNAP (src/habu/snap-lib.f). Import its
+\ public wordlist for the rest of this file so the driver below can call
+\ SNAPGO by its plain name; the import ends with this load file.
+using SNAP
 
 \ Seal the test-only final-close fault seam: a snapshot suite arms it by
 \ injecting its source ahead of this driver, so the arm has already happened by

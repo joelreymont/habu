@@ -167,6 +167,7 @@ TRUSTED: MULTI-COUNT+ ( -- ) 1 MULTI-ERR-N +! ;
 7175 constant C-DICT-CAP    \ generated-declaration-dictionary.f E-DICTIONARY-CAP
 7176 constant C-CTOR-ARM    \ E-CTOR-ARM, below in this file
 7177 constant C-REPLAY-BUSY \ DECL-REPLAY:E-REPLAY-BUSY, below in this file
+7169 constant C-PROTECTION-CAP \ generated-declaration-protection.f E-PROTECTION-CAP
 7190 constant C-MAKE-FAM    \ structure-make.f E-SM-FAM
 7191 constant C-MAKE-EMPTY  \ structure-make.f E-SM-EMPTY
 
@@ -233,11 +234,23 @@ variable ARMED              \ the code the armed reason explains (NO-CODE = none
    code C-MAKE-EMPTY   = IF s" a constructed family needs at least one field" FOUND EXIT THEN
    NOTHING$ MISSING ;
 
+\ The protection owner raises one code for one condition: there is no room left to
+\ protect the constructor wordlists this declaration needs.  It went unmapped for a
+\ long time, so an exhausted registry printed the FALLBACK$ text against whatever
+\ family happened to declare next -- the maki competitive-evidence red was
+\ misattributed to an innocent enum for two days because of exactly that.  The
+\ reason names the registry, so the reader looks at capacity instead of at the
+\ declaration in front of them.
+: REASON-PROTECTION ( n -- ptr u8 n bool ) {: code:n :}
+   code C-PROTECTION-CAP = IF s" the protected-wordlist registry is full" FOUND EXIT THEN
+   NOTHING$ MISSING ;
+
 : CODE-REASON ( n -- ptr u8 n ) {: code:n :}
-   code REASON-GRAMMAR IF EXIT THEN 2drop
-   code REASON-NAME    IF EXIT THEN 2drop
-   code REASON-FIELD   IF EXIT THEN 2drop
-   code REASON-TXN     IF EXIT THEN 2drop
+   code REASON-GRAMMAR    IF EXIT THEN 2drop
+   code REASON-NAME       IF EXIT THEN 2drop
+   code REASON-FIELD      IF EXIT THEN 2drop
+   code REASON-TXN        IF EXIT THEN 2drop
+   code REASON-PROTECTION IF EXIT THEN 2drop
    FALLBACK$ ;
 
 \ An armed reason describes ONE code.  If a different code escaped, the arming

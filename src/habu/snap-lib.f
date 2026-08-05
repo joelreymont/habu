@@ -2,10 +2,25 @@
 \
 \ Load after target image emission words (`BUILD-SNAP-HDR`, `SNAP-DROP`,
 \ `SNAP-EXTRA-PTR`, `SNAP-EXTRA-SIZE`) and driver I/O. Entry files decide when
-\ to prepare checker/include state and call SNAPGO.
+\ to prepare checker/include state and call the writer's `SNAPGO`.
+\
+\ Everything here belongs to package SNAP. The only word an entry file needs is
+\ the public `SNAP:SNAPGO`; `SNAP:INSTALL-HOOK` is the audited trusted entry
+\ that freezes the verify-on-definition hook into an emitted image. The writer
+\ state and the scratch-copy machinery stay package-private.
+\
+\ The public entry keeps its historic spelling `SNAPGO` rather than a shorter
+\ tail: src/habu/snap.f still defines global words, so renaming the call site
+\ would make its driver a changed global definition and pull that file (and the
+\ build-fixpoint test that pins its emitted text) into this change. Those files
+\ get their own package owners under a separate dot; snap.f imports this
+\ package with `using SNAP` in the meantime.
+
+package SNAP
 
 \ output path — the single knob; build-fixpoint owns/moves the artifact
-: SNAP-OUT s" hb-snap0" TMP-PATH ;
+: OUT-PATH ( -- ptr u8 n )
+   s" hb-snap0" TMP-PATH ;
 
 \ Snapshot trailer format version (item 12 slice 3b, dot
 \ habu-snapshot-format-ver): once 3b bakes nonzero hidden-field counts into the
@@ -32,36 +47,36 @@ s" STB-CELL@" s" -- ptr n" TRUST
 : SDB@ SDB @ ;
 s" SDB@" s" -- ptr u8" TRUST
 
-: SNAP-SIZE! ( -- )
+: SIZE! ( -- )
    STSZ @ SCL @ + SDL @ + 48 + SNL ! ;   \ +48: 48-byte format-versioned trailer
 
-: SNAP-HDR! ( -- snap )
+: HDR! ( -- snap )
    SNL @ BUILD-SNAP-HDR SFTS ! ;
 
-: SNAP-PAD! ( -- snap )
-   SNAP-HDR!
+: PAD! ( -- snap )
+   HDR!
    SFTS @ CODE-OFF - SNL @ - SPAD ! ;
 
-: SNAP-STALE ( snap -- )
+: STALE ( snap -- )
    SNAP-DROP ;
 
-: SNAP-ABSORB-PAD ( -- snap )
-   SNAP-SIZE!
-   SNAP-PAD! SNAP-STALE
+: ABSORB-PAD ( -- snap )
+   SIZE!
+   PAD! STALE
    SDL @ SPAD @ + SDL !
-   SNAP-SIZE!
+   SIZE!
    SDL @ DATA-SIZE > if s" snap: data payload exceeds image DATA" 74 die then
-   SNAP-HDR! ;
+   HDR! ;
 
-: SNAP-RESET-IMAGE-BUFFER ( -- )
+: RESET-BUF ( -- )
    \ MBUF-A is a process-local mmap pointer; restored images must allocate
    \ their own buffer before emitting a fresh ELF/snapshot header.
    0 MBUF-A !
    0 MP !
    0 MLEN! ;
 
-: SNAP-HDR ( -- snap )
-   SNAP-RESET-IMAGE-BUFFER
+: HDR ( -- snap )
+   RESET-BUF
    \ The builder's x20 register constant is XREG-RBASE so it does not shadow
    \ the `rbase` primitive; read the saved text base straight from its cell.
    data-base RBASE-CELL + @ STB !         \ text CONTENT base
@@ -69,7 +84,7 @@ s" SDB@" s" -- ptr u8" TRUST
    dbase@ SDB !
    cp@ SDB @ - SCL !                      \ region payload (dict + compiled code)
    here data-base - SDL !                 \ data payload (through DP)
-   SNAP-ABSORB-PAD ;
+   ABSORB-PAD ;
 
 
 \ ---- canonical-base persistence ----
@@ -178,48 +193,104 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 : SND-COPY ( -- )
    data-base SND-PTR SDL @ BYTE-COPY ;
 
-\ Quarantined dangling-pointer cells (dot habu-persist-dangling-owners):
-\ live process-state cells scattered across persisted structures, each
-\ holding an ASLR mmap pointer that is dead after restore (proven by RCA:
-\ none is read post-restore; buckets = two instances of the same
-\ pre-/post-checker structure classes caching source-text pointers, plus
-\ the USIGS snapshot-copy bookkeeping cells). Offsets are tree-dependent;
-\ the two-build byte-compare in the snap flow fails closed on any drift,
-\ and the owning-field fixes are tracked by the dot above. Keep entries
-\ sorted; every change needs the compare green on the exact tree.
-create SND-QUARANTINE
-   $17CF50 , $17CF68 , $17CF70 , $17D090 , $17D098 ,
-   $31D138 , $31D158 , $32EC98 ,
-   $51DB60 , $51DB78 , $51DB80 , $51DCA0 ,
-   $6CF8A8 , $743ED0 ,
-   $757148 , $757150 , $757160 ,
-   $75AB80 , $75ABF0 , $75ABF8 ,
-20 constant SND-QUARANTINE#
+\ ---- the heap the refresh prelude abandoned ---------------------------------
+\ The native refresh truncates the dictionary back to the primitive boundary
+\ (src/habu/hide.f BFR-HIDE-DICT-FROM-EARLIEST, driven by tools/build-fixpoint.f
+\ BF-STAGE2-HIDE-DEFS) and then reloads the whole prefix from source. Truncating
+\ the dictionary does not move DP, so everything the previous generation had
+\ allotted stays in the DP heap with no owner and no reader -- and it still holds
+\ that generation's own mmap addresses and region pointers, which the image then
+\ carries into runs where they mean nothing. Measured on this tree with
+\ tools/snap-heap-owner.f: 4.48 MB of abandoned heap holding 50 of the 113 heap cells
+\ that differ between two builds of the same image.
+\ The live generation starts at IMK-NDICT0, the first variable of the first
+\ prefix source file (src/core/util.f records the primitive record watermark
+\ there precisely because it is first), so everything below it is abandoned. A
+\ build with no truncation ahead of it puts IMK-NDICT0 at DATA-START and the
+\ span is empty, which is the same rule with nothing to do.
+\ This replaces a table of twenty hardcoded offsets that had gone stale: measured
+\ against the actual two-build difference, eight of them pointed inside this same
+\ abandoned heap and the other twelve zeroed cells in live checker buffers that
+\ do not differ between builds at all.
+\ IMK-NDICT0 is a prefix-internal word: the whole engine prefix loads inside the
+\ refresh prelude's check-off window, so it carries no charted effect and checked
+\ code cannot name it. This is the same named trusted boundary src/habu/snap.f
+\ uses to reach CHECKER-SNAPSHOT-PREPARE, and for the same reason.
+TRUSTED: SND-DEAD-HEAP-END ( -- n )
+   IMK-NDICT0 data-base - ;
 
-TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
+: SND-ZERO-DEAD-HEAP ( -- )
+   SND-DEAD-HEAP-END {: end:n :}
+   end DATA-START < if
+      s" snap: live heap starts below DATA-START" 74 die
+   then
+   DATA-START
+   begin dup 8 + end <= while
+      dup SND-ZERO-SPAN-CELL
+      8 +
+   repeat drop ;
 
-: SND-ZERO-QUARANTINE ( -- )
-   SND-QUARANTINE# 0 ?do
-      i SND-QUARANTINE@ SND-ZERO-SPAN-CELL
+\ ---- persisted cells that hold a JIT-region address --------------------------
+\ Everything inside the region copy is already canonicalised: pointers into the
+\ region are folded to the RBASE-VA sentinel and call displacements to the
+\ canonical REGION-OFF distance. Some cells in DATA hold region addresses too --
+\ every deferred word's dispatch cell, and the three engine hook cells -- and DATA
+\ is copied verbatim, so before this they arrived at a restoring run still
+\ pointing at the writing run's region.
+\ That was survivable only while the region had a fixed address. It is not now:
+\ the loader takes whatever base the kernel gives it (dot
+\ habu-relocate-snapshot-region-752042fe), so a stale cell is wrong in every run.
+\ Measured under lldb on a restored image before this: `ldr x16,[x9]` then
+\ `blr x16` in a compiled deferred call jumped to 0x105a1dd30, the writing run's
+\ address for the target, with the live region at 0x103550000 -- an immediate
+\ SIGSEGV on the first deferred call.
+\ Which cells those are is never guessed from what a cell contains: an ordinary
+\ integer may hold any value, including one that looks exactly like a region
+\ address. The engine declares each cell where its kind is decided -- `defer` when
+\ it allocates a dispatch cell, `is` when it stores into one, and cold boot for
+\ the three hook cells -- and records the DATA offset in the table this pass
+\ walks. The loader (habu2.f EM-SNAPSHOT-RESTORE) inverts exactly this list from
+\ exactly the same table.
+\ These four words belong to this package, the snapshot writer, rather than to
+\ SNAP-RELOC: the engine owns the declaring and the restoring, and the writer owns
+\ the one pass that runs over its own scratch copy. They read the table's shape
+\ from SNAP-RELOC and nothing else.
+TRUSTED: SND-XT-CELL@ ( n -- n ) SND-N @ + @ ;
+TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
+
+: SND-XT-ROW ( n -- n ) {: row:n :}
+   SNAP-RELOC:XTCELL-ROWS-OFF row cells + SND-XT-CELL@ ;
+
+: SND-CANON-XT-CELL ( n -- ) {: cell:n :}
+   cell SND-XT-CELL@ {: xt:n :}
+   xt 0= if exit then
+   xt dbase@ - RBASE-VA +  cell SND-XT-CELL! ;
+
+: SND-CANON-XT-CELLS ( -- )
+   SNAP-RELOC:XTCELL-N-CELL SND-XT-CELL@ 0 ?do
+      i SND-XT-ROW SND-CANON-XT-CELL
    loop ;
 
-: SNAP-CANON-DATA ( -- )
+: CANON-DATA ( -- )
    SND-ALLOC
    SND-COPY
    SND-ZERO-LIVE
-   SND-ZERO-QUARANTINE ;
+   SND-ZERO-DEAD-HEAP
+   SND-CANON-XT-CELLS ;
 
-: SNAP-CANON-REGION ( -- )
+: CANON-REGION ( -- )
    SNC-ALLOC
    SNC-COPY
    SNC-CANON ;
+
+;package
 
 \ ---- test-only final-close fault seam ----
 \ snap-lib.f is builder-only: SNAP-RETIRE-GO forgets this whole tail before the
 \ snapshot header is written, so nothing here reaches a shipped image. The seam
 \ lets the owner-WID snapshot suite force the final close to fail and prove
-\ SNAP-WRITE-BYTES fails closed (rc 74) instead of accepting a half-written
-\ image. BEFORE defaults to a no-op; only a test source injected ahead of the
+\ the writer's WRITE-BYTES fails closed (rc 74) instead of accepting a
+\ half-written image. BEFORE defaults to a no-op; only a test source injected ahead of the
 \ snap driver can arm it through INSTALL-TEST, and snap.f undefines that entry on
 \ every build so no normal or shipping path can reach it.
 package SNAP-CLOSE-SEAM
@@ -244,7 +315,9 @@ public
 
 ;package
 
-: SNAP-WRITE-BYTES ( -- )
+package SNAP
+
+: WRITE-BYTES ( -- )
    \ trailer (48 bytes): magic, CANONICAL text base (0), dict count, region
    \ length, data length, format version - the region stream below is the
    \ canonicalized copy. Version at +40 is the last field so the magic/field
@@ -252,11 +325,11 @@ public
    SNAP-MAGIC TRL !  0 TRL 8 + !  ndict@ TRL 16 + !
    SCL @ TRL 24 + !  SDL @ TRL 32 + !  SNAP-FORMAT-VERSION TRL 40 + !
    \ stream: header, engine text, region, data, trailer, zero pad
-   SNAP-OUT PATH0 1537 493 open SFD !
+   OUT-PATH PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
    MBUF {: hdr:ptr :}
    SNAP-EXTRA-PTR {: extra:ptr :}
-   SNAP-RESET-IMAGE-BUFFER
+   RESET-BUF
    SFD @ hdr CODE-OFF DRV-WALL
    SFD @ STB@ STSZ @ DRV-WALL
    SFD @ SNC-PTR SCL @ DRV-WALL
@@ -266,21 +339,26 @@ public
    SFD @ SNAP-CLOSE-SEAM:RUN
    SFD @ close-rc 0 <> IF s" snap: output close failed" 74 die THEN ;
 
-: SNAP-WRITE ( snap -- )
+: WRITE-IMAGE ( snap -- )
    SNAP-DROP
-   SNAP-WRITE-BYTES ;
-
-: SNAPGO ( -- )
-   SNAP-HDR
-   SNAP-CANON-REGION
-   SNAP-CANON-DATA
-   SNAP-WRITE
-   DRV-EXIT-OK ;
+   WRITE-BYTES ;
 
 \ Freeze the verify-on-definition hook into the emitted image: hb is fully
 \ loaded, so a typed def in its REPL is checked against its sig.
-TRUSTED: SNAP-CHECK-HOOK ( ptr u8 n -- n )
+TRUSTED: CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> IF 70 throw THEN ;
-TRUSTED: SNAP-INSTALL-HOOK ( -- )
+
+public
+
+: SNAPGO ( -- )
+   HDR
+   CANON-REGION
+   CANON-DATA
+   WRITE-IMAGE
+   DRV-EXIT-OK ;
+
+TRUSTED: INSTALL-HOOK ( -- )
    LOWER-CERT-HOOK:INSTALL
-   ['] SNAP-CHECK-HOOK set-check ;
+   ['] CHECK-HOOK set-check ;
+
+;package

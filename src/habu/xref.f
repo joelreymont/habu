@@ -8,8 +8,13 @@
 2 constant XREF-FLAGS-SLOT
 3 constant XREF-NAME-SLOT
 5 constant XREF-WORDLIST-SLOT
--1 constant XREF-NAMESPACE-WL
--2 constant XREF-RETIRED-WL
+\ The two non-wordlist values a record's wordlist cell can carry. They are
+\ src/habu/layout.f's, not this file's: the engine's hash index is keyed on the
+\ same cell, and XREF-RETIRE below is the one writer that changes it after a
+\ record is already in that index - see the DICT-WL comment there for what the
+\ lookup does about it.
+DICT-WL:NAMESPACE constant XREF-NAMESPACE-WL
+DICT-WL:RETIRED constant XREF-RETIRED-WL
 
 32 constant XREF-SP
 
@@ -142,6 +147,74 @@ variable XREF-NV
 : XREF-MATCH? ( ptr a ptr u8 n -- bool )
    XREF-U ! XREF-A!
    XREF-NAME$ XREF-A@ XREF-U @ XREF-STR=CI ;
+
+package PKG-AUTH
+private
+
+0 constant MODE-NONE
+1 constant MODE-PRI
+2 constant MODE-PUB
+
+: NAME-OUT ( ptr a n -- ptr u8 n n bool ) {: rec:ptr mode:n :}
+   rec XREF-NAME$ dup 0= if
+      2drop s" " MODE-NONE XREF-FALSE exit
+   then
+   mode XREF-TRUE ;
+
+\ A package record is live only when its address is an exact DREC slot below
+\ ndict@. This rejects stale snapshots, unaligned pointers, and foreign data
+\ before any record field is read.
+: REC-LIVE? ( n -- bool ) {: addr:n :}
+   addr dbase@ < if XREF-FALSE exit then
+   addr dbase@ -
+   dup DREC mod 0 <> if drop XREF-FALSE exit then
+   DREC / ndict@ < ;
+
+\ Return the one authenticated package context. The global context is the exact
+\ all-zero tuple. A package context must name a live namespace record whose two
+\ WIDs equal the protected engine cells; get-current selects its visibility.
+: LIVE-PKG ( n n n n -- ptr u8 n n bool )
+   {: recn:n pub:n pri:n cur:n :}
+   recn 0= if
+      pub 0= pri 0= and cur 0= and if
+         s" " MODE-NONE XREF-TRUE
+      else
+         s" " MODE-NONE XREF-FALSE
+      then
+      exit
+   then
+   pub 0= pri 0= or pub pri = or if
+      s" " MODE-NONE XREF-FALSE exit
+   then
+   recn REC-LIVE? 0= if
+      s" " MODE-NONE XREF-FALSE exit
+   then
+   recn XREF-N>REC
+   dup XREF-WORDLIST XREF-NAMESPACE-WL <> if
+      drop s" " MODE-NONE XREF-FALSE exit
+   then
+   dup XREF-START pub <> if
+      drop s" " MODE-NONE XREF-FALSE exit
+   then
+   dup XREF-LEN pri <> if
+      drop s" " MODE-NONE XREF-FALSE exit
+   then
+   cur pub = if MODE-PUB NAME-OUT exit then
+   cur pri = if MODE-PRI NAME-OUT exit then
+   drop s" " MODE-NONE XREF-FALSE ;
+
+: LIVE ( -- ptr u8 n n bool )
+   data-base PKG-REC-CELL + @
+   data-base PKG-PUB-CELL + @
+   data-base PKG-PRI-CELL + @
+   get-current
+   LIVE-PKG ;
+
+: INSTALL ( -- )
+   [: LIVE ;] is PKG-LIVE-XT ;
+INSTALL
+
+;package
 
 : XREF-FIND-WL ( ptr u8 n n -- ptr a )
    XREF-WID ! XREF-FU ! XREF-FN!
@@ -341,6 +414,105 @@ TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict! ;
 
+\ ---- the notice a code reclamation owes whatever is keyed to code -------------
+\ WHY THERE IS AN EVENT HERE AT ALL. The engine compiles every definition into
+\ one bump pointer, and a FORGET moves that pointer BACK: the bytes above it are
+\ free again and the next definition the engine compiles is written over them.
+\ Anything that wrote a fact down against a CODE ADDRESS - what the routine
+\ there destroys, what its body is - is then describing bytes that stopped being
+\ its routine's, and the address itself will never say so. The bytes may even be
+\ rewritten to a different routine at exactly the same address, which is why "a
+\ later publication would notice the collision" is not a defence either.
+\ src/compiler/native/clobber.f and src/compiler/native/inline.f keep exactly
+\ such facts, and src/compiler/native/publish.f decides where a routine lands
+\ from the same pointer.
+\
+\ SO LOWERING THE CODE POINTER IS AN EVENT AND NOT A STORE. Every checked word
+\ that reclaims code space does it through TRUNCATE below, and everything
+\ holding an address-keyed fact registers once and is told the floor BEFORE the
+\ space is released. That is what makes the lifetime of such a fact a
+\ consequence of the lifetime of the code it describes rather than of a
+\ pointer's happening to move one way.
+\
+\ THE WATCHERS RUN FIRST AND THE POINTER MOVES AFTER, so there is no instant at
+\ which the pointer says a slot is free while a live row still claims to
+\ describe what used to be there.
+\
+\ AND A WATCHER MUST BE TOTAL. It is told in the middle of a FORGET - the
+\ dictionary records are already retired and the checker's signatures already
+\ truncated - so there is nothing to roll back to and nothing it could
+\ meaningfully refuse. It may only drop what it holds. That is the contract
+\ src/core/declaration-transaction.f states for its own release phase, for the
+\ same reason.
+package CODE-RECLAIM
+
+private
+
+\ One slot per file that keeps an address-keyed fact. Three files do today -
+\ src/compiler/native/publish.f, which remembers where the routine it published
+\ last ends, and the two records a call site reads, clobber.f and inline.f - and
+\ the table is fixed because this runs while the engine is compiling and has
+\ nowhere to allocate from. A fourth registration would be a source change, so a
+\ fifth is a defect in that change rather than a condition a program can reach:
+\ it dies here instead of being refused into a caller that has no answer for it.
+4 constant WATCH-MAX
+
+create WATCH-TBL WATCH-MAX cells allot
+variable WATCH-N
+0 WATCH-N !
+
+\ A watcher cell holds an execution token, so the store has to be `xt!` rather
+\ than `!`: the cell address is computed at run time, and a snapshot image that
+\ kept a raw token would dispatch into the writing run's JIT region. This is the
+\ same declaration src/core/declaration-transaction.f's callback stores make.
+TRUSTED: WATCH-AT ( n -- ptr [ n -- ] )
+   cells WATCH-TBL + ;
+
+public
+
+\ A floor above the free code slot. There is nothing above the slot to reclaim,
+\ so a caller asking for one is not truncating - it is moving the pointer the
+\ other way with a notice nobody can act on, which is the one shape that would
+\ make this word mean two things. Refused by name, and public because it is a
+\ refusal a caller can reach.
+7178 constant E-FLOOR
+
+\ Be told the floor of every code reclamation from here on. Registration is
+\ one-way and unordered: a watcher only drops what it holds, so no watcher can
+\ observe another one's work and none of them can disagree.
+: WATCH ( [ n -- ] -- )
+   WATCH-N @ WATCH-MAX >= if
+      s" code-reclaim: more watchers than the table holds" 76 die
+   then
+   WATCH-N @ WATCH-AT xt!
+   WATCH-N @ 1+ WATCH-N ! ;
+
+\ Reclaim the code space above this address. Every watcher is told the floor,
+\ and only then is the pointer moved: a watcher drops what it holds at or above
+\ the floor, so the bytes are released with nothing left claiming to describe
+\ them.
+: TRUNCATE ( n -- )
+   {: floor:n :}
+   floor cp@ > if E-FLOOR throw then
+   WATCH-N @ 0 ?do
+      floor i WATCH-AT @ execute
+   loop
+   floor cp! ;
+
+\ How many watchers are registered, which is what a test measures a registration
+\ against.
+: WATCHERS ( -- n )
+   WATCH-N @ ;
+
+private
+
+get-current prot-wid-add
+
+public
+get-current prot-wid-add
+
+;package
+
 variable XREF-FORGET-CP
 
 : FORGET-DEFS-FROM ( ptr u8 n -- )
@@ -349,7 +521,7 @@ variable XREF-FORGET-CP
    idx XREF-REC XREF-START XREF-FORGET-CP !
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict!
-   XREF-FORGET-CP @ cp! ;
+   XREF-FORGET-CP @ CODE-RECLAIM:TRUNCATE ;
 
 : XREF-NAME. ( ptr a -- )
    XREF-NAME$ type ;
@@ -383,6 +555,37 @@ variable XREF-FORGET-CP
       dup XREF-REC dup XREF-RETIRED? if drop else XREF-NAME. space then
       1+
    repeat drop cr ;
+
+\ The installed provider holds direct code references. Retire every source-level
+\ rebinding seam and mutable provider cell before the engine-prefix seal.
+undefine PKG-LIVE-XT
+undefine CHECKER-PKG-LIVE-DEFAULT
+undefine CHECKER-PKG-BOOT-LIVE
+undefine CHECKER-PKG-MIRROR
+undefine CHECKER-PKG-CONTEXT
+undefine CHECKER-PKG-CONTEXT-REJECT
+undefine CHECKER-VERIFY-PKG-DEPTH
+undefine VPKG-NAME
+undefine VPKG-U
+undefine VPKG-MODE
+undefine VPKG-SAVE
+undefine VPKG-RESTORE
+undefine TFAM-PKG-XT
+undefine TFAM-PKG$*
+package PKG-AUTH
+undefine INSTALL
+undefine LIVE
+undefine LIVE-PKG
+undefine REC-LIVE?
+undefine NAME-OUT
+undefine MODE-PUB
+undefine MODE-PRI
+undefine MODE-NONE
+private
+get-current prot-wid-add
+public
+get-current prot-wid-add
+;package
 
 \ TFAM 2b-iii: freeze the dictionary-truncation watermark (baseline capture).
 \ xref.f is the last BASE prefix file, but src/os/script-argv.f still loads

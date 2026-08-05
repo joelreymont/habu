@@ -29,7 +29,24 @@ $48425350414E5321 constant SNAP-MAGIC
 \ the loader rebases them to the live region base. A pre-4 engine maps the region at
 \ the old fixed VA and cannot relocate a v4 image's region pointers, so it fails
 \ closed rc 80.
-4 constant SNAP-FORMAT-VERSION
+\ Version 5: the region no longer has to land at a particular address at all. The
+\ loader accepts whatever base the kernel gives it and relocates every recorded
+\ region-to-text call displacement, and every persisted data cell that was
+\ declared to hold a region address (both tables live in the SNAP-RELOC band near
+\ the end of this file). A version 5 image therefore stores its call immediates in
+\ the canonical "region sits exactly REGION-OFF above __text" form, and its
+\ declared address cells relative to the RBASE-VA sentinel, rather than in the
+\ writing run's own form. A version 4 engine would read both as live values and
+\ jump to wild addresses, so it must fail closed rc 80 instead.
+\ Version 6: the address literals the compiler builds inside region code -- the
+\ four-instruction MOVZ/MOVK chain that pushes a quotation entry, a `[']` target
+\ or a `postpone` target -- are canonicalized as well, region-valued ones against
+\ the RBASE-VA sentinel and engine-text-valued ones against text base 0, from a
+\ third table in the SNAP-RELOC band. A version 5 image stores those chains as
+\ the writing run's own absolute addresses, so a version 5 engine and a version 6
+\ image disagree about what the chain bytes mean in both directions and each must
+\ fail closed rc 80 rather than execute the other's literals.
+6 constant SNAP-FORMAT-VERSION
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
@@ -48,6 +65,31 @@ $181000 constant DICT-SIZE
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
+\ --- the wordlist cell's two non-wordlist values ---------------------------
+\ A record's wordlist cell is HALF THE HASH INDEX'S KEY (habu1.f C-HIDX-INS
+\ keys a slot on the folded name XOR this cell), and it is written once, at
+\ publication, BEFORE the record is inserted - which is what lets a probe with a
+\ caller's wid find the row or prove it absent.
+\
+\ NAMESPACE keeps that rule: a package's own row carries it from birth, so the
+\ row is on this key's chain and LFIND's qualifier probe finds it there.
+\ RETIRED breaks it. src/habu/xref.f XREF-RETIRE stamps it on the cell of a
+\ record that is ALREADY in the table, so the row stays on the chain of the wid
+\ it was published under. Every lookup keyed on a REAL wid still agrees with a
+\ scan (the row's cell no longer matches, so both skip it), but a lookup keyed
+\ on RETIRED itself cannot be answered by the table at all - and retiring one
+\ name twice puts two rows under the key, which an insert-once table has no slot
+\ shape for. habu1.f BSWL therefore keeps its linear scan for exactly this wid.
+\
+\ Both live in a package rather than beside the constants above because they are
+\ new: the surrounding global surface is this file's packaging debt (dot
+\ habu-give-layout-f-315df2ca), and a name that has no bare callers yet has no
+\ reason to join it. `package SNAP-RELOC` further down is the same shape.
+package DICT-WL
+public
+-1 constant NAMESPACE
+-2 constant RETIRED
+;package
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time
@@ -283,37 +325,65 @@ $3CA8 constant AOT-SEED-DONE-CELL
 $3CB0 constant AOT-SEED-ARM-CELL
 \ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Records the WIDs of
 \ sealed system / generated constructor packages created in the friend window;
-\ PROT-WID? membership (habu1.f) gates the sealed-WID guards. u32 entries so wordlist
-\ IDs above 255 fit. Each PUBLIC ADT family consumes ONE slot (xref.f PROT-WID-CTOR-ADD
-\ -> prot-wid-add per family constructor wordlist), so the capacity is the number of
-\ public ADT families a session may declare. Raised 16 -> 256 (dot
-\ habu-seal-protwid-cap-6f1c9d2b): 16 overflowed at the 17th public family (silent
-\ exit 84), and a realistic switchover (a public stdlib plus user Option/Result/...
-\ families) declares dozens-to-hundreds. The count cell ($3CB8) and table base ($3CC0)
-\ are DELIBERATELY UNCHANGED: aot-capture.f ACAP-PWID-CAPTURE reads the LIVE metabuild
-\ host registry at these offsets (via data-base) during the self-hosting build, so moving
-\ them would make the transitional build read the old-layout host at a new offset (a
-\ garbage count -> "protected-WID registry overflow"). Instead the 256-slot table
-\ ($3CC0..$40C0) grows UPWARD and UNCGH-CELL/TASK-USER-BASE/DATA-START are bumped above
-\ it; those cells are not read live at build time, so relocating them is safe. It stays
-\ engine-reserved -- no compiled source writes it, the DP heap is bounded >= DATA-START
-\ (above the table) and snapshot saves it. The band [PROT-REG-OFF, +PROT-REG-LEN) is a
-\ SECOND range checked by PROT-GUARD, rejecting user data stores into the count cell,
-\ table, or uncaught-throw hook. The code-emit sinks cp!/ndict! (habu1.f BCPSET/BNDSET)
-\ ARE range-guarded too:
-\ each PROT-GUARDs the address it redirects a write to, so a post-seal cp!/ndict! into
-\ either band fails closed at the sink. ---
-$3CB8 constant PROT-WID-N-CELL          \ protected-WID count (u32); UNCHANGED offset (aot-capture reads it live at build time)
-$3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX u32); UNCHANGED offset (aot-capture reads it live)
-256 constant PROT-WID-MAX               \ table capacity (256 u32 = $400, spans $3CC0..$40C0); raised from 16 (dot habu-seal-protwid-cap-6f1c9d2b)
-PROT-WID-OFF PROT-WID-MAX 4 * + constant PROT-WID-END
-PROT-WID-N-CELL constant PROT-REG-OFF   \ second PROT-GUARD band base (= count cell)
-PROT-WID-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: registry + UNCGH-CELL = $3CB8..$40C8
+\ PROT-WID? membership (habu1.f) gates the sealed-WID guards.
+\
+\ SHAPE: a WID-INDEXED BITMAP. Bit w of the $400-byte band at PROT-BITS-OFF is set
+\ exactly when wordlist w is protected, so membership and insertion are O(1) and the
+\ set can hold ANY subset of the WIDs the engine can index. It replaced a flat
+\ 256-entry u32 append-only table (dot habu-replace-the-protected-ca920a8f). That
+\ table's capacity was the number of public ADT families ONE PROCESS may declare --
+\ a quantity unrelated to any resource the program controls -- and it was scanned
+\ linearly by every sealed-WID guard. It filled at 246/256 on master, so the maki
+\ suite's next public family died with an uncaught 7169 that named an innocent enum
+\ in whatever file happened to declare next. Raising the number (16 -> 256 once
+\ already, dot habu-seal-protwid-cap-6f1c9d2b) only moves that cliff.
+\
+\ CAPACITY: PROT-WID-MAX is now a WID BOUND, not a slot count: the highest wordlist
+\ id + 1 that can ever be protected. The band is the SAME $3CC0..$40C0 the 256-slot
+\ table occupied, so nothing above it moves, and $400 bytes of bitmap index 8192 WIDs
+\ against the 700 a full maki suite run allocates. prot-wid-room reports
+\ PROT-WID-MAX - WIDN, i.e. how many more wordlists may still be allocated AND
+\ protected, so a declaration's preflight is exact instead of approximate, and
+\ prot-wid-add names the bound itself when handed a WID at or above it. Growing the
+\ bound later means widening the band upward into the free $40C8..$43C0 gap and
+\ bumping UNCGH-CELL, exactly as the 16 -> 256 raise did.
+\
+\ TRANSITION: the tag cell ($3CB8) and the band base ($3CC0) are DELIBERATELY
+\ UNCHANGED, because aot-capture.f ACAP-PWID-CAPTURE reads the LIVE metabuild host
+\ registry at these offsets (via data-base) during the self-hosting build -- the host
+\ is the PREVIOUS engine, so during the changeover a bitmap-era binary is built by a
+\ table-era one. The cell that held the table's count now holds PROT-REG-TAG when the
+\ band is a bitmap; a table-era engine leaves a count there, which is 0..256 and can
+\ never collide with the tag. The capture reads the tag, takes the bitmap path on a
+\ match and the legacy table path otherwise, and dies loudly on any third shape, so
+\ the changeover cannot silently misread either lineage. The legacy reader retires
+\ once the seed has rolled past the transition (dot habu-retire-the-legacy-31ad57bc).
+\
+\ The band stays engine-reserved -- no compiled source writes it, the DP heap is
+\ bounded >= DATA-START (above it) and snapshot saves it. [PROT-REG-OFF,
+\ +PROT-REG-LEN) is a SECOND range checked by PROT-GUARD, rejecting user data stores
+\ into the tag cell, the bitmap, or the uncaught-throw hook. The code-emit sinks
+\ cp!/ndict! (habu1.f BCPSET/BNDSET) ARE range-guarded too: each PROT-GUARDs the
+\ address it redirects a write to, so a post-seal cp!/ndict! into either band fails
+\ closed at the sink. ---
+$3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag; UNCHANGED offset (aot-capture reads it live at build time)
+$50574249544D4150 constant PROT-REG-TAG \ "PWBITMAP": written by every path that publishes the band; unreachable as a legacy count
+$3CC0 constant PROT-BITS-OFF            \ protected-WID bitmap base; UNCHANGED offset (aot-capture reads it live)
+8192 constant PROT-WID-MAX              \ WID bound: bits 0..8191 span $3CC0..$40C0, the exact band the 256-slot table held
+PROT-WID-MAX 8 / constant PROT-BITS-BYTES
+PROT-BITS-OFF PROT-BITS-BYTES + constant PROT-BITS-END
+PROT-REG-TAG-CELL constant PROT-REG-OFF \ second PROT-GUARD band base (= tag cell)
+PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: tag + bitmap + UNCGH-CELL = $3CB8..$40C8
+\ Legacy aliases: ONLY the transitional capture path may use these, to read a
+\ table-era host's registry. Nothing in the running engine reads the band this way.
+PROT-REG-TAG-CELL constant PROT-WID-LEGACY-N-CELL
+PROT-BITS-OFF constant PROT-WID-LEGACY-OFF
+256 constant PROT-WID-LEGACY-MAX
 \ UNCGH-CELL: runtime address of the uncaught-top-level-throw reporter (LUNCAUGHT,
 \ habu2.f), stored at boot (EM-STARTUP-RUNTIME-STATE) beside RRECP/EVALREC so the leaf
 \ BTHROW primitive (which cannot name a habu2.f label) can branch to it when a throw
 \ reaches THROW-NOREC with no handler and no REPL. Moved $3D00 -> $40C0 (above the grown
-\ 256-slot protected-WID table); not read live at build time so the relocation is safe.
+\ protected-WID band); not read live at build time so the relocation is safe.
 \ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
 \ DATA region is zero until boot).
 $40C0 constant UNCGH-CELL
@@ -564,9 +634,114 @@ USE-BAND-OFF 16 +     constant USE-RPKG-SAVE-CELL  \ depth saved at REPL line st
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
+\ --- snapshot relocation bookkeeping (dot habu-relocate-snapshot-region-752042fe) ---
+\ Two tables that let a snapshot image be restored at a region address the
+\ writing run never saw. Both live in the engine-reserved DATA band below
+\ DATA-START, so the ordinary snapshot DATA copy carries them with no new image
+\ section, and both are keyed by an OFFSET rather than an address, so their own
+\ contents are the same in every run and never need canonicalising.
+\ The engine half of this subsystem reopens this package in src/habu/habu2.f and
+\ the snapshot writer's half reopens it in src/habu/snap-lib.f.
+package SNAP-RELOC
+public
+
+\ Exit status for a corrupt call map: the loader found a recorded region-to-text
+\ call site that does not hold a call instruction, so the image's region bytes and
+\ its call map come from different builds or one of them is damaged. Relocating it
+\ anyway would write a wild branch into live code, so the image is refused. It
+\ lives here beside BL-RANGE-RC and AOT-OWNER-RC rather than in the
+\ src/core/engine-error.f registry for the same reason those two do: the engine
+\ emitter reads its exit statuses from this file while it is being compiled, one
+\ generation before a new src/core constant would be reachable. 95 is the next
+\ free status above that registry's last entry (94), and 96 and 97 follow it.
+95 constant CALLMAP-RC
+\ Exit status for an overfull address-cell table: more cells were declared to hold
+\ a region address than XTCELL-CAP has room for. Continuing would silently drop a
+\ cell and leave a stale writer-run address in a restored image, so the engine
+\ stops instead.
+96 constant XTCELL-RC
+\ Exit status for a corrupt address-literal map: the loader found a recorded
+\ address-literal site that does not hold the four-instruction MOVZ/MOVK chain the
+\ compiler emits there, so the image's region bytes and its literal map come from
+\ different builds or one of them is damaged. Rewriting the four immediates anyway
+\ would plant a wild address in live code, so the image is refused.
+97 constant ADDRMAP-RC
+
+\ Call-site map: one bit per four-byte word of the JIT region, recording every
+\ call site whose callee lives in the engine's loaded __text instead of inside the
+\ region. Those calls are the only instructions whose displacement is not the same
+\ in the run that wrote a snapshot image and the run that restores it. A call from
+\ one region address to another keeps its distance wherever the region is mapped;
+\ a call from the region into __text does not, because the kernel picks the region
+\ base and the loader picks the image base independently.
+\ A site is recorded when the call is created, at the single call-emit chokepoint
+\ (habu2.f EMIT-CEMITBL) and at the AOT call-site patcher (EM-AOT-PATCH-SITES), so
+\ nothing ever has to recognise a call again by decoding region bytes -- which
+\ could not be done soundly, because a compiled word may carry inline
+\ non-instruction data.
+\ The snapshot writer rewrites every recorded site to the displacement it would
+\ have if the region sat exactly REGION-OFF above __text, and the loader rewrites
+\ it again for the distance this run actually got.
+\ The size is fixed and derived from REGION, so the map cannot overflow and needs
+\ no capacity check: grow REGION and the map grows with it.
+REGION 32 / constant CALLMAP-BYTES        \ one bit per region word (REGION / 4 / 8)
+USE-BAND-END constant CALLMAP-OFF
+CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
+
+\ Address-literal map: the same shape as the call map, one bit per four-byte word
+\ of the JIT region, recording the FIRST word of every four-instruction MOVZ/MOVK
+\ chain the compiler builds an execution token with. Those are the quotation entry
+\ address a `[: ... ;]` pushes and the target a `[']` or a `postpone` pushes; the
+\ chain names a word's code, which lives either inside the region or in the
+\ engine's loaded __text, and neither of those keeps its address between the run
+\ that writes a snapshot image and the run that restores it.
+\ A separate map rather than a second bit in the call map: a call site and a chain
+\ start are different instruction shapes at different addresses, the two passes
+\ rewrite completely different fields, and a two-bit call map would cost the same
+\ bytes while forcing the already-proven call pass to decode a tag it does not
+\ need. Two one-bit maps also let each pass keep the identical bit-scan loop.
+\ Membership is recorded where the compiler decides the literal is an address of
+\ CODE: habu2.f C-CODE-ADDR is the single emit point, and the AOT seed's code-
+\ literal rebase (EM-AOT-RELOC-CODE) is the second producer, which knows its sites
+\ are code literals because they come from the captured code-site list rather than
+\ the data-site list. The sibling C-DATA-ADDR literals are deliberately NOT
+\ recorded: they hold DATA addresses, and DATA is mapped at a fixed address in
+\ every run, so they are already the same in the writing and the restoring run.
+\ Nothing ever recognises a chain by looking at region bytes or at the value a
+\ chain carries: a compiled word may hold inline non-instruction data, and an
+\ ordinary integer may hold any value at all.
+\ Sized from REGION like the call map, so it cannot overflow and needs no capacity
+\ check, and keyed by region offset, so its own contents are run-invariant.
+REGION 32 / constant ADDRMAP-BYTES        \ one bit per region word (REGION / 4 / 8)
+CALLMAP-END constant ADDRMAP-OFF
+ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
+
+\ Address-cell table: the DATA offset of every persisted cell that was DECLARED to
+\ hold a JIT-region address. Region code moves between the run that writes an
+\ image and the run that restores it, but DATA is mapped at a fixed address, so a
+\ cell in DATA that points into the region is stale the moment the image is
+\ restored somewhere else -- the crash is an immediate jump to the writing run's
+\ address on the first deferred call.
+\ Membership is recorded where the cell's kind is decided, never inferred from
+\ what the cell happens to contain: the `defer` handler registers a dispatch cell
+\ when it allocates it, the `is` handler registers the cell it is about to store
+\ into, and the three engine hook cells are registered by name at cold boot
+\ (habu2.f). Scanning DATA for values that fall in some address band would be a
+\ guess -- an ordinary integer can hold any value at all -- and is deliberately
+\ not what this does.
+\ Layout: a count cell followed by XTCELL-CAP offset cells. The engine appends
+\ only offsets that are not already present, so a cell registered by both `defer`
+\ and `is` is listed once and is relocated once.
+4096 constant XTCELL-CAP                  \ declared address cells one image may carry
+ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows
+XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
+XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
+
+;package
+
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
 \ >= DATA-START; task-user cells stop at EVAL-FRAME and sixteen evaluator
 \ frames occupy $43C0..$47C0. The lowering state ends at $8000; the pre-trust defer
 \ pending band follows, then the immutable lowering blob lives outside DATA.
-USE-BAND-END constant DATA-START
+SNAP-RELOC:XTCELL-END constant DATA-START

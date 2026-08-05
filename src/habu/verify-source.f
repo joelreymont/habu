@@ -651,10 +651,10 @@ variable STG-START
 : RECORD-EXPORT ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
-   CHECKER-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
 \ A package primitive row has two closers, and this verifier models them exactly
-\ as the ratchet parser does (tools/primitive-effect-inventory.f PRIVATE-CLOSE?):
+\ as the source lexer does:
 \ `PPRIM;` interns the axiom into the package public wordlist and `CLOSE-PRIVATE`
 \ interns it into the package private one. Visibility is part of the row, not a
 \ different row shape, so either token ends a `PPRIM:` row. A bare `PRIM:` row has
@@ -795,8 +795,11 @@ variable STG-START
    dup 0= IF drop exit THEN
    throw ;
 
-: RUN ( -- )
-   [: VERIFY-SOURCE ;] catch THROW-RESULT ;
+TRUSTED: RUN ( -- )
+   CHECKER-VERIFY-PKG-START
+   [: VERIFY-SOURCE ;] catch
+   CHECKER-VERIFY-PKG-DONE
+   THROW-RESULT ;
 
 public
 
