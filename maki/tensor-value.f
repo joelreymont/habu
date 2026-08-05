@@ -152,7 +152,7 @@ ENUM align DERIVE eq
 \ callers reconstruct `data-base off +`. Shared by tensor-value / model-ir / cad (all
 \ `require` this file); public in MAKI. The fresh tail is left as-is: every live slot is
 \ written by its append before any read (the TV-U / MIR-N / P-N liveness guards).
-: RAW-ENSURE ( n n ptr a ptr a -- )   \ needbytes livebytes off-var cap-var
+: RAW-ENSURE ( n n ptr n ptr n -- )   \ needbytes livebytes off-var cap-var
    {: need:n live:n ov:ptr cv:ptr :}
    need cv @ <= if exit then                       \ fits the current region
    cv @ 2 * need max {: newcap:n :}                 \ doubling floor (grow-to-at-least)
