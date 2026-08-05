@@ -14,6 +14,8 @@ private
 
 GPT2:OUTPUT-CAP BL>N constant T-CAP
 240000 constant T-TIMEOUT-MS
+731 constant E-T-MODEL
+732 constant E-T-SESSION
 
 create T-TMP FS-PATH-CAP allot
 create T-SRC FS-PATH-CAP allot
@@ -33,6 +35,13 @@ variable T-OUT-W
 variable T-ERR-R
 variable T-ERR-W
 variable T-PID
+variable T-FREE-N
+variable T-SYNC-N
+variable T-EVENT
+variable T-FREE-EVENT
+variable T-SYNC-EVENT
+variable T-FREE-RC
+variable T-SYNC-RC
 
 : T-TMP$ ( -- ptr u8 n )
    T-TMP T-TMP-U @ ;
@@ -231,6 +240,78 @@ variable T-PID
    $DD $E9 T-READ-REFUSAL
    T-WAIT-GENERATE-FAIL ;
 
+: T-TRACK-FREE ( cuda-devptr -- rc ) {: dev:cuda-devptr :}
+   dev CUDA:CU-MEM-FREE RC>N {: real:n :}
+   1 T-FREE-N +!
+   1 T-EVENT +!
+   T-EVENT @ T-FREE-EVENT !
+   real 0<> if real >RC exit then
+   T-FREE-RC @ >RC ;
+
+: T-TRACK-SYNC ( CUDA:stream -- rc ) {: stream:CUDA:stream :}
+   stream CUDA:CU-STREAM-SYNCHRONIZE RC>N {: real:n :}
+   1 T-SYNC-N +!
+   1 T-EVENT +!
+   T-EVENT @ T-SYNC-EVENT !
+   real 0<> if real >RC exit then
+   T-SYNC-RC @ >RC ;
+
+: T-FAULTS ( n n -- ) {: free:n sync:n :}
+   0 T-FREE-N !
+   0 T-SYNC-N !
+   0 T-EVENT !
+   0 T-FREE-EVENT !
+   0 T-SYNC-EVENT !
+   free T-FREE-RC !
+   sync T-SYNC-RC !
+   [: T-TRACK-FREE ;] MKD:CUMEMFREE!
+   [: T-TRACK-SYNC ;] MKD:STREAMSYNC! ;
+
+: T-OWNERS ( -- GPU:session GPT2:model )
+   GPU:OPEN
+   MATCH result
+      err OF throw ENDOF
+      ok OF
+         0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
+         MATCH result
+            err OF OPEN-FAIL ENDOF
+            ok OF ENDOF
+         ;MATCH
+      ENDOF
+   ;MATCH ;
+
+: T-PRIMARY ( -- )
+   T-OWNERS E-T-MODEL E-T-SESSION T-FAULTS E-FRAME RESULT:ERR FINISH ;
+
+: T-MODEL ( -- )
+   T-OWNERS E-T-MODEL E-T-SESSION T-FAULTS 0 RESULT:OK FINISH ;
+
+: T-SESSION-FAULT ( -- )
+   T-OWNERS 0 E-T-SESSION T-FAULTS 0 RESULT:OK FINISH ;
+
+: T-CLEAN-ORDER ( -- )
+   MKD:USE-REAL
+   T-FREE-N @ 1 T=
+   T-SYNC-N @ 1 T=
+   T-FREE-EVENT @ 1 T=
+   T-SYNC-EVENT @ 2 T= ;
+
+: T-BAD-OPEN ( -- )
+   s" /tmp/habu-no-gpt2-service-model" RUN-ACT ;
+
+: T-CLEANUP-FAULTS ( -- )
+   s" service cleanup preserves primary, model, then session failure order" T-LABEL
+   [: T-PRIMARY ;] E-FRAME TTHROWSQ T-CLEAN-ORDER
+   [: T-MODEL ;] E-T-MODEL TTHROWSQ T-CLEAN-ORDER
+   [: T-SESSION-FAULT ;] E-T-SESSION TTHROWSQ T-CLEAN-ORDER
+   s" service model-open refusal closes the real caller session" T-LABEL
+   0 E-T-SESSION T-FAULTS
+   [: T-BAD-OPEN ;] E-FS-OPEN TTHROWSQ
+   MKD:USE-REAL
+   T-FREE-N @ 0 T=
+   T-SYNC-N @ 1 T=
+   T-SYNC-EVENT @ 1 T= ;
+
 : T-RUN ( -- )
    SCRIPT-ARGC 1 <> if E-USAGE throw then
    T-RESET
@@ -242,6 +323,7 @@ variable T-PID
    T-WRITE-FAILURE
    T-CONTEXT-LIMIT-FAILURE
    CLEANUP-RUN
+   T-CLEANUP-FAULTS
    T-REPORT ;
 
 T-RUN

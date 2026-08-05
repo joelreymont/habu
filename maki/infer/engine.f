@@ -75,10 +75,8 @@ TRUSTED: I-TAKE
 : I-KV-TRY ( n n n n n n n n -- n n n n n n n n )
    drop KV:CONFIG KV-CONFIG:UNMAKE ;
 
-: I-START-CACHE
-   ( GPU:session GPT2:model ptr u8 n n -- result<INFER:engine,n> )
-   {: rec:ptr nseq:n npages:n :}
-   GPT2:CONFIG@
+: I-KV-CONFIG ( GPT2:config n n -- result<KV:config,n> )
+   {: nseq:n npages:n :}
    GPT2:NLAYER@ {: nl:n :}
    GPT2:NHEAD@ {: nh:n :}
    GPT2:NEMBD@ {: ne:n :}
@@ -87,14 +85,26 @@ TRUSTED: I-TAKE
    nl nh ne nh / F32-BYTES npages nseq cx 0 [: I-KV-TRY ;] catch
    {: knl:n knh:n khd:n kdb:n kpages:n kseq:n kctx:n kptok:n code:n :}
    code 0<> if
-      code I-MODEL-FAIL
+      knl drop knh drop khd drop kdb drop
+      kpages drop kseq drop kctx drop kptok drop
+      code RESULT:ERR
       exit
    then
-   knl knh khd kdb kpages kseq kctx kptok KV-CONFIG:MAKE
-   swap >r KV:OPEN r> swap
+   knl knh khd kdb kpages kseq kctx kptok KV-CONFIG:MAKE RESULT:OK ;
+
+: I-START-CACHE
+   ( GPU:session GPT2:model ptr u8 n n -- result<INFER:engine,n> )
+   {: rec:ptr nseq:n npages:n :}
+   GPT2:CONFIG@ nseq npages I-KV-CONFIG
    MATCH result
       err OF I-MODEL-FAIL ENDOF
-      ok OF rec I-MINT RESULT:OK ENDOF
+      ok OF
+         swap >r KV:OPEN r> swap
+         MATCH result
+            err OF I-MODEL-FAIL ENDOF
+            ok OF rec I-MINT RESULT:OK ENDOF
+         ;MATCH
+      ENDOF
    ;MATCH ;
 
 : I-START-MODEL

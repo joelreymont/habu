@@ -16,6 +16,8 @@ private
 4097 constant T-LONG-N
 4096 constant T-CAP
 240000 constant T-TIMEOUT-MS
+721 constant E-T-MODEL
+722 constant E-T-SESSION
 
 create T-ROOT FS-PATH-CAP allot
 create T-SRC FS-PATH-CAP allot
@@ -25,6 +27,13 @@ create T-OUT T-CAP allot
 create T-ERR T-CAP allot
 
 variable T-ROOT-U
+variable T-FREE-N
+variable T-SYNC-N
+variable T-EVENT
+variable T-FREE-EVENT
+variable T-SYNC-EVENT
+variable T-FREE-RC
+variable T-SYNC-RC
 
 : T-ROOT$ ( -- ptr u8 n )
    T-ROOT T-ROOT-U @ ;
@@ -120,6 +129,81 @@ variable T-ROOT-U
    erru 0 T=
    T-OUT outu GPT2-REFERENCE:REAL-BYTES$ T$= ;
 
+: T-TRACK-FREE ( cuda-devptr -- rc ) {: dev:cuda-devptr :}
+   dev CUDA:CU-MEM-FREE RC>N {: real:n :}
+   1 T-FREE-N +!
+   1 T-EVENT +!
+   T-EVENT @ T-FREE-EVENT !
+   real 0<> if real >RC exit then
+   T-FREE-RC @ >RC ;
+
+: T-TRACK-SYNC ( CUDA:stream -- rc ) {: stream:CUDA:stream :}
+   stream CUDA:CU-STREAM-SYNCHRONIZE RC>N {: real:n :}
+   1 T-SYNC-N +!
+   1 T-EVENT +!
+   T-EVENT @ T-SYNC-EVENT !
+   real 0<> if real >RC exit then
+   T-SYNC-RC @ >RC ;
+
+: T-FAULTS ( n n -- ) {: free:n sync:n :}
+   0 T-FREE-N !
+   0 T-SYNC-N !
+   0 T-EVENT !
+   0 T-FREE-EVENT !
+   0 T-SYNC-EVENT !
+   free T-FREE-RC !
+   sync T-SYNC-RC !
+   [: T-TRACK-FREE ;] MKD:CUMEMFREE!
+   [: T-TRACK-SYNC ;] MKD:STREAMSYNC! ;
+
+: T-OWNERS ( -- GPU:session GPT2:model )
+   GPU:OPEN
+   MATCH result
+      err OF throw ENDOF
+      ok OF
+         0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
+         MATCH result
+            err OF SESSION-CLEAN throw ENDOF
+            ok OF ENDOF
+         ;MATCH
+      ENDOF
+   ;MATCH ;
+
+: T-CLEAN-ORDER ( -- )
+   MKD:USE-REAL
+   T-FREE-N @ 1 T=
+   T-SYNC-N @ 1 T=
+   T-FREE-EVENT @ 1 T=
+   T-SYNC-EVENT @ 2 T= ;
+
+: T-CLOSE-CASE ( n n n -- )
+   {: free:n sync:n want:n :}
+   T-OWNERS
+   free sync T-FAULTS
+   0 CLOSE-ALL {: code:n :}
+   T-CLEAN-ORDER
+   code want T= ;
+
+: T-PRIMARY ( -- )
+   E-T-MODEL E-T-SESSION T-FAULTS
+   0 SCRIPT-ARGV$ s" " RUN-ACT drop ;
+
+: T-BAD-OPEN ( -- )
+   s" /tmp/habu-no-gpt2-cli-model" s" Hello" RUN-ACT drop ;
+
+: T-CLEANUP-FAULTS ( -- )
+   s" CLI cleanup preserves primary, model, then session failure order" T-LABEL
+   [: T-PRIMARY ;] GPT2:E-PROMPT TTHROWSQ T-CLEAN-ORDER
+   E-T-MODEL E-T-SESSION E-T-MODEL T-CLOSE-CASE
+   0 E-T-SESSION E-T-SESSION T-CLOSE-CASE
+   s" CLI model-open refusal closes the real caller session" T-LABEL
+   0 E-T-SESSION T-FAULTS
+   [: T-BAD-OPEN ;] E-FS-OPEN TTHROWSQ
+   MKD:USE-REAL
+   T-FREE-N @ 0 T=
+   T-SYNC-N @ 1 T=
+   T-SYNC-EVENT @ 1 T= ;
+
 : T-RUN ( -- )
    SCRIPT-ARGC 1 <> if E-USAGE throw then
    T-RESET
@@ -130,6 +214,7 @@ variable T-ROOT-U
    2dup T-FAILURES
    T-ENTRY
    CLEANUP-RUN
+   T-CLEANUP-FAULTS
    T-REPORT ;
 
 T-RUN

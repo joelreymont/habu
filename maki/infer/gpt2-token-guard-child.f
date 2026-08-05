@@ -15,15 +15,6 @@ create TG-TRUNC-4-1 $F1 c,
 create TG-TRUNC-4-2 $F1 c, $80 c,
 create TG-TRUNC-4-3 $F1 c, $80 c, $80 c,
 
-: TG-CODE ( result<n,n> -- n )
-   MATCH result
-      ok OF ENDOF
-      err OF ENDOF
-   ;MATCH ;
-
-: TG-FIRST ( n n -- n ) {: first:n next:n :}
-   first 0<> if first else next then ;
-
 : TG-OPEN ( -- GPU:session GPT2:model )
    SCRIPT-ARGC 1 <> if E-STR-BOUNDS throw then
    GPU:OPEN
@@ -35,8 +26,8 @@ create TG-TRUNC-4-3 $F1 c, $80 c, $80 c,
             ok OF ENDOF
             err OF
                {: primary:n :}
-               GPU:CLOSE TG-CODE
-               primary swap TG-FIRST throw
+               GPU:CLOSE M-RESULT-CODE
+               primary swap M-FIRST throw
             ENDOF
          ;MATCH
       ENDOF
@@ -44,9 +35,9 @@ create TG-TRUNC-4-3 $F1 c, $80 c, $80 c,
 
 : TG-CLOSE ( GPU:session GPT2:model -- )
    CLOSE
-   TG-CODE {: model-code:n :}
-   GPU:CLOSE TG-CODE {: session-code:n :}
-   model-code session-code TG-FIRST
+   M-RESULT-CODE {: model-code:n :}
+   GPU:CLOSE M-RESULT-CODE {: session-code:n :}
+   model-code session-code M-FIRST
    dup 0<> if throw then drop ;
 
 : TG-GUARD! ( ptr u8 -- ) {: region:ptr :}

@@ -85,6 +85,27 @@ PTR-VARIABLE SAVED-REC
    s" INFER:MODEL@" XREF-FIND XREF-FOUND? TFALSE
    s" INFER:CACHE@" XREF-FIND XREF-FOUND? TFALSE ;
 
+: TEST-KV-CONFIG ( -- )
+   s" authenticated asymmetric GPT-2 config maps every KV field exactly" T-LABEL
+   MAKI-DATATYPE:DF32
+   32 64 5 24 3 true 63 63 0.00001 true GPT2:BUILD
+   2 7 I-KV-CONFIG
+   MATCH result
+      err OF throw ENDOF
+      ok OF
+         KV-CONFIG:UNMAKE
+         {: nl:n nh:n hd:n db:n pages:n seqs:n ctx:n ptok:n :}
+         nl 5 T=
+         nh 3 T=
+         hd 8 T=
+         db 4 T=
+         pages 7 T=
+         seqs 2 T=
+         ctx 32 T=
+         ptok 16 T=
+      ENDOF
+   ;MATCH ;
+
 : F-OPEN ( -- ) 1 OPEN-N +! 601 throw ;
 
 : TEST-EARLY-FAILURES ( -- )
@@ -189,6 +210,28 @@ PTR-VARIABLE SAVED-REC
    KV:WATERMARK 0 T=
    rec I-MINT ;
 
+: ALLOC-SEQ ( KV:cache -- KV:cache )
+   16 KV:ALLOC-SEQ MATCH result
+      err OF throw ENDOF
+      ok OF KV-SEQ:UNMAKE drop drop drop ENDOF
+   ;MATCH ;
+
+: ALLOC-SEQ-ERR ( KV:cache -- KV:cache )
+   16 KV:ALLOC-SEQ MATCH result
+      err OF E-KV-SEQS T= ENDOF
+      ok OF KV-SEQ:UNMAKE drop drop drop false TTRUE ENDOF
+   ;MATCH ;
+
+: SEQ-CAP ( INFER:engine -- INFER:engine )
+   s" engine admits exactly its configured live-sequence capacity" T-LABEL
+   I-TAKE {: rec:ptr :}
+   ALLOC-SEQ ALLOC-SEQ
+   KV:RESERVED-PAGES 2 T=
+   KV:FREE-PAGES 128 T=
+   ALLOC-SEQ-ERR
+   KV:RESERVED-PAGES 2 T=
+   rec I-MINT ;
+
 : SAVE-REC ( INFER:engine -- INFER:engine )
    I-TAKE {: rec:ptr :}
    rec SAVED-REC !
@@ -207,7 +250,7 @@ PTR-VARIABLE SAVED-REC
    s" two real engines coexist and stop in either order" T-LABEL
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
-   MUST-START INSPECT MUST-START
+   MUST-START INSPECT SEQ-CAP MUST-START
    swap SAVE-REC MUST-STOP MUST-STOP REC-UNMAPPED
    MUST-START MUST-START
    MUST-STOP MUST-STOP
@@ -243,6 +286,7 @@ PTR-VARIABLE SAVED-REC
 : RUN ( -- )
    T-RESET
    TEST-TYPES
+   TEST-KV-CONFIG
    TEST-EARLY-FAILURES
    TEST-REC-FAIL
    TEST-SESSION-FAIL
