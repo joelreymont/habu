@@ -163,7 +163,7 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
 \ DIM>CLASS is public: it is the shape classifier the typed key and the tests
 \ share (the field-eq == text-eq contract is pinned over it).
 public
-: DIM>CLASS ( e -- dimclass n )                 \ extent -> (class, magnitude)
+: DIM>CLASS ( n -- dimclass n )                 \ extent -> (class, magnitude)
    dup 0=    if drop MAKI-DIMCLASS:UNBOUND 0 exit then
    dup 64 <= if MAKI-DIMCLASS:EXACT swap exit then
    dup POW2? if NEXT-POW2 MAKI-DIMCLASS:POW2 swap exit then
