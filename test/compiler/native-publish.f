@@ -47,6 +47,7 @@
 \ more than it said and the corpus crashed several words later.
 
 require lib/test.f
+require src/habu/layout.f
 require src/compiler/native/publish.f
 require test/compiler/native-source-fixture.f
 require test/compiler/native-chain-fixture.f
@@ -275,6 +276,173 @@ variable SAVED-CP
 : PLACE-CASE ( -- )
    NFIX:BINDING [: PLACE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ ---- what a refused publication leaves behind, measured ------------------------
+\ THE CLAIM UNDER TEST. A publication either happens or it does not. Every
+\ condition that can refuse is asked before the first byte moves, so a refusal at
+\ ANY of them leaves the three things a publication writes exactly as it found
+\ them: the code arena, the dictionary record, and the call map. The cases above
+\ each check the record after their own refusal; these check all three, at every
+\ fallible point, against a witness taken immediately before the attempt.
+\
+\ WHY ALL THREE AND NOT JUST THE RECORD. The defect this replaces was a refusal
+\ that came AFTER a mutation - an overlong name returned E-NPUB-CAP from the
+\ replacement log with the record already pointing at the new routine - and a
+\ record-only check cannot see the other two. The call map matters most of the
+\ three because nothing else in the system reads it until a snapshot is restored,
+\ which is far away from anything that could report the damage.
+\
+\ THE WITNESS IS THE BYTES THEMSELVES. Not a count and not a flag: the words of
+\ code space at the slot the publication would have claimed, the map bits over
+\ that same span, the code pointer, and the record's two cells. A publication
+\ that wrote anything at all moves one of them.
+32 constant WIT-WORDS                \ words of the free slot the witness covers
+
+create WIT-CODE WIT-WORDS cells allot
+create WIT-MAP WIT-WORDS cells allot
+variable WIT-CP
+variable WIT-START
+variable WIT-LEN
+
+\ One bit of the region-to-text call map, read the way the publisher writes it:
+\ by region word offset, out of the byte the map keeps it in.
+TRUSTED: DATA-A ( -- ptr u8 )
+   data-base ;
+
+: MAP-BIT@ ( n -- n ) {: at:n :}
+   at dbase@ - {: off:n :}
+   DATA-A SNAP-RELOC:CALLMAP-OFF + off 5 rshift + c@
+   off 2 rshift 7 and rshift 1 and ;
+
+\ The record half of the witness is taken of a word that always exists, because
+\ one of the points below names a word that does not - there is no record to read
+\ for an unknown name, and the claim being tested is about the state a refusal
+\ leaves, not about the name it refused. PUB-KEEP is never successfully
+\ published by any of these points, so its record moving at all is the failure.
+: WITNESS ( -- )
+   cp@ WIT-CP !
+   s" PUB-KEEP" REC-START WIT-START !
+   s" PUB-KEEP" REC-LEN WIT-LEN !
+   WIT-WORDS 0 ?do
+      cp@ i 4 * +  {: at:n :}
+      at CODE-WORD@  WIT-CODE i cells + !
+      at MAP-BIT@    WIT-MAP i cells + !
+   loop ;
+
+: WITNESS-CK ( -- )
+   cp@ WIT-CP @ T=
+   s" PUB-KEEP" REC-START WIT-START @ T=
+   s" PUB-KEEP" REC-LEN WIT-LEN @ T=
+   WIT-WORDS 0 ?do
+      WIT-CP @ i 4 * + {: at:n :}
+      at CODE-WORD@  WIT-CODE i cells + @  T=
+      at MAP-BIT@    WIT-MAP i cells + @  T=
+   loop ;
+
+\ One mutation point: take the witness, make the publication fail exactly there,
+\ and hold the whole witness against what is there afterwards.
+\
+\ THE SUBJECT TRAVELS IN CELLS BECAUSE A QUOTATION IS NOT A CLOSURE. `[: ... ;]`
+\ may not read the enclosing word's locals, and the publication has to happen
+\ inside one so its throw can be caught and named. So the name and the wordlist
+\ are put where the quotation's own body can read them.
+128 BUFFER: PT-NAME
+variable PT-U
+variable PT-WID
+
+: PT-NAME$ ( -- ptr u8 n )
+   PT-NAME PT-U @ ;
+
+: PT-PUBLISH ( -- )
+   PT-NAME$ PT-WID @ NPUB:REPUBLISH ;
+
+: POINT ( ptr u8 n n n -- ) {: a:ptr u:n wid:n code:n :}
+   a PT-NAME u STR-LEN BYTE-COPY-LEN
+   u PT-U !
+   wid PT-WID !
+   WITNESS
+   [: PT-PUBLISH ;] code TTHROWSQ
+   WITNESS-CK ;
+
+\ A name the log cannot hold. NAME-MAX is 64, so this word's tail is longer than
+\ a log row, and the refusal it earns is the exact one that used to arrive after
+\ the record had already been retargeted.
+: DEFINE-LONG ( -- )
+   s" : PUB-NAME-THAT-IS-DELIBERATELY-LONGER-THAN-A-LOG-ROW-CAN-EVER-HOLD ( n -- n ) 2 * ;"
+   EV ;
+
+: LONG$ ( -- ptr u8 n )
+   s" PUB-NAME-THAT-IS-DELIBERATELY-LONGER-THAN-A-LOG-ROW-CAN-EVER-HOLD" ;
+
+: ATOMIC-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c COMPILE-SQ
+
+   s" a name the record resolves but the log cannot hold leaves everything"
+   T-LABEL
+   LONG$ GLOBAL-WID E-NPUB-CAP POINT
+
+   s" an unknown name leaves everything" T-LABEL
+   s" PUB-NO-SUCH-WORD" PUB-WID E-NPUB-NAME POINT
+
+   s" a package record leaves everything" T-LABEL
+   s" PUB-KEEP" XREF-NAMESPACE-WL E-NPUB-NAME POINT
+
+   s" an immediate word leaves everything" T-LABEL
+   s" IF" GLOBAL-WID E-NPUB-NAME POINT ;
+
+\ The two points that need the code pointer moved out from under the attempt: a
+\ slot with no room under the end reserve, and a placement that is not the slot
+\ being claimed. Both restore the pointer afterwards, which they can do because
+\ neither wrote anything - which is the claim.
+: ROOM-POINT ( -- )
+   cp@ SAVED-CP !
+   s" a publication with no room leaves everything" T-LABEL
+   AT-CEILING
+   s" PUB-KEEP" PUB-WID E-NPUB-ROOM POINT
+   SAVED-CP @ CODE-RECLAIM:TRUNCATE ;
+
+: PLACE-POINT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   NPUB:NEXT-SLOT PLACE-SKEW + A64EMIT:PLACE-AT
+   c COMPILE-SQ
+   s" a placement that is not the claimed slot leaves everything" T-LABEL
+   s" PUB-KEEP" PUB-WID E-NPUB-PLACE POINT ;
+
+: ATOMIC-CASES ( -- )
+   DEFINE-LONG
+   NFIX:BINDING [: ATOMIC-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: drop ROOM-POINT ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: PLACE-POINT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ ---- and what a publication that SUCCEEDS wrote --------------------------------
+\ The other half of the same question. The window copies the emitter's buffer in
+\ one go instead of poking each instruction at its own mapped offset, so "the
+\ published bytes are the emission" is now a property of one bulk copy and is
+\ worth reading back word for word. The map is read back too: a routine with no
+\ call to engine text must leave no bit set anywhere in its span, which is what
+\ says the window's clear really ran.
+: BYTES-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c COMPILE-SQ
+   NPUB:NEXT-SLOT {: at:n :}
+   s" PUB-KEEP" PUB-WID NPUB:REPUBLISH
+
+   s" every word of the published routine is the word the emitter sealed" T-LABEL
+   A64EMIT:INSNS 0 ?do
+      at i 4 * + CODE-WORD@  i A64EMIT:WORD@  T=
+   loop
+
+   s" the code pointer moved past exactly the emission" T-LABEL
+   cp@ at A64EMIT:SIZE + T=
+
+   s" and no word of it claims a call into engine text" T-LABEL
+   A64EMIT:INSNS 0 ?do
+      at i 4 * + MAP-BIT@ 0 T=
+   loop ;
+
+: BYTES-CASE ( -- )
+   NFIX:BINDING [: BYTES-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : SEALED-CASES ( -- )
    RECORD-CASE
    UNKNOWN-CASE
@@ -312,6 +480,8 @@ public
    NFIX:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT
    CALLER-CASE
    PLACE-CASE
+   ATOMIC-CASES
+   BYTES-CASE
    T-REPORT ;
 
 ;package

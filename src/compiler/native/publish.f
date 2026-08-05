@@ -22,11 +22,53 @@
 \ publish an emission the validator has not accepted: the second door would have
 \ to be a second parameter, and there is none.
 \
-\ THE OFFSETS COME FROM THE SOURCE MAP. Instruction i is written at the offset
-\ the emitter recorded for it, not at four times its position, so a map that lost
-\ a row or moved an offset leaves a hole in the published routine rather than a
-\ routine nobody compared the map against. An offset outside the emission, or one
-\ that is not instruction aligned, is refused by name here.
+\ IT IS ONE WINDOW, AND THAT IS THE SHAPE OF THE WHOLE FILE. A publication used
+\ to be a sequence of pokes: `patch32` per instruction, each one flipping the
+\ code region writable, storing four bytes, flipping it back and syncing a cache
+\ line - two protection syscalls apiece - and four more pokes for the two record
+\ cells. A four-instruction routine cost sixteen protection syscalls, and the
+\ record's cells were torn across two windows each. It is now ONE call to
+\ `code-publish`: one flip to writable, one copy of the whole emission, one flip
+\ back, one flush of exactly the range written. Two syscalls, whatever the
+\ routine's length.
+\
+\ THE WINDOW CANNOT BE COMPOSED OUT OF SMALLER PIECES, which is why it is an
+\ engine primitive rather than a loop here. Flipping the code region to writable
+\ removes execute permission from the page the running interpreter is on, so
+\ everything between the two flips has to be engine text; a Habu caller that held
+\ the region open across its own loop would have unmapped itself. src/habu/
+\ habu1.f BCODEPUBLISH is that window and this file is its only caller.
+\
+\ AND `patch32` IS NOT USED HERE ANY MORE. It remains the engine's ISOLATED
+\ writer - one already-published instruction, rewritten in place, with its own
+\ protection pair and its own line flush - which is what a debugger breakpoint
+\ is and what src/habu/xref.f retires a record with. Publication is an append of
+\ a whole routine and uses the window; a single-word edit of live code is the
+\ other operation and uses the poke. Nothing in this file pokes.
+\
+\ THE TWO PHASES, AND THE LINE BETWEEN THEM IS THE POINT. Everything that can
+\ refuse refuses in the first phase, before a single byte of code, a single map
+\ bit or a single record cell has moved: the emission is measured, its source map
+\ is held against the bytes it describes, the name is resolved and admitted, the
+\ code space is claimed, the placement is held against the slot, the clobber row
+\ is checked for room and for narrowing, every branch is decoded and held against
+\ what the routine claims to destroy, and the replacement log is checked for room
+\ and for name length. The second phase writes, and NOTHING in it can throw. A
+\ refusal therefore leaves the dictionary record, the code arena, the call map
+\ and the clobber table exactly as it found them, and the word keeps running the
+\ code it was running. This was not true before: an overlong name reached
+\ E-NPUB-CAP from the replacement log AFTER the live start address had already
+\ been changed.
+\
+\ THE OFFSETS COME FROM THE SOURCE MAP, AND THE MAP HAS TO BE THE IDENTITY. A
+\ bulk copy writes the emitter's buffer as it stands, so the claim that
+\ instruction i belongs at offset 4i is no longer something the writer can honour
+\ one instruction at a time - it is something the publication has to CHECK. So it
+\ is checked, for every instruction, before the copy: an offset that is not four
+\ times its position, or one outside the emission, or one that is not instruction
+\ aligned, is refused by name. That is strictly more than the per-instruction
+\ writer proved. It wrote each instruction wherever the map said and would have
+\ published a permuted routine without complaint; this refuses one.
 \
 \ AND THE SLOT IS ALSO WHAT THE ROUTINE'S OWN BRANCHES WERE MEASURED FROM. A
 \ routine that calls another word carries a branch whose displacement is the
@@ -81,6 +123,50 @@
 \ leave untouched, and it is the byte count of the code the old emitter produced
 \ for the same name, which nothing else remembers once the record is rewritten.
 \
+\ AND WHAT IT PUBLISHES BESIDES THE BYTES: THE RELOCATION RECORD OF EVERY CALL
+\ IT WROTE. A call from one region address to another keeps its distance wherever
+\ the region is mapped; a call from the region into the engine's loaded text does
+\ not, because the kernel picks the region base and the loader picks the image
+\ base independently. So a snapshot has to rewrite the second kind and must not
+\ touch the first, and which kind a branch is has to be recorded where the branch
+\ is BUILT - src/habu/layout.f says why nothing may recognise one afterwards by
+\ decoding region bytes. The engine's own emitter records it at its call-emit
+\ chokepoint. This publisher writes calls too, and for a long time recorded none
+\ of them: a migrated routine calling sealed engine `abs` decoded to the right
+\ target with its map bit clear, so a snapshot restore preserved the writing
+\ run's displacement and branched into whatever now sits there.
+\
+\ IT IS WRITTEN HERE NOW, AND BOTH DIRECTIONS ARE WRITTEN. The window clears the
+\ map over the whole span it publishes, so every word of a fresh routine starts
+\ with no claim on it - which is what a reused slot needs, because the bits above
+\ a reclaimed routine described calls that no longer exist. Then this file sets
+\ the bit for exactly those branches whose target lies outside the region. A
+\ branch that stays inside sets nothing, and needs to set nothing, because the
+\ clear already ran. There is one writer of a code address in this system and it
+\ is this file; there is one durable store of what that address is and it is the
+\ XREF record.
+\
+\ WHICH IS THE SAME SENTENCE AS THE RECLAMATION INVARIANT. No address-keyed fact
+\ may outlive the code it describes. The call map is given back by the window
+\ that overwrites the span; the clobber row and the recorded body are given back
+\ by CODE-RECLAIM (src/habu/xref.f), which is the notice every reclamation goes
+\ through; and the claimed-slot line below follows the code pointer down. A fact
+\ this file records is reachable only through an address the XREF record still
+\ points at, and it stops being reachable when that record does.
+\
+\ AND THE RECORD IS COMMITTED IN ONE ORDER, WITH RELEASE. A record's first two
+\ cells are the address a caller branches to and the number of bytes the engine's
+\ inliner may copy from there; they mean nothing apart. `xref-retarget` writes
+\ both in one protection window - a cell store built out of two 32-bit pokes tore
+\ each of them across two windows - and it writes the LENGTH first and the
+\ ADDRESS last, with a store-release. The address is what makes the new routine
+\ reachable, so everything that has to be true before a caller may enter is
+\ ordered before it: the instruction bytes, the cache flush the window already
+\ did, the relocation bits, and the length. A reader that acquires the start
+\ address sees the length that belongs to it. Retargeting start-first would leave
+\ a window in which callers reach new code carrying the old routine's length,
+\ which is the span the inliner copies into them.
+\
 \ AND WHAT IT PUBLISHES BESIDES THE BYTES: WHAT THE ROUTINE DESTROYS. A call site
 \ has to put every value it is holding somewhere the callee cannot reach, and
 \ "every register the caller could be holding a value in" is the only honest
@@ -129,29 +215,28 @@ $4000 constant CODE-RESERVE
 128 constant LOG-MAX
 64 constant NAME-MAX
 
-\ ---- the one primitive that writes ------------------------------------------
-\ `patch32` is the engine's 32-bit poke: it flips the code region writable,
-\ stores, flips it back and syncs the instruction cache for the line it wrote,
-\ all inside engine text. It is refused from checked code, so it is wrapped once
-\ here and this word chooses nothing - both the value and the address are
-\ computed by the checked words below. src/habu/xref.f wraps the same primitive
-\ the same way to retire a record.
-TRUSTED: POKE ( n ptr a -- )
-   patch32 ;
+\ ---- the three primitives that write -----------------------------------------
+\ All three are code injection, so the checker admits them only through a trusted
+\ boundary; each is wrapped exactly once here and none of these words chooses
+\ anything. Every address and every value they are handed is computed by the
+\ checked words below, and each of them runs only after the whole publication has
+\ been validated.
+\
+\ The bulk window: one flip to writable, the whole emission copied, one flip
+\ back, the call map cleared over the span, the code pointer advanced past it,
+\ and one flush of exactly that range.
+TRUSTED: CODE-WINDOW ( ptr u8 n n -- )
+   code-publish ;
 
-\ A dictionary record is cells; `patch32` writes half of one, so a cell store is
-\ its two halves. The record address is carried as a number because the cell
-\ being written is addressed rather than dereferenced.
-: HALF-LO ( n -- n )
-   $FFFFFFFF and ;
+\ One call site recorded as reaching outside the region. The window above has
+\ already cleared every bit of the span, so this only ever sets.
+TRUSTED: RELOC-EXTERNAL ( n -- )
+   callmap-set ;
 
-: HALF-HI ( n -- n )
-   $20 rshift $FFFFFFFF and ;
-
-: REC-CELL! ( n n n -- )
-   {: v:n rec:n k:n :}
-   v HALF-LO   rec k cells + XREF-N>REC POKE
-   v HALF-HI   rec k cells + INSN-BYTES + XREF-N>REC POKE ;
+\ The record's two cells, written whole and in one order: length, then the start
+\ address with a store-release.
+TRUSTED: RETARGET-REC ( n n n -- )
+   xref-retarget ;
 
 \ ---- the replacement log -----------------------------------------------------
 \ One row per republished name: what the record held before, and what it holds
@@ -187,6 +272,17 @@ variable LOG-N
 
 : LOG-OK ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
    a u wid LOG-FIND dup 0 < if E-NPUB-LOG throw then ;
+
+\ The log's two refusals, asked in the validation phase. They used to be asked by
+\ the append itself, which runs after the code and the record have already
+\ moved - an overlong name really did return E-NPUB-CAP with the word already
+\ pointing at its new routine. So the questions are asked here, where a refusal
+\ still costs nothing, and the append below cannot answer anything but yes. The
+\ throws inside it are the backstop and not the path, which is the shape
+\ src/compiler/native/clobber.f keeps for the same reason.
+: LOG-CK ( n -- ) {: u:n :}
+   LOG-N @ LOG-MAX >= if E-NPUB-CAP throw then
+   u NAME-MAX > if E-NPUB-CAP throw then ;
 
 : LOG+ ( ptr u8 n n n n n n -- )
    {: a:ptr u:n wid:n os:n ol:n ns:n nl:n :}
@@ -343,21 +439,43 @@ variable CLAIMED
       then
    loop ;
 
-\ Write the emission at the claimed slot and move the code pointer past it, so
-\ the next definition the engine compiles begins after this routine.
-: WRITE ( n n -- ) {: fn:n size:n :}
+\ ---- the source map describes the bytes the window will copy ------------------
+\ A bulk copy takes the emitter's buffer as it stands, so "instruction i lives at
+\ offset 4i" stops being something a per-instruction writer can arrange and
+\ becomes something the publication has to prove. Every row is held against its
+\ own position here, in the validation phase, so a map that lost a row, gained
+\ one, or reordered two is a refusal rather than a permuted routine. The bounds
+\ and alignment questions OFFSET-CK asks are asked of the same row on the way
+\ past, so a map row is admitted by one word rather than by two that could
+\ disagree.
+: MAP-CK ( n -- ) {: size:n :}
    A64EMIT:INSNS 0 ?do
-      i A64EMIT:WORD@
-      i A64EMIT:MAP-OFFSET@ size OFFSET-CK fn +  XREF-N>REC
-      POKE
-   loop
-   fn size + cp! ;
+      i A64EMIT:MAP-OFFSET@ size OFFSET-CK  i INSN-BYTES * <> if
+         E-NPUB-OFFSET throw
+      then
+   loop ;
 
-\ Point the record at the new routine. The length excludes the trailing return
-\ because that is what the engine's own record means by a word's length.
-: RETARGET ( n n n -- ) {: idx:n fn:n size:n :}
-   fn   idx XREF-REC-ADDR XREF-START-SLOT REC-CELL!
-   size INSN-BYTES -  idx XREF-REC-ADDR XREF-LEN-SLOT REC-CELL! ;
+\ ---- the relocation record of every call the emission carries -----------------
+\ Which branches reach outside the region, decided the way BRANCH-CK decides
+\ where a branch goes: through src/compiler/native/branch.f, the one reader of
+\ that displacement. A target inside the region keeps its distance wherever the
+\ region is mapped and needs no record; one outside does not, and is the only
+\ kind a snapshot rewrites.
+: EXTERNAL? ( n -- bool ) {: t:n :}
+   t dbase@ < if true exit then
+   t dbase@ REGION + >= ;
+
+\ Set the bit for every call site of the routine just published. It runs after
+\ the window, which cleared the whole span, so a site that needs no record is
+\ already right and nothing here has to clear one.
+: RELOC-CALLS ( n -- ) {: fn:n :}
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ NBR:BL? if
+         fn i INSN-BYTES * +  i A64EMIT:WORD@  NBR:BL-TARGET EXTERNAL? if
+            fn i INSN-BYTES * + RELOC-EXTERNAL
+         then
+      then
+   loop ;
 
 public
 
@@ -365,24 +483,42 @@ public
 \ wordlist. Global words are wordlist zero; a package word's wordlist is the one
 \ its own record carries.
 \
-\ Everything that can refuse refuses before the first byte is written: the
-\ emission is read and measured, the name is resolved and admitted, and the code
-\ space is claimed, all before WRITE. So a refusal leaves the dictionary record
-\ exactly as it found it, and the word keeps running the code it was running.
-: REPUBLISH ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
-   SIZE-CK {: size:n :}
+\ THE VALIDATION PHASE IS EVERY REFUSAL THIS PUBLICATION CAN MAKE, and it ends
+\ before the first byte moves. Nothing below the line can throw: the window, the
+\ relocation bits, the record retarget and the three bookkeeping steps are all
+\ writes whose preconditions have just been proved. So a refusal leaves the code
+\ arena, the call map, the dictionary record, the clobber table and the log
+\ exactly as it found them, and the word keeps running the code it was running.
+: VALIDATE ( ptr u8 n n n -- n n ) {: a:ptr u:n wid:n size:n :}
+   size MAP-CK
    a u wid TARGET {: idx:n :}
    size ROOM-CK {: fn:n :}
    fn PLACE-CK
    fn SLOT-CK
    fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD-CK
    fn size BRANCH-CK
+   u LOG-CK
+   idx fn ;
+
+\ THE COMMIT PHASE, IN THE ONE ORDER THAT IS CORRECT. The bytes go in first and
+\ the window flushes them; then the relocation record of each call it wrote;
+\ then, LAST, the record cell that makes the routine reachable at all, written
+\ with a release so everything above it is visible to whoever acquires it. The
+\ clobber row, the claimed-slot line and the log follow, none of which any caller
+\ can reach before the retarget.
+: COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
+   A64EMIT:BYTES fn size CODE-WINDOW
+   fn RELOC-CALLS
+   fn  size INSN-BYTES -  idx RETARGET-REC
+   fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD
+   fn size CLAIM ;
+
+: REPUBLISH ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
+   SIZE-CK {: size:n :}
+   a u wid size VALIDATE {: idx:n fn:n :}
    idx XREF-REC XREF-START {: os:n :}
    idx XREF-REC XREF-LEN {: ol:n :}
-   fn size WRITE
-   idx fn size RETARGET
-   fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD
-   fn size CLAIM
+   idx fn size COMMIT
    a u wid os ol fn  size INSN-BYTES -  LOG+ ;
 
 \ The address the next republication will write its first instruction at. It is

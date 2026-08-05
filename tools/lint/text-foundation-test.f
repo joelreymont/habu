@@ -890,12 +890,15 @@ variable REG-I
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   \ Ratchet on the whole axiom registry of checker.f: 280 `PRIM:` rows plus 61
+   \ Ratchet on the whole axiom registry of checker.f: 283 `PRIM:` rows plus 61
    \ `PPRIM:` rows. It was 345 before the sealed-owner WID registry was deleted,
    \ which took the four `owner-wid-preflight?` / `owner-wid-public?` /
-   \ `owner-wid-private?` / `owner-wid?` axioms with it. A lexer that swallowed a
-   \ row into a neighbouring string would drop the count, not raise it.
-   REG-COUNT 341 ASSERT=
+   \ `owner-wid-private?` / `owner-wid?` axioms with it, and 341 before the bulk
+   \ publication window (dot habu-publish-native-code-886e3ef9) added the three
+   \ trusted-only axioms `code-publish`, `callmap-set` and `xref-retarget`. A
+   \ lexer that swallowed a row into a neighbouring string would drop the count,
+   \ not raise it.
+   REG-COUNT 344 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

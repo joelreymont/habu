@@ -294,9 +294,23 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ eight 16 KiB __TEXT pages, so the text pad absorbs all 3504 bytes and
 \ `FILE-SIZE bin/hb` is still 148855 = BUILD-SIZE:BASELINE-MACOS. The Linux row
 \ below is owed a linux-host re-measure for the same merge.
-114236 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-05, the bulk publication window (dot habu-publish-native-code-886e3ef9):
+\ three engine primitives join the emitter - `code-publish` (the span guard, the
+\ RW/copy/RX bracket, the call-map clear over the span and the range flush),
+\ `callmap-set` (one relocation bit) and `xref-retarget` (both record cells in
+\ one window, length then start-release) - plus their registrations and checker
+\ axioms. They replace a per-instruction poke loop in the CALLER
+\ (src/compiler/native/publish.f), so the engine text grows while the work each
+\ publication does shrinks. Two of them also carry their own bounds guard - a
+\ call-site address outside the region would index past the call map, and a
+\ record index outside the live dictionary would write anywhere in it - which is
+\ the last 56 bytes. The exact-CODELEN ratchet measured the candidate at 115028
+\ (was 114236), +792. Floor follows from the same number: 3644 -> 4436, inside
+\ the same 16 KiB page, so the text pad absorbs it and neither MACOS-SIGNATURE
+\ nor MACOS-TOTAL moves.
+115028 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-3644 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+4436 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
