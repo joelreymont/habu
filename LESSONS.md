@@ -5235,3 +5235,18 @@ itself, so the fork wrapper is the only honest place to record "entered by
 fork"; and "passes standalone, dies in the pool" does not imply a race -
 reduce to one member before theorising about siblings.
 
+## A substring assertion protects exactly nothing (2026-08-05)
+
+The bootstrap mirror suite held 259 source-text assertions and the fixpoint
+builder an exact-substring window audit. Every one failed both directions: a
+comment decoy satisfies the assertion, and a stale comment keeps it green
+after the real code is gone. What replaced them is nothing, deliberately -
+the fixpoint rebuild compiles what the text described, the certify pre-pass
+checks the exact assembled bytes through every window, and the recovery
+fixtures execute the paths the text quoted. The few invariants no gate
+observes (a mirror constant exercised only during no-binary recovery) kept a
+check - but as token-kind lexing with hostile comment/string fixtures, never
+text search. When deleting a check, name what still observes its invariant;
+where the answer is nothing and the invariant is real, that is a new dot, not
+a silent deletion.
+
