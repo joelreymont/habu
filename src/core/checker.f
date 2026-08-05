@@ -9998,6 +9998,25 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    -1 NPBAD !  2 NPBAD-KIND !
    vid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  ct NPBAD-TERM ! ;
 
+\ A real VALUE-RECORD accessor surfaces checker-owned field variables that are
+\ not raw signature quantifiers. Exempt only a resolved output root found under
+\ FIELD-INNER of a direct input field; an unrelated record grants no authority.
+: NP-FIELD-ROW? ( n n -- bool ) {: id:n row:n :}
+   row R-RES
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE T-RES dup FIELD-PARAM? IF
+         FIELD-INNER id MK-VAR swap RES-FALSE
+         TWALK-DEEPER TYPE-VAR?* TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+      ELSE drop THEN
+      P>REST R-RES
+   REPEAT drop RES-FALSE ;
+: NP-FIELD-IN? ( n -- bool )
+   T-RES dup TAG T-VAR <> IF drop RES-FALSE EXIT THEN
+   PAY {: id:n :}
+   id SGIN @ NP-FIELD-ROW? IF RES-TRUE EXIT THEN
+   SGHASR @ IF id SGRIN @ NP-FIELD-ROW? EXIT THEN
+   RES-FALSE ;
+
 \ NP-FREE-SCAN ( t -- ) : flag any input-unbound var inside a term nested under the
 \ output cell family stashed in NP-CELL-TERM. Raw (no T-RES) — a body bind cannot
 \ launder the declared var's absence from the inputs.
@@ -10006,7 +10025,9 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
       \ only a USER-DECLARED quantifier (a..z, NP-LETTER != '?') can forge a mint;
       \ internal/fresh vars from family machinery are checker-owned, never user-writable.
       t PAY NP-LETTER 63 <>  t PAY NP-INVARS-HAS? 0=  and
-      IF t PAY NP-CELL-TERM @ NP-FAIL-FREEMINT THEN EXIT
+      IF
+         t NP-FIELD-IN? 0= IF t PAY NP-CELL-TERM @ NP-FAIL-FREEMINT THEN
+      THEN EXIT
    THEN
    t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-PARAM = IF
@@ -10035,26 +10056,8 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
       P>REST R-RES
    REPEAT drop ;
 
-\ NP-ROW-HAS-FIELD? ( row -- bool ) : does a declared input row consume a
-\ VALUE-RECORD? A record is carried as a reserved `field<rec,name,inner>` term
-\ (FIELD-PARAM?), and it can EXISTENTIALLY hold a polymorphic cell field. So a
-\ checker-native field accessor (`( rec -- fam<a,..> )`, empty body = width
-\ coercion) legitimately surfaces cell vars unbound at the sig surface — a
-\ checker-governed introduction, NOT a register mint. The register-phantom
-\ families this seal protects (span / gridctx / tile / …) are plain cells and
-\ never appear as accessor inputs, so the PTX mint surface is unaffected.
-\ (Conservative boundary: a wrapper mixing a record input with a register mint is
-\ not sealed — an audited, contrived shape.)
-: NP-ROW-HAS-FIELD? ( n -- bool )
-   R-RES BEGIN dup TAG S-PUSH = WHILE
-      dup P>TYPE FIELD-PARAM? IF drop RES-TRUE EXIT THEN
-      P>REST R-RES
-   REPEAT drop RES-FALSE ;
-
 : NP-MINT-CHECK ( -- )   \ output cell params may not introduce input-unbound vars
    NPBAD @ IF EXIT THEN
-   SGIN @ NP-ROW-HAS-FIELD? IF EXIT THEN
-   SGHASR @ IF SGRIN @ NP-ROW-HAS-FIELD? IF EXIT THEN THEN
    0 NP-INVARS-N !  TWALK-RESET
    SGIN @ NP-INVARS-WALK
    SGHASR @ IF SGRIN @ NP-INVARS-WALK THEN
