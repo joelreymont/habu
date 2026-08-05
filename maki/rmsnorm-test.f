@@ -3,6 +3,7 @@
 \ Backward at x=[1,1], dy=[1,0]: Jacobian [[.5,-.5],[-.5,.5]] -> dx=[0.5,-0.5].
 
 require lib/test.f
+require test/checker-assert.f
 require maki/rmsnorm.f
 
 package MAKI
@@ -13,6 +14,13 @@ create RT-DY 2 cells allot
 create RT-DX 2 cells allot
 
 T-RESET
+
+s" RMS-R-FWD ( ptr r ptr r n -- ) RMS-FWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" RMS-N-FWD ( ptr n ptr r n -- ) RMS-FWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" RMS-U8-FWD ( ptr u8 ptr r n -- ) RMS-FWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" RMS-R-BWD ( ptr r ptr r ptr r n -- ) RMS-BWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" RMS-N-BWD ( ptr n ptr r ptr r n -- ) RMS-BWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" RMS-U8-BWD ( ptr u8 ptr r ptr r n -- ) RMS-BWD" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- forward: x=[1,1] (r ~ 1) -----------------------------------------------
 1.0 RT-X 0 T-SET  1.0 RT-X 1 T-SET
