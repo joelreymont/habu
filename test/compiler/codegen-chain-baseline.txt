@@ -65,13 +65,13 @@ rows: 11
 path  word                          bytes    cost  outputs
 ----  ----------------------------  -----  ------  -------
 new   CODEGEN-CORPUS:NOOP               0    1000
-new   CODEGEN-CORPUS:ADD3              28    1095  6 7
-new   CODEGEN-CORPUS:SQUARE-SUM        28    1041  25 29
-new   CODEGEN-CORPUS:MAX2              32    1059  4 9
-new   CODEGEN-CORPUS:LERP              48    1197  15 25
-new   CODEGEN-CORPUS:SUM-TO            64    5673  120 0
-new   CODEGEN-CORPUS:COUNT-DOWN        36    3451  0 -4
-new   CODEGEN-CORPUS:CELL-BUMP         64    1213  8 8 0 0
-new   CODEGEN-CORPUS:BYTE-SUM          80    7719  2040 0
-new   CODEGEN-CORPUS:BYTE-FIND        100    4706  9 -1
-new   CODEGEN-CORPUS:FACT              80    8220  3628800 1
+new   CODEGEN-CORPUS:ADD3              28    1118  6 7
+new   CODEGEN-CORPUS:SQUARE-SUM        28    1057  25 29
+new   CODEGEN-CORPUS:MAX2              32    1063  4 9
+new   CODEGEN-CORPUS:LERP              48    1232  15 25
+new   CODEGEN-CORPUS:SUM-TO            64    6170  120 0
+new   CODEGEN-CORPUS:COUNT-DOWN        36    3767  0 -4
+new   CODEGEN-CORPUS:CELL-BUMP         40     984  8 8 0 0
+new   CODEGEN-CORPUS:BYTE-SUM          80   11161  2040 0
+new   CODEGEN-CORPUS:BYTE-FIND        100    4821  9 -1
+new   CODEGEN-CORPUS:FACT              80    8275  3628800 1
