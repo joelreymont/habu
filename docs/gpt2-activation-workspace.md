@@ -68,12 +68,12 @@ family 'cad-num:alloc-byte-len'") and the load fails closed at exit 70. So
 themselves; they are carried in a private typed `layout` value through every
 validation step and erased exactly once, inside `MINT-WORKSPACE`.
 
-`WS-CELLS` returns a **cell** pointer, not a byte pointer: every internal
-read — the header and every region view — is cell-addressed, so the crossing
-that serves them must produce `ptr a` directly. Returning `ptr u8` here would
-force an unlisted byte-to-cell cast at each use and the three listed
-crossings would not be sufficient. `WS-TAKE` keeps `ptr u8` because
-`MEM:RELEASE-BYTES` consumes exactly that.
+`WS-CELLS` exposes the cell view used by every header and region read.
+`WS-TAKE` recovers the original `ptr u8` mapping representation minted by
+`MEM:ALLOC-BYTES` and passes it to
+`MEM:RELEASE-BYTES ( ptr a CAD-NUM:alloc-byte-len -- )`. The release input
+accepts that concrete pointer instantiation but does not require `u8`
+specifically. Neither crossing needs a cast.
 
 No other word converts between the token and an address. The header
 constructors and the layout arithmetic are private. `MINT-WORKSPACE` is

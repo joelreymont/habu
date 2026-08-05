@@ -578,7 +578,7 @@ TEST-WITH-BYTES
 
 ;package
 
-\ ---- static rejection matrix: frozen signatures accept; role swaps reject ------
+\ ---- static rejection matrix: generic pointers accept; role swaps reject --------
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
 package MEM
 private
@@ -604,6 +604,16 @@ private
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-ALLOC-CELLS ( CAD-NUM:alloc-cell-count -- ptr a ) MEM:ALLOC-CELLS"
       CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-AC-U8 ( CAD-NUM:alloc-cell-count -- ptr u8 ) MEM:ALLOC-CELLS"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-AC-BOOL ( CAD-NUM:alloc-cell-count -- ptr bool ) MEM:ALLOC-CELLS"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-AC-PU8 ( CAD-NUM:alloc-cell-count -- ptr ptr u8 ) MEM:ALLOC-CELLS"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-AC-DUP ( CAD-NUM:alloc-cell-count -- ptr u8 ptr u8 ) MEM:ALLOC-CELLS dup"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" B-AC-SPLIT ( CAD-NUM:alloc-cell-count -- ptr u8 ptr bool ) MEM:ALLOC-CELLS dup"
+      CHECK-QUIET-CANDIDATE! 0 T=
    s" G-ALLOC-64K ( -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-64K"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-BYTES-ALLOC-LEN ( n -- CAD-NUM:alloc-byte-len ) MEM:BYTES-ALLOC-LEN"
@@ -621,11 +631,13 @@ private
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-BYTE-ROLE-64K-BYTES ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:64K-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   \ RELEASE-BYTES demands the exact ptr u8 + alloc-byte-len ALLOC-BYTES mints: the
-   \ frozen signature resolves, while a raw-integer address, a raw-n length, a
-   \ zero-admitting byte-len, or a cell role are checker rejects, so no forged
-   \ address or unvalidated size reaches munmap.
-   s" G-RELEASE ( ptr u8 CAD-NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
+   \ RELEASE-BYTES accepts any typed mapping pointer with an exact allocation
+   \ extent. Raw addresses and every other length role are rejected.
+   s" G-REL-U8 ( ptr u8 CAD-NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-REL-BOOL ( ptr bool CAD-NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-REL-PU8 ( ptr ptr u8 CAD-NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" B-RELEASE-RAW-PTR ( n CAD-NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
@@ -635,11 +647,19 @@ private
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-RELEASE-CELL-LEN ( ptr u8 CAD-NUM:alloc-cell-count -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   \ UNMAP accepts a mapped byte extent, not an allocation owner, raw length,
-   \ cell length, or cell pointer.
-   s" G-UNMAP ( ptr u8 CAD-NUM:byte-len -- ) MEM:UNMAP"
+   \ UNMAP likewise accepts every typed pointer, but only with a mapped byte
+   \ extent. The primitive is pointer-polymorphic and still rejects raw addresses.
+   s" G-UM-U8 ( ptr u8 CAD-NUM:byte-len -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" B-UNMAP-BOOL-PTR ( ptr bool CAD-NUM:byte-len -- ) MEM:UNMAP"
+   s" G-UM-BOOL ( ptr bool CAD-NUM:byte-len -- ) MEM:UNMAP"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-UM-PU8 ( ptr ptr u8 CAD-NUM:byte-len -- ) MEM:UNMAP"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-MUN-BOOL ( ptr bool n -- n ) munmap"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" B-UNMAP-RAW-PTR ( n CAD-NUM:byte-len -- ) MEM:UNMAP"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-MUN-RAW ( n n -- n ) munmap"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-UNMAP-RAW-LEN ( ptr u8 n -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! 0 T=
