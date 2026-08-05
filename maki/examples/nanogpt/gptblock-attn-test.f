@@ -133,8 +133,8 @@ variable GB-T  variable GB-B1T  variable GB-B2T
 : GB-C1 ( -- r ) 1.0 GB-B1T @ f- ;  : GB-C2 ( -- r ) 1.0 GB-B2T @ f- ;
 
 \ ---- executor output (last forward node = the logits) + per-slot gradient node --------
-: GB-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
-: GB-GRAD ( n -- ptr a )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
+: GB-OUT ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
+: GB-GRAD ( n -- ptr r )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 : GB-INVR ( -- r )  1.0 GBT s>f f/ ;
 
 \ write the mean-scaled y-onehot(target) seed cotangent from the logits; return mean CE
@@ -340,7 +340,7 @@ create GBR-F GBT GBC * cells allot     create GBR-LOG GBT GBV * cells allot
    GBR-F GB-WLM GBR-LOG  GBT GBC GBV  MATMUL   GBR-LOG GBT GBV GB-BLM GBR-ROWBIAS ;  \ LM head -> logits
 
 \ ---- causality probe: bind init params + real mask, forward, return the softmax P node --
-: GB-FWD-P ( -- ptr a )
+: GB-FWD-P ( -- ptr r )
    GB-INIT  EX-RESET  GB-BIND
    BW-FWD-N@ EX-RUN-N
    7 MIR-NODE-ID EX-OUT@ ;                     \ node 7 = SOFTMAX-ROW (the attention weights P)

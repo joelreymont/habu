@@ -79,8 +79,8 @@ variable M-T  variable M-B1T  variable M-B2T
    M-MASK A-MASK-FILL ;
 
 \ ---- executor output (last forward node = the logits) + per-slot gradient node -------
-: M-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
-: M-GRAD ( n -- ptr a )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
+: M-OUT ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
+: M-GRAD ( n -- ptr r )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 : M-INVR ( -- r )  1.0 MSEQ s>f f/ ;
 
 \ write the mean-scaled y-onehot(target) seed cotangent from the logits; return mean CE
@@ -193,7 +193,7 @@ GC-RUN V-PASS T=
 
 \ forward semantic: with the real causal mask bound, query 0 attends ONLY to key 0 -
 \ future-key weights decay to ~0 through the stable softmax (node 4 = the softmax P).
-: A-CAUSAL-FWD-P ( -- ptr a )   \ bind params + real mask, run forward, return softmax P
+: A-CAUSAL-FWD-P ( -- ptr r )   \ bind params + real mask, run forward, return softmax P
    M-INIT  EX-RESET
    M-X 0 MIR-SLOT-ID EX-BIND   M-WQ 1 MIR-SLOT-ID EX-BIND   M-WK 2 MIR-SLOT-ID EX-BIND
    M-SC 3 MIR-SLOT-ID EX-BIND  M-WV 4 MIR-SLOT-ID EX-BIND   M-WH 5 MIR-SLOT-ID EX-BIND

@@ -77,9 +77,9 @@ variable LNAO-B1T   variable LNAO-B2T
    0.0 LNAO-GM LNAO-C  T-FILL  0.0 LNAO-GV LNAO-C  T-FILL
    0.0 LNAO-BM LNAO-C  T-FILL  0.0 LNAO-BV LNAO-C  T-FILL ;
 
-: LNAO-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = y
+: LNAO-OUT ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = y
 : LNAO-INV-N ( -- r )  1.0 LNAO-RC s>f f/ ;
-: LNAO-GRAD-AT ( n -- ptr a )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
+: LNAO-GRAD-AT ( n -- ptr r )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 
 \ write the mean-scaled seed cotangent from the current output; return the mean MSE
 : LNAO-LOSS-SEED ( -- r )

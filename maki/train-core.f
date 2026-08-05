@@ -27,7 +27,7 @@ public
 \ output buffer (EX-OUT@ fails closed with E-EX-NODE if a slot carried no
 \ gradient node).
 : SC-SLOT ( n -- MIR:input-slot )  MIR-SLOT-ID ;
-: SC-GRAD-AT ( n -- ptr a )  SC-SLOT BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
+: SC-GRAD-AT ( n -- ptr r )  SC-SLOT BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 
 private
 

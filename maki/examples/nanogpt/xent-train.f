@@ -104,8 +104,8 @@ public
 private
 
 \ ---- forward output (the logits node) + per-parameter gradient node ----------
-: CET-OUT  ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
-: CET-GRAD ( n -- ptr a )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
+: CET-OUT  ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
+: CET-GRAD ( n -- ptr r )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 
 \ scale the whole seed buffer to the MEAN loss (TT-XENT-SEED writes the SUM's y-t)
 : CET-SEED-SCALE! ( -- )

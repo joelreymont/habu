@@ -84,7 +84,7 @@ variable CKM-L
    MF-W2 3 MIR-SLOT-ID EX-BIND   MF-B2 4 MIR-SLOT-ID EX-BIND
    MF-SEED BW-SEED-SLOT@ EX-BIND ;
 
-: MF-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = 8x2 output
+: MF-OUT ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = 8x2 output
 : MF-INVN ( -- r )  1.0 MF-ON s>f f/ ;
 
 \ write the mean-scaled seed cotangent (2*(o-t)/N); return the mean MSE
@@ -146,7 +146,7 @@ variable CKA-L
    AF-S 2 MIR-SLOT-ID EX-BIND   AF-V 3 MIR-SLOT-ID EX-BIND
    AF-SEED BW-SEED-SLOT@ EX-BIND ;
 
-: AF-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = 4x3 output
+: AF-OUT ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = 4x3 output
 : AF-INVN ( -- r )  1.0 AF-ON s>f f/ ;
 
 : AF-LOSS-SEED ( -- r )

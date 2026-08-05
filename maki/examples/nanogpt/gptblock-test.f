@@ -87,8 +87,8 @@ variable G-RNG
    GT 0 ?do  i GV mod s>f  G-IDS i T-SET   i GV mod s>f  G-TGT i T-SET  loop ;
 
 \ ---- executor forward output (the last node = the 5x6 logits) + per-slot gradient -
-: G-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
-: G-GRAD ( n -- ptr a )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
+: G-OUT ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
+: G-GRAD ( n -- ptr r )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 : G-INVR ( -- r )  1.0 GT s>f f/ ;
 
 \ write the mean-scaled y-onehot(target) seed cotangent from the logits; return mean CE

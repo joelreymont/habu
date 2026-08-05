@@ -75,7 +75,7 @@ variable TP-T@   variable TP-B1T   variable TP-B2T
    TP-WPE  TP-WPE-SLOT SC-SLOT EX-BIND
    TP-SEED BW-SEED-SLOT@ EX-BIND ;
 
-: TP-OUT  ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = the 6x3 output
+: TP-OUT  ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = the 6x3 output
 : TP-INVN ( -- r )  1.0 TP-PN s>f f/ ;
 
 \ write the mean-scaled seed cotangent (2*(o-t)/N) from the current output; return mean MSE

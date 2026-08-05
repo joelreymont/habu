@@ -109,7 +109,7 @@ create MHO-PWO 64 cells allot         create MHO-PBO 8 cells allot
    -777.25 0 MIR-NODE-ID EX-OUT@ 0 MIR-NODE-ID EX-NODE-ELEMS T-FILL
    [: EX-RUN ;] catch E-MHA-GEOM T=
    MHO-NO-PUB? TTRUE ;
-: MHO-OUT ( -- ptr a )  0 MIR-NODE-ID EX-OUT@ ;
+: MHO-OUT ( -- ptr r )  0 MIR-NODE-ID EX-OUT@ ;
 : MHO-REF ( -- )  MHO-X MHO-WQKV MHO-BQKV MHO-WO MHO-BO MHO-REFY MHA-FWD ;
 
 \ direct geometry-validator probes (extents come from the bind, checked against the constants)

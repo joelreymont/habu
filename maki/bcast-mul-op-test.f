@@ -54,7 +54,7 @@ create BMO-X BMO-RC cells allot   create BMO-G BMO-C cells allot
 : BMO-BIND-RUN ( -- )                         \ bind the two inputs and run the forward IR
    BMO-FILL EX-RESET
    BMO-X 0 MIR-SLOT-ID EX-BIND  BMO-G 1 MIR-SLOT-ID EX-BIND  EX-RUN ;
-: BMO-OUT ( -- ptr a )  0 MIR-NODE-ID EX-OUT@ ;
+: BMO-OUT ( -- ptr r )  0 MIR-NODE-ID EX-OUT@ ;
 
 T-RESET
 

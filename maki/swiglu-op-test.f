@@ -59,7 +59,7 @@ create SW-CT   SWC cells allot   create SW-Y1  SWC cells allot   create SW-Y2 SW
 : SW-ALL-EQ? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}
    n 0 ?do  a i T-GET  b i T-GET  f= 0= if  false unloop exit  then  loop  true ;
 
-: SW-OUT ( -- ptr a )  0 MIR-NODE-ID EX-OUT@ ;
+: SW-OUT ( -- ptr r )  0 MIR-NODE-ID EX-OUT@ ;
 : SW-BIND-RUN ( -- )
    SW-FILL EX-RESET  SW-GATE 0 MIR-SLOT-ID EX-BIND  SW-UP 1 MIR-SLOT-ID EX-BIND  EX-RUN ;
 

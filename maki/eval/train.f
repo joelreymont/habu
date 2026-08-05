@@ -147,7 +147,7 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
    ET-GA 3 SC-SLOT EX-BIND   ET-BE 4 SC-SLOT EX-BIND   ET-EW 5 SC-SLOT EX-BIND
    ET-DY BW-SEED-SLOT@ EX-BIND ;
 
-: ET-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node output
+: ET-OUT ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node output
 : ET-INVN ( -- r )  1.0 ET-XN s>f f/ ;
 
 \ mean MSE at the current params + its mean-scaled seed cotangents (2*(y-t)/N)

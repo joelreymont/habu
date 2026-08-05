@@ -110,7 +110,7 @@ variable TIE-AT   variable TIE-AB1   variable TIE-AB2
 : TIE-LR ( -- r )  0.05 ;
 
 \ ---- slot gradient node reader (the slot's analytic grad buffer) --------------
-: TIE-GRD ( n -- ptr a )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
+: TIE-GRD ( n -- ptr r )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 
 \ ---- tie-shape guard: the two roles must be transpose-compatible --------------
 \ wte(V,C) and wlm(C,V): rows(wte)=cols(wlm) and cols(wte)=rows(wlm). A pair that
@@ -121,7 +121,7 @@ variable TIE-AT   variable TIE-AB1   variable TIE-AB2
    ws MIR-SLOT-COLS@ COLS-RAW   hs MIR-SLOT-ROWS@ ROWS-RAW   <> if E-TIE-SHAPE throw then ;
 
 \ ---- forward output + mean-scaled cross-entropy loss/seed ----------------------
-: TIE-OUTB ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
+: TIE-OUTB ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
 : TIE-INVR ( -- r )  1.0 KS s>f f/ ;
 : TIE-LOSS-SEED ( -- r )                 \ write dL/dlogits seed; return mean CE
    TIE-OUTB {: ob:ptr :}

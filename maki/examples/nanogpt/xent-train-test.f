@@ -43,9 +43,9 @@ using LOSS
 variable LAST-LOSS                              \ stashed final loss (determinism check)
 
 \ ---- read the analytic gradient node for a model input slot -----------------
-: AN-GRAD ( n -- ptr a )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
+: AN-GRAD ( n -- ptr r )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 \ ---- forward logits node + a forward-slice-only run -------------------------
-: LOGITS  ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
+: LOGITS  ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
 : RUN-FWD ( -- )  BW-FWD-N@ EX-RUN-N ;
 \ ---- the batch MEAN cross-entropy at the current logits (what training reports)
 : MEAN-CE ( -- r )  LOGITS CET-R CET-V CET-T CET-TN TT-XENT  CET-INV-R f* ;

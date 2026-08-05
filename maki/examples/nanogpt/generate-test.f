@@ -76,8 +76,8 @@ variable GN-T  variable GN-B1T  variable GN-B2T
 : GN-C1 ( -- r ) 1.0 GN-B1T @ f- ;  : GN-C2 ( -- r ) 1.0 GN-B2T @ f- ;
 
 \ ---- executor forward output (last node = the TxV logits) + per-slot gradient node ---
-: GN-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
-: GN-GRAD ( n -- ptr a )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
+: GN-OUT ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;
+: GN-GRAD ( n -- ptr r )  MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 : GN-INVR ( -- r )  1.0 GNT s>f f/ ;
 
 \ write the mean-scaled y-onehot(target) seed cotangent from the logits; return mean CE
@@ -116,7 +116,7 @@ create GN-BACK 16 allot              \ decoded bytes (round-trip)
 8 constant GN-G                      \ tokens to generate
 
 \ forward the current WIN (bound to the ids slot) and return the (TxV) logit buffer base
-: GN-FWD ( -- ptr a )  BW-FWD-N@ EX-RUN-N  GN-OUT ;
+: GN-FWD ( -- ptr r )  BW-FWD-N@ EX-RUN-N  GN-OUT ;
 
 \ committed prompt: ids ending in token 0 (t = (T-1-i) mod V) -> a varied greedy orbit
 : GN-SEED-PROMPT ( -- )  GNT 0 ?do  GNT 1- i - GNV mod s>f  GN-PROMPT i T-SET  loop ;

@@ -133,16 +133,16 @@ EX-IN-PTR EX-IN-PP   ! EX-IN-SET EX-IN-SP !  EX-IN-SEED EX-IN-CAP !
 : EX-IN-CK ( n -- n )                   \ validate a raw model-input slot index
    dup 0 < over SLOT-COUNT@ CAD-NUM:EX-IC>N >= or if E-EX-SLOT throw then ;
 
-: EX-SLOT-PTR ( MIR:input-slot -- ptr a ) {: s:MIR:input-slot :}   \ bound buffer (fail closed)
+: EX-SLOT-PTR ( MIR:input-slot -- ptr r ) {: s:MIR:input-slot :}   \ bound buffer (fail closed)
    s SLOT>RAW EX-IN-CK {: raw:n :}
    EX-IN-SP @ raw T-AT @ 0= if E-EX-UNBOUND throw then
    EX-IN-PP @ raw T-AT @ ;
 
 : EX-OFF@ ( CAD-KIND:node-id -- n )  NODE>RAW EX-OFF-P @ swap T-AT @ ;
-: EX-NODE-PTR ( CAD-KIND:node-id -- ptr a )  EX-OFF@ {: off:n :}  EX-ARENA-P @ off T-AT ;
+: EX-NODE-PTR ( CAD-KIND:node-id -- ptr r )  EX-OFF@ {: off:n :}  EX-ARENA-P @ off T-AT ;
 
 \ ---- operand-ref descriptor (input slot or producer node) -------------------
-: EX-REF-PTR ( MIR:operand-ref -- ptr a ) {: r:MIR:operand-ref :}
+: EX-REF-PTR ( MIR:operand-ref -- ptr r ) {: r:MIR:operand-ref :}
    r MIR-REF-INPUT? if r MIR-REF-SLOT EX-SLOT-PTR else r MIR-REF-NODE EX-NODE-PTR then ;
 : EX-REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: r:MIR:operand-ref :}
    r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-REF-NODE MIR-ROWS@ then ;
@@ -194,7 +194,7 @@ private
    nd EX-NODE-ELEMS 0 ?do  ap i T-GET  nd MIR-OP@ EX-U-EL  ob i T-SET  loop ;
 
 \ broadcast read b[r,c]: a 1-row operand reads row 0, a 1-col operand reads col 0.
-: EX-BC@ ( ptr a n n n n -- r ) {: bp:ptr br:n bc:n r:n c:n :}
+: EX-BC@ ( ptr r n n n n -- r ) {: bp:ptr br:n bc:n r:n c:n :}
    br 1 = if 0 else r then {: rr:n :}
    bc 1 = if 0 else c then {: cc:n :}
    bp  rr bc *  cc +  T-GET ;
@@ -234,7 +234,7 @@ private
    loop ;
 
 \ ---- row words (layernorm / rmsnorm / softmax + VJPs) applied per row -------
-: EX-ROW-FWD-1 ( ptr a ptr a n opkind -- )
+: EX-ROW-FWD-1 ( ptr r ptr r n opkind -- )
    MATCH opkind
       layernorm OF LN-FWD ENDOF  rmsnorm OF RMS-FWD ENDOF  softmax-row OF SM-FWD ENDOF
       add OF E-EX-UNSUP throw ENDOF  mul OF E-EX-UNSUP throw ENDOF
@@ -275,7 +275,7 @@ private
    nd EX-NODE-NROWS {: R:n :}  nd EX-NODE-NCOLS {: C:n :}
    R 0 ?do  xb i C * T-AT   ob i C * T-AT   C   nd MIR-OP@   EX-ROW-FWD-1  loop ;
 
-: EX-ROW-BWD-1 ( ptr a ptr a ptr a n opkind -- )
+: EX-ROW-BWD-1 ( ptr r ptr r ptr r n opkind -- )
    MATCH opkind
       layernorm-bwd OF LN-BWD ENDOF  rmsnorm-bwd OF RMS-BWD ENDOF  softmax-row-bwd OF SM-BWD ENDOF
       add OF E-EX-UNSUP throw ENDOF  mul OF E-EX-UNSUP throw ENDOF
@@ -383,17 +383,17 @@ private
    EX-IDX  nd EX-NODE-NROWS  nd EX-NODE-PTR  SCATTER-ADD ;
 
 \ ---- rope (adjacent column pairs; cos/sin at the pair's base column) --------
-: EX-PAIR! ( r r ptr a n -- ) {: re:r im:r orow:ptr c0:n :}
+: EX-PAIR! ( r r ptr r n -- ) {: re:r im:r orow:ptr c0:n :}
    re orow c0 T-SET   im orow c0 1+ T-SET ;
 
-: EX-ROPE-ROW ( ptr a ptr a ptr a ptr a n -- ) {: xr:ptr cr:ptr sr:ptr orow:ptr C:n :}
+: EX-ROPE-ROW ( ptr r ptr r ptr r ptr r n -- ) {: xr:ptr cr:ptr sr:ptr orow:ptr C:n :}
    C 2 / 0 ?do
       i 2 * {: c0:n :}
       xr c0 T-GET  xr c0 1+ T-GET  cr c0 T-GET  sr c0 T-GET  ROPE-PAIR
       orow c0  EX-PAIR!
    loop ;
 
-: EX-ROPE-ROW-BWD ( ptr a ptr a ptr a ptr a n -- ) {: dz:ptr cr:ptr sr:ptr orow:ptr C:n :}
+: EX-ROPE-ROW-BWD ( ptr r ptr r ptr r ptr r n -- ) {: dz:ptr cr:ptr sr:ptr orow:ptr C:n :}
    C 2 / 0 ?do
       i 2 * {: c0:n :}
       dz c0 T-GET  dz c0 1+ T-GET  cr c0 T-GET  sr c0 T-GET  ROPE-BWD
@@ -624,7 +624,7 @@ public
    SLOT-COUNT@ CAD-NUM:EX-IC>N {: n:n :}  n EX-IN-ENSURE
    n 0 ?do  0 EX-IN-SP @ i T-AT !  loop ;
 
-: EX-BIND ( ptr a MIR:input-slot -- ) {: p:ptr s:MIR:input-slot :}   \ bind a model-input slot's host buffer
+: EX-BIND ( ptr r MIR:input-slot -- ) {: p:ptr s:MIR:input-slot :}   \ bind a model-input slot's host buffer
    s SLOT>RAW EX-IN-CK {: raw:n :}
    p  EX-IN-PP @ raw T-AT  !
    1  EX-IN-SP @ raw T-AT  ! ;
@@ -658,7 +658,7 @@ public
    nd EX-NODE ;
 
 \ ---- read a node's output buffer (after EX-RUN / EX-RUN-N) ------------------
-: EX-OUT@ ( CAD-KIND:node-id -- ptr a ) {: nd:CAD-KIND:node-id :}
+: EX-OUT@ ( CAD-KIND:node-id -- ptr r ) {: nd:CAD-KIND:node-id :}
    nd NODE>RAW {: raw:n :}
    raw 0 < raw NODE-COUNT@ CAD-NUM:EX-IC>N >= or if E-EX-NODE throw then
    nd EX-NODE-PTR ;

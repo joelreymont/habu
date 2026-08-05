@@ -8,6 +8,7 @@
 
 require lib/test.f
 require lib/float.f
+require test/checker-assert.f
 require maki/executor.f
 
 package MAKI
@@ -16,10 +17,10 @@ package MAKI
 create XB 8 cells allot   create WB 8 cells allot   create BB 4 cells allot
 create SB 8 cells allot   create CB 8 cells allot   create IB 4 cells allot
 
-: >I ( ptr a n -- n )   T-GET 0.5 f+ f>s ;            \ read cell as nearest int
-: >M ( ptr a n -- n )   T-GET 1000.0 f* 0.5 f+ f>s ;  \ read cell as milliunits (>=0)
+: >I ( ptr r n -- n )   T-GET 0.5 f+ f>s ;            \ read cell as nearest int
+: >M ( ptr r n -- n )   T-GET 1000.0 f* 0.5 f+ f>s ;  \ read cell as milliunits (>=0)
 
-: SEQ ( r ptr a n -- ) {: v0:r base:ptr n:n :}       \ base[i] = v0 + i
+: SEQ ( r ptr r n -- ) {: v0:r base:ptr n:n :}       \ base[i] = v0 + i
    n 0 ?do  v0 i s>f f+  base i T-SET  loop ;
 
 \ ---- fail-closed probes (top level cannot push quotations) -----------------
@@ -76,6 +77,13 @@ create SB 8 cells allot   create CB 8 cells allot   create IB 4 cells allot
    EX-RESET  1 EX-PLAN-N ;
 
 T-RESET
+
+s" EX-T-BIND-R ( ptr r MIR:input-slot -- ) EX-BIND" CHECK-QUIET-CANDIDATE! -1 T=
+s" EX-T-BIND-N ( ptr n MIR:input-slot -- ) EX-BIND" CHECK-QUIET-CANDIDATE! 0 T=
+s" EX-T-BIND-U8 ( ptr u8 MIR:input-slot -- ) EX-BIND" CHECK-QUIET-CANDIDATE! 0 T=
+s" EX-T-OUT-R ( CAD-KIND:node-id -- ptr r ) EX-OUT@" CHECK-QUIET-CANDIDATE! -1 T=
+s" EX-T-OUT-N ( CAD-KIND:node-id -- ptr n ) EX-OUT@" CHECK-QUIET-CANDIDATE! 0 T=
+s" EX-T-OUT-U8 ( CAD-KIND:node-id -- ptr u8 ) EX-OUT@" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- MATMUL: X=[[1,2],[3,4]] W=[[5,6],[7,8]] -> Y=[[19,22],[43,50]] ----------
 MIR-RESET
@@ -299,7 +307,7 @@ OP-CAST   EX-OP-OK? TFALSE
 \ over-seed buffer is planned, written, and read back. (Runs LAST: it grows EX-ARENA-N, which
 \ the seed-boundary EX-OFF! test above relies on staying at the seed.)
 create GBUF 185 185 * cells allot
-: GFILL1 ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  1.0 p i T-SET  loop ;
+: GFILL1 ( ptr r n -- ) {: p:ptr n:n :}  n 0 ?do  1.0 p i T-SET  loop ;
 MIR-RESET
 185 185 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
 MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 185 185 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop

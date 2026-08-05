@@ -55,7 +55,7 @@ create DR-SEED-CT DRC cells allot                     \ seed-cotangent buffer (a
 : DR-MEAN ( ptr a n -- r ) {: yb:ptr n:n :}
    0.0  n 0 ?do  yb i T-GET f+  loop  n s>f f/ ;
 
-: DR-OUT ( -- ptr a )  0 MIR-NODE-ID EX-OUT@ ;
+: DR-OUT ( -- ptr r )  0 MIR-NODE-ID EX-OUT@ ;
 : DR-BIND-RUN ( -- )  EX-RESET  DR-X 0 MIR-SLOT-ID EX-BIND  EX-RUN ;
 
 \ direct (catchable) probes of the p domain guard (DO-P>FIX, the composer's codec)

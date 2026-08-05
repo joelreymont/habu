@@ -512,7 +512,7 @@ create ATN-VM ATN-EN cells allot   create ATN-VV ATN-EN cells allot
 \ ---- mean-MSE loss over the output + its mean-scaled seed cotangents --------
 : ATN-INV-N ( -- r )  1.0 ATN-EN s>f f/ ;
 
-: ATN-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = 4x3 output
+: ATN-OUT ( -- ptr r )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = 4x3 output
 
 : ATN-SEED-SCALE! ( -- )    \ TT-MSE-DY writes 2*(o-t); scale to the MEAN loss
    ATN-EN 0 ?do  ATN-SEED i T-GET ATN-INV-N f*  ATN-SEED i T-SET  loop ;
