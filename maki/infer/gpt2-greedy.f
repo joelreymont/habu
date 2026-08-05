@@ -63,7 +63,7 @@ public
 
 \ LOGITS commits the input token before G-SCAN can report E-NUMERIC.
 : GREEDY
-   ( GPT2:model n ptr u8 CAD-NUM:byte-len -- GPT2:model result<n,n> )
+   ( GPU:session GPT2:model n ptr u8 CAD-NUM:byte-len -- GPU:session GPT2:model result<n,n> )
    {: tok:n row:ptr bytes:CAD-NUM:byte-len :}
    tok row bytes LOGITS
    MATCH result

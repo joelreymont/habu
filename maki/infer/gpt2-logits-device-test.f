@@ -4,6 +4,7 @@ require lib/test.f
 require lib/cad-num-arithmetic.f
 require lib/fs-path.f
 require lib/float32-buffer.f
+require test/checker-assert.f
 require maki/infer/gpt2-model.f
 require maki/infer/gpt2-greedy.f
 require maki/infer/gpt2-reference-data.f
@@ -32,32 +33,32 @@ variable LT-MAX
       misaligned OF E-FIX throw ENDOF
    ;MATCH ;
 
-: LT-OPEN ( -- GPT2:model )
+: LT-OPEN ( GPU:session -- GPU:session GPT2:model )
    0 SCRIPT-ARGV$ FS-PATH:MAKE OPEN
    MATCH result
       ok OF ENDOF
       err OF throw ENDOF
    ;MATCH ;
 
-: LT-CLOSE ( GPT2:model -- )
+: LT-CLOSE ( GPU:session GPT2:model -- GPU:session )
    CLOSE MATCH result
       ok OF drop ENDOF
       err OF throw ENDOF
    ;MATCH ;
 
-: LT-OK ( GPT2:model n ptr u8 n -- GPT2:model )
+: LT-OK ( GPU:session GPT2:model n ptr u8 n -- GPU:session GPT2:model )
    LT-LEN LOGITS MATCH result
       ok OF drop ENDOF
       err OF throw ENDOF
    ;MATCH ;
 
-: LT-GREEDY ( GPT2:model n -- GPT2:model n )
+: LT-GREEDY ( GPU:session GPT2:model n -- GPU:session GPT2:model n )
    LT-OUT LT-BYTES LT-LEN GREEDY MATCH result
       ok OF ENDOF
       err OF throw ENDOF
    ;MATCH ;
 
-: LT-ERR ( GPT2:model n ptr u8 n n -- GPT2:model )
+: LT-ERR ( GPU:session GPT2:model n ptr u8 n n -- GPU:session GPT2:model )
    {: want:n :}
    LT-LEN GREEDY MATCH result
       ok OF drop E-FIX throw ENDOF
@@ -141,7 +142,7 @@ variable LT-MAX
    $7F800000 1 LT-SCAN! 2 LT-SCAN-ERR
    $FF800000 1 LT-SCAN! 2 LT-SCAN-ERR ;
 
-: LT-DECODE ( GPT2:model -- GPT2:model )
+: LT-DECODE ( GPU:session GPT2:model -- GPU:session GPT2:model )
    s" first and second production decode rows match pinned GPT-2" T-LABEL
    15496 LT-GREEDY 0 GPT2-REFERENCE:REAL-ID T=
    LT-REFS
@@ -161,15 +162,48 @@ variable LT-MAX
    15496 LT-OUT LT-BYTES LT-OK
    LT-SAME-FIRST ;
 
+: LT-SESSION ( -- GPU:session )
+   GPU:OPEN MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: LT-CLOSE-SESSION ( GPU:session -- )
+   GPU:CLOSE MATCH result
+      ok OF drop ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: LT-CLOSE-LEFT
+   ( GPU:session GPT2:model GPT2:model -- GPU:session GPT2:model )
+   >r LT-CLOSE r> ;
+
+: LT-CLOSE-RIGHT
+   ( GPU:session GPT2:model GPT2:model -- GPU:session GPT2:model )
+   swap >r LT-CLOSE r> ;
+
+: LT-OPEN-NEXT
+   ( GPU:session GPT2:model -- GPU:session GPT2:model GPT2:model )
+   >r LT-OPEN r> swap ;
+
+: LT-TYPES ( -- )
+   s" LT-GREEDY-NEW ( GPU:session GPT2:model n ptr u8 CAD-NUM:byte-len -- GPU:session GPT2:model result<n,n> ) GPT2:GREEDY"
+   CHECK-QUIET-CANDIDATE! -1 T=
+   s" LT-GREEDY-OLD ( GPT2:model n ptr u8 CAD-NUM:byte-len -- GPT2:model result<n,n> ) GPT2:GREEDY"
+   CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : LT-RUN ( -- )
    SCRIPT-ARGC 1 <> if E-FIX throw then
    T-RESET
    LT-SCANNER
+   LT-TYPES
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
    s" two GPT-2 models coexist and close in either order" T-LABEL
-   LT-OPEN LT-OPEN swap LT-DECODE LT-CLOSE
-   LT-OPEN LT-CLOSE LT-CLOSE
+   LT-SESSION
+   LT-OPEN LT-OPEN-NEXT LT-CLOSE-LEFT LT-DECODE LT-CLOSE
+   LT-OPEN LT-OPEN-NEXT LT-CLOSE-RIGHT LT-DECODE LT-CLOSE
+   LT-CLOSE-SESSION
    SAFET:LIVE-OWNERS owners T=
    SAFET-MAP:LIVE maps T=
    T-REPORT ;

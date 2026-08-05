@@ -104,7 +104,9 @@ using RESULT
    x a b logits token k v pos
    tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE ;
 
-: OWN-GREEDY ( GPT2:model n -- GPT2:model result<n,n> ) {: tok:n :}
+: OWN-GREEDY
+   ( GPU:session GPT2:model n -- GPU:session GPT2:model result<n,n> )
+   {: tok:n :}
    M-TAKE
    {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
    tokbytes T-LOGITS cells + {: row:ptr :}
@@ -151,7 +153,7 @@ using RESULT
    context IC>N <= ;
 
 : FEED-PROMPT
-   ( GPT2:model n n -- GPT2:model result<n,n> )
+   ( GPU:session GPT2:model n n -- GPU:session GPT2:model result<n,n> )
    {: idx:n count:n :}
    idx ID-AT OWN-GREEDY
    MATCH result
@@ -167,7 +169,7 @@ using RESULT
    ;MATCH ;
 
 : CONTINUE
-   ( GPT2:model n n n n -- GPT2:model result<n,n> )
+   ( GPU:session GPT2:model n n n n -- GPU:session GPT2:model result<n,n> )
    {: id:n count:n max:n eos:n :}
    id eos = if count RESULT:OK exit then
    id count ID-PUT
@@ -183,7 +185,7 @@ using RESULT
    ;MATCH ;
 
 : GENERATE-INNER
-   ( GPT2:model CAD-NUM:item-count CAD-NUM:item-count -- GPT2:model result<n,n> )
+   ( GPU:session GPT2:model CAD-NUM:item-count CAD-NUM:item-count -- GPU:session GPT2:model result<n,n> )
    {: prompt:CAD-NUM:item-count max:CAD-NUM:item-count :}
    max IC>N {: maxn:n :}
    EOS-ID {: eos:n :}
@@ -200,7 +202,7 @@ using RESULT
 public
 
 : GENERATE
-   ( GPT2:model ptr u8 CAD-NUM:byte-len CAD-NUM:item-count ptr u8 CAD-NUM:byte-len -- GPT2:model result<CAD-NUM:byte-len,n> )
+   ( GPU:session GPT2:model ptr u8 CAD-NUM:byte-len CAD-NUM:item-count ptr u8 CAD-NUM:byte-len -- GPU:session GPT2:model result<CAD-NUM:byte-len,n> )
    {:
       prompt:ptr promptu:CAD-NUM:byte-len max:CAD-NUM:item-count
       out:ptr cap:CAD-NUM:byte-len

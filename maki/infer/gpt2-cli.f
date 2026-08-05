@@ -55,25 +55,44 @@ using CAD-NUM
       err OF ENDOF
    ;MATCH ;
 
+: SESSION-CLEAN ( GPU:session n -- n )
+   {: primary:n :}
+   GPU:CLOSE CLOSE-CODE
+   primary swap FIRST ;
+
+: CLOSE-ALL ( GPU:session GPT2:model n -- n )
+   {: primary:n :}
+   GPT2:CLOSE CLOSE-CODE {: model-code:n :}
+   GPU:CLOSE CLOSE-CODE {: session-code:n :}
+   primary model-code FIRST session-code FIRST ;
+
 : RUN-ACT ( ptr u8 n ptr u8 n -- CAD-NUM:byte-len )
    {: root:ptr rootu:n prompt:ptr promptu:n :}
-   root rootu FS-PATH:MAKE GPT2:OPEN
+   GPU:OPEN
    MATCH result
       err OF throw ENDOF
       ok OF
-         prompt promptu PROMPT-LEN CONT-N
-         OUT OUTPUT-CAP GENERATE
+         root rootu FS-PATH:MAKE GPT2:OPEN
          MATCH result
             err OF
-               {: generate:n :}
-               GPT2:CLOSE CLOSE-CODE
-               generate swap FIRST throw
+               {: open-code:n :}
+               open-code SESSION-CLEAN throw
             ENDOF
             ok OF
-               {: outu:CAD-NUM:byte-len :}
-               GPT2:CLOSE CLOSE-CODE
-               dup 0<> if throw then drop
-               outu
+               prompt promptu PROMPT-LEN CONT-N
+               OUT OUTPUT-CAP GENERATE
+               MATCH result
+                  err OF
+                     {: generate:n :}
+                     generate CLOSE-ALL throw
+                  ENDOF
+                  ok OF
+                     {: outu:CAD-NUM:byte-len :}
+                     0 CLOSE-ALL
+                     dup 0<> if throw then drop
+                     outu
+                  ENDOF
+               ;MATCH
             ENDOF
          ;MATCH
       ENDOF
