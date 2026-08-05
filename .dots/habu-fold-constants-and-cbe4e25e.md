@@ -1,6 +1,6 @@
 ---
 title: Fold constants and number values on the IR
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-05T09:41:37.369599+02:00"
@@ -11,3 +11,5 @@ The chain has no redundancy elimination: after transitive inlining, repeated sub
 Blocked by: habu-epic-hard-cut-a684f24d phases 1-6. Re-scoped: operate on typed frozen IR before selection; fold only operations whose trap/overflow/FP policy is explicit; start with repeated literals/subexpressions and constant division where wins are easiest to measure. Run DCE after inlining so copied unused values disappear.
 
 UNBLOCKED (2026-08-05, user order): the optimization program proceeds NOW on the chain as it stands — the hard cut continues in parallel and is no longer a prerequisite. Standing acceptance for every optimization lane: name the corpus rows expected to improve BEFORE implementing; show the emitted instruction delta on them; every oracle answer preserved bit-for-bit incl. NaN; report BOTH gaps per touched row (chain-vs-clang closed, chain-vs-own-baseline gained) from tools/codegen-compare.f; re-pin the chain baseline with --update-chain only after the report is read; no regression on untouched rows outside a stated multi-objective trade. New instruction forms (madd/msub, ldp/stp, bitfields, ccmp, NEON) require Rocq rows in formal/Common/Insn.v with enc/wf/roundtrip before the emitter uses them — the CG-02 discipline, applied per-lane not deferred.
+
+Claim: agent=folding workspace=.jj-ws/habu-fold-constants-and-cbe4e25e
