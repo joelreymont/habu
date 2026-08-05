@@ -108,6 +108,11 @@ PTR-VARIABLE SAVED-REC
 
 : F-OPEN ( -- ) 1 OPEN-N +! 601 throw ;
 
+: F-OPEN-EXHAUST ( -- )
+   I-REC-BYTES MMAP-TEST:EXHAUST-CHILD
+   I-REC-BYTES MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
+   601 throw ;
+
 : TEST-EARLY-FAILURES ( -- )
    s" zero capacities and record refusal precede GPU acquisition" T-LABEL
    0 OPEN-N !
@@ -135,16 +140,22 @@ PTR-VARIABLE SAVED-REC
    pid PID>N 0= if REC-FAIL-CHILD then
    pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
+: SESSION-FAIL-CHILD ( -- )
+   [: F-OPEN-EXHAUST ;] MKD:OPEN!
+   BAD-PATH 2 IC 128 IC START-GPT2 MATCH result
+      err OF 601 <> if E-FIX throw then ENDOF
+      ok OF MUST-STOP E-FIX throw ENDOF
+   ;MATCH
+   I-REC-BYTES MMAP-TEST:EXHAUSTED? if E-FIX throw then
+   I-REC-BYTES MMAP-TEST:EXHAUSTED? if E-FIX throw then
+   I-REC-BYTES MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
+   s" " 0 die ;
+
 : TEST-SESSION-FAIL ( -- )
-   s" session acquisition releases its record and returns its exact failure" T-LABEL
-   0 OPEN-N !
-   [: F-OPEN ;] MKD:OPEN!
-   BAD-PATH 2 IC 128 IC 601 START-ERR
-   MMAP-TEST:VM-PAGES {: pages:n :}
-   BAD-PATH 2 IC 128 IC 601 START-ERR
-   MMAP-TEST:VM-PAGES pages T=
-   MKD:USE-REAL
-   OPEN-N @ 2 T= ;
+   s" session refusal releases both allocated host records exactly" T-LABEL
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if SESSION-FAIL-CHILD then
+   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
 : F-SYNC-611 ( CUDA:stream -- rc )
    drop 1 SYNC-N +! 611 >RC ;
