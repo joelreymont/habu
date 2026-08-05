@@ -31,4 +31,15 @@ TW TG 4 T-REL-L2  dup f* 28.0 f* 1000.0 f* 0.5 f+ f>s  4000 T=  \ rel^2*28 = 4
 3.0 4.0 T-REL1   1000.0 f* 0.5 f+ f>s   250 T=   \ |3-4|/4
 4.0 4.0 T-REL1   1000.0 f* 0.5 f+ f>s     0 T=
 
+s" MAT-AT-R ( ptr r n -- ptr r ) T-AT" CHECK-CANDIDATE! -1 T=
+s" MAT-AT-N ( ptr n n -- ptr n ) T-AT" CHECK-CANDIDATE! -1 T=
+s" MAT-AT-U8 ( ptr u8 n -- ptr u8 ) T-AT" CHECK-CANDIDATE! -1 T=
+s" MAT-AT-BAD ( ptr r n -- ptr n ) T-AT" CHECK-CANDIDATE! 0 T=
+s" MAT-GET-R ( ptr r n -- r ) T-GET" CHECK-CANDIDATE! -1 T=
+s" MAT-GET-N ( ptr n n -- r ) T-GET" CHECK-CANDIDATE! 0 T=
+s" MAT-GET-U8 ( ptr u8 n -- r ) T-GET" CHECK-CANDIDATE! 0 T=
+s" MAT-SET-R ( r ptr r n -- ) T-SET" CHECK-CANDIDATE! -1 T=
+s" MAT-SET-N ( r ptr n n -- ) T-SET" CHECK-CANDIDATE! 0 T=
+s" MAT-SET-U8 ( r ptr u8 n -- ) T-SET" CHECK-CANDIDATE! 0 T=
+
 T-REPORT
