@@ -308,14 +308,25 @@ create RBT-ERR RBT-CAP allot
    ;MATCH ;
 
 : MBT-ENDS ( -- )
-   MEM-64K MBT-OPEN
+   MEM-64K 1 + {: want:n :}
+   want MBT-OPEN
    MEM:BORROW {: buf:ptr len:CAD-NUM:byte-len :}
-   len MEM-64K RBT-LEN RBT-BYTES= 0= if E-PRIMARY throw then
+   len want RBT-LEN RBT-BYTES= 0= if E-PRIMARY throw then
    MEMT-MARK-A buf c!
-   MEMT-MARK-Z buf MEM-64K 1 - + c!
+   MEMT-MARK-Z buf want 1 - + c!
    buf c@ MEMT-MARK-A <> if E-PRIMARY throw then
-   buf MEM-64K 1 - + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
+   buf want 1 - + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
    MEM:RELEASE ;
+
+: MBT-BASE-CHILD ( -- )
+   MEM-64K 2 * MBT-OPEN
+   MEM:BORROW {: buf:ptr len:CAD-NUM:byte-len :}
+   len drop
+   buf MEM-64K + MEM-64K munmap
+   dup 0<> if E-MEM-UNMAP throw then
+   drop
+   MEM:RELEASE
+   MEMT-EXIT0 ;
 
 : MBT-UNMAP-CHILD ( -- )
    MEM-64K MBT-OPEN
@@ -327,7 +338,8 @@ create RBT-ERR RBT-CAP allot
    MEMT-EXIT0 ;
 
 : MBT-OVERFLOW ( -- )
-   MEM-MAX-N MEM:BYTES-ALLOC-LEN MEM:OPEN
+   MEM-MAX-N MEM-CELL-BYTES - MEM-CELL-BYTES / MEM-CELL-BYTES * 1 +
+   MEM:BYTES-ALLOC-LEN MEM:OPEN
    MATCH result
       err OF E-MEM-SIZE <> if E-PRIMARY throw then ENDOF
       ok OF MEM:RELEASE E-PRIMARY throw ENDOF
@@ -346,6 +358,7 @@ create RBT-ERR RBT-CAP allot
    T-RESET
    MBT-ENDS
    MBT-OVERFLOW
+   [: MBT-BASE-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
    [: MBT-MAP-ERR-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
    [: MBT-UNMAP-CHILD ;] MEMT-FORK MEMT-FAULT-RC T-OUTCOME-EXITED=
    T-REPORT ;

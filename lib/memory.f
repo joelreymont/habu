@@ -188,29 +188,39 @@ $47 constant UNMAP-EXIT
 : B-BYTE-LEN ( CAD-NUM:alloc-byte-len -- CAD-NUM:byte-len )
    ALLOC-BYTES>N CAD-NUM:BYTE-LEN OK-BYTE-LEN ;
 
+MEM-MAX-N MEM-CELL-BYTES - MEM-CELL-BYTES / MEM-CELL-BYTES * constant B-MAX-LEN
+
+: B-ALIGN ( n -- n )
+   MEM-CELL-BYTES 1 - + MEM-CELL-BYTES / MEM-CELL-BYTES * ;
+
+: B-SPAN ( n -- n )
+   B-ALIGN MEM-CELL-BYTES + ;
+
 \ The checker cannot bind the payload pointer and hidden validated extent to one
-\ linear owner. Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
+\ linear owner. The handle is the cell-aligned tail header, leaving the borrowed
+\ payload pointer at the mmap base. Retirement owner:
+\ habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: B-MINT ( ptr u8 CAD-NUM:alloc-byte-len -- MEM:block )
-   over MEM-CELL-BYTES - ! ;
+   dup ALLOC-BYTES>N B-ALIGN rot + tuck ! ;
 
 TRUSTED: B-TAKE ( MEM:block -- ptr u8 CAD-NUM:alloc-byte-len )
-   dup MEM-CELL-BYTES - @ ;
+   dup @ dup ALLOC-BYTES>N B-ALIGN rot swap - swap ;
 
 public
 
 : OPEN ( CAD-NUM:alloc-byte-len -- result<MEM:block,n> )
    dup ALLOC-BYTES>N
-   dup MEM-MAX-N MEM-CELL-BYTES - > if
+   dup B-MAX-LEN > if
       2drop E-MEM-SIZE RESULT:ERR
       exit
    then
-   MEM-CELL-BYTES +
+   B-SPAN
    NULL$ drop swap [: B-ALLOC ;] catch {: code:n :}
    code 0 <> if
       2drop drop code RESULT:ERR
       exit
    then
-   drop MEM-CELL-BYTES + swap B-MINT RESULT:OK ;
+   drop swap B-MINT RESULT:OK ;
 
 \ The byte span is borrowed only until the returned owner is consumed; the
 \ checker cannot yet bind pointer lifetime to that owner.
@@ -220,8 +230,7 @@ public
 
 : RELEASE ( MEM:block -- )
    B-TAKE
-   swap MEM-CELL-BYTES - swap
-   ALLOC-BYTES>N MEM-CELL-BYTES + RELEASE-RANGE ;
+   ALLOC-BYTES>N B-SPAN RELEASE-RANGE ;
 
 \ ---- scalar sizing: typed compositions of the closed B5.2 algebra --------------
 : CELLS>BYTES ( CAD-NUM:cell-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
