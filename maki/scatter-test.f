@@ -4,6 +4,7 @@
 \ out-of-range offset / index paths.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/scatter.f
 
 package MAKI
@@ -12,9 +13,9 @@ create SC-CT  8 cells allot
 create SC-DST 8 cells allot
 create SC-IX  4 cells allot
 
-: SC-CELL ( ptr a n -- n )  T-GET 0.5 f+ f>s ;               \ read a float cell as an int
-: SC-SET ( n ptr a n -- ) {: v:n base:ptr k:n :}  v s>f base k T-SET ;
-: SC-IX! ( n n -- ) {: v:n k:n :}  v SC-IX k cells + ! ;
+: SC-CELL ( ptr r n -- n )  T-GET 0.5 f+ f>s ;               \ read a float cell as an int
+: SC-SET ( n ptr r n -- ) {: v:n base:ptr k:n :}  v s>f base k T-SET ;
+: SC-IX! ( n n -- ) {: v:n k:n :}  v s>f SC-IX k T-SET ;
 
 : TRY-SC-RANGE ( -- )  SC-CT 2 2 3 4 SC-DST PAD-SCATTER ;    \ r0+cr = 5 > dst rows 4
 : TRY-SC-INDEX ( -- )
@@ -22,6 +23,13 @@ create SC-IX  4 cells allot
    SC-CT 3 2 SC-IX 3 SC-DST SCATTER-ADD ;
 
 T-RESET
+
+s" SC-R-PD ( ptr r n n n n ptr r -- ) PAD-SCATTER" CHECK-QUIET-CANDIDATE! -1 T=
+s" SC-N-PD ( ptr n n n n n ptr n -- ) PAD-SCATTER" CHECK-QUIET-CANDIDATE! 0 T=
+s" SC-U8-PD ( ptr u8 n n n n ptr u8 -- ) PAD-SCATTER" CHECK-QUIET-CANDIDATE! 0 T=
+s" SC-R-SA ( ptr r n n ptr r n ptr r -- ) SCATTER-ADD" CHECK-QUIET-CANDIDATE! -1 T=
+s" SC-N-SA ( ptr n n n ptr n n ptr n -- ) SCATTER-ADD" CHECK-QUIET-CANDIDATE! 0 T=
+s" SC-U8-SA ( ptr u8 n n ptr u8 n ptr u8 -- ) SCATTER-ADD" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- PAD-SCATTER: 2x2 cotangent into a zero 4x2 at offset r0=1 -------------
 \ ct = [[1,2],[3,4]] ; dst = [[0,0],[1,2],[3,4],[0,0]]

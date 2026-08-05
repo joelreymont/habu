@@ -11,13 +11,13 @@
 \   SLICE      dst[k,c]=src[r0+k,c]: offset copy (src flat = e + r0*cols, baked p_a=r0*cols)
 \   CONCAT     top A then B rows   : two-source copy (e<split -> A[e] ; else B[e-split])
 \   GATHER     dst row k=src row id: indexed rows; the f32 index input is rounded EXACTLY
-\              like the executor's EX-BUILD-IDX (x -> trunc(x+0.5)) via add.f32 +0.5 + cvt.rzi.
+\              like host MOVE-GATHER/SCATTER-ADD (T-GET 0.5 f+ f>s) via add.f32 +0.5 + cvt.rzi.
 \
 \ Kernel ABI (REGION_<rid>, uniform over the four): one/two `.param .u64 p_in<i>` buffers,
 \ `.param .u64 p_out`, then `.param .u32 p_a, p_b, p_n`. The kind-specific scalars ride p_a/p_b
 \ (transpose: p_a=src_rows R, p_b=src_cols C; slice: p_a=r0*cols; concat: p_a=split; gather:
 \ p_a=cols C); p_n = the output element count. grid = ceil(N/256), block 256, one elem/thread,
-\ masked against p_n. Gather's index input is buffer 1 (an f32 model input, like EX-BUILD-IDX).
+\ masked against p_n. Gather's index input is buffer 1 (an f32 model input, matching host gather/scatter).
 \
 \ Fail closed BEFORE any PTX (a rejected region emits nothing): a region that is not exactly one
 \ materialized movement node (E-LMV-MULTI), a movement op outside the v1 copy set (E-LMV-OP), a
@@ -294,7 +294,7 @@ private
    s" mul.wide.u32 %rd10, %r8, 4;" PTX-L
    s" add.u64 %rd11, %rd2, %rd10;" PTX-L
    s" ld.global.f32 %f2, [%rd11];" PTX-L
-   s" add.f32 %f3, %f2, 0f3F000000;" PTX-L             \ + 0.5 (mirror EX-BUILD-IDX rounding)
+   s" add.f32 %f3, %f2, 0f3F000000;" PTX-L             \ + 0.5 (mirror host T-GET 0.5 f+ f>s)
    s" cvt.rzi.s32.f32 %r10, %f3;" PTX-L                \ truncate toward zero
    s" mad.lo.u32 %r11, %r10, %r1, %r9;" PTX-L
    s" mul.wide.u32 %rd12, %r11, 4;" PTX-L

@@ -247,7 +247,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
 
 \ materialize an INT64 gather-index constant as a Kx1 f32 input slot: each index is
 \ resolved against the data rows (GA-IDX) THEN bridged to its float value - the executor
-\ reads FLOAT indices (EX-BUILD-IDX rounds), so negative-index resolution must happen at
+\ reads FLOAT indices (host gather/scatter use T-GET 0.5 f+ f>s), so negative-index resolution must happen at
 \ import, the same way SYN-CONST synthesizes a Gemm scalar. Returns the slot's MIR input ref.
 : SYN-IVEC ( n n -- MIR:operand-ref ) {: c:n rows:n :}   \ OGIC constant index + data rows -> MIR input ref
    c OGIC-NVAL@ {: k:n :}

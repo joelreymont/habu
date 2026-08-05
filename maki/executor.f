@@ -26,10 +26,10 @@
 \ per node (EX-PLAN); the checkpoint hooks EX-OFF!/EX-STEP let maki/checkpoint.f place
 \ node buffers itself and execute nodes selectively. One concern: EXECUTION ONLY - no
 \ planning, no gradients, no reporting. Fail closed: an op with no host reference
-\ (cast / decode) is E-EX-UNSUP; an unbound input is E-EX-UNBOUND; arena / index
-\ overflow is E-EX-CAP; a bad slot / node index is E-EX-SLOT / E-EX-NODE. Gather
-\ indices are read and rounded directly by move.f; scatter alone converts its float
-\ operand into EX-IDX integer scratch. maki -> habu; owns -5130..-5134.
+\ (cast / decode) is E-EX-UNSUP; an unbound input is E-EX-UNBOUND; capacity overflow
+\ is E-EX-CAP; a bad slot / node index is E-EX-SLOT / E-EX-NODE. Gather and scatter
+\ indices remain float operands, read and rounded directly by their buffer references.
+\ maki -> habu; owns -5130..-5134.
 
 require lib/string.f
 require lib/float.f
@@ -66,7 +66,7 @@ package CAD-NUM public
 : EX-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
 ;package
 
--5130 constant E-EX-CAP       \ node arena / index scratch capacity exceeded
+-5130 constant E-EX-CAP       \ executor storage capacity exceeded
 -5131 constant E-EX-UNSUP     \ op-kind has no host-executable reference (cast / decode)
 -5132 constant E-EX-UNBOUND   \ an operand names a model-input slot with no bound buffer
 -5133 constant E-EX-SLOT      \ model-input slot index out of range
@@ -86,7 +86,6 @@ $8000  constant EX-ARENA-CELLS \ node-buffer arena SEED (float cells); the arena
                                \ working size from the model at plan time and grows past this seed
 $80000 constant EX-ARENA-MAX   \ generous sanity ceiling (float cells): a plan needing more is an
                                \ absurd model and dies E-EX-CAP before any node runs (transactional)
-$400  constant EX-IDX-CAP     \ scatter index scratch (rows)
 
 create EX-ARENA  EX-ARENA-CELLS cells allot   \ seed node-buffer pool (EX-ARENA-P starts here)
 create EX-OFF    EX-OFF-SEED cells allot        \ per-node arena-offset table SEED (cells); EX-OFF-P starts here
@@ -102,7 +101,6 @@ variable EX-IN-PP                               \ current ptr-table base ptr
 variable EX-IN-SP                               \ current set-table base ptr
 variable EX-IN-CAP                              \ current input-table capacity (slots); grow-to-largest
 variable EX-IN-N                                \ live slot count of the last bind (exact)
-create EX-IDX    EX-IDX-CAP cells allot          \ int index scratch (scatter)
 
 \ The node-buffer arena, the per-node offset table, and the per-slot input tables are all model-
 \ proportional (design dot habu-size-model-proportional): each derives its working size from the model
@@ -323,13 +321,6 @@ private
    nd EX-NODE-NROWS  xr EX-REF-NCOLS  nd EX-NODE-NCOLS  LINEAR ;
 
 \ ---- movement (attrs carry slice offsets; gather reads float indices directly) -
-: EX-BUILD-IDX ( MIR:operand-ref -- n ) {: r:MIR:operand-ref :}   \ float index operand -> EX-IDX ints; count
-   r EX-REF-ELEMS {: n:n :}
-   n EX-IDX-CAP > if E-EX-CAP throw then
-   r EX-REF-PTR {: p:ptr :}
-   n 0 ?do  p i T-GET 0.5 f+ f>s  EX-IDX i cells + !  loop
-   n ;
-
 : EX-RESHAPE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd 0 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}
    r EX-REF-PTR  r EX-REF-NROWS  r EX-REF-NCOLS
@@ -377,9 +368,8 @@ private
 : EX-SCATTER-ADD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd 0 MIR-INPUT-IDX MIR-IN@ {: rc:MIR:operand-ref :}
    nd 1 MIR-INPUT-IDX MIR-IN@ {: rix:MIR:operand-ref :}
-   rix EX-BUILD-IDX drop
    rc EX-REF-PTR  rc EX-REF-NROWS  rc EX-REF-NCOLS
-   EX-IDX  nd EX-NODE-NROWS  nd EX-NODE-PTR  SCATTER-ADD ;
+   rix EX-REF-PTR  nd EX-NODE-NROWS  nd EX-NODE-PTR  SCATTER-ADD ;
 
 \ ---- rope (adjacent column pairs; cos/sin at the pair's base column) --------
 : EX-PAIR! ( r r ptr r n -- ) {: re:r im:r orow:ptr c0:n :}
