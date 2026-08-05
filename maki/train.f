@@ -40,13 +40,13 @@ public
 \ --- tensor-scale training (over a whole weight tensor; needs maki/array.f) ---
 \ model y[i] = w[i]*x[i] ; MSE over the tensor ; element gradient 2*(w*x - t)*x
 
-: T-LOSS ( ptr a ptr a ptr a n -- r ) {: wb xb tb len :}
+: T-LOSS ( ptr r ptr r ptr r n -- r ) {: wb xb tb len :}
    0.0  len 0 ?do
       wb i T-GET  xb i T-GET f*  tb i T-GET f-  dup f*  f+
    loop ;
 
 \ in-place tensor training step: w[i] -= lr * 2*(w[i]*x[i] - t[i])*x[i]
-: T-TRAIN-STEP! ( r ptr a ptr a ptr a n -- ) {: lr wb xb tb len :}
+: T-TRAIN-STEP! ( r ptr r ptr r ptr r n -- ) {: lr wb xb tb len :}
    len 0 ?do
       wb i T-GET                                  \ w[i]
       wb i T-GET  xb i T-GET f*  tb i T-GET f-     \ (w*x - t)
@@ -55,7 +55,7 @@ public
       wb i T-SET
    loop ;
 
-: T-TRAIN-N! ( r ptr a ptr a ptr a n n -- ) {: lr wb xb tb len epochs :}
+: T-TRAIN-N! ( r ptr r ptr r ptr r n n -- ) {: lr wb xb tb len epochs :}
    epochs 0 ?do
       lr wb xb tb len T-TRAIN-STEP!
    loop ;
