@@ -693,6 +693,10 @@ private
       CHECK-QUIET-CANDIDATE! -1 T=
    s" WBT-CONSUME ( MEM:wbt-own -- ) MEM-64K MEM:BYTES-ALLOC-LEN [: 2drop WBT-DONE ;] MEM:WITH-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
+   s" WBB-MINT ( MEM:block -- MEM:wbt-own ) [: WBT-OWN ;] MEM:WITH-BLOCK"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" WBB-CONSUME ( MEM:wbt-own MEM:block -- ) [: 2drop WBT-DONE ;] MEM:WITH-BLOCK"
+      CHECK-QUIET-CANDIDATE! -1 T=
    \ positive signature controls: the exact B5.5-frozen effects resolve.
    s" G-CELLS>BYTES ( CAD-NUM:cell-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:CELLS>BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=

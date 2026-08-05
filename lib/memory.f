@@ -313,13 +313,8 @@ public
 
 \ typed-local-lint: allow-bare-local - `body` carries the row-polymorphic quotation
 \ effect [ R ptr u8 CAD-NUM:alloc-byte-len -- S ], which a local annotation cannot express.
-: WITH-BYTES ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+: WITH-BLOCK ( R MEM:block [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
    {: body :}
-   OPEN
-   MATCH result
-      ok OF ENDOF
-      err OF throw ENDOF
-   ;MATCH
    BORROW
    \ The borrowed extent is the owner's own allocation length, so the alloc
    \ narrowing cannot refuse here; OK-ALLOC-BYTE-LEN reports a refusal as the
@@ -327,6 +322,17 @@ public
    CAD-NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN
    body WB-GUARD
    RELEASE ;
+
+\ typed-local-lint: allow-bare-local - `body` carries the row-polymorphic quotation
+\ effect [ R ptr u8 CAD-NUM:alloc-byte-len -- S ], which a local annotation cannot express.
+: WITH-BYTES ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+   {: body :}
+   OPEN
+   MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH
+   body WITH-BLOCK ;
 
 private
 get-current prot-wid-add

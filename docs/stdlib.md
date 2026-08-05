@@ -734,6 +734,7 @@ MEM:ALLOC-BYTES       ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len 
 MEM:ALLOC-CELLS       ( CAD-NUM:alloc-cell-count -- ptr a )
 MEM:RELEASE-BYTES     ( ptr a CAD-NUM:alloc-byte-len -- )
 MEM:UNMAP             ( ptr a CAD-NUM:byte-len -- )
+MEM:WITH-BLOCK        ( R MEM:block [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
 MEM:WITH-BYTES        ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
 ```
 
@@ -745,12 +746,11 @@ byte range without fabricating an allocation extent. The checker models the
 shared primitive as `munmap ( ptr a n -- n )`: pointee type is irrelevant to the
 kernel call, while the public words retain distinct length roles. Kernel refusal
 writes `memory: unmap failed` to standard error and exits 71, bypassing `catch`.
-`MEM:WITH-BYTES` scopes one `MEM:block` owner: it opens the block, lends the
-block's span to the body, and releases the block on normal return. If the body
-throws, the scope releases the block and rethrows the body's code. Because the
-length now reaches `MEM:OPEN`, a length too large to carry the block's own
-header is refused as `E-MEM-SIZE` before any `mmap`; an ordinary mapping
-failure still throws `E-MEM-MAP`.
+`MEM:WITH-BLOCK` lends an existing `MEM:block` span to the body and releases
+the block on return. If the body throws, it releases the block and rethrows the
+body's code. `MEM:WITH-BYTES` opens the block and delegates to `WITH-BLOCK`; a
+length too large to carry the block's header is refused as `E-MEM-SIZE` before
+any `mmap`, while an ordinary mapping failure throws `E-MEM-MAP`.
 
 `MEM-MAP-SHARED` is the named shared-mapping flag for checked device or file
 mappings that use the raw `mmap` primitive directly.
