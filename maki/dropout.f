@@ -77,7 +77,7 @@ DO-SEED-INIT DO-SEED-V !
 : DO-LCG-NEXT ( -- n )                 \ advance the stream; return the raw 32-bit state
    DO-RNG @ DO-LCG-A *  DO-LCG-C +  DO-LCG-MASK and  dup DO-RNG ! ;
 
-: DO-COPY ( ptr a ptr a n -- ) {: sb:ptr db:ptr n:n :}
+: DO-COPY ( ptr r ptr r n -- ) {: sb:ptr db:ptr n:n :}
    n 0 ?do  sb i T-GET  db i T-SET  loop ;
 
 public
@@ -92,7 +92,7 @@ public
 \ ---- the buffer reference (forward x->y AND backward dy->dx are one op) --------------
 \ eval = identity copy; train = per-element inverted dropout under the seeded stream.
 \ srcb -> dstb over n elements; pfix/eval? decoded from the attr, seed = the node seed.
-: DO-APPLY ( ptr a ptr a n n bool n -- )
+: DO-APPLY ( ptr r ptr r n n bool n -- )
    {: sb:ptr db:ptr n:n pfix:n ev:bool seed:n :}
    ev if  sb db n DO-COPY  exit  then             \ eval mode is the identity
    seed DO-RNG !

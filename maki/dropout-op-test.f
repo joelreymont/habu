@@ -38,21 +38,21 @@ create DR-X   DRC cells allot
 create DR-Y1  DRC cells allot   create DR-Y2 DRC cells allot
 create DR-SEED-CT DRC cells allot                     \ seed-cotangent buffer (all ones)
 
-: DR-FILL1 ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  1.0 p i T-SET  loop ;   \ all ones
-: DR-SNAP ( ptr a ptr a n -- ) {: sa:ptr da:ptr n:n :}  n 0 ?do  sa i T-GET  da i T-SET  loop ;
+: DR-FILL1 ( ptr r n -- ) {: p:ptr n:n :}  n 0 ?do  1.0 p i T-SET  loop ;   \ all ones
+: DR-SNAP ( ptr r ptr r n -- ) {: sa:ptr da:ptr n:n :}  n 0 ?do  sa i T-GET  da i T-SET  loop ;
 
-: DR-ALL-EQ? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}   \ every element bit-equal (f=)
+: DR-ALL-EQ? ( ptr r ptr r n -- bool ) {: a:ptr b:ptr n:n :}   \ every element bit-equal (f=)
    n 0 ?do  a i T-GET  b i T-GET  f= 0= if  false unloop exit  then  loop  true ;
 
 \ each y is EITHER 0 OR x*scale exactly (the inverted-dropout per-element golden)
-: DR-MASK-OK? ( ptr a ptr a n r -- bool ) {: yb:ptr xb:ptr n:n sc:r :}
+: DR-MASK-OK? ( ptr r ptr r n r -- bool ) {: yb:ptr xb:ptr n:n sc:r :}
    n 0 ?do
       yb i T-GET  dup 0.0 f=  swap  xb i T-GET sc f*  f=  or 0= if  false unloop exit  then
    loop  true ;
 
-: DR-COUNT-KEPT ( ptr a n -- n ) {: yb:ptr n:n :}   \ non-zero (kept) elements
+: DR-COUNT-KEPT ( ptr r n -- n ) {: yb:ptr n:n :}   \ non-zero (kept) elements
    0  n 0 ?do  yb i T-GET 0.0 f= 0= if 1+ then  loop ;
-: DR-MEAN ( ptr a n -- r ) {: yb:ptr n:n :}
+: DR-MEAN ( ptr r n -- r ) {: yb:ptr n:n :}
    0.0  n 0 ?do  yb i T-GET f+  loop  n s>f f/ ;
 
 : DR-OUT ( -- ptr r )  0 MIR-NODE-ID EX-OUT@ ;
