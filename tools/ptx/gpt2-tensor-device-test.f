@@ -134,7 +134,7 @@ variable E0   variable E1   variable E2
    fn 0 D0 8 PSET  fn 8 D1 8 PSET  fn 16 D3 8 PSET  fn 24 E0 4 PSET
    fn E0 @ GRID GO ;
 
-: ALLOC ( ptr a n -- ) {: dst:ptr bytes:n :}
+: ALLOC ( ptr n n -- ) {: dst:ptr bytes:n :}
    dst bytes >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
    dst @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR ;
 

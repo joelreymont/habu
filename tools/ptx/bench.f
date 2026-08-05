@@ -38,7 +38,7 @@ variable BENCH-NS-TMP                   \ BENCH-GPU-NS result held across the ev
 
 8 constant CUDA-ATTR-MAX-DYNSMEM        \ CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES
 
-: COPY! ( ptr u8 n ptr u8 ptr a -- )
+: COPY! ( ptr u8 n ptr u8 ptr n -- )
    {: a u:n dst lenp:ptr :} \ typed-local-lint: allow-bare-local - ptr roles.
    u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
@@ -178,9 +178,9 @@ public
 \ handle so the frame unwinds it (freeing the open-coded UNLOAD/CLOSE/DEVICE-FREE list).
 : OWN-CTX ( -- )        DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX ;    \ retained primary context (released via the device handle)
 : OWN-MOD ( -- )        MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE ;         \ loaded module
-: OWN-DEV ( ptr a -- )  @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR ;          \ a DEVICE-ALLOC buffer, by its holding variable
+: OWN-DEV ( ptr n -- )  @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR ;          \ a DEVICE-ALLOC buffer, by its holding variable
 
-: DEVICE-ALLOC ( n ptr a -- )
+: DEVICE-ALLOC ( n ptr n -- )
    {: bytes:n out:ptr :}
    out bytes >LEN CUDA:CU-MEM-ALLOC CUDA:RC0 ;
 

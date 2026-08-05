@@ -2,8 +2,8 @@
 \
 \ Portable: the host leg proves the fail-closed guards (null handle and nonzero
 \ CUresult throw E-CUDA) and the off-device OPEN? smoke without touching a real
-\ GPU. The typed FFI bindings and convenience helpers (LOAD-MODULE / GET-FUNCTION
-\ / DEVICE-ALLOC / HTOD / DTOH) are checked at load; their device legs are
+\ GPU. The typed FFI bindings and convenience helpers (HTOD / DTOH) are checked
+\ at load; their device legs are
 \ exercised by the tools/ptx launcher device gate on hardware. CU-MEMCPY-DTOD
 \ is checked at load and by the GPU buffer device gate.
 
@@ -11,6 +11,9 @@ require lib/test.f
 require lib/ptx/cuda-driver.f
 
 package CUDA-DRIVER-TEST
+
+$200 constant PARAM-DIAG-CAP
+create PARAM-DIAG PARAM-DIAG-CAP allot
 
 : OPEN-SMOKE ( -- )                               \ off-device: no handle; on-device: nonnull
    CUDA:OPEN? if
@@ -31,12 +34,20 @@ package CUDA-DRIVER-TEST
 : DTOD-CHECKED ( cuda-devptr cuda-devptr len -- rc )
    CUDA:CU-MEMCPY-DTOD ;
 
+: PARAM-TYPES ( -- )
+   s" CDTP-N ( cuda-fn idx ptr n len -- rc ) CUDA:CU-PARAM-SET-V" CHECK-CANDIDATE! -1 T=
+   s" CDTP-U8 ( cuda-fn idx ptr u8 len -- rc ) CUDA:CU-PARAM-SET-V" CHECK-CANDIDATE! -1 T=
+   PARAM-DIAG PARAM-DIAG-CAP DIAG-BUFFER!
+   s" CDTP-RAW ( cuda-fn idx n len -- rc ) CUDA:CU-PARAM-SET-V" CHECK-CANDIDATE! 0 T=
+   DIAG-BUFFER-OFF ;
+
 : RUN ( -- )
    T-RESET
    OPEN-SMOKE
    HANDLE-BAD
    RC-OK
    RC-BAD
+   PARAM-TYPES
    T-REPORT ;
 
 RUN
