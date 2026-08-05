@@ -1,9 +1,11 @@
 ---
 title: Canonicalize compiler tables
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-26T22:55:16.430122+02:00\""
+created-at: "\"\\\"2026-07-26T22:55:16.430122+02:00\\\"\""
+closed-at: "2026-08-05T11:57:17.922963+02:00"
+close-reason: "Obsolete: the canonical codec stack this dot built was deleted under CG-31 (no product consumer; hard-cut policy) in ad32f68b"
 blocks:
   - habu-verify-frozen-compiler-224d78ad
 ---

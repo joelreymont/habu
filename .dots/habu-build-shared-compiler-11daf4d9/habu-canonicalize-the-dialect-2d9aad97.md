@@ -1,9 +1,11 @@
 ---
 title: Canonicalize the dialect schema-table digest
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-30T02:09:50.693897+02:00"
+created-at: "\"2026-07-30T02:09:50.693897+02:00\""
+closed-at: "2026-08-05T11:57:17.946312+02:00"
+close-reason: "Obsolete: the canonical codec stack this dot built was deleted under CG-31 (no product consumer; hard-cut policy) in ad32f68b"
 ---
 
 Full context: src/compiler/ir/encode.f cannot bind IR-SCHEMA:FTABLE-DIGEST into a canonical module frame, and test/compiler/ir-encode.f measures why. IR-SCHEMA:FROW-DIGEST folds each schema record's stored operand, result and attribute-key lists (src/compiler/ir/schema.f FDPRE-LIST), and those lists hold module-local INSERTION ordinals, so two equivalent modules built along two admissible intern orders have two different schema-table digests. The canonical wire frame therefore binds only the dialect's canonical name ordinal and the schema major and minor version, which is what design section 6.6 asks for, and the frame carries no binding to the declared arities, types, effects or target requirements of the dialect's operations. Work: give the schema table a canonical digest, computed over canonical ordinals rather than insertion ordinals. Two candidate owners: IR-SCHEMA gains a digest that takes a canonical numbering and rewrites the stored symbol and type ordinals through it, or IR-CANON gains a canonicalized schema section in its cell stream and the encoder frames it like any other section. The encoder must NOT recompute a schema digest of its own; that would give the schema two digest authorities. Acceptance: two equivalent modules built along reversed intern insertion orders have the same canonical schema digest; changing one declared operand type, arity, effect or attribute key of one schema record changes it; the negative fixture in test/compiler/ir-encode.f that currently pins the non-canonical behaviour is updated to pin the canonical one; the canonical frame binds it and the digest-equality fixture stays green. Dependency: src/compiler/ir/canon.f and src/compiler/ir/encode.f as landed.
