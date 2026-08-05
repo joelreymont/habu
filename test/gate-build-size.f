@@ -85,8 +85,17 @@
 
 package BUILD-SIZE
 
+\ 2026-08-05 Linux 123072 -> 127168: merge cd7bf8eb resolved this row to the
+\ pre-merge master binary while the campaign's measured integrated value was
+\ 127168 (the row carried 127168 from ed5d0442 through 5f8e27a7, and the prose
+\ above the Linux rows in test/gate-size-attribution-test.f still says "the whole
+\ file remains exactly 127168"). The rebuilt integrated tip measures 127168, so
+\ this is a merge-resolution repair and not a rebaseline. The matching whole-file
+\ row in test/gate-size-attribution-test.f now carries the same number; that
+\ file's Linux DECOMPOSITION is marked owed, because a page-rounded total does not
+\ determine it and no Linux host has measured this binary.
 148855 constant BASELINE-MACOS
-123072 constant BASELINE-LINUX
+127168 constant BASELINE-LINUX
 
 : BASELINE ( -- n )
    HB-TARGET-MACOS? if BASELINE-MACOS exit then

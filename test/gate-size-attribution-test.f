@@ -447,10 +447,43 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ test files are not part of the assembled
 \ stage2 engine source.
 \ cda6ec6d: compile/ops +288, dictionary-code +16, aot-seed -312; net -8, total 123072 unchanged.
-118420 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\
+\ 2026-08-05 THE LINUX DECOMPOSITION IS OWED A RE-MEASURE, AND SAYS SO.
+\ Merge cd7bf8eb resolved these four rows to the pre-merge MASTER binary's numbers
+\ (118420 / 3732 / 123072) while keeping the campaign's prose above them, which is
+\ why that prose ends "the whole file remains exactly 127168". The rebuilt
+\ integrated tip measures 127168, so the whole-file row was simply wrong and is
+\ corrected here; BUILD-SIZE:BASELINE-LINUX carries the same number.
+\
+\ The DECOMPOSITION cannot be corrected the same way, and inventing it would be
+\ the same defect again. The model reconstructs the total as
+\ PAGE-UP(CODE-OFF + CODE-TEXT, 4 KiB) + LINUX-RW, so a measured total of 127168
+\ pins CODE-OFF + CODE-TEXT only to the half-open 4 KiB page (122880, 126976] -
+\ one equation, two unknowns. Neither surviving candidate describes this binary:
+\ 118420 is master's engine before the campaign's text landed, and the campaign's
+\ own 122592 predates master's owner-registry deletion, which removes engine text
+\ (the per-region rows below still carry master's shape - no aot-owner row, and
+\ protected-wid at 120 rather than 1540). Deriving a third number from the page
+\ boundary would be page rounding wearing an attribution's clothes.
+\
+\ So CODE-TEXT and FLOOR-DIST are ZERO, which this manifest already means as
+\ "unmeasured target, fail closed with the measured size to commit"
+\ (test/gate-build-size.f header), and LINUX-MEASURED? gates the committed-row
+\ self-checks the way HOST-REGION-BUDGETS-MEASURED? already gates the macOS
+\ per-region rows. A Linux host running the candidate gate now reports the real
+\ CODELEN to commit instead of a drift against a binary that no longer exists.
+\ The per-region rows are left standing as the last measurement anyone took, so
+\ that re-measure starts from a diff rather than from nothing.
+0 constant LINUX-CODE-TEXT        \ OWED: unmeasured on the integrated tree
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3732 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
-123072 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-LINUX
+0 constant LINUX-FLOOR-DIST       \ OWED: derives from CODE-TEXT, unmeasured with it
+127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-LINUX
+
+\ A zero CODE-TEXT row is this manifest's spelling of "unmeasured": there is no
+\ committed decomposition to check against, and the rows that would check it stay
+\ silent rather than assert something nobody measured.
+: LINUX-MEASURED? ( -- bool )
+   LINUX-CODE-TEXT 0 <> ;
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
 \ The whole-file (BUILD-SIZE) and __text-total (CODE-TEXT / SUM-TEXT) ratchets catch
@@ -589,7 +622,7 @@ public
    HB-TARGET-LINUX? if q LINUX-REGION-BUDGETS then ;
 
 : HOST-REGION-BUDGETS-MEASURED? ( -- bool )
-   HB-TARGET-LINUX? ;
+   HB-TARGET-LINUX? LINUX-MEASURED? and ;
 
 \ SOME committed budget for the named region on the running target, else NONE.
 : HOST-REGION-BUDGET-FIND ( ptr u8 n -- option<n> ) {: qa:ptr qu:n :}
@@ -608,14 +641,22 @@ public
 \ its whole file and page-floor shave, and the running target's committed total
 \ equals the live installed engine. Any drift - a bigger engine, a stale row -
 \ fails one of these, so the manifest cannot silently fall behind reality.
+\ The committed-row self-check for a target whose decomposition is measured. A
+\ target whose CODE-TEXT is owed has nothing here to check: its rows do not claim
+\ to reconstruct anything, and the live coupling below still holds its whole-file
+\ total against the running engine.
+: LINUX-SELF-CHECK ( -- )
+   LINUX-MEASURED? 0= if exit then
+   LINUX-MODEL-SUM LINUX-TOTAL T=
+   LINUX-MODEL-FLOOR LINUX-FLOOR-DIST T=
+   LINUX-REGION-BUDGET-SUM LINUX-CODE-TEXT T= ;   \ per-region budgets decompose __text exactly
+
 : RUN ( -- )
    T-RESET
    MACOS-MODEL-SUM MACOS-TOTAL T=
    MACOS-MODEL-FLOOR MACOS-FLOOR-DIST T=
-   LINUX-MODEL-SUM LINUX-TOTAL T=
-   LINUX-MODEL-FLOOR LINUX-FLOOR-DIST T=
+   LINUX-SELF-CHECK
    HOST-TOTAL LIVE-ENGINE T=
-   LINUX-REGION-BUDGET-SUM LINUX-CODE-TEXT T=   \ per-region budgets decompose __text exactly
    T-REPORT ;
 
 \ Live drift check against a captured map + its engine (for a build-and-capture
