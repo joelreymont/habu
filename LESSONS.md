@@ -5332,3 +5332,13 @@ context WHOSE EXIT CLEANED UP THE LEAK - a test that wraps everything in the
 scope under test cannot see the failure path a real driver takes. The
 regression cases now run at top level, where the driver lives.
 
+## A measured floor decays with the tree (2026-08-05)
+
+The literal CSE's acceptance floor was measured as four improved rows; by
+landing day it was eight - master had moved and the stale floor would have
+understated the win and hidden that CELL-BUMP's -24 bytes was the
+second-biggest gain. Re-derive a measured floor on the tree it will gate,
+every time; a number carried across masters is a claim about a tree that no
+longer exists. Same discipline as re-pinning: measurements are dated, and
+the date is part of the number.
+
