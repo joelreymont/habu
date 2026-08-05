@@ -24,7 +24,7 @@ require maki/array.f
 package MAKI
 
 \ copy table row E[id] into output row Y[iy]
-: EMB-ROW! ( ptr a ptr a n n n -- ) {: eb:ptr yb:ptr id:n iy:n dim:n :}
+: EMB-ROW! ( ptr r ptr r n n n -- ) {: eb:ptr yb:ptr id:n iy:n dim:n :}
    dim 0 ?do
       eb  id dim *  i +  T-GET
       yb  iy dim *  i +  T-SET
@@ -33,7 +33,7 @@ package MAKI
 \ Y[i,:] = E[ids[i],:]
 public
 
-: EMB-GATHER ( ptr a ptr a ptr a n n -- ) {: eb:ptr idsb:ptr yb:ptr lc:n dim:n :}
+: EMB-GATHER ( ptr r ptr r ptr r n n -- ) {: eb:ptr idsb:ptr yb:ptr lc:n dim:n :}
    lc 0 ?do
       eb yb  idsb i T-GET f>s  i  dim  EMB-ROW!
    loop ;
@@ -41,7 +41,7 @@ public
 private
 
 \ dE[id,:] += dY[iy,:]   (accumulate, so repeated ids sum)
-: EMB-SCATTER-ROW! ( ptr a ptr a n n n -- ) {: deb:ptr dyb:ptr id:n iy:n dim:n :}
+: EMB-SCATTER-ROW! ( ptr r ptr r n n n -- ) {: deb:ptr dyb:ptr id:n iy:n dim:n :}
    dim 0 ?do
       deb  id dim *  i +  T-GET
       dyb  iy dim *  i +  T-GET  f+
@@ -51,7 +51,7 @@ private
 \ scatter-ADD the row cotangents back into the table gradient (dE pre-zeroed)
 public
 
-: EMB-SCATTER-ADD ( ptr a ptr a ptr a n n -- ) {: idsb:ptr dyb:ptr deb:ptr lc:n dim:n :}
+: EMB-SCATTER-ADD ( ptr r ptr r ptr r n n -- ) {: idsb:ptr dyb:ptr deb:ptr lc:n dim:n :}
    lc 0 ?do
       deb dyb  idsb i T-GET f>s  i  dim  EMB-SCATTER-ROW!
    loop ;
@@ -59,7 +59,7 @@ public
 private
 
 \ dst[i] += src[i] over the leading n elements (the slice image is contiguous from row 0)
-: ROW-ADD ( ptr a ptr a n -- ) {: sb:ptr db:ptr n:n :}
+: ROW-ADD ( ptr r ptr r n -- ) {: sb:ptr db:ptr n:n :}
    n 0 ?do  db i T-GET  sb i T-GET  f+  db i T-SET  loop ;
 
 \ named reject: a sequence length past the positional table's extent (never a clamp)
@@ -68,16 +68,16 @@ private
 \ wpe piece: forward positional lookup wpe[0:T] (rows 0..T-1, contiguous slice)
 public
 
-: WPE-SLICE ( ptr a ptr a n n n -- ) {: wb:ptr yb:ptr t:n maxt:n dim:n :}
+: WPE-SLICE ( ptr r ptr r n n n -- ) {: wb:ptr yb:ptr t:n maxt:n dim:n :}
    t maxt WPE-FIT
    t dim * 0 ?do  wb i T-GET  yb i T-SET  loop ;
 
 \ wpe piece VJP: dWpe[0:T] += dY (slice adjoint / pad-scatter at offset 0; dWpe pre-zeroed)
-: WPE-SLICE-ADD ( ptr a ptr a n n -- ) {: dyb:ptr dwb:ptr t:n dim:n :}
+: WPE-SLICE-ADD ( ptr r ptr r n n -- ) {: dyb:ptr dwb:ptr t:n dim:n :}
    dyb dwb  t dim *  ROW-ADD ;
 
 \ token+pos composition: Y[i,:] = E[ids[i],:] + wpe[i,:] (the B*T x dim block input, B=1)
-: TOKPOS-EMBED ( ptr a ptr a ptr a ptr a n n n -- )
+: TOKPOS-EMBED ( ptr r ptr r ptr r ptr r n n n -- )
    {: eb:ptr idsb:ptr wb:ptr yb:ptr t:n maxt:n dim:n :}
    t maxt WPE-FIT
    eb idsb yb  t dim  EMB-GATHER
