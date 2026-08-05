@@ -134,7 +134,7 @@ private
 : GA-SLOT-ELEMS ( MIR:input-slot -- n ) {: s:MIR:input-slot :}
    s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ SHAPE-ELEMS DIM-RAW ;
 public
-: GA-IN-PTR ( MIR:input-slot -- ptr a )
+: GA-IN-PTR ( MIR:input-slot -- ptr r )
    SLOT>RAW cells GA-IN-OFF + @ {: off:n :}  GA-ARENA off T-AT ;
 private
 
@@ -238,7 +238,7 @@ private
 : GA-WRITE-SHAPE ( CAD-KIND:rows CAD-KIND:cols -- )
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
    rows ROWS-RAW GA-T-INT $78 GA-T-C cols COLS-RAW GA-T-INT ;
-: GA-WRITE-DATA ( ptr a n -- ) {: p:ptr n:n :}
+: GA-WRITE-DATA ( ptr r n -- ) {: p:ptr n:n :}
    n 0 ?do  i 0 > if $20 GA-T-C then  p i T-GET GA-T-FLOAT  loop ;
 
 : GA-WRITE-HEADER ( -- )
@@ -328,7 +328,7 @@ private
         ta tu CAD-NUM:GA-BL>N GA-PF-TOKEN
         nx CAD-NUM:GA-BO>N STR-TRUE ENDOF
    ;MATCH ;
-: GA-PARSE-FLOATS ( ptr u8 n ptr a n -- ) {: va:ptr vu:n dst:ptr cnt:n :}
+: GA-PARSE-FLOATS ( ptr u8 n ptr r n -- ) {: va:ptr vu:n dst:ptr cnt:n :}
    dst GA-PF-DST !  cnt GA-PF-CNT !  0 GA-PF-IDX !
    0 begin va vu rot GA-PF-STEP while repeat drop
    GA-PF-IDX @ cnt <> if E-GA-PARSE throw then ;
@@ -396,7 +396,7 @@ private
    ae POW10  re POW10 b fabs f* f+ {: t:r :}
    a b f- fabs {: d:r :}
    t d f< 0= ;
-: GA-COMPARE ( ptr a ptr a n n n -- bool ) {: cp:ptr ep:ptr n:n ae:n re:n :}
+: GA-COMPARE ( ptr r ptr r n n n -- bool ) {: cp:ptr ep:ptr n:n ae:n re:n :}
    n 0 ?do
       cp i T-GET  ep i T-GET  ae re GA-WITHIN? 0= if false unloop exit then
    loop  true ;

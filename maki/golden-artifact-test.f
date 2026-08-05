@@ -25,7 +25,7 @@ package CAD-NUM public
 
 package MAKI
 
-: GT-IN-PTR ( n -- ptr a )  MIR-SLOT-ID GA-IN-PTR ;
+: GT-IN-PTR ( n -- ptr r )  MIR-SLOT-ID GA-IN-PTR ;
 
 variable GT-VA  variable GT-VU
 : GT-SAVE ( ptr u8 n -- )  GT-VU ! GT-VA ! ;
