@@ -335,18 +335,18 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    pid PID>N 0= if ALLOC-REFUSAL-CHILD then
    pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
-: TOKEN-OWNER ( GPT2:model -- GPT2:model ptr a CAD-NUM:alloc-byte-len )
+: TOKEN-OWNER ( GPT2:model -- GPT2:model ptr n CAD-NUM:alloc-byte-len )
    M-TAKE
    {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    x a b logits token k v pos
    tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
    tokstate toklen ;
 
-: READ-TOKEN-TAIL ( ptr a -- )
+: READ-TOKEN-TAIL ( ptr n -- )
    TOKEN-LIVE-CELLS 1- cells + @ drop
    s" " 0 die ;
 
-: TOKEN-UNMAPPED ( ptr a -- ) {: tokstate:ptr :}
+: TOKEN-UNMAPPED ( ptr n -- ) {: tokstate:ptr :}
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if 2 close-rc drop tokstate READ-TOKEN-TAIL then
    pid PROC-WAIT-OUTCOME FAULT-RC T-OUTCOME-EXITED= ;

@@ -149,7 +149,7 @@ create T-C-M9 2 , 1 ,
 : T-MIXED-SPACE$ ( -- ptr u8 n )
    s\"  \xE3\x80\x80x" ;
 
-: T-CHUNKS? ( ptr a n ptr u8 n -- bool )
+: T-CHUNKS? ( ptr n n ptr u8 n -- bool )
    {: want:ptr wantn:n src:ptr srcu:n :}
    0 0
    begin over srcu < while
@@ -300,7 +300,7 @@ using GPT2
    CONTEXT CONTEXT-N BYTE-CAP 1 TOKEN-CAP OUT OUTPUT-CAP GENERATE
    EXPECT-OK BL>N drop ;
 
-: T-ENC-EQ ( GPT2:model ptr u8 n ptr a n -- GPT2:model )
+: T-ENC-EQ ( GPT2:model ptr u8 n ptr n n -- GPT2:model )
    {: src:ptr srcu:n want:ptr wantn:n :}
    src srcu BYTE-CAP ENCODE
    MATCH result
