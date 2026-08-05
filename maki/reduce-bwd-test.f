@@ -3,6 +3,7 @@
 \ over row-major float-cell buffers, plus the fail-closed column-mismatch path.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/reduce-bwd.f
 
 package MAKI
@@ -12,12 +13,19 @@ create RB-CT  8 cells allot
 create RB-X   8 cells allot
 create RB-DST 8 cells allot
 
-: RB-CELL ( ptr a n -- n )  T-GET 0.5 f+ f>s ;               \ read a float cell as an int
-: RB-SET ( n ptr a n -- ) {: v:n base:ptr k:n :}  v s>f base k T-SET ;
+: RB-CELL ( ptr r n -- n )  T-GET 0.5 f+ f>s ;               \ read a float cell as an int
+: RB-SET ( n ptr r n -- ) {: v:n base:ptr k:n :}  v s>f base k T-SET ;
 
 : TRY-RB-COLS ( -- )  RB-SRC 3 2 RB-DST 3 ROWSUM-BWD ;       \ dst cols 3 != src cols 2
 
 T-RESET
+
+s" RB-R-RS ( ptr r n n ptr r n -- ) ROWSUM-BWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" RB-N-RS ( ptr n n n ptr n n -- ) ROWSUM-BWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" RB-U8-RS ( ptr u8 n n ptr u8 n -- ) ROWSUM-BWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" RB-R-FS ( ptr r ptr r n ptr r -- ) FULLSUM-DOT-BWD" CHECK-QUIET-CANDIDATE! -1 T=
+s" RB-N-FS ( ptr n ptr n n ptr n -- ) FULLSUM-DOT-BWD" CHECK-QUIET-CANDIDATE! 0 T=
+s" RB-U8-FS ( ptr u8 ptr u8 n ptr u8 -- ) FULLSUM-DOT-BWD" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- ROWSUM-BWD: 3x2 -> 1x2 column sums ------------------------------------
 \ src = [[1,2],[3,4],[5,6]] ; column sums = [1+3+5, 2+4+6] = [9,12]

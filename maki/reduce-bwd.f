@@ -21,7 +21,7 @@ public
 
 \ ROWSUM-BWD: d[0,c] = sum over rows i of s[i,c]; source sr x sc, dst 1 x dc (dc=sc).
 \ The bias gradient: reduce the cotangent over its broadcast (row) axis.
-: ROWSUM-BWD ( ptr a n n ptr a n -- ) {: s:ptr sr:n sc:n d:ptr dc:n :}
+: ROWSUM-BWD ( ptr r n n ptr r n -- ) {: s:ptr sr:n sc:n d:ptr dc:n :}
    dc sc <> if E-RB-COLS throw then
    sc 0 ?do                                     \ outer = column (i here, j inside the row loop)
       0.0                                        \ column accumulator (f32)
@@ -31,7 +31,7 @@ public
 
 \ FULLSUM-DOT-BWD: d[0,0] = sum over all n elements of ct[k] * x[k]; dst is 1x1.
 \ The scale gradient: dot the cotangent with the saved input, reduced to a scalar.
-: FULLSUM-DOT-BWD ( ptr a ptr a n ptr a -- ) {: ct:ptr x:ptr n:n d:ptr :}
+: FULLSUM-DOT-BWD ( ptr r ptr r n ptr r -- ) {: ct:ptr x:ptr n:n d:ptr :}
    0.0  n 0 ?do  ct i T-GET  x i T-GET  f*  f+  loop
    d 0 T-SET ;
 
