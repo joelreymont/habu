@@ -7,6 +7,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require maki/infer/gpt2-serve.f
+require maki/infer/gpt2-clean-test-lib.f
 require maki/infer/gpt2-reference-data.f
 
 package GPT2-SERVE
@@ -14,6 +15,8 @@ private
 
 GPT2:OUTPUT-CAP BL>N constant T-CAP
 240000 constant T-TIMEOUT-MS
+731 constant E-T-MODEL
+732 constant E-T-SESSION
 
 create T-TMP FS-PATH-CAP allot
 create T-SRC FS-PATH-CAP allot
@@ -231,6 +234,45 @@ variable T-PID
    $DD $E9 T-READ-REFUSAL
    T-WAIT-GENERATE-FAIL ;
 
+using GPT2-CLEAN-TEST
+
+: T-OWNERS ( -- GPU:session GPT2:model )
+   GPU:OPEN
+   MATCH result
+      err OF throw ENDOF
+      ok OF
+         0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
+         MATCH result
+            err OF OPEN-FAIL ENDOF
+            ok OF ENDOF
+         ;MATCH
+      ENDOF
+   ;MATCH ;
+
+: T-PRIMARY ( -- )
+   T-OWNERS E-T-MODEL E-T-SESSION TRACK-FAULTS E-FRAME RESULT:ERR FINISH ;
+
+: T-MODEL ( -- )
+   T-OWNERS E-T-MODEL E-T-SESSION TRACK-FAULTS 0 RESULT:OK FINISH ;
+
+: T-SESSION-FAULT ( -- )
+   T-OWNERS 0 E-T-SESSION TRACK-FAULTS 0 RESULT:OK FINISH ;
+
+: T-BAD-OPEN ( -- )
+   s" /tmp/habu-no-gpt2-service-model" RUN-ACT ;
+
+: T-CLEANUP-FAULTS ( -- )
+   s" service cleanup preserves primary, model, then session failure order" T-LABEL
+   [: T-PRIMARY ;] E-FRAME TTHROWSQ ASSERT-MODEL-SESSION
+   [: T-MODEL ;] E-T-MODEL TTHROWSQ ASSERT-MODEL-SESSION
+   [: T-SESSION-FAULT ;] E-T-SESSION TTHROWSQ ASSERT-MODEL-SESSION
+   s" service model-open refusal closes the real caller session" T-LABEL
+   0 E-T-SESSION TRACK-FAULTS
+   [: T-BAD-OPEN ;] E-FS-OPEN TTHROWSQ
+   ASSERT-SESSION-ONLY ;
+
+;using
+
 : T-RUN ( -- )
    SCRIPT-ARGC 1 <> if E-USAGE throw then
    T-RESET
@@ -242,6 +284,7 @@ variable T-PID
    T-WRITE-FAILURE
    T-CONTEXT-LIMIT-FAILURE
    CLEANUP-RUN
+   T-CLEANUP-FAULTS
    T-REPORT ;
 
 T-RUN

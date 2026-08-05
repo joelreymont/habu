@@ -67,11 +67,10 @@ using RESULT
    promptu T-ID-CAP > if E-TOK-CAP ERR exit then
    prompt promptu 0 T-ENC-FITS? 0= if E-TOK-CAP ERR exit then
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    prompt promptu tokstate -rot T-ENCODE {: count:n :}
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
    count 0= if E-PROMPT ERR else count TOKEN-CAP RESULT:OK then ;
 
 : DECODE
@@ -79,44 +78,51 @@ using RESULT
    {: count:n out:ptr cap:CAD-NUM:byte-len :}
    cap BL>N {: outu:n :}
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    tokstate count T-DECODE-LEN {: bytes:n :}
    bytes outu <= if tokstate out bytes T-DECODE-OUT then
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
    bytes outu > if E-TOK-CAP ERR else bytes BYTE-CAP RESULT:OK then ;
 
 : ID-AT ( GPT2:model n -- GPT2:model n ) {: idx:n :}
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    tokstate idx T-ID@ {: id:n :}
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
    id ;
 
 : ID-PUT ( GPT2:model n n -- GPT2:model ) {: id:n idx:n :}
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    tokstate id idx T-ID!
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE ;
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE ;
 
-: OWN-GREEDY ( GPT2:model n -- GPT2:model result<n,n> ) {: tok:n :}
+: OWN-GREEDY
+   ( GPU:session GPT2:model n -- GPU:session GPT2:model result<n,n> )
+   {: tok:n :}
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes T-LOGITS cells + {: row:ptr :}
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
+   tokstate T-LOGITS cells + {: row:ptr :}
    ROW-LEN {: bytes:CAD-NUM:byte-len :}
    tok pos bytes M-VALIDATE {: valid:n :}
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c :}
+   rot swap
+   c
    valid 0= if
       x a b logits token k v pos embed ln linear unembed gelu residual attn
       tok row bytes M-INFER
    else valid then {: code:n :}
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c2 :}
+   rot swap
+   c2
    code 0<> if
       x a b logits token k v pos
-      tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+      tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
       code ERR
       exit
    then
@@ -125,13 +131,13 @@ using RESULT
       err OF
          {: scan-code:n :}
          x a b logits token k v pos 1+
-         tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+         tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
          scan-code ERR
       ENDOF
       ok OF
          {: id:n :}
          x a b logits token k v pos 1+
-         tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+         tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
          id RESULT:OK
       ENDOF
    ;MATCH ;
@@ -151,7 +157,7 @@ using RESULT
    context IC>N <= ;
 
 : FEED-PROMPT
-   ( GPT2:model n n -- GPT2:model result<n,n> )
+   ( GPU:session GPT2:model n n -- GPU:session GPT2:model result<n,n> )
    {: idx:n count:n :}
    idx ID-AT OWN-GREEDY
    MATCH result
@@ -167,7 +173,7 @@ using RESULT
    ;MATCH ;
 
 : CONTINUE
-   ( GPT2:model n n n n -- GPT2:model result<n,n> )
+   ( GPU:session GPT2:model n n n n -- GPU:session GPT2:model result<n,n> )
    {: id:n count:n max:n eos:n :}
    id eos = if count RESULT:OK exit then
    id count ID-PUT
@@ -183,7 +189,7 @@ using RESULT
    ;MATCH ;
 
 : GENERATE-INNER
-   ( GPT2:model CAD-NUM:item-count CAD-NUM:item-count -- GPT2:model result<n,n> )
+   ( GPU:session GPT2:model CAD-NUM:item-count CAD-NUM:item-count -- GPU:session GPT2:model result<n,n> )
    {: prompt:CAD-NUM:item-count max:CAD-NUM:item-count :}
    max IC>N {: maxn:n :}
    EOS-ID {: eos:n :}
@@ -200,7 +206,7 @@ using RESULT
 public
 
 : GENERATE
-   ( GPT2:model ptr u8 CAD-NUM:byte-len CAD-NUM:item-count ptr u8 CAD-NUM:byte-len -- GPT2:model result<CAD-NUM:byte-len,n> )
+   ( GPU:session GPT2:model ptr u8 CAD-NUM:byte-len CAD-NUM:item-count ptr u8 CAD-NUM:byte-len -- GPU:session GPT2:model result<CAD-NUM:byte-len,n> )
    {:
       prompt:ptr promptu:CAD-NUM:byte-len max:CAD-NUM:item-count
       out:ptr cap:CAD-NUM:byte-len

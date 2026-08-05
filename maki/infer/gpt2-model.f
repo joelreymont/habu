@@ -29,6 +29,8 @@ DEFLINEAR GPT2:model
 
 private
 
+using MEM
+
 -5651 constant E-CATALOG
 -5654 constant E-DIGEST
 -5655 constant E-TOKEN
@@ -57,68 +59,59 @@ variable M-GELU-H
 variable M-RESIDUAL-H
 variable M-ATTN-H
 
-0 constant R-GPU
-1 cells constant R-BUF
-2 cells constant R-DT
-3 cells constant R-CX
-4 cells constant R-VO
-5 cells constant R-NL
-6 cells constant R-NE
-7 cells constant R-NH
-8 cells constant R-TIED
-9 cells constant R-BOS
-10 cells constant R-EOS
-11 cells constant R-EPS
-12 cells constant R-SCALE
-13 cells constant R-PROOF
-14 cells constant R-X
-15 cells constant R-A
-16 cells constant R-B
-17 cells constant R-LOGITS
-18 cells constant R-TOKEN
-19 cells constant R-K
-20 cells constant R-V
-21 cells constant R-POS
-22 cells constant R-TMOD
-23 cells constant R-AMOD
-24 cells constant R-EMBED
-25 cells constant R-LN
-26 cells constant R-LINEAR
-27 cells constant R-UNEMBED
-28 cells constant R-GELU
-29 cells constant R-RESIDUAL
-30 cells constant R-ATTN
-31 cells constant R-TOKSTATE
-32 cells constant R-TOKLEN
-33 cells constant R-BYTES
+0 constant R-BUF
+1 cells constant R-DT
+2 cells constant R-CX
+3 cells constant R-VO
+4 cells constant R-NL
+5 cells constant R-NE
+6 cells constant R-NH
+7 cells constant R-TIED
+8 cells constant R-BOS
+9 cells constant R-EOS
+10 cells constant R-EPS
+11 cells constant R-SCALE
+12 cells constant R-PROOF
+13 cells constant R-X
+14 cells constant R-A
+15 cells constant R-B
+16 cells constant R-LOGITS
+17 cells constant R-TOKEN
+18 cells constant R-K
+19 cells constant R-V
+20 cells constant R-POS
+21 cells constant R-TMOD
+22 cells constant R-AMOD
+23 cells constant R-EMBED
+24 cells constant R-LN
+25 cells constant R-LINEAR
+26 cells constant R-UNEMBED
+27 cells constant R-GELU
+28 cells constant R-RESIDUAL
+29 cells constant R-ATTN
+30 cells constant R-TOKSTATE
+31 cells constant R-TOKLEN
+32 cells constant R-BYTES
 
 \ One GPU:buffer is laid out as weights | x | a | b | logits | token | K | V;
 \ the private offsets below are the sole authority for that allocation.
 \ Cubins are transient build provenance: only two modules and seven functions
-\ persist, and CLOSE unloads attention then tensor before buffer and session.
+\ persist, and CLOSE unloads attention then tensor before the model buffer.
 \ GPT2:model is the second production CUDA consumer after GPU and adds no runtime.
 \ The checker cannot tie raw CUDA module/function cells to the model lifetime;
 \ they stay private and are valid only while their owning module is loaded.
 \ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 
 : M-REC-LEN ( -- CAD-NUM:alloc-byte-len )
-   R-BYTES MEM:BYTES-ALLOC-LEN ;
-
-: M-ALLOC-REC ( ptr u8 -- ptr u8 )
-   drop M-REC-LEN MEM:ALLOC-BYTES drop ;
-
-: M-ALLOC-PATH ( ptr u8 -- ptr u8 )
-   drop FS-PATH-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
-
-: M-FREE-REC ( ptr u8 -- )
-   M-REC-LEN MEM:RELEASE-BYTES ;
+   R-BYTES BYTES-ALLOC-LEN ;
 
 \ The checker cannot tie the opaque owner to its private host record.
 \ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: M-SAVE
-   ( GPU:session GPU:buffer config n n n n n n n n n n n n n n n n n ptr a CAD-NUM:alloc-byte-len ptr u8 -- GPT2:model )
-   {: g:GPU:session buf:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len rec:ptr :}
-   g rec R-GPU + !
+   ( MEM:block GPU:buffer config n n n n n n n n n n n n n n n n n ptr a CAD-NUM:alloc-byte-len -- GPT2:model )
+   {: buf:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
+   BORROW {: rec:ptr recu:CAD-NUM:byte-len :}
+   recu R-BYTES <> if E-SIZE throw then
    buf rec R-BUF + !
    dt rec R-DT + !
    cx rec R-CX + !
@@ -150,13 +143,12 @@ TRUSTED: M-SAVE
    residual rec R-RESIDUAL + !
    attn rec R-ATTN + !
    tokstate rec R-TOKSTATE + !
-   toklen rec R-TOKLEN + !
-   rec ;
+   toklen rec R-TOKLEN + ! ;
 
 TRUSTED: M-TAKE
-   ( GPT2:model -- GPU:session GPU:buffer config n n n n n n n n n n n n n n n n n ptr a CAD-NUM:alloc-byte-len ptr u8 ptr u8 )
-   {: rec:ptr :}
-   rec R-GPU + @
+   ( GPT2:model -- MEM:block GPU:buffer config n n n n n n n n n n n n n n n n n ptr a CAD-NUM:alloc-byte-len )
+   BORROW {: rec:ptr recu:CAD-NUM:byte-len :}
+   recu R-BYTES <> if E-SIZE throw then
    rec R-BUF + @
    rec R-DT + @
    rec R-CX + @
@@ -189,9 +181,7 @@ TRUSTED: M-TAKE
    rec R-RESIDUAL + @
    rec R-ATTN + @
    rec R-TOKSTATE + @
-   rec R-TOKLEN + @
-   rec R-TOKSTATE + @
-   rec ;
+   rec R-TOKLEN + @ ;
 
 : M-ADD ( n n -- n ) {: a:n b:n :}
    a MAX-N b - > if E-SIZE throw then
@@ -449,6 +439,8 @@ TRUSTED: M-TAKE
 : M-PIN-FRAME ( ptr u8 SAFET:mapping -- ptr u8 n SAFET:mapping )
    [: M-PIN-MAP ;] SAFET:WITH-MAPPING drop ;
 
+;using
+
 public
 
 : SPAN ( config tensor-id -- config CAD-NUM:byte-off CAD-NUM:byte-len )
@@ -462,6 +454,8 @@ public
    elems bytes CHECKED-MUL M-BYTE-LEN ;
 
 private
+
+using MEM
 
 : M-RESULT-CODE ( result<n,n> -- n )
    MATCH result
@@ -1035,17 +1029,10 @@ private
    GPT2-CONFIG:UNMAKE
    2drop 2drop 2drop 2drop 2drop 2drop ;
 
-: M-GPU-CLEAN ( GPU:session GPU:buffer n -- n )
+: M-GPU-CLEAN ( GPU:session GPU:buffer n -- GPU:session n )
    {: first:n :}
    GPU:FREE M-RESULT-CODE {: free:n :}
-   first free M-FIRST {: first2:n :}
-   GPU:CLOSE M-RESULT-CODE
-   first2 swap M-FIRST ;
-
-: M-SESSION-CLEAN ( GPU:session n -- n )
-   {: first:n :}
-   GPU:CLOSE M-RESULT-CODE
-   first swap M-FIRST ;
+   first free M-FIRST ;
 
 : M-SOURCE-CLEAN ( config ptr u8 SAFET:file SAFET:mapping n -- n )
    {: first:n :}
@@ -1056,7 +1043,7 @@ private
    first2 ;
 
 : M-ALL-CLEAN
-   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping n -- n )
+   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping n -- GPU:session n )
    {: first:n :}
    SAFET:UNMAP-MAPPING M-RESULT-CODE
    first swap M-FIRST {: first2:n :}
@@ -1065,8 +1052,8 @@ private
    first2 M-GPU-CLEAN ;
 
 : M-FINISH
-   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
-   {: tokstate:ptr toklen:CAD-NUM:alloc-byte-len rec:ptr :}
+   ( MEM:block GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   {: tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    SAFET:UNMAP-MAPPING M-RESULT-CODE {: code:n :}
    drop
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
@@ -1075,97 +1062,104 @@ private
    code 0<> if
       c M-DROP-CFG
       code M-GPU-CLEAN
-      tokstate drop toklen drop rec drop M-MODEL-ERR
+      tokstate drop toklen drop
+      {: fail:n :}
+      swap RELEASE
+      fail M-MODEL-ERR
       exit
    then
    M-BUILD-CODE {: build:n :}
    build 0<> if
       c M-DROP-CFG
       build M-GPU-CLEAN
-      tokstate drop toklen drop rec drop M-MODEL-ERR
+      tokstate drop toklen drop
+      {: fail:n :}
+      swap RELEASE
+      fail M-MODEL-ERR
       exit
    then
+   rot swap
    c M-LAYOUT
    {: x:n a:n b:n logits:n token:n k:n v:n alloc:CAD-NUM:alloc-byte-len :}
    alloc drop
    x a b logits token k v 0
    M-CODE@
-   tokstate toklen rec M-SAVE
+   tokstate toklen M-SAVE
    M-CODE-RESET
    RESULT:OK ;
 
 : M-GPU-FAIL
-   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a CAD-NUM:alloc-byte-len ptr u8 n -- result<GPT2:model,n> )
+   ( MEM:block GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a CAD-NUM:alloc-byte-len n -- GPU:session result<GPT2:model,n> )
    {: code:n :}
-   drop drop drop
-   code M-ALL-CLEAN M-MODEL-ERR ;
+   drop drop
+   code M-ALL-CLEAN
+   {: fail:n :}
+   swap RELEASE
+   fail M-MODEL-ERR ;
 
 : M-GPU-FLOW
-   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
-   >r >r >r
+   ( MEM:block GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   >r >r
    M-UPLOAD-FRAME
    >r {: code:n :}
    code 0<> if
-      r> r> r> r> code M-GPU-FAIL
+      r> r> r> code M-GPU-FAIL
    else
-      r> r> r> r> M-FINISH
+      r> r> r> M-FINISH
    then ;
 
 : M-GPU
-   ( config ptr u8 SAFET:file SAFET:mapping CAD-NUM:alloc-byte-len ptr a CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
-   {: alloc:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len rec:ptr :}
+   ( MEM:block GPU:session config ptr u8 SAFET:file SAFET:mapping CAD-NUM:alloc-byte-len ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   {: alloc:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    >r >r
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr :}
-   GPU:OPEN
+   alloc GPU:ALLOC
    MATCH result
       err OF
          {: code:n :}
          c scratch r> r> code M-SOURCE-CLEAN
-         tokstate drop toklen drop rec drop M-MODEL-ERR
+         tokstate drop toklen drop
+         {: fail:n :}
+         swap RELEASE
+         fail M-MODEL-ERR
       ENDOF
       ok OF
-         alloc GPU:ALLOC
-         MATCH result
-            err OF
-               {: code:n :}
-               code M-SESSION-CLEAN {: first:n :}
-               c scratch r> r> first M-SOURCE-CLEAN
-               tokstate drop toklen drop rec drop M-MODEL-ERR
-            ENDOF
-            ok OF
-               r> r> >r c scratch r>
-               tokstate toklen rec M-GPU-FLOW
-            ENDOF
-         ;MATCH
+         r> r> >r c scratch r>
+         tokstate toklen M-GPU-FLOW
       ENDOF
    ;MATCH ;
 
 : M-FILE
-   ( config ptr u8 SAFET:file CAD-NUM:alloc-byte-len ptr a CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
-   {: alloc:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len rec:ptr :}
+   ( MEM:block GPU:session config ptr u8 SAFET:file CAD-NUM:alloc-byte-len ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   {: alloc:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    SAFET:DETACH-MAPPING
    MATCH SAFET:map-take
       empty OF
          SAFET:RELEASE
          drop M-DROP-CFG
-         tokstate drop toklen drop rec drop E-CATALOG M-MODEL-ERR
+         tokstate drop toklen drop
+         swap RELEASE
+         E-CATALOG M-MODEL-ERR
       ENDOF
       moved OF
          \ Parse rejects hostile structure before the digest gates GPU work.
          M-CATALOG-ORDER M-PIN-ORDER {: code:n :}
          code 0<> if
             code M-SOURCE-CLEAN
-            tokstate drop toklen drop rec drop M-MODEL-ERR
+            tokstate drop toklen drop
+            {: fail:n :}
+            swap RELEASE
+            fail M-MODEL-ERR
          else
-            alloc tokstate toklen rec M-GPU
+            alloc tokstate toklen M-GPU
          then
       ENDOF
    ;MATCH ;
 
 : M-BODY
-   ( ptr u8 n config CAD-NUM:alloc-byte-len ptr u8 CAD-NUM:alloc-byte-len ptr a CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
-   {: root:ptr rootu:n c alloc:CAD-NUM:alloc-byte-len scratch:ptr scratchu:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len rec:ptr :} \ typed-local-lint: allow-bare-local
+   ( MEM:block GPU:session ptr u8 n config CAD-NUM:alloc-byte-len ptr u8 CAD-NUM:byte-len ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
+   {: root:ptr rootu:n c alloc:CAD-NUM:alloc-byte-len scratch:ptr scratchu:CAD-NUM:byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len :} \ typed-local-lint: allow-bare-local
    scratchu drop
    c scratch
    root rootu GPT2PIN:MODEL-NAME$ scratch JOIN-PATH {: pathu:n :}
@@ -1174,10 +1168,12 @@ private
       err OF
          {: code:n :}
          drop M-DROP-CFG
-         tokstate drop toklen drop rec drop code M-MODEL-ERR
+         tokstate drop toklen drop
+         swap RELEASE
+         code M-MODEL-ERR
       ENDOF
       ok OF
-         alloc tokstate toklen rec M-FILE
+         alloc tokstate toklen M-FILE
       ENDOF
    ;MATCH ;
 
@@ -1188,24 +1184,21 @@ private
       rootu 1 M-ADD nameu M-ADD
    then ;
 
-: M-SCOPE-FINISH
-   ( ptr u8 ptr u8 CAD-NUM:alloc-byte-len result<GPT2:model,n> -- result<GPT2:model,n> )
+: M-PATH-FINISH
+   ( MEM:block GPU:session result<GPT2:model,n> -- GPU:session result<GPT2:model,n> )
    MATCH result
       err OF
          {: code:n :}
-         MEM:RELEASE-BYTES
-         M-FREE-REC
+         swap RELEASE
          code M-MODEL-ERR
       ENDOF
       ok OF
-         >r
-         MEM:RELEASE-BYTES
-         drop
-         r> RESULT:OK
+         rot RELEASE RESULT:OK
       ENDOF
    ;MATCH ;
 
-: M-OPEN-CFG ( ptr u8 n config ptr a CAD-NUM:alloc-byte-len -- result<GPT2:model,n> )
+: M-OPEN-CFG
+   ( GPU:session ptr u8 n config ptr a CAD-NUM:alloc-byte-len -- GPU:session result<GPT2:model,n> )
    {: root:ptr rootu:n c tokstate:ptr toklen:CAD-NUM:alloc-byte-len :} \ typed-local-lint: allow-bare-local - c preserves GPT2:config's W>1 layout, which locals cannot annotate.
    root rootu GPT2PIN:MODEL-NAME$ nip M-JOIN-LEN
    FS-PATH-CAP > if
@@ -1219,28 +1212,34 @@ private
    2drop 2drop 2drop drop
    M-DROP-CFG
    r> {: alloc:CAD-NUM:alloc-byte-len :}
-   NULL$ drop [: M-ALLOC-REC ;] catch {: rec-code:n :}
-   rec-code 0<> if
-      drop c M-DROP-CFG
-      tokstate drop
-      toklen drop
-      rec-code M-MODEL-ERR
-      exit
-   then
-   {: rec:ptr :}
-   NULL$ drop [: M-ALLOC-PATH ;] catch {: path-code:n :}
-   path-code 0<> if
-      drop rec M-FREE-REC
-      c M-DROP-CFG
-      tokstate drop
-      toklen drop
-      path-code M-MODEL-ERR
-      exit
-   then
-   {: scratch:ptr :}
-   rec scratch FS-PATH-CAP MEM:BYTES-ALLOC-LEN
-   root rootu c alloc scratch FS-PATH-CAP MEM:BYTES-ALLOC-LEN tokstate toklen rec M-BODY
-   M-SCOPE-FINISH ;
+   M-REC-LEN MEM:OPEN
+   MATCH result
+      err OF
+         {: code:n :}
+         c M-DROP-CFG
+         tokstate drop toklen drop
+         code M-MODEL-ERR
+      ENDOF
+      ok OF
+         FS-PATH-CAP BYTES-ALLOC-LEN MEM:OPEN
+         MATCH result
+            err OF
+               {: code:n :}
+               RELEASE
+               c M-DROP-CFG
+               tokstate drop toklen drop
+               code M-MODEL-ERR
+            ENDOF
+            ok OF
+               BORROW
+               {: scratch:ptr scratchu:CAD-NUM:byte-len :}
+               swap rot
+               root rootu c alloc scratch scratchu tokstate toklen M-BODY
+               M-PATH-FINISH
+            ENDOF
+         ;MATCH
+      ENDOF
+   ;MATCH ;
 
 : M-ALLOC-TOK ( ptr u8 CAD-NUM:alloc-byte-len -- ptr a CAD-NUM:alloc-byte-len )
    2drop T-NEW ;
@@ -1250,10 +1249,11 @@ private
    tokstate root rootu T-BUILD
    tokstate toklen root rootu ;
 
-: M-OPEN-TOK ( ptr u8 n config -- result<GPT2:model,n> )
+: M-OPEN-TOK
+   ( GPU:session ptr u8 n config -- GPU:session result<GPT2:model,n> )
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: root:ptr rootu:n c :}
-   NULL$ drop 1 MEM:BYTES-ALLOC-LEN [: M-ALLOC-TOK ;] catch {: alloc-code:n :}
+   NULL$ drop 1 BYTES-ALLOC-LEN [: M-ALLOC-TOK ;] catch {: alloc-code:n :}
    alloc-code 0<> if
       2drop c M-DROP-CFG
       alloc-code M-MODEL-ERR
@@ -1274,9 +1274,11 @@ private
       ok OF RESULT:OK ENDOF
    ;MATCH ;
 
+;using
+
 public
 
-: OPEN ( FS:path -- result<GPT2:model,n> )
+: OPEN ( GPU:session FS:path -- GPU:session result<GPT2:model,n> )
    FS-PATH:UNMAKE {: root:ptr rootu:n :}
    root rootu FS-PATH:MAKE HF:OPEN-GPT2
    MATCH result
@@ -1290,29 +1292,39 @@ public
 
 : CONTEXT-LEN ( GPT2:model -- GPT2:model CAD-NUM:item-count )
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    NCTX@ {: cx:n :}
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
    cx M-ITEM-COUNT ;
 
 : EOS-ID ( GPT2:model -- GPT2:model n )
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    EOS@ {: eos:n :}
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
    eos ;
 
+: CONFIG@ ( GPT2:model -- GPT2:model config )
+   M-TAKE
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c :}
+   c x a b logits token k v pos
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
+   c ;
+
 : LOGITS
-   ( GPT2:model n ptr u8 CAD-NUM:byte-len -- GPT2:model result<n,n> )
+   ( GPU:session GPT2:model n ptr u8 CAD-NUM:byte-len -- GPU:session GPT2:model result<n,n> )
    {: tok:n dst:ptr outu:CAD-NUM:byte-len :}
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    tok pos outu M-VALIDATE {: valid:n :}
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c :}
+   rot swap
+   c
    valid 0= if
       x a b logits token k v pos embed ln linear unembed gelu residual attn
       tok dst outu M-INFER
@@ -1320,26 +1332,29 @@ public
       valid
    then
    {: code:n :}
+   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
+   {: c2 :}
+   rot swap
+   c2
    x a b logits token k v
    code 0= if pos 1+ else pos then
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
    code 0= if 0 RESULT:OK else code RESULT:ERR then ;
 
 : RESET ( GPT2:model -- GPT2:model )
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    pos drop
    x a b logits token k v 0
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE ;
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE ;
 
-: CLOSE ( GPT2:model -- result<n,n> )
-   M-TAKE {: tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+: CLOSE ( GPU:session GPT2:model -- GPU:session result<n,n> )
+   M-TAKE {: tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    2drop 2drop 2drop drop
    {: tmod:n amod:n :}
    2drop 2drop 2drop 2drop
    M-DROP-CFG
+   rot swap
    0 M-BYTE-OFF 4 M-BYTE-LEN GPU:SPAN
    MATCH result
       ok OF drop 0 ENDOF
@@ -1350,7 +1365,7 @@ public
    tmod swap M-UNLOAD
    M-GPU-CLEAN {: code:n :}
    tokstate toklen T-FREE
-   rec M-FREE-REC
+   swap MEM:RELEASE
    code 0= if 0 RESULT:OK else code RESULT:ERR then ;
 
 ;package

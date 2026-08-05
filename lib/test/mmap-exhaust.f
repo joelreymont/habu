@@ -1,4 +1,4 @@
-\ mmap-exhaust.f - exhaust anonymous VM mappings in a fork child.
+\ mmap-exhaust.f - exhaust process mappings.
 
 require lib/memory.f
 

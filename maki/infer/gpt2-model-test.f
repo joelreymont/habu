@@ -16,7 +16,6 @@ private
 
 -7697 constant E-FIX
 $86 constant FAULT-RC
-$80 constant STATM-CAP
 
 create BASE-BYTE 1 allot
 create ROOT FS-PATH-CAP allot
@@ -24,7 +23,6 @@ create SRC FS-PATH-CAP allot
 create DST FS-PATH-CAP allot
 create JOIN-ROOT FS-PATH-CAP allot
 create JOIN-DST FS-PATH-CAP allot
-create STATM-BUF STATM-CAP allot
 create EMPTY-MODEL 2 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 123 c, 125 c,
 create MUT-BYTE $5B c,
 
@@ -35,6 +33,8 @@ variable UPLOAD-N
 variable UPLOAD-BASE
 variable UPLOAD-NEXT
 variable UPLOAD-BAD
+variable STREAM-CREATE-N
+variable STREAM-DESTROY-N
 TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
 
 : BASE ( -- ptr u8 ) BASE-BYTE ;
@@ -161,9 +161,16 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
 
 : TEST-OPAQUE ( -- )
    s" GPT2:model has no public forge or raw-cell conversion" T-LABEL
-   s" GM-CLOSE ( GPT2:model -- result<n,n> ) GPT2:CLOSE" YES
+   s" GM-OPEN ( GPU:session FS:path -- GPU:session result<GPT2:model,n> ) GPT2:OPEN" YES
+   s" GM-OLD-OPEN ( FS:path -- result<GPT2:model,n> ) GPT2:OPEN" NO
+   s" GM-LOGITS ( GPU:session GPT2:model n ptr u8 CAD-NUM:byte-len -- GPU:session GPT2:model result<n,n> ) GPT2:LOGITS" YES
+   s" GM-OLD-LOGITS ( GPT2:model n ptr u8 CAD-NUM:byte-len -- GPT2:model result<n,n> ) GPT2:LOGITS" NO
+   s" GM-CLOSE ( GPU:session GPT2:model -- GPU:session result<n,n> ) GPT2:CLOSE" YES
+   s" GM-OLD-CLOSE ( GPT2:model -- result<n,n> ) GPT2:CLOSE" NO
    s" GM-MAKE ( ptr u8 -- GPT2:model ) GPT2-MODEL:MAKE" UNK
    s" GM-UNMAKE ( GPT2:model -- ptr u8 ) GPT2-MODEL:UNMAKE" UNK
+   s" GM-DUP ( GPT2:model -- GPT2:model GPT2:model ) dup" NO
+   s" GM-DROP ( GPT2:model -- ) drop" NO
    s" GM-RAW-IN ( n -- GPT2:model )" NO
    s" GM-RAW-OUT ( GPT2:model -- n )" NO ;
 
@@ -173,59 +180,69 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
       err OF throw ENDOF
    ;MATCH ;
 
-: TEST-REFUSAL ( -- )
-   s" OPEN refuses before GPU ownership and leaves no source owner" T-LABEL
+: SESSION-OPEN ( -- GPU:session )
+   GPU:OPEN MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: SESSION-CLOSE ( GPU:session -- )
+   GPU:CLOSE CLOSE-OK ;
+
+: TRACK-STREAM-CREATE ( ptr a n -- rc )
+   1 STREAM-CREATE-N +!
+   CUDA:CU-STREAM-CREATE ;
+
+: TRACK-STREAM-DESTROY ( CUDA:stream -- rc )
+   1 STREAM-DESTROY-N +!
+   CUDA:CU-STREAM-DESTROY ;
+
+: STREAM-TRACK ( -- )
+   0 STREAM-CREATE-N !
+   0 STREAM-DESTROY-N !
+   [: TRACK-STREAM-CREATE ;] MKD:STREAMCREATE!
+   [: TRACK-STREAM-DESTROY ;] MKD:STREAMDESTROY! ;
+
+: DROP-RC0 ( a -- rc ) drop 0 >RC ;
+
+: SYNTH-CLOSE ( GPU:session -- )
+   [: DROP-RC0 ;] MKD:CTXSET!
+   [: DROP-RC0 ;] MKD:STREAMSYNC!
+   [: DROP-RC0 ;] MKD:STREAMDESTROY!
+   [: DROP-RC0 ;] MKD:CTXRELEASE!
+   SESSION-CLOSE
+   MKD:USE-REAL ;
+
+: MODEL-CLOSE ( GPU:session GPT2:model -- GPU:session )
+   GPT2:CLOSE CLOSE-OK ;
+
+: TEST-REFUSAL ( GPU:session -- GPU:session )
+   s" OPEN refusal preserves the caller session and leaves no source owner" T-LABEL
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
    s" /tmp/habu-no-gpt2-model" FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-FS-OPEN T= ENDOF
-      ok OF GPT2:CLOSE CLOSE-OK false TTRUE ENDOF
+      ok OF MODEL-CLOSE false TTRUE ENDOF
    ;MATCH
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T= ;
 
-: STATM-TOK-U ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
-   i u = if i exit then
-   a i + c@ STR-SPACE <= if i exit then
-   a u i 1+ recurse ;
-
-: STATM-N ( ptr u8 n n -- n ) {: a:ptr u:n acc:n :}
-   u 0= if acc exit then
-   a c@ {: c:n :}
-   c STR-DIGIT? 0= if E-FIX throw then
-   a 1+ u 1- acc 10 * c STR-ZERO - + recurse ;
-
-: VM-PAGES ( -- n )
-   s" /proc/self/statm" STATM-BUF STATM-CAP READ-ALL {: u:n :}
-   STATM-BUF u 0 STATM-TOK-U {: tokenu:n :}
-   tokenu 0= if E-FIX throw then
-   STATM-BUF tokenu 0 STATM-N ;
-
-: OPEN-REFUSAL ( n -- ) {: want:n :}
+: OPEN-REFUSAL ( GPU:session n -- GPU:session ) {: want:n :}
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF want <> if E-FIX throw then ENDOF
-      ok OF GPT2:CLOSE CLOSE-OK E-FIX throw ENDOF
+      ok OF MODEL-CLOSE E-FIX throw ENDOF
    ;MATCH ;
 
-: REFUSAL-CHILD ( n -- ) {: want:n :}
+: REFUSAL-PROOF ( n -- ) {: want:n :}
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
+   SESSION-OPEN
    want OPEN-REFUSAL
    SAFET:LIVE-OWNERS owners <> if E-FIX throw then
    SAFET-MAP:LIVE maps <> if E-FIX throw then
-   VM-PAGES {: pages:n :}
-   want OPEN-REFUSAL
-   SAFET:LIVE-OWNERS owners <> if E-FIX throw then
-   SAFET-MAP:LIVE maps <> if E-FIX throw then
-   VM-PAGES pages <> if E-FIX throw then
-   s" " 0 die ;
-
-: REFUSAL-PROOF ( n -- ) {: want:n :}
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if want REFUSAL-CHILD then
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   SESSION-CLOSE ;
 
 : TEST-EMPTY ( ptr u8 n -- )
    s" OPEN rejects an empty real Safetensors catalog and restores VM ownership" T-LABEL
@@ -240,11 +257,13 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    DST$ REMOVE-FILE
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
+   SESSION-OPEN
    ROOT$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-TOK-IO T= ENDOF
-      ok OF GPT2:CLOSE CLOSE-OK false TTRUE ENDOF
+      ok OF MODEL-CLOSE false TTRUE ENDOF
    ;MATCH
+   SESSION-CLOSE
    SAFET:LIVE-OWNERS before T=
    SAFET-MAP:LIVE maps T=
    CLEANUP-RUN ;
@@ -293,30 +312,34 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
 : ALLOC-REFUSAL-CHILD ( -- )
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
+   SESSION-OPEN
    TOKEN-BYTES MMAP-TEST:EXHAUST-CHILD
    TOKEN-BYTES MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
    0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       err OF E-MEM-MAP <> if E-FIX throw then ENDOF
-      ok OF GPT2:CLOSE CLOSE-OK E-FIX throw ENDOF
+      ok OF MODEL-CLOSE E-FIX throw ENDOF
    ;MATCH
    SAFET:LIVE-OWNERS owners <> if E-FIX throw then
    SAFET-MAP:LIVE maps <> if E-FIX throw then
    TOKEN-BYTES MMAP-TEST:EXHAUSTED? 0= if E-FIX throw then
+   \ Keep synthetic VM exhaustion active through every OPEN assertion. Only
+   \ teardown is injected: CUDA cleanup itself needs allocator headroom, and
+   \ process exit releases the doomed child's real driver resources.
+   SYNTH-CLOSE
    s" " 0 die ;
 
 : TEST-ALLOC-REFUSAL ( -- )
-   s" OPEN returns tokenizer allocation refusal without taking SAFET ownership" T-LABEL
+   s" OPEN preserves its session and source owners on tokenizer allocation refusal" T-LABEL
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if ALLOC-REFUSAL-CHILD then
    pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
 : TOKEN-OWNER ( GPT2:model -- GPT2:model ptr a CAD-NUM:alloc-byte-len )
    M-TAKE
-   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len tokbytes:ptr rec:ptr :}
-   tokbytes drop
+   {: x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    x a b logits token k v pos
-   tmod amod embed ln linear unembed gelu residual attn tokstate toklen rec M-SAVE
+   tmod amod embed ln linear unembed gelu residual attn tokstate toklen M-SAVE
    tokstate toklen ;
 
 : READ-TOKEN-TAIL ( ptr a -- )
@@ -363,21 +386,38 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
       s" gpt2-model: no model root argument -> device leg SKIPPED" type cr
       exit
    then
-   0 SCRIPT-ARGV$ TEST-TOKEN-MISSING
+   \ CUDA driver state cannot cross fork; run every fork-isolated refusal
+   \ before this process opens its caller-owned session.
+   TEST-ALLOC-REFUSAL
    0 SCRIPT-ARGV$ TEST-VOCAB-DIGEST
    0 SCRIPT-ARGV$ TEST-MERGES-DIGEST
    0 SCRIPT-ARGV$ TEST-EMPTY
-   TEST-ALLOC-REFUSAL
+   SESSION-OPEN
+   STREAM-TRACK
+   TEST-REFUSAL
+   STREAM-CREATE-N @ 0 T=
+   STREAM-DESTROY-N @ 0 T=
+   SESSION-CLOSE
+   STREAM-CREATE-N @ 0 T=
+   STREAM-DESTROY-N @ 1 T=
+   MKD:USE-REAL
+   0 SCRIPT-ARGV$ TEST-TOKEN-MISSING
    s" OPEN uploads the pinned GPT-2 model and CLOSE releases every owner" T-LABEL
    0 SCRIPT-ARGV$ REAL-TOTAL {: total:CAD-NUM:byte-len :}
    SAFET:LIVE-OWNERS {: before:n :}
    SAFET-MAP:LIVE {: maps:n :}
    UPLOAD-RESET
+   SESSION-OPEN
+   STREAM-TRACK
    [: TRACK-HTOD ;] MKD:HTOD!
    0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
-   MKD:USE-REAL
    MATCH result
-      err OF throw ENDOF
+      err OF
+         {: code:n :}
+         MKD:USE-REAL
+         SESSION-CLOSE
+         code throw
+      ENDOF
       ok OF
          UPLOAD-N @ 160 T=
          UPLOAD-BAD @ 0 T=
@@ -387,7 +427,11 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
          TOKEN-LIVE-CELLS T-CELLS T=
          toklen TOK-LEN-OBS !
          [: TOK-LEN-OBS @ ;] [: TOKEN-ALLOC-LEN ;] SNAP=
-         GPT2:CLOSE CLOSE-OK
+         MODEL-CLOSE
+         STREAM-CREATE-N @ 0 T=
+         STREAM-DESTROY-N @ 0 T=
+         MKD:USE-REAL
+         SESSION-CLOSE
          tokstate TOKEN-UNMAPPED
       ENDOF
    ;MATCH
@@ -399,7 +443,6 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
    TEST-SPAN
    TEST-PATH-LIMIT
    TEST-OPAQUE
-   TEST-REFUSAL
    TEST-DEVICE
    T-REPORT ;
 

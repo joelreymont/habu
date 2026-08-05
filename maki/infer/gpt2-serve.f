@@ -248,7 +248,7 @@ using CAD-NUM
 ;using
 
 : GENERATE-REQUEST
-   ( GPT2:model fd CAD-NUM:byte-len CAD-NUM:item-count -- GPT2:model result<option<n>,n> )
+   ( GPU:session GPT2:model fd CAD-NUM:byte-len CAD-NUM:item-count -- GPU:session GPT2:model result<option<n>,n> )
    {:
       fd:fd promptu:CAD-NUM:byte-len max:CAD-NUM:item-count
    :}
@@ -269,7 +269,7 @@ using CAD-NUM
    ;MATCH ;
 
 : HANDLE-REQUEST
-   ( GPT2:model fd -- GPT2:model result<option<n>,n> )
+   ( GPU:session GPT2:model fd -- GPU:session GPT2:model result<option<n>,n> )
    {: fd:fd :}
    REQ-PROMPT-U @ 0= if fd E-PROMPT REFUSE exit then
    REQ-MAX @ 0= if fd E-LIMIT REFUSE exit then
@@ -293,7 +293,7 @@ using CAD-NUM
    ;MATCH ;
 
 : SERVICE-STEP
-   ( GPT2:model -- GPT2:model result<option<n>,n> )
+   ( GPU:session GPT2:model -- GPU:session GPT2:model result<option<n>,n> )
    0 >FD READ-REQUEST
    MATCH result
       err OF PREFIX-ERR ENDOF
@@ -305,7 +305,8 @@ using CAD-NUM
       ENDOF
    ;MATCH ;
 
-: SERVICE ( GPT2:model -- GPT2:model result<n,n> )
+: SERVICE
+   ( GPU:session GPT2:model -- GPU:session GPT2:model result<n,n> )
    begin
       SERVICE-STEP
       MATCH result
@@ -335,19 +336,35 @@ using CAD-NUM
       err OF ENDOF
    ;MATCH ;
 
-: FINISH ( GPT2:model result<n,n> -- )
+: FIRST ( n n -- n ) {: first:n next:n :}
+   first 0<> if first else next then ;
+
+: FINISH ( GPU:session GPT2:model result<n,n> -- )
    SERVICE-CODE {: primary:n :}
-   GPT2:CLOSE CLOSE-CODE {: closing:n :}
+   GPT2:CLOSE CLOSE-CODE {: model-code:n :}
+   GPU:CLOSE CLOSE-CODE {: session-code:n :}
    \ The first stream or generation failure remains authoritative over cleanup.
    primary 0<> if primary throw then
-   closing 0<> if closing throw then ;
+   model-code 0<> if model-code throw then
+   session-code 0<> if session-code throw then ;
 
-: RUN-ACT ( ptr u8 n -- )
+: OPEN-FAIL ( GPU:session n -- )
+   {: primary:n :}
+   GPU:CLOSE CLOSE-CODE {: closing:n :}
+   primary closing FIRST throw ;
+
+: RUN-ACT ( ptr u8 n -- ) {: root:ptr rootu:n :}
    1 >FD FD-NOSIGPIPE!
-   FS-PATH:MAKE GPT2:OPEN
+   GPU:OPEN
    MATCH result
       err OF throw ENDOF
-      ok OF SERVICE FINISH ENDOF
+      ok OF
+         root rootu FS-PATH:MAKE GPT2:OPEN
+         MATCH result
+            err OF OPEN-FAIL ENDOF
+            ok OF SERVICE FINISH ENDOF
+         ;MATCH
+      ENDOF
    ;MATCH ;
 
 public

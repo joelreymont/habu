@@ -8,6 +8,7 @@ require lib/memory.f
 require lib/test/outcome.f
 require lib/process-fork.f
 require lib/test/subject.f
+require lib/test/mmap-exhaust.f
 
 64 constant MEMT-BUFS
 16 constant MEMT-SPAN-BUFS
@@ -250,10 +251,8 @@ public
    MEM-MAX-N MEMT-64K-COUNT MEM-MAX-64K-BUFFERS 1 + T= ;
 
 \ ---- typed release and range unmap ---------------------------------------------
-\ White-box suite block: these fixtures and their runner live inside package MEM
-\ beside the WITH-BYTES fixtures below, so package words are called bare and the
-\ suite owns a real package tail instead of a raw global stem.
-package MEM
+\ Package-local fixtures exercise MEM only through its public seams.
+package MEM-TEST
 private
 
 $86 constant MEMT-FAULT-RC
@@ -265,7 +264,29 @@ create RBT-OUT RBT-CAP allot
 create RBT-ERR RBT-CAP allot
 
 : RBT-LEN ( n -- CAD-NUM:byte-len )
-   CAD-NUM:BYTE-LEN SIZE-BYTE-LEN ;
+   CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
+      ok OF ENDOF
+      negative OF E-PRIMARY throw ENDOF
+      zero OF E-PRIMARY throw ENDOF
+      overflow OF E-PRIMARY throw ENDOF
+      underflow OF E-PRIMARY throw ENDOF
+      bad-alignment OF E-PRIMARY throw ENDOF
+      misaligned OF E-PRIMARY throw ENDOF
+   ;MATCH ;
+
+: RBT-SUB-OK? ( CAD-NUM:byte-len CAD-NUM:byte-len -- bool )
+   CAD-NUM:SUB-BYTES MATCH CAD-NUM:numeric-result
+      ok OF drop true ENDOF
+      negative OF false ENDOF
+      zero OF true ENDOF
+      overflow OF false ENDOF
+      underflow OF false ENDOF
+      bad-alignment OF false ENDOF
+      misaligned OF false ENDOF
+   ;MATCH ;
+
+: RBT-BYTES= ( CAD-NUM:byte-len CAD-NUM:byte-len -- bool )
+   2dup RBT-SUB-OK? >r swap RBT-SUB-OK? r> and ;
 
 : MEMT-EXIT0 ( -- )
    s" " 0 die ;
@@ -279,12 +300,90 @@ create RBT-ERR RBT-CAP allot
    then
    pid PROC-WAIT-OUTCOME ;
 
+: MBT-OPEN ( n -- MEM:block )
+   MEM:BYTES-ALLOC-LEN MEM:OPEN
+   MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: MBT-ENDS ( -- )
+   MEM-64K 1 + {: want:n :}
+   want MBT-OPEN
+   MEM:BORROW {: buf:ptr len:CAD-NUM:byte-len :}
+   len want RBT-LEN RBT-BYTES= 0= if E-PRIMARY throw then
+   MEMT-MARK-A buf c!
+   MEMT-MARK-Z buf want 1 - + c!
+   buf c@ MEMT-MARK-A <> if E-PRIMARY throw then
+   buf want 1 - + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
+   MEM:RELEASE ;
+
+: MBT-BASE-CHILD ( -- )
+   MEM-64K 2 * MBT-OPEN
+   MEM:BORROW {: buf:ptr len:CAD-NUM:byte-len :}
+   len drop
+   buf MEM-64K + MEM-64K munmap
+   dup 0<> if E-MEM-UNMAP throw then
+   drop
+   MEM:RELEASE
+   MEMT-EXIT0 ;
+
+: MBT-UNMAP-CHILD ( -- )
+   MEM-64K MBT-OPEN
+   MEM:BORROW {: buf:ptr len:CAD-NUM:byte-len :}
+   len drop
+   MEM:RELEASE
+   2 close
+   buf c@ drop
+   MEMT-EXIT0 ;
+
+: MBT-OVERFLOW ( -- )
+   MEM-MAX-N MEM-CELL-BYTES - MEM-CELL-BYTES / MEM-CELL-BYTES * 1 +
+   MEM:BYTES-ALLOC-LEN MEM:OPEN
+   MATCH result
+      err OF E-MEM-SIZE <> if E-PRIMARY throw then ENDOF
+      ok OF MEM:RELEASE E-PRIMARY throw ENDOF
+   ;MATCH ;
+
+: MBT-MAP-ERR-CHILD ( -- )
+   MEM-64K MEM-CELL-BYTES + MMAP-TEST:EXHAUST-CHILD
+   MEM-64K MEM:BYTES-ALLOC-LEN MEM:OPEN
+   MATCH result
+      err OF E-MEM-MAP <> if E-PRIMARY throw then ENDOF
+      ok OF MEM:RELEASE E-PRIMARY throw ENDOF
+   ;MATCH
+   MEMT-EXIT0 ;
+
+: TEST-BLOCK ( -- )
+   T-RESET
+   MBT-ENDS
+   MBT-OVERFLOW
+   [: MBT-BASE-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
+   [: MBT-MAP-ERR-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
+   [: MBT-UNMAP-CHILD ;] MEMT-FORK MEMT-FAULT-RC T-OUTCOME-EXITED=
+   T-REPORT ;
+
+: MBT-SEALED-SRC ( -- ptr u8 n )
+   s" package MEM private EXPORT B-MINT ;package" ;
+
+: TEST-SEALED ( -- )
+   T-RESET
+   MBT-SEALED-SRC RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
+   RBT-TIMEOUT-MS >MS SUBJECT:RUN
+   ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
+   LEN>N drop
+   LEN>N drop
+   T-REPORT ;
+
+: MBT-SEAL-ACTION ( -- [ -- ] )
+   [: TEST-SEALED ;] ;
+
 : RBT-RELEASED-BASE ( -- ptr u8 )
-   MEM-64K 2 * BYTES-ALLOC-LEN ALLOC-BYTES
+   MEM-64K 2 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
    over {: base:ptr :}
    MEMT-MARK-A base c!
    MEMT-MARK-Z base MEM-64K 2 * 1 - + c!
-   RELEASE-BYTES
+   MEM:RELEASE-BYTES
    base ;
 
 : RBT-RELEASE-FIRST ( -- )
@@ -294,19 +393,19 @@ create RBT-ERR RBT-CAP allot
    RBT-RELEASED-BASE MEM-64K 2 * 1 - + c@ drop ;
 
 : RBT-RELEASE-OUTERS ( ptr u8 -- ) {: base:ptr :}
-   base MEM-64K RBT-LEN UNMAP
-   base MEM-64K 3 * + MEM-64K RBT-LEN UNMAP ;
+   base MEM-64K RBT-LEN MEM:UNMAP
+   base MEM-64K 3 * + MEM-64K RBT-LEN MEM:UNMAP ;
 
 : RBT-ONE-CLEANUP ( ptr u8 -- ) {: base:ptr :}
-   base MEM-64K RBT-LEN UNMAP
-   base MEM-64K 2 * + MEM-64K RBT-LEN UNMAP ;
+   base MEM-64K RBT-LEN MEM:UNMAP
+   base MEM-64K 2 * + MEM-64K RBT-LEN MEM:UNMAP ;
 
 : RBT-ONE-MAP ( -- ptr u8 )
-   MEM-64K 3 * BYTES-ALLOC-LEN ALLOC-BYTES
+   MEM-64K 3 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
    drop {: base:ptr :}
    MEMT-MARK-A base MEM-64K 1 - + c!
    MEMT-MARK-Z base MEM-64K 2 * + c!
-   base MEM-64K + MEM-64K RBT-LEN UNMAP
+   base MEM-64K + MEM-64K RBT-LEN MEM:UNMAP
    base ;
 
 : RBT-ONE-GUARDS ( -- )
@@ -319,11 +418,11 @@ create RBT-ERR RBT-CAP allot
    RBT-ONE-MAP MEM-64K + c@ drop ;
 
 : RBT-UNMAP-MID ( -- ptr u8 )
-   MEM-64K 4 * BYTES-ALLOC-LEN ALLOC-BYTES
+   MEM-64K 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
    drop {: base:ptr :}
    MEMT-MARK-A base MEM-64K 1 - + c!
    MEMT-MARK-Z base MEM-64K 3 * + c!
-   base MEM-64K + MEM-64K 2 * RBT-LEN UNMAP
+   base MEM-64K + MEM-64K 2 * RBT-LEN MEM:UNMAP
    base ;
 
 : RBT-UNMAP-LEFT ( -- )
@@ -347,28 +446,28 @@ create RBT-ERR RBT-CAP allot
    RBT-UNMAPPED-BASE MEM-64K 3 * 1 - + c@ drop ;
 
 : RBT-RELEASE-FIRST-SRC ( -- ptr u8 n )
-   s" package MEM RBT-RELEASE-FIRST ;package" ;
+   s" package MEM-TEST RBT-RELEASE-FIRST ;package" ;
 
 : RBT-RELEASE-LAST-SRC ( -- ptr u8 n )
-   s" package MEM RBT-RELEASE-LAST ;package" ;
+   s" package MEM-TEST RBT-RELEASE-LAST ;package" ;
 
 : RBT-UNMAP-FIRST-SRC ( -- ptr u8 n )
-   s" package MEM RBT-UNMAP-FIRST ;package" ;
+   s" package MEM-TEST RBT-UNMAP-FIRST ;package" ;
 
 : RBT-UNMAP-LAST-SRC ( -- ptr u8 n )
-   s" package MEM RBT-UNMAP-LAST ;package" ;
+   s" package MEM-TEST RBT-UNMAP-LAST ;package" ;
 
 : RBT-UNMAP-LEFT-SRC ( -- ptr u8 n )
-   s" package MEM RBT-UNMAP-LEFT ;package" ;
+   s" package MEM-TEST RBT-UNMAP-LEFT ;package" ;
 
 : RBT-UNMAP-RIGHT-SRC ( -- ptr u8 n )
-   s" package MEM RBT-UNMAP-RIGHT ;package" ;
+   s" package MEM-TEST RBT-UNMAP-RIGHT ;package" ;
 
 : RBT-ONE-GUARDS-SRC ( -- ptr u8 n )
-   s" package MEM RBT-ONE-GUARDS ;package" ;
+   s" package MEM-TEST RBT-ONE-GUARDS ;package" ;
 
 : RBT-ONE-FAULT-SRC ( -- ptr u8 n )
-   s" package MEM RBT-ONE-FAULT ;package" ;
+   s" package MEM-TEST RBT-ONE-FAULT ;package" ;
 
 : RBT-EXPECT-FAULT ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
@@ -419,18 +518,21 @@ create RBT-ERR RBT-CAP allot
    MEMT-TYPED-CELLS
    \ shared narrowing helpers refuse zero/negative/overflow with E-MEM-SIZE
    \ before any mmap primitive is reachable
-   [: 0 BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
-   [: -1 BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
-   [: 0 CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
-   [: -1 CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
-   [: MEM-MAX-CELLS 1 + CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
+   [: 0 MEM:BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
+   [: -1 MEM:BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
+   [: 0 MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
+   [: -1 MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
+   [: MEM-MAX-CELLS 1 + MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
    T-REPORT ;
 
 TEST-ALLOC-ROLES
+TEST-BLOCK
+MBT-SEAL-ACTION
 RBT-ACTION
 
 ;package
 
+execute
 execute
 
 \ Fatal syscall failures bypass catch and cannot print the survival byte.
@@ -475,7 +577,7 @@ MEM-FATAL-TEST:RUN
 
 \ ---- MEM:WITH-BYTES: quotation-scoped mapped memory (RAII) --------------------
 \ Child processes prove release through OS-enforced mapping accessibility.
-package MEM
+package MEM-TEST
 private
 PTR-VARIABLE WBT-SAVED
 PTR-VARIABLE WBT-OUTER
@@ -522,7 +624,7 @@ s" WBT-DONE" s" MEM:wbt-own --" TRUST
    drop {: outer:ptr :}
    outer WBT-OUTER !
    MEMT-MARK-A outer c!
-   MEM-64K BYTES-ALLOC-LEN [: WBT-SAVE-INNER ;] WITH-BYTES
+   MEM-64K MEM:BYTES-ALLOC-LEN [: WBT-SAVE-INNER ;] MEM:WITH-BYTES
    WBT-OUTER @ c@ MEMT-MARK-A <> if E-PRIMARY throw then
    WBT-RELEASED ;
 
@@ -530,14 +632,14 @@ s" WBT-DONE" s" MEM:wbt-own --" TRUST
    drop {: outer:ptr :}
    outer WBT-SAVED !
    MEMT-MARK-A outer c!
-   MEM-64K BYTES-ALLOC-LEN [: WBT-TOUCH-INNER ;] WITH-BYTES
+   MEM-64K MEM:BYTES-ALLOC-LEN [: WBT-TOUCH-INNER ;] MEM:WITH-BYTES
    outer c@ MEMT-MARK-A <> if E-PRIMARY throw then ;
 
 : WBT-RESULT ( -- n )
-   MEM-64K BYTES-ALLOC-LEN [: WBT-RESULT-BODY ;] WITH-BYTES ;
+   MEM-64K MEM:BYTES-ALLOC-LEN [: WBT-RESULT-BODY ;] MEM:WITH-BYTES ;
 
 : WBT-THROW ( -- )
-   MEM-64K BYTES-ALLOC-LEN [: WBT-THROW-BODY ;] WITH-BYTES ;
+   MEM-64K MEM:BYTES-ALLOC-LEN [: WBT-THROW-BODY ;] MEM:WITH-BYTES ;
 
 : WBT-NORMAL-CHILD ( -- )
    WBT-RESULT MEMT-MARK-A <> if E-PRIMARY throw then
@@ -550,16 +652,16 @@ s" WBT-DONE" s" MEM:wbt-own --" TRUST
    MEMT-EXIT0 ;
 
 : WBT-INNER-CHILD ( -- )
-   MEM-64K BYTES-ALLOC-LEN [: WBT-INNER-RELEASE ;] WITH-BYTES
+   MEM-64K MEM:BYTES-ALLOC-LEN [: WBT-INNER-RELEASE ;] MEM:WITH-BYTES
    MEMT-EXIT0 ;
 
 : WBT-OUTER-CHILD ( -- )
-   MEM-64K BYTES-ALLOC-LEN [: WBT-OUTER-RELEASE ;] WITH-BYTES
+   MEM-64K MEM:BYTES-ALLOC-LEN [: WBT-OUTER-RELEASE ;] MEM:WITH-BYTES
    WBT-RELEASED
    MEMT-EXIT0 ;
 
 : WBT-RETAINED-CHILD ( -- )
-   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES
+   MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
    drop {: buf:ptr :}
    buf WBT-SAVED !
    MEMT-MARK-A buf c!
@@ -580,7 +682,7 @@ TEST-WITH-BYTES
 
 \ ---- static rejection matrix: generic pointers accept; role swaps reject --------
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
-package MEM
+package MEM-TEST
 private
 
 : STAT ( -- )
@@ -620,6 +722,18 @@ private
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-CELLS-ALLOC-COUNT ( n -- CAD-NUM:alloc-cell-count ) MEM:CELLS-ALLOC-COUNT"
       CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-BLOCK-OPEN ( CAD-NUM:alloc-byte-len -- result<MEM:block,n> ) MEM:OPEN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-BLOCK-BORROW ( MEM:block -- MEM:block ptr u8 CAD-NUM:byte-len ) MEM:BORROW"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-BLOCK-RELEASE ( MEM:block -- ) MEM:RELEASE"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" B-BLOCK-DUP ( MEM:block -- MEM:block MEM:block ) dup"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-BLOCK-DROP ( MEM:block -- ) drop"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-BLOCK-FORGE ( ptr u8 -- MEM:block )"
+      CHECK-QUIET-CANDIDATE! 0 T=
    \ negatives: a zero-admitting role at the sink, byte<->cell role swaps, raw n.
    s" B-ZEROABLE-ALLOC ( CAD-NUM:byte-len -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=

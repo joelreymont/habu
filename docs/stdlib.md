@@ -766,8 +766,12 @@ byte range without fabricating an allocation extent. The checker models the
 shared primitive as `munmap ( ptr a n -- n )`: pointee type is irrelevant to the
 kernel call, while the public words retain distinct length roles. Kernel refusal
 writes `memory: unmap failed` to standard error and exits 71, bypassing `catch`.
-`MEM:WITH-BYTES` releases after normal return or a body throw, restores its
-outer frame after successful release, then rethrows the body code.
+`MEM:WITH-BYTES` scopes one `MEM:block` owner: it opens the block, lends the
+block's span to the body, and releases the block on normal return. If the body
+throws, the scope releases the block and rethrows the body's code. Because the
+length now reaches `MEM:OPEN`, a length too large to carry the block's own
+header is refused as `E-MEM-SIZE` before any `mmap`; an ordinary mapping
+failure still throws `E-MEM-MAP`.
 
 `MEM-MAP-SHARED` is the named shared-mapping flag for checked device or file
 mappings that use the raw `mmap` primitive directly.

@@ -85,11 +85,15 @@ create T-C-M9 2 , 1 ,
 : YES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
+: NO ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : UNK ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 1 T= ;
 
 : T-SURFACE ( -- )
-   s" GEN-SIG ( GPT2:model ptr u8 CAD-NUM:byte-len CAD-NUM:item-count ptr u8 CAD-NUM:byte-len -- GPT2:model result<CAD-NUM:byte-len,n> ) GPT2:GENERATE" YES
+   s" GEN-SIG ( GPU:session GPT2:model ptr u8 CAD-NUM:byte-len CAD-NUM:item-count ptr u8 CAD-NUM:byte-len -- GPU:session GPT2:model result<CAD-NUM:byte-len,n> ) GPT2:GENERATE" YES
+   s" GEN-OLD ( GPT2:model ptr u8 CAD-NUM:byte-len CAD-NUM:item-count ptr u8 CAD-NUM:byte-len -- GPT2:model result<CAD-NUM:byte-len,n> ) GPT2:GENERATE" NO
    s" GEN-CX ( GPT2:model -- GPT2:model CAD-NUM:item-count ) GPT2:CONTEXT-LEN" YES
    s" GEN-EOS ( GPT2:model -- GPT2:model n ) GPT2:EOS-ID" YES
    s" GEN-BL-PRIVATE ( CAD-NUM:byte-len -- n ) GPT2:BL>N" UNK
@@ -215,18 +219,42 @@ create T-C-M9 2 , 1 ,
 
 using GPT2
 
-: CLOSE-OK ( GPT2:model -- )
+: CLOSE-MODEL ( GPU:session GPT2:model -- GPU:session )
    GPT2:CLOSE MATCH result
       ok OF 0 T= ENDOF
       err OF throw ENDOF
    ;MATCH ;
 
-: OPEN-MODEL ( -- GPT2:model )
+: OPEN-MODEL ( GPU:session -- GPU:session GPT2:model )
    0 SCRIPT-ARGV$ FS-PATH:MAKE GPT2:OPEN
    MATCH result
       ok OF ENDOF
       err OF throw ENDOF
    ;MATCH ;
+
+: OPEN-SESSION ( -- GPU:session )
+   GPU:OPEN MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: CLOSE-SESSION ( GPU:session -- )
+   GPU:CLOSE MATCH result
+      ok OF drop ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: OPEN-NEXT
+   ( GPU:session GPT2:model -- GPU:session GPT2:model GPT2:model )
+   >r OPEN-MODEL r> swap ;
+
+: CLOSE-LEFT
+   ( GPU:session GPT2:model GPT2:model -- GPU:session GPT2:model )
+   >r CLOSE-MODEL r> ;
+
+: CLOSE-RIGHT
+   ( GPU:session GPT2:model GPT2:model -- GPU:session GPT2:model )
+   swap >r CLOSE-MODEL r> ;
 
 : T-METADATA ( GPT2:model -- GPT2:model )
    s" model metadata accessors retain the owner" T-LABEL
@@ -235,7 +263,7 @@ using GPT2
 
 ;using
 
-: T-LIMITS ( GPT2:model -- GPT2:model )
+: T-LIMITS ( GPU:session GPT2:model -- GPU:session GPT2:model )
    s" token limits refuse before model or caller-output mutation" T-LABEL
    OUT-RESET
    s" Hello" BYTE-CAP 0 TOKEN-CAP OUT OUTPUT-CAP GENERATE
@@ -246,7 +274,7 @@ using GPT2
    E-LIMIT EXPECT-ERR
    OUT-PRESERVED ;
 
-: T-TOK-REFUSAL ( GPT2:model -- GPT2:model )
+: T-TOK-REFUSAL ( GPU:session GPT2:model -- GPU:session GPT2:model )
    s" tokenizer refusal returns the model and preserves caller output" T-LABEL
    LONG-N [char] x LONG-FILL
    OUT-RESET
@@ -262,7 +290,7 @@ using GPT2
       err OF throw ENDOF
    ;MATCH ;
 
-: T-CONTEXT ( GPT2:model -- GPT2:model )
+: T-CONTEXT ( GPU:session GPT2:model -- GPU:session GPT2:model )
    s" exact context boundary passes and one over refuses before mutation" T-LABEL
    CONTEXT-COUNT
    OUT-RESET
@@ -403,7 +431,8 @@ using GPT2
 
 using MKD
 
-: T-MODEL-REFUSAL ( GPT2:model -- GPT2:model )
+: T-MODEL-REFUSAL
+   ( GPU:session GPT2:model -- GPU:session GPT2:model )
    s" model refusal returns the owner and preserves caller output" T-LABEL
    OUT-RESET
    [: FAIL-DTOH ;] DTOH!
@@ -412,7 +441,7 @@ using MKD
    1 EXPECT-ERR
    OUT-PRESERVED ;
 
-: T-EOS ( GPT2:model -- GPT2:model )
+: T-EOS ( GPU:session GPT2:model -- GPU:session GPT2:model )
    s" EOS stops before staging or writing a continuation" T-LABEL
    OUT-RESET
    [: EOS-DTOH ;] DTOH!
@@ -436,7 +465,7 @@ using GPT2-REFERENCE
    outu wantu T=
    OUT outu want wantu T$= ;
 
-: T-PINNED ( GPT2:model -- GPT2:model )
+: T-PINNED ( GPU:session GPT2:model -- GPU:session GPT2:model )
    s" a valid request after refusal returns exact pinned ids and bytes" T-LABEL
    OUT-RESET
    s" Hello" BYTE-CAP 4097 TOKEN-CAP OUT OUTPUT-CAP GENERATE
@@ -447,7 +476,7 @@ using GPT2-REFERENCE
    EXPECT-OK PINNED-BYTES
    PINNED-IDS ;
 
-: T-ONE-SHORT ( GPT2:model -- GPT2:model )
+: T-ONE-SHORT ( GPU:session GPT2:model -- GPU:session GPT2:model )
    s" one-short decode capacity refuses without writing caller output" T-LABEL
    OUT-RESET
    REAL-BYTES$ nip 1- BYTE-CAP {: short:CAD-NUM:byte-len :}
@@ -462,17 +491,18 @@ using GPT2-REFERENCE
    4000 ID-AT 456 T=
    swap 4000 ID-AT 123 T= swap ;
 
-: T-ONE ( GPT2:model -- GPT2:model )
+: T-ONE ( GPU:session GPT2:model -- GPU:session GPT2:model )
    OUT-RESET
    s" Hello" BYTE-CAP 1 TOKEN-CAP OUT OUTPUT-CAP GENERATE
    EXPECT-OK BL>N 1 T=
    OUT 1 s" ," T$=
    0 ID-AT 11 T= ;
 
-: T-ALTERNATE ( GPT2:model GPT2:model -- GPT2:model GPT2:model )
+: T-ALTERNATE
+   ( GPU:session GPT2:model GPT2:model -- GPU:session GPT2:model GPT2:model )
    s" both live models generate the pinned one-token continuation" T-LABEL
-   swap T-ONE swap
-   T-ONE ;
+   >r T-ONE r>
+   swap >r T-ONE r> swap ;
 
 ;using
 
@@ -486,9 +516,8 @@ using GPT2-REFERENCE
    T-MALFORMED-GRAMMAR
    SAFET:LIVE-OWNERS {: owners:n :}
    SAFET-MAP:LIVE {: maps:n :}
+   OPEN-SESSION
    OPEN-MODEL
-   OPEN-MODEL
-   T-DISTINCT
    T-METADATA
    T-LIMITS
    T-TOK-REFUSAL
@@ -501,15 +530,16 @@ using GPT2-REFERENCE
    T-EOS
    T-PINNED
    T-ONE-SHORT
-   T-ALTERNATE
-   CLOSE-OK
-   CLOSE-OK
-   OPEN-MODEL
-   OPEN-MODEL
+   CLOSE-MODEL
+   OPEN-MODEL OPEN-NEXT
    T-DISTINCT
    T-ALTERNATE
-   swap CLOSE-OK
-   CLOSE-OK
+   CLOSE-LEFT CLOSE-MODEL
+   OPEN-MODEL OPEN-NEXT
+   T-DISTINCT
+   T-ALTERNATE
+   CLOSE-RIGHT CLOSE-MODEL
+   CLOSE-SESSION
    SAFET:LIVE-OWNERS owners T=
    SAFET-MAP:LIVE maps T=
    T-REPORT ;

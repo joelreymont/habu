@@ -15,20 +15,30 @@ create TG-TRUNC-4-1 $F1 c,
 create TG-TRUNC-4-2 $F1 c, $80 c,
 create TG-TRUNC-4-3 $F1 c, $80 c, $80 c,
 
-: TG-OPEN ( -- GPT2:model )
+: TG-OPEN ( -- GPU:session GPT2:model )
    SCRIPT-ARGC 1 <> if E-STR-BOUNDS throw then
-   0 SCRIPT-ARGV$ FS-PATH:MAKE OPEN
+   GPU:OPEN
    MATCH result
-      ok OF ENDOF
       err OF throw ENDOF
+      ok OF
+         0 SCRIPT-ARGV$ FS-PATH:MAKE OPEN
+         MATCH result
+            ok OF ENDOF
+            err OF
+               {: primary:n :}
+               GPU:CLOSE M-RESULT-CODE
+               primary swap M-FIRST throw
+            ENDOF
+         ;MATCH
+      ENDOF
    ;MATCH ;
 
-: TG-CLOSE ( GPT2:model -- )
+: TG-CLOSE ( GPU:session GPT2:model -- )
    CLOSE
-   MATCH result
-      ok OF dup 0<> if throw then drop ENDOF
-      err OF throw ENDOF
-   ;MATCH ;
+   M-RESULT-CODE {: model-code:n :}
+   GPU:CLOSE M-RESULT-CODE {: session-code:n :}
+   model-code session-code M-FIRST
+   dup 0<> if throw then drop ;
 
 : TG-GUARD! ( ptr u8 -- ) {: region:ptr :}
    region MEM-64K + MEM-64K munmap
@@ -42,7 +52,7 @@ create TG-TRUNC-4-3 $F1 c, $80 c, $80 c,
    source ;
 
 : TG-MAPPED
-   ( GPT2:model ptr u8 n ptr u8 CAD-NUM:alloc-byte-len -- GPT2:model )
+   ( GPU:session GPT2:model ptr u8 n ptr u8 CAD-NUM:alloc-byte-len -- GPU:session GPT2:model )
    {: bytes:ptr length:n region:ptr region-len:CAD-NUM:alloc-byte-len :}
    region-len drop
    region TG-GUARD!
@@ -53,11 +63,12 @@ create TG-TRUNC-4-3 $F1 c, $80 c, $80 c,
       err OF throw ENDOF
    ;MATCH ;
 
-: TG-RUN ( GPT2:model ptr u8 n -- GPT2:model )
+: TG-RUN
+   ( GPU:session GPT2:model ptr u8 n -- GPU:session GPT2:model )
    MEM-64K 2 * MEM:BYTES-ALLOC-LEN
    [: TG-MAPPED ;] MEM:WITH-BYTES ;
 
-: TG-CASES ( GPT2:model -- GPT2:model )
+: TG-CASES ( GPU:session GPT2:model -- GPU:session GPT2:model )
    TG-APOSTROPHE 1 TG-RUN
    TG-TRUNC-2-1 1 TG-RUN
    TG-TRUNC-3-1 1 TG-RUN
