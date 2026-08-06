@@ -11,11 +11,11 @@
 \
 \ THE TWO REFUSALS ARE ONE REFUSAL REACHED TWO WAYS, which is why they name one
 \ capability. PRESSURE-LOOP holds fourteen values live inside a loop and
-\ CALL-PRESSURE holds seven across a call inside one; both are values the
+\ CALL-PRESSURE holds eight across a call inside one; both are values the
 \ allocator has to put somewhere other than a register while control is in the
 \ body of a loop, and MB-SPILLABLE? refuses exactly that. The second row exists
 \ because the first reaches the wall with a shape nobody writes - fourteen live
-\ loads - while seven values live across a call in a loop is an ordinary program,
+\ loads - while eight values live across a call in a loop is an ordinary program,
 \ and a capability whose only witness is a contrived body is easy to leave.
 \
 \ THE FIRST REFUSAL, MEASURED. The corpus's own text, handed to the same migration
@@ -45,15 +45,26 @@
 \
 \     : CALL-PRESSURE-N ( n n n n n n n n n -- n )
 \        {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :}
-\        seed len 0 ?do C-LONG-N loop a + b + c + d + e + f + g + ;
+\        seed len 0 ?do C-LONG-N loop a + b + c + d + e + f + g + len + ;
 \                                          18 registers   threw -8508  E-A64RA-SPILL
 \
 \ It is not the budget here either, and the control is the neighbour: the same
-\ body with SIX values live across the call instead of seven compiles at the same
-\ eighteen. So the wall on this shape is at seven, the same allocator rule puts it
-\ there, and tools/codegen-compare-test.f runs both migrations and checks both
-\ codes. The two rows together say the refusal is about WHERE a value has to live
-\ and not about how many there are: fourteen without a call, seven with one.
+\ body with SEVEN values live across the call instead of eight compiles at the
+\ same eighteen. So the wall on this shape is at eight, the same allocator rule
+\ puts it there, and tools/codegen-compare-test.f runs both migrations and checks
+\ both codes. The two rows together say the refusal is about WHERE a value has to
+\ live and not about how many there are: fourteen without a call, eight with one.
+\
+\ THE WALL ON THIS SHAPE MOVED BY ONE, ONCE, AND THE ROW WAS RE-DERIVED RATHER
+\ THAN RE-PINNED. It was at seven until the selection stage began emitting the
+\ add and subtract immediate forms, and then seven compiled - measured through
+\ the migration entry, with the mechanism deliberately not guessed at; the survey
+\ in tools/codegen-spill-probe.f says why. A row whose gap declaration survived
+\ that would have been a false statement about the chain. The
+\ row was therefore given an eighth surviving value - the trip count, read after
+\ the loop, so the arity it is measured at did not change - and it is past the
+\ wall again. Re-pinning it to "compiles" instead would have deleted the only
+\ witness this capability has that is a shape somebody would really write.
 \
 \ ============================================================================
 \ WHERE THE CHAIN LOST, WHICH IS WHY THIS CORPUS EXISTS, AND WHAT CLOSED IT

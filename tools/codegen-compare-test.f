@@ -1781,7 +1781,7 @@ private
 \ "refused" could mean "the number was too small".
 \
 \ THE TWO REFUSALS REACH ONE RULE BY TWO ROADS. PRESSURE-LOOP holds fourteen
-\ values live in a loop body and nothing else; CALL-PRESSURE holds seven across a
+\ values live in a loop body and nothing else; CALL-PRESSURE holds eight across a
 \ call the loop makes, which is a shape programs really have. Their walls are at
 \ different counts and the reason is one: MB-SPILLABLE? will not place a value
 \ defined or read in a block that is neither the entry nor the exit, and a call
@@ -1826,16 +1826,30 @@ variable TRY-REGS
    s" : WIDE-10-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n j:n k:n :} a b + c + d + e + f + g + h + j + k + ;" ;
 
 \ The corpus's CALL-PRESSURE body, character for character but for the `-N` the
-\ migration's convention puts on a name: seven values live across a call the loop
+\ migration's convention puts on a name: eight values live across a call the loop
 \ really makes, to a callee neither generator copies. The callee is named as the
 \ package publishes it, which is a spelling the migration's own resolver has to
 \ take (test/compiler/native-inline.f pins that it does).
-: SPILL-CALL-7$ ( -- ptr u8 n )
-   s" : CALL-PRESSURE-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + ;" ;
+\
+\ WHAT MAKES THE PRESSURE HERE SURVIVE A TRANSFORM. Every value that crosses the
+\ call is a distinct argument of the routine, read exactly once after the loop.
+\ There is no constant to fold into an instruction, no repeated subexpression for
+\ a memo to share and nothing for a reassociation to merge, so no selection or
+\ combining pass can take a crossing value out of this body: what is live across
+\ the call is live because the caller passed it in and the body reads it later.
+\ That is deliberate. This case sat at SEVEN crossing values until the add and
+\ subtract immediate forms landed, and then the seven-value body compiled: the
+\ wall this case is about moved by one. The body was re-derived to sit past the
+\ new wall - not re-pinned to "compiles", which would have deleted the refusal
+\ this case exists for - and the survey that pins the wall from both sides is
+\ tools/codegen-spill-probe.f, which also says why no mechanism for the move is
+\ claimed.
+: SPILL-CALL-8$ ( -- ptr u8 n )
+   s" : CALL-PRESSURE-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + len + ;" ;
 
 \ The same body with one value fewer live across the call, which is the control.
-: SPILL-CALL-6$ ( -- ptr u8 n )
-   s" : CALL-PRESSURE-6-N ( n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + ;" ;
+: SPILL-CALL-7$ ( -- ptr u8 n )
+   s" : CALL-PRESSURE-7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + ;" ;
 
 \ One staged callee, named the way a migrated body would spell it and addressed
 \ off its own dictionary record.
@@ -1884,10 +1898,10 @@ variable TRY-REGS
    SPILL-13$ 2 18 TRY 0 T=
 
    s" the corpus's own call-pressure loop is refused at the same pool" T-LABEL
-   SPILL-CALL-7$ 9 18 TRY-CALLING E-A64RA-SPILL T=
+   SPILL-CALL-8$ 9 18 TRY-CALLING E-A64RA-SPILL T=
 
-   s" and it is the seventh live value and not the budget: six compiles there" T-LABEL
-   SPILL-CALL-6$ 8 18 TRY-CALLING 0 T=
+   s" and it is the eighth live value and not the budget: seven compiles there" T-LABEL
+   SPILL-CALL-7$ 9 18 TRY-CALLING 0 T=
 
    s" a routine of eleven arguments is refused by the place list" T-LABEL
    WIDE-11$ 11 18 TRY E-A64EFF-SEQ T=

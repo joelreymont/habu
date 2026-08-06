@@ -126,7 +126,7 @@
 \                   over. It is where the chain's size rule is at its widest and
 \                   where the trade it states can be read off the two columns.
 \   CALL-PRESSURE   one call per turn of a counted loop to a callee NEITHER
-\                   generator copies, with seven values live across it and read
+\                   generator copies, with eight values live across it and read
 \                   after the loop. PRESSURE-LOOP asks what the chain does when a
 \                   loop holds more values than the machine has; this asks what
 \                   it does when a loop holds values across a real call, which is
@@ -315,18 +315,24 @@ public
       + + + + + + + + + + + + + +
    loop ;
 
-\ Seven values live across a call the loop really makes, read only after it. The
+\ Eight values live across a call the loop really makes, read only after it. The
 \ callee is C-LONG, which neither generator copies, so what crosses the call is
-\ crossing a call and not an inlined body; the seven locals are read after the
-\ loop so they add nothing to the body and everything to what must survive.
-\ Six of them is the largest the chain places today and seven is one more, so
-\ this is the smallest body on the far side of that line - the survey that
-\ establishes both is at the head of tools/codegen-compare-new4.f.
+\ crossing a call and not an inlined body; the seven locals and the trip count
+\ are read after the loop so they add nothing to the body and everything to what
+\ must survive. Seven of them is the largest the chain places today and eight is
+\ one more, so this is the smallest body on the far side of that line - the
+\ survey that establishes both is at the head of tools/codegen-compare-new4.f.
+\
+\ THE EIGHTH SURVIVOR IS THE TRIP COUNT AND NOT AN EIGHTH ARGUMENT, so that this
+\ row keeps the arity it was measured at while sitting past the wall. Reading the
+\ count after the loop that used it is an ordinary thing for a program to do, and
+\ it costs the loop body nothing: what it costs is one more value that has to be
+\ somewhere other than a register while control is inside the body.
 : CALL-PRESSURE ( n n n n n n n n n -- n )
    {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :}
    seed
    len 0 ?do C-LONG loop
-   a + b + c + d + e + f + g + ;
+   a + b + c + d + e + f + g + len + ;
 
 \ Four distinct sixty-four-bit literals a turn, each combined with the loop index
 \ so that no turn computes what the last one did. The literals are written in

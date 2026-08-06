@@ -109,6 +109,27 @@ $10008 constant A3
    {: e:n :}
    e A64EFF:FPR-ALL NCLOB:FPR-CLOB A64EFF:FPRS-N ;
 
+\ How many general registers a row names. The cases that are about a COUNT of
+\ saves ask this rather than writing the same width down a second time as a
+\ number, so a row that changed width cannot leave a count agreeing with a stale
+\ one. The loop runs the register file's own width, which is the reach of the
+\ field the set is stored in.
+: ROW-WIDTH ( n -- n )
+   {: e:n :}
+   e GPR-AT {: bits:n :}
+   0
+   A64EFF:FILE-SIZE 0 ?do
+      bits 1 i lshift and 0<> if 1+ then
+   loop ;
+
+\ The same row with its lowest-numbered register taken out: a strict subset of
+\ any non-empty set, and the empty set when the row named one register. Clearing
+\ the lowest set bit is `v and (v-1)`, and it is used where a case needs a row
+\ that is narrower than a real one WITHOUT knowing how wide the real one is.
+: WITHOUT-LOWEST ( n -- n )
+   {: v:n :}
+   v v 1 - and ;
+
 : FLAG# ( bool -- n )
    if 1 else 0 then ;
 
@@ -295,36 +316,90 @@ $F8400000 constant LDUR-OP
 
 \ ---- the narrowing, measured where it can actually be lost -------------------
 \ The pair above holds two values live across each call while the callee's row
-\ leaves six registers free, so the row has slack: delete a register from it and
-\ both callers still spill nothing extra and every count stays where it was.
-\ This pair holds EIGHT values live across one call - seven named sums and the
-\ accumulator - which is more than the row leaves room for, so the caller spills
-\ the excess and the number it spills is (live - room). Every register the row
-\ names therefore moves exactly one store and one load, in both directions: a
-\ record that named one register fewer would take these counts to two, and the
-\ engine-compiled twin, whose room is nothing at all, spills all eight.
+\ leaves most of the pool free, so the row has slack: delete a register from it
+\ and both callers still spill nothing extra and every count stays where it was.
+\ The pair below holds more live values than the registers the row leaves free,
+\ and then every register the row names is holding one of them - so each moves
+\ exactly one store and one load, and the engine-compiled twin, which is known to
+\ destroy everything, saves every live value it has.
+\
+\ WHAT MAKES THIS PAIR PRESS, AND WHY IT NEEDS ITS OWN CALLEE. Two things have to
+\ be true at once and neither is true of the callee the pair above uses. The
+\ callee's row has to name SEVERAL registers, or there is nothing for a caller to
+\ save and nothing a deleted register could change; and the caller has to hold
+\ more values across the call than the row leaves free, or the allocator has room
+\ to keep them all out of the row's way. NCLOB-STEP is six additions of small
+\ constants, and since the selection stage emits the immediate forms
+\ (src/compiler/native/select.f) none of those constants is ever materialised:
+\ its whole emission lives in ONE register, so its row names one and a caller of
+\ it can never save more than one thing. This pair therefore has a callee of its
+\ own, sized for the property rather than for the pair above.
+\
+\ AND THE CALLEE'S PRESSURE IS OF A KIND NO LATER PASS CAN TAKE AWAY. Its body
+\ interleaves multiplication with xor and and, over five distinct constants each
+\ read once, and keeps three of its own intermediates live at a time. Every one
+\ of those properties is doing work. A multiplication has no immediate form for a
+\ selection stage to choose, so no fold like the one that flattened NCLOB-STEP
+\ reaches it. Distinct constants give a memo nothing to share. And mixing the
+\ bitwise operations in makes the routine NOT a linear function of its argument,
+\ so no reassociation can gather the whole body into a single multiply the way it
+\ could if the body were four multiplies and three adds - which is the shape this
+\ callee was almost written as, and the shape a future arithmetic pass would have
+\ collapsed to one register. That is what makes the three registers this row
+\ names a fact about the routine and not about the compiler that happens to be
+\ compiling it today. The row's width is not written down twice: the store count
+\ is asserted to BE the number of registers the row names, so a change to either
+\ has to be a change to both.
+\
+\ THE CONTROL IS THE SAME BODY ONE VALUE SMALLER, against the same callee at the
+\ same budget, because without it "spills three" could mean "always spills three".
+\ One sum fewer and the allocator has room to keep every live value out of the
+\ row, and the count drops to the caller's own entry traffic.
+: MIGRATE-PRESSURE-CALLEE ( -- )
+   s" : NCLOB-PSTEP ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
+   1 1 REGS NMIGRATE:DEFINE ;
+
+: DEFINE-PRESSURE-ENGINE-CALLEE ( -- )
+   s" : NCLOB-ENGINE-PSTEP ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;" EV ;
+
 : MIGRATE-PRESSURE-NARROW ( -- )
-   s" NCLOB-STEP" s" NCLOB-STEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NCLOB-PN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s NCLOB-STEP + + + + + + + ;"
+   s" NCLOB-PSTEP" s" NCLOB-PSTEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NCLOB-PN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s NCLOB-PSTEP + + + + + + ;"
    1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : MIGRATE-PRESSURE-WIDE ( -- )
-   s" NCLOB-ENGINE-STEP" s" NCLOB-ENGINE-STEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NCLOB-PW ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s NCLOB-ENGINE-STEP + + + + + + + ;"
+   s" NCLOB-ENGINE-PSTEP" s" NCLOB-ENGINE-PSTEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NCLOB-PW ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s NCLOB-ENGINE-PSTEP + + + + + + ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: MIGRATE-PRESSURE-CONTROL ( -- )
+   s" NCLOB-PSTEP" s" NCLOB-PSTEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NCLOB-PC ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s NCLOB-PSTEP + + + + + ;"
    1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : PRESSURE-CASES ( -- )
    s" both pressure callers answer what their body says" T-LABEL
-   s" 0 NCLOB-PN" EV-N 49 T=
-   s" 0 NCLOB-PW" EV-N 49 T=
+   s" 5 NCLOB-PN" EV-N 304 T=
+   s" 5 NCLOB-PW" EV-N 304 T=
+   s" 0 NCLOB-PN" EV-N 70 T=
+   s" 0 NCLOB-PW" EV-N 70 T=
 
-   s" a caller with more live values than the row leaves room for spills the excess" T-LABEL
+   s" the pressure callee really destroys three registers" T-LABEL
+   s" NCLOB-PSTEP" ENTRY-OF GPR-AT $7 T=
+   s" NCLOB-PSTEP" ENTRY-OF ROW-WIDTH 3 T=
+
+   s" a caller with more live values than the row leaves room for saves one per register the row names" T-LABEL
+   s" NCLOB-PN" DS-STORES  s" NCLOB-PSTEP" ENTRY-OF ROW-WIDTH T=
    s" NCLOB-PN" DS-STORES 3 T=
    s" NCLOB-PN" DS-LOADS 3 T=
 
    s" while its engine-callee twin, with no room at all, spills every one" T-LABEL
-   s" NCLOB-PW" DS-STORES 9 T=
-   s" NCLOB-PW" DS-LOADS 9 T= ;
+   s" NCLOB-PW" DS-STORES 8 T=
+   s" NCLOB-PW" DS-LOADS 8 T=
+
+   s" and one value fewer fits inside the room, leaving only its own traffic" T-LABEL
+   s" NCLOB-PC" DS-STORES 1 T=
+   s" NCLOB-PC" DS-STORES  s" NCLOB-PN" DS-STORES  < TTRUE ;
 
 \ ---- a row dies with the code it describes ------------------------------------
 \ The engine compiles every definition into one bump pointer and FORGET-DEFS-FROM
@@ -413,7 +488,19 @@ variable GONE-ENTRY
 \ - the engine compiles the identical text from the identical free slot, so the
 \ second run claims the address the first one did. The refusal itself proves the
 \ collision: without it the second migration would simply succeed.
+\
+\ AND THE ROW THAT IS SEEDED IS DERIVED FROM THE REAL ONE, NOT WRITTEN DOWN. The
+\ seed has to be strictly narrower than what the second migration will record, or
+\ there is no widening and the case silently stops testing anything - which is
+\ exactly what happened when the seed was the literal `$1`: a compiler change
+\ narrowed this routine's emission to one register, the literal became the whole
+\ of the real row, and the refusal stopped firing. So the first migration's own
+\ row is read before the forget drops it, its lowest register is taken out, and
+\ THAT is what is seeded. It is a strict subset whatever the allocator does, the
+\ case asserts it is one, and no future allocation can make the two coincide.
 variable ANCHOR-ENTRY
+variable REAL-ROW
+variable SEED-ROW
 
 : ORDER-ANCHOR ( -- )
    s" : NCLOB-ANCHOR ( -- ) ;" EV ;
@@ -425,9 +512,16 @@ variable ANCHOR-ENTRY
    ORDER-ANCHOR
    ORDER-MIGRATE
    s" NCLOB-REPLAY" ENTRY-OF ANCHOR-ENTRY !
+   ANCHOR-ENTRY @ GPR-AT REAL-ROW !
+   REAL-ROW @ WITHOUT-LOWEST SEED-ROW !
 
    s" NCLOB-ANCHOR" FORGET-DEFS-FROM
-   ANCHOR-ENTRY @  $1 GPRS  $0 FPRS  NCLOB:RECORD
+   ANCHOR-ENTRY @  SEED-ROW @ GPRS  $0 FPRS  NCLOB:RECORD
+
+   s" the seeded row really is narrower than the one the migration will write"
+   T-LABEL
+   SEED-ROW @ REAL-ROW @ T<>
+   SEED-ROW @ REAL-ROW @ and  SEED-ROW @ T=
 
    s" a publication whose row would widen an existing one is refused" T-LABEL
    ORDER-ANCHOR
@@ -439,7 +533,7 @@ variable ANCHOR-ENTRY
    s" 0 NCLOB-REPLAY" EV-N 21 T=
 
    s" with the seeded row exactly as the refusal found it" T-LABEL
-   ANCHOR-ENTRY @ GPR-AT $1 T= ;
+   ANCHOR-ENTRY @ GPR-AT SEED-ROW @ T= ;
 
 public
 
@@ -453,8 +547,11 @@ public
    MIGRATE-NARROW
    MIGRATE-WIDE
    NARROW-CASES
+   MIGRATE-PRESSURE-CALLEE
+   DEFINE-PRESSURE-ENGINE-CALLEE
    MIGRATE-PRESSURE-NARROW
    MIGRATE-PRESSURE-WIDE
+   MIGRATE-PRESSURE-CONTROL
    PRESSURE-CASES
    BUILD-RECLAIMED
    RECLAIM-CASES

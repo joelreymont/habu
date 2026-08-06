@@ -390,7 +390,7 @@ i64 hc4_call_pressure(i64 a, i64 b, i64 c, i64 d, i64 e, i64 f, i64 g,
                       i64 seed, i64 len) {
    i64 x = seed;
    for (i64 i = 0; i < len; i++) x = c4_long(x);
-   return x + a + b + c + d + e + f + g;
+   return x + a + b + c + d + e + f + g + len;
 }
 
 i64 hc4_big_consts(i64 len) {

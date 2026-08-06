@@ -1002,13 +1002,20 @@ variable STALE-ENTRY
 \ walk a chain into each ceiling in turn and show which one stopped it.
 \
 \ THE LITERAL CHAIN WALKS INTO THE SIZE RULE. Each link multiplies or adds a
-\ constant, which is a move-wide and an operation - two instructions of body -
-\ and the arithmetic is different at every link, so a copy that dropped a
-\ literal, reordered two, or truncated one answers a different number. L1 is
+\ constant, and the arithmetic is different at every link, so a copy that dropped
+\ a literal, reordered two, or truncated one answers a different number. L1 is
 \ recorded; L2 copies it and is recorded with L1's literals inside it; L3 copies
 \ L2 and is recorded with literals that have now survived two splices; L4 copies
 \ L3 and its body is ONE instruction past the rule for its arity, so it is not
 \ recorded; and L5, whose callee has no record, makes a real call.
+\
+\ WHAT EACH LINK COSTS, WHICH IS WHAT PUTS THE BOUNDARY WHERE IT IS. A multiply
+\ by a constant is a move-wide and a multiply, two instructions, because the A64
+\ multiply has no immediate form for the selection stage to choose. An add or a
+\ subtract of a small constant is ONE instruction, because it has one and the
+\ selection stage emits it (src/compiler/native/select.f) - the constant is never
+\ materialised into a register. So the chain's bodies are 1, 3, 5, 6: L3 sits on
+\ the bound the rule states for this arity and L4 sits one instruction past it.
 \
 \ THE RENAME CHAIN WALKS INTO THE ROW'S CAPACITY INSTEAD, and the pair of them is
 \ why the two ceilings have to be separate. A rename is a token and no
@@ -1030,9 +1037,24 @@ variable STALE-ENTRY
 \ reads into one multiply-add, so a chain written `3 * 7 +` loses an instruction
 \ to it and every count below shifts by one: L4 came inside the rule and the
 \ refusal this fixture exists to pin stopped happening. Written the other way
-\ round the arithmetic is the same shape, the same two literals and the same
+\ round the arithmetic is the same shape, the same literals and the same
 \ instruction counts, and no combining pass has anything to fold - so the numbers
 \ here are the inliner's own. Do not swap them back.
+\
+\ AND THE LINKS ARE BUILT SO THAT NO LATER TRANSFORM CAN SHORTEN THEM EITHER.
+\ Every literal in the chain is distinct and read once, so no memo, no common
+\ subexpression and no reassociation has two of anything to collapse; the two
+\ multiplies are by different primes and are separated by nothing an associative
+\ rule could reach across, so they cannot become one; and the add and the
+\ subtract are ALREADY in their immediate form, which is the shortest an A64
+\ encoder has - a selection pass cannot take a further instruction out of a link
+\ that is one instruction. That is why the boundary this fixture pins is a fact
+\ about the inliner's rule and not about which constants the chain happens to
+\ use. The pins moved once, when the immediate forms landed and the two
+\ arithmetic links stopped materialising their constants: the chain was extended
+\ by one multiply so that a link sits ON the bound and the next sits one past it
+\ again, which is the property, rather than the counts being widened to whatever
+\ the new compiler produced.
 variable L3-BODY
 variable L4-BODY
 
@@ -1041,7 +1063,7 @@ variable L4-BODY
    s" NINL-L1" s" NINL-L1" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-L2 ( n -- n ) NINL-L1 7 * ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
    s" NINL-L2" s" NINL-L2" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-L3 ( n -- n ) NINL-L2 ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" : NINL-L3 ( n -- n ) NINL-L2 11 * ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
    A64EMIT:BODY-INSNS L3-BODY !
    s" NINL-L3" s" NINL-L3" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-L4 ( n -- n ) NINL-L3 5 - ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
@@ -1066,7 +1088,7 @@ variable R3-BODY
 \ The same arithmetic as the whole literal chain, compiled by the ENGINE, so what
 \ the copied chain answers is held against a second compiler.
 : DEFINE-CHAIN-TWIN ( -- )
-   s" : NINL-ENGINE-CHAIN ( n -- n ) 3 + 7 * 5 - ;" EV ;
+   s" : NINL-ENGINE-CHAIN ( n -- n ) 3 + 7 * 11 * 5 - ;" EV ;
 
 : CHAIN-CASES ( -- )
    s" a routine whose own call was copied is recorded, and so is one of those"
@@ -1078,7 +1100,7 @@ variable R3-BODY
    s" and each row is the operations, never the call that was written" T-LABEL
    s" NINL-L1" ENTRY-OF NINL:TOKENS 2 T=
    s" NINL-L2" ENTRY-OF NINL:TOKENS 4 T=
-   s" NINL-L3" ENTRY-OF NINL:TOKENS 4 T=
+   s" NINL-L3" ENTRY-OF NINL:TOKENS 6 T=
 
    s" the literals survive two splices, in the right order and to the bit"
    T-LABEL
@@ -1086,13 +1108,15 @@ variable R3-BODY
    s" NINL-L3" ENTRY-OF 1 NINL:SPELL$ s" +" STR= TTRUE
    s" NINL-L3" ENTRY-OF 2 NINL:LIT@ 7 T=
    s" NINL-L3" ENTRY-OF 3 NINL:SPELL$ s" *" STR= TTRUE
+   s" NINL-L3" ENTRY-OF 4 NINL:LIT@ 11 T=
+   s" NINL-L3" ENTRY-OF 5 NINL:SPELL$ s" *" STR= TTRUE
 
    s" one link further is one instruction past the rule, so it is not recorded"
    T-LABEL
    s" NINL-L4" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
-   s" NINL-L3" WORD-INSNS 7 T=
+   s" NINL-L3" WORD-INSNS 8 T=
    s" NINL-L4" WORD-INSNS 9 T=
-   L3-BODY @ 4 T=
+   L3-BODY @ 5 T=
    L4-BODY @ 6 T=
    1 1 L3-BODY @ NINL:SMALL? TTRUE
    1 1 L4-BODY @ NINL:SMALL? TFALSE
@@ -1112,8 +1136,8 @@ variable R3-BODY
    s" 5 NINL-L4" EV-N  s" 5 NINL-ENGINE-CHAIN" EV-N T=
    s" 0 NINL-L4" EV-N  s" 0 NINL-ENGINE-CHAIN" EV-N T=
    s" -7 NINL-L4" EV-N  s" -7 NINL-ENGINE-CHAIN" EV-N T=
-   s" 5 NINL-L4" EV-N 51 T=
-   s" 5 NINL-L5" EV-N 51 T=
+   s" 5 NINL-L4" EV-N 611 T=
+   s" 5 NINL-L5" EV-N 611 T=
 
    s" a chain of renames fills the ROW before it reaches the size rule" T-LABEL
    s" NINL-R1" ENTRY-OF NINL:TOKENS 8 T=
