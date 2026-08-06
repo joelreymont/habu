@@ -11,6 +11,7 @@ require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB co
 require lib/type/deftype.f               \ DEFTYPE - declared-nominal role exemplar in the runtime role source
 
 using GATE
+using GATE-COMMON
 
 \ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
 \ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB index
@@ -113,6 +114,15 @@ create GE-CHECK-OFF-LINE
       GENG-PARSE-ARG
    repeat ;
 
+\ GE-FILES: is GATE-COMMON's own file-list definer, and a word whose name ends
+\ in ':' has no call form outside its package - neither bare through `using` nor
+\ qualified as PKG:NAME: - so the two lists it declares are declared inside a
+\ reopened GATE-COMMON.  They keep their GE- names and become GATE-COMMON
+\ publics, which the `using GATE-COMMON` above resolves for the two readers
+\ below.
+package GATE-COMMON
+public
+
 GE-FILES: GE-ENGINE-STDLIB-CHECK-FILES
    lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/process-cwd.f
@@ -125,6 +135,8 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    tools/check-all-errors-core.f tools/cli-run.f
    tools/json.f tools/gate-json-assert-core.f tools/check-repair-hints-test.f
 ;GE-FILES
+
+;package
 
 : GE-LOAD-RESET ( -- )
    GE-HB-RESET

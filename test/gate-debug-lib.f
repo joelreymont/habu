@@ -5,6 +5,7 @@
 require tools/jitdump-core.f
 
 using GATE
+using GATE-COMMON
 
 : GDB-PROP ( -- )
    GE-HB-RESET

@@ -17,9 +17,11 @@ require tools/build-fixpoint.f
 require test/gate-pool.f
 require test/gate-engine-lib.f
 
+using GATE
+using GATE-COMMON
+
 package CANDIDATE-RUNTIME
 
-using GATE
 private
 
 64 constant KEY-U
@@ -83,3 +85,5 @@ public
 ;package
 
 ' CANDIDATE-RUNTIME:MAIN catch s" candidate runtime" GE-THROW-REPORT
+
+;using

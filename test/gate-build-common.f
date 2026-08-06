@@ -3,6 +3,7 @@
 \ Load after test/gate-common.f and lib/memory.f.
 
 using GATE
+using GATE-COMMON
 
 $FEEDFACF constant GB-MH-MAGIC64
 $19 constant GB-LC-SEGMENT-64

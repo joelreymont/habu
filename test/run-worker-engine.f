@@ -8,6 +8,8 @@ require test/gate-common-lib.f
 require test/gate-engine-lib.f
 
 package TEST
+
+using GATE-COMMON
 private
 
 TRW-LOAD-DONE

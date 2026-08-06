@@ -3,6 +3,7 @@
 package GATE-VALIDATION
 
 using GATE
+using GATE-COMMON
 
 GT-OUT-CAP constant EVIDENCE-CAP
 3 constant WORKER-MAX

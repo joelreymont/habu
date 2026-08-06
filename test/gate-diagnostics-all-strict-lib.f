@@ -7,6 +7,7 @@ require tools/diag-to-sarif-core.f
 package GATE-DIAGNOSTICS
 
 using GATE
+using GATE-COMMON
 
 : SARIF ( -- )
    GE-HB-RESET

@@ -7,6 +7,7 @@ require test/gate-pool.f
 package AOT-POSITIVE
 
 using GATE
+using GATE-COMMON
 
 46 constant DOT
 99 constant C-LOWER

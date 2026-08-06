@@ -14,6 +14,8 @@ TEST:TRW-LOAD-DONE
 
 package TEST
 
+using GATE-COMMON
+
 : UNDER! ( -- )
    TR-UNDER-READY @ 0= if exit then
    UNDER$ GE-HB! ;

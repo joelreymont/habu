@@ -3,6 +3,7 @@
 \ Load after tools/hb-build-lib.f and test/gate-build-common.f.
 
 using GATE
+using GATE-COMMON
 
 : GB-HBB-PREPARE ( -- )
    HBB-RESET-OPTIONS

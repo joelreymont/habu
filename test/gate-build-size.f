@@ -97,6 +97,8 @@
 
 package BUILD-SIZE
 
+using GATE-COMMON
+
 148855 constant BASELINE-MACOS
 127168 constant BASELINE-LINUX
 

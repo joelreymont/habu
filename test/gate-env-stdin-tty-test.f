@@ -16,6 +16,8 @@ require test/gate-runner-support.f
 
 package GATE-ENV-STDIN-TTY-TEST
 
+using GATE-COMMON
+
 $40045431 constant LINUX-TIOCSPTLCK
 $80045430 constant LINUX-TIOCGPTN
 2 constant PTY-OPEN-RDWR

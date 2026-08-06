@@ -7,6 +7,7 @@ require test/golden.f
 package GATE-DIAGNOSTICS
 
 using GATE
+using GATE-COMMON
 
 using PS
 

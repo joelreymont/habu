@@ -8,6 +8,19 @@ require lib/process-fork.f
 
 using GATE
 
+\ Signatures for four engine globals the gate calls.  They stay OUTSIDE
+\ package GATE-COMMON: a TRUST inside the package would publish a same-named
+\ package word instead, and every bare reference would then be an
+\ E-USING-SHADOW-GLOBAL collision with the global it was meant to describe.
+s" UEND" s" -- ptr n" TRUST
+s" USIGS-RESTORE-END" s" n --" TRUST
+s" UTERM!" s" --" TRUST
+s" JSON-DIAGS" s" -- ptr a" TRUST
+
+package GATE-COMMON
+
+public
+
 $40000 constant GE-SRC-CAP
 64 constant GE-SRC-MAX
 120000 constant GE-TIMEOUT-MS
@@ -18,11 +31,6 @@ $40000 constant GE-SRC-CAP
 10 constant GE-FD-SAVE-MIN
 1 constant GE-STDOUT-FD
 2 constant GE-STDERR-FD
-
-s" UEND" s" -- ptr n" TRUST
-s" USIGS-RESTORE-END" s" n --" TRUST
-s" UTERM!" s" --" TRUST
-s" JSON-DIAGS" s" -- ptr a" TRUST
 
 create GE-SRC-BUF GE-SRC-CAP allot
 create GE-SRC-A GE-SRC-MAX cells allot
@@ -71,14 +79,6 @@ variable GE-EVAL-SRC-U
 : GE-EVAL-SRC$ ( -- ptr u8 n )
    GE-EVAL-SRC-A-FIELD @ GE-EVAL-SRC-U @ ;
 
-: GE-STORE-CAPTURE ( len len rc -- ) {: outu:len erru:len rc:rc :}
-   rc RC>N OUTCOME:EXITED GT-OUTCOME!
-   erru LEN>N GT-ERR-U !
-   outu LEN>N GT-OUT-U ! ;
-
-: GE-STORE-OUTCOME ( len len outcome -- )
-   GT-STORE-RUN ;
-
 : GE-ARGV-RESET ( -- )
    0 GE-ARGV-U ! ;
 
@@ -122,9 +122,9 @@ variable GE-EVAL-SRC-U
    timeout >MS PROC-STDIN-CAPTURE-BEGIN
    path pathu GS-HELPER-EVENT
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
-   GT-OUT-BUF 0 >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
+   GT-OUT-SINK drop 0 >LEN GT-OUT-SINK GT-ERR-SINK
    PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+   PROC-CAPTURE-FINISH-OUTCOME GT-STORE-RUN ;
 
 : GE-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n in:ptr inu:n timeout:n :}
    PROC-ENV-INHERIT-MISSING
@@ -133,9 +133,9 @@ variable GE-EVAL-SRC-U
    timeout >MS PROC-STDIN-CAPTURE-BEGIN
    path pathu GS-HELPER-EVENT
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
-   in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
+   in inu >LEN GT-OUT-SINK GT-ERR-SINK
    PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+   PROC-CAPTURE-FINISH-OUTCOME GT-STORE-RUN ;
 
 : GE-SPAWN-FILE-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
    pathz argv envp GE-INFD @ >FD PROC-OUT-W @ PROC-ERR-W @
@@ -157,8 +157,8 @@ variable GE-EVAL-SRC-U
    timeout >MS PROC-CAPTURE-BEGIN
    path pathu GS-HELPER-EVENT
    pathz argv envp GE-SPAWN-FILE-CAPTURE
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+   GT-OUT-SINK GT-ERR-SINK PROC-RUN-CAPTURE-OUTCOME-LOOP
+   PROC-CAPTURE-FINISH-OUTCOME GT-STORE-RUN ;
 
 : GE-OUTCOME. ( outcome -- )
    MATCH outcome
@@ -513,10 +513,10 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
 \ forge, so the runner copy is the single synthesized-state home.
 : GE-EVAL-STORE-RC ( n -- ) {: rc:n :}
    rc >RC PROC-RC !
-   PROC-OUT-LEN @ PROC-ERR-LEN @ rc OUTCOME:EXITED GE-STORE-OUTCOME ;
+   PROC-OUT-LEN @ PROC-ERR-LEN @ rc OUTCOME:EXITED GT-STORE-RUN ;
 
 : GE-EVAL-DRAIN ( -- )
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-LOOP ;
+   GT-OUT-SINK GT-ERR-SINK PROC-RUN-CAPTURE-LOOP ;
 
 \ typed-local-lint: allow-bare-local - q is the captured action quotation.
 : GE-CAPTURE-ACTION ( [ -- ] -- n ) {: q :}
@@ -526,7 +526,7 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    GE-EVAL-RESTORE!
    GE-EVAL-DRAIN
    PROC-CLOSE-ALL-CAPTURE-FDS
-   PROC-CAPTURE-OUTCOME@ GE-STORE-OUTCOME
+   PROC-CAPTURE-OUTCOME@ GT-STORE-RUN
    rc ;
 
 : GE-EVAL-CAPTURE-SRC ( ptr u8 n -- )
@@ -556,9 +556,9 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    GE-SRC-BUF GE-SRC-U @ GE-EVAL-SRC!
    GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
    GE-EVAL-FORK-SPAWN
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
+   GT-OUT-SINK GT-ERR-SINK
    PROC-RUN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+   PROC-CAPTURE-FINISH-OUTCOME GT-STORE-RUN ;
 
 : GE-EVAL-FORK-BAD ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
@@ -619,5 +619,7 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GE-EXPECT-SILENT ;
+
+;package
 
 ;using

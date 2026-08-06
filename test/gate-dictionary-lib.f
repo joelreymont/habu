@@ -5,6 +5,7 @@
 package GATE-DICTIONARY
 
 using GATE
+using GATE-COMMON
 
 $41 constant NAME-CHAR
 $2E constant DOT-CHAR

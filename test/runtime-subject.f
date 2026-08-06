@@ -4,6 +4,9 @@ require lib/test/subject.f
 
 package RUNTIME-SUBJECT
 
+using GATE
+using GATE-COMMON
+
 64 constant DIGEST-U
 
 create SRC GE-SRC-CAP allot
@@ -34,7 +37,7 @@ variable RUN-ID
    GT-OUT-SINK
    GT-ERR-SINK
    GE-TIMEOUT-MS >MS SUBJECT:RUN
-   GE-STORE-OUTCOME ;
+   GT-STORE-RUN ;
 
 : SAVE-DIRECT ( -- )
    GT-OUT$ DIRECT-OUT swap dup DIRECT-OUT-U ! BYTE-COPY
