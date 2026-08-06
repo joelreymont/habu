@@ -14,6 +14,8 @@ require lib/errors.f
 require lib/test.f
 require test/checker-assert.f
 
+package DREC-SHAPE
+
 \ record-pointer arithmetic ( = TRUSTED: XREF-REC+ today)
 : DRS-REC+ ( ptr a n -- ptr a ) + ;
 
@@ -81,3 +83,5 @@ require test/checker-assert.f
    T-REPORT ;
 
 MAIN
+
+;package
