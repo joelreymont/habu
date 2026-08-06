@@ -460,6 +460,10 @@ public
    \ it leaves, read off the emitted code. It belongs beside the chain's own
    \ leaves because one of its fixtures is migrated through the chain.
    s" test/compiler/codegen-tail-probe.f" GSI-FORK-INCLUDE
+   \ And the instrument the combining lane decides with, beside it for the same
+   \ reason: it reads emitted code through that probe's walk, and its rows are
+   \ routines the chain really compiled.
+   s" test/compiler/codegen-combine-inventory.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the code generator comparison - bytes, computed
    \ values, the two generators head to head, the committed table's structure.
    \ The timing column is left out here because this group runs its members in

@@ -371,6 +371,16 @@ SUITE compiler-codegen-tail-probe
    test/compiler/codegen-tail-probe.f
 ;SUITE
 
+\ Counting the instruction PAIRS one three-source instruction would replace,
+\ which is the measurement the combining lane decides what to build from. It
+\ runs beside the tail probe because it reads emitted code through that tool's
+\ walk, and its classifiers are held against the shipped encoders in
+\ src/arch/arm64/asm.f - including the multiply-add alias that makes MUL and
+\ MADD the same word.
+SUITE compiler-codegen-combine-inventory
+   test/compiler/codegen-combine-inventory.f
+;SUITE
+
 \ The native chain's end-to-end run: source text through the real compile path
 \ to executed machine code. It runs after the leaves it composes, so a red here
 \ with green leaves means the leaves disagree with each other.
