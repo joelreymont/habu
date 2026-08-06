@@ -6811,11 +6811,17 @@ NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BO
 variable NORET-FLAG
 variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 
+\ The store has two readings, the same way USIGS does: raw bytes for the span
+\ itself, cells for the entries inside it. Both are instantiations of ONE
+\ parametric variable cell -- `variable NORET-P` publishes ( -- ptr a ), so each
+\ reader names the pointee it wants and neither needs a coercion. That is why
+\ this seam mints nothing, where the USIGS one inherited a trusted view.
 : NORETS ( -- ptr u8 ) NORET-P @ ;
+: NORET-CELLS ( -- ptr n ) NORET-P @ ;
 
-: NORET-CELL ( n -- ptr a ) {: off:n :}
+: NORET-CELL ( n -- ptr n ) {: off:n :}
    off NORET-ENTRY-ALIGN 1 - and 0 <> IF s" checker: unaligned no-return cell" 76 die THEN
-   NORETS off + ;
+   NORET-CELLS off + ;
 
 : NORET-TERM ( -- )
    0 NORET-END @ NORET-CELL ! ;
@@ -7087,10 +7093,10 @@ REG-EXT-DEFAULTS
    REG-SCRATCH-SNAP-XT
    REG-LATE-SCRATCH-SNAP-XT ;
 
-: NORET-REC ( -- ptr a )
+: NORET-REC ( -- ptr n )
    NORET-END @ NORET-CELL ;
 
-: NORET-FLAG@ ( ptr a -- n )
+: NORET-FLAG@ ( ptr n -- n )
    NORET.FLAG @ ;
 
 \ HIDX-CTL-SYNC ( -- ) : flush the cache when NORETS rewound below a cached
