@@ -56,7 +56,7 @@ create M-HM MD MVOC * cells allot   create M-HV MD MVOC * cells allot
 variable M-RNG
 : M-NEXT ( -- r )  M-RNG @ 1664525 * 1013904223 + $FFFFFFFF and dup M-RNG !  s>f 4294967296.0 f/ ;
 : M-UNIT ( -- r )  M-NEXT 2.0 f* 1.0 f- ;
-: M-SMALL ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  M-UNIT 0.2 f*  p i T-SET  loop ;
+: M-SMALL ( ptr r n -- ) {: p:ptr n:n :}  n 0 ?do  M-UNIT 0.2 f*  p i T-SET  loop ;
 
 \ ---- Adam state (step count + running decay powers) ---------------------------------
 : M-B1 ( -- r ) 0.9 ;  : M-B2 ( -- r ) 0.999 ;  : M-EPS ( -- r ) 0.00000001 ;
@@ -92,7 +92,7 @@ variable M-T  variable M-B1T  variable M-B2T
 
 \ ---- Adam update of one bound parameter from its gradient node ----------------------
 : M-LR ( -- r )  0.05 ;
-: M-UPD ( ptr a n ptr a ptr a n -- ) {: p:ptr slot:n mp:ptr vp:ptr n:n :}
+: M-UPD ( ptr r n ptr r ptr r n -- ) {: p:ptr slot:n mp:ptr vp:ptr n:n :}
    M-LR M-B1 M-B2 M-EPS M-C1 M-C2  p  slot M-GRAD  mp vp n  OPTIM:TT-ADAM! ;
 
 \ build backward once, bind every host buffer (params + seed cotangent)
