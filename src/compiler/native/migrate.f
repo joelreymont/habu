@@ -620,6 +620,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    CC nb A64SPILL:BIND-DIALECT
    CC m nb TXT len A64COMB:REWRITE {: m1:IR-BUILD:module :}
    A64COMB:FUSED n <> if E-A64COMB-SHAPE throw then
+   m IR-BUILD:RETIRE
    m1 ;
 
 \ The emission is made against the slot the publication seam is about to claim,
@@ -690,6 +691,7 @@ variable REC-OK                      \ the body staged so far is still one worth
       exit
    then
    m len LOWERED {: m1:IR-BUILD:module :}
+   m IR-BUILD:RETIRE
    CC m1 ROUTINE A64RA:ALLOCATE
    m1 EMIT-AT ;
 

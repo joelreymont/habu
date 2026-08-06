@@ -121,6 +121,7 @@ $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 1 constant ST-LIVE
 2 constant ST-FROZEN
 3 constant ST-ABORTED
+4 constant ST-RETIRED
 0 constant STG-FREE                  \ no builder holds this stage
 
 \ ---- the fifteen tables a module is made of ----------------------------------
@@ -372,7 +373,7 @@ SLOTS-CLEAR
 
 : STATE-OK ( n -- n )
    dup BSTATE@ {: st:n :}
-   st ST-LIVE = st ST-FROZEN = or st ST-ABORTED = or 0= if
+   st ST-LIVE = st ST-FROZEN = or st ST-ABORTED = or st ST-RETIRED = or 0= if
       E-IR-BUILD-STATE throw
    then ;
 
@@ -382,11 +383,13 @@ SLOTS-CLEAR
    dup BSTATE@ ST-ABORTED = if E-IR-BUILD-ABORTED throw then
    dup BSTATE@ ST-LIVE <> if E-IR-BUILD-FROZEN throw then ;
 
-\ A module handle is minted only by FREEZE, and a frozen slot never changes
-\ state again, so anything but ST-FROZEN here is corrupted registry state
+\ A module handle is minted only by FREEZE, and a frozen slot changes state
+\ once more at most - RETIRE gives its tables back - so a retired module is
+\ named on its own terms and anything else here is corrupted registry state
 \ rather than a caller mistake.
 : FROZEN-SLOT ( IR-BUILD:module -- n )
    M>N RESOLVE STATE-OK
+   dup BSTATE@ ST-RETIRED = if E-IR-BUILD-RETIRED throw then
    dup BSTATE@ ST-FROZEN <> if E-IR-BUILD-STATE throw then ;
 
 : OWN-CK ( IR-CTX:ctx n -- )
@@ -1293,6 +1296,12 @@ private
       slot i TAB@ IR-ARENA:ABORT
    loop ;
 
+: TABLES-RETIRE ( n -- )
+   {: slot:n :}
+   TABLES# 0 ?do
+      slot i VIEW@ IR-ARENA:RETIRE
+   loop ;
+
 \ Design section 6.5's whole-module verification, run as the last refusal arm
 \ before any table is frozen. The verifier is its own authority: this file hands
 \ it the module's tables and its own derived table and repeats none of its logic.
@@ -1348,6 +1357,37 @@ public
    slot BGEN@ STG-RELEASE
    slot TABLES-ABORT
    ST-ABORTED slot BSTATE! ;
+
+\ Give a PUBLISHED module up. It is ABORT's counterpart on the other side of the
+\ freeze: all seventeen tables are retired at once, which releases their registry
+\ slots and makes every view and index they minted stale, and the slot records
+\ that it was retired so a later use of the module handle is named rather than
+\ merely refused.
+\
+\ WHAT THIS IS FOR. A pass that rewrites a module reads the old one and writes a
+\ new one, and when it returns, the old module is dead: everything the new module
+\ needs has been copied into it and no reader of the old one remains. Without
+\ this word that module's seventeen slots stayed taken until the whole context
+\ tore down, so a chain of rewriting passes cost the SUM of every module it ever
+\ built. The registry holds sixty-four slots, so three chained builders plus the
+\ model and tape arenas is already the ceiling - which is how a routine that
+\ combined and then spilled ran out (E-IR-ARENA-SLOTS).
+\
+\ THE CALLER SAYS WHICH MODULE IS DEAD AND THE SEALS SAY WHETHER IT WAS RIGHT.
+\ This word cannot prove a module has no readers - liveness is the caller's fact,
+\ not the registry's - so it does not pretend to. What it guarantees is that
+\ being wrong is LOUD: a read through this handle afterwards is
+\ E-IR-BUILD-RETIRED, and a read through any view or index the module already
+\ handed out is IR-ARENA's own E-IR-ARENA-OWNER, because the generation those
+\ indices carry no longer matches the slot. Retiring the wrong module therefore
+\ fails at the next read of it rather than returning something plausible.
+\
+\ IT TAKES NO CONTEXT, for ABORT's reason: giving arenas back needs no allocator
+\ and publishes nothing, so it keeps the narrower signature.
+: RETIRE ( IR-BUILD:module -- )
+   FROZEN-SLOT {: slot:n :}
+   slot TABLES-RETIRE
+   ST-RETIRED slot BSTATE! ;
 
 \ ---- the frozen module -------------------------------------------------------
 \ The views the later read-only passes read through. Each is the table's own

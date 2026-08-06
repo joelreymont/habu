@@ -335,7 +335,7 @@ public
 -6647 constant E-IR-CTX-STATE     \ persisted context state failed its consistency recheck
 
 \ Compiler IR arena (package IR-ARENA): -6650..-6659
--6650 constant E-IR-ARENA-STALE   \ an arena handle was used after abort or after its context's teardown
+-6650 constant E-IR-ARENA-STALE   \ an arena handle was used after abort, after retire, or after its context's teardown
 -6651 constant E-IR-ARENA-OWNER   \ an index or context was presented to an arena that did not mint it
 -6652 constant E-IR-ARENA-FULL    \ an append reached the arena's committed cell ceiling
 -6653 constant E-IR-ARENA-FROZEN  \ a mutation word ran against a frozen arena
@@ -602,6 +602,7 @@ public
 -8068 constant E-IR-BUILD-SLOTS   \ the builder registry has no free slot
 -8069 constant E-IR-BUILD-SERIALS \ builder generation serials reached their ceiling
 -8070 constant E-IR-BUILD-STATE   \ persisted builder registry state failed its consistency recheck
+-8071 constant E-IR-BUILD-RETIRED \ any use of a frozen-module handle RETIRE already gave back: the pass that superseded this module released its tables, so every view and index it minted is stale
 
 \ Compiler structural freeze verification (package IR-VERIFY): -8080..-8099
 -8080 constant E-IR-VERIFY-STATE   \ a derived edge store failed its header, row-shape, or window recheck

@@ -398,6 +398,30 @@ public
    LIVE-SLOT {: slot:n :}
    0 slot AGEN! ;
 
+\ RETIRE is ABORT's other half, for an arena that was published rather than
+\ abandoned: the registry slot is freed and every index the view minted goes
+\ stale, exactly as ABORT does, but it is reached through the FROZEN handle
+\ because that is the only handle a published arena has left.
+\
+\ WHY A FROZEN ARENA MAY BE GIVEN BACK AT ALL. A frozen arena is immutable, not
+\ immortal. It stays readable for as long as somebody can still read it, and
+\ when a later pass has copied everything it needed out of a module, nothing
+\ can. Until this word existed the only way a published slot came back was
+\ SWEEP, which waits for the whole owning CONTEXT to tear down - so a chain of
+\ passes that each supersede the last held every intermediate module's slots to
+\ the end of the compilation, and peak pressure was the number of modules ever
+\ BUILT rather than the number live at once.
+\
+\ NOTHING HERE DECIDES THAT THE ARENA IS DEAD, and that is the point. This word
+\ frees the slot; the generation seal is what makes a mistake loud. A view or an
+\ index minted before the retire carries the old generation, and IDX-AT compares
+\ it against the slot's current one, so a read through a retired arena is
+\ E-IR-ARENA-OWNER and not stale data - the same refusal a handle from another
+\ context gets, for the same reason and through the same comparison.
+: RETIRE ( IR-ARENA:view -- )
+   FROZEN-SLOT {: slot:n :}
+   0 slot AGEN! ;
+
 \ ---- frozen readers ----------------------------------------------------------
 : AT ( IR-ARENA:view IR-ARENA:cell-id -- n )
    {: f:IR-ARENA:view x:IR-ARENA:cell-id :}
