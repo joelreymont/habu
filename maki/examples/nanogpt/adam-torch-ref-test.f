@@ -32,7 +32,7 @@ package MAKI
 : TTR-TOL ( -- r )  0.000002 ;   \ see header: ~140x the measured FEXP-gap floor
 
 \ tensor closeness against a committed torch reference buffer
-: TTR-NEAR ( ptr a ptr a n -- )  T-REL-L2 TTR-TOL f<  TTRUE ;
+: TTR-NEAR ( ptr r ptr r n -- )  T-REL-L2 TTR-TOL f<  TTRUE ;
 
 \ one parity step: loss + all five gradients vs torch, then apply Adam so the
 \ NEXT step checks freshly-updated parameters (the optimizer chain compounds)
