@@ -6555,19 +6555,19 @@ public
 : DFER-DELETE ( ptr u8 n -- )
    RES-FALSE DFER-ADD-FLAG ;
 
-: DFER-NEXT ( ptr a -- ptr a )
+: DFER-NEXT ( ptr n -- ptr n )
    DFER-REC + ;
 
-: DFER-FLAG@ ( ptr a -- bool )
+: DFER-FLAG@ ( ptr n -- bool )
    DFER.FLAG @ 0 <> ;
 
-: DFER-SYM@ ( ptr a -- n )
+: DFER-SYM@ ( ptr n -- n )
    DFER.SYM @ ;
 
-: DFER-END? ( ptr a -- bool )
+: DFER-END? ( ptr n -- bool )
    @ 0= ;
 
-: DFER-MATCH-SYM? ( ptr a n -- bool ) {: rec:ptr sym:n :}
+: DFER-MATCH-SYM? ( ptr n n -- bool ) {: rec:ptr sym:n :}
    rec DFER-SYM@ sym = ;
 
 variable DFER-HIT
