@@ -8,6 +8,7 @@
 \ (recorded SKIP off-device); the emit half is proven host-side by
 \ tools/ptx/fusion-emit-test.f.
 
+require maki/eval/active-target.f
 require tools/ptx/fusion-emit.f
 require tools/ptx/bandwidth-lib.f
 
@@ -64,6 +65,7 @@ package PTXBW
    unfused 1000 * fused / FMT:.U cr ;
 
 : MAIN ( -- )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                \ assembler arch from the probed active target; every BUILD-KERNEL below assembles, and PTXTC:PREPARE does not clear it
    RUN-SAXPY-V4 {: sax:n :}
    RUN-RELU-V4 {: relu:n :}
    sax relu REPORT-UNFUSED
