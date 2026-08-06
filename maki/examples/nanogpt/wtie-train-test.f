@@ -85,10 +85,10 @@ create UN-WM   KC KV * cells allot   create UN-WV KC KV * cells allot
 variable TIE-RNG
 : TIE-NEXT ( -- r )  TIE-RNG @ 1664525 * 1013904223 + $FFFFFFFF and dup TIE-RNG !  s>f 4294967296.0 f/ ;
 : TIE-UNIT ( -- r )  TIE-NEXT 2.0 f* 1.0 f- ;
-: TIE-SMALL ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  TIE-UNIT 0.1 f*  p i T-SET  loop ;
+: TIE-SMALL ( ptr r n -- ) {: p:ptr n:n :}  n 0 ?do  TIE-UNIT 0.1 f*  p i T-SET  loop ;
 
 \ ---- transposed mirror: dst(C,V)[c][v] = src(V,C)[v][c] (outer j=c, inner i=v) --
-: TIE-XPOSE ( ptr a ptr a -- ) {: src:ptr dst:ptr :}
+: TIE-XPOSE ( ptr r ptr r -- ) {: src:ptr dst:ptr :}
    KC 0 ?do  KV 0 ?do  src i KC * j +  T-GET   dst j KV * i +  T-SET  loop loop ;
 : TIE-MIRROR ( -- )  TIE-P TIE-WT TIE-XPOSE ;
 
