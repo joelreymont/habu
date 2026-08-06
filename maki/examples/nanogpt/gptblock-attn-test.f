@@ -99,7 +99,7 @@ create GB-BFM GBC cells allot        create GB-BFV GBC cells allot
 variable GB-RNG
 : GB-NEXT ( -- r )  GB-RNG @ 1664525 * 1013904223 + $FFFFFFFF and dup GB-RNG !  s>f 4294967296.0 f/ ;
 : GB-UNIT ( -- r )  GB-NEXT 2.0 f* 1.0 f- ;
-: GB-SMALL ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  GB-UNIT 0.1 f*  p i T-SET  loop ;
+: GB-SMALL ( ptr r n -- ) {: p:ptr n:n :}  n 0 ?do  GB-UNIT 0.1 f*  p i T-SET  loop ;
 
 \ committed init: small weights, sc = 1/sqrt(d), gamma=1/beta=0 for all three affine LNs,
 \ a copy task (token id t = t mod V, target class t = t mod V) the block learns end-to-end.
@@ -146,7 +146,7 @@ variable GB-T  variable GB-B1T  variable GB-B2T
 
 \ ---- Adam update of one bound parameter from its gradient node -------------------------
 : GB-LR ( -- r )  0.05 ;
-: GB-UPD ( ptr a n ptr a ptr a n -- ) {: p:ptr slot:n mp:ptr vp:ptr n:n :}
+: GB-UPD ( ptr r n ptr r ptr r n -- ) {: p:ptr slot:n mp:ptr vp:ptr n:n :}
    GB-LR GB-BET1 GB-BET2 GB-EPS GB-C1 GB-C2  p  slot GB-GRAD  mp vp n  OPTIM:TT-ADAM! ;
 
 \ Adam-update every trained param EXCEPT the tied pair wte(slot 0) / wlm(slot 12), shared by
@@ -213,7 +213,7 @@ create GB-TIEG   GBV GBC * cells allot        \ summed tied grad (V,C) = Gwte + 
 create GB-TIE-GE GBV GBC * cells allot         \ embedding-path grad only (Gwte)
 create GB-TIE-GH GBV GBC * cells allot         \ head-path grad only, transposed (Gwlm^T)
 
-: GB-XPOSE ( ptr a ptr a -- ) {: src:ptr dst:ptr :}   \ dst(C,V)[c][v]=src(V,C)[v][c] (outer j=c, inner i=v)
+: GB-XPOSE ( ptr r ptr r -- ) {: src:ptr dst:ptr :}   \ dst(C,V)[c][v]=src(V,C)[v][c] (outer j=c, inner i=v)
    GBC 0 ?do  GBV 0 ?do  src i GBC * j +  T-GET   dst j GBV * i +  T-SET  loop loop ;
 : GB-TIE-MIRROR ( -- )  GB-WTE GB-WLM GB-XPOSE ;      \ refresh head mirror WLM = WTE^T
 
@@ -293,7 +293,7 @@ create GBR-AT GBT GBC * cells allot    create GBR-X1 GBT GBC * cells allot    cr
 create GBR-H GBT GBH * cells allot     create GBR-M GBT GBC * cells allot     create GBR-X2 GBT GBC * cells allot
 create GBR-F GBT GBC * cells allot     create GBR-LOG GBT GBV * cells allot
 
-: GBR-ROWBIAS ( ptr a n n ptr a -- ) {: yb:ptr rows:n cols:n bb:ptr :}
+: GBR-ROWBIAS ( ptr r n n ptr r -- ) {: yb:ptr rows:n cols:n bb:ptr :}
    rows 0 ?do cols 0 ?do  yb j cols * i + T-GET  bb i T-GET f+  yb j cols * i + T-SET  loop loop ;
 
 \ A-SCORES element: S[q,k] = sum_{dad,dac} Q[q,dad]*(LN1[k,dac]*WK[dac,dad])
