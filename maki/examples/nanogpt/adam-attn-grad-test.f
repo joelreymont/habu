@@ -91,7 +91,7 @@ create AG-BAD ATN-EN cells allot        \ corrupted-analytic scratch (detection)
 \ ---- central finite difference of AG-LOSS over every element of a buffer ------
 : AG-FD-STEP ( -- r )  0.001 ;   \ matches gradcheck GC-H
 
-: AG-FD! ( ptr a n ptr a -- ) {: pb:ptr len:n fdb:ptr :}
+: AG-FD! ( ptr r n ptr r -- ) {: pb:ptr len:n fdb:ptr :}
    len 0 ?do
       pb i T-GET {: base:r :}
       base AG-FD-STEP f+  pb i T-SET  AG-LOSS {: yp:r :}
@@ -105,7 +105,7 @@ create AG-BAD ATN-EN cells allot        \ corrupted-analytic scratch (detection)
 : AG-LOSS-TOL ( -- r )  0.000000001 ;    \ 1e-9 forward-loss parity (summation noise)
 
 \ one parameter: full central-FD gradient vs the executor VJP node, rel-L2 < tol
-: AG-CHECK ( n ptr a n ptr a -- ) {: slot:n pb:ptr len:n fdb:ptr :}
+: AG-CHECK ( n ptr r n ptr r -- ) {: slot:n pb:ptr len:n fdb:ptr :}
    pb len fdb AG-FD!
    fdb  slot SC-GRAD-AT  len  T-REL-L2  AG-GRAD-TOL f<  TTRUE ;
 
@@ -192,7 +192,7 @@ AG-STEP-FD
 40 constant EQX-N
 create EQX-EQ EQX-N cells allot   create EQX-MM EQX-N cells allot
 variable EQX-BAD
-: EQX-RUN ( ptr a -- ) {: dst:ptr :}  ATN-SETUP  EQX-N 0 ?do  ATN-STEP  dst i T-SET  loop ;
+: EQX-RUN ( ptr r -- ) {: dst:ptr :}  ATN-SETUP  EQX-N 0 ?do  ATN-STEP  dst i T-SET  loop ;
 : EQX-CMP ( -- n )
    0 EQX-BAD !
    EQX-N 0 ?do  EQX-EQ i T-GET  EQX-MM i T-GET  f= 0= if EQX-BAD @ 1+ EQX-BAD ! then  loop
