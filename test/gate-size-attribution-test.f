@@ -447,10 +447,24 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ test files are not part of the assembled
 \ stage2 engine source.
 \ cda6ec6d: compile/ops +288, dictionary-code +16, aot-seed -312; net -8, total 123072 unchanged.
-118420 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-06 engine-generation rebaseline, re-measured live at the linux-arm64
+\ byte fixpoint. These rows described the PREVIOUS engine generation: that
+\ 123072-byte engine can no longer even load this tree (it dies E-UNDEFINED: xt!
+\ on the current sources), so the manifest had fallen a whole generation behind
+\ reality and RUN's live coupling was the thing that said so - working exactly as
+\ designed. Re-measured by rebuilding the stdin metabuild host with
+\ HABU_ENGINE_SIZE_MAP=1 and reconciling the captured map through
+\ tools/size-report.f: attributed 127168 = engine-file 127168 (every byte lands on
+\ a named row), code-total 121956, page-floor-distance 3172, container/header 4096,
+\ container/text-pad 924, container/rw-segment 192 unchanged. The rebuilt engine is
+\ byte-reproducible (sha b4144636). __text grew +3536 over 15 rows - dictionary-code
+\ +1060, aot-seed +912, primitives/base +368, primitives/find +308, main/startup
+\ +272, and ten smaller - which crosses one 4 KiB text page, so the whole file gains
+\ exactly one page: 123072 -> 127168. The other 29 rows are unchanged.
+121956 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3732 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
-123072 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-LINUX
+3172 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
 \ The whole-file (BUILD-SIZE) and __text-total (CODE-TEXT / SUM-TEXT) ratchets catch
@@ -472,47 +486,47 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ and dictionary-code +32 (the generator's baked entry) - exactly the
 \ attribution this ratchet exists to give.
 : LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
-   s" main/startup"            4792 q execute
+   s" main/startup"            5064 q execute
    s" main/comment"             380 q execute
    s" interpret/colon"         752 q execute
-   s" interpret/define"       10464 q execute
-   s" interpret/string"        1148 q execute
+   s" interpret/define"       10480 q execute
+   s" interpret/string"        1168 q execute
    s" interpret/number"          48 q execute
    s" interpret/find"           132 q execute
    s" compile/adt"             2140 q execute
-   s" compile/semi"            6892 q execute
+   s" compile/semi"            6900 q execute
    s" compile/local"            552 q execute
    s" compile/p2wide"          2460 q execute
-   s" compile/keywords"       9916 q execute
+   s" compile/keywords"       9988 q execute
    s" compile/literal"           36 q execute
    s" compile/ops"             2744 q execute
    s" compile/call"             628 q execute
    s" compile/undef"            924 q execute
    s" compile/die"              200 q execute
-   s" compile/exit"            1868 q execute
+   s" compile/exit"            1992 q execute
    s" compile/eval-recover"     724 q execute
    s" main/underflow"           192 q execute
-   s" primitives/base"        17604 q execute
+   s" primitives/base"        17972 q execute
    s" primitives/arity"         760 q execute
-   s" primitives/extra"         568 q execute
+   s" primitives/extra"         664 q execute
    s" primitives/prof"          220 q execute
    s" primitives/float"         764 q execute
    s" primitives/cemit"         108 q execute
-   s" primitives/cemitbl"       100 q execute
+   s" primitives/cemitbl"       172 q execute
    s" primitives/capture"       156 q execute
    s" primitives/token"         104 q execute
    s" primitives/protect"       304 q execute
-   s" primitives/protected-wid" 120 q execute
+   s" primitives/protected-wid" 124 q execute
    s" primitives/flush"          72 q execute
-   s" primitives/find"          952 q execute
+   s" primitives/find"         1260 q execute
    s" primitives/find-used"     520 q execute
    s" primitives/hash-index"    852 q execute
    s" primitives/number"        332 q execute
    s" primitives/top-hook"       68 q execute
-   s" dictionary-code"         5016 q execute
-   s" runtime"                 9464 q execute
-   s" seed-dictionary"         8352 q execute
-   s" aot-seed"               22156 q execute
+   s" dictionary-code"         6076 q execute
+   s" runtime"                 9620 q execute
+   s" seed-dictionary"         8400 q execute
+   s" aot-seed"               23068 q execute
    s" primitives/qualify-def"  2448 q execute
    s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;

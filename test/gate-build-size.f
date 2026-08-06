@@ -83,10 +83,22 @@
 \ CODE-TEXT/floor rows and the per-region attribution are in
 \ test/gate-size-attribution-test.f.
 
+\ 2026-08-06 Linux 123072 -> 127168: engine-generation rebaseline, not a single
+\ landing. The 123072 row described an engine generation that can no longer load
+\ this tree at all (it dies E-UNDEFINED: xt! on the current sources), so this
+\ ratchet and the attribution manifest had both fallen a generation behind. The
+\ current fixpoint engine was rebuilt and re-measured on linux-arm64 with
+\ HABU_ENGINE_SIZE_MAP=1: CODELEN 118420 -> 121956 (+3536 over 15 emitter rows,
+\ largest dictionary-code +1060 and aot-seed +912), which crosses one 4 KiB text
+\ page, so the whole file gains exactly one page. The rebuilt engine is
+\ byte-reproducible (sha b4144636) and tools/size-report.f reconciles every byte
+\ (attributed 127168 = engine-file 127168). Per-region rows in
+\ test/gate-size-attribution-test.f.
+
 package BUILD-SIZE
 
 148855 constant BASELINE-MACOS
-123072 constant BASELINE-LINUX
+127168 constant BASELINE-LINUX
 
 : BASELINE ( -- n )
    HB-TARGET-MACOS? if BASELINE-MACOS exit then
