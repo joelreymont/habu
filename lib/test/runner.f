@@ -156,7 +156,7 @@ variable GT-TAIL-U
    u 0= if exit then
    fd a u write u <> if E-FS-IO throw then ;
 
-: GT-FLUSH-LINES-FD ( n ptr u8 ptr a -- ) {: fd buf:ptr lenp:ptr :}
+: GT-FLUSH-LINES-FD ( n ptr u8 ptr n -- ) {: fd:n buf:ptr lenp:ptr :}
    lenp @ 0 < if E-STR-BOUNDS throw then
    buf lenp @ GT-LINE-FLUSH-U GT-FLUSH-U !
    GT-FLUSH-U @ 0 <= if exit then
@@ -167,7 +167,7 @@ variable GT-TAIL-U
    then
    GT-TAIL-U @ lenp ! ;
 
-: GT-FLUSH-REMAINDER-FD ( n ptr u8 ptr a -- ) {: fd buf:ptr lenp:ptr :}
+: GT-FLUSH-REMAINDER-FD ( n ptr u8 ptr n -- ) {: fd:n buf:ptr lenp:ptr :}
    lenp @ GT-TAIL-U !
    GT-TAIL-U @ 0 < if E-STR-BOUNDS throw then
    GT-TAIL-U @ 0= if exit then
