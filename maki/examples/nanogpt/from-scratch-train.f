@@ -64,11 +64,11 @@ create SC-SEED SC-BATCH SC-OUT * cells allot
 
 \ ---- forward output access (mu = col 0, logvar = col 1, per row) ------------
 : SC-OUT-NODE ( -- CAD-KIND:node-id )  BW-FWD-N@ 1- MIR-NODE-ID ;
-: SC-OUT-MU ( ptr a n -- r ) {: ob:ptr r:n :}  ob r SC-OUT *    T-GET ;
-: SC-OUT-LV ( ptr a n -- r ) {: ob:ptr r:n :}  ob r SC-OUT * 1+ T-GET ;
+: SC-OUT-MU ( ptr r n -- r ) {: ob:ptr r:n :}  ob r SC-OUT *    T-GET ;
+: SC-OUT-LV ( ptr r n -- r ) {: ob:ptr r:n :}  ob r SC-OUT * 1+ T-GET ;
 
 \ one output row: write its two mean-scaled seed cotangents, return its NLL
-: SC-SEED-ROW ( ptr a n -- r ) {: ob:ptr r:n :}
+: SC-SEED-ROW ( ptr r n -- r ) {: ob:ptr r:n :}
    ob r SC-OUT-MU {: mu:r :}
    ob r SC-OUT-LV {: lv:r :}
    SC-Y r T-GET {: y:r :}
@@ -87,11 +87,11 @@ create SC-SEED SC-BATCH SC-OUT * cells allot
 \ batch-loop trainer (docs/batch-sequence-design.md section 5 BTC-3, Option C
 \ under Option D's layout) - the segment op (BTC-1) replaces the host loop, not
 \ this read.
-: SC-GRAD-ACCUM! ( ptr a n n -- ) {: buf:ptr slot:n len:n :}
+: SC-GRAD-ACCUM! ( ptr r n n -- ) {: buf:ptr slot:n len:n :}
    buf  slot SC-GRAD-AT  len  T-ADD! ;
 
 \ SGD one parameter buffer in place from its backward gradient node
-: SC-UPD ( ptr a n n -- ) {: wp:ptr s:n len:n :}
+: SC-UPD ( ptr r n n -- ) {: wp:ptr s:n len:n :}
    SC-LR  wp  s SC-GRAD-AT  len  T-SGD! ;
 
 : SC-UPDATE-PARAMS ( -- )
