@@ -130,7 +130,7 @@ public
 private
 
 \ ---- save: build the image from the registered segments -----------------------
-: TSC-PUT-SEG ( ptr a n -- ) {: base:ptr cnt:n :}
+: TSC-PUT-SEG ( ptr n n -- ) {: base:ptr cnt:n :}
    cnt 0 ?do
       base i cells + @  TSC-CUR @ TSC-CELL!
       TSC-CUR @ 1+ TSC-CUR !
@@ -166,7 +166,7 @@ private
    ncells TSC-TOTAL @ <> if E-TSC-SHAPE throw then ;                     \ wrong shape (intact file)
 
 \ ---- restore: copy the validated payload back into the registered segments -----
-: TSC-GET-SEG ( ptr a n -- ) {: base:ptr cnt:n :}
+: TSC-GET-SEG ( ptr n n -- ) {: base:ptr cnt:n :}
    cnt 0 ?do
       TSC-CUR @ TSC-CELL@  base i cells + !
       TSC-CUR @ 1+ TSC-CUR !
