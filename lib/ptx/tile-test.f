@@ -5,6 +5,14 @@
 \ The element type f32, extent token extent-n, and block-256 instantiate the
 \ polymorphic operation signatures in lib/ptx/tile.f; the mask token threads from
 \ GRID-CTX through LOAD / SCALE / +. / -. / /. to STORE by unification.
+\
+\ The kernel locals stay BARE. Every type a kernel body binds - span, ptr,
+\ gridctx, idxctx, fanctx, tile - is a PARAMETRIC family, and a `{: x:fam<..> :}`
+\ annotation is fail-closed in the locals parser (docs/type-families.md 17.1; the
+\ capability is dot habu-typed-locals-for-b06b6707). A single-letter annotation
+\ such as `x:a` is not a substitute: it DECLARES a fresh quantifier `a` for this
+\ word, which the body then specializes to ptr - a false parametricity claim the
+\ checker rejects with E-NONPARAMETRIC-EFFECT.
 
 require lib/ptx/test-prelude.f
 require test/checker-assert.f
@@ -47,26 +55,26 @@ KERNEL: ONCE-SPAN ( span<space-global-once,f32,extent-n> -- )  GRID: ceil-n-256
    x g STORE-ONCE ;
 
 KERNEL: FANIN-PTRS ( ptr<space-global,f32> ptr<space-global,f32> -- )  GRID: ceil-n-256
-   {: x:a y:b :}
-   x FANIN-CTX {: g:c :}
+   {: x y :}                  \ typed-local-lint: allow-bare-local - parametric kernel type
+   x FANIN-CTX {: g :}        \ typed-local-lint: allow-bare-local - parametric kernel type
    x g FANIN-LOAD
    y g FANIN-SCATTER-ADD ;
 
 KERNEL: INDEX-GATHER ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> span<space-global,f32,extent-i> -- )  GRID: ceil-n-256
-   {: idx:a data:b out:c :}
-   idx data INDEX-CTX {: g:d :}
+   {: idx data out :}             \ typed-local-lint: allow-bare-local - parametric kernel type
+   idx data INDEX-CTX {: g :}     \ typed-local-lint: allow-bare-local - parametric kernel type
    idx data g INDEX-LOAD
    out g INDEX-DENSE-STORE ;
 
 KERNEL: INDEX-SCATTER ( span<space-global,u32,extent-i> span<space-global,f32,extent-i> span<space-global,f32,extent-d> -- )  GRID: ceil-n-256
-   {: idx:a vals:b out:c :}
-   idx out INDEX-CTX {: g:d :}
+   {: idx vals out :}             \ typed-local-lint: allow-bare-local - parametric kernel type
+   idx out INDEX-CTX {: g :}      \ typed-local-lint: allow-bare-local - parametric kernel type
    vals g INDEX-DENSE-LOAD
    idx out g INDEX-SCATTER-ADD ;
 
 KERNEL: INDEX-UNIQUE ( span<space-global,u32,extent-i> span<space-global,f32,extent-i> span<space-global,f32,extent-d> -- )  GRID: ceil-n-256
-   {: idx:a vals:b out:c :}
-   idx out UNIQUE-INDEX-CTX {: g:d :}
+   {: idx vals out :}                    \ typed-local-lint: allow-bare-local - parametric kernel type
+   idx out UNIQUE-INDEX-CTX {: g :}      \ typed-local-lint: allow-bare-local - parametric kernel type
    vals g UNIQUE-INDEX-DENSE-LOAD
    idx out g INDEX-STORE ;
 
@@ -91,14 +99,14 @@ s" PTX-GOOD-FMA-MASK {: s a :} s GRID-CTX {: g :} a s g LOAD s g LOAD FMA." CHEC
 s" PTX-BAD-FMA-MASK {: s a :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} a s g1 LOAD s g2 LOAD FMA." PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
 s" PTX-GOOD-SCATTER-ADD {: s :} s GRID-CTX {: g :} s g LOAD s g SCATTER-ADD" CHECK! -1 T= \ typed-local-lint: allow-bare-local
 s" PTX-BAD-SCATTER-ADD-MASK {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s g2 SCATTER-ADD" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
-s" PTX-GOOD-FANIN ( ptr<space-global,f32> ptr<space-global,f32> -- ) {: p:a q:b :} p FANIN-CTX {: g:c :} p g FANIN-LOAD q g FANIN-SCATTER-ADD" CHECK! -1 T=
-s" PTX-BAD-FANIN-WITH-GRID ( ptr<space-global,f32> span<space-global,f32,extent-n> -- ) {: p:a s:b :} s GRID-CTX {: g:c :} p g FANIN-LOAD drop" PTX-CHECK-REJECTS
-s" PTX-BAD-LOAD-WITH-FANIN ( ptr<space-global,f32> span<space-global,f32,extent-n> -- ) {: p:a s:b :} p FANIN-CTX {: g:c :} s g LOAD drop" PTX-CHECK-REJECTS
-s" PTX-GOOD-INDEX ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> -- ) {: ix:a xs:b :} ix xs INDEX-CTX {: g:c :} ix xs g INDEX-LOAD ix xs g INDEX-SCATTER-ADD" CHECK! -1 T=
-s" PTX-GOOD-INDEX-DENSE ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> span<space-global,f32,extent-i> -- ) {: ix:a xs:b ys:c :} ix xs INDEX-CTX {: g:d :} ix xs g INDEX-LOAD ys g INDEX-DENSE-STORE" CHECK! -1 T=
-s" PTX-GOOD-INDEX-UNIQUE ( span<space-global,u32,extent-i> span<space-global,f32,extent-i> span<space-global,f32,extent-d> -- ) {: ix:a vals:b out:c :} ix out UNIQUE-INDEX-CTX {: g:d :} vals g UNIQUE-INDEX-DENSE-LOAD ix out g INDEX-STORE" CHECK! -1 T=
-s" PTX-BAD-INDEX-WRONG-DATA ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> span<space-global,f32,extent-e> -- ) {: ix:a xs:b ys:c :} ix xs INDEX-CTX {: g:d :} ix ys g INDEX-LOAD drop" PTX-CHECK-REJECTS
-s" PTX-BAD-INDEX-WRONG-DENSE ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> span<space-global,f32,extent-j> -- ) {: ix:a xs:b ys:c :} ix xs INDEX-CTX {: g:d :} ys g INDEX-DENSE-LOAD drop" PTX-CHECK-REJECTS
+s" PTX-GOOD-FANIN ( ptr<space-global,f32> ptr<space-global,f32> -- ) {: p q :} p FANIN-CTX {: g :} p g FANIN-LOAD q g FANIN-SCATTER-ADD" CHECK! -1 T= \ typed-local-lint: allow-bare-local - parametric kernel type
+s" PTX-BAD-FANIN-WITH-GRID ( ptr<space-global,f32> span<space-global,f32,extent-n> -- ) {: p s :} s GRID-CTX {: g :} p g FANIN-LOAD drop" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local - parametric kernel type
+s" PTX-BAD-LOAD-WITH-FANIN ( ptr<space-global,f32> span<space-global,f32,extent-n> -- ) {: p s :} p FANIN-CTX {: g :} s g LOAD drop" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local - parametric kernel type
+s" PTX-GOOD-INDEX ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> -- ) {: ix xs :} ix xs INDEX-CTX {: g :} ix xs g INDEX-LOAD ix xs g INDEX-SCATTER-ADD" CHECK! -1 T= \ typed-local-lint: allow-bare-local - parametric kernel type
+s" PTX-GOOD-INDEX-DENSE ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> span<space-global,f32,extent-i> -- ) {: ix xs ys :} ix xs INDEX-CTX {: g :} ix xs g INDEX-LOAD ys g INDEX-DENSE-STORE" CHECK! -1 T= \ typed-local-lint: allow-bare-local - parametric kernel type
+s" PTX-GOOD-INDEX-UNIQUE ( span<space-global,u32,extent-i> span<space-global,f32,extent-i> span<space-global,f32,extent-d> -- ) {: ix vals out :} ix out UNIQUE-INDEX-CTX {: g :} vals g UNIQUE-INDEX-DENSE-LOAD ix out g INDEX-STORE" CHECK! -1 T= \ typed-local-lint: allow-bare-local - parametric kernel type
+s" PTX-BAD-INDEX-WRONG-DATA ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> span<space-global,f32,extent-e> -- ) {: ix xs ys :} ix xs INDEX-CTX {: g :} ix ys g INDEX-LOAD drop" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local - parametric kernel type
+s" PTX-BAD-INDEX-WRONG-DENSE ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> span<space-global,f32,extent-j> -- ) {: ix xs ys :} ix xs INDEX-CTX {: g :} ys g INDEX-DENSE-LOAD drop" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local - parametric kernel type
 s" PTX-BAD-INDEX-STORE-NONUNIQUE ( tile<f32,block-256,mask-live> span<space-global,u32,extent-i> span<space-global,f32,extent-d> idxctx<block-256,extent-i,extent-d,mask-live> -- ) INDEX-STORE" PTX-CHECK-REJECTS
 s" PTX-BAD-INDEX-SCATTER-UNIQUE ( tile<f32,block-256,mask-live> span<space-global,u32,extent-i> span<space-global,f32,extent-d> uniqidxctx<block-256,extent-i,extent-d,mask-live> -- ) INDEX-SCATTER-ADD" PTX-CHECK-REJECTS
 s" PTX-GOOD-ONCE {: s :} s GRID-CTX-ONCE {: g :} s g LOAD-ONCE s g STORE-ONCE" CHECK! -1 T= \ typed-local-lint: allow-bare-local

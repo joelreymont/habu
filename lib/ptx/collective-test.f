@@ -5,6 +5,14 @@
 \ row context `c` is valid for both spans; the mask token threads from ROW-LOAD
 \ through PTX:B-/EXP./BLOCK-SUM/PTX:B/ to ROW-STORE by unification. A reject would emit a
 \ diagnostic and fail the load.
+\
+\ The kernel locals stay BARE. Every type a kernel body binds - matrix, rowidx,
+\ span, rowctx, tile - is a PARAMETRIC family, and a `{: x:fam<..> :}` annotation
+\ is fail-closed in the locals parser (docs/type-families.md 17.1; the capability
+\ is dot habu-typed-locals-for-b06b6707). A single-letter annotation such as `x:a`
+\ is not a substitute: it DECLARES a fresh quantifier `a` for this word, which the
+\ body then specializes to matrix - a false parametricity claim the checker
+\ rejects with E-NONPARAMETRIC-EFFECT.
 
 require lib/ptx/test-prelude.f
 require test/checker-assert.f
@@ -40,26 +48,26 @@ KERNEL: MAX-SELECT-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<spa
    out r ROW-SPAN c ROW-STORE ;
 
 KERNEL: SUM-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
-   {: in:a out:b :}
-   ROW            {: r:c :}
-   in r ROW-SPAN  {: xs:d :}
-   xs ROW-CTX     {: ctx:e :}
+   {: in out :}                 \ typed-local-lint: allow-bare-local - parametric kernel type
+   ROW            {: r :}       \ typed-local-lint: allow-bare-local - parametric kernel type
+   in r ROW-SPAN  {: xs :}      \ typed-local-lint: allow-bare-local - parametric kernel type
+   xs ROW-CTX     {: ctx :}     \ typed-local-lint: allow-bare-local - parametric kernel type
    xs ctx ROW-LOAD BLOCK-SUM BROADCAST
    out r ROW-SPAN ctx ROW-STORE ;
 
 KERNEL: ROW-SCATTER-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
-   {: in:a out:b :}
-   ROW            {: r:c :}
-   in r ROW-SPAN  {: xs:d :}
-   xs ROW-CTX     {: ctx:e :}
+   {: in out :}                 \ typed-local-lint: allow-bare-local - parametric kernel type
+   ROW            {: r :}       \ typed-local-lint: allow-bare-local - parametric kernel type
+   in r ROW-SPAN  {: xs :}      \ typed-local-lint: allow-bare-local - parametric kernel type
+   xs ROW-CTX     {: ctx :}     \ typed-local-lint: allow-bare-local - parametric kernel type
    xs ctx ROW-LOAD
    out r ROW-SPAN ctx ROW-SCATTER-ADD ;
 
 KERNEL: ROW-ONCE-ROWS ( matrix<space-global-once,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
-   {: in:a :}
-   ROW                  {: r:b :}
-   in r ROW-SPAN-ONCE   {: xs:c :}
-   xs ROW-CTX-ONCE      {: ctx:d :}
+   {: in :}                        \ typed-local-lint: allow-bare-local - parametric kernel type
+   ROW                  {: r :}    \ typed-local-lint: allow-bare-local - parametric kernel type
+   in r ROW-SPAN-ONCE   {: xs :}   \ typed-local-lint: allow-bare-local - parametric kernel type
+   xs ROW-CTX-ONCE      {: ctx :}  \ typed-local-lint: allow-bare-local - parametric kernel type
    xs ctx ROW-LOAD-ONCE
    xs ctx ROW-STORE-ONCE ;
 
@@ -130,10 +138,10 @@ KERNEL: ROPE-ROWS-BWD ( matrix<space-global,f32,extent-r,extent-c>  matrix<space
 SMEM-BYTES 4096 T=
 
 KERNEL: SUM-ROWS-1024 ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
-   {: in:a out:b :}
-   ROW            {: r:c :}
-   in r ROW-SPAN  {: xs:d :}
-   xs ROW-CTX     {: ctx:e :}
+   {: in out :}                 \ typed-local-lint: allow-bare-local - parametric kernel type
+   ROW            {: r :}       \ typed-local-lint: allow-bare-local - parametric kernel type
+   in r ROW-SPAN  {: xs :}      \ typed-local-lint: allow-bare-local - parametric kernel type
+   xs ROW-CTX     {: ctx :}     \ typed-local-lint: allow-bare-local - parametric kernel type
    xs ctx ROW-LOAD BLOCK-SUM BROADCAST
    out r ROW-SPAN ctx ROW-STORE ;
 
