@@ -89,15 +89,31 @@ TRUSTED: SINK4 ( a b c d [ n n n n -- ] -- )
 \ wrapper REPACKAGES register operands into a NEW register-phantom family whose
 \ every type argument is PROJECTED from the operands — no fresh var is minted
 \ here, so the fresh-mask CONTEXT mints (GRID-CTX / ROW-CTX / …) stay TRUSTED.
-\ Two soundness layers hold forging no easier than a per-op TRUSTED: row:
-\   (1) the combinator's declared types PIN the projection, so a wrapper cannot
-\       reroute an operand argument — an element<->block relabel REJECTS by
-\       unification, exactly as REP2's shared `a` rejects a cross-family relabel;
-\   (2) the checked-mint output-provenance seal (src/core/checker.f NP-MINT-CHECK)
-\       REJECTS a `:` wrapper that declares an input-unbound output type variable,
-\       so the register<->phantom mint cannot leak a free-typed phantom into
-\       checked code. The a<->n from-register coercion inside `execute` is the
-\       one concentrated trusted boundary, as with REP*/SINK*.
+\ ONE layer holds forging no easier than a per-op TRUSTED: row: the combinator's
+\ declared types PIN the projection, so a wrapper cannot reroute an operand
+\ argument — an element<->block relabel REJECTS by unification, exactly as REP2's
+\ shared `a` rejects a cross-family relabel. The a<->n from-register coercion
+\ inside `execute` is the one concentrated trusted boundary, as with REP*/SINK*.
+\
+\ This comment used to name the checked-mint seal (src/core/checker.f
+\ NP-MINT-CHECK) as a SECOND layer here. It is not, and saying so produced four
+\ negative fixtures that rejected for the wrong reason. Measured through the
+\ candidate checker (lib/ptx/mint-neg-test.f carries the derivation and the
+\ evidence): because every argument of the declared output above is projected
+\ from an operand, a wrapper's output argument always resolves either to another
+\ declared quantifier — the ALIASING clause rejects — or to the concrete type the
+\ operand pinned — the SPECIALIZATION clause rejects. Both run before the mint
+\ clause and leave it unreached, so NO wrapper over these three combinators can
+\ reach the seal. Sourcing a context from GRID-CTX / ROW-CTX does hand the block
+\ position a genuinely fresh variable, but the same row's `fresh-mask-live`
+\ argument is generative — a distinct nominal per occurrence, unnameable in any
+\ declaration — and specializes a declared quantifier first.
+\
+\ The seal's real reach is a checked `:` wrapper over a TRUSTED: row whose OWN
+\ declared output introduces an input-unbound single-cell type variable —
+\ ACC-ZERO, ROW, BROADCAST and the fresh-mask CONTEXT mints. That is why those
+\ rows cannot be rewritten as checked callers, and it is a fact about them, not
+\ about the combinators here.
 \ MINT-LOAD ( span<s,t,e> gridctx<b,e,m> [ n n -- n ] -- tile<t,b,m> ) : the
 \ masked coalesced grid load — element from the span, block+mask from the ctx
 \ (LOAD / LOAD-ONCE, space-generic over `s`).
