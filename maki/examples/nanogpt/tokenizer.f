@@ -86,15 +86,15 @@ private
 \ write; TOK-ENC-WRITE then stores the proven ids as float cells.
 : TOK-ENC-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do  a i + c@ TOK-ID drop  loop ;
-: TOK-ENC-WRITE ( ptr u8 n  ptr a -- ) {: a:ptr u:n d:ptr :}
+: TOK-ENC-WRITE ( ptr u8 n  ptr r -- ) {: a:ptr u:n d:ptr :}
    u 0 ?do  a i + c@ TOK-ID s>f  d i T-SET  loop ;
 
 \ Decode is two passes so a rejected cell leaves the destination untouched:
 \ TOK-DEC-CHECK proves every stored cell is a finite, exactly-integral, in-vocab id
 \ (E-TOK-RANGE) via TOK-CELL>ID + TOK-CHAR before any write; TOK-DEC-WRITE writes bytes.
-: TOK-DEC-CHECK ( ptr a n -- ) {: ids:ptr u:n :}
+: TOK-DEC-CHECK ( ptr r n -- ) {: ids:ptr u:n :}
    u 0 ?do  ids i T-GET TOK-CELL>ID TOK-CHAR drop  loop ;
-: TOK-DEC-WRITE ( ptr a n  ptr u8 -- ) {: ids:ptr u:n d:ptr :}
+: TOK-DEC-WRITE ( ptr r n  ptr u8 -- ) {: ids:ptr u:n d:ptr :}
    u 0 ?do  ids i T-GET TOK-CELL>ID TOK-CHAR  d i + c!  loop ;
 
 public
@@ -121,7 +121,7 @@ public
 \ capacity and a dst too small (E-TOK-CAP) before the loop, and a byte absent from
 \ the vocab (E-TOK-RANGE). Validates every source byte before storing any id, so a
 \ rejected call leaves the destination byte-identical to its pre-call contents.
-: TOK-ENCODE ( ptr u8 n ptr a n -- n ) {: a:ptr u:n d:ptr cap:n :}
+: TOK-ENCODE ( ptr u8 n ptr r n -- n ) {: a:ptr u:n d:ptr cap:n :}
    TOK-READY
    u cap TOK-BOUNDS
    a u TOK-ENC-CHECK
@@ -134,7 +134,7 @@ public
 \ in [0,vocab) (E-TOK-RANGE) - NaN, infinite, fractional, and out-of-range are rejected.
 \ Validates every cell before writing any byte, so a rejected call leaves the
 \ destination byte-identical to its pre-call contents.
-: TOK-DECODE ( ptr a n ptr u8 n -- n ) {: ids:ptr u:n d:ptr cap:n :}
+: TOK-DECODE ( ptr r n ptr u8 n -- n ) {: ids:ptr u:n d:ptr cap:n :}
    TOK-READY
    u cap TOK-BOUNDS
    ids u TOK-DEC-CHECK
