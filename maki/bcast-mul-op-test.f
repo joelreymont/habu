@@ -28,7 +28,7 @@ require maki/fusion-plan.f
 
 package MAKI
 
-: BMO>I ( ptr a n -- n )  T-GET 0.5 f+ f>s ;   \ read an output cell as nearest int
+: BMO>I ( ptr r n -- n )  T-GET 0.5 f+ f>s ;   \ read an output cell as nearest int
 
 \ ---- shape-guard fixtures (EW-SHAPE-CHECK with the BCAST-MUL broadcast class) ----
 \ A 1xC param row-broadcasts over AxC data (legal); a 2xC param is not a row broadcast.
