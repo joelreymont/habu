@@ -121,7 +121,7 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
 : ET-C1 ( -- r )  1.0 ET-B1P @ f- ;   \ 1 - beta1^t
 : ET-C2 ( -- r )  1.0 ET-B2P @ f- ;   \ 1 - beta2^t
 
-: ET-Z ( ptr a n -- )  0.0 -rot T-FILL ;
+: ET-Z ( ptr r n -- )  0.0 -rot T-FILL ;
 
 \ ---- deterministic init: data via the LCG, params via the init-role policy ----
 : ET-INIT ( -- )
@@ -170,7 +170,7 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
    5 SC-GRAD-AT ET-WN T-NORM2 f+ ;
 
 \ Adam-update one bound parameter in place from its slot's backward gradient node
-: ET-UPD ( r n ptr a ptr a ptr a n -- ) {: lr:r slot:n wp:ptr mp:ptr vp:ptr len:n :}
+: ET-UPD ( r n ptr r ptr r ptr r n -- ) {: lr:r slot:n wp:ptr mp:ptr vp:ptr len:n :}
    lr ET-BETA1 ET-BETA2 ET-EPS ET-C1 ET-C2
    wp  slot SC-GRAD-AT  mp vp len  OPTIM:TT-ADAM! ;
 
