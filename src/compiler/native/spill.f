@@ -1019,6 +1019,14 @@ public
    c b A64IR:FPR-TYPE 0 BND-FPR !
    BOUND-YES BND-MODE ! ;
 
+\ Whether a binding is live, for a caller cleaning up after a refused run. See
+\ src/compiler/native/select.f BOUND? for why each pass answers for itself. This
+\ pass needs one for a reason the other three do not have: whether its binding was
+\ ever spent depends on whether the walk decided a spill, and a caller cleaning up
+\ after a refusal cannot know how far the run got.
+: BOUND? ( -- bool )
+   BND-MODE @ BOUND-YES = ;
+
 \ Give up a binding without rewriting against it.
 : RELEASE ( -- )
    BND-TAKE ;

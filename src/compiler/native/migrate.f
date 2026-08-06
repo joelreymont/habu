@@ -77,6 +77,7 @@ require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/inline.f
 require src/compiler/native/select.f
+require src/compiler/native/spill.f
 require src/compiler/native/emit.f
 require src/compiler/native/publish.f
 
@@ -211,6 +212,7 @@ variable M-CALLS
 variable M-OPEN                      \ a migration is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
+variable M-SPILLS                    \ frame slots this definition proved it needs
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -483,13 +485,24 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ is not there - so the contract is read off the pass that built the module.
 \ CALLS-CK below keeps the other direction, which is still the caller's to get
 \ wrong: a migration entered as one that calls nothing may not have staged one.
+\
+\ AND HOW MUCH FRAME IT TAKES, which is the one thing stated here that is nobody's
+\ declaration. How many values a definition cannot keep in its registers is
+\ decided by the allocator and by nothing else, so M-SPILLS starts at zero and is
+\ filled in by EMITTED below out of what the walk proved. Zero is what the four
+\ unframed forms declared before this file counted anything, so a definition whose
+\ values all fit is compiled under exactly the contract it always had.
 : ROUTINE ( -- A64EFF:routine )
    NELAB:TAIL-CALLED?  NELAB:TAIL-ENTRY@ NPUB:IN-REGION?  and if
-      NELAB:CALLS-BACK? if 0 M-REGS @ M-IN @ M-OUT @ NABI:TAIL-CALLING exit then
-      0 M-REGS @ M-IN @ M-OUT @ NABI:TAIL exit
+      NELAB:CALLS-BACK? if
+         0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-CALLING-FRAMED exit
+      then
+      0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-FRAMED exit
    then
-   NELAB:CALLED? if 0 M-REGS @ M-IN @ M-OUT @ NABI:CALL exit then
-   0 M-REGS @ M-IN @ M-OUT @ NABI:LEAF ;
+   NELAB:CALLED? if
+      0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:CALL-FRAMED exit
+   then
+   0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:LEAF-FRAMED ;
 
 : CALLS-CK ( -- )
    M-CALLS @ 0<> if exit then
@@ -502,14 +515,21 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ The recorded length is read off the LIVE builder, before the freeze consumes
 \ the handle, because selection is handed the text the unit kept and refuses it
 \ unless it digests to the source the module was compiled from.
-: SELECTED ( -- IR-BUILD:module )
-   TEXT-LEN {: len:n :}
+\
+\ THE LOWERING PASS IS BOUND HERE TOO, because a module's symbols are its own
+\ ordinals and this is the only moment the machine dialect can be asked them: the
+\ module a rewrite would read is the one selection is about to write. A migration
+\ whose walk decides no spill gives that binding straight back, which is what the
+\ RELEASE in EMITTED below is.
+: SELECTED ( n -- IR-BUILD:module )
+   {: len:n :}
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
    CC ab A64EMIT:BIND-DIALECT
+   CC ab A64SPILL:BIND-DIALECT
    CC m ab TXT len ROUTINE A64SEL:SELECT ;
 
 \ The emission is made against the slot the publication seam is about to claim,
@@ -519,12 +539,69 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ a condition, and the seam holds it against the slot it really claims - which
 \ turns "nothing moved the code pointer between the emission and the
 \ publication" from an assumption into a refusal.
-: EMITTED ( -- )
-   SELECTED {: m:IR-BUILD:module :}
-   CC m ROUTINE A64RA:ALLOCATE
+: EMIT-AT ( IR-BUILD:module -- )
+   {: m:IR-BUILD:module :}
    m ROUTINE A64RAV:ACCEPT
    NPUB:NEXT-SLOT A64EMIT:PLACE-AT
    CC m A64EMIT:EMIT ;
+
+\ The module in which the sealed spill decisions are real stores and loads. The
+\ emitter's binding is given back first because it was taken over the builder
+\ selection wrote into, and everything from here on reads the builder this makes.
+\ The reserve the rewrite emits is sized from A64RA:FRAME - the frame the walk
+\ just proved this routine needs - which is the same number ROUTINE declares from
+\ the same count, so the module and its contract agree by construction rather
+\ than by the caller getting a guess right.
+: LOWERED ( IR-BUILD:module n -- IR-BUILD:module )
+   {: m:IR-BUILD:module len:n :}
+   A64EMIT:RELEASE
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb A64RA:BIND-DIALECT
+   CC nb A64RAV:BIND-DIALECT
+   CC nb A64EMIT:BIND-DIALECT
+   CC m nb TXT len A64SPILL:REWRITE ;
+
+\ ---- the two stages, or the four ---------------------------------------------
+\ A definition whose values all fit its registers is selected, allocated,
+\ accepted and emitted - one walk, exactly as before this file knew what a spill
+\ was.
+\
+\ ONE WHOSE VALUES DO NOT FIT IS NO LONGER REFUSED. The allocator does not hold a
+\ walk to the frame its contract arrived with any more; it hands out the slots the
+\ program needs and answers how many (habu-derive-a-routine-84ed36b6). So the
+\ count is read off the walk, the contract above declares exactly it, and two
+\ stages go in between: build the module those decisions are real operations in,
+\ and allocate THAT - because the decisions the first walk sealed are not an
+\ assignment for the module it read. Skipping either does not quietly emit the
+\ wrong program; the validator refuses it.
+\
+\ WHAT THE SECOND WALK DECIDES IS NOTHING, because it reads a module whose
+\ operations already are the ones the first walk assumed. It is still run, because
+\ the claims the emitter reads have to be claims about the module being emitted.
+\
+\ A ROUTINE THAT CALLS STILL CANNOT SPILL, and it is refused rather than
+\ mis-emitted. Its frame is built by the SELECTOR - src/compiler/native/select.f
+\ PROLOGUE emits the reserve and the link save, sized from the contract selection
+\ was handed - and selection has already happened by the time the count is known.
+\ The lowering pass keeps that prologue rather than resizing it
+\ (src/compiler/native/spill.f ONCE-CK), so the module reserves the frame a
+\ spill-free routine needed while its contract declares the one the spills need,
+\ and src/compiler/native/regalloc-verify.f refuses the difference by name. Making
+\ a calling routine spill starts at the selector and is dot
+\ habu-exercise-a-call-dda45093.
+: EMITTED ( -- )
+   TEXT-LEN {: len:n :}
+   len SELECTED {: m:IR-BUILD:module :}
+   CC m ROUTINE A64RA:ALLOCATE
+   A64RA:SPILLS M-SPILLS !
+   M-SPILLS @ 0= if
+      A64SPILL:RELEASE
+      m EMIT-AT
+      exit
+   then
+   m len LOWERED {: m1:IR-BUILD:module :}
+   CC m1 ROUTINE A64RA:ALLOCATE
+   m1 EMIT-AT ;
 
 \ ---- one migration -----------------------------------------------------------
 : WORK ( -- )
@@ -567,6 +644,7 @@ variable REC-OK                      \ the body staged so far is still one worth
 : RETURN-BINDINGS ( -- )
    A64SEL:BOUND? if A64SEL:RELEASE then
    A64RA:BOUND? if A64RA:RELEASE then
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
    A64EMIT:BOUND? if A64EMIT:RELEASE then ;
 
 : BODY ( IR-CTX:ctx -- )
@@ -604,7 +682,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
    in M-IN ! out M-OUT ! regs M-REGS !
-   0 M-DATA-U ! 0 M-CALLS ! ;
+   0 M-DATA-U ! 0 M-CALLS ! 0 M-SPILLS ! ;
 
 public
 
@@ -677,6 +755,15 @@ public
 
 : WID ( -- n )
    NAME-WID @ ;
+
+\ How many values the last migration could not keep in registers, and therefore
+\ how many slots its routine's frame holds. Zero for every definition that fits,
+\ which is nearly all of them. It is published because it is the only way to tell
+\ from outside that a migration took the lowering path at all: the code a spilling
+\ definition and a fitting one publish are both just code, and a test that only
+\ checked the answers could not tell which route produced them.
+: SPILLS ( -- n )
+   M-SPILLS @ ;
 
 private
 

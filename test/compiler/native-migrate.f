@@ -101,6 +101,63 @@ variable OLD-LEN
    s" and the interpreter enters it" T-LABEL
    s" 12 NMG-SQ" EV-N 144 T= ;
 
+\ ---- a word whose values do not all fit its registers -------------------------
+\ THE FIRST DEFINITION THE PRODUCTION ENTRY HAS COMPILED THROUGH THE SPILL
+\ LOWERING. Eight sums of the argument are computed before any of them is added
+\ up, so all eight are live at once, against a routine allowed four scratch
+\ registers. Five of them cannot be kept in a register and go to the frame.
+\
+\ IT USED TO BE REFUSED, AND NOT FOR A REASON ABOUT THE PROGRAM. The allocator
+\ was held to the frame its contract declared, migrate.f declared none, and so the
+\ first value that needed a slot ended the compilation with E-A64RA-PRESSURE. The
+\ frame is derived from what the walk needs now (habu-derive-a-routine-84ed36b6)
+\ and EMITTED puts A64SPILL:REWRITE between the allocation and the acceptance,
+\ which is what this case exists to hold.
+\
+\ WHY THE ANSWERS ARE THE PROOF AND NOT THE COMPILATION. A spilled value is one
+\ stored to a slot and read back later, and every way of getting that wrong -
+\ storing to the wrong slot, reloading before the store, reloading the slot
+\ another value went to, losing a store - leaves a routine that still compiles
+\ and answers something else. The eight terms are the argument plus one through
+\ eight, so the result is eight times the argument plus thirty-six: the two
+\ calls below pin those two numbers separately, which is to say they pin how many
+\ terms survived AND which ones. A dropped term, a doubled term or two terms
+\ confused with each other moves one of the answers.
+\
+\ AND THE SPILL COUNT IS ASSERTED BECAUSE THE ANSWERS ALONE CANNOT SEE IT. The
+\ same body compiled with registers to spare answers 116 too. NMIGRATE:SPILLS is
+\ what says this definition went through the lowering rather than round it, so a
+\ change that quietly stopped spilling fails here instead of passing for the
+\ wrong reason.
+: SPILL-SRC ( -- ptr u8 n )
+   s" : NMG-SPILL ( n -- n ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + + + + + + + + ;" ;
+
+4 constant SPILL-REGS
+
+: MIGRATE-SPILL ( -- )
+   SPILL-SRC 1 1 SPILL-REGS NMIGRATE:DEFINE ;
+
+: SPILL-CASE ( -- )
+   MIGRATE-SPILL
+
+   s" five values went to the frame, and the migration says so" T-LABEL
+   NMIGRATE:SPILLS 5 T=
+
+   s" the record points at the code the publication seam claimed" T-LABEL
+   s" NMG-SPILL" REC-START
+   s" NMG-SPILL" GLOBAL-WID NPUB:NEW-START T=
+
+   s" and its length is the chain's emission, not the engine's code" T-LABEL
+   s" NMG-SPILL" REC-LEN  s" NMG-SPILL" GLOBAL-WID NPUB:NEW-LEN T=
+
+   s" the interpreter enters it and every term survives its slot" T-LABEL
+   s" 0 NMG-SPILL" EV-N 36 T=
+   s" 10 NMG-SPILL" EV-N 116 T=
+
+   s" a definition compiled afterwards calls it" T-LABEL
+   s" : NMG-SPILL-CALL ( n -- n ) NMG-SPILL ;" EV
+   s" 100 NMG-SPILL-CALL" EV-N 836 T= ;
+
 \ ---- one chain-compiled word calling another ---------------------------------
 \ THE FIRST TWO-WORD PROGRAM THE CHAIN HAS COMPILED. Both words are migrated:
 \ the callee first, so that it is a published record with an address of its own,
@@ -1425,6 +1482,7 @@ variable BACK-N
 : RUN ( -- )
    T-RESET
    MIGRATED-CASE
+   SPILL-CASE
    CALL-CASE
    DEEP-CASE
    INTEROP-CASE
