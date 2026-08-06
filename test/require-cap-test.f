@@ -44,7 +44,7 @@ variable EXITED?
 
 : FORGE$ ( -- ptr u8 n )  FORGE-BUF FORGE-U @ ;
 
-: FORGE-C ( c -- ) {: c:n :}
+: FORGE-C ( n -- ) {: c:n :}
    FORGE-U @ 1+ FORGE-CAP > if s" require-cap: forge overflow" 1 die then
    c FORGE-BUF FORGE-U @ + c!
    FORGE-U @ 1+ FORGE-U ! ;
@@ -54,13 +54,13 @@ variable EXITED?
    a FORGE-BUF FORGE-U @ + u BYTE-COPY
    FORGE-U @ u + FORGE-U ! ;
 
-: FORGE-LINE ( i -- ) {: i:n :}        \ one fresh require: "require p<a-z><a-z>"
+: FORGE-LINE ( n -- ) {: i:n :}        \ one fresh require: "require p<a-z><a-z>"
    s" require p" FORGE-APPEND
    $61 i 26 / +   FORGE-C
    $61 i 26 mod + FORGE-C
    10 FORGE-C ;
 
-: FORGE-GEN ( k -- ptr u8 n ) {: k:n :}
+: FORGE-GEN ( n -- ptr u8 n ) {: k:n :}
    0 FORGE-U !
    s" 0 REQUIRE-N ! 0 REQUIRE-BASE ! DISCOVERY-ON" FORGE-APPEND  10 FORGE-C
    0 begin dup k < while dup FORGE-LINE 1+ repeat drop
@@ -75,7 +75,7 @@ variable EXITED?
      timeout OF  0 RC-N !  0 EXITED? ! ENDOF
    ;MATCH ;
 
-: RUN-CHILD ( k -- )
+: RUN-CHILD ( n -- )
    FORGE-GEN
    OUT-BUF IO-CAP >LEN
    ERR-BUF IO-CAP >LEN
