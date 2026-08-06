@@ -409,6 +409,22 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
 : RECORD-END-PACKAGE ( -- )
    CHECKER-END-PACKAGE ;
 
+\ `using NAME` and `;using` are source events exactly like `package` and
+\ `;package`, and they were the one scope word this table never had a row for
+\ (dot habu-own-pkg-state-acf7086c). Without them a replayed file's own imports
+\ did nothing -- `using RB-SUPPLIER : RB-USE ( -- n ) WIDGET ;` loaded fine
+\ through the engine and was refused on replay with E-UNDEFINED for WIDGET --
+\ while the CALLER's imports stayed live over the whole replay instead. The
+\ checker owns the replay's using depth, so these two rows are the only thing
+\ that moves it.
+: RECORD-USING ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing using name" 74 die THEN
+   name nameu CHECKER-USING-PUSH ;
+
+: RECORD-END-USING ( -- )
+   CHECKER-USING-POP ;
+
 \ DEFTYPE NAME declares a value nominal (lib/type/deftype.f): a
 \ package-scoped arity-0 type family whose lowercase tail is the surface name
 \ folded (SERIAL -> serial) and whose converter pair >NAME ( n -- tail ) /
@@ -734,6 +750,8 @@ variable STG-START
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
    a u s" private" STR=CI IF RECORD-PRIVATE 0 0= EXIT THEN
    a u s" ;package" STR=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
+   a u s" using" STR=CI IF RECORD-USING 0 0= EXIT THEN
+   a u s" ;using" STR=CI IF RECORD-END-USING 0 0= EXIT THEN
    a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI IF RECORD-VALUE-RECORD 0 0= EXIT THEN

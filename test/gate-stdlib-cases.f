@@ -853,6 +853,10 @@ SUITE checker-verify-pkg-scope
    test/checker-verify-pkg-scope.f
 ;SUITE
 
+SUITE checker-replay-pkg-state
+   test/checker-replay-pkg-state.f
+;SUITE
+
 SUITE prim-link
    test/prim-link-test.f
 ;SUITE

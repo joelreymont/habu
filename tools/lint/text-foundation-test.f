@@ -895,10 +895,13 @@ variable REG-I
    \ which took the four `owner-wid-preflight?` / `owner-wid-public?` /
    \ `owner-wid-private?` / `owner-wid?` axioms with it, and 341 before the bulk
    \ publication window (dot habu-publish-native-code-886e3ef9) added the three
-   \ trusted-only axioms `code-publish`, `callmap-set` and `xref-retarget`. A
+   \ trusted-only axioms `code-publish`, `callmap-set` and `xref-retarget`, and
+   \ 344 before the replay package-state window (dot habu-own-pkg-state-acf7086c)
+   \ added `CHECKER-USING-PUSH` and `CHECKER-USING-POP`, the two rows a replayed
+   \ source's own `using` and `;using` are driven through. A
    \ lexer that swallowed a row into a neighbouring string would drop the count,
    \ not raise it.
-   REG-COUNT 344 ASSERT=
+   REG-COUNT 346 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

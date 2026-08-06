@@ -534,6 +534,27 @@ variable CHECKER-PACKAGE-NEUTRAL
 : CHECKER-PACKAGE-NEUTRAL? ( -- bool )
    CHECKER-PACKAGE-NEUTRAL @ 0 <> ;
 
+\ The replay's own `using` depth, and the other half of "one effective package
+\ and using state" (dot habu-own-pkg-state-acf7086c). The package half above was
+\ already owned; the imports were not, and the two have to answer to the same
+\ authority or a replayed file resolves half in its own scope and half in its
+\ caller's.
+\
+\ Ordinary compilation reads the live depth from the engine's own DATA cell,
+\ which is right: the code really is being compiled inside whatever usings the
+\ engine has open. A replay is not. Its source is a FILE, and a file's imports
+\ are exactly the ones it declares -- `using` scope is file-local (docs/forth.md
+\ § Packages) -- so a neutral replay starts with none and collects its own from
+\ the source it replays. Before this, the caller's usings stayed live throughout,
+\ which both hid tokens the replayed file never imported behind
+\ E-USING-SHADOW-GLOBAL and left a `using` the file DID declare doing nothing.
+\
+\ It is declared here rather than beside the using mirror 5000 lines down because
+\ the verifier window (CHECKER-VERIFY-PKG-START) has to seed and restore it, and
+\ that word is defined long before the mirror.
+variable CHECKER-USE-OWNED-N
+0 CHECKER-USE-OWNED-N !
+
 \ The mirror above records parser state and is rollback-aware. It is authority
 \ only while the private verifier scope is active. Normal checking reads the
 \ engine's protected package record/WIDs/current target through PKG-LIVE-XT.
@@ -542,12 +563,19 @@ variable CHECKER-PACKAGE-NEUTRAL
 $78 constant CK-PKG-PUB-OFF
 $80 constant CK-PKG-PRI-OFF
 $90 constant CK-PKG-REC-OFF
+\ The engine's live `using` depth, the fourth engine cell this file mirrors. The
+\ using mirror further down is the main reader; the verifier window also seeds
+\ its owned depth from it, and that window is defined here, so the raw read lives
+\ with the other engine offsets rather than with the mirror.
+$9C08 constant CK-USE-DEPTH-OFF            \ = layout.f USE-DEPTH-CELL (DATA-relative); engine owns it
+: CK-USE-ENGINE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;
 7136 constant E-PKG-CONTEXT
 variable CHECKER-VERIFY-PKG-DEPTH
 0 CHECKER-VERIFY-PKG-DEPTH !
 create VPKG-NAME CHECKER-PACKAGE-CAP allot
 variable VPKG-U
 variable VPKG-MODE
+variable VPKG-USE-N   \ the owned using depth at verifier-window entry
 
 variable VPKG-I
 
@@ -569,12 +597,14 @@ variable VPKG-I
 : VPKG-SAVE ( ptr u8 n n -- ) {: a:ptr u:n mode:n :}
    a VPKG-NAME u VPKG-COPY
    u VPKG-U !
-   mode VPKG-MODE ! ;
+   mode VPKG-MODE !
+   CHECKER-USE-OWNED-N @ VPKG-USE-N ! ;
 
 : VPKG-RESTORE ( -- )
    VPKG-NAME CHECKER-PACKAGE-NAME VPKG-U @ VPKG-COPY
    VPKG-U @ CHECKER-PACKAGE-U !
-   VPKG-MODE @ CHECKER-PACKAGE-MODE ! ;
+   VPKG-MODE @ CHECKER-PACKAGE-MODE !
+   VPKG-USE-N @ CHECKER-USE-OWNED-N ! ;
 
 : CHECKER-PKG-MIRROR ( -- ptr u8 n n bool )
    CHECKER-PACKAGE-MODE @ {: mode:n :}
@@ -718,7 +748,17 @@ CHECKER-PKG-LIVE-DEFAULT
       livea liveu livemode mira miru mirmode VPKG-PROVE-INHERITED
    THEN
    mira miru mirmode VPKG-SAVE
-   1 CHECKER-VERIFY-PKG-DEPTH ! ;
+   1 CHECKER-VERIFY-PKG-DEPTH !
+   \ Seed the owned using depth the same way the package half is proved: a
+   \ neutral replay declares top level and therefore no imports, while an
+   \ inherited replay continues the caller's scope and keeps the caller's usings,
+   \ which is what this window did before it owned a depth at all. VPKG-SAVE
+   \ above has already recorded the entry value for VPKG-RESTORE.
+   CHECKER-PACKAGE-NEUTRAL? IF
+      0 CHECKER-USE-OWNED-N !
+   ELSE
+      CK-USE-ENGINE-DEPTH CHECKER-USE-OWNED-N !
+   THEN ;
 
 : CHECKER-VERIFY-PKG-DONE ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
@@ -5596,6 +5636,8 @@ PRIM: SCHEMA-ROOT-N@ PE-N PE-OUT PRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USING PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-USING-PUSH PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-USING-POP PRIM;
 PRIM: CHECKER-PUBLIC PRIM;
 PRIM: CHECKER-PRIVATE PRIM;
 PRIM: CHECKER-END-PACKAGE PRIM;
@@ -5728,14 +5770,21 @@ variable DFER-END
 \ C-USING before it increments the shared depth, and by verify-source likewise) records the
 \ name into the slot at the current depth; resolution reads names[0..depth).
 16 constant CK-USE-MAX                     \ = layout.f USE-MAX (concurrent usings)
-$9C08 constant CK-USE-DEPTH-OFF            \ = layout.f USE-DEPTH-CELL (DATA-relative); engine owns it
 create CK-USE-NAMES CK-USE-MAX CHECKER-PACKAGE-CAP * allot
 create CK-USE-LENS  CK-USE-MAX cells allot
 7140 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
 variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
 variable CK-USED-SLOT                      \ used-scan slot of that first match (-1 = none), for the shadow diagnostic
 
-: CK-USE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;   \ engine-owned live using depth (USE-DEPTH-CELL)
+\ The depth every read of the mirror is bounded by, from whichever authority owns
+\ the current scope: the replay's own count while the mirror is authority, and
+\ the engine's live cell otherwise. Both are counts into the SAME name table --
+\ a replay writes its imports into the slots above the depth it inherited and
+\ restores the depth on the way out, so the caller's rows are never overwritten
+\ while they are still reachable.
+: CK-USE-DEPTH ( -- n )
+   CHECKER-PKG-MIRROR-AUTHORITY? IF CHECKER-USE-OWNED-N @ EXIT THEN
+   CK-USE-ENGINE-DEPTH ;
 : CK-USE-SLOT ( n -- ptr u8 )  CHECKER-PACKAGE-CAP * CK-USE-NAMES + ;
 : CK-USE-LEN@ ( n -- n )  cells CK-USE-LENS + @ ;
 
@@ -5749,11 +5798,13 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
 \ terminate and never index past the mirror no matter what that read returns.
 \ Correctness then rests on the mirror's CONTENTS, not on the raw depth value:
 \ CHECKER-USING is the sole writer of the mirror and is only ever driven by the
-\ engine's C-USING for a real `using`, so an engine with no live using-scope
+\ engine's C-USING for a real `using` or by a replay's own `using` row, so an
+\ engine with no live using-scope
 \ leaves every scanned slot at its zero-initialised length and SYM-FIND matches
 \ nothing. On a using-capable engine the depth is always in [0,CK-USE-MAX] (C-USING
 \ dies on push overflow), so the cap never binds and the scan is exactly the live
-\ usings, unchanged.
+\ usings, unchanged. The owned depth is bounded by the same CK-USE-MAX at its own
+\ push, so the cap does not bind for a replay either.
 : CK-USE-SCAN-N ( -- n )
    CK-USE-DEPTH
    dup 0 < IF drop 0 EXIT THEN
@@ -5769,6 +5820,30 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
       1 +
    REPEAT drop
    u d cells CK-USE-LENS + ! ;
+
+\ --- the replay's own `using` boundary --------------------------------------
+\ Live compilation splits these two steps between the engine and the checker: the
+\ engine's C-USING calls CHECKER-USING to record the name and then increments its
+\ own depth cell, and every scope boundary restores that cell. A replay has no
+\ engine doing either half for it -- the source is text being read, not tokens
+\ being compiled -- so it takes both steps here, against the depth it owns.
+\
+\ These are only reachable while the mirror is authority. Calling them during
+\ ordinary compilation would move a counter nothing reads and leave the engine's
+\ real depth untouched, so they refuse rather than silently disagree with the
+\ engine.
+7142 constant E-USING-UNBALANCED           \ `;using` with no `using` open in a replay
+
+: CHECKER-USING-PUSH ( ptr u8 n -- )
+   CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-USING
+   CHECKER-USE-OWNED-N @ 1 + CHECKER-USE-OWNED-N ! ;
+
+: CHECKER-USING-POP ( -- )
+   CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-USE-OWNED-N @ {: d:n :}
+   d 0 <= IF E-USING-UNBALANCED throw THEN
+   d 1 - CHECKER-USE-OWNED-N ! ;
 
 \ Resolve a bare tail against the live used publics (searched only after the open-scope +
 \ global chain missed). A single distinct interned public sym wins; a second distinct sym
@@ -5860,7 +5935,20 @@ USHADOW-DIAG-DEFAULT
 \ engine's own "no package open" test, and it is also what an engine that
 \ predates the package band leaves at this offset — such an engine has no
 \ `using` either, so the mirror is empty and this probe is unreachable there.
+\
+\ The question is "which wordlist will the ENGINE bind this token in", and it has
+\ an answer only while the engine is the one compiling. During a replay it does
+\ not: the source is text being read, and the package it belongs to is the
+\ mirror's, not whatever the caller happens to have open. Answering from the
+\ caller's wordlists there let one process's package scope reach into another
+\ file's tokens -- a standalone `: RA-USE ( n -- n n ) dup ;` was refused with
+\ E-UNDEFINED for `dup` purely because the CALLING package defined its own DUP.
+\ So under mirror authority the engine claims nothing and the checker's own
+\ package tables, which the replay populates from the replayed source, are the
+\ whole answer for the open-package leg. The global leg is unaffected and stays
+\ live: wid 0 is not package scope, and a global is a global in either mode.
 : CK-OPEN-CLAIMS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CHECKER-PKG-MIRROR-AUTHORITY? IF RES-FALSE EXIT THEN
    data-base CK-PKG-PRI-OFF + @ {: pri:n :}
    pri 0= IF RES-FALSE EXIT THEN
    a u pri CK-WL-CLAIMS? IF RES-TRUE EXIT THEN
@@ -10522,7 +10610,8 @@ $78 constant RBF.PKGU-OFF
 $80 constant RBF.DFEREND-OFF
 $88 constant RBF.COORD-OFF
 $90 constant RBF.PKGNEU-OFF
-$98 constant RBF-REC
+$98 constant RBF.PKGUSE-OFF
+$A0 constant RBF-REC
 $8 constant RBF-REC-ALIGN
 0 constant RBF-REC-PTR-MASK
 
@@ -10551,6 +10640,7 @@ $8 constant RBF-REC-ALIGN
 : RBF.DFEREND ( ptr a -- ptr a ) RBF.DFEREND-OFF + ;
 : RBF.COORD ( ptr a -- ptr a ) RBF.COORD-OFF + ;
 : RBF.PKGNEU ( ptr a -- ptr a ) RBF.PKGNEU-OFF + ;
+: RBF.PKGUSE ( ptr a -- ptr a ) RBF.PKGUSE-OFF + ;
 
 RBF.UEND-OFF 0 cells CHECKER-LAYOUT=
 RBF.NEND-OFF 1 cells CHECKER-LAYOUT=
@@ -10571,7 +10661,8 @@ RBF.PKGU-OFF 15 cells CHECKER-LAYOUT=
 RBF.DFEREND-OFF 16 cells CHECKER-LAYOUT=
 RBF.COORD-OFF 17 cells CHECKER-LAYOUT=
 RBF.PKGNEU-OFF 18 cells CHECKER-LAYOUT=
-RBF-REC 19 cells CHECKER-LAYOUT=
+RBF.PKGUSE-OFF 19 cells CHECKER-LAYOUT=
+RBF-REC 20 cells CHECKER-LAYOUT=
 RBF-REC-ALIGN CELL CHECKER-LAYOUT=
 RBF-REC RBF-REC-ALIGN mod 0 CHECKER-LAYOUT=
 RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -10652,6 +10743,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-PACKAGE-MODE @ r RBF.PKGMODE !
    CHECKER-PACKAGE-U @ r RBF.PKGU !
    CHECKER-PACKAGE-NEUTRAL @ r RBF.PKGNEU !
+   CHECKER-USE-OWNED-N @ r RBF.PKGUSE !
    DFER-END @ r RBF.DFEREND !
    RBF-NO-COORDINATOR r RBF.COORD !
    CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
@@ -10686,6 +10778,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.PKGMODE @ CHECKER-PACKAGE-MODE !
    r RBF.PKGU @ CHECKER-PACKAGE-U !
    r RBF.PKGNEU @ CHECKER-PACKAGE-NEUTRAL !
+   r RBF.PKGUSE @ CHECKER-USE-OWNED-N !
    RBF-NAME-CUR CHECKER-PACKAGE-NAME r RBF.PKGU @ USIGS-COPY
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
@@ -10807,9 +10900,14 @@ TYPES-DEFAULTS
 \ frame RBF-PUSH pushed carries the caller's package mode, length, name bytes
 \ and neutral declaration, and RBF-POP restores all of them on the clean and
 \ the throwing path alike.
+\ Top level means no open package AND no imports: a standalone file starts with
+\ the global dictionary and whatever it goes on to declare for itself. RBF-PUSH
+\ has already recorded both halves, so the caller's package and the caller's
+\ usings come back at CHECKER-SCOPE-DONE on the clean and the throwing path.
 : CHECKER-SCOPE-START-NEUTRAL ( -- )
    RBF-PUSH
    CHECKER-END-PACKAGE
+   0 CHECKER-USE-OWNED-N !
    1 CHECKER-PACKAGE-NEUTRAL ! ;
 
 : CHECKER-SCOPE-FINALIZE ( -- )

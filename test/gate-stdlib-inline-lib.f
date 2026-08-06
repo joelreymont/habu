@@ -556,6 +556,7 @@ public
    s" test/effect-read-api-test.f" GSI-FORK-INCLUDE
    s" test/checker-assert-test.f" GSI-FORK-INCLUDE
    s" test/checker-verify-pkg-scope.f" GSI-FORK-INCLUDE
+   s" test/checker-replay-pkg-state.f" GSI-FORK-INCLUDE
    s" test/prim-link-test.f" GSI-FORK-INCLUDE
    s" test/verify-prim-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
