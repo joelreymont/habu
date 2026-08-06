@@ -428,3 +428,55 @@ i64 hc4_store_load(i64 cellp, i64 len) {
    for (i64 i = 0; i < len; i++) *cell = *cell + 3;
    return *cell;
 }
+
+/* ==========================================================================
+ * Corpus 5 - tools/codegen-compare-corpus5.f
+ *
+ * The tail-call corpus. Every row is one call, or two, placed where a compiler
+ * may or may not turn the last of them into a branch, so the reference column
+ * here says what clang -O2 does with the same six placements.
+ *
+ * THE TWO CALLEES ARE static AND THAT IS ALL THAT IS DONE TO THEM. Nothing
+ * forces or forbids inlining: whether clang copies c5_long into a row, calls
+ * it, or tail-branches to it IS the measurement, exactly as the head of this
+ * file says. They are the same arithmetic as the habu corpus's C5-LONG and
+ * C5-PAIR, on the same arguments.
+ *
+ * WHY C5-PAIR'S TWIN NEEDS AN ACCESSOR. The habu word leaves TWO values, and a
+ * C function returns one. The pair is computed once, the first of the two
+ * results is left in c5_pair_deep and the second is returned, and the harness
+ * reads the first back through hc5_pair_deep - the same discipline
+ * hc4_store_load and hc4_step_get already use for a row whose answer does not
+ * fit in a return value. Both columns record the same two values in the same
+ * order: the top of the habu stack first.
+ * ========================================================================== */
+
+/* The deeper of C5-PAIR's two results, left where the harness can read it. */
+static i64 c5_pair_deep;
+
+static i64 c5_long(i64 n) {
+   i64 a = n * 3 + (n ^ 5) + (n & 7);
+   return (a + a * 11) ^ 13;
+}
+
+static i64 c5_pair(i64 a, i64 b) {
+   i64 s = a * 3 + (b ^ 5);
+   c5_pair_deep = s;
+   return (s & 7) + ((s * 11) ^ 13);
+}
+
+i64 hc5_pair_deep(void) { return c5_pair_deep; }
+
+i64 hc5_tail_big(i64 n) { return c5_long(n); }
+
+i64 hc5_tail_work(i64 n) { return c5_long(n + 1); }
+
+i64 hc5_nontail(i64 n) { return c5_long(n) + 1; }
+
+i64 hc5_tail_mid(i64 n) { return c5_long(n); }
+
+i64 hc5_tail_chain(i64 n) { return hc5_tail_mid(n); }
+
+i64 hc5_tail_pair(i64 a, i64 b) { return c5_pair(a, b); }
+
+i64 hc5_tail_after(i64 n) { return c5_long(c5_long(n)); }

@@ -26,7 +26,7 @@ package CODEGEN-CORPORA
 
 private
 
-8 constant CORPUS-MAX             \ four are declared today; the store leaves room
+8 constant CORPUS-MAX             \ five are declared today; the store leaves room
 64 constant NAME-MAX              \ a selector name
 128 constant PATH-MAX             \ a repository-relative path
 

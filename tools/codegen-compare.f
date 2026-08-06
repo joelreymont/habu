@@ -11,7 +11,7 @@
 \       table from this measurement - and no other table. Use it when a
 \       deliberate compiler change has moved that corpus's numbers, and read the
 \       resulting diff before committing it. The corpus names are the ones each
-\       case file declares: corpus, corpus2, corpus3, corpus4.
+\       case file declares: corpus, corpus2, corpus3, corpus4, corpus5.
 \
 \   bin/hb --load tools/codegen-compare.f -- --update all
 \       The same for every corpus, in one run.
@@ -43,7 +43,7 @@
 \ had to type. A bare --update names the corpora it would have accepted and
 \ exits with the usage status, having written nothing.
 \
-\ FOUR CORPORA, FOUR TABLES, ONE RUN. tools/codegen-compare-corpus.f is the
+\ FIVE CORPORA, FIVE TABLES, ONE RUN. tools/codegen-compare-corpus.f is the
 \ original eleven words - one smallest honest example of each shape a code
 \ generator has to handle - tools/codegen-compare-corpus2.f is seven words taken
 \ from the places this system really spends its time,
@@ -52,7 +52,10 @@
 \ did not choose afterwards, and tools/codegen-compare-corpus4.f is twelve shapes
 \ chosen the other way round - each one picked because somebody had a reason to
 \ believe the new chain handles it WORSE than the engine's emitter, so that the
-\ suite does not consist only of rows its subject wins. They are separate files
+\ suite does not consist only of rows its subject wins - and
+\ tools/codegen-compare-corpus5.f is six shapes about one decision, a call in
+\ tail position, measured before either generator turns such a call into a
+\ branch. They are separate files
 \ with separate committed tables because each table is a pinned yardstick:
 \ adding a row to one would be a change to the artifact every compiler change is
 \ read against. Each declares itself in tools/codegen-compare-corpora.f, the

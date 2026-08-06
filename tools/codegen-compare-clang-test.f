@@ -41,6 +41,7 @@ require tools/codegen-compare-cases.f
 require tools/codegen-compare-cases2.f
 require tools/codegen-compare-cases3.f
 require tools/codegen-compare-cases4.f
+require tools/codegen-compare-cases5.f
 
 package CODEGEN-CLANG-TEST
 
@@ -227,11 +228,12 @@ variable DIR-U
 : REAL-OBJECT-CASES ( -- )
    CODEGEN-MACHO:LOAD
 
-   s" the real object carries every twin the four corpora name" T-LABEL
+   s" the real object carries every twin the five corpora name" T-LABEL
    s" hc1_add3" CODEGEN-MACHO:FIND 0 >= TTRUE
    s" hc2_t_res_walk" CODEGEN-MACHO:FIND 0 >= TTRUE
    s" hc3_t_rel_l2" CODEGEN-MACHO:FIND 0 >= TTRUE
    s" hc4_store_load" CODEGEN-MACHO:FIND 0 >= TTRUE
+   s" hc5_tail_big" CODEGEN-MACHO:FIND 0 >= TTRUE
    s" hf_i9" CODEGEN-MACHO:FIND 0 >= TTRUE
 
    s" every symbol is a positive whole number of arm64 instructions" T-LABEL
@@ -379,7 +381,10 @@ variable DIR-U
    11 CORPUS-REF-CASES
    CODEGEN-CASES4:RUN
    s" every row of the fourth corpus has a twin that answers what it answers"
-   13 CORPUS-REF-CASES ;
+   13 CORPUS-REF-CASES
+   CODEGEN-CASES5:RUN
+   s" every row of the fifth corpus has a twin that answers what it answers"
+   8 CORPUS-REF-CASES ;
 
 \ ---- an absent toolchain is a result -----------------------------------------
 \ Nothing here can uninstall clang, so what is checked is the shape of the

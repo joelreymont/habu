@@ -113,6 +113,7 @@ require tools/codegen-compare-cases.f
 require tools/codegen-compare-cases2.f
 require tools/codegen-compare-cases3.f
 require tools/codegen-compare-cases4.f
+require tools/codegen-compare-cases5.f
 require tools/codegen-compare-report.f
 require src/compiler/native/migrate.f
 
@@ -655,18 +656,20 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    loop ;
 
 : REGISTER-CASES ( -- )
-   s" four corpora are declared, in the order they are measured" T-LABEL
-   CODEGEN-CORPORA:COUNT 4 T=
+   s" five corpora are declared, in the order they are measured" T-LABEL
+   CODEGEN-CORPORA:COUNT 5 T=
    0 CODEGEN-CORPORA:NAME$ s" corpus" T$=
    1 CODEGEN-CORPORA:NAME$ s" corpus2" T$=
    2 CODEGEN-CORPORA:NAME$ s" corpus3" T$=
    3 CODEGEN-CORPORA:NAME$ s" corpus4" T$=
+   4 CODEGEN-CORPORA:NAME$ s" corpus5" T$=
 
    s" each declared name selects its own corpus" T-LABEL
    s" corpus" CODEGEN-CORPORA:FIND 0 T=
    s" corpus2" CODEGEN-CORPORA:FIND 1 T=
    s" corpus3" CODEGEN-CORPORA:FIND 2 T=
    s" corpus4" CODEGEN-CORPORA:FIND 3 T=
+   s" corpus5" CODEGEN-CORPORA:FIND 4 T=
 
    s" a name no corpus was declared under selects none" T-LABEL
    s" corpus9" CODEGEN-CORPORA:FIND -1 T=
@@ -1700,6 +1703,54 @@ private
    s" a fourth table missing a row is reported" T-LABEL
    s" CODEGEN-CORPUS4:TINY-CALLEE" MISSING-ROW-CK ;
 
+\ ---- the fifth corpus's premise, read off the emitted machine code ------------
+\ Every row of tools/codegen-compare-corpus5.f measures a call that is really
+\ emitted, and that rests on one claim: NEITHER generator copies either of the
+\ two callees. A byte count could be explained away; the instruction cannot.
+\
+\ WHAT IS ASSERTED HERE AND WHAT IS DELIBERATELY LEFT TO THE TABLE. The durable
+\ facts are here: both callees are past the engine's copy ceiling, the engine
+\ emits a real call in every row, each callee's own code calls nothing, and the
+\ CONTROL row keeps its call in both columns because a call with work after it
+\ can never become a tail branch. What the chain emits at a TAIL call is the
+\ thing this corpus exists to move, so it is pinned by
+\ test/compiler/codegen-chain-baseline5.txt - a committed number that a change
+\ re-pins deliberately - rather than frozen by an assertion here that the same
+\ change would have to delete.
+: REAL-RUN-CASES5 ( -- )
+   s" neither callee is one the engine will copy into its caller" T-LABEL
+   s" CODEGEN-CORPUS5:C5-LONG" WORD-BYTES INL-MAX FRAME-BYTES + > TTRUE
+   s" CODEGEN-CORPUS5:C5-PAIR" WORD-BYTES INL-MAX FRAME-BYTES + > TTRUE
+
+   s" and neither callee's own code calls anything" T-LABEL
+   s" CODEGEN-CORPUS5:C5-LONG" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS5:C5-PAIR" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS5:C5-LONG-N" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS5:C5-PAIR-N" BL-COUNT 0 T=
+
+   s" so the engine emits a real call in every row of the corpus" T-LABEL
+   s" CODEGEN-CORPUS5:TAIL-BIG" BL-COUNT 1 T=
+   s" CODEGEN-CORPUS5:TAIL-WORK" BL-COUNT 1 T=
+   s" CODEGEN-CORPUS5:NONTAIL" BL-COUNT 1 T=
+   s" CODEGEN-CORPUS5:TAIL-MID" BL-COUNT 1 T=
+   s" CODEGEN-CORPUS5:TAIL-CHAIN" BL-COUNT 1 T=
+   s" CODEGEN-CORPUS5:TAIL-PAIR" BL-COUNT 1 T=
+   s" CODEGEN-CORPUS5:TAIL-AFTER" BL-COUNT 2 T=
+
+   s" and the chain does too, in the one row whose call is not in tail position"
+   T-LABEL
+   s" CODEGEN-CORPUS5:NONTAIL-N" BL-COUNT 1 T=
+
+   s" the two rows with work in them are the two the engine spends most on"
+   T-LABEL
+   s" CODEGEN-CORPUS5:TAIL-WORK" WORD-BYTES
+   s" CODEGEN-CORPUS5:TAIL-BIG" WORD-BYTES > TTRUE
+   s" CODEGEN-CORPUS5:NONTAIL" WORD-BYTES
+   s" CODEGEN-CORPUS5:TAIL-MID" WORD-BYTES > TTRUE
+
+   s" and both columns answer the same on every pinned input" T-LABEL
+   CODEGEN-COMPARE:MISMATCHES 0 T= ;
+
 \ ---- the ceilings the fourth corpus was designed around -----------------------
 \ tools/codegen-compare-corpus4.f says two shapes were left out of the corpus
 \ because the migration entry cannot carry them, and gives an error code for each;
@@ -1904,6 +1955,8 @@ variable TRY-REGS
    CODEGEN-CASES4:RUN
    REAL-RUN-CASES4
    CORPUS4-TABLE-CASES
+   CODEGEN-CASES5:RUN
+   REAL-RUN-CASES5
    REFUSAL-CASES
    CLEANUP-RUN
    CODEGEN-BASELINE:LOUD!

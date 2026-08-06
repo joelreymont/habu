@@ -33,6 +33,7 @@ require tools/codegen-compare-cases.f
 require tools/codegen-compare-cases2.f
 require tools/codegen-compare-cases3.f
 require tools/codegen-compare-cases4.f
+require tools/codegen-compare-cases5.f
 require tools/codegen-compare-report.f
 require tools/codegen-compare-gaps.f
 require tools/codegen-compare-baseline.f
@@ -40,6 +41,7 @@ require tools/codegen-compare-new.f
 require tools/codegen-compare-new2.f
 require tools/codegen-compare-new3.f
 require tools/codegen-compare-new4.f
+require tools/codegen-compare-new5.f
 
 package CODEGEN-COMPARE-CLI
 
@@ -47,7 +49,7 @@ private
 
 70 constant FINDINGS-RC           \ sysexits EX_SOFTWARE: the comparison disagreed
 
-\ The measurement pass of one declared corpus. This is the one place the four
+\ The measurement pass of one declared corpus. This is the one place the
 \ corpora are named, and the index is the register's own, so the pass that runs
 \ and the table it is compared against cannot come from two different corpora.
 \ A corpus declared without an arm here reaches the throw instead of being
@@ -57,6 +59,7 @@ private
    k 1 = if CODEGEN-CASES2:RUN exit then
    k 2 = if CODEGEN-CASES3:RUN exit then
    k 3 = if CODEGEN-CASES4:RUN exit then
+   k 4 = if CODEGEN-CASES5:RUN exit then
    E-CODEGEN-COMPARE-CORPUS throw ;
 
 \ One measurement pass, one report, one finding count: the whole check apart
@@ -101,7 +104,7 @@ private
 \ findings are added so that none can hide another.
 \
 \ The distance to the clang reference is collected as each corpus finishes and
-\ ranked once at the end, over all four: a ranking inside one pass could only
+\ ranked once at the end, over all of them: a ranking inside one pass could only
 \ rank a corpus against itself, and it is the ranking over everything that is
 \ the optimisation lanes' priority list. It is printed before the verdict and
 \ counts nothing, which is what "informational" means here.
