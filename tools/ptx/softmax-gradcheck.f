@@ -53,8 +53,8 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
+: PACK4   ( ptr r ptr u8 -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr r -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : GC-OUT-GUARD ( -- )  GCK 0 ?do  GC-OUT i F32@ PTXSENT:GUARD drop  loop ;  \ fail closed if the copy-back was dropped
 
 \ device availability (false iff off-device); false means Mac/CI, so the gradcheck skips
@@ -100,7 +100,7 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    GCK GC-KV ! ;
 
 \ run the forward softmax on the f64 input array `src`, write the f64 output to `dst`
-: GC-FWD-RUN ( ptr a ptr a -- ) {: src dst :}
+: GC-FWD-RUN ( ptr r ptr r -- ) {: src:ptr dst:ptr :}
    GC-OUT 16 PTXSENT:FILL                            \ poison readback: dropped copy-back fails closed
    1 GCK 256 PTX-ROW-LAUNCH-CHECK
    src GC-IN PACK4
