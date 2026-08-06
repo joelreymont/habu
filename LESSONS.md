@@ -5383,3 +5383,16 @@ fresh process, assert the state, then demand the refusal - never one that
 assumes the member's process history. Green is not evidence when the
 configuration selects the other branch.
 
+## An optimisation must never turn a compilable program into a failure (2026-08-06)
+
+The first tail-call version REFUSED `: X ( n -- n ) abs ;` because the tail
+branch to engine text could not be relocated. Wrong shape: publishability is
+decided in the publisher, the tail decision in the elaborator, and the
+earlier pass must ask the later one BEFORE committing - the fix declines the
+optimisation (keeps call+ret) instead of declining the program, with the
+fail-closed refusal kept as backstop. Related record-keeping trap: a routine
+length defined as 'excluding the trailing return' subtracts a return the
+tail form does not have - three readers of routine extent went wrong at
+once. When a new form breaks a convention's arithmetic, grep every reader
+of that convention before trusting green.
+
