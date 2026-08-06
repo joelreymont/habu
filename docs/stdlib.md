@@ -1667,27 +1667,6 @@ T$<>            ( ptr u8 n ptr u8 n -- )
 TTHROWS         ( a n -- )
 TTHROWSQ        ( [ -- ] n -- )
 T-REPORT        ( -- )
-GT-RESET        ( -- )
-GT-START        ( ptr u8 n -- )
-GT-CLEANUP      ( -- )
-GT-PATH         ( ptr u8 n ptr u8 -- n )
-GT-RUN          ( ptr u8 n n -- )
-GT-RUN-DEFAULT  ( ptr u8 n -- )
-GT-PROGRESS-RUN ( ptr u8 n -- )
-GT-U-TYPE       ( n -- )
-GT-PROGRESS-PASS ( ptr u8 n -- )
-GT-RC@          ( -- n )
-GT-RC=          ( n ptr u8 n -- )
-GT-RC-NONZERO   ( ptr u8 n -- )
-GT-TIMEOUT      ( ptr u8 n -- )
-GT-STDOUT=      ( ptr u8 n ptr u8 n -- )
-GT-STDERR=      ( ptr u8 n ptr u8 n -- )
-GT-STDOUT-HAS   ( ptr u8 n ptr u8 n -- )
-GT-STDERR-HAS   ( ptr u8 n ptr u8 n -- )
-GT-FAIL+        ( ptr u8 n -- )
-GT-FAILURES     ( -- n )
-GT-FAIL-NAME$   ( n -- ptr u8 n )
-GT-REPORT       ( -- )
 PROP:SEED!      ( n -- )
 PROP:SEED@      ( -- n )
 PROP:COUNT@     ( -- n )
@@ -1742,13 +1721,98 @@ live in a private package, not global stemmed names.
 source buffers, modeled generator depth, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked
 source, but pure generators and shrink predicates remain checked helpers.
-`lib/test/runner.f` layers reusable process-fixture helpers on top of `lib/fs.f`,
-`lib/fs-mutate.f`, `lib/process.f`, and `lib/process-argv.f`. It creates a
-cleanup-tracked temporary root, runs prepared argv captures with bounded stdout
-and stderr buffers, classifies exit/signal/timeout outcomes, and accumulates
-named failures so test scripts can report all local expectation failures before
-exiting. Test runner paths are counted byte strings; stdout/stderr assertions
-never truncate silently because process capture still enforces bounded output.
+`lib/test/runner.f` publishes package `GATE`: reusable process-fixture helpers on
+top of `lib/fs.f`, `lib/fs-mutate.f`, `lib/process.f`, and `lib/process-argv.f`.
+It creates a cleanup-tracked temporary root, runs prepared argv captures with
+bounded stdout and stderr buffers, classifies exit/signal/timeout outcomes, and
+accumulates named failures so test scripts can report all local expectation
+failures before exiting. Test runner paths are counted byte strings;
+stdout/stderr assertions never truncate silently because process capture still
+enforces bounded output. Import it once with `using GATE` and call the words
+bare.
+
+```forth
+\ temp root
+GATE:GT-START        ( ptr u8 n -- )       \ make a temp root under a prefix
+GATE:GT-ROOT         ( -- ptr u8 n )       \ the root path
+GATE:GT-ROOT?        ( -- bool )           \ has a root been made yet
+GATE:GT-COPY-ROOT!   ( ptr u8 n -- )       \ adopt an existing directory as the root
+GATE:GT-EXPECT-ROOT  ( -- )                \ throw E-FS-PATH when there is none
+GATE:GT-PATH         ( ptr u8 n ptr u8 -- n )
+GATE:GT-CLEANUP      ( -- )
+
+\ run a child into the arena
+GATE:GT-RUN          ( ptr u8 n n -- )     \ prepared argv, timeout ms
+GATE:GT-RUN-DEFAULT  ( ptr u8 n -- )
+GATE:GT-CAPTURE-DRAIN ( -- )               \ one non-blocking read into the arena
+GATE:GT-CAPTURE-STORE ( -- )               \ commit the finished capture
+
+\ lend the arena to another producer, and commit what it returns
+GATE:GT-OUT-SINK     ( -- ptr u8 len )     \ stdout buffer + its capacity
+GATE:GT-ERR-SINK     ( -- ptr u8 len )     \ stderr buffer + its capacity
+GATE:GT-STORE-RUN    ( len len outcome -- )
+
+\ read the last run
+GATE:GT-OUT$         ( -- ptr u8 n )
+GATE:GT-ERR$         ( -- ptr u8 n )
+GATE:GT-OUTCOME@     ( -- outcome )
+GATE:GT-RC@          ( -- n )
+GATE:GT-TIMED-OUT?   ( -- bool )
+GATE:GT-RESET        ( -- )
+
+\ assertions over the last run
+GATE:GT-RC=          ( n ptr u8 n -- )
+GATE:GT-RC-NONZERO   ( ptr u8 n -- )
+GATE:GT-TIMEOUT      ( ptr u8 n -- )
+GATE:GT-STDOUT=      ( ptr u8 n ptr u8 n -- )
+GATE:GT-STDERR=      ( ptr u8 n ptr u8 n -- )
+GATE:GT-STDOUT-HAS   ( ptr u8 n ptr u8 n -- )
+GATE:GT-STDERR-HAS   ( ptr u8 n ptr u8 n -- )
+GATE:GT-CHECK        ( bool ptr u8 n -- )
+
+\ failure ledger and progress
+GATE:GT-FAIL+        ( ptr u8 n -- )
+GATE:GT-FAILURES     ( -- n )
+GATE:GT-FAIL-STORED  ( -- n )
+GATE:GT-FAIL-NAME$   ( n -- ptr u8 n )
+GATE:GT-REPORT       ( -- )
+GATE:GT-PROGRESS-RUN ( ptr u8 n -- )
+GATE:GT-PROGRESS-PASS ( ptr u8 n -- )
+GATE:GT-PROGRESS-WAIT ( ptr u8 n -- )
+GATE:GT-PROGRESS-SLICE-MS ( -- ms )
+GATE:GT-PROGRESS-CAPTURE ( ptr u8 n -- )
+GATE:GT-PROGRESS-STDIN-CAPTURE ( ptr u8 len ptr u8 n -- )
+GATE:GT-U-TYPE       ( n -- )
+
+\ sizing constants for a caller's own buffers
+GATE:GT-OUT-CAP  GATE:GT-ERR-CAP  GATE:GT-FAIL-NAME-CAP
+GATE:GT-FAIL-MAX  GATE:GT-DEFAULT-TIMEOUT-MS  GATE:GT-HEARTBEAT-MS  GATE:GT-EX-FAIL
+```
+
+The capture arena itself is private. The buffers, their byte counts, the three
+outcome cells and the tag writer cannot be named from outside `GATE`, qualified
+or bare. That is what makes the pairing and the commit safe rather than
+conventional: a lend is one word, so a buffer can never be handed the other
+stream's capacity, and a run is committed by `GT-STORE-RUN`, so the lengths and
+the outcome always arrive together from one writer. A second capture context is
+built the way `test/gate-pool.f` and `test/candidate-rebuild-test.f` build one -
+by owning storage - not by reaching into this one.
+
+`GT-OUT$` and `GT-ERR$` return spans the NEXT run overwrites. A caller that
+needs the bytes across two runs must copy them into its own buffer first.
+
+`GATE` also still exports the failure ledger's slot helpers (`GT-FAIL-SLOT`,
+`GT-FAIL-U-PTR`, `GT-FAIL-NAME!`, `GT-FAIL-NAMES`, `GT-FAIL-US`, `GT-FAIL#`,
+`GT-REPORT-FAILS`, `GT-REPORT-OVERFLOW`) and the progress loop's step words
+(`GT-PROGRESS-DUE?`, `GT-PROGRESS-ELAPSED-MS`, `GT-PROGRESS-CAPTURE-READY`,
+`GT-PROGRESS-CAPTURE-STEP?`, `GT-PROGRESS-STDIN-READY`,
+`GT-PROGRESS-STDIN-STEP?`, `GT-PROGRESS-STDIN-TIMEOUT?`,
+`GT-PROGRESS-START-NS`). Of these only `GT-PROGRESS-CAPTURE-TIMEOUT?`,
+`GT-PROGRESS-SLICE-MS` and `GT-PROGRESS-WAIT` have a caller outside the runner
+(`lib/test/echo.f`, which drives its own poll loop), and `GT-PROGRESS-LAST-NS`
+is written by the runner's own test to age the heartbeat clock. Everything else
+in that list is runner-internal.
+
 Test scripts should call `GT-PROGRESS-RUN` immediately before long subchecks and
 `GT-PROGRESS-PASS` after successful completion. Long poll loops should cap their
 poll timeout with `GT-PROGRESS-SLICE-MS` and call `GT-PROGRESS-WAIT` on quiet
@@ -1766,7 +1830,7 @@ ECHO:CAPTURE       ( ptr u8 n -- )
 ```
 
 `ECHO:CAPTURE` runs a pending capture to completion the way
-`GT-PROGRESS-CAPTURE` does, but writes the child's output through to the
+`GATE:GT-PROGRESS-CAPTURE` does, but writes the child's output through to the
 parent's own descriptors as it arrives. Callers that drive their own poll loop
 route the capture buffers through `ECHO:LINES-FD` while polling and
 `ECHO:REMAINDER-FD` at process exit; `ECHO:LINE-SPAN` reports how much of a

@@ -749,6 +749,41 @@ fits.
   freezing a contract spelling, and expect to rename (WSTORE spells it
   `residency`).
 
+## Packages, Imports & Name Reach
+
+- **A package public whose name ends in `:` has no external call form.** A word
+  such as `GE-FILES:` is unreachable from outside its package both ways:
+  `PKG:GE-FILES:` and a bare `GE-FILES:` under `using PKG` are each
+  `E-UNDEFINED` at exit 70, while an otherwise identical colon-free twin in the
+  same package resolves both ways. Block-opener definers (`NAME:` … `;NAME`)
+  therefore have to be USED inside a reopened package block, or the definer has
+  to be renamed. Check this before packaging a file that publishes a definer.
+- **`is` does not consult imported packages.** Arming a `defer` that a package
+  publishes must name it qualified: under a live `using GATE-POOL`,
+  `is GT-POOL-PASS-HOOK` prints the bare token and exits 70, and
+  `is GATE-POOL:GT-POOL-PASS-HOOK` binds. `is` parses and looks up its token
+  itself, so the used-public leg of the search never runs. Packaging a file that
+  publishes deferred words breaks every arming site outside it.
+- **A required file inherits the caller's open import scope.** `require`-ing a
+  file while `using PKG` is open makes PKG's publics resolve inside that file
+  even though it never imported them; the same file loaded without the caller's
+  import is `E-UNDEFINED`. Only the child-to-parent direction is documented as
+  isolated. So a file that resolves today can be silently depending on one
+  requirer's imports — give every file the imports it uses.
+- **`TRUST` inside a package describes a package word, not the global.** The
+  four gate `TRUST` lines for engine globals (`JSON-DIAGS`, `UEND`, …) publish a
+  same-named package word when they sit inside `package NAME`, and every bare
+  reference then fails `E-USING-SHADOW-GLOBAL` (checker code 7141) against the
+  very global the line was written to describe. Keep signature assertions for
+  engine globals outside the package block.
+- **Dropping a name prefix inside a package is not a rename, it is a packaging
+  campaign.** Rewriting call sites to the shorter tails edits lines inside
+  definitions that still live in unpackaged regions, and the package lint then
+  demands an owner for each one — a `GT-`-prefix drop across the gate tree
+  reported 22 `E-PACKAGE-OWNERSHIP` findings in five further files plus 35
+  `E-UNTYPED-LOCAL` findings on the touched lines. Cost the ownership cascade
+  before promising a prefix drop.
+
 ## Tool & Infra
 
 - **To see the engine reject its OWN prefix source, build a warm snapshot engine
