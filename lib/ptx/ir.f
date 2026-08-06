@@ -6,6 +6,9 @@
 
 require lib/adt/option.f                     \ option<n> for PTXIR-FIND(-RAW) (switchover wave A)
 
+package PTX-IR
+public
+
 0 constant PTXIR-K-INPUT
 1 constant PTXIR-K-CONST
 2 constant PTXIR-K-ADD
@@ -28,6 +31,8 @@ PRODUCT ptxir-node 0
   FIELD live n
 ;PRODUCT
 
+private
+
 BEGIN-STRUCTURE PTXIR-REC
    CELL +FIELD PTXIR.OP
    CELL +FIELD PTXIR.A
@@ -39,11 +44,15 @@ END-STRUCTURE
 create PTXIR-NODES PTXIR-MAX PTXIR-REC * allot
 variable PTXIR-N
 
+public
+
 : PTXIR-RESET ( -- )
    0 PTXIR-N ! ;
 
 : PTXIR-COUNT ( -- n )
    PTXIR-N @ ;
+
+private
 
 : PTXIR-CAP-CHECK ( n -- )
    dup 0 < if E-PTX-IR-UNKNOWN throw then
@@ -59,6 +68,8 @@ variable PTXIR-N
    id PTXIR-CAP-CHECK
    PTXIR-NODES id PTXIR-REC * + ;
 
+public
+
 : PTXIR-OP@ ( n -- n ) {: id:n :}
    id PTXIR-ID-CHECK
    id PTXIR-REC@ PTXIR.OP @ ;
@@ -71,32 +82,42 @@ variable PTXIR-N
    id PTXIR-ID-CHECK
    id PTXIR-REC@ PTXIR.B @ ;
 
+private
+
 : PTXIR-VAL@ ( n -- n ) {: id:n :}
    id PTXIR-ID-CHECK
    id PTXIR-REC@ PTXIR.VAL @ ;
+
+public
 
 : PTXIR-LIVE@ ( n -- bool ) {: id:n :}
    id PTXIR-ID-CHECK
    id PTXIR-REC@ PTXIR.LIVE @ 0 <> ;
 
+private
+
 : PTXIR-LIVE! ( bool n -- ) {: live:bool id:n :}
    id PTXIR-ID-CHECK
    live if 1 else 0 then id PTXIR-REC@ PTXIR.LIVE ! ;
 
+public
+
 : >PTXIR-NODE ( n n n n n -- ptxir-node )
-   PTXIR--NODE:MAKE ;
+   PTX--IR-PTXIR--NODE:MAKE ;
 
 : PTXIR-NODE> ( ptxir-node -- n n n n n )
-   PTXIR--NODE:UNMAKE ;
+   PTX--IR-PTXIR--NODE:UNMAKE ;
 
 : PTXIR-NODE-DROP ( ptxir-node -- )
    drop ;                                       \ one layout drop (item 12)
 
 : PTXIR-NODE-DUP-RAW ( n n n n n -- ptxir-node ptxir-node )
-   PTXIR--NODE:MAKE dup ;                        \ one layout dup (item 12)
+   PTX--IR-PTXIR--NODE:MAKE dup ;                        \ one layout dup (item 12)
 
 : PTXIR-NODE-DUP ( ptxir-node -- ptxir-node ptxir-node )
    dup ;
+
+private
 
 : PTXIR-WRITE-RAW ( n n n n n n -- ) {: op:n a:n b:n val:n live:n id:n :}
    id PTXIR-REC@ {: rec:ptr :}
@@ -120,6 +141,8 @@ variable PTXIR-N
 : PTXIR-MATCH? ( ptxir-node n -- bool )
    >r PTXIR-NODE> r> PTXIR-MATCH-RAW? ;
 
+public
+
 : PTXIR-FIND-RAW ( n n n n n -- option<n> ) {: op:n a:n b:n val:n live:n :}   \ SOME matching node id, else NONE
    PTXIR-N @ 0 ?do
       op a b val live i PTXIR-MATCH-RAW? if i OPTION:SOME unloop exit then
@@ -128,6 +151,8 @@ variable PTXIR-N
 
 : PTXIR-FIND ( ptxir-node -- option<n> )   \ SOME equivalent node id, else NONE
    PTXIR-NODE> PTXIR-FIND-RAW ;
+
+private
 
 : PTXIR-ROOM ( -- )
    PTXIR-N @ PTXIR-MAX >= if E-PTX-IR-OVERFLOW throw then ;
@@ -146,6 +171,8 @@ variable PTXIR-N
 : PTXIR-INTERN ( n n n n -- n )
    0 >PTXIR-NODE PTXIR-NODE-INTERN ;
 
+public
+
 : PTXIR-INPUT# ( n -- n ) {: sym:n :}
    PTXIR-K-INPUT PTXIR-NONE PTXIR-NONE sym PTXIR-INTERN ;
 
@@ -162,6 +189,8 @@ variable PTXIR-N
    id PTXIR-CONST? 0= if E-PTX-IR-UNKNOWN throw then
    id PTXIR-VAL@ ;
 
+private
+
 : PTXIR-CONST= ( n n -- bool ) {: id:n val:n :}
    id PTXIR-CONST? if id PTXIR-VAL@ val = exit then
    0 0= 0= ;
@@ -177,6 +206,8 @@ variable PTXIR-N
 : PTXIR-MUL-NODE ( n n -- n )
    PTXIR-CANON2 {: a:n b:n :}
    PTXIR-K-MUL a b 0 PTXIR-INTERN ;
+
+public
 
 : PTXIR-ADD ( n n -- n ) {: a:n b:n :}
    a PTXIR-CONST? b PTXIR-CONST? and if
@@ -204,12 +235,18 @@ variable PTXIR-N
 : PTXIR-BSUM ( n -- n ) {: id:n :}
    PTXIR-K-BSUM id PTXIR-NONE 0 PTXIR-INTERN ;
 
+private
+
 : PTXIR-BSUB-NODE ( n n -- n ) {: tile:n unif:n :}
    PTXIR-K-BSUB tile unif 0 PTXIR-INTERN ;
+
+public
 
 : PTXIR-BSUB ( n n -- n ) {: tile:n unif:n :}
    unif 0 PTXIR-CONST= if tile exit then
    tile unif PTXIR-BSUB-NODE ;
+
+private
 
 : PTXIR-LIVE-CLEAR ( -- )
    PTXIR-N @ 0 ?do 0 0= 0= i PTXIR-LIVE! loop ;
@@ -223,12 +260,16 @@ variable PTXIR-N
    id PTXIR-OP@ PTXIR-K-BSUM = if id PTXIR-A@ recurse exit then
    id PTXIR-OP@ PTXIR-K-BSUB = if id PTXIR-A@ recurse id PTXIR-B@ recurse exit then ;
 
+public
+
 : PTXIR-LIVE-COUNT ( n -- n ) {: root:n :}
    PTXIR-LIVE-CLEAR
    root PTXIR-MARK
    0 PTXIR-N @ 0 ?do
       i PTXIR-LIVE@ if 1+ then
    loop ;
+
+private
 
 : PTXIR-SEP ( -- )
    SB$ nip 0 > if $20 SB-APPEND-C then ;
@@ -259,7 +300,11 @@ variable PTXIR-N
       drop E-PTX-IR-UNKNOWN throw
    endcase ;
 
+public
+
 : PTXIR-RENDER ( n -- ptr u8 n )
    SB-RESET
    PTXIR-RENDER-NODE
    SB$ ;
+
+;package

@@ -3,6 +3,10 @@
 require lib/ptx/test-prelude.f
 require lib/ptx/ad-ir.f
 
+package PTX-IR-TEST
+
+using PTX-IR
+
 create PTXIRT-OPS 7 cells allot
 
 : PTXIRT-SOFTMAX-OPS ( -- )
@@ -137,3 +141,7 @@ PTXIRT-RENDER
 ' PTXIRT-OVERFLOW E-PTX-IR-OVERFLOW TTHROWS
 
 T-REPORT
+
+;using
+
+;package

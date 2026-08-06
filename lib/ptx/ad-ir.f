@@ -7,8 +7,10 @@
 \ and lib/ptx/cg-collective.f. Checked Habu.
 
 require lib/ptx/ad.f
+require lib/ptx/ir.f
 
 using PTX-AD
+using PTX-IR
 
 7 constant ADIR-SOFTMAX-LEN
 create ADIR-OPS ADIR-SOFTMAX-LEN cells allot
@@ -81,4 +83,5 @@ variable ADIR-OP-N
    ops len ADIR-SOFTMAX-OPS-CHECK
    y dy ADIR-EMIT-SOFTMAX-BWD ;
 
+;using
 ;using
