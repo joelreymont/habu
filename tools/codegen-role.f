@@ -63,26 +63,26 @@ variable CGR-WP
 : CGR-WP@ ( -- ptr u8 )
    CGR-WP 0 ptr-field @ ;
 
-: CGR-WORD@ ( n -- w )
+: CGR-WORD@ ( n -- n )
    CW@ CGR-WP 0 ptr-field !
    CGR-WP@ 0 CODE-BYTE+ c@
    CGR-WP@ 1 CODE-BYTE+ c@ 8 lshift or
    CGR-WP@ 2 CODE-BYTE+ c@ 16 lshift or
    CGR-WP@ 3 CODE-BYTE+ c@ 24 lshift or ;
 
-: CGR-STR? ( w -- bool )
+: CGR-STR? ( n -- bool )
    CGR-STR-MASK and CGR-STR-BASE = ;
 
-: CGR-STR-RT ( w -- n )
+: CGR-STR-RT ( n -- n )
    $1F and ;
 
-: CGR-STR-RN ( w -- n )
+: CGR-STR-RN ( n -- n )
    5 rshift $1F and ;
 
-: CGR-STR-OFF ( w -- n )
+: CGR-STR-OFF ( n -- n )
    10 rshift $FFF and 8 * ;
 
-: CGR-MOVZ-0? ( w -- bool )
+: CGR-MOVZ-0? ( n -- bool )
    CGR-MOVZ-0-MASK and CGR-MOVZ-0-BASE = ;
 
 \ typed STR:FIND-SUB / STR:INDEX-OF boundary: route byte-lengths through the STR:
@@ -133,7 +133,7 @@ public
      some OF IDX>N ENDOF
    ;MATCH ;
 
-: CGR-WS? ( c -- bool )
+: CGR-WS? ( n -- bool )
    dup STR-SPACE = over STR-TAB = or over STR-LF = or swap STR-CR = or ;
 
 : CGR-SKIP-WS ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}
@@ -173,7 +173,7 @@ variable CGR-GEN
    then
    CGR-GEN ! ;
 
-: CGR-GEN-C ( -- c )
+: CGR-GEN-C ( -- n )
    CGR-GEN @ CGR-GEN-BASE + ;
 
 \ ---- scratch buffers ----
@@ -194,7 +194,7 @@ variable CGR-SB-LEN
 : CGR-SB+ ( ptr u8 n -- )
    STR:LENGTH CGR-SB-BUF CGR-SB-CAP STR:LENGTH CGR-SB-LEN STR:BUF-APPEND ;
 
-: CGR-SB-C+ ( c -- )
+: CGR-SB-C+ ( n -- )
    CGR-SB-BUF CGR-SB-CAP STR:LENGTH CGR-SB-LEN STR:BUF-APPEND-C ;
 
 : CGR-SB$ ( -- ptr u8 n )
@@ -215,7 +215,7 @@ variable CGR-NI
    then
    CGR-NB-A 0 ptr-field @ ;
 
-: CGR-NB-C+ ( c -- )
+: CGR-NB-C+ ( n -- )
    CGR-NB-BUF CGR-NB-CAP STR:LENGTH CGR-NB-LEN STR:BUF-APPEND-C ;
 
 : CGR-NB$ ( -- ptr u8 n )
