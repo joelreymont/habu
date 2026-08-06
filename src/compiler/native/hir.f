@@ -243,7 +243,12 @@ public
 \ a list of names because design line 229's closed world is then a property of
 \ the type: a later stage that binds a source word, or matches on what an
 \ operation is, cannot name an operation this dialect does not have, and every
-\ MATCH over it has to answer for all five.
+\ MATCH over it has to answer for every member.
+\
+\ The count is deliberately not written down here. It was, as "all five", and it
+\ was still saying five long after the family had grown past forty - which is
+\ how a reader comes to believe the chain compiles less than it does. The
+\ members below are the list; anything that needs the number counts them.
 ENUM opcode DERIVE eq
    const
    add

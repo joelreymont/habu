@@ -8,10 +8,18 @@
 \ the other. It is the first pass of the native chain that translates a program.
 \
 \ WHAT IT TRANSLATES. One colon definition of the straight-line subset: the
-\ defined name and a body of integer literals, modeled arithmetic words,
-\ compile-time stack renames, the structured control words, the two cell-width
-\ memory words, `RECURSE`, and one `{: … :}` group of typed locals read by name.
-\ Nothing else.
+\ defined name and a body of integer and real literals, the modeled arithmetic,
+\ comparison and bitwise words, the float words, compile-time stack renames, the
+\ structured control words, the cell and byte memory words, `RECURSE`, a call to
+\ a declared callee or a declared data word, and one `{: … :}` group of typed
+\ locals read by name. Nothing else.
+\
+\ WHAT IT DOES NOT TRANSLATE, because a reader deciding whether a program can
+\ compile here should not have to infer it from silence: string and character
+\ literals, `case`, ADT `match` and `construct`, quotations, `does>`, plain
+\ `do`, `+loop`, `leave`, `j`, the return-stack words, and `execute`. The
+\ modeled vocabulary is the table in src/compiler/native/hir-word.f and it is
+\ the authority; anything absent from it is E-HIR-UNMODELED.
 \
 \ THE UNIT IS THE DEFINITION, AND THAT IS WHY THERE IS NO FRAME TO FIND. The
 \ tape this pass reads is produced by src/compiler/native/feed.f from the

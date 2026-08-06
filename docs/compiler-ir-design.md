@@ -815,14 +815,22 @@ model. Together they are the dialect for a colon body that only computes with
 integers, which is the first program the native chain has to compile end to end.
 Four decisions, each one a commitment later leaves inherit.
 
-**Five opcodes, and no promises.** `hir.const`, `hir.add`, `hir.sub`, `hir.mul`
-and `hir.return`. The rest of the list above - `if`, `loop`, `quotation`,
-`execute`, `catch` and the others - are later leaves of the same chain. An
-opcode with no elaborator, no lowering and no test would be a promise rather
-than a schema, so none is declared. The family is an `ENUM`, not a list of
+**Only opcodes that are implemented, and no promises.** An opcode with no
+elaborator, no lowering and no test would be a promise rather than a schema, so
+none is declared. The family began as five - `hir.const`, `hir.add`, `hir.sub`,
+`hir.mul` and `hir.return` - and has since grown to cover comparison, bitwise,
+memory, branch, call and the float set. The family is an `ENUM`, not a list of
 names, which makes the closed world of section 5.3 a property of the type: a
 later stage cannot name an operation this dialect does not have, and every
-`MATCH` over the family has to answer for all five.
+`MATCH` over the family has to answer for every member.
+
+The list itself is not repeated here, and neither is its length. This paragraph
+said "five opcodes" for as long as the family had more than forty, and a stale
+statement of what the chain compiles is worse than no statement: it was read as
+evidence that the chain was further from, or nearer to, compiling real programs
+than it is. `src/compiler/native/hir.f` is the authority for the operations and
+`src/compiler/native/hir-word.f` for the source words that reach them; what the
+elaborator refuses is listed in that file's header.
 
 **`DUP`, `DROP`, `SWAP`, `OVER`, `NIP` and `ROT` are not operations.** Section
 7.3 already says they produce no SIR operation and therefore no runtime
@@ -848,14 +856,20 @@ registration reads `CNUM:OVERFLOW@` off the bound policy and the same three
 arithmetic opcodes register as may-trap under a trapping policy and as total
 under a wrapping one.
 
-**A source word means one of four things, and a refusal names its capability.**
-The word model answers `literal` for an integer-literal token, `op` for a word
-that elaborates to one operation, `rename` for a word that only rearranges the
-value vector, and refuses everything else. A refused word is either a declared
-boundary, which names the capability that has to land before it can be retired,
-or a word the model never declared at all; to checked source those are the same
-event. A character or string literal is a token kind the subset does not model
-and is refused as such rather than resolved as a name.
+**A source word means one of a fixed set of things, and a refusal names its
+capability.** The word model answers `literal` for an integer-literal token and
+`real-literal` for a real one, `op` for a word that elaborates to one operation,
+`const-op` for one that folds a constant into it, `control` for a structured
+control word, `rename` for a word that only rearranges the value vector,
+`fixed` for a declared data word, `callable` for a declared callee, the two
+locals markers, and `unmodeled` for everything else. As with the opcodes, the
+meanings are an `ENUM` in `src/compiler/native/hir.f` and that is the authority;
+the count is not restated here, because the previous sentence in this position
+said "one of four things" while the model answered eleven. A refused word is
+either a declared boundary, which names the capability that has to land before
+it can be retired, or a word the model never declared at all; to checked source
+those are the same event. A character or string literal is a token kind the
+subset does not model and is refused as such rather than resolved as a name.
 
 The two halves cannot yet meet on one module. `IR-BUILD` hands out no live
 reader for a module's tables, so the source tape - which needs the module's live
