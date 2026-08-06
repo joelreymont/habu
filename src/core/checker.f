@@ -3657,6 +3657,14 @@ TRUSTED: USIGS-CELL-AT ( n -- ptr a )
 : USIGS-HEAD ( -- ptr a )
    0 USIGS-CELL-AT ;
 
+\ The store's second view. Strings written by E-COPY-STR live BETWEEN the cell
+\ records in the same arena, so a byte offset also has to resolve to a byte
+\ pointer. This needs no trust: USIGS is already ptr u8 and `+` carries the
+\ pointee through, so the byte view is ordinary checked arithmetic. Only the
+\ cell view (USIGS-CELL-AT, above) reinterprets anything.
+: USIGS-BYTE-AT ( n -- ptr u8 )
+   USIGS + ;
+
 0 USIGS-USER-OFF !
 0 CHK-CAND !
 
@@ -3796,8 +3804,8 @@ USIGS-RUNTIME-INIT
 \ per-symbol index it has to repair (search USX-TRUNCATE), because the repair
 \ needs the record accessors declared further down this file.
 
-: USIGS-USER ( -- ptr a )
-   USIGS USIGS-USER-OFF @ + ;
+: USIGS-USER ( -- ptr n )
+   USIGS-USER-OFF @ USIGS-CELL-AT ;
 
 : SYM-FOLD-C ( n -- n ) {: c:n :}
    c $41 < if c exit then
@@ -4512,24 +4520,29 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       id 1+ EC-RV-HW @ max EC-RV-HW !
    then @ ;
 
-: E-OFF ( ptr a -- n )
-   USIGS - ;
+\ The two directions of the one seam. A record pointer is cell-addressed; the
+\ offset that names it is a BYTE offset into the byte-addressed store, so each
+\ crossing goes through an audited view rather than raw base arithmetic. E-OFF
+\ takes the byte view first because `-` is ( ptr a ptr a -- n ): both sides must
+\ agree on the pointee, and the base is bytes.
+: E-OFF ( ptr n -- n )
+   ARENA-BYTE-VIEW USIGS - ;
 
-: E-PTR ( n -- ptr a )
-   USIGS + ;
+: E-PTR ( n -- ptr n )
+   USIGS-CELL-AT ;
 
 : E-ENSURE-NODE ( -- )
    UEND @ EFF-NODE + CELL + USIGS-ENSURE ;
 
 \ typed-local-lint: allow-bare-local - p preserves ptr a field-owner role.
-: E-NODE-INIT ( n ptr a -- ) {: tag:n p :}
+: E-NODE-INIT ( n ptr n -- ) {: tag:n p :}
    tag p EN.TAG !
    0 p EN.A !  0 p EN.B !  0 p EN.C !  0 p EN.D !
    0 p EN.E !  0 p EN.F !  0 p EN.G !  0 p EN.H ! ;
 
-: E-NODE-NEW ( n -- ptr a ) {: tag:n :}
+: E-NODE-NEW ( n -- ptr n ) {: tag:n :}
    E-ENSURE-NODE
-   USIGS UEND @ + {: p:ptr :}
+   UEND @ USIGS-CELL-AT {: p:ptr :}
    tag p E-NODE-INIT
    UEND @ EFF-NODE + UEND !
    p ;
@@ -4546,7 +4559,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    UEND @
    dup argc cells + UEND ! ;
 
-: E-COPY-STR ( ptr u8 n ptr a -- ) {: a:ptr u:n p:ptr :}
+: E-COPY-STR ( ptr u8 n ptr n -- ) {: a:ptr u:n p:ptr :}
    UEND @ p EN.A !
    u p EN.B !
    UEND @ u + UALIGN CELL + USIGS-ENSURE
@@ -4632,10 +4645,10 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : E-COPY-WITH ( n bool -- n ) TWALK-RESET E-COPY* ;
 : E-COPY ( n -- n ) RES-FALSE E-COPY-WITH ;
 
-: USIG-NEXT ( ptr a -- ptr a )
+: USIG-NEXT ( ptr n -- ptr n )
    ER.NEXT @ E-PTR ;
 
-: USIG-OFF ( ptr a -- n )
+: USIG-OFF ( ptr n -- n )
    E-OFF ;
 
 \ FEP holds the found active effect record; FEP-OFF stores its USIGS offset+1 so
@@ -4643,7 +4656,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : FEP-CLEAR ( -- )
    0 FEP-OFF ! ;
 
-: FEP-SET ( ptr a -- )
+: FEP-SET ( ptr n -- )
    dup FEP !
    USIG-OFF 1 + FEP-OFF ! ;
 
@@ -4653,7 +4666,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : FEP-HIT? ( -- bool )
    FEP-OFF@ 0 <> ;
 
-: USIG-END? ( ptr a -- bool )
+: USIG-END? ( ptr n -- bool )
    @ 0= ;
 
 \ --- per-symbol effect-record index (USX) --------------------------------------
@@ -4794,22 +4807,22 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
 \ flushes the cache BEFORE new records can reuse the truncated offsets — a
 \ read-time-only check could be masked by rewind-then-regrow.
 \ typed-local-lint: allow-bare-local - p preserves ptr a record-owner role.
-: E-REC-INIT ( ptr a -- ) {: p :}
+: E-REC-INIT ( ptr n -- ) {: p :}
    0 p ER.NEXT !  0 p ER.ACTIVE !
    0 p ER.DIN !   0 p ER.DOUT !  0 p ER.RIN !  0 p ER.ROUT !
    0 p ER.HASR !  0 p ER.TVN !   0 p ER.RVN !  0 p ER.MINI !
    0 p ER.SYMPREV !
    CHECKER-REC-SYM @ p ER.SYM ! ;
 
-: E-REC-START ( -- ptr a )
+: E-REC-START ( -- ptr n )
    HIDX-EFF-SYNC
    USX-ENSURE                            \ USX-LINK writes into the mapping: it has to
                                          \ exist, and be current, before the append
    UEND @ EFF-REC + CELL + USIGS-ENSURE
-   USIGS UEND @ + {: p:ptr :}
+   UEND @ USIGS-CELL-AT {: p:ptr :}
    p E-REC-INIT
-   p USIGS - CHECKER-REC-SYM @ USX-LINK
-   p EFF-REC + USIGS - UEND !
+   p E-OFF CHECKER-REC-SYM @ USX-LINK
+   p EFF-REC + E-OFF UEND !
    USX-STAMP                             \ USIGS-ENSURE may have moved the store
    p ;
 
@@ -4849,7 +4862,7 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
       rin raw E-COPY-WITH off E-PTR ER.RIN !
       rout raw E-COPY-WITH off E-PTR ER.ROUT !
    then
-   hasr off E-PTR ER.HASR !
+   hasr IF 1 ELSE 0 THEN off E-PTR ER.HASR !   \ record cells are n; every reader decodes with 0 <>
    EC-TVN @ off E-PTR ER.TVN !
    EC-RVN @ off E-PTR ER.RVN !
    minin off E-PTR ER.MINI !
@@ -5120,10 +5133,10 @@ BADSIG-DEFAULT
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
 
-: USIG-SYM@ ( ptr a -- n )
+: USIG-SYM@ ( ptr n -- n )
    ER.SYM @ ;
 
-: USIG-MATCH-SYM? ( ptr a n -- bool ) {: rec:ptr sym:n :}
+: USIG-MATCH-SYM? ( ptr n n -- bool ) {: rec:ptr sym:n :}
    rec USIG-SYM@ sym = ;
 
 : USIG-FIND-OFF-SYM ( n -- n bool ) {: sym:n :}
@@ -5142,15 +5155,15 @@ variable FMEND
 \ offset — the cache dependency, since a rewind below it can change the answer.
 \ Older records for the same symbol are shadowed and cannot change either value,
 \ which is exactly why the per-symbol head answers this in one load.
-: SCAN-USIGS-SYM {: sym:n :}
+: SCAN-USIGS-SYM ( n -- ) {: sym:n :}
    FEP-CLEAR
    0 FMEND !
    sym USIG-NEWEST dup 0= if drop exit then
    1 - E-PTR {: rec:ptr :}
    rec ER.NEXT @ FMEND !
-   rec ER.ACTIVE @ if rec FEP-SET then ;
+   rec ER.ACTIVE @ EFF-ACTIVE = if rec FEP-SET then ;
 
-: E-INST-RESET ( ptr a -- ) {: h:ptr :}
+: E-INST-RESET ( ptr n -- ) {: h:ptr :}
    E-I-AK-RESET
    0 begin dup h ER.TVN @ < while
       UNBOUND over cells EI-TV + !
@@ -5183,8 +5196,10 @@ variable FMEND
    {: id:n :}
    a u id ;
 
-: E-I-STR ( ptr a -- ptr u8 n )
-   dup EN.A @ E-PTR swap EN.B @ ;
+\ The string body a node points at is bytes, not cells, so it resolves through
+\ the byte view -- the same offset, the store's other reading.
+: E-I-STR ( ptr n -- ptr u8 n )
+   dup EN.A @ USIGS-BYTE-AT swap EN.B @ ;
 
 : E-INST ( n -- n ) {: off:n :}
    off 0= if 0 exit then
@@ -5229,7 +5244,7 @@ variable FMEND
       r> drop 0 swap
    endcase ;
 
-: EFF-APPLY ( ptr a -- ) {: h:ptr :}
+: EFF-APPLY ( ptr n -- ) {: h:ptr :}
    h E-INST-RESET
    h ER.DIN @ E-INST
    h ER.DOUT @ E-INST
@@ -5239,7 +5254,7 @@ variable FMEND
       h ER.ROUT @ E-INST RCUR !
    then ;
 
-: EFF-QUOT ( ptr a -- n ) {: h:ptr :}
+: EFF-QUOT ( ptr n -- n ) {: h:ptr :}
    h E-INST-RESET
    h ER.HASR @ 0 <> if
       h ER.DIN @ E-INST
@@ -7394,7 +7409,7 @@ variable UNSAFE-SYM-N
 
 \ EXPORT-EFF-INST ( ptr a -- n n n n bool ) : instantiate the source record's
 \ rows into fresh working terms for exact checked publication.
-: EXPORT-EFF-INST ( ptr a -- n n n n bool ) {: h:ptr :}
+: EXPORT-EFF-INST ( ptr n -- n n n n bool ) {: h:ptr :}
    h E-INST-RESET
    h ER.DIN @ E-INST
    h ER.DOUT @ E-INST
@@ -7478,7 +7493,7 @@ variable SV-TRAIL
 
 variable TSEEN  variable TSOK  variable TFA
 
-: TRY-EFF ( ptr a -- bool ) {: h:ptr :}
+: TRY-EFF ( ptr n -- bool ) {: h:ptr :}
    TRIAL-DEPTH @ 1 + TRIAL-DEPTH !       \ open a trial: disables path compression
    TRIAL-SAVE
    h EFF-APPLY
@@ -8571,7 +8586,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    RECEFF-UEND @ USIGS-RESTORE-END
    0 RECEFF-ON ! ;
 
-: CF-RECURSE-EFF ( ptr a -- ) {: h:ptr :}
+: CF-RECURSE-EFF ( ptr n -- ) {: h:ptr :}
    h E-INST-RESET
    h ER.HASR @ RHAS !
    h ER.DIN @ E-INST RDIN !
@@ -9970,7 +9985,7 @@ variable IS-MARK
 : BTICK-XT-CELL-PTR? ( n -- bool )       \ term is `ptr xt<...>` : pointer to a typed xt<effect> cell
    T-RES dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
    PTR>INNER T-RES TAG T-QUOT = ;
-: BTICK-DOUT-XT-CELL? ( ptr a -- bool )  \ effect record's top output term is a typed xt cell pointer
+: BTICK-DOUT-XT-CELL? ( ptr n -- bool )  \ effect record's top output term is a typed xt cell pointer
    EFF-QUOT Q>DOUT R-RES dup TAG S-PUSH = IF P>TYPE BTICK-XT-CELL-PTR? EXIT THEN
    drop RES-FALSE ;
 : BTICK-STORE-CELL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ next token is a typed-xt-cell store accessor
