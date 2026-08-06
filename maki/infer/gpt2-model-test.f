@@ -193,7 +193,7 @@ TYPED-VARIABLE TOK-LEN-OBS CAD-NUM:alloc-byte-len
 : SESSION-CLOSE ( GPU:session -- )
    GPU:CLOSE CLOSE-OK ;
 
-: TRACK-STREAM-CREATE ( ptr a n -- rc )
+: TRACK-STREAM-CREATE ( ptr n n -- rc )
    1 STREAM-CREATE-N +!
    CUDA:CU-STREAM-CREATE ;
 
