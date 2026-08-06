@@ -23,13 +23,13 @@ require lib/string.f
    again ;
 
 \ typed-local-lint: allow-bare-local - q keeps the quotation effect from the stack signature.
-: TR-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
+: TR-FILES-WALK ( ptr u8 [ ptr u8 n -- ] -- ) {: p:ptr q :}
    p begin dup c@ 0= 0= while
       dup 1+ over c@ q execute
       dup c@ 1 + +
    repeat drop ;
 
-: TR-FILES-RUN ( [ ptr u8 n -- ] ptr a -- )
+: TR-FILES-RUN ( [ ptr u8 n -- ] ptr u8 -- )
    swap TR-FILES-WALK ;
 
 : TR-FILES: ( -- )
