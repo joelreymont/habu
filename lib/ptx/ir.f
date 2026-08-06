@@ -77,11 +77,11 @@ variable PTXIR-N
 
 : PTXIR-LIVE@ ( n -- bool ) {: id:n :}
    id PTXIR-ID-CHECK
-   id PTXIR-REC@ PTXIR.LIVE @ ;
+   id PTXIR-REC@ PTXIR.LIVE @ 0 <> ;
 
 : PTXIR-LIVE! ( bool n -- ) {: live:bool id:n :}
    id PTXIR-ID-CHECK
-   live id PTXIR-REC@ PTXIR.LIVE ! ;
+   live if 1 else 0 then id PTXIR-REC@ PTXIR.LIVE ! ;
 
 : >PTXIR-NODE ( n n n n n -- ptxir-node )
    PTXIR--NODE:MAKE ;
