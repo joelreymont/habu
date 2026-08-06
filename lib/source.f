@@ -296,11 +296,13 @@ variable SOURCE-PKG-DEPTH
    c SOURCE-LF = if line q SOURCE-LS-EMIT exit then
    c line cap SOURCE-LS-APPEND ;
 
+\ The byte index rides the return stack (`?do` / `i`), not the data stack: a
+\ counter left under the arguments would join the row that `q` is executed on,
+\ so every caller would then have to pass a quotation carrying that extra cell.
 : SOURCE-LS-CHUNK ( n ptr u8 n [ ptr u8 n n -- ] -- ) {: got line:ptr cap q :}
-   0 begin dup got < while
-      SOURCE-LS-READ-BUF over + c@ line cap q SOURCE-LS-BYTE
-      1+
-   repeat drop ;
+   got 0 ?do
+      SOURCE-LS-READ-BUF i + c@ line cap q SOURCE-LS-BYTE
+   loop ;
 
 : SOURCE-LS-DRAIN ( ptr u8 n [ ptr u8 n n -- ] -- ) {: line:ptr cap q :}
    cap 0 <= if E-FS-CAPACITY SOURCE-LS-THROW then
