@@ -16,7 +16,7 @@ require lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
+require lib/json-write.f
 require tools/lint/source-lex.f
 require tools/diag-origin-core.f
 require tools/json.f

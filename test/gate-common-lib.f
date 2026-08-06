@@ -413,7 +413,7 @@ variable GE-EVAL-SRC-U
    s" tools/lint/text.f" GE-ARG+
    s" tools/lint/token.f" GE-ARG+
    s" tools/lint/lib.f" GE-ARG+
-   s" tools/lint/json-writer.f" GE-ARG+
+   s" lib/json-write.f" GE-ARG+
    s" tools/lint/source-lex.f" GE-ARG+
    s" tools/diag-origin-core.f" GE-ARG+
    s" tools/json.f" GE-ARG+

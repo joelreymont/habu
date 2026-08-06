@@ -3,7 +3,7 @@
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
 \ lib/process-env.f lib/process-cwd.f lib/source.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ tools/lint/json-writer.f tools/lint/source-lex.f
+\ lib/json-write.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
 \ tools/reserved-name-lint-core.f
@@ -26,7 +26,7 @@ require lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
+require lib/json-write.f
 require tools/lint/source-lex.f
 require tools/diag-origin-core.f
 require tools/json.f

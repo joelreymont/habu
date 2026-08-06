@@ -12,7 +12,7 @@ require lib/process-argv.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
+require lib/json-write.f
 require tools/lint/source-lex.f
 require lib/argv.f
 require tools/cli-run.f

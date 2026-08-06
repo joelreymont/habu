@@ -2,7 +2,7 @@
 \ Load after lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
 \ lib/process.f, lib/process-argv.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/json-writer.f, tools/lint/source-lex.f,
+\ lib/json-write.f, tools/lint/source-lex.f,
 \ tools/check-all-errors-core.f, and lib/argv.f.
 
 package CHECK-ALL-ERRORS-CLI

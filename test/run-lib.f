@@ -716,7 +716,7 @@ private
    s" tools/lint/text.f"  >LEN PROC-ARGV+
    s" tools/lint/token.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" lib/json-write.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" tools/aot-lint-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
@@ -797,7 +797,7 @@ private
    s" tools/lint/text.f"  >LEN PROC-ARGV+
    s" tools/lint/token.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" lib/json-write.f"  >LEN PROC-ARGV+
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
    s" test/gate-dictionary.f"  >LEN PROC-ARGV+ ;

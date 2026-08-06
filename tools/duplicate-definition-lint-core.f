@@ -1,7 +1,7 @@
 \ duplicate-definition-lint-core.f - report duplicate flat source definitions.
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ and tools/lint/json-writer.f.
+\ and lib/json-write.f.
 
 package DUPLICATE-DEFINITION-LINT
 private

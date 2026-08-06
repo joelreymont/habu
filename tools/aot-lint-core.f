@@ -1,6 +1,6 @@
 \ aot-lint-core.f - reject source forms unsupported by stripped AOT.
 \ Load after lib/memory.f, lib/vector.f, tools/lint/text.f,
-\ tools/lint/token.f, tools/lint/lib.f, tools/lint/json-writer.f, and
+\ tools/lint/token.f, tools/lint/lib.f, lib/json-write.f, and
 \ tools/lint/source-lex.f.
 
 package AOT-LINT

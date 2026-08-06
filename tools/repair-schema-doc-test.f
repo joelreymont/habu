@@ -1,7 +1,7 @@
 \ repair-schema-doc-test.f - checked fixture for repair diagnostic docs.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
-\ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
+\ tools/lint/token.f tools/lint/lib.f lib/json-write.f
 \ tools/lint/source-lex.f tools/check-all-errors-core.f tools/json.f
 \ tools/gate-json-assert-core.f tools/repair-schema-doc-test.f
 
@@ -16,7 +16,7 @@ require lib/process.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
+require lib/json-write.f
 require tools/lint/source-lex.f
 require tools/check-all-errors-core.f
 require tools/json.f

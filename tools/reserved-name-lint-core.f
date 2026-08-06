@@ -9,7 +9,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/json-writer.f, and tools/lint/source-lex.f.
+\ lib/json-write.f, and tools/lint/source-lex.f.
 
 package RESERVED-NAME-LINT
 private

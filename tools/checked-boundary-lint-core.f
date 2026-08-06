@@ -1,6 +1,6 @@
 \ checked-boundary-lint-core.f - forbid broad unchecked definitions.
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, and
-\ tools/lint/json-writer.f.
+\ lib/json-write.f.
 
 require tools/hook-sites.f                     \ single registry of audited hook identities
 

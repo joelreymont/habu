@@ -2,7 +2,7 @@
 \ Load after lib/date.f, lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/json-writer.f, tools/lint/source-lex.f,
+\ lib/json-write.f, tools/lint/source-lex.f,
 \ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
 \ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
 \ tools/reserved-name-lint-core.f,

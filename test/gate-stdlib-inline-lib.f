@@ -154,7 +154,7 @@ variable GSI-TOOL-BASE-READY
    s" tools/lint/intern.f" GSI-REQUIRE
    s" tools/lint/token.f" GSI-REQUIRE
    s" tools/lint/lib.f" GSI-REQUIRE
-   s" tools/lint/json-writer.f" GSI-REQUIRE
+   s" lib/json-write.f" GSI-REQUIRE
    s" tools/lint/source-lex.f" GSI-REQUIRE
    s" lib/argv.f" GSI-REQUIRE
    s" tools/check-all-errors-core.f" GSI-REQUIRE

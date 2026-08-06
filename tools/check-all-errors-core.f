@@ -2,7 +2,7 @@
 \ Load after lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
 \ lib/process.f, lib/process-argv.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/json-writer.f, and tools/lint/source-lex.f.
+\ lib/json-write.f, and tools/lint/source-lex.f.
 
 \ The checked source verifier is a load-time dependency: every checker scope
 \ opened below replays source through VERIFY. It is required here, at top

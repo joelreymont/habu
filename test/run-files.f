@@ -50,7 +50,7 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    lib/object.f lib/object-cache.f lib/object-index.f lib/object-resolve.f
    lib/object-link.f tools/cli-run.f tools/object-image.f tools/hb-build-lib.f
    tools/lint/text.f tools/lint/token.f
-   tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f
+   tools/lint/lib.f lib/json-write.f tools/lint/source-lex.f
    tools/aot-lint-core.f tools/signature-lint-core.f tools/hb-build-direct-lints.f
    tools/json.f tools/gate-json-assert-core.f tools/aot-call-report-lib.f
    test/gate-stats.f test/gate-common-lib.f test/gate-build-common.f
@@ -80,7 +80,7 @@ TR-FILES: TR-GATE-HARNESS-FILES
 
 TR-FILES: TR-GATE-COMMON-FILES
    test/gate-common-lib.f lib/date.f lib/source.f tools/lint/text.f
-   tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
+   tools/lint/token.f tools/lint/lib.f lib/json-write.f
    tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
    tools/json-only-core.f tools/signature-lint-core.f
    tools/checked-boundary-lint-core.f tools/reserved-name-lint-core.f
