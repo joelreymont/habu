@@ -1531,19 +1531,19 @@ private
 \ label (a duplicate label dies the gate: gate-stats GS-LABEL-DUP).
 4 constant TR-MAKI-SLICES
 
-: TR-MAKI-SLICE-LOAD ( i -- ptr u8 n )
+: TR-MAKI-SLICE-LOAD ( n -- ptr u8 n )
    dup 0 = if drop s" maki/test-core.f" exit then
    dup 1 = if drop s" maki/test-db.f" exit then
    dup 2 = if drop s" maki/test-eval-emit.f" exit then
    drop s" maki/test-eval.f" ;
 
-: TR-MAKI-SLICE-LABEL ( i -- ptr u8 n )
+: TR-MAKI-SLICE-LABEL ( n -- ptr u8 n )
    dup 0 = if drop s" native maki core suite" exit then
    dup 1 = if drop s" native maki db suite" exit then
    dup 2 = if drop s" native maki eval-emit suite" exit then
    drop s" native maki eval suite" ;
 
-: TR-MAKI-SLICE-TMP ( i -- ptr u8 n )
+: TR-MAKI-SLICE-TMP ( n -- ptr u8 n )
    dup 0 = if drop s" gate-maki-core" exit then
    dup 1 = if drop s" gate-maki-db" exit then
    dup 2 = if drop s" gate-maki-eval-emit" exit then
@@ -1561,7 +1561,7 @@ private
    s" HB_LOAD_PCT" >LEN TR-LOAD-PCT-EXPORT TR-PCT$ >LEN PROC-ENV+
    s" HB_CAL_PCT" >LEN TR-CAL-PCT TR-PCT$ >LEN PROC-ENV+ ;
 
-: TR-MAKI-BASE ( i -- ) {: i:n :}
+: TR-MAKI-BASE ( n -- ) {: i:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    i TR-MAKI-SLICE-TMP TR-MAKI-TMP!
@@ -1590,7 +1590,7 @@ private
    TR-MAKI-SHA
    GS-TEST ;
 
-: TR-MAKI-START-ONE ( i -- ) {: i:n :}
+: TR-MAKI-START-ONE ( n -- ) {: i:n :}
    i TR-MAKI-BASE
    s" top-phase-spawn" GS-EVENT
    s" under-phase-spawn" GS-EVENT
