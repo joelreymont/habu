@@ -461,9 +461,34 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ +1060, aot-seed +912, primitives/base +368, primitives/find +308, main/startup
 \ +272, and ten smaller - which crosses one 4 KiB text page, so the whole file gains
 \ exactly one page: 123072 -> 127168. The other 29 rows are unchanged.
-121956 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-06 seal-message re-measure. The sealed-package guard stopped writing a
+\ bare token to fd 2 and started naming itself ("hb: protected package sealed
+\ against user source: " + token + LF, src/habu/habu2.f SEAL-MSG:LMSG), and the
+\ wording holds on every path into that shared fail. Those bytes are engine text,
+\ so CODELEN moved and the ratchet said so: phase 15 reported candidate 122428
+\ against the 121956 row. This records the measurement, it does not widen a
+\ budget to fit.
+\
+\ Re-measured through the file's own refresh path on linux-arm64: install --force
+\ to the byte fixpoint (engine sha 3aba2e81, byte-reproducible - a second forced
+\ rebuild lands on the same bytes), then HABU_ENGINE_SIZE_MAP=1 captured off the
+\ stdin metabuild host and reconciled with tools/size-report.f. Zero residue:
+\ attributed 127168 = engine-file 127168, every byte on a named row.
+\
+\ __text 121956 -> 122428: +472 across 4 of the 44 rows - interpret/define +240,
+\ compile/keywords +120, primitives/qualify-def +60, runtime +52 - and the other
+\ 40 are unchanged. Those four are exactly the qualified-definition and package
+\ paths the new wording reaches, which is the corroboration that this is the seal
+\ message and not unrelated drift.
+\
+\ Nothing crosses a page this time, so the file total does not move: text-pad
+\ absorbs all 472 bytes (924 -> 452, LINUX-TEXT-PAD derives it), the floor
+\ distance rises the same 472 (3172 -> 3644, LINUX-MODEL-FLOOR derives it), and
+\ LINUX-TOTAL stays 127168 = BUILD-SIZE:BASELINE-LINUX, which therefore needs no
+\ edit. container/header 4096 and container/rw-segment 192 are unchanged.
+122428 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3172 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+3644 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
@@ -489,7 +514,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" main/startup"            5064 q execute
    s" main/comment"             380 q execute
    s" interpret/colon"         752 q execute
-   s" interpret/define"       10480 q execute
+   s" interpret/define"       10720 q execute
    s" interpret/string"        1168 q execute
    s" interpret/number"          48 q execute
    s" interpret/find"           132 q execute
@@ -497,7 +522,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" compile/semi"            6900 q execute
    s" compile/local"            552 q execute
    s" compile/p2wide"          2460 q execute
-   s" compile/keywords"       9988 q execute
+   s" compile/keywords"      10108 q execute
    s" compile/literal"           36 q execute
    s" compile/ops"             2744 q execute
    s" compile/call"             628 q execute
@@ -524,10 +549,10 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" primitives/number"        332 q execute
    s" primitives/top-hook"       68 q execute
    s" dictionary-code"         6076 q execute
-   s" runtime"                 9620 q execute
+   s" runtime"                 9672 q execute
    s" seed-dictionary"         8400 q execute
    s" aot-seed"               23068 q execute
-   s" primitives/qualify-def"  2448 q execute
+   s" primitives/qualify-def"  2508 q execute
    s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;
 
