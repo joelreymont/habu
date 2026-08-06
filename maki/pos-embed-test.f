@@ -53,7 +53,7 @@ variable TP-T@   variable TP-B1T   variable TP-B2T
 : TP-LR ( -- r )  0.05 ;
 
 \ Adam-update one parameter buffer in place from its gradient buffer
-: TP-ADAM ( r ptr a ptr a ptr a ptr a n -- ) {: lr:r wp:ptr gp:ptr mp:ptr vp:ptr len:n :}
+: TP-ADAM ( r ptr r ptr r ptr r ptr r n -- ) {: lr:r wp:ptr gp:ptr mp:ptr vp:ptr len:n :}
    lr 0.9 0.999 0.00000001 TP-C1 TP-C2  wp gp mp vp len  OPTIM:TT-ADAM! ;
 
 \ deterministic init: small wte/wpe, fixed integer token ids, a committed target
