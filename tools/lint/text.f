@@ -122,22 +122,22 @@ $1000000 constant MAX-BYTES
 : BUF! ( ptr u8 ptr a -- )
    BUF-FIELD ! ;
 
-: CAP@ ( ptr a -- n ) {: s:ptr :}
+: CAP@ ( ptr n -- n ) {: s:ptr :}
    s 1 cells + @ ;
 
-: CAP! ( n ptr a -- ) {: v:n s:ptr :}
+: CAP! ( n ptr n -- ) {: v:n s:ptr :}
    v s 1 cells + ! ;
 
-: LEN@ ( ptr a -- n ) {: s:ptr :}
+: LEN@ ( ptr n -- n ) {: s:ptr :}
    s 2 cells + @ ;
 
-: LEN! ( n ptr a -- ) {: v:n s:ptr :}
+: LEN! ( n ptr n -- ) {: v:n s:ptr :}
    v s 2 cells + ! ;
 
 : ALLOC-NEED ( n -- n )
    dup 0 <= IF drop 1 THEN ;
 
-: ALLOC ( n ptr a -- ) {: size:n s:ptr :}
+: ALLOC ( n ptr n -- ) {: size:n s:ptr :}
    size ALLOC-NEED MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
    cap s CAP!
    buf s BUF! ;
@@ -147,7 +147,7 @@ $1000000 constant MAX-BYTES
    s" lint-slab: bytes=" type size .
    E-FS-CAPACITY throw ;
 
-: ENSURE-CAPACITY ( ptr u8 n n ptr a -- ) {: path:ptr pathu:n size:n s:ptr :}
+: ENSURE-CAPACITY ( ptr u8 n n ptr n -- ) {: path:ptr pathu:n size:n s:ptr :}
    size MAX-BYTES > IF path pathu size TOO-LARGE THEN
    s BUF@ 0= size s CAP@ > or IF size s ALLOC THEN ;
 
@@ -156,12 +156,12 @@ public
 \ Cells a caller must reserve for one slab: `create MY-SLAB LINT-SLAB:CELLS cells allot`.
 3 constant CELLS
 
-: LOAD ( ptr u8 n ptr a -- ) {: path:ptr pathu:n s:ptr :}
+: LOAD ( ptr u8 n ptr n -- ) {: path:ptr pathu:n s:ptr :}
    path pathu FILE-SIZE {: size:n :}
    path pathu size s ENSURE-CAPACITY
    path pathu s BUF@ s CAP@ READ-ALL s LEN! ;
 
-: TEXT ( ptr a -- ptr u8 n ) {: s:ptr :}
+: TEXT ( ptr n -- ptr u8 n ) {: s:ptr :}
    s BUF@ s LEN@ ;
 
 ;package
