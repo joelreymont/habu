@@ -6,6 +6,8 @@ require lib/vector.f
 require lib/fs-mutate.f
 
 package GATE-LINT-TOOLS
+
+using GATE-POOL
 private
 
 \ This file is an in-process gate BODY, not a standalone entry point. Its header says

@@ -17,6 +17,7 @@ require test/gate-pool.f
 require test/run-lib.f
 
 using GATE
+using GATE-POOL
 
 \ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
 \ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB /
@@ -327,7 +328,7 @@ private
 
 : GPT-SPAN-CASE-BODY ( -- )
    GT-ROOT GS-ROOT!
-   [: GPT-SPAN-HOOK ;] is GT-POOL-PASS-HOOK
+   [: GPT-SPAN-HOOK ;] is GATE-POOL:GT-POOL-PASS-HOOK
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    s" fork span child" GPT-TIMEOUT-MS [: GPT-SPAN-CHILD ;] GT-POOL-START-FORK
@@ -360,7 +361,7 @@ private
 
 : GPT-SPAN-MULTI-CASE-BODY ( -- )
    GT-ROOT GS-ROOT!
-   [: GPT-SPAN-HOOK ;] is GT-POOL-PASS-HOOK
+   [: GPT-SPAN-HOOK ;] is GATE-POOL:GT-POOL-PASS-HOOK
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    s" fork multi parent" GPT-TIMEOUT-MS [: GPT-SPAN-MULTI-CHILD ;] GT-POOL-START-FORK
@@ -409,7 +410,7 @@ variable GPT-GEN-SAVE-U
 : GPT-NEST-CASE-BODY ( -- )
    GT-ROOT GS-ROOT!
    s" 7" GS-GEN!
-   [: GPT-SPAN-HOOK ;] is GT-POOL-PASS-HOOK
+   [: GPT-SPAN-HOOK ;] is GATE-POOL:GT-POOL-PASS-HOOK
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    s" fork nest label" GPT-TIMEOUT-MS [: GPT-NEST-CHILD ;] GT-POOL-START-FORK
@@ -677,7 +678,7 @@ variable GPT-GK-SENTINEL-U
 
 : GPT-TIMEOUT-STAT-CASE-BODY ( -- )
    GT-ROOT GS-ROOT!
-   [: GPT-TIMEOUT-STAT-HOOK ;] is GT-POOL-TIMEOUT-HOOK
+   [: GPT-TIMEOUT-STAT-HOOK ;] is GATE-POOL:GT-POOL-TIMEOUT-HOOK
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    GT-POOL-RED-RESET

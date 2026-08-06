@@ -56,6 +56,8 @@ require test/run-lib.f                \ TEST:CAL-REF-MS: the owner of the per-pr
 require lib/json-read-perf-test.f
 
 package JSON-READ-PERF-PHASE
+
+using GATE-POOL
 private
 
 \ MEASURE is ~1.7s of workloads on a quiet box; the timeout carries enough

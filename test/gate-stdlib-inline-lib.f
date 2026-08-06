@@ -3,6 +3,7 @@
 \ Load after test/gate-stdlib-lib.f in the resident test runner.
 
 using GATE
+using GATE-POOL
 
 variable GSI-TIMINGS
 variable GSI-PATH-A

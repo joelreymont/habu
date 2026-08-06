@@ -10,6 +10,7 @@ require test/gate-engine-lib.f
 package TEST
 
 using GATE-COMMON
+using GATE-POOL
 private
 
 TRW-LOAD-DONE

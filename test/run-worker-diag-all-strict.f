@@ -30,6 +30,8 @@ TEST:TRW-LOAD-DONE
 
 package TEST
 
+using GATE-POOL
+
 variable FORK-ID
 
 : RUN-ID ( idx -- ) {: idx:idx :}

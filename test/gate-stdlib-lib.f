@@ -10,6 +10,7 @@ require lib/test.f
 package STDLIB-GATE
 
 using GATE
+using GATE-POOL
 
 120000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
@@ -327,7 +328,7 @@ private
    label labelu ms GS-SPAN-AUTH ;
 
 : SUITE-INSTALL-POOL-HOOKS ( -- )
-   [: SUITE-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK ;
+   [: SUITE-POOL-PASS-SPAN ;] is GATE-POOL:GT-POOL-PASS-HOOK ;
 
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS

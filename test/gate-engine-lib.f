@@ -11,6 +11,7 @@ require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB co
 require lib/type/deftype.f               \ DEFTYPE - declared-nominal role exemplar in the runtime role source
 
 using GATE
+using GATE-POOL
 using GATE-COMMON
 
 \ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
@@ -1345,14 +1346,22 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-TRUSTED-EFFECT
    GE-ROLE-TYPES ;
 
+\ Owned by ENGINE-GATE because it reads the runner's timeout answer: the arena
+\ cell it used to read is private to package GATE, and the package lint requires
+\ a changed definition to have a package owner.
+package ENGINE-GATE
+public
+
 : GE-TIMEOUT-ATTRIBUTION ( -- )
    GE-HB-RESET
    s" 1" GE-ARG+
    s" /bin/sleep" 50 RUNTIME-DIRECT:TIMEOUT
-   GT-TIMED-OUT @ 0= if
+   GT-TIMED-OUT? 0= if
       s" gate timeout outcome attribution" GE-FAIL
    then
    s" PASS: gate timeout outcome attribution" type cr ;
+
+;package
 
 : GE-PROCESS-PTY ( -- )
    GE-HB-RESET
@@ -2074,7 +2083,7 @@ public
    GE-PKGSCOPE-RECOVERY
    GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
-   GE-TIMEOUT-ATTRIBUTION ;
+   ENGINE-GATE:GE-TIMEOUT-ATTRIBUTION ;
 
 : ALL ( -- )
    GE-CONSTRUCT-EXEC

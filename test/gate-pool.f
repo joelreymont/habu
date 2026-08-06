@@ -8,6 +8,10 @@ require tools/why-threw.f
 
 using GATE
 
+package GATE-POOL
+
+public
+
 16 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
 8 constant GT-POOL-MACOS-DEFAULT
@@ -722,7 +726,7 @@ GT-POOL-ABORT-KILL!
    GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ ;
 
 : GT-POOL-CAPTURE-ROOT$ ( -- ptr u8 n )
-   GT-ROOT-U @ 0 > if GT-ROOT exit then
+   GT-ROOT? if GT-ROOT exit then
    GT-POOL-FALLBACK-ROOT$ ;
 
 : GT-POOL-CAPTURE-PATH! ( idx n -- ) {: idx:idx stream:n :}
@@ -1116,5 +1120,7 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-DRAIN ( -- )
    GT-POOL-DRAIN-SOFT
    GT-POOL-RED# 0 > if GT-POOL-RED-DIE then ;
+
+;package
 
 ;using

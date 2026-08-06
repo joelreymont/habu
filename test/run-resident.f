@@ -2,6 +2,8 @@
 
 
 package TEST
+
+using GATE-POOL
 private
 variable TR-R-SETUP-START-NS
 

@@ -9,6 +9,7 @@ require test/run-files.f
 require test/run-result-cache.f
 
 using GATE
+using GATE-POOL
 
 package TEST
 private
@@ -538,8 +539,8 @@ private
 
 public
 : INSTALL-POOL-HOOKS ( -- )
-   [: TR-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK
-   [: TR-POOL-TIMEOUT-STAT ;] is GT-POOL-TIMEOUT-HOOK ;
+   [: TR-POOL-PASS-SPAN ;] is GATE-POOL:GT-POOL-PASS-HOOK
+   [: TR-POOL-TIMEOUT-STAT ;] is GATE-POOL:GT-POOL-TIMEOUT-HOOK ;
 
 INSTALL-POOL-HOOKS
 

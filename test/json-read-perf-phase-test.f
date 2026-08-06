@@ -43,6 +43,7 @@ require test/json-read-perf-phase.f
 package JSON-READ-PERF-PHASE
 
 using GATE
+using GATE-POOL
 private
 
 \ Load-scaled, not fixed: a fixed wall-clock budget in a process-spawning suite

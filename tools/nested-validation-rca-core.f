@@ -17,6 +17,7 @@ require test/gate-engine-lib.f
 package NESTED-VALIDATION-RCA
 
 using GATE
+using GATE-POOL
 using GATE-COMMON
 
 160 constant EVENT-CAP
