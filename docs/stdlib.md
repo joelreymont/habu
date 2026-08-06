@@ -38,6 +38,7 @@ Planned module files:
 - `lib/test/assert.f`
 - `lib/test/suite.f`
 - `lib/test/runner.f`
+- `lib/test/echo.f`
 - `lib/test/subject.f`
 - `lib/property.f`
 - `lib/build.f`
@@ -1764,11 +1765,25 @@ poll timeout with `GT-PROGRESS-SLICE-MS` and call `GT-PROGRESS-WAIT` on quiet
 polls so silent children still produce regular heartbeat lines. The progress
 helpers print only runner labels and elapsed milliseconds; successful child
 stdout/stderr remains captured unless the caller deliberately streams it.
-Streaming callers that do forward child output should route capture buffers
-through `GT-FLUSH-LINES-FD` during polling and `GT-FLUSH-REMAINDER-FD` at process
-exit. This keeps parent progress records serialized at line boundaries: a child
-line written in several chunks cannot be split by a parent heartbeat, while a
-final unterminated child fragment is still emitted before PASS/FAIL.
+
+`lib/test/echo.f` owns that streaming half and publishes package `ECHO`:
+
+```forth
+ECHO:LINE-SPAN     ( ptr u8 n -- n )
+ECHO:LINES-FD      ( n ptr u8 ptr n -- )
+ECHO:REMAINDER-FD  ( n ptr u8 ptr n -- )
+ECHO:CAPTURE       ( ptr u8 n -- )
+```
+
+`ECHO:CAPTURE` runs a pending capture to completion the way
+`GT-PROGRESS-CAPTURE` does, but writes the child's output through to the
+parent's own descriptors as it arrives. Callers that drive their own poll loop
+route the capture buffers through `ECHO:LINES-FD` while polling and
+`ECHO:REMAINDER-FD` at process exit; `ECHO:LINE-SPAN` reports how much of a
+buffer is whole lines. This keeps parent progress records serialized at line
+boundaries: a child line written in several chunks cannot be split by a parent
+heartbeat, while a final unterminated child fragment is still emitted before
+PASS/FAIL.
 
 `lib/test/subject.f` publishes `SUBJECT:RUN`, which evaluates one counted source
 inside a disposable fork child, captures bounded stdout and stderr, enforces a

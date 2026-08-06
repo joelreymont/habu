@@ -12,7 +12,6 @@ require lib/test/record.f
 32768 constant GT-ERR-CAP
 10000 constant GT-DEFAULT-TIMEOUT-MS
 5000 constant GT-HEARTBEAT-MS
-10 constant GT-LF
 
 create GT-ROOT-BUF FS-PATH-CAP allot
 create GT-OUT-BUF GT-OUT-CAP allot
@@ -29,9 +28,6 @@ variable GT-CODE                         \ exit code or signal number; 0 for tim
 variable GT-FAIL#
 variable GT-PROGRESS-START-NS
 variable GT-PROGRESS-LAST-NS
-variable GT-LINE-END
-variable GT-FLUSH-U
-variable GT-TAIL-U
 
 : GT-FAIL-SLOT ( n -- ptr u8 ) {: idx :}
    idx 0 < if E-TBL-BOUNDS throw then
@@ -142,46 +138,6 @@ variable GT-TAIL-U
 : GT-RUN-DEFAULT ( ptr u8 n -- )
    GT-DEFAULT-TIMEOUT-MS GT-RUN ;
 
-: GT-LINE-FLUSH-U ( ptr u8 n -- n ) {: a:ptr u :}
-   u 0 < if E-STR-BOUNDS throw then
-   0 GT-LINE-END !
-   0 begin dup u < while
-      dup a + c@ GT-LF = if dup 1+ GT-LINE-END ! then
-      1+
-   repeat drop
-   GT-LINE-END @ ;
-
-: GT-WRITE-FD ( n ptr u8 n -- ) {: fd a:ptr u :}
-   u 0 < if E-STR-BOUNDS throw then
-   u 0= if exit then
-   fd a u write u <> if E-FS-IO throw then ;
-
-: GT-FLUSH-LINES-FD ( n ptr u8 ptr n -- ) {: fd:n buf:ptr lenp:ptr :}
-   lenp @ 0 < if E-STR-BOUNDS throw then
-   buf lenp @ GT-LINE-FLUSH-U GT-FLUSH-U !
-   GT-FLUSH-U @ 0 <= if exit then
-   fd buf GT-FLUSH-U @ GT-WRITE-FD
-   lenp @ GT-FLUSH-U @ - GT-TAIL-U !
-   GT-TAIL-U @ 0 > if
-      buf GT-FLUSH-U @ + buf GT-TAIL-U @ BYTE-COPY
-   then
-   GT-TAIL-U @ lenp ! ;
-
-: GT-FLUSH-REMAINDER-FD ( n ptr u8 ptr n -- ) {: fd:n buf:ptr lenp:ptr :}
-   lenp @ GT-TAIL-U !
-   GT-TAIL-U @ 0 < if E-STR-BOUNDS throw then
-   GT-TAIL-U @ 0= if exit then
-   fd buf GT-TAIL-U @ GT-WRITE-FD
-   0 lenp ! ;
-
-: GT-CAPTURE-FLUSH-LINES ( -- )
-   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-LINES-FD
-   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-LINES-FD ;
-
-: GT-CAPTURE-FLUSH-FINAL ( -- )
-   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-REMAINDER-FD
-   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-REMAINDER-FD ;
-
 : GT-PROGRESS-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    mono-ns GT-PROGRESS-START-NS !
    GT-PROGRESS-START-NS @ GT-PROGRESS-LAST-NS !
@@ -231,11 +187,6 @@ variable GT-TAIL-U
    GT-CAPTURE-DRAIN
    label labelu GT-PROGRESS-WAIT ;
 
-: GT-PROGRESS-CAPTURE-READY-FLUSH ( ptr u8 n -- ) {: label:ptr labelu :}
-   GT-CAPTURE-DRAIN
-   GT-CAPTURE-FLUSH-LINES
-   label labelu GT-PROGRESS-WAIT ;
-
 : GT-PROGRESS-CAPTURE-STEP? ( ptr u8 n -- bool ) {: label:ptr labelu :}
    GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
       drop
@@ -244,18 +195,6 @@ variable GT-TAIL-U
    then
    drop
    label labelu GT-PROGRESS-CAPTURE-READY
-   0 0= 0= ;
-
-: GT-PROGRESS-CAPTURE-STEP-FLUSH? ( ptr u8 n -- bool ) {: label:ptr labelu :}
-   GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
-      drop
-      label labelu GT-PROGRESS-CAPTURE-TIMEOUT? dup if
-         GT-CAPTURE-FLUSH-FINAL
-      then
-      exit
-   then
-   drop
-   label labelu GT-PROGRESS-CAPTURE-READY-FLUSH
    0 0= 0= ;
 
 : GT-PROGRESS-STDIN-READY ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
@@ -279,14 +218,6 @@ variable GT-TAIL-U
       label labelu GT-PROGRESS-CAPTURE-STEP? if GT-CAPTURE-STORE exit then
    repeat
    PROC-REAP-CAPTURE
-   GT-CAPTURE-STORE ;
-
-: GT-PROGRESS-CAPTURE-FLUSH ( ptr u8 n -- ) {: label:ptr labelu :}
-   begin PROC-CAPTURE-DONE? 0= while
-      label labelu GT-PROGRESS-CAPTURE-STEP-FLUSH? if GT-CAPTURE-STORE exit then
-   repeat
-   PROC-REAP-CAPTURE
-   GT-CAPTURE-FLUSH-FINAL
    GT-CAPTURE-STORE ;
 
 : GT-PROGRESS-STDIN-CAPTURE ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}

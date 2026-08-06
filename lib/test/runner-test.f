@@ -1,4 +1,4 @@
-\ runner-test.f - focused tests for lib/test/runner.f.
+\ runner-test.f - focused tests for lib/test/runner.f and lib/test/echo.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/test/runner.f
 \ lib/test/runner-test.f
@@ -12,6 +12,11 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/test/runner.f
+require lib/test/echo.f
+
+package RUNNER-TEST
+
+using ECHO
 
 create GTT-OK-PATH FS-PATH-CAP allot
 create GTT-FAIL-PATH FS-PATH-CAP allot
@@ -129,12 +134,12 @@ variable GTT-OFI
 
 : GTT-LINE-FLUSH-LINES ( -- )
    GTT-LINE$ OPEN-APPEND-FD GTT-LINE-FD !
-   GTT-LINE-FD @ GTT-LINE-BUF GTT-LINE-LEN GT-FLUSH-LINES-FD
+   GTT-LINE-FD @ GTT-LINE-BUF GTT-LINE-LEN LINES-FD
    GTT-LINE-FD @ close ;
 
 : GTT-LINE-FLUSH-REMAINDER ( -- )
    GTT-LINE$ OPEN-APPEND-FD GTT-LINE-FD !
-   GTT-LINE-FD @ GTT-LINE-BUF GTT-LINE-LEN GT-FLUSH-REMAINDER-FD
+   GTT-LINE-FD @ GTT-LINE-BUF GTT-LINE-LEN REMAINDER-FD
    GTT-LINE-FD @ close ;
 
 : GTT-LINE-FILE$ ( -- ptr u8 n )
@@ -198,7 +203,7 @@ variable GTT-OFI
 : GTT-PROGRESS-FLUSH-TRUE ( -- )
    PROC-ARGV-RESET
    s" /usr/bin/true" GTT-CMD-TIMEOUT-MS GTT-ARGV-CAPTURE-BEGIN
-   s" progress capture flush" GT-PROGRESS-CAPTURE-FLUSH
+   s" progress capture flush" CAPTURE
    PROC-CLOSE-CAPTURE-FDS ;
 
 : GTT-PROGRESS-STDIN-CAT ( -- )
@@ -278,9 +283,9 @@ variable GTT-OFI
    GT-FAIL-STORED 0 T= ;
 
 : GTT-TEST-LINE-FLUSH-U ( -- )
-   s" abc" GT-LINE-FLUSH-U 0 T=
-   GTT-LINES-PARTIAL$ GT-LINE-FLUSH-U 6 T=
-   GTT-LINES-COMPLETE$ GT-LINE-FLUSH-U 11 T= ;
+   s" abc" LINE-SPAN 0 T=
+   GTT-LINES-PARTIAL$ LINE-SPAN 6 T=
+   GTT-LINES-COMPLETE$ LINE-SPAN 11 T= ;
 
 : GTT-TEST-LINE-FLUSH-FD ( -- )
    GTT-LINE-FILE-RESET
@@ -340,4 +345,8 @@ variable GTT-OFI
    GT-REPORT
    s" test-runner-test: ok" type cr ;
 
+;using
+
 TEST-RUNNER-TEST-MAIN
+
+;package
