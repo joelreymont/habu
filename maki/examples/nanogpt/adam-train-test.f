@@ -49,7 +49,7 @@ create RG-DB1  SC-B1N cells allot
 create RG-DW2  SC-W2N cells allot
 create RG-DB2  SC-B2N cells allot
 
-: RG-ACC ( r ptr a n -- ) {: d:r p:ptr k:n :}
+: RG-ACC ( r ptr r n -- ) {: d:r p:ptr k:n :}
    p k T-GET d f+  p k T-SET ;
 
 \ ---- reference forward (MUL-F/ADD-F chains + the gelu scalar rule) -----------
@@ -300,7 +300,7 @@ create RGB-B1C SC-B1N cells allot
 create RGB-W2C SC-W2N cells allot
 create RGB-B2C SC-B2N cells allot
 
-: RGB-COPY ( ptr a ptr a n -- ) {: s:ptr d:ptr n:n :}
+: RGB-COPY ( ptr r ptr r n -- ) {: s:ptr d:ptr n:n :}
    n 0 ?do  s i T-GET  d i T-SET  loop ;
 
 : RGB-ZERO-REF ( -- )
