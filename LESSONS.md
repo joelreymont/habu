@@ -5369,3 +5369,17 @@ peer lane one spurious failure: never pkill by pattern on a shared box -
 match your own gate's exact PID lineage; peer lanes run identically-named
 binaries.
 
+## A pin must own the state that selects its outcome (2026-08-06)
+
+A guard with two legitimate outcomes - inherited-mapping success and
+unmapped-child refusal - was pinned by a test asserting the refusal
+unconditionally, inside a gate member whose sibling files had already mapped
+the library. In every configuration the gate actually runs, the pin did zero
+mutation-killing work and manufactured a red; on hosts without the toolchain
+it silently passed. The 'intermittent' red was toolchain availability, and
+identifying the mechanism first turned ten-run flake batteries into run-1
+determinism. The cure: a case that STAGES its own precondition - exec a
+fresh process, assert the state, then demand the refusal - never one that
+assumes the member's process history. Green is not evidence when the
+configuration selects the other branch.
+
