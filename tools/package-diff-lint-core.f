@@ -1326,6 +1326,17 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
    FILE$ s" src/core/enum-decl.f" LINT-STR= if
       DEF-NAME-I @ s" ENUM" TOK=CI exit
    then
+   \ Same shape and same reason as STRUCTURE and ENUM above: these four are the
+   \ generative storage declaration keywords a user writes at genuine top level,
+   \ and src/core/internal-mark.f's seal pass keeps them executable there. They
+   \ are the ONLY names in this file that may stay global; everything else lives
+   \ in package LAYOUT-BUF and is still reported.
+   FILE$ s" src/core/layout-buffer.f" LINT-STR= if
+      DEF-NAME-I @ s" LAYOUT-BUFFER" TOK=CI
+      DEF-NAME-I @ s" DEFER-LAYOUT-BUFFER" TOK=CI or
+      DEF-NAME-I @ s" TYPED-BUFFER" TOK=CI or
+      DEF-NAME-I @ s" TYPED-VARIABLE" TOK=CI or exit
+   then
    false ;
 
 \ A changed unpackaged definition normally loses its package owner.  A non-zero

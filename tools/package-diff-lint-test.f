@@ -581,6 +581,62 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    name nameu TEST-GLOBAL-SOURCE
    path pathu TEST-ADD-SOURCE-SECTION ;
 
+\ The four generative storage declaration keywords carry a FOUR-name exception in
+\ src/core/layout-buffer.f. Everything else that file defines lives in package
+\ LAYOUT-BUF, so the row has to admit exactly these four names at exactly that
+\ path: a fifth global beside them is reported, each of the four is reported in
+\ any other file, and wrapping one of them in a package block is reported through
+\ SCOPE-DELTA (the boundary moved, so ownership genuinely changed).
+: TEST-LAYOUT-KEYWORD-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" : LAYOUT-BUFFER ( n -- ) LAYOUT-BUF:RUN ;" TEST-SOURCE-LINE
+   s" : DEFER-LAYOUT-BUFFER ( -- ) LAYOUT-BUF:RUN-DEFER ;" TEST-SOURCE-LINE
+   s" : TYPED-BUFFER ( n -- ) LAYOUT-BUF:RUN-BUF ;" TEST-SOURCE-LINE
+   s" : TYPED-VARIABLE ( -- ) LAYOUT-BUF:RUN-VAR ;" TEST-SOURCE-LINE ;
+
+: TEST-LAYOUT-KEYWORD-ELSEWHERE ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   TEST-SOURCE-RESET
+   s" : " TEST-SOURCE+ name nameu TEST-SOURCE+ s"  ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" src/core/layout-valid.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-LAYOUT-KEYWORD-OWNER-LOSS-SRC ( -- )
+   TEST-SOURCE-RESET
+   s" : LAYOUT-BUFFER ( n -- ) LAYOUT-BUF:RUN ;" TEST-SOURCE-LINE
+   s" src/core/layout-buffer.f" TEST-WRITE-SOURCE ;
+
+: TEST-LAYOUT-KEYWORD-OWNER-LOSS-DIFF ( -- )
+   s" src/core/layout-buffer.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package LAYOUT-BUF" TEST-DIFF+ TEST-LF
+   s"  : LAYOUT-BUFFER ( n -- ) LAYOUT-BUF:RUN ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-LAYOUT-KEYWORD-GLOBALS ( -- )
+   TEST-LAYOUT-KEYWORD-SOURCE
+   TEST-DIFF-RESET s" src/core/layout-buffer.f" TEST-ADD-SOURCE-SECTION
+   s" the four storage keywords are admitted at their own path" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ (a) a fifth global beside the four is still reported
+   TEST-LAYOUT-KEYWORD-SOURCE
+   s" : LBUF-LEAK ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" src/core/layout-buffer.f" TEST-ADD-SOURCE-SECTION
+   s" a fifth global beside the storage keywords is reported" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ (b) each of the four is reported in any other file
+   s" a storage keyword in a neighboring file is reported" T-LABEL
+   s" LAYOUT-BUFFER" TEST-LAYOUT-KEYWORD-ELSEWHERE
+   s" DEFER-LAYOUT-BUFFER" TEST-LAYOUT-KEYWORD-ELSEWHERE
+   s" TYPED-BUFFER" TEST-LAYOUT-KEYWORD-ELSEWHERE
+   s" TYPED-VARIABLE" TEST-LAYOUT-KEYWORD-ELSEWHERE
+   \ (c) the admission sits behind SCOPE-DELTA: deleting the package boundary
+   \ that used to own one of the four still reports, because the ownership
+   \ genuinely changed even though the name itself is admitted.
+   TEST-LAYOUT-KEYWORD-OWNER-LOSS-SRC
+   TEST-DIFF-RESET TEST-LAYOUT-KEYWORD-OWNER-LOSS-DIFF
+   s" a deleted package boundary around a storage keyword still reports" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 : TEST-CORE-EXEMPTIONS ( -- )
    TEST-DIFF-RESET
    s" PRELUDE-GLOBAL" s" lib/prelude.f" TEST-ADD-WHOLE-CORE-EXEMPTION
@@ -633,7 +689,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    1 TEST-EXPECT-FINDINGS
    s" NEARBY-GLOBAL" TEST-GLOBAL-SOURCE
    TEST-DIFF-RESET s" src/core/enum-decl.f" TEST-ADD-SOURCE-SECTION
-   1 TEST-EXPECT-FINDINGS ;
+   1 TEST-EXPECT-FINDINGS
+   TEST-LAYOUT-KEYWORD-GLOBALS ;
 
 : TEST-OPTION-SOURCE ( ptr u8 n -- )
    TEST-SOURCE-RESET
