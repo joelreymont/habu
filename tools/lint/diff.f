@@ -186,7 +186,7 @@ variable SEG-END
 : FAIL ( -- )
    E-DIFF-SYNTAX throw ;
 
-: ON? ( ptr a -- bool )
+: ON? ( ptr n -- bool )
    @ 0<> ;
 
 : NONE ( -- event )
