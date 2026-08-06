@@ -584,6 +584,18 @@ public
 : SP-ALIGN ( -- n )       SP-ALIGN-N ;
 : FRAME-MAX ( -- n )      FRAME-MAX-N ;
 
+\ The frame a routine needing `want` bytes below its entry declares: the request
+\ rounded up to the stack alignment, and no frame at all for a routine that needs
+\ nothing. It is here rather than in either caller because two of them need the
+\ same number now - src/compiler/native/abi.f turns a spill count into a
+\ declaration, and src/compiler/native/regalloc.f measures the frame a walk
+\ proved its routine needs - and the two have to agree exactly or the validator
+\ refuses the difference. One authority rather than two that drift.
+: FRAME-ROUND ( n -- n )
+   {: want:n :}
+   want 0= if 0 exit then
+   want SP-ALIGN-N 1- +  SP-ALIGN-N /  SP-ALIGN-N * ;
+
 \ The deepest byte an access of this width can name through the unsigned-offset
 \ field. A consumer placing slots asks this rather than repeating the arithmetic.
 \ A width no load or store form moves has no reach, so it is refused here.

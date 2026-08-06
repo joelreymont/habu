@@ -85,9 +85,7 @@ public
 \ and that needs no slot declares no frame at all.
 : FRAME-FOR ( A64EFF:traits n -- n )
    {: t:A64EFF:traits spills:n :}
-   t A64FRAME:SPILL-BASE  spills A64IR:SLOT-WIDTH *  + {: want:n :}
-   want 0= if 0 exit then
-   want A64EFF:SP-ALIGN 1- +  A64EFF:SP-ALIGN /  A64EFF:SP-ALIGN * ;
+   t A64FRAME:SPILL-BASE  spills A64IR:SLOT-WIDTH *  +  A64EFF:FRAME-ROUND ;
 
 \ A leaf word under that convention, with room in its frame for `spills` values
 \ the register allocator could not keep in registers. No register is part of the
