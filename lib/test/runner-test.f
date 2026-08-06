@@ -221,6 +221,53 @@ variable GTT-OFI
    GTT-FAIL$ FILE? TTRUE
    GTT-HANG$ FILE? TTRUE ;
 
+\ Lend the published sinks exactly as an outside consumer must: hand both to the
+\ real capture producer and read the run back through GT-OUT$/GT-ERR$/GT-RC@.
+\ The fail fixture writes to BOTH streams and dies 7, so a swapped, aliased or
+\ mis-capped pair cannot pass.
+: GTT-SINK-RUN ( -- )
+   PROC-ARGV-RESET
+   GTT-FAIL$ >LEN PROC-ARGV+
+   s" bin/hb" >LEN
+   GT-OUT-SINK
+   GT-ERR-SINK
+   GTT-HB-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE-OUTCOME
+   GT-STORE-RUN ;
+
+: GTT-SINK-CAP ( ptr u8 len -- n ) {: a:ptr cap:len :}
+   cap LEN>N ;
+
+: GTT-TEST-SINKS ( -- )
+   s" out sink lends the stdout capacity" T-LABEL
+   GT-OUT-SINK GTT-SINK-CAP GT-OUT-CAP T=
+   s" err sink lends the stderr capacity" T-LABEL
+   GT-ERR-SINK GTT-SINK-CAP GT-ERR-CAP T=
+   GTT-SINK-RUN
+   s" lent sinks capture the run rc" T-LABEL
+   GT-RC@ 7 T=
+   s" lent out sink reads back as stdout" T-LABEL
+   GT-OUT$ GTT-FAIL-OUT$ T$=
+   s" lent err sink reads back as stderr" T-LABEL
+   GT-ERR$ GTT-FAIL-ERR$ T$= ;
+
+\ A timeout and a SIGKILL death are the same rc 137, so GT-RC@ cannot tell them
+\ apart and GT-TIMED-OUT? must not be derived from it.
+: GTT-TEST-TIMED-OUT-PREDICATE ( -- )
+   0 >LEN 0 >LEN SIGKILL OUTCOME:SIGNALED GT-STORE-RUN
+   s" signal death flattens to rc 137" T-LABEL
+   GT-RC@ 137 T=
+   s" signal death is not a timeout" T-LABEL
+   GT-TIMED-OUT? TFALSE
+   0 >LEN 0 >LEN OUTCOME:TIMEOUT GT-STORE-RUN
+   s" timeout flattens to the same rc 137" T-LABEL
+   GT-RC@ 137 T=
+   s" timeout is a timeout" T-LABEL
+   GT-TIMED-OUT? TTRUE
+   0 >LEN 0 >LEN 0 OUTCOME:EXITED GT-STORE-RUN
+   s" clean exit is not a timeout" T-LABEL
+   GT-TIMED-OUT? TFALSE ;
+
 : GTT-TEST-PASSING-COMMAND ( -- )
    GTT-RUN-OK
    0 s" ok rc" GT-RC=
@@ -327,8 +374,14 @@ variable GTT-OFI
 
 : TEST-RUNNER-TEST-MAIN ( -- )
    T-RESET
+   s" no temp root before GT-START" T-LABEL
+   GT-ROOT? TFALSE
    GTT-PREPARE
+   s" temp root after GT-START" T-LABEL
+   GT-ROOT? TTRUE
    GTT-TEST-TEMP-ROOT
+   GTT-TEST-SINKS
+   GTT-TEST-TIMED-OUT-PREDICATE
    GTT-TEST-PASSING-COMMAND
    GTT-TEST-FAILING-COMMAND
    GTT-TEST-TIMEOUT

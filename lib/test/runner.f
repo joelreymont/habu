@@ -58,17 +58,32 @@ variable GT-PROGRESS-LAST-NS
 : GT-ROOT ( -- ptr u8 n )
    GT-ROOT-BUF GT-ROOT-U @ ;
 
+\ Has a temp root been made yet?  Every caller that used to read GT-ROOT-U for
+\ this asks the question instead of the cell.
+: GT-ROOT? ( -- bool )
+   GT-ROOT-U @ 0 > ;
+
 : GT-OUT$ ( -- ptr u8 n )
    GT-OUT-BUF GT-OUT-U @ ;
 
 : GT-ERR$ ( -- ptr u8 n )
    GT-ERR-BUF GT-ERR-U @ ;
 
+\ The stdout and stderr sinks: the buffer a producer may fill, paired with the
+\ capacity that belongs to it.  Lend these instead of hand-pairing a buffer with
+\ a cap - one word cannot transpose the pair, and the storage stays the
+\ runner's.  GT-OUT$/GT-ERR$ read back what a producer wrote here.
+: GT-OUT-SINK ( -- ptr u8 len )
+   GT-OUT-BUF GT-OUT-CAP >LEN ;
+
+: GT-ERR-SINK ( -- ptr u8 len )
+   GT-ERR-BUF GT-ERR-CAP >LEN ;
+
 : GT-FAILURES ( -- n )
    GT-FAIL# @ ;
 
 : GT-EXPECT-ROOT ( -- )
-   GT-ROOT-U @ 0 <= if E-FS-PATH throw then ;
+   GT-ROOT? 0= if E-FS-PATH throw then ;
 
 : GT-COPY-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
    u 0 < if E-FS-PATH throw then
@@ -123,6 +138,16 @@ variable GT-PROGRESS-LAST-NS
    GT-EXITED @ if GT-CODE @ OUTCOME:EXITED exit then
    GT-CODE @ OUTCOME:SIGNALED ;
 
+\ Did the last run hit the capture deadline?  Asked of the outcome, which is the
+\ one tag authority; GT-RC@ cannot answer it, because a timeout and a SIGKILL
+\ death both flatten to rc 137.
+: GT-TIMED-OUT? ( -- bool )
+   GT-OUTCOME@ MATCH outcome
+     exited OF drop 0 0= 0= ENDOF
+     signaled OF drop 0 0= 0= ENDOF
+     timeout OF 0 0= ENDOF
+   ;MATCH ;
+
 : GT-STORE-RUN ( len len outcome -- )
    GT-OUTCOME!
    LEN>N GT-ERR-U !
@@ -132,12 +157,12 @@ variable GT-PROGRESS-LAST-NS
    PROC-CAPTURE-OUTCOME@ GT-STORE-RUN ;
 
 : GT-RUN ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
-   path pathu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
+   path pathu >LEN GT-OUT-SINK GT-ERR-SINK timeout >MS
    RUN-ARGV-CAPTURE-OUTCOME
    GT-STORE-RUN ;
 
 : GT-CAPTURE-DRAIN ( -- )
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-DRAIN-READY ;
+   GT-OUT-SINK GT-ERR-SINK PROC-DRAIN-READY ;
 
 : GT-RUN-DEFAULT ( ptr u8 n -- )
    GT-DEFAULT-TIMEOUT-MS GT-RUN ;
@@ -248,7 +273,7 @@ variable GT-PROGRESS-LAST-NS
    GT-RC@ 0 <> name nameu GT-CHECK ;
 
 : GT-TIMEOUT ( ptr u8 n -- ) {: name:ptr nameu :}
-   GT-TIMED-OUT @ name nameu GT-CHECK ;
+   GT-TIMED-OUT? name nameu GT-CHECK ;
 
 : GT-STDOUT= ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu name:ptr nameu :}
    GT-OUT$ want wantu STR= name nameu GT-CHECK ;
