@@ -97,6 +97,32 @@ user token.
 The temporary files are not build products. The final installed `bin/hb` is the
 native checked stdin/TTY engine rebuilt from current source.
 
+## A Stale Engine Cannot Report a Verdict
+
+Because `bin/hb` is generated and ignored, a checkout can carry an engine built
+from source it no longer holds — a new Jujutsu workspace starts with whatever
+binary was in `bin/` at the time. Only four of the native suite's phases run
+under the freshly built candidate; the rest spawn `bin/hb`, so a stale engine
+would quietly decide most of the gate's verdict.
+
+The native suite refuses to let that happen. Phase 15 already builds the engine
+this tree produces, and `BF-INSTALL-HB` and `GE-PROMOTE-CANDIDATE` promote the
+same `hb-stdin` artifact, so `bin/hb` and `Habu-under-test` are byte-equal
+exactly when `bin/hb` was installed from the current source. `TEST:DRAIN-UNTIL-UNDER`
+compares the two hashes and stops the gate when they differ:
+
+```
+bin/hb sha256=37f6269f...
+this tree builds sha256=3aba2e81...
+refresh it: bin/hb --load tools/build-fixpoint-refresh.f -- install
+FAIL: bin/hb is not the engine this tree builds
+```
+
+Run the named refresh and rerun the gate. The refresh is idempotent: it costs
+about half a second when the engine is already current, and about five seconds
+when it has to rebuild. `--under PATH` supplies an engine deliberately and skips
+the phase 15 build, so the comparison has nothing to compare and is not made.
+
 ## Periodic No-Binary Check
 
 The normal native gate uses an existing `bin/hb`; it does not prove the

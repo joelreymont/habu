@@ -86,6 +86,7 @@ create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
 create TR-UNDER-BUF FS-PATH-CAP allot
 create TR-UNDER-HEX 64 allot
+create TR-HB-HEX 64 allot
 create TR-RESULT-KEY-HEX 64 allot
 create TR-UNDER-ARG-BUF FS-PATH-CAP allot
 create TR-PERSIST-BUF FS-PATH-CAP allot
@@ -606,6 +607,37 @@ private
    UNDER$ CHMOD-X
    s" candidate-import" GS-EVENT
    -1 TR-UNDER-READY ! ;
+
+: TR-HB-SHA! ( -- )
+   s" bin/hb" TR-HB-HEX SHA256-FILE-HEX 0 <> if
+      s" failed to hash bin/hb" TR-FAIL
+   then ;
+
+\ bin/hb is generated and gitignored, so a checkout can inherit an engine built
+\ from source it no longer holds - a fresh Jujutsu workspace copies whatever
+\ binary happened to be there. Only phases 3, 14, 16 and 20 run under the
+\ candidate (PHASE-UNDER?); every other phase spawns bin/hb, so a stale engine
+\ decides most of this gate's verdict and nothing notices. Measured on this
+\ branch: with an inherited engine installed, tools/subject-case-run-test.f
+\ reports two failures the tree's own engine passes.
+\
+\ The comparison is free because the gate has already paid for it. Phase 15
+\ (ENGINE-GATE:FIXPOINT) runs BF-BUILD-STDIN-FROM-STAGE and GE-PROMOTE-CANDIDATE
+\ renames that same hb-stdin to Habu-under-test, while BF-INSTALL-HB copies the
+\ identical file to bin/hb. The two paths promote one artifact, so equal hashes
+\ mean bin/hb was installed from this tree and unequal hashes mean it was not.
+\ TR-UNDER-LINE has just hashed the candidate; this reads bin/hb once.
+\
+\ --under supplies an engine on purpose and skips the phase 15 build, so there
+\ is no tree-built hash to compare against and the check has nothing to say.
+: TR-EXPECT-ENGINE-FROM-TREE ( -- )
+   TR-UNDER-ARG? if exit then
+   TR-HB-SHA!
+   TR-HB-HEX 64 TR-UNDER-HEX 64 STR= if exit then
+   s" bin/hb sha256=" type TR-HB-HEX 64 type cr
+   s" this tree builds sha256=" type TR-UNDER-HEX 64 type cr
+   s" refresh it: bin/hb --load tools/build-fixpoint-refresh.f -- install" type cr
+   s" bin/hb is not the engine this tree builds" TR-FAIL ;
 
 : TR-BASE ( -- )
    PROC-ARGV-RESET
@@ -1216,6 +1248,7 @@ public
       GT-POOL-STEP
    repeat
    TR-EXPECT-UNDER
+   TR-EXPECT-ENGINE-FROM-TREE
    TR-MAKI-KICK ;
 
 : CANDIDATE-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
