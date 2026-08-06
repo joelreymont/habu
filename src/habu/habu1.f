@@ -2115,13 +2115,28 @@ public
 : BXREFRETARGET ( -- )
    LBL LBL {: live:label bad:label :}
    A G-POP  B G-POP  C G-POP     \ x9 = record index, x10 = len, x11 = start
-   \ A record index names a row of the live dictionary or it names nothing. The
-   \ index arrives from a lookup that already found the record, so this is the
-   \ backstop rather than the path - but the write it guards lands anywhere in
-   \ the dictionary region, so it is worth the two comparisons.
+   \ A record index names a row of the live dictionary, or the ONE pending row a
+   \ publication is preparing, or it names nothing. The index arrives from a
+   \ lookup that already found the record, so this is the backstop rather than
+   \ the path - but the write it guards lands anywhere in the dictionary region,
+   \ so it is worth the comparison.
    \ One UNSIGNED comparison covers both ends: a negative index is a huge
    \ unsigned one and fails the same test.
-   9 NDICT CMP,  C-CS bad BCOND,                 \ negative, or at or past the newest record
+   \
+   \ WHY THE PENDING ROW IS ADMITTED. Record[NDICT] is the slot the next
+   \ definition occupies, and it is written BEFORE it is published as a matter of
+   \ course: EM-INTERPRET-COLON (habu2.f) stores that record's name, flags and
+   \ entry cell there while the count still points at it, and the publish tail
+   \ then raises the count over a record that was already complete. So a write to
+   \ the pending row is what preparing a publication looks like, and refusing it
+   \ made this primitive stricter than the engine's own definition path.
+   \ src/compiler/native/publish.f COMMIT-HELD is the caller that needs it: the
+   \ native chain prepares a withheld record's two cells and only then publishes
+   \ the count, which is the ONE order in which no reader can ever observe the
+   \ pair half written - an unpublished record has no callers to tear against.
+   \ Exactly one row past the count is admitted; NDICT+1 and beyond still trap,
+   \ so this stays a bound and not an opening.
+   9 NDICT CMP,  C-HI bad BCOND,                 \ negative, or past the pending record
    live B,
    bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    live LBL,

@@ -214,6 +214,30 @@ variable M-RC                        \ the code the run inside the context reach
 variable M-VERDICT                   \ the verdict the recorded scan reached
 variable M-SPILLS                    \ frame slots this definition proved it needs
 
+\ ---- compiling without publishing --------------------------------------------
+\ A DEFAULT migration lets the engine publish the definition and then points the
+\ published record at the chain's code. That makes the chain a second pass over
+\ a word that already exists, and it is why the old emitter cannot be removed:
+\ every definition must succeed through it first.
+\
+\ A HELD migration asks the engine to certify the definition and publish
+\ NOTHING. The checker still runs, the tape is still filled by its reader, and
+\ the record `:` built is still there - but the count does not move, the name
+\ never enters the index, and the emission's code space is given straight back.
+\ The chain then compiles the tape and its own publisher commits that record
+\ (src/compiler/native/publish.f COMMIT-HELD). Nothing is reachable under the
+\ name until code the validator accepted stands behind it.
+\
+\ M-HELD-PENDING IS THE OBLIGATION, not a copy of the mode. It is raised once the
+\ engine has really held a record for this run and lowered when that record is
+\ committed, so the failure path can tell "a definition is being withheld and
+\ nobody will ever publish it" from "nothing was held". What it owes on that path
+\ is the checker's side of the retraction: the engine gave the code space back by
+\ itself, and the count never moved, but the certified signature the checker
+\ recorded under this name did not go away with them.
+variable M-HELD                      \ this migration compiles without publishing
+variable M-HELD-PENDING              \ a held record is waiting to be committed or retracted
+
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
 : TAPE ( -- IR-ARENA:view )      0 M-TAPE @ ;
@@ -286,11 +310,25 @@ variable M-SPILLS                    \ frame slots this definition proved it nee
 \ failure is caught here only to release the recorder, and is rethrown with its
 \ own code: without this every later migration in the process would be refused
 \ for the state this one left behind rather than for anything about itself.
+\ The hold is opened around the scan and closed on every path out of it. Leaving
+\ it armed would withhold the NEXT definition the process compiles - one this
+\ migration knows nothing about and no chain is waiting for - so the close is
+\ paired with the open rather than left to the caller.
+: HOLD-OPEN ( -- )
+   M-HELD @ 0= if exit then
+   CHECKER-TAPE:HOLD-ARM ;
+
+: HOLD-CLOSE ( -- )
+   M-HELD @ 0= if exit then
+   CHECKER-TAPE:HOLD-DISARM ;
+
 : RECORD ( -- n )
    CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
    CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   HOLD-OPEN
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
+   HOLD-CLOSE
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
    M-VERDICT @ -1 <> if E-NMIGRATE-VERDICT throw then
    before ;
@@ -309,14 +347,34 @@ variable M-SPILLS                    \ frame slots this definition proved it nee
 : PUBLISHED-ONE ( n -- ) {: before:n :}
    ndict@ before 1+ <> if E-NMIGRATE-NAME throw then ;
 
+\ The held migration's version of the same question, and it is the OPPOSITE
+\ assertion. A source that published anything under a hold either defined
+\ something the hold does not cover - a `create`, a `constant`, a second
+\ definition - or the hold did not take, and in both cases the record this
+\ migration is about is not the one the count points at. So the count must not
+\ have moved at all.
+: PUBLISHED-NONE ( n -- ) {: before:n :}
+   ndict@ before <> if E-NMIGRATE-NAME throw then ;
+
+: SOURCE-PUBLICATION-CK ( n -- ) {: before:n :}
+   M-HELD @ 0<> if before PUBLISHED-NONE exit then
+   before PUBLISHED-ONE ;
+
+\ Which record this migration is about. A published one is the newest; a held one
+\ is the unpublished slot the count still points at, which is exactly the slot
+\ src/compiler/native/publish.f will commit.
+: REC-INDEX ( -- n )
+   M-HELD @ 0<> if ndict@ exit then
+   ndict@ 1- ;
+
 : LATEST-NAME$ ( -- ptr u8 n )
-   ndict@ 1- XREF-REC XREF-NAME$ ;
+   REC-INDEX XREF-REC XREF-NAME$ ;
 
 \ Which wordlist the definition landed in. A word is a tail in a wordlist, and
 \ where a definition lands is decided by the package scope open when the source
 \ is evaluated, so the wordlist is read off the record rather than assumed.
 : LATEST-WID ( -- n )
-   ndict@ 1- XREF-REC XREF-WORDLIST ;
+   REC-INDEX XREF-REC XREF-WORDLIST ;
 
 \ The record's name is a span of the dictionary the next definition may move, so
 \ the migration keeps its own copy of the name it published.
@@ -604,22 +662,47 @@ variable REC-OK                      \ the body staged so far is still one worth
    m1 EMIT-AT ;
 
 \ ---- one migration -----------------------------------------------------------
+\ A held record is not in the name index, so asking whether its tail resolves to
+\ it would ask whether an unpublished record can be found - which it cannot, by
+\ construction. The question that check really answers, "the record about to be
+\ rewritten is the one this source made", is answered for a held migration by the
+\ publisher instead: src/compiler/native/publish.f HELD-CK refuses any index but
+\ the one slot the engine can have withheld.
+: RESOLUTION-CK ( n -- ) {: wid:n :}
+   M-HELD @ 0<> if exit then
+   LATEST-NAME$ wid RESOLVES-TO-LATEST ;
+
+\ From here until the commit, a record exists that nothing will ever publish
+\ unless this run finishes. RUN's failure path is what settles it.
+: HELD-TAKEN ( -- )
+   M-HELD @ 0= if exit then
+   1 M-HELD-PENDING ! ;
+
+: PUBLISH-IT ( n -- ) {: wid:n :}
+   M-HELD @ 0<> if
+      NPUB:COMMIT-HELD
+      0 M-HELD-PENDING !
+      exit
+   then
+   NAME-BUF NAME-U @ wid NPUB:REPUBLISH ;
+
 : WORK ( -- )
    CC HIR-MOD 0 M-BLD !
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    RECORD {: before:n :}
-   before PUBLISHED-ONE
+   before SOURCE-PUBLICATION-CK
    LATEST-WID {: wid:n :}
-   LATEST-NAME$ wid RESOLVES-TO-LATEST
+   wid RESOLUTION-CK
    KEEP-NAME
    wid NAME-WID !
+   HELD-TAKEN
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop
    CALLS-CK
    r STAGE-BODY
    EMITTED
    SIZE-CK
    CLAIM-ROW
-   NAME-BUF NAME-U @ wid NPUB:REPUBLISH
+   wid PUBLISH-IT
    KEEP-BODY ;
 
 \ The failure is caught INSIDE the context and carried out as a code, so the
@@ -665,6 +748,33 @@ variable REC-OK                      \ the body staged so far is still one worth
 : IN-CONTEXT ( -- )
    NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ ---- what a refused HELD migration owes --------------------------------------
+\ A refused held run leaves less behind than a refused ordinary one, because the
+\ engine already took back everything it owns: the count never moved, the name
+\ never entered the index, and the code space went back to the colon entry the
+\ moment the hold was taken. The record at that slot is inert - the next
+\ definition the engine compiles writes over it - so there is nothing to undo
+\ there either.
+\
+\ WHAT IS LEFT IS THE CHECKER'S. The definition CERTIFIED; that is what made it
+\ holdable. So the checker recorded a signature under the name, and unlike the
+\ count and the code that signature has no owner that gives it back. Left in
+\ place it is a certified effect for a word that does not exist: the next
+\ definition of that name meets the certified-duplicate guard and is refused for
+\ the state this run left rather than for anything about itself - the same
+\ failure mode RECORD gives the recorder up to avoid.
+\
+\ THE NAME IS THE TAIL THE RECORD CARRIES, which is the checker's symbol for a
+\ definition made at top level, where migrations run. A held migration inside an
+\ open package would need the qualified spelling, and that arrives with the
+\ package-scoped migration (dot habu-parse-a-migrated-b38a83d9); until then a
+\ held run in a package would under-retract, so the fixture pins the global case
+\ this file actually supports.
+: HELD-RETRACT ( -- )
+   M-HELD-PENDING @ 0= if exit then
+   0 M-HELD-PENDING !
+   NAME-BUF NAME-U @ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
+
 : RUN ( -- )
    M-OPEN @ 0<> if E-NMIGRATE-STATE throw then
    M-SRC-U @ TEXT-CAP > if E-NMIGRATE-TEXT throw then
@@ -676,13 +786,14 @@ variable REC-OK                      \ the body staged so far is still one worth
    CALLEES-CLEAR
    NINL:STAGED? if NINL:STAGE-CLEAR then
    M-RC @ {: rc:n :}
-   rc 0 <> if rc throw then ;
+   rc 0 <> if HELD-RETRACT rc throw then ;
 
 : STAGE ( ptr u8 n n n n -- )
    {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
    in M-IN ! out M-OUT ! regs M-REGS !
-   0 M-DATA-U ! 0 M-CALLS ! 0 M-SPILLS ! ;
+   0 M-DATA-U ! 0 M-CALLS ! 0 M-SPILLS !
+   0 M-HELD ! 0 M-HELD-PENDING ! ;
 
 public
 
@@ -692,6 +803,23 @@ public
 : DEFINE ( ptr u8 n n n n -- )
    CALLEES-NONE-CK
    STAGE RUN ;
+
+\ Compile the definition this source publishes WITHOUT publishing it: the engine
+\ certifies it and withholds the record, the chain compiles the tape, and this
+\ file's publisher commits that record. A refusal anywhere leaves the definition
+\ uncompiled and unpublished, with the refusing stage's own error - the chain's
+\ vocabulary refusal is still E-HIR-UNMODELED, its control refusal still
+\ E-NELAB-CTRL - and nothing under the name at all, because there never was
+\ anything under the name.
+\
+\ THIS IS THE ENTRY THE CUT NEEDS. Every other entry in this file compiles a word
+\ the old emitter already published; this one is the first that does not, which
+\ is what makes the old emitter's emission unnecessary rather than prerequisite.
+: DEFINE-HELD ( ptr u8 n n n n -- )
+   CALLEES-NONE-CK
+   STAGE
+   1 M-HELD !
+   RUN ;
 
 \ The same for a definition that calls itself.
 : DEFINE-CALL ( ptr u8 n n n n -- )

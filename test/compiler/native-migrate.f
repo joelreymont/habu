@@ -1479,6 +1479,67 @@ variable BACK-N
    s" and a body the chain refused keeps the record the engine compiled for it" T-LABEL
    s" NMG-BAD2" DEFINED? TTRUE ;
 
+\ ---- compiling without publishing --------------------------------------------
+\ Every case above migrates a word the ENGINE published: the chain is a second
+\ pass, and the record it rewrites already had the old emitter's code in it.
+\ These cases are the other thing - the definition is certified and WITHHELD, so
+\ nothing is published under its name until the chain's own publisher commits a
+\ record. That is what makes the old emitter's emission unnecessary rather than
+\ prerequisite, which is the whole point of the mode.
+variable HELD-ND0
+variable HELD-ND1
+
+: HELD-MIGRATE ( -- )
+   ndict@ HELD-ND0 !
+   s" : NMG-HELD ( n -- n ) 3 + ;" 1 1 REGS NMIGRATE:DEFINE-HELD
+   ndict@ HELD-ND1 ! ;
+
+: HELD-CASE ( -- )
+   s" a held definition compiles end to end and answers" T-LABEL
+   HELD-MIGRATE
+   s" 5 NMG-HELD" EV-N 8 T=
+   s" 0 NMG-HELD" EV-N 3 T=
+   s" -3 NMG-HELD" EV-N 0 T=
+
+   s" exactly one record appeared, and the chain's publisher is what added it" T-LABEL
+   HELD-ND1 @ HELD-ND0 @ 1 + T=
+
+   s" the record points at the chain's emission" T-LABEL
+   s" NMG-HELD" REC-START  s" NMG-HELD" GLOBAL-WID NPUB:NEW-START T=
+
+   s" and the old emitter produced NOTHING for that name, which is the point" T-LABEL
+   s" NMG-HELD" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" NMG-HELD" GLOBAL-WID NPUB:OLD-START 0 T=
+   s" NMG-HELD" GLOBAL-WID NPUB:OLD-LEN 0 T=
+
+   s" a definition compiled afterwards calls it as an ordinary word" T-LABEL
+   s" : NMG-HELD-CALLER ( n -- n ) NMG-HELD NMG-HELD ;" EV
+   s" 1 NMG-HELD-CALLER" EV-N 7 T= ;
+
+\ A held migration the CHAIN refuses. The engine has published nothing by then,
+\ so unlike every refusal case above there is no word left behind to keep
+\ running - the correct outcome is that the name does not exist at all.
+: HELD-REFUSED-MIGRATE ( -- )
+   s" : NMG-HELD-BAD ( n -- n ) dup 5 mod + ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
+
+: HELD-REFUSAL-CASE ( -- )
+   s" a held body outside the dialect is refused with the dialect's own code" T-LABEL
+   ndict@ HELD-ND0 !
+   [: HELD-REFUSED-MIGRATE ;] E-HIR-UNMODELED TTHROWSQ
+
+   s" and it leaves NOTHING published - no record, no name, no log row" T-LABEL
+   ndict@ HELD-ND0 @ T=
+   s" NMG-HELD-BAD" DEFINED? TFALSE
+   s" NMG-HELD-BAD" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+
+   s" the recorder recovered, so the NEXT held migration still works" T-LABEL
+   s" : NMG-HELD-AFTER ( n -- n ) 7 + ;" 1 1 REGS NMIGRATE:DEFINE-HELD
+   s" 1 NMG-HELD-AFTER" EV-N 8 T=
+
+   s" and the refused name is free again: the checker's signature went with it" T-LABEL
+   s" : NMG-HELD-BAD ( n -- n ) 1 + ;" EV
+   s" 4 NMG-HELD-BAD" EV-N 5 T= ;
+
 : RUN ( -- )
    T-RESET
    MIGRATED-CASE
@@ -1502,6 +1563,8 @@ variable BACK-N
    SHAPE-CASE
    FLOAT-PLACE-CASES
    FLOAT-REFUSAL-CASES
+   HELD-CASE
+   HELD-REFUSAL-CASE
    T-REPORT ;
 
 ;package

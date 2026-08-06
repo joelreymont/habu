@@ -1362,6 +1362,16 @@ create ENDLOC-KW 58 c, 125 c,
 $4842444546455201 constant DEFER-MAGIC
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2DOESW
+
+\ The held-publication seam's own two names: the label cell holding the spelling
+\ the publish tail looks up, and the emitter that asks the question. They own one
+\ concern between them - withholding a certified definition for the native chain
+\ - so they live in their own package rather than joining the global emitter
+\ surface around them, which is pre-existing debt and not a pattern to extend.
+package HOLD-EMIT
+public
+variable LHOLDQ
+;package
 \ ADT lowering keywords (TFAM 10, docs §16): `construct` dispatches through the
 \ CMM-CELL mode machine (J-CONSTRUCT + EM-COMPILE-ADT-MODE, slice 2; execution
 \ gate-pinned by GE-CONSTRUCT-EXEC). The MATCH rows are data-only until slice 3
@@ -1437,7 +1447,7 @@ variable LKWTRUSTRAW
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  HOLD-EMIT:LHOLDQ LABEL@ LBL, s" checker-hold?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
@@ -6221,6 +6231,46 @@ s" em-compile-flush-pend" s" --" TRUST
    publish B, ;
 s" em-compile-publish-trusted" s" label --" TRUST
 
+\ The hook's answer is a SIGN and not a set of codes. Zero has always meant
+\ "refused, unpublish it"; every non-zero value has always meant "certified,
+\ publish it". The third outcome splits that second half rather than adding a
+\ magic number the engine and src/core/check-hook.f would both have to spell:
+\ NEGATIVE certifies and publishes, POSITIVE certifies and HOLDS. The engine
+\ therefore asks a structural question about the answer - which side of zero is
+\ it on - and never has to know which hold code the checked world chose, so
+\ there is no constant here that a second file has to keep in step.
+\
+\ WHAT HOLDING IS FOR. A definition the native chain is about to recompile from
+\ the tape the checker just filled (src/compiler/native/migrate.f). Everything
+\ the publication does is exactly what must NOT happen yet: the count must not
+\ move, the record must not enter the name index, and the checker's width and
+\ minimum-arity facts must not be poked into a record no caller can reach. The
+\ chain's own publisher does all four, after its emission has been validated,
+\ so that nothing is reachable under this name until code the chain accepted is
+\ what stands behind it.
+\
+\ AND HOLDING IS NOT REJECTING, WHICH IS THE TRAP IN THIS BLOCK. Both skip the
+\ publish label and both give the emission's code space back, so the two legs
+\ look interchangeable. They are not. A name longer than DNAME-INL is not stored
+\ in the record: C-STORE-NAME writes those bytes into CODE space and keeps the
+\ PRE-NAME code pointer at record offset 24. Rejecting rewinds to that pre-name
+\ pointer, which is right when the whole record is being thrown away and fatal
+\ when it is being kept - the chain would emit its routine straight over the
+\ bytes that spell the held word's own name. So the held leg rewinds to the
+\ COLON ENTRY, record cell 0, for inline and ext names alike, with no DNAME-EXT
+\ test. That erases every instruction the old emitter wrote and stops one byte
+\ above the name.
+\
+\ WHICH ALSO LEAVES THE RECORD POINTING AT ITS OWN NEXT CODE. After the rewind
+\ the code pointer IS the record's start cell, so the slot the chain is handed
+\ (src/compiler/native/publish.f NEXT-SLOT) is the slot the record already
+\ names, and the commit has no start cell to invent.
+\
+\ THE TEST SITS BEFORE THE PASS-2 DISPATCH DELIBERATELY. A held definition never
+\ enters the width-aware re-run: its emission is being discarded, so re-emitting
+\ it more carefully is work for nobody. Skipping the freeze strands nothing -
+\ TXN-ACTIVE-CELL is set in exactly one place and the trigger follows it in the
+\ same instruction stream, so it is never left set across definitions.
 : EM-COMPILE-PUBLISH-HOOKED ( label label -- )
    {: publish:label finish:label :}
    LBL LBL LBL LBL {: nohook:label rejected:label inl:label done:label :}
@@ -6242,6 +6292,49 @@ s" em-compile-publish-trusted" s" label --" TRUST
    finish B, ;
 s" em-compile-publish-hooked" s" label label --" TRUST
 
+\ Ask, at the one point both publish tails reach, whether this certified
+\ definition is being withheld for the native chain (src/core/checker.f
+\ CHECKER-HOLD?). A non-zero answer takes the held exit: no count, no name
+\ index, no record facts, and the code pointer back to the colon entry.
+\
+\ IT IS ASKED HERE AND NOT IN EITHER TAIL. Only the sig-less tail has a hook
+\ return value; a definition WITH a declared signature publishes through
+\ EM-COMPILE-PUBLISH-TRUSTED, which calls the checker directly and never reads a
+\ verdict. Anything carried on the hook's answer would therefore have reached
+\ half the definitions in the system and silently missed the half that matter.
+\ Both tails converge on `publish`, so one question here is one mechanism for
+\ every definition, whichever route certified it.
+\
+\ ABSENT MEANS NOT HELD. The lookup is the non-fatal form, so the cold prefix -
+\ every definition compiled before checker.f exists - takes exactly the path it
+\ took before this question was asked.
+\
+\ AND THE HELD EXIT REWINDS TO THE COLON ENTRY, NEVER THE WAY THE REJECT LEG
+\ DOES. A name longer than DNAME-INL is not stored in the record: C-STORE-NAME
+\ writes those bytes into CODE space and keeps the PRE-NAME code pointer at
+\ record offset 24. Rejecting rewinds to that pre-name pointer, which is right
+\ when the record is being thrown away and fatal when it is being KEPT - the
+\ chain would emit its routine straight over the bytes that spell the held
+\ word's own name. Rewinding to record cell 0 instead erases every instruction
+\ the old emitter wrote and stops one byte above the name, which also leaves the
+\ record already pointing at the slot the chain is about to fill.
+package HOLD-EMIT
+public
+
+: EM-COMPILE-HELD? ( label -- ) {: finish:label :}
+   LBL {: nohold:label :}
+   LHOLDQ 13 C-FIND-GLOBAL?
+   13 nohold CBZ,
+   C-CALL-X11-SAVED
+   10 G-POP
+   10 nohold CBZ,
+      11 DATA PEND-CELL LDR,  CP 11 0 LDR,             \ CP := colon entry, above the name
+      finish B,
+   nohold LBL, ;
+s" HOLD-EMIT:EM-COMPILE-HELD?" s" label --" TRUST
+
+;package
+
 : EM-COMPILE-PUBLISH ( -- )
    LBL LBL LBL {: hooked:label publish:label finish:label :}
    9 DATA HOOK-CELL LDR,  9 hooked CBZ,
@@ -6250,6 +6343,7 @@ s" em-compile-publish-hooked" s" label label --" TRUST
    hooked LBL,
    publish finish EM-COMPILE-PUBLISH-HOOKED
    publish LBL,
+   finish HOLD-EMIT:EM-COMPILE-HELD?
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    finish LBL,
@@ -7226,7 +7320,7 @@ package LABELS
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL LP2DOESW !
+   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL HOLD-EMIT:LHOLDQ !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !

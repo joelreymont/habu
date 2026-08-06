@@ -236,3 +236,108 @@ remembers" — silently destroys the record's own name.
   engine's only test is non-zero (commit) versus zero (reject). The hold code is a
   third value in a domain that currently has two, so it costs one CMP and one
   conditional branch on a register the tail is already holding.
+
+PHASE 2 — LANDED (2026-08-06, agent=noemit)
+
+A checked definition now compiles through checker -> tape -> chain -> chain
+publisher with the old emitter publishing nothing for it. The route there
+corrected the phase-1 design twice; both corrections came from measurement and
+both are recorded here because each cost a cycle to find.
+
+CORRECTION 1 — THE HOOK'S RETURN IS THE WRONG CARRIER.
+
+  The design proposed widening the check hook's return value. Measured: an
+  ordinary `: NAME ( in -- out ) … ;` publishes through
+  EM-COMPILE-PUBLISH-TRUSTED, which calls the checker directly and branches to
+  `publish` unconditionally - it never reads a hook return. Only the
+  signature-LESS tail consults it. A verdict-carried answer would therefore have
+  reached half the definitions in the system and silently missed the half the cut
+  is about. The phase-1 probe was misread: today's hook THROWS rather than
+  returning zero, so the cp/ndict restore came from throw unwinding, not from the
+  reject leg. LESSONS.md:367 already recorded the real routing.
+
+  THE MECHANISM THAT SHIPPED. The engine ASKS. Both tails converge on one
+  `publish` label, and the question is asked there - once, for every definition,
+  whichever route certified it - through the same C-FIND-GLOBAL? lookup of a
+  named checker word that EM-REC-WIDE-PUBLISH already uses a few instructions
+  later for this definition's width and arity facts. The answer is
+  src/core/checker.f CHECKER-HOLD?, which reads the recording unit's own flag.
+  The sign convention was dropped rather than kept alongside it: one question,
+  one site, one owner. An absent lookup means "not held", so the cold prefix
+  compiles exactly as before.
+
+CORRECTION 2 — THE SEAL WAS RIGHT, AND ONE SLOT TOO TIGHT.
+
+  The held path died at an opaque, silent exit 83 (ENGINE-ERROR:SEAL-VIOLATION).
+  Diagnosed by bisecting the commit's stages: it survived the code window and the
+  relocation pass and died in `xref-retarget`. The guard is habu1.f
+  BXREFRETARGET, `9 NDICT CMP, C-CS bad BCOND` - an unsigned test refusing any
+  index at or past the count. A held record's index IS the count, because
+  unpublished is exactly what it means.
+
+  THE SEAL WAS RIGHT TO FIRE: an unpublished record is not a live row, and that
+  is what the guard says. But the invariant was one slot tighter than the engine's
+  own behaviour - EM-INTERPRET-COLON writes record[NDICT]'s name, flags and entry
+  cell BEFORE the count is raised over it, so writing the pending row is what
+  preparing any publication looks like. Widened to admit exactly that row
+  (C-HI): NDICT+1 and beyond still trap, so it stays a bound.
+
+  AND IT MAKES THE COMMIT ORDER THE SAFE ONE. A held record has no callers, so
+  its two cells can be prepared while it is still unreachable and the count
+  raised once afterwards - there is no window in which a reader sees the pair
+  half written. The republish path needs its atomic retarget precisely because
+  its record IS live; the held path does not.
+
+WHAT IS PROVEN, IN test/compiler/native-migrate.f
+
+  HELD-CASE: a definition compiled end to end in held mode answers correctly
+  (`5 NMG-HELD` = 8), exactly one record appeared, that record points at the
+  chain's emission, and NPUB:OLD-START / OLD-LEN are both 0 - the log's own
+  measurement of what the old emitter produced for that name, which is nothing.
+  A definition compiled afterwards calls it as an ordinary word.
+
+  HELD-REFUSAL-CASE: a held body outside the dialect is refused with the chain's
+  own E-HIR-UNMODELED and leaves NOTHING - the count did not move, the name does
+  not resolve, no log row exists. The recorder recovers (the next held migration
+  works), and the refused name is free again because the retraction took the
+  checker's certified signature with it.
+
+  MUTATION, run and reverted: neutering HELD-RETRACT so it stops truncating the
+  checker signature turns the suite red loudly - the redefinition of the refused
+  name dies at exit 78, CHECKER-DUP-DEFINITION ($4E). The leak is caught by the
+  checker's own certified-duplicate guard, which is what the prose claims.
+
+GATE STATE
+
+  Full test/run.f: one red phase, GROUP stdlib/lint-artifacts/fast, which is the
+  known incident tracked by habu-attr-the-candidate-4a2356c5 and reproduces with
+  the untouched main-worktree engine over sources this branch never edits.
+  Everything else zero-red. codegen-compare 0 findings. Fixpoint property held
+  (`bin/hb refresh OK: compiler fixpoint`). Four lints 0. Size attribution
+  re-measured: CODELEN 116204 -> 116332, floor 5612 -> 5740, same 16 KiB page so
+  the signature and total are unmoved.
+
+  DEFAULT PATH BEHAVIOUR IS UNCHANGED. The held exit is unreachable unless a hold
+  is armed, arming requires an open recording unit, and the only opener is
+  NMIGRATE:DEFINE-HELD. Every pre-existing migrate, publish, feed, inline,
+  clobber, regalloc, type-ctor and declaration-transaction case still passes.
+
+NOTE FOR THE NEXT LANE — `all` DOES NOT INSTALL THE ENGINE
+
+  `tools/build-fixpoint-refresh.f -- all --force` rebuilds and reaches the
+  fixpoint but does NOT replace bin/hb; only the `install` verb does. An engine
+  change tested after `all` alone is tested against the OLD binary, which cost a
+  cycle here: a widened guard read as "still failing" when it simply was not in
+  the running engine. Use `install --force` for anything that changes
+  src/habu/*.f, and check bin/hb's mtime against the edit before believing a
+  negative result.
+
+REMAINING, NOT IN THIS DOT
+
+  A held migration inside an open package would under-retract on refusal: the
+  retraction passes the record's tail, which is the checker's symbol only for a
+  top-level definition. Package-scoped migration is habu-parse-a-migrated-b38a83d9
+  and the fixture pins the global case this file supports. The commit's
+  O(NDICT) index rebuild per held publication (the `ndict!` raise leg) is
+  correct but not free; if a whole-tree cut makes it matter, the fix is to expose
+  the engine's existing one-record insert rather than to keep the rebuild.
