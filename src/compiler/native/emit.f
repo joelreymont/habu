@@ -235,7 +235,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-60 constant OPCODES-N
+62 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -296,6 +296,8 @@ private
 57 constant O-FCMPSELZD
 58 constant O-TAILCALL
 59 constant O-MADD
+60 constant O-ADDI
+61 constant O-SUBI
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -412,6 +414,7 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COND IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-OFF IR-ID:ir-symbol-id
 
 \ The emitted bytes, and one source-map row per emitted instruction.
 create CODE INSN-MAX INSN-BYTES * allot
@@ -504,6 +507,8 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       fcmpselzd OF O-FCMPSELZD ENDOF
       tailcall  OF O-TAILCALL  ENDOF
       madd      OF O-MADD      ENDOF
+      addi      OF O-ADDI      ENDOF
+      subi      OF O-SUBI      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -568,6 +573,8 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       O-MADD      of A64IR-OPCODE:MADD      endof
+      O-ADDI      of A64IR-OPCODE:ADDI      endof
+      O-SUBI      of A64IR-OPCODE:SUBI      endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -671,6 +678,12 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : FRAME-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-FRAME @ ATTR-INT ;
 
+\ The arithmetic immediate, under the dialect's own key for it. It goes to the
+\ encoder as the number it is: ENC-ADDI and ENC-SUBI bound their own field, so
+\ no bound is repeated here for the same reason none of the frame ones is.
+: OFF-IMM ( IR-ID:ir-op-id -- n )
+   0 BND-OFF @ ATTR-INT ;
+
 \ ---- the data-stack operands -------------------------------------------------
 \ The same two readings against the other pointer, under the dialect's own keys
 \ for them. They are separate keys and separate readers because a frame offset
@@ -723,6 +736,14 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : TRIPLE ( IR-ID:ir-op-id -- n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  id 1 OPERAND-REG ;
+
+\ The add and subtract immediate forms: one register written, one read, and the
+\ third field is not a register at all but the number the operation carries. It
+\ is the same reading shape TRIPLE has with its last register replaced by that
+\ number, which is exactly the difference the form is for.
+: PAIRI ( IR-ID:ir-op-id -- n n n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  id OFF-IMM ;
 
 \ The zero register, which is what register 31 is in this instruction's addend
 \ field. No value of the machine dialect stands for it and the allocator never
@@ -1710,6 +1731,8 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       sub      OF id  id TRIPLE ENC-SUB  APPEND ENDOF
       mul      OF id  id TRIPLE ENC-MUL  APPEND ENDOF
       madd     OF id  id QUAD ENC-MADD  APPEND ENDOF
+      addi     OF id  id PAIRI ENC-ADDI  APPEND ENDOF
+      subi     OF id  id PAIRI ENC-SUBI  APPEND ENDOF
       sdiv     OF id PUT-SDIV ENDOF
       and      OF id  id TRIPLE ENC-AND  APPEND ENDOF
       orr      OF id  id TRIPLE ENC-ORR  APPEND ENDOF
@@ -1990,6 +2013,8 @@ public
    c b A64IR-OPCODE:WORDCALL  BIND1
    c b A64IR-OPCODE:TAILCALL  BIND1
    c b A64IR-OPCODE:MADD      BIND1
+   c b A64IR-OPCODE:ADDI      BIND1
+   c b A64IR-OPCODE:SUBI      BIND1
    c b A64IR-OPCODE:LINKSAVE  BIND1
    c b A64IR-OPCODE:LINKLOAD  BIND1
    c b A64IR-OPCODE:FADD     BIND1
@@ -2023,6 +2048,7 @@ public
    c b A64IR:KEY-COND   0 BND-COND !
    c b A64IR:KEY-DBACK  0 BND-DBACK !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
+   c b A64IR:KEY-OFF    0 BND-OFF !
    BOUND-YES BND-MODE ! ;
 
 \ Whether a binding is live, for a caller cleaning up after a refused run. See

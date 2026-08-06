@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-60 constant OPCODES-N
+62 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -188,9 +188,11 @@ private
 57 constant O-FCMPSELZD
 58 constant O-TAILCALL
 59 constant O-MADD
+60 constant O-ADDI
+61 constant O-SUBI
 
 \ One slot per attribute key the dialect declares.
-9 constant KEYS-N
+10 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -200,6 +202,7 @@ private
 6 constant K-COND
 7 constant K-DBACK
 8 constant K-ENTRY
+9 constant K-OFF
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -308,6 +311,8 @@ create NAMEBUF NAME-CAP allot
       fcmpselzd OF O-FCMPSELZD ENDOF
       tailcall  OF O-TAILCALL  ENDOF
       madd      OF O-MADD      ENDOF
+      addi      OF O-ADDI      ENDOF
+      subi      OF O-SUBI      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -372,6 +377,8 @@ create NAMEBUF NAME-CAP allot
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       O-MADD      of A64IR-OPCODE:MADD      endof
+      O-ADDI      of A64IR-OPCODE:ADDI      endof
+      O-SUBI      of A64IR-OPCODE:SUBI      endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -539,6 +546,14 @@ create NAMEBUF NAME-CAP allot
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-FRAME  CTX BLD size A64IR:FRAME-ATTR  IR-BUILD:ADD-ATTR ;
 
+\ The arithmetic immediate. This pass introduces no add or subtract immediate of
+\ its own - folding a constant into one is the combine pass's - but it copies the
+\ ones that pass built, and an immediate copied under the wrong key would be a
+\ routine adding the wrong number.
+: OFF-ATTR+ ( n -- )
+   {: imm:n :}
+   CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD imm A64IR:OFF-ATTR  IR-BUILD:ADD-ATTR ;
+
 \ The two data-stack fields. This pass inserts no data-stack operation of its
 \ own - the convention is the selector's - but it copies the ones the selector
 \ built, and a field copied under the wrong key would be a routine reading its
@@ -690,6 +705,7 @@ create NAMEBUF NAME-CAP allot
       k K-COND = if v COND-ATTR+ then
       k K-DBACK = if v DBACK-ATTR+ then
       k K-ENTRY = if v ENTRY-ATTR+ then
+      k K-OFF = if v OFF-ATTR+ then
    loop ;
 
 \ The blocks a terminator hands control to. Blocks are copied one for one and in
@@ -1009,6 +1025,8 @@ public
    c b A64IR-OPCODE:FCMPSELD  BIND1
    c b A64IR-OPCODE:FCMPSELZD BIND1
    c b A64IR-OPCODE:MADD      BIND1
+   c b A64IR-OPCODE:ADDI      BIND1
+   c b A64IR-OPCODE:SUBI      BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
@@ -1018,6 +1036,7 @@ public
    c b A64IR:KEY-COND   K-COND BND-KEY !
    c b A64IR:KEY-DBACK  K-DBACK BND-KEY !
    c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !
+   c b A64IR:KEY-OFF    K-OFF BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:FPR-TYPE 0 BND-FPR !
