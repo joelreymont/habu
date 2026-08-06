@@ -47,6 +47,39 @@ variable UNDER-EXE-U
 variable ARG-N
 variable OUT-I
 variable OUT-START
+variable OUT-U
+variable ERR-U
+variable EXITED
+variable TIMED-OUT
+variable CODE
+
+\ This gate captures a whole test/run.f into buffers twice the runner's own
+\ capacity, so it owns its capture storage AND the lengths and outcome that
+\ describe it - the same way test/gate-pool.f owns a second capture context.
+\ Parking these lengths in the runner's cells used to describe the runner's
+\ buffers with this gate's byte counts.
+: OUTCOME! ( outcome -- )
+   MATCH outcome
+     exited OF CODE ! 0 0= EXITED ! 0 0= 0= TIMED-OUT ! ENDOF
+     signaled OF CODE ! 0 0= 0= EXITED ! 0 0= 0= TIMED-OUT ! ENDOF
+     timeout OF 0 CODE ! 0 0= 0= EXITED ! 0 0= TIMED-OUT ! ENDOF
+   ;MATCH ;
+
+: OUTCOME@ ( -- outcome )
+   TIMED-OUT @ if OUTCOME:TIMEOUT exit then
+   EXITED @ if CODE @ OUTCOME:EXITED exit then
+   CODE @ OUTCOME:SIGNALED ;
+
+: STORE-RUN ( len len outcome -- )
+   OUTCOME!
+   LEN>N ERR-U !
+   LEN>N OUT-U ! ;
+
+: RC@ ( -- n )
+   OUTCOME@ PROC-OUTCOME>RC RC>N ;
+
+: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
+: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : XDG$ ( -- ptr u8 n ) XDG XDG-U @ ;
@@ -101,15 +134,15 @@ variable OUT-START
    s" FAIL: " type label labelu type cr
    s" executable: " type HB$ type cr
    ARGV.
-   s" outcome exited: " type GT-EXITED @ .
-   s" outcome timed out: " type GT-TIMED-OUT @ .
-   s" outcome code: " type GT-CODE @ .
-   s" stdout bytes: " type GT-OUT-U @ GT-U-TYPE s"  / " type CAP GT-U-TYPE cr
-   s" stderr bytes: " type GT-ERR-U @ GT-U-TYPE s"  / " type CAP GT-U-TYPE cr
+   s" outcome exited: " type EXITED @ .
+   s" outcome timed out: " type TIMED-OUT @ .
+   s" outcome code: " type CODE @ .
+   s" stdout bytes: " type OUT-U @ GT-U-TYPE s"  / " type CAP GT-U-TYPE cr
+   s" stderr bytes: " type ERR-U @ GT-U-TYPE s"  / " type CAP GT-U-TYPE cr
    s" stdout:" type cr
-   OUT GT-OUT-U @ type cr
+   OUT$ type cr
    s" stderr:" type cr
-   ERR GT-ERR-U @ type cr
+   ERR$ type cr
    s" candidate gate failed" 1 die ;
 
 : LABEL$ ( n -- ptr u8 n )
@@ -122,8 +155,8 @@ variable OUT-START
    s" HB_TMP" >LEN root rootu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME GT-STORE-RUN
-   GT-RC@ 0 <> if imported LABEL$ FAIL then ;
+   RUN-ARGV-ENV-CAPTURE-OUTCOME STORE-RUN
+   RC@ 0 <> if imported LABEL$ FAIL then ;
 
 : SCAN ( ptr u8 n -- ) {: root:ptr rootu:n :}
    root rootu s" gate-stats.tsv" STAT JOIN-PATH STAT-U !
@@ -142,7 +175,7 @@ variable OUT-START
 : OUT-LINE? ( ptr u8 n -- bool ) {: want:ptr wantu:n :}
    0 OUT-I !
    0 OUT-START !
-   begin OUT-I @ GT-OUT-U @ < while
+   begin OUT-I @ OUT-U @ < while
       OUT OUT-I @ + c@ STR-LF = if
          OUT OUT-START @ + OUT-I @ OUT-START @ - want wantu STR= if
             0 0= exit
@@ -151,8 +184,8 @@ variable OUT-START
       then
       OUT-I @ 1 + OUT-I !
    repeat
-   OUT-START @ GT-OUT-U @ < if
-      OUT OUT-START @ + GT-OUT-U @ OUT-START @ - want wantu STR= exit
+   OUT-START @ OUT-U @ < if
+      OUT OUT-START @ + OUT-U @ OUT-START @ - want wantu STR= exit
    then
    0 0= 0= ;
 
@@ -167,7 +200,7 @@ variable OUT-START
    s" ordinary candidate validated" T-LABEL GS-CANDIDATE-VALIDATE @ 1 T=
    s" ordinary phase 15 row" T-LABEL BUILD-ROW? TTRUE
    s" ordinary engine build passed" T-LABEL
-      OUT GT-OUT-U @ s" PASS: native engine build slice (" CONTAINS? TTRUE ;
+      OUT$ s" PASS: native engine build slice (" CONTAINS? TTRUE ;
 
 : SOURCE-PREPARE ( -- )
    RUN1$ s" hb-under-test" SRC-EXE JOIN-PATH SRC-EXE-U !
@@ -199,7 +232,7 @@ variable OUT-START
    s" imported candidate validated" T-LABEL GS-CANDIDATE-VALIDATE @ 1 T=
    s" imported phase 15 absent" T-LABEL BUILD-ROW? TFALSE
    s" imported engine build absent" T-LABEL
-      OUT GT-OUT-U @ s" native engine build slice" CONTAINS? TFALSE
+      OUT$ s" native engine build slice" CONTAINS? TFALSE
    IMPORT-HASH ;
 
 : MAIN ( -- )

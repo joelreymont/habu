@@ -39,23 +39,43 @@ variable RUN-ID
    GE-TIMEOUT-MS >MS SUBJECT:RUN
    GT-STORE-RUN ;
 
+\ The runner's outcome, spread into the three values this file compares and
+\ logs.  It is read from GT-OUTCOME@ rather than GT-RC@ because the parity
+\ check has to see a capture timeout and a SIGKILL death as different runs, and
+\ rc flattens both to 137.
+: OUTCOME-CELLS ( -- bool bool n )
+   GT-OUTCOME@ MATCH outcome
+     exited OF 0 0= 0 0= 0= rot ENDOF
+     signaled OF 0 0= 0= 0 0= 0= rot ENDOF
+     timeout OF 0 0= 0= 0 0= 0 ENDOF
+   ;MATCH ;
+
 : SAVE-DIRECT ( -- )
    GT-OUT$ DIRECT-OUT swap dup DIRECT-OUT-U ! BYTE-COPY
    GT-ERR$ DIRECT-ERR swap dup DIRECT-ERR-U ! BYTE-COPY
-   GT-EXITED @ DIRECT-EXITED !
-   GT-TIMED-OUT @ DIRECT-TIMED !
-   GT-CODE @ DIRECT-CODE ! ;
+   OUTCOME-CELLS
+   DIRECT-CODE !
+   DIRECT-TIMED !
+   DIRECT-EXITED ! ;
 
 : CHECK-SOURCE ( ptr u8 n -- ) {: src:ptr srcu:n :}
    SRC SRC-U @ src srcu STR= 0= if
       s" runtime parity source mutation" GE-FAIL
    then ;
 
+\ A live flag against the cell SAVE-DIRECT wrote for the direct run.
+: FLAG-AGREES? ( bool n -- bool ) {: live:bool saved:n :}
+   live if saved 0<> exit then
+   saved 0= ;
+
+: CHECK-OUTCOME ( bool bool n -- ) {: exited:bool timed:bool code:n :}
+   exited DIRECT-EXITED @ FLAG-AGREES? 0= if s" runtime parity outcome" GE-FAIL then
+   timed DIRECT-TIMED @ FLAG-AGREES? 0= if s" runtime parity outcome" GE-FAIL then
+   code DIRECT-CODE @ <> if s" runtime parity outcome" GE-FAIL then ;
+
 : CHECK-DIRECT ( ptr u8 n -- )
    CHECK-SOURCE
-   GT-EXITED @ DIRECT-EXITED @ <> if s" runtime parity outcome" GE-FAIL then
-   GT-TIMED-OUT @ DIRECT-TIMED @ <> if s" runtime parity outcome" GE-FAIL then
-   GT-CODE @ DIRECT-CODE @ <> if s" runtime parity outcome" GE-FAIL then
+   OUTCOME-CELLS CHECK-OUTCOME
    GT-OUT$ DIRECT-OUT DIRECT-OUT-U @ STR= 0= if s" runtime parity stdout" GE-FAIL then
    GT-ERR$ DIRECT-ERR DIRECT-ERR-U @ STR= 0= if s" runtime parity stderr" GE-FAIL then ;
 
@@ -71,7 +91,7 @@ variable RUN-ID
    src srcu DIGESTS!
    RUN-ID @ 1+ dup RUN-ID !
    parity SRC-HEX DIGEST-U
-   GT-EXITED @ GT-TIMED-OUT @ GT-CODE @
+   OUTCOME-CELLS
    GT-OUT$ nip OUT-HEX DIGEST-U
    GT-ERR$ nip ERR-HEX DIGEST-U
    GS-RUNTIME-SUBJECT ;
