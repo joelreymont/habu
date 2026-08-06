@@ -101,6 +101,11 @@
 \   a64.wordcall Addi ds ds n; Bl entry; Subi ds ds m
 \                                - the same three instructions to ANOTHER word,
 \                                  whose entry address the operation carries
+\   a64.tailcall B entry         - leave through another word, which returns to
+\                                  OUR caller: the last call a routine makes,
+\                                  where its result is already the routine's own
+\                                  result and the data-stack pointer already
+\                                  stands where the callee is entered
 \   a64.lnkstr   Str x30 sp off  - put the caller's return address in a frame slot
 \   a64.lnkldr   Ldr x30 sp off  - take it back out again
 \   a64.ret      Ret             - return to the address in the link register
@@ -400,6 +405,7 @@ ENUM opcode DERIVE eq
    fcmpselz
    fcmpseld
    fcmpselzd
+   tailcall
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -575,14 +581,15 @@ public
 : NAME ( -- ptr u8 n )
    s" a64" ;
 
-\ Version 0.5: the integer subset, the scalar floating forms, the four float
-\ comparison forms, and the four conditional selects - two that answer a cell
-\ and two that answer a double. The major version stays at zero until the
+\ Version 0.6: the integer subset, the scalar floating forms, the four float
+\ comparison forms, the four conditional selects - two that answer a cell and two
+\ that answer a double - and the tail branch, which is the first terminator of
+\ this dialect that leaves through another routine. The major version stays at zero until the
 \ dialect is the whole machine; the minor version moves whenever the schema
 \ table gains a form, because a table with these forms in it and one without are
 \ two different tables and every consumer compares the version exactly.
 0 constant MAJOR
-5 constant MINOR
+6 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 \ A pass that materialises a constant walks the halves of a register, and it asks
@@ -790,6 +797,7 @@ public
       fcmpselz  OF s" a64.fcmpselz" ENDOF
       fcmpseld  OF s" a64.fcmpseld" ENDOF
       fcmpselzd OF s" a64.fcmpselzd" ENDOF
+      tailcall  OF s" a64.tailcall" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -998,6 +1006,7 @@ private
       fcmpselz  OF s" a64.rule.fcmpselz" ENDOF
       fcmpseld  OF s" a64.rule.fcmpseld" ENDOF
       fcmpselzd OF s" a64.rule.fcmpselzd" ENDOF
+      tailcall  OF s" a64.rule.tailcall" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1061,6 +1070,7 @@ private
       fcmpselz  OF s" a64.render.fcmpselz" ENDOF
       fcmpseld  OF s" a64.render.fcmpseld" ENDOF
       fcmpselzd OF s" a64.render.fcmpselzd" ENDOF
+      tailcall  OF s" a64.render.tailcall" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1257,6 +1267,15 @@ private
 : DSTACK-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
+   IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
+
+\ The same space and the same alias behaviour for a form that also ENDS its
+\ block. The two are one word each rather than a control flag on one, because
+\ the control shape and the memory space are declared once apiece and a caller
+\ that stated both would be refused for stating one twice.
+: DSTACK-TERM-MEM ( IR-SCHEMA:effect -- )
+   {: e:IR-SCHEMA:effect :}
+   true 0 0 IR-SCHEMA:SET-CONTROL
    IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
 
 \ Dtake: the routine moves the data-stack pointer down over the arguments the
@@ -1692,6 +1711,48 @@ private
    c b A64IR-OPCODE:WORDCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Tailcall: the last call a routine makes, made by BRANCHING to the callee so
+\ that the callee's own return goes to OUR caller. It is a TERMINATOR and not a
+\ call: control does not come back here, so there is nothing after it to reach.
+\
+\ WHY IT IS A FORM AND NOT A FLAG ON THE WORDCALL. Every consumer of this dialect
+\ reads the opcode to know what an operation does, and this one does something no
+\ other call does - it ends the block. A flag would make the register allocator's
+\ validator, the emitter's layout and the freeze verifier all read a field before
+\ they knew whether they were looking at a terminator.
+\
+\ IT CARRIES NO ADJUSTMENT, AND THAT IS THE WHOLE OF WHAT MAKES IT ONE
+\ INSTRUCTION. A call site moves the data-stack pointer up over what it hands the
+\ callee and back down over what it takes back; there is no taking back here, and
+\ the selector only chooses this form where the pointer ALREADY stands at the
+\ callee's entry base - which it proves before it builds one
+\ (src/compiler/native/select.f, TAIL-CK). So the two adjustment keys are absent
+\ rather than present and zero, which is also what keeps the consumers that find
+\ a call site by those keys from reading this as one: a tail branch is not a call
+\ site, it has no store run behind it and no load run in front of it, and
+\ src/compiler/native/regalloc-verify.f says so in a clause of its own.
+\
+\ IT TAKES THE DATA-STACK ORDER AND ENDS IT, exactly as a64.dpublish does, for
+\ the same reason: it is the moment the results become the caller's - or rather
+\ the moment the CALLEE becomes the one that will make them so - and no access of
+\ this routine may be ordered after it.
+\
+\ THE TARGET IS AN ADDRESS, LIKE THE WORDCALL'S. A branch to a block of this
+\ function has its displacement fall out of the layout; this one goes somewhere
+\ else entirely, so the module carries the address and the emitter subtracts the
+\ place the branch lands at, told to it by the seam that decides where the
+\ routine is written.
+: DEF-TAILCALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:TAILCALL OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   c b KEY-ENTRY IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE DSTACK-TERM-MEM
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b A64IR-OPCODE:TAILCALL NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ Saving and restoring the caller's return address. They are the same Str and Ldr
 \ the frame forms above are, against the same stack pointer, and they differ in
 \ exactly one thing: the register they move is x30, which is named by the FORM.
@@ -2105,6 +2166,7 @@ public
    c b t DEF-CMPBR
    c b k DEF-CALL
    c b k DEF-WORDCALL
+   c b k DEF-TAILCALL
    c b k DEF-LNKSTR
    c b k DEF-LNKLDR
    c b t DEF-RET

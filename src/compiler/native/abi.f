@@ -126,6 +126,53 @@ public
 : CALL ( n n n n -- A64EFF:routine )
    0 CALL-FRAMED ;
 
+\ ---- and the same convention for a word that LEAVES through its last callee ---
+\ A word whose last operation is a call whose results are already its own results
+\ does not have to come back for them. It can branch, and let the callee's own
+\ return go to OUR caller: the arguments the callee reads are the cells this
+\ word's caller will read the results out of, so the data stack needs no
+\ instruction at the boundary at all.
+\
+\ ONE FIELD CHANGES AGAINST THE TWO ABOVE, AND IT IS THE ONE THAT SAYS SO.
+\ `control tail-call` is what src/compiler/a64-effect.f already models - a routine
+\ control does not come back to, that still delivers a result and still needs the
+\ caller's return address intact, which is exactly what RETURNING? answers true
+\ for and LINK-CK demands. Everything else is the convention it always was.
+\
+\ THE TRAITS ARE THE OTHER HALF, AND THEY ARE NOT THE SAME QUESTION. A trait
+\ names an instruction FORM the routine contains, and a tail branch is a B and
+\ not a Bl - so a word whose only call is the tail one contains no direct call,
+\ reserves no frame and saves no return address, which is the whole of the win.
+\ A word that calls somebody else BEFORE it tail-branches does contain one, and
+\ declares it, and pays for it exactly as CALL-FRAMED's routines do; its epilogue
+\ then stands in front of the branch instead of in front of a return.
+: TAIL-FRAMED ( n n n n n -- A64EFF:routine )
+   {: base:n n:n in:n out:n spills:n :}
+   in SLOT-SEQ  out SLOT-SEQ
+   base n POOL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
+   A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:TAIL-CALL
+   A64EFF:TRAITS-NONE
+   A64EFF:TRAITS-NONE spills FRAME-FOR
+   0 A64EFF:ROUTINE ;
+
+: TAIL ( n n n n -- A64EFF:routine )
+   0 TAIL-FRAMED ;
+
+\ The same, for a word that also makes a call it comes back from.
+: TAIL-CALLING-FRAMED ( n n n n n -- A64EFF:routine )
+   {: base:n n:n in:n out:n spills:n :}
+   in SLOT-SEQ  out SLOT-SEQ
+   base n POOL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
+   A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:TAIL-CALL
+   A64EFF:T-CALL
+   A64EFF:T-CALL spills FRAME-FOR
+   0 A64EFF:ROUTINE ;
+
+: TAIL-CALLING ( n n n n -- A64EFF:routine )
+   0 TAIL-CALLING-FRAMED ;
+
 private
 
 get-current prot-wid-add

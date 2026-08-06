@@ -544,6 +544,15 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 : VCALL-ENTRY ( IR-ID:ir-op-id -- n )
    0 BND-ENTRY @ ATTR-INT ;
 
+\ The form that leaves the routine THROUGH another routine. It is told from a
+\ call to another word by the two fields, not by an opcode, which is the reading
+\ every other question here is asked by: both name an ADDRESS, and only a call
+\ carries a take-back count - because only a call has anything to take back.
+: TAILBR? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id VCALL-ENTRY NOSLOT = if false exit then
+   id DBACK-OF NOSLOT = ;
+
 : VCALL-BITS ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id cls:n :}
    id VCALL-ENTRY {: e:n :}
@@ -660,9 +669,23 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ for position j. The terminator is read off the block's own row, and its
 \ operands are the values the routine returns, so this is the assignment's answer
 \ at exactly the instant the convention talks about.
+\ A ROUTINE THAT LEAVES THROUGH A CALLEE RETURNS NOTHING FROM HERE, so its
+\ terminator's one operand is the data-stack order it ends and not a value in a
+\ register. Under the data-stack convention the returned values were written into
+\ the caller's cells before the branch - or are still standing in them - and the
+\ callee is what will publish them, so there is no position for this rule to be
+\ about. A tail branch under a REGISTER convention would be one, and there is no
+\ such convention in the chain: the contract that declares a tail call also
+\ declares data-stack places, and the entry check above refuses the mixture.
+: OUT-TAIL-CK ( IR-ID:ir-op-id A64EFF:placeseq -- )
+   {: id:IR-ID:ir-op-id outs:A64EFF:placeseq :}
+   outs A64EFF:SEQ-SLOTS 0= if E-A64RAV-PLACE throw then
+   id OPERANDS-OF 1 <> if E-A64RAV-PLACE throw then ;
+
 : OUT-CK ( IR-ID:ir-block-id A64EFF:placeseq -- )
    {: bk:IR-ID:ir-block-id outs:A64EFF:placeseq :}
    V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ {: id:IR-ID:ir-op-id :}
+   id TAILBR? if id outs OUT-TAIL-CK exit then
    outs A64EFF:SEQ-SLOTS 0<> id OPERANDS-OF 0<> and
    if E-A64RAV-PLACE throw then
    outs REG-POSITIONS {: n:n :}
@@ -799,6 +822,8 @@ variable V-CHANGED
 0 V-CHANGED !
 variable V-CALLS                     \ whether the contract says this routine calls
 0 V-CALLS !
+variable V-TAIL                      \ whether the contract says control leaves through a callee
+0 V-TAIL !
 variable V-FRAME                     \ whether the module reaches a frame at all
 0 V-FRAME !
 variable V-BASE                      \ the first frame byte the allocator's slots may use
@@ -1668,6 +1693,13 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 0 ?do  bk i OP-AT VDCK-OP  loop ;
 
+\ How far in front of the epilogue the moment being judged stands: the returning
+\ form is judged where the pointer moves over the results, and the tail form at
+\ the branch itself, which has no such move in front of it.
+: VDPUB-BACK ( -- n )
+   V-TAIL @ 0<> if 1 exit then
+   2 ;
+
 \ The exit publication is judged in its own block, at the position the shape
 \ check already found it: the map there is the one the walk above rebuilt, and
 \ the cells the convention names have to hold something at exactly that point.
@@ -1675,7 +1707,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
    rb VDCUR<IN
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
-   xb OP-COUNT PRO-N - 2 - {: pub:n :}
+   xb OP-COUNT PRO-N - VDPUB-BACK - {: pub:n :}
    pub 0 ?do  xb i OP-AT VDOP-XFER  loop
    outs r VDOUTS-CK ;
 
@@ -1782,8 +1814,54 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
    loop ;
 
+\ THE SAME WINDOW FOR A ROUTINE THAT LEAVES THROUGH A CALLEE, and the two
+\ differences are the whole of what a tail branch is. There is no publication:
+\ the pointer is not moved over the results here, because the callee is what will
+\ move it, so the window ends at the terminator itself rather than one before it.
+\ And where the pointer stands is not derived from a field this time, it is
+\ DEMANDED: a tail branch enters the callee at the place the pointer is standing
+\ at, and the callee will leave the pointer one past ITS results and return to
+\ OUR caller - which reads its results at 8*out. A routine whose body stands
+\ anywhere else hands its caller a stack top that is not where the caller
+\ believes it is, and no instruction after the branch could put it right, so it
+\ is refused here.
+\
+\ WHAT THE STORE RUN IN FRONT OF IT IS. The cells the callee will read its
+\ arguments out of are the very cells this routine's caller will read its results
+\ out of - that coincidence IS the tail call - so the run is measured against the
+\ declared OUT places exactly as the publication's run is, in rising order and
+\ naming no other place.
+: VDTAIL-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
+   f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
+   xb OP-COUNT PRO-N - {: n:n :}
+   n 1 < if E-A64RAV-DSTACK throw then
+   xb  xb OP-COUNT 1-  OP-AT TAILBR? 0= if E-A64RAV-DSTACK throw then
+   VD-STAND @  r A64IR:SLOT-WIDTH *  <> if E-A64RAV-DSTACK throw then
+   n 1 - VD-P !
+   0 VD-ES !
+   begin
+      VD-P @ 0 > if xb VD-P @ 1- VDSTORE? else false then
+   while
+      VD-P @ 1- VD-P !
+      VD-ES @ 1+ VD-ES !
+   repeat
+   0 VD-J !
+   VD-ES @ 0 ?do
+      outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
+   loop ;
+
+\ Which positions of the block control leaves through belong to that window. The
+\ tail form has no publication position of its own, so its window is the store
+\ run alone; the returning form has the publication as well.
+: VDTAIL-POS? ( n n -- bool )
+   {: n:n at:n :}
+   n 1 - PRO-N - {: q:n :}
+   at q VD-ES @ - >= at q < and ;
+
 : VDEXIT-POS? ( n n -- bool )
    {: n:n at:n :}
+   V-TAIL @ 0<> if n at VDTAIL-POS? exit then
    n 2 - PRO-N - {: p:n :}
    at p = if true exit then
    at p VD-ES @ - >= at p < and ;
@@ -1952,10 +2030,38 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    VD-ENTRY @ VDREQ+
    VD-LEAVE @ VDREQ+
    f a args VDENTRY-CK
-   f rb r outs VDEXIT-CK
+   V-TAIL @ 0<> if f rb r outs VDTAIL-CK else f rb r outs VDEXIT-CK then
    V-BLKS @ 0 ?do f i 0 rb VDCLEAN1 loop
    VDPLACE-CK
    f rb a r args outs VDRES-CK ;
+
+\ ---- the contract's control and the module's terminator ----------------------
+\ The contract says how control leaves this routine and the module shows it, and
+\ the two are held against each other here rather than either being believed. A
+\ contract declaring a return over a module that branches away would describe a
+\ routine whose caller is never come back to; a contract declaring a tail call
+\ over a module that returns would leave a frame reserved and a link saved for a
+\ branch that is not there. And a tail branch anywhere but at the end of the
+\ block control leaves through is a routine abandoned in the middle of itself:
+\ every other block would be unreachable code the layout still writes.
+: VTAIL1 ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id b:n rb:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      bk i OP-AT TAILBR? if
+         V-TAIL @ 0= if E-A64RAV-SHAPE throw then
+         b rb <> if E-A64RAV-SHAPE throw then
+         i bk OP-COUNT 1- <> if E-A64RAV-SHAPE throw then
+      then
+   loop ;
+
+: VTAIL-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id rb:n :}
+   V-BLKS @ 0 ?do f i rb VTAIL1 loop
+   f rb BLOCK-AT TERM-AT TAILBR? if
+      V-TAIL @ 0= if E-A64RAV-SHAPE throw then exit
+   then
+   V-TAIL @ 0<> if E-A64RAV-SHAPE throw then ;
 
 \ ---- the whole re-derivation -------------------------------------------------
 : VBLOCK-CKS ( IR-ID:ir-fun-id -- )
@@ -1989,6 +2095,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    REGISTER-CK
    OVERLAP-CK
    f VEDGE-CK
+   f rb VTAIL-CK
    f rb frame VFRAME-CK
    f VBLOCK-CKS
    f 0 BLOCK-AT args ARG-CK
@@ -2102,6 +2209,7 @@ public
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
    t A64EFF:T-CALL A64EFF:TRAITS-HAS? if 1 else 0 then V-CALLS !
+   ct A64EFF-CONTROL:TAIL-CALL A64EFF-CONTROL:EQ if 1 else 0 then V-TAIL !
    t A64FRAME:SPILL-BASE V-BASE !
    pool fpool gi gr size WALK {: f:IR-ID:ir-fun-id :}
    f

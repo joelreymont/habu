@@ -492,6 +492,15 @@ create PL-VAL PLMAX cells allot
 : CALL-AT? ( IR-ID:ir-op-id -- bool )
    DK-BACK BND-DKEY @ ATTR-INT-OF NOATTR <> ;
 
+\ And is it the branch a routine LEAVES through? It names an address, as a call
+\ to another word does, and carries no take-back count, because control does not
+\ come back for anything to be taken back. Both halves are attributes, so this is
+\ the same reading CALL-AT? is made by and no opcode is spelled here either.
+: TAILBR-AT? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-ENTRY @ ATTR-INT-OF NOATTR = if false exit then
+   id CALL-AT? 0= ;
+
 : CALL-BITS ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id cls:n :}
    id 0 BND-ENTRY @ ATTR-INT-OF {: e:n :}
@@ -625,6 +634,7 @@ create PL-VAL PLMAX cells allot
       args:A64EFF:placeseq outs:A64EFF:placeseq :}
    args A64EFF:SEQ-SLOTS 0<> bk ARG-COUNT 0<> and
    if E-A64RA-PLACE throw then
+   rb TERM-AT TAILBR-AT? if exit then
    outs A64EFF:SEQ-SLOTS 0<> rb TERM-AT OPERANDS-OF 0<> and
    if E-A64RA-PLACE throw then ;
 

@@ -103,6 +103,7 @@ require src/compiler/native/hir.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/migrate.f
 require src/compiler/native/inline.f
+require tools/codegen-tail-probe.f
 
 package NINL-TEST
 
@@ -385,11 +386,27 @@ variable CODE-AT
 : DEFINED? ( ptr u8 n -- bool )
    XREF-FIND XREF-FOUND? ;
 
+\ Does this word LEAVE through a branch to another routine rather than returning
+\ to its caller? A caller whose whole body is one call it hands its own results
+\ straight out of does not have to come back for them: it branches, and the
+\ callee's own return goes to this caller's caller. It is still a caller that did
+\ NOT copy the callee - which is what every case below that says "calls it" is
+\ really about - and it is a caller with no frame and no saved return address
+\ besides. The question is settled by where the branch GOES and not by its
+\ opcode, which is why it is asked of the shared instrument rather than of a
+\ mask here: a loop's back edge is an unconditional branch too.
+: LEAVES? ( ptr u8 n -- bool )
+   NTAILPROBE:TAIL-BRANCH? ;
+
 \ How many instructions the published word holds. The record's length excludes
-\ the trailing return, which is what the engine means by a word's length, so the
-\ emission is one instruction more than the record measures.
-: WORD-INSNS ( ptr u8 n -- n )
-   WORD-REC XREF-LEN INSN-BYTES / 1+ ;
+\ the trailing return, which is what the engine means by a word's length - so the
+\ emission is one instruction more than the record measures, unless the word has
+\ no trailing return because it left through a branch, and then the record is the
+\ whole of it.
+: WORD-INSNS ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u WORD-REC XREF-LEN INSN-BYTES / {: k:n :}
+   a u LEAVES? if k exit then
+   k 1+ ;
 
 \ How many instructions of the word's own code match one form. The mask and the
 \ value are the caller's, so each case below says which instruction it is
@@ -518,9 +535,10 @@ variable CALLS-BODY-RC
    s" and reserves no frame and saves no return address" T-LABEL
    s" NINL-COPIES" FRAME-COUNT 0 T=
 
-   s" while the caller of the other calls it, with a frame to call from" T-LABEL
-   s" NINL-CALLS" BL-COUNT 1 T=
-   s" NINL-CALLS" FRAME-COUNT 1 T=
+   s" while the caller of the other LEAVES THROUGH it, and needs no frame to" T-LABEL
+   s" NINL-CALLS" LEAVES? FLAG# 1 T=
+   s" NINL-CALLS" BL-COUNT 0 T=
+   s" NINL-CALLS" FRAME-COUNT 0 T=
 
    s" and both answer what the engine's code for the same body answers" T-LABEL
    s" 3 NINL-COPIES" EV-N  s" 3 NINL-ENGINE-COPIES" EV-N T=
@@ -598,9 +616,9 @@ variable CALLS-BODY-RC
 
    s" a routine that really CALLS is not recorded, and both of these do" T-LABEL
    s" NINL-VIA-CTRL" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
-   s" NINL-VIA-CTRL" BL-COUNT 1 T=
+   s" NINL-VIA-CTRL" LEAVES? FLAG# 1 T=
    s" NINL-CALLS" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
-   s" NINL-CALLS" BL-COUNT 1 T=
+   s" NINL-CALLS" LEAVES? FLAG# 1 T=
 
    s" and the emitter refuses to say what such a routine's BODY is" T-LABEL
    CALLS-BODY-RC @ E-A64EMIT-BODY T=
@@ -617,10 +635,11 @@ variable CALLS-BODY-RC
    s" NINL-VIA" ENTRY-OF 1 NINL:SPELL$ s" +" STR= TTRUE
    s" NINL-VIA" ENTRY-OF 9 NINL:SPELL$ s" +" STR= TTRUE
 
-   s" and a caller of one of them CALLS it, which is the answer to refusing it"
+   s" and a caller of one of them LEAVES THROUGH it, which is the answer to"
    T-LABEL
-   s" NINL-VIA-CTRL" BL-COUNT 1 T=
-   s" NINL-VIA-CTRL" FRAME-COUNT 1 T=
+   s" NINL-VIA-CTRL" LEAVES? FLAG# 1 T=
+   s" NINL-VIA-CTRL" BL-COUNT 0 T=
+   s" NINL-VIA-CTRL" FRAME-COUNT 0 T=
    s" -6 NINL-VIA-CTRL" EV-N 0 T=
    s" 6 NINL-VIA-CTRL" EV-N 6 T=
 
@@ -1068,9 +1087,10 @@ variable R3-BODY
    s" NINL-L4" BL-COUNT 0 T=
    s" NINL-L4" FRAME-COUNT 0 T=
 
-   s" but a caller of it calls it, because nothing recorded it" T-LABEL
-   s" NINL-L5" BL-COUNT 1 T=
-   s" NINL-L5" FRAME-COUNT 1 T=
+   s" but a caller of it leaves through it, because nothing recorded it" T-LABEL
+   s" NINL-L5" LEAVES? FLAG# 1 T=
+   s" NINL-L5" BL-COUNT 0 T=
+   s" NINL-L5" FRAME-COUNT 0 T=
    s" NINL-L5" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
 
    s" and the whole chain answers what the engine's code for it answers" T-LABEL
@@ -1108,8 +1128,9 @@ variable R3-BODY
    s" 3 4 NINL-R3 drop" EV-N 3 T=
    s" 3 4 NINL-R3 nip" EV-N 4 T=
 
-   s" while its caller calls it, and runs too" T-LABEL
-   s" NINL-R4" BL-COUNT 1 T=
+   s" while its caller leaves through it, and runs too" T-LABEL
+   s" NINL-R4" LEAVES? FLAG# 1 T=
+   s" NINL-R4" BL-COUNT 0 T=
    s" 3 4 NINL-R4 drop" EV-N 3 T=
    s" 3 4 NINL-R4 nip" EV-N 4 T= ;
 
@@ -1303,9 +1324,10 @@ variable FULL-BODY
    s" the decline is counted rather than dropped in silence" T-LABEL
    NINL:DECLINED DECLINED-BEFORE @ 1 + T=
 
-   s" and a caller of it calls it, with a frame to call from, and runs" T-LABEL
-   s" NINL-CALL-FULL" BL-COUNT 1 T=
-   s" NINL-CALL-FULL" FRAME-COUNT 1 T=
+   s" and a caller of it leaves through it, with no frame at all, and runs" T-LABEL
+   s" NINL-CALL-FULL" LEAVES? FLAG# 1 T=
+   s" NINL-CALL-FULL" BL-COUNT 0 T=
+   s" NINL-CALL-FULL" FRAME-COUNT 0 T=
    s" 3 NINL-CALL-FULL" EV-N 96 T=
 
    s" a malformed claim is still refused with the table full, and not declined"
@@ -1390,9 +1412,9 @@ variable RECLAIM-ENTRY
    s" 5 NINL-RECYCLED" EV-N 26 T= ;
 
 : RECLAIM-CALLER-CASES ( -- )
-   s" a caller of the word at a reclaimed slot calls it rather than splicing"
+   s" a caller of the word at a reclaimed slot branches to it rather than splicing"
    T-LABEL
-   s" NINL-RECYCLED-CALLER" BL-COUNT 1 T=
+   s" NINL-RECYCLED-CALLER" LEAVES? FLAG# 1 T=
 
    s" and answers what that word computes, not what the forgotten one did"
    T-LABEL

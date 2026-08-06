@@ -318,6 +318,9 @@ create LBUF LNAME-CAP allot
 variable TOK-LIVE                    \ whether an order has been minted yet
 variable TOK-NEED                    \ whether the body has a word that takes one
 variable CALL-NEED                   \ whether the body calls anything at all
+variable TAIL-NEED                   \ whether the last thing the body does is a call it need not come back from
+variable CALL-BACK                   \ whether the body makes a call control comes BACK from
+variable TAIL-ENTRY                  \ where the callee it would leave through starts
 variable OPJ                         \ general operands taken so far by the open staging
 
 : TOK-RESET ( -- )
@@ -2849,6 +2852,91 @@ EXPORT SPLICE-MEANING?
 : CALLED? ( -- bool )
    CALL-NEED @ 0<> ;
 
+\ Does the definition this pass last elaborated make a call control comes BACK
+\ from? That is the question the FRAME turns on, and it is not the same question
+\ as CALLED? once a body can leave through its final call: the branch that leaves
+\ writes no return address, so a definition whose only call is that one destroys
+\ nothing of its caller's and needs no frame to keep anything in. A definition
+\ that calls somebody else first does, and declares it.
+: CALLS-BACK? ( -- bool )
+   CALL-BACK @ 0<> ;
+
+\ Does the definition this pass last elaborated LEAVE through its last call? It
+\ is published for the same reason CALLED? is: the routine contract the later
+\ stages are told turns on it, and the module the selector reads has to be
+\ described by the contract it is selected under. The selector re-derives the
+\ same answer from the module it built and refuses a disagreement by name, so
+\ this is a claim held against a derivation rather than a decision taken twice.
+: TAIL-CALLED? ( -- bool )
+   TAIL-NEED @ 0<> ;
+
+\ And where the callee it would leave through starts. The migration entry asks,
+\ because whether a branch to that address can be PUBLISHED is the publication
+\ seam's answer and not this pass's - and the shape has to be decided before the
+\ routine contract is built, not refused after the code is emitted. Asked of a
+\ definition that leaves through nothing it answers zero, which no code occupies.
+: TAIL-ENTRY@ ( -- n )
+   TAIL-ENTRY @ ;
+
+\ ---- when the last call need not be come back from ---------------------------
+\ A routine can leave THROUGH its final callee - branching instead of calling, so
+\ that the callee's own return goes to this routine's caller - exactly when four
+\ things are true of the body, and each of them is about what the machine would
+\ have to do between the branch and the callee's return, which is nothing.
+\
+\   THE CALL IS THE LAST THING THE BODY DOES. The tape's final token is a call
+\   this pass did not copy into the definition. A copied call is not a call at
+\   all - the callee's operations are in this routine and there is no branch to
+\   redirect - and WORD-CALL? is the same reading INLINE-SCAN's decision is
+\   published through everywhere else, so the two cannot come to disagree.
+\
+\   NOTHING BRANCHES. A definition with an `exit` or with control flow has more
+\   than one block, and the call would then be the last operation of ONE path
+\   rather than of the routine. That is a real shape and a real further
+\   optimisation, and it is not this one: dot habu-leave-through-a-43dd5bdd.
+\
+\   THE CALLEE'S RESULTS ARE THIS ROUTINE'S RESULTS. The callee leaves the
+\   data-stack pointer one past ITS results and this routine's caller reads them
+\   one past OURS, and no instruction can run in between - so the two counts have
+\   to be the same number.
+\
+\   AND THE POINTER IS ALREADY WHERE THE CALLEE IS ENTERED. A call site moves it
+\   up over what it hands over; a tail branch cannot, because the move would have
+\   to be undone after the branch. The three counts being equal - what this
+\   routine takes, what the callee takes, and what either leaves - is what makes
+\   every one of the placement's requirements the same place, so the pointer
+\   stands there already and the branch is the whole of the site.
+\
+\ A SELF-CALL IS NOT ONE OF THESE, and not because it could not be: a definition
+\ whose only block ends in a call to itself is a loop with no way out, so the
+\ shape a tail-recursive routine really has is a guarded one - which is the
+\ branching case above and waits on the same dot.
+: TAIL-CALLEE? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena ix:n :}
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MEANING@ HIR-MEANING:CALLABLE HIR-MEANING:EQ 0= if false exit then
+   r sy HIR-WORD:CALLEE-IN@ IN-N @ <> if false exit then
+   r sy HIR-WORD:CALLEE-OUT@ OUT-N @ = ;
+
+: TAIL-SCAN ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena n:n :}
+   0 TAIL-NEED !
+   0 TAIL-ENTRY !
+   CALL-NEED @ CALL-BACK !
+   IN-N @ OUT-N @ <> if exit then
+   IN-N @ 0= if exit then
+   EXIT-USED @ 0<> if exit then
+   NB @ 0<> if exit then
+   n 2 < if exit then
+   r n 1- WORD-CALL? 0= if exit then
+   r n 1- TAIL-CALLEE? 0= if exit then
+   1 TAIL-NEED !
+   r  VW MKEY n 1- NTAPE:SPELL@  HIR-WORD:ENTRY@ TAIL-ENTRY !
+   0 CALL-BACK !
+   n 1- 1 ?do
+      r i WORD-CALL? if 1 CALL-BACK ! leave then
+   loop ;
+
 \ Elaborate the one colon definition this sealed tape holds, and answer the
 \ function it became. The arenas are, in order, the tape's sealed view, the word
 \ model's pick pool and the word model's rows; the two counts are the values the
@@ -2890,6 +2978,7 @@ EXPORT SPLICE-MEANING?
       0 out 0 0 0 OPEN-ARGS-H
    then
    c b v key out EMIT-RETURN
+   r n TAIL-SCAN
    c b IR-BUILD:END-BLOCK drop
    c b IR-BUILD:END-FUN ;
 

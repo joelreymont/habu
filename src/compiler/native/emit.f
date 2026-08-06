@@ -235,7 +235,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-58 constant OPCODES-N
+59 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -294,6 +294,7 @@ private
 55 constant O-FCMPSELZ
 56 constant O-FCMPSELD
 57 constant O-FCMPSELZD
+58 constant O-TAILCALL
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -372,6 +373,8 @@ variable EM-IFACE
 0 EM-IFACE !
 variable EM-NCALL
 0 EM-NCALL !
+variable EM-TAIL                     \ tail branches this emission wrote
+0 EM-TAIL !
 
 \ ---- where this routine will be written --------------------------------------
 \ A branch to a block is measured from the layout, so it is the same displacement
@@ -498,6 +501,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       fcmpselz  OF O-FCMPSELZ  ENDOF
       fcmpseld  OF O-FCMPSELD  ENDOF
       fcmpselzd OF O-FCMPSELZD ENDOF
+      tailcall  OF O-TAILCALL  ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -560,6 +564,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       O-FCMPSELZ  of A64IR-OPCODE:FCMPSELZ  endof
       O-FCMPSELD  of A64IR-OPCODE:FCMPSELD  endof
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
+      O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -1621,6 +1626,26 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    id  id WORD-DELTA BL-WORD  APPEND
    id  id DBACK-SIZE negate  PUT-DMOVE ;
 
+\ ---- leaving through another word --------------------------------------------
+\ The tail branch, which is ONE instruction and never more. It is the same
+\ displacement the word call above computes - the callee's entry less the address
+\ this instruction will occupy - encoded into a B instead of a Bl, so the callee's
+\ own return goes to the address x30 already holds, which is OUR caller's.
+\
+\ THERE IS NO ADJUSTMENT AND NO SECOND INSTRUCTION, and that is a property of the
+\ form rather than a case that happens to be empty: the selector only builds this
+\ operation where the data-stack pointer already stands at the callee's entry
+\ base, and the schema carries no adjustment field for it to have written one in.
+\
+\ IT NOTES ITS CALLEE EXACTLY AS A CALL DOES. What this routine destroys covers
+\ what the routine it leaves through destroys - the branch is the last thing that
+\ happens here, but a caller of THIS routine gets the callee's registers written
+\ under this routine's name, so the union is the same union.
+: PUT-TAILCALL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id ENTRY-ADDR NOTE-CALLEE
+   id  id WORD-DELTA B-WORD  APPEND ;
+
 \ One copy, which is one instruction unless it is a copy from a register into
 \ itself, and then it is none. SELF-MOV? is the layout's own word, asked here
 \ with the same argument, so the instruction left out is exactly the instruction
@@ -1712,6 +1737,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       fcmpselz  OF id PUT-FCMPSELZ ENDOF
       fcmpseld  OF id PUT-FCMPSELD ENDOF
       fcmpselzd OF id PUT-FCMPSELZD ENDOF
+      tailcall  OF id PUT-TAILCALL ENDOF
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
@@ -1726,7 +1752,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : TERMINATOR? ( IR-ID:ir-block-id n -- bool )
    OP-AT SLOT-AT {: k:n :}
    k O-RET = k O-BR = or k O-BRZ = or k O-CMPBR = or
-   k O-FCMPBR = or k O-FCMPBRZ = or ;
+   k O-FCMPBR = or k O-FCMPBRZ = or k O-TAILCALL = or ;
 
 : BLOCK-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
@@ -1764,7 +1790,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 
 : CALL-FORM? ( n -- bool )
    {: k:n :}
-   k O-CALL = k O-WORDCALL = or ;
+   k O-CALL = k O-WORDCALL = or k O-TAILCALL = or ;
 
 \ One operation written, and what it added to the two counts above. The cursor is
 \ read on both sides of the writer, so an elided adjustment costs the interface
@@ -1775,6 +1801,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    N-INS @ {: was:n :}
    id home PUT-OP
    k CALL-FORM? if 1 EM-NCALL +! then
+   k O-TAILCALL = if 1 EM-TAIL +! then
    k IFACE-FORM? 0= if exit then
    N-INS @ was - EM-IFACE +! ;
 
@@ -1936,6 +1963,7 @@ public
    c b A64IR-OPCODE:ABSTORE  BIND1
    c b A64IR-OPCODE:CALL      BIND1
    c b A64IR-OPCODE:WORDCALL  BIND1
+   c b A64IR-OPCODE:TAILCALL  BIND1
    c b A64IR-OPCODE:LINKSAVE  BIND1
    c b A64IR-OPCODE:LINKLOAD  BIND1
    c b A64IR-OPCODE:FADD     BIND1
@@ -2044,6 +2072,7 @@ public
    0 EM-KFPR !
    0 EM-IFACE !
    0 EM-NCALL !
+   0 EM-TAIL !
    m BND-MODULE-CK
    c TARGET-CK
    m VIEWS!
@@ -2070,6 +2099,16 @@ public
 
 : FPR-CLOBBER ( -- A64EFF:fprs )
    SEAL-CK EM-CFPR @ A64EFF:FPR-SET ;
+
+\ Does this emission LEAVE through a branch rather than through a return? Two
+\ seams need the answer and neither can read it off the bytes: the publication
+\ records a word's length as the span its callers may copy, which the engine
+\ defines as everything before the trailing return - and a routine that has no
+\ trailing return has no instruction to leave out. And the body recorder has to
+\ decline such a routine, because a copied `b` would branch out of whatever
+\ caller it was copied into.
+: LEAVES-BY-BRANCH? ( -- bool )
+   SEAL-CK EM-TAIL @ 0<> ;
 
 \ How many instructions were emitted, and how many bytes they occupy.
 : INSNS ( -- n )

@@ -28,6 +28,21 @@
 \      shape of the fixture rather than assumed, because a fixture that stopped
 \      reproducing the layout would leave this suite green and proving nothing.
 \
+\ AND ONE OF THEM REALLY DOES LEAVE BY A BRANCH NOW, which is the third thing
+\ this suite has to be able to tell apart. The chain lowers a final call whose
+\ results are already the routine's own results to a plain `b` to the callee, so
+\ TAIL-BRANCH? has a true case as well as the two false ones - and the false case
+\ built to fool it, LOOPY-N's back edge, is still false beside it. Without the
+\ true case the predicate could answer false always and this suite would not
+\ notice; with it, the distinction the tool exists to make is pinned in both
+\ directions by two routines whose LAST BODY INSTRUCTION IS A `b` EITHER WAY.
+\
+\ THE TAIL ROUTINE ALSO HAS NO TRAILING RETURN, and that is the record convention
+\ every reader of a word's code depends on, so it is asserted rather than left to
+\ be discovered: src/compiler/native/publish.f records the WHOLE emission for
+\ such a routine, because there is no return to leave out of it, and TRAILER-RET?
+\ is therefore false where it is true for every other row here.
+\
 \ THE FIXTURES ARE COMPILED BOTH WAYS ON PURPOSE. The copying and call-counting
 \ cases are ordinary definitions the ENGINE compiles, because the copying rule
 \ under test is the engine's. The back-edge case is migrated through the native
@@ -37,6 +52,7 @@
 
 require lib/prelude.f
 require lib/test.f
+require src/compiler/native/dict.f
 require src/compiler/native/migrate.f
 require tools/codegen-tail-probe.f
 
@@ -90,11 +106,51 @@ private
 
 8 constant REGS
 
+\ Where a published word's code starts, which is what a call site is staged
+\ with. The spelling is the qualified one, because the routines below are
+\ published inside the fixture's package.
+: ENTRY-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-NPUB-NAME throw then
+   XREF-START ;
+
+\ The callee the tail row leaves through: eleven operations, which is past the
+\ engine's forty bytes of body and past the chain's own bound for a routine of
+\ arity one to one, so neither generator copies it and the caller really does
+\ have a branch in it.
+: BIG ( -- )
+   s" : NTP-BIG-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
+   1 1 REGS NMIGRATE:DEFINE ;
+
+\ AND THE CALLER WHOSE CALLEE IS OUTSIDE THE REGION, which is the case the
+\ lowering DECLINES rather than refuses. `abs` is an engine primitive: its code
+\ is in the loaded image's text and not in the JIT region, so a branch to it does
+\ not keep its distance when a snapshot is restored somewhere else, and
+\ src/compiler/native/publish.f has no way to record one (dot
+\ habu-relocate-a-tail-96d571af). The routine is a perfectly ordinary program and
+\ has to stay one: it keeps its call and its return, exactly as it did before
+\ there was a tail lowering at all. An optimisation that turned it into a
+\ compilation failure would not be an optimisation.
+: OUTSIDE ( -- )
+   s" abs" NDICT:SPELL-START {: e:n :}
+   s" abs" e 1 1 NMIGRATE:CALLEE
+   s" : OUTSIDE-N ( n -- n ) abs ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+\ And the caller whose whole body is that call. Its emitted code is one
+\ instruction: the branch.
+: TAILED ( -- )
+   s" NTP-BIG-N" s" NTP-FIXTURE:NTP-BIG-N" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : TAILED-N ( n -- n ) NTP-BIG-N ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
 public
 
 : RUN ( -- )
    s" : LOOPY-N ( ptr n n -- ) {: base:ptr len:n :} len 0 ?do i base i cells + ! loop ;"
-   2 0 REGS NMIGRATE:DEFINE ;
+   2 0 REGS NMIGRATE:DEFINE
+   BIG
+   TAILED
+   OUTSIDE ;
 
 ;package
 
@@ -132,7 +188,7 @@ public
    s" what follows the last call is counted, and it is the epilogue" T-LABEL
    s" NTP-FIXTURE:CALLS-BIG" AFTER-LAST-CALL 0 > TTRUE
 
-   s" every one of them still ends in the trailing return the record promises" T-LABEL
+   s" every one that returns ends in the trailing return the record promises" T-LABEL
    s" NTP-FIXTURE:PLAIN" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:COPIES" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:CALLS-BIG" TRAILER-RET? TTRUE
@@ -141,11 +197,29 @@ public
    s" the back-edge fixture really does end its body on a branch" T-LABEL
    s" NTP-FIXTURE:LOOPY-N" LAST-BODY NBR:B? TTRUE
 
-   s" and none of them leaves by a branch, that back edge included" T-LABEL
+   s" and so does the routine that LEAVES through its callee" T-LABEL
+   s" NTP-FIXTURE:TAILED-N" LAST-BODY NBR:B? TTRUE
+
+   s" but only one of the two goes anywhere outside itself" T-LABEL
    s" NTP-FIXTURE:PLAIN" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:COPIES" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:CALLS-BIG" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:LOOPY-N" TAIL-BRANCH? TFALSE
+   s" NTP-FIXTURE:TAILED-N" TAIL-BRANCH? TTRUE
+
+   s" and the one that does has no trailing return and makes no call" T-LABEL
+   s" NTP-FIXTURE:TAILED-N" TRAILER-RET? TFALSE
+   s" NTP-FIXTURE:TAILED-N" CALLS 0 T=
+   s" NTP-FIXTURE:TAILED-N" INSNS 1 T=
+
+   s" while the routine it leaves through is a whole body of its own" T-LABEL
+   s" NTP-FIXTURE:NTP-BIG-N" TAIL-BRANCH? TFALSE
+   s" NTP-FIXTURE:NTP-BIG-N" TRAILER-RET? TTRUE
+
+   s" and a routine whose callee is outside the region keeps its call" T-LABEL
+   s" NTP-FIXTURE:OUTSIDE-N" TAIL-BRANCH? TFALSE
+   s" NTP-FIXTURE:OUTSIDE-N" TRAILER-RET? TTRUE
+   s" NTP-FIXTURE:OUTSIDE-N" CALLS 1 T=
 
    s" a name nothing published is a refusal and not a quiet zero" T-LABEL
    [: s" NTP-FIXTURE:NO-SUCH-WORD" CALLS drop ;]

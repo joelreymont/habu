@@ -1097,3 +1097,18 @@ public
 
 -8610 constant E-A64RAV-DRES    \ a data-stack slot published with no store in front of it that no path defines: an omitted store for a slot nothing ever wrote, one a call between the write and the publication destroyed, or a read of such a slot - and, fail-closed rather than reachable, a residency descent that was still moving after every cell of the map could have fallen as far as it can
 -8611 constant E-A64RAV-DKEEP   \ a data-stack access the emission had no reason to make: a store writing a slot that already holds that very value, a load of a slot whose value is already in a register, or a load whose result nothing reads
+
+\ Leaving a routine through its last callee: -8620..-8629
+\
+\ A routine whose final call hands back exactly what the routine itself hands
+\ back does not have to come back for it: it branches, and the callee's own
+\ return goes to this routine's caller. Which routines those are is decided
+\ twice - the elaborator reads it off the body it just walked and the routine
+\ contract says so, and src/compiler/native/select.f derives it again from the
+\ module it is building - and this is the refusal of the second derivation. It
+\ is a statement about the SITE, not about the contract: A64EFF already refuses a
+\ contract in which a tail call and a destroyed link register are both declared,
+\ and src/compiler/native/regalloc-verify.f refuses a module whose terminator and
+\ whose contract disagree.
+-8620 constant E-A64SEL-TAIL    \ a call the selector was told to leave through that it cannot: a value live across it, a callee whose arity is not this routine's own, a data-stack adjustment the branch would have had to carry, or a contract declaring a tail call over a module with no such site in it - and the other way round, a site built under a contract that declares an ordinary return
+-8621 constant E-NPUB-RELOC   \ an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement

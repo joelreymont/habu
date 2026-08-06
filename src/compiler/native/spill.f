@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-58 constant OPCODES-N
+59 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -186,6 +186,7 @@ private
 55 constant O-FCMPSELZ
 56 constant O-FCMPSELD
 57 constant O-FCMPSELZD
+58 constant O-TAILCALL
 
 \ One slot per attribute key the dialect declares.
 9 constant KEYS-N
@@ -304,6 +305,7 @@ create NAMEBUF NAME-CAP allot
       fcmpselz  OF O-FCMPSELZ  ENDOF
       fcmpseld  OF O-FCMPSELD  ENDOF
       fcmpselzd OF O-FCMPSELZD ENDOF
+      tailcall  OF O-TAILCALL  ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -366,6 +368,7 @@ create NAMEBUF NAME-CAP allot
       O-FCMPSELZ  of A64IR-OPCODE:FCMPSELZ  endof
       O-FCMPSELD  of A64IR-OPCODE:FCMPSELD  endof
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
+      O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       E-A64SPILL-OPCODE throw
    endcase ;
 

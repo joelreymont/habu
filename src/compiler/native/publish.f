@@ -430,13 +430,40 @@ variable CLAIMED
    t A64EFF:FPR-ALL NCLOB:FPR-CLOB A64EFF:FPRS-N
    f invert and 0<> if E-NPUB-CLOBBER throw then ;
 
+\ ---- and a branch that LEAVES the routine is a call site too -------------------
+\ A routine can end by BRANCHING to another word rather than calling it, so that
+\ the callee's own return goes to this routine's caller. What the two forms do to
+\ the register file is the same thing: the callee runs, and every register it
+\ destroys is destroyed under this routine's name. A reader that looked only for
+\ the branch-with-link would record a routine as destroying less than it does,
+\ and a caller of it would keep a value in a register the tail callee writes -
+\ silently, because nothing downstream ever asks again.
+\
+\ WHICH BRANCHES THOSE ARE IS DECIDED BY WHERE THEY GO, NOT BY THEIR OPCODE. A
+\ routine's own control flow is unconditional branches too - a loop's back edge,
+\ a block that is not laid out next - and every one of those lands inside the
+\ span about to be written. A branch to an address outside that span is the only
+\ kind that leaves, and it is exactly the kind whose callee has to be accounted
+\ for. The span is [fn, fn+size), which this seam is the one authority on.
+: LEAVES? ( n n n -- bool ) {: fn:n size:n t:n :}
+   t fn < if true exit then
+   t fn size + >= ;
+
+: BRANCH-TARGET-CK ( n n n n n -- ) {: fn:n size:n at:n g:n f:n :}
+   at A64EMIT:WORD@ {: w:n :}
+   w NBR:BL? if
+      fn size at INSN-ADDR  w  NBR:BL-TARGET  fn g f TARGET-CK exit
+   then
+   w NBR:B? 0= if exit then
+   fn size at INSN-ADDR  w  NBR:B-TARGET {: t:n :}
+   fn size t LEAVES? 0= if exit then
+   t fn g f TARGET-CK ;
+
 : BRANCH-CK ( n n -- ) {: fn:n size:n :}
    A64EMIT:GPR-CLOBBER A64EFF:GPRS-N {: g:n :}
    A64EMIT:FPR-CLOBBER A64EFF:FPRS-N {: f:n :}
    A64EMIT:INSNS 0 ?do
-      i A64EMIT:WORD@ NBR:BL? if
-         fn size i INSN-ADDR  i A64EMIT:WORD@  NBR:BL-TARGET  fn g f TARGET-CK
-      then
+      fn size i g f BRANCH-TARGET-CK
    loop ;
 
 \ ---- the source map describes the bytes the window will copy ------------------
@@ -465,6 +492,32 @@ variable CLAIMED
    t dbase@ < if true exit then
    t dbase@ REGION + >= ;
 
+\ A TAIL BRANCH OUT OF THE ROUTINE IS A CALL SITE HERE TOO, and it is the one
+\ this seam cannot record. The engine's loader walks the recorded sites and
+\ refuses an image in which one of them does not hold a branch-with-link
+\ (src/habu/habu2.f EMIT-CALLS, which compares the top six bits against BL-OP-HI
+\ and exits CALLMAP-RC otherwise), so a `b` recorded there would turn a restored
+\ snapshot into a refusal rather than into a relocated branch. Widening that
+\ comparison is a change to the engine's emitted relocation pass and to the model
+\ formal/Common/Reloc.v holds it against: dot habu-relocate-a-tail-96d571af.
+\
+\ SO THE PUBLICATION REFUSES ONE INSTEAD, and refuses it in the validation phase
+\ where a refusal still costs nothing. A tail branch that stays inside the region
+\ needs no record at all - it keeps its distance wherever the region is mapped,
+\ for the same reason an internal call does - and that is every tail branch the
+\ chain builds today, because a chain-published callee is in the region. One to
+\ the engine's own loaded text is the case that has no record, and it is named
+\ here rather than published as a branch a restored image would follow into
+\ whatever now sits at that address.
+: TAIL-RELOC-CK ( n n -- ) {: fn:n size:n :}
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ {: w:n :}
+      w NBR:B? if
+         fn size i INSN-ADDR  w  NBR:B-TARGET {: t:n :}
+         fn size t LEAVES? t EXTERNAL? and if E-NPUB-RELOC throw then
+      then
+   loop ;
+
 \ Set the bit for every call site of the routine just published. It runs after
 \ the window, which cleared the whole span, so a site that needs no record is
 \ already right and nothing here has to clear one.
@@ -476,6 +529,31 @@ variable CLAIMED
          then
       then
    loop ;
+
+\ ---- how much of the routine a caller may copy --------------------------------
+\ The engine stores a word's code length EXCLUDING its trailing return
+\ (src/habu/habu2.f EM-COMPILE-FLUSH-PEND writes `CP - entry - 4`), because that
+\ is the span its inliner copies into a caller and copying the return as well
+\ would return from the caller. So the subtraction is this seam's own
+\ responsibility - and it is a subtraction of the RETURN, not of an instruction.
+\
+\ A ROUTINE THAT LEAVES BY BRANCHING HAS NO RETURN TO LEAVE OUT, so its recorded
+\ length is the whole emission. Subtracting anyway would record a four-byte tail
+\ branch as a word of no length at all, and every reader of a routine's extent -
+\ the engine's inliner, the workload scan, the byte column of the codegen
+\ comparison - would be reading a span that is not the routine.
+\
+\ AND THE ENGINE'S INLINER STILL DECLINES IT, which is what makes the whole
+\ length safe to record. Whichever span C-CALL takes, the tail branch or the call
+\ that made the routine reserve a frame is inside it: a routine with no prologue
+\ gives up the whole of [entry, entry+len), which ends on the branch; one whose
+\ first word is the prologue gives up [entry+8, entry+len-8), and a routine only
+\ reserves a frame because it makes a call it comes back from, which stands
+\ strictly between the link save and the link restore. C-CALL-SCAN-SAFE refuses a
+\ span containing either, so the copy falls back to the branch it always could.
+: RECORDED-LEN ( n -- n ) {: size:n :}
+   A64EMIT:LEAVES-BY-BRANCH? if size exit then
+   size INSN-BYTES - ;
 
 public
 
@@ -497,6 +575,7 @@ public
    fn SLOT-CK
    fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD-CK
    fn size BRANCH-CK
+   fn size TAIL-RELOC-CK
    u LOG-CK
    idx fn ;
 
@@ -509,7 +588,7 @@ public
 : COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
    A64EMIT:BYTES fn size CODE-WINDOW
    fn RELOC-CALLS
-   fn  size INSN-BYTES -  idx RETARGET-REC
+   fn  size RECORDED-LEN  idx RETARGET-REC
    fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD
    fn size CLAIM ;
 
@@ -519,7 +598,7 @@ public
    idx XREF-REC XREF-START {: os:n :}
    idx XREF-REC XREF-LEN {: ol:n :}
    idx fn size COMMIT
-   a u wid os ol fn  size INSN-BYTES -  LOG+ ;
+   a u wid os ol fn  size RECORDED-LEN  LOG+ ;
 
 \ The address the next republication will write its first instruction at. It is
 \ the engine's own free code slot, which is what REPUBLISH claims, so a caller
@@ -528,6 +607,17 @@ public
 \ nothing: a caller that asks and never publishes has moved no pointer.
 : NEXT-SLOT ( -- n )
    cp@ ;
+
+\ Is this address one a branch from a published routine keeps its distance to,
+\ wherever the region is mapped? Everything inside the region moves with it, so
+\ a branch that stays inside needs no relocation record and survives a snapshot
+\ restore untouched; one that leaves does not, and this seam cannot record a
+\ tail branch (TAIL-RELOC-CK above says why), so a caller deciding whether it may
+\ leave through a callee at all asks here BEFORE it commits to the shape. The
+\ refusal above stays as the fail-closed backstop: this is the question, that is
+\ the guarantee.
+: IN-REGION? ( n -- bool )
+   EXTERNAL? 0= ;
 
 \ How many words this process has republished.
 : REPUBLISHED ( -- n )

@@ -440,6 +440,7 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ and a call is not.
 : SIZE-CK ( -- )
    NINL:STAGED? 0= if exit then
+   A64EMIT:LEAVES-BY-BRANCH? if NINL:STAGE-CLEAR exit then
    M-IN @ M-OUT @ A64EMIT:BODY-INSNS NINL:SMALL? 0= if NINL:STAGE-CLEAR then ;
 
 \ Claim the row for the staged body: the address the routine is about to be
@@ -483,6 +484,10 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ CALLS-CK below keeps the other direction, which is still the caller's to get
 \ wrong: a migration entered as one that calls nothing may not have staged one.
 : ROUTINE ( -- A64EFF:routine )
+   NELAB:TAIL-CALLED?  NELAB:TAIL-ENTRY@ NPUB:IN-REGION?  and if
+      NELAB:CALLS-BACK? if 0 M-REGS @ M-IN @ M-OUT @ NABI:TAIL-CALLING exit then
+      0 M-REGS @ M-IN @ M-OUT @ NABI:TAIL exit
+   then
    NELAB:CALLED? if 0 M-REGS @ M-IN @ M-OUT @ NABI:CALL exit then
    0 M-REGS @ M-IN @ M-OUT @ NABI:LEAF ;
 

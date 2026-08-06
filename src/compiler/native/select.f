@@ -283,6 +283,8 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
 variable S-FRAME                     \ the frame the contract declares, in bytes
 variable N-CALLS                     \ calls this selection built
+variable N-TAILS                     \ tail branches this selection built
+variable S-TAIL                      \ whether the contract says control leaves through a callee
 variable FUSE-AT                     \ where in this block the fused comparison is, or -1
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
@@ -444,6 +446,7 @@ variable D-RETS                                    \ returns seen while surveyin
 : ARGS ( -- A64EFF:placeseq )        0 S-ARGS @ ;
 : OUTS ( -- A64EFF:placeseq )        0 S-OUTS @ ;
 : TRAITS ( -- A64EFF:traits )        0 S-TRT @ ;
+: TAIL? ( -- bool )                  S-TAIL @ 0<> ;
 : FRAME ( -- n )                     S-FRAME @ ;
 : FTOK ( -- IR-ID:ir-value-id )      0 S-FTOK @ ;
 : FTOK! ( IR-ID:ir-value-id -- )     0 S-FTOK ! ;
@@ -765,6 +768,19 @@ variable D-RETS                                    \ returns seen while surveyin
       N-CALLS @ 0= if E-A64SEL-CALL throw then exit
    then
    N-CALLS @ 0<> if E-A64SEL-CALL throw then ;
+
+\ And the same holding for the way control leaves. The contract declares it
+\ before a single operation is selected - it is what decides whether the frame
+\ and the link save are built at all - and this holds it against what the pass
+\ really built: a contract declaring a tail call over a routine that built none
+\ describes a routine whose caller is returned to twice, and a tail branch under
+\ a contract that declares a return is a routine that never comes back from a
+\ frame it still reserved.
+: TAILED-CK ( -- )
+   TAIL? if
+      N-TAILS @ 1 <> if E-A64SEL-TAIL throw then exit
+   then
+   N-TAILS @ 0<> if E-A64SEL-TAIL throw then ;
 
 \ ---- the four data-stack operations ------------------------------------------
 \ Each carries the span of the source operation it is anchored to, so a
@@ -2670,6 +2686,101 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    FUSE-AT @ 0 < if id EMIT-BRZ exit then
    id  BLK FUSE-AT @ OP-AT  EMIT-CMPBR ;
 
+\ WHICH OPERATION THE ROUTINE LEAVES THROUGH, read off the module. It is the
+\ operation immediately in front of the terminator of a block whose terminator is
+\ the return - which, for a body the elaborator called a tail call, is the only
+\ block there is. Asked of a position, because both the placement below and the
+\ lowering above have one; and asked of the CONTRACT first, so a routine that was
+\ not declared a tail caller never grows one.
+: TAIL-AT? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id at:n :}
+   TAIL? 0= if false exit then
+   bk OP-COUNT {: n:n :}
+   n 2 < if false exit then
+   at n 2 - <> if false exit then
+   bk at OP-AT OP-SLOT O-WORDCALL <> if false exit then
+   bk n 1- OP-AT OP-SLOT O-RETURN = ;
+
+\ Does the block being lowered leave through a callee? The walk hands each
+\ operation down on its own, so the position is found by asking the block.
+: TAIL-HERE? ( -- bool )
+   TAIL? 0= if false exit then
+   BLK OP-COUNT {: n:n :}
+   n 2 < if false exit then
+   BLK n 2 - TAIL-AT? ;
+
+: TAIL-OP? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   TAIL-HERE? 0= if false exit then
+   BLK  BLK OP-COUNT 2 -  OP-AT IR-ID:OP-LOCAL  id IR-ID:OP-LOCAL = ;
+
+\ ---- leaving through the callee ----------------------------------------------
+\ WHAT A TAIL CALL IS, AND WHY IT IS NOT A CALL SITE WITH THE END CUT OFF. A call
+\ site is the routine's exit sequence, the branch, and the routine's entry
+\ sequence, arranged so that the pointer is where it started when control comes
+\ back. Control does not come back here. So the site is the store run and the
+\ branch, and there is nothing to take back, nothing to load, no publication and
+\ no return - the CALLEE's own exit publishes the results, into the very cells
+\ this routine's caller will read them out of, and the callee's own return goes
+\ to the address x30 holds, which is this routine's caller's.
+\
+\ THE FOUR THINGS THAT MAKE THAT TRUE ARE HELD HERE, NOT ASSUMED. The elaborator
+\ decided this routine leaves through its last call and the contract says so;
+\ this is the second derivation, made from the module, and it refuses by name
+\ rather than lowering a branch that would hand the caller a stack it does not
+\ expect:
+\   nothing is live across the branch, because nothing follows it;
+\   the callee takes exactly what this routine takes and leaves exactly what it
+\   leaves, so the cells are the same cells at both ends;
+\   and the pointer already stands at the callee's entry base, so the site has no
+\   adjustment - which is what DPLACE below makes true rather than hopes for.
+: TAIL-CK ( n n n n -- )
+   {: a:n r:n kk:n m:n :}
+   kk 0<> if E-A64SEL-TAIL throw then
+   m 0<> if E-A64SEL-TAIL throw then
+   a ARGS SLOT-POSITIONS <> if E-A64SEL-TAIL throw then
+   r OUTS SLOT-POSITIONS <> if E-A64SEL-TAIL throw then
+   a A64IR:SLOT-WIDTH * DPLACED 0<> if E-A64SEL-TAIL throw then
+   r A64IR:SLOT-WIDTH * DPLACED 0<> if E-A64SEL-TAIL throw then ;
+
+: EMIT-TAIL-BR ( IR-ID:ir-op-id n -- )
+   {: at:IR-ID:ir-op-id entry:n :}
+   at A64IR-OPCODE:TAILCALL OPEN
+   TOK OPERAND+
+   CTX BLD  CTX BLD A64IR:KEY-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
+   IR-BUILD:ADD-ATTR
+   CTX BLD IR-BUILD:END-OP drop ;
+
+\ The epilogue stands in FRONT of the branch and not after it, which is the whole
+\ of what a routine that also calls has to do differently: the frame and the
+\ saved return address are given back while this routine is still running, and
+\ then it leaves. A routine whose only call is this one has no epilogue at all -
+\ CALLS? is false, so PROLOGUE and EPILOGUE build nothing - and that is the win.
+: EMIT-TAIL-CALL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id WORD-SHAPE {: a:n r:n kk:n m:n :}
+   a r kk m TAIL-CK
+   id 0 OPERAND TOK!
+   id kk m a CALL-SAVE
+   id EPILOGUE
+   id  id WORD-ENTRY  EMIT-TAIL-BR
+   N-TAILS @ 1+ N-TAILS ! ;
+
+
+\ The two arms the tail decision changes, and it changes nothing else: a word
+\ call that is the operation the routine leaves through becomes the branch, and
+\ the return it stood in front of becomes nothing at all, because the branch is
+\ already the block's terminator.
+: EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id TAIL-OP? if id EMIT-TAIL-CALL exit then
+   id EMIT-WORD-CALL ;
+
+: EMIT-RETURN-OR-TAILED ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   TAIL-HERE? if exit then
+   id EMIT-RETURN ;
+
 : RULE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
@@ -2700,8 +2811,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       br     OF id EMIT-BR ENDOF
       brz    OF id EMIT-BRANCH ENDOF
       call   OF id EMIT-CALL ENDOF
-      wordcall OF id EMIT-WORD-CALL ENDOF
-      return OF id EMIT-RETURN ENDOF
+      wordcall OF id EMIT-CALL-OR-TAIL ENDOF
+      return OF id EMIT-RETURN-OR-TAILED ENDOF
       fconst   OF id EMIT-FCONST ENDOF
       fadd     OF id A64IR-OPCODE:FADD EMIT-FBINARY ENDOF
       fsub     OF id A64IR-OPCODE:FSUB EMIT-FBINARY ENDOF
@@ -3106,6 +3217,16 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    {: c:n :}
    c 0 >=  c A64EFF:SLOT-BACK <=  and ;
 
+\ A ROUTINE THAT LEAVES THROUGH A CALLEE HAS NO CHOICE, which is why the survey
+\ above is not consulted for one. A tail branch is the whole of its site: there
+\ is no instruction in front of it to move the pointer with, so the pointer has
+\ to be standing at the callee's entry base already - and the rule that makes a
+\ tail call possible at all is that the callee takes what this routine takes, so
+\ that base is this routine's own argument base. Standing anywhere else would
+\ make the branch impossible rather than expensive, so the place is settled
+\ rather than chosen, and EMIT-TAIL-CALL holds every adjustment the site would
+\ have carried against zero.
+\
 \ Better means fewer adjustments, and on a tie the lower place. The base is the
 \ incumbent: it is where this pass stood before there was a choice, it is always
 \ inside the bound, and it is the lowest place there is, so a tie with it keeps
@@ -3137,6 +3258,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    DSTACK? 0= if exit then
    ARGS SLOT-POSITIONS A64IR:SLOT-WIDTH * DREQ+
    f BLOCK-COUNT 0 ?do  f i DPLACE-BLOCK  loop
+   TAIL? if ARGS SLOT-POSITIONS A64IR:SLOT-WIDTH * D-POS ! exit then
    D-REQ-OVER @ 0<> if exit then
    DPLACE-CHOOSE ;
 
@@ -3770,7 +3892,9 @@ public
    A64EFF:FPR-WRITABLE 0 S-FPOOL !
    t 0 S-TRT !
    size S-FRAME !
+   ct A64EFF-CONTROL:TAIL-CALL A64EFF-CONTROL:EQ if 1 else 0 then S-TAIL !
    0 N-CALLS !
+   0 N-TAILS !
    0 R-NEWBASE !
    DSTACK-CK
    CONTRACT-CK
@@ -3784,6 +3908,7 @@ public
       MKEY i IR-ID:PACK-FUN WALK-FUN
    loop
    CALLED-CK
+   TAILED-CK
    c b IR-BUILD:FREEZE ;
 
 private
