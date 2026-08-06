@@ -18,4 +18,4 @@ require tools/cli-run.f
 
 require tools/diag-origin-test-lib.f
 
-DGT-MAIN
+DIAG-ORIGIN-TEST:TEST

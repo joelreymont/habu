@@ -4,6 +4,9 @@
 \ tools/lint/token.f tools/lint/lib.f tools/diag-origin-core.f
 \ tools/cli-run.f tools/diag-origin-test.f
 
+package DIAG-ORIGIN-TEST
+private
+
 4096 constant DGT-BUF-CAP
 10000 constant DGT-TIMEOUT-MS
 
@@ -104,7 +107,7 @@ create DGT-ERR DGT-BUF-CAP allot
    LEN>N swap LEN>N swap ;
 
 : DGT-RUN-CORE ( -- n )
-   DGT-IN DGT-OUT DGT-BUF-CAP >LEN DIAG-ORIGIN>BUF LEN>N ;
+   DGT-IN DGT-OUT DGT-BUF-CAP >LEN DIAG-ORIGIN:>BUF LEN>N ;
 
 : DGT-TEST-CORE ( -- )
    DGT-RUN-CORE {: outu:n :}
@@ -115,7 +118,9 @@ create DGT-ERR DGT-BUF-CAP allot
    DGT-OUT outu DGT-WANT$ T$=
    DGT-ERR erru DGT-EMPTY$ T$= ;
 
-: DGT-MAIN ( -- )
+public
+
+: TEST ( -- )
    T-RESET
    DGT-PREPARE
    DGT-IN DGT-SOURCE$ WRITE-ALL
@@ -125,3 +130,5 @@ create DGT-ERR DGT-BUF-CAP allot
    DGT-ROOT EXISTS? TFALSE
    T-REPORT
    s" diag-origin-test: ok" type cr ;
+
+;package

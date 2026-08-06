@@ -1,6 +1,14 @@
 \ diag-origin-core.f - inject checker diagnostic origin markers before definitions.
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, tools/lint/text.f,
 \ tools/lint/token.f, and tools/lint/lib.f.
+\
+\ The module is package DIAG-ORIGIN. Its whole interface is three words:
+\ DIAG-ORIGIN:RUN marks a file to the output fd, DIAG-ORIGIN:>BUF marks it into
+\ a caller's buffer and answers the byte count, and DIAG-ORIGIN:USAGE is the
+\ CLI's argument-count failure. Everything else - the lexer state, the output
+\ sink, the marker emitter - is private to the package.
+
+package DIAG-ORIGIN
 
 $40000 constant DO-FILE-CAP
 32 constant DO-NUM-CAP
@@ -133,9 +141,6 @@ variable DO-OUT-BUF?
 : DO-ERR-C ( n -- )
    DO-C!
    2 DO-ONE 1 DO-WRITE ;
-
-: DO-USAGE ( -- )
-   s" usage: tools/diag-origin.f file" 64 DO-FAIL ;
 
 : DO-U$ ( n -- ptr u8 n ) {: u :}
    DO-NUM-CAP DO-NUM-I !
@@ -305,7 +310,9 @@ variable DO-OUT-BUF?
    0 DO-OUT-U !
    DO-TRUE DO-OUT-BUF? ! ;
 
-: DIAG-ORIGIN-RUN ( ptr u8 n -- )
+\ read the file, walk it once, and emit the marked source to whichever sink the
+\ caller armed (DO-OUT-FD! or DO-OUT-BUF!).
+: SCAN ( ptr u8 n -- )
    DO-FILE-BUF DO-FILE-CAP READ-FILE
    DO-SRC-U ! DO-SRC-A!
    0 DO-X !
@@ -317,11 +324,18 @@ variable DO-OUT-BUF?
    repeat
    DO-OUT-X @ DO-SRC-U @ DO-EMIT-RANGE ;
 
-: DIAG-ORIGIN ( ptr u8 n -- )
-   DO-OUT-FD!
-   DIAG-ORIGIN-RUN ;
+public
 
-: DIAG-ORIGIN>BUF ( ptr u8 n ptr u8 len -- len ) {: path:ptr pathu out:ptr cap :}
+: USAGE ( -- )
+   s" usage: tools/diag-origin.f file" 64 DO-FAIL ;
+
+: RUN ( ptr u8 n -- )
+   DO-OUT-FD!
+   SCAN ;
+
+: >BUF ( ptr u8 n ptr u8 len -- len ) {: path:ptr pathu:n out:ptr cap:len :}
    out cap DO-OUT-BUF!
-   path pathu DIAG-ORIGIN-RUN
+   path pathu SCAN
    DO-OUT-U @ >LEN ;
+
+;package
