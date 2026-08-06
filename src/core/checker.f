@@ -30,16 +30,42 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
 : ARENA-ALLOC ( n -- ptr a )
    ARENA-MMAP-RC ARENA-RC>PTR ;
 
-: ARENA-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}   \ n bytes, src->dst
+\ The arena's byte view: it reinterprets a cell-addressed arena pointer as the
+\ bytes underneath it, which no checked effect can express. It is the checker's
+\ own copy of the view src/core/bytes.f publishes to user code as BYTE-VIEW; the
+\ two cannot be one word, because the checker seals its namespace and a
+\ signature declared here is invisible to checked user code (proved: moving
+\ BYTE-VIEW into this file makes lib/codegen.f fail E-UNDEFINED). Local trusted
+\ casts are the established shape here -- see ARENA-RC>PTR above and
+\ USIGS-RC>PTR / USIGS-CELL-AT below. It does NOT specialize its input: the `a`
+\ binds fresh per call, so viewing a parametric pointer as bytes leaves the
+\ caller's quantifier free, which is what lets ARENA-COPY keep its effect.
+TRUSTED: ARENA-BYTE-VIEW ( ptr a -- ptr u8 ) ;
+
+\ Cell-wise bulk mover: it reads `a` and writes the same `a` back, so the
+\ quantifier stays free and every caller keeps its own pointee type. Returns
+\ the byte offset it reached, which is where the tail picks up.
+: ARENA-CELLS-COPY ( ptr a ptr a n -- n ) {: src:ptr dst:ptr n:n :}
    0 ARENA-CP-I !
    begin ARENA-CP-I @ CELL + n <= while
       src ARENA-CP-I @ + @ dst ARENA-CP-I @ + !
       ARENA-CP-I @ CELL + ARENA-CP-I !
    repeat
+   ARENA-CP-I @ ;
+
+\ The sub-cell remainder, on a concrete byte view. Only the string arenas
+\ (CT-STR, VREC-STR, SYM-STR, TF-STR) ever reach it: every record-stride grow
+\ passes a whole number of cells.
+: ARENA-TAIL-COPY ( ptr u8 ptr u8 n n -- ) {: src:ptr dst:ptr from:n n:n :}
+   from ARENA-CP-I !
    begin ARENA-CP-I @ n < while
       src ARENA-CP-I @ + c@ dst ARENA-CP-I @ + c!
       ARENA-CP-I @ 1 + ARENA-CP-I !
    repeat ;
+
+: ARENA-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}   \ n bytes, src->dst
+   src dst n ARENA-CELLS-COPY {: done:n :}
+   src ARENA-BYTE-VIEW dst ARENA-BYTE-VIEW done n ARENA-TAIL-COPY ;
 
 : ARENA-CELLS-UNBOUND ( ptr a n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) UNBOUND
    from ARENA-UB-I !
