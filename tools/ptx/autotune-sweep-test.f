@@ -26,7 +26,7 @@ package SW-RT
 \ ---- thin aliases + scratch config for staging ------------------------------
 : DEF! ( n -- )        AUTOTUNE:SW-CAND-DEF ;
 : SET! ( n n n -- )    AUTOTUNE:SW-CAND-SET ;
-: COPY! ( ptr a n -- ) AUTOTUNE:SW-CAND-COPY ;
+: COPY! ( ptr n n -- ) AUTOTUNE:SW-CAND-COPY ;
 : CANDOK? ( n -- bool ) AUTOTUNE:SW-CAND-OK? ;
 : CNTOK? ( n -- bool ) AUTOTUNE:SW-COUNT-OK? ;
 create SRC AUTOTUNE:AT-CFG-N cells allot     \ a valid source config to copy
