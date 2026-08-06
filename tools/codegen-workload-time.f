@@ -176,7 +176,7 @@ variable ROUNDS-V
 : ARM-SLOT ( ptr a n n -- ptr a ) {: arm:ptr k:n s:n :}
    arm k ARM-CELLS * s + SLOT ;
 
-: ARM@ ( n ptr a n -- n ) {: k:n arm:ptr s:n :}
+: ARM@ ( n ptr n n -- n ) {: k:n arm:ptr s:n :}
    arm k ROW-OK s ARM-SLOT @ ;
 
 \ ---- one timed run ----------------------------------------------------------
@@ -229,7 +229,7 @@ variable ROUNDS-V
    OPEN? @ 0= if E-WLTIME-STATE throw then ;
 
 \ One column's three numbers into one column, in one decision.
-: ARM! ( n n n ptr a -- ) {: fast:n slow:n sum:n arm:ptr :}
+: ARM! ( n n n ptr n -- ) {: fast:n slow:n sum:n arm:ptr :}
    fast          arm ROW-N @ ARM-NS ARM-SLOT !
    fast slow SPREAD-OF  arm ROW-N @ ARM-SPREAD ARM-SLOT !
    sum           arm ROW-N @ ARM-SUM ARM-SLOT ! ;
