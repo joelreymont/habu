@@ -190,9 +190,86 @@ public
    BAD-N @ U. s"  finding(s)" type NL
    BAD-N @ 0 > if 1 throw then ;
 
+\ ---- the recovery corpus is NOT all of src/ -----------------------------------
+\ tools/bootstrap.sh names the stage-0 input explicitly, in one closed array
+\ (SRC_COMMON), and every entry of it lies in one of the four directories below.
+\ src/compiler is deliberately not among them: it is compiled by the RECOVERED
+\ NATIVE engine at the immediate fixpoint refresh (bootstrap.sh runs
+\ tools/build-fixpoint.f install --force straight after the stage), never by the
+\ gforth stage-0 emitter, so a declaration there cannot reach the unmirrored
+\ pass-2 and cannot carry a wide width fact through it.
+\
+\ Walking all of `src` scanned files the stage never sees, and when the compiler
+\ packages landed their NEWTYPE/ENUM declarations that produced 56 findings about
+\ a hazard that does not exist. Scanning the corpus instead is a narrowing of the
+\ lint's DOMAIN to the invariant it exists to protect, not a loosening of its
+\ rule: the rule below is unchanged and still fires on the first live declaration
+\ keyword in any file the stage really compiles.
+\
+\ These four are a strict SUPERSET of SRC_COMMON - they hold files the array does
+\ not name - so the scan can only over-report against the true corpus, never
+\ under-report. What keeps that true as bootstrap.sh changes is CORPUS-DRIFT-CK
+\ below, which reads the array itself.
+4 constant ROOTS-N
+
+: ROOT-AT ( n -- ptr u8 n ) {: i:n :}
+   i 0 = if s" src/core" exit then
+   i 1 = if s" src/arch" exit then
+   i 2 = if s" src/os"   exit then
+   s" src/habu" ;
+
+: IN-CORPUS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   LINT-FALSE
+   ROOTS-N 0 ?do
+      a u i ROOT-AT LINT-PREFIX? if drop LINT-TRUE leave then
+   loop ;
+
+\ ---- the drift guard ----------------------------------------------------------
+\ The four roots above restate a fact bootstrap.sh owns, and a restated fact
+\ rots. This reads SRC_COMMON back and refuses any entry that lies outside them,
+\ so adding a src/compiler file (or any new directory) to the stage-0 list turns
+\ this lint red at once instead of silently taking that file out of the scan.
+\ A path is an array entry that ends `.f` and is not a shell variable; the
+\ `$OS_*` entries name files under src/os/macos and src/os/linux, both already
+\ inside the src/os root, and they are checked by their expansion's directory
+\ rather than by the variable's spelling.
+$8000 constant BS-CAP
+create BS-BUF BS-CAP allot
+
+: BS-LINE-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" .f" LINT-SUFFIX? 0= if LINT-FALSE exit then
+   a u s" /" LINT-CONTAINS? ;
+
+: DRIFT-BAD ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" BOOTSTRAP-MIRROR tools/bootstrap.sh: SRC_COMMON entry `" type
+   a u type
+   s" ` lies outside the roots this lint scans; widen ROOT-AT, and mirror the pass-2 lowering first if it carries ADTs (dot habu-bootstrap-mirror-pass-f1714953)" type NL
+   BAD-N @ 1+ BAD-N ! ;
+
+variable BS-IN
+
+: DRIFT-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u LINT-TRIM {: t:ptr tu:n :}
+   tu 0= if exit then
+   t tu s" SRC_COMMON=(" LINT-CONTAINS? if 1 BS-IN ! exit then
+   BS-IN @ 0= if exit then
+   t tu s" )" LINT-PREFIX? if 0 BS-IN ! exit then
+   t tu BS-LINE-PATH? 0= if exit then
+   t tu IN-CORPUS? if exit then
+   t tu DRIFT-BAD ;
+
+: CORPUS-DRIFT-CK ( -- )
+   0 BS-IN !
+   s" tools/bootstrap.sh" BS-BUF BS-CAP READ-FILE {: a:ptr u:n :}
+   a u SPLIT-LINES
+   SN# @ 0 ?do i S@ DRIFT-LINE loop ;
+
 : RUN ( -- )
    RESET
-   s" src" [: WALK-FILE ;] WALK-FILES
+   ROOTS-N 0 ?do
+      i ROOT-AT [: WALK-FILE ;] WALK-FILES
+   loop
+   CORPUS-DRIFT-CK
    FINISH ;
 
 ;package

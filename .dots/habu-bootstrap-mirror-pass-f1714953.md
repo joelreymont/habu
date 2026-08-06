@@ -1,6 +1,6 @@
 ---
 title: Bootstrap mirror pass-2 + wide-marking parity
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-09T13:28:23.589159+02:00"
@@ -43,3 +43,55 @@ REMAINDER (unchanged, now enforced): implement the stage-0 pass-2 +
 wide-marking mirror in bootstrap/cg/forth.fs + jit.fs before (or with) the
 first src/ ADT declaration — the tripwire makes that ordering a red gate
 instead of a convention.
+
+Claim: agent=adt-fix workspace=.jj-ws/habu-bootstrap-mirror-pass-f1714953
+
+FINDINGS RETIRED AS VACUOUS, MIRROR STILL NOT BUILT (2026-08-06, adt-fix).
+All 56 findings named files under src/compiler, and src/compiler is NOT in the
+recovery corpus. The lint was walking all of `src`, while its own header already
+said the corpus is "SRC_COMMON: src/core + src/arch + src/os + src/habu". The
+domain was wrong, not the rule.
+
+THE INVARIANT, RE-DERIVED FROM THE TREE:
+1. tools/bootstrap.sh has exactly ONE file-list array, SRC_COMMON (:69-102). It
+   is a closed, explicitly ordered list. The only directories any path in the
+   whole script names are src/arch/arm64, src/core, src/habu, src/os,
+   src/os/linux, src/os/macos (plus lib/ and tools/ for the POST-recovery
+   fixpoint refresh). `src/compiler` appears nowhere in the script.
+2. The list cannot be widened implicitly by requires: the stage-0 sources carry
+   ZERO `require` lines (checked roles.f, layout.f, habu1.f, habu2.f, xref.f,
+   enums.f, combinators.f), and nothing under src/core, src/arch, src/os or
+   src/habu requires anything from src/compiler. The shell script is the whole
+   dependency graph.
+3. So no src/compiler declaration can reach the unmirrored gforth pass-2, and
+   the 56 findings described a hazard that does not exist.
+4. Independently, the stage is ARMED rather than silent about wide layouts:
+   bootstrap.sh bootstrap_wide_gate runs test/bootstrap-wide-memory.fs plus two
+   fixtures that must exit rc 70 with marker BOOTSTRAP-WIDE-ARMED. A wide fact
+   reaching the stage-0 emitter is refused, not miscompiled.
+
+THE REPAIR IS A DOMAIN NARROWING PLUS A NEW DRIFT GUARD, NOT A LOOSENING. The
+ADT rule is untouched. RUN now walks the four corpus roots (a strict superset of
+SRC_COMMON, so it can over-report but never under-report), and CORPUS-DRIFT-CK
+reads SRC_COMMON back out of tools/bootstrap.sh and reds on any entry outside
+those roots - so adding a src/compiler file to the stage-0 list turns this lint
+red at once instead of silently dropping that file from the scan. bootstrap.sh
+stays the single authority on what the corpus is.
+
+FALSIFIED, NOT ASSUMED: planting `src/compiler/ir/id.f` into SRC_COMMON makes
+the guard report "SRC_COMMON entry `src/compiler/ir/id.f` lies outside the roots
+this lint scans", 1 finding; removing it returns 0. The pre-existing
+planted-overlay red fixture still fires its 4 findings, so the ADT rule is still
+proven live.
+
+EVIDENCE FROM THE REAL THING: HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh ran
+green end to end on this tree WITH all 56 declarations present - exit 0,
+"bin/hb refresh OK: compiler fixpoint", "bootstrap OK: bin/hb", self-check
+census 0 uncheckable / 0 rejected / 4297 certified - and the engine reconverged
+BYTE-IDENTICALLY (79cb84e8450352cc before and after). That is the invariant
+holding in production, not a reading of it.
+
+REMAINDER UNCHANGED: the stage-0 pass-2 + wide-marking mirror in
+bootstrap/cg/forth.fs + jit.fs is still NOT implemented. It is still required
+before the first ADT declaration in a file the recovery corpus actually
+compiles, and the tripwire now guards exactly that set.
