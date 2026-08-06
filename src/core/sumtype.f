@@ -51,9 +51,11 @@ variable TDECL-CUR-FAM              \ family id being declared (-1 outside a bod
    wa wu TDECL-WHY!
    code throw ;
 
-\ --- transactional mark/restore over every store a declaration can grow. The
-\ registries retire by counter (linear scans, interned offsets), so restoring
-\ the high-water marks fully removes a failed declaration's rows.
+\ --- transactional mark/restore over every store a declaration can grow. Most
+\ of these registries retire by counter (linear scans, interned offsets), so
+\ restoring the high-water mark fully removes a failed declaration's rows. The
+\ family store is the exception: its rows are also chained in a tail index, and
+\ the restore below unchains them through that index's own seam.
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
 variable TDM-SUMV   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
@@ -69,7 +71,16 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    TFAM-N @ TDM-TFAM !   TF-STR-U @ TDM-STR !   TF-PK-N @ TDM-PK !
    SUMV-N @ TDM-SUMV !   LAY-N @ TDM-LAY !
    SCH-N @ TDM-SCH !     SCH-ROOT-N @ TDM-ROOT ! ;
+\ TFX-RETIRE reads the rows it unchains, so it runs FIRST, while their ids are
+\ still inside TFAM-N — the same order the checker-scope rollback uses
+\ (type-family.f TF-RESTORE-TOP). Rewinding the counter first strands the rows
+\ on their buckets unreachably, and the enclosing scope rollback cannot repair
+\ it: its own TFX-RETIRE finds nothing above the rewound counter and then marks
+\ the index exact, so the next lookup walks a stranded row instead of rebuilding.
+\ The variant rows need no matching SVX call: SVX indexes generated constructor
+\ symbols, and TDECL-CTOR-WORDS generates those after this transaction closes.
 : TDECL-RESTORE ( -- )
+   TDM-TFAM @ TFX-RETIRE
    TDM-TFAM @ TFAM-N !   TDM-STR @ TF-STR-U !   TDM-PK @ TF-PK-N !
    TDM-SUMV @ SUMV-N !   TDM-LAY @ LAY-N !
    TDM-SCH @ SCH-N !     TDM-ROOT @ SCH-ROOT-N ! ;
