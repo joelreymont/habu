@@ -236,20 +236,20 @@ private
 : PS-OUT ( ptr u8 n -- ) {: a:ptr u:n :}
    1 a u PS-WRITE ;
 
-: PS-C! ( n -- )
+: STAGE-C ( n -- )
    PS-ONE c! ;
 
-: PS-C ( n -- )
-   PS-C!
+: OUT-C ( n -- )
+   STAGE-C
    PS-ONE 1 PS-OUT ;
 
-: PS-ERR-C ( n -- )
-   PS-C!
+: ERR-C ( n -- )
+   STAGE-C
    2 PS-ONE 1 PS-WRITE ;
 
 : PS-ERRLN ( ptr u8 n -- ) {: a:ptr u:n :}
    2 a u PS-WRITE
-   PS-LF-C PS-ERR-C ;
+   PS-LF-C ERR-C ;
 
 public
 : PS-USAGE ( -- )
@@ -273,58 +273,58 @@ private
    repeat drop
    PS-NUM-BUF PS-NUM-I @ +  PS-NUM-CAP PS-NUM-I @ - ;
 
-: PS-JSON-U ( n -- )
+: JSON-U ( n -- )
    PS-U$ PS-OUT ;
 
-: PS-JSON-BOOL ( bool -- )
+: JSON-BOOL ( bool -- )
    IF s" true" ELSE s" false" THEN PS-OUT ;
 
-: PS-JSON-NIBBLE ( n -- n )
+: JSON-NIBBLE ( n -- n )
    dup 10 < IF PS-ZERO + ELSE 55 + THEN ;
 
-: PS-JSON-U00 ( n -- )
-   PS-BACKSLASH-C PS-C
-   117 PS-C
-   PS-ZERO PS-C
-   PS-ZERO PS-C
-   dup 4 rshift PS-JSON-NIBBLE PS-C
-   $F and PS-JSON-NIBBLE PS-C ;
+: JSON-U00 ( n -- )
+   PS-BACKSLASH-C OUT-C
+   117 OUT-C
+   PS-ZERO OUT-C
+   PS-ZERO OUT-C
+   dup 4 rshift JSON-NIBBLE OUT-C
+   $F and JSON-NIBBLE OUT-C ;
 
 : PS-JSON-ESC-C ( n -- ) {: c:n :}
-   c PS-DQ = IF PS-BACKSLASH-C PS-C PS-DQ PS-C exit THEN
-   c PS-BACKSLASH-C = IF PS-BACKSLASH-C PS-C PS-BACKSLASH-C PS-C exit THEN
-   c PS-BS = IF PS-BACKSLASH-C PS-C 98 PS-C exit THEN
-   c PS-FF = IF PS-BACKSLASH-C PS-C 102 PS-C exit THEN
-   c PS-LF-C = IF PS-BACKSLASH-C PS-C 110 PS-C exit THEN
-   c PS-CR = IF PS-BACKSLASH-C PS-C 114 PS-C exit THEN
-   c PS-TAB = IF PS-BACKSLASH-C PS-C 116 PS-C exit THEN
-   c 32 < IF c PS-JSON-U00 exit THEN
-   c PS-C ;
+   c PS-DQ = IF PS-BACKSLASH-C OUT-C PS-DQ OUT-C exit THEN
+   c PS-BACKSLASH-C = IF PS-BACKSLASH-C OUT-C PS-BACKSLASH-C OUT-C exit THEN
+   c PS-BS = IF PS-BACKSLASH-C OUT-C 98 OUT-C exit THEN
+   c PS-FF = IF PS-BACKSLASH-C OUT-C 102 OUT-C exit THEN
+   c PS-LF-C = IF PS-BACKSLASH-C OUT-C 110 OUT-C exit THEN
+   c PS-CR = IF PS-BACKSLASH-C OUT-C 114 OUT-C exit THEN
+   c PS-TAB = IF PS-BACKSLASH-C OUT-C 116 OUT-C exit THEN
+   c 32 < IF c JSON-U00 exit THEN
+   c OUT-C ;
 
 : PS-JSON-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
-   PS-DQ PS-C
+   PS-DQ OUT-C
    0 begin dup u < while
       dup a + c@ PS-JSON-ESC-C
       1+
    repeat drop
-   PS-DQ PS-C ;
+   PS-DQ OUT-C ;
 
 : PS-JSON-KEY ( ptr u8 n -- )
    PS-JSON-STRING
-   PS-COLON-C PS-C ;
+   PS-COLON-C OUT-C ;
 
-: PS-JSON-COMMA ( -- ) PS-COMMA-C PS-C ;
-: PS-JSON-OBJECT-START ( -- ) PS-LBRACE-C PS-C ;
-: PS-JSON-OBJECT-END ( -- ) PS-RBRACE-C PS-C ;
-: PS-JSON-ARRAY-START ( -- ) PS-LBRACK-C PS-C ;
-: PS-JSON-ARRAY-END ( -- ) PS-RBRACK-C PS-C ;
+: JSON-COMMA ( -- ) PS-COMMA-C OUT-C ;
+: JSON-OBJECT-START ( -- ) PS-LBRACE-C OUT-C ;
+: JSON-OBJECT-END ( -- ) PS-RBRACE-C OUT-C ;
+: JSON-ARRAY-START ( -- ) PS-LBRACK-C OUT-C ;
+: JSON-ARRAY-END ( -- ) PS-RBRACK-C OUT-C ;
 
 : PS-TRUST-Q ( ptr u8 n -- ) {: a:ptr u:n :}
-   115 PS-C
-   PS-DQ PS-C
-   32 PS-C
+   115 OUT-C
+   PS-DQ OUT-C
+   32 OUT-C
    a u PS-OUT
-   PS-DQ PS-C ;
+   PS-DQ OUT-C ;
 
 : PS-LOWER? ( n -- bool )
    dup 96 > swap 123 < and ;
@@ -428,10 +428,10 @@ private
 
 : PS-TRUST-ENTRY ( ptr u8 n -- ) {: sig:ptr sigu:n :}
    PS-WORD$ PS-TRUST-Q
-   32 PS-C
+   32 OUT-C
    sig sigu LINT-TRIM PS-TRUST-Q
    s"  TRUST" PS-OUT
-   PS-LF-C PS-C ;
+   PS-LF-C OUT-C ;
 
 : PS-SIGNATURE$ ( ptr u8 n -- ptr u8 n )
    LINT-TRIM PS-TU ! PS-TA!
@@ -585,26 +585,26 @@ private
    PS-FIRST? @ IF
       0 PS-FIRST? !
    ELSE
-      PS-JSON-COMMA
+      JSON-COMMA
    THEN
-   PS-JSON-OBJECT-START ;
+   JSON-OBJECT-START ;
 
 : PS-DEF-END ( -- )
-   PS-JSON-OBJECT-END ;
+   JSON-OBJECT-END ;
 
 : PS-PAIR-COMMA ( -- )
-   PS-JSON-COMMA ;
+   JSON-COMMA ;
 
 : PS-EMIT-DEF ( bool ptr u8 n -- ) {: exported?:bool file-a:ptr file-u:n :}
    PS-DEF-START
-   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
+   s" schema_version" PS-JSON-KEY 1 JSON-U PS-PAIR-COMMA
    s" word" PS-JSON-KEY PS-WORD$ PS-JSON-STRING PS-PAIR-COMMA
    s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
-   s" line" PS-JSON-KEY PS-NAME-LINE @ PS-JSON-U PS-PAIR-COMMA
-   s" column" PS-JSON-KEY PS-NAME-COL @ PS-JSON-U PS-PAIR-COMMA
-   s" byte_start" PS-JSON-KEY PS-NAME-BYTE @ PS-JSON-U PS-PAIR-COMMA
+   s" line" PS-JSON-KEY PS-NAME-LINE @ JSON-U PS-PAIR-COMMA
+   s" column" PS-JSON-KEY PS-NAME-COL @ JSON-U PS-PAIR-COMMA
+   s" byte_start" PS-JSON-KEY PS-NAME-BYTE @ JSON-U PS-PAIR-COMMA
    s" signature" PS-JSON-KEY PS-SIG-A@ PS-SIG-U @ PS-SIGNATURE$ PS-JSON-STRING PS-PAIR-COMMA
-   s" exported" PS-JSON-KEY exported? PS-JSON-BOOL
+   s" exported" PS-JSON-KEY exported? JSON-BOOL
    PS-DEF-END ;
 
 : PS-EMIT-PUBLIC ( bool ptr u8 n -- ) {: exported?:bool file-a:ptr file-u:n :}
@@ -810,14 +810,14 @@ private
 
 : PS-EMIT-CTOR ( n n ptr u8 n -- ) {: fam:n vid:n file-a:ptr file-u:n :}
    PS-DEF-START
-   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
+   s" schema_version" PS-JSON-KEY 1 JSON-U PS-PAIR-COMMA
    s" word" PS-JSON-KEY vid PS-CTOR-WORD$ PS-JSON-STRING PS-PAIR-COMMA
    s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
-   s" line" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
-   s" column" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
-   s" byte_start" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
+   s" line" PS-JSON-KEY 0 JSON-U PS-PAIR-COMMA
+   s" column" PS-JSON-KEY 0 JSON-U PS-PAIR-COMMA
+   s" byte_start" PS-JSON-KEY 0 JSON-U PS-PAIR-COMMA
    s" signature" PS-JSON-KEY fam PS-CTOR-SIG$ PS-SIGNATURE$ PS-JSON-STRING PS-PAIR-COMMA
-   s" exported" PS-JSON-KEY PS-TRUE PS-JSON-BOOL
+   s" exported" PS-JSON-KEY PS-TRUE JSON-BOOL
    PS-DEF-END ;
 
 : PS-ENUM-PUBLIC? ( n -- bool ) {: fam:n :}
@@ -845,14 +845,14 @@ private
 : PS-EMIT-DRV ( n ptr u8 n ptr u8 n n -- )
    {: fam:n ta:ptr tu:n file-a:ptr file-u:n eq:n :}
    PS-DEF-START
-   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
+   s" schema_version" PS-JSON-KEY 1 JSON-U PS-PAIR-COMMA
    s" word" PS-JSON-KEY fam ta tu PS-DRV-WORD$ PS-JSON-STRING PS-PAIR-COMMA
    s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
-   s" line" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
-   s" column" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
-   s" byte_start" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
+   s" line" PS-JSON-KEY 0 JSON-U PS-PAIR-COMMA
+   s" column" PS-JSON-KEY 0 JSON-U PS-PAIR-COMMA
+   s" byte_start" PS-JSON-KEY 0 JSON-U PS-PAIR-COMMA
    s" signature" PS-JSON-KEY fam eq PS-DRV-SIG$ PS-SIGNATURE$ PS-JSON-STRING PS-PAIR-COMMA
-   s" exported" PS-JSON-KEY PS-TRUE PS-JSON-BOOL
+   s" exported" PS-JSON-KEY PS-TRUE JSON-BOOL
    PS-DEF-END ;
 
 : PS-EMIT-FAM-CTORS ( n ptr u8 n -- ) {: fam:n file-a:ptr file-u:n :}
@@ -896,15 +896,15 @@ public
 : PS-JSON-DOC-START ( -- )
    -1 PS-FIRST? !
    PS-TRUST @ IF exit THEN
-   PS-JSON-OBJECT-START
-   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-JSON-COMMA
-   s" definitions" PS-JSON-KEY PS-JSON-ARRAY-START ;
+   JSON-OBJECT-START
+   s" schema_version" PS-JSON-KEY 1 JSON-U JSON-COMMA
+   s" definitions" PS-JSON-KEY JSON-ARRAY-START ;
 
 : PS-JSON-DOC-END ( -- )
    PS-TRUST @ IF exit THEN
-   PS-JSON-ARRAY-END
-   PS-JSON-OBJECT-END
-   PS-LF-C PS-C ;
+   JSON-ARRAY-END
+   JSON-OBJECT-END
+   PS-LF-C OUT-C ;
 
 private
 : PS-PARSE-ARGS ( -- )
