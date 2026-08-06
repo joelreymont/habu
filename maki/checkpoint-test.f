@@ -38,10 +38,10 @@ require maki/checkpoint.f
 package MAKI
 
 \ ---- shared helpers ----------------------------------------------------------
-: CKT-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}
+: CKT-COPY ( ptr r ptr r n -- ) {: src:ptr dst:ptr n:n :}
    n 0 ?do  src i T-GET  dst i T-SET  loop ;
 
-: CKT-EQ? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}   \ exact f= per element
+: CKT-EQ? ( ptr r ptr r n -- bool ) {: a:ptr b:ptr n:n :}   \ exact f= per element
    n 0 ?do  a i T-GET b i T-GET f= 0= if false unloop exit then  loop  true ;
 
 \ ---- fail closed: run / accessor before any CK-SETUP -------------------------
@@ -70,7 +70,7 @@ create MN0  MF-N0N cells allot                \ interior node 0 (8x16)
 variable CKM-L
 
 \ deterministic varied fill, distinct stream per buffer (k)
-: MF-FILL ( ptr a n n -- ) {: p:ptr n:n k:n :}
+: MF-FILL ( ptr r n n -- ) {: p:ptr n:n k:n :}
    n 0 ?do  k i 3 * + 17 mod s>f 0.07 f* 0.15 f+  p i T-SET  loop ;
 
 : MF-FILLS ( -- )                    \ params/input + a non-uniform target
@@ -133,7 +133,7 @@ create AGV AF-EN cells allot
 create AN0 AF-N0N cells allot                 \ interior node 0 = q@kt (4x4)
 variable CKA-L
 
-: AF-FILL ( ptr a n n -- ) {: p:ptr n:n k:n :}
+: AF-FILL ( ptr r n n -- ) {: p:ptr n:n k:n :}
    n 0 ?do  k i 3 * + 17 mod s>f 0.07 f* 0.15 f+  p i T-SET  loop ;
 
 : AF-FILLS ( -- )
@@ -200,7 +200,7 @@ create DGB2 DP-B2N cells allot    create DGW3 DP-W3N cells allot
 create DGB3 DP-B3N cells allot    create DN0  DP-N0N cells allot
 
 \ deterministic varied fill, distinct stream per buffer (k)
-: DP-FILL ( ptr a n n -- ) {: p:ptr n:n k:n :}
+: DP-FILL ( ptr r n n -- ) {: p:ptr n:n k:n :}
    n 0 ?do  k i 3 * + 17 mod s>f 0.07 f* 0.15 f+  p i T-SET  loop ;
 
 : DP-FILLS ( -- )                    \ params/input + a non-uniform seed cotangent
