@@ -136,7 +136,7 @@ variable PTYNUM
 : SEND-LN {: a:ptr u :} ( ptr u8 n -- )
    MFD @ >FD a u FD-WRITE-LN ;
 
-: SEND-ESC ( c -- )
+: SEND-ESC ( n -- )
    27 SEND-C
    91 SEND-C
    SEND-C ;
