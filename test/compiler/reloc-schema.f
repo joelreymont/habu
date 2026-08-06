@@ -191,21 +191,23 @@ public
 \ through the shared source lexer, rather than executed. Every other half of
 \ this contract is run for real.
 
-3 constant WBODY-COUNT
+4 constant WBODY-COUNT
 
 : WBODY-NAME$ ( n -- ptr u8 n )
    case
       0 of s" SND-XT-ROW" endof
-      1 of s" SND-CANON-XT-CELL" endof
-      2 of s" SND-CANON-XT-CELLS" endof
+      1 of s" SND-XT-CELL-OK?" endof
+      2 of s" SND-CANON-XT-CELL" endof
+      3 of s" SND-CANON-XT-CELLS" endof
       E-CRL-ROW throw
    endcase ;
 
 : WBODY-RUN$ ( n -- ptr u8 n )
    case
       0 of s" {: row:n :} SNAP-RELOC:XTCELL-ROWS-OFF row cells + SND-XT-CELL@" endof
-      1 of s" {: cell:n :} cell SND-XT-CELL@ {: xt:n :} xt 0= if exit then xt dbase@ - RBASE-VA + cell SND-XT-CELL!" endof
-      2 of s" SNAP-RELOC:XTCELL-N-CELL SND-XT-CELL@ 0 ?do i SND-XT-ROW SND-CANON-XT-CELL loop" endof
+      1 of s" {: cell:n :} cell 0 < if 0 0= 0= exit then cell SNAP-RELOC:XTCELL-OFF-MAX > 0=" endof
+      2 of s" {: cell:n :} cell SND-XT-CELL-OK? 0= if SND-XT-CELL-REFUSE then cell SND-XT-CELL@ {: xt:n :} xt 0= if exit then xt dbase@ - RBASE-VA + cell SND-XT-CELL!" endof
+      3 of s" SNAP-RELOC:XTCELL-N-CELL SND-XT-CELL@ 0 ?do i SND-XT-ROW SND-CANON-XT-CELL loop" endof
       E-CRL-ROW throw
    endcase ;
 

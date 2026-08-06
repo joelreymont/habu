@@ -1,10 +1,34 @@
 \ declaration-transaction.f - reusable ordered transaction coordinator.
 \
 \ One coordinator instance owns a participant table and transaction telemetry.
-\ Callers provide the instance record, its initial row arena, an allocator, and
-\ a diagnostic callback.  Registration is ordered and becomes immutable at
-\ SEAL.  RUN retains every participant savepoint through body, prepare, and
-\ reversible commit; rollback runs in reverse order.
+\ Callers provide the instance record, its row arena, and a diagnostic callback.
+\ Registration is ordered and becomes immutable at SEAL.  RUN retains every
+\ participant savepoint through body, prepare, and reversible commit; rollback
+\ runs in reverse order.
+\
+\ THE PARTICIPANT TABLE IS A CLOSED WORLD.  Its capacity is fixed when the
+\ instance is initialised and never changes: the row arena the caller hands over
+\ is the table, for the life of the instance.  A registration past that capacity
+\ is refused by name with E-PARTICIPANT-CAPACITY before anything is written, so
+\ adding a participant without widening the arena fails loudly at the
+\ registration instead of quietly somewhere later.
+\
+\ There used to be a growth path here -- an injectable allocator, a doubling
+\ NEXT-CAP, and a GROW-TABLE that replaced the row arena when a registration
+\ arrived past the capacity.  It was deleted, and not merely as dead weight
+\ (dot habu-seal-the-declaration-7183177e).  A row's five callback cells are
+\ declared to the engine's persisted-address-cell table by `xt!`, and that table
+\ is keyed by a cell's offset within DATA.  The stock allocator grew the arena
+\ into anonymous mmap, which is not in DATA at all, so the first grown row
+\ declared five offsets outside [0, DATA-SIZE): measured on a capacity-1
+\ instance, a second registration recorded five out-of-band offsets and returned
+\ success.  A snapshot writer then reads and writes its scratch DATA copy at
+\ those offsets, and a restored image relocates whatever they happen to hit.
+\ Growth was never reachable in production -- the five boot participants enroll
+\ and the registration entry points are undefined immediately afterwards -- so
+\ the closed world is the honest shape, and a fixed capacity cannot produce an
+\ out-of-band cell at all.  The engine now also refuses such a cell outright;
+\ this file simply no longer manufactures one.
 \
 \ Once every reversible commit has succeeded the transaction has published and
 \ can no longer fail.  RELEASE then runs each participant in reverse order for
@@ -35,21 +59,15 @@ public
 5 constant PHASE-ROLLBACK
 
 7 constant ROW-CELLS
-13 constant STATE-CELLS
+12 constant STATE-CELLS
 
 private
 
 ROW-CELLS cells constant ROW-BYTES
+\ The largest capacity whose row arithmetic cannot overflow a cell.  It is not a
+\ growth limit -- nothing grows -- but the ceiling INIT-STATE admits, so
+\ `idx ROW-CELLS * cells` in ROW stays exact for every index the table can hold.
 $7FFFFFFFFFFFFFFF ROW-BYTES / constant MAX-ROWS
-
-: ROWS>BYTES ( n -- n )
-   dup 0 < over MAX-ROWS > or if E-PARTICIPANT-CAPACITY throw then
-   ROW-BYTES * ;
-
-: NEXT-CAP ( n -- n )
-   dup MAX-ROWS >= if E-PARTICIPANT-CAPACITY throw then
-   dup MAX-ROWS 2 / <= if 2 * exit then
-   drop MAX-ROWS ;
 
 0 cells constant ROW.ID-OFF
 1 cells constant ROW.ORDER-OFF
@@ -70,8 +88,7 @@ $7FFFFFFFFFFFFFFF ROW-BYTES / constant MAX-ROWS
 8 cells constant ST.FAILURE-PHASE-OFF
 9 cells constant ST.FAILURE-PARTICIPANT-OFF
 10 cells constant ST.CLEANUP-PARTICIPANT-OFF
-11 cells constant ST.ALLOCATOR-OFF
-12 cells constant ST.DIAGNOSTIC-OFF
+11 cells constant ST.DIAGNOSTIC-OFF
 
 : ST.TABLE ( ptr a -- ptr ptr a ) ST.TABLE-OFF ptr-field ;
 : ST.CAP ( ptr a -- ptr a ) ST.CAP-OFF + ;
@@ -84,8 +101,6 @@ $7FFFFFFFFFFFFFFF ROW-BYTES / constant MAX-ROWS
 : ST.FAILURE-PHASE ( ptr a -- ptr a ) ST.FAILURE-PHASE-OFF + ;
 : ST.FAILURE-PARTICIPANT ( ptr a -- ptr a ) ST.FAILURE-PARTICIPANT-OFF + ;
 : ST.CLEANUP-PARTICIPANT ( ptr a -- ptr a ) ST.CLEANUP-PARTICIPANT-OFF + ;
-TRUSTED: ST.ALLOCATOR ( ptr a -- ptr [ ptr a n n -- ptr a ] )
-   ST.ALLOCATOR-OFF + ;
 TRUSTED: ST.DIAGNOSTIC ( ptr a -- ptr [ n n -- ] )
    ST.DIAGNOSTIC-OFF + ;
 
@@ -95,7 +110,6 @@ TRUSTED: ST.DIAGNOSTIC ( ptr a -- ptr [ n n -- ] )
 : DEPTH@ ( ptr a -- n ) ST.DEPTH @ ;
 : SEALED@ ( ptr a -- n ) ST.SEALED @ ;
 : POISON@ ( ptr a -- n ) ST.POISON @ ;
-: ALLOCATOR@ ( ptr a -- [ ptr a n n -- ptr a ] ) ST.ALLOCATOR @ ;
 : DIAGNOSTIC@ ( ptr a -- [ n n -- ] ) ST.DIAGNOSTIC @ ;
 
 : ROW ( ptr a n -- ptr a ) {: state:ptr idx:n :}
@@ -117,17 +131,20 @@ TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
 : ROLLBACK@ ( ptr a n -- [ n -- n ] ) ROW ROW.ROLLBACK @ ;
 : RELEASE@ ( ptr a n -- [ -- ] ) ROW ROW.RELEASE @ ;
 
-\ The five callback cells of a row, and the two callback cells of the state
-\ record below, hold an execution token: an address inside the JIT region, which
+\ The five callback cells of a row, and the diagnostic cell of the state record
+\ below, hold an execution token: an address inside the JIT region, which
 \ the kernel places somewhere new on every boot. A snapshot image keeps them byte
 \ for byte, so each one has to be declared to the engine's address-cell table or
 \ a restored image dispatches into the writing run's region and dies (dot
 \ habu-declare-persisted-cb-b150b5d5). `defer` and `is` cannot declare these:
 \ they name a cell while they are being compiled, and a row's cell address is not
 \ known until ROW has multiplied a row index by the row size and added the table
-\ base at run time. These seven store words are the code that decides the cell
+\ base at run time. These six store words are the code that decides the cell
 \ will hold a token, so they are where the declaration belongs, and `xt!` makes
 \ the store and the declaration one step.
+\ Every one of these cells lies inside the caller's row arena or its state
+\ record, both of which are ordinary DP-heap storage, so every declared offset
+\ is inside DATA by construction now that the arena cannot be replaced.
 : ID! ( n ptr a n -- ) ROW ROW.ID ! ;
 : ORDER! ( n ptr a n -- ) ROW ROW.ORDER ! ;
 : SNAPSHOT! ( [ n -- n ] ptr a n -- ) ROW ROW.SNAPSHOT xt! ;
@@ -136,16 +153,11 @@ TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
 : ROLLBACK! ( [ n -- n ] ptr a n -- ) ROW ROW.ROLLBACK xt! ;
 : RELEASE! ( [ -- ] ptr a n -- ) ROW ROW.RELEASE xt! ;
 
-TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
-
-: DEFAULT-ALLOCATE ( ptr a n n -- ptr a )
-   TABLE-ARENA-GROW ;
-
 : NO-DIAGNOSTIC ( n n -- )
    2drop ;
 
-: INIT-STATE ( ptr a ptr a n [ ptr a n n -- ptr a ] [ n n -- ] -- )
-   {: state:ptr table:ptr cap:n allocator diagnostic :} \ typed-local-lint: allow-bare-local
+: INIT-STATE ( ptr a ptr a n [ n n -- ] -- )
+   {: state:ptr table:ptr cap:n diagnostic :} \ typed-local-lint: allow-bare-local
    cap 1 < cap MAX-ROWS > or if E-PARTICIPANT-CAPACITY throw then
    table state ST.TABLE !
    cap state ST.CAP !
@@ -158,7 +170,6 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    0 state ST.FAILURE-PHASE !
    -1 state ST.FAILURE-PARTICIPANT !
    -1 state ST.CLEANUP-PARTICIPANT !
-   allocator state ST.ALLOCATOR xt!
    diagnostic state ST.DIAGNOSTIC xt! ;
 
 : DUPLICATE? ( ptr a n -- bool ) {: state:ptr id:n :}
@@ -169,10 +180,13 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    REPEAT
    drop 0 0= 0= ;
 
+\ The capacity refusal is the closed world's edge, and it is raised here --
+\ before OPEN-SLOT shifts a single row -- so a registration past the arena leaves
+\ the table byte-identical and fails by name.
 : REQUIRE-REGISTRATION ( ptr a n -- ) {: state:ptr id:n :}
    state DEPTH@ 0 <> IF E-REGISTRATION-ACTIVE throw THEN
    state SEALED@ 0 <> IF E-REGISTRATION-SEALED throw THEN
-   state N@ MAX-ROWS >= if E-PARTICIPANT-CAPACITY throw then
+   state N@ state CAP@ >= if E-PARTICIPANT-CAPACITY throw then
    state id DUPLICATE? IF E-PARTICIPANT-DUP throw THEN ;
 
 : INSERT-AT ( ptr a n -- n ) {: state:ptr order:n :}
@@ -191,20 +205,9 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    state from ROLLBACK@ state to ROLLBACK!
    state from RELEASE@ state to RELEASE! ;
 
-: GROW-TABLE ( ptr a -- ) {: state:ptr :}
-   state CAP@ {: oldcap:n :}
-   oldcap NEXT-CAP {: newcap:n :}
-   state TABLE@ oldcap ROWS>BYTES newcap ROWS>BYTES
-      state ALLOCATOR@ execute {: grown:ptr :}
-   grown state ST.TABLE !
-   newcap state ST.CAP ! ;
-
-: ENSURE-ROOM ( ptr a -- ) {: state:ptr :}
-   state N@ state CAP@ < IF EXIT THEN
-   state GROW-TABLE ;
-
+\ REQUIRE-REGISTRATION has already proved there is a free row, so the shift below
+\ can only ever move a live row up into one.
 : OPEN-SLOT ( ptr a n -- n ) {: state:ptr order:n :}
-   state ENSURE-ROOM
    state order INSERT-AT {: idx:n :}
    state N@
    BEGIN dup idx > WHILE
@@ -351,7 +354,8 @@ TRUSTED: CATCH-DIAGNOSTIC ( n n [ n n -- ] -- )
 
 public
 
-: INIT ( ptr a ptr a n [ ptr a n n -- ptr a ] [ n n -- ] -- )
+\ The row arena and the capacity arrive together and are the table for good.
+: INIT ( ptr a ptr a n [ n n -- ] -- )
    INIT-STATE ;
 
 : REGISTER
@@ -374,7 +378,6 @@ public
 : LAST-FAILURE-PARTICIPANT ( ptr a -- n ) ST.FAILURE-PARTICIPANT @ ;
 : LAST-CLEANUP-PARTICIPANT ( ptr a -- n ) ST.CLEANUP-PARTICIPANT @ ;
 
-: DEFAULT-ALLOCATOR ( ptr a n n -- ptr a ) DEFAULT-ALLOCATE ;
 : DEFAULT-DIAGNOSTIC ( n n -- ) NO-DIAGNOSTIC ;
 
 ;package

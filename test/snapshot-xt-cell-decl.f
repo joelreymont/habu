@@ -151,7 +151,7 @@ public
 variable OFF-ID          variable OFF-ORDER
 variable OFF-SNAPSHOT    variable OFF-PREPARE    variable OFF-COMMIT
 variable OFF-ROLLBACK    variable OFF-RELEASE
-variable OFF-ALLOCATOR   variable OFF-DIAGNOSTIC
+variable OFF-DIAGNOSTIC
 
 private
 ;package
@@ -166,7 +166,6 @@ package DECLARATION-TRANSACTION
    ROW.COMMIT-OFF    XT-CELL-DECL:OFF-COMMIT !
    ROW.ROLLBACK-OFF  XT-CELL-DECL:OFF-ROLLBACK !
    ROW.RELEASE-OFF   XT-CELL-DECL:OFF-RELEASE !
-   ST.ALLOCATOR-OFF  XT-CELL-DECL:OFF-ALLOCATOR !
    ST.DIAGNOSTIC-OFF XT-CELL-DECL:OFF-DIAGNOSTIC ! ;
 
 XT-CELL-OFFSETS
@@ -196,7 +195,6 @@ create LOOKALIKE TAB-CELLS cells allot
 variable T0   variable T1   variable T2   variable T3   variable T4
 variable TALLY
 
-: TAB-ALLOC ( ptr a n n -- ptr a ) 2drop ;
 : TAB-DIAG ( n n -- ) 2drop ;
 : TAB-STEP ( n -- n ) ;
 : TAB-DONE ( -- ) ;
@@ -208,7 +206,7 @@ variable TALLY
 
 : TAB-INIT ( -- )
    TAB-STATE TAB-ROWS TAB-CAP
-   [: TAB-ALLOC ;] [: TAB-DIAG ;]
+   [: TAB-DIAG ;]
    DECLARATION-TRANSACTION:INIT ;
 
 : ROW-CELL ( n n -- ptr a ) {: row:n off:n :}
@@ -237,10 +235,9 @@ variable TALLY
    loop
    TALLY @ ;
 
-\ Every callback cell of every row, plus the state record's two.
+\ Every callback cell of every row, plus the state record's diagnostic.
 : DECLARED-COUNT ( -- n )
    0 TALLY !
-   OFF-ALLOCATOR  @ STATE-OFF TALLY-IF-LISTED
    OFF-DIAGNOSTIC @ STATE-OFF TALLY-IF-LISTED
    TAB-CAP 0 ?do
       i OFF-SNAPSHOT @ ROW-OFF TALLY-IF-LISTED
@@ -324,8 +321,8 @@ public
    RAW-OFF LISTED? 0= TTRUE
    s" that cell really does hold the token that was stored" T-LABEL
    RAW-XT @  ['] RAW-TARGET  T=
-   s" initialising a coordinator declares its two callback cells" T-LABEL
-   T1 @ T0 @ 2 + T=
+   s" initialising a coordinator declares its diagnostic callback cell" T-LABEL
+   T1 @ T0 @ 1+ T=
    s" registering a participant declares its five callback cells" T-LABEL
    T2 @ T1 @ 5 + T=
    s" a second participant declares its own row's five" T-LABEL
@@ -333,7 +330,7 @@ public
    s" a participant that shifts the live rows declares only the new row's five" T-LABEL
    T4 @ T3 @ 5 + T=
    s" every callback cell of the table is in the relocation table" T-LABEL
-   DECLARED-COUNT  TAB-CAP 5 * 2 +  T=
+   DECLARED-COUNT  TAB-CAP 5 * 1+  T=
    s" the identity and order cells of those rows are not" T-LABEL
    BOOKKEEPING-LISTED 0 T=
    s" a lookalike table of real tokens declares nothing" T-LABEL

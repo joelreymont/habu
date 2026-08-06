@@ -161,6 +161,8 @@ variable LXTMSG     \ more address cells were declared than the table can hold (
 32 constant XTMSG-LEN     \ byte length of "hb: snapshot address table full\n" (LXTMSG)
 variable LADDRMSG   \ a recorded address-literal site does not hold the MOVZ/MOVK chain (ADDRMAP-RC)
 34 constant ADDRMSG-LEN   \ byte length of "hb: snapshot address map mismatch\n" (LADDRMSG)
+variable LXTBANDMSG \ a declared address cell is not a cell-aligned address inside DATA (XTBAND-RC)
+39 constant XTBANDMSG-LEN \ byte length of "hb: snapshot address cell out of range\n" (LXTBANDMSG)
 variable LCALLS     \ region-to-text call relocation routine (snapshot write + restore)
 variable LXT        \ declared-address-cell relocation routine (snapshot restore)
 variable LMARK      \ declare one DATA cell as holding a region address
@@ -437,6 +439,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    SNAP-RELOC:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ SNAP-RELOC:CALLMSG-LEN bytes incl. newline
    SNAP-RELOC:LXTMSG LABEL@ LBL, s" hb: snapshot address table full" BYTES,  NL-KW 1 BYTES,      \ SNAP-RELOC:XTMSG-LEN bytes incl. newline
    SNAP-RELOC:LADDRMSG LABEL@ LBL, s" hb: snapshot address map mismatch" BYTES,  NL-KW 1 BYTES,   \ SNAP-RELOC:ADDRMSG-LEN bytes incl. newline
+   SNAP-RELOC:LXTBANDMSG LABEL@ LBL, s" hb: snapshot address cell out of range" BYTES,  NL-KW 1 BYTES,  \ SNAP-RELOC:XTBANDMSG-LEN bytes incl. newline
    LSRCFULL LABEL@ LBL, s" hb: source prefix buffer full" BYTES,  NL-KW 1 BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
    LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
    LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES,                       \ BADSTR-MSG-LEN bytes incl. newline
@@ -4110,15 +4113,24 @@ public
 \ the relocation twice and produce an address that points nowhere.
 \ Overflow is a hard stop: dropping a row would leave a stale writer-run address in
 \ a restored image, which is exactly the failure this table exists to prevent.
+\ A cell that does not lie inside DATA is a hard stop for the same reason and one
+\ step earlier. This is the single point every producer of a row goes through --
+\ `defer`, `is` and `xt!` alike -- so validating here covers all three, and each
+\ of them now declares BEFORE it stores, so a refused cell is refused before
+\ anything has been written to it. A cell outside DATA is not a near miss: the
+\ table's three consumers would index DATA by that offset and read or write eight
+\ bytes of whatever lives there. Containment is the entire rule -- see the
+\ XTCELL-OFF-MAX note in src/habu/layout.f for why alignment is not part of it.
 \ Every register it uses is saved and restored, because the compile-handler call
 \ sites are in the middle of a handler with its own live values and the `xt!` call
 \ site is in the middle of a running checked word.
 : EMIT-MARK ( -- )
-   LBL LBL LBL LBL {: scan:label add:label full:label ret:label :}
+   LBL LBL LBL LBL LBL {: scan:label add:label full:label band:label ret:label :}
    LMARK LABEL@ LBL,
    SP SP 48 SUBI,
    5 SP 0 STR,  6 SP 8 STR,  12 SP 16 STR,  13 SP 24 STR,  14 SP 32 STR,
    12 9 DATA SUB,                                   \ x12 = the cell's offset within DATA
+   6 XTCELL-OFF-MAX LIT64,  12 6 CMP,  C-HI band BCOND,   \ unsigned: the cell would run past DATA, or start below it
    5 XTCELL-ROWS-OFF LIT64,  5 DATA 5 ADD,          \ x5 = row base
    6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 LDR,   \ x13 = rows in use
    14 0 MOVZ,                                       \ x14 = row index
@@ -4135,6 +4147,9 @@ public
    full LBL,
       1 LXTMSG LABEL@ ADR,  0 2 MOVZ,  2 XTMSG-LEN MOVZ,  NR-WRITE SYS,
       0 XTCELL-RC MOVZ,  NR-EXIT-GROUP SYS,
+   band LBL,
+      1 LXTBANDMSG LABEL@ ADR,  0 2 MOVZ,  2 XTBANDMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 XTBAND-RC MOVZ,  NR-EXIT-GROUP SYS,
    ret LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,  14 SP 32 LDR,
    SP SP 48 ADDI,  RET, ;
@@ -4149,15 +4164,23 @@ public
 \ are one primitive rather than two words so neither half can be done without the
 \ other and the declaration cannot drift away from the store it describes.
 \ The store itself is habu1.f BSTORE's, protection guard and all: x10 is the cell,
-\ x9 the token, and the guard leaves both alone. Then the cell address moves into
-\ x9 for the declarer above, which preserves x9 and saves every other register it
-\ touches. Registered framed, because the guard and LMARK are both BL.
+\ x9 the token, and the guard leaves both alone.
+\ The declaration runs BEFORE the store, which is the ordering `defer` and `is`
+\ have always had and the reason the band check above can be called a
+\ precondition: LMARK refuses a cell that is not a cell-aligned address inside
+\ DATA by terminating, so a refused cell is never written. Doing the store first
+\ would leave the caller's token in a cell the engine then declines to declare.
+\ The swap below is what that ordering costs: LMARK wants the cell in x9, so the
+\ token is parked in x11 across the call. x11 is scratch in a primitive body, and
+\ LMARK preserves x9 and saves every other register it touches, so both survive.
+\ Registered framed, because the guard and LMARK are both BL.
 : BXTSTORE ( -- )
    B G-POP  A G-POP
    7 8 MOVZ,  B 7 PROT-GUARD:CALL
-   A B 0 STR,
-   A B 0 ADDI,
-   LMARK LABEL@ BL, ;
+   C A 0 ADDI,                                      \ x11 = the token
+   A B 0 ADDI,                                      \ x9 = the cell, for LMARK
+   LMARK LABEL@ BL,
+   C B 0 STR, ;
 
 \ Move every declared address cell by one signed amount.
 \   x10 = the amount to add
@@ -4165,20 +4188,30 @@ public
 \ src/habu/snap-lib.f, because it works on a scratch copy of DATA rather than on
 \ the live region. A zero cell means "nothing installed here yet" and stays zero,
 \ which is why a cleared hook survives a snapshot as a cleared hook.
-\ Clobbers x5, x6, x9, x13, x14.
+\ Every row is re-validated here rather than trusted because the rows arrive from
+\ an IMAGE FILE. The engine that wrote it checked what it declared, but this run
+\ did not write it: a damaged or forged image can carry any offset at all, and
+\ relocating through one would add the region delta to eight bytes chosen by the
+\ image. The check is the same band the declaration enforces, so a row this
+\ engine wrote always passes and only a corrupt image can fail it.
+\ Clobbers x5, x6, x9, x13, x14, x12.
 : EMIT-XT ( -- )
-   LBL LBL LBL {: loop:label skip:label done:label :}
+   LBL LBL LBL LBL {: loop:label skip:label band:label done:label :}
    LXT LABEL@ LBL,
    5 XTCELL-ROWS-OFF LIT64,  5 DATA 5 ADD,
    6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 LDR,
    14 0 MOVZ,
    loop LBL,  14 13 CMP,  C-GE done BCOND,
       6 14 3 LSLI,  6 5 6 ADD,  6 6 0 LDR,          \ x6 = the cell's offset within DATA
+      12 XTCELL-OFF-MAX LIT64,  6 12 CMP,  C-HI band BCOND,  \ unsigned: the cell would run past DATA, or start below it
       6 DATA 6 ADD,
       9 6 0 LDR,  9 skip CBZ,
          9 9 10 ADD,  9 6 0 STR,
       skip LBL,
       14 14 1 ADDI,  loop B,
+   band LBL,
+      1 LXTBANDMSG LABEL@ ADR,  0 2 MOVZ,  2 XTBANDMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 XTBAND-RC MOVZ,  NR-EXIT-GROUP SYS,
    done LBL,  RET, ;
 
 \ Record the four-instruction MOVZ/MOVK chain that is about to be written at CP as
@@ -7221,6 +7254,7 @@ package LABELS
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL SNAP-RELOC:LCALLMSG !  LBL SNAP-RELOC:LXTMSG !  LBL SNAP-RELOC:LADDRMSG !
+   LBL SNAP-RELOC:LXTBANDMSG !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LPROTPUB !  LBL LPROTAOT !
    LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !

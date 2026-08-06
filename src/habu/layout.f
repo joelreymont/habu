@@ -726,6 +726,14 @@ public
 \ different builds or one of them is damaged. Rewriting the four immediates anyway
 \ would plant a wild address in live code, so the image is refused.
 97 constant ADDRMAP-RC
+\ Exit status for a declared address cell that does not lie inside DATA. Every row
+\ of the table below is a DATA offset, and the three passes that consume it -- the
+\ writer's canonicalise, the loader's relocate, and the declaration itself -- index
+\ DATA by that offset with no further arithmetic. An offset that is negative or
+\ that reaches past the region makes all three read and write memory that is not
+\ the cell anyone meant, so it is refused where it is first seen instead of being
+\ carried into an image.
+98 constant XTBAND-RC
 
 \ Call-site map: one bit per four-byte word of the JIT region, recording every
 \ call site whose callee lives in the engine's loaded __text instead of inside the
@@ -796,6 +804,26 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows
 XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
+
+\ The largest offset a declared cell may carry. All three consumers of a row --
+\ the declaration itself (habu2.f EMIT-MARK), the writer's canonicalise
+\ (snap-lib.f SND-CANON-XT-CELLS) and the loader's relocate (habu2.f EMIT-XT) --
+\ add the offset to a DATA base and read or write the eight bytes there, so the
+\ whole cell has to be inside the region. Comparing UNSIGNED against this bound
+\ rejects a negative offset in the same instruction, because a negative offset is
+\ an enormous unsigned one -- and negative is the shape the real defect produced:
+\ a participant table grown into anonymous mmap sat about 4.6e12 bytes BELOW
+\ data-base (dot habu-seal-the-declaration-7183177e).
+\
+\ Containment is the whole rule; the cell is deliberately NOT required to be on a
+\ cell boundary. The DP heap does not cell-align what `create` hands out -- two
+\ adjacent `create X 4 cells allot` tables measure at DATA offsets 5114415 and
+\ 5114447, both 7 mod 8 -- and cell loads and stores at any byte address are
+\ well defined on this target, so every declared cell in the tree is already
+\ reached through an unaligned access that works. An alignment clause here would
+\ reject the engine's own tables on the first `xt!`, which is exactly what it did
+\ when this guard was first written with one.
+DATA-SIZE 8 - constant XTCELL-OFF-MAX
 
 ;package
 

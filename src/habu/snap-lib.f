@@ -266,7 +266,24 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 : SND-XT-ROW ( n -- n ) {: row:n :}
    SNAP-RELOC:XTCELL-ROWS-OFF row cells + SND-XT-CELL@ ;
 
+\ The offset is about to index this writer's scratch copy of DATA, so it has to
+\ name a whole cell inside DATA before it is used for anything. The same band the
+\ declaration and the loader enforce; refusing here means a bad row can never
+\ reach an image, and the writer never reads or writes outside its own copy.
+\ The unsigned bound is split in two because this side is checked Habu with
+\ signed cells: a negative offset fails the first test rather than wrapping.
+\ Containment only -- alignment is deliberately not required (src/habu/layout.f).
+: SND-XT-CELL-OK? ( n -- bool ) {: cell:n :}
+   cell 0 < if 0 0= 0= exit then
+   cell SNAP-RELOC:XTCELL-OFF-MAX > 0= ;
+
+\ Kept as its own word so the guarded body above stays a clean token run for the
+\ relocation manifest, which freezes these bodies exactly (test/compiler).
+: SND-XT-CELL-REFUSE ( -- )
+   s" snap: declared address cell outside DATA" SNAP-RELOC:XTBAND-RC die ;
+
 : SND-CANON-XT-CELL ( n -- ) {: cell:n :}
+   cell SND-XT-CELL-OK? 0= if SND-XT-CELL-REFUSE then
    cell SND-XT-CELL@ {: xt:n :}
    xt 0= if exit then
    xt dbase@ - RBASE-VA +  cell SND-XT-CELL! ;

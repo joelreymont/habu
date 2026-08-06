@@ -559,10 +559,18 @@ private
 
 package GENERATED-DECL-OWNER
 
-\ Five sealed participants enroll: the checker frame (100), DECL-EVENT (800),
-\ constructor generation (820), the native dictionary (850), and protection
-\ (900). The boot arena is sized to hold all five, so no ordinary boot performs
-\ a participant-table grow; the growth path stays live for a future sixth.
+\ Five sealed participants enroll, and five is therefore the capacity: the
+\ checker frame (100), DECL-EVENT (800), constructor generation (820), the
+\ native dictionary (850), and protection (900).  The last of them registers
+\ through REGISTER-LAST, which seals the table, and
+\ src/core/generated-declaration-protection.f then undefines every registration
+\ entry point, so this membership is closed before any user source loads.
+\
+\ This number is the membership, not a starting guess -- the table cannot grow
+\ (see the closed-world note in src/core/declaration-transaction.f).  A sixth
+\ participant is a deliberate edit HERE as well as in its own file; forgetting
+\ this line makes the sixth registration throw E-PARTICIPANT-CAPACITY during
+\ cold boot rather than quietly moving the table out of DATA.
 5 constant PARTICIPANT-CAP-INIT
 
 create PARTICIPANT-BOOT
@@ -571,7 +579,6 @@ create STATE DECLARATION-TRANSACTION:STATE-CELLS cells allot
 
 : INIT ( -- )
    STATE PARTICIPANT-BOOT PARTICIPANT-CAP-INIT
-   [: DECLARATION-TRANSACTION:DEFAULT-ALLOCATOR ;]
    [: DECLARATION-TRANSACTION:DEFAULT-DIAGNOSTIC ;]
    DECLARATION-TRANSACTION:INIT
    STATE CHECKER-DECL-FRAME:INSTALL ;
