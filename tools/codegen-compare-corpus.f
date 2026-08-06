@@ -40,8 +40,7 @@
 \ comparison bump the same cell and both record its contents beside the answer.
 \ What the word RETURNS is its argument plus one, which a routine that never
 \ touched memory could compute just as well; what it LEAVES is the only evidence
-\ that the store and the load happened, so the cell is published for reading and
-\ its address for compiling.
+\ that the store and the load happened, so the cell is published for reading.
 
 require lib/prelude.f
 
@@ -58,17 +57,13 @@ create BUMP-CELL 1 cells allot
 
 public
 
-\ The cell's address as the number a code generator has to materialise, and its
-\ contents. The address is a named unchecked boundary and the only one in this
-\ file: the checker gives a `create`d word the type `ptr a`, deliberately, so
-\ that a pointer cannot be done arithmetic on by accident, and there is no
-\ checked way to say "the number that pointer is" - which is exactly what a
-\ compiler needs of a data word. Dot habu-resolve-a-data-a1c8067f is the
-\ capability that retires it: when the chain can ask the engine what a data word
-\ is, the harness stops naming the address at all. The reader beside it is
-\ ordinary checked Habu, and it is what both columns verify the bump through.
-TRUSTED: BUMP-ADDR ( -- n ) BUMP-CELL ;
-
+\ The cell's contents, read the checked way, and it is what both columns verify
+\ the bump through. This file used to publish the cell's ADDRESS beside it too,
+\ through the one unchecked boundary it had, because a compiler needs the number
+\ a data word pushes and the checker gives a `create`d word the type `ptr a` so
+\ that a pointer cannot be done arithmetic on by accident. The harness no longer
+\ names that number at all: the chain asks the engine what the data word is, so
+\ there is nothing here for a harness to state and nothing to state it wrongly.
 : BUMP-CELL@ ( -- n )
    BUMP-CELL @ ;
 

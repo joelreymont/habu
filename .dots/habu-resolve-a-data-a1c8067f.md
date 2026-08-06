@@ -10,7 +10,7 @@ The HIR source-word model now carries a 'fixed' meaning: a word that pushes one 
 
 Scout update (2026-08-05): still real and THE one hard capability blocker for the cut — every create'd data word in the engine's own source hits it (migrate.f:288-290, hir-word.f:589-593 still state the parked-address seam). Path repair: the cited tools/codegen-compare-chain.f is now tools/codegen-compare-migrated.f (CELL-BUMP still hands BUMP-ADDR to DEFINE-DATA at :83-90). The AOT half (a published routine holding a raw process address needs a relocation record — the new publisher owns relocation, so the record kind lands there) is untouched.
 
-Claim: agent=dataword workspace=.jj-ws/habu-resolve-a-data-a1c8067f
+Claim: agent=dataword2 workspace=.jj-ws/habu-resolve-a-data-a1c8067f
 
 RELOCATION DECIDED (2026-08-05, dataword): NO NEW RELOCATION KIND IS NEEDED FOR
 THE SNAPSHOT. A data-address literal is restore-invariant by construction, and

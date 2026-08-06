@@ -539,6 +539,154 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    s" 7 NMG-TRIPLE" EV-N 21 T=
    s" NMG-TRIPLE" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
+\ ---- a data word's address is the engine's answer, and it stays current -------
+\ WHAT THIS SECTION IS FOR. A definition the chain compiles may name a `create`d
+\ data word, and the routine it emits has to materialise that word's address as a
+\ number. The caller used to hand the number over, having obtained it by running
+\ the word a moment earlier; the chain asks the engine for it now, inside the
+\ migration, through src/compiler/native/dict.f. These cases are what makes that
+\ a change in kind rather than a change in spelling.
+\
+\ FIRST, THE ANSWER IS THE RIGHT ONE, AND IT IS CHECKED AGAINST THE OTHER ROUTE
+\ TO IT. The word model resolves a wordlist and enters the record; the assertion
+\ hands the same spelling to the interpreter. Two different paths through the
+\ engine, one answer, so the agreement is a statement about the resolver and not
+\ a restatement of it.
+\
+\ SECOND, THE SAME NUMBER EMITS THE SAME CODE. Two migrations of one body, under
+\ two names, are compared instruction word by instruction word. This is what
+\ makes the third case mean something: without it, "the bytes changed" could be
+\ any two migrations differing for any reason at all.
+\
+\ THIRD, AND THIS IS THE ONE THE OLD SEAM COULD NOT SURVIVE. The data word is
+\ retired and created again, which puts it at a different address, and the same
+\ body is migrated a third time. Its code MUST differ from the first two, and the
+\ routine MUST bump the new cell. The routine compiled before the retirement is
+\ still published and still holds the old address, so running it must leave the
+\ new cell alone - which is how a stale address is caught by name, with no test
+\ reading raw memory. Under the caller-stated seam a harness that cached the
+\ address kept compiling routines pointed at retired storage, and nothing
+\ anywhere could tell the stale number from the live one. There is no number to
+\ cache now.
+64 constant SPAN-MAX                 \ instruction words one compared span may hold
+
+create SPAN-A SPAN-MAX cells allot
+create SPAN-B SPAN-MAX cells allot
+here CELL 1- and CELL swap - CELL 1- and allot
+variable SPAN-N
+variable KEEP-N
+
+\ The walk's callback. It writes into a cell rather than onto the stack for the
+\ reason BRANCH-NOTE gives: a quotation cannot read the enclosing word's locals.
+: SPAN-NOTE ( n n -- )
+   {: at:n w:n :}
+   SPAN-N @ SPAN-MAX >= if E-TEST-CAPACITY throw then
+   w  SPAN-N @ cells SPAN-A + !
+   SPAN-N @ 1+ SPAN-N ! ;
+
+\ The instruction words of the record this spelling names, read through the same
+\ walker the branch counts above use, and answering how many there were.
+: SPAN-READ ( ptr u8 n -- n )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   0 SPAN-N !
+   a u REC-START  a u REC-LEN  [: SPAN-NOTE ;] NWALK:SPAN-EACH
+   SPAN-N @ ;
+
+\ What was just read, kept aside so the next read can be held against it.
+: SPAN-KEEP ( n -- )
+   {: n:n :}
+   n KEEP-N !
+   n 0 ?do  i cells SPAN-A + @  i cells SPAN-B + !  loop ;
+
+: SPAN-SAME? ( n -- bool )
+   {: n:n :}
+   n KEEP-N @ <> if false exit then
+   n 0 ?do
+      i cells SPAN-A + @  i cells SPAN-B + @ <> if false unloop exit then
+   loop
+   true ;
+
+\ The data word the three migrations name, and the three bodies that name it.
+\ They are one body under three names: the whole point of the comparison is that
+\ nothing about the source differs between them.
+: DAT-NEW ( -- )
+   s" create NMG-DAT 1 cells allot" EV ;
+
+: DAT-RETIRE ( -- )
+   s" undefine NMG-DAT" EV ;
+
+: BUMP1 ( -- )
+   s" : NMG-BUMP1 ( n -- n ) NMG-DAT ! NMG-DAT @ 1+ dup NMG-DAT ! ;"
+   s" NMG-DAT" 1 1 REGS NMIGRATE:DEFINE-DATA ;
+
+: BUMP2 ( -- )
+   s" : NMG-BUMP2 ( n -- n ) NMG-DAT ! NMG-DAT @ 1+ dup NMG-DAT ! ;"
+   s" NMG-DAT" 1 1 REGS NMIGRATE:DEFINE-DATA ;
+
+: BUMP3 ( -- )
+   s" : NMG-BUMP3 ( n -- n ) NMG-DAT ! NMG-DAT @ 1+ dup NMG-DAT ! ;"
+   s" NMG-DAT" 1 1 REGS NMIGRATE:DEFINE-DATA ;
+
+\ The two shapes the query has no answer for. A word that leaves nothing and a
+\ word that leaves two are both refused: what a fixed row holds is the one value
+\ a word of that kind pushes, and neither of these is a word of that kind.
+: VOID-WORDS ( -- )
+   s" : NMG-VOID ( -- ) ;" EV
+   s" : NMG-TWO ( -- n n ) 1 2 ;" EV ;
+
+: ASK-ABSENT ( -- )
+   s" NMG-NOT-A-WORD" NDICT:FIXED-VALUE drop ;
+
+: ASK-VOID ( -- )
+   s" NMG-VOID" NDICT:FIXED-VALUE drop ;
+
+: ASK-TWO ( -- )
+   s" NMG-TWO" NDICT:FIXED-VALUE drop ;
+
+: DATA-CASES ( -- )
+   DAT-NEW
+   VOID-WORDS
+
+   s" the engine's answer for a data word is the address its own name evaluates to" T-LABEL
+   s" NMG-DAT" NDICT:FIXED-VALUE  s" NMG-DAT" EV-N T=
+
+   s" a spelling that denotes no word has no answer" T-LABEL
+   [: ASK-ABSENT ;] E-NDICT-NAME TTHROWSQ
+
+   s" nor has a word that leaves no value where it was entered" T-LABEL
+   [: ASK-VOID ;] E-NDICT-VALUE TTHROWSQ
+
+   s" nor one that leaves two" T-LABEL
+   [: ASK-TWO ;] E-NDICT-VALUE TTHROWSQ
+
+   BUMP1
+   BUMP2
+
+   s" one body migrated twice emits the same instruction words" T-LABEL
+   s" NMG-BUMP1" SPAN-READ SPAN-KEEP
+   s" NMG-BUMP2" SPAN-READ SPAN-SAME? TTRUE
+
+   s" and both routines bump the cell the word names" T-LABEL
+   s" 4000 NMG-BUMP1" EV-N 4001 T=
+   s" NMG-DAT @" EV-N 4001 T=
+   s" 8000 NMG-BUMP2" EV-N 8001 T=
+   s" NMG-DAT @" EV-N 8001 T=
+
+   DAT-RETIRE
+   DAT-NEW
+   BUMP3
+
+   s" the same body compiled after the word was retired and made again differs" T-LABEL
+   s" NMG-BUMP3" SPAN-READ SPAN-SAME? 0= TTRUE
+
+   s" the new routine bumps the new cell" T-LABEL
+   s" 4000 NMG-BUMP3" EV-N 4001 T=
+   s" NMG-DAT @" EV-N 4001 T=
+
+   s" and the routine compiled before it does not: its address is the old one" T-LABEL
+   s" 7000 NMG-BUMP1" EV-N 7001 T=
+   s" NMG-DAT @" EV-N 4001 T= ;
+
 public
 
 \ ---- the scalar float vocabulary, end to end ---------------------------------
@@ -1285,6 +1433,7 @@ variable BACK-N
    REFUSED-CASE
    UNTOUCHED-CASE
    ENTRY-CASES
+   DATA-CASES
    FLOAT-CASE
    FCMP-MIGRATIONS
    FCMP-FLAG-CASE

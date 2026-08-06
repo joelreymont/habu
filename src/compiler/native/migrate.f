@@ -72,6 +72,7 @@ require lib/prelude.f
 require lib/errors.f
 require lib/string.f
 require src/compiler/native/abi.f
+require src/compiler/native/dict.f
 require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/inline.f
@@ -150,69 +151,19 @@ create CALLEE-OUT CALLEES-MAX cells allot
 \ here, where the two arrive together, and settling it settles the NAME, the
 \ PACKAGE the routine was published in and the ADDRESS in one comparison.
 \
-\ THE ORDER IS THE ENGINE'S OWN AND NOT A SECOND OPINION ABOUT IT.
-\ src/habu/habu1.f EMIT-FIND resolves a bare token in the open package's private
-\ wordlist, then its public one, then the global wordlist, and a NAME:tail token
-\ through the namespace record for NAME - which is what src/habu/xref.f
-\ XREF-FIND-QUALIFIED is. That lookup is what resolves the definition's own body
-\ when the engine compiles it (SCAN below), in the scope this staging runs in, so
-\ any other question would answer about a word the body does not name. What is
-\ NOT walked is the used-publics leg the engine reaches after the global
-\ wordlist: a callee named through a `using` answers absent here and its
-\ migration is refused rather than compiled against an unconfirmed address, which
-\ is the fail-closed direction. Dot habu-walk-the-used-96694010 carries it, and
-\ dot habu-one-resolver-for-4e9e3e59 carries giving the engine, the checker and
-\ this file one resolver instead of three walks of one order.
+\ WHICH RECORD A SPELLING DENOTES IS NOT ASKED HERE ANY MORE.
+\ src/compiler/native/dict.f owns that walk - the engine's own order, its
+\ fail-closed treatment of a name reached only through a `using`, and the reason
+\ both are what they are. It moved there when the word model started asking the
+\ same question about a data word's spelling: one resolver, two askers.
 \
-\ `search-wl` is the engine's own scan and case fold over one wordlist, and it
-\ answers the record's code start - which is the address a call site branches to.
-\ Zero is its absent answer, and no word's code starts there.
-\ XREF-QUAL-INDEX's answer for a token a second colon makes name nothing.
--2 constant QUAL-BAD
-
-: PKG-PRI-WID ( -- n )
-   data-base PKG-PRI-CELL + @ ;
-
-: PKG-PUB-WID ( -- n )
-   data-base PKG-PUB-CELL + @ ;
-
-\ The open package's two wordlists, in the engine's order. A zero private cell is
-\ the engine's own test for no package open, and it answers absent so that the
-\ global leg below is then the whole of the search.
-: OPEN-START ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   PKG-PRI-WID 0= if 0 exit then
-   a u PKG-PRI-WID search-wl {: pri:n :}
-   pri 0<> if pri exit then
-   a u PKG-PUB-WID search-wl ;
-
-: BARE-START ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a u OPEN-START {: open:n :}
-   open 0<> if open exit then
-   a u 0 search-wl ;
-
-: QUAL-START ( ptr u8 n n -- n )
-   XREF-FIND-QUALIFIED
-   dup XREF-FOUND? 0= if drop 0 exit then
-   XREF-START ;
-
-\ Where the code of the word this spelling denotes starts, or zero when it
-\ denotes no word where this definition is compiled.
-: SPELL-START ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a u XREF-QUAL-INDEX {: q:n :}
-   q QUAL-BAD = if 0 exit then
-   q 0 >= if a u q QUAL-START exit then
-   a u BARE-START ;
-
 \ The one refusal. A spelling that denotes nothing is refused for the same reason
 \ a mismatched address is: there is no second authority to prefer, and a
 \ migration compiled against an unconfirmed address is a routine that branches
 \ somewhere nobody named.
 : RESOLVES-TO-ENTRY ( ptr u8 n n -- )
    {: ca cu:n entry:n :} \ typed-local-lint: allow-bare-local - ca keeps the ptr u8 byte-span role
-   ca cu SPELL-START {: start:n :}
+   ca cu NDICT:SPELL-START {: start:n :}
    start 0= if E-NMIGRATE-CALLEE throw then
    start entry <> if E-NMIGRATE-CALLEE throw then ;
 
@@ -234,13 +185,13 @@ variable CALLEE-PRI
 variable CALLEE-PUB
 
 : CALLEES-SCOPE! ( -- )
-   PKG-PRI-WID CALLEE-PRI !
-   PKG-PUB-WID CALLEE-PUB ! ;
+   NDICT:OPEN-PRI CALLEE-PRI !
+   NDICT:OPEN-PUB CALLEE-PUB ! ;
 
 : CALLEES-SCOPE-CK ( -- )
    CALLEE-N @ 0= if exit then
-   PKG-PRI-WID CALLEE-PRI @ <> if E-NMIGRATE-CALLEE throw then
-   PKG-PUB-WID CALLEE-PUB @ <> if E-NMIGRATE-CALLEE throw then ;
+   NDICT:OPEN-PRI CALLEE-PRI @ <> if E-NMIGRATE-CALLEE throw then
+   NDICT:OPEN-PUB CALLEE-PUB @ <> if E-NMIGRATE-CALLEE throw then ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER M-CTX IR-CTX:ctx
@@ -253,7 +204,6 @@ PTR-VARIABLE M-SRC
 variable M-SRC-U
 PTR-VARIABLE M-DATA
 variable M-DATA-U
-variable M-DATA-ADDR
 variable M-IN
 variable M-OUT
 variable M-REGS
@@ -285,9 +235,9 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 
 \ The dialect's source-word model: which Habu word means which operation. A
 \ definition that mentions a `create`d data word needs one row more, because
-\ which data words a program names is the program's and not the dialect's; the
-\ address is stated until the chain can ask the engine what a data word is (dot
-\ habu-resolve-a-data-a1c8067f).
+\ which data words a program names is the program's and not the dialect's. What
+\ that row holds is the engine's answer and not the caller's: the caller names
+\ the word, the word model asks the dictionary.
 : EXTRA-ROWS ( -- n )
    CALLEE-N @
    M-DATA-U @ 0<> if 1+ then ;
@@ -297,7 +247,7 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 
 : DECLARE-DATA ( IR-ARENA:arena -- ) {: r:IR-ARENA:arena :}
    M-DATA-U @ 0= if exit then
-   CC BB r  CC BB DATA$ IR-BUILD:INTERN-SYMBOL  M-DATA-ADDR @ HIR-WORD:DECLARE-FIXED ;
+   CC BB r  CC BB DATA$ IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED ;
 
 \ Every word this definition calls, as the word model's own rows. The list is the
 \ caller's, staged before the migration; this only reads it, one row at a time,
@@ -649,7 +599,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
    in M-IN ! out M-OUT ! regs M-REGS !
-   0 M-DATA-U ! 0 M-DATA-ADDR ! 0 M-CALLS ! ;
+   0 M-DATA-U ! 0 M-CALLS ! ;
 
 public
 
@@ -704,13 +654,15 @@ public
    1 M-CALLS !
    RUN ;
 
-\ The same for a definition that names one `create`d data word: its spelling as
-\ the definition writes it, and the address that word pushes.
-: DEFINE-DATA ( ptr u8 n ptr u8 n n n n n -- )
-   {: sa su:n da du:n addr:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
+\ The same for a definition that names one `create`d data word. Its spelling as
+\ the definition writes it is the whole of what the caller says about it: the
+\ address that word pushes is the engine's to answer, and the word model asks
+\ src/compiler/native/dict.f for it while it declares the row.
+: DEFINE-DATA ( ptr u8 n ptr u8 n n n n -- )
+   {: sa su:n da du:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
    CALLEES-NONE-CK
    sa su in out regs STAGE
-   da M-DATA ! du M-DATA-U ! addr M-DATA-ADDR !
+   da M-DATA ! du M-DATA-U !
    RUN ;
 
 \ The name of the word the last migration published, and the wordlist it landed

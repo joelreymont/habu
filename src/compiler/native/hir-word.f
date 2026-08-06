@@ -103,6 +103,7 @@ require src/compiler/ir/arena.f
 require src/compiler/ir/build.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
+require src/compiler/native/dict.f
 
 package HIR-WORD
 public
@@ -504,6 +505,15 @@ private
    v UNUSED
    ROW-ADD ;
 
+\ Where the spelling of a fixed word is read back out of the module's interner so
+\ the dictionary can be asked about it. The ceiling is the longest spelling a
+\ program may write for such a word, and a qualified `NAME:tail` is the longer of
+\ the two forms it can take; a spelling past it is refused by the interner's own
+\ copy rather than truncated into a name that denotes another word.
+64 constant FIX-NAME-CAP
+
+create FIX-NAME FIX-NAME-CAP allot
+
 \ The row a word that is CALLED writes: where the callee's code starts, and how
 \ many values it takes and leaves. Those three are the whole of what a call site
 \ needs to know about a callee - the entry is where the branch goes, and the
@@ -587,15 +597,25 @@ private
 public
 
 \ Declare that a source word pushes one fixed value. This is how a `create`d
-\ data word enters a definition the chain compiles: the caller states the
-\ address, because the chain cannot yet ask the engine what a data word is (dot
-\ habu-resolve-a-data-a1c8067f). It is the builder form and there is no frozen
-\ one, because which data words a program mentions is known while its module is
-\ being built and never afterwards.
-: DECLARE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n -- )
+\ data word or a `constant` enters a definition the chain compiles. It is the
+\ builder form and there is no frozen one, because which data words a program
+\ mentions is known while its module is being built and never afterwards.
+\
+\ THE VALUE IS NOT A PARAMETER, AND THAT IS THE WHOLE POINT OF THE WORD. It used
+\ to be one, and every caller obtained it by running the word and handing the
+\ number over. Two authorities for one fact is one authority too many: the
+\ caller's copy goes stale the moment the word is retired and redefined, and a
+\ stale address is an ordinary integer that nothing downstream can tell from a
+\ live one. So the spelling the module interned is the whole of the declaration
+\ and src/compiler/native/dict.f answers it - the same spelling the definition's
+\ body writes, resolved in the same order the engine resolves that body, entered
+\ the way any word is entered. There is no longer a parameter for anyone to
+\ answer wrongly.
+: DECLARE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
-      id:IR-ID:ir-symbol-id v:n :}
-   c r  c b id BSYM-CK  v FIXED-ROW ;
+      id:IR-ID:ir-symbol-id :}
+   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   c r  c b id BSYM-CK  FIX-NAME u NDICT:FIXED-VALUE FIXED-ROW ;
 
 \ Declare that a source word is another word this definition CALLS: where its
 \ code starts and what its declared effect is. This is how a call to a word that

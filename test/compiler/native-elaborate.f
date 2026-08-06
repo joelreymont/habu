@@ -278,7 +278,7 @@ using NSRC
 
 \ ---- a word that reads and writes memory -------------------------------------
 \ The corpus's cell-bump body, `A ! A @ 1+ dup A !`, with A a `create`d data
-\ word the model is told the address of. What this case measures is the two
+\ word the model names and the engine answers for. What this case measures is the two
 \ things the printed operation list cannot show on its own.
 \
 \ THE OPERAND ORDER OF A STORE. Forth writes `value address !`, so the value is
@@ -297,12 +297,22 @@ using NSRC
 \ the second store's is the load's second result - so an access that took an
 \ older order, or a fresh one, is a different VALUE here rather than a different
 \ printed order.
-4096 constant CELL-A-ADDR
+\ THE DATA WORD IS A REAL ONE NOW. The model is no longer told an address; it
+\ asks the engine what the spelling denotes, so the case has to create the word
+\ before it declares it. It is created through the same front end any definition
+\ goes through, at the scope this case runs in, which is the scope the model
+\ resolves it in.
+TRUSTED: EV ( ptr u8 n -- ) evaluate ;
+
+: CELL-A! ( -- )
+   s" CELL-A" 0 search-wl 0<> if exit then
+   s" create CELL-A 1 cells allot" EV ;
 
 : SEALED-DATA ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
    {: c:IR-CTX:ctx :}
+   CELL-A!
    c HIR-BUILDER {: b:IR-BUILD:builder :}
-   c b s" CELL-A" CELL-A-ADDR MODEL-DATA
+   c b s" CELL-A" MODEL-DATA
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b TAPE {: tp:IR-ARENA:arena :}
    c LEX

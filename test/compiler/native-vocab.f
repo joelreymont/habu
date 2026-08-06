@@ -595,28 +595,27 @@ $FFE0FFE0 constant MVN-SHAPE
 \
 \ THE CONSTANTS ARE THE ENGINE'S, WHICH IS THE POINT. Each one is created by
 \ evaluating a `constant` declaration through the same front end the definition
-\ goes through, and its value is read back by evaluating its name; the word model
-\ is then told that value, exactly as it is told a `create`d data word's address.
-\ Nothing here writes a number down, and dot habu-resolve-a-data-a1c8067f is the
-\ seam that closes the telling.
+\ goes through, and the word model is then given its NAME. Nothing here writes a
+\ number down and nothing here reads one back either: the model asks the engine
+\ what each name denotes, exactly as it does for a `create`d data word's address.
 : WS-CONSTS ( -- )
    s" 32 constant NVC-SP" EV
    s" 9 constant NVC-TAB" EV
    s" 10 constant NVC-LF" EV
    s" 13 constant NVC-CR" EV ;
 
-: WS-FIXED ( IR-ARENA:arena ptr u8 n n -- )
-   {: r:IR-ARENA:arena a u:n v:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   CC BB r  CC BB a u IR-BUILD:INTERN-SYMBOL  v HIR-WORD:DECLARE-FIXED ;
+: WS-FIXED ( IR-ARENA:arena ptr u8 n -- )
+   {: r:IR-ARENA:arena a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   CC BB r  CC BB a u IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED ;
 
 \ The four rows the body's constants need, on top of the dialect's vocabulary.
 \ MODEL already committed the table to them, because the case raised R-EXTRA.
 : WS-MODEL ( -- IR-ARENA:arena IR-ARENA:arena )
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r s" NVC-SP"  s" NVC-SP" EV-N  WS-FIXED
-   r s" NVC-TAB" s" NVC-TAB" EV-N WS-FIXED
-   r s" NVC-LF"  s" NVC-LF" EV-N  WS-FIXED
-   r s" NVC-CR"  s" NVC-CR" EV-N  WS-FIXED
+   r s" NVC-SP"  WS-FIXED
+   r s" NVC-TAB" WS-FIXED
+   r s" NVC-LF"  WS-FIXED
+   r s" NVC-CR"  WS-FIXED
    p r ;
 
 \ The same prelude PREP runs, with the constant-carrying model in place of the

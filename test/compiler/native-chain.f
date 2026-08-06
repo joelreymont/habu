@@ -377,9 +377,9 @@ $54000000 constant BCOND-FORM
 \
 \ FIRST, THE DATA WORD IS THE ENGINE'S. The cell is created by evaluating
 \ `create NCH-CELL 1 cells allot` through the same front end the definition goes
-\ through, and its address is read back by evaluating its name. Nothing in this
-\ file writes an address down. What the word model is TOLD is that one number,
-\ which is the seam dot habu-resolve-a-data-a1c8067f closes; everything else -
+\ through, and the word model is told nothing but its NAME - the address is the
+\ engine's answer, asked for while the row is declared. Nothing in this file
+\ writes an address down or reads one back, and everything else the case uses -
 \ the spelling, the tape, the spans - comes off the engine's own compilation.
 \
 \ SECOND, THE CELL IS POISONED BEFORE EACH CALL. `CELL-BUMP`'s answer is its
@@ -404,12 +404,12 @@ $54000000 constant BCOND-FORM
 
 \ The word model this definition needs: the dialect's own vocabulary plus the one
 \ data word the body names, committed to one row more than REGISTER-WORDS writes.
-: MODEL-MEM ( IR-CTX:ctx IR-BUILD:builder n -- IR-ARENA:arena IR-ARENA:arena )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:n :}
+: MODEL-MEM ( IR-CTX:ctx IR-BUILD:builder -- IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b IR-BUILD:MODULE-KEY HIR-WORD:WORDS 1+ HIR-WORD:PICK-CELLS HIR-WORD:NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r HIR-WORD:REGISTER-WORDS
-   c b r  c b s" NCH-CELL" IR-BUILD:INTERN-SYMBOL  v HIR-WORD:DECLARE-FIXED
+   c b r  c b s" NCH-CELL" IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED
    p r ;
 
 : RECORD4 ( -- )
@@ -436,7 +436,7 @@ $54000000 constant BCOND-FORM
    c 0 R-CTX !
    c HIR-MOD 0 R-BLD !
    s" create NCH-CELL 1 cells allot" EV
-   CC BB  s" NCH-CELL" EV-N  MODEL-MEM {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CC BB MODEL-MEM {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    RECORD4
    p r ELABORATE4
    CC BB TXT TEXT-LEN 0 REGS 1 1 NFIX:RUN-HABU

@@ -81,12 +81,13 @@ private
    1 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ The one word whose point is a side effect. The cell it bumps is the corpus's
-\ own, so this routine and the interpreted word write the same memory, and the
-\ address is handed to the chain because the chain cannot yet ask the engine what
-\ a data word is (dot habu-resolve-a-data-a1c8067f).
+\ own, so this routine and the interpreted word write the same memory. Its
+\ spelling is all the chain is told: the address is the engine's answer, asked
+\ for in the scope this line runs in - which is the corpus's own package, where
+\ that spelling denotes the corpus's private cell and nothing else.
 : CELL-BUMP ( -- )
    s" : CELL-BUMP-N ( n -- n ) BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL ! ;"
-   s" BUMP-CELL" CODEGEN-CORPUS:BUMP-ADDR
+   s" BUMP-CELL"
    1 1 REGS NMIGRATE:DEFINE-DATA ;
 
 : BYTE-SUM ( -- )

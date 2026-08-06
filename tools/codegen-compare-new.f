@@ -19,8 +19,8 @@
 \ seven renames `2dup dup drop swap over nip rot` - plus integer literals, and
 \ src/compiler/native/hir.f gives the dialect seventeen operations. A word of the
 \ corpus is expressible exactly when its body is those words and nothing else,
-\ plus - for a body that names a `create`d data word - the one address the
-\ harness states (dot habu-resolve-a-data-a1c8067f). All eleven are: the empty
+\ plus - for a body that names a `create`d data word - that word's spelling,
+\ which the engine itself answers the address for. All eleven are: the empty
 \ word, the three-argument sum, the sum of two squares - which is the one that
 \ shows the renames costing nothing at all - the two-way branch, the typed
 \ locals frame, both loop forms, the recursion, the cell bump, the byte sum and

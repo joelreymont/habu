@@ -778,6 +778,25 @@ private
    ANN-BODY
    3 T= 1 T= 1 T= ;
 
+\ ---- the data word these cases declare ---------------------------------------
+\ A FIXED row no longer carries a number the case chose; it carries what the
+\ engine says the named word pushes. So the cases below have to create a real
+\ data word, through the same front end any definition goes through, in the scope
+\ they run in - and what they assert the row against is that word's address read
+\ back the OTHER way, by evaluating its name. The two answers come from two
+\ different engine paths - the word model resolves a wordlist and enters the
+\ record, the assertion hands the name to the interpreter - so their agreement is
+\ a statement and not a restatement.
+TRUSTED: EV ( ptr u8 n -- ) evaluate ;
+TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
+
+: CELL-A! ( -- )
+   s" CELL-A" 0 search-wl 0<> if exit then
+   s" create CELL-A 1 cells allot" EV ;
+
+: CELL-A-ADDR ( -- n )
+   s" CELL-A" EV-N ;
+
 \ ---- the memory words and the data word --------------------------------------
 \ The four memory words bind to the four memory operations - one pair per access
 \ width, because the width is a form of the dialect and not a field of one form,
@@ -785,18 +804,19 @@ private
 \ increment binds to
 \ an addition of one - which is what makes `1+` one token of source and two
 \ operations rather than an opcode this dialect does not have - and a `create`d
-\ data word is declared by the caller with the value it pushes. The last one is
-\ how a definition that mentions a data word compiles at all, so what is asserted
-\ is the value it reads back as and the meaning the gate answers for it.
-4096 constant DATUM
+\ data word is declared by its NAME, the value being the engine's to answer. The
+\ last one is how a definition that mentions a data word compiles at all, so what
+\ is asserted is the value it reads back as and the meaning the gate answers for
+\ it.
 
 : MODEL-PLUS ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx :}
+   CELL-A!
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b HIR-WORD:WORDS 1+ HIR-WORD:PICK-CELLS WORDS-NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r HIR-WORD:REGISTER-WORDS
-   c b r  c b s" CELL-A" IR-BUILD:INTERN-SYMBOL  DATUM HIR-WORD:DECLARE-FIXED
+   c b r  c b s" CELL-A" IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED
    b p r ;
 
 : MEMWORD-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool )
@@ -821,7 +841,7 @@ private
 : MEMWORD-CASE ( -- )
    s" the memory words, the increment and a data word read back as declared" T-LABEL
    BND [: MEMWORD-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE DATUM T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE CELL-A-ADDR T= ;
 
 \ Asking a data word which operation it is, when its whole meaning is a value.
 : FIXED-CLASS-BODY ( IR-CTX:ctx -- )
@@ -921,10 +941,11 @@ variable BC-OUT
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b HIR-WORD:WORDS 2 + HIR-WORD:PICK-CELLS WORDS-NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CELL-A!
    c b p r HIR-WORD:REGISTER-WORDS
    c b r  c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL
    CALLEE-ENTRY CALLEE-IN CALLEE-OUT HIR-WORD:DECLARE-CALLABLE
-   c b r  c b s" CELL-A" IR-BUILD:INTERN-SYMBOL  DATUM HIR-WORD:DECLARE-FIXED
+   c b r  c b s" CELL-A" IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED
    b p r ;
 
 : CALLABLE-REFUSE-BODY ( IR-CTX:ctx -- n n n n )

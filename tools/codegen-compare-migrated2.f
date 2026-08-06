@@ -109,13 +109,12 @@ private
    3 1 WIDE-REGS NMIGRATE:DEFINE ;
 
 \ The walk's callee. Its one name outside the dialect is the corpus's own
-\ binding table, whose address is handed over because the chain cannot yet ask
-\ the engine what a data word is (dot habu-resolve-a-data-a1c8067f). Both
-\ columns therefore walk the SAME table, which is what makes the head-to-head
-\ check a statement about the loads.
+\ binding table, and its spelling is all the chain is told: the engine answers
+\ where that table is. Both columns therefore walk the SAME table, which is what
+\ makes the head-to-head check a statement about the loads.
 : TV-NEXT? ( -- )
    s" : TV-NEXT?-N ( n -- n bool ) dup 7 and 1 = 0= if 0 0= 0= exit then dup 3 rshift cells TV-TABLE + @ dup -1 = if drop 0 0= 0= else nip 0 0= then ;"
-   s" TV-TABLE" CODEGEN-CORPUS2:TV-ADDR
+   s" TV-TABLE"
    1 2 WIDE-REGS NMIGRATE:DEFINE-DATA ;
 
 \ The walk itself: a loop whose test is a call. Its routine declares the direct

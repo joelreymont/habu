@@ -127,15 +127,13 @@ public
 
 \ ---- what the harness reads the side effects through -------------------------
 
-\ The binding table's address as the number a code generator has to materialise.
-\ This is the same named unchecked boundary the first corpus's BUMP-ADDR is, for
-\ the same reason: the checker gives a `create`d word the type `ptr a` so that a
-\ pointer cannot be done arithmetic on by accident, and there is no checked way
-\ to say "the number that pointer is", which is exactly what a compiler needs of
-\ a data word. Dot habu-resolve-a-data-a1c8067f retires it - when the chain can
-\ ask the engine what a data word is, no harness names an address at all.
-TRUSTED: TV-ADDR ( -- n ) TV-TABLE ;
-
+\ This corpus used to publish its binding table's ADDRESS here, through the same
+\ named unchecked boundary the first corpus kept for its cell, because a compiler
+\ needs the number a data word pushes and the checker gives a `create`d word the
+\ type `ptr a` so that a pointer cannot be done arithmetic on by accident. No
+\ harness names an address any more: the chain asks the engine what the data word
+\ is, so both columns walk the same table without anyone writing down where it is.
+\
 \ One cell of the destination buffer, read the checked way. This is what both
 \ columns verify the copy through.
 : COPY-DST@ ( n -- n )

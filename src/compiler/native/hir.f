@@ -340,9 +340,9 @@ ENUM ctrl DERIVE eq
 \ `fixed` is the meaning of a word that pushes one value and nothing else, which
 \ is what a `create`d data word does: its address is decided once, when the word
 \ is created, and every mention of it is that number. The row carries the value,
-\ so the caller that builds the word model states it - the address of a data
-\ word in this process is not something this dialect can look up yet, and dot
-\ habu-resolve-a-data-a1c8067f is where that lookup lands.
+\ and where that value comes from is not the caller's to say: the declaration
+\ names the word and src/compiler/native/dict.f asks the running dictionary what
+\ it pushes.
 \ `open-locals` and `close-locals` are the two halves of a `{: … :}` group. A
 \ group binds names to values the body then reads by name, and a bound name is
 \ nothing but a value of the compile-time vector - so the group stages no

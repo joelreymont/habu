@@ -1085,5 +1085,15 @@ public
 \ was one it could have dropped. Whether the value in the slot is the value the
 \ program meant to publish there is a statement about the module the selector
 \ read, and it stays where it already was: dot habu-prove-a-data-df458151.
+\ Asking the running dictionary about a spelling: -8600..-8609
+\
+\ src/compiler/native/dict.f walks the engine's own resolution order for a name a
+\ program wrote, and for a data word or a constant it enters the record it found
+\ and takes what that word leaves. Both refusals are the question having no
+\ answer, and neither is a statement about the chain's own state, so neither
+\ borrows the migration entry's or the word model's name.
+-8600 constant E-NDICT-NAME     \ a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist and the namespace record for a qualified token all answer absent
+-8601 constant E-NDICT-VALUE    \ the word a spelling denoted did not leave exactly one value where it was entered, so it is not a word whose whole meaning is the value it pushes and what it left is not its answer
+
 -8610 constant E-A64RAV-DRES    \ a data-stack slot published with no store in front of it that no path defines: an omitted store for a slot nothing ever wrote, one a call between the write and the publication destroyed, or a read of such a slot - and, fail-closed rather than reachable, a residency descent that was still moving after every cell of the map could have fallen as far as it can
 -8611 constant E-A64RAV-DKEEP   \ a data-stack access the emission had no reason to make: a store writing a slot that already holds that very value, a load of a slot whose value is already in a register, or a load whose result nothing reads

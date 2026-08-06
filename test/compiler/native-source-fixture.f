@@ -216,18 +216,18 @@ public
    p r ;
 
 \ The same model with one `create`d data word declared beside the subset's own
-\ vocabulary: the word's spelling and the address it pushes. A definition that
-\ mentions a data word cannot be compiled without this, because the dialect's
-\ vocabulary is the dialect's and which data words a program names is the
-\ program's; the table is therefore committed to one row more than
-\ REGISTER-WORDS writes. The address is stated rather than looked up, which is
-\ dot habu-resolve-a-data-a1c8067f.
-: MODEL-DATA ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n -- IR-ARENA:arena IR-ARENA:arena )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n v:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+\ vocabulary, named by its spelling. A definition that mentions a data word
+\ cannot be compiled without this, because the dialect's vocabulary is the
+\ dialect's and which data words a program names is the program's; the table is
+\ therefore committed to one row more than REGISTER-WORDS writes. The spelling is
+\ the whole of the declaration: the address that word pushes is the engine's to
+\ answer, so a caller of this fixture has to have created the word it names.
+: MODEL-DATA ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    c b IR-BUILD:MODULE-KEY HIR-WORD:WORDS 1+ HIR-WORD:PICK-CELLS HIR-WORD:NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r HIR-WORD:REGISTER-WORDS
-   c b r  c b a u IR-BUILD:INTERN-SYMBOL  v HIR-WORD:DECLARE-FIXED
+   c b r  c b a u IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED
    p r ;
 
 \ A tape of this module, bound to the text now in TXT and registered as the
