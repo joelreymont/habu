@@ -1158,17 +1158,7 @@ SOURCE-LINE-PKG-TRACK          ( ptr u8 len -- )
 SOURCE-APPEND-COMMENTED-EXPORT ( ptr u8 len ptr u8 len ptr len -- )
 SOURCE-APPEND-COMMENT-LINE     ( ptr u8 len ptr u8 len ptr len -- )
 COMMENT-EXPORTS                ( ptr u8 len ptr u8 len -- len )
-SOURCE-LS-CLOSE                ( -- )
-SOURCE-LS-THROW                ( n -- )
-SOURCE-LS-OPEN                 ( ptr u8 n -- )
-SOURCE-LS-READ                 ( -- n )
-SOURCE-LS-TRIM-CR              ( ptr u8 n -- ptr u8 n )
-SOURCE-LS-APPEND               ( n ptr u8 n -- )
-SOURCE-LS-EMIT                 ( ptr u8 [ ptr u8 n n -- ] -- )
-SOURCE-LS-BYTE                 ( n ptr u8 n [ ptr u8 n n -- ] -- )
-SOURCE-LS-CHUNK                ( n ptr u8 n [ ptr u8 n n -- ] -- )
-SOURCE-LS-DRAIN                ( ptr u8 n [ ptr u8 n n -- ] -- )
-SOURCE-FILE-LINES              ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- )
+SOURCE-LS:FILE-LINES           ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- )
 ```
 
 `CONCAT-FILES` concatenates counted path entries from parallel pointer/length
@@ -1189,13 +1179,13 @@ source-list mode for tools that need stdin data:
 `bin/hb --load lib/source.f tool.f -- args... < data`. In that form the loader
 reads source files from argv and leaves fd 0 for `READ-STDIN-ALL`.
 
-`SOURCE-FILE-LINES` streams a counted file path through a caller-owned line
+`SOURCE-LS:FILE-LINES` streams a counted file path through a caller-owned line
 buffer and a callback `( ptr u8 n n -- )`, where the final `n` is the 1-based
 line number. It emits empty lines, emits a final partial line without requiring
 a trailing newline, strips a trailing carriage return before `\n`, and throws
 `E-FS-CAPACITY` rather than truncating a line that exceeds the supplied line
-buffer. `SOURCE-LS-*` words are the checked implementation steps behind that
-streaming API.
+buffer. It is the whole interface of `package SOURCE-LS`; the open, read, trim,
+append and drain steps behind it are private to that package.
 
 ## Processes
 

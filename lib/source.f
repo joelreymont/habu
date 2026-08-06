@@ -7,7 +7,6 @@ require lib/fs.f
 
 $20000 constant SOURCE-CAP
 1 constant SOURCE-PROBE-CAP
-4096 constant SOURCE-LS-READ-CAP
 9 constant SOURCE-TAB
 10 constant SOURCE-LF
 13 constant SOURCE-CR
@@ -16,7 +15,6 @@ $20000 constant SOURCE-CAP
 92 constant SOURCE-BACKSLASH
 
 create SOURCE-PROBE SOURCE-PROBE-CAP allot
-create SOURCE-LS-READ-BUF SOURCE-LS-READ-CAP allot
 
 variable SOURCE-BUF-A
 variable SOURCE-LEN
@@ -26,10 +24,6 @@ variable SOURCE-J
 variable SOURCE-CUT
 variable SOURCE-SKIP
 variable SOURCE-END
-variable SOURCE-LS-FD
-variable SOURCE-LS-RD
-variable SOURCE-LS-LEN
-variable SOURCE-LS-LINE#
 
 : SOURCE-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -257,63 +251,93 @@ variable SOURCE-PKG-DEPTH
    repeat
    SOURCE-LEN @ ;
 
-: SOURCE-LS-CLOSE ( -- )
-   SOURCE-LS-FD @ dup 0 >= if close else drop then
-   -1 SOURCE-LS-FD ! ;
+\ Line scanner: streams a file through a caller-owned line buffer, handing each
+\ line to the caller's quotation. SOURCE-LS:FILE-LINES is the whole interface;
+\ every step behind it is private.
+\
+\ CLOSE-FD, CLOSE-THROW, FILL-BUF and EMIT-LINE keep a distinguishing tail
+\ because a package member shadows a global for every member defined after it:
+\ members named CLOSE, THROW, READ or EMIT would silently capture the core
+\ words these bodies call.
+package SOURCE-LS
+4096 constant READ-CAP
+create READ-BUF READ-CAP allot
+variable FD
+variable RD
+variable LEN
+variable LINE#
 
-: SOURCE-LS-THROW ( n -- )
-   SOURCE-LS-CLOSE
+: CLOSE-FD ( -- )
+   FD @ dup 0 >= if close else drop then
+   -1 FD ! ;
+
+: CLOSE-THROW ( n -- )
+   CLOSE-FD
    throw ;
 
-: SOURCE-LS-OPEN ( ptr u8 n -- )
-   -1 SOURCE-LS-FD !
-   FS-PATHZ open-rd SOURCE-LS-FD !
-   SOURCE-LS-FD @ 0 < if E-FS-OPEN throw then ;
+: FILL-BUF ( -- n )
+   FD @ READ-BUF READ-CAP read RD !
+   RD @ 0 < if E-FS-IO CLOSE-THROW then
+   RD @ READ-CAP > if E-FS-IO CLOSE-THROW then
+   RD @ ;
 
-: SOURCE-LS-READ ( -- n )
-   SOURCE-LS-FD @ SOURCE-LS-READ-BUF SOURCE-LS-READ-CAP read SOURCE-LS-RD !
-   SOURCE-LS-RD @ 0 < if E-FS-IO SOURCE-LS-THROW then
-   SOURCE-LS-RD @ SOURCE-LS-READ-CAP > if E-FS-IO SOURCE-LS-THROW then
-   SOURCE-LS-RD @ ;
-
-: SOURCE-LS-TRIM-CR ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: TRIM-CR ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u 0 > if
       a u 1 - + c@ SOURCE-CR = if a u 1 - exit then
    then
    a u ;
 
-: SOURCE-LS-APPEND ( n ptr u8 n -- ) {: c line:ptr cap :}
-   SOURCE-LS-LEN @ cap >= if E-FS-CAPACITY SOURCE-LS-THROW then
-   c line SOURCE-LS-LEN @ + c!
-   SOURCE-LS-LEN @ 1+ SOURCE-LS-LEN ! ;
+: APPEND ( n ptr u8 n -- ) {: c:n line:ptr cap:n :}
+   LEN @ cap >= if E-FS-CAPACITY CLOSE-THROW then
+   c line LEN @ + c!
+   LEN @ 1+ LEN ! ;
 
-: SOURCE-LS-EMIT ( ptr u8 [ ptr u8 n n -- ] -- ) {: line:ptr q :}
-   SOURCE-LS-LINE# @ 1+ SOURCE-LS-LINE# !
-   line SOURCE-LS-LEN @ SOURCE-LS-TRIM-CR SOURCE-LS-LINE# @ q execute
-   0 SOURCE-LS-LEN ! ;
+\ typed-local-lint: allow-bare-local - q carries a quotation effect, which the
+\ local annotation form cannot express.
+: EMIT-LINE ( ptr u8 [ ptr u8 n n -- ] -- ) {: line:ptr q :}
+   LINE# @ 1+ LINE# !
+   line LEN @ TRIM-CR LINE# @ q execute
+   0 LEN ! ;
 
-: SOURCE-LS-BYTE ( n ptr u8 n [ ptr u8 n n -- ] -- ) {: c line:ptr cap q :}
-   c SOURCE-LF = if line q SOURCE-LS-EMIT exit then
-   c line cap SOURCE-LS-APPEND ;
+\ typed-local-lint: allow-bare-local - q carries a quotation effect, which the
+\ local annotation form cannot express.
+: BYTE ( n ptr u8 n [ ptr u8 n n -- ] -- ) {: c:n line:ptr cap:n q :}
+   c SOURCE-LF = if line q EMIT-LINE exit then
+   c line cap APPEND ;
 
 \ The byte index rides the return stack (`?do` / `i`), not the data stack: a
 \ counter left under the arguments would join the row that `q` is executed on,
 \ so every caller would then have to pass a quotation carrying that extra cell.
-: SOURCE-LS-CHUNK ( n ptr u8 n [ ptr u8 n n -- ] -- ) {: got line:ptr cap q :}
+\ typed-local-lint: allow-bare-local - q carries a quotation effect, which the
+\ local annotation form cannot express.
+: CHUNK ( n ptr u8 n [ ptr u8 n n -- ] -- ) {: got:n line:ptr cap:n q :}
    got 0 ?do
-      SOURCE-LS-READ-BUF i + c@ line cap q SOURCE-LS-BYTE
+      READ-BUF i + c@ line cap q BYTE
    loop ;
 
-: SOURCE-LS-DRAIN ( ptr u8 n [ ptr u8 n n -- ] -- ) {: line:ptr cap q :}
-   cap 0 <= if E-FS-CAPACITY SOURCE-LS-THROW then
-   0 SOURCE-LS-LEN !
-   0 SOURCE-LS-LINE# !
-   begin SOURCE-LS-READ dup 0 > while
-      line cap q SOURCE-LS-CHUNK
-   repeat drop
-   SOURCE-LS-LEN @ 0 > if line q SOURCE-LS-EMIT then
-   SOURCE-LS-CLOSE ;
+: OPEN ( ptr u8 n -- )
+   -1 FD !
+   FS-PATHZ open-rd FD !
+   FD @ 0 < if E-FS-OPEN throw then ;
 
-: SOURCE-FILE-LINES ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- ) {: path:ptr pathu line:ptr cap q :}
-   path pathu SOURCE-LS-OPEN
-   line cap q SOURCE-LS-DRAIN ;
+\ typed-local-lint: allow-bare-local - q carries a quotation effect, which the
+\ local annotation form cannot express.
+: DRAIN ( ptr u8 n [ ptr u8 n n -- ] -- ) {: line:ptr cap:n q :}
+   cap 0 <= if E-FS-CAPACITY CLOSE-THROW then
+   0 LEN !
+   0 LINE# !
+   begin FILL-BUF dup 0 > while
+      line cap q CHUNK
+   repeat drop
+   LEN @ 0 > if line q EMIT-LINE then
+   CLOSE-FD ;
+
+public
+
+\ typed-local-lint: allow-bare-local - q carries a quotation effect, which the
+\ local annotation form cannot express.
+: FILE-LINES ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- ) {: path:ptr pathu:n line:ptr cap:n q :}
+   path pathu OPEN
+   line cap q DRAIN ;
+
+;package

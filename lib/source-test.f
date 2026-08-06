@@ -97,14 +97,6 @@ variable ST-QP-U
    {: src:ptr srcu dst:ptr cap :}
    src srcu >LEN dst cap >LEN COMMENT-EXPORTS LEN>N ;
 
-: ST-FILE-LINES ( ptr u8 n [ ptr u8 n n -- ] -- )
-   {: path:ptr pathu q :}
-   path pathu ST-LINE-BUF ST-LINE-CAP q SOURCE-FILE-LINES ;
-
-: ST-SMALL-FILE-LINES ( ptr u8 n [ ptr u8 n n -- ] -- )
-   {: path:ptr pathu q :}
-   path pathu ST-SMALL-LINE-BUF ST-SMALL-LINE-CAP q SOURCE-FILE-LINES ;
-
 : ST-LF ( -- )
    10 SB-APPEND-C ;
 
@@ -231,47 +223,68 @@ variable ST-QP-U
    ST-SRC ST-BUF ST-CAP ST-COMMENT-EXPORTS ST-WANT-U @ T=
    ST-BUF ST-WANT-U @ ST-WANT T$= ;
 
-: ST-LINES-PARTIAL-CB ( ptr u8 n n -- ) {: a:ptr u line :}
+\ Line-scanner cases. SCAN and SCAN-SMALL bind the two caller-owned line
+\ buffers to SOURCE-LS:FILE-LINES; the callbacks record what each line
+\ delivered. Nothing here is named outside this block except the five cases.
+package ST-LINES
+
+\ typed-local-lint: allow-bare-local - q carries a quotation effect, which the
+\ local annotation form cannot express.
+: SCAN ( ptr u8 n [ ptr u8 n n -- ] -- )
+   {: path:ptr pathu:n q :}
+   path pathu ST-LINE-BUF ST-LINE-CAP q SOURCE-LS:FILE-LINES ;
+
+\ typed-local-lint: allow-bare-local - q carries a quotation effect, which the
+\ local annotation form cannot express.
+: SCAN-SMALL ( ptr u8 n [ ptr u8 n n -- ] -- )
+   {: path:ptr pathu:n q :}
+   path pathu ST-SMALL-LINE-BUF ST-SMALL-LINE-CAP q SOURCE-LS:FILE-LINES ;
+
+: PARTIAL-CB ( ptr u8 n n -- ) {: a:ptr u:n line:n :}
    line 1 = if a u s" alpha" T$= then
    line 2 = if a u s" beta" T$= then
    line 2 > if STR-FALSE T-ASSERT then
    ST-LINE-COUNT @ 1+ ST-LINE-COUNT ! ;
 
-: ST-LINES-CRLF-CB ( ptr u8 n n -- ) {: a:ptr u line :}
+: CRLF-CB ( ptr u8 n n -- ) {: a:ptr u:n line:n :}
    line 1 = if a u s" alpha" T$= then
    line 2 = if a u s" beta" T$= then
    ST-LINE-COUNT @ 1+ ST-LINE-COUNT ! ;
 
-: ST-LINES-NOOP ( ptr u8 n n -- )
+: NOOP ( ptr u8 n n -- )
    drop 2drop ;
 
-: TEST-SOURCE-FILE-LINES-EMPTY ( -- )
+public
+
+: EMPTY ( -- )
    ST-A s" " WRITE-ALL
    0 ST-LINE-COUNT !
-   ST-A [: ST-LINES-NOOP ;] ST-FILE-LINES
+   ST-A [: NOOP ;] SCAN
    ST-LINE-COUNT @ 0 T= ;
 
-: TEST-SOURCE-FILE-LINES-PARTIAL ( -- )
+: PARTIAL ( -- )
    SB-RESET s" alpha" SB-APPEND ST-LF s" beta" SB-APPEND
    ST-A SB$ WRITE-ALL
    0 ST-LINE-COUNT !
-   ST-A [: ST-LINES-PARTIAL-CB ;] ST-FILE-LINES
+   ST-A [: PARTIAL-CB ;] SCAN
    ST-LINE-COUNT @ 2 T= ;
 
-: TEST-SOURCE-FILE-LINES-CRLF ( -- )
+: CRLF ( -- )
    SB-RESET s" alpha" SB-APPEND ST-CR ST-LF s" beta" SB-APPEND ST-CR ST-LF
    ST-A SB$ WRITE-ALL
    0 ST-LINE-COUNT !
-   ST-A [: ST-LINES-CRLF-CB ;] ST-FILE-LINES
+   ST-A [: CRLF-CB ;] SCAN
    ST-LINE-COUNT @ 2 T= ;
 
-: TEST-SOURCE-FILE-LINES-LONG ( -- )
+: LONG ( -- )
    ST-A s" abcde" WRITE-ALL
-   ST-A [: ST-LINES-NOOP ;] ST-SMALL-FILE-LINES ;
+   ST-A [: NOOP ;] SCAN-SMALL ;
 
-: TEST-SOURCE-FILE-LINES-MISSING ( -- )
+: MISSING ( -- )
    ST-ROOT s" missing-lines.txt" ST-BUF JOIN-PATH {: u :}
-   ST-BUF u [: ST-LINES-NOOP ;] ST-FILE-LINES ;
+   ST-BUF u [: NOOP ;] SCAN ;
+
+;package
 
 : TEST-SOURCE-ERRORS ( -- )
    s" abc" s" xyz" ST-BUF 5 ST-INSERT-BEFORE-FINAL-LINE drop ;
@@ -327,7 +340,9 @@ variable ST-QP-U
 : TEST-QPATH-CR ( -- )
    [: 13 ST-QP-UNSAFE! ;] E-FS-PATH-UNSAFE TTHROWSQ ;
 
-: SOURCE-TEST-MAIN ( -- )
+package SOURCE-TEST
+
+: MAIN ( -- )
    T-RESET
    ST-PREPARE
    TEST-READ-STDIN-ALL
@@ -342,11 +357,11 @@ variable ST-QP-U
    TEST-INSERT-BEFORE-FINAL-LINE
    TEST-COMMENT-EXPORTS
    TEST-COMMENT-EXPORTS-PKG
-   TEST-SOURCE-FILE-LINES-EMPTY
-   TEST-SOURCE-FILE-LINES-PARTIAL
-   TEST-SOURCE-FILE-LINES-CRLF
-   [: TEST-SOURCE-FILE-LINES-LONG ;] E-FS-CAPACITY TTHROWSQ
-   [: TEST-SOURCE-FILE-LINES-MISSING ;] E-FS-OPEN TTHROWSQ
+   ST-LINES:EMPTY
+   ST-LINES:PARTIAL
+   ST-LINES:CRLF
+   [: ST-LINES:LONG ;] E-FS-CAPACITY TTHROWSQ
+   [: ST-LINES:MISSING ;] E-FS-OPEN TTHROWSQ
    [: TEST-SOURCE-ERRORS ;] E-FS-CAPACITY TTHROWSQ
    [: TEST-SOURCE-APPEND-NEG-LEN ;] E-FS-CAPACITY TTHROWSQ
    [: TEST-SOURCE-APPEND-HIGH-LEN ;] E-FS-CAPACITY TTHROWSQ
@@ -355,19 +370,23 @@ variable ST-QP-U
    T-REPORT
    s" source-test: ok" type cr ;
 
-: SOURCE-TEST-STDIN-MAIN ( -- )
+: STDIN-MAIN ( -- )
    T-RESET
    TEST-READ-STDIN-DATA
    T-REPORT
    s" source-test stdin: ok" type cr ;
 
-: SOURCE-TEST-USAGE ( -- )
+: USAGE ( -- )
    s" source-test: usage: [stdin]" 64 die ;
 
-: SOURCE-TEST-ENTRY ( -- )
-   SCRIPT-ARGC 0= if SOURCE-TEST-MAIN exit then
-   SCRIPT-ARGC 1 <> if SOURCE-TEST-USAGE then
-   0 SCRIPT-ARGV$ s" stdin" STR= if SOURCE-TEST-STDIN-MAIN exit then
-   SOURCE-TEST-USAGE ;
+public
 
-SOURCE-TEST-ENTRY
+: ENTRY ( -- )
+   SCRIPT-ARGC 0= if MAIN exit then
+   SCRIPT-ARGC 1 <> if USAGE then
+   0 SCRIPT-ARGV$ s" stdin" STR= if STDIN-MAIN exit then
+   USAGE ;
+
+;package
+
+SOURCE-TEST:ENTRY
