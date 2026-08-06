@@ -140,8 +140,18 @@ variable OLD-LEN
 : SPILL-CASE ( -- )
    MIGRATE-SPILL
 
-   s" five values went to the frame, and the migration says so" T-LABEL
-   NMIGRATE:SPILLS 5 T=
+   \ FOUR AND NOT FIVE SINCE THE CONSTANTS STOPPED TAKING REGISTERS. Every one of
+   \ this body's eight terms adds a small number to the same argument, and the
+   \ combine pass now folds each of those numbers into the addition's own
+   \ immediate field, so eight move-wides are gone and the registers they were
+   \ written into are never claimed. The pressure that decides this count is what
+   \ the body needs LIVE AT ONCE, and eight of those live values were constants,
+   \ so one fewer value reaches the frame. The count is still five short of what
+   \ the definition needs, which is what keeps this a spill case at all - and the
+   \ answers below are unchanged, which is what says the spill that remains is
+   \ still correct.
+   s" four values went to the frame, and the migration says so" T-LABEL
+   NMIGRATE:SPILLS 4 T=
 
    s" the record points at the code the publication seam claimed" T-LABEL
    s" NMG-SPILL" REC-START
@@ -1242,10 +1252,17 @@ variable BACK-N
 
    MIGRATE-UNTIL
 
+   \ NINE AND NOT TEN FOR THE DECREMENT'S SAKE. `begin 1- dup 0 <= until` holds
+   \ two constants, and exactly one of them folds: the 1 is subtracted from a
+   \ register, so it becomes the subtraction's own immediate and its move-wide is
+   \ never written, while the 0 is read by the COMPARISON, which has no immediate
+   \ form in this dialect and still needs the number in a register. One
+   \ instruction goes and the block count does not move, which is the point of
+   \ pinning both here.
    s" a loop whose build order was already the best is written out unmoved" T-LABEL
    A64EMIT:BLOCKS 4 T=
    SELF-PLACED  A64EMIT:BLOCKS T=
-   A64EMIT:INSNS 10 T=
+   A64EMIT:INSNS 9 T=
 
    s" and it too keeps only its back edge" T-LABEL
    s" NMG-UNTIL" UNCOND-IN 1 T=

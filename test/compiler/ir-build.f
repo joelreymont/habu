@@ -689,6 +689,110 @@ variable PART-FREE
    TARENA-SLOTS 3 TTABLES * - T=
    E-IR-ARENA-SLOTS T= ;
 
+\ ---- retire releases a PUBLISHED module's storage -----------------------------
+\ The other side of the freeze, and the same measurement. ABORT above proves an
+\ ABANDONED builder gives its seventeen arenas back; this proves a module that
+\ was published and then superseded gives its seventeen back too. Until RETIRE
+\ existed the only way a published slot came back was the whole context tearing
+\ down, so a chain of passes that each rewrote the last held every intermediate
+\ module to the end of the compilation - which is what ran the native chain out
+\ of arenas once a routine both combined and spilled.
+\
+\ Freezing and retiring TSLOTS modules in one context needs TSLOTS times
+\ seventeen arenas in total, which is far past the registry, so this can only
+\ pass if every RETIRE gives its whole seventeen back at once.
+: RT-CYCLE ( IR-CTX:ctx -- IR-CTX:ctx )
+   dup {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b IR-BUILD:FREEZE IR-BUILD:RETIRE ;
+
+\ Eight cycles is what this measures, and the number is bounded from both ends
+\ rather than chosen: eight times seventeen arenas is well past the arena
+\ registry, so the case cannot pass unless the arenas come back, and eight is
+\ under the BUILDER registry's own capacity, which a retire does not refill -
+\ a retired slot records that it was retired, exactly as an aborted one does.
+8 constant RT-CYCLES
+
+: RT-RELEASE-BODY ( IR-CTX:ctx -- n )
+   {: c:IR-CTX:ctx :}
+   RT-CYCLES 0 ?do
+      c RT-CYCLE drop
+   loop
+   RT-CYCLES TTABLES * ;
+
+: RT-RELEASE-CASE ( -- )
+   s" retire releases every arena a published module held, far past the registry"
+   T-LABEL
+   BND [: RT-RELEASE-BODY ;] IR-CTX:WITH-CONTEXT
+   RT-CYCLES TTABLES * T=
+   s" the retired arenas far outnumber the arena registry" T-LABEL
+   RT-CYCLES TTABLES * TARENA-SLOTS > TTRUE
+   s" and the cycles stay inside the builder registry, which retire does not refill"
+   T-LABEL
+   RT-CYCLES TSLOTS < TTRUE ;
+
+\ And the storage really comes back rather than merely being forgotten: a
+\ context that froze and retired eight modules has exactly as many free arena
+\ slots left as one that built nothing. This is the peak-pressure claim stated
+\ as a number - a chain that retires what it supersedes costs the modules LIVE
+\ at once, not the modules ever built.
+\
+\ THE TWO COUNTS RUN IN SEPARATE CONTEXTS BECAUSE COUNTING IS DESTRUCTIVE:
+\ PART-COUNT-FREE takes arenas until the registry refuses, so a context it has
+\ measured has nothing left to build with. One context is measured cold and the
+\ other after the cycles, and the two numbers are compared outside both.
+: RT-FREE-COLD ( IR-CTX:ctx -- n )
+   PART-COUNT-FREE ;
+
+: RT-FREE-AFTER ( IR-CTX:ctx -- n )
+   {: c:IR-CTX:ctx :}
+   RT-CYCLES 0 ?do
+      c RT-CYCLE drop
+   loop
+   c PART-COUNT-FREE ;
+
+: RT-FREE-CASE ( -- )
+   s" a context that retired eight modules has the free slots of one that built none"
+   T-LABEL
+   BND [: RT-FREE-COLD ;] IR-CTX:WITH-CONTEXT
+   BND [: RT-FREE-AFTER ;] IR-CTX:WITH-CONTEXT
+   T= ;
+
+\ A retired module answers with its OWN name. This is what makes retiring the
+\ wrong module a loud failure instead of a plausible answer: the next reader of
+\ the handle is refused rather than served stale tables.
+: RT-READ-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:RETIRE
+   m IR-BUILD:FKEY drop ;
+
+: RT-READ ( -- )
+   BND [: RT-READ-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ And a view the module handed out BEFORE it was retired is refused too, by the
+\ arena's own seal rather than by anything this package restates. The view was
+\ legal when it was taken, which is exactly the dangerous case: it is the handle
+\ a pass would still be holding if it kept reading a module somebody else gave
+\ back.
+: RT-VIEW-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: v:IR-ARENA:view :}
+   m IR-BUILD:RETIRE
+   v IR-ARENA:SIZE drop ;
+
+: RT-VIEW ( -- )
+   BND [: RT-VIEW-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: RT-STALE-CASES ( -- )
+   s" a retired module refuses by its own name" T-LABEL
+   [: RT-READ ;] E-IR-BUILD-RETIRED TTHROWSQ
+   s" and a view it handed out before the retire is stale, not readable" T-LABEL
+   [: RT-VIEW ;] E-IR-ARENA-STALE TTHROWSQ ;
+
 \ An aborted builder answers with its own name, not merely as unknown, and the
 \ tables it held are gone with it.
 : AB-READ-BODY ( IR-CTX:ctx -- )
@@ -1321,6 +1425,9 @@ public
    BND [: HARNESS-LIVE-REFUSE-G ;] IR-CTX:WITH-CONTEXT
    AB-RELEASE-CASE
    PART-CASE
+   RT-RELEASE-CASE
+   RT-FREE-CASE
+   RT-STALE-CASES
    STALE-CASES
    CHECKER-CASES
    T-REPORT ;
