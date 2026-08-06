@@ -1557,6 +1557,58 @@ variable HELD-ND1
    s" : NMG-HELD-BAD ( n -- n ) 1 + ;" EV
    s" 4 NMG-HELD-BAD" EV-N 5 T= ;
 
+\ ---- which token the chain refused, read through the real entry --------------
+\ src/compiler/native/elaborate.f writes down the body token its refusal was
+\ about, and test/compiler/native-elaborate.f proves what it writes. What only
+\ this suite can show is the part that is about DRIVING the chain: the record
+\ says nothing about attempts that never reach the elaborator, and a driver
+\ compiling one definition after another has to clear it itself.
+\
+\ THE HAZARD IS THE POINT OF THE CASE, so it is asserted and not only guarded
+\ against. An engine-level refusal - an undefined word in the body - is raised
+\ while `evaluate` is still resolving names, before any tape is sealed, so
+\ NELAB:COLON is never entered and the clear that is COLON's first act never
+\ runs. A driver that read the record then would read the PREVIOUS definition's
+\ word as this one's. That is asserted here exactly as it happens, so the case
+\ fails if the reset is ever quietly made unnecessary, and then the cure is
+\ asserted beside it.
+\
+\ Reasoning the hazard away by which codes can come out of where is not the same
+\ guarantee: it would rest on E-HIR-UNMODELED never being thrown outside an
+\ admit, and src/compiler/native/hir-word.f throws it from readers an admit is
+\ not the only caller of. The clear does not rest on anything.
+70 constant REJECT-RC                \ src/core/checker.f PKGCTX-REJECT-RC (private there)
+
+: HELD-MOD-MIGRATE ( -- )
+   s" : NMG-HELD-MOD ( n -- n ) dup 5 mod + ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
+
+: HELD-UNDEF-MIGRATE ( -- )
+   s" : NMG-HELD-UA ( n -- n ) NMG-NO-SUCH-WORD-A and ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
+
+: HELD-UNDEF2-MIGRATE ( -- )
+   s" : NMG-HELD-UB ( n -- n ) NMG-NO-SUCH-WORD-B and ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
+
+: HELD-RECORD-CASE ( -- )
+   s" a held body outside the dialect names the offending word through the chain's own record" T-LABEL
+   NELAB:REFUSED-RESET
+   [: HELD-MOD-MIGRATE ;] E-HIR-UNMODELED TTHROWSQ
+   NELAB:REFUSED$ s" mod" T$=
+
+   s" a refusal the engine raises before elaboration leaves that record standing" T-LABEL
+   [: HELD-UNDEF-MIGRATE ;] REJECT-RC TTHROWSQ
+   NELAB:REFUSED$ s" mod" T$=
+
+   s" so a driver clears the record before each attempt, and then reads no word at all" T-LABEL
+   NELAB:REFUSED-RESET
+   [: HELD-UNDEF2-MIGRATE ;] REJECT-RC TTHROWSQ
+   NELAB:REFUSED-ROW -1 T=
+   NELAB:REFUSED$ nip 0 T=
+
+   s" and the chain recovered: the next held migration compiles and leaves no record" T-LABEL
+   s" : NMG-HELD-AGAIN ( n -- n ) 9 + ;" 1 1 REGS NMIGRATE:DEFINE-HELD
+   s" 1 NMG-HELD-AGAIN" EV-N 10 T=
+   NELAB:REFUSED-ROW -1 T= ;
+
 : RUN ( -- )
    T-RESET
    MIGRATED-CASE
@@ -1582,6 +1634,7 @@ variable HELD-ND1
    FLOAT-REFUSAL-CASES
    HELD-CASE
    HELD-REFUSAL-CASE
+   HELD-RECORD-CASE
    T-REPORT ;
 
 ;package

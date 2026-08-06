@@ -770,6 +770,199 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
    s" a defined name the tape read while compiling is refused" T-LABEL
    [: NAMEMODE ;] E-NELAB-MODE TTHROWSQ ;
 
+\ ---- which token the refusal was about ---------------------------------------
+\ The refusals above say WHAT the chain would not compile; these say WHICH token
+\ it was standing on, which is the part a caller can act on. The word model's two
+\ refusals carry no token in the code itself, so the elaborator writes the token
+\ down as the refusal leaves it, and these cases read that record back through
+\ the same public entry every other case here uses.
+\
+\ WHAT IS ACTUALLY BEING PROVED, because "the record says `mod`" on its own would
+\ pass just as well against a constant. Three bodies refused for three different
+\ spellings each get their own spelling back, one of them at a row that is not
+\ the first, and one of them a name only the fixture has ever written - so the
+\ answer is read off the tape rather than looked up in the dialect's table.
+\
+\ AND THE HOSTILE ONE, which is what the record is really for. A record left over
+\ from an earlier refusal would be indistinguishable from a right answer at the
+\ moment a caller reads it, so the cases below run a SECOND elaboration after a
+\ refusal and demand the first one's word be gone: gone when the second refusal
+\ names a different token, and gone when the second definition compiles and names
+\ nothing at all.
+
+\ `BAD ` followed by k copies of one letter: a body of exactly one token, whose
+\ spelling is as long as the case wants to make it.
+: LONG-TEXT ( n -- )
+   {: k:n :}
+   s" BAD " TEXT!
+   k 0 ?do s" a" TEXT+ loop ;
+
+\ That token's spelling, taken off the fixture's own text rather than written out
+\ a second time here: four bytes of `BAD ` and then the whole of the body.
+: BODY$ ( -- ptr u8 n )
+   TEXT$ {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a 4 + u 4 - ;
+
+\ A body word the dialect models no operation for. `mod` is arithmetic the subset
+\ has no opcode for, so it stays unmodeled for the same reason `negate` does.
+: MODTOK-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" BAD mod" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: MODTOK ( -- )
+   BND [: MODTOK-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A name no dialect will ever model, three tokens into the body. The two tokens
+\ before it are modeled and leave the vector exactly as deep as it started, so
+\ the elaboration really does reach the fourth row - which is what makes the row
+\ the record answers a measurement rather than a constant.
+: LATE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" BAD dup * WIDGET" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: LATE ( -- )
+   BND [: LATE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ An unmodeled word spelled in exactly as many bytes as the record holds, and one
+\ spelled in one byte more. The lengths are asked of the elaborator rather than
+\ written down here, so the pair stays at the ceiling if the ceiling moves.
+: FITNAME-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   NELAB:REFUSED-CAP LONG-TEXT
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: FITNAME ( -- )
+   BND [: FITNAME-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: OVERNAME-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   NELAB:REFUSED-CAP 1+ LONG-TEXT
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: OVERNAME ( -- )
+   BND [: OVERNAME-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A body that compiles. It measures nothing - the SQUARE case above already
+\ measures what this body becomes - because what it is here for is the state it
+\ leaves behind, and a fixture that answered a stackful of values would put that
+\ state behind a row of assertions about something else.
+: COMPILES-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" SQUARE dup *" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+\ Each refusal, asserted. A case that runs two of them wraps each one in an
+\ enclosing context of its own for the reason the section above gives: the throw
+\ skips the elaboration's own teardown, so the arenas it left standing are only
+\ reclaimed when something outside it exits normally.
+: MOD-THROWS ( -- )
+   [: MODTOK ;] E-HIR-UNMODELED TTHROWSQ ;
+
+: STR-THROWS ( -- )
+   [: STRTOK ;] E-HIR-KIND TTHROWSQ ;
+
+: FIT-THROWS ( -- )
+   [: FITNAME ;] E-HIR-UNMODELED TTHROWSQ ;
+
+: OVER-THROWS ( -- )
+   [: OVERNAME ;] E-HIR-UNMODELED TTHROWSQ ;
+
+: UNDER-THROWS ( -- )
+   [: UNDER ;] E-NELAB-UNDER TTHROWSQ ;
+
+: REFUSED-WORD-CASE ( -- )
+   s" a body word the dialect cannot compile is named by the record, with its row and its kind" T-LABEL
+   MOD-THROWS
+   NELAB:REFUSED$ s" mod" T$=
+   NELAB:REFUSED-ROW 1 T=
+   NTAPE-KIND:NAME NELAB:REFUSED-KIND? TTRUE ;
+
+: REFUSED-OTHER-CASE ( -- )
+   s" a different body word gives a different answer, so the record reads the body" T-LABEL
+   [: UNDEC ;] E-HIR-UNMODELED TTHROWSQ
+   NELAB:REFUSED$ s" negate" T$= ;
+
+: REFUSED-LATE-CASE ( -- )
+   s" a name only this fixture ever wrote is answered, at the row it stands on" T-LABEL
+   [: LATE ;] E-HIR-UNMODELED TTHROWSQ
+   NELAB:REFUSED$ s" WIDGET" T$=
+   NELAB:REFUSED-ROW 3 T= ;
+
+: REFUSED-KIND-CASE ( -- )
+   s" a token kind the subset does not model is answered as that kind, not as a name" T-LABEL
+   STR-THROWS
+   NTAPE-KIND:STRING-LITERAL NELAB:REFUSED-KIND? TTRUE
+   NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE
+   NELAB:REFUSED$ s" x" T$=
+   NELAB:REFUSED-ROW 1 T= ;
+
+: REFUSED-STALE-CASE ( -- )
+   s" a later refusal never answers an earlier refusal's word" T-LABEL
+   BND [: drop MOD-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ s" mod" T$=
+   BND [: drop STR-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ s" mod" T$<>
+   NELAB:REFUSED$ s" x" T$=
+   NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE ;
+
+: REFUSED-CLEARED-CASE ( -- )
+   s" and a definition that compiles leaves no word for a caller to read" T-LABEL
+   BND [: drop MOD-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ s" mod" T$=
+   BND [: COMPILES-BODY ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED-ROW -1 T=
+   NELAB:REFUSED$ nip 0 T=
+   NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE ;
+
+\ A refusal that is not about one token's spelling. `+` is a word the dialect
+\ models perfectly well; what is wrong is the body around it, so the record has
+\ nothing to name and says so - even directly after a refusal that DID name a
+\ word, which is the same staleness demand as the two cases above made of a
+\ definition that compiled.
+: REFUSED-NONE-CASE ( -- )
+   s" a refusal that is not about a token leaves no token named, however recent the last one was" T-LABEL
+   BND [: drop MOD-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ s" mod" T$=
+   BND [: drop UNDER-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED-ROW -1 T=
+   NELAB:REFUSED$ nip 0 T= ;
+
+\ The clear a driver calls itself. What it is FOR cannot be shown from here - it
+\ matters when a definition is refused before any elaboration begins, which needs
+\ the engine and lives in test/compiler/native-migrate.f - so what this case
+\ states is the one thing this suite owns: the word really does throw a record
+\ away, so a driver that calls it before each attempt starts from nothing.
+: REFUSED-RESET-CASE ( -- )
+   s" a caller can throw the record away itself" T-LABEL
+   BND [: drop MOD-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ s" mod" T$=
+   NELAB:REFUSED-RESET
+   NELAB:REFUSED-ROW -1 T=
+   NELAB:REFUSED$ nip 0 T=
+   NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE ;
+
+: REFUSED-CEILING-CASE ( -- )
+   s" a spelling that fills the record is answered whole, and one byte more is answered as nothing" T-LABEL
+   BND [: drop FIT-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ BODY$ T$=
+   NELAB:REFUSED$ nip NELAB:REFUSED-CAP T=
+   BND [: drop OVER-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ nip 0 T=
+   NELAB:REFUSED-ROW 1 T=
+   NTAPE-KIND:NAME NELAB:REFUSED-KIND? TTRUE ;
+
 \ ---- the three shapes a control word builds ----------------------------------
 \ Each of these is a real corpus body, elaborated and then measured on the three
 \ things a control construction can get wrong: how many blocks it made, which
@@ -1543,6 +1736,15 @@ public
    BND [: drop BADMODE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop SECOND-NAME-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop NAMEMODE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop REFUSED-WORD-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop REFUSED-OTHER-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop REFUSED-LATE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop REFUSED-KIND-CASE ;] IR-CTX:WITH-CONTEXT
+   REFUSED-STALE-CASE
+   REFUSED-CLEARED-CASE
+   REFUSED-NONE-CASE
+   REFUSED-RESET-CASE
+   REFUSED-CEILING-CASE
    T-REPORT ;
 
 ;package

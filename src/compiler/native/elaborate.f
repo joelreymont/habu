@@ -135,6 +135,121 @@ private
 : VW ( -- IR-ARENA:view )            0 S-VW @ ;
 : MKEY ( -- IR-ID:ir-module-key )    0 S-KEY @ ;
 
+\ ---- naming the token a refusal was about ------------------------------------
+\ WHY THE CHAIN HAS TO SAY WHICH TOKEN. A body word the dialect cannot compile is
+\ refused with E-HIR-UNMODELED and a body token kind the subset does not model
+\ with E-HIR-KIND, and neither code carries the token it is about. A caller told
+\ only "somewhere in this body is a word I cannot compile" cannot act on that: to
+\ find the word it would have to lex the source again and guess, which is a
+\ SECOND opinion about what a token is - the one thing this chain keeps a single
+\ producer for. So the answer is taken where the elaboration already stands, off
+\ the tape it is reading.
+\
+\ WHAT THE RECORD IS ABOUT, EXACTLY: the token this file was asking the word
+\ model about. Both refusals belong to that one question -
+\ src/compiler/native/hir-word.f ADMIT-TOKEN refuses the kind and ADMIT refuses
+\ the word - and ADMIT-AT below is the only place this file asks it. Everything
+\ else the elaboration can refuse is refused for a reason that is not about one
+\ token's spelling: a declared arity, the shape of the tape, a control structure
+\ left open, a vector that ran out. Those leave no record at all rather than a
+\ record that points at whichever token the pass happened to have reached.
+\
+\ WHY IT IS TAKEN ON THE WAY OUT RATHER THAN ON THE WAY IN. The refusal is not
+\ this file's, so the caller of ADMIT-TOKEN never gets an answer back to write
+\ down. Writing the SPELLING down before each admit would copy bytes for every
+\ token of every definition that compiles, to describe a refusal nobody ever
+\ asks about; catching the refusal costs the compiling path nothing beyond the
+\ one integer store ADMIT-AT makes, and takes the record only when there is a
+\ refusal to describe.
+\
+\ AND IT HAS TO BE TAKEN HERE, because the tape does not outlive the call. The
+\ migration runs the whole chain inside one IR-CTX context and gives every arena
+\ back as it leaves (src/compiler/native/migrate.f BODY), so by the time the
+\ caller has caught the refusal the tape that names the token is gone. A reader
+\ that answered by reaching back into the tape would be reading released memory.
+\ These bytes are this package's own and outlive the context.
+\
+\ THE RECORD DESCRIBES THE LAST ELABORATION AND NOTHING ELSE, and two cells make
+\ that structural rather than careful. RF-AT is non-negative exactly while an
+\ admit is in flight - ADMIT-AT writes the row before the call and takes it back
+\ the instant the call returns - so the only way it can still hold a row is that
+\ the admit threw. RF-ROW is the row a refusal was really taken for, or -1 for
+\ "there is no record", and every reader below is gated on it, so the kind and
+\ the bytes cannot contradict it: the same discipline
+\ src/compiler/native/tape.f keeps for a token's literal, where the kind decides
+\ and there is no second flag to disagree with it. COLON clears both before it
+\ reads anything, so every attempt that REACHES this file starts with no record
+\ and a definition that compiles leaves none behind.
+\
+\ AND THE CLEAR CANNOT COVER WHAT NEVER ARRIVES, which is the honest limit of it.
+\ A definition can be refused before any elaboration begins - the engine rejects
+\ the source while `evaluate` is still resolving names, and no tape is ever
+\ sealed - and then COLON is not entered, so nothing here runs and the record is
+\ still the last definition that DID reach it. That is not a state this file can
+\ observe: it is the driver, not the elaborator, that knows an attempt was made.
+\ So the clear is published as REFUSED-RESET, and a driver running many
+\ definitions in one process calls it before each attempt. Then a refusal raised
+\ before elaboration reads as what it is - no record - instead of as the previous
+\ definition's word.
+\
+\ A SPELLING THAT DOES NOT FIT IS NOT NAMED. The bytes are the token's interned
+\ spelling, and for a string literal that is the string's own text, which has no
+\ ceiling - so no buffer can promise to hold every one. Truncating would answer a
+\ name that denotes some OTHER word, which is worse than answering none, so what
+\ does not fit is recorded as nothing: the row and the kind still say where the
+\ refusal was and what shape the token had, and the spelling comes back empty,
+\ which no real spelling is.
+128 constant RF-CAP                  \ bytes of one refused spelling the record holds
+
+here CELL 1- and CELL swap - CELL 1- and allot
+variable RF-AT                       \ the row of the admit in flight, or -1
+variable RF-ROW                      \ the row the record was taken for, or -1
+variable RF-U                        \ how many of that row's spelling bytes are held
+1 TYPED-BUFFER RF-KIND NTAPE:kind
+create RF-BUF RF-CAP allot
+
+: RF-RESET ( -- )
+   -1 RF-AT !
+   -1 RF-ROW ! ;
+
+\ The one place this file asks the word model what a body token means, and the
+\ one integer store that lets the refusal it may throw be described.
+: ADMIT-AT ( IR-ARENA:arena n -- HIR:meaning )
+   {: r:IR-ARENA:arena ix:n :}
+   ix RF-AT !
+   VW MKEY r ix HIR-WORD:ADMIT-TOKEN
+   -1 RF-AT ! ;
+
+\ Everything the record reads off the tape, in the order that keeps a partial
+\ read honest: the kind, then an empty spelling, then the row - which is the
+\ gate, so the record exists from that store onwards - and the bytes last,
+\ because they are the only part that can be refused. A refused copy therefore
+\ leaves a record whose spelling is empty rather than one carrying the length of
+\ some earlier refusal's bytes.
+: RF-TAKE ( -- )
+   VW RF-AT @ NTAPE:KIND@ 0 RF-KIND !
+   0 RF-U !
+   RF-AT @ RF-ROW !
+   CTX BLD  VW MKEY RF-AT @ NTAPE:SPELL@  RF-BUF RF-CAP IR-BUILD:SYMBOL-COPY
+   RF-U ! ;
+
+\ The record, taken so that it cannot BECOME the refusal. Two things make the
+\ code caught here different from a swallowed error. A refusal is already in
+\ flight - RF-RECORD is only ever reached from a handler that is about to rethrow
+\ it - so nothing is lost by dropping this one; and letting it out would replace
+\ the reason the caller asked about with the interner's reason for not being able
+\ to spell it, which is the one failure a diagnostic must not have. What the code
+\ decides instead is the CONTENT of the record: an over-long spelling leaves the
+\ row and the kind standing and no bytes at all. Emptying the spelling here as
+\ well as in the take is what makes that answer independent of how far the take
+\ got, so a copier that ever wrote bytes before refusing still could not leave a
+\ length behind for a caller to read them by.
+: RF-RECORD ( -- )
+   RF-AT @ 0 < if exit then
+   [: RF-TAKE ;] catch {: rc:n :}
+   rc 0= if exit then
+   0 RF-U ! ;
+
 \ ---- the compile-time value vector -------------------------------------------
 \ How deep the data stack may get inside one straight-line body. Sixty-four is
 \ far past anything hand-written Forth reaches; a body that wants more is a
@@ -2011,7 +2126,7 @@ create JOIN-TAB TMAX cells allot
    VW ix NTAPE-MODE:COMPILING MODE-CK
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
-   VW MKEY r ix HIR-WORD:ADMIT-TOKEN
+   r ix ADMIT-AT
    HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if exit then
    r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:CTRL@
    MATCH HIR:ctrl
@@ -2753,7 +2868,7 @@ variable IX                          \ the body token the walk stands on
    EXIT-PENDING @ 0<> if r ix AFTER-EXIT-CK then
    ix IN-DECL? if exit then
    ix LOCAL-READ? if exit then
-   VW MKEY r ix HIR-WORD:ADMIT-TOKEN
+   r ix ADMIT-AT
    MATCH HIR:meaning
       literal      OF ix EMIT-CONST ENDOF
       real-literal OF ix EMIT-FCONST ENDOF
@@ -2781,6 +2896,44 @@ variable IX                          \ the body token the walk stands on
       p r IX @ STEP
       IX @ 1+ IX !
    repeat ;
+
+\ ---- the two walks of the body, with the record around them ------------------
+\ Both of them ask the word model about every token through ADMIT-AT, so both can
+\ be left by a refusal that ADMIT-AT was standing in the middle of, and these are
+\ where such a refusal is written down. Each hands its arguments back because a
+\ checked catch takes a stack-preserving quotation and a quotation cannot read
+\ the enclosing word's locals (docs/forth.md § Errors); each rethrows the code
+\ unchanged, because this seam decides nothing about the refusal and only names
+\ the token it was about.
+\
+\ THE BUILDER IS LEFT EXACTLY AS THE REFUSAL LEFT IT. Unwinding its open stages
+\ would need handles a stack-preserving quotation cannot carry, which is the
+\ paragraph at the top of this file. Naming a token needs nothing but what this
+\ package has already parked, which is why one of the two is possible here and
+\ the other is not.
+: SK-KEEP ( IR-ARENA:arena n -- IR-ARENA:arena n )
+   {: r:IR-ARENA:arena n:n :}
+   r n SKELETON
+   r n ;
+
+: SKELETON-TRY ( IR-ARENA:arena n -- )
+   [: SK-KEEP ;] catch {: rc:n :}
+   2drop
+   rc 0= if exit then
+   RF-RECORD
+   rc throw ;
+
+: WALK-KEEP ( IR-ARENA:arena IR-ARENA:arena n -- IR-ARENA:arena IR-ARENA:arena n )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena n:n :}
+   p r n WALK
+   p r n ;
+
+: WALK-TRY ( IR-ARENA:arena IR-ARENA:arena n -- )
+   [: WALK-KEEP ;] catch {: rc:n :}
+   2drop drop
+   rc 0= if exit then
+   RF-RECORD
+   rc throw ;
 
 \ ---- opening the function ----------------------------------------------------
 \ The word's declared effect as a code-reference type: one cell in per input and
@@ -3002,6 +3155,7 @@ EXPORT SPLICE-MEANING?
 : COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
       r:IR-ARENA:arena in:n out:n :}
+   RF-RESET
    in out ARITY-CK
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    c 0 S-CTX !
@@ -3019,12 +3173,12 @@ EXPORT SPLICE-MEANING?
    r n INLINE-SCAN
    r n MEM-SCAN
    r n CROSS-SCAN
-   r n SKELETON
+   r n SKELETON-TRY
    c b v key in out OPEN-FUN
    c b v key in OPEN-BLOCK
    TOK-NEED @ 0<> if 0 EMIT-MEM then
    0 EXIT-PENDING !
-   p r n WALK
+   p r n WALK-TRY
    CS-N @ 0<> if E-NELAB-CTRL throw then
    EXIT-PENDING @ 0<> if E-NELAB-CTRL throw then
    EXIT-USED @ 0<> if
@@ -3037,6 +3191,58 @@ EXPORT SPLICE-MEANING?
    r n TAIL-SCAN
    c b IR-BUILD:END-BLOCK drop
    c b IR-BUILD:END-FUN ;
+
+\ ---- what the last elaboration refused ---------------------------------------
+\ The readers of the record above, for a caller that has just caught a refusal
+\ out of COLON and needs to know which token it was about, and the clear that
+\ makes the answer honest for a caller driving more than one definition. They
+\ answer about the last elaboration that reached COLON, which the row decides:
+\ COLON clears the row before it reads anything, so a definition that compiled
+\ and a definition refused somewhere other than a body token both answer "no
+\ record". An attempt refused BEFORE COLON is reached never runs that clear -
+\ see the section above - so a driver clears the record itself.
+\
+\ WHY THE KIND IS A QUESTION AND NOT AN ANSWER. There is no token kind that
+\ means "no token", so a reader that handed one back would have to invent a
+\ sentinel and every caller would have to know it. Asking whether the refused
+\ token was of a given kind has a true answer in every state: with no record,
+\ no token was refused, so it was not of that kind either.
+
+\ Which body row the last elaboration's refusal stood on, or -1 when it refused
+\ nothing, or refused something that is not a body token - a declared arity, the
+\ shape of the tape, or a control structure still open when the body ended.
+: REFUSED-ROW ( -- n )
+   RF-ROW @ ;
+
+\ Was that token of this tape kind? False whenever there is no record.
+: REFUSED-KIND? ( NTAPE:kind -- bool )
+   {: k:NTAPE:kind :}
+   RF-ROW @ 0 < if false exit then
+   0 RF-KIND @ k NTAPE-KIND:EQ ;
+
+\ Its spelling, as the tape interned it. Empty when there is no record, and
+\ empty when the spelling was longer than the record holds - REFUSED-ROW
+\ separates the two, and truncating rather than answering nothing would name a
+\ word other than the one that was refused.
+: REFUSED$ ( -- ptr u8 n )
+   RF-ROW @ 0 < if RF-BUF 0 exit then
+   RF-BUF RF-U @ ;
+
+\ The longest spelling REFUSED$ can answer, so a caller that copies the answer
+\ away can size its own buffer from this rather than from a number of its own.
+: REFUSED-CAP ( -- n )
+   RF-CAP ;
+
+\ Throw the record away. A driver that compiles many definitions in one process
+\ calls this before EACH attempt, and then what it reads afterwards describes
+\ that attempt or nothing: an attempt refused before elaboration begins - the
+\ engine rejecting the source, a reader refusing it, anything that never reaches
+\ COLON - leaves the readers above answering "no record" instead of answering
+\ the last definition that did reach it. Reasoning that such a refusal carries a
+\ code the driver would not have asked about is not the same guarantee: it
+\ depends on which codes can come out of where, and this does not.
+: REFUSED-RESET ( -- )
+   RF-RESET ;
 
 private
 get-current prot-wid-add
