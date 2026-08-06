@@ -208,6 +208,13 @@ private
    s" map-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" ffi-abi" SUITE-LABEL= if SUITE-TRUE exit then
    s" ieee-float32" SUITE-LABEL= if SUITE-TRUE exit then
+   \ The ptx family runs whole here. Two of its suites were declared in
+   \ test/gate-stdlib-cases.f and named by no slice, so they ran in no gate:
+   \ ptx-emitter-lint (the single-definition lint over the PTX emitter surface)
+   \ and ptx-uniform-barrier (the uniformity / block-uniform barrier model). A
+   \ split family is how a suite goes quietly unrun - whoever touches lib/ptx
+   \ runs one slice and must get every ptx suite from it, lint included.
+   s" ptx-emitter-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-rep-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-mint-neg" SUITE-LABEL= if SUITE-TRUE exit then
@@ -220,6 +227,7 @@ private
    s" ptx-gemm-checked-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-attention-checked-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-autograd-neg" SUITE-LABEL= if SUITE-TRUE exit then
+   s" ptx-uniform-barrier" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-toolchain" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
