@@ -126,9 +126,14 @@ variable LABEL-U
 : CHECK-RUN ( -- )
    CHECK:RUN throw ;
 
+\ An in-process check run is committed by GE-EVAL-STORE-RC, the one word that
+\ owns synthesized runner state.  This used to take the same rc and write only
+\ the outcome tag with GT-OUTCOME!, on top of the lengths and the process
+\ outcome GE-CAPTURE-ACTION had already stored - two parties writing the tag for
+\ one run, with the second unable to touch the lengths that go with it.
 \ typed-local-lint: allow-bare-local - q preserves the quotation effect.
 : CHECK-CAPTURE ( [ -- ] -- ) {: q :}
-   q GE-CAPTURE-ACTION OUTCOME:EXITED GT-OUTCOME! ;
+   q GE-CAPTURE-ACTION GE-EVAL-STORE-RC ;
 
 : STDIN-ACT ( -- )
    GE-SRC-BUF GE-SRC-U @ s" <stdin>" CHECK:SOURCE
