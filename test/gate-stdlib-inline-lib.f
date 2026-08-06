@@ -621,7 +621,8 @@ public
    s" lib/ptx/cpp-slot-neg-test.f" GSI-INCLUDE
    s" lib/ptx/cg-mma-slot-neg-test.f" GSI-INCLUDE
    s" lib/ptx/gemm-checked-neg-test.f" GSI-INCLUDE
-   s" lib/ptx/attention-checked-neg-test.f" GSI-INCLUDE ;
+   s" lib/ptx/attention-checked-neg-test.f" GSI-INCLUDE
+   s" lib/ptx/autograd-neg-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-LIBS-PTX-TOOL ( -- )
    s" stdlib/lint-libs/ptx-toolchain" GSI-GROUP-SEQ GSI-GROUP-HEADER \ ( -- )
