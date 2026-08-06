@@ -37,7 +37,9 @@ variable LJW-NUM-I
    a LJW-BUF LJW-LEN @ + u LINT-BMOVE
    LJW-LEN @ u + LJW-LEN ! ;
 
-: LJW-HEX ( n -- c )
+\ One nibble to its ASCII hex digit. Both are plain byte values: the input is
+\ masked to 0..15 by the caller, the result is what LJW-C stores.
+: LJW-HEX ( n -- n )
    dup 10 < IF LJW-ZERO + ELSE 55 + THEN ;
 
 : LJW-U00 ( n -- )
