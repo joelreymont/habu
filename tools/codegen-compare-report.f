@@ -618,35 +618,41 @@ private
    j 0 < if false exit then
    k j BIGGER-ROW? ;
 
-\ ---- the one row that loses on bytes today, and why it is allowed to ----------
-\ ONE row of the four corpora is bigger in the new column, and it is a stated
-\ trade, not a waiting capability. CODEGEN-CORPUS4:CALL-FAN-BIG was on this
-\ list waiting for habu-measure-inline-cost-031e817e to re-derive the inliner's
-\ size rule. That landed, and the honest re-derivation kept the row: a copy
-\ costs the callee's body and a call site costs anything from the branch alone
-\ to the whole of what its arity allows, so no rule read while the CALLEE is
-\ published can promise that a copy is never bigger. The rule bounds what a
-\ copy ADDS and says so, and this row is that bound at its widest: five sites
-\ whose calls are one instruction each against copies of four, 88 bytes against
-\ 36, in about a twentieth of the time. src/compiler/native/inline.f carries
-\ the derivation. The fact comes off this file if the rule ever tightens past
-\ C-MAD's body, and the stale check below is what would say so.
+\ ---- the rows that lose on bytes today, and why one would be allowed to -------
+\ NO row of the five corpora is bigger in the new column, so this list is empty
+\ and every byte loss a run finds is an unknown one and a finding.
+\
+\ IT HELD ONE UNTIL INSTRUCTION COMBINING LANDED, and how it came off is the
+\ mechanism working rather than a fact being edited away.
+\ CODEGEN-CORPUS4:CALL-FAN-BIG is five call sites over a callee the engine calls
+\ and the chain copies, so the chain paid five copies of `3 * 5 +` against five
+\ branches: 56 bytes against the emitter's 36. The trade was real and the row was
+\ named here for it. src/compiler/native/combine.f then turned each copy's
+\ multiply and addition into one multiply-add - five instructions, twenty bytes -
+\ and the row came to 36 exactly, a draw. A draw is not a loss, so the stale
+\ check below reported the fact as outlived and this is that report acted on.
+\ The list's previous entry, CODEGEN-CORPUS2:T-RES-WALK, came off the same way.
 \
 \ WHY A NAMED ROW AND NOT A TOLERANCE. A tolerance - "a row may be up to so
 \ much bigger" - would also absorb the next loss, and the next loss is the
-\ whole reason this check exists. The named row absorbs itself and nothing
-\ else, and it is checked in BOTH directions: a new loss is a finding, and this
-\ row ceasing to lose is a finding too, so the fact cannot outlive the trade
-\ (the list's previous entry, CODEGEN-CORPUS2:T-RES-WALK, came off through
-\ exactly that finding).
+\ whole reason this check exists. A named row absorbs itself and nothing else,
+\ and it is checked in BOTH directions: a new loss is a finding, and a named row
+\ ceasing to lose is a finding too, so a fact cannot outlive its trade.
+\
+\ WHILE THE LIST IS EMPTY THE SECOND DIRECTION HAS NOTHING TO WATCH. STALE-LOSS?
+\ below answers false for a name no row carries, which is what an empty name is,
+\ so the stale half is dormant rather than removed: it is what will report the
+\ NEXT recorded trade when that trade ends. The first direction - an unnamed row
+\ that grows is a finding - is what guards the corpora today, and it is live for
+\ every row.
 
 : KNOWN-LOSS$ ( -- ptr u8 n )
-   s" CODEGEN-CORPUS4:CALL-FAN-BIG" ;
+   s" " ;
 
-\ Why the row is allowed to lose, printed beside it so a reader of a report
-\ does not have to come here to find out.
+\ Why a named row is allowed to lose, printed beside it so a reader of a report
+\ does not have to come here to find out. There is no such row today.
 : KNOWN-WHY$ ( -- ptr u8 n )
-   s" five copies of a callee the engine calls; the inline size rule's stated trade, src/compiler/native/inline.f" ;
+   s" no row is a stated trade today" ;
 
 : KNOWN? ( ptr u8 n -- bool )
    KNOWN-LOSS$ STR= ;

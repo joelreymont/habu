@@ -69,6 +69,8 @@ $1F constant REG-MASK              \ a register operand is a five-bit field
 $FFF constant IMM12-MASK           \ the unsigned load/store offset field
 8 constant SLOT-BYTES              \ one 64-bit slot: the load/store scale, and
                                    \ the distance a pairable pair's offsets differ by
+31 constant ZERO-REG               \ the addend field's value that makes a
+                                   \ multiply-add a plain multiply
 
 : FRD ( n -- n ) {: w:n :}
    w REG-MASK and ;
@@ -81,6 +83,11 @@ $FFF constant IMM12-MASK           \ the unsigned load/store offset field
 
 : FI12 ( n -- n ) {: w:n :}
    w 10 rshift IMM12-MASK and ;
+
+\ The three-source forms' fourth register, which sits between the two fields the
+\ shifted-register forms use.
+: FRA ( n -- n ) {: w:n :}
+   w 10 rshift REG-MASK and ;
 
 $3F constant SHIFT-MASK            \ a shift amount for a 64-bit register
 $1FFF constant NIS-MASK            \ the packed N:immr:imms of a logical immediate
@@ -123,6 +130,17 @@ public
 : ADD? ( n -- bool ) {: w:n :}
    w R3-OK? 0= if false exit then
    w FRD w FRN w FRM ENC-ADD w = ;
+
+\ The multiply-add itself: what a combined pair became. It shares its opcode with
+\ the plain multiply and is told apart by the addend field, exactly as the
+\ decoder in formal/Common/Insn.v tells them apart - so the addend is read out
+\ and put back, and a word whose addend is the zero register reproduces as a
+\ multiply here and answers false, which is what it is.
+: MADD? ( n -- bool ) {: w:n :}
+   w R3-OK? 0= if false exit then
+   w FRA ENCODABLE? 0= if false exit then
+   w FRA ZERO-REG = if false exit then
+   w FRD w FRN w FRM w FRA ENC-MADD w = ;
 
 : SUB? ( n -- bool ) {: w:n :}
    w R3-OK? 0= if false exit then
@@ -334,6 +352,11 @@ public
 
 : SHIFTS ( -- n )
    [: SHIFTI? ;] COUNT1 ;
+
+\ How many multiply-adds the row already holds: what a combining pass PUT there,
+\ as opposed to the pairs above, which are what one could still take.
+: MADD-INSNS ( -- n )
+   [: MADD? ;] COUNT1 ;
 
 : MADDS ( -- n )
    [: MADD-PAIR? ;] COUNT2 ;

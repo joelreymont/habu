@@ -42,6 +42,7 @@ variable T-SUB
 variable T-LDR
 variable T-STR
 variable T-MADD
+variable T-MADDI
 variable T-MADD-SAFE
 variable T-MSUB
 variable T-MSUB-SAFE
@@ -67,6 +68,7 @@ variable T-ROWS
    NCOMBINV:SUBS T-SUB +!
    NCOMBINV:LDRS T-LDR +!
    NCOMBINV:STRS T-STR +!
+   NCOMBINV:MADD-INSNS T-MADDI +!
    NCOMBINV:MADDS T-MADD +!
    NCOMBINV:MADD-SAFES T-MADD-SAFE +!
    NCOMBINV:MSUBS T-MSUB +!
@@ -85,6 +87,7 @@ variable T-ROWS
    s"  sub " NCOMBINV:SUBS FIELD
    s"  ldr " NCOMBINV:LDRS FIELD
    s"  str " NCOMBINV:STRS FIELD
+   s"  madd-insn " NCOMBINV:MADD-INSNS FIELD
    s"  madd " NCOMBINV:MADDS FIELD
    s"  madd-safe " NCOMBINV:MADD-SAFES FIELD
    s"  msub " NCOMBINV:MSUBS FIELD
@@ -178,6 +181,7 @@ private
    s"  sub " T-SUB @ FIELD
    s"  ldr " T-LDR @ FIELD
    s"  str " T-STR @ FIELD
+   s"  madd-insn " T-MADDI @ FIELD
    s"  madd " T-MADD @ FIELD
    s"  madd-safe " T-MADD-SAFE @ FIELD
    s"  msub " T-MSUB @ FIELD

@@ -78,6 +78,7 @@ require src/compiler/native/elaborate.f
 require src/compiler/native/inline.f
 require src/compiler/native/select.f
 require src/compiler/native/spill.f
+require src/compiler/native/combine.f
 require src/compiler/native/emit.f
 require src/compiler/native/publish.f
 
@@ -588,7 +589,38 @@ variable REC-OK                      \ the body staged so far is still one worth
    CC ab A64RAV:BIND-DIALECT
    CC ab A64EMIT:BIND-DIALECT
    CC ab A64SPILL:BIND-DIALECT
+   CC ab A64COMB:BIND-DIALECT
    CC m ab TXT len ROUTINE A64SEL:SELECT ;
+
+\ The module in which a multiply and the addition that reads its product are one
+\ multiply-add. It stands between selection and allocation because that is where
+\ the pattern is visible: the two operations are values here and registers
+\ afterwards, and the allocator's own reuse of a register is what makes the same
+\ pair unfusable once it has run.
+\
+\ A MODULE WITH NO SUCH PAIR IS HANDED BACK UNTOUCHED, which is not an
+\ optimisation of this pass but the thing that keeps every other routine's bytes
+\ what they were. Rebuilding a module renumbers its values, and the allocator
+\ breaks ties on those numbers, so a routine that gained nothing could still come
+\ out holding different registers and therefore different bytes. The scan is
+\ asked first and the binding given straight back when it answers zero, exactly
+\ as EMITTED below gives the spill binding back for a routine that spills
+\ nothing.
+: COMBINED ( IR-BUILD:module n -- IR-BUILD:module )
+   {: m:IR-BUILD:module len:n :}
+   m A64COMB:FUSIONS {: n:n :}
+   n 0= if A64COMB:RELEASE m exit then
+   A64RA:RELEASE
+   A64EMIT:RELEASE
+   A64SPILL:RELEASE
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb A64RA:BIND-DIALECT
+   CC nb A64RAV:BIND-DIALECT
+   CC nb A64EMIT:BIND-DIALECT
+   CC nb A64SPILL:BIND-DIALECT
+   CC m nb TXT len A64COMB:REWRITE {: m1:IR-BUILD:module :}
+   A64COMB:FUSED n <> if E-A64COMB-SHAPE throw then
+   m1 ;
 
 \ The emission is made against the slot the publication seam is about to claim,
 \ which is what a branch to another word is measured from. It is declared for
@@ -649,7 +681,7 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ habu-exercise-a-call-dda45093.
 : EMITTED ( -- )
    TEXT-LEN {: len:n :}
-   len SELECTED {: m:IR-BUILD:module :}
+   len SELECTED len COMBINED {: m:IR-BUILD:module :}
    CC m ROUTINE A64RA:ALLOCATE
    A64RA:SPILLS M-SPILLS !
    M-SPILLS @ 0= if
@@ -728,6 +760,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    A64SEL:BOUND? if A64SEL:RELEASE then
    A64RA:BOUND? if A64RA:RELEASE then
    A64SPILL:BOUND? if A64SPILL:RELEASE then
+   A64COMB:BOUND? if A64COMB:RELEASE then
    A64EMIT:BOUND? if A64EMIT:RELEASE then ;
 
 : BODY ( IR-CTX:ctx -- )

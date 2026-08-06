@@ -1113,3 +1113,20 @@ public
 -8620 constant E-A64SEL-TAIL    \ a call the selector was told to leave through that it cannot: a value live across it, a callee whose arity is not this routine's own, a data-stack adjustment the branch would have had to carry, or a contract declaring a tail call over a module with no such site in it - and the other way round, a site built under a contract that declares an ordinary return
 -8621 constant E-NPUB-RELOC   \ an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement
 -8622 constant E-NPUB-HELD    \ a held publication that is not the one the engine is holding: the record the engine withheld is always the unpublished slot the dictionary count points at, so an index anywhere else names a record no hold created and committing it would publish whatever happened to be there
+
+\ Combining two machine operations into one: -8630..-8639
+\
+\ A multiply whose product one later addition reads, and nothing else does, is
+\ the multiply-add the machine already has. src/compiler/native/combine.f is the
+\ pass that finds those pairs and writes the module in which they are one
+\ operation, and these are its refusals. They are a rewriter's refusals rather
+\ than a validator's: the pass writes a module the ordinary
+\ src/compiler/native/regalloc-verify.f then decides, so anything the rewrite
+\ gets wrong about registers is caught there and not here. What is refused here
+\ is the pass being asked to work on something it cannot read.
+-8630 constant E-A64COMB-BIND    \ a combine attempted before the machine dialect's identities were bound, or a second binding over a live one
+-8631 constant E-A64COMB-SHAPE   \ a module this pass cannot rewrite: a span naming another source, a block with no operation in it, or a value used before it is defined
+-8632 constant E-A64COMB-SOURCE  \ source text whose digest is not the one the module being rewritten recorded
+-8633 constant E-A64COMB-OPCODE  \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
+-8634 constant E-A64COMB-CAP     \ more values in one function than the rewriter's value map holds
+-8635 constant E-A64COMB-ADDEND  \ a multiply-add whose addend register is the zero register: that word IS a plain multiply, which is why formal/Common/Insn.v puts it outside `wf`, so emitting one would be emitting a different instruction than the module says

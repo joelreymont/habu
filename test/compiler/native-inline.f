@@ -1022,13 +1022,24 @@ variable STALE-ENTRY
 \ body this file will not hold is a body its callers call, exactly as they call a
 \ word the engine compiled: F-L4 and F-R3 are published, answer correctly, and
 \ their own callers carry one branch each.
+\ THE CHAIN ADDS BEFORE IT MULTIPLIES, AND THAT ORDER IS LOAD-BEARING. What these
+\ links are FOR is the size rule - one link sits inside it and the next sits one
+\ instruction past it - so the bodies have to be the length this file says they
+\ are, and any pass that shortens them moves the boundary instead of testing it.
+\ src/compiler/native/combine.f folds a multiply whose product the next addition
+\ reads into one multiply-add, so a chain written `3 * 7 +` loses an instruction
+\ to it and every count below shifts by one: L4 came inside the rule and the
+\ refusal this fixture exists to pin stopped happening. Written the other way
+\ round the arithmetic is the same shape, the same two literals and the same
+\ instruction counts, and no combining pass has anything to fold - so the numbers
+\ here are the inliner's own. Do not swap them back.
 variable L3-BODY
 variable L4-BODY
 
 : MIGRATE-LIT-CHAIN ( -- )
-   s" : NINL-L1 ( n -- n ) 3 * ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NINL-L1 ( n -- n ) 3 + ;" 1 1 REGS NMIGRATE:DEFINE
    s" NINL-L1" s" NINL-L1" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-L2 ( n -- n ) NINL-L1 7 + ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" : NINL-L2 ( n -- n ) NINL-L1 7 * ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
    s" NINL-L2" s" NINL-L2" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-L3 ( n -- n ) NINL-L2 ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
    A64EMIT:BODY-INSNS L3-BODY !
@@ -1055,7 +1066,7 @@ variable R3-BODY
 \ The same arithmetic as the whole literal chain, compiled by the ENGINE, so what
 \ the copied chain answers is held against a second compiler.
 : DEFINE-CHAIN-TWIN ( -- )
-   s" : NINL-ENGINE-CHAIN ( n -- n ) 3 * 7 + 5 - ;" EV ;
+   s" : NINL-ENGINE-CHAIN ( n -- n ) 3 + 7 * 5 - ;" EV ;
 
 : CHAIN-CASES ( -- )
    s" a routine whose own call was copied is recorded, and so is one of those"
@@ -1072,9 +1083,9 @@ variable R3-BODY
    s" the literals survive two splices, in the right order and to the bit"
    T-LABEL
    s" NINL-L3" ENTRY-OF 0 NINL:LIT@ 3 T=
-   s" NINL-L3" ENTRY-OF 1 NINL:SPELL$ s" *" STR= TTRUE
+   s" NINL-L3" ENTRY-OF 1 NINL:SPELL$ s" +" STR= TTRUE
    s" NINL-L3" ENTRY-OF 2 NINL:LIT@ 7 T=
-   s" NINL-L3" ENTRY-OF 3 NINL:SPELL$ s" +" STR= TTRUE
+   s" NINL-L3" ENTRY-OF 3 NINL:SPELL$ s" *" STR= TTRUE
 
    s" one link further is one instruction past the rule, so it is not recorded"
    T-LABEL
@@ -1101,8 +1112,8 @@ variable R3-BODY
    s" 5 NINL-L4" EV-N  s" 5 NINL-ENGINE-CHAIN" EV-N T=
    s" 0 NINL-L4" EV-N  s" 0 NINL-ENGINE-CHAIN" EV-N T=
    s" -7 NINL-L4" EV-N  s" -7 NINL-ENGINE-CHAIN" EV-N T=
-   s" 5 NINL-L4" EV-N 17 T=
-   s" 5 NINL-L5" EV-N 17 T=
+   s" 5 NINL-L4" EV-N 51 T=
+   s" 5 NINL-L5" EV-N 51 T=
 
    s" a chain of renames fills the ROW before it reaches the size rule" T-LABEL
    s" NINL-R1" ENTRY-OF NINL:TOKENS 8 T=

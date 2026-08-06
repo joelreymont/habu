@@ -610,18 +610,23 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    s" CODEGEN-CORPUS:ADD3" CODEGEN-REPORT:BIGGER? TTRUE
    CODEGEN-REPORT:SAY-BYTE-LOSSES 1 T=
 
-   s" and a known loss that has stopped losing is a finding of its own" T-LABEL
+   s" a row that has stopped losing is no finding while nothing is named" T-LABEL
    [: SHRUNK-KNOWN-LOSS ;] MEASURE-WITH
    s" CODEGEN-CORPUS4:CALL-FAN-BIG" CODEGEN-REPORT:BIGGER? TFALSE
-   CODEGEN-REPORT:SAY-BYTE-LOSSES 1 T=
+   CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
 
-   s" while a known loss this pass does not hold says nothing either way" T-LABEL
+   s" and a row the pass does not hold says nothing either way" T-LABEL
    [: NEW-HONEST-CASE ;] MEASURE-WITH
    s" CODEGEN-CORPUS4:CALL-FAN-BIG" CODEGEN-REPORT:BIGGER? TFALSE
    CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
 
-   s" the known loss is the one row that loses today, named" T-LABEL
-   CODEGEN-REPORT:KNOWN-LOSS$ s" CODEGEN-CORPUS4:CALL-FAN-BIG" T$= ;
+   \ The list is empty, and that is the assertion: no row of the corpora is a
+   \ stated trade, so every byte loss a run finds is an unknown one. It came
+   \ empty when src/compiler/native/combine.f took CODEGEN-CORPUS4:CALL-FAN-BIG
+   \ from 56 bytes to the emitter's own 36 and the stale check reported the fact
+   \ as outlived. A row named here again has to earn it.
+   s" no row is a stated byte-loss trade today" T-LABEL
+   CODEGEN-REPORT:KNOWN-LOSS$ s" " T$= ;
 
 \ ---- the register the drivers walk ------------------------------------------
 \ Every driver in tools/codegen-compare-cli.f reads which corpora exist, and
@@ -1600,12 +1605,19 @@ private
    s" CODEGEN-CORPUS4:TINY-CALLEE" SMALLER? TTRUE
    s" CODEGEN-CORPUS4:LADDER" SMALLER? TTRUE
 
-   s" and it is the five sites over the callee only the chain copies" T-LABEL
+   \ The five sites over the callee only the chain copies. It used to be the
+   \ corpora's one byte LOSS - five copies of `3 * 5 +` against five branches,
+   \ 56 bytes against the emitter's 36 - and src/compiler/native/combine.f made
+   \ each copy's multiply and addition one multiply-add, which is five
+   \ instructions and exactly the twenty bytes between them. So the row is a DRAW
+   \ now: not fewer bytes than the engine's, which is why it is still the one row
+   \ NOT-SMALLER counts, and no longer more, which is why nothing here is a loss.
+   s" and it is the five sites over the callee only the chain copies, now a draw" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN-BIG" SMALLER? TFALSE
-   s" CODEGEN-CORPUS4:CALL-FAN-BIG" CODEGEN-REPORT:BIGGER? TTRUE
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" CODEGEN-REPORT:BIGGER? TFALSE
    s" CODEGEN-CORPUS4:CALL-FAN" CODEGEN-REPORT:BIGGER? TFALSE
 
-   s" which the harness adjudicates as a KNOWN loss and not as a finding" T-LABEL
+   s" so the harness adjudicates the corpus with no byte loss at all" T-LABEL
    CODEGEN-REPORT:SAY-BYTE-LOSSES 0 T=
 
    s" exactly one row touches the caller's data stack more often, and is that one" T-LABEL
