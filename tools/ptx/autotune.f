@@ -55,11 +55,11 @@ public
 13 constant AT-BPAD           \ transposed-Bs (BT) row pad
 
 public
-: AT-CFG@ ( ptr a n -- n )  cells + @ ;
-: AT-CFG! ( n ptr a n -- )  cells + ! ;
+: AT-CFG@ ( ptr n n -- n )  cells + @ ;
+: AT-CFG! ( n ptr n n -- )  cells + ! ;
 
 \ the byte-identical cg-mma baseline (8-warp tf32 BN=64 MFRAGS=1) as a config record
-: AT-DEFAULTS ( ptr a -- ) {: c:ptr :}
+: AT-DEFAULTS ( ptr n -- ) {: c:ptr :}
    8 c AT-WARPS AT-CFG!   1 c AT-MFRAGS AT-CFG!  32 c AT-BK AT-CFG!   0 c AT-PAD AT-CFG!
    2 c AT-STAGES AT-CFG!  0 c AT-DYN AT-CFG!      0 c AT-EPILOG AT-CFG! 0 c AT-DTYPE AT-CFG!
    0 c AT-LMODE AT-CFG!  64 c AT-BN AT-CFG!       0 c AT-GROUP AT-CFG!
@@ -76,8 +76,8 @@ create AT-AXS  3 ,  1 , 2 , 3 ,
 create AT-AXN  3 , 64 , 128 , 256 ,
 create AT-AXD  3 ,  0 , 1 , 2 ,
 public
-: AT-AXIS-N ( ptr a -- n )  @ ;
-: AT-AXIS@ ( ptr a n -- n ) {: ax:ptr i:n :}  i 1+ cells ax + @ ;
+: AT-AXIS-N ( ptr n -- n )  @ ;
+: AT-AXIS@ ( ptr n n -- n ) {: ax:ptr i:n :}  i 1+ cells ax + @ ;
 : AT-AX-WARPS  ( -- ptr a )  AT-AXW ;
 : AT-AX-MFRAGS ( -- ptr a )  AT-AXM ;
 : AT-AX-BK     ( -- ptr a )  AT-AXK ;
@@ -94,7 +94,7 @@ private
 create AT-SNAP AT-CFG-N cells allot
 
 public
-: AT-APPLY ( ptr a -- ) {: c:ptr :}                   \ set every cg-mma knob from a config record
+: AT-APPLY ( ptr n -- ) {: c:ptr :}                   \ set every cg-mma knob from a config record
    c AT-WARPS  AT-CFG@ MMA-WARPS !     c AT-MFRAGS AT-CFG@ MMA-MFRAGS !
    c AT-BK     AT-CFG@ MMA-BK !        c AT-PAD    AT-CFG@ MMA-PAD !
    c AT-STAGES AT-CFG@ MMA-STAGES !    c AT-DYN    AT-CFG@ MMA-DYNSMEM !
@@ -125,10 +125,10 @@ public
    MMA-CHECK-GROUP ;
 
 \ apply + check a config; throws the specific E-MMA-* if the config is illegal.
-: AT-CHECK-CFG ( ptr a -- )  AT-APPLY AT-CHECK ;
+: AT-CHECK-CFG ( ptr n -- )  AT-APPLY AT-CHECK ;
 
 \ pure legality probe: never leaves the emitter's knob state mutated.
-: AT-LEGAL? ( ptr a -- bool ) {: c:ptr :}
+: AT-LEGAL? ( ptr n -- bool ) {: c:ptr :}
    AT-SAVE
    c AT-APPLY
    [: AT-CHECK ;] catch {: code:n :}
@@ -164,7 +164,7 @@ public
 12 constant AT-WIN#            \ committed rows
 15 constant AT-ROW-N           \ cells per row (1 class-dim + AT-CFG-N config)
 : AT-WIN-ROW ( n -- ptr a )  AT-ROW-N * cells AT-WINNERS + ;   \ row index 0..AT-WIN#-1
-: AT-ROW-DIM@ ( ptr a -- n )   @ ;
+: AT-ROW-DIM@ ( ptr n -- n )   @ ;
 : AT-ROW-CFG ( ptr a -- ptr a )  1 cells + ;                   \ 14-cell config sub-record
 
 \ ---- bucketing rule (documented, integer-only, no overflow) -----------------
@@ -203,7 +203,7 @@ public
 \ onto the knobs via AT-APPLY.
 : AT-DTYPE-OK? ( n -- bool )  dup 0 >= swap 3 < and ;
 
-: AT-SELECT ( n n n n -- ptr a ) {: dt:n :}           \ ( M N K dtype -- cfg )
+: AT-SELECT ( n n n n -- ptr n ) {: dt:n :}           \ ( M N K dtype -- cfg )
    dt AT-DTYPE-OK? 0= if E-AT-DTYPE throw then
    * * {: w:n :}                                      \ W = M*N*K
    w AT-FLOOR <  w AT-CEIL >  or if E-AT-NEWCLASS throw then
