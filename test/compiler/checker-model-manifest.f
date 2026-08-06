@@ -27,4 +27,13 @@ public
 
 ;package
 
+\ Asked INSIDE the package that declares the vectors' sum families, which is
+\ where a `construct` row can be asked at all: the family resolves in the active
+\ package only. checker-model-proof.f has run it there since the construct
+\ vectors landed and this file did not, which is what made three rows red and
+\ four vacuously green here and nowhere else. The vector phase states that
+\ precondition and checks it, so this is a requirement satisfied rather than a
+\ convention repeated.
+package CHECKER-MODEL-CASES
 CHECKER-MODEL-MANIFEST-TEST:RUN
+;package

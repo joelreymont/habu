@@ -461,9 +461,43 @@ private
    k VEC-NAME$ SB-APPEND SB$ T-LABEL
    k VEC-SRC$ CHECK-QUIET-CANDIDATE! VERDICT-OF k VEC-VERD@ T= ;
 
+\ ---- where these vectors have to be asked ------------------------------------
+\ Every `construct` row resolves its family in the ACTIVE package -
+\ TFAM-CONSTRUCT-FAM, src/core/type-family.f, which reads the very
+\ CHECKER-AUTH-PACKAGE$ this word reads - and the families these rows use are
+\ declared in this package. Asked from anywhere else the checker refuses every
+\ one of them with `bad construct: family not declared in the active package`,
+\ which is a correct refusal about a program nobody wrote.
+\
+\ WHAT THAT COSTS IS NOT ONLY THE RED ROWS. The three rows the model says
+\ certify go red, and the four that expect a refusal go GREEN FOR THE WRONG
+\ REASON: measured at top level, `a_sibling_variant_of_the_same_family_wants_its
+\ _own_payload` is refused for the missing family rather than for the payload
+\ its variant does not have, and so is the underflow row. Four rows that assert
+\ nothing look exactly like four rows that pass.
+\
+\ SO IT IS NOT A CALLER'S PROMISE ANY MORE. checker-model-proof.f wrapped its
+\ call in the package and checker-model-manifest.f did not; both files were
+\ internally correct and nothing noticed the disagreement, so the manifest was
+\ red on three rows and vacuously green on four from the day the construct
+\ vectors landed. The phase reads the authority itself now and names the cause.
+\
+\ IT ASKS FOR THE PACKAGE AND NOT FOR A CERTIFYING PROBE, deliberately. A probe
+\ that ran a construct and required VCert would also fire if `construct` itself
+\ ever regressed, and would report that as "asked in the wrong place". The
+\ environment is what this row is about; a broken rule belongs to the rows that
+\ test the rule.
+: OWN-PACKAGE$ ( -- ptr u8 n )
+   s" CHECKER-MODEL-CASES" ;
+
+: ASKED-IN-OWN-PACKAGE? ( -- bool )
+   CHECKER-AUTH-PACKAGE$ OWN-PACKAGE$ STR= ;
+
 public
 
 : VECTOR-PHASE ( -- )
+   s" the vectors are asked inside the package that declares their families" T-LABEL
+   ASKED-IN-OWN-PACKAGE? TTRUE
    VECTORS 0 ?do i VECTOR-ROW loop ;
 
 \ ---- the whole Habu side -----------------------------------------------------

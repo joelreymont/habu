@@ -637,8 +637,15 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 \ Scope note, and it is why the gate runs where it does. `TFAM-CONSTRUCT-FAM`
 \ (src/core/type-family.f) resolves a construct family in the ACTIVE package
 \ only, so these programs certify only when the checker is asked from inside the
-\ package that declared the family. `test/compiler/checker-model-proof.f` runs
-\ the whole gate inside `package CHECKER-MODEL-CASES` for that reason.
+\ package that declared the family. Both runners ask them there:
+\ `test/compiler/checker-model-proof.f` has since these rows landed, and
+\ `test/compiler/checker-model-manifest.f` since the day the divergence was
+\ read. It is no longer left to a runner to remember - the vector phase in
+\ `test/compiler/checker-model-cases.f` reads `CHECKER-AUTH-PACKAGE$` itself and
+\ fails by name, because the manifest asked from top level for a week and what
+\ that looked like was three red rows and four that passed while asserting
+\ nothing: outside the package the REJECT rows below are refused for the missing
+\ family rather than for the rule each one is about.
 : BUILD-CONSTRUCT-VECTORS ( -- )
    s" construct_builds_the_bundle_from_the_variant_payload"
       s" CMV19 ( n -- cmres ) construct cmres cmok"
