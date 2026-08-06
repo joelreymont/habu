@@ -329,9 +329,21 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ follows from the same number: 5460 -> 5612, inside the same 16 KiB page, so the
 \ text pad absorbs it and neither MACOS-SIGNATURE nor MACOS-TOTAL moves
 \ (FILE-SIZE bin/hb still 148855, signature still 1295).
-116204 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-06, the held publish exit (dot habu-give-the-chain-5ed1f7c5): the
+\ compile-mode publish tail gains a third outcome. A definition the native chain
+\ is recording may be CERTIFIED and withheld - the count, the name index and the
+\ record facts are all skipped and the code pointer returns to the colon entry -
+\ so the chain's own publisher can commit the record once it has an emission the
+\ validator accepted. The question is asked where the two publish tails converge,
+\ by the same named-checker-word lookup EM-REC-WIDE-PUBLISH already uses a few
+\ instructions later, because only one of the two tails carries a hook verdict at
+\ all. That is a lookup, a call, a test and a four-instruction exit block. The
+\ exact-CODELEN ratchet measured the candidate at 116332 (was 116204), +128.
+\ Floor follows from the same number: 5612 -> 5740, inside the same 16 KiB page,
+\ so the text pad absorbs it and neither MACOS-SIGNATURE nor MACOS-TOTAL moves.
+116332 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-5612 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+5740 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

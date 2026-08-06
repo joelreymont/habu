@@ -238,6 +238,15 @@ TRUSTED: RELOC-EXTERNAL ( n -- )
 TRUSTED: RETARGET-REC ( n n n -- )
    xref-retarget ;
 
+\ The certified minimum input arity, OR'd into the flags of the record the count
+\ has just published. The engine's own publish tail pokes the same byte into the
+\ same field (src/habu/habu2.f EM-REC-WIDE-PUBLISH); the primitive carries no
+\ checker axiom, so it is admitted here on the same terms as the three writers
+\ above - wrapped exactly once, choosing nothing, handed values the checked words
+\ below computed.
+TRUSTED: MIN-IN-REC ( n n -- )
+   min-in-mark ;
+
 \ ---- the replacement log -----------------------------------------------------
 \ One row per republished name: what the record held before, and what it holds
 \ now. The name is stored so a caller can ask about a word rather than about a
@@ -567,15 +576,23 @@ public
 \ writes whose preconditions have just been proved. So a refusal leaves the code
 \ arena, the call map, the dictionary record, the clobber table and the log
 \ exactly as it found them, and the word keeps running the code it was running.
-: VALIDATE ( ptr u8 n n n -- n n ) {: a:ptr u:n wid:n size:n :}
-   size MAP-CK
-   a u wid TARGET {: idx:n :}
+\ Everything the validation asks about the EMISSION and the slot it is going
+\ into - which is every question that does not depend on how the record was
+\ reached. A republication reaches its record by name; a held publication is
+\ handed the record the engine withheld. Both then have exactly this to prove.
+: VALIDATE-EMISSION ( n -- n ) {: size:n :}
    size ROOM-CK {: fn:n :}
    fn PLACE-CK
    fn SLOT-CK
    fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD-CK
    fn size BRANCH-CK
    fn size TAIL-RELOC-CK
+   fn ;
+
+: VALIDATE ( ptr u8 n n n -- n n ) {: a:ptr u:n wid:n size:n :}
+   size MAP-CK
+   a u wid TARGET {: idx:n :}
+   size VALIDATE-EMISSION {: fn:n :}
    u LOG-CK
    idx fn ;
 
@@ -599,6 +616,82 @@ public
    idx XREF-REC XREF-LEN {: ol:n :}
    idx fn size COMMIT
    a u wid os ol fn  size RECORDED-LEN  LOG+ ;
+
+\ ---- committing a publication the engine withheld ----------------------------
+\ WHAT A HELD RECORD IS. When the engine certifies a definition whose tape the
+\ chain is recording, it publishes nothing: the count does not move, the name
+\ never enters the index, and the checker's facts are not poked into the record
+\ (src/habu/habu2.f EM-COMPILE-PUBLISH-HOOKED, the `held` leg). What it leaves
+\ behind is a COMPLETE dictionary record - name, wordlist, flags and entry
+\ address, all written by `:` - sitting at the one slot the count points at.
+\ This word turns that record into a word of the running engine.
+\
+\ THERE IS NO CREATE PATH HERE, AND THAT IS THE DESIGN. It would be easy to read
+\ "the chain publishes its own definitions" as "the chain builds its own
+\ records", and it is wrong. `:` is the sole constructor of a dictionary record
+\ in this system: it allocates the slot, qualifies and stores the name, sets the
+\ flags and writes the entry cell (habu2.f EM-INTERPRET-COLON). A second
+\ constructor in this file would have to agree with that one about every field,
+\ forever, across every future change to what a record holds - and the two would
+\ be edited by different people for different reasons. So the chain does not
+\ build a record; it COMMITS the one the engine already built. What the engine's
+\ publication tail does, and all it does, is move the count, insert the name and
+\ apply the checker's facts, and those three are what this word performs.
+\
+\ WHICH RECORD, ASKED RATHER THAN STATED. The held record is always the slot the
+\ count points at - that is what "unpublished" means - so this word takes no
+\ index, no name and no wordlist. Everything it needs is read off that record,
+\ for the same reason REPUBLISH takes only a name: a caller that could state
+\ these could state them wrongly, and there is no second authority to prefer.
+\
+\ THE COUNT IS RAISED THROUGH THE ENGINE'S OWN SINK. `ndict!` is the one door
+\ Habu has to the published count, and its raise leg rebuilds the name index
+\ from the raised range (src/habu/habu1.f BNDSET), so the record becomes findable
+\ by the same table every other word is found in. The engine's own publish tail
+\ inserts one entry instead of rebuilding; that difference is a cost, not a
+\ semantic gap, and it is measured rather than assumed - dot
+\ habu-insert-one-held-record tracks exposing the single-record insert if the
+\ rebuild proves too slow for a whole-tree cut.
+\
+\ AND THE TWO PHASES ARE THE SAME TWO. Every refusal happens before a byte moves;
+\ the writes below cannot throw. A refused commit leaves the code arena, the call
+\ map, the record, the clobber table and the log as it found them - and, because
+\ nothing was published, leaves the definition exactly as unpublished as it was.
+: HELD-IDX ( -- n )
+   ndict@ ;
+
+\ The held record has to be the one the engine is holding. Nothing else in the
+\ dictionary is a legal target: a lower index is a word that IS published, and a
+\ higher one is a slot no `:` has written.
+: HELD-CK ( n -- ) {: idx:n :}
+   idx HELD-IDX <> if E-NPUB-HELD throw then
+   idx WORDLIST-CK
+   idx FLAGS-CK ;
+
+\ The checker's own facts about the definition, applied to the record the count
+\ has just made newest. These are the two the engine's publish tail applies
+\ after ndict++ (habu2.f EM-REC-WIDE-PUBLISH), read from the same two latches,
+\ so a chain-published word carries the same guards as an engine-published one.
+: HELD-FACTS ( n -- ) {: idx:n :}
+   REC-WIDE-PUBLISH
+   REC-MIN-IN@ {: mi:n :}
+   mi 0<> if idx mi MIN-IN-REC then ;
+
+\ Make the sealed emission the code of the record the engine withheld, and
+\ publish that record.
+: COMMIT-HELD ( -- )
+   SIZE-CK {: size:n :}
+   size MAP-CK
+   HELD-IDX {: idx:n :}
+   idx HELD-CK
+   idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   idx XREF-REC XREF-WORDLIST {: wid:n :}
+   size VALIDATE-EMISSION {: fn:n :}
+   u LOG-CK
+   idx fn size COMMIT
+   ndict@ 1+ ndict!
+   idx HELD-FACTS
+   a u wid 0 0 fn  size RECORDED-LEN  LOG+ ;
 
 \ The address the next republication will write its first instruction at. It is
 \ the engine's own free code slot, which is what REPUBLISH claims, so a caller

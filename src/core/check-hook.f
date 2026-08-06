@@ -22,6 +22,11 @@ package LOWER-CERT-HOOK
 \ it) — the name must resolve for later definitions to keep checking. The body
 \ is compiled but never run on a check-only load; the driver exits nonzero via
 \ MULTI-ERR-END.
+\
+\ WITHHOLDING A CERTIFIED DEFINITION IS NOT DECIDED HERE. The engine asks the
+\ checker directly at its publish tail (src/core/checker.f CHECKER-HOLD?),
+\ because only that seam is reached by BOTH publish routes - a definition with a
+\ declared signature never consults this word's answer at all.
 public
 
 : HOOK ( ptr u8 n -- n )
