@@ -77,7 +77,7 @@ SPEC: A-CTX     A-O[daq dad] = Σdak dac A-P[daq dak] · A-XK[dak dac] · A-WV[d
 \ magnitude stays finite so the stable softmax's FEXP never forms a non-finite exponent.
 public
 : A-MASK-NEG ( -- r )  -50.0 ;   \ exp(-50) ~ 2e-22 : structurally 0, FEXP-safe (|k|~72)
-: A-MASK-FILL ( ptr a -- ) {: mb:ptr :}   \ outer j=query row, inner i=key col ; mask key>query
+: A-MASK-FILL ( ptr r -- ) {: mb:ptr :}   \ outer j=query row, inner i=key col ; mask key>query
    #DAQ 0 ?do
       #DAK 0 ?do
          i j > if A-MASK-NEG else 0.0 then   mb j #DAK * i + T-SET
