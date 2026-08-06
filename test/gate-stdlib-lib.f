@@ -265,6 +265,15 @@ private
    s" argv-stdlib-script-args" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdlib-source-default" SUITE-LABEL= if SUITE-TRUE exit then
    s" pointer-storage" SUITE-LABEL= if SUITE-TRUE exit then
+   \ The process fixtures belong here for the same reason pointer-storage does:
+   \ the tail slice is where the standalone stdlib suites run, and a suite named
+   \ by no slice runs in no gate. Five of its members are also fork-included by
+   \ TAIL-PROCESS, which is the in-process arm and not a substitute - the slice
+   \ spawns each member into a fresh engine, and pointer-storage already carries
+   \ both. Two members had no other home at all: tools/standalone-load-test.f
+   \ and test/lint-cli-standalone-load.f, the guards that prove a tool entry
+   \ still loads on its own, ran in nothing until this line.
+   s" stdlib-process-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-RUN? ( -- bool )
