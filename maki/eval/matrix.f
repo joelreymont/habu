@@ -75,7 +75,7 @@ variable MX-OUT-U
       1+
    repeat drop ;
 
-: MX-NAME! ( ptr u8 n ptr u8 ptr a -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+: MX-NAME! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    u MX-NAME-CAP > if E-MX-CAP throw then
    u 0= if E-MX-ARG throw then
    a dst u BYTE-COPY
