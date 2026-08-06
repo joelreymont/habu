@@ -27,4 +27,14 @@ public
 
 ;package
 
+\ The vectors are driven INSIDE the package that declares their sum families.
+\ `construct` resolves its family in the active package only
+\ (`TFAM-CONSTRUCT-FAM`, src/core/type-family.f), so a construct vector can only
+\ be asked where the family is owned: asked from any other package the very same
+\ text is refused for a reason that has nothing to do with the rule under test.
+\ No other row here depends on the package, and every one of them answers the
+\ same either way. test/compiler/checker-model-proof.f drives the same rows from
+\ the same place for the same reason.
+package CHECKER-MODEL-CASES
 CHECKER-MODEL-MANIFEST-TEST:RUN
+;package
