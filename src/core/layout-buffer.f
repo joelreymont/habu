@@ -69,7 +69,7 @@ variable LBUF-BYTES
    name nameu CHECKER-DEFINED? if E-DUP-DEFINITION throw then
    name nameu get-current search-wl 0 <> if E-DUP-DEFINITION throw then ;
 
-: LBUF-ZERO ( ptr a n -- ) {: base:ptr bytes:n :}
+: LBUF-ZERO ( ptr n n -- ) {: base:ptr bytes:n :}
    0 LBUF-I !
    begin LBUF-I @ bytes < while
       0 base LBUF-I @ + !

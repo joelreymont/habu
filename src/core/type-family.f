@@ -1248,7 +1248,7 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
    fam TFAM-SUM? fam TFAM-ENUM? or IF term SUM-IWIDTH EXIT THEN
    1 ;
 
-: PF-ROW-OWNER? ( n n ptr a -- bool ) {: fam:n var:n r:ptr :}
+: PF-ROW-OWNER? ( n n ptr n -- bool ) {: fam:n var:n r:ptr :}
    r PF.FAM @ fam = r PF.VAR @ var = and ;
 : PF-MATCH? ( n n ptr u8 n n -- bool ) {: fam:n var:n na:ptr nu:n id:n :}
    id PF-REC@ {: r:ptr :}
@@ -2130,7 +2130,7 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 
 package CHECKER-DECL-FRAME
 
-: PF-DEPTH= ( ptr a -- )
+: PF-DEPTH= ( ptr n -- )
    TFRB.PFTXDEPTH @ PF-TX-DEPTH @ <> IF E-PF-TX throw THEN ;
 
 : TF-RELEASE ( -- )
@@ -2149,7 +2149,7 @@ package CHECKER-DECL-FRAME
    PF-TX-DEPTH @ r TFRB.PFTXDEPTH !
    TF-RBF-DEPTH @ 1 + TF-RBF-DEPTH ! ;
 
-: TF-RESTORE-TOP ( ptr a -- )
+: TF-RESTORE-TOP ( ptr n -- )
    TF-RELEASE
    {: r:ptr :}
    r TFRB.TFAMN @ TFX-RETIRE             \ unchain the rows before their ids go out of range

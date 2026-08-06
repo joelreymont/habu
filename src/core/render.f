@@ -249,7 +249,7 @@ variable HRC  variable HRI  variable HRF
 6 constant QDEPTH-MAX                        \ quotation nesting render budget
 create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render path, by depth
 
-: QRET? ( q -- f ) {: q :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
+: QRET? ( n -- bool ) {: q :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
 \ is quot node r already being rendered above depth d (a type-graph cycle)?
 : QANCESTOR? {: r:n d:n :}

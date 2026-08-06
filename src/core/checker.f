@@ -6414,8 +6414,8 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 
 : EFFECT-DIN-N ( -- n )        EFFQ-DIN @ EFF-ROW-N ;      \ fixed din term count
 : EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;     \ fixed dout term count
-: EFFECT-DIN-FAM ( i -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
-: EFFECT-DOUT-FAM ( i -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
+: EFFECT-DIN-FAM ( n -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
+: EFFECT-DOUT-FAM ( n -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
 
 \ ---- ARM64 contract link: stable link from an emitted primitive/callable
 \ contract to its checker primitive-effect (PES) row (dot
