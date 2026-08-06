@@ -123,7 +123,7 @@ variable DLT-NA                           \ corpus-A token count
 : DLT-SNAP ( -- )
    DLT-ROWS 0 ?do  BL-IDS i T-GET DLT-IDS0 i T-SET  BL-TGT i T-GET DLT-TGT0 i T-SET  loop ;
 
-: DLT-EQ? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}
+: DLT-EQ? ( ptr r ptr r n -- bool ) {: a:ptr b:ptr n:n :}
    n 0 ?do  a i T-GET b i T-GET f= 0= if false unloop exit then  loop true ;
 
 \ same seed reproduces the exact batch
@@ -159,7 +159,7 @@ variable DLT-NA                           \ corpus-A token count
       i TOK-CHAR  DLT-VOCAB0 i + c@  <> if false unloop exit then
    loop true ;
 
-: DLT-DECODES? ( ptr a n ptr u8 n -- bool )  \ ids[0,n) decode byte-exactly to txt
+: DLT-DECODES? ( ptr r n ptr u8 n -- bool )  \ ids[0,n) decode byte-exactly to txt
    {: ids:ptr n:n txt:ptr txtu:n :}
    ids n DLT-DEC DLT-TCAP TOK-DECODE {: nb:n :}
    DLT-DEC nb txt txtu T-STR= ;
