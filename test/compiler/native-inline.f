@@ -608,7 +608,11 @@ variable CALLS-BODY-RC
 : BODY-REFUSAL-CASES ( -- )
    s" a callee with a control structure is not recorded" T-LABEL
    s" NINL-CTRL" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
-   CTRL-BODY @ 4 T=
+\ Three, not four: `dup 0 < if drop 0 then` writes zero twice, and the literal
+\ memo crosses into the arm because the branch above dominates it, so the arm
+\ reads the guard's zero instead of materialising its own. What this line is
+\ here for is unchanged - the routine is small ENOUGH, and is refused anyway.
+   CTRL-BODY @ 3 T=
    1 1 CTRL-BODY @ NINL:SMALL? TTRUE
 
    s" and neither is one that calls itself" T-LABEL

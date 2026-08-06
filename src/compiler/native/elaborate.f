@@ -590,15 +590,36 @@ variable OPJ                         \ general operands taken so far by the open
 \ move-wide chains; the second computes what the first already holds. This memo
 \ makes the second reference read the first value instead.
 \
-\ WHY IT IS BLOCK-LOCAL, WHICH IS THE WHOLE SOUNDNESS ARGUMENT. Reusing a value
-\ is only legal where its definition dominates the reference. Every entry here
-\ was defined by an operation staged into the block being built, and a later
-\ position in that same block is dominated by it - so the rule needs no dominance
-\ query and no verifier licence. The memo is cleared at every BEGIN-BLOCK, so it
-\ can never name a value from a block that does not dominate the reader. That is
-\ conservative at OPEN-PLAIN, which keeps the value vector it inherits and could
-\ in principle keep the memo too; it costs missed folds and buys a rule this file
-\ can state in one sentence.
+\ WHY IT IS DOMINANCE-LOCAL, WHICH IS THE WHOLE SOUNDNESS ARGUMENT. Reusing a
+\ value is only legal where its definition dominates the reference. Every entry
+\ here was defined by an operation staged into a block that dominates the block
+\ being built, and a later position in a dominated block is dominated by it - so
+\ the rule needs no dominance query and no verifier licence.
+\
+\ THE MEMO IS CLEARED AT THE TWO OPENERS WHOSE NEW BLOCK IS NOT DOMINATED BY THE
+\ OLD ONE. OPEN-ARGS-H opens a join, which is reached by an edge from every path
+\ that ends there, so no block a walker has just left dominates it; OPEN-BLOCK
+\ opens a definition's entry block, which no block reaches at all. Either could
+\ name a value from a block that does not dominate the reader, so neither keeps
+\ anything.
+\
+\ IT IS CARRIED THROUGH OPEN-PLAIN, BY THAT SAME CONSTRUCTION AND NOT BY AN
+\ EXTENSION OF IT. The block OPEN-PLAIN opens has exactly one predecessor - the
+\ two-way branch just above it - so that predecessor dominates it, and so does
+\ everything that dominates the predecessor. This is the same dominance the
+\ inherited value vector already rides: OPEN-PLAIN keeps the vector for precisely
+\ this reason, and the memo is a second reader of that one fact rather than a
+\ second rule. What it buys is the fold across a structure's boundary - the `3`
+\ before an `if` and the `3` at the top of its arm are one value.
+\
+\ THE STUB IS THE ONE PLACE THE INDUCTION NEEDS HELP, AND STUB-H IS WHERE IT GETS
+\ IT. A stub and the block after the branch are SIBLINGS: both are reached from
+\ the same two-way branch and neither dominates the other. Letting the memo out
+\ of a stub would therefore let the sibling name a value the stub defined, which
+\ is the one thing this rule forbids. So STUB-H marks the memo before it opens
+\ the stub and releases it after the stub closes, and the block after the branch
+\ inherits the memo exactly as the branch left it. That holds whatever a stub
+\ ever comes to stage; it does not rest on today's stubs staging no literal.
 \
 \ WHAT IT COSTS, MEASURED, SO NOBODY REDISCOVERS IT. Folding two references
 \ EXTENDS the surviving value's live range, and a longer live range is more
@@ -618,6 +639,15 @@ variable LIT-N
 
 : LIT-RESET ( -- )
    0 LIT-N ! ;
+
+\ The memo as a scope, which is what a stub needs. Rows are only ever appended,
+\ so the count IS the mark: releasing to a mark drops exactly the rows added
+\ since it was taken and leaves every earlier row the value it already held.
+: LIT-MARK ( -- n )
+   LIT-N @ ;
+
+: LIT-RELEASE ( n -- )
+   LIT-N ! ;
 
 \ Which memo row holds this number, or -1.
 : LIT-FIND ( n -- n )
@@ -1242,11 +1272,16 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ nothing over, so every value the vector holds was defined in a block that
 \ dominates this one and may be read here by name. That is the dominance rule
 \ the freeze verifier already enforces, not a licence this file takes.
+\
+\ THE LITERAL MEMO IS KEPT FOR THE SAME REASON AND BY THE SAME SENTENCE. Its
+\ entries name values defined in blocks that dominate the one being left, and
+\ this block is dominated by that one, so they dominate this block too. Nothing
+\ is reset here; the memo's own header says where it is reset and why a stub is
+\ the one boundary it must not cross.
 : OPEN-PLAIN ( n -- )
    {: ix:n :}
    CTX BLD IR-BUILD:BEGIN-BLOCK
-   CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN
-   LIT-RESET ;
+   CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN ;
 
 \ ---- what one edge really hands over -----------------------------------------
 \ One vector position, as the type the destination's argument has. A value
@@ -1334,10 +1369,23 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ leaves a two-way branch and has to carry values goes through one of these,
 \ because a two-way branch carries none: that is ordinary critical-edge
 \ splitting, and it is what makes the arms of a structure agree at their join.
+\
+\ THE LITERAL MEMO IS SCOPED TO THE STUB, WHICH IS WHERE CARRYING IT HAS TO STOP.
+\ A stub is the ONE block a walk opens that does not dominate what the walk opens
+\ next: the block after the branch is the stub's sibling, reached from the same
+\ two-way branch, and a value defined in a stub reaches neither it nor anything
+\ below it. The stub may READ the memo, because the branch above dominates the
+\ stub as it dominates everything else here; what it may not do is add to the
+\ memo the sibling then inherits. So the mark is taken before the stub opens and
+\ released after it closes. Today's stubs stage no literal at all - they stage
+\ only what one edge crosses with - and this scope is what makes that a fact
+\ about stubs rather than the reason the rule holds.
 : STUB-H ( n n n n n -- )
    {: ix:n t:n lo:n h:n l:n :}
+   LIT-MARK {: m:n :}
    ix OPEN-PLAIN
-   ix t lo h l TERM-BR-H ;
+   ix t lo h l TERM-BR-H
+   m LIT-RELEASE ;
 
 : STUB ( n n -- )
    CROSS-DO CROSS-L STUB-H ;

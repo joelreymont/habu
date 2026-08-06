@@ -811,6 +811,58 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
    BND [: MAX2-BODY ;] IR-CTX:WITH-CONTEXT
    3 T= 2 T= 2 T= 2 T= 2 T= 1 T= 2 T= TTRUE 4 T= ;
 
+\ ---- where the literal memo may cross a block boundary and where it may not ---
+\ `LITMEMO dup 1 < if 1- then 1-`. The number one is written three times and the
+\ four blocks answer for it differently, which is the whole of the memo's
+\ dominance rule read off a published module.
+\
+\ THE ARM KEEPS THE ENTRY'S CONSTANT. The arm is opened by OPEN-PLAIN, whose one
+\ predecessor is the two-way branch above it, so the entry block dominates the
+\ arm and the constant it defined may be read there by name. The arm therefore
+\ stages NO constant of its own, and the subtraction's second operand is asserted
+\ to be the very value the entry block's constant defined - identity, not a count,
+\ because "the arm has one fewer operation" would also be true of an arm that
+\ computed one again and threw it away.
+\
+\ THE JOIN DOES NOT. The third `1-` is past `then`, in a block every arm reaches,
+\ so no block a walk has just left dominates it and the memo is cleared there.
+\ That block stages its own constant, and this is the assertion that fails if the
+\ carrying is ever widened from OPEN-PLAIN to every opener.
+\
+\ THE STUB STAGES NOTHING. A stub and the arm are siblings, so a constant defined
+\ in a stub would dominate neither the arm nor the join; STUB-H scopes the memo
+\ for exactly that reason. Today a stub only crosses edge values and stages no
+\ constant at all, and this is where that stays a measured fact.
+\
+\ IT IS THE `1-` SHAPE ON PURPOSE. The entry's constant comes off the tape and
+\ the arm's is a constant-and-operation word's own, so the two reach the memo by
+\ the two different routes into EMIT-LIT and are proved to meet in it. That is
+\ also the shape test/compiler/native-chain.f RSPILL-CASE is built on.
+: LITMEMO-BODY ( IR-CTX:ctx -- n n n n n bool )
+   {: c:IR-CTX:ctx :}
+   s" LITMEMO dup 1 < if 1- then 1-" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
+   m f 1 F-BLK-AT {: st:IR-ID:ir-block-id :}
+   m f 2 F-BLK-AT {: arm:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: jn:IR-ID:ir-block-id :}
+   m e s" hir.const" 0 F-OPC-AT {: ec:IR-ID:ir-op-id :}
+   m arm s" hir.sub" 0 F-OPC-AT {: sb:IR-ID:ir-op-id :}
+   m f F-BLKS
+   m e s" hir.const" F-OPC-N
+   m st s" hir.const" F-OPC-N
+   m arm s" hir.const" F-OPC-N
+   m jn s" hir.const" F-OPC-N
+   m sb 1 F-IN  m ec 0 F-OUT SAME? ;
+
+: LITMEMO-CASE ( -- )
+   s" the literal memo crosses into the arm and stops at the join" T-LABEL
+   BND [: LITMEMO-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T= 0 T= 0 T= 1 T= 4 T= ;
+
 \ `COUNT-DOWN begin 1- dup 0 <= until`. Four blocks: the entry, the loop header,
 \ the latch and the exit. The header is reached twice - once from the entry and
 \ once from the latch - and takes one argument both times, which is what makes
@@ -1442,6 +1494,7 @@ public
    JOINR-CASE
    JOINC-CASE
    MAX2-CASE
+   LITMEMO-CASE
    LERP-CASE
    BND [: drop TWO-GROUPS-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop OPEN-GROUP-CASE ;] IR-CTX:WITH-CONTEXT

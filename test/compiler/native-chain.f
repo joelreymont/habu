@@ -810,8 +810,17 @@ $54000000 constant BCOND-FORM
 \ it exists to hold. So the literals in this block are distinct instead: 5, 2, 3,
 \ 4 and the guard's 1 are five different numbers, no memo can fold any two of
 \ them, and the case's pressure character is the same whether the CSE runs or
-\ not. The `1` in `a 1-` is in the THEN block and the memo is block-local, so it
-\ is not a repeat of the guard's.
+\ not.
+\ THE `1` IN `a 1-` IS A REPEAT OF THE GUARD'S, AND IT IS NOW FOLDED. The memo
+\ crosses into the THEN block, because the branch above dominates it - see the
+\ memo's header in src/compiler/native/elaborate.f - so the two ones are one
+\ value whose live range spans the branch. Measured, the frame still spills
+\ exactly one, and for a reason rather than by luck: the guard's constant is
+\ minted AFTER the add chain has been folded down to a single value, so carrying
+\ it into the arm lengthens a range that overlaps nothing which was live at the
+\ pressure peak. What this case pins is that peak, and the peak is in the add
+\ chain, which is why the five distinct numbers above are still what the body
+\ needs.
 : SRC13 ( -- ptr u8 n )
    s" : NCH-RSPILL ( n -- n ) {: a:n :} a 5 + a 2 + a 3 + a 4 + + + + 1 a < if a 1- RECURSE + then ;" ;
 
