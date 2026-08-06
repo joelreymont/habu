@@ -44,6 +44,7 @@ private
 
 $FC000000 constant BL-MASK
 $94000000 constant BL-OP
+$14000000 constant B-OP
 $03FFFFFF constant IMM26
 $02000000 constant IMM26-SIGN         \ the top bit of the twenty-six-bit field
 $04000000 constant IMM26-SPAN         \ two to the twenty-sixth, the wrap the sign is taken against
@@ -64,13 +65,30 @@ public
 : BL? ( n -- bool )
    BL-MASK and BL-OP = ;
 
-\ Where the branch-with-link at this address goes. The field is a signed count
-\ of instructions from the site itself, so the answer is arithmetic on the
-\ site's address and not a guess.
-: BL-TARGET ( n n -- n ) {: at:n w:n :}
+\ And is it the plain unconditional branch? The two forms differ in one bit of
+\ the opcode and in nothing else: same mask, same twenty-six-bit signed count of
+\ instructions, so everything below serves both and the file stays the one
+\ reader of that displacement.
+: B? ( n -- bool )
+   BL-MASK and B-OP = ;
+
+private
+
+\ Where the branch at this address goes. The field is a signed count of
+\ instructions from the site itself, so the answer is arithmetic on the site's
+\ address and not a guess. Both forms share it, which is why it is written once.
+: TARGET ( n n -- n ) {: at:n w:n :}
    w IMM26 and {: d:n :}
    d IMM26-SIGN and 0<> if d IMM26-SPAN - INSN-BYTES * at + exit then
    d INSN-BYTES * at + ;
+
+public
+
+: BL-TARGET ( n n -- n )
+   TARGET ;
+
+: B-TARGET ( n n -- n )
+   TARGET ;
 
 \ Could a branch-with-link at this address name this target at all? Both
 \ addresses have to be whole instructions and the distance between them has to

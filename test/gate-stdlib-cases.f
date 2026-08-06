@@ -363,6 +363,14 @@ SUITE compiler-native-reach
    test/compiler/native-reach.f
 ;SUITE
 
+\ Reading a published routine's calls and its exit off the emitted code: the
+\ instrument a tail-call lane decides with. It runs beside the reach suite
+\ because both consume src/compiler/native/branch.f, the chain's one reader of a
+\ branch displacement.
+SUITE compiler-codegen-tail-probe
+   test/compiler/codegen-tail-probe.f
+;SUITE
+
 \ The native chain's end-to-end run: source text through the real compile path
 \ to executed machine code. It runs after the leaves it composes, so a red here
 \ with green leaves means the leaves disagree with each other.

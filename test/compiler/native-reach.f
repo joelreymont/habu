@@ -113,6 +113,21 @@ $10000000 constant FAR-AT
    FAR-AT  FAR-AT d INSN-BYTES * +  NBR:BL-WORD {: w:n :}
    FAR-AT w NBR:BL-TARGET ;
 
+\ The same round trip through the TAIL form, whose displacement the reader has
+\ to decode from an instruction nothing in the chain writes yet. The instruction
+\ is therefore built here out of the call form and the one opcode bit that
+\ separates them, so what is being read back is a real branch word and not a
+\ number this file also produced by the code under test.
+$FC000000 constant BRANCH-MASK
+$14000000 constant B-OP
+
+: AS-B ( n -- n ) {: w:n :}
+   w BRANCH-MASK invert and  B-OP or ;
+
+: B-ROUND-TRIP ( n -- n ) {: d:n :}
+   FAR-AT  FAR-AT d INSN-BYTES * +  NBR:BL-WORD AS-B {: w:n :}
+   FAR-AT w NBR:B-TARGET ;
+
 public
 
 : BRANCH-CASES ( -- )
@@ -145,7 +160,20 @@ public
    s" a branch nothing could encode is refused rather than built" T-LABEL
    [: FAR-AT  FAR-AT IMM26-MAX 1+ INSN-BYTES * +  NBR:BL-WORD drop ;]
       E-NBR-RANGE TTHROWSQ
-   [: FAR-AT  FAR-AT 2 +  NBR:BL-WORD drop ;] E-NBR-RANGE TTHROWSQ ;
+   [: FAR-AT  FAR-AT 2 +  NBR:BL-WORD drop ;] E-NBR-RANGE TTHROWSQ
+
+   s" the tail form carries the displacement through the same field" T-LABEL
+   FAR-AT FAR-AT NBR:BL-WORD AS-B NBR:B? TTRUE
+   0 B-ROUND-TRIP FAR-AT T=
+   1 B-ROUND-TRIP FAR-AT INSN-BYTES + T=
+   -1 B-ROUND-TRIP FAR-AT INSN-BYTES - T=
+   IMM26-MAX B-ROUND-TRIP  FAR-AT IMM26-MAX INSN-BYTES * + T=
+   IMM26-MIN B-ROUND-TRIP  FAR-AT IMM26-MIN INSN-BYTES * + T=
+
+   s" the two forms are told apart, which is the whole point of reading both" T-LABEL
+   FAR-AT FAR-AT NBR:BL-WORD AS-B  NBR:BL? TFALSE
+   FAR-AT FAR-AT NBR:BL-WORD       NBR:B?  TFALSE
+   FAR-AT FAR-AT NBR:BL-WORD AS-B  FAR-AT FAR-AT NBR:BL-WORD <> TTRUE ;
 
 \ ---- the caller, before the migration ----------------------------------------
 : BEFORE-CASES ( -- )

@@ -456,6 +456,10 @@ public
    s" test/compiler/native-inline.f" GSI-FORK-INCLUDE
    s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
    s" test/compiler/native-vocab.f" GSI-FORK-INCLUDE
+   \ The instrument a tail-call lane decides with: a routine's calls and the way
+   \ it leaves, read off the emitted code. It belongs beside the chain's own
+   \ leaves because one of its fixtures is migrated through the chain.
+   s" test/compiler/codegen-tail-probe.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the code generator comparison - bytes, computed
    \ values, the two generators head to head, the committed table's structure.
    \ The timing column is left out here because this group runs its members in
