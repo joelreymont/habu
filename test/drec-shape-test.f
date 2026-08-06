@@ -18,7 +18,7 @@ require test/checker-assert.f
 : DRS-REC+ ( ptr a n -- ptr a ) + ;
 
 \ numeric slot read ( = XREF-CELL@ over a trusted rec ptr today)
-: DRS-CELL@ ( ptr a n -- n ) cells + @ ;
+: DRS-CELL@ ( ptr n n -- n ) cells + @ ;
 
 \ pointer slot read ( = XREF-PTR@ + TRUSTED: XREF-N>U8 today)
 : DRS-PTR@ ( ptr a n -- ptr u8 ) ptr-field @ ;
