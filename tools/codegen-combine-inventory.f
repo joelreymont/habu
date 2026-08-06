@@ -155,6 +155,19 @@ public
    w R3-OK? 0= if false exit then
    w FRD w FRN w FRM ENC-SUB w = ;
 
+\ The add and subtract IMMEDIATE forms: what a folded constant became. Each is
+\ told from its register-register namesake the way every form here is told - by
+\ re-encoding the fields that were read out and comparing the whole word - so a
+\ shifted immediate, which these encoders do not emit, reproduces as something
+\ else and answers false.
+: ADDI? ( n -- bool ) {: w:n :}
+   w R2-OK? 0= if false exit then
+   w FRD w FRN w FI12 ENC-ADDI w = ;
+
+: SUBI? ( n -- bool ) {: w:n :}
+   w R2-OK? 0= if false exit then
+   w FRD w FRN w FI12 ENC-SUBI w = ;
+
 : LDR? ( n -- bool ) {: w:n :}
    w R2-OK? 0= if false exit then
    w FRD w FRN w FI12 SLOT-BYTES * ENC-LDR w = ;
@@ -366,6 +379,14 @@ public
 \ as opposed to the pairs above, which are what one could still take.
 : MADD-INSNS ( -- n )
    [: MADD? ;] COUNT1 ;
+
+\ And how many folded constants the row holds, on the same terms: what the
+\ combine pass PUT there, not what one could still take.
+: ADDI-INSNS ( -- n )
+   [: ADDI? ;] COUNT1 ;
+
+: SUBI-INSNS ( -- n )
+   [: SUBI? ;] COUNT1 ;
 
 : MADDS ( -- n )
    [: MADD-PAIR? ;] COUNT2 ;

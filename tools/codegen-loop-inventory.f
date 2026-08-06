@@ -381,13 +381,23 @@ public
 \ Of those move-wides, the ones a different transform would remove outright
 \ rather than move. A LONE `movz` into the bottom quarter of a register with an
 \ immediate small enough for an arithmetic instruction's own field is not a
-\ 64-bit literal at all: it is a small number this chain materialises into a
-\ register because it selects the register-register form of the add or subtract
-\ that reads it, where src/arch/arm64/asm.f already carries the immediate form
-\ (ENC-ADDI). Hoisting one saves an instruction per turn and costs a register
-\ held across the loop; selecting the immediate form saves the instruction and
-\ costs nothing. So this column is counted separately and is NOT a hoisting
+\ 64-bit literal at all: it is a small number materialised into a register
+\ because something selected a register-register form to read it. Hoisting one
+\ would save an instruction per turn and cost a register held across the loop;
+\ folding it into the reading instruction saves the instruction and costs
+\ nothing. So this column is counted separately and is NOT a hoisting
 \ opportunity - it is the measurement saying a cheaper transform owns these.
+\
+\ THAT TRANSFORM NOW EXISTS, so read this column as what is LEFT rather than as
+\ what is available. src/compiler/native/combine.f folds a small constant into
+\ the add or subtract that reads it, and this tool measures the code the chain
+\ finally emits, so a constant that folded is no longer a move-wide here at all.
+\ What still counts is the residue the fold deliberately leaves: a constant
+\ whose reader is not an add or a subtract - a comparison has no immediate form
+\ in this dialect - and a constant with more than one reader, which has to stay
+\ in a register for the readers that did not fold. Both are correct refusals,
+\ and counting them keeps them visible instead of letting a later reader assume
+\ the column went to zero because the work is finished.
 : BODY-FOLDABLE ( n -- n ) {: k:n :}
    k LOOP-LO {: lo:n :}
    lo 0 < if 0 exit then

@@ -74,6 +74,24 @@ public
 : NCT-TWO ( n n n -- n ) {: a:n b:n c:n :}
    a b * c +  a c * b +  + ;
 
+: NCT-IADD ( n -- n )
+   5 + ;
+
+: NCT-ISUB ( n -- n )
+   5 - ;
+
+: NCT-IRSUB ( n -- n )
+   5 swap - ;
+
+: NCT-ISHARED ( n n -- n ) {: a:n b:n :}
+   a 9 + b 9 + + ;
+
+: NCT-IMAX ( n -- n )
+   4095 + ;
+
+: NCT-IOVER ( n -- n )
+   4096 + ;
+
 ;package
 
 \ ---- the chain's compilation: the subject ------------------------------------
@@ -113,6 +131,36 @@ private
    s" : NCT-TWO-N ( n n n -- n ) {: a:n b:n c:n :} a b * c +  a c * b +  + ;"
    3 1 REGS NMIGRATE:DEFINE ;
 
+\ ---- the folded constant -----------------------------------------------------
+\ One small constant added to a value, which is the whole of the pattern.
+: IADD ( -- )
+   s" : NCT-IADD-N ( n -- n ) 5 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ The same subtracted, which is the other opcode and not a negated immediate.
+: ISUB ( -- )
+   s" : NCT-ISUB-N ( n -- n ) 5 - ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ THE CONSTANT ON THE WRONG SIDE OF A SUBTRACTION. `5 - x` subtracts the value
+\ FROM the constant, and the immediate form subtracts the immediate from the
+\ register, so this one must not fold however small the number is.
+: IRSUB ( -- )
+   s" : NCT-IRSUB-N ( n -- n ) 5 swap - ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ A constant with a SECOND READER. The literal memo gives both additions one
+\ value, so folding either would delete a move-wide the other still needs.
+: ISHARED ( -- )
+   s" : NCT-ISHARED-N ( n n -- n ) {: a:n b:n :} a 9 + b 9 + + ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
+\ THE TWO ENDS OF THE FIELD. 4095 is the largest immediate the form carries and
+\ folds; 4096 is the first that does not fit and must stay a move-wide. The pair
+\ is what says the bound is the field's and not a number somebody liked.
+: IMAX ( -- )
+   s" : NCT-IMAX-N ( n -- n ) 4095 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: IOVER ( -- )
+   s" : NCT-IOVER-N ( n -- n ) 4096 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
 public
 
 : RUN ( -- )
@@ -122,7 +170,13 @@ public
    ACC2
    TWICE
    SPLIT
-   TWO ;
+   TWO
+   IADD
+   ISUB
+   IRSUB
+   ISHARED
+   IMAX
+   IOVER ;
 
 ;package
 
@@ -180,6 +234,34 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 : TWO= ( n n n -- ) {: a:n b:n c:n :}
    a b c NCT-FIXTURE:NCT-TWO  a b c NCT-FIXTURE:NCT-TWO-N  T= ;
 
+: IADD= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-IADD  a NCT-FIXTURE:NCT-IADD-N  T= ;
+
+: ISUB= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-ISUB  a NCT-FIXTURE:NCT-ISUB-N  T= ;
+
+: IRSUB= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-IRSUB  a NCT-FIXTURE:NCT-IRSUB-N  T= ;
+
+: ISHARED= ( n n -- ) {: a:n b:n :}
+   a b NCT-FIXTURE:NCT-ISHARED  a b NCT-FIXTURE:NCT-ISHARED-N  T= ;
+
+: IMAX= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-IMAX  a NCT-FIXTURE:NCT-IMAX-N  T= ;
+
+: IOVER= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-IOVER  a NCT-FIXTURE:NCT-IOVER-N  T= ;
+
+\ How many folded constants a published routine's emitted code holds, and how
+\ many move-wides survive beside them.
+: ADDIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u NCOMBINV:ROW!
+   NCOMBINV:ADDI-INSNS ;
+
+: SUBIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u NCOMBINV:ROW!
+   NCOMBINV:SUBI-INSNS ;
+
 public
 
 : FIRED-CASES ( -- )
@@ -211,6 +293,42 @@ public
    s" and neither is one read by an addition and by something else" T-LABEL
    s" NCT-FIXTURE:NCT-SPLIT-N" MADDS-IN 0 T=
    s" NCT-FIXTURE:NCT-SPLIT-N" MULS-IN 1 T= ;
+
+: IMM-FIRED-CASES ( -- )
+   s" a small constant added to a value becomes the addition's own immediate"
+   T-LABEL
+   s" NCT-FIXTURE:NCT-IADD-N" ADDIS-IN 1 T=
+
+   s" and subtracted, it becomes the subtraction's - not a negated addition"
+   T-LABEL
+   s" NCT-FIXTURE:NCT-ISUB-N" SUBIS-IN 1 T=
+   s" NCT-FIXTURE:NCT-ISUB-N" ADDIS-IN 0 T=
+
+   s" the largest value the field holds still folds" T-LABEL
+   s" NCT-FIXTURE:NCT-IMAX-N" ADDIS-IN 1 T= ;
+
+: IMM-REFUSED-CASES ( -- )
+   s" a constant the value is subtracted FROM is not folded" T-LABEL
+   s" NCT-FIXTURE:NCT-IRSUB-N" SUBIS-IN 0 T=
+   s" NCT-FIXTURE:NCT-IRSUB-N" ADDIS-IN 0 T=
+
+   s" nor is one a second reader still needs" T-LABEL
+   s" NCT-FIXTURE:NCT-ISHARED-N" ADDIS-IN 0 T=
+
+   s" nor is the first value too large for the field" T-LABEL
+   s" NCT-FIXTURE:NCT-IOVER-N" ADDIS-IN 0 T= ;
+
+: IMM-ANSWER-CASES ( -- )
+   s" the folded forms answer what the engine's own code answers" T-LABEL
+   0 IADD= 1 IADD= -1 IADD= MAX-INT IADD= MIN-INT IADD=
+   0 ISUB= 1 ISUB= -1 ISUB= MAX-INT ISUB= MIN-INT ISUB=
+   0 IMAX= -1 IMAX= MAX-INT IMAX= MIN-INT IMAX=
+
+   s" and so do the three the pass refused, which still have to be right" T-LABEL
+   0 IRSUB= 7 IRSUB= -1 IRSUB= MAX-INT IRSUB= MIN-INT IRSUB=
+   0 IOVER= -1 IOVER= MAX-INT IOVER= MIN-INT IOVER=
+   3 5 ISHARED= 0 0 ISHARED= -1 -1 ISHARED=
+   MAX-INT MAX-INT ISHARED= MIN-INT MIN-INT ISHARED= ;
 
 : ANSWER-CASES ( -- )
    s" the canonical shape answers what the engine's own code answers" T-LABEL
@@ -264,7 +382,10 @@ public
 : CASES ( -- )
    FIRED-CASES
    REFUSED-CASES
-   ANSWER-CASES ;
+   ANSWER-CASES
+   IMM-FIRED-CASES
+   IMM-REFUSED-CASES
+   IMM-ANSWER-CASES ;
 
 ;using
 
