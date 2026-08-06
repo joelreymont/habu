@@ -129,6 +129,21 @@ private
    form F-FCSEL = if a b c d FCSEL, true exit then
    false ;
 
+\ The multiply group. Like the two unscaled memory forms above, these reach
+\ their encoder directly and go into the buffer through the same `EMITW` every
+\ mnemonic ends in, and for the same reason: no mnemonic wrapper exists because
+\ nothing writes them by hand. Their consumer is the chain's instruction
+\ combining pass, which calls encoders itself, so `ENC-SMULH`, `ENC-MADD` and
+\ `ENC-MSUB` ARE the shipped words here and a `MADD,` in
+\ `src/arch/arm64/mnem.f` would be vocabulary the engine builder never writes.
+\ Smulh carries three operands and the other two carry four, so all three go
+\ through this one word rather than being split across the arity above.
+: MULTIPLY-CALL ( n n n n n -- bool ) {: form:n a:n b:n c:n d:n :}
+   form F-SMULH = if a b c ENC-SMULH EMITW true exit then
+   form F-MADD = if a b c d ENC-MADD EMITW true exit then
+   form F-MSUB = if a b c d ENC-MSUB EMITW true exit then
+   false ;
+
 : SYSTEM-CALL ( n n -- bool ) {: form:n a:n :}
    form F-SVC = if a SVC, true exit then
    form F-RET = if RET, true exit then
@@ -194,6 +209,7 @@ public
    form a b c MEM-CALL if 0 exit then
    form a b COMPARE-CALL if 0 exit then
    form a b c d SELECT-CALL if 0 exit then
+   form a b c d MULTIPLY-CALL if 0 exit then
    form a SYSTEM-CALL if 0 exit then
    E-CIE-FORM throw ;
 

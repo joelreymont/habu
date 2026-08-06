@@ -93,6 +93,16 @@
 \     shift field, and the reason the model excludes it is that the word is
 \     also a right shift of zero. `lsli_lsri_alias_at_zero` in
 \     `formal/Common/Insn.v` is where that lives.
+\   - `wf` calls a multiply-add whose addend is register 31 malformed for the
+\     same reason, and again the shipped encoder emits it: that word IS a plain
+\     multiply, so MUL and MADD cannot both name it. `madd_mul_alias_at_xzr` in
+\     `formal/Common/Insn.v` is where THAT lives, and it carries the MSUB half
+\     too - MSUB with the same addend is well formed, because the word it makes
+\     is MNEG and MNEG is not a form here. The vectors below pin both.
+\   - Three forms are modelled and encoded with no caller yet: `SMULH`, `MADD`
+\     and `MSUB`. That order is the discipline rather than dead weight - the
+\     chain's instruction-combining pass may not emit a form the model does not
+\     carry, so the rows land before the pass that will use them.
 \
 \ Consumers: `test/compiler/insn-cases.f`,
 \ `test/compiler/insn-obligations.f`, `test/compiler/insn-refusal.f`.
@@ -119,6 +129,9 @@ s" LBL," s" n --" TRUST
 s" MOVZHW" s" n n n -- n" TRUST
 s" ENC-LDUR" s" n n n -- n" TRUST
 s" ENC-STUR" s" n n n -- n" TRUST
+s" ENC-SMULH" s" n n n -- n" TRUST
+s" ENC-MADD" s" n n n n -- n" TRUST
+s" ENC-MSUB" s" n n n n -- n" TRUST
 s" MOVNHW" s" n n n -- n" TRUST
 s" EMITW" s" n --" TRUST
 s" MOVZ," s" n n --" TRUST
@@ -197,8 +210,9 @@ public
 42 constant F-NOP      43 constant F-DSB-ISH  44 constant F-ISB
 45 constant F-BLR      46 constant F-BR       47 constant F-ICIVAU
 48 constant F-DCCVAU  49 constant F-FCSEL     50 constant F-LDUR
-51 constant F-STUR
-52 constant FORMS
+51 constant F-STUR    52 constant F-SMULH   53 constant F-MADD
+54 constant F-MSUB
+55 constant FORMS
 
 \ The constructor name in `formal/Common/Insn.v`. It names the form in a
 \ failing row's label and in the generated Rocq obligation, so the two reports
@@ -222,7 +236,8 @@ public
       42 of s" Nop" endof      43 of s" DsbIsh" endof  44 of s" Isb" endof
       45 of s" Blr" endof      46 of s" Br" endof      47 of s" IcIvau" endof
       48 of s" DcCvau" endof   49 of s" Fcsel" endof   50 of s" Ldur" endof
-      51 of s" Stur" endof
+      51 of s" Stur" endof     52 of s" Smulh" endof   53 of s" Madd" endof
+      54 of s" Msub" endof
       E-CIE-FORM throw
    endcase ;
 
@@ -241,11 +256,14 @@ public
    k F-LDAR = k F-STLR = or k F-CMP = or k F-CMPI = or k F-CSET = or
    k F-BCOND = or k F-CBZ = or k F-CBNZ = or k F-ADR = or ;
 
-\ The two forms with four: a conditional select names a destination, two
-\ sources and the condition that chooses between them, and that is the same
-\ four whichever register file the three registers come out of.
+\ The forms with four operands, which are two pairs. A conditional select names
+\ a destination, two sources and the condition that chooses between them, and
+\ that is the same four whichever register file the three registers come out of.
+\ A multiply-add or multiply-subtract names a destination, the two registers it
+\ multiplies and the register it accumulates into, and there the fourth operand
+\ is a register like the other three.
 : QUATERNARY-FORM? ( n -- bool ) {: k:n :}
-   k F-CSEL = k F-FCSEL = or ;
+   k F-CSEL = k F-FCSEL = or k F-MADD = or k F-MSUB = or ;
 
 : FORM-ARITY ( n -- n ) {: k:n :}
    k 0 < k FORMS >= or if E-CIE-FORM throw then
@@ -545,6 +563,40 @@ variable LIM-N
    F-CSEL 20 2 30 4 $9A9E4054 V4
    F-CSEL 31 31 31 15 $9A9FF3FF V4 ;
 
+\ The multiply group. SMULH answers the high half of a signed 64x64 product and
+\ takes three operands; MADD and MSUB multiply their two sources and add or
+\ subtract the fourth register, so they carry four. Smulh's three slots reach
+\ `XR3`, exactly as a shifted-register form's do; Madd's and Msub's four reach
+\ `XR4`, which is `XR2` applied twice. So the field bound on a register needs no
+\ row here - the Add and Ldar rows already ask that question of both those words.
+\ What is new is the ADDEND slot at bit ten, which no other form in this table
+\ has, and the out-of-range table below asks about it once.
+\
+\ Two rows are the alias boundary rather than ordinary encodings. `F-MADD 1 2 3
+\ 30` sits one below the addend the model refuses, and `F-MSUB 1 2 3 31` sits AT
+\ it - well formed for MSUB and not for MADD, because a MADD with that addend is
+\ the word MUL already owns while an MSUB with it is MNEG, which is not a form
+\ here. The pair is what makes that asymmetry answerable on the shipped side:
+\ both encode, and `madd_mul_alias_at_xzr` in the model says why only one of the
+\ two is a name the decoder may use.
+: MULTIPLY-VECTORS ( -- )
+   F-SMULH 10 11 12 $9B4C7D6A V3
+   F-SMULH 0 0 0 $9B407C00 V3
+   F-SMULH 1 2 3 $9B437C41 V3
+   F-SMULH 20 2 30 $9B5E7C54 V3
+   F-SMULH 31 31 31 $9B5F7FFF V3
+   F-MADD 3 4 5 6 $9B051883 V4
+   F-MADD 13 9 21 11 $9B152D2D V4
+   F-MADD 1 2 3 0 $9B030041 V4
+   F-MADD 30 30 30 30 $9B1E7BDE V4
+   F-MADD 31 31 31 30 $9B1F7BFF V4
+   F-MSUB 3 4 5 6 $9B059883 V4
+   F-MSUB 13 9 21 11 $9B15AD2D V4
+   F-MSUB 1 2 3 0 $9B038041 V4
+   F-MSUB 7 8 9 10 $9B09A907 V4
+   F-MSUB 1 2 3 31 $9B03FC41 V4
+   F-MSUB 31 31 31 31 $9B1FFFFF V4 ;
+
 \ The same select over two DOUBLES, operand for operand: the four fields sit at
 \ the same four positions and only the opcode differs, which is what the rows
 \ below say by carrying the same operands as the rows above. Its three register
@@ -665,7 +717,8 @@ variable LIM-N
    F-CSET 1 16 0 OOR+                        \ was: cond 16 became cond eq
    F-CSEL 1 2 2 16 OOR4+                     \ was: cond 16 ran into the second source
    F-FCSEL 1 2 2 16 OOR4+
-   F-BCOND 16 0 0 OOR+ ;
+   F-BCOND 16 0 0 OOR+
+   F-MADD 1 2 3 32 OOR4+ ;                   \ the addend slot, bounded by `XR4`
 
 \ A byte operand the encoder divides by its access scale. Each was rounded down
 \ and encoded as the aligned operand below it.
@@ -696,7 +749,19 @@ variable LIM-N
    F-SDIV 18 2 3 X18  F-SDIV 1 18 3 X18  F-SDIV 1 2 18 X18
    F-UDIV 18 2 3 X18  F-UDIV 1 18 3 X18  F-UDIV 1 2 18 X18
    F-LSLV 18 2 3 X18  F-LSLV 1 18 3 X18  F-LSLV 1 2 18 X18
-   F-LSRV 18 2 3 X18  F-LSRV 1 18 3 X18  F-LSRV 1 2 18 X18 ;
+   F-LSRV 18 2 3 X18  F-LSRV 1 18 3 X18  F-LSRV 1 2 18 X18
+   F-SMULH 18 2 3 X18 F-SMULH 1 18 3 X18 F-SMULH 1 2 18 X18 ;
+
+\ The three-source forms, one row per slot as everywhere else. `XR4` screens
+\ them in two passes and the rows are what say so: the first `XR2` takes the
+\ second multiplicand and the addend, the second takes the destination and the
+\ first multiplicand. Drop either pass and four of these eight rows stop
+\ refusing, which is how the halves are told apart.
+: RESERVED-MULTIPLY ( -- )
+   F-MADD 18 2 3 4 X184  F-MADD 1 18 3 4 X184
+   F-MADD 1 2 18 4 X184  F-MADD 1 2 3 18 X184
+   F-MSUB 18 2 3 4 X184  F-MSUB 1 18 3 4 X184
+   F-MSUB 1 2 18 4 X184  F-MSUB 1 2 3 18 X184 ;
 
 \ The logical forms take the plain mask and pack it themselves, so these rows
 \ carry the mask the mnemonic is handed and the packed value the model sees.
@@ -760,6 +825,7 @@ variable LIM-N
 : RESERVED-VECTORS ( -- )
    RESERVED-MOVE-WIDE
    RESERVED-SHIFTED-REGISTER
+   RESERVED-MULTIPLY
    RESERVED-IMMEDIATE
    RESERVED-SHIFT
    RESERVED-MEMORY
@@ -787,6 +853,7 @@ variable LIM-N
    UNSCALED-VECTORS
    COMPARE-VECTORS
    CONDITIONAL-SELECT-VECTORS
+   MULTIPLY-VECTORS
    FLOAT-SELECT-VECTORS
    BRANCH-VECTORS
    SYSTEM-VECTORS

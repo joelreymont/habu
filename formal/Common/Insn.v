@@ -61,6 +61,11 @@
                                      by zero are the same word, which is why
                                      a left shift of zero is not well formed
                                      here.
+     madd_mul_alias_at_xzr         - the same fact about the multiply family:
+                                     a multiply-add whose addend is the zero
+                                     register IS a plain multiply, one word
+                                     under two names, which is why that addend
+                                     is not well formed here.
 
    Operand conventions follow the shipped words, not the architecture
    manual, because the shipped words are what this has to constrain.  So a
@@ -92,6 +97,32 @@
    with nothing to catch it, which is what this file exists to prevent, and a
    sign that was dropped would turn every access below the pointer into one far
    above it.
+
+   AND THREE OF THE MULTIPLY FAMILY, WHICH ARRIVE BEFORE THEIR CALLER.  Smulh,
+   Madd and Msub are modelled here with no emitter using them yet, and that
+   order is the rule rather than an oversight: the emitter may not write a form
+   this file does not carry, so the row has to land first.  Smulh is the high
+   half of a signed 64x64 product, which is what turns a division by a constant
+   into a multiplication; Madd and Msub are the multiply-accumulate pair a
+   combining pass folds a multiply and an adjacent add or subtract into.
+
+   Their arrival says something the file could not say before, because MUL is
+   not an instruction of its own on this machine.  It is MADD with the zero
+   register as its addend, and the two encodings are the SAME WORD.  So the
+   decoder cannot have a row for each: `decoder_rows_exclusive` would fail, and
+   `enc_injective` would be false outright, since two well-formed forms would
+   share an encoding.  One row covers the whole multiply-add opcode and reads
+   the addend field to choose the name - exactly what `row_Lsli` does for the
+   two immediate shifts, and for the same reason - and a Madd naming register
+   31 as its addend is outside `wf`, as a left shift of zero is.
+   `madd_mul_alias_at_xzr` below is that fact written down.
+
+   Msub needs no such exclusion, and the difference is a fact about this
+   vocabulary rather than about the machine.  MSUB with the zero register as its
+   subtrahend is MNEG, which is a real alias on the machine but is not a form
+   here, so no second name competes for that word and `wf` lets the addend be
+   any register.  If MNEG is ever modelled it will need the same treatment MUL
+   gets, in the same row.
 
    MODEL GAPS.  The remaining floating-point encoders (FMOVXD, FMOVDX, FMOVDD,
    FADD, FSUB, FMUL, FDIV, FNEG, FABS, FSQRT, FCMP, FCMP0, SCVTF, FCVTZS) are
@@ -238,6 +269,9 @@ Inductive insn : Type :=
 | Orr (rd rn rm : Z)
 | Eor (rd rn rm : Z)
 | Mul (rd rn rm : Z)
+| Smulh (rd rn rm : Z)
+| Madd (rd rn rm ra : Z)
+| Msub (rd rn rm ra : Z)
 | Sdiv (rd rn rm : Z)
 | Udiv (rd rn rm : Z)
 | Lslv (rd rn rm : Z)
@@ -293,6 +327,9 @@ Definition enc (i : insn) : Z :=
   | Orr rd rn rm => Z.lor 0xAA000000 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (fld (rm) 16)))
   | Eor rd rn rm => Z.lor 0xCA000000 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (fld (rm) 16)))
   | Mul rd rn rm => Z.lor 0x9B007C00 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (fld (rm) 16)))
+  | Smulh rd rn rm => Z.lor 0x9B407C00 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (fld (rm) 16)))
+  | Madd rd rn rm ra => Z.lor 0x9B000000 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (Z.lor (fld (rm) 16) (fld (ra) 10))))
+  | Msub rd rn rm ra => Z.lor 0x9B008000 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (Z.lor (fld (rm) 16) (fld (ra) 10))))
   | Sdiv rd rn rm => Z.lor 0x9AC00C00 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (fld (rm) 16)))
   | Udiv rd rn rm => Z.lor 0x9AC00800 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (fld (rm) 16)))
   | Lslv rd rn rm => Z.lor 0x9AC02000 (Z.lor (fld (rd) 0) (Z.lor (fld (rn) 5) (fld (rm) 16)))
@@ -348,10 +385,14 @@ Definition emit (i : insn) : Z := Z.land (enc i) 0xFFFFFFFF.
    test/compiler/insn-schema.f run each one through the real mnemonic and
    require the process to die, while asking this predicate the same question.
 
-   One clause is not an encoder bound and has no such row.  A left shift of
-   zero is inside the six-bit shift field, and the shipped encoder emits it;
-   it is excluded here because that word is also a right shift of zero, so
-   the decoder cannot name it.  lsli_lsri_alias_at_zero below is that fact. *)
+   Two clauses are not encoder bounds and have no such row, and they are the
+   same clause twice: a word that two forms here would both name.  A left shift
+   of zero is inside the six-bit shift field and the shipped encoder emits it,
+   but that word is also a right shift of zero.  A multiply-add whose addend is
+   register 31 is inside the five-bit addend field and the shipped encoder emits
+   it, but that word is a plain multiply.  Both are excluded so that each word
+   has one name, which is what `enc_injective` needs; lsli_lsri_alias_at_zero
+   and madd_mul_alias_at_xzr below are the two facts. *)
 Definition uok (w v : Z) : bool := (0 <=? v) && (v <? 2 ^ w).
 Definition sok (w v : Z) : bool := (- (2 ^ (w - 1)) <=? v) && (v <? 2 ^ (w - 1)).
 Definition rok (r : Z) : bool := uok 5 r.
@@ -367,6 +408,9 @@ Definition wf (i : insn) : bool :=
   | Orr rd rn rm => rok rd && rok rn && rok rm
   | Eor rd rn rm => rok rd && rok rn && rok rm
   | Mul rd rn rm => rok rd && rok rn && rok rm
+  | Smulh rd rn rm => rok rd && rok rn && rok rm
+  | Madd rd rn rm ra => rok rd && rok rn && rok rm && rok ra && (ra <? 31)
+  | Msub rd rn rm ra => rok rd && rok rn && rok rm && rok ra
   | Sdiv rd rn rm => rok rd && rok rn && rok rm
   | Udiv rd rn rm => rok rd && rok rn && rok rm
   | Lslv rd rn rm => rok rd && rok rn && rok rm
@@ -437,6 +481,9 @@ Definition checked_regs (i : insn) : list Z :=
   | Orr rd rn rm => [rd; rn; rm]
   | Eor rd rn rm => [rd; rn; rm]
   | Mul rd rn rm => [rd; rn; rm]
+  | Smulh rd rn rm => [rd; rn; rm]
+  | Madd rd rn rm ra => [rd; rn; rm; ra]
+  | Msub rd rn rm ra => [rd; rn; rm; ra]
   | Sdiv rd rn rm => [rd; rn; rm]
   | Udiv rd rn rm => [rd; rn; rm]
   | Lslv rd rn rm => [rd; rn; rm]
@@ -493,6 +540,9 @@ Definition xregs (i : insn) : list Z :=
   | Orr rd rn rm => [rd; rn; rm]
   | Eor rd rn rm => [rd; rn; rm]
   | Mul rd rn rm => [rd; rn; rm]
+  | Smulh rd rn rm => [rd; rn; rm]
+  | Madd rd rn rm ra => [rd; rn; rm; ra]
+  | Msub rd rn rm ra => [rd; rn; rm; ra]
   | Sdiv rd rn rm => [rd; rn; rm]
   | Udiv rd rn rm => [rd; rn; rm]
   | Lslv rd rn rm => [rd; rn; rm]
@@ -560,7 +610,8 @@ Definition row_Sub := R 0xFFE0FC00 0xCB000000 (fun w => Sub (get 0 5 w) (get 5 5
 Definition row_And := R 0xFFE0FC00 0x8A000000 (fun w => And (get 0 5 w) (get 5 5 w) (get 16 5 w)).
 Definition row_Orr := R 0xFFE0FC00 0xAA000000 (fun w => Orr (get 0 5 w) (get 5 5 w) (get 16 5 w)).
 Definition row_Eor := R 0xFFE0FC00 0xCA000000 (fun w => Eor (get 0 5 w) (get 5 5 w) (get 16 5 w)).
-Definition row_Mul := R 0xFFE0FC00 0x9B007C00 (fun w => Mul (get 0 5 w) (get 5 5 w) (get 16 5 w)).
+Definition row_Smulh := R 0xFFE0FC00 0x9B407C00 (fun w => Smulh (get 0 5 w) (get 5 5 w) (get 16 5 w)).
+Definition row_Msub := R 0xFFE08000 0x9B008000 (fun w => Msub (get 0 5 w) (get 5 5 w) (get 16 5 w) (get 10 5 w)).
 Definition row_Sdiv := R 0xFFE0FC00 0x9AC00C00 (fun w => Sdiv (get 0 5 w) (get 5 5 w) (get 16 5 w)).
 Definition row_Udiv := R 0xFFE0FC00 0x9AC00800 (fun w => Udiv (get 0 5 w) (get 5 5 w) (get 16 5 w)).
 Definition row_Lslv := R 0xFFE0FC00 0x9AC02000 (fun w => Lslv (get 0 5 w) (get 5 5 w) (get 16 5 w)).
@@ -611,6 +662,18 @@ Definition row_Lsli := R 0xFFC00000 0xD3400000 (fun w =>
   then Lsri (get 0 5 w) (get 5 5 w) (get 16 6 w)
   else Lsli (get 0 5 w) (get 5 5 w) (63 - get 10 6 w)).
 
+(* MUL and MADD are one opcode too, and the addend field is what tells them
+   apart: a plain multiply stores register 31 there, which is the zero register,
+   and a multiply-add stores the register it accumulates into.  So they share a
+   row for the same reason the two shifts above do - two rows would overlap, and
+   `decoder_rows_exclusive` would fail.  MSUB is a different opcode (its o0 bit
+   is set) and keeps a row of its own; MNEG, which would be its register-31
+   case, is not a form here, so nothing competes with it for that word. *)
+Definition row_Madd := R 0xFFE08000 0x9B000000 (fun w =>
+  if get 10 5 w =? 31
+  then Mul (get 0 5 w) (get 5 5 w) (get 16 5 w)
+  else Madd (get 0 5 w) (get 5 5 w) (get 16 5 w) (get 10 5 w)).
+
 Definition table : list row :=
   [ row_Movz
   ; row_Movn
@@ -620,7 +683,9 @@ Definition table : list row :=
   ; row_And
   ; row_Orr
   ; row_Eor
-  ; row_Mul
+  ; row_Madd
+  ; row_Msub
+  ; row_Smulh
   ; row_Sdiv
   ; row_Udiv
   ; row_Lslv
@@ -904,15 +969,58 @@ Proof.
   - cbv [row_Eor rmask rval enc]. lfields.
 Qed.
 
+(* The multiply family.  Smulh and Msub have rows of their own and go the
+   ordinary way; Mul and Madd share one row and are told apart by the addend
+   field, so each of them first computes what that field holds and then takes
+   the branch of the row that matches - the same two-step the two immediate
+   shifts make at the end of this section. *)
+Lemma dec_Smulh : forall rd rn rm, wf (Smulh rd rn rm) = true ->
+  decode (enc (Smulh rd rn rm)) = Some (Smulh rd rn rm).
+Proof.
+  intros rd rn rm H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_Smulh).
+  - cbv [row_Smulh rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Smulh rmask rval enc]. lfields.
+Qed.
+
+Lemma dec_Msub : forall rd rn rm ra, wf (Msub rd rn rm ra) = true ->
+  decode (enc (Msub rd rn rm ra)) = Some (Msub rd rn rm ra).
+Proof.
+  intros rd rn rm ra H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_Msub).
+  - cbv [row_Msub rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Msub rmask rval enc]. lfields.
+Qed.
+
 Lemma dec_Mul : forall rd rn rm, wf (Mul rd rn rm) = true ->
   decode (enc (Mul rd rn rm)) = Some (Mul rd rn rm).
 Proof.
   intros rd rn rm H. wfsplit H.
-  unfold decode. rewrite (decode1_of_match table _ row_Mul).
-  - cbv [row_Mul rmk enc]. f_equal. f_equal; gfields.
+  assert (E : get 10 5 (enc (Mul rd rn rm)) = 31) by (cbv [enc]; gfields).
+  unfold decode. rewrite (decode1_of_match table _ row_Madd).
+  - cbv [row_Madd rmk]. cbv beta. rewrite E. cbv [Z.eqb].
+    cbv [enc]. f_equal. f_equal; gfields.
   - vm_compute; reflexivity.
   - cbv [table]; simpl; tauto.
-  - cbv [row_Mul rmask rval enc]. lfields.
+  - cbv [row_Madd rmask rval enc]. lfields.
+Qed.
+
+Lemma dec_Madd : forall rd rn rm ra, wf (Madd rd rn rm ra) = true ->
+  decode (enc (Madd rd rn rm ra)) = Some (Madd rd rn rm ra).
+Proof.
+  intros rd rn rm ra H. wfsplit H.
+  assert (E : get 10 5 (enc (Madd rd rn rm ra)) = ra) by (cbv [enc]; gfields).
+  unfold decode. rewrite (decode1_of_match table _ row_Madd).
+  - cbv [row_Madd rmk]. cbv beta. rewrite E.
+    replace (ra =? 31) with false by (symmetry; apply Z.eqb_neq; lia).
+    cbv [enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Madd rmask rval enc]. lfields.
 Qed.
 
 Lemma dec_Sdiv : forall rd rn rm, wf (Sdiv rd rn rm) = true ->
@@ -1413,6 +1521,9 @@ Proof.
   - apply dec_Orr.
   - apply dec_Eor.
   - apply dec_Mul.
+  - apply dec_Smulh.
+  - apply dec_Madd.
+  - apply dec_Msub.
   - apply dec_Sdiv.
   - apply dec_Udiv.
   - apply dec_Lslv.
@@ -1495,6 +1606,9 @@ Definition opmask (i : insn) : Z :=
   | Orr _ _ _ => 0xFFE0FC00
   | Eor _ _ _ => 0xFFE0FC00
   | Mul _ _ _ => 0xFFE0FC00
+  | Smulh _ _ _ => 0xFFE0FC00
+  | Madd _ _ _ _ => 0xFFE08000
+  | Msub _ _ _ _ => 0xFFE08000
   | Sdiv _ _ _ => 0xFFE0FC00
   | Udiv _ _ _ => 0xFFE0FC00
   | Lslv _ _ _ => 0xFFE0FC00
@@ -1551,6 +1665,9 @@ Definition fldmask (i : insn) : Z :=
   | Orr _ _ _ => 0x001F03FF
   | Eor _ _ _ => 0x001F03FF
   | Mul _ _ _ => 0x001F03FF
+  | Smulh _ _ _ => 0x001F03FF
+  | Madd _ _ _ _ => 0x001F7FFF
+  | Msub _ _ _ _ => 0x001F7FFF
   | Sdiv _ _ _ => 0x001F03FF
   | Udiv _ _ _ => 0x001F03FF
   | Lslv _ _ _ => 0x001F03FF
@@ -1661,6 +1778,18 @@ Theorem lsli_lsri_alias_at_zero :
   wf (Lsli 3 4 0) = false /\ enc (Lsli 3 4 0) = enc (Lsri 3 4 0).
 Proof. split; vm_compute; reflexivity. Qed.
 
+(* The multiply family has the same ambiguity in the same place, and this is
+   why a multiply-add whose addend is register 31 is outside `wf`: that word IS
+   a plain multiply, bit for bit.  It is not a bound the shipped encoder could
+   apply either - the word is a perfectly good instruction and the machine runs
+   it - it is a question of which of two names the decoder gives it back, and
+   MUL is the name the shipped assembler already emits.  Msub carries no such
+   clause because nothing here competes with it for its register-31 word. *)
+Theorem madd_mul_alias_at_xzr :
+  wf (Madd 3 4 5 31) = false /\ enc (Madd 3 4 5 31) = enc (Mul 3 4 5) /\
+  wf (Msub 3 4 5 31) = true.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
 (* ---- what these results rest on ---------------------------------------- *)
 
 Print Assumptions decode_encode.
@@ -1673,3 +1802,4 @@ Print Assumptions overflow_aliases_another_instruction.
 Print Assumptions truncating_scale_aliases_another_offset.
 Print Assumptions overflow_escapes_the_vocabulary.
 Print Assumptions lsli_lsri_alias_at_zero.
+Print Assumptions madd_mul_alias_at_xzr.

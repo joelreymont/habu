@@ -106,6 +106,12 @@ $FFFFFFFF constant ARM64-W32
 
 : XR3 ( n n n -- n n n )  XREG? rot XREG? rot XREG? rot ;
 
+\ Four X-register operands, which is what the three-source multiply forms take.
+\ It is XR2 twice with the pair order swapped between, so the reserved-register
+\ refusal reaches every one of the four and no slot is screened by a rule of its
+\ own: whatever XR2 means for a two-operand form it means here as well.
+: XR4 ( n n n n -- n n n n )  XR2 2swap XR2 2swap ;
+
 : XRDI ( n n n -- n n n )  rot XREG? rot XREG? rot ;
 
 \ The D-register file uses the same 5-bit operand fields, but no member of it
@@ -121,6 +127,7 @@ variable ARM-BASE
 variable ARM-RD
 variable ARM-RN
 variable ARM-RM
+variable ARM-RA
 variable ARM-IMM
 variable ARM-SH
 variable ARM-X
@@ -147,6 +154,14 @@ variable ARM-Z
 : RRR ( n n n n -- n )
    ARM-BASE ! ARM-R3!
    ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-RM @ 16 lshift or MSK ;
+
+\ three-source: rd rn rm ra. The fourth register sits in its own five-bit field
+\ at bit ten, between the two the shifted-register forms above use, so this is
+\ RRR with that one field added rather than a layout of its own.
+: RRRA ( n n n n n -- n )
+   ARM-BASE ! ARM-RA ! ARM-R3!
+   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or
+   ARM-RM @ 16 lshift or  ARM-RA @ 10 lshift or MSK ;
 
 : ENC-ADD ( n n n -- n ) XR3 $8B000000 RRR ;
 
@@ -186,7 +201,25 @@ variable ARM-Z
 \ compiled routine has no reason to spend one.
 : ENC-MVN ( n n -- n ) ARM-ZERO-REG swap ENC-ORN ;
 
+\ The multiply group, which is one instruction with an addend field rather than
+\ the four separate forms these four names suggest. MUL is the multiply-add
+\ whose addend is register 31, the zero register - that is why its base carries
+\ $7C00, the addend field already full - and MNEG, which this file does not
+\ spell, would be MSUB's register-31 case in the same way. So a caller that
+\ wants a plain product writes ENC-MUL and a caller that wants the product
+\ accumulated writes ENC-MADD; they differ in one field and the encoding says so.
+\
+\ SMULH is the odd one and takes three operands, not four: it answers the HIGH
+\ half of a signed 64x64 product, so there is nothing to accumulate and its
+\ addend field is fixed full like MUL's. It is what a division by a constant
+\ becomes once the constant has been turned into a reciprocal.
 : ENC-MUL ( n n n -- n ) XR3 $9B007C00 RRR ;
+
+: ENC-SMULH ( n n n -- n ) XR3 $9B407C00 RRR ;
+
+: ENC-MADD ( n n n n -- n ) XR4 $9B000000 RRRA ;
+
+: ENC-MSUB ( n n n n -- n ) XR4 $9B008000 RRRA ;
 
 : RRI ( n n n n -- n )
    ARM-BASE ! ARM-I3!
