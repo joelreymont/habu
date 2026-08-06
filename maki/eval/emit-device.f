@@ -109,21 +109,21 @@ create CH-OUT CH-OUT-CAP allot  create CH-ERR CH-ERR-CAP allot
 create PA-OUT PA-OUT-CAP allot  create PA-ERR PA-ERR-CAP allot
 
 \ ---- little-endian f32 host pack/unpack -------------------------------------
-: F32! ( n ptr a n -- ) {: v:n buf:ptr idx:n :}
+: F32! ( n ptr u8 n -- ) {: v:n buf:ptr idx:n :}
    idx 4 * {: o:n :}
    v           $FF and  buf o     + c!
    v 8 rshift  $FF and  buf o 1 + + c!
    v 16 rshift $FF and  buf o 2 + + c!
    v 24 rshift $FF and  buf o 3 + + c! ;
 
-: F32@ ( ptr a n -- n ) {: buf:ptr idx:n :}
+: F32@ ( ptr u8 n -- n ) {: buf:ptr idx:n :}
    idx 4 * {: o:n :}
    buf o     + c@
    buf o 1 + + c@  8  lshift or
    buf o 2 + + c@  16 lshift or
    buf o 3 + + c@  24 lshift or ;
 
-: F! ( r ptr a n -- ) {: v:r buf:ptr idx:n :}    \ store a Habu float as f32 at element idx
+: F! ( r ptr u8 n -- ) {: v:r buf:ptr idx:n :}    \ store a Habu float as f32 at element idx
    v NARROW buf idx F32! ;
 
 : MAXF ( r r -- r ) {: a:r b:r :}  a b f> if a else b then ;
