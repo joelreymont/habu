@@ -14,4 +14,4 @@ require tools/bundle-lib-core.f
 
 require tools/bundle-lib-test-lib.f
 
-BLTT-MAIN
+BUNDLE-LIB-TEST:MAIN

@@ -2,6 +2,13 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/cli-run.f
 \ tools/bundle-lib-core.f tools/bundle-lib-test.f
+\
+\ One word is public - the entry the thin test file calls. The fixtures keep
+\ their BLTT- prefix: they are private to this package, and renaming forty-five
+\ of them to bare words would put names like ARG+ and DRIVER into a file that
+\ calls the stdlib, for no gain to any caller.
+
+package BUNDLE-LIB-TEST
 
 8192 constant BLTT-BUF-CAP
 $20000 constant BLTT-BUNDLE-CAP
@@ -141,13 +148,13 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-TOOL-CAPTURE ;
 
 : BLTT-RUN-BUNDLE-LIB ( -- len len outcome )
-   BL-RESET
-   BLTT-BUNDLE BL-OUT!
-   s" errors" BL-MOD+
-   s" array" BL-MOD+
-   BLTT-DRIVER BL-SCRIPT!
-   BL-VERIFY
-   BL-EMIT-BUNDLE
+   BUNDLE-LIB:RESET
+   BLTT-BUNDLE BUNDLE-LIB:OUT!
+   s" errors" BUNDLE-LIB:MOD+
+   s" array" BUNDLE-LIB:MOD+
+   BLTT-DRIVER BUNDLE-LIB:SCRIPT!
+   BUNDLE-LIB:VERIFY
+   BUNDLE-LIB:EMIT-BUNDLE
    0 >LEN 0 >LEN 0 OUTCOME:EXITED ;
 
 : BLTT-RUN-BUNDLE ( -- len len outcome )
@@ -209,7 +216,9 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
       BLTT-PUBLIC-BIN-N @ 1 T=
    then ;
 
-: BLTT-MAIN ( -- )
+public
+
+: MAIN ( -- )
    T-RESET
    BLTT-PREPARE
    BLTT-TEST-MISSING-MODULE
@@ -221,3 +230,5 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-ROOT EXISTS? TFALSE
    T-REPORT
    BLTT-OK$ type cr ;
+
+;package
