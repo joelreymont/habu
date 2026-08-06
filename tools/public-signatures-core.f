@@ -236,14 +236,14 @@ private
 : PS-OUT ( ptr u8 n -- ) {: a:ptr u:n :}
    1 a u PS-WRITE ;
 
-: PS-C! ( c -- )
+: PS-C! ( n -- )
    PS-ONE c! ;
 
-: PS-C ( c -- )
+: PS-C ( n -- )
    PS-C!
    PS-ONE 1 PS-OUT ;
 
-: PS-ERR-C ( c -- )
+: PS-ERR-C ( n -- )
    PS-C!
    2 PS-ONE 1 PS-WRITE ;
 
@@ -273,16 +273,16 @@ private
    repeat drop
    PS-NUM-BUF PS-NUM-I @ +  PS-NUM-CAP PS-NUM-I @ - ;
 
-: PS-JSON-U ( u -- )
+: PS-JSON-U ( n -- )
    PS-U$ PS-OUT ;
 
-: PS-JSON-BOOL ( f -- )
+: PS-JSON-BOOL ( bool -- )
    IF s" true" ELSE s" false" THEN PS-OUT ;
 
-: PS-JSON-NIBBLE ( n -- c )
+: PS-JSON-NIBBLE ( n -- n )
    dup 10 < IF PS-ZERO + ELSE 55 + THEN ;
 
-: PS-JSON-U00 ( c -- )
+: PS-JSON-U00 ( n -- )
    PS-BACKSLASH-C PS-C
    117 PS-C
    PS-ZERO PS-C
