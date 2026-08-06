@@ -197,16 +197,33 @@ variable START-NS
    s" 9" GE-OUT-LINE
    SB$ s" hb long dictionary names output" GE-EXPECT-OUT ;
 
+\ ---- wordlist isolation, through the one definition context that authenticates -
+\ THE PROPERTY IS UNCHANGED: a name defined into one wordlist is not reachable in
+\ another. What changed is the only lawful way to OPEN such a wordlist. A
+\ definition's package context has to be either the exact all-zero global tuple
+\ or a live namespace record whose two WIDs are the protected engine cells
+\ (src/habu/xref.f LIVE-PKG); `set-current` to a bare user wordlist is neither -
+\ the record cell is zero while get-current is not - so the definition is refused
+\ by CHECKER-PKG-CONTEXT-REJECT. A package is the shape that answers the same
+\ question lawfully, and it isolates for the stronger reason: the wordlist has an
+\ owner the checker can attribute every definition in it to.
+\
+\ THE WID IS TAKEN FROM THE ENGINE RATHER THAN ASSUMED. `get-current` inside the
+\ open package IS the wordlist the definition below lands in, so the second
+\ search asks about the wordlist that was actually written to; a test that named
+\ a number of its own could pass while the definition went somewhere else.
 : WORDLIST-SOURCE ( -- )
    GE-SRC-RESET
-   s" wordlist constant LONG-WL" GE-SRC-LINE
-   s" LONG-WL set-current" GE-SRC-LINE
+   s" variable LONG-WL" GE-SRC-LINE
+   s" package LONGWL" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" get-current LONG-WL !" GE-SRC-LINE
    s" : LONG-WORDLIST-ONLY-NAME ( -- i64 ) 8 ;" GE-SRC-LINE
-   s" 0 set-current" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" LONG-WORDLIST-ONLY-NAME" GE-SRC-S"
    s"  0 search-wl 0= ." GE-SRC-LINE
    s" LONG-WORDLIST-ONLY-NAME" GE-SRC-S"
-   s"  LONG-WL search-wl 0= ." GE-SRC-LINE ;
+   s"  LONG-WL @ search-wl 0= ." GE-SRC-LINE ;
 
 : WORDLIST ( -- )
    GE-HB-RESET
@@ -216,6 +233,24 @@ variable START-NS
    s" -1" GE-OUT-LINE
    s" 0" GE-OUT-LINE
    SB$ s" hb long dictionary wordlist isolation output" GE-EXPECT-OUT ;
+
+\ ---- and the shape that is no longer a definition context ---------------------
+\ The negative half of the same rule, pinned so that admitting bare wordlists
+\ again is a decision somebody has to make here rather than something a later
+\ change can do quietly. The refusal is named on stderr and carries the engine's
+\ compile-reject status, which is what distinguishes a modelled refusal from the
+\ bare uncaught throw this used to be.
+: WORDLIST-BARE-SOURCE ( -- )
+   GE-SRC-RESET
+   s" wordlist constant BARE-WL" GE-SRC-LINE
+   s" BARE-WL set-current" GE-SRC-LINE
+   s" : BARE-WORDLIST-NAME ( -- i64 ) 8 ;" GE-SRC-LINE ;
+
+: WORDLIST-BARE ( -- )
+   GE-HB-RESET
+   WORDLIST-BARE-SOURCE
+   70 s" no authenticated package context"
+   s" hb bare wordlist definition refused" GE-EVAL-FORK-BAD ;
 
 : LONG-NAME-SOURCE ( -- )
    GE-SRC-RESET
@@ -1256,6 +1291,7 @@ public
    s" hb-gate-dictionary" GT-START
    s" dictionary/long-dictionary" [: LONG-DICTIONARY ;] CASE-RUN
    s" dictionary/wordlist" [: WORDLIST ;] CASE-RUN
+   s" dictionary/wordlist-bare" [: WORDLIST-BARE ;] CASE-RUN
    s" dictionary/long-name" [: LONG-NAME ;] CASE-RUN
    s" dictionary/trusted-does" [: TRUSTED-DOES ;] CASE-RUN
    s" dictionary/bad-does" [: BAD-DOES ;] CASE-RUN
