@@ -3,6 +3,9 @@
 require lib/errors.f
 require lib/string.f
 
+package TEST
+private
+
 : TR-FILES-END? ( ptr u8 n -- bool )
    s" ;TR-FILES" STR= ;
 
@@ -36,6 +39,8 @@ require lib/string.f
    create TR-FILES-PARSE
    does> ( [ ptr u8 n -- ] -- )
       TR-FILES-RUN ;
+
+public
 
 TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    lib/errors.f lib/string.f lib/memory.f lib/cad-num-arithmetic.f lib/cad-num-types.f lib/vector.f lib/fs.f lib/fs-mutate.f
@@ -93,3 +98,5 @@ TR-FILES: TR-AOT-NEG-PHASE-FILES
    test/run-worker-aot-neg.f test/gate-aot-negative-lib.f
    src/habu/aot-closure.f tools/gate-json-assert-core.f
 ;TR-FILES
+
+;package
