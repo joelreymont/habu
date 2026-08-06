@@ -501,10 +501,13 @@ variable START-NS
 : CHECK-BUF-ACT ( -- )
    LABEL$ GE-SRC-BUF GE-SRC-U @ CHECK-ALL-ERRORS:BUF ;
 
+\ The tool writes its diagnostics to its own OUT buffer, which is the runner's
+\ stderr arena here, so the run commits as empty stdout plus those bytes.
 : CHECK-BUF-STORE ( n -- ) {: rc:n :}
-   rc OUTCOME:EXITED GT-OUTCOME!
-   0 GT-OUT-U !
-   CHECK-ALL-ERRORS:OUT$ nip GT-ERR-U ! ;
+   0 >LEN
+   CHECK-ALL-ERRORS:OUT$ nip >LEN
+   rc OUTCOME:EXITED
+   GT-STORE-RUN ;
 
 : CHECK-BUF-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
@@ -530,9 +533,10 @@ variable START-NS
    0 ;
 
 : CANDIDATE-STORE ( n -- ) {: rc:n :}
-   rc CANDIDATE-RC OUTCOME:EXITED GT-OUTCOME!
-   0 GT-OUT-U !
-   DIAG-BUFFER$ nip GT-ERR-U !
+   0 >LEN
+   DIAG-BUFFER$ nip >LEN
+   rc CANDIDATE-RC OUTCOME:EXITED
+   GT-STORE-RUN
    DIAG-BUFFER-OFF ;
 
 : CANDIDATE-RUN ( ptr u8 n ptr u8 n -- ) {: body:ptr bodyu:n label:ptr labelu:n :}
