@@ -407,6 +407,8 @@ ENUM opcode DERIVE eq
    fcmpselzd
    tailcall
    madd
+   addi
+   subi
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -647,6 +649,18 @@ private
    dup A64EFF:FRAME-MAX > if E-A64IR-FRAME throw then
    dup FRAME-LIM > if E-A64IR-FRAME throw then ;
 
+\ An immediate the add and subtract forms can carry in the instruction itself.
+\ It is the same twelve-bit field a frame is claimed with, and unlike a frame it
+\ takes no alignment: any value the field holds is an immediate an arithmetic
+\ instruction can name. It is UNSIGNED and it takes no shift, because the
+\ encoders src/arch/arm64/asm.f ships hardwire the shift bit to zero
+\ (ENC-ADDI, ENC-SUBI) - so a negative immediate is not "subtract instead", it
+\ is a value this form cannot express, and the caller that wanted one has to
+\ choose the other opcode itself.
+: OFF ( n -- n )
+   dup 0 < if E-A64IR-OFF throw then
+   dup OFF-MAX > if E-A64IR-OFF throw then ;
+
 \ ---- checked data-stack operands ---------------------------------------------
 \ An offset from the data-stack pointer, which is what an access of the caller's
 \ stack encodes. It is SIGNED, and that is the whole difference from a frame
@@ -800,6 +814,8 @@ public
       fcmpselzd OF s" a64.fcmpselzd" ENDOF
       tailcall  OF s" a64.tailcall" ENDOF
       madd      OF s" a64.madd"     ENDOF
+      addi      OF s" a64.addi"     ENDOF
+      subi      OF s" a64.subi"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -874,6 +890,18 @@ public
 
 : FRAME-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    FRAME IR-BUILD:INTERN-INT-ATTR ;
+
+\ The one attribute key the add and subtract immediate forms require: the number
+\ the instruction carries in its own field. It is its own key rather than the
+\ move-wide's `a64.imm`, for the reason the data-stack keys are their own below:
+\ the two fields have different widths, so one key answering both would let a
+\ sixteen-bit move-wide check pass a value the twelve-bit arithmetic field
+\ cannot hold.
+: KEY-OFF ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.off" IR-BUILD:INTERN-SYMBOL ;
+
+: OFF-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   OFF IR-BUILD:INTERN-INT-ATTR ;
 
 \ The two attribute keys the data-stack forms require. They are their own keys
 \ rather than the frame's, because a consumer that walks a module has to be able
@@ -1010,6 +1038,8 @@ private
       fcmpselzd OF s" a64.rule.fcmpselzd" ENDOF
       tailcall  OF s" a64.rule.tailcall" ENDOF
       madd      OF s" a64.rule.madd"     ENDOF
+      addi      OF s" a64.rule.addi"     ENDOF
+      subi      OF s" a64.rule.subi"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1075,6 +1105,8 @@ private
       fcmpselzd OF s" a64.render.fcmpselzd" ENDOF
       tailcall  OF s" a64.render.tailcall" ENDOF
       madd      OF s" a64.render.madd"     ENDOF
+      addi      OF s" a64.render.addi"     ENDOF
+      subi      OF s" a64.render.subi"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1164,6 +1196,40 @@ private
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ One register read, one written, and a second source that is not a register at
+\ all but a number standing in the instruction's own field. `add rd, rn, #imm`
+\ and `sub rd, rn, #imm` have exactly this shape and differ only in their names
+\ and in the base word the emitter picks, so the two share it.
+\
+\ THE IMMEDIATE IS AN ATTRIBUTE AND NOT AN OPERAND, which is the whole of why
+\ the form costs no register. An operand names a VALUE, and a value has to be
+\ somewhere - so a form whose second source were an operand would be the
+\ register-register addition this dialect already carries, with a move-wide
+\ chain in front of it to put the number in a register. An attribute is part of
+\ the instruction itself, so the number occupies nothing and the chain is not
+\ written at all.
+\
+\ IT DECLARES NO TIE, for the reason DEF-BINARY declares none: the encoders name
+\ independent destination and source register fields (src/arch/arm64/asm.f RRI),
+\ so the result may be any register and the operand keeps its value.
+\
+\ AND IT IS NOT COMMUTATIVE, which is a fact about `sub` rather than about this
+\ shape. The operand is the value the immediate is added to or subtracted FROM,
+\ so a rewriter folding a constant into a subtraction may only fold the value
+\ being subtracted, never the value subtracted from. That rule is the caller's
+\ to keep; this schema only says which of the two the operand is.
+: DEF-BINARY-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-OFF IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    TOTAL
    TARGET
@@ -2178,6 +2244,8 @@ public
    c b t DEF-MOV
    c b t A64IR-OPCODE:ADD DEF-BINARY
    c b t A64IR-OPCODE:SUB DEF-BINARY
+   c b t A64IR-OPCODE:ADDI DEF-BINARY-IMM
+   c b t A64IR-OPCODE:SUBI DEF-BINARY-IMM
    c b t A64IR-OPCODE:MUL DEF-BINARY
    c b t DEF-MADD
    c b t DEF-SDIV

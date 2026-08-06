@@ -801,12 +801,14 @@ public
 \ as SSA values. Almost every refusal a malformed A64IR operation earns belongs
 \ to IR-SCHEMA or IR-OP, which measure it against the schema table; these five
 \ are the facts only the dialect knows: which schema table it may fill, the two
-\ operand fields of the move-wide form, and the two of the frame forms.
+\ operand fields of the move-wide form, the two of the frame forms, and the one
+\ of the add/sub-immediate forms.
 -8340 constant E-A64IR-DIALECT  \ a module whose schema table was created for another dialect or another schema version
 -8341 constant E-A64IR-IMM      \ a move-wide immediate outside the sixteen-bit field the form holds
 -8342 constant E-A64IR-SHIFT    \ a move-wide shift that does not select one of the four halves of a general register
 -8343 constant E-A64IR-SLOT     \ a frame-slot offset the memory forms cannot address: negative, not a multiple of the eight bytes they move, or past the reach of their scaled twelve-bit offset field
 -8344 constant E-A64IR-FRAME    \ a reserved frame size no routine can declare: negative, not a multiple of the stack alignment, or past the deepest frame the offset field can reach
+-8345 constant E-A64IR-OFF      \ an add or subtract immediate outside the unsigned twelve-bit field the form holds: negative, or past the largest value that field carries with no shift
 
 \ Native ARM64 instruction selection (package A64SEL): -8360..-8379
 \
