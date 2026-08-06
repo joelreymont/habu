@@ -5410,3 +5410,14 @@ E-A64RA-PRESSURE left the old case proving the opposite thing, a gap that
 only surfaced because the case was rewritten by hand. Rename or re-test a
 refusal whose bound moves.
 
+## install replaces the binary; a fixpoint alone does not (2026-08-06)
+
+build-fixpoint-refresh -- all --force reaches the fixpoint but does NOT
+replace bin/hb - only install does. A working engine fix read as 'still
+failing' for a full cycle because the running binary predated it. Check
+bin/hb's mtime before believing a negative result on any src/habu change.
+And from the same lane: when a seal fires under a new exit, diagnose it
+before building around it - this one was RIGHT to fire and one slot too
+tight, and the widening's invariant (the pending row is the one slot ':'
+writes before raising the count) became the design's atomicity story.
+
