@@ -5354,3 +5354,18 @@ its whole life. A test that pins a silent downgrade is a bug preservation
 order - when the downgrade is the defect, the pin must flip in the same
 change that fixes it.
 
+## A zero-headroom wall-clock ratchet is structurally flaky (2026-08-06)
+
+The json scan rows asserted cross-tree wall-clock equality at 0.1%
+resolution against a recording-day median; measured run-to-run drift on a
+quiet host is 1.4-3.5%, so the row failed whenever drift landed positive -
+an estimator change alone passed one run and missed the next by 0.105%. A
+timing tolerance must be sized by the measurement's own noise, recorded with
+its basis, and judged on the one order statistic host load cannot inflate
+(the fastest of interleaved windows). The cure DELETED more than it added:
+the verdict engine and the median machinery went, raw paired intervals
+replaced them, and the data now speaks for itself. Ops footnote that cost a
+peer lane one spurious failure: never pkill by pattern on a shared box -
+match your own gate's exact PID lineage; peer lanes run identically-named
+binaries.
+
