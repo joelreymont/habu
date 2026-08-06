@@ -7,7 +7,6 @@ require lib/fs-mutate.f
 
 package GATE-LINT-TOOLS
 
-using GATE-POOL
 private
 
 \ This file is an in-process gate BODY, not a standalone entry point. Its header says
@@ -36,6 +35,16 @@ private
    E-GLT-NO-HARNESS throw ;
 
 REQUIRE-HARNESS
+
+\ Everything below here is harness-dependent, and this `using` is the first of it:
+\ the engine resolves `using NAME` the moment it reads the line, and package
+\ GATE-POOL is opened by test/gate-pool.f, which the harness loads and this file
+\ deliberately does not. A `using` placed above REQUIRE-HARNESS therefore kills a
+\ direct load with the engine's unknown-package status before the refusal above can
+\ speak - which is the very "opaque status instead of a named refusal" this guard
+\ exists to prevent, and is exactly what happened when GATE-POOL was first packaged.
+\ Anything the harness supplies goes below the guard, never above it.
+using GATE-POOL
 
 : REPL ( -- )
    s" ." LINT-REPL:ROOT!
