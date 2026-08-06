@@ -1207,11 +1207,21 @@ variable LONG-J
    outu 0 T=
    erru 0 T= ;
 
+\ `dup` on a linear value is caught structurally: the linear type refuses to
+\ instantiate dup's unrestricted quantifier, so the checker captures the pair
+\ (`expected: a actual: own`) and DCODE in src/core/render.f takes its
+\ E-MISMATCH arm. E-REJECTED is the bottom of that cascade -- the fallback for
+\ a rejection with no captured pair -- so asserting it here would demand the
+\ least informative packet the mapper can produce. This case used to land there
+\ (archived lesson: type-linear rejections came out "E-REJECTED with
+\ declared==inferred"); it no longer does. The repair_class pins the same
+\ mapped-not-fallback property from a second field.
 : TEST-LINEAR-BAD ( -- )
    LINEAR-BAD$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" E-REJECTED" CONTAINS? TTRUE
+   CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CAP-ERR erru s" fix_type" CONTAINS? TTRUE
    CAP-ERR erru s" dup" CONTAINS? TTRUE ;
 
 : VREC-BAD-TEST ( -- )
