@@ -55,7 +55,7 @@ variable LAST-LOSS                              \ stashed final loss (determinis
    CET-ON 0 ?do  CET-SEED i T-GET CET-INV-R f*  CET-SEED i T-SET  loop ;
 
 \ ---- central finite difference of MEAN-CE over one parameter element ---------
-: FD-AT ( ptr a n -- r ) {: pb:ptr e:n :}
+: FD-AT ( ptr r n -- r ) {: pb:ptr e:n :}
    pb e T-GET {: base:r :}
    base 0.001 f+ pb e T-SET  RUN-FWD MEAN-CE {: yp:r :}
    base 0.001 f- pb e T-SET  RUN-FWD MEAN-CE {: ym:r :}
@@ -69,7 +69,7 @@ variable LAST-LOSS                              \ stashed final loss (determinis
    a fd f- fabs   GTOL-ABS  GTOL-REL a fabs f* f+   f< ;
 
 \ ---- every element of one parameter tensor: analytic node vs central FD -------
-: CHECK-PARAM ( n ptr a n -- ) {: slot:n pb:ptr len:n :}
+: CHECK-PARAM ( n ptr r n -- ) {: slot:n pb:ptr len:n :}
    len 0 ?do  slot AN-GRAD i T-GET  pb i FD-AT  GCLOSE? TTRUE  loop ;
 
 \ ---- fresh forward + mean-scaled seed + full backward (grads at current params)
