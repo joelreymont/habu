@@ -132,6 +132,9 @@ s" ENC-STUR" s" n n n -- n" TRUST
 s" ENC-SMULH" s" n n n -- n" TRUST
 s" ENC-MADD" s" n n n n -- n" TRUST
 s" ENC-MSUB" s" n n n n -- n" TRUST
+s" ENC-LD1V" s" n n -- n" TRUST
+s" ENC-UADDLV" s" n n -- n" TRUST
+s" ENC-UMOVH" s" n n n -- n" TRUST
 s" MOVNHW" s" n n n -- n" TRUST
 s" EMITW" s" n --" TRUST
 s" MOVZ," s" n n --" TRUST
@@ -211,8 +214,9 @@ public
 45 constant F-BLR      46 constant F-BR       47 constant F-ICIVAU
 48 constant F-DCCVAU  49 constant F-FCSEL     50 constant F-LDUR
 51 constant F-STUR    52 constant F-SMULH   53 constant F-MADD
-54 constant F-MSUB
-55 constant FORMS
+54 constant F-MSUB    55 constant F-LD1V    56 constant F-UADDLV
+57 constant F-UMOVH
+58 constant FORMS
 
 \ The constructor name in `formal/Common/Insn.v`. It names the form in a
 \ failing row's label and in the generated Rocq obligation, so the two reports
@@ -237,7 +241,8 @@ public
       45 of s" Blr" endof      46 of s" Br" endof      47 of s" IcIvau" endof
       48 of s" DcCvau" endof   49 of s" Fcsel" endof   50 of s" Ldur" endof
       51 of s" Stur" endof     52 of s" Smulh" endof   53 of s" Madd" endof
-      54 of s" Msub" endof
+      54 of s" Msub" endof     55 of s" Ld1v" endof    56 of s" Uaddlv" endof
+      57 of s" Umovh" endof
       E-CIE-FORM throw
    endcase ;
 
@@ -252,9 +257,15 @@ public
    k F-B = k F-BL = or k F-SVC = or k F-BLR = or k F-BR = or
    k F-ICIVAU = or k F-DCCVAU = or ;
 
+\ The two SIMD forms with two operands are here for the same reason the two
+\ atomic memory forms are: a register and a register, whichever file each of
+\ them names. A vector load names the vector it fills and the general register
+\ holding the address; a reduction names the vector it writes and the vector it
+\ reads.
 : BINARY-FORM? ( n -- bool ) {: k:n :}
    k F-LDAR = k F-STLR = or k F-CMP = or k F-CMPI = or k F-CSET = or
-   k F-BCOND = or k F-CBZ = or k F-CBNZ = or k F-ADR = or ;
+   k F-BCOND = or k F-CBZ = or k F-CBNZ = or k F-ADR = or
+   k F-LD1V = or k F-UADDLV = or ;
 
 \ The forms with four operands, which are two pairs. A conditional select names
 \ a destination, two sources and the condition that chooses between them, and
@@ -597,6 +608,41 @@ variable LIM-N
    F-MSUB 1 2 3 31 $9B03FC41 V4
    F-MSUB 31 31 31 31 $9B1FFFFF V4 ;
 
+\ The SIMD group: load sixteen bytes, add them into one 16-bit result, carry
+\ that result into a general register. Three instructions, and between them the
+\ whole of a byte-summing strip.
+\
+\ THE ROWS THAT NAME REGISTER 18 ARE THE POINT OF THIS BLOCK. x18 is Darwin
+\ platform-reserved and every X-register slot in the table below refuses it, but
+\ v18 is an ordinary vector register and refusing it would be wrong code
+\ refused. So the vector slots are exercised AT 18 here and must encode, while
+\ the general-register slots at 18 are in `RESERVED-SIMD` below and must die.
+\ The two blocks are the same question asked of one instruction twice, and
+\ `F-UMOVH 3 18 0` against `F-UMOVH 18 3 0` is the pair that answers it: the
+\ same form, the same number, one file apart, one encodes and one refuses. Put
+\ `XREG?` on the vector operand and the first of those rows fails; take it off
+\ the general one and the second stops refusing.
+\
+\ Reference: ARM ARM for A-profile, C7.2, LD1 (multiple structures, one
+\ register, no offset) / UADDLV / UMOV. Words checked against the assembler.
+: SIMD-VECTORS ( -- )
+   F-LD1V 0 0 $4C407000 V2
+   F-LD1V 1 2 $4C407041 V2
+   F-LD1V 31 30 $4C4073DF V2
+   F-LD1V 5 31 $4C4073E5 V2                  \ the base may be the stack pointer
+   F-LD1V 18 3 $4C407072 V2                  \ v18 is not reserved; x18 is
+   F-UADDLV 0 0 $6E303800 V2
+   F-UADDLV 1 2 $6E303841 V2
+   F-UADDLV 31 30 $6E303BDF V2
+   F-UADDLV 18 18 $6E303A52 V2               \ both slots are vector slots
+   F-UMOVH 0 0 0 $0E023C00 V3
+   F-UMOVH 1 2 0 $0E023C41 V3
+   F-UMOVH 30 31 0 $0E023FFE V3
+   F-UMOVH 3 4 3 $0E0E3C83 V3                \ the lane index, off its floor
+   F-UMOVH 1 2 7 $0E1E3C41 V3                \ and at its ceiling
+   F-UMOVH 3 18 0 $0E023E43 V3               \ the vector source may be v18
+   F-UMOVH 31 31 7 $0E1E3FFF V3 ;            \ every field full at once
+
 \ The same select over two DOUBLES, operand for operand: the four fields sit at
 \ the same four positions and only the opcode differs, which is what the rows
 \ below say by carrying the same operands as the rows above. Its three register
@@ -718,7 +764,14 @@ variable LIM-N
    F-CSEL 1 2 2 16 OOR4+                     \ was: cond 16 ran into the second source
    F-FCSEL 1 2 2 16 OOR4+
    F-BCOND 16 0 0 OOR+
-   F-MADD 1 2 3 32 OOR4+ ;                   \ the addend slot, bounded by `XR4`
+   F-MADD 1 2 3 32 OOR4+                     \ the addend slot, bounded by `XR4`
+   F-LD1V 32 3 0 OOR+                        \ `DR2` bounds the vector slot too
+   F-LD1V 1 32 0 OOR+
+   F-UADDLV 32 1 0 OOR+
+   F-UADDLV 1 32 0 OOR+
+   F-UMOVH 32 1 0 OOR+
+   F-UMOVH 1 32 0 OOR+
+   F-UMOVH 1 2 8 OOR+ ;                      \ the lane index is three bits
 
 \ A byte operand the encoder divides by its access scale. Each was rounded down
 \ and encoded as the aligned operand below it.
@@ -762,6 +815,17 @@ variable LIM-N
    F-MADD 1 2 18 4 X184  F-MADD 1 2 3 18 X184
    F-MSUB 18 2 3 4 X184  F-MSUB 1 18 3 4 X184
    F-MSUB 1 2 18 4 X184  F-MSUB 1 2 3 18 X184 ;
+
+\ The SIMD forms have exactly ONE general-register slot between them and these
+\ are it: the address a vector load reads through, and the destination a vector
+\ move writes. Two rows, not six, and the four rows that are absent are as
+\ load-bearing as these two - the vector slots at 18 sit in `SIMD-VECTORS`
+\ above and must ENCODE. Add a row here for a vector slot and it fails, because
+\ v18 encodes; that is the check that keeps the reserved-register refusal on the
+\ file it belongs to.
+: RESERVED-SIMD ( -- )
+   F-LD1V 1 18 0 X18
+   F-UMOVH 18 2 0 X18 ;
 
 \ The logical forms take the plain mask and pack it themselves, so these rows
 \ carry the mask the mnemonic is handed and the packed value the model sees.
@@ -826,6 +890,7 @@ variable LIM-N
    RESERVED-MOVE-WIDE
    RESERVED-SHIFTED-REGISTER
    RESERVED-MULTIPLY
+   RESERVED-SIMD
    RESERVED-IMMEDIATE
    RESERVED-SHIFT
    RESERVED-MEMORY
@@ -854,6 +919,7 @@ variable LIM-N
    COMPARE-VECTORS
    CONDITIONAL-SELECT-VECTORS
    MULTIPLY-VECTORS
+   SIMD-VECTORS
    FLOAT-SELECT-VECTORS
    BRANCH-VECTORS
    SYSTEM-VECTORS

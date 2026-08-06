@@ -66,6 +66,11 @@
                                      register IS a plain multiply, one word
                                      under two names, which is why that addend
                                      is not well formed here.
+     umov_lane_overflow_escapes_the_vocabulary - the vector move's lane index
+                                     is three bits, and an index past them runs
+                                     off the top of the architecture's imm5
+                                     into the opcode, so the word is not any
+                                     form here.
 
    Operand conventions follow the shipped words, not the architecture
    manual, because the shipped words are what this has to constrain.  So a
@@ -123,6 +128,31 @@
    here, so no second name competes for that word and `wf` lets the addend be
    any register.  If MNEG is ever modelled it will need the same treatment MUL
    gets, in the same row.
+
+   AND THREE OF THE SIMD FILE, WHICH ARRIVE BEFORE THEIR CALLER TOO.  Ld1v,
+   Uaddlv and Umovh are the three instructions a 16-byte strip of a
+   byte-summing loop is made of: load sixteen bytes, add them into one 16-bit
+   result, carry that result into a general register.  They are modelled with no
+   emitter using them, for the reason the multiply family gives above - the row
+   lands before the pass - and the pass they are for is the one that closes the
+   measured 8.4 ns between CODEGEN-CORPUS:BYTE-SUM and its clang twin.
+
+   THE V FILE IS THE D FILE, and that is what makes these rows say something the
+   Fcsel row could not.  v3 and d3 are one register read at two widths, so no
+   new register bound appears in the shipped encoder and none is needed here.
+   But Umov's DESTINATION is a general register while its source is a vector, so
+   one instruction spans both files: `xregs` holds its destination alone, and
+   `checked_regs` has to agree, because ENC-UMOVH really does put that one
+   operand through the reserved-register refusal and really does not put the
+   other one there.  Fcsel could only say "no operand is an X register"; this
+   says which ones are, in a form where the answer is neither all nor none.
+
+   Umov's lane index is the one operand here that is not a register, and it is
+   three bits rather than the five the architecture's field diagram shows.  The
+   remaining two bits of that `imm5` carry the ELEMENT SIZE - for a 16-bit lane
+   the field is (index * 4) + 2 - and they are opcode, not operand.  Splitting it
+   that way is what keeps the decoder row exact rather than merely sound; the
+   note above row_Umovh says what reading it as one five-bit operand would cost.
 
    MODEL GAPS.  The remaining floating-point encoders (FMOVXD, FMOVDX, FMOVDD,
    FADD, FSUB, FMUL, FDIV, FNEG, FABS, FSQRT, FCMP, FCMP0, SCVTF, FCVTZS) are
@@ -314,7 +344,10 @@ Inductive insn : Type :=
 | Blr (rn : Z)
 | Br (rn : Z)
 | IcIvau (rt : Z)
-| DcCvau (rt : Z).
+| DcCvau (rt : Z)
+| Ld1v (vt rn : Z)
+| Uaddlv (vd vn : Z)
+| Umovh (rd vn idx : Z).
 
 Definition enc (i : insn) : Z :=
   match i with
@@ -373,6 +406,9 @@ Definition enc (i : insn) : Z :=
   | Br rn => Z.lor 0xD61F0000 (fld (rn) 5)
   | IcIvau rt => Z.lor 0xD50B7520 (fld (rt) 0)
   | DcCvau rt => Z.lor 0xD50B7B20 (fld (rt) 0)
+  | Ld1v vt rn => Z.lor 0x4C407000 (Z.lor (fld (vt) 0) (fld (rn) 5))
+  | Uaddlv vd vn => Z.lor 0x6E303800 (Z.lor (fld (vd) 0) (fld (vn) 5))
+  | Umovh rd vn idx => Z.lor 0x0E023C00 (Z.lor (fld (rd) 0) (Z.lor (fld (vn) 5) (fld (idx) 18)))
   end.
 
 (* The shipped encoders end in MSK ($FFFFFFFF and); this is that step. *)
@@ -454,6 +490,9 @@ Definition wf (i : insn) : bool :=
   | Br rn => rok rn
   | IcIvau rt => rok rt
   | DcCvau rt => rok rt
+  | Ld1v vt rn => rok vt && rok rn
+  | Uaddlv vd vn => rok vd && rok vn
+  | Umovh rd vn idx => rok rd && rok vn && uok 3 idx
   end.
 
 (* Which operands the shipped encoder passes through XREG?, the
@@ -527,6 +566,9 @@ Definition checked_regs (i : insn) : list Z :=
   | Br rn => [rn]
   | IcIvau rt => [rt]
   | DcCvau rt => [rt]
+  | Ld1v vt rn => [rn]
+  | Uaddlv vd vn => []
+  | Umovh rd vn idx => [rd]
   end.
 
 Definition xregs (i : insn) : list Z :=
@@ -586,6 +628,9 @@ Definition xregs (i : insn) : list Z :=
   | Br rn => [rn]
   | IcIvau rt => [rt]
   | DcCvau rt => [rt]
+  | Ld1v vt rn => [rn]
+  | Uaddlv vd vn => []
+  | Umovh rd vn idx => [rd]
   end.
 
 (* x18 is Darwin platform-reserved: the kernel zeroes it on any synchronous
@@ -653,6 +698,24 @@ Definition row_Blr := R 0xFFFFFC1F 0xD63F0000 (fun w => Blr (get 5 5 w)).
 Definition row_Br := R 0xFFFFFC1F 0xD61F0000 (fun w => Br (get 5 5 w)).
 Definition row_IcIvau := R 0xFFFFFFE0 0xD50B7520 (fun w => IcIvau (get 0 5 w)).
 Definition row_DcCvau := R 0xFFFFFFE0 0xD50B7B20 (fun w => DcCvau (get 0 5 w)).
+
+(* The SIMD group.  LD1 and UADDLV read their two register operands out of the
+   same two five-bit fields every load and every three-operand form here uses,
+   so their rows say nothing new about layout - what is new is which FILE each
+   operand names, and that is what `checked_regs` and `xregs` above record.
+
+   UMOV's row is the one with a decision in it.  The five bits at position 16
+   are the architecture's `imm5`, which carries the element size AND the lane
+   index together: for a 16-bit lane it is (index * 4) + 2.  Splitting it the
+   way the encoder does - the low two bits into the OPCODE, where the element
+   size belongs, and the top three into a field - is what keeps this row exact.
+   Read as one five-bit operand it would not be: a word naming an 8-bit lane
+   would match this row and decode to a 16-bit lane index that re-encodes to a
+   different word, and `decode_encode` would be proving something weaker than
+   it says.  So the size lives in `rval` and only the index is read back. *)
+Definition row_Ld1v := R 0xFFFFFC00 0x4C407000 (fun w => Ld1v (get 0 5 w) (get 5 5 w)).
+Definition row_Uaddlv := R 0xFFFFFC00 0x6E303800 (fun w => Uaddlv (get 0 5 w) (get 5 5 w)).
+Definition row_Umovh := R 0xFFE3FC00 0x0E023C00 (fun w => Umovh (get 0 5 w) (get 5 5 w) (get 18 3 w)).
 
 (* LSL and LSR by an immediate are the same UBFM opcode; the shift amount
    field is what tells them apart, so they share one row.  A right shift
@@ -727,7 +790,10 @@ Definition table : list row :=
   ; row_Blr
   ; row_Br
   ; row_IcIvau
-  ; row_DcCvau ].
+  ; row_DcCvau
+  ; row_Ld1v
+  ; row_Uaddlv
+  ; row_Umovh ].
 
 Definition excl (a b : row) : bool :=
   negb (Z.land (rval a) (Z.land (rmask a) (rmask b)) =?
@@ -805,6 +871,7 @@ Ltac side :=
 
 Ltac gz := first
   [ rewrite (get_fld_zero _ _ _ _ 2) by side
+  | rewrite (get_fld_zero _ _ _ _ 3) by side
   | rewrite (get_fld_zero _ _ _ _ 4) by side
   | rewrite (get_fld_zero _ _ _ _ 5) by side
   | rewrite (get_fld_zero _ _ _ _ 6) by side
@@ -817,6 +884,7 @@ Ltac gz := first
 
 Ltac lz := first
   [ rewrite (fld_land_disjoint _ _ 2) by side
+  | rewrite (fld_land_disjoint _ _ 3) by side
   | rewrite (fld_land_disjoint _ _ 4) by side
   | rewrite (fld_land_disjoint _ _ 5) by side
   | rewrite (fld_land_disjoint _ _ 6) by side
@@ -829,6 +897,7 @@ Ltac lz := first
 
 Ltac ls := first
   [ rewrite (fld_land_super _ _ 2) by side
+  | rewrite (fld_land_super _ _ 3) by side
   | rewrite (fld_land_super _ _ 4) by side
   | rewrite (fld_land_super _ _ 5) by side
   | rewrite (fld_land_super _ _ 6) by side
@@ -1509,6 +1578,39 @@ Proof.
   - cbv [row_Lsli rmask rval enc]. lfields.
 Qed.
 
+Lemma dec_Ld1v : forall vt rn, wf (Ld1v vt rn) = true ->
+  decode (enc (Ld1v vt rn)) = Some (Ld1v vt rn).
+Proof.
+  intros vt rn H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_Ld1v).
+  - cbv [row_Ld1v rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Ld1v rmask rval enc]. lfields.
+Qed.
+
+Lemma dec_Uaddlv : forall vd vn, wf (Uaddlv vd vn) = true ->
+  decode (enc (Uaddlv vd vn)) = Some (Uaddlv vd vn).
+Proof.
+  intros vd vn H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_Uaddlv).
+  - cbv [row_Uaddlv rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Uaddlv rmask rval enc]. lfields.
+Qed.
+
+Lemma dec_Umovh : forall rd vn idx, wf (Umovh rd vn idx) = true ->
+  decode (enc (Umovh rd vn idx)) = Some (Umovh rd vn idx).
+Proof.
+  intros rd vn idx H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_Umovh).
+  - cbv [row_Umovh rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_Umovh rmask rval enc]. lfields.
+Qed.
+
 Theorem decode_encode : forall i, wf i = true -> decode (enc i) = Some i.
 Proof.
   destruct i.
@@ -1567,6 +1669,9 @@ Proof.
   - apply dec_Br.
   - apply dec_IcIvau.
   - apply dec_DcCvau.
+  - apply dec_Ld1v.
+  - apply dec_Uaddlv.
+  - apply dec_Umovh.
 Qed.
 
 Corollary enc_injective : forall i j, wf i = true -> wf j = true ->
@@ -1652,6 +1757,9 @@ Definition opmask (i : insn) : Z :=
   | Br _ => 0xFFFFFC1F
   | IcIvau _ => 0xFFFFFFE0
   | DcCvau _ => 0xFFFFFFE0
+  | Ld1v _ _ => 0xFFFFFC00
+  | Uaddlv _ _ => 0xFFFFFC00
+  | Umovh _ _ _ => 0xFFE3FC00
   end.
 
 Definition fldmask (i : insn) : Z :=
@@ -1711,6 +1819,9 @@ Definition fldmask (i : insn) : Z :=
   | Br _ => 0x000003E0
   | IcIvau _ => 0x0000001F
   | DcCvau _ => 0x0000001F
+  | Ld1v _ _ => 0x000003FF
+  | Uaddlv _ _ => 0x000003FF
+  | Umovh _ _ _ => 0x001C03FF
   end.
 
 Theorem opcode_and_operands_tile_the_word : forall i,
@@ -1790,6 +1901,19 @@ Theorem madd_mul_alias_at_xzr :
   wf (Msub 3 4 5 31) = true.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
+(* The lane index of a vector-to-general move is three bits, and this is what
+   makes that bound an encoder's business rather than a comment.  The two bits
+   below the index in the architecture's `imm5` say the lane is 16 bits wide,
+   and they are opcode here.  An index of 8 is the first that does not fit, and
+   it does not run into those two bits - it runs off the top of `imm5` into the
+   opcode above, so the word it makes is not any instruction this file names.
+   The decoder could not even report what had been emitted, which is the same
+   failure `overflow_escapes_the_vocabulary` records for an unbounded immediate,
+   reached by a different road. *)
+Theorem umov_lane_overflow_escapes_the_vocabulary :
+  wf (Umovh 1 2 8) = false /\ decode (emit (Umovh 1 2 8)) = None.
+Proof. split; vm_compute; reflexivity. Qed.
+
 (* ---- what these results rest on ---------------------------------------- *)
 
 Print Assumptions decode_encode.
@@ -1803,3 +1927,4 @@ Print Assumptions truncating_scale_aliases_another_offset.
 Print Assumptions overflow_escapes_the_vocabulary.
 Print Assumptions lsli_lsri_alias_at_zero.
 Print Assumptions madd_mul_alias_at_xzr.
+Print Assumptions umov_lane_overflow_escapes_the_vocabulary.

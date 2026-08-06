@@ -32,6 +32,7 @@ $FFFFFFFF constant ARM64-W32
 1  6 lshift constant SHIFT-LIM   \ shift amount for a 64-bit register
 1  4 lshift constant COND-LIM    \ condition code
 1  2 lshift constant HW-LIM      \ move-wide shifted-half selector
+1  3 lshift constant LANEH-LIM   \ which 16-bit lane of a vector UMOV reads
 
 \ True when v does not fit the unsigned field that holds 0 .. lim-1. Every
 \ bound below is this one test; only the limit and the diagnostic differ.
@@ -83,6 +84,14 @@ $FFFFFFFF constant ARM64-W32
 
 : ?HW ( n -- n )
    dup HW-LIM OUT? IF s" asm: move-wide half out of range" ASM-EXIT-RC die THEN ;
+
+\ Which 16-bit lane a vector-to-general move reads. A vector holds eight of
+\ them, so the operand is three bits and NOT the five the register operands
+\ carry: the two bits below it in the word are the ones that say the lane is 16
+\ bits wide rather than 8 or 32, and they belong to the opcode. An index this
+\ refuses would run into them and name a different element size.
+: ?LANEH ( n -- n )
+   dup LANEH-LIM OUT? IF s" asm: vector lane index out of range" ASM-EXIT-RC die THEN ;
 
 \ A byte operand the encoder is about to divide by its access scale. The
 \ division rounds down, so a value it would round is refused here rather than
@@ -317,6 +326,34 @@ variable ARM-Z
 : ENC-FSUB ( n n n -- n ) DR3 $1E603800 RRR ;
 
 : ENC-FMUL ( n n n -- n ) DR3 $1E600800 RRR ;
+
+\ SIMD: the three forms a 16-byte strip of a byte-summing loop is made of. They
+\ are here with no caller yet, which is the same order SMULH, MADD and MSUB
+\ arrived in and for the same reason - the chain may not emit a form
+\ formal/Common/Insn.v does not carry, so the encoder and the model row land
+\ before the pass that will write them.
+\
+\ THE V FILE IS THE D FILE, which is why no new operand bound appears here.
+\ v3 and d3 are one register read at two widths, so the SIMD operands below are
+\ bounded by the same DR2 the FP forms above use, and for the same reason: the
+\ file has no platform-reserved member, so only the five-bit field bound applies
+\ to them. The ONE operand here that is screened for x18 is UMOV's destination,
+\ which is a general register - so a single instruction spans both files and the
+\ two lists in the model say different things about its operands.
+\
+\ Reference: ARM Architecture Reference Manual for A-profile, C7.2 -
+\ LD1 (multiple structures, one register, no offset), UADDLV, UMOV. LD1 puts Rt
+\ at bit 0 and Rn at 5, the same two positions the loads above use. UADDLV adds
+\ sixteen unsigned bytes into one 16-bit result, which cannot overflow: the
+\ largest is 16 * 255 = 4080. UMOV then carries that result into a general
+\ register, and it is the only bridge in this group between the two files.
+: ENC-LD1V ( n n -- n ) DR2 XREG? $4C407000 RR ;
+
+: ENC-UADDLV ( n n -- n ) DR2 $6E303800 RR ;
+
+: ENC-UMOVH ( n n n -- n )
+   ?LANEH ARM-IMM !  DR2 XR2ND ARM-R2!
+   $0E023C00 ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-IMM @ 18 lshift or MSK ;
 
 \ conditional set ( rd cond -- w ): cset = csinc rd, xzr, xzr, invert(cond)
 : ENC-CSET ( n n -- n )

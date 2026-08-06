@@ -64,3 +64,6 @@ closed
 theorem Habu.Common.Insn.madd_mul_alias_at_xzr
 type wf (Madd 3 4 5 31) = false /\ enc (Madd 3 4 5 31) = enc (Mul 3 4 5) /\ wf (Msub 3 4 5 31) = true
 closed
+theorem Habu.Common.Insn.umov_lane_overflow_escapes_the_vocabulary
+type wf (Umovh 1 2 8) = false /\ decode (emit (Umovh 1 2 8)) = None
+closed

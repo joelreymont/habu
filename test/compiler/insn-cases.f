@@ -144,6 +144,18 @@ private
    form F-MSUB = if a b c d ENC-MSUB EMITW true exit then
    false ;
 
+\ The SIMD group, reaching its encoders directly for the reason the multiply
+\ group does: their consumer is the chain's emitter, which calls encoders
+\ itself, so `ENC-LD1V`, `ENC-UADDLV` and `ENC-UMOVH` ARE the shipped words and
+\ a mnemonic wrapper would be vocabulary the engine builder never writes. The
+\ vector load and the reduction take two operands and the move takes three, so
+\ all three go through this one word rather than being split by arity.
+: SIMD-CALL ( n n n n -- bool ) {: form:n a:n b:n c:n :}
+   form F-LD1V = if a b ENC-LD1V EMITW true exit then
+   form F-UADDLV = if a b ENC-UADDLV EMITW true exit then
+   form F-UMOVH = if a b c ENC-UMOVH EMITW true exit then
+   false ;
+
 : SYSTEM-CALL ( n n -- bool ) {: form:n a:n :}
    form F-SVC = if a SVC, true exit then
    form F-RET = if RET, true exit then
@@ -210,6 +222,7 @@ public
    form a b COMPARE-CALL if 0 exit then
    form a b c d SELECT-CALL if 0 exit then
    form a b c d MULTIPLY-CALL if 0 exit then
+   form a b c SIMD-CALL if 0 exit then
    form a SYSTEM-CALL if 0 exit then
    E-CIE-FORM throw ;
 
