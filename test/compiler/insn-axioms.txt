@@ -61,3 +61,6 @@ closed
 theorem Habu.Common.Insn.lsli_lsri_alias_at_zero
 type wf (Lsli 3 4 0) = false /\ enc (Lsli 3 4 0) = enc (Lsri 3 4 0)
 closed
+theorem Habu.Common.Insn.madd_mul_alias_at_xzr
+type wf (Madd 3 4 5 31) = false /\ enc (Madd 3 4 5 31) = enc (Mul 3 4 5) /\ wf (Msub 3 4 5 31) = true
+closed
