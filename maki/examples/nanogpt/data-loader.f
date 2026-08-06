@@ -69,7 +69,7 @@ public
 \ GPU/eval suite has loaded the kernel DSL into the shared image a bare LOAD would
 \ silently bind the kernel word and be rejected by the checker. A distinctive public
 \ tail keeps the import unambiguous in every co-loaded image; do not shorten it back.
-: LOAD-CORPUS ( ptr u8 n ptr u8 n ptr a n -- n ) {: pa:ptr pu:n tb:ptr tcap:n ib:ptr icap:n :}
+: LOAD-CORPUS ( ptr u8 n ptr u8 n ptr r n -- n ) {: pa:ptr pu:n tb:ptr tcap:n ib:ptr icap:n :}
    pa pu tb tcap READ-ALL {: nbytes:n :}   \ input capture into tb (not a published dataset)
    nbytes 0 <= if E-DL-EMPTY throw then
    nbytes icap DL-FIT                       \ preflight ids capacity before any publish
