@@ -72,6 +72,13 @@ $FFF constant IMM12-MASK           \ the unsigned load/store offset field
 31 constant ZERO-REG               \ the addend field's value that makes a
                                    \ multiply-add a plain multiply
 
+public
+
+\ The three register fields, public because they are the one place this tree
+\ decodes an ARM64 register operand out of an instruction word. The loop
+\ inventory (tools/codegen-loop-inventory.f) asks which register an instruction
+\ writes and which one a load reaches through, and a second copy of these three
+\ shifts is exactly the drift this file's own header argues against.
 : FRD ( n -- n ) {: w:n :}
    w REG-MASK and ;
 
@@ -80,6 +87,8 @@ $FFF constant IMM12-MASK           \ the unsigned load/store offset field
 
 : FRM ( n -- n ) {: w:n :}
    w 16 rshift REG-MASK and ;
+
+private
 
 : FI12 ( n -- n ) {: w:n :}
    w 10 rshift IMM12-MASK and ;

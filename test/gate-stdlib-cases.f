@@ -390,6 +390,17 @@ SUITE compiler-codegen-combine-inventory
    test/compiler/codegen-combine-inventory.f
 ;SUITE
 
+\ Counting the LOOPS the chain's compilations hold and the work inside them that
+\ does not depend on the turn, which is the measurement the hoisting lane decides
+\ what to build from. It runs beside the combining inventory because it reads
+\ emitted code through the same walk and borrows that tool's register-field
+\ decoders. Its structural cases are built from the routine that caught the bug
+\ the first version had - a return block laid out inside a loop's span, whose
+\ backward branch is an ordinary forward edge.
+SUITE compiler-codegen-loop-inventory
+   test/compiler/codegen-loop-inventory.f
+;SUITE
+
 \ The native chain's end-to-end run: source text through the real compile path
 \ to executed machine code. It runs after the leaves it composes, so a red here
 \ with green leaves means the leaves disagree with each other.

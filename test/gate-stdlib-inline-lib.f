@@ -467,6 +467,11 @@ public
    \ reason: it reads emitted code through that probe's walk, and its rows are
    \ routines the chain really compiled.
    s" test/compiler/codegen-combine-inventory.f" GSI-FORK-INCLUDE
+   \ And the instrument the hoisting lane decides with, beside it for the same
+   \ reason again: the loops of a routine and the work inside them that does not
+   \ depend on the turn, read off the same walk over routines the chain really
+   \ compiled.
+   s" test/compiler/codegen-loop-inventory.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the code generator comparison - bytes, computed
    \ values, the two generators head to head, the committed table's structure.
    \ The timing column is left out here because this group runs its members in
