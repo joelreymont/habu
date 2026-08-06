@@ -16,10 +16,10 @@
 \   held live inside the body is refused; thirteen compiles. Nothing crosses a
 \   call here, so this row really is about how much a loop body may hold.
 \
-\   CALL-PRESSURE's wall is NOT that. Seven values live ACROSS a loop that makes
+\   CALL-PRESSURE's wall is NOT that. Eight values live ACROSS a loop that makes
 \   no call compile fine, so being live across a loop is not what refuses them.
 \
-\   NOR IS IT THE CALL BY ITSELF. The same seven values live across the same call
+\   NOR IS IT THE CALL BY ITSELF. The same eight values live across the same call
 \   with NO loop around it compile fine. So neither the loop alone nor the call
 \   alone reaches the wall.
 \
@@ -43,15 +43,29 @@
 \   and fixing it will find the refusal unmoved; that is what these mutations are
 \   recorded for.
 \
-\   AND THE DECIDING PAIR IS THE LAST TWO CASES. The same seven locals, the same
+\   AND THE DECIDING PAIR IS THE LAST TWO CASES. The same eight locals, the same
 \   loop, the same call, the same budget - read BEFORE the loop they compile, read
 \   AFTER it they are refused. Nothing else differs, so the crossing is the whole
 \   of it, and a fix has to stop the crossing rather than re-place what it
 \   creates.
 \
+\ WHERE THE WALL SITS, AND WHY THE COUNT IN THESE CASES MOVED ONCE. It is at
+\ EIGHT crossing values today and it was at seven until the selection stage began
+\ emitting the add and subtract immediate forms. That is a measurement through
+\ the entry below and not a reading of the allocator: the same body that threw
+\ -8508 at seven compiles at seven now, and eight is what throws. WHICH register
+\ the immediate forms handed back is deliberately not claimed here - it would be
+\ a guess, and the cases below are worth having precisely because the wall's
+\ position is not derivable by reading the pass that moved it. The cases were
+\ re-derived to straddle the new wall rather than re-pinned to the new answers,
+\ because what this file is for is the DISCRIMINATION - which property reaches
+\ the refusal - and a case that has drifted to the compiling side of the wall
+\ discriminates nothing. The seven-value body is kept as the control directly
+\ beneath, so the wall's position is pinned from both sides.
+\
 \ WHAT A CHANGE TO THIS FILE MEANS. These are the current walls, not desired
 \ ones. A pass that lets a crossing local live in a frame slot across a loop
-\ turns POST7 green, and this file is where that is recorded rather than
+\ turns POST8 green, and this file is where that is recorded rather than
 \ discovered - so the case is asserted with its code and a fix must come here and
 \ say what it moved.
 
@@ -112,16 +126,16 @@ variable TRY-IN
 \ ---- what CALL-PRESSURE's refusal is NOT -------------------------------------
 
 : NOT-THE-LOOP-CASES ( -- )
-   s" seven values live ACROSS a callless loop compile: residency is not it"
+   s" eight values live ACROSS a callless loop compile: residency is not it"
    T-LABEL
-   s" : SP-ACROSS7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do 1 + loop a + b + c + d + e + f + g + ;"
-   9 TRY 0 T= ;
+   s" : SP-ACROSS8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} seed len 0 ?do 1 + loop a + b + c + d + e + f + g + h + ;"
+   10 TRY 0 T= ;
 
 : NOT-THE-CALL-CASES ( -- )
-   s" seven locals across a call with NO loop compile: the call is not it"
+   s" eight locals across a call with NO loop compile: the call is not it"
    T-LABEL
-   s" : SP-SL7-N ( n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n :} seed CODEGEN-CORPUS4:C-LONG-N a + b + c + d + e + f + g + ;"
-   8 TRY-CALLING 0 T= ;
+   s" : SP-SL8-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n :} seed CODEGEN-CORPUS4:C-LONG-N a + b + c + d + e + f + g + h + ;"
+   9 TRY-CALLING 0 T= ;
 
 \ ---- what it IS: the crossing, measured by moving one thing ------------------
 \ The same seven locals, the same loop, the same call, the same budget. The only
@@ -129,17 +143,17 @@ variable TRY-IN
 \ or after it, which is exactly what decides whether they must survive the call.
 
 : CROSSING-CASES ( -- )
-   s" seven locals read BEFORE a loop that calls compile" T-LABEL
-   s" : SP-PRE7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} a b + c + d + e + f + g + seed + len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop ;"
-   9 TRY-CALLING 0 T=
+   s" eight locals read BEFORE a loop that calls compile" T-LABEL
+   s" : SP-PRE8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} a b + c + d + e + f + g + h + seed + len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop ;"
+   10 TRY-CALLING 0 T=
 
    s" and read AFTER it they are refused - this is CALL-PRESSURE" T-LABEL
-   s" : SP-POST7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + ;"
-   9 TRY-CALLING E-A64RA-SPILL T=
+   s" : SP-POST8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + h + ;"
+   10 TRY-CALLING E-A64RA-SPILL T=
 
-   s" six across the same call in the same loop compiles" T-LABEL
-   s" : SP-POST6-N ( n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + ;"
-   8 TRY-CALLING 0 T= ;
+   s" seven across the same call in the same loop compiles" T-LABEL
+   s" : SP-POST7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + ;"
+   9 TRY-CALLING 0 T= ;
 
 public
 
