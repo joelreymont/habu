@@ -64,7 +64,7 @@ private
 \ ---- the true target function (a fixed linear part + one nonlinear product) ---
 \ y(window) = 0.6*x0 - 0.4*x1 + 0.3*x2 + 0.5*x3*x4 - 0.2*x5  (+ noise, added by
 \ the generator). The x3*x4 product is the nonlinearity the GELU MLP must fit.
-: SC-ROW-TARGET ( ptr a -- r ) {: xr:ptr :}
+: SC-ROW-TARGET ( ptr r -- r ) {: xr:ptr :}
    xr 0 T-GET {: a0:r :}  xr 1 T-GET {: a1:r :}  xr 2 T-GET {: a2:r :}
    xr 3 T-GET {: a3:r :}  xr 4 T-GET {: a4:r :}  xr 5 T-GET {: a5:r :}
    a0 0.6 f*
@@ -91,7 +91,7 @@ private
 
 \ small non-zero init in [-0.1, 0.1)
 : SC-SMALL ( -- r )  SC-UNIT 0.1 f* ;
-: SC-FILL-SMALL ( ptr a n -- ) {: base:ptr len:n :}
+: SC-FILL-SMALL ( ptr r n -- ) {: base:ptr len:n :}
    len 0 ?do  SC-SMALL base i T-SET  loop ;
 
 public
