@@ -618,12 +618,19 @@ s\" CBAD-ESC-LETTER ( -- ptr u8 n ) s\\\" bad\\g\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX ( -- ptr u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX-SHORT ( -- ptr u8 n ) s\\\" bad\\x4\" " T-CHECK-REJECTS
 s\" CBAD-ESC-UNTERMINATED ( -- ptr u8 n ) s\\\" no end" T-CHECK-REJECTS
-\ pointer arithmetic + byte view: pointee-polymorphic ptr+n arithmetic, ptr-ptr
-\ difference, and an explicit ( ptr a -- ptr u8 ) byte view all certify. A
-\ pointer's pointee element type is invariant: the u8->cell/u32 integer widening
-\ that applies to top-level scalar cells must NOT apply inside a ptr, so a
-\ concrete ptr u8 never satisfies ptr cell/ptr u32 and cross-pointee unification
-\ is rejected. ptr+ptr and cell @/! on a byte span stay rejected.
+\ pointer arithmetic + byte view: pointee-polymorphic ptr+n arithmetic and
+\ ptr-ptr difference certify — the COK rows below all keep a quantifier in the
+\ signature and pass. An identity ( ptr a -- ptr u8 ) byte view does not, since
+\ ae0fc854 required strict parametricity: an empty body specializes the caller's
+\ quantifier to u8, and a checked definition may not do that. The signature is
+\ not what rejects — a mixed ( ptr a -- ptr u8 ) certifies when the body stays
+\ parametric and returns a byte pointer of its own — so the coercion itself has
+\ exactly one sanctioned home, the TRUSTED: BYTE-VIEW boundary in
+\ src/core/bytes.f. A pointer's pointee element type is invariant: the
+\ u8->cell/u32 integer widening that applies to top-level scalar cells must NOT
+\ apply inside a ptr, so a concrete ptr u8 never satisfies ptr cell/ptr u32 and
+\ cross-pointee unification is rejected. ptr+ptr and cell @/! on a byte span
+\ stay rejected.
 s" COK-PTR-ADD ( ptr a n -- ptr a ) +" T-CHECK-PASSES
 s" COK-PTR-ADD-REV ( n ptr a -- ptr a ) +" T-CHECK-PASSES
 s" COK-PTR-SUB ( ptr a n -- ptr a ) -" T-CHECK-PASSES
@@ -631,22 +638,28 @@ s" COK-PTR-DIFF ( ptr a ptr a -- n ) -" T-CHECK-PASSES
 s" COK-PTR-CELLPLUS ( ptr a -- ptr a ) cell+" T-CHECK-PASSES
 s" COK-PTR-CHARPLUS ( ptr a -- ptr a ) char+" T-CHECK-PASSES
 s" COK-PTR-BYTEADD ( ptr u8 n -- ptr u8 ) +" T-CHECK-PASSES
-s" COK-PTR-VIEW ( ptr a -- ptr u8 )" T-CHECK-PASSES
 s" COK-PTR-SAME-EQ ( ptr u8 ptr u8 -- bool ) =" T-CHECK-PASSES
 s" COK-PTR-SCALAR-WIDEN ( u8 -- cell )" T-CHECK-PASSES
 s" CBAD-PTR-ADD-PP ( ptr a ptr a -- ptr a ) +" T-CHECK-REJECTS
 s" CBAD-PTR-WIDEN-CELL ( ptr u8 -- ptr cell )" T-CHECK-REJECTS
 s" CBAD-PTR-WIDEN-U32 ( ptr u8 -- ptr u32 )" T-CHECK-REJECTS
 s" CBAD-PTR-WIDEN-NEST ( ptr ptr u8 -- ptr ptr cell )" T-CHECK-REJECTS
+s" CBAD-PTR-VIEW ( ptr a -- ptr u8 )" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ ( ptr u8 ptr cell -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ-REV ( ptr cell ptr u8 -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-CELL-ON-BYTE ( ptr u8 -- n ) @" T-CHECK-REJECTS
 \ Cell store `!` on a byte span is rejected exactly like cell load `@`. This is
 \ the miss class the fixpoint certify caught in checker.f USIGS-CLEAR (dot
 \ habu-fix-0-usigs): a head accessor declared ( -- ptr u8 ) whose caller stores a
-\ cell with `0 WORD !` must reject, because `!` requires a ptr a target.
+\ cell with `0 WORD !` must reject, because `!` needs a cell-wide target.
+\ Storing through a quantified ( ptr a -- ) rejects for the other reason: writing
+\ the literal 0 specializes the caller's `a` to n, which strict parametricity
+\ forbids. The honest declaration is ( ptr n -- ), and it certifies — the two
+\ rows are a pair, and they differ only in the declared pointee, so neither the
+\ reject nor the pass can be satisfied by anything but the rule under test.
 s" CBAD-PTR-CELL-STORE-ON-BYTE ( ptr u8 -- ) 0 swap !" T-CHECK-REJECTS
-s" COK-PTR-CELL-STORE ( ptr a -- ) 0 swap !" T-CHECK-PASSES
+s" CBAD-PTR-CELL-STORE ( ptr a -- ) 0 swap !" T-CHECK-REJECTS
+s" COK-PTR-CELL-STORE-N ( ptr n -- ) 0 swap !" T-CHECK-PASSES
 variable ESB-BYTE-P
 : ESB-BYTE-HEAD ( -- ptr u8 ) ESB-BYTE-P @ ;
 s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
@@ -2204,13 +2217,14 @@ s" specialize diag: names the forged family" T-LABEL
 DIAG-BUFFER$ s" family 'esnp'" T-HAS? -1 T=
 DIAG-BUFFER-OFF
 
-\ aliasing diagnostic: E-NONPARAMETRIC-EFFECT, both quantifier letters
+\ aliasing diagnostic: E-NONPARAMETRIC-EFFECT, both quantifier letters. The
+\ inventory names them alphabetically since 1d33deb4, not in stack order.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-CANDIDATE! 0 T=
 s" aliasing diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
 DIAG-BUFFER$ s" E-NONPARAMETRIC-EFFECT" T-HAS? -1 T=
 s" aliasing diag: names both quantifiers" T-LABEL
-DIAG-BUFFER$ s" 'a' and 'b'" T-HAS? -1 T=
+DIAG-BUFFER$ s" 'b' and 'a'" T-HAS? -1 T=
 DIAG-BUFFER-OFF
 
 \ pointer-pointee path stays stable: the ptr instance rejects via the existing
