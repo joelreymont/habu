@@ -48,15 +48,23 @@ variable EC-ORD-N
 : EC-TRUE ( -- bool )   0 0= ;
 : EC-FALSE ( -- bool )  EC-TRUE 0= ;
 
-: EC-OFF@ ( n -- n )   cells EC-OFF + @ ;
-: EC-LEN@ ( n -- n )   cells EC-LEN + @ ;
+: OFF@ ( n -- n )   cells EC-OFF + @ ;
+: LEN@ ( n -- n )   cells EC-LEN + @ ;
 
-: EC-PATH$ ( n -- ptr u8 n ) {: i:n :}
-   i EC-OFF@ EC-POOL + i EC-LEN@ ;
+public
+
+\ PATH$ is exported here rather than with the rest of the interface below
+\ because the package's own walks read every path through it, and a public word
+\ resolves unqualified for the rest of the package once it is defined. One
+\ definition, no private twin to keep in step with it.
+: PATH$ ( n -- ptr u8 n ) {: i:n :}
+   i OFF@ EC-POOL + i LEN@ ;
+
+private
 
 : EC-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 begin dup EC-N @ < while
-      dup EC-PATH$ a u STR= if drop EC-TRUE exit then
+      dup PATH$ a u STR= if drop EC-TRUE exit then
       1+
    repeat drop EC-FALSE ;
 
@@ -74,7 +82,7 @@ variable EC-ORD-N
    off u + EC-POOL-N !
    EC-N @ 1+ EC-N ! ;
 
-: EC-LOADS? ( n -- bool ) {: i:n :}
+: LOADS? ( n -- bool ) {: i:n :}
    i EVENT-KIND@ {: k:n :}
    k EV-INCLUDED = if EC-TRUE exit then
    k EV-REQUIRED = i EVENT-STATE@ EV-STATE-FRESH = and if EC-TRUE exit then
@@ -87,7 +95,7 @@ variable EC-ORD-N
 : EC-SCAN-EVENTS ( -- )
    0 EC-I !
    begin EC-I @ EVENT-COUNT < while
-      EC-I @ EC-LOADS? if EC-I @ EVENT-PATH@ EC-ENQUEUE then
+      EC-I @ LOADS? if EC-I @ EVENT-PATH@ EC-ENQUEUE then
       EC-I @ 1+ EC-I !
    repeat ;
 
@@ -98,14 +106,14 @@ variable EC-ORD-N
 \ tools/check-core.f CHK-EXPAND-ID - each file's own require/include closure is
 \ fully expanded (post-order pushed) before the file itself, so a dep's scope
 \ tokens replay exactly where its content would load. Only loading events
-\ (EC-LOADS?) contribute, so the ordered list is a permutation of BUILD's set.
+\ (LOADS?) contribute, so the ordered list is a permutation of BUILD's set.
 
 : EC-CLEAR ( -- )
    0 EC-N !  0 EC-POOL-N !  0 EC-HEAD ! ;
 
 : EC-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup EC-N @ < while
-      dup EC-PATH$ a u STR= if exit then
+      dup PATH$ a u STR= if exit then
       1+
    repeat drop -1 ;
 
@@ -135,7 +143,7 @@ variable EC-ORD-N
    a u EC-INTERN EC-DIR-PUSH ;
 
 : EC-EVENT-DIR+ ( n -- ) {: ix:n :}
-   ix EC-LOADS? 0= if exit then
+   ix LOADS? 0= if exit then
    ix EVENT-PATH@ EC-DIR-QUEUE ;
 
 : EC-COLLECT-DEPS ( -- )
@@ -148,7 +156,7 @@ variable EC-ORD-N
    id EC-STATE@ 0= 0= if exit then
    1 id EC-STATE!
    EC-DIR-N @ {: mark:n :}
-   id EC-PATH$ DISCOVER:RUN
+   id PATH$ DISCOVER:RUN
    EC-COLLECT-DEPS
    mark begin dup EC-DIR-N @ < while
       dup cells EC-DIR + @ RECURSE
@@ -170,13 +178,11 @@ public
 
 : COUNT ( -- n )   EC-N @ ;
 
-: PATH$ ( n -- ptr u8 n )   EC-PATH$ ;
-
 : BUILD ( ptr u8 n -- ) {: a:ptr u:n :}
    RESET
    a u EC-ADD
    begin EC-HEAD @ EC-N @ < while
-      EC-HEAD @ EC-PATH$ DISCOVER:RUN
+      EC-HEAD @ PATH$ DISCOVER:RUN
       EC-SCAN-EVENTS
       EC-HEAD @ 1+ EC-HEAD !
    repeat ;
@@ -191,6 +197,6 @@ public
 
 : ORDER-COUNT ( -- n )   EC-ORD-N @ ;
 
-: ORDER-PATH$ ( n -- ptr u8 n )   cells EC-ORDER + @ EC-PATH$ ;
+: ORDER-PATH$ ( n -- ptr u8 n )   cells EC-ORDER + @ PATH$ ;
 
 ;package
