@@ -55,8 +55,8 @@ create SW-CT   SWC cells allot   create SW-Y1  SWC cells allot   create SW-Y2 SW
    0.7 SW-CT 0 T-SET  -1.3 SW-CT 1 T-SET  0.2 SW-CT 2 T-SET  2.0 SW-CT 3 T-SET
   -0.4 SW-CT 4 T-SET   1.1 SW-CT 5 T-SET  0.9 SW-CT 6 T-SET -0.6 SW-CT 7 T-SET ;
 
-: SW-SNAP ( ptr a ptr a n -- ) {: sa:ptr da:ptr n:n :}  n 0 ?do  sa i T-GET  da i T-SET  loop ;
-: SW-ALL-EQ? ( ptr a ptr a n -- bool ) {: a:ptr b:ptr n:n :}
+: SW-SNAP ( ptr r ptr r n -- ) {: sa:ptr da:ptr n:n :}  n 0 ?do  sa i T-GET  da i T-SET  loop ;
+: SW-ALL-EQ? ( ptr r ptr r n -- bool ) {: a:ptr b:ptr n:n :}
    n 0 ?do  a i T-GET  b i T-GET  f= 0= if  false unloop exit  then  loop  true ;
 
 : SW-OUT ( -- ptr r )  0 MIR-NODE-ID EX-OUT@ ;
