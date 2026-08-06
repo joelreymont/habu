@@ -29,10 +29,12 @@
 \          reaches an inlined subject at all.
 \
 \ EVERY FAMILY CARRIES TWO NULL ROWS, and that is what makes its number
-\ judgeable. A null row runs the same program on both arms, so whatever delta it
-\ reports is manufactured by this harness rather than by a code generator, and
-\ the report takes the larger of the two as the bar the family's real row has to
-\ clear. They measure two different confounds:
+\ readable. A null row runs the same program on both arms, so whatever delta it
+\ reports is manufactured by this harness rather than by a code generator; the
+\ report prints them beside the family's real row so the reader sees the
+\ harness's own noise next to the number being read (no verdict is derived
+\ from them - dot habu-pair-and-alternate-60b04c6a). They measure two
+\ different confounds:
 \
 \   -control    the same body compiled on either side of the migration, both
 \               arms reaching HOT-FIXED. It holds everything the migration did to
@@ -46,10 +48,10 @@
 \ The placement row times all five publications woven through each other and
 \ reports the widest gap between any two of them. It is five and not two because
 \ the effect is not a wobble around a centre: on the scan shape the publications
-\ fall into a fast group and a slow group tens of per cent apart, so a bar taken
-\ from one named pair depends on which pair was named - and a bar taken that way
-\ reported a workload as a REAL LOSS three runs running with nothing whatever
-\ having slowed it down.
+\ fall into a fast group and a slow group tens of per cent apart, so a gap taken
+\ from one named pair depends on which pair was named - which is how the
+\ retired verdict machinery once ruled a workload REAL LOSS three runs running
+\ with nothing whatever having slowed it down.
 
 require lib/errors.f
 require lib/prelude.f

@@ -687,6 +687,13 @@ using CODEGEN-SCAN
       [: NOTHING-OLD ;] [: NOTHING-OLD ;] [: NOTHING-OLD ;]
       [: NOTHING-OLD ;] [: NOTHING-OLD ;] CODEGEN-CLOCK:SWEEP ;
 
+\ How many null rows a family recorded - the read side the report loops over.
+: FAM-NULLS ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0
+   CODEGEN-CLOCK:ROWS 0 ?do
+      i CODEGEN-CLOCK:NULL? i CODEGEN-CLOCK:FAM$ a u STR= and if 1+ then
+   loop ;
+
 : ARM-CASES ( -- )
    MEASURE-ARM-ROWS
    s" a pair row's two columns hold the arms they were given, not each other" T-LABEL
@@ -701,6 +708,8 @@ using CODEGEN-SCAN
    k CODEGEN-CLOCK:REPS ARM-REPS T=
    k CODEGEN-CLOCK:ROUNDS ARM-ROUNDS T=
    k CODEGEN-CLOCK:INTERLEAVED? TTRUE
+   k CODEGEN-CLOCK:PAIRED? TTRUE
+   k CODEGEN-CLOCK:DELTA-LO  k CODEGEN-CLOCK:DELTA-HI  <= TTRUE
 
    s" and it kept a time for each column, which is not the same as a fast one" T-LABEL
    k CODEGEN-CLOCK:OLD-NS 0 > TTRUE
@@ -709,7 +718,7 @@ using CODEGEN-SCAN
    s" the row is what it was opened as, in the family it was opened in" T-LABEL
    k CODEGEN-CLOCK:FAM$ s" arm-store" T$=
    s" arm-store-null" CODEGEN-CLOCK:ROW-OF CODEGEN-CLOCK:NULL? TTRUE
-   s" arm-store" CODEGEN-CLOCK:NULLS 2 T=
+   s" arm-store" FAM-NULLS 2 T=
 
    s" a sweep keeps its extremes, so its old column is never the greater" T-LABEL
    s" arm-store-sweep" CODEGEN-CLOCK:ROW-OF {: w:n :}
@@ -847,36 +856,39 @@ using CODEGEN-SCAN
 \ ---- the bar behind a verdict ------------------------------------------------
 \ A verdict is a delta held against the largest delta this harness produced when
 \ nothing changed, and the rows that measure that are the family's null rows.
-\ Before this, the report named those rows by hand and a name that matched no row
-\ scored as a bar of nothing: renaming one row made every verdict read REAL and
-\ the run still exited zero. The bar now comes out of the recorded rows, and a
-\ family with none of them throws.
-\
-\ None of this reads a clock. Whether a bar is large or small is a timing; that
-\ every judged row HAS one, and that no null row exceeds the bar its own family's
-\ null rows set, are facts about the store.
-: BAR-CASES ( -- )
-   s" a family with no null row has no bar, and asking for one throws" T-LABEL
-   s" CODEGEN-WORKLOAD-TEST:NO-SUCH-FAMILY" CODEGEN-CLOCK:NULLS 0 T=
-   [: s" CODEGEN-WORKLOAD-TEST:NO-SUCH-FAMILY" CODEGEN-CLOCK:BAR-PERMILLE drop ;]
-      CODEGEN-CLOCK:E-WLTIME-BAR TTHROWSQ
-
+\ The judging machinery is gone (dot habu-pair-and-alternate-60b04c6a): the
+\ store records real rows and null rows and the report prints both raw, so
+\ what the suite pins is the record - a null row is still a null row, every
+\ real row still has its family's null context recorded beside it, and a PAIR
+\ row carries a paired-delta interval that is ordered and refused on rows
+\ that never ran as pairs. None of this reads a clock.
+: RAW-CASES ( -- )
    s" the compile-shaped row's own family carries four null draws" T-LABEL
-   s" check" CODEGEN-CLOCK:NULLS 4 T=
+   s" check" FAM-NULLS 4 T=
 
-   s" every row the report judges has null rows behind its bar" T-LABEL
+   s" every real row has null rows of its own family recorded beside it" T-LABEL
    CODEGEN-CLOCK:ROWS 0 ?do
       i CODEGEN-CLOCK:REAL? if
-         i CODEGEN-CLOCK:FAM$ CODEGEN-CLOCK:NULLS 0 > TTRUE
+         i CODEGEN-CLOCK:FAM$ FAM-NULLS 0 > TTRUE
       then
    loop
 
-   s" and no null row clears the bar its own family's draws set" T-LABEL
+   s" a woven pair row carries an ordered paired-delta interval" T-LABEL
    CODEGEN-CLOCK:ROWS 0 ?do
-      i CODEGEN-CLOCK:NULL? if
-         i CODEGEN-CLOCK:OVER-BAR? TFALSE
+      i CODEGEN-CLOCK:PAIRED? if
+         i CODEGEN-CLOCK:DELTA-LO  i CODEGEN-CLOCK:DELTA-HI  <= TTRUE
       then
-   loop ;
+   loop
+
+   s" a split row never claims a paired interval, and asking for one throws" T-LABEL
+   s" check-batch" CODEGEN-CLOCK:ROW-OF {: cb:n :}
+   cb 0 >= TTRUE
+   cb CODEGEN-CLOCK:PAIRED? TFALSE
+   [: s" check-batch" CODEGEN-CLOCK:ROW-OF CODEGEN-CLOCK:DELTA-LO drop ;]
+      CODEGEN-CLOCK:E-WLTIME-STATE TTHROWSQ
+
+   s" a sweep row never claims a paired interval either" T-LABEL
+   s" arm-store-sweep" CODEGEN-CLOCK:ROW-OF CODEGEN-CLOCK:PAIRED? TFALSE ;
 
 \ ---- the compile-shaped family, real row and null draws alike ----------------
 \ Every one of them compiles the same generated text the same number of times, so
@@ -941,6 +953,10 @@ public
 
    s" and a new arm that ran faster is reported as a saving" T-LABEL
    k CODEGEN-CLOCK:DELTA-PERMILLE 0 > TTRUE
+
+   s" and every alternated round agreed: the paired interval sits above zero" T-LABEL
+   k CODEGEN-CLOCK:PAIRED? TTRUE
+   k CODEGEN-CLOCK:DELTA-LO 0 > TTRUE
    T-REPORT
    s" codegen-workload-timed-test: ok" type cr ;
 
@@ -963,7 +979,7 @@ public
    DRIFT-ROW-CASES
    DELTA-CASES
    ARM-CASES
-   BAR-CASES
+   RAW-CASES
    STORE-CASES
    T-REPORT
    s" codegen-workload-test: ok" type cr ;

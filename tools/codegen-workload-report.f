@@ -14,24 +14,23 @@
 \      after-arm whose driver still calls the before-arm's word would report a
 \      delta of nothing and look perfectly healthy, so the report shows which
 \      record each arm's call instruction actually enters.
-\   4  THE WORKLOADS: each one's two arms, its delta, and beneath it the null
-\      rows of its own family - the rows that ran the same program on both arms
-\      and so measure what this harness invents when nothing changed.
-\   5  THE VERDICT PER WORKLOAD, in one line each, with no hedging: a delta that
-\      does not clear the largest of its family's null rows is reported as not
-\      measurable rather than as a small improvement.
+\   4  THE WORKLOADS: each one's two arms, its delta, its paired-delta
+\      interval, and beside it the null rows of its own family - the rows that
+\      ran the same program on both arms and so measure what this harness
+\      invents when nothing changed.
 \
-\ NOTHING HERE THROWS ON A NUMBER, AND EXACTLY ONE THING HERE THROWS. A report
-\ that failed when a row came out slow would be a gate, and a gate on a timing
-\ fails for host load; the gate this work carries is
+\ THERE IS NO VERDICT SECTION, AND THAT IS DELIBERATE. The report used to rule
+\ REAL / REAL LOSS / NOT MEASURABLE per row, judging each delta against the
+\ largest delta its family's null draws produced. Two to four null draws are
+\ not a distribution: on unchanged trees the same workload ruled REAL LOSS
+\ three runs in five (dot habu-pair-and-alternate-60b04c6a). Until the harness
+\ is calibrated, this file prints the raw data - both columns, the fastest-run
+\ delta, the per-round paired interval, and the null rows beside the real ones
+\ - and no label stronger than the data. NOTHING HERE THROWS ON A NUMBER: a
+\ report that failed when a row came out slow would be a gate, and a gate on a
+\ timing fails for host load; the gate this work carries is
 \ tools/codegen-workload-test.f, and every assertion in it is a fact about
-\ compiled code. What this file does refuse is a verdict with no bar behind it.
-\ The bar used to be assembled from row names written out by hand here, and a
-\ name that matched no row scored as a bar of nothing - renaming one row made
-\ every verdict in the table read REAL, and the run still exited zero. So the
-\ bar is no longer named here at all: each row records which family it belongs
-\ to and whether it is a real comparison or a null draw, and a family with no
-\ null draw throws E-WLTIME-BAR instead of being judged against zero.
+\ compiled code.
 
 require lib/errors.f
 require lib/prelude.f
@@ -255,11 +254,19 @@ public
 
 private
 
+: PAIR-COLS ( n -- ) {: k:n :}
+   k CODEGEN-CLOCK:PAIRED? 0= if
+      s" -" 9 TR. s" -" 9 TR. exit
+   then
+   k CODEGEN-CLOCK:DELTA-LO 9 PCT-COL
+   k CODEGEN-CLOCK:DELTA-HI 9 PCT-COL ;
+
 : ROW. ( n -- ) {: k:n :}
    k CODEGEN-CLOCK:NAME$ 16 T.
    k CODEGEN-CLOCK:OLD-NS 12 N.
    k CODEGEN-CLOCK:NEW-NS 12 N.
    k CODEGEN-CLOCK:DELTA-PERMILLE 9 PCT-COL
+   k PAIR-COLS
    k CODEGEN-CLOCK:OLD-SPREAD 9 PCT-COL
    k CODEGEN-CLOCK:NEW-SPREAD 9 PCT-COL
    s"   " type
@@ -267,7 +274,7 @@ private
    s"   " type
    k CODEGEN-CLOCK:SAME-ANSWER? s" agree" s" DISAGREE" YESNO
    s"   " type
-   k CODEGEN-CLOCK:REAL? s" judged" s" null" YESNO
+   k CODEGEN-CLOCK:REAL? s" subject" s" null" YESNO
    cr ;
 
 public
@@ -276,12 +283,18 @@ public
    s" 4. THE WORKLOADS" type cr
    RULE
    s" Fastest run of each arm, in nanoseconds; the delta is what the new code" type cr
-   s" generator saved. `spread` is how far apart that arm's fastest and slowest" type cr
-   s" runs were. `woven` means the two arms' runs were threaded through each" type cr
-   s" other; `split` means the workload compiles something and its arms had to" type cr
-   s" be measured on either side of the migration. A `null` row ran the SAME" type cr
-   s" program on both arms, so its delta is what this harness manufactures when" type cr
-   s" nothing changed; a `judged` row is one the next section rules on. On a" type cr
+   s" generator saved. `d-lo`/`d-hi` are the extremes of the PER-ROUND paired" type cr
+   s" deltas on a woven row - each round's two runs compared inside the same" type cr
+   s" pair of adjacent windows, the order alternating round by round - so an" type cr
+   s" interval that straddles zero says the rounds did not agree on a" type cr
+   s" direction, whatever the headline delta reads. `spread` is how far apart" type cr
+   s" one arm's own fastest and slowest runs were. `woven` means the two arms'" type cr
+   s" runs were threaded through each other; `split` means the workload" type cr
+   s" compiles something and its arms had to be measured on either side of the" type cr
+   s" migration. A `null` row ran the SAME program on both arms, so everything" type cr
+   s" it reports is what this harness manufactures when nothing changed: read" type cr
+   s" the subject rows against the null rows printed beside them - no verdict" type cr
+   s" is derived, because two to four null draws are not a distribution. On a" type cr
    s" `-placement` row the two columns are not two arms but the FASTEST and the" type cr
    s" SLOWEST of five publications of one identical body, so its delta is the" type cr
    s" widest gap between any two of them." type cr
@@ -303,93 +316,13 @@ public
    s" because the system spends its time in it." type cr
    cr
    s" row" 16 T. s" old ns" 12 TR. s" new ns" 12 TR.
-   s" delta" 9 TR. s" old sprd" 9 TR. s" new sprd" 9 TR.
+   s" delta" 9 TR. s" d-lo" 9 TR. s" d-hi" 9 TR.
+   s" old sprd" 9 TR. s" new sprd" 9 TR.
    s"   order   answers   role" type cr
    CODEGEN-CLOCK:ROWS 0 ?do i ROW. loop
    cr ;
 
 private
-
-\ ---- 5. the verdict ---------------------------------------------------------
-\ The bar comes out of the recorded rows and is not named here. Each row carries
-\ the family it belongs to and whether it is a real comparison or a null draw,
-\ and the bar for a real row is the largest magnitude its own family's null draws
-\ produced. Two things follow, and both are the point:
-\
-\ A BAR IS A MAXIMUM OVER SEVERAL DRAWS, NOT ONE MEASUREMENT. The confound the
-\ null rows measure is not a small symmetric wobble: two byte-identical
-\ publications of one body have come out two per cent apart on one run and
-\ thirty-five per cent apart on another. A bar taken from a single draw of that
-\ landed under a scan delta three runs in a row and printed REAL LOSS each time,
-\ which is an artifact of the draw and not a finding about the code.
-\
-\ A MISSING BAR IS AN ERROR, NOT A ZERO. This section used to name its bar rows
-\ by hand; a name that matched no row scored zero and every verdict beside it
-\ read REAL. BAR-PERMILLE throws on a family with no null draw instead.
-\
-\ The within-arm SPREAD is deliberately not a bar. A spread says how far apart
-\ one arm's own runs were, which is exactly what the fastest-run rule exists to
-\ cut through: the scan rows here routinely spread by sixty per cent while their
-\ fastest runs repeat to within a few. The spreads are printed in the row table
-\ for a reader to judge the host by; they are not evidence about a delta.
-: VERDICT ( n -- ) {: k:n :}
-   k CODEGEN-CLOCK:NAME$ 16 T.
-   k CODEGEN-CLOCK:DELTA-PERMILLE PCT.
-   s"  saved, against a " type
-   k CODEGEN-CLOCK:FAM$ CODEGEN-CLOCK:BAR-PERMILLE PCT.
-   s"  bar - the largest of " type
-   k CODEGEN-CLOCK:FAM$ CODEGEN-CLOCK:NULLS FMT:.INT
-   s"  null rows" type
-   k CODEGEN-CLOCK:OVER-BAR? if
-      k CODEGEN-CLOCK:DELTA-PERMILLE 0 > if
-         s"   - REAL" type
-      else
-         s"   - REAL LOSS" type
-      then
-   else
-      s"   - NOT MEASURABLE" type
-   then
-   cr ;
-
-public
-
-: VERDICT-TABLE ( -- )
-   s" 5. WHAT EACH WORKLOAD'S NUMBER MEANS" type cr
-   RULE
-   s" The bar a delta has to clear is the LARGEST delta this harness produced on" type cr
-   s" the same workload when nothing changed at all: its control row, whose two" type cr
-   s" arms are old code compiled either side of the migration, and its placement" type cr
-   s" row, which times five publications of the identical subject against each" type cr
-   s" other and reports the widest gap between any two of them. Five and not two," type cr
-   s" because that confound is not a wobble around a centre: the publications of" type cr
-   s" one body fall into a fast group and a slow group tens of per cent apart, so" type cr
-   s" a bar taken from one named pair depends on which pair was named - and a bar" type cr
-   s" taken that way reported a workload as a REAL LOSS three runs running with" type cr
-   s" nothing whatever having slowed it down. A delta under the bar is not a" type cr
-   s" small win; it is a win this measurement cannot see." type cr
-   cr
-   s" The compile-shaped row is judged the same way. Its arms straddle the" type cr
-   s" migration and cannot be woven, so its null draws are pairs of consecutive" type cr
-   s" batch sequences compiled before it, with nothing between them but the" type cr
-   s" dictionary they grew - which is the confound its two arms are separated by." type cr
-   cr
-   s" AND ITS ARMS ARE NOW SEPARATED BY A MIGRATION THAT REACHED THE CHECKER." type cr
-   s" Section 1 shows it: the checker's own fold was migrated and every call" type cr
-   s" instruction that entered it was moved onto the chain's routine. If this row" type cr
-   s" still reads NOT MEASURABLE, that is a fact about where a batch spends its" type cr
-   s" time and not about whether the migration landed. It was measured: one batch" type cr
-   s" enters that fold about twenty-four thousand times, and twenty-four thousand" type cr
-   s" calls of it cost well under a tenth of one per cent of a batch through" type cr
-   s" either code generator, while more than half of a batch scales with the SIZE" type cr
-   s" of the dictionary - the engine's own linear name lookup, which is engine" type cr
-   s" text and not a dictionary record, so no republication can reach it at all." type cr
-   s" Dot habu-compile-shaped-cost-4e74a181 carries that measurement and the work" type cr
-   s" behind it." type cr
-   cr
-   CODEGEN-CLOCK:ROWS 0 ?do
-      i CODEGEN-CLOCK:REAL? if i VERDICT then
-   loop
-   cr ;
 
 : TITLE ( -- )
    s" habu code generator - end to end workload measurement" type cr
@@ -401,12 +334,13 @@ public
    s" from a committed file." type cr
    cr ;
 
+public
+
 : PRINT ( -- )
    TITLE
    ENGINE-TABLE
    SUBJECT-TABLE
    ARM-TABLE
-   ROW-TABLE
-   VERDICT-TABLE ;
+   ROW-TABLE ;
 
 ;package
