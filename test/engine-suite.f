@@ -729,93 +729,107 @@ DIAG-BUFFER$ s" E-BAD-QUALIFIED" T-HAS? -1 T=
 s" qualified diag token" T-LABEL
 DIAG-BUFFER$ s" a:b:c" T-HAS? -1 T=
 DIAG-BUFFER-OFF
-variable TG-UEND
-variable TG-CAP
-variable TG-USIGS-P
-variable TG-GROW-CAP
-variable TG-GROW-NEXT
-variable TG-UOFF
-variable TG-SMALL-CAP
+\ Arena-growth support: the saved copies of the checker's live arena state, plus
+\ the whitebox shims the assertions below reach it through. Every member is used
+\ from the top level of this file, so the whole surface is public; the assertions
+\ stay outside the block on purpose, where UEND, USIGS-P and TV-CAP still name
+\ the checker's live cells rather than these saved copies.
+package ES-GROW
+public
+variable UEND
+variable CAP
+variable USIGS-P
+variable GROW-CAP
+variable GROW-NEXT
+variable UOFF
+variable SMALL-CAP
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): internal checker COLON
 \ words probed at top level go through named trusted shims - bare internal
 \ colon tokens fail closed under the internal-word gate (state cells stay
 \ directly readable: data records are exempt).
-TRUSTED: TG-RESET ( -- ) USIGS-RESET ;
-TRUSTED: TG-USIGS ( -- ptr a ) USIGS ;
-TRUSTED: TG-POW2 ( n -- n ) USIGS-POW2-CAP ;
-TRUSTED: TG-COPY ( ptr u8 ptr u8 n -- ) ARENA-COPY ;
-TRUSTED: TG-RESTORE-END ( n -- ) USIGS-RESTORE-END ;
-TRUSTED: TG-TV-RESET ( -- ) TV-SNAP-RESET ;
-TRUSTED: TG-ARENA-RESET ( -- ) DECOUPLED-ARENA-SNAP-RESET ;
-TRUSTED: TG-TVT ( -- ptr a ) TVT ;
-UEND @ TG-UEND !
-USIGS-CAP-U @ TG-CAP !
-USIGS-P @ TG-USIGS-P !
-USIGS-GROW-CAP @ TG-GROW-CAP !
-USIGS-GROW-NEXT @ TG-GROW-NEXT !
-USIGS-USER-OFF @ TG-UOFF !
+TRUSTED: RESET ( -- ) USIGS-RESET ;
+TRUSTED: LIVE-USIGS ( -- ptr a ) USIGS ;
+TRUSTED: POW2 ( n -- n ) USIGS-POW2-CAP ;
+TRUSTED: COPY ( ptr u8 ptr u8 n -- ) ARENA-COPY ;
+TRUSTED: RESTORE-END ( n -- ) USIGS-RESTORE-END ;
+TRUSTED: TV-RESET ( -- ) TV-SNAP-RESET ;
+TRUSTED: ARENA-RESET ( -- ) DECOUPLED-ARENA-SNAP-RESET ;
+TRUSTED: LIVE-TVT ( -- ptr a ) TVT ;
+;package
+UEND @ ES-GROW:UEND !
+USIGS-CAP-U @ ES-GROW:CAP !
+USIGS-P @ ES-GROW:USIGS-P !
+USIGS-GROW-CAP @ ES-GROW:GROW-CAP !
+USIGS-GROW-NEXT @ ES-GROW:GROW-NEXT !
+USIGS-USER-OFF @ ES-GROW:UOFF !
 \ normalize first: a restored snapshot boots with a persisted (smaller)
 \ store; one reset guarantees the runtime-sized arena the asserts assume
-TG-RESET
+ES-GROW:RESET
 USIGS-P @
 USIGS-CAP-U @
-TG-RESET
+ES-GROW:RESET
 USIGS-CAP-U @ T=
 USIGS-P @ T=
 UEND @ 0 T=
-TG-USIGS @ 0 T=
+ES-GROW:LIVE-USIGS @ 0 T=
 USIGS-GROW-CAP @ 0 T=
 USIGS-GROW-NEXT @ 0 T=
 USIGS-INIT-CAP 2 / USIGS-CAP-U !
 USIGS-P @
-TG-RESET
+ES-GROW:RESET
 USIGS-P @ = 0 T=
 USIGS-CAP-U @ USIGS-INIT-CAP T=
 UEND @ 0 T=
-TG-USIGS @ 0 T=
+ES-GROW:LIVE-USIGS @ 0 T=
 UEND @ 128 + USIGS-CAP-U !
-USIGS-CAP-U @ TG-SMALL-CAP !
+USIGS-CAP-U @ ES-GROW:SMALL-CAP !
 s" T-GROW-PAIR" s" ptr u8 n ptr u8 n -- ptr u8 n" TRUST
 s" COK-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) T-GROW-PAIR" T-CHECK-PASSES
 \ growth is geometric: one forced grow at least doubles the old cap
 s" usigs-grow-geometric" T-LABEL
-USIGS-CAP-U @ TG-SMALL-CAP @ 2 * >= -1 T=
-TG-USIGS-P @ USIGS-P !
-TG-CAP @ USIGS-CAP-U !
-TG-GROW-CAP @ USIGS-GROW-CAP !
-TG-GROW-NEXT @ USIGS-GROW-NEXT !
-TG-UOFF @ USIGS-USER-OFF !
-TG-UEND @ TG-RESTORE-END
+USIGS-CAP-U @ ES-GROW:SMALL-CAP @ 2 * >= -1 T=
+ES-GROW:USIGS-P @ USIGS-P !
+ES-GROW:CAP @ USIGS-CAP-U !
+ES-GROW:GROW-CAP @ USIGS-GROW-CAP !
+ES-GROW:GROW-NEXT @ USIGS-GROW-NEXT !
+ES-GROW:UOFF @ USIGS-USER-OFF !
+ES-GROW:UEND @ ES-GROW:RESTORE-END
 \ snapshot cap policy: smallest power-of-2 grain multiple >= size
 s" pow2-cap floor" T-LABEL
-1 TG-POW2 USIGS-GRAIN T=
+1 ES-GROW:POW2 USIGS-GRAIN T=
 s" pow2-cap exact grain" T-LABEL
-USIGS-GRAIN TG-POW2 USIGS-GRAIN T=
+USIGS-GRAIN ES-GROW:POW2 USIGS-GRAIN T=
 s" pow2-cap rounds up" T-LABEL
-USIGS-GRAIN 1 + TG-POW2 USIGS-GRAIN 2 * T=
+USIGS-GRAIN 1 + ES-GROW:POW2 USIGS-GRAIN 2 * T=
 s" pow2-cap next power" T-LABEL
-USIGS-GRAIN 3 * TG-POW2 USIGS-GRAIN 4 * T=
+USIGS-GRAIN 3 * ES-GROW:POW2 USIGS-GRAIN 4 * T=
 \ cell-wise ARENA-COPY preserves odd-length byte spans (body + tail)
-create TG-CPY-SRC
+package ES-GROW
+public
+create CPY-SRC
    $11 c, $22 c, $33 c, $44 c, $55 c, $66 c, $77 c, $88 c,
    $99 c, $AA c, $BB c,
-create TG-CPY-DST 11 allot
-TG-CPY-SRC TG-CPY-DST 11 TG-COPY
+create CPY-DST 11 allot
+;package
+ES-GROW:CPY-SRC ES-GROW:CPY-DST 11 ES-GROW:COPY
 s" usigs-copy bytes" T-LABEL
-TG-CPY-DST 11 TG-CPY-SRC 11 T$=
+ES-GROW:CPY-DST 11 ES-GROW:CPY-SRC 11 T$=
 \ --- growable typevar arena: a body needing > MAXTV-INIT vars no longer dies
 \ and a mid-check grow must not corrupt the var-id maps (relocatable arena).
-variable TG-TV-CAP
-TV-CAP @ TG-TV-CAP !
+package ES-GROW
+public
+variable TV-CAP
+;package
+TV-CAP @ ES-GROW:TV-CAP !
 8 TV-CAP !                       \ shrink shared cap so a small body forces a grow
 s" COK-TVGROW ( a -- a ) dup drop dup drop dup drop dup drop dup drop" T-CHECK-PASSES
 s" tv-arena-grow-geometric" T-LABEL
 TV-CAP @ 16 >= -1 T=             \ one forced grow at least doubles the shrunk cap
-TG-TV-RESET                      \ repoint every var-id store back at its boot buffer
+ES-GROW:TV-RESET                 \ repoint every var-id store back at its boot buffer
 s" tv-arena-restored-cap" T-LABEL
 TV-CAP @ MAXTV-INIT T=
 s" tv-arena-restored-boot" T-LABEL
-TG-TVT TVT-BOOT = -1 T=
+ES-GROW:LIVE-TVT TVT-BOOT = -1 T=
 s" T-PHASE-ID" s" img -- img" TRUST
 s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" T-CHECK-PASSES
 s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS
@@ -860,7 +874,7 @@ s" param-arena-grow" T-LABEL
 PARAM-CAP @ 2 > -1 T=
 s" atom-arena-grow" T-LABEL
 ATOM-CAP @ 2 > -1 T=
-TG-ARENA-RESET                   \ repoint every scratch store back at its boot buffer
+ES-GROW:ARENA-RESET              \ repoint every scratch store back at its boot buffer
 s" decoupled-arena-restored" T-LABEL
 SPA-CAP @ MAXPUSH-INIT =  PTR-CAP @ MAXPTR-INIT =  and
 QE-CAP @ MAXQE-INIT =  and  ATOM-CAP @ MAXATOM-INIT =  and
