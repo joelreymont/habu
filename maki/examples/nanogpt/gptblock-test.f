@@ -74,7 +74,7 @@ create G-TGT 5 cells allot    create G-SEED GON cells allot
 variable G-RNG
 : G-NEXT ( -- r )  G-RNG @ 1664525 * 1013904223 + $FFFFFFFF and dup G-RNG !  s>f 4294967296.0 f/ ;
 : G-UNIT ( -- r )  G-NEXT 2.0 f* 1.0 f- ;
-: G-SMALL ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  G-UNIT 0.1 f*  p i T-SET  loop ;
+: G-SMALL ( ptr r n -- ) {: p:ptr n:n :}  n 0 ?do  G-UNIT 0.1 f*  p i T-SET  loop ;
 
 \ committed init: small weights, gamma=1/beta=0 for both affine LNs, and a copy task
 \ (token id t = t mod V, target class t = t mod V) the block learns through wte + head.
@@ -100,7 +100,7 @@ variable G-RNG
 
 \ ---- SGD trainer: forward slice -> loss + seed -> full IR -> update every param ----
 : G-LR ( -- r )  0.05 ;
-: G-UPD ( ptr a n n -- ) {: p:ptr slot:n n:n :}  G-LR p slot G-GRAD n T-SGD! ;
+: G-UPD ( ptr r n n -- ) {: p:ptr slot:n n:n :}  G-LR p slot G-GRAD n T-SGD! ;
 : G-STEP ( -- r )
    BW-FWD-N@ EX-RUN-N
    G-LOSS-SEED {: loss:r :}
@@ -139,9 +139,9 @@ variable G-IL   variable G-FL   variable G-BAD   variable G-PREV
 \ ---- independent layer-by-layer forward reference (forward golden) ----------------
 create R-X0 20 cells allot   create R-LN1 20 cells allot   create R-H 40 cells allot
 create R-M 20 cells allot    create R-F 20 cells allot     create R-LOG 30 cells allot
-: R-ROWBIAS ( ptr a n n ptr a -- ) {: yb:ptr rows:n cols:n bb:ptr :}
+: R-ROWBIAS ( ptr r n n ptr r -- ) {: yb:ptr rows:n cols:n bb:ptr :}
    rows 0 ?do cols 0 ?do  yb j cols * i + T-GET  bb i T-GET f+  yb j cols * i + T-SET  loop loop ;
-: R-ROWMUL ( ptr a n n ptr a -- ) {: yb:ptr rows:n cols:n gb:ptr :}
+: R-ROWMUL ( ptr r n n ptr r -- ) {: yb:ptr rows:n cols:n gb:ptr :}
    rows 0 ?do cols 0 ?do  yb j cols * i + T-GET  gb i T-GET f*  yb j cols * i + T-SET  loop loop ;
 : R-FWD ( -- )
    G-WTE G-IDS G-WPE R-X0  GT GT GC  TOKPOS-EMBED                       \ wte[ids] + wpe
