@@ -611,8 +611,9 @@ variable VPKG-I
 \ so every byte was written at an offset equal to its own character code. The
 \ first save/restore round trip looked fine because the mirror already held the
 \ right name; the second one restored a scrambled package name and the verifier
-\ then refused to start (7136). USIGS-COPY does the same job but is defined far
-\ below this point, so the loop lives here with a named cursor.
+\ then refused to start (7136). This stays a pure byte loop with a named cursor:
+\ ARENA-COPY above would also serve, so this is a deletion candidate, but the
+\ bug above is the reason the cursor is explicit and it is worth keeping visible.
 : VPKG-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}
    0 VPKG-I !
    BEGIN VPKG-I @ n < WHILE
@@ -3681,20 +3682,13 @@ TRUSTED: USIGS-CELL-AT ( n -- ptr a )
    CHK-CAND @ 0 <> IF EXIT THEN
    0 OK !  -1 FAILSET ! ;
 
-variable UCP-I
-
-\ USIGS-COPY ( ptr a ptr a n -- ) : cell-wise store copy with a byte tail
-\ (ARM64 tolerates unaligned cell access; spans can start byte-aligned).
-: USIGS-COPY {: src:ptr dst:ptr n:n :}
-   0 UCP-I !
-   begin UCP-I @ CELL + n <= while
-      src UCP-I @ + @ dst UCP-I @ + !
-      UCP-I @ CELL + UCP-I !
-   repeat
-   begin UCP-I @ n < while
-      src UCP-I @ + c@ dst UCP-I @ + c!
-      UCP-I @ 1 + UCP-I !
-   repeat ;
+\ The store's relocations use ARENA-COPY. This file used to carry a second,
+\ byte-identical copier here (USIGS-COPY, with its own cursor) whose only
+\ distinction was where it sat in the file; it also carried no declared effect,
+\ which is the shape that turns one rejection into an aborted certify pass for
+\ every caller. ARENA-COPY declares ( ptr a ptr a n -- ) and copies n bytes as
+\ whole cells plus a byte tail, which is what every one of those call sites
+\ wanted -- cell stores and package-name bytes alike.
 
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
@@ -3758,7 +3752,7 @@ USIGS-RUNTIME-INIT
    USIGS-SNAPSHOT-SIZE {: n:n :}
    n USIGS-POW2-CAP {: cap:n :}
    cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
-   USIGS dst n USIGS-COPY
+   USIGS dst n ARENA-COPY
    dst USIGS-P !
    cap USIGS-CAP-U !
    0 USIGS-GROW-CAP !
@@ -3769,7 +3763,7 @@ USIGS-RUNTIME-INIT
 : USIGS-GROW {: need :}
    need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP USIGS-GROW-CAP !
    USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
-   USIGS USIGS-GROW-NEXT @ UEND @ CELL + USIGS-COPY
+   USIGS USIGS-GROW-NEXT @ UEND @ CELL + ARENA-COPY
    USIGS-GROW-NEXT @ USIGS-P !
    USIGS-GROW-CAP @ USIGS-CAP-U ! ;
 
@@ -6937,7 +6931,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 
 : NORET-SNAPSHOT-PERSIST ( -- )
    NORET-SNAPSHOT-CAP
-   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ CELL + USIGS-COPY THEN
+   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ CELL + ARENA-COPY THEN
    NORET-BOOT NORET-P !
    NORET-INIT-CAP NORET-CAP-U !
    0 NORET-GROW-CAP !
@@ -6946,7 +6940,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 : NORET-GROW {: need :}
    need NORET-CAP-U @ 2 * max USIGS-ROUND-CAP NORET-GROW-CAP !
    NORET-GROW-CAP @ USIGS-ALLOC NORET-GROW-NEXT !
-   NORETS NORET-GROW-NEXT @ NORET-END @ CELL + USIGS-COPY
+   NORETS NORET-GROW-NEXT @ NORET-END @ CELL + ARENA-COPY
    NORET-GROW-NEXT @ NORET-P !
    NORET-GROW-CAP @ NORET-CAP-U ! ;
 
@@ -7013,7 +7007,7 @@ variable REG-PERSIST-DELTA
    pvar REG-PVAR@ {: old:ptr :}
    here {: dst:ptr :}
    bytes allot
-   old dst bytes USIGS-COPY
+   old dst bytes ARENA-COPY
    dst pvar REG-PVAR!
    dst old - REG-PERSIST-DELTA !
    RES-TRUE ;
@@ -11035,7 +11029,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-PACKAGE-NEUTRAL @ r RBF.PKGNEU !
    DFER-END @ r RBF.DFEREND !
    RBF-NO-COORDINATOR r RBF.COORD !
-   CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
+   CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ ARENA-COPY
    RBF-DEPTH @ 1 + RBF-DEPTH !
    REG-EXT-RB-SAVE-XT ;
 
@@ -11066,7 +11060,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.PKGMODE @ CHECKER-PACKAGE-MODE !
    r RBF.PKGU @ CHECKER-PACKAGE-U !
    r RBF.PKGNEU @ CHECKER-PACKAGE-NEUTRAL !
-   RBF-NAME-CUR CHECKER-PACKAGE-NAME r RBF.PKGU @ USIGS-COPY
+   RBF-NAME-CUR CHECKER-PACKAGE-NAME r RBF.PKGU @ ARENA-COPY
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
 

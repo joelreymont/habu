@@ -730,7 +730,7 @@ variable TG-SMALL-CAP
 TRUSTED: TG-RESET ( -- ) USIGS-RESET ;
 TRUSTED: TG-USIGS ( -- ptr a ) USIGS ;
 TRUSTED: TG-POW2 ( n -- n ) USIGS-POW2-CAP ;
-TRUSTED: TG-COPY ( ptr u8 ptr u8 n -- ) USIGS-COPY ;
+TRUSTED: TG-COPY ( ptr u8 ptr u8 n -- ) ARENA-COPY ;
 TRUSTED: TG-RESTORE-END ( n -- ) USIGS-RESTORE-END ;
 TRUSTED: TG-TV-RESET ( -- ) TV-SNAP-RESET ;
 TRUSTED: TG-ARENA-RESET ( -- ) DECOUPLED-ARENA-SNAP-RESET ;
@@ -782,7 +782,7 @@ s" pow2-cap rounds up" T-LABEL
 USIGS-GRAIN 1 + TG-POW2 USIGS-GRAIN 2 * T=
 s" pow2-cap next power" T-LABEL
 USIGS-GRAIN 3 * TG-POW2 USIGS-GRAIN 4 * T=
-\ cell-wise USIGS-COPY preserves odd-length byte spans (body + tail)
+\ cell-wise ARENA-COPY preserves odd-length byte spans (body + tail)
 create TG-CPY-SRC
    $11 c, $22 c, $33 c, $44 c, $55 c, $66 c, $77 c, $88 c,
    $99 c, $AA c, $BB c,
