@@ -16,8 +16,8 @@ package MAKI
 create PIT-X 8 cells allot
 create PIT-W 8 cells allot
 
-: PIT->I ( ptr a n -- n )   T-GET 0.5 f+ f>s ;            \ read cell as nearest int
-: PIT->M ( ptr a n -- n )   T-GET 1000.0 f* 0.5 f+ f>s ;  \ read cell as milliunits
+: PIT->I ( ptr r n -- n )   T-GET 0.5 f+ f>s ;            \ read cell as nearest int
+: PIT->M ( ptr r n -- n )   T-GET 1000.0 f* 0.5 f+ f>s ;  \ read cell as milliunits
 
 \ n0 = MATMUL(x,w) ; n1 = GELU(n0) - x = identity, w = [[1,2],[3,4]]
 : PIT-CHAIN ( -- )
