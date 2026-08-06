@@ -153,7 +153,7 @@ public
 
 defer CAP-ROWS>BYTES ( n -- n )
 defer CAP-NEXT-CAP ( n -- n )
-defer CAP-COUNT! ( ptr a n -- )
+defer CAP-COUNT! ( ptr n n -- )
 
 private
 
@@ -161,7 +161,7 @@ private
 
 package DECLARATION-TRANSACTION
 
-: CAP-TEST-COUNT! ( ptr a n -- )
+: CAP-TEST-COUNT! ( ptr n n -- )
    swap ST.N ! ;
 
 : CAP-TEST-INSTALL ( -- )
@@ -188,7 +188,7 @@ package GENERATED-DECLARATION-TXN-TEST
 : CAP-TEST-INERT ( n -- n ) ;
 : CAP-TEST-NO-RELEASE ( -- ) ;
 
-: CAP-TEST-FILL-CELLS ( n ptr a n -- )
+: CAP-TEST-FILL-CELLS ( n ptr n n -- )
    {: value:n a:ptr count:n :}
    count 0 ?do
       value a i cells + !
@@ -491,7 +491,7 @@ package GENERATED-DECLARATION-TXN-TEST
    DECL-EVENT:COUNT EVENT-N0 @ T=
    PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 @ T= ;
 
-: APPEND-DIGIT ( n ptr a -- ) {: digit:n trace:ptr :}
+: APPEND-DIGIT ( n ptr n -- ) {: digit:n trace:ptr :}
    TRACE-ON @ 0= IF EXIT THEN
    trace @ 10 * digit + trace ! ;
 
@@ -514,7 +514,7 @@ package GENERATED-DECLARATION-TXN-TEST
    0 TRACK-VALUES !
    0 TRACE-ON ! ;
 
-: MAYBE-MUTATE-SNAPSHOT ( ptr a n -- ) {: value:ptr participant:n :}
+: MAYBE-MUTATE-SNAPSHOT ( ptr n n -- ) {: value:ptr participant:n :}
    SNAPSHOT-MUTATE-PARTICIPANT @ participant = IF 1 value +! THEN ;
 
 : MAYBE-FAIL ( n n -- ) {: phase:n participant:n :}
@@ -672,7 +672,7 @@ package GENERATED-DECLARATION-TXN-TEST
 : REGISTER-LATE-CATCH ( -- n )
    [: REGISTER-LATE ;] catch ;
 
-: INJECTING-ALLOCATOR ( ptr a n n -- ptr a )
+: INJECTING-ALLOCATOR ( ptr n n n -- ptr n )
    {: base:ptr oldbytes:n newbytes:n :}
    ALLOCATOR-CALLS @ 1 + dup ALLOCATOR-CALLS !
    oldbytes ALLOCATOR-OLD-BYTES !
