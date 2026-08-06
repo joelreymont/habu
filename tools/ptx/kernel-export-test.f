@@ -30,7 +30,7 @@ variable DIR-B-U
 : DIR-A$ ( -- ptr u8 n )  DIR-A-BUF DIR-A-U @ ;
 : DIR-B$ ( -- ptr u8 n )  DIR-B-BUF DIR-B-U @ ;
 
-: TMP! ( ptr u8 n ptr u8 ptr a -- )    \ mkdir a private tmp dir, keep its path
+: TMP! ( ptr u8 n ptr u8 ptr n -- )    \ mkdir a private tmp dir, keep its path
    {: prefix:ptr prefixu:n dst:ptr lenp:ptr :}
    prefix prefixu TMPDIR-MKDIR {: ta:ptr tu:n :}
    tu FS-PATH-CAP > if E-FS-PATH throw then
