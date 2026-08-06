@@ -406,6 +406,7 @@ ENUM opcode DERIVE eq
    fcmpseld
    fcmpselzd
    tailcall
+   madd
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -589,7 +590,7 @@ public
 \ table gains a form, because a table with these forms in it and one without are
 \ two different tables and every consumer compares the version exactly.
 0 constant MAJOR
-6 constant MINOR
+7 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 \ A pass that materialises a constant walks the halves of a register, and it asks
@@ -798,6 +799,7 @@ public
       fcmpseld  OF s" a64.fcmpseld" ENDOF
       fcmpselzd OF s" a64.fcmpselzd" ENDOF
       tailcall  OF s" a64.tailcall" ENDOF
+      madd      OF s" a64.madd"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1007,6 +1009,7 @@ private
       fcmpseld  OF s" a64.rule.fcmpseld" ENDOF
       fcmpselzd OF s" a64.rule.fcmpselzd" ENDOF
       tailcall  OF s" a64.rule.tailcall" ENDOF
+      madd      OF s" a64.rule.madd"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1071,6 +1074,7 @@ private
       fcmpseld  OF s" a64.render.fcmpseld" ENDOF
       fcmpselzd OF s" a64.render.fcmpselzd" ENDOF
       tailcall  OF s" a64.render.tailcall" ENDOF
+      madd      OF s" a64.render.madd"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1164,6 +1168,42 @@ private
    TOTAL
    TARGET
    c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Madd: the multiply-add, which is the one form of this dialect that reads THREE
+\ registers and writes one. The product's two factors are operands 0 and 1 and
+\ the addend is operand 2, in the order `madd rd, rn, rm, ra` names them, so a
+\ reader of the operand window and a reader of the instruction agree without
+\ either having to know the other's order.
+\
+\ AND IT DECLARES NO TIE, WHICH IS THE POINT OF THE FORM. The obvious reading of
+\ "accumulate" is that the addend and the destination are one register, the way
+\ Movk's surviving halves and its result are, and that reading is wrong here:
+\ ARM64's multiply-add names four INDEPENDENT five-bit fields
+\ (src/arch/arm64/asm.f RRRA), so the destination may be any register and the
+\ addend keeps its value. A tie declared here would be a constraint the machine
+\ does not impose, and the register allocator would honour it by inserting copies
+\ to satisfy a rule nothing needs - which is how a form meant to remove one
+\ instruction would start adding them.
+\
+\ ITS ADDEND MAY NOT BE THE ZERO REGISTER, and that is a fact about the encoding
+\ rather than about this dialect: `madd rd, rn, rm, xzr` IS `mul rd, rn, rm`,
+\ the same four bytes, which is why formal/Common/Insn.v puts that addend outside
+\ `wf` and carries `madd_mul_alias_at_xzr` as the reason. No value of this
+\ dialect stands for the zero register, so no module can name it here; the
+\ emission leaf refuses it anyway, because the register a value ends up in is
+\ decided after this schema is read.
+: DEF-MADD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:MADD OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:MADD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Signed division: the same two registers in and one out as the three forms
@@ -2139,6 +2179,7 @@ public
    c b t A64IR-OPCODE:ADD DEF-BINARY
    c b t A64IR-OPCODE:SUB DEF-BINARY
    c b t A64IR-OPCODE:MUL DEF-BINARY
+   c b t DEF-MADD
    c b t DEF-SDIV
    c b t A64IR-OPCODE:AND DEF-BINARY
    c b t A64IR-OPCODE:ORR DEF-BINARY

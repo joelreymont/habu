@@ -28,19 +28,24 @@
 \ base that are two slots apart, and the load that overwrites the base the next
 \ load reads. A predicate that answered true on shape alone passes none of them.
 \
-\ THE LAST GROUP IS THE REAL THING. Four routines the native chain really
-\ compiled, counted through the same entry the report uses. SQUARE-SUM-N is the
-\ shape the pattern exists for; ADD3-N has the additions and none of the
-\ multiplies; C-MAD-N has BOTH a multiply and an addition and still counts zero,
-\ because the register allocator put the addend in the register the multiply read
-\ - which is the measurement that says where the combining pass has to run, and
-\ would be lost if the suite only asserted totals.
+\ THE LAST GROUP IS THE REAL THING: routines the native chain really compiled,
+\ counted through the same entry the report uses. They are read after
+\ src/compiler/native/combine.f has run over them, because that pass is part of
+\ the chain that compiles them, so each case pins the classifier AND the pass.
+\ SQUARE-SUM-N is the shape the pattern exists for; ADD3-N has the additions and
+\ none of the multiplies and comes out untouched; and C-MAD-N is the one that
+\ says where the pass has to run - its multiply and its addition are separated by
+\ a move-wide that overwrites the register the multiply read, so no rewriter of
+\ finished code could fuse them, and it is fused here because the pass sees
+\ values rather than registers.
 
 require lib/test.f
 require lib/prelude.f
 require src/arch/arm64/asm.f
 require tools/codegen-combine-inventory.f
 require tools/codegen-compare-migrated.f
+require tools/codegen-compare-migrated2.f
+require tools/codegen-compare-migrated3.f
 require tools/codegen-compare-migrated4.f
 
 package NCOMBINV-TEST
@@ -85,6 +90,10 @@ public
    s" but a multiply-add with a real addend is not a multiply" T-LABEL
    R0 R1 R2 R3 ENC-MADD MUL? TFALSE
    R0 R1 R2 R3 ENC-MADD ADD? TFALSE
+   R0 R1 R2 R3 ENC-MADD MADD? TTRUE
+   R0 R1 R2 RZERO ENC-MADD MADD? TFALSE
+   R0 R1 R2 ENC-MUL MADD? TFALSE
+   R0 R1 R2 ENC-ADD MADD? TFALSE
    R0 R1 R2 R3 ENC-MSUB MUL? TFALSE
    R0 R1 R2 R3 ENC-MSUB SUB? TFALSE
 
@@ -154,28 +163,51 @@ public
    R1 RBASE 0 ENC-LDR  R2 RBASE 8 ENC-STR  LDP-PAIR? TFALSE
    R1 RBASE 0 ENC-STR  R2 RBASE 8 ENC-LDR  STP-PAIR? TFALSE ;
 
+\ These rows are read AFTER src/compiler/native/combine.f has run over them,
+\ because that pass is part of the chain that compiles them - so what the counts
+\ say is what the combining left, and each case is a regression test for the pass
+\ having fired as well as for the classifier reading it.
 : EMITTED-CASES ( -- )
-   s" the row the pattern exists for holds one safe pair" T-LABEL
+   s" the row the pattern exists for holds a multiply-add and no pair" T-LABEL
    s" CODEGEN-CORPUS:SQUARE-SUM-N" ROW!
-   MADDS 1 T=
-   MADD-SAFES 1 T=
+   INSNS 6 T=
+   MADD-INSNS 1 T=
+   MULS 1 T=
+   ADDS 0 T=
+   MADDS 0 T=
 
-   s" a row with additions and no multiply holds none" T-LABEL
+   s" a row with additions and no multiply is untouched by the pass" T-LABEL
    s" CODEGEN-CORPUS:ADD3-N" ROW!
+   INSNS 7 T=
    MULS 0 T=
    ADDS 2 T=
-   MADDS 0 T=
+   MADD-INSNS 0 T=
 
-   s" the row with BOTH a multiply and an addition still holds none" T-LABEL
+   \ The row whose pair the register allocator would have made unfusable: its
+   \ multiply and its addition are separated by a move-wide that overwrites the
+   \ very register the multiply read, so no rewriter of FINISHED code could take
+   \ it - and it is fused here anyway, because the pass runs while the two are
+   \ still values. This case is the measured reason the pass sits before
+   \ allocation rather than after it.
+   s" the row a post-allocation rewriter could not have fused is fused" T-LABEL
    s" CODEGEN-CORPUS4:C-MAD-N" ROW!
-   MULS 1 T=
-   ADDS 1 T=
-   MADDS 0 T=
+   INSNS 5 T=
+   MULS 0 T=
+   ADDS 0 T=
+   MADD-INSNS 1 T=
 
-   s" the five-call row holds four" T-LABEL
+   s" the five-call row holds five, one per copied callee" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN-BIG-N" ROW!
-   MADDS 4 T=
-   MADD-SAFES 4 T=
+   INSNS 9 T=
+   MADD-INSNS 5 T=
+   MULS 0 T=
+   ADDS 0 T=
+
+   s" and the two loop rows hold two each" T-LABEL
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS-N" ROW!
+   MADD-INSNS 2 T=
+   s" CODEGEN-CORPUS3:T-DIST2-N" ROW!
+   MADD-INSNS 2 T=
 
    s" no row of either corpus holds a subtracting pair" T-LABEL
    s" CODEGEN-CORPUS:SQUARE-SUM-N" ROW!

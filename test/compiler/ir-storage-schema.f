@@ -129,7 +129,7 @@ public
 
 : PIN-VALUE ( n -- n )
    case
-      0 of $40000 endof
+      0 of $80000 endof
       1 of 64 endof
       2 of $7FFFFFFF endof
       3 of 16 endof
@@ -539,13 +539,13 @@ variable DSCN-N
       COP-USED 0 32 C-OK
       COP-SCRATCH 0 E-IR-CTX-SIZE C-NO
       COP-USED 0 32 C-OK
-      COP-SCRATCH 262017 E-IR-CTX-SCRATCH C-NO
+      COP-SCRATCH 524161 E-IR-CTX-SCRATCH C-NO
       COP-USED 0 32 C-OK
-      COP-SCRATCH 262016 E-IR-CTX-SCRATCH C-NO
+      COP-SCRATCH 524160 E-IR-CTX-SCRATCH C-NO
       COP-USED 0 32 C-OK
-      COP-SCRATCH 261984 262016 C-OK
+      COP-SCRATCH 524128 524160 C-OK
       COP-SCRATCH 1 E-IR-CTX-SCRATCH C-NO
-      COP-USED 0 262016 C-OK
+      COP-USED 0 524160 C-OK
    ROLE-SCRATCH 4 ;CSEQ ;
 
 \ The module budget is reserved against this context's ceiling before the global

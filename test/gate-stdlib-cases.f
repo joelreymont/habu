@@ -371,6 +371,15 @@ SUITE compiler-codegen-tail-probe
    test/compiler/codegen-tail-probe.f
 ;SUITE
 
+\ The multiply-add the chain writes, held against the two instructions it
+\ replaces: the same source compiled by the engine's emitter, which never fuses,
+\ and by the chain, which does, run against each other to the ends of the signed
+\ range. It runs beside the chain's own leaves because its fixtures go through
+\ the production migration entry.
+SUITE compiler-native-combine
+   test/compiler/native-combine.f
+;SUITE
+
 \ Counting the instruction PAIRS one three-source instruction would replace,
 \ which is the measurement the combining lane decides what to build from. It
 \ runs beside the tail probe because it reads emitted code through that tool's

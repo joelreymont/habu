@@ -235,7 +235,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-59 constant OPCODES-N
+60 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -295,6 +295,7 @@ private
 56 constant O-FCMPSELD
 57 constant O-FCMPSELZD
 58 constant O-TAILCALL
+59 constant O-MADD
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -502,6 +503,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       fcmpseld  OF O-FCMPSELD  ENDOF
       fcmpselzd OF O-FCMPSELZD ENDOF
       tailcall  OF O-TAILCALL  ENDOF
+      madd      OF O-MADD      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -565,6 +567,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       O-FCMPSELD  of A64IR-OPCODE:FCMPSELD  endof
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
+      O-MADD      of A64IR-OPCODE:MADD      endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -720,6 +723,27 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : TRIPLE ( IR-ID:ir-op-id -- n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  id 1 OPERAND-REG ;
+
+\ The zero register, which is what register 31 is in this instruction's addend
+\ field. No value of the machine dialect stands for it and the allocator never
+\ hands it out, so this cannot happen by the ordinary route - which is exactly
+\ why it is asked. `madd rd, rn, rm, xzr` and `mul rd, rn, rm` are the SAME four
+\ bytes, so an addend that arrived here as register 31 would silently emit a
+\ multiply where the module says multiply-add, and the answer would be wrong by
+\ the whole addend. formal/Common/Insn.v puts that word outside `wf` for the same
+\ reason (`madd_mul_alias_at_xzr`); this is that boundary where the register is
+\ finally known.
+31 constant ZERO-REG
+
+: ?ADDEND ( n -- n )
+   dup ZERO-REG = if E-A64COMB-ADDEND throw then ;
+
+\ The three-source form's four registers, in the order `madd rd, rn, rm, ra`
+\ names them - which is the order the schema in src/compiler/native/a64ir.f
+\ declares its operands in, so neither reader has to know the other's.
+: QUAD ( IR-ID:ir-op-id -- n n n n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  id 1 OPERAND-REG  id 2 OPERAND-REG ?ADDEND ;
 
 \ The frame accesses. Both name the stack pointer as their base, because the
 \ frame is where the stack pointer is: the form has no other base and this
@@ -1685,6 +1709,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       add      OF id  id TRIPLE ENC-ADD  APPEND ENDOF
       sub      OF id  id TRIPLE ENC-SUB  APPEND ENDOF
       mul      OF id  id TRIPLE ENC-MUL  APPEND ENDOF
+      madd     OF id  id QUAD ENC-MADD  APPEND ENDOF
       sdiv     OF id PUT-SDIV ENDOF
       and      OF id  id TRIPLE ENC-AND  APPEND ENDOF
       orr      OF id  id TRIPLE ENC-ORR  APPEND ENDOF
@@ -1964,6 +1989,7 @@ public
    c b A64IR-OPCODE:CALL      BIND1
    c b A64IR-OPCODE:WORDCALL  BIND1
    c b A64IR-OPCODE:TAILCALL  BIND1
+   c b A64IR-OPCODE:MADD      BIND1
    c b A64IR-OPCODE:LINKSAVE  BIND1
    c b A64IR-OPCODE:LINKLOAD  BIND1
    c b A64IR-OPCODE:FADD     BIND1

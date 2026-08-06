@@ -460,6 +460,9 @@ public
    \ it leaves, read off the emitted code. It belongs beside the chain's own
    \ leaves because one of its fixtures is migrated through the chain.
    s" test/compiler/codegen-tail-probe.f" GSI-FORK-INCLUDE
+   \ The multiply-add the chain writes, against the two instructions it replaces,
+   \ differentially and to the ends of the signed range.
+   s" test/compiler/native-combine.f" GSI-FORK-INCLUDE
    \ And the instrument the combining lane decides with, beside it for the same
    \ reason: it reads emitted code through that probe's walk, and its rows are
    \ routines the chain really compiled.
