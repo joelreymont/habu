@@ -36,6 +36,7 @@ require lib/float.f
 require lib/float32-buffer.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
+require maki/eval/active-target.f
 require maki/cad.f
 require maki/lower/golden.f
 require maki/ablate-ptx.f
@@ -99,30 +100,34 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
 \ ============================= (B) sentinel: dropped copy-back =================================
 \ Hand-roll an EW launch that reuses lower-launch's OWN staging words (private, resolved because
 \ this file reopens package MAKI) but OMITS the cuMemcpyDtoH copy-back, then GUARDs the still-
-\ poisoned readback. Mirrors LLA-EXEC/LLA-LAUNCH exactly up to the launch; only the readback's
-\ device->host copy is dropped. LLA-RELEASE always runs (device buffers freed) before re-throw.
+\ poisoned readback. Mirrors LLA-EXEC/LLA-EXEC-BODY exactly up to the launch; only the readback's
+\ device->host copy is dropped. Like LLA-EXEC-BODY this body closes over no locals - the grid comes
+\ from LLA-GX and the output size is re-derived from LLA-ELEMS - so CUDA-SCOPE:SCOPE owns the module,
+\ the primary context and every allocation and unwinds them in reverse on BOTH return and throw. The
+\ sentinel's E-PTX-READBACK is the body's own throw, propagated after that unwind.
+: ABL-NO-DTOH-BODY ( -- )
+   LLA-SETUP
+   LLA-ELEMS @ 4 * LLA-ALLOC-UPLOAD
+   LLA-BIND-PARAMS
+   LLA-FUNC @ >CUDA-FN LLA-GX @ 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   LLA-HRB LLA-ELEMS @ 4 * PTXSENT:FILL             \ readback poisoned (as LLA-READBACK pre-fills)...
+   \ ---- DELIBERATELY OMIT the cuMemcpyDtoH copy-back (obytes LLA-READBACK) ----
+   LLA-HRB F32-BUF:LOAD PTXSENT:GUARD drop ;
+
 : ABL-LAUNCH-NO-DTOH ( -- )
    GA-BIND-SYNTH                                    \ synthetic inputs (GA-IN-PTR) for the packer
    0 FP-REGION-ID LLA-STAGE-EW
-   LLA-GRID-EW {: grid:n :}
-   LLA-ELEMS @ 4 * {: obytes:n :}
    LLA-NIN @ 0 ?do  i LLA-PACK-INPUT  loop
-   0 FP-REGION-ID LLA-FNAME
-   LLA-SETUP
-   obytes LLA-ALLOC-UPLOAD
-   LLA-BIND-PARAMS
-   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
-   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
-   LLA-HRB obytes PTXSENT:FILL                      \ readback poisoned (as LLA-READBACK pre-fills)...
-   \ ---- DELIBERATELY OMIT the cuMemcpyDtoH copy-back (obytes LLA-READBACK) ----
-   [: LLA-HRB F32-BUF:LOAD PTXSENT:GUARD drop ;] catch {: rc:n :}
-   LLA-RELEASE                                      \ free device buffers/module/ctx on every path
-   rc 0<> if rc throw then ;                         \ re-throw the sentinel E-PTX-READBACK
+   0 FP-REGION-ID LLA-FNAME  LLA-GRID-EW LLA-GX !
+   [: ABL-NO-DTOH-BODY ;] CUDA-SCOPE:SCOPE ;
 : ABL-SENT ( -- )
    CUDA:OPEN? 0= if exit then
    s"  (B) sentinel: launch with the copy-back skipped -> GUARD must throw E-PTX-READBACK" type cr
    0 FP-REGION-ID ABL-CAP-EW ABL-ASSEMBLE-RAW                    \ a correct kernel to launch
    [: ABL-LAUNCH-NO-DTOH ;] E-PTX-READBACK TTHROWSQ
+   CUDA-SCOPE:DEPTH 0 T=                          \ the throw path unwound: no module, context or allocation still owned
+   CUDA-SCOPE:CLEANUP-ERRORS 0 T=                 \ and every release the unwind attempted succeeded
    s"   sentinel fired: E-PTX-READBACK (dropped copy-back caught)" type cr ;
 
 \ ---- off-device SKIP scaffolding (device-smoke pattern) --------------------------------------
@@ -131,6 +136,7 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
    CUDA:OPEN? 0= if
       s" ablate-golden-device: libcuda unavailable -> device leg SKIPPED (host build OK)" type cr
       exit then
+   ATGT:LABEL$ PTXTC:TC-ARCH!                \ assembler arch from the probed active target; PREPARE does not clear it, so every ABL-ASSEMBLE-RAW uses it
    s" habu-ablate-ptx" PTXTC:PREPARE ;
 : ABL-END ( -- )
    CUDA:OPEN? 0= if  0 0= TTRUE  T-REPORT exit then
