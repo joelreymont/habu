@@ -13,6 +13,8 @@ require lib/test/runner.f
 
 package ECHO
 
+using GATE
+
 10 constant LF
 
 variable LINE-END

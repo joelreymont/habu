@@ -2,6 +2,8 @@
 \
 \ Load after test/gate-common.f and lib/memory.f.
 
+using GATE
+
 $FEEDFACF constant GB-MH-MAGIC64
 $19 constant GB-LC-SEGMENT-64
 32 constant GB-MH-SIZE
@@ -368,3 +370,5 @@ variable GB-LC-OFF
    n 0 < if [char] - emit n negate recurse exit then
    n 10 >= if n 10 / recurse then
    n 10 mod STR-ZERO + emit ;
+
+;using

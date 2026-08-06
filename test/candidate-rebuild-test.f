@@ -16,6 +16,8 @@ require test/gate-stats.f
 
 package CANDIDATE-REBUILD-TEST
 
+using GATE
+
 $10000 constant CAP
 300000 constant TIMEOUT-MS
 64 constant HEX-U

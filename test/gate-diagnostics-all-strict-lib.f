@@ -6,6 +6,8 @@ require tools/diag-to-sarif-core.f
 
 package GATE-DIAGNOSTICS
 
+using GATE
+
 : SARIF ( -- )
    GE-HB-RESET
    s" habu-all-errors.err" PATH!

@@ -4,6 +4,8 @@
 
 package GATE-DICTIONARY
 
+using GATE
+
 $41 constant NAME-CHAR
 $2E constant DOT-CHAR
 $63 constant C-LOWER-CHAR

@@ -16,6 +16,8 @@ require test/gate-engine-lib.f
 
 package NESTED-VALIDATION-RCA
 
+using GATE
+
 160 constant EVENT-CAP
 512 constant STAT-CAP
 32 constant STAT-SPACE

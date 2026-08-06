@@ -6,6 +6,8 @@ require test/golden.f
 
 package GATE-DIAGNOSTICS
 
+using GATE
+
 using PS
 
 64 constant USAGE-RC

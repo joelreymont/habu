@@ -6,6 +6,8 @@
 
 require lib/process-fork.f
 
+using GATE
+
 $40000 constant GE-SRC-CAP
 64 constant GE-SRC-MAX
 120000 constant GE-TIMEOUT-MS
@@ -617,3 +619,5 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GE-EXPECT-SILENT ;
+
+;using

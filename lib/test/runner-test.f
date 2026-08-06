@@ -16,6 +16,8 @@ require lib/test/echo.f
 
 package RUNNER-TEST
 
+using GATE
+
 using ECHO
 
 create GTT-OK-PATH FS-PATH-CAP allot

@@ -2,6 +2,8 @@
 
 package GATE-VALIDATION
 
+using GATE
+
 GT-OUT-CAP constant EVIDENCE-CAP
 3 constant WORKER-MAX
 \ Existing validation uses 8 nested executions. The direct-lint shared row adds

@@ -21,6 +21,8 @@ require test/tail-ratchet.f
 \ protected-WID capacity boundaries; all other semantic cases use SUBJECT.
 package TAIL-GROUP
 
+using GATE
+
 variable START-NS
 
 : ELAPSED-MS ( -- n )

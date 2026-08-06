@@ -5,6 +5,10 @@
 
 require lib/test/record.f
 
+package GATE
+
+public
+
 2 constant GT-EX-FAIL
 256 constant GT-FAIL-MAX
 128 constant GT-FAIL-NAME-CAP
@@ -283,3 +287,5 @@ variable GT-PROGRESS-LAST-NS
    s" test-runner: " type GT-FAIL# @ . s" failure(s)" type cr
    GT-REPORT-FAILS
    s" test-runner: failures" GT-EX-FAIL die ;
+
+;package

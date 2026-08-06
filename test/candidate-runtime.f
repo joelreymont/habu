@@ -18,6 +18,8 @@ require test/gate-pool.f
 require test/gate-engine-lib.f
 
 package CANDIDATE-RUNTIME
+
+using GATE
 private
 
 64 constant KEY-U

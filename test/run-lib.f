@@ -8,6 +8,8 @@ require test/run-support.f
 require test/run-files.f
 require test/run-result-cache.f
 
+using GATE
+
 package TEST
 private
 
@@ -1728,3 +1730,5 @@ public
    id TR-PROFILE-ID ! ;
 
 ;package
+
+;using

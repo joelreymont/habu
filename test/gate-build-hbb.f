@@ -2,6 +2,8 @@
 \
 \ Load after tools/hb-build-lib.f and test/gate-build-common.f.
 
+using GATE
+
 : GB-HBB-PREPARE ( -- )
    HBB-RESET-OPTIONS
    GB-SRC$ GB-OUT$ HBB-PATHS!
@@ -27,3 +29,5 @@
    GB-HBB-PREPARE
    HBB-STRICT-ON
    GB-HBB-BUILD-OUT ;
+
+;using

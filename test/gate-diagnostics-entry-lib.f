@@ -6,6 +6,8 @@ require test/gate-diagnostics-all-strict-lib.f
 
 package GATE-DIAGNOSTICS
 
+using GATE
+
 : SERIAL ( -- )
    s" hb-gate-diagnostics" GT-START
    PRIMARY-JSON

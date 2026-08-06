@@ -9,6 +9,8 @@ require lib/test.f
 
 package STDLIB-GATE
 
+using GATE
+
 120000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
 0 constant SUITE-ALL-ID

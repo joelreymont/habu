@@ -16,6 +16,8 @@ require lib/test/runner.f
 require test/gate-pool.f
 require test/run-lib.f
 
+using GATE
+
 \ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
 \ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB /
 \ STR:INDEX-OF index back to its raw cell, keeping GPT-KR-PARSE-ROOT
@@ -725,3 +727,5 @@ variable GPT-GK-SENTINEL-U
 ' GATE-POOL-TEST-MAIN
 ;package
 execute
+
+;using

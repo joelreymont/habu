@@ -16,6 +16,8 @@ LOWER-CERT-HOOK:INSTALL
 \ an unregistered direct-branch target is not followed and still fails closed.
 package AOT-NEGATIVE
 
+using GATE
+
 : BRANCH-SOURCE ( -- )
    GE-SRC-RESET
    s" package AOT-LINK" GE-SRC-LINE

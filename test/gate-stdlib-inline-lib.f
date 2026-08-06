@@ -2,6 +2,8 @@
 \
 \ Load after test/gate-stdlib-lib.f in the resident test runner.
 
+using GATE
+
 variable GSI-TIMINGS
 variable GSI-PATH-A
 variable GSI-PATH-U
@@ -681,3 +683,5 @@ s" GSI-CHECK-CLI" 0 REJECT-WORD
 ;package
 
 ' CHECK-CLI-GATE:RUN drop
+
+;using

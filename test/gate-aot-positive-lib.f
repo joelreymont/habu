@@ -6,6 +6,8 @@ require test/gate-pool.f
 
 package AOT-POSITIVE
 
+using GATE
+
 46 constant DOT
 99 constant C-LOWER
 $10000 constant STRIPPED-TEXT-MAX

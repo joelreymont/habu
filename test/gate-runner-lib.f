@@ -7,6 +7,8 @@ require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switc
 
 package GATE-RUNNER
 
+using GATE
+
 64 constant USAGE-RC
 -1 constant ID-UNKNOWN
 0 constant ID-TOOL
