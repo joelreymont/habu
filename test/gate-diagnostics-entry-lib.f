@@ -28,7 +28,6 @@ using GATE
    UNDEFINED-RECURSIVE
    SARIF
    PUBLIC-SIGNATURES
-   LINT-STALE
    GT-CLEANUP
    s" PASS: native checker diagnostics gate phase" type cr ;
 
