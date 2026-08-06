@@ -58,7 +58,7 @@ create GN-BLMM GNV cells allot        create GN-BLMV GNV cells allot
 variable GN-RNG
 : GN-NEXT ( -- r )  GN-RNG @ 1664525 * 1013904223 + $FFFFFFFF and dup GN-RNG !  s>f 4294967296.0 f/ ;
 : GN-UNIT ( -- r )  GN-NEXT 2.0 f* 1.0 f- ;
-: GN-SMALL ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  GN-UNIT 0.1 f*  p i T-SET  loop ;
+: GN-SMALL ( ptr r n -- ) {: p:ptr n:n :}  n 0 ?do  GN-UNIT 0.1 f*  p i T-SET  loop ;
 
 \ committed init: small weights + a shift task (id t = t mod V, target = (t+1) mod V)
 : GN-INIT ( -- )
@@ -87,7 +87,7 @@ variable GN-T  variable GN-B1T  variable GN-B2T
    GNON 0 ?do  GN-SEED i T-GET GN-INVR f*  GN-SEED i T-SET  loop
    ob GNT GNV GN-TGT GNT LOSS:TT-XENT  GN-INVR f* ;
 
-: GN-UPD ( ptr a n ptr a ptr a n -- ) {: p:ptr slot:n mp:ptr vp:ptr n:n :}
+: GN-UPD ( ptr r n ptr r ptr r n -- ) {: p:ptr slot:n mp:ptr vp:ptr n:n :}
    GN-LR GN-BET1 GN-BET2 GN-EPS GN-C1 GN-C2  p  slot GN-GRAD  mp vp n  OPTIM:TT-ADAM! ;
 
 : GN-BIND ( -- )
@@ -159,7 +159,7 @@ create GN-OH2 3 cells allot          \ one-hot at index 2
 \ sample a 3-wide row over many seeds; return true iff every draw equals EXP (EXP<0: only
 \ require in-bounds [0,3)). Proves inverse-CDF never falls off the row and hits sure indices.
 variable GN-BOK
-: GN-BOUNDS? ( ptr a n -- n ) {: p:ptr exp:n :}
+: GN-BOUNDS? ( ptr r n -- n ) {: p:ptr exp:n :}
    true GN-BOK !
    300 0 ?do  i SC-SEED!  p 3 GEN-SAMPLE {: s:n :}
       exp 0< if  s 0 < s 3 >= or if false GN-BOK ! then
