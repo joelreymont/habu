@@ -1360,6 +1360,10 @@ variable TWALK-D
 1 constant IS-QOTHER
 2 constant IS-QOWN
 3 constant IS-RMARK
+\ The two ANSWERING modes of the same walker (the three above classify instead
+\ of answering). Both reach every var leaf; they differ in which leaf is a hit.
+0 constant IS-EXACT            \ a var leaf is a hit only when it IS the queried q
+-1 constant IS-ANY             \ every var leaf is a hit; TYPE-CLOSED? inverts it
 
 1 constant IS-C-OWN
 2 constant IS-C-MULTI
@@ -1379,7 +1383,7 @@ variable IS-RBIT
    BEGIN dup TAG S-PUSH = WHILE P>REST REPEAT ;
 
 : IS-C-OWNER+ ( n -- ) {: id:n :}
-   id IS-META@ IS-C-OWN and IF IS-C-MULTI id IS-META+ ELSE IS-C-OWN id IS-META+ THEN ;
+   id IS-META@ IS-C-OWN and 0 <> IF IS-C-MULTI id IS-META+ ELSE IS-C-OWN id IS-META+ THEN ;
 
 : IS-QRAW+ ( n n -- ) {: raw:n mode:n :}
    raw TAG S-ROW <> IF EXIT THEN
@@ -1414,21 +1418,21 @@ variable IS-RBIT
       dup ISROW IF
          mode IS-RMARK = IF PAY IS-RBIT @ swap IS-META+ RES-FALSE ELSE
          mode IS-QMODE? IF drop RES-FALSE ELSE
-         mode IF drop RES-TRUE ELSE PAY q PAY = q ISROW and THEN THEN THEN
+         mode 0 <> IF drop RES-TRUE ELSE PAY q PAY = q ISROW and THEN THEN THEN
       ELSE drop RES-FALSE THEN
       EXIT
    THEN
    dup ISROW IF
       mode IS-RMARK = IF PAY IS-RBIT @ swap IS-META+ RES-FALSE ELSE
       mode IS-QMODE? IF drop RES-FALSE ELSE
-      mode IF drop RES-TRUE ELSE PAY q PAY = q ISROW and THEN THEN THEN
+      mode 0 <> IF drop RES-TRUE ELSE PAY q PAY = q ISROW and THEN THEN THEN
       EXIT
    THEN
    drop
    mode IS-QMODE? IF t ELSE t T-RES THEN {: x:n :}
    x TAG T-VAR = IF
       mode IS-RMARK = mode IS-QMODE? or IF RES-FALSE ELSE
-      mode IF RES-TRUE ELSE x PAY q PAY = q ISVAR and THEN THEN EXIT
+      mode 0 <> IF RES-TRUE ELSE x PAY q PAY = q ISVAR and THEN THEN EXIT
    THEN
    x TAG T-PTR = IF q x PTR>INNER mode TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
@@ -1449,7 +1453,7 @@ variable IS-RBIT
    THEN
    RES-FALSE ;
 : VAR-OCC* ( n n -- bool )
-   RES-FALSE TYPE-VAR?* ;
+   IS-EXACT TYPE-VAR?* ;
 : TY-OCC* ( n n -- bool ) {: id:n t:n :}
    id MK-VAR t VAR-OCC* ;
 : RV-OCC* ( n n -- bool ) {: id:n t:n :}
@@ -1458,7 +1462,7 @@ variable IS-RBIT
    TWALK-RESET TY-OCC* ;
 : RV-OCC? ( n n -- bool )
    TWALK-RESET RV-OCC* ;
-: TYPE-CLOSED? ( n -- bool ) TWALK-RESET 0 swap RES-TRUE TYPE-VAR?* 0= ;
+: TYPE-CLOSED? ( n -- bool ) TWALK-RESET 0 swap IS-ANY TYPE-VAR?* 0= ;
 
 \ --- item 7 (docs/type-families.md §10-11, PLAN item 7, reject-only): a logical
 \ sum/enum/product layout value is ONE T-PARAM cell in a signature and is NOT
@@ -1743,13 +1747,20 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ pointers, atoms, and non-layout cell-family parameters are values without
 \ ownership of the types they mention. Fields are transparent; logical layouts
 \ and their sampled hidden tag own their value-bearing arguments and schemas.
-1 constant KIND-NEED
+\ The three kind-walker modes. They walk the same frontier and differ only at a
+\ var leaf, so KIND-DRY and KIND-RAISE always return the SAME answer — the walk
+\ is a dry run under one and commits the kind under the other. NONLIN-TYPE!
+\ relies on exactly that: dry-run first, raise only once the answer is yes, so a
+\ rejected bind leaves no kind raised behind it.
+1 constant KIND-NEED           \ a var leaf answers with the kind it ALREADY carries
+0 constant KIND-DRY            \ a var leaf answers yes and is left untouched
+-1 constant KIND-RAISE         \ a var leaf answers yes and has the kind raised on it
 
 : NONLIN-TYPE* ( n n -- bool ) {: t0:n mode:n :}
    t0 T-RES {: t:n :}
    t TAG T-VAR = IF
       mode KIND-NEED = IF t PAY TVK-NONLIN? EXIT THEN
-      mode IF t PAY TVK-NONLIN-RAISE THEN
+      mode 0 <> IF t PAY TVK-NONLIN-RAISE THEN
       RES-TRUE EXIT
    THEN
    t TAG T-CON = IF t PAY CT-LINEAR? 0= EXIT THEN
@@ -1774,8 +1785,8 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    RES-TRUE ;
 
 : NONLIN-TYPE! ( n -- bool ) {: t:n :}
-   TWALK-RESET t RES-FALSE NONLIN-TYPE* 0= IF RES-FALSE EXIT THEN
-   TWALK-RESET t RES-TRUE NONLIN-TYPE* ;
+   TWALK-RESET t KIND-DRY NONLIN-TYPE* 0= IF RES-FALSE EXIT THEN
+   TWALK-RESET t KIND-RAISE NONLIN-TYPE* ;
 
 : NONLIN-ROW! ( n -- bool ) {: row:n :}
    row
@@ -1827,7 +1838,7 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    THEN
    RES-TRUE ;                                          \ atom / xt / row: engine raw-stores these -> admit
 : RAW-OK? ( n -- bool )
-   RES-TRUE RAW-OK* ;
+   KIND-RAISE RAW-OK* ;
 : RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates the RAW cell discipline?
    over TVK-RAW? 0= IF 2drop RES-FALSE EXIT THEN     \ ordinary var: never blocks
    nip RAW-OK? 0= ;                                   \ RAW var: `term` must be RAW-admissible
@@ -9689,19 +9700,19 @@ variable IS-MARK
 : IS-VISIT2 ( n n -- )
    swap IS-VISIT IS-VISIT ;
 
-: IS-CF-VISIT ( ptr a -- ) {: r:ptr :}
+: IS-CF-VISIT ( ptr n -- ) {: r:ptr :}
    r CF.SA @ r CF.RA @ IS-VISIT2
    r CF.SB @ dup 0 <> IF IS-VISIT ELSE drop THEN
    r CF.RB @ dup 0 <> IF IS-VISIT ELSE drop THEN
    r CF.KND @ 6 = IF
-      r CF.XST @ IF r CF.XRO @ r CF.XRR @ IS-VISIT2 THEN
-      r CF.TXS @ IF r CF.TXD @ r CF.TXR @ IS-VISIT2 THEN
+      r CF.XST @ 0 <> IF r CF.XRO @ r CF.XRR @ IS-VISIT2 THEN
+      r CF.TXS @ 0 <> IF r CF.TXD @ r CF.TXR @ IS-VISIT2 THEN
    THEN ;
 
-: IS-MF-VISIT ( ptr a -- ) {: r:ptr :}
+: IS-MF-VISIT ( ptr n -- ) {: r:ptr :}
    r MF.TERM @ IS-VISIT
    r MF.BASE @ r MF.RBASE @ IS-VISIT2
-   r MF.HAS @ IF r MF.OUT @ r MF.ROUT @ IS-VISIT2 THEN ;
+   r MF.HAS @ 0 <> IF r MF.OUT @ r MF.ROUT @ IS-VISIT2 THEN ;
 
 : IS-ROOTS ( n -- ) {: sig:n :}
    DCUR @ RCUR @ IS-VISIT2
@@ -9780,7 +9791,7 @@ variable IS-MARK
    want0 R-RES dup ISROW 0= IF drop RES-FALSE EXIT THEN
    dup PAY {: wid:n :}
    wid IS-META@ dup IS-C-DST and 0= IF drop drop RES-FALSE EXIT THEN
-   IS-C-USED and IF drop RES-FALSE EXIT THEN
+   IS-C-USED and 0 <> IF drop RES-FALSE EXIT THEN
    IS-C-USED wid IS-META+
    id ROW-BIND! ;
 
@@ -10314,7 +10325,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    row R-RES
    BEGIN dup TAG S-PUSH = WHILE
       dup P>TYPE T-RES dup FIELD-PARAM? IF
-         FIELD-INNER id MK-VAR swap RES-FALSE
+         FIELD-INNER id MK-VAR swap IS-EXACT
          TWALK-DEEPER TYPE-VAR?* TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
       ELSE drop THEN
       P>REST R-RES
