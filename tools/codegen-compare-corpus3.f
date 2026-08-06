@@ -322,33 +322,33 @@ public
 \ measures in CELL-BUMP - but the rows that call them are the real two-word
 \ programs because these are here.
 : T-AT  ( ptr a n -- ptr a )  cells + ;
-: T-GET ( ptr a n -- r )      T-AT @ ;
-: T-SET ( r ptr a n -- )      T-AT ! ;
+: T-GET ( ptr r n -- r )      T-AT @ ;
+: T-SET ( r ptr r n -- )      T-AT ! ;
 
 \ maki/array.f:16, verbatim, bare locals and all - the corpus is pinned to the
 \ surveyed body and an annotation would be an edit to it.
 \ typed-local-lint: allow-bare-local - base and len are maki/array.f:16's own
 \ spelling; this corpus records the body that runs, not a rewrite of it.
-: T-SUM ( ptr a n -- r ) {: base len :}
+: T-SUM ( ptr r n -- r ) {: base len :}
    0.0  len 0 ?do  base i T-GET f+  loop ;
 
 \ maki/array.f:20, verbatim. The in-place step: w[i] -= lr * g[i].
 \ typed-local-lint: allow-bare-local - lr, wbase, gbase and len are
 \ maki/array.f:20's own spelling.
-: T-SGD! ( r ptr a ptr a n -- ) {: lr wbase gbase len :}
+: T-SGD! ( r ptr r ptr r n -- ) {: lr wbase gbase len :}
    len 0 ?do
       wbase i T-GET   lr  gbase i T-GET  f*  f-   wbase i T-SET
    loop ;
 
 \ maki/array.f:32, verbatim: sum_i (a[i]-b[i])^2.
-: T-DIST2 ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :}
+: T-DIST2 ( ptr r ptr r n -- r ) {: abase:ptr bbase:ptr len:n :}
    0.0
    len 0 ?do
       abase i T-GET  bbase i T-GET  f-  dup f*  f+
    loop ;
 
 \ maki/array.f:39, verbatim: sum_i b[i]^2.
-: T-NORM2 ( ptr a n -- r ) {: bbase:ptr len:n :}
+: T-NORM2 ( ptr r n -- r ) {: bbase:ptr len:n :}
    0.0
    len 0 ?do
       bbase i T-GET  dup f*  f+
@@ -356,7 +356,7 @@ public
 
 \ maki/array.f:46, verbatim over the two rows above: ||a-b|| / ||b||. Two calls,
 \ two square roots and a division in one straight line.
-: T-REL-L2 ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :}
+: T-REL-L2 ( ptr r ptr r n -- r ) {: abase:ptr bbase:ptr len:n :}
    abase bbase len T-DIST2 fsqrt
    bbase len T-NORM2 fsqrt
    f/ ;
