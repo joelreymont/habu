@@ -15,23 +15,28 @@ require tools/lint/json-writer.f
 require tools/duplicate-definition-lint-core.f
 require lib/argv.f
 
-: DUPLICATE-DEFINITION-LINT-ARGV-FILE ( n -- ) {: idx :}
+package DUPLICATE-DEFINITION-LINT-CLI
+private
+
+: ARGV-FILE ( n -- ) {: idx:n :}
    ARGV:LABEL? if
-      idx ARGV:POS$ ARGV:LABEL$ DUPLICATE-DEFINITION-LINT-FILE-AS
+      idx ARGV:POS$ ARGV:LABEL$ DUPLICATE-DEFINITION-LINT:FILE-AS
    else
-      idx ARGV:POS$ DUPLICATE-DEFINITION-LINT-FILE
+      idx ARGV:POS$ DUPLICATE-DEFINITION-LINT:FILE
    then ;
 
-: DUPLICATE-DEFINITION-LINT ( -- )
+: RUN ( -- )
    s" tools/duplicate-definition-lint.f [--json] [--label name] file ..." ARGV:USAGE!
    ARGV:PARSE
    1 -1 ARGV:EXPECT-POS
-   DUPLICATE-DEFINITION-LINT-RESET
-   ARGV:JSON? DDL-JSON!
+   DUPLICATE-DEFINITION-LINT:RESET
+   ARGV:JSON? DUPLICATE-DEFINITION-LINT:JSON!
    0 begin dup ARGV:POS# < while
-      dup DUPLICATE-DEFINITION-LINT-ARGV-FILE
+      dup ARGV-FILE
       1+
    repeat drop
-   DUPLICATE-DEFINITION-LINT-FINISH ;
+   DUPLICATE-DEFINITION-LINT:FINISH ;
 
-DUPLICATE-DEFINITION-LINT
+RUN
+
+;package

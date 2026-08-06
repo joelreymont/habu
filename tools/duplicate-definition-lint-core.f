@@ -3,6 +3,9 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ and tools/lint/json-writer.f.
 
+package DUPLICATE-DEFINITION-LINT
+private
+
 $1000 constant DDL-DEF-CAP
 $2000 constant DDL-HASH-CAP
 $1FFF constant DDL-HASH-MASK
@@ -139,8 +142,12 @@ variable DDL-TOK-COL
 : DDL-FILE$ ( n -- ptr u8 n ) {: idx :}
    idx DDL-FILE-A@  idx DDL-FILE-U@ ;
 
-: DDL-JSON! ( bool -- )
+public
+
+: JSON! ( bool -- )
    DDL-JSON ! ;
+
+private
 
 : DDL-OUT-FD! ( fd -- )
    DDL-OUT-FD ! ;
@@ -430,7 +437,9 @@ variable DDL-TOK-COL
    DDL-DEF-CAP DDL-COL DDL-ALLOC-TABLE
    DDL-HASH-CAP DDL-HASH-TAB DDL-ALLOC-TABLE ;
 
-: DUPLICATE-DEFINITION-LINT-RESET ( -- )
+public
+
+: RESET ( -- )
    DDL-ENSURE-TABLES
    0 DDL-BAD !
    0 DDL-DEF# !
@@ -441,14 +450,16 @@ variable DDL-TOK-COL
    0 DDL-JSON !
    1 >FD DDL-OUT-FD! ;
 
-: DUPLICATE-DEFINITION-LINT-FILE-AS ( ptr u8 n ptr u8 n -- )
+: FILE-AS ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu label:ptr labelu :}
    label DDL-FILE-LABEL-A! labelu DDL-FILE-LABEL-U !
    path pathu DDL-LOAD-SOURCE
    DDL-SCAN ;
 
-: DUPLICATE-DEFINITION-LINT-FILE ( ptr u8 n -- )
-   2dup DUPLICATE-DEFINITION-LINT-FILE-AS ;
+: FILE ( ptr u8 n -- )
+   2dup FILE-AS ;
 
-: DUPLICATE-DEFINITION-LINT-FINISH ( -- )
+: FINISH ( -- )
    DDL-BAD @ 0 > if 1 throw then ;
+
+;package
