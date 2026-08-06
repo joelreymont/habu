@@ -160,32 +160,47 @@ public
    s" CODEGEN-CORPUS:BYTE-FIND-N" ROW!
    LOOPS 1 T=
 
+   \ SEVEN AND NOT EIGHT SINCE THE CONSTANTS MOVED INTO THE INSTRUCTIONS. This
+   \ tool reads the machine code the chain finally emits, and the combine pass
+   \ now folds a small constant into the add or subtract that reads it, so the
+   \ move-wide that used to stand in this body is not there to count. The body
+   \ is one instruction shorter and holds no move-wide at all.
    s" and that block's literal chain is not charged to the loop body" T-LABEL
    s" CODEGEN-CORPUS:BYTE-FIND-N" ROW!
-   BODY-TOTAL 8 T=
-   CONSTS-TOTAL 1 T=
+   BODY-TOTAL 7 T=
+   CONSTS-TOTAL 0 T=
 
    s" the counted byte loops hold one loop each" T-LABEL
    s" CODEGEN-CORPUS:BYTE-SUM-N" ROW!
    LOOPS 1 T=
-   BODY-TOTAL 7 T=
+   BODY-TOTAL 6 T=
    s" CODEGEN-CORPUS:SUM-TO-N" ROW!
    LOOPS 1 T=
-   BODY-TOTAL 5 T=
+   BODY-TOTAL 4 T=
 
    \ The row the measurement turns on: four sixty-four-bit literals, each a chain
    \ of four move-wide instructions, rebuilt on every turn. Sixteen of its
-   \ seventeen in-body move-wides are chain members and one is a small constant
-   \ an immediate form would carry, which is why the two are counted apart.
+   \ seventeen in-body move-wides were chain members and the seventeenth was a
+   \ small constant an immediate form could carry - which is now where it is, so
+   \ sixteen chain members are what is left. That the count fell by exactly one
+   \ is the point of the row: a wide literal is NOT foldable, and only the one
+   \ small constant moved.
    s" the four-literal row rebuilds sixteen chain instructions a turn" T-LABEL
    s" CODEGEN-CORPUS4:BIG-CONSTS-N" ROW!
    LOOPS 1 T=
-   BODY-TOTAL 28 T=
-   CONSTS-TOTAL 17 T=
-   FOLDABLE-TOTAL 1 T=
+   BODY-TOTAL 27 T=
+   CONSTS-TOTAL 16 T=
+   FOLDABLE-TOTAL 0 T=
 
-   s" a small constant feeding an arithmetic instruction counts as foldable" T-LABEL
-   s" CODEGEN-CORPUS:SUM-TO-N" ROW!
+   \ THE CLASSIFIER STILL HAS TO ANSWER YES SOMEWHERE, or nothing tests it. What
+   \ is left foldable-SHAPED after the fold is the constant whose reader is not
+   \ an add or a subtract: this row's loop test compares against zero, and a
+   \ comparison has no immediate form in this dialect, so the zero is still a
+   \ move-wide small enough for an arithmetic field and the column still counts
+   \ it. That is the residue the fold deliberately leaves, named here so it is
+   \ measured rather than assumed.
+   s" a small constant a comparison reads is still counted foldable" T-LABEL
+   s" CODEGEN-CORPUS:COUNT-DOWN-N" ROW!
    CONSTS-TOTAL 1 T=
    FOLDABLE-TOTAL 1 T=
 
