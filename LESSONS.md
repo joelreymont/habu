@@ -5396,3 +5396,17 @@ tail form does not have - three readers of routine extent went wrong at
 once. When a new form breaks a convention's arithmetic, grep every reader
 of that convention before trusting green.
 
+## Check binding lifecycles before designing a multi-pass fix (2026-08-06)
+
+The spill rewrite wanted allocate-measure-reallocate, but A64SEL:SELECT
+freezes the a64 builder, so a selected module is allocatable exactly once -
+measure-while-allocating was the only shape, and knowing that before
+designing would have saved a discarded plan. Two corollaries from the same
+landing: when a reader's MEANING is wrong, redefining the reader can be
+smaller than changing every consumer (A64SPILL needed no edit - it already
+asked the right question and had been getting the wrong answer); and a
+refusal that changes meaning silently loses its test - repointing
+E-A64RA-PRESSURE left the old case proving the opposite thing, a gap that
+only surfaced because the case was rewritten by hand. Rename or re-test a
+refusal whose bound moves.
+
