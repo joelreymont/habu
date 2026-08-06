@@ -890,7 +890,7 @@ variable REG-I
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   \ Ratchet on the whole axiom registry of checker.f: 283 `PRIM:` rows plus 61
+   \ Ratchet on the whole axiom registry of checker.f: 285 `PRIM:` rows plus 63
    \ `PPRIM:` rows. It was 345 before the sealed-owner WID registry was deleted,
    \ which took the four `owner-wid-preflight?` / `owner-wid-public?` /
    \ `owner-wid-private?` / `owner-wid?` axioms with it, and 341 before the bulk
@@ -898,10 +898,21 @@ variable REG-I
    \ trusted-only axioms `code-publish`, `callmap-set` and `xref-retarget`, and
    \ 344 before the replay package-state window (dot habu-own-pkg-state-acf7086c)
    \ added `CHECKER-USING-PUSH` and `CHECKER-USING-POP`, the two rows a replayed
-   \ source's own `using` and `;using` are driven through. A
-   \ lexer that swallowed a row into a neighbouring string would drop the count,
-   \ not raise it.
-   REG-COUNT 346 ASSERT=
+   \ source's own `using` and `;using` are driven through, and 346 before the
+   \ no-emit publication hold (commit 94bf026b, 2026-08-06) added the two
+   \ `CHECKER-TAPE` axioms `HOLD-ARM` and `HOLD-DISARM`, the rows that arm and
+   \ release the held-publication window. That landing did not bump this row, so
+   \ the ratchet went red exactly as designed; it was misread as a symptom of the
+   \ concurrent-gate timing incident (dot habu-attr-the-candidate-4a2356c5) and
+   \ merged anyway. The assertion number is the tell: a ratchet miss always stops
+   \ at the same assertion, a contention flake stops at a timing one.
+   \ The `PRIM:`/`PPRIM:` split above is also two higher than the old comment
+   \ claimed - 283 plus 61 never summed to the 346 it sat next to. The lexer is
+   \ the authority here and it counted 285 plus 63; the prose was stale, the
+   \ constant was not.
+   \ A lexer that swallowed a row into a neighbouring string would drop the
+   \ count, not raise it.
+   REG-COUNT 348 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.
