@@ -24,6 +24,8 @@ require test/gate-common-lib.f
 require test/gate-diagnostics-lib.f
 require test/gate-diagnostics-all-strict-lib.f
 
+using JSON
+
 TEST:TRW-LOAD-DONE
 
 package TEST
@@ -70,3 +72,5 @@ variable FORK-ID
 ;package
 
 execute
+
+;using

@@ -5,6 +5,8 @@ require lib/string.f
 require lib/memory.f
 require tools/json.f
 
+using JSON
+
 variable TEST-N
 : ASSERT ( bool -- )
    0= IF s" json-test failed at assertion " type TEST-N @ . cr 1 throw THEN
@@ -359,3 +361,5 @@ variable NODE
    s" json-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 
 JSON-TEST
+
+;using

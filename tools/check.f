@@ -26,4 +26,8 @@ require tools/check-all-errors-core.f
 require lib/argv.f
 require tools/check-core.f
 
+using JSON
+
 CHECK:MAIN
+
+;using

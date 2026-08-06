@@ -23,6 +23,8 @@ require tools/check-core.f
 require test/gate-common-lib.f
 require test/gate-diagnostics-lib.f
 
+using JSON
+
 TEST:TRW-LOAD-DONE
 
 package TEST
@@ -40,3 +42,5 @@ package TEST
 ;package
 
 execute
+
+;using

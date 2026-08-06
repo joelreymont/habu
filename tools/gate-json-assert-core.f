@@ -2,6 +2,9 @@
 \ Load after lib/errors.f, lib/memory.f, and tools/json.f.
 
 require lib/adt/option.f                 \ option<n> for GJA-U? (switchover wave A)
+require tools/json.f
+
+using JSON
 
 $8000 constant GJA-IN-CAP
 $1000 constant GJA-SRC-CAP
@@ -691,3 +694,5 @@ variable GJA-DIRECT
    GJA-DISPATCH-RETURN-STACK IF exit THEN
    GJA-DISPATCH-ROW-EFFECT IF exit THEN
    GJA-USAGE ;
+
+;using

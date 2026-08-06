@@ -52,3 +52,7 @@ require test/gate-debug-lib.f
 require test/gate-stdlib-inline-lib.f
 require test/gate-stdlib-tool-base-ready.f
 require test/gate-runner-lib.f
+
+using JSON
+
+;using

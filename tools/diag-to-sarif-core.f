@@ -4,6 +4,8 @@ require lib/errors.f
 require lib/memory.f
 require tools/json.f
 
+using JSON
+
 65 constant SARIF-E-DATA
 74 constant SARIF-E-IO
 
@@ -518,3 +520,5 @@ variable SARIF-PARSE-NODE
    SARIF-LOAD-FILE
    SARIF-COLLECT-RULES
    SARIF-EMIT-DOC ;
+
+;using

@@ -27,6 +27,8 @@ require tools/gate-json-assert-core.f
 require lib/argv.f
 require tools/repair-packet-core.f
 
+using JSON
+
 package LOAD-REJECT-TEST
 
 $1000 constant CAP
@@ -383,3 +385,5 @@ LOWER-CERT-HOOK:INSTALL
 MAIN
 
 ;package
+
+;using

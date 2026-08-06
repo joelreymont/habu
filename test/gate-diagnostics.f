@@ -25,6 +25,8 @@ require tools/check-core.f
 include test/gate-diagnostics-lib.f
 include test/gate-diagnostics-entry-lib.f
 
+using JSON
+
 package GATE-DIAGNOSTICS
 
 ' DISPATCH
@@ -32,3 +34,5 @@ package GATE-DIAGNOSTICS
 ;package
 
 execute
+
+;using

@@ -25,6 +25,8 @@ require tools/cli-run.f
 require tools/json.f
 require tools/gate-json-assert-core.f
 
+using JSON
+
 package CHECK-REPAIR-HINTS-TEST
 
 private
@@ -304,3 +306,5 @@ create ERR BUF-CAP allot
 RUN
 
 ;package
+
+;using

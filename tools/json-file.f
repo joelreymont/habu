@@ -9,6 +9,9 @@
 \ trusted wrapped layer and is unchanged; JSONF is the checked wrapper.
 
 require lib/adt/option.f
+require tools/json.f
+
+using JSON
 
 package JSONF
 
@@ -170,3 +173,5 @@ public
 
 private
 ;package
+
+;using

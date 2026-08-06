@@ -1,3 +1,6 @@
+require tools/json.f
+
+using JSON
 \ json-only-core.f - JSON diagnostic line filter core.
 \ Load after lib/errors.f, lib/memory.f, and tools/json.f.
 
@@ -125,3 +128,5 @@ variable JSON-ONLY-BUF-ON
    ELSE
       JSON-ONLY-PROSE
    THEN ;
+
+;using

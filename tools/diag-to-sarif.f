@@ -5,4 +5,8 @@ require lib/memory.f
 require tools/json.f
 require tools/diag-to-sarif-core.f
 
+using JSON
+
 SARIF-MAIN
+
+;using

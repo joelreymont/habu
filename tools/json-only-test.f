@@ -16,4 +16,8 @@ require tools/json-only-core.f
 
 require tools/json-only-test-lib.f
 
+using JSON
+
 JOT-MAIN
+
+;using

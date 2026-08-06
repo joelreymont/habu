@@ -30,6 +30,8 @@ require tools/json.f
 require tools/repair-packet-core.f
 require maki/eval/repair-loop.f
 
+using JSON
+
 \ eval-repair-mech owns error codes -5240..-5243.
 -5240 constant E-MECH-SRC-CAP   \ candidate exceeds the working-source capacity
 -5241 constant E-MECH-PKT-CAP   \ repair packet exceeds the packet buffer
@@ -248,3 +250,5 @@ public
    again ;
 
 ;package
+
+;using

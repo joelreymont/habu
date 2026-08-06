@@ -29,6 +29,8 @@ require lib/argv.f
 require tools/repair-packet-core.f
 require test/golden.f
 
+using JSON
+
 package REPAIR-PACKET-TEST
 
 private
@@ -423,3 +425,5 @@ create PACKET-BUF FS-PATH-CAP allot
 RUN
 
 ;package
+
+;using

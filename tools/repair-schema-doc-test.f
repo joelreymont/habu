@@ -22,6 +22,8 @@ require tools/check-all-errors-core.f
 require tools/json.f
 require tools/gate-json-assert-core.f
 
+using JSON
+
 package REPAIR-SCHEMA-TEST
 
 $40000 constant DOC-CAP
@@ -341,3 +343,5 @@ create CHK-BUF EMIT-CAP allot
 RUN
 
 ;package
+
+;using

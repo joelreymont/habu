@@ -28,6 +28,8 @@ require tools/check-all-errors-core.f
 require lib/argv.f
 require tools/check-core.f
 
+using JSON
+
 package CHECK-CLEANUP-CHILD
 
 private
@@ -173,3 +175,5 @@ public
 ;package
 
 CHECK-CLEANUP-CHILD:RUN
+
+;using

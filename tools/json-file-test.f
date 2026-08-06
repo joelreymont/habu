@@ -10,6 +10,8 @@ require lib/fs-mutate.f
 require tools/json.f
 require tools/json-file.f
 
+using JSON
+
 package JSONF-TEST
 
 5000 constant LONG-N
@@ -190,3 +192,5 @@ public
 ;package
 
 JSONF-TEST:MAIN
+
+;using

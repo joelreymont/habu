@@ -1,3 +1,6 @@
+require tools/json.f
+
+using JSON
 \ repair-packet-core.f - normalize checker JSONL into an LLM repair packet.
 \ Load after lib/errors.f, lib/memory.f, lib/argv.f, and tools/json.f.
 
@@ -235,3 +238,5 @@ variable RP-NODE
 
 : RP-MAIN ( -- )
    RP-INPUT$ RP-READ-FILE 2dup RP-COUNT >r RP-FIRST r> RP-PACKET type cr ;
+
+;using

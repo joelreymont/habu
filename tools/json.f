@@ -3,6 +3,10 @@
 
 require lib/adt/result.f                 \ result<root,code> for JSON-PARSE-TRY (switchover wave C)
 
+package JSON
+
+public
+
 -7100 constant E-JSON-SYNTAX
 -7101 constant E-JSON-CAPACITY
 -7102 constant E-JSON-TYPE
@@ -37,6 +41,8 @@ $400 constant JSON-MAX-NODES
 $800 constant JSON-MAX-ITEMS
 $800 constant JSON-MAX-PAIRS
 $8000 constant JSON-STR-BOOT-CAP
+private
+
 $8000 constant JSON-OUT-CAP
 $10000 constant JSON-STR-GRAIN
 $7FFFFFFFFFFFFFFF constant JSON-MAX-N
@@ -59,7 +65,11 @@ variable JSON-NODES
 variable JSON-ITEMS
 variable JSON-PAIRS
 variable JSON-STR-LEN
+public
+
 variable JSON-OUT-LEN
+private
+
 variable JSON-ERR-LEN
 variable JSON-ERR-POS
 variable JSON-STR-P
@@ -90,7 +100,11 @@ variable JSONL-A
 variable JSONL-U
 variable JSONL-I
 variable JSONL-LA
+public
+
 variable JSONL-LU
+private
+
 variable JSONL-ROOT
 variable JSONL-SKIPS
 variable JSONL-MODE
@@ -99,6 +113,8 @@ variable JSON-PARSE-TRY-ROOT
 
 0 constant JSONL-MODE-STRICT
 1 constant JSONL-MODE-SKIP
+public
+
 0 constant JSONL-ROW-JSON
 1 constant JSONL-ROW-BLANK
 2 constant JSONL-ROW-ERROR
@@ -111,6 +127,8 @@ variable JSON-PARSE-TRY-ROOT
 
 : JSON-PTR-U8! ( ptr u8 ptr a -- )
    JSON-PTR-U8-FIELD ! ;
+
+private
 
 : JSON-PTR-A-FIELD ( ptr a -- ptr ptr a )
    0 ptr-field ;
@@ -128,10 +146,14 @@ variable JSON-PARSE-TRY-ROOT
 : JSON-A! ( ptr u8 -- ) JSON-A JSON-PTR-U8! ;
 : JSON-GKA@ ( -- ptr u8 ) JSON-GKA JSON-PTR-U8@ ;
 : JSON-GKA! ( ptr u8 -- ) JSON-GKA JSON-PTR-U8! ;
+public
+
 : JSONL-A@ ( -- ptr u8 ) JSONL-A JSON-PTR-U8@ ;
 : JSONL-A! ( ptr u8 -- ) JSONL-A JSON-PTR-U8! ;
 : JSONL-LA@ ( -- ptr u8 ) JSONL-LA JSON-PTR-U8@ ;
 : JSONL-LA! ( ptr u8 -- ) JSONL-LA JSON-PTR-U8! ;
+private
+
 : JSON-STR-P! ( ptr u8 -- ) JSON-STR-P JSON-PTR-U8! ;
 : JSON-TAB-A@ ( -- ptr a ) JSON-TAB-A JSON-PTR-A@ ;
 : JSON-TAB-A! ( ptr a -- ) JSON-TAB-A JSON-PTR-A! ;
@@ -178,13 +200,19 @@ variable JSON-PARSE-TRY-ROOT
    JSON-ENSURE-STR-BOOT
    JSON-STR-P JSON-PTR-U8@ ;
 
+public
+
 : JSON-OUT-BUF ( -- ptr u8 )
    JSON-OUT-A @ 0= IF JSON-OUT-CAP JSON-ALLOC-BYTES JSON-OUT-A! THEN
    JSON-OUT-A JSON-PTR-U8@ ;
 
+private
+
 : JSON-ERR-BUF ( -- ptr u8 )
    JSON-ERR-A @ 0= IF JSON-ERR-CAP JSON-ALLOC-BYTES JSON-ERR-A! THEN
    JSON-ERR-A JSON-PTR-U8@ ;
+
+public
 
 : JSON-COPY ( ptr u8 i64 ptr u8 -- )
    {: a:ptr u dst:ptr :}
@@ -201,14 +229,20 @@ variable JSON-PARSE-TRY-ROOT
       1+
    repeat drop  0 0= ;
 
+private
+
 : JSON-SET-ERROR ( ptr u8 i64 -- )
    {: a:ptr u :}
    u JSON-ERR-CAP > IF s" json: error message overflow" 76 die THEN
    a u JSON-ERR-BUF JSON-COPY
    u JSON-ERR-LEN ! ;
 
+public
+
 : JSON-ERROR$ ( -- ptr u8 i64 )
    JSON-ERR-BUF JSON-ERR-LEN @ ;
+
+private
 
 : JSON-FAIL ( ptr u8 i64 i64 -- )
    {: a u code :}
@@ -225,8 +259,12 @@ variable JSON-PARSE-TRY-ROOT
 : JSON-TYPE-ERROR ( ptr u8 i64 -- )
    E-JSON-TYPE JSON-FAIL ;
 
+public
+
 : JSON-STR-CAP ( -- n )
    JSON-STR-CAP-U @ ;
+
+private
 
 : JSON-CHECK-STR-NEED ( n -- )
    dup 0 < IF s" json: string buffer full" JSON-CAPACITY THEN
@@ -245,8 +283,12 @@ variable JSON-PARSE-TRY-ROOT
 : JSON-STR-SPAN ( n -- n )
    JSON-STR-GRAINS JSON-STR-GRAIN * ;
 
+public
+
 : JSON-ALLOC-STR-PTR ( n -- ptr u8 )
    MEM-ALLOC-PTR ;
+
+private
 
 : JSON-COPY-STR-OLD ( ptr u8 -- ) {: dst:ptr :}
    JSON-STR-BUF JSON-STR-LEN @ dst JSON-COPY ;
@@ -641,6 +683,8 @@ variable JSON-PARSE-TRY-ROOT
    THEN THEN
    JSON-VALUE-LEAVE ;
 
+public
+
 : JSON-PARSE ( ptr u8 i64 -- i64 )
    {: a:ptr u :}
    JSON-RESET
@@ -661,9 +705,13 @@ variable JSON-PARSE-TRY-ROOT
 : JSON-KIND ( i64 -- i64 ) J-KIND@ ;
 : JSON-COUNT ( i64 -- i64 ) J-COUNT@ ;
 
+private
+
 : JSON-REQUIRE-KIND ( i64 i64 -- )
    {: node kind :}
    node J-KIND@ kind <> IF s" json: wrong node kind" JSON-TYPE-ERROR THEN ;
+
+public
 
 : JSON-STRING$ ( i64 -- ptr u8 i64 )
    {: node :}
@@ -740,6 +788,8 @@ variable JSON-PARSE-TRY-ROOT
    a u JSON-OUT-BUF JSON-OUT-LEN @ + JSON-COPY
    JSON-OUT-LEN @ u + JSON-OUT-LEN ! ;
 
+private
+
 : JSONW-HEX ( n -- n )
    dup 10 < IF 48 + ELSE 55 + THEN ;
 
@@ -763,6 +813,8 @@ variable JSON-PARSE-TRY-ROOT
    c J-SP < IF c JSONW-U00 exit THEN
    c JSONW-C ;
 
+public
+
 : JSONW-STRING ( ptr u8 i64 -- )
    {: a:ptr u :}
    J-DQ JSONW-C
@@ -781,6 +833,8 @@ variable JSON-PARSE-TRY-ROOT
 : JSONW-ARRAY-START ( -- ) J-LBRACK JSONW-C ;
 : JSONW-ARRAY-END ( -- ) J-RBRACK JSONW-C ;
 : JSONW-COMMA ( -- ) J-COMMA JSONW-C ;
+
+private
 
 : JSON-EMIT ( i64 -- )
    {: node :}
@@ -815,10 +869,14 @@ variable JSON-PARSE-TRY-ROOT
    THEN
    s" json: unknown node kind" JSON-TYPE-ERROR ;
 
+public
+
 : JSON-WRITE ( i64 -- ptr u8 i64 )
    JSONW-RESET
    JSON-EMIT
    JSON-OUT-BUF JSON-OUT-LEN @ ;
+
+private
 
 : JSON-TRIM-LEFT ( ptr u8 i64 -- ptr u8 i64 )
    {: a:ptr u :}
@@ -840,8 +898,12 @@ variable JSON-PARSE-TRY-ROOT
    repeat
    a 0 ;
 
+public
+
 : JSON-TRIM ( ptr u8 i64 -- ptr u8 i64 )
    JSON-TRIM-LEFT JSON-TRIM-RIGHT ;
+
+private
 
 : JSONL-START-MODE ( ptr u8 i64 i64 -- )
    {: a:ptr u mode :}
@@ -855,6 +917,8 @@ variable JSON-PARSE-TRY-ROOT
    0 JSONL-LINE-N !
    mode JSONL-MODE ! ;
 
+public
+
 : JSONL-START-STRICT ( ptr u8 i64 -- )
    JSONL-MODE-STRICT JSONL-START-MODE ;
 
@@ -866,6 +930,8 @@ variable JSON-PARSE-TRY-ROOT
 
 : JSONL-SKIPPED ( -- i64 )
    JSONL-SKIPS @ ;
+
+private
 
 : JSONL-SKIP ( -- )
    JSONL-SKIPS @ 1+ JSONL-SKIPS ! ;
@@ -879,11 +945,15 @@ variable JSON-PARSE-TRY-ROOT
 : JSONL-FALSE ( -- bool )
    JSONL-TRUE 0= ;
 
+public
+
 : JSONL-LINE# ( -- i64 )
    JSONL-LINE-N @ ;
 
 : JSONL-LINE$ ( -- ptr u8 i64 )
    JSONL-LA@ JSONL-LU @ ;
+
+private
 
 : JSONL-LINE++ ( -- )
    JSONL-LINE-N @ 1+ JSONL-LINE-N ! ;
@@ -917,6 +987,8 @@ variable JSON-PARSE-TRY-ROOT
      err OF -1 JSONL-ROW-ERROR rot JSONL-TRUE ENDOF          \ ( -1 rowkind code true )
    ;MATCH ;
 
+public
+
 : JSONL-NEXT-ROW ( -- i64 i64 i64 bool )
    JSONL-TAKE-LINE 0= IF
       -1 JSONL-ROW-EOF 0 JSONL-FALSE exit
@@ -925,6 +997,8 @@ variable JSON-PARSE-TRY-ROOT
       -1 JSONL-ROW-BLANK 0 JSONL-TRUE exit
    THEN
    JSONL-PARSE-ROW ;
+
+private
 
 : JSONL-OBJECT? ( i64 -- bool )
    JSON-KIND J-OBJ = ;
@@ -945,6 +1019,8 @@ variable JSON-PARSE-TRY-ROOT
    THEN
    code throw ;
 
+public
+
 : JSONL-NEXT-OBJECT ( -- i64 )
    begin JSONL-NEXT-ROW while
       JSON-TMP ! JSON-TMP2 ! JSONL-ROOT !
@@ -960,3 +1036,5 @@ variable JSON-PARSE-TRY-ROOT
    repeat
    2drop drop
    -1 ;
+
+;package

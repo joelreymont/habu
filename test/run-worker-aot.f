@@ -21,6 +21,8 @@ require test/gate-build-common.f
 require test/gate-build-hbb.f
 require test/gate-aot-positive-lib.f
 
+using JSON
+
 TEST:TRW-LOAD-DONE
 
 package AOT-POS-WORKER
@@ -40,3 +42,5 @@ public
 ;package
 
 AOT-POS-WORKER:RUN
+
+;using
