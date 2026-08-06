@@ -63,8 +63,8 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
+: PACK4   ( ptr r ptr u8 -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr r -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : SW-OUT-GUARD ( -- )  SWK 0 ?do  SW-OUT i F32@ PTXSENT:GUARD drop  loop ;   \ fail closed if copy-back dropped
 
 : SW-DEVICE? ( -- bool )  CUDA:OPEN? ;
@@ -106,7 +106,7 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
    SWK SW-KV ! ;
 
 \ forward SWIGLU_ROWS on f64 gate/up rows -> f64 output (gate=%rd1 up=%rd2 out=%rd3 k=%r1)
-: SW-FWD-RUN ( ptr a ptr a ptr a -- ) {: gsrc usrc dst :}
+: SW-FWD-RUN ( ptr r ptr r ptr r -- ) {: gsrc:ptr usrc:ptr dst:ptr :}
    SW-OUT 16 PTXSENT:FILL
    1 SWK 256 PTX-ROW-LAUNCH-CHECK
    gsrc SW-GIN PACK4   usrc SW-UIN PACK4
