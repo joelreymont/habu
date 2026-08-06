@@ -1159,7 +1159,7 @@ variable BACK-N
 \ double that came back through the wrong file, or an accumulation the loop
 \ carried in the wrong order, is a different number here rather than a near one.
 : FLOAT-STORE ( -- )
-   s" : NMG-BAD2 ( r ptr a -- ) {: v:r b:ptr :} v 1.0 f+ b ! ;" 2 0 REGS NMIGRATE:DEFINE ;
+   s" : NMG-BAD2 ( r ptr r -- ) {: v:r b:ptr :} v 1.0 f+ b ! ;" 2 0 REGS NMIGRATE:DEFINE ;
 
 \ The loop-carried accumulator: the double enters the header from the block above
 \ it and comes back to it from the latch, so the header's argument is a floating
