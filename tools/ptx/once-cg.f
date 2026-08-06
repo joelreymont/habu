@@ -13,6 +13,8 @@
 \ then specializes to span - a false parametricity claim the checker rejects with
 \ E-NONPARAMETRIC-EFFECT.
 
+package PTXONCECG
+
 256 %BLOCK
 
 KERNEL: ONCE-SPAN ( span<space-global-once,f32,extent-n> -- )  GRID: ceil-n-256
@@ -34,3 +36,5 @@ KERNEL: ONCE-SPAN ( span<space-global-once,f32,extent-n> -- )  GRID: ceil-n-256
    CG-RET CG-CLOSE ;
 
 EMIT-ONCE
+
+;package

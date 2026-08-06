@@ -17,6 +17,8 @@
 require lib/ptx/test-prelude.f
 require test/checker-assert.f
 
+package PTX-TILE-TEST
+
 T-RESET
 
 256 %BLOCK
@@ -129,3 +131,5 @@ SGBAD @ TTRUE
 \ against its declared parametric effect. A reject emits a diagnostic + fails load.
 
 T-REPORT
+
+;package

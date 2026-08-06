@@ -12,6 +12,8 @@
 \ body then specializes to matrix - a false parametricity claim the checker
 \ rejects with E-NONPARAMETRIC-EFFECT.
 
+package PTXSUM1024CG
+
 1024 %BLOCK
 KERNEL: SUM1024-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
    {: in out :}                 \ typed-local-lint: allow-bare-local - parametric kernel type
@@ -30,3 +32,5 @@ KERNEL: SUM1024-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-
    CG-SM-RET CG-SM-CLOSE ;
 
 EMIT-SUM1024
+
+;package

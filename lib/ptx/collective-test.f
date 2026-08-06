@@ -17,6 +17,8 @@
 require lib/ptx/test-prelude.f
 require test/checker-assert.f
 
+package PTX-COLLECTIVE-TEST
+
 T-RESET
 
 256 %BLOCK
@@ -163,3 +165,5 @@ s" PTX-BAD-ROPE-SIN-UNIFORM ( tile<f32,block-256,mask-live> tile<f32,block-256,m
 \ RMSNORM-ROWS-BWD / ROPE-ROWS / ROPE-ROWS-BWD certified.
 
 T-REPORT
+
+;package
