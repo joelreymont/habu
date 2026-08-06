@@ -253,3 +253,5 @@ currently reds on measurement noise a fraction of a percent wide. That is worth 
 and is the reason this is written down. It was NOT touched here: retuning a ratchet so that
 one's own change goes green is the move the discipline forbids, and the honest report is
 that this branch is four-green-two-red over six runs for a reason that is not in the diff.
+
+BLOCKED (2026-08-06, structural audit at 04a462e0 — the 'every prerequisite closed' claim above was FALSE and is retracted): the cut waits on (1) habu-give-the-chain-5ed1f7c5 no-emit compile mode — the chain is today a post-pass whose input exists only after the old emitter succeeds, so routing the entry through it is circular; (2) habu-give-the-ir-f0cfa96a aggregate/tagged-union IR kinds; (3) habu-complete-the-chain-5aab8cee dialect completion (61 of 174-primitive surface); (4) habu-resolve-a-callee-0340dfde and the caller-stated-fact family (one mutation-proved unsound). Seeding is not a reorder — src/compiler is ~35k lines never yet in the image. The audit's refusal inventory and gate evidence live in the 04a462e0 commit and this leaf's history.
