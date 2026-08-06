@@ -332,59 +332,59 @@ private
 
 : UB-JSON-BASE ( ptr u8 n -- )
    {: code:ptr codeu:n :}
-   LJW-RESET
-   LJW-OBJECT-START
-   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY code codeu LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" trusted_boundary_required" LJW-STRING LJW-COMMA
-   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA ;
+   JSON-WRITE:RESET
+   JSON-WRITE:OBJECT-START
+   s" schema_version" JSON-WRITE:KEY 1 JSON-WRITE:U JSON-WRITE:COMMA
+   s" code" JSON-WRITE:KEY code codeu JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" repair_class" JSON-WRITE:KEY s" trusted_boundary_required" JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" verdict" JSON-WRITE:KEY s" rejected" JSON-WRITE:STRING JSON-WRITE:COMMA ;
 
 : UB-JSON-ORIGIN ( -- )
-   s" token" LJW-KEY UB-TOK$ LJW-STRING LJW-COMMA
-   s" token_index" LJW-KEY 0 LJW-U LJW-COMMA
-   s" file" LJW-KEY UB-FILE$ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY UB-TOK-LINE @ LJW-U LJW-COMMA
-   s" column" LJW-KEY UB-TOK-COL @ LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY UB-TOK-BYTE @ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY UB-TOK-BYTE @ UB-TOK-U @ + LJW-U LJW-COMMA ;
+   s" token" JSON-WRITE:KEY UB-TOK$ JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" token_index" JSON-WRITE:KEY 0 JSON-WRITE:U JSON-WRITE:COMMA
+   s" file" JSON-WRITE:KEY UB-FILE$ JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" line" JSON-WRITE:KEY UB-TOK-LINE @ JSON-WRITE:U JSON-WRITE:COMMA
+   s" column" JSON-WRITE:KEY UB-TOK-COL @ JSON-WRITE:U JSON-WRITE:COMMA
+   s" byte_start" JSON-WRITE:KEY UB-TOK-BYTE @ JSON-WRITE:U JSON-WRITE:COMMA
+   s" byte_end" JSON-WRITE:KEY UB-TOK-BYTE @ UB-TOK-U @ + JSON-WRITE:U JSON-WRITE:COMMA ;
 
 : UB-JSON-FINISH ( ptr u8 n ptr u8 n -- )
    {: expected:ptr expectedu:n actual:ptr actualu:n :}
-   s" expected" LJW-KEY expected expectedu LJW-STRING LJW-COMMA
-   s" actual" LJW-KEY actual actualu LJW-STRING LJW-COMMA
-   s" suggestion" LJW-KEY
-   s" Keep generated/user code checked; move checker mutations behind an audited boundary." LJW-STRING
-   LJW-OBJECT-END
-   LJW$ UB-OUT UB-NL ;
+   s" expected" JSON-WRITE:KEY expected expectedu JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" actual" JSON-WRITE:KEY actual actualu JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" suggestion" JSON-WRITE:KEY
+   s" Keep generated/user code checked; move checker mutations behind an audited boundary." JSON-WRITE:STRING
+   JSON-WRITE:OBJECT-END
+   JSON-WRITE:$ UB-OUT UB-NL ;
 
 : UB-JSON-DEFINITION ( ptr u8 n -- )
    {: name:ptr nu:n :}
    s" E-UNCHECKED-DEFINITION" UB-JSON-BASE
-   s" word" LJW-KEY name nu LJW-STRING LJW-COMMA
+   s" word" JSON-WRITE:KEY name nu JSON-WRITE:STRING JSON-WRITE:COMMA
    UB-JSON-ORIGIN
    s" checked definition" s" checker disabled" UB-JSON-FINISH ;
 
 : UB-JSON-MUTATION ( -- )
    s" E-CHECKER-MUTATION" UB-JSON-BASE
-   s" word" LJW-KEY s" " LJW-STRING LJW-COMMA
+   s" word" JSON-WRITE:KEY s" " JSON-WRITE:STRING JSON-WRITE:COMMA
    UB-JSON-ORIGIN
    s" checker hook remains installed" s" set-check" UB-JSON-FINISH ;
 
 : UB-JSON-PREFLIGHT ( -- )
    s" E-CHECKER-MUTATION" UB-JSON-BASE
-   s" word" LJW-KEY s" set-check" LJW-STRING LJW-COMMA
+   s" word" JSON-WRITE:KEY s" set-check" JSON-WRITE:STRING JSON-WRITE:COMMA
    UB-JSON-ORIGIN
    s" LOWER-CERT-HOOK:INSTALL" s" set-check" UB-JSON-FINISH ;
 
 : UB-JSON-ROGUE-HOOK ( -- )
    s" E-UNAUDITED-HOOK" UB-JSON-BASE
-   s" word" LJW-KEY UB-PREV$ LJW-STRING LJW-COMMA
+   s" word" JSON-WRITE:KEY UB-PREV$ JSON-WRITE:STRING JSON-WRITE:COMMA
    UB-JSON-ORIGIN
    s" audited checker hook" UB-PREV$ UB-JSON-FINISH ;
 
 : UB-JSON-ROGUE-TOP-HOOK ( -- )
    s" E-UNAUDITED-TOP-HOOK" UB-JSON-BASE
-   s" word" LJW-KEY UB-PREV$ LJW-STRING LJW-COMMA
+   s" word" JSON-WRITE:KEY UB-PREV$ JSON-WRITE:STRING JSON-WRITE:COMMA
    UB-JSON-ORIGIN
    s" audited top-check hook" UB-PREV$ UB-JSON-FINISH ;
 

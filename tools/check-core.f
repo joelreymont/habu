@@ -669,39 +669,39 @@ private
    s" Choose a unique non-reserved nominal type name." ;
 
 : CHK-NOM-JSTR ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n val:ptr valu:n :}
-   key keyu LJW-KEY val valu LJW-STRING LJW-COMMA ;
+   key keyu JSON-WRITE:KEY val valu JSON-WRITE:STRING JSON-WRITE:COMMA ;
 
 : CHK-NOM-JU ( n ptr u8 n -- )
-   LJW-KEY LJW-U LJW-COMMA ;
+   JSON-WRITE:KEY JSON-WRITE:U JSON-WRITE:COMMA ;
 
 : CHK-TYPE-JSON ( n n ptr u8 n -- ) {: def:n name:n word:ptr wordu:n :}
-   LJW-RESET
-   LJW-OBJECT-START
+   JSON-WRITE:RESET
+   JSON-WRITE:OBJECT-START
    1 s" schema_version" CHK-NOM-JU
    s" code" s" E-BAD-NOMINAL-TYPE" CHK-NOM-JSTR
    s" repair_class" s" fix_nominal_type" CHK-NOM-JSTR
    s" verdict" s" rejected" CHK-NOM-JSTR
    s" word" word wordu CHK-NOM-JSTR
-   s" token" LJW-KEY name LINT-LEX:TOKEN LJW-STRING LJW-COMMA
+   s" token" JSON-WRITE:KEY name LINT-LEX:TOKEN JSON-WRITE:STRING JSON-WRITE:COMMA
    name s" token_index" CHK-NOM-JU
-   s" file" LJW-KEY CHK-LABEL LJW-STRING LJW-COMMA
+   s" file" JSON-WRITE:KEY CHK-LABEL JSON-WRITE:STRING JSON-WRITE:COMMA
    name LINT-LEX:LINE@ s" line" CHK-NOM-JU
    name LINT-LEX:COL@ s" column" CHK-NOM-JU
    name LINT-LEX:BYTE@ s" byte_start" CHK-NOM-JU
    name CHK-TOK-END s" byte_end" CHK-NOM-JU
-   s" definition_source" LJW-KEY def name CHK-NOM-SRC$ LJW-STRING LJW-COMMA
+   s" definition_source" JSON-WRITE:KEY def name CHK-NOM-SRC$ JSON-WRITE:STRING JSON-WRITE:COMMA
    s" declared_effect" s" unknown " CHK-NOM-JSTR
    s" declared_effect_source" s" unknown" CHK-NOM-JSTR
    s" inferred_effect" s" unknown " CHK-NOM-JSTR
-   s" return_stack" LJW-KEY
-   LJW-OBJECT-START
-   s" expected" LJW-KEY s" " LJW-STRING LJW-COMMA
-   s" actual" LJW-KEY s" " LJW-STRING
-   LJW-OBJECT-END
-   LJW-COMMA
-   s" suggestion" LJW-KEY CHK-NOM-BAD-SUG$ LJW-STRING
-   LJW-OBJECT-END
-   LJW$ CHK-ERR
+   s" return_stack" JSON-WRITE:KEY
+   JSON-WRITE:OBJECT-START
+   s" expected" JSON-WRITE:KEY s" " JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" actual" JSON-WRITE:KEY s" " JSON-WRITE:STRING
+   JSON-WRITE:OBJECT-END
+   JSON-WRITE:COMMA
+   s" suggestion" JSON-WRITE:KEY CHK-NOM-BAD-SUG$ JSON-WRITE:STRING
+   JSON-WRITE:OBJECT-END
+   JSON-WRITE:$ CHK-ERR
    CHK-LF CHK-ERR-C ;
 
 : CHK-NOM-PROSE ( n -- ) {: name:n :}

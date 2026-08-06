@@ -100,22 +100,22 @@ private
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
 
 : JSON-FINDING ( n -- ) {: k:n :}
-   LJW-RESET
-   LJW-OBJECT-START
-   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY s" E-AOT-UNSUPPORTED" LJW-STRING LJW-COMMA
-   s" file" LJW-KEY FILE-A@ FILE-U @ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY k LINT-LEX:LINE@ LJW-U LJW-COMMA
-   s" column" LJW-KEY k LINT-LEX:COL@ LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY k LINT-LEX:BYTE@ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY k TOK-END LJW-U LJW-COMMA
-   s" word" LJW-KEY CUR-A@ CUR-U @ LJW-STRING LJW-COMMA
-   s" token" LJW-KEY k LINT-LEX:TOKEN LJW-STRING LJW-COMMA
-   s" reason" LJW-KEY s" stripped AOT has no runtime compiler or writable code" LJW-STRING LJW-COMMA
-   s" suggestion" LJW-KEY
-   s" stripped AOT cannot run compile,/patch32 at runtime; use --repl or remove the word" LJW-STRING
-   LJW-OBJECT-END
-   LJW$ OUT NL ;
+   JSON-WRITE:RESET
+   JSON-WRITE:OBJECT-START
+   s" schema_version" JSON-WRITE:KEY 1 JSON-WRITE:U JSON-WRITE:COMMA
+   s" code" JSON-WRITE:KEY s" E-AOT-UNSUPPORTED" JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" file" JSON-WRITE:KEY FILE-A@ FILE-U @ JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" line" JSON-WRITE:KEY k LINT-LEX:LINE@ JSON-WRITE:U JSON-WRITE:COMMA
+   s" column" JSON-WRITE:KEY k LINT-LEX:COL@ JSON-WRITE:U JSON-WRITE:COMMA
+   s" byte_start" JSON-WRITE:KEY k LINT-LEX:BYTE@ JSON-WRITE:U JSON-WRITE:COMMA
+   s" byte_end" JSON-WRITE:KEY k TOK-END JSON-WRITE:U JSON-WRITE:COMMA
+   s" word" JSON-WRITE:KEY CUR-A@ CUR-U @ JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" token" JSON-WRITE:KEY k LINT-LEX:TOKEN JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" reason" JSON-WRITE:KEY s" stripped AOT has no runtime compiler or writable code" JSON-WRITE:STRING JSON-WRITE:COMMA
+   s" suggestion" JSON-WRITE:KEY
+   s" stripped AOT cannot run compile,/patch32 at runtime; use --repl or remove the word" JSON-WRITE:STRING
+   JSON-WRITE:OBJECT-END
+   JSON-WRITE:$ OUT NL ;
 
 : TEXT-FINDING ( n -- ) {: k:n :}
    s" E-AOT-UNSUPPORTED " OUT
