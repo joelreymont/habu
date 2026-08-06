@@ -57,8 +57,8 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  ROK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  ROK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
+: PACK4   ( ptr r ptr u8 -- ) {: src:ptr dst:ptr :}  ROK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr r -- ) {: src:ptr dst:ptr :}  ROK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : RO-OUT-GUARD ( -- )  ROK 0 ?do  RO-IN i F32@ PTXSENT:GUARD drop  loop ;
 
 : RO-DEVICE? ( -- bool )  CUDA:OPEN? ;
@@ -105,7 +105,7 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
 
 \ launch a 4-ptr row kernel (fn handle in variable `fnv`) with rd1-input `src`
 \ (packed), output -> `dst`. cos/sin already resident from RO-SETUP.
-: RO-LAUNCH ( ptr a ptr a ptr n -- ) {: src dst fnv :}
+: RO-LAUNCH ( ptr r ptr r ptr n -- ) {: src:ptr dst:ptr fnv:ptr :}
    RO-IN 16 PTXSENT:FILL
    1 ROK 256 PTX-ROW-LAUNCH-CHECK
    src RO-IN PACK4
@@ -123,7 +123,7 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
    RO-OUT-GUARD
    RO-IN dst UNPACK4 ;
 
-: RO-FWD-RUN ( ptr a ptr a -- )  RO-FWD RO-LAUNCH ;
+: RO-FWD-RUN ( ptr r ptr r -- )  RO-FWD RO-LAUNCH ;
 : RO-BWD-RUN ( -- )              HDY HDXA RO-BWD RO-LAUNCH ;
 
 : RO-EPS ( -- r )  1.0 1024.0 f/ ;                   \ 2^-10, exact f32
