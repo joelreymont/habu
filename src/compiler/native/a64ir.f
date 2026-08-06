@@ -748,6 +748,11 @@ public
 \ A64EFF can describe is reachable in one instruction.
 : FRAME-LIMIT ( -- n )   FRAME-LIM ;
 
+\ The largest immediate the add and subtract forms carry. A pass deciding whether
+\ a constant can stand in the instruction instead of a register asks here, so the
+\ field's width is stated once in this dialect and never restated by a consumer.
+: OFF-LIMIT ( -- n )     OFF-MAX ;
+
 \ ---- the opcode names --------------------------------------------------------
 \ This module's interned symbol for one opcode. Interning deduplicates, so asking
 \ twice answers the same identity, and this is the symbol both IR-SCHEMA's

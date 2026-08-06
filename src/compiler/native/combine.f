@@ -224,6 +224,7 @@ create NAMEBUF NAME-CAP allot
 \ not copied, and the operation it is named at is written as the multiply-add.
 create FOLD-AT OPS-MAX cells allot
 create FOLDED OPS-MAX cells allot
+create IMM-AT OPS-MAX cells allot
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -528,6 +529,88 @@ create FOLDED OPS-MAX cells allot
    f bk d1 k FOLDS-HERE? if d1 exit then
    -1 ;
 
+\ ---- which constants this block puts in the instruction ------------------------
+\ THE SECOND PATTERN, AND WHY IT IS THE SAME SHAPE AS THE FIRST. ARM64's add and
+\ subtract carry a small number in the instruction itself, and this chain does
+\ not use that form: src/compiler/native/select.f selects the register-register
+\ add for every addition, so a constant small enough to have stood in the
+\ instruction is built into a register by a move-wide first.
+\ tools/codegen-loop-inventory.f measures the consequence - over the 54 migrated
+\ corpus rows, 24 of the 42 move-wides standing inside a loop body are constants
+\ small enough for the arithmetic field, each read once by the add or subtract
+\ under it. Folding one removes the move-wide outright and costs no register,
+\ which is why that column is counted apart from the hoistable ones: hoisting
+\ such a constant would save the same instruction and spend a register to do it.
+\
+\ The conditions are the multiply-add's, restated for this pair, with one that
+\ is new:
+\   THE CONSTANT HAS EXACTLY ONE USE. Identical to the product's condition and
+\   exact for the identical reason: a number read twice still has to be in a
+\   register, so folding one reader would leave the move-wide and ADD an
+\   instruction.
+\   THE MOVE-WIDE IS A WHOLE CONSTANT AND IT FITS. A movz writing the bottom
+\   half of a cleared register IS the number, while a movz under a movk is one
+\   half of a larger one - and the single-use condition already excludes the
+\   second, because such a movz's one reader is the movk. The value must also
+\   fit the twelve-bit field the form carries, which A64IR states once.
+\   THE TWO ARE IN ONE BLOCK, AND THE MOVE-WIDE STANDS FIRST. Both as above.
+\   AND THE CONSTANT IS ON THE RIGHT SIDE OF A SUBTRACTION, which is the new
+\   one. Addition is commutative, so either operand may be the constant; `sub`
+\   is not, and its immediate form subtracts FROM the register. So `x - 5` folds
+\   and `5 - x` does not, and reading the operand by position rather than by
+\   identity is what keeps those apart.
+: ATTR-BY-KEY ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id want:n :}
+   -1
+   id ATTRS-OF 0 ?do
+      id i ATTR-KEY-AT KEY-SLOT-OF want = if drop id i ATTR-INT-AT leave then
+   loop ;
+
+\ The number this operation puts in a register, when it is a whole constant that
+\ the arithmetic field can hold, and -1 when it is anything else.
+: WHOLE-IMM ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-MOVZ <> if -1 exit then
+   id RESULTS-OF 1 <> if -1 exit then
+   id K-SHIFT ATTR-BY-KEY 0<> if -1 exit then
+   id K-IMM ATTR-BY-KEY {: v:n :}
+   v 0 < if -1 exit then
+   v A64IR:OFF-LIMIT > if -1 exit then
+   v ;
+
+\ Whether the operation at this position is a constant this pass may fold into
+\ the one reading it.
+: FOLDABLE-IMM? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
+   k 0 < if false exit then
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   id WHOLE-IMM 0 < if false exit then
+   f  id 0 RESULT-AT  USES-OF 1 = ;
+
+: IMM-FOLDS-HERE? ( IR-ID:ir-fun-id IR-ID:ir-block-id n n -- bool )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id d:n k:n :}
+   d k >= if false exit then
+   f bk d FOLDABLE-IMM? ;
+
+\ The constant this add or subtract folds, or -1. An addition is asked of both
+\ its operands and a subtraction only of its second, which is the whole of the
+\ commutativity rule above. A pair the multiply-add already claimed is left
+\ alone, so the two patterns never both rewrite one operation.
+: IMM-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
+   f bk k FOLD-FOR 0 >= if -1 exit then
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-ADD <>  id OP-SLOT O-SUB <>  and if -1 exit then
+   id OPERANDS-OF 2 <> if -1 exit then
+   id RESULTS-OF 1 <> if -1 exit then
+   id OP-SLOT O-ADD = if
+      bk  id 0 OPERAND-AT  DEF-INDEX {: d0:n :}
+      f bk d0 k IMM-FOLDS-HERE? if d0 exit then
+   then
+   bk  id 1 OPERAND-AT  DEF-INDEX {: d1:n :}
+   f bk d1 k IMM-FOLDS-HERE? if d1 exit then
+   -1 ;
+
 \ The whole block's plan, read once before a single operation of it is copied,
 \ so the walk and the operation it reaches later agree about what was decided.
 : PLAN-BLOCK ( IR-ID:ir-fun-id IR-ID:ir-block-id -- )
@@ -536,6 +619,7 @@ create FOLDED OPS-MAX cells allot
    n OPS-MAX > if E-A64COMB-CAP throw then
    n 0 ?do
       -1 i cells FOLD-AT + !
+      -1 i cells IMM-AT + !
       0 i cells FOLDED + !
    loop
    n 0 ?do
@@ -544,10 +628,20 @@ create FOLDED OPS-MAX cells allot
          d i cells FOLD-AT + !
          1 d cells FOLDED + !
       then
+   loop
+   n 0 ?do
+      f bk i IMM-FOLD-FOR {: d:n :}
+      d 0 >= if
+         d i cells IMM-AT + !
+         1 d cells FOLDED + !
+      then
    loop ;
 
 : FOLD-OF ( n -- n )
    cells FOLD-AT + @ ;
+
+: IMM-OF ( n -- n )
+   cells IMM-AT + @ ;
 
 : FOLDED? ( n -- bool )
    cells FOLDED + @ 0<> ;
@@ -687,6 +781,26 @@ create FOLDED OPS-MAX cells allot
    add  CLOSE  BIND-RESULTS
    1 N-FUSED +! ;
 
+\ The add or subtract immediate, written where the arithmetic stood. It reads the
+\ operand that is NOT the folded constant and carries the constant in its own
+\ attribute, so the move-wide is bound to nothing and the value map refuses any
+\ reader of it this pass did not account for - exactly as it does for a folded
+\ product. Which of the two opcodes it is comes off the operation being rewritten
+\ rather than off the sign of anything: this dialect's immediate is unsigned, and
+\ a subtraction stays a subtraction.
+: EMIT-ADDI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
+   {: mz:IR-ID:ir-op-id ar:IR-ID:ir-op-id :}
+   mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
+   ar OP-SLOT O-SUB =
+   if A64IR-OPCODE:SUBI else A64IR-OPCODE:ADDI then {: o:A64IR:opcode :}
+   ar o OPEN
+   ar k ADDEND-OF VOF OPERAND+
+   CTX BLD  ar 0 RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
+   CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD mz WHOLE-IMM A64IR:OFF-ATTR
+   IR-BUILD:ADD-ATTR
+   ar  CLOSE  BIND-RESULTS
+   1 N-FUSED +! ;
+
 \ ---- the block ---------------------------------------------------------------
 \ The old block's arguments are the new block's arguments, one for one. The value
 \ map is NOT cleared here: a value defined in one block is read in the blocks it
@@ -715,10 +829,11 @@ create FOLDED OPS-MAX cells allot
    n 0 ?do
       i FOLDED? 0= if
          i FOLD-OF {: d:n :}
-         d 0 <
-         if   bk i OP-AT COPY-OP
-         else bk d OP-AT  bk i OP-AT  EMIT-MADD
-         then
+         i IMM-OF {: e:n :}
+         d 0 >= if bk d OP-AT  bk i OP-AT  EMIT-MADD else
+         e 0 >= if bk e OP-AT  bk i OP-AT  EMIT-ADDI else
+                   bk i OP-AT COPY-OP
+         then then
       then
    loop
    CTX BLD IR-BUILD:END-BLOCK drop ;
@@ -900,6 +1015,7 @@ public
          f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
          bk OP-COUNT 0 ?do
             f bk i FOLD-FOR 0 >= if 1+ then
+            f bk i IMM-FOLD-FOR 0 >= if 1+ then
          loop
       loop
    loop ;
