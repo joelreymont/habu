@@ -85,7 +85,7 @@ $00C0FFEE constant CET-PARAM-SEED
    c s>f  CET-T r T-SET ;
 
 : CET-SMALL ( -- r )  CET-UNIT 0.1 f* ;
-: CET-FILL ( ptr a n -- ) {: base:ptr len:n :}
+: CET-FILL ( ptr r n -- ) {: base:ptr len:n :}
    len 0 ?do  CET-SMALL base i T-SET  loop ;
 
 public
@@ -119,7 +119,7 @@ private
    ob CET-R CET-V CET-T CET-TN LOSS:TT-XENT  CET-INV-R f* ;
 
 \ SGD one parameter buffer in place from its backward gradient node
-: CET-UPD ( ptr a n n -- ) {: wp:ptr slot:n len:n :}
+: CET-UPD ( ptr r n n -- ) {: wp:ptr slot:n len:n :}
    CET-LR  wp  slot CET-GRAD  len  T-SGD! ;
 
 : CET-UPDATE-PARAMS ( -- )
