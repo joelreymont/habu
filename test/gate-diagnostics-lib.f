@@ -747,8 +747,8 @@ variable LABEL-U
    s" json-one-schema" s" habu-recursive.err" s" recursive schema" GJA1 ;
 
 : PUBLIC-SIGNATURES ( -- )
-   GT-OUT-BUF GT-OUT-CAP PS-OUT-BUFFER!
-   GT-ERR-BUF GT-ERR-CAP PS-ERR-BUFFER!
+   GT-OUT-SINK LEN>N PS-OUT-BUFFER!
+   GT-ERR-SINK LEN>N PS-ERR-BUFFER!
    0 PS-TRUST !
    PS-JSON-DOC-START
    s" examples/llm/good.f" PS-SCAN-FILE

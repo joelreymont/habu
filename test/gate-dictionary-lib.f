@@ -509,7 +509,7 @@ variable START-NS
    label labelu GT-PROGRESS-RUN
    s" inprocess-check" GS-EVENT
    label labelu LABEL!
-   GT-ERR-BUF GT-ERR-CAP GT-OUT-BUF GT-OUT-CAP CHECK-ALL-ERRORS:BUFFERS!
+   GT-ERR-SINK LEN>N GT-OUT-SINK LEN>N CHECK-ALL-ERRORS:BUFFERS!
    0 0= 0= CHECK-ALL-ERRORS:JSON!
    [: CHECK-BUF-ACT ;] catch CHECK-BUF-STORE ;
 
@@ -539,7 +539,7 @@ variable START-NS
    s" inprocess-candidate" GS-EVENT
    body bodyu CANDIDATE!
    -1 CANDIDATE-VERDICT !
-   GT-ERR-BUF GT-ERR-CAP DIAG-BUFFER!
+   GT-ERR-SINK LEN>N DIAG-BUFFER!
    [: CANDIDATE-ACT ;] catch CANDIDATE-STORE ;
 
 : CANDIDATE-BAD ( ptr u8 n n ptr u8 n ptr u8 n -- )

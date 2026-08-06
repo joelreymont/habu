@@ -31,8 +31,8 @@ variable RUN-ID
 
 : CAPTURE ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu
-   GT-OUT-BUF GT-OUT-CAP >LEN
-   GT-ERR-BUF GT-ERR-CAP >LEN
+   GT-OUT-SINK
+   GT-ERR-SINK
    GE-TIMEOUT-MS >MS SUBJECT:RUN
    GE-STORE-OUTCOME ;
 
