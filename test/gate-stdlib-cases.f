@@ -100,8 +100,15 @@ SUITE imagedisasm-tool
    tools/imagedisasm-test.f
 ;SUITE
 
+\ The two tools that REPORT over the tree rather than judging one file, so they
+\ share the suite that has no skip flag: a report nobody scheduled is a report
+\ nobody reads. The native-chain census belongs here and not with the lints - it
+\ makes no findings and passes no verdict, it measures how much of the tree the
+\ chain can compile, and its own suite label would need the slice tables in
+\ test/gate-stdlib-lib.f and test/gate-runner-lib.f to name it.
 SUITE tool-boundary-aot-call
    tools/aot-call-report-test.f
+   tools/chain-census-test.f
 ;SUITE
 
 SUITE tool-boundary-check-repair

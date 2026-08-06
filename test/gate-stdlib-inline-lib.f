@@ -184,10 +184,14 @@ variable GSI-TOOL-BASE-READY
 package AOT-CALL-GATE
 public
 
+\ The mirror of SUITE tool-boundary-aot-call. Both members report over the tree
+\ rather than judging one file; the census is the second, and it rides here for
+\ the reason written beside that suite.
 : RUN ( -- )
    s" stdlib/tool-aot-call" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-SETUP
-   s" tools/aot-call-report-test.f" GSI-INCLUDE ;
+   s" tools/aot-call-report-test.f" GSI-INCLUDE
+   s" tools/chain-census-test.f" GSI-INCLUDE ;
 
 ;package
 
