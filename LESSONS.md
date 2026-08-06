@@ -5157,3 +5157,19 @@ scratch in one checked cell mapping while reading pinned source files through
 short-lived byte mappings. Build the complete private block, authenticate every
 pinned input, and set readiness last; then any failed allocation, read, digest,
 parse, or model open has one unpublished owner to release.
+
+## An in-process test source may not open a resident library's package (2026-08-06)
+
+test/type-decl-suite.f passed standalone and exited 84 with three bytes of
+stderr — `MEM` — as a candidate-validation `shared` case. The suite opened
+`package MEM` for a test-local family; lib/test/subject.f evaluates each case
+inside a fork of the running harness, where lib/memory.f's `package MEM` is
+already resident and protects its two wordlists (`get-current prot-wid-add`).
+Reopening a protected package from user source is a fail-closed exit
+(ENGINE-ERROR:SEAL-PACKAGE, 84) whose whole diagnostic is the offending token,
+so the harness recorded three anonymous bytes. Two rules fall out. A source
+that runs in-process must name its packages out of the resident namespace —
+this suite's own `td*`/`tv*` convention already does. And a failure that only
+appears in-process is reproduced fastest without the fork at all:
+`bin/hb --load lib/memory.f <two-line file with package MEM>` gives the same
+exit 84 and the same three bytes.

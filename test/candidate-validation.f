@@ -44,6 +44,7 @@ variable OUT-U
 variable ERR-U
 variable CODE
 variable FAILS
+variable REPORTED
 
 : N. ( n -- ) {: n:n :}
    n 0 < if E-STR-BOUNDS throw then
@@ -87,7 +88,8 @@ variable FAILS
    LEN>N ERR-U !
    LEN>N OUT-U !
    OUT OUT-U @ OUT-HEX HASH
-   ERR ERR-U @ ERR-HEX HASH ;
+   ERR ERR-U @ ERR-HEX HASH
+   0 REPORTED ! ;
 
 : CAPTURE ( -- )
    SRC SRC-U @ OUT IO-CAP >LEN ERR IO-CAP >LEN
@@ -121,11 +123,34 @@ variable FAILS
    ERR-U @ N. TAB
    ERR-HEX HEX-LEN type cr ;
 
+: SP ( -- )
+   32 emit ;
+
+\ What a failing case has to hand over, per docs/forth.md § Habu Native Tooling
+\ Gotchas: the case label, the entry it ran through, the outcome kind and code,
+\ the capture sizes against their capacity, and the captured bytes themselves.
+\ The evidence row above carries digests, and a digest identifies a byte string
+\ only to someone who already has it: a three-byte stderr reading `MEM` was once
+\ hunted for a day because its hash was the whole record. Printed once per case,
+\ under the first check that failed; STORE clears the flag for the next case.
+: CAPTURED ( -- )
+   s" case-target" type SP TARGET$ type cr
+   s" case-entry" type SP s" SUBJECT:RUN fork (lib/test/subject.f)" type cr
+   s" case-outcome" type SP KIND$ type SP CODE @ N. cr
+   s" case-stdout" type SP OUT-U @ N. SP s" of" type SP IO-CAP N. cr
+   OUT OUT-U @ type cr
+   s" case-stderr" type SP ERR-U @ N. SP s" of" type SP IO-CAP N. cr
+   ERR ERR-U @ type cr ;
+
 : FAIL ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n reason:ptr reasonu:n :}
    FAILS @ 1 + FAILS !
    s" candidate-validation: " type path pathu type
-   s" : " type reason reasonu type cr ;
+   s" : " type reason reasonu type cr
+   REPORTED @ 0= if
+      0 0= REPORTED !
+      CAPTURED
+   then ;
 
 : CHECK ( bool ptr u8 n ptr u8 n -- )
    {: ok:bool path:ptr pathu:n reason:ptr reasonu:n :}

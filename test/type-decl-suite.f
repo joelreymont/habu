@@ -1171,21 +1171,31 @@ s" TQBAD-HIDDEN ( @tdres.tag<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ A package-owned family may share a tail with a global family. The exact
 \ identities keep separate arities: the owner gets its own row for a bare tail,
 \ while top level and unrelated packages keep the global row for that bare tail.
+\ The package name is test-scoped on purpose. This suite also runs inside a
+\ process that already has the standard libraries resident (lib/test/subject.f
+\ evaluates it in a fork of the running engine), and `package NAME` on a name a
+\ resident library owns and protects is a fail-closed exit 84 there — it was
+\ `package MEM`, which lib/memory.f owns.
 \ ---------------------------------------------------------------------------
-package MEM
+package TDMEM
 public
 NEWTYPE span 6
 private
 NEWTYPE tier 1
 
-s" TPC-OWNER ( span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-OWN-PRIVATE ( tier<n> -- MEM:tier<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-OWNER ( span<n,n,n,n,n,n> -- TDMEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-OWN-PRIVATE ( tier<n> -- TDMEM:tier<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" NEWTYPE span 6" E-TFAM-DUP TDT-NEG
 \ This failure creates a family and one variant before the duplicate variant
 \ rejects; the declaration transaction must retire every provisional row.
 s" SUMTYPE rolled-span 6 VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
-s" mem" s" rolled-span" TWX-TFAM-FIND-IN TDOK ! drop
+s" tdmem" s" rolled-span" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
+\ The word whose stored effect the replay cases below read. It belongs to the
+\ family's own package: a colon word is ordinary packaging debt everywhere, and
+\ the package lint reports one written at this suite's top level.
+public
+: TPC-STORED ( TDMEM:span<n,n,n,n,n,n> -- TDMEM:span<n,n,n,n,n,n> ) ;
 ;package
 
 package OTHER
@@ -1195,39 +1205,40 @@ NEWTYPE tier 2
 
 \ The existing global span remains the bare top-level identity.
 s" TPC-GLOBAL ( span<n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-MEM-QUAL ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-TDMEM-QUAL ( TDMEM:span<n,n,n,n,n,n> -- TDMEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPC-GLOBAL-ARITY ( span<n,n,n,n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-MEM-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-CROSS-A ( span<n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-CROSS-B ( MEM:span<n,n,n,n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-TDMEM-ARITY ( TDMEM:span<n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-CROSS-A ( span<n,n,n> -- TDMEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-CROSS-B ( TDMEM:span<n,n,n,n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 \ A foreign private row is invisible; with no lexical global, the one public
 \ family of the same tail is the outside-package bare fallback.
-s" TPC-PRIVATE-HIDDEN ( MEM:tier<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-PRIVATE-HIDDEN ( TDMEM:tier<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-PUBLIC-BARE ( tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ Stored effects retain exact qualified identity and arity when replayed.
-: TPC-MEM-STORED ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> ) ;
-s" TPC-MEM-REPLAY ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> ) TPC-MEM-STORED" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-MEM-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-MEM-STORED" CHECK-QUIET-CANDIDATE! 0 T=
+\ Stored effects retain exact qualified identity and arity when replayed. Both
+\ candidates are checked at top level, so the replay reads the stored row of a
+\ word named across a package boundary.
+s" TPC-TDMEM-REPLAY ( TDMEM:span<n,n,n,n,n,n> -- TDMEM:span<n,n,n,n,n,n> ) TDMEM:TPC-STORED" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-TDMEM-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TDMEM:TPC-STORED" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ Prose row rendering and JSON arity diagnostics keep the package qualifier, and
-\ render it case-folded: the declaring package was written `package MEM`, but a
+\ render it case-folded: the declaring package was written `package TDMEM`, but a
 \ rendered family name is spelled canonically (render.f FAM-QNAME-REND), the way
 \ word names and the used-package row already are. `token` is the opposite kind
-\ of field — a raw echo of what the author typed — so it keeps `MEM:span`. The
+\ of field — a raw echo of what the author typed — so it keeps `TDMEM:span`. The
 \ folded row still names the family back, because a signature's qualifier folds
 \ before lookup.
 TDIAG-BUF 8192 DIAG-BUFFER!
-s" TPC-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" actual: mem:span<n,n,n,n,n,n> " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: MEM:span<n,n,n,n,n,n> " TDT-CONTAINS? 0 T=
+s" TPC-RENDER ( TDMEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" actual: tdmem:span<n,n,n,n,n,n> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: TDMEM:span<n,n,n,n,n,n> " TDT-CONTAINS? 0 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
-s" TPC-JSON-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"actual\":\"mem:span<n,n,n,n,n,n> \"" TDT-CONTAINS? -1 T=
+s" TPC-JSON-RENDER ( TDMEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"actual\":\"tdmem:span<n,n,n,n,n,n> \"" TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
-s" TPC-JSON-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"token\":\"MEM:span\"" TDT-CONTAINS? -1 T=
+s" TPC-JSON-ARITY ( TDMEM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"token\":\"TDMEM:span\"" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s\" \"arity_expected\":6" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s\" \"arity_actual\":3" TDT-CONTAINS? -1 T=
 0 DIAG-JSON!
@@ -1237,7 +1248,7 @@ TDIAG-BUF 8192 DIAG-BUFFER!
 s" " s" span" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-ARITY@ 3 T=
-s" mem" s" span" TWX-TFAM-FIND-IN TDOK ! TDF !
+s" tdmem" s" span" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-ARITY@ 6 T=
 

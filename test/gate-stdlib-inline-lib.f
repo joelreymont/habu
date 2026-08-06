@@ -516,6 +516,9 @@ public
    GSI-TEST!
    GSI-FORK-RESET
    s" tools/hb-cli-contracts-test.f" GSI-FORK-INCLUDE
+   \ Two spawned engines, 0.78s measured - under hb-cli-contracts-test.f (0.85s)
+   \ and standalone-load-test.f (1.04s), the neighbours in this list.
+   s" tools/subject-case-run-test.f" GSI-FORK-INCLUDE
    s" test/seal.f" GSI-FORK-INCLUDE
    s" test/require-cap-test.f" GSI-FORK-INCLUDE
    s" test/seal-absence.f" GSI-FORK-INCLUDE
