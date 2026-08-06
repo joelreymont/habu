@@ -775,7 +775,7 @@ public
 -8326 constant E-A64RA-TARGET    \ a context bound to a target these registers do not belong to
 -8327 constant E-A64RA-CAP       \ a value, block or plan ordinal outside the allocator's tables: more of them in one routine than the tables hold, or a read past the count the sealed walk recorded
 -8328 constant E-A64RA-TIE       \ a schema-declared tie that cannot be honoured: the kept value is still needed afterwards, or its register is not free
--8329 constant E-A64RA-PRESSURE  \ the routine's declared frame is exhausted: more values have to be spilled at once than its frame holds slots for. Register pressure itself is now a spill, not a refusal; the one operation that no spill can serve is E-A64RA-POOL
+-8329 constant E-A64RA-PRESSURE  \ more values have to be spilled at once than ANY frame of this chain holds slots for: the demand passed the tighter of what the architecture can describe and what a pass can name a slot of. It is no longer about the frame a caller declared - the allocator derives that from what the walk needs (A64RA:FRAME) instead of being held to a guess. Register pressure itself is a spill, not a refusal; the one operation that no spill can serve is E-A64RA-POOL
 
 \ Native ARM64 allocation validator (package A64RAV): -8330..-8339
 \

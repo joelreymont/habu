@@ -1561,15 +1561,28 @@ create TXT
    BUILD-MB-EDGE-CLASH
    4 M-ALLOCATE drop ;
 
-\ One register cannot hold the two literals the sum reads, so one of them goes
-\ into the frame - and this routine declares none, so there is nowhere to put it.
-\ The refusal that used to stand here was "a routine of more than one block
-\ cannot spill at all"; a plan row names its block now, so what is left is the
-\ frame itself running out.
+\ One register cannot hold the two literals the sum reads, and no slot can help:
+\ both are operands of the SAME operation, so putting either away does not free a
+\ register that operation can use. That is E-A64RA-POOL and not a frame running
+\ out. This body used to be refused for its frame - it declares none - but a walk
+\ is not held to its contract's frame any more, so what is left is the wall that
+\ was always underneath it.
 : MB-SPILL-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-MB-EDGE
    1 M-ALLOCATE drop ;
+
+\ The chain of DERIVE-FRAME-CASES again with two more registers, which is enough
+\ that only ONE value has to be put away. It is here because that is the case
+\ where the rounding is visible: eight bytes reached and sixteen declared are
+\ different numbers, where four slots reached and declared are both thirty-two.
+\ A change that answered the depth where the declaration belongs would leave
+\ DERIVE-FRAME-CASES green and only this red.
+: ROUND-FRAME-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-CHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 4 16 LEAF-FRAMED A64RA:ALLOCATE ;
 
 \ The same pressure over a loop, where every class holding a register is one an
 \ edge forced: the loop-carried accumulator and count each hold three values, so
@@ -2191,6 +2204,7 @@ create TXT
 : STALE ( -- )            WBND [: STALE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-EDGE-CLASH ( -- )    WBND [: MB-EDGE-CLASH-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-SPILL ( -- )         WBND [: MB-SPILL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: ROUND-FRAME ( -- )      WBND [: ROUND-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-CARRIED ( -- )       WBND [: MB-CARRIED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-MULTI-ARG ( -- )     WBND [: MB-MULTI-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -2214,11 +2228,39 @@ create TXT
 : PRESSURE-REFUSE-CASES ( -- )
    s" more arguments live at once than the pool holds, and none may be put away" T-LABEL
    [: PRESSURE ;] E-A64RA-SPILL TTHROWSQ
-   s" a frame one slot short of what the spills need is refused" T-LABEL
-   [: SMALL-FRAME ;] E-A64RA-PRESSURE TTHROWSQ
    \ The refusal just above left no sealed walk, so there is no claim to read.
    s" a refused allocation leaves no claim behind" T-LABEL
    [: 0 A64RA:CLAIM@ drop ;] E-A64RA-STATE TTHROWSQ ;
+
+\ ---- the frame the walk derives ----------------------------------------------
+\ A contract's frame used to be a wall the walk was held to: a routine whose
+\ author declared two slots and whose program needed three was refused with
+\ E-A64RA-PRESSURE, though the chain compiles it perfectly well. Nobody was in a
+\ position to declare that number - it is decided by the walk - so the
+\ declaration is the walk's OUTPUT now and this is where that is pinned
+\ (habu-derive-a-routine-84ed36b6).
+\
+\ THE BODY IS THE ONE THAT USED TO BE REFUSED, unchanged, and the frame it is
+\ handed is still the sixteen bytes that used to be too small. Three values go to
+\ slots, which wants twenty-four bytes below the entry; a frame is a multiple of
+\ the stack alignment, so the routine has to declare thirty-two. Both numbers are
+\ read, because the rounded one is what a caller declares and the unrounded one
+\ is what the program actually reached, and a change that confused them would
+\ leave one of the two right.
+\
+\ WHAT MAKES THIS MORE THAN A RESTATEMENT of the allocator's arithmetic: the same
+\ two numbers are what src/compiler/native/spill.f sizes its reserve from and what
+\ src/compiler/native/abi.f builds a declaration from, and the validator refuses
+\ any difference between the two. Pinning them here is pinning the handshake.
+: DERIVE-FRAME-CASES ( -- )
+   s" a frame one slot short of what the spills need is derived, not refused" T-LABEL
+   SMALL-FRAME
+   s" four values went to slots" T-LABEL
+   A64RA:SPILLS 4 T=
+   s" the walk reached thirty-two bytes below the entry" T-LABEL
+   A64RA:FRAME-USED 32 T=
+   s" so the routine has to declare a frame of thirty-two" T-LABEL
+   A64RA:FRAME 32 T= ;
 
 : POOL-REFUSE-CASES ( -- )
    s" a routine that may destroy nothing allocates nothing" T-LABEL
@@ -2339,8 +2381,23 @@ create TXT
 : MB-REFUSE-CASES ( -- )
    s" two values live at once forced into one class by an edge are refused" T-LABEL
    [: MB-EDGE-CLASH ;] E-A64RA-EDGE TTHROWSQ
-   s" a routine of more than one block with no frame to spill into is refused" T-LABEL
-   [: MB-SPILL ;] E-A64RA-PRESSURE TTHROWSQ ;
+   s" two operands of one operation in one register: no slot can help" T-LABEL
+   [: MB-SPILL ;] E-A64RA-POOL TTHROWSQ ;
+
+\ Where the rounding shows. A frame is a multiple of what the stack pointer moves
+\ by, so a routine that reaches one slot below its entry still declares two slots
+\ worth - and the declaration is the number src/compiler/native/abi.f builds from
+\ the same count and src/compiler/native/spill.f sizes its reserve from, so the
+\ two have to be this one and not the depth.
+: ROUND-FRAME-CASES ( -- )
+   s" a walk that reaches one slot declares the alignment above it" T-LABEL
+   ROUND-FRAME
+   s" one value went to a slot" T-LABEL
+   A64RA:SPILLS 1 T=
+   s" the walk reached eight bytes below the entry" T-LABEL
+   A64RA:FRAME-USED 8 T=
+   s" and the frame it has to declare rounds up to sixteen" T-LABEL
+   A64RA:FRAME 16 T= ;
 
 : MB-ACCEPT-REFUSE-CASES ( -- )
    s" a two-way branch into a block that takes an argument is refused" T-LABEL
@@ -2537,6 +2594,7 @@ create TXT
 : GROUP-SHAPE ( IR-CTX:ctx -- )     drop SHAPE-REFUSE-CASES ;
 : GROUP-TIE ( IR-CTX:ctx -- )       drop TIE-REFUSE-CASES ;
 : GROUP-PRESSURE ( IR-CTX:ctx -- )  drop PRESSURE-REFUSE-CASES ;
+: GROUP-DERIVE ( IR-CTX:ctx -- )    drop DERIVE-FRAME-CASES ;
 : GROUP-POOL ( IR-CTX:ctx -- )      drop POOL-REFUSE-CASES ;
 : GROUP-FIXED ( IR-CTX:ctx -- )     drop FIXED-REFUSE-CASES ;
 : GROUP-CROSS ( IR-CTX:ctx -- )     drop CROSS-REFUSE-CASE ;
@@ -2553,6 +2611,7 @@ create TXT
 : GROUP-ACCEPT ( IR-CTX:ctx -- )    drop ACCEPT-REFUSE-CASES ;
 : GROUP-STATE ( IR-CTX:ctx -- )     drop STATE-REFUSE-CASES ;
 : GROUP-MB ( IR-CTX:ctx -- )        drop MB-REFUSE-CASES ;
+: GROUP-ROUND ( IR-CTX:ctx -- )     drop ROUND-FRAME-CASES ;
 : GROUP-MB-CARRIED ( IR-CTX:ctx -- ) drop MB-CARRIED-REFUSE-CASE ;
 : GROUP-MB-ACCEPT ( IR-CTX:ctx -- ) drop MB-ACCEPT-REFUSE-CASES ;
 
@@ -2600,6 +2659,8 @@ public
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-PRESSURE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-DERIVE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-ROUND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-POOL ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-FIXED ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-CROSS ;] IR-CTX:WITH-CONTEXT
@@ -2616,6 +2677,7 @@ public
    WBND [: GROUP-ACCEPT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-STATE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MB ;] IR-CTX:WITH-CONTEXT
+
    WBND [: GROUP-MB-CARRIED ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MB-ACCEPT ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;

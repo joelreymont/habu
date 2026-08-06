@@ -302,8 +302,6 @@ variable N-PLAN
 0 N-PLAN !
 variable N-SLOTS
 0 N-SLOTS !
-variable FRAME-N
-0 FRAME-N !
 variable BASE-N                      \ the first frame byte this walk may use
 0 BASE-N !
 variable ARGS-N
@@ -640,8 +638,20 @@ create PL-VAL PLMAX cells allot
 
 \ ---- taking a register away --------------------------------------------------
 \ The next slot of the routine's frame. Slots are handed out in order and never
-\ handed out twice, so no two values ever share one; a frame with no room for the
-\ next slot is what is left of register pressure as a refusal.
+\ handed out twice, so no two values ever share one.
+\
+\ THIS WALK IS NOT HELD TO THE FRAME ITS CONTRACT DECLARED, and that is the whole
+\ of what habu-derive-a-routine-84ed36b6 changed. A routine's frame is declared
+\ before its body is allocated, so a declaration can only ever be a guess at how
+\ many values will not fit their registers - and it was the caller making it.
+\ Refusing the walk when the guess was too small meant a program the chain can
+\ compile perfectly well was rejected for a number nobody was in a position to
+\ get right. So the walk hands out what the program needs and RECORDS it, and
+\ FRAME below answers the frame the routine must therefore declare. The
+\ declaration is this pass's OUTPUT now, not its input.
+\
+\ WHAT IS STILL A REFUSAL IS A DEMAND NO FRAME CAN MEET. That is a fact about the
+\ machine and not about anybody's guess, so it keeps the pressure name.
 \
 \ THEY START ABOVE WHAT THE PROLOGUE OWNS. A routine that calls keeps its
 \ caller's return address in the bottom slot of its own frame, and
@@ -649,11 +659,32 @@ create PL-VAL PLMAX cells allot
 \ where its own slots may begin rather than assuming the frame is empty. That is
 \ what makes a routine that both calls and spills one frame with one layout
 \ instead of two passes agreeing by luck.
+\
+\ THE CEILING IS THE TIGHTER OF THE TWO THE CHAIN HAS, taken rather than chosen
+\ so that it stays true if either moves: the architecture cannot describe a frame
+\ past A64EFF:FRAME-MAX, and no pass of this chain can name more than NFROZEN:VMAX
+\ slots - src/compiler/native/regalloc-verify.f refuses a slot ordinal at that
+\ ceiling, so a walk that handed one out would only be refused later by name.
+: FRAME-CEIL ( -- n )
+   NFROZEN:VMAX A64IR:SLOT-WIDTH *  A64EFF:FRAME-MAX min ;
+
 : NEW-SLOT ( -- n )
    BASE-N @  N-SLOTS @ A64IR:SLOT-WIDTH *  + {: off:n :}
-   off A64IR:SLOT-WIDTH + FRAME-N @ > if E-A64RA-PRESSURE throw then
+   off A64IR:SLOT-WIDTH + FRAME-CEIL > if E-A64RA-PRESSURE throw then
    N-SLOTS @ 1+ N-SLOTS !
    off ;
+
+\ How deep this walk reached, and the frame that implies. The first is what the
+\ prologue owns plus every slot handed out; the second is that rounded to what
+\ the stack pointer may be moved by, which is what a routine has to declare to
+\ hold it. A64EFF owns the rounding so that this and the declaration
+\ src/compiler/native/abi.f builds are the same number rather than two that agree
+\ by luck - the validator refuses the difference between them.
+: DEPTH-WANT ( -- n )
+   BASE-N @  N-SLOTS @ A64IR:SLOT-WIDTH *  + ;
+
+: FRAME-WANT ( -- n )
+   DEPTH-WANT A64EFF:FRAME-ROUND ;
 
 \ ---- the linear order, and everything decided over it ------------------------
 \ Everything above this line reads one declaration or one operation. What follows
@@ -1949,17 +1980,28 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ a forged contract cannot survive the round trip.
 \ Every slot this walk handed out, measured against the routine that has to
 \ address it. A64EFF owns that rule - a width its forms carry, an offset its
-\ scale division will not round, an offset inside the declared frame and inside
-\ the reach of the offset field - so the decision is made there and not here.
+\ scale division will not round, an offset inside the frame and inside the reach
+\ of the offset field - so the decision is made there and not here.
+\
+\ THE FRAME IT IS MEASURED AGAINST IS THE ONE THIS WALK DERIVED and not the one
+\ the contract arrived with, because the contract's is a caller's guess this pass
+\ no longer honours (see NEW-SLOT). What survives the substitution is every rule
+\ that is about the machine rather than about the guess: an offset the scale
+\ division will not round and one past the reach of the offset field are still
+\ refused here, under A64EFF's name, before anything acts on the assignment. That
+\ the offsets lie inside the derived frame is true by construction, and it is
+\ checked again where it is not - src/compiler/native/regalloc-verify.f measures
+\ them against the contract the routine is actually emitted under.
 : SLOTS-CK ( A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
    {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
+   FRAME-WANT {: want:n :}
    N-SLOTS @ 0 ?do
       BASE-N @  i A64IR:SLOT-WIDTH *  +  A64IR:SLOT-WIDTH
-      gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+      gi gr gc fi fr fc z l ct t want delta A64EFF-ROUTINE:MAKE
       A64EFF:CHECK-SLOT
    loop ;
 
@@ -2041,16 +2083,19 @@ public
 \ routine that may destroy nothing allocates nothing; the walk seals a claim per
 \ value, which src/compiler/native/regalloc-verify.f then has to accept before
 \ anything may act on it.
-: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq A64EFF:traits n -- )
+\ The frame the contract declares is NOT among what this takes, and that is the
+\ change habu-derive-a-routine-84ed36b6 made: the walk decides how much frame the
+\ routine needs, so a declaration handed in could only be a guess to be held to.
+\ FRAME below answers what the walk decided, and the caller declares that.
+: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq A64EFF:traits -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
-      args:A64EFF:placeseq outs:A64EFF:placeseq traits:A64EFF:traits frame:n :}
+      args:A64EFF:placeseq outs:A64EFF:placeseq traits:A64EFF:traits :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
    c TARGET-CK
    pool 0 S-POOL !
    fpool 0 S-FPOOL !
-   frame FRAME-N !
    traits A64FRAME:SPILL-BASE BASE-N !
    m VIEWS!
    m IR-BUILD:FMODULE 0 S-MOD !
@@ -2075,7 +2120,7 @@ public
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
-   pool fpool gi gr t size WALK
+   pool fpool gi gr t WALK
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST ! ;
@@ -2105,18 +2150,24 @@ public
 : FPOOL ( -- A64EFF:fprs )
    SEAL-CK 0 S-FPOOL @ ;
 
-\ The frame this walk allocated under, and how much of it the spills used. The
-\ first is the contract's declaration and the second is what the program proved
-\ it needs; nothing yet turns the second into the first, so a routine whose
-\ author declared too small a frame is refused rather than given the frame it
-\ needs (dot habu-derive-a-routine-84ed36b6).
+\ The frame this walk proved its routine needs, and how deep into it the walk
+\ reached. The second is what the prologue owns plus every slot handed out; the
+\ first is that rounded to what the stack pointer may be moved by, which is what
+\ the routine has to DECLARE to hold it.
+\
+\ THE FIRST IS THIS PASS'S ANSWER AND NOT A RESTATEMENT OF ITS QUESTION. It used
+\ to be the frame the contract arrived with - a caller's guess the walk was held
+\ to, so a routine whose author guessed low was refused rather than given the
+\ frame its program needs. It is now derived from what the walk decided, which is
+\ what habu-derive-a-routine-84ed36b6 asked for: a caller allocates, reads this,
+\ and declares exactly it. src/compiler/native/regalloc-verify.f then holds the
+\ emitted routine to that declaration, so the number below is checked against the
+\ program rather than believed.
 : FRAME ( -- n )
-   SEAL-CK FRAME-N @ ;
+   SEAL-CK FRAME-WANT ;
 
-\ How deep into the frame this walk reached: the prologue's own slots plus the
-\ ones it handed out, which is what a routine would have to declare to hold both.
 : FRAME-USED ( -- n )
-   SEAL-CK BASE-N @  N-SLOTS @ A64IR:SLOT-WIDTH *  + ;
+   SEAL-CK DEPTH-WANT ;
 
 : VALUES ( -- n )
    SEAL-CK N-VALS @ ;

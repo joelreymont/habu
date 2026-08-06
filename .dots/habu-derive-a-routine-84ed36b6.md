@@ -1,6 +1,6 @@
 ---
 title: "Derive a routine's frame from what its spills need"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-31T20:09:03.305859+02:00"
@@ -13,3 +13,5 @@ no longer in the graph: it was closed and archived by commit bc6485eb7 "Close th
 spill-lowering dot", and what it delivered is in the tree at src/compiler/native/spill.f
 (package A64SPILL) - the spill set this dot derives a frame from. The dependency is satisfied;
 nothing blocks this dot now.
+
+Claim: agent=spillwire workspace=.jj-ws/habu-wire-the-spill
