@@ -4,12 +4,20 @@
 \ witness. LOAD-ONCE's adjoint may use STORE-ONCE; this emitter proves the
 \ once path lowers to ordinary ld/st, not red.global.add. Load after lib/ptx/cg.f,
 \ lib/ptx/header.f, and lib/ptx/tile.f. Emits to stdout.
+\
+\ The kernel locals stay BARE. Every type a kernel body binds - span, gridctx -
+\ is a PARAMETRIC family, and a `{: x:fam<..> :}` annotation is fail-closed in the
+\ locals parser (docs/type-families.md 17.1; the capability is dot
+\ habu-typed-locals-for-b06b6707). A single-letter annotation such as `x:a` is not
+\ a substitute: it DECLARES a fresh quantifier `a` for this word, which the body
+\ then specializes to span - a false parametricity claim the checker rejects with
+\ E-NONPARAMETRIC-EFFECT.
 
 256 %BLOCK
 
 KERNEL: ONCE-SPAN ( span<space-global-once,f32,extent-n> -- )  GRID: ceil-n-256
-   {: x:a :}
-   x GRID-CTX-ONCE {: g:b :}
+   {: x :}                     \ typed-local-lint: allow-bare-local - parametric kernel type
+   x GRID-CTX-ONCE {: g :}     \ typed-local-lint: allow-bare-local - parametric kernel type
    x g LOAD-ONCE
    x g STORE-ONCE ;
 

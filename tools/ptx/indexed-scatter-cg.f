@@ -3,6 +3,14 @@
 \ INDEXED_FWD computes out[idx[i]] += x[idx[i]].
 \ INDEXED_BWD computes dx[idx[i]] += dz[idx[i]].
 \ INDEXED_STORE copies vals[i] to out[idx[i]] through the unique-index boundary.
+\
+\ The kernel locals stay BARE. Every type a kernel body binds - span, idxctx,
+\ uniqidxctx - is a PARAMETRIC family, and a `{: x:fam<..> :}` annotation is
+\ fail-closed in the locals parser (docs/type-families.md 17.1; the capability is
+\ dot habu-typed-locals-for-b06b6707). A single-letter annotation such as `x:a` is
+\ not a substitute: it DECLARES a fresh quantifier `a` for this word, which the
+\ body then specializes to span - a false parametricity claim the checker rejects
+\ with E-NONPARAMETRIC-EFFECT.
 
 require lib/errors.f
 require lib/string.f
@@ -25,20 +33,20 @@ package PTXINDEXCG
    0 CG-NL ! ;
 
 KERNEL: INDEXED-FWD ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> span<space-global,f32,extent-d> -- )  GRID: ceil-n-256
-   {: idx:a x:b out:c :}
-   idx x INDEX-CTX {: g:d :}
+   {: idx x out :}             \ typed-local-lint: allow-bare-local - parametric kernel type
+   idx x INDEX-CTX {: g :}     \ typed-local-lint: allow-bare-local - parametric kernel type
    idx x g INDEX-LOAD
    idx out g INDEX-SCATTER-ADD ;
 
 KERNEL: INDEXED-BWD ( span<space-global,u32,extent-i> span<space-global,f32,extent-d> span<space-global,f32,extent-d> -- )  GRID: ceil-n-256
-   {: idx:a dx:b dz:c :}
-   idx dz INDEX-CTX {: g:d :}
+   {: idx dx dz :}             \ typed-local-lint: allow-bare-local - parametric kernel type
+   idx dz INDEX-CTX {: g :}    \ typed-local-lint: allow-bare-local - parametric kernel type
    idx dz g INDEX-LOAD
    idx dx g INDEX-SCATTER-ADD ;
 
 KERNEL: INDEXED-STORE ( span<space-global,u32,extent-i> span<space-global,f32,extent-i> span<space-global,f32,extent-d> -- )  GRID: ceil-n-256
-   {: idx:a vals:b out:c :}
-   idx out UNIQUE-INDEX-CTX {: g:d :}
+   {: idx vals out :}                  \ typed-local-lint: allow-bare-local - parametric kernel type
+   idx out UNIQUE-INDEX-CTX {: g :}    \ typed-local-lint: allow-bare-local - parametric kernel type
    vals g UNIQUE-INDEX-DENSE-LOAD
    idx out g INDEX-STORE ;
 

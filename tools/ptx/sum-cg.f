@@ -6,21 +6,29 @@
 \ header is followed by BOTH the SUM_ROWS and SCATTER_ROWS entries, so ptxas
 \ assembles the whole stream. Load after lib/ptx/cg.f, lib/ptx/header.f,
 \ lib/ptx/cg-collective.f, lib/ptx/collective.f. Emits to stdout.
+\
+\ The kernel locals stay BARE. Every type a kernel body binds - matrix, rowidx,
+\ span, rowctx - is a PARAMETRIC family, and a `{: x:fam<..> :}` annotation is
+\ fail-closed in the locals parser (docs/type-families.md 17.1; the capability is
+\ dot habu-typed-locals-for-b06b6707). A single-letter annotation such as `x:a` is
+\ not a substitute: it DECLARES a fresh quantifier `a` for this word, which the
+\ body then specializes to matrix - a false parametricity claim the checker
+\ rejects with E-NONPARAMETRIC-EFFECT.
 
 256 %BLOCK
 KERNEL: SUM-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
-   {: in:a out:b :}
-   ROW            {: r:c :}
-   in r ROW-SPAN  {: xs:d :}
-   xs ROW-CTX     {: ctx:e :}
+   {: in out :}                 \ typed-local-lint: allow-bare-local - parametric kernel type
+   ROW            {: r :}       \ typed-local-lint: allow-bare-local - parametric kernel type
+   in r ROW-SPAN  {: xs :}      \ typed-local-lint: allow-bare-local - parametric kernel type
+   xs ROW-CTX     {: ctx :}     \ typed-local-lint: allow-bare-local - parametric kernel type
    xs ctx ROW-LOAD BLOCK-SUM BROADCAST
    out r ROW-SPAN ctx ROW-STORE ;
 
 KERNEL: SCATTER-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
-   {: in:a out:b :}
-   ROW            {: r:c :}
-   in r ROW-SPAN  {: xs:d :}
-   xs ROW-CTX     {: ctx:e :}
+   {: in out :}                 \ typed-local-lint: allow-bare-local - parametric kernel type
+   ROW            {: r :}       \ typed-local-lint: allow-bare-local - parametric kernel type
+   in r ROW-SPAN  {: xs :}      \ typed-local-lint: allow-bare-local - parametric kernel type
+   xs ROW-CTX     {: ctx :}     \ typed-local-lint: allow-bare-local - parametric kernel type
    xs ctx ROW-LOAD
    out r ROW-SPAN ctx ROW-SCATTER-ADD ;
 

@@ -2,6 +2,14 @@
 \
 \ FANIN_FWD computes out[0] = sum_i x[0] across n threads.
 \ FANIN_BWD computes dx[0] = sum_i dz[0], the accumulated VJP of that fan-in.
+\
+\ The kernel locals stay BARE. Every type a kernel body binds - ptr, fanctx - is
+\ a PARAMETRIC family, and a `{: x:fam<..> :}` annotation is fail-closed in the
+\ locals parser (docs/type-families.md 17.1; the capability is dot
+\ habu-typed-locals-for-b06b6707). A single-letter annotation such as `x:a` is not
+\ a substitute: it DECLARES a fresh quantifier `a` for this word, which the body
+\ then specializes to ptr - a false parametricity claim the checker rejects with
+\ E-NONPARAMETRIC-EFFECT.
 
 require lib/errors.f
 require lib/string.f
@@ -17,14 +25,14 @@ package PTXSCATTERGRADCG
 256 %BLOCK
 
 KERNEL: FANIN-FWD ( ptr<space-global,f32> ptr<space-global,f32> -- )  GRID: ceil-n-256
-   {: x:a out:b :}
-   x FANIN-CTX {: g:c :}
+   {: x out :}                 \ typed-local-lint: allow-bare-local - parametric kernel type
+   x FANIN-CTX {: g :}         \ typed-local-lint: allow-bare-local - parametric kernel type
    x g FANIN-LOAD
    out g FANIN-SCATTER-ADD ;
 
 KERNEL: FANIN-BWD ( ptr<space-global,f32> ptr<space-global,f32> -- )  GRID: ceil-n-256
-   {: dx:a dz:b :}
-   dz FANIN-CTX {: g:c :}
+   {: dx dz :}                 \ typed-local-lint: allow-bare-local - parametric kernel type
+   dz FANIN-CTX {: g :}        \ typed-local-lint: allow-bare-local - parametric kernel type
    dz g FANIN-LOAD
    dx g FANIN-SCATTER-ADD ;
 
