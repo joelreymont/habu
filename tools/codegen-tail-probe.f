@@ -43,9 +43,11 @@ private
 \ the file that owns it exists because there were three.
 NBR:INSN-BYTES constant INSN-BYTES
 
-\ The return, which is the one encoding this file does have to name: it is a
-\ whole word with no field in it, and no branch reader owns it.
-$D65F03C0 constant RET-WORD
+\ The return. It used to be named here, because it is a whole word with no field
+\ in it and the branch reader owned only displacements. A second walk over
+\ emitted code now needs it too (tools/codegen-loop-inventory.f follows control
+\ through a span), so it moved to src/compiler/native/branch.f beside the branch
+\ forms rather than being spelled out twice.
 
 variable CODE-AT
 
@@ -69,7 +71,7 @@ variable CODE-AT
    NBR:B? ;
 
 : RET? ( n -- bool )
-   RET-WORD = ;
+   NBR:RET? ;
 
 \ The record of a word this tool was asked about. A name nothing published is a
 \ refusal rather than a row of zeroes, because a silent miss would read as "this

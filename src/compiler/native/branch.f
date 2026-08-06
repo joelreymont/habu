@@ -90,6 +90,65 @@ public
 : B-TARGET ( n n -- n )
    TARGET ;
 
+\ ---- the conditional forms ----------------------------------------------------
+\ The three conditional branches this chain emits carry a NINETEEN-bit signed
+\ count of instructions instead of the twenty-six the two forms above use, and
+\ the count sits five bits up rather than at the bottom. Everything else about
+\ the arithmetic is the same, so it is written here beside the other one for the
+\ reason this whole file exists: a reader that needs where a conditional branch
+\ goes should not be the fourth place that sign-extends a displacement.
+\
+\ WHO ASKS. Anything that has to follow control flow through emitted code rather
+\ than merely recognise a call - tools/codegen-loop-inventory.f asks whether the
+\ span between a backward branch and its target can reach that branch, which is
+\ what tells a loop from a join block that happens to sit at a lower address.
+
+private
+
+$FF000010 constant BCOND-MASK         \ b.cond: the opcode byte, and bit 4 clear
+$54000000 constant BCOND-OP
+$FF000000 constant CB-MASK            \ the compare-and-branch pair share a byte
+$B4000000 constant CBZ-OP
+$B5000000 constant CBNZ-OP
+$7FFFF constant IMM19                 \ the nineteen-bit field, once shifted down
+$40000 constant IMM19-SIGN            \ its top bit
+$80000 constant IMM19-SPAN            \ two to the nineteenth, the wrap the sign is taken against
+
+public
+
+\ The return. It is a whole word with no field in it, so it needs none of the
+\ arithmetic above - but it is the other way control leaves an instruction, and a
+\ walk that follows control through emitted code has to recognise it. It lives
+\ here so that the two readers which need it (tools/codegen-tail-probe.f and the
+\ loop inventory that walks spans) share one spelling.
+$D65F03C0 constant RET-WORD
+
+: RET? ( n -- bool )
+   RET-WORD = ;
+
+: BCOND? ( n -- bool )
+   BCOND-MASK and BCOND-OP = ;
+
+: CBZ? ( n -- bool )
+   CB-MASK and CBZ-OP = ;
+
+: CBNZ? ( n -- bool )
+   CB-MASK and CBNZ-OP = ;
+
+\ Any of the three, which is the question a control-flow walk actually has.
+: COND? ( n -- bool ) {: w:n :}
+   w BCOND? if true exit then
+   w CBZ? if true exit then
+   w CBNZ? ;
+
+\ Where the conditional branch at this address goes when it is taken. The field
+\ is a signed count of instructions from the site itself, exactly as the
+\ unconditional forms' is, so the answer is arithmetic on the site's address.
+: COND-TARGET ( n n -- n ) {: at:n w:n :}
+   w 5 rshift IMM19 and {: d:n :}
+   d IMM19-SIGN and 0<> if d IMM19-SPAN - INSN-BYTES * at + exit then
+   d INSN-BYTES * at + ;
+
 \ Could a branch-with-link at this address name this target at all? Both
 \ addresses have to be whole instructions and the distance between them has to
 \ fit the field. A caller that has to refuse rather than throw asks this; the
