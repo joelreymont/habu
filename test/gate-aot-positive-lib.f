@@ -255,7 +255,7 @@ variable BLR-CNT
    s" 4 constant AMAP-BODY-LEN" GE-SRC-LINE
    s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
    s" $40 constant AMAP-R2-OFF" GE-SRC-LINE
-   s" : AMAP-REC! ( ptr a ptr u8 n -- ) {: r:ptr code:ptr len:n :} code r 0 ptr-field ! len r 8 + ! ;" GE-SRC-LINE
+   s" : AMAP-REC! ( ptr n ptr u8 n -- ) {: r:ptr code:ptr len:n :} code r 0 ptr-field ! len r 8 + ! ;" GE-SRC-LINE
    s" : AMAP-RECS! ( -- ) AMAP-R1 AMAP-CODE AMAP-BODY-LEN AMAP-REC! AMAP-R2 AMAP-CODE AMAP-CODE-ROW + AMAP-BODY-LEN AMAP-REC! ;" GE-SRC-LINE
    s" : AMAP-CLOSURE! ( -- ) AMAP-R1 CLO 0 ptr-field ! AMAP-R2 CLO 1 ptr-field ! 0 NEWOFF ! AMAP-R2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
    s" : AMAP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
