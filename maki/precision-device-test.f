@@ -34,6 +34,7 @@ require lib/float.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
 require src/arch/ptx/emit.f
+require maki/eval/active-target.f
 require maki/device-artifacts.f
 require maki/cad.f
 require maki/lower/mm.f
@@ -124,6 +125,7 @@ variable PDT-PTX-U                                         \ correct-module text
    CUDA:OPEN? 0= if
       s" precision-device: libcuda unavailable -> device leg SKIPPED (host build OK)" type cr
       exit then
+   ATGT:LABEL$ PTXTC:TC-ARCH!                \ assembler arch from the probed active target; PREPARE does not clear it, so all four PDT-ASSEMBLE calls use it
    s" habu-pdt-drv" MAKI-GRADE:PREPARE
    s" habu-pdt-ptx" PTXTC:PREPARE ;
 : PDT-END ( -- )

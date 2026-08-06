@@ -7,6 +7,7 @@
 \ nonzero emit/ptxas rc fails CLOSED with the named E-PTX-EMIT throw (child stderr
 \ surfaced first). Off the Orin (no libcuda) it SKIPS explicitly.
 
+require maki/eval/active-target.f
 require tools/ptx/fusion-emit.f
 require tools/ptx/bandwidth-lib.f
 
@@ -16,6 +17,7 @@ package PTXBW
    CUDA:OPEN? 0= if
       s" bandwidth-v4: libcuda.so.1 unavailable -> SKIPPED (off-device)" type cr exit
    then
+   ATGT:LABEL$ PTXTC:TC-ARCH!                \ assembler arch from the probed active target
    s" habu-ptx-bw-saxpy-v4" s" tools/ptx/saxpy-v4-cg.f" PTXFE:BUILD-KERNEL
    DEFAULTS
    PTXTC:CUBIN$ CUBIN!                       \ load the private per-run cubin, not a shared /tmp path
