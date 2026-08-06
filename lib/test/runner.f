@@ -17,11 +17,24 @@ public
 10000 constant GT-DEFAULT-TIMEOUT-MS
 5000 constant GT-HEARTBEAT-MS
 
+create GT-FAIL-NAMES GT-FAIL-MAX GT-FAIL-NAME-CAP * allot
+create GT-FAIL-US GT-FAIL-MAX cells allot
+
+variable GT-FAIL#
+variable GT-PROGRESS-START-NS
+variable GT-PROGRESS-LAST-NS
+
+private
+
+\ The capture arena and the temp root.  Nothing outside this package may name
+\ this storage: a lend goes through GT-OUT-SINK/GT-ERR-SINK, a commit through
+\ GT-STORE-RUN, a read through GT-OUT$/GT-ERR$/GT-OUTCOME@/GT-RC@, and the root
+\ through GT-ROOT/GT-ROOT?.  Sealing the bytes and the counts together is the
+\ point: a caller that could reach one of them could describe the other's
+\ contents with the wrong number.
 create GT-ROOT-BUF FS-PATH-CAP allot
 create GT-OUT-BUF GT-OUT-CAP allot
 create GT-ERR-BUF GT-ERR-CAP allot
-create GT-FAIL-NAMES GT-FAIL-MAX GT-FAIL-NAME-CAP * allot
-create GT-FAIL-US GT-FAIL-MAX cells allot
 
 variable GT-ROOT-U
 variable GT-OUT-U
@@ -29,9 +42,8 @@ variable GT-ERR-U
 variable GT-EXITED                       \ bool: completed by exit (vs signal) when not timed out
 variable GT-TIMED-OUT                    \ bool: capture deadline hit
 variable GT-CODE                         \ exit code or signal number; 0 for timeout
-variable GT-FAIL#
-variable GT-PROGRESS-START-NS
-variable GT-PROGRESS-LAST-NS
+
+public
 
 : GT-FAIL-SLOT ( n -- ptr u8 ) {: idx :}
    idx 0 < if E-TBL-BOUNDS throw then
@@ -124,14 +136,20 @@ variable GT-PROGRESS-LAST-NS
 : GT-CHECK ( bool ptr u8 n -- ) {: ok name:ptr nameu :}
    ok 0= if name nameu GT-FAIL+ then ;
 
+private
+
 \ Decompose an outcome into the runner's exited/timed-out/code cells (all one
-\ cell, lossless: exit codes >= 128 stay distinct from signal deaths).
+\ cell, lossless: exit codes >= 128 stay distinct from signal deaths).  Private
+\ with the cells it writes: GT-STORE-RUN is the only way in, so a tag never
+\ arrives without the lengths that belong to it.
 : GT-OUTCOME! ( outcome -- )
    MATCH outcome
      exited OF GT-CODE ! 0 0= GT-EXITED ! 0 0= 0= GT-TIMED-OUT ! ENDOF
      signaled OF GT-CODE ! 0 0= 0= GT-EXITED ! 0 0= 0= GT-TIMED-OUT ! ENDOF
      timeout OF 0 GT-CODE ! 0 0= 0= GT-EXITED ! 0 0= GT-TIMED-OUT ! ENDOF
    ;MATCH ;
+
+public
 
 : GT-OUTCOME@ ( -- outcome )
    GT-TIMED-OUT @ if OUTCOME:TIMEOUT exit then
