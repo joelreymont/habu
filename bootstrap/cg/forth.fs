@@ -437,6 +437,8 @@ variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  v
 variable LPREFMISS  variable LPREFMISSMSG
 variable LTHROWDISPATCH
 35 constant PREFMISSMSG-LEN
+variable LSEALPKG   \ sealed system-package guard labeled rc-84 exit (mirrors src/habu/habu2.f SEAL-MSG:LMSG)
+50 constant SEALPKG-MSG-LEN   \ byte length of "hb: protected package sealed against user source: "; both seal guards append the offending token + newline
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
 variable LKWDO variable LKWLOOP variable LKWI
@@ -2578,6 +2580,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWCONST @ LBL,  s" constant" BYTES,
    LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
    LPREFMISSMSG @ LBL, S\" hb: compile preflight hook missing\n" BYTES,
+   LSEALPKG @ LBL, s" hb: protected package sealed against user source: " BYTES,   \ SEALPKG-MSG-LEN bytes; the seal guards append the offending token + newline
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
    LKWEXIT @ LBL,  s" exit" BYTES,   LKWREC @ LBL,  s" recurse" BYTES,
@@ -3196,6 +3199,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       0 LRESENGINEERROR @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 qsealed CBNZ,
       qlookup B,
    qsealed LBL,
+      0 2 MOVZ,  1 LSEALPKG @ ADR,  2 SEALPKG-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
@@ -3467,6 +3471,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    bad C-PACKAGE-PROT-GUARD
    ok B,
    bad LBL,
+      0 2 MOVZ,  1 LSEALPKG @ ADR,  2 SEALPKG-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
@@ -6315,6 +6320,7 @@ variable P2SK
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LPREFMISS !  LBL LPREFMISSMSG !
+   LBL LSEALPKG !
    LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;
 

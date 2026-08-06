@@ -1473,6 +1473,52 @@ private
    mdstart mdend s" hb: cannot map fixed data region" MUST-FIND-BEFORE
    mdstart mdend s" C-EXIT-DIAG" MUST-FIND-BEFORE ;
 
+\ The sealed system-package guard names itself before the offending token, in
+\ BOTH emitters. It used to write the bare token, so `package MEM` died with the
+\ three bytes `MEM` on fd 2 and nothing to say which wall it hit.
+\ These rows are not text searches. The message is pinned as the emit row that
+\ binds it to its label, so the same words in a comment prove nothing; the byte
+\ length is pinned as the exact constant; and the write sequence is walked in
+\ ORDER inside the word that owns the exit - label, then token, then newline,
+\ then the rc-84 exit - so a reordered, duplicated or elsewhere-placed write
+\ cannot satisfy it. That the bytes actually reach fd 2 is proved by a real fork
+\ in tools/subject-case-run-test.f, which pins the whole stderr; this is the
+\ native/Gforth mirror contract.
+: SEAL-DIAG ( -- )
+   s" src/habu/habu2.f" LOAD
+   s" package SEAL-MSG" POS-FOUND {: sstart:n :}
+   sstart s" ;package" AFTER-FOUND {: send:n :}
+   sstart send s" variable LMSG" MUST-FIND-BEFORE
+   sstart send s" 50 constant MSG-LEN" MUST-FIND-BEFORE
+   S\" SEAL-MSG:LMSG LABEL@ LBL, s\" hb: protected package sealed against user source: \" BYTES," MUST-HAVE
+   s" : C-SEAL-PACKAGE-FAIL" POS-FOUND {: nstart:n :}
+   nstart s" NR-EXIT-GROUP SYS, ;" AFTER-FOUND {: nfin:n :}
+   nstart s" 1 SEAL-MSG:LMSG LABEL@ ADR," AFTER-FOUND
+      s" 2 SEAL-MSG:MSG-LEN MOVZ," AFTER-FOUND
+      s" 1 DATA TKA-CELL LDR," AFTER-FOUND
+      s" 2 DATA TKL-CELL LDR," AFTER-FOUND
+      s" 1 LQNL LABEL@ ADR," AFTER-FOUND
+      s" 0 ENGINE-ERROR:SEAL-PACKAGE MOVZ," AFTER-FOUND
+   nfin < TTRUE
+   s" bootstrap/cg/forth.fs" LOAD
+   s" 50 constant SEALPKG-MSG-LEN" MUST-HAVE
+   S\" LSEALPKG @ LBL, s\" hb: protected package sealed against user source: \" BYTES," MUST-HAVE
+   s" : C-PACKAGE-SEAL-GUARD" POS-FOUND {: pstart:n :}
+   pstart s" ok LBL, ;" AFTER-FOUND {: pfin:n :}
+   pstart s" 1 LSEALPKG @ ADR," AFTER-FOUND
+      s" 2 SEALPKG-MSG-LEN MOVZ," AFTER-FOUND
+      s" 1 DATA TKA-CELL LDR," AFTER-FOUND
+      s" 1 LQNL @ ADR," AFTER-FOUND
+      s" 0 ENGINE-ERROR:SEAL-PACKAGE MOVZ," AFTER-FOUND
+   pfin < TTRUE
+   s" : C-QUALIFY-DEF" POS-FOUND {: qstart:n :}
+   qstart s" 1 LSEALPKG @ ADR," AFTER-FOUND
+      s" 2 SEALPKG-MSG-LEN MOVZ," AFTER-FOUND
+      s" 1 DATA DEF-TKA-CELL LDR," AFTER-FOUND
+      s" 1 LQNL @ ADR," AFTER-FOUND
+      s" 0 ENGINE-ERROR:SEAL-PACKAGE MOVZ," AFTER-FOUND
+   qstart > TTRUE ;
+
 ;package
 
 \ The compile preflight hook: both emitters must carry the missing-hook
@@ -1610,6 +1656,7 @@ public
 : MAIN ( -- )
    T-RESET
    MMAP-DIAG
+   SEAL-DIAG
    BCG-PREFLIGHT:TEST
    BCG-USING:TEST
    INSTALL-FAIL-CLOSED

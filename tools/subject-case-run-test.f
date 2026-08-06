@@ -14,8 +14,11 @@
 \ lines to be the true ones and finds the case's forgery down in the raw section
 \ where captured bytes belong. The second fixture is the seal collision that
 \ made the tool necessary: `package MEM` reopens the package lib/memory.f owns
-\ and protects, which is a fail-closed exit 84 whose whole diagnostic is the
-\ three bytes `MEM` - the case row's only evidence used to be a hash of them.
+\ and protects, which is a fail-closed exit 84 - and its stderr is pinned here
+\ byte for byte, because the case row's only evidence used to be a hash of it.
+\ The guard used to write the bare token, so the whole diagnostic was the three
+\ bytes `MEM`; it now names itself first (src/habu/habu2.f SEAL-MSG:LMSG), and this
+\ fixture is where a silent change to that text stops.
 
 require lib/errors.f
 require lib/string.f
@@ -153,7 +156,8 @@ variable END
    7 s" err 3 77 69 77" LINE= ;
 
 \ The seal collision itself: `package MEM` in a fork of a harness that has
-\ lib/memory.f resident. Exit 84, empty stdout, and three bytes of stderr.
+\ lib/memory.f resident. Exit 84, empty stdout, and a labelled stderr line that
+\ names the guard, the offending token, and ends in one newline.
 : SEAL-CASE ( -- )
    SEAL SEAL-U @ RUN-TOOL
    s" seal case: the tool reports the case it was given" T-LABEL
@@ -163,11 +167,12 @@ variable END
    s" seal case: reopening a protected package is a fail-closed exit 84" T-LABEL
    2 s" outcome exited 84" LINE=
    3 s" out 0" LINE=
-   s" seal case: the three stderr bytes are named, not hashed" T-LABEL
-   4 s" err 3 77 69 77" LINE=
+   s" seal case: every stderr byte is named, not hashed" T-LABEL
+   4 s" err 54 104 98 58 32 112 114 111 116 101 99 116 101 100 32 112 97 99 107 97 103 101 32 115 101 97 108 101 100 32 97 103 97 105 110 115 116 32 117 115 101 114 32 115 111 117 114 99 101 58 32 77 69 77 10" LINE=
    5 s" raw-stdout" LINE=
    7 s" raw-stderr" LINE=
-   8 s" MEM" LINE= ;
+   s" seal case: the guard names itself before the offending token" T-LABEL
+   8 s" hb: protected package sealed against user source: MEM" LINE= ;
 
 public
 

@@ -222,6 +222,14 @@ variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled
 variable LPROTPUB   variable LPROTAOT   \ protected-WID seal labeled rc-84 exits (publish-into-protected / AOT boot-pass gate reject)
 40 constant PROTPUB-MSG-LEN   \ byte length of "hb: cannot publish into protected word: " (LPROTPUB; C-STORE-DEF-NAME appends the def name + newline)
 34 constant PROTAOT-MSG-LEN   \ byte length of "hb: AOT protected-WID gate reject\n" (LPROTAOT; EM-AOTWIDGATE boot-pass reject)
+\ The sealed system-package guard's own labeled rc-84 diagnostic (C-SEAL-PACKAGE-FAIL).
+\ The label and the byte length of the text are owned together, so the row that
+\ emits the bytes and the write that names them cannot drift apart.
+package SEAL-MSG
+public
+variable LMSG         \ "hb: protected package sealed against user source: "
+50 constant MSG-LEN   \ byte length of that text; the guard appends the offending token + newline
+;package
 variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
 33 constant MMAPCODE-MSG-LEN   \ byte length of "hb: cannot map fixed code region\n" (LMMAPCODE)
 33 constant MMAPDATA-MSG-LEN   \ byte length of "hb: cannot map fixed data region\n" (LMMAPDATA)
@@ -441,6 +449,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
    LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES,                       \ BADSTR-MSG-LEN bytes incl. newline
    LPROTPUB LABEL@ LBL, s" hb: cannot publish into protected word: " BYTES,                     \ PROTPUB-MSG-LEN bytes; C-STORE-DEF-NAME appends the def name + newline
+   SEAL-MSG:LMSG LABEL@ LBL, s" hb: protected package sealed against user source: " BYTES,      \ SEAL-MSG:MSG-LEN bytes; C-SEAL-PACKAGE-FAIL appends the offending token + newline
    LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject" BYTES,  NL-KW 1 BYTES,            \ PROTAOT-MSG-LEN bytes incl. newline
    LMMAPCODE LABEL@ LBL, s" hb: cannot map fixed code region" BYTES,  NL-KW 1 BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
    LMMAPDATA LABEL@ LBL, s" hb: cannot map fixed data region" BYTES,  NL-KW 1 BYTES,            \ MMAPDATA-MSG-LEN bytes incl. newline
@@ -2231,8 +2240,21 @@ s" c-reject-dup-def" s" --" TRUST
 \ (RESTAB above) and the A-Z fold are native, NOT checker words: the guards must
 \ resolve during the sealed self-hosting stage build and checker-boot recompile,
 \ where a checker word is neither reachably kept nor safely callable.
-: C-SEAL-PACKAGE-FAIL ( -- )   \ write the offending package token, exit ENGINE-ERROR:SEAL-PACKAGE
+\ The diagnostic names the guard before the token, exactly like the sibling
+\ publish guard ("hb: cannot publish into protected word: " + name + newline,
+\ LPROTPUB). Without the label the whole diagnostic was the bare token, so
+\ `package MEM` died with three anonymous bytes on fd 2 and no clue which wall
+\ it hit. The wording says what is true on EVERY path into this fail, not just
+\ the `package NAME` reopen: the same code runs for a qualified definition
+\ (`: TFAM:tail`), for `'`/`[']`/`postpone` of a qualified name, and for
+\ `EXPORT`, where nothing is reopened and the token carries its tail
+\ (`TFAM:tail`). What all of them share is the one condition the guard tests --
+\ the package is protected and the friend latch is sealed, i.e. this is user
+\ source.
+: C-SEAL-PACKAGE-FAIL ( -- )   \ name the guard + the offending token on fd 2, exit ENGINE-ERROR:SEAL-PACKAGE
+   0 2 MOVZ,  1 SEAL-MSG:LMSG LABEL@ ADR,  2 SEAL-MSG:MSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS, ;
 s" c-seal-package-fail" s" --" TRUST
 
@@ -7132,7 +7154,7 @@ package LABELS
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL SNAP-RELOC:LCALLMSG !  LBL SNAP-RELOC:LXTMSG !  LBL SNAP-RELOC:LADDRMSG !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
-   LBL LPROTPUB !  LBL LPROTAOT !
+   LBL LPROTPUB !  LBL LPROTAOT !  LBL SEAL-MSG:LMSG !
    LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
