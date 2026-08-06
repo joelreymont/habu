@@ -25,6 +25,7 @@ require lib/test.f
 require lib/test/runner.f
 require test/gate-stats.f
 require test/gate-pool.f
+require test/gate-common-lib.f
 require tools/codegen-compare-cabi.f
 
 package CGFORK
@@ -35,16 +36,6 @@ variable PREPARED?
 
 : CHILD-FLAG-ACT ( -- )
    PROC-FORK:CHILD? 0= if E-CODEGEN-COMPARE-STAGE throw then ;
-
-\ ---- a child that would have to map the image itself ------------------------
-\ It must be refused BY NAME. Before the guard this was the 134: dyld faulted
-\ and the member died with no diagnosis at all. The child cleans up the tree it
-\ built on the way in, because it owns that one.
-
-: REFUSE-ACT ( -- )
-   [: CODEGEN-CABI:OPEN ;] catch {: rc:n :}
-   CODEGEN-CC:REMOVE
-   rc E-CODEGEN-CLANG-FORK <> if E-CODEGEN-COMPARE-STAGE throw then ;
 
 \ ---- a child of a parent that mapped it -------------------------------------
 \ The supported shape: the forking process maps, the child inherits and calls.
@@ -83,15 +74,26 @@ public
    s" child-flag" [: CHILD-FLAG-ACT ;] FORK-CASE
    RED# 0 T=
 
+   \ The refusal's precondition names the PARENT: a chain that never mapped
+   \ the reference. This member cannot be that parent - the gate root and the
+   \ member's sibling files legitimately map it before this line runs - so the
+   \ case execs a fresh probe and forks the child THERE, where the unmapped
+   \ state is asserted instead of assumed (the intermittent refuse -8264, dot
+   \ habu-attr-the-compare-2f98fcfc). It needs no toolchain - the guard fires
+   \ before any path is consulted - so it runs on every host, and a red
+   \ attributes through the gate boundary with argv and both streams.
+   s" a child of an unmapped chain is refused by name" T-LABEL
+   GE-HB-RESET
+   s" --load" GE-ARG+
+   s" test/codegen-fork-refuse-probe.f" GE-ARG+
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" refuse-probe" GE-EXPECT-OK
+
    CODEGEN-CC:READY? PREPARED? !
    PREPARED? @ 0= if
       s" codegen-fork-reference: no C toolchain; the fork cases need the reference" type cr
       T-REPORT exit
    then
-
-   s" a child that would have to map the image is refused by name" T-LABEL
-   s" refuse" [: REFUSE-ACT ;] FORK-CASE
-   RED# 0 T=
 
    CODEGEN-CABI:PREPARE drop
 

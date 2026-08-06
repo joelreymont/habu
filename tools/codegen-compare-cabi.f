@@ -84,6 +84,14 @@ public
    CODEGEN-CC:READY? dup 0= if exit then
    OPEN ;
 
+\ Whether THIS process holds the reference mapping. A fact reader, minted for
+\ the probes that must assert their own precondition: the refusal contract
+\ (OPEN's fork guard) is only testable from a chain that maps nothing, and a
+\ test that ASSUMES that state red-flips with whichever files shared its
+\ process (dot habu-attr-the-compare-2f98fcfc).
+: MAPPED? ( -- bool )
+   LIB-HANDLE @ 0<> ;
+
 \ Where the twin of this name starts. A name the library does not carry is a
 \ claim the comparison made and did not keep, so it throws rather than answering
 \ zero and calling it later.
