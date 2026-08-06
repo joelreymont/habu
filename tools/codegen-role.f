@@ -26,6 +26,27 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f.
 \ Exercised by tools/codegen-role-test.f (gate suite codegen-role).
+\
+\ UNPACKAGED ON PURPOSE, AND IT COSTS TEN LINT FINDINGS. Every definition here
+\ is global, so `tools/package-diff-lint.f` reports E-PACKAGE-OWNERSHIP for each
+\ one this file's ten typed signatures touched. That is a recorded decision, not
+\ an oversight, and it is not to be "fixed" by wrapping the file in a package
+\ without the two owners below agreeing.
+\
+\ Why the wrap is not free: CGR-HOOK just below is entry 7 in
+\ `tools/hook-sites.f`, the immutable registry of audited checker-hook
+\ identities - (this file, `CGR-HOOK`, test-metaprog, cap:checker-hook-identity).
+\ It is a TRUSTED: word that calls `set-check`, so the registry is what
+\ authorizes it to install a checker hook at all. Opening a package moves the
+\ bare name the registry pins, which is a change to a security boundary rather
+\ than a namespacing tidy-up. Two owners have to move together: the codegen
+\ effort, which owns this file, and whoever owns the hook registry and the
+\ checked-boundary lint that reads it.
+\
+\ The typing inside is settled and reviewed: the instruction-word and character
+\ signatures state n because their bodies build and take apart machine integers,
+\ and CGR-RN-SLOT-A/-U keep their `ptr a` because they only select between static
+\ addresses. See the commit "test: type the codegen-role instruction words".
 
 require lib/errors.f
 require lib/string.f
