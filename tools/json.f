@@ -315,11 +315,11 @@ private
    0 JSON-ERR-POS !
    0 JSON-DEPTH ! ;
 
-: J-CELL@ ( i64 ptr a -- i64 )
+: J-CELL@ ( i64 ptr i64 -- i64 )
    {: n base:ptr :}
    base n cells + @ ;
 
-: J-CELL! ( i64 i64 ptr a -- )
+: J-CELL! ( i64 i64 ptr i64 -- )
    {: x n base:ptr :}
    x base n cells + ! ;
 
