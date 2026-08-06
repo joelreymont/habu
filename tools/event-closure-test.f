@@ -47,7 +47,7 @@ variable ECT-I
 : ECT-DC$ ( -- ptr u8 n )     ECT-DC ECT-DC-U @ ;
 : ECT-UN$ ( -- ptr u8 n )     ECT-UN ECT-UN-U @ ;
 
-: ECT-MK ( ptr u8 n ptr u8 ptr a -- ) {: na:ptr nu:n dst:ptr up:ptr :}
+: ECT-MK ( ptr u8 n ptr u8 ptr n -- ) {: na:ptr nu:n dst:ptr up:ptr :}
    ECT-ROOT$ na nu dst JOIN-PATH up ! ;
 
 : ECT-DQ ( -- )   34 SB-APPEND-C ;
