@@ -67,6 +67,8 @@ private
 
 $1F constant REG-MASK              \ a register operand is a five-bit field
 $FFF constant IMM12-MASK           \ the unsigned load/store offset field
+1 8 lshift constant SIMM9-SIGN     \ the unscaled offset's sign bit, and the span
+1 9 lshift constant SIMM9-SPAN     \ a set one subtracts to sign-extend it
 8 constant SLOT-BYTES              \ one 64-bit slot: the load/store scale, and
                                    \ the distance a pairable pair's offsets differ by
 31 constant ZERO-REG               \ the addend field's value that makes a
@@ -88,10 +90,24 @@ public
 : FRM ( n -- n ) {: w:n :}
    w 16 rshift REG-MASK and ;
 
-private
-
+\ The two immediate fields, public for the same reason the three registers are.
+\ The call-site inventory (tools/codegen-callsite-inventory.f) has to re-encode
+\ an add-immediate and an unscaled load to recognise them, and re-encoding needs
+\ the immediate the word carries; decoding it there would be the second copy this
+\ file's header argues against.
 : FI12 ( n -- n ) {: w:n :}
    w 10 rshift IMM12-MASK and ;
+
+\ The unscaled load/store offset, sign-extended out of the field
+\ src/arch/arm64/asm.f packs it into. It is signed because that is the whole
+\ reason those two forms exist here: an access BELOW the base register has no
+\ spelling in the unsigned ones.
+: FSIMM9 ( n -- n ) {: w:n :}
+   w SIMM9-SHIFT rshift SIMM9-MASK and {: v:n :}
+   v SIMM9-SIGN and 0<> if v SIMM9-SPAN - exit then
+   v ;
+
+private
 
 \ The three-source forms' fourth register, which sits between the two fields the
 \ shifted-register forms use.

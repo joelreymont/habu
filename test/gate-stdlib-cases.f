@@ -401,6 +401,19 @@ SUITE compiler-codegen-loop-inventory
    test/compiler/codegen-loop-inventory.f
 ;SUITE
 
+\ Counting the instructions that exist only to move arguments and results through
+\ the caller's data stack, split by WHERE they sit: beside a call, which a
+\ register calling convention could remove, against the routine's own entry and
+\ exit, which it could not while every published routine is a dictionary record
+\ the engine can enter. It runs beside the other two inventories because it reads
+\ emitted code through the same walk and borrows the same register and immediate
+\ decoders. Its near-miss cases are the ones that matter: the frame's own
+\ adjustment is the same instruction form over register 31, and the scaled load
+\ sits at the same registers and offset as the unscaled one.
+SUITE compiler-codegen-callsite-inventory
+   test/compiler/codegen-callsite-inventory.f
+;SUITE
+
 \ The native chain's end-to-end run: source text through the real compile path
 \ to executed machine code. It runs after the leaves it composes, so a red here
 \ with green leaves means the leaves disagree with each other.
