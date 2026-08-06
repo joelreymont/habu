@@ -223,16 +223,22 @@ TRUSTED: BWM-DEF-A ( -- ) [: 42 ;] is BWM-DEF ;
 TRUSTED: BWM-DEF-B ( -- ) [: 99 ;] is BWM-DEF ;
 TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 
-: BWM-RD64 ( addr -- n )  dup 0 BWM-W32  swap 4 BWM-W32  32 lshift  or ;
-
-: BWM-TEST-DEFER ( -- )
+\ The round-trip readers and drivers own a package; the defer and the TRUSTED:
+\ installers above stay global on purpose, because the driver reaches BWM-DEF
+\ through `s" BWM-DEF" BWM-XT`, a bare wordlist-0 lookup that a packaged name is
+\ invisible to.
+package BWM-DEFER-TEST
+: RD64 ( addr -- n )  dup 0 BWM-W32  swap 4 BWM-W32  32 lshift  or ;
+public
+: RUN ( -- )
    s" BWM-DEF" BWM-XT {: xt:n :}
    xt 44 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
    xt 48 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
-   xt 52 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
+   xt 52 + RD64 RD64                          \ the fresh dispatch cell's value
    s" DEFER-UNSET" BWM-XT BWM=                \ = DEFER-UNSET code addr (fail closed, before any is)
    BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
    BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;          \ a second is re-points -> 99
+;package
 
 \ CHECKED-path defer / is round-trip (dot habu-mirror-checker-defer-6a8a366e).
 \ The stage2 engine-hook migration puts `is` inside CHECKED (non-TRUSTED)
@@ -252,14 +258,17 @@ defer BWM-CDEF ( -- n )
 : BWM-CDEF-B ( -- )  [: 99 ;] BWM-CDEF! ;           \ re-install a 99-returning target
 : BWM-CALL-CDEF ( -- n )  BWM-CDEF ;                \ checked call through the defer
 
-: BWM-TEST-CDEFER ( -- )
+package BWM-DEFER-TEST
+public
+: RUN-CHECKED ( -- )
    s" BWM-CDEF" BWM-XT {: xt:n :}
    xt 44 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
    xt 48 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
-   xt 52 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
+   xt 52 + RD64 RD64                          \ the fresh dispatch cell's value
    s" DEFER-UNSET" BWM-XT BWM=                \ = DEFER-UNSET code addr (fail closed, before any is)
    BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=          \ checked is installs a target -> dispatch returns 42
    BWM-CDEF-B  BWM-CALL-CDEF 99 BWM= ;        \ a second checked is re-points -> 99
+;package
 
 variable BWM-CF-ACC
 
@@ -287,7 +296,7 @@ variable BWM-CF-ACC
 
 BWM-TEST-GOLDENS
 BWM-TEST-RUNTIME
-BWM-TEST-DEFER
-BWM-TEST-CDEFER
+BWM-DEFER-TEST:RUN
+BWM-DEFER-TEST:RUN-CHECKED
 BWM-TEST-CATCH-FRAME
 BWM-REPORT
