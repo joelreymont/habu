@@ -5421,3 +5421,18 @@ before building around it - this one was RIGHT to fire and one slot too
 tight, and the widening's invariant (the pending row is the one slot ':'
 writes before raising the count) became the design's atomicity story.
 
+## Read the assert number before charging a red to an incident (2026-08-06)
+
+An open host-contention incident became a place to file reds. A lane with
+one red phase charged it to the incident and merged - the red was its own
+unbumped content ratchet. The incident lane certified the sibling 'refuted'
+over an attribution window that stopped one commit short of the breakage. A
+content ratchet cannot flake on timing and a nanosecond budget cannot flake
+on content: the assertion number distinguishes them in one line, and a
+'green' verdict must state the window it covers. Two more from the same
+pair of lanes: a calibration probe is valid only for workloads bound by the
+resource it measures (a register spin saw 8% while fork/exec work ran 73%
+slow); and measuring finished code undercounts a pre-allocation
+optimisation - register reuse hides fusions, so a post-allocation inventory
+is a floor, not a prediction.
+
