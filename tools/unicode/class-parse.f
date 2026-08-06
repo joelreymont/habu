@@ -123,7 +123,7 @@ variable PENDING-NAME-U
    u 7 < PENDING-NAME-U @ 8 < or if FALSE-VALUE exit then
    a u 7 - PENDING-NAME-A @ PENDING-NAME-U @ 8 - STR= ;
 
-: STAGE-APPEND ( n n ptr a ptr a ptr n -- )
+: STAGE-APPEND ( n n ptr n ptr n ptr n -- )
    {: lo:n hi:n los:ptr his:ptr countp:ptr :}
    lo hi SCALAR-RANGE
    countp @ 0 > if
@@ -267,7 +267,7 @@ variable PENDING-NAME-U
    idx 0 < idx count >= or if E-RANGE throw then
    idx ;
 
-: RANGE@ ( n ptr a ptr a n -- n n ) {: idx:n los:ptr his:ptr count:n :}
+: RANGE@ ( n ptr n ptr n n -- n n ) {: idx:n los:ptr his:ptr count:n :}
    idx count VALID-INDEX {: safe:n :}
    safe los SLOT @ safe his SLOT @ ;
 
