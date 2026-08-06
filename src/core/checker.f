@@ -48,7 +48,7 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
       ARENA-UB-I @ 1 + ARENA-UB-I !
    repeat ;
 
-: ARENA-CELLS-ZERO ( ptr a n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) to 0
+: ARENA-CELLS-ZERO ( ptr n n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) to 0
    from ARENA-UB-I !
    begin ARENA-UB-I @ to < while
       0 ARENA-UB-I @ cells base + !
@@ -122,7 +122,7 @@ TV-ARENA-BOOT
 
 \ TVK grows like TV-GROW-ONE but its fresh tail is TVK-ANY (0), not UNBOUND: an
 \ un-raised var id is always ANY.
-: TVK-GROW-ONE ( ptr ptr a n n -- ) {: pv:ptr oc:n nc:n :}
+: TVK-GROW-ONE ( ptr ptr n n n -- ) {: pv:ptr oc:n nc:n :}
    nc cells ARENA-ALLOC {: nb:ptr :}
    pv @ nb oc cells ARENA-COPY
    nb oc nc ARENA-CELLS-ZERO
