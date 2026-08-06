@@ -223,7 +223,7 @@ TRUSTED: BWM-DEF-A ( -- ) [: 42 ;] is BWM-DEF ;
 TRUSTED: BWM-DEF-B ( -- ) [: 99 ;] is BWM-DEF ;
 TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 
-: BWM-RD64 ( addr -- x )  dup 0 BWM-W32  swap 4 BWM-W32  32 lshift  or ;
+: BWM-RD64 ( addr -- n )  dup 0 BWM-W32  swap 4 BWM-W32  32 lshift  or ;
 
 : BWM-TEST-DEFER ( -- )
    s" BWM-DEF" BWM-XT {: xt:n :}
