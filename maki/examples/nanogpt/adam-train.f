@@ -74,7 +74,7 @@ variable ADAM-B2T           \ running b2^t
 
 \ Adam-update one bound parameter buffer in place from its backward node
 \ (SC-GRAD-AT: the slot's gradient node output; fails closed via EX-OUT@)
-: ADAM-UPD ( r ptr a n ptr a ptr a n -- )
+: ADAM-UPD ( r ptr r n ptr r ptr r n -- )
    {: lr:r wp:ptr slot:n mp:ptr vp:ptr len:n :}
    lr ADAM-B1 ADAM-B2 ADAM-EPS ADAM-C1 ADAM-C2
    wp  slot SC-GRAD-AT  mp vp len  OPTIM:TT-ADAM! ;
@@ -82,7 +82,7 @@ variable ADAM-B2T           \ running b2^t
 \ AdamW-update one bound parameter buffer in place: the param's decay attribute
 \ (WD-DECAY / WD-NONE) gates the trainer's decoupled decay coefficient wd. wd=0
 \ makes this bit-identical to ADAM-UPD.
-: ADAMW-UPD ( r ptr a n ptr a ptr a n r n -- )
+: ADAMW-UPD ( r ptr r n ptr r ptr r n r n -- )
    {: lr:r wp:ptr slot:n mp:ptr vp:ptr len:n wd:r flag:n :}
    wd flag ADAMW-WD-FOR {: wd2:r :}
    lr ADAM-B1 ADAM-B2 ADAM-EPS ADAM-C1 ADAM-C2 wd2
@@ -92,7 +92,7 @@ variable ADAM-B2T           \ running b2^t
 \ accumulator) instead of a slot's live grad node - the accumulation consumer for
 \ the batch trainer (BTC-3). Same math as ADAMW-UPD with gp supplied directly; the
 \ locked single-pass ADAMW-UPD reads SC-GRAD-AT and is left untouched.
-: ADAMW-UPD-G ( r ptr a ptr a ptr a ptr a n r n -- )
+: ADAMW-UPD-G ( r ptr r ptr r ptr r ptr r n r n -- )
    {: lr:r wp:ptr gp:ptr mp:ptr vp:ptr len:n wd:r flag:n :}
    wd flag ADAMW-WD-FOR {: wd2:r :}
    lr ADAM-B1 ADAM-B2 ADAM-EPS ADAM-C1 ADAM-C2 wd2
@@ -313,7 +313,7 @@ variable AMT-B               \ sequences in the current host batch
 
 \ scale one running buffer in place by c (the 1/B batch-mean normalization; c=1
 \ for B=1 leaves it bit-unchanged since x*1.0 = x)
-: AMT-GSCALE ( r ptr a n -- ) {: c:r base:ptr len:n :}
+: AMT-GSCALE ( r ptr r n -- ) {: c:r base:ptr len:n :}
    len 0 ?do  base i T-GET c f*  base i T-SET  loop ;
 
 \ normalize the summed grads to the batch mean (1/B over all four buffers)
@@ -495,7 +495,7 @@ create ATN-VM ATN-EN cells allot   create ATN-VV ATN-EN cells allot
    0.0 ATN-VM ATN-EN T-FILL   0.0 ATN-VV ATN-EN T-FILL ;
 
 \ small deterministic fill in [-0.5, 0.5) from the shared LCG stream
-: ATN-FILL ( ptr a n -- ) {: p:ptr len:n :}
+: ATN-FILL ( ptr r n -- ) {: p:ptr len:n :}
    len 0 ?do  SC-UNIT 0.5 f*  p i T-SET  loop ;
 
 \ init parameters + target from the committed seed; s starts at 1/sqrt(d)
