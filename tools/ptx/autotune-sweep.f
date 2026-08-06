@@ -447,7 +447,7 @@ variable SW-CAND-ID                       \ current candidate id (SW-CANDIDATE l
       then
    then ;
 
-: SW-CANDIDATE ( ptr a n n -- ) {: c:ptr id:n n:n :}
+: SW-CANDIDATE ( ptr n n n -- ) {: c:ptr id:n n:n :}
    c AT-APPLY
    n MMA-EXACT:MX-SHAPE-OK? 0= if
       id AT-XR-PRUNED AT-XCL-ADD
@@ -492,7 +492,7 @@ private
    AT-CFG-N * cells SW-CANDS + ;
 public
 : SW-CAND-DEF ( n -- )  SW-CAND-ROW AT-DEFAULTS ;               \ row = the cg-mma baseline record
-: SW-CAND-COPY ( ptr a n -- ) {: src:ptr idx:n :}              \ row idx = a copy of the config at src
+: SW-CAND-COPY ( ptr n n -- ) {: src:ptr idx:n :}              \ row idx = a copy of the config at src
    idx SW-CAND-ROW {: dst:ptr :}
    AT-CFG-N 0 ?do  src i AT-CFG@  dst i AT-CFG!  loop ;
 : SW-CAND-SET ( n n n -- ) {: field:n :}                       \ ( value idx field -- ) set one knob of a staged row, bounds-checked
