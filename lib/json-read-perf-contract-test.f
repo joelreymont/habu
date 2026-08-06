@@ -14,7 +14,7 @@
 \   - Each workload is judged against its own recorded baseline, which the known
 \     order of those baselines pins.
 \   - Every verdict is published as an evidence line, not just counted.
-\   - Storing a sample out of order, a nineteenth sample, or a read outside the
+\   - Storing a sample out of order, an extra sample past the table, or a read outside the
 \     table is refused with a named code.
 \
 \ Run: bin/hb --load lib/json-read-perf-contract-test.f
@@ -36,16 +36,19 @@ WORK-N constant NO-SLOW               \ "slow workload" argument naming no workl
    ESC-BASE HEADROOM-PCT * PCT-DEN /
    T-BUDGET-MAX-PCT * PCT-DEN / 1+ ;
 
-: FILL-WORK ( n n -- ) {: work:n value:n :}
-   SAMPLE-N 0 ?do value work SAMPLE+ loop ;
-
 : SAMPLE-VALUE ( n n -- n ) {: work:n slow:n :}
    work slow = if SLOW-NS exit then
    FAST-NS ;
 
+\ Complete table in the store's own round-major order: each round stores one
+\ sample of every workload, exactly the order MEASURE takes them in.
 : FILL ( n -- ) {: slow:n :}          \ complete table; workload `slow` is over budget
    SAMPLES-CLEAR
-   WORK-N 0 ?do i  i slow SAMPLE-VALUE  FILL-WORK loop ;
+   SAMPLE-N 0 ?do
+      WORK-N 0 ?do
+         i slow SAMPLE-VALUE  i SAMPLE+
+      loop
+   loop ;
 
 \ ---- probes ---------------------------------------------------------------
 variable MEASURE-TAKEN                \ samples MEASURE stored
@@ -107,11 +110,11 @@ create SEEN-N WORK-N cells allot      \ per slowed workload: how many verdicts w
    ESC-ID FILL REPORT-RED ONE-RED ! ;
 
 \ ---- sample-table misuse --------------------------------------------------
-: BAD-EXTRA ( -- )                    \ a nineteenth sample belongs to no workload
+: BAD-EXTRA ( -- )                    \ a sample past the full table belongs to no workload
    NO-SLOW FILL
    FAST-NS MISS-ID SAMPLE+ ;
 
-: BAD-ORDER ( -- )                    \ workloads are stored in order; a jump skips runs
+: BAD-ORDER ( -- )                    \ a round stores the workloads in order; a jump skips one
    SAMPLES-CLEAR
    FAST-NS LONG-ID SAMPLE+ ;
 
@@ -129,7 +132,7 @@ create SEEN-N WORK-N cells allot      \ per slowed workload: how many verdicts w
    SEEN-N work cells + @ 1 T= ;
 
 : CHECK-MEASURE ( -- )
-   s" MEASURE stores three samples for each of the six workloads" T-LABEL
+   s" MEASURE stores a full round-major sample table for the six workloads" T-LABEL
    MEASURE-TAKEN @ SAMPLE-TOTAL T=
    s" every stored sample is a positive elapsed time" T-LABEL
    POSITIVE-N @ SAMPLE-TOTAL T=
@@ -195,7 +198,7 @@ create SEEN-N WORK-N cells allot      \ per slowed workload: how many verdicts w
    verdictu BUILT-TAIL$ verdict verdictu T$= ;
 
 : CHECK-MISUSE ( -- )
-   s" a nineteenth sample is rejected" T-LABEL
+   s" a sample past the full table is rejected" T-LABEL
    [: BAD-EXTRA ;] E-JRP-SAMPLE TTHROWSQ
    s" a sample stored out of workload order is rejected" T-LABEL
    [: BAD-ORDER ;] E-JRP-SAMPLE TTHROWSQ

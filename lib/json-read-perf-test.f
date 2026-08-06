@@ -4,12 +4,21 @@
 \ beside other test files; a wall-clock ratchet measured under that contention
 \ reports the contention, not the parser. This package owns them instead, split
 \ across two public words. MEASURE runs the warm-up correctness probes and then
-\ stores every raw sample - three per workload, eighteen in all. REPORT turns the
-\ stored samples into calibrated budgets, one evidence line per workload, and the
-\ six pass/fail verdicts. A caller that wants meaningful numbers runs MEASURE
-\ while nothing else is running and calls REPORT afterwards. REPORT fails every
-\ verdict closed until the whole sample set exists, so a skipped or half-finished
-\ MEASURE can never report a pass.
+\ stores every raw sample - SAMPLE-N per workload, taken in interleaved rounds:
+\ each round times every workload once, so a load burst lands across the six
+\ workloads instead of inside one workload's whole sample set (the paired
+\ discipline of dot habu-pair-and-alternate-60b04c6a). REPORT turns the stored
+\ samples into calibrated budgets, one evidence line per workload, and the six
+\ pass/fail verdicts - each judged on the FASTEST of its samples, because a run
+\ can only be made slower by the rest of the machine, never faster: the fastest
+\ run is the closest estimate of the real cost (tools/codegen-compare-core.f's
+\ standing discipline), a real regression slows every sample including it, and
+\ ambient load has to poison every window of every round to move it. The
+\ median it replaces moved whenever two of three consecutive samples were
+\ dirty, which is exactly the flake the gate recorded. A caller that wants
+\ meaningful numbers runs MEASURE while nothing else is running and calls
+\ REPORT afterwards. REPORT fails every verdict closed until the whole sample
+\ set exists, so a skipped or half-finished MEASURE can never report a pass.
 \
 \ Run: bin/hb --load lib/json-read-perf-test.f lib/json-read-perf-contract-test.f
 
@@ -26,7 +35,7 @@ private
 
 \ ---- sample table ---------------------------------------------------------
 6 constant WORK-N                     \ ratchet workloads
-3 constant SAMPLE-N                   \ timed runs per workload
+5 constant SAMPLE-N                   \ timed rounds per workload
 WORK-N SAMPLE-N * constant SAMPLE-TOTAL
 0 constant SMALL-ID
 1 constant LONG-ID
@@ -52,13 +61,14 @@ variable TAKEN   0 TAKEN !            \ raw samples stored by the current MEASUR
 
 \ Samples are appended, never addressed: the store index is the count so far, so
 \ a dropped or repeated run cannot leave a plausible-looking table behind. The
-\ workload argument pins the append order too: a run stored under the wrong
-\ workload would land in another workload's row, so it throws instead.
+\ workload argument pins the append order too - ROUND-MAJOR, one sample of
+\ every workload per round: a run stored under the wrong workload, or out of
+\ round order, throws instead of landing in another workload's row.
 : SAMPLE+ ( n n -- ) {: value:n work:n :}
    TAKEN @ {: idx:n :}
    idx SAMPLE-TOTAL >= if E-JRP-SAMPLE throw then
-   idx SAMPLE-N / work <> if E-JRP-SAMPLE throw then
-   value SAMPLES idx cells + !
+   idx WORK-N mod work <> if E-JRP-SAMPLE throw then
+   value work idx WORK-N / SAMPLE-A !
    idx 1+ TAKEN ! ;
 
 : COMPLETE? ( -- bool )
@@ -109,8 +119,18 @@ $7D constant RBRACE
 89995280 constant HIT-BASE
 90105840 constant MISS-BASE
 100 constant PCT-DEN                  \ percent denominator
-100 constant EXACT-PCT                \ scan baselines carry no extra headroom
-110 constant HEADROOM-PCT             \ ten percent over the production-path medians:
+\ EVERY row carries the same ten percent of headroom. The scan rows used to
+\ carry none (a separate EXACT-PCT tier), which asserted equality with a
+\ baseline recorded on another tree at below measurement resolution: on two
+\ admissible quiet-bracket runs of an unchanged tree (2026-08-06, dot
+\ habu-pair-and-alternate-60b04c6a) the scan rows' fastest-of-five landed at
+\ -0.7%..+0.1% (small documents) and -3.3%..+0.1% (long stream) of that
+\ zero-headroom budget - a 1.4% and 3.5% run-to-run band against a 0%
+\ allowance, so the row failed whenever calibration drift landed positive.
+\ That measured band is the basis for folding both tiers into the one
+\ headroom below; a regression of the ten-percent class this ratchet exists
+\ to catch still fails it.
+110 constant HEADROOM-PCT             \ ten percent over the recorded medians:
                                       \ wider than the observed timing noise, still
                                       \ narrow enough to reject a real regression
 
@@ -268,37 +288,27 @@ create MISS-KEY KEY-LEN allot
    MISS-KEY false CHECK-FIND ;
 
 \ ---- taking the samples ---------------------------------------------------
-: TAKE-SMALL ( -- )
-   SAMPLE-N 0 ?do SMALL-RUN SMALL-ID SAMPLE+ loop ;
-
-: TAKE-LONG ( -- )
-   SAMPLE-N 0 ?do LONG-RUN LONG-ID SAMPLE+ loop ;
-
-: TAKE-RAW ( -- )
-   SAMPLE-N 0 ?do RAW-RUN RAW-ID SAMPLE+ loop ;
-
-: TAKE-ESC ( -- )
-   SAMPLE-N 0 ?do ESC-RUN ESC-ID SAMPLE+ loop ;
-
-: TAKE-HIT ( -- )
-   SAMPLE-N 0 ?do HIT-RUN HIT-ID SAMPLE+ loop ;
-
-: TAKE-MISS ( -- )
-   SAMPLE-N 0 ?do MISS-RUN MISS-ID SAMPLE+ loop ;
+\ One round: every workload timed once, in the fixed workload order the store
+\ enforces. Rounds repeat SAMPLE-N times, so consecutive samples of ONE
+\ workload are separated by a whole round of the other five - a load burst
+\ shorter than a round can dirty at most one sample of each workload, and the
+\ fastest-of-round judging above it needs every round dirty to move.
+: TAKE-ROUND ( -- )
+   SMALL-RUN SMALL-ID SAMPLE+
+   LONG-RUN LONG-ID SAMPLE+
+   RAW-RUN RAW-ID SAMPLE+
+   ESC-RUN ESC-ID SAMPLE+
+   HIT-RUN HIT-ID SAMPLE+
+   MISS-RUN MISS-ID SAMPLE+ ;
 
 public
 
-\ Warm up on the production path, then time every workload three times. Every
-\ sample is kept; nothing here judges a number.
+\ Warm up on the production path, then time every workload once per round,
+\ SAMPLE-N rounds. Every sample is kept; nothing here judges a number.
 : MEASURE ( -- )
    SAMPLES-CLEAR
    WARM-UP
-   TAKE-SMALL
-   TAKE-LONG
-   TAKE-RAW
-   TAKE-ESC
-   TAKE-HIT
-   TAKE-MISS ;
+   SAMPLE-N 0 ?do TAKE-ROUND loop ;
 
 private
 
@@ -306,24 +316,21 @@ private
 : MIN2 ( n n -- n )
    2dup > if swap then drop ;
 
-: MAX2 ( n n -- n )
-   2dup < if swap then drop ;
-
-: MEDIAN3 ( n n n -- n ) {: a:n b:n c:n :}
-   a b + c +
-   a b MIN2 c MIN2 -
-   a b MAX2 c MAX2 - ;
-
-: MEDIAN ( n -- n ) {: work:n :}
-   work 0 SAMPLE@ work 1 SAMPLE@ work 2 SAMPLE@ MEDIAN3 ;
+\ The judged statistic: the workload's fastest sample. A regression in the
+\ parser slows every sample including the fastest; host load slows only the
+\ windows it lands in, and the rounds interleave the workloads so it has to
+\ land in all of them to move this.
+: FASTEST ( n -- n ) {: work:n :}
+   work 0 SAMPLE@
+   SAMPLE-N 1 ?do work i SAMPLE@ MIN2 loop ;
 
 \ One table for the whole report: a workload's name, the baseline it was
 \ recorded at, and the headroom that baseline carries. Nothing else selects on
 \ the workload, so no verdict can pair one workload's name with another's budget.
 : ROW ( n -- ptr u8 n n n )
    case
-      SMALL-ID of s" 20,000 small documents" SMALL-BASE EXACT-PCT endof
-      LONG-ID of s" one 10,000-value stream" LONG-BASE EXACT-PCT endof
+      SMALL-ID of s" 20,000 small documents" SMALL-BASE HEADROOM-PCT endof
+      LONG-ID of s" one 10,000-value stream" LONG-BASE HEADROOM-PCT endof
       RAW-ID of s" repeated raw string decode" RAW-BASE HEADROOM-PCT endof
       ESC-ID of s" repeated escape-heavy decode" ESC-BASE HEADROOM-PCT endof
       HIT-ID of s" repeated object key-search hits" HIT-BASE HEADROOM-PCT endof
@@ -340,7 +347,7 @@ private
 
 : PASS? ( n n -- bool ) {: work:n budget:n :}
    COMPLETE? 0= if false exit then    \ an incomplete sample set never passes
-   work MEDIAN budget <= ;
+   work FASTEST budget <= ;
 
 \ ---- evidence line --------------------------------------------------------
 : SB-TF ( bool -- )
@@ -353,11 +360,12 @@ private
 
 : LINE-SAMPLES ( n -- ) {: work:n :}
    s"  samples=" SB-APPEND work 0 SAMPLE@ FMT:SB-U
-   s" ," SB-APPEND work 1 SAMPLE@ FMT:SB-U
-   s" ," SB-APPEND work 2 SAMPLE@ FMT:SB-U ;
+   SAMPLE-N 1 ?do
+      s" ," SB-APPEND work i SAMPLE@ FMT:SB-U
+   loop ;
 
 : LINE-TAIL ( n n bool -- ) {: work:n budget:n pass:bool :}
-   s"  median=" SB-APPEND work MEDIAN FMT:SB-U
+   s"  fastest=" SB-APPEND work FASTEST FMT:SB-U
    s"  budget=" SB-APPEND budget FMT:SB-U
    s"  stored=" SB-APPEND TAKEN @ FMT:SB-U
    s"  pass=" SB-APPEND pass SB-TF ;

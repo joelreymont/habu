@@ -58,8 +58,8 @@ require lib/json-read-perf-test.f
 package JSON-READ-PERF-PHASE
 private
 
-\ MEASURE is ~1.7s of workloads on a quiet box; the timeout carries enough
-\ headroom that only a genuinely stuck worker reaches it.
+\ MEASURE is ~3s of workloads on a quiet box (five interleaved rounds); the
+\ timeout carries enough headroom that only a genuinely stuck worker reaches it.
 30000 constant TIMEOUT-MS
 
 \ The "fork " stem is the gate-stats registered prefix for a forked slice

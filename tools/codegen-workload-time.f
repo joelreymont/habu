@@ -36,28 +36,27 @@
 \ the same answer. A row whose two answers disagree is a miscompilation, and the
 \ report names it as one rather than timing it and folding it into a claim.
 \
-\ A ROW ALSO SAYS WHAT IT IS FOR, AND THAT IS WHAT MAKES A VERDICT POSSIBLE. Every
-\ row carries a FAMILY - the workload it belongs to - and a KIND. A KIND-REAL row
-\ is a comparison someone wants an answer about; a KIND-NULL row ran the same
-\ program on both arms, so whatever delta it produced is a delta this harness
-\ manufactures out of nothing. The bar for a real row is therefore not a number
-\ chosen by a reader, and not a row named by hand somewhere else: it is the
-\ largest magnitude any of ITS OWN family's null rows produced, and BAR-PERMILLE
-\ computes it from the recorded rows. A family with no null row in it has no bar,
-\ and asking for one throws rather than returning a zero that would let every
-\ delta look real. That refusal is the whole reason the field exists: the report
-\ used to name its bar rows by hand and silently scored a missing name as a bar
-\ of nothing.
+\ A ROW ALSO SAYS WHAT IT IS FOR. Every row carries a FAMILY - the workload it
+\ belongs to - and a KIND. A KIND-REAL row is a comparison someone wants an
+\ answer about; a KIND-NULL row ran the same program on both arms, so whatever
+\ delta it produced is a delta this harness manufactures out of nothing. The
+\ kinds are DESCRIPTIVE: the report prints the null rows beside the real ones
+\ so a reader sees the harness's own noise next to the number being read, and
+\ nothing here or there turns that comparison into a verdict. The bar-and-
+\ verdict machinery this store used to feed (a family's largest null delta as
+\ the line a real row had to clear) produced REAL LOSS on unchanged trees -
+\ two to four null draws are not a distribution - and was deleted with dot
+\ habu-pair-and-alternate-60b04c6a: until the harness is calibrated, the
+\ report prints raw data and no verdict stronger than the data.
 \
-\ ONE DRAW IS NOT A BAR. The confound a null row measures is not a small
-\ symmetric wobble around zero. Two byte-identical publications of one body, both
-\ compiled by the same generator, have been measured thirty-five per cent apart
-\ on a workload whose inner loop calls a small word millions of times: where the
-\ callee landed matters more than what the code generator did. A single pair
-\ drawn from that says nothing about the next pair, so SWEEP below times a whole
-\ set of identical publications against each other in one row and keeps the two
-\ extremes: its delta is the widest gap the set contains, which is the largest
-\ delta this harness can produce for a body nobody changed.
+\ A PAIR ROW ALTERNATES ITS ARM ORDER AND KEEPS ITS PAIRED DELTAS. Running the
+\ old arm first in every round hands any drift that arrives mid-round to one
+\ column systematically; PAIR flips the order each round instead, and beside
+\ the two columns' fastest runs it records the per-round paired deltas'
+\ extremes - DELTA-LO and DELTA-HI, each round's two runs compared inside the
+\ same pair of adjacent windows. That interval is the measured spread of the
+\ comparison itself: a reader who sees it straddle zero knows the sign of the
+\ headline delta is not supported by the rounds.
 \
 \ THE DELTA IS REPORTED, NEVER ASSERTED HERE. Nothing in this file compares a
 \ measurement with a committed number or throws because a row was slower than
@@ -78,7 +77,6 @@ public
 -7222 constant E-WLTIME-ROW     \ a row index outside the recorded count
 -7223 constant E-WLTIME-CLOCK   \ the monotonic clock reported no elapsed time across a whole run
 -7224 constant E-WLTIME-STATE   \ an arm measured with no row open, or a row closed with an arm missing
--7226 constant E-WLTIME-BAR     \ a bar was asked of a family with no null row to build one from
 
 48 constant ROW-MAX
 32 constant NAME-MAX
@@ -136,6 +134,9 @@ create NEW-ARM ROW-MAX ARM-CELLS * cells allot
 create REPS-A ROW-MAX cells allot
 create ROUNDS-A ROW-MAX cells allot
 create WOVEN-A ROW-MAX cells allot
+create PAIRED-A ROW-MAX cells allot
+create DLO-A ROW-MAX cells allot
+create DHI-A ROW-MAX cells allot
 
 create SW-FAST SWEEP-ARMS cells allot
 create SW-SLOW SWEEP-ARMS cells allot
@@ -154,6 +155,11 @@ variable OLD-SUM-V
 variable NEW-SUM-V
 variable REPS-V
 variable ROUNDS-V
+variable PAIRED-V
+variable PR-OLD                 \ one round's old-arm run, for the paired delta
+variable PR-NEW                 \ one round's new-arm run, for the paired delta
+variable DLO-V                  \ smallest per-round paired delta so far
+variable DHI-V                  \ largest per-round paired delta so far
 
 : SLOT ( ptr a n -- ptr a )
    cells + ;
@@ -199,15 +205,18 @@ variable ROUNDS-V
    fast 0= if E-WLTIME-CLOCK throw then
    slow fast - PERMILLE * fast / ;
 
-\ How big a delta is, with the direction dropped. A bar is a size, and a loss of
-\ three per cent is as far from zero as a gain of three.
-: MAG ( n -- n ) {: v:n :}
-   v 0 < if 0 v - exit then
-   v ;
+public
 
-: BIGGER ( n n -- n ) {: x:n y:n :}
-   x y > if x exit then
-   y ;
+\ How much of an old number a new one saved, in parts per thousand, SIGNED: a new
+\ arm that took longer than the old one answers negative. It is a word of its own
+\ rather than three tokens inside DELTA-PERMILLE because a scheduled suite can
+\ hand it a pair of numbers it chose and check the sign that comes back, while a
+\ row's two times only ever arrive from a clock.
+: DELTA-OF ( n n -- n ) {: old:n new:n :}
+   old 0= if E-WLTIME-CLOCK throw then
+   old new - PERMILLE * old / ;
+
+private
 
 : STR-CP ( ptr u8 n ptr u8 -- )
    swap STR-LEN BYTE-COPY-LEN ;
@@ -248,6 +257,7 @@ variable ROUNDS-V
    NS-MAX NEW-FAST !  0 NEW-SLOW !
    0 HAVE-OLD !  0 HAVE-NEW !  0 HAVE-SUMS !  0 WOVEN !
    0 REPS-V !  0 ROUNDS-V !
+   0 PAIRED-V !  NS-MAX DLO-V !  0 NS-MAX - DHI-V !
    -1 OPEN? ! ;
 
 public
@@ -304,6 +314,9 @@ public
    REPS-V @ REPS-A ROW-N @ SLOT !
    ROUNDS-V @ ROUNDS-A ROW-N @ SLOT !
    WOVEN @ WOVEN-A ROW-N @ SLOT !
+   PAIRED-V @ PAIRED-A ROW-N @ SLOT !
+   DLO-V @ DLO-A ROW-N @ SLOT !
+   DHI-V @ DHI-A ROW-N @ SLOT !
    ROW-N @ 1+ ROW-N !
    0 OPEN? ! ;
 
@@ -311,19 +324,49 @@ public
 \ The ordinary case: both arms are runnable at the same moment, so a round
 \ measures one of each and the host's behaviour during the measurement lands on
 \ both columns. The row is opened first, by the caller, with the identity it is
-\ to be reported and judged under; this word only measures and closes.
+\ to be reported under; this word only measures and closes.
+\
+\ THE ORDER ALTERNATES. A round that always ran the old arm first would hand
+\ any drift that arrives mid-round - a thermal step, a scheduler migration -
+\ to the same column every time, which is a bias no number on the page shows.
+\ Even rounds run old-then-new and odd rounds new-then-old, so whatever a
+\ round's two windows differ by lands on each column equally often.
+\
+\ AND EACH ROUND'S PAIR IS A DATUM OF ITS OWN. The two runs of one round sit
+\ in adjacent windows, so their delta is the comparison made under one host
+\ moment; PR-NOTE folds each round's delta into the row's DELTA-LO..DELTA-HI
+\ interval, which the report prints beside the fastest-run delta. An interval
+\ that straddles zero says the rounds did not agree on a direction.
+private
+: PR-NOTE ( -- )
+   PR-OLD @ PR-NEW @ DELTA-OF {: d:n :}
+   d DLO-V @ < if d DLO-V ! then
+   d DHI-V @ > if d DHI-V ! then ;
+
+\ typed-local-lint: allow-bare-local - old and new are the two arms' bodies, and
+\ a local annotation cannot carry a quotation effect.
+: PAIR-ROUND ( n n [ -- ] [ -- ] -- ) {: r:n reps:n old new :}
+   r 1 and 0= if
+      reps old RUN-ONCE dup SAMPLE-OLD PR-OLD !
+      reps new RUN-ONCE dup SAMPLE-NEW PR-NEW !
+   else
+      reps new RUN-ONCE dup SAMPLE-NEW PR-NEW !
+      reps old RUN-ONCE dup SAMPLE-OLD PR-OLD !
+   then
+   PR-NOTE ;
+public
+
 \ typed-local-lint: allow-bare-local - old and new are the two arms' bodies, and
 \ a local annotation cannot carry a quotation effect.
 : PAIR ( n n n n [ -- ] [ -- ] -- )
    {: reps:n rounds:n oldsum:n newsum:n old new :}
    OPEN-CK
    rounds 0 ?do
-      reps old RUN-ONCE SAMPLE-OLD
-      reps new RUN-ONCE SAMPLE-NEW
+      i reps old new PAIR-ROUND
    loop
    oldsum newsum ANSWERS
    reps REPS-V !  rounds ROUNDS-V !
-   -1 HAVE-OLD !  -1 HAVE-NEW !  -1 WOVEN !
+   -1 HAVE-OLD !  -1 HAVE-NEW !  -1 WOVEN !  -1 PAIRED-V !
    CLOSE ;
 
 \ ---- a row that times one body at several addresses -------------------------
@@ -453,20 +496,27 @@ public
 : INTERLEAVED? ( n -- bool ) {: k:n :}
    WOVEN-A k ROW-OK SLOT @ 0<> ;
 
+\ Whether the row's rounds were measured as alternating pairs, and the extremes
+\ of its per-round paired deltas. Only a PAIR row has them: a split row's arms
+\ never shared a window and a sweep's columns are two of five publications, so
+\ asking either for a paired interval is a caller error, not a zero.
+: PAIRED? ( n -- bool ) {: k:n :}
+   PAIRED-A k ROW-OK SLOT @ 0<> ;
+
+: PAIRED-CK ( n -- n ) {: k:n :}
+   k PAIRED? 0= if E-WLTIME-STATE throw then
+   k ;
+
+: DELTA-LO ( n -- n ) {: k:n :}
+   DLO-A k PAIRED-CK SLOT @ ;
+
+: DELTA-HI ( n -- n ) {: k:n :}
+   DHI-A k PAIRED-CK SLOT @ ;
+
 \ Did the two arms compute the same thing? The delta means nothing unless they
 \ did.
 : SAME-ANSWER? ( n -- bool ) {: k:n :}
    k OLD-SUM k NEW-SUM = ;
-
-\ How much of an old number a new one saved, in parts per thousand, SIGNED: a new
-\ arm that took longer than the old one answers negative, and that sign is the
-\ whole verdict of a row. It is a word of its own rather than three tokens inside
-\ DELTA-PERMILLE because a scheduled suite can hand it a pair of numbers it chose
-\ and check the sign that comes back, while a row's two times only ever arrive
-\ from a clock.
-: DELTA-OF ( n n -- n ) {: old:n new:n :}
-   old 0= if E-WLTIME-CLOCK throw then
-   old new - PERMILLE * old / ;
 
 \ How much of the old arm's time the new arm saved, in parts per thousand. A
 \ negative row is one the new code generator lost.
@@ -478,32 +528,5 @@ public
       dup NAME$ a u STR= if exit then
       1+
    repeat drop -1 ;
-
-\ ---- the bar a family's real rows are judged against ------------------------
-\ How many null draws a family has, and the largest delta any of them produced.
-\ A null row ran the same program on both arms, so its delta is entirely this
-\ harness's own doing; the largest of several draws is the size of artifact the
-\ harness has been SEEN to manufacture for that workload's shape, and a real
-\ delta smaller than that is a delta this measurement cannot see.
-: NULLS ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0
-   ROW-N @ 0 ?do
-      i NULL? i FAM$ a u STR= and if 1+ then
-   loop ;
-
-: BAR-PERMILLE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u NULLS 0= if E-WLTIME-BAR throw then
-   0
-   ROW-N @ 0 ?do
-      i NULL? i FAM$ a u STR= and if
-         i DELTA-PERMILLE MAG BIGGER
-      then
-   loop ;
-
-\ Did this row's delta clear the bar its own family's null draws set? This is the
-\ verdict, and it is the only place a delta is compared with anything.
-: OVER-BAR? ( n -- bool ) {: k:n :}
-   k DELTA-PERMILLE MAG
-   k FAM$ BAR-PERMILLE > ;
 
 ;package

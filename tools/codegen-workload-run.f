@@ -44,12 +44,12 @@
 \ One row is one sample, and the second question does not have a small symmetric
 \ answer: two byte-identical publications of the same body have measured
 \ thirty-five per cent apart on the scan shape, and the same pair has measured
-\ two per cent apart on another run. A bar built from one draw of that is a
-\ coin toss, and it produced three consecutive runs in which a workload was
-\ reported as a REAL LOSS against a two per cent bar. With five publications in
-\ hand, each workload's placement row times all five against each other and
-\ reports the widest gap any two of them showed; that gap is the bar, and a
-\ delta has to clear THAT.
+\ two per cent apart on another run. A judgment built from one draw of that is
+\ a coin toss - the retired verdict machinery once ruled a workload REAL LOSS
+\ three runs running against a two per cent single-draw figure. With five
+\ publications in hand, each workload's placement row times all five against
+\ each other and reports the widest gap any two of them showed, printed beside
+\ the real row as the size of artifact placement alone manufactures.
 \
 \ THE MEASUREMENT IS NOT HERE. This file publishes and it measures the rows that
 \ cannot be measured anywhere else; tools/codegen-workload-rows.f holds the
@@ -153,11 +153,10 @@ variable REC-BEFORE
 \ delta is therefore entirely what compiling a few hundred definitions does to
 \ the compilation of the few hundred after them - the dictionary is longer, and
 \ every name in the next sequence is looked up in it. That is the same gap the
-\ real row's two arms are separated by, plus the migration, so it is the honest
-\ bar for the real row and the reason the compile-shaped row can be judged at
-\ all. The draws run BEFORE the real row: the growth per sequence is a larger
-\ fraction of a smaller total, so a bar taken here is if anything the
-\ conservative one.
+\ real row's two arms are separated by, minus the migration, so it is the
+\ honest context to print beside the real row. The draws run BEFORE the real
+\ row: the growth per sequence is a larger fraction of a smaller total, so the
+\ context is if anything the conservative one.
 : DRIFT-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" check" CODEGEN-CLOCK:OPEN-NULL
    TAKE-ARM CHECK-OLD
@@ -172,7 +171,7 @@ public
 \ construction: the interpreter has no `[:` to give.
 \
 \ FOUR DRAWS, for the reason the file header gives: one draw of a confound this
-\ size is a coin toss, and the report's bar is the largest of them.
+\ size is a coin toss; the report prints all of them beside the real row.
 : CHECK-DRIFT ( -- )
    CODEGEN-CLOCK:RESET
    CODEGEN-HOT:ARM-AFTER 1+ ARM-NEXT !
