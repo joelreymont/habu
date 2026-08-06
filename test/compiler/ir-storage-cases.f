@@ -132,16 +132,16 @@ private
    loop
    LAST @ ;
 
-: FLAG@ ( n ptr a -- n ) {: d:n base:ptr :}
+: FLAG@ ( n ptr n -- n ) {: d:n base:ptr :}
    base d cells + @ ;
 
-: FLAG! ( n ptr a -- ) {: d:n base:ptr :}
+: FLAG! ( n ptr n -- ) {: d:n base:ptr :}
    1 base d cells + ! ;
 
 : BODY-HAS? ( n ptr u8 n -- bool ) {: d:n a:ptr u:n :}
    d cells DEF-LO + @ d cells DEF-HI + @ a u SPAN-COUNT 0 > ;
 
-: SEED-ONE ( ptr u8 n ptr a -- ) {: a:ptr u:n base:ptr :}
+: SEED-ONE ( ptr u8 n ptr n -- ) {: a:ptr u:n base:ptr :}
    DEF-N @ 0 ?do
       i a u BODY-HAS? if i base FLAG! then
    loop ;
@@ -152,7 +152,7 @@ private
    loop ;
 
 \ Does this token name a definition that already carries the flag?
-: FLAGGED-NAME? ( ptr u8 n ptr a -- bool ) {: a:ptr u:n base:ptr :}
+: FLAGGED-NAME? ( ptr u8 n ptr n -- bool ) {: a:ptr u:n base:ptr :}
    DEF-N @ 0 ?do
       i base FLAG@ 0 <> if
          i DEF-NAME$ a u STR= if true unloop exit then
@@ -160,14 +160,14 @@ private
    loop
    false ;
 
-: CALLS-FLAGGED? ( n ptr a -- bool ) {: d:n base:ptr :}
+: CALLS-FLAGGED? ( n ptr n -- bool ) {: d:n base:ptr :}
    d cells DEF-LO + @ d cells DEF-HI + @ {: b:n e:n :}
    e b ?do
       i TOK$ base FLAGGED-NAME? if true unloop exit then
    loop
    false ;
 
-: FLAG-PASS ( ptr a -- n ) {: base:ptr :}
+: FLAG-PASS ( ptr n -- n ) {: base:ptr :}
    0 NEWLY !
    DEF-N @ 0 ?do
       i base FLAG@ 0= if
@@ -181,7 +181,7 @@ private
 
 \ Close the flag under calls. Each pass flags at least one more definition or
 \ none at all, so the definition count bounds the number of passes.
-: FLAG-CLOSE ( ptr a -- ) {: base:ptr :}
+: FLAG-CLOSE ( ptr n -- ) {: base:ptr :}
    DEF-N @ 1+ 0 ?do
       base FLAG-PASS 0= if unloop exit then
    loop ;
