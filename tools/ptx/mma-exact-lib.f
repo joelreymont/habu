@@ -112,7 +112,7 @@ create MX-MAXERR 1 cells allot             \ f64 max abs error over the compare
 \ every downstream multiply overflow-UNREACHABLE (no wrap possible once the edge check passes).
 : MX-EDGE-OK? ( n -- bool )  dup 0 >  swap MX-MAX <=  and ;    \ 1..MX-MAX
 : MX-CHECK-EDGE ( -- )  MX-N @ MX-EDGE-OK? 0= if MX-E-CAP throw then ;   \ guard MX-N before any host/device index
-: MX-CHECK-E ( e -- e )  dup 0 <  over MX-CAP >  or if MX-E-CAP throw then ;   \ guard an explicit extent against the buffer capacity
+: MX-CHECK-E ( n -- n )  dup 0 <  over MX-CAP >  or if MX-E-CAP throw then ;   \ guard an explicit extent against the buffer capacity
 
 \ ---- element-exact fill / host reference / compare (integer, bit-exact) ------
 : MX-FILL ( -- )                           \ deterministic varied small integers (1..13 / 1..11)
@@ -150,7 +150,7 @@ public
    loop ;
 
 \ ---- dtype-dispatched host -> packed A,B (F64 host -> tf32/fp16/bf16 device) --
-: MX-PACK-AB ( e -- )  MX-CHECK-E {: e:n :}
+: MX-PACK-AB ( n -- )  MX-CHECK-E {: e:n :}
    MMA-BF16? if      MX-HA e MX-PA BF16-PACK  MX-HB e MX-PB BF16-PACK   \ F64>BF16 RNE
    else MMA-F16? if  MX-HA e MX-PA F16-PACK   MX-HB e MX-PB F16-PACK    \ F64->fp16
    else              MX-HA e MX-PA PACK   MX-HB e MX-PB PACK    \ F64->tf32
@@ -171,10 +171,10 @@ variable MX-DA  variable MX-DB  variable MX-DC
    0 MX-DA !  0 MX-DB !  0 MX-DC ! ;
 : MX-OWN ( -- )                            \ transfer the three device buffers to the active CUDA-SCOPE frame (freed on unwind, replaces MX-DEV-FREE)
    MX-DA PTXBENCH:OWN-DEV  MX-DB PTXBENCH:OWN-DEV  MX-DC PTXBENCH:OWN-DEV ;
-: MX-HTOD-AB ( e -- )  MX-CHECK-E {: e:n :}   \ upload the packed A,B to the device buffers
+: MX-HTOD-AB ( n -- )  MX-CHECK-E {: e:n :}   \ upload the packed A,B to the device buffers
    MX-DA @ MX-PA e MMA-ESZ * PTXBENCH:HTOD
    MX-DB @ MX-PB e MMA-ESZ * PTXBENCH:HTOD ;
-: MX-DTOH-C ( e -- )  MX-CHECK-E {: e:n :}    \ read C back to the host and unpack f32 -> host f64
+: MX-DTOH-C ( n -- )  MX-CHECK-E {: e:n :}    \ read C back to the host and unpack f32 -> host f64
    MX-PC MX-DC @ e 4 * PTXBENCH:DTOH
    MX-PC e MX-HC UNPACK ;
 
