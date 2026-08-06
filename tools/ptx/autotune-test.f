@@ -10,17 +10,17 @@ require tools/ptx/autotune.f
 package AT-RT
 
 \ ---- thin aliases into the module (keeps the assertions readable) -----------
-: CFG@ ( ptr a n -- n )   AUTOTUNE:AT-CFG@ ;
-: CFG! ( n ptr a n -- )   AUTOTUNE:AT-CFG! ;
-: DEF! ( ptr a -- )       AUTOTUNE:AT-DEFAULTS ;
-: SEL ( n n n n -- ptr a ) AUTOTUNE:AT-SELECT ;
+: CFG@ ( ptr n n -- n )   AUTOTUNE:AT-CFG@ ;
+: CFG! ( n ptr n n -- )   AUTOTUNE:AT-CFG! ;
+: DEF! ( ptr n -- )       AUTOTUNE:AT-DEFAULTS ;
+: SEL ( n n n n -- ptr n ) AUTOTUNE:AT-SELECT ;
 : AUTO ( n n n n -- )     AUTOTUNE:AT-AUTOTUNE ;
-: APPLY ( ptr a -- )      AUTOTUNE:AT-APPLY ;
-: LEGAL? ( ptr a -- bool ) AUTOTUNE:AT-LEGAL? ;
-: CHECKCFG ( ptr a -- )   AUTOTUNE:AT-CHECK-CFG ;
+: APPLY ( ptr n -- )      AUTOTUNE:AT-APPLY ;
+: LEGAL? ( ptr n -- bool ) AUTOTUNE:AT-LEGAL? ;
+: CHECKCFG ( ptr n -- )   AUTOTUNE:AT-CHECK-CFG ;
 : WROW ( n -- ptr a )     AUTOTUNE:AT-WIN-ROW ;
 : RCFG ( ptr a -- ptr a ) AUTOTUNE:AT-ROW-CFG ;
-: RDIM ( ptr a -- n )     AUTOTUNE:AT-ROW-DIM@ ;
+: RDIM ( ptr n -- n )     AUTOTUNE:AT-ROW-DIM@ ;
 \ (3) STOPWATCH pure-logic aliases
 : CLKSTABLE? ( n n n -- bool ) AUTOTUNE:AT-CLK-STABLE? ;
 : XRESET ( -- )           AUTOTUNE:AT-XCL-RESET ;
