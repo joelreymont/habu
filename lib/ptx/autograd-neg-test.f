@@ -10,33 +10,33 @@
 
 require lib/ptx/neg-test-lib.f
 
-: AGN-CERTIFIES ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
-   src srcu PTXN-CHECK {: diag:n verdict:n rc:n :}
-   label labelu T-LABEL
-   rc 0 T=
-   label labelu T-LABEL
-   verdict -1 T= ;
+package AUTOGRAD-NEG
+using PTXN
+private
 
-: AGN-BWD-OK$ ( -- ptr u8 n )
+: BWD-OK$ ( -- ptr u8 n )
    s" AGN-BWD-OK ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- ) {: y dy dx :} ROW {: r :} y r ROW-SPAN {: ys :} dy r ROW-SPAN {: dys :} ys ROW-CTX {: c :} ys c ROW-LOAD {: yt :} dys c ROW-LOAD {: dyt :} dyt yt *. BLOCK-SUM {: s :} dyt s PTX:B- yt *. dx r ROW-SPAN c ROW-STORE" ;
 
-: AGN-BWD-BAD$ ( -- ptr u8 n )
+: BWD-BAD$ ( -- ptr u8 n )
    s" AGN-BWD-BAD ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c2> -- ) {: y dy dx :} ROW {: r :} y r ROW-SPAN {: ys :} dy r ROW-SPAN {: dys :} ys ROW-CTX {: c :} ys c ROW-LOAD {: yt :} dys c ROW-LOAD {: dyt :} dyt yt *. BLOCK-SUM {: s :} dyt s PTX:B- yt *. dx r ROW-SPAN c ROW-STORE" ;
 
-: AGN-SPAN-OK$ ( -- ptr u8 n )
+: SPAN-OK$ ( -- ptr u8 n )
    s" AGN-SPAN-OK ( ptr<space-global,f32> ptr<space-global,f32> u32 -- ) MK-SPAN= {: ys dxs :} ys GRID-CTX {: g :} ys g LOAD dxs g STORE" ;
 
-: AGN-SPAN-BAD$ ( -- ptr u8 n )
+: SPAN-BAD$ ( -- ptr u8 n )
    s" AGN-SPAN-BAD ( ptr<space-global,f32> u32 ptr<space-global,f32> u32 -- ) MK-SPAN {: dxs :} MK-SPAN {: ys :} ys GRID-CTX {: g :} ys g LOAD dxs g STORE" ;
 
-: AGN-MAIN ( -- )
+: MAIN ( -- )
    T-RESET
    256 %BLOCK
-   AGN-BWD-OK$ s" closed-form backward, shared extents" AGN-CERTIFIES
-   AGN-BWD-BAD$ s" extent-c2" s" gradient extent mismatch" PTXN-REJECTS
-   AGN-SPAN-OK$ s" MK-SPAN= minted gradient pair" AGN-CERTIFIES
-   AGN-SPAN-BAD$ s" fresh-extent" s" separately minted gradient span" PTXN-REJECTS
+   BWD-OK$ s" closed-form backward, shared extents" ACCEPTS
+   BWD-BAD$ s" extent-c2" s" gradient extent mismatch" REJECTS
+   SPAN-OK$ s" MK-SPAN= minted gradient pair" ACCEPTS
+   SPAN-BAD$ s" fresh-extent" s" separately minted gradient span" REJECTS
    s" NEG: mismatched gradient extents are checker errors (token-proven lengths)" type cr
    T-REPORT ;
 
-AGN-MAIN
+MAIN
+
+;using
+;package

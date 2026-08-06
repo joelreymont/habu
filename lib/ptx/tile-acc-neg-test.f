@@ -6,12 +6,17 @@
 
 require lib/ptx/neg-test-lib.f
 
-: TAN-MAIN ( -- )
+package TILE-ACC-NEG
+private
+
+: MAIN ( -- )
    T-RESET
    256 %BLOCK
    s" BAD-ACC ( span<space-global,f32,extent-n> -- ) {: s :} s GRID-CTX {: g :} g ACC-ZERO s g STORE"
-   s" STORE" s" tile-acc negative" PTXN-REJECTS
+   s" STORE" s" tile-acc negative" PTXN:REJECTS
    s" NEG: raw (unfinalized) accumulator store rejected (acc<> != tile<>)" type cr
    T-REPORT ;
 
-TAN-MAIN
+MAIN
+
+;package

@@ -26,30 +26,35 @@
 require lib/ptx/neg-test-lib.f
 require lib/ptx/cpp-slot.f
 
-: CSN-MAIN ( -- )
+package CPPSLOT-NEG
+private
+
+: MAIN ( -- )
    T-RESET
    256 %BLOCK
 
    s" BAD-RBW ( cpp-pending<p> -- ) CPPSLOT:READ"
-   s" cpp-ready" s" cpp-slot read-before-wait negative" PTXN-REJECTS
+   s" cpp-ready" s" cpp-slot read-before-wait negative" PTXN:REJECTS
    s" NEG: READ of a pending (unwaited) slot rejected (needs cpp-ready)" type cr
 
    s" BAD-MC ( cpp-pending<p> -- ) CPPSLOT:WAIT CPPSLOT:READ"
-   s" cpp-committed" s" cpp-slot missing-commit negative" PTXN-REJECTS
+   s" cpp-committed" s" cpp-slot missing-commit negative" PTXN:REJECTS
    s" NEG: WAIT of a pending (uncommitted) slot rejected (needs cpp-committed)" type cr
 
    s" BAD-DW ( cpp-committed<p> -- ) CPPSLOT:WAIT CPPSLOT:WAIT CPPSLOT:READ"
-   s" cpp-committed" s" cpp-slot double-wait negative" PTXN-REJECTS
+   s" cpp-committed" s" cpp-slot double-wait negative" PTXN:REJECTS
    s" NEG: second WAIT of an already-ready slot rejected (needs cpp-committed)" type cr
 
    s" BAD-PAR ( mmstage<f32,block-256,geom-as64x32-bs32x64,mask-live,parity-b> cpp-ready<parity-a> -- mmstage<f32,block-256,geom-as64x32-bs32x64,mask-live,parity-b> ) CPPSLOT:READ-STAGE"
-   s" parity-a" s" cpp-slot parity-mismatch negative" PTXN-REJECTS
+   s" parity-a" s" cpp-slot parity-mismatch negative" PTXN:REJECTS
    s" NEG: READ-STAGE of a slot whose parity differs from the tile rejected (same-buffer rule)" type cr
 
    s" BAD-DIVBAR ( cpp-committed<p> f -- ) IF CPPSLOT:WAIT CPPSLOT:READ THEN"
-   s" divergent barrier" s" cpp-slot divergent-barrier negative" PTXN-REJECTS
+   s" divergent barrier" s" cpp-slot divergent-barrier negative" PTXN:REJECTS
    s" NEG: WAIT (bar.sync fence) under divergent control rejected (M5 compose)" type cr
 
    T-REPORT ;
 
-CSN-MAIN
+MAIN
+
+;package

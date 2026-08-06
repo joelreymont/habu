@@ -1,7 +1,7 @@
 \ mint-neg-test.f - committed negatives for the checked-mint output-provenance
 \ seal (src/core/checker.f NP-MINT-CHECK) and for the output-family pinning of
 \ the MINTING combinators (lib/ptx/rep.f: PTXREP:MINT-LOAD / MINT-ROW-SPAN /
-\ MINT-ROW-LOAD). Every case drives the real checker through PTXN-CHECK.
+\ MINT-ROW-LOAD). Every case runs through PTXN's shared assertions.
 \
 \ WHERE THE SEAL BITES. NP-CHECK walks the whole declared quantifier inventory
 \ first, rejecting a quantifier that got specialized to a concrete type or
@@ -65,28 +65,8 @@
 require lib/ptx/neg-test-lib.f
 
 package MINT-NEG
+using PTXN
 private
-
-\ CHECK-CANDIDATE! answers -1 certified / 0 rejected / 1 uncheckable. lib/ptx
-\ shares PTXN-REJECTS but has no resolving-control assertion yet; this file owns
-\ one until neg-test-lib.f itself moves into a package and can publish it.
--1 constant CERT
-
-\ The resolving control for a PTXN-REJECTS case: the same premise minus the one
-\ property under test. The verdict is asserted EXACTLY certified, because an
-\ unresolvable or mistyped control answers 1, and 1 would otherwise read as
-\ "not rejected". The diagnostic must be EMPTY as well - that is what proves a
-\ needle matched in the paired negative is the CHECKER's text and not the
-\ candidate's own source echoed back.
-: ACCEPTS ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n label:ptr labelu:n :}
-   src srcu PTXN-CHECK {: diag:n verdict:n rc:n :}
-   label labelu T-LABEL
-   rc 0 T=
-   label labelu T-LABEL
-   verdict CERT T=
-   label labelu T-LABEL
-   diag 0 T= ;
 
 : MAIN ( -- )
    T-RESET
@@ -95,21 +75,21 @@ private
    \ --- the mint-provenance seal ------------------------------------------
    s" MZ1 ( gridctx<b,e,m> -- acc<t,b,m> ) ACC-ZERO"
    s" 't' is minted into family 'acc' but is unbound in the inputs"
-   s" ACC-ZERO as checked code: free argument 0 beside bound siblings" PTXN-REJECTS
+   s" ACC-ZERO as checked code: free argument 0 beside bound siblings" REJECTS
    s" MZ1C ( gridctx<b,e,m> acc<t,b,m> -- acc<t,b,m> ) drop ACC-ZERO"
    s" control: the same ACC-ZERO mint with 't' bound by a witness operand" ACCEPTS
    s" NEG: ACC-ZERO cannot become checked code; binding b and m does not free t" type cr
 
    s" MZ2 ( uniform<f32> -- tile<f32,b,m> ) BROADCAST"
    s" 'b' is minted into family 'tile' but is unbound in the inputs"
-   s" BROADCAST as checked code: free argument past a concrete one" PTXN-REJECTS
+   s" BROADCAST as checked code: free argument past a concrete one" REJECTS
    s" MZ2C ( uniform<f32> tile<f32,b,m> -- tile<f32,b,m> ) drop BROADCAST"
    s" control: the same BROADCAST mint with 'b' bound by a witness operand" ACCEPTS
    s" NEG: BROADCAST cannot become checked code; a concrete f32 does not end the scan" type cr
 
    s" MZ3 ( -- rowidx<e> ) ROW"
    s" 'e' is minted into family 'rowidx' but is unbound in the inputs"
-   s" ROW as checked code: an empty input row binds nothing" PTXN-REJECTS
+   s" ROW as checked code: an empty input row binds nothing" REJECTS
    s" MZ3C ( rowidx<e> -- rowidx<e> ) drop ROW"
    s" control: the same ROW mint with 'e' bound by a witness operand" ACCEPTS
    s" NEG: ROW cannot become checked code; with no inputs nothing can bind e" type cr
@@ -122,22 +102,23 @@ private
    \ --- why M1..M4 were re-aimed: this shape never reaches the seal --------
    s" MZX ( span<space-global,t,e> gridctx<b,e,m> -- tile<u,b,m> ) [: EMIT-LOAD ;] PTXREP:MINT-LOAD"
    s" declared quantifiers 'u' and 't' are unified"
-   s" a free MINT-LOAD output aliases its projected operand, seal unreached" PTXN-REJECTS
+   s" a free MINT-LOAD output aliases its projected operand, seal unreached" REJECTS
    s" NEG: MINT-LOAD's output is fully projected, so a free element aliases first" type cr
 
    \ --- layer 1: the minted output family is pinned ------------------------
    s" MF1 ( span<space-global,t,e> gridctx<b,e,m> -- acc<t,b,m> ) [: EMIT-LOAD ;] PTXREP:MINT-LOAD"
    s" expected: acc<a,b,c> actual: tile<a,b,c>"
-   s" MINT-LOAD family relabel (tile->acc) reject" PTXN-REJECTS
+   s" MINT-LOAD family relabel (tile->acc) reject" REJECTS
    s" NEG: MINT-LOAD output family is pinned; acc relabel rejects (family forge)" type cr
 
    s" MF2 ( matrix<space-global,t,e,k> rowidx<e> -- matrix<space-global,t,e,k> ) [: EMIT-ROW-SPAN ;] PTXREP:MINT-ROW-SPAN"
    s" expected: matrix<space-global,a,b,c> actual: span<space-global,a,c>"
-   s" MINT-ROW-SPAN family relabel (span->matrix) reject" PTXN-REJECTS
+   s" MINT-ROW-SPAN family relabel (span->matrix) reject" REJECTS
    s" NEG: MINT-ROW-SPAN output family is pinned; matrix relabel rejects (family forge)" type cr
 
    T-REPORT ;
 
 MAIN
 
+;using
 ;package

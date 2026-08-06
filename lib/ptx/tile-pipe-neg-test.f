@@ -40,38 +40,43 @@ require lib/ptx/neg-test-lib.f
 require lib/ptx/cg-matmul.f
 require lib/ptx/tile-pipe.f
 
-: TPN-MAIN ( -- )
+package TILE-PIPE-NEG
+private
+
+: MAIN ( -- )
    T-RESET
    256 %BLOCK
 
    s" BAD-TP-PARITY ( mmracc<f32,block-256,geom-mt4x4,mask-live> mmafrag<f32,block-256,geom-as64x32-bs32x64,mask-live,parity-a> mmbfrag<f32,block-256,geom-as64x32-bs32x64,mask-live,parity-b> -- mmracc<f32,block-256,geom-mt4x4,mask-live> ) RB-FMA"
-   s" parity-a" s" tile-pipe cross-parity negative" PTXN-REJECTS
+   s" parity-a" s" tile-pipe cross-parity negative" PTXN:REJECTS
    s" NEG: RB-FMA over two buffer parities rejected (same-stage operand rule)" type cr
 
    s" BAD-TP-AV4 ( mmaslice<f32,block-256,geom-as64x32-bs32x64,mask-live,parity-a> -- ) {: s :} s 0 B-FRAG.V4 drop"
-   s" mmaslice" s" tile-pipe strided-v4-base negative" PTXN-REJECTS
+   s" mmaslice" s" tile-pipe strided-v4-base negative" PTXN:REJECTS
    s" NEG: strided A slice into B-FRAG.V4 rejected (16B contiguous obligation)" type cr
 
    s" BAD-TP-SPAN ( span<space-shared,f32,extent-n> -- ) {: s :} s 0 B-FRAG.V4 drop"
-   s" space-shared" s" tile-pipe unproven-v4-base negative" PTXN-REJECTS
+   s" space-shared" s" tile-pipe unproven-v4-base negative" PTXN:REJECTS
    s" NEG: plain shared span into B-FRAG.V4 rejected (alignment-proven mmbslice only)" type cr
 
    s" BAD-TP-LAYOUT ( mmracc<f32,block-256,geom-mt4x4,mask-live> mmafrag<f32,block-256,geom-other,mask-live,parity-a> mmbfrag<f32,block-256,geom-as64x32-bs32x64,mask-live,parity-a> -- mmracc<f32,block-256,geom-mt4x4,mask-live> ) RB-FMA"
-   s" geom-other" s" tile-pipe cross-layout negative" PTXN-REJECTS
+   s" geom-other" s" tile-pipe cross-layout negative" PTXN:REJECTS
    s" NEG: fragment from a different blocked layout rejected (layout atom pinned)" type cr
 
    s" BAD-TP-STORE ( mmracc<f32,block-256,geom-mt4x4,mask-live> span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- ) STORE"
-   s" mmracc" s" tile-pipe naive-store negative" PTXN-REJECTS
+   s" mmracc" s" tile-pipe naive-store negative" PTXN:REJECTS
    s" NEG: register-blocked accumulator through scalar STORE rejected (mmracc != tile)" type cr
 
    s" BAD-TP-SLOAD ( mmstage<f32,block-256,geom-as64x32-bs32x64,mask-live,parity-a> coopctx<block-256,extent-n,mask-live> -- ) SLOAD drop"
-   s" mmstage" s" tile-pipe naive-sload negative" PTXN-REJECTS
+   s" mmstage" s" tile-pipe naive-sload negative" PTXN:REJECTS
    s" NEG: pipelined stage through scalar SLOAD rejected (mmstage != shared span)" type cr
 
    s" BAD-TP-DROP ( mmctx<extent-m,extent-k,extent-n> mmracc<f32,block-256,geom-mt4x4,mask-live> -- mmctx<extent-m,extent-k,extent-n> mmracc<f32,block-256,geom-mt4x4,mask-live> ) [: drop ;] PIPE-LOOP"
-   s" mmstage" s" tile-pipe acc-dropping-body negative" PTXN-REJECTS
+   s" mmstage" s" tile-pipe acc-dropping-body negative" PTXN:REJECTS
    s" NEG: accumulator-dropping PIPE-LOOP body rejected (acc-preserving contract)" type cr
 
    T-REPORT ;
 
-TPN-MAIN
+MAIN
+
+;package

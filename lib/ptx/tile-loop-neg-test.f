@@ -6,12 +6,17 @@
 
 require lib/ptx/neg-test-lib.f
 
-: TLN-MAIN ( -- )
+package TILE-LOOP-NEG
+private
+
+: MAIN ( -- )
    T-RESET
    256 %BLOCK
    s" BAD-K ( span<space-global,f32,extent-n> -- ) {: s :} s GRID-CTX {: g :} s g LOAD 4 swap [: dup ;] TILE-LOOP s g STORE"
-   s" TILE-LOOP" s" tile-loop negative" PTXN-REJECTS
+   s" TILE-LOOP" s" tile-loop negative" PTXN:REJECTS
    s" NEG: accumulator-violating TILE-LOOP body rejected (located at tile-loop)" type cr
    T-REPORT ;
 
-TLN-MAIN
+MAIN
+
+;package

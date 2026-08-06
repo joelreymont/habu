@@ -13,21 +13,26 @@
 require lib/ptx/neg-test-lib.f
 require lib/ptx/tile-v4a.f
 
-: TV4AN-MAIN ( -- )
+package TILE-V4A-NEG
+private
+
+: MAIN ( -- )
    T-RESET
    256 %BLOCK
    s" BAD-V4A-LOAD ( span<space-global,f32,extent-n> -- ) {: s :} s GRID-CTX.V4 {: g :} s g LOAD.V4 drop"
-   s" LOAD.V4" s" tile-v4a misaligned-base negative" PTXN-REJECTS
+   s" LOAD.V4" s" tile-v4a misaligned-base negative" PTXN:REJECTS
    s" NEG: LOAD.V4 on a plain span rejected (vspan 16B-alignment obligation)" type cr
 
    s" BAD-V4A-STORE ( span<space-global,f32,extent-n> -- ) {: s :} s V4-ALIGN {: sa :} s GRID-CTX.V4 {: g :} sa g LOAD.V4 s g STORE.V4"
-   s" vspan" s" tile-v4a unproven-store-base negative" PTXN-REJECTS
+   s" vspan" s" tile-v4a unproven-store-base negative" PTXN:REJECTS
    s" NEG: STORE.V4 on a plain span rejected (vspan 16B-alignment obligation)" type cr
 
    s" BAD-V4A-ARITY ( span<space-global,f32,extent-n> -- ) {: s :} s V4-ALIGN {: sa :} s GRID-CTX.V4 {: g :} sa g LOAD.V4 s g STORE"
-   s" vtile" s" tile-v4a wrong-lane-arity negative" PTXN-REJECTS
+   s" vtile" s" tile-v4a wrong-lane-arity negative" PTXN:REJECTS
    s" NEG: vec4 vtile stored through scalar STORE rejected (vtile != tile)" type cr
 
    T-REPORT ;
 
-TV4AN-MAIN
+MAIN
+
+;package

@@ -6,12 +6,17 @@
 
 require lib/ptx/neg-test-lib.f
 
-: TSN-MAIN ( -- )
+package TILE-SMEM-NEG
+private
+
+: MAIN ( -- )
    T-RESET
    256 %BLOCK
    s" BAD-SPACE ( span<space-global,f32,extent-n> -- ) {: s :} s COOP-CTX {: g :} s g SLOAD drop"
-   s" SLOAD" s" tile-smem negative" PTXN-REJECTS
+   s" SLOAD" s" tile-smem negative" PTXN:REJECTS
    s" NEG: global span read through SLOAD rejected (space-shared != space-global)" type cr
    T-REPORT ;
 
-TSN-MAIN
+MAIN
+
+;package

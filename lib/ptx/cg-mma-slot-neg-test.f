@@ -23,6 +23,7 @@ require lib/ptx/neg-test-lib.f
 require lib/ptx/cg-mma.f
 
 package MMASB
+using PTXN
 private
 
 : MAIN ( -- )
@@ -31,24 +32,23 @@ private
 
    \ the production single-buffer protocol shape certifies end to end
    s" GOOD ( -- ) 11 14 MMA-STAGE-ISSUE CPPSLOT:COMMIT CPPSLOT:WAIT CPPSLOT:READ"
-   T-LABEL
-   s" GOOD ( -- ) 11 14 MMA-STAGE-ISSUE CPPSLOT:COMMIT CPPSLOT:WAIT CPPSLOT:READ"
-   CHECK-CANDIDATE! 0 <> TTRUE
+   s" single-buffer in-order protocol certifies" ACCEPTS
 
    s" BAD-WBC ( -- ) 11 14 MMA-STAGE-ISSUE CPPSLOT:WAIT CPPSLOT:COMMIT CPPSLOT:READ"
-   s" cpp-committed" s" single-buffer wait-before-commit negative" PTXN-REJECTS
+   s" cpp-committed" s" single-buffer wait-before-commit negative" REJECTS
    s" NEG: wait-before-commit on the production issue mint rejected (needs cpp-committed)" type cr
 
    s" BAD-DW ( -- ) 11 14 MMA-STAGE-ISSUE CPPSLOT:COMMIT CPPSLOT:READ"
-   s" cpp-ready" s" single-buffer dropped-wait negative" PTXN-REJECTS
+   s" cpp-ready" s" single-buffer dropped-wait negative" REJECTS
    s" NEG: dropped wait/sync fence rejected (READ needs cpp-ready)" type cr
 
    s" BAD-RBI ( -- ) 11 14 MMA-STAGE-ISSUE CPPSLOT:READ"
-   s" cpp-ready" s" single-buffer read-after-issue negative (mint state pin)" PTXN-REJECTS
+   s" cpp-ready" s" single-buffer read-after-issue negative (mint state pin)" REJECTS
    s" NEG: read straight after issue rejected (mint returns cpp-pending, not ready)" type cr
 
    T-REPORT ;
 
 MAIN
 
+;using
 ;package

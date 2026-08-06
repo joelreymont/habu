@@ -37,6 +37,9 @@
 require lib/ptx/neg-test-lib.f
 require test/checker-assert.f
 
+package UBAR-TEST
+private
+
 T-RESET
 256 %BLOCK
 
@@ -48,7 +51,7 @@ T-RESET
 
 : UB-DIVBAR ( ptr u8 n ptr u8 n -- )   \ src label -> reject + "divergent barrier" diag
    {: la:ptr lu:n :}
-   s" divergent barrier" la lu PTXN-REJECTS ;
+   s" divergent barrier" la lu PTXN:REJECTS ;
 
 \ --- positives: straight-line collectives certify -----------------------------
 s" UB-SOFTMAX ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-MAX {: mx :} x mx PTX:B- EXP. {: e :} e BLOCK-SUM {: s :} e s PTX:B/ out r ROW-SPAN c ROW-STORE" UB-CERT
@@ -101,3 +104,5 @@ s" UB-TILE-FMA ( span<space-global,f32,extent-n> -- ) {: xs :} xs GRID-CTX {: g 
 s" UB-TILE-BMINUS ( matrix<space-global,f32,extent-r,extent-c> -- ) {: in :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x x PTX:B- drop" UB-REJECT
 
 T-REPORT
+
+;package
