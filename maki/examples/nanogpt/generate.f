@@ -38,15 +38,15 @@ public
 \ The sampling primitives are folded onto maki/sampling.f (SMP-*), the canonical
 \ owner of the host-side algebra; generate re-exports them under its GEN-* names so
 \ the committed sampling locks (generate-test.f) keep pinning identical behaviour.
-: GEN-ARGMAX ( ptr a n -- n )  SMP-ARGMAX ;      \ FIRST index wins ties (strict f>)
-: GEN-TEMP!  ( ptr a n r -- )  SMP-TEMP! ;       \ scale each logit by 1/temp in place
-: GEN-TOPK!  ( ptr a n n -- )  SMP-TOPK! ;       \ keep k largest, mask the rest to rowmax-50
-: GEN-SAMPLE ( ptr a n -- n )  SMP-SAMPLE ;      \ inverse-CDF multinomial over the shared LCG
+: GEN-ARGMAX ( ptr r n -- n )  SMP-ARGMAX ;      \ FIRST index wins ties (strict f>)
+: GEN-TEMP!  ( ptr r n r -- )  SMP-TEMP! ;       \ scale each logit by 1/temp in place
+: GEN-TOPK!  ( ptr r n n -- )  SMP-TOPK! ;       \ keep k largest, mask the rest to rowmax-50
+: GEN-SAMPLE ( ptr r n -- n )  SMP-SAMPLE ;      \ inverse-CDF multinomial over the shared LCG
 
 \ pick the next token id from a raw LAST-position logit row. temp<0 and k outside
 \ [1,vocab] are rejected up front (named, red-first). temp=0 is TRUE argmax (greedy,
 \ no divide). Otherwise: temperature-divide, optional top-k mask, softmax, sample.
-: GEN-NEXT ( ptr a n r n -- n ) {: r:ptr n:n temp:r k:n :}
+: GEN-NEXT ( ptr r n r n -- n ) {: r:ptr n:n temp:r k:n :}
    temp f0< if E-GEN-TEMP throw then
    k 1 <  k n >  or if E-GEN-TOPK throw then
    temp 0.0 f= if  r n GEN-ARGMAX exit  then
@@ -58,7 +58,7 @@ public
 \ crop a prompt to the model's block T into the window buffer (nanoGPT "crop to block
 \ size"): copy the LAST min(plen,blk) ids. Empty prompt throws; a prompt longer than the
 \ block does NOT die - it keeps the last blk. Returns the count written (= min(plen,blk)).
-: GEN-CROP ( ptr a n ptr a n -- n ) {: p:ptr plen:n win:ptr blk:n :}
+: GEN-CROP ( ptr r n ptr r n -- n ) {: p:ptr plen:n win:ptr blk:n :}
    plen 0 <= if E-GEN-PROMPT throw then
    plen blk min {: k:n :}
    plen k -  {: off:n :}
@@ -70,7 +70,7 @@ public
 \ rolled left by one and the new id appended each step. XT ( -- logits ) runs the forward
 \ pass over the current WIN and returns the (blk x voc) logit buffer base; generate reads
 \ its LAST row and mutates that row in place (harmless: the next forward recomputes it).
-: GEN-RUN ( ptr a n ptr a n n r n [ -- ptr a ] -- )
+: GEN-RUN ( ptr r n ptr r n n r n [ -- ptr r ] -- )
    {: win:ptr blk:n out:ptr gen:n voc:n temp:r topk:n xt :}
    gen 0 ?do
       xt execute {: lg:ptr :}
