@@ -1,12 +1,14 @@
 ---
 title: Cut colon compilation onto the checked chain
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-05T10:36:19.611694+02:00"
 ---
 
 CG-01, phase 4 of the hard cut: make checked HIR plus the native pipeline the sole compiler for normal colon definitions. habu2.f:7020 COMPILE-EMIT:EM-COMPILE is the single production entry (verified, no drift); route it and bootstrap through the chain, prove self-hosting to a byte-identical fixpoint, run every gate on the sole path, then delete the old emitter and bridges (habu-delete-the-old-679cfd35). An opt-in hook is not completion. Reconcile with habu-cut-over-staged-070d68c8 / habu-self-host-staged-520ab588.
+
+Claim: agent=thecut workspace=.jj-ws/habu-cut-colon-compilation-a5aa3f1f
 
 PREREQUISITES (scout-verified 2026-08-05/06):
 1. Data-word addresses (habu-resolve-a-data-a1c8067f) — the one hard capability blocker; lane in flight.
@@ -109,3 +111,145 @@ missing half is the routine's FRAME.
     (select.f:905-909 PROLOGUE) and the lowering pass keeps that prologue rather than
     resizing it (spill.f ONCE-CK), so nothing after selection may widen it. That is
     habu-exercise-a-call-dda45093, and it starts at the selector.
+
+STOPPED 2026-08-06 (agent=thecut, workspace .jj-ws/habu-cut-colon-compilation-a5aa3f1f,
+tree at master 09a6bceb, engine refreshed to fixpoint aaa8882b). NO CUT WAS ATTEMPTED AND
+NONE SHOULD BE UNTIL THE THREE BLOCKERS BELOW ARE CLOSED. The leaf's premise — "every
+prerequisite is closed; route the entry through the chain" — is false. The prerequisite
+list above is not wrong about what it lists; it is incomplete, and what it omits is larger
+than everything it names. Measured, not argued:
+
+BLOCKER 1 — THE CHAIN IS A POST-PASS OVER THE OLD EMITTER, NOT AN ALTERNATIVE TO IT.
+The chain's only front end is NMIGRATE (src/compiler/native/migrate.f:692 DEFINE). Its
+input is the token TAPE, and the tape has exactly one producer: src/compiler/native/feed.f
+hangs on the checker's own reader, src/core/checker.f:10231 CHECK-SCAN, which the engine
+runs from its check hook AT EVERY `;` — that is, after COMPILE-EMIT:EM-COMPILE has already
+emitted the whole body. migrate.f reaches that reader by calling `evaluate`
+(migrate.f:88-89 TRUSTED: EV, reached from RECORD -> SCAN at :278-296), which re-enters the
+engine's ordinary interpret and compile path. So a migration REQUIRES a successful old-emitter
+compile and publication before it can begin, and migrate.f enforces exactly that by name:
+PUBLISHED-ONE (:301) refuses unless the dictionary grew by one record, and E-NMIGRATE-VERDICT
+(:297) refuses unless the engine's own check certified the definition.
+Consequence: "route COMPILE-EMIT:EM-COMPILE through the chain" is circular as written —
+EM-COMPILE would call a chain whose entry calls `evaluate`, which re-enters EM-COMPILE.
+There is no seam to flip and no flag to add. Making the chain the sole compiler needs a
+compile mode that PARSES AND CHECKS WITHOUT EMITTING, so the tape exists before any code
+does; the engine has no such mode, and building one is a habu2.f change of the same order as
+the emitter it would replace. Nothing in the tree stages this, and no dot owns it. FILE ONE.
+
+BLOCKER 2 — THE CHAIN COMPILES ABOUT A THIRD OF THE DIALECT, AND THAT IS THE WHOLE OF THE
+REMAINING WORK. Counted from the tables, not estimated. The chain's modeled vocabulary is
+61 spellings, committed as a constant at src/compiler/native/hir-word.f:938 (`61 constant
+WORDS`) and registered by HIR-WORD:REGISTER-WORDS (hir-word.f:1184): 4 arithmetic, 6
+compare, 6 bitwise, 4 const-op, 4 memory, 9 float, 5 float-compare, 13 control, 2 locals
+markers, 8 renames. The engine's compile path carries 70 keyword/op rows (habu2.f:6274,
+6291, 6300, 6315, 6370-6417) over 174 primitives (habu1.f FPRIM/FPRIM-L/GDEREF sites, plus
+habu2.f and prof.f). Anything not in the 61 is E-HIR-UNMODELED at hir-word.f:815.
+REFUSED TODAY, each verified absent from the tables: string literals and char literals
+(hir-word.f:922-927 ADMIT-TOKEN throws E-HIR-KIND on any tape kind that is not int literal,
+real literal or name); `case`/`of`/`endof`/`endcase`; ADT `match`/`;match`/`construct`;
+quotations `[: ;]`; `does>`; `do`/`loop` (only `?do` is modeled), `+loop`, `leave`, `j`,
+`again`; the return-stack words `>r`/`r>`/`r@`; `execute`; `['`]/`postpone`/`[char]`/`is`;
+and the ordinary primitives `negate 0< mod /mod abs min max tuck -rot ?dup 2swap 2over +!
+cell+ char+ chars count type`. The type substrate models two value types — signed 64-bit
+integer (elaborate.f:344) and IEEE754 double (hir.f:535) — over 8 flat kinds
+(src/compiler/ir/type.f:196-203: int, float, pointer, quotation, code-ref, memory-token,
+mask, opaque). There is NO struct, NO array, NO aggregate, NO tagged-union kind anywhere in
+the IR, so ADTs, products, structures and value-records are not "unimplemented rows" — they
+have no representation to be implemented into. The stdlib is written in the dialect the
+ENGINE accepts. It cannot compile through the chain today and the gap is not vocabulary
+rows; it is a type substrate plus a dozen control forms.
+
+BLOCKER 3 — THE ENTRY'S FACTS ARE THE CALLER'S, AND ONE OF THEM IS MUTATION-PROVED UNSOUND.
+migrate.f's own header (:44-72) names four open dots as the distance between this harness
+and a compiler, and ALL FOUR ARE OPEN: habu-bind-checker-env-ed4f9f87 (the declared arity is
+restated by the caller, not read off the unit the checker certified),
+habu-choose-the-register-a95390ac (the register budget is a hand-chosen number),
+habu-resolve-a-callee-0340dfde (a callee's address AND declared effect are the caller's
+word), habu-parse-a-migrated-b38a83d9 (the definition arrives as an s" literal, not from the
+input stream). None of the four appears in the prerequisite list above.
+habu-resolve-a-callee-0340dfde carries a mutation proof dated 2026-08-02: a body
+`: LIE-W ( n n -- n n ) LIE-DBL ;` whose callee really takes and leaves one value but is
+DECLARED as taking and leaving two selects, allocates, passes the register-allocation
+validator, emits and publishes with NO THROW — because the selector builds both the
+store/load runs and the two byte counts from the same stated arity, so the two derivations
+it holds against each other always agree. Routing production compilation through an entry
+whose callee facts are unchecked caller assertions would make every miscount a silently
+wrong program. That dot is a hard prerequisite of the cut and is not listed as one.
+
+HARD CAPS, measured through the real entry on this tree (not read off constants):
+`: CP-A ( n -- n ) dup + ;` migrates, rc=0. A 559-byte source refuses rc=-8571
+E-NMIGRATE-TEXT (TEXT-CAP 512, migrate.f:96). Also: TAPE-CAP 128 tokens (:97), NAME-CAP 64
+(:103), CALLEES-MAX 4 (:122) — a definition may declare at most FOUR called words — and
+exactly one `create`d data word per migration (DEFINE-DATA, :744; M-DATA-U is a single
+slot). These are buffer sizes and are the least interesting of the blockers; they are
+recorded so a later reader does not mistake them for the reason.
+
+WHAT THIS MEANS FOR THE ORDER. The cut is not phase 4 of a campaign whose earlier phases
+are done; it is the LAST step after the chain becomes a compiler for the language. Ordering
+that follows from the above, none of it started: (1) a no-emit compile mode in the engine so
+a tape exists without the old emitter (unowned — file it); (2) the type substrate for
+aggregates and tagged unions (unowned — file it); (3) the refused control forms and literal
+kinds (unowned — file it); (4) habu-resolve-a-callee-0340dfde, habu-bind-checker-env-ed4f9f87,
+habu-choose-the-register-a95390ac, which together make the entry state nothing the engine
+already knows. Only then does routing EM-COMPILE mean anything, and only then can the
+stdlib-compiles proof, the fixpoint and the sole-path gates be attempted.
+habu-delete-the-old-679cfd35 stays blocked behind all of it.
+
+RECONCILIATION with the two staged-cutover dots, as this leaf asked for.
+habu-cut-over-staged-070d68c8 ("Cut over staged native compiler") and
+habu-self-host-staged-520ab588 ("Self-host staged compiler") are BOTH SUBSUMED BY THIS LEAF
+and should be closed as such rather than extended: each states the same deliverable in the
+older design-document vocabulary (make the staged compiler default; prove a byte-identical
+fixpoint; delete the old direct paths; update the size baseline), each carries acceptance
+criteria phrased against `docs/compiler-ir-design.md` sections rather than against the
+tree, and neither adds a requirement this leaf does not already carry. Keeping three open
+dots for one cut is how the prerequisite list came to be believed complete. They are left
+open here only because closing another lane's dots is not this claim's to do; the
+recommendation is recorded and the merge review should act on it.
+
+ALSO FOUND, not blocking, worth a dot each: docs/compiler-ir-design.md:809-860 ("As
+implemented: the straight-line subset") is badly stale — it says "Five opcodes" where
+hir.f:247-292 now defines 44, and "a source word means one of four things" where hir.f:364-376
+defines 11. src/compiler/native/elaborate.f:10-14 says "the two cell-width memory words"
+where the table has four, and omits floats and calls entirely. A stale statement of what the
+chain compiles is precisely what let this leaf's premise stand unchallenged, and correcting
+it is worth more than it looks.
+
+TWO MORE MEASUREMENTS from the same session, both bearing on the plan above.
+
+PREREQUISITE 5 IS NOT A REORDERING, IT IS AN ADDITION. The leaf says to derive the seed by
+transitive closure from the chain's entry, "ir/* before native/*". Measured: NEITHER
+src/compiler/ir/* NOR src/compiler/native/* appears anywhere in tools/srclist.f or in
+tools/bootstrap.sh's SRC_COMMON. The chain is not in the engine seed at all today - it is
+ordinary runtime-loaded source, reached by `require`. So seeding it is not a matter of
+ordering ir/* ahead of native/*; it is putting roughly 35,000 lines of compiler into the
+image for the first time, with the AOT x9 hazard (ACAP-SCAN-DATA) gating capture exactly as
+this leaf warns. Whoever plans that step should size it as new work, not as a sort.
+
+THE JSON-READ-PERF RATCHET REDS THE GATE AT RANDOM ON THIS HOST, ON EITHER TREE. Measured
+over ten full suite runs, because a first guess at the mechanism was wrong and is corrected
+here rather than left standing.
+The budget is NOT fed by a stored history - `stored=30` is the sample count of the current
+run. Each budget is a hardcoded baseline (lib/json-read-perf-test.f:111-121) plus ten
+percent, scaled by a host calibration factor measured once per run. The factor is a step
+function of the PRE-calibration draw alone, and three draws occur on this host:
+pre=103 gives the raw-decode row budget=130491136, pre=104 gives 131699387, pre=105 gives
+132907638. Nothing else moves it.
+On this host the two production-path rows have no real headroom left after that scaling.
+Ten runs: six on the tree with these two commits (four green, two red) and four on
+unmodified master (four green). Every red is the json-read-perf phase and nothing else. The
+margins are the finding: the worst breach was 0.64%, and the smallest was
+"repeated escape-heavy decode" at fastest=225709500 against budget=225706732 - OVER BY 2768
+NANOSECONDS ON A 225.7 MILLISECOND MEASUREMENT, which is 0.0012%.
+The tree is not the discriminator, and that was checked rather than assumed. This tree drew
+the tight pre=103 budget and PASSED the raw-decode row on it (mine6: fastest=130067375 vs
+130491136); master has simply not drawn the unlucky calibration in four runs. The change in
+these two commits is comments, documentation and one dot leaf; the engine is byte-identical
+across it (aaa8882b before and after a forced fixpoint rebuild), and none of the edited
+files is on the JSON decode path.
+So master is exposed to exactly the same coin flip, and the project's blocking merge gate
+currently reds on measurement noise a fraction of a percent wide. That is worth its own dot
+and is the reason this is written down. It was NOT touched here: retuning a ratchet so that
+one's own change goes green is the move the discipline forbids, and the honest report is
+that this branch is four-green-two-red over six runs for a reason that is not in the diff.
