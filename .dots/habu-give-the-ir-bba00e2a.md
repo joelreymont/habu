@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-08-06T20:14:57.140561+02:00"
 blocks:
-  - habu-key-a64rav-interference-151111d3
 ---
 
 src/compiler/ir/type.f has eight kinds (type.f:120-129): int float pointer quotation code-ref memory-token mask opaque. No vector kind, and it is not among the design's deferred ones either (type.f:19-24 names tuple/layout, register-class, tensor/memref) - so this is a new design entry.
@@ -14,6 +13,7 @@ Shape is already set by the file. Interning is structural over a fixed four-cell
 
 Then the a64 dialect. src/compiler/native/a64ir.f:323-329 names this exact seam in its own words: 'A value of this dialect is a 64-bit general register, a 64-bit floating register, or the memory token... The SIMD register file, labels and fixups are further records of the same dialect and are not here yet; the seam where they arrive is these three readers.' So add VEC-TYPE beside GPR-TYPE/FPR-TYPE/MEM-TYPE (a64ir.f:707/714/724), and a SIMD-TARGET macro beside FP-TARGET (a64ir.f:564-566).
 
-The class must map to F-FPR because the V registers alias the D registers. That is why habu-key-a64rav-interference-151111d3 blocks this: without it, this dot is the change that makes the validator silently stop checking.
 
 Found by agent neon while scoping habu-vectorize-the-byte-a0da35a7.
+
+Unblocked 2026-08-07: the interference file-keying prerequisite landed and closed (e9aa49a4).
