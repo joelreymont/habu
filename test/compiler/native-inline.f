@@ -603,7 +603,7 @@ variable CALLS-BODY-RC
 
 : MIGRATE-SELF ( -- )
    s" : NINL-SELF ( n -- n ) dup 0 > if 1- RECURSE then ;"
-   1 1 REGS NMIGRATE:DEFINE-CALL ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 : BODY-REFUSAL-CASES ( -- )
    s" a callee with a control structure is not recorded" T-LABEL

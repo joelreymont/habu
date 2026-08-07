@@ -1130,10 +1130,18 @@ public
 \ identity of another module and an ordinal it never minted, and the refusal
 \ that comes out is the interner's own, so this path and a caller holding the
 \ symbol rows directly reject the same identity for the same reason.
-: SYMBOL-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
+\ How many bytes one of this module's symbols spells. A caller that is about to
+\ copy the spelling into a fixed buffer asks this first: the copy REFUSES a span
+\ smaller than the symbol, with the interner's own error, and a caller reading a
+\ name the PROGRAM chose rather than one the dialect declared needs to answer
+\ "too long to be a name I can ask about" as an ordinary no rather than a throw.
+: SYMBOL-LEN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
    c b USE {: slot:n :}
-   slot T-SR TAB@ id IR-SYM:LEN@ drop ;
+   slot T-SR TAB@ id IR-SYM:LEN@ ;
+
+: SYMBOL-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
+   SYMBOL-LEN drop ;
 
 \ Byte equality between one of this module's symbols and a presented span. This
 \ is how a caller that knows a spelling checks an identity it was handed without

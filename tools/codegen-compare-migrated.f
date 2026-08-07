@@ -99,7 +99,7 @@ private
 \ frame its caller's return address goes in.
 : FACT ( -- )
    s" : FACT-N ( n -- n ) dup 1 <= if drop 1 exit then dup 1- RECURSE * ;"
-   1 1 LOOP-REGS NMIGRATE:DEFINE-CALL ;
+   1 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 : BYTE-FIND ( -- )
    s" : BYTE-FIND-N ( ptr u8 n n -- n ) {: a:ptr u:n c:n :} u 0 ?do i a + c@ c = if i unloop exit then loop -1 ;"

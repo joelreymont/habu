@@ -519,12 +519,30 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    s" NMG-AFTER" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
 \ ---- a word the chain cannot compile ------------------------------------------
-\ `mod` is not one of the source words the dialect models, so the elaborator
-\ refuses the body by that dialect's own name. The engine has already published
-\ the word at that point, which is exactly the state a refusal has to leave
-\ working.
+\ WHY A NAMED CONSTANT IS THE FIXTURE. A name the dialect does not model is no
+\ longer refused for that alone: src/compiler/native/elaborate.f RESOLVE-SCAN
+\ puts it to the engine, and a word the engine can name and the checker can size
+\ becomes a call. So the body outside the dialect has to be one the chain still
+\ cannot compile after asking, and a `constant` is exactly that. Its published
+\ effect is `-- a`, a bare raw type variable, whose family the checker's exported
+\ enum deliberately does not resolve - so its width in stack cells cannot be
+\ stated here and src/compiler/native/dict.f SPELL-ARITY declines it rather than
+\ guessing. The elaborator then refuses the body by the dialect's own name, and
+\ the engine has already published the word at that point, which is exactly the
+\ state a refusal has to leave working.
+\
+\ IT IS COUPLED TO A CAPABILITY AND THE COUPLING IS DELIBERATE. When dot
+\ habu-export-the-checker-2bbc831c publishes the checker's own cell width, a
+\ constant becomes compilable and this fixture must be changed with it. That is
+\ the point of a fixture: it fails when the thing it describes stops being true.
+\ The constant is published the way every other fixture word this suite migrates
+\ against is published - through the engine's own interpret path - so the bodies
+\ below name it at the same scope they are compiled in.
+: MOD-CONST ( -- )
+   s" 5 constant NMG-K" EV ;
+
 : MOD-SRC ( -- ptr u8 n )
-   s" : NMG-MOD ( n -- n ) dup 5 mod + ;" ;
+   s" : NMG-MOD ( n -- n ) NMG-K + ;" ;
 
 : MIGRATE-MOD ( -- )
    MOD-SRC 1 1 REGS NMIGRATE:DEFINE ;
@@ -534,8 +552,8 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    [: MIGRATE-MOD ;] E-HIR-UNMODELED TTHROWSQ
 
    s" the word the engine published is still there and still runs" T-LABEL
-   s" 12 NMG-MOD" EV-N 14 T=
-   s" 40 NMG-MOD" EV-N 40 T=
+   s" 12 NMG-MOD" EV-N 17 T=
+   s" 40 NMG-MOD" EV-N 45 T=
 
    s" and the publication seam never logged it" T-LABEL
    s" NMG-MOD" GLOBAL-WID NPUB:REPUBLISHED? TFALSE ;
@@ -545,12 +563,12 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
 \ definition is made here and migrated in the case above, which is why the two
 \ halves are separate words: the record has to be read between them.
 : MOD-BEFORE ( -- )
-   s" : NMG-MOD2 ( n -- n ) dup 5 mod + ;" EV
+   s" : NMG-MOD2 ( n -- n ) NMG-K + ;" EV
    s" NMG-MOD2" REC-START OLD-START !
    s" NMG-MOD2" REC-LEN OLD-LEN ! ;
 
 : MIGRATE-MOD2 ( -- )
-   s" : NMG-MOD3 ( n -- n ) dup 5 mod + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NMG-MOD3 ( n -- n ) NMG-K + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : UNTOUCHED-CASE ( -- )
    MOD-BEFORE
@@ -564,7 +582,7 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    s" and the word it refused still runs the code the engine compiled for it" T-LABEL
    ln s" NMG-MOD2" REC-LEN T=
    st 0 T<>
-   s" 12 NMG-MOD3" EV-N 14 T= ;
+   s" 12 NMG-MOD3" EV-N 17 T= ;
 
 \ ---- what the entry itself refuses --------------------------------------------
 \ A source that publishes no definition never opens a scan, so the recorder's own
@@ -1537,7 +1555,7 @@ variable HELD-ND1
 \ so unlike every refusal case above there is no word left behind to keep
 \ running - the correct outcome is that the name does not exist at all.
 : HELD-REFUSED-MIGRATE ( -- )
-   s" : NMG-HELD-BAD ( n -- n ) dup 5 mod + ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
+   s" : NMG-HELD-BAD ( n -- n ) NMG-K + ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
 
 : HELD-REFUSAL-CASE ( -- )
    s" a held body outside the dialect is refused with the dialect's own code" T-LABEL
@@ -1580,7 +1598,7 @@ variable HELD-ND1
 70 constant REJECT-RC                \ src/core/checker.f PKGCTX-REJECT-RC (private there)
 
 : HELD-MOD-MIGRATE ( -- )
-   s" : NMG-HELD-MOD ( n -- n ) dup 5 mod + ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
+   s" : NMG-HELD-MOD ( n -- n ) NMG-K + ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
 
 : HELD-UNDEF-MIGRATE ( -- )
    s" : NMG-HELD-UA ( n -- n ) NMG-NO-SUCH-WORD-A and ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
@@ -1592,11 +1610,11 @@ variable HELD-ND1
    s" a held body outside the dialect names the offending word through the chain's own record" T-LABEL
    NELAB:REFUSED-RESET
    [: HELD-MOD-MIGRATE ;] E-HIR-UNMODELED TTHROWSQ
-   NELAB:REFUSED$ s" mod" T$=
+   NELAB:REFUSED$ s" NMG-K" T$=
 
    s" a refusal the engine raises before elaboration leaves that record standing" T-LABEL
    [: HELD-UNDEF-MIGRATE ;] REJECT-RC TTHROWSQ
-   NELAB:REFUSED$ s" mod" T$=
+   NELAB:REFUSED$ s" NMG-K" T$=
 
    s" so a driver clears the record before each attempt, and then reads no word at all" T-LABEL
    NELAB:REFUSED-RESET
@@ -1609,8 +1627,88 @@ variable HELD-ND1
    s" 1 NMG-HELD-AGAIN" EV-N 10 T=
    NELAB:REFUSED-ROW -1 T= ;
 
+\ ---- a name resolved off the engine, with nothing staged ---------------------
+\ THE CASE THE WHOLE TRANCHE IS ABOUT. Nothing below stages a callee, a data word
+\ or an address. Each body simply NAMES a word, and the chain resolves the name:
+\ src/compiler/native/dict.f answers where its code starts, in the order the
+\ engine resolves that same body, and the CHECKER answers how many cells a call
+\ to it moves. If either answer were wrong the migrated routine would branch
+\ somewhere else or move the wrong number of cells, and the answers below would
+\ not be the answers the engine's own compilation gives.
+\
+\ THE ARITHMETIC IS CHOSEN SO EVERY CELL COUNT MATTERS. RES-ADD3 takes two and
+\ leaves one, so a call site that moved one cell too few or too many would hand
+\ the callee the wrong operand or take back a value nobody produced; the answers
+\ are asymmetric in their arguments, so a swapped or shifted operand shows up as
+\ a different number rather than the same one.
+: RESOLVED-SETUP ( -- )
+   s" : RES-ADD3 ( n n -- n ) + 3 + ;" EV
+   s" variable RES-VAR" EV
+   s" 41 RES-VAR !" EV ;
+
+: MIGRATE-RESOLVED-CALL ( -- )
+   s" : RES-CALLER ( n n -- n ) RES-ADD3 2 * ;" 2 1 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-RESOLVED-DATA ( -- )
+   s" : RES-READ ( -- n ) RES-VAR @ 1 + ;" 0 1 REGS NMIGRATE:DEFINE ;
+
+: RESOLVED-CASE ( -- )
+   RESOLVED-SETUP
+
+   s" a body that NAMES a tree word migrates with nothing staged" T-LABEL
+   MIGRATE-RESOLVED-CALL
+   s" RES-CALLER" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+
+   s" and it computes what the callee really computes, not what a caller said" T-LABEL
+   s" 10 20 RES-CALLER" EV-N 66 T=
+   s" 1 2 RES-CALLER" EV-N 12 T=
+
+   s" a body that NAMES a data word migrates with nothing staged" T-LABEL
+   MIGRATE-RESOLVED-DATA
+   s" RES-READ" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" RES-READ" EV-N 42 T=
+
+   s" and the address it reads is the one that word really pushes" T-LABEL
+   s" 7 RES-VAR !" EV
+   s" RES-READ" EV-N 8 T= ;
+
+\ ---- the resolution is the LIVE dictionary's, not a copy of it ---------------
+\ THE STALENESS CLASS, WHICH IS WHY THE ANSWER IS TAKEN WHERE IT IS USED. A
+\ caller that stated a callee's address stated a number it had looked up a moment
+\ earlier, and nothing downstream could tell that number from a live one once the
+\ callee was retired and redefined somewhere else. Here the callee is redefined
+\ between two migrations of the SAME source text, and the second migration has to
+\ compile against the second callee - not against the first, and not against a
+\ remembered address.
+: STALE-SETUP ( -- )
+   s" : STL-CALLEE ( n -- n ) 10 * ;" EV ;
+
+: STALE-REDEFINE ( -- )
+   s" undefine STL-CALLEE" EV
+   s" : STL-CALLEE ( n -- n ) 100 * ;" EV ;
+
+: MIGRATE-STALE-1 ( -- )
+   s" : STL-A ( n -- n ) STL-CALLEE 1 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-STALE-2 ( -- )
+   s" : STL-B ( n -- n ) STL-CALLEE 1 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: STALE-CASE ( -- )
+   STALE-SETUP
+   s" the first migration compiles against the callee that exists then" T-LABEL
+   MIGRATE-STALE-1
+   s" 5 STL-A" EV-N 51 T=
+
+   s" and after the callee is redefined the NEXT migration follows the new one" T-LABEL
+   STALE-REDEFINE
+   MIGRATE-STALE-2
+   s" 5 STL-B" EV-N 501 T= ;
+
 : RUN ( -- )
    T-RESET
+   MOD-CONST
+   RESOLVED-CASE
+   STALE-CASE
    MIGRATED-CASE
    SPILL-CASE
    CALL-CASE

@@ -94,6 +94,42 @@ private
    dup XREF-FOUND? 0= if drop 0 exit then
    XREF-START ;
 
+\ ---- the same walk, answering the record rather than the code start ----------
+\ WHY THIS EXISTS AT ALL, GIVEN THE WALK ABOVE. Some questions are about the
+\ RECORD and not about the address in its first slot - whether the word runs at
+\ compile time, whether it is engine-internal - and `search-wl` answers the slot,
+\ not the record. So the legs are walked once more with the finder that answers a
+\ record, in the same order.
+\
+\ AND WHY THAT IS NOT A SECOND OPINION. It would be, if either answer were
+\ allowed to stand on its own. `search-wl` is the engine's own primitive and it
+\ closes doors this finder does not - it short-circuits the owner-API private
+\ wordlist to absent (src/habu/habu1.f) - so it stays the authority on WHETHER a
+\ spelling denotes anything here and WHERE. The record found below is used only
+\ for the slots the start does not carry, and it is REFUSED unless its own start
+\ is the start the authority already answered. Two walks that must agree are one
+\ answer with a check on it; the moment they disagree, nothing is compiled. Dot
+\ habu-one-resolver-for-4e9e3e59 carries collapsing them into one walk.
+: OPEN-REC ( ptr u8 n -- ptr a )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   OPEN-PRI 0= if XREF-NULL exit then
+   a u OPEN-PRI XREF-FIND-WL {: pri:ptr :}
+   pri XREF-FOUND? if pri exit then
+   a u OPEN-PUB XREF-FIND-WL ;
+
+: BARE-REC ( ptr u8 n -- ptr a )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u OPEN-REC {: open:ptr :}
+   open XREF-FOUND? if open exit then
+   a u 0 XREF-FIND-WL ;
+
+: SPELL-REC ( ptr u8 n -- ptr a )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u XREF-QUAL-INDEX {: q:n :}
+   q QUAL-BAD = if XREF-NULL exit then
+   q 0 >= if a u q XREF-FIND-QUALIFIED exit then
+   a u BARE-REC ;
+
 \ ---- entering the word the spelling denoted ----------------------------------
 \ THE ONE BOUNDARY THIS FILE NEEDS, AND WHY THE CHECKER CANNOT CERTIFY IT.
 \ `execute` enters a word the dictionary named at run time, so what it consumes
@@ -147,6 +183,130 @@ public
    depth FX-BASE !
    start RUN-WORD
    depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
+
+\ ---- and how many cells a call to it moves --------------------------------
+\ THE THIRD QUESTION, AND IT HAS THE SAME ANSWER-WHERE-IT-IS-USED SHAPE. A call
+\ site has to know how many cells it hands the callee and how many it takes back.
+\ That is not the caller's opinion either: it is what the CHECKER accepted for
+\ that name, and the checker is the only authority on it. A migration that states
+\ the arity itself compiles a routine that moves the wrong number of cells and
+\ nothing downstream refuses it - the selector builds the store run, the load run
+\ and both byte counts from the one stated number, so every derivation it holds
+\ against itself agrees (dot habu-resolve-a-callee-0340dfde, mutation of
+\ 2026-08-02). So the count is read off the checker here, beside the address, and
+\ a caller states a NAME and nothing else.
+\
+\ WHY THE FAMILY OF EVERY TERM IS INSPECTED AND NOT JUST THE COUNTS. The checker
+\ publishes its effect as a count of TERMS, and this file needs a count of CELLS.
+\ They are not the same number: `ptr u8 n` is two terms and two cells, but a term
+\ whose width the projection cannot state may be either. The exported family enum
+\ settles it term by term - EN-CON is a value cell, EN-PTR a pointer, EN-QUOT an
+\ execution token, and each of those is exactly one cell - so a row whose every
+\ fixed term carries one of those three has as many cells as it has terms, PROVED
+\ rather than assumed. A gray term is one the enum deliberately does not resolve
+\ (a raw type variable, a row variable, an atom, a layout parameter), its width
+\ is not recoverable here, and the question is answered absent rather than with a
+\ count that happens to be right for the common case.
+\
+\ WHAT THAT COSTS AND WHERE IT IS BOOKED. A `constant`'s published effect is
+\ `-- a` and a bare raw type variable is gray, so a constant answers absent and a
+\ body naming one is refused rather than compiled against a guessed width. Dot
+\ habu-export-the-checker-2bbc831c carries exporting the checker's own ROW-CELLS -
+\ which knows T-WIDTH and so knows a gray term's width - and retires the
+\ restriction. Until it lands the refusal is fail-closed and named.
+\
+\ The enum is the checker's published ABI (src/core/checker.f, EFAM-*), mirrored
+\ here by value the same way src/core/top-row.f mirrors it as TR-*. Only the one
+\ family this file has to recognise is mirrored.
+0 constant FAM-GRAY
+
+\ The checker's effect store answers only past a trusted boundary: its readers
+\ are sig-less colon words that the seal strips, so checked code reaches them as
+\ compiled calls behind a declared signature. Each boundary is one word wide and
+\ does no deciding - the counting and the refusing above them are ordinary
+\ checked Habu.
+TRUSTED: EFF-TERMS ( ptr u8 n -- n n )
+   EFFECT-QUERY if EFFECT-DIN-N EFFECT-DOUT-N else -1 -1 then ;
+
+TRUSTED: EFF-DIN-FAM ( n -- n )
+   EFFECT-DIN-FAM ;
+
+TRUSTED: EFF-DOUT-FAM ( n -- n )
+   EFFECT-DOUT-FAM ;
+
+\ Whether every fixed term of the row just queried is one the enum resolves, and
+\ so whether that row's term count is its cell count.
+: DIN-ALL-SIZED? ( n -- bool )
+   {: n:n :}
+   n 0 ?do
+      i EFF-DIN-FAM FAM-GRAY = if false unloop exit then
+   loop
+   true ;
+
+: DOUT-ALL-SIZED? ( n -- bool )
+   {: n:n :}
+   n 0 ?do
+      i EFF-DOUT-FAM FAM-GRAY = if false unloop exit then
+   loop
+   true ;
+
+public
+
+\ Where a compiled CALL may branch to for this spelling, or zero when it may not
+\ branch there at all. It answers the ADDRESS rather than a yes, because every
+\ caller that wants the answer wants the address too and asking twice would walk
+\ the dictionary twice for one question.
+\
+\ A NAME IN A BODY IS NOT ALWAYS A CALL, and the two flags that say so are the
+\ two src/compiler/native/publish.f already refuses a publication for, for the
+\ same reason. An IMMEDIATE word runs while the source around it is being
+\ compiled - a body that writes one is asking for something to happen THEN, and a
+\ routine that branches to it at run time does not do that thing late, it does a
+\ different thing entirely. An ENGINE-INTERNAL word has no name past the seal, so
+\ a body naming one is naming something that will not be there. Neither is a
+\ capability this chain is missing, so neither is guessed at: the spelling is
+\ answered not-callable and refused as unmodelled, by name.
+\
+\ THIS IS MEASURED AND NOT ARGUED. Walking every record in a loaded engine and
+\ asking which ones SPELL-START resolves AND SPELL-ARITY sizes - the two answers
+\ that would otherwise be enough to build a call - finds 805 words, and among
+\ them `include` and `require`, both IMMEDIATE, and three RETIRED records. Those
+\ five are exactly what this refuses and nothing else does: without it a body
+\ naming `include` compiles into a routine that branches, at run time, into the
+\ word that loads a file while the compiler is reading one. The internal clause
+\ finds nothing today, and it is kept because it is publish.f's own rule about
+\ publish.f's own flag, and a predicate that answers "may a call branch here"
+\ half way is worse than one nobody has to remember the exceptions to.
+\
+\ A RETIRED RECORD IS THE THIRD, and it is the staleness the caller-stated
+\ address could never see. `forget` and a redefinition retire the old record and
+\ leave its code where it was, so its start is still a perfectly ordinary integer
+\ pointing at instructions nobody can reach by name any more. Asked here, at the
+\ moment the call is compiled, it answers retired and nothing is emitted.
+: CALL-TARGET ( ptr u8 n -- n )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u SPELL-START {: start:n :}
+   start 0= if 0 exit then
+   a u SPELL-REC {: rec:ptr :}
+   rec XREF-FOUND? 0= if 0 exit then
+   rec XREF-START start <> if 0 exit then
+   rec XREF-RETIRED? if 0 exit then
+   rec XREF-FLAGS {: f:n :}
+   f DNAME-INT and 0<> if 0 exit then
+   f DNAME-IMM and 0<> if 0 exit then
+   start ;
+
+-1 constant ARITY-NONE
+
+\ How many cells a call to the word this spelling denotes consumes, and how many
+\ it leaves. ARITY-NONE twice when the checker certified no effect for the name,
+\ or when it certified one whose width this cannot state.
+: SPELL-ARITY ( ptr u8 n -- n n )
+   EFF-TERMS {: din:n dout:n :}
+   din ARITY-NONE = if ARITY-NONE ARITY-NONE exit then
+   din DIN-ALL-SIZED? 0= if ARITY-NONE ARITY-NONE exit then
+   dout DOUT-ALL-SIZED? 0= if ARITY-NONE ARITY-NONE exit then
+   din dout ;
 
 private
 get-current prot-wid-add

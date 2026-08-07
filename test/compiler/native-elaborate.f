@@ -512,18 +512,45 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
    BND [: FUN-BODY ;] IR-CTX:WITH-CONTEXT
    6 T= 0 T= 1 T= 1 T= TTRUE ;
 
+\ ---- the two words this suite is refused by -----------------------------------
+\ WHY A NAMED CONSTANT IS THE FIXTURE. A body word the dialect models no
+\ operation for is no longer refused for that alone: src/compiler/native/
+\ elaborate.f RESOLVE-SCAN puts every unmodelled name to the running engine, and
+\ a word the engine can name and the checker can size becomes a CALL. `negate`
+\ and `mod`, which these fixtures used to be written with, compile that way now.
+\ A `constant` survives being asked and is still refused: its published effect is
+\ `-- a`, a bare raw type variable, whose family the checker's exported enum
+\ deliberately leaves gray, so src/compiler/native/dict.f SPELL-ARITY cannot
+\ state its width in cells and declines it rather than guessing. The elaborator
+\ then refuses the body with the dialect's own code, E-HIR-UNMODELED, and names
+\ that token.
+\
+\ THEY ARE PUBLIC AND THE BODIES SPELL THEM QUALIFIED, because being RESOLVED is
+\ the point. The engine is asked about the spelling the body carries, and a
+\ private word of a package nothing has open answers nothing at all - which would
+\ refuse the body for a reason that has nothing to do with the width, and would
+\ go on refusing it long after the width had stopped being a problem. A public
+\ word named the way any other caller would name it is found, is callable, and is
+\ declined only because its width cannot be stated.
+\
+\ AND THE COUPLING TO THAT MISSING CAPABILITY IS DELIBERATE. When dot
+\ habu-export-the-checker-2bbc831c publishes the checker's own cell width a
+\ constant becomes compilable and these fixtures must change with it. That is
+\ what a fixture is for: it fails when the thing it describes stops being true.
+\
+\ TWO OF THEM, SPELLED DIFFERENTLY AND VALUED DIFFERENTLY, because one case below
+\ refuses two bodies and demands two different answers back.
+public
+5 constant K5
+7 constant K7
+private
+
 \ ---- refusals: what the elaborator will not compile --------------------------
 \ A word the model never declared. To checked source this is the same event as a
-\ declared boundary, and it carries the word model's own name for it. The
-\ spelling is `xor`, not a stack word: the subset's five opcodes are a closed
-\ family with no bitwise operation in it, so modeling `xor` would mean a new
-\ opcode with an elaboration and a lowering behind it, while a new stack word is
-\ only another rename row. That keeps this fixture testing an undeclared word
-\ even as the rename vocabulary grows, which is how `rot` stopped being usable
-\ here.
+\ declared boundary, and it carries the word model's own name for it.
 : UNDEC-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" BAD negate" TEXT!
+   s" BAD NELAB-TEST:K7" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 1 1 NELAB:COLON drop ;
@@ -777,11 +804,11 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 \ down as the refusal leaves it, and these cases read that record back through
 \ the same public entry every other case here uses.
 \
-\ WHAT IS ACTUALLY BEING PROVED, because "the record says `mod`" on its own would
-\ pass just as well against a constant. Three bodies refused for three different
-\ spellings each get their own spelling back, one of them at a row that is not
-\ the first, and one of them a name only the fixture has ever written - so the
-\ answer is read off the tape rather than looked up in the dialect's table.
+\ WHAT IS ACTUALLY BEING PROVED, because "the record says K5" on its own would
+\ pass just as well against a fixed answer. Three bodies refused for three
+\ different spellings each get their own spelling back, one of them at a row that
+\ is not the first, and one of them a name only the fixture has ever written - so
+\ the answer is read off the tape rather than looked up in the dialect's table.
 \
 \ AND THE HOSTILE ONE, which is what the record is really for. A record left over
 \ from an earlier refusal would be indistinguishable from a right answer at the
@@ -803,17 +830,18 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
    TEXT$ {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    a 4 + u 4 - ;
 
-\ A body word the dialect models no operation for. `mod` is arithmetic the subset
-\ has no opcode for, so it stays unmodeled for the same reason `negate` does.
-: MODTOK-BODY ( IR-CTX:ctx -- )
+\ A body word the chain cannot compile - the other of the two constants above, so
+\ that the case which refuses both of them has two different answers to tell
+\ apart.
+: KTOK-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" BAD mod" TEXT!
+   s" BAD NELAB-TEST:K5" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 1 1 NELAB:COLON drop ;
 
-: MODTOK ( -- )
-   BND [: MODTOK-BODY ;] IR-CTX:WITH-CONTEXT ;
+: KTOK ( -- )
+   BND [: KTOK-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ A name no dialect will ever model, three tokens into the body. The two tokens
 \ before it are modeled and leave the vector exactly as deep as it started, so
@@ -867,8 +895,8 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 \ enclosing context of its own for the reason the section above gives: the throw
 \ skips the elaboration's own teardown, so the arenas it left standing are only
 \ reclaimed when something outside it exits normally.
-: MOD-THROWS ( -- )
-   [: MODTOK ;] E-HIR-UNMODELED TTHROWSQ ;
+: K-THROWS ( -- )
+   [: KTOK ;] E-HIR-UNMODELED TTHROWSQ ;
 
 : STR-THROWS ( -- )
    [: STRTOK ;] E-HIR-KIND TTHROWSQ ;
@@ -884,15 +912,15 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 
 : REFUSED-WORD-CASE ( -- )
    s" a body word the dialect cannot compile is named by the record, with its row and its kind" T-LABEL
-   MOD-THROWS
-   NELAB:REFUSED$ s" mod" T$=
+   K-THROWS
+   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
    NELAB:REFUSED-ROW 1 T=
    NTAPE-KIND:NAME NELAB:REFUSED-KIND? TTRUE ;
 
 : REFUSED-OTHER-CASE ( -- )
    s" a different body word gives a different answer, so the record reads the body" T-LABEL
    [: UNDEC ;] E-HIR-UNMODELED TTHROWSQ
-   NELAB:REFUSED$ s" negate" T$= ;
+   NELAB:REFUSED$ s" NELAB-TEST:K7" T$= ;
 
 : REFUSED-LATE-CASE ( -- )
    s" a name only this fixture ever wrote is answered, at the row it stands on" T-LABEL
@@ -910,17 +938,17 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 
 : REFUSED-STALE-CASE ( -- )
    s" a later refusal never answers an earlier refusal's word" T-LABEL
-   BND [: drop MOD-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" mod" T$=
+   BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
    BND [: drop STR-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" mod" T$<>
+   NELAB:REFUSED$ s" NELAB-TEST:K5" T$<>
    NELAB:REFUSED$ s" x" T$=
    NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE ;
 
 : REFUSED-CLEARED-CASE ( -- )
    s" and a definition that compiles leaves no word for a caller to read" T-LABEL
-   BND [: drop MOD-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" mod" T$=
+   BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
    BND [: COMPILES-BODY ;] IR-CTX:WITH-CONTEXT
    NELAB:REFUSED-ROW -1 T=
    NELAB:REFUSED$ nip 0 T=
@@ -933,8 +961,8 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 \ definition that compiled.
 : REFUSED-NONE-CASE ( -- )
    s" a refusal that is not about a token leaves no token named, however recent the last one was" T-LABEL
-   BND [: drop MOD-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" mod" T$=
+   BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
    BND [: drop UNDER-THROWS ;] IR-CTX:WITH-CONTEXT
    NELAB:REFUSED-ROW -1 T=
    NELAB:REFUSED$ nip 0 T= ;
@@ -946,8 +974,8 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 \ away, so a driver that calls it before each attempt starts from nothing.
 : REFUSED-RESET-CASE ( -- )
    s" a caller can throw the record away itself" T-LABEL
-   BND [: drop MOD-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" mod" T$=
+   BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
    NELAB:REFUSED-RESET
    NELAB:REFUSED-ROW -1 T=
    NELAB:REFUSED$ nip 0 T=

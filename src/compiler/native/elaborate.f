@@ -1577,6 +1577,64 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    loop
    LG-FROM @ 0 >=  LG-TO @ 0 <  and if E-NELAB-LOCAL throw then ;
 
+\ ---- the names the dialect does not model, before anything reads the model ----
+\ THE DIALECT IS NOT THE WHOLE VOCABULARY AND NEVER WAS. It models the operations
+\ this chain compiles into instructions; everything else a body names is some
+\ OTHER word, and what a call site needs to know about another word - where its
+\ code starts and how many cells it moves - is a fact of the running engine and
+\ of the checker, not of the dialect. So before any pass reads the word model,
+\ every name in the body that the model does not carry is put to the engine, and
+\ the ones it and the checker can both answer for become callable rows.
+\
+\ THIS IS WHERE THE STAGING WENT. It used to be the CALLER of the migration that
+\ named a body's callees and stated each one's entry address and arity by hand,
+\ up to a fixed ceiling of four. Every one of those facts was already in the
+\ running engine, and a caller that stated one wrongly compiled a routine that
+\ branched somewhere nobody named, or moved the wrong number of cells, with
+\ nothing downstream able to tell - the selector builds the save run, the restore
+\ run and both byte counts from the one stated number, so its derivations always
+\ agree with each other (dot habu-resolve-a-callee-0340dfde). Resolving here
+\ removes the ceiling and the parameter together: a body names a word, and the
+\ answer is taken from the only thing that has it.
+\
+\ AND IT IS A PASS OF ITS OWN RATHER THAN A QUESTION ASKED DURING THE WALK,
+\ because the passes between here and the walk READ the model and decide from it:
+\ MEM-SCAN decides whether an order has to be minted, CROSS-SCAN whether this
+\ body calls at all and so whether its edges carry save runs. A row that appeared
+\ later would make the walk emit a call the pre-scans had already concluded could
+\ not happen, and CALL-LIVE and CALL-CROSS-CK refuse exactly that disagreement -
+\ correctly, because a call with no order live and no crossing counted cannot be
+\ lowered. One model, complete before the first reader, is the only arrangement
+\ in which the scans and the walk are looking at the same program.
+\
+\ DECLINING IS AN ORDINARY ANSWER AND IS NOT AN ERROR. RESOLVE-CALLABLE declines
+\ every spelling the engine and the checker cannot both answer for - a name that
+\ denotes nothing here, one that runs at compile time, one the checker certified
+\ no effect for, one whose effect has a term whose width cannot be stated - and
+\ declining leaves the model exactly as it was, so the token is refused later as
+\ unmodelled, by name, with the capability it waits for recorded. Nothing is
+\ swallowed: the outcome a caller sees is still the admit's.
+\
+\ A NAME THE PROGRAM BOUND TO A LOCAL IS NOT A NAME OF ANYTHING ELSE, so the
+\ declaration group and every mention of a bound local are passed over here for
+\ the same reason the walk passes over them: the body chose that spelling, and a
+\ dictionary word that happens to share it is not what the body means. The locals
+\ pass runs first so that those bindings already exist to be passed over.
+: RESOLVE-STEP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   ix IN-DECL? if exit then
+   ix LOCAL-OF 0 >= if exit then
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? if exit then
+   CTX BLD r sy HIR-WORD:RESOLVE-CALLABLE drop ;
+
+: RESOLVE-SCAN ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena n:n :}
+   n 1 ?do
+      r i RESOLVE-STEP
+   loop ;
+
 \ ---- how far a body token may be from the definition's first ------------------
 \ The ceiling every table keyed by a BODY TOKEN shares - the skeleton's forward
 \ joins and the inline decision below - so the two cannot disagree about which
@@ -3170,6 +3228,7 @@ EXPORT SPLICE-MEANING?
    in IN-N !
    out OUT-N !
    r n LOCALS-SCAN
+   r n RESOLVE-SCAN
    r n INLINE-SCAN
    r n MEM-SCAN
    r n CROSS-SCAN

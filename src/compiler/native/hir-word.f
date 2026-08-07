@@ -628,6 +628,41 @@ public
       id:IR-ID:ir-symbol-id entry:n in:n out:n :}
    c r  c b id BSYM-CK  entry in out CALLABLE-ROW ;
 
+\ Make that row for a spelling nobody staged, by asking the engine about it.
+\
+\ WHY THIS IS THE SAME WORD AS THE ONE ABOVE AND NOT A SECOND ROAD. A body that
+\ names a word the dialect does not model used to be refused unless its caller
+\ had staged the name, the callee's entry address and the callee's arity by hand.
+\ All three of those facts belong to the running engine, and the caller obtained
+\ them from it a moment earlier: two authorities for one fact, with the caller's
+\ copy going stale the instant the callee is retired and redefined, and a stated
+\ arity that disagrees with the certified one compiling a routine that moves the
+\ wrong number of cells with nothing to refuse it. So the spelling is the whole
+\ of the question here too, and the row is built from the engine's own answers -
+\ src/compiler/native/dict.f resolves the entry in the order the engine resolves
+\ the body that wrote the name, and the arity is the effect the CHECKER accepted
+\ for it. There is no parameter left for anyone to answer wrongly.
+\
+\ NO IS AN ORDINARY ANSWER HERE, and that is the difference from the declarers
+\ above. They serve a caller that has already decided a word belongs in the
+\ table; this serves the elaborator meeting a token it has no opinion about yet,
+\ so every way the engine can fail to answer - a spelling too long to be asked
+\ about, one that denotes no word in this scope, one the checker certified no
+\ effect for, one whose certified effect has a term whose width cannot be stated
+\ - answers false and leaves the token to be refused as unmodeled, by name, with
+\ the capability it is waiting for recorded. It never answers a row it guessed.
+: RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id :}
+   c b id IR-BUILD:SYMBOL-LEN FIX-NAME-CAP > if false exit then
+   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   FIX-NAME u NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if false exit then
+   FIX-NAME u NDICT:SPELL-ARITY {: in:n out:n :}
+   in NDICT:ARITY-NONE = if false exit then
+   c b r id entry in out DECLARE-CALLABLE
+   true ;
+
 \ Declare that a source word elaborates to one operation of this dialect. The
 \ arena pair is this table's rows and the module's symbol rows: the second is
 \ the interner that has to have minted the word's spelling.

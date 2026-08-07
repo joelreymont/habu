@@ -51,22 +51,24 @@
 \ from the routine rather than from the caller is dot
 \ habu-choose-the-register-a95390ac.
 \
-\ AND, FOR A DEFINITION THAT CALLS ANOTHER WORD, WHICH WORD IT IS. Its spelling,
-\ the address its code starts at, and its declared effect. All three are already
-\ facts of the running engine - the address is the callee's dictionary record and
-\ the effect is what the checker accepted for it - and reading them off those two
-\ authorities instead of taking them from the caller is dot
-\ habu-resolve-a-callee-0340dfde.
+\ AND, FOR A DEFINITION THAT CALLS ANOTHER WORD, NOTHING AT ALL ANY MORE. The
+\ body names the word and that is the whole of it. Where the callee's code starts
+\ and how many cells a call to it moves are facts of the running engine and of
+\ the checker, and src/compiler/native/elaborate.f RESOLVE-SCAN asks them at the
+\ point they are used, through src/compiler/native/dict.f, for every name in the
+\ body the dialect does not model. There is no parameter left for a caller to
+\ answer wrongly, and no ceiling on how many words a body may call.
 \
-\ THE FIRST TWO OF THE THREE ARE HELD AGAINST EACH OTHER HERE. A spelling and an
-\ address are ONE fact stated twice: the caller obtained the address by resolving
-\ that spelling, and the definition's body reaches the routine by writing that
-\ spelling. So the staging asks the dictionary what the spelling denotes and
-\ refuses an address that is not where that word's code starts
-\ (RESOLVES-TO-ENTRY below). That settles the name, the package it was published
-\ in and the address in one comparison. Until the effect is read off the checker
-\ too, a caller can still state THAT wrongly, and the arity a callee's own
-\ migration recorded is what catches it.
+\ THE STAGING ENTRIES BELOW ARE WHAT IS LEFT OF THE OLD ARRANGEMENT. CALLEE still
+\ takes a spelling, an address and an effect, and DEFINE-CALLING still spends the
+\ list; a caller that uses them can still state an effect that is not the one the
+\ checker certified, which is the lie dot habu-resolve-a-callee-0340dfde was
+\ opened for. Resolution closes that class for every name nobody stages - which
+\ is every name in a body by default - and deleting the staging path outright is
+\ the remaining half of that dot. What holds the staging together meanwhile: a
+\ spelling and an address are ONE fact stated twice, so RESOLVES-TO-ENTRY below
+\ refuses an address that is not where that spelling's word starts, settling the
+\ name, the package it was published in and the address in one comparison.
 
 require lib/prelude.f
 require lib/errors.f
@@ -209,7 +211,6 @@ variable M-DATA-U
 variable M-IN
 variable M-OUT
 variable M-REGS
-variable M-CALLS
 variable M-OPEN                      \ a migration is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
@@ -269,8 +270,19 @@ variable M-HELD-PENDING              \ a held record is waiting to be committed 
    CALLEE-N @
    M-DATA-U @ 0<> if 1+ then ;
 
+\ How many rows the table is committed to, and why that number is read off the
+\ TAPE rather than chosen. The dialect's own words are a fixed count and the
+\ staged extras are counted above, but the elaborator now adds a row for every
+\ name the body writes that the dialect does not model and the engine does
+\ (src/compiler/native/elaborate.f RESOLVE-SCAN). Which names those are is not
+\ known until the body has been read, and the thing that read it is the tape - so
+\ the ceiling is the tape's own token count, which is the most distinct names a
+\ body can possibly write. That makes the table as large as the program needs and
+\ no larger, with no number for anyone to pick: a body that names nothing outside
+\ the dialect never fills the headroom, and one that names a hundred words cannot
+\ run out of it.
 : MODEL-ROWS ( -- n )
-   HIR-WORD:WORDS EXTRA-ROWS + ;
+   HIR-WORD:WORDS EXTRA-ROWS + TAPE NTAPE:TOKENS + ;
 
 : DECLARE-DATA ( IR-ARENA:arena -- ) {: r:IR-ARENA:arena :}
    M-DATA-U @ 0= if exit then
@@ -542,8 +554,13 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ contain none. The module is what the contract has to describe - the selector
 \ holds the two against each other and refuses a frame reserved for a call that
 \ is not there - so the contract is read off the pass that built the module.
-\ CALLS-CK below keeps the other direction, which is still the caller's to get
-\ wrong: a migration entered as one that calls nothing may not have staged one.
+\
+\ THERE IS NO LONGER A SECOND DIRECTION TO KEEP. A check used to refuse a
+\ migration whose body called when the caller had not entered it as one that
+\ calls. That was never a fact about the definition, only a test of whether the
+\ caller had predicted the walk; and now that a body's names resolve off the
+\ dictionary, any body may turn out to call and no caller can predict it. It went
+\ with the flag it read.
 \
 \ AND HOW MUCH FRAME IT TAKES, which is the one thing stated here that is nobody's
 \ declaration. How many values a definition cannot keep in its registers is
@@ -562,10 +579,6 @@ variable REC-OK                      \ the body staged so far is still one worth
       0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:CALL-FRAMED exit
    then
    0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:LEAF-FRAMED ;
-
-: CALLS-CK ( -- )
-   M-CALLS @ 0<> if exit then
-   NELAB:CALLED? if E-NMIGRATE-STATE throw then ;
 
 : A64-BUILDER ( -- IR-BUILD:builder )
    IR-BUILD:PLAN-DEFAULT
@@ -720,10 +733,18 @@ variable REC-OK                      \ the body staged so far is still one worth
    then
    NAME-BUF NAME-U @ wid NPUB:REPUBLISH ;
 
+\ THE MODEL IS BUILT AFTER THE TAPE AND NOT BEFORE IT. It used to be built first,
+\ because everything in it was known before the body was read: the dialect's own
+\ words, and whatever the caller had staged. Neither of those is the whole table
+\ any more - the elaborator adds a row for each name the body writes that the
+\ engine can answer for - so the table has to be sized from the body, and the
+\ body is the tape. Nothing between the two ever needed the model: the engine's
+\ own compilation of the source is what RECORD runs, and it knows nothing about
+\ this chain's vocabulary.
 : WORK ( -- )
    CC HIR-MOD 0 M-BLD !
-   MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    RECORD {: before:n :}
+   MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    before SOURCE-PUBLICATION-CK
    LATEST-WID {: wid:n :}
    wid RESOLUTION-CK
@@ -731,7 +752,6 @@ variable REC-OK                      \ the body staged so far is still one worth
    wid NAME-WID !
    HELD-TAKEN
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop
-   CALLS-CK
    r STAGE-BODY
    EMITTED
    SIZE-CK
@@ -827,7 +847,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
    in M-IN ! out M-OUT ! regs M-REGS !
-   0 M-DATA-U ! 0 M-CALLS ! 0 M-SPILLS !
+   0 M-DATA-U ! 0 M-SPILLS !
    0 M-HELD ! 0 M-HELD-PENDING ! ;
 
 public
@@ -856,13 +876,6 @@ public
    1 M-HELD !
    RUN ;
 
-\ The same for a definition that calls itself.
-: DEFINE-CALL ( ptr u8 n n n n -- )
-   CALLEES-NONE-CK
-   STAGE
-   1 M-CALLS !
-   RUN ;
-
 \ Stage one word the NEXT migration's definition calls: its spelling as the
 \ definition writes it, the address its code starts at, and the effect it
 \ declares. The spelling is COPIED, because it is a span of the caller's memory
@@ -887,17 +900,21 @@ public
    cout k cells CALLEE-OUT + !
    k 1+ CALLEE-N ! ;
 
-\ Migrate a definition that CALLS the words staged above it. The routine's
-\ contract declares the direct call for the same reason DEFINE-CALL's does - the
-\ first call destroys this routine's caller's return address, so it has to have a
-\ frame to keep it in - and it is the SAME declaration, because a routine that
-\ calls itself and a routine that calls somebody else pay exactly the same thing
-\ for it. A migration with no callee staged is refused: it would be DEFINE.
+\ Migrate a definition that CALLS the words staged above it. A migration with no
+\ callee staged is refused: it would be DEFINE.
+\
+\ NOTHING IS DECLARED ABOUT THE FRAME HERE ANY MORE. This entry used to raise a
+\ flag saying "this definition calls", and a migration whose body called without
+\ it was refused. The flag was never the fact: ROUTINE picks the frame from
+\ NELAB:CALLED?, which is what the WALK found, and the refusal only checked that
+\ the caller had predicted the walk correctly. Once a body's names resolve off
+\ the dictionary a caller cannot predict it at all - any body may turn out to
+\ call - and the prediction was redundant the whole time, because the frame was
+\ already derived from the walk that knows.
 : DEFINE-CALLING ( ptr u8 n n n n -- )
    {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    CALLEE-N @ 0= if E-NMIGRATE-STATE throw then
    sa su in out regs STAGE
-   1 M-CALLS !
    RUN ;
 
 \ The same for a definition that names one `create`d data word. Its spelling as

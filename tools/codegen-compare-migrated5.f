@@ -66,45 +66,38 @@ private
 
 \ The pure shape: one call, in tail position, and nothing else.
 : TAIL-BIG ( -- )
-   s" C5-LONG-N" s" CODEGEN-CORPUS5:C5-LONG-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : TAIL-BIG-N ( n -- n ) C5-LONG-N ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ Work before the tail call.
 : TAIL-WORK ( -- )
-   s" C5-LONG-N" s" CODEGEN-CORPUS5:C5-LONG-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : TAIL-WORK-N ( n -- n ) 1 + C5-LONG-N ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ The control: work after the call, so the call is not in tail position.
 : NONTAIL ( -- )
-   s" C5-LONG-N" s" CODEGEN-CORPUS5:C5-LONG-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : NONTAIL-N ( n -- n ) C5-LONG-N 1 + ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ The second copy of the pure shape, and the callee of TAIL-CHAIN-N.
 : TAIL-MID ( -- )
-   s" C5-LONG-N" s" CODEGEN-CORPUS5:C5-LONG-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : TAIL-MID-N ( n -- n ) C5-LONG-N ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ A tail call to a word that is itself nothing but a tail call.
 : TAIL-CHAIN ( -- )
-   s" TAIL-MID-N" s" CODEGEN-CORPUS5:TAIL-MID-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : TAIL-CHAIN-N ( n -- n ) TAIL-MID-N ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ The pure shape at arity (2 -> 2).
 : TAIL-PAIR ( -- )
-   s" C5-PAIR-N" s" CODEGEN-CORPUS5:C5-PAIR-N" CODEGEN-COMPARE:CODE-ENTRY 2 2 NMIGRATE:CALLEE
    s" : TAIL-PAIR-N ( n n -- n n ) C5-PAIR-N ;"
-   2 2 REGS NMIGRATE:DEFINE-CALLING ;
+   2 2 REGS NMIGRATE:DEFINE ;
 
 \ A real call and then a tail call.
 : TAIL-AFTER ( -- )
-   s" C5-LONG-N" s" CODEGEN-CORPUS5:C5-LONG-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : TAIL-AFTER-N ( n -- n ) C5-LONG-N C5-LONG-N ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 public
 
