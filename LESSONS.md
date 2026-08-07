@@ -5436,3 +5436,17 @@ slow); and measuring finished code undercounts a pre-allocation
 optimisation - register reuse hides fusions, so a post-allocation inventory
 is a floor, not a prediction.
 
+## A stronger comment than its code is a defect report (2026-08-07)
+
+Two headers in the register allocator described the file rule - a register
+is a file and a number, interference is a same-file question - while the
+code keyed on value class, correct only by the accident that class and file
+were in bijection. The comment was the specification; the code was the bug.
+When prose states a stronger invariant than the code implements, believe the
+prose and fix the code (or fix the prose and say why the weaker rule is
+right, as the coalescing case here deliberately did). And mutate with a
+PLAUSIBLE WRONG MODEL, not an arbitrary edit: giving the allocator the
+belief that V is a third register file produced exactly the silent
+wrong-code failure the future risked, which an arbitrary line flip would
+not have shown.
+
