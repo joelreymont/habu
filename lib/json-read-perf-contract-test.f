@@ -4,15 +4,20 @@
 \ sample table the provider's own verdicts read. Nothing here re-implements a
 \ budget, a median or a verdict: every probe runs the real words and only reads
 \ back how many assertions failed. What it proves:
-\   - MEASURE really stores eighteen samples, three per workload, none of them
-\     zero, and its warm-up correctness probes pass on the production path.
+\   - MEASURE really stores a full round-major table - one sample per round for
+\     each of the six workloads AND the reference - none of them zero, and its
+\     warm-up correctness probes pass on the production path.
 \   - REPORT fails all six verdicts closed while the sample table is incomplete,
 \     so a skipped MEASURE can never look like a pass.
 \   - A complete, fast sample set passes all six, and one slowed workload turns
 \     exactly one verdict red.
 \   - The red verdict is the slowed workload's own, checked for all six.
-\   - Each workload is judged against its own recorded baseline, which the known
-\     order of those baselines pins.
+\   - MULTIPLYING EVERY SLOT, workloads and reference alike, by 2 and by 97
+\     moves no verdict. That is the property the ratio exists to provide - a
+\     slower machine must not be able to fail a tree - and the old absolute
+\     budgets could not have survived either factor.
+\   - Each workload is judged against its own recorded ratio, which the known
+\     order of those ratios pins.
 \   - Every verdict is published as an evidence line, not just counted.
 \   - Storing a sample out of order, an extra sample past the table, or a read outside the
 \     table is refused with a named code.
@@ -25,28 +30,61 @@ package JSON-READ-PERF-TEST
 private
 
 \ ---- synthetic sample values ----------------------------------------------
-1 constant FAST-NS                    \ one nanosecond is under every budget
+\ Verdicts are ratios now, so a synthetic table needs a reference to be a ratio
+\ AGAINST. Every row's value is chosen relative to this one number, which is why
+\ it is named and not spelled out at each use.
+1000000 constant REF-NS               \ the reference's synthetic sample
 WORK-N constant NO-SLOW               \ "slow workload" argument naming no workload
 
-\ A sample this large is over budget under any calibration: the calibration
-\ factor is clamped at T-BUDGET-MAX-PCT and the widest headroom any workload
-\ carries is HEADROOM-PCT, so this is one nanosecond past the largest budget the
-\ provider can compute for its largest baseline.
+: ROW-RATIO ( n -- n ) {: work:n :}   \ this row's recorded ratio
+   work ROW {: base:n pct:n :}
+   2drop                              \ the workload name is not needed here
+   base ;
+
+\ A passing time for this row: the one that reproduces its RECORDED ratio
+\ exactly. Deliberately not "1". A trivially small sample divides to a ratio of
+\ zero, which is under every ceiling by construction - it would make the fast
+\ table and the scaling cases below pass without ever exercising the division
+\ they exist to test. This value makes the arithmetic do real work and leaves
+\ exactly the headroom margin between the row and its ceiling.
+: FAST-NS ( n -- n ) {: work:n :}
+   work ROW-RATIO REF-NS * RATIO-SCALE / ;
+
+\ A sample this large is over budget for EVERY row: it is one part past the
+\ largest ceiling the provider can compute (the largest recorded ratio widened
+\ by the headroom), converted back into a time against REF-NS. Derived from the
+\ table rather than written down, so a re-recorded ratio cannot leave a
+\ hand-picked constant behind that no longer clears the bar.
 : SLOW-NS ( -- n )
-   ESC-BASE HEADROOM-PCT * PCT-DEN /
-   T-BUDGET-MAX-PCT * PCT-DEN / 1+ ;
+   ESC-RATIO HEADROOM-PCT * PCT-DEN / 1+
+   REF-NS * RATIO-SCALE / ;
 
 : SAMPLE-VALUE ( n n -- n ) {: work:n slow:n :}
+   work REF-ID = if REF-NS exit then
    work slow = if SLOW-NS exit then
-   FAST-NS ;
+   work FAST-NS ;
 
 \ Complete table in the store's own round-major order: each round stores one
-\ sample of every workload, exactly the order MEASURE takes them in.
+\ sample of every slot, the reference included, exactly the order MEASURE takes
+\ them in.
 : FILL ( n -- ) {: slow:n :}          \ complete table; workload `slow` is over budget
    SAMPLES-CLEAR
    SAMPLE-N 0 ?do
-      WORK-N 0 ?do
+      SLOT-N 0 ?do
          i slow SAMPLE-VALUE  i SAMPLE+
+      loop
+   loop ;
+
+\ The same table with every slot - workloads AND reference - multiplied by the
+\ same factor, which is exactly what a slower machine does to a measurement.
+\ Every ratio is unchanged by construction, so every verdict must be too. This
+\ is the one property the whole design exists for, and it is asserted rather
+\ than assumed.
+: FILL-SCALED ( n -- ) {: k:n :}
+   SAMPLES-CLEAR
+   SAMPLE-N 0 ?do
+      SLOT-N 0 ?do
+         i NO-SLOW SAMPLE-VALUE k *  i SAMPLE+
       loop
    loop ;
 
@@ -67,13 +105,13 @@ create SEEN-N WORK-N cells allot      \ per slowed workload: how many verdicts w
       work i SAMPLE@ 0 > if POSITIVE-N @ 1+ POSITIVE-N ! then
    loop ;
 
-: PROBE-MEASURE ( -- )                \ the real six workloads, once
+: PROBE-MEASURE ( -- )                \ the real six workloads and the reference, once
    T-RESET
    MEASURE
    T-FAILURES MEASURE-RED !
    TAKEN @ MEASURE-TAKEN !
    0 POSITIVE-N !
-   WORK-N 0 ?do i POSITIVE-WORK loop ;
+   SLOT-N 0 ?do i POSITIVE-WORK loop ;
 
 : REPORT-RED ( -- n )                 \ verdicts REPORT fails against the current table
    T-RESET
@@ -112,14 +150,14 @@ create SEEN-N WORK-N cells allot      \ per slowed workload: how many verdicts w
 \ ---- sample-table misuse --------------------------------------------------
 : BAD-EXTRA ( -- )                    \ a sample past the full table belongs to no workload
    NO-SLOW FILL
-   FAST-NS MISS-ID SAMPLE+ ;
+   REF-NS MISS-ID SAMPLE+ ;
 
 : BAD-ORDER ( -- )                    \ a round stores the workloads in order; a jump skips one
    SAMPLES-CLEAR
-   FAST-NS LONG-ID SAMPLE+ ;
+   REF-NS LONG-ID SAMPLE+ ;
 
 : BAD-WORK ( -- )
-   WORK-N 0 SAMPLE@ drop ;
+   SLOT-N 0 SAMPLE@ drop ;
 
 : BAD-SLOT ( -- )
    SMALL-ID SAMPLE-N SAMPLE@ drop ;
@@ -132,7 +170,7 @@ create SEEN-N WORK-N cells allot      \ per slowed workload: how many verdicts w
    SEEN-N work cells + @ 1 T= ;
 
 : CHECK-MEASURE ( -- )
-   s" MEASURE stores a full round-major sample table for the six workloads" T-LABEL
+   s" MEASURE stores a full round-major table for the workloads and the reference" T-LABEL
    MEASURE-TAKEN @ SAMPLE-TOTAL T=
    s" every stored sample is a positive elapsed time" T-LABEL
    POSITIVE-N @ SAMPLE-TOTAL T=
@@ -147,26 +185,54 @@ create SEEN-N WORK-N cells allot      \ per slowed workload: how many verdicts w
    s" REPORT reports exactly one red verdict for one slowed workload" T-LABEL
    ONE-RED @ 1 T= ;
 
-\ The recorded baselines are all different and their order is known, so reading
+\ ---- the property the ratio exists for -------------------------------------
+\ A slower machine multiplies every timed slot by the same factor. If a verdict
+\ can be moved by that, the ratchet is still measuring the box. Two very
+\ different factors are used because one could pass by arithmetic accident;
+\ SLOW-FACTOR is far past the calibration clamp the old absolute budgets used to
+\ need, so a run this slow could not have been judged at all before.
+2 constant SLOW-FACTOR
+97 constant ODD-FACTOR                \ not a power of two, so no shift hides a bug
+
+variable SCALED-RED                   \ verdicts REPORT fails on a uniformly slowed table
+variable ODD-RED
+
+: PROBE-SCALE ( -- )
+   SLOW-FACTOR FILL-SCALED REPORT-RED SCALED-RED !
+   ODD-FACTOR FILL-SCALED REPORT-RED ODD-RED ! ;
+
+: CHECK-SCALE ( -- )
+   s" a machine twice as slow moves no verdict" T-LABEL
+   SCALED-RED @ 0 T=
+   s" a machine 97 times as slow moves no verdict" T-LABEL
+   ODD-RED @ 0 T= ;
+
+\ The recorded ratios are all different and their order is known, so reading
 \ each workload's budget back through the real ROW and BUDGET words pins which
-\ baseline each workload is judged against: swap any two rows of the table and
+\ ratio each workload is judged against: swap any two rows of the table and
 \ one of these comparisons turns false.
 : WORK-BUDGET ( n -- n ) {: work:n :}
    work ROW {: base:n pct:n :}
    2drop                              \ the workload name is not needed here
    base pct BUDGET ;
 
+\ The order is ESC > RAW > LONG > MISS > HIT > SMALL. The long stream sits high
+\ for a structural reason worth naming: every other slot's sub-run is a fraction
+\ of its iteration count, but one 10,000-value parse cannot be cut in half, so
+\ the long row's sub-run is a whole parse while the reference's shrank with
+\ SLOT-CHUNKS. Its ratio is therefore against a smaller denominator than the
+\ others and is not comparable to them - only to its own recorded value.
 : CHECK-BUDGET-ORDER ( -- )
-   s" escape-heavy decode is judged against the largest baseline" T-LABEL
+   s" escape-heavy decode is judged against the largest ratio" T-LABEL
    ESC-ID WORK-BUDGET RAW-ID WORK-BUDGET > TTRUE
-   s" raw string decode is judged above both key searches" T-LABEL
-   RAW-ID WORK-BUDGET MISS-ID WORK-BUDGET > TTRUE
+   s" raw string decode is judged above the long stream" T-LABEL
+   RAW-ID WORK-BUDGET LONG-ID WORK-BUDGET > TTRUE
+   s" the long stream is judged above both key searches" T-LABEL
+   LONG-ID WORK-BUDGET MISS-ID WORK-BUDGET > TTRUE
    s" the key-search miss is judged above the key-search hit" T-LABEL
    MISS-ID WORK-BUDGET HIT-ID WORK-BUDGET > TTRUE
    s" the key-search hit is judged above the small documents" T-LABEL
-   HIT-ID WORK-BUDGET SMALL-ID WORK-BUDGET > TTRUE
-   s" the small documents are judged above the long stream" T-LABEL
-   SMALL-ID WORK-BUDGET LONG-ID WORK-BUDGET > TTRUE ;
+   HIT-ID WORK-BUDGET SMALL-ID WORK-BUDGET > TTRUE ;
 
 \ REPORT renders each evidence line through the shared string builder, so the
 \ line for the last workload is still there when REPORT returns. Reading it back
@@ -211,6 +277,7 @@ create SEEN-N WORK-N cells allot      \ per slowed workload: how many verdicts w
    CHECK-MEASURE
    CHECK-REPORT
    WORK-N 0 ?do i CHECK-ROW loop
+   CHECK-SCALE
    CHECK-BUDGET-ORDER
    CHECK-LINE
    CHECK-MISUSE ;
@@ -220,6 +287,7 @@ create SEEN-N WORK-N cells allot      \ per slowed workload: how many verdicts w
 PROBE-MEASURE
 PROBE-REPORT
 PROBE-ROWS
+PROBE-SCALE
 
 T-RESET
 CHECK-ALL

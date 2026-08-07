@@ -304,9 +304,65 @@ Global exec/fork totals are diagnostic census values, not performance limits:
 process API tests intentionally launch large fixed matrices, and co-located
 reapers depend on whether a case runs inside a pool worker. Tail child timeouts
 use bounded `HB_LOAD_PCT`, including the structural pool-pressure floor;
-performance ratchets use measured `HB_CAL_PCT` only, preserving the nominal
-8/10-second limits on an idle full gate. Per-owner ratchets catch semantic
-engine-boot regressions without conflating those contracts.
+the remaining wall-clock ratchets — the engine runtime slice, both stdlib tail
+ratchets and the MATCH compile bench — use measured `HB_CAL_PCT` only,
+preserving the nominal 8/10-second limits on an idle full gate. Per-owner
+ratchets catch semantic engine-boot regressions without conflating those
+contracts.
+
+## json-read ratchet ratios
+
+The six JSON-reader benchmarks do **not** read `HB_CAL_PCT`, and must not. They
+are judged as ratios against a frozen reference workload timed in the same
+interleaved rounds (`lib/json-read-perf-test.f`), so the machine's speed appears
+in both terms and divides out instead of being compensated for.
+
+Two rules make the ratio mean anything, and both were established by
+measurement rather than argument:
+
+- **The reference must have the workloads' shape.** A flat byte-scan reference
+  made the verdicts *worse* than no reference on four of six rows. This host has
+  8 performance and 4 efficiency cores, and each loop shape has its own penalty
+  between them, so a wrong-shaped reference compounds core placement rather than
+  cancelling it — the same defect that disqualified the register-only
+  calibration spin. The reference copies the reader's silhouette: a per-item
+  call, a byte-at-a-time classify-and-copy, a teardown.
+- **Both terms must be measured the same way.** Timing the reference as the
+  fastest of ten short sub-runs while timing each workload as one long run let
+  the denominator find quiet gaps the numerator could not, and a *healthy* tree
+  red five of six rows under load. Every slot is now the fastest of
+  `SLOT-CHUNKS` sub-runs of a tenth of its own work.
+
+- **Sub-runs must be short enough to fit between interruptions.** Timing each
+  slot as one long run left a 7.8–12.8% spread and red healthy trees inside the
+  real gate whenever ambient load rose — two of five consecutive gate runs, on
+  an unchanged tree. Cutting every slot into `SLOT-CHUNKS` = 40 short sub-runs
+  and keeping the fastest collapsed the spread to under 1%.
+
+**Recorded basis (2026-08-07, macOS arm64).** Medians of 8 healthy measurements
+taken with a foreign build already on half the cores (load ~12, calibration spin
+158–170 ms); no quiet window was sought. Full spread per row at that load was
+0.4–0.6%; under twelve extra busy loops (load ~32) the worst observation sat
+8.1% above its median. `HEADROOM-PCT` is bounded by that loaded tail below
+(~108) and by the smallest demonstrated regression above (~115, escape-heavy at
++15.5%); 112 sits between them. Re-record only with a fresh basis written the
+same way.
+
+**Provenance, recorded as fact.** The wall-clock baselines these replaced named
+parents `83fae24d6628` and `aa2a169469ad`. Neither commit resolves in this repo.
+The four suspect decode-path commits that *do* resolve
+(`bc6b49080b49`, `ddb4f44c8a18`, `82fa49c1f160`, `d32daa5bbd0e`) can no longer
+be compiled: the checker has since tightened and rejects their `lib/json-read.f`
+(`in push: at 'c!' expected: u8 ptr u8 actual: n ptr n`). There is therefore no
+tree to re-measure and no source that can be timed on the current engine, so
+**whether the reader regressed against the old numbers is unanswerable**, and
+nothing in the current ratios should be read as having answered it. Continuity
+to the old baselines is broken; the first honest ratchet starts here.
+
+**Known limit.** The class reliably separated starts near fifteen percent, set
+by the loaded tail rather than the quiet resolution — on a quiet host these rows
+resolve to better than one percent, so a tighter headroom is available to anyone
+willing to record the basis for one.
 
 Generated stats, caches, build images, and test logs remain local artifacts and
 are never committed. Standalone snapshot-launcher tooling is not part of the
