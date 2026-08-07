@@ -5479,3 +5479,19 @@ reference actually emitted and why - a byte win bought by keeping a call
 the reference removed may be a time loss, and the time column adjudicates
 policy differences.
 
+## Brief from the file, and publish the dot before the lane (2026-08-07)
+
+A lane was dispatched to build a per-call-site inline cost model that the
+tree already had - inline.f SMALL? decides from measured post-selection
+size against the convention-derived overhead, landed earlier and recorded
+in this very file, and the briefing orchestrator wrote the premise from
+memory instead of re-reading the owning file. The same dispatch named a dot
+that existed only in an unpublished working-copy commit, so the worker
+found nothing to claim. Two rules, both old, both violated at once: a
+brief's premises come from the tree as it stands (re-read the owning file
+the same day), and dot metadata publishes BEFORE any lane depends on it.
+The lane's refusal to build was correct and cheap; the wasted dispatch was
+the fee. Bonus finding from the same refusal: TINY-CALLEE's gap is clang
+CLOSED-FORMING the loop, not inlining - the gap table without mechanism
+attribution mis-aimed the whole plan's first item.
+
