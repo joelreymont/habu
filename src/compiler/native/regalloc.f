@@ -236,14 +236,30 @@ private
 \ and both are number zero - so every table below that is keyed by a register is
 \ keyed by the file and the number together, and a class that lives in no file
 \ has no row at all rather than a row nothing writes.
+\
+\ THE FILE IS WHAT EVERY POOL AND EVERY HOLDER QUESTION BELOW IS ASKED OF, never
+\ the class. The two agree today, one class per file, and they stop agreeing the
+\ moment one file holds two classes - this machine's vector registers are the
+\ floating ones, v3 and d3 being one register - at which point a class-keyed pool
+\ hands out registers another class is already holding. So the map is read once,
+\ here, and everything downstream carries the file it answered. A class the map
+\ does not name is refused rather than defaulted onto the general file, which is
+\ what makes adding a class a loud failure instead of a quiet one.
 2 constant FILES-N
 0 constant F-GPR
 1 constant F-FPR
+
+\ The class is held in no register file at all. It is an answer and not a
+\ refusal, because "which file is this value's" is asked of every value the
+\ routine has, and the memory token's honest answer is "none" - while a class
+\ this map has never heard of is still a refusal.
+-1 constant NOFILE
 
 : FILE-OF ( n -- n )
    {: cls:n :}
    cls C-GPR = if F-GPR exit then
    cls C-FPR = if F-FPR exit then
+   cls C-TOKEN = if NOFILE exit then
    E-A64RA-CLASS throw ;
 
 \ This value is in no slot.
@@ -340,11 +356,14 @@ create PL-VAL PLMAX cells allot
 \ ---- the slots, read back ----------------------------------------------------
 \ The registers of one file this routine may hand out. Two pools, asked the same
 \ way of two contract fields, because a shortage in one file is not relieved by a
-\ free register in the other.
+\ free register in the other. Each file is named and there is no default arm: a
+\ file this word does not know would otherwise be handed the general registers
+\ and hand them out twice.
 : POOL-BITS ( n -- n )
-   {: cls:n :}
-   cls C-FPR = if 0 S-FPOOL @ A64EFF:FPRS-N exit then
-   0 S-POOL @ A64EFF:GPRS-N ;
+   {: fl:n :}
+   fl F-FPR = if 0 S-FPOOL @ A64EFF:FPRS-N exit then
+   fl F-GPR = if 0 S-POOL @ A64EFF:GPRS-N exit then
+   E-A64RA-CLASS throw ;
 
 \ ---- the per-value tables ----------------------------------------------------
 \ Every table is keyed by the value's own module-local ordinal, so a value of
@@ -359,6 +378,7 @@ create PL-VAL PLMAX cells allot
 : REG-AT ( n -- n )                  cells V-REG + @ ;
 : SET-AT ( n -- n )                  cells V-SET + @ ;
 : CLS-AT ( n -- n )                  cells V-CLS + @ ;
+: FILE-AT ( n -- n )                 CLS-AT FILE-OF ;
 : SLOT-AT ( n -- n )                 cells V-SLOT + @ ;
 
 : DECL-IX ( n n -- n )               {: d:n k:n :} d VMAX * k + ;
@@ -372,10 +392,28 @@ create PL-VAL PLMAX cells allot
 : CLS! ( n n -- )                    {: v:n k:n :} v k cells V-CLS + ! ;
 : SLOT! ( n n -- )                   {: v:n k:n :} v k cells V-SLOT + ! ;
 
-: RIX ( n n -- n )                   {: cls:n r:n :} cls FILE-OF REGS-N * r + ;
+\ The holder table's key is a register, and a register is a file and a number.
+\ The file is checked against the table's own shape here rather than trusted from
+\ the caller: this is the one row arithmetic in the pass, NOFILE is a real answer
+\ FILE-OF gives, and a row index off either end would be a quiet write into
+\ whatever is next in the dictionary.
+: RIX ( n n -- n )
+   {: fl:n r:n :}
+   fl 0 < fl FILES-N >= or if E-A64RA-CLASS throw then
+   r 0 < r REGS-N >= or if E-A64RA-CLASS throw then
+   fl REGS-N * r + ;
 
 : HOLD-AT ( n n -- n )               RIX cells R-HOLD + @ ;
-: HOLD! ( n n n -- )                 {: v:n cls:n r:n :} v cls r RIX cells R-HOLD + ! ;
+: HOLD! ( n n n -- )                 {: v:n fl:n r:n :} v fl r RIX cells R-HOLD + ! ;
+
+\ Every register of every file holds nothing. Written once and used by both the
+\ walk's own reset and the start of each scan, and it loops over the FILES rather
+\ than naming them, so a file added to the map above is cleared without this word
+\ being touched.
+: HOLDERS-CLEAR ( -- )
+   FILES-N 0 ?do
+      REGS-N 0 ?do NOBODY j i HOLD! loop
+   loop ;
 
 : TABLES-CLEAR ( -- )
    VMAX 0 ?do
@@ -387,8 +425,7 @@ create PL-VAL PLMAX cells allot
       NOSLOT i SLOT!
       DECLS-N 0 ?do NOBODY i j DECL! loop
    loop
-   REGS-N 0 ?do NOBODY C-GPR i HOLD! loop
-   REGS-N 0 ?do NOBODY C-FPR i HOLD! loop
+   HOLDERS-CLEAR
    0 N-PLAN !
    0 N-SLOTS ! ;
 
@@ -499,13 +536,18 @@ create PL-VAL PLMAX cells allot
    id 0 BND-ENTRY @ ATTR-INT-OF NOATTR = if false exit then
    id CALL-AT? 0= ;
 
+\ What a call leaves alone in ONE file. Named per file with no default arm, for
+\ POOL-BITS' reason: a file this word does not know would be held against the
+\ record of what the callee does to the GENERAL registers, and a value of it
+\ would be left across the call looking safe.
 : CALL-BITS ( IR-ID:ir-op-id n -- n )
-   {: id:IR-ID:ir-op-id cls:n :}
+   {: id:IR-ID:ir-op-id fl:n :}
    id 0 BND-ENTRY @ ATTR-INT-OF {: e:n :}
-   e NOATTR = if cls POOL-BITS exit then
-   cls C-FPR = if
+   e NOATTR = if fl POOL-BITS exit then
+   fl F-FPR = if
       e 0 S-FPOOL @ NCLOB:FPR-CLOB A64EFF:FPRS-N exit
    then
+   fl F-GPR = 0= if E-A64RA-CLASS throw then
    e 0 S-POOL @ NCLOB:GPR-CLOB A64EFF:GPRS-N ;
 
 : FORBIDDEN? ( n n -- bool )
@@ -534,8 +576,8 @@ create PL-VAL PLMAX cells allot
    n N-VALS ! ;
 
 : POOL-HAS? ( n n -- bool )
-   {: cls:n r:n :}
-   cls POOL-BITS 1 r lshift and 0<> ;
+   {: fl:n r:n :}
+   fl POOL-BITS 1 r lshift and 0<> ;
 
 \ The lowest-numbered register of one file's pool that holds nothing and that
 \ the value being placed may have, or -1 when every one of them is taken or
@@ -544,12 +586,12 @@ create PL-VAL PLMAX cells allot
 \ destroys - no bits at all for a value that crosses no call, which is every
 \ value of a routine that calls nothing.
 : FREE-REG ( n n -- n )
-   {: cls:n forbid:n :}
+   {: fl:n forbid:n :}
    -1
    REGS-N 0 ?do
-      cls i POOL-HAS?
+      fl i POOL-HAS?
       forbid i FORBIDDEN? 0= and
-      cls i HOLD-AT NOBODY = and if drop i leave then
+      fl i HOLD-AT NOBODY = and if drop i leave then
    loop ;
 
 \ Nothing below hands out a register that is not the routine's: FREE-REG only
@@ -559,10 +601,10 @@ create PL-VAL PLMAX cells allot
 \ that must fail closed rather than be argued about.
 : TAKE ( n n -- )
    {: k:n r:n :}
-   k CLS-AT {: cls:n :}
-   cls r POOL-HAS? 0= if E-A64RA-POOL throw then
+   k FILE-AT {: fl:n :}
+   fl r POOL-HAS? 0= if E-A64RA-POOL throw then
    r k REG!
-   k cls r HOLD! ;
+   k fl r HOLD! ;
 
 \ ---- the routine's own fixed registers ---------------------------------------
 \ The contract's two ordered lists, read once into tables this walk can index by
@@ -602,10 +644,10 @@ create PL-VAL PLMAX cells allot
 \ only answer for a caller that drives WALK with a pool of its own.
 : FIXED-POOL-CK ( -- )
    ARGS-N @ 0 ?do
-      C-GPR i cells A-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
+      F-GPR i cells A-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
    loop
    OUTS-N @ 0 ?do
-      C-GPR i cells O-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
+      F-GPR i cells O-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
    loop ;
 
 \ A convention that names more positions than the routine has arguments, or more
@@ -841,8 +883,8 @@ variable CHANGED
 0 CHANGED !
 variable SHORT-AT                    \ the position the scan ran short at, or -1
 -1 SHORT-AT !
-variable SHORT-CLS                   \ and which register file it ran short of
-0 SHORT-CLS !
+variable SHORT-FILE                  \ and which register file it ran short of
+0 SHORT-FILE !
 variable RET-B                       \ the block control leaves the routine through
 0 RET-B !
 
@@ -1064,12 +1106,16 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    repeat ;
 
 \ Two values joined into one class have to be able to share one register, and
-\ two values of two different register files never can: the same eight bytes in a
-\ general register and in a floating one are not the same place, and no
-\ instruction reads both fields. So a union across the files is refused by name
-\ rather than made and then discovered, which is what would happen otherwise -
-\ the class would be given a register of one file and half its members would be
-\ read out of the other.
+\ this asks their CLASSES and not their files, which is the one register question
+\ in the pass that is not a file question. Two files are the plainest way to
+\ fail - the same eight bytes in a general register and in a floating one are not
+\ the same place, and no instruction reads both fields - but two classes of ONE
+\ file need not be one place either: a file's registers can be read at more than
+\ one width, and one value's register is then a part of another's rather than the
+\ same one. Sharing needs the same place, so the same class is the question, and
+\ a union across classes is refused by name rather than made and then
+\ discovered - which is what would happen otherwise, the class being given one
+\ register and half its members read out of something else.
 : UF-UNION ( n n -- )
    {: a:n b:n :}
    a CLS-AT b CLS-AT <> if E-A64RA-FILE throw then
@@ -1494,24 +1540,26 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 
 \ ---- the scan ----------------------------------------------------------------
 : MB-EXPIRE1 ( n n n -- )
-   {: cls:n r:n limit:n :}
-   cls r HOLD-AT {: v:n :}
+   {: fl:n r:n limit:n :}
+   fl r HOLD-AT {: v:n :}
    v NOBODY = if exit then
-   v cells CL-HI + @ limit < if NOBODY cls r HOLD! then ;
+   v cells CL-HI + @ limit < if NOBODY fl r HOLD! then ;
 
 : MB-EXPIRE ( n -- )
    {: limit:n :}
-   REGS-N 0 ?do C-GPR i limit MB-EXPIRE1 loop
-   REGS-N 0 ?do C-FPR i limit MB-EXPIRE1 loop ;
+   FILES-N 0 ?do
+      REGS-N 0 ?do j i limit MB-EXPIRE1 loop
+   loop ;
 
 \ How many registers of ONE file are free here. It is per file because a class
-\ that wants a floating register is not served by a free general one, so the two
-\ counts are two facts and the pressure test below asks both.
+\ that wants a floating register is not served by a free general one - and
+\ because two classes of ONE file are served by the same free registers, so the
+\ count belongs to the file that holds them and not to either class.
 : MB-FREE-N ( n -- n )
-   {: cls:n :}
+   {: fl:n :}
    0
    REGS-N 0 ?do
-      cls i POOL-HAS? cls i HOLD-AT NOBODY = and if 1+ then
+      fl i POOL-HAS? fl i HOLD-AT NOBODY = and if 1+ then
    loop ;
 
 \ ---- what a class already in the frame still costs in registers ---------------
@@ -1546,18 +1594,22 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    {: r:n p:n :}
    p  r cells CL-DEF + @  = ;
 
+\ Is this class one of THIS file's that the walk already put in a frame slot? The
+\ demand a position makes on a file is the demand of every class that file holds,
+\ so the question is asked of the file: two classes sharing one file compete for
+\ the same free registers and their loads have to be counted together.
 : MB-FRAMED? ( n n -- bool )
-   {: r:n cls:n :}
-   r UF-FIND r =  r CLS-AT cls =  and
+   {: r:n fl:n :}
+   r UF-FIND r =  r FILE-AT fl =  and
    r cells CL-SLOT + @ NOSLOT <>  and ;
 
 \ What the frame's classes need while this position READS: every load in front of
 \ it, plus every class held across it.
 : MB-LOAD-N ( IR-ID:ir-fun-id n n -- n )
-   {: f:IR-ID:ir-fun-id p:n cls:n :}
+   {: f:IR-ID:ir-fun-id p:n fl:n :}
    0
    N-VALS @ 0 ?do
-      i cls MB-FRAMED? if
+      i fl MB-FRAMED? if
          i p MB-ACROSS?  f i p MB-READS? or if 1+ then
       then
    loop ;
@@ -1565,10 +1617,10 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ And what they need while it WRITES: every class this position puts in a
 \ register, plus the same held-across ones.
 : MB-STORE-N ( n n -- n )
-   {: p:n cls:n :}
+   {: p:n fl:n :}
    0
    N-VALS @ 0 ?do
-      i cls MB-FRAMED? if
+      i fl MB-FRAMED? if
          i p MB-ACROSS?  i p MB-WRITTEN? or if 1+ then
       then
    loop ;
@@ -1578,8 +1630,8 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ file: putting a double away frees a floating register and does nothing at all
 \ for a routine that ran out of general ones.
 : MB-SHORT! ( n n -- )
-   {: p:n cls:n :}
-   SHORT-AT @ 0 < if p SHORT-AT !  cls SHORT-CLS ! then ;
+   {: p:n fl:n :}
+   SHORT-AT @ 0 < if p SHORT-AT !  fl SHORT-FILE ! then ;
 
 \ ---- which registers one class may not have ----------------------------------
 \ The registers destroyed by the calls this class's live range crosses. A value
@@ -1612,13 +1664,13 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 
 : MB-FORBID ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id r:n :}
-   r CLS-AT {: cls:n :}
+   r FILE-AT {: fl:n :}
    0
    MB-AT @ 0 ?do
       i POS-OP? if
          f i POS-OP CALL-AT? if
             r i MB-CROSSES? if
-               f i POS-OP cls CALL-BITS or
+               f i POS-OP fl CALL-BITS or
             then
          then
       then
@@ -1644,10 +1696,10 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ anything else at that position, and one register is one convention position.
 : MB-PIN ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id r:n want:n :}
-   r CLS-AT {: cls:n :}
-   cls want POOL-HAS? 0= if E-A64RA-FIXED throw then
+   r FILE-AT {: fl:n :}
+   fl want POOL-HAS? 0= if E-A64RA-FIXED throw then
    f r MB-FORBID want FORBIDDEN? if E-A64RA-FIXED throw then
-   cls want HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
+   fl want HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
    r want TAKE ;
 
 \ The register the contract says a returned class leaves in, when the walk can
@@ -1662,7 +1714,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    r cells CL-WANT + @ {: want:n :}
    want NOBODY = if -1 exit then
    forbid want FORBIDDEN? if -1 exit then
-   r CLS-AT want HOLD-AT {: held:n :}
+   r FILE-AT want HOLD-AT {: held:n :}
    held NOBODY = if want exit then
    held cells CL-WANT + @ NOBODY <> if E-A64RA-FIXED throw then
    -1 ;
@@ -1675,17 +1727,36 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    f r MB-FORBID {: forbid:n :}
    f r forbid MB-WANTED {: w:n :}
    w 0 >= if r w TAKE exit then
-   r CLS-AT forbid FREE-REG {: g:n :}
-   g 0 < if pos r CLS-AT MB-SHORT! exit then
+   r FILE-AT forbid FREE-REG {: g:n :}
+   g 0 < if pos r FILE-AT MB-SHORT! exit then
    r g TAKE ;
 
 : MB-READ-PRESSURE ( IR-ID:ir-fun-id n n -- )
-   {: f:IR-ID:ir-fun-id pos:n cls:n :}
-   f pos cls MB-LOAD-N  cls MB-FREE-N > if pos cls MB-SHORT! then ;
+   {: f:IR-ID:ir-fun-id pos:n fl:n :}
+   f pos fl MB-LOAD-N  fl MB-FREE-N > if pos fl MB-SHORT! then ;
 
 : MB-WRITE-PRESSURE ( n n -- )
-   {: pos:n cls:n :}
-   pos cls MB-STORE-N  cls MB-FREE-N > if pos cls MB-SHORT! then ;
+   {: pos:n fl:n :}
+   pos fl MB-STORE-N  fl MB-FREE-N > if pos fl MB-SHORT! then ;
+
+\ Both instants are measured of every file, and the walk stops at the first one
+\ that ran short - the scan restarts after a spill, so measuring the rest would
+\ record nothing MB-SHORT! keeps. Written as a loop over the files rather than a
+\ line per file, so a file added to the map is measured without this being
+\ touched.
+: MB-READ-PRESSURE-ALL ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id pos:n :}
+   FILES-N 0 ?do
+      SHORT-AT @ 0 >= if leave then
+      f pos i MB-READ-PRESSURE
+   loop ;
+
+: MB-WRITE-PRESSURE-ALL ( n -- )
+   {: pos:n :}
+   FILES-N 0 ?do
+      SHORT-AT @ 0 >= if leave then
+      pos i MB-WRITE-PRESSURE
+   loop ;
 
 \ The classes due here, pinned ones first. The order matters for exactly one
 \ shape and it is the commonest one there is: the entry block's arguments are all
@@ -1713,24 +1784,19 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 : MB-STEP ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id pos:n :}
    pos MB-EXPIRE
-   f pos C-GPR MB-READ-PRESSURE
-   SHORT-AT @ 0 >= if exit then
-   f pos C-FPR MB-READ-PRESSURE
+   f pos MB-READ-PRESSURE-ALL
    SHORT-AT @ 0 >= if exit then
    pos 1+ MB-EXPIRE
    f pos MB-PLACE-PINNED
    f pos MB-PLACE-REST
    SHORT-AT @ 0 >= if exit then
-   pos C-GPR MB-WRITE-PRESSURE
-   SHORT-AT @ 0 >= if exit then
-   pos C-FPR MB-WRITE-PRESSURE ;
+   pos MB-WRITE-PRESSURE-ALL ;
 
 : MB-SCAN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    -1 SHORT-AT !
-   C-GPR SHORT-CLS !
-   REGS-N 0 ?do NOBODY C-GPR i HOLD! loop
-   REGS-N 0 ?do NOBODY C-FPR i HOLD! loop
+   F-GPR SHORT-FILE !
+   HOLDERS-CLEAR
    MB-AT @ 0 ?do
       SHORT-AT @ 0 < if f i MB-STEP then
    loop ;
@@ -1738,9 +1804,9 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ ---- taking a class out of the registers -------------------------------------
 : MB-HELD? ( n -- bool )
    {: r:n :}
-   r CLS-AT {: cls:n :}
+   r FILE-AT {: fl:n :}
    false
-   REGS-N 0 ?do cls i HOLD-AT r = if drop true leave then loop ;
+   REGS-N 0 ?do fl i HOLD-AT r = if drop true leave then loop ;
 
 \ A class the scan could take a register from here. It has to hold one, it has to
 \ be one this pass may put in the frame, and this position must not touch it: a
@@ -1756,20 +1822,20 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ position with none of them is the one register pressure no spill can serve:
 \ every register holds something the operation itself needs.
 : MB-SPARE-N ( IR-ID:ir-fun-id n n -- n )
-   {: f:IR-ID:ir-fun-id p:n cls:n :}
+   {: f:IR-ID:ir-fun-id p:n fl:n :}
    0
    REGS-N 0 ?do
-      cls i HOLD-AT {: r:n :}
+      fl i HOLD-AT {: r:n :}
       r NOBODY <> if
          f r p MB-TOUCHES? 0= if 1+ then
       then
    loop ;
 
 : MB-FURTHEST ( IR-ID:ir-fun-id n n -- n )
-   {: f:IR-ID:ir-fun-id p:n cls:n :}
+   {: f:IR-ID:ir-fun-id p:n fl:n :}
    -1
    REGS-N 0 ?do
-      cls i HOLD-AT {: r:n :}
+      fl i HOLD-AT {: r:n :}
       r NOBODY <> if
          f r p MB-CANDIDATE? if
             f r p 1+ MB-NEXT-USE {: c:n :}
@@ -1784,15 +1850,15 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ nothing can be taken the refusal says which of the two walls was hit - every
 \ register needed by this one operation, or nothing here that may go in a frame.
 : MB-VICTIM ( IR-ID:ir-fun-id n n -- n )
-   {: f:IR-ID:ir-fun-id p:n cls:n :}
-   f p cls MB-FURTHEST {: want:n :}
+   {: f:IR-ID:ir-fun-id p:n fl:n :}
+   f p fl MB-FURTHEST {: want:n :}
    want 0 < if
-      f p cls MB-SPARE-N 0= if E-A64RA-POOL throw then
+      f p fl MB-SPARE-N 0= if E-A64RA-POOL throw then
       E-A64RA-SPILL throw
    then
    -1
    REGS-N 0 ?do
-      cls i HOLD-AT {: r:n :}
+      fl i HOLD-AT {: r:n :}
       r NOBODY <> if
          f r p MB-CANDIDATE? if
             f r p 1+ MB-NEXT-USE want = if drop r leave then
@@ -1802,8 +1868,8 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    dup 0 < if E-A64RA-SPILL throw then ;
 
 : MB-EVICT ( IR-ID:ir-fun-id n n -- )
-   {: f:IR-ID:ir-fun-id p:n cls:n :}
-   f p cls MB-VICTIM {: r:n :}
+   {: f:IR-ID:ir-fun-id p:n fl:n :}
+   f p fl MB-VICTIM {: r:n :}
    NEW-SLOT r cells CL-SLOT + !
    f r MB-DEF-POS {: d:n :}
    d r cells CL-DEF + !
@@ -1819,7 +1885,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    begin
       f MB-SCAN
       SHORT-AT @ 0 <
-      dup 0= if drop f SHORT-AT @ SHORT-CLS @ MB-EVICT false then
+      dup 0= if drop f SHORT-AT @ SHORT-FILE @ MB-EVICT false then
    until ;
 
 \ Every value takes the register its class was given, or the slot its class was

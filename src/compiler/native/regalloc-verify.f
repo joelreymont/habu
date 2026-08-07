@@ -114,13 +114,45 @@ private
 
 \ The three value classes this dialect has, spelled exactly as the allocator
 \ spells them: a general register, a floating register, and the memory token the
-\ frame forms thread. The two register classes are two FILES, and a register
-\ number names a register of one of them - d0 and x0 are two registers and both
-\ are number zero - so every question below about a register is asked of the file
-\ its value belongs to.
+\ frame forms thread.
 0 constant C-GPR
 1 constant C-TOKEN
 2 constant C-FPR
+
+\ The register FILES those classes live in. A register number names a register of
+\ ONE file - d0 and x0 are two registers and both are number zero - so every
+\ question below about a register is asked of the FILE the value's class belongs
+\ to, and never of the class itself.
+\
+\ WHY THE TWO ARE WRITTEN DOWN SEPARATELY WHILE THEY STILL AGREE. Today the map
+\ below is one-to-one, so "same class" and "same file" pick out the same pairs of
+\ values and every check here would read the same either way. They stop agreeing
+\ the moment one file holds two classes, which is the shape this machine's vector
+\ registers already have - v3 and d3 are ONE register - and a check keyed on the
+\ class would then quietly stop comparing a vector against a double and let the
+\ allocator put both in that one register. So the file is what every register
+\ question is asked of, ahead of any class that shares one, and the agreement of
+\ today's two answers is a fact about the map rather than a thing anything relies
+\ on.
+\
+\ AND A CLASS THIS MAP DOES NOT NAME IS REFUSED. FILE-OF is total over the
+\ classes it knows and throws for every other one, so a class added without a
+\ file cannot be silently treated as a general register: it fails on the first
+\ module that carries one, loudly, which is the only behaviour that keeps the
+\ paragraph above true of a dialect that grows.
+2 constant FILES-N
+0 constant F-GPR
+1 constant F-FPR
+
+\ The class is held in no register file at all.
+-1 constant NOFILE
+
+: FILE-OF ( n -- n )
+   {: cls:n :}
+   cls C-GPR = if F-GPR exit then
+   cls C-FPR = if F-FPR exit then
+   cls C-TOKEN = if NOFILE exit then
+   E-A64RAV-CLASS throw ;
 
 \ This operation names no slot.
 -1 constant NOSLOT
@@ -171,6 +203,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 : LAST-AT ( n -- n )                 cells L-AT + @ ;
 : SEEN-AT ( n -- n )                 cells S-AT + @ ;
 : CLS-AT ( n -- n )                  cells C-AT + @ ;
+: FILE-AT ( n -- n )                 CLS-AT FILE-OF ;
 : USES-AT ( n -- n )                 cells U-AT + @ ;
 
 : DEF! ( n n -- )                    {: v:n k:n :} v k cells D-AT + ! ;
@@ -316,15 +349,15 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       0= if E-A64RAV-CLASS throw then
    loop ;
 
-: GPR? ( n -- bool )
-   CLS-AT C-GPR = ;
+\ Is this value's register one of THIS file's? Asked by everything that counts
+\ registers, holds one against a pool, or compares two of them.
+: IN-FILE? ( n n -- bool )
+   {: v:n fl:n :}
+   v FILE-AT fl = ;
 
-: FPR? ( n -- bool )
-   CLS-AT C-FPR = ;
-
-\ Does this value live in a register at all - in either file?
+\ Does this value live in a register at all - in any file?
 : REGGED? ( n -- bool )
-   dup GPR? swap FPR? or ;
+   FILE-AT NOFILE <> ;
 
 \ ---- the memory order --------------------------------------------------------
 \ Every memory order this module mints is passed on exactly once ON EVERY PATH
@@ -506,6 +539,15 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ written, because a check that only looks at the registers it expects to see is
 \ not a check, and it is not claimed to be tested - only mutating the allocator
 \ reaches it.
+\ The registers one file's pool holds. Named per file with no default arm: a
+\ value of a file this word does not know would otherwise be held against the
+\ general registers, which is the one wrong answer that reads as an agreement.
+: FILE-POOL ( n n n -- n )
+   {: fl:n pool:n fpool:n :}
+   fl F-GPR = if pool exit then
+   fl F-FPR = if fpool exit then
+   E-A64RAV-CLASS throw ;
+
 : REGISTER-CK ( -- )
    A64RA:POOL A64EFF:GPRS-N {: pool:n :}
    A64RA:FPOOL A64EFF:FPRS-N {: fpool:n :}
@@ -515,7 +557,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
          r 0 >= r A64EFF:FILE-SIZE < and if E-A64RAV-CLASS throw then
       else
          r 0 < r A64EFF:FILE-SIZE >= or if E-A64RAV-REGISTER throw then
-         i FPR? if fpool else pool then
+         i FILE-AT pool fpool FILE-POOL
          1 r lshift and 0= if E-A64RAV-REGISTER throw then
       then
    loop ;
@@ -553,13 +595,18 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    id VCALL-ENTRY NOSLOT = if false exit then
    id DBACK-OF NOSLOT = ;
 
+\ What the callee leaves alone in ONE file, as a mask of that file's registers.
+\ Per file and with no default arm, for FILE-POOL's reason: a file this word does
+\ not name would be held against the general registers' record, and a value of it
+\ would cross the call looking safe.
 : VCALL-BITS ( IR-ID:ir-op-id n -- n )
-   {: id:IR-ID:ir-op-id cls:n :}
+   {: id:IR-ID:ir-op-id fl:n :}
    id VCALL-ENTRY {: e:n :}
-   cls C-FPR = if
+   fl F-FPR = if
       e NOSLOT = if 0 V-FPOOL @ A64EFF:FPRS-N exit then
       e 0 V-FPOOL @ NCLOB:FPR-CLOB A64EFF:FPRS-N exit
    then
+   fl F-GPR = 0= if E-A64RAV-CLASS throw then
    e NOSLOT = if 0 V-POOL @ A64EFF:GPRS-N exit then
    e 0 V-POOL @ NCLOB:GPR-CLOB A64EFF:GPRS-N ;
 
@@ -568,7 +615,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    id DCALL? 0= if exit then
    N-VALS @ 0 ?do
       i REGGED?  i DEF-AT p <  and  i LAST-AT p >  and if
-         id i CLS-AT VCALL-BITS  1 i A64RA:CLAIM@ lshift  and
+         id i FILE-AT VCALL-BITS  1 i A64RA:CLAIM@ lshift  and
          0<> if E-A64RAV-CLOBBER throw then
       then
    loop ;
@@ -597,11 +644,38 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    then
    b LAST-AT a DEF-AT > ;
 
+\ HOW THE FILE KEYING WAS PROVED, SINCE NO FIXTURE CAN BUILD THE PAIR IT CATCHES.
+\ This dialect has one class per file, so a module of it cannot hold two values
+\ of two classes in one file, and the refusal below is reached the way this
+\ file's other closed-world clauses are: by mutating the compiler and running the
+\ gate. The mutation adds the third class the machine already has - a vector,
+\ which lives in the FLOATING file because v3 and d3 are one register - and gives
+\ the ALLOCATOR the plausible wrong model that a vector is a file of its own, so
+\ it hands one vector and one double the same d0 while both are alive. That is an
+\ allocator bug of exactly the kind this file exists to refuse.
+\
+\ Keyed on the CLASS, the verifier accepted it: ACCEPTED? true, both values
+\ reported register 0, and a routine whose two live doubles are one register was
+\ passed to the emitter with no diagnostic. Keyed on the FILE, the same tree
+\ throws E-A64RAV-OVERLAP. Both runs were over TWO-FILES-CASE in
+\ test/compiler/native-regalloc.f, which is the module the mutation needs and is
+\ in the suite for its own sake: it is what proves this clause does not refuse a
+\ cell and a double that hold register zero of two different files.
+\
+\ WHICH PAIRS ARE COMPARED, AND WHY IT IS THE FILE THAT DECIDES. Two values can
+\ be handed one machine register exactly when their registers are numbered in the
+\ same file, so that is the pair this asks about. It is deliberately NOT "the
+\ same class": one file may hold more than one class - this machine's vector and
+\ floating classes are one file, v3 and d3 being one register - and a class-keyed
+\ question would then walk past the one pair it exists to catch and call the
+\ result checked. The file is asked of both, and a value in no file is not in
+\ this question at all, so the memory token's non-register is never compared with
+\ anything.
 : OVERLAP-CK ( -- )
    N-VALS @ {: n:n :}
    n 0 ?do
       n i 1+ ?do
-         j CLS-AT i CLS-AT =  j REGGED? and  j i CLASH? and if
+         j REGGED?  j FILE-AT i FILE-AT = and  j i CLASH? and if
             j A64RA:CLAIM@ i A64RA:CLAIM@ = if E-A64RAV-OVERLAP throw then
          then
       loop
@@ -2240,7 +2314,7 @@ public
    FRESH-CK
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
    dup REGGED? 0= if E-A64RAV-CLASS throw then
-   FPR? ;
+   F-FPR IN-FILE? ;
 
 \ ---- what the accepted allocation says this routine destroys ------------------
 \ THE DERIVATION, AS ONE STATEMENT. The general registers a routine emitted from
@@ -2275,11 +2349,15 @@ public
 \ file ACCEPTED, so a register that reaches an instruction without being in it
 \ would have had to reach it without being a claim - which is what the emitter
 \ holds its own count of written registers against before it seals.
+\ Both answers are counted per FILE and not per class, which is what makes them
+\ stay right when one file holds two classes: what a caller can be holding in x3
+\ is decided by everything this routine puts in the general file, whatever kind
+\ of value each one is.
 : GPR-WRITTEN ( -- A64EFF:gprs )
    FRESH-CK
    0
    N-VALS @ 0 ?do
-      i REGGED? i GPR? and if
+      i F-GPR IN-FILE? if
          1  i A64RA:CLAIM@  lshift or
       then
    loop
@@ -2289,7 +2367,7 @@ public
    FRESH-CK
    0
    N-VALS @ 0 ?do
-      i REGGED? i FPR? and if
+      i F-FPR IN-FILE? if
          1  i A64RA:CLAIM@  lshift or
       then
    loop
