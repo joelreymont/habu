@@ -36,7 +36,12 @@
 \   5. THAT A REFUSAL COSTS NOTHING. After the refused move, the caller still
 \      enters the record it entered and still answers the same. Everything this
 \      seam can refuse is asked before the first instruction is written, and
-\      this is the case that would go red if that stopped being true.
+\      this is the case that would go red if that stopped being true. The sites
+\      are counted BEFORE the refusal as well as after and the two counts held
+\      against each other, because "left every site where it found it" is a
+\      claim about a difference: a caller holding none would satisfy the
+\      after-count on its own, and that is the shape this case actually failed
+\      in once - see the note above NRT-NARROW.
 \   6. THAT THE REMAINING REFUSALS ARE REACHABLE, one fixture each: a name that
 \      resolves to nothing, both names resolving to one record, two records
 \      carrying different words, a target the publication seam never wrote, two
@@ -68,11 +73,18 @@ require tools/codegen-workload-scan.f
 
 package NREACH-TEST
 
-private
+\ The register budgets the migrated fixtures are published with. They are public
+\ because the fixtures that use them are published at the bottom of this file,
+\ outside the package, and naming them here is what keeps a budget from being
+\ written down twice and drifting.
+public
 
 8 constant REGS                      \ scratch registers the migrated routines may use
 12 constant WIDE-REGS                \ enough for the pressure body below to keep eight sums live
-3 constant NARROW-REGS
+3 constant NARROW-REGS               \ and few enough that the wide row is strictly wider
+
+private
+
 4 constant INSN-BYTES
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and it
@@ -195,6 +207,13 @@ private
 variable OLD-ENTRY
 variable MOVED
 
+\ How many sites the clobber caller held BEFORE the refused move. The count
+\ after the refusal is held against this rather than against a number written
+\ down a second time, so the case cannot be satisfied by a caller that never had
+\ any sites - the failure this file was carrying when the constant fold shrank
+\ its callee under the engine's copy limit.
+variable CL-SITES
+
 public
 
 \ ---- the redirection ---------------------------------------------------------
@@ -238,7 +257,22 @@ public
 \ the wide routine really does destroy registers the narrow one does not, and
 \ the narrow one destroys none the wide one does not. Without those two lines a
 \ record that stopped narrowing at all would leave both directions passing.
+\
+\ AND THE SITES ARE COUNTED BEFORE THE REFUSAL AS WELL AS AFTER. "The refused
+\ move left every site where it found it" is a claim about a difference, so it
+\ needs both ends: a caller holding no sites at all satisfies an after-count of
+\ zero just as happily as a refusal that behaved. So the count is taken first,
+\ asserted to be the two calls the caller was written to make, and the count
+\ after the refusal is held against THAT rather than against a literal. The
+\ engine's copy decision is asked about the callee in the same breath, because a
+\ callee the engine copies is precisely how the before-count goes to zero.
 : CLOBBER-CASES ( -- )
+   s" the narrow routine is one the engine calls, not one it copies" T-LABEL
+   s" NRT-NARROW:NRT-CL" CODEGEN-SCAN:ENGINE-COPIES? TFALSE
+   s" NRT-BASE:NRT-CL-CALLER" s" NRT-NARROW:NRT-CL" CODEGEN-SCAN:CALLS-IN
+      CL-SITES !
+   CL-SITES @ 2 T=
+
    s" the wide routine destroys registers the narrow one does not" T-LABEL
    s" NRT-WIDE-P:NRT-CL" GPR-AT  s" NRT-NARROW:NRT-CL" GPR-AT invert and  0 T<>
    s" NRT-NARROW:NRT-CL" GPR-AT  s" NRT-WIDE-P:NRT-CL" GPR-AT invert and  0 T=
@@ -252,9 +286,10 @@ public
       E-NREACH-NONE TTHROWSQ
 
    s" the refused move left every site where it found it" T-LABEL
-   s" NRT-BASE:NRT-CL-CALLER" s" NRT-NARROW:NRT-CL" CODEGEN-SCAN:CALLS-IN 2 T=
+   s" NRT-BASE:NRT-CL-CALLER" s" NRT-NARROW:NRT-CL" CODEGEN-SCAN:CALLS-IN
+      CL-SITES @ T=
    s" NRT-BASE:NRT-CL-CALLER" s" NRT-WIDE-P:NRT-CL" CODEGEN-SCAN:CALLS-IN 0 T=
-   s" 0 NRT-BASE:NRT-CL-CALLER" EV-N 42 T= ;
+   s" 0 NRT-BASE:NRT-CL-CALLER" EV-N 2413 T= ;
 
 \ ---- the remaining refusals --------------------------------------------------
 : REFUSAL-CASES ( -- )
@@ -321,9 +356,9 @@ NREACH-TEST:BEFORE-CASES
 \ a package and its callers are moved afterwards.
 package NRT-CHAIN
 public
-s" : NRT-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 8 NMIGRATE:DEFINE
-s" : NRT-TINY ( n -- n ) 7 and ;" 1 1 8 NMIGRATE:DEFINE
-s" : NRT-ARITY ( n n -- n ) + 1 + 2 + 3 + 4 + 5 + ;" 2 1 8 NMIGRATE:DEFINE
+s" : NRT-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 NREACH-TEST:REGS NMIGRATE:DEFINE
+s" : NRT-TINY ( n -- n ) 7 and ;" 1 1 NREACH-TEST:REGS NMIGRATE:DEFINE
+s" : NRT-ARITY ( n n -- n ) + 1 + 2 + 3 + 4 + 5 + ;" 2 1 NREACH-TEST:REGS NMIGRATE:DEFINE
 ;package
 
 \ The same body once more, compiled by the ENGINE under the same tail. Nothing
@@ -336,15 +371,32 @@ public
 \ The two routines the unsafe-move case is about: one body that needs three
 \ scratch registers and one that keeps eight sums live at once, so the second
 \ really destroys registers the first does not.
+\
+\ AND THE NARROW ONE HAS TO BE A ROUTINE THE ENGINE CALLS. The whole case is
+\ about call sites surviving a refusal, so a narrow body the engine COPIES into
+\ its caller leaves the case with no sites to be about - which is exactly what
+\ happened when this body was six additions of small constants: once the
+\ selection stage emitted the immediate forms none of those constants was
+\ materialised, the whole emission fitted in thirty-two bytes against the
+\ engine's forty-byte copy limit, and the caller stopped holding a call at all.
+\ So the body is chosen for a pressure no later pass can take away, the same way
+\ native-clobber.f chooses its own: a multiplication has no immediate form for a
+\ selection stage to fold, five distinct constants each read once give a memo
+\ nothing to share, and mixing xor and and in makes the routine not a linear
+\ function of its argument, so no reassociation can gather it into one operation.
+\ The case does not take that on trust either - it asks the scanner whether the
+\ engine would copy this routine before it makes any claim about sites, so a
+\ compiler that did shrink it again fails at a case that names the real reason.
 package NRT-NARROW
 public
-s" : NRT-CL ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 3 NMIGRATE:DEFINE
+s" : NRT-CL ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
+   1 1 NREACH-TEST:NARROW-REGS NMIGRATE:DEFINE
 ;package
 
 package NRT-WIDE-P
 public
 s" : NRT-CL ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + + + + + + + + ;"
-   1 1 12 NMIGRATE:DEFINE
+   1 1 NREACH-TEST:WIDE-REGS NMIGRATE:DEFINE
 ;package
 
 \ A caller of the narrow routine, compiled after it, so the refused move has
@@ -358,7 +410,7 @@ public
 package NRT-SELFP
 public
 s" NRT-BASE:NRT-SELF" s" NRT-BASE:NRT-SELF" CODEGEN-SCAN:WORD-ENTRY 1 1 NMIGRATE:CALLEE
-s" : NRT-SELF ( n -- n ) NRT-BASE:NRT-SELF 1 + ;" 1 1 8 NMIGRATE:DEFINE-CALLING
+s" : NRT-SELF ( n -- n ) NRT-BASE:NRT-SELF 1 + ;" 1 1 NREACH-TEST:REGS NMIGRATE:DEFINE-CALLING
 ;package
 
 package NREACH-TEST

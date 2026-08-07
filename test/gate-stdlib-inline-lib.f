@@ -458,6 +458,16 @@ public
    s" test/compiler/native-migrate.f" GSI-FORK-INCLUDE
    s" test/compiler/native-clobber.f" GSI-FORK-INCLUDE
    s" test/compiler/native-inline.f" GSI-FORK-INCLUDE
+   \ Carrying a migration back to callers that already exist, and every reason a
+   \ move is refused. It belongs after the publication, clobber and inline leaves
+   \ for the reason test/gate-stdlib-cases.f gives: what decides whether a site
+   \ may be moved is the row the publication seam recorded, and whether there is
+   \ a site to move at all is the inline rule's decision. It is listed here as
+   \ well as there because only this list is what test/run.f actually forks - a
+   \ suite present only in gate-stdlib-cases.f is reachable by the ALL slice,
+   \ which no phase of test/run.f runs, and that is how this file's clobber case
+   \ sat red on master while its two neighbours were repaired.
+   s" test/compiler/native-reach.f" GSI-FORK-INCLUDE
    s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
    s" test/compiler/native-vocab.f" GSI-FORK-INCLUDE
    \ The instrument a tail-call lane decides with: a routine's calls and the way
