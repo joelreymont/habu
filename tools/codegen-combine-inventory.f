@@ -184,6 +184,7 @@ public
    w R2-OK? 0= if false exit then
    w FRD w FRN w FI12 ENC-SUBI w = ;
 
+
 : LDR? ( n -- bool ) {: w:n :}
    w R2-OK? 0= if false exit then
    w FRD w FRN w FI12 SLOT-BYTES * ENC-LDR w = ;
@@ -207,6 +208,17 @@ public
 : ANDI? ( n -- bool ) {: w:n :}
    w R2-OK? 0= if false exit then
    w FRD w FRN w FNIS ENC-ANDI w = ;
+
+\ Its two siblings, recognised the same way. The mask itself is never
+\ reconstructed - the nis IS what the instruction holds - so the round trip is
+\ over that field and identifies the form without unpacking anything.
+: ORRI? ( n -- bool ) {: w:n :}
+   w R2-OK? 0= if false exit then
+   w FRD w FRN w FNIS ENC-ORRI w = ;
+
+: EORI? ( n -- bool ) {: w:n :}
+   w R2-OK? 0= if false exit then
+   w FRD w FRN w FNIS ENC-EORI w = ;
 
 \ Either shift whose amount an add or subtract could carry instead. ARM64's
 \ shifted-register arithmetic holds a left shift and both right shifts, so all
@@ -403,6 +415,15 @@ public
 
 : SUBI-INSNS ( -- n )
    [: SUBI? ;] COUNT1 ;
+
+: ANDI-INSNS ( -- n )
+   [: ANDI? ;] COUNT1 ;
+
+: ORRI-INSNS ( -- n )
+   [: ORRI? ;] COUNT1 ;
+
+: EORI-INSNS ( -- n )
+   [: EORI? ;] COUNT1 ;
 
 : MADDS ( -- n )
    [: MADD-PAIR? ;] COUNT2 ;

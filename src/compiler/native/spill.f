@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-63 constant OPCODES-N
+66 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -191,9 +191,12 @@ private
 60 constant O-ADDI
 61 constant O-SUBI
 62 constant O-MOVN
+63 constant O-ANDI
+64 constant O-ORRI
+65 constant O-EORI
 
 \ One slot per attribute key the dialect declares.
-10 constant KEYS-N
+11 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -204,6 +207,7 @@ private
 7 constant K-DBACK
 8 constant K-ENTRY
 9 constant K-OFF
+10 constant K-MASK
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -315,6 +319,9 @@ create NAMEBUF NAME-CAP allot
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
       movn      OF O-MOVN      ENDOF
+      andi      OF O-ANDI      ENDOF
+      orri      OF O-ORRI      ENDOF
+      eori      OF O-EORI      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -382,6 +389,9 @@ create NAMEBUF NAME-CAP allot
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
       O-MOVN      of A64IR-OPCODE:MOVN      endof
+      O-ANDI      of A64IR-OPCODE:ANDI      endof
+      O-ORRI      of A64IR-OPCODE:ORRI      endof
+      O-EORI      of A64IR-OPCODE:EORI      endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -557,6 +567,10 @@ create NAMEBUF NAME-CAP allot
    {: imm:n :}
    CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD imm A64IR:OFF-ATTR  IR-BUILD:ADD-ATTR ;
 
+: MASK-ATTR+ ( n -- )
+   {: m:n :}
+   CTX BLD  CTX BLD A64IR:KEY-MASK  CTX BLD m A64IR:MASK-ATTR  IR-BUILD:ADD-ATTR ;
+
 \ The two data-stack fields. This pass inserts no data-stack operation of its
 \ own - the convention is the selector's - but it copies the ones the selector
 \ built, and a field copied under the wrong key would be a routine reading its
@@ -709,6 +723,7 @@ create NAMEBUF NAME-CAP allot
       k K-DBACK = if v DBACK-ATTR+ then
       k K-ENTRY = if v ENTRY-ATTR+ then
       k K-OFF = if v OFF-ATTR+ then
+      k K-MASK = if v MASK-ATTR+ then
    loop ;
 
 \ The blocks a terminator hands control to. Blocks are copied one for one and in
@@ -1031,6 +1046,9 @@ public
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1
    c b A64IR-OPCODE:MOVN      BIND1
+   c b A64IR-OPCODE:ANDI      BIND1
+   c b A64IR-OPCODE:ORRI      BIND1
+   c b A64IR-OPCODE:EORI      BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
@@ -1041,6 +1059,7 @@ public
    c b A64IR:KEY-DBACK  K-DBACK BND-KEY !
    c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !
    c b A64IR:KEY-OFF    K-OFF BND-KEY !
+   c b A64IR:KEY-MASK   K-MASK BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:FPR-TYPE 0 BND-FPR !

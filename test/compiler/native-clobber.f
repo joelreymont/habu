@@ -337,19 +337,30 @@ $F8400000 constant LDUR-OP
 \
 \ AND THE CALLEE'S PRESSURE IS OF A KIND NO LATER PASS CAN TAKE AWAY. Its body
 \ interleaves multiplication with xor and and, over five distinct constants each
-\ read once, and keeps three of its own intermediates live at a time. Every one
-\ of those properties is doing work. A multiplication has no immediate form for a
-\ selection stage to choose, so no fold like the one that flattened NCLOB-STEP
-\ reaches it. Distinct constants give a memo nothing to share. And mixing the
-\ bitwise operations in makes the routine NOT a linear function of its argument,
-\ so no reassociation can gather the whole body into a single multiply the way it
-\ could if the body were four multiplies and three adds - which is the shape this
-\ callee was almost written as, and the shape a future arithmetic pass would have
-\ collapsed to one register. That is what makes the three registers this row
-\ names a fact about the routine and not about the compiler that happens to be
-\ compiling it today. The row's width is not written down twice: the store count
-\ is asserted to BE the number of registers the row names, so a change to either
-\ has to be a change to both.
+\ read once, and KEEPS THREE OF ITS OWN INTERMEDIATES LIVE AT A TIME. That last
+\ property is the one the row rests on, and it is worth saying plainly because
+\ the others have since been eaten and the row did not move.
+\
+\ WHAT THE COMBINE PASS TOOK, AND WHY IT DID NOT MATTER. The logical-immediate
+\ fold now folds `5 xor`, `7 and` and `13 xor` into the instruction, so three of
+\ the five constants no longer reach a register at all. The row is still exactly
+\ three registers wide, because those constants were never what made it three:
+\ each was live for the one instruction that read it, while the three
+\ intermediates are live ACROSS each other. A fold that removes a value with a
+\ one-instruction live range cannot narrow a row that a simultaneous liveness
+\ made. The multiplies are what keeps that liveness reachable - a multiplication
+\ has no immediate form for any of these folds to choose, so `3 *` and `11 *`
+\ still materialise their constants and still force the intermediates apart.
+\
+\ Mixing the bitwise operations in makes the routine NOT a linear function of its
+\ argument, so no reassociation can gather the whole body into a single multiply
+\ the way it could if the body were four multiplies and three adds - which is the
+\ shape this callee was almost written as, and the shape a future arithmetic pass
+\ would have collapsed to one register. That is what makes the three registers
+\ this row names a fact about the routine and not about the compiler that happens
+\ to be compiling it today. The row's width is not written down twice: the store
+\ count is asserted to BE the number of registers the row names, so a change to
+\ either has to be a change to both.
 \
 \ THE CONTROL IS THE SAME BODY ONE VALUE SMALLER, against the same callee at the
 \ same budget, because without it "spills three" could mean "always spills three".

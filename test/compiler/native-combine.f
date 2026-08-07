@@ -89,6 +89,30 @@ public
 : NCT-IMAX ( n -- n )
    4095 + ;
 
+: NCT-MAND ( n -- n )
+   7 and ;
+
+: NCT-MORR ( n -- n )
+   7 or ;
+
+: NCT-MEOR ( n -- n )
+   7 xor ;
+
+: NCT-MSWAP ( n -- n )
+   7 swap and ;
+
+: NCT-MHOLE ( n -- n )
+   5 and ;
+
+: NCT-MZERO ( n -- n )
+   0 and ;
+
+: NCT-MALL ( n -- n )
+   -1 and ;
+
+: NCT-MSHARED ( n n -- n ) {: a:n b:n :}
+   a 7 and b 7 and + ;
+
 : NCT-IOVER ( n -- n )
    4096 + ;
 
@@ -161,9 +185,50 @@ private
 : IOVER ( -- )
    s" : NCT-IOVER-N ( n -- n ) 4096 + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
+\ ---- the folded mask ---------------------------------------------------------
+\ One small mask over a value, in each of the three bitwise forms. 7 is a run of
+\ three ones, which the logical field describes, so all three fold.
+: MAND ( -- )
+   s" : NCT-MAND-N ( n -- n ) 7 and ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: MORR ( -- )
+   s" : NCT-MORR-N ( n -- n ) 7 or ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: MEOR ( -- )
+   s" : NCT-MEOR-N ( n -- n ) 7 xor ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ THE MASK ON THE OTHER SIDE. All three forms are commutative, so unlike the
+\ subtraction this one folds too - and it is the case that says the fold reads
+\ both operands rather than only the second.
+: MSWAP ( -- )
+   s" : NCT-MSWAP-N ( n -- n ) 7 swap and ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ THE MASK THE FIELD CANNOT DESCRIBE. 5 is 0b101 - three bits wide with a hole
+\ in the middle - so it is not a rotated contiguous run and the thirteen-bit
+\ description cannot be built for it. It must stay a move-wide and a register
+\ `and`, and it is the row that catches a fold written as a range check: 5 is
+\ SMALLER than 7, so any bound on magnitude would have admitted it.
+: MHOLE ( -- )
+   s" : NCT-MHOLE-N ( n -- n ) 5 and ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ And the two masks with no encoding at all, at the ends the packer refuses:
+\ a mask of no ones and a mask of nothing but ones.
+: MZERO ( -- )
+   s" : NCT-MZERO-N ( n -- n ) 0 and ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: MALL ( -- )
+   s" : NCT-MALL-N ( n -- n ) -1 and ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ A mask with a SECOND READER, which must not fold for the reason a shared
+\ constant must not: the move-wide the fold would delete is still needed.
+: MSHARED ( -- )
+   s" : NCT-MSHARED-N ( n n -- n ) {: a:n b:n :} a 7 and b 7 and + ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
 public
 
 : RUN ( -- )
+   MAND MORR MEOR MSWAP MHOLE MZERO MALL MSHARED
    SQSUM
    MAD3
    ACC
@@ -249,6 +314,30 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 : IMAX= ( n -- ) {: a:n :}
    a NCT-FIXTURE:NCT-IMAX  a NCT-FIXTURE:NCT-IMAX-N  T= ;
 
+: MAND= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-MAND  a NCT-FIXTURE:NCT-MAND-N  T= ;
+
+: MORR= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-MORR  a NCT-FIXTURE:NCT-MORR-N  T= ;
+
+: MEOR= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-MEOR  a NCT-FIXTURE:NCT-MEOR-N  T= ;
+
+: MSWAP= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-MSWAP  a NCT-FIXTURE:NCT-MSWAP-N  T= ;
+
+: MHOLE= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-MHOLE  a NCT-FIXTURE:NCT-MHOLE-N  T= ;
+
+: MZERO= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-MZERO  a NCT-FIXTURE:NCT-MZERO-N  T= ;
+
+: MALL= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-MALL  a NCT-FIXTURE:NCT-MALL-N  T= ;
+
+: MSHARED= ( n n -- ) {: a:n b:n :}
+   a b NCT-FIXTURE:NCT-MSHARED  a b NCT-FIXTURE:NCT-MSHARED-N  T= ;
+
 : IOVER= ( n -- ) {: a:n :}
    a NCT-FIXTURE:NCT-IOVER  a NCT-FIXTURE:NCT-IOVER-N  T= ;
 
@@ -261,6 +350,19 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 : SUBIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u NCOMBINV:ROW!
    NCOMBINV:SUBI-INSNS ;
+
+\ The same reading for the three logical immediate forms.
+: ANDIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u NCOMBINV:ROW!
+   NCOMBINV:ANDI-INSNS ;
+
+: ORRIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u NCOMBINV:ROW!
+   NCOMBINV:ORRI-INSNS ;
+
+: EORIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u NCOMBINV:ROW!
+   NCOMBINV:EORI-INSNS ;
 
 public
 
@@ -379,13 +481,55 @@ public
    MAX-INT MAX-INT SPLIT=
    MIN-INT MIN-INT SPLIT= ;
 
+\ The mask fold: which masks reach the instruction, which stay in a register,
+\ and - the row that matters most - that a mask with no encoding is DECLINED
+\ rather than handed to a packer that would end the process on it.
+: MASK-FIRED-CASES ( -- )
+   s" a small mask over a value becomes the operation's own immediate" T-LABEL
+   s" NCT-FIXTURE:NCT-MAND-N" ANDIS-IN 1 T=
+   s" NCT-FIXTURE:NCT-MORR-N" ORRIS-IN 1 T=
+   s" NCT-FIXTURE:NCT-MEOR-N" EORIS-IN 1 T=
+
+   s" and it folds from either operand, because all three are commutative" T-LABEL
+   s" NCT-FIXTURE:NCT-MSWAP-N" ANDIS-IN 1 T= ;
+
+: MASK-REFUSED-CASES ( -- )
+   s" a mask the field cannot describe is not folded, though it is smaller" T-LABEL
+   s" NCT-FIXTURE:NCT-MHOLE-N" ANDIS-IN 0 T=
+
+   s" nor is a mask of no ones or a mask of nothing but ones" T-LABEL
+   s" NCT-FIXTURE:NCT-MZERO-N" ANDIS-IN 0 T=
+   s" NCT-FIXTURE:NCT-MALL-N" ANDIS-IN 0 T=
+
+   s" nor is one a second reader still needs" T-LABEL
+   s" NCT-FIXTURE:NCT-MSHARED-N" ANDIS-IN 0 T= ;
+
+\ Every one of them has to answer what the engine's own code answers, the
+\ refused ones included - a declined fold still has to compile to right code.
+: MASK-ANSWER-CASES ( -- )
+   s" the folded masks answer what the engine's own code answers" T-LABEL
+   0 MAND= 1 MAND= -1 MAND= MAX-INT MAND= MIN-INT MAND=
+   0 MORR= 1 MORR= -1 MORR= MAX-INT MORR= MIN-INT MORR=
+   0 MEOR= 1 MEOR= -1 MEOR= MAX-INT MEOR= MIN-INT MEOR=
+   0 MSWAP= 9 MSWAP= -1 MSWAP= MAX-INT MSWAP= MIN-INT MSWAP=
+
+   s" and so do the four the pass refused, which still have to be right" T-LABEL
+   0 MHOLE= 9 MHOLE= -1 MHOLE= MAX-INT MHOLE= MIN-INT MHOLE=
+   0 MZERO= -1 MZERO= MAX-INT MZERO= MIN-INT MZERO=
+   0 MALL= -1 MALL= MAX-INT MALL= MIN-INT MALL=
+   3 5 MSHARED= 0 0 MSHARED= -1 -1 MSHARED=
+   MAX-INT MAX-INT MSHARED= MIN-INT MIN-INT MSHARED= ;
+
 : CASES ( -- )
    FIRED-CASES
    REFUSED-CASES
    ANSWER-CASES
    IMM-FIRED-CASES
    IMM-REFUSED-CASES
-   IMM-ANSWER-CASES ;
+   IMM-ANSWER-CASES
+   MASK-FIRED-CASES
+   MASK-REFUSED-CASES
+   MASK-ANSWER-CASES ;
 
 ;using
 

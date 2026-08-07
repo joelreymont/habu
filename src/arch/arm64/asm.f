@@ -462,15 +462,44 @@ variable LIE   variable LIONES
 
 : LIMM-BAD ( -- )  s" asm: bad logical immediate" ASM-EXIT-RC die ;
 
-: >LIMM ( n -- n )
+\ The encoding attempt itself, which answers whether the mask has an encoding
+\ instead of ending the process when it does not. It exists because the two
+\ callers below need OPPOSITE things from the same rule: an emitter that has
+\ already committed to the instruction can only die on a mask that will not
+\ pack, while a pass DECIDING whether to use the immediate form at all has to
+\ ask first and choose the register form when the answer is no. Both read this
+\ one implementation, so the rule cannot drift into a second copy that admits a
+\ mask the packer rejects - which would put the die back, at the far end of a
+\ decision that had already been made.
+\ The nis is zero when the answer is false; a caller that ignores the flag and
+\ encodes it anyway gets `and rd, rn, #1`, not a wild field.
+\ The boolean literals this predicate answers with. src/arch/arm64/asm.f is
+\ loaded as bare source by the encoder gate, without lib/prelude.f, so `true`
+\ and `false` are not in the dictionary here - and they are spelled the way the
+\ prelude spells them, as comparisons, which is also what gives them the
+\ checker's bool type instead of a number's.
+: LIMM-YES ( -- bool ) 0 0= ;
+: LIMM-NO  ( -- bool ) 0 0= 0= ;
+
+: LIMM-TRY ( n -- n bool )
    ARM-X !
-   ARM-X @ 0 =  ARM-X @ -1 =  or IF LIMM-BAD THEN
+   ARM-X @ 0 =  ARM-X @ -1 =  or IF 0 LIMM-NO exit THEN
    ARM-X @ LELEM LIE !                                  \ ( elem ), e in LIE
    dup POPC64 LIONES !
-   LIONES @ LIE @ = IF LIMM-BAD THEN
+   LIONES @ LIE @ = IF drop 0 LIMM-NO exit THEN
    LIONES @ LIE @ LROT                               \ ( r | -1 )
-   dup 0 < IF LIMM-BAD THEN
-   LIONES @ LIE @ LIMM-PACK ;
+   dup 0 < IF drop 0 LIMM-NO exit THEN
+   LIONES @ LIE @ LIMM-PACK LIMM-YES ;
+
+: >LIMM ( n -- n )
+   LIMM-TRY 0= IF LIMM-BAD THEN ;
+
+\ Whether the and/orr/eor immediate forms can carry this mask at all. This is the
+\ whole of the validity question - a logical immediate has no bound to check
+\ separately, because the set of encodable masks IS the set the packer above can
+\ build a nis for.
+: LIMM? ( n -- bool )
+   LIMM-TRY swap drop ;
 
 \ indirect branches, trap, nop
 : ENC-BLR ( n -- n ) XREG? $D63F0000 swap 5 lshift or MSK ;

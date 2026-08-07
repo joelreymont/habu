@@ -810,6 +810,7 @@ public
 -8343 constant E-A64IR-SLOT     \ a frame-slot offset the memory forms cannot address: negative, not a multiple of the eight bytes they move, or past the reach of their scaled twelve-bit offset field
 -8344 constant E-A64IR-FRAME    \ a reserved frame size no routine can declare: negative, not a multiple of the stack alignment, or past the deepest frame the offset field can reach
 -8345 constant E-A64IR-OFF      \ an add or subtract immediate outside the unsigned twelve-bit field the form holds: negative, or past the largest value that field carries with no shift
+-8346 constant E-A64IR-MASK     \ a mask the logical immediate forms cannot carry: the field holds a rotated contiguous run of ones repeating at a power-of-two element width, which excludes zero, all ones, and every run that is broken
 
 \ Native ARM64 instruction selection (package A64SEL): -8360..-8379
 \

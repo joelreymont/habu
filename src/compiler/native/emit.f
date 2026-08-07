@@ -235,7 +235,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-63 constant OPCODES-N
+66 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -299,6 +299,9 @@ private
 60 constant O-ADDI
 61 constant O-SUBI
 62 constant O-MOVN
+63 constant O-ANDI
+64 constant O-ORRI
+65 constant O-EORI
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -416,6 +419,7 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OFF IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-MASK IR-ID:ir-symbol-id
 
 \ The emitted bytes, and one source-map row per emitted instruction.
 create CODE INSN-MAX INSN-BYTES * allot
@@ -511,6 +515,9 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
       movn      OF O-MOVN      ENDOF
+      andi      OF O-ANDI      ENDOF
+      orri      OF O-ORRI      ENDOF
+      eori      OF O-EORI      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -578,6 +585,9 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
       O-MOVN      of A64IR-OPCODE:MOVN      endof
+      O-ANDI      of A64IR-OPCODE:ANDI      endof
+      O-ORRI      of A64IR-OPCODE:ORRI      endof
+      O-EORI      of A64IR-OPCODE:EORI      endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -687,6 +697,14 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : OFF-IMM ( IR-ID:ir-op-id -- n )
    0 BND-OFF @ ATTR-INT ;
 
+\ The logical immediate, under the dialect's own key for it. The dialect holds
+\ the MASK - the number the instruction masks with - and the encoders take the
+\ thirteen-bit description of it, so the packer converts one to the other here.
+\ It cannot refuse: the dialect's own bound on this key is that same packer, so
+\ a mask that reached a module is one it already built a description for.
+: MASK-IMM ( IR-ID:ir-op-id -- n )
+   0 BND-MASK @ ATTR-INT >LIMM ;
+
 \ ---- the data-stack operands -------------------------------------------------
 \ The same two readings against the other pointer, under the dialect's own keys
 \ for them. They are separate keys and separate readers because a frame offset
@@ -754,6 +772,12 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : PAIRI ( IR-ID:ir-op-id -- n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  id OFF-IMM ;
+
+\ The same three fields for the logical immediate forms, differing only in which
+\ of the two immediate keys the third comes from.
+: PAIRM ( IR-ID:ir-op-id -- n n n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  id MASK-IMM ;
 
 \ The zero register, which is what register 31 is in this instruction's addend
 \ field. No value of the machine dialect stands for it and the allocator never
@@ -1744,6 +1768,9 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       madd     OF id  id QUAD ENC-MADD  APPEND ENDOF
       addi     OF id  id PAIRI ENC-ADDI  APPEND ENDOF
       subi     OF id  id PAIRI ENC-SUBI  APPEND ENDOF
+      andi     OF id  id PAIRM ENC-ANDI  APPEND ENDOF
+      orri     OF id  id PAIRM ENC-ORRI  APPEND ENDOF
+      eori     OF id  id PAIRM ENC-EORI  APPEND ENDOF
       sdiv     OF id PUT-SDIV ENDOF
       and      OF id  id TRIPLE ENC-AND  APPEND ENDOF
       orr      OF id  id TRIPLE ENC-ORR  APPEND ENDOF
@@ -2027,6 +2054,9 @@ public
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1
    c b A64IR-OPCODE:MOVN      BIND1
+   c b A64IR-OPCODE:ANDI      BIND1
+   c b A64IR-OPCODE:ORRI      BIND1
+   c b A64IR-OPCODE:EORI      BIND1
    c b A64IR-OPCODE:LINKSAVE  BIND1
    c b A64IR-OPCODE:LINKLOAD  BIND1
    c b A64IR-OPCODE:FADD     BIND1
@@ -2061,6 +2091,7 @@ public
    c b A64IR:KEY-DBACK  0 BND-DBACK !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    c b A64IR:KEY-OFF    0 BND-OFF !
+   c b A64IR:KEY-MASK   0 BND-MASK !
    BOUND-YES BND-MODE ! ;
 
 \ Whether a binding is live, for a caller cleaning up after a refused run. See

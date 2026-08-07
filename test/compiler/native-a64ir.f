@@ -120,7 +120,7 @@ private
 \ CMPSEL-SHAPE-CASE, the two that answer a double in FSEL-SHAPE-CASE, the four
 \ whose flags an Fcmp wrote in FFSEL-SHAPE-CASE, and the six bitwise and shift
 \ forms in BITWISE-CASE, and the count covers all of them.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -148,6 +148,9 @@ private
    c b A64IR-OPCODE:ADDI A64IR:OPCODE {: ai:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:SUBI A64IR:OPCODE {: si:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:MOVN A64IR:OPCODE {: mn:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:ANDI A64IR:OPCODE {: an:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:ORRI A64IR:OPCODE {: oi:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:EORI A64IR:OPCODE {: ei:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FDEFINED?
@@ -174,14 +177,17 @@ private
    rv md IR-SCHEMA:FDEFINED?
    rv ai IR-SCHEMA:FDEFINED?
    rv si IR-SCHEMA:FDEFINED?
-   rv mn IR-SCHEMA:FDEFINED? ;
+   rv mn IR-SCHEMA:FDEFINED?
+   rv an IR-SCHEMA:FDEFINED?
+   rv oi IR-SCHEMA:FDEFINED?
+   rv ei IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the sixty-three machine opcodes" T-LABEL
+   s" registration defines exactly the sixty-six machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE 63 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 66 T= ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one

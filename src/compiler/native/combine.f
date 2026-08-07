@@ -107,7 +107,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it here too.
-63 constant OPCODES-N
+66 constant OPCODES-N
 
 0 constant O-MOVZ
 1 constant O-MOVK
@@ -172,11 +172,14 @@ private
 60 constant O-ADDI
 61 constant O-SUBI
 62 constant O-MOVN
+63 constant O-ANDI
+64 constant O-ORRI
+65 constant O-EORI
 \ One slot per attribute key the dialect declares. This pass writes no attribute
 \ of its own - the form it introduces carries none - but it COPIES every one the
 \ selector built, and a field copied under the wrong key would be a routine
 \ reading its arguments out of its own frame.
-10 constant KEYS-N
+11 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -187,6 +190,7 @@ private
 7 constant K-DBACK
 8 constant K-ENTRY
 9 constant K-OFF
+10 constant K-MASK
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -226,6 +230,7 @@ create NAMEBUF NAME-CAP allot
 create FOLD-AT OPS-MAX cells allot
 create FOLDED OPS-MAX cells allot
 create IMM-AT OPS-MAX cells allot
+create MASK-AT OPS-MAX cells allot
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -296,6 +301,9 @@ create IMM-AT OPS-MAX cells allot
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
       movn      OF O-MOVN      ENDOF
+      andi      OF O-ANDI      ENDOF
+      orri      OF O-ORRI      ENDOF
+      eori      OF O-EORI      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -363,6 +371,9 @@ create IMM-AT OPS-MAX cells allot
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
       O-MOVN      of A64IR-OPCODE:MOVN      endof
+      O-ANDI      of A64IR-OPCODE:ANDI      endof
+      O-ORRI      of A64IR-OPCODE:ORRI      endof
+      O-EORI      of A64IR-OPCODE:EORI      endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -569,16 +580,44 @@ create IMM-AT OPS-MAX cells allot
       id i ATTR-KEY-AT KEY-SLOT-OF want = if drop id i ATTR-INT-AT leave then
    loop ;
 
+\ The whole number this operation puts in a register, and whether it is one at
+\ all. A movz writing the bottom half of a cleared register IS the number; a
+\ movz under a movk is one half of a larger one, and the single-use condition
+\ the callers apply already excludes that, because such a movz's one reader is
+\ the movk. Both immediate folds below read this, so the question "is this
+\ operation a whole constant" is asked once and each fold adds only its own
+\ question about whether ITS field can hold the answer.
+: MOVZ-VALUE ( IR-ID:ir-op-id -- n bool )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-MOVZ <> if 0 false exit then
+   id RESULTS-OF 1 <> if 0 false exit then
+   id K-SHIFT ATTR-BY-KEY 0<> if 0 false exit then
+   id K-IMM ATTR-BY-KEY {: v:n :}
+   v 0 < if 0 false exit then
+   v true ;
+
 \ The number this operation puts in a register, when it is a whole constant that
 \ the arithmetic field can hold, and -1 when it is anything else.
 : WHOLE-IMM ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-MOVZ <> if -1 exit then
-   id RESULTS-OF 1 <> if -1 exit then
-   id K-SHIFT ATTR-BY-KEY 0<> if -1 exit then
-   id K-IMM ATTR-BY-KEY {: v:n :}
-   v 0 < if -1 exit then
+   MOVZ-VALUE {: v:n ok:bool :}
+   ok 0= if -1 exit then
    v A64IR:OFF-LIMIT > if -1 exit then
+   v ;
+
+\ The same reading against the OTHER immediate field. The arithmetic field is
+\ bounded by its width, so the question there is a comparison; the logical field
+\ is not bounded by a width at all - it holds whatever mask its thirteen-bit
+\ description can rebuild - so the question here is whether that description
+\ exists, which only the packer can answer. Asking it is what keeps this fold
+\ from handing the emitter a mask it would have to die on.
+: WHOLE-MASK? ( IR-ID:ir-op-id -- bool )
+   MOVZ-VALUE {: v:n ok:bool :}
+   ok 0= if false exit then
+   v A64IR:MASK-IMM? ;
+
+: WHOLE-MASK ( IR-ID:ir-op-id -- n )
+   MOVZ-VALUE {: v:n ok:bool :}
+   ok 0= if E-A64COMB-SHAPE throw then
    v ;
 
 \ Whether the operation at this position is a constant this pass may fold into
@@ -614,6 +653,49 @@ create IMM-AT OPS-MAX cells allot
    f bk d1 k IMM-FOLDS-HERE? if d1 exit then
    -1 ;
 
+\ ---- which masks this block puts in the instruction ---------------------------
+\ THE THIRD PATTERN. ARM64's and, orr and eor carry a mask in the instruction,
+\ and this chain does not use that form either: a mask small enough to have
+\ stood in the instruction is built into a register by a move-wide first, so
+\ `x 7 and` is a movz and an and where it is one `and xd, xn, #7`.
+\
+\ The conditions are the arithmetic fold's, with the two that differ:
+\   WHETHER THE FIELD CAN HOLD IT is not a range question. See WHOLE-MASK?.
+\   AND ALL THREE ARE COMMUTATIVE, so either operand may be the mask - unlike
+\   the subtract, which is why this asks both positions unconditionally where
+\   IMM-FOLD-FOR asks the first only of an addition.
+\ Nothing here cross-checks the other two folds. They claim an addition, a
+\ subtraction or a multiply, and this claims a bitwise operation, so no
+\ operation is a candidate for two of them and no movz can be claimed twice: a
+\ constant with one use has one reader, and it is that reader which folds it.
+: FOLDABLE-MASK? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
+   k 0 < if false exit then
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   id WHOLE-MASK? 0= if false exit then
+   f  id 0 RESULT-AT  USES-OF 1 = ;
+
+: MASK-FOLDS-HERE? ( IR-ID:ir-fun-id IR-ID:ir-block-id n n -- bool )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id d:n k:n :}
+   d k >= if false exit then
+   f bk d FOLDABLE-MASK? ;
+
+: LOGICAL-OP? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-AND =  id OP-SLOT O-ORR =  or  id OP-SLOT O-EOR =  or ;
+
+: MASK-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   id LOGICAL-OP? 0= if -1 exit then
+   id OPERANDS-OF 2 <> if -1 exit then
+   id RESULTS-OF 1 <> if -1 exit then
+   bk  id 0 OPERAND-AT  DEF-INDEX {: d0:n :}
+   f bk d0 k MASK-FOLDS-HERE? if d0 exit then
+   bk  id 1 OPERAND-AT  DEF-INDEX {: d1:n :}
+   f bk d1 k MASK-FOLDS-HERE? if d1 exit then
+   -1 ;
+
 \ The whole block's plan, read once before a single operation of it is copied,
 \ so the walk and the operation it reaches later agree about what was decided.
 : PLAN-BLOCK ( IR-ID:ir-fun-id IR-ID:ir-block-id -- )
@@ -623,6 +705,7 @@ create IMM-AT OPS-MAX cells allot
    n 0 ?do
       -1 i cells FOLD-AT + !
       -1 i cells IMM-AT + !
+      -1 i cells MASK-AT + !
       0 i cells FOLDED + !
    loop
    n 0 ?do
@@ -638,6 +721,13 @@ create IMM-AT OPS-MAX cells allot
          d i cells IMM-AT + !
          1 d cells FOLDED + !
       then
+   loop
+   n 0 ?do
+      f bk i MASK-FOLD-FOR {: d:n :}
+      d 0 >= if
+         d i cells MASK-AT + !
+         1 d cells FOLDED + !
+      then
    loop ;
 
 : FOLD-OF ( n -- n )
@@ -645,6 +735,9 @@ create IMM-AT OPS-MAX cells allot
 
 : IMM-OF ( n -- n )
    cells IMM-AT + @ ;
+
+: MASK-OF ( n -- n )
+   cells MASK-AT + @ ;
 
 : FOLDED? ( n -- bool )
    cells FOLDED + @ 0<> ;
@@ -710,6 +803,10 @@ create IMM-AT OPS-MAX cells allot
       then
       k K-OFF = if
          CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD v A64IR:OFF-ATTR
+         IR-BUILD:ADD-ATTR
+      then
+      k K-MASK = if
+         CTX BLD  CTX BLD A64IR:KEY-MASK  CTX BLD v A64IR:MASK-ATTR
          IR-BUILD:ADD-ATTR
       then
    loop ;
@@ -804,6 +901,26 @@ create IMM-AT OPS-MAX cells allot
    ar  CLOSE  BIND-RESULTS
    1 N-FUSED +! ;
 
+\ The bitwise operation with its mask in the instruction, written where the
+\ register form stood. It is EMIT-ADDI against the other immediate key, and
+\ which of the three opcodes it is comes off the operation being rewritten -
+\ the mask is the same number whichever of them reads it.
+: EMIT-MASKI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
+   {: mz:IR-ID:ir-op-id lg:IR-ID:ir-op-id :}
+   mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
+   lg OP-SLOT O-AND =
+   if   A64IR-OPCODE:ANDI
+   else lg OP-SLOT O-ORR =
+        if A64IR-OPCODE:ORRI else A64IR-OPCODE:EORI then
+   then {: o:A64IR:opcode :}
+   lg o OPEN
+   lg k ADDEND-OF VOF OPERAND+
+   CTX BLD  lg 0 RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
+   CTX BLD  CTX BLD A64IR:KEY-MASK  CTX BLD mz WHOLE-MASK A64IR:MASK-ATTR
+   IR-BUILD:ADD-ATTR
+   lg  CLOSE  BIND-RESULTS
+   1 N-FUSED +! ;
+
 \ ---- the block ---------------------------------------------------------------
 \ The old block's arguments are the new block's arguments, one for one. The value
 \ map is NOT cleared here: a value defined in one block is read in the blocks it
@@ -833,10 +950,12 @@ create IMM-AT OPS-MAX cells allot
       i FOLDED? 0= if
          i FOLD-OF {: d:n :}
          i IMM-OF {: e:n :}
+         i MASK-OF {: g:n :}
          d 0 >= if bk d OP-AT  bk i OP-AT  EMIT-MADD else
          e 0 >= if bk e OP-AT  bk i OP-AT  EMIT-ADDI else
+         g 0 >= if bk g OP-AT  bk i OP-AT  EMIT-MASKI else
                    bk i OP-AT COPY-OP
-         then then
+         then then then
       then
    loop
    CTX BLD IR-BUILD:END-BLOCK drop ;
@@ -977,6 +1096,9 @@ public
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1
    c b A64IR-OPCODE:MOVN      BIND1
+   c b A64IR-OPCODE:ANDI      BIND1
+   c b A64IR-OPCODE:ORRI      BIND1
+   c b A64IR-OPCODE:EORI      BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
@@ -987,6 +1109,7 @@ public
    c b A64IR:KEY-DBACK  K-DBACK BND-KEY !
    c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !
    c b A64IR:KEY-OFF    K-OFF BND-KEY !
+   c b A64IR:KEY-MASK   K-MASK BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:FPR-TYPE 0 BND-FPR !
@@ -1020,6 +1143,7 @@ public
          bk OP-COUNT 0 ?do
             f bk i FOLD-FOR 0 >= if 1+ then
             f bk i IMM-FOLD-FOR 0 >= if 1+ then
+            f bk i MASK-FOLD-FOR 0 >= if 1+ then
          loop
       loop
    loop ;

@@ -338,6 +338,7 @@ require src/compiler/ir/context.f
 require src/compiler/ir/type.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/build.f
+require src/arch/arm64/asm.f
 
 package A64IR
 public
@@ -410,6 +411,9 @@ ENUM opcode DERIVE eq
    addi
    subi
    movn
+   andi
+   orri
+   eori
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -662,6 +666,22 @@ private
    dup 0 < if E-A64IR-OFF throw then
    dup OFF-MAX > if E-A64IR-OFF throw then ;
 
+\ THE MASK THE LOGICAL IMMEDIATE FORMS CARRY, AND WHY ITS BOUND IS NOT A RANGE.
+\ Every other immediate in this dialect is bounded by the WIDTH of the field it
+\ drops into, so the check is a comparison. This one is not: the and/orr/eor
+\ immediate is not a mask stored in a field, it is a mask RECONSTRUCTED from a
+\ thirteen-bit description of a repeating element - a rotated contiguous run of
+\ ones, at an element width that is a power of two. So the set of values the
+\ form can carry is not an interval, and no comparison describes it. Whether a
+\ mask is encodable is answered by trying to encode it, which is what
+\ src/arch/arm64/asm.f's packer does, and that packer is asked here rather than
+\ having its rule restated: a second copy would be free to drift into admitting
+\ a mask the encoder then refuses, and the encoder's refusal ends the process.
+\ A mask that cannot be encoded is therefore not representable in this dialect
+\ at all, so no pass can build one and leave the die for the emitter to reach.
+: MASK ( n -- n )
+   dup LIMM? 0= if E-A64IR-MASK throw then ;
+
 \ ---- checked data-stack operands ---------------------------------------------
 \ An offset from the data-stack pointer, which is what an access of the caller's
 \ stack encodes. It is SIGNED, and that is the whole difference from a frame
@@ -754,6 +774,12 @@ public
 \ field's width is stated once in this dialect and never restated by a consumer.
 : OFF-LIMIT ( -- n )     OFF-MAX ;
 
+\ Whether the logical immediate forms can carry this mask. A pass CHOOSING
+\ between the immediate form and the register form asks this first and takes the
+\ register form when the answer is no; the bound above is what makes a pass that
+\ forgot to ask fail loudly instead of emitting a wrong instruction.
+: MASK-IMM? ( n -- bool )   LIMM? ;
+
 \ ---- the opcode names --------------------------------------------------------
 \ This module's interned symbol for one opcode. Interning deduplicates, so asking
 \ twice answers the same identity, and this is the symbol both IR-SCHEMA's
@@ -823,6 +849,9 @@ public
       addi      OF s" a64.addi"     ENDOF
       subi      OF s" a64.subi"     ENDOF
       movn      OF s" a64.movn"     ENDOF
+      andi      OF s" a64.andi"     ENDOF
+      orri      OF s" a64.orri"     ENDOF
+      eori      OF s" a64.eori"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -909,6 +938,18 @@ public
 
 : OFF-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    OFF IR-BUILD:INTERN-INT-ATTR ;
+
+\ The one attribute key the logical immediate forms require: the whole mask, as
+\ the number it masks with. It is its own key for the reason `a64.off` is its
+\ own: the two fields admit different values, and one key answering both would
+\ let an arithmetic immediate pass a value the logical field cannot express -
+\ and, the other way round, would refuse the mask -2, which the logical field
+\ carries and the arithmetic one cannot hold at all.
+: KEY-MASK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.mask" IR-BUILD:INTERN-SYMBOL ;
+
+: MASK-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   MASK IR-BUILD:INTERN-INT-ATTR ;
 
 \ The two attribute keys the data-stack forms require. They are their own keys
 \ rather than the frame's, because a consumer that walks a module has to be able
@@ -1048,6 +1089,9 @@ private
       addi      OF s" a64.rule.addi"     ENDOF
       subi      OF s" a64.rule.subi"     ENDOF
       movn      OF s" a64.rule.movn"     ENDOF
+      andi      OF s" a64.rule.andi"     ENDOF
+      orri      OF s" a64.rule.orri"     ENDOF
+      eori      OF s" a64.rule.eori"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1116,6 +1160,9 @@ private
       addi      OF s" a64.render.addi"     ENDOF
       subi      OF s" a64.render.subi"     ENDOF
       movn      OF s" a64.render.movn"     ENDOF
+      andi      OF s" a64.render.andi"     ENDOF
+      orri      OF s" a64.render.orri"     ENDOF
+      eori      OF s" a64.render.eori"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1251,6 +1298,25 @@ private
 \ so a rewriter folding a constant into a subtraction may only fold the value
 \ being subtracted, never the value subtracted from. That rule is the caller's
 \ to keep; this schema only says which of the two the operand is.
+\ One logical immediate form: one register read, one written, and the mask in
+\ the instruction. It is DEF-BINARY-IMM with the other immediate key, and it is
+\ a separate word rather than a parameter because the key is what says which
+\ field the value is checked against - the whole point of the two keys.
+\
+\ All three ARE commutative, unlike the subtract the shape below shares with the
+\ add, so a pass folding a constant into one of them may read either operand.
+: DEF-LOGICAL-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-MASK IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 : DEF-BINARY-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -2274,6 +2340,9 @@ public
    c b t A64IR-OPCODE:SUB DEF-BINARY
    c b t A64IR-OPCODE:ADDI DEF-BINARY-IMM
    c b t A64IR-OPCODE:SUBI DEF-BINARY-IMM
+   c b t A64IR-OPCODE:ANDI DEF-LOGICAL-IMM
+   c b t A64IR-OPCODE:ORRI DEF-LOGICAL-IMM
+   c b t A64IR-OPCODE:EORI DEF-LOGICAL-IMM
    c b t A64IR-OPCODE:MUL DEF-BINARY
    c b t DEF-MADD
    c b t DEF-SDIV
