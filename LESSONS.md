@@ -5466,3 +5466,16 @@ see different programs), and a cannot-compile fixture must be refused for
 the SAME NAMED REASON, not merely refused, or it stays green when its
 capability gap closes.
 
+## Read the twin before claiming the row (2026-08-07)
+
+A 'chain beats clang' headline rested on rows where the C twin's callee is
+static and clang INLINED it - the 40-byte column was a deliberate inlined
+body, not a failed tail call, so the 4-vs-40 comparison measured a policy
+difference (copy vs call), not codegen quality. The harness's own header
+states that clang is allowed to inline and that the difference IS the
+measurement; the scorekeeping error was reading the byte column past that
+sentence. Before claiming a row against a reference compiler, read what the
+reference actually emitted and why - a byte win bought by keeping a call
+the reference removed may be a time loss, and the time column adjudicates
+policy differences.
+
