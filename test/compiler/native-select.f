@@ -216,6 +216,9 @@ $1000 constant BUMP-ADDR
 : MEMT ( -- IR-ID:ir-type-id )
    CC BB HIR:MEM-TYPE ;
 
+: MEMARG+ ( -- IR-ID:ir-value-id )
+   CC BB MEMT IR-BUILD:ADD-BLOCK-ARG ;
+
 : MEM0 ( -- IR-ID:ir-value-id )
    HIR-OPCODE:MEM BODY-ST BODY-LN OPEN-OP
    CC BB MEMT IR-BUILD:ADD-RESULT
@@ -328,6 +331,29 @@ $1000 constant BUMP-ADDR
    CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
    CC BB IR-BUILD:END-OP drop ;
 
+\ The same edge carrying two values, which the side-effect pair needs: an arm
+\ that stores hands the join the memory order the store answered, and the arm
+\ that does not hands the one it was given, exactly as an elaborated body does.
+: BR2 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- )
+   {: u:IR-ID:ir-value-id v:IR-ID:ir-value-id t:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB u IR-BUILD:ADD-OPERAND
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+\ The same edge carrying three values. Only the carried-count cases below need
+\ it: an arm that hands three values over is an arm whose every defined value is
+\ still wanted where the select is made.
+: BR3 ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id n -- )
+   {: u:IR-ID:ir-value-id v:IR-ID:ir-value-id w:IR-ID:ir-value-id t:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB u IR-BUILD:ADD-OPERAND
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB w IR-BUILD:ADD-OPERAND
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
 \ `carry` says which value the two arms hand the join. Handing the ARGUMENTS on
 \ leaves the comparison's answer with one reader, the branch, which is what the
 \ fusion requires; handing the COMPARISON's answer on gives it three, which is
@@ -391,6 +417,26 @@ $1000 constant BUMP-ADDR
    CC BB x IR-BUILD:ADD-OPERAND
    CC BB y IR-BUILD:ADD-OPERAND
    CC BB CELLT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+\ A double literal, which carries its bit pattern in the same integer attribute
+\ an integer literal carries its value in, and a float operation over two
+\ doubles. The if-conversion cases about an arm's own locals need both: an arm
+\ that materialises a constant and computes with it is the shape they are about.
+: FCONSTOP ( n -- IR-ID:ir-value-id )
+   {: v:n :}
+   HIR-OPCODE:FCONST BODY-ST BODY-LN OPEN-OP
+   CC BB REALT IR-BUILD:ADD-RESULT
+   CC BB  CC BB HIR:KEY-VALUE  CC BB v IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
+: FBINOP ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: o:HIR:opcode x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   o BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB REALT IR-BUILD:ADD-RESULT
    CLOSE-VALUE ;
 
 \ And one against the instruction's own zero, which takes one operand.
@@ -693,6 +739,157 @@ $1000 constant BUMP-ADDR
    yc 3 BR1
    BLOCK+
    ARG+ RET1
+   CLOSE-FUN ;
+
+\ ---- the arms that carry their own constant ---------------------------------
+\ `: FROUND ( r -- n ) dup f0< if 0.5 f- else 0.5 f+ then f>s ;` as the
+\ elaborator leaves it, which is CODEGEN-CORPUS3:FROUND's own body and the
+\ measured witness for the admission rule. Each arm holds THREE operations that
+\ define a value: the literal, the crossing that reads the argument cell as a
+\ double, and the arithmetic. Only the arithmetic is handed to the join, and the
+\ crossing is consumed inside the arm that made it; the two literals are ONE
+\ value after the region's memo has folded them, and that one is held from the
+\ first arm to the second. So a count over every defined value puts this region
+\ at six and a count over the values the region really holds puts it at three.
+\
+\ THE TWO ARMS WRITE THE SAME LITERAL, deliberately and exactly as the source
+\ does: the elaborator's own memo is released around a stub, so the two `0.5`s
+\ arrive here as two operations, and folding them is the converted region's
+\ memo and not something the fixture arranged.
+$3FE0000000000000 constant HALF-BITS       \ 0.5
+
+: SELECT-LOCALS-ARM ( HIR:opcode IR-ID:ir-value-id -- )
+   {: o:HIR:opcode xc:IR-ID:ir-value-id :}
+   HALF-BITS FCONSTOP {: c:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   o x c FBINOP 3 BR1 ;
+
+: BUILD-SELECT-LOCALS ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:FLTZ x FCMP1 {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   HIR-OPCODE:FADD xc SELECT-LOCALS-ARM
+   BLOCK+
+   HIR-OPCODE:FSUB xc SELECT-LOCALS-ARM
+   BLOCK+
+   FARG+ drop
+   xc RET1
+   CLOSE-FUN ;
+
+\ SIX DEFINED VALUES AGAIN AND EVERY ONE OF THEM CARRIED, which is the control
+\ for the case above: the count is the same, nothing about the region's shape,
+\ width or pool differs in kind, and the only thing changed is that each arm
+\ hands all three of its values to the join instead of consuming two of them.
+\ A rule that had merely been relaxed to admit six values would admit this too.
+: SELECT-CARRIED-ARM ( n -- )
+   {: base:n :}
+   base CONSTOP {: a:IR-ID:ir-value-id :}
+   base 1+ CONSTOP {: b:IR-ID:ir-value-id :}
+   base 2 + CONSTOP {: c:IR-ID:ir-value-id :}
+   a b c 3 BR3 ;
+
+: BUILD-SELECT-CARRIED ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:LT x y BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   10 SELECT-CARRIED-ARM
+   BLOCK+
+   20 SELECT-CARRIED-ARM
+   BLOCK+
+   ARG+ drop
+   ARG+ drop
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ ---- one literal in two arms is one value, and it is a carried one ----------
+\ TWO MODULES THAT DIFFER IN ONE NUMBER. Each arm computes two values from the
+\ argument and a literal of its own and hands both to the join, so four values
+\ are carried whatever the literals are - one short of the bound. In one module
+\ the two arms write the SAME literal and in the other they do not, and nothing
+\ else about the pair differs: same block count, same operation count per arm,
+\ same width, same convention.
+\
+\ SO THE PAIR IS EXACTLY THE FOLD'S OWN QUESTION. The converted region's memo
+\ makes two identical literals one value, and that one value is then read where
+\ the second arm stood - so it is held across the first arm's whole tail and is
+\ a fifth carried value, over the bound. Two DIFFERENT literals are two values,
+\ each consumed inside the arm that wrote it, and the region converts. A count
+\ that treated a shared literal as an arm's own local would convert both, and
+\ would hand the allocator a region holding one value more than it was told
+\ about.
+: SELECT-SHARED-ARM ( HIR:opcode n IR-ID:ir-value-id IR-ID:ir-value-id -- )
+   {: o:HIR:opcode k:n x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   k CONSTOP {: c:IR-ID:ir-value-id :}
+   o x c BINOP {: u:IR-ID:ir-value-id :}
+   o y c BINOP {: v:IR-ID:ir-value-id :}
+   u v 3 BR2 ;
+
+: BUILD-SELECT-SHARED ( bool -- )
+   {: shared:bool :}
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:LT x y BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   HIR-OPCODE:MUL 9 x y SELECT-SHARED-ARM
+   BLOCK+
+   HIR-OPCODE:ADD  shared if 9 else 10 then  x y SELECT-SHARED-ARM
+   BLOCK+
+   ARG+ drop
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ THE SAME BODY WITH A SIDE EFFECT IN ONE ARM, which has to keep its branch
+\ whatever the counts say. Running both arms is what a select does, so an arm
+\ that WRITES would write on a path the program does not take - that is wrong
+\ code and not slower code, and it is refused by the source dialect's own memory
+\ effect rather than by anything counted here.
+\
+\ THE FLAG IS THE ONLY DIFFERENCE BETWEEN THE TWO MODULES, which is what makes
+\ the pair below a controlled experiment rather than two assertions. Both carry
+\ the memory the definition is entered with, both arms hold the same three
+\ operations they hold above, both are selected under the same convention: one
+\ of them stores through that memory and the other does not.
+\ The arms are cells rather than doubles for one reason: this pair is about the
+\ memory effect and nothing else, so the module it selects should hold nothing
+\ that asks a second question. Each arm still holds THREE values with only one
+\ of them handed to the join, which is the shape the widening admits - the
+\ literal and the multiply are the arm's own and die in it.
+: SELECT-EFFECT-ARM ( n IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: k:n x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   k CONSTOP {: c:IR-ID:ir-value-id :}
+   HIR-OPCODE:MUL x c BINOP {: m:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD m y BINOP ;
+
+: BUILD-SELECT-EFFECT ( bool -- )
+   {: writes:bool :}
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   MEM0 {: k0:IR-ID:ir-value-id :}
+   HIR-OPCODE:LT x y BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   3 x y SELECT-EFFECT-ARM {: r0:IR-ID:ir-value-id :}
+   writes if
+      BUMP-ADDR CONSTOP {: a0:IR-ID:ir-value-id :}
+      r0  x a0 k0 STORE1  3 BR2
+   else
+      r0 k0 3 BR2
+   then
+   BLOCK+
+   5 x y SELECT-EFFECT-ARM k0 3 BR2
+   BLOCK+
+   ARG+ {: r:IR-ID:ir-value-id :}
+   MEMARG+ drop
+   r RET1
    CLOSE-FUN ;
 
 \ ---- running the pass --------------------------------------------------------
@@ -1320,6 +1517,87 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: FSEL-CELL-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE 4 T= ;
 
+\ ---- what the arms may compute, and what they may still hold ----------------
+\ FROUND's own body, which used to keep its branch and now does not. Six values
+\ across its two arms: two crossings consumed inside the arm that made them, two
+\ literals that the memo makes one held value, and two results handed to the
+\ join - so the region holds three and the bound is over those three. What comes
+\ out is the region every other case in this section comes out
+\ as - one fused select against the instruction's own zero, under `mi` - which
+\ is what says the widening changed which regions are ADMITTED and nothing about
+\ what an admitted region becomes.
+\
+\ AND THE OPERAND ASSERTION IS THE MEMO. The two arms wrote the same literal, so
+\ a region that materialised each of them would hold two constants and the two
+\ arithmetic operations would read different values. They read the SAME value:
+\ inside a converted region there is one straight line and no pair of siblings
+\ left in it, so the second literal is the first one.
+: SELECT-LOCALS-BODY ( IR-CTX:ctx -- n n bool bool bool bool n )
+   HIR-MOD
+   BUILD-SELECT-LOCALS
+   SELECTED-POOL-FP READ!
+   BLOCKS
+   OPS
+   8 s" a64.fcmpselzd" OPCODE-IS?
+   8 s" a64.fcmpbrz" OPCODE-IS?
+   3 s" a64.fmovxd" OPCODE-IS?
+   5 1 OPERAND@  7 1 OPERAND@  SAME-VALUE?
+   8 0 ATTR-INT ;
+
+: SELECT-LOCALS-CASE ( -- )
+   s" an arm that carries its own constant converts, and both arms carry one"
+   T-LABEL
+   WBND [: SELECT-LOCALS-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:MI A64IR:COND-CODE T=
+   TTRUE TTRUE TFALSE TTRUE
+   11 T= 2 T= ;
+
+\ The control: the same six defined values with every one of them handed to the
+\ join. Nothing was relaxed to a bigger number, so this one still keeps its
+\ branch - and a rule that had merely counted higher would have taken it. Its
+\ entry block holds ONE operation when the region is refused - the comparison
+\ fuses into the branch and the branch is all that is left - so the
+\ compare-and-branch is at index zero and a select would have replaced it.
+: SELECT-CARRIED-BODY ( IR-CTX:ctx -- n bool bool )
+   HIR-MOD
+   BUILD-SELECT-CARRIED
+   SELECTED-POOL READ!
+   BLOCKS
+   0 s" a64.cmpbr" OPCODE-IS?
+   0 s" a64.cmpsel" OPCODE-IS? ;
+
+: SELECT-CARRIED-CASE ( -- )
+   s" the same six values, all handed to the join, are over the bound and stay branched"
+   T-LABEL
+   WBND [: SELECT-CARRIED-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE 4 T= ;
+
+\ The pair about the fold, read as the block count on both sides of one number.
+\ Four values are handed to the join either way; the literal each arm writes is
+\ the fifth value only when the two arms write the SAME one, because that is
+\ when the memo makes them one value and holds it across the arms. Two blocks is
+\ the region converted and four is the branch still standing beside its arms and
+\ their join.
+: SELECT-SHARED-BODY ( IR-CTX:ctx -- n bool )
+   HIR-MOD
+   true BUILD-SELECT-SHARED
+   SELECTED-POOL READ!
+   BLOCKS
+   0 s" a64.cmpbr" OPCODE-IS? ;
+
+: SELECT-DISTINCT-BODY ( IR-CTX:ctx -- n bool )
+   HIR-MOD
+   false BUILD-SELECT-SHARED
+   SELECTED-POOL READ!
+   BLOCKS
+   6 s" a64.cmpsel" OPCODE-IS? ;
+
+: SELECT-SHARED-CASE ( -- )
+   s" one literal written by both arms is a carried value and takes the region over the bound"
+   T-LABEL
+   WBND [: SELECT-SHARED-BODY ;] IR-CTX:WITH-CONTEXT TTRUE 4 T=
+   WBND [: SELECT-DISTINCT-BODY ;] IR-CTX:WITH-CONTEXT TTRUE 2 T= ;
+
 \ ---- the fused compare-and-branch --------------------------------------------
 \ The entry block of the branching shape holds ONE operation when the comparison
 \ fuses: the source comparison selects to nothing at all, and the branch selects
@@ -1778,6 +2056,53 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m A64-BUILDER TXT TXT-N  in out HABU-CONV  A64SEL:SELECT ;
 
+\ The data-stack convention with both register files to hand out, which the
+\ side-effect pair is the only user of. It needs the SLOTS because the generic
+\ memory order of this dialect begins where the routine takes the caller's
+\ operands, so a module holding a `hir.mem` has to be selected under a
+\ convention that has one; and it needs the POOLS because the region under test
+\ has to be one that would otherwise convert, or the refusal being read would be
+\ the pool's and not the store's.
+: POOLED-SLOTS ( n n -- A64EFF:routine )
+   {: in:n out:n :}
+   in SLOTS-N  out SLOTS-N  A64EFF:GPR-ALL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
+: SELECTED-POOL-SLOTS ( n n -- IR-BUILD:module )
+   {: in:n out:n :}
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m A64-BUILDER TXT TXT-N  in out POOLED-SLOTS  A64SEL:SELECT ;
+
+\ ---- the arm that writes ----------------------------------------------------
+\ The one refusal no count may overrule, read as the block count on both sides
+\ of one flag. The if-conversion is the only thing in this pass that changes
+\ that number, so two blocks is the region converted and four is the branch
+\ still standing beside its two arms and their join. Without the store the arms
+\ are the ones the case above converts; with it the source dialect's own memory
+\ effect refuses the region before a single value is counted, because a select
+\ runs both arms and a write on a path the program does not take is wrong code
+\ rather than slower code.
+: SELECT-EFFECT-PURE-BODY ( IR-CTX:ctx -- n )
+   HIR-MOD
+   false BUILD-SELECT-EFFECT
+   2 1 SELECTED-POOL-SLOTS READ!
+   BLOCKS ;
+
+: SELECT-EFFECT-STORE-BODY ( IR-CTX:ctx -- n )
+   HIR-MOD
+   true BUILD-SELECT-EFFECT
+   2 1 SELECTED-POOL-SLOTS READ!
+   BLOCKS ;
+
+: SELECT-EFFECT-CASE ( -- )
+   s" a store in one arm keeps the branch: an effect may not run on a path not taken"
+   T-LABEL
+   WBND [: SELECT-EFFECT-PURE-BODY ;] IR-CTX:WITH-CONTEXT 2 T=
+   WBND [: SELECT-EFFECT-STORE-BODY ;] IR-CTX:WITH-CONTEXT 4 T= ;
+
 : DSTACK-BODY ( IR-CTX:ctx -- n n bool n bool n bool bool n bool n n )
    HIR-MOD
    BUILD-SQUARE
@@ -2044,6 +2369,9 @@ public
    FSELZ-CELL-CASE
    FSEL-REAL-POOL-CASE
    FSEL-CELL-REFUSE-CASE
+   SELECT-LOCALS-CASE
+   SELECT-CARRIED-CASE
+   SELECT-SHARED-CASE
    FLAG-VALUE-CASE
    FFUSE-CASE
    FFUSE-REST-CASE
@@ -2057,6 +2385,7 @@ public
    PASS-CASE
    EXCH-CASE
    MEM-CASE
+   SELECT-EFFECT-CASE
    WBND [: GROUP-BIND-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SOURCE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE-REFUSE ;] IR-CTX:WITH-CONTEXT

@@ -307,19 +307,47 @@ create NAMEBUF NAME-CAP allot
 \ nothing much larger.
 \
 \ THE VALUE COUNT IS ALSO WHAT KEEPS THE ROUTINE ALLOCATABLE, and that half of
-\ it was measured rather than argued. Every value an arm computes is live from
-\ where it is computed to the select that reads it, so a converted region holds
-\ all of them at once; the eight-deep early-exit ladder of
-\ tools/codegen-compare-corpus4.f is the shape that showed it, running an
-\ eight-register routine out of registers when the bound was eight and
-\ allocating cleanly at four. Four is also exactly what the range fold this work
-\ was raised for needs: three values across its two arms, and one of headroom.
+\ it was measured rather than argued: the eight-deep early-exit ladder of
+\ tools/codegen-compare-corpus4.f ran an eight-register routine out of
+\ registers when the bound was eight and allocated cleanly at four.
+\
+\ WHICH VALUES THE BOUND IS OVER WAS WRONG, AND THAT IS WHAT CHANGED. It used to
+\ be every value an arm defines, under the sentence "every one of them is live
+\ from where it is computed to the select that reads it". That sentence is false,
+\ and R-COUNT-DEFS below is where it is now decided instead of assumed. A region
+\ is emitted as ONE straight line - every arm's operations in ordinal order, and
+\ then the selects - so a value an arm defines and CONSUMES before its own
+\ terminator has died before the next arm's operations start, and no select ever
+\ holds it. Only a value the selects still hold stacks up: one the block hands
+\ the join through its own branch, one the select's comparison reads, one
+\ another member of the region reads, and one the region's literal memo hands
+\ to a later arm. Those are CARRIED; the rest are the arm's own locals, and at
+\ most one arm's locals are live at a time.
+\
+\ SO THE NUMBER DID NOT MOVE AND WHAT IT COUNTS DID. Four was measured against
+\ the allocator's own refusal and it still is. The ladder's arms hand every one
+\ of their constants to a select or to a fused comparison and hold nothing of
+\ their own - its four candidate regions count 9, 8, 6 and 4 CARRIED with 0
+\ local - so the correction does not touch that row, and raising the number to
+\ admit its next region brings the measured -8508 straight back: the same
+\ migration of the same body throws E-A64RA-SPILL at six, seven and eight, and
+\ compiles at four and five. Dot habu-cascade-the-ladder-ac28c314 records that
+\ measurement and what the row would really need.
+\
+\ WHAT THE CORRECTION ADMITS is the shape it was wrongly refusing - an arm whose
+\ body is a value computation carrying its own constant materialisation, which
+\ is CODEGEN-CORPUS3:FROUND (`0.5 f-` against `0.5 f+`). Of its six defined
+\ values the two crossings are each consumed inside the arm that made them, the
+\ two literals are ONE value once the memo below has folded them, and the two
+\ results are handed to the join: three carried, one local, where counting every
+\ defined value said six.
+\
 \ Correctness never rests on the number - a region refused here is a region that
 \ keeps its branch - and the allocator remains the authority on what really
 \ fits, which is what R-PRESSURE-OK? below holds the count against.
 16 constant SEL-WIDTH-MAX            \ values a converted selection may hand its join
 16 constant SEL-BLOCK-MAX            \ blocks a converted region may absorb
-4 constant SEL-DEFS-MAX              \ values it may compute on a path not taken
+4 constant SEL-CARRY-MAX             \ values it may still hold where its selects are made
 
 here CELL 1- and CELL swap - CELL 1- and allot
 create R-PRED NFROZEN:BMAX cells allot     \ predecessors this block has
@@ -337,8 +365,12 @@ create R-LIST NFROZEN:BMAX cells allot     \ the members the current try has tak
 variable R-QN
 variable R-QI
 variable R-LIST-N
-variable R-SPEC                      \ operations the current try would speculate
-variable R-SPEC-D                    \ how many of them define a double
+variable R-CARRY                     \ values the try's arms still hold where its selects are made
+variable R-CARRY-D                   \ how many of them are doubles
+variable R-LOCAL                     \ and the widest arm's own locals, one arm's worth at a time
+variable R-LOCAL-D                   \ how many of those are doubles
+variable R-BLOCAL                    \ the same pair for the one arm being counted
+variable R-BLOCAL-D
 variable R-JOIN                      \ the exit the current try has found, or -1
 variable R-WIDTH                     \ how many values the region hands its exit
 variable R-WIDTH-D                   \ how many of those values are doubles
@@ -564,6 +596,9 @@ variable D-RETS                                    \ returns seen while surveyin
       sym i BND-OP @ SAME-SYM? if drop i leave then
    loop
    dup 0 < if E-A64SEL-OPCODE throw then ;
+
+: OP-SLOT ( IR-ID:ir-op-id -- n )
+   OPCODE-AT OPCODE-SLOT ;
 
 \ ---- the value map -----------------------------------------------------------
 \ Which value of the new module a value of the source module selected to. It is
@@ -1241,6 +1276,76 @@ variable KEPT-F
    e EMIT-WBL
    id kk m r CALL-RESTORE ;
 
+\ ---- the converted region's literal memo -------------------------------------
+\ One number materialised twice in one converted region is one value. The
+\ elaborator already keeps this memo per BLOCK
+\ (src/compiler/native/elaborate.f, "the block-local literal memo"), and its
+\ soundness argument is one sentence: a value may be reused only where its
+\ definition dominates the reference, and every row it keeps was defined in a
+\ block that dominates the block being built. That is why it is released around
+\ a stub - a stub and the block after the branch are SIBLINGS, and neither
+\ dominates the other - so the `0.5` in one arm of an `if` and the `0.5` in the
+\ other stay two operations however identical they are.
+\
+\ THE CONVERSION IS WHAT DELETES THE SIBLINGS, WHICH IS WHY THE SAME RULE
+\ REACHES FURTHER HERE. A region this pass converts is emitted as ONE straight
+\ line: the head's operations, then every member's in ordinal order, and every
+\ one of them runs whichever arm the program would have taken. There is no
+\ branch left inside it and so no pair of siblings left in it either - a value
+\ defined earlier in that line dominates every later point of it, by
+\ construction rather than by a dominance query. So the memo the elaborator has
+\ to release at a stub can be held across a whole region here, and the two arms'
+\ constants become one.
+\
+\ IT IS OPEN ONLY WHILE A REGION IS BEING EMITTED. A block selected the ordinary
+\ way still has real branches under it and gets no memo at all, which is the
+\ elaborator's answer for the same shape; the count below is -1 there, and every
+\ reader asks that first. WALK-FUN closes it per function beside VCLEAR for the
+\ same reason VCLEAR exists: a row names a value of the module being built.
+\
+\ THE KEY IS THE OPCODE AND THE NUMBER, NOT THE NUMBER. A constant and a double
+\ literal may carry the same bits and they select to different files - a
+\ move-wide chain in a general register against that chain and an FMOV across -
+\ so a memo keyed on the number alone would hand a D register where a cell was
+\ wanted. Overflowing the memo stops it remembering more, which loses folds and
+\ changes nothing else: this is a cache, exactly as the elaborator's is.
+32 constant RLIT-MAX                 \ distinct constants one region's memo holds
+-1 constant RLIT-SHUT                \ the count when no region is being emitted
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create RLIT-SLOT RLIT-MAX cells allot   \ which member of the source family
+create RLIT-VAL RLIT-MAX cells allot    \ and the number it carried
+RLIT-MAX TYPED-BUFFER RLIT-ID IR-ID:ir-value-id
+variable RLIT-N
+
+RLIT-SHUT RLIT-N !
+
+: RLIT-OPEN ( -- )
+   0 RLIT-N ! ;
+
+: RLIT-CLOSE ( -- )
+   RLIT-SHUT RLIT-N ! ;
+
+: RLIT-ON? ( -- bool )
+   RLIT-N @ 0 >= ;
+
+\ Which row holds this constant, or -1.
+: RLIT-FIND ( n n -- n )
+   {: slot:n val:n :}
+   -1
+   RLIT-N @ 0 ?do
+      i cells RLIT-SLOT + @ slot =
+      i cells RLIT-VAL + @ val = and if drop i leave then
+   loop ;
+
+: RLIT-REMEMBER ( n n IR-ID:ir-value-id -- )
+   {: slot:n val:n id:IR-ID:ir-value-id :}
+   RLIT-N @ RLIT-MAX >= if exit then
+   slot RLIT-N @ cells RLIT-SLOT + !
+   val RLIT-N @ cells RLIT-VAL + !
+   id RLIT-N @ RLIT-ID !
+   RLIT-N @ 1+ RLIT-N ! ;
+
 \ ---- selecting a constant ----------------------------------------------------
 \ The literal is the whole content of a source constant, and it rides as the
 \ attribute the source opcode's schema requires. The key is compared against the
@@ -1347,10 +1452,28 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    v MOVN-COST  v MOVZ-COST  < if id v MATERIALISE-N exit then
    id v MATERIALISE-Z ;
 
+\ Has the region being emitted already materialised this constant? Both the
+\ question and the note are here, above the two rules that ask them, because
+\ what makes two constants the same is one statement and not two.
+: RLIT-REUSED? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   RLIT-ON? 0= if false exit then
+   id OP-SLOT  id CONST-VALUE  RLIT-FIND {: k:n :}
+   k 0 < if false exit then
+   id 0 RESULT-AT  k RLIT-ID @  VBIND
+   true ;
+
+: RLIT-NOTE ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   RLIT-ON? 0= if exit then
+   id OP-SLOT  id CONST-VALUE  ACC  RLIT-REMEMBER ;
+
 : EMIT-CONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id RLIT-REUSED? if exit then
    id  id CONST-VALUE  MATERIALISE
-   id 0 RESULT-AT  ACC  VBIND ;
+   id 0 RESULT-AT  ACC  VBIND
+   id RLIT-NOTE ;
 
 \ A double literal, which is the same materialisation and one instruction more.
 \
@@ -1377,12 +1500,14 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ either way; what would move is the byte count and the cost.
 : EMIT-FCONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id RLIT-REUSED? if exit then
    id  id CONST-VALUE  MATERIALISE
    id A64IR-OPCODE:FMOVXD OPEN
    CTX BLD ACC IR-BUILD:ADD-OPERAND
    FRESULT+
    CLOSE-VALUE
-   id 0 RESULT-AT  ACC  VBIND ;
+   id 0 RESULT-AT  ACC  VBIND
+   id RLIT-NOTE ;
 
 \ ---- selecting the arithmetic ------------------------------------------------
 \ Two values in, one out. The operands are the values the source operands
@@ -2201,9 +2326,6 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    n 1 < if E-A64SEL-SHAPE throw then
    bk n 1- OP-AT ;
 
-: OP-SLOT ( IR-ID:ir-op-id -- n )
-   OPCODE-AT OPCODE-SLOT ;
-
 : BRZ-TERM? ( IR-ID:ir-block-id -- bool )
    TERM-OP OP-SLOT O-BRZ = ;
 
@@ -2344,39 +2466,209 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    bk SEL-CMP-F
    R-WIDTH-D @ 0 > if SEL-ARM-REGS + then ;
 
-\ How many VALUES one block of the region would compute on a path the program
-\ would not have taken. It is the block's operations less its terminator, which
-\ is not selected at all, and less the comparison its branch fuses with, which
-\ selects to no register either - the select stands for both. Every one of the
-\ rest defines a value that is live from where it is computed to the select that
-\ reads it, which is why this is the number the pool is held against.
-: SPEC-DEFS ( IR-ID:ir-block-id -- n )
-   {: bk:IR-ID:ir-block-id :}
-   bk OP-COUNT 1-
-   bk FUSE-INDEX 0 >= if 1- then ;
+\ ---- what the arms of a region really hold at its selects --------------------
+\ WHICH VALUES A CONVERTED REGION HOLDS AT ONCE, DECIDED RATHER THAN ASSUMED.
+\ The emission below writes every member's operations in ordinal order and only
+\ then the selects, so the selects stand AFTER the last arm's last operation.
+\ A value defined by an arm therefore reaches them only if something at or after
+\ that point reads it. The region has exactly three such readers to offer, and
+\ one keeper of its own besides them:
+\
+\   the block's own TERMINATOR. A `br` hands its operands to the join and a
+\     select is what chooses between them; a `brz` that fuses with nothing has
+\     its tested value read by the zero-test select. Either way the operand is
+\     still wanted where the select is made.
+\
+\   the COMPARISON the block's branch fuses with. The fused select carries that
+\     comparison's operands as its own, so they are read at the select and not
+\     at the comparison that no longer exists.
+\
+\   ANOTHER MEMBER of the region. A block reached by a two-way branch takes no
+\     arguments - src/compiler/native/regalloc-verify.f VMULTI-CK is where that
+\     is decided, and a branch that hands values over is refused there by name -
+\     so such a block reads what dominates it directly, and an arm really can
+\     read a value an earlier arm defined. That value is live across everything
+\     between them.
+\
+\ AND THE ONE THIS PASS MAKES ITSELF: a LITERAL a later arm will fold into. The
+\ region's memo below turns two arms writing the same number into one value, and
+\ that one value is then read where the second arm stood - so the first arm's
+\ literal outlives the arm that made it exactly as if the second arm had read
+\ it, while the second arm's literal is no longer a value at all. The fold is
+\ decided by the memo's own key, the opcode and the number, so the count and the
+\ emission cannot disagree about which literals are one.
+\
+\ Everything else an arm defines is consumed inside the arm that defined it and
+\ is dead before the next arm begins - which is why the two counts below are
+\ added differently: the carried ones stack across the whole region, the local
+\ ones are held one arm at a time and only the widest arm's count matters.
+\
+\ THE SCAN IS OVER THE COMMITTED MEMBER LIST AND SO RUNS AFTER GROWTH, not
+\ during it. A member's readers include members the growth has not reached yet,
+\ so a count taken as blocks arrive would be asking about a region that does not
+\ exist yet.
 
-\ Does this operation define a double? An operation that defines nothing at all
-\ answers no, which is the right answer for the floating count and leaves it in
-\ the general one - where the total above already counts it, and where counting
-\ a value that needs no register is the conservative direction.
-: REAL-DEF? ( IR-ID:ir-op-id -- bool )
-   {: id:IR-ID:ir-op-id :}
-   id RESULTS-OF 1 < if false exit then
-   id 0 RESULT-AT REAL? ;
+\ Does this operation read this value?
+: R-OP-READS? ( IR-ID:ir-op-id IR-ID:ir-value-id -- bool )
+   {: o:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
+   false
+   o OPERANDS-OF 0 ?do
+      o i OPERAND-AT v SAME-VALUE? if drop true leave then
+   loop ;
 
-\ How many of that block's speculated values are doubles. The two counts are
-\ taken over exactly the same operations - the same terminator and the same
-\ fused comparison are left out - so the general count is the difference and
-\ neither file's pressure can be counted twice or missed.
-: SPEC-DEFS-D ( IR-ID:ir-block-id -- n )
-   {: bk:IR-ID:ir-block-id :}
+\ Does any operation of this block read it?
+: R-BLOCK-READS? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
+   {: bk:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
+   false
+   bk OP-COUNT 0 ?do
+      bk i OP-AT v R-OP-READS? if drop true leave then
+   loop ;
+
+\ Does any member of the region OTHER than the one that defined it read it?
+: R-OTHERS-READ? ( IR-ID:ir-fun-id n IR-ID:ir-value-id -- bool )
+   {: f:IR-ID:ir-fun-id b:n v:IR-ID:ir-value-id :}
+   false
+   R-LIST-N @ 0 ?do
+      i cells R-LIST + @ {: m:n :}
+      m b <> if
+         f m BLOCK-AT v R-BLOCK-READS? if drop true leave then
+      then
+   loop ;
+
+\ Is this value still held where the region's selects are made? The three
+\ readers above, in that order.
+: R-CARRIED? ( IR-ID:ir-fun-id n IR-ID:ir-value-id -- bool )
+   {: f:IR-ID:ir-fun-id b:n v:IR-ID:ir-value-id :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk TERM-OP v R-OP-READS? if true exit then
+   bk FUSE-INDEX {: fz:n :}
+   fz 0 >= if
+      bk fz OP-AT v R-OP-READS? if true exit then
+   then
+   f b v R-OTHERS-READ? ;
+
+: R-CARRY-NOTE ( IR-ID:ir-value-id -- )
+   {: v:IR-ID:ir-value-id :}
+   R-CARRY @ 1+ R-CARRY !
+   v REAL? if R-CARRY-D @ 1+ R-CARRY-D ! then ;
+
+: R-LOCAL-NOTE ( IR-ID:ir-value-id -- )
+   {: v:IR-ID:ir-value-id :}
+   R-BLOCAL @ 1+ R-BLOCAL !
+   v REAL? if R-BLOCAL-D @ 1+ R-BLOCAL-D ! then ;
+
+\ One defined value, added to whichever pair of counts it belongs to. Which
+\ FILE it is counted in is the value's own type, asked through the same door
+\ every other class question in this pass goes through.
+: R-DEF-NOTE ( IR-ID:ir-fun-id n IR-ID:ir-value-id -- )
+   {: f:IR-ID:ir-fun-id b:n v:IR-ID:ir-value-id :}
+   f b v R-CARRIED? if v R-CARRY-NOTE exit then
+   v R-LOCAL-NOTE ;
+
+\ ---- the literals the region's memo will make one ----------------------------
+\ Which operations the memo keys on, asked here the same way EMIT-CONST and
+\ EMIT-FCONST ask it: they are the two rules that call RLIT-REUSED?, and these
+\ are their two opcodes.
+: R-FOLDABLE? ( IR-ID:ir-op-id -- bool )
+   OP-SLOT {: s:n :}
+   s O-CONST =  s O-FCONST =  or ;
+
+\ Does this block define that literal in its first `k` operations? The key is
+\ the memo's own - the opcode and the number, never the number alone - so a
+\ constant and a double literal carrying the same bits are two literals here for
+\ the reason they are two there.
+: R-FOLD-IN? ( IR-ID:ir-block-id n n n -- bool )
+   {: bk:IR-ID:ir-block-id k:n s:n v:n :}
+   false
+   k 0 ?do
+      bk i OP-AT {: o:IR-ID:ir-op-id :}
+      o R-FOLDABLE? if
+         o OP-SLOT s =  o CONST-VALUE v =  and if drop true leave then
+      then
+   loop ;
+
+\ Is there such a literal EARLIER in the one line the region is emitted as? The
+\ order is the emission's own - the head, then the members by ordinal, then this
+\ block's own earlier operations - because a memo row is found only if it was
+\ written first. A literal with one before it is folded away and is no longer a
+\ value the count is over.
+: R-FOLD-BEFORE? ( IR-ID:ir-fun-id n n n IR-ID:ir-op-id -- bool )
+   {: f:IR-ID:ir-fun-id h:n b:n k:n o:IR-ID:ir-op-id :}
+   o OP-SLOT {: s:n :}
+   o CONST-VALUE {: v:n :}
+   f h BLOCK-AT {: hb:IR-ID:ir-block-id :}
+   hb  hb OP-COUNT 1-  s v R-FOLD-IN? if true exit then
+   f b BLOCK-AT k s v R-FOLD-IN? if true exit then
+   false
+   R-LIST-N @ 0 ?do
+      i cells R-LIST + @ {: m:n :}
+      m b < if
+         f m BLOCK-AT {: mb:IR-ID:ir-block-id :}
+         mb  mb OP-COUNT 1-  s v R-FOLD-IN? if drop true leave then
+      then
+   loop ;
+
+\ Is there one in a LATER arm? Then this literal is the value that arm will read
+\ instead of writing its own, so it is held from here to there and is carried.
+\ A second copy later in the SAME block is not asked about: it is folded into
+\ this one, which stretches nothing past the block they are both in.
+: R-FOLD-AFTER? ( IR-ID:ir-fun-id n IR-ID:ir-op-id -- bool )
+   {: f:IR-ID:ir-fun-id b:n o:IR-ID:ir-op-id :}
+   o OP-SLOT {: s:n :}
+   o CONST-VALUE {: v:n :}
+   false
+   R-LIST-N @ 0 ?do
+      i cells R-LIST + @ {: m:n :}
+      m b > if
+         f m BLOCK-AT {: mb:IR-ID:ir-block-id :}
+         mb  mb OP-COUNT 1-  s v R-FOLD-IN? if drop true leave then
+      then
+   loop ;
+
+\ Every value one operation defines. It is a loop over the results rather than a
+\ reading of the first one because a register is held per VALUE, and an operation
+\ that defines none holds none.
+\
+\ A LITERAL IS ASKED THE MEMO'S QUESTION FIRST, and only a literal: nothing else
+\ this pass emits is shared between two arms. One with an earlier twin is not a
+\ value at all after the fold and is counted as nothing; one with a later twin is
+\ the value that twin will read, so it is carried whatever its own arm does with
+\ it; a literal with neither is an ordinary defined value and is counted like
+\ one.
+: R-OP-DEFS ( IR-ID:ir-fun-id n n n IR-ID:ir-op-id -- )
+   {: f:IR-ID:ir-fun-id h:n b:n k:n o:IR-ID:ir-op-id :}
+   o R-FOLDABLE? if
+      f h b k o R-FOLD-BEFORE? if exit then
+      f b o R-FOLD-AFTER? if
+         o RESULTS-OF 0 ?do  o i RESULT-AT R-CARRY-NOTE  loop
+         exit
+      then
+   then
+   o RESULTS-OF 0 ?do
+      f b  o i RESULT-AT  R-DEF-NOTE
+   loop ;
+
+\ One member of the region, counted whole. Its terminator is not selected at all
+\ and the comparison its branch fuses with selects to no register either - the
+\ select stands for both - so neither defines anything this count is over. What
+\ the block's own locals leave behind is the widest arm's count and not a sum.
+: R-COUNT-BLOCK ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id h:n b:n :}
+   0 R-BLOCAL !  0 R-BLOCAL-D !
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk FUSE-INDEX {: fz:n :}
    bk OP-COUNT 1- {: k:n :}
-   0
    k 0 ?do
-      i fz <> if
-         bk i OP-AT REAL-DEF? if 1+ then
-      then
+      i fz <> if  f h b i  bk i OP-AT  R-OP-DEFS  then
+   loop
+   R-BLOCAL @ R-LOCAL @ max R-LOCAL !
+   R-BLOCAL-D @ R-LOCAL-D @ max R-LOCAL-D ! ;
+
+: R-COUNT-DEFS ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id h:n :}
+   0 R-CARRY !  0 R-CARRY-D !  0 R-LOCAL !  0 R-LOCAL-D !
+   R-LIST-N @ 0 ?do
+      f  h  i cells R-LIST + @  R-COUNT-BLOCK
    loop ;
 
 \ ---- the per-block rows, read and written ------------------------------------
@@ -2430,8 +2722,10 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    0 R-QN !
    0 R-QI !
    0 R-LIST-N !
-   0 R-SPEC !
-   0 R-SPEC-D !
+   0 R-CARRY !
+   0 R-CARRY-D !
+   0 R-LOCAL !
+   0 R-LOCAL-D !
    -1 R-JOIN !
    0 R-WIDTH-D !
    NFROZEN:BMAX 0 ?do 0 i cells R-MARK + ! loop ;
@@ -2468,8 +2762,6 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk MEMBER-OK? 0= if false exit then
    b R-TAKE
-   R-SPEC @  bk SPEC-DEFS +  R-SPEC !
-   R-SPEC-D @  bk SPEC-DEFS-D +  R-SPEC-D !
    bk TERM-OP {: t:IR-ID:ir-op-id :}
    t SUCCS-OF 0 ?do
       b  t i SUCC-IDX  R-PUSH
@@ -2557,33 +2849,51 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
 \ THE OTHER HALF OF THE POOL QUESTION IS PRESSURE, AND IT IS THE ONE THAT
 \ DECIDES REAL BODIES. A converted region computes every arm's values whether
-\ that arm would have run or not, and each of those values is live from where it
-\ is computed to the select that reads it - so they are all live at once, on top
-\ of the values the join is handed. A region that makes more of them than the
-\ routine has registers does not become slower code: it becomes a routine the
-\ allocator refuses, which would turn this optimisation into a compilation
-\ failure. So the count is held against the pool, and a region that does not fit
-\ stays branched.
+\ that arm would have run or not, so the arms no longer take turns with the
+\ registers: what one arm still holds where the selects are made is held while
+\ every later arm computes, on top of the values the join is handed. WHICH
+\ values those are is R-COUNT-DEFS above, which reads it off the arms' own
+\ operands rather than assuming it of every value an arm defines. A region that
+\ holds more of them at once than the routine has registers does not become
+\ slower code: it becomes a routine the allocator refuses, which would turn this
+\ optimisation into a compilation failure. So the count is held against the
+\ pool, and a region that does not fit stays branched.
 \
 \ WHAT THE COUNT DOES NOT INCLUDE, said plainly. Whatever else the routine has
 \ live where the branch stood is not counted here, because this pass has no
 \ liveness of its own and building one would be a second derivation of what the
-\ allocator already computes. The bound is therefore a floor rather than a
-\ proof, and it is the floor that was measured: with it the four comparison
-\ corpora, the maki suite and the chain's own suites all allocate, and without
-\ it the eight-deep early-exit ladder of tools/codegen-compare-corpus4.f does
-\ not. A routine that still runs out is refused by the allocator by name, which
-\ is the same refusal any too-tight pool has always given.
+\ allocator already computes. The head's own values are on that list: the head
+\ ran on every path before the conversion and runs on every path after it, so
+\ what it leaves live is the routine's pressure and not the region's - and that
+\ covers a literal the head wrote and an arm now folds into rather than writing
+\ again, which moves one register from the arm's side of this count to the
+\ routine's without moving what the machine has to hold. The bound is therefore
+\ a floor rather than a proof, and it is the floor that was measured: with it
+\ the four comparison corpora, the maki suite and the chain's own suites all
+\ allocate, and without it the eight-deep early-exit ladder of
+\ tools/codegen-compare-corpus4.f does not. A routine that still runs out is
+\ refused by the allocator by name, which is the same refusal any too-tight
+\ pool has always given.
 \
 \ AND IT IS TWO PRESSURES FOR THE REASON IT IS TWO FLOORS: a speculated double
 \ and a speculated cell do not compete for the same register. The two counts
-\ partition the same set of values - every speculated operation is counted in
-\ exactly one of them, and every position of the join in exactly one of them -
-\ so a region that fits both pools has each file's live set inside that file.
+\ partition the same set of values - every value an arm defines and the fold
+\ leaves standing is counted in exactly one of them, and every position of the
+\ join in exactly one of them - so a region that fits both pools has each file's
+\ live set inside that file.
+\
+\ THE ARM'S OWN LOCALS ENTER AS ONE ARM'S WORTH AND NOT AS A SUM, which is the
+\ same statement the count above makes: they die inside the arm that defined
+\ them, and the arms are emitted one after another, so the widest arm is the
+\ most that is ever live at once. Adding the widest arm to the whole carried set
+\ is still an over-count - the carried values of arms not yet emitted are not
+\ live where that arm runs - and over-counting only refuses a region that would
+\ have fitted, which is the direction this floor is allowed to be wrong in.
 : R-PRESSURE-OK? ( -- bool )
    GPR-POOL-N
-   R-SPEC @ R-SPEC-D @ -  R-WIDTH @ R-WIDTH-D @ -  +  >= 0= if false exit then
-   FPR-POOL-N  R-SPEC-D @ R-WIDTH-D @ +  >= ;
+   R-CARRY @ R-CARRY-D @ -  R-LOCAL @ R-LOCAL-D @ -  +
+   R-WIDTH @ R-WIDTH-D @ -  +  >= 0= if false exit then
+   FPR-POOL-N  R-CARRY-D @ R-LOCAL-D @ +  R-WIDTH-D @ +  >= ;
 
 : R-POOL-OK? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id h:n :}
@@ -2592,11 +2902,16 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    FPR-POOL-N  f h R-NEED-F  < if false exit then
    R-PRESSURE-OK? ;
 
-: R-BOUNDS-OK? ( -- bool )
+\ The shape a grown region has to have before anything is counted over it: some
+\ members, not more of them than a small selection, and one block they all
+\ leave through.
+: R-SHAPE-OK? ( -- bool )
    R-LIST-N @ 0= if false exit then
    R-LIST-N @ SEL-BLOCK-MAX > if false exit then
-   R-SPEC @ SEL-DEFS-MAX > if false exit then
    R-JOIN @ 0 >= ;
+
+: R-CARRY-OK? ( -- bool )
+   R-CARRY @ SEL-CARRY-MAX <= ;
 
 : R-COMMIT ( n -- )
    {: h:n :}
@@ -2623,7 +2938,9 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    h s0 R-PUSH
    h s1 R-PUSH
    f R-GROW 0= if exit then
-   R-BOUNDS-OK? 0= if exit then
+   R-SHAPE-OK? 0= if exit then
+   f h R-COUNT-DEFS
+   R-CARRY-OK? 0= if exit then
    f R-WIDTH-OK? 0= if exit then
    f h R-EDGES-OK? 0= if exit then
    f h R-POOL-OK? 0= if exit then
@@ -3757,8 +4074,10 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    h R-EXIT@ R-EXIT-BK !
    f R-EXIT-BK @ BLOCK-AT 0 R-JB !
    REGION-WIDTH!
+   RLIT-OPEN
    f h REGION-BLOCK-OPS
    f h REGION-MEMBERS-OPS
+   RLIT-CLOSE
    f h REGION-MEMBERS-VALUES
    f h REGION-BLOCK-VALUES
    f h BLOCK-AT TERM-OP  h  REGION-BR ;
@@ -3806,6 +4125,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    f 0 S-FUN !
    f OPEN-FUN
    VCLEAR
+   RLIT-CLOSE
    f PLAN-REGIONS
    f DRESIDENCY
    f DPLACE
