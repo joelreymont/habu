@@ -1265,9 +1265,57 @@ variable KEPT-F
    CTX BLD  CTX BLD A64IR:KEY-SHIFT  CTX BLD sh A64IR:SHIFT-ATTR   IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
-\ The move-wide chain that materialises one 64-bit value: the lowest half always,
-\ then every further half that is not already zero.
-: MATERIALISE ( IR-ID:ir-op-id n -- )
+\ THE TWO CHAINS A CONSTANT CAN BE BUILT BY, AND WHY THE SHORTER ONE IS CHOSEN
+\ RATHER THAN THE FIRST ONE. A move-wide writes one sixteen-bit half and says what
+\ becomes of the other three: movz clears them, movn fills them with ones. So a
+\ value is reachable two ways - clear the register and write every half that is
+\ not zero, or fill it and write every half that is not all ones - and which of
+\ the two is shorter is a property of the value. A value most of whose halves are
+\ zero wants the first; one most of whose halves are ones wants the second, and
+\ -1 is the extreme case: one movn against a movz and three movks, four bytes
+\ against sixteen. The chain writing only the zero-based form is always CORRECT,
+\ which is why it stood alone until now, and it is simply longer on the values
+\ this corpus actually returns - CODEGEN-CORPUS:BYTE-FIND answers -1.
+\
+\ The tie goes to the zero-based chain, so no value whose two chains are the same
+\ length changes the bytes this pass emits.
+A64IR:IMM-LIMIT 1- constant ONES-HALF
+
+\ How many move-wides each chain needs. The zero-based one always writes the
+\ lowest half and then every higher half that is not already zero; the ones-based
+\ one writes the half MOVN-HALF names and then every OTHER half that is not
+\ already all ones.
+: MOVZ-COST ( n -- n )
+   {: v:n :}
+   1
+   A64IR:HALVES 1 ?do
+      v i A64IR:HALF-OF 0<> if 1+ then
+   loop ;
+
+\ The half a movn spends itself on: the lowest one that is not already all ones,
+\ so the instruction does work a movk would otherwise have to do. When every half
+\ is ones the value is -1, there is no such half, and the lowest is as good as
+\ any - the movn writes ones over ones and the chain is that one instruction.
+: MOVN-HALF ( n -- n )
+   {: v:n :}
+   0
+   A64IR:HALVES 0 ?do
+      v i A64IR:HALF-OF ONES-HALF <> if drop i leave then
+   loop ;
+
+: MOVN-COST ( n -- n )
+   {: v:n :}
+   v MOVN-HALF {: s:n :}
+   1
+   A64IR:HALVES 0 ?do
+      i s <> if
+         v i A64IR:HALF-OF ONES-HALF <> if 1+ then
+      then
+   loop ;
+
+\ The zero-based chain: the lowest half always, then every further half that is
+\ not already zero.
+: MATERIALISE-Z ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id v:n :}
    id A64IR-OPCODE:MOVZ  v 0 A64IR:HALF-OF  0 A64IR:HALF-SHIFT  false MOVE-WIDE
    A64IR:HALVES 1 ?do
@@ -1275,6 +1323,29 @@ variable KEPT-F
          id A64IR-OPCODE:MOVK  v i A64IR:HALF-OF  i A64IR:HALF-SHIFT  true MOVE-WIDE
       then
    loop ;
+
+\ The ones-based chain. The movn carries the COMPLEMENT of the half it names,
+\ because the instruction writes the complement of what it is given, and every
+\ other half comes out ones and needs a movk only where the value is not ones.
+: MATERIALISE-N ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id v:n :}
+   v MOVN-HALF {: s:n :}
+   id A64IR-OPCODE:MOVN
+   v s A64IR:HALF-OF ONES-HALF xor  s A64IR:HALF-SHIFT  false MOVE-WIDE
+   A64IR:HALVES 0 ?do
+      i s <> if
+         v i A64IR:HALF-OF ONES-HALF <> if
+            id A64IR-OPCODE:MOVK  v i A64IR:HALF-OF  i A64IR:HALF-SHIFT  true MOVE-WIDE
+         then
+      then
+   loop ;
+
+\ The move-wide chain that materialises one 64-bit value: whichever of the two is
+\ shorter, and the zero-based one when they are the same length.
+: MATERIALISE ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id v:n :}
+   v MOVN-COST  v MOVZ-COST  < if id v MATERIALISE-N exit then
+   id v MATERIALISE-Z ;
 
 : EMIT-CONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}

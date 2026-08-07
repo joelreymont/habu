@@ -235,7 +235,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-62 constant OPCODES-N
+63 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -298,6 +298,7 @@ private
 59 constant O-MADD
 60 constant O-ADDI
 61 constant O-SUBI
+62 constant O-MOVN
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -509,6 +510,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
+      movn      OF O-MOVN      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -575,6 +577,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
+      O-MOVN      of A64IR-OPCODE:MOVN      endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -716,6 +719,13 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : WORD-MOVK ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id IMM-OF  id HALF-OF  MOVKHW ;
+
+\ The move-wide that writes the COMPLEMENT of its shifted immediate. It reads its
+\ two fields exactly as the two above do - the dialect holds the same key pair for
+\ all three - and differs only in the encoder it hands them to.
+: WORD-MOVN ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id IMM-OF  id HALF-OF  MOVNHW ;
 
 \ The copy that puts a returned value where the routine's contract says it
 \ leaves. ENC-MOV is the assembler's own name for the Orr-with-zero-register
@@ -1726,6 +1736,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    MATCH A64IR:opcode
       movz     OF id  id WORD-MOVZ  APPEND ENDOF
       movk     OF id  id WORD-MOVK  APPEND ENDOF
+      movn     OF id  id WORD-MOVN  APPEND ENDOF
       mov      OF id PUT-MOV ENDOF
       add      OF id  id TRIPLE ENC-ADD  APPEND ENDOF
       sub      OF id  id TRIPLE ENC-SUB  APPEND ENDOF
@@ -2015,6 +2026,7 @@ public
    c b A64IR-OPCODE:MADD      BIND1
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1
+   c b A64IR-OPCODE:MOVN      BIND1
    c b A64IR-OPCODE:LINKSAVE  BIND1
    c b A64IR-OPCODE:LINKLOAD  BIND1
    c b A64IR-OPCODE:FADD     BIND1

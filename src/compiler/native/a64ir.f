@@ -409,6 +409,7 @@ ENUM opcode DERIVE eq
    madd
    addi
    subi
+   movn
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -821,6 +822,7 @@ public
       madd      OF s" a64.madd"     ENDOF
       addi      OF s" a64.addi"     ENDOF
       subi      OF s" a64.subi"     ENDOF
+      movn      OF s" a64.movn"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1045,6 +1047,7 @@ private
       madd      OF s" a64.rule.madd"     ENDOF
       addi      OF s" a64.rule.addi"     ENDOF
       subi      OF s" a64.rule.subi"     ENDOF
+      movn      OF s" a64.rule.movn"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1112,6 +1115,7 @@ private
       madd      OF s" a64.render.madd"     ENDOF
       addi      OF s" a64.render.addi"     ENDOF
       subi      OF s" a64.render.subi"     ENDOF
+      movn      OF s" a64.render.movn"     ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1139,6 +1143,24 @@ private
    TOTAL
    TARGET
    c b A64IR-OPCODE:MOVZ NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Movn: the same shape as the movz above - no register read, one written, the
+\ immediate and its half - and the one difference is that the register is filled
+\ with the COMPLEMENT of the shifted immediate, so every half the instruction
+\ does not name comes out all ones instead of all zeros. That is what makes it
+\ the cheap way to build a value most of whose halves are ones: -1 is one movn
+\ where it is a movz and three movks, and src/compiler/native/select.f's
+\ MATERIALISE picks whichever of the two chains is shorter.
+: DEF-MOVN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:MOVN OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-RESULT
+   c b MOVE-ATTRS
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:MOVN NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Movk: the value whose other halves survive is the operand, and the value with
@@ -2246,6 +2268,7 @@ public
    c b MEM-TYPE {: k:IR-ID:ir-type-id :}
    c b t DEF-MOVZ
    c b t DEF-MOVK
+   c b t DEF-MOVN
    c b t DEF-MOV
    c b t A64IR-OPCODE:ADD DEF-BINARY
    c b t A64IR-OPCODE:SUB DEF-BINARY

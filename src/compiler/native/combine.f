@@ -107,7 +107,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it here too.
-62 constant OPCODES-N
+63 constant OPCODES-N
 
 0 constant O-MOVZ
 1 constant O-MOVK
@@ -171,6 +171,7 @@ private
 59 constant O-MADD
 60 constant O-ADDI
 61 constant O-SUBI
+62 constant O-MOVN
 \ One slot per attribute key the dialect declares. This pass writes no attribute
 \ of its own - the form it introduces carries none - but it COPIES every one the
 \ selector built, and a field copied under the wrong key would be a routine
@@ -294,6 +295,7 @@ create IMM-AT OPS-MAX cells allot
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
+      movn      OF O-MOVN      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -360,6 +362,7 @@ create IMM-AT OPS-MAX cells allot
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
+      O-MOVN      of A64IR-OPCODE:MOVN      endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -973,6 +976,7 @@ public
    c b A64IR-OPCODE:MADD      BIND1
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1
+   c b A64IR-OPCODE:MOVN      BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
