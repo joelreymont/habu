@@ -4397,6 +4397,28 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : E-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
 
+\ ---- the one authority for a row's width in stack cells ------------------------
+\ ROW-TERM-CELLS and ROW-CELLS sit ABOVE E-COPY* because the copy has to call
+\ them: a stored effect records each fixed term's width as the copy walks past
+\ the live term, and there is no second implementation of the rule anywhere.
+\ EFFECT-MIN-IN, further down, is the other caller.
+\
+\ A hidden layout parameter already denotes one physical cell; charging its
+\ family's full logical width again would turn a W-cell bundle into W^2 cells.
+: ROW-TERM-CELLS ( n -- n ) {: t:n :}
+   t T-RES dup HIDDEN-PARAM? if drop 1 exit then
+   T-WIDTH ;
+
+\ ROW-CELLS: total physical width of a row's fixed entries — the minimum stack
+\ depth any call must provide for that row. Row-polymorphic tails match zero
+\ cells, so the fixed prefix IS the floor (dot habu-habu-certified-words-84e84eaf).
+: ROW-CELLS ( n -- n ) {: s:n :}
+   0 s                                   \ ( acc cur )
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE ROW-TERM-CELLS rot + swap
+      P>REST
+   REPEAT drop ;
+
 : E-COPY* ( n -- n ) {: x:n :}
    x 0= if 0 exit then
    x E-RES TAG case
@@ -4425,6 +4447,16 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
          EN-PUSH E-NODE-NEW E-OFF >r
          x E-RES P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
          x E-RES P>REST TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
+         \ This cell's PHYSICAL WIDTH, asked of ROW-TERM-CELLS while the live term
+         \ is still in hand — the same authority ROW-CELLS asks for ER.MINI, at the
+         \ same moment, so the two can never drift. The stored graph cannot answer
+         \ it afterwards: a width is a question about the TYPE (T-WIDTH walks the
+         \ family registry's schemas), and the copy keeps a term's identity, not
+         \ its layout registry. Held as width+1 so that ZERO means "this node was
+         \ written by something that did not know the question", which is what a
+         \ snapshot taken before this field existed restores (EN.E on a param node
+         \ carries the same pre-3a story). Readers fail closed on it.
+         x E-RES P>TYPE ROW-TERM-CELLS 1 + r@ E-PTR EN.C !
          r>
       endof
       T-QUOT of
@@ -4651,22 +4683,6 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
 : E-REC-FINISH ( ptr a -- )
    UEND @ swap ER.NEXT !
    UTERM! ;
-
-\ A hidden layout parameter already denotes one physical cell; charging its
-\ family's full logical width again would turn a W-cell bundle into W^2 cells.
-: ROW-TERM-CELLS ( n -- n ) {: t:n :}
-   t T-RES dup HIDDEN-PARAM? if drop 1 exit then
-   T-WIDTH ;
-
-\ ROW-CELLS: total physical width of a row's fixed entries — the minimum stack
-\ depth any call must provide for that row. Row-polymorphic tails match zero
-\ cells, so the fixed prefix IS the floor (dot habu-habu-certified-words-84e84eaf).
-: ROW-CELLS ( n -- n ) {: s:n :}
-   0 s                                   \ ( acc cur )
-   BEGIN R-RES dup TAG S-PUSH = WHILE
-      dup P>TYPE ROW-TERM-CELLS rot + swap
-      P>REST
-   REPEAT drop ;
 
 : EFFECT-MIN-IN ( n -- n )
    ROW-CELLS dup 255 > if s" checker: min-in exceeds record field" 76 die then ;
@@ -6264,6 +6280,12 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 \ a declared TRUSTED: signature, so SIG-MIN-IN finds it and internal-mark leaves it
 \ top-level callable; the readers project the private EN-node graph onto a coarse,
 \ stable family enum, so the graph representation stays free to evolve behind them.
+\ They answer two different questions and a consumer has to know which it wants: a
+\ row's TERM count and per-term family, and a row's width in STACK CELLS
+\ (EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS). The two agree only while every term is
+\ one cell. A call site moves CELLS, so that is what src/compiler/native/dict.f
+\ asks for; the family enum is a shape identity, which is what PRIM-LINK:FP
+\ fingerprints (dot habu-export-the-checker-2bbc831c).
 \ Read-only: no store word is exposed and the query never mutates a persisted record.
 \ EFFECT-QUERY resolves a NAME's active effect (user row or prim axiom) into query
 \ state; the EFFECT-* readers report on the last successful query.
@@ -6285,6 +6307,7 @@ variable EFFQ-DOUT          \ dout row offset
 : EFF-TAG@ ( n -- n )   USIGS-CELL-AT EN.TAG @ ;    \ node tag at offset n
 : EFF-A@   ( n -- n )   USIGS-CELL-AT EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   USIGS-CELL-AT EN.B @ ;      \ EN.B field (rest-of-row offset)
+: EFF-C@   ( n -- n )   USIGS-CELL-AT EN.C @ ;      \ EN.C field (on a row cell: width+1)
 
 : EFF-TERM-FAM ( n -- n )       \ n = term-node offset (E-OFF); 0 -> gray
    dup 0= if drop EFAM-GRAY exit then
@@ -6323,10 +6346,30 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    else 0 EFFQ-DIN !  0 EFFQ-DOUT ! then
    EFFQ-OK @ ;
 
+\ EFF-ROW-CELLS: the row's width in STACK CELLS — what a call site actually
+\ moves, which is the number the term count above only coincides with when every
+\ fixed term happens to be one cell wide. Each row cell carries the width
+\ ROW-TERM-CELLS gave it when the effect was recorded (E-COPY*, S-PUSH arm), so
+\ this sums stored facts rather than re-deriving a rule the checker already owns;
+\ a term whose family makes it three cells reports three here and is still ONE
+\ term above. CELLS-NONE when any fixed cell carries no recorded width, which is
+\ what a pre-field snapshot restores: the row is then unsizeable and says so,
+\ instead of reporting a total that silently omits the cells it could not see.
+-1 constant CELLS-NONE
+: EFF-ROW-CELLS ( n -- n ) {: off:n :}
+   0 off                                     \ ( acc cur )
+   begin dup EFF-IS-PUSH? while
+      dup EFF-C@ dup 0= if 2drop drop CELLS-NONE exit then
+      1 - rot + swap                         \ ( acc' cur )
+      EFF-B@
+   repeat drop ;
+
 : EFFECT-DIN-N ( -- n )        EFFQ-DIN @ EFF-ROW-N ;      \ fixed din term count
 : EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;     \ fixed dout term count
 : EFFECT-DIN-FAM ( i -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
 : EFFECT-DOUT-FAM ( i -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
+: EFFECT-DIN-CELLS ( -- n )    EFFQ-DIN @ EFF-ROW-CELLS ;  \ fixed din width in cells, or CELLS-NONE
+: EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
 
 \ ---- ARM64 contract link: stable link from an emitted primitive/callable
 \ contract to its checker primitive-effect (PES) row (dot
