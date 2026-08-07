@@ -1,6 +1,6 @@
 ---
 title: Key A64RAV interference on register file, not class
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-08-06T20:14:41.594191+02:00"
@@ -17,3 +17,5 @@ Fix: give A64RAV a FILE-OF and key OVERLAP-CK (and REGGED?/FLOATING?/GPR-WRITTEN
 Also in scope, same closed-world defect in the allocator (all verified, with lines): the two SILENT fall-throughs POOL-BITS regalloc.f:346-347 and CALL-BITS regalloc.f:506-509 hand a third class the GPR pool/clobber mask with no throw; and the five literal C-GPR/C-FPR enumerations at regalloc.f:390-391 (TABLES-CLEAR), 1504-1505 (MB-EXPIRE), 1716/1718 and 1724/1726 (MB-STEP pressure), 1732-1733 (MB-SCAN). FILES-N exists (regalloc.f:239) but NOTHING loops over it. The leaf words (MB-FREE-N, MB-READ/WRITE-PRESSURE, MB-LOAD-N, MB-FORBID, MB-PIN, MB-PLACE1) are already class-parameterised, so the repair is at the callers.
 
 Found by agent neon while scoping habu-vectorize-the-byte-a0da35a7.
+
+Claim: agent=ravfix workspace=.jj-ws/habu-key-a64rav-interference-151111d3

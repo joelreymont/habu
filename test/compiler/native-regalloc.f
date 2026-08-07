@@ -2585,6 +2585,92 @@ create TXT
    s" a branch taken from anywhere but the callee's base is refused" T-LABEL
    [: SELF-HIGH ;] E-A64RAV-DRES TTHROWSQ ;
 
+\ ---- one routine computing in both register files -----------------------------
+\ WHAT THIS IS FOR. A register is a file and a number, so x0 and d0 are two
+\ registers that are both number zero, and two values holding them are not
+\ sharing anything. Everything above this point declares no floating register at
+\ all, so nothing in this file ever asked the allocator for the second file or
+\ watched the verifier judge an assignment that uses both. This one does: its
+\ cell argument and its first double are alive at the same instant and are both
+\ given register zero, which is the pattern a check that compared REGISTER
+\ NUMBERS without their files would refuse, and its two doubles are alive at the
+\ same instant and are given two different numbers, which is the pattern such a
+\ check would let through if it compared nothing at all.
+\
+\ AND IT IS WHERE THE MUTATION LANDS. The one pattern this cannot build is two
+\ values of two CLASSES in one file - this dialect has one class per file - so
+\ that half of A64RAV:OVERLAP-CK is proved the way the class rule's own clauses
+\ are, by mutating the compiler and watching the gate: see the note above
+\ OVERLAP-CK in src/compiler/native/regalloc-verify.f.
+: FPOOL-N ( n -- A64EFF:fprs )
+   {: n:n :}
+   A64EFF:FPR-NONE
+   n 0 ?do i A64EFF:FPR-REG A64EFF:FPR-WITH loop ;
+
+\ A leaf that may write both files: `n` general registers and `fn` floating ones.
+: LEAF-FN ( n n -- A64EFF:routine )
+   {: n:n fn:n :}
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
+   A64EFF:FPR-NONE A64EFF:FPR-NONE fn FPOOL-N
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
+: M-FRESULT+ ( -- )
+   CC BB  CC BB A64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
+
+: M-FMOVXD ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id :}
+   A64IR-OPCODE:FMOVXD M-OPEN
+   CC BB x IR-BUILD:ADD-OPERAND
+   M-FRESULT+
+   CLOSE-VALUE ;
+
+: M-FADD ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   A64IR-OPCODE:FADD M-OPEN
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   M-FRESULT+
+   CLOSE-VALUE ;
+
+: M-FMOVDX ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: d:IR-ID:ir-value-id :}
+   A64IR-OPCODE:FMOVDX M-OPEN
+   CC BB d IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   CLOSE-VALUE ;
+
+\ The cell argument is read a second time AFTER the first double exists, which is
+\ what makes the two alive together rather than one after the other.
+: BUILD-TWO-FILES ( -- )
+   s" BOTHF" 1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   a M-FMOVXD {: p:IR-ID:ir-value-id :}
+   a M-FMOVXD {: q:IR-ID:ir-value-id :}
+   p q M-FADD {: s:IR-ID:ir-value-id :}
+   s M-FMOVDX M-RET
+   CLOSE-FUN ;
+
+: TWO-FILES-BODY ( IR-CTX:ctx -- n n n bool bool n n bool )
+   A64-MOD
+   BUILD-TWO-FILES
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  2 2 LEAF-FN  A64RA:ALLOCATE
+   m  2 2 LEAF-FN  A64RAV:ACCEPT
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   0 A64RAV:FLOATING?
+   1 A64RAV:FLOATING?
+   A64RAV:GPR-WRITTEN A64EFF:GPRS-N
+   A64RAV:FPR-WRITTEN A64EFF:FPRS-N
+   A64RAV:ACCEPTED? ;
+
+: TWO-FILES-CASE ( -- )
+   s" a cell and a double alive together hold register zero of each file" T-LABEL
+   WBND [: TWO-FILES-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 3 T= 1 T= TTRUE TFALSE 1 T= 0 T= 0 T= ;
+
 \ ---- groups ------------------------------------------------------------------
 : GROUP-PLACE-ACCEPT ( IR-CTX:ctx -- ) drop PLACE-ACCEPT-CASE ;
 : GROUP-PLACE-MOVED ( IR-CTX:ctx -- ) drop PLACE-MISPLACED-CASES ;
@@ -2637,6 +2723,7 @@ public
    UNUSED-CASE
    WIDE-CASE
    PLAIN-CASE
+   TWO-FILES-CASE
    INTERLEAVED-CASE
    TIED-EXTRA-CASE
    UNTIED-EXTRA-CASE
