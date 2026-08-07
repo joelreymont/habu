@@ -51,3 +51,5 @@ STILL OPEN, with what the tree says about each:
 
 Also filed: habu-pkg-the-src-5c3e9049, for the LIMM? unit rows that could not
 land because tools/asm-src-test.f is unpackaged.
+
+PARTIAL LANDED 2026-08-07 (merged from immext): movn materialisation (cost comparison in select.f MATERIALISE, tie to movz) and the and/orr/eor bitmask fold (LIMM-TRY/LIMM? packer split — the mask bound IS the packer, unencodable masks unrepresentable in the IR; the 5-vs-7 fixture kills range-check impostors). -24 bytes over 4 rows, predictions exact on TAG and BYTE-FIND. REMAINING, designs in the lane's report: lsl (IR-side; re-derive native-inline L1-L4 boundaries), LERP's proven-nonzero divide (8 bytes, trap-flag fixture care). The cmp-immediate clause of this leaf is CEDED to habu-compare-against-a-da4cc639, which specifies it exactly (a64.flagi/a64.cmpbri variants of the fused forms; ENC-CMNI/Cmni need rows-first or dropping) — one owner, not two.
