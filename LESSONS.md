@@ -5450,3 +5450,19 @@ belief that V is a third register file produced exactly the silent
 wrong-code failure the future risked, which an arbitrary line flip would
 not have shown.
 
+## A certified effect cannot tell a data word from a colon word (2026-08-07)
+
+The plan was to fold resolved variables and constants to literals by
+executing them at compile time. Falsified before building: a colon word
+`: FORGE-PTR ( -- ptr a ) VX ;` is byte-identical in certified effect to
+`variable VX` - so the fold would have executed arbitrary user code during
+compilation on the strength of an effect signature. Every resolved name
+became a CALL instead, which is correct for all three shapes. The general
+rule: an effect signature names what a word LEAVES, never what it IS - any
+compile-time action keyed on effect alone will eventually run the wrong
+thing. Two siblings from the same lane: a model a pass reads must be
+complete before the pass starts (lazy growth makes pre-scans and the walk
+see different programs), and a cannot-compile fixture must be refused for
+the SAME NAMED REASON, not merely refused, or it stays green when its
+capability gap closes.
+
