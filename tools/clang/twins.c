@@ -38,6 +38,46 @@
  * recorded float answers are compared bit for bit and reassociating a sum would
  * change them. Where clang recognises a closed form for a loop, or folds a dead
  * store the engine keeps, it is allowed to: that difference IS the measurement.
+ *
+ * AND WHERE THE LINE IS, because the sentence above was read too widely and two
+ * rows measured nothing for it. A row is a comparison of two compilations of ONE
+ * program. Clang finding a cheaper way to run that program is the measurement;
+ * clang running a DIFFERENT program is not, and that is what happened to the two
+ * rows whose whole subject is memory traffic. Recorded on this host at -O2,
+ * before the volatile below:
+ *
+ *   hc4_store_load  compiled to one ldr, one str and `x0 + 3 * len`. The row is
+ *                   named for a load and a store to one address every turn of a
+ *                   loop - a loop-carried dependence through memory - and the
+ *                   reference had no loop and no dependence at all.
+ *   hc1_cell_bump   compiled to one str. The first of the word's two writes was
+ *                   dead in C and folded, so the row named "a store, a load and
+ *                   a store again" measured a store.
+ *
+ * A qualifier is the C for "this access really happens", so the storage those
+ * two rows step is volatile and each one now emits the accesses its name claims.
+ * This CHANGES those rows' reference code, deliberately: their byte counts and
+ * their times both move, and they move because the row is finally measuring what
+ * it says. Nothing else in this file is volatile - a row that is not about
+ * memory traffic has no business forbidding clang an optimisation.
+ *
+ * AND NOTHING CHECKS THAT THOSE TWO QUALIFIERS ARE STILL HERE. Both rows answer
+ * the same values either way, and the reference column is measured rather than
+ * pinned, so a volatile deleted by accident would put both rows quietly back to
+ * measuring a different program. Dot habu-check-the-mem-7cf9ab6c carries the
+ * check; until it lands, the disassembly above is the evidence and this
+ * paragraph is the warning.
+ *
+ * WHAT VOLATILE CANNOT REPAIR, and hc4_pressure_loop is the case, so it is
+ * written down rather than papered over. Its loop body loads fourteen cells and
+ * holds them live at once; clang hoists all fourteen loads out of the loop,
+ * vectorises the sum and multiplies by the trip count, so the reference never
+ * holds fourteen values and never spills. Volatile would force the fourteen
+ * loads back into the loop but would NOT force the liveness: clang would fold
+ * each value into the accumulator as it arrived and hold one. There is no honest
+ * C that makes the reference face the allocator question the row asks, so the
+ * row's reference column is a lower bound on a different program, and the report
+ * says so beside it rather than this file pretending otherwise.
  */
 
 #include <stdint.h>
@@ -82,8 +122,10 @@ i64 hf_diii(double a, i64 b, i64 c, i64 d) {
  * ========================================================================== */
 
 /* CELL-BUMP's cell. The habu word owns one cell of its own and materialises
- * its address; this is the same program with C's storage. */
-static i64 c1_bump_cell;
+ * its address; this is the same program with C's storage. It is volatile
+ * because the row is named for the traffic through it - see the head of this
+ * file - and without that the first of the two writes is dead in C. */
+static volatile i64 c1_bump_cell;
 
 /* BYTE-SUM and BYTE-FIND are measured over this span and over an empty one. */
 static const unsigned char c1_subject[] = "habu codegen baseline";
@@ -115,10 +157,17 @@ i64 hc1_fact(i64 n) {
    return n * hc1_fact(n - 1);
 }
 
+/* Store, load, add one, store - and the answer is the value that was stored,
+ * not a third read of the cell. CODEGEN-CORPUS:CELL-BUMP keeps the incremented
+ * value on the stack and returns THAT, so a twin that read the cell again would
+ * make one more access than the word it is the twin of. That did not matter
+ * while the cell was ordinary, because the extra read folded away; now that the
+ * cell is volatile it would be a real load, so the value is named here. */
 i64 hc1_cell_bump(i64 n) {
    c1_bump_cell = n;
-   c1_bump_cell = c1_bump_cell + 1;
-   return c1_bump_cell;
+   i64 v = c1_bump_cell + 1;
+   c1_bump_cell = v;
+   return v;
 }
 
 i64 hc1_byte_sum(i64 ap, i64 u) {
@@ -372,6 +421,10 @@ i64 hc4_ladder(i64 x) {
    return 8;
 }
 
+/* The row volatile cannot repair: clang hoists all fourteen loads, vectorises
+ * the sum and multiplies by the trip count, so the reference never holds the
+ * fourteen live values the row is named for. Deliberately left alone - the head
+ * of this file carries the argument, and the report marks the row. */
 i64 hc4_pressure_loop(i64 basep, i64 len) {
    const i64 *base = (const i64 *)(intptr_t)basep;
    i64 acc = 0;
@@ -423,8 +476,12 @@ i64 hc4_float_mix(i64 seed, i64 len) {
    return acc;
 }
 
+/* One load and one store to the same address every turn, which is the row's
+ * whole subject. The cell is volatile so the dependence survives -O2; see the
+ * head of this file for what it compiled to before. The trailing read is the
+ * habu word's own `cell @` after its loop and not an extra access. */
 i64 hc4_store_load(i64 cellp, i64 len) {
-   i64 *cell = (i64 *)(intptr_t)cellp;
+   volatile i64 *cell = (volatile i64 *)(intptr_t)cellp;
    for (i64 i = 0; i < len; i++) *cell = *cell + 3;
    return *cell;
 }

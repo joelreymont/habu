@@ -154,9 +154,16 @@ variable WRITE-PATH                  \ which column the committed table being wr
    NL
    s"   path     which code generator produced the row" LINE
    s"   word     the corpus word that was compiled, executed and timed" LINE
-   s"   bytes    how many bytes of machine code the word occupies, read from the" LINE
-   s"            word's own dictionary record - the record holds its code start" LINE
-   s"            address and its code length" LINE
+   s"   bytes    how many bytes of machine code the word occupies - the WHOLE" LINE
+   s"            routine, the return it ends with included. The word's own" LINE
+   s"            dictionary record holds its code start address and a length," LINE
+   s"            but that length is the span a CALLER may copy, which is" LINE
+   s"            everything before the trailing return, because copying the" LINE
+   s"            return would return from the caller. So the return is added" LINE
+   s"            back here. It is NOT added back for a routine that leaves by a" LINE
+   s"            branch, which has no trailing return to have left out, and" LINE
+   s"            which shape a record is gets read off the emitted code by" LINE
+   s"            tools/codegen-tail-probe.f rather than assumed." LINE
    s"   cost     how long one call takes, in thousandths of the cost of calling" LINE
    s"            the empty word CODEGEN-CORPUS:NOOP in the same run. 1000 means" LINE
    s"            an ordinary empty call; 4000 means four times that. Absolute" LINE
@@ -165,6 +172,16 @@ variable WRITE-PATH                  \ which column the committed table being wr
    s"            largely does not." LINE
    s"   outputs  the values the word left on the stack when it ran on its pinned" LINE
    s"            inputs, in the order the harness recorded them" LINE
+   NL
+   s" The byte column was re-pinned once for an accounting change and not for a" LINE
+   s" code change. It used to be the recorded length alone, so every habu row was" LINE
+   s" four bytes short of the code that runs while the reference column's rows," LINE
+   s" being whole C functions, were not: the two columns were not counting the" LINE
+   s" same thing, and CODEGEN-CORPUS:NOOP said so by reading zero bytes for a" LINE
+   s" word that is a return. The re-pin added four to every row EXCEPT the six" LINE
+   s" that leave by a branch and have no return to add - which is the check that" LINE
+   s" it was an accounting change: not one routine's instructions moved, and the" LINE
+   s" rows that did not move are exactly the rows the code says should not." LINE
    NL ;
 
 \ How a difference is adjudicated. It is the one part of the row prose that is
@@ -248,16 +265,20 @@ variable WRITE-PATH                  \ which column the committed table being wr
    s" how far the chain has come from where it was, and it is committed, because a" LINE
    s" baseline you are trying to beat has to be a thing that does not move." LINE
    NL
-   s" The bytes below were measured on master cd2d7cf6, and they are the chain as" LINE
-   s" it stood at the parity campaign's baseline commit, 5dcb2867. That second" LINE
-   s" sentence is a checkable claim and not a date. The four migrated corpora are" LINE
-   s" unchanged between the two commits, and the ONE difference in src/compiler is" LINE
-   s" the enum member rename in a64-effect.f - `result` became `delivered`, because" LINE
-   s" the old spelling collided with the result<T,E> family and stopped the file" LINE
-   s" loading. Re-measuring across that rename moved no byte count in this file," LINE
-   s" which is how the claim is checked rather than asserted: a rename that had" LINE
-   s" touched code generation would have shown up here as a row that grew or shrank," LINE
-   s" and the run that pinned these numbers would have said so." LINE
+   s" The code these bytes describe is still the chain as it stood at the parity" LINE
+   s" campaign's baseline commit, 5dcb2867: no row's instructions have moved since." LINE
+   s" The numbers themselves were re-pinned once, for the accounting change the" LINE
+   s" section above describes - the byte column began counting the trailing return," LINE
+   s" which it had been leaving out while the reference column counted whole C" LINE
+   s" functions." LINE
+   NL
+   s" That re-pin is a checkable claim and not a date. Every row here gained" LINE
+   s" exactly four bytes across it, EXCEPT the six rows that leave by a branch and" LINE
+   s" so have no trailing return to have been missing - CODEGEN-CORPUS5:TAIL-BIG," LINE
+   s" TAIL-WORK, TAIL-MID, TAIL-CHAIN, TAIL-PAIR and TAIL-AFTER - which gained" LINE
+   s" none. A re-pin that had touched code generation would have moved some row by" LINE
+   s" something other than four, or moved one of those six, and the run that" LINE
+   s" pinned these numbers would have said so." LINE
    NL
    s" Regenerate it, deliberately, with" LINE
    NL
@@ -824,6 +845,91 @@ private
       1+
    repeat drop ;
 
+\ ---- rows whose two columns do not hold the same amount of program -----------
+\ THE GAP COLUMN IS A SUBTRACTION AND NOT ALWAYS A VERDICT. Both byte counts are
+\ exact - each is the whole of the routine it names, trailing return and all -
+\ but a routine is not always the whole of the program the row is about, and
+\ where the two columns disagree about how much of it they hold, the difference
+\ between them is arithmetic rather than a result.
+\
+\ TWO WAYS THAT HAPPENS, AND THEY ARE NOT LISTED THE SAME WAY BECAUSE THEY ARE
+\ NOT KNOWN THE SAME WAY.
+\
+\ The first is READ OFF THE EMITTED CODE, every run, for every row. A routine
+\ that leaves by a branch to a callee is four bytes; the callee is real and its
+\ bytes are simply somewhere else. CODEGEN-CORPUS5:TAIL-BIG is the plain case -
+\ the chain emits a four-byte branch to a fifty-two-byte callee while clang
+\ inlined its own, so a bare subtraction says the chain is ten times smaller,
+\ which is the wrong sign on a real difference. The rows are found by
+\ CODEGEN-COMPARE:TAIL?, which the store fills in from
+\ tools/codegen-tail-probe.f at measurement time, so this list cannot go stale.
+\
+\ WHY THE CALLEE IS NOT SIMPLY ADDED IN, which was the other way to fix it. One
+\ callee is reached by six rows of the fifth corpus. Adding its fifty-two bytes
+\ to each of them would claim three hundred and twelve bytes where fifty-two
+\ exist, and it would make an unrelated edit to that callee move six rows of a
+\ table that is compared exactly - turning one change into six red rows for a
+\ seventh reason. The byte column is worth more as an exact statement about one
+\ routine, with the rows that need reading in context named underneath it.
+\
+\ The second is STATED, because it cannot be read off anything: a reference that
+\ compiles the row's program into a DIFFERENT program. There is one, and the
+\ disassembly that establishes it is recorded beside the twin in
+\ tools/clang/twins.c. It is named here the way this file names a known byte
+\ loss - one row, not a tolerance - so that it absorbs itself and nothing else.
+\ Unlike a known byte loss it carries NO staleness check, and that is a real
+\ difference rather than an oversight: a loss stops being a loss in a way the
+\ two columns show, and there is no number in this table that would change if
+\ clang stopped hoisting the loop. The evidence is the recorded disassembly, and
+\ a reader who doubts it should re-read the twin.
+
+: REF-DIFFERENT$ ( -- ptr u8 n )
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" ;
+
+: REF-DIFFERENT-WHY$ ( -- ptr u8 n )
+   s" clang: hoists all fourteen loads out of the loop and multiplies by the trip count, so the reference never holds the values the row is named for" ;
+
+: NOTE-ROW ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n wa:ptr wu:n :}
+   s"   " APPEND
+   a u NAME-COL PAD-RIGHT
+   GAP-COL PAD
+   wa wu LINE ;
+
+\ A row of the reference table that leaves by a tail branch. The reference
+\ column has one row per corpus word, so a chain row without one is a row this
+\ table never printed and has nothing to annotate.
+: TAIL-NOTE? ( n -- bool ) {: k:n :}
+   k CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-NEW <> if false exit then
+   k CODEGEN-COMPARE:TAIL? 0= if false exit then
+   CODEGEN-COMPARE:PATH-CLANG k CODEGEN-COMPARE:NAME$
+   CODEGEN-COMPARE:FIND-ROW 0 >= ;
+
+\ The stated row, and only when THIS pass holds it: the store carries one corpus
+\ at a time, and a pass that never measured the row has nothing to say about it.
+: DIFFERENT-NOTE? ( -- bool )
+   CODEGEN-COMPARE:PATH-CLANG REF-DIFFERENT$ CODEGEN-COMPARE:FIND-ROW 0 >= ;
+
+: NOTES ( -- n )
+   DIFFERENT-NOTE? if 1 else 0 then
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i TAIL-NOTE? if 1+ then
+   loop ;
+
+: REF-NOTES ( -- )
+   NOTES 0= if exit then
+   NL
+   s" NOT LIKE FOR LIKE. Both byte counts above are exact, but on the rows named" LINE
+   s" here the two columns do not hold the same amount of program, so the gap" LINE
+   s" between them is a subtraction and not a verdict:" LINE
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i TAIL-NOTE? if
+         i CODEGEN-COMPARE:NAME$
+         s" chain: leaves by a tail branch, so the callee it reaches is under no row here"
+         NOTE-ROW
+      then
+   loop
+   DIFFERENT-NOTE? if REF-DIFFERENT$ REF-DIFFERENT-WHY$ NOTE-ROW then ;
+
 : REF$ ( -- ptr u8 n )
    0 TEXT-U !
    s" chain against the clang reference. Informational: a gap is a priority, not" LINE
@@ -834,6 +940,7 @@ private
    NL
    REF-HEAD
    REF-ROWS
+   REF-NOTES
    TEXT TEXT-U @ ;
 
 public

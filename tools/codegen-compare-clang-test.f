@@ -126,15 +126,39 @@ variable DIR-U
 \ 32 - and around them every line a reader must NOT take up:
 \
 \   ltmp0        non-external, and its linkage word ENDS in `external`, which is
-\                what a substring match would find.
-\   _external    a symbol whose NAME is the linkage word, at an address that
-\                would break every size if it were taken up.
+\                what a substring match would find. It sits at 0, which is where
+\                the assembler's label for the head of __text really sits and
+\                where _alpha is: a label names an address, it does not start a
+\                stretch of one.
+\   _external    a symbol whose NAME is the linkage word. It is at _beta's
+\                address for the same reason, so what this line tests is the
+\                reading of the line and nothing else.
 \   _c1_subject  a symbol in another section of the SAME segment.
 \
 \ The three real ones are written in nm's own order, which is by name and not by
 \ address, so a reader that trusted the input order would size them wrongly.
 : NM-FOOL$ ( -- ptr u8 n )
-   S\" 0000000000000020 (__TEXT,__text) external _beta\n0000000000000000 (__TEXT,__text) external _alpha\n0000000000000040 (__TEXT,__text) external _gamma\n0000000000000010 (__TEXT,__text) non-external ltmp0\n0000000000000018 (__TEXT,__text) non-external _external\n0000000000000000 (__TEXT,__const) non-external _c1_subject\n0000000000000000 (__LD,__compact_unwind) non-external ltmp1\n" ;
+   S\" 0000000000000020 (__TEXT,__text) external _beta\n0000000000000000 (__TEXT,__text) external _alpha\n0000000000000040 (__TEXT,__text) external _gamma\n0000000000000000 (__TEXT,__text) non-external ltmp0\n0000000000000020 (__TEXT,__text) non-external _external\n0000000000000000 (__TEXT,__const) non-external _c1_subject\n0000000000000000 (__LD,__compact_unwind) non-external ltmp1\n" ;
+
+\ The listing the second refusal exists for, and it is the shape a static
+\ function clang declined to inline really takes: a non-external symbol at
+\ 0x10, which no external symbol names. Every size still adds up to 96 - which
+\ is why the tiling check passes it - but sixteen of _alpha's thirty-two bytes
+\ belong to the routine at 0x10 and to no twin at all.
+: NM-LOCAL-CODE$ ( -- ptr u8 n )
+   S\" 0000000000000000 (__TEXT,__text) external _alpha\n0000000000000010 (__TEXT,__text) non-external _c5_long\n0000000000000020 (__TEXT,__text) external _beta\n0000000000000040 (__TEXT,__text) external _gamma\n" ;
+
+\ And the same listing with the helper external, which is what the reader is
+\ entitled to assume: now every stretch has a name, and _alpha really is the
+\ sixteen bytes the listing above would have charged it thirty-two for.
+: NM-LOCAL-NAMED$ ( -- ptr u8 n )
+   S\" 0000000000000000 (__TEXT,__text) external _alpha\n0000000000000010 (__TEXT,__text) external _c5_long\n0000000000000020 (__TEXT,__text) external _beta\n0000000000000040 (__TEXT,__text) external _gamma\n" ;
+
+\ A linkage word this reader has never seen, at an address of its own. It must
+\ fail towards the refusal and not towards a silent skip: whatever `weird` means,
+\ the reader cannot claim the stretch after it belongs to _alpha.
+: NM-UNKNOWN-LINKAGE$ ( -- ptr u8 n )
+   S\" 0000000000000000 (__TEXT,__text) external _alpha\n0000000000000010 (__TEXT,__text) weird _mystery\n0000000000000020 (__TEXT,__text) external _beta\n0000000000000040 (__TEXT,__text) external _gamma\n" ;
 
 : LOAD-FOOL ( -- )
    NM-FOOL$ SIZE-OK$ CODEGEN-MACHO:LOAD-FROM ;
@@ -206,7 +230,31 @@ variable DIR-U
    T-LABEL
    LOAD-FOOL
    [: s" delta" CODEGEN-MACHO:BYTES drop ;]
-   E-CODEGEN-CLANG-SYMBOL TTHROWSQ ;
+   E-CODEGEN-CLANG-SYMBOL TTHROWSQ
+
+   \ The four cases below are one claim: text the reader cannot name a twin for
+   \ stops the reading. They are worth having separately from the tiling cases
+   \ because the tiling check PASSES every one of them - the bytes are all
+   \ accounted for, they are simply accounted to the wrong symbol.
+   s" a non-external symbol starting a stretch of __text is refused" T-LABEL
+   [: NM-LOCAL-CODE$ SIZE-OK$ CODEGEN-MACHO:LOAD-FROM ;]
+   E-CODEGEN-CLANG-LOCAL TTHROWSQ
+
+   s" a linkage word the reader does not know is refused, never skipped" T-LABEL
+   [: NM-UNKNOWN-LINKAGE$ SIZE-OK$ CODEGEN-MACHO:LOAD-FROM ;]
+   E-CODEGEN-CLANG-LOCAL TTHROWSQ
+
+   s" and that refusal is what stops a twin being charged a stranger's bytes"
+   T-LABEL
+   NM-LOCAL-NAMED$ SIZE-OK$ CODEGEN-MACHO:LOAD-FROM
+   s" alpha" CODEGEN-MACHO:BYTES 16 T=
+   s" c5_long" CODEGEN-MACHO:BYTES 16 T=
+
+   s" a non-external symbol at an external's address is a label and sizes nothing"
+   T-LABEL
+   LOAD-FOOL
+   CODEGEN-MACHO:COUNT 3 T=
+   s" alpha" CODEGEN-MACHO:BYTES 32 T= ;
 
 \ ---- the real object ---------------------------------------------------------
 \ The fixtures above say the reader is not fooled. This says the thing it reads

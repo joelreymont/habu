@@ -706,14 +706,20 @@ public
 \ row: a measured reference the two habu code generators are read against. Three
 \ conditions stop it outright. A missing compiler is NOT one of them - the column
 \ is then absent and says so - but a compiler that was there and refused, a twin
-\ the comparison names that the reference object does not carry, and a symbol
-\ table whose sizes do not add up to the text section it came out of all mean the
-\ reference is not what the harness thinks it is, and a wrong reference is worse
-\ than none.
+\ the comparison names that the reference object does not carry, a symbol table
+\ whose sizes do not add up to the text section it came out of, and text the
+\ reader cannot attribute to any twin at all, all mean the reference is not what
+\ the harness thinks it is, and a wrong reference is worse than none.
 -8268 constant E-CODEGEN-CLANG-TOOL       \ the host C toolchain was present and a tool refused
 -8269 constant E-CODEGEN-CLANG-SYMBOL     \ a C twin the comparison names is not in the reference object
 -8270 constant E-CODEGEN-CLANG-SIZE       \ the reference object's per-symbol sizes do not account for its text section
 -8271 constant E-CODEGEN-CLANG-FORK       \ a forked child asked dyld to map the reference library, which only the process that built it may do
+-8272 constant E-CODEGEN-CLANG-LOCAL      \ a non-external symbol starts a stretch of __text, so the reference object holds code no twin can be named for
+\ A word's dictionary record states the span its callers may copy, which is
+\ everything before its trailing return - or, for a routine that leaves by a
+\ branch, the whole of it. A reader that wants the code's real extent has to put
+\ the return back, and it is only entitled to do that when the return is there.
+-8273 constant E-CODEGEN-COMPARE-EXTENT   \ a word's record neither ends in a tail branch nor is followed by the return the engine's record convention puts after it
 
 \ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299
 \

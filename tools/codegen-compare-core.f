@@ -69,6 +69,7 @@
 require lib/errors.f
 require lib/prelude.f
 require lib/string.f
+require tools/codegen-tail-probe.f
 
 package CODEGEN-COMPARE
 
@@ -141,6 +142,7 @@ create NAME-LENS ROW-MAX cells allot
 create PATHS ROW-MAX cells allot
 create CALIBRATIONS PATH-N cells allot
 create SIZES ROW-MAX cells allot
+create TAILS ROW-MAX cells allot
 create PICOS ROW-MAX cells allot
 create FLOORS ROW-MAX cells allot
 create SPREADS ROW-MAX cells allot
@@ -192,12 +194,32 @@ variable NORMALIZED
    SLOWEST @ FASTEST @ - COST-UNIT * FASTEST @ / ;
 
 \ ---- the compiled size of a live word --------------------------------------
+\ THE SIZE IS THE WHOLE ROUTINE, TRAILING RETURN AND ALL, and that is a fix and
+\ not a definition. The size used to be the word's recorded length, which is the
+\ span a caller may COPY - everything before the trailing return - so every habu
+\ row was four bytes short of the code that runs while the reference column's
+\ rows, being whole C functions, were not. The two columns were not counting the
+\ same thing. CODEGEN-CORPUS:NOOP said it plainly: an empty word is a return and
+\ nothing else, and the chain's row for it read zero bytes.
+\
+\ The four are not simply added. A routine that leaves by a branch has no
+\ trailing return, and its recorded length is already the whole emission; adding
+\ to it would invent an instruction. tools/codegen-tail-probe.f decides which
+\ shape a record is by reading the code - it owns that reading, and the tail rows
+\ of the fifth corpus are what made the distinction matter - so the size here is
+\ its answer and this file does no arithmetic of its own.
 
 : SUBJECT-SIZE ( ptr u8 n -- n )
-   XREF-FIND dup XREF-FOUND? 0= if
-      drop E-CODEGEN-COMPARE-SUBJECT throw
-   then
-   XREF-LEN ;
+   NTAILPROBE:CODE-BYTES ;
+
+\ Does this subject leave by a branch to a callee? Recorded per row because it
+\ decides whether the row's byte count is the whole of what the row's program
+\ costs: a routine that tail-branches carries four bytes here and the callee it
+\ reaches carries the rest. The report marks such a row rather than adding the
+\ callee in - see the note there for why a shared callee cannot be added to
+\ every row that reaches it.
+: SUBJECT-TAIL? ( ptr u8 n -- bool )
+   NTAILPROBE:TAIL-BRANCH? ;
 
 : NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
    u NAME-MAX > if E-CODEGEN-COMPARE-CAP throw then
@@ -270,15 +292,18 @@ CAST: REAL-BITS ( r -- n ) ;
 private
 
 \ Record one row: which code generator produced it, its name, its size in bytes,
-\ a body that calls the subject once for timing, and a body that calls it on its
-\ pinned inputs and hands every result to VECTOR.
+\ whether the routine leaves by a branch to a callee whose bytes that size does
+\ not hold, a body that calls the subject once for timing, and a body that calls
+\ it on its pinned inputs and hands every result to VECTOR.
 \ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies,
 \ and a local annotation cannot carry a quotation effect.
-: RECORD ( ptr u8 n n n [ -- ] [ -- ] -- ) {: a:ptr u:n path:n size:n timing vectors :}
+: RECORD ( ptr u8 n n n bool [ -- ] [ -- ] -- )
+   {: a:ptr u:n path:n size:n tail?:bool timing vectors :}
    ROW-N @ ROW-MAX >= if E-CODEGEN-COMPARE-CAP throw then
    a u NAME!
    path PATH-OK PATHS ROW-N @ SLOT !
    size SIZES ROW-N @ SLOT !
+   tail? if 1 else 0 then TAILS ROW-N @ SLOT !
    0 OUT-N !
    vectors execute
    OUT-N @ OUT-COUNTS ROW-N @ SLOT !
@@ -295,7 +320,7 @@ public
 \ record, so a subject this image does not hold stops the pass.
 \ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
 : MEASURE ( ptr u8 n [ -- ] [ -- ] -- ) {: a:ptr u:n timing vectors :}
-   a u PATH-OLD  a u SUBJECT-SIZE  timing vectors RECORD ;
+   a u PATH-OLD  a u SUBJECT-SIZE  a u SUBJECT-TAIL?  timing vectors RECORD ;
 
 \ Measure a routine whose byte count cannot be read off a dictionary record
 \ because it is not a word of this dictionary: the clang reference column's C
@@ -303,8 +328,18 @@ public
 \ parameter here for that reason and for no other - there is still exactly one
 \ authority for it, and it is not this file.
 \ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
+\
+\ A REFERENCE ROW IS NEVER MARKED AS REACHING CODE ITS SIZE DOES NOT HOLD, and
+\ what entitles it to that is a refusal in another file rather than a hope. Every
+\ helper twins.c keeps to itself is static, and tools/codegen-compare-macho.f
+\ refuses the whole reading if any non-external symbol starts a stretch of
+\ __text - so a run that produced this column at all is a run in which clang
+\ inlined every one of them, and a twin's symbol size is the whole of its
+\ program. What that refusal does NOT cover is a twin that tail-branches to
+\ ANOTHER TWIN, which is external and would be read normally; dot
+\ habu-check-no-c-019014f8 carries that check.
 : MEASURE-CLANG ( ptr u8 n n [ -- ] [ -- ] -- ) {: a:ptr u:n size:n timing vectors :}
-   a u PATH-CLANG size timing vectors RECORD ;
+   a u PATH-CLANG size false timing vectors RECORD ;
 
 \ Measure a word the native chain compiled and the publication seam republished.
 \ The row is named after the corpus word it is the head-to-head partner of, and
@@ -315,7 +350,7 @@ public
 \ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
 : MEASURE-NEW ( ptr u8 n ptr u8 n [ -- ] [ -- ] -- )
    {: a:ptr u:n na:ptr nu:n timing vectors :}
-   a u PATH-NEW  na nu SUBJECT-SIZE  timing vectors RECORD ;
+   a u PATH-NEW  na nu SUBJECT-SIZE  na nu SUBJECT-TAIL?  timing vectors RECORD ;
 
 \ Where a published word's code starts, read off its own dictionary record. It
 \ is here, beside the reader that takes a size off the same record, so that the
@@ -433,6 +468,12 @@ public
 
 : SIZE ( n -- n ) {: k:n :}
    SIZES k ROW-OK SLOT @ ;
+
+\ Does this row's routine leave by a branch to a callee? Such a row's SIZE is the
+\ branch and not the program: the callee's bytes are real, they are simply
+\ somewhere else. The report says so beside the row.
+: TAIL? ( n -- bool ) {: k:n :}
+   TAILS k ROW-OK SLOT @ 0<> ;
 
 : PICOSECONDS ( n -- n ) {: k:n :}
    PICOS k ROW-OK SLOT @ ;

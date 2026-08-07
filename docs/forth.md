@@ -129,12 +129,19 @@ before `public` or after `private`; define the public interface only in the
 
 The commit gate checks this policy against the exact Jujutsu diff and the
 post-change files. From the repository root, generate one artifact and pass it
-to both checked diff linters:
+to both checked diff linters. **Name the artifact after the lane that wrote
+it.** Parallel lanes share `$HB_TMP`, so a fixed `change.diff` is one file two
+workspaces write and either may read: a lane that lints a name another lane has
+just overwritten is linting somebody else's change, and the failure looks like
+a syntax error in a diff it did not produce (`E-DIFF-SYNTAX`, `-7400`, on a
+truncated or foreign artifact). Derive the name from the workspace so it is
+unique without anybody having to remember to make it so:
 
 ```sh
-jj diff --git > "$HB_TMP/change.diff"
-bin/hb --load tools/typed-local-diff-lint.f -- "$HB_TMP/change.diff"
-bin/hb --load tools/package-diff-lint.f -- "$HB_TMP/change.diff"
+diff_artifact="$HB_TMP/$(basename "$PWD").diff"
+jj diff --git > "$diff_artifact"
+bin/hb --load tools/typed-local-diff-lint.f -- "$diff_artifact"
+bin/hb --load tools/package-diff-lint.f -- "$diff_artifact"
 ```
 
 `package-diff-lint` accepts exactly one diff artifact. It validates every
@@ -1020,7 +1027,7 @@ Run on the exact tree that is being landed, from the repository root. Red,
 skipped, or unrun means the bookmark does not move.
 
 1. The behaviour suites the change touched, plus `bin/hb --load maki/test.f`.
-2. The two checked diff linters over one Jujutsu artifact
+2. The two checked diff linters over one Jujutsu artifact, named per lane
    (`docs/forth.md` § Packages), plus `tools/error-code-lint.f` and the dot
    lint.
 

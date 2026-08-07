@@ -21,6 +21,30 @@
 \ stop adding up to the section, which is what padding, an unexpected symbol, or
 \ a reordering would look like.
 \
+\ AND ONLY THE EXTERNAL SYMBOLS ARE TWINS, WHICH USED TO BE A PRECONDITION
+\ NOBODY CHECKED. Every twin is a plain function and therefore external; the
+\ helpers twins.c keeps to itself - c5_long, c4_add1 and the rest - are static,
+\ and clang inlines all of them at -O2, so nothing non-external stands in __text
+\ except ltmp0, the assembler's label for the section's own head. If clang ever
+\ declined to inline one, that helper would appear as a non-external symbol at an
+\ address of its OWN, the reader would skip its line, and its bytes would be
+\ added to whichever twin happened to sit in front of it. The tiling check could
+\ not catch that: the sizes would still sum to the section, because the bytes
+\ went to a neighbour rather than going missing. So a second refusal stands
+\ beside it. Every non-external __text symbol must name an address an external
+\ symbol already names - which is what a label like ltmp0 is - and one that
+\ starts a stretch of its own is refused outright.
+\
+\ WHAT THAT REFUSAL BUYS THE REST OF THE HARNESS, AND EXACTLY WHAT IT DOES NOT.
+\ A run that produced a reference column at all is a run in which clang inlined
+\ every STATIC helper twins.c has, because the alternative did not build - so a
+\ twin's symbol size being the whole of its program is checked rather than hoped
+\ for, which is what lets the comparison read a habu row that branches to a
+\ callee against a reference row that does not. What is NOT covered is a twin
+\ that tail-branches to ANOTHER TWIN: that callee is external, this reader takes
+\ it up normally, and nothing here notices. Dot habu-check-no-c-019014f8 carries
+\ that check.
+\
 \ WHAT IS COUNTED AND WHAT IS NOT. __text, which is the instructions. Clang also
 \ writes literal pools - __literal8, __literal16, __const - and those are read
 \ and reported as one number beside the table rather than folded into any row:
@@ -50,6 +74,12 @@ create NAME-LENS SYM-MAX cells allot
 create ADDRS SYM-MAX cells allot
 create SIZES SYM-MAX cells allot
 
+\ Where the non-external __text symbols sit. Their names are not kept, because
+\ no twin is ever looked up by one; what is kept is the address, which is the
+\ only thing the refusal below asks about.
+create LOCAL-ADDRS SYM-MAX cells allot
+
+variable LOCAL-N
 variable SYM-N
 variable TEXT-BYTES-CELL
 variable POOL-BYTES-CELL
@@ -98,13 +128,22 @@ variable LOADED
 : EXTERNAL$ ( -- ptr u8 n )
    s" external" ;
 
+\ One __text symbol that is not external. Anything whose linkage word is not
+\ `external` exactly comes here, `non-external` and any spelling this reader has
+\ never seen alike, so an unfamiliar listing fails towards the refusal rather
+\ than towards a silent skip.
+: LOCAL+ ( n -- ) {: addr:n :}
+   LOCAL-N @ SYM-MAX >= if E-CODEGEN-CLANG-SYMBOL throw then
+   addr LOCAL-ADDRS LOCAL-N @ SLOT !
+   LOCAL-N @ 1+ LOCAL-N ! ;
+
 : NM-LINE ( -- )
    CODEGEN-TEXT:NEXT-HEX 0= if drop exit then
    {: addr:n :}
    CODEGEN-TEXT:NEXT$ 0= if 2drop exit then
    TEXT-SECTION$ STR= 0= if exit then
    CODEGEN-TEXT:NEXT$ 0= if 2drop exit then
-   EXTERNAL$ STR= 0= if exit then
+   EXTERNAL$ STR= 0= if addr LOCAL+ exit then
    CODEGEN-TEXT:NEXT$ 0= if 2drop exit then
    STRIP addr SYM+ ;
 
@@ -201,17 +240,38 @@ create ORDER SYM-MAX cells allot
    last 0 <= if E-CODEGEN-CLANG-SIZE throw then
    last SIZES SYM-N @ 1- ORDER@ SLOT ! ;
 
+\ ---- and nothing else may start a stretch of the section ---------------------
+\ The sizes above are distances between EXTERNAL symbols, so they are the twins'
+\ own bytes only while no other symbol stands between two of them. A label like
+\ ltmp0 does not: it names an address an external symbol names too, and a
+\ distance measured from that address is the same distance either way. A static
+\ function clang declined to inline DOES, and its bytes would land on the twin in
+\ front of it. So the question asked of every non-external symbol is whether an
+\ external one is already there.
+
+: EXTERNAL-AT? ( n -- bool ) {: addr:n :}
+   SYM-N @ 0 ?do
+      i SYM-ADDR addr = if true unloop exit then
+   loop
+   false ;
+
+: LOCAL-CK ( -- )
+   LOCAL-N @ 0 ?do
+      LOCAL-ADDRS i SLOT @ EXTERNAL-AT? 0= if E-CODEGEN-CLANG-LOCAL throw then
+   loop ;
+
 public
 
 \ Read one symbol table and one section listing. The two texts are parameters
 \ rather than fetched here, so the scheduled test can drive this exact word -
 \ the one production uses - over fixtures built to fool it: a non-external
 \ symbol, a symbol in another section, a symbol whose NAME is a linkage word,
-\ symbols out of address order, and a section listing naming __text in the wrong
-\ segment. A reader tested only on real nm output is a reader tested on the one
-\ input that cannot be wrong.
+\ symbols out of address order, a non-external symbol standing between two twins,
+\ and a section listing naming __text in the wrong segment. A reader tested only
+\ on real nm output is a reader tested on the one input that cannot be wrong.
 : LOAD-FROM ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    0 SYM-N !
+   0 LOCAL-N !
    0 TEXT-BYTES-CELL !
    0 POOL-BYTES-CELL !
    0 LOADED !
@@ -219,7 +279,8 @@ public
    sa su SCAN-SIZE
    TEXT-BYTES-CELL @ 0 <= if E-CODEGEN-CLANG-SIZE throw then
    SORT-ORDER
-   SIZE-SYMS ;
+   SIZE-SYMS
+   LOCAL-CK ;
 
 \ Read the reference object once. Everything after this is a lookup.
 \
@@ -272,6 +333,7 @@ private
 
 : INIT ( -- )
    0 LOADED !
+   0 LOCAL-N !
    0 SYM-N ! ;
 
 INIT

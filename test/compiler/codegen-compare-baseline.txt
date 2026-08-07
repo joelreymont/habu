@@ -26,9 +26,16 @@ line is prose. A row carries, in order:
 
   path     which code generator produced the row
   word     the corpus word that was compiled, executed and timed
-  bytes    how many bytes of machine code the word occupies, read from the
-           word's own dictionary record - the record holds its code start
-           address and its code length
+  bytes    how many bytes of machine code the word occupies - the WHOLE
+           routine, the return it ends with included. The word's own
+           dictionary record holds its code start address and a length,
+           but that length is the span a CALLER may copy, which is
+           everything before the trailing return, because copying the
+           return would return from the caller. So the return is added
+           back here. It is NOT added back for a routine that leaves by a
+           branch, which has no trailing return to have left out, and
+           which shape a record is gets read off the emitted code by
+           tools/codegen-tail-probe.f rather than assumed.
   cost     how long one call takes, in thousandths of the cost of calling
            the empty word CODEGEN-CORPUS:NOOP in the same run. 1000 means
            an ordinary empty call; 4000 means four times that. Absolute
@@ -37,6 +44,16 @@ line is prose. A row carries, in order:
            largely does not.
   outputs  the values the word left on the stack when it ran on its pinned
            inputs, in the order the harness recorded them
+
+The byte column was re-pinned once for an accounting change and not for a
+code change. It used to be the recorded length alone, so every habu row was
+four bytes short of the code that runs while the reference column's rows,
+being whole C functions, were not: the two columns were not counting the
+same thing, and CODEGEN-CORPUS:NOOP said so by reading zero bytes for a
+word that is a return. The re-pin added four to every row EXCEPT the six
+that leave by a branch and have no return to add - which is the check that
+it was an accounting change: not one routine's instructions moved, and the
+rows that did not move are exactly the rows the code says should not.
 
 Sizes and outputs are compared exactly: one byte or one value out of place
 is a finding. A cost is a measurement, so it is compared with a stated
@@ -50,14 +67,14 @@ rows: 11
 
 path  word                          bytes    cost  outputs
 ----  ----------------------------  -----  ------  -------
-old   CODEGEN-CORPUS:NOOP              16    1000
-old   CODEGEN-CORPUS:ADD3              72    1927  6 7
-old   CODEGEN-CORPUS:SQUARE-SUM       180    3769  25 29
-old   CODEGEN-CORPUS:MAX2             104    3217  4 9
-old   CODEGEN-CORPUS:LERP             144    2943  15 25
-old   CODEGEN-CORPUS:SUM-TO           248   15654  120 0
-old   CODEGEN-CORPUS:COUNT-DOWN       120   26868  0 -4
-old   CODEGEN-CORPUS:FACT             196   24967  3628800 1
-old   CODEGEN-CORPUS:CELL-BUMP        160    5078  8 8 0 0
-old   CODEGEN-CORPUS:BYTE-SUM         320   37075  2040 0
-old   CODEGEN-CORPUS:BYTE-FIND        416   22843  9 -1
+old   CODEGEN-CORPUS:NOOP              20    1000
+old   CODEGEN-CORPUS:ADD3              76    1889  6 7
+old   CODEGEN-CORPUS:SQUARE-SUM       184    3835  25 29
+old   CODEGEN-CORPUS:MAX2             108    3218  4 9
+old   CODEGEN-CORPUS:LERP             148    2856  15 25
+old   CODEGEN-CORPUS:SUM-TO           252   14789  120 0
+old   CODEGEN-CORPUS:COUNT-DOWN       124   26535  0 -4
+old   CODEGEN-CORPUS:FACT             200   24482  3628800 1
+old   CODEGEN-CORPUS:CELL-BUMP        164    5031  8 8 0 0
+old   CODEGEN-CORPUS:BYTE-SUM         324   37181  2040 0
+old   CODEGEN-CORPUS:BYTE-FIND        420   22173  9 -1

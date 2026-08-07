@@ -26,9 +26,16 @@ line is prose. A row carries, in order:
 
   path     which code generator produced the row
   word     the corpus word that was compiled, executed and timed
-  bytes    how many bytes of machine code the word occupies, read from the
-           word's own dictionary record - the record holds its code start
-           address and its code length
+  bytes    how many bytes of machine code the word occupies - the WHOLE
+           routine, the return it ends with included. The word's own
+           dictionary record holds its code start address and a length,
+           but that length is the span a CALLER may copy, which is
+           everything before the trailing return, because copying the
+           return would return from the caller. So the return is added
+           back here. It is NOT added back for a routine that leaves by a
+           branch, which has no trailing return to have left out, and
+           which shape a record is gets read off the emitted code by
+           tools/codegen-tail-probe.f rather than assumed.
   cost     how long one call takes, in thousandths of the cost of calling
            the empty word CODEGEN-CORPUS:NOOP in the same run. 1000 means
            an ordinary empty call; 4000 means four times that. Absolute
@@ -37,6 +44,16 @@ line is prose. A row carries, in order:
            largely does not.
   outputs  the values the word left on the stack when it ran on its pinned
            inputs, in the order the harness recorded them
+
+The byte column was re-pinned once for an accounting change and not for a
+code change. It used to be the recorded length alone, so every habu row was
+four bytes short of the code that runs while the reference column's rows,
+being whole C functions, were not: the two columns were not counting the
+same thing, and CODEGEN-CORPUS:NOOP said so by reading zero bytes for a
+word that is a return. The re-pin added four to every row EXCEPT the six
+that leave by a branch and have no return to add - which is the check that
+it was an accounting change: not one routine's instructions moved, and the
+rows that did not move are exactly the rows the code says should not.
 
 Sizes and outputs are compared exactly: one byte or one value out of place
 is a finding. A cost is a measurement, so it is compared with a stated
@@ -50,16 +67,16 @@ rows: 13
 
 path  word                          bytes    cost  outputs
 ----  ----------------------------  -----  ------  -------
-old   CODEGEN-CORPUS:NOOP              16    1000
-old   CODEGEN-CORPUS4:CALL-FAN        216    3781  6 8 6 6
-old   CODEGEN-CORPUS4:CALL-FAN-BIG     36    9121  2306 605 362 62570
-old   CODEGEN-CORPUS4:CALL-LOOP-3     476   27814  2567 13 -2053
-old   CODEGEN-CORPUS4:CALL-PRESSURE    608   81127  289587073345441 37 -241122708068503
-old   CODEGEN-CORPUS4:TINY-CALLEE     360   32571  32 5 29
-old   CODEGEN-CORPUS4:WIDE-ARITY      148    2521  -3 3 0 3
-old   CODEGEN-CORPUS4:LADDER          400    2301  0 0 1 2 5 7 7 8
-old   CODEGEN-CORPUS4:PRESSURE-LOOP   1092  106926  4512 0
-old   CODEGEN-CORPUS4:BIG-CONSTS      636   42591  -6684231971589409744 0 3776157021978711687
-old   CODEGEN-CORPUS4:MANY-LOCALS     604   64446  288 0 32
-old   CODEGEN-CORPUS4:FLOAT-MIX       360   22472  12 0 -99
-old   CODEGEN-CORPUS4:STORE-LOAD      308   19579  124 124 -7 100
+old   CODEGEN-CORPUS:NOOP              20    1000
+old   CODEGEN-CORPUS4:CALL-FAN        220    3835  6 8 6 6
+old   CODEGEN-CORPUS4:CALL-FAN-BIG     40    6668  2306 605 362 62570
+old   CODEGEN-CORPUS4:CALL-LOOP-3     480   26641  2567 13 -2053
+old   CODEGEN-CORPUS4:CALL-PRESSURE    612   82150  289587073345441 37 -241122708068503
+old   CODEGEN-CORPUS4:TINY-CALLEE     364   31475  32 5 29
+old   CODEGEN-CORPUS4:WIDE-ARITY      152    2374  -3 3 0 3
+old   CODEGEN-CORPUS4:LADDER          404    2212  0 0 1 2 5 7 7 8
+old   CODEGEN-CORPUS4:PRESSURE-LOOP   1096  107093  4512 0
+old   CODEGEN-CORPUS4:BIG-CONSTS      640   42304  -6684231971589409744 0 3776157021978711687
+old   CODEGEN-CORPUS4:MANY-LOCALS     608   65950  288 0 32
+old   CODEGEN-CORPUS4:FLOAT-MIX       364   17772  12 0 -99
+old   CODEGEN-CORPUS4:STORE-LOAD      312   19340  124 124 -7 100

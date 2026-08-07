@@ -143,6 +143,17 @@ private
    s" : TAILED-N ( n -- n ) NTP-BIG-N ;"
    1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
+\ THE EMPTY ROUTINE, which is where a recorded length is at its most misleading
+\ and why CODE-BYTES exists. Its emission is a return and nothing else, so the
+\ span a caller may copy - everything before the return - is NOTHING, and the
+\ record says zero. A reader that took that for the routine's size would report
+\ a word of no length that a caller nevertheless branches to and comes back
+\ from; the codegen comparison did exactly that, and CODEGEN-CORPUS:NOOP reading
+\ zero bytes in the chain column is what gave it away.
+: EMPTY ( -- )
+   s" : EMPTY-N ( -- ) ;"
+   0 0 REGS NMIGRATE:DEFINE ;
+
 public
 
 : RUN ( -- )
@@ -150,7 +161,8 @@ public
    2 0 REGS NMIGRATE:DEFINE
    BIG
    TAILED
-   OUTSIDE ;
+   OUTSIDE
+   EMPTY ;
 
 ;package
 
@@ -221,8 +233,41 @@ public
    s" NTP-FIXTURE:OUTSIDE-N" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:OUTSIDE-N" CALLS 1 T=
 
+   \ ---- and how many bytes of code each of them really is --------------------
+   \ The recorded length is the span a CALLER may copy, so for everything that
+   \ returns it is the routine less its trailing return, and for the routine that
+   \ leaves by a branch it is the whole emission. CODE-BYTES has to put the four
+   \ bytes back in the first case and NOT in the second, and the fixtures above
+   \ are already the two shapes plus the one built to fool the distinction.
+   s" a returning routine is its recorded body and the return after it" T-LABEL
+   s" NTP-FIXTURE:PLAIN" CODE-BYTES
+      s" NTP-FIXTURE:PLAIN" INSNS 1+ NBR:INSN-BYTES * T=
+   s" NTP-FIXTURE:CALLS-BIG" CODE-BYTES
+      s" NTP-FIXTURE:CALLS-BIG" INSNS 1+ NBR:INSN-BYTES * T=
+   s" NTP-FIXTURE:NTP-BIG-N" CODE-BYTES
+      s" NTP-FIXTURE:NTP-BIG-N" INSNS 1+ NBR:INSN-BYTES * T=
+
+   s" a loop's back edge does not make its routine one that leaves by a branch"
+   T-LABEL
+   s" NTP-FIXTURE:LOOPY-N" CODE-BYTES
+      s" NTP-FIXTURE:LOOPY-N" INSNS 1+ NBR:INSN-BYTES * T=
+
+   s" but a routine that really leaves by one gets nothing added" T-LABEL
+   s" NTP-FIXTURE:TAILED-N" CODE-BYTES
+      s" NTP-FIXTURE:TAILED-N" INSNS NBR:INSN-BYTES * T=
+   s" NTP-FIXTURE:TAILED-N" CODE-BYTES NBR:INSN-BYTES T=
+
+   s" an empty routine records no length at all, and is not a word of no size"
+   T-LABEL
+   s" NTP-FIXTURE:EMPTY-N" INSNS 0 T=
+   s" NTP-FIXTURE:EMPTY-N" TAIL-BRANCH? TFALSE
+   s" NTP-FIXTURE:EMPTY-N" TRAILER-RET? TTRUE
+   s" NTP-FIXTURE:EMPTY-N" CODE-BYTES NBR:INSN-BYTES T=
+
    s" a name nothing published is a refusal and not a quiet zero" T-LABEL
    [: s" NTP-FIXTURE:NO-SUCH-WORD" CALLS drop ;]
+      E-CODEGEN-COMPARE-SUBJECT TTHROWSQ
+   [: s" NTP-FIXTURE:NO-SUCH-WORD" CODE-BYTES drop ;]
       E-CODEGEN-COMPARE-SUBJECT TTHROWSQ ;
 
 ;using
