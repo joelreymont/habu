@@ -356,7 +356,6 @@ public
    s" tools/maki-dep-lint-core.f" GSI-REQUIRE
    s" tools/namespace-lint-core.f" GSI-REQUIRE
    s" tools/error-code-lint-core.f" GSI-REQUIRE
-   s" tools/lint/schedule-lint.f" GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-LINT-TOOLS ( -- )
@@ -504,12 +503,6 @@ public
    \ parallel; see the note on the codegen-compare entry in
    \ test/gate-stdlib-cases.f, and run the timed check by hand.
    s" tools/codegen-compare-test.f" GSI-FORK-INCLUDE
-   \ The third member of the same registration, and the one that has to run
-   \ HERE: it asks whether the clang reference column survives a fork, through
-   \ the same test/gate-pool.f the gate forks its members with. Standalone there
-   \ is no fork, so standalone can never fail; scheduling it beside the column it
-   \ guards is what makes the answer worth anything.
-   s" test/codegen-fork-reference-test.f" GSI-FORK-INCLUDE
    \ And the third column beside it: the symbol reader the reference column's
    \ bytes come out of, the chain's own committed baseline, and the twins
    \ themselves on the real corpora. No assertion in it reads a clock either.
@@ -600,7 +593,9 @@ public
    s" test/proc-signal-smoke.f" GSI-FORK-INCLUDE
    s" lib/process-fork-test.f" GSI-FORK-INCLUDE
    s" test/process-pty-io-smoke.f" GSI-FORK-INCLUDE
-   s" lib/task-test.f" GSI-FORK-INCLUDE
+   \ lib/task-test.f is deliberately NOT here: pthread tasking does not survive a
+   \ gate-pool fork. It runs in the tail slice, which spawns a fresh process per
+   \ suite; see the note on its registration in test/gate-stdlib-cases.f.
    s" tools/standalone-load-test.f" GSI-FORK-INCLUDE
    s" test/lint-cli-standalone-load.f" GSI-FORK-INCLUDE
    s" tools/object-image-test.f" GSI-FORK-INCLUDE

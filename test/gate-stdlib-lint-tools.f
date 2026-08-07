@@ -95,7 +95,9 @@ REQUIRE-HARNESS
 \ The scheduling closure itself: every SUITE registration must be reachable by a
 \ slice predicate or by a gate fork list. The fixture file drives the scanner
 \ over synthetic sources and then enforces the live tree, so this one include is
-\ both halves.
+\ both halves. The tool is not in GSI-LINT-TOOLS-SETUP: the fixture file requires
+\ it, this is the only fork that wants it, and the setup word is a global that
+\ the package-ownership policy will not let a caller edit in passing.
 : SCHEDULE ( -- )
    s" tools/lint/schedule-lint-test.f" GSI-INCLUDE ;
 

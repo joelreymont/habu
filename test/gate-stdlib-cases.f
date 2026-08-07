@@ -268,14 +268,21 @@ SUITE compiler-native-immediate
 \ engine's word answered. A host without a C compiler runs the first two and
 \ says so about the third; it does not fail.
 \
-\ The third file is the fork question, and it had been the one member of this
-\ registration that nothing scheduled: it asks whether the reference column
-\ survives a fork, which is exactly the thing a standalone run cannot ask. All
-\ three now sit in the resident tail-pure fork list, so the registration is
+\ Both files sit in the resident tail-pure fork list, so this registration is
 \ covered file by file rather than by a label nobody selects.
 SUITE codegen-compare
    tools/codegen-compare-test.f
    tools/codegen-compare-clang-test.f
+;SUITE
+
+\ The fork question, which used to be a third member of the registration above
+\ and was the one member nothing scheduled. It is its own registration because it
+\ needs a runner the other two do not: its first claim is that PROC-FORK:CHILD?
+\ is FALSE in the process that maps the reference column, so it has to BE the
+\ forking process. Put in the tail-pure fork group it runs as a forked child
+\ already and that claim inverts (measured: expected false got true). The tail
+\ slice spawns one fresh process per suite, which is the shape it asks for.
+SUITE codegen-fork-reference
    test/codegen-fork-reference-test.f
 ;SUITE
 
@@ -518,9 +525,12 @@ SUITE compiler-reloc-proof
 \ The instruction-encoding parity gate compiles formal/Common/Insn.v with the
 \ Rocq proof assistant and spawns child engines for the encodings the shipped
 \ assembler refuses by ending the process, so it runs in the proof slice
-\ alongside its four siblings. It is the slice's long pole: measured at roughly a
-\ minute and a half against the 120s per-suite budget on a loaded pool, which is
-\ why the slice gets a phase to itself and starts first.
+\ alongside its four siblings. It is the slice's long pole and it has the least
+\ headroom of any suite in the gate: 99543ms quiescent against the FIXED 120000ms
+\ STDLIB-GATE:SUITE-TIMEOUT-MS, which unlike every other per-suite budget does not
+\ scale with the measured load factor. On a host running a second gate beside this
+\ one it times out at 120145ms. That is why the slice gets a phase to itself and
+\ starts first; dot habu-scale-the-stdlib-4e245a64 owns the missing scaling.
 SUITE compiler-insn-proof
    test/compiler/insn-proof.f
 ;SUITE
@@ -582,6 +592,12 @@ SUITE engine-candidate-resolver
    test/engine-candidate-test.f
 ;SUITE
 
+\ CPU tasking over pthread. It runs in the tail slice, which spawns a fresh
+\ process per suite, because it does not survive a gate-pool FORK: on one image,
+\ loaded in-process it is green, and forked through GT-POOL-START-FORK from the
+\ same image it dies (rc 75 in the minimal probe, SIGSEGV in the gate's
+\ tail-process group). Creating pthreads in a forked child of the pool worker is
+\ the difference; dot habu-task-pthreads-die-4fea8480 owns the root cause.
 SUITE tasking-threads
    lib/task-test.f
 ;SUITE

@@ -290,6 +290,15 @@ private
    s" boot-pin-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" hb-build-fixtures" SUITE-LABEL= ;
 
+\ Two suites that need to BE a top-level process, not a forked child of one.
+\ codegen-fork-reference's first claim is that PROC-FORK:CHILD? is false where it
+\ maps the clang reference column, and tasking-threads creates pthreads, which
+\ does not survive a gate-pool fork. This slice spawns one fresh process per
+\ suite, which is exactly the shape both of them ask for.
+: SUITE-TAIL-PROCESS? ( -- bool )
+   s" codegen-fork-reference" SUITE-LABEL= if SUITE-TRUE exit then
+   s" tasking-threads" SUITE-LABEL= ;
+
 : SUITE-TAIL? ( -- bool )
    SUITE-SLICE @ SUITE-TAIL-ID <> if SUITE-FALSE exit then
    s" source-stdlib-stdin" SUITE-LABEL= if SUITE-TRUE exit then
@@ -298,6 +307,7 @@ private
    s" stdlib-source-default" SUITE-LABEL= if SUITE-TRUE exit then
    s" pointer-storage" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-TAIL-ENGINE? if SUITE-TRUE exit then
+   SUITE-TAIL-PROCESS? if SUITE-TRUE exit then
    SUITE-TAIL-BUILD? ;
 
 \ The Rocq parity gates and the spill probe. Each one compiles a formal model

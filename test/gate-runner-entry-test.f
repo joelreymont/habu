@@ -112,7 +112,7 @@ variable GRE-RC
 : GRE-ASSERT-STDLIB-USAGE ( -- )
    GRE-EXITED @ TTRUE
    GRE-RC @ GRE-USAGE-RC T=
-   GRE-ERR$ s" usage: test/gate-stdlib.f [lint|lint-tools|lint-artifacts|lint-libs|tool|check-cli|tail]" CONTAINS? TTRUE
+   GRE-ERR$ s" usage: test/gate-stdlib.f [lint|lint-tools|lint-artifacts|lint-libs|tool|check-cli|tail|proof]" CONTAINS? TTRUE
    GRE-ERR$ s" E-UNDEFINED" CONTAINS? TFALSE ;
 
 : GRE-TEST-UNKNOWN-PHASE ( -- )
