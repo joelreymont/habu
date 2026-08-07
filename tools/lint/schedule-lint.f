@@ -1,42 +1,65 @@
-\ schedule-lint.f - every SUITE registration must be reachable by a runner.
+\ schedule-lint.f - every SUITE registration must be reachable by a runner, and
+\ every phase that runner has must be started.
 \
 \ THE HOLE THIS CLOSES. test/gate-stdlib-cases.f registers a suite by writing
 \ `SUITE <label> <files...> ;SUITE`. Writing it there does not run it. A
 \ registration only runs when a slice predicate in test/gate-stdlib-lib.f selects
-\ its label, or when its files appear in one of the inline gate bodies' GSI
-\ lists. The remaining route - the bare (ALL) slice, which selects every label -
-\ is spawned by no phase of test/run.f and never has been. So a registration
-\ whose label no predicate names and whose files no list names is DARK: it looks
-\ scheduled, it is counted in the suite inventory, and nothing runs it. Fifty
-\ three of them were dark when this lint was written, including seven proof
-\ parity gates and the clang reference column's fork case.
+\ its label AND some phase of test/run.f asks for that slice, or when its files
+\ appear in one of the inline gate bodies' GSI lists. The remaining route - the
+\ bare (ALL) slice, which selects every label - is spawned by no phase of
+\ test/run.f and never has been. So a registration whose label no reachable
+\ slice names and whose files no list names is DARK: it looks scheduled, it is
+\ counted in the suite inventory, and nothing runs it. Fifty three of them were
+\ dark when this lint was written, including seven proof parity gates and the
+\ clang reference column's fork case.
 \
-\ WHAT IT CHECKS. A registration is covered when its label is in the selected set
+\ THE SECOND HALF, and why it is a check of its own. "The tail slice selects
+\ this label" is only half an answer: the tail slice ran nowhere, because phase
+\ $4 was in none of test/run-lib.f's order tables. Five registrations were
+\ selected and never run, and both the gate and the first version of this lint
+\ were green throughout. A slice is a runner only if a phase asks for it and
+\ something starts that phase, so this lint asks both:
+\   PHASES     every phase test/run-lib.f has, that it has not retired
+\              (TEST:PHASE-RETIRED?), must appear in one of its schedule tables
+\              or in its deferred table. A phase in none of them is started by
+\              nothing. When such a phase runs a stdlib slice, the report also
+\              names the registrations that slice was carrying.
+\   LABELS     a registration's label counts as covered only when the REAL
+\              predicate - STDLIB-GATE:SLICE-SELECTS?, which is SUITE-RUN? with
+\              the label the registry stores - answers yes for a slice that some
+\              live phase asks for. A predicate written for a slice no phase
+\              names schedules nothing, and now says so.
+\
+\ WHAT IT CHECKS. A registration is covered when its label is covered as above
 \ OR every one of its files is in the scheduled set. Partial coverage is a
 \ finding too: a registration with two files and one of them scheduled is half
 \ dark, and the half that is dark is the half nobody notices.
 \
-\ WHERE THE TWO SETS COME FROM. Both are derived from the real sources; there is
-\ no third hand-written list of suites to go stale.
-\   selected labels  test/gate-stdlib-lib.f, the shape `s" LABEL" SUITE-LABEL=`
-\   scheduled files  every .f under test/, the shape
-\                    `s" PATH" GSI-FORK-INCLUDE | GSI-INCLUDE | GSI-REQUIRE`
+\ WHERE THE SETS COME FROM. All of them are derived from the real sources; there
+\ is no hand-written list of suites, slices or phases to go stale.
+\   slices          test/run-lib.f PHASE-SLICE-TOKEN over every live phase, put
+\                   through STDLIB-GATE:SLICE-ID?
+\   the predicate   test/gate-stdlib-lib.f, run, not read
+\   phase schedule  test/run-lib.f's order tables, read as data
+\   scheduled files every .f under test/, the shape
+\                   `s" PATH" GSI-FORK-INCLUDE | GSI-INCLUDE | GSI-REQUIRE`
 \ All three inline gate bodies live under test/, so walking test/ reaches every
 \ list there is. A GSI list placed OUTSIDE test/ would be invisible here and its
 \ registration would report as dark - a false RED, which is the safe direction:
 \ it demands an answer instead of quietly granting coverage.
 \
-\ WHY IT LEXES INSTEAD OF SEARCHING. The question is structural, so the answer
-\ has to be. `SUITE` written inside a comment or a string literal is not a
-\ registration; `s" ptx-stdlib" TYPE` selects nothing; `: SUITE ( -- ) ... ;`
-\ defines the opener rather than opening a registration. Every one of those
-\ reads as a hit to a text search. The shared source lexer (package LINT-LEX,
-\ tools/lint/source-lex.f) consumes `\` line comments, `( ... )` and `.( ... )`
-\ bodies, and every string literal body, and it hands a literal's payload back
-\ through CONTENT so the payload is reachable in its ROLE and nowhere else. A
-\ lexer diagnostic truncates the token table at the defect, so every later
-\ registration in that source would be invisible: this lint rejects on
-\ LINT-LEX:ERROR? rather than certify a verdict built from half a file.
+\ WHY IT LEXES THE REGISTRATIONS INSTEAD OF SEARCHING THEM. The question is
+\ structural, so the answer has to be. `SUITE` written inside a comment or a
+\ string literal is not a registration; `: SUITE ( -- ) ... ;` defines the opener
+\ rather than opening a registration. Every one of those reads as a hit to a text
+\ search. The shared source lexer (package LINT-LEX, tools/lint/source-lex.f)
+\ consumes `\` line comments, `( ... )` and `.( ... )` bodies, and every string
+\ literal body, and it hands a literal's payload back through CONTENT so the
+\ payload is reachable in its ROLE and nowhere else. A lexer diagnostic truncates
+\ the token table at the defect, so every later registration in that source would
+\ be invisible: this lint rejects on LINT-LEX:ERROR? rather than certify a
+\ verdict built from half a file. The SELECTOR is not lexed at all any more - it
+\ is loaded and asked.
 \
 \ THE SUITE GRAMMAR IS lib/test/suite.f's, not an approximation of it. `SUITE`
 \ parses one name; `SUITE-STDIN` parses a name and then its stdin datum. Every
@@ -62,6 +85,8 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require test/run-lib.f                  \ the phase schedule, read as data
+require test/gate-stdlib-lib.f          \ the slice predicate, run as itself
 
 package SCHEDULE-LINT
 
@@ -85,6 +110,10 @@ public
 \ the source without its closer. A verdict over a source the gate could not load
 \ is worthless, so it stops.
 -4815 constant E-SCHED-SYNTAX
+\ The runner grew more phases or more slices than this lint sized itself for.
+\ Growing past a cap must stop the lint, never silently drop the tail of a table:
+\ a phase this lint never looked at is a phase it would have called scheduled.
+-4816 constant E-SCHED-CAP
 
 private
 
@@ -93,14 +122,25 @@ $4000 constant LABEL-CAP                \ packed selected labels
 $8000 constant SCHED-CAP                \ packed scheduled paths
 $100 constant NAME-CAP                  \ one suite label
 
-0 constant SEL-SET                      \ labels a slice predicate selects
+0 constant UNFILED-SET                  \ labels whose files are not all scheduled
 1 constant SCHED-SET                    \ files a gate fork list schedules
+
+$40 constant PHASE-CAP                  \ >= TEST:PHASES
+$10 constant SLICE-CAP                  \ >= the slices STDLIB-GATE:SLICE-ID? knows
 
 create LABEL-BUF LABEL-CAP allot        \ packed [len][bytes] runs
 create SCHED-BUF SCHED-CAP allot
+create PHASE-STARTED PHASE-CAP allot    \ one byte per phase: an order table names it
+create PHASE-DEFERRED PHASE-CAP allot   \ one byte per phase: the deferred table names it
+create LIVE-SLICE PHASE-CAP cells allot \ slice ids the live phases ask for
 create NAME-BUF NAME-CAP allot
 create ORIGIN-BUF FS-PATH-CAP allot
 
+variable COVERED?                       \ a reachable slice selects the registration under verdict
+variable AUDIT-K                        \ cursor of the carried-registration walk
+variable LIVE-SLICE-N
+variable PHASE-I                        \ cursor of the phase walks
+variable SLICE-I                        \ cursor of the slice walks
 variable LABEL-U   variable LABEL-N
 variable SCHED-U   variable SCHED-N
 variable NAME-U
@@ -152,27 +192,27 @@ variable NUM-D
 \ re-derived at each use rather than bound.
 
 : SET-BASE ( n -- ptr u8 ) {: s:n :}
-   s SEL-SET = if LABEL-BUF exit then
+   s UNFILED-SET = if LABEL-BUF exit then
    SCHED-BUF ;
 
 : SET-CAP@ ( n -- n ) {: s:n :}
-   s SEL-SET = if LABEL-CAP exit then
+   s UNFILED-SET = if LABEL-CAP exit then
    SCHED-CAP ;
 
 : SET-U@ ( n -- n ) {: s:n :}
-   s SEL-SET = if LABEL-U @ exit then
+   s UNFILED-SET = if LABEL-U @ exit then
    SCHED-U @ ;
 
 : SET-U! ( n n -- ) {: v:n s:n :}
-   s SEL-SET = if v LABEL-U ! exit then
+   s UNFILED-SET = if v LABEL-U ! exit then
    v SCHED-U ! ;
 
 : SET-N@ ( n -- n ) {: s:n :}
-   s SEL-SET = if LABEL-N @ exit then
+   s UNFILED-SET = if LABEL-N @ exit then
    SCHED-N @ ;
 
 : SET-N! ( n n -- ) {: v:n s:n :}
-   s SEL-SET = if v LABEL-N ! exit then
+   s UNFILED-SET = if v LABEL-N ! exit then
    v SCHED-N ! ;
 
 : SET-BYTE ( n n -- n ) {: s:n off:n :}
@@ -204,6 +244,20 @@ variable NUM-D
       HAS-K @ 1+ HAS-K !
    repeat
    LINT-FALSE ;
+
+\ The k-th entry, for a caller that has to report a set rather than test it.
+: SET-AT ( n n -- ptr u8 n ) {: s:n k:n :}
+   k 0 < if E-STR-BOUNDS throw then
+   k s SET-N@ >= if E-STR-BOUNDS throw then
+   0 HAS-OFF !
+   0 HAS-K !
+   begin HAS-K @ k < while
+      s HAS-OFF @ SET-BYTE HAS-LEN !
+      HAS-OFF @ HAS-LEN @ + 1 + HAS-OFF !
+      HAS-K @ 1+ HAS-K !
+   repeat
+   s HAS-OFF @ SET-BYTE HAS-LEN !
+   s SET-BASE HAS-OFF @ + 1 + HAS-LEN @ ;
 
 \ ---- the source under scan ---------------------------------------------------
 
@@ -266,13 +320,156 @@ variable NUM-D
    k 1- s" postpone" LEX-IS if LINT-TRUE exit then
    k 1- s" undefine" LEX-IS ;
 
-\ ---- the selected set: `s" LABEL" SUITE-LABEL=` ------------------------------
+\ ---- the phase schedule, read out of test/run-lib.f ---------------------------
+\ Two byte tables, one per question. STARTED means an order table names the
+\ phase; DEFERRED means the deferred table does. Neither is a hand-list: both are
+\ filled by walking the runner's own `create ... ,` tables through its accessors.
 
-: SELECT-AT ( n -- ) {: k:n :}
-   k LEX-STRING? 0= if exit then
-   k 1+ LINT-LEX:COUNT >= if exit then
-   k 1+ s" SUITE-LABEL=" LEX-IS 0= if exit then
-   SEL-SET k LINT-LEX:CONTENT SET+ ;
+: PHASE-BOUND ( n -- ) {: i:n :}
+   i 0 < if E-SCHED-CAP throw then
+   i PHASE-CAP >= if E-SCHED-CAP throw then ;
+
+: STARTED! ( n -- ) {: i:n :}
+   i PHASE-BOUND
+   1 PHASE-STARTED i + c! ;
+
+: STARTED? ( n -- bool ) {: i:n :}
+   i PHASE-BOUND
+   PHASE-STARTED i + c@ 0 <> ;
+
+: DEFERRED! ( n -- ) {: i:n :}
+   i PHASE-BOUND
+   1 PHASE-DEFERRED i + c! ;
+
+: DEFERRED? ( n -- bool ) {: i:n :}
+   i PHASE-BOUND
+   PHASE-DEFERRED i + c@ 0 <> ;
+
+\ LIVE means the runner has not retired the phase: TR-PHASE-ARGS will build an
+\ argv for it, so something is meant to start it.
+: LIVE-PHASE? ( n -- bool ) {: i:n :}
+   i >IDX TEST:PHASE-RETIRED? 0= ;
+
+: PHASE-TABLES-RESET ( -- )
+   0 PHASE-I !
+   begin PHASE-I @ PHASE-CAP < while
+      0 PHASE-STARTED PHASE-I @ + c!
+      0 PHASE-DEFERRED PHASE-I @ + c!
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
+: MARK-EARLY ( -- )
+   0 PHASE-I !
+   begin PHASE-I @ TEST:EARLY-HOST-PHASES < while
+      PHASE-I @ >IDX TEST:EARLY-HOST-ORDER@ IDX>N STARTED!
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
+: MARK-LATE ( -- )
+   0 PHASE-I !
+   begin PHASE-I @ TEST:LATE-PHASES < while
+      PHASE-I @ >IDX TEST:LATE-ORDER@ IDX>N STARTED!
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
+: MARK-CANDIDATE ( -- )
+   0 PHASE-I !
+   begin PHASE-I @ TEST:CANDIDATE-HOST-PHASES < while
+      PHASE-I @ >IDX TEST:CANDIDATE-HOST-ORDER@ IDX>N STARTED!
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
+: MARK-READY-DIRECT ( -- )
+   0 PHASE-I !
+   begin PHASE-I @ TEST:READY-DIRECT-PHASES < while
+      PHASE-I @ >IDX TEST:READY-DIRECT-ORDER@ IDX>N STARTED!
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
+: MARK-READY-SHARED ( -- )
+   0 PHASE-I !
+   begin PHASE-I @ TEST:READY-SHARED-PHASES < while
+      PHASE-I @ >IDX TEST:READY-SHARED-ORDER@ IDX>N STARTED!
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
+: MARK-DIRECT ( -- )
+   0 PHASE-I !
+   begin PHASE-I @ TEST:DIRECT-PHASES < while
+      PHASE-I @ >IDX TEST:DIRECT-ORDER@ IDX>N STARTED!
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
+: MARK-DEFERRED ( -- )
+   0 PHASE-I !
+   begin PHASE-I @ TEST:DEFERRED-PHASES < while
+      PHASE-I @ >IDX TEST:DEFERRED-ORDER@ IDX>N DEFERRED!
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
+: MARK-SCHEDULE ( -- )
+   PHASE-TABLES-RESET
+   MARK-EARLY
+   MARK-LATE
+   MARK-CANDIDATE
+   MARK-READY-DIRECT
+   MARK-READY-SHARED
+   MARK-DIRECT
+   MARK-DEFERRED ;
+
+\ ---- the slices those phases ask for -----------------------------------------
+\ LIVE-SLICE holds every slice a live phase names. A label is covered when one of
+\ them selects it: a predicate written for a slice NO phase names schedules
+\ nothing, whatever it selects. Whether the phases that name a slice are actually
+\ started is the phase audit's question, not this list's - keeping the two apart
+\ is what lets the audit report say which registrations a dark phase was
+\ carrying.
+
+: SLICE-CELL ( ptr a n -- ptr a ) {: base:ptr i:n :}
+   i 0 < if E-SCHED-CAP throw then
+   i PHASE-CAP >= if E-SCHED-CAP throw then
+   base i cells + ;
+
+: LIVE-SLICE+ ( n -- ) {: id:n :}
+   id LIVE-SLICE LIVE-SLICE-N @ SLICE-CELL !
+   LIVE-SLICE-N @ 1+ LIVE-SLICE-N ! ;
+
+: SLICE-AT ( n -- ) {: i:n :}
+   i LIVE-PHASE? 0= if exit then
+   i >IDX TEST:STDLIB-SLICE? 0= if exit then
+   i >IDX TEST:PHASE-SLICE-TOKEN STDLIB-GATE:SLICE-ID? MATCH option
+     none OF exit ENDOF
+     some OF ENDOF
+   ;MATCH
+   LIVE-SLICE+ ;
+
+: COLLECT-SLICES ( -- )
+   0 LIVE-SLICE-N !
+   0 PHASE-I !
+   begin PHASE-I @ TEST:PHASES < while
+      PHASE-I @ SLICE-AT
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
+\ ---- asking the real predicate ------------------------------------------------
+
+: SLICE-HIT? ( ptr u8 n ptr a n -- bool ) {: a:ptr u:n base:ptr n:n :}
+   0 SLICE-I !
+   begin SLICE-I @ n < while
+      a u base SLICE-I @ SLICE-CELL @ STDLIB-GATE:SLICE-SELECTS? if LINT-TRUE exit then
+      SLICE-I @ 1+ SLICE-I !
+   repeat
+   LINT-FALSE ;
+
+public
+
+\ Covered by a slice: some live phase asks for a slice whose predicate selects
+\ this label. The predicate is not read here, it is RUN - SLICE-SELECTS? is
+\ SUITE-RUN? with the label put through the registry's own store.
+: LABEL-COVER? ( ptr u8 n -- bool )
+   LIVE-SLICE LIVE-SLICE-N @ SLICE-HIT? ;
+
+private
 
 \ ---- the scheduled set: `s" PATH" GSI-*` -------------------------------------
 
@@ -335,11 +532,23 @@ variable NUM-D
    NAME-BUF HIT-BUF NAME-U @ BYTE-COPY
    NAME-U @ HIT-U ! ;
 
+\ Every registration whose files are not all scheduled, whether or not a slice
+\ covers it. A covered one is not a finding, but it IS what its slice is
+\ carrying: if the phase that asks for that slice stops being started, this is
+\ the list that goes dark, and the phase report names it.
+: UNFILED+ ( -- )
+   UNFILED-SET NAME$ SET-HAS? if exit then
+   UNFILED-SET NAME$ SET+ ;
+
 : MISS-COUNT ( -- )
    CUR-MISS @ 1+ CUR-MISS !
-   CUR-MISS @ 1 = if HIT! FINDING-HEAD then ;
+   CUR-MISS @ 1 <> if exit then
+   UNFILED+
+   COVERED? @ 0 <> if exit then
+   HIT! FINDING-HEAD ;
 
 : MISS-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   COVERED? @ 0 <> if exit then
    REPORT? @ 0= if exit then
    s" schedule-lint:   " type a u type
    s"  is in no GSI-FORK-INCLUDE / GSI-INCLUDE / GSI-REQUIRE list under test/" type cr ;
@@ -352,9 +561,11 @@ variable NUM-D
 
 \ A registration that names no source file at all spawns `hb --load` with
 \ nothing to load: it registers a label and runs no code, which is the same
-\ emptiness this lint exists to find, reached from the other side.
+\ emptiness this lint exists to find, reached from the other side. A slice
+\ selecting its label does not save it - there is nothing to run either way.
 : EMPTY-CHECK ( -- )
    CUR-FILES @ 0 <> if exit then
+   UNFILED+
    HIT!
    REPORT? @ 0= if exit then
    s" schedule-lint: " type ORIGIN$ type
@@ -382,18 +593,13 @@ variable NUM-D
    repeat
    E-SCHED-SYNTAX throw ;
 
-: BODY-SKIP ( -- )
-   begin SCAN-I @ LINT-LEX:COUNT < while
-      SCAN-I @ SUITE-CLOSE? if exit then
-      SCAN-I @ 1+ SCAN-I !
-   repeat
-   E-SCHED-SYNTAX throw ;
-
-\ A registration whose label a slice predicate selects is scheduled whatever its
-\ files say, so its body is only skipped to the closer.
+\ A registration a reachable slice selects is scheduled whatever its files say.
+\ Its body is still walked, because what a slice is CARRYING - the members no
+\ fork list also schedules - is what the phase report has to name when nothing
+\ starts the phase that asks for that slice.
 : VERDICT ( -- )
    0 CUR-MISS !
-   SEL-SET NAME$ SET-HAS? if BODY-SKIP exit then
+   NAME$ LABEL-COVER? COVERED? !
    BODY-WALK
    EMPTY-CHECK ;
 
@@ -446,6 +652,52 @@ variable NUM-D
 : READ-INTO ( ptr u8 n -- ) {: a:ptr u:n :}
    a u FILE-A-FIELD @ FILE-CAP READ-ALL FILE-U ! ;
 
+\ ---- the phase audit ----------------------------------------------------------
+\
+\ The second half of the question. Every phase the runner has not retired is a
+\ phase something is meant to start; if no order table names it and the deferred
+\ table does not excuse it, nothing does. That is not a hypothetical: phase $4
+\ ran the tail slice, five registrations were selected for it, and it was in no
+\ table at all.
+
+: PHASE-CARRIED ( n -- ) {: i:n :}
+   i >IDX TEST:PHASE-SLICE-TOKEN STDLIB-GATE:SLICE-ID? MATCH option
+     none OF exit ENDOF
+     some OF ENDOF
+   ;MATCH
+   {: id:n :}
+   0 AUDIT-K !
+   begin AUDIT-K @ UNFILED-SET SET-N@ < while
+      UNFILED-SET AUDIT-K @ SET-AT {: a:ptr u:n :}
+      a u id STDLIB-GATE:SLICE-SELECTS? if
+         s"   it was the only runner for SUITE " type a u type
+         s" , whose files no gate fork list schedules" type cr
+      then
+      AUDIT-K @ 1+ AUDIT-K !
+   repeat ;
+
+: PHASE-FINDING ( n -- ) {: i:n :}
+   BAD @ 1+ BAD !
+   REPORT? @ 0= if exit then
+   s" schedule-lint: phase " type i DEC.
+   s"   " type i >IDX TEST:PHASE-LABEL type
+   s" : no order table in test/run-lib.f starts it and TR-DEFERRED-ORDER does not excuse it" type cr
+   i >IDX TEST:STDLIB-SLICE? 0= if exit then
+   i PHASE-CARRIED ;
+
+: PHASE-AUDIT-ONE ( n -- ) {: i:n :}
+   i LIVE-PHASE? 0= if exit then
+   i STARTED? if exit then
+   i DEFERRED? if exit then
+   i PHASE-FINDING ;
+
+: PHASE-AUDIT ( -- )
+   0 PHASE-I !
+   begin PHASE-I @ TEST:PHASES < while
+      PHASE-I @ PHASE-AUDIT-ONE
+      PHASE-I @ 1+ PHASE-I !
+   repeat ;
+
 public
 
 \ Findings print by default. A fixture that provokes them on purpose silences
@@ -469,17 +721,17 @@ public
    0 SUITE-N !
    0 HIT-LINE !
    0 HIT-U !
-   SEL-SET SET-RESET
+   0 LIVE-SLICE-N !
+   PHASE-TABLES-RESET
+   UNFILED-SET SET-RESET
    SCHED-SET SET-RESET ;
 
-\ Record every label a slice predicate selects in one source.
-: SELECT-SRC ( ptr u8 n ptr u8 n -- )
-   LEX-SOURCE
-   0 WALK-I !
-   begin WALK-I @ LINT-LEX:COUNT < while
-      WALK-I @ SELECT-AT
-      WALK-I @ 1+ WALK-I !
-   repeat ;
+\ Read the runner's schedule: which phases an order table starts, which the
+\ deferred table excuses, and which slices those phases ask for. Every later
+\ verdict is against this, so a driver calls it before it judges anything.
+: SCHEDULE ( -- )
+   MARK-SCHEDULE
+   COLLECT-SLICES ;
 
 \ Record every file a gate fork list schedules in one source.
 : SCHED-SRC ( ptr u8 n ptr u8 n -- )
@@ -502,11 +754,6 @@ public
       then
       WALK-I @ 1+ WALK-I !
    repeat ;
-
-: SELECT-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   PREPARE
-   a u READ-INTO
-   a u FILE$ SELECT-SRC ;
 
 : SCHED-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    PREPARE
@@ -541,29 +788,32 @@ public
 : HIT-LABEL$ ( -- ptr u8 n )
    HIT-BUF HIT-U @ ;
 
-: SELECT# ( -- n )
-   SEL-SET SET-N@ ;
+: SLICE# ( -- n )
+   LIVE-SLICE-N @ ;
 
 : SCHED# ( -- n )
    SCHED-SET SET-N@ ;
 
-\ The live tree: the real predicates, the real gate bodies, the real
-\ registrations.
+\ The live tree: the real schedule, the real predicate run against it, the real
+\ gate bodies, the real registrations. Order matters - the registrations are
+\ judged against the schedule and the file lists that came before them.
 : LIVE ( -- )
    PREPARE
    RESET
-   s" test/gate-stdlib-lib.f" SELECT-FILE
+   SCHEDULE
    s" test/" SCHED-TREE
-   s" test/gate-stdlib-cases.f" CASE-FILE ;
+   s" test/gate-stdlib-cases.f" CASE-FILE
+   PHASE-AUDIT ;
 
 : SUMMARY ( -- )
    s" schedule-lint: " type
    SUITE# DEC. s"  registration(s), " type
-   SELECT# DEC. s"  selected label(s), " type
+   SLICE# DEC. s"  live slice(s), " type
    SCHED# DEC. s"  scheduled file(s), " type
    FINDINGS DEC. s"  finding(s)" type cr ;
 
-\ Gate entry: a registration nobody runs fails the gate.
+\ Gate entry: a registration nobody runs, or a phase nobody starts, fails the
+\ gate.
 : STRICT ( -- )
    LIVE
    SUMMARY

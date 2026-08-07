@@ -2,9 +2,14 @@
 \ live-tree enforcement.
 \ Run: bin/hb --load tools/lint/schedule-lint-test.f
 \
-\ The fixtures drive the real scanner over SYNTHETIC sources - the same public
-\ entry points the live run uses, just handed bytes instead of a path - so what
-\ they check is the shipped grammar and not a copy of it. Each source is built to
+\ The fixtures drive the real scanner over SYNTHETIC registration sources - the
+\ same public entry points the live run uses, just handed bytes instead of a path
+\ - so what they check is the shipped grammar and not a copy of it. The two
+\ things a registration is judged against are NOT synthetic: the slice side is
+\ the live runner's phase tables put through the gate's own predicate, so the
+\ label a fixture uses to stand for "covered by a slice" is a label the tail
+\ slice really selects today. Only the fork-list side is synthetic, because a
+\ fixture has to name files that do not exist. Each source is built to
 \ fool a text matcher: the label that exists only inside a `\` comment, the label
 \ inside a string literal standing in the wrong role, the definition of the
 \ opener word itself, the argv tail after `--` that looks like a filename, the
@@ -24,11 +29,15 @@ private
 : ORIGIN$ ( -- ptr u8 n )
    s" fixture-cases.f" ;
 
-\ ---- the two set sources, shared by every case below -------------------------
-\ Selected labels: one real selection, one label in the wrong role, one label
-\ that exists only inside a line comment.
-: SEL-SRC ( -- ptr u8 n )
-   S\" : SEL? ( -- bool )\n   s\q covered-by-slice\q SUITE-LABEL= if TRUE exit then\n   s\q wrong-role-label\q TYPE\n   \\ s\q comment-only-label\q SUITE-LABEL=\n   FALSE ;\n" ;
+\ ---- what the cases are judged against, shared by every case below -----------
+\ A label the live tail slice really selects, and one no predicate names. If the
+\ first ever stops being selected this fixture stops standing for anything, which
+\ is why it is asserted directly below rather than assumed.
+: COVERED-LABEL$ ( -- ptr u8 n )
+   s" pointer-storage" ;
+
+: DARK-LABEL$ ( -- ptr u8 n )
+   s" no-slice-names-this-label" ;
 
 \ Scheduled files: three real schedulers, one path in the wrong role, one path
 \ that exists only inside a line comment.
@@ -39,7 +48,7 @@ private
    SCHEDULE-LINT:PREPARE
    SCHEDULE-LINT:REPORT-OFF
    SCHEDULE-LINT:RESET
-   ORIGIN$ SEL-SRC SCHEDULE-LINT:SELECT-SRC
+   SCHEDULE-LINT:SCHEDULE
    ORIGIN$ SCHED-SRC SCHEDULE-LINT:SCHED-SRC ;
 
 \ typed-local-lint: allow-bare-local - q keeps the source-producing effect from
@@ -51,16 +60,17 @@ private
 
 \ ---- the registration sources ------------------------------------------------
 
-\ Positive control by slice (its file is scheduled nowhere, the label carries
-\ it), positive control by fork list (no predicate names the label), and the
-\ partial: two files, one scheduled, which MUST report.
+\ Positive control by slice (its file is scheduled nowhere, the label carries it
+\ because the live tail slice selects it), positive control by fork list (no
+\ predicate names the label), and the partial: two files, one scheduled, which
+\ MUST report.
 : CASES-MIXED ( -- ptr u8 n )
-   S\" SUITE covered-by-slice\n   lib/never-scheduled.f\n;SUITE\n\nSUITE covered-by-fork\n   lib/fork-covered.f\n;SUITE\n\nSUITE half-dark\n   lib/half-covered.f\n   lib/dark-partner.f\n;SUITE\n" ;
+   S\" SUITE pointer-storage\n   lib/never-scheduled.f\n;SUITE\n\nSUITE covered-by-fork\n   lib/fork-covered.f\n;SUITE\n\nSUITE half-dark\n   lib/half-covered.f\n   lib/dark-partner.f\n;SUITE\n" ;
 
 \ The same three registrations, reordered. Coverage is a property of each
 \ registration, so the verdict must not depend on the order they are read in.
 : CASES-REORDER ( -- ptr u8 n )
-   S\" SUITE half-dark\n   lib/dark-partner.f\n   lib/half-covered.f\n;SUITE\n\nSUITE covered-by-fork\n   lib/fork-covered.f\n;SUITE\n\nSUITE covered-by-slice\n   lib/never-scheduled.f\n;SUITE\n" ;
+   S\" SUITE half-dark\n   lib/dark-partner.f\n   lib/half-covered.f\n;SUITE\n\nSUITE covered-by-fork\n   lib/fork-covered.f\n;SUITE\n\nSUITE pointer-storage\n   lib/never-scheduled.f\n;SUITE\n" ;
 
 \ Two registrations under one label. Each is judged on its own files, so a dark
 \ duplicate is a finding of its own and not absorbed by its twin.
@@ -111,7 +121,7 @@ private
 \ text `s\q` as the name and then read the payload as an argument, which this
 \ lint declines to model rather than guess at.
 : CASES-QUOTED-LABEL ( -- ptr u8 n )
-   S\" SUITE s\q covered-by-slice\q\n   lib/dark-e.f\n;SUITE\n" ;
+   S\" SUITE s\q pointer-storage\q\n   lib/dark-e.f\n;SUITE\n" ;
 
 \ A string literal that runs past end of input truncates the token table, so
 \ every registration after it is invisible.
@@ -136,11 +146,15 @@ private
 \ ---- the checks --------------------------------------------------------------
 
 : T-SETS ( -- )
-   s" only the label in SUITE-LABEL= role is selected" T-LABEL
-   LOAD-SETS
-   SCHEDULE-LINT:SELECT# 1 T=
    s" only the paths in a GSI role are scheduled" T-LABEL
-   SCHEDULE-LINT:SCHED# 3 T= ;
+   LOAD-SETS
+   SCHEDULE-LINT:SCHED# 3 T=
+   s" the live runner asks for at least one slice" T-LABEL
+   SCHEDULE-LINT:SLICE# 0 > TTRUE
+   s" a label one of those slices selects is covered" T-LABEL
+   COVERED-LABEL$ SCHEDULE-LINT:LABEL-COVER? TTRUE
+   s" a label no predicate names is not" T-LABEL
+   DARK-LABEL$ SCHEDULE-LINT:LABEL-COVER? TFALSE ;
 
 : T-MIXED ( -- )
    s" one partial registration reports, the two covered ones do not" T-LABEL

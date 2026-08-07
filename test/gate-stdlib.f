@@ -18,6 +18,10 @@ require lib/test/runner.f
 require test/gate-pool.f
 require test/gate-stats.f
 require lib/content-key.f
-include test/gate-stdlib-lib.f
-include test/gate-stdlib-inline-lib.f
+\ The two libraries are REQUIRED, not included: tools/lint/schedule-lint.f also
+\ requires gate-stdlib-lib.f to ask the slice predicate about a label, and a file
+\ that arrived here through `include` is not registered, so that require would
+\ load it a second time and redefine the package.
+require test/gate-stdlib-lib.f
+require test/gate-stdlib-inline-lib.f
 include test/gate-stdlib-cases.f
