@@ -129,6 +129,16 @@ $FFFFFFFF constant ARM64-W32
 
 : DR3 ( n n n -- n n n )  ?REG rot ?REG rot ?REG rot ;
 
+\ A memory access of the D file: the transferred register, the base register it
+\ addresses through, and an offset. The two registers are of two different
+\ FILES, which is the whole of what this word says: the transfer names a D
+\ register and takes the field bound alone, because that file has no
+\ platform-reserved member, while the base names an X register and takes the
+\ refusal as every other base in this file does. It is XRDI with the
+\ destination's refusal weakened to the bound, and it is the same split
+\ ENC-LD1V makes one operand earlier.
+: DRXN ( n n n -- n n n )  rot ?REG rot XREG? rot ;
+
 \ move-wide operands: destination register, 16-bit immediate, shifted half.
 : XMW3 ( n n n -- n n n )  ?HW rot XREG? rot ?IMM16 rot ;
 
@@ -296,6 +306,23 @@ variable ARM-Z
 : ENC-LDRW ( n n n -- n ) XRDI 4 SCALE/ ?IMM12 $B9400000 RRI ;
 
 : ENC-STRW ( n n n -- n ) XRDI 4 SCALE/ ?IMM12 $B9000000 RRI ;
+
+\ The same four accesses for the D-register file. A double lives in that file,
+\ so a load that lands it in a general register and a move across afterwards is
+\ two instructions where the machine has one; these are the one. Every field is
+\ the general form's - the scaled pair divides a byte offset by eight and holds
+\ twelve bits of it, the unscaled pair holds nine signed bits of a byte offset
+\ at bit twelve - and exactly one bit of the opcode differs: bit 26, which the
+\ architecture calls V and which says the transferred register is of the
+\ SIMD&FP file. ARM ARM (DDI 0487) C6.2, LDR/STR/LDUR/STUR (immediate, SIMD&FP)
+\ with size=11 for the 64-bit form.
+: ENC-LDRD ( n n n -- n ) DRXN 8 SCALE/ ?IMM12 $FD400000 RRI ;
+
+: ENC-STRD ( n n n -- n ) DRXN 8 SCALE/ ?IMM12 $FD000000 RRI ;
+
+: ENC-LDURD ( n n n -- n ) DRXN ?SIMM9 $FC400000 RRSI ;
+
+: ENC-STURD ( n n n -- n ) DRXN ?SIMM9 $FC000000 RRSI ;
 
 : ENC-LDAR ( n n -- n ) XR2 5 lshift or $C8DFFC00 or MSK ;
 

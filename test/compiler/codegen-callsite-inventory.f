@@ -56,6 +56,8 @@ private
 1 constant R1
 19 constant RBASE                  \ the data-stack pointer
 31 constant RSP                    \ the stack pointer: the frame's own base
+18 constant RRSVD                  \ x18, which no routine holds - and d18,
+                                   \ which is an ordinary floating register
 
 public
 
@@ -76,8 +78,25 @@ public
    R0 RBASE -8 ENC-LDUR DACCESS? TTRUE
    R0 RBASE -256 ENC-STUR DACCESS? TTRUE
 
+   s" the D file's two are the same traffic and are counted with them" T-LABEL
+   R0 RBASE 8 ENC-LDURD DACCESS? TTRUE
+   R0 RBASE 8 ENC-STURD DACCESS? TTRUE
+   R0 RBASE -8 ENC-LDURD DACCESS? TTRUE
+   R0 RBASE -256 ENC-STURD DACCESS? TTRUE
+
+   s" and the same three near-misses hold for them" T-LABEL
+   R0 R1 8 ENC-LDURD DACCESS? TFALSE
+   R0 R1 8 ENC-STURD DACCESS? TFALSE
+   R0 RBASE 8 ENC-LDRD DACCESS? TFALSE
+   R0 RBASE 8 ENC-STRD DACCESS? TFALSE
+
+   s" d18 is an ordinary D register, so an access transferring it is one" T-LABEL
+   RRSVD RBASE 8 ENC-LDURD DACCESS? TTRUE
+   RRSVD RBASE 8 ENC-STURD DACCESS? TTRUE
+
    s" an access is not an adjustment and an adjustment is not an access" T-LABEL
    R0 RBASE 8 ENC-LDUR DADJUST? TFALSE
+   R0 RBASE 8 ENC-LDURD DADJUST? TFALSE
    RBASE RBASE 16 ENC-ADDI DACCESS? TFALSE ;
 
 : ADJUST-CASES ( -- )

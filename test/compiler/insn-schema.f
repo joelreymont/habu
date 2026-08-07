@@ -72,11 +72,13 @@
 \     that `src/arch/arm64/icode.f` bounds first; and an ADR displacement is a
 \     word position times four, so it can never be misaligned. Each is stated
 \     here rather than left to be discovered.
-\   - One floating-point form is in the modelled vocabulary and has rows like
-\     every other: `FCSEL,`, the conditional select of two doubles, which the
-\     chain emits for a selection whose answer is a double. Its rows are where
-\     the `DR3` field bound in `src/arch/arm64/asm.f` is asked about, one row
-\     per slot, because it is the only modelled form that reaches that word.
+\   - Five floating-point forms are in the modelled vocabulary and have rows
+\     like every other. `FCSEL,`, the conditional select of two doubles, is
+\     where the `DR3` field bound in `src/arch/arm64/asm.f` is asked about, one
+\     row per slot. `ENC-LDRD`, `ENC-STRD`, `ENC-LDURD` and `ENC-STURD` are the
+\     D file's memory accesses, and they are where `DRXN` is asked about - one
+\     out-of-range row per encoder for the transfer slot it bounds, and one
+\     reserved-register row per encoder for the base slot it screens.
 \     The other floating-point encoders bound their D-register operands through
 \     `DR2` and `DR3` too and still have no row here: they are not in the
 \     modelled vocabulary, which `formal/Common/Insn.v` records as a MODEL GAP
@@ -88,6 +90,13 @@
 \     for it, so a row that refused would contradict the shipped code and a
 \     model that listed the operands would fail these rows and
 \     `every_x_register_is_checked` at once.
+\   - The four D-file memory forms have ONE refusing reserved-register row each
+\     and a d18 encoding row each, because they span both files: the base is an
+\     X register and is screened, the transfer is a D register and is not. A
+\     second refusing row on the transfer slot would fail against `SIMD-VECTORS`
+\     reasoning applied to `D-MEMORY-VECTORS`, where d18 must encode; a missing
+\     one on the base would leave `checked_regs` claiming a screen that is not
+\     there.
 \   - `wf` calls a left shift of zero malformed and the shipped encoder does
 \     not refuse it. That is not a missing bound: zero is inside the six-bit
 \     shift field, and the reason the model excludes it is that the word is
@@ -129,6 +138,10 @@ s" LBL," s" n --" TRUST
 s" MOVZHW" s" n n n -- n" TRUST
 s" ENC-LDUR" s" n n n -- n" TRUST
 s" ENC-STUR" s" n n n -- n" TRUST
+s" ENC-LDRD" s" n n n -- n" TRUST
+s" ENC-STRD" s" n n n -- n" TRUST
+s" ENC-LDURD" s" n n n -- n" TRUST
+s" ENC-STURD" s" n n n -- n" TRUST
 s" ENC-SMULH" s" n n n -- n" TRUST
 s" ENC-MADD" s" n n n n -- n" TRUST
 s" ENC-MSUB" s" n n n n -- n" TRUST
@@ -215,8 +228,9 @@ public
 48 constant F-DCCVAU  49 constant F-FCSEL     50 constant F-LDUR
 51 constant F-STUR    52 constant F-SMULH   53 constant F-MADD
 54 constant F-MSUB    55 constant F-LD1V    56 constant F-UADDLV
-57 constant F-UMOVH
-58 constant FORMS
+57 constant F-UMOVH   58 constant F-LDRD    59 constant F-STRD
+60 constant F-LDURD   61 constant F-STURD
+62 constant FORMS
 
 \ The constructor name in `formal/Common/Insn.v`. It names the form in a
 \ failing row's label and in the generated Rocq obligation, so the two reports
@@ -242,7 +256,8 @@ public
       48 of s" DcCvau" endof   49 of s" Fcsel" endof   50 of s" Ldur" endof
       51 of s" Stur" endof     52 of s" Smulh" endof   53 of s" Madd" endof
       54 of s" Msub" endof     55 of s" Ld1v" endof    56 of s" Uaddlv" endof
-      57 of s" Umovh" endof
+      57 of s" Umovh" endof    58 of s" LdrD" endof    59 of s" StrD" endof
+      60 of s" LdurD" endof    61 of s" SturD" endof
       E-CIE-FORM throw
    endcase ;
 
@@ -301,7 +316,7 @@ private
 \ ---- storage -----------------------------------------------------------------
 
 $100 constant VEC-CAP
-$40 constant OOR-CAP
+$80 constant OOR-CAP
 $80 constant RES-CAP
 $10 constant LIM-CAP
 
@@ -547,6 +562,43 @@ variable LIM-N
    F-LDUR 31 31 -256 $F85003FF V3
    F-STUR 31 31 -256 $F81003FF V3 ;
 
+\ The same two addressing modes for the D file, which is where a double lives.
+\ Field for field these are the four rows above and the four scaled ones before
+\ them - same offset conventions, same two ends of each field, same register
+\ positions - and one bit of the opcode apart. So the rows are laid out to be
+\ read against those: `F-LDURD 0 19 -8` beside `F-LDUR 0 19 -8` differs in the
+\ word by exactly bit 26.
+\
+\ THE ROWS THAT NAME REGISTER 18 ARE THE POINT OF THIS BLOCK, exactly as they
+\ are for the SIMD group. d18 is an ordinary D register and must ENCODE here,
+\ while x18 in the BASE slot must die and sits in `RESERVED-MEMORY` below. One
+\ form, one number, one file apart: `F-LDRD 18 3 16` encodes and
+\ `F-LDRD 1 18 0` refuses. Put `XREG?` on the transfer slot and the first fails;
+\ take it off the base and the second stops refusing.
+\
+\ Reference: ARM ARM for A-profile, C6.2, LDR/STR (immediate, SIMD&FP, unsigned
+\ offset) and LDUR/STUR (SIMD&FP) with size=11. Words checked against the
+\ assembler.
+: D-MEMORY-VECTORS ( -- )
+   F-LDRD 0 1 0 $FD400020 V3
+   F-LDRD 3 19 8 $FD400663 V3
+   F-LDRD 18 3 16 $FD400872 V3               \ d18 is not reserved; x18 is
+   F-LDRD 31 31 32760 $FD7FFFFF V3
+   F-STRD 0 1 0 $FD000020 V3
+   F-STRD 3 19 8 $FD000663 V3
+   F-STRD 18 3 16 $FD000872 V3
+   F-STRD 31 31 32760 $FD3FFFFF V3
+   F-LDURD 0 19 -8 $FC5F8260 V3
+   F-LDURD 5 6 0 $FC4000C5 V3
+   F-LDURD 18 3 7 $FC407072 V3
+   F-LDURD 31 31 255 $FC4FF3FF V3
+   F-LDURD 1 2 -256 $FC500041 V3
+   F-STURD 0 19 -8 $FC1F8260 V3
+   F-STURD 7 8 24 $FC018107 V3
+   F-STURD 18 3 7 $FC007072 V3
+   F-STURD 31 31 255 $FC0FF3FF V3
+   F-STURD 1 2 -256 $FC100041 V3 ;
+
 : COMPARE-VECTORS ( -- )
    F-CMP 9 8 $EB08013F V2
    F-CMP 15 14 $EB0E01FF V2
@@ -757,6 +809,16 @@ variable LIM-N
    F-LDUR 1 2 -257 OOR+                      \ and one past the bottom of it
    F-STUR 1 2 256 OOR+
    F-STUR 1 2 -257 OOR+
+   F-LDRD 1 2 32768 OOR+                     \ the D file's four take the same bounds
+   F-STRD 1 2 32768 OOR+
+   F-LDURD 1 2 256 OOR+
+   F-LDURD 1 2 -257 OOR+
+   F-STURD 1 2 256 OOR+
+   F-STURD 1 2 -257 OOR+
+   F-LDRD 32 2 0 OOR+                        \ `DRXN` bounds the transfer slot too
+   F-STRD 32 2 0 OOR+
+   F-LDURD 32 2 0 OOR+
+   F-STURD 32 2 0 OOR+
    F-LSLI 1 2 64 OOR+
    F-LSRI 1 2 64 OOR+
    F-ASRI 1 2 64 OOR+
@@ -780,7 +842,9 @@ variable LIM-N
    F-LDR 1 2 12 OOR+                         \ was: an offset of 12 rounded down to 8
    F-STR 1 2 12 OOR+
    F-LDRW 1 2 6 OOR+
-   F-STRW 1 2 6 OOR+ ;
+   F-STRW 1 2 6 OOR+
+   F-LDRD 1 2 12 OOR+
+   F-STRD 1 2 12 OOR+ ;
 
 \ ---- the reserved-register vectors -------------------------------------------
 \ One row per X-register operand slot of every form. A row with code 72 runs in
@@ -853,6 +917,8 @@ variable LIM-N
    F-STRW 18 15 0 X18  F-STRW 1 18 0 X18
    F-LDUR 18 15 0 X18  F-LDUR 1 18 0 X18
    F-STUR 18 15 0 X18  F-STUR 1 18 0 X18
+   F-LDRD 1 18 0 X18   F-STRD 1 18 0 X18
+   F-LDURD 1 18 0 X18  F-STURD 1 18 0 X18
    F-LDAR 18 15 0 X18  F-LDAR 14 18 0 X18
    F-STLR 18 5 0 X18   F-STLR 14 18 0 X18 ;
 
@@ -916,6 +982,7 @@ variable LIM-N
    SHIFT-VECTORS
    MEMORY-VECTORS
    UNSCALED-VECTORS
+   D-MEMORY-VECTORS
    COMPARE-VECTORS
    CONDITIONAL-SELECT-VECTORS
    MULTIPLY-VECTORS

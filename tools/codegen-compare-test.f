@@ -786,21 +786,38 @@ variable CODE-AT
 \ (src/compiler/a64-effect.f DSTACK-GPR), counted in a word's own compiled code.
 \ A byte count moves for any reason; this moves for one.
 \
-\ AND THERE ARE TWO SPELLINGS OF ONE ACCESS, which is why each counter below adds
-\ two forms rather than one. Since dot habu-place-the-data-9f128e58 the chain
-\ stands its data-stack pointer where the fewest adjustments are needed, so a
-\ cell it reaches can be UNDER the pointer as well as over it - and under it is
-\ the unscaled signed form, Ldur and Stur, which is a different encoding of the
-\ same access. A counter that knew only the scaled forms would report an access
-\ the routine really makes as no access at all, and would read a change of
-\ addressing mode as a saving. Both forms are counted, so what these numbers
+\ AND THERE ARE FOUR SPELLINGS OF ONE ACCESS, which is why each counter below
+\ adds four forms rather than one. Two of them are the addressing mode: since dot
+\ habu-place-the-data-9f128e58 the chain stands its data-stack pointer where the
+\ fewest adjustments are needed, so a cell it reaches can be UNDER the pointer as
+\ well as over it - and under it is the unscaled signed form, Ldur and Stur,
+\ which is a different encoding of the same access. The other two are the
+\ REGISTER FILE: a double reaches and leaves a slot in the file it lives in
+\ (src/compiler/native/select.f, the placement), so the same eight bytes travel
+\ under the SIMD&FP spelling of the same two modes.
+\
+\ A counter that knew only some of the four would report an access the routine
+\ really makes as no access at all, and would read a change of addressing mode -
+\ or of register file - as a saving. All four are counted, so what these numbers
 \ measure stays "how often the caller's stack is touched" whatever the placement
-\ chose.
+\ chose and whichever file the value is in.
+\
+\ AND THE TWO SIMD&FP FORMS WERE ALREADY BEING MISSED IN THE ENGINE'S COLUMN,
+\ which is worth saying because one pinned number below moved when they were
+\ added and the code it describes did not. The ENGINE pushes a computed double
+\ onto the data stack with `str d9, [x19]` - it always has - so
+\ CODEGEN-CORPUS3:SGD really makes one store and was recorded as making none.
+\ The row now reads one, and the chain's row reads one, which is the two columns
+\ being level rather than either of them having changed.
 $FFC00000 constant MEM-MASK
 $F9000000 constant STR-OP
 $F9400000 constant LDR-OP
 $F8000000 constant STUR-OP
 $F8400000 constant LDUR-OP
+$FD000000 constant STRD-OP
+$FD400000 constant LDRD-OP
+$FC000000 constant STURD-OP
+$FC400000 constant LDURD-OP
 
 : DSTACK-AT? ( n n -- bool ) {: w:n op:n :}
    w MEM-MASK and op =
@@ -817,11 +834,15 @@ $F8400000 constant LDUR-OP
 
 : DS-STORES ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u STR-OP DS-COUNT
-   a u STUR-OP DS-COUNT + ;
+   a u STUR-OP DS-COUNT +
+   a u STRD-OP DS-COUNT +
+   a u STURD-OP DS-COUNT + ;
 
 : DS-LOADS ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u LDR-OP DS-COUNT
-   a u LDUR-OP DS-COUNT + ;
+   a u LDUR-OP DS-COUNT +
+   a u LDRD-OP DS-COUNT +
+   a u LDURD-OP DS-COUNT + ;
 
 \ ---- and how many calls a word's own code makes ------------------------------
 \ The other exact number, and the one a claim about copying a callee rests on:
@@ -1167,12 +1188,13 @@ $1E602008 constant FCMP0-OP
    s" CODEGEN-CORPUS3:T-SGD!-N" DS-STORES 0 T=
    s" CODEGEN-CORPUS3:T-SGD!-N" DS-LOADS 4 T=
 
-   s" exactly one row of this corpus touches the caller's data stack more often" T-LABEL
-   DS-HEAVIER-ROWS 1 T=
+   s" no row of this corpus touches the caller's data stack more often" T-LABEL
+   DS-HEAVIER-ROWS 0 T=
 
-   s" and it is the smallest float body, by the one store the chain makes" T-LABEL
-   s" CODEGEN-CORPUS3:SGD" DS-HEAVIER? TTRUE
-   s" CODEGEN-CORPUS3:SGD" DS-STORES 0 T=
+   s" and the smallest float body is level with the engine, store for store"
+   T-LABEL
+   s" CODEGEN-CORPUS3:SGD" DS-HEAVIER? TFALSE
+   s" CODEGEN-CORPUS3:SGD" DS-STORES 1 T=
    s" CODEGEN-CORPUS3:SGD" DS-LOADS 3 T=
    s" CODEGEN-CORPUS3:SGD-N" DS-STORES 1 T=
    s" CODEGEN-CORPUS3:SGD-N" DS-LOADS 3 T=

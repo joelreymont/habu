@@ -107,7 +107,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it here too.
-66 constant OPCODES-N
+72 constant OPCODES-N
 
 0 constant O-MOVZ
 1 constant O-MOVK
@@ -175,6 +175,12 @@ private
 63 constant O-ANDI
 64 constant O-ORRI
 65 constant O-EORI
+66 constant O-FLOAD
+67 constant O-FSTORE
+68 constant O-FALOAD
+69 constant O-FASTORE
+70 constant O-FDLOAD
+71 constant O-FDSTORE
 \ One slot per attribute key the dialect declares. This pass writes no attribute
 \ of its own - the form it introduces carries none - but it COPIES every one the
 \ selector built, and a field copied under the wrong key would be a routine
@@ -304,6 +310,12 @@ create MASK-AT OPS-MAX cells allot
       andi      OF O-ANDI      ENDOF
       orri      OF O-ORRI      ENDOF
       eori      OF O-EORI      ENDOF
+      fload     OF O-FLOAD     ENDOF
+      fstore    OF O-FSTORE    ENDOF
+      faload    OF O-FALOAD    ENDOF
+      fastore   OF O-FASTORE   ENDOF
+      fdload    OF O-FDLOAD    ENDOF
+      fdstore   OF O-FDSTORE   ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -374,6 +386,12 @@ create MASK-AT OPS-MAX cells allot
       O-ANDI      of A64IR-OPCODE:ANDI      endof
       O-ORRI      of A64IR-OPCODE:ORRI      endof
       O-EORI      of A64IR-OPCODE:EORI      endof
+      O-FLOAD     of A64IR-OPCODE:FLOAD     endof
+      O-FSTORE    of A64IR-OPCODE:FSTORE    endof
+      O-FALOAD    of A64IR-OPCODE:FALOAD    endof
+      O-FASTORE   of A64IR-OPCODE:FASTORE   endof
+      O-FDLOAD    of A64IR-OPCODE:FDLOAD    endof
+      O-FDSTORE   of A64IR-OPCODE:FDSTORE   endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -1081,6 +1099,12 @@ public
    c b A64IR-OPCODE:FMOVXD   BIND1
    c b A64IR-OPCODE:FMOVDX   BIND1
    c b A64IR-OPCODE:FMOVDD   BIND1
+   c b A64IR-OPCODE:FLOAD    BIND1
+   c b A64IR-OPCODE:FSTORE   BIND1
+   c b A64IR-OPCODE:FALOAD   BIND1
+   c b A64IR-OPCODE:FASTORE  BIND1
+   c b A64IR-OPCODE:FDLOAD   BIND1
+   c b A64IR-OPCODE:FDSTORE  BIND1
    c b A64IR-OPCODE:FFLAG    BIND1
    c b A64IR-OPCODE:FFLAGZ   BIND1
    c b A64IR-OPCODE:FCMPBR   BIND1

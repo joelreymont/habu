@@ -85,6 +85,25 @@ private
    w R2-OK? 0= if false exit then
    w NCOMBINV:FRD  w NCOMBINV:FRN  w NCOMBINV:FSIMM9  ENC-STUR  w = ;
 
+\ The same two forms over the D file. A double reaches and leaves the caller's
+\ data stack in the register file it lives in (src/compiler/native/select.f, the
+\ placement), so `ldur d0, [x19,#-8]` is exactly the argument traffic
+\ `ldur x0, [x19,#-8]` is and has to be counted with it - a classifier blind to
+\ them would report a float row as carrying less marshalling than it does, which
+\ is the silent wrong number this file exists to prevent.
+\
+\ AND THEY SCREEN ONE REGISTER AND NOT TWO. The base is an X register and no
+\ emitted routine may hold x18; the transferred register is a D register and the
+\ floating file has no reserved member, so d18 is one the allocator really hands
+\ out. Screening both would answer false for every access through it.
+: LDURD? ( n -- bool ) {: w:n :}
+   w NCOMBINV:FRN ENCODABLE? 0= if false exit then
+   w NCOMBINV:FRD  w NCOMBINV:FRN  w NCOMBINV:FSIMM9  ENC-LDURD  w = ;
+
+: STURD? ( n -- bool ) {: w:n :}
+   w NCOMBINV:FRN ENCODABLE? 0= if false exit then
+   w NCOMBINV:FRD  w NCOMBINV:FRN  w NCOMBINV:FSIMM9  ENC-STURD  w = ;
+
 : ADDI? ( n -- bool ) {: w:n :}
    w R2-OK? 0= if false exit then
    w NCOMBINV:FRD  w NCOMBINV:FRN  w NCOMBINV:FI12  ENC-ADDI  w = ;
@@ -98,9 +117,11 @@ private
 public
 
 \ A load or a store that reaches THROUGH the data-stack pointer: one argument
-\ read, one result written, or one value put across a call.
+\ read, one result written, or one value put across a call. Four forms, because
+\ the eight bytes travel in whichever register file the value lives in and the
+\ instruction that moves them is the same instruction either way.
 : DACCESS? ( n -- bool ) {: w:n :}
-   w LDUR? w STUR? or
+   w LDUR? w STUR? or  w LDURD? or  w STURD? or
    w NCOMBINV:FRN DS = and ;
 
 \ An adjustment OF that pointer. The frame's own `sub sp, sp, #16` is the very

@@ -409,6 +409,104 @@ $1000 constant BUMP-ADDR
    CC BB REALT IR-BUILD:ADD-RESULT
    CLOSE-VALUE ;
 
+\ The crossing the other way, and a float operation to put between the two. The
+\ placement fixtures further down need both: what they are about is a double that
+\ arrives from memory and leaves to memory, and neither end exists without a
+\ crossing at it.
+: UNCROSS ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id :}
+   HIR-OPCODE:REALBITS BODY-ST BODY-LN OPEN-OP
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: FBINOP ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: o:HIR:opcode x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   o BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB REALT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+\ ---- the five fixtures the D-file placement is decided on --------------------
+\ Every one of them is `A @ dup f+` with one thing changed, and the thing that
+\ changes is what the rest of the routine does with the CELL at one end or the
+\ other. That is the whole of the placement rule: a cell whose every use
+\ reinterprets it as a double is loaded into the floating file, a cell that
+\ reinterprets a double and is only ever written to memory is never brought out
+\ of it, and every other cell is what it always was.
+\
+\ `A @ dup f+` and nothing else. Both ends qualify: the loaded cell's only use is
+\ the crossing, and the crossing back's only use is the routine's own result.
+: BUILD-FPLACE ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEM0 {: k0:IR-ID:ir-value-id :}
+   a k0 LOAD1 {: c:IR-ID:ir-value-id k1:IR-ID:ir-value-id :}
+   c CROSS {: r0:IR-ID:ir-value-id :}
+   HIR-OPCODE:FADD r0 r0 FBINOP UNCROSS RET1
+   CLOSE-FUN ;
+
+\ The same, but the double reaches memory through an address the program
+\ computed rather than through the routine's own result cell.
+: BUILD-FPLACE-STORE ( -- )
+   1 0 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEM0 {: k0:IR-ID:ir-value-id :}
+   a k0 LOAD1 {: c:IR-ID:ir-value-id k1:IR-ID:ir-value-id :}
+   c CROSS {: r0:IR-ID:ir-value-id :}
+   HIR-OPCODE:FADD r0 r0 FBINOP UNCROSS {: c1:IR-ID:ir-value-id :}
+   c1 a k1 STORE1 drop
+   HIR-OPCODE:RETURN CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB IR-BUILD:END-OP drop
+   CLOSE-FUN ;
+
+\ THE LOAD'S NEGATIVE: the loaded cell is published as well, so one of its uses
+\ is not a crossing and it stays in the general file with the Fmov in front of
+\ the float operation.
+: BUILD-FPLACE-USED ( -- )
+   1 2 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEM0 {: k0:IR-ID:ir-value-id :}
+   a k0 LOAD1 {: c:IR-ID:ir-value-id k1:IR-ID:ir-value-id :}
+   c CROSS {: r0:IR-ID:ir-value-id :}
+   HIR-OPCODE:FADD r0 r0 FBINOP UNCROSS {: c1:IR-ID:ir-value-id :}
+   HIR-OPCODE:RETURN CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB c1 IR-BUILD:ADD-OPERAND
+   CC BB c IR-BUILD:ADD-OPERAND
+   CC BB IR-BUILD:END-OP drop
+   CLOSE-FUN ;
+
+\ THE STORE'S NEGATIVE: the crossing back is added to itself, so its use is
+\ arithmetic rather than a store and the move out of the floating file is
+\ written.
+: BUILD-FPLACE-ADDED ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEM0 {: k0:IR-ID:ir-value-id :}
+   a k0 LOAD1 {: c:IR-ID:ir-value-id k1:IR-ID:ir-value-id :}
+   c CROSS {: r0:IR-ID:ir-value-id :}
+   HIR-OPCODE:FADD r0 r0 FBINOP UNCROSS {: c1:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD c1 c1 BINOP RET1
+   CLOSE-FUN ;
+
+\ AND THE WRONG ROLE, which is the fixture the rule really has to survive. The
+\ crossing back is used by a STORE - and it is the ADDRESS the store writes
+\ through, not the value it writes. A rule that asked only which opcode uses a
+\ value would place it and hand the machine an a64.fastr whose base register is
+\ of the floating file, which is an addressing mode no encoder has.
+: BUILD-FPLACE-ADDRESS ( -- )
+   1 0 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEM0 {: k0:IR-ID:ir-value-id :}
+   a k0 LOAD1 {: c:IR-ID:ir-value-id k1:IR-ID:ir-value-id :}
+   c CROSS {: r0:IR-ID:ir-value-id :}
+   HIR-OPCODE:FADD r0 r0 FBINOP UNCROSS {: c1:IR-ID:ir-value-id :}
+   a c1 k1 STORE1 drop
+   HIR-OPCODE:RETURN CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB IR-BUILD:END-OP drop
+   CLOSE-FUN ;
+
 \ A float comparison of two doubles, answering a cell - which is what a Habu
 \ flag is.
 : FCMP2 ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
@@ -429,14 +527,6 @@ $1000 constant BUMP-ADDR
    CC BB REALT IR-BUILD:ADD-RESULT
    CC BB  CC BB HIR:KEY-VALUE  CC BB v IR-BUILD:INTERN-INT-ATTR
    IR-BUILD:ADD-ATTR
-   CLOSE-VALUE ;
-
-: FBINOP ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
-   {: o:HIR:opcode x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
-   o BODY-ST BODY-LN OPEN-OP
-   CC BB x IR-BUILD:ADD-OPERAND
-   CC BB y IR-BUILD:ADD-OPERAND
-   CC BB REALT IR-BUILD:ADD-RESULT
    CLOSE-VALUE ;
 
 \ And one against the instruction's own zero, which takes one operand.
@@ -2244,6 +2334,109 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: MEM-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 11 T= ;
 
+\ ---- a double that never leaves the floating file ----------------------------
+\ WHAT THE FIVE CASES BELOW MEASURE, IN ONE SENTENCE: an instruction that is not
+\ there. The crossings this dialect calls a64.fmovxd and a64.fmovdx compute
+\ nothing - the same eight bits are read as a double or as a cell - so where the
+\ access on the other side of one can name the floating file, the crossing has
+\ no work left. Each case therefore asserts the FORM the access took and the
+\ operation COUNT together: a load that became a64.faldr while the Fmov stayed
+\ would be one instruction worse than what it replaced, and the count is what
+\ says so.
+\
+\ THE NUMBERING, because it is the same five operations every time. 0 a64.dtake,
+\ 1 a64.dload (the pointer argument - a cell used as an ADDRESS, which is not a
+\ crossing, so it is never placed), 2 the access under test, then the float
+\ operation, then the exit.
+: FPLACE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool )
+   HIR-MOD
+   BUILD-FPLACE
+   1 1 SELECTED-HABU READ!
+   OPS
+   1 s" a64.dload" OPCODE-IS?
+   2 s" a64.faldr" OPCODE-IS?
+   2 s" a64.aldr" OPCODE-IS?
+   3 s" a64.fadd" OPCODE-IS?
+   4 s" a64.fdstore" OPCODE-IS?
+   4 s" a64.dstore" OPCODE-IS? ;
+
+: FPLACE-CASE ( -- )
+   s" a cell whose every use is a crossing is loaded into the floating file"
+   T-LABEL
+   WBND [: FPLACE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE TFALSE TTRUE TTRUE 7 T= ;
+
+: FPLACE-STORE-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+   HIR-MOD
+   BUILD-FPLACE-STORE
+   1 0 SELECTED-HABU READ!
+   OPS
+   2 s" a64.faldr" OPCODE-IS?
+   3 s" a64.fadd" OPCODE-IS?
+   4 s" a64.fastr" OPCODE-IS?
+   4 s" a64.astr" OPCODE-IS? ;
+
+: FPLACE-STORE-CASE ( -- )
+   s" and a double written through a computed address is a64.fastr" T-LABEL
+   WBND [: FPLACE-STORE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE TTRUE 7 T= ;
+
+\ The load's negative. The cell is published as well as crossed, so it is in the
+\ general file and the crossing is an instruction again - which is two more
+\ operations than the first case, not one, because the second result needs its
+\ own exit store.
+: FPLACE-USED-BODY ( IR-CTX:ctx -- n bool bool bool )
+   HIR-MOD
+   BUILD-FPLACE-USED
+   1 2 SELECTED-HABU READ!
+   OPS
+   2 s" a64.aldr" OPCODE-IS?
+   2 s" a64.faldr" OPCODE-IS?
+   3 s" a64.fmovxd" OPCODE-IS? ;
+
+: FPLACE-USED-CASE ( -- )
+   s" a cell with one use that is not a crossing stays in the general file"
+   T-LABEL
+   WBND [: FPLACE-USED-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TFALSE TTRUE 9 T= ;
+
+\ The store's negative, and the load's positive in the same routine: the cell
+\ going IN still qualifies, and the cell coming OUT does not.
+: FPLACE-ADDED-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+   HIR-MOD
+   BUILD-FPLACE-ADDED
+   1 1 SELECTED-HABU READ!
+   OPS
+   2 s" a64.faldr" OPCODE-IS?
+   4 s" a64.fmovdx" OPCODE-IS?
+   6 s" a64.dstore" OPCODE-IS?
+   6 s" a64.fdstore" OPCODE-IS? ;
+
+: FPLACE-ADDED-CASE ( -- )
+   s" a crossing back whose use is arithmetic keeps its move across" T-LABEL
+   WBND [: FPLACE-ADDED-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE TTRUE 9 T= ;
+
+\ AND THE ROLE. The crossing back IS used by a store and by nothing else, and it
+\ is still not placed, because it is the store's ADDRESS. This is the case that
+\ separates "which opcode uses this value" from "which operand of it", and it is
+\ the one that would be wrong CODE rather than merely a missed saving: an
+\ a64.fastr through a floating base is not an addressing mode.
+: FPLACE-ADDRESS-BODY ( IR-CTX:ctx -- n bool bool bool )
+   HIR-MOD
+   BUILD-FPLACE-ADDRESS
+   1 0 SELECTED-HABU READ!
+   OPS
+   4 s" a64.fmovdx" OPCODE-IS?
+   5 s" a64.astr" OPCODE-IS?
+   5 s" a64.fastr" OPCODE-IS? ;
+
+: FPLACE-ADDRESS-CASE ( -- )
+   s" a crossing back used as a store's ADDRESS is not the value it stores"
+   T-LABEL
+   WBND [: FPLACE-ADDRESS-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE 8 T= ;
+
 \ A memory operation in a routine whose convention names only registers. The
 \ generic memory order of this dialect begins where the routine takes the
 \ caller's operands, and a routine that takes none has no beginning for it, so
@@ -2386,6 +2579,11 @@ public
    EXCH-CASE
    MEM-CASE
    SELECT-EFFECT-CASE
+   FPLACE-CASE
+   FPLACE-STORE-CASE
+   FPLACE-USED-CASE
+   FPLACE-ADDED-CASE
+   FPLACE-ADDRESS-CASE
    WBND [: GROUP-BIND-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SOURCE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE-REFUSE ;] IR-CTX:WITH-CONTEXT

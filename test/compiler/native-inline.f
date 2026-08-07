@@ -1226,7 +1226,13 @@ variable R3-BODY
 \
 \ THE PAD IS A MULTIPLICATION BY ONE, which moves no bit of a finite double, so
 \ the two callees are the same arithmetic and the stored eight bytes can be held
-\ against each other and against the literal sum.
+\ against each other and against the literal sum. It is TWO of them because the
+\ sum itself is now one instruction: a double reaching and leaving memory does so
+\ in its own register file (src/compiler/native/select.f, the placement), so the
+\ body of `f+` is the Fadd alone where it used to be an Fmov in front of each
+\ argument and one behind the answer. The pad's job is to put the big callee past
+\ the size rule and nothing else, so it is however many multiplications by one
+\ that takes.
 variable FSUM-BODY
 variable FSUM-BIG-BODY
 
@@ -1235,7 +1241,7 @@ variable FSUM-BIG-BODY
    A64EMIT:BODY-INSNS FSUM-BODY ! ;
 
 : MIGRATE-FSUM-BIG ( -- )
-   s" : NINL-FSUM-BIG ( r r -- r ) f+ 1.0 f* ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NINL-FSUM-BIG ( r r -- r ) f+ 1.0 f* 1.0 f* ;" 2 1 REGS NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS FSUM-BIG-BODY ! ;
 
 : MIGRATE-FPUT ( -- )
@@ -1264,8 +1270,8 @@ variable FSUM-BIG-BODY
    s" NINL-FSUM" ENTRY-OF NINL:TOKENS 1 T=
    s" NINL-FSUM" ENTRY-OF 0 NINL:SPELL$ s" f+" STR= TTRUE
    s" NINL-FSUM-BIG" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
-   FSUM-BODY @ 4 T=
-   FSUM-BIG-BODY @ 8 T=
+   FSUM-BODY @ 1 T=
+   FSUM-BIG-BODY @ 9 T=
    2 1 FSUM-BODY @ NINL:SMALL? TTRUE
    2 1 FSUM-BIG-BODY @ NINL:SMALL? TFALSE
 

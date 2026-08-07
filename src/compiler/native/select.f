@@ -288,6 +288,7 @@ variable S-TAIL                      \ whether the contract says control leaves 
 variable FUSE-AT                     \ where in this block the fused comparison is, or -1
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
+create VREAL VMAX cells allot                      \ this cell was placed in the D file
 create NAMEBUF NAME-CAP allot
 
 \ ---- what the if-conversion below is working on ------------------------------
@@ -608,6 +609,7 @@ variable D-RETS                                    \ returns seen while surveyin
 : VCLEAR ( -- )
    VMAX 0 ?do
       0 i cells VSET + !
+      0 i cells VREAL + !
    loop ;
 
 : VSLOT ( IR-ID:ir-value-id -- n )
@@ -624,6 +626,35 @@ variable D-RETS                                    \ returns seen while surveyin
    VSLOT {: k:n :}
    k cells VSET + @ 0= if E-A64SEL-SHAPE throw then
    k VMAP @ ;
+
+\ ---- which register file a value's machine value is in -----------------------
+\ THE SOURCE MODULE'S TYPE IS THE ANSWER FOR EVERY VALUE BUT ONE KIND. A value
+\ the source dialect calls a double is in the floating file because every
+\ machine form that defines one writes there, and REAL? is the whole of the
+\ question - which is why nothing below is asked about such a value.
+\
+\ THE ONE KIND IS A CELL THAT ONLY EVER TRAVELS. A double crossing a data-stack
+\ slot, a memory cell or a routine boundary is a CELL to the source dialect: the
+\ recorded unit says sixty-four bits and the two crossings say where those bits
+\ are read as a number (src/compiler/native/elaborate.f, COERCE1 and
+\ CELL-CROSS). Such a cell is loaded and stored by this pass, and WHICH FILE it
+\ is loaded into is not stated anywhere in the source module - it is decided
+\ here, from what the rest of the function does with the value, and it has to be
+\ recorded because no later reader can re-derive it from a type.
+\
+\ ONE WRITER PER VALUE, AND THE WRITER IS THE DEFINITION. Whichever operation
+\ defines the cell decides - the load that reads it out of memory or out of a
+\ slot, or the crossing that is about to leave the floating file with it - and
+\ every reader of the answer is a USE of that same value: the crossing that would
+\ have moved it across, and the store that writes it back. Because a value of
+\ this dialect is defined once, no two answers about one value can exist. A value
+\ nothing wrote is a value in the general file, which is what every value was
+\ before these forms existed.
+: FPLACE! ( IR-ID:ir-value-id -- )
+   VSLOT cells VREAL + 1 swap ! ;
+
+: FPLACED? ( IR-ID:ir-value-id -- bool )
+   VSLOT cells VREAL + @ 0<> ;
 
 \ ---- reading the frozen module -----------------------------------------------
 \ A span of the source module names a source of the source module; the new
@@ -739,6 +770,18 @@ variable D-RETS                                    \ returns seen while surveyin
 : FRESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
 
+\ Which file the value a memory access TRANSFERS lives in, read off the form the
+\ caller staged. It is one fact and it is stated once: an emitter that took the
+\ opcode and the class as two arguments would be a caller saying the same thing
+\ twice, and the day the two disagreed the schema would refuse the pair rather
+\ than the disagreement being caught where it was made. The two accesses that
+\ answer the floating file are the two that name it.
+: XFER-RESULT+ ( A64IR:opcode -- )
+   {: o:A64IR:opcode :}
+   o A64IR-OPCODE:FALOAD A64IR-OPCODE:EQ
+   o A64IR-OPCODE:FDLOAD A64IR-OPCODE:EQ or if FRESULT+ exit then
+   RESULT+ ;
+
 : TOKEN+ ( -- )
    CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
 
@@ -817,6 +860,93 @@ variable D-RETS                                    \ returns seen while surveyin
    then
    N-TAILS @ 0<> if E-A64SEL-TAIL throw then ;
 
+\ ---- which cells are placed in the floating file -----------------------------
+\ TWO SHAPES, AND BOTH OF THEM ARE A REINTERPRETATION THAT DOES NOT HAVE TO COST
+\ AN INSTRUCTION. hir.bitsreal and hir.realbits compute nothing at all: they say
+\ that the same sixty-four bits are now read as a double, or as a cell. What
+\ makes them cost an Fmov is that a value lives in ONE register file and the file
+\ was read off the source type, so a cell loaded out of memory landed in a
+\ general register and every float operation above it needed the bits moved
+\ across.
+\
+\   THE LOAD SHAPE. A cell read out of memory or out of a data-stack slot, whose
+\   every use reinterprets it as a double. The load names the D file, each
+\   reinterpretation is the loaded value itself, and no Fmov is written. RELU-F
+\   reads its argument twice this way, so one Ldur replaces one Ldur and two
+\   Fmovs.
+\
+\   THE STORE SHAPE. A cell whose definition reinterprets a double, and whose
+\   every use writes it to memory or leaves it in the routine's result slot. The
+\   reinterpretation is the double itself, the store names the D file, and again
+\   no Fmov is written.
+\
+\ EVERY USE, AND THAT IS WHAT MAKES THE REST OF THE PASS SAFE RATHER THAN THIS
+\ BEING SIX MORE CASES. A placed value is in a register file the rest of this
+\ pass does not expect, so the rule is that it may not reach the rest of this
+\ pass: requiring that EVERY use is the one shape means a placed value can only
+\ be read by the crossing or the store that the shape names. A cell handed
+\ across a block edge, published to a call, compared, added, or converted has a
+\ use that is neither, so it is not placed and nothing changes for it. That is
+\ why the predicates below ask about a POSITION and not only about an opcode:
+\ the value stored by a store is its first operand and the ADDRESS is its second,
+\ and a cell used as an address is not a cell on its way into the D file.
+\
+\ AND A VALUE WITH NO USE AT ALL IS NOT PLACED. It would be a load nothing reads,
+\ which is a placement decision about nothing; leaving it general keeps the
+\ answer the same as it was before these forms existed.
+0 constant PLACE-LOAD
+1 constant PLACE-STORE
+
+\ Does this operand position of this source operation accept a value that lives
+\ in the floating file, under the shape being asked about?
+: PLACE-POS? ( n n n -- bool )
+   {: k:n ix:n p:n :}
+   p PLACE-LOAD = if k O-BITSREAL = ix 0= and exit then
+   k O-STORE = ix 0= and
+   k O-RETURN = DSTACK? and or ;
+
+: PLACE-OP? ( IR-ID:ir-value-id IR-ID:ir-op-id n -- n )
+   {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id p:n :}
+   id OPCODE-AT OPCODE-SLOT {: k:n :}
+   0
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT v SAME-VALUE? if
+         k i p PLACE-POS? if 1+ else drop -1 leave then
+      then
+   loop ;
+
+: PLACE-BLOCK? ( IR-ID:ir-value-id IR-ID:ir-block-id n -- n )
+   {: v:IR-ID:ir-value-id bk:IR-ID:ir-block-id p:n :}
+   0
+   bk OP-COUNT 0 ?do
+      v  bk i OP-AT  p PLACE-OP?
+      dup 0 < if drop drop -1 leave then
+      +
+   loop ;
+
+\ How many uses this value has under the shape, or -1 when one of them is not of
+\ the shape at all. The count and the refusal are one answer because the rule is
+\ "every use, and at least one": a walk that answered them separately would read
+\ the function twice and could disagree with itself about which uses it saw.
+: PLACE-USES ( IR-ID:ir-value-id n -- n )
+   {: v:IR-ID:ir-value-id p:n :}
+   0
+   FUN BLOCK-COUNT 0 ?do
+      v  FUN i BLOCK-AT  p PLACE-BLOCK?
+      dup 0 < if drop drop -1 leave then
+      +
+   loop ;
+
+: PLACE? ( IR-ID:ir-value-id n -- bool )
+   PLACE-USES 0 > ;
+
+\ The two questions the emitters below ask, named for the shape they decide.
+: LOAD-PLACE? ( IR-ID:ir-value-id -- bool )
+   PLACE-LOAD PLACE? ;
+
+: STORE-PLACE? ( IR-ID:ir-value-id -- bool )
+   PLACE-STORE PLACE? ;
+
 \ ---- the four data-stack operations ------------------------------------------
 \ Each carries the span of the source operation it is anchored to, so a
 \ diagnostic about an entry load still points at the word the programmer wrote.
@@ -855,28 +985,42 @@ variable D-RETS                                    \ returns seen while surveyin
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
 
 \ One argument, read out of its slot. The value it defines is what every use of
-\ that argument in the selected module reads.
-: EMIT-DLOAD ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: at:IR-ID:ir-op-id off:n :}
-   at A64IR-OPCODE:DLOAD OPEN
+\ that argument in the selected module reads. WHICH FILE it lands in is the
+\ form's, for the reason XFER-RESULT+ gives: a64.dload brings the eight bytes
+\ back in a general register and a64.fdload in a floating one, and the placement
+\ above is what chooses between them.
+: EMIT-DLOAD ( IR-ID:ir-op-id n A64IR:opcode -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id off:n o:A64IR:opcode :}
+   at o OPEN
    TOK OPERAND+
-   RESULT+
+   o XFER-RESULT+
    TOKEN+
    off DSLOT-ATTR+
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 1 IR-BUILD:OP-RESULT@ TOK!
    CTX BLD id 0 IR-BUILD:OP-RESULT@ ;
 
-\ One result, written into its slot.
-: EMIT-DSTORE ( IR-ID:ir-op-id IR-ID:ir-value-id n -- )
-   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id off:n :}
-   at A64IR-OPCODE:DSTORE OPEN
+\ One result, written into its slot, out of the file the value it is handed lives
+\ in.
+: EMIT-DSTORE ( IR-ID:ir-op-id IR-ID:ir-value-id n A64IR:opcode -- )
+   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id off:n o:A64IR:opcode :}
+   at o OPEN
    v OPERAND+
    TOK OPERAND+
    TOKEN+
    off DSLOT-ATTR+
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
+
+\ The data-stack pair, chosen by whether the value crossing the slot is placed in
+\ the floating file. Both are one word each because the choice is one question
+\ asked at four sites, and a site that spelled the pair out could pick the load
+\ of one file and the store of the other.
+: DLOAD-FORM ( bool -- A64IR:opcode )
+   if A64IR-OPCODE:FDLOAD exit then A64IR-OPCODE:DLOAD ;
+
+: DSTORE-FORM ( bool -- A64IR:opcode )
+   if A64IR-OPCODE:FDSTORE exit then A64IR-OPCODE:DSTORE ;
 
 \ The pointer is left where the caller expects it - one past the results, which
 \ is the moment they become the caller's - and the order of the data-stack
@@ -1170,12 +1314,30 @@ variable KEPT-F
       id kk m i DBACK-VAL  i  DRES!
    loop ;
 
+\ A CALL SITE'S SAVES ARE ALWAYS IN THE GENERAL FILE, and that is a consequence
+\ of the placement rule rather than a case left out of it. A value is placed only
+\ when EVERY use of it is the crossing or the store that shape names, and a value
+\ published to a callee is used by the CALL - so no placed value ever reaches
+\ this run. It could not: KEEP-N above decides how many live values a site may
+\ leave in registers by asking REAL? of each, which is the SOURCE type, and a
+\ cell that lived in the floating file would be counted against the wrong pool.
+\
+\ THE RESTORES ARE NOT THE SAME QUESTION, and they do ask. A value coming back
+\ out of a slot after the branch is a RESULT of the call operation - a value of
+\ its own, bound here and nowhere else, whose uses are whatever the rest of the
+\ function does with it. Where those are all reinterpretations it comes back into
+\ the file it is about to be read in, exactly as an argument does at the entry.
+\ The three ranges CALL-RESTORE binds are disjoint - results 1..kk are the saved
+\ values, kk+1..kk+m the kept ones and the rest the callee's answers - so no
+\ value is bound twice and the file it is loaded into cannot be contradicted by a
+\ second binding.
 : CALL-SAVE ( IR-ID:ir-op-id n n n -- )
    {: id:IR-ID:ir-op-id kk:n m:n a:n :}
    id kk m a DSAVE-XFER {: mask:n :}
    kk a + 0 ?do
       mask i DBIT? 0= if
-         id  id kk m i DSAVE-VAL VOF  i A64IR:SLOT-WIDTH *  EMIT-DSTORE
+         id  id kk m i DSAVE-VAL VOF  i A64IR:SLOT-WIDTH *
+         false DSTORE-FORM  EMIT-DSTORE
       then
    loop ;
 
@@ -1185,7 +1347,8 @@ variable KEPT-F
    kk r + 0 ?do
       id kk m i DBACK-VAL {: v:IR-ID:ir-value-id :}
       v DNEED? if
-         v  id  i A64IR:SLOT-WIDTH *  EMIT-DLOAD  VBIND
+         v LOAD-PLACE? if v FPLACE! then
+         v  id  i A64IR:SLOT-WIDTH *  v FPLACED? DLOAD-FORM  EMIT-DLOAD  VBIND
       then
    loop
    m 0 ?do
@@ -1601,7 +1764,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    id o OPEN
    CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
-   RESULT+
+   o XFER-RESULT+
    TOKEN+
    CTX BLD IR-BUILD:END-OP {: nid:IR-ID:ir-op-id :}
    CTX BLD nid 1 IR-BUILD:OP-RESULT@ {: tk:IR-ID:ir-value-id :}
@@ -1624,6 +1787,56 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    CTX BLD nid 0 IR-BUILD:OP-RESULT@ {: tk:IR-ID:ir-value-id :}
    tk TOK!
    id 0 RESULT-AT tk VBIND ;
+
+\ ---- the cell load and store, in the file the placement chose ----------------
+\ The two source forms that move a whole cell through an address, and the one
+\ place the addressed pair asks the placement question. The byte forms are not
+\ here and cannot be: a byte load answers a zero-extended byte, which is a number
+\ this machine has no float reading of, so hir.bload and hir.bstore stay the two
+\ general accesses they always were.
+: EMIT-CELL-LOAD ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-AT LOAD-PLACE? if
+      id 0 RESULT-AT FPLACE!
+      id A64IR-OPCODE:FALOAD EMIT-ALOAD exit
+   then
+   id A64IR-OPCODE:ALOAD EMIT-ALOAD ;
+
+: EMIT-CELL-STORE ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-AT FPLACED? if
+      id A64IR-OPCODE:FASTORE EMIT-ASTORE exit
+   then
+   id A64IR-OPCODE:ASTORE EMIT-ASTORE ;
+
+\ ---- the two reinterpretations -----------------------------------------------
+\ NEITHER OF THESE COMPUTES ANYTHING. hir.bitsreal says the same sixty-four bits
+\ are now read as a double and hir.realbits says they are read as a cell, so the
+\ instruction each one costs is a MOVE between the two register files and nothing
+\ else. Where the placement above put the cell in the floating file already, the
+\ move has nowhere to go: the machine value the crossing would have written IS
+\ the machine value it would have read, so this pass binds the two source values
+\ to one machine value and stages no operation at all.
+\
+\ WHICH SIDE DECIDES IS WHICH SIDE THE CELL IS ON. A cell read out of memory is
+\ placed by the load, so the crossing above it only has to notice; a cell about
+\ to be written to memory is placed HERE, by the crossing that would have carried
+\ it across, because this is where the value is defined and the placement has one
+\ writer. Both ask the same question of the same map.
+: EMIT-BITSREAL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-AT FPLACED? if
+      id 0 RESULT-AT  id 0 OPERAND  VBIND exit
+   then
+   id A64IR-OPCODE:FMOVXD EMIT-FUNARY ;
+
+: EMIT-REALBITS ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-AT STORE-PLACE? if
+      id 0 RESULT-AT FPLACE!
+      id 0 RESULT-AT  id 0 OPERAND  VBIND exit
+   then
+   id A64IR-OPCODE:FMOVDX EMIT-UNARY ;
 
 \ ---- selecting the return ----------------------------------------------------
 \ Under a register convention the values still live where control leaves become
@@ -1655,7 +1868,8 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    id r DEXIT-XFER {: mask:n :}
    r 0 ?do
       mask i DBIT? 0= if
-         id  id i OPERAND  OUTS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  EMIT-DSTORE
+         id  id i OPERAND  OUTS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
+         id i OPERAND-AT FPLACED? DSTORE-FORM  EMIT-DSTORE
       then
    loop
    id  r A64IR:SLOT-WIDTH *  EMIT-DPUBLISH ;
@@ -3192,8 +3406,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       rshift OF id A64IR-OPCODE:LSRV EMIT-BINARY ENDOF
       invert OF id A64IR-OPCODE:MVN EMIT-UNARY ENDOF
       mem    OF id EMIT-MEM ENDOF
-      load   OF id A64IR-OPCODE:ALOAD EMIT-ALOAD ENDOF
-      store  OF id A64IR-OPCODE:ASTORE EMIT-ASTORE ENDOF
+      load   OF id EMIT-CELL-LOAD ENDOF
+      store  OF id EMIT-CELL-STORE ENDOF
       bload  OF id A64IR-OPCODE:ABLOAD EMIT-ALOAD ENDOF
       bstore OF id A64IR-OPCODE:ABSTORE EMIT-ASTORE ENDOF
       br     OF id EMIT-BR ENDOF
@@ -3216,8 +3430,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       feqz     OF id EMIT-FLAG ENDOF
       intreal  OF id A64IR-OPCODE:SCVTF EMIT-FUNARY ENDOF
       realint  OF id A64IR-OPCODE:FCVTZS EMIT-UNARY ENDOF
-      bitsreal OF id A64IR-OPCODE:FMOVXD EMIT-FUNARY ENDOF
-      realbits OF id A64IR-OPCODE:FMOVDX EMIT-UNARY ENDOF
+      bitsreal OF id EMIT-BITSREAL ENDOF
+      realbits OF id EMIT-REALBITS ENDOF
    ;MATCH ;
 
 \ ---- which slot holds which value, over the whole routine ---------------------
@@ -3743,8 +3957,10 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    a 0 ?do
       bk i ARG-AT {: v:IR-ID:ir-value-id :}
       v DNEED? if
+         v LOAD-PLACE? if v FPLACE! then
          v
-         at  ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  EMIT-DLOAD
+         at  ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
+         v FPLACED? DLOAD-FORM  EMIT-DLOAD
          VBIND
       then
    loop ;

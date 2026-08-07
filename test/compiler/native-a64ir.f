@@ -118,9 +118,10 @@ private
 \ BYTE-SHAPE-CASE, the fused compare-and-branch in CMPBR-SHAPE-CASE, the two
 \ conditional selects that answer a cell in SELZ-SHAPE-CASE and
 \ CMPSEL-SHAPE-CASE, the two that answer a double in FSEL-SHAPE-CASE, the four
-\ whose flags an Fcmp wrote in FFSEL-SHAPE-CASE, and the six bitwise and shift
-\ forms in BITWISE-CASE, and the count covers all of them.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+\ whose flags an Fcmp wrote in FFSEL-SHAPE-CASE, the six that reach memory in the
+\ D file in D-ADDR-SHAPE-CASE and D-SLOT-SHAPE-CASE, and the six bitwise and
+\ shift forms in BITWISE-CASE, and the count covers all of them.
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -151,6 +152,12 @@ private
    c b A64IR-OPCODE:ANDI A64IR:OPCODE {: an:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:ORRI A64IR:OPCODE {: oi:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:EORI A64IR:OPCODE {: ei:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FLOAD A64IR:OPCODE {: xl:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FSTORE A64IR:OPCODE {: xs:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FALOAD A64IR:OPCODE {: xa:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FASTORE A64IR:OPCODE {: xb:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FDLOAD A64IR:OPCODE {: xd:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FDSTORE A64IR:OPCODE {: xe:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FDEFINED?
@@ -180,14 +187,21 @@ private
    rv mn IR-SCHEMA:FDEFINED?
    rv an IR-SCHEMA:FDEFINED?
    rv oi IR-SCHEMA:FDEFINED?
-   rv ei IR-SCHEMA:FDEFINED? ;
+   rv ei IR-SCHEMA:FDEFINED?
+   rv xl IR-SCHEMA:FDEFINED?
+   rv xs IR-SCHEMA:FDEFINED?
+   rv xa IR-SCHEMA:FDEFINED?
+   rv xb IR-SCHEMA:FDEFINED?
+   rv xd IR-SCHEMA:FDEFINED?
+   rv xe IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the sixty-six machine opcodes" T-LABEL
+   s" registration defines exactly the seventy-two machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 66 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 72 T= ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one
@@ -491,6 +505,127 @@ private
    TTRUE TTRUE TTRUE TTRUE 0 T= 1 T= 3 T=
    TTRUE TTRUE TTRUE 0 T= 2 T= 2 T=
    TTRUE TTRUE ;
+
+\ ---- the two addressed forms of the D file -----------------------------------
+\ These are the only two forms of this dialect whose operands are of BOTH
+\ register files, so the pair of them is the one place a schema written with one
+\ type would be wrong rather than merely coarse: a64.faldr reads through an
+\ ADDRESS, which a program computes and therefore holds in a general register,
+\ and lands eight bytes in a DOUBLE, which lives in the floating one.
+\
+\ WHICH IS WHY EACH OF THE TWO CROSSING SLOTS IS ASKED TWICE, ONCE FOR EACH
+\ ANSWER. A row saying only "the base is the general type" passes just as well
+\ when both types are the same identity, which is exactly the mistake being
+\ guarded against - one type handed to the shape twice. The refusing rows are
+\ what make the pair say something: the base is NOT the floating type and the
+\ transferred value is NOT the general one, so a schema that collapsed them
+\ reddens here instead of reaching the emitter as a load whose address the
+\ allocator would place in a D register.
+: D-ADDR-SHAPE-BODY ( IR-CTX:ctx -- bool bool n n n bool bool bool bool bool bool n n n bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:FALOAD A64IR:OPCODE {: al:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FASTORE A64IR:OPCODE {: as:IR-ID:ir-symbol-id :}
+   c b A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
+   c b A64IR:FPR-TYPE {: f:IR-ID:ir-type-id :}
+   c b A64IR:MEM-TYPE {: kt:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv al s" a64.faldr" IR-SYM:FEQ?
+   pv yv as s" a64.fastr" IR-SYM:FEQ?
+   rv al IR-SCHEMA:FOPERANDS
+   rv al IR-SCHEMA:FRESULTS
+   rv al IR-SCHEMA:FATTRS
+   qv rv key al 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key al 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key al 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL kt IR-ID:TYPE-LOCAL =
+   qv rv key al 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key al 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   rv al IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ
+   rv as IR-SCHEMA:FOPERANDS
+   rv as IR-SCHEMA:FRESULTS
+   rv as IR-SCHEMA:FATTRS
+   qv rv key as 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key as 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key as 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key as 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL kt IR-ID:TYPE-LOCAL =
+   rv as IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ
+   rv al IR-SCHEMA:FSPACE@ IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ
+   rv as IR-SCHEMA:FALIAS@ IR--SCHEMA-ALIAS:UNRESTRICTED IR--SCHEMA-ALIAS:EQ ;
+
+: D-ADDR-SHAPE-CASE ( -- )
+   s" the two addressed D forms take a general base and a floating transfer" T-LABEL
+   BND [: D-ADDR-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TFALSE TTRUE TTRUE
+   0 T= 1 T= 3 T=
+   TTRUE TFALSE TTRUE TTRUE TFALSE TTRUE
+   0 T= 2 T= 2 T=
+   TTRUE TTRUE ;
+
+\ ---- the four slot forms of the D file ---------------------------------------
+\ The frame pair and the data-stack pair, whose base is named by the FORM and is
+\ therefore no operand at all. What each one has to say is the same three things
+\ its general twin says - how many operands, how many results, which slot key -
+\ plus the one thing that makes it its own form: the transferred value is of the
+\ floating file. The two keys are read back as well, because a frame slot and a
+\ data-stack slot are counted from two different pointers and a D-file access
+\ under the wrong key would be a routine reading its arguments out of its own
+\ frame.
+: D-SLOT-SHAPE-BODY ( IR-CTX:ctx -- bool bool bool bool n n n bool bool bool n n n bool bool bool n n n bool bool n n n bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:FLOAD A64IR:OPCODE {: fl:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FSTORE A64IR:OPCODE {: fs:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FDLOAD A64IR:OPCODE {: dl:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FDSTORE A64IR:OPCODE {: ds:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-SLOT {: lk:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-DSLOT {: dk:IR-ID:ir-symbol-id :}
+   c b A64IR:FPR-TYPE {: f:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv fl s" a64.fldr" IR-SYM:FEQ?
+   pv yv fs s" a64.fstr" IR-SYM:FEQ?
+   pv yv dl s" a64.fdload" IR-SYM:FEQ?
+   pv yv ds s" a64.fdstore" IR-SYM:FEQ?
+   rv fl IR-SCHEMA:FOPERANDS
+   rv fl IR-SCHEMA:FRESULTS
+   rv fl IR-SCHEMA:FATTRS
+   qv rv key fl 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key fl 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL lk IR-ID:SYMBOL-LOCAL =
+   rv fl IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ
+   rv fs IR-SCHEMA:FOPERANDS
+   rv fs IR-SCHEMA:FRESULTS
+   rv fs IR-SCHEMA:FATTRS
+   qv rv key fs 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key fs 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL lk IR-ID:SYMBOL-LOCAL =
+   rv fs IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ
+   rv dl IR-SCHEMA:FOPERANDS
+   rv dl IR-SCHEMA:FRESULTS
+   rv dl IR-SCHEMA:FATTRS
+   qv rv key dl 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key dl 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL dk IR-ID:SYMBOL-LOCAL =
+   rv ds IR-SCHEMA:FOPERANDS
+   rv ds IR-SCHEMA:FRESULTS
+   rv ds IR-SCHEMA:FATTRS
+   qv rv key ds 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key ds 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL dk IR-ID:SYMBOL-LOCAL = ;
+
+: D-SLOT-SHAPE-CASE ( -- )
+   s" the four slot forms of the D file transfer a floating register" T-LABEL
+   BND [: D-SLOT-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 1 T= 1 T= 2 T=
+   TTRUE TTRUE 1 T= 2 T= 1 T=
+   TTRUE TTRUE TTRUE 1 T= 1 T= 2 T=
+   TTRUE TTRUE TTRUE 1 T= 2 T= 1 T=
+   TTRUE TTRUE TTRUE TTRUE ;
 
 \ ---- the declared shapes of the two addressed BYTE forms ---------------------
 \ A byte access is its own form, so what has to be asserted is that it is one: a
@@ -1537,6 +1672,8 @@ private
 : GROUP-ADDR ( IR-CTX:ctx -- )
    drop
    ADDR-SHAPE-CASE
+   D-ADDR-SHAPE-CASE
+   D-SLOT-SHAPE-CASE
    BYTE-SHAPE-CASE
    SDIV-CASE ;
 

@@ -110,6 +110,13 @@ private
 \ mnemonic wrapper would be vocabulary the engine builder never writes.
    form F-LDUR = if a b c ENC-LDUR EMITW true exit then
    form F-STUR = if a b c ENC-STUR EMITW true exit then
+\ The D file's four reach their encoders the same way and for the same reason:
+\ the chain's emitter calls ENC-LDRD and its siblings itself, so those words ARE
+\ the shipped ones here.
+   form F-LDRD = if a b c ENC-LDRD EMITW true exit then
+   form F-STRD = if a b c ENC-STRD EMITW true exit then
+   form F-LDURD = if a b c ENC-LDURD EMITW true exit then
+   form F-STURD = if a b c ENC-STURD EMITW true exit then
    form F-LDAR = if a b LDAR, true exit then
    form F-STLR = if a b STLR, true exit then
    false ;

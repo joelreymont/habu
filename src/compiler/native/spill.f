@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-66 constant OPCODES-N
+72 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -194,6 +194,12 @@ private
 63 constant O-ANDI
 64 constant O-ORRI
 65 constant O-EORI
+66 constant O-FLOAD
+67 constant O-FSTORE
+68 constant O-FALOAD
+69 constant O-FASTORE
+70 constant O-FDLOAD
+71 constant O-FDSTORE
 
 \ One slot per attribute key the dialect declares.
 11 constant KEYS-N
@@ -322,6 +328,12 @@ create NAMEBUF NAME-CAP allot
       andi      OF O-ANDI      ENDOF
       orri      OF O-ORRI      ENDOF
       eori      OF O-EORI      ENDOF
+      fload     OF O-FLOAD     ENDOF
+      fstore    OF O-FSTORE    ENDOF
+      faload    OF O-FALOAD    ENDOF
+      fastore   OF O-FASTORE   ENDOF
+      fdload    OF O-FDLOAD    ENDOF
+      fdstore   OF O-FDSTORE   ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -392,6 +404,12 @@ create NAMEBUF NAME-CAP allot
       O-ANDI      of A64IR-OPCODE:ANDI      endof
       O-ORRI      of A64IR-OPCODE:ORRI      endof
       O-EORI      of A64IR-OPCODE:EORI      endof
+      O-FLOAD     of A64IR-OPCODE:FLOAD     endof
+      O-FSTORE    of A64IR-OPCODE:FSTORE    endof
+      O-FALOAD    of A64IR-OPCODE:FALOAD    endof
+      O-FASTORE   of A64IR-OPCODE:FASTORE   endof
+      O-FDLOAD    of A64IR-OPCODE:FDLOAD    endof
+      O-FDSTORE   of A64IR-OPCODE:FDSTORE   endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -523,17 +541,27 @@ create NAMEBUF NAME-CAP allot
    {: k:n :}
    MKEY k IR-ID:PACK-VALUE FPR-VALUE? ;
 
-\ A double the allocator decided to put away. This pass cannot lower one: the
-\ machine dialect has no STR, LDR or register move for the D file, because
-\ nothing in the subset it serves reaches them - a routine's contract hands out
-\ the whole floating file, so a double can only run short of registers in a body
-\ that holds more than the file has. Refusing it by name is what keeps a double
-\ from being put away by the GENERAL store and brought back in a general
-\ register, which is the same eight bytes read by the wrong instruction. The
-\ forms and this refusal go together, and dot habu-carry-a-double-570d2f5c is
-\ where they land.
-: FPR-CK ( n -- )
-   FPR-SLOT? if E-A64SPILL-SHAPE throw then ;
+\ WHICH FORM PUTS A VALUE AWAY AND WHICH BRINGS IT BACK IS THE ONE QUESTION THIS
+\ PASS ASKS ABOUT A VALUE'S FILE, and it is these two words. The general file's
+\ pair is a64.str and a64.ldr; the floating file's is a64.fstr and a64.fldr,
+\ which are the same two forms with the same operands over the other register
+\ file. Nothing else about an insert changes - same slot, same anchor, same
+\ token, same order - because nothing else about it depends on where the eight
+\ bytes live.
+\
+\ THE PASS USED TO REFUSE A DOUBLE HERE, AND WHAT THAT REFUSAL PROTECTED IS NOW
+\ STRUCTURAL. While the dialect had no D-file access, putting a double away could
+\ only have been done with the GENERAL store - the same eight bytes written by
+\ the right instruction and read back into the wrong register file - so refusing
+\ by name was the only fail-closed answer. The two words below make the file a
+\ property of the value the plan names, and the substrate checks the answer: a
+\ double handed to a64.str is an operand whose type is not the one that schema
+\ declares, which IR-BUILD refuses as E-IR-VERIFY-OPTYPE.
+: STORE-FORM ( n -- A64IR:opcode )
+   FPR-SLOT? if A64IR-OPCODE:FSTORE exit then A64IR-OPCODE:STORE ;
+
+: LOAD-FORM ( n -- A64IR:opcode )
+   FPR-SLOT? if A64IR-OPCODE:FLOAD exit then A64IR-OPCODE:LOAD ;
 
 \ ---- staging one operation in the new module ---------------------------------
 : OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
@@ -547,6 +575,14 @@ create NAMEBUF NAME-CAP allot
 : GPR-RESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-RESULT ;
 
+: FPR-RESULT+ ( -- )
+   CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
+
+\ The class of the register a value comes back into, which is the class of the
+\ register it left. Reading it off the value rather than writing GPR everywhere is
+\ what makes the reload of a double land where the operation below it looks.
+: FILE-RESULT+ ( n -- )
+   FPR-SLOT? if FPR-RESULT+ exit then GPR-RESULT+ ;
 
 : MEM-RESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
@@ -628,8 +664,7 @@ create NAMEBUF NAME-CAP allot
 \ as a register value; everything after this reads it out of the slot.
 : EMIT-STORE ( IR-ID:ir-op-id n -- )
    {: at:IR-ID:ir-op-id k:n :}
-   k FPR-CK
-   at A64IR-OPCODE:STORE OPEN
+   at k STORE-FORM OPEN
    MKEY k IR-ID:PACK-VALUE VOF OPERAND+
    TOK OPERAND+
    MEM-RESULT+
@@ -641,10 +676,9 @@ create NAMEBUF NAME-CAP allot
 \ revive one - so the operation below it reads this value and not the old one.
 : EMIT-LOAD ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
-   k FPR-CK
-   at A64IR-OPCODE:LOAD OPEN
+   at k LOAD-FORM OPEN
    TOK OPERAND+
-   GPR-RESULT+
+   k FILE-RESULT+
    MEM-RESULT+
    k A64RA:SLOT@ SLOT-ATTR+
    CLOSE {: id:IR-ID:ir-op-id :}
@@ -658,9 +692,20 @@ create NAMEBUF NAME-CAP allot
 \ not the original. Which register the copy lands in is not decided here and is
 \ not in the plan: the lowered module is allocated again, and that walk reads the
 \ declaration off the same contract.
+\
+\ AND IT IS THE ONE INSERT THAT STAYS IN THE GENERAL FILE, WHICH IS NOT AN
+\ OMISSION BESIDE THE TWO ABOVE. A copy is planned for a returned value the
+\ CONTRACT names a register for, and the only result placements a contract of
+\ this chain states are general ones: A64EFF:ROUTINE carries a floating result
+\ set, and nothing in the chain reads it - src/compiler/native/regalloc.f plans
+\ its moves against the general out list alone (MB-PLAN-MOVES over OUTS-N). So a
+\ double cannot be the subject of a move, and a64.fmovdd here would be a form
+\ with no producer. The day a contract states where a returned double leaves,
+\ this word wants the same two-armed question the store and the load ask - and
+\ until then IR-BUILD refuses the mismatch by name rather than this pass copying
+\ a double with a general move.
 : EMIT-MOVE ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
-   k FPR-CK
    at A64IR-OPCODE:MOV OPEN
    MKEY k IR-ID:PACK-VALUE pos READ-AS OPERAND+
    GPR-RESULT+
@@ -1032,6 +1077,12 @@ public
    c b A64IR-OPCODE:FMOVXD   BIND1
    c b A64IR-OPCODE:FMOVDX   BIND1
    c b A64IR-OPCODE:FMOVDD   BIND1
+   c b A64IR-OPCODE:FLOAD    BIND1
+   c b A64IR-OPCODE:FSTORE   BIND1
+   c b A64IR-OPCODE:FALOAD   BIND1
+   c b A64IR-OPCODE:FASTORE  BIND1
+   c b A64IR-OPCODE:FDLOAD   BIND1
+   c b A64IR-OPCODE:FDSTORE  BIND1
    c b A64IR-OPCODE:FFLAG    BIND1
    c b A64IR-OPCODE:FFLAGZ   BIND1
    c b A64IR-OPCODE:FCMPBR   BIND1

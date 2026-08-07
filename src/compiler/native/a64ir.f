@@ -49,6 +49,12 @@
 \                                  address register
 \   a64.aldrb    Ldrb rt rn 0    - load one byte through an address register,
 \                                  zero-extended into the register
+\   a64.fstr     StrD dt sp off  - store a DOUBLE into a frame slot
+\   a64.fldr     LdrD dt sp off  - load one back out of a frame slot
+\   a64.fdstore  StrD dt ds off  - write a DOUBLE into a data-stack slot
+\   a64.fdload   LdrD dt ds off  - read one out of a data-stack slot
+\   a64.fastr    StrD dt rn 0    - store a DOUBLE through an address register
+\   a64.faldr    LdrD dt rn 0    - load one through an address register
 \   a64.reserve  Subi sp sp n    - claim the routine's own frame
 \   a64.release  Addi sp sp n    - give the frame back
 \   a64.dtake    Subi ds ds n    - take the caller's operands off the data stack
@@ -111,6 +117,26 @@
 \   a64.ret      Ret             - return to the address in the link register
 \ There is no opcode here for a form no pass in the chain produces yet. An opcode
 \ with no selection rule and no emission would be a promise, not a schema.
+\
+\ THE SIX D-FILE MEMORY FORMS ARE THE SIX ABOVE THEM WITH ONE BIT OF THE OPCODE
+\ CHANGED, AND THAT IS THE WHOLE OF WHAT THEY ADD. A double lives in the floating
+\ file, so before these existed a double could only reach memory by being moved
+\ into a general register first and moved back on the way out: an Fmovdx in front
+\ of every store of one and an Fmovxd behind every load. The architecture has no
+\ such requirement - LDR and STR name a register of either file, and which one
+\ they name is bit 26 - so the pairs are exact twins of a64.str/a64.ldr,
+\ a64.dstore/a64.dload and a64.astr/a64.aldr: same operands in the same order,
+\ same base register named by the form rather than taken as an operand where the
+\ general twin names it, same offset attribute, same memory space and same token
+\ chain. ONE thing differs and it is the register CLASS of the transferred value,
+\ which is what a schema states and therefore the only place it can be stated.
+\
+\ AND a64.faldr AND a64.fastr SPAN BOTH FILES, which is why DEF-ALDR and DEF-ASTR
+\ below take two types. The base is an address the program computed, so it is a
+\ general register; the transferred value is a double, so it is a floating one.
+\ Declaring them with one type - which was possible while every member of the
+\ shape was general - would say the ADDRESS is of the floating file, and no
+\ addressing mode of this machine has such a thing.
 \
 \ THE FOUR FLOAT COMPARISON FORMS ARE FOUR AND NOT TWO, and both splits are
 \ instruction forms rather than tastes. The flag-materialising pair and the fused
@@ -396,6 +422,12 @@ ENUM opcode DERIVE eq
    fmovxd
    fmovdx
    fmovdd
+   fload
+   fstore
+   faload
+   fastore
+   fdload
+   fdstore
    fflag
    fflagz
    fcmpbr
@@ -834,6 +866,12 @@ public
       fmovxd   OF s" a64.fmovxd" ENDOF
       fmovdx   OF s" a64.fmovdx" ENDOF
       fmovdd   OF s" a64.fmovdd" ENDOF
+      fload    OF s" a64.fldr" ENDOF
+      fstore   OF s" a64.fstr" ENDOF
+      faload   OF s" a64.faldr" ENDOF
+      fastore  OF s" a64.fastr" ENDOF
+      fdload   OF s" a64.fdload" ENDOF
+      fdstore  OF s" a64.fdstore" ENDOF
       fflag    OF s" a64.fflag" ENDOF
       fflagz   OF s" a64.fflagz" ENDOF
       fcmpbr   OF s" a64.fcmpbr" ENDOF
@@ -1074,6 +1112,12 @@ private
       fmovxd   OF s" a64.rule.fmovxd" ENDOF
       fmovdx   OF s" a64.rule.fmovdx" ENDOF
       fmovdd   OF s" a64.rule.fmovdd" ENDOF
+      fload    OF s" a64.rule.fldr" ENDOF
+      fstore   OF s" a64.rule.fstr" ENDOF
+      faload   OF s" a64.rule.faldr" ENDOF
+      fastore  OF s" a64.rule.fastr" ENDOF
+      fdload   OF s" a64.rule.fdload" ENDOF
+      fdstore  OF s" a64.rule.fdstore" ENDOF
       fflag    OF s" a64.rule.fflag" ENDOF
       fflagz   OF s" a64.rule.fflagz" ENDOF
       fcmpbr   OF s" a64.rule.fcmpbr" ENDOF
@@ -1145,6 +1189,12 @@ private
       fmovxd   OF s" a64.render.fmovxd" ENDOF
       fmovdx   OF s" a64.render.fmovdx" ENDOF
       fmovdd   OF s" a64.render.fmovdd" ENDOF
+      fload    OF s" a64.render.fldr" ENDOF
+      fstore   OF s" a64.render.fstr" ENDOF
+      faload   OF s" a64.render.faldr" ENDOF
+      fastore  OF s" a64.render.fastr" ENDOF
+      fdload   OF s" a64.render.fdload" ENDOF
+      fdstore  OF s" a64.render.fdstore" ENDOF
       fflag    OF s" a64.render.fflag" ENDOF
       fflagz   OF s" a64.render.fflagz" ENDOF
       fcmpbr   OF s" a64.render.fcmpbr" ENDOF
@@ -1398,9 +1448,9 @@ private
 \ Str: the register whose value is being put away, and the token that orders this
 \ store against every other frame access. The slot it goes into is the
 \ instruction's own field, so it rides as the attribute.
-: DEF-STR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b A64IR-OPCODE:STORE OPCODE IR-SCHEMA:BEGIN-OP
+: DEF-STR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
    k IR-SCHEMA:ADD-OPERAND
    k IR-SCHEMA:ADD-RESULT
@@ -1408,15 +1458,15 @@ private
    IR--SCHEMA-EFFECT:WRITE FRAME-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:STORE NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Ldr: the value read out of the slot, and the token passed on. Result zero is
 \ the register, so a consumer that wants the loaded value asks for the first
 \ result the way it does of every other value-producing form.
-: DEF-LDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b A64IR-OPCODE:LOAD OPCODE IR-SCHEMA:BEGIN-OP
+: DEF-LDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
    k IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
    k IR-SCHEMA:ADD-RESULT
@@ -1424,7 +1474,7 @@ private
    IR--SCHEMA-EFFECT:READ FRAME-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:LOAD NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Reserve: the routine takes its frame, and the token every later frame access
@@ -1493,9 +1543,9 @@ private
 
 \ Dload: one argument read out of its slot. Result zero is the register, so the
 \ value an argument arrives as is asked for exactly like any other value.
-: DEF-DLOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b A64IR-OPCODE:DLOAD OPCODE IR-SCHEMA:BEGIN-OP
+: DEF-DLOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
    k IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
    k IR-SCHEMA:ADD-RESULT
@@ -1503,13 +1553,13 @@ private
    IR--SCHEMA-EFFECT:READ DSTACK-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:DLOAD NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Dstore: one result written into its slot, which is how a Habu word publishes.
-: DEF-DSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b A64IR-OPCODE:DSTORE OPCODE IR-SCHEMA:BEGIN-OP
+: DEF-DSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
    k IR-SCHEMA:ADD-OPERAND
    k IR-SCHEMA:ADD-RESULT
@@ -1517,7 +1567,7 @@ private
    IR--SCHEMA-EFFECT:WRITE DSTACK-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:DSTORE NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Dpublish: the data-stack pointer moves up over the results, which is the moment
@@ -1552,35 +1602,43 @@ private
 \ form encodes at offset zero, which is `[Xn]`, and an offset that is not zero is
 \ an addressing mode this dialect does not have rather than a field left at its
 \ default.
-: DEF-ALDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b A64IR-OPCODE:ALOAD OPCODE IR-SCHEMA:BEGIN-OP
-   t IR-SCHEMA:ADD-OPERAND
+\
+\ THE BASE AND THE TRANSFER ARE TWO TYPES AND NOT ONE, because the D file's
+\ member of this shape spans both files: a64.faload reads through an X register
+\ and lands the eight bytes in a D one. Writing them as one type was possible
+\ only while every member was general, and the moment one is not, one type would
+\ declare the ADDRESS to be of the floating file - which no addressing mode has
+\ and which the machine cannot encode.
+: DEF-ALDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ID:ir-type-id v:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   a IR-SCHEMA:ADD-OPERAND
    k IR-SCHEMA:ADD-OPERAND
-   t IR-SCHEMA:ADD-RESULT
+   v IR-SCHEMA:ADD-RESULT
    k IR-SCHEMA:ADD-RESULT
    IR--SCHEMA-EFFECT:READ ADDR-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:ALOAD NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Astr: the register whose value is being written, the address to write it
 \ through, and the token. The value is the FIRST operand and the address the
 \ second, which is the order the source dialect's store has them and the order
 \ Forth writes them in, so a swapped pair is a wrong program rather than a
-\ different spelling of the same one.
-: DEF-ASTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b A64IR-OPCODE:ASTORE OPCODE IR-SCHEMA:BEGIN-OP
-   t IR-SCHEMA:ADD-OPERAND
-   t IR-SCHEMA:ADD-OPERAND
+\ different spelling of the same one. The two types are the load's two, for the
+\ load's reason.
+: DEF-ASTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ID:ir-type-id v:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   v IR-SCHEMA:ADD-OPERAND
+   a IR-SCHEMA:ADD-OPERAND
    k IR-SCHEMA:ADD-OPERAND
    k IR-SCHEMA:ADD-RESULT
    IR--SCHEMA-EFFECT:WRITE ADDR-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:ASTORE NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Aldrb and astrb: the same two addressed accesses one byte wide. Everything
@@ -2352,16 +2410,16 @@ public
    c b t A64IR-OPCODE:LSLV DEF-BINARY
    c b t A64IR-OPCODE:LSRV DEF-BINARY
    c b t DEF-MVN
-   c b t k DEF-STR
-   c b t k DEF-LDR
+   c b t k A64IR-OPCODE:STORE DEF-STR
+   c b t k A64IR-OPCODE:LOAD DEF-LDR
    c b k DEF-RESERVE
    c b k DEF-RELEASE
    c b k DEF-DTAKE
-   c b t k DEF-DLOAD
-   c b t k DEF-DSTORE
+   c b t k A64IR-OPCODE:DLOAD DEF-DLOAD
+   c b t k A64IR-OPCODE:DSTORE DEF-DSTORE
    c b k DEF-DPUBLISH
-   c b t k DEF-ALDR
-   c b t k DEF-ASTR
+   c b t t k A64IR-OPCODE:ALOAD DEF-ALDR
+   c b t t k A64IR-OPCODE:ASTORE DEF-ASTR
    c b t k DEF-ALDRB
    c b t k DEF-ASTRB
    c b t DEF-FLAG
@@ -2398,7 +2456,13 @@ public
    c b t f DEF-FCMPSEL
    c b t f DEF-FCMPSELZ
    c b f DEF-FCMPSELD
-   c b f DEF-FCMPSELZD ;
+   c b f DEF-FCMPSELZD
+   c b f k A64IR-OPCODE:FSTORE DEF-STR
+   c b f k A64IR-OPCODE:FLOAD DEF-LDR
+   c b f k A64IR-OPCODE:FDLOAD DEF-DLOAD
+   c b f k A64IR-OPCODE:FDSTORE DEF-DSTORE
+   c b t f k A64IR-OPCODE:FALOAD DEF-ALDR
+   c b t f k A64IR-OPCODE:FASTORE DEF-ASTR ;
 
 private
 get-current prot-wid-add

@@ -80,15 +80,39 @@
    instruction-relative delta in WORDS that src/arch/arm64/icode.f computes
    from the label.
 
-   ONE FORM OF THE D FILE IS MODELLED, AND IT IS THE ONE THAT CHOOSES.  Fcsel
-   is here because the chain emits it for a selection whose answer is a double
-   (src/compiler/native/select.f), so a field of it that moved would be wrong
-   code with nothing to catch it.  It is also the form that makes the two
-   register lists below say something rather than repeat each other: its three
-   register operands are D registers, so `xregs` is empty for it and
-   `checked_regs` has to be empty too - a claim that the shipped ENC-FCSEL
-   screens them for the reserved register would be a claim about a file that
-   has no reserved member, and `every_x_register_is_checked` refuses it.
+   FIVE FORMS OF THE D FILE ARE MODELLED: THE ONE THAT CHOOSES, AND THE FOUR
+   THAT REACH MEMORY.  Fcsel is here because the chain emits it for a selection
+   whose answer is a double (src/compiler/native/select.f), so a field of it
+   that moved would be wrong code with nothing to catch it.  It is also the form
+   that makes the two register lists below say something rather than repeat each
+   other: its three register operands are D registers, so `xregs` is empty for
+   it and `checked_regs` has to be empty too - a claim that the shipped
+   ENC-FCSEL screens them for the reserved register would be a claim about a
+   file that has no reserved member, and `every_x_register_is_checked` refuses
+   it.
+
+   LdrD, StrD, LdurD and SturD are the D file's memory accesses, and they are
+   the forms that let a double reach and leave memory in the file it lives in.
+   Without them the chain had to move every loaded double across to a general
+   register and back - FMOV in front of every float operation reading memory and
+   FMOV behind every one writing it - because a load that names a D register was
+   a form this file did not carry and therefore a word the emitter could not
+   write.  They pair exactly with Ldr/Str and Ldur/Stur: the same two addressing
+   modes, the same offset conventions, the same fields in the same places, and
+   ONE bit different - bit 26, the architecture's V, which says the transferred
+   register is of the SIMD&FP file.  Read against the ARM Architecture Reference
+   Manual for A-profile (DDI 0487, C6.2 LDR/STR/LDUR/STUR (immediate, SIMD&FP),
+   size=11 for the 64-bit form) and confirmed against the shipped host
+   assembler for every field.
+
+   THEY SPAN BOTH FILES, AND THAT IS WHAT THEIR TWO REGISTER LISTS SAY.  The
+   transferred register is a D register and the BASE is an X register, so
+   `xregs` holds the base alone and `checked_regs` has to agree: the shipped
+   ENC-LDRD and its three siblings put the base through XREG? and the transfer
+   through the field bound only, which is the same split ENC-LD1V makes.  This
+   is the second shape after Umovh where the answer is neither all nor none, and
+   it is the mirror of it - Umov's DESTINATION is the general one, these forms'
+   BASE is.
 
    AND TWO FORMS OF THE UNSCALED ADDRESSING MODE, FOR THE SAME REASON.  Ldur
    and Stur are here because the chain emits them (src/compiler/native/emit.f):
@@ -156,9 +180,9 @@
 
    MODEL GAPS.  The remaining floating-point encoders (FMOVXD, FMOVDX, FMOVDD,
    FADD, FSUB, FMUL, FDIV, FNEG, FABS, FSQRT, FCMP, FCMP0, SCVTF, FCVTZS) are
-   not modelled here; neither is `>LIMM`, the logical-immediate mask synthesis,
-   whose packed result the Andi/Orri/Eori forms take as an operand.  The
-   out-of-reach refusals for B/BL (?REL26) cannot be reached through the
+   still not modelled here; neither is `>LIMM`, the logical-immediate mask
+   synthesis, whose packed result the Andi/Orri/Eori forms take as an operand.
+   The out-of-reach refusals for B/BL (?REL26) cannot be reached through the
    shipped 2 MB code window at all.  Each is recorded as a dot. *)
 
 From Stdlib Require Import ZArith Bool List Lia Btauto.
@@ -322,6 +346,10 @@ Inductive insn : Type :=
 | Strb (rt rn off : Z)
 | Ldrw (rt rn off : Z)
 | Strw (rt rn off : Z)
+| LdrD (rt rn off : Z)
+| StrD (rt rn off : Z)
+| LdurD (rt rn off : Z)
+| SturD (rt rn off : Z)
 | Ldar (rt rn : Z)
 | Stlr (rt rn : Z)
 | Cmp (rn rm : Z)
@@ -383,6 +411,10 @@ Definition enc (i : insn) : Z :=
   | Strb rt rn off => Z.lor 0x39000000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off) 10)))
   | Ldrw rt rn off => Z.lor 0xB9400000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off / 4) 10)))
   | Strw rt rn off => Z.lor 0xB9000000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off / 4) 10)))
+  | LdrD rt rn off => Z.lor 0xFD400000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off / 8) 10)))
+  | StrD rt rn off => Z.lor 0xFD000000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (off / 8) 10)))
+  | LdurD rt rn off => Z.lor 0xFC400000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (low 9 off) 12)))
+  | SturD rt rn off => Z.lor 0xFC000000 (Z.lor (fld (rt) 0) (Z.lor (fld (rn) 5) (fld (low 9 off) 12)))
   | Ldar rt rn => Z.lor 0xC8DFFC00 (Z.lor (fld (rt) 0) (fld (rn) 5))
   | Stlr rt rn => Z.lor 0xC89FFC00 (Z.lor (fld (rt) 0) (fld (rn) 5))
   | Cmp rn rm => Z.lor 0xEB00001F (Z.lor (fld (rn) 5) (fld (rm) 16))
@@ -467,6 +499,10 @@ Definition wf (i : insn) : bool :=
   | Strb rt rn off => rok rt && rok rn && uok 12 off
   | Ldrw rt rn off => rok rt && rok rn && (off mod 4 =? 0) && uok 12 (off / 4)
   | Strw rt rn off => rok rt && rok rn && (off mod 4 =? 0) && uok 12 (off / 4)
+  | LdrD rt rn off => rok rt && rok rn && (off mod 8 =? 0) && uok 12 (off / 8)
+  | StrD rt rn off => rok rt && rok rn && (off mod 8 =? 0) && uok 12 (off / 8)
+  | LdurD rt rn off => rok rt && rok rn && sok 9 off
+  | SturD rt rn off => rok rt && rok rn && sok 9 off
   | Ldar rt rn => rok rt && rok rn
   | Stlr rt rn => rok rt && rok rn
   | Cmp rn rm => rok rn && rok rm
@@ -543,6 +579,10 @@ Definition checked_regs (i : insn) : list Z :=
   | Strb rt rn off => [rt; rn]
   | Ldrw rt rn off => [rt; rn]
   | Strw rt rn off => [rt; rn]
+  | LdrD rt rn off => [rn]
+  | StrD rt rn off => [rn]
+  | LdurD rt rn off => [rn]
+  | SturD rt rn off => [rn]
   | Ldar rt rn => [rt; rn]
   | Stlr rt rn => [rt; rn]
   | Cmp rn rm => [rn; rm]
@@ -605,6 +645,10 @@ Definition xregs (i : insn) : list Z :=
   | Strb rt rn off => [rt; rn]
   | Ldrw rt rn off => [rt; rn]
   | Strw rt rn off => [rt; rn]
+  | LdrD rt rn off => [rn]
+  | StrD rt rn off => [rn]
+  | LdurD rt rn off => [rn]
+  | SturD rt rn off => [rn]
   | Ldar rt rn => [rt; rn]
   | Stlr rt rn => [rt; rn]
   | Cmp rn rm => [rn; rm]
@@ -675,6 +719,22 @@ Definition row_Ldrb := R 0xFFC00000 0x39400000 (fun w => Ldrb (get 0 5 w) (get 5
 Definition row_Strb := R 0xFFC00000 0x39000000 (fun w => Strb (get 0 5 w) (get 5 5 w) (get 10 12 w)).
 Definition row_Ldrw := R 0xFFC00000 0xB9400000 (fun w => Ldrw (get 0 5 w) (get 5 5 w) (4 * get 10 12 w)).
 Definition row_Strw := R 0xFFC00000 0xB9000000 (fun w => Strw (get 0 5 w) (get 5 5 w) (4 * get 10 12 w)).
+
+(* The D file's four memory forms.  Their opcode masks are the ones the X-file
+   accesses above already use, and what separates them from those is one bit
+   inside those masks: bit 26 is the architecture's V, which says the transfer
+   register names the SIMD&FP file rather than the general one.  So the
+   exclusivity of these rows against Ldr, Str, Ldur and Stur is a bit the masks
+   already cover rather than a wider mask, and `decoder_rows_exclusive` decides
+   it by computation like every other pair.  The offsets keep the X-file
+   division exactly: the scaled pair carries a byte offset that is a multiple of
+   eight and holds twelve bits of it, the unscaled pair carries a signed byte
+   offset in nine bits at position twelve. *)
+Definition row_LdrD := R 0xFFC00000 0xFD400000 (fun w => LdrD (get 0 5 w) (get 5 5 w) (8 * get 10 12 w)).
+Definition row_StrD := R 0xFFC00000 0xFD000000 (fun w => StrD (get 0 5 w) (get 5 5 w) (8 * get 10 12 w)).
+Definition row_LdurD := R 0xFFE00C00 0xFC400000 (fun w => LdurD (get 0 5 w) (get 5 5 w) (sext 9 (get 12 9 w))).
+Definition row_SturD := R 0xFFE00C00 0xFC000000 (fun w => SturD (get 0 5 w) (get 5 5 w) (sext 9 (get 12 9 w))).
+
 Definition row_Ldar := R 0xFFFFFC00 0xC8DFFC00 (fun w => Ldar (get 0 5 w) (get 5 5 w)).
 Definition row_Stlr := R 0xFFFFFC00 0xC89FFC00 (fun w => Stlr (get 0 5 w) (get 5 5 w)).
 Definition row_Cmp := R 0xFFE0FC1F 0xEB00001F (fun w => Cmp (get 5 5 w) (get 16 5 w)).
@@ -768,6 +828,10 @@ Definition table : list row :=
   ; row_Strb
   ; row_Ldrw
   ; row_Strw
+  ; row_LdrD
+  ; row_StrD
+  ; row_LdurD
+  ; row_SturD
   ; row_Ldar
   ; row_Stlr
   ; row_Cmp
@@ -1298,6 +1362,54 @@ Proof.
   - cbv [row_Strw rmask rval enc]. lfields.
 Qed.
 
+(* The D file's four.  Each one goes the ordinary way and by the ordinary
+   tactic: nothing about the register FILE reaches the packing, which is the
+   point - a D register and an X register are the same five bits in the same
+   place, and what differs is the opcode the row already pins. *)
+Lemma dec_LdrD : forall rt rn off, wf (LdrD rt rn off) = true ->
+  decode (enc (LdrD rt rn off)) = Some (LdrD rt rn off).
+Proof.
+  intros rt rn off H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_LdrD).
+  - cbv [row_LdrD rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_LdrD rmask rval enc]. lfields.
+Qed.
+
+Lemma dec_StrD : forall rt rn off, wf (StrD rt rn off) = true ->
+  decode (enc (StrD rt rn off)) = Some (StrD rt rn off).
+Proof.
+  intros rt rn off H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_StrD).
+  - cbv [row_StrD rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_StrD rmask rval enc]. lfields.
+Qed.
+
+Lemma dec_LdurD : forall rt rn off, wf (LdurD rt rn off) = true ->
+  decode (enc (LdurD rt rn off)) = Some (LdurD rt rn off).
+Proof.
+  intros rt rn off H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_LdurD).
+  - cbv [row_LdurD rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_LdurD rmask rval enc]. lfields.
+Qed.
+
+Lemma dec_SturD : forall rt rn off, wf (SturD rt rn off) = true ->
+  decode (enc (SturD rt rn off)) = Some (SturD rt rn off).
+Proof.
+  intros rt rn off H. wfsplit H.
+  unfold decode. rewrite (decode1_of_match table _ row_SturD).
+  - cbv [row_SturD rmk enc]. f_equal. f_equal; gfields.
+  - vm_compute; reflexivity.
+  - cbv [table]; simpl; tauto.
+  - cbv [row_SturD rmask rval enc]. lfields.
+Qed.
+
 Lemma dec_Ldar : forall rt rn, wf (Ldar rt rn) = true ->
   decode (enc (Ldar rt rn)) = Some (Ldar rt rn).
 Proof.
@@ -1646,6 +1758,10 @@ Proof.
   - apply dec_Strb.
   - apply dec_Ldrw.
   - apply dec_Strw.
+  - apply dec_LdrD.
+  - apply dec_StrD.
+  - apply dec_LdurD.
+  - apply dec_SturD.
   - apply dec_Ldar.
   - apply dec_Stlr.
   - apply dec_Cmp.
@@ -1734,6 +1850,10 @@ Definition opmask (i : insn) : Z :=
   | Strb _ _ _ => 0xFFC00000
   | Ldrw _ _ _ => 0xFFC00000
   | Strw _ _ _ => 0xFFC00000
+  | LdrD _ _ _ => 0xFFC00000
+  | StrD _ _ _ => 0xFFC00000
+  | LdurD _ _ _ => 0xFFE00C00
+  | SturD _ _ _ => 0xFFE00C00
   | Ldar _ _ => 0xFFFFFC00
   | Stlr _ _ => 0xFFFFFC00
   | Cmp _ _ => 0xFFE0FC1F
@@ -1796,6 +1916,10 @@ Definition fldmask (i : insn) : Z :=
   | Strb _ _ _ => 0x003FFFFF
   | Ldrw _ _ _ => 0x003FFFFF
   | Strw _ _ _ => 0x003FFFFF
+  | LdrD _ _ _ => 0x003FFFFF
+  | StrD _ _ _ => 0x003FFFFF
+  | LdurD _ _ _ => 0x001FF3FF
+  | SturD _ _ _ => 0x001FF3FF
   | Ldar _ _ => 0x000003FF
   | Stlr _ _ => 0x000003FF
   | Cmp _ _ => 0x001F03E0

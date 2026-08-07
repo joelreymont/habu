@@ -2640,6 +2640,13 @@ create TXT
    M-RESULT+
    CLOSE-VALUE ;
 
+: M-FCVTZS ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: d:IR-ID:ir-value-id :}
+   A64IR-OPCODE:FCVTZS M-OPEN
+   CC BB d IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   CLOSE-VALUE ;
+
 \ The cell argument is read a second time AFTER the first double exists, which is
 \ what makes the two alive together rather than one after the other.
 : BUILD-TWO-FILES ( -- )
@@ -2670,6 +2677,93 @@ create TXT
    s" a cell and a double alive together hold register zero of each file" T-LABEL
    WBND [: TWO-FILES-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 3 T= 1 T= TTRUE TFALSE 1 T= 0 T= 0 T= ;
+
+\ ---- putting a DOUBLE away ---------------------------------------------------
+\ The whole spill route again over a value of the floating file: allocate a
+\ program that does not fit, lower the decisions into operations, and allocate
+\ the module that holds them.
+\
+\ WHY A FIXTURE HAS TO DECLARE A SMALL FLOATING FILE FOR THIS TO BE REACHABLE AT
+\ ALL. A routine contract hands out the WHOLE floating file
+\ (src/compiler/native/abi.f), so a body the chain compiles runs short of D
+\ registers only if it holds more than thirty-two doubles at once - which no row
+\ of any pinned corpus does. Declaring two is what puts the wall where a fixture
+\ can reach it, and it changes nothing about the pass under test: the plan and
+\ the lowering read the pool they are given.
+\
+\ WHAT MAKES THIS MORE THAN "IT DID NOT THROW", AND IT IS THE BUILD ITSELF. The
+\ operations the lowering writes carry the spilled value as an operand and its
+\ reload as a result, and IR-BUILD checks both against the schema of the opcode
+\ they are given. a64.str declares a GENERAL operand and a64.ldr a general
+\ result, so putting a double away with the general pair does not build - the
+\ file the eight bytes travel in is checked by the substrate rather than by a
+\ name test the pass makes about itself. Point src/compiler/native/spill.f's
+\ STORE-FORM at a64.str and this case is red where it stands.
+\
+\ THE ROUTINE STILL ANSWERS A CELL. The conversion at the end of the fixture
+\ takes the sum into the general file and the return carries that, so nothing
+\ here asserts where a double LEAVES a routine - only the frame round trip in
+\ the middle, which is what the two forms are for.
+: BUILD-FCHAIN ( -- )
+   s" FCHAIN" 0 1 OPEN-FUN
+   $11 M-MOVZ M-FMOVXD {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ M-FMOVXD {: b:IR-ID:ir-value-id :}
+   $33 M-MOVZ M-FMOVXD {: c:IR-ID:ir-value-id :}
+   b c M-FADD {: s1:IR-ID:ir-value-id :}
+   s1 a M-FADD M-FCVTZS M-RET
+   CLOSE-FUN ;
+
+\ LEAF-FN with a frame, because a routine that spills has to have somewhere to
+\ spill to.
+: FLEAF-FRAMED ( n n n -- A64EFF:routine )
+   {: n:n fn:n size:n :}
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
+   A64EFF:FPR-NONE A64EFF:FPR-NONE fn FPOOL-N
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
+
+: FSPILL-CONTRACT ( -- A64EFF:routine )
+   4 2 16 FLEAF-FRAMED ;
+
+\ Three doubles are live where the third is written and two registers hold them,
+\ so one has to go into the frame - and it is the first, which the last addition
+\ reads furthest away.
+: FSPILL-PLAN-BODY ( IR-CTX:ctx -- n n bool )
+   A64-MOD
+   SPILL-BIND
+   BUILD-FCHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 FSPILL-CONTRACT A64RA:ALLOCATE
+   A64SPILL:RELEASE
+   A64RA:SPILLS
+   A64RA:PLAN-N
+   0 A64RA:PLAN-STORE? ;
+
+: FSPILL-PLAN-CASE ( -- )
+   s" a double that does not fit is planned into the frame" T-LABEL
+   WBND [: FSPILL-PLAN-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 2 T= 1 T= ;
+
+: FSPILL-LOWER-BODY ( IR-CTX:ctx -- n n bool )
+   A64-MOD
+   SPILL-BIND
+   BUILD-FCHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 FSPILL-CONTRACT A64RA:ALLOCATE
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb A64RA:BIND-DIALECT
+   CC nb A64RAV:BIND-DIALECT
+   CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m1 FSPILL-CONTRACT A64RA:ALLOCATE
+   m1 FSPILL-CONTRACT A64RAV:ACCEPT
+   A64RA:SPILLS
+   A64RA:VALUES
+   A64RAV:ACCEPTED? ;
+
+: FSPILL-LOWER-CASE ( -- )
+   s" a lowered double spill allocates and is accepted" T-LABEL
+   WBND [: FSPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 13 T= 0 T= ;
 
 \ ---- groups ------------------------------------------------------------------
 : GROUP-PLACE-ACCEPT ( IR-CTX:ctx -- ) drop PLACE-ACCEPT-CASE ;
@@ -2724,6 +2818,8 @@ public
    WIDE-CASE
    PLAIN-CASE
    TWO-FILES-CASE
+   FSPILL-PLAN-CASE
+   FSPILL-LOWER-CASE
    INTERLEAVED-CASE
    TIED-EXTRA-CASE
    UNTIED-EXTRA-CASE

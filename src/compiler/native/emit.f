@@ -235,7 +235,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-66 constant OPCODES-N
+72 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -302,6 +302,12 @@ private
 63 constant O-ANDI
 64 constant O-ORRI
 65 constant O-EORI
+66 constant O-FLOAD
+67 constant O-FSTORE
+68 constant O-FALOAD
+69 constant O-FASTORE
+70 constant O-FDLOAD
+71 constant O-FDSTORE
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -530,6 +536,12 @@ variable N-LAID                        \ how many blocks the order actually hold
       andi      OF O-ANDI      ENDOF
       orri      OF O-ORRI      ENDOF
       eori      OF O-EORI      ENDOF
+      fload     OF O-FLOAD     ENDOF
+      fstore    OF O-FSTORE    ENDOF
+      faload    OF O-FALOAD    ENDOF
+      fastore   OF O-FASTORE   ENDOF
+      fdload    OF O-FDLOAD    ENDOF
+      fdstore   OF O-FDSTORE   ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -600,6 +612,12 @@ variable N-LAID                        \ how many blocks the order actually hold
       O-ANDI      of A64IR-OPCODE:ANDI      endof
       O-ORRI      of A64IR-OPCODE:ORRI      endof
       O-EORI      of A64IR-OPCODE:EORI      endof
+      O-FLOAD     of A64IR-OPCODE:FLOAD     endof
+      O-FSTORE    of A64IR-OPCODE:FSTORE    endof
+      O-FALOAD    of A64IR-OPCODE:FALOAD    endof
+      O-FASTORE   of A64IR-OPCODE:FASTORE   endof
+      O-FDLOAD    of A64IR-OPCODE:FDLOAD    endof
+      O-FDSTORE   of A64IR-OPCODE:FDSTORE   endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -904,6 +922,35 @@ variable N-LAID                        \ how many blocks the order actually hold
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-STR ;
 
+\ The same six accesses for the D file. Every one of them is its general twin
+\ with one encoder swapped, and nothing else about it changes: the same base
+\ register is named, the same offset is read off the same attribute, the same
+\ addressing mode is chosen by the same sign test. What the swap buys is the
+\ whole point of the forms - a double reaches memory and leaves it in the file
+\ it lives in, so no FMOV stands in front of a float operation that reads memory
+\ or behind one that writes it.
+: DENC-LDRD ( n n n -- n )
+   dup 0 < if ENC-LDURD exit then ENC-LDRD ;
+
+: DENC-STRD ( n n n -- n )
+   dup 0 < if ENC-STURD exit then ENC-STRD ;
+
+: WORD-FSTORE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-STRD ;
+
+: WORD-FLOAD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDRD ;
+
+: WORD-FDLOAD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-LDRD ;
+
+: WORD-FDSTORE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-STRD ;
+
 \ ---- the two addressed forms -------------------------------------------------
 \ The same Ldr and Str the frame and the data stack use, with the base taken out
 \ of the module instead of named by this file: an addressed access reaches
@@ -924,6 +971,15 @@ variable N-LAID                        \ how many blocks the order actually hold
 : WORD-ASTORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF  ENC-STR ;
+
+\ The D file's pair of the same two, base and offset read exactly as above.
+: WORD-FALOAD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ADDR-OFF  ENC-LDRD ;
+
+: WORD-FASTORE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF  ENC-STRD ;
 
 \ The same two accesses one byte wide. Ldrb and Strb are their own encodings
 \ with their own unscaled twelve-bit offset field, so the width is which
@@ -1975,6 +2031,12 @@ variable CH-AT
       dpublish OF id PUT-DPUBLISH ENDOF
       aload    OF id  id WORD-ALOAD  APPEND ENDOF
       astore   OF id  id WORD-ASTORE  APPEND ENDOF
+      fload    OF id  id WORD-FLOAD  APPEND ENDOF
+      fstore   OF id  id WORD-FSTORE  APPEND ENDOF
+      faload   OF id  id WORD-FALOAD  APPEND ENDOF
+      fastore  OF id  id WORD-FASTORE  APPEND ENDOF
+      fdload   OF id  id WORD-FDLOAD  APPEND ENDOF
+      fdstore  OF id  id WORD-FDSTORE  APPEND ENDOF
       abload   OF id  id WORD-ABLOAD  APPEND ENDOF
       abstore  OF id  id WORD-ABSTORE  APPEND ENDOF
       flag     OF id PUT-FLAG ENDOF
@@ -2057,9 +2119,15 @@ variable CH-AT
 \ they are not all interface and the difference below would not be that routine's
 \ body. BODY-INSNS refuses such an emission by name rather than answering a
 \ number that means something else.
+\ The D file's two data-stack accesses are the same crossing as the general
+\ pair and are counted with them: an argument that arrives as a double is read
+\ out of the caller's cell by a64.fdload exactly as a cell argument is read by
+\ a64.dload, and which register file the eight bytes land in says nothing about
+\ whether the instruction is interface or work.
 : IFACE-FORM? ( n -- bool )
    {: k:n :}
-   k O-DTAKE = k O-DLOAD = or k O-DSTORE = or k O-DPUBLISH = or k O-RET = or ;
+   k O-DTAKE = k O-DLOAD = or k O-DSTORE = or k O-DPUBLISH = or k O-RET = or
+   k O-FDLOAD = or k O-FDSTORE = or ;
 
 : CALL-FORM? ( n -- bool )
    {: k:n :}
@@ -2258,6 +2326,12 @@ public
    c b A64IR-OPCODE:FMOVXD   BIND1
    c b A64IR-OPCODE:FMOVDX   BIND1
    c b A64IR-OPCODE:FMOVDD   BIND1
+   c b A64IR-OPCODE:FLOAD    BIND1
+   c b A64IR-OPCODE:FSTORE   BIND1
+   c b A64IR-OPCODE:FALOAD   BIND1
+   c b A64IR-OPCODE:FASTORE  BIND1
+   c b A64IR-OPCODE:FDLOAD   BIND1
+   c b A64IR-OPCODE:FDSTORE  BIND1
    c b A64IR-OPCODE:FFLAG    BIND1
    c b A64IR-OPCODE:FFLAGZ   BIND1
    c b A64IR-OPCODE:FCMPBR   BIND1
