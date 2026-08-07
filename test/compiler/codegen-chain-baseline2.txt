@@ -65,10 +65,10 @@ rows: 8
 path  word                          bytes    cost  outputs
 ----  ----------------------------  -----  ------  -------
 new   CODEGEN-CORPUS:NOOP               0    1000
-new   CODEGEN-CORPUS2:TAG              16     986  1 0 7
-new   CODEGEN-CORPUS2:WS?              84    1212  1 1 1 1 0
-new   CODEGEN-CORPUS2:SYM-FOLD-C       40    1126  64 97 122 91 97
-new   CODEGEN-CORPUS2:MAX-DIM          24    1061  7 7 5
-new   CODEGEN-CORPUS2:COUNT-CHAR       76    5332  6 0 0
-new   CODEGEN-CORPUS2:T-RES-WALK       36    5547  24 24 33
-new   CODEGEN-CORPUS2:VEC-COPY-CELLS     72    2541  7 107 207 307 0
+new   CODEGEN-CORPUS2:TAG              12     976  1 0 7
+new   CODEGEN-CORPUS2:WS?              84    1196  1 1 1 1 0
+new   CODEGEN-CORPUS2:SYM-FOLD-C       36    1012  64 97 122 91 97
+new   CODEGEN-CORPUS2:MAX-DIM          24     996  7 7 5
+new   CODEGEN-CORPUS2:COUNT-CHAR       76    5180  6 0 0
+new   CODEGEN-CORPUS2:T-RES-WALK       36    4786  24 24 33
+new   CODEGEN-CORPUS2:VEC-COPY-CELLS     72    2518  7 107 207 307 0
