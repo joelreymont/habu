@@ -19,14 +19,21 @@ private
 12 constant TR-TOP-POOL-MAX
 public
 600000 constant TIMEOUT-MS
+\ The phase-id space. tools/lint/schedule-lint.f walks it to ask, of every phase
+\ this runner has, whether anything starts it.
+41 constant PHASES
 private
-41 constant TR-PHASES
+PHASES constant TR-PHASES
 32 constant TR-NUM-CAP
 $100 constant TR-HOST-CAP
 public
 $2 constant CANDIDATE-HOST-PHASES
 $1C constant EARLY-HOST-PHASES
 $3 constant LATE-PHASES
+$3 constant READY-DIRECT-PHASES
+$2 constant READY-SHARED-PHASES
+$2 constant DIRECT-PHASES
+$3 constant DEFERRED-PHASES
 private
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
@@ -93,6 +100,42 @@ $8 , $7 , $24 , $25 , $26 , $27 , $16 , $15 ,
 $1A , $C , $11 , $23 , $1E , $22 , $B , $A ,
 $1F , $21 ,
 $5 , $2 , $1B , $1C , $19 , $20 , $D , $18 ,
+
+\ Candidate-ready phases the DAG kicks ahead of the early loop so their work
+\ overlaps the serial shared setup. Every id here is in an order table above as
+\ well - PRE-MARK makes the later pass a no-op - so these two are a priority
+\ hint, not a schedule of their own. They are tables rather than literals in
+\ test/run-resident.f because a phase id written where no table can see it is a
+\ start that tools/lint/schedule-lint.f cannot count.
+create TR-READY-DIRECT-ORDER
+$9 , $14 , $10 ,
+
+create TR-READY-SHARED-ORDER
+$3 , $E ,
+
+\ The two phases the DAG starts by name and by name only: the prop/debug phase at
+\ the head of DAG-RUN-REST, and the engine build slice from EARLY-EXTERNAL-START
+\ when no prebuilt candidate was handed in. Neither is in an order table, so this
+\ is the only record that they run.
+public
+$6 constant PHASE-DEBUG
+$F constant PHASE-ENGINE-BUILD
+private
+
+create TR-DIRECT-ORDER
+PHASE-DEBUG , PHASE-ENGINE-BUILD ,
+
+\ Phases this runner deliberately does NOT start. Each is an aggregate whose
+\ members already run here, split into their own groups: lint-libs ($13) as
+\ phases $1E..$21, lint-artifacts ($12) as $22, and the tool-lints group ($17) as
+\ the four splits $24..$27. The aggregates are still reachable - by hand as
+\ `test/gate-stdlib.f -- lint-libs` at the merge gate and on the device, and by id
+\ through test/gate-runner-entry.f - so they are not retired. They are NAMED here
+\ instead of being quietly absent from every order table, because quietly absent
+\ is exactly the state the tail slice was in when five of its suites ran nowhere.
+\ A phase that wants to be skipped has to say so.
+create TR-DEFERRED-ORDER
+$12 , $13 , $17 ,
 
 create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
@@ -531,6 +574,18 @@ public
    GS-ON? if s" HABU_GATE_STATS" GS-PATH$ TR-DEFAULT+ then ;
 
 private
+\ The same two factors, written into a SPAWNED child's environment. The resident
+\ path above hands them to a fork through PROC-ENV-DEFAULT+, which a spawned
+\ child never sees, so every word that builds a child environment puts them in
+\ explicitly: PHASE-BASE for the phases and TR-MAKI-BASE for maki. Without
+\ them a spawned slice reads no HB_LOAD_PCT, lib/test/budget.f self-calibrates
+\ against an idle-box reference, and its per-suite budgets stay at nominal while
+\ the box runs several times slower - which is how the stdlib gate's 120s
+\ per-suite wall killed a 100s suite at 120145ms under a second concurrent gate.
+: TR-PCT-ENV+ ( -- )
+   s" HB_LOAD_PCT" >LEN TR-LOAD-PCT-EXPORT TR-PCT$ >LEN PROC-ENV+
+   s" HB_CAL_PCT" >LEN TR-CAL-PCT TR-PCT$ >LEN PROC-ENV+ ;
+
 : TR-UNDER-PATHS ( -- )
    GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
    UNDER$ EXISTS? if UNDER$ REMOVE-FILE then
@@ -719,30 +774,6 @@ private
    s" --"  >LEN PROC-ARGV+
    slice sliceu  >LEN PROC-ARGV+ ;
 
-: TR-STDLIB-LINT-ARGS ( -- )
-   s" lint" TR-STDLIB-SLICE-ARGS ;
-
-: TR-STDLIB-LINT-TOOLS-ARGS ( -- )
-   s" lint-tools" TR-STDLIB-SLICE-ARGS ;
-
-: TR-STDLIB-LINT-ARTIFACTS-ARGS ( -- )
-   s" lint-artifacts" TR-STDLIB-SLICE-ARGS ;
-
-: TR-STDLIB-LINT-LIBS-ARGS ( -- )
-   s" lint-libs" TR-STDLIB-SLICE-ARGS ;
-
-: TR-STDLIB-TOOL-ARGS ( -- )
-   s" tool" TR-STDLIB-SLICE-ARGS ;
-
-: TR-STDLIB-CHECK-CLI-ARGS ( -- )
-   s" check-cli" TR-STDLIB-SLICE-ARGS ;
-
-: TR-STDLIB-TAIL-ARGS ( -- )
-   s" tail" TR-STDLIB-SLICE-ARGS ;
-
-: TR-STDLIB-PROOF-ARGS ( -- )
-   s" proof" TR-STDLIB-SLICE-ARGS ;
-
 : TR-ENGINE-ARGS ( -- )
    TR-COMMON
    s" lib/build.f"  >LEN PROC-ARGV+
@@ -915,13 +946,100 @@ private
       E-TBL-BOUNDS throw
    endcase ;
 
-: TR-PHASE-ARGS ( idx -- ) {: idx:idx :}
+public
+\ The phases that run a slice of the stdlib gate. Membership decides three
+\ things: the slice argument the phase spawns with (PHASE-SLICE-TOKEN below),
+\ the nested pool argument it gets, and whether its fork inherits the shared
+\ tool base. tools/lint/schedule-lint.f walks it to ask which slices this
+\ runner actually starts.
+: STDLIB-SLICE? ( idx -- bool ) {: idx:idx :}
    idx IDX>N case
-      0 of TR-UNSCHEDULED-PHASE endof
-      1 of TR-UNSCHEDULED-PHASE endof
-      2 of TR-STDLIB-TOOL-ARGS endof
-      3 of TR-STDLIB-CHECK-CLI-ARGS endof
-      4 of TR-STDLIB-TAIL-ARGS endof
+      2 of TR-TRUE endof
+      3 of TR-TRUE endof
+      4 of TR-TRUE endof
+      17 of TR-TRUE endof
+      18 of TR-TRUE endof
+      19 of TR-TRUE endof
+      21 of TR-TRUE endof
+      22 of TR-TRUE endof
+      23 of TR-TRUE endof
+      24 of TR-TRUE endof
+      25 of TR-TRUE endof
+      26 of TR-TRUE endof
+      27 of TR-TRUE endof
+      28 of TR-TRUE endof
+      30 of TR-TRUE endof
+      31 of TR-TRUE endof
+      32 of TR-TRUE endof
+      33 of TR-TRUE endof
+      34 of TR-TRUE endof
+      35 of TR-TRUE endof
+      36 of TR-TRUE endof
+      37 of TR-TRUE endof
+      38 of TR-TRUE endof
+      39 of TR-TRUE endof
+      40 of TR-TRUE endof
+      TR-FALSE swap
+   endcase ;
+
+\ The slice argument a stdlib phase hands to test/gate-stdlib.f. This is the ONLY
+\ place the phase -> slice map is written: TR-PHASE-ARGS below builds the argv
+\ from it, and tools/lint/schedule-lint.f reads it to answer the second half of
+\ the scheduling question - a slice predicate only runs a suite if some phase
+\ that this runner STARTS asks for that slice. Twenty-five phases used to name
+\ their slice through twenty-five copies of `N of TR-STDLIB-<SLICE>-ARGS endof`,
+\ which is a map no reader outside this word could consult.
+: PHASE-SLICE-TOKEN ( idx -- ptr u8 n ) {: idx:idx :}
+   idx IDX>N case
+      2 of s" tool" endof
+      3 of s" check-cli" endof
+      4 of s" tail" endof
+      17 of s" lint-tools" endof
+      18 of s" lint-artifacts" endof
+      19 of s" lint-libs" endof
+      21 of s" tool" endof
+      22 of s" tool" endof
+      23 of s" tool" endof
+      24 of s" tool" endof
+      25 of s" tail" endof
+      26 of s" tail" endof
+      27 of s" tail" endof
+      28 of s" tail" endof
+      30 of s" lint-libs" endof
+      31 of s" lint-libs" endof
+      32 of s" lint-libs" endof
+      33 of s" lint-libs" endof
+      34 of s" lint-artifacts" endof
+      35 of s" tail" endof
+      36 of s" tool" endof
+      37 of s" tool" endof
+      38 of s" tool" endof
+      39 of s" tool" endof
+      40 of s" proof" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+\ The phases this runner has retired. TR-PHASE-ARGS refuses to build an argv for
+\ them, so nothing can start one. tools/lint/schedule-lint.f reads the same
+\ answer from the other side: a phase that is NOT retired has to appear in one of
+\ the order tables, or it is a phase nobody starts - which is how the tail slice
+\ came to have five registered suites and no runner.
+: PHASE-RETIRED? ( idx -- bool ) {: idx:idx :}
+   idx IDX>N case
+      0 of TR-TRUE endof
+      1 of TR-TRUE endof
+      29 of TR-TRUE endof
+      TR-FALSE swap
+   endcase ;
+
+private
+: TR-PHASE-ARGS ( idx -- ) {: idx:idx :}
+   idx PHASE-RETIRED? if TR-UNSCHEDULED-PHASE then
+   idx STDLIB-SLICE? if
+      idx PHASE-SLICE-TOKEN TR-STDLIB-SLICE-ARGS
+      exit
+   then
+   idx IDX>N case
       5 of TR-ENGINE-REPAIR-ARGS endof
       6 of TR-DEBUG-ARGS endof
       7 of TR-AOT-POSITIVE-ARGS endof
@@ -934,30 +1052,7 @@ private
       14 of TR-DICTIONARY-ARGS endof
       15 of TR-ENGINE-BUILD-ARGS endof
       16 of TR-ENGINE-RUNTIME-ARGS endof
-      17 of TR-STDLIB-LINT-TOOLS-ARGS endof
-      18 of TR-STDLIB-LINT-ARTIFACTS-ARGS endof
-      19 of TR-STDLIB-LINT-LIBS-ARGS endof
       20 of TR-ENGINE-VALIDATE-ARGS endof
-      21 of TR-STDLIB-TOOL-ARGS endof
-      22 of TR-STDLIB-TOOL-ARGS endof
-      23 of TR-STDLIB-TOOL-ARGS endof
-      24 of TR-STDLIB-TOOL-ARGS endof
-      25 of TR-STDLIB-TAIL-ARGS endof
-      26 of TR-STDLIB-TAIL-ARGS endof
-      27 of TR-STDLIB-TAIL-ARGS endof
-      28 of TR-STDLIB-TAIL-ARGS endof
-      29 of TR-UNSCHEDULED-PHASE endof
-      30 of TR-STDLIB-LINT-LIBS-ARGS endof
-      31 of TR-STDLIB-LINT-LIBS-ARGS endof
-      32 of TR-STDLIB-LINT-LIBS-ARGS endof
-      33 of TR-STDLIB-LINT-LIBS-ARGS endof
-      34 of TR-STDLIB-LINT-ARTIFACTS-ARGS endof
-      35 of TR-STDLIB-TAIL-ARGS endof
-      36 of TR-STDLIB-TOOL-ARGS endof
-      37 of TR-STDLIB-TOOL-ARGS endof
-      38 of TR-STDLIB-TOOL-ARGS endof
-      39 of TR-STDLIB-TOOL-ARGS endof
-      40 of TR-STDLIB-PROOF-ARGS endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1008,42 +1103,13 @@ private
    GT-ROOT idx TR-PHASE-DIR TR-PATH-BUF JOIN-PATH TR-PATH-U !
    TR-PATH$ MAKE-DIRS ;
 
-: TR-STDLIB-SLICE? ( idx -- bool ) {: idx:idx :}
-   idx IDX>N case
-      2 of TR-TRUE endof
-      3 of TR-TRUE endof
-      4 of TR-TRUE endof
-      17 of TR-TRUE endof
-      18 of TR-TRUE endof
-      19 of TR-TRUE endof
-      21 of TR-TRUE endof
-      22 of TR-TRUE endof
-      23 of TR-TRUE endof
-      24 of TR-TRUE endof
-      25 of TR-TRUE endof
-      26 of TR-TRUE endof
-      27 of TR-TRUE endof
-      28 of TR-TRUE endof
-      30 of TR-TRUE endof
-      31 of TR-TRUE endof
-      32 of TR-TRUE endof
-      33 of TR-TRUE endof
-      34 of TR-TRUE endof
-      35 of TR-TRUE endof
-      36 of TR-TRUE endof
-      37 of TR-TRUE endof
-      38 of TR-TRUE endof
-      39 of TR-TRUE endof
-      40 of TR-TRUE endof
-      TR-FALSE swap
-   endcase ;
 
 \ Phases whose fork inherits the parent shared tool base: stdlib slices plus
 \ the dictionary/checker and diagnostics families, whose require lists dedupe
 \ against the base so only their gate-lib deltas load after the fork.
 public
 : SHARED-BASE? ( idx -- bool ) {: idx:idx :}
-   idx TR-STDLIB-SLICE? if TR-TRUE exit then
+   idx STDLIB-SLICE? if TR-TRUE exit then
    idx IDX>N case
       10 of TR-TRUE endof
       11 of TR-TRUE endof
@@ -1055,7 +1121,7 @@ public
 
 private
 : TR-PHASE-POOL-ARGS ( idx -- ) {: idx:idx :}
-   idx TR-STDLIB-SLICE? if
+   idx STDLIB-SLICE? if
       TR-NESTED-POOL @ TR-POOL-ARG+
       exit
    then
@@ -1146,7 +1212,7 @@ private
 
 : TR-PHASE-TIMINGS-ARGS ( idx -- ) {: idx:idx :}
    TR-TIMINGS @ 0= if exit then
-   idx TR-STDLIB-SLICE? if TR-TIMINGS-ARG+ exit then ;
+   idx STDLIB-SLICE? if TR-TIMINGS-ARG+ exit then ;
 
 public
 : PHASE-TEST ( idx -- ) {: idx:idx :}
@@ -1180,21 +1246,27 @@ private
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/test/runner.f"  >LEN PROC-ARGV+ ;
 
-: TR-PHASE-BASE ( idx -- ) {: idx:idx :}
+public
+\ The environment and --load prefix a spawned phase starts from. Public because
+\ it is the whole of what a spawned child inherits from this runner, and because
+\ test/gate-budget-test.f asks it directly whether the load factor is in there:
+\ the resident phases get that factor through PROC-ENV-DEFAULT+ and a spawned
+\ one gets nothing but what is written here.
+: PHASE-BASE ( idx -- ) {: idx:idx :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    idx TR-PHASE-TMP!
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
    idx TR-PHASE-TOOLS-ENV
    TR-BUILD-CACHE-ENV
+   TR-PCT-ENV+
    GS-ENV+
    idx TR-PHASE-UNDER-ENV
    PROC-ENV-INHERIT-MISSING
    TR-PHASE-ARGV-COLD ;
 
-public
 : PHASE-START ( idx -- ) {: idx:idx :}
-   idx TR-PHASE-BASE
+   idx PHASE-BASE
    idx TR-PHASE-ARGS
    idx TR-PHASE-POOL-ARGS
    idx TR-PHASE-TIMINGS-ARGS
@@ -1205,7 +1277,7 @@ public
 
 private
 : TR-PHASE-START-SLOT ( idx idx -- ) {: idx:idx slot:idx :}
-   idx TR-PHASE-BASE
+   idx PHASE-BASE
    idx TR-PHASE-ARGS
    idx TR-PHASE-POOL-ARGS
    idx TR-PHASE-TIMINGS-ARGS
@@ -1251,6 +1323,18 @@ public
 
 : EARLY-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-EARLY-HOST-ORDER + @ >IDX ;
+
+: READY-DIRECT-ORDER@ ( idx -- idx ) {: idx:idx :}
+   idx IDX>N cells TR-READY-DIRECT-ORDER + @ >IDX ;
+
+: READY-SHARED-ORDER@ ( idx -- idx ) {: idx:idx :}
+   idx IDX>N cells TR-READY-SHARED-ORDER + @ >IDX ;
+
+: DIRECT-ORDER@ ( idx -- idx ) {: idx:idx :}
+   idx IDX>N cells TR-DIRECT-ORDER + @ >IDX ;
+
+: DEFERRED-ORDER@ ( idx -- idx ) {: idx:idx :}
+   idx IDX>N cells TR-DEFERRED-ORDER + @ >IDX ;
 
 \ Per-phase content-keyed PASS-stamp cache. A phase with a declared file set
 \ (test/run-files.f) keys (label, bin/hb, candidate sha for under phases,
@@ -1578,21 +1662,13 @@ private
    GT-ROOT nm nu TR-PATH-BUF JOIN-PATH TR-PATH-U !
    TR-PATH$ MAKE-DIRS ;
 
-\ Export the gate's measured load/calibration factors so maki's own per-suite
-\ timeout and performance budgets scale with contention, exactly as the resident
-\ phases do (TR-PHASE-RESIDENT-SETUP): HB_LOAD_PCT carries the pool-pressure floor
-\ for timeout budgets, HB_CAL_PCT the measured factor for performance ratchets.
-: TR-MAKI-PCT-ENV+ ( -- )
-   s" HB_LOAD_PCT" >LEN TR-LOAD-PCT-EXPORT TR-PCT$ >LEN PROC-ENV+
-   s" HB_CAL_PCT" >LEN TR-CAL-PCT TR-PCT$ >LEN PROC-ENV+ ;
-
 : TR-MAKI-BASE ( i -- ) {: i:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    i TR-MAKI-SLICE-TMP TR-MAKI-TMP!
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
    TR-BUILD-CACHE-ENV
-   TR-MAKI-PCT-ENV+
+   TR-PCT-ENV+
    TR-UNDER-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
@@ -1639,7 +1715,7 @@ public
    GT-POOL-RESET
    TR-PRE-TOOLS-START
    TR-PRE-CANDIDATE-START
-   TR-UNDER-ARG? 0= if 15 >IDX PHASE-START then ;
+   TR-UNDER-ARG? 0= if PHASE-ENGINE-BUILD >IDX PHASE-START then ;
 
 : PREPARE ( -- )
    TR-CALIBRATE

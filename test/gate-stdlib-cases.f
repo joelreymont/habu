@@ -526,11 +526,14 @@ SUITE compiler-reloc-proof
 \ Rocq proof assistant and spawns child engines for the encodings the shipped
 \ assembler refuses by ending the process, so it runs in the proof slice
 \ alongside its four siblings. It is the slice's long pole and it has the least
-\ headroom of any suite in the gate: 99543ms quiescent against the FIXED 120000ms
-\ STDLIB-GATE:SUITE-TIMEOUT-MS, which unlike every other per-suite budget does not
-\ scale with the measured load factor. On a host running a second gate beside this
-\ one it times out at 120145ms. That is why the slice gets a phase to itself and
-\ starts first; dot habu-scale-the-stdlib-4e245a64 owns the missing scaling.
+\ headroom of any suite in the gate: 99543ms quiescent against a 120000ms nominal
+\ wall. That wall used to be a fixed constant and this suite is what proved the
+\ constant wrong - on a host running a second gate beside this one it timed out
+\ at 120145ms, a 21 percent stretch that the load factor exists to absorb.
+\ STDLIB-GATE:SUITE-TIMEOUT-MS now derives from that nominal through
+\ lib/test/budget.f, and test/run-lib.f hands every spawned phase the
+\ HB_LOAD_PCT the resident phases already had. The slice still gets a phase to
+\ itself and still starts first, because it remains the run's long pole.
 SUITE compiler-insn-proof
    test/compiler/insn-proof.f
 ;SUITE
@@ -1058,6 +1061,15 @@ SUITE hb-build-fixtures
 SUITE gate-pool
    test/gate-pool-test.f
    test/json-read-perf-phase-test.f
+;SUITE
+
+\ The gate's own load factor: that a spawned phase is handed it at all, and that
+\ the two per-suite walls are derived from it instead of frozen. It runs in the
+\ tail slice, which spawns a fresh process per suite, because it starts the
+\ runner for real - TEST:PREPARE reads the process's script arguments - and a
+\ forked member of a slice would be handed that slice's arguments instead.
+SUITE gate-budget
+   test/gate-budget-test.f
 ;SUITE
 
 package STDLIB-GATE public get-current ;package

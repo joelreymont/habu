@@ -61,7 +61,8 @@ $4C constant OVERLAP-RC
 \ eight busy slots. WORST-CHILD-MS records that busiest measurement and
 \ HANG-MARGIN keeps the guard an order of magnitude above it, so host load
 \ cannot reach the guard. The product also stays well inside the gate's own
-\ 120 s per-phase guard (SUITE-TIMEOUT-MS in test/gate-stdlib-lib.f), so a real
+\ per-suite guard (STDLIB-GATE:SUITE-TIMEOUT-MS, 120 s nominal and more when the
+\ box is loaded), so a real
 \ deadlock is still reported here by name, with its case, instead of arriving as
 \ an anonymous killed phase.
 3000 constant WORST-CHILD-MS

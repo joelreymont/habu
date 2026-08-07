@@ -72,16 +72,23 @@ variable TR-R-SETUP-START-NS
    idx TR-R-GROUP-START
    idx PRE-MARK ;
 
+\ The two priority kicks. Their ids live in test/run-lib.f's tables rather than
+\ here, so every phase this runner starts is readable as data: a start written as
+\ a literal in a word body is a start tools/lint/schedule-lint.f cannot count,
+\ and an uncounted start is how a whole slice went dark.
 : TR-R-READY-CANDIDATE-START-DIRECT ( -- )
    UNDER-READY? 0= if exit then
-   9 >IDX TR-R-PHASE-START-ONCE
-   20 >IDX TR-R-PHASE-START-ONCE
-   16 >IDX TR-R-PHASE-START-ONCE ;
+   0 begin dup READY-DIRECT-PHASES < while
+      dup >IDX READY-DIRECT-ORDER@ TR-R-PHASE-START-ONCE
+      1+
+   repeat drop ;
 
 : TR-R-READY-CANDIDATE-START-SHARED ( -- )
    UNDER-READY? 0= if exit then
-   3 >IDX TR-R-PHASE-START-ONCE
-   14 >IDX TR-R-PHASE-START-ONCE ;
+   0 begin dup READY-SHARED-PHASES < while
+      dup >IDX READY-SHARED-ORDER@ TR-R-PHASE-START-ONCE
+      1+
+   repeat drop ;
 
 : TR-R-EARLY-HOST-START-DIRECT ( -- )
    TR-R-READY-CANDIDATE-START-DIRECT
@@ -123,7 +130,7 @@ variable TR-R-SETUP-START-NS
 \ copy-on-write, so their require lists load only the family deltas.
 public
 : DAG-RUN-REST ( -- )
-   6 >IDX TR-R-PHASE-START
+   PHASE-DEBUG >IDX TR-R-PHASE-START
    TR-R-EARLY-HOST-START-DIRECT
    TR-R-SHARED-SETUP
    TR-R-EARLY-HOST-START-SHARED

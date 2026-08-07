@@ -356,6 +356,14 @@ public
    0 ARG-U !
    DEFAULT-GROUP ;
 
+\ The label the selector sees. ITEM-RUN sets it from the registration it is about
+\ to run and then asks SELECT?; a caller that wants the same question answered
+\ about a registration it has NOT reached - tools/lint/schedule-lint.f asks which
+\ slices would select each label in the gate's registration file - sets it here
+\ and asks the same predicate, rather than growing a second copy of the rule.
+: LABEL! ( ptr u8 n -- )
+   CUR-LABEL! ;
+
 : LABEL$ ( -- ptr u8 n )
    CUR-LABEL-BUF CUR-LABEL-U @ ;
 

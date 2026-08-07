@@ -62,9 +62,11 @@ $100001 constant OVERCAP-SOURCE-LEN
 \ 3.2 s and 7.5 to 8.7 s under the same two conditions. WORST-CHILD-MS records
 \ the busiest measurement. HANG-MARGIN is 4 rather than the order of magnitude
 \ the cheaper fixtures can afford, because the product is bounded from above as
-\ well: the gate gives this whole phase 120 s (SUITE-TIMEOUT-MS in
-\ test/gate-stdlib-lib.f), and a guard above that would always lose the race to
-\ the phase guard and never get to name anything. Between those two bounds the
+\ well: the gate gives this whole suite 120 s on an idle box
+\ (STDLIB-GATE:SUITE-TIMEOUT-MS, which stretches with the measured load factor
+\ but never shrinks below that), and a guard above the nominal figure would
+\ always lose the race to the suite guard and never get to name anything.
+\ Between those two bounds the
 \ guard is unreachable by load, since a host slow enough to stretch one child to
 \ 54 s would have blown the phase guard on the earlier cases already.
 13500 constant WORST-CHILD-MS

@@ -8,6 +8,12 @@ require lib/process-fork.f
 
 $40000 constant GE-SRC-CAP
 64 constant GE-SRC-MAX
+\ A FIXED per-suite wall for one engine-gate child, unlike
+\ STDLIB-GATE:SUITE-TIMEOUT-MS which scales with the measured load factor. It is
+\ the same failure class and it wants the same repair, but every word in this
+\ file is global and the package-ownership policy will not accept a new global
+\ definition here: making this load-aware means giving the file a package first.
+\ Dot habu-pkg-the-engine-e4109720 owns that.
 120000 constant GE-TIMEOUT-MS
 10 constant GE-LF
 32 constant GE-SP

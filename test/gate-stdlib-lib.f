@@ -1,15 +1,44 @@
 \ gate-stdlib.f - Habu-specific adapter for the native lint/stdlib test phase.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test/runner.f,
-\ test/gate-pool.f, lib/test.f, and lib/content-key.f.
+\ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/content-key.f.
+\ The runner, the pool and the suite registry it drives are required below, so a
+\ consumer that only wants the slice predicates - tools/lint/schedule-lint.f asks
+\ them which labels a slice selects - does not have to reproduce a prefix.
 
 require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 require lib/test.f
+require lib/test/budget.f                \ T-BUDGET-MS: the per-suite wall scales with load
+require lib/test/runner.f                \ GT-RESET / GT-RC@ / GT-OUT$
+require test/gate-pool.f                 \ GT-POOL-START and the stats events beneath it
 
 package STDLIB-GATE
 
-120000 constant SUITE-TIMEOUT-MS
+public
+
+\ The per-suite wall for one spawned child engine, on an idle box. It is a
+\ NOMINAL figure, not the deadline: SUITE-TIMEOUT-MS stretches it by the measured
+\ load factor the way every other per-suite budget in the tree does.
+\
+\ It used to be the deadline itself, and that made this the one budget in the
+\ gate that could not tell a slow box from a hung child. compiler-insn-proof runs
+\ 99543ms quiescent, so it had 20 percent of headroom against a fixed 120000; a
+\ second full gate on the same host stretched it to 120145ms and the constant
+\ called that a TIMEOUT-UNDER-LOAD. Raising the constant would have bought that
+\ one suite room by deleting the hang detector for the ~180 suites that finish in
+\ a second. Scaling keeps both: lib/test/budget.f clamps the factor to
+\ [100% .. 300%], so a budget never shrinks below nominal and a genuinely hung
+\ child still dies within 3x nominal.
+120000 constant SUITE-TIMEOUT-NOMINAL-MS
+
+\ The deadline a spawned suite is actually given: the nominal wall stretched by
+\ HB_LOAD_PCT, which test/run-lib.f exports into every phase it starts and which
+\ lib/test/budget.f measures for itself when the gate is not the caller.
+: SUITE-TIMEOUT-MS ( -- n )
+   SUITE-TIMEOUT-NOMINAL-MS T-BUDGET-MS ;
+
+private
+
 64 constant SUITE-USAGE-RC
 0 constant SUITE-ALL-ID
 2 constant SUITE-LINT-ID
@@ -93,16 +122,32 @@ private
    -1 SUITE-TIMINGS !
    1 SUITE-ADVANCE ;
 
+public
+
+\ The slice a command-line token names. The gate's own argument parser is the
+\ first consumer; test/run-lib.f names the same tokens in PHASE-SLICE-TOKEN when
+\ it spawns a phase, and tools/lint/schedule-lint.f reads one and looks up the
+\ other here, so a phase asking for a slice this gate does not have is a finding
+\ instead of a usage exit nobody sees.
+: SLICE-ID? ( ptr u8 n -- option<n> ) {: a:ptr u:n :}
+   a u s" lint" STR= if SUITE-LINT-ID OPTION:SOME exit then
+   a u s" lint-tools" STR= if SUITE-LINT-TOOLS-ID OPTION:SOME exit then
+   a u s" lint-artifacts" STR= if SUITE-LINT-ARTIFACTS-ID OPTION:SOME exit then
+   a u s" lint-libs" STR= if SUITE-LINT-LIBS-ID OPTION:SOME exit then
+   a u s" tool" STR= if SUITE-TOOL-ID OPTION:SOME exit then
+   a u s" check-cli" STR= if SUITE-CHECK-CLI-ID OPTION:SOME exit then
+   a u s" tail" STR= if SUITE-TAIL-ID OPTION:SOME exit then
+   a u s" proof" STR= if SUITE-PROOF-ID OPTION:SOME exit then
+   OPTION:NONE ;
+
+private
+
 : SUITE-SLICE-ARG? ( -- bool )
-   SUITE-ARG$ s" lint" STR= if SUITE-LINT-ID SUITE-SLICE! SUITE-TRUE exit then
-   SUITE-ARG$ s" lint-tools" STR= if SUITE-LINT-TOOLS-ID SUITE-SLICE! SUITE-TRUE exit then
-   SUITE-ARG$ s" lint-artifacts" STR= if SUITE-LINT-ARTIFACTS-ID SUITE-SLICE! SUITE-TRUE exit then
-   SUITE-ARG$ s" lint-libs" STR= if SUITE-LINT-LIBS-ID SUITE-SLICE! SUITE-TRUE exit then
-   SUITE-ARG$ s" tool" STR= if SUITE-TOOL-ID SUITE-SLICE! SUITE-TRUE exit then
-   SUITE-ARG$ s" check-cli" STR= if SUITE-CHECK-CLI-ID SUITE-SLICE! SUITE-TRUE exit then
-   SUITE-ARG$ s" tail" STR= if SUITE-TAIL-ID SUITE-SLICE! SUITE-TRUE exit then
-   SUITE-ARG$ s" proof" STR= if SUITE-PROOF-ID SUITE-SLICE! SUITE-TRUE exit then
-   SUITE-FALSE ;
+   SUITE-ARG$ SLICE-ID? MATCH option
+     none OF SUITE-FALSE exit ENDOF
+     some OF ENDOF
+   ;MATCH
+   SUITE-SLICE! SUITE-TRUE ;
 
 : SUITE-SLICE-OPT ( -- )
    SUITE-SLICE-SEEN @ if SUITE-USAGE then
@@ -290,13 +335,16 @@ private
    s" boot-pin-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" hb-build-fixtures" SUITE-LABEL= ;
 
-\ Two suites that need to BE a top-level process, not a forked child of one.
+\ Suites that need to BE a top-level process, not a forked child of one.
 \ codegen-fork-reference's first claim is that PROC-FORK:CHILD? is false where it
-\ maps the clang reference column, and tasking-threads creates pthreads, which
-\ does not survive a gate-pool fork. This slice spawns one fresh process per
-\ suite, which is exactly the shape both of them ask for.
+\ maps the clang reference column; tasking-threads creates pthreads, which do not
+\ survive a gate-pool fork; and gate-budget starts the runner itself, so it needs
+\ its own script arguments and its own runner state rather than the ones it would
+\ inherit from a slice it was forked out of. This slice spawns one fresh process
+\ per suite, which is exactly the shape all three ask for.
 : SUITE-TAIL-PROCESS? ( -- bool )
    s" codegen-fork-reference" SUITE-LABEL= if SUITE-TRUE exit then
+   s" gate-budget" SUITE-LABEL= if SUITE-TRUE exit then
    s" tasking-threads" SUITE-LABEL= ;
 
 : SUITE-TAIL? ( -- bool )
@@ -336,6 +384,44 @@ private
    SUITE-TAIL? if SUITE-TRUE exit then
    SUITE-PROOF? if SUITE-TRUE exit then
    SUITE-FALSE ;
+
+\ ---- asking the selector about a label it has not reached ---------------------
+\
+\ The gate asks SUITE-RUN? once per registration, with the slice its arguments
+\ chose and the label the suite registry has just made current. A tool that wants
+\ the same answer about a registration the run has not reached - which slices, if
+\ any, would run it - has to set those same two things and ask the same word. It
+\ does NOT get to restate the rule: a second copy of "which labels does the tail
+\ slice select" would agree with the first only until someone edited one of them.
+\
+\ Both settings are restored, so the probe is invisible to a caller mid-run.
+
+$100 constant SUITE-PROBE-CAP           \ >= lib/test/suite.f NAME-CAP (128)
+create SUITE-PROBE-BUF SUITE-PROBE-CAP allot
+variable SUITE-PROBE-U
+
+: SUITE-PROBE-SAVE ( -- )
+   TEST:LABEL$ {: a:ptr u:n :}
+   u SUITE-PROBE-CAP > if E-STR-CAPACITY throw then
+   a SUITE-PROBE-BUF u BYTE-COPY
+   u SUITE-PROBE-U ! ;
+
+: SUITE-PROBE-RESTORE ( -- )
+   SUITE-PROBE-BUF SUITE-PROBE-U @ TEST:LABEL! ;
+
+public
+
+: SLICE-SELECTS? ( ptr u8 n n -- bool ) {: a:ptr u:n slice:n :}
+   SUITE-SLICE @ {: saved:n :}
+   SUITE-PROBE-SAVE
+   slice SUITE-SLICE!
+   a u TEST:LABEL!
+   SUITE-RUN? {: hit:bool :}
+   saved SUITE-SLICE!
+   SUITE-PROBE-RESTORE
+   hit ;
+
+private
 
 : SUITE-HB ( -- )
    PROC-ARGV-RESET
