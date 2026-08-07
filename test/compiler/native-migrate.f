@@ -519,33 +519,66 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    s" NMG-AFTER" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
 \ ---- a word the chain cannot compile ------------------------------------------
-\ WHY A NAMED CONSTANT IS THE FIXTURE. A name the dialect does not model is no
-\ longer refused for that alone: src/compiler/native/elaborate.f RESOLVE-SCAN
-\ puts it to the engine, and a word the engine can name and the checker can size
-\ becomes a call. So the body outside the dialect has to be one the chain still
-\ cannot compile after asking, and a `constant` is exactly that. Its published
-\ effect is `-- a`, a bare raw type variable, whose family the checker's exported
-\ enum deliberately does not resolve - so its width in stack cells cannot be
-\ stated here and src/compiler/native/dict.f SPELL-ARITY declines it rather than
-\ guessing. The elaborator then refuses the body by the dialect's own name, and
-\ the engine has already published the word at that point, which is exactly the
-\ state a refusal has to leave working.
+\ WHY A NAME REACHED THROUGH `using` IS THE FIXTURE. A name the dialect does not
+\ model is not refused for that alone: src/compiler/native/elaborate.f
+\ RESOLVE-SCAN puts it to the engine, and a word the engine can name and the
+\ checker can size becomes a call. That now includes every named CONSTANT - dot
+\ habu-export-the-checker-2bbc831c gave the checker's stored effects a per-cell
+\ width, so `-- a` sizes at one cell and `NMG-K +` compiles - which is why this
+\ fixture is no longer written with a bare constant. It needs a body the chain
+\ still cannot compile AFTER asking.
 \
-\ IT IS COUPLED TO A CAPABILITY AND THE COUPLING IS DELIBERATE. When dot
-\ habu-export-the-checker-2bbc831c publishes the checker's own cell width, a
-\ constant becomes compilable and this fixture must be changed with it. That is
-\ the point of a fixture: it fails when the thing it describes stops being true.
-\ The constant is published the way every other fixture word this suite migrates
-\ against is published - through the engine's own interpret path - so the bodies
-\ below name it at the same scope they are compiled in.
+\ A `using` import is exactly that, and for a reason the resolver states about
+\ itself. src/compiler/native/dict.f walks the open package's two wordlists and
+\ then the global one, and deliberately does NOT walk the used-publics leg the
+\ engine reaches after it: a word named through a `using` answers absent there
+\ and the compilation is refused rather than made against an answer the chain
+\ did not confirm. So the ENGINE compiles this body without complaint - the
+\ import is ordinary, checked source - and the CHAIN declines the same spelling.
+\ The elaborator refuses by the dialect's own name and says which token it was.
+\
+\ IT IS COUPLED TO A CAPABILITY AND THE COUPLING IS DELIBERATE. Dot
+\ habu-walk-the-used-96694010 carries walking that leg; when it lands this body
+\ compiles and this fixture must be changed with it. That is the point of a
+\ fixture: it fails when the thing it describes stops being true. Both the
+\ package and the bodies are published through the engine's own interpret path,
+\ so the bodies name the constant at the same scope they are compiled in.
 : MOD-CONST ( -- )
-   s" 5 constant NMG-K" EV ;
+   s" package NMG-AWAY public 5 constant NMG-K ;package" EV ;
 
 : MOD-SRC ( -- ptr u8 n )
-   s" : NMG-MOD ( n -- n ) NMG-K + ;" ;
+   s" using NMG-AWAY : NMG-MOD ( n -- n ) NMG-K + ; ;using" ;
 
 : MIGRATE-MOD ( -- )
    MOD-SRC 1 1 REGS NMIGRATE:DEFINE ;
+
+\ ---- and the same shape the chain CAN compile ---------------------------------
+\ The capability the refusal above is measured against, asserted rather than
+\ assumed. A named constant reached the ordinary way - a global spelling, in
+\ scope - is a word the engine names and the checker sizes at one cell, so the
+\ chain compiles a call to it. That is what dot habu-export-the-checker-2bbc831c
+\ landed: before it, the checker published an effect as a count of TERMS and a
+\ per-term family that left `-- a` gray, and a body naming ANY constant was
+\ refused exactly as the `using` body above still is. The two cases differ in one
+\ thing only - whether the chain's resolver can reach the spelling - so putting
+\ them beside each other is what stops the refusal from passing for the wrong
+\ reason. The migrated word is RUN, because a call compiled against a width the
+\ chain guessed would still migrate; only the answer shows the width was right.
+: CONST-GLOBAL ( -- )
+   s" 5 constant NMG-GK" EV ;
+
+: MIGRATE-CONST ( -- )
+   s" : NMG-KC ( n -- n ) NMG-GK + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: CONST-CALL-CASE ( -- )
+   CONST-GLOBAL
+   s" a body naming an in-scope constant is compiled, not refused" T-LABEL
+   MIGRATE-CONST
+   s" NMG-KC" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+
+   s" and the migrated word answers what the constant is worth" T-LABEL
+   s" 12 NMG-KC" EV-N 17 T=
+   s" 40 NMG-KC" EV-N 45 T= ;
 
 : REFUSED-CASE ( -- )
    s" a body outside the dialect is refused with the dialect's own code" T-LABEL
@@ -563,12 +596,12 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
 \ definition is made here and migrated in the case above, which is why the two
 \ halves are separate words: the record has to be read between them.
 : MOD-BEFORE ( -- )
-   s" : NMG-MOD2 ( n -- n ) NMG-K + ;" EV
+   s" using NMG-AWAY : NMG-MOD2 ( n -- n ) NMG-K + ; ;using" EV
    s" NMG-MOD2" REC-START OLD-START !
    s" NMG-MOD2" REC-LEN OLD-LEN ! ;
 
 : MIGRATE-MOD2 ( -- )
-   s" : NMG-MOD3 ( n -- n ) NMG-K + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" using NMG-AWAY : NMG-MOD3 ( n -- n ) NMG-K + ; ;using" 1 1 REGS NMIGRATE:DEFINE ;
 
 : UNTOUCHED-CASE ( -- )
    MOD-BEFORE
@@ -1555,7 +1588,7 @@ variable HELD-ND1
 \ so unlike every refusal case above there is no word left behind to keep
 \ running - the correct outcome is that the name does not exist at all.
 : HELD-REFUSED-MIGRATE ( -- )
-   s" : NMG-HELD-BAD ( n -- n ) NMG-K + ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
+   s" using NMG-AWAY : NMG-HELD-BAD ( n -- n ) NMG-K + ; ;using" 1 1 REGS NMIGRATE:DEFINE-HELD ;
 
 : HELD-REFUSAL-CASE ( -- )
    s" a held body outside the dialect is refused with the dialect's own code" T-LABEL
@@ -1598,7 +1631,7 @@ variable HELD-ND1
 70 constant REJECT-RC                \ src/core/checker.f PKGCTX-REJECT-RC (private there)
 
 : HELD-MOD-MIGRATE ( -- )
-   s" : NMG-HELD-MOD ( n -- n ) NMG-K + ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
+   s" using NMG-AWAY : NMG-HELD-MOD ( n -- n ) NMG-K + ; ;using" 1 1 REGS NMIGRATE:DEFINE-HELD ;
 
 : HELD-UNDEF-MIGRATE ( -- )
    s" : NMG-HELD-UA ( n -- n ) NMG-NO-SUCH-WORD-A and ;" 1 1 REGS NMIGRATE:DEFINE-HELD ;
@@ -1716,6 +1749,7 @@ variable HELD-ND1
    INTEROP-CASE
    LOOP-CALL-CASE
    CALL-REFUSAL-CASES
+   CONST-CALL-CASE
    REFUSED-CASE
    UNTOUCHED-CASE
    ENTRY-CASES

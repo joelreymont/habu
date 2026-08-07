@@ -196,59 +196,32 @@ public
 \ 2026-08-02). So the count is read off the checker here, beside the address, and
 \ a caller states a NAME and nothing else.
 \
-\ WHY THE FAMILY OF EVERY TERM IS INSPECTED AND NOT JUST THE COUNTS. The checker
-\ publishes its effect as a count of TERMS, and this file needs a count of CELLS.
-\ They are not the same number: `ptr u8 n` is two terms and two cells, but a term
-\ whose width the projection cannot state may be either. The exported family enum
-\ settles it term by term - EN-CON is a value cell, EN-PTR a pointer, EN-QUOT an
-\ execution token, and each of those is exactly one cell - so a row whose every
-\ fixed term carries one of those three has as many cells as it has terms, PROVED
-\ rather than assumed. A gray term is one the enum deliberately does not resolve
-\ (a raw type variable, a row variable, an atom, a layout parameter), its width
-\ is not recoverable here, and the question is answered absent rather than with a
-\ count that happens to be right for the common case.
+\ AND CELLS ARE ASKED FOR DIRECTLY, BECAUSE TERMS ARE A DIFFERENT NUMBER. The
+\ checker used to publish an effect only as a count of TERMS, and a term is not a
+\ cell: `ptr u8 n` is two terms and two cells, but one term of a three-cell
+\ layout family is one term and three cells. This file read the term count and
+\ then had to argue its way back to cells from a coarse per-term family enum -
+\ sound only for the terms the enum resolved, so a row carrying any other term
+\ was answered absent. That cost every named CONSTANT, whose published effect is
+\ `-- a`: a bare raw type variable the enum leaves gray, refused rather than
+\ compiled against a guessed width. Dot habu-export-the-checker-2bbc831c closed
+\ it at the source - the checker now records each row cell's width as it stores
+\ the effect, using the same ROW-TERM-CELLS that computes ER.MINI, and publishes
+\ the row's total through EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS. So the answer
+\ arrives as the number this file actually wants, from the only authority that
+\ knows it, and the reconstruction is gone rather than improved.
 \
-\ WHAT THAT COSTS AND WHERE IT IS BOOKED. A `constant`'s published effect is
-\ `-- a` and a bare raw type variable is gray, so a constant answers absent and a
-\ body naming one is refused rather than compiled against a guessed width. Dot
-\ habu-export-the-checker-2bbc831c carries exporting the checker's own ROW-CELLS -
-\ which knows T-WIDTH and so knows a gray term's width - and retires the
-\ restriction. Until it lands the refusal is fail-closed and named.
-\
-\ The enum is the checker's published ABI (src/core/checker.f, EFAM-*), mirrored
-\ here by value the same way src/core/top-row.f mirrors it as TR-*. Only the one
-\ family this file has to recognise is mirrored.
-0 constant FAM-GRAY
+\ IT STILL FAILS CLOSED, on the checker's word rather than this file's. A row the
+\ checker cannot width answers CELLS-NONE - the case a snapshot written before
+\ the width field existed restores - and that arrives here as ARITY-NONE and a
+\ named refusal, exactly as an uncertified name does.
 
 \ The checker's effect store answers only past a trusted boundary: its readers
 \ are sig-less colon words that the seal strips, so checked code reaches them as
-\ compiled calls behind a declared signature. Each boundary is one word wide and
-\ does no deciding - the counting and the refusing above them are ordinary
-\ checked Habu.
-TRUSTED: EFF-TERMS ( ptr u8 n -- n n )
-   EFFECT-QUERY if EFFECT-DIN-N EFFECT-DOUT-N else -1 -1 then ;
-
-TRUSTED: EFF-DIN-FAM ( n -- n )
-   EFFECT-DIN-FAM ;
-
-TRUSTED: EFF-DOUT-FAM ( n -- n )
-   EFFECT-DOUT-FAM ;
-
-\ Whether every fixed term of the row just queried is one the enum resolves, and
-\ so whether that row's term count is its cell count.
-: DIN-ALL-SIZED? ( n -- bool )
-   {: n:n :}
-   n 0 ?do
-      i EFF-DIN-FAM FAM-GRAY = if false unloop exit then
-   loop
-   true ;
-
-: DOUT-ALL-SIZED? ( n -- bool )
-   {: n:n :}
-   n 0 ?do
-      i EFF-DOUT-FAM FAM-GRAY = if false unloop exit then
-   loop
-   true ;
+\ compiled calls behind a declared signature. The boundary is one word wide and
+\ does no deciding - the refusing above it is ordinary checked Habu.
+TRUSTED: EFF-CELLS ( ptr u8 n -- n n )
+   EFFECT-QUERY if EFFECT-DIN-CELLS EFFECT-DOUT-CELLS else -1 -1 then ;
 
 public
 
@@ -267,16 +240,22 @@ public
 \ capability this chain is missing, so neither is guessed at: the spelling is
 \ answered not-callable and refused as unmodelled, by name.
 \
-\ THIS IS MEASURED AND NOT ARGUED. Walking every record in a loaded engine and
-\ asking which ones SPELL-START resolves AND SPELL-ARITY sizes - the two answers
-\ that would otherwise be enough to build a call - finds 805 words, and among
-\ them `include` and `require`, both IMMEDIATE, and three RETIRED records. Those
-\ five are exactly what this refuses and nothing else does: without it a body
+\ THIS IS MEASURED AND NOT ARGUED, AND THE WALK IS A TOOL. Asking every record in
+\ a loaded engine which ones SPELL-START resolves AND SPELL-ARITY sizes - the two
+\ answers that would otherwise be enough to build a call - finds 1632 words, and
+\ among them exactly `include` and `require`, both IMMEDIATE, plus the RETIRED
+\ records the walk sets aside separately. Those are exactly what this refuses and
+\ nothing else does: without it a body
 \ naming `include` compiles into a routine that branches, at run time, into the
 \ word that loads a file while the compiler is reading one. The internal clause
 \ finds nothing today, and it is kept because it is publish.f's own rule about
 \ publish.f's own flag, and a predicate that answers "may a call branch here"
 \ half way is worse than one nobody has to remember the exceptions to.
+\
+\ The walk is tools/callable-arity-probe.f, so the paragraph above can be
+\ re-measured instead of believed. It moved once already: before the checker
+\ published cell widths the same walk found 805, and every one of the 827 words
+\ it gained is a name whose width used to be unstatable here.
 \
 \ A RETIRED RECORD IS THE THIRD, and it is the staleness the caller-stated
 \ address could never see. `forget` and a redefinition retire the old record and
@@ -300,12 +279,20 @@ public
 
 \ How many cells a call to the word this spelling denotes consumes, and how many
 \ it leaves. ARITY-NONE twice when the checker certified no effect for the name,
-\ or when it certified one whose width this cannot state.
+\ or when it certified one whose width IT cannot state. Both rows are demanded:
+\ a call that knows what it hands over and not what it takes back is no more
+\ compilable than one that knows neither, so either row absent refuses the pair.
+\
+\ ABSENT IS TESTED AS "NOT A COUNT", not as a particular number. A width is a
+\ count of cells and so is never negative; the checker spells its own absence
+\ CELLS-NONE and the boundary spells an uncertified name -1, and this asks the
+\ property both of them have instead of matching either spelling. The pair this
+\ file publishes for it is its own ARITY-NONE, so no caller has to know that the
+\ two vocabularies currently agree on a value.
 : SPELL-ARITY ( ptr u8 n -- n n )
-   EFF-TERMS {: din:n dout:n :}
-   din ARITY-NONE = if ARITY-NONE ARITY-NONE exit then
-   din DIN-ALL-SIZED? 0= if ARITY-NONE ARITY-NONE exit then
-   dout DOUT-ALL-SIZED? 0= if ARITY-NONE ARITY-NONE exit then
+   EFF-CELLS {: din:n dout:n :}
+   din 0 < if ARITY-NONE ARITY-NONE exit then
+   dout 0 < if ARITY-NONE ARITY-NONE exit then
    din dout ;
 
 private

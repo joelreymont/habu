@@ -513,30 +513,30 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
    6 T= 0 T= 1 T= 1 T= TTRUE ;
 
 \ ---- the two words this suite is refused by -----------------------------------
-\ WHY A NAMED CONSTANT IS THE FIXTURE. A body word the dialect models no
-\ operation for is no longer refused for that alone: src/compiler/native/
-\ elaborate.f RESOLVE-SCAN puts every unmodelled name to the running engine, and
-\ a word the engine can name and the checker can size becomes a CALL. `negate`
-\ and `mod`, which these fixtures used to be written with, compile that way now.
-\ A `constant` survives being asked and is still refused: its published effect is
-\ `-- a`, a bare raw type variable, whose family the checker's exported enum
-\ deliberately leaves gray, so src/compiler/native/dict.f SPELL-ARITY cannot
-\ state its width in cells and declines it rather than guessing. The elaborator
-\ then refuses the body with the dialect's own code, E-HIR-UNMODELED, and names
-\ that token.
+\ WHY AN OUT-OF-SCOPE SPELLING IS THE FIXTURE. A body word the dialect models no
+\ operation for is not refused for that alone: src/compiler/native/elaborate.f
+\ RESOLVE-SCAN puts every unmodelled name to the running engine, and a word the
+\ engine can name and the checker can size becomes a CALL. `negate` and `mod`,
+\ which these fixtures used to be written with, compile that way now, and so does
+\ a named CONSTANT: dot habu-export-the-checker-2bbc831c gave the checker's
+\ stored effects a per-cell width, so `-- a` sizes at one cell. That capability
+\ is asserted where both halves of it are live, in test/compiler/native-migrate.f
+\ CONST-CALL-CASE, which migrates a body naming a constant and then runs it.
 \
-\ THEY ARE PUBLIC AND THE BODIES SPELL THEM QUALIFIED, because being RESOLVED is
-\ the point. The engine is asked about the spelling the body carries, and a
-\ private word of a package nothing has open answers nothing at all - which would
-\ refuse the body for a reason that has nothing to do with the width, and would
-\ go on refusing it long after the width had stopped being a problem. A public
-\ word named the way any other caller would name it is found, is callable, and is
-\ declined only because its width cannot be stated.
+\ What is left, and what these two are, is a spelling that resolves NOWHERE the
+\ chain looks. src/compiler/native/dict.f walks the open package's two wordlists
+\ and then the global one; these constants are PUBLIC WORDS OF THIS PACKAGE and
+\ the bodies spell them BARE, and every case here elaborates with no package
+\ open. So the spelling is a real published word that the chain's resolver cannot
+\ reach from where the body is compiled. It answers absent, and the elaborator
+\ refuses the body with the dialect's own code, E-HIR-UNMODELED, naming that
+\ token.
 \
-\ AND THE COUPLING TO THAT MISSING CAPABILITY IS DELIBERATE. When dot
-\ habu-export-the-checker-2bbc831c publishes the checker's own cell width a
-\ constant becomes compilable and these fixtures must change with it. That is
-\ what a fixture is for: it fails when the thing it describes stops being true.
+\ THE REASON IS THE RESOLVER'S OWN AND IT IS PERMANENT. A bare name is looked up
+\ in the scope the definition is compiled in, and that is the engine's rule, not
+\ a gap: no capability landing later makes a package's public word answer to its
+\ bare spelling from outside. Which is what this fixture wanted from the width
+\ refusal it used to be written with, and did not get - that one closed.
 \
 \ TWO OF THEM, SPELLED DIFFERENTLY AND VALUED DIFFERENTLY, because one case below
 \ refuses two bodies and demands two different answers back.
@@ -550,7 +550,7 @@ private
 \ declared boundary, and it carries the word model's own name for it.
 : UNDEC-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" BAD NELAB-TEST:K7" TEXT!
+   s" BAD K7" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 1 1 NELAB:COLON drop ;
@@ -835,7 +835,7 @@ private
 \ apart.
 : KTOK-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" BAD NELAB-TEST:K5" TEXT!
+   s" BAD K5" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 1 1 NELAB:COLON drop ;
@@ -913,14 +913,14 @@ private
 : REFUSED-WORD-CASE ( -- )
    s" a body word the dialect cannot compile is named by the record, with its row and its kind" T-LABEL
    K-THROWS
-   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
+   NELAB:REFUSED$ s" K5" T$=
    NELAB:REFUSED-ROW 1 T=
    NTAPE-KIND:NAME NELAB:REFUSED-KIND? TTRUE ;
 
 : REFUSED-OTHER-CASE ( -- )
    s" a different body word gives a different answer, so the record reads the body" T-LABEL
    [: UNDEC ;] E-HIR-UNMODELED TTHROWSQ
-   NELAB:REFUSED$ s" NELAB-TEST:K7" T$= ;
+   NELAB:REFUSED$ s" K7" T$= ;
 
 : REFUSED-LATE-CASE ( -- )
    s" a name only this fixture ever wrote is answered, at the row it stands on" T-LABEL
@@ -939,16 +939,16 @@ private
 : REFUSED-STALE-CASE ( -- )
    s" a later refusal never answers an earlier refusal's word" T-LABEL
    BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
+   NELAB:REFUSED$ s" K5" T$=
    BND [: drop STR-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" NELAB-TEST:K5" T$<>
+   NELAB:REFUSED$ s" K5" T$<>
    NELAB:REFUSED$ s" x" T$=
    NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE ;
 
 : REFUSED-CLEARED-CASE ( -- )
    s" and a definition that compiles leaves no word for a caller to read" T-LABEL
    BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
+   NELAB:REFUSED$ s" K5" T$=
    BND [: COMPILES-BODY ;] IR-CTX:WITH-CONTEXT
    NELAB:REFUSED-ROW -1 T=
    NELAB:REFUSED$ nip 0 T=
@@ -962,7 +962,7 @@ private
 : REFUSED-NONE-CASE ( -- )
    s" a refusal that is not about a token leaves no token named, however recent the last one was" T-LABEL
    BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
+   NELAB:REFUSED$ s" K5" T$=
    BND [: drop UNDER-THROWS ;] IR-CTX:WITH-CONTEXT
    NELAB:REFUSED-ROW -1 T=
    NELAB:REFUSED$ nip 0 T= ;
@@ -975,7 +975,7 @@ private
 : REFUSED-RESET-CASE ( -- )
    s" a caller can throw the record away itself" T-LABEL
    BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ s" NELAB-TEST:K5" T$=
+   NELAB:REFUSED$ s" K5" T$=
    NELAB:REFUSED-RESET
    NELAB:REFUSED-ROW -1 T=
    NELAB:REFUSED$ nip 0 T=

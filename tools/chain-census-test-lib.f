@@ -133,27 +133,34 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
 
 \ One word the dialect does not model, written where the chain will meet it.
 \
-\ WHY A NAMED CONSTANT IS THE FIXTURE. A body word the dialect has no operation
-\ for is no longer refused for that alone: src/compiler/native/elaborate.f
-\ RESOLVE-SCAN puts every unmodelled name to the running engine, and a word the
-\ engine can name and the checker can size becomes a CALL. `mod`, which this
-\ fixture used to be written with, compiles that way now. A `constant` survives
-\ being asked and is still refused: its published effect is `-- a`, a bare raw
-\ type variable, whose family the checker's exported enum deliberately leaves
-\ gray, so src/compiler/native/dict.f SPELL-ARITY cannot state its width in
-\ cells and declines it rather than guessing. The elaborator then refuses the
-\ body by the dialect's own name and says which token it was.
+\ WHY THE RETURN STACK IS THE FIXTURE. A body word the dialect has no operation
+\ for is not refused for that alone: src/compiler/native/elaborate.f RESOLVE-SCAN
+\ puts every unmodelled name to the running engine, and a word the engine can
+\ name and the checker can size becomes a CALL. `mod`, which this fixture used to
+\ be written with, compiles that way now, and so does a named CONSTANT, which is
+\ what it was written with after that: dot habu-export-the-checker-2bbc831c gave
+\ the checker's stored effects a per-cell width, so `-- a` sizes at one cell.
+\ `>r` is refused for a reason no width can settle - the dialect stages no
+\ operation for the return stack at all, and there is nothing to ask the engine
+\ about. The elaborator refuses the body by the dialect's own name and says which
+\ token it was.
 \
-\ AND THE COUPLING TO THAT MISSING CAPABILITY IS DELIBERATE. When dot
-\ habu-export-the-checker-2bbc831c publishes the checker's own cell width a
-\ constant becomes compilable and this fixture must change with it. That is what
-\ a fixture is for: it fails when the thing it describes stops being true.
+\ THE CONSTANT STAYS, AS A CONTROL. It is still a definition of the file that is
+\ not a colon definition, so it still holds the population line below; and it is
+\ now a word the chain CAN size, named in the same body, which is what makes the
+\ refusal below unambiguously about the return-stack token. A fixture that only
+\ said "this body is refused" would not distinguish the two.
+\
+\ AND THE COUPLING TO A MISSING CAPABILITY IS STILL DELIBERATE. When the dialect
+\ models the return stack this body compiles and this fixture must change with
+\ it. That is what a fixture is for: it fails when the thing it describes stops
+\ being true.
 : MOD-SRC ( -- ptr u8 n )
    FIX-RESET
    s" package CENSUS-FIX-MOD" LINE
    s" public" LINE
    s" 3 constant CFM-K" LINE
-   s" : CFM-MOD ( n -- n ) CFM-K + ;" LINE
+   s" : CFM-MOD ( n -- n ) >r CFM-K r> + ;" LINE
    s" ;package" LINE
    FIX$ ;
 
@@ -175,10 +182,14 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
 \
 \ CFP-USES names the private HELPER and compiles, because the reopen let the
 \ engine answer where the helper's code starts and the checker answer how many
-\ cells a call to it moves. CFP-HELPER names the private CONSTANT and is
-\ refused, because a constant's width cannot be stated (see MOD-SRC above) - and
-\ the refusal names the constant, which only a body that resolved its own
-\ package's private names could ever have reached.
+\ cells a call to it moves. CFP-HELPER names the private CONSTANT and now
+\ compiles too: dot habu-export-the-checker-2bbc831c gave the checker's stored
+\ effects a per-cell width, so a constant sizes at one cell where it used to be
+\ refused. THAT IS A STRONGER PROOF THAN THE REFUSAL IT REPLACES, and worth
+\ saying plainly. A refusal only showed the private name had been REACHED; a
+\ body that compiles must have RESOLVED it, because a body naming a private
+\ word its package was not reopened for is refused by the engine before the
+\ chain sees it - which is the count the last assertion below pins at zero.
 : PRIV-SRC ( -- ptr u8 n )
    FIX-RESET
    s" package CENSUS-FIX-PRIV" LINE
@@ -226,7 +237,7 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
    s" : CENSUS-FIX-ALREADY ( n -- n ) dup + ;" LINE
    FIX$ ;
 
-\ The canonical hazard shape. CFT-FIRST names a global constant, which the chain
+\ The canonical hazard shape. CFT-FIRST uses the return stack, which the chain
 \ cannot compile for the reason MOD-SRC gives, so it is refused BY THE ELABORATOR
 \ and leaves that word in the elaborator's refused-token record; CFT-SECOND is
 \ refused by the ENGINE, before any elaboration begins, so nothing in the
@@ -246,7 +257,7 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
    s" ;package" LINE
    s" using CENSUS-FIX-STALE" LINE
    s" 3 constant CFT-K" LINE
-   s" : CFT-FIRST ( n -- n ) CFT-K + ;" LINE
+   s" : CFT-FIRST ( n -- n ) >r CFT-K r> + ;" LINE
    s" : CFT-SECOND ( n -- n ) CFT-HELPER 1+ ;" LINE
    FIX$ ;
 
@@ -484,11 +495,11 @@ variable ACC
    s" unmodeled: refused as unmodeled" T-LABEL
       0 CHAIN-CENSUS:DEF-CODE E-HIR-UNMODELED T=
    s" unmodeled: the refusal names the word" T-LABEL
-      0 CHAIN-CENSUS:DEF-SPELL$ s" CFM-K" T$=
+      0 CHAIN-CENSUS:DEF-SPELL$ s" >r" T$=
    s" unmodeled: the sub-histogram has one entry" T-LABEL
       CHAIN-CENSUS:SPELLS 1 T=
    s" unmodeled: and it is that word" T-LABEL
-      0 CHAIN-CENSUS:SPELL$ s" CFM-K" T$= ;
+      0 CHAIN-CENSUS:SPELL$ s" >r" T$= ;
 
 \ ---- (c) a string literal ----------------------------------------------------------------------
 \ The brief expected E-HIR-KIND. That is not what the chain does, and the tool's
@@ -518,10 +529,8 @@ variable ACC
       s" CFP-HELPER" DEF-BY CHAIN-CENSUS:DEF-OUT 1 T=
    s" private: the caller reached the CHAIN and compiled" T-LABEL
       s" CFP-USES" CODE-AT-NAME 0 T=
-   s" private: the helper reached the chain too" T-LABEL
-      s" CFP-HELPER" CODE-AT-NAME E-HIR-UNMODELED T=
-   s" private: refused on the private constant it names" T-LABEL
-      s" CFP-HELPER" SPELL-AT-NAME$ s" CFP-K" T$=
+   s" private: the body naming the private CONSTANT compiled too" T-LABEL
+      s" CFP-HELPER" CODE-AT-NAME 0 T=
    s" private: no name went unresolved" T-LABEL
       CHAIN-CENSUS:RC-UNDEFINED CHAIN-CENSUS:COUNT-OF 0 T= ;
 
@@ -649,7 +658,7 @@ variable ACC
    s" stale: the helper compiled" T-LABEL
       s" CFT-HELPER" CODE-AT-NAME 0 T=
    s" stale: the first global was refused by the elaborator, for its word" T-LABEL
-      s" CFT-FIRST" SPELL-AT-NAME$ s" CFT-K" T$=
+      s" CFT-FIRST" SPELL-AT-NAME$ s" >r" T$=
    s" stale: the second was refused by the engine instead" T-LABEL
       s" CFT-SECOND" CODE-AT-NAME CHAIN-CENSUS:RC-UNDEFINED T=
    s" stale: and carries no spelling of its own" T-LABEL

@@ -217,8 +217,17 @@ TRUSTED: EV ( ptr u8 n -- )
 \ and test/effect-read-api-test.f both use. One boundary, both halves of the
 \ answer, and a name the checker holds no effect for answers a pair nothing can be
 \ mistaken for.
+\
+\ IT ASKS FOR CELLS, because that is what the number is used AS. The census hands
+\ this pair to NELAB:COLON as the definition's declared arity, and the elaborator
+\ checks the body's compile-time value vector against it - a count of CELLS. The
+\ TERM count is a different number whenever a signature carries a term wider than
+\ one cell, and handing the term count over states an arity the body cannot match,
+\ which the elaborator then refuses as E-NELAB-ARITY: the census reporting a
+\ dialect verdict on its own arithmetic. Dot habu-export-the-checker-2bbc831c
+\ published the widths; this reads them.
 TRUSTED: EFFECT ( ptr u8 n -- n n )
-   EFFECT-QUERY if EFFECT-DIN-N EFFECT-DOUT-N else -1 -1 then ;
+   EFFECT-QUERY if EFFECT-DIN-CELLS EFFECT-DOUT-CELLS else -1 -1 then ;
 
 -1 constant EFFECT-NONE
 
