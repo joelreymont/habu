@@ -21,12 +21,17 @@
 \ wiring. Draining right after the fork keeps the box to a single working
 \ process while the ratchets run.
 \
-\ Calibration brackets the measurement: one fixed calibration spin before the
-\ workloads sets the budget factor, one after checks that the host did not
-\ change speed underneath them, and CAL-SPIN:DRIFT-OK? - the single owner of
-\ that tolerance - decides. A bracket that moved, or a box so slow that the
-\ budget compensation has saturated at its clamp, means the numbers describe the
-\ machine rather than the tree.
+\ A spin brackets the measurement: one fixed calibration spin before the
+\ workloads and one after, and CAL-SPIN:DRIFT-OK? - the single owner of that
+\ tolerance - decides whether the host held one speed throughout. A bracket that
+\ moved means the numbers describe the machine rather than the tree.
+\
+\ Note what the bracket is NOT, because it used to be both: it does not scale
+\ anything any more. The workloads are judged as ratios against a reference
+\ timed in the same rounds, so how fast this box is has already divided out of
+\ the verdict before the bracket is consulted. All that is left for the spin to
+\ answer is whether the box held still, which is a question a ratio cannot
+\ answer for itself.
 \
 \ Such an attempt is INADMISSIBLE, not a verdict. The phase re-measures up to
 \ ATTEMPT-MAX times, and if the box never goes quiet it refuses to report at all
@@ -58,9 +63,16 @@ require lib/json-read-perf-test.f
 package JSON-READ-PERF-PHASE
 private
 
-\ MEASURE is ~3s of workloads on a quiet box (five interleaved rounds); the
-\ timeout carries enough headroom that only a genuinely stuck worker reaches it.
-30000 constant TIMEOUT-MS
+\ MEASURE is several seconds of workloads on a quiet box (five interleaved rounds
+\ of seven slots, each slot the fastest of forty sub-runs), and a contended box
+\ may run it ATTEMPT-MAX times before refusing. The wall therefore has to clear
+\ that WHOLE RETRY BUDGET on a busy machine, not one measurement - sizing it for
+\ a single pass turns an ordinary third attempt into a timeout. Scaled by the
+\ host load factor on top, because a fixed wall-clock budget in a
+\ process-spawning suite is the documented flake class (lib/test/budget.f) and
+\ this worker is a fork. Only a genuinely stuck worker should reach it.
+: TIMEOUT-MS ( -- n )
+   90000 T-BUDGET-MS ;
 
 \ The "fork " stem is the gate-stats registered prefix for a forked slice
 \ (test/gate-stats.f GS-STRAY-SLICE?), so this slot's completion span is
@@ -100,23 +112,6 @@ defer PROBE-MS ( -- n )               \ one fixed calibration spin, wall ms
    [: CAL-SPIN:MS ;] is PROBE-MS ;
 
 PROBE-MS-DEFAULT!
-
-\ The factor has to come from the SAME per-profile reference the gate driver
-\ calibrates against - test/run-lib.f TEST:CAL-REF-MS, which owns the committed
-\ GB10 performance-core figure - and NOT from lib/test/budget.f's reference,
-\ which is 0 anywhere but macOS. With that one every Linux and Spark factor
-\ collapsed to the 100% floor, so this word measured the spin and then threw the
-\ measurement away: a worker forked onto a slower efficiency core would run
-\ every workload about half again as slow against unscaled budgets and red the
-\ gate. T-BUDGET-CAL-PCT still owns the arithmetic and the 100..300 clamp, so
-\ neither the reference nor the clamp is copied here.
-\
-\ TEST:PREPARE already installed the driver's own factor before this phase runs.
-\ Replacing it is the point: the driver measured once at gate start, in the
-\ driver process, while this measures in the worker that is about to run the
-\ workloads, on the core it is about to run them on.
-: FACTOR ( n -- n )                   \ spin ms -> this host's budget factor, percent
-   TEST:CAL-REF-MS T-BUDGET-CAL-PCT ;
 
 \ ---- machine load samples --------------------------------------------------
 \ These are AUDIT CONTEXT, not the admissibility decision. The one-minute load
@@ -203,23 +198,24 @@ variable LOAD-POS
    a u LOAD-AVG-X100  a u LOAD-RUNNABLE ;
 
 \ ---- admissibility --------------------------------------------------------
-\ Two structural conditions, neither of them a tuned threshold:
-\   - the bracket must hold. CAL-SPIN:DRIFT-OK? is the single owner of the
-\     ten-percent rule, and a bracket that moved means the box changed speed
-\     underneath the workloads, so the budgets they were judged against were
-\     never the budgets they ran under.
-\   - the compensation must not be saturated. FACTOR scales every budget by the
-\     measured slowdown, but T-BUDGET-CLAMP stops at T-BUDGET-MAX-PCT, so a box
-\     past that ceiling runs the workloads against budgets that no longer
-\     describe it. The clamp is an existing recorded constant, not a new one.
-\ Both read the very resource the workloads compete for, at the time they run,
-\ which is why neither is a load heuristic.
-: SATURATED? ( n -- bool ) {: pre:n :}
-   pre FACTOR T-BUDGET-MAX-PCT >= ;
-
+\ ONE structural condition now: the bracket must hold. CAL-SPIN:DRIFT-OK? is the
+\ single owner of the ten-percent rule, and a bracket that moved means the box
+\ changed speed underneath the workloads - which the verdicts cannot survive,
+\ because a fastest-of-rounds needs at least one round the machine did not
+\ interfere with, and a box whose speed is moving did not provide one.
+\
+\ The saturation half of this test is GONE, and its absence is the point. It
+\ asked whether the budget compensation had hit its clamp; there is no budget
+\ compensation any more. A slow core used to be a reason to distrust the
+\ numbers, because the budgets were nanosecond counts recorded on a fast one.
+\ The verdicts are now RATIOS against a reference timed in the same rounds
+\ (lib/json-read-perf-test.f), so an efficiency core slows the workloads and the
+\ reference together and divides out of the answer. What the bracket still
+\ catches is the thing a ratio genuinely cannot: not a slow box, but an
+\ UNSTEADY one, where the interference lands on the workloads and the reference
+\ at different moments and so does not cancel.
 : ADMISSIBLE? ( n n -- bool ) {: pre:n post:n :}
-   pre post CAL-SPIN:DRIFT-OK?
-   pre SATURATED? 0= and ;
+   pre post CAL-SPIN:DRIFT-OK? ;
 
 \ ---- the calibration evidence line -----------------------------------------
 : SB-TF ( bool -- )
@@ -231,10 +227,9 @@ variable LOAD-POS
 
 : CAL-HEAD ( n n -- ) {: pre:n post:n :}
    SB-RESET
-   s" json-read-perf-phase: calibration pre=" SB-APPEND pre FMT:SB-U
+   s" json-read-perf-phase: bracket pre=" SB-APPEND pre FMT:SB-U
    s"  post=" SB-APPEND post FMT:SB-U
-   s"  stable=" SB-APPEND pre post CAL-SPIN:DRIFT-OK? SB-TF
-   s"  saturated=" SB-APPEND pre SATURATED? SB-TF ;
+   s"  stable=" SB-APPEND pre post CAL-SPIN:DRIFT-OK? SB-TF ;
 
 : CAL-LOAD ( n n n n -- ) {: lpre:n lpost:n rpre:n rpost:n :}
    s"  load1-pre-x100=" SB-APPEND lpre SB-NUM
@@ -246,10 +241,12 @@ variable LOAD-POS
    s"  admissible=" SB-APPEND ok SB-TF
    SB$ type cr ;
 
+\ The spin readings BRACKET the measurement and no longer scale anything. They
+\ are two questions about one machine - was it steady? - and not, as they were,
+\ the number every budget was multiplied by.
 : ATTEMPT ( -- bool )                 \ measure once; true when the box stayed quiet
    LOAD-NOW {: lpre:n rpre:n :}
    PROBE-MS {: pre:n :}
-   pre FACTOR TEST-BUDGET:PERF-SET
    T-RESET
    JSON-READ-PERF-TEST:MEASURE
    PROBE-MS {: post:n :}

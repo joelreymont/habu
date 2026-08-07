@@ -54,7 +54,12 @@ private
 \ regressed failed on its own growth (dot habu-recalibrate-cold-gate-ec0ba309).
 \ Performance is judged only where a stopwatch wraps one fixed workload and
 \ nothing else - today the six confined benchmarks behind
-\ test/json-read-perf-phase.f, each with its own recorded budget.
+\ test/json-read-perf-phase.f, each with its own recorded RATIO against a frozen
+\ reference workload timed in the same rounds. Those six do not read the
+\ calibration factor below and must not: their verdicts divide the machine out
+\ instead of compensating for it. The factor is still owned here for the
+\ consumers that genuinely need one - the engine runtime slice, both stdlib tail
+\ ratchets, and the MATCH compile bench.
 T-BUDGET-CAL-ITERS constant TR-CAL-ITERS             \ shared with lib/test/budget.f self-calibration
 T-BUDGET-CAL-REF-MACOS-MS constant TR-CAL-REF-MACOS-MS
 0 constant TR-CAL-REF-JETSON-MS

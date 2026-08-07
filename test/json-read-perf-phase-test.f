@@ -21,17 +21,20 @@
 \     CONTENDED-RC. The verdict is that exact exit status, not merely "nonzero":
 \     a benchmark that missed its budget dies 1 through the ordinary fork-throw
 \     path, so the two outcomes are proven distinguishable rather than assumed.
-\   - A UNIFORMLY contended box is refused too. Its bracket is perfectly stable,
-\     so the drift rule alone would admit it; the saturation rule catches it,
-\     which is the whole reason admissibility is not just DRIFT-OK?.
+\   - A steady bracket is admissible however SLOW the box reads, and a drifted
+\     one is refused however fast it reads. Speed alone no longer refuses
+\     anything: the verdicts are ratios, so a uniformly slower machine cancels
+\     out, and only an unsteady one is inadmissible.
 \   - The load sampler parses a real /proc/loadavg, reports n/a rather than a
 \     number on a host without one, and rejects malformed content instead of
 \     inventing a sample from it.
 \   - Spawning real CPU-bound neighbours raises the recorded runnable-process
 \     count, so the sample on the evidence line tracks actual machine load.
-\   - The spin the phase measures actually decides the budget: two brackets that
-\     differ only in their scripted spin reading must produce two different
-\     budgets, so measuring the spin and then dropping it cannot pass.
+\   - The phase does not touch the SHARED performance factor. That factor is
+\     scaled into the engine runtime-slice ratchet, both stdlib tail ratchets
+\     and the MATCH compile bench; this phase used to overwrite it from its own
+\     spin, and two brackets at different scripted speeds now leave it exactly
+\     where they found it.
 \   - The phase runs once per gate process. A second START is refused with
 \     E-JRPP-REPEAT, and a REFUSED start does not consume that one turn.
 \
@@ -43,22 +46,24 @@ require test/json-read-perf-phase.f
 package JSON-READ-PERF-PHASE
 private
 
-\ Load-scaled, not fixed: a fixed wall-clock budget in a process-spawning suite
-\ is the documented flake class (lib/test/budget.f), and these workers are forks.
-: WORK-TIMEOUT-MS ( -- n )            \ headroom for two full brackets
-   30000 T-BUDGET-MS ;
+\ Sized by the work a worker actually does, then load-scaled. The bound that
+\ matters is ATTEMPT-MAX, not two: EXHAUST-WORKER scripts a box that never goes
+\ quiet, so it runs the phase's full retry budget - THREE complete measurements,
+\ every workload and the reference, before it may report. The old constant said
+\ "two full brackets" and was already short of that; it survived only because
+\ each measurement used to be cheaper. Load-scaled on top, because a fixed
+\ wall-clock budget in a process-spawning suite is the documented flake class
+\ (lib/test/budget.f) and these workers are forks. A worker that reaches this is
+\ genuinely stuck, not merely unlucky.
+: WORK-TIMEOUT-MS ( -- n )            \ ATTEMPT-MAX full measurements, with margin
+   90000 T-BUDGET-MS ;
 
-\ The per-profile spin reference the phase now calibrates against is 0 until a
-\ host profile is applied, which would make every factor the 100% floor and hide
-\ a broken budget wiring. Pin the committed Spark profile so the reference is a
-\ known nonzero number and two different spin readings must produce two
-\ different budgets.
-using TEST
-
-: PROFILE-PIN! ( -- )
-   PROFILE-DGX-SPARK-10X2 PROFILE! ;
-
-1000 constant PROBE-BASE              \ a round base, so the factor reads straight off the budget
+\ No host profile is pinned here any more, and its absence is load-bearing. The
+\ phase used to divide its spin reading by a per-profile reference that is 0
+\ until a profile is applied, so these cases had to install one. Nothing in the
+\ phase reads a host reference now - the verdicts are ratios - so a case that
+\ needed one would be evidence the calibration had crept back in.
+1000 constant PROBE-BASE              \ a round base, so a scripted reading reads straight off
 
 \ ---- scripted calibration probe -------------------------------------------
 \ Eight readings is four brackets - one more than ATTEMPT-MAX allows. Reading
@@ -174,18 +179,25 @@ variable SCRIPT-I
    100 SCRIPT+ 200 SCRIPT+
    MEASURE-ADMISSIBLE ;
 
-\ A box that is evenly loaded for the whole bracket does not drift at all: pre
-\ and post agree, DRIFT-OK? is happy, and only saturation says the numbers are
-\ worthless. Pure, so it needs no measurement.
-: CASE-SATURATION ( -- )
-   PROFILE-PIN!
-   CAL-REF-MS {: ref:n :}
-   s" an idle bracket is admissible" T-LABEL
-   ref ref ADMISSIBLE? TTRUE
-   s" a stable bracket on a box past the compensation clamp is refused" T-LABEL
-   ref 3 *  ref 3 *  ADMISSIBLE? TFALSE
-   s" a drifted bracket is refused even below the clamp" T-LABEL
-   ref  ref 2 *  ADMISSIBLE? TFALSE ;
+\ What the bracket does and does not decide. Pure arithmetic on two readings, so
+\ it needs no measurement and no host profile - which is itself the point: the
+\ admissibility rule no longer consults a per-host reference at all.
+\
+\ The middle case is the one that changed. A stable bracket on a THREE TIMES
+\ SLOWER box used to be refused, because the absolute budgets were nanosecond
+\ counts recorded on a fast machine and the compensation factor had saturated at
+\ its clamp. Verdicts are ratios now, so a uniformly slower box is simply a
+\ slower box: both the workloads and the reference slow together and the ratio
+\ is unchanged. Restore any speed-based refusal here and this case fails.
+100 constant BRACKET-BASE             \ an arbitrary steady reading; only the ratios matter
+
+: CASE-BRACKET ( -- )
+   s" a steady bracket is admissible" T-LABEL
+   BRACKET-BASE BRACKET-BASE ADMISSIBLE? TTRUE
+   s" a steady bracket on a three times slower box is admissible too" T-LABEL
+   BRACKET-BASE 3 *  BRACKET-BASE 3 *  ADMISSIBLE? TTRUE
+   s" a bracket that drifted is refused however fast the box is" T-LABEL
+   BRACKET-BASE  BRACKET-BASE 2 *  ADMISSIBLE? TFALSE ;
 
 \ ---- load sampling --------------------------------------------------------
 \ Structural, not substring: each case hands the parser a byte buffer and reads
@@ -303,25 +315,29 @@ MEM-64K constant FENCE-SPAN
    s" the runnable sample counts real CPU-bound neighbours" T-LABEL
    busy-run LOAD-NEIGHBOURS >= TTRUE ;
 
-\ ---- the pre-spin actually reaches the budget --------------------------------
-\ The regression the review demanded. ATTEMPT measures a spin and is supposed to
-\ turn it into this run's budget factor; before the fix it measured the spin and
-\ discarded it, because the reference it divided by was zero off macOS and every
-\ factor pinned to the 100% floor. Two brackets whose only difference is the
-\ scripted spin reading must therefore produce two different budgets: delete the
-\ `pre FACTOR TEST-BUDGET:PERF-SET` wiring, or divide by the wrong reference
-\ again, and both readings collapse to the same number and this worker dies.
-: BUDGET-WORKER ( -- )
-   PROFILE-PIN!
-   CAL-REF-MS {: ref:n :}                   \ the committed performance-core spin time
+\ ---- the spin reaches NOTHING but the bracket --------------------------------
+\ The inverse of the regression this file used to assert, and it guards a real
+\ boundary rather than an internal detail. ATTEMPT used to install its spin
+\ reading as the process-wide performance factor
+\ (`pre FACTOR TEST-BUDGET:PERF-SET`). That factor is SHARED: the engine
+\ runtime-slice ratchet, both stdlib tail ratchets and the MATCH compile bench
+\ all scale their own budgets by it. This phase has no business moving it, and
+\ now does not - its verdicts are ratios and need no factor at all.
+\
+\ So: pin the factor to a known value, run two brackets whose scripted spin
+\ readings differ by a factor of two, and require the shared factor to be
+\ exactly what it was. Reinstate any PERF-SET call in ATTEMPT and the second
+\ reading moves it and this worker dies.
+100 constant PINNED-PCT               \ the uncalibrated floor: a value ATTEMPT must not move
+
+: FACTOR-UNTOUCHED-WORKER ( -- )
+   PINNED-PCT TEST-BUDGET:PERF-SET
    SCRIPT-INSTALL!
-   ref  ref  ref 2 *  ref 2 *  SCRIPT!
-   ATTEMPT drop                       \ bracket one: the box is at the reference speed
+   PROBE-BASE  PROBE-BASE  PROBE-BASE 2 *  PROBE-BASE 2 *  SCRIPT!
+   ATTEMPT drop                       \ bracket one: the box is at the scripted speed
    PROBE-BASE TEST-BUDGET:PERF-MS PROBE-BASE EXPECT-EQ
    ATTEMPT drop                       \ bracket two: the box reads half as fast
-   PROBE-BASE TEST-BUDGET:PERF-MS PROBE-BASE 2 * EXPECT-EQ ;
-
-;using
+   PROBE-BASE TEST-BUDGET:PERF-MS PROBE-BASE EXPECT-EQ ;
 
 : CASE-WORKERS ( -- )
    GT-POOL-FIND-FREE {: retry:idx :}
@@ -329,7 +345,7 @@ MEM-64K constant FENCE-SPAN
    GT-POOL-FIND-FREE {: exhaust:idx :}
    s" jrpp contended exhaust" WORK-TIMEOUT-MS exhaust [: EXHAUST-WORKER ;] GT-POOL-START-FORK-SLOT
    GT-POOL-FIND-FREE {: budget:idx :}
-   s" jrpp budget wiring" WORK-TIMEOUT-MS budget [: BUDGET-WORKER ;] GT-POOL-START-FORK-SLOT
+   s" jrpp shared factor untouched" WORK-TIMEOUT-MS budget [: FACTOR-UNTOUCHED-WORKER ;] GT-POOL-START-FORK-SLOT
    GT-POOL-DRAIN-SOFT
    s" a contended bracket is re-measured and a clean one after it is accepted" T-LABEL
    retry GT-POOL-OK? TTRUE
@@ -338,7 +354,7 @@ MEM-64K constant FENCE-SPAN
    exhaust GT-POOL-CODE-PTR @ CONTENDED-RC T=
    s" that status is not the one a failed benchmark leaves behind" T-LABEL
    CONTENDED-RC 1 <> TTRUE
-   s" the measured spin decides the budget, it is not measured and dropped" T-LABEL
+   s" the phase leaves the shared performance factor alone" T-LABEL
    budget GT-POOL-OK? TTRUE ;
 
 : MAIN ( -- )
@@ -347,7 +363,7 @@ MEM-64K constant FENCE-SPAN
    LOAD-NEIGHBOURS 2 + GT-POOL-SLOTS!
    GT-POOL-RESET
    CASE-ADMISSION
-   CASE-SATURATION
+   CASE-BRACKET
    CASE-LOAD-PARSE
    CASE-END-OF-MAPPING
    CASE-LOAD-SPAWN

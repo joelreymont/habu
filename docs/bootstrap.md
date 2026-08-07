@@ -260,17 +260,28 @@ nothing else**. Today that is the six confined JSON-reader benchmarks in
 [`test/json-read-perf-phase.f`](../test/json-read-perf-phase.f) as a single
 quiescent fork after every scheduled phase has drained:
 
-- Each benchmark owns its own recorded baseline constant and margin, and is
-  judged on the median of three samples. A benchmark over budget reds its own
-  verdict and reds the gate through the ordinary red-phase path — the same exit
-  status any failing phase produces.
-- The phase brackets itself with a calibration spin before and after. If the
-  bracket moved, or the box is so slow that budget compensation has saturated at
-  its clamp, the attempt is **inadmissible** rather than a verdict: it is
-  re-measured, and if the box never goes quiet the phase exits **68**, meaning
-  *the measurement could not be taken* — never *the tree is slow*. Rerun in a
-  quiet window. Every attempt records the one-minute load average and the
-  runnable-process count on its evidence line.
+- **A verdict is a ratio, not a stopwatch reading.** A seventh slot in every
+  round times a *frozen reference workload* that calls no code under test, and
+  each benchmark is judged on its fastest sample divided by the reference's,
+  against a recorded ratio and margin. A nanosecond budget is a claim about the
+  machine that recorded it and needed a per-host calibration factor to survive
+  meeting any other machine; a ratio needs none, because the machine appears in
+  both terms and divides out. A benchmark over its ratio reds its own verdict
+  and reds the gate through the ordinary red-phase path — the same exit status
+  any failing phase produces.
+- The reference is shaped like the work it normalises (a per-item call, a
+  byte-at-a-time classify-and-copy, a teardown) and *not* like a stopwatch
+  calibration spin. This was measured, not assumed: on an asymmetric-core host
+  each loop shape has its own performance-to-efficiency core penalty, so a
+  reference of the wrong shape does not cancel core placement, it compounds it.
+- The phase brackets itself with a calibration spin before and after. That
+  bracket no longer scales anything — it only asks whether the box held ONE
+  speed while the rounds ran. A box that is merely slow is now fine, because
+  the ratio cancels it; a box whose speed *moved* is **inadmissible** rather
+  than a verdict: it is re-measured, and if the box never goes quiet the phase
+  exits **68**, meaning *the measurement could not be taken* — never *the tree
+  is slow*. Rerun in a quiet window. Every attempt records the one-minute load
+  average and the runnable-process count on its evidence line.
 
 Widening performance coverage means **adding another confined benchmark with its
 own budget**, never re-introducing an aggregate timer over the whole gate.
