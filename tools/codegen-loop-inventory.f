@@ -273,12 +273,28 @@ create CANREACH SPAN-MAX allot
 : IN-BODY? ( n -- bool ) {: j:n :}
    j REACHED? j CANREACH? and ;
 
-\ Whether the instruction at this index is a loop's back edge: an unconditional
-\ branch whose target is inside this record and at or above the branch itself in
+\ Whether the instruction at this index is a loop's back edge: a branch of any
+\ form whose target is inside this record and at or above the branch itself in
 \ the layout, and whose span really is a cycle.
+\
+\ IT USED TO INSIST THE BRANCH WAS UNCONDITIONAL, AND THAT STOPPED BEING TRUE.
+\ The emitter's collapse (src/compiler/native/emit.f, ORDER-BLOCKS) branches past
+\ any block that emits nothing before its terminator, and a counted loop's latch
+\ is exactly such a block: the conditional at the bottom of the body used to
+\ reach the header through the latch's unconditional branch, and now names the
+\ header itself. So a loop's back edge is routinely a `b.cc`, and a rule that
+\ read only `b` reported the corpus's counted loops as no loops at all.
+\
+\ DROPPING THE OPCODE TEST COSTS NOTHING, because it was never what did the
+\ discriminating work. The hazard this file exists to avoid - a branch pointing
+\ backward in the LAYOUT that is an ordinary forward edge in the graph - is
+\ refused by the cycle test below, which asks whether control entering at the
+\ target can arrive back at the branch. CODEGEN-CORPUS:BYTE-FIND's -1 literal
+\ chain is declined by that test and not by its opcode.
 : BACK-EDGE? ( n -- bool ) {: k:n :}
-   k INSN@ NBR:B? 0= if false exit then
-   k B-TARGET-IX {: t:n :}
+   k INSN@ {: w:n :}
+   w NBR:B? w NBR:COND? or 0= if false exit then
+   k TARGET-IX {: t:n :}
    t 0 < if false exit then
    t k > if false exit then
    t k SPAN-REACHES? ;
@@ -314,9 +330,17 @@ public
 \ The body of the k-th loop, as the half-open index span between the header the
 \ back edge names and the back edge itself. The branch is not part of the body:
 \ it is the turn, not the work.
+\
+\ THE TARGET IS READ BY THE FORM AND NOT AS AN UNCONDITIONAL BRANCH. A back edge
+\ is now routinely a `b.cc` - see BACK-EDGE? - and the two forms carry their
+\ displacement in different fields, so decoding a conditional branch with the
+\ unconditional reader answers a number that is not an index of anything. It did
+\ exactly that here: the low bits of a `b.cc` read as a 26-bit displacement gave
+\ a body span millions of instructions long and the marking walk ran off its
+\ arrays. TARGET-IX asks src/compiler/native/branch.f for the form it really is.
 : LOOP-LO ( n -- n ) {: k:n :}
    k EDGE-IX dup 0 < if exit then
-   B-TARGET-IX ;
+   TARGET-IX ;
 
 : LOOP-HI ( n -- n ) {: k:n :}
    k EDGE-IX ;

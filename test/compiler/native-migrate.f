@@ -1287,11 +1287,23 @@ variable BACK-N
    MIGRATE-STEP
    MIGRATE-WCALL
 
-   s" the loop's body is written before its exit stub, not after it" T-LABEL
-   A64EMIT:BLOCKS 5 T=
-   SELF-PLACED 3 T=
-   2 A64EMIT:BLOCK-AT-POS@ 3 T=
-   3 A64EMIT:BLOCK-AT-POS@ 2 T=
+   \ THE ORDER USED TO BE THE WHOLE ANSWER HERE AND IS NOW HALF OF IT. This shape
+   \ builds five blocks, two of which do nothing before their branch: the exit
+   \ stub and the join. Choosing the order deleted the branches INTO them; the
+   \ collapse deletes the blocks themselves, because every branch that named one
+   \ is sent to the far end instead and nothing reaches it any more. So the
+   \ routine is written in three positions and the ordinals that survive are the
+   \ header, the body and the block control leaves through.
+   s" the loop's do-nothing stubs are branched past and never written" T-LABEL
+   A64EMIT:BLOCKS 3 T=
+   A64EMIT:DROPPED 2 T=
+   SELF-PLACED 2 T=
+   2 A64EMIT:BLOCK-AT-POS@ 4 T=
+
+   \ And a position past the last one laid is a refusal, not whichever block sat
+   \ there in an earlier emission - the table is not cleared beyond what this
+   \ routine used, so the bound is what makes a stale read impossible.
+   [: 3 A64EMIT:BLOCK-AT-POS@ drop ;] E-A64EMIT-BLOCK TTHROWSQ
 
    s" so its record holds one unconditional branch, and that one is the back edge"
    T-LABEL

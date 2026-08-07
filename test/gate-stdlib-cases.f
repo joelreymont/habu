@@ -408,6 +408,18 @@ SUITE compiler-codegen-loop-inventory
    test/compiler/codegen-loop-inventory.f
 ;SUITE
 
+\ Counting the branches that go to another branch, which is what the collapse
+\ lane removes, and the branches that reach the instruction already after them,
+\ which is what the fall-through rule still misses across a block that emits
+\ nothing. The suite is built around the four ways such a reader answers
+\ confidently and wrongly - a call read as a branch, a walk past the end of a
+\ routine that leaves by one, a branch followed out of the routine, and a
+\ conditional target called a chain - each pinned by a row that really is that
+\ shape and asserts it before asking for the count.
+SUITE compiler-codegen-branch-inventory
+   test/compiler/codegen-branch-inventory.f
+;SUITE
+
 \ Counting the instructions that exist only to move arguments and results through
 \ the caller's data stack, split by WHERE they sit: beside a call, which a
 \ register calling convention could remove, against the routine's own entry and

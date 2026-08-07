@@ -206,8 +206,20 @@ public
    s" NTP-FIXTURE:CALLS-BIG" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:LOOPY-N" TRAILER-RET? TTRUE
 
-   s" the back-edge fixture really does end its body on a branch" T-LABEL
-   s" NTP-FIXTURE:LOOPY-N" LAST-BODY NBR:B? TTRUE
+   \ THE FIXTURE BUILT TO FOOL THIS TOOL IS NO LONGER THE SHAPE THAT FOOLS IT, AND
+   \ SAYING SO IS THE POINT OF ASSERTING THE PRECONDITION. The emitter's collapse
+   \ (src/compiler/native/emit.f, ORDER-BLOCKS) branches past any block that emits
+   \ nothing before its terminator, and a counted loop's latch is exactly such a
+   \ block - so the conditional at the bottom of the body now names the header
+   \ itself and the loop's back edge is a `b.cc`. No row of any corpus ends its
+   \ recorded body on an unconditional branch any more; that was measured across
+   \ all 54 migrated rows, not assumed. So this case asserts what is now true
+   \ instead of a hazard that cannot be built, and the hazard itself is carried by
+   \ dot habu-hand-built-fixture-a6a4efe7, which assembles the shape by hand
+   \ rather than waiting for a code generator to emit one again.
+   s" the loop row no longer ends its body on an unconditional branch" T-LABEL
+   s" NTP-FIXTURE:LOOPY-N" LAST-BODY NBR:B? TFALSE
+   s" NTP-FIXTURE:LOOPY-N" LAST-BODY NBR:COND? TTRUE
 
    s" and so does the routine that LEAVES through its callee" T-LABEL
    s" NTP-FIXTURE:TAILED-N" LAST-BODY NBR:B? TTRUE

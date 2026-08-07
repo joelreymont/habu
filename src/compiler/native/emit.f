@@ -449,6 +449,18 @@ create B-START BMAX cells allot
 create B-ORDER BMAX cells allot        \ position -> block ordinal
 create B-PLACE BMAX cells allot        \ block ordinal -> position
 
+\ Where a branch that names this block SHOULD go, which is not always the block
+\ it names. A block whose whole content is an unconditional branch is a place
+\ control passes through without doing anything, so a branch to it can name the
+\ far end instead and the block itself becomes unreachable. B-GOTO holds that far
+\ end for every block - itself, for the blocks that are not passed through - and
+\ B-KEEP says which blocks are still reached once every branch has been
+\ redirected. The two are written once, before the order is chosen, and every
+\ reader of a successor asks B-GOTO rather than the module.
+create B-GOTO BMAX cells allot         \ block ordinal -> the block a branch to it should name
+create B-KEEP BMAX cells allot         \ block ordinal -> is it still reachable
+variable N-LAID                        \ how many blocks the order actually holds
+
 \ ---- the dialect's operation family ------------------------------------------
 : SLOT-OF ( A64IR:opcode -- n )
    MATCH A64IR:opcode
@@ -1153,6 +1165,19 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    bb  pp cells B-ORDER + !
    pp  bb cells B-PLACE + ! ;
 
+\ Where a branch naming this block should go. It is read after GOTO! has run, so
+\ it already holds the far end of however long a chain of pass-through blocks
+\ stood in the way.
+: GOTO-OF ( n -- n )
+   BLK-ORD-CK cells B-GOTO + @ ;
+
+\ And is this block still reached once every branch has been redirected? It is a
+\ table read like the one above, and it lives here beside it because the order
+\ has to ask it while it is being chosen; the sweep that WRITES the table needs
+\ the register assignment and so stands further down.
+: KEPT? ( n -- bool )
+   BLK-ORD-CK cells B-KEEP + @ 0<> ;
+
 \ The block a terminator's trailing unconditional branch names, or -1 when the
 \ block ends in no such branch. It is TAIL-SUCC asked of a whole block, which is
 \ the form the ordering needs: the elision rule asks it of an operation.
@@ -1160,12 +1185,14 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    TERM-AT {: t:IR-ID:ir-op-id :}
    t SLOT-AT TAIL-SUCC {: s:n :}
    s 0 < if -1 exit then
-   t s SUCC-BLOCK ;
+   t s SUCC-BLOCK GOTO-OF ;
 
 \ The lowest-numbered block with no position yet, or -1 when every block has one.
+\ Only the blocks still reached are candidates: one that nothing branches to any
+\ more is not laid out at all, which is where the bytes come from.
 : NEXT-UNLAID ( -- n )
    0 begin dup N-BLK @ < while
-      dup LAID? 0= if exit then
+      dup KEPT? over LAID? 0= and if exit then
       1+
    repeat
    drop -1 ;
@@ -1220,26 +1247,6 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 \ seam would mis-measure. The trace then fills the positions between, and the
 \ return block is already placed, so it is never picked up early.
 \
-\ LAY is what bounds the two numbers it writes, so a follower outside the
-\ function's blocks is E-A64EMIT-BLOCK here rather than a row written past the
-\ end of a table. It cannot happen: fewer than N-BLK blocks are laid when a
-\ position is still to be filled, so NEXT-UNLAID always has one to answer with.
-: ORDER-BLOCKS ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   f BLOCK-COUNT {: n:n :}
-   n 1 < if E-A64EMIT-SHAPE throw then
-   n BMAX > if E-A64EMIT-CAP throw then
-   n N-BLK !
-   f RET-ORD {: r:n :}
-   n 0 ?do  -1 i cells B-PLACE + !  loop
-   r n 1- LAY
-   n 1 = if exit then
-   r 0= if E-A64EMIT-SHAPE throw then
-   0 0 LAY
-   n 1- 1 ?do
-      f  i 1- AT-POS  FOLLOWER  i LAY
-   loop ;
-
 \ THE RULE, WRITTEN ONCE. An operation's trailing unconditional branch is reached
 \ by falling into it when the block it names is the block laid out immediately
 \ after the one the operation terminates - and then it is not emitted at all.
@@ -1257,7 +1264,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT TAIL-SUCC {: s:n :}
    s 0 < if false exit then
-   id s SUCC-BLOCK POS-OF  home POS-OF 1+ = ;
+   id s SUCC-BLOCK GOTO-OF POS-OF  home POS-OF 1+ = ;
 
 \ THE SECOND RULE, ALSO WRITTEN ONCE. A copy whose source and destination are the
 \ same register moves that register into itself, which is no instruction at all,
@@ -1328,7 +1335,187 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
    loop ;
 
 : START-AT ( n -- n )
-   BLK-ORD-CK cells B-START + @ ;
+   BLK-ORD-CK
+   dup LAID? 0= if E-A64EMIT-BLOCK throw then
+   cells B-START + @ ;
+
+\ ---- the blocks control only passes through ----------------------------------
+\ A BLOCK WHOSE WHOLE CONTENT IS AN UNCONDITIONAL BRANCH DOES NOTHING, AND A
+\ BRANCH TO IT CAN NAME THE FAR END INSTEAD. Control arriving at such a block
+\ leaves it again immediately, so every branch that names it is made to take two
+\ branches to reach the place it was always going. Redirecting them costs
+\ nothing at run time and deletes the block: nothing reaches it any more, so it
+\ is not laid out and its branch is never written.
+\
+\ WHAT MAKES IT SOUND IS THAT THE BLOCK EMITS NOTHING, AND NOT WHAT ITS EDGES
+\ SAY. A branch hands its operands to the destination's block arguments, and the
+\ obvious rule would be that the block passed through has to hand on exactly what
+\ it was given. That rule is too strong, and it rejects the case this pass exists
+\ for: a counted loop's latch is a block with no arguments whose branch carries
+\ the incremented index to the header, so it hands on values it was never given
+\ and is refused by a rule about arguments while emitting nothing whatsoever.
+\
+\ THE REGISTERS ARE WHERE THE ARGUMENT ACTUALLY IS. src/compiler/native/
+\ regalloc-verify.f has already accepted both edges, and its edge rule says the
+\ register holding a terminator's operand i is the register holding the
+\ destination's argument i. So when T's branch executes, D's arguments are
+\ already in D's registers. If T emits NO instruction before that branch, then
+\ nothing happens between arriving at T and leaving it - no register is written,
+\ no flag is set - so those registers hold the same values at the moment the
+\ branch INTO T executes. Redirecting that branch straight to D therefore lands D
+\ in the identical machine state, and the values are reachable because the
+\ allocator's own liveness put them there: T holds no instruction, so what is
+\ live leaving T is live entering it, and so is live along the edge into it.
+\
+\ SO THE CONDITION IS ABOUT EMITTED INSTRUCTIONS AND IS ASKED AFTER THE
+\ ASSIGNMENT IS ACCEPTED. Two operations can be present and emit nothing - a copy
+\ into the register it already lives in, and a data-stack adjustment of zero
+\ bytes - and which they are is a fact about the register assignment. That is why
+\ EMIT now probes the acceptance BEFORE it chooses the order, where it used to
+\ choose the order first: the order is no longer a question the module alone can
+\ answer, exactly as the layout already was not.
+\
+\ THE ENTRY IS NEVER PASSED THROUGH. Block zero is where the caller arrives, so
+\ it is laid first whatever it contains; treating it as a block to be deleted
+\ would be deleting the routine's first byte. It costs nothing measurable and it
+\ removes the only case where "unreachable" and "the entry" could disagree.
+\ Does this operation emit nothing at all? Two of them can: a copy into the
+\ register it already lives in, and a data-stack adjustment of zero bytes. Both
+\ are the elisions the layout already subtracts, asked here without the third -
+\ a trailing branch reached by falling through - because that one is a question
+\ about the order this word is helping to decide.
+: OP-SILENT? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id SLOT-AT INSNS-OF
+   id SELF-MOV? if 1- then
+   id DZERO-MOVES -
+   0= ;
+
+\ And does the whole block emit nothing before its terminator? That is what makes
+\ control merely pass through it: everything it holds is a copy that moves
+\ nothing, so arriving and leaving are the same machine state.
+: SILENT-BEFORE-TERM? ( IR-ID:ir-block-id -- bool )
+   {: bk:IR-ID:ir-block-id :}
+   0
+   bk OP-COUNT 1- 0 ?do
+      bk i OP-AT OP-SILENT? 0= if 1+ then
+   loop
+   0= ;
+
+: PASS-THRU? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b 0= if false exit then
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk TERM-AT {: t:IR-ID:ir-op-id :}
+   t SLOT-AT O-BR <> if false exit then
+   bk SILENT-BEFORE-TERM? ;
+
+\ The walk that finds that far end. One step, so that the bound below is a plain
+\ counted loop and this file keeps its habit of not declaring locals inside one.
+variable CH-AT
+
+: CHASE-STEP ( IR-ID:ir-fun-id -- bool )
+   {: f:IR-ID:ir-fun-id :}
+   f CH-AT @ PASS-THRU? 0= if false exit then
+   f CH-AT @ BLOCK-AT TERM-AT 0 SUCC-BLOCK {: nxt:n :}
+   nxt CH-AT @ = if false exit then
+   nxt CH-AT !
+   true ;
+
+\ A chain of pass-through blocks that closed into a loop would be walked for
+\ ever - `begin again` with an empty body is exactly that - so the walk is
+\ bounded by the number of blocks there are: more steps than that and it has
+\ visited one twice. Stopping part way round such a loop is still a correct
+\ answer, because every block on it passes control straight to the next, so the
+\ branch is redirected to one of them and the routine still spins where it must.
+: CHASE ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b CH-AT !
+   N-BLK @ 0 ?do
+      f CHASE-STEP 0= if leave then
+   loop
+   CH-AT @ ;
+
+\ Every block's far end, written once. A block that is not passed through is its
+\ own answer, so every reader can ask unconditionally.
+: GOTO! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   N-BLK @ 0 ?do  f i CHASE  i cells B-GOTO + !  loop ;
+
+\ ---- which blocks are still reached ------------------------------------------
+\ Reachability over the REDIRECTED edges, from the entry. It is a fixed point
+\ reached by sweeping until a sweep marks nothing, which needs no work list and
+\ no recursion: at most BMAX blocks makes the sweep cheap, and a sweep that
+\ marks nothing is the answer.
+: KEEP1 ( n -- n )
+   {: s:n :}
+   s KEPT? if 0 exit then
+   1 s cells B-KEEP + !
+   1 ;
+
+: KEEP-SUCCS ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   0
+   t SUCCS-OF 0 ?do
+      t i SUCC-BLOCK GOTO-OF KEEP1 +
+   loop ;
+
+: KEEP-SWEEP ( IR-ID:ir-fun-id -- n )
+   {: f:IR-ID:ir-fun-id :}
+   0
+   N-BLK @ 0 ?do
+      i KEPT? if f i KEEP-SUCCS + then
+   loop ;
+
+: KEEP! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   N-BLK @ 0 ?do  0 i cells B-KEEP + !  loop
+   1 0 cells B-KEEP + !
+   begin  f KEEP-SWEEP 0=  until ;
+
+\ LAY is what bounds the two numbers it writes, so a follower outside the
+\ function's blocks is E-A64EMIT-BLOCK here rather than a row written past the
+\ end of a table. It cannot happen: fewer than N-LAID blocks are laid when a
+\ position is still to be filled, so NEXT-UNLAID always has one to answer with.
+\
+\ AND THE ORDER IS OVER THE BLOCKS STILL REACHED, WHICH IS NOT ALL OF THEM. The
+\ redirection above is computed first, and a block every branch was redirected
+\ past is reached by nothing: it is left out of the order, so no position is
+\ spent on it and its own branch is never written. That is where the bytes go.
+\ N-LAID is therefore how many positions there are, and N-BLK stays the number of
+\ blocks the module has, because a branch still names an ORDINAL and the label
+\ table is still keyed by one.
+\
+\ THE COUNT OF KEPT BLOCKS IS TAKEN RATHER THAN ASSUMED, because the trace below
+\ fills exactly N-LAID positions and a miscount would leave one unwritten or run
+\ past the end. The return block is always reached - it is the block control
+\ leaves through - and so is the entry, which is why the two ends can still be
+\ pinned before the trace fills what is between them.
+: KEPT-COUNT ( -- n )
+   0
+   N-BLK @ 0 ?do  i KEPT? if 1+ then  loop ;
+
+: ORDER-BLOCKS ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT {: n:n :}
+   n 1 < if E-A64EMIT-SHAPE throw then
+   n BMAX > if E-A64EMIT-CAP throw then
+   n N-BLK !
+   f GOTO!
+   f KEEP!
+   KEPT-COUNT {: k:n :}
+   k N-LAID !
+   f RET-ORD {: r:n :}
+   r KEPT? 0= if E-A64EMIT-SHAPE throw then
+   n 0 ?do  -1 i cells B-PLACE + !  loop
+   r k 1- LAY
+   k 1 = if exit then
+   r 0= if E-A64EMIT-SHAPE throw then
+   0 0 LAY
+   k 1- 1 ?do
+      f  i 1- AT-POS  FOLLOWER  i LAY
+   loop ;
 
 \ Where each block's first instruction lands, measured in instructions from the
 \ start of the routine. It is computed before a single byte is written, because a
@@ -1347,7 +1534,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : LAYOUT ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    0 LAY-AT !
-   N-BLK @ 0 ?do
+   N-LAID @ 0 ?do
       LAY-AT @ i AT-POS cells B-START + !
       LAY-AT @  f i AT-POS BLOCK-AT  i AT-POS BLOCK-INSNS  +  LAY-AT !
    loop ;
@@ -1393,7 +1580,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : PUT-BR ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id home FALL-THRU? if exit then
-   id  id 0 SUCC-BLOCK DELTA B-WORD  APPEND ;
+   id  id 0 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
 \ The two-way branch: go to the first successor when the tested register is
 \ zero, and to the second when it is not. The conditional is always emitted; the
@@ -1402,9 +1589,9 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 \ the block laid out next, which is that same successor.
 : PUT-BRZ ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
-   id  id 0 OPERAND-REG  id 0 SUCC-BLOCK DELTA  BZ-WORD  APPEND
+   id  id 0 OPERAND-REG  id 0 SUCC-BLOCK GOTO-OF DELTA  BZ-WORD  APPEND
    id home FALL-THRU? if exit then
-   id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
+   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
 \ The fused compare-and-branch, which is three instructions: compare the two
 \ registers, go to the first successor when the condition the operation carries
@@ -1424,9 +1611,9 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : PUT-CMPBR ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
-   id  id 0 SUCC-BLOCK DELTA  id COND-OF  BCOND-WORD  APPEND
+   id  id 0 SUCC-BLOCK GOTO-OF DELTA  id COND-OF  BCOND-WORD  APPEND
    id home FALL-THRU? if exit then
-   id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
+   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
 \ The two fused FLOAT compare-and-branches, which are the same three instructions
 \ with an Fcmp in front instead of a Cmp - the two-register form for the three
@@ -1447,16 +1634,16 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 : PUT-FCMPBR ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-FCMP  APPEND
-   id  id 0 SUCC-BLOCK DELTA  id COND-OF  BCOND-WORD  APPEND
+   id  id 0 SUCC-BLOCK GOTO-OF DELTA  id COND-OF  BCOND-WORD  APPEND
    id home FALL-THRU? if exit then
-   id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
+   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
 : PUT-FCMPBRZ ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG ENC-FCMP0  APPEND
-   id  id 0 SUCC-BLOCK DELTA  id COND-OF  BCOND-WORD  APPEND
+   id  id 0 SUCC-BLOCK GOTO-OF DELTA  id COND-OF  BCOND-WORD  APPEND
    id home FALL-THRU? if exit then
-   id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
+   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
 \ One comparison, which is three instructions: compare the two registers, set one
 \ into the result on the condition, and negate it, because a Habu flag is all
@@ -1914,7 +2101,7 @@ create B-PLACE BMAX cells allot        \ block ordinal -> position
 \ rather than leaving it to the two loops looking alike.
 : WALK ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   N-BLK @ 0 ?do
+   N-LAID @ 0 ?do
       i AT-POS CURSOR-CK
       f i AT-POS BLOCK-AT  i AT-POS  WALK-BLOCK
    loop
@@ -2173,8 +2360,8 @@ public
    m VIEWS!
    FUN-OF {: f:IR-ID:ir-fun-id :}
    f SHAPE-CK
-   f ORDER-BLOCKS
    m ALLOC-CK
+   f ORDER-BLOCKS
    f LAYOUT
    f WALK
    CLOBBER-SEAL
@@ -2240,18 +2427,45 @@ public
 \ How many blocks were laid out, and where each one starts. A caller that wants
 \ to know whether a branch went where the layout said it would reads these and
 \ the instruction at the branch's own position; a fixture asserts both.
+\
+\ IT IS THE COUNT OF POSITIONS AND NOT OF BLOCKS, which is what its callers walk:
+\ every one of them iterates positions and asks BLOCK-AT-POS@ for each. Since the
+\ layout began leaving out the blocks every branch is redirected past, the two
+\ numbers differ - a routine may have five blocks and four positions - and the
+\ one a walk over the order needs is this one. BLOCK-START@ is still keyed by
+\ ORDINAL, because that is what a branch names.
 : BLOCKS ( -- n )
-   SEAL-CK N-BLK @ ;
+   SEAL-CK N-LAID @ ;
 
 : BLOCK-START@ ( n -- n )
    SEAL-CK BLK-ORD-CK cells B-START + @ ;
+
+\ How many of the module's blocks the redirection left unreachable, and so out of
+\ the order entirely. It is the pass's own count of what it did, read back the
+\ way A64COMB:FUSED is: a byte count that fell says a routine got smaller, and
+\ only this says the collapse is what made it smaller.
+: DROPPED ( -- n )
+   SEAL-CK N-BLK @ N-LAID @ - ;
+
+\ And which block a branch naming this one is actually sent to, so a fixture can
+\ say the redirection happened rather than infer it from a byte count.
+: GOTO@ ( n -- n )
+   SEAL-CK GOTO-OF ;
 
 \ And which block was written at a position, which is the order this pass chose.
 \ It is read back for the same reason the starts are: the order decides which
 \ branches exist at all, so a fixture that wants to say a routine was written in
 \ the order its blocks were built - or in some other one - has to be able to ask.
+\ A POSITION PAST THE LAST ONE LAID IS A REFUSAL AND NOT A LEFTOVER. The order
+\ table is written for the positions this routine has and not cleared beyond
+\ them, so a caller reading past N-LAID would be handed whichever block sat there
+\ during some earlier emission - a number that looks like an answer. Since the
+\ collapse began dropping blocks there are fewer positions than blocks, so this
+\ is reachable by any fixture that kept walking to the old count.
 : BLOCK-AT-POS@ ( n -- n )
-   SEAL-CK AT-POS ;
+   SEAL-CK
+   dup 0 < over N-LAID @ >= or if E-A64EMIT-BLOCK throw then
+   AT-POS ;
 
 : SIZE ( -- n )
    SEAL-CK N-INS @ INSN-BYTES * ;

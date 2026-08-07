@@ -486,6 +486,10 @@ public
    \ depend on the turn, read off the same walk over routines the chain really
    \ compiled.
    s" test/compiler/codegen-loop-inventory.f" GSI-FORK-INCLUDE
+   \ And the branch shapes, read off the same walk over routines the chain really
+   \ compiled: the branches that go to another branch, and the ones that reach
+   \ the instruction already after them.
+   s" test/compiler/codegen-branch-inventory.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the code generator comparison - bytes, computed
    \ values, the two generators head to head, the committed table's structure.
    \ The timing column is left out here because this group runs its members in

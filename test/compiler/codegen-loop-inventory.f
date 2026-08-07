@@ -165,18 +165,24 @@ public
    \ now folds a small constant into the add or subtract that reads it, so the
    \ move-wide that used to stand in this body is not there to count. The body
    \ is one instruction shorter and holds no move-wide at all.
+   \ AND ONE SHORTER AGAIN SINCE THE LATCH WENT. The emitter's collapse branches
+   \ past a block that emits nothing before its terminator, which is exactly a
+   \ counted loop's latch, so the conditional at the bottom of the body now names
+   \ the header itself and IS the back edge. The back edge is not part of the
+   \ body - it is the turn, not the work - so the instruction that used to be the
+   \ body's last is now excluded, and every counted loop here reads one less.
    s" and that block's literal chain is not charged to the loop body" T-LABEL
    s" CODEGEN-CORPUS:BYTE-FIND-N" ROW!
-   BODY-TOTAL 7 T=
+   BODY-TOTAL 6 T=
    CONSTS-TOTAL 0 T=
 
    s" the counted byte loops hold one loop each" T-LABEL
    s" CODEGEN-CORPUS:BYTE-SUM-N" ROW!
    LOOPS 1 T=
-   BODY-TOTAL 6 T=
+   BODY-TOTAL 5 T=
    s" CODEGEN-CORPUS:SUM-TO-N" ROW!
    LOOPS 1 T=
-   BODY-TOTAL 4 T=
+   BODY-TOTAL 3 T=
 
    \ The row the measurement turns on: four sixty-four-bit literals, each a chain
    \ of four move-wide instructions, rebuilt on every turn. Sixteen of its
@@ -188,7 +194,7 @@ public
    s" the four-literal row rebuilds sixteen chain instructions a turn" T-LABEL
    s" CODEGEN-CORPUS4:BIG-CONSTS-N" ROW!
    LOOPS 1 T=
-   BODY-TOTAL 27 T=
+   BODY-TOTAL 26 T=
    CONSTS-TOTAL 16 T=
    FOLDABLE-TOTAL 0 T=
 

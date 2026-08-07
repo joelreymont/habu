@@ -618,9 +618,13 @@ $54000000 constant BCOND-FORM
    s" NCH-BUF 4 NCH-BSUM" EV-N ;
 
 : BSUM-CASE ( -- )
+   \ SIX POSITIONS AND NOT SEVEN. One of the loop's blocks does nothing before
+   \ its branch, so every branch that named it now names the far end and it is
+   \ left out of the order entirely - see ORDER-BLOCKS. The answers are what this
+   \ case is really about and they are unchanged.
    s" a definition that reads bytes in a loop compiles and runs" T-LABEL
    NFIX:BINDING [: BSUM-BODY ;] IR-CTX:WITH-CONTEXT
-   HABU-SUM T= 0 T= HABU-SUM T= 7 T= ;
+   HABU-SUM T= 0 T= HABU-SUM T= 6 T= ;
 
 \ ---- a definition that leaves from the middle of a loop ----------------------
 \ The same run over a scan that stops as soon as it finds the byte it wants.
@@ -662,9 +666,12 @@ $54000000 constant BCOND-FORM
    s" NCH-BUF 4 98 NCH-BFIND" EV-N ;
 
 : BFIND-CASE ( -- )
+   \ SIX POSITIONS AND NOT ELEVEN. A loop with an early exit builds the most
+   \ do-nothing blocks of any shape here - the exit stub, the join, and the
+   \ latch - and all of them are branched past and never written.
    s" a definition that leaves from the middle of a loop compiles and runs" T-LABEL
    NFIX:BINDING [: BFIND-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= -1 T= 2 T= 11 T= ;
+   2 T= -1 T= 2 T= 6 T= ;
 
 \ ---- a definition that calls itself ------------------------------------------
 \ The same run over the one shape that needs a call: `RECURSE`, which is a call
@@ -729,9 +736,13 @@ $54000000 constant BCOND-FORM
    s" 1 NCH-FACT" EV-N ;
 
 : FACT-CASE ( -- )
+   \ THREE POSITIONS AND NOT FIVE. The two blocks the recursion's early exit
+   \ leaves empty are branched past, which is also what closes the fall-through
+   \ this routine used to miss: they were the zero-length blocks that stood
+   \ between a block and its successor and made the branch over them survive.
    s" a definition that calls itself compiles and runs" T-LABEL
    NFIX:BINDING [: FACT-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 3628800 T= 1 T= 3628800 T= 0 T= 5 T= ;
+   1 T= 3628800 T= 1 T= 3628800 T= 0 T= 3 T= ;
 
 \ ---- a definition that does not fit in its registers -------------------------
 \ The same run over a routine of more than one block whose values do not all fit
