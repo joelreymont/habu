@@ -20,12 +20,12 @@ private
 public
 600000 constant TIMEOUT-MS
 private
-40 constant TR-PHASES
+41 constant TR-PHASES
 32 constant TR-NUM-CAP
 $100 constant TR-HOST-CAP
 public
 $2 constant CANDIDATE-HOST-PHASES
-$1A constant EARLY-HOST-PHASES
+$1C constant EARLY-HOST-PHASES
 $3 constant LATE-PHASES
 private
 0 constant TR-GROUP-SEQ
@@ -81,7 +81,14 @@ $9 , $E ,
 create TR-LATE-ORDER
 $3 , $14 , $10 ,
 
+\ The proof slice ($28) leads: its own long pole is the instruction parity gate
+\ at about a minute and a half, so anything that starts ahead of it lengthens the
+\ run. The tail slice ($4) follows it because it too is a spawned slice with
+\ child-engine and build members, and because until this change NOTHING started
+\ it at all - its five registered suites were selected by SUITE-TAIL? and then
+\ never run, which is the same dark corner the unscheduled labels sat in.
 create TR-EARLY-HOST-ORDER
+$28 , $4 ,
 $8 , $7 , $24 , $25 , $26 , $27 , $16 , $15 ,
 $1A , $C , $11 , $23 , $1E , $22 , $B , $A ,
 $1F , $21 ,
@@ -733,6 +740,9 @@ private
 : TR-STDLIB-TAIL-ARGS ( -- )
    s" tail" TR-STDLIB-SLICE-ARGS ;
 
+: TR-STDLIB-PROOF-ARGS ( -- )
+   s" proof" TR-STDLIB-SLICE-ARGS ;
+
 : TR-ENGINE-ARGS ( -- )
    TR-COMMON
    s" lib/build.f"  >LEN PROC-ARGV+
@@ -854,6 +864,7 @@ public
       37 of s" GROUP: stdlib/tool-lint/aot-signature [parallel]" endof
       38 of s" GROUP: stdlib/tool-lint/names [parallel]" endof
       39 of s" GROUP: stdlib/tool-lint/bundle-json [parallel]" endof
+      40 of s" native stdlib proof slice" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -900,6 +911,7 @@ private
       37 of s" gate-stdlib-tool-lint-aot" endof
       38 of s" gate-stdlib-tool-lint-names" endof
       39 of s" gate-stdlib-tool-lint-bundle" endof
+      40 of s" gate-stdlib-proof" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -945,6 +957,7 @@ private
       37 of TR-STDLIB-TOOL-ARGS endof
       38 of TR-STDLIB-TOOL-ARGS endof
       39 of TR-STDLIB-TOOL-ARGS endof
+      40 of TR-STDLIB-PROOF-ARGS endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -987,6 +1000,7 @@ private
       37 of s" tool-lint-aot" endof
       38 of s" tool-lint-names" endof
       39 of s" tool-lint-bundle" endof
+      40 of s" proof" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1020,6 +1034,7 @@ private
       37 of TR-TRUE endof
       38 of TR-TRUE endof
       39 of TR-TRUE endof
+      40 of TR-TRUE endof
       TR-FALSE swap
    endcase ;
 
@@ -1081,6 +1096,10 @@ public
       exit
    then ;
 
+\ TRUE is the default here, so a new phase that must spawn its own process has to
+\ be named below or it silently forks the resident worker instead - and
+\ test/run-worker-stdlib.f would then throw E-TBL-BOUNDS for an id it has no arm
+\ for. Phase 40 spawns `test/gate-stdlib.f -- proof`, so it belongs in this list.
 : PHASE-RESIDENT? ( idx -- bool ) {: idx:idx :}
    idx IDX>N case
       0 of TR-FALSE endof
@@ -1089,6 +1108,7 @@ public
       15 of TR-FALSE endof
       18 of TR-FALSE endof
       19 of TR-FALSE endof
+      40 of TR-FALSE endof
       TR-TRUE swap
    endcase ;
 

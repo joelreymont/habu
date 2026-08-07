@@ -356,6 +356,7 @@ public
    s" tools/maki-dep-lint-core.f" GSI-REQUIRE
    s" tools/namespace-lint-core.f" GSI-REQUIRE
    s" tools/error-code-lint-core.f" GSI-REQUIRE
+   s" tools/lint/schedule-lint.f" GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-LINT-TOOLS ( -- )
@@ -490,12 +491,25 @@ public
    \ compiled: the branches that go to another branch, and the ones that reach
    \ the instruction already after them.
    s" test/compiler/codegen-branch-inventory.f" GSI-FORK-INCLUDE
+   \ And the third instrument built on that same walk: the instructions that
+   \ exist only to move arguments and results through the caller's data stack,
+   \ split by where they sit. It belongs beside its two named siblings because
+   \ all three read emitted code through one walk over routines the chain really
+   \ compiled, and because its near-miss cases are decided by the register and
+   \ immediate decoders the other two own.
+   s" test/compiler/codegen-callsite-inventory.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the code generator comparison - bytes, computed
    \ values, the two generators head to head, the committed table's structure.
    \ The timing column is left out here because this group runs its members in
    \ parallel; see the note on the codegen-compare entry in
    \ test/gate-stdlib-cases.f, and run the timed check by hand.
    s" tools/codegen-compare-test.f" GSI-FORK-INCLUDE
+   \ The third member of the same registration, and the one that has to run
+   \ HERE: it asks whether the clang reference column survives a fork, through
+   \ the same test/gate-pool.f the gate forks its members with. Standalone there
+   \ is no fork, so standalone can never fail; scheduling it beside the column it
+   \ guards is what makes the answer worth anything.
+   s" test/codegen-fork-reference-test.f" GSI-FORK-INCLUDE
    \ And the third column beside it: the symbol reader the reference column's
    \ bytes come out of, the chain's own committed baseline, and the twins
    \ themselves on the real corpora. No assertion in it reads a clock either.
@@ -563,13 +577,33 @@ public
    s" test/engine-error-package.f" GSI-FORK-INCLUDE
    s" test/catch-frame.f" GSI-FORK-INCLUDE
    \ test/pre-trust-defer.f is deliberately NOT fork-included: four child-engine
-   \ boots (~1s) measured over the fast-tier budget; the standalone stdlib gate
-   \ runs its registered suite.
+   \ boots (~1s) measured over the fast-tier budget. It runs in the TAIL slice
+   \ instead - SUITE-TAIL? in test/gate-stdlib-lib.f selects its label, and
+   \ phase 4 of test/run-lib.f spawns that slice. The earlier wording here said
+   \ "the standalone stdlib gate runs its registered suite", which named no
+   \ scheduled runner at all: the only slice that reaches an unselected label is
+   \ the bare (ALL) one, and no phase of test/run.f has ever run it.
    s" test/export-package.f" GSI-FORK-INCLUDE
    s" test/gate-runner-entry-test.f" GSI-FORK-INCLUDE
    s" lib/process-test.f" GSI-FORK-INCLUDE
    s" lib/process-command-test.f" GSI-FORK-INCLUDE
    s" lib/process-pty-handle-test.f" GSI-FORK-INCLUDE
+   \ The rest of the process, tasking and standalone-load family, which had been
+   \ registered in test/gate-stdlib-cases.f under labels no slice selects. Each
+   \ one forks, spawns a child engine, or drives a pty, so it belongs with the
+   \ three process members above rather than in a pure group: the fork isolates
+   \ its signal handlers, its watchers and its child engines from the runner.
+   s" test/atomics-smoke.f" GSI-FORK-INCLUDE
+   s" test/run-in-stack-smoke.f" GSI-FORK-INCLUDE
+   s" test/getpid-smoke.f" GSI-FORK-INCLUDE
+   s" test/proc-watch-smoke.f" GSI-FORK-INCLUDE
+   s" test/proc-signal-smoke.f" GSI-FORK-INCLUDE
+   s" lib/process-fork-test.f" GSI-FORK-INCLUDE
+   s" test/process-pty-io-smoke.f" GSI-FORK-INCLUDE
+   s" lib/task-test.f" GSI-FORK-INCLUDE
+   s" tools/standalone-load-test.f" GSI-FORK-INCLUDE
+   s" test/lint-cli-standalone-load.f" GSI-FORK-INCLUDE
+   s" tools/object-image-test.f" GSI-FORK-INCLUDE
    s" test/gate-env-stdin-tty-test.f" GSI-FORK-INCLUDE
    \ engine-gate negative regressions: these lived only in gate-stdlib-cases.f
    \ suites whose labels no slice selects, so the full runner never executed
@@ -612,6 +646,31 @@ public
    s" lib/codegen-test.f" GSI-FORK-INCLUDE
    s" lib/regex-test.f" GSI-FORK-INCLUDE
    s" lib/map-test.f" GSI-FORK-INCLUDE
+   \ The rest of the library's own unit tests. Every one of them was registered
+   \ in test/gate-stdlib-cases.f under a label no slice predicate selects, so the
+   \ only slice that could have reached them is the bare (ALL) one, which no
+   \ phase of test/run.f runs - they had been green-by-assumption rather than
+   \ green. They are the same kind as their neighbours above (one library file,
+   \ no child engine, under a second and a half each), so they join the same
+   \ parallel fork group.
+   s" lib/ffi-test.f" GSI-FORK-INCLUDE
+   s" lib/float-test.f" GSI-FORK-INCLUDE
+   s" lib/fmath-test.f" GSI-FORK-INCLUDE
+   s" lib/fmt-test.f" GSI-FORK-INCLUDE
+   s" lib/sort-test.f" GSI-FORK-INCLUDE
+   s" lib/stats-test.f" GSI-FORK-INCLUDE
+   s" lib/hashmap-test.f" GSI-FORK-INCLUDE
+   s" lib/prelude-test.f" GSI-FORK-INCLUDE
+   s" lib/adt/option-test.f" GSI-FORK-INCLUDE
+   s" lib/adt/result-test.f" GSI-FORK-INCLUDE
+   s" lib/cad-num-arithmetic-test.f" GSI-FORK-INCLUDE
+   s" lib/engine-id-test.f" GSI-FORK-INCLUDE
+   s" lib/object-cache-test.f" GSI-FORK-INCLUDE
+   s" lib/object-index-test.f" GSI-FORK-INCLUDE
+   s" lib/object-resolve-test.f" GSI-FORK-INCLUDE
+   s" lib/object-link-test.f" GSI-FORK-INCLUDE
+   s" lib/layout/box-test.f" GSI-FORK-INCLUDE
+   s" lib/test/src-shape-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
 
 : GSI-LINT-LIBS-PTX ( -- )
@@ -636,6 +695,11 @@ public
    s" lib/ptx/cpp-pipe-step-test.f" GSI-INCLUDE
    s" lib/ptx/cpp-slot-test.f" GSI-INCLUDE
    s" lib/ptx/collective-test.f" GSI-INCLUDE
+   \ The uniformity and block-uniform barrier model, beside the collectives
+   \ because a collective is what a block-uniform barrier orders. Its claims are
+   \ positive certifications plus their paired rejections, so it belongs in this
+   \ group rather than the negative one, which owns whole files of refusals.
+   s" lib/ptx/uniform-barrier-test.f" GSI-INCLUDE
    s" lib/ptx/cg-collective-test.f" GSI-INCLUDE
    s" lib/ptx/cg-activation-test.f" GSI-INCLUDE
    s" lib/ptx/autograd-test.f" GSI-INCLUDE
@@ -660,7 +724,11 @@ public
    s" lib/ptx/cpp-slot-neg-test.f" GSI-INCLUDE
    s" lib/ptx/cg-mma-slot-neg-test.f" GSI-INCLUDE
    s" lib/ptx/gemm-checked-neg-test.f" GSI-INCLUDE
-   s" lib/ptx/attention-checked-neg-test.f" GSI-INCLUDE ;
+   s" lib/ptx/attention-checked-neg-test.f" GSI-INCLUDE
+   \ The gradient-extent refusals: a mismatched gradient span must not certify.
+   \ Same kind as the rest of this group - a file whose subject is what the
+   \ checker rejects - so it belongs here and not with the positive tiles.
+   s" lib/ptx/autograd-neg-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-LIBS-PTX-TOOL ( -- )
    s" stdlib/lint-libs/ptx-toolchain" GSI-GROUP-SEQ GSI-GROUP-HEADER \ ( -- )

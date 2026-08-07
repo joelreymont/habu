@@ -68,6 +68,16 @@ SUITE error-code-lint-fixtures
    tools/error-code-lint-test.f
 ;SUITE
 
+\ The scheduling closure over this very file: every registration below must be
+\ reachable by a slice predicate in test/gate-stdlib-lib.f or by a gate fork
+\ list under test/. The tool derives both sides from those real sources through
+\ the shared lexer, so a registration nobody scheduled reds the gate instead of
+\ sitting dark. It runs in the lint-tools body beside the other lint entries.
+SUITE schedule-lint
+   tools/lint/schedule-lint.f
+   tools/lint/schedule-lint-test.f
+;SUITE
+
 SUITE text-foundation-fixtures
    tools/lint/text-foundation-test.f
 ;SUITE
@@ -257,6 +267,12 @@ SUITE compiler-native-immediate
 \ what is checked is that every row has a twin and every twin answers what the
 \ engine's word answered. A host without a C compiler runs the first two and
 \ says so about the third; it does not fail.
+\
+\ The third file is the fork question, and it had been the one member of this
+\ registration that nothing scheduled: it asks whether the reference column
+\ survives a fork, which is exactly the thing a standalone run cannot ask. All
+\ three now sit in the resident tail-pure fork list, so the registration is
+\ covered file by file rather than by a label nobody selects.
 SUITE codegen-compare
    tools/codegen-compare-test.f
    tools/codegen-compare-clang-test.f
@@ -302,7 +318,9 @@ SUITE codegen-workload
 \ comparison measuring the fourth corpus against the third corpus's baseline,
 \ which is exactly what happened when it was first listed there. No assertion it
 \ makes reads a clock - every one of them is a throw code from the chain - so
-\ scheduling it schedules no flake.
+\ scheduling it schedules no flake. It runs in the proof slice with the parity
+\ gates: at 26s through the real runner it is a minute-scale member, not a
+\ fast-tier one.
 SUITE codegen-spill-probe
    tools/codegen-spill-probe.f
 ;SUITE
@@ -448,50 +466,61 @@ SUITE compiler-native-vocab
 ;SUITE
 
 \ The identity parity gate compiles formal/Common with the Rocq proof assistant
-\ and spawns child engines, so it runs here in the standalone stdlib gate and is
-\ not mirrored into the resident fast tier.
+\ and spawns child engines, so it runs in the PROOF slice - SUITE-PROOF? in
+\ test/gate-stdlib-lib.f selects it, and phase 40 of test/run-lib.f spawns that
+\ slice - and is not mirrored into the resident fast tier. The seven proof gates
+\ and the spill probe below share that slice; it is scheduled first in the early
+\ order because the instruction gate is the run's long pole.
+\
+\ The earlier wording on these eight entries said they "run here in the
+\ standalone stdlib gate", which named no runner: the only slice that reaches a
+\ label no predicate selects is the bare (ALL) one, and no phase of test/run.f
+\ has ever run it. They were unscheduled, not deferred.
 SUITE compiler-ir-id-proof
    test/compiler/ir-id-proof.f
 ;SUITE
 
 \ The interning parity gate compiles formal/Common/Interning.v with the Rocq
-\ proof assistant for the same reason, so it runs here alongside its sibling.
+\ proof assistant for the same reason, so it runs in the proof slice alongside
+\ its sibling.
 SUITE compiler-ir-intern-proof
    test/compiler/ir-intern-proof.f
 ;SUITE
 
 \ The structure parity gate compiles formal/Common/Structure.v with the Rocq
-\ proof assistant for the same reason, so it runs here alongside its two
-\ siblings.
+\ proof assistant for the same reason, so it runs in the proof slice alongside
+\ its two siblings.
 SUITE compiler-ir-structure-proof
    test/compiler/ir-structure-proof.f
 ;SUITE
 
 \ The storage and lifetime parity gate compiles formal/Common/Storage.v with the
-\ Rocq proof assistant for the same reason, so it runs here alongside its two
-\ siblings.
+\ Rocq proof assistant for the same reason, so it runs in the proof slice
+\ alongside its two siblings.
 SUITE compiler-ir-storage-proof
    test/compiler/ir-storage-proof.f
 ;SUITE
 
 \ The checker model parity gate compiles formal/Common/Effects.v and
 \ formal/Common/Control.v with the Rocq proof assistant for the same reason, so
-\ it runs here alongside its three siblings.
+\ it runs in the proof slice alongside its three siblings.
 SUITE checker-model-proof
    test/compiler/checker-model-proof.f
 ;SUITE
 
 \ The snapshot relocation parity gate compiles formal/Common/Reloc.v with the
-\ Rocq proof assistant for the same reason, so it runs here alongside its
-\ siblings.
+\ Rocq proof assistant for the same reason, so it runs in the proof slice
+\ alongside its siblings.
 SUITE compiler-reloc-proof
    test/compiler/reloc-proof.f
 ;SUITE
 
 \ The instruction-encoding parity gate compiles formal/Common/Insn.v with the
 \ Rocq proof assistant and spawns child engines for the encodings the shipped
-\ assembler refuses by ending the process, so it runs here in the standalone
-\ stdlib gate alongside its four siblings.
+\ assembler refuses by ending the process, so it runs in the proof slice
+\ alongside its four siblings. It is the slice's long pole: measured at roughly a
+\ minute and a half against the 120s per-suite budget on a loaded pool, which is
+\ why the slice gets a phase to itself and starts first.
 SUITE compiler-insn-proof
    test/compiler/insn-proof.f
 ;SUITE

@@ -77,6 +77,28 @@ REQUIRE-HARNESS
 : LINT-DEF ( -- )
    s" tools/lint/def-test.f" GSI-INCLUDE ;
 
+\ The other three tools/lint fixture files. Each is its own SUITE registration
+\ in test/gate-stdlib-cases.f and each gets its own fork for the reason written
+\ above: a test file's T-REPORT `die` exits the fork before GSI-INCLUDE can
+\ print its per-file FAIL line, so a shared fork would report every one of them
+\ under one label. One fork per registration keeps the FAIL line and the suite
+\ label the same name.
+: LINT-INTERN-SET ( -- )
+   s" tools/lint/set-test.f" GSI-INCLUDE ;
+
+: LINT-DIFF ( -- )
+   s" tools/lint/diff-test.f" GSI-INCLUDE ;
+
+: LINT-DIFF-FRAME ( -- )
+   s" tools/lint/diff-frame-test.f" GSI-INCLUDE ;
+
+\ The scheduling closure itself: every SUITE registration must be reachable by a
+\ slice predicate or by a gate fork list. The fixture file drives the scanner
+\ over synthetic sources and then enforces the live tree, so this one include is
+\ both halves.
+: SCHEDULE ( -- )
+   s" tools/lint/schedule-lint-test.f" GSI-INCLUDE ;
+
 : NAMESPACE ( -- )
    s" namespace-lint" [: NAMESPACE-LINT-STRICT ;] GSI-RUN
    s" tools/namespace-lint-test.f" GSI-INCLUDE ;
@@ -109,6 +131,10 @@ public
    s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: DOT ;] GT-POOL-START-FORK
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: MAKI ;] GT-POOL-START-FORK
    s" lint-tools/def" GSI-FORK-TIMEOUT-MS [: LINT-DEF ;] GT-POOL-START-FORK
+   s" lint-tools/intern-set" GSI-FORK-TIMEOUT-MS [: LINT-INTERN-SET ;] GT-POOL-START-FORK
+   s" lint-tools/diff" GSI-FORK-TIMEOUT-MS [: LINT-DIFF ;] GT-POOL-START-FORK
+   s" lint-tools/diff-frame" GSI-FORK-TIMEOUT-MS [: LINT-DIFF-FRAME ;] GT-POOL-START-FORK
+   s" lint-tools/schedule" GSI-FORK-TIMEOUT-MS [: SCHEDULE ;] GT-POOL-START-FORK
    s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: NAMESPACE ;] GT-POOL-START-FORK
    s" lint-tools/package-diff" GSI-FORK-TIMEOUT-MS [: PACKAGE-OWNERSHIP ;] GT-POOL-START-FORK
    s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: ERROR-CODE ;] GT-POOL-START-FORK

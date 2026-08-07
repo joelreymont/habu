@@ -19,6 +19,11 @@ package STDLIB-GATE
 6 constant SUITE-LINT-TOOLS-ID
 7 constant SUITE-LINT-LIBS-ID
 8 constant SUITE-LINT-ARTIFACTS-ID
+\ The proof slice: the parity gates that drive the Rocq proof assistant, plus the
+\ register allocator's spill probe. They are minutes of work between them and
+\ every one of them spawns children, so they get a slice of their own rather than
+\ a place in a fast tier whose neighbours finish in a second.
+9 constant SUITE-PROOF-ID
 
 variable SUITE-SLICE
 variable SUITE-SKIP-TOOL-LINTS
@@ -36,7 +41,7 @@ variable SUITE-TIMINGS
    0 0= 0= ;
 
 : SUITE-USAGE ( -- )
-   s" usage: test/gate-stdlib.f [lint|lint-tools|lint-artifacts|lint-libs|tool|check-cli|tail] [--pool-slots N] [--timings]" SUITE-USAGE-RC die ;
+   s" usage: test/gate-stdlib.f [lint|lint-tools|lint-artifacts|lint-libs|tool|check-cli|tail|proof] [--pool-slots N] [--timings]" SUITE-USAGE-RC die ;
 
 : SUITE-ARG$ ( -- ptr u8 n )
    SUITE-ARG-I @ SCRIPT-ARGV$ ;
@@ -96,6 +101,7 @@ private
    SUITE-ARG$ s" tool" STR= if SUITE-TOOL-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-ARG$ s" check-cli" STR= if SUITE-CHECK-CLI-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-ARG$ s" tail" STR= if SUITE-TAIL-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-ARG$ s" proof" STR= if SUITE-PROOF-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-SLICE-OPT ( -- )
@@ -193,6 +199,10 @@ private
    s" namespace-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" error-code-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" error-code-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" lint-intern-set" SUITE-LABEL= if SUITE-TRUE exit then
+   s" diff-parser" SUITE-LABEL= if SUITE-TRUE exit then
+   s" diff-frame-codec" SUITE-LABEL= if SUITE-TRUE exit then
+   s" schedule-lint" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-LINT-ARTIFACTS-LABEL? ( -- bool )
@@ -259,6 +269,27 @@ private
    SUITE-SLICE @ SUITE-CHECK-CLI-ID <> if SUITE-FALSE exit then
    s" check-cli-boundary" SUITE-LABEL= ;
 
+\ The tail slice runs one spawned child engine per suite through the pool, with
+\ the 120s per-suite budget above. That is what the entries below need and what
+\ the resident fast tier cannot give them: each boots child engines of its own,
+\ writes snapshots, or drives a whole build.
+: SUITE-TAIL-ENGINE? ( -- bool )
+   s" pre-trust-defer" SUITE-LABEL= if SUITE-TRUE exit then
+   s" top-row-hook" SUITE-LABEL= if SUITE-TRUE exit then
+   s" checker-scan-index" SUITE-LABEL= if SUITE-TRUE exit then
+   s" snapshot-writer" SUITE-LABEL= if SUITE-TRUE exit then
+   s" stdlib-standalone-load" SUITE-LABEL= if SUITE-TRUE exit then
+   s" aot-wid-restore" SUITE-LABEL= if SUITE-TRUE exit then
+   s" using-import" SUITE-LABEL= if SUITE-TRUE exit then
+   s" load-reject-diag" SUITE-LABEL= if SUITE-TRUE exit then
+   s" engine-candidate-resolver" SUITE-LABEL= if SUITE-TRUE exit then
+   SUITE-FALSE ;
+
+: SUITE-TAIL-BUILD? ( -- bool )
+   s" build-fixpoint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" boot-pin-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" hb-build-fixtures" SUITE-LABEL= ;
+
 : SUITE-TAIL? ( -- bool )
    SUITE-SLICE @ SUITE-TAIL-ID <> if SUITE-FALSE exit then
    s" source-stdlib-stdin" SUITE-LABEL= if SUITE-TRUE exit then
@@ -266,6 +297,25 @@ private
    s" argv-stdlib-script-args" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdlib-source-default" SUITE-LABEL= if SUITE-TRUE exit then
    s" pointer-storage" SUITE-LABEL= if SUITE-TRUE exit then
+   SUITE-TAIL-ENGINE? if SUITE-TRUE exit then
+   SUITE-TAIL-BUILD? ;
+
+\ The Rocq parity gates and the spill probe. Each one compiles a formal model
+\ with an external proof assistant or migrates definitions of its own, and the
+\ measured walls run from 26s to over a minute and a half, so they own a slice
+\ and a phase rather than sharing a fast tier's budget with second-long
+\ neighbours. codegen-compare is deliberately NOT here: its three files are
+\ scheduled through the resident tail-pure fork group instead.
+: SUITE-PROOF? ( -- bool )
+   SUITE-SLICE @ SUITE-PROOF-ID <> if SUITE-FALSE exit then
+   s" compiler-ir-id-proof" SUITE-LABEL= if SUITE-TRUE exit then
+   s" compiler-ir-intern-proof" SUITE-LABEL= if SUITE-TRUE exit then
+   s" compiler-ir-structure-proof" SUITE-LABEL= if SUITE-TRUE exit then
+   s" compiler-ir-storage-proof" SUITE-LABEL= if SUITE-TRUE exit then
+   s" checker-model-proof" SUITE-LABEL= if SUITE-TRUE exit then
+   s" compiler-reloc-proof" SUITE-LABEL= if SUITE-TRUE exit then
+   s" compiler-insn-proof" SUITE-LABEL= if SUITE-TRUE exit then
+   s" codegen-spill-probe" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-RUN? ( -- bool )
@@ -274,6 +324,7 @@ private
    SUITE-TOOL? if SUITE-TRUE exit then
    SUITE-CHECK-CLI? if SUITE-TRUE exit then
    SUITE-TAIL? if SUITE-TRUE exit then
+   SUITE-PROOF? if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-HB ( -- )
