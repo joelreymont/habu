@@ -5523,3 +5523,27 @@ key asked twice: the count predicts the fold with exactly the key the
 emission folds by, so the two halves of one pass cannot diverge. When a
 pass gains a transform, every count it is admitted under must be derived
 through that transform, not beside it.
+
+## A two-file form cannot reuse a one-type schema definer (2026-08-08)
+
+The D-file addressed accesses span both register files - an X base, a D
+transfer - and the inherited draft declared them through a definer written
+with ONE type, which silently said the ADDRESS is floating. The failure
+only surfaces when an operand reaches the allocator. The schema test must
+assert the refusing half too ("operand 0 is NOT the floating type"): a row
+that only asserts the accepting half passes when both types are one
+identity. And adding any instruction form silently breaks every
+measurement tool that classifies emitted words by encoding - grep for the
+encoder name AND the raw base constants, because the tools are written in
+both styles; one of the blind counters here was pinning a number that was
+already wrong (the engine always stored doubles with str d9, and SGD's
+data-stack store count was pinned at zero).
+
+## Two lanes, one test file, one silent duplicate (2026-08-08)
+
+Two concurrent lanes each added an identical helper to the same test file
+in different places; jj's textual merge kept both without a conflict, and
+only the duplicate-definition guard turned it red - in the full gate, not
+in either lane's own green run. Overlapping-file lanes reconcile at
+integration by GATE, not by conflict-freeness: a clean automerge of the
+same name is still a red tree.
