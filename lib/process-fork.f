@@ -22,6 +22,7 @@
 
 require lib/errors.f
 require lib/process.f
+require lib/fs-mutate.f                  \ the fs cleanup table a forked child must not inherit; see ENTER-CHILD
 
 package PROC-FORK
 
@@ -41,6 +42,25 @@ private
 \ so the fork wrapper, which is the one place that knows, records it.
 variable CHILD-FLAG
 
+\ Everything a new process entered by fork owes itself, run on the child's very
+\ first instruction after the fork and before any caller code. The gate's
+\ process-primitive lint (tools/process-primitive-lint.f) confines the `fork`
+\ primitive to the lib/process*.f family, and RAW is its only call site in the
+\ tree, so this is the one seam every forked child in the system passes through.
+\
+\ lib/fs-mutate.f's cleanup table is process-owned state: its entries name paths
+\ THIS process created and promised to remove, and CLEANUP-RUN deletes every
+\ entry in it. A child inherits a copy of that table, but not the ownership it
+\ records - those paths still belong to the live parent - so running an
+\ inherited entry deletes somebody else's files. Emptying the table here leaves
+\ the child cleaning up exactly what the child registers, which is the only
+\ thing it owns. (Measured before this reset: a gate pool member that ran its
+\ own cleanups also ran the driver's `GT-ROOT CLEANUP-TREE+` and removed the
+\ whole capture root out from under its live siblings.)
+: ENTER-CHILD ( -- )
+   -1 CHILD-FLAG !
+   CLEANUP-RESET ;
+
 public
 
 \ Was this image entered by fork rather than by exec? See CHILD-FLAG.
@@ -49,7 +69,7 @@ public
 
 : RAW ( -- pid )
    fork >PID PROCESS-TRACE:FORKED {: pid:pid :}
-   pid PID>N 0= if -1 CHILD-FLAG ! then
+   pid PID>N 0= if ENTER-CHILD then
    pid ;
 
 : CHECKED ( -- pid )

@@ -667,6 +667,125 @@ variable GPT-GK-SENTINEL-U
    0 GT-POOL-RED-CODE-PTR @ SIGKILL T=
    GT-CLEANUP ;
 
+\ Fork-inherited cleanup registrations. lib/fs-mutate.f's cleanup table records
+\ the paths THIS process owns and CLEANUP-RUN deletes every entry in it, so a
+\ fork child that inherits the parent's entries and runs its own cleanups
+\ deletes paths the live parent still owns. In the gate that was the driver's
+\ whole capture root, removed out from under its running siblings (E-FS-OPEN /
+\ E-FS-IO on a rotating victim). PROC-FORK:RAW empties the table in the child,
+\ so a child cleans up exactly what the child registered.
+\
+\ The evidence lives in a private temp tree that is deliberately NOT registered
+\ for cleanup: an unfixed child also runs the inherited GT-ROOT entry, and
+\ evidence kept under GT-ROOT would be erased by the very bug it records.
+create GPT-FC-EV FS-PATH-CAP allot        \ evidence root; never registered
+create GPT-FC-PARENT FS-PATH-CAP allot    \ registered by the parent, before the fork
+create GPT-FC-PARENT-FILE FS-PATH-CAP allot
+create GPT-FC-CHILD FS-PATH-CAP allot     \ registered by the child, after the fork
+create GPT-FC-CHILD-FILE FS-PATH-CAP allot
+create GPT-FC-DEPTH FS-PATH-CAP allot     \ one byte: the table depth the child inherited
+create GPT-FC-DONE FS-PATH-CAP allot      \ written after the child's CLEANUP-RUN returns
+create GPT-FC-BYTE 8 allot                \ a whole cell, so what follows stays aligned
+variable GPT-FC-EV-U
+variable GPT-FC-PARENT-U
+variable GPT-FC-PARENT-FILE-U
+variable GPT-FC-CHILD-U
+variable GPT-FC-CHILD-FILE-U
+variable GPT-FC-DEPTH-U
+variable GPT-FC-DONE-U
+
+: GPT-FC-EV$ ( -- ptr u8 n )
+   GPT-FC-EV GPT-FC-EV-U @ ;
+
+: GPT-FC-PARENT$ ( -- ptr u8 n )
+   GPT-FC-PARENT GPT-FC-PARENT-U @ ;
+
+: GPT-FC-PARENT-FILE$ ( -- ptr u8 n )
+   GPT-FC-PARENT-FILE GPT-FC-PARENT-FILE-U @ ;
+
+: GPT-FC-CHILD$ ( -- ptr u8 n )
+   GPT-FC-CHILD GPT-FC-CHILD-U @ ;
+
+: GPT-FC-CHILD-FILE$ ( -- ptr u8 n )
+   GPT-FC-CHILD-FILE GPT-FC-CHILD-FILE-U @ ;
+
+: GPT-FC-DEPTH$ ( -- ptr u8 n )
+   GPT-FC-DEPTH GPT-FC-DEPTH-U @ ;
+
+: GPT-FC-DONE$ ( -- ptr u8 n )
+   GPT-FC-DONE GPT-FC-DONE-U @ ;
+
+: GPT-FC-EV! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a GPT-FC-EV u BYTE-COPY
+   u GPT-FC-EV-U ! ;
+
+: GPT-FC-SUB! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
+   {: base:ptr baseu:n name:ptr nameu:n dst:ptr up:ptr :}
+   base baseu name nameu dst JOIN-PATH up ! ;
+
+: GPT-FC-PATHS! ( -- )
+   s" hb-fork-cleanup" TMPDIR-MKDIR GPT-FC-EV!
+   GPT-FC-EV$ s" parent" GPT-FC-PARENT GPT-FC-PARENT-U GPT-FC-SUB!
+   GPT-FC-PARENT$ s" keep" GPT-FC-PARENT-FILE GPT-FC-PARENT-FILE-U GPT-FC-SUB!
+   GPT-FC-EV$ s" child" GPT-FC-CHILD GPT-FC-CHILD-U GPT-FC-SUB!
+   GPT-FC-CHILD$ s" mark" GPT-FC-CHILD-FILE GPT-FC-CHILD-FILE-U GPT-FC-SUB!
+   GPT-FC-EV$ s" depth" GPT-FC-DEPTH GPT-FC-DEPTH-U GPT-FC-SUB!
+   GPT-FC-EV$ s" done" GPT-FC-DONE GPT-FC-DONE-U GPT-FC-SUB! ;
+
+: GPT-FC-REGISTER-PARENT ( -- )
+   GPT-FC-PARENT$ MAKE-DIRS
+   GPT-FC-PARENT-FILE$ s" keep" WRITE-ALL
+   GPT-FC-PARENT$ CLEANUP-TREE+ ;
+
+\ The fork worker records the cleanup depth it inherited - one byte, written
+\ before it touches the table - then registers and runs its OWN cleanup. It
+\ asserts nothing: a failed assertion in a fork child still exits 0, so every
+\ verdict belongs to the parent.
+: GPT-FC-WORKER ( -- )
+   FS-MUT-CLEANUP-N @ {: depth:n :}
+   depth 0 < if E-FS-CAPACITY throw then
+   depth FS-MUT-CLEANUP-MAX > if E-FS-CAPACITY throw then
+   depth GPT-FC-BYTE c!
+   GPT-FC-DEPTH$ GPT-FC-BYTE 1 WRITE-ALL
+   GPT-FC-CHILD$ MAKE-DIRS
+   GPT-FC-CHILD-FILE$ s" mark" WRITE-ALL
+   GPT-FC-CHILD$ CLEANUP-TREE+
+   CLEANUP-RUN
+   GPT-FC-DONE$ s" done" WRITE-ALL ;
+
+\ Poison the byte before reading it, so a short or empty read cannot pass for a
+\ recorded depth of 0, and demand exactly the one byte the child wrote.
+: GPT-FC-DEPTH@ ( -- n )
+   $FF GPT-FC-BYTE c!
+   GPT-FC-DEPTH$ GPT-FC-BYTE 1 READ-ALL {: got:n :}
+   got 1 <> if E-FS-IO throw then
+   GPT-FC-BYTE c@ ;
+
+: GPT-FC-CASE ( -- )
+   s" gate-pool-fork-cleanup" GT-START     \ a registered capture root: the driver's own shape
+   GPT-FC-PATHS!
+   GPT-FC-REGISTER-PARENT
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   s" fork cleanup worker" GPT-TIMEOUT-MS [: GPT-FC-WORKER ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN
+   s" fork cleanup: the child inherits an empty cleanup table" T-LABEL
+   GPT-FC-DEPTH@ 0 T=
+   s" fork cleanup: the child ran its own cleanup" T-LABEL
+   GPT-FC-CHILD$ EXISTS? TFALSE
+   s" fork cleanup: the child ran to completion" T-LABEL
+   GPT-FC-DONE$ FILE? TTRUE
+   s" fork cleanup: the parent's directory survives the child" T-LABEL
+   GPT-FC-PARENT$ DIR? TTRUE
+   s" fork cleanup: the parent's file survives the child" T-LABEL
+   GPT-FC-PARENT-FILE$ FILE? TTRUE
+   GT-CLEANUP
+   s" fork cleanup: the parent's own run removes what it registered" T-LABEL
+   GPT-FC-PARENT$ EXISTS? TFALSE
+   GPT-FC-EV$ REMOVE-TREE ;
+
 \ gate-stats attribution: with a timeout hook installed (as run-lib does), a
 \ pool-timed-out slot writes a distinct `pool-timeout` gate-stats.tsv row so the
 \ contended-host kill is attributable in machine RCA, not only on the RED: line.
@@ -715,6 +834,7 @@ variable GPT-GK-SENTINEL-U
    GPT-GROUP-KILL-CASE
    GPT-WAIT-NEG-CASE
    GPT-EXTERNAL-KILL-CASE
+   GPT-FC-CASE
    GPT-KEPT-ROOT-CASE
    GPT-BATTERY-REPORT
    T-REPORT
