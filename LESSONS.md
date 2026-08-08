@@ -5547,3 +5547,18 @@ only the duplicate-definition guard turned it red - in the full gate, not
 in either lane's own green run. Overlapping-file lanes reconcile at
 integration by GATE, not by conflict-freeness: a clean automerge of the
 same name is still a red tree.
+
+## Process-global registries and fork (2026-08-08)
+
+A child inherits the parent's cleanup table but not the ownership it
+records, so any "clean up everything I registered" sweep in a child
+destroys the parent's files. The repair belongs in the child arm of the
+SINGLE fork call site - never per-caller guards - and the primitive-
+confinement lint is what makes "single call site" a fact instead of a
+hope. The bug hid for so long because GT-START happens to call
+CLEANUP-RESET, accidentally shielding every child that starts its own
+capture root: when a bug is masked by an unrelated reset, look for the
+seam that should have done that reset on purpose. Corollary for tests:
+assertions inside a fork child are worthless (a failed assert still
+exits 0) - the parent owns every verdict, and the evidence must live
+where the bug under test cannot erase it.
