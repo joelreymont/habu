@@ -5495,3 +5495,31 @@ the fee. Bonus finding from the same refusal: TINY-CALLEE's gap is clang
 CLOSED-FORMING the loop, not inlining - the gap table without mechanism
 attribution mis-aimed the whole plan's first item.
 
+
+## Correlate the flake with one bit, then keep the evidence (2026-08-08)
+
+A gate red that "rotates its victim" inside one parallel group looked like
+timing flake. Splitting runs on a single environment bit - HB_TMP set
+against unset - came back 3/3 green against 3/3 red, which is not flake,
+it is a switch. The switch named the mechanism: the default-TMPDIR arm of
+TR-START registers the gate root in lib/fs-mutate.f's cleanup table,
+forked members inherit that table, and the first in-gate tests that call
+CLEANUP-RUN (the newly scheduled object-* members) executed the DRIVER's
+registration and deleted the capture root under their siblings. Two
+practices made the diagnosis cheap: HB_TMP keeps the capture root (the
+default root cleans itself up even on failure, destroying the evidence),
+and a phase can be run standalone by reproducing only its driver preamble
+- TEST:PREPARE plus GT-POOL-SLOTS!/GT-POOL-RESET - instead of the whole
+gate. Fix at the fork seam (children own no parent registrations), never
+per-test.
+
+## One key for the transform and its admission count (2026-08-08)
+
+The if-conversion draft added a region literal memo (a transform that
+makes two arms' constants one value) while its pressure count still
+assumed arms take turns - so the count and the emission disagreed about
+which values exist. The repair was not a bigger bound but the memo's own
+key asked twice: the count predicts the fold with exactly the key the
+emission folds by, so the two halves of one pass cannot diverge. When a
+pass gains a transform, every count it is admitted under must be derived
+through that transform, not beside it.
