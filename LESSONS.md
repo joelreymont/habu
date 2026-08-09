@@ -5590,3 +5590,16 @@ share one representation the fix is a FIELD, not a cleverer predicate
 (the obvious inference was falsified by the owning pass's own suite),
 and the field belongs where the value is BUILT, so no consumer can ever
 hold a contradiction. The tell was in the header all along.
+
+## Probe the bucket's entries, and check what the successes cost (2026-08-10)
+
+A refusal histogram keyed on the FIRST refusal and the token AS WRITTEN
+hid two different things: 147 of 325 "dialect gaps" were one case-fold
+issue wearing four spellings, and capitalised rename words did not
+refuse at all - they compiled into real calls where lower case costs
+zero, counted as successes. Before sizing a capability off a census
+bucket, open the bucket's own entries - and audit what the successes
+compiled TO, because a wrong success is worse than a refusal. Corollary
+that killed a phantom cut blocker: before designing new IR kinds for a
+construct, hand-elaborate its semantics into the shapes the chain
+already compiles; the "missing aggregate" was flat cells all along.
