@@ -12,3 +12,11 @@ GROOMED 2026-08-04 (dot-groom). Dangling blocker repointed. habu-feed-the-src-f7
 longer in the graph: it was closed and archived by commit 36fe20b26 "Close the tape-producer
 dot, dot the cert seal", so the source-tape producer this dot puts payloads onto is landed
 and the dependency is satisfied. Nothing blocks this dot now.
+
+STRING HALF LANDED 2026-08-09 with dot habu-compile-str-literals-30a7121b
+(merged at 3ba76ff0): the reader consumes string payloads, decodes escapes in
+the checker, and fills the tape's string-literal kind; test/compiler/
+native-feed.f pins the recorded body against what the compiled word pushes,
+including a re-lex-hostile fixture. REMAINING SCOPE OF THIS DOT IS THE
+CHARACTER HALF ONLY: [char] payloads still do not reach the tape's
+char-literal kind.
