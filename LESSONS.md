@@ -5603,3 +5603,15 @@ compiled TO, because a wrong success is worse than a refusal. Corollary
 that killed a phantom cut blocker: before designing new IR kinds for a
 construct, hand-elaborate its semantics into the shapes the chain
 already compiles; the "missing aggregate" was flat cells all along.
+
+## Ask the running engine which lookups fold (2026-08-10)
+
+The engine folds keywords and dictionary names but NOT locals - three
+lookups, two rules - and a four-line probe against the running engine
+settled in a minute what reading the assembler would have left arguable.
+Two census corollaries from the same lane: a spelling can leave the
+refusal histogram without the gap closing (the definition now refuses
+EARLIER under another code - diff the whole bucket table, not the
+spelling list); and "both compile" is not parity - only reading both
+frozen modules back, op by op, catches a body that compiled into worse
+code than its twin.
