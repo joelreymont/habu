@@ -5615,3 +5615,18 @@ EARLIER under another code - diff the whole bucket table, not the
 spelling list); and "both compile" is not parity - only reading both
 frozen modules back, op by op, catches a body that compiled into worse
 code than its twin.
+
+## A premise is only as good as its five-minute probe (2026-08-10)
+
+The rename-miscompile leaf said two published counts (terms vs cells)
+already distinguish an ADT bundle from loose values. They are equal in
+exactly the case that miscompiles - a user signature flattens the bundle
+- and the design built on that sentence had to be killed on measurement.
+The two-line probe comparing a bundled signature against a two-variable
+one with identical counts would have cost five minutes at design time.
+Probe the leaf's central premise before building on it, even (especially)
+when you wrote the leaf. Second find from the same lane: a ruling's
+condition can be necessary but not sufficient - "boundary falls inside a
+run" missed swap over two adjacent whole bundles; the built test covers
+the whole window. Workers should strengthen a ruling when the code shows
+it short, and say so.
