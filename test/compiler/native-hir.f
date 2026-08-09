@@ -822,8 +822,8 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 : MEMWORD-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-PLUS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" CELL-A" IR-BUILD:INTERN-SYMBOL HIR-WORD:FIXED-VALUE@
-   r c b s" CELL-A" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
+   r c b s" CELL-A" HIR-WORD:KEY-SPELL HIR-WORD:FIXED-VALUE@
+   r c b s" CELL-A" HIR-WORD:KEY-SPELL HIR-WORD:ADMIT
       HIR-MEANING:FIXED HIR-MEANING:EQ
    r c b s" @" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
       HIR-OPCODE:LOAD HIR-OPCODE:EQ
@@ -847,7 +847,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 : FIXED-CLASS-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c MODEL-PLUS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" CELL-A" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ drop ;
+   r c b s" CELL-A" HIR-WORD:KEY-SPELL HIR-WORD:OPCODE@ drop ;
 
 : FIXED-CLASS ( -- )
    BND [: FIXED-CLASS-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -879,10 +879,10 @@ $4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
 : CALLABLE-BODY ( IR-CTX:ctx -- n n n bool )
    {: c:IR-CTX:ctx :}
    c MODEL-CALL {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL HIR-WORD:ENTRY@
-   r c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL HIR-WORD:CALLEE-IN@
-   r c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL HIR-WORD:CALLEE-OUT@
-   r c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
+   r c b s" OTHER-W" HIR-WORD:KEY-SPELL HIR-WORD:ENTRY@
+   r c b s" OTHER-W" HIR-WORD:KEY-SPELL HIR-WORD:CALLEE-IN@
+   r c b s" OTHER-W" HIR-WORD:KEY-SPELL HIR-WORD:CALLEE-OUT@
+   r c b s" OTHER-W" HIR-WORD:KEY-SPELL HIR-WORD:ADMIT
       HIR-MEANING:CALLABLE HIR-MEANING:EQ ;
 
 : CALLABLE-CASE ( -- )
@@ -928,10 +928,10 @@ variable BC-OUT
 \ Asking a callable word which operation it is, when its whole meaning is a
 \ routine somewhere else; and asking a data word where its callee starts.
 : BC-AS-OPCODE ( -- )
-   BC-R  BC-C BC-B s" OTHER-W" IR-BUILD:INTERN-SYMBOL  HIR-WORD:OPCODE@ drop ;
+   BC-R  BC-C BC-B s" OTHER-W" HIR-WORD:KEY-SPELL  HIR-WORD:OPCODE@ drop ;
 
 : BC-AS-ENTRY ( -- )
-   BC-R  BC-C BC-B s" CELL-A" IR-BUILD:INTERN-SYMBOL  HIR-WORD:ENTRY@ drop ;
+   BC-R  BC-C BC-B s" CELL-A" HIR-WORD:KEY-SPELL  HIR-WORD:ENTRY@ drop ;
 
 \ The model both category errors are asked of: the dialect's vocabulary, one
 \ callable word and one data word, so each reader can be pointed at a row of the
@@ -1654,9 +1654,9 @@ variable BC-OUT
 
 : TJ-BODY ( IR-CTX:ctx -- bool bool bool )
    TAPE-BUILD {: v:IR-ARENA:view key:IR-ID:ir-module-key wr:IR-ARENA:arena :}
-   v key wr 0 HIR-WORD:ADMIT-TOKEN HIR-MEANING:LITERAL HIR-MEANING:EQ
-   v key wr 1 HIR-WORD:ADMIT-TOKEN HIR-MEANING:RENAME HIR-MEANING:EQ
-   v key wr 2 HIR-WORD:ADMIT-TOKEN HIR-MEANING:OP HIR-MEANING:EQ ;
+   v wr 0  v key 0 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN HIR-MEANING:LITERAL HIR-MEANING:EQ
+   v wr 1  v key 1 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN HIR-MEANING:RENAME HIR-MEANING:EQ
+   v wr 2  v key 2 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN HIR-MEANING:OP HIR-MEANING:EQ ;
 
 : TJ-CASE ( -- )
    s" a tape token is read as a literal, a rename, or an operation" T-LABEL
@@ -1665,7 +1665,7 @@ variable BC-OUT
 
 : TJ-UNMOD-BODY ( IR-CTX:ctx -- )
    TAPE-BUILD {: v:IR-ARENA:view key:IR-ID:ir-module-key wr:IR-ARENA:arena :}
-   v key wr 3 HIR-WORD:ADMIT-TOKEN drop ;
+   v wr 3  v key 3 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN drop ;
 
 : TJ-UNMOD ( -- )
    BND [: TJ-UNMOD-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1674,7 +1674,7 @@ variable BC-OUT
 \ literal's body and there is nothing there to resolve.
 : TJ-STRING-BODY ( IR-CTX:ctx -- bool )
    TAPE-BUILD {: v:IR-ARENA:view key:IR-ID:ir-module-key wr:IR-ARENA:arena :}
-   v key wr 4 HIR-WORD:ADMIT-TOKEN HIR-MEANING:STRING-LITERAL HIR-MEANING:EQ ;
+   v wr 4  v key 4 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN HIR-MEANING:STRING-LITERAL HIR-MEANING:EQ ;
 
 : TJ-STRING-CASE ( -- )
    s" a string-literal token is read as a string literal" T-LABEL
@@ -1683,7 +1683,7 @@ variable BC-OUT
 
 : TJ-CHAR-BODY ( IR-CTX:ctx -- )
    TAPE-BUILD {: v:IR-ARENA:view key:IR-ID:ir-module-key wr:IR-ARENA:arena :}
-   v key wr 5 HIR-WORD:ADMIT-TOKEN drop ;
+   v wr 5  v key 5 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN drop ;
 
 : TJ-CHAR ( -- )
    BND [: TJ-CHAR-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1693,6 +1693,121 @@ variable BC-OUT
    [: TJ-UNMOD ;] E-HIR-UNMODELED TTHROWSQ
    s" a character literal is a kind this subset does not model" T-LABEL
    [: TJ-CHAR ;] E-HIR-KIND TTHROWSQ ;
+
+\ ---- the case a body may write a dialect word in -----------------------------
+\ A row is keyed by the FOLD of its word's spelling, because that is the identity
+\ the engine gives a name: `IF` and `if` are one keyword to src/habu/habu2.f
+\ LKWCMP and `FOO` and `foo` are one word to src/habu/habu1.f's dictionary find.
+\ The cases here hold that key to the engine's own rule and to nothing wider.
+\
+\ THE FOLD MOVES `A`..`Z` AND NOTHING ELSE, WHICH IS WHY `[:` IS HERE. A fold
+\ written as "set $20 on every byte" agrees with the engine on every letter and
+\ turns `[:` into `{:` - the opener of a typed locals group - so a quotation the
+\ dialect cannot compile would be read as a locals group and the body around it
+\ would be taken apart as names. The two spellings are two keys here, and the
+\ near-miss beside it makes the same point about length: a key is the whole
+\ spelling folded, not a prefix of one.
+\
+\ AND THE TAPE'S OWN SYMBOL IS NOT FOLDED, which the raw-symbol cases pin from
+\ both sides. `DUP` and `dup` stay two identities in the module's interner - a
+\ refusal names the bytes the body wrote, and a string literal's body IS its
+\ symbol - so the fold is this table's key and not a rewrite of what the source
+\ said. A reader asked under a raw symbol that is not its own fold therefore
+\ finds no row: fail closed, by name, which is the same answer an undeclared word
+\ gets.
+: KEY-OF ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- n )
+   HIR-WORD:KEY-SPELL IR-ID:SYMBOL-LOCAL ;
+
+: RAW-OF ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- n )
+   IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL ;
+
+: FOLD-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b s" DUP" KEY-OF  c b s" dup" KEY-OF =
+   c b s" DuP" KEY-OF  c b s" dup" KEY-OF =
+   c b s" [:" KEY-OF   c b s" {:" KEY-OF = 0=
+   c b s" DUP" RAW-OF  c b s" dup" RAW-OF = 0=
+   c b s" dup" RAW-OF  c b s" dup" KEY-OF = ;
+
+: FOLD-CASE ( -- )
+   s" a spelling's key is its fold, over the letters the engine folds and no other byte" T-LABEL
+   BND [: FOLD-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+: CASE-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r  c b s" IF" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@ HIR-CTRL:OPEN-IF HIR-CTRL:EQ
+   r  c b s" BeGiN" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@ HIR-CTRL:OPEN-BEGIN HIR-CTRL:EQ
+   r  c b s" RECURSE" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@ HIR-CTRL:SELF-CALL HIR-CTRL:EQ
+   r  c b s" recurse" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@ HIR-CTRL:SELF-CALL HIR-CTRL:EQ
+   r  c b s" 2DUP" HIR-WORD:KEY-SPELL  HIR-WORD:MEANING@ HIR-MEANING:RENAME HIR-MEANING:EQ
+   p r  c b s" OVER" HIR-WORD:KEY-SPELL  0 HIR-WORD:PICK@  1 = ;
+
+: CASE-CASE ( -- )
+   s" a word of the dialect is the same word in any case, whichever case it was declared in" T-LABEL
+   BND [: CASE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+: MISS-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r  c b s" IFF" HIR-WORD:KEY-SPELL  HIR-WORD:MODELS? 0=
+   r  c b s" DUPX" HIR-WORD:KEY-SPELL  HIR-WORD:MODELS? 0=
+   r  c b s" [:" HIR-WORD:KEY-SPELL  HIR-WORD:MODELS? 0=
+   r  c b s" DUP" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS? 0= ;
+
+: MISS-CASE ( -- )
+   s" a word the dialect never declared is still no word of it, in any case" T-LABEL
+   BND [: MISS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE ;
+
+\ One word is one row whichever case each declaration wrote, which is the same
+\ statement the two cases above make from the reading side. It is worth making
+\ from the writing side too: a table that took a second row for `FOO` would have
+\ two rows a lookup could reach, and which one it reached would depend on the
+\ order they were declared in.
+: DUP-CASE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-WORD:WORDS 2 + HIR-WORD:PICK-CELLS WORDS-NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r HIR-WORD:REGISTER-WORDS
+   c b r  c b s" Foo" IR-BUILD:INTERN-SYMBOL
+   CALLEE-ENTRY CALLEE-IN CALLEE-OUT HIR-WORD:DECLARE-CALLABLE
+   c b r  c b s" FOO" IR-BUILD:INTERN-SYMBOL
+   CALLEE-ENTRY CALLEE-IN CALLEE-OUT HIR-WORD:DECLARE-CALLABLE ;
+
+: DUP-CASE ( -- )
+   BND [: DUP-CASE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ The frozen door states its key rather than computing it - the note beside
+\ SYM-CK says why it cannot compute one - so a row declared through it under a
+\ spelling that is not already its own fold is a row no key reaches. It fails
+\ closed, exactly as an undeclared word does, and that is pinned here so an
+\ unreachable row cannot be mistaken for a modelled word.
+: STATED-KEY-BODY ( IR-CTX:ctx -- bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL
+   {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
+      key:IR-ID:ir-module-key :}
+   c r sy  c sp sy key s" XOR" IR-SYM:INTERN  HIR-OPCODE:XOR HIR-WORD:DECLARE-OP
+   r  c sp sy key s" XOR" IR-SYM:INTERN  HIR-WORD:MODELS?
+   r  c sp sy key s" xor" IR-SYM:INTERN  HIR-WORD:MODELS? 0= ;
+
+: STATED-KEY-CASE ( -- )
+   s" a row declared under a spelling that is not its own fold is reachable by no key" T-LABEL
+   BND [: STATED-KEY-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE ;
+
+: KEY-CASES ( -- )
+   FOLD-CASE
+   CASE-CASE
+   MISS-CASE
+   STATED-KEY-CASE
+   s" one word declared twice in two cases is one row declared twice" T-LABEL
+   [: DUP-CASE ;] E-HIR-DUP TTHROWSQ ;
 
 \ ---- the schema table this dialect may fill ----------------------------------
 \ A schema table names its dialect and its schema version in its header, fixed
@@ -1832,9 +1947,9 @@ variable BC-OUT
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    c b JOINED-TAPE {: v:IR-ARENA:view :}
-   v key r 0 HIR-WORD:ADMIT-TOKEN HIR-MEANING:LITERAL HIR-MEANING:EQ
-   v key r 1 HIR-WORD:ADMIT-TOKEN HIR-MEANING:RENAME HIR-MEANING:EQ
-   v key r 2 HIR-WORD:ADMIT-TOKEN HIR-MEANING:OP HIR-MEANING:EQ
+   v r 0  v key 0 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN HIR-MEANING:LITERAL HIR-MEANING:EQ
+   v r 1  v key 1 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN HIR-MEANING:RENAME HIR-MEANING:EQ
+   v r 2  v key 2 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN HIR-MEANING:OP HIR-MEANING:EQ
    r  v key 2 NTAPE:SPELL@  HIR-WORD:OPCODE@ HIR-OPCODE:MUL HIR-OPCODE:EQ
    p r  v key 1 NTAPE:SPELL@  1 HIR-WORD:PICK@ ;
 
@@ -1955,6 +2070,10 @@ variable BC-OUT
    drop
    DIALECT-REFUSE-CASES ;
 
+: GROUP-KEY ( IR-CTX:ctx -- )
+   drop
+   KEY-CASES ;
+
 : GROUP-INTERNER ( IR-CTX:ctx -- )
    drop
    INTERNER-CASES ;
@@ -1979,6 +2098,7 @@ public
    BND [: GROUP-FORGE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TAPE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-DIALECT-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-KEY ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-INTERNER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-JOINED ;] IR-CTX:WITH-CONTEXT
    CHECKER-CASES

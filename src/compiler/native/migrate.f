@@ -487,7 +487,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    REC-OK @ 0= if exit then
    ix NELAB:COPIED? if r ix REC-CALL exit then
    1 NINL:STAGE-FITS? 0= if 0 REC-OK ! exit then
-   TAPE MKEY r ix NELAB:SPLICEABLE? 0= if 0 REC-OK ! exit then
+   TAPE r ix  CC BB  TAPE MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM
+   NELAB:SPLICEABLE? 0= if 0 REC-OK ! exit then
    TAPE ix NTAPE:KIND@ {: kd:NTAPE:kind :}
    kd NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if
       TAPE ix NTAPE:LIT@ NINL:STAGE-INT exit

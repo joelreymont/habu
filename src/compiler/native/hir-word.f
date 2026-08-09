@@ -89,12 +89,16 @@
 \ does, or the builder that holds them privately while the module is still being
 \ built - and both end in the same IR-SYM refusal.
 \
-\ SPELLINGS ARE BYTES, AND THE LEXER OWNS THEIR CASE. REGISTER-WORDS interns the
-\ subset's words exactly as `docs/forth.md` spells them: built-ins stay lower
-\ case. Symbol interning is byte equality, so a producer that hands
-\ the tape `DUP` where this table declared `dup` will find no row and be refused
-\ by name. Which spelling the real lexer records is the tape producer's fact and
-\ is tracked by dot habu-feed-the-src-f7ed8733; nothing here guesses at it.
+\ SPELLINGS ARE BYTES AND A ROW IS KEYED BY THEIR FOLD. REGISTER-WORDS interns
+\ the subset's words exactly as `docs/forth.md` spells them, built-ins in lower
+\ case and `RECURSE` in capitals, and every row is then keyed by the FOLD of that
+\ spelling - which is the same fold the engine applies when it decides what a
+\ token of a checked body means. A body may therefore write `IF`, `if` or `If`
+\ and reach the one row, exactly as it may write any of them to the engine. The
+\ fold and the argument for it are at KEY-SYM below. Which spelling the real
+\ lexer records is still the tape producer's fact, tracked by dot
+\ habu-feed-the-src-f7ed8733; nothing here guesses at it, and nothing here folds
+\ the tape's own record of it.
 
 require lib/prelude.f
 require lib/errors.f
@@ -381,10 +385,108 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
    r RHDR-CK
    r HC-SERIAL LCELL@ id IR-ID:SYMBOL-OWNER MID-SERIAL SERIAL-CK ;
 
+\ ---- the key a spelling has in this table ------------------------------------
+\ WHAT A ROW IS KEYED BY, AND WHY IT IS NOT THE BYTES THE SOURCE WROTE. A Habu
+\ name is case-insensitive to the ENGINE, and in both of the places that decide
+\ what a token of a checked body means: src/habu/habu2.f LKWCMP, which is how
+\ `if`, `begin`, `?do` and `{:` are recognised, and src/habu/habu1.f
+\ C-HIDX-HASH with the FIND compare beside it, which is how every dictionary word
+\ is found. Both apply one rule to each byte - a byte in `A`..`Z` gets $20 set,
+\ every other byte stands - so `IF` and `if` are ONE name to the engine, and a
+\ table that kept them apart refused a body for its spelling alone.
+\
+\ SO THIS TABLE'S KEY IS THAT FOLD, ON BOTH SIDES OF THE COMPARISON. Every row is
+\ written under the fold of its word's spelling - BKEY-CK below, which every
+\ builder-side declarer goes through - and every question is asked under the fold
+\ of the token's spelling, which is KEY-SYM. One function, one canonical form,
+\ one ordinal comparison: there is no second spelling for a row to be written
+\ under, and no second rule for a lookup to miss by.
+\
+\ AND IT IS THIS TABLE'S KEY RATHER THAN A POLICY ABOUT NAMES. The tape's own
+\ symbol still holds the bytes the source wrote - that is what a refusal names,
+\ and what a string literal's body IS - and a `{: … :}` local is not folded at
+\ all, because the engine's own local lookup (src/habu/habu2.f EMIT-LOC-FIND)
+\ compares those bytes raw where its keyword and dictionary compares fold. The
+\ fold is applied where the engine folds and nowhere else.
+$41 constant KEY-A                   \ the first byte the fold moves
+$5A constant KEY-Z                   \ and the last
+$20 constant KEY-BIT                 \ the bit it sets
+
+\ The longest spelling this table can key. It is the ceiling the declarers that
+\ read a spelling back already keep - FIX-NAME-CAP below and
+\ src/compiler/native/migrate.f's staging - so no row of any table this file
+\ builds can have a longer spelling than this, and a longer one is answered
+\ unfolded rather than truncated into a name that denotes some other word.
+64 constant KEY-CAP
+
+create KEY-BUF KEY-CAP allot
+
+: FOLD-C ( n -- n )
+   {: b:n :}
+   b KEY-A < if b exit then
+   b KEY-Z > if b exit then
+   b KEY-BIT or ;
+
+\ Whether these bytes are already their own fold. The interner answers ONE
+\ identity per byte string, so interning bytes it already holds under an identity
+\ can only answer that identity again - which makes this a shortcut rather than a
+\ second rule. It is worth taking because the scan costs a compare per byte where
+\ the intern costs a digest of the whole spelling and a walk of the module's
+\ symbols, and the elaborator asks this of every name token of every body.
+: FOLDED? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   true
+   u 0 ?do
+      a i + c@ dup FOLD-C = 0= if drop false leave then
+   loop ;
+
+: FOLD-INTO ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 ?do
+      a i + c@ FOLD-C  KEY-BUF i + c!
+   loop ;
+
+public
+
+\ The key these bytes have in a table of this module. It is what a caller holding
+\ a spelling rather than an identity asks - the splice, which reads a recorded
+\ body's names back as bytes - so that a copied token reaches the same row the
+\ token it was copied from reached.
+: KEY-SPELL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a:ptr u:n :}
+   u KEY-CAP > if c b a u IR-BUILD:INTERN-SYMBOL exit then
+   a u FOLDED? if c b a u IR-BUILD:INTERN-SYMBOL exit then
+   a u FOLD-INTO
+   c b KEY-BUF u IR-BUILD:INTERN-SYMBOL ;
+
+\ The same key for a spelling this module has already interned, which is the form
+\ the elaborator asks: it holds a tape row's symbol and wants the row that
+\ symbol's WORD has. A spelling too long to be any row's answers itself, because
+\ no key of any case can find a row for it and the refusal should name the word
+\ the body wrote.
+: KEY-SYM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
+   c b id IR-BUILD:SYMBOL-LEN KEY-CAP > if id exit then
+   c b id KEY-BUF KEY-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   KEY-BUF u FOLDED? if id exit then
+   KEY-BUF u FOLD-INTO
+   c b KEY-BUF u IR-BUILD:INTERN-SYMBOL ;
+
+private
+
 \ ---- symbols the module's interner has answered for --------------------------
 \ The module's symbol rows, held directly. IR-SYM refuses an identity of another
 \ module and an ordinal past the interned count, and the refusal is the
 \ interner's own, exactly as src/compiler/native/immediate.f asks it.
+\
+\ THIS DOOR STATES ITS KEY RATHER THAN COMPUTING IT, which is the one difference
+\ from the builder-side door below. Reading a spelling back out of a frozen
+\ module needs its byte pool and this is handed only its rows, so the fold cannot
+\ be applied here; a caller that declares a row through this door under a
+\ spelling that is not already its own fold writes a row no lookup can reach.
+\ That fails closed - the word is refused as unmodeled, by name - and
+\ test/compiler/native-hir.f pins it, so the unreachable row cannot be mistaken
+\ for a modelled word.
 : SYM-CK ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR-WORD:interned )
    {: sy:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    sy id IR-SYM:LEN@ drop
@@ -397,6 +499,15 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
    c b id IR-BUILD:SYMBOL-CK
    id HIR--WORD-INTERNED:MAKE ;
+
+\ The symbol a declaration through that door writes its row under: the key of the
+\ word's spelling, answered for by the same interner. Every builder-side declarer
+\ below goes through this and none of them touches BSYM-CK directly, so a row
+\ under any other key cannot be written - the declarers do not have to remember
+\ the rule, they cannot express its opposite.
+: BKEY-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- HIR-WORD:interned )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
+   c b  c b id KEY-SYM  BSYM-CK ;
 
 \ ---- row addressing ----------------------------------------------------------
 : ROW-CELL ( n n -- n )
@@ -579,22 +690,22 @@ create FIX-NAME FIX-NAME-CAP allot
 : BDECLARE-PLAIN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:meaning -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id m:HIR:meaning :}
-   c r  c b id BSYM-CK  m PLAIN-ROW ;
+   c r  c b id BKEY-CK  m PLAIN-ROW ;
 
 : BDECLARE-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode :}
-   c r  c b id BSYM-CK  o OP-ROW ;
+   c r  c b id BKEY-CK  o OP-ROW ;
 
 : BDECLARE-CONST-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode v:n :}
-   c r  c b id BSYM-CK  o v CONST-OP-ROW ;
+   c r  c b id BKEY-CK  o v CONST-OP-ROW ;
 
 : BDECLARE-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:ctrl -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id k:HIR:ctrl :}
-   c r  c b id BSYM-CK  k CONTROL-ROW ;
+   c r  c b id BKEY-CK  k CONTROL-ROW ;
 
 public
 
@@ -617,7 +728,7 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
    c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   c r  c b id BSYM-CK  FIX-NAME u NDICT:FIXED-VALUE FIXED-ROW ;
+   c r  c b id BKEY-CK  FIX-NAME u NDICT:FIXED-VALUE FIXED-ROW ;
 
 \ Declare that a source word is another word this definition CALLS: where its
 \ code starts and what its declared effect is. This is how a call to a word that
@@ -628,7 +739,7 @@ public
 : DECLARE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id entry:n in:n out:n :}
-   c r  c b id BSYM-CK  entry in out CALLABLE-ROW ;
+   c r  c b id BKEY-CK  entry in out CALLABLE-ROW ;
 
 \ Make that row for a spelling nobody staged, by asking the engine about it.
 \
@@ -747,7 +858,7 @@ create STG-PICK PICK-MAX cells allot
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
    STG-TAKE
-   c p r  c b id BSYM-CK  RENAME-ROW ;
+   c p r  c b id BKEY-CK  RENAME-ROW ;
 
 public
 
@@ -953,17 +1064,24 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ dialect makes of it. A literal is a literal whatever any table says, because
 \ its kind is what makes it one, and the tape has two literal kinds this dialect
 \ models - an integer and a double - which are two meanings because they stage
-\ two different operations. A name is looked up by its spelling. A character or
+\ two different operations. A name is looked up by its key. A character or
 \ string literal is a kind the straight-line subset does not model at all, and is
 \ refused as such rather than resolved as a name.
-: ADMIT-TOKEN ( IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena n -- HIR:meaning )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key r:IR-ARENA:arena i:n :}
+\
+\ THE KEY IS PRESENTED RATHER THAN DERIVED, because deriving it needs the
+\ module's interner and this join is also asked of a module that has been frozen
+\ - the caller holds whichever of the two the module still has. It is the token's
+\ key, which is KEY-SYM of the symbol the tape recorded for row `i`; the two
+\ named-symbol forms in src/compiler/native/elaborate.f take a symbol beside a
+\ token for the same reason, so this is the shape its neighbours already have.
+: ADMIT-TOKEN ( IR-ARENA:view IR-ARENA:arena n IR-ID:ir-symbol-id -- HIR:meaning )
+   {: v:IR-ARENA:view r:IR-ARENA:arena i:n sy:IR-ID:ir-symbol-id :}
    v i NTAPE:KIND@ {: k:NTAPE:kind :}
    k NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if HIR-MEANING:LITERAL exit then
    k NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if HIR-MEANING:REAL-LITERAL exit then
    k NTAPE-KIND:STRING-LITERAL NTAPE-KIND:EQ if HIR-MEANING:STRING-LITERAL exit then
    k NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-HIR-KIND throw then
-   r v key i NTAPE:SPELL@ ADMIT ;
+   r sy ADMIT ;
 
 \ ---- the subset's vocabulary -------------------------------------------------
 \ The words the straight-line subset models, and the exact ceilings they need,
@@ -1107,8 +1225,10 @@ private
 \ The rule is that this table interns each word exactly as `docs/forth.md` spells
 \ it, and § "RECURSE uses the declared effect" spells this one in capitals - so
 \ the row and the source agree by following one authority, not by two guesses
-\ landing on the same bytes. A body that wrote it any other way finds no row and
-\ is refused by name.
+\ landing on the same bytes. Which case is written here decides nothing about
+\ which case a body may write: the row is keyed by the spelling's fold, so
+\ `RECURSE` and `recurse` reach it alike, exactly as they reach the same word in
+\ the engine.
 : DEF-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" if" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-IF BDECLARE-CONTROL

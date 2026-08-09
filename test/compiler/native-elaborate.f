@@ -1824,6 +1824,286 @@ private
    BND [: JOINC-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE  3 T=  4 T= ;
 
+\ ---- the case a body writes the dialect's words in ---------------------------
+\ A Habu name is case-insensitive to the ENGINE - src/habu/habu2.f LKWCMP folds
+\ the letters of a keyword and src/habu/habu1.f's dictionary find folds the
+\ letters of a name - so a body that writes `IF` or `SWAP` runs exactly what one
+\ writing `if` or `swap` runs. The word model keys its rows by that same fold
+\ (src/compiler/native/hir-word.f KEY-SYM), and what these cases measure is the
+\ consequence: the definition a body in capitals becomes is the definition its
+\ lower-case twin becomes, operation for operation.
+\
+\ WHY THE MODULES ARE COMPARED AND NOT JUST BOTH COMPILED. "Both compile" is
+\ exactly what the failure this fixes looked like from outside. A capitalised
+\ RENAME or OPERATION was not refused: it fell through the resolve pass to the
+\ ENGINE, which answered - case-insensitively - with the address of a real word,
+\ so `SWAP` compiled as a wordcall where `swap` compiles as nothing at all. Two
+\ definitions that both compile can therefore be a fast one and a slow one, or a
+\ right one and a wrong one; only reading both modules back says they are the
+\ same program. So a twin case reads every block, every operation, its opcode by
+\ name, its operands, its results and its successors, and the comparator's own
+\ falsifier below proves it can say no.
+\
+\ AND A LOCAL IS NOT FOLDED, WHICH IS THE OTHER HALF OF THE DECISION. The engine's
+\ local lookup (src/habu/habu2.f EMIT-LOC-FIND) compares a local's name BYTE FOR
+\ BYTE where its keyword and dictionary compares fold, and the engine was asked
+\ rather than assumed: with `{: I:n :}` bound, `: TUP ( n -- n ) {: I:n :} 0 3 0
+\ ?do I + loop ;` answers 15 for 5 - the local - and the same definition written
+\ `?do i + loop` answers 3 - the loop index. The two spellings are two things
+\ there, so they stay two things here: the elaborator matches a local by the
+\ bytes the body wrote, and only the mention that is NOT a local is put to the
+\ word model under its key. The pair of cases at the end of this section holds
+\ the chain to that split.
+64 constant TW-CAP
+
+create TW-BUF TW-CAP allot
+
+\ One module's operation, named by the opcode spelling its own module holds, held
+\ against the other module's operation. The name is copied out and compared as
+\ bytes because two modules intern their own symbols: the same opcode is a
+\ different ordinal in each, and comparing ordinals would call every pair equal
+\ or every pair different depending on the order the two were built in.
+: TW-OPC$ ( IR-BUILD:module IR-ID:ir-op-id -- ptr u8 n )
+   {: m:IR-BUILD:module op:IR-ID:ir-op-id :}
+   TW-BUF
+   m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS
+   m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY op IR-OP:FOPCODE@
+   TW-BUF TW-CAP IR-SYM:FCOPY ;
+
+: TW-OPC? ( IR-BUILD:module IR-ID:ir-op-id IR-BUILD:module IR-ID:ir-op-id -- bool )
+   {: ma:IR-BUILD:module oa:IR-ID:ir-op-id mb:IR-BUILD:module ob:IR-ID:ir-op-id :}
+   ma oa TW-OPC$ {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   mb ob a u F-OPC? ;
+
+\ Operands, results and successors are compared as the module-local ordinals they
+\ are: two twins that name their values and blocks in the same order are the same
+\ dataflow and the same control flow.
+: TW-INS? ( IR-BUILD:module IR-ID:ir-op-id IR-BUILD:module IR-ID:ir-op-id -- bool )
+   {: ma:IR-BUILD:module oa:IR-ID:ir-op-id mb:IR-BUILD:module ob:IR-ID:ir-op-id :}
+   ma oa F-INS mb ob F-INS <> if false exit then
+   true
+   ma oa F-INS 0 ?do
+      ma oa i F-IN IR-ID:VALUE-LOCAL
+      mb ob i F-IN IR-ID:VALUE-LOCAL <> if drop false leave then
+   loop ;
+
+: TW-OUTS? ( IR-BUILD:module IR-ID:ir-op-id IR-BUILD:module IR-ID:ir-op-id -- bool )
+   {: ma:IR-BUILD:module oa:IR-ID:ir-op-id mb:IR-BUILD:module ob:IR-ID:ir-op-id :}
+   ma oa F-OUTS mb ob F-OUTS <> if false exit then
+   true
+   ma oa F-OUTS 0 ?do
+      ma oa i F-OUT IR-ID:VALUE-LOCAL
+      mb ob i F-OUT IR-ID:VALUE-LOCAL <> if drop false leave then
+   loop ;
+
+: TW-SUCCS? ( IR-BUILD:module IR-ID:ir-op-id IR-BUILD:module IR-ID:ir-op-id -- bool )
+   {: ma:IR-BUILD:module oa:IR-ID:ir-op-id mb:IR-BUILD:module ob:IR-ID:ir-op-id :}
+   ma oa F-SUCCS mb ob F-SUCCS <> if false exit then
+   true
+   ma oa F-SUCCS 0 ?do
+      ma oa i F-SUCC  mb ob i F-SUCC <> if drop false leave then
+   loop ;
+
+: TW-OP? ( IR-BUILD:module IR-ID:ir-op-id IR-BUILD:module IR-ID:ir-op-id -- bool )
+   {: ma:IR-BUILD:module oa:IR-ID:ir-op-id mb:IR-BUILD:module ob:IR-ID:ir-op-id :}
+   ma oa mb ob TW-OPC? 0= if false exit then
+   ma oa mb ob TW-INS? 0= if false exit then
+   ma oa mb ob TW-OUTS? 0= if false exit then
+   ma oa mb ob TW-SUCCS? ;
+
+: TW-BLOCK? ( IR-BUILD:module IR-ID:ir-block-id IR-BUILD:module IR-ID:ir-block-id -- bool )
+   {: ma:IR-BUILD:module ba:IR-ID:ir-block-id mb:IR-BUILD:module bb:IR-ID:ir-block-id :}
+   ma ba F-ARGS mb bb F-ARGS <> if false exit then
+   ma ba F-OPS mb bb F-OPS <> if false exit then
+   true
+   ma ba F-OPS 0 ?do
+      ma  ma ba i F-OP  mb  mb bb i F-OP  TW-OP? 0= if drop false leave then
+   loop ;
+
+: TW-FUN? ( IR-BUILD:module IR-ID:ir-fun-id IR-BUILD:module IR-ID:ir-fun-id -- bool )
+   {: ma:IR-BUILD:module fa:IR-ID:ir-fun-id mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
+   ma F-TOTAL mb F-TOTAL <> if false exit then
+   ma F-VALUES mb F-VALUES <> if false exit then
+   ma fa F-BLKS mb fb F-BLKS <> if false exit then
+   true
+   ma fa F-BLKS 0 ?do
+      ma  ma fa i F-BLK-AT  mb  mb fb i F-BLK-AT  TW-BLOCK? 0= if drop false leave then
+   loop ;
+
+\ One source text, compiled and frozen, as the pair a comparison takes.
+: BUILT ( IR-CTX:ctx ptr u8 n n n -- IR-BUILD:module IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx a u:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r in out NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE f ;
+
+\ The control words: `if`, `else` and `then`, with a rename and both step words
+\ around them. This is the shape the census counted 137 refusals of.
+: CTRL-TWIN-BODY ( IR-CTX:ctx -- bool )
+   {: c:IR-CTX:ctx :}
+   c s" TWIN dup 0 > if 1+ else 1- then" 1 1 BUILT
+   {: ma:IR-BUILD:module fa:IR-ID:ir-fun-id :}
+   c s" TWIN DUP 0 > IF 1+ ELSE 1- THEN" 1 1 BUILT
+   {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
+   ma fa mb fb TW-FUN? ;
+
+\ The renames and the operations, which are the class that did not refuse: every
+\ word here is one the engine's dictionary would have answered for, so a table
+\ that missed them compiled a branch per word instead of a rename or one
+\ instruction.
+: WORD-TWIN-BODY ( IR-CTX:ctx -- bool )
+   {: c:IR-CTX:ctx :}
+   c s" TWINW 2dup and nip nip dup cells swap invert xor 1+ 0=" 2 1 BUILT
+   {: ma:IR-BUILD:module fa:IR-ID:ir-fun-id :}
+   c s" TWINW 2DUP AND NIP NIP DUP CELLS SWAP INVERT XOR 1+ 0=" 2 1 BUILT
+   {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
+   ma fa mb fb TW-FUN? ;
+
+\ The counted loop and its index.
+: LOOP-TWIN-BODY ( IR-CTX:ctx -- bool )
+   {: c:IR-CTX:ctx :}
+   c s" TWIND 0 swap 0 ?do i + loop" 1 1 BUILT
+   {: ma:IR-BUILD:module fa:IR-ID:ir-fun-id :}
+   c s" TWIND 0 SWAP 0 ?DO I + LOOP" 1 1 BUILT
+   {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
+   ma fa mb fb TW-FUN? ;
+
+\ `RECURSE`, which the table declares in CAPITALS, so this twin is the fold read
+\ the other way round: the lower-case spelling is the one that used to refuse.
+: SELF-TWIN-BODY ( IR-CTX:ctx -- bool )
+   {: c:IR-CTX:ctx :}
+   c s" TWINR dup 1 <= if drop 1 exit then dup 1- RECURSE *" 1 1 BUILT
+   {: ma:IR-BUILD:module fa:IR-ID:ir-fun-id :}
+   c s" TWINR dup 1 <= if drop 1 exit then dup 1- recurse *" 1 1 BUILT
+   {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
+   ma fa mb fb TW-FUN? ;
+
+\ The comparator's own falsifier. Two bodies that differ by one word must compare
+\ unequal, or every twin above says nothing.
+: UNTWIN-BODY ( IR-CTX:ctx -- bool )
+   {: c:IR-CTX:ctx :}
+   c s" TWIN dup 0 > if 1+ else 1- then" 1 1 BUILT
+   {: ma:IR-BUILD:module fa:IR-ID:ir-fun-id :}
+   c s" TWIN dup 0 > if 1- else 1+ then" 1 1 BUILT
+   {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
+   ma fa mb fb TW-FUN? ;
+
+\ The two mentions of one locals name, which the engine keeps apart and so does
+\ this. `I` is the local the group bound; `i` is the loop's index. Both bodies
+\ compile, and they are two different programs.
+: LOCAL-CASE-BODY ( IR-CTX:ctx -- bool )
+   {: c:IR-CTX:ctx :}
+   c s" LOCC {: I:n :} 0 3 0 ?do I + loop" 1 1 BUILT
+   {: ma:IR-BUILD:module fa:IR-ID:ir-fun-id :}
+   c s" LOCC {: I:n :} 0 3 0 ?do i + loop" 1 1 BUILT
+   {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
+   ma fa mb fb TW-FUN? ;
+
+: CTRL-TWIN-CASE ( -- )
+   s" a body that writes the control words in capitals compiles to its lower-case twin's module" T-LABEL
+   BND [: CTRL-TWIN-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE ;
+
+: WORD-TWIN-CASE ( -- )
+   s" and so does one that writes the renames and the operations in capitals" T-LABEL
+   BND [: WORD-TWIN-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE ;
+
+: LOOP-TWIN-CASE ( -- )
+   s" and one that writes the counted loop and its index in capitals" T-LABEL
+   BND [: LOOP-TWIN-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE ;
+
+: SELF-TWIN-CASE ( -- )
+   s" and one that writes the self-call in the case the table did not declare it in" T-LABEL
+   BND [: SELF-TWIN-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE ;
+
+: UNTWIN-CASE ( -- )
+   s" two bodies that are not the same program do not compare equal" T-LABEL
+   BND [: UNTWIN-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE ;
+
+: LOCAL-CASE-CASE ( -- )
+   s" a locals name is matched by its own bytes, so the other case of it is the dialect's word" T-LABEL
+   BND [: LOCAL-CASE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE ;
+
+\ ---- and what capitals do NOT do ---------------------------------------------
+\ The fold is the key of a word this table declared, and nothing else. A word the
+\ dialect never modelled is refused in capitals exactly as in lower case, and the
+\ record names the bytes the body wrote rather than the key they were looked up
+\ under.
+: CAPS-UNMOD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" CAPSX dup ZZQX" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: CAPS-UNMOD ( -- )
+   BND [: CAPS-UNMOD-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A near miss on both sides: `IFF` folds to `iff`, which is not `if`, so a key is
+\ the whole spelling folded and not a prefix of one.
+: CAPS-NEAR-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" CAPSN dup IFF" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: CAPS-NEAR ( -- )
+   BND [: CAPS-NEAR-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ The byte the fold must not touch. `[` is $5B and `{` is $7B, one bit apart, so a
+\ fold written as "set $20 on every byte" turns the quotation opener `[:` into
+\ the locals opener `{:` - and this body would then be read as a locals group
+\ rather than refused for the word it really writes.
+: CAPS-QUOT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" CAPSQ dup [:" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: CAPS-QUOT ( -- )
+   BND [: CAPS-QUOT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A local named after a word the dialect models is still refused, and a local
+\ whose name only FOLDS onto one is still the program's own name - which is the
+\ decision the section head states, held in both directions.
+: LOCAL-LOWER-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" LOCI {: i:n :} 0" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: LOCAL-LOWER ( -- )
+   BND [: LOCAL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: CAPS-REFUSE-CASE ( -- )
+   s" a word the dialect never modelled is refused in capitals too, and named by its own spelling" T-LABEL
+   [: CAPS-UNMOD ;] E-HIR-UNMODELED TTHROWSQ
+   NELAB:REFUSED$ s" ZZQX" T$= ;
+
+: CAPS-NEAR-CASE ( -- )
+   s" a capitalised near miss on a modelled word is refused, and named by its own spelling" T-LABEL
+   [: CAPS-NEAR ;] E-HIR-UNMODELED TTHROWSQ
+   NELAB:REFUSED$ s" IFF" T$= ;
+
+: CAPS-QUOT-CASE ( -- )
+   s" the quotation opener is not the locals opener, and is refused by its own spelling" T-LABEL
+   [: CAPS-QUOT ;] E-HIR-UNMODELED TTHROWSQ
+   NELAB:REFUSED$ s" [:" T$= ;
+
+: LOCAL-LOWER-CASE ( -- )
+   s" a local named exactly as a word the dialect models is refused" T-LABEL
+   [: LOCAL-LOWER ;] E-NELAB-LOCAL TTHROWSQ ;
+
 public
 
 : RUN ( -- )
@@ -1894,6 +2174,16 @@ public
    REFUSED-NONE-CASE
    REFUSED-RESET-CASE
    REFUSED-CEILING-CASE
+   CTRL-TWIN-CASE
+   WORD-TWIN-CASE
+   LOOP-TWIN-CASE
+   SELF-TWIN-CASE
+   UNTWIN-CASE
+   LOCAL-CASE-CASE
+   BND [: drop CAPS-REFUSE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop CAPS-NEAR-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop CAPS-QUOT-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop LOCAL-LOWER-CASE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 
 ;package

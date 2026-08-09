@@ -136,6 +136,25 @@ private
 : VW ( -- IR-ARENA:view )            0 S-VW @ ;
 : MKEY ( -- IR-ID:ir-module-key )    0 S-KEY @ ;
 
+\ ---- the word a body token names ---------------------------------------------
+\ Which word this tape row is about, as the word model's own key: the fold of the
+\ spelling the tape recorded, which is the fold the ENGINE applied when it decided
+\ what the token meant (src/compiler/native/hir-word.f KEY-SYM carries the
+\ argument). Every pass below that asks the model anything asks it about this, so
+\ a body may spell a word of the dialect in any case the engine accepts and all of
+\ the passes agree about which word it wrote.
+\
+\ WHAT DOES NOT COME THROUGH HERE, AND WHY EACH ONE IS RAW. The refusal record and
+\ a string literal's body are the BYTES the source wrote - a refusal that renamed
+\ the word it is about would name a word nobody wrote, and a folded string literal
+\ would be different text. A `{: … :}` local's name is raw because the engine's
+\ own local lookup compares those bytes raw, so folding here would bind a name the
+\ engine keeps apart. And the definition's own name is the name the engine
+\ published. Those four read NTAPE:SPELL@ directly and say so by doing it.
+: WSYM ( n -- IR-ID:ir-symbol-id )
+   {: ix:n :}
+   CTX BLD  VW MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM ;
+
 \ ---- naming the token a refusal was about ------------------------------------
 \ WHY THE CHAIN HAS TO SAY WHICH TOKEN. A body word the dialect cannot compile is
 \ refused with E-HIR-UNMODELED and a body token kind the subset does not model
@@ -218,7 +237,7 @@ create RF-BUF RF-CAP allot
 : ADMIT-AT ( IR-ARENA:arena n -- HIR:meaning )
    {: r:IR-ARENA:arena ix:n :}
    ix RF-AT !
-   VW MKEY r ix HIR-WORD:ADMIT-TOKEN
+   VW r ix  ix WSYM  HIR-WORD:ADMIT-TOKEN
    -1 RF-AT ! ;
 
 \ Everything the record reads off the tape, in the order that keeps a partial
@@ -943,7 +962,7 @@ variable LIT-N
 
 : EMIT-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   r ix  VW MKEY ix NTAPE:SPELL@  EMIT-OP-SYM ;
+   r ix  ix WSYM  EMIT-OP-SYM ;
 
 \ A word that pushes one fixed value - the address a `create`d data word names.
 \ The value is the word model's, so this stages the same operation an integer
@@ -954,7 +973,7 @@ variable LIT-N
 
 : EMIT-FIXED ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   r ix  VW MKEY ix NTAPE:SPELL@  EMIT-FIXED-SYM ;
+   r ix  ix WSYM  EMIT-FIXED-SYM ;
 
 \ ---- a string literal ----------------------------------------------------------
 \ WHAT ONE COMPILES TO, AND WHY IT IS NOTHING NEW. The checker certifies `s"` as
@@ -1000,7 +1019,7 @@ create SB-BUF SB-CAP allot
 
 : EMIT-CONST-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   r ix  VW MKEY ix NTAPE:SPELL@  EMIT-CONST-OP-SYM ;
+   r ix  ix WSYM  EMIT-CONST-OP-SYM ;
 
 \ Leaving the word. The outputs are the whole vector, bottom first, and the
 \ vector has to hold exactly as many as the word declares - one too few or one
@@ -1624,7 +1643,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 : MODELED-AS? ( IR-ARENA:arena n HIR:meaning -- bool )
    {: r:IR-ARENA:arena ix:n m:HIR:meaning :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ m HIR-MEANING:EQ ;
 
@@ -1642,6 +1661,21 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ shadow it: `{: i:n :}` inside a counted loop would otherwise make `i` mean two
 \ things, and which one it means is a rule this file has no business inventing
 \ (dot habu-decide-what-a-9f38a8f6).
+\
+\ THE NAME IS THE BYTES THE BODY WROTE, AND IS NOT FOLDED. Everywhere else this
+\ file asks the word model under the spelling's FOLD, because that is the
+\ identity the engine's keyword and dictionary compares give a name. A local is
+\ the one thing the engine does NOT fold: src/habu/habu2.f EMIT-LOC-FIND compares
+\ a local's name byte for byte, and the engine was asked rather than assumed -
+\ `: TUP ( n -- n ) {: I:n :} 0 3 0 ?do I + loop ;` answers 15 for 5, the LOCAL,
+\ while the same definition written `?do i + loop` answers 3, the loop INDEX. So
+\ the name is interned as written and matched as written (LOCAL-OF), and the
+\ collision question above is asked of that same raw name: `{: i:n :}` is refused
+\ exactly as it was, `{: I:n :}` is the program's own name exactly as it was, and
+\ a mention in the OTHER case is not a local here for the same reason it is not
+\ one in the engine - it goes to the word model under its key and is the dialect's
+\ word. Folding this would refuse a program the engine compiles; folding LOCAL-OF
+\ instead would bind a mention the engine gives to something else.
 : DECLARE-LOCAL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    LN @ LMAX >= if E-NELAB-LOCAL-CAP throw then
@@ -1753,7 +1787,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? if exit then
    CTX BLD r sy HIR-WORD:RESOLVE-CALLABLE drop ;
 
@@ -1849,10 +1883,13 @@ create INL-TAB TMAX cells allot      \ whether the call on this body token is co
 \ The symbol one recorded token's spelling is in THIS module. A recorded body
 \ carries spellings as bytes, because the module its tokens were read into died
 \ with the migration that compiled it; interning them here is what turns them
-\ back into identities this module's word model can be asked about.
+\ back into identities this module's word model can be asked about. It is the
+\ word model's own KEY that is asked for, exactly as WSYM asks it of a token of
+\ this definition's own tape, so a recorded body reaches the rows its own
+\ compilation reached whichever case its source wrote them in.
 : INL-SYM ( n n -- IR-ID:ir-symbol-id )
    {: entry:n k:n :}
-   CTX BLD  entry k NINL:SPELL$  IR-BUILD:INTERN-SYMBOL ;
+   CTX BLD  entry k NINL:SPELL$  HIR-WORD:KEY-SPELL ;
 
 public
 
@@ -1999,7 +2036,7 @@ private
 \ always did.
 : CALLEE-COPY? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:ENTRY@ {: entry:n :}
    entry NINL:KNOWN? 0= if false exit then
    entry NINL:IN@  r sy HIR-WORD:CALLEE-IN@  <> if E-NELAB-INLINE throw then
@@ -2039,7 +2076,7 @@ private
 : WORD-ORDER? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
    m HIR-MEANING:CALLABLE HIR-MEANING:EQ if
@@ -2082,7 +2119,7 @@ private
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
    m HIR-MEANING:CALLABLE HIR-MEANING:EQ if ix INL-AT? 0= exit then
@@ -2120,7 +2157,7 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
 : ROW-CTRL? ( IR-ARENA:arena n HIR:ctrl -- bool )
    {: r:IR-ARENA:arena ix:n want:HIR:ctrl :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if false exit then
    r sy HIR-WORD:CTRL@ want HIR-CTRL:EQ ;
@@ -2316,7 +2353,7 @@ create JOIN-TAB TMAX cells allot
    ix LOCAL-OF 0 >= if exit then
    r ix ADMIT-AT
    HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if exit then
-   r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:CTRL@
+   r  ix WSYM  HIR-WORD:CTRL@
    MATCH HIR:ctrl
       open-if      OF HIR-CTRL:OPEN-IF ix SK-PUSH  NB @ 2 + NB ! ENDOF
       mid-else     OF ix SK-ELSE ENDOF
@@ -2795,7 +2832,7 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ consumes each live value and answers it again.
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:CALLEE-IN@ {: a:n :}
    r sy HIR-WORD:CALLEE-OUT@ {: o:n :}
    a o CALL-LIVE o + {: back:n :}
@@ -2903,7 +2940,7 @@ variable LRK                         \ crossing locals the walk below has taken 
 
 : DO-INLINE ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:ENTRY@ {: entry:n :}
    entry NINL:IN@ {: a:n :}
    entry NINL:OUT@ {: o:n :}
@@ -3036,7 +3073,7 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ builds; nothing else in this file decides what a control word means.
 : DO-CONTROL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:CTRL@
+   r  ix WSYM  HIR-WORD:CTRL@
    MATCH HIR:ctrl
       open-if      OF ix DO-OPEN-IF ENDOF
       mid-else     OF ix DO-ELSE ENDOF
@@ -3064,7 +3101,7 @@ variable IX                          \ the body token the walk stands on
 : AFTER-EXIT-CK ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    r ix HIR-MEANING:CONTROL MODELED-AS? 0= if E-NELAB-CTRL throw then
-   r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:CTRL@
+   r  ix WSYM  HIR-WORD:CTRL@
    HIR-CTRL:CLOSE-IF HIR-CTRL:EQ 0= if E-NELAB-CTRL throw then ;
 
 : STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
@@ -3083,7 +3120,7 @@ variable IX                          \ the body token the walk stands on
       fixed        OF r ix EMIT-FIXED ENDOF
       callable     OF p r ix DO-CALL ENDOF
       control      OF r ix DO-CONTROL ENDOF
-      rename       OF p r  VW MKEY ix NTAPE:SPELL@  RENAME ENDOF
+      rename       OF p r  ix WSYM  RENAME ENDOF
       open-locals  OF E-NELAB-LOCAL throw ENDOF
       close-locals OF ix DO-CLOSE-LOCALS ENDOF
       unmodeled    OF E-HIR-UNMODELED throw ENDOF
@@ -3222,14 +3259,20 @@ EXPORT SPLICE-MEANING?
 \ at all. One rule, asked at both ends: the definition that is recorded has to
 \ pass it against its own word model, and every caller that copies it has to pass
 \ it again against the caller's.
-: SPLICEABLE? ( IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena n -- bool )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key r:IR-ARENA:arena ix:n :}
+\
+\ THE TOKEN'S KEY IS PRESENTED RATHER THAN DERIVED, for the reason
+\ src/compiler/native/hir-word.f ADMIT-TOKEN gives: deriving it needs the module's
+\ interner, and the caller is the one that holds it. It is HIR-WORD:KEY-SYM of the
+\ symbol the tape recorded for row `ix`, which is what WSYM answers for a token of
+\ the definition this pass is elaborating.
+: SPLICEABLE? ( IR-ARENA:view IR-ARENA:arena n IR-ID:ir-symbol-id -- bool )
+   {: v:IR-ARENA:view r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
    v ix NTAPE:KIND@ {: kd:NTAPE:kind :}
    kd NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if true exit then
    kd NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if true exit then
    kd NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   r  v key ix NTAPE:SPELL@  HIR-WORD:MODELS? 0= if false exit then
-   r  v key ix NTAPE:SPELL@  HIR-WORD:MEANING@ SPLICE-MEANING? ;
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ SPLICE-MEANING? ;
 
 \ ---- what a recorder has to be told about a call -----------------------------
 \ SPLICEABLE? above answers no for every call, and that is right for a token that
@@ -3257,7 +3300,7 @@ EXPORT SPLICE-MEANING?
 : COPIED-ENTRY ( IR-ARENA:arena n -- n )
    {: r:IR-ARENA:arena ix:n :}
    ix INL-AT? 0= if E-NELAB-INLINE throw then
-   r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:ENTRY@ ;
+   r  ix WSYM  HIR-WORD:ENTRY@ ;
 
 \ Does the definition this pass last elaborated CALL anything? It is the pre-scan
 \ answer above, published because the routine contract the later stages are told
@@ -3328,7 +3371,7 @@ EXPORT SPLICE-MEANING?
 \ branching case above and waits on the same dot.
 : TAIL-CALLEE? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MEANING@ HIR-MEANING:CALLABLE HIR-MEANING:EQ 0= if false exit then
    r sy HIR-WORD:CALLEE-IN@ IN-N @ <> if false exit then
    r sy HIR-WORD:CALLEE-OUT@ OUT-N @ = ;
@@ -3346,7 +3389,7 @@ EXPORT SPLICE-MEANING?
    r n 1- WORD-CALL? 0= if exit then
    r n 1- TAIL-CALLEE? 0= if exit then
    1 TAIL-NEED !
-   r  VW MKEY n 1- NTAPE:SPELL@  HIR-WORD:ENTRY@ TAIL-ENTRY !
+   r  n 1- WSYM  HIR-WORD:ENTRY@ TAIL-ENTRY !
    0 CALL-BACK !
    n 1- 1 ?do
       r i WORD-CALL? if 1 CALL-BACK ! leave then
