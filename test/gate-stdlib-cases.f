@@ -228,6 +228,10 @@ SUITE compiler-native-feed
    test/compiler/native-feed.f
 ;SUITE
 
+SUITE compiler-native-string
+   test/compiler/native-string.f
+;SUITE
+
 SUITE compiler-native-immediate
    test/compiler/native-immediate.f
 ;SUITE

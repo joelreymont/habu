@@ -117,6 +117,15 @@ public
       st ln SPAN  c st ln SYM  m NTAPE:STRING-TOKEN
    NTAPE:PUSH-INTO drop ;
 
+\ A character literal, which is the kind the straight-line subset still has no
+\ model for. It is here so a fixture that needs an unmodelled KIND has one that
+\ is unmodelled for a reason rather than by accident of what has landed.
+: CHAR, ( IR-CTX:ctx n n NTAPE:mode n -- )
+   {: c:IR-CTX:ctx st:n ln:n m:NTAPE:mode v:n :}
+   c 0 W-B @ 0 W-TP @
+      st ln SPAN  c st ln SYM  m v NTAPE:CHAR-TOKEN
+   NTAPE:PUSH-INTO drop ;
+
 private
 
 \ ---- the lexer ---------------------------------------------------------------

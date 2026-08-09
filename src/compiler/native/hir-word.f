@@ -33,9 +33,10 @@
 \                 vector.
 \   unmodeled a named boundary: checked source may not compile it yet, and the
 \             row says which capability has to land first.
-\ A fourth meaning, `literal`, belongs to a source-tape token rather than to a
-\ word, so no row ever stores it - an integer literal is not a call, and the
-\ tape's own token kind is what says it is a literal. A word this table never
+\ Three further meanings - `literal`, `real-literal` and `string-literal` -
+\ belong to a source-tape token rather than to a word, so no row ever stores
+\ one: an integer literal is not a call, a string literal is not a name, and the
+\ tape's own token kind is what says which it is. A word this table never
 \ declared is refused exactly as a declared unmodeled boundary is: to checked
 \ source they are the same event, this dialect cannot compile that word.
 \
@@ -160,6 +161,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
    MATCH HIR:meaning
       literal   OF 0 ENDOF
       real-literal OF 10 ENDOF
+      string-literal OF 11 ENDOF
       op        OF 1 ENDOF
       rename    OF 2 ENDOF
       unmodeled OF 3 ENDOF
@@ -171,9 +173,9 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       close-locals OF 8 ENDOF
    ;MATCH ;
 
-\ Codes zero and ten, `literal` and `real-literal`, are deliberately absent:
-\ both are a TOKEN's meaning, so a row that claims either is corrupt rather than
-\ unusual.
+\ Codes zero, ten and eleven - `literal`, `real-literal` and `string-literal` -
+\ are deliberately absent: all three are a TOKEN's meaning, so a row that claims
+\ one is corrupt rather than unusual.
 : N>MEAN ( n -- HIR:meaning )
    case
       1 of HIR-MEANING:OP endof
@@ -959,6 +961,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    v i NTAPE:KIND@ {: k:NTAPE:kind :}
    k NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if HIR-MEANING:LITERAL exit then
    k NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if HIR-MEANING:REAL-LITERAL exit then
+   k NTAPE-KIND:STRING-LITERAL NTAPE-KIND:EQ if HIR-MEANING:STRING-LITERAL exit then
    k NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-HIR-KIND throw then
    r v key i NTAPE:SPELL@ ADMIT ;
 

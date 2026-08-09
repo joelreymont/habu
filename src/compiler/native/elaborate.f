@@ -111,6 +111,7 @@ require src/compiler/ir/build.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
+require src/compiler/native/string.f
 require src/compiler/native/inline.f
 require src/compiler/native/frozen.f
 
@@ -887,6 +888,40 @@ variable LIT-N
 : EMIT-FIXED ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    r ix  VW MKEY ix NTAPE:SPELL@  EMIT-FIXED-SYM ;
+
+\ ---- a string literal ----------------------------------------------------------
+\ WHAT ONE COMPILES TO, AND WHY IT IS NOTHING NEW. The checker certifies `s"` as
+\ ( -- ptr u8 n ): an address and a length. The length is a number. The address
+\ is the address of bytes that outlive the routine, which is exactly what a
+\ `create`d data word's address is - and EMIT-FIXED above already stages one of
+\ those as an ordinary integer literal. So a literal stages two constants and
+\ needs no operation, no machine form and no encoder this dialect did not already
+\ have.
+\
+\ THE BYTES ARE INTERNED HERE AND NOT AT PUBLICATION, because the address is an
+\ OPERAND: instruction selection has to materialise it, so it has to be a number
+\ before the module is built, and there is no later point at which it could be
+\ filled in - src/compiler/native/emit.f keeps no relocation list because there is
+\ nothing to patch afterwards. What makes that safe against a refusal further
+\ down is that the store is keyed by CONTENT, so interning is idempotent: a
+\ definition the allocator refuses and the pipeline re-elaborates allocates
+\ nothing the second time. src/compiler/native/string.f carries that argument.
+\
+\ THE BODY IS COPIED OUT OF THE MODULE'S INTERNER, which is where the tape put
+\ it: a string row's spelling IS its body. A body longer than this buffer is
+\ refused by the interner's own copier with its own name, so there is no second
+\ ceiling here to disagree with it.
+$1000 constant SB-CAP
+create SB-BUF SB-CAP allot
+
+: STRING-BODY ( n -- ptr u8 n ) {: ix:n :}
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   SB-BUF  CTX BLD sy SB-BUF SB-CAP IR-BUILD:SYMBOL-COPY ;
+
+: EMIT-STRING ( n -- ) {: ix:n :}
+   ix STRING-BODY {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   ix  a u NSTR:INTERN  EMIT-LIT
+   ix  u  EMIT-LIT ;
 
 \ A word that is one constant and one operation - `1-` is `1` then `-`. Both
 \ halves come off the word model's row, so a second opcode meaning the same
@@ -1761,16 +1796,18 @@ private
 \ skeleton never counted; a callable would copy a call into a body that must hold
 \ none; either half of a locals group would bind names in the caller's own scope.
 \
-\ AND THE TWO LITERAL MEANINGS ANSWER `call`, WHICH IS HONEST RATHER THAN ABSENT.
-\ Both belong to a TOKEN and never to a word: src/compiler/native/hir-word.f's
-\ N>MEAN refuses their stored codes outright, so MEANING@ - the only way a
-\ meaning reaches this table - cannot answer either of them, and a token that
-\ really is a literal is answered by its KIND long before this is asked. A row
-\ claiming one would be a corrupt row, and what a corrupt row earns is not a copy.
+\ AND THE THREE LITERAL MEANINGS ANSWER `call`, WHICH IS HONEST RATHER THAN
+\ ABSENT. All three belong to a TOKEN and never to a word:
+\ src/compiler/native/hir-word.f's N>MEAN refuses their stored codes outright, so
+\ MEANING@ - the only way a meaning reaches this table - cannot answer any of
+\ them, and a token that really is a literal is answered by its KIND long before
+\ this is asked. A row claiming one would be a corrupt row, and what a corrupt
+\ row earns is not a copy.
 : SPLICE-STAGING ( HIR:meaning -- staging )
    MATCH HIR:meaning
       literal      OF NELAB-STAGING:CALL ENDOF
       real-literal OF NELAB-STAGING:CALL ENDOF
+      string-literal OF NELAB-STAGING:CALL ENDOF
       op           OF NELAB-STAGING:OP ENDOF
       const-op     OF NELAB-STAGING:CONST-OP ENDOF
       fixed        OF NELAB-STAGING:FIXED ENDOF
@@ -2930,6 +2967,7 @@ variable IX                          \ the body token the walk stands on
    MATCH HIR:meaning
       literal      OF ix EMIT-CONST ENDOF
       real-literal OF ix EMIT-FCONST ENDOF
+      string-literal OF ix EMIT-STRING ENDOF
       op           OF r ix EMIT-OP ENDOF
       const-op     OF r ix EMIT-CONST-OP ENDOF
       fixed        OF r ix EMIT-FIXED ENDOF

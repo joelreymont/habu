@@ -656,8 +656,23 @@ private
    BND [: FOREIGN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- refusals a lexer would never produce ------------------------------------
-\ A string literal in the body: a token kind the straight-line subset does not
-\ model, refused as such rather than resolved as a name.
+\ A CHARACTER literal in the body: the token kind the straight-line subset still
+\ does not model, refused as such rather than resolved as a name. It took over
+\ this role from the string literal, which the subset now compiles.
+: CHARTOK-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" BAD x" TEXT!
+   c RIG
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena tp:IR-ARENA:arena :}
+   c 0 3 NTAPE-MODE:INTERPRETING NAME,
+   c 4 1 NTAPE-MODE:COMPILING $78 CHAR,
+   c b  tp NTAPE:SEAL  p r 1 1 NELAB:COLON drop ;
+
+\ And the same tape with a STRING literal in it, which the subset does compile:
+\ the body leaves an address and a length, so the definition declares two
+\ outputs and no inputs. Nothing is asserted about the code here - that is
+\ test/compiler/native-string.f's work, through the production entry - only that
+\ the elaborator has a rule for the kind at all.
 : STRTOK-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    s" BAD x" TEXT!
@@ -665,7 +680,10 @@ private
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena tp:IR-ARENA:arena :}
    c 0 3 NTAPE-MODE:INTERPRETING NAME,
    c 4 1 NTAPE-MODE:COMPILING STR,
-   c b  tp NTAPE:SEAL  p r 1 1 NELAB:COLON drop ;
+   c b  tp NTAPE:SEAL  p r 0 2 NELAB:COLON drop ;
+
+: CHARTOK ( -- )
+   BND [: CHARTOK-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : STRTOK ( -- )
    BND [: STRTOK-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -745,9 +763,14 @@ private
    s" a body word the dialect never modeled is refused by name" T-LABEL
    [: UNDEC ;] E-HIR-UNMODELED TTHROWSQ ;
 
+: CHARTOK-CASE ( -- )
+   s" a character literal in the body is refused as a kind the subset has no model for" T-LABEL
+   [: CHARTOK ;] E-HIR-KIND TTHROWSQ ;
+
 : STRTOK-CASE ( -- )
-   s" a string literal in the body is refused as a kind the subset has no model for" T-LABEL
-   [: STRTOK ;] E-HIR-KIND TTHROWSQ ;
+   s" a string literal in the body is a kind the subset does model" T-LABEL
+   BND [: STRTOK-BODY ;] IR-CTX:WITH-CONTEXT
+   NELAB:REFUSED-ROW -1 T= ;
 
 : UNDER-CASE ( -- )
    s" an operation with too few values under it is refused" T-LABEL
@@ -898,8 +921,8 @@ private
 : K-THROWS ( -- )
    [: KTOK ;] E-HIR-UNMODELED TTHROWSQ ;
 
-: STR-THROWS ( -- )
-   [: STRTOK ;] E-HIR-KIND TTHROWSQ ;
+: CHAR-THROWS ( -- )
+   [: CHARTOK ;] E-HIR-KIND TTHROWSQ ;
 
 : FIT-THROWS ( -- )
    [: FITNAME ;] E-HIR-UNMODELED TTHROWSQ ;
@@ -930,8 +953,8 @@ private
 
 : REFUSED-KIND-CASE ( -- )
    s" a token kind the subset does not model is answered as that kind, not as a name" T-LABEL
-   STR-THROWS
-   NTAPE-KIND:STRING-LITERAL NELAB:REFUSED-KIND? TTRUE
+   CHAR-THROWS
+   NTAPE-KIND:CHAR-LITERAL NELAB:REFUSED-KIND? TTRUE
    NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE
    NELAB:REFUSED$ s" x" T$=
    NELAB:REFUSED-ROW 1 T= ;
@@ -940,7 +963,7 @@ private
    s" a later refusal never answers an earlier refusal's word" T-LABEL
    BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
    NELAB:REFUSED$ s" K5" T$=
-   BND [: drop STR-THROWS ;] IR-CTX:WITH-CONTEXT
+   BND [: drop CHAR-THROWS ;] IR-CTX:WITH-CONTEXT
    NELAB:REFUSED$ s" K5" T$<>
    NELAB:REFUSED$ s" x" T$=
    NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE ;
@@ -1751,6 +1774,7 @@ public
    PASS-CASE
    FUN-CASE
    BND [: drop UNDEC-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop CHARTOK-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRTOK-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop UNDER-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop RENAME-UNDER-CASE ;] IR-CTX:WITH-CONTEXT

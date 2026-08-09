@@ -1670,12 +1670,16 @@ variable BC-OUT
 : TJ-UNMOD ( -- )
    BND [: TJ-UNMOD-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-: TJ-STRING-BODY ( IR-CTX:ctx -- )
+\ A string literal is a kind of its own rather than a name: its bytes are the
+\ literal's body and there is nothing there to resolve.
+: TJ-STRING-BODY ( IR-CTX:ctx -- bool )
    TAPE-BUILD {: v:IR-ARENA:view key:IR-ID:ir-module-key wr:IR-ARENA:arena :}
-   v key wr 4 HIR-WORD:ADMIT-TOKEN drop ;
+   v key wr 4 HIR-WORD:ADMIT-TOKEN HIR-MEANING:STRING-LITERAL HIR-MEANING:EQ ;
 
-: TJ-STRING ( -- )
-   BND [: TJ-STRING-BODY ;] IR-CTX:WITH-CONTEXT ;
+: TJ-STRING-CASE ( -- )
+   s" a string-literal token is read as a string literal" T-LABEL
+   BND [: TJ-STRING-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE ;
 
 : TJ-CHAR-BODY ( IR-CTX:ctx -- )
    TAPE-BUILD {: v:IR-ARENA:view key:IR-ID:ir-module-key wr:IR-ARENA:arena :}
@@ -1687,8 +1691,6 @@ variable BC-OUT
 : TJ-REFUSE-CASES ( -- )
    s" a name the model does not model is refused off the tape" T-LABEL
    [: TJ-UNMOD ;] E-HIR-UNMODELED TTHROWSQ
-   s" a string literal is a kind this subset does not model" T-LABEL
-   [: TJ-STRING ;] E-HIR-KIND TTHROWSQ
    s" a character literal is a kind this subset does not model" T-LABEL
    [: TJ-CHAR ;] E-HIR-KIND TTHROWSQ ;
 
@@ -1946,6 +1948,7 @@ variable BC-OUT
 : GROUP-TAPE ( IR-CTX:ctx -- )
    drop
    TJ-CASE
+   TJ-STRING-CASE
    TJ-REFUSE-CASES ;
 
 : GROUP-DIALECT-REFUSE ( IR-CTX:ctx -- )

@@ -369,6 +369,7 @@ ENUM ctrl DERIVE eq
 ENUM meaning DERIVE eq
    literal
    real-literal
+   string-literal
    op
    const-op
    control

@@ -1140,3 +1140,5 @@ public
 -8633 constant E-A64COMB-OPCODE  \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
 -8634 constant E-A64COMB-CAP     \ more values in one function than the rewriter's value map holds
 -8635 constant E-A64COMB-ADDEND  \ a multiply-add whose addend register is the zero register: that word IS a plain multiply, which is why formal/Common/Insn.v puts it outside `wf`, so emitting one would be emitting a different instruction than the module says
+-8636 constant E-NSTR-CAP       \ a string literal this store cannot take: more distinct bodies than its index holds, or more bytes than its arena holds. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
+-8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
