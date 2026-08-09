@@ -5562,3 +5562,20 @@ seam that should have done that reset on purpose. Corollary for tests:
 assertions inside a fork child are worthless (a failed assert still
 exits 0) - the parent owns every verdict, and the evidence must live
 where the bug under test cannot erase it.
+
+## A benchmark that compares answers cannot measure an address (2026-08-09)
+
+codegen-compare judges three columns by the CELLS a word leaves; a string
+literal's address is legitimately different in every column (inline code,
+intern arena, hand-written reference), so a corpus row for it can never
+agree and a row returning only the length measures nothing. Check the
+comparison contract before promising corpus rows; pin the byte cost
+through the publication lengths instead when the answer is an address.
+
+## jj squash blocks invisibly on the editor (2026-08-09)
+
+`jj squash` with two described commits opens $EDITOR to combine messages;
+piped and backgrounded, that looks like a lock hang at 0% CPU. Use
+`--use-destination-message` (or -m) in any non-interactive flow. Check
+`ps` for the editor before diagnosing repo locks — and kill the stale
+`tail` such a kill leaves behind.
