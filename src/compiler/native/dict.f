@@ -223,6 +223,96 @@ public
 TRUSTED: EFF-CELLS ( ptr u8 n -- n n )
    EFFECT-QUERY if EFFECT-DIN-CELLS EFFECT-DOUT-CELLS else -1 -1 then ;
 
+\ ---- which cells of a row may not be separated from one another ---------------
+\ WHY A CALL SITE HAS TO KNOW THIS AND CANNOT WORK IT OUT. A value of a layout
+\ family occupies several stack cells, and those cells are one value: reordering
+\ them, or moving one without the others, destroys it. The compile-time value
+\ vector in src/compiler/native/elaborate.f holds one entry per CELL, so a
+\ rename - which is nothing but a permutation of that vector - will happily take
+\ a bundle apart, and the CELL counts still add up, so nothing downstream
+\ notices. That is dot habu-rename-over-rows-982167af, measured as four working
+\ programs the chain compiled into wrong ones.
+\
+\ WHAT THE CHECKER ALREADY KNOWS AND HOW IT SPELLS IT. A declared signature
+\ records a layout value as one term PER CELL, each carrying its position in the
+\ bundle (EFFECT-DIN-SLOT / EFFECT-DOUT-SLOT: slot+1, 0 for an ordinary term).
+\ That is the only fact that separates `( option<n> n -- )` from `( a b n -- )`:
+\ the two agree on the term count, the cell count and the family of every term,
+\ and disagree only here.
+\
+\ AND WHERE IT SPELLS IT THE OTHER WAY. A generated constructor's row keeps the
+\ value as ONE term several cells wide instead - `OPTION:SOME` leaves one term of
+\ two cells - so its terms and its cells disagree in number and no per-term slot
+\ marks anything. There is no exported per-term width to say WHICH term is the
+\ wide one, so a row whose two counts disagree is reported glued THROUGHOUT. That
+\ is deliberately more than the truth: it can only cause a refusal where a finer
+\ answer would have compiled, never the reverse, and the finer answer belongs
+\ with the row-wise rename itself (dot habu-rename-rows-row-143c0331).
+\
+\ THE ANSWER IS A BITMASK OVER CELLS, bit i for the i-th cell from the BOTTOM of
+\ the row, which is how the value vector indexes it. One cell holds it because a
+\ row wider than the vector is refused before it can be asked about.
+TRUSTED: EFF-QUERY ( ptr u8 n -- bool )   EFFECT-QUERY ;
+TRUSTED: EFF-COUNTS ( -- n n n n )        \ din terms, din cells, dout terms, dout cells
+   EFFECT-DIN-N EFFECT-DIN-CELLS EFFECT-DOUT-N EFFECT-DOUT-CELLS ;
+TRUSTED: EFF-DIN-SLOT ( n -- n )          EFFECT-DIN-SLOT ;
+TRUSTED: EFF-DOUT-SLOT ( n -- n )         EFFECT-DOUT-SLOT ;
+
+public
+0 constant GLUE-NONE                 \ no cell of the row belongs to a bundle
+private
+
+64 constant GLUE-MAX                 \ cells of one row a mask can describe
+
+: GLUE-ALL ( n -- n ) {: cells:n :}   \ every cell of a `cells`-wide row glued
+   cells 0 <= if GLUE-NONE exit then
+   cells GLUE-MAX >= if -1 exit then
+   1 cells lshift 1 - ;
+
+\ ONE CELL IS NOT A BUNDLE, and that is the whole subtlety of this walk. Every
+\ value of a layout family is recorded cell by cell with its position, INCLUDING
+\ the families whose values are a single cell - a plain closed enum is one tag and
+\ nothing else. Marking those would refuse renames over ordinary one-cell values
+\ for no reason: a value that occupies one cell cannot be taken apart by moving
+\ cells around. So a term's slot is not the question; the WIDTH of the value the
+\ term belongs to is, and that width is readable from the top of each run - the
+\ cells of one value carry slots W, W-1 ... 1 downwards, so the first slot met
+\ going down IS the width. A run of one is skipped, and a longer one is marked
+\ whole and stepped over.
+\
+\ Terms arrive top first and cells are numbered from the bottom, so term i is cell
+\ cells-1-i. That correspondence holds only while the two counts agree; when they
+\ do not, the row carries a term wider than one cell with no slot to find it by,
+\ and the whole row is glued without walking it.
+variable RG-MASK   variable RG-I   variable RG-S
+
+: RG-BIT ( n -- ) {: bit:n :}
+   RG-MASK @  1 bit lshift or  RG-MASK ! ;
+
+: RG-RUN ( n n n -- ) {: cells:n top:n width:n :}   \ one value of `width` cells whose top term is `top`
+   width 0 ?do  cells 1 - top i + -  RG-BIT  loop ;
+
+: ROW-GLUE ( n n bool -- n ) {: terms:n cells:n din:bool :}
+   cells 0 <= if GLUE-NONE exit then
+   cells GLUE-MAX > if cells GLUE-ALL exit then
+   terms cells <> if cells GLUE-ALL exit then
+   GLUE-NONE RG-MASK !
+   0 RG-I !
+   begin RG-I @ terms < while
+      din if RG-I @ EFF-DIN-SLOT else RG-I @ EFF-DOUT-SLOT then RG-S !
+      RG-S @ 2 < if
+         RG-I @ 1 + RG-I !
+      else
+         RG-I @ RG-S @ + terms > if              \ a run reaching past the row: fail closed
+            cells GLUE-ALL RG-MASK !  terms RG-I !
+         else
+            cells RG-I @ RG-S @ RG-RUN
+            RG-I @ RG-S @ + RG-I !
+         then
+      then
+   repeat
+   RG-MASK @ ;
+
 public
 
 \ Where a compiled CALL may branch to for this spelling, or zero when it may not
@@ -294,6 +384,17 @@ public
    din 0 < if ARITY-NONE ARITY-NONE exit then
    dout 0 < if ARITY-NONE ARITY-NONE exit then
    din dout ;
+
+\ Which cells of this spelling's two rows belong to a multi-cell value, as the
+\ bitmasks described above: bit i for the i-th cell from the bottom of the row.
+\ GLUE-NONE twice for a name the checker holds no effect for, which is the same
+\ answer as "nothing here is bundled" and safe to be: a name with no effect is
+\ refused by SPELL-ARITY before any caller reaches for its glue.
+: SPELL-GLUE ( ptr u8 n -- n n )
+   EFF-QUERY 0= if GLUE-NONE GLUE-NONE exit then
+   EFF-COUNTS {: dn:n dc:n on:n oc:n :}
+   dn dc true ROW-GLUE
+   on oc false ROW-GLUE ;
 
 private
 get-current prot-wid-add

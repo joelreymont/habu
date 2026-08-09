@@ -145,7 +145,8 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; unmodeled: the reason ordinal plus one; callable: the callee's entry address
 3 constant OFF-IN                    \ rename: the number of values consumed; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
 4 constant OFF-N                     \ rename: the number of values put back; callable: the values the callee leaves; otherwise zero
-5 constant ROW-CELLS
+5 constant OFF-GLUE                  \ callable: which of the callee's result cells belong to a multi-cell value; otherwise zero
+6 constant ROW-CELLS
 0 constant UNUSED                    \ a payload cell this meaning does not use
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant ROW-CAP-MAX
 $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
@@ -570,9 +571,9 @@ private
 \ Append one validated row. Every declarer ends here, so the ownership, the
 \ duplicate rule and the ceiling are proved in one place, and the symbol it
 \ takes has already been answered for by the module's interner.
-: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n -- )
+: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n n -- )
    {: c:IR-CTX:ctx r:IR-ARENA:arena w:HIR-WORD:interned mean:n a:n
-      in:n n:n :}
+      in:n n:n glue:n :}
    w HIR--WORD-INTERNED:UNMAKE {: id:IR-ID:ir-symbol-id :}
    r id SYM-OWNER-CK
    id IR-ID:SYMBOL-LOCAL {: so:n :}
@@ -582,7 +583,8 @@ private
    c r mean IR-ARENA:PUSH drop
    c r a IR-ARENA:PUSH drop
    c r in IR-ARENA:PUSH drop
-   c r n IR-ARENA:PUSH drop ;
+   c r n IR-ARENA:PUSH drop
+   c r glue IR-ARENA:PUSH drop ;
 
 \ The row an operation word writes, once its symbol has been answered for. The
 \ two declarers below differ only in which interner answered.
@@ -590,7 +592,7 @@ private
    {: o:HIR:opcode :}
    HIR-MEANING:OP MEAN-CODE
    o OPCODE-CODE
-   UNUSED UNUSED
+   UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 \ The row a constant-and-operation word writes. Some Habu words are one integer
@@ -602,7 +604,7 @@ private
    {: o:HIR:opcode v:n :}
    HIR-MEANING:CONST-OP MEAN-CODE
    o OPCODE-CODE
-   v UNUSED
+   v UNUSED UNUSED
    ROW-ADD ;
 
 \ The row a word that pushes one fixed value writes. A `create`d data word is
@@ -615,7 +617,7 @@ private
    {: v:n :}
    HIR-MEANING:FIXED MEAN-CODE
    UNUSED
-   v UNUSED
+   v UNUSED UNUSED
    ROW-ADD ;
 
 \ Where the spelling of a fixed word is read back out of the module's interner so
@@ -648,13 +650,21 @@ create FIX-NAME FIX-NAME-CAP allot
 \ above); reading them off the dictionary record and the checker's own accepted
 \ effect is dot habu-resolve-a-callee-0340dfde, and nothing else here changes
 \ when it lands.
-: CALLABLE-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n -- )
-   {: entry:n in:n out:n :}
+\ THE GLUE IS THE CALLEE'S RESULT SHAPE AND NOT ITS SIZE. A callee that leaves a
+\ value occupying several cells leaves cells the caller may not reorder
+\ separately, and the arity says only how many there are. Which of them are one
+\ value is a fact of the callee's declared effect, so it travels with the address
+\ and the arity rather than being worked out at the call site
+\ (dot habu-rename-over-rows-982167af). Zero means nothing the callee leaves is
+\ bundled, which is the answer for every one-cell row and the safe reading of a
+\ row a declarer had no glue for.
+: CALLABLE-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n -- )
+   {: entry:n in:n out:n glue:n :}
    entry 0 <= if E-HIR-CALLEE throw then
    in 0 < out 0 < or if E-HIR-CALLEE throw then
    HIR-MEANING:CALLABLE MEAN-CODE
    entry
-   in out
+   in out glue
    ROW-ADD ;
 
 \ The row a structured control word writes. It stages no operation of its own -
@@ -665,7 +675,7 @@ create FIX-NAME FIX-NAME-CAP allot
    {: k:HIR:ctrl :}
    HIR-MEANING:CONTROL MEAN-CODE
    k CTRL-CODE
-   UNUSED UNUSED
+   UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 \ The row a word with no payload at all writes. The two halves of a typed
@@ -681,7 +691,7 @@ create FIX-NAME FIX-NAME-CAP allot
    m HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ or
    0= if E-HIR-CLASS throw then
    m MEAN-CODE
-   UNUSED UNUSED UNUSED
+   UNUSED UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 \ The same declaration for a module still being built: the builder answers for
@@ -736,10 +746,14 @@ public
 \ the same reason DECLARE-FIXED is - which words a program calls is a fact about
 \ that program and not about the dialect, so it is known while the program's
 \ module is being built and never afterwards.
+\ A caller that states a callee by hand states no glue, and gets none: its rows
+\ read as entirely unbundled, which is what every one-cell row is anyway and what
+\ this declarer's callers have always compiled against. RESOLVE-CALLABLE below
+\ asks the checker instead and states the real answer.
 : DECLARE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id entry:n in:n out:n :}
-   c r  c b id BKEY-CK  entry in out CALLABLE-ROW ;
+   c r  c b id BKEY-CK  entry in out NDICT:GLUE-NONE CALLABLE-ROW ;
 
 \ Make that row for a spelling nobody staged, by asking the engine about it.
 \
@@ -773,7 +787,8 @@ public
    entry 0= if false exit then
    FIX-NAME u NDICT:SPELL-ARITY {: in:n out:n :}
    in NDICT:ARITY-NONE = if false exit then
-   c b r id entry in out DECLARE-CALLABLE
+   FIX-NAME u NDICT:SPELL-GLUE nip {: glue:n :}   \ the callee's RESULT cells are the caller's concern
+   c r  c b id BKEY-CK  entry in out glue CALLABLE-ROW
    true ;
 
 \ Declare that a source word elaborates to one operation of this dialect. The
@@ -796,7 +811,7 @@ public
    c r  sy id SYM-CK
    HIR-MEANING:UNMODELED MEAN-CODE
    why IR-ID:SYMBOL-LOCAL 1+
-   UNUSED UNUSED
+   UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 private
@@ -849,7 +864,7 @@ create STG-PICK PICK-MAX cells allot
    loop
    c r w
    HIR-MEANING:RENAME MEAN-CODE
-   st STG-IN @ STG-N @
+   st STG-IN @ STG-N @ UNUSED
    ROW-ADD ;
 
 \ The same declaration for a module still being built. The stage is consumed
@@ -1012,6 +1027,14 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:CONTROL ROW-AS {: l:n :}
    r l OFF-A RC@ N>CTRL ;
+
+\ Which of a callee's result cells belong to a multi-cell value, as the bitmask
+\ src/compiler/native/dict.f builds: bit i for the i-th cell from the bottom of
+\ the row, which is the order they reach the caller's value vector.
+: OUT-GLUE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
+   r l OFF-GLUE RC@ ;
 
 \ How many values a rename consumes off the top of the value vector.
 : INPUTS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )

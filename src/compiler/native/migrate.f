@@ -780,6 +780,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    KEEP-NAME
    wid NAME-WID !
    HELD-TAKEN
+   NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop
    r STAGE-BODY
    EMITTED

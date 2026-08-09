@@ -276,19 +276,78 @@ create RF-BUF RF-CAP allot
 \ capability to raise here, not a ceiling to widen silently.
 64 constant VMAX
 
+\ ---- which entries of the vector are cells of ONE value ----------------------
+\ THE VECTOR COUNTS CELLS AND THE LANGUAGE COUNTS VALUES, and for almost every
+\ program those are the same number. A value of a layout family is where they
+\ part: it occupies several stack cells, so it takes several entries here, and
+\ those entries are not independent - reordering them, or moving one without the
+\ others, destroys the value. A rename is exactly a permutation of this vector,
+\ so a rename reaching such an entry compiles a program that takes a value apart
+\ while every count still adds up and nothing refuses. That was measured as four
+\ working definitions the chain turned into wrong ones (dot
+\ habu-rename-over-rows-982167af).
+\
+\ SO THE VECTOR CARRIES A SECOND FACT PER ENTRY: whether this cell is part of a
+\ multi-cell value. It is a bitmask rather than an array because the vector's own
+\ ceiling is sixty-four entries, so one cell holds one bit for each of them, and
+\ the two can never disagree about how many entries exist.
+\
+\ WHERE THE BITS COME FROM, WHICH IS THE WHOLE OF IT. Nothing this file computes
+\ makes a value wider than a cell: every literal, every operation result and
+\ every block argument is one cell. Only two things put a wider value on the
+\ vector - the definition's own arguments, and a call's results - and both arrive
+\ from the checker's declared effect through src/compiler/native/dict.f. So the
+\ mask is written in exactly two places and is otherwise carried along.
+\
+\ AND WHAT IT IS FOR IS A REFUSAL, NOT A REPAIR. Moving whole values would mean
+\ this vector knowing where each value begins and ends across joins, loop edges
+\ and returns as well; that is dot habu-rename-rows-row-143c0331. Until it lands
+\ a rename that reaches a bundled cell is refused by name, which turns a silently
+\ wrong program into one that does not compile.
 here CELL 1- and CELL swap - CELL 1- and allot
 variable VN                          \ how many values the vector holds
+variable VGLUE                       \ bit i set: vector entry i is a cell of a multi-cell value
 VMAX TYPED-BUFFER VSTK IR-ID:ir-value-id
 VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
 
 : VRESET ( -- )
-   0 VN ! ;
+   0 VN !
+   0 VGLUE ! ;
 
+\ Ordinary pushes are one whole value, so they clear their own bit rather than
+\ inheriting whatever the entry held when the vector last reached this depth.
 : VPUSH ( IR-ID:ir-value-id -- )
    {: val:IR-ID:ir-value-id :}
    VN @ VMAX >= if E-NELAB-CAP throw then
    val VN @ VSTK !
+   VGLUE @  1 VN @ lshift invert and  VGLUE !
    VN @ 1+ VN ! ;
+
+\ Just the low `n` bits of a mask: what a record of the vector's own glue holds
+\ when the vector is n entries deep, so a stored mask never carries bits for
+\ entries that were not there.
+: VGLUE-LOW ( n n -- n ) {: mask:n n:n :}
+   n 0 <= if 0 exit then
+   n VMAX >= if mask exit then
+   mask  1 n lshift 1 -  and ;
+
+\ Mark a run of entries already on the vector from a row's own mask, whose bit i
+\ is the i-th cell from the bottom of that row. The run starts at `base`, so the
+\ row's bit i is this vector's bit base+i.
+: VGLUE-RUN ( n n -- ) {: base:n mask:n :}
+   mask 0= if exit then
+   VGLUE @  mask base lshift or  VGLUE ! ;
+
+\ Whether any entry from `base` to the top is a cell of a multi-cell value.
+\ It masks off the entries BELOW base rather than building a window of the ones
+\ above it, because the window's width would be VN-base and a vector filled to its
+\ ceiling makes that the whole word - a shift the machine reduces modulo the word
+\ size, which would answer "nothing bundled" for the one case that holds the most.
+\ Masking downwards only ever shifts by base, which is strictly less than VN.
+: VGLUE-ABOVE? ( n -- bool ) {: base:n :}
+   base VN @ >= if false exit then
+   VGLUE @ VN @ VGLUE-LOW
+   1 base lshift 1 - invert and 0<> ;
 
 \ The i-th value from the bottom. Every reader of the vector goes through here,
 \ so an index outside what the vector holds is one refusal rather than several.
@@ -322,12 +381,21 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
 \ A pick names its input by depth in the consumed window with zero being the top,
 \ so the value it names sits at window position in-1-depth. Picks are listed
 \ bottom first, which is the order they are pushed.
+\ THE WINDOW MAY NOT REACH A CELL OF A MULTI-CELL VALUE. A rename names its
+\ inputs by depth and puts back whichever it likes, so a window holding one cell
+\ of a value can drop it, duplicate it, or move it away from the cells it belongs
+\ with - and the picks are counted in cells, so the arity still balances and
+\ nothing further down would object. The test is on the whole window rather than
+\ only on its lower edge: a value lying entirely inside the window is just as
+\ easily permuted as one straddling it, and `swap` over two adjacent two-cell
+\ values is exactly that case.
 : RENAME ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena sym:IR-ID:ir-symbol-id :}
    r sym HIR-WORD:INPUTS@ {: in:n :}
    r sym HIR-WORD:PICKS {: picks:n :}
    in VN @ > if E-NELAB-UNDER throw then
    VN @ in - {: base:n :}
+   base VGLUE-ABOVE? if E-NELAB-BUNDLE throw then
    in 0 ?do
       base i + VAT  i VWIN !
    loop
@@ -1346,6 +1414,10 @@ variable NB                          \ blocks closed so far; also the open block
 \ habu-let-exit-leave-7e013b93 carries the general case.
 variable IN-N                        \ values the definition takes
 variable OUT-N                       \ values the definition leaves
+variable IN-GLUE                     \ which of those it takes are cells of a multi-cell value
+variable OUT-GLUE                    \ and which of those it leaves are
+variable FR-GIN                      \ what the caller staged for the definition about to be compiled
+variable FR-GOUT
 variable EXIT-USED                   \ whether the body has an `exit` at all
 variable EXIT-ORD                    \ the block every `exit` and the fall-through reach
 variable EXIT-PENDING                \ an `exit` closed the arm; only its `then` may follow
@@ -1417,11 +1489,12 @@ NFROZEN:BMAX VMAX * constant ARG-CAP
 
 here CELL 1- and CELL swap - CELL 1- and allot
 create ARG-N NFROZEN:BMAX cells allot   \ vector positions stated for this block, or -1
+create ARG-G NFROZEN:BMAX cells allot   \ which of those positions are cells of a multi-cell value
 ARG-CAP TYPED-BUFFER ARG-T IR-ID:ir-type-id  \ the type each of those positions has
 VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hands over
 
 : ARG-RESET ( -- )
-   NFROZEN:BMAX 0 ?do  -1 i cells ARG-N + !  loop ;
+   NFROZEN:BMAX 0 ?do  -1 i cells ARG-N + !  0 i cells ARG-G + !  loop ;
 
 : ARG-BLOCK-CK ( n -- n )
    dup 0 < over NFROZEN:BMAX >= or if E-NELAB-BLOCK throw then ;
@@ -1437,6 +1510,14 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    k 0 < k t ARG-WIDTH@ >= or if E-NELAB-JOIN throw then
    t VMAX * k + ARG-T @ ;
 
+\ Which of a block's argument positions are cells of a multi-cell value. A value
+\ that is one value on one side of an edge is one value on the other, so this
+\ crosses with the width and the types rather than being rederived after the
+\ join - without it every bundled value would arrive at a join looking like
+\ unrelated cells and a rename below it would no longer refuse.
+: ARG-G@ ( n -- n )
+   ARG-BLOCK-CK cells ARG-G + @ ;
+
 \ The first edge into a block, stating one type per vector position it hands
 \ over. A block whose types were already stated is never restated: the whole
 \ point is that the second edge is held to the first one's answer.
@@ -1447,6 +1528,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    n 0 ?do
       i VAT VTYPE-OF  t VMAX * i +  ARG-T !
    loop
+   VGLUE @  n VGLUE-LOW  t ARG-BLOCK-CK cells ARG-G + !
    n t ARG-BLOCK-CK cells ARG-N + ! ;
 
 \ A block that takes its live values as arguments. Every value the vector held
@@ -1494,6 +1576,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    n 0 ?do
       CTX BLD  NB @ i ARG-T@  IR-BUILD:ADD-BLOCK-ARG VPUSH
    loop
+   0 NB @ ARG-G@ VGLUE-RUN
    lo h LOOP-ARGS+
    l LOCAL-ARGS+
    TOK-LIVE @ 0<> if
@@ -1558,6 +1641,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
       exit
    then
    t ARG-WIDTH@ VN @ <> if E-NELAB-JOIN throw then
+   t ARG-G@  VGLUE @ VN @ VGLUE-LOW  <> if E-NELAB-JOIN throw then
    VN @ 0 ?do
       ix i  t i ARG-T@  EDGE-VALUE  i XV !
    loop ;
@@ -2789,8 +2873,16 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ takes its place - the order into its slot, each loop's counters back into their
 \ frame, each local's value back under its name, and the survivors and outputs
 \ onto the vector.
-: CALL-CLOSE ( n -- )
-   {: n:n :}
+\ THE SURVIVORS COME BACK AS THE SAME VALUES AND SO WITH THE SAME MARKS. A call
+\ hands the whole vector over and takes it back, so every value the caller still
+\ held is answered again; a value that was several cells before the call is the
+\ same several cells after it, and forgetting that here would let a rename below
+\ the call take apart what a rename above it could not. The callee's own results
+\ are marked from its declared effect, which is the other of the two places
+\ anything wider than a cell enters this vector.
+: CALL-CLOSE ( n n n -- )
+   {: n:n out:n oglue:n :}
+   VGLUE @ {: keep:n :}
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    VN @ VDROP
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK!
@@ -2798,7 +2890,10 @@ variable LRK                         \ crossing locals the walk below has taken 
    id CROSS-L LOCAL-RESULTS@
    n 0 ?do
       CTX BLD id  i 1+ CROSS-RESULTS +  IR-BUILD:OP-RESULT@ VPUSH
-   loop ;
+   loop
+   n out - {: k:n :}
+   0  keep k VGLUE-LOW  VGLUE-RUN
+   k oglue VGLUE-RUN ;
 
 : DO-SELF-CALL ( n -- )
    {: ix:n :}
@@ -2808,7 +2903,7 @@ variable LRK                         \ crossing locals the walk below has taken 
    CTX BLD VW MKEY ix op OPEN
    CALL-OPERANDS+
    back CALL-RESULTS+
-   back CALL-CLOSE ;
+   back OUT-N @ OUT-GLUE @ CALL-CLOSE ;
 
 \ The three fields a call to another word carries: where the callee starts, and
 \ what its declared effect is. Nothing here decides any of them - they are the
@@ -2842,7 +2937,7 @@ variable LRK                         \ crossing locals the walk below has taken 
    CALL-OPERANDS+
    back CALL-RESULTS+
    r sy HIR-WORD:ENTRY@ a o WCALL-ATTRS+
-   back CALL-CLOSE ;
+   back o  r sy HIR-WORD:OUT-GLUE@  CALL-CLOSE ;
 
 \ ---- copying a callee's body in instead of calling it ------------------------
 \ WHAT A COPIED CALL IS. The callee's recorded tokens, staged one at a time by
@@ -2953,7 +3048,13 @@ variable LRK                         \ crossing locals the walk below has taken 
       VN @ base < if E-NELAB-INLINE throw then
    loop
    VN @ base o + <> if E-NELAB-INLINE throw then
-   ix base o CELL-CROSS-RUN ;
+   ix base o CELL-CROSS-RUN
+   \ A COPIED CALL LEAVES THE SAME VALUES A MADE ONE WOULD. The spliced tokens
+   \ are literals and operations, so each of them leaves one cell and marks
+   \ nothing - but what the callee DECLARED it leaves is unchanged by the copy,
+   \ and a value of its several cells is still one value here. So the callee's
+   \ own answer is stated over the results, exactly as DO-WORD-CALL states it.
+   base  r sy HIR-WORD:OUT-GLUE@  VGLUE-RUN ;
 
 \ Either way of reaching another word's body. Which one this token is was decided
 \ once, before any walk started, and is read here rather than asked again.
@@ -3230,7 +3331,8 @@ variable IX                          \ the body token the walk stands on
    LIT-RESET
    in 0 ?do
       c b  c b CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG VPUSH
-   loop ;
+   loop
+   0 IN-GLUE @ VGLUE-RUN ;
 
 \ The one row the definition frame is: the name the definition gives, read while
 \ the parser was still interpreting because `:` parses it before it switches the
@@ -3401,6 +3503,24 @@ EXPORT SPLICE-MEANING?
 \ word takes and the values it leaves. Every identity read off the tape is
 \ checked against this builder's module by the table that owns it, so a tape of
 \ another module cannot be elaborated into this one.
+\ WHICH OF THE DEFINITION'S OWN ARGUMENTS AND RESULTS ARE CELLS OF A MULTI-CELL
+\ VALUE, stated at the same seam and by the same caller that states how many
+\ there are, and for the same reason: the fact belongs to the checker's accepted
+\ effect, and until a recorded unit carries that effect (dot
+\ habu-bind-checker-env-ed4f9f87) a name lookup here would answer about whatever
+\ word carries the name now rather than about the tape being compiled.
+\
+\ IT IS SEPARATE FROM COLON'S ARGUMENTS RATHER THAN TWO MORE OF THEM so that a
+\ caller which knows nothing about bundles keeps compiling exactly what it
+\ compiled before: unstated reads as nothing bundled, which is the truth for
+\ every row whose values are one cell each, and that is all but a handful.
+\ COLON consumes the statement and clears it, so one definition's answer can
+\ never be read by the next.
+: FRAME-GLUE! ( n n -- )
+   {: gin:n gout:n :}
+   gin FR-GIN !
+   gout FR-GOUT ! ;
+
 : COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
       r:IR-ARENA:arena in:n out:n :}
@@ -3418,6 +3538,8 @@ EXPORT SPLICE-MEANING?
    ARG-RESET
    in IN-N !
    out OUT-N !
+   FR-GIN @ IN-GLUE !  FR-GOUT @ OUT-GLUE !
+   0 FR-GIN !  0 FR-GOUT !
    r n LOCALS-SCAN
    r n RESOLVE-SCAN
    r n INLINE-SCAN
