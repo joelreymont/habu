@@ -446,7 +446,7 @@ variable SP-N
 \ needs beside the number. A code that is NOT here is not swallowed: the report
 \ prints it raw, on its own line, because the census discovering a reason nobody
 \ predicted is a result.
-22 constant CODE#
+23 constant CODE#
 
 : CODE-AT ( n -- n )
    case
@@ -457,21 +457,22 @@ variable SP-N
       4 of E-NELAB-LOCAL endof
       5 of E-NELAB-LOCAL-CAP endof
       6 of E-NELAB-BLOCK endof
-      7 of E-A64RA-SPILL endof
-      8 of E-A64RA-POOL endof
-      9 of E-A64RA-EDGE endof
-      10 of E-A64RA-PRESSURE endof
-      11 of E-NELAB-ARITY endof
-      12 of E-NMIGRATE-TEXT endof
-      13 of E-NMIGRATE-STATE endof
-      14 of E-NMIGRATE-NAME endof
-      15 of E-NMIGRATE-VERDICT endof
-      16 of E-NFEED-STATE endof
-      17 of E-NFEED-TEXT endof
-      18 of E-NCLOB-CAP endof
-      19 of E-NPUB-CAP endof
-      20 of RC-UNDEFINED endof
-      21 of RC-DUPLICATE endof
+      7 of E-NELAB-BUNDLE endof
+      8 of E-A64RA-SPILL endof
+      9 of E-A64RA-POOL endof
+      10 of E-A64RA-EDGE endof
+      11 of E-A64RA-PRESSURE endof
+      12 of E-NELAB-ARITY endof
+      13 of E-NMIGRATE-TEXT endof
+      14 of E-NMIGRATE-STATE endof
+      15 of E-NMIGRATE-NAME endof
+      16 of E-NMIGRATE-VERDICT endof
+      17 of E-NFEED-STATE endof
+      18 of E-NFEED-TEXT endof
+      19 of E-NCLOB-CAP endof
+      20 of E-NPUB-CAP endof
+      21 of RC-UNDEFINED endof
+      22 of RC-DUPLICATE endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -484,21 +485,22 @@ variable SP-N
       4 of s" E-NELAB-LOCAL" endof
       5 of s" E-NELAB-LOCAL-CAP" endof
       6 of s" E-NELAB-BLOCK" endof
-      7 of s" E-A64RA-SPILL" endof
-      8 of s" E-A64RA-POOL" endof
-      9 of s" E-A64RA-EDGE" endof
-      10 of s" E-A64RA-PRESSURE" endof
-      11 of s" E-NELAB-ARITY" endof
-      12 of s" E-NMIGRATE-TEXT" endof
-      13 of s" E-NMIGRATE-STATE" endof
-      14 of s" E-NMIGRATE-NAME" endof
-      15 of s" E-NMIGRATE-VERDICT" endof
-      16 of s" E-NFEED-STATE" endof
-      17 of s" E-NFEED-TEXT" endof
-      18 of s" E-NCLOB-CAP" endof
-      19 of s" E-NPUB-CAP" endof
-      20 of s" engine refused the name" endof
-      21 of s" engine refused a duplicate name" endof
+      7 of s" E-NELAB-BUNDLE" endof
+      8 of s" E-A64RA-SPILL" endof
+      9 of s" E-A64RA-POOL" endof
+      10 of s" E-A64RA-EDGE" endof
+      11 of s" E-A64RA-PRESSURE" endof
+      12 of s" E-NELAB-ARITY" endof
+      13 of s" E-NMIGRATE-TEXT" endof
+      14 of s" E-NMIGRATE-STATE" endof
+      15 of s" E-NMIGRATE-NAME" endof
+      16 of s" E-NMIGRATE-VERDICT" endof
+      17 of s" E-NFEED-STATE" endof
+      18 of s" E-NFEED-TEXT" endof
+      19 of s" E-NCLOB-CAP" endof
+      20 of s" E-NPUB-CAP" endof
+      21 of s" engine refused the name" endof
+      22 of s" engine refused a duplicate name" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -532,9 +534,9 @@ variable SP-N
 \ work order is read off. TOTALS. prints it on its own line for the same reason a
 \ self-check count is printed: it is a number to watch, not a gap to close.
 : ROW-CLASS ( n -- n ) {: i:n :}
-   i 7 < if CL-DIALECT exit then
-   i 11 < if CL-PRESSURE exit then
-   i 20 < if CL-INSTRUMENT exit then
+   i 8 < if CL-DIALECT exit then
+   i 12 < if CL-PRESSURE exit then
+   i 21 < if CL-INSTRUMENT exit then
    CL-SELF-CHECK ;
 
 \ Which named row a code is, or -1 for a code no row names.

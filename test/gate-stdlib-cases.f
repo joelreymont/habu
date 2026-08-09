@@ -469,6 +469,15 @@ SUITE compiler-native-chain
    test/compiler/native-chain.f
 ;SUITE
 
+\ A rename is a permutation of the compile-time value vector, and that vector
+\ counts CELLS while the language counts VALUES. This suite is the differential
+\ that holds the two together over a value wider than a cell: every case states
+\ one body twice, once for the engine and once for the chain, and compares what
+\ they leave rather than what anybody expected them to leave.
+SUITE compiler-native-rename-rows
+   test/compiler/native-rename-rows.f
+;SUITE
+
 \ The same end-to-end run over the comparison and bitwise vocabulary, word by
 \ word, each answer compared with the interpreted word's. It runs beside the
 \ chain suite because it is the same path with a wider source vocabulary.

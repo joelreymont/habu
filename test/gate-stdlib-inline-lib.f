@@ -470,6 +470,7 @@ public
    \ sat red on master while its two neighbours were repaired.
    s" test/compiler/native-reach.f" GSI-FORK-INCLUDE
    s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-rename-rows.f" GSI-FORK-INCLUDE
    s" test/compiler/native-vocab.f" GSI-FORK-INCLUDE
    \ The instrument a tail-call lane decides with: a routine's calls and the way
    \ it leaves, read off the emitted code. It belongs beside the chain's own
