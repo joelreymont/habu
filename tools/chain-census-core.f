@@ -13,12 +13,25 @@
 \ is the chain's own, obtained by running it, and every reason is the error the
 \ refusing stage threw.
 \
-\ THE INSTRUMENT IS NMIGRATE:DEFINE-HELD. It hands one definition's source to
+\ THE INSTRUMENT IS NMIGRATE:MEASURE-HELD. It hands one definition's source to
 \ the engine, which compiles and CERTIFIES it and publishes nothing; the chain
 \ then compiles the tape the checker's own reader filled while it certified that
-\ body. A refusal anywhere throws the refusing stage's own code and leaves
-\ nothing behind. That is why the census can ask about a definition without
-\ changing what the definition means.
+\ body, and the publication seam makes every refusal it can make against the
+\ finished emission. A refusal anywhere throws the refusing stage's own code and
+\ leaves nothing behind. That is why the census can ask about a definition
+\ without changing what the definition means.
+\
+\ AND IT KEEPS NOTHING WHEN THE ANSWER IS YES EITHER, WHICH IS WHAT MAKES THE
+\ COMPILED COUNT A MEASUREMENT. A migration that COMMITS its emission spends a
+\ code slot, a row of the clobber record and a row of the replacement log per
+\ definition, and neither record may drop a row to make space - a row is the
+\ whole of what a caller compiled against it. So a census that committed ran out
+\ of table long before it ran out of tree, and reported the size of the table it
+\ filled first: the 2026-08-07 run compiled EXACTLY 128 definitions of lib/ and
+\ refused 1275 more with the clobber record's E-NCLOB-CAP, every one of them
+\ after selection, allocation, verification and emission had all accepted it.
+\ Measuring stops one step short of those writes, so what the count reports is
+\ what the chain can compile.
 \
 \ THE SUBJECT IS THE BODY, NOT THE NAME, AND THAT IS FORCED. A tail may be
 \ defined once in a wordlist (src/habu/habu2.f C-REJECT-DUP-DEF), and every
@@ -520,10 +533,11 @@ variable SP-N
 
 \ ---- the fresh name every subject is driven under ------------------------------
 \ It has to be a name nothing in the tree carries and nothing a later run will
-\ carry either, because a successful held migration really does publish a record.
-\ The counter is monotonic for the life of the process and is deliberately NOT
-\ cleared by RESET: two censuses in one process must not offer the same name
-\ twice.
+\ carry either, because the definition is CERTIFIED under it while it is being
+\ measured, and a second certified definition of one name is refused before the
+\ measurement can retract the first. The counter is monotonic for the life of the
+\ process and is deliberately NOT cleared by RESET: two censuses in one process
+\ must not offer the same name twice.
 variable SUBJECT-N
 create SUBJECT-BUF NAME-CAP allot
 variable SUBJECT-U
@@ -555,7 +569,7 @@ variable RUN-OUT
 \ Parked, because a quotation cannot read the enclosing word's locals and the run
 \ has to happen inside one so its refusal can be caught.
 : MIGRATE ( -- )
-   SRC-BUF SRC-U @ RUN-IN @ RUN-OUT @ REGS NMIGRATE:DEFINE-HELD ;
+   SRC-BUF SRC-U @ RUN-IN @ RUN-OUT @ REGS NMIGRATE:MEASURE-HELD ;
 
 \ ---- the package scope a section runs in ---------------------------------------
 create PKG-BUF NAME-CAP allot

@@ -1672,6 +1672,100 @@ variable HELD-ND1
    s" 1 NMG-HELD-AGAIN" EV-N 10 T=
    NELAB:REFUSED-ROW -1 T= ;
 
+\ ---- asking the chain without spending anything on the answer ----------------
+\ THE THIRD MODE, AND THE ONE A MEASUREMENT NEEDS. A held migration commits its
+\ emission, and committing is permanent: it takes a code slot, a row of the
+\ clobber record and a row of the replacement log, and neither record may drop a
+\ row to make space, because a row is the whole of what a caller compiled against
+\ it. So a caller that wants to know whether the chain can compile a definition -
+\ rather than to have it compiled - could only find out by paying for it, and
+\ after enough questions the answer it got back was that a table was full. That is
+\ what tools/chain-census-core.f measured: it reported the size of the first table
+\ it filled as the size of the compilable tree.
+\
+\ MEASURE-HELD RUNS EVERY STAGE AND KEEPS NONE OF IT. What the cases below assert
+\ is that "keeps none of it" is each of the four things a publication would have
+\ kept, one assertion apiece, plus the fifth thing the checker holds: the
+\ certified signature under the definition's name, which is retracted the way a
+\ refused held run retracts it.
+\
+\ THE SAME NAME IS MEASURED OVER AND OVER ON PURPOSE. A second certified
+\ definition of one name is refused, so a measurement that failed to retract the
+\ first one would make the second attempt fail - and the loop below would report
+\ that failure rather than the counts. Reusing the name is how the retraction is
+\ tested on the path where nothing went wrong, which is the path a census spends
+\ all its time on.
+16 constant MEASURE-N
+variable MEAS-ND0
+variable MEAS-CP0
+variable MEAS-ROWS0
+variable MEAS-PUB0
+
+: MEASURE-SUBJECT ( -- )
+   s" : NMG-MEASURED ( n -- n ) 3 + 4 * ;" 1 1 REGS NMIGRATE:MEASURE-HELD ;
+
+: MEASURE-BEFORE ( -- )
+   ndict@ MEAS-ND0 !
+   cp@ MEAS-CP0 !
+   NCLOB:ROWS MEAS-ROWS0 !
+   NPUB:REPUBLISHED MEAS-PUB0 ! ;
+
+: MEASURE-MANY ( -- )
+   MEASURE-N 0 ?do MEASURE-SUBJECT loop ;
+
+: MEASURE-CASE ( -- )
+   MEASURE-BEFORE
+   MEASURE-MANY
+
+   s" a measured definition publishes no record and no name" T-LABEL
+   ndict@ MEAS-ND0 @ T=
+   s" NMG-MEASURED" DEFINED? TFALSE
+   s" NMG-MEASURED" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+
+   s" it writes no code and leaves the free slot where it found it" T-LABEL
+   cp@ MEAS-CP0 @ T=
+
+   s" and it spends no row of either record a publication keeps" T-LABEL
+   NCLOB:ROWS MEAS-ROWS0 @ T=
+   NPUB:REPUBLISHED MEAS-PUB0 @ T=
+
+   s" the name is free afterwards: the certified signature went with it" T-LABEL
+   s" : NMG-MEASURED ( n -- n ) 3 + 4 * ;" EV
+   s" 5 NMG-MEASURED" EV-N 32 T= ;
+
+\ What measuring answers has to be what publishing answers, or the count is a
+\ measurement of a second chain. The same source text is measured and then HELD -
+\ under the same name, which the measurement had to leave free - and the word
+\ that appears computes what the body says.
+: MEASURE-AGREE-CASE ( -- )
+   s" a body the measurement accepts is one the held publication accepts" T-LABEL
+   s" : NMG-MEASURE-TWIN ( n -- n ) 5 * 2 + ;" 1 1 REGS NMIGRATE:MEASURE-HELD
+   s" NMG-MEASURE-TWIN" DEFINED? TFALSE
+   s" : NMG-MEASURE-TWIN ( n -- n ) 5 * 2 + ;" 1 1 REGS NMIGRATE:DEFINE-HELD
+   s" 3 NMG-MEASURE-TWIN" EV-N 17 T=
+
+   s" and the record it published is the chain's own emission" T-LABEL
+   s" NMG-MEASURE-TWIN" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
+
+: MEASURE-REFUSED-MIGRATE ( -- )
+   s" using NMG-AWAY : NMG-MEASURE-BAD ( n -- n ) NMG-K + ; ;using" 1 1 REGS NMIGRATE:MEASURE-HELD ;
+
+: MEASURE-REFUSAL-CASE ( -- )
+   s" a measured body outside the dialect is refused with the dialect's own code" T-LABEL
+   MEASURE-BEFORE
+   [: MEASURE-REFUSED-MIGRATE ;] E-HIR-UNMODELED TTHROWSQ
+
+   s" and a refused measurement leaves exactly what an accepted one leaves" T-LABEL
+   ndict@ MEAS-ND0 @ T=
+   cp@ MEAS-CP0 @ T=
+   NCLOB:ROWS MEAS-ROWS0 @ T=
+   NPUB:REPUBLISHED MEAS-PUB0 @ T=
+   s" NMG-MEASURE-BAD" DEFINED? TFALSE
+
+   s" the chain recovered, so the next measurement still answers" T-LABEL
+   s" : NMG-MEASURE-AFTER ( n -- n ) 6 + ;" 1 1 REGS NMIGRATE:MEASURE-HELD
+   s" NMG-MEASURE-AFTER" DEFINED? TFALSE ;
+
 \ ---- a name resolved off the engine, with nothing staged ---------------------
 \ THE CASE THE WHOLE TRANCHE IS ABOUT. Nothing below stages a callee, a data word
 \ or an address. Each body simply NAMES a word, and the chain resolves the name:
@@ -1779,6 +1873,9 @@ variable HELD-ND1
    HELD-CASE
    HELD-REFUSAL-CASE
    HELD-RECORD-CASE
+   MEASURE-CASE
+   MEASURE-AGREE-CASE
+   MEASURE-REFUSAL-CASE
    T-REPORT ;
 
 ;package

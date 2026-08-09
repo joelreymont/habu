@@ -237,8 +237,26 @@ variable M-SPILLS                    \ frame slots this definition proved it nee
 \ is the checker's side of the retraction: the engine gave the code space back by
 \ itself, and the count never moved, but the certified signature the checker
 \ recorded under this name did not go away with them.
+\
+\ AND A MEASURED MIGRATION IS A HELD ONE THAT NEVER COMMITS. It asks the whole
+\ chain the same question - the engine certifies, the reader fills the tape, the
+\ dialect elaborates it, the allocator accepts it, the emitter seals it, and the
+\ publication seam makes every refusal it can make - and then keeps none of the
+\ answer: no code, no record, no clobber row, no replacement-log row and no
+\ count. The held record is retracted on the way out exactly as a refused run
+\ retracts it, because a measured run leaves the same thing behind: a definition
+\ that certified and was never published.
+\
+\ WHY THAT IS A MODE AND NOT A CALLER'S OWN AFFAIR. What a publication keeps is
+\ kept in two records that may not drop a row to make space - a row is the whole
+\ of what a caller compiled against it - so a caller that asks the question a few
+\ thousand times fills them, and the refusal it then gets says the chain ran out
+\ of table rather than that the definition is one it cannot compile. That is a
+\ measurement of the instrument. tools/chain-census-core.f is the caller that
+\ asks, and it read the first of those tables as the size of the compilable tree.
 variable M-HELD                      \ this migration compiles without publishing
 variable M-HELD-PENDING              \ a held record is waiting to be committed or retracted
+variable M-MEASURE                   \ this migration proves the publication instead of making it
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -529,8 +547,17 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ with no room for another body refuses nothing at all: it declines the row, the
 \ word publishes, and its callers call it, exactly as they call a body the size
 \ rule turned down.
+\
+\ AND A MEASURED RUN CLAIMS NOTHING, because the address it would claim is one no
+\ routine is going to occupy: the run publishes nothing, the code pointer never
+\ moves, and the next definition compiled in this process starts exactly there. A
+\ row claimed for it would be a body kept against somebody else's code - and the
+\ record says so itself, by refusing the second measurement's claim at the same
+\ address (E-NINL-DUP). The staging is left for RUN to drop, which is the same
+\ path a refused run's staging leaves by.
 : CLAIM-ROW ( -- )
    NINL:STAGED? 0= if exit then
+   M-MEASURE @ 0<> if exit then
    A64EMIT:PLACEMENT NINL:CLAIM ;
 
 \ Write the row the claim reserved, now that the seam has published the routine
@@ -727,6 +754,7 @@ variable REC-OK                      \ the body staged so far is still one worth
 
 : PUBLISH-IT ( n -- ) {: wid:n :}
    M-HELD @ 0<> if
+      M-MEASURE @ 0<> if NPUB:VALIDATE-HELD exit then
       NPUB:COMMIT-HELD
       0 M-HELD-PENDING !
       exit
@@ -841,14 +869,15 @@ variable REC-OK                      \ the body staged so far is still one worth
    CALLEES-CLEAR
    NINL:STAGED? if NINL:STAGE-CLEAR then
    M-RC @ {: rc:n :}
-   rc 0 <> if HELD-RETRACT rc throw then ;
+   rc 0 <> if HELD-RETRACT rc throw then
+   M-MEASURE @ 0<> if HELD-RETRACT then ;
 
 : STAGE ( ptr u8 n n n n -- )
    {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
    in M-IN ! out M-OUT ! regs M-REGS !
    0 M-DATA-U ! 0 M-SPILLS !
-   0 M-HELD ! 0 M-HELD-PENDING ! ;
+   0 M-HELD ! 0 M-HELD-PENDING ! 0 M-MEASURE ! ;
 
 public
 
@@ -874,6 +903,28 @@ public
    CALLEES-NONE-CK
    STAGE
    1 M-HELD !
+   RUN ;
+
+\ Ask whether the chain can compile the definition this source publishes, and
+\ keep nothing whatever the answer is. It runs every stage DEFINE-HELD runs,
+\ including every refusal the publication seam can make
+\ (src/compiler/native/publish.f VALIDATE-HELD), and stops one step short of the
+\ writes: no code in the arena, no dictionary record, no row in either
+\ address-keyed record, no replacement-log row, and the checker's signature for
+\ the name retracted on the way out. A refusal arrives exactly as it would have
+\ from DEFINE-HELD, with the refusing stage's own code.
+\
+\ THIS IS WHAT A CENSUS NEEDS AND THE OTHER ENTRIES CANNOT GIVE IT. Every other
+\ entry here publishes, and a publication is permanent: the two address-keyed
+\ records may not drop a row to make space, so a caller that asks about a few
+\ thousand definitions fills them and is refused for the tables rather than for
+\ the definitions. What the caller wanted to know is answered before any of that
+\ is written down.
+: MEASURE-HELD ( ptr u8 n n n n -- )
+   CALLEES-NONE-CK
+   STAGE
+   1 M-HELD !
+   1 M-MEASURE !
    RUN ;
 
 \ Stage one word the NEXT migration's definition calls: its spelling as the

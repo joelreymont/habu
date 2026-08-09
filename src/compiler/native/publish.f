@@ -677,21 +677,47 @@ public
    REC-MIN-IN@ {: mi:n :}
    mi 0<> if idx mi MIN-IN-REC then ;
 
-\ Make the sealed emission the code of the record the engine withheld, and
-\ publish that record.
-: COMMIT-HELD ( -- )
+\ Every refusal a held publication can make, and it ends before the first byte
+\ moves. It answers the three things the commit below needs and nothing has been
+\ written when it does: the record the engine withheld, the slot the routine
+\ would go into, and the emission's size.
+: HELD-PROVE ( -- n n n )
    SIZE-CK {: size:n :}
    size MAP-CK
    HELD-IDX {: idx:n :}
    idx HELD-CK
-   idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
-   idx XREF-REC XREF-WORDLIST {: wid:n :}
+   idx XREF-REC XREF-NAME$ nip {: u:n :}
    size VALIDATE-EMISSION {: fn:n :}
    u LOG-CK
+   idx fn size ;
+
+\ Make the sealed emission the code of the record the engine withheld, and
+\ publish that record.
+: COMMIT-HELD ( -- )
+   HELD-PROVE {: idx:n fn:n size:n :}
+   idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   idx XREF-REC XREF-WORDLIST {: wid:n :}
    idx fn size COMMIT
    ndict@ 1+ ndict!
    idx HELD-FACTS
    a u wid 0 0 fn  size RECORDED-LEN  LOG+ ;
+
+\ Ask the same publication whether it would be accepted, and then do none of it.
+\ Every refusal above is made, in the same order, against the same emission and
+\ the same record - it is one word and not a copy of one, so the two answers
+\ cannot drift apart - and nothing is written: no code, no relocation bit, no
+\ dictionary record, no clobber row, no log row and no count.
+\
+\ WHAT IT IS FOR. A caller that wants to know whether the chain can compile a
+\ definition, rather than to have the definition compiled. Committing one would
+\ cost it a code slot, a clobber row and a log row per question asked - and the
+\ two records may not drop a row to make space, because a row is the only thing
+\ standing behind what a caller compiled against it, so asking enough questions
+\ used to be indistinguishable from a chain that had run out of dialect
+\ (tools/chain-census-core.f, which asks thousands of them and read the first
+\ table it filled as the size of the compilable tree).
+: VALIDATE-HELD ( -- )
+   HELD-PROVE 2drop drop ;
 
 \ The address the next republication will write its first instruction at. It is
 \ the engine's own free code slot, which is what REPUBLISH claims, so a caller
