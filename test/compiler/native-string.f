@@ -151,6 +151,54 @@ TRUSTED: EV-B ( ptr u8 n -- bool )
    S\" NST-LONE2 s\q lone-body\q STR=" EV-B TTRUE
    s" NST-LONE drop NST-LONE2 drop =" EV-B TTRUE ;
 
+\ ---- what a literal costs in code bytes -----------------------------------------
+\ THE MEASUREMENT THE DESIGN TURNS ON, taken through the publication seam's own
+\ two readers: OLD-LEN is the code the ENGINE compiled for that definition and
+\ NEW-LEN is the code the chain published in its place, so one migration answers
+\ both columns for one body and nothing has to be lined up by hand.
+\
+\ WHAT THE OLD EMITTER SPENDS. src/habu/habu2.f C-SDQ copies the payload INLINE
+\ into the compiled word, jumps over it, and addresses it pc-relatively, so its
+\ cost grows with the string: measured here, a two-byte body costs 48 bytes and a
+\ thirty-two-byte body costs 76, and the difference is exactly the payload
+\ growth, 32 bytes rounded to four against 2 rounded to four.
+\
+\ WHAT THE CHAIN SPENDS. Two constants and no payload at all, because the bytes
+\ are in DATA space: measured here, 28 bytes for BOTH bodies. That is the claim
+\ this case exists to keep honest, and it is asserted as an EQUALITY rather than
+\ as a number, because it is the independence that matters - a change that put a
+\ literal's bytes back into the code region would move the two apart whatever the
+\ absolute figures became.
+\
+\ WHICH PINS ARE ABSOLUTE AND WHICH ARE RELATIONS. The old emitter's layout does
+\ not depend on where anything is mapped, so its two lengths are pinned as
+\ numbers. The chain's does: an address literal is a move-wide chain, and how
+\ many halfwords it needs depends on the arena's address, which is a fact about
+\ the host's DATA base rather than about this compiler. So the chain's side is
+\ pinned as the two relations that carry the claim.
+: COST-PAIR ( -- )
+   S\" : NST-COST-SHORT ( -- ptr u8 n ) s\" hi\" ;" 0 2 DEF
+   S\" : NST-COST-LONG ( -- ptr u8 n ) s\" 12345678901234567890123456789012\" ;" 0 2 DEF ;
+
+: OLD ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u 0 NPUB:OLD-LEN ;
+
+: NEW ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u 0 NPUB:NEW-LEN ;
+
+: BYTE-COST-CASE ( -- )
+   COST-PAIR
+   s" the old emitter's code grows with the string, by the payload" T-LABEL
+   s" NST-COST-SHORT" OLD 48 T=
+   s" NST-COST-LONG" OLD 76 T=
+
+   s" the chain's code does not grow with the string at all" T-LABEL
+   s" NST-COST-LONG" NEW  s" NST-COST-SHORT" NEW T=
+
+   s" and it is smaller than the old emitter's for both" T-LABEL
+   s" NST-COST-SHORT" NEW  s" NST-COST-SHORT" OLD < TTRUE
+   s" NST-COST-LONG" NEW  s" NST-COST-LONG" OLD < TTRUE ;
+
 \ ---- the store's ceiling ------------------------------------------------------
 \ THIS CASE RUNS LAST AND EXHAUSTS THE STORE, so nothing after it can intern.
 \ What it proves is that a body the store cannot take is refused by name: the
@@ -183,6 +231,7 @@ public
    ROUND-TRIP-CASE
    SHARING-CASE
    INTERN-IDEMPOTENT-CASE
+   BYTE-COST-CASE
    CAP-CASE
    T-REPORT ;
 
