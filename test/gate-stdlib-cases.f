@@ -992,6 +992,10 @@ SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
+SUITE checker-dead-path
+   test/checker-dead-path-suite.f
+;SUITE
+
 SUITE snapshot-writer
    test/snapshot-writer.f
 ;SUITE

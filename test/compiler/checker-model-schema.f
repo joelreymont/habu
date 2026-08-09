@@ -342,8 +342,9 @@ variable VEC-N
    s" recurse" s" CF-RECURSE"                     s" TRecurse"   CFT-ROW ;
 
 \ The tokens the model knows that `CF-TOK?` does not dispatch: an ordinary call
-\ and a call to a word with recorded control flags, `throw` and `die` (named in
-\ `THROW-CUR?` / `DEAD-CUR?`), `match` and its family and variant tokens
+\ and a call to a word with recorded control flags, `throw` and `die` (which
+\ carry theirs from `NORET-AXIOMS`, so `THROW-CUR?` / `DEAD-CUR?` read them the
+\ same way they read any other call's), `match` and its family and variant tokens
 \ (intercepted by `MATCH-TOK` while `MM` is non-zero), `construct` (intercepted
 \ by `CONSTRUCT-TOK` while `CONM` is non-zero, and reusing the same family and
 \ variant tokens for its two operands), `execute` and `catch`

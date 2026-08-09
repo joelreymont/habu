@@ -7071,6 +7071,25 @@ REG-EXT-DEFAULTS
 : NORET-ADD {: a:ptr u:n flag:n :}
    a u CHECKER-RECORD-SYM flag NORET-ADD-SYM ;
 
+\ The two path-ending words the engine owns. `throw` leaves through the catch
+\ edge, so it carries both flags; `die` ends the process and is dead only. They
+\ are RECORDED here, in the same store every other word's control flags live in,
+\ rather than recognised by spelling where the flags are read.
+\
+\ WHY THE SPELLING TEST HAD TO GO. The store is keyed by the SYMBOL a token
+\ resolves to and a spelling is not: a package that defines its own `throw`
+\ binds that word for every bare mention inside it, and the spelling test killed
+\ the path anyway. `package P public : throw ( n -- ) drop ; : T2 ( n n -- n )
+\ 0 = if drop 5 throw then ;` certified with the true arm treated as dead, and
+\ `7 0 P:T2` returned NOTHING where the signature promised a cell - the next
+\ word underflowed. One authority for "does this call end the path", and it is
+\ the record of the word the token really names.
+: NORET-AXIOMS ( -- )
+   s" throw" CTL-DEAD CTL-THROW or NORET-ADD
+   s" die" CTL-DEAD NORET-ADD ;
+
+NORET-AXIOMS
+
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-UNDEFINE-GUARD
    a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
@@ -7138,13 +7157,14 @@ variable CURSYM
 : CTL-FLAGS-CUR ( -- n )
    CURSYM @ CTL-FLAGS-SYM ;
 
-: DEAD-CUR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" die" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" throw" CORE-STR= IF RES-TRUE EXIT THEN
+\ Does the token the walk just applied end the path, and can it reach a catchable
+\ throw edge? Both read the resolved symbol's control flags and nothing else -
+\ `throw` and `die` carry theirs from NORET-AXIOMS above, exactly as a checked
+\ definition ending in one carries its own.
+: DEAD-CUR? ( -- bool )
    CTL-FLAGS-CUR CTL-DEAD and 0 <> ;
 
-: THROW-CUR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" throw" CORE-STR= IF RES-TRUE EXIT THEN
+: THROW-CUR? ( -- bool )
    CTL-FLAGS-CUR CTL-THROW and 0 <> ;
 
 \ M5: current token is a block collective (CTL-BARRIER, set by E-ADD-EFFECT). The
@@ -10035,8 +10055,8 @@ variable CONFAM    \ resolved family id while CONM = 2
       a u FAIL-PIN! REJECT-IMMEDIATE
    THEN   \ live immediate with a usig: wrong-certificate reject (p5)
    TKF TKFU @ DO-TOK
-   OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
-   OK @ IF TKF TKFU @ DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
+   OK @ IF THROW-CUR? IF THROW-EDGE THEN THEN
+   OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF a u REJECT-DIVBAR THEN THEN THEN
    STRING-PAYLOAD-STEP
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
