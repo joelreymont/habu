@@ -42,10 +42,10 @@
 \
 \ AND THE TABLE IS THE BETTER FOR IT. A row was previously kept for every
 \ address this process ever published at, so a forget-and-re-migrate cycle burnt
-\ a row per turn and ROWS-MAX became a limit on how many times a program could
-\ recompile a word rather than on how many routines it has. Dropping the rows of
-\ reclaimed code gives the table its end back, so a slot whose routine is gone is
-\ a slot a later publication can have.
+\ a row per turn and the table's end became a limit on how many times a program
+\ could recompile a word rather than on how many routines it has. Dropping the
+\ rows of reclaimed code gives the table its end back, so a slot whose routine is
+\ gone is a slot a later publication can have.
 \
 \ AND THE ONE RULE THAT KEEPS IT TRUE IS THAT A ROW MAY ONLY EVER NARROW. A
 \ caller compiled while this file knew nothing about an address saved everything,
@@ -76,36 +76,107 @@
 
 require lib/prelude.f
 require lib/errors.f
+require lib/vector.f
 require src/compiler/a64-effect.f
 
 package NCLOB
 
 private
 
-\ How many LIVE published routines this file can remember at once. It is a fixed
-\ table for the reason src/compiler/native/publish.f's log is one: this runs
-\ while the engine is compiling and has nowhere to allocate from. A row is never
-\ dropped TO MAKE SPACE - dropping one would silently widen what every caller
-\ compiled against it assumed - so the ceiling is a refusal, E-NCLOB-CAP, and it
-\ is the same number of routines the publication log holds. A row IS dropped
-\ when the code it describes is reclaimed, which is a different thing entirely:
-\ there is no caller left to widen anything for.
-128 constant ROWS-MAX
+\ ---- how many routines this file can remember at once -------------------------
+\ ONE ROW PER LIVE PUBLISHED ROUTINE, AND THE PROGRAM SAYS HOW MANY THAT IS. A
+\ row is never dropped TO MAKE SPACE - dropping one would silently widen what
+\ every caller compiled against it assumed - so a table that could not grow was a
+\ limit on how much of a program the chain may compile, and not a limit on
+\ anything the record is about. It was 128 rows, which is what the system
+\ migrated when the record was written; a whole-tree census hit that number
+\ exactly and reported it as the size of the compilable tree.
+\
+\ SO THE ROWS ARE A GROWABLE VECTOR AND NOT A FIXED ARRAY. lib/vector.f is the
+\ tree's growable cell array: mapped storage, doubled and copied when it fills,
+\ and the span it grew out of handed back to the OS. Three of them, one per
+\ column, because the lookup below reads only the address column and a row's
+\ three cells are never read together.
+\
+\ AND "NOWHERE TO ALLOCATE FROM" WAS NOT TRUE. That was the reason given for the
+\ fixed array, and the chain disproves it on every migration it makes: each one
+\ runs inside src/compiler/ir/context.f's WITH-CONTEXT, which maps half a
+\ megabyte through MEM:WITH-BYTES and gives it back, and the publication this
+\ file serves happens inside that. What is true is that the space must be taken
+\ BEFORE the commit phase, because a publication's commit may not throw, and
+\ ROOM-CK below is where it is taken.
+128 constant ROWS-SEED
 
-create R-ENTRY ROWS-MAX cells allot
-create R-GPR ROWS-MAX cells allot
-create R-FPR ROWS-MAX cells allot
-variable ROWS-N
-0 ROWS-N !
+\ ---- and the one ceiling that is left -----------------------------------------
+\ A row exists because a publication claimed a code slot for it, slots are
+\ claimed in strictly increasing order (src/compiler/native/publish.f SLOT-CK
+\ refuses one below the last routine's end) and every one of them is an
+\ instruction-aligned address inside the engine's code region. So the rows this
+\ record can be holding at once are at most the instruction slots that region
+\ has, and E-NCLOB-CAP is that bound.
+\
+\ IT IS A BACKSTOP AND NOT A PATH, which is the shape the widen refusal in RECORD
+\ already has here. The publication seam runs out of code arena long before it
+\ runs out of slots - src/compiler/native/publish.f ROOM-CK refuses with
+\ E-NPUB-ROOM at the end reserve - so a program cannot reach this number through
+\ the seam at all. It is asked because a caller that records addresses of its own
+\ is not the seam, and a record that grew without a bound would be a table with
+\ no answer for how large it may become.
+4 constant INSN-BYTES
+REGION INSN-BYTES / constant ROWS-CEIL
 
-\ Which row this address has, or -1. Linear, because the table is small and the
-\ answer has to be exact: a hash that collided would hand one routine's
-\ destroyed set to another routine's callers.
+create R-ENTRY VEC-HEADER-CELLS cells allot
+create R-GPR VEC-HEADER-CELLS cells allot
+create R-FPR VEC-HEADER-CELLS cells allot
+
+: TABLE-INIT ( -- )
+   R-ENTRY ROWS-SEED VEC-COUNT VEC-INIT
+   R-GPR ROWS-SEED VEC-COUNT VEC-INIT
+   R-FPR ROWS-SEED VEC-COUNT VEC-INIT ;
+
+TABLE-INIT
+
+\ How many rows are live. The three columns are written and truncated together,
+\ so the address column's length is the table's length.
+: ROWS# ( -- n )
+   R-ENTRY VEC-LEN@ LEN>N ;
+
+\ The address column, read the way the three scans below read it: the storage
+\ base and one cell out of it. They walk every live row, so this is the one
+\ reader on a path whose length is the population, and the checked element
+\ accessor - six nested calls to prove an index the loop bound already proves -
+\ made a lookup twelve times what it costs here. The row columns are read once
+\ per operation rather than once per row, so they keep the checked accessor.
+: ENTRY-AT ( n -- n ) {: k:n :}
+   R-ENTRY VEC-DATA@ k cells + @ ;
+
+: GPR-AT ( n -- n ) {: k:n :}
+   R-GPR k VEC-IDX VEC-N@ ;
+
+: FPR-AT ( n -- n ) {: k:n :}
+   R-FPR k VEC-IDX VEC-N@ ;
+
+: GPR-AT! ( n n -- ) {: v:n k:n :}
+   v R-GPR k VEC-IDX VEC-N! ;
+
+: FPR-AT! ( n n -- ) {: v:n k:n :}
+   v R-FPR k VEC-IDX VEC-N! ;
+
+\ Cut the table to its first k rows. The three columns move together or the
+\ record would answer one routine's address with another routine's registers.
+: TRUNC-TO ( n -- ) {: k:n :}
+   k VEC-LEN R-ENTRY VEC-LEN!
+   k VEC-LEN R-GPR VEC-LEN!
+   k VEC-LEN R-FPR VEC-LEN! ;
+
+\ Which row this address has, or -1. Linear, because the answer has to be exact:
+\ a hash that collided would hand one routine's destroyed set to another
+\ routine's callers.
 : ROW-OF ( n -- n )
    {: entry:n :}
    -1
-   ROWS-N @ 0 ?do
-      i cells R-ENTRY + @ entry = if drop i leave then
+   ROWS# 0 ?do
+      i ENTRY-AT entry = if drop i leave then
    loop ;
 
 \ The bits, so that "is every register of the new set already in the old one" is
@@ -114,14 +185,24 @@ variable ROWS-N
    {: old:n new:n :}
    new old and new = ;
 
+\ Room for one more row, taken in front. Growing is an allocation and an
+\ allocation can fail, so it happens where a refusal still costs nothing rather
+\ than in the append, which runs in a publication's commit phase and may not
+\ throw. Taking room changes no row: a caller refused after this ran finds the
+\ record holding exactly what it held before.
+: ROOM-CK ( -- )
+   ROWS# 1+ {: need:n :}
+   need ROWS-CEIL > if E-NCLOB-CAP throw then
+   R-ENTRY need VEC-COUNT VEC-ENSURE
+   R-GPR need VEC-COUNT VEC-ENSURE
+   R-FPR need VEC-COUNT VEC-ENSURE ;
+
 : ROW+ ( n n n -- )
    {: entry:n g:n f:n :}
-   ROWS-N @ {: k:n :}
-   k ROWS-MAX >= if E-NCLOB-CAP throw then
-   entry k cells R-ENTRY + !
-   g k cells R-GPR + !
-   f k cells R-FPR + !
-   k 1+ ROWS-N ! ;
+   ROOM-CK
+   entry R-ENTRY VEC-PUSH-N drop
+   g R-GPR VEC-PUSH-N drop
+   f R-FPR VEC-PUSH-N drop ;
 
 \ The first row at or above this address, or the end of the table. What makes one
 \ number the whole answer is that the live table is in publication order and a
@@ -131,9 +212,9 @@ variable ROWS-N
 \ is where it starts.
 : FLOOR-ROW ( n -- n )
    {: floor:n :}
-   ROWS-N @
-   ROWS-N @ 0 ?do
-      i cells R-ENTRY + @ floor >= if drop i leave then
+   ROWS#
+   ROWS# 0 ?do
+      i ENTRY-AT floor >= if drop i leave then
    loop ;
 
 \ ...and that the rest of the table really is above the floor. A row below it
@@ -145,8 +226,8 @@ variable ROWS-N
 \ uses for the same class of defect.
 : ORDER-CK ( n n -- )
    {: floor:n k:n :}
-   ROWS-N @ k ?do
-      i cells R-ENTRY + @ floor < if
+   ROWS# k ?do
+      i ENTRY-AT floor < if
          s" nclob: recorded routines out of publication order" 76 die
       then
    loop ;
@@ -162,7 +243,7 @@ variable ROWS-N
    {: floor:n :}
    floor FLOOR-ROW {: k:n :}
    floor k ORDER-CK
-   k ROWS-N ! ;
+   k TRUNC-TO ;
 
 public
 
@@ -178,13 +259,13 @@ public
    {: entry:n worst:A64EFF:gprs :}
    entry ROW-OF {: k:n :}
    k 0 < if worst exit then
-   k cells R-GPR + @ A64EFF:GPR-SET ;
+   k GPR-AT A64EFF:GPR-SET ;
 
 : FPR-CLOB ( n A64EFF:fprs -- A64EFF:fprs )
    {: entry:n worst:A64EFF:fprs :}
    entry ROW-OF {: k:n :}
    k 0 < if worst exit then
-   k cells R-FPR + @ A64EFF:FPR-SET ;
+   k FPR-AT A64EFF:FPR-SET ;
 
 \ Would RECORD below take this set at this address? Both of its refusals, asked
 \ while a refusal still costs nothing. RECORD runs once the routine is in the
@@ -198,12 +279,9 @@ public
 : RECORD-CK ( n A64EFF:gprs A64EFF:fprs -- )
    {: entry:n g:A64EFF:gprs f:A64EFF:fprs :}
    entry ROW-OF {: k:n :}
-   k 0 < if
-      ROWS-N @ ROWS-MAX >= if E-NCLOB-CAP throw then
-      exit
-   then
-   k cells R-GPR + @ g A64EFF:GPRS-N NARROWS? 0= if E-NCLOB-WIDEN throw then
-   k cells R-FPR + @ f A64EFF:FPRS-N NARROWS? 0= if E-NCLOB-WIDEN throw then ;
+   k 0 < if ROOM-CK exit then
+   k GPR-AT g A64EFF:GPRS-N NARROWS? 0= if E-NCLOB-WIDEN throw then
+   k FPR-AT f A64EFF:FPRS-N NARROWS? 0= if E-NCLOB-WIDEN throw then ;
 
 \ Record what the routine published at this address destroys. A first row is
 \ taken as it stands; a second one for the same address is taken only when it
@@ -215,15 +293,15 @@ public
    f A64EFF:FPRS-N {: fb:n :}
    entry ROW-OF {: k:n :}
    k 0 < if entry gb fb ROW+ exit then
-   k cells R-GPR + @ gb NARROWS? 0= if E-NCLOB-WIDEN throw then
-   k cells R-FPR + @ fb NARROWS? 0= if E-NCLOB-WIDEN throw then
-   gb k cells R-GPR + !
-   fb k cells R-FPR + ! ;
+   k GPR-AT gb NARROWS? 0= if E-NCLOB-WIDEN throw then
+   k FPR-AT fb NARROWS? 0= if E-NCLOB-WIDEN throw then
+   gb k GPR-AT!
+   fb k FPR-AT! ;
 
 \ How many routines this file remembers, which is what a test measures a
 \ publication against.
 : ROWS ( -- n )
-   ROWS-N @ ;
+   ROWS# ;
 
 private
 

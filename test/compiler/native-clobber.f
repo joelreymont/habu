@@ -546,6 +546,104 @@ variable SEED-ROW
    s" with the seeded row exactly as the refusal found it" T-LABEL
    ANCHOR-ENTRY @ GPR-AT SEED-ROW @ T= ;
 
+\ ---- the table holds as many routines as the program has ----------------------
+\ WHAT THIS IS FOR. The rows used to live in a fixed array of 128 cells, which is
+\ what the system migrated when the record was written. A whole-tree census then
+\ measured the chain against lib/ and reported that the chain compiles EXACTLY
+\ 128 definitions - not because the 129th is a shape the dialect lacks, but
+\ because the 129th publication was refused a table slot after selection,
+\ allocation, verification and emission had all accepted it. A table that cannot
+\ grow is a bound on how much of a program the chain may compile, and this case
+\ is what says it no longer is one.
+\
+\ IT IS DRIVEN THROUGH THE RECORD'S OWN ENTRIES, which is what the publication
+\ seam calls: RECORD writes a row, GPR-CLOB and FPR-CLOB read one, and
+\ CODE-RECLAIM:TRUNCATE is the notice that drops them. Nothing here re-implements
+\ the table or reaches around it - there is no other door to reach around it
+\ through.
+\
+\ WHY THE ADDRESSES START AT THE FREE CODE SLOT. Every row this record holds
+\ describes a routine below that slot, so a row recorded above it is above every
+\ live row - which is the order the publication seam produces and the order the
+\ reclamation cut below rests on. They are four bytes apart because that is the
+\ closest two published routines can ever be.
+\
+\ AND WHAT IT MEASURES IS NOT JUST THE COUNT. The rows written before the storage
+\ first grew are read back AFTER it has grown six times, and the widen refusal is
+\ asked of one of them: a growth that lost or moved a row would answer a stale
+\ set, and answering a stale narrow set is precisely the failure the whole record
+\ exists to prevent. The narrowing write goes to a copied row for the same
+\ reason.
+128 constant OLD-CEILING              \ the fixed array this record used to be
+5000 constant GROWN-ROWS              \ past the population lib+src needs
+variable GROW-BASE
+variable GROW-BEFORE
+
+: GROW-AT ( n -- n ) {: k:n :}
+   GROW-BASE @ k INSN-BYTES * + ;
+
+\ A set per row that depends on the row, so a lookup that answered a neighbour
+\ would answer the neighbour's registers and the case would see it.
+: GROW-GPRS ( n -- n ) {: k:n :}
+   k $F and 1 + ;
+
+: GROW-FPRS ( n -- n ) {: k:n :}
+   k 3 and 1 + ;
+
+\ The free code slot is above every routine this record holds a row for, because
+\ a publication claims that slot and moves it past the routine it wrote. The fill
+\ asserts it rather than assuming it: a row already sitting up there would make
+\ the first row below a RE-record of somebody else's routine, and the case would
+\ report a widen refusal instead of what it is about.
+: GROW-FILL ( -- )
+   cp@ GROW-BASE !
+   NCLOB:ROWS GROW-BEFORE !
+
+   s" no row describes a routine at or above the free code slot" T-LABEL
+   GROW-BASE @ NCLOB:KNOWN? FLAG# 0 T=
+
+   GROWN-ROWS 0 ?do
+      i GROW-AT  i GROW-GPRS GPRS  i GROW-FPRS FPRS  NCLOB:RECORD
+   loop ;
+
+: GROW-ROW-EXACT ( n -- ) {: k:n :}
+   k GROW-AT GPR-AT k GROW-GPRS T=
+   k GROW-AT FPR-AT k GROW-FPRS T= ;
+
+: GROW-CASES ( -- )
+   s" the record holds one row per published routine, not 128" T-LABEL
+   NCLOB:ROWS GROW-BEFORE @ GROWN-ROWS + T=
+   GROWN-ROWS OLD-CEILING > TTRUE
+
+   s" a row written before the storage grew still answers what it was told"
+   T-LABEL
+   0 GROW-ROW-EXACT
+   OLD-CEILING 1 - GROW-ROW-EXACT
+
+   s" and so does the row the fixed array had no slot for at all" T-LABEL
+   OLD-CEILING GROW-ROW-EXACT
+   GROWN-ROWS 1 - GROW-ROW-EXACT
+
+   s" the widen refusal still stands on a row the growth copied" T-LABEL
+   [: 0 GROW-AT  0 GROW-GPRS WITHOUT-LOWEST $10 or GPRS  0 GROW-FPRS FPRS
+      NCLOB:RECORD ;] E-NCLOB-WIDEN TTHROWSQ
+   0 GROW-ROW-EXACT
+
+   s" and a narrowing of a copied row is written where the reader looks" T-LABEL
+   0 GROW-AT  0 GROW-GPRS WITHOUT-LOWEST GPRS  0 GROW-FPRS FPRS NCLOB:RECORD
+   0 GROW-AT GPR-AT  0 GROW-GPRS WITHOUT-LOWEST T=
+
+   s" reclaiming the code they describe gives every one of those slots back"
+   T-LABEL
+   GROW-BASE @ CODE-RECLAIM:TRUNCATE
+   NCLOB:ROWS GROW-BEFORE @ T=
+   0 GROW-AT NCLOB:KNOWN? FLAG# 0 T=
+   GROWN-ROWS 1 - GROW-AT NCLOB:KNOWN? FLAG# 0 T=
+
+   s" and the rows below the floor are exactly as they were" T-LABEL
+   A1 GPR-AT $4 T=
+   A2 GPR-AT $8 T= ;
+
 public
 
 : RUN ( -- )
@@ -569,6 +667,8 @@ public
    MIGRATE-RECLAIM-CALLER
    MIGRATE-RECLAIM-TWIN
    RECLAIM-CALLER-CASES
+   GROW-FILL
+   GROW-CASES
    ORDER-CASES
    T-REPORT ;
 
