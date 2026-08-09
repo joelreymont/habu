@@ -75,15 +75,6 @@ create OUT-BUF OUT-CAP allot
 : LINE ( ptr u8 n -- )
    FIX+ LF ;
 
-\ The two bytes `s"`, which no `s" ... "` literal in this file can hold: the quote
-\ would close the literal that was trying to spell it.
-create SQ-BUF 2 allot
-
-: SQ$ ( -- ptr u8 n )
-   115 SQ-BUF c!
-   34 SQ-BUF 1+ c!
-   SQ-BUF 2 ;
-
 \ ---- where the fixtures live -------------------------------------------------------
 create ROOT-BUF FS-PATH-CAP allot      variable ROOT-U
 create GOOD-BUF FS-PATH-CAP allot      variable GOOD-U
@@ -166,9 +157,10 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
    s" ;package" LINE
    FIX$ ;
 
-\ A string literal. The tape has a kind for one and nothing fills it, so the
-\ refusal is E-HIR-UNMODELED at the token spelled `s"` and not E-HIR-KIND; the
-\ tool's header carries the measurement behind that.
+\ A string literal, which the chain compiles: the reader fills the tape's string
+\ kind with the literal's body and the elaborator stages an address and a length.
+\ It was E-HIR-UNMODELED at the token spelled `s"` until dot
+\ habu-compile-str-literals-30a7121b landed the tranche.
 : STR-SRC ( -- ptr u8 n )
    FIX-RESET
    s" package CENSUS-FIX-STR" LINE
@@ -504,17 +496,20 @@ variable ACC
       0 CHAIN-CENSUS:SPELL$ s" >r" T$= ;
 
 \ ---- (c) a string literal ----------------------------------------------------------------------
-\ The brief expected E-HIR-KIND. That is not what the chain does, and the tool's
-\ header carries the measurement: nothing fills the tape's string kind, so the
-\ token arrives as a name and is refused as unmodeled. This pins the real answer,
-\ and pins E-HIR-KIND at zero so the day something starts filling that kind this
-\ suite says so instead of quietly agreeing.
+\ The chain compiles one now, so the verdict is no verdict: the body reaches the
+\ chain, the chain has a rule for the kind, and the definition publishes. Both
+\ refusal codes a string literal could earn are pinned at zero beside it - the
+\ dialect refusal it used to earn until dot habu-compile-str-literals-30a7121b,
+\ and the kind refusal the brief once expected - so the day either starts firing
+\ on a string this suite says so instead of quietly agreeing.
 : CASE-STRING ( -- )
    STR$ CENSUS1
-   s" string: refused as unmodeled, not as a kind" T-LABEL
-      0 CHAIN-CENSUS:DEF-CODE E-HIR-UNMODELED T=
-   s" string: the refusal names the literal opener" T-LABEL
-      0 CHAIN-CENSUS:DEF-SPELL$ SQ$ T$=
+   s" string: the body compiled" T-LABEL
+      0 CHAIN-CENSUS:DEF-CODE 0 T=
+   s" string: it was offered rather than skipped" T-LABEL
+      0 CHAIN-CENSUS:FILE-EXAMINED 1 T=
+   s" string: E-HIR-UNMODELED is unreached" T-LABEL
+      E-HIR-UNMODELED CHAIN-CENSUS:COUNT-OF 0 T=
    s" string: E-HIR-KIND is still unreached" T-LABEL
       E-HIR-KIND CHAIN-CENSUS:COUNT-OF 0 T= ;
 
@@ -585,14 +580,14 @@ variable ACC
       s" CFH-ARITY" DEF-BY CHAIN-CENSUS:DEF-IN 3 T=
    s" hostile: and its one output" T-LABEL
       s" CFH-ARITY" DEF-BY CHAIN-CENSUS:DEF-OUT 1 T=
-   s" hostile: row 3 was refused for its literal opener" T-LABEL
-      s" CFH-QUOTE" SPELL-AT-NAME$ SQ$ T$=
+   s" hostile: row 3 compiled, literal and all" T-LABEL
+      s" CFH-QUOTE" CODE-AT-NAME 0 T=
    s" hostile: row 4 was refused for the quotation opener" T-LABEL
       s" CFH-QUOT" SPELL-AT-NAME$ s" [:" T$= ;
 
 : CASE-HOSTILE-SPELLINGS ( -- )
-   s" hostile: two distinct refused spellings" T-LABEL
-      CHAIN-CENSUS:SPELLS 2 T=
+   s" hostile: one refused spelling" T-LABEL
+      CHAIN-CENSUS:SPELLS 1 T=
    s" hostile: the line-commented word is not one of them" T-LABEL
       s" mod" SPELLED? TFALSE
    s" hostile: nor is the paren-commented one" T-LABEL

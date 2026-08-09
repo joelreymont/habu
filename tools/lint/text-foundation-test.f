@@ -910,9 +910,13 @@ variable REG-I
    \ claimed - 283 plus 61 never summed to the 346 it sat next to. The lexer is
    \ the authority here and it counted 285 plus 63; the prose was stale, the
    \ constant was not.
+   \ It was 348 before the string-literal tranche (dot
+   \ habu-compile-str-literals-30a7121b) added the `CHECKER-TAPE` axiom
+   \ `K-STRING`, the fourth token class the reader hands its observer - the one
+   \ that carries a string literal's decoded body rather than its opener.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 348 ASSERT=
+   REG-COUNT 349 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

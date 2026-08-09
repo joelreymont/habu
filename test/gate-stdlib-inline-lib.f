@@ -447,6 +447,7 @@ public
    s" test/compiler/ir-type.f" GSI-FORK-INCLUDE
    s" test/compiler/native-tape.f" GSI-FORK-INCLUDE
    s" test/compiler/native-feed.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-string.f" GSI-FORK-INCLUDE
    s" test/compiler/native-immediate.f" GSI-FORK-INCLUDE
    s" test/compiler/native-hir.f" GSI-FORK-INCLUDE
    s" test/compiler/native-elaborate.f" GSI-FORK-INCLUDE
