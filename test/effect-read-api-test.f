@@ -11,6 +11,8 @@
 \   EFFECT-DOUT-FAM ( i -- fam )          EFAM-* family of dout term i (top = 0)
 \   EFFECT-DIN-CELLS ( -- n )             fixed din width in STACK CELLS, or CELLS-NONE
 \   EFFECT-DOUT-CELLS ( -- n )            fixed dout width in cells, or CELLS-NONE
+\   EFFECT-DIN-SLOT ( i -- n )            bundle slot+1 of din term i, 0 = logical
+\   EFFECT-DOUT-SLOT ( i -- n )           bundle slot+1 of dout term i, 0 = logical
 \ Family ABI (EFAM-*, mirrored below as ERA-* to pin the numeric contract):
 \   0 gray (var/row/atom/param)   1 scalar (con)   2 pointer (ptr)   3 xt (quot)
 \
@@ -32,6 +34,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/adt/option.f
 
 0 constant ERA-GRAY     1 constant ERA-SCALAR
 2 constant ERA-POINTER  3 constant ERA-XT
@@ -40,6 +43,29 @@ require lib/test.f
 : ERA-A ( n -- n n ) dup ;                          \ scalar in; two scalars out
 : ERA-G ( a -- a a ) dup ;                          \ polymorphic var (gray) in/out
 : ERA-P ( ptr u8 n -- n ) drop drop 42 ;            \ pointer + scalar in; scalar out
+
+\ THE PAIR THE SLOT READER EXISTS FOR, and the reason it has to be a pair. These
+\ two signatures agree on every other thing the API reports - three din terms,
+\ three din cells, and the same family for each of the three - so an assertion
+\ about either one alone would pass just as well against a reader that answered a
+\ constant. They differ in one respect only: the first names a value that occupies
+\ two of those three cells, and the second names two values that occupy one cell
+\ each. Renaming the second cell-wise is correct; renaming the first cell-wise
+\ takes a value apart.
+\
+\ These three carry an owning package, unlike the three fixtures above them. The
+\ globals are global because they were written before EFFECT-QUERY was known to
+\ resolve a qualified name; it does, so nothing new here needs to be global, and
+\ the assertions below name them the way the rest of the tree names a package
+\ word.
+package ERA-FIX
+public
+
+: BUNDLE ( option<n> n -- n option<n> ) swap ;
+: TWOVAR ( a b n -- n a b ) swap ;
+: MKOPT  ( n -- option<n> ) OPTION:SOME ;           \ a user word whose OUTPUT is bundled
+
+;package
 
 \ The effect-read API reads raw effect-store state, so - like the top-row hook - it
 \ is called from an unchecked window. `0 set-check` opens the named boundary; T= /
@@ -119,6 +145,52 @@ private
    s" type" EFFECT-QUERY TTRUE
    EFFECT-DOUT-CELLS 0 T= ;
 
+\ ---- which cell of a value each term is, which neither of the other two says --
+\ EFFECT-DIN-SLOT / EFFECT-DOUT-SLOT report a term's position inside a multi-cell
+\ value as slot+1, and 0 for an ordinary term (dot habu-rename-over-rows-982167af).
+\ The two fixtures are built to fool a reader that guesses: they agree on the term
+\ count, the cell count and every family, so only a reader that reaches the stored
+\ marker can tell them apart. The negative half is asserted as loudly as the
+\ positive one - a reader that answered "bundled" everywhere would pass the first
+\ block and fail the second.
+: ERA-SLOTS ( -- )
+   s" a bundled signature and a two-variable one agree on counts and families" T-LABEL
+   s" ERA-FIX:BUNDLE" EFFECT-QUERY TTRUE
+   EFFECT-DIN-N 3 T=            EFFECT-DIN-CELLS 3 T=
+   0 EFFECT-DIN-FAM ERA-SCALAR T=
+   1 EFFECT-DIN-FAM ERA-GRAY T=   2 EFFECT-DIN-FAM ERA-GRAY T=
+   s" ERA-FIX:TWOVAR" EFFECT-QUERY TTRUE
+   EFFECT-DIN-N 3 T=            EFFECT-DIN-CELLS 3 T=
+   0 EFFECT-DIN-FAM ERA-SCALAR T=
+   1 EFFECT-DIN-FAM ERA-GRAY T=   2 EFFECT-DIN-FAM ERA-GRAY T=
+
+   s" and the slots separate them: the bundle's two cells carry their positions" T-LABEL
+   s" ERA-FIX:BUNDLE" EFFECT-QUERY TTRUE
+   0 EFFECT-DIN-SLOT 0 T=       \ the plain n on top
+   1 EFFECT-DIN-SLOT 2 T=       \ the value's upper cell, slot 1
+   2 EFFECT-DIN-SLOT 1 T=       \ its lower cell, slot 0
+   s" while two independent variables are all logical" T-LABEL
+   s" ERA-FIX:TWOVAR" EFFECT-QUERY TTRUE
+   0 EFFECT-DIN-SLOT 0 T=  1 EFFECT-DIN-SLOT 0 T=  2 EFFECT-DIN-SLOT 0 T=
+
+   s" the output side reports it too, for a user word returning the value" T-LABEL
+   s" ERA-FIX:MKOPT" EFFECT-QUERY TTRUE
+   EFFECT-DOUT-N 2 T=           EFFECT-DOUT-CELLS 2 T=
+   0 EFFECT-DOUT-SLOT 2 T=      1 EFFECT-DOUT-SLOT 1 T=
+
+   s" a generated constructor keeps it as one wide term instead, so no slot marks it" T-LABEL
+   s" OPTION:SOME" EFFECT-QUERY TTRUE
+   EFFECT-DOUT-N 1 T=           EFFECT-DOUT-CELLS 2 T=
+   0 EFFECT-DOUT-SLOT 0 T=
+
+   s" an ordinary word has no bundled cell on either side" T-LABEL
+   s" ERA-A" EFFECT-QUERY TTRUE
+   0 EFFECT-DIN-SLOT 0 T=
+   0 EFFECT-DOUT-SLOT 0 T=      1 EFFECT-DOUT-SLOT 0 T=
+
+   s" and an out-of-range index reads logical rather than running off the row" T-LABEL
+   9 EFFECT-DIN-SLOT 0 T=       9 EFFECT-DOUT-SLOT 0 T= ;
+
 \ ---- the width against the checker's own answer, over the whole dictionary ----
 \ WHAT THIS PROVES THAT THE FIXTURES ABOVE CANNOT. The checker computes a row's
 \ width twice, by two walks over two different representations. ROW-CELLS walks
@@ -163,6 +235,7 @@ public
 : MAIN ( -- )
    T-RESET
    ERA-CELLS
+   ERA-SLOTS
    ERA-AGREEMENT
    T-REPORT
    s" effect-read-api widths: ok" type cr ;

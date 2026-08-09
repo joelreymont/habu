@@ -6293,12 +6293,15 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 \ a declared TRUSTED: signature, so SIG-MIN-IN finds it and internal-mark leaves it
 \ top-level callable; the readers project the private EN-node graph onto a coarse,
 \ stable family enum, so the graph representation stays free to evolve behind them.
-\ They answer two different questions and a consumer has to know which it wants: a
-\ row's TERM count and per-term family, and a row's width in STACK CELLS
-\ (EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS). The two agree only while every term is
-\ one cell. A call site moves CELLS, so that is what src/compiler/native/dict.f
-\ asks for; the family enum is a shape identity, which is what PRIM-LINK:FP
-\ fingerprints (dot habu-export-the-checker-2bbc831c).
+\ They answer three different questions and a consumer has to know which it wants:
+\ a row's TERM count and per-term family, a row's width in STACK CELLS
+\ (EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS), and which cell of a multi-cell value
+\ each term is (EFFECT-DIN-SLOT / EFFECT-DOUT-SLOT). The first two agree only
+\ while every term is one cell. A call site moves CELLS, so that is what
+\ src/compiler/native/dict.f asks for; the family enum is a shape identity, which
+\ is what PRIM-LINK:FP fingerprints (dot habu-export-the-checker-2bbc831c); the
+\ slot says which cells may not be separated from one another, which is what a
+\ consumer reordering a stack needs and neither of the other two can tell it.
 \ Read-only: no store word is exposed and the query never mutates a persisted record.
 \ EFFECT-QUERY resolves a NAME's active effect (user row or prim axiom) into query
 \ state; the EFFECT-* readers report on the last successful query.
@@ -6321,6 +6324,7 @@ variable EFFQ-DOUT          \ dout row offset
 : EFF-A@   ( n -- n )   USIGS-CELL-AT EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   USIGS-CELL-AT EN.B @ ;      \ EN.B field (rest-of-row offset)
 : EFF-C@   ( n -- n )   USIGS-CELL-AT EN.C @ ;      \ EN.C field (on a row cell: width+1)
+: EFF-E@   ( n -- n )   USIGS-CELL-AT EN.E @ ;      \ EN.E field (on a param term: hidden slot+1)
 
 : EFF-TERM-FAM ( n -- n )       \ n = term-node offset (E-OFF); 0 -> gray
    dup 0= if drop EFAM-GRAY exit then
@@ -6329,6 +6333,28 @@ variable EFFQ-DOUT          \ dout row offset
    dup EN-QUOT = if drop EFAM-XT exit then
    EN-CON = if EFAM-SCALAR exit then
    EFAM-GRAY ;
+
+\ WHICH BUNDLE CELL A TERM IS, which is the one thing the family enum above
+\ cannot say. A value of a layout family occupies W stack cells, and the checker
+\ records the row as W separate terms — one per physical cell — each carrying its
+\ position in PARAMHID, which E-COPY* stores on the term's EN-PARAM node as EN.E
+\ (slot+1, so 0 means an ordinary logical term). Without this the flattened form
+\ is indistinguishable from W unrelated one-cell terms: `( option<n> n -- )` and
+\ `( a b n -- )` agree on the term count, the cell count AND the family of every
+\ term, so a reader that has only those three cannot tell a bundle it must move
+\ whole from two values it may reorder freely.
+\
+\ A term that is not a param answers 0 for the same reason a missing node does:
+\ it is not part of a bundle, which is what the caller asked. A snapshot written
+\ before the field existed restores zeros throughout, and that is safe to read as
+\ "no bundles" HERE because it is not this reader that would be fooled by it: the
+\ checker's own MATCH needs the same marker (MATCH-SCRUT-CELL? requires
+\ HIDDEN-PARAM?) and rejects every scrutinee without it, so such an image fails
+\ loudly at the first `MATCH` long before a consumer of this reader sees a body.
+: EFF-TERM-SLOT ( n -- n )      \ n = term-node offset (E-OFF); 0 -> not a bundle cell
+   dup 0= if drop 0 exit then
+   dup EFF-TAG@ EN-PARAM = 0= if drop 0 exit then
+   EFF-E@ ;
 
 : EFF-IS-PUSH? ( n -- bool )    \ n = row-node offset; a live fixed EN-PUSH term?
    dup 0= if drop 0 0= 0= exit then
@@ -6347,6 +6373,14 @@ variable EFFQ-DOUT          \ dout row offset
       swap EFF-B@ swap 1 -
    repeat drop                                \ ( cur )
    dup EFF-IS-PUSH? if EFF-A@ EFF-TERM-FAM else drop EFAM-GRAY then ;
+
+: EFF-ROW-SLOT ( n n -- n ) {: i:n off:n :}   \ bundle slot+1 of the i-th term from the top (0-based)
+   off i
+   begin dup 0 > while                        \ ( cur i ) advance i EN-PUSH terms
+      over EFF-IS-PUSH? 0= if 2drop 0 exit then
+      swap EFF-B@ swap 1 -
+   repeat drop                                \ ( cur )
+   dup EFF-IS-PUSH? if EFF-A@ EFF-TERM-SLOT else drop 0 then ;
 
 \ Only EFFECT-QUERY is trusted: it reads FEP / ER.DIN / ER.DOUT (raw checker state
 \ the checker cannot type, like its sibling USIGS readers). The four readers below
@@ -6383,6 +6417,8 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 : EFFECT-DOUT-FAM ( i -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
 : EFFECT-DIN-CELLS ( -- n )    EFFQ-DIN @ EFF-ROW-CELLS ;  \ fixed din width in cells, or CELLS-NONE
 : EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
+: EFFECT-DIN-SLOT ( i -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
+: EFFECT-DOUT-SLOT ( i -- n )  EFFQ-DOUT @ EFF-ROW-SLOT ;  \ bundle slot+1 of dout term i (top = 0), 0 = logical
 
 \ ---- ARM64 contract link: stable link from an emitted primitive/callable
 \ contract to its checker primitive-effect (PES) row (dot
