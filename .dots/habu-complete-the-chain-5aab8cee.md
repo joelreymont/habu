@@ -348,3 +348,9 @@ compilable those fixtures must change again, which is what a fixture is for.
   measured at 1c664f2c and at 77115b79 with no local changes, and with
   RESOLVE-SCAN disabled. Not caused by this work.
 - habu-walk-the-used-96694010 stays refused fail-closed, untouched.
+
+TRANCHE PROGRESS 2026-08-09: strings landed (30a7121b, merged 3ba76ff0),
+locals-groups landed (merged 858150df: E-NELAB-LOCAL 309->57), clobber/census
+ceilings landed (merged 601a79cd). Census on 858150df-era tree: compiled 2065
+of 3460. The stale 'Claim: agent=nameres' above is DEAD (that lane merged and
+closed); this leaf is unclaimed and serves as the tranche ledger.
