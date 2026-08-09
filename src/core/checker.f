@@ -1915,22 +1915,32 @@ $1002 constant TOKBUF-MAP-ANON
 create FAILTK-BOOT TOKBUF-INIT-CAP allot
 create TKF-BOOT TOKBUF-INIT-CAP allot
 create NMB-BOOT TOKBUF-INIT-CAP allot
-variable FAILTK-P   variable TKF-P   variable NMB-P   variable TOKBUF-CAP-U
+\ The fourth buffer of the family holds a string literal's DECODED body, and it
+\ rides the same growth because the same number bounds it: CHECK-RESET ensures
+\ the family for the whole scan text, and a decoded payload is never longer than
+\ the raw payload it came from, which is a slice of that text. So there is no
+\ separate ceiling here and no separate refusal — a body this cannot hold is a
+\ body the scan itself could not hold.
+create SDEC-BOOT TOKBUF-INIT-CAP allot
+variable FAILTK-P   variable TKF-P   variable NMB-P   variable SDEC-P   variable TOKBUF-CAP-U
 variable FAILTU
-FAILTK-BOOT FAILTK-P !   TKF-BOOT TKF-P !   NMB-BOOT NMB-P !
+FAILTK-BOOT FAILTK-P !   TKF-BOOT TKF-P !   NMB-BOOT NMB-P !   SDEC-BOOT SDEC-P !
 TOKBUF-INIT-CAP TOKBUF-CAP-U !
-\ FAILTK-FIELD/TKF-FIELD/NMB-FIELD ( -- ptr ptr u8 )
+\ FAILTK-FIELD/TKF-FIELD/NMB-FIELD/SDEC-FIELD ( -- ptr ptr u8 )
 : FAILTK-FIELD FAILTK-P 0 ptr-field ;
 : TKF-FIELD TKF-P 0 ptr-field ;
 : NMB-FIELD NMB-P 0 ptr-field ;
-\ FAILTK/TKF/NMB ( -- ptr u8 )
+: SDEC-FIELD SDEC-P 0 ptr-field ;
+\ FAILTK/TKF/NMB/SDEC ( -- ptr u8 )
 : FAILTK FAILTK-FIELD @ ;
 : TKF TKF-FIELD @ ;
 : NMB NMB-FIELD @ ;
-\ FAILTK!/TKF!/NMB! ( ptr u8 -- )
+: SDEC SDEC-FIELD @ ;
+\ FAILTK!/TKF!/NMB!/SDEC! ( ptr u8 -- )
 : FAILTK! FAILTK-FIELD ! ;
 : TKF! TKF-FIELD ! ;
 : NMB! NMB-FIELD ! ;
+: SDEC! SDEC-FIELD ! ;
 : TOKBUF-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad token buffer cap" 76 die THEN
    need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF s" checker: token buffer too large" 76 die THEN
@@ -1949,6 +1959,7 @@ TRUSTED: TOKBUF-RC>PTR ( n -- ptr u8 ) ;
    cap TOKBUF-ALLOC FAILTK!
    cap TOKBUF-ALLOC TKF!
    cap TOKBUF-ALLOC NMB!
+   cap TOKBUF-ALLOC SDEC!
    cap TOKBUF-CAP-U ! ;
 : TOKBUF-ENSURE {: need :}
    need TOKBUF-CAP-U @ <= IF exit THEN
@@ -1958,6 +1969,7 @@ TRUSTED: TOKBUF-RC>PTR ( n -- ptr u8 ) ;
    FAILTK-BOOT FAILTK!
    TKF-BOOT TKF!
    NMB-BOOT NMB!
+   SDEC-BOOT SDEC!
    TOKBUF-INIT-CAP TOKBUF-CAP-U !
    0 FAILTU ! ;
 variable TOKIX  variable FAILIX  variable DVERD
@@ -5631,7 +5643,7 @@ PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 \ never accept one, and it needs no trust boundary to hold the checker sound.
 PPRIM: CHECKER-TAPE INSTALL
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN ;PE-Q PE-IN
-   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
+   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
 PPRIM;
 PPRIM: CHECKER-TAPE ARM PPRIM;
@@ -5649,6 +5661,7 @@ PPRIM: CHECKER-TAPE HOLD-DISARM PPRIM;
 PPRIM: CHECKER-TAPE K-NAME PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-INT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-REAL PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-TAPE K-STRING PE-N PE-OUT PPRIM;
 PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -9207,10 +9220,30 @@ variable SKI  variable SKF
    c $61 >= c $66 <= and IF RES-TRUE EXIT THEN
    c $41 >= c $46 <= and ;
 
-: ESC-SIMPLE? ( n -- bool ) {: c:n :}
-   c $22 = c $5C = or c $61 = or c $62 = or c $65 = or c $66 = or
-   c $6C = or c $6E = or c $71 = or c $72 = or c $74 = or c $76 = or
-   c $7A = or ;
+\ THE ONE ESCAPE TABLE. Both readers below come off this word — the validator
+\ that decides whether a payload is well formed, and the decoder that produces
+\ the payload's bytes — so a spelling the checker accepts and a byte the checker
+\ produces cannot disagree, and one of them cannot drift from the engine's own
+\ decoder while the other stays right. The bytes are C-ESC-DECODE-BASIC's
+\ (habu2.f), value for value; note that \l and \n are both line feed there.
+: ESC-BYTE? ( n -- n bool ) {: c:n :}
+   c $22 = IF $22 RES-TRUE EXIT THEN
+   c $71 = IF $22 RES-TRUE EXIT THEN
+   c $5C = IF $5C RES-TRUE EXIT THEN
+   c $61 = IF $07 RES-TRUE EXIT THEN
+   c $62 = IF $08 RES-TRUE EXIT THEN
+   c $65 = IF $1B RES-TRUE EXIT THEN
+   c $6C = IF $0A RES-TRUE EXIT THEN
+   c $66 = IF $0C RES-TRUE EXIT THEN
+   c $6E = IF $0A RES-TRUE EXIT THEN
+   c $72 = IF $0D RES-TRUE EXIT THEN
+   c $74 = IF $09 RES-TRUE EXIT THEN
+   c $76 = IF $0B RES-TRUE EXIT THEN
+   c $7A = IF $00 RES-TRUE EXIT THEN
+   0 RES-FALSE ;
+
+: ESC-SIMPLE? ( n -- bool )
+   ESC-BYTE? nip ;
 
 : ESC-HEX-LEAD? ( n -- bool ) {: c:n :}
    c $78 = c $58 = or ;
@@ -9244,6 +9277,103 @@ variable SKI  variable SKF
       THEN
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
+
+\ ---- the payload a string literal carried --------------------------------------
+\ WHY THE READER HAS TO RECORD IT. The reader consumes a string literal as an
+\ opener token and then SPENDS its payload bytes without tokenising them, which
+\ is exactly what stops a quoted word from being read as code. A stage that has
+\ to COMPILE the literal needs those bytes, and it must not re-derive them by
+\ re-lexing the source: a second reader that merely agrees with this one is not
+\ the same reader, and the first payload the two disagree about is a compiled
+\ string that is not the string the programmer wrote. So the reader that spends
+\ the bytes is the one that reports them.
+\
+\ THE SPAN IS RAW AND THE BYTES MAY NOT BE. An escaped literal's body is what its
+\ escapes DECODE to, and that is shorter than the text it was written as, so the
+\ two are recorded apart: the span says where the literal was read from, and the
+\ bytes say what it IS. That is the division a tape row already makes between its
+\ span and its spelling, and it is why the decoded bytes need a buffer of their
+\ own rather than being described as a slice of the source.
+\
+\ AND THE AUTHORITY FOR "A PAYLOAD WAS SPENT" IS THE SKIP'S OWN CLOSE FLAG. Not
+\ the token's spelling, which the reader may never have reached the payload for
+\ (a name token, a match arm, a token inside a locals group), and not the check
+\ verdict, which is about the definition rather than about these bytes. SKF is
+\ set by exactly the two loops that walked a payload to its closing quote, so a
+\ recorded span is always a payload some loop really consumed and always one
+\ whose escapes really validated - SKIP-ESC-BAD spends the rest of the payload
+\ and leaves SKF clear.
+variable SPAY-ON      \ did the token just judged spend a payload?
+variable SPAY-ESC     \ was it the escaped spelling?
+variable SPAY-B       \ raw payload start, as a byte offset into the scan text
+variable SPAY-U       \ raw payload length
+variable SDU          \ decoded length, in SDEC
+variable SDI          \ decode cursor, a byte offset into the scan text
+
+\ TI stood on the single delimiter after the opener when the skip started and
+\ stands one past the closing quote now, so the payload is what lies strictly
+\ between the two.
+: SPAY-RECORD ( n n -- ) {: before:n esc:n :}
+   before 1 + SPAY-B !
+   TI @ before - 2 - SPAY-U !
+   esc SPAY-ESC !
+   -1 SPAY-ON ! ;
+
+: SD-PUT ( n -- ) {: b:n :}
+   b  SDEC SDU @ +  c!
+   SDU @ 1 + SDU ! ;
+
+: ESC-HEX-VAL ( n -- n ) {: c:n :}
+   c $39 <= IF c $30 - EXIT THEN
+   c $61 >= IF c $57 - EXIT THEN
+   c $37 - ;
+
+: SD-HEX ( -- )   \ SDI at 'x'/'X', both digits already validated
+   SDI @ 1 + TBYTE@ ESC-HEX-VAL 4 lshift
+   SDI @ 2 + TBYTE@ ESC-HEX-VAL or SD-PUT
+   SDI @ 3 + SDI ! ;
+
+\ The unknown-escape leg cannot be reached from a recorded span, because the
+\ validator walked the same table over the same bytes before SKF was set. It is
+\ written as a refusal rather than left out so that a future table edit that
+\ reaches only one of the two readers stops the definition instead of quietly
+\ emitting a byte nobody chose.
+: SD-ESC ( -- )   \ SDI at '\'
+   SDI @ 1 + SDI !
+   SDI @ TBYTE@ ESC-HEX-LEAD? IF SD-HEX EXIT THEN
+   SDI @ TBYTE@ ESC-BYTE? IF SD-PUT  SDI @ 1 + SDI !  EXIT THEN
+   drop  0 OK !  TBLEN @ SDI ! ;
+
+: SD-DECODE ( -- )
+   0 SDU !
+   SPAY-B @ SDI !
+   SPAY-B @ SPAY-U @ + {: end:n :}
+   BEGIN SDI @ end < WHILE
+      SDI @ TBYTE@ 92 = IF SD-ESC ELSE
+         SDI @ TBYTE@ SD-PUT  SDI @ 1 + SDI !
+      THEN
+   REPEAT ;
+
+\ The literal's body. A plain literal's body IS the recorded span, so it is
+\ handed over where it already lies; an escaped one is decoded into the buffer
+\ the token family grew for it.
+: SPAY-BYTES ( -- ptr u8 n )
+   SPAY-ESC @ 0= IF SPAY-B @ TADDR  SPAY-U @ EXIT THEN
+   SD-DECODE
+   SDEC SDU @ ;
+
+\ The step the two skips are reached through, so that recording a span is part of
+\ spending one rather than a second decision somewhere else.
+: STRING-PAYLOAD-STEP ( -- )
+   TI @ {: before:n :}
+   TKF TKFU @ ESCAPED-STRING-OPENER? IF
+      SKIP-ESCAPED-STRING-PAYLOAD
+      SKF @ IF before -1 SPAY-RECORD THEN
+      EXIT
+   THEN
+   TKF TKFU @ NORMAL-STRING-OPENER? 0= IF EXIT THEN
+   SKIP-STRING-PAYLOAD
+   SKF @ IF before 0 SPAY-RECORD THEN ;
 
 : SKIP-PARSE-LIT-PAYLOAD ( -- )
    BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 <= ELSE 0 0= 0= THEN WHILE
@@ -9872,8 +10002,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
    OK @ IF TKF TKFU @ DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF a u REJECT-DIVBAR THEN THEN THEN
-   TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
-   TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
+   STRING-PAYLOAD-STEP
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
    \ declared parsing immediate: skip its payload tokens - raw-text scans only
    \ (engine-reconstructed load buffers already lack the payload, PIMM-STREAM).
@@ -10191,13 +10320,17 @@ package CHECKER-TAPE
 public
 
 \ The reader's own token vocabulary, as codes an observer can store. `name` is
-\ every token to be resolved later, including a string or character opener,
-\ whose payload this reader skips rather than consumes. The three are closed:
-\ an observer that meets something else has met a construct this reader does
-\ not have, which is a class to add here rather than a number to smuggle past.
+\ every token to be resolved later, including a character opener, whose payload
+\ this reader skips rather than consumes. `string` is a string literal, and the
+\ bytes reported for it are its BODY rather than the opener that introduced it —
+\ the opener is what the reader read, the body is what the literal is, and a
+\ stage that has to compile one needs the second. The four are closed: an
+\ observer that meets something else has met a construct this reader does not
+\ have, which is a class to add here rather than a number to smuggle past.
 0 constant K-NAME
 1 constant K-INT
 2 constant K-REAL
+3 constant K-STRING
 
 private
 
@@ -10206,7 +10339,7 @@ private
 \ snapshot persists it byte for byte, and `defer`/`is` are the only two points
 \ that tell the snapshot writer so.
 defer SCAN-XT ( ptr u8 n -- )
-defer TOKEN-XT ( ptr u8 n n n n -- )
+defer TOKEN-XT ( ptr u8 n n n n n -- )
 defer DONE-XT ( ptr u8 n n -- )
 
 \ Whether an observer was installed is a question ARM has to ASK, and a
@@ -10219,7 +10352,7 @@ public
 \ sites read this cell directly, so an unarmed checker pays a load and a branch.
 variable ARMED   0 ARMED !
 
-: INSTALL ( [ ptr u8 n -- ] [ ptr u8 n n n n -- ] [ ptr u8 n n -- ] -- )
+: INSTALL ( [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    SET @ 0 <> if s" checker: source-tape observer already installed" 76 die then
    is DONE-XT
    is TOKEN-XT
@@ -10280,11 +10413,29 @@ public
    a u SCAN-XT ;
 
 \ One token, as the reader consumed it: its bytes, its byte offset in the
-\ scanned text, its class, and whether it is the definition's name token - the
-\ one token of a colon definition the outer interpreter parses before the
-\ parser switches to compiling.
+\ scanned text, how many bytes of that text it spans, its class, and whether it
+\ is the definition's name token - the one token of a colon definition the outer
+\ interpreter parses before the parser switches to compiling.
+\
+\ THE SPANNED LENGTH IS A SEPARATE NUMBER FROM THE BYTE COUNT, and for these
+\ three classes it is the same number: the bytes ARE the text at that offset. It
+\ is carried anyway because the fourth class below cannot say that, and an
+\ observer must not have to know which class it is holding to know what the
+\ offset means.
 : TOKEN ( ptr u8 n n n -- ) {: a:ptr u:n off:n first:n :}
-   a u off a u KIND first TOKEN-XT ;
+   a u off u  a u KIND  first TOKEN-XT ;
+
+\ One string literal, as the reader consumed it: the literal's BODY, and the
+\ span of source the literal's payload occupied. The two differ whenever an
+\ escape decoded, which is why both are passed; a plain literal hands over the
+\ span's own bytes and the two agree.
+\
+\ IT IS NEVER A NAME TOKEN. A colon definition's name is parsed by the outer
+\ interpreter before the parser switches to compiling, and the reader reports
+\ that one token before it has consumed any payload at all, so `first` is not a
+\ question this event can be asked.
+: STRING ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
+   a u off ru K-STRING 0 TOKEN-XT ;
 
 \ The verdict that scan reached, with the text it reached it over.
 : DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
@@ -10332,6 +10483,35 @@ public
    0 WF-N !  0 RECW !  0 RECMI !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
+\ ---- reporting one token to the source-tape observer ---------------------------
+\ WHY THE REPORT MOVED BEHIND THE JUDGEMENT. A string literal's body is not known
+\ until its payload has been spent, and spending it is DO-TOK1's work, so a
+\ report made before the judgement can only ever describe the opener. Asking the
+\ spelling instead - "does this token look like a string opener?" - would be a
+\ second opinion about a decision DO-TOK1 has already made for its own reasons: a
+\ definition's name token, a token inside a locals group, a match arm and a
+\ construct arm all reach the judgement without ever reaching the payload skip,
+\ and each of those would then lose its row. So the one authority is whether a
+\ payload was actually spent, and that is only knowable afterwards.
+\
+\ THE OBSERVER STILL DECIDES NOTHING. Its answer is not read here either, so it
+\ can still abort a compilation and still never accept one; what changed is only
+\ that the abort now lands after the token was judged rather than before, and a
+\ judgement makes no record an abort would have to undo.
+\
+\ TWO FACTS ARE KEPT ACROSS THE JUDGEMENT because the judgement moves them. TI
+\ walks past a spent payload, so the token's own length has to be taken before;
+\ and TOK0 is cleared by the name branch, so whether this was the name has to be
+\ taken before too.
+variable SCAN-U       \ the token's own byte length, taken before the judgement
+variable SCAN-TOK0    \ was it the definition's name token?
+
+: SCAN-REPORT ( -- )
+   SPAY-ON @ IF
+      SPAY-BYTES  SPAY-B @ SPAY-U @  CHECKER-TAPE:STRING EXIT
+   THEN
+   TSTART @ TADDR  SCAN-U @  TSTART @  SCAN-TOK0 @  CHECKER-TAPE:TOKEN ;
+
 : CHECK-SCAN ( -- )
    CHECKER-TAPE:ARMED @ IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
@@ -10361,9 +10541,10 @@ public
          TI @ TSTART !
          BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
          CHECKER-TAPE:ARMED @ IF
-            TSTART @ TADDR  TI @ TSTART @ -  TSTART @  TOK0 @  CHECKER-TAPE:TOKEN
+            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !
          THEN
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
+         CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
        THEN
      THEN
    REPEAT ;

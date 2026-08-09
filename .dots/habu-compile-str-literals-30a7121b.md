@@ -1,9 +1,11 @@
 ---
 title: Compile string literals through the chain
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-08-09T21:44:30.192794+02:00"
+created-at: "\"2026-08-09T21:44:30.192794+02:00\""
 ---
 
 The s" tranche of the cut (253+ definitions refused E-HIR-UNMODELED; 1601 of 11756 colon defs hold a string literal, 6082 sites, 100282 payload bytes, 186 defs' outputs name a ptr so bytes must be permanent). RULED DESIGN (2026-08-09, from the strings design lane): bytes interned content-keyed in DATA space (new package NSTR, src/compiler/native/string.f, over a DATA arena with a NAMED capacity refusal); a string literal elaborates to two existing hir.const ops - interned address then length - so ZERO new HIR opcodes, machine ops, encoders; no change to select/regalloc/spill/emit/publish. Changes: checker.f K-STRING tape class + PPRIM row + token event fired AFTER payload skip carrying the span + escape DECODING in the checker (ruled: checker owns it, so the tape's spelling stays the body per tape.f:86); feed.f K-STRING->APPEND-STRING leg minting the existing NTAPE:STRING-TOKEN (delete the open-work note at feed.f:39-42, satisfies habu-put-str-and-0750ac90); hir.f one ENUM meaning member string-literal; hir-word.f ADMIT-TOKEN leg; elaborate.f EMIT-STRING beside EMIT-FIXED. Interning is REQUIRED not an optimisation: the cut's spill retry re-elaborates, so allocation must be idempotent (refusal-moves-nothing for a resource publish.f does not own). c" and ." stay refused (0 sites; separate dot if ever needed). INHERITED DEFECT, flagged not absorbed: AOT capture (ACAP-LIT9? recognises only x9 movz/movk chains) misses chain-emitted DATA addresses - already true of fixed today; owner habu-per-site-relocation-bb9b6d70 must land ahead of or with the cut. Acceptance (all eight from the design report): round-trip verbatim incl. re-lex-hostile payloads; s\" escapes decoded; empty string valid; intern dedups within and across definitions; retry allocates nothing; tape pins string-literal row with body spelling asserted in test/compiler/native-feed.f; named arena refusal; byte cost measured into codegen-compare with string rows in a corpus; registered in a scheduled suite; census rerun shows s" bucket 0 and E-HIR-UNMODELED drops >=254. Files: src/core/checker.f, src/compiler/native/{feed,hir,hir-word,elaborate,string}.f, tests. Verify: native-feed/native-chain suites, full gate, census. Depends: none (bb9b6d70 ordered before the CUT, not before this).
+
+Claim: agent=strings workspace=.jj-ws/habu-sq-strings

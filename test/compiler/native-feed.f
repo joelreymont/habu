@@ -304,21 +304,104 @@ create UTXT TEXT-CAP allot
    BND [: HIDE-COMMENT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TFALSE TFALSE 3 T= ;
 
-\ The same for a string payload. The opener IS a token - the reader consumes it
-\ and steps over the bytes behind it - so the tape says `s"` was read and says
-\ nothing about the body, which is the truth about what this reader consumed.
-: HIDE-STRING-BODY ( IR-CTX:ctx -- n bool bool bool )
+\ The same for a string payload, and this fixture is hostile in both directions
+\ at once. The payload holds two spellings that would be ordinary tokens
+\ anywhere else - a word and a number - and NEITHER may name a row of its own:
+\ the reader spends those bytes rather than tokenising them, which is exactly
+\ what stops a quoted word from being read as code. What the tape says instead
+\ is what the literal IS - one row, of the string kind, spelled the WHOLE body -
+\ and the opener does not name a row either, because the opener is how the body
+\ was written rather than what it is.
+: HIDE-STRING-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c S\" : NF-HIDES ( -- n ) s\" zdup z77\" 2drop 5 ;" 0 REC
    0 TOKENS
    0 s" zdup" ANY-SPELL?
    0 s" z77" ANY-SPELL?
-   0 1 S\" s\"" SPELL-IS? ;
+   0 S\" s\q" ANY-SPELL?
+   0 1 NTAPE-KIND:STRING-LITERAL KIND-IS?
+   0 1 s" zdup z77" SPELL-IS? ;
 
 : HIDE-STRING-CASE ( -- )
    s" a spelling hidden in a string payload never becomes a row" T-LABEL
    BND [: HIDE-STRING-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TFALSE TFALSE 4 T= ;
+   TTRUE TTRUE TFALSE TFALSE TFALSE 4 T= ;
+
+\ ---- the body a string literal really carried ---------------------------------
+\ VERBATIM, AND THAT IS THE WHOLE POINT. The reconstructed definition the checker
+\ reads has had its backslash comments removed and its runs of whitespace
+\ collapsed (TRIM-CASE above), and NONE of that reaches inside a literal: the
+\ engine appends a payload to the body capture as a raw byte run. So a body with
+\ two spaces in it keeps two spaces, and a body holding a definition closer, a
+\ colon and a comment opener keeps all three as ordinary bytes. A tape that
+\ collapsed or re-lexed any of it would compile a string that is not the string
+\ the programmer wrote, and nothing downstream could tell.
+: VERBATIM-BODY ( IR-CTX:ctx -- n bool bool )
+   {: c:IR-CTX:ctx :}
+   c S\" : NF-VERB ( -- n ) s\" a  b ; : ( x\" 2drop 5 ;" 0 REC
+   0 TOKENS
+   0 1 s" a  b ; : ( x" SPELL-IS?
+   0 1 NTAPE-KIND:STRING-LITERAL KIND-IS? ;
+
+: VERBATIM-CASE ( -- )
+   s" a string literal's body is recorded verbatim" T-LABEL
+   BND [: VERBATIM-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 4 T= ;
+
+\ AN ESCAPED LITERAL'S BODY IS WHAT ITS ESCAPES DECODE TO. The checker owns the
+\ decoding, so the row's spelling is three bytes here and not the eight the
+\ literal was written as - and the SPAN is still the eight, because the span says
+\ where the literal was read from while the spelling says what it is. Both halves
+\ are asserted, because a decoder that also shortened the span would leave every
+\ later diagnostic pointing at the wrong bytes.
+\
+\ THE TABLE IS EXERCISED RATHER THAN SAMPLED: a named escape, a hex escape and a
+\ quote escape in one body. \q is a double quote that does NOT close the literal,
+\ which is the case a decoder that merely scanned for the closing quote would get
+\ wrong.
+: ESCAPE-BODY ( IR-CTX:ctx -- n n bool )
+   {: c:IR-CTX:ctx :}
+   c S\" : NF-ESC ( -- n ) s\\\" a\\tb\\x41\\qc\" 2drop 5 ;" 0 REC
+   0 TOKENS
+   0 1 SPAN-LEN
+   0 1 S\" a\tbA\qc" SPELL-IS? ;
+
+: ESCAPE-CASE ( -- )
+   s" an escaped literal records its decoded body and its raw span" T-LABEL
+   BND [: ESCAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 11 T= 4 T= ;
+
+\ THE EMPTY STRING IS A STRING. `s" "` parses as a literal with no bytes at all,
+\ so the row is present, of the string kind, and spelled nothing - and the feed's
+\ span check has to admit a zero length where its byte check refuses one.
+: EMPTY-BODY ( IR-CTX:ctx -- n bool bool )
+   {: c:IR-CTX:ctx :}
+   c S\" : NF-EMPTY ( -- n ) s\" \" 2drop 5 ;" 0 REC
+   0 TOKENS
+   0 1 NTAPE-KIND:STRING-LITERAL KIND-IS?
+   0 1 s" " SPELL-IS? ;
+
+: EMPTY-CASE ( -- )
+   s" the empty string literal is a string row with no bytes" T-LABEL
+   BND [: EMPTY-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 4 T= ;
+
+\ TWO EQUAL BODIES ARE ONE SYMBOL AND TWO ROWS, which is the same rule the
+\ REPEAT-CASE above pins for names: the module's interner deduplicates the bytes,
+\ the tape does not deduplicate the token. It is asserted here because the
+\ elaborator interns a literal's ADDRESS off this symbol, so two equal literals
+\ sharing one symbol is what makes them share one address.
+: SAME-BODY ( IR-CTX:ctx -- n bool bool )
+   {: c:IR-CTX:ctx :}
+   c S\" : NF-SAME ( -- n ) s\" ab\" 2drop s\" ab\" 2drop 5 ;" 0 REC
+   0 TOKENS
+   0 1 LOCAL-SPELL  0 3 LOCAL-SPELL  =
+   0 1 SPAN-START   0 3 SPAN-START   <> ;
+
+: SAME-CASE ( -- )
+   s" two equal string bodies are one symbol and two rows" T-LABEL
+   BND [: SAME-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 6 T= ;
 
 \ ---- what one changed byte moves ---------------------------------------------
 \ A byte inside a literal moves the tape digest. The pair is built so that the
@@ -652,6 +735,10 @@ public
    TRIM-CASE
    HIDE-COMMENT-CASE
    HIDE-STRING-CASE
+   VERBATIM-CASE
+   ESCAPE-CASE
+   EMPTY-CASE
+   SAME-CASE
    KEPT-CASE
    LITBYTE-CASE
    NAMEBYTE-CASE

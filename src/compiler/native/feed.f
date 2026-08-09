@@ -36,10 +36,14 @@
 \ and the closing `;` are gone before the checker sees anything, so a produced
 \ tape has no frame rows at all and the elaborator reads the definition frame
 \ off the recorded modes instead - the name is the one token consumed while
-\ interpreting. Two consequences are still open work rather than hidden: a
-\ literal payload never reaches the tape's string-literal and char-literal
-\ kinds (habu-put-str-and-0750ac90), and a recorded unit is not yet tied to the
-\ file it came from (habu-bind-a-recorded-78d51725).
+\ interpreting.
+\
+\ A STRING LITERAL IS THE ONE TOKEN WHOSE PAYLOAD DOES REACH THE TAPE. The reader
+\ spends those bytes rather than tokenising them, so it is the reader that
+\ reports them, and it reports the literal's BODY with the span of source that
+\ body was written as (src/core/checker.f SPAY-BYTES). A character literal's
+\ payload still does not - `[char]`'s code point is open work, and so is tying a
+\ recorded unit to the file it came from (habu-bind-a-recorded-78d51725).
 \
 \ WHY THE UNIT KEEPS THE TEXT. IR-SOURCE records a source as its length and the
 \ digest of its bytes, never the bytes, and the buffer the checker read from is
@@ -55,8 +59,9 @@
 \ WHAT IT REFUSES. A foreign or second scan, a scan longer than the caller's
 \ text buffer, a token whose bytes are not the bytes at the offset it claims,
 \ an append that lands anywhere but the next ordinal, a literal class this
-\ stage has no tape kind for, and an integer literal whose value it cannot read
-\ back. Refusals another authority owns keep that authority's name: a full tape
+\ stage has no tape kind for, an integer literal whose value it cannot read
+\ back, and a string literal whose body is longer than the source it decoded
+\ from or whose span leaves the kept text. Refusals another authority owns keep that authority's name: a full tape
 \ is E-NTAPE-CAP, a span outside its source is IR-SOURCE's, and a tape that
 \ belongs to another module than the builder is NTAPE's own owner check at the
 \ first token.
@@ -133,6 +138,23 @@ variable F-VERDICT
    off u + F-LEN @ > if E-NFEED-SPAN throw then
    TXT@ off + u  a u  STR= 0= if E-NFEED-SPAN throw then ;
 
+\ A string literal's bytes are its BODY and the span is the source its payload
+\ occupied, so the two are not the same thing and cannot be compared. What is
+\ still checkable, and what this checks, is the span: it has to lie inside the
+\ kept text, or the row would describe bytes nobody kept. The body itself is
+\ carried by the reader that spent those bytes and is not re-derived here - that
+\ is the whole reason the reader reports it.
+\
+\ AN EMPTY BODY IS A REAL STRING. `s" "` is the empty string, so a zero length is
+\ admitted here where BYTES-CK refuses one; what is refused is a body LONGER than
+\ the source it decoded from, which no decoding can produce.
+: SPAN-CK ( n n n -- ) {: u:n off:n ru:n :}
+   u 0 < if E-NFEED-SPAN throw then
+   ru 0 < if E-NFEED-SPAN throw then
+   u ru > if E-NFEED-SPAN throw then
+   off 0 < if E-NFEED-SPAN throw then
+   off ru + F-LEN @ > if E-NFEED-SPAN throw then ;
+
 \ The parser mode the token was consumed in. `:` runs from the outer
 \ interpreter and parses the defined name before the parser switches to
 \ compiling, so the name token was read while interpreting and every later
@@ -192,14 +214,25 @@ variable F-VERDICT
    BLD SID off u IR-BUILD:ADD-SPAN  sym  first MODE  v  NTAPE:REAL-TOKEN
    NTAPE:PUSH-INTO ;
 
+\ The string row. Its SPELLING is the literal's body and its SPAN is the source
+\ that body was written as, which is why this append takes both and the three
+\ above take one length for both jobs. The mode is the compiling one without
+\ asking: a string literal is never the token a colon definition is named by.
+: APPEND-STRING ( ptr u8 n n n -- n ) {: a:ptr u:n off:n ru:n :}
+   CTX BLD a u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
+   CTX BLD TAPE
+   BLD SID off ru IR-BUILD:ADD-SPAN  sym  NTAPE-MODE:COMPILING  NTAPE:STRING-TOKEN
+   NTAPE:PUSH-INTO ;
+
 \ Which append this token's class takes. A literal class this stage has no tape
 \ kind for is refused: recording it as a name would say the elaborator may
-\ resolve it, which is false. The reader has three classes and the tape now has a
-\ kind for all three.
-: APPEND ( ptr u8 n n n n -- n ) {: a:ptr u:n off:n kind:n first:n :}
+\ resolve it, which is false. The reader has four classes and the tape has a kind
+\ for all four.
+: APPEND ( ptr u8 n n n n n -- n ) {: a:ptr u:n off:n ru:n kind:n first:n :}
    kind CHECKER-TAPE:K-NAME = if a u off first APPEND-NAME exit then
    kind CHECKER-TAPE:K-INT = if a u off first APPEND-INT exit then
    kind CHECKER-TAPE:K-REAL = if a u off first APPEND-REAL exit then
+   kind CHECKER-TAPE:K-STRING = if a u off ru APPEND-STRING exit then
    E-NFEED-KIND throw ;
 
 \ The ordinal an append answers is the count this producer expects. They differ
@@ -220,10 +253,10 @@ variable F-VERDICT
    CTX BLD TXT@ u IR-BUILD:ADD-SOURCE 0 F-SID !
    ST-SCANNING F-STATE ! ;
 
-: ON-TOKEN ( ptr u8 n n n n -- ) {: a:ptr u:n off:n kind:n first:n :}
+: ON-TOKEN ( ptr u8 n n n n n -- ) {: a:ptr u:n off:n ru:n kind:n first:n :}
    ST-SCANNING STATE-CK
-   a u off BYTES-CK
-   a u off kind first APPEND ORDER-CK
+   kind CHECKER-TAPE:K-STRING = if u off ru SPAN-CK else a u off BYTES-CK then
+   a u off ru kind first APPEND ORDER-CK
    F-N @ 1+ F-N ! ;
 
 \ The verdict has to belong to the scan that was recorded, so the text it was
