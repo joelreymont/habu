@@ -5579,3 +5579,14 @@ piped and backgrounded, that looks like a lock hang at 0% CPU. Use
 `--use-destination-message` (or -m) in any non-interactive flow. Check
 `ps` for the editor before diagnosing repo locks — and kill the stale
 `tail` such a kill leaves behind.
+
+## An empty list is not a statement (2026-08-09)
+
+A64EFF's place list used one value, SEQ-NONE, to mean both "passes
+nothing" and "placement unconstrained" - the type's own header said so -
+and four passes each guessed which meaning applied, all the same way,
+all wrong for a ( -- ) routine: 327 definitions refused. When two facts
+share one representation the fix is a FIELD, not a cleverer predicate
+(the obvious inference was falsified by the owning pass's own suite),
+and the field belongs where the value is BUILT, so no consumer can ever
+hold a contradiction. The tell was in the header all along.
