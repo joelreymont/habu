@@ -101,6 +101,49 @@ variable OLD-LEN
    s" and the interpreter enters it" T-LABEL
    s" 12 NMG-SQ" EV-N 144 T= ;
 
+\ ---- a word that passes nothing and calls -------------------------------------
+\ THE SHAPE THAT WAS REFUSED UNTIL THE CONTRACT DECLARED ITS CONVENTION. A word
+\ of arity ( -- ) names no data-stack place, because it has nothing to name one
+\ for, and the selector used to read that silence as a register convention: it
+\ built no entry, so there was no data-stack pointer for a call site to write
+\ through and no frame for a return address, and every call in such a word was
+\ refused with E-A64SEL-CALL. The whole-tree census counted 327 definitions
+\ refused for exactly this and nothing else.
+\
+\ THE CASE RUNS THE WORD AND NOT ONLY THE COMPILER. A refusal that has been
+\ turned off is worth nothing on its own; what has to be true is that the code
+\ the chain emits for this shape does what the source says. So the migrated word
+\ is entered twice through the interpreter and its effect on a cell nobody else
+\ writes is read back: two calls to a word that adds one, and one to a word that
+\ adds three, is five each time round.
+: DEFINE-VOID-PARTS ( -- )
+   s" variable NMG-VCELL" EV
+   s" : NMG-VBUMP ( -- ) NMG-VCELL @ 1 + NMG-VCELL ! ;" EV
+   s" : NMG-VADD3 ( n -- n ) 3 + ;" EV ;
+
+: MIGRATE-VOID ( -- )
+   s" : NMG-VCALLS ( -- ) NMG-VBUMP NMG-VBUMP NMG-VCELL @ NMG-VADD3 NMG-VCELL ! ;"
+   0 0 REGS NMIGRATE:DEFINE ;
+
+: VOID-CALL-CASE ( -- )
+   DEFINE-VOID-PARTS
+   MIGRATE-VOID
+
+   s" a ( -- ) word that calls is compiled by the chain" T-LABEL
+   NMIGRATE:NAME$ s" NMG-VCALLS" T$=
+   s" NMG-VCALLS" REC-START
+   s" NMG-VCALLS" GLOBAL-WID NPUB:NEW-START T=
+   s" NMG-VCALLS" REC-LEN  s" NMG-VCALLS" GLOBAL-WID NPUB:NEW-LEN T=
+
+   s" and running it does what its source says, twice over" T-LABEL
+   s" 0 NMG-VCELL !" EV
+   s" NMG-VCALLS NMG-VCELL @" EV-N 5 T=
+   s" NMG-VCALLS NMG-VCELL @" EV-N 10 T=
+
+   s" a definition compiled afterwards calls it too" T-LABEL
+   s" : NMG-VOUTER ( -- n ) NMG-VCALLS NMG-VCELL @ ;" EV
+   s" NMG-VOUTER" EV-N 15 T= ;
+
 \ ---- a word whose values do not all fit its registers -------------------------
 \ THE FIRST DEFINITION THE PRODUCTION ENTRY HAS COMPILED THROUGH THE SPILL
 \ LOWERING. Eight sums of the argument are computed before any of them is added
@@ -1960,6 +2003,7 @@ variable MEAS-PUB0
    STALE-CASE
    LOCALS-GROUPS-CASE
    MIGRATED-CASE
+   VOID-CALL-CASE
    SPILL-CASE
    CALL-CASE
    DEEP-CASE
