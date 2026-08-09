@@ -1843,11 +1843,122 @@ variable MEAS-PUB0
    MIGRATE-STALE-2
    s" 5 STL-B" EV-N 501 T= ;
 
+\ ---- as many locals groups as the body writes -------------------------------
+\ THE SHAPE THE TREE IS FULL OF: bind, compute, name the result, compute again.
+\ Every body below is compiled by the production entry from its own text, so the
+\ tape the chain elaborates is the one the checker filled, and every answer is
+\ held against arithmetic that a wrongly-bound name cannot reproduce.
+\
+\ THE ARITHMETIC IS CHOSEN SO A MIS-BOUND NAME SHOWS. LGP-TWO subtracts before
+\ it squares, so binding the second group to the wrong value - the entry
+\ argument rather than the difference, or the arguments the other way round -
+\ answers a different number for the same call. LGP-THREE chains three groups
+\ and ends by subtracting the FIRST group's name from the third's, so it also
+\ says that an earlier group's names are still readable after a later one binds.
+: LGP-TWO-SRC ( -- ptr u8 n )
+   s" : LGP-TWO ( n n -- n ) {: a:n b:n :} b a - {: d:n :} d d * ;" ;
+
+: LGP-THREE-SRC ( -- ptr u8 n )
+   s" : LGP-THREE ( n n -- n ) {: a:n b:n :} a b + {: s:n :} s s * {: q:n :} q a - ;" ;
+
+\ The group that opens AFTER a call, which is what makes the prefix rule a
+\ measurement rather than an argument. `a` is named on both sides of the call, so
+\ it travels across it; `d` does not exist yet when that call is staged and must
+\ not be handed over with it; and the loop after the second group carries both
+\ names across its edges. A seam that read the whole name table instead of the
+\ bound prefix would hand the call an operand for a name holding no value.
+: LGP-CALL-SRC ( -- ptr u8 n )
+   s" : LGP-CALL ( n n -- n ) {: a:n b:n :} b LGP-DBL {: d:n :} d begin dup a > while a - repeat ;" ;
+
+\ A name that is a CALL before the group and the local afterwards. The engine
+\ compiles this body and answers 22 for 5 (measured), because a token is
+\ resolved where it stands - so a chain that read the first `LGP-DBL` as the
+\ local would be compiling a program the checker never certified.
+: LGP-SHADOW-SETUP ( -- )
+   s" : LGP-DBL ( n -- n ) 2 * ;" EV ;
+
+: LGP-SHADOW-SRC ( -- ptr u8 n )
+   s" : LGP-SHADOW ( n -- n ) LGP-DBL 1 + {: LGP-DBL:n :} LGP-DBL LGP-DBL + ;" ;
+
+\ A group that opens after a CLOSED early-exit guard, which docs/forth.md admits
+\ as ordinary source: the fall-through path is live, so the group binds on it.
+\ The `exit` branches to a block that takes the outputs and nothing else, and
+\ the group that comes later must not change what that branch handed over - so
+\ both paths are executed below, not just the one the group is on.
+: LGP-EXIT-SRC ( -- ptr u8 n )
+   s" : LGP-EXIT ( n -- n ) {: a:n :} a 0 < if 0 exit then a 3 * {: d:n :} d a + ;" ;
+
+: MIGRATE-LGP-TWO ( -- )
+   LGP-TWO-SRC 2 1 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-LGP-THREE ( -- )
+   LGP-THREE-SRC 2 1 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-LGP-CALL ( -- )
+   LGP-CALL-SRC 2 1 LOOP-REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-LGP-SHADOW ( -- )
+   LGP-SHADOW-SRC 1 1 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-LGP-EXIT ( -- )
+   LGP-EXIT-SRC 1 1 REGS NMIGRATE:DEFINE ;
+
+\ The engine's own compilations of the same text, under names of their own, so
+\ the answers below are held against the emitter this chain replaces rather than
+\ against numbers written out by hand.
+: LGP-INTERPRETED ( -- )
+   s" : LGI-TWO ( n n -- n ) {: a:n b:n :} b a - {: d:n :} d d * ;" EV
+   s" : LGI-THREE ( n n -- n ) {: a:n b:n :} a b + {: s:n :} s s * {: q:n :} q a - ;" EV
+   s" : LGI-CALL ( n n -- n ) {: a:n b:n :} b LGP-DBL {: d:n :} d begin dup a > while a - repeat ;" EV
+   s" : LGI-SHADOW ( n -- n ) LGP-DBL 1 + {: LGP-DBL:n :} LGP-DBL LGP-DBL + ;" EV
+   s" : LGI-EXIT ( n -- n ) {: a:n :} a 0 < if 0 exit then a 3 * {: d:n :} d a + ;" EV ;
+
+: LOCALS-GROUPS-CASE ( -- )
+   LGP-SHADOW-SETUP
+   LGP-INTERPRETED
+
+   s" a body with two locals groups is the chain's code" T-LABEL
+   MIGRATE-LGP-TWO
+   s" LGP-TWO" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+
+   s" and the second group names what the first group's names computed" T-LABEL
+   s" 3 10 LGP-TWO" EV-N 49 T=
+   s" 3 10 LGP-TWO" EV-N  s" 3 10 LGI-TWO" EV-N T=
+   s" 10 3 LGP-TWO" EV-N  s" 10 3 LGI-TWO" EV-N T=
+
+   s" three groups chain, each naming the one before it" T-LABEL
+   MIGRATE-LGP-THREE
+   s" 2 5 LGP-THREE" EV-N 47 T=
+   s" 2 5 LGP-THREE" EV-N  s" 2 5 LGI-THREE" EV-N T=
+   s" 5 2 LGP-THREE" EV-N  s" 5 2 LGI-THREE" EV-N T=
+
+   s" a group opened after a call carries only the names that exist there" T-LABEL
+   MIGRATE-LGP-CALL
+   s" LGP-CALL" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" 7 10 LGP-CALL" EV-N 6 T=
+   s" 4 6 LGP-CALL" EV-N 4 T=
+   s" 7 10 LGP-CALL" EV-N  s" 7 10 LGI-CALL" EV-N T=
+   s" 4 6 LGP-CALL" EV-N  s" 4 6 LGI-CALL" EV-N T=
+
+   s" a name is the call before its group and the local after it" T-LABEL
+   MIGRATE-LGP-SHADOW
+   s" 5 LGP-SHADOW" EV-N 22 T=
+   s" 5 LGP-SHADOW" EV-N  s" 5 LGI-SHADOW" EV-N T=
+   s" 8 LGP-SHADOW" EV-N  s" 8 LGI-SHADOW" EV-N T=
+
+   s" a group after a closed early-exit guard binds on the path that reaches it" T-LABEL
+   MIGRATE-LGP-EXIT
+   s" 5 LGP-EXIT" EV-N 20 T=
+   s" -2 LGP-EXIT" EV-N 0 T=
+   s" 5 LGP-EXIT" EV-N  s" 5 LGI-EXIT" EV-N T=
+   s" -2 LGP-EXIT" EV-N  s" -2 LGI-EXIT" EV-N T= ;
+
 : RUN ( -- )
    T-RESET
    MOD-CONST
    RESOLVED-CASE
    STALE-CASE
+   LOCALS-GROUPS-CASE
    MIGRATED-CASE
    SPILL-CASE
    CALL-CASE

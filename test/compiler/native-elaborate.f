@@ -1563,21 +1563,102 @@ private
    TTRUE TTRUE
    6 T= ;
 
-\ ---- what a locals frame refuses ---------------------------------------------
-\ Each of the five below is a shape this elaborator has no rule for, and each one
-\ is refused by name rather than compiled into something else. Rebinding a local
-\ and taking its address need no case here: `to` and `^` are not words of the
-\ dialect at all, so they are already refused as E-HIR-UNMODELED by the case
-\ above them in this file.
-: TWO-GROUPS-BODY ( IR-CTX:ctx -- )
+\ ---- a second group names what the first one's names computed ----------------
+\ THE SHAPE THE TREE WRITES CONSTANTLY: bind the arguments, compute, name the
+\ result, compute again. `b a - {: d:n :} d d *` squares the difference, and the
+\ two names come from two groups.
+\
+\ WHAT THE MODULE HAS TO SHOW, AND IT IS NOT "it compiled". The subtraction's
+\ operands are the two entry arguments the right way round - a frame that bound
+\ the second group's name to the wrong value would still compile - and the
+\ multiply reads the SUBTRACTION's result twice, which is the whole claim: `d`
+\ is one value, defined by the operation that stood before the group, and read
+\ where the body names it. Three operations for eleven body tokens - the
+\ subtraction, the multiply and the return: neither group stages anything, and
+\ neither does a mention of a name. Four values, which is the two entry
+\ arguments and the two results; a group that had staged a move would show one
+\ more of each.
+: TWO-GROUPS-BODY ( IR-CTX:ctx -- n bool bool bool bool n )
    {: c:IR-CTX:ctx :}
-   s" TWOG {: a:n :} {: b:n :} a" TEXT!
+   s" TWOG {: a:n b:n :} b a - {: d:n :} d d *" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 2 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk F-OPS
+   m blk 0 F-OP {: sb:IR-ID:ir-op-id :}
+   m blk 1 F-OP {: ml:IR-ID:ir-op-id :}
+   m sb 0 F-IN  m blk 1 F-ARG SAME?
+   m sb 1 F-IN  m blk 0 F-ARG SAME?
+   m ml 0 F-IN  m sb 0 F-OUT SAME?
+   m ml 1 F-IN  m sb 0 F-OUT SAME?
+   m F-VALUES ;
+
+: TWO-GROUPS-CASE ( -- )
+   s" a second locals group names what the first group's names computed" T-LABEL
+   BND [: TWO-GROUPS-BODY ;] IR-CTX:WITH-CONTEXT
+   4 T=
+   TTRUE TTRUE TTRUE TTRUE
+   3 T= ;
+
+\ ---- what a locals frame refuses ---------------------------------------------
+\ Each body below is a shape this elaborator has no rule for, or one ceiling it
+\ will not overrun, and each one is refused by name rather than compiled into
+\ something else. Rebinding a local and taking its address need no case here:
+\ `to` and `^` are not words of the dialect at all, so they are already refused
+\ as E-HIR-UNMODELED by the case above them in this file.
+: NESTED-GROUP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" NESTG {: a:n {: b:n :} :} a" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 2 1 NELAB:COLON drop ;
 
-: TWO-GROUPS ( -- )
-   BND [: TWO-GROUPS-BODY ;] IR-CTX:WITH-CONTEXT ;
+: NESTED-GROUP ( -- )
+   BND [: NESTED-GROUP-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A closer with no opener. The pre-pass is looking for an opener and passes over
+\ it, so the row the WALK meets is one no group claims - which is the whole
+\ reason the walk holds its arrival against the row the pre-pass recorded for
+\ the group it is binding next. The first body has a group for that closer to be
+\ mistaken for and reaches the row check; the second has none and reaches the
+\ groups-exhausted check. The two are BACKSTOPS FOR EACH OTHER and that is
+\ measured rather than assumed: deleting either one alone still refuses both
+\ bodies, and deleting both lets the lone closer compile.
+: ORPHAN-CLOSE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" ORPHC :} {: a:n :} a" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: ORPHAN-CLOSE ( -- )
+   BND [: ORPHAN-CLOSE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LONE-CLOSE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" LONEC :} 0" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: LONE-CLOSE ( -- )
+   BND [: LONE-CLOSE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ More groups than the tables hold. A group that declares no name is legal
+\ source - the engine parses `{: :}` and binds nothing (measured) - so the group
+\ ceiling is reachable without reaching the name ceiling, and it is a table
+\ bound rather than a shape rule: seventeen groups is one past LMAX.
+: GROUP-CAP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" GCAP {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} 0" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: GROUP-CAP ( -- )
+   BND [: GROUP-CAP-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : OPEN-GROUP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -1621,9 +1702,21 @@ private
 : NESTED ( -- )
    BND [: NESTED-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-: TWO-GROUPS-CASE ( -- )
-   s" a second locals group in one definition is refused" T-LABEL
-   [: TWO-GROUPS ;] E-NELAB-LOCAL TTHROWSQ ;
+: NESTED-GROUP-CASE ( -- )
+   s" a group opened inside an open group is refused" T-LABEL
+   [: NESTED-GROUP ;] E-NELAB-LOCAL TTHROWSQ ;
+
+: ORPHAN-CLOSE-CASE ( -- )
+   s" a closer standing before its definition's group is refused" T-LABEL
+   [: ORPHAN-CLOSE ;] E-NELAB-LOCAL TTHROWSQ ;
+
+: LONE-CLOSE-CASE ( -- )
+   s" a closer in a definition that opens no group at all is refused" T-LABEL
+   [: LONE-CLOSE ;] E-NELAB-LOCAL TTHROWSQ ;
+
+: GROUP-CAP-CASE ( -- )
+   s" more groups than the tables hold is refused as a ceiling, by its own code" T-LABEL
+   [: GROUP-CAP ;] E-NELAB-LOCAL-CAP TTHROWSQ ;
 
 : OPEN-GROUP-CASE ( -- )
    s" a locals group the body never closes is refused" T-LABEL
@@ -1740,7 +1833,11 @@ public
    MAX2-CASE
    LITMEMO-CASE
    LERP-CASE
-   BND [: drop TWO-GROUPS-CASE ;] IR-CTX:WITH-CONTEXT
+   TWO-GROUPS-CASE
+   BND [: drop NESTED-GROUP-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop ORPHAN-CLOSE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop LONE-CLOSE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop GROUP-CAP-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop OPEN-GROUP-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop SHADOW-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop TWICE-CASE ;] IR-CTX:WITH-CONTEXT

@@ -982,8 +982,8 @@ public
 \ elaborator that has no rule for it, and a source word the dialect cannot
 \ compile at all is still E-HIR-UNMODELED, which is what a rebinding or an
 \ address-of by name is refused as.
--8540 constant E-NELAB-LOCAL     \ a locals declaration this elaborator has no rule for: a second group in one definition, a group opened inside a control structure, a group left unclosed, a closer with no opener, a declared name the dialect already models, the same name declared twice, or a token in the group that is not a name
--8541 constant E-NELAB-LOCAL-CAP \ more locals in one definition than the elaborator's name table holds
+-8540 constant E-NELAB-LOCAL     \ a locals declaration this elaborator has no rule for: a group opened inside another group or inside a control structure, a group left unclosed, a closer with no opener, a declared name the dialect already models, the same name declared twice, or a token in the group that is not a name
+-8541 constant E-NELAB-LOCAL-CAP \ more locals, or more locals groups, in one definition than the elaborator's tables hold
 
 \ Native calls: -8550..-8559
 \

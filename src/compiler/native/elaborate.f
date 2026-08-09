@@ -336,46 +336,106 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
 \ src/compiler/native/hir-word.f's LOCAL-NAME-LEN, because this file holds no
 \ spelling of its own.
 \
-\ WHY THE GROUP IS FOUND BEFORE THE WALK. Two walks read the body - the skeleton
-\ that counts blocks and the build that makes them - and both of them meet
-\ tokens that are neither dialect words nor literals: the declared names, and
-\ every later mention of one. Asking the word model about either is a refusal,
-\ so both walks have to know which rows are the group and which names are
-\ locals before they start. The pre-pass answers both by recording the group's
-\ two ENDS as tape indices, so the two walks share one derivation of where the
-\ group is instead of each keeping a state machine that could drift; and the
-\ build checks its own arrival at the closer against the index the pre-pass
-\ recorded, which is the same two-derivations discipline SKELETON keeps.
+\ WHY THE GROUPS ARE FOUND BEFORE THE WALK. Two walks read the body - the
+\ skeleton that counts blocks and the build that makes them - and both of them
+\ meet tokens that are neither dialect words nor literals: the declared names,
+\ and every later mention of one. Asking the word model about either is a
+\ refusal, so both walks have to know which rows are a declaration and which
+\ names are locals before they start. The pre-pass answers both by recording
+\ each group's two ENDS as tape indices, so the two walks share one derivation
+\ of where the groups are instead of each keeping a state machine that could
+\ drift; and the build checks its own arrival at a closer against the index the
+\ pre-pass recorded for the group it is binding next, which is the same
+\ two-derivations discipline SKELETON keeps.
 \
-\ ONE GROUP, AT THE TOP LEVEL, READ-ONLY. That is what the corpus needs and it
-\ is all that is built: a second group in one definition, a group inside a
-\ control structure and an unclosed group are refused by name. Rebinding a local
-\ and taking its address need no refusal here at all - no such word is in the
-\ dialect's vocabulary, so `to` and `^` are already refused as words this
-\ dialect cannot compile. Dots habu-rebind-a-typed-b2a3e369 and
-\ habu-take-the-addr-18a38b4f carry the two capabilities.
-16 constant LMAX                     \ locals one definition may declare
+\ AS MANY GROUPS AS THE BODY WRITES, EACH AT THE TOP LEVEL, READ-ONLY. A
+\ definition may open a group wherever it stands, and the tree writes them that
+\ way constantly - bind the arguments, compute, name the results, compute again.
+\ The names one group declares come into scope at its OWN closer and stay in
+\ scope for the rest of the body, so the locals a given row can see are always a
+\ PREFIX of the declared names, and LBN is the length of that prefix. Every
+\ reader that hands locals across a seam reads that prefix rather than the whole
+\ table.
+\
+\ AND THE PREFIX IS STABLE ACROSS A CONTROL STRUCTURE, WHICH IS WHAT LETS THE
+\ SEAMS KEEP READING ONE COUNT. A group whose closer stands inside an open
+\ structure is refused (dot habu-scope-a-locals-2faa3d7a), so the prefix can only
+\ grow where no structure is open - and every edge of a structure therefore sees
+\ the same prefix its opener saw. That is a fact about the rules rather than
+\ about the corpus: it is what makes CROSS-L one number at both ends of an edge.
+\
+\ A GROUP INSIDE A CONTROL STRUCTURE AND AN UNCLOSED GROUP ARE STILL REFUSED BY
+\ NAME, and so is a name the dialect already models (dot
+\ habu-decide-what-a-9f38a8f6). Rebinding a local and taking its address need no
+\ refusal here at all - no such word is in the dialect's vocabulary, so `to` and
+\ `^` are already refused as words this dialect cannot compile. Dots
+\ habu-rebind-a-typed-b2a3e369 and habu-take-the-addr-18a38b4f carry the two
+\ capabilities.
+16 constant LMAX                     \ locals, and groups, one definition may declare
 64 constant LNAME-CAP                \ bytes one declaration spelling may hold
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable LN                          \ how many locals were declared
-variable LG-FROM                     \ the tape row the `{:` is on, or -1
-variable LG-TO                       \ the tape row the `:}` is on, or -1
-variable LBOUND                      \ whether the group has closed and bound
+variable LG-N                        \ how many groups the pre-pass found
+variable LG-OPEN                     \ the group the pre-pass is reading, or -1
+variable LG-K0                       \ the first name index of that open group
+variable LGB                         \ how many groups the walk has bound
+variable LBN                         \ how many declared locals are bound
 LMAX TYPED-BUFFER LNAME IR-ID:ir-symbol-id
 LMAX TYPED-BUFFER LVAL IR-ID:ir-value-id
 create LCROSS LMAX cells allot       \ whether a call can reach a mention of this local
+create LROW LMAX cells allot         \ the row the group declaring this local closes on
+create LG-A LMAX cells allot         \ the row each group's `{:` is on
+create LG-B LMAX cells allot         \ the row its `:}` is on, or -1 while it is open
+create LG-K LMAX cells allot         \ how many names it declares
 create LBUF LNAME-CAP allot
 
 : LRESET ( -- )
    0 LN !
-   -1 LG-FROM !
-   -1 LG-TO !
-   0 LBOUND !
+   0 LG-N !
+   -1 LG-OPEN !
+   0 LG-K0 !
+   0 LGB !
+   0 LBN !
    LMAX 0 ?do  0 i cells LCROSS + !  loop ;
 
 : LAT ( n -- n )
    dup 0 < over LN @ >= or if E-NELAB-LOCAL throw then ;
+
+\ The row at which this local comes into scope: the one its group's `:}` is on,
+\ or -1 while that group is still being read.
+: LROW@ ( n -- n )
+   LAT cells LROW + @ ;
+
+\ The write is not bounded here, exactly as the name's own store is not: the
+\ declaration that fills both is the one that raises LN, and its ceiling is
+\ DECLARE-LOCAL's cap check. Reads are bounded, which is where an index that
+\ came from somewhere else arrives.
+: LROW! ( n n -- )
+   {: row:n k:n :}
+   row k cells LROW + ! ;
+
+\ Whether this local is a name that row may use: its group has closed, and
+\ closed before the row.
+: LIVE-AT? ( n n -- bool )
+   {: k:n ix:n :}
+   k LROW@ {: r:n :}
+   r 0 < if false exit then
+   r ix < ;
+
+\ One group's three facts, each read through the same bound. A group index the
+\ pre-pass has not filled is refused rather than answered.
+: LGAT ( n -- n )
+   dup 0 < over LG-N @ >= or if E-NELAB-LOCAL throw then ;
+
+: LG-A@ ( n -- n )
+   LGAT cells LG-A + @ ;
+
+: LG-B@ ( n -- n )
+   LGAT cells LG-B + @ ;
+
+: LG-K@ ( n -- n )
+   LGAT cells LG-K + @ ;
 
 \ Whether this local's value has to survive a call - which is what makes it
 \ travel. CROSS-SCAN below decides it for the whole definition before the walk
@@ -386,23 +446,30 @@ create LBUF LNAME-CAP allot
 : LCROSS+ ( n -- )
    LAT cells LCROSS +  1 swap ! ;
 
-\ Is this tape row part of the declaration - the opener, or one of the names
-\ after it? The closer is not: it is the row that does the binding.
+\ Is this tape row part of a declaration - a group's opener, or one of the names
+\ after it? A closer is not: it is the row that does the binding.
 : IN-DECL? ( n -- bool )
    {: ix:n :}
-   LG-FROM @ 0 <  if false exit then
-   ix LG-FROM @ >=  ix LG-TO @ <  and ;
+   false
+   LG-N @ 0 ?do
+      ix i LG-A@ >=  ix i LG-B@ <  and or
+   loop ;
 
 \ Which declared local this row names, or a negative answer. The comparison is
 \ between interned identities of one module, so it is an identity question and
 \ not a search for text.
+\
+\ IT IS ALSO A QUESTION ABOUT WHERE THE ROW STANDS. A name is that local only
+\ from its group's closer onwards; before it, the same spelling is whatever else
+\ the body means by it - a call to a word of that name, most obviously - and
+\ reading it as the local would refuse a program the engine compiles.
 : LOCAL-OF ( n -- n )
    {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if -1 exit then
    VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
    -1
    LN @ 0 ?do
-      sy i LNAME @ NFROZEN:SAME-SYM? if drop i leave then
+      sy i LNAME @ NFROZEN:SAME-SYM?  i ix LIVE-AT?  and if drop i leave then
    loop ;
 
 \ ---- the definition's memory order -------------------------------------------
@@ -1150,12 +1217,12 @@ variable DOK                         \ counted loops the search below has passed
    0 CROSS-N ;
 
 \ How many bound locals cross an edge: the ones a call can reach, which
-\ CROSS-SCAN worked out for the whole definition. Before the group has closed
-\ there are none to cross, whatever the declaration said.
+\ CROSS-SCAN worked out for the whole definition. Only the bound PREFIX counts -
+\ a name whose group has not closed yet holds no value to carry, whatever the
+\ declaration said - and before the first group has closed the prefix is empty.
 : CROSS-L ( -- n )
-   LBOUND @ 0= if 0 exit then
    0
-   LN @ 0 ?do  i LCROSS? if 1+ then  loop ;
+   LBN @ 0 ?do  i LCROSS? if 1+ then  loop ;
 
 \ One open loop's two counters as operands of the branch or call being staged,
 \ index first. Which order they go in matters only in that all the carriers
@@ -1206,7 +1273,7 @@ variable DOK                         \ counted loops the search below has passed
 \ block argument waiting for it holds a register of the other file.
 : NO-REAL-LOCAL-CK ( n -- )
    LOCAL-CK 0= if exit then
-   LN @ 0 ?do
+   LBN @ 0 ?do
       i LCROSS? if
          i LVAL @ REAL-VALUE? if E-NELAB-TYPE throw then
       then
@@ -1215,13 +1282,13 @@ variable DOK                         \ counted loops the search below has passed
 : LOCAL-OPERANDS+ ( n -- )
    dup NO-REAL-LOCAL-CK
    LOCAL-CK 0= if exit then
-   LN @ 0 ?do
+   LBN @ 0 ?do
       i LCROSS? if CTX BLD  i LVAL @  IR-BUILD:ADD-OPERAND then
    loop ;
 
 : LOCAL-ARGS+ ( n -- )
    LOCAL-CK 0= if exit then
-   LN @ 0 ?do
+   LBN @ 0 ?do
       i LCROSS? if
          CTX BLD  CTX BLD CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG  i LVAL !
       then
@@ -1548,10 +1615,10 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    {: v:IR-ARENA:view ix:n want:NTAPE:mode :}
    v ix NTAPE:MODE@ want NTAPE-MODE:EQ 0= if E-NELAB-MODE throw then ;
 
-\ ---- finding the locals group ------------------------------------------------
-\ One walk of the body before either of the other two, recording where the group
-\ is and which names it declares. It asks the word model only about rows the
-\ model could answer for: MODELS? is the one reader here that treats an
+\ ---- finding the locals groups -----------------------------------------------
+\ One walk of the body before either of the other two, recording where each
+\ group is and which names it declares. It asks the word model only about rows
+\ the model could answer for: MODELS? is the one reader here that treats an
 \ undeclared word as an ordinary answer rather than a refusal, which is exactly
 \ what a name the program chose is.
 : MODELED-AS? ( IR-ARENA:arena n HIR:meaning -- bool )
@@ -1585,22 +1652,48 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    r sy HIR-WORD:MODELS? if E-NELAB-LOCAL throw then
    sy DUP-LOCAL? if E-NELAB-LOCAL throw then
    sy LN @ LNAME !
+   -1 LN @ LROW!
    LN @ 1+ LN ! ;
 
-\ One row of the pre-pass. Before the group, the only row that matters is an
-\ opener; inside it, every row is a declared name until the closer; after it, a
-\ second opener is refused, because one group per definition is what this
-\ elaborator binds.
+\ A group opens. Its row is recorded, its names start where the ones declared so
+\ far end, and it is the group every row until the closer belongs to. The
+\ ceiling is the name table's, because a group that declares nothing still costs
+\ a row here.
+: GROUP-OPEN ( n -- )
+   {: ix:n :}
+   LG-N @ LMAX >= if E-NELAB-LOCAL-CAP throw then
+   LG-N @ {: g:n :}
+   g 1+ LG-N !
+   ix g cells LG-A + !
+   -1 g cells LG-B + !
+   0 g cells LG-K + !
+   LN @ LG-K0 !
+   g LG-OPEN ! ;
+
+\ And it closes. The row it closes on is where its names come into scope, which
+\ is what every later reader asks LIVE-AT? about, so it is written into each of
+\ them here rather than derived twice.
+: GROUP-CLOSE ( n -- )
+   {: ix:n :}
+   LG-OPEN @ {: g:n :}
+   ix g cells LG-B + !
+   LN @ LG-K0 @ -  g cells LG-K + !
+   LN @ LG-K0 @ ?do
+      ix i LROW!
+   loop
+   -1 LG-OPEN ! ;
+
+\ One row of the pre-pass. Outside a group the only row that matters is an
+\ opener; inside one, every row is a declared name until the closer. A second
+\ group is an ordinary group and not a refusal: the names it declares join the
+\ ones already declared, and come into scope at its own closer.
 : SCAN-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   LG-FROM @ 0 < if
-      r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if ix LG-FROM ! then exit
-   then
-   LG-TO @ 0 >= if
-      r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if E-NELAB-LOCAL throw then exit
+   LG-OPEN @ 0 < if
+      r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if ix GROUP-OPEN then exit
    then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-NELAB-LOCAL throw then
-   r ix HIR-MEANING:CLOSE-LOCALS MODELED-AS? if ix LG-TO ! exit then
+   r ix HIR-MEANING:CLOSE-LOCALS MODELED-AS? if ix GROUP-CLOSE exit then
    r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if E-NELAB-LOCAL throw then
    r ix DECLARE-LOCAL ;
 
@@ -1610,7 +1703,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    n 1 ?do
       r i SCAN-STEP
    loop
-   LG-FROM @ 0 >=  LG-TO @ 0 <  and if E-NELAB-LOCAL throw then ;
+   LG-OPEN @ 0 >= if E-NELAB-LOCAL throw then ;
 
 \ ---- the names the dialect does not model, before anything reads the model ----
 \ THE DIALECT IS NOT THE WHOLE VOCABULARY AND NEVER WAS. It models the operations
@@ -2648,7 +2741,7 @@ variable LRK                         \ crossing locals the walk below has taken 
    {: id:IR-ID:ir-op-id l:n :}
    l LOCAL-CK 0= if exit then
    0 LRK !
-   LN @ 0 ?do
+   LBN @ 0 ?do
       i LCROSS? if
          CTX BLD id  CROSS-N 2 * LRK @ + 1+  IR-BUILD:OP-RESULT@  i LVAL !
          LRK @ 1+ LRK !
@@ -2871,10 +2964,11 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ over a stack holding a, b, t must bind a to the deepest, not to the top.
 \
 \ The group's own place is checked twice. The row this closer is on has to be
-\ the row the pre-pass recorded, so the two walks agree about where the group
-\ is; and no control structure may be open, because a group inside one would
-\ bind names on a path that does not dominate the rest of the body and this
-\ elaborator has no scoping rule for that (dot habu-scope-a-locals-2faa3d7a).
+\ the row the pre-pass recorded for the NEXT group to bind, so the two walks
+\ agree about where the groups are and about their order; and no control
+\ structure may be open, because a group inside one would bind names on a path
+\ that does not dominate the rest of the body and this elaborator has no scoping
+\ rule for that (dot habu-scope-a-locals-2faa3d7a).
 \ A local that a call can reach is put into a CELL here, once, and stays one. The
 \ reason is where it goes: the machine stage writes every value a call site hands
 \ over into a data-stack slot and reads it back out of that slot, and a slot is
@@ -2888,37 +2982,53 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ defined in the block the group closed in, which dominates every mention of it,
 \ so it is read where it stands and in whichever file it stands in - a double
 \ stays in the floating file and costs nothing.
-: LOCAL-BIND-CROSS ( n -- )
-   {: ix:n :}
-   LN @ 0 ?do
-      i LCROSS?  i LVAL @ REAL-VALUE?  and if
-         ix  i LVAL @  HIR-OPCODE:REALBITS CROSS-VALUE  i LVAL !
-      then
+\
+\ ONLY THE NAMES THIS GROUP JUST BOUND ARE CROSSED, because they are the only
+\ ones that can still hold a double: an earlier group's names were crossed at
+\ their own closer and a later group's hold no value at all.
+: BIND-CROSS-ONE ( n n -- )
+   {: ix:n k:n :}
+   k LCROSS? 0= if exit then
+   k LVAL @ REAL-VALUE? 0= if exit then
+   ix  k LVAL @  HIR-OPCODE:REALBITS CROSS-VALUE  k LVAL ! ;
+
+: LOCAL-BIND-CROSS ( n n n -- )
+   {: ix:n from:n k:n :}
+   k 0 ?do
+      ix  from i +  BIND-CROSS-ONE
    loop ;
 
 : DO-CLOSE-LOCALS ( n -- )
    {: ix:n :}
-   ix LG-TO @ <> if E-NELAB-LOCAL throw then
-   LBOUND @ 0<> if E-NELAB-LOCAL throw then
+   LGB @ LG-N @ >= if E-NELAB-LOCAL throw then
+   ix LGB @ LG-B@ <> if E-NELAB-LOCAL throw then
    CS-N @ 0<> if E-NELAB-LOCAL throw then
-   LN @ {: k:n :}
+   LGB @ LG-K@ {: k:n :}
+   LBN @ {: from:n :}
    k VN @ > if E-NELAB-UNDER throw then
    VN @ k - {: base:n :}
    k 0 ?do
-      base i + VAT  i LVAL !
+      base i + VAT  from i + LVAL !
    loop
    k VDROP
-   ix LOCAL-BIND-CROSS
-   1 LBOUND ! ;
+   ix from k LOCAL-BIND-CROSS
+   from k + LBN !
+   LGB @ 1+ LGB ! ;
 
 \ A mention of a bound local in the body: the value it names goes back on the
 \ vector. It produces no operation, exactly as a rename does, because the value
 \ already exists - whatever computed it - and this only says where it is used.
+\
+\ THE SECOND TEST IS A BACKSTOP AND IS ASKED ANYWAY. LOCAL-OF answers only for a
+\ name whose group closed on an EARLIER row, and the walk reaches the rows in
+\ order and binds each group as it passes its closer, so a name it answers for
+\ is one the walk has already bound. Reaching the refusal would mean those two
+\ orders had come apart.
 : LOCAL-READ? ( n -- bool )
    {: ix:n :}
    ix LOCAL-OF {: k:n :}
    k 0 < if false exit then
-   LBOUND @ 0= if E-NELAB-LOCAL throw then
+   k LBN @ >= if E-NELAB-LOCAL throw then
    k LAT LVAL @ VPUSH
    true ;
 
