@@ -446,7 +446,7 @@ variable SP-N
 \ needs beside the number. A code that is NOT here is not swallowed: the report
 \ prints it raw, on its own line, because the census discovering a reason nobody
 \ predicted is a result.
-20 constant CODE#
+22 constant CODE#
 
 : CODE-AT ( n -- n )
    case
@@ -468,8 +468,10 @@ variable SP-N
       15 of E-NMIGRATE-VERDICT endof
       16 of E-NFEED-STATE endof
       17 of E-NFEED-TEXT endof
-      18 of RC-UNDEFINED endof
-      19 of RC-DUPLICATE endof
+      18 of E-NCLOB-CAP endof
+      19 of E-NPUB-CAP endof
+      20 of RC-UNDEFINED endof
+      21 of RC-DUPLICATE endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -493,14 +495,33 @@ variable SP-N
       15 of s" E-NMIGRATE-VERDICT" endof
       16 of s" E-NFEED-STATE" endof
       17 of s" E-NFEED-TEXT" endof
-      18 of s" engine refused the name" endof
-      19 of s" engine refused a duplicate name" endof
+      18 of s" E-NCLOB-CAP" endof
+      19 of s" E-NPUB-CAP" endof
+      20 of s" engine refused the name" endof
+      21 of s" engine refused a duplicate name" endof
       E-TBL-BOUNDS throw
    endcase ;
 
 \ The first seven rows are the dialect's own refusals, the next four are register
 \ pressure, then the instrument's, then the engine's - the last two being the
 \ census reporting on itself.
+\
+\ THE TWO PUBLICATION CEILINGS ARE THE INSTRUMENT'S TOO, and they are the reason
+\ this table gained a row rather than a comment. E-NCLOB-CAP is the clobber
+\ record's table full and E-NPUB-CAP is the replacement log's; both are raised
+\ AFTER selection, allocation, register-allocation validation and emission have
+\ all accepted the definition, so a definition they refuse is one the chain
+\ COMPILED and could not find a table row for. Unlisted, they printed as a raw
+\ number in the dialect bucket - which is where a reader looks for work the chain
+\ still needs - and the 2026-08-07 whole-tree run put 1669 of them there, three
+\ times the biggest real dialect gap over the same tree. A capacity reached is
+\ not a capability missing.
+\
+\ AND A CENSUS SHOULD NEVER SEE EITHER OF THEM AGAIN. Both records are written by
+\ a publication, and a census does not publish: it measures through
+\ NMIGRATE:MEASURE-HELD, which makes every refusal a publication can make and
+\ then keeps none of the rows. A nonzero count on either line means something
+\ started committing what it was only supposed to ask about.
 \
 \ E-NELAB-ARITY IS THE INSTRUMENT'S AND NOT THE DIALECT'S, and it is the one
 \ classification here worth arguing. The elaborator throws it when the declared
@@ -513,7 +534,7 @@ variable SP-N
 : ROW-CLASS ( n -- n ) {: i:n :}
    i 7 < if CL-DIALECT exit then
    i 11 < if CL-PRESSURE exit then
-   i 18 < if CL-INSTRUMENT exit then
+   i 20 < if CL-INSTRUMENT exit then
    CL-SELF-CHECK ;
 
 \ Which named row a code is, or -1 for a code no row names.

@@ -32,6 +32,8 @@ require tools/lint/lib.f
 require tools/lint/source-lex.f
 require tools/lint/def.f
 require lib/content-key.f
+require src/compiler/native/clobber.f
+require src/compiler/native/publish.f
 require tools/chain-census-core.f
 
 package CHAIN-CENSUS-TEST
@@ -944,6 +946,48 @@ variable ENG-B
    s" directory: files come out densest first, empty ones last" T-LABEL
       DENSE-ORDERED? TTRUE ;
 
+\ ---- a capacity reached is not a capability missing ----------------------------
+\ WHAT THIS IS ABOUT. A publication writes a row into two records that may not
+\ drop one to make space, and both are full at some point. Their refusals -
+\ E-NCLOB-CAP for the clobber record, E-NPUB-CAP for the replacement log - are
+\ raised AFTER the definition has been selected, allocated, verified and emitted,
+\ so a definition they refuse is one the chain compiled. While the code table did
+\ not name them the report printed them raw, in the DIALECT bucket, which is where
+\ a reader looks for what the chain still cannot compile: the 2026-08-07 whole-tree
+\ run put 1275 of them there, three times the biggest real dialect gap, and the
+\ compiled count it printed beside them was the size of the table rather than the
+\ size of the tree.
+\
+\ AND THE SECOND HALF IS THAT A CENSUS CANNOT REACH THEM ANY MORE. It measures
+\ through NMIGRATE:MEASURE-HELD, which makes every refusal a publication can make
+\ and then writes none of the rows, so a whole census run costs neither record a
+\ single row. That is asserted against the records themselves, before and after a
+\ real run over a real file, rather than against the census's own report of
+\ itself.
+variable PUB-ROWS0
+variable PUB-LOG0
+
+: CASE-CEILINGS ( -- )
+   s" ceilings: the clobber record's full table is a named instrument code" T-LABEL
+      E-NCLOB-CAP CHAIN-CENSUS:CLASS-OF CHAIN-CENSUS:CL-INSTRUMENT T=
+   s" ceilings: and so is the replacement log's" T-LABEL
+      E-NPUB-CAP CHAIN-CENSUS:CLASS-OF CHAIN-CENSUS:CL-INSTRUMENT T=
+
+   NCLOB:ROWS PUB-ROWS0 !
+   NPUB:REPUBLISHED PUB-LOG0 !
+   GOOD$ CENSUS1
+
+   s" ceilings: a census that compiled definitions really did compile them" T-LABEL
+      0 CHAIN-CENSUS:FILE-COMPILED 0 T<>
+
+   s" ceilings: and it spent no row of the clobber record" T-LABEL
+      NCLOB:ROWS PUB-ROWS0 @ T=
+   s" ceilings: nor a row of the replacement log" T-LABEL
+      NPUB:REPUBLISHED PUB-LOG0 @ T=
+   s" ceilings: so neither ceiling was reached" T-LABEL
+      E-NCLOB-CAP CHAIN-CENSUS:COUNT-OF 0 T=
+      E-NPUB-CAP CHAIN-CENSUS:COUNT-OF 0 T= ;
+
 public
 
 : MAIN ( -- )
@@ -963,6 +1007,7 @@ public
    CASE-CLOSED
    CASE-RESERVED-MIRROR
    CASE-DIRECTORY
+   CASE-CEILINGS
    CLEANUP-RUN
    T-REPORT
    s" chain-census-test: ok" type cr ;
