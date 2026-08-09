@@ -55,11 +55,11 @@ package A64EFF-TEST
 private
 
 \ ---- consuming contract values -----------------------------------------------
-\ A contract is twelve stack cells, so a test that only wants the throw has to
+\ A contract is thirteen stack cells, so a test that only wants the throw has to
 \ unmake what it built.
 : DROP-ROUTINE ( A64EFF:routine -- )
    A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop drop drop drop drop drop drop ;
+   drop drop drop drop drop drop drop drop drop drop drop drop drop ;
 
 : DROP-DIGEST ( CDIGEST:digest -- )
    CDIGEST-DIGEST:UNMAKE drop drop drop drop ;
@@ -96,32 +96,43 @@ private
 \ is making.
 
 : R-GPR ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs -- A64EFF:routine )
+   {: gi:placeseq gr:placeseq gc:gprs :}
+   A64EFF-CONV:REGISTER gi gr gc
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
+\ The same with the other convention declared, for the cases whose subject is a
+\ contract that passes its values through the caller's data stack.
+: R-DSTACK ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs -- A64EFF:routine )
+   {: gi:placeseq gr:placeseq gc:gprs :}
+   A64EFF-CONV:DSTACK gi gr gc
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
 : R-FPR ( A64EFF:fprs A64EFF:fprs A64EFF:fprs -- A64EFF:routine )
    {: fi:fprs fr:fprs fc:fprs :}
-   SQ-NONE SQ-NONE A64EFF:GPR-NONE fi fr fc
+   A64EFF-CONV:REGISTER SQ-NONE SQ-NONE A64EFF:GPR-NONE fi fr fc
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
 : R-STACK ( A64EFF:control n n -- A64EFF:routine )
    {: c:control size:n delta:n :}
-   SQ-NONE SQ-NONE A64EFF:GPR-NONE
+   A64EFF-CONV:REGISTER SQ-NONE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED c
    A64EFF:TRAITS-NONE size delta A64EFF:ROUTINE ;
 
 : R-LINK ( A64EFF:control A64EFF:link -- A64EFF:routine )
    {: c:control l:link :}
-   SQ-NONE SQ-NONE A64EFF:GPR-NONE
+   A64EFF-CONV:REGISTER SQ-NONE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED l c A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
 : R-RESULT ( A64EFF:placeseq A64EFF:fprs A64EFF:nzcv A64EFF:control -- A64EFF:routine )
    {: gr:placeseq fr:fprs z:nzcv c:control :}
-   SQ-NONE gr A64EFF:GPR-NONE
+   A64EFF-CONV:REGISTER SQ-NONE gr A64EFF:GPR-NONE
    A64EFF:FPR-NONE fr A64EFF:FPR-NONE
    z A64EFF-LINK:PRESERVED c A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
@@ -288,8 +299,8 @@ private
    \ a data-stack place is in no register set, so a routine that takes everything
    \ off the stack reads and returns no register on account of its convention
    0 1 DQ2 A64EFF:SEQ-SET A64EFF:GPRS-N 0 T=
-   0 DQ 0 SQ X2 R-GPR A64EFF:GPR-IN@ A64EFF:GPRS-N 0 T=
-   0 SQ 0 DQ X2 R-GPR A64EFF:GPR-RESULT@ A64EFF:GPRS-N 0 T=
+   0 DQ 0 DQ X2 R-DSTACK A64EFF:GPR-IN@ A64EFF:GPRS-N 0 T=
+   0 DQ 0 DQ X2 R-DSTACK A64EFF:GPR-RESULT@ A64EFF:GPRS-N 0 T=
    \ one register and one slot with the same number are two places, not a repeat
    SQ-NONE 0 A64EFF:SEQ-WITH 0 A64EFF:SEQ-WITH-SLOT A64EFF:SEQ-LEN 2 T=
    A64EFF:SEQ-SLOT-LIMIT DQ 0 A64EFF:SEQ-SLOT@ A64EFF:SEQ-SLOT-LIMIT T=
@@ -299,6 +310,47 @@ private
    [: 0 0 DQ2 A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
    [: A64EFF:SEQ-SLOT-LIMIT 1+ DQ A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
    [: -1 DQ A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ ;
+
+\ ---- 2b5. the declared convention and the places are one statement -----------
+\ An empty place list is silent about which convention a routine speaks - it is
+\ what a routine passing nothing has either way - so the contract states the
+\ convention and the constructor holds the two against each other. Both
+\ directions are refused, and refused HERE, where the contract is built, so no
+\ pass downstream ever holds one: a data-stack convention naming a register and a
+\ register convention naming a slot of the caller's stack.
+\
+\ AND A LIST OF NOTHING SATISFIES EITHER, which is the case the whole field was
+\ minted for: a ( -- ) word declares no place and is still entered through the
+\ data stack, and the contract can now say so.
+: CONV-CASES ( -- )
+   A64EFF-CONV:DSTACK A64EFF-CONV:DSTACK A64EFF-CONV:EQ TTRUE
+   A64EFF-CONV:DSTACK A64EFF-CONV:REGISTER A64EFF-CONV:EQ TFALSE
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE R-DSTACK A64EFF:CONV@
+      A64EFF-CONV:DSTACK A64EFF-CONV:EQ TTRUE
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE R-GPR A64EFF:CONV@
+      A64EFF-CONV:REGISTER A64EFF-CONV:EQ TTRUE
+   0 DQ 1 DQ X2 R-DSTACK A64EFF:CONV@
+      A64EFF-CONV:DSTACK A64EFF-CONV:EQ TTRUE
+   \ two contracts alike in every other field are not the same contract
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE R-DSTACK
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE R-GPR A64EFF:SAME? TFALSE
+   \ a data-stack convention may not name a register, on either side
+   [: 0 SQ SQ-NONE A64EFF:GPR-NONE R-DSTACK DROP-ROUTINE ;]
+      E-A64EFF-CONV TTHROWSQ
+   [: SQ-NONE 0 SQ X2 R-DSTACK DROP-ROUTINE ;]
+      E-A64EFF-CONV TTHROWSQ
+   \ and a register convention may not name a data-stack slot, on either side
+   [: 0 DQ SQ-NONE A64EFF:GPR-NONE R-GPR DROP-ROUTINE ;]
+      E-A64EFF-CONV TTHROWSQ
+   [: SQ-NONE 0 DQ A64EFF:GPR-NONE R-GPR DROP-ROUTINE ;]
+      E-A64EFF-CONV TTHROWSQ
+   \ a side that mixes the two kinds is refused whichever is declared
+   [: SQ-NONE 0 A64EFF:SEQ-WITH 0 A64EFF:SEQ-WITH-SLOT
+      SQ-NONE A64EFF:GPR-NONE R-DSTACK DROP-ROUTINE ;]
+      E-A64EFF-CONV TTHROWSQ
+   [: SQ-NONE 0 A64EFF:SEQ-WITH 0 A64EFF:SEQ-WITH-SLOT
+      SQ-NONE A64EFF:GPR-NONE R-GPR DROP-ROUTINE ;]
+      E-A64EFF-CONV TTHROWSQ ;
 
 \ ---- 2b4. the engine's registers are unbuildable ------------------------------
 \ The running engine holds its data-stack pointer, DATA/RBASE, DBASE, NDICT and
@@ -466,7 +518,7 @@ variable ER-REG
 \ Assembled by the generated constructor with a stack delta a returning routine
 \ cannot have, so every word that revalidates refuses it with that rule's code.
 : FORGED ( -- A64EFF:routine )
-   SQ-NONE SQ-NONE A64EFF:GPR-NONE
+   A64EFF-CONV:REGISTER SQ-NONE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 32 -16 A64EFF-ROUTINE:MAKE ;
@@ -474,6 +526,7 @@ variable ER-REG
 \ A second forgery, this one naming the reserved register at argument position
 \ zero of a list the checked constructor would never have accepted.
 : FORGED-X18 ( -- A64EFF:routine )
+   A64EFF-CONV:REGISTER
    1 60 lshift 18 or A64EFF-PLACESEQ:MAKE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
@@ -517,15 +570,19 @@ variable ER-REG
 \ ---- 2g. a missing or role-swapped argument never reaches runtime -------------
 \ -1 is accepted by the checker, 0 refused.
 : STATIC-REJECTS ( -- )
-   s" A64T-OK ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-OK ( A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" A64T-SHORT ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-SHORT ( A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-FILES ( A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-FILES ( A64EFF:conv A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-SWAP ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:link A64EFF:nzcv A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-SWAP ( A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:link A64EFF:nzcv A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-BARE ( n A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-BARE ( A64EFF:conv n A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" A64T-NOCONV ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" A64T-CONVSEQ ( A64EFF:placeseq A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" A64T-SETOK ( n -- A64EFF:gprs ) A64EFF:GPR-SET"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -533,7 +590,7 @@ variable ER-REG
       CHECK-QUIET-CANDIDATE! 0 T=
    s" A64T-WITHX ( A64EFF:gprs A64EFF:fprs -- A64EFF:gprs ) A64EFF:GPR-WITH"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-SETS ( A64EFF:gprs A64EFF:gprs A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-SETS ( A64EFF:conv A64EFF:gprs A64EFF:gprs A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" A64T-SEQOK ( A64EFF:placeseq n -- A64EFF:placeseq ) A64EFF:SEQ-WITH"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -549,13 +606,13 @@ variable ER-REG
 \ ---- 5a. the canonical preimage ----------------------------------------------
 : PREIMAGE ( -- )
    0 SQ 1 SQ X2 R-GPR A64EFF:ENCODE {: base:ptr len:n :}
-   len 112 T=
+   len 120 T=
    base 0 CDIGEST:SLOT@ CDIGEST:TAG-A64-ROUTINE T=
-   base 1 CDIGEST:SLOT@ 3 T=
-   base 2 CDIGEST:SLOT@ 0 SQ A64EFF-PLACESEQ:UNMAKE T=
-   base 3 CDIGEST:SLOT@ 1 SQ A64EFF-PLACESEQ:UNMAKE T=
-   base 4 CDIGEST:SLOT@ X2 A64EFF:GPRS-N T=
-   base 5 CDIGEST:SLOT@ 0 T=
+   base 1 CDIGEST:SLOT@ 4 T=
+   base 2 CDIGEST:SLOT@ 1 T=
+   base 3 CDIGEST:SLOT@ 0 SQ A64EFF-PLACESEQ:UNMAKE T=
+   base 4 CDIGEST:SLOT@ 1 SQ A64EFF-PLACESEQ:UNMAKE T=
+   base 5 CDIGEST:SLOT@ X2 A64EFF:GPRS-N T=
    base 6 CDIGEST:SLOT@ 0 T=
    base 7 CDIGEST:SLOT@ 0 T=
    base 8 CDIGEST:SLOT@ 0 T=
@@ -564,16 +621,19 @@ variable ER-REG
    base 11 CDIGEST:SLOT@ 0 T=
    base 12 CDIGEST:SLOT@ 0 T=
    base 13 CDIGEST:SLOT@ 0 T=
+   base 14 CDIGEST:SLOT@ 0 T=
+   0 DQ 1 DQ X2 R-DSTACK A64EFF:ENCODE {: db:ptr dlen:n :}
+   db 2 CDIGEST:SLOT@ 0 T=
    A64EFF-CONTROL:NO-RETURN 32 -32 R-STACK A64EFF:ENCODE {: nb:ptr nlen:n :}
-   nb 10 CDIGEST:SLOT@ 2 T=
-   nb 12 CDIGEST:SLOT@ 32 T=
-   nb 13 CDIGEST:SLOT@ -32 T=
+   nb 11 CDIGEST:SLOT@ 2 T=
+   nb 13 CDIGEST:SLOT@ 32 T=
+   nb 14 CDIGEST:SLOT@ -32 T=
    SQ-NONE A64EFF:FPR-NONE A64EFF-NZCV:READ-CLOBBERED
       A64EFF-CONTROL:RETURNS R-RESULT A64EFF:ENCODE {: zb:ptr zlen:n :}
-   zb 8 CDIGEST:SLOT@ 4 T=
+   zb 9 CDIGEST:SLOT@ 4 T=
    A64EFF-CONTROL:NO-RETURN A64EFF-LINK:CLOBBERED R-LINK
       A64EFF:ENCODE {: lb:ptr llen:n :}
-   lb 9 CDIGEST:SLOT@ 1 T= ;
+   lb 10 CDIGEST:SLOT@ 1 T= ;
 
 \ The guard that keeps the digest load-bearing: the record's DECLARED field
 \ count, read back out of the type registry, is tied to the width of its
@@ -594,8 +654,8 @@ variable ER-REG
    PLACESEQ$ REFLECT:FLDS 1 T=
    PLACESEQ$ REFLECT:WIDTH 1 T=
    ROUTINE$ REFLECT:FAMS 1 T=
-   ROUTINE$ REFLECT:FLDS 12 T=
-   ROUTINE$ REFLECT:WIDTH 12 T=
+   ROUTINE$ REFLECT:FLDS 13 T=
+   ROUTINE$ REFLECT:WIDTH 13 T=
    LEAF A64EFF:ENCODE SLOTS-OF ROUTINE$ REFLECT:FLDS 2 + T=
    GPRS$ REFLECT:FAMS 1 T=
    GPRS$ REFLECT:FLDS 1 T=
@@ -687,6 +747,7 @@ create DGA ROWS 4 * cells allot
 
 : SWEEP-A>ROUTINE ( n -- A64EFF:routine )
    {: a:n :}
+   A64EFF-CONV:REGISTER
    a 5 0 A-SEQ  a 4 1 A-SEQ  a 3 2 A-GPR
    a 2 0 A-FPR  a 1 1 A-FPR  a 0 2 A-FPR
    a A-NZCV A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
@@ -722,7 +783,7 @@ create DGA ROWS 4 * cells allot
    {: b:n :}
    b 9 mod {: s:n :}
    b 9 / {: t:n :}
-   SQ-NONE SQ-NONE A64EFF:GPR-NONE
+   A64EFF-CONV:REGISTER SQ-NONE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED s B-LINK s B-CONTROL
    t A64EFF:TRAIT-SET s B-FRAME s B-DELTA A64EFF:ROUTINE ;
@@ -766,6 +827,7 @@ public
    ALGEBRA
    SEQUENCE
    PLACES
+   CONV-CASES
    ENGINE-RESERVED
    FILE-SWEEP
    DERIVED

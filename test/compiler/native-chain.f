@@ -1362,7 +1362,7 @@ $54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused 
 \ the whole framed-leaf entry the chain's cases go through.
 : DROP-ROUTINE ( A64EFF:routine -- )
    A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop drop drop drop drop drop drop ;
+   drop drop drop drop drop drop drop drop drop drop drop drop drop ;
 
 : POOL-CASES ( -- )
    s" a pool naming an engine register is refused before selection" T-LABEL

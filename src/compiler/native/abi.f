@@ -72,6 +72,13 @@ public
 \ The first `n` data-stack slots of the caller's stack, as one side of a calling
 \ convention. Both sides of a Habu word's convention have this shape, so one word
 \ builds either list.
+\
+\ AND THE LIST IS NOT WHAT SAYS SO. Every constructor below DECLARES
+\ A64EFF-CONV:DSTACK, because at `n` of zero this list is empty and an empty list
+\ is silent: it is what a routine passing nothing has under either convention.
+\ This file is the only production writer of a routine contract, so this is where
+\ the fact that every Habu word is entered through the caller's data stack is
+\ written down, once, for the selector, the allocator and the validator to read.
 : SLOT-SEQ ( n -- A64EFF:placeseq )
    {: n:n :}
    A64EFF:SEQ-NONE
@@ -94,6 +101,7 @@ public
 \ declared destroyed.
 : LEAF-FRAMED ( n n n n n -- A64EFF:routine )
    {: base:n n:n in:n out:n spills:n :}
+   A64EFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    base n POOL
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
@@ -113,6 +121,7 @@ public
 \ leaf has it for nothing and a caller has to make it true.
 : CALL-FRAMED ( n n n n n -- A64EFF:routine )
    {: base:n n:n in:n out:n spills:n :}
+   A64EFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    base n POOL
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
@@ -146,6 +155,7 @@ public
 \ then stands in front of the branch instead of in front of a return.
 : TAIL-FRAMED ( n n n n n -- A64EFF:routine )
    {: base:n n:n in:n out:n spills:n :}
+   A64EFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    base n POOL
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
@@ -160,6 +170,7 @@ public
 \ The same, for a word that also makes a call it comes back from.
 : TAIL-CALLING-FRAMED ( n n n n n -- A64EFF:routine )
    {: base:n n:n in:n out:n spills:n :}
+   A64EFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    base n POOL
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL

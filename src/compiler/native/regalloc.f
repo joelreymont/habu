@@ -669,14 +669,15 @@ create PL-VAL PLMAX cells allot
 \ whose terminator names no successor. In a routine of one block they are the
 \ same block; with control flow they are not, and asking the entry block about
 \ the results would read a branch's block arguments as if they were the routine's.
-: LOWERED-CK ( IR-ID:ir-block-id IR-ID:ir-block-id A64EFF:placeseq A64EFF:placeseq -- )
-   {: bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id
-      args:A64EFF:placeseq outs:A64EFF:placeseq :}
-   args A64EFF:SEQ-SLOTS 0<> bk ARG-COUNT 0<> and
-   if E-A64RA-PLACE throw then
+\ IT IS THE DECLARED CONVENTION THAT DECIDES, not the place lists. Asking whether
+\ a list names a slot gives no answer for a routine that passes nothing, and a
+\ pass that reads the lists twice can come to two views of one contract.
+: LOWERED-CK ( IR-ID:ir-block-id IR-ID:ir-block-id A64EFF:conv -- )
+   {: bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id cv:A64EFF:conv :}
+   cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ 0= if exit then
+   bk ARG-COUNT 0<> if E-A64RA-PLACE throw then
    rb TERM-AT TAILBR-AT? if exit then
-   outs A64EFF:SEQ-SLOTS 0<> rb TERM-AT OPERANDS-OF 0<> and
-   if E-A64RA-PLACE throw then ;
+   rb TERM-AT OPERANDS-OF 0<> if E-A64RA-PLACE throw then ;
 
 \ ---- taking a register away --------------------------------------------------
 \ The next slot of the routine's frame. Slots are handed out in order and never
@@ -2060,14 +2061,14 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ them against the contract the routine is actually emitted under.
 : SLOTS-CK ( A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
+   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
    FRAME-WANT {: want:n :}
    N-SLOTS @ 0 ?do
       BASE-N @  i A64IR:SLOT-WIDTH *  +  A64IR:SLOT-WIDTH
-      gi gr gc fi fr fc z l ct t want delta A64EFF-ROUTINE:MAKE
+      cv gi gr gc fi fr fc z l ct t want delta A64EFF-ROUTINE:MAKE
       A64EFF:CHECK-SLOT
    loop ;
 
@@ -2153,9 +2154,10 @@ public
 \ change habu-derive-a-routine-84ed36b6 made: the walk decides how much frame the
 \ routine needs, so a declaration handed in could only be a guess to be held to.
 \ FRAME below answers what the walk decided, and the caller declares that.
-: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq A64EFF:traits -- )
+: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:traits -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
-      args:A64EFF:placeseq outs:A64EFF:placeseq traits:A64EFF:traits :}
+      cv:A64EFF:conv args:A64EFF:placeseq outs:A64EFF:placeseq
+      traits:A64EFF:traits :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
@@ -2173,21 +2175,21 @@ public
    f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
    f RET-B @ BLOCK-AT {: rb:IR-ID:ir-block-id :}
    bk rb FIXED-ARITY-CK
-   bk rb args outs LOWERED-CK
+   bk rb cv LOWERED-CK
    f bk rb MB-RUN ;
 
 : ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
+   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}
-   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
-   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
-   pool fpool gi gr t WALK
-   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
+   pool fpool cv gi gr t WALK
+   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST ! ;
 

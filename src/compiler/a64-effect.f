@@ -101,19 +101,19 @@
 \ may be added to a family, but an existing variant's code may never be
 \ renumbered without bumping SCHEMA.
 \
-\ FORGERY. `routine` is a public family, so its generated MAKE can assemble twelve
-\ field values that never passed the checked constructor, and `placeseq` likewise
-\ can assemble a cell that is not a list at all. Every word here whose result
-\ carries identity or a decision - VALIDATE, SAME?, ENCODE, DIGEST, the derived
-\ interface, preserved and writable sets, RETURNS?, CHECK-SLOT, and each of the
-\ list readers - revalidates its input first. The plain field readers do not:
-\ they only project a value the caller holds.
+\ FORGERY. `routine` is a public family, so its generated MAKE can assemble
+\ thirteen field values that never passed the checked constructor, and
+\ `placeseq` likewise can assemble a cell that is not a list at all. Every word
+\ here whose result carries identity or a decision - VALIDATE, SAME?, ENCODE,
+\ DIGEST, the derived interface, preserved and writable sets, RETURNS?,
+\ CHECK-SLOT, and each of the list readers - revalidates its input first. The
+\ plain field readers do not: they only project a value the caller holds.
 \
 \ WHY THE RECORD IS FLAT. Grouping the three roles of a register file into a
 \ nested record would read better, but a multi-cell value cannot be bound to a
 \ typed local today (the layout-polymorphic parameter capability is still open),
 \ so every reader of a middle field would have to dispose of a nested value it
-\ cannot name. Twelve single-cell fields keep every word in this file checkable
+\ cannot name. Thirteen single-cell fields keep every word in this file checkable
 \ with the types the checker has now. The field NAMES carry the grouping.
 \
 \ NOT MODELLED YET, deliberately, each with a named owner. The kernel-entry
@@ -182,6 +182,29 @@ STRUCTURE placeseq 0 DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
+\ ---- which convention the two place lists are stated in -----------------------
+\ A DECLARATION AND NOT AN INFERENCE, WHICH IS THE WHOLE OF WHY IT EXISTS. An
+\ empty place list says two different things - a routine that passes nothing, and
+\ a routine whose placement this contract has no opinion about - and SEQ-NONE
+\ above says so in as many words. So no reader can recover the convention by
+\ looking at the lists: a routine of arity zero has an empty list under BOTH
+\ conventions, and every pass that guessed from the lists guessed the same way
+\ and got a ( -- ) routine wrong.
+\
+\   dstack   - every argument arrives in, and every result leaves in, a slot of
+\              the caller's data stack. This is the convention a Habu word is
+\              entered under, and the one src/compiler/native/abi.f declares.
+\   register - every argument arrives in, and every result leaves in, a register.
+\              A contract may still name no position at all, which is how a test
+\              fixture says it has no opinion about an interface it is not about.
+\
+\ The two codes are stable wire codes and ride in the digest; neither may be
+\ renumbered without bumping SCHEMA.
+ENUM conv DERIVE eq
+   dstack
+   register
+;ENUM
+
 \ ---- the condition flags -----------------------------------------------------
 \ NZCV is a one-register file whose legal role combinations are few enough to
 \ name, which is better than three independent flags that could spell a state no
@@ -235,13 +258,17 @@ STRUCTURE traits 0 DERIVE eq
 \ Fields in declaration order, deepest stack field first. It does not DERIVE eq -
 \ a structure field is not a derivable role - so SAME? below is the hand-written
 \ field-by-field identity, and it is the equality the digest is proved to agree
-\ with. `gpr-arg` is the register each argument arrives in and `gpr-out` the
-\ register each returned value leaves in, both position by position; the sets a
+\ with. `conv` comes first because it is what says how to READ the two lists
+\ after it: a position means a register under one convention and a data-stack
+\ slot under the other, and an empty list means nothing at all without it.
+\ `gpr-arg` is the place each argument arrives in and `gpr-out` the place each
+\ returned value leaves in, both position by position; the sets a
 \ reader used to find in their place are derived from them below. `frame` is how
 \ far below the entry stack pointer the routine's own frame reaches, in bytes;
 \ `sp-delta` is the net stack-pointer change where control leaves, which is zero
 \ or negative.
 STRUCTURE routine 0
+   FIELD conv conv
    FIELD gpr-arg placeseq
    FIELD gpr-out placeseq
    FIELD gpr-clobber gprs
@@ -360,6 +387,12 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
       returns   OF 0 ENDOF
       tail-call OF 1 ENDOF
       no-return OF 2 ENDOF
+   ;MATCH ;
+
+: CONV-CODE ( A64EFF:conv -- n )
+   MATCH conv
+      dstack   OF 0 ENDOF
+      register OF 1 ENDOF
    ;MATCH ;
 
 \ ---- per-field rules ---------------------------------------------------------
@@ -501,6 +534,28 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    c RETURNING? 0= if exit then
    delta 0<> if E-A64EFF-SP throw then ;
 
+\ The convention a contract declares and the places it names have to be the same
+\ statement. A data-stack convention whose list names a register, or a register
+\ convention whose list names a slot, is a routine no entry sequence can be
+\ written for: the two kinds are reached by different instructions and no pass of
+\ this chain pairs them. It is refused HERE, at construction, so no later pass
+\ ever holds such a contract - which is the point of declaring the convention at
+\ all. A list naming NO position satisfies either declaration: a routine that
+\ passes nothing passes nothing whichever way it would have.
+: SIDE-CK ( A64EFF:conv A64EFF:placeseq -- )
+   {: cv:conv s:placeseq :}
+   s S-BITS SEQ-CK {: w:n :}
+   w SEQ-SLOTS-OF {: sl:n :}
+   cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if
+      sl w SEQ-LEN-OF <> if E-A64EFF-CONV throw then exit
+   then
+   sl 0<> if E-A64EFF-CONV throw then ;
+
+: CONV-CK ( A64EFF:conv A64EFF:placeseq A64EFF:placeseq -- )
+   {: cv:conv gi:placeseq gr:placeseq :}
+   cv gi SIDE-CK
+   cv gr SIDE-CK ;
+
 \ Both a return and a tail call end by jumping to the address in x30: the tail
 \ callee's own return does. Either way a destroyed link register has nowhere to
 \ go back to.
@@ -525,22 +580,27 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 \ data-stack slot - and the version says so instead of two schemas sharing one
 \ digest. Version 2 was the step before, where those slots became ordered lists
 \ rather than sets.
-3 constant SCHEMA
-14 constant SLOTS
+\ Version 4: the contract states which convention its two interface lists are
+\ written in, so the preimage carries one more slot and it stands in front of
+\ them - the field that says how the next two are read. Two contracts that
+\ differed only in a convention nothing recorded used to digest the same.
+4 constant SCHEMA
+15 constant SLOTS
 0 constant SLOT-TAG
 1 constant SLOT-SCHEMA
-2 constant SLOT-GPR-IN
-3 constant SLOT-GPR-RES
-4 constant SLOT-GPR-CLOB
-5 constant SLOT-FPR-IN
-6 constant SLOT-FPR-RES
-7 constant SLOT-FPR-CLOB
-8 constant SLOT-NZCV
-9 constant SLOT-LINK
-10 constant SLOT-CONTROL
-11 constant SLOT-TRAITS
-12 constant SLOT-FRAME
-13 constant SLOT-DELTA
+2 constant SLOT-CONV
+3 constant SLOT-GPR-IN
+4 constant SLOT-GPR-RES
+5 constant SLOT-GPR-CLOB
+6 constant SLOT-FPR-IN
+7 constant SLOT-FPR-RES
+8 constant SLOT-FPR-CLOB
+9 constant SLOT-NZCV
+10 constant SLOT-LINK
+11 constant SLOT-CONTROL
+12 constant SLOT-TRAITS
+13 constant SLOT-FRAME
+14 constant SLOT-DELTA
 
 SLOTS CDIGEST:SLOT-BYTES * constant PRE-BYTES
 create PRE PRE-BYTES allot
@@ -754,8 +814,8 @@ public
 \ ---- construction and validation ---------------------------------------------
 \ The production entry point. A combination that cannot be true of one routine
 \ throws a named error and no contract value is produced.
-: ROUTINE ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine )
-   {: gi:placeseq gr:placeseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
+: ROUTINE ( A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine )
+   {: cv:conv gi:placeseq gr:placeseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
       l:link c:control t:traits size:n delta:n :}
    gi S-BITS SEQ-CK drop
    gr S-BITS SEQ-CK SEQ-MASK gc G-BITS GPR-CK ROLE-CK
@@ -766,8 +826,9 @@ public
    size delta DELTA-CK
    c delta BALANCE-CK
    c l LINK-CK
+   cv gi gr CONV-CK
    gr S-BITS SEQ-MASK fr F-BITS z c RESULT-CK
-   gi gr gc fi fr fc z l c t size delta A64EFF-ROUTINE:MAKE ;
+   cv gi gr gc fi fr fc z l c t size delta A64EFF-ROUTINE:MAKE ;
 
 \ Recheck a contract that may have been assembled by the generated constructor.
 : VALIDATE ( A64EFF:routine -- A64EFF:routine )
@@ -775,41 +836,57 @@ public
 
 \ ---- field readers -----------------------------------------------------------
 \ A projection of a value the caller already holds; nothing here revalidates.
+: CONV@ ( A64EFF:routine -- A64EFF:conv )
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop drop drop ;
+
 : ARGS@ ( A64EFF:routine -- A64EFF:placeseq )
-   A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop drop drop drop drop drop ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop drop nip ;
 
 : RESULTS@ ( A64EFF:routine -- A64EFF:placeseq )
-   A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop drop drop drop drop nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop nip nip ;
 
 : GPR-CLOBBER@ ( A64EFF:routine -- A64EFF:gprs )
-   A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop drop drop drop nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop nip nip nip ;
 
 : FPR-IN@ ( A64EFF:routine -- A64EFF:fprs )
-   A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop drop drop nip nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop nip nip nip nip ;
 
 : FPR-RESULT@ ( A64EFF:routine -- A64EFF:fprs )
-   A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop drop nip nip nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop nip nip nip nip nip ;
 
 : FPR-CLOBBER@ ( A64EFF:routine -- A64EFF:fprs )
-   A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop nip nip nip nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop nip nip nip nip nip nip ;
 
 : NZCV@ ( A64EFF:routine -- A64EFF:nzcv )
-   A64EFF-ROUTINE:UNMAKE drop drop drop drop drop nip nip nip nip nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop nip nip nip nip nip nip nip ;
 
 : LINK@ ( A64EFF:routine -- A64EFF:link )
-   A64EFF-ROUTINE:UNMAKE drop drop drop drop nip nip nip nip nip nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop nip nip nip nip nip nip nip nip ;
 
 : CONTROL@ ( A64EFF:routine -- A64EFF:control )
-   A64EFF-ROUTINE:UNMAKE drop drop drop nip nip nip nip nip nip nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop drop nip nip nip nip nip nip nip nip nip ;
 
 : TRAITS@ ( A64EFF:routine -- A64EFF:traits )
-   A64EFF-ROUTINE:UNMAKE drop drop nip nip nip nip nip nip nip nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop drop nip nip nip nip nip nip nip nip nip nip ;
 
 : FRAME@ ( A64EFF:routine -- n )
-   A64EFF-ROUTINE:UNMAKE drop nip nip nip nip nip nip nip nip nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   drop nip nip nip nip nip nip nip nip nip nip nip ;
 
 : DELTA@ ( A64EFF:routine -- n )
-   A64EFF-ROUTINE:UNMAKE nip nip nip nip nip nip nip nip nip nip nip ;
+   A64EFF-ROUTINE:UNMAKE
+   nip nip nip nip nip nip nip nip nip nip nip nip ;
 
 \ ---- derived facts -----------------------------------------------------------
 \ Which registers the interface lists name, as sets. A caller that only wants to
@@ -829,7 +906,7 @@ public
    VALIDATE A64EFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    drop drop drop                  \ the floating sets
-   {: gi:placeseq gr:placeseq gc:gprs :}
+   {: cv:conv gi:placeseq gr:placeseq gc:gprs :}
    GPR-MASK gr S-BITS SEQ-MASK invert and gc G-BITS invert and MK-G ;
 
 \ Every register the routine may WRITE: the ones it destroys, plus the ones it
@@ -842,14 +919,14 @@ public
    VALIDATE A64EFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    drop drop drop                  \ the floating sets
-   {: gi:placeseq gr:placeseq gc:gprs :}
+   {: cv:conv gi:placeseq gr:placeseq gc:gprs :}
    gr S-BITS SEQ-MASK gc G-BITS or MK-G ;
 
 : FPR-PRESERVED ( A64EFF:routine -- A64EFF:fprs )
    VALIDATE A64EFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    {: fi:fprs fr:fprs fc:fprs :}
-   drop drop drop                  \ the general interface lists and destroyed set
+   drop drop drop drop             \ the general lists, the destroyed set, the convention
    FPR-MASK fr F-BITS invert and fc F-BITS invert and MK-F ;
 
 \ The floating file's writable set, derived exactly as the general file's is:
@@ -861,7 +938,7 @@ public
    VALIDATE A64EFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    {: fi:fprs fr:fprs fc:fprs :}
-   drop drop drop                  \ the general interface lists and destroyed set
+   drop drop drop drop             \ the general lists, the destroyed set, the convention
    fr F-BITS fc F-BITS or MK-F ;
 
 : RETURNS? ( A64EFF:routine -- bool )
@@ -887,12 +964,13 @@ public
 \ contract cannot be compared as if it were a declarable routine.
 : SAME? ( A64EFF:routine A64EFF:routine -- bool )
    VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: ygi:placeseq ygr:placeseq ygc:gprs yfi:fprs yfr:fprs yfc:fprs yz:nzcv
-      yl:link yc:control yt:traits ysize:n ydelta:n :}
+   {: ycv:conv ygi:placeseq ygr:placeseq ygc:gprs yfi:fprs yfr:fprs yfc:fprs
+      yz:nzcv yl:link yc:control yt:traits ysize:n ydelta:n :}
    VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: xgi:placeseq xgr:placeseq xgc:gprs xfi:fprs xfr:fprs xfc:fprs xz:nzcv
-      xl:link xc:control xt:traits xsize:n xdelta:n :}
-   xgi ygi A64EFF-PLACESEQ:EQ
+   {: xcv:conv xgi:placeseq xgr:placeseq xgc:gprs xfi:fprs xfr:fprs xfc:fprs
+      xz:nzcv xl:link xc:control xt:traits xsize:n xdelta:n :}
+   xcv ycv A64EFF-CONV:EQ
+   xgi ygi A64EFF-PLACESEQ:EQ and
    xgr ygr A64EFF-PLACESEQ:EQ and
    xgc ygc A64EFF-GPRS:EQ and
    xfi yfi A64EFF-FPRS:EQ and
@@ -909,10 +987,11 @@ public
 \ next ENCODE call; DIGEST is the copy-free consumer.
 : ENCODE ( A64EFF:routine -- ptr u8 n )
    VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:placeseq gr:placeseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
+   {: cv:conv gi:placeseq gr:placeseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
       l:link c:control t:traits size:n delta:n :}
    CDIGEST:TAG-A64-ROUTINE PRE SLOT-TAG CDIGEST:SLOT!
    SCHEMA PRE SLOT-SCHEMA CDIGEST:SLOT!
+   cv CONV-CODE PRE SLOT-CONV CDIGEST:SLOT!
    gi S-BITS PRE SLOT-GPR-IN CDIGEST:SLOT!
    gr S-BITS PRE SLOT-GPR-RES CDIGEST:SLOT!
    gc G-BITS PRE SLOT-GPR-CLOB CDIGEST:SLOT!

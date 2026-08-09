@@ -994,7 +994,7 @@ $3FE0000000000000 constant HALF-BITS       \ 0.5
 \ source module's operations selected to. The data-stack convention has its own
 \ cases further down, which is where an entry and an exit are the subject.
 : NO-PLACES ( -- A64EFF:routine )
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-NONE
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -1007,7 +1007,7 @@ $3FE0000000000000 constant HALF-BITS       \ 0.5
 \ Under the contract above every such case would be refused by the pool and none
 \ of them would be asking about the rule they are written for.
 : POOLED ( -- A64EFF:routine )
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -1022,7 +1022,7 @@ $3FE0000000000000 constant HALF-BITS       \ 0.5
 \ write no floating register at all cannot hold an Fcsel, whatever else is true
 \ of it.
 : POOLED-FP ( -- A64EFF:routine )
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -1039,7 +1039,7 @@ $3FE0000000000000 constant HALF-BITS       \ 0.5
 
 : POOLED-FN ( n -- A64EFF:routine )
    {: n:n :}
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
    A64EFF:FPR-NONE A64EFF:FPR-NONE n FPR-N
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -2110,7 +2110,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 
 : HABU-CONV ( n n -- A64EFF:routine )
    {: in:n out:n :}
-   in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
+   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -2125,20 +2125,27 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ afford exactly one of them.
 : CALL-CONV ( n n -- A64EFF:routine )
    {: in:n out:n :}
-   in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
+   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
 
-\ A contract whose argument side names a data-stack slot AND a register. There is
-\ no entry sequence for a convention that puts one argument on the stack and the
-\ next in a register, so it is refused rather than half-built.
-: MIXED-CONV ( -- A64EFF:routine )
-   A64EFF:SEQ-NONE 0 A64EFF:SEQ-WITH-SLOT 0 A64EFF:SEQ-WITH
-   A64EFF:SEQ-NONE A64EFF:GPR-NONE
+\ A contract that declares a call under the REGISTER convention. A call site
+\ hands its arguments over through the caller's data stack and saves every live
+\ value into it, and a routine entered in registers never took the pointer, so
+\ there is no site to build and it is refused before an operation is selected.
+\ This is the clause a ( -- ) word used to fall foul of, back when the pass
+\ worked the convention out from the place lists instead of reading it.
+\
+\ A CONTRACT MIXING THE TWO KINDS IS NOT TESTED HERE ANY MORE. It cannot reach
+\ this pass at all now: A64EFF:ROUTINE refuses a declared convention that
+\ disagrees with the places it names, so the case is a construction case and
+\ lives in test/compiler/a64-effect.f, in both directions.
+: CALL-REG-CONV ( -- A64EFF:routine )
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
 
 : SELECTED-HABU ( n n -- IR-BUILD:module )
    {: in:n out:n :}
@@ -2155,7 +2162,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ the pool's and not the store's.
 : POOLED-SLOTS ( n n -- A64EFF:routine )
    {: in:n out:n :}
-   in SLOTS-N  out SLOTS-N  A64EFF:GPR-ALL
+   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-ALL
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -2453,20 +2460,20 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" a memory operation in a register-convention routine is refused" T-LABEL
    [: MEM-REG ;] E-A64SEL-MEM TTHROWSQ ;
 
-: MIXED-BODY ( IR-CTX:ctx -- )
+: CALL-REG-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SQUARE
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   CC m A64-BUILDER TXT TXT-N MIXED-CONV A64SEL:SELECT drop ;
+   CC m A64-BUILDER TXT TXT-N CALL-REG-CONV A64SEL:SELECT drop ;
 
 : ARITY-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SQUARE
    2 1 SELECTED-HABU drop ;
 
-: MIXED ( -- )
-   WBND [: MIXED-BODY ;] IR-CTX:WITH-CONTEXT ;
+: CALL-REG ( -- )
+   WBND [: CALL-REG-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : DARITY ( -- )
    WBND [: ARITY-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2490,9 +2497,9 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ module the fixture built and the machine builder the selection opened - so two
 \ of them in one group exhaust the live-arena registry and the second case
 \ reports a refusal that really happened as a failure.
-: MIXED-REFUSE-CASE ( -- )
-   s" a convention mixing register places with data-stack places is refused" T-LABEL
-   [: MIXED ;] E-A64SEL-PLACE TTHROWSQ ;
+: CALL-REG-REFUSE-CASE ( -- )
+   s" a contract declaring a call under the register convention is refused" T-LABEL
+   [: CALL-REG ;] E-A64SEL-CALL TTHROWSQ ;
 
 : DARITY-REFUSE-CASE ( -- )
    s" a convention naming more data-stack arguments than the word has is refused" T-LABEL
@@ -2523,9 +2530,9 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    drop
    MEM-REG-REFUSE-CASE ;
 
-: GROUP-MIXED-REFUSE ( IR-CTX:ctx -- )
+: GROUP-CALL-REG-REFUSE ( IR-CTX:ctx -- )
    drop
-   MIXED-REFUSE-CASE ;
+   CALL-REG-REFUSE-CASE ;
 
 : GROUP-DARITY-REFUSE ( IR-CTX:ctx -- )
    drop
@@ -2590,7 +2597,7 @@ public
    WBND [: GROUP-OPCODE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TRAP-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MEM-REG-REFUSE ;] IR-CTX:WITH-CONTEXT
-   WBND [: GROUP-MIXED-REFUSE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-CALL-REG-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-DARITY-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-CALL-NONE-REFUSE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;

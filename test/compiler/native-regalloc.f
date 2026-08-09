@@ -132,7 +132,7 @@ private
 \ keeps the link register, touches no flags, reserves no frame and calls nothing.
 : LEAF ( A64EFF:gprs -- A64EFF:routine )
    {: pool:A64EFF:gprs :}
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -150,7 +150,7 @@ private
 
 : HABU-N ( n n n -- A64EFF:routine )
    {: n:n in:n out:n :}
-   in SLOTS-N  out SLOTS-N  n POOL-N
+   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  n POOL-N
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -160,7 +160,7 @@ private
 : LEAF-FRAMED ( n n -- A64EFF:routine )
    {: n:n size:n :}
    n POOL-N {: pool:A64EFF:gprs :}
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
@@ -195,18 +195,20 @@ private
 \ are the given pool less the ones a result leaves in - one register cannot be
 \ both. The pool is passed rather than derived, so a case can hand it one that
 \ does NOT hold a declared register and get the refusal that earns.
-: LEAF-DECL ( A64EFF:gprs A64EFF:placeseq A64EFF:placeseq -- A64EFF:routine )
-   {: pool:A64EFF:gprs args:A64EFF:placeseq outs:A64EFF:placeseq :}
-   args outs
+: LEAF-DECL ( A64EFF:gprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq -- A64EFF:routine )
+   {: pool:A64EFF:gprs cv:A64EFF:conv
+      args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   cv args outs
    pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
 \ The same with a frame, for a program that declares an interface AND spills.
-: LEAF-DECL-FRAMED ( A64EFF:gprs A64EFF:placeseq A64EFF:placeseq -- A64EFF:routine )
-   {: pool:A64EFF:gprs args:A64EFF:placeseq outs:A64EFF:placeseq :}
-   args outs
+: LEAF-DECL-FRAMED ( A64EFF:gprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq -- A64EFF:routine )
+   {: pool:A64EFF:gprs cv:A64EFF:conv
+      args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   cv args outs
    pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
@@ -534,8 +536,8 @@ create TXT
    HIR-MOD
    BUILD-DIFF
    SELECTED {: m:IR-BUILD:module :}
-   CC m 4 POOL-N 2 0 SQ2 1 SQ LEAF-DECL A64RA:ALLOCATE
-   m 4 POOL-N 2 0 SQ2 1 SQ LEAF-DECL A64RAV:ACCEPT
+   CC m 4 POOL-N A64EFF-CONV:REGISTER 2 0 SQ2 1 SQ LEAF-DECL A64RA:ALLOCATE
+   m 4 POOL-N A64EFF-CONV:REGISTER 2 0 SQ2 1 SQ LEAF-DECL A64RAV:ACCEPT
    A64RA:MOVES
    A64RA:VALUES
    0 A64RAV:REG@
@@ -557,9 +559,9 @@ create TXT
    BUILD-SUM3
    SELECTED {: m:IR-BUILD:module :}
    CC m  4 4 POOL-FROM 0 1 2 SQ3 A64EFF:SEQ-SET A64EFF:GPR-WITH
-      0 1 2 SQ3  0 SQ LEAF-DECL A64RA:ALLOCATE
+      A64EFF-CONV:REGISTER 0 1 2 SQ3  0 SQ LEAF-DECL A64RA:ALLOCATE
    m  4 4 POOL-FROM 0 1 2 SQ3 A64EFF:SEQ-SET A64EFF:GPR-WITH
-      0 1 2 SQ3  0 SQ LEAF-DECL A64RAV:ACCEPT
+      A64EFF-CONV:REGISTER 0 1 2 SQ3  0 SQ LEAF-DECL A64RAV:ACCEPT
    A64RA:MOVES
    0 A64RAV:REG@
    1 A64RAV:REG@
@@ -1069,7 +1071,7 @@ create TXT
 \ the returned value has to leave in x1 - which is not where the argument it
 \ returns arrives. That is the one shape pre-colouring cannot serve.
 : DECL-KEEP ( -- A64EFF:routine )
-   4 POOL-N  0 1 SQ2  1 SQ  LEAF-DECL ;
+   4 POOL-N  A64EFF-CONV:REGISTER 0 1 SQ2  1 SQ  LEAF-DECL ;
 
 \ ---- a hand-built module allocates the same way ------------------------------
 \ The tie fixture below is the same chain the selector produces, so a module
@@ -1609,7 +1611,7 @@ create TXT
 \ feeding it another, and A64RAV:VEDGE1 would refuse it. And it costs no copy:
 \ MOVES is zero because the class was free to take x0 where it was written.
 : MB-FIXED-CONTRACT ( -- A64EFF:routine )
-   4 POOL-N  A64EFF:SEQ-NONE  0 SQ LEAF-DECL ;
+   4 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  0 SQ LEAF-DECL ;
 
 : MB-FIXED-BODY ( IR-CTX:ctx -- n n n n n )
    A64-MOD
@@ -1862,7 +1864,7 @@ create TXT
 \ - x1, not the x0 the same program lands in when nothing is declared. It costs
 \ no copy either, because the walk pre-colours the last sum straight into x1.
 : DECL-SPILL-CONTRACT ( -- A64EFF:routine )
-   3 POOL-N  A64EFF:SEQ-NONE  1 SQ  LEAF-DECL-FRAMED ;
+   3 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  1 SQ  LEAF-DECL-FRAMED ;
 
 : DECL-SPILL-BODY ( IR-CTX:ctx -- n n n n )
    A64-MOD
@@ -1905,7 +1907,7 @@ create TXT
    A64-MOD
    BUILD-CROSS
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  2 POOL-N  A64EFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
+   CC m  2 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
 
 \ ---- fixed constraints an allocation cannot honour ---------------------------
 \ A declared argument register the routine may not write. The pool is x0 to x3
@@ -1915,30 +1917,30 @@ create TXT
    A64-MOD
    BUILD-KEEP
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  5 0 SQ2  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
+   CC m  4 POOL-N  A64EFF-CONV:REGISTER 5 0 SQ2  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
 
 \ A convention that names three argument positions for a routine that has two.
 : OVER-ARG-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-KEEP
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  0 1 2 SQ3  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
+   CC m  4 POOL-N  A64EFF-CONV:REGISTER 0 1 2 SQ3  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
 
 \ And one that names two returned values for a routine that returns one.
 : OVER-OUT-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-KEEP
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  A64EFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
+   CC m  4 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
 
 \ ---- data-stack places the allocation cannot honour -------------------------
 \ A convention declaring an argument in a data-stack slot describes a module the
 \ selector already turned that place into a load in - so the block has no
 \ argument for it. Handed a module that still carries its arguments as block
 \ arguments, this allocation would leave them in registers no caller ever wrote
-\ to, and it refuses instead. The second case is a side that names a register
-\ place and a data-stack place at once, which nothing in the chain can pair with
-\ a module's arguments.
+\ to, and it refuses instead. A side that names a register place and a data-stack
+\ place at once never reaches this pass: A64EFF:ROUTINE refuses that contract
+\ where it is built, and test/compiler/a64-effect.f is where the case lives.
 : DSLOT-Q ( n -- A64EFF:placeseq )
    A64EFF:SEQ-NONE swap A64EFF:SEQ-WITH-SLOT ;
 
@@ -1946,14 +1948,7 @@ create TXT
    A64-MOD
    BUILD-KEEP
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  0 DSLOT-Q  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
-
-: MIXED-PLACE-BODY ( IR-CTX:ctx -- )
-   A64-MOD
-   BUILD-KEEP
-   M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  0 DSLOT-Q 1 A64EFF:SEQ-WITH  A64EFF:SEQ-NONE
-   LEAF-DECL A64RA:ALLOCATE ;
+   CC m  4 POOL-N  A64EFF-CONV:DSTACK 0 DSLOT-Q  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
 
 \ Two registers cannot hold three arguments at once, and a block argument is one
 \ of the things this pass may not put in a frame: the values feeding it across
@@ -2117,19 +2112,19 @@ create TXT
    A64-MOD
    BUILD-KEEP
    4 M-ALLOCATE {: m:IR-BUILD:module :}
-   m  4 POOL-N  1 0 SQ2  A64EFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
+   m  4 POOL-N  A64EFF-CONV:REGISTER 1 0 SQ2  A64EFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
 
 : ACCEPT-WRONG-OUT-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-KEEP
    4 M-ALLOCATE {: m:IR-BUILD:module :}
-   m  4 POOL-N  A64EFF:SEQ-NONE  1 SQ LEAF-DECL A64RAV:ACCEPT ;
+   m  4 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  1 SQ LEAF-DECL A64RAV:ACCEPT ;
 
 : ACCEPT-OVER-ARG-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-KEEP
    4 M-ALLOCATE {: m:IR-BUILD:module :}
-   m  4 POOL-N  0 1 2 SQ3  A64EFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
+   m  4 POOL-N  A64EFF-CONV:REGISTER 0 1 2 SQ3  A64EFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
 
 \ A claim nobody checked is not an answer, and an answer stops being one when a
 \ later walk replaces the allocation it was about.
@@ -2282,14 +2277,9 @@ create TXT
 : UNLOWERED ( -- )
    WBND [: UNLOWERED-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-: MIXED-PLACE ( -- )
-   WBND [: MIXED-PLACE-BODY ;] IR-CTX:WITH-CONTEXT ;
-
 : PLACE-REFUSE-CASES ( -- )
    s" data-stack places on a module that still carries block arguments are refused" T-LABEL
-   [: UNLOWERED ;] E-A64RA-PLACE TTHROWSQ
-   s" a side mixing register places with data-stack places is refused" T-LABEL
-   [: MIXED-PLACE ;] E-A64RA-PLACE TTHROWSQ ;
+   [: UNLOWERED ;] E-A64RA-PLACE TTHROWSQ ;
 
 \ Its own group for the reason CROSS-REFUSE-CASE below has one: every refusing
 \ body abandons a context, and the live-arena registry gives those slots back
@@ -2549,7 +2539,7 @@ create TXT
 
 : CALL-HABU-N ( n n n -- A64EFF:routine )
    {: n:n in:n out:n :}
-   in SLOTS-N  out SLOTS-N  n POOL-N
+   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  n POOL-N
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
@@ -2610,7 +2600,7 @@ create TXT
 \ A leaf that may write both files: `n` general registers and `fn` floating ones.
 : LEAF-FN ( n n -- A64EFF:routine )
    {: n:n fn:n :}
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
    A64EFF:FPR-NONE A64EFF:FPR-NONE fn FPOOL-N
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -2717,7 +2707,7 @@ create TXT
 \ spill to.
 : FLEAF-FRAMED ( n n n -- A64EFF:routine )
    {: n:n fn:n size:n :}
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
    A64EFF:FPR-NONE A64EFF:FPR-NONE fn FPOOL-N
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;

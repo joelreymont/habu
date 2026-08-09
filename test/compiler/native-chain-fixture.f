@@ -59,7 +59,7 @@ variable N-SPILLED                   \ slots the first walk of the last run used
 
 : LEAF-OF ( A64EFF:gprs -- A64EFF:routine )
    {: pool:A64EFF:gprs :}
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -97,8 +97,8 @@ variable N-SPILLED                   \ slots the first walk of the last run used
 \ recorded, so a caller cannot present other bytes.
 \ The routine contract reaches the selector as well as the allocator now, because
 \ the selector is where a data-stack place becomes a load or a store. It is the
-\ last argument for the same reason it is everywhere else: twelve cells cannot be
-\ bound to a typed local, so it is presented on top and taken apart there.
+\ last argument for the same reason it is everywhere else: thirteen cells cannot
+\ be bound to a typed local, so it is presented on top and taken apart there.
 \
 \ THE LOWERING PASS IS BOUND HERE TOO, because a module's symbols are its own
 \ ordinals and this is the only moment the machine dialect can be asked them. A
@@ -106,7 +106,7 @@ variable N-SPILLED                   \ slots the first walk of the last run used
 \ the RELEASE in each of the entry points below is.
 : SELECTED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n A64EFF:routine -- IR-BUILD:module )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
+   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}
@@ -119,7 +119,7 @@ variable N-SPILLED                   \ slots the first walk of the last run used
    c ab A64EMIT:BIND-DIALECT
    c ab A64SPILL:BIND-DIALECT
    c m ab a u
-   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64SEL:SELECT ;
 
 public
@@ -141,7 +141,7 @@ public
 : LEAF-FRAMED ( n n -- A64EFF:routine )
    {: n:n size:n :}
    0 n POOL {: pool:A64EFF:gprs :}
-   A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
@@ -161,7 +161,7 @@ public
    base n POOL
    args A64EFF:SEQ-SET A64EFF:GPR-WITH
    outs A64EFF:SEQ-SET A64EFF:GPR-WITH {: pool:A64EFF:gprs :}
-   args outs
+   A64EFF-CONV:REGISTER args outs
    pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS

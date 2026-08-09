@@ -171,6 +171,8 @@ variable N-VALS
 0 N-VALS !
 variable NB-N                        \ blocks in the function being checked
 0 NB-N !
+variable V-DSTACK                    \ whether the contract declares the data-stack convention
+0 V-DSTACK !
 
 1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
 
@@ -719,7 +721,11 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ mixes register places with data-stack places has no pairing rule anywhere in
 \ this chain, and a side declared entirely in data-stack slots constrains no
 \ register at all - the selector turned every one of those places into an
-\ operation, and DSTACK-CK below is what judges those.
+\ operation, and VDSTACK-CK below is what judges those. This asks the LIST and
+\ not the contract's declared convention, because how many positions are
+\ registers is a property the list answers on its own; which convention the
+\ routine speaks is what the three checks under it read, and they read it from
+\ the declaration.
 : REG-POSITIONS ( A64EFF:placeseq -- n )
    {: s:A64EFF:placeseq :}
    s A64EFF:SEQ-LEN {: len:n :}
@@ -730,7 +736,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 
 : ARG-CK ( IR-ID:ir-block-id A64EFF:placeseq -- )
    {: bk:IR-ID:ir-block-id args:A64EFF:placeseq :}
-   args A64EFF:SEQ-SLOTS 0<> bk ARG-COUNT 0<> and
+   V-DSTACK @ 0<> bk ARG-COUNT 0<> and
    if E-A64RAV-PLACE throw then
    args REG-POSITIONS {: n:n :}
    bk ARG-COUNT n < if E-A64RAV-FIXED throw then
@@ -749,18 +755,20 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ the caller's cells before the branch - or are still standing in them - and the
 \ callee is what will publish them, so there is no position for this rule to be
 \ about. A tail branch under a REGISTER convention would be one, and there is no
-\ such convention in the chain: the contract that declares a tail call also
-\ declares data-stack places, and the entry check above refuses the mixture.
-: OUT-TAIL-CK ( IR-ID:ir-op-id A64EFF:placeseq -- )
-   {: id:IR-ID:ir-op-id outs:A64EFF:placeseq :}
-   outs A64EFF:SEQ-SLOTS 0= if E-A64RAV-PLACE throw then
+\ such convention in the chain: the selector refuses a call under it, and a tail
+\ branch is a call. THE QUESTION IS THE CONTRACT'S DECLARATION and not whether
+\ the result list names a slot - a routine that returns nothing names no slot and
+\ still leaves through the data-stack convention it was entered under.
+: OUT-TAIL-CK ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   V-DSTACK @ 0= if E-A64RAV-PLACE throw then
    id OPERANDS-OF 1 <> if E-A64RAV-PLACE throw then ;
 
 : OUT-CK ( IR-ID:ir-block-id A64EFF:placeseq -- )
    {: bk:IR-ID:ir-block-id outs:A64EFF:placeseq :}
    V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ {: id:IR-ID:ir-op-id :}
-   id TAILBR? if id outs OUT-TAIL-CK exit then
-   outs A64EFF:SEQ-SLOTS 0<> id OPERANDS-OF 0<> and
+   id TAILBR? if id OUT-TAIL-CK exit then
+   V-DSTACK @ 0<> id OPERANDS-OF 0<> and
    if E-A64RAV-PLACE throw then
    outs REG-POSITIONS {: n:n :}
    id OPERANDS-OF n < if E-A64RAV-FIXED throw then
@@ -839,7 +847,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ from both ends of itself.
 : SLOT-CK ( IR-ID:ir-fun-id A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
+   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
@@ -850,7 +858,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
          bk i OP-AT SLOT-OF {: off:n :}
          off NOSLOT <> if
             off A64IR:SLOT-WIDTH
-            gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+            cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
             A64EFF:CHECK-SLOT
          then
       loop
@@ -2089,11 +2097,18 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    VD-REQ-N @ 0 ?do  i cells VD-REQ + @ VDPLACE-TRY  loop
    VD-BEST @ VD-STAND @ <> if E-A64RAV-DSTACK throw then ;
 
+\ WHICH OF THE TWO SHAPES THIS MODULE HAS TO HAVE IS THE CONTRACT'S DECLARATION.
+\ A register-convention routine touches the caller's stack nowhere; a data-stack
+\ one has an entry run, an exit run and a call site's runs and nothing else. The
+\ counts below are how LONG those runs are and they can both be zero: a ( -- )
+\ word entered through the data stack takes the pointer by nothing and publishes
+\ nothing, which is two operations that emit no instruction and are still the
+\ shape this measures.
 : VDSTACK-CK ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
    args A64EFF:SEQ-SLOTS {: a:n :}
    outs A64EFF:SEQ-SLOTS {: r:n :}
-   a 0= r 0= and if
+   V-DSTACK @ 0= if
       V-BLKS @ 0 ?do f i BLOCK-AT VNO-DSTACK loop
       exit
    then
@@ -2274,20 +2289,21 @@ public
 \ routine contract, or refuse it by name. Nothing is answered until this returns.
 : ACCEPT ( IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
+   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}
-   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
-   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
    t A64EFF:T-CALL A64EFF:TRAITS-HAS? if 1 else 0 then V-CALLS !
    ct A64EFF-CONTROL:TAIL-CALL A64EFF-CONTROL:EQ if 1 else 0 then V-TAIL !
+   cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if 1 else 0 then V-DSTACK !
    t A64FRAME:SPILL-BASE V-BASE !
    pool fpool gi gr size WALK {: f:IR-ID:ir-fun-id :}
    f
-   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    SLOT-CK
    A64RA:GEN A-GEN !
    ST-ACCEPTED ST ! ;

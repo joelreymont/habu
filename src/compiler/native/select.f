@@ -285,6 +285,7 @@ variable S-FRAME                     \ the frame the contract declares, in bytes
 variable N-CALLS                     \ calls this selection built
 variable N-TAILS                     \ tail branches this selection built
 variable S-TAIL                      \ whether the contract says control leaves through a callee
+variable S-DSTACK                    \ whether the contract declares the data-stack convention
 variable FUSE-AT                     \ where in this block the fused comparison is, or -1
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
@@ -797,7 +798,10 @@ variable D-RETS                                    \ returns seen while surveyin
 \ How many positions of one side are data-stack slots. A side that mixes register
 \ places with data-stack places is refused: there is no entry sequence here for a
 \ convention that puts argument one in a register and argument two on the stack,
-\ and half-serving it would leave one of them nowhere.
+\ and half-serving it would leave one of them nowhere. A contract that reached
+\ this pass through SELECT cannot mix them - A64EFF:ROUTINE refuses the mixture
+\ where the contract is built - so this stands for a caller that assembled one
+\ some other way, and it fails closed.
 : SLOT-POSITIONS ( A64EFF:placeseq -- n )
    {: s:A64EFF:placeseq :}
    s A64EFF:SEQ-SLOTS {: sl:n :}
@@ -806,17 +810,16 @@ variable D-RETS                                    \ returns seen while surveyin
    sl ;
 
 \ Does this routine take its arguments and leave its results on the caller's data
-\ stack at all? One side saying so commits the other: a word whose arguments
-\ arrive on the stack and whose result leaves in a register is not a convention
-\ this pass builds, so a register place on either side is refused once either
-\ side names a slot.
+\ stack? THE CONTRACT SAYS SO AND THIS PASS DOES NOT WORK IT OUT. It used to ask
+\ whether either side named a slot, which is the same answer for every routine
+\ that passes anything - and the wrong answer for one that passes nothing, whose
+\ two lists are empty under either convention. A ( -- ) word entered under this
+\ convention was therefore read as a register-convention routine, given neither
+\ the pointer that a data-stack access needs nor the frame a call needs, and
+\ CONTRACT-CK below had to refuse every call in it. SELECT reads the declared
+\ field once and stores it here.
 : DSTACK? ( -- bool )
-   ARGS SLOT-POSITIONS OUTS SLOT-POSITIONS or 0<> ;
-
-: DSTACK-CK ( -- )
-   DSTACK? 0= if exit then
-   ARGS SLOT-POSITIONS ARGS A64EFF:SEQ-LEN <> if E-A64SEL-PLACE throw then
-   OUTS SLOT-POSITIONS OUTS A64EFF:SEQ-LEN <> if E-A64SEL-PLACE throw then ;
+   S-DSTACK @ 0<> ;
 
 \ Does the contract say this routine calls? That declaration is what decides
 \ whether the frame and the link save are built, and SELECT holds it against the
@@ -827,11 +830,20 @@ variable D-RETS                                    \ returns seen while surveyin
    TRAITS A64EFF:T-CALL A64EFF:TRAITS-HAS? ;
 
 \ What a contract that declares a call has to say for this pass to build one.
-\ A call reaches the callee through the caller's data stack, so a routine whose
-\ convention names no data-stack place has no way to hand an argument over; and
-\ the return address goes into slot zero of the routine's own frame, so a frame
-\ too small to hold one cell has nowhere to put it. Both are the contract's
-\ declaration and both are decided before a single operation is selected.
+\ A call site hands the callee its arguments through the caller's data stack and
+\ saves every live value into the same stack, so a routine declared under the
+\ REGISTER convention has no site to build: its entry never takes the pointer,
+\ and the register form of a call is not a lowering this pass has. And the return
+\ address goes into slot zero of the routine's own frame, so a frame too small to
+\ hold one cell has nowhere to put it. Both are the contract's declaration and
+\ both are decided before a single operation is selected.
+\
+\ THIS USED TO REFUSE A ( -- ) WORD, and that is what declaring the convention
+\ fixed. The question was asked of the place lists, which are empty for a routine
+\ that passes nothing whichever convention it speaks, so every arity-zero
+\ definition with a call in it was refused as if it were a register-convention
+\ routine. It is asked of the declaration now, and a ( -- ) word entered through
+\ the data stack answers yes.
 : CONTRACT-CK ( -- )
    CALLS? 0= if exit then
    DSTACK? 0= if E-A64SEL-CALL throw then
@@ -4476,15 +4488,15 @@ public
 \ A64IR. The bytes are the source text the frozen module was compiled from, and
 \ they are proved to be by digest before any span is carried across.
 \
-\ The routine contract is the LAST argument because a contract is twelve cells
+\ The routine contract is the LAST argument because a contract is thirteen cells
 \ and a value of more than one cell cannot be bound to a typed local: it is taken
-\ apart at the top, its two place lists are kept, and the ten fields this pass
-\ has no use for are dropped. It is the whole contract rather than the two lists
-\ alone so that a caller cannot hand this pass one routine's convention and the
-\ allocator another's.
+\ apart at the top, its convention and its two place lists are kept, and the ten
+\ fields this pass has no use for are dropped. It is the whole contract rather
+\ than the convention and the two lists alone so that a caller cannot hand this
+\ pass one routine's convention and the allocator another's.
 : SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n A64EFF:routine -- IR-BUILD:module )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
+   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}
@@ -4493,17 +4505,17 @@ public
    m BND-MODULE-CK
    gi 0 S-ARGS !
    gr 0 S-OUTS !
-   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:GPR-WRITABLE 0 S-POOL !
-   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:FPR-WRITABLE 0 S-FPOOL !
    t 0 S-TRT !
    size S-FRAME !
    ct A64EFF-CONTROL:TAIL-CALL A64EFF-CONTROL:EQ if 1 else 0 then S-TAIL !
+   cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if 1 else 0 then S-DSTACK !
    0 N-CALLS !
    0 N-TAILS !
    0 R-NEWBASE !
-   DSTACK-CK
    CONTRACT-CK
    c b A64IR:REGISTER
    c 0 S-CTX !
