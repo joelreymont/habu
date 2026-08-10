@@ -55,6 +55,17 @@
 \ reserved and given back with nothing written into it would be two instructions
 \ for nothing and a stack pointer no reader could account for.
 \
+\ AND A MODULE HOLDS SEVERAL FUNCTIONS NOW, WITH ONE FRAME BETWEEN THEM. Every
+\ function is rebuilt - a function left out would be a routine the emitter never
+\ received, and a quotation body is exactly such a routine - and every one is held
+\ to the frame-shape rule above, because lowering any of them twice would build
+\ the second frame this pass exists to prevent. What is NOT repeated is the frame
+\ itself: its base and its slot count are one per module, the module's first
+\ function is the definition's own routine, and
+\ src/compiler/native/regalloc.f FRAME-ONCE-CK refuses by name a later function
+\ that needs a slot. So the reserve and the release this pass inserts go into the
+\ first function and PRO-N records that function's answer.
+\
 \ THE MEMORY TOKEN IS THREADED HERE, AND RE-THREADED THROUGH WHAT WAS ALREADY
 \ THERE. The dialect's frame forms carry a memory token so their order is a
 \ dependency the module holds rather than a property of the printed order. The
@@ -77,12 +88,13 @@
 \     all: rewriting a module that needs no store, no load and no copy would be a
 \     duplicate, and a duplicate with a new identity is a module nobody asked for.
 \   - a module whose frame operations are neither nothing nor exactly a selector's
-\     prologue. Spill lowering runs once; a module that has been through it holds
-\     a reserve of its own with no link save under it, and lowering that again
-\     would build a second frame inside the first, so it stops here by name.
-\   - a shape this pass cannot rebuild: more than one function, an empty block, a
-\     span naming a source the old module does not have, or a value read before it
-\     is defined.
+\     prologue, in ANY of its functions. Spill lowering runs once; a function that
+\     has been through it holds a reserve of its own with no link save under it,
+\     and lowering that again would build a second frame inside the first, so it
+\     stops here by name wherever it stands.
+\   - a shape this pass cannot rebuild: no function at all, more functions than
+\     the chain's shared ceiling, an empty block, a span naming a source the old
+\     module does not have, or a value read before it is defined.
 \   - source text whose digest is not the one the old module recorded. Every
 \     operation carries a span into that text, and the new module needs the same
 \     source registered in it, so the bytes are proved to be the same bytes
@@ -727,10 +739,11 @@ create NAMEBUF NAME-CAP allot
 \ Every decision the allocator anchored to this position, in the order it made
 \ them. The plan is in that order already - a walk decides one operation's spills
 \ before the next one's - so this reads it with a cursor rather than searching
-\ it, and the block below refuses a plan the cursor did not reach the end of: a
-\ decision anchored to a position this block does not have would otherwise be
-\ dropped in silence, and a dropped store is a value that never reaches its
-\ slot.
+\ it, and REWRITE refuses a plan the cursor did not reach the end of once every
+\ function has been walked: a decision anchored to a position no block of the
+\ module has would otherwise be dropped in silence, and a dropped store is a
+\ value that never reaches its slot. It is asked after the LAST function because
+\ the plan is the module's and not one function's.
 : INSERT-ONE ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id j:n pos:n :}
    j A64RA:PLAN-VALUE@ {: k:n :}
@@ -742,6 +755,20 @@ create NAMEBUF NAME-CAP allot
 \ block and the index inside it have to agree; matching the index alone would put
 \ a store meant for one block in front of the operation of the same number in
 \ another.
+\
+\ THE ANCHOR IS REALLY A FUNCTION, A BLOCK AND A POSITION, and only the last two
+\ are carried. The allocator plans functions in the module's own order and blocks
+\ in each function's own order (src/compiler/native/regalloc.f WALK and MB-PLAN)
+\ and this walk reads them in exactly that order through a cursor that only moves
+\ forward, so a row is reached in the function that made it AS LONG AS no
+\ function after the first contributes one. Today none can: a store or a reload
+\ names a frame slot and FRAME-ONCE-CK refuses by name a function after the first
+\ that takes one, and the returned-value copy is planned only for a contract that
+\ names a REGISTER for a result, which src/compiler/native/abi.f - the one
+\ production writer of a contract - never does. The moment the frame stops being
+\ a module singleton (dot habu-give-each-fn-c1fd7c5a) the row has to carry its
+\ function, for exactly the reason it already carries its block: the same index
+\ inside two functions names one operation in each.
 : HERE? ( n n -- bool )
    {: b:n at:n :}
    N-CUR @ A64RA:PLAN-N >= if false exit then
@@ -859,30 +886,38 @@ create NAMEBUF NAME-CAP allot
       VBIND
    loop ;
 
-\ Does this pass take the frame itself? Only when the plan really needs a slot
-\ AND the module did not arrive with a frame of its own. A plan of nothing but
-\ moves needs no slot, and a routine that reserved a frame it never wrote into
-\ would be two instructions and a stack pointer nobody can account for; a routine
-\ that calls already took its frame in the selector, and a second reserve inside
-\ the first is not a shape any reader of this chain has.
-: FRAMES? ( -- bool )
+\ Does this pass take the frame itself, in this function? Only when the plan
+\ really needs a slot AND the module did not arrive with a frame of its own. A
+\ plan of nothing but moves needs no slot, and a routine that reserved a frame it
+\ never wrote into would be two instructions and a stack pointer nobody can
+\ account for; a routine that calls already took its frame in the selector, and a
+\ second reserve inside the first is not a shape any reader of this chain has.
+\
+\ AND ONLY THE FIRST FUNCTION EVER TAKES IT, because there is one frame and it is
+\ that function's: its base and its slot count are one per module, and
+\ src/compiler/native/regalloc.f FRAME-ONCE-CK refuses by name a later function
+\ that needs a slot. So a later function has nothing to put in a frame, and a
+\ reserve in it would move a stack pointer for storage nothing addresses.
+: FRAMES? ( n -- bool )
+   {: k:n :}
+   k 0<> if false exit then
    A64RA:SPILLS 0<> PRO-N @ 0= and ;
 
 \ One block. The reserve opens the ENTRY block and the release stands in front of
 \ the terminator of the block control leaves through, which is the same pair of
 \ places the selector's own prologue uses - and the only pair whose two ends the
 \ routine passes exactly once, in that order, on every run.
-: WALK-BLOCK ( IR-ID:ir-fun-id n n -- )
-   {: f:IR-ID:ir-fun-id b:n rb:n :}
+: WALK-BLOCK ( IR-ID:ir-fun-id n n n -- )
+   {: f:IR-ID:ir-fun-id k:n b:n rb:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    n 1 < if E-A64SPILL-SHAPE throw then
    bk OPEN-BLOCK
-   b 0= FRAMES? and if bk 0 OP-AT EMIT-RESERVE then
+   b 0= k FRAMES? and if bk 0 OP-AT EMIT-RESERVE then
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
       id b i G-AT @ INSERT-AT
-      i n 1- =  b rb =  and  FRAMES?  and if id EMIT-RELEASE then
+      i n 1- =  b rb =  and  k FRAMES?  and if id EMIT-RELEASE then
       id G-AT @ COPY-OP
       G-AT @ 1+ G-AT !
    loop
@@ -925,8 +960,13 @@ create NAMEBUF NAME-CAP allot
       then
    loop ;
 
-: WALK-FUN ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
+\ One function of the old module, rebuilt into the new one. The value map and the
+\ operation counter are cleared here because both are the FUNCTION's: a value is
+\ read in the blocks its definition dominates and in no other function at all,
+\ and the counter is what tells a load placed in front of one operation from a
+\ load placed in front of the operation of the same number in another block.
+: WALK-FUN ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id k:n :}
    CTX BLD f FUN-NAME IR-BUILD:BEGIN-FUN
    CTX BLD f FUN-SIG IR-BUILD:SET-SIGNATURE
    CTX BLD  V-FUNR VW f IR-FUN:FLINKAGE@  IR-BUILD:SET-LINKAGE
@@ -936,8 +976,7 @@ create NAMEBUF NAME-CAP allot
    f RET-ORD {: rb:n :}
    VCLEAR
    0 G-AT !
-   f BLOCK-COUNT 0 ?do f i rb WALK-BLOCK loop
-   N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then
+   f BLOCK-COUNT 0 ?do f k i rb WALK-BLOCK loop
    CTX BLD IR-BUILD:END-FUN drop ;
 
 \ ---- what one rewrite is told ------------------------------------------------
@@ -1011,16 +1050,41 @@ create NAMEBUF NAME-CAP allot
    f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE <>
    if E-A64SPILL-SHAPE throw then ;
 
-: ONCE-CK ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
+\ ONE FUNCTION'S FRAME SHAPE, and the answer is kept only for the first. Every
+\ function of the module is held to the same rule - a function that has been
+\ through this pass already, or one whose four frame forms are neither nothing
+\ nor exactly a selector's prologue, is refused wherever it stands - because
+\ lowering any of them twice builds a second frame inside the first.
+\
+\ PRO-N IS THE FIRST FUNCTION'S ANSWER AND NOT A RUNNING ONE. It says whether
+\ this pass has to TAKE a frame, and there is one frame: its base, its slot count
+\ and its size are one per module (src/compiler/native/regalloc.f FRAME-ONCE-CK,
+\ which refuses a later function that needs a slot by name), and the module's
+\ first function is the definition's own routine. So the reserve and the release
+\ this pass inserts go into that function, and the answer that decides whether it
+\ inserts them is that function's. Nothing is lost by not keeping the others'
+\ answers, because nothing is inserted into them: the count each one is held to
+\ is the count of the forms it already carries.
+: ONCE-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id k:n :}
    f COUNT-FRAME
-   N-SAV @ 0= if NO-FRAME-CK 0 PRO-N ! exit then
+   N-SAV @ 0= if
+      NO-FRAME-CK
+      k 0= if 0 PRO-N ! then
+      exit
+   then
    f PROLOGUE-CK
-   1 PRO-N ! ;
+   k 0= if 1 PRO-N ! then ;
 
-: SHAPE-CK ( -- )
-   FUN-COUNT 1 <> if E-A64SPILL-SHAPE throw then
-   MKEY 0 IR-ID:PACK-FUN ONCE-CK ;
+\ How many functions this module holds, held against the ceiling every pass of
+\ the chain shares. A module with none is not a routine at all, and each one is
+\ asked the frame question above.
+: SHAPE-CK ( -- n )
+   FUN-COUNT {: n:n :}
+   n 1 < if E-A64SPILL-SHAPE throw then
+   n NFROZEN:FMAX > if E-A64SPILL-CAP throw then
+   n 0 ?do MKEY i IR-ID:PACK-FUN i ONCE-CK loop
+   n ;
 
 : BIND1 ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
@@ -1166,8 +1230,9 @@ public
    b 0 S-BLD !
    m VIEWS!
    c b p u SOURCE!
-   SHAPE-CK
-   MKEY 0 IR-ID:PACK-FUN WALK-FUN
+   SHAPE-CK {: nf:n :}
+   nf 0 ?do MKEY i IR-ID:PACK-FUN i WALK-FUN loop
+   N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then
    c b IR-BUILD:FREEZE ;
 
 private
