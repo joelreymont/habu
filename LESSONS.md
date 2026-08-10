@@ -5654,3 +5654,14 @@ shape with the arms swapped, because the original walk order can pass
 by luck. Same lane, second find: deriving a new answer (NO-RET) is not
 consuming it - grep every reader of the old answer before believing
 the derivation landed.
+
+## The memo is a dominance argument, not a liveness one (2026-08-10)
+
+The block-local literal memo hands a value across block boundaries
+legally (SSA-wise) and can still be an allocator failure: reusing an
+earlier block's constant for UNREACHABLE code gave a real value a live
+range across every call for nothing (measured E-A64RA-POOL on the
+simplest dead-path shape). Stage unreachable operands fresh. Same lane:
+the first DIALECT consumer of an IR form that only hand-built fixtures
+exercised is where its missing table rows surface (two passes lacked the
+trap's key row) - budget that surfacing into the first consumer's lane.
