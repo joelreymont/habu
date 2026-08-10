@@ -482,6 +482,15 @@ SUITE native-dead-path
    test/compiler/native-dead-path.f
 ;SUITE
 
+\ The three tag-dispatch forms - `MATCH`, `case` and `construct` - from source
+\ text to executed machine code, every case comparing the chain's answer with the
+\ engine's on the same body. It runs after the trap leaf and the dead-path leaf
+\ because it is their first source-level consumer: a dispatch's mismatch edge IS
+\ the trap, and an arm that throws IS a dead path.
+SUITE compiler-native-match
+   test/compiler/native-match.f
+;SUITE
+
 \ A rename is a permutation of the compile-time value vector, and that vector
 \ counts CELLS while the language counts VALUES. This suite is the differential
 \ that holds the two together over a value wider than a cell: every case states

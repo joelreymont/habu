@@ -475,6 +475,11 @@ public
    s" test/compiler/native-reach.f" GSI-FORK-INCLUDE
    s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
    s" test/compiler/native-dead-path.f" GSI-FORK-INCLUDE
+   \ The three tag-dispatch forms through the whole chain. It follows the trap
+   \ and dead-path leaves because it is their first source-level consumer, and it
+   \ is listed here as well as in test/gate-stdlib-cases.f for the reason given
+   \ above: only this list is what test/run.f actually forks.
+   s" test/compiler/native-match.f" GSI-FORK-INCLUDE
    s" test/compiler/native-rename-rows.f" GSI-FORK-INCLUDE
    s" test/compiler/native-vocab.f" GSI-FORK-INCLUDE
    \ The instrument a tail-call lane decides with: a routine's calls and the way
