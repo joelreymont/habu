@@ -1133,6 +1133,10 @@ SUITE boot-pin-fixtures
    test/boot-pin-test.f
 ;SUITE
 
+SUITE load-argv-contract
+   tools/load-argv-test.f
+;SUITE
+
 SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/build-cache-test.f

@@ -345,16 +345,27 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ into habu-per-site-relocation): SNAP-RELOC:EMIT-ADDRS stops demanding x9 in all
 \ four lanes of a recorded chain and instead takes the register from the site's
 \ own first word, requiring the other three to name that same one. Thirteen
-\ instructions: one ANDI that reads the register off word 0, and three more per
-\ lane (LSRI, LSLI, ORR) that clear the scaffold's own register and put the
-\ site's back before the compare. The exact-CODELEN ratchet measured the
-\ candidate at 116384 (was 116332), +52 = 13 * 4. Floor follows from the same
-\ number: 5740 -> 5792, inside the same 16 KiB page, so the text pad absorbs it
-\ and neither MACOS-SIGNATURE nor MACOS-TOTAL moves (FILE-SIZE bin/hb still
-\ 148855, signature still 1295).
-116384 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ instructions, +52 = 13 * 4 (measured 116332 -> 116384 on its own base; composed
+\ below with the loader rows by prediction, confirmed by this test's own measure).
+\ 2026-08-10, the loader consults its registry (dot
+\ habu-make-load-consult-85c88fb3) and states two facts it used to leave to
+\ proxies. `bin/hb --load` stops inlining every argv file's text and appends
+\ `s" <path>" script-required` instead, which costs a second append leaf beside
+\ LAPPPROV (LAPPREQ: the same STRB-and-branch sequence with a longer keyword),
+\ the three-way mode store in C-SOURCE-FILE-PREFIX and the branch in
+\ C-SOURCE-APPEND-ARG that picks between the two. A second cold-prefix token,
+\ REQUIRE-BOOT-FREEZE, is appended beside SEAL-CAPTURE so the count of paths the
+\ ENGINE provides stays separable from the ones a process later required; it is
+\ emitted the same inline-character way SEAL-CAPTURE is, with a longer keyword.
+\ The exact-CODELEN ratchet measured the candidate at 117740 (was 116332),
+\ +1408. Floor follows from the same number: 5740 -> 7148, and the text pad
+\ absorbs it exactly - 9816 -> 9236, so code+pad is 126976 either way, the file
+\ stays inside the same 16 KiB page and neither MACOS-SIGNATURE nor MACOS-TOTAL
+\ moves (FILE-SIZE bin/hb still 148855, signature still 1295).
+117792 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+>>>>>>> conflict 1 of 2 ends
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-5792 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+7200 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

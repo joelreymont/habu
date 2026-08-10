@@ -140,7 +140,32 @@ variable EXT-ERR-A
    {: bundle:ptr bundleu:n src:ptr srcu:n :}
    bundle bundleu src srcu EXT-PROVIDED$ APPEND-FILE ;
 
+\ The engine carries part of the stdlib itself (dot
+\ habu-seed-the-stdlib-d8e3a757), so a bundle that copied lib/errors.f in
+\ redefined every word in it the moment it ran. A module the engine provides is
+\ STATED here and checked by src/core/include.f ?ENGINE-PROVIDES when the bundle
+\ loads; everything else is carried as before. This is the same rule
+\ tools/bundle-lib-core.f applies, kept in step with it: these fixtures build
+\ their bundles by hand because they interleave example scripts the bundler has
+\ no notion of.
+: EXT-ASSUMED$ ( ptr u8 n -- ptr u8 n ) {: src:ptr srcu:n :}
+   SB-RESET
+   s" s" SB-APPEND 34 SB-APPEND-C 32 SB-APPEND-C
+   src srcu SB-APPEND
+   34 SB-APPEND-C 32 SB-APPEND-C
+   s" ?ENGINE-PROVIDES" SB-APPEND
+   STR-LF SB-APPEND-C
+   SB$ ;
+
+: EXT-ADD-ASSUMED ( ptr u8 n ptr u8 n -- )
+   {: bundle:ptr bundleu:n src:ptr srcu:n :}
+   bundle bundleu src srcu EXT-ASSUMED$ APPEND-FILE ;
+
 : EXT-ADD-SOURCE-LF ( ptr u8 n ptr u8 n -- ) {: bundle:ptr bundleu src:ptr srcu :}
+   src srcu ENGINE-PROVIDES? if
+      bundle bundleu src srcu EXT-ADD-ASSUMED
+      exit
+   then
    bundle bundleu src srcu EXT-ADD-PROVIDED
    bundle bundleu src srcu EXT-ADD-SOURCE
    bundle bundleu EXT-LF$ APPEND-FILE ;

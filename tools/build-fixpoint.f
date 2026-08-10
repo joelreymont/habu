@@ -1566,9 +1566,16 @@ undefine KEEP-U
 \ self-dispatch, omitting an entry wrapper from the recovery command left an
 \ explicit build verb unclaimed, so the loaded stdin engine read its program
 \ from the closed stdin, hit EOF, and exited 0 having built nothing. Run the CLI
-\ here when this file is the top-level `--load` entry (INCLUDE-DEPTH 0; a
-\ `require`d dependency sits at depth > 0 and stays inert) AND a build verb was
-\ passed after `--`. The verb gate keeps a co-loaded tool that consumes its own
+\ here when the command line named THIS file (SCRIPT-NAMED-LOAD?; a file another
+\ file required stays inert) AND a build verb was passed after `--`.
+\
+\ That question used to be asked as INCLUDE-DEPTH 0, which was only ever a
+\ proxy: it was true because `--load` inlined its argv files into the top-level
+\ source stream, so a named file happened to sit at depth 0. Once `--load`
+\ started loading them through the require registry (dot
+\ habu-make-load-consult-85c88fb3) every named file sat at depth 1 and the
+\ dispatch went silently inert - the exact footgun below, restored. The loader
+\ records which paths the command line named, so ask that. The verb gate keeps a co-loaded tool that consumes its own
 \ `--`-flag args (e.g. tools/hb-build.f under tools/hb-build-test.f, loaded at
 \ depth 0 alongside this file) from being hijacked, and BF-CLI is idempotent so
 \ calls from either explicit entry wrapper cannot double-build.
@@ -1582,7 +1589,7 @@ undefine KEEP-U
    BF-FALSE ;
 
 : BF-CLI-SELF-DISPATCH ( -- )
-   INCLUDE-DEPTH @ 0 <> if exit then
+   SCRIPT-NAMED-LOAD? 0= if exit then
    BF-CLI-VERB-ARG0? 0= if exit then
    BF-CLI ;
 BF-CLI-SELF-DISPATCH

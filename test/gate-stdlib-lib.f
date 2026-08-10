@@ -327,6 +327,7 @@ private
    s" aot-wid-restore" SUITE-LABEL= if SUITE-TRUE exit then
    s" using-import" SUITE-LABEL= if SUITE-TRUE exit then
    s" load-reject-diag" SUITE-LABEL= if SUITE-TRUE exit then
+   s" load-argv-contract" SUITE-LABEL= if SUITE-TRUE exit then
    s" engine-candidate-resolver" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 

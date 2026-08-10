@@ -29,6 +29,7 @@ variable INCLUDE-PATH-A
 variable INCLUDE-PATH-U
 variable INCLUDE-PATH-I
 variable REQUIRE-N
+variable REQUIRE-BOOT-N
 variable REQUIRE-BASE
 variable REQUIRE-SAVE-N
 variable REQUIRE-SAVE-BASE
@@ -112,6 +113,28 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
    u idx REQUIRE-LEN!
    idx 1 + REQUIRE-N ! ;
 
+\ One scratch line for diagnostics that have to name a path. Sized so the
+\ longest accepted path plus the longest prefix below always fits, and the
+\ append refuses rather than truncates, so a message is whole or absent.
+$20 constant INCLUDE-DIAG-PREFIX-CAP
+INCLUDE-PATH-CAP INCLUDE-DIAG-PREFIX-CAP + constant INCLUDE-DIAG-CAP
+create INCLUDE-DIAG INCLUDE-DIAG-CAP allot
+create INCLUDE-LF 1 allot
+variable INCLUDE-DIAG-U
+
+$0A INCLUDE-LF 0 ZBYTE!
+
+: INCLUDE-DIAG-RESET ( -- )
+   0 INCLUDE-DIAG-U ! ;
+
+: INCLUDE-DIAG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   INCLUDE-DIAG-U @ u + INCLUDE-DIAG-CAP > if exit then
+   a INCLUDE-DIAG INCLUDE-DIAG-U @ + u BYTE-COPY
+   INCLUDE-DIAG-U @ u + INCLUDE-DIAG-U ! ;
+
+: INCLUDE-DIAG$ ( -- ptr u8 n )
+   INCLUDE-DIAG INCLUDE-DIAG-U @ ;
+
 : INCLUDE-PATH-COPY ( -- )
    0 INCLUDE-PATH-I !
    begin INCLUDE-PATH-I @ INCLUDE-PATH-U @ < while
@@ -129,8 +152,30 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
    dup 0 < if s" include: depth underflow" INCLUDE-DIE then
    INCLUDE-MAX-DEPTH >= if s" include: nested too deeply" INCLUDE-DIE then ;
 
+\ ---- which loads the command line asked for, by name ---------------------
+\
+\ `bin/hb --load a.f b.f` appends one `s" a.f" script-required` per argv file
+\ (src/habu/habu2.f C-SOURCE-APPEND-ARG), so the loader knows which loads the
+\ user named and which are dependencies pulled in underneath them. A tool that
+\ must act only when it IS the entry point - tools/build-fixpoint.f runs its
+\ CLI verb then, and must stay inert when another tool requires it - used to
+\ read INCLUDE-DEPTH 0 for that, which was true only while `--load` inlined its
+\ argv files into the top-level stream. The depth was a proxy; this is the
+\ fact, and it is recorded per frame so a nested require inside a named file
+\ answers no.
+create SCRIPT-NAMED-FRAME INCLUDE-MAX-DEPTH cells allot
+variable SCRIPT-NAMED-PEND              \ the next INCLUDE-PUSH opens a named frame
+
+: SCRIPT-NAMED-SLOT ( n -- ptr a )
+   cells SCRIPT-NAMED-FRAME + ;
+
+: SCRIPT-NAMED-PEND! ( bool -- )
+   SCRIPT-NAMED-PEND ! ;
+
 : INCLUDE-PUSH ( -- )
    INCLUDE-DEPTH @ INCLUDE-CHECK-DEPTH
+   SCRIPT-NAMED-PEND @ INCLUDE-DEPTH @ SCRIPT-NAMED-SLOT !
+   INCLUDE-FALSE SCRIPT-NAMED-PEND!
    INCLUDE-DEPTH @ 1 + INCLUDE-DEPTH ! ;
 
 : INCLUDE-POP ( -- )
@@ -152,9 +197,23 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
    INCLUDE-DEPTH @ 1 - dup INCLUDE-CHECK-DEPTH
    INCLUDE-BUF-CAP * INCLUDE-BUFS@ + ;
 
+\ A failed open is almost always a typo or a moved file, and the one thing the
+\ reader needs is WHICH path. The message used to drop it even though
+\ INCLUDE-PATH holds the resolved path at exactly that moment, so a bad
+\ `require` said only "include: open failed". Now that `bin/hb --load` routes
+\ its argv files through `required` too (dot habu-make-load-consult-85c88fb3),
+\ this is the diagnostic a mistyped command line gets, and the raw argv reader
+\ it replaced always named the path.
+: INCLUDE-OPEN-DIE ( -- )
+   INCLUDE-DIAG-RESET
+   s" include: cannot open " INCLUDE-DIAG+
+   INCLUDE-PATH INCLUDE-PATH-U @ INCLUDE-DIAG+
+   INCLUDE-LF 1 INCLUDE-DIAG+
+   INCLUDE-DIAG$ INCLUDE-DIE ;
+
 : INCLUDE-OPEN ( ptr u8 n -- )
    INCLUDE-PATH0 open-rd INCLUDE-FD !
-   INCLUDE-FD @ 0 < if s" include: open failed" INCLUDE-DIE then ;
+   INCLUDE-FD @ 0 < if INCLUDE-OPEN-DIE then ;
 
 : INCLUDE-PROBE-OVERFLOW ( -- bool )
    INCLUDE-FD @ INCLUDE-PROBE INCLUDE-PROBE-CAP read INCLUDE-RD !
@@ -287,14 +346,32 @@ variable DISC-TOK-U
    DISCOVERY? if 2drop exit then
    INCLUDE-LOAD ;
 
-: required ( ptr u8 n -- )
+\ One body for both spellings. A path the registry already holds is skipped, so
+\ the pending flag has to be cleared on every exit or it would leak into the
+\ next unrelated load.
+: REQUIRE-BODY ( ptr u8 n -- )
    INCLUDE-CHECK-PATH
    2dup REQUIRE-KNOWN? {: known:bool :}
    2dup EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
-   known if 2drop exit then
+   known if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
    2dup REQUIRE-STORE
-   DISCOVERY? if 2drop exit then
+   DISCOVERY? if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
    INCLUDE-LOAD ;
+
+: required ( ptr u8 n -- )
+   INCLUDE-FALSE SCRIPT-NAMED-PEND!
+   REQUIRE-BODY ;
+
+\ The `--load` argv row. Same load, and it records that the command line is
+\ what asked for it.
+: script-required ( ptr u8 n -- )
+   INCLUDE-TRUE SCRIPT-NAMED-PEND!
+   REQUIRE-BODY ;
+
+\ Is the file being loaded right now one the command line named?
+: SCRIPT-NAMED-LOAD? ( -- bool )
+   INCLUDE-DEPTH @ 0= if INCLUDE-FALSE exit then
+   INCLUDE-DEPTH @ 1 - SCRIPT-NAMED-SLOT @ 0= 0= ;
 
 : provided ( ptr u8 n -- )
    INCLUDE-CHECK-PATH
@@ -328,10 +405,11 @@ immediate
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
    REQUIRE-SAVE-N @ REQUIRE-N ! ;
 
-: INCLUDE-SNAPSHOT-PREPARE ( -- )
+\ The loader scratch a fresh pass may reset at any time: the open file, the read
+\ counters, the path buffer, the discovery base and the event log. None of it
+\ describes a load in flight, so resetting it underneath one is safe.
+: INCLUDE-RESET-SCRATCH ( -- )
    INCLUDE-CLOSE
-   0 INCLUDE-BUFS-A !
-   0 INCLUDE-DEPTH !
    0 INCLUDE-U !
    0 INCLUDE-RD !
    0 INCLUDE-PATH-U !
@@ -339,6 +417,57 @@ immediate
    EVENT-OFF
    DISCOVERY-OFF
    EVENTS-RESET ;
+
+\ Snapshot preparation adds the one thing only a snapshot needs: the mapped
+\ include buffers do not survive the image, so the pointer is dropped and the
+\ restored process maps fresh ones on its next load.
+\
+\ It does NOT touch INCLUDE-DEPTH. The depth counts the loads in flight, which
+\ belong to the caller, and a snapshot is only meaningful when there are none -
+\ so this asks instead of assuming. Zeroing it was the old shape, and it made
+\ the word look like a general "reset the include subsystem": a caller that
+\ used it that way and then returned had its own frame silently erased and
+\ underflowed at INCLUDE-POP (test/compiler/ir-id-replay.f, found when `--load`
+\ started loading its argv files through `required`). Callers that want the
+\ resettable half now say INCLUDE-RESET-SCRATCH and say it at any depth.
+: INCLUDE-SNAPSHOT-PREPARE ( -- )
+   INCLUDE-DEPTH @ 0= 0= if
+      s" include: snapshot prepare under an open load" INCLUDE-DIE
+   then
+   INCLUDE-RESET-SCRATCH
+   0 INCLUDE-BUFS-A ! ;
+
+\ ---- what the ENGINE provides, as opposed to what this process has loaded ---
+\
+\ The boot prefix marks its own files `provided` before any user token runs, so
+\ the registry opens with exactly the engine's surface in it. Freezing the count
+\ at the end of the prefix is what lets a later question separate "the engine
+\ carries this" from "something in this process required it", which a plain
+\ REQUIRE-KNOWN? cannot: by the time a tool asks, its own dependencies are in
+\ the registry too. tools/bundle-lib-core.f needs exactly this separation - it
+\ must not bundle a copy of a file the engine already loaded, and must not skip
+\ one the engine does not have.
+: REQUIRE-BOOT-FREEZE ( -- )
+   REQUIRE-N @ REQUIRE-BOOT-N ! ;
+
+: ENGINE-PROVIDES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup REQUIRE-BOOT-N @ < while
+      dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
+      1+
+   repeat drop INCLUDE-FALSE ;
+
+\ A bundle (tools/bundle-lib.f) carries the modules this engine does NOT have
+\ and states the ones it assumes. Stating the assumption is the bundle's half;
+\ checking it is the engine's, so a bundle built against a richer engine and run
+\ on a barer one refuses here, by name, instead of dying later on a missing word
+\ or - worse - loading a second copy of a module the engine already carries.
+: ?ENGINE-PROVIDES ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u ENGINE-PROVIDES? if exit then
+   INCLUDE-DIAG-RESET
+   s" bundle: this engine does not provide " INCLUDE-DIAG+
+   a u INCLUDE-DIAG+
+   INCLUDE-LF 1 INCLUDE-DIAG+
+   INCLUDE-DIAG$ INCLUDE-DIE ;
 
 \ constructor generation (sumtype.f, loaded earlier in the boot prefix) crosses
 \ evaluate only through this audited INCLUDE-EVALUATE boundary; engines without

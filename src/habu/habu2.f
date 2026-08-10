@@ -892,7 +892,7 @@ variable SRC-REPL variable SRC-DONE  variable SRC-FSCAN
 variable SRC-FNEXT variable SRC-FREADY variable SRC-FPLAIN
 variable SRC-FLOOP variable SRC-SHLOOP variable SRC-STDINPROG
 variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
-variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
+variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
 
 : C-SOURCE-LABELS ( -- )
    LBL SRC-TTY !   LBL SRC-FILE !  LBL SRC-SFAIL !
@@ -901,7 +901,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    LBL SRC-FNEXT ! LBL SRC-FREADY ! LBL SRC-FPLAIN !
    LBL SRC-FLOOP ! LBL SRC-SHLOOP ! LBL SRC-STDINPROG !
    LBL SRC-BLOOP ! LBL SRC-BDONE ! LBL SRC-BFAIL !
-   LBL LCOLDPFX !  LBL LCOLDPFXB !  LBL LAPPPROV ! ;
+   LBL LCOLDPFX !  LBL LCOLDPFXB !  LBL LAPPPROV !  LBL LAPPREQ ! ;
 
 : C-SOURCE-MMAP ( label -- ) {: fail:label :}
    0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,
@@ -976,19 +976,42 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
       loop B,
    done LBL, ;
 
-: C-SOURCE-APPEND-PROVIDED ( -- )
+\ `s" <x12>" ` - the head both loader lines below share.
+: C-SOURCE-APPEND-QUOTED ( -- )
    $73 C-SOURCE-APPEND-CHAR
    $22 C-SOURCE-APPEND-CHAR
    $20 C-SOURCE-APPEND-CHAR
    C-SOURCE-APPEND-Z12
    $22 C-SOURCE-APPEND-CHAR
-   $20 C-SOURCE-APPEND-CHAR
+   $20 C-SOURCE-APPEND-CHAR ;
+
+: C-SOURCE-APPEND-PROVIDED ( -- )
+   C-SOURCE-APPEND-QUOTED
    $70 C-SOURCE-APPEND-CHAR
    $72 C-SOURCE-APPEND-CHAR
    $6F C-SOURCE-APPEND-CHAR
    $76 C-SOURCE-APPEND-CHAR
    $69 C-SOURCE-APPEND-CHAR
    $64 C-SOURCE-APPEND-CHAR
+   $65 C-SOURCE-APPEND-CHAR
+   $64 C-SOURCE-APPEND-CHAR
+   $0A C-SOURCE-APPEND-CHAR ;
+
+: C-SOURCE-APPEND-REQUIRED ( -- )
+   C-SOURCE-APPEND-QUOTED
+   $73 C-SOURCE-APPEND-CHAR
+   $63 C-SOURCE-APPEND-CHAR
+   $72 C-SOURCE-APPEND-CHAR
+   $69 C-SOURCE-APPEND-CHAR
+   $70 C-SOURCE-APPEND-CHAR
+   $74 C-SOURCE-APPEND-CHAR
+   $2D C-SOURCE-APPEND-CHAR
+   $72 C-SOURCE-APPEND-CHAR
+   $65 C-SOURCE-APPEND-CHAR
+   $71 C-SOURCE-APPEND-CHAR
+   $75 C-SOURCE-APPEND-CHAR
+   $69 C-SOURCE-APPEND-CHAR
+   $72 C-SOURCE-APPEND-CHAR
    $65 C-SOURCE-APPEND-CHAR
    $64 C-SOURCE-APPEND-CHAR
    $0A C-SOURCE-APPEND-CHAR ;
@@ -1002,6 +1025,38 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
 \ boundary and only grows as the interpret loop chews the concatenated source.
 \ Cold boots only: a snapshot restores its bake-time watermark from the
 \ persisted friend band (same gate as PFX-LOAD-SCRIPT-ARGV-COLD).
+\ Freeze the count of paths the ENGINE provides, as the last prefix token
+\ alongside SEAL-CAPTURE and for the same reason: everything recorded up to
+\ here is the engine's own surface, everything after it belongs to whoever is
+\ running. src/core/include.f ENGINE-PROVIDES? reads the frozen count, so a
+\ tool can tell "the engine carries this file" from "this process required it".
+\ Cold boots only - a snapshot restores the count with the rest of its data.
+: EMIT-REQUIRE-FREEZE-TOKEN ( -- )
+   LBL {: done:label :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   $52 C-SOURCE-APPEND-CHAR
+   $45 C-SOURCE-APPEND-CHAR
+   $51 C-SOURCE-APPEND-CHAR
+   $55 C-SOURCE-APPEND-CHAR
+   $49 C-SOURCE-APPEND-CHAR
+   $52 C-SOURCE-APPEND-CHAR
+   $45 C-SOURCE-APPEND-CHAR
+   $2D C-SOURCE-APPEND-CHAR
+   $42 C-SOURCE-APPEND-CHAR
+   $4F C-SOURCE-APPEND-CHAR
+   $4F C-SOURCE-APPEND-CHAR
+   $54 C-SOURCE-APPEND-CHAR
+   $2D C-SOURCE-APPEND-CHAR
+   $46 C-SOURCE-APPEND-CHAR
+   $52 C-SOURCE-APPEND-CHAR
+   $45 C-SOURCE-APPEND-CHAR
+   $45 C-SOURCE-APPEND-CHAR
+   $5A C-SOURCE-APPEND-CHAR
+   $45 C-SOURCE-APPEND-CHAR
+   $0A C-SOURCE-APPEND-CHAR
+   done LBL, ;
+
 : EMIT-SEAL-CAPTURE-TOKEN ( -- )
    LBL {: done:label :}
    12 DATA SNAP-CELL LDR,
@@ -1121,25 +1176,54 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    load LBL,
    14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
    LCOLDPFX LABEL@ BL,
+   16 1 MOVZ,                                              \ --load: hand argv files to the registry
    multi B,
    build LBL,
    14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
    LCOLDPFXB LABEL@ BL,
+   16 0 MOVZ,                                              \ --build: one certified payload, read raw
    multi LBL,
    C-SOURCE-FIND-SEP
    SRC-FPLAIN LABEL@ LBL,
    LCOLDPFX LABEL@ BL,
+   16 0 MOVZ,                                              \ plain `hb prog.f`: the program, read raw
    SRC-FREADY LABEL@ LBL, ;
 
 : C-SOURCE-ARGV14 ( -- )
    12 DATA ARGV-CELL LDR,  5 14 3 LSLI,
    12 12 5 ADD,  12 12 0 LDR, ;
 
+\ One argv source file (dot habu-make-load-consult-85c88fb3).
+\
+\ `--load` means "make these files loaded", so it appends `s" <path>" required`
+\ and lets src/core/include.f decide: a path the registry already holds is
+\ skipped, anything else is read and recorded. The old row wrote the `provided`
+\ marker and then inlined the text ANYWAY - it maintained a registry it never
+\ read, so `--load lib/errors.f` against an engine that already carries
+\ lib/errors.f died on a duplicate definition while `require lib/errors.f` from
+\ inside a file no-opped cleanly. Same request, two answers; the loader now
+\ consults the registry it writes.
+\
+\ The other two argv modes stay raw. `--build` receives ONE statically certified
+\ payload, assembled and hashed as a single stream and far past INCLUDE-BUF-CAP;
+\ plain `hb prog.f` receives the program itself, not a dependency. x16 carries
+\ which mode we are in, set on each of the three exits of C-SOURCE-FILE-PREFIX
+\ right after that mode's cold-prefix call - the same entry-mode-bit shape
+\ LCOLDPFX/LCOLDPFXB already use for their own seal decision. The only other
+\ write to x16 in the startup path is inside the cold prefix itself, which
+\ always runs before these three stores.
 : C-SOURCE-APPEND-ARG ( -- )
-   C-SOURCE-ARGV14
-   LAPPPROV LABEL@ BL,
-   C-SOURCE-ARGV14
-   LSRCRD LABEL@ BL,
+   LBL LBL {: raw:label done:label :}
+   16 raw CBZ,
+      C-SOURCE-ARGV14
+      LAPPREQ LABEL@ BL,
+      done B,
+   raw LBL,
+      C-SOURCE-ARGV14
+      LAPPPROV LABEL@ BL,
+      C-SOURCE-ARGV14
+      LSRCRD LABEL@ BL,
+   done LBL,
    14 14 1 ADDI, ;
 
 : C-SOURCE-APPEND-LF ( -- )
@@ -1226,13 +1310,17 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
 
 \ Shared cold-prefix routines: the stdin engine builds the checker/stdlib
 \ provided-files prefix at the user entries plus the certified MODE-BUILD entry.
-\ Two routines, emitted once each and
+\ Three routines, emitted once each and
 \ branched over so the fall-through startup path skips their bodies:
 \
 \ LAPPPROV ( x12 = string ptr, x9 = cursor -> appends `s" <str>" provided\n`,
 \ x9 advanced ). Leaf: the append sequence uses only STRB/branch (no BL), so no
 \ x30 frame. Replaces the ~552-byte per-row inline C-SOURCE-APPEND-PROVIDED,
 \ which was emitted ~19 times in PFX-PROVIDE-FILES plus once in the argv loop.
+\
+\ LAPPREQ is the same leaf with `required` in place of `provided`: the --load
+\ argv row, which asks the registry to load a path rather than asserting the
+\ path is already loaded and inlining it regardless.
 \
 \ LCOLDPFX/LCOLDPFXB load the same prefix. LCOLDPFX seals before ordinary
 \ source; LCOLDPFXB is the build-only entry used for a statically certified
@@ -1243,6 +1331,8 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    skip B,
    LAPPPROV LABEL@ LBL,
       C-SOURCE-APPEND-PROVIDED  RET,
+   LAPPREQ LABEL@ LBL,
+      C-SOURCE-APPEND-REQUIRED  RET,
    LCOLDPFX LABEL@ LBL,
       SP SP 16 SUBI,  30 SP 0 STR,
       12 0 MOVZ,  12 SP 8 STR,  body B,
@@ -1256,6 +1346,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
       PFX-PROVIDE-FILES
       PFX-LOAD-INTMARK-COLD                        \ LAST prefix definition/marking pass
       PFX-LOAD-TOPROW-COLD                         \ tier-1 top-row tracker: armed on the first user token
+      EMIT-REQUIRE-FREEZE-TOKEN                    \ engine-provided path count, same boundary
       EMIT-SEAL-CAPTURE-TOKEN                      \ watermark token at the true engine-prefix end
       12 SP 8 LDR,  12 noseal CBNZ,
       SRC-SFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN      \ seal before any appended user source

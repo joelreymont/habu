@@ -17,8 +17,17 @@
 \ refuse that with its package-seal status; if it did not, the source would
 \ re-run and its `0 NEXT-SERIAL !` would restart the counter. A mode switch on
 \ the environment rather than on an argument is what the loader leaves
-\ available: `--load` treats every further argument as another file to load, and
-\ the first mode's include-state reset cannot run underneath a `require`.
+\ available: `--load` treats every further argument as another file to load.
+\
+\ The reset below is INCLUDE-RESET-SCRATCH, which resets the loader scratch the
+\ registry replay actually needs and nothing else. It used to be
+\ INCLUDE-SNAPSHOT-PREPARE, which additionally zeroed INCLUDE-DEPTH - harmless
+\ while `--load` inlined this file into the top-level stream at depth 0, and a
+\ silent corruption of the caller's frame once `--load` began loading argv files
+\ through the registry (dot habu-make-load-consult-85c88fb3): this file's own
+\ load underflowed at INCLUDE-POP. Snapshot preparation now refuses to run under
+\ an open load rather than zeroing its way through one, so this file names the
+\ half it means.
 
 require lib/errors.f
 require src/compiler/ir/id.f
@@ -49,12 +58,12 @@ public
 IR-ID:NEW-MODULE nip
 IR-ID-REPLAY:STILL-FRESH
 
-\ Reset the include subsystem and ask for the identity authority again, twice.
-INCLUDE-SNAPSHOT-PREPARE
+\ Reset the loader scratch and ask for the identity authority again, twice.
+INCLUDE-RESET-SCRATCH
 require src/compiler/ir/id.f
 IR-ID-REPLAY:STILL-FRESH
 
-INCLUDE-SNAPSHOT-PREPARE
+INCLUDE-RESET-SCRATCH
 require src/compiler/ir/id.f
 IR-ID-REPLAY:STILL-FRESH
 

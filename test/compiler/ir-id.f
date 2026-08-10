@@ -316,7 +316,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
    SB-RESET
    s" require src/compiler/ir/id.f" SB-APPEND 10 SB-APPEND-C
    s" IR-ID:NEW-MODULE nip" SB-APPEND 10 SB-APPEND-C
-   s" INCLUDE-SNAPSHOT-PREPARE" SB-APPEND 10 SB-APPEND-C
+   s" INCLUDE-RESET-SCRATCH" SB-APPEND 10 SB-APPEND-C
    s" require src/compiler/ir/id.f" SB-APPEND 10 SB-APPEND-C
    s" : DISTINCT ( IR-ID:ir-module-id -- ) IR-ID:NEW-MODULE nip"
       SB-APPEND

@@ -181,14 +181,32 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    outu 0 T=
    BLTT-ERR erru s" missing script" CONTAINS? TTRUE ;
 
+\ What a bundle carries changed when the engine started carrying part of the
+\ stdlib itself (dot habu-seed-the-stdlib-d8e3a757). lib/errors.f is in the boot
+\ prefix, so copying its text into the bundle redefined every word in it the
+\ moment the bundle ran; the builder now ASSUMES such a module and carries the
+\ rest. These assertions moved with that meaning, and they check the bundle's
+\ STRUCTURE rather than searching it for a path: every path here appears in the
+\ file either way, on an assume row or a provided row, so a substring test
+\ cannot tell a carried module from an assumed one. The body markers are what
+\ separates them - E-A-FIRST is defined in lib/errors.f and A-LEN in
+\ lib/array.f, so their presence is the presence of the module's text.
 : BLTT-TEST-BUILD-BUNDLE ( -- )
    BLTT-RUN-BUNDLE-LIB 0 BLTT-EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=
    BLTT-ERR erru BLTT-EMPTY$ T$=
    BLTT-BUNDLE BLTT-BUNDLE-READ BLTT-BUNDLE-CAP READ-ALL {: bundleu:n :}
-   BLTT-BUNDLE-READ bundleu s" lib/errors.f" CONTAINS? TTRUE
+   s" an engine-provided module is stated, not copied" T-LABEL
+   BLTT-BUNDLE-READ bundleu s\" s\q lib/errors.f\q ?ENGINE-PROVIDES" CONTAINS? TTRUE
+   s" an engine-provided module's body is absent" T-LABEL
+   BLTT-BUNDLE-READ bundleu s" E-A-FIRST" CONTAINS? TFALSE
+   s" a module the engine lacks is carried, and marked provided" T-LABEL
+   BLTT-BUNDLE-READ bundleu s\" s\q lib/array.f\q provided" CONTAINS? TTRUE
+   s" a carried module's body is present" T-LABEL
+   BLTT-BUNDLE-READ bundleu s" A-LEN" CONTAINS? TTRUE
+   s" a module nobody asked for is neither stated nor carried" T-LABEL
    BLTT-BUNDLE-READ bundleu s" src/core/combinators.f" CONTAINS? TFALSE
-   BLTT-BUNDLE-READ bundleu s" lib/array.f" CONTAINS? TTRUE
+   s" the script is carried" T-LABEL
    BLTT-BUNDLE-READ bundleu s" BLT-MAIN" CONTAINS? TTRUE ;
 
 : BLTT-TEST-RUN-BUNDLE ( -- )
