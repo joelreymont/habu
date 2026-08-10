@@ -183,6 +183,7 @@
 require lib/prelude.f
 require lib/errors.f
 require lib/string.f
+require lib/vector.f
 require src/compiler/native/branch.f
 require src/compiler/native/clobber.f
 require src/compiler/native/dict.f
@@ -201,21 +202,6 @@ private
 $4000 constant CODE-RESERVE
 
 4 constant INSN-BYTES
-
-\ How many republications this seam can remember in one process. The log is
-\ evidence and not a cache - it is the only thing that still knows what the old
-\ emitter produced for a name once the record has been rewritten - so a row can
-\ never be dropped to make space and the ceiling is a real refusal, E-NPUB-CAP,
-\ rather than an eviction.
-\
-\ THE NUMBER IS WHAT THE SYSTEM ACTUALLY MIGRATES, and it moves when that does.
-\ It is a fixed table because this seam runs while the engine is compiling and
-\ has nowhere to allocate from; at 64 bytes of name and six cells a row, this
-\ ceiling is about fourteen kilobytes, which is small beside the code arena it
-\ writes into. Dot habu-grow-the-republication-52ef5df0 carries making it grow
-\ with the program, which is what a whole-system migration will need.
-128 constant LOG-MAX
-64 constant NAME-MAX
 
 \ ---- the three primitives that write -----------------------------------------
 \ All three are code injection, so the checker admits them only through a trusted
@@ -250,39 +236,146 @@ TRUSTED: MIN-IN-REC ( n n -- )
    min-in-mark ;
 
 \ ---- the replacement log -----------------------------------------------------
-\ One row per republished name: what the record held before, and what it holds
-\ now. The name is stored so a caller can ask about a word rather than about a
-\ row number.
-LOG-MAX NAME-MAX * BUFFER: LOG-NAMES
-create LOG-LENS LOG-MAX cells allot
-create LOG-WIDS LOG-MAX cells allot
-create LOG-OLD-START LOG-MAX cells allot
-create LOG-OLD-LEN LOG-MAX cells allot
-create LOG-NEW-START LOG-MAX cells allot
-create LOG-NEW-LEN LOG-MAX cells allot
-variable LOG-N
+\ ONE ROW PER REPUBLISHED WORD, AND THE PROGRAM SAYS HOW MANY THAT IS. A row is
+\ what the record held before this seam rewrote it and what it holds now, with
+\ the name so a caller can ask about a word rather than about a row number. The
+\ half that matters is the old half: it is the only surviving measurement of the
+\ code the old emitter produced for that name, so a row is never dropped TO MAKE
+\ SPACE - dropping one would answer a caller about a routine nobody measured -
+\ and a log that ran out is a refusal, E-NPUB-CAP, rather than an eviction.
+\
+\ WHICH IS WHY A FIXED TABLE WAS A BOUND ON THE WRONG THING. There were 128 rows,
+\ which is what the system migrated when the log was written, and once
+\ src/compiler/native/clobber.f grew this was the next fixed ceiling under it: a
+\ run that drove the cut's own entry (src/compiler/native/migrate.f DEFINE-HELD)
+\ over four hundred definitions published EXACTLY 128 and was refused the 129th
+\ here, after selection, allocation, verification, emission and every other
+\ refusal this seam can make had all accepted it. That number said how many rows
+\ the table had and nothing whatever about the program.
+\
+\ SO THE ROWS ARE GROWABLE VECTORS AND NOT FIXED ARRAYS. lib/vector.f is the
+\ tree's growable cell array: mapped storage, doubled and copied when it fills,
+\ and the span it grew out of handed back to the OS. One per column, because the
+\ lookup below walks the three columns that identify a row - the wordlist, the
+\ spelling and its length - and never reads the four it answers with while it is
+\ searching.
+\
+\ AND "NOWHERE TO ALLOCATE FROM" WAS NOT TRUE, which was the reason given for the
+\ fixed table. Every migration disproves it: each one runs inside
+\ src/compiler/ir/context.f's WITH-CONTEXT, which maps half a megabyte and gives
+\ it back, and the publication this log serves happens inside that. What is true
+\ is that the space must be taken BEFORE the commit phase, because a commit may
+\ not throw, and LOG-CK below is where it is taken.
+128 constant ROWS-SEED
 
-: SLOT ( ptr a n -- ptr a )
-   cells + ;
+\ A spelling is stored in a fixed-width row of CELLS, because the growable array
+\ is an array of cells and a name is bytes. NAME-MAX is that row's width and it
+\ is the length this log refuses past, so the two cannot drift: the width is
+\ stated in cells and the refusal is stated from the width.
+8 constant NAME-CELLS
+NAME-CELLS cells constant NAME-MAX
 
-: LOG-NAME-AT ( n -- ptr u8 )
-   NAME-MAX * LOG-NAMES + ;
+\ ---- and the one ceiling that is left -----------------------------------------
+\ A row is written by a publication, and a publication CLAIMS A CODE SLOT for the
+\ routine the row is about. SLOT-CK below refuses a slot below the END of the
+\ routine published last and CLAIM raises that line past the routine just
+\ written, so one row's address is at least a whole routine - and a routine is at
+\ least one instruction - above the row before it, and every one of them is an
+\ instruction-aligned address inside the engine's code region. RECLAIMED lowers
+\ the line again when code space is really given back, and drops the rows above
+\ the floor with it. So the rows this log can be holding at once are at most the
+\ instruction slots that region has, and E-NPUB-CAP is that bound.
+\
+\ IT IS A BACKSTOP AND NOT A PATH, which is the shape src/compiler/native/
+\ clobber.f keeps for the same bound. The seam runs out of code arena long before
+\ it runs out of slots - ROOM-CK below refuses with E-NPUB-ROOM at the engine's
+\ own end reserve - so a program cannot reach this number through the seam at
+\ all. It is asked because a record that grew without a bound would be a table
+\ with no answer for how large it may become.
+REGION INSN-BYTES / constant ROWS-CEIL
+
+create LOG-NAMES VEC-HEADER-CELLS cells allot
+create LOG-LENS VEC-HEADER-CELLS cells allot
+create LOG-WIDS VEC-HEADER-CELLS cells allot
+create LOG-OLD-START VEC-HEADER-CELLS cells allot
+create LOG-OLD-LEN VEC-HEADER-CELLS cells allot
+create LOG-NEW-START VEC-HEADER-CELLS cells allot
+create LOG-NEW-LEN VEC-HEADER-CELLS cells allot
+
+: LOG-INIT ( -- )
+   LOG-NAMES ROWS-SEED NAME-CELLS * VEC-COUNT VEC-INIT
+   LOG-LENS ROWS-SEED VEC-COUNT VEC-INIT
+   LOG-WIDS ROWS-SEED VEC-COUNT VEC-INIT
+   LOG-OLD-START ROWS-SEED VEC-COUNT VEC-INIT
+   LOG-OLD-LEN ROWS-SEED VEC-COUNT VEC-INIT
+   LOG-NEW-START ROWS-SEED VEC-COUNT VEC-INIT
+   LOG-NEW-LEN ROWS-SEED VEC-COUNT VEC-INIT ;
+
+LOG-INIT
+
+\ How many rows are live. Every column is appended and truncated with the rest,
+\ and the address column is the one the reclamation cut below decides on, so its
+\ length is the log's length.
+: ROWS# ( -- n )
+   LOG-NEW-START VEC-LEN@ LEN>N ;
+
+\ The columns a search walks, read the way the searches below read them: the
+\ storage base and one cell - or one spelling - out of it. LOG-FIND walks the
+\ three that identify a row and the reclamation cut walks the address column, so
+\ these are the readers on a path whose length is the population, and the checked
+\ element accessor proves an index the loop bound already proves. The four
+\ columns a lookup ANSWERS with are read once per operation and keep the checked
+\ accessor; the address column has both readers because it is both searched and
+\ answered.
+: NAME-AT ( n -- ptr u8 ) {: k:n :}
+   LOG-NAMES VEC-DATA@ k NAME-MAX * + BYTE-VIEW ;
+
+: LEN-AT ( n -- n ) {: k:n :}
+   LOG-LENS VEC-DATA@ k cells + @ ;
+
+: WID-AT ( n -- n ) {: k:n :}
+   LOG-WIDS VEC-DATA@ k cells + @ ;
+
+: NEW-START-AT ( n -- n ) {: k:n :}
+   LOG-NEW-START VEC-DATA@ k cells + @ ;
 
 : LOG-NAME$ ( n -- ptr u8 n ) {: k:n :}
-   k LOG-NAME-AT  LOG-LENS k SLOT @ ;
+   k NAME-AT  k LEN-AT ;
 
 : LOG-ROW? ( n ptr u8 n n -- bool ) {: k:n a:ptr u:n wid:n :}
-   LOG-WIDS k SLOT @ wid <> if false exit then
+   k WID-AT wid <> if false exit then
    k LOG-NAME$ a u STR= ;
 
+\ The FIRST row a name has, which is the one that carries what the old emitter
+\ produced for it. A second row for one name is not reachable through the
+\ migration entry - the engine refuses a second definition of a tail
+\ (src/habu/habu2.f C-REJECT-DUP-DEF), so a name is republished again only after
+\ a FORGET, and a FORGET's floor is the very address the row records, so the
+\ earlier row is dropped before the later one is written.
 : LOG-FIND ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
    -1
-   LOG-N @ 0 ?do
+   ROWS# 0 ?do
       i a u wid LOG-ROW? if drop i leave then
    loop ;
 
 : LOG-OK ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
    a u wid LOG-FIND dup 0 < if E-NPUB-LOG throw then ;
+
+\ Room for one more row, taken in front. Growing is an allocation and an
+\ allocation can fail, so it happens where a refusal still costs nothing rather
+\ than in the append, which runs in a publication's commit phase and may not
+\ throw. Taking room changes no row: a publication refused after this ran finds
+\ the log holding exactly what it held before.
+: LOG-ROOM ( -- )
+   ROWS# 1+ {: need:n :}
+   need ROWS-CEIL > if E-NPUB-CAP throw then
+   LOG-NAMES need NAME-CELLS * VEC-COUNT VEC-ENSURE
+   LOG-LENS need VEC-COUNT VEC-ENSURE
+   LOG-WIDS need VEC-COUNT VEC-ENSURE
+   LOG-OLD-START need VEC-COUNT VEC-ENSURE
+   LOG-OLD-LEN need VEC-COUNT VEC-ENSURE
+   LOG-NEW-START need VEC-COUNT VEC-ENSURE
+   LOG-NEW-LEN need VEC-COUNT VEC-ENSURE ;
 
 \ The log's two refusals, asked in the validation phase. They used to be asked by
 \ the append itself, which runs after the code and the record have already
@@ -292,21 +385,90 @@ variable LOG-N
 \ throws inside it are the backstop and not the path, which is the shape
 \ src/compiler/native/clobber.f keeps for the same reason.
 : LOG-CK ( n -- ) {: u:n :}
-   LOG-N @ LOG-MAX >= if E-NPUB-CAP throw then
-   u NAME-MAX > if E-NPUB-CAP throw then ;
+   u NAME-MAX > if E-NPUB-CAP throw then
+   LOG-ROOM ;
 
+\ The spelling column carries NAME-CELLS cells a row whatever the name's length
+\ is, so a row's spelling begins at a fixed stride and the length column says how
+\ much of it is the name. The bytes are written first and the length raised
+\ after, so a row is never counted before the column it is counted by holds it.
+: NAME+ ( ptr u8 n n -- ) {: a:ptr u:n k:n :}
+   a  k NAME-AT  u STR-LEN BYTE-COPY-LEN
+   k 1+ NAME-CELLS * VEC-LEN LOG-NAMES VEC-LEN! ;
+
+\ The address column is pushed LAST, because it is the column ROWS# counts and
+\ the column the reclamation cut reads: a row becomes one when every other column
+\ already holds it.
 : LOG+ ( ptr u8 n n n n n n -- )
    {: a:ptr u:n wid:n os:n ol:n ns:n nl:n :}
-   LOG-N @ LOG-MAX >= if E-NPUB-CAP throw then
    u NAME-MAX > if E-NPUB-CAP throw then
-   a  LOG-N @ LOG-NAME-AT  u STR-LEN BYTE-COPY-LEN
-   u   LOG-LENS LOG-N @ SLOT !
-   wid LOG-WIDS LOG-N @ SLOT !
-   os LOG-OLD-START LOG-N @ SLOT !
-   ol LOG-OLD-LEN LOG-N @ SLOT !
-   ns LOG-NEW-START LOG-N @ SLOT !
-   nl LOG-NEW-LEN LOG-N @ SLOT !
-   LOG-N @ 1+ LOG-N ! ;
+   LOG-ROOM
+   a u ROWS# NAME+
+   u   LOG-LENS VEC-PUSH-N drop
+   wid LOG-WIDS VEC-PUSH-N drop
+   os LOG-OLD-START VEC-PUSH-N drop
+   ol LOG-OLD-LEN VEC-PUSH-N drop
+   nl LOG-NEW-LEN VEC-PUSH-N drop
+   ns LOG-NEW-START VEC-PUSH-N drop ;
+
+\ ---- a row's lifetime is the lifetime of the code it describes ----------------
+\ WHY A ROW IS EVER DROPPED, given that "a row is never dropped" is what the
+\ ceiling above rests on. The two are not one sentence. A row is never dropped TO
+\ MAKE SPACE, because what it holds is the only surviving measurement of the code
+\ the old emitter produced for that name. But a row also names the address the
+\ NEW routine was written at, and that address stops being the routine's the
+\ moment the code space is reclaimed - src/habu/xref.f says why nothing may
+\ recognise the difference afterwards, and why the bytes may even be rewritten to
+\ a different routine at exactly the same address. A row kept across a
+\ reclamation does not preserve evidence: it manufactures it.
+\
+\ THAT WAS MEASURED RATHER THAN ARGUED. A word the chain published, then forgotten
+\ and defined and published again - which is what a re-migration is - left the
+\ dead row in front of the live one, and NEW-START answered the dead address:
+\ 4332218348, where the record really started at 4332218388, forty bytes away and
+\ inside a routine belonging to another name. src/compiler/native/reach.f holds
+\ that answer against a walked record's own start and would have refused the live
+\ routine on it; the codegen comparison reads the same columns for its byte
+\ counts.
+\
+\ AND IT IS A SUFFIX THAT GOES. The live rows are in publication order and a
+\ publication's slot is above every slot claimed before it - which SLOT-CK holds
+\ as a REFUSAL, E-NPUB-SLOT, rather than as an assumption - so the rows a
+\ reclamation takes away are the tail of the log and the cut is where it starts.
+\ Dropping a suffix rather than sifting leaves every surviving row where it was.
+: LOG-TRUNC-TO ( n -- ) {: k:n :}
+   k NAME-CELLS * VEC-LEN LOG-NAMES VEC-LEN!
+   k VEC-LEN LOG-LENS VEC-LEN!
+   k VEC-LEN LOG-WIDS VEC-LEN!
+   k VEC-LEN LOG-OLD-START VEC-LEN!
+   k VEC-LEN LOG-OLD-LEN VEC-LEN!
+   k VEC-LEN LOG-NEW-LEN VEC-LEN!
+   k VEC-LEN LOG-NEW-START VEC-LEN! ;
+
+: LOG-FLOOR-ROW ( n -- n ) {: floor:n :}
+   ROWS#
+   ROWS# 0 ?do
+      i NEW-START-AT floor >= if drop i leave then
+   loop ;
+
+\ ...and that the rest of the log really is above the floor. A row below it after
+\ the cut would mean this log is not the sequence the cut rests on, which is a
+\ defect in this file rather than anything a program can ask for: there is no
+\ correct answer to give and no caller to give it to, so it dies here rather than
+\ dropping the wrong rows. A watcher may not throw - the reclamation it is
+\ answering is already half done - and this is the shape
+\ src/compiler/native/clobber.f uses for the same class of defect.
+: LOG-ORDER-CK ( n n -- ) {: floor:n k:n :}
+   ROWS# k ?do
+      i NEW-START-AT floor < if
+         s" npub: logged republications out of publication order" 76 die
+      then
+   loop ;
+
+: LOG-DROP-FROM ( n -- ) {: floor:n :}
+   floor LOG-FLOOR-ROW {: k:n :}
+   floor k LOG-ORDER-CK
+   k LOG-TRUNC-TO ;
 
 \ ---- which names may be republished -----------------------------------------
 \ A republishable record is a live word of a real wordlist whose body the running
@@ -384,8 +546,10 @@ variable CLAIMED
 \ The floor of a code reclamation. The bytes above it are the engine's again, so
 \ the slots this seam claimed up there are claimable again too - and a routine
 \ that starts below the floor is untouched, which is why this lowers the line to
-\ the floor rather than to nothing.
+\ the floor rather than to nothing. The log's rows above the floor go with it,
+\ for the reason LOG-DROP-FROM gives: what they name is not the routine any more.
 : RECLAIMED ( n -- ) {: floor:n :}
+   floor LOG-DROP-FROM
    floor CLAIMED @ < if floor CLAIMED ! then ;
 
 \ ---- the routine's branches and the slot it is written at --------------------
@@ -768,9 +932,10 @@ public
 : IN-REGION? ( n -- bool )
    EXTERNAL? 0= ;
 
-\ How many words this process has republished.
+\ How many words this process has republished whose code is still where it was
+\ put. It is what a test measures a publication against.
 : REPUBLISHED ( -- n )
-   LOG-N @ ;
+   ROWS# ;
 
 : REPUBLISHED? ( ptr u8 n n -- bool ) {: a:ptr u:n wid:n :}
    a u wid LOG-FIND 0 >= ;
@@ -779,16 +944,16 @@ public
 \ started, and how many bytes of it the engine recorded. This is the only
 \ surviving measurement of what the old emitter produced for that name.
 : OLD-START ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
-   LOG-OLD-START  a u wid LOG-OK SLOT @ ;
+   LOG-OLD-START  a u wid LOG-OK VEC-IDX VEC-N@ ;
 
 : OLD-LEN ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
-   LOG-OLD-LEN  a u wid LOG-OK SLOT @ ;
+   LOG-OLD-LEN  a u wid LOG-OK VEC-IDX VEC-N@ ;
 
 : NEW-START ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
-   LOG-NEW-START  a u wid LOG-OK SLOT @ ;
+   LOG-NEW-START  a u wid LOG-OK VEC-IDX VEC-N@ ;
 
 : NEW-LEN ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
-   LOG-NEW-LEN  a u wid LOG-OK SLOT @ ;
+   LOG-NEW-LEN  a u wid LOG-OK VEC-IDX VEC-N@ ;
 
 private
 

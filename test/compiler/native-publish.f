@@ -47,6 +47,7 @@
 \ more than it said and the corpus crashed several words later.
 
 require lib/test.f
+require lib/fmt.f
 require src/habu/layout.f
 require src/compiler/native/publish.f
 require test/compiler/native-source-fixture.f
@@ -472,6 +473,198 @@ variable PT-WID
    s" a word that was never republished is unchanged" T-LABEL
    s" 7 NPUB-TEST:PUB-KEEP" EV-N 21 T= ;
 
+\ ---- the log holds one row per republished word, not 128 ----------------------
+\ WHAT THIS IS FOR. The replacement log used to be a fixed table of 128 rows,
+\ which is what the system republished when it was written. Once the clobber
+\ record grew past its own fixed table this was the next ceiling under it: a run
+\ that drove the cut's own entry over four hundred definitions published EXACTLY
+\ 128 and was refused the 129th with E-NPUB-CAP, after every other refusal this
+\ seam can make had accepted it. A log that cannot grow is a bound on how much of
+\ a program the chain may publish, and this case is what says it no longer is one.
+\
+\ IT IS DRIVEN THROUGH THE SEAM AND NOT AROUND IT. Every row here is written by
+\ NPUB:REPUBLISH, which is the only word that writes one - the log is private and
+\ has no other door - so what the case fills is the real log by the real path.
+\ The emission is the suite's own sealed one, published under one name after
+\ another: a publication with no placement may be written at whatever slot the
+\ seam claims (RECORD-CASE above is the same fact stated once), so one emission
+\ can stand for the many definitions a cut publishes without paying for a chain
+\ compile per row.
+\
+\ AND WHAT IT MEASURES IS NOT JUST THE COUNT. Every row is read back after the
+\ storage has doubled twice, against the slot the seam claimed for it - the
+\ routines are all one size, so row k belongs at base + k sizes and a lookup that
+\ answered a neighbour would be exactly one routine out. The spellings are read
+\ back too, because they live in a column of their own and a growth that smeared
+\ it would answer one name's row for another: PUB-G1 and PUB-G10 share a prefix,
+\ and neither the bare prefix nor a spelling one byte longer than a stored one may
+\ be found.
+\
+\ AND THEN THE ROWS ARE GIVEN BACK, which is the whole of why the ceiling is a
+\ bound on live routines rather than on how long the process has been running.
+\ The reclamation is the engine's own FORGET, so the records go with the code and
+\ nothing is left pointing into the space that was handed back. This case runs
+\ last for that reason.
+128 constant OLD-CEILING              \ the fixed table the log used to be
+320 constant GROWN-ROWS               \ two doublings past the seed
+
+64 BUFFER: G-NAME
+variable G-NAME-U
+variable G-BASE
+variable G-SIZE
+variable G-BEFORE
+variable G-SQ-START
+variable G-OLD-FIRST
+variable G-OLD-LAST
+
+: G-NAME$ ( -- ptr u8 n )
+   G-NAME G-NAME-U @ ;
+
+: G-NAME! ( n -- ) {: k:n :}
+   SB-RESET
+   s" PUB-G" SB-APPEND
+   k FMT:SB-U
+   SB$ {: a:ptr u:n :}
+   a G-NAME u STR-LEN BYTE-COPY-LEN
+   u G-NAME-U ! ;
+
+\ The subjects. They are compiled by the ordinary interpret path, so each one is
+\ a record the engine published in the global wordlist - which is what a
+\ republication rewrites.
+: G-DEF ( n -- ) {: k:n :}
+   k G-NAME!
+   SB-RESET
+   s" : " SB-APPEND  G-NAME$ SB-APPEND  s"  ( n -- n ) 1 + ;" SB-APPEND
+   SB$ EV ;
+
+: G-DEFINE-ALL ( -- )
+   GROWN-ROWS 0 ?do i G-DEF loop ;
+
+: G-REC-START ( n -- n ) {: k:n :}
+   k G-NAME!
+   G-NAME$ GLOBAL-WID XREF-FIND-WL
+   dup XREF-FOUND? 0= if E-NPUB-NAME throw then
+   XREF-START ;
+
+\ Where the seam wrote row k's routine. One emission means one size, and the seam
+\ moves the code pointer past exactly the emission it published (BYTES-CASE
+\ above), so the slots are that size apart and this is an exact expectation
+\ rather than a bound.
+: G-AT ( n -- n ) {: k:n :}
+   G-BASE @ k G-SIZE @ * + ;
+
+: G-PUB ( n -- ) {: k:n :}
+   k G-NAME!
+   G-NAME$ GLOBAL-WID NPUB:REPUBLISH ;
+
+: G-NEW-START ( n -- n ) {: k:n :}
+   k G-NAME!
+   G-NAME$ GLOBAL-WID NPUB:NEW-START ;
+
+: G-KNOWN? ( n -- bool ) {: k:n :}
+   k G-NAME!
+   G-NAME$ GLOBAL-WID NPUB:REPUBLISHED? ;
+
+: G-ROW-EXACT ( n -- ) {: k:n :}
+   k G-NEW-START  k G-AT T=
+   k G-NAME!
+   G-NAME$ GLOBAL-WID NPUB:NEW-LEN  G-SIZE @ INSN-BYTES - T= ;
+
+\ Every row against its own slot, in one answer: a lookup that answered a
+\ neighbour's row, or a growth that lost or moved one, fails here whichever row
+\ it was.
+: G-ALL-EXACT? ( -- bool )
+   true
+   GROWN-ROWS 0 ?do
+      i G-NEW-START  i G-AT <> if drop false leave then
+   loop ;
+
+\ The order the reclamation cut rests on: a publication's slot is above every
+\ slot claimed before it, so the rows a floor takes away are the tail of the log.
+: G-ORDERED? ( -- bool )
+   true
+   GROWN-ROWS 1 ?do
+      i G-NEW-START  i 1- G-NEW-START <= if drop false leave then
+   loop ;
+
+: G-FILL ( -- )
+   NPUB:REPUBLISHED G-BEFORE !
+   A64EMIT:SIZE G-SIZE !
+   NPUB:NEXT-SLOT G-BASE !
+   s" PUB-SQ" PUB-WID NPUB:NEW-START G-SQ-START !
+   0 G-REC-START G-OLD-FIRST !
+   GROWN-ROWS 1- G-REC-START G-OLD-LAST !
+   GROWN-ROWS 0 ?do i G-PUB loop ;
+
+: G-CASES ( -- )
+   s" the log holds one row per republished word, not 128" T-LABEL
+   NPUB:REPUBLISHED  G-BEFORE @ GROWN-ROWS + T=
+   GROWN-ROWS OLD-CEILING > TTRUE
+
+   s" a row written before the storage grew still answers its own routine"
+   T-LABEL
+   0 G-ROW-EXACT
+   OLD-CEILING 1- G-ROW-EXACT
+
+   s" and so does the row the fixed table had no slot for at all" T-LABEL
+   OLD-CEILING G-ROW-EXACT
+   GROWN-ROWS 1- G-ROW-EXACT
+
+   s" every row of the grown log answers the slot the seam claimed for it"
+   T-LABEL
+   G-ALL-EXACT? TTRUE
+
+   s" and the rows are in publication order, which the reclamation cut rests on"
+   T-LABEL
+   G-ORDERED? TTRUE
+
+   s" the code the old emitter produced is what the copied rows still report"
+   T-LABEL
+   0 G-NAME! G-NAME$ GLOBAL-WID NPUB:OLD-START G-OLD-FIRST @ T=
+   GROWN-ROWS 1- G-NAME! G-NAME$ GLOBAL-WID NPUB:OLD-START G-OLD-LAST @ T=
+   G-OLD-FIRST @ G-OLD-LAST @ T<>
+
+   s" the spelling column is matched whole, by name and by wordlist" T-LABEL
+   s" PUB-G1" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" PUB-G10" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" PUB-G" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+   s" PUB-G1X" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+   s" PUB-G3199" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+   s" PUB-G1" XREF-NAMESPACE-WL NPUB:REPUBLISHED? TFALSE
+
+   s" a row the log has no name for is still refused by name" T-LABEL
+   [: s" PUB-G3199" GLOBAL-WID NPUB:NEW-START drop ;] E-NPUB-LOG TTHROWSQ
+
+   s" and the log's own refusal still comes before anything moves" T-LABEL
+   LONG$ GLOBAL-WID E-NPUB-CAP POINT ;
+
+\ Reclaiming the code the rows describe. The engine's own FORGET is the door:
+\ it retires the records from this name on and hands their code space back
+\ through the one notice every address-keyed record is dropped by, so the rows
+\ go with the routines rather than outliving them.
+: G-RECLAIM-CASES ( -- )
+   s" reclaiming the code they describe gives every one of those rows back"
+   T-LABEL
+   s" PUB-G0" FORGET-DEFS-FROM
+   NPUB:REPUBLISHED G-BEFORE @ T=
+   0 G-KNOWN? TFALSE
+   OLD-CEILING G-KNOWN? TFALSE
+   GROWN-ROWS 1- G-KNOWN? TFALSE
+
+   s" and the rows below the floor are exactly as they were" T-LABEL
+   s" PUB-SQ" PUB-WID NPUB:REPUBLISHED? TTRUE
+   s" PUB-SQ" PUB-WID NPUB:NEW-START G-SQ-START @ T= ;
+
+: GROW-BODY ( IR-CTX:ctx -- )
+   COMPILE-SQ
+   G-FILL
+   G-CASES ;
+
+: GROW-CASES ( -- )
+   G-DEFINE-ALL
+   NFIX:BINDING [: GROW-BODY ;] IR-CTX:WITH-CONTEXT
+   G-RECLAIM-CASES ;
+
 public
 
 : RUN ( -- )
@@ -482,6 +675,7 @@ public
    PLACE-CASE
    ATOMIC-CASES
    BYTES-CASE
+   GROW-CASES
    T-REPORT ;
 
 ;package
