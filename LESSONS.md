@@ -5716,3 +5716,15 @@ not load. After any split, build every intermediate commit on its own
 before believing the stack. Same lane: a refusal that MARKS its token
 for a handler is nameless in any pass without one - record the token
 at the refusal site, not in the handler.
+
+## The inliner defeats behavioral assertions written as call sites (2026-08-10)
+
+A fixture asserting "the word still runs its own code" is silently
+defeated when written as a compiled call site - the inliner may have
+copied the body, so the test passes against an engine that corrupted
+the record. Enter through the interpreter (evaluate), which uses the
+address the record holds. The alias-reclamation case passed against a
+BROKEN engine until the call form changed. Sibling rule from the same
+lane: a recorded length is not a routine's extent (measured: 554 baked
+records where START+LEN+4 is not the next start) - derive floors from
+starts and slot-ordering, never from lengths.
