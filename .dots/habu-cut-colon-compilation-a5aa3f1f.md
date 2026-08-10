@@ -267,3 +267,18 @@ CELLS where the checker permutes ROWS across multi-cell ADT values; the cut
 must not land while that miscompile is open. Also ordered before the cut:
 habu-per-site-relocation-bb9b6d70 (AOT), habu-grow-the-republication-52ef5df0
 (LOG-MAX), seed closure.
+
+PREREQUISITE 5 REPLACED BY MEASUREMENT 2026-08-11 (seed-closure lane): the
+seed is the BOOT PREFIX, not the baked image - the chain arrives as ONE
+require row (~40 bytes of IBUFSZ; 53 flat rows would take the shared buffer
+to 87.5% and force IBUFSZ 4->8MB). Closure measured: 53 files / 50,703
+lines / 2.30MB; NREACH excluded for a derived reason (it serves
+REpublication; the cut compiles at ';' with no callers yet); 15 files
+directory-thinking would miss (5 top-level src/compiler, asm.f, 8 lib/*).
+Impact: +7,464 dict records (40% of cap), +1.2MB code, +1.5MB DATA
+(NSTR = 53%), +1.24s cold boot (gate multiplier UNMEASURED - count cold
+execs before Stage B lands). CONSEQUENCE: a source-prefix seed means the
+old emitter compiles the chain at every boot, so
+habu-delete-the-old-679cfd35 is UNREACHABLE until the baked-code stage
+(Stage F: AOT format change, REC-MAX 256->7500+, BLOB-CAP 64KB->1.1MB+).
+Staged plan A-F on the seed dots minted 2026-08-11.

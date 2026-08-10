@@ -49,3 +49,11 @@ form. [']: option ii (widen EMIT-ADDRS to the site's own Rd, stronger than
 today, Reloc.v updated) - the x9-copy route is rejected as a patch. Stages
 3-4 are completeness, not cut-critical. +1 insn per DATA site moves the
 pinned byte baselines - re-pin in the same change.
+
+SCOPE NOTE 2026-08-11 (seed-closure lane): this leaf's DATA gap is the
+IN-WINDOW case only. PRE-WINDOW DATA literals (NSTR arena, NTRAP table -
+allotted when the PREFIX loads, below d0) are a THIRD relocation class:
+invisible to the window scan AND wrong to rebase by the window delta (their
+correct value is fixed by the prefix's own DP, which differs between
+metabuild host and bin/hb). Separate dot: habu-aot-pre-window (minted
+2026-08-11).
