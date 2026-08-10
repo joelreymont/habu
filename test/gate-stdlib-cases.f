@@ -399,6 +399,15 @@ SUITE compiler-native-inline
    test/compiler/native-inline.f
 ;SUITE
 
+\ Which bytes of the code arena a reclamation may hand back. It runs after the
+\ publication seam and the two address-keyed records because the case that says
+\ a floor is wrong needs a republished routine to be wrong ABOUT, and the case
+\ that says the floor still moves reads the publication log row that goes with
+\ the routine it gives back.
+SUITE code-reclaim
+   test/code-reclaim.f
+;SUITE
+
 \ Carrying a migration back to the callers that were compiled before it: the
 \ call instructions already in the image, moved onto the routine the chain
 \ published, and every reason a move is refused. It runs after the publication

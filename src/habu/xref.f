@@ -472,6 +472,74 @@ variable WATCH-N
 TRUSTED: WATCH-AT ( n -- ptr [ n -- ] )
    cells WATCH-TBL + ;
 
+\ ---- which bytes a reclamation is allowed to be about ------------------------
+\ A FLOOR IS A STATEMENT ABOUT CODE ORDER. The bytes from it upwards are handed
+\ back and rewritten, so no routine a surviving record still points at may begin
+\ there. The record array, though, is in DEFINITION order, and the two orders
+\ agree only while every routine is written in the order its record was made.
+\ Two things in this system separate them, and both are ordinary:
+\
+\   - a republication (src/compiler/native/publish.f) writes a word's new
+\     routine at the top of the arena and leaves its record where it was, so an
+\     EARLY record can point at LATE code;
+\   - an `EXPORT` alias publishes a second record for a word that already
+\     exists, so a LATE record can point at EARLY code - the alias record's
+\     start is the original's routine, which everything defined between them
+\     sits above.
+\
+\ So a floor read off ONE record's start is reading the wrong order, and the
+\ answer is wrong in both directions: too high and retired routines are never
+\ given back, too low and a surviving word's routine is. FORGET-DEFS-FROM read
+\ exactly that, and forgetting an alias handed back the code of the two live
+\ words underneath it - the address-keyed records then correctly dropped their
+\ rows, and calling either word ran whatever was compiled next.
+\
+\ THE FLOOR IS THEREFORE A ROUTINE'S OWN START, CHOSEN BY ADDRESS. Below it must
+\ lie every surviving routine; at it must begin a routine the sweep retires. A
+\ retired routine's start is the one address that can be named without knowing
+\ how long the routine below it is - the recorded length is the span the inliner
+\ copies and not the whole emission, so measuring the last survivor's END would
+\ be measuring the wrong number. What that costs is a routine's worth of space
+\ when the sweep's lowest retirement is not the first thing above the survivors:
+\ the bytes stay claimed, which is the harmless direction.
+
+\ The first address of the engine's code arena. Below it are the dictionary
+\ records themselves and, lower still, the engine's own loaded text where a
+\ primitive's record points - neither is a slot this pointer ever handed out.
+: ARENA-LO ( -- n )
+   dbase@ DICT-SIZE + ;
+
+\ Where a record's routine begins, or 0 for a record that has no routine in the
+\ arena: a package namespace row carries a wordlist id in that cell and a
+\ primitive row carries an address in the engine's text.
+: REC-CODE ( n -- n ) {: k:n :}
+   k XREF-REC XREF-START {: s:n :}
+   s ARENA-LO < if 0 exit then
+   s cp@ < if s exit then
+   0 ;
+
+variable LIVE-HI
+variable FLOOR-A
+
+: HIGHER ( n n -- n ) {: hi:n s:n :}
+   s hi > if s exit then
+   hi ;
+
+\ The highest address any routine below the cut begins at. A record that is
+\ already RETIRED still counts: `undefine` retires the name and leaves the
+\ routine where it is, and a caller compiled before that retirement still
+\ branches into it.
+: LIVE-SCAN ( n -- ) {: cut:n :}
+   0 LIVE-HI !
+   cut 0 ?do
+      LIVE-HI @ i REC-CODE HIGHER LIVE-HI !
+   loop ;
+
+: MIN-ABOVE-LIVE ( n n -- n ) {: floor:n s:n :}
+   s LIVE-HI @ <= if floor exit then
+   s floor < if s exit then
+   floor ;
+
 public
 
 \ A floor above the free code slot. There is nothing above the slot to reclaim,
@@ -480,6 +548,12 @@ public
 \ make this word mean two things. Refused by name, and public because it is a
 \ refusal a caller can reach.
 7178 constant E-FLOOR
+
+\ A floor with a surviving routine at or above it. The bytes from a floor
+\ upwards are given back, so this is a caller asking for code that is still
+\ somebody's to be rewritten. It is refused before any watcher is told and
+\ before the pointer moves, so a caller that gets it has lost nothing.
+7179 constant E-LIVE
 
 \ Be told the floor of every code reclamation from here on. Registration is
 \ one-way and unordered: a watcher only drops what it holds, so no watcher can
@@ -491,13 +565,35 @@ public
    WATCH-N @ WATCH-AT xt!
    WATCH-N @ 1+ WATCH-N ! ;
 
+\ The floor of a sweep that retires every record from CUT upwards: the lowest
+\ address a retired routine begins at that is above every surviving routine's
+\ start. When the sweep retires no routine that sits above the survivors there
+\ is nothing to give back and the answer is the free slot itself.
+: FLOOR-FROM ( n -- n ) {: cut:n :}
+   cut LIVE-SCAN
+   cp@ FLOOR-A !
+   ndict@ cut ?do
+      FLOOR-A @ i REC-CODE MIN-ABOVE-LIVE FLOOR-A !
+   loop
+   FLOOR-A @ ;
+
 \ Reclaim the code space above this address. Every watcher is told the floor,
 \ and only then is the pointer moved: a watcher drops what it holds at or above
 \ the floor, so the bytes are released with nothing left claiming to describe
 \ them.
+\
+\ AND THE FLOOR IS HELD AGAINST THE RECORDS THAT SURVIVE IT rather than taken on
+\ the caller's word. Every caller computes its floor from something else - this
+\ file from the records a FORGET retires, src/core/generated-declaration-
+\ dictionary.f from the free slot its transaction saved - and a floor is only
+\ ever correct relative to what the dictionary still points at, which is a
+\ question this word can ask and they cannot answer for each other. The scan
+\ runs before the watchers, so a refusal here leaves the arena exactly as it was.
 : TRUNCATE ( n -- )
    {: floor:n :}
    floor cp@ > if E-FLOOR throw then
+   ndict@ LIVE-SCAN
+   floor LIVE-HI @ <= if E-LIVE throw then
    WATCH-N @ 0 ?do
       floor i WATCH-AT @ execute
    loop
@@ -522,7 +618,7 @@ variable XREF-FORGET-CP
 : FORGET-DEFS-FROM ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
-   idx XREF-REC XREF-START XREF-FORGET-CP !
+   idx CODE-RECLAIM:FLOOR-FROM XREF-FORGET-CP !
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict!
    XREF-FORGET-CP @ CODE-RECLAIM:TRUNCATE ;

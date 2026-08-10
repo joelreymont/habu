@@ -463,6 +463,10 @@ public
    s" test/compiler/native-migrate.f" GSI-FORK-INCLUDE
    s" test/compiler/native-clobber.f" GSI-FORK-INCLUDE
    s" test/compiler/native-inline.f" GSI-FORK-INCLUDE
+   \ Which bytes of the code arena a reclamation may hand back. It is listed
+   \ here as well as in test/gate-stdlib-cases.f for the reason given below:
+   \ only this list is what test/run.f actually forks.
+   s" test/code-reclaim.f" GSI-FORK-INCLUDE
    \ Carrying a migration back to callers that already exist, and every reason a
    \ move is refused. It belongs after the publication, clobber and inline leaves
    \ for the reason test/gate-stdlib-cases.f gives: what decides whether a site
