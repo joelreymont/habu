@@ -146,7 +146,8 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 3 constant OFF-IN                    \ rename: the number of values consumed; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
 4 constant OFF-N                     \ rename: the number of values put back; callable: the values the callee leaves; otherwise zero
 5 constant OFF-GLUE                  \ callable: which of the callee's result cells belong to a multi-cell value; otherwise zero
-6 constant ROW-CELLS
+6 constant OFF-DEAD                  \ callable: whether control comes back from the callee; otherwise zero
+7 constant ROW-CELLS
 0 constant UNUSED                    \ a payload cell this meaning does not use
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant ROW-CAP-MAX
 $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
@@ -162,6 +163,19 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 \ The stored codes are this table's stable vocabulary. Both decoders are exact
 \ cases, so a row written past this package's declarers cannot decode as some
 \ other meaning or some other operation.
+
+\ Whether control comes back from a callee. It is a stored CODE and not a raw
+\ flag for the same reason the meanings are: a row cell holds a number, and a
+\ number this file did not name is a number some other reader could read as
+\ something else. COMES-BACK is zero so that it is also what an unset payload
+\ cell says, which makes "a declarer that had no answer" and "a callee control
+\ comes back from" the same row - the safe direction, since the only cost of it
+\ is a refusal where a finer answer would have compiled.
+0 constant COMES-BACK
+1 constant NO-RETURN
+
+: NORET-CODE ( bool -- n )
+   if NO-RETURN else COMES-BACK then ;
 : MEAN-CODE ( HIR:meaning -- n )
    MATCH HIR:meaning
       literal   OF 0 ENDOF
@@ -573,9 +587,9 @@ private
 \ Append one validated row. Every declarer ends here, so the ownership, the
 \ duplicate rule and the ceiling are proved in one place, and the symbol it
 \ takes has already been answered for by the module's interner.
-: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n n -- )
+: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n n n -- )
    {: c:IR-CTX:ctx r:IR-ARENA:arena w:HIR-WORD:interned mean:n a:n
-      in:n n:n glue:n :}
+      in:n n:n glue:n dead:n :}
    w HIR--WORD-INTERNED:UNMAKE {: id:IR-ID:ir-symbol-id :}
    r id SYM-OWNER-CK
    id IR-ID:SYMBOL-LOCAL {: so:n :}
@@ -586,7 +600,8 @@ private
    c r a IR-ARENA:PUSH drop
    c r in IR-ARENA:PUSH drop
    c r n IR-ARENA:PUSH drop
-   c r glue IR-ARENA:PUSH drop ;
+   c r glue IR-ARENA:PUSH drop
+   c r dead IR-ARENA:PUSH drop ;
 
 \ The row an operation word writes, once its symbol has been answered for. The
 \ two declarers below differ only in which interner answered.
@@ -594,7 +609,7 @@ private
    {: o:HIR:opcode :}
    HIR-MEANING:OP MEAN-CODE
    o OPCODE-CODE
-   UNUSED UNUSED UNUSED
+   UNUSED UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 \ The row a constant-and-operation word writes. Some Habu words are one integer
@@ -606,7 +621,7 @@ private
    {: o:HIR:opcode v:n :}
    HIR-MEANING:CONST-OP MEAN-CODE
    o OPCODE-CODE
-   v UNUSED UNUSED
+   v UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 \ The row a word that pushes one fixed value writes. A `create`d data word is
@@ -619,7 +634,7 @@ private
    {: v:n :}
    HIR-MEANING:FIXED MEAN-CODE
    UNUSED
-   v UNUSED UNUSED
+   v UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 \ Where the spelling of a fixed word is read back out of the module's interner so
@@ -660,13 +675,21 @@ create FIX-NAME FIX-NAME-CAP allot
 \ (dot habu-rename-over-rows-982167af). Zero means nothing the callee leaves is
 \ bundled, which is the answer for every one-cell row and the safe reading of a
 \ row a declarer had no glue for.
-: CALLABLE-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n -- )
-   {: entry:n in:n out:n glue:n :}
+\ AND THE DEADNESS IS THE CALLEE'S CONTROL EFFECT, TRAVELLING THE SAME ROAD FOR
+\ THE SAME REASON. Whether control comes back from a call is a fact of the
+\ callee, not of the site: `throw`, `die` and every definition whose own paths
+\ all end in one have no normal continuation, and a caller that compiled such a
+\ call as an ordinary one would go on to make the path it is on meet another
+\ one. Zero is "control comes back", which is what every ordinary word answers
+\ and the safe reading of a row a declarer had no answer for: it can only cost a
+\ refusal where a finer answer would have compiled, never the reverse.
+: CALLABLE-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n n -- )
+   {: entry:n in:n out:n glue:n dead:n :}
    entry 0 <= if E-HIR-CALLEE throw then
    in 0 < out 0 < or if E-HIR-CALLEE throw then
    HIR-MEANING:CALLABLE MEAN-CODE
    entry
-   in out glue
+   in out glue dead
    ROW-ADD ;
 
 \ The row a structured control word writes. It stages no operation of its own -
@@ -677,7 +700,7 @@ create FIX-NAME FIX-NAME-CAP allot
    {: k:HIR:ctrl :}
    HIR-MEANING:CONTROL MEAN-CODE
    k CTRL-CODE
-   UNUSED UNUSED UNUSED
+   UNUSED UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 \ The row a word with no payload at all writes. The two halves of a typed
@@ -693,7 +716,7 @@ create FIX-NAME FIX-NAME-CAP allot
    m HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ or
    0= if E-HIR-CLASS throw then
    m MEAN-CODE
-   UNUSED UNUSED UNUSED UNUSED
+   UNUSED UNUSED UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 \ The same declaration for a module still being built: the builder answers for
@@ -748,14 +771,15 @@ public
 \ the same reason DECLARE-FIXED is - which words a program calls is a fact about
 \ that program and not about the dialect, so it is known while the program's
 \ module is being built and never afterwards.
-\ A caller that states a callee by hand states no glue, and gets none: its rows
-\ read as entirely unbundled, which is what every one-cell row is anyway and what
-\ this declarer's callers have always compiled against. RESOLVE-CALLABLE below
-\ asks the checker instead and states the real answer.
+\ A caller that states a callee by hand states no glue and no deadness, and gets
+\ neither: its rows read as entirely unbundled and as coming back, which is what
+\ every one-cell row is anyway and what this declarer's callers have always
+\ compiled against. RESOLVE-CALLABLE below asks the checker instead and states
+\ the real answer to both.
 : DECLARE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id entry:n in:n out:n :}
-   c r  c b id BKEY-CK  entry in out NDICT:GLUE-NONE CALLABLE-ROW ;
+   c r  c b id BKEY-CK  entry in out NDICT:GLUE-NONE COMES-BACK CALLABLE-ROW ;
 
 \ Make that row for a spelling nobody staged, by asking the engine about it.
 \
@@ -790,7 +814,8 @@ public
    FIX-NAME u NDICT:SPELL-ARITY {: in:n out:n :}
    in NDICT:ARITY-NONE = if false exit then
    FIX-NAME u NDICT:SPELL-GLUE nip {: glue:n :}   \ the callee's RESULT cells are the caller's concern
-   c r  c b id BKEY-CK  entry in out glue CALLABLE-ROW
+   FIX-NAME u NDICT:SPELL-DEAD? {: dead:bool :}
+   c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW
    true ;
 
 \ Declare that a source word elaborates to one operation of this dialect. The
@@ -813,7 +838,7 @@ public
    c r  sy id SYM-CK
    HIR-MEANING:UNMODELED MEAN-CODE
    why IR-ID:SYMBOL-LOCAL 1+
-   UNUSED UNUSED UNUSED
+   UNUSED UNUSED UNUSED UNUSED
    ROW-ADD ;
 
 private
@@ -866,7 +891,7 @@ create STG-PICK PICK-MAX cells allot
    loop
    c r w
    HIR-MEANING:RENAME MEAN-CODE
-   st STG-IN @ STG-N @ UNUSED
+   st STG-IN @ STG-N @ UNUSED UNUSED
    ROW-ADD ;
 
 \ The same declaration for a module still being built. The stage is consumed
@@ -1023,6 +1048,15 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
    r l OFF-N RC@ ;
+
+\ Whether control comes back from a call to this callee. The one reader of the
+\ fact RESOLVE-CALLABLE put in the row, so every pass that has to know - the
+\ block count, the walk, the tail decision - asks one question and gets one
+\ answer, instead of each asking the engine again and risking three.
+: CALLEE-DEAD? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
+   r l OFF-DEAD RC@ NO-RETURN = ;
 
 \ Which control action a structured control word is.
 : CTRL@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:ctrl )

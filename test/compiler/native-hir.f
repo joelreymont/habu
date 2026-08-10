@@ -1516,12 +1516,13 @@ variable BC-OUT
 
 \ ---- forged rows -------------------------------------------------------------
 \ A holder who bypasses the package and appends raw cells writes a row whose
-\ shape is right and whose content is not. The six cells are the row shape
+\ shape is right and whose content is not. The seven cells are the row shape
 \ src/compiler/native/hir-word.f commits to, in its order: the word's symbol
 \ ordinal, the stored meaning, the payload, the rename's input count, its pick
-\ count, and - for a callable - which of the callee's result cells belong to one
-\ multi-cell value. A change to that layout has to change this fixture too, which
-\ is why the sixth cell arrived here the day the layout gained it.
+\ count, - for a callable - which of the callee's result cells belong to one
+\ multi-cell value, and whether control comes back from that callee. A change to
+\ that layout has to change this fixture too, which is why the sixth cell arrived
+\ here the day the layout gained it and the seventh the day it gained that.
 : RAW-ROW ( IR-CTX:ctx IR-ARENA:arena n n n n n -- )
    {: c:IR-CTX:ctx r:IR-ARENA:arena so:n mean:n a:n in:n n:n :}
    c r so IR-ARENA:PUSH drop
@@ -1529,6 +1530,7 @@ variable BC-OUT
    c r a IR-ARENA:PUSH drop
    c r in IR-ARENA:PUSH drop
    c r n IR-ARENA:PUSH drop
+   c r 0 IR-ARENA:PUSH drop
    c r 0 IR-ARENA:PUSH drop ;
 
 \ One empty table, one forged row, and the symbol that names it.

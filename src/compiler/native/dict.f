@@ -223,6 +223,32 @@ public
 TRUSTED: EFF-CELLS ( ptr u8 n -- n n )
    EFFECT-QUERY if EFFECT-DIN-CELLS EFFECT-DOUT-CELLS else -1 -1 then ;
 
+\ ---- and whether control comes back from it ----------------------------------
+\ THE FOURTH QUESTION, AND IT HAS THE SAME OWNER AS THE ARITY. A call to `throw`
+\ or `die`, or to any word whose own body ends in one, has no normal
+\ continuation: the values below it never reach the block after the call,
+\ because control never gets there. A caller that compiled such a call as an
+\ ordinary one has to make the path it is on join the next one, and there is
+\ nothing to join with - which is the E-NELAB-JOIN the chain refused
+\ `: JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;` with.
+\
+\ THE ANSWER IS THE CHECKER'S AND THIS FILE ASKS FOR IT BY NAME. The checker
+\ records a control flag per WORD, in the same store and keyed by the same
+\ symbol as everything else it certifies (src/core/checker.f, NORET-AXIOMS and
+\ CTL-FLAGS): `throw` and `die` carry theirs as axioms, and a definition whose
+\ own paths all end in one earns the flag when it is certified. So there is no
+\ list of dead words here and no spelling compared - the same discipline
+\ SPELL-ARITY keeps, for the same reason. A second list would go stale the
+\ moment a package defined its own `throw`, and the checker learned that the
+\ hard way: keying deadness on a spelling certified a body whose arm returned
+\ nothing where its signature promised a cell.
+\
+\ THE BOUNDARY ANSWERS THE QUESTION AND NOT THE BITS, which is why the mask is
+\ inside it. Which bit means dead is the checker's encoding; that this file
+\ needs to know is whether the call comes back.
+TRUSTED: EFF-DEAD? ( ptr u8 n -- bool )
+   CTL-FLAGS CTL-DEAD and 0 <> ;
+
 \ ---- which cells of a row may not be separated from one another ---------------
 \ WHY A CALL SITE HAS TO KNOW THIS AND CANNOT WORK IT OUT. A value of a layout
 \ family occupies several stack cells, and those cells are one value: reordering
@@ -395,6 +421,14 @@ public
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
    dn dc true ROW-GLUE
    on oc false ROW-GLUE ;
+
+\ Whether control comes back from a call to the word this spelling denotes.
+\ False for a name the checker holds no control flag for, which is every
+\ ordinary word: a call that comes back is the common case and the one a caller
+\ needs no permission for. A name the checker certified nothing at all for is
+\ refused by SPELL-ARITY before any caller reaches for this.
+: SPELL-DEAD? ( ptr u8 n -- bool )
+   EFF-DEAD? ;
 
 private
 get-current prot-wid-add
