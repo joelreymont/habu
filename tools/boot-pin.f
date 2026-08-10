@@ -117,7 +117,9 @@ variable BP-SET
    s" src/os/linux/layout.f" ;
 
 \ Canonical boot-prefix path list — the single source of truth. Order MUST match
-\ src/habu/habu2.f PFX-LOAD-BASE-FILES then PFX-LOAD-SCRIPT-ARGV then
+\ src/habu/habu2.f PFX-LOAD-BASE-FILES, then PFX-LOAD-STDLIB-FILES (the checked
+\ stdlib the engine loads for every program, dot
+\ habu-seed-the-stdlib-d8e3a757), then PFX-LOAD-SCRIPT-ARGV then
 \ PFX-LOAD-INTMARK; the cross-check
 \ test enforces membership + count against that source. The hash and the test
 \ sandbox-copy both drive this, so the list lives in exactly one place.
@@ -158,6 +160,14 @@ variable BP-SET
    s" src/core/generated-declaration-protection.f" q execute
    s" src/core/layout-buffer-seal.f" q execute
    s" src/core/lower-cert-seal.f" q execute
+   s" lib/prelude.f" q execute
+   s" lib/errors.f" q execute
+   s" lib/adt/option.f" q execute
+   s" lib/cad-num-types.f" q execute
+   s" lib/cad-num-arithmetic.f" q execute
+   s" lib/string.f" q execute
+   s" lib/memory.f" q execute
+   s" lib/vector.f" q execute
    s" src/os/script-argv.f" q execute
    s" src/core/internal-mark.f" q execute ;
 

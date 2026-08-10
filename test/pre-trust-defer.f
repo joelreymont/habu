@@ -104,7 +104,15 @@ variable LAST-ERR-U
 
 : COPY-ENTRY ( ptr u8 n -- )  2dup FILE? if COPY-ONE else 2drop then ;
 
-: COPY-SRC-TREE ( -- )  s" src" [: COPY-ENTRY ;] WALK-FILES ;
+\ The sandbox has to hold everything the engine reads at boot, or the child dies
+\ naming a missing prefix file instead of reaching the refusal a case is about.
+\ Since dot habu-seed-the-stdlib-d8e3a757 that is no longer only src/: the cold
+\ prefix also loads the checked stdlib out of lib/. Both trees are walked whole
+\ rather than listing the prefix files, so a later prefix row inside either tree
+\ cannot silently leave this sandbox short.
+: COPY-SRC-TREE ( -- )
+   s" src" [: COPY-ENTRY ;] WALK-FILES
+   s" lib" [: COPY-ENTRY ;] WALK-FILES ;
 
 : SUB$ ( ptr u8 n -- ptr u8 n )                       \ ROOT/<rel> absolute path
    ROOT$ 2swap SUB-BUF JOIN-PATH SUB-U ! SUB-BUF SUB-U @ ;
@@ -261,11 +269,28 @@ variable LAST-ERR-U
    RESTORE-FILES ;
 
 \ Control for the backstop case: the SAME hook-blanked tree with the drain intact
-\ must boot clean. Without it the next case's exit 73 could be blamed on the
+\ must NOT produce the next case's 73. Without it that 73 could be blamed on the
 \ missing check hook instead of on the undrained table.
+\
+\ This control used to expect a clean boot. It cannot any more, and the reason is
+\ a real change in what the boot prefix does: since dot
+\ habu-seed-the-stdlib-d8e3a757 the prefix loads lib/adt/option.f and
+\ lib/cad-num-types.f, so booting now DECLARES types (an ENUM and the CAD-NUM
+\ NEWTYPEs) rather than only defining words. A declaration needs the check hook
+\ this case has just blanked, so the engine refuses at the generated constructor
+\ plan with exit 76 — fail-closed, and a strictly stronger statement than the
+\ silent boot it replaced. What the control has to provide is unchanged and is
+\ asserted directly below: 76 is not 73, so the backstop case's 73 still cannot
+\ be blamed on the blanked hook. The diagnostic is pinned by name so a future
+\ engine that started ignoring an uninstallable hook would fail here.
 : HOOK-BLANK-CONTROL-CASE ( -- )
    BLANK-CHECK-HOOK
-   s" blanked check hook alone still boots" SPAWN-RC 0 CHILD-RC
+   s" blanked check hook alone refuses the prefix declarations, exits 76"
+      SPAWN-RC 76 CHILD-RC
+   s" hook-blank control names the refused constructor plan" T-LABEL
+   ERR$ s" incomplete generated constructor plan" CONTAINS? TTRUE
+   s" hook-blank control is distinguishable from the backstop's 73" T-LABEL
+   76 73 T<>
    RESTORE-FILES ;
 
 \ Drain blanked AND check hook blanked: nothing after check-hook.f is checked, so

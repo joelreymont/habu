@@ -362,10 +362,19 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ absorbs it exactly - 9816 -> 9236, so code+pad is 126976 either way, the file
 \ stays inside the same 16 KiB page and neither MACOS-SIGNATURE nor MACOS-TOTAL
 \ moves (FILE-SIZE bin/hb still 148855, signature still 1295).
-117792 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
->>>>>>> conflict 1 of 2 ends
+\ 2026-08-10, the boot prefix gains the checked stdlib (dot
+\ habu-seed-the-stdlib-d8e3a757). The eight files are read from disk at boot and
+\ contribute no emitter text of their own, but their TABLE ROWS do: eight
+\ load rows and eight provide rows are an ADR and a BL each inside the
+\ cold-prefix routine, the eight path rows bake their path bytes, and the
+\ block's SNAP-CELL guard is three more instructions. Measured, not assumed -
+\ the candidate was built at this commit's parent and at this commit and the
+\ size maps differed: 117740 -> 118032, +292. Floor follows: 7148 -> 7440, pad
+\ 9236 -> 8944, code+pad 126976 either way, so the file stays inside the same
+\ 16 KiB page and neither MACOS-SIGNATURE nor MACOS-TOTAL moves.
+118084 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-7200 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+7492 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

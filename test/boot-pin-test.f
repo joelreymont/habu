@@ -34,7 +34,7 @@ public
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
 70 constant BPT-DRIFT-RC
-46 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 45 calls)
+54 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 53 calls)
                                     \ 22->26: +src/core/type-family.f +type-schema.f +sumtype.f
                                     \ +type-family-sha.f (TFAM growth; user sign-off dot
                                     \ habu-boot-pin-sign-be74cfd3). 26->31: +src/core/
@@ -56,6 +56,17 @@ public
                                     \ Later declaration/front-end rows brought the base to 42;
                                     \ 42->46: +generic declaration transaction,
                                     \ native dictionary owner, and protection owner.
+                                    \ 46->54: +the checked stdlib the engine now loads once
+                                    \ for every program instead of once per program —
+                                    \ lib/prelude.f, lib/errors.f, lib/adt/option.f,
+                                    \ lib/cad-num-types.f, lib/cad-num-arithmetic.f,
+                                    \ lib/string.f, lib/memory.f, lib/vector.f (dot
+                                    \ habu-seed-the-stdlib-d8e3a757; ruled by the
+                                    \ orchestrator 2026-08-10, EIGHT files — the ninth
+                                    \ candidate src/arch/arm64/asm.f was cut because it
+                                    \ opens no package and its 146 globals make a bare
+                                    \ name ambiguous under `using`, and it joins the
+                                    \ block through dot habu-pkg-the-arm64-ce972795).
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex
@@ -93,6 +104,8 @@ variable BPT-OFF
    s" src/os/macos" BPT-MKDIR
    s" src/os/linux" BPT-MKDIR
    s" src/habu" BPT-MKDIR
+   s" lib" BPT-MKDIR
+   s" lib/adt" BPT-MKDIR
    [: BPT-COPY ;] BP-EACH ;
 
 : BPT-CHECKER-SBX$ ( -- ptr u8 n )

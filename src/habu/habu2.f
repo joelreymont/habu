@@ -261,6 +261,12 @@ variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable
 variable LPCOMBINATORS  variable LPXREF  variable LPGENDECLDICT  variable LPGENDECLPROT
 variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPTOPROW
+\ Boot stdlib block (dot habu-seed-the-stdlib-d8e3a757): the checked stdlib the
+\ whole tree already requires, loaded once by the engine instead of once per
+\ program.
+variable LPPRELUDE      variable LPERRORS       variable LPOPTION
+variable LPCADTYPES     variable LPCADARITH     variable LPSTRING
+variable LPMEMORY       variable LPVECTOR
 variable LCHKSNAPTOKEN
 variable SRC-SFAIL
 
@@ -737,6 +743,42 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-LOAD-DECL-FILES
    PFX-LOAD-CORE-FILES ;
 
+\ The boot stdlib (dot habu-seed-the-stdlib-d8e3a757). These eight files are the
+\ checked surface the tree already requires everywhere - lib/string.f alone has
+\ 548 requiring files, lib/errors.f 472 - so every program used to pay for its
+\ own copy. Loading them once here makes each of those requires a registry
+\ no-op and gives every program the same pre-seal copy.
+\
+\ Order is the files' own require graph, read from the files: prelude and
+\ errors have no requires; adt/option.f is a bare ENUM; cad-num-types.f is the
+\ role NEWTYPEs and cad-num-arithmetic.f requires it; string.f requires errors,
+\ adt/option and cad-num-arithmetic; memory.f requires errors and
+\ cad-num-arithmetic; vector.f requires errors and memory. Three of them spell
+\ the dependency as `s" path" required` rather than the `require` keyword, so
+\ the graph has to be read from the files and not grepped for one spelling.
+\
+\ Unlike every other prefix file these DO carry require lines, so the provide
+\ rows for the eight must reach the registry BEFORE the first file text is read
+\ - otherwise the first `required` inside a file re-reads a file this table
+\ already loaded and the boot dies on a duplicate definition. That is what
+\ PFX-LOAD-STDLIB-COLD orders, and why the block cannot simply be appended to
+\ PFX-LOAD-CORE-FILES.
+\
+\ src/arch/arm64/asm.f is deliberately NOT here. It opens no package and would
+\ publish 146 global names to every boot, and the checker proves the cost: with
+\ it loaded, a bare `enc-b` under `using onnx` is ambiguous against the global
+\ ENC-B it defines (E-USING-SHADOW-GLOBAL, maki/onnx/proto-test.f). It joins
+\ this block once it has a package - dot habu-pkg-the-arm64-ce972795.
+: PFX-LOAD-STDLIB-FILES ( -- )
+   PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
+   PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
+   PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-LOAD-ROW
+   PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-LOAD-ROW
+   PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-LOAD-ROW
+   PFX-COMMON LPSTRING       s" lib/string.f"             PFX-LOAD-ROW
+   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-LOAD-ROW
+   PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-LOAD-ROW ;
+
 : PFX-LOAD-SCRIPT-ARGV ( -- )
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
 
@@ -834,10 +876,21 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PATH-ROW
    PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PATH-ROW ;
 
+: PFX-PATH-STDLIB-FILES ( -- )
+   PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PATH-ROW
+   PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PATH-ROW
+   PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PATH-ROW
+   PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-PATH-ROW
+   PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-PATH-ROW
+   PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PATH-ROW
+   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PATH-ROW
+   PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-PATH-ROW ;
+
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
    PFX-PATH-DECL-FILES
-   PFX-PATH-CORE-FILES ;
+   PFX-PATH-CORE-FILES
+   PFX-PATH-STDLIB-FILES ;
 
 \ The prefix reload below zeroes HOOK-CELL, so the boot-time load of the
 \ checker/core prefix is itself unchecked. The staged fixpoint pre-pass
@@ -1133,6 +1186,33 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PROVIDE-ROW
    PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PROVIDE-ROW ;
 
+\ The nine boot-stdlib provide rows. They are NOT part of PFX-PROVIDE-FILES:
+\ that word runs on snapshot boots too (it is outside the SNAP-CELL guard), and
+\ the dev snapshot's keep surface (tools/build-fixpoint.f BF-APPEND-SNAP-KEEP)
+\ does not carry lib/, so a row there would tell a snapshot engine that
+\ lib/string.f is already loaded when it is not - a silent no-op require and a
+\ missing STR:. On a cold boot these run inside PFX-LOAD-STDLIB-COLD, ahead of
+\ the file texts, which is exactly where the nine need them.
+: PFX-PROVIDE-STDLIB-FILES ( -- )
+   PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PROVIDE-ROW
+   PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PROVIDE-ROW
+   PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PROVIDE-ROW
+   PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-PROVIDE-ROW
+   PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PROVIDE-ROW
+   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PROVIDE-ROW
+   PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-PROVIDE-ROW ;
+
+\ Cold boots only, like PFX-LOAD-SCRIPT-ARGV-COLD above: a snapshot restores its
+\ bake-time dictionary and must not reload anything.
+: PFX-LOAD-STDLIB-COLD ( -- )
+   LBL {: done:label :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   PFX-PROVIDE-STDLIB-FILES
+   PFX-LOAD-STDLIB-FILES
+   done LBL, ;
+
 : PFX-PROVIDE-FILES ( -- )
    PFX-PROVIDE-CHECKER-FILES
    PFX-PROVIDE-DECL-FILES
@@ -1341,6 +1421,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
       12 1 MOVZ,  12 SP 8 STR,
    body LBL,
       EMIT-COLD-PREFIX
+      PFX-LOAD-STDLIB-COLD                         \ the checked stdlib, after the core files
       PFX-APPEND-ENGINE-SNAP-HOOK-BUILD
       PFX-LOAD-SCRIPT-ARGV-COLD
       PFX-PROVIDE-FILES
@@ -7488,7 +7569,11 @@ package LABELS
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPGENDECLDICT !  LBL LPGENDECLPROT !
    LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
-   LBL LPTOPROW !  LBL LCHKSNAPTOKEN ! ;
+   LBL LPTOPROW !
+   LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
+   LBL LPCADTYPES !  LBL LPCADARITH !  LBL LPSTRING !
+   LBL LPMEMORY !  LBL LPVECTOR !
+   LBL LCHKSNAPTOKEN ! ;
 
 : JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !
