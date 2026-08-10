@@ -569,11 +569,18 @@ variable CLAIMED
 \ would return from the caller. So the subtraction is this seam's own
 \ responsibility - and it is a subtraction of the RETURN, not of an instruction.
 \
-\ A ROUTINE THAT LEAVES BY BRANCHING HAS NO RETURN TO LEAVE OUT, so its recorded
+\ A ROUTINE THAT DOES NOT END IN A RETURN HAS NONE TO LEAVE OUT, so its recorded
 \ length is the whole emission. Subtracting anyway would record a four-byte tail
 \ branch as a word of no length at all, and every reader of a routine's extent -
 \ the engine's inliner, the workload scan, the byte column of the codegen
 \ comparison - would be reading a span that is not the routine.
+\
+\ THE QUESTION IS ABOUT THE LAST INSTRUCTION AND NOT ABOUT THE ROUTINE'S PATHS,
+\ which is a distinction the trap terminator made real. A routine that returns on
+\ one path and traps on another leaves by branching somewhere in the middle of
+\ itself and still ENDS in the return this subtraction is about; a routine every
+\ path of which traps ends in the branch and has nothing to subtract. Asking
+\ A64EMIT:LEAVES-BY-BRANCH? here would have taken the first one's return with it.
 \
 \ AND THE ENGINE'S INLINER STILL DECLINES IT, which is what makes the whole
 \ length safe to record. Whichever span C-CALL takes, the tail branch or the call
@@ -584,7 +591,7 @@ variable CLAIMED
 \ strictly between the link save and the link restore. C-CALL-SCAN-SAFE refuses a
 \ span containing either, so the copy falls back to the branch it always could.
 : RECORDED-LEN ( n -- n ) {: size:n :}
-   A64EMIT:LEAVES-BY-BRANCH? if size exit then
+   A64EMIT:TRAILING-RETURN? 0= if size exit then
    size INSN-BYTES - ;
 
 public

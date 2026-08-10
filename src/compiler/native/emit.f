@@ -387,8 +387,10 @@ variable EM-IFACE
 0 EM-IFACE !
 variable EM-NCALL
 0 EM-NCALL !
-variable EM-TAIL                     \ tail branches this emission wrote
+variable EM-TAIL                     \ branches out of the routine this emission wrote
 0 EM-TAIL !
+variable EM-LAST                     \ the form of the last operation it wrote
+-1 EM-LAST !
 
 \ ---- where this routine will be written --------------------------------------
 \ A branch to a block is measured from the layout, so it is the same displacement
@@ -2189,13 +2191,24 @@ variable CH-AT
 \ One operation written, and what it added to the two counts above. The cursor is
 \ read on both sides of the writer, so an elided adjustment costs the interface
 \ nothing here exactly as it costs the layout nothing there.
+\ Which forms leave the routine by BRANCHING to another one. Both of them end
+\ control here: the tail branch reaches a callee whose results become this
+\ routine's, and the trap reaches the routine that ends the process. What the two
+\ have in common is the one thing the readers of the count below ask about - a
+\ caller may not COPY such a routine's body, because a copied `b` would branch
+\ out of whatever caller it was copied into.
+: LEAVE-FORM? ( n -- bool )
+   {: k:n :}
+   k O-TAILCALL = k O-TRAP = or ;
+
 : PUT-COUNTED ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT {: k:n :}
    N-INS @ {: was:n :}
    id home PUT-OP
+   k EM-LAST !
    k CALL-FORM? if 1 EM-NCALL +! then
-   k O-TAILCALL = if 1 EM-TAIL +! then
+   k LEAVE-FORM? if 1 EM-TAIL +! then
    k IFACE-FORM? 0= if exit then
    N-INS @ was - EM-IFACE +! ;
 
@@ -2484,6 +2497,7 @@ public
    0 EM-IFACE !
    0 EM-NCALL !
    0 EM-TAIL !
+   -1 EM-LAST !
    m BND-MODULE-CK
    c TARGET-CK
    m VIEWS!
@@ -2511,15 +2525,30 @@ public
 : FPR-CLOBBER ( -- A64EFF:fprs )
    SEAL-CK EM-CFPR @ A64EFF:FPR-SET ;
 
-\ Does this emission LEAVE through a branch rather than through a return? Two
-\ seams need the answer and neither can read it off the bytes: the publication
-\ records a word's length as the span its callers may copy, which the engine
-\ defines as everything before the trailing return - and a routine that has no
-\ trailing return has no instruction to leave out. And the body recorder has to
-\ decline such a routine, because a copied `b` would branch out of whatever
-\ caller it was copied into.
+\ Does control leave this emission by branching to another routine ANYWHERE in
+\ it? The body recorder needs that answer and cannot read it off the bytes: a
+\ caller that copied such a body would copy a `b` measured from where these bytes
+\ were going to be, and it would branch out of the caller it was copied into.
+\
+\ IT IS A QUESTION ABOUT THE WHOLE EMISSION AND NOT ABOUT ITS LAST INSTRUCTION,
+\ which is what stopped being one thing when the trap arrived. A tail branch is
+\ the only way a routine could leave by branching while there was only one block
+\ control left through, so "leaves by branching" and "does not end in a return"
+\ were one fact. A routine that returns on one path and traps on another does
+\ both: it may not be copied, AND its emission ends in the return the recorded
+\ length has to leave out. The two readers ask their own question now.
 : LEAVES-BY-BRANCH? ( -- bool )
    SEAL-CK EM-TAIL @ 0<> ;
+
+\ And does it END in a return? The publication seam records a word's length as
+\ the span its callers may copy, which the engine defines as everything before
+\ the trailing return (src/habu/habu2.f EM-COMPILE-FLUSH-PEND), so the seam
+\ subtracts one instruction - and only where there is one to subtract. It is the
+\ last OPERATION that is asked about rather than the last instruction word,
+\ because the operation is what this pass knows: a return is exactly one
+\ instruction, so an emission whose last operation is one ends in it.
+: TRAILING-RETURN? ( -- bool )
+   SEAL-CK EM-LAST @ O-RET = ;
 
 \ How many instructions were emitted, and how many bytes they occupy.
 : INSNS ( -- n )

@@ -170,9 +170,9 @@ create TXT
 \ traps. This is the shape the chain refused before hir.trap existed - a routine
 \ with a second terminator that names no successor - and the whole point of the
 \ exit-block rule is that it now goes through.
-: BUILD-MIXED ( n -- )
-   {: ord:n :}
-   s" TRP" 1 1 OPEN-FUN
+: BUILD-MIXED-NAMED ( ptr u8 n n -- )
+   {: p u:n ord:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   p u 1 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    a 1 2 BRZ2
    BLOCK+
@@ -180,6 +180,10 @@ create TXT
    BLOCK+
    ord CONSTOP TRAP1
    CLOSE-FUN ;
+
+: BUILD-MIXED ( n -- )
+   {: ord:n :}
+   s" TRP" ord BUILD-MIXED-NAMED ;
 
 \ THE SAME TWO ARMS THE OTHER WAY ROUND, which is the shape that says the fix is
 \ a rule and not an ordering. The chain walks blocks in module order, so here the
@@ -405,6 +409,15 @@ public
 : TRAP-VICTIM ( n -- n )
    dup + ;
 
+\ Two more of the same, for the length the seam records rather than for the exit
+\ the forge produces. They are republished with a routine that traps and never
+\ called: what is measured is the record, not the run.
+: LEN-VICTIM-A ( n -- n )
+   dup + ;
+
+: LEN-VICTIM-B ( n -- n )
+   dup + ;
+
 get-current constant VICTIM-WID
 
 private
@@ -509,6 +522,65 @@ variable CHILD-RC
    [: RUN-VOID ;] 0 TTHROWSQ
    DMOVES-IN-EMISSION 1 T= ;
 
+\ ---- the length the publication seam records ---------------------------------
+\ The engine's records exclude a word's trailing return, because that span is
+\ what its inliner copies into a caller. A routine that ENDS in the branch that
+\ leaves has no such instruction, and subtracting one anyway would record a
+\ routine four bytes shorter than it is; a routine that traps in the middle of
+\ itself and returns at the end DOES have one, and not subtracting it would
+\ record a span whose last instruction returns from whatever copied it. The two
+\ shapes are published and their records read out of the dictionary.
+: REC ( ptr u8 n -- ptr a )
+   VICTIM-WID XREF-FIND-WL
+   dup XREF-FOUND? 0= if E-NPUB-NAME throw then ;
+
+: REC-LEN ( ptr u8 n -- n )
+   REC XREF-LEN ;
+
+variable EM-SIZE
+
+: LEN-A-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   s" afam" NTRAP:FAMILY {: k:n :}
+   s" LEN-VICTIM-A" k BUILD-TRAP-ONLY
+   PLACE
+   CC BB TXT TXT-N 0 4 1 1 NFIX:RUN-HABU
+   A64EMIT:SIZE EM-SIZE ! ;
+
+: LEN-B-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   s" bfam" NTRAP:FAMILY {: k:n :}
+   s" LEN-VICTIM-B" k BUILD-MIXED-NAMED
+   PLACE
+   CC BB TXT TXT-N 0 4 1 1 NFIX:RUN-HABU
+   A64EMIT:SIZE EM-SIZE ! ;
+
+: RECORDED-LEN-CASE ( -- )
+   NFIX:BINDING [: LEN-A-BODY ;] IR-CTX:WITH-CONTEXT
+
+   s" a routine with no return anywhere does not end in one" T-LABEL
+   A64EMIT:TRAILING-RETURN? TFALSE
+
+   s" and it leaves by branching, so no caller may copy its body" T-LABEL
+   A64EMIT:LEAVES-BY-BRANCH? TTRUE
+
+   s" LEN-VICTIM-A" VICTIM-WID NPUB:REPUBLISH
+   s" so the record the seam wrote is the whole emission" T-LABEL
+   s" LEN-VICTIM-A" REC-LEN  EM-SIZE @  T=
+
+   NFIX:BINDING [: LEN-B-BODY ;] IR-CTX:WITH-CONTEXT
+
+   s" a routine that traps in the middle and returns at the end ends in one"
+   T-LABEL
+   A64EMIT:TRAILING-RETURN? TTRUE
+
+   s" and it still leaves by branching, so no caller may copy it either" T-LABEL
+   A64EMIT:LEAVES-BY-BRANCH? TTRUE
+
+   s" LEN-VICTIM-B" VICTIM-WID NPUB:REPUBLISH
+   s" so its record is the emission without that return" T-LABEL
+   s" LEN-VICTIM-B" REC-LEN  EM-SIZE @ INSN-BYTES -  T= ;
+
 : SHARED-TARGET-CASE ( -- )
    RUN-TWO-TRAPS
 
@@ -564,6 +636,7 @@ public
    DEAD-BYTES-CASE
    VOID-PLACE-CASE
    SHARED-TARGET-CASE
+   RECORDED-LEN-CASE
 
    \ ---- and the whole of it, in a process that dies ----
    FORGE-CASE
