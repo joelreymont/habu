@@ -6316,6 +6316,26 @@ variable EFFQ-OK            \ bool: last EFFECT-QUERY resolved an active effect
 variable EFFQ-DIN           \ din row offset (E-OFF) of the queried effect, 0 = none
 variable EFFQ-DOUT          \ dout row offset
 
+\ ---- reading INSIDE a quotation term -----------------------------------------
+\ A quotation is one term of a row and it carries a whole effect of its own: its
+\ own din and dout rows, its own return rows, and whether it can throw or never
+\ comes back. EFAM-XT says a term IS one and says nothing about what it takes and
+\ leaves, and that is exactly what a caller compiling the body needs - a
+\ quotation body is a routine, and a routine's arity is the number of cells its
+\ caller hands it.
+\
+\ THE TWO ROW CELLS ARE ONE LATCH, so reading a quotation means moving that latch
+\ onto its rows and moving it back. The move is explicit in both directions: a
+\ descent SAVES the row pair it displaced and EFFECT-QUOT-UP puts it back, so a
+\ consumer that wants the outer row again after reading a quotation does not have
+\ to resolve the name a second time and cannot get a different answer than it had.
+\ A second descent while one is open is REFUSED rather than nested: the save is
+\ one deep, and a save that silently overwrote itself would give the outer row
+\ back as the quotation's.
+variable EFFQ-QUOT          \ the EN-QUOT node the latch is currently inside, 0 = none
+variable EFFQ-SAVE-DIN      \ the row pair the open descent displaced
+variable EFFQ-SAVE-DOUT
+
 \ The EN-node graph lives in the byte-addressed USIGS arena; USIGS-CELL-AT turns an
 \ E-OFF into a cell pointer the checked readers can fetch (E-PTR yields a ptr u8 that
 \ cell-fetch rejects). The stored offsets are node-aligned, so this is the same
@@ -6323,8 +6343,10 @@ variable EFFQ-DOUT          \ dout row offset
 : EFF-TAG@ ( n -- n )   USIGS-CELL-AT EN.TAG @ ;    \ node tag at offset n
 : EFF-A@   ( n -- n )   USIGS-CELL-AT EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   USIGS-CELL-AT EN.B @ ;      \ EN.B field (rest-of-row offset)
-: EFF-C@   ( n -- n )   USIGS-CELL-AT EN.C @ ;      \ EN.C field (on a row cell: width+1)
-: EFF-E@   ( n -- n )   USIGS-CELL-AT EN.E @ ;      \ EN.E field (on a param term: hidden slot+1)
+: EFF-C@   ( n -- n )   USIGS-CELL-AT EN.C @ ;      \ EN.C field (on a row cell: width+1; on a quot: rin)
+: EFF-D@   ( n -- n )   USIGS-CELL-AT EN.D @ ;      \ EN.D field (on a quot: rout)
+: EFF-E@   ( n -- n )   USIGS-CELL-AT EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: has a throw edge)
+: EFF-F@   ( n -- n )   USIGS-CELL-AT EN.F @ ;      \ EN.F field (on a quot: the fall-through path is dead)
 
 : EFF-TERM-FAM ( n -- n )       \ n = term-node offset (E-OFF); 0 -> gray
    dup 0= if drop EFAM-GRAY exit then
@@ -6366,28 +6388,43 @@ variable EFFQ-DOUT          \ dout row offset
       EFF-B@ swap 1 + swap
    repeat drop ;
 
-: EFF-ROW-FAM ( n n -- n ) {: i:n off:n :}   \ family of the i-th term from the top (0-based)
-   off i
-   begin dup 0 > while                        \ ( cur i ) advance i EN-PUSH terms
-      over EFF-IS-PUSH? 0= if 2drop EFAM-GRAY exit then
-      swap EFF-B@ swap 1 -
-   repeat drop                                \ ( cur )
-   dup EFF-IS-PUSH? if EFF-A@ EFF-TERM-FAM else drop EFAM-GRAY then ;
-
-: EFF-ROW-SLOT ( n n -- n ) {: i:n off:n :}   \ bundle slot+1 of the i-th term from the top (0-based)
+\ THE I-TH TERM OF A STORED ROW, AS ITS OWN NODE OFFSET, and 0 when the row does
+\ not have one. Every question about a term is this walk plus one field read, so
+\ the walk is written once: a second copy of it is a second place an off-by-one
+\ can live, and the three readers below would then agree only by inspection.
+: EFF-ROW-TERM ( n n -- n ) {: i:n off:n :}   \ the i-th term from the top (0-based), 0 = none
    off i
    begin dup 0 > while                        \ ( cur i ) advance i EN-PUSH terms
       over EFF-IS-PUSH? 0= if 2drop 0 exit then
       swap EFF-B@ swap 1 -
    repeat drop                                \ ( cur )
-   dup EFF-IS-PUSH? if EFF-A@ EFF-TERM-SLOT else drop 0 then ;
+   dup EFF-IS-PUSH? if EFF-A@ else drop 0 then ;
+
+\ WHAT A ROW ENDS IN, once its fixed terms are walked off: the row VARIABLE its
+\ tail is. Two rows that hold the same fixed terms still describe two different
+\ stacks when their tails are two different variables, so the tail is half of
+\ "these two rows are the same row" and the term count is the other half.
+: EFF-ROW-TAIL ( n -- n )                     \ the non-push node a row ends in
+   begin dup EFF-IS-PUSH? while EFF-B@ repeat ;
+
+: EFF-ROW-FAM ( n n -- n )                    \ family of the i-th term from the top (0-based)
+   EFF-ROW-TERM EFF-TERM-FAM ;
+
+: EFF-ROW-SLOT ( n n -- n )                   \ bundle slot+1 of the i-th term from the top (0-based)
+   EFF-ROW-TERM EFF-TERM-SLOT ;
 
 \ Only EFFECT-QUERY is trusted: it reads FEP / ER.DIN / ER.DOUT (raw checker state
-\ the checker cannot type, like its sibling USIGS readers). The four readers below
-\ are ordinary checked words over EFF-ROW-N / EFF-ROW-FAM, so the trusted base grows
-\ by exactly one site; internal-mark strips their names past the seal, but the query
-\ boundary (and the prefix consumers) reach them as compiled calls.
+\ the checker cannot type, like its sibling USIGS readers). Every reader below it
+\ is an ordinary checked word over EFF-ROW-N / EFF-ROW-TERM, so the trusted base
+\ grows by exactly one site; internal-mark strips their names past the seal, but
+\ the query boundary (and the prefix consumers) reach them as compiled calls.
+\
+\ A FRESH QUERY IS A FRESH LATCH, so it closes any open quotation descent: the
+\ rows it installs are the queried NAME's, and leaving a descent marked open over
+\ them would make EFFECT-QUOT-SIMPLE? answer about a quotation of the PREVIOUS
+\ name and EFFECT-QUOT-UP put that name's rows back.
 TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect into query state
+   0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    FIND-SIG dup EFFQ-OK !
    if FEP @ ER.DIN @ EFFQ-DIN !  FEP @ ER.DOUT @ EFFQ-DOUT !
    else 0 EFFQ-DIN !  0 EFFQ-DOUT ! then
@@ -6419,6 +6456,80 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 : EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
 : EFFECT-DIN-SLOT ( i -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
 : EFFECT-DOUT-SLOT ( i -- n )  EFFQ-DOUT @ EFF-ROW-SLOT ;  \ bundle slot+1 of dout term i (top = 0), 0 = logical
+
+\ ---- the quotation descent ----------------------------------------------------
+\ Move the latch onto the rows of the quotation a term IS, so that every reader
+\ above then answers about the quotation instead of the word that mentions it.
+\ The term has to BE a quotation: EFAM-XT is the same question EFFECT-DIN-FAM
+\ answers, and asking it here rather than trusting the caller is what makes a
+\ wrong index a false rather than a walk down a node of another shape.
+: EFF-DESCEND ( n -- bool )     \ n = term-node offset; latch its quot rows
+   {: t:n :}
+   EFFQ-QUOT @ 0= 0= if 0 0= 0= exit then     \ one descent at a time, fail closed
+   t 0= if 0 0= 0= exit then
+   t EFF-TAG@ EN-QUOT = 0= if 0 0= 0= exit then
+   EFFQ-DIN @ EFFQ-SAVE-DIN !
+   EFFQ-DOUT @ EFFQ-SAVE-DOUT !
+   t EFFQ-QUOT !
+   t EFF-A@ EFFQ-DIN !
+   t EFF-B@ EFFQ-DOUT !
+   0 0= ;
+
+: EFFECT-DIN-QUOT ( i -- bool )    EFFQ-DIN @ EFF-ROW-TERM EFF-DESCEND ;
+: EFFECT-DOUT-QUOT ( i -- bool )   EFFQ-DOUT @ EFF-ROW-TERM EFF-DESCEND ;
+
+\ Put the displaced row pair back. False when no descent is open, which is the
+\ same fail-closed answer a descent into a term that is not a quotation gives:
+\ neither one changed the latch, so neither one has anything to undo.
+: EFFECT-QUOT-UP ( -- bool )
+   EFFQ-QUOT @ 0= if 0 0= 0= exit then
+   EFFQ-SAVE-DIN @ EFFQ-DIN !
+   EFFQ-SAVE-DOUT @ EFFQ-DOUT !
+   0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
+   0 0= ;
+
+\ ARE THE QUOTATION'S TWO RETURN ROWS THE SAME STACK? They are when neither holds
+\ a fixed term and both end in the same row variable, which is what a signature
+\ with no `| rin -- rout` clause records and what a body that leaves the return
+\ stack alone infers.
+\
+\ THE TWO ROWS ARE NOT COMPARED BY IDENTITY, and that is not a shortcut avoided
+\ but a wrong answer avoided. E-COPY* copies the live term graph node by node, so
+\ the rin and rout of a quotation whose signature named ONE row are copied into
+\ TWO nodes; comparing the stored offsets would call every quotation in the tree
+\ non-neutral. What survives the copy is what the nodes SAY - no terms, and the
+\ same row-variable id - so that is what is asked.
+: EFF-RET-NEUTRAL? ( n n -- bool )
+   {: rin:n rout:n :}
+   rin EFF-ROW-N 0= 0= if 0 0= 0= exit then
+   rout EFF-ROW-N 0= 0= if 0 0= 0= exit then
+   rin EFF-ROW-TAIL {: a:n :}
+   rout EFF-ROW-TAIL {: b:n :}
+   a EFF-TAG@ EN-ROW = 0= if 0 0= 0= exit then
+   b EFF-TAG@ EN-ROW = 0= if 0 0= 0= exit then
+   a EFF-A@ b EFF-A@ = ;
+
+\ IS THE QUOTATION THE LATCH IS INSIDE ONE A CALLER MAY COMPILE AS AN ORDINARY
+\ ROUTINE? Three clauses, and none of them is decoration.
+\   the return rows are NEUTRAL (EN.C against EN.D, above): the body neither takes
+\     anything off the return stack nor leaves anything on it, so a caller that
+\     reaches it with an ordinary branch finds the return stack as it left it.
+\   there is NO THROW EDGE (EN.E = 0): a body that can throw leaves by a path the
+\     caller's own control flow does not have, so its exit is not the one return.
+\   the FALL-THROUGH IS LIVE (EN.F = 0): a body that never comes back delivers
+\     nothing to the instruction after the call, and code emitted there would be
+\     unreachable code a caller believes in. This clause is NOT optional and is
+\     the one a reader is most likely to leave out, because a never-returning
+\     quotation has a perfectly ordinary din and dout.
+\ False when no descent is open: there is no quotation to answer about, and
+\ answering true would let a caller compile the enclosing word's own effect as a
+\ body.
+: EFFECT-QUOT-SIMPLE? ( -- bool )
+   EFFQ-QUOT @ {: q:n :}
+   q 0= if 0 0= 0= exit then
+   q EFF-C@ q EFF-D@ EFF-RET-NEUTRAL? 0= if 0 0= 0= exit then
+   q EFF-E@ 0= 0= if 0 0= 0= exit then
+   q EFF-F@ 0= ;
 
 \ ---- ARM64 contract link: stable link from an emitted primitive/callable
 \ contract to its checker primitive-effect (PES) row (dot

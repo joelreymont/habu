@@ -13,6 +13,10 @@
 \   EFFECT-DOUT-CELLS ( -- n )            fixed dout width in cells, or CELLS-NONE
 \   EFFECT-DIN-SLOT ( i -- n )            bundle slot+1 of din term i, 0 = logical
 \   EFFECT-DOUT-SLOT ( i -- n )           bundle slot+1 of dout term i, 0 = logical
+\   EFFECT-DIN-QUOT ( i -- bool )         latch onto din term i's own quotation rows
+\   EFFECT-DOUT-QUOT ( i -- bool )        the same for a dout term
+\   EFFECT-QUOT-UP ( -- bool )            put the displaced rows back
+\   EFFECT-QUOT-SIMPLE? ( -- bool )       is the latched quotation an ordinary routine?
 \ Family ABI (EFAM-*, mirrored below as ERA-* to pin the numeric contract):
 \   0 gray (var/row/atom/param)   1 scalar (con)   2 pointer (ptr)   3 xt (quot)
 \
@@ -64,6 +68,48 @@ public
 : BUNDLE ( option<n> n -- n option<n> ) swap ;
 : TWOVAR ( a b n -- n a b ) swap ;
 : MKOPT  ( n -- option<n> ) OPTION:SOME ;           \ a user word whose OUTPUT is bundled
+
+\ THE PAIR THE QUOTATION DESCENT EXISTS FOR, built on the same argument as the
+\ bundle pair above: everything the OLDER readers report about these two is
+\ identical - three din terms, three din cells, and the families xt, scalar,
+\ scalar in that order - so an assertion about either one alone would pass
+\ against a reader that answered a constant, and an assertion about both would
+\ pass against a reader that read the OUTER row and called it the quotation's.
+\ They differ in one respect only, and it is the one thing no other reader can
+\ see: the quotation the first takes consumes two cells and leaves one, and the
+\ quotation the second takes consumes one and leaves two.
+: QTAKE2 ( n n [ n n -- n ] -- n )
+   {: a:n b:n q :} \ typed-local-lint: allow-bare-local - q keeps the quotation's own effect
+   a b q execute ;
+
+: QTAKE1 ( n n [ n -- n n ] -- n n )
+   {: a:n b:n q :} \ typed-local-lint: allow-bare-local - q keeps the quotation's own effect
+   a drop b q execute ;
+
+\ Three din terms and three cells again, and not a quotation anywhere: the
+\ descent has to answer false rather than walk a node of another shape.
+: QNONE ( n n n -- n )
+   {: a:n b:n c:n :}
+   a b + c + ;
+
+\ A quotation on the OUTPUT side, which is the shape a word that hands its caller
+\ a body has. Its own effect is a third, distinct arity, so a reader that
+\ answered the din row's quotation here would be caught.
+: QSUM3 ( n n n -- n )
+   {: a:n b:n c:n :}
+   a b + c + ;
+
+: QGIVE ( -- [ n n n -- n ] )
+   [: QSUM3 ;] ;
+
+\ A quotation that also states a RETURN effect. Its data rows are the same two
+\ cells in and one out as QTAKE2's, so nothing about its arity separates them;
+\ what separates them is that this one's return rows are two different rows, and
+\ a body whose return stack does not come back the way it arrived is not one a
+\ caller may reach with an ordinary branch.
+: QRET ( n [ n -- n | a -- a ] -- n )
+   {: a:n q :} \ typed-local-lint: allow-bare-local - q keeps the quotation's own effect
+   a ;
 
 ;package
 
@@ -242,6 +288,172 @@ public
 
 ;package
 
+\ ---- what a quotation term takes and leaves, which is a whole effect ----------
+\ EFFECT-DIN-QUOT / EFFECT-DOUT-QUOT move the query latch onto the rows of the
+\ quotation a term IS, EFFECT-QUOT-UP moves it back, and EFFECT-QUOT-SIMPLE? says
+\ whether that quotation is one a caller may compile as an ordinary routine
+\ (dot habu-export-a-certified-f5a7561d). The pair below is built the way the
+\ slot pair above is: the two fixtures agree on every number the OLDER readers
+\ report and differ only inside the quotation, so nothing here can be answered by
+\ a reader that never left the outer row.
+package ERA-QUOT
+private
+
+\ The three numbers the older readers give for both fixtures of the pair. Asked
+\ of each of them, so "they agree" is measured rather than asserted once.
+: OUTER ( -- )
+   EFFECT-DIN-N 3 T=            EFFECT-DIN-CELLS 3 T=
+   0 EFFECT-DIN-FAM ERA-XT T=
+   1 EFFECT-DIN-FAM ERA-SCALAR T=
+   2 EFFECT-DIN-FAM ERA-SCALAR T= ;
+
+: PAIR ( -- )
+   s" two quotation-taking words agree on every number the older readers give" T-LABEL
+   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE   OUTER
+   s" ERA-FIX:QTAKE1" EFFECT-QUERY TTRUE   OUTER
+
+   s" and the descent separates them: one quotation takes two and leaves one" T-LABEL
+   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
+   0 EFFECT-DIN-QUOT TTRUE
+   EFFECT-DIN-N 2 T=            EFFECT-DOUT-N 1 T=
+   EFFECT-DIN-CELLS 2 T=        EFFECT-DOUT-CELLS 1 T=
+
+   s" while the other takes one and leaves two" T-LABEL
+   s" ERA-FIX:QTAKE1" EFFECT-QUERY TTRUE
+   0 EFFECT-DIN-QUOT TTRUE
+   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 2 T=
+   EFFECT-DIN-CELLS 1 T=        EFFECT-DOUT-CELLS 2 T= ;
+
+\ THE INDEX HAS TO DECIDE, not the row. Both refusals below are asked of a row
+\ that DOES hold a quotation at another position, so a reader that answered "this
+\ row has one somewhere" would pass the QNONE case and fail here.
+: REFUSALS ( -- )
+   s" a scalar term of a row that also holds a quotation is not one" T-LABEL
+   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
+   1 EFFECT-DIN-QUOT TFALSE
+   2 EFFECT-DIN-QUOT TFALSE
+   s" and the refused descent left the latch on the outer row" T-LABEL
+   OUTER
+
+   s" an index past the end of the row is not one either" T-LABEL
+   9 EFFECT-DIN-QUOT TFALSE
+
+   s" a row with no quotation in it at all has none at position zero" T-LABEL
+   s" ERA-FIX:QNONE" EFFECT-QUERY TTRUE
+   EFFECT-DIN-N 3 T=
+   0 EFFECT-DIN-QUOT TFALSE
+
+   s" and the output side is asked separately from the input side" T-LABEL
+   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
+   0 EFFECT-DOUT-QUOT TFALSE ;
+
+: GIVEN ( -- )
+   s" a word that hands its caller a body carries the quotation on the OUT side" T-LABEL
+   s" ERA-FIX:QGIVE" EFFECT-QUERY TTRUE
+   EFFECT-DIN-N 0 T=            EFFECT-DOUT-N 1 T=
+   0 EFFECT-DOUT-FAM ERA-XT T=
+   0 EFFECT-DOUT-QUOT TTRUE
+   EFFECT-DIN-N 3 T=            EFFECT-DOUT-N 1 T=
+   EFFECT-DIN-CELLS 3 T=        EFFECT-DOUT-CELLS 1 T= ;
+
+\ THE LATCH IS ONE PAIR OF CELLS, so the whole value of the descent depends on it
+\ going back. The outer numbers are read, the descent is made and read, the latch
+\ is put back, and the outer numbers are read AGAIN - without resolving the name
+\ a second time, which is the point: a consumer walking a body cannot afford to
+\ re-resolve, and a save that did not restore would show up here as the
+\ quotation's numbers where the word's belong.
+: RESTORE ( -- )
+   s" the latch goes back to the outer row, with no second query" T-LABEL
+   s" ERA-FIX:QGIVE" EFFECT-QUERY TTRUE
+   EFFECT-DOUT-N 1 T=
+   0 EFFECT-DOUT-QUOT TTRUE
+   EFFECT-DIN-N 3 T=
+   EFFECT-QUOT-UP TTRUE
+   EFFECT-DIN-N 0 T=            EFFECT-DOUT-N 1 T=
+   0 EFFECT-DOUT-FAM ERA-XT T=
+
+   s" a second descent while one is open is refused, and changes nothing" T-LABEL
+   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
+   0 EFFECT-DIN-QUOT TTRUE
+   EFFECT-DIN-N 2 T=
+   0 EFFECT-DIN-QUOT TFALSE
+   EFFECT-DIN-N 2 T=
+   EFFECT-QUOT-UP TTRUE
+   OUTER
+
+   s" and putting back a latch nothing displaced is refused too" T-LABEL
+   EFFECT-QUOT-UP TFALSE
+   OUTER
+
+   s" a fresh query closes an open descent rather than carrying it over" T-LABEL
+   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
+   0 EFFECT-DIN-QUOT TTRUE
+   s" ERA-A" EFFECT-QUERY TTRUE
+   EFFECT-QUOT-SIMPLE? TFALSE
+   EFFECT-QUOT-UP TFALSE
+   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 2 T= ;
+
+\ IS IT A BODY A CALLER MAY COMPILE? The two quotations below have the SAME data
+\ rows - one cell in, one cell out - so their arity separates nothing; what
+\ separates them is the return clause the second one states, and a body whose
+\ return stack does not come back the way it arrived is not one an ordinary
+\ branch reaches.
+\
+\ THE OTHER TWO CLAUSES ARE PROVED BY MUTATING THE CHECKER, because no DECLARED
+\ signature can reach them. MK-QUOT (src/core/checker.f) writes zero into both the
+\ throw-edge and the dead-fall-through cells, and only the checker's own inference
+\ of a quotation BODY ever writes anything else - so every quotation term any
+\ stored record holds today carries zero in both, and a fixture written here could
+\ not carry anything else. That is a fact about where the two cells come FROM, not
+\ a gap in the rule: the reader exists for a consumer that will ask about inferred
+\ quotations, and a consumer that emitted code after a call to a body which never
+\ returns would be writing unreachable code it believed in.
+\
+\ TRANSCRIPT, on this tree, 2026-08-10. Each mutation is made at the RECORD-STORE
+\ site (the E-COPY* arm for T-QUOT), not at MK-QUOT, so the checker's own live
+\ inference is untouched and the boot prefix still certifies - mutating MK-QUOT
+\ instead makes every quotation in the tree never-returning and the engine stops
+\ loading at `call-participant`, which proves the field matters to the CHECKER and
+\ says nothing about this reader.
+\   storing 1 into EN.E of every recorded quotation term turns
+\     "a quotation with neither a throw edge nor a dead fall-through is simple"
+\     red (assert 82, expected true got false) and moves nothing else;
+\   storing 1 into EN.F instead turns the same case red on its own;
+\   deleting the neutral-return clause from EFFECT-QUOT-SIMPLE? turns
+\     "a quotation that states a return effect is not" red (assert 88).
+\ So all three clauses are live and each is load-bearing by itself. Reverted after
+\ each run; the two fixtures below are the declared-signature half.
+: SIMPLE ( -- )
+   s" a quotation with neither a throw edge nor a dead fall-through is simple" T-LABEL
+   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
+   0 EFFECT-DIN-QUOT TTRUE
+   EFFECT-QUOT-SIMPLE? TTRUE
+   EFFECT-QUOT-UP TTRUE
+
+   s" a quotation that states a return effect is not, though its arity is ordinary" T-LABEL
+   s" ERA-FIX:QRET" EFFECT-QUERY TTRUE
+   0 EFFECT-DIN-QUOT TTRUE
+   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 1 T=
+   EFFECT-QUOT-SIMPLE? TFALSE
+   EFFECT-QUOT-UP TTRUE
+
+   s" and with no descent open there is no quotation to call simple" T-LABEL
+   EFFECT-QUOT-SIMPLE? TFALSE ;
+
+public
+
+: MAIN ( -- )
+   T-RESET
+   PAIR
+   REFUSALS
+   GIVEN
+   RESTORE
+   SIMPLE
+   T-REPORT
+   s" effect-read-api quotations: ok" type cr ;
+
+;package
+
 : ERA-MAIN ( -- )
    T-RESET
    ERA-SCALAR-PRODUCER
@@ -254,3 +466,4 @@ public
 
 ERA-MAIN
 ERA-WIDTH:MAIN
+ERA-QUOT:MAIN
