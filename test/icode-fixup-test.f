@@ -9,22 +9,16 @@ require lib/memory.f
 require lib/process.f
 require lib/process-argv.f
 
-package ICODE-FIXUP-LOAD
-
-: WORD? ( ptr u8 n -- bool )
-   XREF-FIND 0= 0= ;
-
-public
-
-: LOAD ( -- )
-   s" ASM-INIT" WORD? if exit then
-   s" src/arch/arm64/asm.f" included
-   s" src/arch/arm64/icode.f" included
-   s" src/arch/arm64/mnem.f" included ;
-
-;package
-
-ICODE-FIXUP-LOAD:LOAD
+\ The three ARM64 encoder sources are `require`d, not probed-and-included.
+\ A probe on ASM-INIT decided whether to load asm.f, but ASM-INIT is defined in
+\ icode.f, so the probe only ever answered "is icode.f loaded" - it reported
+\ asm.f absent whenever the two were not loaded together, and loading asm.f a
+\ second time is a duplicate definition, not a no-op. `require` asks the
+\ registry that actually records what is loaded, which is also the registry the
+\ ten-plus existing `require src/arch/arm64/asm.f` sites already share.
+require src/arch/arm64/asm.f
+require src/arch/arm64/icode.f
+require src/arch/arm64/mnem.f
 
 package ICODE-FIXUP-TEST
 

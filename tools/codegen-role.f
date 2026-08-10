@@ -47,15 +47,16 @@ $F9000000 constant CGR-STR-BASE     \ str xN,[xM,#imm] unsigned offset
 $FFC00000 constant CGR-STR-MASK
 31 constant CGR-SP                  \ spawn slots live on the runtime stack
 
-: CGR-WORD? ( ptr u8 n -- bool )
-   XREF-FIND 0= 0= ;
-
-: CGR-LOAD-ASM ( -- )
-   s" ASM-INIT" CGR-WORD? if exit then
-   s" src/arch/arm64/asm.f" included
-   s" src/arch/arm64/icode.f" included
-   s" src/arch/arm64/mnem.f" included ;
-CGR-LOAD-ASM
+\ The three ARM64 encoder sources are `require`d, not probed-and-included.
+\ A probe on ASM-INIT decided whether to load asm.f, but ASM-INIT is defined in
+\ icode.f, so the probe only ever answered "is icode.f loaded" - it reported
+\ asm.f absent whenever the two were not loaded together, and loading asm.f a
+\ second time is a duplicate definition, not a no-op. `require` asks the
+\ registry that actually records what is loaded, which is also the registry the
+\ ten-plus existing `require src/arch/arm64/asm.f` sites already share.
+require src/arch/arm64/asm.f
+require src/arch/arm64/icode.f
+require src/arch/arm64/mnem.f
 
 \ ---- emitted-word decode ----
 variable CGR-WP

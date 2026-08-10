@@ -10,14 +10,19 @@ require lib/content-key.f
 require lib/object.f
 require lib/object-link.f
 
+\ The three ARM64 encoder sources are `require`d, not probed-and-included.
+\ A probe on ASM-INIT decided whether to load asm.f, but ASM-INIT is defined in
+\ icode.f, so the probe only ever answered "is icode.f loaded" - it reported
+\ asm.f absent whenever the two were not loaded together, and loading asm.f a
+\ second time is a duplicate definition, not a no-op. `require` asks the
+\ registry that actually records what is loaded, which is also the registry the
+\ ten-plus existing `require src/arch/arm64/asm.f` sites already share.
+require src/arch/arm64/asm.f
+require src/arch/arm64/icode.f
+require src/arch/arm64/mnem.f
+
 : OBJIMG-WORD? ( ptr u8 n -- bool )
    XREF-FIND 0= 0= ;
-
-: OBJIMG-LOAD-ASM ( -- )
-   s" ASM-INIT" OBJIMG-WORD? if exit then
-   s" src/arch/arm64/asm.f" included
-   s" src/arch/arm64/icode.f" included
-   s" src/arch/arm64/mnem.f" included ;
 
 : OBJIMG-LOAD-SYS ( -- )
    s" SYS," OBJIMG-WORD? if exit then
@@ -54,7 +59,6 @@ require lib/object-link.f
    s" DRV-WRITE-IMAGE" OBJIMG-WORD? if exit then
    s" src/habu/driver-io.f" included ;
 
-OBJIMG-LOAD-ASM
 OBJIMG-LOAD-SYS
 OBJIMG-LOAD-IMAGE
 OBJIMG-LOAD-SIZE

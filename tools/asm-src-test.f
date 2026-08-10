@@ -5,15 +5,12 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 
-: AST-WORD? ( ptr u8 n -- bool )
-   XREF-FIND 0= 0= ;
-
-: AST-LOAD-ASM ( -- )
-   s" ENC-ADD" AST-WORD? 0= if s" src/arch/arm64/asm.f" included then
-   s" LIT64," AST-WORD? 0= if s" src/arch/arm64/icode.f" included then
-   s" ADD," AST-WORD? 0= if s" src/arch/arm64/mnem.f" included then ;
-
-AST-LOAD-ASM
+\ Probed per file and loaded with `included`, which never records the load, so a
+\ later `require src/arch/arm64/asm.f` in the same process read the file again
+\ and redefined it. `require` records what it loads and skips what is recorded.
+require src/arch/arm64/asm.f
+require src/arch/arm64/icode.f
+require src/arch/arm64/mnem.f
 
 \ Raw ARM64 fixture effects retire with habu-builder-trust-rows-c5d41af6.
 \ MOVZHW and ENC-ADD/LDR/LDAR/BLR expose their instruction encoders.
