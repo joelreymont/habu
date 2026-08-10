@@ -456,6 +456,10 @@ public
    s" test/compiler/native-regalloc.f" GSI-FORK-INCLUDE
    s" test/compiler/native-emit.f" GSI-FORK-INCLUDE
    s" test/compiler/native-publish.f" GSI-FORK-INCLUDE
+   \ The terminator that does not return. It is listed here as well as in
+   \ test/gate-stdlib-cases.f for the reason given a few lines below: only this
+   \ list is what test/run.f actually forks.
+   s" test/compiler/native-trap.f" GSI-FORK-INCLUDE
    s" test/compiler/native-migrate.f" GSI-FORK-INCLUDE
    s" test/compiler/native-clobber.f" GSI-FORK-INCLUDE
    s" test/compiler/native-inline.f" GSI-FORK-INCLUDE

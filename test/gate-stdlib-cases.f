@@ -368,6 +368,15 @@ SUITE compiler-native-publish
    test/compiler/native-publish.f
 ;SUITE
 
+\ The terminator that does not return: the family table and the one shared
+\ routine a compiled trap branches to, the exit-block rule every pass re-derives,
+\ and the length the seam records for a routine that leaves by branching. It runs
+\ after the publication seam because its last case publishes a trapping routine
+\ over a word and calls it in a child, which is the whole path in one measurement.
+SUITE compiler-native-trap
+   test/compiler/native-trap.f
+;SUITE
+
 \ The production entry: a definition the engine compiles, recompiled by the
 \ chain and republished under its own name, plus what happens to a word the
 \ chain cannot compile.
