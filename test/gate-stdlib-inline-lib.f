@@ -489,6 +489,11 @@ public
    \ The multiply-add the chain writes, against the two instructions it replaces,
    \ differentially and to the ends of the signed range.
    s" test/compiler/native-combine.f" GSI-FORK-INCLUDE
+   \ The counted loops the chain now answers instead of running, against the same
+   \ loops really run by the engine's emitter, plus the eleven shapes it must
+   \ refuse. It sits beside the combine leaf because it is the other module-in,
+   \ module-out rewrite and its fixtures go through the same migration entry.
+   s" test/compiler/native-loop.f" GSI-FORK-INCLUDE
    \ And the instrument the combining lane decides with, beside it for the same
    \ reason: it reads emitted code through that probe's walk, and its rows are
    \ routines the chain really compiled.

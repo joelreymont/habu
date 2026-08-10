@@ -180,9 +180,21 @@ public
    s" CODEGEN-CORPUS:BYTE-SUM-N" ROW!
    LOOPS 1 T=
    BODY-TOTAL 5 T=
-   s" CODEGEN-CORPUS:SUM-TO-N" ROW!
+   s" CODEGEN-CORPUS4:STORE-LOAD-N" ROW!
    LOOPS 1 T=
-   BODY-TOTAL 3 T=
+   BODY-TOTAL 5 T=
+
+   \ THE SECOND SUBJECT HERE USED TO BE SUM-TO, whose body was three instructions,
+   \ and it is now a routine with no loop in it at all: src/compiler/native/loop.f
+   \ answers the sum of a counted loop's indices instead of running the loop. The
+   \ row moved to the stepping loop, which writes memory and is therefore declined
+   \ by that pass, and what SUM-TO reads now is measured on its own below - a
+   \ subject that stopped having the shape a row is named for has to be re-aimed
+   \ and re-stated, not quietly left to answer something else.
+   s" and the loop the chain answers instead of running holds none" T-LABEL
+   s" CODEGEN-CORPUS:SUM-TO-N" ROW!
+   LOOPS 0 T=
+   BODY-TOTAL 0 T=
 
    \ The row the measurement turns on: four sixty-four-bit literals, each a chain
    \ of four move-wide instructions, rebuilt on every turn. Sixteen of its

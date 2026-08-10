@@ -425,6 +425,17 @@ SUITE compiler-native-combine
    test/compiler/native-combine.f
 ;SUITE
 
+\ The counted loops the chain now answers instead of running: the same source
+\ compiled by the engine's emitter, which really runs every turn, and by the
+\ chain, which does not, run against each other - including three trip counts no
+\ loop could be run at. Its other half is the eleven shapes the pass must refuse,
+\ each of which still has to hold its loop in the emitted code. It runs beside
+\ the combine suite because it is the other module-in, module-out rewrite and its
+\ fixtures go through the same production migration entry.
+SUITE compiler-native-loop
+   test/compiler/native-loop.f
+;SUITE
+
 \ Counting the instruction PAIRS one three-source instruction would replace,
 \ which is the measurement the combining lane decides what to build from. It
 \ runs beside the tail probe because it reads emitted code through that tool's

@@ -102,10 +102,18 @@ public
 \ non-zero path with hand-built code instead; until it lands, the counter's
 \ ability to count is carried by the branch column below and by the mutations
 \ recorded in this file's header.
+\ THE COUNTED LOOP THIS ROW USED TO NAME WAS SUM-TO, AND IT HAS NO BRANCH LEFT AT
+\ ALL. src/compiler/native/loop.f answers that loop instead of running it, so the
+\ routine is straight-line arithmetic and holds neither a back edge nor a
+\ trampoline - which is a fact about the chain and not about this counter, and it
+\ is measured as the last row below rather than left as a subject that quietly
+\ stopped having the shape the row is named for. BYTE-SUM is the counted loop the
+\ row moved to: it reads a byte a turn, so the closed-forming pass declines it and
+\ the shape this row is about survives.
 : CHAIN-CASES ( -- )
    s" a counted loop keeps its back edge and loses its trampoline" T-LABEL
-   s" CODEGEN-CORPUS:SUM-TO-N" HOPS 1 T=
-   s" CODEGEN-CORPUS:SUM-TO-N" CHAINS 0 T=
+   s" CODEGEN-CORPUS:BYTE-SUM-N" HOPS 1 T=
+   s" CODEGEN-CORPUS:BYTE-SUM-N" CHAINS 0 T=
 
    s" an early exit out of a loop loses two of them" T-LABEL
    s" CODEGEN-CORPUS:BYTE-FIND-N" HOPS 1 T=
@@ -114,7 +122,12 @@ public
    s" and a loop that stores through a pointer loses every branch it had"
    T-LABEL
    s" CODEGEN-CORPUS4:STORE-LOAD-N" HOPS 0 T=
-   s" CODEGEN-CORPUS4:STORE-LOAD-N" CHAINS 0 T= ;
+   s" CODEGEN-CORPUS4:STORE-LOAD-N" CHAINS 0 T=
+
+   s" and the loop the chain now answers instead of running holds no branch"
+   T-LABEL
+   s" CODEGEN-CORPUS:SUM-TO-N" HOPS 0 T=
+   s" CODEGEN-CORPUS:SUM-TO-N" CHAINS 0 T= ;
 
 \ Mistake 1. The preconditions are asserted first - this row really does hold a
 \ call, and really does hold a branch beside it - so the mask is being asked the

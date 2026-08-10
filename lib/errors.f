@@ -1145,6 +1145,24 @@ public
 -8636 constant E-NSTR-CAP       \ a string literal this store cannot take: more distinct bodies than its index holds, or more bytes than its arena holds. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
 -8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
 
+\ The counted-loop closed form: -8660..-8669
+\
+\ src/compiler/native/loop.f reads a source-dialect module, recognises a counted
+\ loop whose whole body accumulates an affine function of the index, and writes
+\ the module in which that loop is the arithmetic it would have computed. Like
+\ the combine pass above these are a rewriter's refusals and not a validator's:
+\ what the rewrite produces is decided downstream by the ordinary selection,
+\ allocation and verification stages. A loop this pass cannot PROVE closed-formable
+\ is not an error at all - the scan answers zero and the module is handed on
+\ untouched - so every code here is about the pass being asked to work on
+\ something it cannot read, never about a loop it declined.
+-8660 constant E-NLOOP-BIND     \ a rewrite attempted before the source dialect's identities were bound, or a second binding over a live one
+-8661 constant E-NLOOP-SHAPE    \ a module this pass cannot rewrite: a span naming another source, a value used before it is defined, or a value of a type this dialect does not declare
+-8662 constant E-NLOOP-SOURCE   \ source text whose digest is not the one the module being rewritten recorded
+-8663 constant E-NLOOP-OPCODE   \ an operation whose opcode is none of the source dialect's family, so this pass has no form to rebuild it as
+-8664 constant E-NLOOP-CAP      \ more values, blocks or invariant addends in one function than the rewriter's tables hold
+-8665 constant E-NLOOP-PLAN     \ a rewrite asked for when the scan had recognised no loop, so there is nothing to fold and the caller and this pass disagree about what was measured
+
 \ The trap terminator's family table: -8640..-8649
 \
 \ src/compiler/native/trap.f owns the one routine a compiled trap branches to and

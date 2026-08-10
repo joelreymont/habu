@@ -78,6 +78,7 @@ require src/compiler/native/dict.f
 require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/inline.f
+require src/compiler/native/loop.f
 require src/compiler/native/select.f
 require src/compiler/native/spill.f
 require src/compiler/native/combine.f
@@ -612,6 +613,40 @@ variable REC-OK                      \ the body staged so far is still one worth
    IR-BUILD:PLAN-DEFAULT
    CC A64IR:NEW-BUILDER ;
 
+: HIR-BUILDER ( -- IR-BUILD:builder )
+   IR-BUILD:PLAN-DEFAULT
+   CC HIR:NEW-BUILDER ;
+
+\ The module in which a counted loop whose body only accumulates is the
+\ arithmetic that loop would have computed. It stands between the elaborator and
+\ selection because that is where the pattern is visible: the guard's
+\ subtraction, the index and the limit the header takes as arguments and the
+\ additions the body makes are all values of the SOURCE dialect, and the closed
+\ form written there is an ordinary program the selector, the combine pass and
+\ the allocator then treat like any other.
+\
+\ A MODULE WITH NO SUCH LOOP IS HANDED BACK UNTOUCHED, for the reason COMBINED
+\ below gives: rebuilding a module renumbers its values, so a routine that gained
+\ nothing could still come out holding different registers and therefore
+\ different bytes. The scan is asked first and the binding given straight back
+\ when it answers zero.
+\
+\ SELECTION'S BINDING IS TAKEN OVER THE MODULE THAT IS REALLY SELECTED. A binding
+\ records which module it learned its opcode identities from and SELECT refuses
+\ any other, so a rewrite has to give the first binding back and take a second one
+\ over the builder it is about to write into.
+: CLOSED ( IR-BUILD:module n -- IR-BUILD:module )
+   {: m:IR-BUILD:module len:n :}
+   m NLOOP:FOLDS {: n:n :}
+   n 0= if NLOOP:RELEASE m exit then
+   A64SEL:RELEASE
+   HIR-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb A64SEL:BIND-SOURCE
+   CC m nb TXT len NLOOP:REWRITE {: m1:IR-BUILD:module :}
+   NLOOP:FOLDED n <> if E-NLOOP-PLAN throw then
+   m IR-BUILD:RETIRE
+   m1 ;
+
 \ The recorded length is read off the LIVE builder, before the freeze consumes
 \ the handle, because selection is handed the text the unit kept and refuses it
 \ unless it digests to the source the module was compiled from.
@@ -623,8 +658,10 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ RELEASE in EMITTED below is.
 : SELECTED ( n -- IR-BUILD:module )
    {: len:n :}
+   CC BB NLOOP:BIND-DIALECT
    CC BB A64SEL:BIND-SOURCE
-   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC BB IR-BUILD:FREEZE {: m0:IR-BUILD:module :}
+   m0 len CLOSED {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
@@ -809,6 +846,7 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ binding is documented as replaceable: a second one over a live one is not a
 \ refusal there.
 : RETURN-BINDINGS ( -- )
+   NLOOP:BOUND? if NLOOP:RELEASE then
    A64SEL:BOUND? if A64SEL:RELEASE then
    A64RA:BOUND? if A64RA:RELEASE then
    A64SPILL:BOUND? if A64SPILL:RELEASE then
