@@ -5811,3 +5811,12 @@ designing any build-fixpoint change (it decides the change's shape);
 using PKG is file-scoped and never reaches requiring files;
 build-fixpoint-test self-runs at load so appended debug drivers never
 execute - bisect by unregistering steps.
+
+## Lane temp roots must be lane-private (2026-08-11)
+
+Two concurrent lanes briefly shared one HB_TMP root, and one of them
+does rm -rf on that root at the start of every gate run - it wiped the
+other lane's build mid-flight. Every gate invocation names a temp root
+private to its lane (and ideally to the run); a gate that ran during a
+shared-root window proves nothing and must be rerun. This is also the
+likeliest source of paired timing-assertion flakes across lanes.
