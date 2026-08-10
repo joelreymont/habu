@@ -3000,14 +3000,20 @@ create JOIN-TAB TMAX cells allot
 \ Walk the body once, counting. A structure left open at the end of the body is
 \ refused here rather than at the return, because the walk that follows would
 \ otherwise build blocks against a join nobody ever named.
-: SKELETON ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena n:n :}
-   n TMAX > if E-NELAB-BLOCK throw then
+\ THE RANGE IS PASSED IN BECAUSE A TAPE HOLDS MORE THAN ONE BODY. A definition's
+\ own body runs from the token after its name to the end of the tape; a
+\ quotation's body runs between the two tokens that open and close it, on the
+\ same tape and in the middle of the enclosing one. Both are counted by these
+\ words and neither may see the other's tokens, so where a body starts and stops
+\ is the caller's to say rather than something derived from the tape's length.
+: SKELETON ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
+   hi TMAX > if E-NELAB-BLOCK throw then
    0 NB !
    JOIN-RESET
    CS-RESET
    EXIT-RESET
-   n 1 ?do
+   hi lo ?do
       r i SK-STEP
    loop
    CS-N @ 0<> if E-NELAB-CTRL throw then
@@ -4145,11 +4151,11 @@ variable IX                          \ the body token the walk stands on
 \ end is the definition's end, because the tape IS one definition - the unit the
 \ producer opened and sealed around one scan - so there is nothing to look for
 \ and nothing can follow.
-: WALK ( IR-ARENA:arena IR-ARENA:arena n -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena n:n :}
-   1 IX !
+: WALK ( IR-ARENA:arena IR-ARENA:arena n n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
+   lo IX !
    begin
-      IX @ n <
+      IX @ hi <
    while
       p r IX @ STEP
       IX @ 1+ IX !
@@ -4169,26 +4175,26 @@ variable IX                          \ the body token the walk stands on
 \ paragraph at the top of this file. Naming a token needs nothing but what this
 \ package has already parked, which is why one of the two is possible here and
 \ the other is not.
-: SK-KEEP ( IR-ARENA:arena n -- IR-ARENA:arena n )
-   {: r:IR-ARENA:arena n:n :}
-   r n SKELETON
-   r n ;
+: SK-KEEP ( IR-ARENA:arena n n -- IR-ARENA:arena n n )
+   {: r:IR-ARENA:arena lo:n hi:n :}
+   r lo hi SKELETON
+   r lo hi ;
 
-: SKELETON-TRY ( IR-ARENA:arena n -- )
+: SKELETON-TRY ( IR-ARENA:arena n n -- )
    [: SK-KEEP ;] catch {: rc:n :}
-   2drop
+   2drop drop
    rc 0= if exit then
    RF-RECORD
    rc throw ;
 
-: WALK-KEEP ( IR-ARENA:arena IR-ARENA:arena n -- IR-ARENA:arena IR-ARENA:arena n )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena n:n :}
-   p r n WALK
-   p r n ;
+: WALK-KEEP ( IR-ARENA:arena IR-ARENA:arena n n -- IR-ARENA:arena IR-ARENA:arena n n )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
+   p r lo hi WALK
+   p r lo hi ;
 
-: WALK-TRY ( IR-ARENA:arena IR-ARENA:arena n -- )
+: WALK-TRY ( IR-ARENA:arena IR-ARENA:arena n n -- )
    [: WALK-KEEP ;] catch {: rc:n :}
-   2drop drop
+   2drop 2drop
    rc 0= if exit then
    RF-RECORD
    rc throw ;
@@ -4482,12 +4488,12 @@ EXPORT SPLICE-MEANING?
    r n INLINE-SCAN
    r n MEM-SCAN
    r n CROSS-SCAN
-   r n SKELETON-TRY
+   r 1 n SKELETON-TRY
    c b v key in out OPEN-FUN
    c b v key in OPEN-BLOCK
    TOK-NEED @ 0<> if 0 EMIT-MEM then
    PATH-LIVE PATH-END !
-   p r n WALK-TRY
+   p r 1 n WALK-TRY
    CS-N @ 0<> if E-NELAB-CTRL throw then
    PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
    \ A BODY WHOSE LAST PATH ENDED HAS NO FALL-THROUGH AND MAY HAVE NO RETURN AT
