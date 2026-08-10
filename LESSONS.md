@@ -5630,3 +5630,13 @@ condition can be necessary but not sufficient - "boundary falls inside a
 run" missed swap over two adjacent whole bundles; the built test covers
 the whole window. Workers should strengthen a ruling when the code shows
 it short, and say so.
+
+## Gate hygiene on a shared box, and dark suites (2026-08-10)
+
+Three from one lane: never edit the tree while test/run.f is running (a
+mid-run edit produced reds that looked real and cost a gate cycle); two
+concurrent full gates on one host red each other's timing ratchets -
+check pgrep -f test/run.f before starting one; and schedule-lint is the
+thing that catches a suite that is registered but dark - trust it over
+"I added a SUITE block", and prove scheduling by breaking one assertion
+and watching the full gate go red.
