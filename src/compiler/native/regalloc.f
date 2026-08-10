@@ -1,5 +1,5 @@
-\ regalloc.f - give every virtual register of one machine routine a real ARM64
-\ general register, by linear scan over the routine's blocks.
+\ regalloc.f - give every virtual register of one machine module a real ARM64
+\ general register, by linear scan over the blocks of every function it holds.
 \
 \ docs/compiler-ir-design.md section 7.9 ("start with linear scan") over the
 \ dialect src/compiler/native/a64ir.f defines and src/compiler/native/select.f
@@ -18,6 +18,19 @@
 \ liveness, one interval rule, one class rule, one victim rule and one plan - so
 \ a routine that branches and a routine that does not are allocated by the same
 \ words, and a fixture about either measures the same code.
+\
+\ AND A MODULE HOLDS SEVERAL FUNCTIONS, ON ONE NUMBER LINE. A definition that
+\ makes a quotation compiles to its own routine plus a routine per body, and the
+\ pass allocates all of them in one walk: the positions of the functions run end
+\ to end rather than each from its own zero, so the intervals of two functions are
+\ disjoint by construction and a register a later function reuses is one an
+\ earlier one has provably finished with. What that costs is written into the
+\ shape of the walk below - the value tables are the MODULE's and every question
+\ about them is asked once, while the block tables hold one function at a time and
+\ every pass that reads them lays its function out again from the base the
+\ measuring walk filed. src/compiler/native/regalloc-verify.f is built the same
+\ way and for the same reason; the two have to number positions alike or a routine
+\ is measured in one numbering and checked in the other.
 \
 \ THE READ-THEN-WRITE BOUNDARY. One operation reads its operands and then writes
 \ its results, so a value whose last use is operation i and a value defined by
@@ -354,6 +367,27 @@ create PL-POS PLMAX cells allot
 create PL-KIND PLMAX cells allot
 create PL-VAL PLMAX cells allot
 
+\ ---- where each function sits on the module's one number line ----------------
+\ A module holds several functions and their positions run END TO END rather than
+\ from each function's own zero, for the reason src/compiler/native/regalloc-verify.f
+\ VLAYOUT gives: one set of value tables describes every function, so two values
+\ of two functions carrying the same interval would look live at the same instant
+\ and the overlap rule would refuse a register two routines that never run at once
+\ may share. On one line the intervals of two functions are disjoint by
+\ construction and the question needs no notion of which function a value is of.
+\
+\ THE BLOCK TABLES STILL HOLD ONE FUNCTION AT A TIME, which is what these three
+\ are for. B-ST/B-EN, the live sets and the return-block ordinal are rewritten for
+\ every function, so a pass that has to read them again after a later function has
+\ been measured lays that function out again from the base filed here. F-LO is the
+\ base of whichever function is laid out now, and every position walk of one
+\ function runs from it to MB-AT.
+create F-BASE NFROZEN:FMAX 1 + cells allot   \ function ordinal -> its first position
+create F-RET NFROZEN:FMAX cells allot        \ function ordinal -> its return-block ordinal
+variable F-LO                                \ the base of the function laid out now
+variable N-FUNS                              \ how many functions the module holds
+variable SHORT-FUN                           \ the function whose scan ran short
+
 \ ---- the slots, read back ----------------------------------------------------
 \ The registers of one file this routine may hand out. Two pools, asked the same
 \ way of two contract fields, because a shortage in one file is not relieved by a
@@ -578,13 +612,28 @@ create PL-VAL PLMAX cells allot
    t 0 BND-MEM @ SAME-TYPE? if C-TOKEN exit then
    E-A64RA-CLASS throw ;
 
-\ Every value the module holds has to be a value the walk measured, or it has
-\ read only part of the program it is allocating for.
-: COVER-CK ( -- )
+\ How many values the module holds, read BEFORE any function is measured because
+\ every sweep below is over them. It is the module's count and not one function's:
+\ src/compiler/ir/op.f keeps one append-only value arena per module, so a second
+\ function's values are new ordinals in the same space.
+: VALS-N! ( -- )
    V-VALR VW IR-OP:FVALUES {: n:n :}
    n VMAX > if E-A64RA-CAP throw then
-   n 0 ?do i SET-AT 0= if E-A64RA-SHAPE throw then loop
    n N-VALS ! ;
+
+\ Every value the module holds has to be a value the walk measured, or it has
+\ read only part of the program it is allocating for.
+\
+\ IT IS ASKED ONCE, AFTER THE LAST FUNCTION, and that is the whole of what makes
+\ it a statement about the module. Asked inside the per-function walk it fails on
+\ the FIRST function of a module that holds two - every value the second one
+\ defines is still unmeasured at that point - which is a refusal about the shape
+\ of the module wearing the name of a missing measurement. The other half of
+\ "exactly once" is MB-DEFINE's own refusal of a value that is already set, and
+\ because the tables are cleared once for the module rather than once per
+\ function, a value defined in two functions is refused there.
+: COVER-CK ( -- )
+   N-VALS @ 0 ?do i SET-AT 0= if E-A64RA-SHAPE throw then loop ;
 
 : POOL-HAS? ( n n -- bool )
    {: fl:n r:n :}
@@ -959,12 +1008,19 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    e b cells B-EN + !
    e 1+ MB-AT ! ;
 
-: MB-LAYOUT ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
+\ ONE FUNCTION'S BLOCKS, LAID OUT FROM THE BASE IT IS GIVEN. The base is passed in
+\ rather than taken from MB-AT because this runs twice over each function: once to
+\ put every function on the line in turn, and again - from the SAME base - to put
+\ the block tables back for the passes that read them after a later function has
+\ overwritten them. F-LO records the base so a position walk of this function
+\ knows where it starts.
+: MB-LAYOUT ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id base:n :}
    f BLOCK-COUNT {: n:n :}
    n BMAX > if E-A64RA-CAP throw then
    n N-BLKS !
-   0 MB-AT !
+   base MB-AT !
+   base F-LO !
    n 0 ?do f i MB-LAY1 loop ;
 
 : OP-POS ( n n -- n )
@@ -1098,11 +1154,27 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    {: k:n :}
    N-BLKS @ 0 ?do i k MB-EXTEND1 loop ;
 
+\ THE EXTENSION IS ASKED ONLY ABOUT THE VALUES THIS FUNCTION DEFINED, and the
+\ window is how it says so: on one number line a value is this function's exactly
+\ when its definition position lies in this function's span, which is the same
+\ disjointness the overlap rule rests on rather than a second copy of the module's
+\ structure.
+\
+\ NO FIXTURE CAN FALSIFY THE WINDOW AND IT IS STILL WORTH HAVING, which is worth
+\ saying plainly rather than leaving a reader to find out. Removing it leaves
+\ every suite green, because MB-EXTEND1 only touches a value the live sets say is
+\ live across a block and MB-LIVENESS clears those sets for each function - so a
+\ value of another function has no bit anywhere and is reached by nothing. That
+\ makes the correctness of this sweep rest on TWO facts held apart: the intervals
+\ are module-wide tables, and the live sets happen to be cleared. The window makes
+\ it one fact - a value's interval is only ever touched by the function that
+\ defines it - and one fact is what a reader can check here instead of over there.
 : MB-RANGES ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    N-BLKS @ 0 ?do f i MB-BLOCK-RANGE loop
-   COVER-CK
-   N-VALS @ 0 ?do i MB-EXTEND-V loop ;
+   N-VALS @ 0 ?do
+      i DEF-AT NOPOS <>  i DEF-AT F-LO @ >=  and if i MB-EXTEND-V then
+   loop ;
 
 \ ---- step four: the block-argument classes -----------------------------------
 : UF-INIT ( -- )
@@ -1537,10 +1609,14 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
       bk i OP-AT DSTACK-TOUCH? 0= if drop i leave then
    loop ;
 
+\ THE POSITIONS IT WALKS ARE THIS FUNCTION'S, for the reason MB-FORBID's are: a
+\ class belongs to one function and every position outside that function's window
+\ is read through a layout that is not the one it was measured in, so POS-BLOCK
+\ would refuse it before the question was even asked.
 : MB-DEF-POS ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id r:n :}
    -1
-   MB-AT @ 0 ?do
+   MB-AT @ F-LO @ ?do
       f r i MB-DEFS? if drop i leave then
    loop ;
 
@@ -1674,11 +1750,16 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
       then
    loop ;
 
+\ THE POSITIONS IT WALKS ARE THIS FUNCTION'S, from the base its layout was made
+\ from to the end of it. A class belongs to one function, the calls that can
+\ destroy its registers are that function's, and every other function's positions
+\ read the block tables through a layout that is not theirs - so the window is
+\ what makes the walk mean anything, not an optimisation of it.
 : MB-FORBID ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id r:n :}
    r FILE-AT {: fl:n :}
    0
-   MB-AT @ 0 ?do
+   MB-AT @ F-LO @ ?do
       i POS-OP? if
          f i POS-OP CALL-AT? if
             r i MB-CROSSES? if
@@ -1804,12 +1885,13 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    SHORT-AT @ 0 >= if exit then
    pos MB-WRITE-PRESSURE-ALL ;
 
+\ ONE FUNCTION'S POSITIONS, in the order the machine runs them. The shortage
+\ cells and the holder table are NOT reset here any more: they belong to the whole
+\ turn of the fit below, which walks every function of the module in order before
+\ it decides anything.
 : MB-SCAN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   -1 SHORT-AT !
-   F-GPR SHORT-FILE !
-   HOLDERS-CLEAR
-   MB-AT @ 0 ?do
+   MB-AT @ F-LO @ ?do
       SHORT-AT @ 0 < if f i MB-STEP then
    loop ;
 
@@ -1887,18 +1969,10 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    d r cells CL-DEF + !
    f d MB-ANCH-POS  r cells CL-ANCH + ! ;
 
-\ Scan, and when the pool ran short somewhere, put one class in the frame and
-\ scan again. Putting a class away only ever frees registers, so a later scan
-\ runs short no earlier than the one before it, and every round takes one more
-\ class - so this stops either when the whole routine fits or when there is no
-\ class left to take and the refusal above says why.
-: MB-FIT ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   begin
-      f MB-SCAN
-      SHORT-AT @ 0 <
-      dup 0= if drop f SHORT-AT @ SHORT-FILE @ MB-EVICT false then
-   until ;
+\ The fit itself - scan, and when the pool ran short somewhere, put one class in
+\ the frame and scan again - is MB-FIT below, beside the walk. It cannot stand
+\ here because it drives every FUNCTION of the module in turn and the function
+\ readers are declared further down.
 
 \ Every value takes the register its class was given, or the slot its class was
 \ given. A memory token is in no class that holds either and takes neither.
@@ -2067,44 +2141,45 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ liveness, the ranges, the edge classes, the ties, the coalescing, the fit and
 \ the plan are all about values inside the routine and none of them asks how it
 \ leaves.
-: MB-RUN-NO-RET ( IR-ID:ir-fun-id IR-ID:ir-block-id -- )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id :}
-   f MB-LAYOUT
-   f MB-LIVENESS
-   UF-INIT
-   f MB-RANGES
-   bk MB-FIX!
-   N-BLKS @ 0 ?do f i MB-EDGES-OF loop
-   f MB-TIES
-   f MB-COALESCE
-   MB-CLASSES
-   MB-KIND-CLEAR
-   MB-SIZES
-   MB-DECLS!
-   N-BLKS @ 0 ?do f i MB-KEEP-BLOCK loop
-   f MB-FIT
-   MB-FINISH
-   f MB-PLAN ;
+\ ONE FUNCTION, MEASURED ONTO THE LINE. Everything here is about the values THIS
+\ function defines and the blocks it is made of: where its positions are, what is
+\ live across each of them, the interval every value it defines gets, the register
+\ its convention pins an argument or a result to, and the classes its edges, its
+\ schema ties and its copies join.
+\
+\ THE THREE RETURN-CONVENTION STEPS ARE SKIPPED FOR A FUNCTION THAT NEVER RETURNS,
+\ which used to be a second copy of this whole word. They are the pre-colouring of
+\ the declared return registers, the arity held against the contract's result
+\ count, and - later, in the plan - the copies into those registers. A routine
+\ with no block that hands the caller anything has nothing for any of the three to
+\ act on, so the absence is real rather than a missing case (MB-RET-ORD above says
+\ why), and one word with one guard says that better than two walks a reader has
+\ to diff.
+\ THE CONVENTION IS HELD AGAINST THE FUNCTION BEFORE ANYTHING IS MEASURED, which
+\ is the order the two checks need rather than a preference: MB-FIX! reads the
+\ entry block's argument at each declared position, so a contract naming more
+\ arguments than the function has would read past them and fail somewhere else.
+: MB-CONV-CK ( IR-ID:ir-fun-id n A64EFF:conv -- )
+   {: f:IR-ID:ir-fun-id k:n cv:A64EFF:conv :}
+   k cells F-RET + @ {: rb-ord:n :}
+   rb-ord NO-RET = if exit then
+   f 0 BLOCK-AT  f rb-ord BLOCK-AT  {: bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id :}
+   bk rb FIXED-ARITY-CK
+   bk rb cv LOWERED-CK ;
 
-: MB-RUN ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-block-id -- )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id :}
-   f MB-LAYOUT
+: MB-MEASURE ( IR-ID:ir-fun-id n A64EFF:conv -- )
+   {: f:IR-ID:ir-fun-id k:n cv:A64EFF:conv :}
+   f k cv MB-CONV-CK
+   f  k cells F-BASE + @  MB-LAYOUT
    f MB-LIVENESS
-   UF-INIT
    f MB-RANGES
-   bk MB-FIX!
-   rb MB-WANT!
+   f 0 BLOCK-AT MB-FIX!
+   k cells F-RET + @ NO-RET <> if
+      f  k cells F-RET + @  BLOCK-AT MB-WANT!
+   then
    N-BLKS @ 0 ?do f i MB-EDGES-OF loop
    f MB-TIES
-   f MB-COALESCE
-   MB-CLASSES
-   MB-KIND-CLEAR
-   MB-SIZES
-   MB-DECLS!
-   N-BLKS @ 0 ?do f i MB-KEEP-BLOCK loop
-   f MB-FIT
-   MB-FINISH
-   f MB-PLAN ;
+   f MB-COALESCE ;
 
 \ ---- what one allocation run is told -----------------------------------------
 \ The functions this pass allocates, in order. The first is the definition's own
@@ -2129,31 +2204,108 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    n NFROZEN:FMAX > if E-A64RA-CAP throw then
    n ;
 
-\ One function's allocation: the whole of what this pass used to do to the single
-\ function a module held. It is a word rather than the tail of WALK because the
-\ no-return case leaves early, and an early leave inside a loop over functions
-\ would abandon the functions after it instead of the rest of this one.
-variable F-SLOTS0                    \ the slot count the running function found
+\ PUT ONE FUNCTION'S BLOCK TABLES BACK. The layout, the block ordinals and the
+\ return-block ordinal are rewritten for every function measured, so every pass
+\ after the measuring one asks for the function it is about before it reads them.
+\ The line itself is not rebuilt - the base is the one filed when the function was
+\ measured, so every position means what it meant then.
+: MB-RELAY ( n -- )
+   {: k:n :}
+   k FUN-AT  k cells F-BASE + @  MB-LAYOUT
+   k cells F-RET + @ RET-B ! ;
 
-: MB-ONE ( IR-ID:ir-fun-id A64EFF:conv -- )
-   {: f:IR-ID:ir-fun-id cv:A64EFF:conv :}
-   N-SLOTS @ F-SLOTS0 !
-   f MB-RET-ORD RET-B !
-   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   RET-B @ NO-RET = if f bk MB-RUN-NO-RET exit then
-   f RET-B @ BLOCK-AT {: rb:IR-ID:ir-block-id :}
-   bk rb FIXED-ARITY-CK
-   bk rb cv LOWERED-CK
-   f bk rb MB-RUN ;
+\ ---- the three walks over the module's functions ------------------------------
+\ EVERY FUNCTION ONTO THE LINE, in the module's own order, each one filing where
+\ it starts. The end of the last one is filed one past the last function, so a
+\ reader asking where function k stops asks where k+1 starts and the last function
+\ needs no special case - the same shape src/compiler/native/regalloc-verify.f
+\ files its windows in.
+: MEASURE-ALL ( A64EFF:conv -- )
+   {: cv:A64EFF:conv :}
+   0
+   N-FUNS @ 0 ?do
+      dup i cells F-BASE + !
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f MB-RET-ORD  i cells F-RET + !
+      f i cv MB-MEASURE
+      drop MB-AT @
+   loop
+   N-FUNS @ cells F-BASE + ! ;
+
+\ WHICH CLASSES A REGISTER HAS TO BE KEPT FOR, asked of every function after the
+\ classes are final and before the fit begins. It reads the block tables and the
+\ return-block ordinal, so each function is laid out again first; it cannot be
+\ folded into the measuring walk because KEEP! marks a class ROOT and no class is
+\ final until every function has been coalesced.
+: KEEP-ALL ( -- )
+   N-FUNS @ 0 ?do
+      i MB-RELAY
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      N-BLKS @ 0 ?do f i MB-KEEP-BLOCK loop
+   loop ;
+
+\ THE DECISIONS, ANCHORED TO THEIR BLOCKS, once the fit has decided them. A plan
+\ row names a block and a position inside it, both of which are this function's,
+\ so this is the third walk that lays a function out before it reads them.
+: PLAN-ALL ( -- )
+   N-FUNS @ 0 ?do
+      i MB-RELAY
+      i FUN-AT MB-PLAN
+   loop ;
+
+\ Scan, and when the pool ran short somewhere, put one class in the frame and
+\ scan again. Putting a class away only ever frees registers, so a later turn runs
+\ short no earlier than the one before it, and every turn takes one more class -
+\ so this stops either when the whole module fits or when there is no class left
+\ to take and MB-VICTIM's refusal says which wall was hit.
+\
+\ THE TURN IS OVER THE MODULE AND NOT OVER ONE FUNCTION, because the registers are
+\ one pool and a class put away for one function's pressure is put away for all of
+\ them. Each function is laid out again before its own positions are walked, and
+\ the walk stops at the first shortage anywhere - the function it stopped in is
+\ the one whose tables are still laid out, which is what the eviction needs.
+\
+\ AND THE HOLDER TABLE IS CLEARED ONCE PER TURN, NOT ONCE PER FUNCTION. It looks
+\ like it should be cleared at every boundary and it must not be: MB-EXPIRE frees
+\ every register whose class ended before the position being stepped, and on one
+\ number line every class of function k ends before the first position of function
+\ k+1 - so the table empties itself at the boundary. Clearing it there as well
+\ would say nothing; NOT clearing it per turn would carry one turn's holders into
+\ the next, where the class that was evicted still appears to hold its register.
+: MB-FIT ( -- )
+   begin
+      -1 SHORT-AT !
+      F-GPR SHORT-FILE !
+      HOLDERS-CLEAR
+      N-FUNS @ 0 ?do
+         SHORT-AT @ 0 < if
+            i MB-RELAY
+            i SHORT-FUN !
+            i FUN-AT MB-SCAN
+         then
+      loop
+      SHORT-AT @ 0 <
+      dup 0= if
+         drop
+         SHORT-FUN @ FUN-AT  SHORT-AT @  SHORT-FILE @  MB-EVICT
+         false
+      then
+   until ;
 
 \ A module has ONE frame and the first function owns it. The frame's base, its
 \ slot count and the reserve src/compiler/native/migrate.f LOWERED sizes from
-\ A64RA:FRAME are all one per module, so a later function that needed a slot
-\ would be handed one out of the FIRST function's frame - a slot whose address is
-\ measured from a stack pointer that function never moved. That is not a wrong
-\ number to be found later; it is a store through a pointer belonging to another
-\ routine's frame, so it is refused here, by name, the moment the allocation asks
-\ for it.
+\ A64RA:FRAME are all one per module, so a later function handed a slot would be
+\ handed one out of the FIRST function's frame - a slot whose address is measured
+\ from a stack pointer that function never moved. That is not a wrong number to be
+\ found later; it is a store through a pointer belonging to another routine's
+\ frame, so it is refused by name.
+\
+\ IT IS ASKED OF THE SLOTS THEMSELVES, after the fit, rather than of a count taken
+\ before and after each function. The fit decides slots for the whole module at
+\ once, so "how many did this function add" is no longer a question the walk has
+\ an answer to; "which class got a slot, and where is it defined" is, and it names
+\ the class instead of a difference between two counts. A class defined at or past
+\ the first position of the SECOND function belongs to a function after the first.
 \
 \ THE CASE IS EMPTY IN THE TREE AND THE REFUSAL IS STILL THE RIGHT SHAPE. Every
 \ quotation body in src and lib is a single word call and needs no slot at all -
@@ -2163,10 +2315,14 @@ variable F-SLOTS0                    \ the slot count the running function found
 \ dot habu-give-each-fn-c1fd7c5a gives each function its own frame and retires
 \ this; until then a body that will not fit its values in registers is refused,
 \ and the definition keeps the code the engine compiled for it.
-: FRAME-ONCE-CK ( n -- )
-   {: k:n :}
-   k 0= if exit then
-   N-SLOTS @ F-SLOTS0 @ <> if E-A64RA-FRAME throw then ;
+: FRAME-ONCE-CK ( -- )
+   1 cells F-BASE + @ {: after0:n :}
+   N-VALS @ 0 ?do
+      i UF-FIND i =
+      i cells CL-SLOT + @ NOSLOT <> and
+      i cells CL-DEF + @ after0 >= and
+      if E-A64RA-FRAME throw then
+   loop ;
 
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
@@ -2300,10 +2456,20 @@ public
    TABLES-CLEAR
    args outs FIXED!
    FIXED-POOL-CK
-   FUNS-CK 0 ?do
-      i FUN-AT cv MB-ONE
-      i FRAME-ONCE-CK
-   loop ;
+   VALS-N!
+   UF-INIT
+   FUNS-CK N-FUNS !
+   cv MEASURE-ALL
+   COVER-CK
+   MB-CLASSES
+   MB-KIND-CLEAR
+   MB-SIZES
+   MB-DECLS!
+   KEEP-ALL
+   MB-FIT
+   MB-FINISH
+   FRAME-ONCE-CK
+   PLAN-ALL ;
 
 : ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE

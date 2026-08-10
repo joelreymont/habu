@@ -671,14 +671,24 @@ create TXT
    7 M-MOVZ M-RET
    CLOSE-FUN ;
 
-\ Two functions in one module: whichever one an allocation was about, it was not
-\ about both.
+\ TWO FUNCTIONS IN ONE MODULE, which is what a definition that makes a quotation
+\ compiles to: the first is the routine the definition names and the second is the
+\ body of its quotation. They are built to differ, because two identical functions
+\ would allocate identically and an allocation that measured only one of them, or
+\ measured the second with the first's layout, would answer the same numbers.
+\ The first holds two literals live at once; the second holds three.
 : BUILD-TWO-FUNS ( -- )
    s" ONE" 0 1 OPEN-FUN
-   7 M-MOVZ M-RET
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   a b M-ADD M-RET
    CLOSE-FUN
    s" TWO" 0 1 OPEN-FUN
-   9 M-MOVZ M-RET
+   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   $44 M-MOVZ {: d:IR-ID:ir-value-id :}
+   $55 M-MOVZ {: e:IR-ID:ir-value-id :}
+   c d M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 e M-ADD M-RET
    CLOSE-FUN ;
 
 \ A seventh machine operation, defined into this dialect's own table, with a tie
@@ -931,6 +941,30 @@ create TXT
 \ read LAST are the two the allocator has to put away.
 : BUILD-CHAIN ( -- )
    s" CHAIN" 0 1 OPEN-FUN
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   $44 M-MOVZ {: d:IR-ID:ir-value-id :}
+   $55 M-MOVZ {: e:IR-ID:ir-value-id :}
+   a b M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 c M-ADD {: s2:IR-ID:ir-value-id :}
+   s2 d M-ADD {: s3:IR-ID:ir-value-id :}
+   s3 e M-ADD M-RET
+   CLOSE-FUN ;
+
+\ THE SHAPE S1 REFUSES: a module whose SECOND function is the one that cannot fit.
+\ The first function is a literal and a return, so nothing about it needs a slot;
+\ the second is the five-literal chain above, which needs one. A module has one
+\ frame and its first function owns it, so a slot handed to the second would be
+\ addressed from a stack pointer that function never moved - and the walk refuses
+\ by name instead. dot habu-give-each-fn-c1fd7c5a is what inverts this into a
+\ publication; until then this is the boundary and this fixture is where it is
+\ written down.
+: BUILD-SECOND-SPILLS ( -- )
+   s" FIRST" 0 1 OPEN-FUN
+   $77 M-MOVZ M-RET
+   CLOSE-FUN
+   s" SECOND" 0 1 OPEN-FUN
    $11 M-MOVZ {: a:IR-ID:ir-value-id :}
    $22 M-MOVZ {: b:IR-ID:ir-value-id :}
    $33 M-MOVZ {: c:IR-ID:ir-value-id :}
@@ -1842,10 +1876,51 @@ create TXT
    BUILD-WRONG-CLASS
    REFUSE-SHAPE ;
 
-: TWO-FUNS-BODY ( IR-CTX:ctx -- )
+\ BOTH FUNCTIONS' ASSIGNMENTS, AND WHERE EACH ONE SITS ON THE MODULE'S ONE NUMBER
+\ LINE. The definition positions are the whole point: they say that the second
+\ function was measured AFTER the first rather than from its own zero, which is
+\ what makes the intervals of the two disjoint and what lets the second reuse the
+\ first's registers without the two ever being live at once. An allocation that
+\ restarted the line would give the second function's first value the same
+\ definition position as the first function's, and the validator would refuse the
+\ shared register - so this is asserted through A64RAV:ACCEPT, not around it.
+: TWO-FUNS-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n )
    A64-MOD
    BUILD-TWO-FUNS
-   REFUSE-SHAPE ;
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT
+   A64RA:VALUES
+   0 A64RAV:REG@   1 A64RAV:REG@   2 A64RAV:REG@
+   3 A64RAV:REG@   4 A64RAV:REG@   5 A64RAV:REG@
+   6 A64RAV:REG@   7 A64RAV:REG@
+   0 A64RA:DEF@   2 A64RA:LAST@
+   3 A64RA:DEF@   7 A64RA:LAST@ ;
+
+\ The numbers, read top down as every case here reads them. The four positions
+\ come first because they are the claim: function ONE occupies 1 to 4 and
+\ function TWO 6 to 11, one continuous line with no overlap - and the registers
+\ then show function TWO's first value taking register 0 back, which is sound
+\ only because ONE's values are all dead by then.
+: SECOND-SPILLS-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-SECOND-SPILLS
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m 3 16 LEAF-FRAMED A64RA:ALLOCATE ;
+
+: SECOND-SPILLS ( -- )
+   WBND [: SECOND-SPILLS-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TWO-FUNS-CASE ( -- )
+   s" a module of two functions allocates both of them on one number line" T-LABEL
+   WBND [: TWO-FUNS-BODY ;] IR-CTX:WITH-CONTEXT
+   11 T=  6 T=                          \ function TWO: first definition, last read
+   4 T=   1 T=                          \ function ONE: first definition, last read
+   0 T=   0 T=   2 T=   1 T=   0 T=     \ TWO's registers, top value first
+   0 T=   1 T=   0 T=                   \ ONE's registers
+   8 T=                                 \ every value of the module was measured
+
+   s" a function after the first that needs a frame slot is refused by name" T-LABEL
+   [: SECOND-SPILLS ;] E-A64RA-FRAME TTHROWSQ ;
 
 : EXTRA-LIVE-TIE-BODY ( IR-CTX:ctx -- )
    A64-MOD
@@ -2163,7 +2238,6 @@ create TXT
 \ ---- refusal cases -----------------------------------------------------------
 : LIVE-TIE ( -- )         WBND [: LIVE-TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-CLASS ( -- )      WBND [: WRONG-CLASS-BODY ;] IR-CTX:WITH-CONTEXT ;
-: TWO-FUNS ( -- )         WBND [: TWO-FUNS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EXTRA-LIVE-TIE ( -- )   WBND [: EXTRA-LIVE-TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PAIR-SHARED ( -- )      WBND [: PAIR-SHARED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PRESSURE ( -- )         WBND [: PRESSURE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2208,9 +2282,7 @@ create TXT
 
 : SHAPE-REFUSE-CASES ( -- )
    s" a value that is not a general register of this dialect is refused" T-LABEL
-   [: WRONG-CLASS ;] E-A64RA-CLASS TTHROWSQ
-   s" a module of more than one function is refused" T-LABEL
-   [: TWO-FUNS ;] E-A64RA-SHAPE TTHROWSQ ;
+   [: WRONG-CLASS ;] E-A64RA-CLASS TTHROWSQ ;
 
 : TIE-REFUSE-CASES ( -- )
    s" a move-wide overwrite whose kept value is read again is refused" T-LABEL
@@ -2807,6 +2879,7 @@ public
    UNUSED-CASE
    WIDE-CASE
    PLAIN-CASE
+   TWO-FUNS-CASE
    TWO-FILES-CASE
    FSPILL-PLAN-CASE
    FSPILL-LOWER-CASE

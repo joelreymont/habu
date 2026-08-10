@@ -774,7 +774,7 @@ public
 -8320 constant E-A64RA-BIND      \ allocation attempted before the dialect's module and type identities were bound, or a second binding over a live one
 -8321 constant E-A64RA-MODULE    \ a frozen module that is not the bound one
 -8322 constant E-A64RA-STATE     \ an allocation reader used before the walk sealed one, or after a later walk replaced it
--8323 constant E-A64RA-SHAPE     \ a module this leaf cannot allocate: no function at all, no block control leaves through or more than one, a successor ordinal outside the function, or values the function does not hold
+-8323 constant E-A64RA-SHAPE     \ a module this leaf cannot allocate: no function at all, no block control leaves through or more than one, a successor ordinal outside the function, or a value of the module that no function defines
 \ -8324 refused an operation of a form the allocator did not recognise, because
 \ such a form might tie its registers without saying so. A form now declares its
 \ ties in its own operation schema and the allocator reads them, so nothing is
@@ -803,7 +803,7 @@ public
 -8336 constant E-A64RAV-OVERLAP   \ two values live at the same time assigned the same register
 -8337 constant E-A64RAV-CLASS     \ a value whose type is not the dialect's general-register type
 -8338 constant E-A64RAV-TIE       \ a schema-declared tie the assignment breaks: the tied result and operand are not the same register
--8339 constant E-A64RAV-SHAPE     \ a module that is not exactly one function with one block control leaves through, or a successor ordinal outside it, re-derived rather than taken from the allocator
+-8339 constant E-A64RAV-SHAPE     \ a module with no function at all, or a function with more than one block control leaves through, or a successor ordinal outside it, re-derived rather than taken from the allocator
 
 \ Native ARM64 machine dialect (package A64IR): -8340..-8359
 \
@@ -855,7 +855,7 @@ public
 -8381 constant E-A64EMIT-BIND    \ emission attempted before the machine dialect's identities were bound, or a second binding over a live one
 -8382 constant E-A64EMIT-MODULE  \ a frozen module that is not the bound one, or a builder of another dialect or schema version
 -8383 constant E-A64EMIT-ALLOC   \ no accepted register assignment at all, or one accepted for a different module
--8384 constant E-A64EMIT-SHAPE   \ not the straight-line subset: not exactly one function of one block, or a block whose only return is not its last operation
+-8384 constant E-A64EMIT-SHAPE   \ not the straight-line subset: no function at all, a function ordinal outside the module, or a block whose only return is not its last operation
 -8385 constant E-A64EMIT-OPCODE  \ an operation whose opcode is none of the machine dialect's family
 -8386 constant E-A64EMIT-ATTR    \ a move-wide operation that carries no attribute under the key the dialect declares for it
 -8387 constant E-A64EMIT-CAP     \ more instructions in one block than the emission buffers hold
@@ -896,7 +896,7 @@ public
 \ dialect's own field is E-A64IR-SLOT, and a malformed module is IR-OP's.
 -8440 constant E-A64SPILL-BIND   \ a rewrite attempted before the machine dialect's identities were bound, or a second binding over a live one
 -8441 constant E-A64SPILL-PLAN   \ no sealed spill plan at all, one made for another module, or one a later allocation replaced
--8442 constant E-A64SPILL-SHAPE  \ a module this pass cannot rewrite: not exactly one function of one block, a span naming another source, or a value used before it is defined
+-8442 constant E-A64SPILL-SHAPE  \ a module this pass cannot rewrite: no function at all, a function whose frame operations are neither nothing nor exactly a selector's prologue, an empty block, a span naming another source, or a value used before it is defined
 -8443 constant E-A64SPILL-SOURCE \ source text whose digest is not the one the module being rewritten recorded
 -8444 constant E-A64SPILL-OPCODE \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
 -8445 constant E-A64SPILL-CAP    \ more values or more inserted operations in one block than the rewriter's tables hold

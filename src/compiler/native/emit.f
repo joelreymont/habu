@@ -35,9 +35,9 @@
 \     byte, so an acceptance a later allocation invalidated is refused by
 \     A64RAV under A64RAV's own name rather than quietly re-read here.
 \   - a shape this layout cannot serve, re-derived from the module rather than
-\     taken on trust: one function, at least one block, more blocks than the
-\     layout table holds, and a block whose only terminator is its last
-\     operation. The freeze verifier already forbids a block with two terminators
+\     taken on trust: at least one function and no more than the chain's shared
+\     ceiling, at least one block in each, no more blocks than the layout table
+\     holds, and a block whose only terminator is its last operation. The freeze verifier already forbids a block with two terminators
 \     or one that is not last; this pass measures it again because it is about to
 \     lay the operations out in that order.
 \   - a branch whose successor names no block of the function being emitted, and

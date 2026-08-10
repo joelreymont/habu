@@ -32,12 +32,14 @@
 \ starts at register zero and once from a pool that starts at register four, and
 \ the second one's expected words are different in every register field.
 \
-\ WHY THE HOSTILE MODULES ARE BUILT IN THE MACHINE DIALECT. A second function and
-\ an operation of a form outside the dialect's family are shapes the selector
-\ never produces, so they are built straight into A64IR - and they are emitted
-\ without an allocation, because the allocator refuses both before the emitter
-\ would ever see them. That is the point: the emitter must refuse them under its
-\ own name rather than by never meeting them.
+\ WHY THE HOSTILE MODULE IS BUILT IN THE MACHINE DIALECT. An operation of a form
+\ outside the dialect's family is a shape the selector never produces, so it is
+\ built straight into A64IR - and it is emitted without an allocation, because the
+\ allocator refuses it before the emitter would ever see it. That is the point:
+\ the emitter must refuse it under its own name rather than by never meeting it.
+\ A module of two functions is built the same way and for the opposite reason: it
+\ is what a definition that makes a quotation compiles to, and the emission has to
+\ hold both of them end to end.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so a case that builds a source module and a
@@ -653,8 +655,12 @@ $1000 constant BUMP-ADDR
    7 M-MOVZ M-RET
    CLOSE-FUN ;
 
-\ Two functions in one module: whichever one an emission was about, it was not
-\ about both, and the order two functions are laid out in is not decided here.
+\ TWO FUNCTIONS IN ONE MODULE, which is what a definition that makes a quotation
+\ compiles to: the first is the routine the definition names and the second is the
+\ body of its quotation. They carry different literals so the emission can be read
+\ back and each function's instructions told from the other's - two functions
+\ emitting the same bytes would leave an emitter that wrote the first one twice
+\ indistinguishable from one that wrote both.
 : BUILD-TWO-FUNS ( -- )
    s" ONE" 0 1 OPEN-FUN
    7 M-MOVZ M-RET
@@ -936,13 +942,32 @@ $1000 constant BUMP-ADDR
    c HIR:NEW-BUILDER {: b:IR-BUILD:builder :}
    c b A64EMIT:BIND-DIALECT ;
 
-: TWO-FUNS-BODY ( IR-CTX:ctx -- )
+\ BOTH FUNCTIONS' INSTRUCTIONS, IN ONE EMISSION, read back as the words they are.
+\ The four instructions are the two functions end to end - each one's move-wide
+\ and its return - and the literals say which is which, so an emitter that laid
+\ the second function over the first, or wrote the first one twice, answers
+\ different words here rather than a different count.
+: TWO-FUNS-BODY ( IR-CTX:ctx -- n n n n n bool )
    {: c:IR-CTX:ctx :}
    c A64-NEW
+   BIND-RA
+   BIND-RAV
    BIND-EMIT
    BUILD-TWO-FUNS
    M-FREEZE {: m:IR-BUILD:module :}
-   c m A64EMIT:EMIT ;
+   c m 0 4 NFIX:FINISH
+   A64EMIT:INSNS
+   0 A64EMIT:WORD@   1 A64EMIT:WORD@
+   2 A64EMIT:WORD@   3 A64EMIT:WORD@
+   A64EMIT:SEALED? ;
+
+: TWO-FUNS-CASE ( -- )
+   s" a module of two functions emits both of them, one after the other" T-LABEL
+   WBND [: TWO-FUNS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE
+   $D65F03C0 T=  $D2800120 T=
+   $D65F03C0 T=  $D28000E0 T=
+   4 T= ;
 
 : EXTRA-OPCODE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -1017,7 +1042,6 @@ $1000 constant BUMP-ADDR
 : NO-BIND ( -- )         WBND [: NO-BIND-BODY ;] IR-CTX:WITH-CONTEXT ;
 : TWICE-BIND ( -- )      WBND [: TWICE-BIND-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-DIALECT ( -- )   WBND [: WRONG-DIALECT-BODY ;] IR-CTX:WITH-CONTEXT ;
-: TWO-FUNS ( -- )        WBND [: TWO-FUNS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EXTRA-OPCODE ( -- )    WBND [: EXTRA-OPCODE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-TARGET ( -- )    WBND [: WRONG-TARGET-BODY ;] IR-CTX:WITH-CONTEXT ;
 : OTHER-ALLOC ( -- )     WBND [: OTHER-ALLOC-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1046,12 +1070,6 @@ $1000 constant BUMP-ADDR
    [: WRONG-DIALECT ;] E-A64EMIT-MODULE TTHROWSQ ;
 
 : SHAPE-REFUSE-CASES ( -- )
-   s" a module of more than one function is refused" T-LABEL
-   [: TWO-FUNS ;] E-A64EMIT-SHAPE TTHROWSQ
-   \ The refusal just above left no sealed emission, so there are no bytes to read.
-   s" a refused emission leaves no bytes to read" T-LABEL
-   A64EMIT:SEALED? TFALSE
-   [: 0 A64EMIT:WORD@ drop ;] E-A64EMIT-STATE TTHROWSQ
    s" an operation of a form outside the dialect's family is refused" T-LABEL
    [: EXTRA-OPCODE ;] E-A64EMIT-OPCODE TTHROWSQ ;
 
@@ -1108,6 +1126,7 @@ public
    RUN-REUSE-CASE
    RUN-WIDE-CASE
    PLAIN-CASE
+   TWO-FUNS-CASE
    SPILL-CASE
    RUN-SPILL-CASE
    SECOND-CASE
