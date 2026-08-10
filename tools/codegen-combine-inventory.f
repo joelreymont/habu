@@ -55,6 +55,8 @@ require src/arch/arm64/asm.f
 require tools/codegen-tail-probe.f
 
 package NCOMBINV
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 
 private
 
@@ -449,4 +451,5 @@ public
 : BITFIELDS ( -- n )
    [: BITFIELD-PAIR? ;] COUNT2 ;
 
+;using
 ;package

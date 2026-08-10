@@ -1,11 +1,16 @@
 \ mnem.fs — icode-style mnemonic layer over the selfhost encoders: `19 19 8 ADDI,`
 \ reads like src/cg source, so the engine-builder port stays a near-transcription.
 \ Needs asm.fs + icode.fs (EMITW). One concern: mnemonic -> encode+emit.
+\ The encoders are package A64ASM's public surface, imported here once and
+\ called bare: this layer is one line per mnemonic and a qualifier on every one
+\ of them would be all this file consists of.
+using A64ASM
+
 9 constant T0   10 constant T1   11 constant T2
 19 constant XDS  31 constant SP
 \ The condition-code names this layer used to define are asm.fs's now: they are
 \ the vocabulary of the four-bit field ?COND bounds, so they belong beside it,
-\ and this file loads after it.
+\ and this file loads after it. They arrive through the import above.
 
 : MOVZ, ( n n -- )  0 MOVZHW EMITW ;
 
@@ -124,3 +129,5 @@
 : SCVTF, ( n n -- )  ENC-SCVTF EMITW ;
 
 : FCVTZS, ( n n -- )  ENC-FCVTZS EMITW ;
+
+;using

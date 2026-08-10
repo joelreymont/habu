@@ -8,6 +8,9 @@ variable CR-OFF  variable CR-HANDLER
 \ Crash trust rows cover the raw output buffer and ARM64 signal-entry,
 \ mcontext/register, and guarded saved-PC instruction accesses.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
+
 s" CRH" s" -- ptr u8" TRUST
 : CRH-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
@@ -185,3 +188,5 @@ s" c-crash-pc+4" s" --" TRUST
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  8 INSTALL-SIGACT  10 INSTALL-SIGACT  11 INSTALL-SIGACT
    THEN
    C-SIGACTION-FRAME-DONE ;
+
+;using

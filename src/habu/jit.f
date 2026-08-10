@@ -2,6 +2,9 @@
 \ Tag 1 = constant (no code yet), tag 0 = live register; LVSPILL materializes all
 \ entries as [x19] pushes bottom-up and empties the VS. State in DATA header cells.
 \ Load after prof.fs, before habu2.f.
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
+
 variable LVSPILL   variable LVLITPUSH   variable LVPUSHC
 variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
@@ -938,3 +941,5 @@ package ENGINE-EMIT
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;
 
 ;package
+
+;using

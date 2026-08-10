@@ -49,6 +49,8 @@ require tools/codegen-compare-migrated3.f
 require tools/codegen-compare-migrated4.f
 
 package NCOMBINV-TEST
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 
 using NCOMBINV
 
@@ -227,7 +229,7 @@ public
    EMITTED-CASES ;
 
 ;using
-
+;using
 ;package
 
 T-RESET

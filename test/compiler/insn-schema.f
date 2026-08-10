@@ -129,26 +129,29 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 
+\ The encoders are package A64ASM's public surface (src/arch/arm64/asm.f), so
+\ their rows name them the way the dictionary records them; the label, buffer and
+\ mnemonic words below are still global and are named bare.
 s" ASM-INIT" s" --" TRUST
 s" CW@" s" n -- ptr u8" TRUST
 s" CODE-BYTE+" s" ptr u8 n -- ptr u8" TRUST
 s" ASM-LEN" s" -- n" TRUST
 s" LBL" s" -- n" TRUST
 s" LBL," s" n --" TRUST
-s" MOVZHW" s" n n n -- n" TRUST
-s" ENC-LDUR" s" n n n -- n" TRUST
-s" ENC-STUR" s" n n n -- n" TRUST
-s" ENC-LDRD" s" n n n -- n" TRUST
-s" ENC-STRD" s" n n n -- n" TRUST
-s" ENC-LDURD" s" n n n -- n" TRUST
-s" ENC-STURD" s" n n n -- n" TRUST
-s" ENC-SMULH" s" n n n -- n" TRUST
-s" ENC-MADD" s" n n n n -- n" TRUST
-s" ENC-MSUB" s" n n n n -- n" TRUST
-s" ENC-LD1V" s" n n -- n" TRUST
-s" ENC-UADDLV" s" n n -- n" TRUST
-s" ENC-UMOVH" s" n n n -- n" TRUST
-s" MOVNHW" s" n n n -- n" TRUST
+s" A64ASM:MOVZHW" s" n n n -- n" TRUST
+s" A64ASM:ENC-LDUR" s" n n n -- n" TRUST
+s" A64ASM:ENC-STUR" s" n n n -- n" TRUST
+s" A64ASM:ENC-LDRD" s" n n n -- n" TRUST
+s" A64ASM:ENC-STRD" s" n n n -- n" TRUST
+s" A64ASM:ENC-LDURD" s" n n n -- n" TRUST
+s" A64ASM:ENC-STURD" s" n n n -- n" TRUST
+s" A64ASM:ENC-SMULH" s" n n n -- n" TRUST
+s" A64ASM:ENC-MADD" s" n n n n -- n" TRUST
+s" A64ASM:ENC-MSUB" s" n n n n -- n" TRUST
+s" A64ASM:ENC-LD1V" s" n n -- n" TRUST
+s" A64ASM:ENC-UADDLV" s" n n -- n" TRUST
+s" A64ASM:ENC-UMOVH" s" n n n -- n" TRUST
+s" A64ASM:MOVNHW" s" n n n -- n" TRUST
 s" EMITW" s" n --" TRUST
 s" MOVZ," s" n n --" TRUST
 s" MOVN," s" n n --" TRUST
@@ -200,7 +203,7 @@ s" BLR," s" n --" TRUST
 s" BR," s" n --" TRUST
 s" ICIVAU," s" n --" TRUST
 s" DCCVAU," s" n --" TRUST
-s" >LIMM" s" n -- n" TRUST
+s" A64ASM:>LIMM" s" n -- n" TRUST
 
 package COMPILER-INSN-PROOF
 public

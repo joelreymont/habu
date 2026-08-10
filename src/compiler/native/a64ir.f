@@ -737,7 +737,7 @@ private
 \ A mask that cannot be encoded is therefore not representable in this dialect
 \ at all, so no pass can build one and leave the die for the emitter to reach.
 : MASK ( n -- n )
-   dup LIMM? 0= if E-A64IR-MASK throw then ;
+   dup A64ASM:LIMM? 0= if E-A64IR-MASK throw then ;
 
 \ ---- checked data-stack operands ---------------------------------------------
 \ An offset from the data-stack pointer, which is what an access of the caller's
@@ -843,7 +843,7 @@ public
 \ between the immediate form and the register form asks this first and takes the
 \ register form when the answer is no; the bound above is what makes a pass that
 \ forgot to ask fail loudly instead of emitting a wrong instruction.
-: MASK-IMM? ( n -- bool )   LIMM? ;
+: MASK-IMM? ( n -- bool )   A64ASM:LIMM? ;
 
 \ ---- the opcode names --------------------------------------------------------
 \ This module's interned symbol for one opcode. Interning deduplicates, so asking

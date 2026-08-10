@@ -21,6 +21,8 @@ require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 
 package ICODE-FIXUP-TEST
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 
 $801 constant SEQ-N
 $28000 constant WANT-TAB-BYTES
@@ -450,4 +452,5 @@ variable WP
 
 RUN
 
+;using
 ;package

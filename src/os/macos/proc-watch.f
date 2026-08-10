@@ -1,5 +1,11 @@
 \ proc-watch.f -- macOS exact process-lifetime watch primitive emitter.
 
+\ The ARM64 condition-code names are package A64ASM's public surface
+\ (src/arch/arm64/asm.f), imported here rather than qualified at each call so the
+\ emitters below keep the bodies they had: this file carries no package, so the
+\ ownership gate reports a changed global definition in it.
+using A64ASM
+
 : BPROCWATCHOPEN ( -- )            \ ( pid -- fd|-1 )
    LBL LBL LBL {: openbad:label regbad:label done:label :}
    9 G-POP
@@ -26,3 +32,5 @@
    done LBL,
    SP SP 64 ADDI,
    0 G-PUSH ;
+
+;using

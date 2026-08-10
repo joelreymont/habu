@@ -12,6 +12,20 @@
 \ checks its reach (?REL26, ?REL19, ?ADR) before handing it over, in words for
 \ a branch and in bytes for ADR — which its word-counting position also makes
 \ a multiple of four by construction.
+\
+\ Package A64ASM. The public surface is the encoders themselves, the two
+\ operand conversions a caller has to make before one of them will take its
+\ operand (SCALE/ and >LIMM, plus the LIMM? question a pass asks to decide
+\ whether the immediate form exists at all), the condition-code vocabulary of
+\ the field ?COND bounds, and the field widths another layer pins its own copy
+\ against. Everything the encoders are BUILT from — the operand screens, the
+\ scratch cells, the bit-layout stencils and the logical-immediate packer — is
+\ private, so the names this file used to hand every program are 108 published
+\ encoders and conversions plus 69 that no longer leave the file at all.
+
+package A64ASM
+
+\ The module's own word mask and the status every refusal below exits with.
 $FFFFFFFF constant ARM64-W32
 
 : MSK ( n -- n ) ARM64-W32 and ;
@@ -21,17 +35,51 @@ $FFFFFFFF constant ARM64-W32
 \ assembler refused to encode that" wherever the refusal came from.
 72 constant ASM-EXIT-RC
 
+public
+
 \ Operand bounds, one per kind of field, each derived from the WIDTH of the
 \ field the encoder drops the operand into: an unsigned field of w bits holds
 \ 0 .. 2^w - 1. They are written here once, so no encoder carries a bound of
-\ its own and no bound can drift from the field it describes.
+\ its own and no bound can drift from the field it describes. Each one is an
+\ independent fact about one field, so the table is split by who reads it: the
+\ five below are published because a layer that must not exceed a field pins
+\ its own copy against them, and the three in the private section have no
+\ reader outside this file. Publishing one is moving its line.
 1  5 lshift constant REG-LIM     \ Rd/Rn/Rm/Rt register number
 1 16 lshift constant IMM16-LIM   \ move-wide immediate, SVC number
 1 12 lshift constant IMM12-LIM   \ add/sub/compare immediate, load/store offset field
-1 13 lshift constant NIS-LIM     \ packed N:immr:imms of a logical immediate
-1  6 lshift constant SHIFT-LIM   \ shift amount for a 64-bit register
 1  4 lshift constant COND-LIM    \ condition code
 1  2 lshift constant HW-LIM      \ move-wide shifted-half selector
+
+\ Its bits, once the bound has been made: the field is nine bits wide and sits
+\ at bit twelve, so a negative offset is its two's complement in those nine bits.
+1 9 lshift 1 - constant SIMM9-MASK
+12 constant SIMM9-SHIFT
+
+\ x18 is Darwin platform-reserved: XNU zeroes it on any synchronous trap
+\ return (page fault included), so emitted code must never hold live state
+\ there. Fail closed at encode time for every X-register operand field.
+18 constant ARM-RESERVED-REG
+
+\ The vocabulary of that four-bit field, in the architecture's own order. It
+\ lives beside the field it fills, so a caller that needs "less than" names the
+\ condition rather than writing 11, and there is one place that says which
+\ number each condition is. src/arch/arm64/mnem.f used to carry a second copy;
+\ it now loads after this file and reads these. Unlike the bounds table above
+\ this is one closed enumeration of one field rather than a list of separate
+\ facts, so it is published whole: a vocabulary missing three of its words
+\ would say the field cannot hold them.
+ 0 constant C-EQ   1 constant C-NE   2 constant C-CS   3 constant C-CC
+ 4 constant C-MI   5 constant C-PL   6 constant C-VS   7 constant C-VC
+ 8 constant C-HI   9 constant C-LS  10 constant C-GE  11 constant C-LT
+12 constant C-GT  13 constant C-LE  14 constant C-AL
+
+private
+
+\ The three bounds of that same table no caller outside this file reads: the
+\ logical-immediate packing, the register shift amount and the vector lane.
+1 13 lshift constant NIS-LIM     \ packed N:immr:imms of a logical immediate
+1  6 lshift constant SHIFT-LIM   \ shift amount for a 64-bit register
 1  3 lshift constant LANEH-LIM   \ which 16-bit lane of a vector UMOV reads
 
 \ True when v does not fit the unsigned field that holds 0 .. lim-1. Every
@@ -64,23 +112,8 @@ $FFFFFFFF constant ARM64-W32
    dup dup SIMM9-LIM negate < swap SIMM9-LIM >= or
    IF s" asm: 9-bit signed offset out of range" ASM-EXIT-RC die THEN ;
 
-\ Its bits, once the bound has been made: the field is nine bits wide and sits
-\ at bit twelve, so a negative offset is its two's complement in those nine bits.
-1 9 lshift 1 - constant SIMM9-MASK
-12 constant SIMM9-SHIFT
-
 : ?COND ( n -- n )
    dup COND-LIM OUT? IF s" asm: condition code out of range" ASM-EXIT-RC die THEN ;
-
-\ The vocabulary of that four-bit field, in the architecture's own order. It
-\ lives beside the field it fills, so a caller that needs "less than" names the
-\ condition rather than writing 11, and there is one place that says which
-\ number each condition is. src/arch/arm64/mnem.f used to carry a second copy;
-\ it now loads after this file and reads these.
- 0 constant C-EQ   1 constant C-NE   2 constant C-CS   3 constant C-CC
- 4 constant C-MI   5 constant C-PL   6 constant C-VS   7 constant C-VC
- 8 constant C-HI   9 constant C-LS  10 constant C-GE  11 constant C-LT
-12 constant C-GT  13 constant C-LE  14 constant C-AL
 
 : ?HW ( n -- n )
    dup HW-LIM OUT? IF s" asm: move-wide half out of range" ASM-EXIT-RC die THEN ;
@@ -93,17 +126,10 @@ $FFFFFFFF constant ARM64-W32
 : ?LANEH ( n -- n )
    dup LANEH-LIM OUT? IF s" asm: vector lane index out of range" ASM-EXIT-RC die THEN ;
 
-\ A byte operand the encoder is about to divide by its access scale. The
-\ division rounds down, so a value it would round is refused here rather than
-\ silently encoding the aligned operand below it.
-: SCALE/ ( n n -- n )
-   2dup mod 0 <> IF s" asm: operand is not a multiple of its scale" ASM-EXIT-RC die THEN
-   / ;
-
-\ x18 is Darwin platform-reserved: XNU zeroes it on any synchronous trap
-\ return (page fault included), so emitted code must never hold live state
-\ there. Fail closed at encode time for every X-register operand field.
-18 constant ARM-RESERVED-REG
+\ Operand 31 in a logical or an add/sub form is the zero register, which is how
+\ ARM64 spells a move, a negate and a complement; the three encoders that use
+\ it say so at their own lines.
+31 constant ARM-ZERO-REG
 
 : XREG? ( n -- n )
    ?REG
@@ -162,13 +188,6 @@ variable ARM-Z
 : ARM-I3! ( n n n -- )
    ARM-IMM ! ARM-RN ! ARM-RD ! ;
 
-\ move-wide: rd imm16 hw -> u32
-: MOVZHW ( n n n -- n )  XMW3 21 lshift swap 5 lshift or or $D2800000 or MSK ;
-
-: MOVKHW ( n n n -- n )  XMW3 21 lshift swap 5 lshift or or $F2800000 or MSK ;
-
-: MOVNHW ( n n n -- n )  XMW3 21 lshift swap 5 lshift or or $92800000 or MSK ;
-
 \ shifted-register 3-operand: rd rn rm
 : RRR ( n n n n -- n )
    ARM-BASE ! ARM-R3!
@@ -181,6 +200,133 @@ variable ARM-Z
    ARM-BASE ! ARM-RA ! ARM-R3!
    ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or
    ARM-RM @ 16 lshift or  ARM-RA @ 10 lshift or MSK ;
+
+: RRI ( n n n n -- n )
+   ARM-BASE ! ARM-I3!
+   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-IMM @ 10 lshift or MSK ;
+
+: RR ( n n n -- n )
+   ARM-BASE ! ARM-R2!
+   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or MSK ;
+
+\ The unscaled SIGNED offset layout: the other addressing mode of the same
+\ load/store group RRI serves. The offset is in bytes and may be negative, which
+\ is the whole reason ENC-LDUR and ENC-STUR exist - an access BELOW the base
+\ register has no spelling in the unsigned forms. It is not scaled, so no
+\ alignment is forced by the encoding; a caller that wants cells still hands
+\ over a multiple of eight because that is what its own data is.
+: RRSI ( n n n n -- n )
+   ARM-BASE ! ARM-I3!
+   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or
+   ARM-IMM @ SIMM9-MASK and SIMM9-SHIFT lshift or MSK ;
+
+\ encodeBitMasks: plain mask -> nis. A valid mask is a power-of-2-sized
+\ repeating element (2..64 bits) that is a rotated contiguous run of ones;
+\ 0 and all-ones are not encodable (die 72).
+variable PCX
+
+: POPC64 ( n -- n )
+   PCX !  0
+   BEGIN PCX @ 0 <> WHILE  PCX @ 1 and +  PCX @ 1 rshift PCX !  REPEAT ;
+
+: EMASK ( n -- n )   \ low-e-bits mask; lshift wraps at 64
+   dup $40 = IF drop -1 ELSE 1 swap lshift 1 - THEN ;
+
+variable REMSK
+variable RORE-X
+variable RORE-R
+variable RORE-E
+
+: RORE ( n n n -- n )
+   RORE-E ! RORE-R ! RORE-X !
+   RORE-E @ EMASK REMSK !
+   RORE-X @ REMSK @ and dup  RORE-R @ rshift
+   swap RORE-E @ RORE-R @ - lshift  or  REMSK @ and ;
+
+: HALVES= ( n n -- bool )
+   ARM-Y ! ARM-X !
+   1 ARM-Y @ 2 / lshift 1 -  dup  ARM-X @ and
+   swap  ARM-X @ ARM-Y @ 2 / rshift and  = ;
+
+variable LELE
+
+: LELEM ( n -- n n )
+   ARM-X !
+   $40 LELE !
+   BEGIN  LELE @ 2 >  ARM-X @ LELE @ HALVES= and  WHILE  LELE @ 2 / LELE !  REPEAT
+   ARM-X @ LELE @ EMASK and  LELE @ ;
+
+variable LRI
+variable LROT-ELEM
+variable LROT-ONES
+variable LROT-E
+
+: LROT ( n n n -- n )
+   LROT-E ! LROT-ONES ! LROT-ELEM !
+   -1  0 LRI !
+   BEGIN LRI @ LROT-E @ < WHILE
+      1 LROT-ONES @ lshift 1 -  LRI @ LROT-E @ RORE  LROT-ELEM @ = IF
+         drop LRI @  LROT-E @ LRI !
+      ELSE
+         LRI @ 1 + LRI !
+      THEN
+   REPEAT ;
+
+: LIMM-PACK ( n n n -- n )
+   ARM-Z ! ARM-Y ! ARM-X !
+   ARM-Z @ $40 = IF $1000 ELSE 0 THEN
+   ARM-X @ 6 lshift or
+   ARM-Z @ 2 * 1 - $3F and $3F xor  ARM-Y @ 1 - or  or ;
+
+variable LIE   variable LIONES
+
+: LIMM-BAD ( -- )  s" asm: bad logical immediate" ASM-EXIT-RC die ;
+
+\ The encoding attempt itself, which answers whether the mask has an encoding
+\ instead of ending the process when it does not. It exists because its two
+\ callers - >LIMM and LIMM?, both in the public section below - need OPPOSITE
+\ things from the same rule: an emitter that has already committed to the
+\ instruction can only die on a mask that will not pack, while a pass DECIDING
+\ whether to use the immediate form at all has to ask first and choose the
+\ register form when the answer is no. Both read this one implementation, so the
+\ rule cannot drift into a second copy that admits a mask the packer rejects -
+\ which would put the die back, at the far end of a decision that had already
+\ been made.
+\ The nis is zero when the answer is false; a caller that ignores the flag and
+\ encodes it anyway gets `and rd, rn, #1`, not a wild field.
+\ The boolean literals this predicate answers with. src/arch/arm64/asm.f is
+\ loaded as bare source by the encoder gate, without lib/prelude.f, so `true`
+\ and `false` are not in the dictionary here - and they are spelled the way the
+\ prelude spells them, as comparisons, which is also what gives them the
+\ checker's bool type instead of a number's.
+: LIMM-YES ( -- bool ) 0 0= ;
+: LIMM-NO  ( -- bool ) 0 0= 0= ;
+
+: LIMM-TRY ( n -- n bool )
+   ARM-X !
+   ARM-X @ 0 =  ARM-X @ -1 =  or IF 0 LIMM-NO exit THEN
+   ARM-X @ LELEM LIE !                                  \ ( elem ), e in LIE
+   dup POPC64 LIONES !
+   LIONES @ LIE @ = IF drop 0 LIMM-NO exit THEN
+   LIONES @ LIE @ LROT                               \ ( r | -1 )
+   dup 0 < IF drop 0 LIMM-NO exit THEN
+   LIONES @ LIE @ LIMM-PACK LIMM-YES ;
+
+public
+
+\ A byte operand the encoder is about to divide by its access scale. The
+\ division rounds down, so a value it would round is refused here rather than
+\ silently encoding the aligned operand below it.
+: SCALE/ ( n n -- n )
+   2dup mod 0 <> IF s" asm: operand is not a multiple of its scale" ASM-EXIT-RC die THEN
+   / ;
+
+\ move-wide: rd imm16 hw -> u32
+: MOVZHW ( n n n -- n )  XMW3 21 lshift swap 5 lshift or or $D2800000 or MSK ;
+
+: MOVKHW ( n n n -- n )  XMW3 21 lshift swap 5 lshift or or $F2800000 or MSK ;
+
+: MOVNHW ( n n n -- n )  XMW3 21 lshift swap 5 lshift or or $92800000 or MSK ;
 
 : ENC-ADD ( n n n -- n ) XR3 $8B000000 RRR ;
 
@@ -201,9 +347,8 @@ variable ARM-Z
 \ A register-to-register move. ARM64 has no move form of its own: `mov xd, xm`
 \ is `orr xd, xzr, xm`, which is what a disassembler prints back and what the
 \ recovery emitter writes too. Operand 31 in a logical form is the zero
-\ register, so the copy is that one form with 31 as its first source, written
-\ once here rather than at each caller.
-31 constant ARM-ZERO-REG
+\ register, so the copy is that one form with ARM-ZERO-REG as its first source,
+\ named once above rather than written at each caller.
 : ENC-MOV ( n n -- n ) ARM-ZERO-REG swap ENC-ORR ;
 
 \ A negation, for the same reason and by the same route: ARM64 has no negate
@@ -239,14 +384,6 @@ variable ARM-Z
 : ENC-MADD ( n n n n -- n ) XR4 $9B000000 RRRA ;
 
 : ENC-MSUB ( n n n n -- n ) XR4 $9B008000 RRRA ;
-
-: RRI ( n n n n -- n )
-   ARM-BASE ! ARM-I3!
-   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-IMM @ 10 lshift or MSK ;
-
-: RR ( n n n -- n )
-   ARM-BASE ! ARM-R2!
-   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or MSK ;
 
 \ add/sub immediate: rd rn imm12
 : ENC-ADDI ( n n n -- n ) XRDI ?IMM12 $91000000 RRI ;
@@ -288,17 +425,7 @@ variable ARM-Z
 
 : ENC-STRB ( n n n -- n ) XRDI ?IMM12 $39000000 RRI ;
 
-\ load/store, unscaled SIGNED offset: the same two accesses through the other
-\ addressing mode of the same instruction group. The offset is in bytes and may
-\ be negative, which is the whole reason these two forms exist here - an access
-\ BELOW the base register has no spelling in the unsigned forms above. It is not
-\ scaled, so no alignment is forced by the encoding; a caller that wants cells
-\ still hands over a multiple of eight because that is what its own data is.
-: RRSI ( n n n n -- n )
-   ARM-BASE ! ARM-I3!
-   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or
-   ARM-IMM @ SIMM9-MASK and SIMM9-SHIFT lshift or MSK ;
-
+\ The two unscaled accesses, in the signed addressing mode RRSI packs.
 : ENC-LDUR ( n n n -- n ) XRDI ?SIMM9 $F8400000 RRSI ;
 
 : ENC-STUR ( n n n -- n ) XRDI ?SIMM9 $F8000000 RRSI ;
@@ -427,97 +554,6 @@ variable ARM-Z
 
 : ENC-EORI ( n n n -- n ) XRDI ?NIS $D2000000 RRI ;
 
-\ encodeBitMasks: plain mask -> nis. A valid mask is a power-of-2-sized
-\ repeating element (2..64 bits) that is a rotated contiguous run of ones;
-\ 0 and all-ones are not encodable (die 72).
-variable PCX
-
-: POPC64 ( n -- n )
-   PCX !  0
-   BEGIN PCX @ 0 <> WHILE  PCX @ 1 and +  PCX @ 1 rshift PCX !  REPEAT ;
-
-: EMASK ( n -- n )   \ low-e-bits mask; lshift wraps at 64
-   dup $40 = IF drop -1 ELSE 1 swap lshift 1 - THEN ;
-
-variable REMSK
-variable RORE-X
-variable RORE-R
-variable RORE-E
-
-: RORE ( n n n -- n )
-   RORE-E ! RORE-R ! RORE-X !
-   RORE-E @ EMASK REMSK !
-   RORE-X @ REMSK @ and dup  RORE-R @ rshift
-   swap RORE-E @ RORE-R @ - lshift  or  REMSK @ and ;
-
-: HALVES= ( n n -- bool )
-   ARM-Y ! ARM-X !
-   1 ARM-Y @ 2 / lshift 1 -  dup  ARM-X @ and
-   swap  ARM-X @ ARM-Y @ 2 / rshift and  = ;
-
-variable LELE
-
-: LELEM ( n -- n n )
-   ARM-X !
-   $40 LELE !
-   BEGIN  LELE @ 2 >  ARM-X @ LELE @ HALVES= and  WHILE  LELE @ 2 / LELE !  REPEAT
-   ARM-X @ LELE @ EMASK and  LELE @ ;
-
-variable LRI
-variable LROT-ELEM
-variable LROT-ONES
-variable LROT-E
-
-: LROT ( n n n -- n )
-   LROT-E ! LROT-ONES ! LROT-ELEM !
-   -1  0 LRI !
-   BEGIN LRI @ LROT-E @ < WHILE
-      1 LROT-ONES @ lshift 1 -  LRI @ LROT-E @ RORE  LROT-ELEM @ = IF
-         drop LRI @  LROT-E @ LRI !
-      ELSE
-         LRI @ 1 + LRI !
-      THEN
-   REPEAT ;
-
-: LIMM-PACK ( n n n -- n )
-   ARM-Z ! ARM-Y ! ARM-X !
-   ARM-Z @ $40 = IF $1000 ELSE 0 THEN
-   ARM-X @ 6 lshift or
-   ARM-Z @ 2 * 1 - $3F and $3F xor  ARM-Y @ 1 - or  or ;
-
-variable LIE   variable LIONES
-
-: LIMM-BAD ( -- )  s" asm: bad logical immediate" ASM-EXIT-RC die ;
-
-\ The encoding attempt itself, which answers whether the mask has an encoding
-\ instead of ending the process when it does not. It exists because the two
-\ callers below need OPPOSITE things from the same rule: an emitter that has
-\ already committed to the instruction can only die on a mask that will not
-\ pack, while a pass DECIDING whether to use the immediate form at all has to
-\ ask first and choose the register form when the answer is no. Both read this
-\ one implementation, so the rule cannot drift into a second copy that admits a
-\ mask the packer rejects - which would put the die back, at the far end of a
-\ decision that had already been made.
-\ The nis is zero when the answer is false; a caller that ignores the flag and
-\ encodes it anyway gets `and rd, rn, #1`, not a wild field.
-\ The boolean literals this predicate answers with. src/arch/arm64/asm.f is
-\ loaded as bare source by the encoder gate, without lib/prelude.f, so `true`
-\ and `false` are not in the dictionary here - and they are spelled the way the
-\ prelude spells them, as comparisons, which is also what gives them the
-\ checker's bool type instead of a number's.
-: LIMM-YES ( -- bool ) 0 0= ;
-: LIMM-NO  ( -- bool ) 0 0= 0= ;
-
-: LIMM-TRY ( n -- n bool )
-   ARM-X !
-   ARM-X @ 0 =  ARM-X @ -1 =  or IF 0 LIMM-NO exit THEN
-   ARM-X @ LELEM LIE !                                  \ ( elem ), e in LIE
-   dup POPC64 LIONES !
-   LIONES @ LIE @ = IF drop 0 LIMM-NO exit THEN
-   LIONES @ LIE @ LROT                               \ ( r | -1 )
-   dup 0 < IF drop 0 LIMM-NO exit THEN
-   LIONES @ LIE @ LIMM-PACK LIMM-YES ;
-
 : >LIMM ( n -- n )
    LIMM-TRY 0= IF LIMM-BAD THEN ;
 
@@ -591,3 +627,5 @@ variable LIE   variable LIONES
 : ENC-SCVTF ( n n -- n ) DR2 XREG? $9E620000 RR ;
 
 : ENC-FCVTZS ( n n -- n ) DR2 XR2ND $9E780000 RR ;
+
+;package

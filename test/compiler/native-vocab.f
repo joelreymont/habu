@@ -59,6 +59,8 @@ require test/compiler/native-chain-fixture.f
 require test/compiler/native-run-fixture.f
 
 package NVOCAB-TEST
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 private
 
 \ ---- the boundaries this suite needs -----------------------------------------
@@ -678,6 +680,7 @@ public
    WS-CASE
    T-REPORT ;
 
+;using
 ;package
 
 NVOCAB-TEST:RUN

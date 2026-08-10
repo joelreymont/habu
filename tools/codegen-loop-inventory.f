@@ -80,7 +80,9 @@ $FFFF constant IMM16-MASK
 3 constant HW-MASK
 
 \ The unsigned immediate an ARM64 add or subtract carries in its own field. A
-\ constant below it never needed a register of its own.
+\ constant below it never needed a register of its own. This file's own copy of
+\ A64ASM:IMM12-LIM: qualifying the two encoder calls below rather than importing
+\ A64ASM keeps this local name from silently shadowing the published one.
 $1000 constant IMM12-LIM
 
 : FIMM16 ( n -- n ) {: w:n :}
@@ -108,11 +110,11 @@ public
 
 : MOVZ? ( n -- bool ) {: w:n :}
    w NCOMBINV:FRD ENCODABLE? 0= if false exit then
-   w NCOMBINV:FRD  w FIMM16  w FHW  MOVZHW  w = ;
+   w NCOMBINV:FRD  w FIMM16  w FHW  A64ASM:MOVZHW  w = ;
 
 : MOVK? ( n -- bool ) {: w:n :}
    w NCOMBINV:FRD ENCODABLE? 0= if false exit then
-   w NCOMBINV:FRD  w FIMM16  w FHW  MOVKHW  w = ;
+   w NCOMBINV:FRD  w FIMM16  w FHW  A64ASM:MOVKHW  w = ;
 
 \ Either half of a materialised literal.
 : MOVE-WIDE? ( n -- bool ) {: w:n :}

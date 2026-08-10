@@ -87,7 +87,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 \ its two register fields cleared identifies it exactly.
 $FFE0FFE0 constant MOV-SHAPE         \ the Orr-with-zero-register form, register fields cleared
 : MOV-FORM ( -- n )
-   0 0 ENC-MOV MOV-SHAPE and ;
+   0 0 A64ASM:ENC-MOV MOV-SHAPE and ;
 
 : COPIES ( -- n )
    0

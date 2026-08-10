@@ -228,6 +228,8 @@ require src/compiler/native/regalloc-verify.f
 require src/arch/arm64/asm.f
 
 package A64EMIT
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 using NFROZEN
 private
 
@@ -2787,5 +2789,6 @@ get-current prot-wid-add
 public
 get-current prot-wid-add
 
+;using
 ;using
 ;package

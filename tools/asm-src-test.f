@@ -12,16 +12,20 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f);
+\ the trusted rows below name them the way the dictionary now records them.
+using A64ASM
+
 \ Raw ARM64 fixture effects retire with habu-builder-trust-rows-c5d41af6.
 \ MOVZHW and ENC-ADD/LDR/LDAR/BLR expose their instruction encoders.
-s" MOVZHW" s" n n n -- n" TRUST
-s" ENC-ADD" s" n n n -- n" TRUST
-s" ENC-LDR" s" n n n -- n" TRUST
-s" ENC-LDAR" s" n n -- n" TRUST
-s" ENC-BLR" s" n -- n" TRUST
+s" A64ASM:MOVZHW" s" n n n -- n" TRUST
+s" A64ASM:ENC-ADD" s" n n n -- n" TRUST
+s" A64ASM:ENC-LDR" s" n n n -- n" TRUST
+s" A64ASM:ENC-LDAR" s" n n -- n" TRUST
+s" A64ASM:ENC-BLR" s" n -- n" TRUST
 \ >LIMM exposes immediate layout; ENC-ANDI the logical-immediate encoder.
-s" >LIMM" s" n -- n" TRUST
-s" ENC-ANDI" s" n n n -- n" TRUST
+s" A64ASM:>LIMM" s" n -- n" TRUST
+s" A64ASM:ENC-ANDI" s" n n n -- n" TRUST
 \ CW@ exposes code bytes; CODE-BYTE+ preserves byte-pointer arithmetic.
 s" CW@" s" n -- ptr u8" TRUST
 s" CODE-BYTE+" s" ptr u8 n -- ptr u8" TRUST
@@ -80,3 +84,5 @@ $2000000000000000 constant AST-DNAME-EXT
    s" asm-src-test: ok" type cr ;
 
 AST-MAIN
+
+;using

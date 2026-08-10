@@ -10,6 +10,9 @@
 \   (free/claim via LVBIT)   habu2.f: the WHILE and J-REPEAT VRALL stores
 \ Load after mnem.f/sys.f, before jit.f.
 
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
+
 variable LVRALLOC   variable LVBIT   variable LVRINIT   variable LFRALLOC
 
 $1D0F0E0D0C0B0A09 constant VRPACK   \ x9..x15, x29 (byte per slot, idx 0 low)
@@ -89,3 +92,5 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
    LVBIT LABEL@ LBL,
    10 VRITAB-OFF LIT64,  10 DATA 10 ADD,  10 10 7 ADD,  10 10 0 LDRB,
    8 1 MOVZ,  8 8 10 LSLV,  RET, ;
+
+;using

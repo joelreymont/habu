@@ -2,6 +2,9 @@
 \ = SIGALRM + 1 ms timer; ticks map the interrupted pc to its dict word and count;
 \ at the limit: dump "name count" + exit(99). prof-report dumps on demand.
 \ Load after habu1.f (uses DATA/DBASE/NDICT/DREC/A/FPRIM-L), before habu2.f.
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
+
 variable LPROFH   variable LPROFDUMP
 $1E0 constant PROF-TOT
 $1E8 constant PROF-LIM
@@ -129,3 +132,5 @@ s" c-prof-timer-done" s" --" TRUST
 : EMIT-PROF-PRIMS ( -- )
    s" prof-on" ['] BPROF-ON FPRIM-L  s" prof-report" ['] BPROF-REPORT FPRIM-L ;
 s" emit-prof-prims" s" --" TRUST
+
+;using

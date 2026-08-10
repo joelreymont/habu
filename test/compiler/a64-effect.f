@@ -52,6 +52,8 @@ require src/compiler/a64-effect.f
 require src/arch/arm64/asm.f
 
 package A64EFF-TEST
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 private
 
 \ ---- consuming contract values -----------------------------------------------
@@ -848,6 +850,7 @@ public
    PAIRWISE
    T-REPORT ;
 
+;using
 ;package
 
 A64EFF-TEST:RUN

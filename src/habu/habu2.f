@@ -3,6 +3,9 @@
 \ main loop, and ENGINE-EMIT:FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
+
 \ ---- literal emitters: scalars vs relocatable addresses ---------------------------
 \ A relocatable address must never be emitted through the scalar path. Scalars use the
 \ shared minimal MOVZ/MOVN+MOVK synthesizer (LVMOVK, via LVLITPUSH) and materialize into
@@ -764,11 +767,13 @@ s" c-bp-watch-dump" s" label label --" TRUST
 \ PFX-LOAD-STDLIB-COLD orders, and why the block cannot simply be appended to
 \ PFX-LOAD-CORE-FILES.
 \
-\ src/arch/arm64/asm.f is deliberately NOT here. It opens no package and would
-\ publish 146 global names to every boot, and the checker proves the cost: with
-\ it loaded, a bare `enc-b` under `using onnx` is ambiguous against the global
-\ ENC-B it defines (E-USING-SHADOW-GLOBAL, maki/onnx/proto-test.f). It joins
-\ this block once it has a package - dot habu-pkg-the-arm64-ce972795.
+\ src/arch/arm64/asm.f is not here YET, and the reason it could not be is gone.
+\ It used to publish 146 global names, so loading it at every boot made a bare
+\ `enc-b` under `using onnx` ambiguous against the global ENC-B it defined
+\ (E-USING-SHADOW-GLOBAL, maki/onnx/proto-test.f). It is package A64ASM now (dot
+\ habu-pkg-the-arm64-ce972795) and publishes nothing globally, which
+\ test/compiler/asm-package-test.f measures from both sides. Adding the row is
+\ the seed work's, not the packaging's - dot habu-seed-the-chain-e98b03d4.
 : PFX-LOAD-STDLIB-FILES ( -- )
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
@@ -7832,3 +7837,5 @@ public
    DISARM
    ;
 ;package
+
+;using

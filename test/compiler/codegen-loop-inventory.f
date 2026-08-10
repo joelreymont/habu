@@ -47,6 +47,8 @@ require tools/codegen-compare-migrated4.f
 require tools/codegen-compare-migrated5.f
 
 package NLOOPINV-TEST
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 
 using NLOOPINV
 
@@ -245,7 +247,7 @@ public
    EMITTED-CASES ;
 
 ;using
-
+;using
 ;package
 
 T-RESET

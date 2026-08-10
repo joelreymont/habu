@@ -11,6 +11,9 @@
 \ consumer of XDS, and a build whose emitters and whose reserved mask disagree
 \ about the stack register dies here instead of shipping an engine whose
 \ allocator can be handed the register the stack lives in.
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
+
 package RT
 
 72 constant EXIT-RC
@@ -95,3 +98,5 @@ variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
    10 10 11 MUL,
    10 G-PUSH
    RET, ;
+
+;using

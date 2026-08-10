@@ -21,6 +21,8 @@
 \ the raw AOT source-buffer view under habu-builder-trust-rows-c5d41af6.
 
 package AOT-LINK
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 
 variable PB  variable PN  variable PFD  variable PRD
 variable AOT-SI
@@ -366,4 +368,5 @@ public
    AOT-WRITE-OBJ
    s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;
 
+;using
 ;package

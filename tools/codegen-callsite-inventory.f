@@ -63,6 +63,8 @@ require tools/codegen-tail-probe.f
 require tools/codegen-combine-inventory.f
 
 package NSITEINV
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 
 private
 
@@ -220,4 +222,5 @@ public
 : TOTAL ( -- n )
    N-SITE @ N-OWN @ + ;
 
+;using
 ;package

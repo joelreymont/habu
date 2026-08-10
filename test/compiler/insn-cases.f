@@ -38,6 +38,8 @@ require lib/process-command.f
 require test/compiler/insn-schema.f
 
 package COMPILER-INSN-CASES
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 using COMPILER-INSN-PROOF
 private
 
@@ -390,5 +392,6 @@ public
    OUT-OF-RANGES 0 ?do i OUT-OF-RANGE-ROW loop
    LIMM-BADS 0 ?do i LIMM-BAD-ROW loop ;
 
+;using
 ;using
 ;package

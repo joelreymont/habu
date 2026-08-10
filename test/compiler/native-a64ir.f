@@ -30,6 +30,8 @@ require src/compiler/native/a64ir.f
 require src/arch/arm64/asm.f
 
 package A64IR-TEST
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
 private
 
 \ ---- bindings ----------------------------------------------------------------
@@ -1753,6 +1755,7 @@ public
    BND [: GROUP-TARGET-REFUSE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 
+;using
 ;package
 
 A64IR-TEST:RUN

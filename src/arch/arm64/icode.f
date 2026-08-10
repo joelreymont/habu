@@ -2,6 +2,10 @@
 \ words (asm.fs encoders) into a code buffer, define labels, and resolve B/CBZ/CBNZ
 \ branches (backward immediately, forward via backpatch). Next codegen-port step
 \ after the encoders. ASM-CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
+\ The encoders are package A64ASM's public surface, imported here once and called
+\ bare, which is what this layer did when they were global names.
+using A64ASM
+
 $1ff000 constant CODE-CAP-BYTES  \ MPAGE-CODE-OFF: full 2 MB executable window
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
@@ -359,3 +363,5 @@ variable LIT-CH  variable LFI  variable LCI
    I-X @ NFC MAX1  I-X @ NZC MAX1  < IF I-RD @ I-X @ LITN ELSE I-RD @ I-X @ LITZ THEN ;
 
 : ASM-LEN ( -- n )  ASM-CP @ $4 * ;
+
+;using

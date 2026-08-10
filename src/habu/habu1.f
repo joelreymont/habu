@@ -8,6 +8,9 @@
 variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
 
+\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+using A64ASM
+
 package ENGINE-BUILD
 variable ACTIVE
 : ACTIVE? ( -- bool ) ACTIVE @ ;
@@ -3534,3 +3537,5 @@ package ENGINE-EMIT
       1 + REPEAT drop ;
 
 ;package
+
+;using

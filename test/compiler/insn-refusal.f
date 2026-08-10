@@ -53,7 +53,7 @@ private
    COMPILER-INSN-CASES:EMIT-ROW drop ;
 
 : LIMM-ROW ( n -- ) {: r:n :}
-   r LIMM-BAD-MASK >LIMM drop ;
+   r LIMM-BAD-MASK A64ASM:>LIMM drop ;
 
 public
 

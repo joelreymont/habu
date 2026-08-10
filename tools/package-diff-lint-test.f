@@ -1430,13 +1430,16 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" deleted package boundary in render.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
-\ ---- src/arch/arm64/{asm,icode,mnem}.f: the ARM64 encoder prefix ----
-\ Same category and same fixtures as the checker and render entries: the three
+\ ---- src/arch/arm64/{icode,mnem}.f: the ARM64 encoder prefix ----
+\ Same category and same fixtures as the checker and render entries: the two
 \ files carry no package at all, they load ahead of the compiler that defines
 \ packages, and their names are resolved bare by every later engine source. The
 \ positive is the shape that measured the problem - adding the operand bounds to
-\ asm.f - and the negatives pin the match as an exact path and keep every scope
-\ change reported.
+\ the encoders - and the negatives pin the match as an exact path and keep every
+\ scope change reported. src/arch/arm64/asm.f is the entry's RETIRED third
+\ member: dot habu-pkg-the-arm64-ce972795 made it package A64ASM, so it appears
+\ here only as a negative, and the two cases that used to be its positives are
+\ the ones that would fail if the row came back.
 
 : TEST-WRITE-ARM64-OWNER-LOSS ( -- )
    TEST-SOURCE-RESET
@@ -1446,16 +1449,14 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
 : TEST-ARM64-OWNER-LOSS-DIFF ( -- )
    s" src/arch/arm64/asm.f" TEST-MODIFY-HEAD
    s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
-   s" -package ARM64-ASM" TEST-DIFF+ TEST-LF
+   s" -package A64ASM" TEST-DIFF+ TEST-LF
    s"  : ENC-RET ( -- n ) 3596550080 ;" TEST-DIFF+ TEST-LF
    s" -;package" TEST-DIFF+ TEST-LF ;
 
 : TEST-ARM64-EXEMPTION ( -- )
-   \ Positive: a body change to an existing global encoder is admitted, for all
-   \ three files, because the whole surface of each is global by construction.
-   s" src/arch/arm64/asm.f" TEST-CHECKER-COMMENT-CASE
-   s" the ARM64 encoder prefix exempts a body change in asm.f" T-LABEL
-   TEST-EXPECT-CLEAN
+   \ Positive: a body change to an existing global encoder is admitted, for both
+   \ files still in the entry, because the whole surface of each is global by
+   \ construction.
    s" src/arch/arm64/icode.f" TEST-CHECKER-COMMENT-CASE
    s" the ARM64 encoder prefix exempts a body change in icode.f" T-LABEL
    TEST-EXPECT-CLEAN
@@ -1464,22 +1465,31 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-EXPECT-CLEAN
    \ Positive: a new global word is admitted too. This is the exact shape of the
    \ operand bounds - ?REG, ?IMM12, SCALE/ - added beside the encoders.
-   s" src/arch/arm64/asm.f" TEST-CHECKER-NEW-GLOBAL-CASE
-   s" the ARM64 encoder prefix exempts a new global bound in asm.f" T-LABEL
+   s" src/arch/arm64/icode.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" the ARM64 encoder prefix exempts a new global bound in icode.f" T-LABEL
    TEST-EXPECT-CLEAN
+   \ Negative: src/arch/arm64/asm.f is package A64ASM now and left the entry, so
+   \ the two shapes that used to be its positives report again. This is what
+   \ makes the retirement enforced rather than merely announced.
+   s" src/arch/arm64/asm.f" TEST-CHECKER-COMMENT-CASE
+   s" packaged src/arch/arm64/asm.f no longer exempts a global body change" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" src/arch/arm64/asm.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" packaged src/arch/arm64/asm.f no longer exempts a new global" T-LABEL
+   1 TEST-EXPECT-FINDINGS
    \ Negative: a sibling carrying the allowlist path as a prefix is not an exact
    \ match and must still fail.
-   s" src/arch/arm64/asm-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
-   s" sibling src/arch/arm64/asm-extra.f still fails ownership" T-LABEL
+   s" src/arch/arm64/icode-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" sibling src/arch/arm64/icode-extra.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS
    \ Negative: the same basename in another directory carries the allowlist path
    \ as a suffix but is not exact, so it must still fail.
-   s" lib/asm.f" TEST-CHECKER-NEW-GLOBAL-CASE
-   s" lib/asm.f basename collision still fails ownership" T-LABEL
+   s" lib/icode.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" lib/icode.f basename collision still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS
    \ Negative: the disassembler shares the directory and is NOT in the entry, so
-   \ a new global there is still reported - the category is three named files,
-   \ not the src/arch/arm64 tree.
+   \ a new global there is still reported - the category is two named files, not
+   \ the src/arch/arm64 tree.
    s" src/arch/arm64/disasm.f" TEST-CHECKER-NEW-GLOBAL-CASE
    s" src/arch/arm64/disasm.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS
