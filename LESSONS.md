@@ -5665,3 +5665,14 @@ simplest dead-path shape). Stage unreachable operands fresh. Same lane:
 the first DIALECT consumer of an IR form that only hand-built fixtures
 exercised is where its missing table rows surface (two passes lacked the
 trap's key row) - budget that surfacing into the first consumer's lane.
+
+## Unreachable code still costs registers if you share its constants (2026-08-10)
+
+(From the match lane, generalising the dead-path find.) The block-local
+literal memo is a dominance argument, not a liveness one: reusing an
+earlier block's constant for an unreachable trap operand gave a real
+value a live range across every call. Stage unreachable operands fresh.
+And a capacity six passes share (NFROZEN:BMAX) is a product decision to
+raise, not a constant to bump inside a feature lane - measure the
+unlock cost, pin the current ceiling in a test so the raise has a
+number to move, and dot it.
