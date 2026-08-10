@@ -2107,11 +2107,66 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    f MB-PLAN ;
 
 \ ---- what one allocation run is told -----------------------------------------
-\ The one function this pass allocates. A module with any other shape is not a
-\ routine at all.
-: FUN-OF ( -- IR-ID:ir-fun-id )
-   FUN-COUNT 1 <> if E-A64RA-SHAPE throw then
-   MKEY 0 IR-ID:PACK-FUN ;
+\ The functions this pass allocates, in order. The first is the definition's own
+\ routine and the rest are the bodies its quotations make; each is allocated on
+\ its own, because each is entered and left on its own and shares no live value
+\ with any other. A module with no function at all is not a routine.
+\
+\ WHAT THEY DO SHARE IS THE VALUE TABLES, and that is a property of the store
+\ rather than a choice here: src/compiler/ir/op.f keeps ONE append-only value
+\ arena per module, so a second function's values get their own ordinals and
+\ collide with nothing - and spend the same VMAX budget. E-A64RA-CAP below is
+\ therefore a whole-module ceiling once a definition makes quotations, which is
+\ what its note says.
+: FUN-AT ( n -- IR-ID:ir-fun-id )
+   {: k:n :}
+   k 0 < k FUN-COUNT >= or if E-A64RA-SHAPE throw then
+   MKEY k IR-ID:PACK-FUN ;
+
+: FUNS-CK ( -- n )
+   FUN-COUNT {: n:n :}
+   n 1 < if E-A64RA-SHAPE throw then
+   n NFROZEN:FMAX > if E-A64RA-CAP throw then
+   n ;
+
+\ One function's allocation: the whole of what this pass used to do to the single
+\ function a module held. It is a word rather than the tail of WALK because the
+\ no-return case leaves early, and an early leave inside a loop over functions
+\ would abandon the functions after it instead of the rest of this one.
+variable F-SLOTS0                    \ the slot count the running function found
+
+: MB-ONE ( IR-ID:ir-fun-id A64EFF:conv -- )
+   {: f:IR-ID:ir-fun-id cv:A64EFF:conv :}
+   N-SLOTS @ F-SLOTS0 !
+   f MB-RET-ORD RET-B !
+   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   RET-B @ NO-RET = if f bk MB-RUN-NO-RET exit then
+   f RET-B @ BLOCK-AT {: rb:IR-ID:ir-block-id :}
+   bk rb FIXED-ARITY-CK
+   bk rb cv LOWERED-CK
+   f bk rb MB-RUN ;
+
+\ A module has ONE frame and the first function owns it. The frame's base, its
+\ slot count and the reserve src/compiler/native/migrate.f LOWERED sizes from
+\ A64RA:FRAME are all one per module, so a later function that needed a slot
+\ would be handed one out of the FIRST function's frame - a slot whose address is
+\ measured from a stack pointer that function never moved. That is not a wrong
+\ number to be found later; it is a store through a pointer belonging to another
+\ routine's frame, so it is refused here, by name, the moment the allocation asks
+\ for it.
+\
+\ THE CASE IS EMPTY IN THE TREE AND THE REFUSAL IS STILL THE RIGHT SHAPE. Every
+\ quotation body in src and lib is a single word call and needs no slot at all -
+\ the largest is thirteen tokens - so nothing measured today reaches this. What
+\ makes it worth refusing rather than assuming is that the assumption is about
+\ SOURCE nobody has written yet, and the failure it would cause is silent.
+\ dot habu-give-each-fn-c1fd7c5a gives each function its own frame and retires
+\ this; until then a body that will not fit its values in registers is refused,
+\ and the definition keeps the code the engine compiled for it.
+: FRAME-ONCE-CK ( n -- )
+   {: k:n :}
+   k 0= if exit then
+   N-SLOTS @ F-SLOTS0 @ <> if E-A64RA-FRAME throw then ;
 
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
@@ -2245,14 +2300,10 @@ public
    TABLES-CLEAR
    args outs FIXED!
    FIXED-POOL-CK
-   FUN-OF {: f:IR-ID:ir-fun-id :}
-   f MB-RET-ORD RET-B !
-   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   RET-B @ NO-RET = if f bk MB-RUN-NO-RET exit then
-   f RET-B @ BLOCK-AT {: rb:IR-ID:ir-block-id :}
-   bk rb FIXED-ARITY-CK
-   bk rb cv LOWERED-CK
-   f bk rb MB-RUN ;
+   FUNS-CK 0 ?do
+      i FUN-AT cv MB-ONE
+      i FRAME-ONCE-CK
+   loop ;
 
 : ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE

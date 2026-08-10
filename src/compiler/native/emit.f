@@ -471,6 +471,22 @@ create B-GOTO BMAX cells allot         \ block ordinal -> the block a branch to 
 create B-KEEP BMAX cells allot         \ block ordinal -> is it still reachable
 variable N-LAID                        \ how many blocks the order actually holds
 
+\ Where each FUNCTION's first instruction lands, in instructions from the start
+\ of the emission. The five tables above are rewritten for every function, which
+\ is right - a block ordinal means nothing outside the function that named it -
+\ and it is exactly why this one exists: a function's start has to outlive the
+\ tables that computed it, because a a64.codeaddr in the FIRST function names the
+\ entry of a LATER one and is encoded before that function has been laid out.
+\
+\ WHICH IS WHY THE EMISSION IS MEASURED BEFORE IT IS WRITTEN. EMIT below lays
+\ every function out once to fill this table and then lays each one out again to
+\ write it. Two walks rather than a patch list: nothing is emitted in the first,
+\ so nothing has to be revisited in the second, and the emitter stays the only
+\ writer of a byte of this routine - the same argument PUT-WORD-CALL makes about
+\ why a call to another word needs no relocation.
+create F-START FMAX cells allot        \ function ordinal -> its first instruction
+variable N-FUNS                        \ how many functions the emission holds
+
 \ ---- the dialect's operation family ------------------------------------------
 : SLOT-OF ( A64IR:opcode -- n )
    MATCH A64IR:opcode
@@ -1620,11 +1636,19 @@ variable CH-AT
 \
 \ Each block is counted knowing its own ordinal, because that is what its
 \ terminator's fall-through question is asked against. LAY-AT is left holding the
-\ whole routine's instruction count, which is what WALK holds its cursor against
-\ when it has emitted the last block.
-: LAYOUT ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   0 LAY-AT !
+\ instruction count of everything up to and including this function, which is
+\ what WALK holds its cursor against when it has emitted the last block.
+\
+\ THE COUNT IS FROM THE START OF THE EMISSION AND NOT OF THE FUNCTION, which is
+\ what makes a module of several functions one stream of instructions. A
+\ displacement is DELTA's subtraction of two of these numbers, so both ends have
+\ to be measured from the same place; measuring each function from its own zero
+\ would make every branch in the second function point one function too early.
+\ The base is passed in rather than read off N-INS because the measuring walk
+\ runs before a byte is written, when N-INS is nothing for every function.
+: LAYOUT ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id base:n :}
+   base LAY-AT !
    N-LAID @ 0 ?do
       LAY-AT @ i AT-POS cells B-START + !
       LAY-AT @  f i AT-POS BLOCK-AT  i AT-POS BLOCK-INSNS  +  LAY-AT !
@@ -2131,10 +2155,23 @@ variable CH-AT
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
-\ One function, of one or more blocks, each ending in exactly one terminator.
-: FUN-OF ( -- IR-ID:ir-fun-id )
-   FUN-COUNT 1 <> if E-A64EMIT-SHAPE throw then
-   MKEY 0 IR-ID:PACK-FUN ;
+\ One or more functions, each of one or more blocks, each block ending in exactly
+\ one terminator. The first function is the routine the definition names and the
+\ rest are the bodies its quotations make, in the order the elaborator opened
+\ them; nothing here depends on which is which, because a function is emitted the
+\ same way whatever a caller reaches it by.
+: FUN-AT ( n -- IR-ID:ir-fun-id )
+   {: k:n :}
+   k 0 < k N-FUNS @ >= or if E-A64EMIT-SHAPE throw then
+   MKEY k IR-ID:PACK-FUN ;
+
+\ How many functions this module holds, held against the ceiling every pass of
+\ the chain shares. A module with none is not a routine at all.
+: FUNS-CK ( -- )
+   FUN-COUNT {: n:n :}
+   n 1 < if E-A64EMIT-SHAPE throw then
+   n FMAX > if E-A64EMIT-CAP throw then
+   n N-FUNS ! ;
 
 \ The block's operations run in one order and end once. Re-derived rather than
 \ taken from the verifier, because this pass is about to lay them out in exactly
@@ -2484,6 +2521,37 @@ public
 \ above), so the layout cannot be computed until the assignment has been
 \ accepted. ALLOC-CK therefore comes after the order and before the layout: the
 \ acceptance is probed, and only then are the blocks measured and written.
+\
+\ AND THE FUNCTIONS ARE MEASURED BEFORE ANY OF THEM IS WRITTEN. A a64.codeaddr
+\ names a function's entry, and the function it names is emitted after the
+\ instruction that names it, so where every function starts has to be known
+\ before the first byte. MEASURE lays each one out in turn and files its start;
+\ WRITE-ALL lays each one out again, from the start MEASURE filed, and writes it.
+\ The second layout is not a repeat of work but the restoration of the block
+\ tables, which hold one function at a time and were left holding the last.
+: SHAPES-CK ( -- )
+   N-FUNS @ 0 ?do i FUN-AT SHAPE-CK loop ;
+
+: MEASURE ( -- )
+   0
+   N-FUNS @ 0 ?do
+      dup i cells F-START + !
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f ORDER-BLOCKS
+      f over LAYOUT
+      drop LAY-AT @
+   loop
+   drop ;
+
+: WRITE-ALL ( -- )
+   N-FUNS @ 0 ?do
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f ORDER-BLOCKS
+      f  i cells F-START + @  LAYOUT
+      i cells F-START + @ N-INS @ <> if E-A64EMIT-LAYOUT throw then
+      f WALK
+   loop ;
+
 : EMIT ( IR-CTX:ctx IR-BUILD:module -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    BND-TAKE
@@ -2501,12 +2569,11 @@ public
    m BND-MODULE-CK
    c TARGET-CK
    m VIEWS!
-   FUN-OF {: f:IR-ID:ir-fun-id :}
-   f SHAPE-CK
+   FUNS-CK
+   SHAPES-CK
    m ALLOC-CK
-   f ORDER-BLOCKS
-   f LAYOUT
-   f WALK
+   MEASURE
+   WRITE-ALL
    CLOBBER-SEAL
    ST-SEALED ST ! ;
 

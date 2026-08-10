@@ -70,6 +70,24 @@ public
 \ one. A body that wants more is a capability to raise here.
 64 constant BMAX
 
+\ ---- how many functions one module of the native chain has -------------------
+\ Functions in one module. A module used to hold exactly one - a colon
+\ definition's own routine - and it now holds that one plus a routine per
+\ quotation the body makes, because a quotation body is a routine with its own
+\ entry and its own return and nothing else in this chain is that shape. The
+\ measured tree needs twenty: src/core/type-family.f TFAM-HOOK-INSTALL makes
+\ nineteen quotations and no definition makes more. Sixty-four is the same
+\ number src/compiler/ir/build.f already plans a module's function table at, so
+\ a module this ceiling admits is one the store admits too, and it is a ceiling
+\ rather than one per pass for the reason VMAX and BMAX are.
+\
+\ RAISING IT IS A CAPABILITY AND NOT A NUMBER, because the values of every
+\ function share one module-wide table (see E-A64RA-CAP in
+\ src/compiler/native/regalloc.f): more functions in a module spend the same
+\ value budget, so a raise here without a look at that one moves the refusal
+\ rather than removing it.
+64 constant FMAX
+
 \ ---- the frozen tables of the module being read ------------------------------
 \ One indexed slot per view keeps every accessor below to a signature a reader
 \ can hold in their head.
