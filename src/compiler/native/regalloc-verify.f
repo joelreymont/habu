@@ -195,6 +195,14 @@ variable V-DSTACK                    \ whether the contract declares the data-st
 create D-AT VMAX cells allot         \ where the module says each value is written
 create L-AT VMAX cells allot         \ where the module says each value is last read
 create S-AT VMAX cells allot         \ whether the block defines this value at all
+
+\ Where each function's positions begin on the module's one number line, with
+\ the line's end filed one past the last function. A value belongs to the
+\ function whose window its definition position falls in, which is the only sense
+\ in which "belongs to" is needed here: the intervals of two functions are
+\ disjoint, so the window is a fact about the line rather than a second copy of
+\ the module's structure.
+create F-VB NFROZEN:FMAX 1 + cells allot
 create C-AT VMAX cells allot         \ which class the module gives each value
 create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 create U-AT VMAX cells allot         \ how many operands of the function name each value
@@ -291,10 +299,21 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    V-SCHR VW id OPCODE-AT IR-SCHEMA:FEFFECT@
    IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ ;
 
-\ The one function this check measures, re-derived rather than taken on trust.
-: FUN-OF ( -- IR-ID:ir-fun-id )
-   FUN-COUNT 1 <> if E-A64RAV-SHAPE throw then
-   MKEY 0 IR-ID:PACK-FUN ;
+\ The functions this check measures, re-derived rather than taken on trust. Every
+\ one is measured and every one is checked: an assignment is accepted for the
+\ whole module, so a function left out would be a routine emitted under registers
+\ nothing agreed with - and a quotation body is exactly such a routine, reached
+\ only through an address some caller executes.
+: FUN-AT ( n -- IR-ID:ir-fun-id )
+   {: k:n :}
+   k 0 < k FUN-COUNT >= or if E-A64RAV-SHAPE throw then
+   MKEY k IR-ID:PACK-FUN ;
+
+: FUNS-CK ( -- n )
+   FUN-COUNT {: n:n :}
+   n 1 < if E-A64RAV-SHAPE throw then
+   n NFROZEN:FMAX > if E-A64RAV-COVER throw then
+   n ;
 
 \ THE BLOCK THE ROUTINE'S RESULTS LEAVE THROUGH, and NO-RET when there is none.
 \ The rule and the reason a trap block is not that block are written once, in
@@ -333,12 +352,28 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ Every value of the module is a value of this function, the allocation covers
 \ exactly those values, and the interval it recorded for each one is the interval
 \ the module gives.
-: COVER-CK ( -- )
+\ How many values the module holds, read before any function is measured because
+\ the measuring loops over them.
+: VALS-N! ( -- )
    V-VALR VW IR-OP:FVALUES {: n:n :}
-   n A64RA:VALUES <> if E-A64RAV-COVER throw then
    n VMAX > if E-A64RAV-COVER throw then
-   n 0 ?do i SEEN-AT 0= if E-A64RAV-COVER throw then loop
    n N-VALS ! ;
+
+\ EVERY VALUE OF THE MODULE WAS DEFINED EXACTLY ONCE, ACROSS ALL ITS FUNCTIONS -
+\ which is the same guarantee this made when a module held one function, said
+\ over the whole module instead of over the only function in it. The two halves
+\ come from two places and always did. ONCE is NOTE-DEF's refusal: it rejects a
+\ value whose SEEN flag is already set, and because the flag table is now cleared
+\ once for the module rather than once per function, a value defined in two
+\ functions is refused there instead of quietly overwriting the first definition.
+\ EVERY is the sweep below, asked after the last function has been measured
+\ rather than after the first, so a value defined in no function at all is still
+\ a refusal and a value defined in a LATER function is no longer mistaken for one.
+\ The count is held against the allocator's own so that a module and an
+\ allocation describing different numbers of values cannot agree.
+: COVER-CK ( -- )
+   N-VALS @ A64RA:VALUES <> if E-A64RAV-COVER throw then
+   N-VALS @ 0 ?do i SEEN-AT 0= if E-A64RAV-COVER throw then loop ;
 
 : INTERVAL-CK ( -- )
    N-VALS @ 0 ?do
@@ -532,15 +567,28 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       bk i OP-AT b COUNT-OP
    loop ;
 
-: ORDER-CK ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
+: IN-WINDOW? ( n n n -- bool )
+   {: v:n lo:n hi:n :}
+   v DEF-AT {: d:n :}
+   d NOPOS = if false exit then
+   d lo >= d hi < and ;
+
+\ THE TOKEN VALUES IT ORDERS ARE THIS FUNCTION'S, and the window is how it says
+\ so. The counts this rebuilds - which blocks name a value, where it is defined -
+\ are counted from THIS function's blocks, so a token value belonging to another
+\ function would be ordered against blocks it never appears in and refused for
+\ being absent from them. On one number line a value is this function's exactly
+\ when its definition position lies in this function's span, which is the same
+\ disjointness the overlap check rests on rather than a second rule.
+: ORDER-CK ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id lo:n hi:n :}
    f 0 S-FUN !
    f BLOCK-COUNT NB-N !
    NB-N @ BMAX > if E-A64RAV-SHAPE throw then
    N-VALS @ 0 ?do 0 i USES! 0 i UB! -1 i DB! loop
    NB-N @ 0 ?do f i COUNT-BLOCK loop
    N-VALS @ 0 ?do
-      i CLS-AT C-TOKEN = if i ORDER-VALUE-CK then
+      i CLS-AT C-TOKEN =  i lo hi IN-WINDOW?  and if i ORDER-VALUE-CK then
    loop ;
 
 \ Every assigned register is one the routine's contract says it may destroy. The
@@ -976,12 +1024,25 @@ create V-TMP SETC cells allot
    e b cells VB-EN + !
    e 1+ V-AT ! ;
 
-: VLAYOUT ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
+\ THE POSITIONS RUN ACROSS THE WHOLE MODULE AND NOT FROM EACH FUNCTION'S OWN
+\ ZERO, which is what lets one set of value tables describe several functions. A
+\ module holds one append-only value arena (src/compiler/ir/op.f), so a second
+\ function's values are new ordinals in the same space; if its POSITIONS restarted
+\ at zero, two values of two functions would carry the same interval and
+\ OVERLAP-CK would read a register legitimately reused by two routines that never
+\ run at once as a live conflict. On one number line the intervals of two
+\ functions are disjoint by construction, so the overlap question needs no notion
+\ of which function a value came from and answers correctly without one.
+\
+\ The base is passed in because this is run twice over each function: once to
+\ measure every function onto the line, and once more, from the SAME base, to put
+\ the block tables back for the structural checks that read them.
+: VLAYOUT ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id base:n :}
    f BLOCK-COUNT {: n:n :}
    n BMAX > if E-A64RAV-COVER throw then
    n V-BLKS !
-   0 V-AT !
+   base V-AT !
    n 0 ?do f i VLAY1 loop ;
 
 : VOP-POS ( n n -- n )
@@ -1089,14 +1150,27 @@ create V-TMP SETC cells allot
    {: k:n :}
    V-BLKS @ 0 ?do i k VEXTEND1 loop ;
 
-: VMEASURE ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   TABLES-CLEAR
-   f VLAYOUT
+\ One function onto the number line: its blocks laid out from the base it was
+\ given, its liveness, the interval every value it defines gets from its own
+\ blocks, and the extension of those intervals across the blocks they live
+\ through. The extension is asked only about the values THIS function defined -
+\ VEXTEND-V reads V-BLKS, which holds this function's blocks - so asking it about
+\ another function's value would extend that value's interval over blocks it has
+\ nothing to do with.
+\
+\ NEITHER THE TABLES NOR THE COVER CHECK BELONG HERE ANY MORE. Both are about the
+\ MODULE: the tables are cleared once before the first function so that the
+\ duplicate-definition refusal in VDEF-AT sees every function at once, and the
+\ cover check is asked once after the last one, when every value has had its
+\ chance to be defined.
+: VMEASURE1 ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id base:n :}
+   f base VLAYOUT
    f VLIVENESS
    V-BLKS @ 0 ?do f i VBLOCK-RANGE loop
-   COVER-CK
-   N-VALS @ 0 ?do i VEXTEND-V loop ;
+   N-VALS @ 0 ?do
+      i DEF-AT NOPOS <>  i DEF-AT base >=  and if i VEXTEND-V then
+   loop ;
 
 \ ---- the edge clause ---------------------------------------------------------
 \ A branch moves nothing, so the register holding the value a terminator hands
@@ -2266,15 +2340,27 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    {: f:IR-ID:ir-fun-id :}
    V-BLKS @ 0 ?do f i VCLOB-BLOCK loop ;
 
-: VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n -- )
-   {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
-   f VMEASURE
-   f VANY-FRAME
+\ The checks that are about VALUES, asked once for the module after every
+\ function has been measured onto the number line. Each of them sweeps the value
+\ table, and the value table is the module's, so asking them per function would
+\ either ask about values the function does not hold or ask the same question as
+\ many times as there are functions.
+: VALUE-CKS ( -- )
+   COVER-CK
    INTERVAL-CK
    CLASS-CK
-   f ORDER-CK
    REGISTER-CK
-   OVERLAP-CK
+   OVERLAP-CK ;
+
+\ The checks that are about one FUNCTION's structure: its blocks, its edges, its
+\ frame, the registers its arguments arrive in and its results leave in. They read
+\ the block tables, which hold one function at a time, so each is asked with that
+\ function's layout restored.
+: VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n n n -- )
+   {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n
+      lo:n hi:n :}
+   f VANY-FRAME
+   f lo hi ORDER-CK
    f VEDGE-CK
    f rb VTAIL-CK
    f rb frame VFRAME-CK
@@ -2333,7 +2419,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64RAV-MODULE throw then
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
 
-: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq n -- IR-ID:ir-fun-id )
+: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq n -- )
    {: m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
       args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    ST-NONE ST !
@@ -2345,10 +2431,24 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    fpool 0 V-FPOOL !
    pool fpool CONTRACT-CK
    m VIEWS!
-   FUN-OF {: f:IR-ID:ir-fun-id :}
-   f RET-ORD {: rb:n :}
-   f rb args outs frame VERIFY
-   f ;
+   VALS-N!
+   TABLES-CLEAR
+   FUNS-CK {: nf:n :}
+   0
+   nf 0 ?do
+      dup i cells F-VB + !
+      i FUN-AT over VMEASURE1
+      drop V-AT @
+   loop
+   nf cells F-VB + !
+   VALUE-CKS
+   nf 0 ?do
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f  i cells F-VB + @  VLAYOUT
+      f VLIVENESS
+      f  f RET-ORD  args outs frame
+      i cells F-VB + @  i 1 + cells F-VB + @  VERIFY
+   loop ;
 
 public
 
@@ -2394,10 +2494,12 @@ public
    ct A64EFF-CONTROL:TAIL-CALL A64EFF-CONTROL:EQ if 1 else 0 then V-TAIL !
    cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if 1 else 0 then V-DSTACK !
    t A64FRAME:SPILL-BASE V-BASE !
-   pool fpool gi gr size WALK {: f:IR-ID:ir-fun-id :}
-   f
-   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
-   SLOT-CK
+   pool fpool gi gr size WALK
+   FUNS-CK 0 ?do
+      i FUN-AT
+      cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+      SLOT-CK
+   loop
    A64RA:GEN A-GEN !
    ST-ACCEPTED ST ! ;
 
