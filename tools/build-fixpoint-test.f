@@ -19,6 +19,7 @@ require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
 require tools/source-arena-policy.f
+require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 
 8192 constant BFT-CAPTURE-CAP
 $40000 constant BFT-BIG-CAP
@@ -527,18 +528,41 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-STALE s" stamp" BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U BFT-PATH!
    BFT-STALE s" src/habu/hide.f" BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U BFT-PATH! ;
 
+\ The sandbox needs every tools/ file the refresh loads. That list used to be
+\ written out by hand and went stale the moment build-fixpoint.f grew a require:
+\ the sandboxed refresh then died on a missing file instead of on the fault the
+\ test was about. Ask the source instead - the same ordered closure walk the
+\ stamp key uses - so the sandbox tracks the tool's own requires. src/ and lib/
+\ still come over whole, because the stage build reads far more of them than
+\ build-fixpoint.f's own requires name.
+package STALE-SEED
+
+variable IX
+
+: COPY-CLOSURE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u EC:BUILD
+   0 IX !
+   begin IX @ EC:COUNT < while
+      IX @ EC:PATH$ BFT-STALE-COPY-ENTRY
+      IX @ 1+ IX !
+   repeat ;
+
+public
+
 : BFT-STALE-PREPARE ( -- )
    BFT-STALE-PATHS!
    BFT-ALLOC-BIG
    BFT-STALE-TMP MAKE-DIRS
    s" src" BFT-STALE-COPY-TREE
    s" lib" BFT-STALE-COPY-TREE
-   s" tools/build-fixpoint.f" BFT-STALE-COPY-FILE
+   s" tools/build-fixpoint.f" COPY-CLOSURE
    s" tools/build-fixpoint-main.f" BFT-STALE-COPY-FILE
-   s" tools/stdin-closure-lib.f" BFT-STALE-COPY-FILE
    s" bin/hb" BFT-STALE-COPY-FILE
    BFT-STALE-HB CHMOD-X
    BFT-STALE-SABOTAGE ;
+
+;package
+using STALE-SEED
 
 : BFT-STALE-ARGV ( -- )
    PROC-ARGV-RESET
