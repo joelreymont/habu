@@ -1199,7 +1199,17 @@ public
 \ capability; while it is open the refusal is what the chain answers, and it is
 \ its own code rather than the generic unmodelled-word one so a census can tell a
 \ quotation the chain declined from a word it has never heard of.
--8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` inside another one, which the engine itself refuses to compile; a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes, or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; a body holding a locals group; or a quotation bound by `is`
+-8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` inside another one, which the engine itself refuses to compile; a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes, or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; or a body holding a locals group
+
+\ `is NAME` binds a quotation to a deferred word by storing into that word's
+\ dispatch cell, so what the elaborator has to be sure of is that NAME really
+\ names one - the cell address is read out of the record's own meta trailer, and
+\ a record that is not a defer's has whatever stands after its code there. So the
+\ trailer's magic is checked, and a spelling that answers no record, a record
+\ whose trailer is not a defer's, and a defer whose declared effect the checker
+\ cannot width are all refused here rather than compiled into a store through an
+\ address the chain guessed.
+-8653 constant E-NELAB-DEFER    \ an `is` this elaborator cannot bind: no token after it, a token after it that is not a name, a name that denotes no word where the definition is compiled, a record whose meta trailer does not carry the defer magic, or a deferred word whose declared effect the checker cannot state in cells
 
 \ A definition holding more quotation bodies than one module has room for. Every
 \ body is a function of the same module, so the ceiling is the module's own -

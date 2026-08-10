@@ -1359,7 +1359,9 @@ create TICK-KW   39 c,
 create BTICK-KW  91 c, 39 c, 93 c,
 create LBRACE-KW 123 c, 58 c,
 create ENDLOC-KW 58 c, 125 c,
-$4842444546455201 constant DEFER-MAGIC
+\ DEFER-MAGIC is src/habu/layout.f's, beside the dispatch-cell offset it belongs
+\ with: this file writes the trailer and checks it, and the native chain's
+\ src/compiler/native/dict.f checks it too, so the number has one definition.
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2DOESW
 

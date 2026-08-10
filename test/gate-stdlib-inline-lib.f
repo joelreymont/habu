@@ -466,6 +466,11 @@ public
    \ listed here as well as in test/gate-stdlib-cases.f for the reason given
    \ below: only this list is what test/run.f actually forks.
    s" test/compiler/native-quot.f" GSI-FORK-INCLUDE
+   \ And what a program does with one: `is` binding it to a deferred word. Same
+   \ reason for being in both lists.
+   s" test/compiler/native-defer.f" GSI-FORK-INCLUDE
+   \ And `execute`. Same reason for being in both lists.
+   s" test/compiler/native-exec.f" GSI-FORK-INCLUDE
    s" test/compiler/native-clobber.f" GSI-FORK-INCLUDE
    s" test/compiler/native-inline.f" GSI-FORK-INCLUDE
    \ Which bytes of the code arena a reclamation may hand back. It is listed

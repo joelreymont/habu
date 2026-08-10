@@ -358,6 +358,17 @@ ENUM opcode DERIVE eq
 \ CF-ENDOF-DISPATCH). A dialect that gave them four members would be inventing a
 \ distinction the two authorities that decide what these tokens mean do not make,
 \ and the elaborator would then have to agree with a rule nobody else keeps.
+\ AND THE LAST TWO ARE WHAT A PROGRAM DOES WITH A QUOTATION ONCE IT HOLDS ONE.
+\ `bind-defer` is `is`, which stores the value into a deferred word's dispatch
+\ cell, and `exec` is `execute`, which enters the routine the value names. Both
+\ compile to a CALL - `is` to the engine's own store-and-declare primitive and
+\ `execute` to the engine's own `execute` - and neither can be a `callable` row,
+\ which is what makes them control actions for exactly the reason `self-call` is
+\ one: what the call takes and leaves is not a fact about the word written. `is`
+\ moves what the DEFERRED WORD declares, and the token after it names which;
+\ `execute` takes one cell more than the quotation it is handed takes, and which
+\ quotation that is, is a fact about the value on the stack where it stands. A
+\ row that stated either number would state it once for every site in the tree.
 ENUM ctrl DERIVE eq
    open-if
    mid-else
@@ -381,6 +392,8 @@ ENUM ctrl DERIVE eq
    make-bundle
    open-quot
    close-quot
+   bind-defer
+   exec
 ;ENUM
 
 \ What a Habu source word, or a source-tape token, means to this dialect.

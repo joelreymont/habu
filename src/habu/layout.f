@@ -290,6 +290,20 @@ $88 constant PKG-PARENT-CELL
 $90 constant PKG-REC-CELL
 $98 constant DEFER-META-CELL
 $A0 constant DEFER-XT-CELL
+\ DEFER-MAGIC: the first cell of the meta trailer `defer` writes just past a
+\ deferred word's code, with the address of that word's dispatch cell in the
+\ cell after it. It is what tells a reader holding a dictionary record whether
+\ that record is a defer's: a record's code is followed by whatever the next
+\ definition put there, and an ordinary integer can hold any value at all, so
+\ the trailer is recognised by this word and never by the shape of what stands
+\ there.
+\ It lives here rather than beside the emitter that writes it because there are
+\ now two readers - habu2.f C-DEFER-META-WRITE and C-DEFER-TARGET-META write and
+\ check it while the engine is being built, and src/compiler/native/dict.f checks
+\ it at run time, when the native chain compiles an `is`. Two files stating one
+\ magic number is one drift away from a chain that stores through an address it
+\ read out of a record that was never a defer's.
+$4842444546455201 constant DEFER-MAGIC
 \ CMFAM-CELL: resolved construct family id, live only between the family and
 \ variant operand tokens of one `construct` form (CMM-CELL state 1 -> 2; TFAM
 \ 10 slice 2). Eager family resolution at the family token means no operand

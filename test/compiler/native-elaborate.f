@@ -46,6 +46,18 @@ require lib/test.f
 require src/compiler/native/elaborate.f
 require test/compiler/native-source-fixture.f
 
+\ ---- the three targets the `is` fixtures name --------------------------------
+\ THEY ARE GLOBAL, AND THAT IS PART OF THE FIXTURE. The chain resolves an `is`
+\ target the way the engine resolves a name in the body being compiled - the
+\ open package's two wordlists, then the global one - and no package is open
+\ when this suite's cases run. A package-private defer would answer absent and
+\ the positive case would then be refused for the wrong reason, proving nothing
+\ about the operand role it exists to measure. NELB-DATA's first data cell holds
+\ the defer magic exactly, which is what a real defer's trailer starts with.
+create NELB-DATA  $4842444546455201 ,  0 ,
+: NELB-PLAIN ( n -- n ) 2 * ;
+defer NELB-HOOK ( n -- n )
+
 package NELAB-TEST
 private
 
@@ -2504,6 +2516,79 @@ create QHID-TXT
    \ function is ( n -- n ), which is what BOTH consumers declared.
    1 T= 1 T=  1 T=  1 T=  2 T= ;
 
+\ ---- binding a quotation to a deferred word ------------------------------------
+\ WHY THESE ARE TAPES AND NOT SOURCE. The engine's own `is` handler refuses a
+\ target that is not a deferred word before the definition is ever certified -
+\ measured in test/compiler/native-defer.f, where such a program dies with the
+\ engine's code and the elaborator is never entered. So the elaborator's refusal
+\ is a backstop that only a hand-built tape can reach, exactly like the nested
+\ opener above, and it is made for the same reason: this pass reads a TAPE, and
+\ a caller that builds one can present a shape the engine never would.
+\
+\ THE FOUR SHAPES ARE THE FOUR WAYS THE TARGET CAN BE WRONG: no token after the
+\ keyword at all, a token that is not a name, a name that denotes a word which
+\ is not deferred, and a name that denotes nothing. The third fixture's target
+\ is a `create`d word whose first data cell holds the defer magic exactly, which
+\ is the value a real defer's trailer starts with - so a reader that looked for
+\ the magic near the record rather than at the record's own START+LEN would bind
+\ into an ordinary data word.
+: DEFER-TAPE ( IR-CTX:ctx ptr u8 n -- )
+   {: c:IR-CTX:ctx a:ptr u:n :}
+   a u TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 0 NELAB:COLON drop ;
+
+: DEFER-BARE-BODY ( IR-CTX:ctx -- )
+   s" QBIND [: 1+ ;] is" DEFER-TAPE ;
+: DEFER-BARE ( -- )
+   BND [: DEFER-BARE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DEFER-LIT-BODY ( IR-CTX:ctx -- )
+   s" QBIND [: 1+ ;] is 42" DEFER-TAPE ;
+: DEFER-LIT ( -- )
+   BND [: DEFER-LIT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DEFER-DATA-BODY ( IR-CTX:ctx -- )
+   s" QBIND [: 1+ ;] is NELB-DATA" DEFER-TAPE ;
+: DEFER-DATA ( -- )
+   BND [: DEFER-DATA-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DEFER-PLAIN-BODY ( IR-CTX:ctx -- )
+   s" QBIND [: 1+ ;] is NELB-PLAIN" DEFER-TAPE ;
+: DEFER-PLAIN ( -- )
+   BND [: DEFER-PLAIN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DEFER-ABSENT-BODY ( IR-CTX:ctx -- )
+   s" QBIND [: 1+ ;] is NELB-NOWHERE" DEFER-TAPE ;
+: DEFER-ABSENT ( -- )
+   BND [: DEFER-ABSENT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ And the shape that WORKS, on the same rig: a real deferred word. It is here
+\ rather than only in test/compiler/native-defer.f because it is the one place
+\ the operand role is observable on its own - the target is a name the dialect
+\ does not model, and a walk that failed to pass over it would refuse it as an
+\ unmodelled word instead of elaborating the body.
+: DEFER-OK-BODY ( IR-CTX:ctx -- )
+   s" QBIND [: 1+ ;] is NELB-HOOK" DEFER-TAPE ;
+: DEFER-OK ( -- )
+   BND [: DEFER-OK-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DEFER-CASES ( -- )
+   s" `is` with no token after it is refused by name" T-LABEL
+   [: DEFER-BARE ;] E-NELAB-DEFER TTHROWSQ
+   s" a target that is not a name is refused by name" T-LABEL
+   [: DEFER-LIT ;] E-NELAB-DEFER TTHROWSQ
+   s" a created word whose data begins with the defer magic is refused by name"
+   T-LABEL
+   [: DEFER-DATA ;] E-NELAB-DEFER TTHROWSQ
+   s" an ordinary colon word is refused by the same name" T-LABEL
+   [: DEFER-PLAIN ;] E-NELAB-DEFER TTHROWSQ
+   s" and so is a name that denotes nothing here" T-LABEL
+   [: DEFER-ABSENT ;] E-NELAB-DEFER TTHROWSQ
+   s" a real deferred word elaborates, target token and all" T-LABEL
+   DEFER-OK ;
+
 : QUOT-REFUSE-CASES ( -- )
    s" a quotation nothing consumes is refused at its own opener" T-LABEL
    [: QUOT-NONE ;] E-NELAB-QUOT TTHROWSQ
@@ -2619,6 +2704,7 @@ public
    QUOT-PAIR-CASES
    QUOT-SHAPE-CASES
    QUOT-REFUSE-CASES
+   DEFER-CASES
    BND [: drop LOCAL-LOWER-CASE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 

@@ -576,7 +576,7 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 70 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 72 T= ;
 
 \ The nine float words, each read back off a real model. `f-` binds to hir.fsub
 \ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
@@ -1026,8 +1026,9 @@ variable BC-OUT
 \ arithmetic words are declared first, then the six comparisons, the six bitwise
 \ words, the four step words, the four memory words, the nine float words, the
 \ five float comparisons, the thirteen control words, the seven words of the
-\ three tag-dispatch forms, the two halves of a locals group and the two halves
-\ of a quotation, with the renames at the end of the walk.
+\ three tag-dispatch forms, the two halves of a locals group, the two halves of
+\ a quotation and the two words a program uses one with, with the renames at the
+\ end of the walk.
 : AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -1036,11 +1037,11 @@ variable BC-OUT
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 62 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 64 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 67 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 69 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 71 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )

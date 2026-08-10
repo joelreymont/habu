@@ -392,6 +392,21 @@ SUITE compiler-native-quot
    test/compiler/native-quot.f
 ;SUITE
 
+\ What `is` becomes: the quotation bound to a deferred word through the engine's
+\ own store-and-declare primitive, the branch decoded out of the published
+\ bytes, and the deferred word dispatching to the body afterwards. It runs after
+\ the migration entry for the same reason the quotation suite does.
+SUITE compiler-native-defer
+   test/compiler/native-defer.f
+;SUITE
+
+\ And what `execute` becomes: a call to the engine's own execute with the arity
+\ the quotation's certified effect states, over both paths a quotation reaches
+\ one by, plus the library's own multishot site re-compiled and run.
+SUITE compiler-native-exec
+   test/compiler/native-exec.f
+;SUITE
+
 \ What a published routine destroys, and what a call site does with the answer.
 \ It runs after the migration entry because the measurement it makes is over two
 \ words the migration published.

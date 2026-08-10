@@ -584,6 +584,14 @@ variable LBN                         \ how many declared locals are bound
 LMAX TYPED-BUFFER LNAME IR-ID:ir-symbol-id
 LMAX TYPED-BUFFER LVAL IR-ID:ir-value-id
 create LCROSS LMAX cells allot       \ whether a call can reach a mention of this local
+\ THE QUOTATION ROW A LOCAL'S VALUE NAMES, carried on the NAME and not on the
+\ value. Binding a name and reading it are both pushes onto the compile-time
+\ vector, and a push clears the vector entry's mark - correctly, because most
+\ pushes are not quotations - so a quotation bound to a local would lose its row
+\ at the binding and every read of the name would be a cell nobody can name an
+\ arity for. The local is what the walk really moves here, so the fact rides on
+\ the local, exactly as it rides on the vector entry everywhere else.
+create LQ LMAX cells allot           \ the quotation row this local's value names, or VQ-NONE
 create LROW LMAX cells allot         \ the row the group declaring this local closes on
 create LG-A LMAX cells allot         \ the row each group's `{:` is on
 create LG-B LMAX cells allot         \ the row its `:}` is on, or -1 while it is open
@@ -597,10 +605,16 @@ create LBUF LNAME-CAP allot
    0 LG-K0 !
    0 LGB !
    0 LBN !
-   LMAX 0 ?do  0 i cells LCROSS + !  loop ;
+   LMAX 0 ?do
+      0 i cells LCROSS + !
+      VQ-NONE i cells LQ + !
+   loop ;
 
 : LAT ( n -- n )
    dup 0 < over LN @ >= or if E-NELAB-LOCAL throw then ;
+
+: LQ@ ( n -- n )     LAT cells LQ + @ ;
+: LQ! ( n n -- )     {: k:n i:n :}  k i LAT cells LQ + ! ;
 
 \ The row at which this local comes into scope: the one its group's `:}` is on,
 \ or -1 while that group is still being read.
@@ -2072,6 +2086,16 @@ create QHI   QMAX cells allot        \ its `;]`, which is one past its last body
 create QIN   QMAX cells allot        \ what the body takes, in cells, or QNONE
 create QOUT  QMAX cells allot        \ and what it leaves
 create QOPENED TMAX cells allot      \ this token opens body k, or -1
+\ WHICH FUNCTION OF THIS EMISSION A ROW'S BODY IS, and QPARAM for a row that has
+\ no body at all. It used to be derived - the row's index plus the definition's
+\ own ordinal plus one - which was true only while every row was a body written
+\ here. A quotation that ARRIVES as an argument is a quotation this definition
+\ holds and has to know the arity of, and it is no function of this emission, so
+\ the two facts came apart and the ordinal is now stated where the row is opened.
+\ The loop that builds the bodies asserts it against the builder rather than
+\ recomputing it, exactly as it did before.
+-1 constant QPARAM                   \ this row's quotation is no body of this emission
+create QFUN  QMAX cells allot        \ the function of this emission a row's body is
 
 \ ---- which body each token belongs to, and which body is being walked ---------
 \ ONE TABLE SAYING WHOSE TOKEN THIS IS, because the two walks below run once for
@@ -2112,6 +2136,7 @@ variable QCUR                        \ the body being walked, or QOWNER-DEF
 : QAT@ ( n -- n )    QROW-CK cells QAT + @ ;
 : QLO@ ( n -- n )    QROW-CK cells QLO + @ ;
 : QHI@ ( n -- n )    QROW-CK cells QHI + @ ;
+: QFUN@ ( n -- n )   QROW-CK cells QFUN + @ ;
 : QIN@ ( n -- n )    QROW-CK cells QIN + @ ;
 : QOUT@ ( n -- n )   QROW-CK cells QOUT + @ ;
 
@@ -2256,7 +2281,7 @@ create QSPELL-BUF QSPELL-CAP allot
 \ refuses THERE, naming `is`. Binding one is dot habu-bind-a-quotation-1ea5f813.
 : QCONSUMED-CK ( -- )
    QN @ 0 ?do
-      i QIN@ QNONE = if i QAT@ QUOT-REFUSE then
+      i QFUN@ QPARAM <>  i QIN@ QNONE =  and if i QAT@ QUOT-REFUSE then
    loop ;
 
 : QOPEN-ROW ( n -- )
@@ -2267,9 +2292,57 @@ create QSPELL-BUF QSPELL-CAP allot
    ix 1+ k cells QLO + !
    QNONE k cells QIN + !
    QNONE k cells QOUT + !
+   QBASE @ k + 1+  k cells QFUN + !
    k ix TOK-CK cells QOPENED + !
    k QD !
    k 1+ QN ! ;
+
+\ ---- a quotation this definition was HANDED ----------------------------------
+\ WHY IT NEEDS A ROW AT ALL. `execute` has to know what the routine it enters
+\ takes and leaves, and for a body written here that is the row a consumer
+\ filled. A quotation that arrives as an ARGUMENT has no body here and no
+\ consumer to fill anything - and it is by far the commoner shape: every
+\ combinator in src/core/combinators.f, every `A-MAPI!` and `VEC-EACH` and
+\ `MAP-EACH` in the library, takes its quotation and executes it.
+\
+\ AND ITS ARITY HAS THE SAME AUTHOR AS EVERY OTHER ARITY HERE. The enclosing
+\ definition DECLARED it - `( ptr a len [ idx a -- a ] -- )` says exactly what
+\ that quotation takes and leaves - and the checker is the authority on the
+\ declaration, asked through the same descent a callee's operand is asked
+\ through (src/compiler/native/dict.f SPELL-QUOT-DIN), over this definition's
+\ own name. So one table holds every quotation the definition has, one column
+\ holds every arity, and `execute` reads the row whatever put it there.
+\
+\ IT IS NO FUNCTION OF THIS EMISSION, which is what QPARAM says: the body is
+\ somewhere else entirely, compiled by whoever wrote it, and the loop that
+\ builds this definition's bodies passes over the row.
+\
+\ TERMS ARE COUNTED FROM THE TOP AND CELLS FROM THE BOTTOM, so term j is cell
+\ in-1-j - the same correspondence QARG-FILL uses over a callee's row, and one
+\ dict.f refuses the descent for when the two counts disagree.
+: QOPEN-PARAM ( n n -- )
+   {: j:n cellix:n :}
+   0 QSPELL j NDICT:SPELL-QUOT-DIN {: qi:n qo:n :}
+   qi NDICT:QUOT-NONE = if exit then
+   QN @ QMAX >= if E-NELAB-QUOT-CAP throw then
+   QN @ {: k:n :}
+   0 k cells QAT + !
+   0 k cells QLO + !
+   0 k cells QHI + !
+   qi k cells QIN + !
+   qo k cells QOUT + !
+   QPARAM k cells QFUN + !
+   k 1+ QN !
+   k cellix VQ! ;
+
+\ Every declared input of this definition, marked where it is a quotation. The
+\ cells are already on the vector, so this only says which of them the body may
+\ execute and what happens when it does.
+: QPARAMS-OPEN ( n -- )
+   {: in:n :}
+   in 0 ?do
+      i  in 1- i -  QOPEN-PARAM
+   loop ;
 
 \ The open row's span, closed. The row is checked rather than trusted because the
 \ ONE store below is the only unchecked write into these tables: `QD` is -1 when
@@ -2344,6 +2417,14 @@ create QSPELL-BUF QSPELL-CAP allot
 0 constant MR-NONE                   \ an ordinary body token
 1 constant MR-FAMILY                 \ the family operand of a `MATCH` or a `construct`
 2 constant MR-VARIANT                \ the variant operand of one
+\ The deferred word `is` binds to. It is the same KIND of row as the two above -
+\ a name the body wrote that denotes nothing this dialect models, standing in a
+\ position a keyword decides - so it is one more role rather than a table of its
+\ own, and every walk passes over it through the one question they all already
+\ ask. What separates it from an ordinary name is only that: read as a body
+\ word it would resolve to the deferred word and compile into a CALL to it,
+\ which is not what `[: … ;] is FOO` does to FOO.
+3 constant MR-DEFER                  \ the deferred word `is` binds to
 
 \ The modes, which are the engine's CMM numbers (src/habu/habu2.f
 \ EM-COMPILE-ADT-MODE) under this file's names.
@@ -2617,6 +2698,38 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    MSN @ 0<> if E-NELAB-MATCH throw then
    MM @ MM-OFF <> if E-NELAB-MATCH throw then ;
 
+\ ---- the deferred word `is` names --------------------------------------------
+\ ONE ROW AFTER THE KEYWORD, AND IT IS DECIDED BY POSITION. `is FOO` binds the
+\ quotation on the stack to FOO, and FOO is not a word this body CALLS - so the
+\ row is marked here, before the model is read, exactly as a `MATCH` family
+\ token is and for the same reason: reading it as a body word would resolve it
+\ to the deferred word and compile a call to it.
+\
+\ THE TOKEN IS ON THE TAPE BECAUSE THE READER CONSUMED IT. src/core/checker.f
+\ IS-TOK reads it out of the middle of its judgement and reports it straight
+\ after the keyword's own row, so the row after `is` IS the deferred word's
+\ name and nothing else can be there. A name in a comment or inside a string
+\ cannot reach this position: a parenthesised comment is not a token at all and
+\ a string literal is ONE token of the string kind, so the refusal below - the
+\ row after `is` has to exist and has to be a NAME - is a structural test and
+\ not a spelling one.
+\
+\ IT RUNS AFTER THE TAG-DISPATCH PASS because that pass clears every role, and
+\ before the pass that resolves names, because that is the first reader of a
+\ role. Both orders are stated in COLON.
+: DSCAN-STEP ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena n:n ix:n :}
+   r ix HIR-CTRL:BIND-DEFER ROW-CTRL? 0= if exit then
+   ix 1+ {: t:n :}
+   t n >= if E-NELAB-DEFER throw then
+   VW t NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-NELAB-DEFER throw then
+   t MR-DEFER MROLE! ;
+
+: DEFER-SCAN ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena n:n :}
+   n 1 ?do
+      r n i DSCAN-STEP
+   loop ;
+
 \ ---- the names the dialect does not model, before anything reads the model ----
 \ THE DIALECT IS NOT THE WHOLE VOCABULARY AND NEVER WAS. It models the operations
 \ this chain compiles into instructions; everything else a body names is some
@@ -2849,6 +2962,25 @@ private
       r entry i REC-TOKEN? 0= if drop false leave then
    loop ;
 
+\ ---- which control actions stage a call, and which call ----------------------
+\ THREE OF THEM DO, AND THE LIST IS WRITTEN ONCE. `RECURSE` calls the definition
+\ being compiled, `is` calls the engine's store-and-declare primitive, and
+\ `execute` calls the engine's own `execute`. Two questions turn on that list -
+\ whether the body calls at all, and whether it needs the memory order - and a
+\ reader that kept two lists of the same three members would eventually not.
+\
+\ AND THE ANSWER CARRIES THE OPERATION, because the order question is asked of
+\ the SCHEMA and not assumed: `RECURSE` goes to a block of this function and the
+\ other two go to an address, which is exactly the difference between hir.call
+\ and hir.wordcall. The false answer carries an operation too rather than a
+\ sentinel, so no caller can read one out of a "no".
+: CTRL-CALL? ( HIR:ctrl -- HIR:opcode bool )
+   {: k:HIR:ctrl :}
+   k HIR-CTRL:SELF-CALL HIR-CTRL:EQ if HIR-OPCODE:CALL true exit then
+   k HIR-CTRL:BIND-DEFER HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
+   k HIR-CTRL:EXEC HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
+   HIR-OPCODE:CALL false ;
+
 \ Does this word stage an operation that takes the definition's memory order?
 \ Asked of the SCHEMA TABLE and not of a list of memory words, so a form added to
 \ the dialect is answered without this file being edited. A word of any other
@@ -2962,10 +3094,9 @@ private
       0<> exit
    then
    m HIR-MEANING:CONTROL HIR-MEANING:EQ if
-      CTX BLD  CTX BLD  HIR-OPCODE:CALL HIR:OPCODE  TOKEN-OPERANDS 0= if
-         false exit
-      then
-      r sy HIR-WORD:CTRL@ HIR-CTRL:SELF-CALL HIR-CTRL:EQ exit
+      r sy HIR-WORD:CTRL@ CTRL-CALL? {: op:HIR:opcode calls:bool :}
+      calls 0= if false exit then
+      CTX BLD  CTX BLD  op HIR:OPCODE  TOKEN-OPERANDS 0<> exit
    then
    r sy SYM-ORDER? ;
 
@@ -3001,7 +3132,8 @@ private
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
    m HIR-MEANING:CALLABLE HIR-MEANING:EQ if ix INL-AT? 0= exit then
    m HIR-MEANING:CONTROL HIR-MEANING:EQ if
-      r sy HIR-WORD:CTRL@ HIR-CTRL:SELF-CALL HIR-CTRL:EQ exit
+      r sy HIR-WORD:CTRL@ CTRL-CALL? {: op:HIR:opcode calls:bool :}
+      calls exit
    then
    false ;
 
@@ -3380,6 +3512,10 @@ create JOIN-TAB TMAX cells allot
       \ refuses rather than agreeing silently with a pre-scan that lost a span.
       open-quot    OF ENDOF
       close-quot   OF ix QUOT-REFUSE ENDOF
+      \ `is` and `execute` each stage one call and no block, so they count the
+      \ same as an ordinary call does here: nothing.
+      bind-defer   OF ENDOF
+      exec         OF ENDOF
    ;MATCH ;
 
 \ Walk the body once, counting. A structure left open at the end of the body is
@@ -4212,19 +4348,30 @@ create DN-BUF DN-CAP allot
 \ way, for the reason src/compiler/native/hir.f gives - no register survives a
 \ call whatever the callee destroys, so the honest statement is that the call
 \ consumes each live value and answers it again.
-: DO-WORD-CALL ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena ix:n :}
-   ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:CALLEE-IN@ {: a:n :}
-   r sy HIR-WORD:CALLEE-OUT@ {: o:n :}
+\ One call to an address, staged. It is written once because there are two
+\ callers with two different ways of knowing the three numbers: a name the body
+\ CALLS reads them off the word model's row, and `is` works them out from the
+\ deferred word the token after it names. What the staging itself does is the
+\ same either way, and it is exactly `RECURSE`'s minus the arity: everything the
+\ caller holds crosses the operation, for the reason
+\ src/compiler/native/hir.f gives.
+: STAGE-WCALL ( n n n n n -- )
+   {: ix:n entry:n a:n o:n oglue:n :}
    a o CALL-LIVE o + {: back:n :}
    ix CALL-CROSS
    CTX BLD HIR-OPCODE:WORDCALL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CALL-OPERANDS+
    back CALL-RESULTS+
-   r sy HIR-WORD:ENTRY@ a o WCALL-ATTRS+
-   back o  r sy HIR-WORD:OUT-GLUE@  CALL-CLOSE
+   entry a o WCALL-ATTRS+
+   back o oglue CALL-CLOSE ;
+
+: DO-WORD-CALL ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   ix  r sy HIR-WORD:ENTRY@
+   r sy HIR-WORD:CALLEE-IN@  r sy HIR-WORD:CALLEE-OUT@
+   r sy HIR-WORD:OUT-GLUE@  STAGE-WCALL
    r sy HIR-WORD:CALLEE-DEAD? if r ix DEAD-END then ;
 
 \ ---- copying a callee's body in instead of calling it ------------------------
@@ -4369,9 +4516,97 @@ create DN-BUF DN-CAP allot
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op RESULTS+
    CTX BLD  CTX BLD HIR:KEY-FUN
-   CTX BLD  QBASE @ k + 1+  IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  k QFUN@  IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
    CTX BLD op CLOSE
    k  VN @ 1-  VQ! ;
+
+\ ---- binding a quotation to a deferred word -----------------------------------
+\ WHAT `is` DOES, AND WHY IT IS A CALL. `[: … ;] is FOO` stores an execution
+\ token into FOO's dispatch cell - and that cell, once it holds one, is a cell of
+\ the DP heap holding a JIT-region address, which a snapshot has to move with the
+\ region or a restored image jumps into the writing run's memory on FOO's first
+\ call (dot habu-relocate-persisted-defer-7aa681c4). Storing and declaring the
+\ cell are therefore one operation, and the engine already has it: `xt!`
+\ (src/habu/habu2.f BXTSTORE), whose own header says the two are one primitive
+\ "so neither half can be done without the other and the declaration cannot drift
+\ away from the store it describes". So this compiles to a call to that
+\ primitive rather than to a store of its own, and there is no way to emit the
+\ store while forgetting the declaration.
+\
+\ WHERE THE ARITY OF THE QUOTATION COMES FROM, AND IT IS NOT FROM HERE. The
+\ checker binds `is` by taking the DEFERRED WORD's declared effect, making a
+\ quotation of it and unifying that against the value on the stack
+\ (src/core/checker.f IS-TOK, which reads the target's signature through
+\ CHECKER-FIND-ACTIVE-SIG and applies it with IS-APPLY). So the deferred word's
+\ own declared effect IS what the body must be, and that is what fills the
+\ consumption row - the same number the checker held the program to, read off
+\ the same authority every other arity in this file comes from.
+\
+\ THE VALUE NEED NOT BE A BODY THIS DEFINITION WROTE. `: X ( [ n -- n ] -- ) is
+\ FOO ;` binds a quotation that arrived as an argument, and there is no row here
+\ to fill; the store is the same store. So the row is filled when there is one
+\ and the call is staged either way.
+\
+\ AND THE ADDRESS IS A CONSTANT OF THIS EMISSION. Which cell FOO dispatches
+\ through is decided when FOO is declared and never again, so it is a literal -
+\ exactly as a `create`d word's address is - staged by the same word an integer
+\ in the source stages. The cell goes on top of the quotation because that is
+\ the order `xt!` takes them: the token is the deeper of the two, which is the
+\ order Forth writes `value address !` in.
+: DO-IS ( n -- )
+   {: ix:n :}
+   VN @ 1 < if E-NELAB-UNDER throw then
+   ix 1+ QSPELL {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u NDICT:SPELL-DEFER-CELL {: cell:n :}
+   cell 0= if E-NELAB-DEFER throw then
+   a u NDICT:SPELL-ARITY {: din:n dout:n :}
+   din NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
+   dout NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
+   s" xt!" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if E-NELAB-DEFER throw then
+   VN @ 1- VQ@ {: k:n :}
+   k 0 >= if k din dout QFILL then
+   ix cell EMIT-LIT
+   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+
+\ ---- entering the routine a quotation names ----------------------------------
+\ WHAT `execute` COMPILES TO. A branch-with-link to the engine's own `execute`,
+\ which is what a compiled `execute` is in the engine too: the routine it enters
+\ is not known where the call is written, so there is nothing to inline and
+\ nothing to fold. The one thing this site knows and the callee does not is how
+\ many cells cross it, and that is what the operation carries.
+\
+\ THE ARITY IS THE QUOTATION'S CERTIFIED EFFECT AND NOTHING ELSE. It takes one
+\ cell more than the quotation takes - the execution token itself, which the
+\ engine pops before it branches - and leaves exactly what the quotation leaves.
+\ Both numbers come off the row the value's mark names, which is the checker's
+\ answer either way: a body written here was told by the term that consumed it,
+\ and a quotation that arrived was told by the effect this definition declared.
+\
+\ GUESSING FROM THE SITE'S STACK SHAPE IS NOT AN OPTION and the refusal below is
+\ what says so. A cell reaching `execute` with no row is a cell nothing certified
+\ as a quotation - an xt out of a variable, a quotation carried across a branch,
+\ or a body this definition wrote that no consumer ever gave an arity - and the
+\ vector's depth would let a guess through every time. The checker refuses the
+\ first of those on its own (an opaque xt is not a T-QUOT); the other two are
+\ refused here, by the same name every other quotation refusal carries.
+\
+\ NOTHING IS SAVED ACROSS IT, which is right rather than unfortunate. The
+\ operation consumes every live value and answers it again, exactly as any call
+\ to an address does, so the caller keeps full save discipline against a callee
+\ nobody can name - which is the only sound assumption about a routine chosen at
+\ run time.
+: DO-EXEC ( n -- )
+   {: ix:n :}
+   VN @ 1 < if E-NELAB-UNDER throw then
+   VN @ 1- VQ@ {: k:n :}
+   k 0 < if ix QUOT-REFUSE then
+   k QIN@ {: qin:n :}
+   k QOUT@ {: qout:n :}
+   qin QNONE = if ix QUOT-REFUSE then
+   s" execute" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if ix QUOT-REFUSE then
+   ix entry  qin 1+  qout  NDICT:GLUE-NONE  STAGE-WCALL ;
 
 \ Either way of reaching another word's body. Which one this token is was decided
 \ once, before any walk started, and is read here rather than asked again.
@@ -4471,6 +4706,7 @@ create DN-BUF DN-CAP allot
    VN @ k - {: base:n :}
    k 0 ?do
       base i + VAT  from i + LVAL !
+      base i + VQ@  from i + LQ!
    loop
    k VDROP
    ix from k LOCAL-BIND-CROSS
@@ -4492,6 +4728,7 @@ create DN-BUF DN-CAP allot
    k 0 < if false exit then
    k LBN @ >= if E-NELAB-LOCAL throw then
    k LAT LVAL @ VPUSH
+   k LQ@  VN @ 1-  VQ!
    true ;
 
 \ The whole control table. Every arm names the blocks one source control word
@@ -4522,6 +4759,8 @@ create DN-BUF DN-CAP allot
       make-bundle  OF ix DO-MAKE-BUNDLE ENDOF
       open-quot    OF ix DO-QUOT ENDOF
       close-quot   OF ix QUOT-REFUSE ENDOF
+      bind-defer   OF ix DO-IS ENDOF
+      exec         OF ix DO-EXEC ENDOF
    ;MATCH ;
 
 \ ---- the walk ----------------------------------------------------------------
@@ -4735,7 +4974,8 @@ variable QNAME-P                     \ the place value the digit loop is on
    in 0 ?do
       c b  c b CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG VPUSH
    loop
-   0 IN-GLUE @ VGLUE-RUN ;
+   0 IN-GLUE @ VGLUE-RUN
+   in QPARAMS-OPEN ;
 
 \ ---- one quotation body, as a function of its own -----------------------------
 \ THE SAME FOUR STEPS THE DEFINITION'S OWN FUNCTION IS BUILT WITH, over a range
@@ -4807,7 +5047,7 @@ variable QNAME-P                     \ the place value the digit loop is on
 : QBUILD ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       p:IR-ARENA:arena r:IR-ARENA:arena k:n :}
-   b IR-BUILD:FUNS  QBASE @ k + 1+  <> if k QAT@ QUOT-REFUSE then
+   b IR-BUILD:FUNS  k QFUN@  <> if k QAT@ QUOT-REFUSE then
    k QLO@ {: lo:n :}
    k QHI@ {: hi:n :}
    k QCUR !
@@ -4830,7 +5070,7 @@ variable QNAME-P                     \ the place value the digit loop is on
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       p:IR-ARENA:arena r:IR-ARENA:arena :}
    QN @ 0 ?do
-      c b v key p r i QBUILD
+      i QFUN@ QPARAM <> if c b v key p r i QBUILD then
    loop ;
 
 \ A `{: … :}` group inside a quotation body, which this leaf refuses. The group
@@ -5078,6 +5318,7 @@ EXPORT SPLICE-MEANING?
    r n LOCALS-SCAN
    QLOCALS-CK
    r n MATCH-SCAN
+   r n DEFER-SCAN
    r n RESOLVE-SCAN
    r n INLINE-SCAN
    r n MEM-SCAN

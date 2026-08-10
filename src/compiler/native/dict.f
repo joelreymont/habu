@@ -515,6 +515,58 @@ public
    EFF-DEAD? ;
 
 private
+
+\ ---- and which cell a deferred word dispatches through ------------------------
+\ THE SIXTH QUESTION, AND IT IS THE ONE `is` NEEDS. `[: … ;] is NAME` stores an
+\ execution token into NAME's dispatch cell, and where that cell is, is a fact of
+\ the running engine exactly as a callee's entry address is: `defer` allocates
+\ the cell in the DP heap and writes its address into a meta trailer just past
+\ the word's code (src/habu/habu2.f C-DEFER-CELL and C-DEFER-META-WRITE). So the
+\ question is asked here, beside the other five, and a caller names a spelling
+\ and nothing else.
+\
+\ THE TRAILER IS RECOGNISED BY ITS MAGIC AND NEVER BY ITS SHAPE. Past any
+\ record's code stands whatever the next definition put there, and
+\ src/habu/layout.f's own rule about the region says it plainly: "an ordinary
+\ integer may hold any value at all". So the first cell of the trailer is held
+\ against DEFER-MAGIC - src/habu/layout.f's constant, the same one the engine
+\ writes and the same one the engine's own `is` checks in C-DEFER-TARGET-META -
+\ and a record whose trailer does not carry it answers absent. That is what
+\ makes "this spelling names a deferred word" a structural question rather than
+\ a guess about a number: a `create`d word whose data happens to begin with the
+\ magic would have to have been written with the magic in it, and a word whose
+\ code is followed by a plausible-looking address is answered absent because the
+\ cell BEFORE that address is not the magic.
+\
+\ THE TWO READS ARE THE ONE THING THIS FILE CANNOT DO IN CHECKED HABU, for the
+\ same reason RUN-WORD above cannot: the trailer is memory at an address the
+\ dictionary handed over, and the checker has no type for it. The boundary is two
+\ cells wide, does no deciding, and every refusal around it is ordinary checked
+\ Habu. Dot habu-typed-xt-storage-ddad4af8's typed cell is the capability that
+\ would let the trailer be read as a declared shape.
+TRUSTED: TRAILER@ ( n -- n )
+   @ ;
+
+public
+
+\ Where the word this spelling denotes dispatches through, or zero when it is not
+\ a deferred word here. Zero is the absent answer for the same reason it is
+\ CALL-TARGET's: no dispatch cell is at address zero.
+\
+\ THE RECORD IS THE AUTHORITY ON WHERE THE TRAILER IS. A record carries its
+\ code's start and its length, and the trailer begins where the code ends - so
+\ the two slots the walk above already answers are the whole of the arithmetic,
+\ and there is no second opinion about a word's extent for this to drift from.
+: SPELL-DEFER-CELL ( ptr u8 n -- n )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u SPELL-REC {: rec:ptr :}
+   rec XREF-FOUND? 0= if 0 exit then
+   rec XREF-RETIRED? if 0 exit then
+   rec XREF-START  rec XREF-LEN +  {: meta:n :}
+   meta TRAILER@ DEFER-MAGIC <> if 0 exit then
+   meta 8 + TRAILER@ ;
+
+private
 get-current prot-wid-add
 
 public

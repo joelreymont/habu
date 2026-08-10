@@ -337,6 +337,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       make-bundle  OF 19 ENDOF
       open-quot    OF 20 ENDOF
       close-quot   OF 21 ENDOF
+      bind-defer   OF 22 ENDOF
+      exec         OF 23 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -363,6 +365,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       19 of HIR-CTRL:MAKE-BUNDLE endof
       20 of HIR-CTRL:OPEN-QUOT endof
       21 of HIR-CTRL:CLOSE-QUOT endof
+      22 of HIR-CTRL:BIND-DEFER endof
+      23 of HIR-CTRL:EXEC endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -1174,8 +1178,11 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ a family or variant token means is the registry's answer and never a row here.
 \ The two halves of a quotation add two more words and no picks, and for a third
 \ statement of the same rule: what stands between them is another FUNCTION's
-\ tokens, so none of them is a row of this table either.
-70 constant WORDS
+\ tokens, so none of them is a row of this table either. `is` and `execute` add
+\ two more and no picks: each stages one call, and the one thing a pick cell
+\ could record - how the compile-time vector is permuted - is not something
+\ either of them does.
+72 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1366,6 +1373,19 @@ private
    c b r c b s" [:" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-QUOT BDECLARE-CONTROL
    c b r c b s" ;]" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-QUOT BDECLARE-CONTROL ;
 
+\ The two words a program uses a quotation with. Neither carries a payload, and
+\ that is the whole reason they are control rows rather than callable ones: a
+\ callable row states its callee's entry AND its declared arity, and neither of
+\ these has an arity to state - `is` moves what the DEFERRED WORD declares, and
+\ the token after it names which; `execute` moves one cell more than whatever
+\ quotation reaches it, which is a fact about the site. Where each branches to
+\ is a question for src/compiler/native/dict.f at the site, exactly as every
+\ other callee's entry is, so no address is recorded here either.
+: DEF-QUOT-USE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" is" IR-BUILD:INTERN-SYMBOL HIR-CTRL:BIND-DEFER BDECLARE-CONTROL
+   c b r c b s" execute" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EXEC BDECLARE-CONTROL ;
+
 \ The two halves of a typed locals group. Neither stages an operation and
 \ neither carries a payload: what the opener does is start reading the names
 \ that follow it and what the closer does is bind them, and both of those are
@@ -1473,6 +1493,7 @@ public
    c b r DEF-ADT
    c b r DEF-LOCALS
    c b r DEF-QUOT
+   c b r DEF-QUOT-USE
    c b p r DEF-2DUP
    c b p r DEF-DUP
    c b p r DEF-DROP
