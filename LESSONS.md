@@ -5796,3 +5796,18 @@ two leaves rested on). Corollary: a leaf that names a mechanism has
 still not proved the mechanism's INPUT exists - "the MOPERAND?
 mechanism" was true of MATCH and false of is, and one contrast probe
 with the same dumper separated them.
+
+## The seeded prefix made binary staleness a red class (2026-08-11)
+
+Since the stdlib entered the boot prefix, tests that query the RUNNING
+engine's provide surface (bundle assume-or-carry, anything reading
+ENGINE-PROVIDES?) red under a bin/hb built before the seed - and bin/hb
+is untracked, so every workspace carries its own. install --force before
+ANY gate, not just after seed-file edits; a "tools-only change" is not
+an exemption because the TREE under the binary moved. Two deterministic
+red runs were this, not the change under test. Sibling notes from the
+keyfix lane: run the package lint on a one-line probe diff before
+designing any build-fixpoint change (it decides the change's shape);
+using PKG is file-scoped and never reaches requiring files;
+build-fixpoint-test self-runs at load so appended debug drivers never
+execute - bisect by unregistering steps.
