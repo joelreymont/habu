@@ -21,6 +21,8 @@ require tools/build-fixpoint.f
 require tools/source-arena-policy.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 
+using STAMP-KEY                          \ the stamp key derivation this file drives
+
 8192 constant BFT-CAPTURE-CAP
 $40000 constant BFT-BIG-CAP
 120000 constant BFT-TIMEOUT-MS
@@ -1376,6 +1378,120 @@ public
    [: BFT-PIN-RELOAD ;] E-BUILD-BOOT-DRIFT TTHROWSQ
    BF-PIN-OFF!
    BF-PIN-RESET ;
+
+\ The native chain's contribution to the stamp key (package STAMP-KEY in
+\ tools/build-fixpoint.f). Two claims, and the second is what makes the first
+\ mean anything for the real refresh.
+\
+\ CLOSURE-KEY runs the production digest word over a fixture entry, so the
+\ closure it walks is built here rather than read from the tree: a content edit
+\ to a file the entry loads must change the digest, an edit to a file it does
+\ not load must leave the digest alone, and restoring the first file's bytes
+\ must restore the original digest exactly. The entry carries two decoys - a
+\ `require` of the unrelated file inside a `\` comment, and the same text inside
+\ a string literal - so a discovery pass that matched loader text instead of
+\ loader FORMS would pull the unrelated file into the closure and fail both the
+\ membership assertions and the untouched-digest claim.
+\
+\ STAMP-FOLD then pins that the refresh's own key preimage carries that digest,
+\ for THIS repository's chain entry: it rebuilds the length-framed `chain-src`
+\ fragment BF-STAMP-KEY-BEGIN is supposed to have appended and finds those exact
+\ bytes in the preimage. The same fragment built from the fixture entry's digest
+\ must be absent, so keying the wrong entry file fails here rather than passing
+\ on the tag alone.
+package BFT-CHAIN
+
+variable ENTRY-U
+variable DEP-U
+variable OTHER-U
+create ENTRY-BUF FS-PATH-CAP allot
+create DEP-BUF FS-PATH-CAP allot
+create OTHER-BUF FS-PATH-CAP allot
+create DG-A 40 allot
+create DG-B 40 allot
+create DG-C 40 allot
+
+: ENTRY$ ( -- ptr u8 n )   ENTRY-BUF ENTRY-U @ ;
+: DEP$ ( -- ptr u8 n )     DEP-BUF DEP-U @ ;
+: OTHER$ ( -- ptr u8 n )   OTHER-BUF OTHER-U @ ;
+
+: PROD-ENTRY$ ( -- ptr u8 n )
+   s" src/compiler/native/migrate.f" ;
+
+\ Entry source: one real `require`, plus the same loader text hidden in a
+\ comment and in a string literal.
+: ENTRY-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" \ require " SB-APPEND OTHER$ SB-APPEND BFT-NL 1 SB-APPEND
+   s\" s\" require " SB-APPEND OTHER$ SB-APPEND 34 SB-APPEND-C BFT-NL 1 SB-APPEND
+   s" require " SB-APPEND DEP$ SB-APPEND BFT-NL 1 SB-APPEND
+   SB$ ;
+
+: WRITE-FIXTURES ( -- )
+   DEP$ s\" \\ dep v1\n" WRITE-ALL
+   OTHER$ s\" \\ other v1\n" WRITE-ALL
+   ENTRY$ ENTRY-SRC$ WRITE-ALL ;
+
+: MEMBER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup EC:COUNT < while
+      dup EC:PATH$ a u STR= if drop BF-TRUE exit then
+      1+
+   repeat drop BF-FALSE ;
+
+\ One preimage field, as the key writes it: a length byte then that many bytes.
+: FIELD+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u SB-APPEND-C
+   a u SB-APPEND ;
+
+\ The framed `chain-src` fragment BF-STAMP-KEY-BEGIN appends for a given digest:
+\ the tag as one field, the digest as the next.
+: FRAGMENT$ ( ptr u8 -- ptr u8 n ) {: dg:ptr :}
+   SB-RESET
+   s" chain-src" FIELD+
+   dg BF-STAMP-DG-U FIELD+
+   SB$ ;
+
+: PREIMAGE-HAS? ( ptr u8 n -- bool )
+   BF-STAMP-BUF BF-STAMP-U @ 2swap CONTAINS? ;
+
+public
+
+: PREP ( -- )
+   BFT-ROOT s" chain-entry.f" ENTRY-BUF ENTRY-U BFT-PATH!
+   BFT-ROOT s" chain-dep.f" DEP-BUF DEP-U BFT-PATH!
+   BFT-ROOT s" chain-other.f" OTHER-BUF OTHER-U BFT-PATH! ;
+
+: TEST-CLOSURE-KEY ( -- )
+   PREP
+   WRITE-FIXTURES
+   ENTRY$ EC:BUILD
+   EC:COUNT 2 T=
+   ENTRY$ MEMBER? TTRUE
+   DEP$ MEMBER? TTRUE
+   OTHER$ MEMBER? TFALSE
+   ENTRY$ DG-A STAMP-KEY:CHAIN-DIGEST!
+   DEP$ s\" \\ dep v2\n" APPEND-FILE
+   ENTRY$ DG-B STAMP-KEY:CHAIN-DIGEST!
+   DG-A BF-STAMP-DG-U DG-B BF-STAMP-DG-U STR= TFALSE
+   OTHER$ s\" \\ other v2\n" APPEND-FILE
+   ENTRY$ DG-C STAMP-KEY:CHAIN-DIGEST!
+   DG-B BF-STAMP-DG-U DG-C BF-STAMP-DG-U STR= TTRUE
+   DEP$ s\" \\ dep v1\n" WRITE-ALL
+   ENTRY$ DG-C STAMP-KEY:CHAIN-DIGEST!
+   DG-A BF-STAMP-DG-U DG-C BF-STAMP-DG-U STR= TTRUE ;
+
+: TEST-STAMP-FOLD ( -- )
+   PREP
+   WRITE-FIXTURES
+   PROD-ENTRY$ DG-A STAMP-KEY:CHAIN-DIGEST!
+   ENTRY$ DG-B STAMP-KEY:CHAIN-DIGEST!
+   DG-A BF-STAMP-DG-U DG-B BF-STAMP-DG-U STR= TFALSE
+   BF-STAMP-KEY-BEGIN
+   DG-A FRAGMENT$ PREIMAGE-HAS? TTRUE
+   DG-B FRAGMENT$ PREIMAGE-HAS? TFALSE ;
+
+;package
+
 \ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
@@ -1401,6 +1517,8 @@ public
    s" stale seed install" [: BFT-TEST-STALE-INSTALL ;] BFT-STEP
    s" cert inject install" [: BFT-TEST-CERT-INJECT-INSTALL ;] BFT-STEP
    s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
+   s" chain closure key" [: BFT-CHAIN:TEST-CLOSURE-KEY ;] BFT-STEP
+   s" chain stamp fold" [: BFT-CHAIN:TEST-STAMP-FOLD ;] BFT-STEP
    s" stamp corrupt" [: BFT-TEST-STAMP-CORRUPT ;] BFT-STEP
    s" stamp engine" [: BFT-TEST-STAMP-ENGINE ;] BFT-STEP
    s" all stamp guard" [: BFT-TEST-ALL-STAMP-GUARD ;] BFT-STEP

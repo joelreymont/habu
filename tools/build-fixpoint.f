@@ -2,7 +2,10 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/codesign.f.
-\ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
+\ The stamp key hashes the engine and the emitted stage sources with the baked
+\ SHA256 words; only the native-chain fold below reaches for lib/content-key.f
+\ and the shared closure walk, because that input is a file LIST rather than one
+\ file (see package STAMP-KEY).
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require src/habu/verify-source.f
@@ -36,6 +39,13 @@ $2F constant BF-SLASH
    s" FS-PATH-CAP" CHECKER-DEFINED? if exit then
    S\" build-fixpoint: missing required load; --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb\n" BF-USAGE-RC die ;
 BF-NEED-PREAMBLE
+
+\ These two come AFTER the guard on purpose. Both pull the preamble libraries in
+\ through their own requires, so requiring them above would satisfy FS-PATH-CAP
+\ by side effect and the missing-preamble case would stop being reported at all.
+\ The guard answers first; only then does the chain fold pull what it needs.
+require lib/content-key.f                \ package STAMP-KEY: the chain fold
+require tools/event-closure-lib.f        \ package STAMP-KEY: the chain fold
 
 create BF-LF-BUF 1 allot
 create BF-PIN-KEYS BF-PIN-CAP BF-STAMP-DG-U * allot
@@ -1377,10 +1387,70 @@ public
    BF-ENGINE$ BF-STAMP-DG SHA256-FILE dup 0 <> if throw then drop
    s" engine" BF-STAMP-DG BF-STAMP-DG+ ;
 
+\ ---------------------------------------------------------------------------
+\ package STAMP-KEY - what the refresh weighs when it decides a rebuild is
+\ unnecessary: the key's preimage, and the comparison against the stored stamp.
+\
+\ The native compiler chain is the one build input this key cannot reach by
+\ digesting the engine and the two emitted stage sources. The chain is seeded
+\ into the stage engine as prefix source read straight from the checkout, so
+\ editing it changes no emitted byte and no other stamp input, and the refresh
+\ would answer `fixpoint: cached` over an engine built from the older chain.
+\ Fold the chain entry's whole ordered require/include closure into the preimage
+\ instead. Discovery is the same walk the hb-build artifact cache keys with
+\ (tools/event-closure-lib.f over tools/source-discovery.f), so exactly the files
+\ that actually load are keyed: an edit to any of them rebuilds, an edit to a
+\ file the chain does not load does not. Discovery rejects fail-closed, so a
+\ chain whose closure cannot be reproduced fails the refresh rather than being
+\ keyed as though it were absent.
+\
+\ The closure digest is captured ONCE per process and every key derived
+\ afterwards replays that capture. The capture happens before the build, because
+\ reading the chain afterwards would record content the build never compiled: an
+\ edit landing mid-build would be written into the stamp and the next refresh
+\ would skip over an engine built from the older chain. Capturing first can only
+\ over-invalidate, which costs one rebuild and never ships a stale engine.
+package STAMP-KEY
+
+create CHAIN-DG 40 allot
+variable CHAIN-DONE?
+variable CHAIN-I
+
+: ENTRY$ ( -- ptr u8 n )
+   s" src/compiler/native/migrate.f" ;
+
+: CLOSURE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u EC:BUILD
+   0 CHAIN-I !
+   begin CHAIN-I @ EC:COUNT < while
+      CHAIN-I @ EC:PATH$ CONTENT-KEY:FILE+
+      CHAIN-I @ 1+ CHAIN-I !
+   repeat ;
+
+public
+
+\ The ordered closure of one entry file, hashed into a 32-byte digest.
+: CHAIN-DIGEST! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
+   CONTENT-KEY:RESET
+   s" native-chain-closure-v1" CONTENT-KEY:TEXT+
+   a u CLOSURE+
+   dst CONTENT-KEY:FINAL ;
+
+private
+
+: CHAIN-RECORD ( -- )
+   CHAIN-DONE? @ if exit then
+   ENTRY$ CHAIN-DG CHAIN-DIGEST!
+   BF-TRUE CHAIN-DONE? ! ;
+
+public
+
 : BF-STAMP-KEY-BEGIN ( -- )
+   CHAIN-RECORD
    0 BF-STAMP-U !
-   s" build-fixpoint-stamp-v1" BF-STAMP-FRAG+
-   BF-STAMP-ENGINE+ ;
+   s" build-fixpoint-stamp-v2" BF-STAMP-FRAG+
+   BF-STAMP-ENGINE+
+   s" chain-src" CHAIN-DG BF-STAMP-DG+ ;
 
 : BF-STAMP-STAGE-KEY+ ( -- )
    BF-STAMP-DG BF-STAGE2-DIGEST
@@ -1410,6 +1480,8 @@ public
    s" stdin-src" BF-REC-STDIN-DG BF-STAMP-DG+
    BF-STAMP-KEY-END ;
 
+private
+
 : BF-STAMP-READ? ( -- bool )
    BF-STAMP-PATH$ FILE? 0= if BF-FALSE exit then
    BF-STAMP-PATH$ FILE-SIZE BF-STAMP-HEX-U 1 + <> if BF-FALSE exit then
@@ -1417,11 +1489,20 @@ public
    BF-STAMP-OLD BF-STAMP-HEX-U + c@ BF-LF <> if BF-FALSE exit then
    BF-TRUE ;
 
+public
+
+\ Every stamped verb asks this first, so it is where the chain capture lands
+\ before the build starts. `--force` answers false without deriving a key, so
+\ the capture has to happen ahead of that answer rather than inside the key.
 : BF-STAMP-MATCH? ( -- bool )
+   CHAIN-RECORD
    BF-FORCE @ 0 <> if BF-FALSE exit then
    BF-STAMP-READ? 0= if BF-FALSE exit then
    BF-STAMP-KEY!
    BF-STAMP-OLD BF-STAMP-HEX-U BF-STAMP-KEY BF-STAMP-HEX-U STR= ;
+
+;package
+using STAMP-KEY
 
 : BF-STAMP-WRITE ( -- )
    BF-STAMP-ENSURE-DIR

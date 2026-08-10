@@ -193,15 +193,21 @@ bin/hb --load tools/build-fixpoint-refresh.f -- install
 running binary. Callers load only the libraries and tool source they need.
 
 The `all`/`install` refresh is content-keyed. After a successful install the
-tool writes a stamp — SHA-256 over the digests of `bin/hb` plus the exact
-emitted fixpoint and stdin stage sources, captured at the moment the build
-consumed them — to `$HABU_FIXPOINT_STAMP` if set, else
+tool writes a stamp — SHA-256 over the digests of `bin/hb`, the exact emitted
+fixpoint and stdin stage sources captured at the moment the build consumed
+them, and the whole ordered `require`/`include` closure of the native compiler
+chain (`src/compiler/native/migrate.f`) — to `$HABU_FIXPOINT_STAMP` if set, else
 `$XDG_CACHE_HOME/habu-fixpoint/stamp`, else `~/.cache/habu-fixpoint/stamp`.
-A repeated refresh with an unchanged engine and unchanged stage sources prints
-`fixpoint: cached <key-prefix>` and exits 0 without rebuilding (~2s instead of
-~27s). Because the stamp key includes the hash of the current `bin/hb`, a
-replaced or stale engine can never false-skip: any byte change to `bin/hb` or
-to a compiled stage source changes the key and forces the full refresh.
+A repeated refresh with an unchanged engine, unchanged stage sources and an
+unchanged chain prints `fixpoint: cached <key-prefix>` and exits 0 without
+rebuilding (~1s instead of ~7s). Because the stamp key includes the hash of the
+current `bin/hb`, a replaced or stale engine can never false-skip: any byte
+change to `bin/hb` or to a compiled stage source changes the key and forces the
+full refresh. The chain is keyed separately because it reaches the stage engine
+as prefix source read straight from the checkout rather than as emitted stage
+bytes, so without that fold a chain edit would change no other stamp input; the
+closure is walked once per refresh, before the build, and costs about 0.16s.
+An edit to a file the chain does not load leaves the key alone.
 Append `--force` to bypass the stamp and rebuild unconditionally; proof flows
 (`tools/seed.f`, `tools/bootstrap.sh`) always pass `--force`. `-- all` only
 writes the stamp when its product is byte-identical to `bin/hb`.
