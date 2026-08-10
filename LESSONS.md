@@ -5742,3 +5742,14 @@ Sibling rule: carrying a fact on VALUE IDENTITY is a lucky-value
 mechanism when calls rename values - acceptance then tracks whether
 the inliner fired; carry facts on the vector entry the walk actually
 moves.
+
+## Four from the no-return lane (2026-08-11)
+
+Gate evidence must be sequential - three concurrent heavy suites
+produced a false red that vanished on rerun. pgrep -f inside a wait
+loop matches the waiting shell's own command line and deadlocks; use a
+marker file. Habu quotations are not closures - a probe's [: ;] cannot
+read the enclosing locals; park values in a variable. And a mutation
+that changes nothing falsifies the COMMENT that claimed it would - the
+honest outcome is rewriting the claim into a derivation (second
+occurrence of this pattern; it is a rule now).
