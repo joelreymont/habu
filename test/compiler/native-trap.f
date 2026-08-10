@@ -462,12 +462,19 @@ variable CHILD-OUT-N
 variable CHILD-ERR-N
 variable CHILD-RC
 
+create CHILD-MODE 16 allot
+variable CHILD-MODE-N
+
+: CHILD-MODE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CHILD-MODE u BYTE-COPY
+   u CHILD-MODE-N ! ;
+
 : CHILD-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/compiler/native-trap.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
-   s" forge" >LEN PROC-ARGV+ ;
+   CHILD-MODE CHILD-MODE-N @ >LEN PROC-ARGV+ ;
 
 : CHILD-RUN ( -- )
    CHILD-ARGV
@@ -484,6 +491,7 @@ variable CHILD-RC
    ERR-BUF CHILD-ERR-N @ ;
 
 : FORGE-CASE ( -- )
+   s" forge" CHILD-MODE!
    CHILD-RUN
 
    s" a forged bad tag through the chain exits ENGINE-ERROR:BAD-TAG" T-LABEL
@@ -494,6 +502,47 @@ variable CHILD-RC
 
    s" and it names no other family" T-LABEL
    CHILD-ERR$ s" hb: bad alpha tag" CONTAINS? TFALSE ;
+
+\ ---- the other kind of row, and the other exit -------------------------------
+\ A trap site the ELABORATOR builds after a call that does not come back carries
+\ a row of the second kind, and reaching it would mean the certificate the caller
+\ was compiled against was false. It says so in its own words and with its own
+\ status - the diagnostic of a scrutinee whose tag matched no arm would be a lie
+\ about a word that returned - so the two are proved to differ in BOTH, in a
+\ process that dies of it.
+: NORET-NAME$ ( -- ptr u8 n )
+   s" ntrapy" ;
+
+: NORET-FORGE ( -- )
+   NORET-NAME$ NTRAP:NO-RETURN NTRAP:TRAP ;
+
+: NORET-CASE ( -- )
+   s" the two kinds are two rows even under one name" T-LABEL
+   s" ntrapz" NTRAP:FAMILY {: f:n :}
+   s" ntrapz" NTRAP:NO-RETURN {: d:n :}
+   f d T<>
+   f NTRAP:KIND@ NTRAP:TAG T=
+   d NTRAP:KIND@ NTRAP:NO-RET T=
+   f NTRAP:NAME$ s" ntrapz" T$=
+   d NTRAP:NAME$ s" ntrapz" T$=
+
+   s" and each kind is idempotent under its own name" T-LABEL
+   f  s" ntrapz" NTRAP:FAMILY  T=
+   d  s" ntrapz" NTRAP:NO-RETURN  T=
+
+   s" a name this table cannot hold is refused for either kind" T-LABEL
+   [: s" " NTRAP:NO-RETURN drop ;] E-NTRAP-NAME TTHROWSQ
+
+   s" the no-return exit is ENGINE-ERROR:CODE-CERT, not the bad-tag one" T-LABEL
+   s" noret" CHILD-MODE!
+   CHILD-RUN
+   CHILD-RC @ ENGINE-ERROR:CODE-CERT T=
+
+   s" and the diagnostic names the word that came back" T-LABEL
+   CHILD-ERR$ s" hb: ntrapy returned" CONTAINS? TTRUE
+
+   s" and says nothing about a tag" T-LABEL
+   CHILD-ERR$ s" tag" CONTAINS? TFALSE ;
 
 \ The two claims about a routine with no return: the emission ends in the branch
 \ that leaves, and there is no return instruction ANYWHERE in it. The second is
@@ -640,6 +689,7 @@ public
 
    \ ---- and the whole of it, in a process that dies ----
    FORGE-CASE
+   NORET-CASE
 
    T-REPORT ;
 
@@ -651,6 +701,7 @@ public
 : ENTRY ( -- )
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" forge" STR= if FORGE exit then
+      0 SCRIPT-ARGV$ s" noret" STR= if NORET-FORGE then
    then
    RUN ;
 
