@@ -5676,3 +5676,27 @@ And a capacity six passes share (NFROZEN:BMAX) is a product decision to
 raise, not a constant to bump inside a feature lane - measure the
 unlock cost, pin the current ceiling in a test so the raise has a
 number to move, and dot it.
+
+## Three from the closed-forming lane (2026-08-10)
+
+A test whose inputs are only reachable BECAUSE an optimisation fired
+must assert the optimisation fired and stop if it did not - otherwise
+a regression turns a red gate into a machine that never returns (a
+2^63-turn loop was asked for before this was caught). A mutation that
+leaves the suite green is a verdict on the fix, not the suite: a
+suspected sentinel bug was already caught downstream, and the honest
+outcome was a corrected comment, not a claimed repair. And optimising
+a corpus row breaks the instruments that used it as a subject - two
+loop-measuring suites named SUM-TO because it was the smallest counted
+loop, and the fold left them measuring nothing.
+
+## A refusal surviving a lift under the same code is not the same refusal (2026-08-10)
+
+The two-function fixture passed before AND after the allocator lift -
+but the check answering had changed (FUN-OF to COVER-CK), so the lift
+looked landed and was not. Only neutering the suspected check and
+watching a SPECIFIC case go red tells the two refusals apart. Sibling
+find: putting one of two agreeing walks on a new number line breaks
+the agreement silently - the validator moved module-wide, the
+allocator did not, and the tell was E-A64RAV-INTERVAL on a case that
+has nothing to do with intervals. The pair moves together.
