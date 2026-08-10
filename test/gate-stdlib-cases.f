@@ -344,6 +344,10 @@ SUITE compiler-native-elaborate
    test/compiler/native-elaborate.f
 ;SUITE
 
+SUITE compiler-asm-package
+   test/compiler/asm-package-test.f
+;SUITE
+
 SUITE compiler-native-a64ir
    test/compiler/native-a64ir.f
 ;SUITE

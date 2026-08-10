@@ -155,6 +155,8 @@ SUITE maki/train-test.f
 ;SUITE
 SUITE maki/onnx-test.f
 ;SUITE
+SUITE maki/onnx/asm-collide-test.f
+;SUITE
 SUITE maki/onnx/proto-test.f
 ;SUITE
 SUITE maki/onnx/import-test.f
