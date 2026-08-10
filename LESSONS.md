@@ -5728,3 +5728,17 @@ BROKEN engine until the call form changed. Sibling rule from the same
 lane: a recorded length is not a routine's extent (measured: 554 baked
 records where START+LEN+4 is not the next start) - derive floors from
 starts and slot-ordering, never from lengths.
+
+## The mutation harness needs its own hygiene (2026-08-11)
+
+Two false verdicts from one battery: an anchor that matched a DIFFERENT
+word (assert anchor uniqueness before mutating) and a baseline that
+still carried debug prints (assert the baseline green first). And a
+fixture that passes for a body whose arity is symmetric proves nothing
+about whether the body was walked at all - the S1 skip bug built
+( n -- n ) bodies as accidental argument-pass-throughs and every
+symmetric fixture passed; only an asymmetric body told the truth.
+Sibling rule: carrying a fact on VALUE IDENTITY is a lucky-value
+mechanism when calls rename values - acceptance then tracks whether
+the inliner fired; carry facts on the vector entry the walk actually
+moves.
