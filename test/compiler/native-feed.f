@@ -287,6 +287,124 @@ create UTXT TEXT-CAP allot
    BND [: KEPT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 23 T= ;
 
+\ ---- the token a keyword reads for itself ------------------------------------
+\ `is NAME` does not read NAME through the scan loop: the judgement reads it,
+\ out of the middle of the loop's turn, and walks the reader's cursor past it.
+\ So the loop's one report per turn describes `is` and the loop resumes AFTER
+\ the name - which used to leave the tape without a row for a token the reader
+\ really had consumed. Measured before the repair: this very definition recorded
+\ five rows ending at `is`.
+\
+\ THE ROW HAS TO BE THERE FOR THE TAPE TO MEAN WHAT IT SAYS. src/compiler/native/
+\ tape.f is "the exact token stream the compiler consumed" and the native chain
+\ has no other way to learn which deferred word a definition binds: a second
+\ lexer over the kept text is precisely what the tape exists to make
+\ unnecessary. So the row is asserted in its place - straight after `is`, in
+\ consumption order - with its own kind, mode and span.
+\ ---- reading a row that may not be there --------------------------------------
+\ The claim these fixtures make is "there is a row here and it says this", and a
+\ producer that stopped making the row would make the readers above throw on the
+\ index instead of answering. A throw out of a fixture ends the suite with a
+\ code and names no case, so the three readers below answer FALSE - and -1 for a
+\ length - for a row the tape does not have, and the case reports which claim
+\ broke.
+: ROW-SPELL? ( n n ptr u8 n -- bool )
+   {: slot:n i:n a:ptr u:n :}
+   i 0 < i slot TOKENS >= or if false exit then
+   slot i a u SPELL-IS? ;
+
+: ROW-KIND? ( n n NTAPE:kind -- bool )
+   {: slot:n i:n k:NTAPE:kind :}
+   i 0 < i slot TOKENS >= or if false exit then
+   slot i k KIND-IS? ;
+
+: ROW-MODE? ( n n NTAPE:mode -- bool )
+   {: slot:n i:n m:NTAPE:mode :}
+   i 0 < i slot TOKENS >= or if false exit then
+   slot i m MODE-IS? ;
+
+: ROW-SPAN-LEN ( n n -- n )
+   {: slot:n i:n :}
+   i 0 < i slot TOKENS >= or if -1 exit then
+   slot i SPAN-LEN ;
+
+\ The deferred word and the body the three fixtures below bind to it, declared
+\ once. A `defer` may not be declared twice - the checker refuses the second as
+\ a duplicate definition - so the three cases share one declaration rather than
+\ each making its own.
+variable SW-READY
+
+: SWALLOW-PREP ( -- )
+   SW-READY @ 0<> if exit then
+   1 SW-READY !
+   s" defer NF-SW-HOOK ( n -- n )" EV
+   s" : NF-SW-IMPL ( n -- n ) 1 + ;" EV ;
+
+: SWALLOW-BODY ( IR-CTX:ctx -- n bool bool bool bool n )
+   {: c:IR-CTX:ctx :}
+   SWALLOW-PREP
+   c s" : NF-SWALLOW ( -- ) [: NF-SW-IMPL ;] is NF-SW-HOOK ;" 0 REC
+   0 TOKENS
+   0 4 s" is" ROW-SPELL?
+   0 5 s" NF-SW-HOOK" ROW-SPELL?
+   0 5 NTAPE-KIND:NAME ROW-KIND?
+   0 5 NTAPE-MODE:COMPILING ROW-MODE?
+   0 5 ROW-SPAN-LEN ;
+
+: SWALLOW-CASE ( -- )
+   s" the name `is` reads for itself is a row of its own, in order" T-LABEL
+   BND [: SWALLOW-BODY ;] IR-CTX:WITH-CONTEXT
+   10 T= TTRUE TTRUE TTRUE TTRUE 6 T= ;
+
+\ AND THE ROW IS THE JUDGEMENT'S, NOT A SPELLING'S. This fixture puts a string
+\ literal whose whole body is `is` in front of the real one. A producer that
+\ flushed a target row after any row spelled `is` would give the literal one
+\ too, and the count would be nine; what decides it here is whether the
+\ judgement really consumed a token that turn, and a string literal consumes
+\ none. The parenthesised copy is asserted as well: the engine drops it while it
+\ reconstructs the body, so it is not even in the text the reader sees, which is
+\ a stronger statement than "the reader steps over it".
+: SWALLOW-HIDE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   SWALLOW-PREP
+   c S\" : NF-SWHID ( -- ) ( is NF-SW-HOOK ) s\" is\" 2drop [: NF-SW-IMPL ;] is NF-SW-HOOK ;"
+   0 REC
+   0 TOKENS
+   0 1 NTAPE-KIND:STRING-LITERAL ROW-KIND?
+   0 1 s" is" ROW-SPELL?
+   0 2 s" 2drop" ROW-SPELL?
+   0 6 s" is" ROW-SPELL?
+   0 7 s" NF-SW-HOOK" ROW-SPELL? ;
+
+: SWALLOW-HIDE-CASE ( -- )
+   s" a string literal spelled `is` reads no name after it" T-LABEL
+   BND [: SWALLOW-HIDE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE 8 T= ;
+
+\ ---- the target `[']` reads, which never reaches this reader at all -----------
+\ `['] W` reads a token for itself the same way `is` does, and the producer
+\ reports it the same way - but no tape can hold it, because the ENGINE drops it
+\ while it reconstructs the body: src/habu/habu2.f C-BTICK consumes the target
+\ with no body capture, which src/core/checker.f's own note on BTICK-CAND?
+\ records. So the text this reader is handed ends at the `[']`, and the missing
+\ row is one stage further up than anything the checker can repair.
+\
+\ IT IS PINNED HERE RATHER THAN LEFT UNSAID because the count is what a reader
+\ would otherwise take for a hole in the repair above. Dot
+\ habu-capture-a-tick-f2bf9d91 carries the engine half; when it lands this
+\ case is what moves.
+: TICK-BODY ( IR-CTX:ctx -- n bool )
+   {: c:IR-CTX:ctx :}
+   SWALLOW-PREP
+   c s" : NF-TICKED ( -- n ) ['] NF-SW-IMPL ;" 0 REC
+   0 TOKENS
+   0 s" NF-SW-IMPL" ANY-SPELL? ;
+
+: TICK-CASE ( -- )
+   s" the engine drops a tick's target before the reader can see it" T-LABEL
+   BND [: TICK-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE 2 T= ;
+
 \ ---- hostile fixtures --------------------------------------------------------
 \ A spelling inside a parenthesised comment is text the reader steps over, so
 \ it must not name a row. The count is asserted too: "no row is spelled it" is
@@ -733,6 +851,9 @@ public
    LIT-CASE
    REPEAT-CASE
    TRIM-CASE
+   SWALLOW-CASE
+   SWALLOW-HIDE-CASE
+   TICK-CASE
    HIDE-COMMENT-CASE
    HIDE-STRING-CASE
    VERBATIM-CASE

@@ -9876,6 +9876,47 @@ variable ISQ
 variable IS-TA
 variable IS-TU
 
+\ ---- the token a keyword swallows -------------------------------------------
+\ TWO KEYWORDS READ A TOKEN OF THEIR OWN out of the middle of the judgement:
+\ `is NAME` reads the deferred word it binds, and `['] W` reads the word it
+\ ticks. Both do it with IS-NEXT-TOKEN below, which walks TI past the token
+\ itself, so the scan loop resumes AFTER it and the source-tape observer - which
+\ the loop notifies once per turn, for the token that turn read - is never told
+\ about it.
+\
+\ THAT IS A HOLE IN THE TAPE AND NOT A CHOICE. src/compiler/native/tape.f is
+\ "the exact token stream the compiler consumed" and src/compiler/native/feed.f
+\ appends "one row per token that reader consumed, in consumption order". These
+\ two tokens ARE consumed by this reader, so a tape without them says the
+\ definition wrote something it did not. Measured before the repair: the tape for
+\ `: X ( -- ) [: I ;] is H ;` held five rows ending at `is`, and the native
+\ chain's elaborator therefore had no name to bind - it cannot ask a second
+\ lexer, because a second lexer is exactly what the tape exists to make
+\ unnecessary.
+\
+\ SO THE TOKEN IS REPORTED, AFTER THE KEYWORD'S OWN ROW. Consumption order is
+\ the keyword and then its target, and the row for the keyword is written by
+\ SCAN-REPORT after the judgement - so the target's row is written straight
+\ after it, from the offset and length recorded here as the target was read.
+\ It is the same shape a string literal's payload already uses: the judgement
+\ spends the bytes and reports what it spent, because only the judgement knows.
+\
+\ IT IS ARMED WHERE THE TOKEN IS CONSUMED AND NOWHERE ELSE. IS-NEXT-TOKEN is
+\ also used to PEEK - BTICK-NEXT-CONSUMES-XT? reads the token after the tick and
+\ puts TI back - and a peek consumes nothing, so arming happens in
+\ IS-TARGET-TOK?, which is the one word both keywords consume through. The peek
+\ overwrites the scratch below and cannot disturb an armed row, because arming
+\ copies.
+variable IS-TOFF                     \ where the token IS-NEXT-TOKEN last read starts
+variable IS-PEND                     \ a swallowed token is waiting to be reported
+variable IS-PEND-OFF                 \ its offset in the scanned text
+variable IS-PEND-U                   \ and its length
+
+: IS-PEND-ARM ( -- )
+   IS-TOFF @ IS-PEND-OFF !
+   IS-TU @ IS-PEND-U !
+   -1 IS-PEND ! ;
+
 \ IS-TA holds a token-start pointer (ptr u8); read/write it through a ptr-field
 \ view so the emitted token span keeps its ptr u8 role.
 : IS-TA-FIELD ( -- ptr ptr u8 )
@@ -9899,6 +9940,7 @@ variable IS-TU
 : IS-NEXT-TOKEN ( -- ptr u8 n bool )
    IS-SKIP-WS
    TI @ TBLEN @ >= IF TBASE@ 0 RES-FALSE EXIT THEN
+   TI @ IS-TOFF !
    TI @ TADDR IS-TA!
    0 IS-TU !
    BEGIN TI @ TBLEN @ < WHILE
@@ -9928,6 +9970,7 @@ variable IS-TU
 : IS-TARGET-TOK? ( -- bool )
    IS-NEXT-TOKEN 0= IF 2drop RES-FALSE EXIT THEN
    TOKFOLD drop
+   IS-PEND-ARM
    RES-TRUE ;
 
 : IS-TOK ( -- )
@@ -10673,11 +10716,23 @@ public
 variable SCAN-U       \ the token's own byte length, taken before the judgement
 variable SCAN-TOK0    \ was it the definition's name token?
 
+\ The token this turn's judgement swallowed, reported after the judgement's own
+\ row so the tape reads in consumption order. It is never the definition's name
+\ token: the name is parsed before the parser switches to compiling, and neither
+\ keyword can stand there. The row is cleared as it is written, so a keyword that
+\ swallowed nothing this turn reports nothing.
+: SCAN-PEND-REPORT ( -- )
+   IS-PEND @ 0= IF EXIT THEN
+   0 IS-PEND !
+   IS-PEND-OFF @ TADDR  IS-PEND-U @  IS-PEND-OFF @  0  CHECKER-TAPE:TOKEN ;
+
 : SCAN-REPORT ( -- )
    SPAY-ON @ IF
-      SPAY-BYTES  SPAY-B @ SPAY-U @  CHECKER-TAPE:STRING EXIT
+      SPAY-BYTES  SPAY-B @ SPAY-U @  CHECKER-TAPE:STRING
+      SCAN-PEND-REPORT EXIT
    THEN
-   TSTART @ TADDR  SCAN-U @  TSTART @  SCAN-TOK0 @  CHECKER-TAPE:TOKEN ;
+   TSTART @ TADDR  SCAN-U @  TSTART @  SCAN-TOK0 @  CHECKER-TAPE:TOKEN
+   SCAN-PEND-REPORT ;
 
 : CHECK-SCAN ( -- )
    CHECKER-TAPE:ARMED @ IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
@@ -10709,6 +10764,7 @@ variable SCAN-TOK0    \ was it the definition's name token?
          BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
          CHECKER-TAPE:ARMED @ IF
             TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !
+            0 IS-PEND !
          THEN
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
          CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
