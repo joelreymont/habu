@@ -320,6 +320,26 @@ ENUM opcode DERIVE eq
 \ them a third kind rather than a badly-named opener: a structure that has met
 \ one of them is still open and still has to be closed by the closer it began
 \ with.
+\
+\ SEVEN MEMBERS BELONG TO THE THREE TAG-DISPATCH FORMS, and they are control
+\ actions for the same reason `self-call` is: what they take and leave is a fact
+\ about the FAMILY the source names rather than about an opcode, so no
+\ schema-driven staging can read it off one. `open-match` is `MATCH`, which opens
+\ a dispatch over the tag of the bundle on top of the stack; `match-arm` is `of`
+\ and `close-arm` is `endof`, the two words a `MATCH` variant arm and a `case`
+\ arm SHARE; `close-match` is `;MATCH`; `open-case` is `case` and `close-case` is
+\ `endcase`; and `make-bundle` is `construct`, which is not a structure at all -
+\ it stages the zero pads and the tag that turn a payload already on the stack
+\ into a value of its family.
+\
+\ `of` AND `endof` ARE ONE MEMBER EACH AND NOT TWO PAIRS, which is the source
+\ language's shape rather than a saving. The engine compiles both forms through
+\ one `of` and one `endof` and tells them apart by which structure is open
+\ (src/habu/habu2.f J-ENDOF reads a branch-kind bit), and the checker does the
+\ same by the kind of its top control frame (src/core/checker.f
+\ CF-ENDOF-DISPATCH). A dialect that gave them four members would be inventing a
+\ distinction the two authorities that decide what these tokens mean do not make,
+\ and the elaborator would then have to agree with a rule nobody else keeps.
 ENUM ctrl DERIVE eq
    open-if
    mid-else
@@ -334,6 +354,13 @@ ENUM ctrl DERIVE eq
    drop-loop
    early-exit
    self-call
+   open-match
+   match-arm
+   close-arm
+   close-match
+   open-case
+   close-case
+   make-bundle
 ;ENUM
 
 \ What a Habu source word, or a source-tape token, means to this dialect.

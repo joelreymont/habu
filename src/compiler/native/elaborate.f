@@ -10,16 +10,17 @@
 \ WHAT IT TRANSLATES. One colon definition of the straight-line subset: the
 \ defined name and a body of integer and real literals, the modeled arithmetic,
 \ comparison and bitwise words, the float words, compile-time stack renames, the
-\ structured control words, the cell and byte memory words, `RECURSE`, a call to
-\ a declared callee or a declared data word, and one `{: … :}` group of typed
-\ locals read by name. Nothing else.
+\ structured control words, the three tag-dispatch forms - `MATCH … ;MATCH`,
+\ `case … endcase` and `construct` - the cell and byte memory words, `RECURSE`,
+\ a call to a declared callee or a declared data word, and one `{: … :}` group
+\ of typed locals read by name. Nothing else.
 \
 \ WHAT IT DOES NOT TRANSLATE, because a reader deciding whether a program can
-\ compile here should not have to infer it from silence: string and character
-\ literals, `case`, ADT `match` and `construct`, quotations, `does>`, plain
-\ `do`, `+loop`, `leave`, `j`, the return-stack words, and `execute`. The
-\ modeled vocabulary is the table in src/compiler/native/hir-word.f and it is
-\ the authority; anything absent from it is E-HIR-UNMODELED.
+\ compile here should not have to infer it from silence: character literals,
+\ quotations, `does>`, plain `do`, `+loop`, `leave`, `j`, the return-stack
+\ words, and `execute`. The modeled vocabulary is the table in
+\ src/compiler/native/hir-word.f and it is the authority; anything absent from
+\ it is E-HIR-UNMODELED.
 \
 \ THE UNIT IS THE DEFINITION, AND THAT IS WHY THERE IS NO FRAME TO FIND. The
 \ tape this pass reads is produced by src/compiler/native/feed.f from the
@@ -115,6 +116,7 @@ require src/compiler/native/string.f
 require src/compiler/native/inline.f
 require src/compiler/native/frozen.f
 require src/compiler/native/trap.f
+require src/compiler/native/family.f
 
 package NELAB
 private
@@ -324,13 +326,34 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
    VGLUE @  1 VN @ lshift invert and  VGLUE !
    VN @ 1+ VN ! ;
 
+\ A run of `n` set bits at the bottom of a cell. It is written once because three
+\ readers want it and one of them wants it at the ceiling: shifting by the word
+\ size is reduced modulo that size on this machine, so a run as long as the
+\ vector would come back as a run of ONE if the arithmetic were repeated at each
+\ site.
+: VRUN-MASK ( n -- n ) {: n:n :}
+   n 0 <= if 0 exit then
+   n VMAX >= if -1 exit then
+   1 n lshift 1 - ;
+
 \ Just the low `n` bits of a mask: what a record of the vector's own glue holds
 \ when the vector is n entries deep, so a stored mask never carries bits for
 \ entries that were not there.
 : VGLUE-LOW ( n n -- n ) {: mask:n n:n :}
-   n 0 <= if 0 exit then
-   n VMAX >= if mask exit then
-   mask  1 n lshift 1 -  and ;
+   mask  n VRUN-MASK  and ;
+
+\ Whether ONE entry is a cell of a multi-cell value. The run tests above answer
+\ about a span; this answers about a position, which is what a reader checking
+\ that a bundle ENDS where a declaration says it does has to ask.
+: VGLUE-AT? ( n -- bool ) {: i:n :}
+   i 0 < i VN @ >= or if E-NELAB-UNDER throw then
+   VGLUE @  1 i lshift  and 0<> ;
+
+\ Every entry of a run stops being a cell of a multi-cell value. It is what a
+\ dispatch arm does to the cells it keeps: they were part of the scrutinee's
+\ bundle and the bundle is gone, so what they are now is the arm's own question.
+: VGLUE-CLEAR ( n n -- ) {: base:n n:n :}
+   VGLUE @  n VRUN-MASK base lshift invert and  VGLUE ! ;
 
 \ Mark a run of entries already on the vector from a row's own mask, whose bit i
 \ is the i-th cell from the bottom of that row. The run starts at `base`, so the
@@ -1158,6 +1181,10 @@ create CS-NW CMAX cells allot
 create CS-XD CMAX cells allot
 create CS-EXIT CMAX cells allot
 create CS-END CMAX cells allot       \ whether the arm before this frame's `else` ended
+create CS-W CMAX cells allot         \ cells one value of a tag-dispatch frame's subject occupies
+create CS-TRAP CMAX cells allot      \ the ordinal a `MATCH` mismatch traps with
+create CS-OFIX CMAX cells allot      \ the row of the `of` that opened the arm being read, or -1
+create CS-JOINED CMAX cells allot    \ whether any arm of this frame reached its join
 CMAX TYPED-BUFFER CS-IDX IR-ID:ir-value-id
 CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 
@@ -1187,6 +1214,10 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
    -1 t cells CS-XD + !
    -1 t cells CS-EXIT + !
    0 t cells CS-END + !
+   0 t cells CS-W + !
+   0 t cells CS-TRAP + !
+   -1 t cells CS-OFIX + !
+   0 t cells CS-JOINED + !
    t 1+ CS-N ! ;
 
 : CS-POP ( -- )
@@ -1209,12 +1240,20 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 : CS-XD@ ( n -- n )       cells CS-XD + @ ;
 : CS-EXIT@ ( n -- n )     cells CS-EXIT + @ ;
 : CS-END@ ( n -- n )      cells CS-END + @ ;
+: CS-W@ ( n -- n )        cells CS-W + @ ;
+: CS-TRAP@ ( n -- n )     cells CS-TRAP + @ ;
+: CS-OFIX@ ( n -- n )     cells CS-OFIX + @ ;
+: CS-JOINED? ( n -- bool ) cells CS-JOINED + @ 0<> ;
 
 : CS-JOIN! ( n n -- )     cells CS-JOIN + ! ;
 : CS-ARM! ( n n -- )      cells CS-ARM + ! ;
 : CS-XD! ( n n -- )       cells CS-XD + ! ;
 : CS-EXIT! ( n n -- )     cells CS-EXIT + ! ;
 : CS-END! ( n n -- )      cells CS-END + ! ;
+: CS-W! ( n n -- )        cells CS-W + ! ;
+: CS-TRAP! ( n n -- )     cells CS-TRAP + ! ;
+: CS-OFIX! ( n n -- )     cells CS-OFIX + ! ;
+: CS-JOINED+ ( n -- )     cells CS-JOINED +  1 swap ! ;
 
 \ One more `while` has been met by the loop this frame is.
 : CS-WHILE+ ( n -- )
@@ -1225,6 +1264,17 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 \ `arm` whatever each of them stores in it.
 : CS-ELSE? ( n -- bool )
    CS-ARM@ 0 >= ;
+
+\ Is this frame one of the two tag-dispatch forms, and is it the one over a
+\ family? `of` and `endof` belong to whichever of them is open - the source
+\ language gives them one spelling each and the engine and the checker both
+\ decide by the open structure - so every reader of an arm asks the frame.
+: CS-ADT? ( n -- bool ) {: t:n :}
+   t CS-KIND @ HIR-CTRL:OPEN-MATCH HIR-CTRL:EQ
+   t CS-KIND @ HIR-CTRL:OPEN-CASE HIR-CTRL:EQ or ;
+
+: CS-MATCH? ( n -- bool )
+   CS-KIND @ HIR-CTRL:OPEN-MATCH HIR-CTRL:EQ ;
 
 \ What `then` still owes an answer for. `else` answered the `if`'s forward
 \ branch when it opened the second arm, so what is left unanswered is the branch
@@ -1855,6 +1905,341 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    loop
    LG-OPEN @ 0 >= if E-NELAB-LOCAL throw then ;
 
+\ ---- is this row a particular control word? ----------------------------------
+\ Asked by three passes below - the tag-dispatch pre-pass, the scan that decides
+\ which locals travel, and the one that decides where a body leaves through - so
+\ the question about a control word's identity is written once. It answers about
+\ the WORD MODEL's row and not about the spelling, exactly as everything else in
+\ this file does, so a body that writes `MATCH` and one that writes `match` are
+\ the same row here for the same reason they are one keyword in the engine.
+: ROW-CTRL? ( IR-ARENA:arena n HIR:ctrl -- bool )
+   {: r:IR-ARENA:arena ix:n want:HIR:ctrl :}
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if false exit then
+   r sy HIR-WORD:CTRL@ want HIR-CTRL:EQ ;
+
+\ ---- how far a body token may be from the definition's first ------------------
+\ The ceiling every table keyed by a BODY TOKEN shares - the skeleton's forward
+\ joins, the tag-dispatch pre-pass below and the inline decision after it - so no
+\ two of them can disagree about which token indices exist. A body that wants
+\ more is a capability to raise here, not a ceiling to widen silently.
+256 constant TMAX                    \ body tokens one definition may have
+
+: TOK-CK ( n -- n )
+   dup 0 < over TMAX >= or if E-NELAB-BLOCK throw then ;
+
+\ ---- the three tag-dispatch forms, read before anything else reads a word -----
+\ WHAT MAKES THEM DIFFERENT FROM EVERY OTHER FORM IN THIS FILE. `MATCH option
+\ some OF … ENDOF … ;MATCH` and `construct option some` write two tokens that
+\ denote nothing a dictionary holds: `option` is a type family and `some` is one
+\ of its variants, and both are rows of the checker's type-family registry. So
+\ the walk cannot ask what it asks about every other token, and a pass that
+\ guessed from the spelling would be a second opinion about which token is an
+\ operand. What decides it is POSITION, exactly as it decides it in the two
+\ authorities that already read these forms: the engine's compile-time token
+\ machine (src/habu/habu2.f, the CMM cell) and the checker's (src/core/checker.f,
+\ the MM cell) both consume the operand tokens by counting from the keyword, and
+\ this pass is the third reader of the same grammar.
+\
+\ AND IT IS THE SAME GRAMMAR RATHER THAN A COPY OF IT, which is what the modes
+\ below say: `construct` wants a family and then a variant; `MATCH` wants a
+\ family, then a variant or `;MATCH`, then `of`. The numbers are the engine's own
+\ mode numbers, so a reader holding the two files side by side is comparing one
+\ machine with itself.
+\
+\ WHAT THE PASS WRITES DOWN, AND WHY IT IS A TABLE KEYED BY THE TOKEN. Three
+\ walks read this body afterwards - the pre-scans, the skeleton and the build -
+\ and every one of them meets the operand tokens and would ask the word model
+\ about a name the model cannot answer for. They all read the role recorded here
+\ instead, and the two walks that BUILD read the numbers beside it: a variant's
+\ tag, the zero pads its bundle carries, and how many cells its payload is. One
+\ derivation, four readers, exactly as the locals groups and the inline decision
+\ are done.
+\
+\ A NAME IN A COMMENT OR IN A STRING IS NOT A TOKEN OF THIS GRAMMAR, and that is
+\ structural rather than careful. The tape holds what the checker's reader
+\ CONSUMED: a parenthesised comment is not a token at all, and a string literal
+\ is one token whose KIND is string-literal, so neither can stand in an operand
+\ position - the pass requires the row after a keyword to be a NAME and refuses
+\ anything else by name.
+0 constant MR-NONE                   \ an ordinary body token
+1 constant MR-FAMILY                 \ the family operand of a `MATCH` or a `construct`
+2 constant MR-VARIANT                \ the variant operand of one
+
+\ The modes, which are the engine's CMM numbers (src/habu/habu2.f
+\ EM-COMPILE-ADT-MODE) under this file's names.
+0 constant MM-OFF                    \ no operand token is expected
+1 constant MM-CON-FAM                \ `construct` has been read; its family is next
+2 constant MM-CON-VAR                \ and then its variant
+3 constant MM-FAM                    \ `MATCH` has been read; its family is next
+4 constant MM-VARIANT                \ a variant token, or the `;MATCH` that ends the form
+5 constant MM-OF                     \ the `of` that opens the arm of the variant just read
+
+0 constant MK-MATCH                  \ the open form is a `MATCH`
+1 constant MK-CASE                   \ the open form is a `case`
+
+128 constant MTOK-CAP                \ bytes of one operand token this pass can read
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create MROLE TMAX cells allot        \ which operand, if any, this row is
+create MTAG TMAX cells allot         \ an arm's variant tag, a `MATCH` row's trap ordinal, a `construct` row's tag
+create MPAD TMAX cells allot         \ the zero pads an arm drops, or a `construct` pushes
+create MPAY TMAX cells allot         \ the payload cells an arm keeps, or a `construct` consumes
+create MWID TMAX cells allot         \ a `MATCH` row's bundle width in cells
+create MONE TMAX cells allot         \ whether an arm's payload cells are ONE value
+create MEND TMAX cells allot         \ whether this `of` opens the LAST arm of its `MATCH`
+create MTOK MTOK-CAP allot
+
+CMAX constant MSMAX                  \ open tag-dispatch forms, as the control stack's own ceiling
+create MS-KIND MSMAX cells allot     \ MK-MATCH or MK-CASE
+create MS-FAM MSMAX cells allot      \ the family a `MATCH` frame is over
+create MS-ARM MSMAX cells allot      \ whether the pass is inside one of its arms
+create MS-OF MSMAX cells allot       \ the row of the `of` that opened the arm read last
+variable MSN                         \ how many forms are open
+variable MM                          \ which operand token the pass is expecting
+variable CB-ROW                      \ the `MATCH` or `construct` row being read
+variable CB-FAM                      \ and the family its first operand named
+variable MV-ROW                      \ the variant row read last, whose `of` is next
+
+\ Only the two columns a later reader consults for a row this pass may not have
+\ written are cleared: every other column is written by the step that later reads
+\ it. A role of MR-NONE is what an ordinary token has, and a `MATCH` arm is the
+\ last one only if the `;MATCH` that ended the form said so.
+: MATCH-RESET ( -- )
+   MM-OFF MM !
+   0 MSN !
+   -1 CB-ROW !
+   -1 MV-ROW !
+   TMAX 0 ?do
+      MR-NONE i cells MROLE + !
+      0 i cells MEND + !
+   loop ;
+
+: MROLE@ ( n -- n )   TOK-CK cells MROLE + @ ;
+: MTAG@ ( n -- n )    TOK-CK cells MTAG + @ ;
+: MPAD@ ( n -- n )    TOK-CK cells MPAD + @ ;
+: MPAY@ ( n -- n )    TOK-CK cells MPAY + @ ;
+: MWID@ ( n -- n )    TOK-CK cells MWID + @ ;
+: MONE@ ( n -- bool ) TOK-CK cells MONE + @ 0<> ;
+: MEND@ ( n -- bool ) TOK-CK cells MEND + @ 0<> ;
+
+\ Is this row an operand of a tag-dispatch form? Every walk after this pass asks
+\ it, and a row it answers for is passed over exactly as a locals declaration is:
+\ the body chose that spelling and no dictionary word is what it means.
+: MOPERAND? ( n -- bool )
+   MROLE@ MR-NONE <> ;
+
+: MROLE! ( n n -- ) {: ix:n r:n :}
+   r ix TOK-CK cells MROLE + ! ;
+
+: MARM! ( n n n n -- ) {: ix:n tag:n pads:n pay:n :}
+   tag ix TOK-CK cells MTAG + !
+   pads ix TOK-CK cells MPAD + !
+   pay ix TOK-CK cells MPAY + ! ;
+
+\ What a `MATCH` row carries: how many cells one value of its family is, and the
+\ ordinal a mismatch over it traps with.
+: MMATCH! ( n n n -- ) {: ix:n w:n ord:n :}
+   w ix TOK-CK cells MWID + !
+   ord ix TOK-CK cells MTAG + ! ;
+
+: MONE! ( n bool -- ) {: ix:n one:bool :}
+   one if 1 else 0 then  ix TOK-CK cells MONE + ! ;
+
+: MEND! ( n -- ) {: ix:n :}
+   1 ix TOK-CK cells MEND + ! ;
+
+\ ---- the forms this pass has open --------------------------------------------
+: MS-AT ( n -- n )
+   dup 0 < over MSN @ >= or if E-NELAB-MATCH throw then ;
+
+: MS-TOP ( -- n )
+   MSN @ 1- MS-AT ;
+
+: MS-PUSH ( n n -- ) {: kind:n fam:n :}
+   MSN @ MSMAX >= if E-NELAB-BLOCK throw then
+   kind MSN @ cells MS-KIND + !
+   fam MSN @ cells MS-FAM + !
+   0 MSN @ cells MS-ARM + !
+   -1 MSN @ cells MS-OF + !
+   MSN @ 1+ MSN ! ;
+
+: MS-POP ( -- )
+   MSN @ 1 < if E-NELAB-MATCH throw then
+   MSN @ 1- MSN ! ;
+
+: MS-MATCH? ( n -- bool )   MS-AT cells MS-KIND + @ MK-MATCH = ;
+: MS-FAM@ ( n -- n )        MS-AT cells MS-FAM + @ ;
+: MS-ARM? ( n -- bool )     MS-AT cells MS-ARM + @ 0<> ;
+: MS-OF@ ( n -- n )         MS-AT cells MS-OF + @ ;
+
+: MS-ARM! ( n n -- ) {: t:n ofix:n :}
+   1 t MS-AT cells MS-ARM + !
+   ofix t MS-AT cells MS-OF + ! ;
+
+: MS-ARM-END! ( n -- ) {: t:n :}
+   0 t MS-AT cells MS-ARM + ! ;
+
+\ ---- one operand token -------------------------------------------------------
+\ Its bytes, which is what the registry compares. A token longer than this buffer
+\ is refused by the interner's own copier with its own name, and no family the
+\ registry holds can be spelled that long - src/compiler/native/trap.f sizes its
+\ arena from the tree's longest family tail, 31 bytes, and a package qualifier in
+\ front of one leaves this buffer four times the room it needs.
+: MTOK$ ( n -- ptr u8 n ) {: ix:n :}
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-NELAB-MATCH throw then
+   MTOK  CTX BLD  VW MKEY ix NTAPE:SPELL@  MTOK MTOK-CAP IR-BUILD:SYMBOL-COPY ;
+
+\ ---- the operand steps, one per mode -----------------------------------------
+\ The family of a `MATCH`, in signature scope. Its width is written against the
+\ `MATCH` row because that is where the build needs it, and so is the ordinal a
+\ mismatch traps with: registering a family with src/compiler/native/trap.f is
+\ idempotent, so asking here costs one row per family per process and the build
+\ reads a number.
+: MSCAN-MATCH-FAM ( n -- ) {: ix:n :}
+   ix MTOK$ NFAM:MATCH-FAM {: fam:n ok:bool :}
+   ok 0= if E-NELAB-MATCH throw then
+   ix MR-FAMILY MROLE!
+   CB-ROW @  fam NFAM:WIDTH  fam NFAM:NAME$ NTRAP:FAMILY  MMATCH!
+   MK-MATCH fam MS-PUSH
+   MM-VARIANT MM ! ;
+
+\ A variant of the open `MATCH`. Its numbers go onto its own row and the row of
+\ the `of` that follows it copies them, because the build reaches the arm at the
+\ `of`: the variant token itself stages nothing at all.
+: MSCAN-VARIANT ( n -- ) {: ix:n :}
+   MS-TOP {: t:n :}
+   ix MTOK$ t MS-FAM@ NFAM:VARIANT {: vid:n ok:bool :}
+   ok 0= if E-NELAB-MATCH throw then
+   ix MR-VARIANT MROLE!
+   ix  vid NFAM:TAG  t MS-FAM@ vid NFAM:PADS  vid NFAM:PAY-CELLS  MARM!
+   ix  vid NFAM:PAY-TERMS  vid NFAM:PAY-CELLS  <>  MONE!
+   ix MV-ROW !
+   MM-OF MM ! ;
+
+\ The `of` that opens the arm the variant token named. The variant's row is the
+\ one the step above recorded rather than the row before this one, so a row this
+\ pass passed over cannot shift which token the numbers came from.
+: MSCAN-OF ( n -- ) {: ix:n :}
+   MV-ROW @ {: vix:n :}
+   vix 0 < if E-NELAB-MATCH throw then
+   ix  vix MTAG@ vix MPAD@ vix MPAY@  MARM!
+   ix  vix MONE@  MONE!
+   MS-TOP ix MS-ARM!
+   -1 MV-ROW !
+   MM-OFF MM ! ;
+
+\ The family of a `construct`, in OWNER scope: minting a value of a family
+\ belongs to the package that declared it, and that is the registry's rule rather
+\ than this pass's.
+: MSCAN-CON-FAM ( n -- ) {: ix:n :}
+   ix MTOK$ NFAM:CON-FAM {: fam:n ok:bool :}
+   ok 0= if E-NELAB-MATCH throw then
+   ix MR-FAMILY MROLE!
+   fam CB-FAM !
+   MM-CON-VAR MM ! ;
+
+\ And its variant, whose numbers go onto the `construct` row: the pads it pushes
+\ and the tag it pushes after them are what turn a payload already on the stack
+\ into a value of the family.
+: MSCAN-CON-VAR ( n -- ) {: ix:n :}
+   ix MTOK$ CB-FAM @ NFAM:VARIANT {: vid:n ok:bool :}
+   ok 0= if E-NELAB-MATCH throw then
+   ix MR-VARIANT MROLE!
+   CB-ROW @  vid NFAM:TAG  CB-FAM @ vid NFAM:PADS  vid NFAM:PAY-CELLS  MARM!
+   MM-OFF MM ! ;
+
+\ ---- the keywords the pass reacts to -----------------------------------------
+\ `endof` closes the arm of whichever form is open, which is the same rule the
+\ engine keeps with its branch-kind bit and the checker with its frame kind. A
+\ `MATCH` goes back to wanting a variant; a `case` goes back to ordinary tokens,
+\ because its next arm's key is an expression.
+: MSCAN-ENDOF ( -- )
+   MS-TOP {: t:n :}
+   t MS-ARM? 0= if E-NELAB-MATCH throw then
+   t MS-ARM-END!
+   t MS-MATCH? if MM-VARIANT MM ! then ;
+
+\ `;MATCH` ends the form, and it is the moment the LAST arm becomes known: no
+\ arm's `of` can say it is the last one while another variant may still follow.
+\ The build needs the answer at the `of` itself - a last arm's mismatch edge goes
+\ to the trap block and every other one goes to the next arm's test - so it is
+\ written back onto that row here.
+: MSCAN-SEMI ( -- )
+   MS-TOP {: t:n :}
+   t MS-MATCH? 0= if E-NELAB-MATCH throw then
+   t MS-ARM? if E-NELAB-MATCH throw then
+   t MS-OF@ {: ofix:n :}
+   ofix 0 < if E-NELAB-MATCH throw then
+   ofix MEND!
+   MS-POP
+   MM-OFF MM ! ;
+
+: MSCAN-ENDCASE ( -- )
+   MS-TOP {: t:n :}
+   t MS-MATCH? if E-NELAB-MATCH throw then
+   t MS-ARM? if E-NELAB-MATCH throw then
+   MS-POP ;
+
+\ An `of` met with no operand pending belongs to a `case`: its key is the
+\ expression just read and there is no variant token in front of it.
+: MSCAN-CASE-OF ( n -- ) {: ix:n :}
+   MS-TOP {: t:n :}
+   t MS-MATCH? if E-NELAB-MATCH throw then
+   t MS-ARM? if E-NELAB-MATCH throw then
+   t ix MS-ARM! ;
+
+: MSCAN-OPEN ( IR-ARENA:arena n -- bool ) {: r:IR-ARENA:arena ix:n :}
+   r ix HIR-CTRL:OPEN-MATCH ROW-CTRL? if
+      ix CB-ROW !  MM-FAM MM !  true exit
+   then
+   r ix HIR-CTRL:MAKE-BUNDLE ROW-CTRL? if
+      ix CB-ROW !  MM-CON-FAM MM !  true exit
+   then
+   r ix HIR-CTRL:OPEN-CASE ROW-CTRL? if
+      MK-CASE 0 MS-PUSH  true exit
+   then
+   false ;
+
+: MSCAN-CLOSE ( IR-ARENA:arena n -- bool ) {: r:IR-ARENA:arena ix:n :}
+   r ix HIR-CTRL:CLOSE-ARM ROW-CTRL? if MSCAN-ENDOF true exit then
+   r ix HIR-CTRL:CLOSE-MATCH ROW-CTRL? if MSCAN-SEMI true exit then
+   r ix HIR-CTRL:CLOSE-CASE ROW-CTRL? if MSCAN-ENDCASE true exit then
+   r ix HIR-CTRL:MATCH-ARM ROW-CTRL? if ix MSCAN-CASE-OF true exit then
+   false ;
+
+\ One row, dispatched on the mode. The operand modes accept nothing else, which
+\ is what makes a form whose operand is missing a refusal here rather than a
+\ family resolved from the wrong token.
+: MSCAN-STEP ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
+   ix IN-DECL? if exit then
+   MM @ MM-FAM = if ix MSCAN-MATCH-FAM exit then
+   MM @ MM-VARIANT = if
+      r ix HIR-CTRL:CLOSE-MATCH ROW-CTRL? if MSCAN-SEMI exit then
+      ix MSCAN-VARIANT exit
+   then
+   MM @ MM-OF = if
+      r ix HIR-CTRL:MATCH-ARM ROW-CTRL? 0= if E-NELAB-MATCH throw then
+      ix MSCAN-OF exit
+   then
+   MM @ MM-CON-FAM = if ix MSCAN-CON-FAM exit then
+   MM @ MM-CON-VAR = if ix MSCAN-CON-VAR exit then
+   r ix MSCAN-OPEN if exit then
+   r ix MSCAN-CLOSE drop ;
+
+\ Walk the body once, before anything reads the word model for a body word. A
+\ form left open at the end is refused here rather than compiled into a dispatch
+\ with no end.
+: MATCH-SCAN ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena n:n :}
+   MATCH-RESET
+   n 1 ?do
+      r i MSCAN-STEP
+   loop
+   MSN @ 0<> if E-NELAB-MATCH throw then
+   MM @ MM-OFF <> if E-NELAB-MATCH throw then ;
+
 \ ---- the names the dialect does not model, before anything reads the model ----
 \ THE DIALECT IS NOT THE WHOLE VOCABULARY AND NEVER WAS. It models the operations
 \ this chain compiles into instructions; everything else a body names is some
@@ -1900,6 +2285,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ pass runs first so that those bindings already exist to be passed over.
 : RESOLVE-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
+   ix MOPERAND? if exit then
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
@@ -1912,16 +2298,6 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    n 1 ?do
       r i RESOLVE-STEP
    loop ;
-
-\ ---- how far a body token may be from the definition's first ------------------
-\ The ceiling every table keyed by a BODY TOKEN shares - the skeleton's forward
-\ joins and the inline decision below - so the two cannot disagree about which
-\ token indices exist. A body that wants more is a capability to raise here, not
-\ a ceiling to widen silently.
-256 constant TMAX                    \ body tokens one definition may have
-
-: TOK-CK ( n -- n )
-   dup 0 < over TMAX >= or if E-NELAB-BLOCK throw then ;
 
 \ ---- which calls are COPIED instead of made ----------------------------------
 \ THE DECISION, IN ONE SENTENCE. A call to a word whose body the chain recorded
@@ -2176,7 +2552,7 @@ private
    {: r:IR-ARENA:arena n:n :}
    INL-RESET
    n 1 ?do
-      i IN-DECL? 0=  i LOCAL-OF 0 <  and if r i INL-STEP then
+      i MOPERAND? 0=  i IN-DECL? 0=  and  i LOCAL-OF 0 <  and if r i INL-STEP then
    loop ;
 
 \ ---- does this definition touch memory at all? -------------------------------
@@ -2220,7 +2596,7 @@ private
    {: r:IR-ARENA:arena n:n :}
    0 TOK-NEED !
    n 1 ?do
-      i IN-DECL? 0=  i LOCAL-OF 0 <  and if
+      i MOPERAND? 0=  i IN-DECL? 0=  and  i LOCAL-OF 0 <  and if
          r i WORD-ORDER? if 1 TOK-NEED ! then
       then
    loop ;
@@ -2278,14 +2654,6 @@ variable LSN                         \ loops the scan is inside
 create LS-CALL LSMAX cells allot     \ whether a call has been met inside this loop
 create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call was met
 
-: ROW-CTRL? ( IR-ARENA:arena n HIR:ctrl -- bool )
-   {: r:IR-ARENA:arena ix:n want:HIR:ctrl :}
-   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:MODELS? 0= if false exit then
-   r sy HIR-WORD:MEANING@ HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if false exit then
-   r sy HIR-WORD:CTRL@ want HIR-CTRL:EQ ;
-
 : OPENS-LOOP? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    r ix HIR-CTRL:OPEN-BEGIN ROW-CTRL?
@@ -2328,6 +2696,7 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
 \ the open loops.
 : CROSS-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
+   ix MOPERAND? if exit then
    ix IN-DECL? if exit then
    ix LOCAL-OF {: k:n :}
    k 0 >= if
@@ -2501,6 +2870,67 @@ create JOIN-TAB TMAX cells allot
    NB @ 2 + NB !
    CS-POP ;
 
+\ ---- what a tag dispatch counts ----------------------------------------------
+\ `MATCH` and `case` build NOTHING when they open: the block the form stands in
+\ becomes its first arm's test block, so a dispatch costs no block until an arm
+\ arrives. Every arm then costs three - the test that compares the tag or the
+\ key, the block its mismatch edge leaves through, and the arm's own body - and
+\ the block after the form is the one the arms' ends branch to.
+: SK-ARM ( n -- ) {: ix:n :}
+   CS-N @ 1 < if E-NELAB-CTRL throw then
+   CS-TOP {: t:n :}
+   t CS-ADT? 0= if E-NELAB-CTRL throw then
+   t CS-OFIX@ 0 >= if E-NELAB-CTRL throw then
+   NB @ 2 + NB !
+   ix t CS-OFIX! ;
+
+\ `endof`: the arm's block ends, and the block that opens is the one this arm's
+\ mismatch edge was branched to - the next arm's test, or the default path of a
+\ `case`. A `MATCH`'s LAST arm branched its mismatch to a trap instead, so
+\ nothing opens after it and the next ordinal is the join's.
+: SK-CLOSE-ARM ( -- )
+   CS-N @ 1 < if E-NELAB-CTRL throw then
+   CS-TOP {: t:n :}
+   t CS-ADT? 0= if E-NELAB-CTRL throw then
+   t CS-OFIX@ {: ofix:n :}
+   ofix 0 < if E-NELAB-CTRL throw then
+   PATH-ENDED? 0= if
+      NB @ 1+ NB !
+      t CS-JOINED+
+   then
+   PATH-LIVE PATH-END !
+   ofix MEND@ 0= if ofix NB @ JOIN! then
+   -1 t CS-OFIX! ;
+
+\ The block after a form, counted once for both of them. A dispatch every arm of
+\ which ended - each one throwing, say - is reached by no edge at all, so no such
+\ block is opened and none is counted: the form has ended exactly as its arms
+\ did, which is the rule an `if` with two ended arms already keeps.
+: SK-ADT-JOIN ( n -- ) {: t:n :}
+   t CS-JOINED? if
+      t CS-JOIN@ NB @ JOIN!
+      PATH-LIVE PATH-END !
+   else
+      PATH-DEAD PATH-END !
+   then
+   CS-POP ;
+
+: SK-CLOSE-MATCH ( -- )
+   HIR-CTRL:OPEN-MATCH CS-OPENER-CK {: t:n :}
+   t CS-OFIX@ 0 >= if E-NELAB-CTRL throw then
+   t SK-ADT-JOIN ;
+
+\ `endcase` closes the DEFAULT path, which is the one path of a `case` that is
+\ not an arm, and then the join opens.
+: SK-CLOSE-CASE ( -- )
+   HIR-CTRL:OPEN-CASE CS-OPENER-CK {: t:n :}
+   t CS-OFIX@ 0 >= if E-NELAB-CTRL throw then
+   PATH-ENDED? 0= if
+      NB @ 1+ NB !
+      t CS-JOINED+
+   then
+   t SK-ADT-JOIN ;
+
 \ A call this walk has to count a block for: one the definition really MAKES
 \ (a copied body is not a call at all) to a word the checker says control does
 \ not come back from. It closes the block it is in, exactly as an `exit` does,
@@ -2524,11 +2954,14 @@ create JOIN-TAB TMAX cells allot
    r  ix WSYM  HIR-WORD:CTRL@ {: k:HIR:ctrl :}
    k HIR-CTRL:CLOSE-IF HIR-CTRL:EQ if exit then
    k HIR-CTRL:MID-ELSE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
+   k HIR-CTRL:CLOSE-ARM HIR-CTRL:EQ  PATH-DEAD?  and if exit then
+   k HIR-CTRL:CLOSE-CASE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    E-NELAB-CTRL throw ;
 
 : SK-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
+   ix MOPERAND? if exit then
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
    PATH-ENDED? if r ix SK-AFTER-END-CK then
@@ -2555,6 +2988,13 @@ create JOIN-TAB TMAX cells allot
       drop-loop    OF ENDOF
       early-exit   OF NB @ 1+ NB !  1 EXIT-USED !  PATH-EXIT PATH-END ! ENDOF
       self-call    OF ENDOF
+      open-match   OF HIR-CTRL:OPEN-MATCH ix SK-PUSH ENDOF
+      match-arm    OF ix SK-ARM ENDOF
+      close-arm    OF SK-CLOSE-ARM ENDOF
+      close-match  OF SK-CLOSE-MATCH ENDOF
+      open-case    OF HIR-CTRL:OPEN-CASE ix SK-PUSH ENDOF
+      close-case   OF SK-CLOSE-CASE ENDOF
+      make-bundle  OF ENDOF
    ;MATCH ;
 
 \ Walk the body once, counting. A structure left open at the end of the body is
@@ -2879,6 +3319,268 @@ create JOIN-TAB TMAX cells allot
 
 : DO-INDEX ( -- )
    DO-FRAME CS-IDX @ VPUSH ;
+
+\ ---- the three tag-dispatch forms --------------------------------------------
+\ WHAT A `MATCH` IS ONCE IT IS BLOCKS. A value of a sum family is W flat cells
+\ with its tag on top, so a dispatch over it is a chain of ordinary comparisons:
+\ each arm's test block compares that tag with the constant its variant's
+\ declaration order is and branches two ways, the matching edge falls into the
+\ arm's body, and the mismatching edge goes on to the next arm's test. The last
+\ arm's mismatching edge has nowhere left to go, and that is where the trap is.
+\ Nothing here is new machinery - `hir.const`, `hir.eq`, `hir.brz`, `hir.br` and
+\ `hir.trap` are the operations the chain already had, and the joins are the
+\ block arguments an `if` already joins through.
+\
+\ WHY THE TEST BLOCKS NEED NO SNAPSHOT OF THE VECTOR. Each arm's mismatching edge
+\ leaves through a stub, which is the same critical-edge split every two-way
+\ branch of this file makes, and the stub hands the whole live vector to the next
+\ test block - which therefore takes it as ORDINARY BLOCK ARGUMENTS. So the
+\ scrutinee reaching the second arm's comparison is the value the first arm's
+\ stub handed over rather than a value read out of a block that no longer
+\ dominates it, and the walk keeps exactly the one vector it always kept.
+\
+\ AND WHY A `case` IS THE SAME MACHINERY. Its subject is one cell rather than a
+\ bundle, the value an arm compares is the key the arm itself computed rather
+\ than a constant off a declaration, and a matched arm consumes the selector
+\ where a matched variant drops its tag and pads - but the blocks, the stubs, the
+\ joins and the two-way branch are the same construction, and the frame decides
+\ which of the two it is. The one place they differ in SHAPE is the end: a
+\ `MATCH` is exhaustive and its last mismatch traps, while a `case` has a default
+\ path, so its last arm's mismatch edge goes to the block `endcase` closes.
+
+\ The subject the form is about to dispatch on, held against the two authorities
+\ that know how wide it is. The registry declares how many cells a value of the
+\ family occupies; the vector's own glue record says which of its entries are
+\ cells of one value, written when the definition's arguments were stated or when
+\ a call answered them. This is the one place the two can be compared, and they
+\ have to agree.
+\
+\ A ONE-CELL VALUE IS NEVER GLUED, which is the rule src/compiler/native/dict.f
+\ already keeps when it marks a declared row: a value that occupies one cell
+\ cannot be taken apart by moving cells around, so nothing marks one and a mark
+\ on it would be a bundle this pass does not have.
+\
+\ AND A DISAGREEMENT IS A REFUSAL RATHER THAN AN ADJUSTMENT. A parametric family
+\ instantiated with a type argument that is itself several cells occupies MORE
+\ cells than its declaration reserves - the checker records that difference as a
+\ fact of its own and the engine's emitter reads it back, and the chain has no
+\ way to ask for it - so what arrives here is a bundle wider than the width this
+\ pass was told. Compiling the arms against the declared width would drop the
+\ wrong cells and leave a program that runs. Two values of two families lying
+\ next to each other are refused by the same test, for the honest reason that a
+\ run of set bits does not say where one of them ends and the next begins.
+: BUNDLE-CK ( n n -- ) {: base:n w:n :}
+   w 1 = if
+      base VGLUE-AT? if E-NELAB-MATCH throw then
+      exit
+   then
+   w 0 ?do
+      base i + VGLUE-AT? 0= if E-NELAB-MATCH throw then
+   loop
+   base 0 <= if exit then
+   base 1- VGLUE-AT? if E-NELAB-MATCH throw then ;
+
+\ `MATCH family`: open a frame over the bundle on top of the vector and build
+\ nothing. The values below it are what every arm has to leave the vector at, the
+\ width is the pre-pass's answer from the registry, and the ordinal is the number
+\ a mismatch over this family traps with.
+: DO-OPEN-MATCH ( n -- ) {: ix:n :}
+   ix MWID@ {: w:n :}
+   w VN @ > if E-NELAB-UNDER throw then
+   VN @ w - {: base:n :}
+   base w BUNDLE-CK
+   HIR-CTRL:OPEN-MATCH base  ix JOIN-OF  CS-PUSH
+   w CS-TOP CS-W!
+   ix MTAG@ CS-TOP CS-TRAP! ;
+
+\ `case`: the selector is the one value on top, and it stays there until an arm
+\ matches or `endcase` drops it.
+: DO-OPEN-CASE ( n -- ) {: ix:n :}
+   VN @ 1 < if E-NELAB-UNDER throw then
+   VN @ 1- {: base:n :}
+   base VGLUE-AT? if E-NELAB-MATCH throw then
+   HIR-CTRL:OPEN-CASE base  ix JOIN-OF  CS-PUSH
+   1 CS-TOP CS-W! ;
+
+\ What the vector has to hold when an arm's test is reached: the values below the
+\ form, and its subject - a `MATCH`'s whole bundle, or a `case`'s selector with
+\ the key this arm just computed on top of it.
+: ARM-WIDTH-CK ( n -- ) {: t:n :}
+   t CS-MATCH? if t CS-DEPTH@ t CS-W@ + else t CS-DEPTH@ 2 + then
+   VN @ <> if E-NELAB-JOIN throw then ;
+
+\ The flag one arm tests. A `MATCH` compares the scrutinee's TAG, which is the
+\ top cell of its bundle, with the constant its variant's declaration order is; a
+\ `case` compares its selector with the key the arm computed. Either way the
+\ value that has to survive the comparison is put back on the vector first,
+\ because the next arm tests it again and an operation consumes what it reads -
+\ and putting it back costs nothing at all, since a value already on the vector
+\ appearing twice is what `dup` is.
+: ARM-FLAG ( n n -- ) {: ix:n t:n :}
+   t CS-MATCH? if
+      VN @ 1- VAT VPUSH
+      ix  ix MTAG@  EMIT-LIT
+   else
+      t CS-DEPTH@ VAT VPUSH
+   then
+   ix HIR-OPCODE:EQUAL EMIT-OPCODE ;
+
+\ What the arm's own block starts with. A `MATCH` arm drops the tag and this
+\ variant's zero pads and keeps its payload: the pads sit between the payload and
+\ the tag, so dropping the top `1 + pads` cells leaves exactly the payload - the
+\ same count the engine's own arm subtracts from the data-stack pointer
+\ (src/habu/habu2.f EM-ADT-MATCH-OF). A `case` arm consumes the selector, which
+\ is the source language's own rule for a matched arm.
+\
+\ AND WHAT THE CELLS IT KEEPS ARE. They were part of a bundle and the bundle is
+\ gone, so the marks go with it - and what replaces them is the payload's own
+\ answer. One cell is never a bundle. Several cells are one value exactly when
+\ the variant's payload has fewer FIELDS than cells, because then one field is
+\ wider than a cell and no exported per-field width says which; that is the same
+\ answer, for the same reason, that src/compiler/native/dict.f gives a declared
+\ row whose terms and cells disagree in number, and it is more than the truth in
+\ the safe direction - it can only refuse a rename a finer answer would have
+\ allowed, never let one through.
+: ARM-GLUE ( n n bool -- ) {: base:n k:n one:bool :}
+   base k VGLUE-CLEAR
+   k 2 < if exit then
+   one 0= if exit then
+   base  k VRUN-MASK  VGLUE-RUN ;
+
+: ARM-RESHAPE ( n n -- ) {: ix:n t:n :}
+   t CS-MATCH? 0= if 1 VDROP exit then
+   ix MPAD@ 1+ {: d:n :}
+   d VN @ > if E-NELAB-UNDER throw then
+   d VDROP
+   t CS-DEPTH@ {: base:n :}
+   base  VN @ base -  ix MONE@  ARM-GLUE ;
+
+\ The block a tag that matched no variant runs into. It is the last arm's
+\ mismatch edge and nothing else reaches it, so it takes no values: it stages the
+\ family's ordinal and the terminator that leaves without returning, and
+\ src/compiler/native/trap.f turns that ordinal back into the diagnostic the
+\ process ends with.
+\
+\ THE ORDINAL IS STAGED FRESH AND THE LITERAL MEMO IS SCOPED AROUND THE WHOLE
+\ BLOCK, for the two reasons the dead-call trap and the stub already give:
+\ reusing an earlier block's value for a number this size would stretch that
+\ value's live range across everything in between for the sake of code that never
+\ runs, and a value THIS block defined would otherwise be visible to its SIBLING
+\ - the arm's body, which the same two-way branch reaches and which this block
+\ does not dominate.
+: MATCH-TRAP ( n n -- ) {: ix:n ord:n :}
+   LIT-MARK {: m:n :}
+   ix OPEN-PLAIN
+   ix ord STAGE-LIT
+   ix HIR-OPCODE:TRAP EMIT-OPCODE
+   CLOSE-BLOCK
+   m LIT-RELEASE ;
+
+\ `of`: the test, the two-way branch, the block the mismatch leaves through, and
+\ the arm's own block. TERM-BRZ goes to its FIRST successor when the flag is
+\ ZERO, so the first is the mismatch and the second is the arm - the polarity
+\ `while` has and the opposite of `until`'s, and turning the two round would run
+\ every arm but the one that matched.
+: DO-ARM ( n -- ) {: ix:n :}
+   CS-N @ 1 < if E-NELAB-CTRL throw then
+   CS-TOP {: t:n :}
+   t CS-ADT? 0= if E-NELAB-CTRL throw then
+   t CS-OFIX@ 0 >= if E-NELAB-CTRL throw then
+   t ARM-WIDTH-CK
+   ix t ARM-FLAG
+   NB @ {: c:n :}
+   ix  c 1+  c 2 +  TERM-BRZ
+   ix MEND@ if ix t CS-TRAP@ MATCH-TRAP else ix  ix JOIN-OF JOIN-CK  STUB then
+   ix OPEN-PLAIN
+   ix t ARM-RESHAPE
+   ix t CS-OFIX! ;
+
+\ `endof`: the arm reaches the join, and the block that opens is the one its own
+\ mismatch edge was branched to. The ordinal the build reached and the one the
+\ skeleton wrote against this arm's `of` are two derivations of one number and
+\ they are held against each other here.
+: DO-CLOSE-ARM ( n -- ) {: ix:n :}
+   CS-N @ 1 < if E-NELAB-CTRL throw then
+   CS-TOP {: t:n :}
+   t CS-ADT? 0= if E-NELAB-CTRL throw then
+   t CS-OFIX@ {: ofix:n :}
+   ofix 0 < if E-NELAB-CTRL throw then
+   PATH-ENDED? if
+      PATH-LIVE PATH-END !
+   else
+      ix  t CS-JOIN@ JOIN-CK  TERM-BR
+      t CS-JOINED+
+   then
+   -1 t CS-OFIX!
+   ofix MEND@ if exit then
+   ofix JOIN-OF JOIN-CK {: nx:n :}
+   NB @ nx <> if E-NELAB-CTRL throw then
+   ix  t CS-DEPTH@ t CS-W@ +  OPEN-ARGS ;
+
+\ The block after either form, taking the values every arm handed it. Its width
+\ is the one the FIRST edge into it stated and every later edge was held to, so
+\ it is read back off the block rather than derived a second time here; that the
+\ block was stated at all is the same fact the frame recorded while the arms ran,
+\ and the two are held against each other.
+: ADT-JOIN ( n n -- ) {: ix:n t:n :}
+   t CS-JOIN@ {: j:n :}
+   t CS-JOINED? 0= if
+      j 0 >= if E-NELAB-CTRL throw then
+      PATH-DEAD PATH-END !
+      exit
+   then
+   j JOIN-CK drop
+   NB @ j <> if E-NELAB-CTRL throw then
+   NB @ ARG-STATED? 0= if E-NELAB-JOIN throw then
+   ix  NB @ ARG-WIDTH@  OPEN-ARGS
+   PATH-LIVE PATH-END ! ;
+
+: DO-CLOSE-MATCH ( n -- ) {: ix:n :}
+   HIR-CTRL:OPEN-MATCH CS-OPENER-CK {: t:n :}
+   t CS-OFIX@ 0 >= if E-NELAB-CTRL throw then
+   ix t ADT-JOIN
+   CS-POP ;
+
+\ `endcase`: the default path ends here, and it is the one path of a `case` that
+\ is not an arm. It still holds the selector - the source language keeps it there
+\ so that a default which produces a value leaves it on top - so the drop is the
+\ whole of what this word stages, exactly as the engine stages one.
+: DO-CLOSE-CASE ( n -- ) {: ix:n :}
+   HIR-CTRL:OPEN-CASE CS-OPENER-CK {: t:n :}
+   t CS-OFIX@ 0 >= if E-NELAB-CTRL throw then
+   PATH-ENDED? if
+      PATH-LIVE PATH-END !
+   else
+      VN @ t CS-DEPTH@ 1+ < if E-NELAB-UNDER throw then
+      1 VDROP
+      ix  t CS-JOIN@ JOIN-CK  TERM-BR
+      t CS-JOINED+
+   then
+   ix t ADT-JOIN
+   CS-POP ;
+
+\ `construct family variant`: the payload is already on the vector, where the
+\ source computed it, so what is left is what a value of the family carries
+\ around it - this variant's zero pads, and then its tag. Both are constants, so
+\ the form stages no operation this dialect did not have and no block at all: it
+\ is the same two pushes the engine emits (src/habu/habu2.f EM-ADT-CON-PUSHES).
+\
+\ AND THE CELLS BECOME ONE VALUE, which is the only thing the vector learns here.
+\ From this point on the payload, the pads and the tag are a value of the family,
+\ so a rename that reached into them would take it apart - and one cell is not a
+\ bundle, which is the same rule every other marker in this file follows.
+: DO-MAKE-BUNDLE ( n -- ) {: ix:n :}
+   ix MPAY@ {: k:n :}
+   k VN @ > if E-NELAB-UNDER throw then
+   VN @ k - {: base:n :}
+   ix MPAD@ 0 ?do
+      ix 0 EMIT-LIT
+   loop
+   ix  ix MTAG@  EMIT-LIT
+   VN @ base - {: w:n :}
+   base w VGLUE-CLEAR
+   w 2 < if exit then
+   base  w VRUN-MASK  VGLUE-RUN ;
 
 \ `RECURSE`: call the word being compiled. What the operation is handed is the
 \ WHOLE compile-time value vector, bottom first, and what it answers is the
@@ -3382,6 +4084,13 @@ create DN-BUF DN-CAP allot
       drop-loop    OF DO-UNLOOP ENDOF
       early-exit   OF ix DO-EXIT ENDOF
       self-call    OF ix DO-SELF-CALL ENDOF
+      open-match   OF ix DO-OPEN-MATCH ENDOF
+      match-arm    OF ix DO-ARM ENDOF
+      close-arm    OF ix DO-CLOSE-ARM ENDOF
+      close-match  OF ix DO-CLOSE-MATCH ENDOF
+      open-case    OF ix DO-OPEN-CASE ENDOF
+      close-case   OF ix DO-CLOSE-CASE ENDOF
+      make-bundle  OF ix DO-MAKE-BUNDLE ENDOF
    ;MATCH ;
 
 \ ---- the walk ----------------------------------------------------------------
@@ -3405,11 +4114,14 @@ variable IX                          \ the body token the walk stands on
    r  ix WSYM  HIR-WORD:CTRL@ {: k:HIR:ctrl :}
    k HIR-CTRL:CLOSE-IF HIR-CTRL:EQ if exit then
    k HIR-CTRL:MID-ELSE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
+   k HIR-CTRL:CLOSE-ARM HIR-CTRL:EQ  PATH-DEAD?  and if exit then
+   k HIR-CTRL:CLOSE-CASE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    E-NELAB-CTRL throw ;
 
 : STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
+   ix MOPERAND? if exit then
    PATH-ENDED? if r ix AFTER-END-CK then
    ix IN-DECL? if exit then
    ix LOCAL-READ? if exit then
@@ -3690,6 +4402,7 @@ EXPORT SPLICE-MEANING?
 \ that ends the process.
 : BACK-CALL? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
+   ix MOPERAND? if false exit then
    r ix WORD-CALL? 0= if false exit then
    r ix HIR-MEANING:CALLABLE MODELED-AS? 0= if true exit then
    r  ix WSYM  HIR-WORD:CALLEE-DEAD? 0= ;
@@ -3764,6 +4477,7 @@ EXPORT SPLICE-MEANING?
    FR-GIN @ IN-GLUE !  FR-GOUT @ OUT-GLUE !
    0 FR-GIN !  0 FR-GOUT !
    r n LOCALS-SCAN
+   r n MATCH-SCAN
    r n RESOLVE-SCAN
    r n INLINE-SCAN
    r n MEM-SCAN

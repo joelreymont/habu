@@ -326,6 +326,13 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       mid-while    OF 10 ENDOF
       close-repeat OF 11 ENDOF
       mid-else     OF 12 ENDOF
+      open-match   OF 13 ENDOF
+      match-arm    OF 14 ENDOF
+      close-arm    OF 15 ENDOF
+      close-match  OF 16 ENDOF
+      open-case    OF 17 ENDOF
+      close-case   OF 18 ENDOF
+      make-bundle  OF 19 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -343,6 +350,13 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       10 of HIR-CTRL:MID-WHILE endof
       11 of HIR-CTRL:CLOSE-REPEAT endof
       12 of HIR-CTRL:MID-ELSE endof
+      13 of HIR-CTRL:OPEN-MATCH endof
+      14 of HIR-CTRL:MATCH-ARM endof
+      15 of HIR-CTRL:CLOSE-ARM endof
+      16 of HIR-CTRL:CLOSE-MATCH endof
+      17 of HIR-CTRL:OPEN-CASE endof
+      18 of HIR-CTRL:CLOSE-CASE endof
+      19 of HIR-CTRL:MAKE-BUNDLE endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -1149,8 +1163,10 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ four for `2dup`, two for `dup`, none for `drop`, two for `swap`, three for
 \ `over`, one for `nip`, three for `rot` and none for `2drop`. A `{: … :}` group
 \ adds two words and no picks: its halves stage nothing and the names between
-\ them are the program's, so they never become rows of this table.
-61 constant WORDS
+\ them are the program's, so they never become rows of this table. The three
+\ tag-dispatch forms add seven more words and no picks, for the same reason: what
+\ a family or variant token means is the registry's answer and never a row here.
+68 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1304,6 +1320,31 @@ private
    c b r c b s" exit" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-EXIT BDECLARE-CONTROL
    c b r c b s" RECURSE" IR-BUILD:INTERN-SYMBOL HIR-CTRL:SELF-CALL BDECLARE-CONTROL ;
 
+\ The three tag-dispatch forms, seven words. `of` and `endof` are ONE row each
+\ and serve both `MATCH` and `case`, exactly as they do in the engine and in the
+\ checker; which form an arm belongs to is decided by the structure the
+\ elaborator has open, never by the token.
+\
+\ EVERY ONE OF THEM IS SPELLED IN LOWER CASE HERE AND MATCHES IN ANY CASE, and
+\ that is the same rule the rest of this table follows for the same reason. A row
+\ is keyed by the fold of its spelling (BKEY-CK) and a token is looked up under
+\ the fold of its own (KEY-SYM), and the fold is the one the ENGINE applies when
+\ it recognises a keyword (src/habu/habu2.f LKWCMP: a byte in `A`..`Z` gets $20
+\ set, every other byte stands) and the one the CHECKER applies before it
+\ compares a token against `match`, `of`, `endof` or `;match` (src/core/checker.f
+\ DO-TOK1 folds into TKF, and MATCH-VARIANT-TOK compares the folded token). So
+\ `MATCH` and `match` reach one row here because they reach one keyword there,
+\ and there is no second rule for a body to fall between.
+: DEF-ADT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" match" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-MATCH BDECLARE-CONTROL
+   c b r c b s" of" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MATCH-ARM BDECLARE-CONTROL
+   c b r c b s" endof" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-ARM BDECLARE-CONTROL
+   c b r c b s" ;match" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-MATCH BDECLARE-CONTROL
+   c b r c b s" case" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-CASE BDECLARE-CONTROL
+   c b r c b s" endcase" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-CASE BDECLARE-CONTROL
+   c b r c b s" construct" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MAKE-BUNDLE BDECLARE-CONTROL ;
+
 \ The two halves of a typed locals group. Neither stages an operation and
 \ neither carries a payload: what the opener does is start reading the names
 \ that follow it and what the closer does is bind them, and both of those are
@@ -1408,6 +1449,7 @@ public
    c b r DEF-FLOAT
    c b r DEF-FCOMPARE
    c b r DEF-CONTROL
+   c b r DEF-ADT
    c b r DEF-LOCALS
    c b p r DEF-2DUP
    c b p r DEF-DUP

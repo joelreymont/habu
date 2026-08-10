@@ -1155,3 +1155,18 @@ public
 -8641 constant E-NTRAP-NAME     \ a family name this table cannot hold: empty, or longer than the message buffer's room for one
 -8642 constant E-NTRAP-CAP      \ more families than the table holds, or more name bytes than its arena holds. The ordinals it has already answered are compiled into published routines, so a name it cannot hold is a refusal rather than a reused ordinal
 -8643 constant E-A64SEL-ORDER   \ a block whose edges disagree about the memory order it is entered with, or that no edge reaches at all. The machine two-way branch carries no operands, so an order two paths differ on cannot be handed over as an argument here; a source that needs one says so among the block's own arguments
+
+\ The tag-dispatch forms: -8650..-8659
+\
+\ `MATCH … ;MATCH`, `case … endcase` and `construct` are the three source forms
+\ whose operands are not ordinary body words: a family name, a variant name and
+\ an arm key. The elaborator reads them with a pre-pass that mirrors the
+\ checker's own token machine and asks the checker's registry what each name
+\ means, so what this code covers is the shape of that form and nothing the
+\ registry or the checker already owns. A form the checker refuses never reaches
+\ the chain at all - a non-exhaustive MATCH, a duplicate variant, a family that
+\ is not a sum, a variant token with no `of` after it and a stray `;match` are
+\ all rejected before the definition is compiled - so a refusal here means the
+\ chain and the checker read one body differently, which is why it is a named
+\ refusal rather than a fallback.
+-8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, or a scrutinee whose bundle on that vector is not the width its family declares - which is what an instantiation wider than the declared one looks like from here
