@@ -420,9 +420,6 @@ private
 \ spellings of Habu source words, so the prefix is what keeps a dialect symbol
 \ and a source word from ever being the same interned symbol.
 
-: CELL-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
-   IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
-
 \ Design line 240 with design section 5.5: whether integer overflow traps is the
 \ compilation unit's numeric policy, so the schema reads it rather than fixing
 \ it.
@@ -543,6 +540,18 @@ public
 
 : KEY-OUT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.out" IR-BUILD:INTERN-SYMBOL ;
+
+\ ---- the type of an ordinary value -------------------------------------------
+\ One signed 64-bit integer per stack value, which is what every schema this
+\ dialect registers declares. It is published beside the other two value types
+\ because a pass that WRITES a module of this dialect has to state the type of
+\ every block argument and every result it mints, and the three readers here are
+\ the dialect's own answer to that question. src/compiler/native/elaborate.f
+\ still interns the same identity itself and says in its own header why that
+\ restatement is checked rather than trusted; a pass that has no such argument
+\ asks here.
+: CELL-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
+   IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
 
 \ ---- the type of the memory order --------------------------------------------
 \ The order of the definition's memory accesses, as a value they pass along. It
