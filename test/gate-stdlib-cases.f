@@ -478,6 +478,10 @@ SUITE compiler-native-chain
    test/compiler/native-chain.f
 ;SUITE
 
+SUITE native-dead-path
+   test/compiler/native-dead-path.f
+;SUITE
+
 \ A rename is a permutation of the compile-time value vector, and that vector
 \ counts CELLS while the language counts VALUES. This suite is the differential
 \ that holds the two together over a value wider than a cell: every case states

@@ -114,6 +114,7 @@ require src/compiler/native/hir-word.f
 require src/compiler/native/string.f
 require src/compiler/native/inline.f
 require src/compiler/native/frozen.f
+require src/compiler/native/trap.f
 
 package NELAB
 private
@@ -941,17 +942,21 @@ variable LIT-N
 \ constant-and-operation word's constant is the word model's and not the tape's.
 \ A number this block has already staged is not staged again: the memo above
 \ answers with the value the first one defined.
-: EMIT-LIT ( n n -- )
+: STAGE-LIT ( n n -- )
    {: ix:n val:n :}
-   val LIT-FIND {: j:n :}
-   j 0 >= if j LIT-ID @ VPUSH exit then
    CTX BLD HIR-OPCODE:CONST HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
    CTX BLD op RESULTS+
    CTX BLD  CTX BLD HIR:KEY-VALUE  CTX BLD val IR-BUILD:INTERN-INT-ATTR
    IR-BUILD:ADD-ATTR
-   CTX BLD op CLOSE
+   CTX BLD op CLOSE ;
+
+: EMIT-LIT ( n n -- )
+   {: ix:n val:n :}
+   val LIT-FIND {: j:n :}
+   j 0 >= if j LIT-ID @ VPUSH exit then
+   ix val STAGE-LIT
    val  VN @ 1- VAT  LIT-REMEMBER ;
 
 \ The memory the definition is entered with, staged at the span of the token that
@@ -1152,6 +1157,7 @@ create CS-ARM CMAX cells allot
 create CS-NW CMAX cells allot
 create CS-XD CMAX cells allot
 create CS-EXIT CMAX cells allot
+create CS-END CMAX cells allot       \ whether the arm before this frame's `else` ended
 CMAX TYPED-BUFFER CS-IDX IR-ID:ir-value-id
 CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 
@@ -1180,6 +1186,7 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
    0 t cells CS-NW + !
    -1 t cells CS-XD + !
    -1 t cells CS-EXIT + !
+   0 t cells CS-END + !
    t 1+ CS-N ! ;
 
 : CS-POP ( -- )
@@ -1201,11 +1208,13 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 : CS-NW@ ( n -- n )       cells CS-NW + @ ;
 : CS-XD@ ( n -- n )       cells CS-XD + @ ;
 : CS-EXIT@ ( n -- n )     cells CS-EXIT + @ ;
+: CS-END@ ( n -- n )      cells CS-END + @ ;
 
 : CS-JOIN! ( n n -- )     cells CS-JOIN + ! ;
 : CS-ARM! ( n n -- )      cells CS-ARM + ! ;
 : CS-XD! ( n n -- )       cells CS-XD + ! ;
 : CS-EXIT! ( n n -- )     cells CS-EXIT + ! ;
+: CS-END! ( n n -- )      cells CS-END + ! ;
 
 \ One more `while` has been met by the loop this frame is.
 : CS-WHILE+ ( n -- )
@@ -1420,12 +1429,35 @@ variable FR-GIN                      \ what the caller staged for the definition
 variable FR-GOUT
 variable EXIT-USED                   \ whether the body has an `exit` at all
 variable EXIT-ORD                    \ the block every `exit` and the fall-through reach
-variable EXIT-PENDING                \ an `exit` closed the arm; only its `then` may follow
+
+\ ---- a path that has already ended -------------------------------------------
+\ TWO WORDS END A PATH AND THEY END IT DIFFERENTLY, so what is remembered is
+\ WHICH, not merely THAT. An `exit` branches to the return block: the arm's block
+\ is closed and one edge into the return exists. A call to a word the checker
+\ certified as never returning closes the arm's block too, but there is no edge
+\ anywhere - control is gone. The two agree on everything the join has to do
+\ (this arm hands the join nothing and contributes no width) and disagree about
+\ everything else: whether the definition needs a return block, whether `else`
+\ may follow, and whether the body may simply stop.
+\
+\ IT IS ONE RECORD BECAUSE THERE IS ONE FACT. Two flags could say a path both
+\ exited and died, and every reader would then have to decide which it believed.
+\ A single cell holding one of three answers cannot.
+0 constant PATH-LIVE                 \ the walk is on a path that goes on
+1 constant PATH-EXIT                 \ an `exit` closed the arm; only its `then` may follow
+2 constant PATH-DEAD                 \ a call that does not come back closed it
+variable PATH-END
+
+: PATH-ENDED? ( -- bool )
+   PATH-END @ PATH-LIVE <> ;
+
+: PATH-DEAD? ( -- bool )
+   PATH-END @ PATH-DEAD = ;
 
 : EXIT-RESET ( -- )
    0 EXIT-USED !
    -1 EXIT-ORD !
-   0 EXIT-PENDING ! ;
+   PATH-LIVE PATH-END ! ;
 
 : BLOCK-ORD ( n -- IR-ID:ir-block-id )
    {: k:n :}
@@ -2118,9 +2150,17 @@ private
 \ resolved in either direction. An address with NO row is not a disagreement at
 \ all: nothing was ever recorded there, and the site calls, which is what it
 \ always did.
+\ AND A CALLEE CONTROL DOES NOT COME BACK FROM IS NEVER COPIED. Its routine ends
+\ in the terminator that leaves without returning, and a copy splices a body's
+\ OPERATIONS into the middle of a block that goes on afterwards - so a copy of it
+\ would put a terminator where the caller still has work to do, which is not a
+\ block at all. The call is what such a callee needs and the call is what it
+\ gets, which is also what makes the dead path a fact about ONE site: the block
+\ the call ends is the caller's own.
 : CALLEE-COPY? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:CALLEE-DEAD? if false exit then
    r sy HIR-WORD:ENTRY@ {: entry:n :}
    entry NINL:KNOWN? 0= if false exit then
    entry NINL:IN@  r sy HIR-WORD:CALLEE-IN@  <> if E-NELAB-INLINE throw then
@@ -2375,28 +2415,59 @@ create JOIN-TAB TMAX cells allot
 \ ordinal is therefore the answer for the `if`'s token, and the join's answer is
 \ left for `then` to write against this token.
 \
-\ AN ARM THAT ALREADY LEFT THE WORD HAS NOTHING TO CLOSE HERE, AND IS REFUSED.
-\ `exit` ends the block it is in, so `if … exit else` would have `else` close a
-\ block that is not open. It is the same rule this file already refuses an `exit`
-\ anywhere but the last position of an arm for, and dot
-\ habu-let-exit-stand-d74f14ec carries the capability.
+\ AN ARM THAT ALREADY ENDED HAS NOTHING TO CLOSE HERE, and what happens then
+\ depends on how it ended. A DEAD arm closed its own block at the call that does
+\ not come back, so `else` closes nothing and only opens the second arm; the
+\ frame records that the first arm reached no join, which is what `then` needs to
+\ know when the second arm ends too. An `exit` is still refused: it would need
+\ the return block to exist before the structure it is in is closed, which is a
+\ different capability and dot habu-let-exit-stand-d74f14ec carries it.
 : SK-ELSE ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
    t CS-ELSE? if E-NELAB-CTRL throw then
-   EXIT-PENDING @ 0<> if E-NELAB-CTRL throw then
-   NB @ 1+ NB !
+   PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
+   PATH-DEAD? if -1 t CS-END! else NB @ 1+ NB ! then
+   PATH-LIVE PATH-END !
    t CS-JOIN@ NB @ JOIN!
    ix t CS-ARM! ;
+
+\ Whether every path into this structure's join has ended, so that there is no
+\ join at all: the walk is inside two arms and both of them are gone. It takes
+\ THIS arm's state as an argument because both walks ask it at the same moment -
+\ after the arm has been accounted for and before the frame is popped - and one
+\ answer for two readers is what keeps the block counts equal.
+\
+\ WITH NO `else` THERE IS ALWAYS A JOIN. The `if`'s own false path is an edge
+\ into it whatever the single arm did, so a structure of one arm never ends here
+\ however that arm ended.
+: SK-BOTH-ENDED? ( n bool -- bool )
+   {: t:n armend:bool :}
+   t CS-ELSE? 0= if false exit then
+   armend 0= if false exit then
+   t CS-END@ 0<> ;
 
 \ `then`: the arm the walk is in ends at the join, and the join opens. Which
 \ token the answer is written against is the one whose forward branch is still
 \ unanswered - the `else`'s when there is one, and the `if`'s when there is not.
+\
+\ AND WHEN BOTH ARMS ENDED THERE IS NOTHING TO WRITE. No edge reaches the block
+\ after this structure, so no such block is opened and none is counted; the
+\ structure has ended, exactly as its arms did, and the word around it goes on
+\ being closed by whatever closes IT. The row for this token stays unanswered,
+\ which is right: nothing branches forward to a block that is not there, and
+\ DO-ELSE below reads the row without demanding an answer for that reason.
 : SK-CLOSE-IF ( -- )
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
    t CS-PENDING {: key:n :}
-   EXIT-PENDING @ 0= if NB @ 1+ NB ! then
-   0 EXIT-PENDING !
+   PATH-ENDED? {: armend:bool :}
+   armend 0= if NB @ 1+ NB ! then
+   t armend SK-BOTH-ENDED? if
+      CS-POP
+      PATH-DEAD PATH-END !
+      exit
+   then
+   PATH-LIVE PATH-END !
    key NB @ JOIN!
    CS-POP ;
 
@@ -2406,7 +2477,7 @@ create JOIN-TAB TMAX cells allot
 \ wrong closer for this loop and `repeat` that it is the right one.
 : SK-WHILE ( -- )
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
-   EXIT-PENDING @ 0<> if E-NELAB-CTRL throw then
+   PATH-ENDED? if E-NELAB-CTRL throw then
    t CS-WHILE+
    NB @ 2 + NB ! ;
 
@@ -2430,11 +2501,42 @@ create JOIN-TAB TMAX cells allot
    NB @ 2 + NB !
    CS-POP ;
 
+\ A call this walk has to count a block for: one the definition really MAKES
+\ (a copied body is not a call at all) to a word the checker says control does
+\ not come back from. It closes the block it is in, exactly as an `exit` does,
+\ and the walk below builds the same block for it - so both walks ask this one
+\ question and neither has a rule of its own about which words are dead.
+: SK-DEAD-CALL? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix HIR-MEANING:CALLABLE MODELED-AS? 0= if false exit then
+   ix INL-AT? if false exit then
+   r  ix WSYM  HIR-WORD:CALLEE-DEAD? ;
+
+\ After a path has ended, the only tokens that may follow are the ones that
+\ close the structure the ended path was an arm of. It is asked HERE as well as
+\ in the walk because this walk COUNTS blocks: a token it went on to count after
+\ a path ended would make the two walks disagree about a number they must agree
+\ about, and the disagreement would surface as a branch into the wrong block
+\ rather than as the refusal it is.
+: SK-AFTER-END-CK ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix HIR-MEANING:CONTROL MODELED-AS? 0= if E-NELAB-CTRL throw then
+   r  ix WSYM  HIR-WORD:CTRL@ {: k:HIR:ctrl :}
+   k HIR-CTRL:CLOSE-IF HIR-CTRL:EQ if exit then
+   k HIR-CTRL:MID-ELSE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
+   E-NELAB-CTRL throw ;
+
 : SK-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
+   PATH-ENDED? if r ix SK-AFTER-END-CK then
+   r ix SK-DEAD-CALL? if
+      NB @ 1+ NB !
+      PATH-DEAD PATH-END !
+      exit
+   then
    r ix ADMIT-AT
    HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if exit then
    r  ix WSYM  HIR-WORD:CTRL@
@@ -2451,7 +2553,7 @@ create JOIN-TAB TMAX cells allot
                       NB @ 3 + NB !  NB @ JOIN!  CS-POP ENDOF
       index        OF ENDOF
       drop-loop    OF ENDOF
-      early-exit   OF NB @ 1+ NB !  1 EXIT-USED !  1 EXIT-PENDING ! ENDOF
+      early-exit   OF NB @ 1+ NB !  1 EXIT-USED !  PATH-EXIT PATH-END ! ENDOF
       self-call    OF ENDOF
    ;MATCH ;
 
@@ -2469,11 +2571,19 @@ create JOIN-TAB TMAX cells allot
       r i SK-STEP
    loop
    CS-N @ 0<> if E-NELAB-CTRL throw then
-   EXIT-PENDING @ 0<> if E-NELAB-CTRL throw then
-   EXIT-USED @ 0<> if NB @ 1+ EXIT-ORD ! then
-   EXIT-USED @ 0<> if NB @ 1+ else NB @ then
+   PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
+   PATH-DEAD? {: dead:bool :}
+   \ WHERE THE RETURN BLOCK LANDS DEPENDS ON WHETHER THE BODY REACHES IT. The
+   \ fall-through closes one more block on its way there; a body whose last path
+   \ ended has no fall-through, so its last block is already closed and the
+   \ return block is the next ordinal rather than the one after that.
+   EXIT-USED @ 0<> if
+      dead if NB @ else NB @ 1+ then EXIT-ORD !
+   then
+   EXIT-USED @ 0<> if EXIT-ORD @ 1+ else NB @ then
    NFROZEN:BMAX > if E-NELAB-BLOCK throw then
    0 NB !
+   PATH-LIVE PATH-END !
    CS-RESET ;
 
 \ ---- what each structured control word builds --------------------------------
@@ -2519,15 +2629,30 @@ create JOIN-TAB TMAX cells allot
 \ and `a b > if a else b then` - which leaves one value where the `if` found none
 \ - is an ordinary structure rather than a refusal. The width is therefore what
 \ the first arm left, recorded here for `then` to hold the second arm to.
+\ AND WHAT AN ENDED FIRST ARM CHANGES. It hands the join nothing, so it states
+\ no width and closes no block here - its own last operation closed it. The
+\ frame records that, because `then` has two questions to answer afterwards and
+\ both turn on it: what width the join takes (the second arm's, since it is now
+\ the only edge) and whether there is a join at all (there is not, if the second
+\ arm ends too). The forward ordinal is read WITHOUT being demanded for the same
+\ reason: when both arms end there is no such block and the skeleton wrote no
+\ answer, and neither this word nor `then` reaches for it on that path.
 : DO-ELSE ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
    t CS-ELSE? if E-NELAB-CTRL throw then
    t CS-DEPTH@ {: d:n :}
    t CS-JOIN@ {: e:n :}
-   ix JOIN-OF JOIN-CK {: j:n :}
-   VN @ t CS-ARM!
-   ix j TERM-BR
+   ix JOIN-OF {: j:n :}
+   PATH-ENDED? if
+      -1 t CS-END!
+      0 t CS-ARM!
+      PATH-LIVE PATH-END !
+   else
+      j JOIN-CK drop
+      VN @ t CS-ARM!
+      ix j TERM-BR
+   then
    NB @ e <> if E-NELAB-CTRL throw then
    j t CS-JOIN!
    ix d OPEN-ARGS ;
@@ -2536,21 +2661,34 @@ create JOIN-TAB TMAX cells allot
 \ arguments as every edge into it carries. An arm that left the stack a different
 \ depth is refused here: the two paths would be handing the same block different
 \ numbers of values.
+\ WHAT THE JOIN TAKES WHEN ONE ARM DID NOT REACH IT. Its width is whatever the
+\ edges that DO reach it carry, and with one arm gone there is exactly one such
+\ edge: the surviving arm's, or - when the structure has no `else` - the `if`'s
+\ own false stub, which carries the vector as the `if` found it. So a first arm
+\ that ended leaves the second arm to state the width, and an only arm that
+\ ended leaves the `if`'s depth standing, which is what it was already.
 : DO-JOIN-WIDTH ( n -- n )
    {: t:n :}
-   t CS-ELSE? if t CS-ARM@ exit then
-   t CS-DEPTH@ ;
+   t CS-ELSE? 0= if t CS-DEPTH@ exit then
+   t CS-END@ 0<> if VN @ exit then
+   t CS-ARM@ ;
 
 : DO-CLOSE-IF ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
+   PATH-ENDED? {: armend:bool :}
    t DO-JOIN-WIDTH {: w:n :}
    t CS-JOIN@ {: j:n :}
-   EXIT-PENDING @ 0<> if
-      0 EXIT-PENDING !
+   armend if
+      PATH-LIVE PATH-END !
    else
       VN @ w <> if E-NELAB-JOIN throw then
       ix j TERM-BR
+   then
+   t armend SK-BOTH-ENDED? if
+      CS-POP
+      PATH-DEAD PATH-END !
+      exit
    then
    NB @ j <> if E-NELAB-CTRL throw then
    ix w OPEN-ARGS
@@ -2895,6 +3033,60 @@ variable LRK                         \ crossing locals the walk below has taken 
    0  keep k VGLUE-LOW  VGLUE-RUN
    k oglue VGLUE-RUN ;
 
+\ ---- a call control does not come back from ----------------------------------
+\ WHAT A DEAD CALL IS AND WHAT IT IS NOT. It is an ORDINARY call: the same
+\ operation, the same operands, the same branch-with-link to the same address.
+\ `throw` really runs, and a `catch` around the caller really catches it -
+\ trapping INSTEAD of calling would turn a catchable throw into a process exit
+\ and change what the program does. What is different is only what follows: the
+\ checker certified that control does not come back, so the values the vector
+\ holds afterwards reach nothing and the path stops here.
+\
+\ AND A BLOCK STILL HAS TO END. src/compiler/ir/verify.f wants exactly one
+\ terminator and it has to be the block's last operation, so the instruction
+\ after the call is not optional - without one the block would fall into
+\ whichever block the emitter laid out next. `hir.return` cannot be it: a
+\ routine publishes its results in one place and src/compiler/native/select.f
+\ refuses a second (E-A64SEL-PLACE). `hir.trap` is the terminator that leaves
+\ without returning, and this is what it says here: if control ever DOES arrive
+\ at this instruction, the certificate this routine was compiled against was
+\ false, and the trap routine names the callee that broke it and ends the
+\ process. It is unreachable by construction and it is not decoration - it is
+\ the difference between a false certificate being reported and a routine
+\ quietly running somebody else's block.
+128 constant DN-CAP                  \ bytes of a callee's spelling this asks about
+here CELL 1- and CELL swap - CELL 1- and allot
+create DN-BUF DN-CAP allot
+
+\ The ordinal the trap site carries: src/compiler/native/trap.f's own number for
+\ "this word returned", keyed by the CALLEE's spelling, which is the only name
+\ that would be worth printing. Registering is idempotent, so every site over
+\ one callee carries one number and a re-elaborated definition adds no row.
+: DEAD-ORD ( IR-ID:ir-symbol-id -- n )
+   {: sy:IR-ID:ir-symbol-id :}
+   CTX BLD sy DN-BUF DN-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   DN-BUF u NTRAP:NO-RETURN ;
+
+\ THE ORDINAL IS STAGED FRESH AND NOT TAKEN OFF THE LITERAL MEMO, which is the
+\ one place the memo would cost something real. The memo answers with a value an
+\ EARLIER block defined, and every ordinal is a small number that a body is
+\ likely to have staged already - so a trap would read a value defined before the
+\ branch, giving that value a live range that reaches from wherever it was
+\ defined, across every call on the way, to an instruction that never runs. The
+\ register allocator then has to keep a register alive across those calls for the
+\ sake of unreachable code, and a class it may not put in a frame - a value read
+\ outside the entry and exit blocks - has nowhere else to be (E-A64RA-POOL,
+\ measured on `: JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;`, whose
+\ ordinal happened to be the same 0 its own comparison had staged). A constant of
+\ its own costs one instruction on a path that never runs and nothing anywhere
+\ else.
+: DEAD-END ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   ix  ix WSYM DEAD-ORD  STAGE-LIT
+   ix HIR-OPCODE:TRAP EMIT-OPCODE
+   CLOSE-BLOCK
+   PATH-DEAD PATH-END ! ;
+
 : DO-SELF-CALL ( n -- )
    {: ix:n :}
    IN-N @ OUT-N @ CALL-LIVE  OUT-N @ + {: back:n :}
@@ -2937,7 +3129,8 @@ variable LRK                         \ crossing locals the walk below has taken 
    CALL-OPERANDS+
    back CALL-RESULTS+
    r sy HIR-WORD:ENTRY@ a o WCALL-ATTRS+
-   back o  r sy HIR-WORD:OUT-GLUE@  CALL-CLOSE ;
+   back o  r sy HIR-WORD:OUT-GLUE@  CALL-CLOSE
+   r sy HIR-WORD:CALLEE-DEAD? if r ix DEAD-END then ;
 
 \ ---- copying a callee's body in instead of calling it ------------------------
 \ WHAT A COPIED CALL IS. The callee's recorded tokens, staged one at a time by
@@ -3074,8 +3267,8 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ word declares it leaves - one too few or one too many is a body that does not
 \ match its effect, and it is refused here rather than turned into a branch that
 \ hands the exit block the wrong number of values - and the branch carries them
-\ to the block the return is in. The arm is finished: EXIT-PENDING says so, and
-\ the only word that may follow is the `then` that closes it.
+\ to the block the return is in. The arm is finished: the path-end record says
+\ so, and the only word that may follow is the `then` that closes it.
 \
 \ AND IT CROSSES WITH NO COUNTED LOOP AND NO LOCAL, which is why both counts are
 \ written here rather than taken from the frames. An `exit` leaves the word for
@@ -3090,7 +3283,7 @@ variable LRK                         \ crossing locals the walk below has taken 
    VN @ OUT-N @ <> if E-NELAB-ARITY throw then
    EXIT-ORD @ 0 < if E-NELAB-CTRL throw then
    ix EXIT-ORD @ 0 0 0 TERM-BR-H
-   1 EXIT-PENDING ! ;
+   PATH-EXIT PATH-END ! ;
 
 \ ---- binding and reading the locals ------------------------------------------
 \ `:}`: take one value off the compile-time vector per declared name, RIGHT TO
@@ -3199,16 +3392,25 @@ variable IX                          \ the body token the walk stands on
 \ and a control word builds blocks. `unmodeled` never reaches the match -
 \ HIR-WORD:ADMIT refuses it first - and the arm throws the same refusal rather
 \ than inventing a second name for it.
-: AFTER-EXIT-CK ( IR-ARENA:arena n -- )
+\ After a path has ended, the only token that may follow is the one that closes
+\ the structure the ended path was an arm of - and which of the two closers that
+\ is depends on HOW the path ended. A dead arm may be followed by its `else`,
+\ because the block it left is closed and the second arm opens a new one; an
+\ `exit` may not, for the reason SK-ELSE gives. This is the same question the
+\ skeleton asks, and it is asked here again because the two walks are separate
+\ readings of one body and each has to be able to refuse it alone.
+: AFTER-END-CK ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    r ix HIR-MEANING:CONTROL MODELED-AS? 0= if E-NELAB-CTRL throw then
-   r  ix WSYM  HIR-WORD:CTRL@
-   HIR-CTRL:CLOSE-IF HIR-CTRL:EQ 0= if E-NELAB-CTRL throw then ;
+   r  ix WSYM  HIR-WORD:CTRL@ {: k:HIR:ctrl :}
+   k HIR-CTRL:CLOSE-IF HIR-CTRL:EQ if exit then
+   k HIR-CTRL:MID-ELSE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
+   E-NELAB-CTRL throw ;
 
 : STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
-   EXIT-PENDING @ 0<> if r ix AFTER-EXIT-CK then
+   PATH-ENDED? if r ix AFTER-END-CK then
    ix IN-DECL? if exit then
    ix LOCAL-READ? if exit then
    r ix ADMIT-AT
@@ -3478,11 +3680,32 @@ EXPORT SPLICE-MEANING?
    r sy HIR-WORD:CALLEE-IN@ IN-N @ <> if false exit then
    r sy HIR-WORD:CALLEE-OUT@ OUT-N @ = ;
 
+\ A call control really does come back from. It is WORD-CALL? with the callee's
+\ own control effect asked as well, because a call to a word that never returns
+\ leaves this routine nothing to come back TO: no return address of ours is read
+\ again on that path, and no value of ours is either. So a body whose only calls
+\ are dead ones needs no frame and saves no link register - the same sentence
+\ the tail decision below makes about the one call a body leaves through, and
+\ the same one src/compiler/native/publish.f makes about a branch to a routine
+\ that ends the process.
+: BACK-CALL? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix WORD-CALL? 0= if false exit then
+   r ix HIR-MEANING:CALLABLE MODELED-AS? 0= if true exit then
+   r  ix WSYM  HIR-WORD:CALLEE-DEAD? 0= ;
+
+: BACK-SCAN ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena n:n :}
+   0 CALL-BACK !
+   n 1 ?do
+      r i BACK-CALL? if 1 CALL-BACK ! leave then
+   loop ;
+
 : TAIL-SCAN ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena n:n :}
    0 TAIL-NEED !
    0 TAIL-ENTRY !
-   CALL-NEED @ CALL-BACK !
+   r n BACK-SCAN
    IN-N @ OUT-N @ <> if exit then
    IN-N @ 0= if exit then
    EXIT-USED @ 0<> if exit then
@@ -3494,7 +3717,7 @@ EXPORT SPLICE-MEANING?
    r  n 1- WSYM  HIR-WORD:ENTRY@ TAIL-ENTRY !
    0 CALL-BACK !
    n 1- 1 ?do
-      r i WORD-CALL? if 1 CALL-BACK ! leave then
+      r i BACK-CALL? if 1 CALL-BACK ! leave then
    loop ;
 
 \ Elaborate the one colon definition this sealed tape holds, and answer the
@@ -3549,19 +3772,33 @@ EXPORT SPLICE-MEANING?
    c b v key in out OPEN-FUN
    c b v key in OPEN-BLOCK
    TOK-NEED @ 0<> if 0 EMIT-MEM then
-   0 EXIT-PENDING !
+   PATH-LIVE PATH-END !
    p r n WALK-TRY
    CS-N @ 0<> if E-NELAB-CTRL throw then
-   EXIT-PENDING @ 0<> if E-NELAB-CTRL throw then
+   PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
+   \ A BODY WHOSE LAST PATH ENDED HAS NO FALL-THROUGH AND MAY HAVE NO RETURN AT
+   \ ALL. The block it was in was closed where the path ended, so nothing here
+   \ branches to the return block and nothing here closes a block. Whether the
+   \ ROUTINE still has a return depends on the `exit`s: one of them is an edge
+   \ into the return block, so that block still has to be opened and the return
+   \ still staged in it. A body with no `exit` and no live last path leaves
+   \ through its trap and has no return convention at all, which is the shape
+   \ src/compiler/native/regalloc.f and src/compiler/native/emit.f already know
+   \ as NO-RET.
+   PATH-DEAD? {: dead:bool :}
    EXIT-USED @ 0<> if
-      VN @ out <> if E-NELAB-ARITY throw then
-      0 EXIT-ORD @ 0 0 0 TERM-BR-H
+      dead 0= if
+         VN @ out <> if E-NELAB-ARITY throw then
+         0 EXIT-ORD @ 0 0 0 TERM-BR-H
+      then
       NB @ EXIT-ORD @ <> if E-NELAB-CTRL throw then
       0 out 0 0 0 OPEN-ARGS-H
    then
-   c b v key out EMIT-RETURN
+   dead  EXIT-USED @ 0=  and 0= if
+      c b v key out EMIT-RETURN
+      c b IR-BUILD:END-BLOCK drop
+   then
    r n TAIL-SCAN
-   c b IR-BUILD:END-BLOCK drop
    c b IR-BUILD:END-FUN ;
 
 \ ---- what the last elaboration refused ---------------------------------------
