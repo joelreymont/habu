@@ -5640,3 +5640,17 @@ check pgrep -f test/run.f before starting one; and schedule-lint is the
 thing that catches a suite that is registered but dark - trust it over
 "I added a SUITE block", and prove scheduling by breaking one assertion
 and watching the full gate go red.
+
+## A running value across a block walk is a hidden dominance claim (2026-08-10)
+
+The selector kept one running memory-order value across its block walk;
+that was sound only while every un-synced access lived in the entry
+block or the single exit block. The day a second exit block existed
+(the trap), one sibling read the token another defined -
+E-IR-VERIFY-DOM naming two sibling blocks is the tell. The repair
+states the order on every edge at the ONE word that builds edges, and
+refuses disagreement; and the fixture that keeps it honest is the same
+shape with the arms swapped, because the original walk order can pass
+by luck. Same lane, second find: deriving a new answer (NO-RET) is not
+consuming it - grep every reader of the old answer before believing
+the derivation landed.
