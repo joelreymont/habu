@@ -5700,3 +5700,19 @@ find: putting one of two agreeing walks on a new number line breaks
 the agreement silently - the validator moved module-wide, the
 allocator did not, and the tell was E-A64RAV-INTERVAL on a case that
 has nothing to do with intervals. The pair moves together.
+
+## A spelling assertion is not a location assertion (2026-08-10)
+
+When two candidate tokens share a spelling, a fixture asserting the
+refused SPELLING passes with its guard deleted - both openers are `[:`.
+Pin the refused ROW. Same family as the substring-assertion rule, one
+level down: the assertion must name the coordinate the guard decides.
+
+## jj split by file breaks stacked concerns (2026-08-10)
+
+jj split is file-granular; a file carrying two concerns splits into a
+parent that references names the child introduces - a commit that does
+not load. After any split, build every intermediate commit on its own
+before believing the stack. Same lane: a refusal that MARKS its token
+for a handler is nameless in any pass without one - record the token
+at the refusal site, not in the handler.
