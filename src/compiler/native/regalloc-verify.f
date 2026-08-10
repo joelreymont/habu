@@ -2419,6 +2419,43 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64RAV-MODULE throw then
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
 
+\ ---- which places one FUNCTION's boundary uses -------------------------------
+\ The same reading src/compiler/native/select.f makes at the other end of the
+\ pair, and it has to be the same reading: this pass measures each function's
+\ entry and exit against the places that function's arguments and results really
+\ occupy, and an emission holds a routine per quotation as well as the
+\ definition's own. Those routines have their own effects, so one arity for the
+\ whole emission would measure a quotation body's boundary against the enclosing
+\ word's - which is the E-A64SEL-PLACE the selector used to raise, arriving here
+\ as a verifier that agreed with an allocation nobody had checked.
+\
+\ THE ARITY IS THE MODULE'S AND THE CONVENTION IS THE CONTRACT'S. NFROZEN:FUN-ARITY
+\ reads the function's own recorded signature, which is where the elaborator put
+\ it; the contract still says which convention the emission speaks and still says
+\ what function zero - the word this emission is published as - has to be.
+: FUN-SLOTS ( n -- A64EFF:placeseq )
+   {: k:n :}
+   A64EFF:SEQ-NONE
+   k 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+
+: DECL-CK ( n n n n -- )
+   {: in:n out:n din:n dout:n :}
+   in din <> if E-A64RAV-CONTRACT throw then
+   out dout <> if E-A64RAV-CONTRACT throw then ;
+
+\ Under the register convention a place is the ABI's allocation and no count can
+\ re-derive it, so the contract's own lists stand for every function exactly as
+\ they did before this seam existed. src/compiler/native/abi.f declares the
+\ data-stack convention for every routine the chain really compiles, so that path
+\ is a fixture's and it is left alone rather than given a derivation with no
+\ basis.
+: FUN-PLACES ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- A64EFF:placeseq A64EFF:placeseq )
+   {: f:IR-ID:ir-fun-id ord:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   V-DSTACK @ 0= if args outs exit then
+   f NFROZEN:FUN-ARITY {: in:n out:n :}
+   ord 0= if in out  args A64EFF:SEQ-LEN outs A64EFF:SEQ-LEN  DECL-CK then
+   in FUN-SLOTS  out FUN-SLOTS ;
+
 : WALK ( IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq n -- )
    {: m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
       args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
@@ -2446,7 +2483,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       i FUN-AT {: f:IR-ID:ir-fun-id :}
       f  i cells F-VB + @  VLAYOUT
       f VLIVENESS
-      f  f RET-ORD  args outs frame
+      f  f RET-ORD  f i args outs FUN-PLACES  frame
       i cells F-VB + @  i 1 + cells F-VB + @  VERIFY
    loop ;
 

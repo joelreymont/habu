@@ -153,6 +153,20 @@ create TXT
    out 0 ?do t IR-TYPE:FN-RESULT loop
    CC BB IR-BUILD:INTERN-CODE-REF ;
 
+\ A module's function table is keyed by symbol, so a fixture of more than one
+\ function needs a name per function; every fixture that builds one names it
+\ SQUARE, which is what OPEN-FUN below still does.
+: OPEN-FUN$ ( ptr u8 n n n -- )
+   {: p u:n in:n out:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   CC BB  CC BB p u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
+   CC BB  in out SIGN  IR-BUILD:SET-SIGNATURE
+   CC BB IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
+   CC BB IR--FUN-VISIBILITY:EXPORTED IR-BUILD:SET-VISIBILITY
+   CC BB IR--FUN-CONVENTION:HABU IR-BUILD:SET-CONVENTION
+   CC BB  NAME-ST NAME-LN SPN  IR-BUILD:SET-FUN-SPAN
+   CC BB IR-BUILD:BEGIN-BLOCK
+   CC BB  OPEN-ST OPEN-LN SPN  IR-BUILD:SET-BLOCK-SPAN ;
+
 : OPEN-FUN ( n n -- )
    {: in:n out:n :}
    CC BB  CC BB s" SQUARE" IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
@@ -2173,6 +2187,110 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m A64-BUILDER TXT TXT-N  in out POOLED-SLOTS  A64SEL:SELECT ;
 
+\ ---- two functions, two arities ----------------------------------------------
+\ THE SHAPE A QUOTATION MAKES. An emission holds the definition's own routine and
+\ a routine per quotation its body makes, and those routines have their own
+\ effects: `: QP-ACT ( -- [ -- ] ) [: 1 drop ;] ;` is a ( -- n ) function whose
+\ body is a ( -- ) one. Selected under ONE arity for the whole emission the second
+\ function was refused - E-A64SEL-PLACE, measured on exactly this pair - because
+\ the exit was built from the contract's outs rather than from the function's.
+\
+\ THE TWO FIXTURES ARE THE SAME PAIR WITH ONE NUMBER CHANGED, which is what makes
+\ the case say something. The second function leaves nothing in one and leaves
+\ what the first leaves in the other; a selector reading one arity for the module
+\ selects the second of them and refuses the first, so the pair separates "each
+\ function's own boundary" from "they happened to agree".
+\
+\ AND THE ASSERTION IS THE SECOND FUNCTION'S OWN EXIT, not the fact that
+\ selection returned. A second function given the FIRST's outs would build a
+\ store and a pointer move for a result it does not have, so its operation count
+\ and its opcodes are where the two readings differ.
+: RET0 ( -- )
+   HIR-OPCODE:RETURN CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB IR-BUILD:END-OP drop ;
+
+: BUILD-OUT1 ( ptr u8 n -- )
+   0 1 OPEN-FUN$
+   7 CONSTOP RET1
+   CLOSE-FUN ;
+
+: BUILD-OUT0 ( ptr u8 n -- )
+   0 0 OPEN-FUN$
+   RET0
+   CLOSE-FUN ;
+
+: BUILD-TWO-ARITIES ( -- )
+   s" OUTER" BUILD-OUT1
+   s" INNER" BUILD-OUT0 ;
+
+: BUILD-TWO-SAME ( -- )
+   s" OUTER" BUILD-OUT1
+   s" INNER" BUILD-OUT1 ;
+
+\ The readers above answer about function zero, because until an emission held
+\ more than one that was the only function there was. These take the ordinal.
+: FBLK0 ( n -- IR-ID:ir-block-id )
+   {: f:n :}
+   RF R-BLKR RV RK  RK f IR-ID:PACK-FUN  0 IR-FUN:FBLOCK@ ;
+
+: FOPS ( n -- n )
+   R-BLKR RV  swap FBLK0  IR-FUN:FOP-COUNT ;
+
+: FOP@ ( n n -- IR-ID:ir-op-id )
+   {: f:n i:n :}
+   R-BLKR RV R-OPR RV RK  f FBLK0  i IR-FUN:FOP@ ;
+
+: FOPCODE-IS? ( n n ptr u8 n -- bool )
+   {: f:n i:n p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   R-SYMP RV R-SYMR RV  R-OPR RV RK f i FOP@ IR-OP:FOPCODE@  p u IR-SYM:FEQ? ;
+
+: TWO-ARITIES-BODY ( IR-CTX:ctx -- n n n bool bool )
+   HIR-MOD
+   BUILD-TWO-ARITIES
+   0 1 SELECTED-HABU READ!
+   RF IR-FUN:FFUNS
+   0 FOPS
+   1 FOPS
+   1  1 FOPS 1 -  s" a64.ret" FOPCODE-IS?
+   1 0 s" a64.dstore" FOPCODE-IS? ;
+
+: TWO-SAME-BODY ( IR-CTX:ctx -- n n n )
+   HIR-MOD
+   BUILD-TWO-SAME
+   0 1 SELECTED-HABU READ!
+   RF IR-FUN:FFUNS
+   0 FOPS
+   1 FOPS ;
+
+\ A contract that does not describe function ZERO. The emission is published
+\ under one name at one address and that is the function the contract is about,
+\ so a caller stating another word's interface is refused rather than compiling
+\ this body behind it.
+: DECL-MISMATCH-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-TWO-ARITIES
+   1 1 SELECTED-HABU drop ;
+
+: DECL-MISMATCH ( -- )
+   WBND [: DECL-MISMATCH-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TWO-ARITIES-CASE ( -- )
+   s" each function of an emission is selected under its OWN arity" T-LABEL
+   WBND [: TWO-ARITIES-BODY ;] IR-CTX:WITH-CONTEXT
+   \ Read bottom up: two functions; the first holds five operations and the
+   \ second three; the second's last operation is its return and its first is
+   \ NOT a store. The three the second holds are its pointer move in, its
+   \ pointer move out over nothing, and the return - where the first, leaving a
+   \ value, also materialises it and stores it into the caller's slot. A second
+   \ function built from the first's outs would carry that store too.
+   TFALSE TTRUE
+   3 T= 5 T= 2 T=
+   s" and two functions that happen to agree still select" T-LABEL
+   WBND [: TWO-SAME-BODY ;] IR-CTX:WITH-CONTEXT
+   5 T= 5 T= 2 T=
+   s" a contract that is not function zero's own interface is refused" T-LABEL
+   [: DECL-MISMATCH ;] E-A64SEL-PLACE TTHROWSQ ;
+
 \ ---- the arm that writes ----------------------------------------------------
 \ The one refusal no count may overrule, read as the block count on both sides
 \ of one flag. The if-conversion is the only thing in this pass that changes
@@ -2585,6 +2703,7 @@ public
    PASS-CASE
    EXCH-CASE
    MEM-CASE
+   TWO-ARITIES-CASE
    SELECT-EFFECT-CASE
    FPLACE-CASE
    FPLACE-STORE-CASE

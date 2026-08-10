@@ -37,6 +37,7 @@ require src/compiler/ir/id.f
 require src/compiler/ir/arena.f
 require src/compiler/ir/attr.f
 require src/compiler/ir/source.f
+require src/compiler/ir/type.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
@@ -154,6 +155,24 @@ public
 \ ---- the functions and blocks of the module ----------------------------------
 : FUN-COUNT ( -- n )
    V-FUNR VW IR-FUN:FFUNS ;
+
+\ HOW MANY VALUES ONE FUNCTION TAKES AND LEAVES, off its own recorded signature.
+\ A module holds a routine per quotation as well as the definition's own, and
+\ those routines have their OWN effects - `: QP-ACT ( -- [ -- ] ) [: 1 drop ;] ;`
+\ is a function that leaves one value holding a function that leaves none. So the
+\ arity is a fact of the FUNCTION, and it is read here, once, by every pass that
+\ needs it: the selector builds each function's entry and exit from it and
+\ src/compiler/native/regalloc-verify.f measures each function's own boundary
+\ against it, and two passes deriving one number from one row cannot come to
+\ disagree about it.
+\
+\ THE SIGNATURE IS THE ONLY PLACE THIS CAN COME FROM. A routine contract states
+\ one arity for a whole emission, which was the truth exactly while an emission
+\ held one function; it says nothing about the second. The module has said it per
+\ function since the elaborator first called IR-BUILD:SET-SIGNATURE.
+: FUN-ARITY ( IR-ID:ir-fun-id -- n n )
+   {: f:IR-ID:ir-fun-id :}
+   V-TYPR VW  V-FUNR VW MKEY f IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@ ;
 
 : BLOCK-COUNT ( IR-ID:ir-fun-id -- n )
    V-FUNR VW swap IR-FUN:FBLOCK-COUNT ;

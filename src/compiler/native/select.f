@@ -285,6 +285,8 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
 1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
 variable S-FRAME                     \ the frame the contract declares, in bytes
+variable S-DECL-IN                   \ how many values the contract declares the emission takes
+variable S-DECL-OUT                  \ and how many it declares it leaves
 variable N-CALLS                     \ calls this selection built
 variable N-TAILS                     \ tail branches this selection built
 variable N-TRAPS                     \ trap branches this selection built
@@ -856,6 +858,58 @@ variable D-RETS                                    \ returns seen while surveyin
    CALLS? 0= if exit then
    DSTACK? 0= if E-A64SEL-CALL throw then
    FRAME A64IR:SLOT-WIDTH < if E-A64SEL-CALL throw then ;
+
+\ ---- each function's own boundary --------------------------------------------
+\ THE CONTRACT DESCRIBES THE PUBLISHED WORD AND THE MODULE DESCRIBES EVERY
+\ FUNCTION. An emission holds the definition's own routine and a routine per
+\ quotation its body makes, and those routines have effects of their own:
+\ `: QP-ACT ( -- [ -- ] ) [: 1 drop ;] ;` is a function leaving one value whose
+\ body leaves none. One arity for a whole emission was the truth exactly while an
+\ emission held one function, and it says nothing about the second - measured as
+\ E-A64SEL-PLACE on a module of a ( -- n ) function and a ( -- ) one, where the
+\ same pair both ( -- n ) selects.
+\
+\ SO THE TWO PLACE LISTS ARE THIS FUNCTION'S, DERIVED FROM ITS OWN SIGNATURE, and
+\ the contract's lists become what function zero - the word the emission is
+\ published as - is HELD against. Every reader below is unchanged: they all ask
+\ ARGS and OUTS, which now answer about the function being walked, which is what
+\ each of them was always asking about.
+\
+\ ONLY THE DATA-STACK CONVENTION CAN BE DERIVED, and the other one is LEFT AS IT
+\ WAS rather than given a derivation it has no basis for. A place list says WHERE
+\ each value is; under the caller's data stack that is slot i, so the count
+\ decides the whole list and the module's own arity is enough. Under a register
+\ convention it is the ABI's allocation, and no count re-derives which registers
+\ those are - so the contract's own lists stand for every function, exactly as
+\ they did before this seam existed. Nothing is lost by that here: the register
+\ path never reads them for a function's boundary at all (OPEN-ARGS below takes
+\ the block's own arguments), and src/compiler/native/abi.f - the only production
+\ writer of a contract - declares the data-stack convention for every routine the
+\ chain compiles, so a register-convention emission is a fixture's.
+: FUN-SLOTS ( n -- A64EFF:placeseq )
+   {: k:n :}
+   A64EFF:SEQ-NONE
+   k 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+
+\ What the caller declared, held against what the module recorded. It is asked of
+\ function zero only, and only under the data-stack convention: there the
+\ contract's lists ARE the arity - src/compiler/native/abi.f builds each one as
+\ `in SLOT-SEQ` - so a contract disagreeing with function zero is a caller
+\ compiling one word's body under another word's interface. Under the register
+\ convention the lists are the ABI's allocation and say nothing about how many
+\ values the function holds, so there is nothing here to hold them against.
+: DECL-CK ( n n -- )
+   {: in:n out:n :}
+   in S-DECL-IN @ <> if E-A64SEL-PLACE throw then
+   out S-DECL-OUT @ <> if E-A64SEL-PLACE throw then ;
+
+: FUN-PLACES! ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id ord:n :}
+   DSTACK? 0= if exit then
+   f NFROZEN:FUN-ARITY {: in:n out:n :}
+   ord 0= if in out DECL-CK then
+   in FUN-SLOTS 0 S-ARGS !
+   out FUN-SLOTS 0 S-OUTS ! ;
 
 \ The contract and the module have to agree about whether this routine calls.
 \ A contract that declares a call for a body containing none reserves a frame and
@@ -4520,11 +4574,12 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
 \ One function of the source module, block by block in the order the module
 \ records them. That order is the one every later pass reads too, so a successor
 \ ordinal means the same block on both sides of this pass.
-: WALK-FUN ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
+: WALK-FUN ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id ord:n :}
    f BLOCK-COUNT {: n:n :}
    n 1 < if E-A64SEL-SHAPE throw then
    n NFROZEN:BMAX > if E-A64SEL-CAP throw then
+   f ord FUN-PLACES!
    f 0 S-FUN !
    f OPEN-FUN
    VCLEAR
@@ -4682,6 +4737,8 @@ public
    m BND-MODULE-CK
    gi 0 S-ARGS !
    gr 0 S-OUTS !
+   gi A64EFF:SEQ-LEN S-DECL-IN !
+   gr A64EFF:SEQ-LEN S-DECL-OUT !
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:GPR-WRITABLE 0 S-POOL !
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
@@ -4702,7 +4759,7 @@ public
    c b p u SOURCE!
    FUN-COUNT {: n:n :}
    n 0 ?do
-      MKEY i IR-ID:PACK-FUN WALK-FUN
+      MKEY i IR-ID:PACK-FUN i WALK-FUN
    loop
    CALLED-CK
    TAILED-CK

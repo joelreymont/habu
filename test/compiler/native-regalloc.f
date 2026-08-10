@@ -2827,7 +2827,76 @@ create TXT
    WBND [: FSPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 13 T= 0 T= ;
 
+\ ---- an emission whose two functions have two arities -------------------------
+\ THE SHAPE A QUOTATION MAKES, judged by the validator rather than by the
+\ selector. `: QP-ACT ( -- [ -- ] ) [: 1 drop ;] ;` is a ( -- n ) function whose
+\ body is a ( -- ) one, so this pass has to measure each function's entry and
+\ exit against the places THAT function's values occupy. Measured against one
+\ arity for the whole emission the second function's boundary is judged by the
+\ first's, which is a verifier agreeing with an allocation nobody checked.
+\
+\ THE MODULE IS THE REAL SELECTOR'S OUTPUT, not a hand-built one: what this pass
+\ has to accept is what the chain really produces for that shape, and a fixture
+\ assembling the entry and exit by hand would be this suite deciding what the
+\ boundary is instead of measuring it.
+: HRET0 ( -- )
+   HIR-OPCODE:RETURN CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB IR-BUILD:END-OP drop ;
+
+: BUILD-Q-OUT1 ( ptr u8 n -- )
+   0 1 OPEN-FUN
+   7 CONSTOP RET1
+   CLOSE-FUN ;
+
+: BUILD-Q-OUT0 ( ptr u8 n -- )
+   0 0 OPEN-FUN
+   HRET0
+   CLOSE-FUN ;
+
+: BUILD-TWO-ARITIES ( -- )
+   s" OUTER" BUILD-Q-OUT1
+   s" INNER" BUILD-Q-OUT0 ;
+
+: SELECTED-HABU ( n n n -- IR-BUILD:module )
+   {: n:n in:n out:n :}
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   A64-BUILDER {: ab:IR-BUILD:builder :}
+   CC ab A64RA:BIND-DIALECT
+   CC ab A64RAV:BIND-DIALECT
+   CC m ab TXT TXT-N  n in out HABU-N  A64SEL:SELECT ;
+
+: TWO-ARITIES-BODY ( IR-CTX:ctx -- bool )
+   HIR-MOD
+   BUILD-TWO-ARITIES
+   4 0 1 SELECTED-HABU {: m:IR-BUILD:module :}
+   CC m  4 0 1 HABU-N  A64RA:ALLOCATE
+   m  4 0 1 HABU-N  A64RAV:ACCEPT
+   A64RAV:ACCEPTED? ;
+
+\ The same allocation offered under a contract that is not function ZERO's own
+\ interface. The pools agree, so the refusal is this rule and not the pool's.
+: TWO-ARITIES-DECL-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-TWO-ARITIES
+   4 0 1 SELECTED-HABU {: m:IR-BUILD:module :}
+   CC m  4 0 1 HABU-N  A64RA:ALLOCATE
+   m  4 1 1 HABU-N  A64RAV:ACCEPT ;
+
+: TWO-ARITIES ( -- bool )
+   WBND [: TWO-ARITIES-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TWO-ARITIES-DECL ( -- )
+   WBND [: TWO-ARITIES-DECL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TWO-ARITIES-CASES ( -- )
+   s" each function of an emission is measured against its OWN boundary" T-LABEL
+   TWO-ARITIES TTRUE
+   s" and a contract that is not function zero's interface is refused" T-LABEL
+   [: TWO-ARITIES-DECL ;] E-A64RAV-CONTRACT TTHROWSQ ;
+
 \ ---- groups ------------------------------------------------------------------
+: GROUP-TWO-ARITIES ( IR-CTX:ctx -- ) drop TWO-ARITIES-CASES ;
 : GROUP-PLACE-ACCEPT ( IR-CTX:ctx -- ) drop PLACE-ACCEPT-CASE ;
 : GROUP-PLACE-MOVED ( IR-CTX:ctx -- ) drop PLACE-MISPLACED-CASES ;
 : GROUP-PLACE-CANON ( IR-CTX:ctx -- ) drop PLACE-CANON-CASES ;
@@ -2897,6 +2966,7 @@ public
    MB-LOWER-CASE
    MB-FIXED-CASE
    RESERVED-CASES
+   WBND [: GROUP-TWO-ARITIES ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-PLACE-ACCEPT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-PLACE-MOVED ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-PLACE-CANON ;] IR-CTX:WITH-CONTEXT
