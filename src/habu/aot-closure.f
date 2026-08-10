@@ -119,13 +119,15 @@ s" MAIN" ENTRY-NAME!
 \ all reach the code region or a live dictionary record (stripped __text is r-x
 \ and not at RBASE-VA). `patch32` is the isolated single-word poke;
 \ `code-publish` is the bulk publication window, `xref-retarget` points a record
-\ at a routine, and `callmap-set` records a call site's relocation class.
+\ at a routine, `callmap-set` records a call site's relocation class, and
+\ `addrmap-set` records an address chain's.
 : AOT-UNSAFE? {: r:ptr :} ( ptr a -- bool )
    r s" create" REC-NAME= IF 0 0= EXIT THEN
    r s" compile," REC-NAME= IF 0 0= EXIT THEN
    r s" patch32" REC-NAME= IF 0 0= EXIT THEN
    r s" code-publish" REC-NAME= IF 0 0= EXIT THEN
    r s" callmap-set" REC-NAME= IF 0 0= EXIT THEN
+   r s" addrmap-set" REC-NAME= IF 0 0= EXIT THEN
    r s" xref-retarget" REC-NAME= IF 0 0= EXIT THEN
    0 0= 0= ;
 create AECH 1 allot

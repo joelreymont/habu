@@ -914,9 +914,13 @@ variable REG-I
    \ habu-compile-str-literals-30a7121b) added the `CHECKER-TAPE` axiom
    \ `K-STRING`, the fourth token class the reader hands its observer - the one
    \ that carries a string literal's decoded body rather than its opener.
+   \ It was 349 before the per-site address relocation record (dot
+   \ habu-per-site-relocation-bb9b6d70) added the trusted-only axiom
+   \ `addrmap-set`, the sibling of `callmap-set` for the second relocation map -
+   \ the one that records where an address chain starts.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 349 ASSERT=
+   REG-COUNT 350 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

@@ -372,9 +372,24 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ size maps differed: 117740 -> 118032, +292. Floor follows: 7148 -> 7440, pad
 \ 9236 -> 8944, code+pad 126976 either way, so the file stays inside the same
 \ 16 KiB page and neither MACOS-SIGNATURE nor MACOS-TOTAL moves.
-118084 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-10, the address-literal map's publisher half (dot
+\ habu-per-site-relocation-bb9b6d70): the engine gains `addrmap-set`, the
+\ sibling of `callmap-set` for the SECOND relocation map - the one that records
+\ which region word an address chain starts in, so a compiler written in Habu can
+\ write the record the engine's own C-CODE-ADDR writes from inside. Same shape as
+\ its sibling: the same region-offset bound guard with its named refusal tail,
+\ the same two index computations, the same byte read-modify-write. The routine
+\ disassembles to 32 instruction words against `callmap-set`'s 31 - one more
+\ because ADDRMAP-OFF sits above CALLMAP-OFF and its LIT64 needs one further
+\ move-wide lane - and the balance of the delta is the primitive's registration
+\ and its deref entry. The exact-CODELEN ratchet measured the candidate at
+\ 116584 (was 116384), +200. Floor follows from the same number: 5792 -> 5992,
+\ inside the same 16 KiB page, so the text pad absorbs it and neither
+\ MACOS-SIGNATURE nor MACOS-TOTAL moves.
+118284 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-7492 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+7692 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

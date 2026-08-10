@@ -2093,6 +2093,47 @@ public
    12 1 MOVZ,  12 12 10 LSLV,
    13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
 
+\ addrmap-set ( addr -- ): record the four-instruction MOVZ/MOVK chain that
+\ starts at `addr` as an address literal, the same way the engine's own
+\ C-CODE-ADDR records one (habu2.f EMIT-ADDR-SITE).
+\
+\ WHY IT IS THE SAME MAP AND NOT A SECOND ONE. What the relocation passes need to
+\ know is WHERE a chain starts, and that question has one answer whatever kind of
+\ address the chain carries: an address of code, or an address of the DATA region.
+\ Both are four move-wide words into one register, indistinguishable in the bytes,
+\ and both are found by the identical bit scan. The KIND is the thing that differs,
+\ and it does not belong here - a kind is per relocation window and is written
+\ beside the window (src/compiler/native/publish.f), while this bit is a permanent
+\ property of the region word it names. A second band would have cost REGION/32
+\ more bytes of engine DATA to answer a question the band does not ask.
+\
+\ AND THE SNAPSHOT PASS ALREADY HANDLES BOTH. EMIT-ADDRS is called once per band
+\ with the band it is moving; a chain whose value lies outside that band is left
+\ alone rather than guessed at. A DATA address is outside both the region band and
+\ the text band in every run - DATA is mapped MAP_FIXED at DATA-VA, far above both -
+\ so a site recorded here for a DATA chain is visited by both calls and rewritten
+\ by neither, which is exactly right: DATA does not move.
+\
+\ THE GUARD IS THE SAME GUARD, for the same reason: the map is indexed by REGION
+\ OFFSET, so an address outside the region indexes past the map and into whatever
+\ DATA band follows it.
+: BADDRMAPSET ( -- )
+   LBL LBL {: inreg:label bad:label :}
+   A G-POP                                       \ x9 = chain's first word address
+   10 9 3 ANDI,  10 bad CBNZ,                    \ a chain starts on a whole instruction
+   10 9 DBASE SUB,                               \ x10 = candidate region byte offset
+   9 DBASE CMP,  C-CC bad BCOND,                 \ below the region
+   11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND, \ at or past its end
+   inreg B,
+   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   inreg LBL,
+   9 9 DBASE SUB,                                \ x9 = region byte offset
+   10 9 2 LSRI,  10 10 7 ANDI,                   \ x10 = bit number
+   11 9 5 LSRI,                                  \ x11 = map byte index
+   12 SNAP-RELOC:ADDRMAP-OFF LIT64,  11 11 12 ADD,  11 DATA 11 ADD,
+   12 1 MOVZ,  12 12 10 LSLV,
+   13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
+
 \ xref-retarget ( start len recidx -- ): point one dictionary record at one
 \ routine, in one protection window and one order.
 \
@@ -2726,6 +2767,7 @@ package ENGINE-EMIT
    s" patch32" ['] BPATCH32 2 GDEREF-F
    s" code-publish" ['] NPUBWIN:BCODEPUBLISH 3 GDEREF-F
    s" callmap-set" ['] NPUBWIN:BCALLMAPSET 1 GDEREF-F
+   s" addrmap-set" ['] NPUBWIN:BADDRMAPSET 1 GDEREF-F
    s" xref-retarget" ['] NPUBWIN:BXREFRETARGET 3 GDEREF-F
    s" close" ['] BCLOSE FPRIM-L
    s" close-rc" ['] BCLOSE-RC FPRIM-L

@@ -5425,6 +5425,8 @@ PRIM: code-publish  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ the bulk publication window is code injection too
 PRIM: callmap-set   PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
+PRIM: addrmap-set   PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
 PRIM: xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ points a live dictionary record at new code
 PRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;

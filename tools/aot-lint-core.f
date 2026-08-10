@@ -92,12 +92,13 @@ private
 \ is on it: a stripped AOT binary has no writable code region to open, so a word
 \ that reaches one of them at runtime cannot run there. `code-publish` is the
 \ bulk window, `xref-retarget` rewrites a live dictionary record, and
-\ `callmap-set` writes the relocation map that only a region-resident compiler
-\ has anything to say about.
+\ `callmap-set` and `addrmap-set` write the two relocation maps that only a
+\ region-resident compiler has anything to say about.
 : UNSAFE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" compile," LINT-STR=CI IF LINT-TRUE exit THEN
    a u s" code-publish" LINT-STR=CI IF LINT-TRUE exit THEN
    a u s" callmap-set" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" addrmap-set" LINT-STR=CI IF LINT-TRUE exit THEN
    a u s" xref-retarget" LINT-STR=CI IF LINT-TRUE exit THEN
    a u s" patch32" LINT-STR=CI ;
 
