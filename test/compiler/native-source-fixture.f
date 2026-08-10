@@ -224,6 +224,20 @@ public
    c b p r HIR-WORD:REGISTER-WORDS
    p r ;
 
+\ The same model with room for `extra` rows the elaborator's own resolver will
+\ fill in. A body that names another word gains a callable row while it is being
+\ elaborated - src/compiler/native/elaborate.f RESOLVE-SCAN puts every name the
+\ engine and the checker can both answer for into the table - so a fixture whose
+\ body calls has to be given a table with somewhere to put them. Sized by the
+\ caller because how many names its own body writes is the fixture's fact.
+: MODEL-ROOM ( IR-CTX:ctx IR-BUILD:builder n -- IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder extra:n :}
+   c b IR-BUILD:MODULE-KEY  HIR-WORD:WORDS extra +  HIR-WORD:PICK-CELLS
+   HIR-WORD:NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r HIR-WORD:REGISTER-WORDS
+   p r ;
+
 \ The same model with one `create`d data word declared beside the subset's own
 \ vocabulary, named by its spelling. A definition that mentions a data word
 \ cannot be compiled without this, because the dialect's vocabulary is the

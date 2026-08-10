@@ -203,7 +203,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module they were all learned from.
-45 constant OPCODES-N
+46 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -249,6 +249,7 @@ private
 42 constant O-FLTZ
 43 constant O-FEQZ
 44 constant O-TRAP
+45 constant O-QUOT
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -265,6 +266,7 @@ BOUND-NO BND-MODE !
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-VAL IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OUT IR-ID:ir-symbol-id
@@ -546,6 +548,7 @@ variable D-RETS                                    \ returns seen while surveyin
       feq      OF O-FEQ      ENDOF
       fltz     OF O-FLTZ     ENDOF
       feqz     OF O-FEQZ     ENDOF
+      quot     OF O-QUOT     ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- HIR:opcode )
@@ -590,6 +593,7 @@ variable D-RETS                                    \ returns seen while surveyin
       O-REALINT  of HIR-OPCODE:REALINT  endof
       O-BITSREAL of HIR-OPCODE:BITSREAL endof
       O-REALBITS of HIR-OPCODE:REALBITS endof
+      O-QUOT     of HIR-OPCODE:QUOT     endof
       O-FLT      of HIR-OPCODE:FLT      endof
       O-FGT      of HIR-OPCODE:FGT      endof
       O-FEQ      of HIR-OPCODE:FEQ      endof
@@ -2098,6 +2102,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
       realint  OF A64SEL-CMPKIND:NONE ENDOF
       bitsreal OF A64SEL-CMPKIND:NONE ENDOF
       realbits OF A64SEL-CMPKIND:NONE ENDOF
+      quot     OF A64SEL-CMPKIND:NONE ENDOF
    ;MATCH ;
 
 : SLOT-KIND ( n -- A64SEL:cmpkind )
@@ -2522,6 +2527,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       feq      OF false ENDOF
       fltz     OF false ENDOF
       feqz     OF false ENDOF
+      quot     OF false ENDOF
    ;MATCH ;
 
 : TRAP-CK ( HIR:opcode IR-ID:ir-symbol-id -- HIR:opcode )
@@ -3599,6 +3605,35 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    TAIL-HERE? if exit then
    id EMIT-RETURN ;
 
+\ ---- selecting the address of another function of this emission ---------------
+\ ONE INSTRUCTION, AND THE ORDINAL RIDES ACROSS UNCHANGED. `hir.quot` names a
+\ function of the source module by its position in that module, and this pass
+\ builds the functions of the machine module in the same order and one for one -
+\ SELECT walks IR-FUN:FFUNS in order and opens one machine function per source
+\ function - so position k there is position k here and the number needs no
+\ mapping. The machine form is a pc-relative Adr, so what the register ends up
+\ holding is right wherever the emission is finally written, and no relocation
+\ carries it.
+\
+\ THE KEY IS COMPARED RATHER THAN THE ATTRIBUTE COUNTED. A quotation carrying
+\ some other attribute is refused instead of read as if its number were the
+\ function, which is the same discipline CONST-VALUE keeps about a literal.
+: QUOT-FUN ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id ATTRS-OF 1 <> if E-A64SEL-ATTR throw then
+   id 0 ATTR-KEY-AT  0 BND-FUN @  SAME-SYM?
+   0= if E-A64SEL-ATTR throw then
+   id 0 ATTR-INT-AT ;
+
+: EMIT-QUOT ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:CODEADDR OPEN
+   RESULT+
+   CTX BLD  CTX BLD A64IR:KEY-FUN
+   CTX BLD  id QUOT-FUN  A64IR:FUN-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
 : RULE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
@@ -3649,6 +3684,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       realint  OF id A64IR-OPCODE:FCVTZS EMIT-UNARY ENDOF
       bitsreal OF id EMIT-BITSREAL ENDOF
       realbits OF id EMIT-REALBITS ENDOF
+      quot     OF id EMIT-QUOT ENDOF
    ;MATCH ;
 
 \ ---- which slot holds which value, over the whole routine ---------------------
@@ -4674,6 +4710,7 @@ public
    c b HIR-OPCODE:BSTORE BIND1
    c b HIR-OPCODE:CALL   BIND1
    c b HIR-OPCODE:WORDCALL BIND1
+   c b HIR-OPCODE:QUOT   BIND1
    c b HIR-OPCODE:RETURN BIND1
    c b HIR-OPCODE:FCONST   BIND1
    c b HIR-OPCODE:FADD     BIND1
@@ -4694,6 +4731,7 @@ public
    c b HIR-OPCODE:FEQZ     BIND1
    c b HIR-OPCODE:TRAP     BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
+   c b HIR:KEY-FUN   0 BND-FUN !
    c b HIR:KEY-ENTRY 0 BND-ENTRY !
    c b HIR:KEY-IN    0 BND-IN !
    c b HIR:KEY-OUT   0 BND-OUT !

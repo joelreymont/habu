@@ -121,7 +121,7 @@ private
 \ whose flags an Fcmp wrote in FFSEL-SHAPE-CASE, the six that reach memory in the
 \ D file in D-ADDR-SHAPE-CASE and D-SLOT-SHAPE-CASE, and the six bitwise and
 \ shift forms in BITWISE-CASE, and the count covers all of them.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -158,6 +158,7 @@ private
    c b A64IR-OPCODE:FASTORE A64IR:OPCODE {: xb:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:FDLOAD A64IR:OPCODE {: xd:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:FDSTORE A64IR:OPCODE {: xe:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:CODEADDR A64IR:OPCODE {: ca:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FDEFINED?
@@ -193,15 +194,16 @@ private
    rv xa IR-SCHEMA:FDEFINED?
    rv xb IR-SCHEMA:FDEFINED?
    rv xd IR-SCHEMA:FDEFINED?
-   rv xe IR-SCHEMA:FDEFINED? ;
+   rv xe IR-SCHEMA:FDEFINED?
+   rv ca IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the seventy-three machine opcodes" T-LABEL
+   s" registration defines exactly the seventy-four machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 73 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 74 T= ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one

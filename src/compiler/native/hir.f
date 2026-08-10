@@ -77,11 +77,19 @@
 \ double was stored in.
 \
 \ That is exactly what section 7.2's list needs for a colon body with no
-\ control flow, no calls, no locals and no strings. Section 7.2 names many more
-\ operations - `quotation`, `execute`, `catch` and the rest - and every one of
-\ them is a later leaf of the same chain. An opcode with no elaborator, no
-\ lowering and no test would be a promise, not a schema, so none is declared
-\ here.
+\ control flow, no calls, no locals and no strings. Section 7.2 names more
+\ operations still - `execute`, `catch` and the rest - and every one of them is a
+\ later leaf of the same chain. An opcode with no elaborator, no lowering and no
+\ test would be a promise, not a schema, so none is declared here.
+\
+\ WHAT A QUOTATION IS IN THIS DIALECT, AND WHY IT IS ONE OPCODE AND NOT A FAMILY.
+\ `[: … ;]` writes a body that is not part of the body around it: it has its own
+\ entry, its own return, and it is reached by an address somebody executes. So it
+\ is compiled as one more FUNCTION of the same emission, and the only thing the
+\ enclosing body holds is that function's address - which is `hir.quot`, declared
+\ below. There is no operation here for making a quotation, none for entering
+\ one, and none for what a quotation captures, because a quotation of this subset
+\ captures nothing: it is a routine, and naming a routine is one value.
 \
 \ WHY SIX COMPARISONS AND NOT THREE WITH THE OPERANDS TURNED ROUND. `a > b` is
 \ `b < a` and `a >= b` is `b <= a`, so the greater-than pair could have been the
@@ -278,6 +286,7 @@ ENUM opcode DERIVE eq
    brz
    call
    wordcall
+   quot
    return
    trap
    fconst
@@ -463,14 +472,15 @@ public
 : NAME ( -- ptr u8 n )
    s" hir" ;
 
-\ Version 0.3: the straight-line subset with doubles in it and a terminator that
-\ does not return. The major version stays at zero until the dialect is the whole
-\ of section 7.2; the minor version moved when the double type and its twelve
-\ operations arrived and again when hir.trap did, because a table with them and
+\ Version 0.4: the straight-line subset with doubles in it, a terminator that
+\ does not return, and the address of another function of the emission. The major
+\ version stays at zero until the dialect is the whole of section 7.2; the minor
+\ version moved when the double type and its twelve operations arrived, again
+\ when hir.trap did, and again when hir.quot did, because a table with them and
 \ one without are two different tables and every consumer compares the version
 \ exactly.
 0 constant MAJOR
-3 constant MINOR
+4 constant MINOR
 
 \ ---- the opcode names --------------------------------------------------------
 \ This module's interned symbol for one opcode. Interning deduplicates, so
@@ -504,6 +514,7 @@ public
       brz    OF s" hir.brz"    ENDOF
       call   OF s" hir.call"   ENDOF
       wordcall OF s" hir.wordcall" ENDOF
+      quot   OF s" hir.quot"   ENDOF
       return OF s" hir.return" ENDOF
       trap   OF s" hir.trap"   ENDOF
       fconst   OF s" hir.fconst"    ENDOF
@@ -551,6 +562,14 @@ public
 
 : KEY-OUT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.out" IR-BUILD:INTERN-SYMBOL ;
+
+\ The one attribute key `hir.quot` requires: WHICH function of this module the
+\ value it answers is the address of, as that function's ordinal. It is an
+\ ordinal rather than an address because there is no address yet - the body is
+\ emitted with the enclosing routine and where it lands is decided by the
+\ emitter, not by the pass that says which routine it is.
+: KEY-FUN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" hir.fun" IR-BUILD:INTERN-SYMBOL ;
 
 \ ---- the type of an ordinary value -------------------------------------------
 \ One signed 64-bit integer per stack value, which is what every schema this
@@ -629,6 +648,7 @@ private
       brz    OF s" hir.rule.brz"    ENDOF
       call   OF s" hir.rule.call"   ENDOF
       wordcall OF s" hir.rule.wordcall" ENDOF
+      quot   OF s" hir.rule.quot"   ENDOF
       return OF s" hir.rule.return" ENDOF
       trap   OF s" hir.rule.trap"   ENDOF
       fconst   OF s" hir.rule.fconst"    ENDOF
@@ -679,6 +699,7 @@ private
       brz    OF s" hir.render.brz"    ENDOF
       call   OF s" hir.render.call"   ENDOF
       wordcall OF s" hir.render.wordcall" ENDOF
+      quot   OF s" hir.render.quot"   ENDOF
       return OF s" hir.render.return" ENDOF
       trap   OF s" hir.render.trap"   ENDOF
       fconst   OF s" hir.render.fconst"    ENDOF
@@ -1067,6 +1088,46 @@ private
    c b HIR-OPCODE:WORDCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ The address of ANOTHER function of this module, as a value. It is what `[:`
+\ leaves: a quotation body is a routine with its own entry and its own return,
+\ compiled as one more function of this emission, and what the enclosing body
+\ holds is the address that routine is entered at.
+\
+\ NO OPERANDS AND ONE CELL. It reads nothing - which function it names is decided
+\ where the source wrote `[:` and not by anything the program computes - and what
+\ it answers is an ADDRESS, which on this machine is a cell like any other. That
+\ is not a shortcut around a richer type and it was measured: a schema names ONE
+\ result type, fixed when the family is registered, so a code-reference result
+\ would assert one signature for every quotation in the tree, and the quotations
+\ the tree really holds have four different ones (a ( -- ) body beside a
+\ ( n n n -- n ) one). Worse, src/compiler/ir/verify.f OPERAND-TYPE-CK holds
+\ every operand against its opcode's declared type, so a value of any type but
+\ the cell type could not be returned, stored, handed to a call or carried across
+\ a block edge - E-IR-VERIFY-OPTYPE, measured on `hir.return` - and those are the
+\ only things a program ever does with a quotation. The engine agrees: an xt on a
+\ Habu stack is a cell holding a code address, which is exactly what
+\ `hir.fixed` already answers for a `create`d word.
+\
+\ SO WHICH ROUTINE IT IS RIDES IN AN ATTRIBUTE, exactly as `hir.wordcall` carries
+\ its callee's entry and arity rather than encoding them in its operand types.
+\ The attribute is the callee's ORDINAL in this module and not an address: the
+\ body has not been emitted yet when this operation is staged, and where it lands
+\ is the emitter's answer.
+\
+\ IT IS PURE AND CANNOT TRAP. Naming a routine runs nothing: the address exists
+\ because the emission does, and no path through this operation enters the body.
+\ Whatever the body can do is the business of whoever executes it.
+: DEF-QUOT ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:QUOT OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-FUN IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:QUOT NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the float forms ---------------------------------------------------------
 \ A double literal: no operands, one double of result, and the value it holds -
 \ which is the literal's own bit pattern, because the cell IS the double. It is a
@@ -1251,6 +1312,7 @@ public
    c b t DEF-BRZ
    c b t k DEF-CALL
    c b t k DEF-WORDCALL
+   c b t DEF-QUOT
    c b t DEF-RETURN
    c b t DEF-TRAP
    c b REAL-TYPE {: f:IR-ID:ir-type-id :}

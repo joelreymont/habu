@@ -107,7 +107,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it here too.
-73 constant OPCODES-N
+74 constant OPCODES-N
 
 0 constant O-MOVZ
 1 constant O-MOVK
@@ -182,11 +182,12 @@ private
 70 constant O-FDLOAD
 71 constant O-FDSTORE
 72 constant O-TRAP
+73 constant O-CODEADDR
 \ One slot per attribute key the dialect declares. This pass writes no attribute
 \ of its own - the form it introduces carries none - but it COPIES every one the
 \ selector built, and a field copied under the wrong key would be a routine
 \ reading its arguments out of its own frame.
-12 constant KEYS-N
+13 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -199,6 +200,7 @@ private
 9 constant K-OFF
 10 constant K-MASK
 11 constant K-TRAP-ENTRY               \ the trap form's target, under a key of its own
+12 constant K-FUN                      \ which function of the emission an address form names
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -306,6 +308,7 @@ create MASK-AT OPS-MAX cells allot
       fcmpselzd OF O-FCMPSELZD ENDOF
       tailcall  OF O-TAILCALL  ENDOF
       trap      OF O-TRAP      ENDOF
+      codeaddr  OF O-CODEADDR  ENDOF
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
@@ -383,6 +386,7 @@ create MASK-AT OPS-MAX cells allot
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       O-TRAP      of A64IR-OPCODE:TRAP      endof
+      O-CODEADDR  of A64IR-OPCODE:CODEADDR  endof
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
@@ -835,6 +839,10 @@ create MASK-AT OPS-MAX cells allot
          CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD v A64IR:ENTRY-ATTR
          IR-BUILD:ADD-ATTR
       then
+      k K-FUN = if
+         CTX BLD  CTX BLD A64IR:KEY-FUN  CTX BLD v A64IR:FUN-ATTR
+         IR-BUILD:ADD-ATTR
+      then
    loop ;
 
 \ The blocks a terminator hands control to. Blocks are copied one for one and in
@@ -1125,6 +1133,7 @@ public
    c b A64IR-OPCODE:FCMPSELZD BIND1
    c b A64IR-OPCODE:TAILCALL  BIND1
    c b A64IR-OPCODE:TRAP      BIND1
+   c b A64IR-OPCODE:CODEADDR  BIND1
    c b A64IR-OPCODE:MADD      BIND1
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1
@@ -1144,6 +1153,7 @@ public
    c b A64IR:KEY-OFF    K-OFF BND-KEY !
    c b A64IR:KEY-MASK   K-MASK BND-KEY !
    c b A64IR:KEY-TRAP-ENTRY K-TRAP-ENTRY BND-KEY !
+   c b A64IR:KEY-FUN    K-FUN BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:FPR-TYPE 0 BND-FPR !

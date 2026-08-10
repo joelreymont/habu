@@ -820,6 +820,7 @@ public
 -8344 constant E-A64IR-FRAME    \ a reserved frame size no routine can declare: negative, not a multiple of the stack alignment, or past the deepest frame the offset field can reach
 -8345 constant E-A64IR-OFF      \ an add or subtract immediate outside the unsigned twelve-bit field the form holds: negative, or past the largest value that field carries with no shift
 -8346 constant E-A64IR-MASK     \ a mask the logical immediate forms cannot carry: the field holds a rotated contiguous run of ones repeating at a power-of-two element width, which excludes zero, all ones, and every run that is broken
+-8347 constant E-A64IR-FUN      \ a function ordinal the address-of-a-function form cannot name: negative, so it denotes no function of any emission. WHICH emission it must be a function of is the emitter's fact and not the dialect's, and is refused there
 
 \ Native ARM64 instruction selection (package A64SEL): -8360..-8379
 \
@@ -1198,6 +1199,13 @@ public
 \ capability; while it is open the refusal is what the chain answers, and it is
 \ its own code rather than the generic unmodelled-word one so a census can tell a
 \ quotation the chain declined from a word it has never heard of.
--8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` inside another one, which the engine itself refuses to compile; a `[:` the body never closes; a `;]` with no `[:` open; or a quotation whose body the leaf that compiles one has not landed yet
+-8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` inside another one, which the engine itself refuses to compile; a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes, or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; a body holding a locals group; or a quotation bound by `is`
+
+\ A definition holding more quotation bodies than one module has room for. Every
+\ body is a function of the same module, so the ceiling is the module's own -
+\ src/compiler/native/frozen.f FMAX, less the one the definition itself occupies -
+\ and raising it is a capability at FMAX, where every pass of the chain reads it,
+\ rather than a number to widen in the elaborator alone.
+-8652 constant E-NELAB-QUOT-CAP \ more quotation bodies in one definition than a module of the native chain holds functions for
 
 -8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, or a scrutinee whose bundle on that vector is not the width its family declares - which is what an instantiation wider than the declared one looks like from here

@@ -116,6 +116,14 @@
 \                                  the process, which does not come back: the
 \                                  ordinal naming the family is already in the
 \                                  cell that routine is entered through
+\   a64.codeaddr Adr rd, fn      - the address ANOTHER function of this emission
+\                                  is entered at, as a value. The operation
+\                                  carries the function's ORDINAL and not its
+\                                  address, because the address is where the
+\                                  emitter puts it and nothing before emission
+\                                  knows that. The instruction is PC-relative, so
+\                                  the value is right wherever the emission is
+\                                  finally written and no relocation carries it
 \   a64.lnkstr   Str x30 sp off  - put the caller's return address in a frame slot
 \   a64.lnkldr   Ldr x30 sp off  - take it back out again
 \   a64.ret      Ret             - return to the address in the link register
@@ -451,6 +459,7 @@ ENUM opcode DERIVE eq
    andi
    orri
    eori
+   codeaddr
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -588,6 +597,15 @@ OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 26 constant B-BITS
 19 constant BZ-BITS
 19 constant BCOND-BITS
+
+\ And the reach of the one form that names an address rather than a branch
+\ target. Its field is twenty-one bits and it counts BYTES, which is the one
+\ place the units of this section change: the instruction adds the field to its
+\ own address, so a word-aligned target simply leaves the field's low two bits
+\ clear rather than being counted in words. It is written as its own constant for
+\ the reason the two nineteens above are two constants: a field that moved would
+\ move here and nowhere else.
+21 constant ADR-BITS
 
 \ Every instruction of this architecture is four bytes, which is why every
 \ displacement field above counts instructions rather than bytes. It is written
@@ -755,6 +773,14 @@ private
    dup 0 <= if E-A64IR-ENTRY throw then
    dup INSN-BYTES mod 0<> if E-A64IR-ENTRY throw then ;
 
+\ ---- the checked function ordinal --------------------------------------------
+\ A position in the emission being built, which is what the address-of-a-function
+\ form names instead of an address. A negative one is no position at all and is
+\ refused here; HOW MANY functions the emission holds is not this dialect's fact,
+\ so the upper bound belongs to the emitter and is made there.
+: FUN-ORD ( n -- n )
+   dup 0 < if E-A64IR-FUN throw then ;
+
 \ ---- the checked condition operand -------------------------------------------
 \ A condition the four-bit field can hold. It is private because a caller reaches
 \ the field through the attribute builder below, which takes a condition of this
@@ -898,6 +924,7 @@ public
       andi      OF s" a64.andi"     ENDOF
       orri      OF s" a64.orri"     ENDOF
       eori      OF s" a64.eori"     ENDOF
+      codeaddr  OF s" a64.codeaddr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -940,6 +967,12 @@ public
 : B-FITS? ( n -- bool )      B-BITS FITS? ;
 : BZ-FITS? ( n -- bool )     BZ-BITS FITS? ;
 : BCOND-FITS? ( n -- bool )  BCOND-BITS FITS? ;
+
+\ The same question for the address form, and its argument is a BYTE delta. The
+\ encoder is the shipped assembler's ENC-ADR, which masks its field exactly as
+\ the branch encoders mask theirs, so the emitter asks this first and an address
+\ out of reach is refused instead of becoming the address of something else.
+: ADR-FITS? ( n -- bool )    ADR-BITS FITS? ;
 
 \ Design line 479: the two attribute keys a move-wide operation requires. The
 \ immediate and the half it goes into are the whole content of a move, so a move
@@ -1052,6 +1085,23 @@ public
 \ silently joining a classification it does not belong to.
 : KEY-TRAP-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.trap-entry" IR-BUILD:INTERN-SYMBOL ;
+
+\ The one attribute key the address-of-a-function form requires: WHICH function
+\ of this emission the value is the address of, as that function's ordinal. It is
+\ an ordinal and not an address for the reason the design list gives - there is no
+\ address until the emitter has laid the emission out - and it is its own key
+\ rather than `a64.entry`, because an entry is an address the world already has
+\ and this is a position in a module nobody has written yet.
+\
+\ WHAT THE BOUND HERE IS AND WHAT IT IS NOT. A negative ordinal names no function
+\ of any emission, which the dialect can say by itself. Whether the ordinal names
+\ a function of THIS emission depends on how many functions the emission holds,
+\ which is the emitter's fact, so it is refused there and not counted twice.
+: KEY-FUN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.fun" IR-BUILD:INTERN-SYMBOL ;
+
+: FUN-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   FUN-ORD IR-BUILD:INTERN-INT-ATTR ;
 
 \ The attribute key the comparison form requires: which condition it sets its
 \ flag on. The condition is the whole content of a comparison, so a comparison
@@ -1169,6 +1219,7 @@ private
       andi      OF s" a64.rule.andi"     ENDOF
       orri      OF s" a64.rule.orri"     ENDOF
       eori      OF s" a64.rule.eori"     ENDOF
+      codeaddr  OF s" a64.rule.codeaddr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1247,6 +1298,7 @@ private
       andi      OF s" a64.render.andi"     ENDOF
       orri      OF s" a64.render.orri"     ENDOF
       eori      OF s" a64.render.eori"     ENDOF
+      codeaddr  OF s" a64.render.codeaddr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1274,6 +1326,26 @@ private
    TOTAL
    TARGET
    c b A64IR-OPCODE:MOVZ NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ The address of another function of this emission. It reads no register and
+\ writes one, and the ordinal it carries says which function - so it has the
+\ shape of a move-wide with a different attribute, and none of the move-wide's
+\ arithmetic: what goes into the register is an address the emitter computes,
+\ not a number this module holds.
+\
+\ IT IS PURE AND TOTAL. The instruction adds a constant to its own address, which
+\ reads no memory, writes nothing but its register, and cannot fault. Whatever
+\ the function it names may do is the business of whoever branches there.
+: DEF-CODEADDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:CODEADDR OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-FUN IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:CODEADDR NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Movn: the same shape as the movz above - no register read, one written, the
@@ -2515,6 +2587,7 @@ public
    c b k DEF-LNKSTR
    c b k DEF-LNKLDR
    c b t DEF-RET
+   c b t DEF-CODEADDR
    c b FPR-TYPE {: f:IR-ID:ir-type-id :}
    c b f A64IR-OPCODE:FADD DEF-FBINARY
    c b f A64IR-OPCODE:FSUB DEF-FBINARY

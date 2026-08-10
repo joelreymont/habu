@@ -2136,7 +2136,7 @@ create TW-BUF TW-CAP allot
    s" QTWO dup [: 1+ ;] drop [: 1- ;] drop" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON drop ;
+   c b v p r 1 2 NELAB:COLON drop ;
 
 : QUOT-TWO ( -- )
    BND [: QUOT-TWO-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2153,9 +2153,380 @@ create TW-BUF TW-CAP allot
    s" a quotation closer with nothing open is refused at the closer itself" T-LABEL
    [: QUOT-ORPHAN ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED$ s" ;]" T$=
+   \ TWO QUOTATIONS ONE AFTER THE OTHER are two pairs, which is what says the
+   \ closer really closes: a pre-scan that opened on `[:` and never cleared would
+   \ read the second opener as a nested one and refuse THERE. Both pairs are well
+   \ formed, so what refuses the body is that nothing consumes either of them,
+   \ and it names the FIRST of the two - the row is the only thing that can say
+   \ which, because both openers are spelled the same way.
    s" two quotations in a row are two pairs, and the first opener is named" T-LABEL
    [: QUOT-TWO ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED-ROW 2 T= ;
+
+\ ---- a quotation body becomes a function of the emission -----------------------
+\ WHAT THE FIXTURES HAVE TO SAY, AND WHY READING THE MODULE IS THE ONLY WAY TO
+\ SAY IT. A quotation compiles into a second function whose arity is the one its
+\ CONSUMER declared, and the enclosing body holds one value naming it by ordinal.
+\ Nothing about that is visible from "the elaboration returned": a leaf that
+\ built one function and dropped the body, or built the body under the enclosing
+\ word's arity, or named the wrong ordinal, all return exactly the same way. So
+\ every case below reads the module back - how many functions it holds, what each
+\ one's recorded signature says, and what the `hir.quot` in the first one names.
+\
+\ THE SUBJECT WORDS ARE DEFINED THROUGH THE ENGINE FIRST, because the arity comes
+\ from the CHECKER's accepted effect for the name and there is no other place it
+\ could come from. The tape is then lexed from the same body, so what is
+\ elaborated is the definition the checker certified.
+: QDEF ( ptr u8 n ptr u8 n -- )
+   {: na nu:n sa su:n :} \ typed-local-lint: allow-bare-local - na and sa keep the ptr u8 byte-span role
+   na nu 0 search-wl 0<> if exit then
+   sa su EV ;
+
+: QP-ACT! ( -- )
+   s" QP-ACT" s" : QP-ACT ( -- [ -- ] ) [: 1 drop ;] ;" QDEF ;
+
+: QP-TAKE! ( -- )
+   s" QP-TAKE" s" : QP-TAKE ( [ n -- n ] n -- n ) swap drop ;" QDEF ;
+
+: QP-USE! ( -- )
+   s" QP-USE" s" : QP-USE ( n -- n ) [: 1 + ;] swap QP-TAKE ;" QDEF ;
+
+: QP-TAKE2! ( -- )
+   s" QP-TAKE2" s" : QP-TAKE2 ( [ n n -- n ] n -- n ) swap drop ;" QDEF ;
+
+: QP-RET! ( -- )
+   s" QP-RET" s" : QP-RET ( [ n -- n | a -- a ] n -- n ) swap drop ;" QDEF ;
+
+: QP-THREE! ( -- )
+   s" QP-THREE"
+   s" : QP-THREE ( -- n [ n n -- n ] [ n n n -- n ] ) 0 [: drop ;] [: drop drop ;] ;"
+   QDEF ;
+
+: F-FUNS ( IR-BUILD:module -- n )
+   IR-BUILD:FFUN-ROWS IR-FUN:FFUNS ;
+
+: F-ARITY ( IR-BUILD:module n -- n n )
+   {: m:IR-BUILD:module k:n :}
+   m IR-BUILD:FTYPE-ROWS
+   m IR-BUILD:FFUN-ROWS m IR-BUILD:FKEY  m IR-BUILD:FKEY k IR-ID:PACK-FUN
+   IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@ ;
+
+\ The name a function of the module carries. A quotation body is a function like
+\ any other and the table is keyed by SYMBOL, so two bodies of one definition
+\ that were named the same thing would be one function - which is why the name is
+\ read back rather than described.
+: F-FUN-NAME? ( IR-BUILD:module n ptr u8 n -- bool )
+   {: m:IR-BUILD:module k:n a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS
+   m IR-BUILD:FFUN-ROWS m IR-BUILD:FKEY  m IR-BUILD:FKEY k IR-ID:PACK-FUN
+   IR-FUN:FSYMBOL@
+   a u IR-SYM:FEQ? ;
+
+: F-QUOT-FUN ( IR-BUILD:module n -- n )
+   {: m:IR-BUILD:module k:n :}
+   m  m  m IR-BUILD:FKEY 0 IR-ID:PACK-FUN  F-BLK  s" hir.quot" k F-OPC-AT {: op:IR-ID:ir-op-id :}
+   m op 0 F-ATTR ;
+
+: F-QUOTS ( IR-BUILD:module -- n )
+   {: m:IR-BUILD:module :}
+   m  m  m IR-BUILD:FKEY 0 IR-ID:PACK-FUN  F-BLK  s" hir.quot" F-OPC-N ;
+
+\ A rig whose word model has room for the callees a fixture's body names.
+: SEALED-ROOM ( IR-CTX:ctx n -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
+   {: c:IR-CTX:ctx extra:n :}
+   c HIR-BUILDER {: b:IR-BUILD:builder :}
+   c b extra MODEL-ROOM
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b TAPE {: tp:IR-ARENA:arena :}
+   c LEX
+   b p r  tp NTAPE:SEAL ;
+
+\ `: QP-ACT ( -- [ -- ] ) [: 1 drop ;] ;` - the returned quotation. The enclosing
+\ function leaves one value and the body leaves none, which is the pair a module
+\ with one arity for the whole emission cannot hold.
+: QUOT-ACT-BODY ( IR-CTX:ctx -- n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   QP-ACT!
+   s" QP-ACT [: 1 drop ;]" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m F-FUNS
+   m F-QUOTS
+   m 0 F-QUOT-FUN
+   m 0 F-ARITY
+   m 1 F-ARITY ;
+
+: QUOT-ACT ( -- n n n n n n n )
+   BND [: QUOT-ACT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A quotation handed to a CALLEE, whose declared operand says what the body is.
+\ `QP-TAKE` takes `[ n -- n ]` and a number, so the body is ( n -- n ) while the
+\ enclosing definition is ( n -- n ) too - which is why the case reads the
+\ ATTRIBUTE and the operand's own descent rather than the two arities alone.
+: QUOT-CALL-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   QP-TAKE! QP-USE!
+   s" QP-USE [: 1 + ;] swap QP-TAKE" TEXT!
+   c 1 SEALED-ROOM
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m F-FUNS
+   m 0 F-QUOT-FUN
+   m 1 F-ARITY ;
+
+: QUOT-CALL ( -- n n n n )
+   BND [: QUOT-CALL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ THREE BODIES IN ONE DEFINITION, which is what says the ordinals are the build
+\ ORDER and not a constant. Each one's arity is its own dout term's, and the
+\ three attributes have to be one, two and three in the order the source wrote
+\ them - a loop that built them backwards, or that numbered from the wrong base,
+\ answers a different triple here rather than failing to return.
+: QUOT-THREE-BODY ( IR-CTX:ctx -- bool bool n n n n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   QP-THREE!
+   s" QP-THREE 0 [: drop ;] [: drop drop ;]" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 3 NELAB:COLON drop
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m 1 s" QP-THREE[:0" F-FUN-NAME?
+   m 2 s" QP-THREE[:1" F-FUN-NAME?
+   m F-FUNS
+   m F-QUOTS
+   m 0 F-QUOT-FUN
+   m 1 F-QUOT-FUN
+   m 1 F-ARITY
+   m 2 F-ARITY
+   m 0 F-ARITY ;
+
+: QUOT-THREE ( -- bool bool n n n n n n n n n n )
+   BND [: QUOT-THREE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ TWO CONSUMERS REACHING ONE BODY, WITH A MADE CALL BETWEEN THEM. This is the
+\ case that says which entry of the compile-time vector a body's row rides on.
+\ A made call hands the WHOLE vector over as operands and takes it back as the
+\ operation's results, so every value that merely survives it comes back a
+\ different value - while a call the inliner copied leaves them alone. A row
+\ carried on the VALUE would therefore be known after one call and lost after the
+\ other, and this definition would compile or not depending on whether an
+\ optimisation fired. It is carried on the vector ENTRY, which a call puts back
+\ where it found it, so the second `QP-TAKE` still names body zero and states the
+\ same arity the first one did.
+: QUOT-TWICE-BODY ( IR-CTX:ctx -- n n n n n )
+   {: c:IR-CTX:ctx :}
+   QP-TAKE!
+   s" QTWICE [: 1 + ;] dup 2 QP-TAKE drop 3 QP-TAKE" TEXT!
+   c 1 SEALED-ROOM
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m F-FUNS
+   m F-QUOTS
+   m 0 F-QUOT-FUN
+   m 1 F-ARITY ;
+
+: QUOT-TWICE ( -- n n n n n )
+   BND [: QUOT-TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ AND THE SAME BODY REACHING TWO CONSUMERS THAT DISAGREE. No certified definition
+\ can hold this - the checker refuses a second consumer declaring a different
+\ quotation effect, measured on `[: 1 + ;] dup 2 QA swap 3 QB` - so the tape is
+\ written straight and the elaborator meets a disagreement the checker would
+\ never let through. It refuses at the body's own `[:` rather than compiling the
+\ routine under whichever consumer the walk reached first.
+: QUOT-DISAGREE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   QP-TAKE! QP-TAKE2!
+   s" QDIS [: 1 + ;] dup 2 QP-TAKE drop 3 QP-TAKE2" TEXT!
+   c 2 SEALED-ROOM
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: QUOT-DISAGREE ( -- )
+   BND [: QUOT-DISAGREE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A BODY THAT DOES NOT LEAVE WHAT ITS CONSUMER SAID IT WOULD. `QP-TAKE` declares
+\ the quotation it takes to be ( n -- n ), and `dup` leaves two where one was
+\ promised. No certified definition can hold this either - the checker infers the
+\ body's own effect and holds it against the operand - so the tape is written
+\ straight, and the body's return refuses at the `[:` rather than staging a
+\ return of the wrong width into a function whose signature already says one.
+: QUOT-DEEP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   QP-TAKE!
+   s" QDEEP [: dup ;] 2 QP-TAKE" TEXT!
+   c 1 SEALED-ROOM
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: QUOT-DEEP ( -- )
+   BND [: QUOT-DEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A BODY THAT IS NOT AN ORDINARY ROUTINE. `QP-RET` declares the quotation it
+\ takes as ( n -- n ) on the data stack AND ( a -- a ) on the RETURN stack, which
+\ is a body a caller cannot reach with a branch and come back from: what it does
+\ to the return stack is not what a call's own return expects to find there. The
+\ checker owns that three-clause question - neutral return rows, no throw edge, a
+\ live fall-through - and src/compiler/native/dict.f asks it rather than
+\ re-deriving it, so the descent answers "no quotation there" and this refuses.
+: QUOT-RSTACK-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   QP-RET!
+   s" QRET [: 1 + ;] 2 QP-RET" TEXT!
+   c 1 SEALED-ROOM
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: QUOT-RSTACK ( -- )
+   BND [: QUOT-RSTACK-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ ---- the three ways a body never gets an arity -------------------------------
+\ NOTHING CONSUMES IT. The value is dropped, so no term ever says what the body
+\ takes and leaves, and there is no function to build. It is named by its own
+\ `[:`, which is the token a reader can act on.
+: QUOT-NONE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" QNONE [: 1 drop ;] drop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 0 NELAB:COLON drop ;
+
+: QUOT-NONE ( -- )
+   BND [: QUOT-NONE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ IT CROSSES A BRANCH. A block edge pushes fresh arguments, so the entry the
+\ consumer holds on the far side names no body and the row is never told. That is
+\ the fail-closed direction and the honest one: a body reached through two arms
+\ could be told two arities, and which one won would be the walk's order.
+: QUOT-JOIN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   QP-TAKE!
+   s" QJOIN [: 1 + ;] swap if then 2 QP-TAKE" TEXT!
+   c 1 SEALED-ROOM
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: QUOT-JOIN ( -- )
+   BND [: QUOT-JOIN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A `{: … :}` group inside a body, refused at the group's own closer. The group
+\ machinery binds with a cursor the enclosing walk advances, and a walk that skips
+\ a body advances none of the body's.
+: QUOT-LOCALS-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" QLOC [: {: a:n :} a ;] drop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 0 NELAB:COLON drop ;
+
+: QUOT-LOCALS ( -- )
+   BND [: QUOT-LOCALS-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ `[:` IN THE WRONG ROLE OPENS NOTHING, and the fixture has to build the tape by
+\ hand to say so. What separates a quotation opener from a string whose text is
+\ `[:` is the token's KIND, not its spelling: both intern to the SAME symbol,
+\ because interning is by content. So the tape below carries two string tokens
+\ spelled exactly `[:` and `;]`, standing where a pair would, in front of a real
+\ pair - and the module still holds two functions and one `hir.quot`.
+\
+\ IT IS THE WHOLE OF THE CLAIM THIS SUITE CAN MAKE. A `[:` inside a parenthesised
+\ COMMENT never becomes a token at all, and that is the reader's fact rather than
+\ the elaborator's: there is nothing to push onto a tape and nothing here to
+\ assert about. test/compiler/native-quot.f states it where the real reader runs.
+\
+\ THE TEXT IS `QP-ACT [: ;] 2drop 2drop [: 1 drop ;]` and the two strings leave
+\ two cells each, which the two `2drop`s take back, so the definition still
+\ leaves exactly the one value its effect declares.
+create QHID-TXT
+   81 c,  80 c,  45 c,  65 c,  67 c,  84 c,  32 c,  91 c,
+   58 c,  32 c,  59 c,  93 c,  32 c,  50 c, 100 c, 114 c,
+  111 c, 112 c,  32 c,  50 c, 100 c, 114 c, 111 c, 112 c,
+   32 c,  91 c,  58 c,  32 c,  49 c,  32 c, 100 c, 114 c,
+  111 c, 112 c,  32 c,  59 c,  93 c,
+37 constant QHID-N
+
+: QUOT-HIDDEN-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   QP-ACT!
+   QHID-TXT QHID-N TEXT!
+   c RIG
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena tp:IR-ARENA:arena :}
+   c 0 6 NTAPE-MODE:INTERPRETING NAME,
+   c 7 2 NTAPE-MODE:COMPILING STR,
+   c 10 2 NTAPE-MODE:COMPILING STR,
+   c 13 5 NTAPE-MODE:COMPILING NAME,
+   c 19 5 NTAPE-MODE:COMPILING NAME,
+   c 25 2 NTAPE-MODE:COMPILING NAME,
+   c 28 1 NTAPE-MODE:COMPILING 1 INT,
+   c 30 4 NTAPE-MODE:COMPILING NAME,
+   c 35 2 NTAPE-MODE:COMPILING NAME,
+   c b  tp NTAPE:SEAL  p r 0 1 NELAB:COLON drop
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m F-FUNS
+   m F-QUOTS ;
+
+: QUOT-HIDDEN ( -- n n )
+   BND [: QUOT-HIDDEN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: QUOT-SHAPE-CASES ( -- )
+   s" a returned quotation is a second function under the arity its term declares"
+   T-LABEL
+   QUOT-ACT
+   \ Read bottom up: the body is ( -- ), the definition is ( -- n ), the one
+   \ hir.quot names function one, there is exactly one of them, and the module
+   \ holds two functions.
+   0 T= 0 T=  1 T= 0 T=  1 T=  1 T=  2 T=
+   s" a quotation handed to a callee is the arity that callee's OPERAND declares"
+   T-LABEL
+   QUOT-CALL
+   1 T= 1 T=  1 T=  2 T=
+   s" three bodies are three functions, numbered in the order the source wrote them"
+   T-LABEL
+   QUOT-THREE
+   \ Bottom up: three functions; two hir.quot; the first names function one and
+   \ the second function two; function one is ( n n -- n ) and function two is
+   \ ( n n n -- n ), each its own dout term's; and the definition is ( -- n n n ).
+   3 T= 0 T=  1 T= 3 T=  1 T= 2 T=  2 T= 1 T=  2 T= 3 T=
+   \ And each body carries a name of its own, built from the definition's name
+   \ and the body's row: two bodies named the same thing would be ONE function.
+   TTRUE TTRUE
+   s" a `[:` in the wrong role opens nothing" T-LABEL
+   QUOT-HIDDEN
+   1 T= 2 T=
+   s" a body two consumers reach is built ONCE, and a made call between them keeps its row"
+   T-LABEL
+   QUOT-TWICE
+   \ Bottom up: two functions; one hir.quot; it names function one; and that
+   \ function is ( n -- n ), which is what BOTH consumers declared.
+   1 T= 1 T=  1 T=  1 T=  2 T= ;
+
+: QUOT-REFUSE-CASES ( -- )
+   s" a quotation nothing consumes is refused at its own opener" T-LABEL
+   [: QUOT-NONE ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED-ROW 1 T=
+   NELAB:REFUSED$ s" [:" T$=
+   s" two consumers that DISAGREE about one body are refused at its opener" T-LABEL
+   [: QUOT-DISAGREE ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED-ROW 1 T=
+   NELAB:REFUSED$ s" [:" T$=
+   s" a quotation that crosses a branch is refused as one nothing consumed" T-LABEL
+   [: QUOT-JOIN ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED-ROW 1 T=
+   s" a body whose declared effect is not an ordinary routine's is refused"
+   T-LABEL
+   [: QUOT-RSTACK ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED-ROW 1 T=
+   s" a body leaving more than its consumer declared is refused at its opener"
+   T-LABEL
+   [: QUOT-DEEP ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED-ROW 1 T=
+   s" a locals group inside a body is refused at the group's own closer" T-LABEL
+   [: QUOT-LOCALS ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED$ s" :}" T$= ;
 
 : CAPS-QUOT-CASE ( -- )
    s" the quotation opener is a word the dialect knows and this leaf declines" T-LABEL
@@ -2246,6 +2617,8 @@ public
    BND [: drop CAPS-NEAR-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CAPS-QUOT-CASE ;] IR-CTX:WITH-CONTEXT
    QUOT-PAIR-CASES
+   QUOT-SHAPE-CASES
+   QUOT-REFUSE-CASES
    BND [: drop LOCAL-LOWER-CASE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 

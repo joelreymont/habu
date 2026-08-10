@@ -139,7 +139,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-73 constant OPCODES-N
+74 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -213,9 +213,10 @@ private
 70 constant O-FDLOAD
 71 constant O-FDSTORE
 72 constant O-TRAP
+73 constant O-CODEADDR
 
 \ One slot per attribute key the dialect declares.
-12 constant KEYS-N
+13 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -228,6 +229,7 @@ private
 9 constant K-OFF
 10 constant K-MASK
 11 constant K-TRAP-ENTRY               \ the trap form's target, under a key of its own
+12 constant K-FUN                      \ which function of the emission an address form names
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -336,6 +338,7 @@ create NAMEBUF NAME-CAP allot
       fcmpselzd OF O-FCMPSELZD ENDOF
       tailcall  OF O-TAILCALL  ENDOF
       trap      OF O-TRAP      ENDOF
+      codeaddr  OF O-CODEADDR  ENDOF
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
@@ -413,6 +416,7 @@ create NAMEBUF NAME-CAP allot
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       O-TRAP      of A64IR-OPCODE:TRAP      endof
+      O-CODEADDR  of A64IR-OPCODE:CODEADDR  endof
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
@@ -651,6 +655,13 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
    IR-BUILD:ADD-ATTR ;
 
+\ And which function of the emission an address form names. It is an ordinal in
+\ a module this pass rebuilds function for function and in order, so the number
+\ means the same thing on both sides and is carried across unchanged.
+: FUN-ATTR+ ( n -- )
+   {: k:n :}
+   CTX BLD  CTX BLD A64IR:KEY-FUN  CTX BLD k A64IR:FUN-ATTR  IR-BUILD:ADD-ATTR ;
+
 : DBACK-ATTR+ ( n -- )
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD size A64IR:DBACK-ATTR  IR-BUILD:ADD-ATTR ;
@@ -809,6 +820,7 @@ create NAMEBUF NAME-CAP allot
       k K-OFF = if v OFF-ATTR+ then
       k K-MASK = if v MASK-ATTR+ then
       k K-TRAP-ENTRY = if v TRAP-ENTRY-ATTR+ then
+      k K-FUN = if v FUN-ATTR+ then
    loop ;
 
 \ The blocks a terminator hands control to. Blocks are copied one for one and in
@@ -1182,6 +1194,7 @@ public
    c b A64IR-OPCODE:ORRI      BIND1
    c b A64IR-OPCODE:EORI      BIND1
    c b A64IR-OPCODE:TRAP      BIND1
+   c b A64IR-OPCODE:CODEADDR  BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
@@ -1194,6 +1207,7 @@ public
    c b A64IR:KEY-OFF    K-OFF BND-KEY !
    c b A64IR:KEY-MASK   K-MASK BND-KEY !
    c b A64IR:KEY-TRAP-ENTRY K-TRAP-ENTRY BND-KEY !
+   c b A64IR:KEY-FUN    K-FUN BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:FPR-TYPE 0 BND-FPR !

@@ -174,7 +174,7 @@ private
 \ One slot per member of the source operation family, so the family stays
 \ exhaustive: a member added to HIR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it here too.
-45 constant OPCODES-N
+46 constant OPCODES-N
 
 0 constant O-CONST
 1 constant O-ADD
@@ -221,6 +221,7 @@ private
 42 constant O-REALINT
 43 constant O-BITSREAL
 44 constant O-REALBITS
+45 constant O-QUOT
 
 \ One slot per attribute key the dialect declares. This pass writes one of its
 \ own - the literal a constant carries - and COPIES every one the elaborator
@@ -349,6 +350,7 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
       realint  OF O-REALINT  ENDOF
       bitsreal OF O-BITSREAL ENDOF
       realbits OF O-REALBITS ENDOF
+      quot     OF O-QUOT     ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- HIR:opcode )
@@ -379,6 +381,7 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
       O-BRZ      of HIR-OPCODE:BRZ      endof
       O-CALL     of HIR-OPCODE:CALL     endof
       O-WORDCALL of HIR-OPCODE:WORDCALL endof
+      O-QUOT     of HIR-OPCODE:QUOT     endof
       O-RETURN   of HIR-OPCODE:RETURN   endof
       O-TRAP     of HIR-OPCODE:TRAP     endof
       O-FCONST   of HIR-OPCODE:FCONST   endof

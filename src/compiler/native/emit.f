@@ -235,7 +235,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-73 constant OPCODES-N
+74 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -309,6 +309,7 @@ private
 70 constant O-FDLOAD
 71 constant O-FDSTORE
 72 constant O-TRAP
+73 constant O-CODEADDR
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -324,7 +325,7 @@ private
 \ block. So a routine that fits the two ceilings NFROZEN commits to emits at most
 \ this many.
 3 constant INSN-PER-OP
-INSN-PER-OP VMAX BMAX 3 * + * constant INSN-MAX
+INSN-PER-OP VMAX BMAX 3 * + * constant INSN-CAP
 
 \ Every ARM64 instruction is four bytes.
 4 constant INSN-BYTES
@@ -428,15 +429,16 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OFF IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MASK IR-ID:ir-symbol-id
 
 \ The emitted bytes, and one source-map row per emitted instruction.
-create CODE INSN-MAX INSN-BYTES * allot
-create M-OFF INSN-MAX cells allot
-create M-ST INSN-MAX cells allot
-create M-LN INSN-MAX cells allot
-INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
+create CODE INSN-CAP INSN-BYTES * allot
+create M-OFF INSN-CAP cells allot
+create M-ST INSN-CAP cells allot
+create M-LN INSN-CAP cells allot
+INSN-CAP TYPED-BUFFER M-SRC IR-ID:ir-source-id
 
 \ Where each block's first instruction lands, in instructions from the start of
 \ the routine. This is the whole label table: a block IS a label, its ordinal is
@@ -550,6 +552,7 @@ variable N-FUNS                        \ how many functions the emission holds
       fcmpselzd OF O-FCMPSELZD ENDOF
       tailcall  OF O-TAILCALL  ENDOF
       trap      OF O-TRAP      ENDOF
+      codeaddr  OF O-CODEADDR  ENDOF
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
@@ -627,6 +630,7 @@ variable N-FUNS                        \ how many functions the emission holds
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       O-TRAP      of A64IR-OPCODE:TRAP      endof
+      O-CODEADDR  of A64IR-OPCODE:CODEADDR  endof
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
@@ -778,6 +782,11 @@ variable N-FUNS                        \ how many functions the emission holds
 \ into one - which is the whole reason the placement below has to be known here.
 : ENTRY-ADDR ( IR-ID:ir-op-id -- n )
    0 BND-ENTRY @ ATTR-INT ;
+
+\ Which function of this emission an address form names, as that function's
+\ ordinal.
+: FUN-OF ( IR-ID:ir-op-id -- n )
+   0 BND-FUN @ ATTR-INT ;
 
 \ The address the trap form branches to. It is the same kind of number under a
 \ key of its own, for the reason src/compiler/native/a64ir.f gives where that
@@ -1076,7 +1085,7 @@ variable N-FUNS                        \ how many functions the emission holds
 \ all came from.
 : APPEND ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id w:n :}
-   N-INS @ INSN-MAX >= if E-A64EMIT-CAP throw then
+   N-INS @ INSN-CAP >= if E-A64EMIT-CAP throw then
    N-INS @ {: k:n :}
    k INSN-BYTES * {: off:n :}
    w off WORD!
@@ -1209,7 +1218,7 @@ variable N-FUNS                        \ how many functions the emission holds
 \ refuses everywhere else.
 \
 \ AND IT CHANGES NO DISPLACEMENT'S REACH. Every branch between blocks of one
-\ routine is measured inside that routine, and INSN-MAX above bounds a routine at
+\ routine is measured inside that routine, and INSN-CAP above bounds a routine at
 \ three instructions per operation over the value and block ceilings NFROZEN
 \ commits to. The narrowest field any of these branches has is the nineteen bits
 \ the conditional and the compare-against-zero forms carry, which reaches
@@ -2007,6 +2016,47 @@ variable CH-AT
    id  id WORD-DELTA BL-WORD  APPEND
    id  id DBACK-SIZE negate  PUT-DMOVE ;
 
+\ ---- the address of another function of this emission ------------------------
+\ ONE INSTRUCTION AND NO ADDRESS AT ALL. An Adr adds a constant to its own
+\ address, so what has to be computed is a DISTANCE inside the emission, and
+\ nothing about where the emission will finally be written enters into it. That
+\ is why this needs no relocation and no placement: PUT-WORD-CALL above measures
+\ against the address this routine was told it would occupy because its target is
+\ outside the emission; this one's target is inside it, and the distance between
+\ two instructions of one emission is the same wherever the emission is put.
+\
+\ THE TARGET'S START IS KNOWN BECAUSE THE EMISSION WAS MEASURED FIRST. MEASURE
+\ laid every function out and filed its first instruction in F-START before a
+\ byte was written, exactly so that this instruction - which stands in an EARLIER
+\ function than the one it names - can be encoded in one pass.
+\
+\ AND THE ORDINAL IS HELD AGAINST WHAT THE EMISSION HOLDS. The dialect refuses a
+\ negative ordinal, which is all it can say; whether the number names a function
+\ of THIS emission is what N-FUNS knows, and a value naming a function that does
+\ not exist would otherwise be encoded as a distance to whatever the table held.
+: FUN-START ( n -- n )
+   {: k:n :}
+   k 0 < k N-FUNS @ >= or if E-A64EMIT-SHAPE throw then
+   k cells F-START + @ ;
+
+\ The distance in BYTES, which is the unit the field counts - the two branch
+\ forms above count instructions because their fields do. Both ends are whole
+\ instructions of the same emission, so the difference is a multiple of four and
+\ the field's low two bits come out clear, which is what the encoder's own
+\ division of the byte delta relies on.
+: ADR-DELTA ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id FUN-OF FUN-START  N-INS @ -  INSN-BYTES * ;
+
+: ADR-WORD ( n n -- n )
+   {: rd:n d:n :}
+   d A64IR:ADR-FITS? 0= if E-A64EMIT-REACH throw then
+   rd d ENC-ADR ;
+
+: PUT-CODEADDR ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 RESULT-REG  id ADR-DELTA  ADR-WORD  APPEND ;
+
 \ ---- leaving through another word --------------------------------------------
 \ The tail branch, which is ONE instruction and never more. It is the same
 \ displacement the word call above computes - the callee's entry less the address
@@ -2152,6 +2202,7 @@ variable CH-AT
       fcmpselzd OF id PUT-FCMPSELZD ENDOF
       tailcall  OF id PUT-TAILCALL ENDOF
       trap      OF id PUT-TRAP ENDOF
+      codeaddr  OF id PUT-CODEADDR ENDOF
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
@@ -2409,6 +2460,7 @@ public
    c b A64IR-OPCODE:WORDCALL  BIND1
    c b A64IR-OPCODE:TAILCALL  BIND1
    c b A64IR-OPCODE:TRAP      BIND1
+   c b A64IR-OPCODE:CODEADDR  BIND1
    c b A64IR-OPCODE:MADD      BIND1
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1
@@ -2458,6 +2510,7 @@ public
    c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
    c b A64IR:KEY-OFF    0 BND-OFF !
    c b A64IR:KEY-MASK   0 BND-MASK !
+   c b A64IR:KEY-FUN    0 BND-FUN !
    BOUND-YES BND-MODE ! ;
 
 \ Whether a binding is live, for a caller cleaning up after a refused run. See
@@ -2694,6 +2747,16 @@ public
 
 : SIZE ( -- n )
    SEAL-CK N-INS @ INSN-BYTES * ;
+
+\ The most instructions one emission can hold, published because it is half of a
+\ standing invariant nobody can state from one side. The address form's
+\ displacement field is twenty-one signed BITS of bytes and the distance it has
+\ to carry is a distance INSIDE this buffer, so `INSN-CAP * INSN-BYTES` being
+\ under that field's reach is what makes E-A64EMIT-REACH unreachable for an Adr.
+\ Raise this and the two facts have to be held against each other again;
+\ test/compiler/native-quot.f is where they are.
+: INSN-MAX ( -- n )
+   INSN-CAP ;
 
 \ The emitted bytes themselves. The source map's offsets index this buffer.
 : BYTES ( -- ptr u8 )

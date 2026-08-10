@@ -128,7 +128,7 @@ private
    s" registration defines the eighteen opcodes the subset started with" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE 45 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 46 T= ;
 
 \ The nine that complete the comparison and bitwise vocabulary. `invert` is the
 \ one unary operation of the subset and is asked for beside the eight binary
@@ -179,7 +179,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   3 T= 0 T= TTRUE ;
+   4 T= 0 T= TTRUE ;
 
 \ Every field the arithmetic schema declares, read back off the frozen table.
 : ARITH-BODY ( IR-CTX:ctx -- n bool n bool n n n bool bool bool bool bool bool )
@@ -1566,7 +1566,7 @@ variable BC-OUT
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 45 0 0 FORGE
+   1 46 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 

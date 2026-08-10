@@ -223,14 +223,32 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 : CLS! ( n n -- )                    {: v:n k:n :} v k cells C-AT + ! ;
 : USES! ( n n -- )                   {: v:n k:n :} v k cells U-AT + ! ;
 
-: TABLES-CLEAR ( -- )
+\ ---- the tables, and which of them a FUNCTION owns ---------------------------
+\ THE VALUE TABLES ARE THE MODULE'S AND THE SLOT TABLE IS A FUNCTION'S, and the
+\ difference is not a convention. A value id is local to the MODULE, so two
+\ functions never name one value and one table over the whole module answers for
+\ both. A frame slot is an offset from the machine stack pointer inside the frame
+\ the routine RESERVED, and every function of an emission reserves its own -
+\ src/compiler/native/select.f builds a prologue per function - so slot zero of
+\ one function and slot zero of another are two different words of two different
+\ frames. Cleared once for the module, the second function's first store into
+\ slot zero reads as a second value in the first function's slot, which is
+\ E-A64RAV-SHARE about two values that were never live at the same moment.
+\ Measured, on a definition holding one quotation whose value crosses a call.
+: VALUES-CLEAR ( -- )
    VMAX 0 ?do
       0 i SEEN!
       NOPOS i DEF!
       NOPOS i LAST!
       C-GPR i CLS!
-   loop
+   loop ;
+
+: SLOTS-CLEAR ( -- )
    SLOTS-MAX 0 ?do -1 i cells W-AT + ! loop ;
+
+: TABLES-CLEAR ( -- )
+   VALUES-CLEAR
+   SLOTS-CLEAR ;
 
 \ ---- reading the frozen module -----------------------------------------------
 : SLOT ( IR-ID:ir-value-id -- n )
@@ -2359,6 +2377,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
 : VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n n n -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n
       lo:n hi:n :}
+   SLOTS-CLEAR
    f VANY-FRAME
    f lo hi ORDER-CK
    f VEDGE-CK

@@ -256,6 +256,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       fltz     OF 42 ENDOF
       feqz     OF 43 ENDOF
       trap     OF 44 ENDOF
+      quot     OF 45 ENDOF
    ;MATCH ;
 
 : N>OPCODE ( n -- HIR:opcode )
@@ -305,6 +306,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       42 of HIR-OPCODE:FLTZ endof
       43 of HIR-OPCODE:FEQZ endof
       44 of HIR-OPCODE:TRAP endof
+      45 of HIR-OPCODE:QUOT endof
       E-HIR-OPCODE throw
    endcase ;
 

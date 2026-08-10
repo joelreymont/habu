@@ -278,6 +278,42 @@ TRUSTED: EFF-DEAD? ( ptr u8 n -- bool )
 \ THE ANSWER IS A BITMASK OVER CELLS, bit i for the i-th cell from the BOTTOM of
 \ the row, which is how the value vector indexes it. One cell holds it because a
 \ row wider than the vector is refused before it can be asked about.
+
+\ ---- and what a quotation TERM of one of those rows takes and leaves ----------
+\ THE FIFTH QUESTION, AND IT HAS THE SAME OWNER AS THE ARITY. A body written
+\ `[: … ;]` is compiled as a routine, and a routine's arity is how many cells its
+\ caller hands it and how many it takes back. Nothing at the place the body is
+\ WRITTEN says what those are: the numbers belong to the term that CONSUMES it -
+\ the operand a callee declares, or the result the enclosing definition declares -
+\ and the checker is the only authority on either.
+\
+\ THE CHECKER PUBLISHES IT AS A DESCENT. A quotation is one term of a row
+\ carrying a whole effect of its own, and src/core/checker.f moves its row latch
+\ onto that effect and back (EFFECT-DIN-QUOT / EFFECT-DOUT-QUOT / EFFECT-QUOT-UP).
+\ So the readers below descend, read the same two counts every other row is read
+\ with, and come back up - and the descent is closed on every path, including the
+\ ones that decline, because a latch left displaced would answer the next
+\ question about this quotation instead of about the row that asked it.
+\
+\ TERMS ARE COUNTED FROM THE TOP AND CELLS FROM THE BOTTOM, and that is why the
+\ index is refused rather than converted when the two counts disagree. A caller
+\ knows which CELL of the row it is holding; the descent is indexed by TERM; and
+\ the two are the same index only while every term of the row is one cell wide,
+\ which is exactly the boundary this file already draws for SPELL-ARITY. A row
+\ where they differ carries a term several cells wide with nothing to say which
+\ term that is, so the answer is "no quotation there" and the caller refuses by
+\ name instead of descending into whichever term the arithmetic landed on.
+\
+\ AND A BODY THAT IS NOT AN ORDINARY ROUTINE IS DECLINED. EFFECT-QUOT-SIMPLE? is
+\ the checker's own three-clause question - the return rows are neutral, there is
+\ no throw edge, and the fall-through is live - and a body failing any of them is
+\ not something a caller may reach with a branch and come back from. Nothing here
+\ re-derives those clauses; this asks the one word that owns them.
+TRUSTED: EFF-QUOT-DIN ( n -- bool )      EFFECT-DIN-QUOT ;
+TRUSTED: EFF-QUOT-DOUT ( n -- bool )     EFFECT-DOUT-QUOT ;
+TRUSTED: EFF-QUOT-SIMPLE? ( -- bool )    EFFECT-QUOT-SIMPLE? ;
+TRUSTED: EFF-QUOT-UP ( -- bool )         EFFECT-QUOT-UP ;
+
 TRUSTED: EFF-QUERY ( ptr u8 n -- bool )   EFFECT-QUERY ;
 TRUSTED: EFF-COUNTS ( -- n n n n )        \ din terms, din cells, dout terms, dout cells
    EFFECT-DIN-N EFFECT-DIN-CELLS EFFECT-DOUT-N EFFECT-DOUT-CELLS ;
@@ -421,6 +457,54 @@ public
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
    dn dc true ROW-GLUE
    on oc false ROW-GLUE ;
+
+\ ---- the quotation a term of one of those rows IS ----------------------------
+public
+-1 constant QUOT-NONE                \ that term is no quotation this chain may compile
+private
+
+\ The two counts, read while the latch is down, with the latch put back before
+\ either is answered. Declining and answering leave the latch in the same place,
+\ which is what makes a caller's next question about the row it thinks it is
+\ about.
+: QUOT-CELLS ( -- n n )
+   EFF-QUOT-SIMPLE? {: simple:bool :}
+   EFF-COUNTS {: dn:n dc:n on:n oc:n :}
+   EFF-QUOT-UP 0= if QUOT-NONE QUOT-NONE exit then
+   simple 0= if QUOT-NONE QUOT-NONE exit then
+   dc 0 < oc 0 < or if QUOT-NONE QUOT-NONE exit then
+   dn dc <> on oc <> or if QUOT-NONE QUOT-NONE exit then
+   dc oc ;
+
+\ Whether this row's terms and cells are the same index, which is what makes term
+\ `i` and cell `i` the same thing to ask about.
+: ROW-INDEXABLE? ( bool -- bool )
+   {: din:bool :}
+   EFF-COUNTS {: dn:n dc:n on:n oc:n :}
+   din if dn dc = dc 0 >= and exit then
+   on oc = oc 0 >= and ;
+
+public
+
+\ What the quotation at term `i` of this spelling's INPUT row takes and leaves,
+\ in cells, counting terms from the TOP of the row as the checker does.
+\ QUOT-NONE twice when there is no such term, when it is not a quotation, when
+\ the row's terms and cells are not the same index, or when the body is not one a
+\ caller may reach with a branch and come back from.
+: SPELL-QUOT-DIN ( ptr u8 n n -- n n )
+   {: a u:n i:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u EFF-QUERY 0= if QUOT-NONE QUOT-NONE exit then
+   true ROW-INDEXABLE? 0= if QUOT-NONE QUOT-NONE exit then
+   i EFF-QUOT-DIN 0= if QUOT-NONE QUOT-NONE exit then
+   QUOT-CELLS ;
+
+\ The same for term `i` of its OUTPUT row.
+: SPELL-QUOT-DOUT ( ptr u8 n n -- n n )
+   {: a u:n i:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u EFF-QUERY 0= if QUOT-NONE QUOT-NONE exit then
+   false ROW-INDEXABLE? 0= if QUOT-NONE QUOT-NONE exit then
+   i EFF-QUOT-DOUT 0= if QUOT-NONE QUOT-NONE exit then
+   QUOT-CELLS ;
 
 \ Whether control comes back from a call to the word this spelling denotes.
 \ False for a name the checker holds no control flag for, which is every
