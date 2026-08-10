@@ -187,7 +187,7 @@ private
 \ of its own - the form it introduces carries none - but it COPIES every one the
 \ selector built, and a field copied under the wrong key would be a routine
 \ reading its arguments out of its own frame.
-13 constant KEYS-N
+14 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -201,6 +201,7 @@ private
 10 constant K-MASK
 11 constant K-TRAP-ENTRY               \ the trap form's target, under a key of its own
 12 constant K-FUN                      \ which function of the emission an address form names
+13 constant K-ADDR                     \ the relocation kind of the value a move-wide chain builds
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -799,6 +800,10 @@ create MASK-AT OPS-MAX cells allot
          CTX BLD  CTX BLD A64IR:KEY-SHIFT  CTX BLD v A64IR:SHIFT-ATTR
          IR-BUILD:ADD-ATTR
       then
+      k K-ADDR = if
+         CTX BLD  CTX BLD A64IR:KEY-ADDR  CTX BLD v A64IR:ADDR-ATTR
+         IR-BUILD:ADD-ATTR
+      then
       k K-SLOT = if
          CTX BLD  CTX BLD A64IR:KEY-SLOT  CTX BLD v A64IR:SLOT-ATTR
          IR-BUILD:ADD-ATTR
@@ -1143,6 +1148,7 @@ public
    c b A64IR-OPCODE:EORI      BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
+   c b A64IR:KEY-ADDR   K-ADDR  BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
    c b A64IR:KEY-FRAME  K-FRAME BND-KEY !
    c b A64IR:KEY-DSLOT  K-DSLOT BND-KEY !

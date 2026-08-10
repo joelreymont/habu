@@ -227,6 +227,13 @@ private
 
 public
 
+\ Migrated ON DEMAND rather than from RUN below, because the case that asks about
+\ it reads the SEALED EMISSION, which holds the last routine this process
+\ compiled. A migration run at load time would have been overwritten by every
+\ migration after it.
+: ADDR-SURVIVES ( -- )
+   S\" : NCT-ADDR-N ( -- ptr u8 n ) s\" combine\" ;" 0 2 REGS NMIGRATE:DEFINE ;
+
 : RUN ( -- )
    MAND MORR MEOR MSWAP MHOLE MZERO MALL MSHARED
    SQSUM
@@ -520,6 +527,43 @@ public
    3 5 MSHARED= 0 0 MSHARED= -1 -1 MSHARED=
    MAX-INT MAX-INT MSHARED= MIN-INT MIN-INT MSHARED= ;
 
+
+\ ---- an address chain SURVIVES the rewrite, kind and all ----------------------
+\ WHY THIS SUITE OWNS THE QUESTION. combine.f rewrites a module between selection
+\ and emission: it copies every operation it does not fold into a fresh module,
+\ attribute by attribute, through an explicit list of keys it knows. A key that
+\ is not on that list is DROPPED - and the relocation kind an address chain
+\ carries is exactly the sort of field that would go missing in silence, leaving
+\ a chain that still computes the right address and no longer tells anyone it is
+\ one. The emission would publish, the word would run, and the AOT capture would
+\ not know the site existed.
+\
+\ WHAT MAKES THE ANSWER TRUSTWORTHY IS THAT LOSING IT IS LOUD, and this case is
+\ the standing proof of that. `a64.addr` is a REQUIRED attribute of the move-wide
+\ forms, so there are two independent refusals under a rewrite that lost it:
+\ combine.f's own KEY-SLOT-OF throws E-A64COMB-OPCODE on an attribute key it was
+\ never taught, and IR-OP's freeze verifier throws E-IR-VERIFY-ATTRKEY on a
+\ required key an operation omits. Deleting the K-ADDR arm from COPY-ATTRS reds
+\ this case; so does deleting the key's row from the bound table.
+\
+\ AND IT ASKS THE QUESTION THROUGH THE WHOLE CHAIN. A string literal is the
+\ shortest source form that makes an address chain: the body pushes the address
+\ of the interned bytes and their length. The word is migrated through the
+\ production entry, so combine.f runs over the real module, and the answer is
+\ read off the SEALED EMISSION - four consecutive move-wide words into one
+\ register, recorded as one site - rather than off the module combine.f produced.
+\ A site that the emitter would not record is a site the publication cannot
+\ write, whatever the module says.
+: ADDR-CASES ( -- )
+   s" an address chain keeps its kind across the rewrite, and is recorded" T-LABEL
+   NCT-MIGRATED:ADDR-SURVIVES
+   A64EMIT:ADDR-SITES 1 T=
+   0 A64EMIT:ADDR-SITE-KIND@ A64IR:ADDR-DATA T=
+
+   s" and it is the four-lane carrier, not the shortest chain" T-LABEL
+   0 A64EMIT:ADDR-SITE@ {: k:n :}
+   k A64IR:HALVES + A64EMIT:INSNS <= TTRUE ;
+
 : CASES ( -- )
    FIRED-CASES
    REFUSED-CASES
@@ -529,7 +573,8 @@ public
    IMM-ANSWER-CASES
    MASK-FIRED-CASES
    MASK-REFUSED-CASES
-   MASK-ANSWER-CASES ;
+   MASK-ANSWER-CASES
+   ADDR-CASES ;
 
 ;using
 

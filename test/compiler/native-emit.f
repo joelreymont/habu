@@ -612,6 +612,32 @@ $1000 constant BUMP-ADDR
    M-RESULT+
    CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR   IR-BUILD:ADD-ATTR
    CC BB  CC BB A64IR:KEY-SHIFT  CC BB 0 A64IR:SHIFT-ATTR   IR-BUILD:ADD-ATTR
+   CC BB  CC BB A64IR:KEY-ADDR   CC BB A64IR:ADDR-NONE A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
+\ The same three move-wide forms with the relocation kind chosen by the caller,
+\ so a case can build a chain the producers in this tree never build. Every one
+\ of the shapes below is refused by the emitter, and each is a shape a rewrite
+\ between selection and emission could plausibly produce.
+: M-WIDE ( A64IR:opcode n n n -- IR-ID:ir-value-id )
+   {: o:A64IR:opcode imm:n sh:n kind:n :}
+   o M-OPEN
+   M-RESULT+
+   CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR   IR-BUILD:ADD-ATTR
+   CC BB  CC BB A64IR:KEY-SHIFT  CC BB sh A64IR:SHIFT-ATTR  IR-BUILD:ADD-ATTR
+   CC BB  CC BB A64IR:KEY-ADDR   CC BB kind A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
+\ A movk keeps the halves already in place, so it takes the running value as an
+\ operand - which is what chains the four lanes into one register.
+: M-WIDE-K ( IR-ID:ir-value-id n n n -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id imm:n sh:n kind:n :}
+   A64IR-OPCODE:MOVK M-OPEN
+   CC BB v IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR   IR-BUILD:ADD-ATTR
+   CC BB  CC BB A64IR:KEY-SHIFT  CC BB sh A64IR:SHIFT-ATTR  IR-BUILD:ADD-ATTR
+   CC BB  CC BB A64IR:KEY-ADDR   CC BB kind A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 : M-RET ( IR-ID:ir-value-id -- )
@@ -1038,6 +1064,70 @@ $1000 constant BUMP-ADDR
    PLAIN-EMITTED
    -1 A64EMIT:MAP-OFFSET@ drop ;
 
+\ ---- the three address-chain shapes the emitter refuses ----------------------
+\ A MOVN CLAIMING AN ADDRESS. The relocation pass writes four plain immediates
+\ over a chain; a movn builds its value out of ones, so a lane that was one would
+\ have to be complemented and the pass does not look. Refused where the movn word
+\ is encoded.
+\
+\ IT IS A FULL FOUR-LANE RUN IN ONE REGISTER, and that is the point of the
+\ fixture rather than an incidental detail. A bare movn carrying the kind is a
+\ ONE-lane run, which the run-length check below refuses on its own - so a case
+\ built that way passes with the movn guard deleted and proves nothing about it.
+\ Leading a genuine carrier with a movn is the only shape that reaches the movn
+\ guard with every other check satisfied: deleting the guard then reds THIS case
+\ and leaves the other two green.
+: BUILD-MOVN-ADDR ( -- )
+   s" MOVNADDR" 0 1 OPEN-FUN
+   A64IR-OPCODE:MOVN 1 0 A64IR:ADDR-DATA M-WIDE
+   2 16 A64IR:ADDR-DATA M-WIDE-K
+   3 32 A64IR:ADDR-DATA M-WIDE-K
+   4 48 A64IR:ADDR-DATA M-WIDE-K
+   M-RET
+   CLOSE-FUN ;
+
+\ A RUN THAT IS NOT THE CARRIER'S WIDTH. Three lanes leave no room for a fourth
+\ half that rebasing can make non-zero, so a three-lane run is not a site and is
+\ not silently treated as one either.
+: BUILD-SHORT-RUN ( -- )
+   s" SHORTRUN" 0 1 OPEN-FUN
+   A64IR-OPCODE:MOVZ 1 0 A64IR:ADDR-DATA M-WIDE
+   2 16 A64IR:ADDR-DATA M-WIDE-K
+   3 32 A64IR:ADDR-DATA M-WIDE-K
+   M-RET
+   CLOSE-FUN ;
+
+\ FOUR LANES THAT DO NOT NAME ONE REGISTER. Four move-wides into two registers
+\ spell out no address any site pushed, and the loader refuses exactly this shape
+\ from the other end (src/habu/habu2.f EMIT-ADDRS). Two independent two-lane
+\ chains are the way to build it: neither takes the other as an operand, so the
+\ allocator has no reason to give them the same register.
+: BUILD-SPLIT-RUN ( -- )
+   s" SPLITRUN" 0 1 OPEN-FUN
+   A64IR-OPCODE:MOVZ 1 0 A64IR:ADDR-DATA M-WIDE
+   2 16 A64IR:ADDR-DATA M-WIDE-K {: a:IR-ID:ir-value-id :}
+   A64IR-OPCODE:MOVZ 3 0 A64IR:ADDR-DATA M-WIDE
+   4 16 A64IR:ADDR-DATA M-WIDE-K {: b:IR-ID:ir-value-id :}
+   a b M-ADD M-RET
+   CLOSE-FUN ;
+
+: EMIT-BUILT ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   M-FREEZE {: m:IR-BUILD:module :}
+   c m 0 4 NFIX:FINISH ;
+
+: MOVN-ADDR-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c A64-NEW BIND-RA BIND-RAV BIND-EMIT BUILD-MOVN-ADDR c EMIT-BUILT ;
+
+: SHORT-RUN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c A64-NEW BIND-RA BIND-RAV BIND-EMIT BUILD-SHORT-RUN c EMIT-BUILT ;
+
+: SPLIT-RUN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c A64-NEW BIND-RA BIND-RAV BIND-EMIT BUILD-SPLIT-RUN c EMIT-BUILT ;
+
 \ ---- refusal cases -----------------------------------------------------------
 : UNACCEPTED ( -- )      WBND [: UNACCEPTED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-MODULE ( -- )    WBND [: WRONG-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1050,9 +1140,22 @@ $1000 constant BUMP-ADDR
 : STALE ( -- )           WBND [: STALE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PAST-END ( -- )        WBND [: PAST-END-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PAST-MAP ( -- )        WBND [: PAST-MAP-BODY ;] IR-CTX:WITH-CONTEXT ;
+: MOVN-ADDR ( -- )       WBND [: MOVN-ADDR-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SHORT-RUN ( -- )       WBND [: SHORT-RUN-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SPLIT-RUN ( -- )       WBND [: SPLIT-RUN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : DROP-BINDING ( -- )
    A64EMIT:RELEASE ;
+
+\ Each of the three names its own shape, so a guard that stopped refusing one of
+\ them leaves the other two green and the case that reds says which.
+: ADDR-REFUSE-CASES ( -- )
+   s" a movn that claims to carry an address is refused" T-LABEL
+   [: MOVN-ADDR ;] E-A64EMIT-ADDR TTHROWSQ
+   s" an address run shorter than the carrier is refused" T-LABEL
+   [: SHORT-RUN ;] E-A64EMIT-ADDR TTHROWSQ
+   s" four address lanes that do not name one register are refused" T-LABEL
+   [: SPLIT-RUN ;] E-A64EMIT-ADDR TTHROWSQ ;
 
 : ALLOC-REFUSE-CASES ( -- )
    s" emitting from a register assignment nobody accepted is refused" T-LABEL
@@ -1104,6 +1207,7 @@ $1000 constant BUMP-ADDR
 : GROUP-ACCEPT ( IR-CTX:ctx -- )  drop OTHER-ALLOC-REFUSE-CASE ;
 : GROUP-STALE ( IR-CTX:ctx -- )   drop STALE-REFUSE-CASE ;
 : GROUP-BOUND ( IR-CTX:ctx -- )   drop BOUND-REFUSE-CASES ;
+: GROUP-ADDR ( IR-CTX:ctx -- )    drop ADDR-REFUSE-CASES ;
 
 public
 
@@ -1133,6 +1237,7 @@ public
    RUN-SPILL-CASE
    SECOND-CASE
    RUN-SECOND-CASE
+   WBND [: GROUP-ADDR ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-BIND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MODULE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT

@@ -27,6 +27,23 @@
 \ instruction encodings identify the shape completely. The address the word
 \ pushes is then read straight out of the chain's immediate fields.
 \
+\ AND IT RECOGNISES THE ENGINE'S SHAPE ONLY, WHICH IS A DELIBERATE UNDER-REPORT.
+\ The four encodings below name x9, because that is the register the engine's one
+\ carrier C-ADDR-RAW writes into. The native chain emits address chains too, and
+\ into whatever register its allocator picked - so the snapshot relocation pass
+\ was widened to take the register off the site's own first word
+\ (src/habu/habu2.f EMIT-ADDRS). THIS tool was NOT widened with it, and the
+\ reason is that the two are asking different questions. A heap OWNER is a word
+\ `create` compiled, and `create` is compiled by the engine in every build: the
+\ chain never produces one. What the chain produces is code that USES a heap
+\ address, which is not what either map above answers about. Widening the compare
+\ to ignore the register would therefore add no owner and would accept four
+\ move-wide words naming four DIFFERENT registers, whose immediates spell out no
+\ address any word pushed - the exact shape the relocation pass refuses. So the
+\ narrow compare stays, and the limit is stated here rather than left to be
+\ discovered: a data word the chain ever comes to compile would be missing from
+\ DUMP, and the fix then is the site record, not a looser instruction match.
+\
 \ Run it from a process that has the source under investigation loaded and has
 \ not retired its dictionary yet. It reads the dictionary through
 \ src/habu/xref.f and the four instruction encodings through src/habu/habu1.f,

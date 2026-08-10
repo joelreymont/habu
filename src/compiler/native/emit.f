@@ -422,6 +422,7 @@ variable EM-PLACE                    \ and what it is
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IMM IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SH IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
@@ -437,6 +438,15 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 
 \ The emitted bytes, and one source-map row per emitted instruction.
 create CODE INSN-CAP INSN-BYTES * allot
+\ Two more columns of the instruction map, and they are what makes an address
+\ chain findable after publication. A relocation pass may not recognise one by
+\ decoding region bytes - a compiled word carries inline data that decodes as a
+\ move-wide - so the kind travels from the elaborator, through selection, to
+\ here, and is recorded per INSTRUCTION because that is the granularity a site
+\ index is in. A word no move-wide wrote holds ADDR-NONE and a register nobody
+\ names.
+create M-ADDR INSN-CAP cells allot
+create M-ARD INSN-CAP cells allot
 create M-OFF INSN-CAP cells allot
 create M-ST INSN-CAP cells allot
 create M-LN INSN-CAP cells allot
@@ -730,6 +740,15 @@ variable N-FUNS                        \ how many functions the emission holds
 : IMM-OF ( IR-ID:ir-op-id -- n )
    0 BND-IMM @ ATTR-INT ;
 
+\ What kind of thing the chain this operation belongs to is building. Only the
+\ move-wide forms declare the key, so a reader that walks every operation asks
+\ whether this one carries it at all - ATTR-HAS? is that question - and an
+\ operation that does not is building nothing an address pass cares about.
+: ADDR-OF ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-ADDR @ ATTR-HAS? 0= if A64IR:ADDR-NONE exit then
+   id 0 BND-ADDR @ ATTR-INT ;
+
 \ The dialect records the shift as a number of bits; the encoding holds the half
 \ it selects. SCALE/ is the assembler's own refusal for a value its division
 \ would round, so a shift that names no whole half is refused there rather than
@@ -809,10 +828,22 @@ variable N-FUNS                        \ how many functions the emission holds
    id 0 RESULT-REG  id IMM-OF  id HALF-OF  MOVKHW ;
 
 \ The move-wide that writes the COMPLEMENT of its shifted immediate. It reads its
-\ two fields exactly as the two above do - the dialect holds the same key pair for
-\ all three - and differs only in the encoder it hands them to.
+\ fields exactly as the two above do - the dialect holds the same key list for
+\ all three - and differs in the encoder it hands them to and in ONE REFUSAL.
+\
+\ A MOVN MAY NOT CARRY AN ADDRESS, and that is stated here as a refusal rather
+\ than by leaving the key off its schema. The relocation pass rewrites a chain by
+\ writing four plain sixteen-bit immediates over the four that are there; a movn
+\ builds its value out of ONES, so a pass that met one would have to know which
+\ lane it was and complement that lane's immediate - and the whole value of a
+\ fixed carrier is that the pass reads four identical move-wides and asks nothing
+\ else. src/compiler/native/select.f MATERIALISE-ADDR never builds one, so this
+\ is the guard that says so where it can be checked instead of where it happens
+\ to be true: a future pass that folded a chain into a movn is refused here
+\ rather than silently producing a site the loader cannot rewrite.
 : WORD-MOVN ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
+   id ADDR-OF A64IR:ADDR-NONE <> if E-A64EMIT-ADDR throw then
    id 0 RESULT-REG  id IMM-OF  id HALF-OF  MOVNHW ;
 
 \ The copy that puts a returned value where the routine's contract says it
@@ -1092,6 +1123,9 @@ variable N-FUNS                        \ how many functions the emission holds
    k INSN-BYTES * {: off:n :}
    w off WORD!
    id off k MAP!
+   id ADDR-OF {: kind:n :}
+   kind k cells M-ADDR + !
+   kind A64IR:ADDR-NONE = if -1 else id 0 RESULT-REG then  k cells M-ARD + !
    k 1+ N-INS ! ;
 
 \ ---- the block layout --------------------------------------------------------
@@ -2502,6 +2536,7 @@ public
    c b A64IR-OPCODE:FCMPSELZD BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
+   c b A64IR:KEY-ADDR   0 BND-ADDR !
    c b A64IR:KEY-SLOT   0 BND-SLOT !
    c b A64IR:KEY-FRAME  0 BND-FRAME !
    c b A64IR:KEY-DSLOT  0 BND-DSLOT !
@@ -2607,6 +2642,74 @@ public
       f WALK
    loop ;
 
+\ ---- where this emission's address chains start ------------------------------
+\ WHAT A SITE IS, AND WHY IT IS A RUN AND NOT A FLAG ON ONE INSTRUCTION. The
+\ relocation pass rewrites an address by writing four sixteen-bit immediates over
+\ the four move-wide words that spell it out, so what it has to be given is the
+\ index of a word that REALLY BEGINS four such words. Marking only the first lane
+\ would make the other three an assumption: the pass would trust that whatever
+\ follows is the rest of the chain, and a fold, a reorder or a dropped lane would
+\ leave it rewriting instructions that are not the chain. So every lane carries
+\ the kind, and this scan admits a site only where it finds a run of EXACTLY four
+\ consecutive lanes, all of the same kind, all writing the SAME register.
+\
+\ EVERY OTHER RUN LENGTH IS A REFUSAL RATHER THAN A SKIP. Three lanes, five
+\ lanes, or four lanes naming two registers are all shapes no producer in this
+\ tree builds - MATERIALISE-ADDR emits four into one, always - so meeting one
+\ means a pass between selection and here changed a chain, and the emission is
+\ refused instead of published with a site that describes something else. That is
+\ the same standard the engine's own loader holds a recorded site to
+\ (src/habu/habu2.f EMIT-ADDRS, which exits ADDRMAP-RC on a site that is not a
+\ whole chain in one register); making the producer refuse first means the loader
+\ never has to.
+\
+\ AND THE SAME-REGISTER CLAUSE IS THE ONE STAGE 1 EARNED. The loader takes the
+\ register off the site's own first word and requires the other three to name it;
+\ four words naming four different registers spell out no address at all. This
+\ end of the pipeline refuses to BUILD that, so the two halves agree by
+\ construction rather than by coincidence.
+\ One chain is four instructions, so an emission cannot hold more chains than a
+\ quarter of its instruction ceiling - which makes the bound derived rather than
+\ chosen, and makes the refusal above a backstop the emitter cannot reach through
+\ any program rather than a limit on how many addresses a routine may name.
+INSN-CAP A64IR:HALVES / constant SITE-CEIL
+create SITES SITE-CEIL cells allot
+variable N-SITES
+
+\ How many lanes of the same kind and register run from k, counting k itself.
+: RUN-AT ( n -- n )
+   {: k:n :}
+   k cells M-ADDR + @ {: kind:n :}
+   k cells M-ARD + @ {: rd:n :}
+   0
+   N-INS @ k ?do
+      i cells M-ADDR + @ kind =
+      i cells M-ARD + @ rd = and 0= if leave then
+      1+
+   loop ;
+
+: SITE+ ( n -- )
+   {: k:n :}
+   N-SITES @ SITE-CEIL >= if E-A64EMIT-ADDR throw then
+   k N-SITES @ cells SITES + !
+   N-SITES @ 1+ N-SITES ! ;
+
+variable SCAN-K
+
+: SCAN-ADDR-SITES ( -- )
+   0 N-SITES !
+   0 SCAN-K !
+   begin SCAN-K @ N-INS @ < while
+      SCAN-K @ cells M-ADDR + @ A64IR:ADDR-NONE = if
+         SCAN-K @ 1+ SCAN-K !
+      else
+         SCAN-K @ RUN-AT {: n:n :}
+         n A64IR:HALVES <> if E-A64EMIT-ADDR throw then
+         SCAN-K @ SITE+
+         SCAN-K @ n + SCAN-K !
+      then
+   repeat ;
+
 : EMIT ( IR-CTX:ctx IR-BUILD:module -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    BND-TAKE
@@ -2630,6 +2733,7 @@ public
    MEASURE
    WRITE-ALL
    CLOBBER-SEAL
+   SCAN-ADDR-SITES
    ST-SEALED ST ! ;
 
 \ ---- the sealed emission -----------------------------------------------------
@@ -2675,6 +2779,27 @@ public
 \ How many instructions were emitted, and how many bytes they occupy.
 : INSNS ( -- n )
    SEAL-CK N-INS @ ;
+
+\ How many address chains this emission carries, and where each one starts -
+\ as an INSTRUCTION INDEX, which is the coordinate the publication seam turns
+\ into an address by the same arithmetic it uses for a call site. The kind is
+\ answered separately, because the seam records the two in different places: the
+\ start goes in the region's address map and the kind in the capture window's
+\ own list.
+: ADDR-SITES ( -- n )
+   SEAL-CK N-SITES @ ;
+
+: ADDR-SITE@ ( n -- n )
+   {: i:n :}
+   SEAL-CK
+   i 0 < i N-SITES @ >= or if E-A64EMIT-BOUND throw then
+   i cells SITES + @ ;
+
+: ADDR-SITE-KIND@ ( n -- n )
+   {: i:n :}
+   SEAL-CK
+   i 0 < i N-SITES @ >= or if E-A64EMIT-BOUND throw then
+   i cells SITES + @ cells M-ADDR + @ ;
 
 \ And how many of them are the routine's BODY: the emission less its crossings -
 \ the two data-stack pointer moves, the loads that read its arguments out of the

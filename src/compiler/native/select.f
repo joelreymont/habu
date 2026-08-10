@@ -1638,14 +1638,19 @@ RLIT-SHUT RLIT-N !
 
 \ One move-wide operation. `keep` is whether the halves already in place survive:
 \ movz clears them and movk keeps them, which is exactly the difference between
-\ taking the running value as an operand and taking none.
-: MOVE-WIDE ( IR-ID:ir-op-id A64IR:opcode n n bool -- )
-   {: id:IR-ID:ir-op-id o:A64IR:opcode imm:n sh:n keep:bool :}
+\ taking the running value as an operand and taking none. `kind` is what the
+\ CHAIN this move belongs to is building, and EVERY lane of a chain carries the
+\ same answer - src/compiler/native/emit.f records a site only where it sees a
+\ run of exactly four consecutive address lanes into one register, so a lane that
+\ disagreed with its neighbours would break the run rather than shorten it.
+: MOVE-WIDE ( IR-ID:ir-op-id A64IR:opcode n n bool n -- )
+   {: id:IR-ID:ir-op-id o:A64IR:opcode imm:n sh:n keep:bool kind:n :}
    id o OPEN
    keep if CTX BLD ACC IR-BUILD:ADD-OPERAND then
    RESULT+
    CTX BLD  CTX BLD A64IR:KEY-IMM    CTX BLD imm A64IR:IMM-ATTR    IR-BUILD:ADD-ATTR
    CTX BLD  CTX BLD A64IR:KEY-SHIFT  CTX BLD sh A64IR:SHIFT-ATTR   IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-ADDR   CTX BLD kind A64IR:ADDR-ATTR  IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 \ THE TWO CHAINS A CONSTANT CAN BE BUILT BY, AND WHY THE SHORTER ONE IS CHOSEN
@@ -1700,10 +1705,12 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ not already zero.
 : MATERIALISE-Z ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id v:n :}
-   id A64IR-OPCODE:MOVZ  v 0 A64IR:HALF-OF  0 A64IR:HALF-SHIFT  false MOVE-WIDE
+   id A64IR-OPCODE:MOVZ  v 0 A64IR:HALF-OF  0 A64IR:HALF-SHIFT  false
+   A64IR:ADDR-NONE MOVE-WIDE
    A64IR:HALVES 1 ?do
       v i A64IR:HALF-OF 0<> if
-         id A64IR-OPCODE:MOVK  v i A64IR:HALF-OF  i A64IR:HALF-SHIFT  true MOVE-WIDE
+         id A64IR-OPCODE:MOVK  v i A64IR:HALF-OF  i A64IR:HALF-SHIFT  true
+         A64IR:ADDR-NONE MOVE-WIDE
       then
    loop ;
 
@@ -1714,19 +1721,54 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    {: id:IR-ID:ir-op-id v:n :}
    v MOVN-HALF {: s:n :}
    id A64IR-OPCODE:MOVN
-   v s A64IR:HALF-OF ONES-HALF xor  s A64IR:HALF-SHIFT  false MOVE-WIDE
+   v s A64IR:HALF-OF ONES-HALF xor  s A64IR:HALF-SHIFT  false
+   A64IR:ADDR-NONE MOVE-WIDE
    A64IR:HALVES 0 ?do
       i s <> if
          v i A64IR:HALF-OF ONES-HALF <> if
-            id A64IR-OPCODE:MOVK  v i A64IR:HALF-OF  i A64IR:HALF-SHIFT  true MOVE-WIDE
+            id A64IR-OPCODE:MOVK  v i A64IR:HALF-OF  i A64IR:HALF-SHIFT  true
+            A64IR:ADDR-NONE MOVE-WIDE
          then
       then
    loop ;
 
-\ The move-wide chain that materialises one 64-bit value: whichever of the two is
-\ shorter, and the zero-based one when they are the same length.
-: MATERIALISE ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id v:n :}
+\ ---- the carrier a relocation pass can find and rewrite -----------------------
+\ THE ADDRESS CHAIN IS ALWAYS FOUR LANES, and the two savings above are exactly
+\ what it gives up. A relocation pass rewrites a chain by writing four new
+\ sixteen-bit immediates over the four that are there, in place, because the
+\ instruction stream around it cannot move: the routine is already published and
+\ every branch over it is already encoded. So the space for all four halves has
+\ to be there BEFORE anyone knows what the address will become. A minimal chain
+\ has it only for the halves that were non-zero in the writing run, and rebasing
+\ can make a zero half non-zero - the region moves by a delta that carries into
+\ any half - so a three-lane chain has nowhere to put the fourth. The movn form
+\ is excluded for a second reason on top of that one: it builds its value out of
+\ ONES, so the pass would have to know which lane was the movn and complement its
+\ immediate, and the whole point of the fixed shape is that the pass reads four
+\ identical move-wides and nothing else.
+\
+\ EVERY LANE IS EMITTED EVEN WHEN ITS HALF IS ZERO, which is what makes the width
+\ constant rather than usually-four. `movz` on lane 0 clears the register and the
+\ three `movk`s write the rest, so a zero half costs one instruction and changes
+\ nothing - and the engine's own C-ADDR-RAW (src/habu/habu2.f) emits exactly this
+\ shape for exactly this reason, which is what lets one relocation pass read both
+\ generators' chains.
+: MATERIALISE-ADDR ( IR-ID:ir-op-id n n -- )
+   {: id:IR-ID:ir-op-id v:n kind:n :}
+   id A64IR-OPCODE:MOVZ  v 0 A64IR:HALF-OF  0 A64IR:HALF-SHIFT  false
+   kind MOVE-WIDE
+   A64IR:HALVES 1 ?do
+      id A64IR-OPCODE:MOVK  v i A64IR:HALF-OF  i A64IR:HALF-SHIFT  true
+      kind MOVE-WIDE
+   loop ;
+
+\ The move-wide chain that materialises one 64-bit value. An ADDRESS takes the
+\ fixed carrier above whatever its halves happen to be; an ordinary number takes
+\ whichever of the two shortest chains is shorter, and the zero-based one when
+\ they are the same length.
+: MATERIALISE ( IR-ID:ir-op-id n n -- )
+   {: id:IR-ID:ir-op-id v:n kind:n :}
+   kind A64IR:ADDR-NONE <> if id v kind MATERIALISE-ADDR exit then
    v MOVN-COST  v MOVZ-COST  < if id v MATERIALISE-N exit then
    id v MATERIALISE-Z ;
 
@@ -1763,7 +1805,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 : EMIT-CONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id RLIT-REUSED? if exit then
-   id  id CONST-VALUE  MATERIALISE
+   id  id CONST-VALUE  id CONST-ADDR  MATERIALISE
    id 0 RESULT-AT  ACC  VBIND
    id RLIT-NOTE ;
 
@@ -1793,7 +1835,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 : EMIT-FCONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id RLIT-REUSED? if exit then
-   id  id CONST-VALUE  MATERIALISE
+   id  id CONST-VALUE  A64IR:ADDR-NONE  MATERIALISE
    id A64IR-OPCODE:FMOVXD OPEN
    CTX BLD ACC IR-BUILD:ADD-OPERAND
    FRESULT+

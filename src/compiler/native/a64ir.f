@@ -644,6 +644,9 @@ public
 : NAME ( -- ptr u8 n )
    s" a64" ;
 
+\ Version 0.9 adds the third required attribute on the move-wide forms: what kind
+\ of thing the chain a move belongs to is building. A table with it and one
+\ without disagree about what a movz IS, so the version moves with it.
 \ Version 0.6: the integer subset, the scalar floating forms, the four float
 \ comparison forms, the four conditional selects - two that answer a cell and two
 \ that answer a double - and the tail branch, which is the first terminator of
@@ -654,7 +657,7 @@ public
 \ and one without are two different tables and every consumer compares the
 \ version exactly.
 0 constant MAJOR
-8 constant MINOR
+9 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 \ A pass that materialises a constant walks the halves of a register, and it asks
@@ -678,6 +681,16 @@ public
    i 0 < i HALVES-N >= or if E-A64IR-SHIFT throw then
    i HALF-N * ;
 
+\ The kinds that key may name. ADDR-NONE is every ordinary number - a loop
+\ bound, a mask, a character - and is what all but a handful of moves carry.
+\ ADDR-DATA is an address of the engine's DATA region: a `create`d word's data
+\ field and the body of an interned string literal are the two the chain builds
+\ today. The value is a small enumeration rather than a flag so the CODE kind
+\ the `[']` road needs is a new member and not a second attribute.
+0 constant ADDR-NONE
+1 constant ADDR-DATA
+ADDR-DATA constant ADDR-KIND-MAX
+
 private
 
 \ ---- checked move-wide operands ----------------------------------------------
@@ -691,6 +704,12 @@ private
 : HALF ( n -- n )
    dup 0 < over XBITS >= or if E-A64IR-SHIFT throw then
    dup HALF-N mod 0<> if E-A64IR-SHIFT throw then ;
+
+\ A relocation kind this dialect knows. An unknown number here would reach the
+\ emitter as a site class it has no rule for, so it is refused where every other
+\ move-wide operand is refused rather than defaulted to "not an address".
+: ADDR-KIND ( n -- n )
+   dup 0 < over ADDR-KIND-MAX > or if E-A64IR-IMM throw then ;
 
 \ ---- checked frame operands --------------------------------------------------
 \ A slot offset the memory forms can reach: inside the frame it is measured from,
@@ -983,14 +1002,34 @@ public
 : KEY-SHIFT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.shift" IR-BUILD:INTERN-SYMBOL ;
 
-\ The two attribute values, each refused before it is interned if it does not fit
-\ the field it names. A pass building a move goes through these, so there is no
-\ route by which an out-of-range move-wide operand reaches a module at all.
+\ Design line 479: the third key a move-wide operation requires - WHAT KIND OF
+\ THING the chain it belongs to is building. A move-wide that starts an address
+\ chain has to be found again after publication, by a relocation pass that may
+\ not decode region bytes to recognise one: a compiled word carries inline data
+\ that decodes as a move, and an ordinary integer may hold any value at all. So
+\ the kind travels with the operation from the point the elaborator knew it, and
+\ src/compiler/native/emit.f records the site off this attribute.
+\
+\ IT IS REQUIRED AND NOT AN EXTENSION KEY, which is the whole reason it is
+\ trustworthy. A pass that rewrites a move-wide - combine.f copies operations
+\ between modules through an explicit key-by-key list - drops any key it does not
+\ name, and a dropped extension key is silently gone. A dropped REQUIRED key is
+\ E-IR-VERIFY-ATTRKEY at the next verification, so a rewrite that loses the kind
+\ stops the compilation instead of quietly unrecording a relocation site.
+: KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.addr" IR-BUILD:INTERN-SYMBOL ;
+
+\ The three attribute values, each refused before it is interned if it does not
+\ fit the field it names. A pass building a move goes through these, so there is
+\ no route by which an out-of-range move-wide operand reaches a module at all.
 : IMM-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    IMM16 IR-BUILD:INTERN-INT-ATTR ;
 
 : SHIFT-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    HALF IR-BUILD:INTERN-INT-ATTR ;
+
+: ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   ADDR-KIND IR-BUILD:INTERN-INT-ATTR ;
 
 \ The two attribute keys the frame forms require: which slot a frame access
 \ names, and how deep a frame the routine reserves.
@@ -1308,12 +1347,18 @@ private
    c b o RULE IR-SCHEMA:SET-RULE
    c b o RENDERER IR-SCHEMA:SET-RENDERER ;
 
-\ The two attribute keys a move-wide operation declares, in the order a builder
-\ has to present them.
+\ The three attribute keys a move-wide operation declares, in the order a builder
+\ has to present them. All three forms share the list - movz, movk and movn - so
+\ the kind is a question every move-wide answers rather than a property only some
+\ of them have, and MOVN's answer is constrained by the emitter rather than by
+\ its absence here: see EMIT-MOVN in src/compiler/native/emit.f, which refuses a
+\ movn that claims to carry an address. Stating the exclusion as a refusal is
+\ what makes it checkable; leaving movn off this list would state it by silence.
 : MOVE-ATTRS ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b KEY-IMM IR-SCHEMA:ADD-ATTR
-   c b KEY-SHIFT IR-SCHEMA:ADD-ATTR ;
+   c b KEY-SHIFT IR-SCHEMA:ADD-ATTR
+   c b KEY-ADDR IR-SCHEMA:ADD-ATTR ;
 
 \ Movz: no register is read, one is written, and the immediate and its half say
 \ what goes into it.

@@ -865,6 +865,7 @@ public
 -8389 constant E-A64EMIT-BOUND   \ an instruction or source-map index at or past the count the sealed emission holds
 -8390 constant E-A64EMIT-LAYOUT  \ the instructions written and the instructions the layout counted disagree: the writer reached a block at an offset the layout did not put it at, or ended the routine at a different length
 -8391 constant E-A64EMIT-BODY    \ how many instructions of an emission are its body, asked about a routine that calls: a call site publishes and takes back through the very data-stack forms a routine's own crossings use, so the emission less its crossings would not be that routine's body
+-8392 constant E-A64EMIT-ADDR    \ an address chain this emission cannot record: a movn claiming to carry an address, a run of lanes that is not exactly the carrier's width in one register, or more chains than the site table holds
 
 \ Native stage N0 source-tape producer (package NFEED): -8400..-8409
 \
