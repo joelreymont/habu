@@ -146,29 +146,135 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ disagreeing, in the same class as the other backstops this file keeps, and a
 \ case here would be a case about the checker wearing the chain's name.
 
-\ ---- 5. the shape that is not compiled yet ------------------------------------
-\ A body EVERY path of which ends leaves through its trap and has no return
-\ convention at all. The elaborator builds it - no return is staged and no block
-\ is left open - and it is refused further down, by the allocation validator,
-\ because such a routine still RESERVES a frame and saves its link register and
-\ nothing ever releases them: the order those two mint is passed on nowhere
-\ (E-A64RAV-ORDER). What is missing is a routine form for a convention that never
-\ returns; src/compiler/a64-effect.f models one (`control no-return`) and
-\ src/compiler/native/abi.f mints no form for it, so every form the migration can
-\ choose declares a frame this routine cannot end.
+\ ---- 5. the body EVERY path of which ends ------------------------------------
+\ Such a body leaves through its trap and has no return convention at all: the
+\ elaborator closes the block at each dead call, no return is staged and no block
+\ is left open. It used to be refused by the allocation validator, because the
+\ only routine forms the migration could choose all declared a frame this routine
+\ has no epilogue to end - it reserved one and saved its link register, and the
+\ memory order those two mint was passed on nowhere (E-A64RAV-ORDER).
 \
-\ IT IS PINNED AS THE REFUSAL IT IS so that the day the form exists this case
-\ fails and is rewritten as the publication it should be, rather than staying a
-\ shape nobody measured.
+\ THE FORM EXISTS NOW and this is the publication that refusal was pinned for.
+\ src/compiler/native/abi.f NORET-FRAMED declares the direct-call trait - the
+\ call is real and is what the routine dies in - declares the caller's return
+\ address DESTROYED, and owns no frame: nothing restores an address that is never
+\ read again, and no epilogue gives back a frame control never reaches.
+\ src/compiler/native/migrate.f asks the checker whether THIS definition is one
+\ that never returns, by the same certificate every other caller of it is
+\ compiled against.
+\
+\ EACH CASE IS RUN, not only compiled. A routine published under a convention
+\ nothing enters correctly would still compile; what says the convention is right
+\ is that the caller gets the code the source names, out of a call the engine
+\ made, with the data stack where the caller left it.
+: MK-ALLDEAD ( -- )
+   s" : DPC-ALLDEAD ( n -- ) drop E-A-EMPTY throw ;" 1 0 DEFINE ;
+
+: ALL-DEAD-CASE ( -- )
+   s" a body whose every path ends compiles, publishes and throws" T-LABEL
+   MK-ALLDEAD
+   s" 5 ' DPC-ALLDEAD catch nip" EV-N E-A-EMPTY T= ;
+
+\ Two arms, both dead. No edge reaches a join and no path states a width, so the
+\ routine has no return anywhere rather than one nothing branches to - and the
+\ arm the argument selects is the code the source named, which is what telling
+\ the two apart proves.
+: MK-BOTH-DEAD ( -- )
+   s" : DPC-BOTHDEAD ( n -- ) 0 = if E-A-EMPTY throw else E-A-BOUNDS throw then ;"
+   1 0 DEFINE ;
+
+: BOTH-DEAD-CASE ( -- )
+   s" two dead arms leave no return anywhere, and each arm is its own" T-LABEL
+   MK-BOTH-DEAD
+   s" 0 ' DPC-BOTHDEAD catch nip" EV-N E-A-EMPTY T=
+   s" 1 ' DPC-BOTHDEAD catch nip" EV-N E-A-BOUNDS T= ;
+
+\ THE SHAPE THAT READS LIKE A TAIL CALL. Its one call is the last thing the body
+\ does and the callee takes and leaves exactly what this definition does, which
+\ is the arithmetic the tail decision is about - and the callee is DEAD, so this
+\ routine has no return for a tail branch to stand in place of. The block ended
+\ at the call and its terminator is the trap, and a routine leaving through a
+\ callee is a routine returning THROUGH somebody else.
+\
+\ THE CODE IS NOT THE ARGUMENT, so the case can tell the call from the caller.
+\ DPCY:DEADN throws one MORE than what it was handed, which no path of the caller
+\ computes: an answer equal to the argument would be a routine that returned it,
+\ and an answer equal to the code says the callee really ran.
+: MK-TAIL-SHAPED ( -- )
+   s" : DPC-TAILDEAD ( n -- n ) DPCY:DEADN ;" 1 1 DEFINE ;
+
+: TAIL-SHAPED-CASE ( -- )
+   s" a dead last call of this definition's own arity still never returns" T-LABEL
+   MK-TAIL-SHAPED
+   s" 4 ' DPC-TAILDEAD catch nip" EV-N 5 T= ;
+
+\ ---- 6. what the whole chain says about that body, without keeping it ---------
+\ The measured entry runs every stage the published one runs and keeps nothing,
+\ so a shape that compiles only because something earlier in this file published
+\ it would fail here. It is also the entry tools/chain-census.f asks with, which
+\ is what makes the census's answer about these bodies this file's subject too.
 : MEASURE ( ptr u8 n n n -- )
    REGS NMIGRATE:MEASURE-HELD ;
 
-: ALL-DEAD ( -- )
-   s" : DPC-ALLDEAD ( n -- ) drop E-A-EMPTY throw ;" 1 0 MEASURE ;
+: ALL-DEAD-MEASURED ( -- )
+   s" : DPC-ALLDEADM ( n -- ) drop E-A-EMPTY throw ;" 1 0 MEASURE ;
 
-: ALL-DEAD-CASE ( -- )
-   s" a body whose every path ends is built, and refused for its frame" T-LABEL
-   [: ALL-DEAD ;] E-A64RAV-ORDER TTHROWSQ ;
+\ The same with a declared result. Control never comes back, so the cell the
+\ signature names is never published - and the routine still declares it, because
+\ the convention a Habu word is entered under is what its CALLERS were compiled
+\ against and the module records the same arity.
+: OUT-DEAD-MEASURED ( -- )
+   s" : DPC-ALLDEADO ( n -- n ) E-A-EMPTY throw ;" 1 1 MEASURE ;
+
+: MEASURED-CASE ( -- )
+   s" the whole chain accepts the shape with nothing published behind it" T-LABEL
+   [: ALL-DEAD-MEASURED ;] 0 TTHROWSQ
+   [: OUT-DEAD-MEASURED ;] 0 TTHROWSQ ;
+
+\ ---- 7. the shape that is still refused, and what it is waiting for ----------
+\ A no-return routine that SPILLS. Its frame is not the selector's - the walk
+\ decides the count after selection - so src/compiler/native/spill.f writes the
+\ reserve into the entry block and the release in front of the terminator of the
+\ block control leaves through. There is no such block here, so the release is
+\ never written, and the memory order the reserve minted is passed on nowhere:
+\ E-A64RAV-ORDER, the same refusal every all-dead body used to earn, now narrowed
+\ to the ones that run out of registers.
+\
+\ THE VALIDATOR ALREADY EXPECTS THE SHAPE - regalloc-verify.f VNO-RET-SPILL-CK
+\ measures a routine that takes its frame and does not give it back - so what is
+\ missing is one decision and not a design: either the trap terminator consumes
+\ the frame order as it already consumes the data-stack order (an operand the
+\ a64.trap form does not have), or the lowering writes the release in front of
+\ every terminator that leaves, which is a frame given back that nothing needed
+\ and a contradiction of the bracket rule above. Both belong to the owners of
+\ src/compiler/native/spill.f and the machine dialect, not to this leaf.
+\
+\ IT IS PINNED AS THE REFUSAL IT IS, at the register budget that reaches it, for
+\ the same reason section 5's refusal was pinned before the form existed. No
+\ census body reaches it: tools/chain-census.f measures at eighteen registers and
+\ nothing in the tree spills a no-return body there.
+: MEASURE-AT ( ptr u8 n n n n -- )
+   NMIGRATE:MEASURE-HELD ;
+
+\ Four values every one of which is read after the last of them is written, at
+\ four scratch registers. The live twin below it is the same arithmetic with the
+\ result returned instead of thrown away, and it compiles: what the case
+\ measures is the frame, so the pressure has to be real on both sides of it.
+: SPILL-DEAD ( -- )
+   s" : DPC-SPILLDEAD ( n n n n -- ) {: a:n b:n c:n d:n :} a b * c d * + a c * + b d * + drop E-A-EMPTY throw ;"
+   4 0 4 MEASURE-AT ;
+
+: SPILL-LIVE ( -- )
+   s" : DPC-SPILLLIVE ( n n n n -- n ) {: a:n b:n c:n d:n :} a b * c d * + a c * + b d * + ;"
+   4 1 4 MEASURE-AT ;
+
+: SPILL-CASE ( -- )
+   s" the same arithmetic spills and compiles when it returns" T-LABEL
+   [: SPILL-LIVE ;] 0 TTHROWSQ
+   NMIGRATE:SPILLS 0 T<>
+
+   s" and is still refused for its frame when every path ends" T-LABEL
+   [: SPILL-DEAD ;] E-A64RAV-ORDER TTHROWSQ ;
 
 public
 
@@ -180,7 +286,11 @@ public
    SECOND-CASE
    SHADOW-CASE
    OWNDEAD-CASE
-   ALL-DEAD-CASE ;
+   ALL-DEAD-CASE
+   BOTH-DEAD-CASE
+   TAIL-SHAPED-CASE
+   MEASURED-CASE
+   SPILL-CASE ;
 
 ;package
 
@@ -203,6 +313,12 @@ public
 
 : BOOM ( n -- )
    throw ;
+
+\ The same deadness at the arity a tail branch would need: what this leaves is
+\ what it takes, so a caller of it whose own arity is the same reads as a routine
+\ that could leave through it.
+: DEADN ( n -- n )
+   dup 1+ throw ;
 
 ;package
 

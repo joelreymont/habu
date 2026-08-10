@@ -2440,17 +2440,21 @@ public
 \ change habu-derive-a-routine-84ed36b6 made: the walk decides how much frame the
 \ routine needs, so a declaration handed in could only be a guess to be held to.
 \ FRAME below answers what the walk decided, and the caller declares that.
-: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:traits -- )
+\ WHERE the walk may start handing slots out is the contract's, and it takes the
+\ trait and the link declaration together because src/compiler/native/frame.f
+\ needs both: a routine that calls and never comes back keeps no return address,
+\ so its first spill slot is the bottom of its frame.
+: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:traits A64EFF:link -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
       cv:A64EFF:conv args:A64EFF:placeseq outs:A64EFF:placeseq
-      traits:A64EFF:traits :}
+      traits:A64EFF:traits link:A64EFF:link :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
    c TARGET-CK
    pool 0 S-POOL !
    fpool 0 S-FPOOL !
-   traits A64FRAME:SPILL-BASE BASE-N !
+   traits link A64FRAME:SPILL-BASE BASE-N !
    m VIEWS!
    m IR-BUILD:FMODULE 0 S-MOD !
    TABLES-CLEAR
@@ -2481,7 +2485,7 @@ public
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
-   pool fpool cv gi gr t WALK
+   pool fpool cv gi gr t l WALK
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST ! ;

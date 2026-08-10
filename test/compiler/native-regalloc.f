@@ -2201,6 +2201,29 @@ create TXT
    4 M-ALLOCATE {: m:IR-BUILD:module :}
    m  4 POOL-N  A64EFF-CONV:REGISTER 0 1 2 SQ3  A64EFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
 
+\ ---- the contract's control statement, held against the module ---------------
+\ `control no-return` is a PERMISSION: it is what lets a routine that calls keep
+\ no return address at all, and therefore no frame slot for one
+\ (src/compiler/native/frame.f LINK-KEPT?). A module whose function zero really
+\ does have a block control leaves through has not earned it - such a routine
+\ would return with the caller's address already destroyed - and nothing further
+\ down catches it, because with no save declared every frame rule is the
+\ frameless one and every one of them passes. The contract below is LEAF's with
+\ two fields changed, so the pool is the same pool the allocation was made
+\ under and the control statement is the only thing being measured.
+: NORET-DECL ( n -- A64EFF:routine )
+   POOL-N {: pool:A64EFF:gprs :}
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:CLOBBERED A64EFF-CONTROL:NO-RETURN
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
+: ACCEPT-NORET-RETURNING-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-PLAIN
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 NORET-DECL A64RAV:ACCEPT ;
+
 \ A claim nobody checked is not an answer, and an answer stops being one when a
 \ later walk replaces the allocation it was about.
 : UNCHECKED-BODY ( IR-CTX:ctx -- )
@@ -2269,6 +2292,8 @@ create TXT
    WBND [: ACCEPT-WRONG-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : ACCEPT-WRONG-POOL ( -- )
    WBND [: ACCEPT-WRONG-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: ACCEPT-NORET-RETURNING ( -- )
+   WBND [: ACCEPT-NORET-RETURNING-BODY ;] IR-CTX:WITH-CONTEXT ;
 : UNCHECKED ( -- )        WBND [: UNCHECKED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : STALE ( -- )            WBND [: STALE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-EDGE-CLASH ( -- )    WBND [: MB-EDGE-CLASH-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2421,6 +2446,11 @@ create TXT
    [: ACCEPT-WRONG-MODULE ;] E-A64RAV-MODULE TTHROWSQ
    s" accepting under a different set of registers is refused" T-LABEL
    [: ACCEPT-WRONG-POOL ;] E-A64RAV-CONTRACT TTHROWSQ ;
+
+: NORET-REFUSE-CASE ( -- )
+   s" a contract saying control never comes back over a module that returns is refused"
+   T-LABEL
+   [: ACCEPT-NORET-RETURNING ;] E-A64RAV-SHAPE TTHROWSQ ;
 
 \ ---- the refusals a routine of more than one block earns ---------------------
 \ The first is the allocator's class invariant, stated over a class the edge rule
@@ -2920,6 +2950,7 @@ create TXT
 : GROUP-MODULE ( IR-CTX:ctx -- )    drop MODULE-REFUSE-CASES ;
 : GROUP-TARGET ( IR-CTX:ctx -- )    drop TARGET-REFUSE-CASES ;
 : GROUP-ACCEPT ( IR-CTX:ctx -- )    drop ACCEPT-REFUSE-CASES ;
+: GROUP-NORET ( IR-CTX:ctx -- )     drop NORET-REFUSE-CASE ;
 : GROUP-STATE ( IR-CTX:ctx -- )     drop STATE-REFUSE-CASES ;
 : GROUP-MB ( IR-CTX:ctx -- )        drop MB-REFUSE-CASES ;
 : GROUP-ROUND ( IR-CTX:ctx -- )     drop ROUND-FRAME-CASES ;
@@ -2991,6 +3022,7 @@ public
    WBND [: GROUP-MODULE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TARGET ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-ACCEPT ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-NORET ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-STATE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MB ;] IR-CTX:WITH-CONTEXT
 

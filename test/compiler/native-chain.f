@@ -1370,6 +1370,109 @@ $54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused 
    [: 24 4 NABI:POOL A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 20 4 1 1 0 NABI:LEAF-FRAMED DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ ;
 
+\ ---- what the no-return form declares, against the calling form it is not -----
+\ The two forms describe routines that make the same instruction - an ordinary
+\ Bl - and differ in what happens after it. Reading the fields side by side is
+\ what says the difference is one capability and not a second convention: the
+\ trait is the same, the arity is the same, and the caller's return address and
+\ the frame are what change. A form that quietly kept the slot would be caught
+\ here rather than as bytes nobody could account for.
+\
+\ EACH CONTRACT IS BUILT AT EVERY READ because a routine is thirteen cells and a
+\ value of more than one cell cannot be bound to a typed local - the same reason
+\ src/compiler/native/abi.f states its own contract more than once.
+: NR0 ( -- A64EFF:routine )   0 4 1 0 0 NABI:NORET-FRAMED ;
+: CF0 ( -- A64EFF:routine )   0 4 1 0 0 NABI:CALL-FRAMED ;
+: NR4 ( -- A64EFF:routine )   0 4 1 0 4 NABI:NORET-FRAMED ;
+: CF4 ( -- A64EFF:routine )   0 4 1 0 4 NABI:CALL-FRAMED ;
+
+\ A contract of one control value and one link value, for the pair of questions
+\ LINK-SPLIT-CASE below asks about every way control can leave.
+: R-LINK ( A64EFF:control A64EFF:link -- A64EFF:routine )
+   {: c:A64EFF:control l:A64EFF:link :}
+   A64EFF-CONV:DSTACK A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-NONE
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED l c
+   A64EFF:T-CALL 0 0 A64EFF:ROUTINE ;
+
+: NORET-TRAIT-CASE ( -- )
+   s" both forms declare the direct call, because both really call" T-LABEL
+   NR0 A64EFF:TRAITS@ A64EFF:T-CALL A64EFF:TRAITS-HAS? TTRUE
+   CF0 A64EFF:TRAITS@ A64EFF:T-CALL A64EFF:TRAITS-HAS? TTRUE ;
+
+: NORET-FIELD-CASE ( -- )
+   s" the calling form keeps the caller's return address and a slot for it"
+   T-LABEL
+   CF0 A64EFF:LINK@ A64EFF-LINK:PRESERVED A64EFF-LINK:EQ TTRUE
+   CF0 A64EFF:FRAME@ A64EFF:SP-ALIGN T=
+   CF0 A64EFF:CONTROL@ A64EFF-CONTROL:RETURNS A64EFF-CONTROL:EQ TTRUE
+   CF0 A64EFF:RETURNS? TTRUE
+
+   s" the no-return form declares it destroyed and owns no frame at all" T-LABEL
+   NR0 A64EFF:LINK@ A64EFF-LINK:CLOBBERED A64EFF-LINK:EQ TTRUE
+   NR0 A64EFF:FRAME@ 0 T=
+   NR0 A64EFF:DELTA@ 0 T=
+   NR0 A64EFF:CONTROL@ A64EFF-CONTROL:NO-RETURN A64EFF-CONTROL:EQ TTRUE
+   NR0 A64EFF:RETURNS? TFALSE ;
+
+\ The layout the two fields decide, read out of the file that owns it. It is the
+\ same pair of questions every pass asks - the selector to decide whether to
+\ build the save, the allocator to decide where its slots start - so a form whose
+\ two fields disagreed with its declared frame would show up as one of these.
+: NORET-LAYOUT-CASE ( -- )
+   s" the layout keeps a slot for the calling form and none for the other"
+   T-LABEL
+   NR0 A64EFF:TRAITS@ NR0 A64EFF:LINK@ A64FRAME:LINK-KEPT? TFALSE
+   CF0 A64EFF:TRAITS@ CF0 A64EFF:LINK@ A64FRAME:LINK-KEPT? TTRUE
+   NR0 A64EFF:TRAITS@ NR0 A64EFF:LINK@ A64FRAME:SPILL-BASE 0 T=
+   CF0 A64EFF:TRAITS@ CF0 A64EFF:LINK@ A64FRAME:SPILL-BASE
+      A64FRAME:LINK-SLOT A64IR:SLOT-WIDTH + T= ;
+
+\ ---- why the split cannot lose a return address ------------------------------
+\ The link save used to be built from the trait alone, and it is now built from
+\ the trait AND the link declaration together. What makes that safe is not this
+\ file's care: it is A64EFF:LINK-CK, which refuses `link clobbered` for every
+\ routine control comes back from. So for a routine that RETURNS or that leaves
+\ through a callee there is exactly one link value a contract can carry, and
+\ LINK-KEPT? over it is the trait and nothing else - the split can only ever drop
+\ the save from a routine no return address is read in.
+\
+\ THE THREE DOORS ARE THE THREE CONTROL VALUES, so a variant added to that family
+\ without an answer here would leave a routine whose link rule nobody stated.
+: LINK-SPLIT-CASE ( -- )
+   s" a routine control comes back from cannot declare the address destroyed"
+   T-LABEL
+   [: A64EFF-CONTROL:RETURNS A64EFF-LINK:CLOBBERED R-LINK DROP-ROUTINE ;]
+      E-A64EFF-LINK TTHROWSQ
+   [: A64EFF-CONTROL:TAIL-CALL A64EFF-LINK:CLOBBERED R-LINK DROP-ROUTINE ;]
+      E-A64EFF-LINK TTHROWSQ
+
+   s" so a calling routine that returns always keeps a slot for it" T-LABEL
+   A64EFF-CONTROL:RETURNS A64EFF-LINK:PRESERVED R-LINK
+      A64EFF:TRAITS@ A64EFF-LINK:PRESERVED A64FRAME:LINK-KEPT? TTRUE
+   A64EFF-CONTROL:TAIL-CALL A64EFF-LINK:PRESERVED R-LINK
+      A64EFF:TRAITS@ A64EFF-LINK:PRESERVED A64FRAME:LINK-KEPT? TTRUE
+
+   s" and only one that never comes back may say otherwise" T-LABEL
+   A64EFF-CONTROL:NO-RETURN A64EFF-LINK:CLOBBERED R-LINK
+      A64EFF:TRAITS@ A64EFF-LINK:CLOBBERED A64FRAME:LINK-KEPT? TFALSE ;
+
+\ And a spilling one, where the slot the prologue owns is the whole difference:
+\ four values fit a no-return routine's frame and push a calling routine's over
+\ the next alignment step. Where the no-return one leaves the machine stack
+\ pointer is its whole frame below where it was entered, because nothing gives it
+\ back and nothing needs it back.
+: NORET-SPILL-CASE ( -- )
+   s" four spill slots fit one form's frame and not the other's" T-LABEL
+   NR4 A64EFF:FRAME@  4 A64IR:SLOT-WIDTH *  A64EFF:FRAME-ROUND  T=
+   CF4 A64EFF:FRAME@  5 A64IR:SLOT-WIDTH *  A64EFF:FRAME-ROUND  T=
+   NR4 A64EFF:FRAME@  CF4 A64EFF:FRAME@  T<>
+
+   s" and the pointer is declared where a routine that never returns leaves it"
+   T-LABEL
+   NR4 A64EFF:DELTA@  NR4 A64EFF:FRAME@ negate  T=
+   CF4 A64EFF:DELTA@ 0 T= ;
+
 public
 
 : RUN ( -- )
@@ -1398,6 +1501,11 @@ public
    RSPILL-CASE
    AGREE-CASES
    POOL-CASES
+   NORET-TRAIT-CASE
+   NORET-FIELD-CASE
+   NORET-LAYOUT-CASE
+   LINK-SPLIT-CASE
+   NORET-SPILL-CASE
    T-REPORT ;
 
 ;package

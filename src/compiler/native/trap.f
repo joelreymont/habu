@@ -214,6 +214,14 @@ KIND-NORET constant NO-RET
 \ certificate said never returns exits ENGINE-ERROR:CODE-CERT, because what was
 \ false is the certificate the caller was compiled against.
 \
+\ AND THAT DISTINCTION EARNED MORE SINCE IT WAS MADE. A caller whose every path
+\ ends is now published under a routine contract that declares no frame and no
+\ saved return address at all (src/compiler/native/abi.f NORET-FRAMED), and what
+\ licenses both is that same certificate - so a callee that comes back does not
+\ merely arrive somewhere the compiler thought unreachable, it arrives in a
+\ routine that has nowhere to return to. BAD-TAG would say something untrue about
+\ a scrutinee; CODE-CERT names the thing that was false.
+\
 \ AN ORDINAL OUTSIDE THE TABLE IS NOT A ROW AND IS NOT REPORTED AS ONE. The
 \ number was written into a published routine by this same process, so a number
 \ that is not a row means the module or the table has been corrupted, and naming

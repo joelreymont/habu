@@ -38,6 +38,15 @@
 \ make it true, so it declares the direct-call trait and a frame of one slot for
 \ the caller's return address; the selector builds the save and the restore from
 \ that declaration and the validator measures them against it.
+\
+\ AND THE SLOT IS BOUGHT BY THE RETURN, NOT BY THE CALL. The two are the same
+\ question for every routine control comes back from, which is why one bit
+\ answered it while those were the only routines here. They come apart at the
+\ routine that calls and never comes back: it destroys the caller's return
+\ address exactly as any caller does, and nothing ever reads it again, so it
+\ declares the trait, declares the address destroyed, and owns no frame slot at
+\ all. NORET-FRAMED at the foot of this file is that contract, and
+\ src/compiler/native/frame.f is where the two fields are read together.
 
 require lib/prelude.f
 require src/compiler/target.f
@@ -90,9 +99,14 @@ public
 \ the one place that turns a count of spill slots into a size and both halves of
 \ the layout come off the same declaration. A routine whose prologue owns nothing
 \ and that needs no slot declares no frame at all.
-: FRAME-FOR ( A64EFF:traits n -- n )
-   {: t:A64EFF:traits spills:n :}
-   t A64FRAME:SPILL-BASE  spills A64IR:SLOT-WIDTH *  +  A64EFF:FRAME-ROUND ;
+\
+\ IT TAKES THE LINK DECLARATION AS WELL AS THE TRAIT because what the prologue
+\ owns is decided by both: a routine that calls owns a slot for the caller's
+\ return address exactly while it means to hand that address back. A64FRAME owns
+\ that rule and is handed the same two fields the routine below declares.
+: FRAME-FOR ( A64EFF:traits A64EFF:link n -- n )
+   {: t:A64EFF:traits l:A64EFF:link spills:n :}
+   t l A64FRAME:SPILL-BASE  spills A64IR:SLOT-WIDTH *  +  A64EFF:FRAME-ROUND ;
 
 \ A leaf word under that convention, with room in its frame for `spills` values
 \ the register allocator could not keep in registers. No register is part of the
@@ -107,7 +121,7 @@ public
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
    A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE
-   A64EFF:TRAITS-NONE spills FRAME-FOR
+   A64EFF:TRAITS-NONE A64EFF-LINK:PRESERVED spills FRAME-FOR
    0 A64EFF:ROUTINE ;
 
 : LEAF ( n n n n -- A64EFF:routine )
@@ -127,7 +141,7 @@ public
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
    A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:T-CALL
-   A64EFF:T-CALL spills FRAME-FOR
+   A64EFF:T-CALL A64EFF-LINK:PRESERVED spills FRAME-FOR
    0 A64EFF:ROUTINE ;
 
 : CALL ( n n n n -- A64EFF:routine )
@@ -161,7 +175,7 @@ public
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
    A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:TAIL-CALL
    A64EFF:TRAITS-NONE
-   A64EFF:TRAITS-NONE spills FRAME-FOR
+   A64EFF:TRAITS-NONE A64EFF-LINK:PRESERVED spills FRAME-FOR
    0 A64EFF:ROUTINE ;
 
 : TAIL ( n n n n -- A64EFF:routine )
@@ -176,11 +190,61 @@ public
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
    A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:TAIL-CALL
    A64EFF:T-CALL
-   A64EFF:T-CALL spills FRAME-FOR
+   A64EFF:T-CALL A64EFF-LINK:PRESERVED spills FRAME-FOR
    0 A64EFF:ROUTINE ;
 
 : TAIL-CALLING ( n n n n -- A64EFF:routine )
    0 TAIL-CALLING-FRAMED ;
+
+\ ---- and the convention of a word control never comes back from ---------------
+\ A word every path of which ends in a call the checker certified never returns
+\ has no return of its own: the elaborator ends the block at each such call and
+\ closes it with the trap that leaves, so the routine contains no Ret anywhere
+\ and no caller of it is ever resumed. `control no-return` is what
+\ src/compiler/a64-effect.f already models for that, and this is the form that
+\ declares it.
+\
+\ WHY IT SAVES NO RETURN ADDRESS, WHICH IS THE WHOLE OF WHAT IT BUYS. A routine
+\ saves x30 because its first call destroys it and it will need it to return. The
+\ first half is true here - the call is an ordinary Bl and the trait says so -
+\ and the second is not: there is no Ret to read it back for. Nothing else reads
+\ it either. Control leaves through the callee, and where that callee goes is
+\ never through this routine's frame: `die` ends the process; `throw` restores
+\ the machine stack pointer, the data-stack pointer, the return-stack depth and
+\ the resume address from the handler frame the nearest `catch` wrote
+\ (src/habu/habu1.f BCATCH and BTHROW) and branches there, so every frame between
+\ the catch and the throw - this one among them - is abandoned rather than walked.
+\ There is no unwinder that reads a routine's own frame, so a frame this routine
+\ never gives back costs the machine nothing and a return address it never saved
+\ is one nobody looks for.
+\
+\ SO IT DECLARES THE ADDRESS DESTROYED, and that is not a licence it takes: it is
+\ the declaration A64EFF:LINK-CK permits for a routine control does not come back
+\ from and refuses for every other one. The frame that follows is derived from
+\ the same pair through A64FRAME, so the prologue owns nothing and a spilling
+\ no-return routine's slots start at the bottom of its frame.
+\
+\ AND THE STACK POINTER IS DECLARED WHERE CONTROL REALLY LEAVES. A returning
+\ routine gives its frame back, so its net change is zero. This one does not, so
+\ where it leaves the pointer stands its whole frame below where it was entered,
+\ and that is the number declared - which A64EFF:DELTA-CK bounds and
+\ A64EFF:BALANCE-CK permits only for a routine that never returns.
+\
+\ WHAT IS NOT MINTED HERE, and why that is not an omission: a routine that never
+\ returns and does NOT call. What makes a body all-dead is the call it dies in,
+\ so every routine this chain compiles under a no-return contract contains one.
+\ A hand-built module whose only terminator is a trap is a fixture's, and a
+\ fixture states its own contract.
+: NORET-FRAMED ( n n n n n -- A64EFF:routine )
+   {: base:n n:n in:n out:n spills:n :}
+   A64EFF-CONV:DSTACK
+   in SLOT-SEQ  out SLOT-SEQ
+   base n POOL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
+   A64EFF-NZCV:CLOBBERED A64EFF-LINK:CLOBBERED A64EFF-CONTROL:NO-RETURN
+   A64EFF:T-CALL
+   A64EFF:T-CALL A64EFF-LINK:CLOBBERED spills FRAME-FOR
+   dup negate A64EFF:ROUTINE ;
 
 private
 

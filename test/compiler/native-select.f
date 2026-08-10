@@ -2161,6 +2161,26 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
 
+\ A contract that keeps the caller's return address in a frame with no room for
+\ it. The address goes into slot zero of the routine's own frame, so a frame
+\ shorter than one cell has nowhere to put it, and the routine would return
+\ through whatever the machine stack happened to hold. It is asked of the
+\ contracts that KEEP one - a routine that never comes back reads its address
+\ back nowhere, declares no frame and is right to - so the two questions are
+\ separate and this is the one that is still refused.
+\
+\ NO PRODUCTION CONTRACT REACHES IT. src/compiler/native/abi.f derives the frame
+\ from the same two fields src/compiler/native/frame.f decides the slot from, so
+\ a form that kept the address and declared no room for it cannot be built there;
+\ this is the fail-closed backstop for a contract assembled some other way,
+\ exactly as the register-convention clause above it is.
+: CALL-NOFRAME-CONV ( n n -- A64EFF:routine )
+   {: in:n out:n :}
+   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:T-CALL 0 0 A64EFF:ROUTINE ;
+
 : SELECTED-HABU ( n n -- IR-BUILD:module )
    {: in:n out:n :}
    CC BB A64SEL:BIND-SOURCE
@@ -2585,6 +2605,13 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m A64-BUILDER TXT TXT-N CALL-REG-CONV A64SEL:SELECT drop ;
 
+: CALL-NOFRAME-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-SQUARE
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m A64-BUILDER TXT TXT-N  1 1 CALL-NOFRAME-CONV  A64SEL:SELECT drop ;
+
 : ARITY-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SQUARE
@@ -2592,6 +2619,9 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 
 : CALL-REG ( -- )
    WBND [: CALL-REG-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: CALL-NOFRAME ( -- )
+   WBND [: CALL-NOFRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : DARITY ( -- )
    WBND [: ARITY-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2618,6 +2648,10 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : CALL-REG-REFUSE-CASE ( -- )
    s" a contract declaring a call under the register convention is refused" T-LABEL
    [: CALL-REG ;] E-A64SEL-CALL TTHROWSQ ;
+
+: CALL-NOFRAME-REFUSE-CASE ( -- )
+   s" a contract keeping the return address in no frame at all is refused" T-LABEL
+   [: CALL-NOFRAME ;] E-A64SEL-CALL TTHROWSQ ;
 
 : DARITY-REFUSE-CASE ( -- )
    s" a convention naming more data-stack arguments than the word has is refused" T-LABEL
@@ -2651,6 +2685,10 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : GROUP-CALL-REG-REFUSE ( IR-CTX:ctx -- )
    drop
    CALL-REG-REFUSE-CASE ;
+
+: GROUP-CALL-NOFRAME-REFUSE ( IR-CTX:ctx -- )
+   drop
+   CALL-NOFRAME-REFUSE-CASE ;
 
 : GROUP-DARITY-REFUSE ( IR-CTX:ctx -- )
    drop
@@ -2717,6 +2755,7 @@ public
    WBND [: GROUP-TRAP-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MEM-REG-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-CALL-REG-REFUSE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-CALL-NOFRAME-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-DARITY-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-CALL-NONE-REFUSE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;

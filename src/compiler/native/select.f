@@ -294,6 +294,7 @@ variable N-TAILS                     \ tail branches this selection built
 variable N-TRAPS                     \ trap branches this selection built
 variable S-TAIL                      \ whether the contract says control leaves through a callee
 variable S-DSTACK                    \ whether the contract declares the data-stack convention
+variable S-LSAVE                     \ whether the contract's prologue keeps the caller's return address
 variable FUSE-AT                     \ where in this block the fused comparison is, or -1
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
@@ -843,14 +844,25 @@ variable D-RETS                                    \ returns seen while surveyin
 : CALLS? ( -- bool )
    TRAITS A64EFF:T-CALL A64EFF:TRAITS-HAS? ;
 
+\ Does the contract say this routine keeps its caller's return address in its own
+\ frame? That is what decides whether the pair below is built, and it is NOT the
+\ same question as whether the routine calls: a routine that calls and never
+\ comes back destroys the address like any caller and reads it back nowhere, so
+\ it saves nothing. src/compiler/native/frame.f owns the rule and is handed the
+\ contract's two fields; SELECT reads the answer once and stores it here.
+: LINK-SAVED? ( -- bool )
+   S-LSAVE @ 0<> ;
+
 \ What a contract that declares a call has to say for this pass to build one.
 \ A call site hands the callee its arguments through the caller's data stack and
 \ saves every live value into the same stack, so a routine declared under the
 \ REGISTER convention has no site to build: its entry never takes the pointer,
-\ and the register form of a call is not a lowering this pass has. And the return
-\ address goes into slot zero of the routine's own frame, so a frame too small to
-\ hold one cell has nowhere to put it. Both are the contract's declaration and
-\ both are decided before a single operation is selected.
+\ and the register form of a call is not a lowering this pass has. And where the
+\ routine keeps a return address at all, it goes into slot zero of its own frame,
+\ so a frame too small to hold one cell has nowhere to put it - which is asked of
+\ the routines that keep one, because a routine that never comes back declares no
+\ frame and has nothing to put anywhere. All three are the contract's declaration
+\ and all three are decided before a single operation is selected.
 \
 \ THIS USED TO REFUSE A ( -- ) WORD, and that is what declaring the convention
 \ fixed. The question was asked of the place lists, which are empty for a routine
@@ -861,6 +873,7 @@ variable D-RETS                                    \ returns seen while surveyin
 : CONTRACT-CK ( -- )
    CALLS? 0= if exit then
    DSTACK? 0= if E-A64SEL-CALL throw then
+   LINK-SAVED? 0= if exit then
    FRAME A64IR:SLOT-WIDTH < if E-A64SEL-CALL throw then ;
 
 \ ---- each function's own boundary --------------------------------------------
@@ -1174,16 +1187,20 @@ variable D-RETS                                    \ returns seen while surveyin
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ FTOK! ;
 
-\ Whether the frame and the link save are built at all is CALLS? above.
+\ Whether the frame and the link save are built at all is LINK-SAVED? above, and
+\ not CALLS?. The pair exists to make the contract's `link preserved` true, so a
+\ routine that declares the address destroyed builds neither half - and there is
+\ no epilogue to build either, because the block the release would stand in front
+\ of is a block control never reaches.
 : PROLOGUE ( IR-ID:ir-op-id -- )
    {: at:IR-ID:ir-op-id :}
-   CALLS? 0= if exit then
+   LINK-SAVED? 0= if exit then
    at EMIT-RESERVE
    at A64IR-OPCODE:LINKSAVE EMIT-LINK ;
 
 : EPILOGUE ( IR-ID:ir-op-id -- )
    {: at:IR-ID:ir-op-id :}
-   CALLS? 0= if exit then
+   LINK-SAVED? 0= if exit then
    at A64IR-OPCODE:LINKLOAD EMIT-LINK
    at EMIT-RELEASE ;
 
@@ -4785,6 +4802,7 @@ public
    size S-FRAME !
    ct A64EFF-CONTROL:TAIL-CALL A64EFF-CONTROL:EQ if 1 else 0 then S-TAIL !
    cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if 1 else 0 then S-DSTACK !
+   t l A64FRAME:LINK-KEPT? if 1 else 0 then S-LSAVE !
    0 N-CALLS !
    0 N-TAILS !
    0 N-TRAPS !

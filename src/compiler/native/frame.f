@@ -16,16 +16,24 @@
 \ layout of its own to remember:
 \
 \   slot 0    the caller's return address, when the contract declares the direct
-\             call trait, and nothing at all when it does not;
+\             call trait AND declares that address still intact where control
+\             leaves, and nothing at all when it does not;
 \   above it  every slot the register allocator hands out, in the order it hands
 \             them out.
 \
-\ WHY A TRAIT DECIDES IT RATHER THAN A FLAG SOMEWHERE. Whether a routine keeps a
-\ return address in its frame is exactly whether it calls, and the contract
-\ already says that: the selector builds the save and the restore from
-\ A64EFF:T-CALL and the validator measures them against the same bit. Deriving
-\ the base from that bit means the allocator's first slot and the selector's link
-\ slot cannot disagree without the contract disagreeing with itself.
+\ WHY THE CONTRACT DECIDES IT RATHER THAN A FLAG SOMEWHERE. Whether a routine
+\ keeps a return address in its frame is a question the contract already answers,
+\ and it takes TWO of its fields to answer it. The trait says the routine
+\ contains a direct call, which is what DESTROYS the caller's return address; the
+\ link field says whether that address is still in x30 where control leaves,
+\ which is what makes keeping a copy worth anything. A routine that calls and
+\ preserves the link has to save and restore, so it owns the slot. A routine that
+\ calls and declares the address destroyed never reads it back, so it owns
+\ nothing - and src/compiler/a64-effect.f LINK-CK refuses that combination for
+\ every routine control comes back from, so the only contract that reaches it is
+\ one that never returns. Deriving the base here means the allocator's first slot
+\ and the selector's link slot cannot disagree without the contract disagreeing
+\ with itself.
 \
 \ WHAT IS NOT HERE. How big the frame has to BE is not derived from the program
 \ yet: a routine whose author declared too small a frame is refused rather than
@@ -47,17 +55,31 @@ private
 \ one slot above it.
 0 constant LINK-IX
 
+public
+
+\ Does this routine's prologue keep the caller's return address in its own frame?
+\ It is one question with one answer, and every pass that builds, places or
+\ measures the save asks it here: the selector to decide whether to build the
+\ pair at all, this file to decide where the allocator's slots start, and the
+\ allocation validator to decide which frame accesses are the prologue's.
+: LINK-KEPT? ( A64EFF:traits A64EFF:link -- bool )
+   {: t:A64EFF:traits l:A64EFF:link :}
+   t A64EFF:T-CALL A64EFF:TRAITS-HAS? 0= if false exit then
+   l A64EFF-LINK:PRESERVED A64EFF-LINK:EQ ;
+
+private
+
 \ How many slots at the bottom of the frame the prologue owns: one for a routine
-\ that calls, none for one that does not.
-: PROLOGUE-SLOTS ( A64EFF:traits -- n )
-   A64EFF:T-CALL A64EFF:TRAITS-HAS? if 1 else 0 then ;
+\ that keeps the caller's return address, none for one that does not.
+: PROLOGUE-SLOTS ( A64EFF:traits A64EFF:link -- n )
+   LINK-KEPT? if 1 else 0 then ;
 
 public
 
 \ The byte offset of the slot the caller's return address is kept in. It is a
 \ slot of a calling routine's frame and of no other, so a reader that has not
-\ decided the routine calls has no business asking for it - which is what
-\ SPILL-BASE below is for.
+\ decided the routine keeps one has no business asking for it - which is what
+\ LINK-KEPT? above and SPILL-BASE below are for.
 : LINK-SLOT ( -- n )
    LINK-IX A64IR:SLOT-WIDTH * ;
 
@@ -65,7 +87,7 @@ public
 \ Everything below it belongs to the prologue, so a frame access naming less than
 \ this is the prologue's own and one naming this or more is a spill. That is the
 \ whole partition, and both sides read it here.
-: SPILL-BASE ( A64EFF:traits -- n )
+: SPILL-BASE ( A64EFF:traits A64EFF:link -- n )
    PROLOGUE-SLOTS A64IR:SLOT-WIDTH * ;
 
 private

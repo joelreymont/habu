@@ -597,7 +597,55 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ filled in by EMITTED below out of what the walk proved. Zero is what the four
 \ unframed forms declared before this file counted anything, so a definition whose
 \ values all fit is compiled under exactly the contract it always had.
+\
+\ WHETHER CONTROL COMES BACK FROM THIS ROUTINE AT ALL IS THE CHECKER'S, AND IT IS
+\ ASKED ABOUT THIS DEFINITION BY NAME. A definition every path of which ends in a
+\ call to a word that never returns is one the checker certifies as never
+\ returning, in the same control-flag store and under the same symbol it
+\ certified everything else about it (src/core/checker.f CTL-DEAD), and
+\ src/compiler/native/dict.f is the door the chain already reads that store
+\ through for every CALLEE a body names. Asking it about the definition itself is
+\ the same question about one word further out - and it is the right authority
+\ rather than a convenient one: every OTHER caller in the tree is compiled
+\ against that same certificate, so a routine published under any contract but
+\ `control no-return` would be a routine disagreeing with what its callers were
+\ told. The elaborator's own walk is the second derivation and the allocation
+\ validator holds the two together (src/compiler/native/regalloc-verify.f
+\ VNORET-CK), so this is a claim held against a derivation rather than a decision
+\ taken twice.
+\
+\ THE NAME IS THE ONE KEEP-NAME COPIED, which is the tail the record carries, and
+\ it is the same key HELD-RETRACT gives back to the checker on the way out of a
+\ refused held run. It is readable here for a held migration as much as for a
+\ published one: the hold withholds the DICTIONARY record, and the certificate is
+\ the checker's, recorded while the engine compiled the source. A migration
+\ inside an open package would need the qualified spelling and does not have one
+\ yet, exactly as HELD-RETRACT does not - that arrives with the package-scoped
+\ migration, dot habu-parse-a-migrated-b38a83d9.
+\
+\ AND A WRONG ANSWER HERE CANNOT PUBLISH A WRONG ROUTINE, which is what makes a
+\ name-keyed question safe to ask at all. Answered yes for a body that really
+\ returns, the contract declares no-return over a module with a return in it and
+\ the allocation validator refuses it by name; answered no for a body whose every
+\ path ends, the contract declares a frame the routine has no epilogue to end and
+\ the memory-order rule refuses THAT by name - which is the refusal this whole
+\ leaf was opened for. Both directions are refusals with the definition still
+\ running the code the engine compiled for it.
+: NO-RETURN? ( -- bool )
+   NAME-BUF NAME-U @ NDICT:SPELL-DEAD? ;
+
+\ THE NO-RETURN ARM COMES FIRST, because the three below it are shapes of a
+\ routine that HAS a return - one to make, one to replace with a branch, and one
+\ to make after a call it came back from - and a body whose every path ends has
+\ none: the elaborator closed each block at the dead call and put the trap that
+\ leaves behind it. So the question that decides whether there is a return at all
+\ is asked before the questions about what to do with one. No body measured so
+\ far answers yes to this and to the tail question both, so the order is a
+\ statement about what the arms MEAN rather than a refusal anything has hit.
 : ROUTINE ( -- A64EFF:routine )
+   NO-RETURN? if
+      0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-FRAMED exit
+   then
    NELAB:TAIL-CALLED?  NELAB:TAIL-ENTRY@ NPUB:IN-REGION?  and if
       NELAB:CALLS-BACK? if
          0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-CALLING-FRAMED exit

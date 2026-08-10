@@ -26,6 +26,7 @@ require lib/process-argv.f
 require lib/engine-candidate.f
 require test/compiler/native-chain-fixture.f
 require src/compiler/native/publish.f
+require src/compiler/native/migrate.f
 
 package NTRAP-TEST
 private
@@ -362,6 +363,23 @@ $1F constant REG-MASK
       i A64EMIT:WORD@ DMOVE-WORD? if 1+ then
    loop ;
 
+\ And how many move the MACHINE stack pointer, which is what a routine's own
+\ frame costs: the reserve subtracts from it and the release adds back. Both
+\ name operand 31 as source and destination, where that operand is the stack
+\ pointer rather than the zero register. A routine with no frame emits neither,
+\ so this counting zero is what "frameless" is as bytes.
+: SPMOVE-WORD? ( n -- bool )
+   {: w:n :}
+   w ADDSUB-MASK and ADDI-OP =  w ADDSUB-MASK and SUBI-OP =  or 0= if false exit then
+   w REG-MASK and A64EFF:SP-GPR <> if false exit then
+   w 5 rshift REG-MASK and A64EFF:SP-GPR = ;
+
+: SPMOVES-IN-EMISSION ( -- n )
+   0
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ SPMOVE-WORD? if 1+ then
+   loop ;
+
 \ ---- two routines, one target ------------------------------------------------
 \ The two are compiled separately, at two DIFFERENT placements, so their branches
 \ carry two different displacements. What has to be equal is where those
@@ -418,6 +436,14 @@ public
 : LEN-VICTIM-B ( n -- n )
    dup + ;
 
+\ A word the CHECKER certifies never returns, because its own body ends in a
+\ throw. The migrated forge below republishes it with a routine that DOES return
+\ and then compiles a caller against the certificate, which is the only way to
+\ make the certificate false: nothing a checked program can write reaches the
+\ instruction after a dead call.
+: NORET-VICTIM ( n -- n )
+   dup throw ;
+
 get-current constant VICTIM-WID
 
 private
@@ -446,6 +472,39 @@ public
    s" 5 NTRAP-TEST:TRAP-VICTIM drop" EV ;
 
 private
+
+\ ---- the same falsehood, reached through a routine the CHAIN compiled --------
+\ FORGE above publishes a trap the fixtures built by hand. This one publishes a
+\ trap the elaborator built, from source, for the reason it exists: a call to a
+\ word the checker certified never returns ends the block, and the instruction
+\ after it is the trap that says the certificate was false if control ever
+\ arrives. Getting there needs the certificate to BE false, and nothing a
+\ checked program can write makes it so - so the callee's record is pointed at a
+\ routine that returns first, and the caller is compiled afterwards, against the
+\ certificate the checker still holds.
+\
+\ WHAT THE CALLER IS. `: NTM ( n -- n ) NORET-VICTIM ;` is an all-dead body: its
+\ one call ends its only path, so it is published under the no-return contract
+\ with no frame and no saved return address (src/compiler/native/abi.f
+\ NORET-FRAMED). The victim returns 2*0, control falls into the trap, and the
+\ process ends with the callee's name and ENGINE-ERROR:CODE-CERT.
+18 constant MIG-REGS
+
+TRUSTED: MIG ( ptr u8 n n n -- )
+   MIG-REGS NMIGRATE:DEFINE ;
+
+: NORET-RET-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   s" retfam" NTRAP:FAMILY {: k:n :}
+   s" NORET-VICTIM" k BUILD-MIXED-NAMED
+   PLACE
+   CC BB TXT TXT-N 0 4 1 1 NFIX:RUN-HABU ;
+
+: NORET-MIG-FORGE ( -- )
+   NFIX:BINDING [: NORET-RET-BODY ;] IR-CTX:WITH-CONTEXT
+   s" NORET-VICTIM" VICTIM-WID NPUB:REPUBLISH
+   s" : NTM ( n -- n ) NTRAP-TEST:NORET-VICTIM ;" 1 1 MIG
+   s" 0 NTM drop" EV ;
 
 \ ---- running the forge in a child --------------------------------------------
 \ The forge ends its process, so it cannot be run in this one. The child is this
@@ -543,6 +602,75 @@ variable CHILD-MODE-N
 
    s" and says nothing about a tag" T-LABEL
    CHILD-ERR$ s" tag" CONTAINS? TFALSE ;
+
+\ ---- the same exit, through a routine compiled from source -------------------
+\ NORET-CASE above proves the ROUTINE this compiler branches to: the ordinal, the
+\ message and the status. This proves the SITE, in the shape the elaborator
+\ really builds it - a call the checker certified never returns, with the trap
+\ standing after it - reached because the certificate was made false first. The
+\ caller is compiled by the migration from source, published, and called.
+\
+\ THE NAME IN THE MESSAGE IS THE DICTIONARY'S SPELLING AND NOT THE SOURCE'S. A
+\ trap row is keyed on the symbol the tape recorded for the token, and the
+\ engine's dictionary is case-insensitive and keeps the folded form - so the
+\ diagnostic reads the callee's name in lower case however the body wrote it.
+: MIG-FORGE-CASE ( -- )
+   s" a compiled dead call whose callee returns exits ENGINE-ERROR:CODE-CERT"
+   T-LABEL
+   s" noretmig" CHILD-MODE!
+   CHILD-RUN
+   CHILD-RC @ ENGINE-ERROR:CODE-CERT T=
+
+   s" and the diagnostic names the callee the body wrote" T-LABEL
+   CHILD-ERR$ s" hb: ntrap-test:noret-victim returned" CONTAINS? TTRUE
+
+   s" and it is not the bad-tag diagnostic" T-LABEL
+   CHILD-ERR$ s" bad" CONTAINS? TFALSE ;
+
+\ ---- what a migrated all-dead routine is as bytes ----------------------------
+\ The contract says no frame and no saved return address; this is that read off
+\ the emission the migration sealed. A routine's own frame costs one instruction
+\ that moves the machine stack pointer at each end, and this one moves it
+\ nowhere - which is what dropping the reserve and the link save IS - while the
+\ data-stack pointer still moves, so a routine that emitted nothing at all
+\ would not pass either.
+18 constant BYTES-REGS
+
+TRUSTED: BYTES-MIG ( ptr u8 n n n -- )
+   BYTES-REGS NMIGRATE:DEFINE ;
+
+: MIG-DEAD-BYTES-CASE ( -- )
+   s" : NTB ( n -- ) drop E-A-EMPTY throw ;" 1 0 BYTES-MIG
+
+   s" a migrated all-dead routine moves the machine stack pointer nowhere"
+   T-LABEL
+   SPMOVES-IN-EMISSION 0 T=
+
+   s" and carries no return at all" T-LABEL
+   RETS-IN-EMISSION 0 T=
+
+   s" while it still enters through the caller's data stack" T-LABEL
+   DMOVES-IN-EMISSION 0 T<>
+
+   s" and it leaves by branching to the shared trap routine" T-LABEL
+   LAST-IS-BRANCH? TTRUE
+   LAST-TARGET  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T= ;
+
+\ The same routine's calling sibling, which is the contrast that makes the case
+\ above say something: a body that calls and DOES come back reserves a frame and
+\ gives it back, so its emission moves the machine stack pointer exactly twice.
+\ The callee is a word the ENGINE compiled, so the chain has no recorded body to
+\ copy into this one and the call really is a call - which is what the count is
+\ about, and what would have to be re-chosen if a copied body ever came from
+\ somewhere other than a migration.
+: MIG-CALL-BYTES-CASE ( -- )
+   s" : NTC ( n -- n ) NTRAP-TEST:TRAP-VICTIM 1 + ;" 1 1 BYTES-MIG
+
+   s" a migrated routine that calls and returns moves it twice" T-LABEL
+   SPMOVES-IN-EMISSION 2 T=
+
+   s" and ends in the return the other one has nowhere for" T-LABEL
+   RETS-IN-EMISSION 0 T<> ;
 
 \ The two claims about a routine with no return: the emission ends in the branch
 \ that leaves, and there is no return instruction ANYWHERE in it. The second is
@@ -687,9 +815,14 @@ public
    SHARED-TARGET-CASE
    RECORDED-LEN-CASE
 
+   \ ---- what a routine compiled from source is as bytes ----
+   MIG-DEAD-BYTES-CASE
+   MIG-CALL-BYTES-CASE
+
    \ ---- and the whole of it, in a process that dies ----
    FORGE-CASE
    NORET-CASE
+   MIG-FORGE-CASE
 
    T-REPORT ;
 
@@ -702,6 +835,7 @@ public
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" forge" STR= if FORGE exit then
       0 SCRIPT-ARGV$ s" noret" STR= if NORET-FORGE then
+      0 SCRIPT-ARGV$ s" noretmig" STR= if NORET-MIG-FORGE exit then
    then
    RUN ;
 

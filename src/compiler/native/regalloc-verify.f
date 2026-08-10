@@ -982,10 +982,12 @@ variable V-AT
 0 V-AT !
 variable V-CHANGED
 0 V-CHANGED !
-variable V-CALLS                     \ whether the contract says this routine calls
-0 V-CALLS !
+variable V-LSAVE                     \ whether the contract's prologue keeps the caller's return address
+0 V-LSAVE !
 variable V-TAIL                      \ whether the contract says control leaves through a callee
 0 V-TAIL !
+variable V-NORET                     \ whether the contract says control never comes back
+0 V-NORET !
 variable V-FRAME                     \ whether the module reaches a frame at all
 0 V-FRAME !
 variable V-BASE                      \ the first frame byte the allocator's slots may use
@@ -1308,15 +1310,16 @@ create V-TMP SETC cells allot
    loop ;
 
 \ Is this position of this block one of the routine's two link accesses? A
-\ routine that does not call has none anywhere; a routine that calls saves the
-\ link register as the entry block's second operation and restores it two in
-\ front of the exit block's terminator. It is a question about a POSITION rather
-\ than a word answering "the" position, because when the entry block and the exit
-\ block are one block both accesses are in it and one answer could not name them
-\ both.
+\ routine whose contract keeps no return address has none anywhere - one that
+\ does not call, and one that calls and never comes back, which reads nothing
+\ back; a routine that keeps one saves the link register as the entry block's
+\ second operation and restores it two in front of the exit block's terminator.
+\ It is a question about a POSITION rather than a word answering "the" position,
+\ because when the entry block and the exit block are one block both accesses are
+\ in it and one answer could not name them both.
 : VLINK-HERE? ( IR-ID:ir-block-id n n n -- bool )
    {: bk:IR-ID:ir-block-id b:n rb:n at:n :}
-   V-CALLS @ 0= if false exit then
+   V-LSAVE @ 0= if false exit then
    b 0 = at 1 = and if true exit then
    b rb = at bk OP-COUNT 3 - = and if true exit then
    false ;
@@ -1422,9 +1425,15 @@ create V-TMP SETC cells allot
 \ pointer - which is what a second frame inside the first would break and is
 \ therefore still measured.
 \
-\ THE SAVED RETURN ADDRESS IS THE SAME STORY. A routine that calls saves the link
-\ register before its first call because that call destroys it; it restores it
-\ before returning, and this one does not return, so the save stands alone.
+\ THE SAVED RETURN ADDRESS IS NOT THE SAME STORY, AND THAT IS WHY IT IS THE
+\ CONTRACT'S QUESTION AND NOT THE MODULE'S. A routine saves the link register
+\ before its first call because that call destroys it, and it saves it in order
+\ to restore it before returning. A routine that never returns restores nothing,
+\ so a save would stand alone - and the production contract for such a routine
+\ declares the address destroyed instead and saves nothing at all
+\ (src/compiler/native/abi.f NORET-FRAMED), which is what makes it frameless.
+\ A hand-built contract that still declares the address preserved gets the save
+\ measured, standing alone, which is the shape VNO-RET-LINK-CK below is for.
 : VNO-RET-BRACKET-CK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id want:n :}
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
@@ -1446,13 +1455,13 @@ create V-TMP SETC cells allot
 
 : VNO-RET-FRAME-CK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id want:n :}
-   V-CALLS @ 0= if f want VNO-RET-SPILL-CK else f want VNO-RET-LINK-CK then
+   V-LSAVE @ 0= if f want VNO-RET-SPILL-CK else f want VNO-RET-LINK-CK then
    f NO-RET VOWNER-CK ;
 
 : VFRAME-CK ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id rb:n want:n :}
    rb NO-RET = if f want VNO-RET-FRAME-CK exit then
-   V-CALLS @ 0= if f rb want VSPILL-CK else f rb want VLINK-CK then
+   V-LSAVE @ 0= if f rb want VSPILL-CK else f rb want VLINK-CK then
    f rb VOWNER-CK ;
 
 \ ---- the data stack, across blocks -------------------------------------------
@@ -1470,15 +1479,15 @@ create V-TMP SETC cells allot
    b cells VB-EN + @  b cells VB-ST + @ - ;
 
 \ How many operations the routine's own frame costs at each end. A routine that
-\ calls takes its frame and saves the return address before it reads a single
-\ argument, and restores and gives the frame back after it has published its
-\ results, so both sequences sit two operations further in than they otherwise
-\ would. A routine that only spills has the frame without the save, so it costs
-\ one at each end; one that never reaches a frame costs none. The first is the
-\ contract's own declaration and the second is re-derived from the module, for
-\ the same reason every other fact here is.
+\ keeps its caller's return address takes its frame and saves that address before
+\ it reads a single argument, and restores and gives the frame back after it has
+\ published its results, so both sequences sit two operations further in than
+\ they otherwise would. A routine that only spills has the frame without the
+\ save, so it costs one at each end; one that never reaches a frame costs none.
+\ The first is the contract's own declaration and the second is re-derived from
+\ the module, for the same reason every other fact here is.
 : PRO-N ( -- n )
-   V-CALLS @ 0<> if 2 exit then
+   V-LSAVE @ 0<> if 2 exit then
    V-FRAME @ 0<> if 1 exit then
    0 ;
 
@@ -2475,6 +2484,31 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    ord 0= if in out  args A64EFF:SEQ-LEN outs A64EFF:SEQ-LEN  DECL-CK then
    in FUN-SLOTS  out FUN-SLOTS ;
 
+\ ---- the contract's control statement, against the module's own answer --------
+\ THE CONTRACT'S `no-return` IS A PERMISSION AND THE MODULE HAS TO HAVE EARNED
+\ IT. It is what lets a routine that calls keep no return address at all
+\ (src/compiler/native/frame.f LINK-KEPT?), so a contract declaring it over a
+\ function that DOES have a block control leaves through describes a routine that
+\ returns with the caller's address already destroyed - it would jump to wherever
+\ its own last callee was going to come back to. Nothing further down catches it:
+\ with no save declared, every frame rule this file has is the frameless one and
+\ every one of them passes.
+\
+\ IT IS ASKED OF FUNCTION ZERO, because that is the function the contract
+\ describes - the same scoping DECL-CK above keeps. A quotation of a routine that
+\ never comes back is an ordinary routine with a return of its own.
+\
+\ THE OTHER DIRECTION IS NOT REFUSED, and deliberately. A contract that claims a
+\ return the module does not make grants nothing and takes nothing away: where it
+\ also declares a call, its prologue's frame and link save are built and nothing
+\ releases them, which the memory-order rule refuses by name; where it does not,
+\ the routine is frameless either way and the bytes are the same. It is a
+\ declaration that overstates rather than one that licenses.
+: VNORET-CK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   V-NORET @ 0= if exit then
+   f RET-ORD NO-RET <> if E-A64RAV-SHAPE throw then ;
+
 : WALK ( IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq n -- )
    {: m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
       args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
@@ -2502,6 +2536,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       i FUN-AT {: f:IR-ID:ir-fun-id :}
       f  i cells F-VB + @  VLAYOUT
       f VLIVENESS
+      i 0= if f VNORET-CK then
       f  f RET-ORD  f i args outs FUN-PLACES  frame
       i cells F-VB + @  i 1 + cells F-VB + @  VERIFY
    loop ;
@@ -2546,10 +2581,11 @@ public
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
-   t A64EFF:T-CALL A64EFF:TRAITS-HAS? if 1 else 0 then V-CALLS !
+   t l A64FRAME:LINK-KEPT? if 1 else 0 then V-LSAVE !
    ct A64EFF-CONTROL:TAIL-CALL A64EFF-CONTROL:EQ if 1 else 0 then V-TAIL !
+   ct A64EFF-CONTROL:NO-RETURN A64EFF-CONTROL:EQ if 1 else 0 then V-NORET !
    cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if 1 else 0 then V-DSTACK !
-   t A64FRAME:SPILL-BASE V-BASE !
+   t l A64FRAME:SPILL-BASE V-BASE !
    pool fpool gi gr size WALK
    FUNS-CK 0 ?do
       i FUN-AT
