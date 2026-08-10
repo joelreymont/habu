@@ -1144,3 +1144,14 @@ public
 -8635 constant E-A64COMB-ADDEND  \ a multiply-add whose addend register is the zero register: that word IS a plain multiply, which is why formal/Common/Insn.v puts it outside `wf`, so emitting one would be emitting a different instruction than the module says
 -8636 constant E-NSTR-CAP       \ a string literal this store cannot take: more distinct bodies than its index holds, or more bytes than its arena holds. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
 -8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
+
+\ The trap terminator's family table: -8640..-8649
+\
+\ src/compiler/native/trap.f owns the one routine a compiled trap branches to and
+\ the table that says which family each trap site is trapping on. An ordinal out
+\ of that table is compiled into published code, so the table refuses rather than
+\ reuses, and a reader refuses rather than naming some other family.
+-8640 constant E-NTRAP-ORD      \ an ordinal that names no row of the family table: the number was written into a published routine by this same process, so a number outside the table means the module or the table is corrupt and naming another family would be worse than saying nothing
+-8641 constant E-NTRAP-NAME     \ a family name this table cannot hold: empty, or longer than the message buffer's room for one
+-8642 constant E-NTRAP-CAP      \ more families than the table holds, or more name bytes than its arena holds. The ordinals it has already answered are compiled into published routines, so a name it cannot hold is a refusal rather than a reused ordinal
+-8643 constant E-A64SEL-ORDER   \ a block whose edges disagree about the memory order it is entered with, or that no edge reaches at all. The machine two-way branch carries no operands, so an order two paths differ on cannot be handed over as an argument here; a source that needs one says so among the block's own arguments
