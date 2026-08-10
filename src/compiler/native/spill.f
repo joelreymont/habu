@@ -203,7 +203,7 @@ private
 72 constant O-TRAP
 
 \ One slot per attribute key the dialect declares.
-11 constant KEYS-N
+12 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -215,6 +215,7 @@ private
 8 constant K-ENTRY
 9 constant K-OFF
 10 constant K-MASK
+11 constant K-TRAP-ENTRY               \ the trap form's target, under a key of its own
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -630,6 +631,14 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  CTX BLD A64IR:KEY-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
    IR-BUILD:ADD-ATTR ;
 
+\ And the address the TRAP form branches to, which the selector put under a key
+\ of its own so that a reader cannot mistake it for a callee this routine comes
+\ back from. Copied across unchanged for the same reason the callee address is.
+: TRAP-ENTRY-ATTR+ ( n -- )
+   {: entry:n :}
+   CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
+   IR-BUILD:ADD-ATTR ;
+
 : DBACK-ATTR+ ( n -- )
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD size A64IR:DBACK-ATTR  IR-BUILD:ADD-ATTR ;
@@ -772,6 +781,7 @@ create NAMEBUF NAME-CAP allot
       k K-ENTRY = if v ENTRY-ATTR+ then
       k K-OFF = if v OFF-ATTR+ then
       k K-MASK = if v MASK-ATTR+ then
+      k K-TRAP-ENTRY = if v TRAP-ENTRY-ATTR+ then
    loop ;
 
 \ The blocks a terminator hands control to. Blocks are copied one for one and in
@@ -1119,6 +1129,7 @@ public
    c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !
    c b A64IR:KEY-OFF    K-OFF BND-KEY !
    c b A64IR:KEY-MASK   K-MASK BND-KEY !
+   c b A64IR:KEY-TRAP-ENTRY K-TRAP-ENTRY BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:FPR-TYPE 0 BND-FPR !

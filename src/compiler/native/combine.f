@@ -186,7 +186,7 @@ private
 \ of its own - the form it introduces carries none - but it COPIES every one the
 \ selector built, and a field copied under the wrong key would be a routine
 \ reading its arguments out of its own frame.
-11 constant KEYS-N
+12 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -198,6 +198,7 @@ private
 8 constant K-ENTRY
 9 constant K-OFF
 10 constant K-MASK
+11 constant K-TRAP-ENTRY               \ the trap form's target, under a key of its own
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -830,6 +831,10 @@ create MASK-AT OPS-MAX cells allot
          CTX BLD  CTX BLD A64IR:KEY-MASK  CTX BLD v A64IR:MASK-ATTR
          IR-BUILD:ADD-ATTR
       then
+      k K-TRAP-ENTRY = if
+         CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD v A64IR:ENTRY-ATTR
+         IR-BUILD:ADD-ATTR
+      then
    loop ;
 
 \ The blocks a terminator hands control to. Blocks are copied one for one and in
@@ -1138,6 +1143,7 @@ public
    c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !
    c b A64IR:KEY-OFF    K-OFF BND-KEY !
    c b A64IR:KEY-MASK   K-MASK BND-KEY !
+   c b A64IR:KEY-TRAP-ENTRY K-TRAP-ENTRY BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:FPR-TYPE 0 BND-FPR !
