@@ -5753,3 +5753,14 @@ read the enclosing locals; park values in a variable. And a mutation
 that changes nothing falsifies the COMMENT that claimed it would - the
 honest outcome is rewriting the claim into a derivation (second
 occurrence of this pattern; it is a rule now).
+
+## A token a keyword swallows is a hole in the tape (2026-08-11)
+
+The census names the token the elaborator stood on, never what stands
+after it - is/['] consumed their target without reporting it, and the
+defer name was simply absent from the tape. Dump the tape before
+designing a pass over it (a 20-line dumper falsified a design sentence
+two leaves rested on). Corollary: a leaf that names a mechanism has
+still not proved the mechanism's INPUT exists - "the MOPERAND?
+mechanism" was true of MATCH and false of is, and one contrast probe
+with the same dumper separated them.
