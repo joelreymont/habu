@@ -260,7 +260,7 @@ TRUSTED: EFFECT ( ptr u8 n -- n n )
 \ - the refusal stood on no body token at all, and the token's spelling was longer
 \ than the record holds - and the two have to be told apart, or a refusal with no
 \ nameable spelling would simply vanish from the sub-histogram and the counts
-\ underneath the E-HIR-UNMODELED bucket would stop adding up to it. The row is
+\ underneath the named-token buckets would stop adding up to them. The row is
 \ what separates them.
 : REFUSED-AT ( -- n )
    NELAB:REFUSED-ROW ;
@@ -446,7 +446,7 @@ variable SP-N
 \ needs beside the number. A code that is NOT here is not swallowed: the report
 \ prints it raw, on its own line, because the census discovering a reason nobody
 \ predicted is a result.
-23 constant CODE#
+24 constant CODE#
 
 : CODE-AT ( n -- n )
    case
@@ -458,21 +458,22 @@ variable SP-N
       5 of E-NELAB-LOCAL-CAP endof
       6 of E-NELAB-BLOCK endof
       7 of E-NELAB-BUNDLE endof
-      8 of E-A64RA-SPILL endof
-      9 of E-A64RA-POOL endof
-      10 of E-A64RA-EDGE endof
-      11 of E-A64RA-PRESSURE endof
-      12 of E-NELAB-ARITY endof
-      13 of E-NMIGRATE-TEXT endof
-      14 of E-NMIGRATE-STATE endof
-      15 of E-NMIGRATE-NAME endof
-      16 of E-NMIGRATE-VERDICT endof
-      17 of E-NFEED-STATE endof
-      18 of E-NFEED-TEXT endof
-      19 of E-NCLOB-CAP endof
-      20 of E-NPUB-CAP endof
-      21 of RC-UNDEFINED endof
-      22 of RC-DUPLICATE endof
+      8 of E-NELAB-QUOT endof
+      9 of E-A64RA-SPILL endof
+      10 of E-A64RA-POOL endof
+      11 of E-A64RA-EDGE endof
+      12 of E-A64RA-PRESSURE endof
+      13 of E-NELAB-ARITY endof
+      14 of E-NMIGRATE-TEXT endof
+      15 of E-NMIGRATE-STATE endof
+      16 of E-NMIGRATE-NAME endof
+      17 of E-NMIGRATE-VERDICT endof
+      18 of E-NFEED-STATE endof
+      19 of E-NFEED-TEXT endof
+      20 of E-NCLOB-CAP endof
+      21 of E-NPUB-CAP endof
+      22 of RC-UNDEFINED endof
+      23 of RC-DUPLICATE endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -486,25 +487,26 @@ variable SP-N
       5 of s" E-NELAB-LOCAL-CAP" endof
       6 of s" E-NELAB-BLOCK" endof
       7 of s" E-NELAB-BUNDLE" endof
-      8 of s" E-A64RA-SPILL" endof
-      9 of s" E-A64RA-POOL" endof
-      10 of s" E-A64RA-EDGE" endof
-      11 of s" E-A64RA-PRESSURE" endof
-      12 of s" E-NELAB-ARITY" endof
-      13 of s" E-NMIGRATE-TEXT" endof
-      14 of s" E-NMIGRATE-STATE" endof
-      15 of s" E-NMIGRATE-NAME" endof
-      16 of s" E-NMIGRATE-VERDICT" endof
-      17 of s" E-NFEED-STATE" endof
-      18 of s" E-NFEED-TEXT" endof
-      19 of s" E-NCLOB-CAP" endof
-      20 of s" E-NPUB-CAP" endof
-      21 of s" engine refused the name" endof
-      22 of s" engine refused a duplicate name" endof
+      8 of s" E-NELAB-QUOT" endof
+      9 of s" E-A64RA-SPILL" endof
+      10 of s" E-A64RA-POOL" endof
+      11 of s" E-A64RA-EDGE" endof
+      12 of s" E-A64RA-PRESSURE" endof
+      13 of s" E-NELAB-ARITY" endof
+      14 of s" E-NMIGRATE-TEXT" endof
+      15 of s" E-NMIGRATE-STATE" endof
+      16 of s" E-NMIGRATE-NAME" endof
+      17 of s" E-NMIGRATE-VERDICT" endof
+      18 of s" E-NFEED-STATE" endof
+      19 of s" E-NFEED-TEXT" endof
+      20 of s" E-NCLOB-CAP" endof
+      21 of s" E-NPUB-CAP" endof
+      22 of s" engine refused the name" endof
+      23 of s" engine refused a duplicate name" endof
       E-TBL-BOUNDS throw
    endcase ;
 
-\ The first seven rows are the dialect's own refusals, the next four are register
+\ The first nine rows are the dialect's own refusals, the next four are register
 \ pressure, then the instrument's, then the engine's - the last two being the
 \ census reporting on itself.
 \
@@ -534,9 +536,9 @@ variable SP-N
 \ work order is read off. TOTALS. prints it on its own line for the same reason a
 \ self-check count is printed: it is a number to watch, not a gap to close.
 : ROW-CLASS ( n -- n ) {: i:n :}
-   i 8 < if CL-DIALECT exit then
-   i 12 < if CL-PRESSURE exit then
-   i 21 < if CL-INSTRUMENT exit then
+   i 9 < if CL-DIALECT exit then
+   i 13 < if CL-PRESSURE exit then
+   i 22 < if CL-INSTRUMENT exit then
    CL-SELF-CHECK ;
 
 \ Which named row a code is, or -1 for a code no row names.
@@ -663,7 +665,21 @@ variable BAD-STRUCTURE
 \ Two spellings no Habu token can carry, because both hold a space and a token is
 \ delimited by one. They stand for the two states in which the elaborator has a
 \ refusal but no word to name it by, and they are entries of the sub-histogram
-\ like any other, so its lines always add up to the bucket above them.
+\ like any other, so its lines always add up to the buckets above them.
+
+\ WHICH REFUSALS CARRY A SPELLING WORTH COUNTING. A refusal that stands on a body
+\ TOKEN can name it, and the sub-histogram of those names is what says which
+\ source shape blocks the most definitions. Two codes do: the word the dialect has
+\ never heard of, and the quotation it HAS heard of and cannot shape yet. Keeping
+\ the second out would have made this histogram lie the moment `[:` stopped being
+\ unmodelled - the spelling would have left the table while every definition it
+\ blocks went on being blocked, which is the one way a census can shrink without
+\ anything improving.
+: SPELLED-CODE? ( n -- bool )
+   {: rc:n :}
+   rc E-HIR-UNMODELED = if 0 0= exit then
+   rc E-NELAB-QUOT = ;
+
 : NO-TOKEN$ ( -- ptr u8 n )
    s" (refused no body token)" ;
 
@@ -694,7 +710,7 @@ variable STALE-N
 
 : RECORD-REFUSAL ( n -- ) {: rc:n :}
    CUR-FILE F-REFUSED T+
-   rc E-HIR-UNMODELED = 0= if exit then
+   rc SPELLED-CODE? 0= if exit then
    REFUSAL-SPELL$ {: sa:ptr su:n :}
    sa su POOL+ su DEF-SPELL! ;
 
@@ -1033,7 +1049,7 @@ variable LOAD-DEPTH
    D-CODE k T@ {: rc:n :}
    rc 0= if exit then
    rc BUCKET+
-   rc E-HIR-UNMODELED = 0= if exit then
+   rc SPELLED-CODE? 0= if exit then
    D-SPELL-OFF k T@  D-SPELL-U k T@ SPELL+ ;
 
 : TALLY ( -- )
@@ -1204,7 +1220,7 @@ variable ACC
    s"  " OUT k SP$ OUT NL ;
 
 : SPELLS. ( -- )
-   s" -- E-HIR-UNMODELED by refused spelling, biggest first --------" OUT NL
+   s" -- refused spellings, biggest first -------------------------" OUT NL
    0 begin dup SP-N @ < while
       dup SP-ORD swap VEC-IDX VEC-N@ SPELL-LINE
       1+

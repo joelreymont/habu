@@ -596,8 +596,10 @@ variable ACC
       s" [:" SPELLED? TTRUE
    s" hostile: spellings come out ordered by count then name" T-LABEL
       0 CHAIN-CENSUS:SPELL$ s" [:" T$=
-   s" hostile: the sub-histogram adds up to its bucket" T-LABEL
-      SPELL-TOTAL E-HIR-UNMODELED CHAIN-CENSUS:COUNT-OF T= ;
+   s" hostile: the sub-histogram adds up to the buckets that carry spellings" T-LABEL
+      SPELL-TOTAL
+      E-HIR-UNMODELED CHAIN-CENSUS:COUNT-OF
+      E-NELAB-QUOT CHAIN-CENSUS:COUNT-OF + T= ;
 
 : CASE-HOSTILE ( -- )
    HOST$ CENSUS1

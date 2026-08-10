@@ -576,7 +576,7 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 68 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 70 T= ;
 
 \ The nine float words, each read back off a real model. `f-` binds to hir.fsub
 \ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
@@ -1026,8 +1026,8 @@ variable BC-OUT
 \ arithmetic words are declared first, then the six comparisons, the six bitwise
 \ words, the four step words, the four memory words, the nine float words, the
 \ five float comparisons, the thirteen control words, the seven words of the
-\ three tag-dispatch forms and the two halves of a locals group, with the
-\ renames at the end of the walk.
+\ three tag-dispatch forms, the two halves of a locals group and the two halves
+\ of a quotation, with the renames at the end of the walk.
 : AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -1036,11 +1036,11 @@ variable BC-OUT
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 60 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 62 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 65 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 67 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 69 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -1761,12 +1761,32 @@ variable BC-OUT
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    r  c b s" IFF" HIR-WORD:KEY-SPELL  HIR-WORD:MODELS? 0=
    r  c b s" DUPX" HIR-WORD:KEY-SPELL  HIR-WORD:MODELS? 0=
-   r  c b s" [:" HIR-WORD:KEY-SPELL  HIR-WORD:MODELS? 0=
+   r  c b s" ;:" HIR-WORD:KEY-SPELL  HIR-WORD:MODELS? 0=
    r  c b s" DUP" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS? 0= ;
 
 : MISS-CASE ( -- )
    s" a word the dialect never declared is still no word of it, in any case" T-LABEL
    BND [: MISS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE ;
+
+\ THE TWO HALVES OF A QUOTATION ARE WORDS OF THE DIALECT, which is what tells a
+\ body the chain DECLINES from one it has never heard of. They used to be neither
+\ - `[:` sat in the case above, beside a misspelling - and the difference is the
+\ whole of what naming them buys: a census reading E-NELAB-QUOT is reading a
+\ shape this dialect has a place for, while E-HIR-UNMODELED means it has none.
+: QUOT-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r  c b s" [:" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS?
+   r  c b s" ;]" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS?
+   r  c b s" [:" IR-BUILD:INTERN-SYMBOL  HIR-WORD:CTRL@
+      HIR-CTRL:OPEN-QUOT HIR-CTRL:EQ
+   r  c b s" ;]" IR-BUILD:INTERN-SYMBOL  HIR-WORD:CTRL@
+      HIR-CTRL:CLOSE-QUOT HIR-CTRL:EQ ;
+
+: QUOT-MODEL-CASE ( -- )
+   s" the two halves of a quotation are control words of the dialect" T-LABEL
+   BND [: QUOT-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE ;
 
 \ One word is one row whichever case each declaration wrote, which is the same
@@ -1811,6 +1831,7 @@ variable BC-OUT
    FOLD-CASE
    CASE-CASE
    MISS-CASE
+   QUOT-MODEL-CASE
    STATED-KEY-CASE
    s" one word declared twice in two cases is one row declared twice" T-LABEL
    [: DUP-CASE ;] E-HIR-DUP TTHROWSQ ;

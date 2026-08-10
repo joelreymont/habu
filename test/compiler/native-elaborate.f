@@ -2095,9 +2095,71 @@ create TW-BUF TW-CAP allot
    [: CAPS-NEAR ;] E-HIR-UNMODELED TTHROWSQ
    NELAB:REFUSED$ s" IFF" T$= ;
 
+\ ---- which token a malformed quotation is named by ----------------------------
+\ A quotation is two tokens and what stands between them is another function's
+\ body. A nested opener is decided BEFORE the walks run, because a walk meets
+\ tokens one at a time and would name the outer opener for a fault at the inner
+\ one; every other malformed pair is met by a walk standing on the token at fault.
+\ The first fixture is written as a TAPE rather than as source the engine
+\ compiled, which is the only way it can exist at all - the engine ends the
+\ process at a nested opener and never produces a tape for one - and the lexer
+\ behind TEXT! has no such opinion. The second is here beside it because the two
+\ together say which token each refusal names, which is the whole point.
+: QUOT-NESTED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" QNEST dup [: [: 1+ ;] ;]" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: QUOT-NESTED ( -- )
+   BND [: QUOT-NESTED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: QUOT-ORPHAN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" QORPH dup ;]" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: QUOT-ORPHAN ( -- )
+   BND [: QUOT-ORPHAN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ TWO QUOTATIONS ONE AFTER THE OTHER, which is what says the closer really closes.
+\ A pass that opened on `[:` and never cleared would read the second opener as a
+\ nested one and refuse THERE; the pair is well formed, so the pre-scan has
+\ nothing to say about it and the walk declines the first opener it meets. The row
+\ is what separates the two answers - both are the same code about a token spelled
+\ the same way.
+: QUOT-TWO-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" QTWO dup [: 1+ ;] drop [: 1- ;] drop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: QUOT-TWO ( -- )
+   BND [: QUOT-TWO-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: QUOT-PAIR-CASES ( -- )
+   s" a quotation opened inside another is refused, at the INNER opener" T-LABEL
+   [: QUOT-NESTED ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED$ s" [:" T$=
+   \ Both openers are spelled `[:`, so the spelling above cannot tell them apart
+   \ and the ROW is what says which one. The tape is QNEST dup [: [: 1+ ;] ;] -
+   \ token 2 is the outer opener and token 3 the inner - and a walk meeting these
+   \ tokens one at a time answers 2.
+   NELAB:REFUSED-ROW 3 T=
+   s" a quotation closer with nothing open is refused at the closer itself" T-LABEL
+   [: QUOT-ORPHAN ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED$ s" ;]" T$=
+   s" two quotations in a row are two pairs, and the first opener is named" T-LABEL
+   [: QUOT-TWO ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED-ROW 2 T= ;
+
 : CAPS-QUOT-CASE ( -- )
-   s" the quotation opener is not the locals opener, and is refused by its own spelling" T-LABEL
-   [: CAPS-QUOT ;] E-HIR-UNMODELED TTHROWSQ
+   s" the quotation opener is a word the dialect knows and this leaf declines" T-LABEL
+   [: CAPS-QUOT ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED$ s" [:" T$= ;
 
 : LOCAL-LOWER-CASE ( -- )
@@ -2183,6 +2245,7 @@ public
    BND [: drop CAPS-REFUSE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CAPS-NEAR-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CAPS-QUOT-CASE ;] IR-CTX:WITH-CONTEXT
+   QUOT-PAIR-CASES
    BND [: drop LOCAL-LOWER-CASE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 

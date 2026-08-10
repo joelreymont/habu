@@ -333,6 +333,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       open-case    OF 17 ENDOF
       close-case   OF 18 ENDOF
       make-bundle  OF 19 ENDOF
+      open-quot    OF 20 ENDOF
+      close-quot   OF 21 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -357,6 +359,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       17 of HIR-CTRL:OPEN-CASE endof
       18 of HIR-CTRL:CLOSE-CASE endof
       19 of HIR-CTRL:MAKE-BUNDLE endof
+      20 of HIR-CTRL:OPEN-QUOT endof
+      21 of HIR-CTRL:CLOSE-QUOT endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -1166,7 +1170,10 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ them are the program's, so they never become rows of this table. The three
 \ tag-dispatch forms add seven more words and no picks, for the same reason: what
 \ a family or variant token means is the registry's answer and never a row here.
-68 constant WORDS
+\ The two halves of a quotation add two more words and no picks, and for a third
+\ statement of the same rule: what stands between them is another FUNCTION's
+\ tokens, so none of them is a row of this table either.
+70 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1345,6 +1352,18 @@ private
    c b r c b s" endcase" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-CASE BDECLARE-CONTROL
    c b r c b s" construct" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MAKE-BUNDLE BDECLARE-CONTROL ;
 
+\ The two tokens a quotation is written with. They are control actions and not
+\ operations for the reason HIR's own ctrl family gives: what stands between them
+\ is a second FUNCTION of the module, so the opener's whole job is to stage one
+\ value and take the tokens up to its closer out of the enclosing body's hands.
+\ Neither row carries a payload - which function the body becomes is decided by
+\ the elaborator, and what the body TAKES is decided by whoever consumes the
+\ value, neither of which is a fact about the dialect.
+: DEF-QUOT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" [:" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-QUOT BDECLARE-CONTROL
+   c b r c b s" ;]" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-QUOT BDECLARE-CONTROL ;
+
 \ The two halves of a typed locals group. Neither stages an operation and
 \ neither carries a payload: what the opener does is start reading the names
 \ that follow it and what the closer does is bind them, and both of those are
@@ -1451,6 +1470,7 @@ public
    c b r DEF-CONTROL
    c b r DEF-ADT
    c b r DEF-LOCALS
+   c b r DEF-QUOT
    c b p r DEF-2DUP
    c b p r DEF-DUP
    c b p r DEF-DROP

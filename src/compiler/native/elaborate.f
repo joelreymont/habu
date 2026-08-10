@@ -273,6 +273,24 @@ create RF-BUF RF-CAP allot
    rc 0= if exit then
    0 RF-U ! ;
 
+\ A REFUSAL THIS FILE MAKES ITSELF STILL HAS TO NAME ITS TOKEN. ADMIT-AT marks
+\ the token only while the word model is answering, because that is the only
+\ throw it is standing in front of; a refusal raised after the model has answered
+\ - which is every refusal about a word the model DOES know - leaves the mark
+\ clear and the record empty.
+\
+\ AND IT TAKES THE RECORD ITSELF RATHER THAN LEAVING IT TO A HANDLER, because the
+\ handlers that take one wrap the two WALKS and a pre-scan runs before either.
+\ Marking without recording would name the token for a refusal made during the
+\ skeleton and leave a pre-scan's refusal nameless, which is the same diagnostic
+\ arriving in two qualities depending on which pass happened to notice. Taking it
+\ here makes the answer the same from anywhere; a walk handler that then takes it
+\ again reads the same token and copies the same bytes.
+: QUOT-REFUSE ( n -- )
+   RF-AT !
+   RF-RECORD
+   E-NELAB-QUOT throw ;
+
 \ ---- the compile-time value vector -------------------------------------------
 \ How deep the data stack may get inside one straight-line body. Sixty-four is
 \ far past anything hand-written Forth reaches; a body that wants more is a
@@ -1930,6 +1948,46 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 : TOK-CK ( n -- n )
    dup 0 < over TMAX >= or if E-NELAB-BLOCK throw then ;
 
+\ ---- a quotation opened inside another ---------------------------------------
+\ THE ONE SHAPE THE WALKS BELOW CANNOT NAME CORRECTLY, so it is decided here,
+\ before either of them runs. `[: ... [: ... ;] ... ;]` is not a nesting the
+\ engine compiles - it ends the process at the inner opener - so no certified body
+\ can reach here holding one, and this refusal cannot fire on source the engine
+\ accepted. It is still made, because this pass reads a TAPE and a tape is filled
+\ by a lexer: a caller that builds one by hand, which is what a fixture does, can
+\ present a shape the engine never would. What a walk would do with it is worse
+\ than refusing: a walk meets tokens one at a time with no memory of an opener, so
+\ it declines the FIRST `[:` and names it, and a reader then goes looking for the
+\ wrong one.
+\
+\ EVERY OTHER MALFORMED PAIR IS ALREADY NAMED CORRECTLY BY THE WALKS, which is why
+\ this pass makes one refusal and not three. A `;]` nobody opened and a `[:` the
+\ body never closes are each met by a walk standing on the very token at fault, so
+\ a second refusal here would answer the same code about the same token one pass
+\ earlier and no fixture could tell the two apart. When the walks stop declining a
+\ well-formed quotation and start SKIPPING its body, those two lose their answer
+\ and come back here with it.
+variable QD                          \ is a quotation open at this token
+
+: QUOT-RESET ( -- )
+   0 QD ! ;
+
+: QSCAN-STEP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix HIR-CTRL:OPEN-QUOT ROW-CTRL? if
+      QD @ 0<> if ix QUOT-REFUSE then
+      1 QD !
+      exit
+   then
+   r ix HIR-CTRL:CLOSE-QUOT ROW-CTRL? if 0 QD ! then ;
+
+: QUOT-SCAN ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena n:n :}
+   QUOT-RESET
+   n 1 ?do
+      r i QSCAN-STEP
+   loop ;
+
 \ ---- the three tag-dispatch forms, read before anything else reads a word -----
 \ WHAT MAKES THEM DIFFERENT FROM EVERY OTHER FORM IN THIS FILE. `MATCH option
 \ some OF … ENDOF … ;MATCH` and `construct option some` write two tokens that
@@ -2995,6 +3053,8 @@ create JOIN-TAB TMAX cells allot
       open-case    OF HIR-CTRL:OPEN-CASE ix SK-PUSH ENDOF
       close-case   OF SK-CLOSE-CASE ENDOF
       make-bundle  OF ENDOF
+      open-quot    OF ix QUOT-REFUSE ENDOF
+      close-quot   OF ix QUOT-REFUSE ENDOF
    ;MATCH ;
 
 \ Walk the body once, counting. A structure left open at the end of the body is
@@ -4097,6 +4157,8 @@ create DN-BUF DN-CAP allot
       open-case    OF ix DO-OPEN-CASE ENDOF
       close-case   OF ix DO-CLOSE-CASE ENDOF
       make-bundle  OF ix DO-MAKE-BUNDLE ENDOF
+      open-quot    OF ix QUOT-REFUSE ENDOF
+      close-quot   OF ix QUOT-REFUSE ENDOF
    ;MATCH ;
 
 \ ---- the walk ----------------------------------------------------------------
@@ -4482,6 +4544,7 @@ EXPORT SPLICE-MEANING?
    out OUT-N !
    FR-GIN @ IN-GLUE !  FR-GOUT @ OUT-GLUE !
    0 FR-GIN !  0 FR-GOUT !
+   r n QUOT-SCAN
    r n LOCALS-SCAN
    r n MATCH-SCAN
    r n RESOLVE-SCAN

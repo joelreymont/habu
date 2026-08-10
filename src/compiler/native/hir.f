@@ -332,6 +332,15 @@ ENUM opcode DERIVE eq
 \ it stages the zero pads and the tag that turn a payload already on the stack
 \ into a value of its family.
 \
+\ THE LAST TWO ARE `[:` AND `;]`, and they are control actions for a reason of
+\ their own: what stands between them is not part of the body that writes them.
+\ A quotation body is a ROUTINE - its own entry, its own return, reached by an
+\ address some caller executes - so the tokens between the pair are a second
+\ function of the module and not operations of the first. `open-quot` is
+\ therefore the one action that both stages a value AND takes a span of the tape
+\ out of the enclosing body's hands; `close-quot` names the token that ends it,
+\ and a walk that ever STEPS one has met a closer with no opener.
+\
 \ `of` AND `endof` ARE ONE MEMBER EACH AND NOT TWO PAIRS, which is the source
 \ language's shape rather than a saving. The engine compiles both forms through
 \ one `of` and one `endof` and tells them apart by which structure is open
@@ -361,6 +370,8 @@ ENUM ctrl DERIVE eq
    open-case
    close-case
    make-bundle
+   open-quot
+   close-quot
 ;ENUM
 
 \ What a Habu source word, or a source-tape token, means to this dialect.

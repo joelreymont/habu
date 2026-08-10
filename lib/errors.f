@@ -1189,4 +1189,15 @@ public
 \ all rejected before the definition is compiled - so a refusal here means the
 \ chain and the checker read one body differently, which is why it is a named
 \ refusal rather than a fallback.
+\ ---- the two tokens a quotation is written with -------------------------------
+\ A quotation body is a second FUNCTION of the module, so the tokens between `[:`
+\ and `;]` are not operations of the body that writes them. Everything this
+\ elaborator cannot yet do with that shape is refused under one name, because
+\ every one of them is the same statement: the pair was not the pair this leaf
+\ knows how to take apart. dot habu-compile-a-quotation-04341c80 is the
+\ capability; while it is open the refusal is what the chain answers, and it is
+\ its own code rather than the generic unmodelled-word one so a census can tell a
+\ quotation the chain declined from a word it has never heard of.
+-8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` inside another one, which the engine itself refuses to compile; a `[:` the body never closes; a `;]` with no `[:` open; or a quotation whose body the leaf that compiles one has not landed yet
+
 -8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, or a scrutinee whose bundle on that vector is not the width its family declares - which is what an instantiation wider than the declared one looks like from here
