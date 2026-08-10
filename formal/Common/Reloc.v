@@ -225,6 +225,15 @@ Definition w_movk1 : Z := 4070572041.
 Definition w_movk2 : Z := 4072669193.
 Definition w_movk3 : Z := 4074766345.
 
+(* $1F and 5, src/habu/habu2.f: the destination-register field of a move-wide
+   word, and its width.  x9 is the register the ONE carrier C-ADDR-RAW writes
+   into, and it is the register all four scaffolds above name; a chain the
+   native compiler emits names whichever register its allocator chose. *)
+Definition addr_rd_mask : Z := 31.
+Definition addr_rd_bits : Z := 5.
+Definition rd_span : Z := 32.
+Definition addr_rd : Z := 9.
+
 (* $FFE0001F, $FFFF and 16, src/habu/habu2.f: an instruction word minus its
    16-bit immediate, that immediate once shifted down by five, and the whole
    chain's length in bytes. *)
@@ -775,11 +784,26 @@ Definition chain_put (c : chain) (v : Z) : chain :=
   (put_imm16 w0 v, put_imm16 w1 (v / imm16_span),
    put_imm16 w2 (v / imm32_span), put_imm16 w3 (v / imm48_span)).
 
+(* The destination register a move-wide word names, and the same word with that
+   register replaced.  `rd_of` is the shipped `9 9 ADDR-RD-MASK ANDI,` and
+   `with_rd` is the shipped `LSRI, LSLI, ORR,` triple that clears a scaffold's
+   register and puts the site's own back. *)
+Definition rd_of (w : Z) : Z := w mod rd_span.
+Definition with_rd (w rd : Z) : Z := w - rd_of w + rd.
+
 (* A chain as the compiler first emits it, and the same chain with one word
    damaged.  These are what the vector rows are written in, so neither the
-   Habu side nor the generated obligations carries a word of its own. *)
+   Habu side nor the generated obligations carries a word of its own.
+   `scaffolds_rd` is the four scaffolds naming a register other than x9, which
+   is what the native compiler's allocator produces and what the widened guard
+   exists to accept. *)
 Definition scaffolds : chain := (w_movz0, w_movk1, w_movk2, w_movk3).
 Definition mk_chain (v : Z) : chain := chain_put scaffolds v.
+
+Definition scaffolds_rd (rd : Z) : chain :=
+  (with_rd w_movz0 rd, with_rd w_movk1 rd,
+   with_rd w_movk2 rd, with_rd w_movk3 rd).
+Definition mk_chain_rd (rd v : Z) : chain := chain_put (scaffolds_rd rd) v.
 
 Definition break_chain (v k bad : Z) : chain :=
   let '(w0, w1, w2, w3) := mk_chain v in
@@ -788,13 +812,40 @@ Definition break_chain (v k bad : Z) : chain :=
   else if Z.eqb k 2 then (w0, w1, bad, w3)
   else (w0, w1, w2, bad).
 
-(* The check the shipped pass makes before it writes: all four words must
-   still be the chain's own instructions, which pins the destination register
-   and each shift as well as the opcode. *)
+(* Four move-wide words that are each the right instruction but do NOT agree on
+   one destination register: lane `odd` names rd+1 and the other three name rd.
+   No compiler emits this and no relocation could repair it, so the guard has to
+   refuse it.  Written the way `break_chain` is, so a row names a case rather
+   than carrying instruction words. *)
+Definition mix_chain (rd odd v : Z) : chain :=
+  let '(w0, w1, w2, w3) := mk_chain_rd rd v in
+  if Z.eqb odd 0 then (with_rd w0 (rd + 1), w1, w2, w3)
+  else if Z.eqb odd 1 then (w0, with_rd w1 (rd + 1), w2, w3)
+  else if Z.eqb odd 2 then (w0, w1, with_rd w2 (rd + 1), w3)
+  else (w0, w1, w2, with_rd w3 (rd + 1)).
+
+(* The check the shipped pass makes before it writes: all four words must still
+   be the chain's own instructions, and all four must name ONE register — the
+   one word 0 names.  That register is read off the site rather than pinned to
+   x9, because the carrier in habu2.f is not the only emitter of the chain any
+   more; the agreement requirement is what keeps the widening from degenerating
+   into "any four move-wide words at all". *)
 Definition is_chain (c : chain) : bool :=
   let '(w0, w1, w2, w3) := c in
-  Z.eqb (scaffold_of w0) w_movz0 && Z.eqb (scaffold_of w1) w_movk1
-  && Z.eqb (scaffold_of w2) w_movk2 && Z.eqb (scaffold_of w3) w_movk3.
+  let rd := rd_of w0 in
+  Z.eqb (scaffold_of w0) (with_rd w_movz0 rd)
+  && Z.eqb (scaffold_of w1) (with_rd w_movk1 rd)
+  && Z.eqb (scaffold_of w2) (with_rd w_movk2 rd)
+  && Z.eqb (scaffold_of w3) (with_rd w_movk3 rd).
+
+(* The widening this design REJECTED: mask the register out of the comparison
+   altogether.  Kept only to exhibit what the agreement requirement buys. *)
+Definition is_chain_rd_blind (c : chain) : bool :=
+  let '(w0, w1, w2, w3) := c in
+  Z.eqb (with_rd (scaffold_of w0) 0) (with_rd w_movz0 0)
+  && Z.eqb (with_rd (scaffold_of w1) 0) (with_rd w_movk1 0)
+  && Z.eqb (with_rd (scaffold_of w2) 0) (with_rd w_movk2 0)
+  && Z.eqb (with_rd (scaffold_of w3) 0) (with_rd w_movk3 0).
 
 (* An address a chain can carry at all: sixty-four unsigned bits. *)
 Definition addr_ok (v : Z) : Prop := 0 <= v < addr_span.
@@ -826,9 +877,81 @@ Proof.
   exfalso. apply H. split; assumption.
 Qed.
 
+(* ---- the destination-register field ---------------------------------- *)
+
+Lemma rd_span_pos : 0 < rd_span.
+Proof. unfold rd_span; lia. Qed.
+
+Lemma rd_bounds : forall w, 0 <= rd_of w < rd_span.
+Proof. intros w. unfold rd_of. apply Z.mod_pos_bound. apply rd_span_pos. Qed.
+
+Lemma rd_split : forall w, w - rd_of w = rd_span * (w / rd_span).
+Proof.
+  intros w. unfold rd_of. rewrite (Z.mod_eq w rd_span) by (unfold rd_span; lia).
+  lia.
+Qed.
+
+Lemma rd_of_with_rd : forall w rd,
+  0 <= rd < rd_span -> rd_of (with_rd w rd) = rd.
+Proof.
+  intros w rd H. unfold rd_of at 1, with_rd.
+  replace (w - rd_of w + rd) with (rd + (w / rd_span) * rd_span)
+    by (pose proof (rd_split w); unfold rd_span in *; lia).
+  rewrite Z.mod_add by (unfold rd_span; lia).
+  apply Z.mod_small. exact H.
+Qed.
+
+Lemma with_rd_inj : forall w a b, with_rd w a = with_rd w b -> a = b.
+Proof. intros w a b H. unfold with_rd in H. lia. Qed.
+
+(* Replacing the register does not disturb the immediate: the register field
+   sits entirely below the immediate's bit five, so no carry crosses. *)
+Lemma imm16_of_with_rd : forall w rd,
+  0 <= rd < rd_span -> imm16_of (with_rd w rd) = imm16_of w.
+Proof.
+  intros w rd H. unfold imm16_of, imm_scale, with_rd.
+  replace (w - rd_of w + rd) with (rd + (w / rd_span) * rd_span)
+    by (pose proof (rd_split w); unfold rd_span in *; lia).
+  unfold rd_span in *.
+  rewrite Z.div_add by lia.
+  rewrite (Z.div_small rd 32) by lia.
+  reflexivity.
+Qed.
+
+Lemma rd_of_scaffold : forall w, rd_of (scaffold_of w) = rd_of w.
+Proof.
+  intros w. unfold rd_of, scaffold_of, imm_scale, rd_span.
+  replace (w - imm16_of w * 32) with (w + (- imm16_of w) * 32) by lia.
+  rewrite Z.mod_add by lia. reflexivity.
+Qed.
+
+Lemma scaffold_of_with_rd : forall w rd,
+  0 <= rd < rd_span -> scaffold_of (with_rd w rd) = with_rd (scaffold_of w) rd.
+Proof.
+  intros w rd H. unfold scaffold_of at 1. rewrite imm16_of_with_rd by exact H.
+  unfold with_rd. rewrite rd_of_scaffold. unfold scaffold_of, imm_scale. lia.
+Qed.
+
+Lemma rd_of_put : forall w v, rd_of (put_imm16 w v) = rd_of w.
+Proof.
+  intros w v. unfold rd_of, put_imm16, scaffold_of, imm_scale, rd_span.
+  replace (w - imm16_of w * 32 + v mod imm16_span * 32)
+    with (w + (v mod imm16_span - imm16_of w) * 32) by lia.
+  rewrite Z.mod_add by lia. reflexivity.
+Qed.
+
+Lemma with_rd_id : forall w, with_rd w (rd_of w) = w.
+Proof. intros w. unfold with_rd. lia. Qed.
+
+(* Reduce the guard's own pattern match and nothing else.  A bare `cbn` here
+   unfolds Z division and diverges, so every proof about `is_chain` names the
+   constants it may reduce. *)
+Ltac open_chain := cbv beta iota zeta delta [is_chain is_chain_rd_blind].
+
 Lemma chain_stays_a_chain : forall c v, is_chain (chain_put c v) = is_chain c.
 Proof.
-  intros [[[w0 w1] w2] w3] v. cbn. rewrite !scaffold_of_put. reflexivity.
+  intros [[[w0 w1] w2] w3] v. open_chain. unfold chain_put.
+  rewrite !scaffold_of_put, !rd_of_put. reflexivity.
 Qed.
 
 Lemma chain_put_compose : forall c a b,
@@ -849,12 +972,79 @@ Theorem opc_mask_is_the_field_complement :
   /\ addr_chain_bytes = 4 * 4.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
+(* And the shipped register mask really is the field `rd_of` reads: ADDR-RD-MASK
+   is every bit below the immediate's bit five, ADDR-RD-BITS is its width, and
+   the register the shipped scaffolds name is inside it.  Renumber either on
+   either side and the two stop describing the same field — which matters here
+   because the shipped pass clears a scaffold's register by shifting down by
+   ADDR-RD-BITS and back, and that is the same operation only while the two agree.
+   The mask sits directly below the immediate, so replacing a register can never
+   disturb one (`imm16_of_with_rd`). *)
+Theorem rd_mask_is_the_register_field :
+  addr_rd_mask = rd_span - 1
+  /\ 2 ^ addr_rd_bits = rd_span
+  /\ addr_opc_mask mod imm_scale = addr_rd_mask
+  /\ 0 <= addr_rd < rd_span.
+Proof.
+  repeat split; try (vm_compute; reflexivity);
+    unfold addr_rd, rd_span; lia.
+Qed.
+
 (* A chain built the way the compiler builds one really is one, so the vector
    rows below are asking the pass about chains and not about arbitrary words. *)
 Theorem mk_chain_is_a_chain : forall v, is_chain (mk_chain v) = true.
 Proof.
   intros v. unfold mk_chain. rewrite chain_stays_a_chain.
   vm_compute. reflexivity.
+Qed.
+
+(* All four shipped scaffolds name ONE register, and it is x9.  That is what
+   makes the four-lane agreement requirement below a generalisation of the old
+   x9 comparison rather than a different check: renumber any one of the four
+   literals to name another register and this stops holding. *)
+Theorem the_shipped_scaffolds_name_one_register :
+  rd_of w_movz0 = addr_rd /\ rd_of w_movk1 = addr_rd
+  /\ rd_of w_movk2 = addr_rd /\ rd_of w_movk3 = addr_rd.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+(* THE WIDENING.  The chain the native compiler emits names whichever register
+   its allocator chose, and the guard accepts it — for every register, and for
+   every address.  Before this, only x9 passed, so a DATA address literal
+   recorded in the address map would have been refused as a corrupt image. *)
+Theorem chain_in_any_register_is_a_chain : forall rd v,
+  0 <= rd < rd_span -> is_chain (mk_chain_rd rd v) = true.
+Proof.
+  intros rd v H. unfold mk_chain_rd. rewrite chain_stays_a_chain.
+  unfold scaffolds_rd. open_chain.
+  rewrite (rd_of_with_rd w_movz0 rd H).
+  rewrite !scaffold_of_with_rd by exact H.
+  assert (S0 : scaffold_of w_movz0 = w_movz0) by (vm_compute; reflexivity).
+  assert (S1 : scaffold_of w_movk1 = w_movk1) by (vm_compute; reflexivity).
+  assert (S2 : scaffold_of w_movk2 = w_movk2) by (vm_compute; reflexivity).
+  assert (S3 : scaffold_of w_movk3 = w_movk3) by (vm_compute; reflexivity).
+  rewrite S0, S1, S2, S3, !Z.eqb_refl. reflexivity.
+Qed.
+
+(* THE STRENGTH.  Accepting any register would be worthless if the four lanes
+   could name four different ones: the pass writes one address across all four
+   immediates, so lanes that disagree are not a chain in any register, and the
+   value they spell out belongs to no site.  A chain the guard accepts names one
+   register in all four lanes — stated over ARBITRARY words, so it is a property
+   of the guard and not of the way the vector rows happen to build a chain. *)
+Theorem a_chain_names_one_register : forall w0 w1 w2 w3,
+  is_chain (w0, w1, w2, w3) = true ->
+  rd_of w1 = rd_of w0 /\ rd_of w2 = rd_of w0 /\ rd_of w3 = rd_of w0.
+Proof.
+  intros w0 w1 w2 w3 H.
+  cbv beta iota zeta delta [is_chain] in H.
+  apply andb_prop in H as [H H3]. apply andb_prop in H as [H H2].
+  apply andb_prop in H as [_ H1].
+  apply Z.eqb_eq in H1. apply Z.eqb_eq in H2. apply Z.eqb_eq in H3.
+  pose proof (rd_bounds w0) as Hb.
+  repeat split.
+  - rewrite <- (rd_of_scaffold w1), H1. apply rd_of_with_rd. exact Hb.
+  - rewrite <- (rd_of_scaffold w2), H2. apply rd_of_with_rd. exact Hb.
+  - rewrite <- (rd_of_scaffold w3), H3. apply rd_of_with_rd. exact Hb.
 Qed.
 
 (* The address read back out of a rewritten chain is the one written in.  All
@@ -1312,6 +1502,57 @@ Theorem skipping_the_last_movk_loses_the_top_field :
   /\ chain_value (chain_put (mk_chain 0) imm48_span) = imm48_span.
 Proof. split; vm_compute; reflexivity. Qed.
 
+(* What the four-lane agreement buys.  The other way to widen the guard was to
+   mask the destination register out of the comparison; that reads every lane's
+   opcode and shift and nothing else, so it accepts four words that name four
+   different registers.  Such a site is not a chain any compiler emits, its four
+   immediates do not spell out one register's address, and rewriting them writes
+   a rebased value into code that never pushed one.  The shipped guard refuses
+   it. *)
+Theorem a_register_blind_guard_admits_mismatched_lanes :
+  is_chain (mix_chain addr_rd 1 0) = false
+  /\ is_chain_rd_blind (mix_chain addr_rd 1 0) = true.
+Proof. split; vm_compute; reflexivity. Qed.
+
+(* And it is not one lucky lane: whichever of the four disagrees, the guard
+   refuses.  `mix_chain` moves the odd lane, and every choice is refused for
+   every register the allocator can pick and every address. *)
+Theorem any_mismatched_lane_is_refused : forall rd odd v,
+  0 <= rd < rd_span - 1 -> 0 <= odd < 4 ->
+  is_chain (mix_chain rd odd v) = false.
+Proof.
+  intros rd odd v Hrd Hodd.
+  assert (Hr : 0 <= rd < rd_span) by (unfold rd_span in *; lia).
+  assert (Hr1 : 0 <= rd + 1 < rd_span) by (unfold rd_span in *; lia).
+  (* what register each lane of the mixed chain names *)
+  assert (A0 : rd_of (put_imm16 (with_rd w_movz0 rd) v) = rd)
+    by (rewrite rd_of_put; apply rd_of_with_rd; exact Hr).
+  assert (A1 : rd_of (put_imm16 (with_rd w_movk1 rd) (v / imm16_span)) = rd)
+    by (rewrite rd_of_put; apply rd_of_with_rd; exact Hr).
+  assert (A2 : rd_of (put_imm16 (with_rd w_movk2 rd) (v / imm32_span)) = rd)
+    by (rewrite rd_of_put; apply rd_of_with_rd; exact Hr).
+  assert (A3 : rd_of (put_imm16 (with_rd w_movk3 rd) (v / imm48_span)) = rd)
+    by (rewrite rd_of_put; apply rd_of_with_rd; exact Hr).
+  assert (B0 : rd_of (with_rd (put_imm16 (with_rd w_movz0 rd) v) (rd + 1))
+               = rd + 1) by (apply rd_of_with_rd; exact Hr1).
+  assert (B1 : rd_of (with_rd (put_imm16 (with_rd w_movk1 rd) (v / imm16_span))
+                        (rd + 1)) = rd + 1) by (apply rd_of_with_rd; exact Hr1).
+  assert (B2 : rd_of (with_rd (put_imm16 (with_rd w_movk2 rd) (v / imm32_span))
+                        (rd + 1)) = rd + 1) by (apply rd_of_with_rd; exact Hr1).
+  assert (B3 : rd_of (with_rd (put_imm16 (with_rd w_movk3 rd) (v / imm48_span))
+                        (rd + 1)) = rd + 1) by (apply rd_of_with_rd; exact Hr1).
+  destruct (is_chain (mix_chain rd odd v)) eqn:E; [exfalso | reflexivity].
+  assert (Hodd4 : odd = 0 \/ odd = 1 \/ odd = 2 \/ odd = 3) by lia.
+  (* the guard accepted it, so by a_chain_names_one_register all four lanes name
+     word 0's register — and the odd lane names one more than the rest. *)
+  destruct Hodd4 as [Eo | [Eo | [Eo | Eo]]]; subst odd;
+    unfold mix_chain, mk_chain_rd, scaffolds_rd, chain_put in E;
+    cbv beta iota zeta delta [Z.eqb] in E;
+    apply a_chain_names_one_register in E as [E1 [E2 E3]];
+    rewrite ?A0, ?A1, ?A2, ?A3, ?B0, ?B1, ?B2, ?B3 in E1, E2, E3;
+    lia.
+Qed.
+
 (* What the chain guard buys.  A recorded site holding a data word is refused
    with ADDRMAP-RC and keeps its four words; the same walk without the guard
    reads a value out of those words, decides it lies inside the band, and
@@ -1345,7 +1586,11 @@ Print Assumptions xt_round_trip.
 Print Assumptions xt_zero_preserved.
 Print Assumptions xt_rebase_general_base.
 Print Assumptions opc_mask_is_the_field_complement.
+Print Assumptions rd_mask_is_the_register_field.
 Print Assumptions mk_chain_is_a_chain.
+Print Assumptions the_shipped_scaffolds_name_one_register.
+Print Assumptions chain_in_any_register_is_a_chain.
+Print Assumptions a_chain_names_one_register.
 Print Assumptions chain_value_of_put.
 Print Assumptions chain_put_value.
 Print Assumptions addr_move_stays_a_chain.
@@ -1364,4 +1609,6 @@ Print Assumptions shift_out_of_reach_wraps.
 Print Assumptions misaligned_base_breaks_round_trip.
 Print Assumptions dropping_the_call_guard_corrupts_data.
 Print Assumptions skipping_the_last_movk_loses_the_top_field.
+Print Assumptions a_register_blind_guard_admits_mismatched_lanes.
+Print Assumptions any_mismatched_lane_is_refused.
 Print Assumptions dropping_the_chain_guard_corrupts_data.

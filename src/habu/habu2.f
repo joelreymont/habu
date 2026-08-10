@@ -175,13 +175,26 @@ $25 constant BL-OP-HI
 
 \ The shape of the four-instruction address chain habu2.f C-ADDR-RAW emits, as the
 \ relocation pass has to read it back. ADDR-OPC-MASK keeps everything in a MOVZ or
-\ MOVK word except its 16-bit immediate, so masking a site word and comparing it
-\ against W-MOVZ0/W-MOVK1/W-MOVK2/W-MOVK3 checks the destination register and the
-\ shift as well as the opcode. ADDR-IMM-MASK is that immediate once it has been
-\ shifted down by five, and ADDR-CHAIN-BYTES is the whole chain.
+\ MOVK word except its 16-bit immediate, so masking a site word leaves the opcode,
+\ the shift and the destination register to compare. ADDR-IMM-MASK is that
+\ immediate once it has been shifted down by five, and ADDR-CHAIN-BYTES is the
+\ whole chain.
+\ W-MOVZ0/W-MOVK1/W-MOVK2/W-MOVK3 all name x9, because that is the register the ONE
+\ carrier C-ADDR-RAW writes into, but they are not the only chains that reach the
+\ map: a chain the native compiler emits names whichever register its allocator
+\ chose. So the pass takes the register from the SITE's own first word and requires
+\ the other three lanes to name that same one. ADDR-RD-MASK is the destination-
+\ register field of a move-wide word and ADDR-RD-BITS its width, so shifting a
+\ scaffold down by that width and back clears the register out of it and leaves the
+\ opcode and the shift, which is what the site's register is then put back into.
+\ Accepting any register without the agreement requirement would accept four words
+\ that name four different registers, whose four immediates spell out no address at
+\ all; formal/Common/Reloc.v states both halves.
 $FFE0001F constant ADDR-OPC-MASK
 $FFFF constant ADDR-IMM-MASK
 16 constant ADDR-CHAIN-BYTES
+$1F constant ADDR-RD-MASK
+5 constant ADDR-RD-BITS
 
 \ Emit "declare the engine cell at OFFSET as holding a region address". The three
 \ engine hook cells are named this way at cold boot; the dispatch cell of a
@@ -4289,10 +4302,23 @@ public
             14 8 14 ADD,                            \ x14 = chain address
             \ a recorded site must still be the chain. Anything else means the map
             \ and the region disagree, which is a corrupt image, so refuse to run it.
-            9 14 0 LDRW,   9 9 7 AND,  10 W-MOVZ0 LIT64,  9 10 CMP,  C-NE sabad BCOND,
-            9 14 4 LDRW,   9 9 7 AND,  10 W-MOVK1 LIT64,  9 10 CMP,  C-NE sabad BCOND,
-            9 14 8 LDRW,   9 9 7 AND,  10 W-MOVK2 LIT64,  9 10 CMP,  C-NE sabad BCOND,
-            9 14 12 LDRW,  9 9 7 AND,  10 W-MOVK3 LIT64,  9 10 CMP,  C-NE sabad BCOND,
+            \ Word 0 supplies the register the whole chain names (x3), and the other
+            \ three lanes are compared against their own scaffold carrying THAT
+            \ register, so four move-wide words that name four different registers are
+            \ refused as firmly as four words that are not move-wide at all.
+            9 14 0 LDRW,   9 9 7 AND,
+            3 9 ADDR-RD-MASK ANDI,
+            10 W-MOVZ0 LIT64,  10 10 ADDR-RD-BITS LSRI,  10 10 ADDR-RD-BITS LSLI,  10 10 3 ORR,
+            9 10 CMP,  C-NE sabad BCOND,
+            9 14 4 LDRW,   9 9 7 AND,
+            10 W-MOVK1 LIT64,  10 10 ADDR-RD-BITS LSRI,  10 10 ADDR-RD-BITS LSLI,  10 10 3 ORR,
+            9 10 CMP,  C-NE sabad BCOND,
+            9 14 8 LDRW,   9 9 7 AND,
+            10 W-MOVK2 LIT64,  10 10 ADDR-RD-BITS LSRI,  10 10 ADDR-RD-BITS LSLI,  10 10 3 ORR,
+            9 10 CMP,  C-NE sabad BCOND,
+            9 14 12 LDRW,  9 9 7 AND,
+            10 W-MOVK3 LIT64,  10 10 ADDR-RD-BITS LSRI,  10 10 ADDR-RD-BITS LSLI,  10 10 3 ORR,
+            9 10 CMP,  C-NE sabad BCOND,
             \ x3 = the address the four immediates spell out
             9 14 0 LDRW,   9 9 5 LSRI,  9 9 2 AND,  3 9 0 ADDI,
             9 14 4 LDRW,   9 9 5 LSRI,  9 9 2 AND,  9 9 16 LSLI,  3 3 9 ORR,

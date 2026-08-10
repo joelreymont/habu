@@ -341,9 +341,20 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ exact-CODELEN ratchet measured the candidate at 116332 (was 116204), +128.
 \ Floor follows from the same number: 5612 -> 5740, inside the same 16 KiB page,
 \ so the text pad absorbs it and neither MACOS-SIGNATURE nor MACOS-TOTAL moves.
-116332 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-10, the address chain's own register (dot habu-widen-emit-addrs, folded
+\ into habu-per-site-relocation): SNAP-RELOC:EMIT-ADDRS stops demanding x9 in all
+\ four lanes of a recorded chain and instead takes the register from the site's
+\ own first word, requiring the other three to name that same one. Thirteen
+\ instructions: one ANDI that reads the register off word 0, and three more per
+\ lane (LSRI, LSLI, ORR) that clear the scaffold's own register and put the
+\ site's back before the compare. The exact-CODELEN ratchet measured the
+\ candidate at 116384 (was 116332), +52 = 13 * 4. Floor follows from the same
+\ number: 5740 -> 5792, inside the same 16 KiB page, so the text pad absorbs it
+\ and neither MACOS-SIGNATURE nor MACOS-TOTAL moves (FILE-SIZE bin/hb still
+\ 148855, signature still 1295).
+116384 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-5740 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+5792 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

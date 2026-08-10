@@ -267,7 +267,9 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    s" XTBANDMSG-LEN" s" XTBANDMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" ADDR-OPC-MASK" s" ADDR-OPC-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" ADDR-IMM-MASK" s" ADDR-IMM-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" ADDR-CHAIN-BYTES" s" ADDR-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
+   s" ADDR-CHAIN-BYTES" s" ADDR-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDR-RD-MASK" s" ADDR-RD-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDR-RD-BITS" s" ADDR-RD-BITS" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
 
 \ The chain's four scaffold words are declared in src/habu/habu1.f. They are
 \ bound as machine symbols so the shipped check runs against the shipped words,
@@ -487,9 +489,19 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
 \ an address, and the four words of every slot are built from the row's address
 \ and the scaffold words read out of src/habu/habu1.f.
 
-: CHAIN-WORD ( n n n -- n ) {: v:n j:n bad:n :}
+\ The scaffold for lane j, read out of src/habu/habu1.f, with its destination
+\ register replaced by the one this lane is meant to name. The four shipped
+\ scaffolds all name x9, so a slot that names x9 gets its words back unchanged.
+: LANE-SCAFFOLD ( n n -- n ) {: j:n rd:n :}
+   SCAF j cells + @ {: w:n :}
+   w w RD-MASK and - rd + ;
+
+: CHAIN-WORD ( n n n n -- n ) {: v:n j:n bad:n rd:n :}
    j bad = if CHAIN-BAD-WORD exit then
-   v j 16 * rshift IMM16-MASK and IMM-SCALE * SCAF j cells + @ + ;
+   v j 16 * rshift IMM16-MASK and IMM-SCALE * j rd LANE-SCAFFOLD + ;
+
+: SLOT-WORD ( n n n -- n ) {: s:n j:n v:n :}
+   v j s ASITE-BAD@ s j ASITE-LANE-RD CHAIN-WORD ;
 
 : AMAP-BIT ( n -- ) {: idx:n :}
    VM-DATA SNAP-RELOC:ADDRMAP-OFF + idx 3 rshift + {: at:n :}
@@ -497,7 +509,7 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
 
 : PLACE-ASITE ( n -- ) {: s:n :}
    CHAIN-WORDS 0 ?do
-      s ASITE-V0@ i s ASITE-BAD@ CHAIN-WORD
+      s i s ASITE-V0@ SLOT-WORD
       VM-REGION s ASITE-IDX@ i + 4 * + 4 RELOC-VM:POKE
    loop
    s ASITE-REC@ 0<> if s ASITE-IDX@ AMAP-BIT then ;
@@ -524,8 +536,8 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    RELOC-VM:HALT-CODE ;
 
 : ASITE-EXPECT ( n n n -- n ) {: s:n phase:n j:n :}
-   phase 0 = if s ASITE-V1@ j s ASITE-BAD@ CHAIN-WORD exit then
-   s ASITE-V2@ j s ASITE-BAD@ CHAIN-WORD ;
+   phase 0 = if s j s ASITE-V1@ SLOT-WORD exit then
+   s j s ASITE-V2@ SLOT-WORD ;
 
 : ASITE-MATCH ( n n -- ) {: s:n phase:n :}
    CHAIN-WORDS 0 ?do

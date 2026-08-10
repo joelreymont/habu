@@ -47,7 +47,7 @@ private
 
 $100 constant CODE-CAP
 32 constant LOC-CAP
-32 constant SYM-CAP
+48 constant SYM-CAP
 16 constant GLB-CAP
 8 constant SEG-CAP
 $1000 constant MEM-CAP

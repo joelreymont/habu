@@ -81,8 +81,20 @@ closed
 theorem Habu.Common.Reloc.opc_mask_is_the_field_complement
 type addr_opc_mask = word32_span - 1 - addr_imm_mask * imm_scale /\ addr_imm_mask + 1 = imm16_span /\ addr_chain_bytes = 4 * 4
 closed
+theorem Habu.Common.Reloc.rd_mask_is_the_register_field
+type addr_rd_mask = rd_span - 1 /\ 2 ^ addr_rd_bits = rd_span /\ addr_opc_mask mod imm_scale = addr_rd_mask /\ 0 <= addr_rd < rd_span
+closed
 theorem Habu.Common.Reloc.mk_chain_is_a_chain
 type forall v, is_chain (mk_chain v) = true
+closed
+theorem Habu.Common.Reloc.the_shipped_scaffolds_name_one_register
+type rd_of w_movz0 = addr_rd /\ rd_of w_movk1 = addr_rd /\ rd_of w_movk2 = addr_rd /\ rd_of w_movk3 = addr_rd
+closed
+theorem Habu.Common.Reloc.chain_in_any_register_is_a_chain
+type forall rd v, 0 <= rd < rd_span -> is_chain (mk_chain_rd rd v) = true
+closed
+theorem Habu.Common.Reloc.a_chain_names_one_register
+type forall w0 w1 w2 w3, is_chain (w0, w1, w2, w3) = true -> rd_of w1 = rd_of w0 /\ rd_of w2 = rd_of w0 /\ rd_of w3 = rd_of w0
 closed
 theorem Habu.Common.Reloc.chain_value_of_put
 type forall c v, addr_ok v -> chain_value (chain_put c v) = v
@@ -137,6 +149,12 @@ type reloc_walk [(true, 5)] 1 = ([(true, 5)], Some callmap_rc) /\ reloc_unguarde
 closed
 theorem Habu.Common.Reloc.skipping_the_last_movk_loses_the_top_field
 type chain_value (chain_put3 (mk_chain 0) imm48_span) = 0 /\ chain_value (chain_put (mk_chain 0) imm48_span) = imm48_span
+closed
+theorem Habu.Common.Reloc.a_register_blind_guard_admits_mismatched_lanes
+type is_chain (mix_chain addr_rd 1 0) = false /\ is_chain_rd_blind (mix_chain addr_rd 1 0) = true
+closed
+theorem Habu.Common.Reloc.any_mismatched_lane_is_refused
+type forall rd odd v, 0 <= rd < rd_span - 1 -> 0 <= odd < 4 -> is_chain (mix_chain rd odd v) = false
 closed
 theorem Habu.Common.Reloc.dropping_the_chain_guard_corrupts_data
 type addr_walk [(true, (5, 0, 0, 0))] 0 1 7 = ([(true, (5, 0, 0, 0))], Some addrmap_rc) /\ addr_unguarded [(true, (5, 0, 0, 0))] 0 1 7 = [(true, (229, 0, 0, 0))]

@@ -62,10 +62,12 @@
 \     turns the row's flags into a real map band, so the bitmap indexing is
 \     exercised on the Habu side and left out of the model. That is MODEL GAP 3
 \     in `formal/Common/Reloc.v`.
-\   - A chain row writes an address, not four instruction words, and both sides
-\     build the same four words from it the same way: scaffold word j from
-\     src/habu/habu1.f with bits 16j..16j+15 of the address at bit five. A
-\     damaged slot replaces one of those words with CHAIN-BAD-WORD. Neither side
+\   - A chain row writes an address and a destination register, not four
+\     instruction words, and both sides build the same four words from them the
+\     same way: scaffold word j from src/habu/habu1.f, its register replaced by
+\     the slot's own, with bits 16j..16j+15 of the address at bit five. A damaged
+\     slot replaces one of those words with CHAIN-BAD-WORD, and a mixed slot
+\     gives one lane a different register from the other three. Neither side
 \     computes an address; every one of them is a frozen literal here.
 \
 \ Consumers: `test/compiler/reloc-cases.f`, `test/compiler/reloc-obligations.f`.
@@ -106,7 +108,7 @@ public
 \ Rocq whether the model still carries the same number. Renumber one side and
 \ the two sides disagree.
 
-14 constant PIN-COUNT
+16 constant PIN-COUNT
 
 : PIN-FILE$ ( n -- ptr u8 n )
    case
@@ -124,6 +126,8 @@ public
       11 of SCAFFOLD-FILE$ endof
       12 of SCAFFOLD-FILE$ endof
       13 of SCAFFOLD-FILE$ endof
+      14 of EMIT-FILE$ endof
+      15 of EMIT-FILE$ endof
       E-CRL-ROW throw
    endcase ;
 
@@ -143,6 +147,8 @@ public
       11 of s" W-MOVK1" endof
       12 of s" W-MOVK2" endof
       13 of s" W-MOVK3" endof
+      14 of s" ADDR-RD-MASK" endof
+      15 of s" ADDR-RD-BITS" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -162,6 +168,8 @@ public
       11 of s" w_movk1" endof
       12 of s" w_movk2" endof
       13 of s" w_movk3" endof
+      14 of s" addr_rd_mask" endof
+      15 of s" addr_rd_bits" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -181,6 +189,8 @@ public
       11 of $F2A00009 endof
       12 of $F2C00009 endof
       13 of $F2E00009 endof
+      14 of $1F endof
+      15 of 5 endof
       E-CRL-ROW throw
    endcase ;
 
@@ -363,7 +373,9 @@ public
 9 constant ROLE-CH-OTHER     \ a chain naming the OTHER band: this call must not touch it
 10 constant ROLE-CH-REFUSE   \ a recorded chain site whose fourth word is not a MOVK3
 11 constant ROLE-CH-WIDE     \ a move that changes every one of the four immediates
-12 constant ROLE-COUNT
+12 constant ROLE-CH-REG      \ chains in registers the compiler's allocator chose, not x9
+13 constant ROLE-CH-MIXREG   \ a recorded chain whose four lanes name different registers
+14 constant ROLE-COUNT
 
 : ROLE-NAME$ ( n -- ptr u8 n )
    case
@@ -379,6 +391,8 @@ public
       9 of s" chain_other_band" endof
       10 of s" chain_refuse" endof
       11 of s" chain_wide" endof
+      12 of s" chain_register" endof
+      13 of s" chain_mixed_register" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -389,15 +403,24 @@ public
 1 constant KIND-RAW
 
 \ How a chain slot is spelled out from the address it carries. Both sides build
-\ the four words the same way: scaffold word j from src/habu/habu1.f, with bits
-\ 16j..16j+15 of the address sitting at bit five. A damaged slot holds
-\ CHAIN-BAD-WORD in one of its four words instead, which is a small integer and
-\ therefore not any of the four scaffolds.
+\ the four words the same way: scaffold word j from src/habu/habu1.f, with its
+\ destination register replaced by the slot's own and bits 16j..16j+15 of the
+\ address sitting at bit five. A damaged slot holds CHAIN-BAD-WORD in one of its
+\ four words instead, which is a small integer and therefore not any of the four
+\ scaffolds in any register.
 4 constant CHAIN-WORDS
 32 constant IMM-SCALE        \ the shipped `LSLI, 5` that puts an immediate at bit five
 $FFFF constant IMM16-MASK
 5 constant CHAIN-BAD-WORD
 -1 constant CHAIN-WHOLE      \ no word of this slot is damaged
+
+\ The register a slot's chain names. The scaffolds in habu1.f name x9, because
+\ that is the register the engine's own carrier writes into; a chain the native
+\ compiler emits names whichever register its allocator chose, so a slot carries
+\ its register and the odd lane - if any - that names a DIFFERENT one.
+$1F constant RD-MASK         \ the shipped ADDR-RD-MASK, the field these rows fill
+9 constant RD-X9             \ the register the four shipped scaffolds name
+-1 constant LANES-AGREE      \ no lane of this slot names another register
 
 private
 
@@ -429,6 +452,8 @@ variable OPEN-BASE
 create ASITE-IDX SITE-CAP cells allot
 create ASITE-REC SITE-CAP cells allot
 create ASITE-BAD SITE-CAP cells allot
+create ASITE-RD SITE-CAP cells allot
+create ASITE-ODD SITE-CAP cells allot
 create ASITE-V0 SITE-CAP cells allot
 create ASITE-V1 SITE-CAP cells allot
 create ASITE-V2 SITE-CAP cells allot
@@ -669,11 +694,16 @@ variable XOPEN-BASE
 \ the address the chain carries before the writer's pass, after it, and after
 \ the loader's. A row lists EVERY slot of its region, in order.
 
-: ASITE+ ( n n n n n n -- ) {: idx:n rec:n bad:n v0:n v1:n v2:n :}
+: ASITE+ ( n n n n n n n n -- )
+   {: idx:n rec:n bad:n rd:n odd:n v0:n v1:n v2:n :}
    ASITE-N @ SITE-CAP >= if E-CRL-ROW throw then
+   rd 0 < rd RD-MASK > or if E-CRL-ROW throw then
+   odd LANES-AGREE < odd CHAIN-WORDS >= or if E-CRL-ROW throw then
    idx ASITE-IDX ASITE-N @ cells + !
    rec ASITE-REC ASITE-N @ cells + !
    bad ASITE-BAD ASITE-N @ cells + !
+   rd ASITE-RD ASITE-N @ cells + !
+   odd ASITE-ODD ASITE-N @ cells + !
    v0 ASITE-V0 ASITE-N @ cells + !
    v1 ASITE-V1 ASITE-N @ cells + !
    v2 ASITE-V2 ASITE-N @ cells + !
@@ -681,21 +711,34 @@ variable XOPEN-BASE
 
 \ A recorded chain: the map bit is set, and the two passes move its address.
 : CHAIN-SITE ( n n n n -- ) {: idx:n v0:n v1:n v2:n :}
-   idx 1 CHAIN-WHOLE v0 v1 v2 ASITE+ ;
+   idx 1 CHAIN-WHOLE RD-X9 LANES-AGREE v0 v1 v2 ASITE+ ;
+
+\ The same, in a register the compiler's allocator chose rather than the x9 the
+\ engine's own carrier writes into.
+: CHAIN-SITE-RD ( n n n n n -- ) {: idx:n rd:n v0:n v1:n v2:n :}
+   idx 1 CHAIN-WHOLE rd LANES-AGREE v0 v1 v2 ASITE+ ;
 
 \ A chain the map does not record: one of the sibling DATA literals, which have
 \ this exact shape and must come through untouched.
 : CHAIN-KEEP ( n n -- ) {: idx:n v:n :}
-   idx 0 CHAIN-WHOLE v v v ASITE+ ;
+   idx 0 CHAIN-WHOLE RD-X9 LANES-AGREE v v v ASITE+ ;
 
 \ Four words the map does not record whose first word is a small integer: the
 \ inline data a compiled word carries.
 : CHAIN-DATA-KEEP ( n n -- ) {: idx:n v:n :}
-   idx 0 0 v v v ASITE+ ;
+   idx 0 0 RD-X9 LANES-AGREE v v v ASITE+ ;
 
 \ A slot the map DOES record with one word damaged: the corrupt-image case.
 : CHAIN-BROKEN ( n n n -- ) {: idx:n bad:n v:n :}
-   idx 1 bad v v v ASITE+ ;
+   idx 1 bad RD-X9 LANES-AGREE v v v ASITE+ ;
+
+\ A recorded slot whose four words are each the right move-wide instruction but
+\ do NOT agree on one destination register: lane ODD names RD+1 and the other
+\ three name RD. No compiler emits it, its four immediates spell out no one
+\ register's address, so the pass must refuse it rather than rewrite it.
+: CHAIN-MIXED ( n n n n -- ) {: idx:n rd:n odd:n v:n :}
+   odd LANES-AGREE = if E-CRL-ROW throw then
+   idx 1 CHAIN-WHOLE rd odd v v v ASITE+ ;
 
 : AROW ( -- )
    ASITE-N @ AOPEN-BASE ! ;
@@ -785,6 +828,31 @@ variable XOPEN-BASE
       0 $23456789ACE34 $59BDEF0124634 $7111122224534 CHAIN-SITE
    ROLE-CH-WIDE $23456789ABC00 $59BDEF0123400 $7111122223300 $10000 4 0 ;AROW ;
 
+\ The chain the NATIVE compiler emits does not name x9: its destination is
+\ whichever register the allocator gave the value. The pass takes that register
+\ from the site's own first word, so every one of them relocates exactly as x9
+\ does. x0 and x31 are the two ends of the five-bit field, so a mask that lost a
+\ bit of it, or a comparison that still demanded x9, is caught here.
+: CHAIN-REGISTER-ROW ( -- )
+   AROW
+      0 0  $101000100 $300000100 $105000100 CHAIN-SITE-RD
+      4 16 $101000200 $300000200 $105000200 CHAIN-SITE-RD
+      8 31 $101000300 $300000300 $105000300 CHAIN-SITE-RD
+   ROLE-CH-REG $101000000 $300000000 $105000000 $800000 12 0 ;AROW ;
+
+\ One recorded slot whose four words are each the right move-wide instruction
+\ but do not agree on a register. The old pass could not see this case at all,
+\ because it demanded x9 in every lane; a register-blind widening would accept
+\ it and write a rebased address into code that pushes no such address. The pass
+\ refuses AT the bad slot, so one row can only ever exercise one lane - hence one
+\ row per lane below, each in a different register. Slot zero moves first, so a
+\ row cannot pass by the pass doing nothing at all.
+: CHAIN-MIXED-ROW ( n n -- ) {: rd:n odd:n :}
+   AROW
+      0 $101000100 $300000100 $300000100 CHAIN-SITE
+      4 rd odd $101000200 CHAIN-MIXED
+   ROLE-CH-MIXREG $101000000 $300000000 $101000000 $800000 8 97 ;AROW ;
+
 : BUILD-CHAIN-ROWS ( -- )
    0 ASITE-N !
    0 AROW-N !
@@ -792,7 +860,12 @@ variable XOPEN-BASE
    CHAIN-REBASE-ROW
    CHAIN-OTHER-BAND-ROW
    CHAIN-REFUSE-ROW
-   CHAIN-WIDE-ROW ;
+   CHAIN-WIDE-ROW
+   CHAIN-REGISTER-ROW
+   0 0 CHAIN-MIXED-ROW
+   5 1 CHAIN-MIXED-ROW
+   RD-X9 2 CHAIN-MIXED-ROW
+   30 3 CHAIN-MIXED-ROW ;
 
 BUILD-CALL-ROWS
 BUILD-XT-ROWS
@@ -847,8 +920,16 @@ public
 : ASITE-IDX@ ( n -- n )     dup ASITE-RANGE cells ASITE-IDX + @ ;
 : ASITE-REC@ ( n -- n )     dup ASITE-RANGE cells ASITE-REC + @ ;
 : ASITE-BAD@ ( n -- n )     dup ASITE-RANGE cells ASITE-BAD + @ ;
+: ASITE-RD@ ( n -- n )      dup ASITE-RANGE cells ASITE-RD + @ ;
+: ASITE-ODD@ ( n -- n )     dup ASITE-RANGE cells ASITE-ODD + @ ;
 : ASITE-V0@ ( n -- n )      dup ASITE-RANGE cells ASITE-V0 + @ ;
 : ASITE-V1@ ( n -- n )      dup ASITE-RANGE cells ASITE-V1 + @ ;
 : ASITE-V2@ ( n -- n )      dup ASITE-RANGE cells ASITE-V2 + @ ;
+
+\ The register lane J of this slot names: the slot's own, or one more than it
+\ when J is the lane the row made disagree.
+: ASITE-LANE-RD ( n n -- n ) {: s:n j:n :}
+   s ASITE-ODD@ j = if s ASITE-RD@ 1+ exit then
+   s ASITE-RD@ ;
 
 ;package

@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-08-04
+Last updated: 2026-08-10
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -1356,6 +1356,38 @@ fits.
 
 ## Runtime, Codegen & AOT
 
+- **Widening a shape check to accept more must add a requirement, not just drop
+  one.** `SNAP-RELOC:EMIT-ADDRS` re-verified a recorded address chain by masking
+  each of its four words with ADDR-OPC-MASK and comparing against W-MOVZ0 /
+  W-MOVK1 / W-MOVK2 / W-MOVK3, which pins Rd = x9 — the register the engine's
+  ONE carrier `C-ADDR-RAW` writes into. The native chain's allocator picks its
+  own register, so the map has to accept any. The cheap widening — extend the
+  mask so the register field is not compared at all — accepts four move-wide
+  words naming four DIFFERENT registers, whose four immediates spell out no
+  address any site ever pushed, and the pass would rebase them anyway. The
+  shipped guard instead reads the register off the site's own word 0 (one
+  `ADDR-RD-MASK ANDI`) and requires each remaining lane to equal its scaffold
+  carrying THAT register (`LSRI`/`LSLI` clears the scaffold's x9, `ORR` puts the
+  site's back). Both halves are stated in `formal/Common/Reloc.v`
+  (`chain_in_any_register_is_a_chain`, `a_chain_names_one_register`) and both
+  are falsifiable through the shipped instruction sequence: restoring the x9-only
+  compare reds `chain_register`, and taking the register-blind widening reds all
+  four `chain_mixed_register` rows.
+- **A proof about a definition containing `mod` must never be closed with bare
+  `cbn`.** Making `Reloc.v`'s `is_chain` register-parametric put `w mod 32`
+  inside it; `chain_stays_a_chain`'s existing `cbn` then ran for over five
+  minutes without finishing, because `cbn` unfolds `Z.modulo` through
+  `Z.pos_div_eucl`. Nothing reported an error — the whole `rocq compile` simply
+  never returned, and piping its output through `head`/`tail` hid the timeout
+  behind the pipe's own exit status. Name the constants a reduction may touch
+  (`cbv beta iota zeta delta [is_chain]`), and read `${PIPESTATUS[0]}` or
+  redirect to a file when timing a compile.
+- **`RELOC-VM`'s SYM-CAP is a silent-looking wall.** Teaching the relocation
+  machine two more shipped constants pushed the symbol table from exactly 32 to
+  34 and `RELOC-VM:SYM+` threw `E-CRL-DECODE` (-6882) — the same code an unknown
+  mnemonic throws, so the failure reads as "the pass grew an instruction the
+  machine was never taught" when it is really "the table is full". Count the
+  symbols in `TEACH-MACHINE` before hunting the instruction stream.
 - **A fixed-register constraint belongs to the routine's interface, not to the
   instruction form: put it where the rest of that interface already is.** The
   ARM64 chain needed to say "argument two arrives in x1" and "the result leaves

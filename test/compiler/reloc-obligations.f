@@ -187,10 +187,24 @@ variable PIN-N
 
 \ ---- one address-literal chain row -------------------------------------------
 
+\ A slot is `mk_chain <address>` when its four words are the chain the engine's
+\ own carrier emits, `mk_chain_rd <register> <address>` when they are that chain
+\ in the register the compiler's allocator chose, `mix_chain <register> <lane>
+\ <address>` when one lane names a different register from the other three, and
+\ `break_chain <address> <word> <value>` when one word is not an instruction of
+\ the chain at all. Every one of those is the MODEL's constructor, so the four
+\ instruction words are spelled out there and not transcribed here.
 : +ACHAIN ( n n -- ) {: s:n v:n :}
    s ASITE-BAD@ {: bad:n :}
-   bad 0 < if s" mk_chain " +$ v +N exit then
-   s" break_chain " +$ v +N s"  " +$ bad +N s"  " +$ CHAIN-BAD-WORD +N ;
+   s ASITE-ODD@ {: odd:n :}
+   bad 0 >= if
+      s" break_chain " +$ v +N s"  " +$ bad +N s"  " +$ CHAIN-BAD-WORD +N exit
+   then
+   odd 0 >= if
+      s" mix_chain " +$ s ASITE-RD@ +N s"  " +$ odd +N s"  " +$ v +N exit
+   then
+   s ASITE-RD@ RD-X9 = if s" mk_chain " +$ v +N exit then
+   s" mk_chain_rd " +$ s ASITE-RD@ +N s"  " +$ v +N ;
 
 : +ASITE ( n n -- ) {: s:n v:n :}
    s" (" +$
