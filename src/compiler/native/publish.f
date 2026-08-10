@@ -185,7 +185,9 @@ require lib/errors.f
 require lib/string.f
 require src/compiler/native/branch.f
 require src/compiler/native/clobber.f
+require src/compiler/native/dict.f
 require src/compiler/native/emit.f
+require src/compiler/native/trap.f
 
 package NPUB
 
@@ -432,8 +434,29 @@ variable CLAIMED
 : INSN-ADDR ( n n n -- n ) {: fn:n size:n k:n :}
    k A64EMIT:MAP-OFFSET@ size OFFSET-CK fn + ;
 
+\ AND A BRANCH TO THE ROUTINE THAT ENDS THE PROCESS IS NOT A CALLEE EITHER, for
+\ the reason src/compiler/native/emit.f PUT-TRAP gives where the branch is
+\ written. A clobber set exists so that a CALLER of this routine knows which
+\ registers survive; control that reaches the trap never comes back to this
+\ routine, so it never comes back to that caller, and no register the trap
+\ routine writes can be read by anybody who was holding a value. Charging its
+\ registers to this routine would claim a cost on every path for something that
+\ only happens on a path with no continuation - which would make every caller of
+\ a word containing one mismatch save its whole register file.
+\
+\ IT IS THE ADDRESS AND NOT THE INSTRUCTION THAT SAYS SO, which is the same
+\ reading the entry arm above is made by: src/compiler/native/trap.f owns ONE
+\ routine tree-wide and NDICT resolves its name to one address, so a branch that
+\ goes there is a branch to a routine that does not return, whichever form
+\ reached it.
+: ENDS-PROCESS? ( n -- bool ) {: t:n :}
+   NTRAP:ROUTINE$ NDICT:CALL-TARGET {: e:n :}
+   e 0= if false exit then
+   t e = ;
+
 : TARGET-CK ( n n n n -- ) {: t:n fn:n g:n f:n :}
    t fn = if exit then
+   t ENDS-PROCESS? if exit then
    t A64EFF:GPR-ALL NCLOB:GPR-CLOB A64EFF:GPRS-N
    g invert and 0<> if E-NPUB-CLOBBER throw then
    t A64EFF:FPR-ALL NCLOB:FPR-CLOB A64EFF:FPRS-N

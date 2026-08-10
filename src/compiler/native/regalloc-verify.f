@@ -188,6 +188,7 @@ variable V-DSTACK                    \ whether the contract declares the data-st
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
 1 TYPED-BUFFER V-POOL A64EFF:gprs
 1 TYPED-BUFFER V-FPOOL A64EFF:fprs
 
@@ -260,6 +261,15 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 : DCALL? ( IR-ID:ir-op-id -- bool )
    DBACK-OF NOSLOT <> ;
 
+\ Does this operation carry the trap form's own target key? The trap branch is
+\ told from the tail branch by a key of its own, for the reason
+\ src/compiler/native/a64ir.f gives where that key is declared: under `a64.entry`
+\ it would answer TAILBR? below, and this pass would then demand that the
+\ routine's contract declare a tail call and measure the routine's results
+\ against a data-stack run whose one value is a family ordinal.
+: TRAP-AT? ( IR-ID:ir-op-id -- bool )
+   0 BND-TRAP @ ATTR-INT NOSLOT <> ;
+
 \ Which region an operation reaches, read off the keys the dialect declares for
 \ each family rather than off an opcode name. A frame access counts its offset
 \ from the machine stack pointer and a data-stack access counts its offset from
@@ -286,19 +296,23 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    FUN-COUNT 1 <> if E-A64RAV-SHAPE throw then
    MKEY 0 IR-ID:PACK-FUN ;
 
-\ The block control leaves the routine through: the one whose terminator names
-\ no successor. Exactly one, re-derived here rather than taken as the last block
-\ or as whatever the allocator thought.
+\ THE BLOCK THE ROUTINE'S RESULTS LEAVE THROUGH, and NO-RET when there is none.
+\ The rule and the reason a trap block is not that block are written once, in
+\ src/compiler/native/regalloc.f MB-RET-ORD; this is the same question asked of
+\ this pass's own view, which is why it is asked again rather than taken from the
+\ allocator.
+-1 constant NO-RET
+
 : RET-ORD ( IR-ID:ir-fun-id -- n )
    {: f:IR-ID:ir-fun-id :}
-   -1
+   NO-RET
    f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT TERM-AT SUCCS-OF 0= if
-         dup 0 < 0= if E-A64RAV-SHAPE throw then
+      f i BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+      t SUCCS-OF 0=  t TRAP-AT? 0=  and if
+         dup NO-RET <> if E-A64RAV-SHAPE throw then
          drop i
       then
-   loop
-   dup 0 < if E-A64RAV-SHAPE throw then ;
+   loop ;
 
 \ ---- what the module says about each value -----------------------------------
 : NOTE-DEF ( IR-ID:ir-value-id n -- )
@@ -1306,8 +1320,46 @@ create V-TMP SETC cells allot
    eb 1 true VLINK-AT?
    xb n 3 - false VLINK-AT? ;
 
+\ A ROUTINE THAT NEVER RETURNS TAKES ITS FRAME AND DOES NOT GIVE IT BACK, and
+\ that is the whole of what changes. There is no block for a release to stand in
+\ front of and nothing to release it for: every path leaves through the branch
+\ that ends the process, so the machine stack pointer this routine moved is never
+\ read again by anybody. The half that still holds is the opening one - the frame
+\ is taken by the first operation of the block the caller enters, it names the
+\ frame the contract declares, and no other operation of any block moves the
+\ pointer - which is what a second frame inside the first would break and is
+\ therefore still measured.
+\
+\ THE SAVED RETURN ADDRESS IS THE SAME STORY. A routine that calls saves the link
+\ register before its first call because that call destroys it; it restores it
+\ before returning, and this one does not return, so the save stands alone.
+: VNO-RET-BRACKET-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id want:n :}
+   f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
+   eb 0 want FRAME-AT?
+   eb 0 NOPOS VNO-SIZE
+   f NO-RET VFRAME-BLOCKS-CK ;
+
+: VNO-RET-SPILL-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id want:n :}
+   V-FRAME @ 0= if f VNO-FRAME exit then
+   f want VNO-RET-BRACKET-CK ;
+
+: VNO-RET-LINK-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id want:n :}
+   f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
+   eb OP-COUNT 2 < if E-A64RAV-CALL throw then
+   f want VNO-RET-BRACKET-CK
+   eb 1 true VLINK-AT? ;
+
+: VNO-RET-FRAME-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id want:n :}
+   V-CALLS @ 0= if f want VNO-RET-SPILL-CK else f want VNO-RET-LINK-CK then
+   f NO-RET VOWNER-CK ;
+
 : VFRAME-CK ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id rb:n want:n :}
+   rb NO-RET = if f want VNO-RET-FRAME-CK exit then
    V-CALLS @ 0= if f rb want VSPILL-CK else f rb want VLINK-CK then
    f rb VOWNER-CK ;
 
@@ -1797,6 +1849,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    {: f:IR-ID:ir-fun-id rb:n a:n r:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
    f a args VDRES-FIX
    V-BLKS @ 0 ?do f i VDCK-BLOCK loop
+   rb NO-RET = if exit then
    f rb r outs VDCK-EXIT ;
 
 \ ---- the entry and exit sequences, re-derived --------------------------------
@@ -1934,6 +1987,18 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    loop ;
 
 \ Which positions of the block control leaves through belong to that window. The
+\ WHICH OF THE TWO EXIT RUNS THIS ROUTINE HAS, AND THE THIRD ANSWER: NEITHER. A
+\ routine that never returns publishes nothing, so there is no run to measure and
+\ no place for it to require. Nothing is lost by leaving the measurement out:
+\ VDCLEAN1 below accounts for every data-stack position of every block, so a
+\ publication standing anywhere in such a routine is a position it can make
+\ neither an entry window nor a site out of, and is refused there by name.
+: VDLEAVE-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
+   rb NO-RET = if exit then
+   V-TAIL @ 0<> if f rb r outs VDTAIL-CK exit then
+   f rb r outs VDEXIT-CK ;
+
 \ tail form has no publication position of its own, so its window is the store
 \ run alone; the returning form has the publication as well.
 : VDTAIL-POS? ( n n -- bool )
@@ -2023,11 +2088,29 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    at  VD-REQ-N @ cells VD-REQ + !
    VD-REQ-N @ 1+ VD-REQ-N ! ;
 
+\ A TRAP SITE IS A CALL SITE WITH NOTHING TO TAKE BACK, and it is measured as
+\ one: a run of data-stack stores naming slots below the base the callee is
+\ entered at, and then the branch. What it does not have is the second half.
+\ Control never comes back, so there is no load run to measure, no take-back
+\ count to hold the site's arithmetic against, and nothing after the branch at
+\ all - the trap IS the block's terminator, which is what the first line holds it
+\ to. A trap carrying a take-back count would be a call staged under the wrong
+\ form and is refused rather than measured as one.
+: VTRAP-SITE ( IR-ID:ir-block-id n n -- n )
+   {: bk:IR-ID:ir-block-id at:n cp:n :}
+   cp bk OP-COUNT 1- <> if E-A64RAV-CALL throw then
+   bk cp OP-AT {: id:IR-ID:ir-op-id :}
+   id DBACK-OF NOSLOT <> if E-A64RAV-CALL throw then
+   id DBYTES-OF VD-STAND @ + VDREQ+
+   bk at  cp at -  id DBYTES-OF VDCELL  VDRUN-BOUND
+   cp 1+ ;
+
 : VCALL-SITE ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk at DSTORE-RUN {: g:n :}
    at g + {: cp:n :}
    cp bk OP-COUNT >= if E-A64RAV-CALL throw then
+   bk cp OP-AT TRAP-AT? if bk at cp VTRAP-SITE exit then
    bk cp OP-AT {: id:IR-ID:ir-op-id :}
    id DCALL? 0= if E-A64RAV-CALL throw then
    id VDNET-CK
@@ -2117,9 +2200,9 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    0 VD-REQ-N !
    0 VD-REQ-OVER !
    VD-ENTRY @ VDREQ+
-   VD-LEAVE @ VDREQ+
+   rb NO-RET <> if VD-LEAVE @ VDREQ+ then
    f a args VDENTRY-CK
-   V-TAIL @ 0<> if f rb r outs VDTAIL-CK else f rb r outs VDEXIT-CK then
+   f rb r outs VDLEAVE-CK
    V-BLKS @ 0 ?do f i 0 rb VDCLEAN1 loop
    VDPLACE-CK
    f rb a r args outs VDRES-CK ;
@@ -2144,13 +2227,22 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       then
    loop ;
 
+\ A ROUTINE THAT NEVER RETURNS LEAVES THROUGH NO CALLEE EITHER. A tail branch is
+\ this routine returning THROUGH somebody else - the callee publishes into the
+\ very cells this routine's caller reads - so a routine with no block that hands
+\ its caller anything has no place for one. VTAIL1 above already refuses one
+\ wherever it stands, because no block is the block control leaves through; what
+\ is left is the contract, and a contract declaring a tail call over such a
+\ module is the same mismatch the returning arm names.
+: VNO-TAIL-CK ( -- )
+   V-TAIL @ 0<> if E-A64RAV-SHAPE throw then ;
+
 : VTAIL-CK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id rb:n :}
    V-BLKS @ 0 ?do f i rb VTAIL1 loop
-   f rb BLOCK-AT TERM-AT TAILBR? if
-      V-TAIL @ 0= if E-A64RAV-SHAPE throw then exit
-   then
-   V-TAIL @ 0<> if E-A64RAV-SHAPE throw then ;
+   rb NO-RET = if VNO-TAIL-CK exit then
+   f rb BLOCK-AT TERM-AT TAILBR? 0= if VNO-TAIL-CK exit then
+   V-TAIL @ 0= if E-A64RAV-SHAPE throw then ;
 
 \ ---- the whole re-derivation -------------------------------------------------
 : VBLOCK-CKS ( IR-ID:ir-fun-id -- )
@@ -2188,7 +2280,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    f rb frame VFRAME-CK
    f VBLOCK-CKS
    f 0 BLOCK-AT args ARG-CK
-   f rb BLOCK-AT outs OUT-CK
+   rb NO-RET <> if f rb BLOCK-AT outs OUT-CK then
    f rb args outs VDSTACK-CK
    f VCLOB-CK ;
 
@@ -2282,6 +2374,7 @@ public
    c b A64IR:KEY-DBYTES 0 BND-DBYTES !
    c b A64IR:KEY-DBACK  0 BND-DBACK !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
+   c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
    BOUND-YES BND-MODE ! ;
 
 \ ---- the check ---------------------------------------------------------------

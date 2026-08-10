@@ -235,7 +235,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-72 constant OPCODES-N
+73 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -308,6 +308,7 @@ private
 69 constant O-FASTORE
 70 constant O-FDLOAD
 71 constant O-FDSTORE
+72 constant O-TRAP
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -424,6 +425,7 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COND IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OFF IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MASK IR-ID:ir-symbol-id
 
@@ -529,6 +531,7 @@ variable N-LAID                        \ how many blocks the order actually hold
       fcmpseld  OF O-FCMPSELD  ENDOF
       fcmpselzd OF O-FCMPSELZD ENDOF
       tailcall  OF O-TAILCALL  ENDOF
+      trap      OF O-TRAP      ENDOF
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
@@ -605,6 +608,7 @@ variable N-LAID                        \ how many blocks the order actually hold
       O-FCMPSELD  of A64IR-OPCODE:FCMPSELD  endof
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
+      O-TRAP      of A64IR-OPCODE:TRAP      endof
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
@@ -756,6 +760,13 @@ variable N-LAID                        \ how many blocks the order actually hold
 \ into one - which is the whole reason the placement below has to be known here.
 : ENTRY-ADDR ( IR-ID:ir-op-id -- n )
    0 BND-ENTRY @ ATTR-INT ;
+
+\ The address the trap form branches to. It is the same kind of number under a
+\ key of its own, for the reason src/compiler/native/a64ir.f gives where that
+\ key is declared: two passes recognise a tail branch by the presence of
+\ `a64.entry` and a trap is not one.
+: TRAP-ADDR ( IR-ID:ir-op-id -- n )
+   0 BND-TRAP @ ATTR-INT ;
 
 \ ---- one instruction per operation -------------------------------------------
 \ Each of these is exactly the encoder call the form names, with the registers
@@ -1099,6 +1110,7 @@ variable N-LAID                        \ how many blocks the order actually hold
    k O-FCMPBR = if 3 exit then
    k O-FCMPBRZ = if 3 exit then
    k O-BRZ = if 2 exit then
+   k O-TRAP = if 2 exit then
    1 ;
 
 \ How many instructions an OPERATION is, is that count less the two instructions
@@ -1274,21 +1286,29 @@ variable N-LAID                        \ how many blocks the order actually hold
 \ the redirection seam - is one instruction wrong about it. The trace is
 \ therefore run over every block but this one, and this one is written last.
 \
-\ WHICH BLOCK THAT IS, RE-DERIVED HERE. The one whose terminator names no
-\ successor. src/compiler/native/regalloc.f decides the same thing the same way
-\ (MB-RET-ORD) and refuses a routine with none or with two, so a module that
-\ reached this pass has exactly one; it is measured again rather than taken on
-\ trust, because this pass is about to make the whole emission end in it.
+\ WHICH BLOCK THAT IS, RE-DERIVED HERE. The one the routine's RESULTS leave
+\ through. src/compiler/native/regalloc.f MB-RET-ORD writes the rule and the
+\ reason a trap block is not that block; this is the same question asked of this
+\ pass's own view, because this pass is about to make the whole emission end in
+\ it. A module that reached here has exactly one such block or none.
+\
+\ AND NONE IS AN ANSWER, NOT A REFUSAL. Every path of such a routine leaves
+\ through the branch that ends the process, so there is no return for the
+\ emission to end on and nothing for the record to leave out - which is exactly
+\ what the paragraph above needs the last block for. ORDER-BLOCKS below pins no
+\ last block for it and lets the trace decide the whole order.
+-1 constant NO-RET
+
 : RET-ORD ( IR-ID:ir-fun-id -- n )
    {: f:IR-ID:ir-fun-id :}
-   -1
+   NO-RET
    f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT TERM-AT SUCCS-OF 0= if
-         dup 0 < 0= if E-A64EMIT-SHAPE throw then
+      f i BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+      t SUCCS-OF 0=  t SLOT-AT O-TRAP <>  and if
+         dup NO-RET <> if E-A64EMIT-SHAPE throw then
          drop i
       then
-   loop
-   dup 0 < if E-A64EMIT-SHAPE throw then ;
+   loop ;
 
 \ The order itself, decided before a single instruction is counted. The block
 \ count is established and bounded here rather than in LAYOUT below, because this
@@ -1552,6 +1572,18 @@ variable CH-AT
    0
    N-BLK @ 0 ?do  i KEPT? if 1+ then  loop ;
 
+\ A ROUTINE THAT NEVER RETURNS PINS NOTHING AT THE END, because the paragraph
+\ above is the only reason anything is pinned there and it does not apply: there
+\ is no trailing return for the record to leave out, so no block has to be last
+\ and the trace decides the whole order from the entry. The entry is still laid
+\ first, for the reason it always is - it is where the caller arrives.
+: ORDER-NO-RET ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id k:n :}
+   0 0 LAY
+   k 1 ?do
+      f  i 1- AT-POS  FOLLOWER  i LAY
+   loop ;
+
 : ORDER-BLOCKS ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f BLOCK-COUNT {: n:n :}
@@ -1563,8 +1595,9 @@ variable CH-AT
    KEPT-COUNT {: k:n :}
    k N-LAID !
    f RET-ORD {: r:n :}
-   r KEPT? 0= if E-A64EMIT-SHAPE throw then
    n 0 ?do  -1 i cells B-PLACE + !  loop
+   r NO-RET = if f k ORDER-NO-RET exit then
+   r KEPT? 0= if E-A64EMIT-SHAPE throw then
    r k 1- LAY
    k 1 = if exit then
    r 0= if E-A64EMIT-SHAPE throw then
@@ -1968,6 +2001,25 @@ variable CH-AT
    id ENTRY-ADDR NOTE-CALLEE
    id  id WORD-DELTA B-WORD  APPEND ;
 
+\ ---- leaving through the routine that ends the process -----------------------
+\ The adjustment that moves the pointer over the ordinal, and the branch. The
+\ same displacement the two forms above compute, out of the address under this
+\ form's own key.
+\
+\ IT DOES NOT NOTE ITS CALLEE, AND THAT IS THE ONE PLACE THIS DIFFERS FROM THE
+\ TAIL BRANCH. What a routine destroys is what a CALLER of it has to assume, and
+\ a caller only ever observes registers on a path that comes back. Control that
+\ reaches this instruction never returns to this routine, so it never returns to
+\ this routine's caller either: nothing the trap routine writes can be read by
+\ anybody who could have been holding a value. Adding its registers to this
+\ routine's destroyed set would be claiming a cost on every path for something
+\ that only happens on a path with no continuation, and it would make every
+\ caller of a word containing one MATCH save its whole register file.
+: PUT-TRAP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id DBYTES-SIZE  PUT-DMOVE
+   id  id TRAP-ADDR  PLACEMENT-CK -  INSN-BYTES /  N-INS @ -  B-WORD  APPEND ;
+
 \ One copy, which is one instruction unless it is a copy from a register into
 \ itself, and then it is none. SELF-MOV? is the layout's own word, asked here
 \ with the same argument, so the instruction left out is exactly the instruction
@@ -2073,6 +2125,7 @@ variable CH-AT
       fcmpseld  OF id PUT-FCMPSELD ENDOF
       fcmpselzd OF id PUT-FCMPSELZD ENDOF
       tailcall  OF id PUT-TAILCALL ENDOF
+      trap      OF id PUT-TRAP ENDOF
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
@@ -2087,7 +2140,7 @@ variable CH-AT
 : TERMINATOR? ( IR-ID:ir-block-id n -- bool )
    OP-AT SLOT-AT {: k:n :}
    k O-RET = k O-BR = or k O-BRZ = or k O-CMPBR = or
-   k O-FCMPBR = or k O-FCMPBRZ = or k O-TAILCALL = or ;
+   k O-FCMPBR = or k O-FCMPBRZ = or k O-TAILCALL = or k O-TRAP = or ;
 
 : BLOCK-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
@@ -2305,6 +2358,7 @@ public
    c b A64IR-OPCODE:CALL      BIND1
    c b A64IR-OPCODE:WORDCALL  BIND1
    c b A64IR-OPCODE:TAILCALL  BIND1
+   c b A64IR-OPCODE:TRAP      BIND1
    c b A64IR-OPCODE:MADD      BIND1
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1
@@ -2351,6 +2405,7 @@ public
    c b A64IR:KEY-COND   0 BND-COND !
    c b A64IR:KEY-DBACK  0 BND-DBACK !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
+   c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
    c b A64IR:KEY-OFF    0 BND-OFF !
    c b A64IR:KEY-MASK   0 BND-MASK !
    BOUND-YES BND-MODE ! ;

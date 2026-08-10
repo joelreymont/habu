@@ -171,6 +171,8 @@ require src/compiler/native/a64ir.f
 require src/compiler/native/clobber.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
+require src/compiler/native/dict.f
+require src/compiler/native/trap.f
 
 package A64SEL
 using NFROZEN
@@ -201,7 +203,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module they were all learned from.
-44 constant OPCODES-N
+45 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -246,6 +248,7 @@ private
 41 constant O-FEQ
 42 constant O-FLTZ
 43 constant O-FEQZ
+44 constant O-TRAP
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -284,6 +287,7 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 variable S-FRAME                     \ the frame the contract declares, in bytes
 variable N-CALLS                     \ calls this selection built
 variable N-TAILS                     \ tail branches this selection built
+variable N-TRAPS                     \ trap branches this selection built
 variable S-TAIL                      \ whether the contract says control leaves through a callee
 variable S-DSTACK                    \ whether the contract declares the data-stack convention
 variable FUSE-AT                     \ where in this block the fused comparison is, or -1
@@ -417,7 +421,9 @@ create D-IN NFROZEN:BMAX DSLOT-MAX * cells allot   \ what each slot holds at a b
 create D-OUT NFROZEN:BMAX DSLOT-MAX * cells allot  \ and at its end
 create D-CUR DSLOT-MAX cells allot                 \ the running answer inside one block
 create D-NEED VMAX cells allot                     \ this value reaches a register
+create D-ORDER-SET NFROZEN:BMAX cells allot        \ an edge has said which order this block is entered with
 variable D-MOVED                                   \ a fixpoint round changed something
+NFROZEN:BMAX TYPED-BUFFER D-ORDER IR-ID:ir-value-id  \ and that order
 
 \ ---- where the routine's data-stack pointer stands ---------------------------
 \ THE FACT, IN ONE SENTENCE. The pointer is a register, so it stands at ONE place
@@ -520,6 +526,7 @@ variable D-RETS                                    \ returns seen while surveyin
       call   OF O-CALL   ENDOF
       wordcall OF O-WORDCALL ENDOF
       return OF O-RETURN ENDOF
+      trap   OF O-TRAP   ENDOF
       fconst   OF O-FCONST   ENDOF
       fadd     OF O-FADD     ENDOF
       fsub     OF O-FSUB     ENDOF
@@ -568,6 +575,7 @@ variable D-RETS                                    \ returns seen while surveyin
       O-CALL   of HIR-OPCODE:CALL   endof
       O-WORDCALL of HIR-OPCODE:WORDCALL endof
       O-RETURN of HIR-OPCODE:RETURN endof
+      O-TRAP   of HIR-OPCODE:TRAP   endof
       O-FCONST   of HIR-OPCODE:FCONST   endof
       O-FADD     of HIR-OPCODE:FADD     endof
       O-FSUB     of HIR-OPCODE:FSUB     endof
@@ -2018,6 +2026,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
       call   OF A64SEL-CMPKIND:NONE ENDOF
       wordcall OF A64SEL-CMPKIND:NONE ENDOF
       return OF A64SEL-CMPKIND:NONE ENDOF
+      trap   OF A64SEL-CMPKIND:NONE ENDOF
       fconst   OF A64SEL-CMPKIND:NONE ENDOF
       fadd     OF A64SEL-CMPKIND:NONE ENDOF
       fsub     OF A64SEL-CMPKIND:NONE ENDOF
@@ -2160,6 +2169,88 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    v DNEED? if false exit then
    b v DIN-HOLDS? ;
 
+\ ---- the order a block is entered with ---------------------------------------
+\ THE FACT, IN ONE SENTENCE. Every data-stack access this pass emits threads the
+\ memory order on, and the accesses of a block have to thread from the order that
+\ block is ENTERED with - which is the order every edge into it leaves.
+\
+\ WHY IT IS STATED BY THE EDGE AND NOT CARRIED FORWARD. The walk takes the blocks
+\ in module order, and the block opened after this one is very often not a block
+\ control can reach from it: the second arm of a two-way branch is opened after
+\ the first arm has been walked whole. Carrying the running order across that
+\ boundary names a value defined in a block that does not dominate the one
+\ reading it, which the freeze verifier refuses by name. Carrying it worked while
+\ the accesses this pass makes of its OWN were confined to the entry block and to
+\ ONE exit block - the entry dominates every block, so an order inherited from it
+\ was legal wherever it was read - and a64.trap ends that: a routine may now
+\ leave through more than one block, and each of those blocks stores the value it
+\ leaves with before it goes.
+\
+\ SO EVERY EDGE STATES THE ORDER IT CARRIES. SUCCESSOR-ORD+ below is the one word
+\ that builds a successor, and the moment it runs is the moment the order along
+\ that edge is known: it is the running order of the block being closed. A block
+\ every edge states the same order for reads that order, and a block its edges
+\ disagree about is a join that needs a phi - which the machine two-way branch
+\ cannot carry, because it takes no operands - so it is refused by name rather
+\ than given one of the two. That is the same sentence REGION-BR already makes
+\ about a converted region's exit.
+\
+\ AND AGREEMENT IS WHAT MAKES THE ORDER LEGAL TO READ THERE. If one predecessor
+\ DEFINED the order it leaves and another leaves the same value, that other one
+\ did not define it, so the value reached it from its own entry - and following
+\ that back, the block that defined it lies on that path too. A value every edge
+\ into a block carries is therefore defined in a block that dominates it, which
+\ is exactly what the verifier asks of the operand that reads it.
+\
+\ A BLOCK THE SOURCE HANDS THE ORDER TO AS AN ARGUMENT IS NOT THIS WORD'S
+\ BUSINESS. A real join whose arms leave different orders is written in the
+\ source with the order among the block's arguments, and OPEN-ARG1 below reads it
+\ out of that argument; those blocks are skipped at both ends here, so the two
+\ mechanisms never answer the same block.
+: ORDER-ARG? ( n -- bool )
+   {: b:n :}
+   false
+   FUN b BLOCK-AT ARG-COUNT 0 ?do
+      FUN b BLOCK-AT i ARG-AT TOKEN?  b i DDROP? 0=  and if drop true leave then
+   loop ;
+
+: ORDER-SET? ( n -- bool )
+   BLOCK-ORD-CK cells D-ORDER-SET + @ 0<> ;
+
+: ORDER@ ( n -- IR-ID:ir-value-id )
+   BLOCK-ORD-CK D-ORDER @ ;
+
+: ORDER! ( n -- )
+   {: b:n :}
+   TOK b BLOCK-ORD-CK D-ORDER !
+   1 b BLOCK-ORD-CK cells D-ORDER-SET + ! ;
+
+: ORDER-SAME? ( n -- bool )
+   ORDER@ IR-ID:VALUE-LOCAL  TOK IR-ID:VALUE-LOCAL  = ;
+
+: ORDER-CLEAR ( -- )
+   NFROZEN:BMAX 0 ?do
+      0 i cells D-ORDER-SET + !
+   loop ;
+
+\ An edge into this block, carrying the running order of the block being closed.
+: ORDER-EDGE! ( n -- )
+   {: b:n :}
+   DSTACK? 0= if exit then
+   b ORDER-ARG? if exit then
+   b ORDER-SET? 0= if b ORDER! exit then
+   b ORDER-SAME? 0= if E-A64SEL-ORDER throw then ;
+
+\ The block being opened takes the order its edges stated. A block no edge
+\ reached is a block control cannot arrive at, and this pass has nothing true to
+\ say about the order there, so it is refused rather than given the last one used.
+: ORDER-ENTER ( n -- )
+   {: b:n :}
+   DSTACK? 0= if exit then
+   b ORDER-ARG? if exit then
+   b ORDER-SET? 0= if E-A64SEL-ORDER throw then
+   b ORDER@ TOK! ;
+
 \ A block names itself twice over: by its ordinal in the module, which is what a
 \ successor carries, and by its ordinal in its own function, which is what the
 \ readers above index by and what the plan's rows are keyed on. The two differ
@@ -2172,6 +2263,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 
 : SUCCESSOR-ORD+ ( n -- )
    {: b:n :}
+   b ORDER-EDGE!
    CTX BLD
    BLD IR-BUILD:MODULE-KEY  R-NEWBASE @ b R-ORD-OF +  IR-ID:PACK-BLOCK
    IR-BUILD:ADD-SUCCESSOR ;
@@ -2314,14 +2406,21 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ rather than one of them being relaxed - if HIR ever declared a float operation
 \ trapping, TRAP-CK would refuse it here until this table said how it survives.
 \
-\ Division is the only one that survives today, and it survives because a64.sdiv
-\ IS the guard and the divide: the machine form branches over a `brk` when the
-\ divisor is not zero, which is what the engine's own `/` does, so a compiled
-\ division traps exactly where an interpreted one traps. A trapping ADDITION has
-\ no such form - it needs a flag-setting add, a conditional branch and a trap
-\ target, none of which is in the machine dialect - so selecting it as a plain
-\ a64.add would drop the check the unit's numeric policy asked for, and it is
-\ refused instead. Dot habu-lower-trapping-arithmetic-5f514ffe carries it.
+\ Division is the only ARITHMETIC one that survives today, and it survives
+\ because a64.sdiv IS the guard and the divide: the machine form branches over a
+\ `brk` when the divisor is not zero, which is what the engine's own `/` does, so
+\ a compiled division traps exactly where an interpreted one traps. A trapping
+\ ADDITION has no such form - it needs a flag-setting add, a conditional branch
+\ and a trap target, none of which is in the machine dialect - so selecting it as
+\ a plain a64.add would drop the check the unit's numeric policy asked for, and
+\ it is refused instead. Dot habu-lower-trapping-arithmetic-5f514ffe carries it.
+\
+\ AND hir.trap ANSWERS TRUE FOR THE ONE REASON THAT IS NOT AN ARGUMENT ABOUT
+\ ARITHMETIC: it is not an operation that MIGHT trap, it is the trap. Its machine
+\ form is the branch to the routine that ends the process, so what the source
+\ operation says and what the emitted instruction does are the same event. A
+\ lowering that lost it would not lose a check, it would lose the whole
+\ operation - which is exactly what this gate exists to stop.
 : TRAP-PRESERVED? ( HIR:opcode -- bool )
    MATCH HIR:opcode
       const  OF false ENDOF
@@ -2351,6 +2450,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       call   OF true  ENDOF
       wordcall OF true ENDOF
       return OF false ENDOF
+      trap   OF true  ENDOF
       fconst   OF false ENDOF
       fadd     OF false ENDOF
       fsub     OF false ENDOF
@@ -3381,6 +3481,56 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    N-TAILS @ 1+ N-TAILS ! ;
 
 
+\ ---- leaving through the routine that ends the process -----------------------
+\ WHERE THE ONE SHARED ROUTINE IS, ASKED ONCE. src/compiler/native/trap.f owns
+\ the routine and publishes its NAME; this is the only place in the chain that
+\ turns that name into an address, which is what makes "the trap routine is
+\ emitted once tree-wide" a property of the compiler rather than of whoever built
+\ the module. It goes through NDICT:CALL-TARGET, the same door every other callee
+\ is resolved through, so a name that is not callable - not published, retired,
+\ internal, immediate - is refused here rather than branched to.
+: TRAP-ENTRY ( -- n )
+   NTRAP:ROUTINE$ NDICT:CALL-TARGET {: e:n :}
+   e 0= if E-A64SEL-TRAP throw then
+   e ;
+
+\ The branch itself. It carries the address under the trap form's own key - not
+\ the one a tail branch carries, for the reason src/compiler/native/a64ir.f gives
+\ where that key is declared - and the adjustment that moves the pointer over the
+\ ordinal, which is the whole difference between this and a tail branch.
+: EMIT-TRAP-BR ( IR-ID:ir-op-id n -- )
+   {: at:IR-ID:ir-op-id entry:n :}
+   at A64IR-OPCODE:TRAP OPEN
+   TOK OPERAND+
+   CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
+   IR-BUILD:ADD-ATTR
+   A64IR:SLOT-WIDTH DBYTES-ATTR+
+   CTX BLD IR-BUILD:END-OP drop ;
+
+\ THE SITE IS A CALL SITE WITH NOTHING TO SAVE AND NOTHING TO TAKE BACK. It
+\ writes the one value the callee is entered with into the caller's own slot
+\ zero, moves the pointer over it, and branches. Slot zero is this routine's own
+\ first argument cell, and overwriting it is exactly what an ordinary call site
+\ does with the cells below the callee's base - only here nothing needs them
+\ afterwards, because there is no afterwards.
+\
+\ NOTHING IS SAVED FOR THE SAME REASON. A call site puts every live value
+\ somewhere the callee cannot reach because it means to read them again; control
+\ never comes back here, so no value of this routine is ever read again and the
+\ store run is empty rather than skipped.
+\
+\ AND IT NEEDS THE DATA-STACK CONVENTION. The routine it branches to is an
+\ ordinary Habu word and takes its argument out of a caller's cell, so a routine
+\ compiled under the register convention has no pointer to put the ordinal
+\ through. That is refused by name rather than lowered into a branch whose callee
+\ would read whatever happened to be in the cell.
+: EMIT-TRAP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   DSTACK? 0= if E-A64SEL-TRAP throw then
+   id  id 0 OPERAND  0  false DSTORE-FORM  EMIT-DSTORE
+   id TRAP-ENTRY EMIT-TRAP-BR
+   N-TRAPS @ 1+ N-TRAPS ! ;
+
 \ The two arms the tail decision changes, and it changes nothing else: a word
 \ call that is the operation the routine leaves through becomes the branch, and
 \ the return it stood in front of becomes nothing at all, because the branch is
@@ -3427,6 +3577,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       call   OF id EMIT-CALL ENDOF
       wordcall OF id EMIT-CALL-OR-TAIL ENDOF
       return OF id EMIT-RETURN-OR-TAILED ENDOF
+      trap   OF id EMIT-TRAP ENDOF
       fconst   OF id EMIT-FCONST ENDOF
       fadd     OF id A64IR-OPCODE:FADD EMIT-FBINARY ENDOF
       fsub     OF id A64IR-OPCODE:FSUB EMIT-FBINARY ENDOF
@@ -3724,6 +3875,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
    s O-WORDCALL = if id mask  id WORD-SHAPE  DNEED-CALL exit then
    s O-RETURN = if id mask DNEED-EXIT exit then
+   s O-TRAP = if id DNEED-OPERANDS exit then
    id DNEED-OPERANDS ;
 
 : DNEED-BLOCK ( IR-ID:ir-fun-id n -- )
@@ -3794,6 +3946,20 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    kk a + A64IR:SLOT-WIDTH * DREQ+
    kk r + A64IR:SLOT-WIDTH * DREQ+ ;
 
+\ A trap requires ONE place and it is the shared routine's, not this routine's:
+\ the base that routine is entered at, which is one past the single cell the site
+\ hands it. Nothing is saved below that cell - control never comes back, so no
+\ value of this routine is ever read again - so the base is one slot and not
+\ `kk + a` slots the way a call's is.
+\
+\ IT IS SURVEYED FOR THE SAME REASON A CALL IS. The pointer stands at one place
+\ for the whole routine, and every site that hands values to a callee has to move
+\ it to that callee's base and back. A trap site only moves it up, but the
+\ distance still has to be one the site can encode, so the place goes into the
+\ same survey and pays for itself in the same currency as every other.
+: DPLACE-TRAP ( -- )
+   A64IR:SLOT-WIDTH DREQ+ ;
+
 \ A routine with two returns would publish twice and this survey would count one
 \ place per publication, while every reader that measures the routine afterwards
 \ - the allocation validator included - re-derives ONE block that control leaves
@@ -3808,6 +3974,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    id OP-SLOT {: s:n :}
    s O-CALL = if id SELF-SHAPE DPLACE-CALL exit then
    s O-WORDCALL = if id WORD-SHAPE DPLACE-CALL exit then
+   s O-TRAP = if DPLACE-TRAP exit then
    s O-RETURN = if DPLACE-RETURN then ;
 
 : DPLACE-BLOCK ( IR-ID:ir-fun-id n -- )
@@ -3959,6 +4126,12 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
 \ caller put it there, nothing here moves it, and the routine's own exit or the
 \ call it is handed to finds it exactly where it already is. The load is the only
 \ thing that goes; the pointer move is not this pass's to touch.
+\
+\ THE ENTRY BLOCK STATES ITS OWN ORDER, because the one edge into it is the CALL
+\ that reached the routine and no block of this function builds it. What the
+\ block is entered with is what the pointer move just minted, so it is stated
+\ here for the same reader every other block's is - which also holds a branch
+\ back to the entry block to leaving the order it arrived with.
 : OPEN-DARGS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    ARGS SLOT-POSITIONS {: a:n :}
@@ -3966,6 +4139,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    bk 0 OP-AT {: at:IR-ID:ir-op-id :}
    at PROLOGUE
    at  a A64IR:SLOT-WIDTH *  EMIT-DTAKE
+   0 ORDER-EDGE!
    a 0 ?do
       bk i ARG-AT {: v:IR-ID:ir-value-id :}
       v DNEED? if
@@ -3987,7 +4161,8 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD bk BLOCK-SPAN IR-BUILD:SET-BLOCK-SPAN
    DSTACK? ord 0= and if bk OPEN-DARGS exit then
-   bk ord OPEN-ARGS ;
+   bk ord OPEN-ARGS
+   ord ORDER-ENTER ;
 
 
 \ ---- emitting a selection as a select ----------------------------------------
@@ -4353,6 +4528,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    f 0 S-FUN !
    f OPEN-FUN
    VCLEAR
+   ORDER-CLEAR
    RLIT-CLOSE
    f PLAN-REGIONS
    f DRESIDENCY
@@ -4461,6 +4637,7 @@ public
    c b HIR-OPCODE:FEQ      BIND1
    c b HIR-OPCODE:FLTZ     BIND1
    c b HIR-OPCODE:FEQZ     BIND1
+   c b HIR-OPCODE:TRAP     BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
    c b HIR:KEY-ENTRY 0 BND-ENTRY !
    c b HIR:KEY-IN    0 BND-IN !
@@ -4515,6 +4692,7 @@ public
    cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if 1 else 0 then S-DSTACK !
    0 N-CALLS !
    0 N-TAILS !
+   0 N-TRAPS !
    0 R-NEWBASE !
    CONTRACT-CK
    c b A64IR:REGISTER

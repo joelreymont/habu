@@ -1,6 +1,6 @@
 ---
 title: Give HIR a trap terminator
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-10T00:23:52.575343+02:00"
@@ -15,6 +15,11 @@ finds none, so this dot must decide what "the block control leaves through"
 means for an all-dead routine and pin it; (b) select.f:3801 DPLACE-RETURN's
 one-return census must learn about trap blocks (a second hir.return as a
 stand-in was probed and is refused there by name - the trap is not a return).
-Also measured: the builder refuses an unterminated block at E-IR-BUILD-STAGE,
-so the trap is the ONLY route; and the dead-path elaborator half (725fbaa0)
-is blocked behind this dot - its measured prize is 41 definitions.
+Also measured: the builder refuses an unterminated block, so the trap is the
+ONLY route; and the dead-path elaborator half (725fbaa0) is blocked behind
+this dot - its measured prize is 41 definitions. RE-MEASURED 2026-08-10 on the
+trap lane's workspace: that refusal is E-IR-FUN-TERM (-8049), "a block that
+does not end in exactly one terminator operation", and not E-IR-BUILD-STAGE as
+first recorded. The conclusion is unchanged.
+
+Claim: agent=trap workspace=.jj-ws/habu-give-hir-trap

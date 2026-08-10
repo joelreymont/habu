@@ -196,12 +196,12 @@ private
    rv xe IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the seventy-two machine opcodes" T-LABEL
+   s" registration defines exactly the seventy-three machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 72 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 73 T= ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one
@@ -249,7 +249,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   7 T= 0 T= TTRUE ;
+   8 T= 0 T= TTRUE ;
 
 \ The spellings themselves, because every reference this dialect stores is a
 \ symbol and a renamed opcode would still read back through the same accessor.

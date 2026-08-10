@@ -107,7 +107,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it here too.
-72 constant OPCODES-N
+73 constant OPCODES-N
 
 0 constant O-MOVZ
 1 constant O-MOVK
@@ -181,6 +181,7 @@ private
 69 constant O-FASTORE
 70 constant O-FDLOAD
 71 constant O-FDSTORE
+72 constant O-TRAP
 \ One slot per attribute key the dialect declares. This pass writes no attribute
 \ of its own - the form it introduces carries none - but it COPIES every one the
 \ selector built, and a field copied under the wrong key would be a routine
@@ -303,6 +304,7 @@ create MASK-AT OPS-MAX cells allot
       fcmpseld  OF O-FCMPSELD  ENDOF
       fcmpselzd OF O-FCMPSELZD ENDOF
       tailcall  OF O-TAILCALL  ENDOF
+      trap      OF O-TRAP      ENDOF
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
@@ -379,6 +381,7 @@ create MASK-AT OPS-MAX cells allot
       O-FCMPSELD  of A64IR-OPCODE:FCMPSELD  endof
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
+      O-TRAP      of A64IR-OPCODE:TRAP      endof
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
@@ -1116,6 +1119,7 @@ public
    c b A64IR-OPCODE:FCMPSELD  BIND1
    c b A64IR-OPCODE:FCMPSELZD BIND1
    c b A64IR-OPCODE:TAILCALL  BIND1
+   c b A64IR-OPCODE:TRAP      BIND1
    c b A64IR-OPCODE:MADD      BIND1
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1

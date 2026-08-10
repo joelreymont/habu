@@ -42,6 +42,8 @@
 \   hir.wordcall  call ANOTHER word, at the entry address and under the arity the
 \                 operation carries, handing it the same thing
 \   hir.return    leave the function with the word's outputs
+\   hir.trap      leave the function WITHOUT returning: hand the family ordinal
+\                 to the one shared trap routine and branch there
 \ and seventeen compute with doubles:
 \   hir.fconst    a double literal, carrying the cell the double is
 \   hir.fadd      double addition
@@ -277,6 +279,7 @@ ENUM opcode DERIVE eq
    call
    wordcall
    return
+   trap
    fconst
    fadd
    fsub
@@ -425,13 +428,14 @@ public
 : NAME ( -- ptr u8 n )
    s" hir" ;
 
-\ Version 0.2: the straight-line subset with doubles in it. The major version
-\ stays at zero until the dialect is the whole of section 7.2; the minor version
-\ moved when the double type and its twelve operations arrived, because a table
-\ with them and one without are two different tables and every consumer compares
-\ the version exactly.
+\ Version 0.3: the straight-line subset with doubles in it and a terminator that
+\ does not return. The major version stays at zero until the dialect is the whole
+\ of section 7.2; the minor version moved when the double type and its twelve
+\ operations arrived and again when hir.trap did, because a table with them and
+\ one without are two different tables and every consumer compares the version
+\ exactly.
 0 constant MAJOR
-2 constant MINOR
+3 constant MINOR
 
 \ ---- the opcode names --------------------------------------------------------
 \ This module's interned symbol for one opcode. Interning deduplicates, so
@@ -466,6 +470,7 @@ public
       call   OF s" hir.call"   ENDOF
       wordcall OF s" hir.wordcall" ENDOF
       return OF s" hir.return" ENDOF
+      trap   OF s" hir.trap"   ENDOF
       fconst   OF s" hir.fconst"    ENDOF
       fadd     OF s" hir.fadd"      ENDOF
       fsub     OF s" hir.fsub"      ENDOF
@@ -578,6 +583,7 @@ private
       call   OF s" hir.rule.call"   ENDOF
       wordcall OF s" hir.rule.wordcall" ENDOF
       return OF s" hir.rule.return" ENDOF
+      trap   OF s" hir.rule.trap"   ENDOF
       fconst   OF s" hir.rule.fconst"    ENDOF
       fadd     OF s" hir.rule.fadd"      ENDOF
       fsub     OF s" hir.rule.fsub"      ENDOF
@@ -627,6 +633,7 @@ private
       call   OF s" hir.render.call"   ENDOF
       wordcall OF s" hir.render.wordcall" ENDOF
       return OF s" hir.render.return" ENDOF
+      trap   OF s" hir.render.trap"   ENDOF
       fconst   OF s" hir.render.fconst"    ENDOF
       fadd     OF s" hir.render.fadd"      ENDOF
       fsub     OF s" hir.render.fsub"      ENDOF
@@ -890,6 +897,47 @@ private
    false IR-SCHEMA:SET-TRAP
    TARGET
    c b HIR-OPCODE:RETURN NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Leaving the function WITHOUT returning. Design line 237 makes a terminator an
+\ operation that ends a block, and src/compiler/ir/verify.f line 630 already
+\ contemplates "a terminator that names no successor"; the return was the only
+\ one until now, and it is the one that hands the caller its results. This is the
+\ other kind: control leaves the routine and does not come back, because the one
+\ shared trap routine it goes to ends the process.
+\
+\ ITS ONE OPERAND IS THE FAMILY ORDINAL, AND THAT IS WHY THIS IS ONE OPERATION
+\ AND NOT A MESSAGE. A scrutinee whose tag matches no arm has to say WHICH family
+\ it was matching, and the engine's own MATCH says it by copying `"hb: bad "`,
+\ the family name and `" tag\n"` into every site - 52 bytes for a
+\ three-character family, pinned in test/match-factor-pin.f, over 303 sites. The
+\ name cannot be a pointer there because the type-family string pool is grown by
+\ doubling and moves (src/habu/habu2.f:7029). A NUMBER does not move, so the
+\ operand is the ordinal src/compiler/native/trap.f gave that family, and the
+\ bytes live once, in that file, beside the routine that writes them.
+\
+\ AND WHY IT CARRIES NO ADDRESS. Which routine a trap goes to is not a fact about
+\ the source program - there is exactly one, tree-wide - so a module that carried
+\ it could carry a different one, and "the trap routine is emitted once" would
+\ stop being a property of the compiler and become a property of whoever built
+\ the module. WHERE the trap is implemented is a machine fact, the same way
+\ hir.mem's ordering is a machine fact with no instruction of its own, so the
+\ address is put on the MACHINE operation by src/compiler/native/select.f, which
+\ has one place to read it from.
+\
+\ IT MAY TRAP, AND THE MACHINE FORM REPRODUCES IT EXACTLY, by being the branch
+\ that reaches the routine that ends the process. That is what select.f's trap
+\ gate requires of every may-trap opcode, and it is why this one cannot be
+\ silently lowered to nothing.
+: DEF-TRAP ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:TRAP OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   true 0 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:TRAP NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Calling the word being compiled, which is what `RECURSE` is. Its operands are
@@ -1157,6 +1205,7 @@ public
    c b t k DEF-CALL
    c b t k DEF-WORDCALL
    c b t DEF-RETURN
+   c b t DEF-TRAP
    c b REAL-TYPE {: f:IR-ID:ir-type-id :}
    c b f DEF-FCONST
    c b f HIR-OPCODE:FADD DEF-FBINARY

@@ -332,6 +332,7 @@ variable OUTS-N
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MOV IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
 DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
@@ -535,6 +536,16 @@ create PL-VAL PLMAX cells allot
    {: id:IR-ID:ir-op-id :}
    id 0 BND-ENTRY @ ATTR-INT-OF NOATTR = if false exit then
    id CALL-AT? 0= ;
+
+\ And is it the branch that leaves the routine WITHOUT returning? The trap form
+\ carries its target under a key of its own, so this is the same reading the two
+\ questions above are made by and no opcode is spelled here either. Why that is a
+\ second key and not `a64.entry` is written where it is declared, in
+\ src/compiler/native/a64ir.f: under one key a trap would answer TAILBR-AT?
+\ above, and this pass would then place the routine's results in a block that has
+\ none.
+: TRAP-AT? ( IR-ID:ir-op-id -- bool )
+   0 BND-TRAP @ ATTR-INT-OF NOATTR <> ;
 
 \ What a call leaves alone in ONE file. Named per file with no default arm, for
 \ POOL-BITS' reason: a file this word does not know would be held against the
@@ -1996,21 +2007,84 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    {: f:IR-ID:ir-fun-id :}
    N-BLKS @ 0 ?do f i MB-PLAN-BLOCK loop ;
 
-\ The ordinal of the block control leaves the routine through: the one whose
-\ terminator names no successor. A routine with none never returns and one with
-\ two returns twice, and neither is a shape this pass can decide a convention
-\ against. It is also where the frame accesses may stand beside the block the
-\ caller enters.
+\ THE ORDINAL OF THE BLOCK THE ROUTINE'S RESULTS LEAVE THROUGH, and that phrase
+\ is the decision this word now carries rather than a description of a loop.
+\
+\ IT USED TO MEAN "THE BLOCK WHOSE TERMINATOR NAMES NO SUCCESSOR", and while the
+\ return and the tail branch were the only two such terminators the two readings
+\ picked the same block. The trap form is a third: it names no successor either,
+\ and control does leave the routine through it - into a routine that ends the
+\ process. Under the old reading a routine that returns AND traps has two such
+\ blocks and is refused, and a routine that only traps has one and would be
+\ handed to the return convention.
+\
+\ SO THE RULE IS THE ONE THIS PASS ACTUALLY NEEDS, DERIVED FROM WHAT IT USES THE
+\ ANSWER FOR. There are three uses and every one of them is about RESULTS: this
+\ block's terminator is where the declared return registers are pre-coloured
+\ (MB-WANT!), where the operand count is held against the contract's result count
+\ (FIXED-ARITY-CK), and where a returned value not already in its declared
+\ register earns a copy (MB-PLAN-MOVES). A trap block has no results - its one
+\ operand is a family ordinal that belongs to the routine it branches to - so
+\ every one of the three has nothing to say about it. A return and a tail branch
+\ both DO leave results: the tail branch's callee publishes them into the very
+\ cells this routine's caller reads. That is the line, and it is not "names no
+\ successor": it is "hands the caller what this routine promised".
+\
+\ A ROUTINE WITH NO SUCH BLOCK IS A ROUTINE THAT NEVER RETURNS, AND IT IS NOT AN
+\ ERROR. Every path of it traps, so it has no results to place, no return
+\ convention to satisfy and no epilogue to run - the three uses above are not
+\ missing, they are empty. NO-RET is that answer, and the walk below skips
+\ exactly those three steps for it. Refusing the shape instead would mean the
+\ compiler declining to compile a program the language admits, and the one that
+\ admits it is a word whose whole body is a MATCH over a family with no arm that
+\ returns.
+\
+\ TWO OF THEM IS STILL A REFUSAL, because two publications are two conventions
+\ and this pass would have to choose. The other three passes that re-derive this
+\ block - src/compiler/native/regalloc-verify.f, src/compiler/native/spill.f and
+\ src/compiler/native/emit.f - ask the same question of their own view, so a
+\ module that reached them has exactly one or none.
+-1 constant NO-RET
+
 : MB-RET-ORD ( IR-ID:ir-fun-id -- n )
    {: f:IR-ID:ir-fun-id :}
-   -1
+   NO-RET
    f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT TERM-AT SUCCS-OF 0= if
-         dup 0 < 0= if E-A64RA-SHAPE throw then
+      f i BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+      t SUCCS-OF 0=  t TRAP-AT? 0=  and if
+         dup NO-RET <> if E-A64RA-SHAPE throw then
          drop i
       then
-   loop
-   dup 0 < if E-A64RA-SHAPE throw then ;
+   loop ;
+
+\ The same walk for a routine that never returns. It is the ordinary one with the
+\ three return-convention steps left out - the pre-colouring of the declared
+\ return registers, the arity held against the contract's result count, and the
+\ copies planned into those registers - because a routine with no block that
+\ hands the caller anything has nothing for any of the three to act on. See
+\ MB-RET-ORD above for why that absence is real rather than a missing case.
+\ Everything else is the same walk over the same module: the layout, the
+\ liveness, the ranges, the edge classes, the ties, the coalescing, the fit and
+\ the plan are all about values inside the routine and none of them asks how it
+\ leaves.
+: MB-RUN-NO-RET ( IR-ID:ir-fun-id IR-ID:ir-block-id -- )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id :}
+   f MB-LAYOUT
+   f MB-LIVENESS
+   UF-INIT
+   f MB-RANGES
+   bk MB-FIX!
+   N-BLKS @ 0 ?do f i MB-EDGES-OF loop
+   f MB-TIES
+   f MB-COALESCE
+   MB-CLASSES
+   MB-KIND-CLEAR
+   MB-SIZES
+   MB-DECLS!
+   N-BLKS @ 0 ?do f i MB-KEEP-BLOCK loop
+   f MB-FIT
+   MB-FINISH
+   f MB-PLAN ;
 
 : MB-RUN ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-block-id -- )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id :}
@@ -2132,6 +2206,7 @@ public
    c b A64IR:KEY-DBYTES DK-BYTES BND-DKEY !
    c b A64IR:KEY-DBACK  DK-BACK BND-DKEY !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
+   c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
    c b A64IR-OPCODE:MOV A64IR:OPCODE 0 BND-MOV !
    BOUND-YES BND-MODE ! ;
 
@@ -2173,6 +2248,7 @@ public
    FUN-OF {: f:IR-ID:ir-fun-id :}
    f MB-RET-ORD RET-B !
    f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   RET-B @ NO-RET = if f bk MB-RUN-NO-RET exit then
    f RET-B @ BLOCK-AT {: rb:IR-ID:ir-block-id :}
    bk rb FIXED-ARITY-CK
    bk rb cv LOWERED-CK

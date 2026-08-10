@@ -112,6 +112,10 @@
 \                                  where its result is already the routine's own
 \                                  result and the data-stack pointer already
 \                                  stands where the callee is entered
+\   a64.trap     B entry         - leave through the one shared routine that ends
+\                                  the process, which does not come back: the
+\                                  ordinal naming the family is already in the
+\                                  cell that routine is entered through
 \   a64.lnkstr   Str x30 sp off  - put the caller's return address in a frame slot
 \   a64.lnkldr   Ldr x30 sp off  - take it back out again
 \   a64.ret      Ret             - return to the address in the link register
@@ -439,6 +443,7 @@ ENUM opcode DERIVE eq
    fcmpseld
    fcmpselzd
    tailcall
+   trap
    madd
    addi
    subi
@@ -624,12 +629,14 @@ public
 \ Version 0.6: the integer subset, the scalar floating forms, the four float
 \ comparison forms, the four conditional selects - two that answer a cell and two
 \ that answer a double - and the tail branch, which is the first terminator of
-\ this dialect that leaves through another routine. The major version stays at zero until the
-\ dialect is the whole machine; the minor version moves whenever the schema
-\ table gains a form, because a table with these forms in it and one without are
-\ two different tables and every consumer compares the version exactly.
+\ this dialect that leaves through another routine - and the trap branch, which
+\ is the first that leaves through one that does not come back. The major version
+\ stays at zero until the dialect is the whole machine; the minor version moves
+\ whenever the schema table gains a form, because a table with these forms in it
+\ and one without are two different tables and every consumer compares the
+\ version exactly.
 0 constant MAJOR
-7 constant MINOR
+8 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 \ A pass that materialises a constant walks the halves of a register, and it asks
@@ -883,6 +890,7 @@ public
       fcmpseld  OF s" a64.fcmpseld" ENDOF
       fcmpselzd OF s" a64.fcmpselzd" ENDOF
       tailcall  OF s" a64.tailcall" ENDOF
+      trap      OF s" a64.trap"     ENDOF
       madd      OF s" a64.madd"     ENDOF
       addi      OF s" a64.addi"     ENDOF
       subi      OF s" a64.subi"     ENDOF
@@ -1021,6 +1029,30 @@ public
 : KEY-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.entry" IR-BUILD:INTERN-SYMBOL ;
 
+\ The address the TRAP form branches to, under a key of its own. It is the same
+\ kind of number the key above carries and it is deliberately not that key.
+\
+\ WHY A SECOND KEY AND NOT THE SAME ONE. Two passes recognise the form a routine
+\ leaves through by its ATTRIBUTES and never by its opcode - a tail branch is
+\ "carries an address and carries no take-back count", which is
+\ src/compiler/native/regalloc.f TAILBR-AT? and
+\ src/compiler/native/regalloc-verify.f TAILBR?, and both say in as many words
+\ that reading the keys rather than the opcode is the rule every other question
+\ there is asked by. A trap carries an address and no take-back count too, so
+\ under `a64.entry` it would BE a tail branch to both of them: the validator
+\ would demand that the routine's contract declare a tail call, and it would
+\ measure the routine's results against a data-stack run whose one value is a
+\ family ordinal. Neither is true, and neither failure would name the trap.
+\
+\ SO THE DISTINCTION IS PUT WHERE THOSE PASSES ALREADY LOOK. `a64.entry` means
+\ the address of a routine this one leaves through whose results become this
+\ routine's results; a trap's callee has no results and this routine has no
+\ caller left to give them to. One key per fact keeps both readings exact and
+\ leaves both predicates as they are, which is what stops a third form from
+\ silently joining a classification it does not belong to.
+: KEY-TRAP-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.trap-entry" IR-BUILD:INTERN-SYMBOL ;
+
 \ The attribute key the comparison form requires: which condition it sets its
 \ flag on. The condition is the whole content of a comparison, so a comparison
 \ without it means nothing, and IR-OP refuses one that omits it.
@@ -1129,6 +1161,7 @@ private
       fcmpseld  OF s" a64.rule.fcmpseld" ENDOF
       fcmpselzd OF s" a64.rule.fcmpselzd" ENDOF
       tailcall  OF s" a64.rule.tailcall" ENDOF
+      trap      OF s" a64.rule.trap"     ENDOF
       madd      OF s" a64.rule.madd"     ENDOF
       addi      OF s" a64.rule.addi"     ENDOF
       subi      OF s" a64.rule.subi"     ENDOF
@@ -1206,6 +1239,7 @@ private
       fcmpseld  OF s" a64.render.fcmpseld" ENDOF
       fcmpselzd OF s" a64.render.fcmpselzd" ENDOF
       tailcall  OF s" a64.render.tailcall" ENDOF
+      trap      OF s" a64.render.trap"     ENDOF
       madd      OF s" a64.render.madd"     ENDOF
       addi      OF s" a64.render.addi"     ENDOF
       subi      OF s" a64.render.subi"     ENDOF
@@ -2010,6 +2044,52 @@ private
    c b A64IR-OPCODE:TAILCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Trap: the branch to the one routine that ends the process. The same single `B`
+\ the tail branch above is, to an address the module carries under the same key,
+\ taking the data-stack order and ending it in the same way - because the ordinal
+\ it hands the routine was written into the caller's stack by an ordinary
+\ a64.dstore, and no access may be ordered after the branch that leaves.
+\
+\ WHY IT IS ITS OWN FORM AND NOT THE TAIL BRANCH WITH ANOTHER TARGET. The two
+\ instructions are identical and everything AROUND them differs. A tail branch is
+\ how a routine RETURNS: the callee takes exactly what this routine takes, leaves
+\ exactly what it leaves, and publishes this routine's results into the very
+\ cells this routine's caller will read. This one publishes nothing and comes
+\ back from nowhere - the callee takes one value that is not this routine's
+\ result and ends the process. Four passes have to tell the difference, because
+\ each of them re-derives the block control leaves the routine THROUGH in order
+\ to place the routine's results there, give the frame back there, and end the
+\ emission there: src/compiler/native/regalloc.f MB-RET-ORD says which block that
+\ is and why a trap block is not it, and src/compiler/native/regalloc-verify.f,
+\ src/compiler/native/spill.f and src/compiler/native/emit.f each ask the same
+\ question of their own view. One opcode with a flag would make every one of them
+\ read a field before it knew what it was looking at, which is the argument the
+\ tail branch itself makes one paragraph up.
+\
+\ IT CARRIES AN ADJUSTMENT AND THE TAIL BRANCH DOES NOT, which is the second
+\ difference and it is not a detail. A tail branch is only ever built where the
+\ data-stack pointer ALREADY stands at the callee's entry base, because the
+\ callee takes exactly what this routine takes. The trap's callee takes ONE cell
+\ that is nobody's argument, so the pointer has to move over it here - the same
+\ `Addi ds ds n` a call site makes, under the same key, and no take-back count
+\ because there is nothing to take back. That absence is what keeps this out of
+\ the call-site reading as well: a call is the form that carries `a64.dback`.
+\
+\ IT DECLARES ITSELF TRAPPING, and here that is not a caution: the operation IS
+\ the trap. src/compiler/native/select.f will not lower a may-trap source
+\ operation to a form that does not reproduce it, and this is the form that does.
+: DEF-TRAP ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:TRAP OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   c b KEY-TRAP-ENTRY IR-SCHEMA:ADD-ATTR
+   c b KEY-DBYTES IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE DSTACK-TERM-MEM
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b A64IR-OPCODE:TRAP NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ Saving and restoring the caller's return address. They are the same Str and Ldr
 \ the frame forms above are, against the same stack pointer, and they differ in
 \ exactly one thing: the register they move is x30, which is named by the FORM.
@@ -2431,6 +2511,7 @@ public
    c b k DEF-CALL
    c b k DEF-WORDCALL
    c b k DEF-TAILCALL
+   c b k DEF-TRAP
    c b k DEF-LNKSTR
    c b k DEF-LNKLDR
    c b t DEF-RET

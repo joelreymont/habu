@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-72 constant OPCODES-N
+73 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -200,6 +200,7 @@ private
 69 constant O-FASTORE
 70 constant O-FDLOAD
 71 constant O-FDSTORE
+72 constant O-TRAP
 
 \ One slot per attribute key the dialect declares.
 11 constant KEYS-N
@@ -321,6 +322,7 @@ create NAMEBUF NAME-CAP allot
       fcmpseld  OF O-FCMPSELD  ENDOF
       fcmpselzd OF O-FCMPSELZD ENDOF
       tailcall  OF O-TAILCALL  ENDOF
+      trap      OF O-TRAP      ENDOF
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
@@ -397,6 +399,7 @@ create NAMEBUF NAME-CAP allot
       O-FCMPSELD  of A64IR-OPCODE:FCMPSELD  endof
       O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
+      O-TRAP      of A64IR-OPCODE:TRAP      endof
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
@@ -894,19 +897,23 @@ create NAMEBUF NAME-CAP allot
    out 0 ?do t IR-TYPE:FN-RESULT loop
    CTX BLD IR-BUILD:INTERN-CODE-REF ;
 
-\ The block control leaves the routine through: the one whose terminator names no
-\ successor. Re-derived here rather than taken as the last block, for the same
-\ reason every other stage re-derives it.
+\ THE BLOCK THE ROUTINE'S RESULTS LEAVE THROUGH, and NO-RET when there is none.
+\ The rule and the reason a trap block is not that block are written once, in
+\ src/compiler/native/regalloc.f MB-RET-ORD; this is the same question asked of
+\ this pass's own view, which is why it is asked again rather than taken from the
+\ allocator.
+-1 constant NO-RET
+
 : RET-ORD ( IR-ID:ir-fun-id -- n )
    {: f:IR-ID:ir-fun-id :}
-   -1
+   NO-RET
    f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT TERM-AT SUCCS-OF 0= if
-         dup 0 < 0= if E-A64SPILL-SHAPE throw then
+      f i BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+      t SUCCS-OF 0=  t OPCODE-AT OPCODE-SLOT O-TRAP = 0=  and if
+         dup NO-RET <> if E-A64SPILL-SHAPE throw then
          drop i
       then
-   loop
-   dup 0 < if E-A64SPILL-SHAPE throw then ;
+   loop ;
 
 : WALK-FUN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
@@ -1100,6 +1107,7 @@ public
    c b A64IR-OPCODE:ANDI      BIND1
    c b A64IR-OPCODE:ORRI      BIND1
    c b A64IR-OPCODE:EORI      BIND1
+   c b A64IR-OPCODE:TRAP      BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
