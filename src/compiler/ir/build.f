@@ -170,7 +170,15 @@ $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 \ seeds every table small and grows it geometrically only as far as it is used,
 \ so a generous ceiling costs nothing until the module needs it. The real limit
 \ is the owning context's mapping, which every table shares.
-256 constant D-SYMS
+\ D-SYMS was 256, and 256 was the number a 17-arm MATCH reached the moment the
+\ HIR dialect grew its second `hir.const` attribute key: the symbol table filled
+\ one row before the SELECTOR's value map did, so the ceiling a caller was told
+\ about changed from E-A64SEL-CAP - the modelled bound on how many arms one
+\ dispatch may have - to E-IR-SYM-CAP, which is this table running out. A
+\ ceiling here is a commitment and not an allocation, so the fix is to put this
+\ table back out of the way of the bounds that mean something, and the arm count
+\ stays bounded where it is modelled.
+512 constant D-SYMS
 4096 constant D-SBYTES
 128 constant D-TYPES
 1024 constant D-TPOOL

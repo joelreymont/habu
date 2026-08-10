@@ -1031,6 +1031,7 @@ variable OPJ                         \ general operands taken so far by the open
 64 constant LITMAX
 
 create LIT-VAL LITMAX cells allot     \ the number
+create LIT-KIND LITMAX cells allot    \ and what the number IS
 LITMAX TYPED-BUFFER LIT-ID IR-ID:ir-value-id
 variable LIT-N
 
@@ -1046,18 +1047,28 @@ variable LIT-N
 : LIT-RELEASE ( n -- )
    LIT-N ! ;
 
-\ Which memo row holds this number, or -1.
-: LIT-FIND ( n -- n )
-   {: val:n :}
+\ Which memo row holds this literal, or -1.
+\
+\ THE KEY IS THE KIND AND THE NUMBER, NOT THE NUMBER. A `create`d word's data
+\ field and an ordinary integer that happens to equal it are the same sixty-four
+\ bits and two different literals: one is an address the relocation pass must
+\ rewrite when its region moves, the other is a number that must survive
+\ untouched. Keyed on the number alone this memo folds them into ONE operation,
+\ and whichever kind that operation ended up carrying is then wrong for one of
+\ the two references - silently, because the fold is invisible by design.
+: LIT-FIND ( n n -- n )
+   {: kind:n val:n :}
    -1
    LIT-N @ 0 ?do
-      i cells LIT-VAL + @ val = if drop i leave then
+      i cells LIT-VAL + @ val =
+      i cells LIT-KIND + @ kind = and if drop i leave then
    loop ;
 
-: LIT-REMEMBER ( n IR-ID:ir-value-id -- )
-   {: val:n id:IR-ID:ir-value-id :}
+: LIT-REMEMBER ( n n IR-ID:ir-value-id -- )
+   {: kind:n val:n id:IR-ID:ir-value-id :}
    LIT-N @ LITMAX >= if exit then
    val LIT-N @ cells LIT-VAL + !
+   kind LIT-N @ cells LIT-KIND + !
    id LIT-N @ LIT-ID !
    LIT-N @ 1+ LIT-N ! ;
 
@@ -1068,22 +1079,37 @@ variable LIT-N
 \ constant-and-operation word's constant is the word model's and not the tape's.
 \ A number this block has already staged is not staged again: the memo above
 \ answers with the value the first one defined.
-: STAGE-LIT ( n n -- )
-   {: ix:n val:n :}
+\
+\ AND IT TAKES THE KIND FOR THE SAME REASON IT TAKES THE VALUE. Whether the
+\ number is an address is the WORD MODEL's answer too, and this is the last pass
+\ that can ask - below here it is sixty-four bits like any other. The schema
+\ requires the kind, so a staging that forgot it is refused by IR-OP rather than
+\ producing a literal nobody can classify later.
+: STAGE-LIT ( n n n -- )
+   {: ix:n val:n kind:n :}
    CTX BLD HIR-OPCODE:CONST HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
    CTX BLD op RESULTS+
    CTX BLD  CTX BLD HIR:KEY-VALUE  CTX BLD val IR-BUILD:INTERN-INT-ATTR
    IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD HIR:KEY-ADDR  CTX BLD kind HIR:ADDR-ATTR
+   IR-BUILD:ADD-ATTR
    CTX BLD op CLOSE ;
 
+: EMIT-KIND-LIT ( n n n -- )
+   {: ix:n val:n kind:n :}
+   kind val LIT-FIND {: j:n :}
+   j 0 >= if j LIT-ID @ VPUSH exit then
+   ix val kind STAGE-LIT
+   kind val  VN @ 1- VAT  LIT-REMEMBER ;
+
+\ An ordinary number: what the source wrote, or what a word model carries as a
+\ plain constant. Every caller that is not staging an address goes through here,
+\ so "not an address" is stated once instead of at each of them.
 : EMIT-LIT ( n n -- )
    {: ix:n val:n :}
-   val LIT-FIND {: j:n :}
-   j 0 >= if j LIT-ID @ VPUSH exit then
-   ix val STAGE-LIT
-   val  VN @ 1- VAT  LIT-REMEMBER ;
+   ix val HIR:ADDR-NONE EMIT-KIND-LIT ;
 
 \ The memory the definition is entered with, staged at the span of the token that
 \ first needed it. It takes nothing and answers the order every later access
@@ -1165,10 +1191,11 @@ variable LIT-N
 
 \ A word that pushes one fixed value - the address a `create`d data word names.
 \ The value is the word model's, so this stages the same operation an integer
-\ literal in the source would.
+\ literal in the source would, and says so: the number IS an address of DATA, and
+\ this is the point at which that is still known. Below here it is a number.
 : EMIT-FIXED-SYM ( IR-ARENA:arena n IR-ID:ir-symbol-id -- )
    {: r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
-   ix  r sy HIR-WORD:FIXED-VALUE@  EMIT-LIT ;
+   ix  r sy HIR-WORD:FIXED-VALUE@  HIR:ADDR-DATA  EMIT-KIND-LIT ;
 
 : EMIT-FIXED ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
@@ -1205,7 +1232,7 @@ create SB-BUF SB-CAP allot
 
 : EMIT-STRING ( n -- ) {: ix:n :}
    ix STRING-BODY {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   ix  a u NSTR:INTERN  EMIT-LIT
+   ix  a u NSTR:INTERN  HIR:ADDR-DATA  EMIT-KIND-LIT
    ix  u  EMIT-LIT ;
 
 \ A word that is one constant and one operation - `1-` is `1` then `-`. Both
@@ -3998,7 +4025,7 @@ create JOIN-TAB TMAX cells allot
 : MATCH-TRAP ( n n -- ) {: ix:n ord:n :}
    LIT-MARK {: m:n :}
    ix OPEN-PLAIN
-   ix ord STAGE-LIT
+   ix ord HIR:ADDR-NONE STAGE-LIT
    ix HIR-OPCODE:TRAP EMIT-OPCODE
    CLOSE-BLOCK
    m LIT-RELEASE ;
@@ -4313,7 +4340,7 @@ create DN-BUF DN-CAP allot
 \ else.
 : DEAD-END ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix  ix WSYM DEAD-ORD  STAGE-LIT
+   ix  ix WSYM DEAD-ORD  HIR:ADDR-NONE STAGE-LIT
    ix HIR-OPCODE:TRAP EMIT-OPCODE
    CLOSE-BLOCK
    PATH-DEAD PATH-END ! ;

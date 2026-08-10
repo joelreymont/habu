@@ -742,6 +742,7 @@ public
 -8289 constant E-HIR-PICK       \ a stack rename that picks an input it never consumed, or an input or output count outside its ceiling
 -8290 constant E-HIR-OPCODE     \ a word bound to an opcode this dialect's schema table does not define
 -8291 constant E-HIR-DIALECT    \ a module whose schema table was created for another dialect or another schema version
+-8292 constant E-HIR-ADDR       \ a relocation kind for a literal that this dialect's hir.addr does not name
 
 \ Native stage N1 straight-line elaborator (package NELAB): -8300..-8319
 \

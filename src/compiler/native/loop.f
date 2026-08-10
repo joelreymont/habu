@@ -227,11 +227,12 @@ private
 \ own - the literal a constant carries - and COPIES every one the elaborator
 \ built, and a field copied under the wrong key would be a call reaching the
 \ wrong routine.
-4 constant KEYS-N
+5 constant KEYS-N
 0 constant K-VALUE
 1 constant K-ENTRY
 2 constant K-IN
 3 constant K-OUT
+4 constant K-ADDR
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -1031,11 +1032,17 @@ $7FFFFFFFFFFFFFFF constant MAX-START
    CELL-RESULT+
    CLOSE 0 RESULT@ ;
 
+\ A constant this pass mints for itself - a loop bound, a stride, an index. Every
+\ one of them is an ORDINARY number: this pass rewrites control flow and never
+\ invents an address, so the kind is stated here as a fact about what the pass
+\ does rather than passed in by callers who would all pass the same thing.
 : MKC ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: sp:IR-ID:ir-op-id v:n :}
    sp HIR-OPCODE:CONST OPEN
    CELL-RESULT+
    CTX BLD  CTX BLD HIR:KEY-VALUE  CTX BLD v IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD HIR:KEY-ADDR  CTX BLD HIR:ADDR-NONE HIR:ADDR-ATTR
    IR-BUILD:ADD-ATTR
    CLOSE 0 RESULT@ ;
 
@@ -1048,6 +1055,10 @@ $7FFFFFFFFFFFFFFF constant MAX-START
       id i ATTR-INT-AT {: v:n :}
       k K-VALUE = if
          CTX BLD  CTX BLD HIR:KEY-VALUE  CTX BLD v IR-BUILD:INTERN-INT-ATTR
+         IR-BUILD:ADD-ATTR
+      then
+      k K-ADDR = if
+         CTX BLD  CTX BLD HIR:KEY-ADDR  CTX BLD v HIR:ADDR-ATTR
          IR-BUILD:ADD-ATTR
       then
       k K-ENTRY = if
@@ -1421,6 +1432,7 @@ public
    c b HIR:KEY-ENTRY K-ENTRY BND-KEY !
    c b HIR:KEY-IN    K-IN    BND-KEY !
    c b HIR:KEY-OUT   K-OUT   BND-KEY !
+   c b HIR:KEY-ADDR  K-ADDR  BND-KEY !
    c b HIR:CELL-TYPE 0 BND-CELL !
    c b HIR:MEM-TYPE  0 BND-MEM !
    c b HIR:REAL-TYPE 0 BND-REAL !

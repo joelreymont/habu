@@ -1119,6 +1119,85 @@ private
    BND [: LITMEMO-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 1 T= 0 T= 0 T= 1 T= 4 T= ;
 
+\ ---- the memo tells an ADDRESS from a number that equals it -------------------
+\ THE ONE CASE A MEMO KEYED ON THE NUMBER ALONE GETS WRONG. `CELL-A` pushes the
+\ address of a `create`d word and an integer literal may hold any value at all,
+\ including that one. Both reach EMIT-LIT, both carry the identical sixty-four
+\ bits, and they are NOT the same literal: one is an address the relocation pass
+\ has to find and rewrite when the region it names moves, the other is a number
+\ that must survive untouched. A memo keyed on the value folds them into one
+\ operation and gives whichever kind that operation ended up carrying to both
+\ references - silently, because reuse is invisible by construction.
+\
+\ THE FIXTURE MAKES THE COLLISION REAL RATHER THAN ARRANGING IT. The number in
+\ the tape is not a number chosen to look like an address: it IS the address, read
+\ back out of the engine through the same NDICT:FIXED-VALUE the word model asks,
+\ and formatted into the source text. So the two tokens cannot drift apart, and
+\ the case cannot pass by the two values merely differing.
+\
+\ WHAT IS ASSERTED. Two `hir.const` operations in the block, not one - and the
+\ two carry DIFFERENT `hir.addr` attributes, which is what makes the count mean
+\ what it says. Asserting the count alone would pass for two constants that both
+\ claimed to be addresses.
+create LK-NUM 32 allot
+variable LK-N
+
+: LK-DIGITS ( n -- ptr u8 n ) {: v:n :}
+   32 LK-N !
+   v 0= if
+      LK-N @ 1- LK-N !  48 LK-NUM LK-N @ + c!
+      LK-NUM LK-N @ + 1 exit
+   then
+   v begin dup 0 > while
+      dup 10 mod 48 +
+      LK-N @ 1- LK-N !  LK-NUM LK-N @ + c!
+      10 /
+   repeat drop
+   LK-NUM LK-N @ +  32 LK-N @ - ;
+
+\ The address the engine gives the word this case is about, asked the way the
+\ word model asks it, so the tape's literal and the model's fixed value are one
+\ number by construction.
+: LK-ADDR ( -- n )
+   CELL-A!
+   s" CELL-A" NDICT:FIXED-VALUE ;
+
+: LK-TEXT! ( -- )
+   s" LITKIND CELL-A " TEXT!
+   LK-ADDR LK-DIGITS NSRC:TEXT+ ;
+
+\ The `hir.addr` attribute of one `hir.const`, read off the frozen module at the
+\ ordinal the schema declares it at - which test/compiler/native-hir.f pins, so
+\ the two files cannot disagree about which ordinal carries which key.
+: F-ADDR-OF ( IR-BUILD:module IR-ID:ir-op-id -- n )
+   {: m:IR-BUILD:module op:IR-ID:ir-op-id :}
+   m IR-BUILD:FATTR-ROWS
+   m IR-BUILD:FOP-POOL m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY op 1 IR-OP:FATTR@
+   IR-ATTR:FINT@ ;
+
+: LITKIND-BODY ( IR-CTX:ctx -- n n n bool )
+   {: c:IR-CTX:ctx :}
+   LK-TEXT!
+   c SEALED-DATA
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 2 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk s" hir.const" 0 F-OPC-AT {: c0:IR-ID:ir-op-id :}
+   m blk s" hir.const" 1 F-OPC-AT {: c1:IR-ID:ir-op-id :}
+   m blk s" hir.const" F-OPC-N
+   m c0 F-ADDR-OF
+   m c1 F-ADDR-OF
+   m c0 0 F-OUT  m c1 0 F-OUT  SAME? ;
+
+: LITKIND-CASE ( -- )
+   s" an address and an integer equal to it are two literals" T-LABEL
+   BND [: LITKIND-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE
+   HIR:ADDR-NONE T=
+   HIR:ADDR-DATA T=
+   2 T= ;
+
 \ `COUNT-DOWN begin 1- dup 0 <= until`. Four blocks: the entry, the loop header,
 \ the latch and the exit. The header is reached twice - once from the entry and
 \ once from the latch - and takes one argument both times, which is what makes
@@ -2630,6 +2709,7 @@ public
    JOINC-CASE
    MAX2-CASE
    LITMEMO-CASE
+   LITKIND-CASE
    LERP-CASE
    TWO-GROUPS-CASE
    BND [: drop NESTED-GROUP-CASE ;] IR-CTX:WITH-CONTEXT

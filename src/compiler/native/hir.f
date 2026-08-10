@@ -485,15 +485,16 @@ public
 : NAME ( -- ptr u8 n )
    s" hir" ;
 
-\ Version 0.4: the straight-line subset with doubles in it, a terminator that
-\ does not return, and the address of another function of the emission. The major
-\ version stays at zero until the dialect is the whole of section 7.2; the minor
-\ version moved when the double type and its twelve operations arrived, again
-\ when hir.trap did, and again when hir.quot did, because a table with them and
-\ one without are two different tables and every consumer compares the version
-\ exactly.
+\ Version 0.5: the straight-line subset with doubles in it, a terminator that
+\ does not return, the address of another function of the emission, and a literal
+\ that says whether the number it carries is an address. The major version stays
+\ at zero until the dialect is the whole of section 7.2; the minor version moved
+\ when the double type and its twelve operations arrived, again when hir.trap
+\ did, again when hir.quot did, and again when `hir.const` grew its second
+\ required attribute - because a table with them and one without are two
+\ different tables and every consumer compares the version exactly.
 0 constant MAJOR
-4 constant MINOR
+5 constant MINOR
 
 \ ---- the opcode names --------------------------------------------------------
 \ This module's interned symbol for one opcode. Interning deduplicates, so
@@ -555,6 +556,45 @@ public
 \ nothing, and IR-OP refuses one that omits it.
 : KEY-VALUE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.value" IR-BUILD:INTERN-SYMBOL ;
+
+\ Design line 479: the second key `hir.const` requires - WHAT THE NUMBER IS, as
+\ against what it equals.
+\
+\ WHY THE KIND IS KNOWN HERE AND NOWHERE LATER. Two of the things this dialect
+\ stages as an integer literal are addresses: the data field a `create`d word
+\ names, and the body of an interned string literal. Every later pass sees a
+\ number, and a number carries no evidence of what it is - an address of the DATA
+\ region and an ordinary integer that happens to equal one are the same sixty-four
+\ bits. The elaborator is the last place that still knows, because it is reading
+\ the WORD MODEL, which says this token is a fixed-value word; so the fact is
+\ recorded where it is known and travels with the operation from there.
+\
+\ AND WHAT DOWNSTREAM NEEDS IT FOR. The address a compiled routine carries has to
+\ be found again after publication, by the relocation pass that rewrites it when
+\ the region it names moves. That pass may not recognise one by decoding region
+\ bytes: a compiled word carries inline data that decodes as a move-wide chain.
+\ So the kind crosses into the machine dialect as `a64.addr` and the emitter
+\ records the site from it.
+: KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" hir.addr" IR-BUILD:INTERN-SYMBOL ;
+
+\ The kinds that key may name. ADDR-NONE is every ordinary number the source
+\ wrote or a word model carries; ADDR-DATA is an address of the engine's DATA
+\ region, which is what EMIT-FIXED-SYM and EMIT-STRING stage. A small enumeration
+\ rather than a flag, so the CODE kind a `[']` needs is a new member and not a
+\ second attribute - and the machine dialect names its own kinds with the same
+\ meanings, translated across the boundary by src/compiler/native/select.f rather
+\ than shared, because a dialect's table is its own.
+0 constant ADDR-NONE
+1 constant ADDR-DATA
+ADDR-DATA constant ADDR-KIND-MAX
+
+\ A kind this dialect knows, refused where the attribute is built rather than
+\ where it is read - an unknown number reaching selection would be a site class
+\ the machine dialect has no rule for.
+: ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   dup 0 < over ADDR-KIND-MAX > or if E-HIR-ADDR throw then
+   IR-BUILD:INTERN-INT-ATTR ;
 
 \ The three attribute keys `hir.wordcall` requires. A call to another word means
 \ nothing without all three: where the callee starts, how many values it takes,
@@ -747,6 +787,7 @@ private
    c b HIR-OPCODE:CONST OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-RESULT
    c b KEY-VALUE IR-SCHEMA:ADD-ATTR
+   c b KEY-ADDR IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    TARGET

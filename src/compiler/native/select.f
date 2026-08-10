@@ -266,6 +266,7 @@ BOUND-NO BND-MODE !
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-VAL IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
@@ -1567,12 +1568,21 @@ variable KEPT-F
 \ so a memo keyed on the number alone would hand a D register where a cell was
 \ wanted. Overflowing the memo stops it remembering more, which loses folds and
 \ changes nothing else: this is a cache, exactly as the elaborator's is.
+\
+\ AND THE RELOCATION KIND IS PART OF THE KEY FOR THE SAME REASON THE OPCODE IS.
+\ A `create`d word's address and an integer that happens to equal it select to
+\ two different chains here - the always-four-lane carrier a relocation pass can
+\ find and rewrite, against the shortest chain that reaches the number - so a
+\ memo keyed without the kind hands one where the other was wanted, and does it
+\ silently, because reuse is invisible by construction. The elaborator's memo
+\ carries the identical clause.
 32 constant RLIT-MAX                 \ distinct constants one region's memo holds
 -1 constant RLIT-SHUT                \ the count when no region is being emitted
 
 here CELL 1- and CELL swap - CELL 1- and allot
 create RLIT-SLOT RLIT-MAX cells allot   \ which member of the source family
-create RLIT-VAL RLIT-MAX cells allot    \ and the number it carried
+create RLIT-VAL RLIT-MAX cells allot    \ the number it carried
+create RLIT-KIND RLIT-MAX cells allot   \ and what that number IS
 RLIT-MAX TYPED-BUFFER RLIT-ID IR-ID:ir-value-id
 variable RLIT-N
 
@@ -1588,33 +1598,43 @@ RLIT-SHUT RLIT-N !
    RLIT-N @ 0 >= ;
 
 \ Which row holds this constant, or -1.
-: RLIT-FIND ( n n -- n )
-   {: slot:n val:n :}
+: RLIT-FIND ( n n n -- n )
+   {: slot:n kind:n val:n :}
    -1
    RLIT-N @ 0 ?do
       i cells RLIT-SLOT + @ slot =
-      i cells RLIT-VAL + @ val = and if drop i leave then
+      i cells RLIT-VAL + @ val = and
+      i cells RLIT-KIND + @ kind = and if drop i leave then
    loop ;
 
-: RLIT-REMEMBER ( n n IR-ID:ir-value-id -- )
-   {: slot:n val:n id:IR-ID:ir-value-id :}
+: RLIT-REMEMBER ( n n n IR-ID:ir-value-id -- )
+   {: slot:n kind:n val:n id:IR-ID:ir-value-id :}
    RLIT-N @ RLIT-MAX >= if exit then
    slot RLIT-N @ cells RLIT-SLOT + !
    val RLIT-N @ cells RLIT-VAL + !
+   kind RLIT-N @ cells RLIT-KIND + !
    id RLIT-N @ RLIT-ID !
    RLIT-N @ 1+ RLIT-N ! ;
 
 \ ---- selecting a constant ----------------------------------------------------
 \ The literal is the whole content of a source constant, and it rides as the
-\ attribute the source opcode's schema requires. The key is compared against the
-\ one this pass was told, so a constant carrying some other attribute is refused
-\ instead of read as if it were the value.
+\ attribute the source opcode's schema requires. Both fields are read BY KEY
+\ through ATTR-INT-OF, which answers a position and refuses a key the operation
+\ does not carry - so neither reader depends on the order the elaborator happened
+\ to add them in, and an operation carrying some other attribute is refused
+\ instead of read as if it were the value. (These two read positionally while
+\ `hir.const` had exactly one attribute; a second attribute is exactly the change
+\ that makes a positional read wrong.)
 : CONST-VALUE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id ATTRS-OF 1 <> if E-A64SEL-ATTR throw then
-   id 0 ATTR-KEY-AT  0 BND-VAL @  SAME-SYM?
-   0= if E-A64SEL-ATTR throw then
-   id 0 ATTR-INT-AT ;
+   id  0 BND-VAL @  ATTR-INT-OF ;
+
+\ What that number IS - the relocation kind the elaborator recorded when it was
+\ the last pass that knew. It decides which chain materialises the value, and it
+\ crosses into the machine dialect from here.
+: CONST-ADDR ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id  0 BND-ADDR @  ATTR-INT-OF ;
 
 \ One move-wide operation. `keep` is whether the halves already in place survive:
 \ movz clears them and movk keeps them, which is exactly the difference between
@@ -1710,13 +1730,27 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    v MOVN-COST  v MOVZ-COST  < if id v MATERIALISE-N exit then
    id v MATERIALISE-Z ;
 
+\ The relocation kind of whichever literal the memo is being asked about. The
+\ memo serves both literal opcodes and only ONE of them carries the attribute:
+\ `hir.const` has it because a cell may be an address, and `hir.fconst` does not
+\ because a double literal is a bit pattern the machine reads into a floating
+\ register and no relocation pass has ever had anything to say about one. That
+\ is a fact about the OPCODE, so it is answered by asking which opcode this is,
+\ and a third opcode arriving at the memo is a refusal rather than a default.
+: CONST-KIND-OF ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT {: sl:n :}
+   sl O-CONST = if id CONST-ADDR exit then
+   sl O-FCONST = if HIR:ADDR-NONE exit then
+   E-A64SEL-ATTR throw ;
+
 \ Has the region being emitted already materialised this constant? Both the
 \ question and the note are here, above the two rules that ask them, because
 \ what makes two constants the same is one statement and not two.
 : RLIT-REUSED? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    RLIT-ON? 0= if false exit then
-   id OP-SLOT  id CONST-VALUE  RLIT-FIND {: k:n :}
+   id OP-SLOT  id CONST-KIND-OF  id CONST-VALUE  RLIT-FIND {: k:n :}
    k 0 < if false exit then
    id 0 RESULT-AT  k RLIT-ID @  VBIND
    true ;
@@ -1724,7 +1758,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 : RLIT-NOTE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    RLIT-ON? 0= if exit then
-   id OP-SLOT  id CONST-VALUE  ACC  RLIT-REMEMBER ;
+   id OP-SLOT  id CONST-KIND-OF  id CONST-VALUE  ACC  RLIT-REMEMBER ;
 
 : EMIT-CONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -4748,6 +4782,7 @@ public
    c b HIR-OPCODE:FEQZ     BIND1
    c b HIR-OPCODE:TRAP     BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
+   c b HIR:KEY-ADDR  0 BND-ADDR !
    c b HIR:KEY-FUN   0 BND-FUN !
    c b HIR:KEY-ENTRY 0 BND-ENTRY !
    c b HIR:KEY-IN    0 BND-IN !
