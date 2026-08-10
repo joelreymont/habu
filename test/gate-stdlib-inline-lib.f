@@ -461,6 +461,11 @@ public
    \ list is what test/run.f actually forks.
    s" test/compiler/native-trap.f" GSI-FORK-INCLUDE
    s" test/compiler/native-migrate.f" GSI-FORK-INCLUDE
+   \ A quotation through the whole chain and running. It follows the migration
+   \ entry because every case is a definition the migration published, and it is
+   \ listed here as well as in test/gate-stdlib-cases.f for the reason given
+   \ below: only this list is what test/run.f actually forks.
+   s" test/compiler/native-quot.f" GSI-FORK-INCLUDE
    s" test/compiler/native-clobber.f" GSI-FORK-INCLUDE
    s" test/compiler/native-inline.f" GSI-FORK-INCLUDE
    \ Which bytes of the code arena a reclamation may hand back. It is listed

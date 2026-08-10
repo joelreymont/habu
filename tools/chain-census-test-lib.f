@@ -348,6 +348,9 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
    s" : CFH-QUOTE ( -- ) s" FIX+ DQ s"  : FAKE ( -- ) ; mod" FIX+ DQ s"  2drop ;" LINE
    s" \ row 4: a quotation. Its closer is not the definition closer, and a" LINE
    s" \ closer-finder matching a leading semicolon would end this row early." LINE
+   s" \ The chain compiles the quotation itself now, so what this row is" LINE
+   s" \ refused for is `execute` - still one refusal about one body token," LINE
+   s" \ and row 5 below is still what proves the row was read whole." LINE
    s" : CFH-QUOT ( n -- n ) [: 1+ ;] execute ;" LINE
    s" \ row 5: the definition after the quotation. If row 4 ended early this one" LINE
    s" \ is never seen, so its presence is what proves row 4 was read whole." LINE
@@ -582,8 +585,8 @@ variable ACC
       s" CFH-ARITY" DEF-BY CHAIN-CENSUS:DEF-OUT 1 T=
    s" hostile: row 3 compiled, literal and all" T-LABEL
       s" CFH-QUOTE" CODE-AT-NAME 0 T=
-   s" hostile: row 4 was refused for the quotation opener" T-LABEL
-      s" CFH-QUOT" SPELL-AT-NAME$ s" [:" T$= ;
+   s" hostile: row 4 was refused for the word that ENTERS the quotation" T-LABEL
+      s" CFH-QUOT" SPELL-AT-NAME$ s" execute" T$= ;
 
 : CASE-HOSTILE-SPELLINGS ( -- )
    s" hostile: one refused spelling" T-LABEL
@@ -592,10 +595,10 @@ variable ACC
       s" mod" SPELLED? TFALSE
    s" hostile: nor is the paren-commented one" T-LABEL
       s" negate" SPELLED? TFALSE
-   s" hostile: the quotation opener is" T-LABEL
-      s" [:" SPELLED? TTRUE
+   s" hostile: the word that enters a quotation is" T-LABEL
+      s" execute" SPELLED? TTRUE
    s" hostile: spellings come out ordered by count then name" T-LABEL
-      0 CHAIN-CENSUS:SPELL$ s" [:" T$=
+      0 CHAIN-CENSUS:SPELL$ s" execute" T$=
    s" hostile: the sub-histogram adds up to the buckets that carry spellings" T-LABEL
       SPELL-TOTAL
       E-HIR-UNMODELED CHAIN-CENSUS:COUNT-OF

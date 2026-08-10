@@ -384,6 +384,14 @@ SUITE compiler-native-migrate
    test/compiler/native-migrate.f
 ;SUITE
 
+\ A quotation, through the whole chain and running: the body compiled as a second
+\ function of the same emission, the Adr that names it decoded out of the
+\ published bytes, and the address executed. It runs after the migration entry
+\ because every case is a definition the migration published.
+SUITE compiler-native-quot
+   test/compiler/native-quot.f
+;SUITE
+
 \ What a published routine destroys, and what a call site does with the answer.
 \ It runs after the migration entry because the measurement it makes is over two
 \ words the migration published.
