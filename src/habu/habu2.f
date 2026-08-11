@@ -206,11 +206,17 @@ $1F constant ADDR-RD-MASK
 \ does not move - and what the record buys is a capture that no longer has to
 \ recognise a chain by what it contains.
 \
-\ WHAT THE KIND COSTS TO KEEP. The band says where a chain is and not what kind
-\ it is, because a kind is per relocation window and belongs beside the window
-\ (the capture's own kind list) rather than in a permanent per-region bit. A
-\ second band would have cost REGION/32 more bytes of engine DATA to answer a
-\ question this one is not asked.
+\ AND THE BAND DOES NOT SAY WHICH KIND A SITE IS, because nothing has to store
+\ that. A consumer already holds the two spans of the window it is working on -
+\ the AOT capture takes them as arguments - and a recorded site's value lands in
+\ exactly one of them: the DATA span sits inside the region mapped at DATA-VA and
+\ the code span inside the JIT region, which are disjoint by construction. So the
+\ kind is DERIVED from the value of a site already known to be a real address,
+\ which is a total classification and not a recognition - the guess the old
+\ value-range scans made was about WHETHER a word was a site at all, and that
+\ question is now answered by this bit and by nothing else. A second band, or a
+\ per-window kind list, would have cost storage to answer a question the spans
+\ already answer.
 \ push a DATA-region address (create/variable data field).
 : C-DATA-ADDR ( -- )
    SNAP-RELOC:MARK-SITE

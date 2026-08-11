@@ -66,7 +66,7 @@
 \ the moment a family is added. Reading the two baked ids back BY ID is the direct,
 \ stable proof, and it is what a bitmap makes cheap.
 \
-\ Cost: three child engine builds (~12 s each). It is registered as
+\ Cost: four child engine builds (~12 s each). It is registered as
 \ `TEST:SUITE aot-wid-restore` in test/gate-stdlib-cases.f, so it runs in the
 \ standalone stdlib gate (a required master gate) - not the fast tail-process
 \ fork tier, whose perf ratchet the build cost would exceed. Run standalone:
@@ -91,6 +91,12 @@ package AOT-WID-SUITE
 8001  constant WID-NEIGHBOUR         \ one id past WID-B: must come back UNprotected
 70000 constant WID-OOR               \ far above the bound: the capture must refuse it
 PROT-WID-LEGACY-MAX 1+ constant LEGACY-N-BAD   \ not a legacy row count at all
+\ Raise the capture window's DATA span start by more than the whole span, so the
+\ span holds nothing and EVERY address chain the band recorded in the blob falls
+\ outside both spans. A small skew would depend on where the first data word
+\ happened to land; this size cannot: the REPL's own `here` growth over one
+\ compile is far below 16 MiB, so d0 + this is past d1 on any tree.
+$1000000 constant D0-SKEW-PAST-SPAN
 ENGINE-ERROR:SEAL-PACKAGE constant FORGE-RC   \ publish-into-protected exit code (84)
 
 $8000 constant CAP                   \ build + probe stdout/stderr capture
@@ -301,12 +307,20 @@ create PRB PRB-CAP allot   variable PRB-U
    s" shipped engine's band holds neither baked id (control)" T-LABEL
    PLAIN$ WID-A MEMBER-PROBE$ READ-N  0 T= ;
 
-\ --- the capture's two refusals ------------------------------------------------
-\ Both are memory-safety guards on a caller-supplied index, so both are proved on
-\ the real build path: the builder dies named, and no engine is produced. The
-\ runtime twin of the first - `prot-wid-add` refusing an id at the bound, exit 84 -
-\ lives in test/seal.f beside the other seal forges; this is the AOT capture's own
-\ guard, which no other test reaches.
+\ --- the capture's three refusals -----------------------------------------------
+\ All three are proved on the real build path: the builder dies named, and no
+\ engine is produced. The first two are memory-safety guards on a caller-supplied
+\ index; the runtime twin of the first - `prot-wid-add` refusing an id at the
+\ bound, exit 84 - lives in test/seal.f beside the other seal forges.
+\ The third is a different kind of guard and the reason it needs a build to reach
+\ it. Since the capture stopped recognising an address chain by the value it
+\ carries and started reading the address-literal band, a recorded site is known
+\ to hold a real address and the only question left is WHICH span it belongs to.
+\ A site in neither span is an address the window does not carry, so there is
+\ nothing correct to bake: rebasing it by this window's delta would be wrong and
+\ skipping it would leave the building host's address in the seeded engine, which
+\ is exactly the silence the old value scan produced. The refusal is what turns
+\ that into a stop, and this case is the only thing that executes it.
 : ASSERT-BUILD-REFUSED ( ptr u8 n -- ) {: m:ptr mu:n :}
    RC @ 0 <> TTRUE
    ERR$ m mu CONTAINS? TTRUE
@@ -318,7 +332,10 @@ create PRB PRB-CAP allot   variable PRB-U
    s" aot-capture: protected WID above the bitmap bound" ASSERT-BUILD-REFUSED
    s" capture refuses a legacy row count that is not a registry shape" T-LABEL
    s" HABU_PWID_LEGACY_N" LEGACY-N-BAD BUILD-REFUSED
-   s" aot-capture: unrecognised protected-WID registry shape" ASSERT-BUILD-REFUSED ;
+   s" aot-capture: unrecognised protected-WID registry shape" ASSERT-BUILD-REFUSED
+   s" capture refuses a recorded chain its window cannot place" T-LABEL
+   s" HABU_AOT_D0_SKEW" D0-SKEW-PAST-SPAN BUILD-REFUSED
+   s" aot-capture: recorded address site outside both window spans" ASSERT-BUILD-REFUSED ;
 
 \ AOT DATA-reserve span guard (dot habu-guard-aot-data-49de2ee6): the sibling
 \ seed-pass forge test/aot-data-span-forge.f builds an oversized-span variant and

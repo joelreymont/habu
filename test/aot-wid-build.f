@@ -21,7 +21,7 @@
 \ it never adds a public tail to either. The rest of the build reuses
 \ tools/build-fixpoint.f exactly as the normal stdin build does.
 \
-\ Four modes, selected by environment so one builder serves every case its
+\ Five modes, selected by environment so one builder serves every case its
 \ companion test/aot-wid-suite.f needs:
 \
 \   (default)          bake the two fixture ids, after checking the capture's own
@@ -39,6 +39,12 @@
 \                      walking the read loop out of the band.
 \   HABU_AOT_SPAN=N    overwrite the captured AOT DATA span (the sibling
 \                      test/aot-data-span-forge.f forge; see SPAN-FORGE-LINE).
+\   HABU_AOT_D0_SKEW=N run the capture a SECOND time over the same window with
+\                      its DATA span start raised by N bytes. Hand it an N past
+\                      the whole span and the window then contains none of the
+\                      address chains its own blob holds, which is the case the
+\                      capture must refuse rather than bake or skip - so the
+\                      build dies named and no engine appears.
 \
 \ Its companion test/aot-wid-suite.f spawns this builder in a child process and
 \ then probes the resulting hb-pwid to prove the protected-WID bitmap is restored
@@ -189,6 +195,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 \ --- the body between CAPTURE-REPL and the image emit --------------------------
 : OOR-ENV$ ( -- ptr u8 n )       s" HABU_PWID_OOR" GETENV ;
 : LEGACY-ENV$ ( -- ptr u8 n )    s" HABU_PWID_LEGACY_N" GETENV ;
+: SKEW-ENV$ ( -- ptr u8 n )      s" HABU_AOT_D0_SKEW" GETENV ;
 
 : REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
    v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
@@ -199,11 +206,23 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    FIXTURE-A$ DRV+  s"  ACAP-PWID-SET" DRV-LINE
    FIXTURE-B$ DRV+  s"  ACAP-PWID-SET" DRV-LINE ;
 
+\ Re-run the real capture over the real window with the DATA span start moved.
+\ The window variables are stdin.f's own globals and still hold the span
+\ CAPTURE-REPL just used, so this is the production entry point (AOT-CAPTURE's
+\ public CAPTURE) called with a window that cannot describe its own contents -
+\ not a stand-in for one. The line is emitted inside the reopened AOT-CAPTURE
+\ package, where CAPTURE resolves bare.
+: SKEW-BODY ( ptr u8 n -- ) {: v:ptr vu:n :}
+   s" REPL-B0 @ REPL-B1 @  REPL-R0 @ REPL-R1 @" DRV+
+   s"  REPL-D0 @ " DRV+  v vu DRV+  s"  +  REPL-D1 @  CAPTURE" DRV-LINE ;
+
 : PWID-BODY ( -- )
    OOR-ENV$ {: o:ptr ou:n :}
    ou 0 > if o ou s" ACAP-PWID-SET" REFUSE-BODY exit then
    LEGACY-ENV$ {: l:ptr lu:n :}
    lu 0 > if l lu s" ACAP-PWID-LEGACY" REFUSE-BODY exit then
+   SKEW-ENV$ {: k:ptr ku:n :}
+   ku 0 > if k ku SKEW-BODY exit then
    FIXTURE-BODY ;
 
 \ CAPTURE-REPL is private to package STDIN-DRIVER, so the appended text reopens
@@ -218,7 +237,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 \ Append the checks the fixture build needs, then stdin.f's own terminal sequence
 \ with the protected-WID work spliced in after CAPTURE-REPL.
 : CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
-   OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and ;
+   OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and ;
 
 : INJECT ( -- )
    CHECKS-WANTED? if

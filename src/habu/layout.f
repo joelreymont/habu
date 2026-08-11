@@ -818,11 +818,16 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ to the RBASE-VA sentinel and the loader maps that sentinel onto the live region
 \ base. So a recorded DATA site is visited by both calls and rewritten by neither.
 \
-\ WHICH KIND a recorded site is, is NOT in this band. A kind is meaningful per
-\ relocation window and is written beside the window that needs it - the AOT
-\ capture's own kind list - while this bit is a permanent property of a region
-\ word. A second band would have cost REGION/32 more bytes of engine DATA to
-\ answer a question this one is never asked.
+\ WHICH KIND a recorded site is, is NOT in this band, and nothing stores it. A
+\ consumer holds the spans of the window it is working on, and a recorded site's
+\ value falls in exactly one of them - the DATA span lies inside the region mapped
+\ MAP_FIXED at DATA-VA, the code span inside the JIT region, and the two cannot
+\ overlap. The kind is therefore DERIVED, by a total classification of a value
+\ already known to be a real address; what the old value-range scans guessed at
+\ was whether a word was a site at all, and this bit is now the only authority on
+\ that. A site whose value is in neither span is refused rather than classified
+\ (src/habu/aot-capture.f). A second band, or a per-window kind list, would have
+\ cost storage to answer a question the spans already answer.
 \ Nothing ever recognises a chain by looking at region bytes or at the value a
 \ chain carries: a compiled word may hold inline non-instruction data, and an
 \ ordinary integer may hold any value at all.

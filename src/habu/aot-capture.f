@@ -25,6 +25,7 @@ package AOT-CAPTURE
 \ The casts expose record addresses, byte views, and record cells for reverse lookup.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: AOT-DBASE ( -- ptr a ) dbase@ ;
+TRUSTED: AOT-DBASE-N ( -- n ) dbase@ ;
 TRUSTED: AOT-A>U8 ( ptr a -- ptr u8 ) ;
 TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
 : AOT-LIVE-DATA ( -- ptr a ) data-base ;
@@ -66,23 +67,15 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
 : ACAP-ZERO-IMM ( ptr u8 -- ) {: p:ptr :}         \ zero the imm26 -> bare `bl #0`, for build determinism
    p ACAP-W32@ $FC000000 and  p ACAP-W32! ;
 
-\ movz/movk x9 4-instruction literal chain (C-LIT) recognise + decode (DATA-addr refs)
-: ACAP-LIT9? ( ptr u8 -- bool ) {: p:ptr :}
-   p ACAP-W32@ $FFE0001F and $D2800009 =
-   p 4 + ACAP-W32@ $FFE0001F and $F2A00009 = and
-   p 8 + ACAP-W32@ $FFE0001F and $F2C00009 = and
-   p 12 + ACAP-W32@ $FFE0001F and $F2E00009 = and ;
-: ACAP-LIT9V ( ptr u8 -- n ) {: p:ptr :}
-   p ACAP-W32@ 5 rshift $FFFF and
-   p 4 + ACAP-W32@ 5 rshift $FFFF and 16 lshift or
-   p 8 + ACAP-W32@ 5 rshift $FFFF and 32 lshift or
-   p 12 + ACAP-W32@ 5 rshift $FFFF and 48 lshift or ;
-\ Re-encode a full 64-bit value into an existing movz/movk x9 chain (the four imm16
-\ lanes), keeping each instruction's opcode + Rd. Inverse of ACAP-LIT9V; used to
-\ canonicalize the code-address literals so the baked blob is builder-independent.
-: ACAP-SET-LIT9 ( ptr u8 n -- ) {: p:ptr val:n :}
+\ Re-encode a full 64-bit value into an existing four-lane MOVZ/MOVK chain (the
+\ four imm16 fields), keeping each instruction's opcode AND its destination
+\ register. Used to canonicalize the code-address literals so the baked blob is
+\ builder-independent. It never reads the register it preserves, which is what
+\ lets it rewrite a chain the native compiler emitted into an allocator's
+\ register as readily as one the engine emitted into x9.
+: ACAP-SET-CHAIN ( ptr u8 n -- ) {: p:ptr val:n :}
    4 0 ?do
-      p i 4 * + ACAP-W32@ $FFE0001F and                \ keep opcode + Rd (x9), clear the imm16 bits
+      p i 4 * + ACAP-W32@ $FFE0001F and                \ keep opcode + Rd
       val i 16 * rshift $FFFF and 5 lshift or           \ this lane's imm16 into bits 20-5
       p i 4 * + ACAP-W32!
    loop ;
@@ -240,58 +233,132 @@ variable ACAP-P
       ACAP-P @ 4 + ACAP-P !
    repeat ;
 
-\ --- scan the blob for DATA-address literals (movz/movk x9, value in the REPL DATA
-\ range [d0,d1)) and record their blob offsets for the boot DATA-reloc pass ---
+\ --- the recorded address chains of the captured span ------------------------
+\ WHERE THE SITES COME FROM, AND WHY IT IS NOT A SCAN ANY MORE. Every chain the
+\ compiler builds records the region word it starts in, at the emit site, in the
+\ address-literal map (src/habu/layout.f SNAP-RELOC:ADDRMAP-OFF; the producers are
+\ habu2.f C-DATA-ADDR, C-DATA-ADDR-RAW and C-CODE-ADDR, and the native chain's
+\ publication seam). So EXISTENCE is answered by the map and by nothing else.
+\
+\ AND A COPIED CHAIN IS RECORDED TOO, which is not a detail here but most of what
+\ this pass finds. A `create`d data word's whole body is one chain plus the push
+\ stencil, short enough that habu2.f C-CALL copies it into every caller instead of
+\ calling it, so a captured window holds far more copies than originals: on the
+\ metabuild window, 21 chains were created and 142 are present. The copies carry
+\ their record because the inliner's copy loop reissues it (SNAP-RELOC:CARRY-SITE),
+\ which is what makes a record able to replace the old scan at all - a record that
+\ only covered the CREATED chains would have found 21 of 142 and left the rest
+\ holding the building host's addresses.
+\
+\ WHAT THIS REPLACED. Two passes used to walk the blob looking for the shape of a
+\ four-word MOVZ/MOVK chain into x9 and then test the value against a span to
+\ decide WHETHER the word was a site at all. That was a guess twice over: a
+\ compiled word may carry inline data that decodes as a move-wide chain, and an
+\ ordinary integer may hold any value at all, so a scalar whose value happened to
+\ land in the DATA range was indistinguishable from an address. It also could not
+\ see the chains the native compiler emits, which name whichever register the
+\ allocator picked rather than x9 - the defect this pass exists to close.
+\
+\ WHAT THE SPANS STILL DO, AND WHY THAT IS NOT THE SAME KIND OF TEST. A recorded
+\ site is already known to hold a real address; the only question left is WHICH
+\ address, and that is a total classification over two spans rather than a
+\ recognition. [d0,d1) is the window's DATA span and [b0,b1) its code span, and
+\ the two are DISJOINT BY CONSTRUCTION, not by luck: d0 and d1 are `here` either
+\ side of the compile, so they lie inside the DATA region mapped MAP_FIXED at
+\ DATA-VA, while b0 and b1 are `cp@` either side of it and lie inside the JIT code
+\ region, which the engine maps REGION-OFF above its own __text. DATA-VA is far
+\ above every address that region can hold on either target, so no value can be in
+\ both spans and the two counts partition the recorded set.
+\
+\ AND A SITE IN NEITHER SPAN IS FATAL. It is an address the window does not carry
+\ - the shape a PRE-WINDOW literal has: data allotted while the prefix loaded, so
+\ below d0, whose correct value is fixed by the prefix's own DP and differs
+\ between the metabuild host and bin/hb. Rebasing it by this window's delta would
+\ be wrong and skipping it leaves the host's address baked in. The band is what
+\ makes the case VISIBLE at all: the old value-range scan recorded no site for
+\ such a chain and said nothing, so the seeded engine read a host address in
+\ silence. Turning that silence into a named refusal is the improvement, and the
+\ refusal correctly blocks a capture whose window cannot describe its own
+\ contents. Whether such a site ever becomes legal - carried rather than refused -
+\ is dot habu-aot-pre-window-0b01043c; until it rules, this dies.
+: ACAP-CHAIN-BIT? ( n n -- bool ) {: bstart:n boff:n :}
+   bstart boff + AOT-DBASE-N - {: off:n :}
+   AOT-LIVE-DATA SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + AOT-A>U8 c@
+   off 2 rshift 7 and rshift 1 and 0= 0= ;
+
+\ The four immediate fields of a recorded chain, whatever register they name. The
+\ register is not read: the producers agree on the carrier's WIDTH, and which
+\ register it writes into is the allocator's business and no longer this file's.
+: ACAP-CHAINV ( ptr u8 -- n ) {: p:ptr :}
+   p ACAP-W32@ 5 rshift $FFFF and
+   p 4 + ACAP-W32@ 5 rshift $FFFF and 16 lshift or
+   p 8 + ACAP-W32@ 5 rshift $FFFF and 32 lshift or
+   p 12 + ACAP-W32@ 5 rshift $FFFF and 48 lshift or ;
+
 : ACAP-ADD-DSITE ( n -- ) {: boff:n :}   \ store blob offset as u16 (blob < 64K)
    AOT-DSITE-N @ AOT-DSITE-MAX >= if s" aot-capture: too many DATA sites" 74 die then
    boff $FFFF > if s" aot-capture: DATA site offset exceeds u16" 74 die then
    boff  AOT-DSITE-N @ 2 * AOT-DSITE-BUF@ +  AOT-P16!
    AOT-DSITE-N @ 1+ AOT-DSITE-N ! ;
-: ACAP-SCAN-DATA ( n n -- ) {: d0:n d1:n :}
-   d0 AOT-DATA-D0 !  d1 d0 - AOT-DATA-SIZE !
-   0 ACAP-P !
-   begin ACAP-P @ 16 + AOT-BLOB-LEN @ <= while
-      AOT-BLOB-BUF@ ACAP-P @ + ACAP-LIT9? if
-         AOT-BLOB-BUF@ ACAP-P @ + ACAP-LIT9V {: v:n :}
-         v d0 >= v d1 < and if ACAP-P @ ACAP-ADD-DSITE then
-         ACAP-P @ 16 + ACAP-P !
-      else
-         ACAP-P @ 4 + ACAP-P !
-      then
-   repeat ;
 
-\ --- scan the blob for CODE-address literals (movz/movk x9, value in the captured
-\ code range [b0,b1)) -- anonymous quotation entry addresses -- record their blob
-\ offsets for the boot CODE-reloc pass, and canonicalize each into a b0-relative
-\ offset. The boot pass rebases every recorded literal (and LAOTCODEB0) by the code
-\ delta (seedCP - captureB0), so the ONLY invariant the stored value must preserve is
-\ (value - b0). Before the JIT region moved it mapped at a fixed VA, so the raw
-\ captured absolute (region base + offset) was builder-invariant and the seed reached
-\ a byte fixpoint. Since the move the region base is the runtime __text-relative base
-\ (ASLR-varying on macOS, fixed VMBASE on Linux), so a raw absolute makes the baked
-\ blob depend on the builder's live region and the seed never fixes. Store the offset
-\ (value - b0) with captureB0 = 0: the baked bytes are then independent of the
-\ builder's live region, and the boot delta (seedCP - 0 = seedCP, giving seedCP +
-\ offset) reproduces the old raw-absolute relocation result byte-for-byte. ---
 : ACAP-ADD-CSITE ( n -- ) {: boff:n :}   \ append (as u16) after the DATA offsets in the DSITE buffer
    AOT-DSITE-N @ AOT-CSITE-N @ + AOT-DSITE-MAX >= if s" aot-capture: too many reloc sites" 74 die then
    boff $FFFF > if s" aot-capture: CODE site offset exceeds u16" 74 die then
    boff  AOT-DSITE-N @ AOT-CSITE-N @ + 2 * AOT-DSITE-BUF@ +  AOT-P16!
    AOT-CSITE-N @ 1+ AOT-CSITE-N ! ;
-: ACAP-SCAN-CODE ( n n -- ) {: b0:n b1:n :}
-   0 AOT-CODE-B0 !                                      \ canonical code base 0: literals stored b0-relative
+
+\ The refusal, with the site named. A capture that cannot classify one of its own
+\ recorded chains has nothing correct to bake, so it dies rather than choosing.
+: ACAP-UNCLASSIFIED ( n n -- ) {: boff:n v:n :}
+   s" aot-capture: recorded address site at blob offset " type boff .
+   s" carries " type v .
+   s" which is in neither the window's DATA span nor its code span" type cr
+   s" aot-capture: recorded address site outside both window spans" 74 die ;
+
+\ The DATA half, and the totality check. Every recorded site is classified here:
+\ one in the DATA span is recorded for the boot DATA-reloc pass, one in the code
+\ span is left for the second sweep, and one in neither ends the build.
+: ACAP-SCAN-DSITES ( n n n n -- ) {: bstart:n bend:n d0:n d1:n :}
+   d0 AOT-DATA-D0 !  d1 d0 - AOT-DATA-SIZE !
    0 ACAP-P !
-   begin ACAP-P @ 16 + AOT-BLOB-LEN @ <= while
-      AOT-BLOB-BUF@ ACAP-P @ + ACAP-LIT9? if
-         AOT-BLOB-BUF@ ACAP-P @ + ACAP-LIT9V {: v:n :}
-         v b0 >= v b1 < and if
-            ACAP-P @ ACAP-ADD-CSITE
-            AOT-BLOB-BUF@ ACAP-P @ +  v b0 -  ACAP-SET-LIT9   \ bake the builder-independent b0-relative offset
+   begin ACAP-P @ SNAP-RELOC:ADDR-CHAIN-BYTES + AOT-BLOB-LEN @ <= while
+      bstart ACAP-P @ ACAP-CHAIN-BIT? if
+         AOT-BLOB-BUF@ ACAP-P @ + ACAP-CHAINV {: v:n :}
+         v d0 >= v d1 < and if
+            ACAP-P @ ACAP-ADD-DSITE
+         else
+            v bstart >= v bend < and 0= if ACAP-P @ v ACAP-UNCLASSIFIED then
          then
-         ACAP-P @ 16 + ACAP-P !
-      else
-         ACAP-P @ 4 + ACAP-P !
       then
+      ACAP-P @ 4 + ACAP-P !
+   repeat ;
+
+\ The CODE half. Its sites are the anonymous quotation entry addresses, and each
+\ is canonicalized into a b0-relative offset with captureB0 = 0. The boot pass
+\ rebases every recorded literal by the code delta (seedCP - captureB0), so the
+\ only invariant the stored value must preserve is (value - b0). Before the JIT
+\ region moved it mapped at a fixed VA and a raw absolute was builder-invariant;
+\ since the move the region base is the runtime __text-relative base (ASLR-varying
+\ on macOS, fixed VMBASE on Linux), so a raw absolute would make the baked blob
+\ depend on the builder's live region and the seed would never reach a fixpoint.
+\ Storing the offset reproduces the old relocation result byte-for-byte.
+\
+\ IT IS A SECOND SWEEP AND NOT A SECOND TEST, because the two site lists share one
+\ buffer with every DATA offset ahead of every code offset - ACAP-ADD-CSITE
+\ appends past AOT-DSITE-N - so the DATA sweep has to finish before the first code
+\ offset is written.
+: ACAP-SCAN-CSITES ( n n -- ) {: bstart:n bend:n :}
+   0 AOT-CODE-B0 !                                      \ canonical code base 0
+   0 ACAP-P !
+   begin ACAP-P @ SNAP-RELOC:ADDR-CHAIN-BYTES + AOT-BLOB-LEN @ <= while
+      bstart ACAP-P @ ACAP-CHAIN-BIT? if
+         AOT-BLOB-BUF@ ACAP-P @ + ACAP-CHAINV {: v:n :}
+         v bstart >= v bend < and if
+            ACAP-P @ ACAP-ADD-CSITE
+            AOT-BLOB-BUF@ ACAP-P @ +  v bstart -  ACAP-SET-CHAIN
+         then
+      then
+      ACAP-P @ 4 + ACAP-P !
    repeat ;
 
 \ --- boot-run list: append a top-level entry-word NAME to the 0-terminated
@@ -397,8 +464,8 @@ public
    bstart bend ACAP-COPY-BLOB
    rend rstart ?do i bstart ACAP-ADD-REC loop
    ACAP-SCAN-CALLS
-   d0 d1 ACAP-SCAN-DATA
-   bstart bend ACAP-SCAN-CODE
+   bstart bend d0 d1 ACAP-SCAN-DSITES
+   bstart bend ACAP-SCAN-CSITES
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
    ACAP-PWID-CAPTURE                            \ serialize the protected-WID bitmap
