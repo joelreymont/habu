@@ -5857,3 +5857,22 @@ ratchets). A red whose failing member does not reference the changed
 code, on a fully-cold run, is this - prove it (the fold census reporter
 reads clean at the throw site), then rerun sequentially. Two sequential
 greens settle it.
+
+## Before minting a name, grep for what the engine already bakes (2026-08-11)
+
+Two of the DEFER-DIAG landing's ten lint findings dissolved by deletion:
+ONELF duplicated the NL-KW byte the engine already bakes, LDEFLF
+duplicated LOPENNL, the newline label three unrelated diagnostics
+already write. Finding the existing surface cut the finding count by
+two with no new ownership at all.
+
+## A file's own package comments are law (2026-08-11)
+
+The HOLD-EMIT comment in habu2.f ("they own one concern between them
+... rather than joining the global emitter surface around them, which
+is pre-existing debt and not a pattern to extend") is a general rule,
+and reading it overturned a placement ruling made from outside the
+file. The precedent that looked like it settled the question
+(KWDATA:LKWTRUSTRAW) actually distinguished it: KWDATA holds a label
+whose CONSUMER lives in another package. Labels couple to their
+concern's package when one exists.
