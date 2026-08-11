@@ -5876,3 +5876,43 @@ file. The precedent that looked like it settled the question
 (KWDATA:LKWTRUSTRAW) actually distinguished it: KWDATA holds a label
 whose CONSUMER lives in another package. Labels couple to their
 concern's package when one exists.
+
+## The relocation lane's twelve (2026-08-11)
+
+Closing lessons from the per-site relocation lane, verbatim from its
+two workers:
+1. The gate builds its own candidate, so a locally-fresh binary proves
+   nothing about what the gate measures.
+2. A parity table can be tied to the model by a different suite than
+   the one that looks like it owns it; falsify each clause against the
+   suite that actually reds.
+3. A refusal reached through a shape another guard already rejects
+   proves nothing about the guard you meant.
+4. A stricter replacement pass reds a size ratchet with the same
+   signal as a broken one - explain the count before touching the row.
+5. A record replacing a heuristic must enumerate every path that
+   REPRODUCES the artifact, not just every path that creates it; the
+   inliner's refusal set is the map of what the tree already knew was
+   copy-unsafe, so a refusal list is where to look for what a new
+   record must propagate.
+6. A shape test that counts raw substrings makes source prose part of
+   its input - check the counting tests before writing the comment.
+7. A test that reports a failure must not then dereference the value
+   the failed assertion was about (a clean red became SIGSEGV that
+   reported nothing).
+8. The package diff lint's refusal names the owner for you - read it.
+9. A move-only refactor of a builder file can be proved neutral:
+   build, byte-compare, then add the behaviour - which is what makes
+   the next size delta attributable.
+10. After a merge, start with `jj new <master>` - `jj rebase -r @` on
+    already-merged content duplicates the merge commit and conflicts
+    on any file the merge deleted.
+11. A guard's failure code is not its failure path: read what the
+    guard IS (a value in a cell, not a code at a site) before masking
+    to a value you assume it recognises. Zero in a dispatch cell was
+    measured as a diagnostic-free SIGSEGV.
+12. Check that the acceptance has a subject before building the
+    mechanism: three cheap reads showed the native chain never runs
+    in a capture window, so the intern leaf's acceptance had nothing
+    to observe. The feature can be fine while the observation path
+    does not exist.
