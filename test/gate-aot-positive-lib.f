@@ -5,6 +5,7 @@
 require test/gate-pool.f
 
 package AOT-POSITIVE
+using HB-BUILD-CLI                       \ the preseed knobs and the json flag
 
 46 constant DOT
 99 constant C-LOWER
@@ -588,4 +589,5 @@ public
    GT-CLEANUP
    s" PASS: native hb-build AOT positive gate phase" type cr ;
 
+;using
 ;package

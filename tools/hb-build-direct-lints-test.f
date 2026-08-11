@@ -42,8 +42,8 @@ $7A02 constant SIG-SENTINEL-RC
    SIG-SENTINEL-RC throw ;
 
 : INSTALL-SENTINELS ( -- )
-   [: AOT-SENTINEL ;] is HBB-AOT-LINT-HOOK
-   [: SIG-SENTINEL ;] is HBB-SIGNATURE-LINT-HOOK ;
+   [: AOT-SENTINEL ;] is HB-BUILD-CLI:HBB-AOT-LINT-HOOK
+   [: SIG-SENTINEL ;] is HB-BUILD-CLI:HBB-SIGNATURE-LINT-HOOK ;
 
 INSTALL-SENTINELS
 
@@ -52,6 +52,7 @@ INSTALL-SENTINELS
 require tools/hb-build-direct-lints.f
 
 package HB-BUILD-DIRECT-LINTS-TEST
+using HB-BUILD-CLI
 private
 
 $4000 constant CAP
@@ -221,4 +222,5 @@ variable MISSING-U
 
 MAIN
 
+;using
 ;package

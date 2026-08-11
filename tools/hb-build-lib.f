@@ -14,6 +14,15 @@ require tools/hb-build-report.f
 require tools/object-image.f
 require tools/event-closure-lib.f
 
+\ The hb-build command's implementation lives in package HB-BUILD-CLI.
+\ Everything below is private to it; the export block at the end of the file
+\ names the whole surface other files call. The package is NOT named HBB: the
+\ `HBB-` tails would then repeat their own package owner, which
+\ package-diff-lint reports as E-REDUNDANT-PACKAGE-PREFIX the moment one of
+\ their heads changes - and changing ~12 of them is what this packaging exists
+\ to unblock. HB-BUILD is taken by the report module (tools/hb-build-report.f),
+\ a different concern with its own published surface.
+package HB-BUILD-CLI
 using BUILD-FIXPOINT                     \ the emitted-source and tmp-root surface
 
 64 constant HBB-USAGE-RC
@@ -1049,4 +1058,29 @@ HBB-INSTALL-CHILD-LINTS
    HBB-BUILD-CLI
    HBB-CLEANUP ;
 
+\ ---------------------------------------------------------------------------
+\ The HB-BUILD-CLI surface: the words other files call, promoted in one place
+\ so the whole export list reads at a glance. tools/hb-build.f runs the entry
+\ with the package closed; the two lint hooks are `defer` words their installer
+\ assigns through the QUALIFIED name, because `is` resolves its target through
+\ the engine's own lookup and does not consult used publics.
+
+public
+
+EXPORT HBB-AOT-LINT-HOOK
+EXPORT HBB-BUILD
+EXPORT HBB-EXIT
+EXPORT HBB-JSON
+EXPORT HBB-MAIN
+EXPORT HBB-PATHS!
+EXPORT HBB-PRESEED-ENTRY!
+EXPORT HBB-PRESEED-SEED!
+EXPORT HBB-RESET-OPTIONS
+EXPORT HBB-RUN-AOT-LINT
+EXPORT HBB-RUN-SIGNATURE-LINT
+EXPORT HBB-SIGNATURE-LINT-HOOK
+EXPORT HBB-SRC$
+EXPORT HBB-STRICT-ON
+
 ;using
+;package

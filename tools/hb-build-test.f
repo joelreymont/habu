@@ -33,6 +33,14 @@ require tools/source-arena-policy.f
 
 using BUILD-FIXPOINT                     \ the build tmp root and engine override
 
+\ This fixture drives the hb-build library's internals, so it REOPENS package
+\ HB-BUILD-CLI rather than importing a public surface: exporting those
+\ internals would widen the library's interface for the benefit of its own
+\ test. The local fixture scopes this file used to carry (HBT, HBT-CAP,
+\ HBT-JSON) were there only because the file had no package of its own; they
+\ are ordinary private words of the library's package now.
+package HB-BUILD-CLI
+
 64 constant HBT-KEY-U
 65536 constant HBT-CAPTURE-CAP
 120000 constant HBT-TIMEOUT-MS
@@ -271,8 +279,6 @@ create HBT-EXP-HEX2 64 allot
    HBB-BUILD
    BF-TMP-RESET ;
 
-package HBT-CAP
-
 variable REPL-N
 variable AOT-N
 
@@ -290,16 +296,12 @@ variable AOT-N
    SOURCE-SIZE AOT-N !
    BF-TMP-RESET ;
 
-public
-
 : CHECK ( -- )
    MEASURE-REPL
    MEASURE-AOT
    REPL-N @ AOT-N @ max SOURCE-ARENA:NEED {: need:n :}
    SOURCE-ARENA-CAP need >= TTRUE
    SOURCE-ARENA-CAP SOURCE-ARENA:NEXT-POW2 SOURCE-ARENA-CAP T= ;
-
-;package
 
 : HBT-REMOVE-FILE? ( ptr u8 n -- )
    2dup FILE? if REMOVE-FILE else 2drop then ;
@@ -364,10 +366,6 @@ public
    HBB-LF SB-APPEND-C
    SB$ ;
 
-package HBT-JSON
-
-private
-
 here CELL 1- and CELL swap - CELL 1- and allot
 create READER-STATE JR:STORAGE-BYTES allot
 
@@ -375,8 +373,6 @@ create READER-STATE JR:STORAGE-BYTES allot
    JR:TOKEN JR:T-STR T=
    HBT-REPORT-BUF FS-PATH-CAP JR:STR {: gotu:n :}
    HBT-REPORT-BUF gotu want wantu T$= ;
-
-public
 
 : CHECK-REPORT ( ptr u8 n n n n n n -- )
    {: a:ptr u:n artifact:n object:n maker:n built:n ran:n :}
@@ -406,8 +402,6 @@ public
    JR:INT 0 >= TTRUE
    JR:CLOSE ;
 
-;package
-
 : HBT-REPL-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
    s" 10" SB-APPEND
@@ -418,15 +412,11 @@ public
    HBB-LF SB-APPEND-C
    SB$ ;
 
-package HBT
-
-public
-
 : BUILD-REPL ( -- )
    HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
    HBT-HBB-BUILD-OUT
    HBT-REPL-OUT FILE? TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE HBT-JSON:CHECK-REPORT ;
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT ;
 
 : REBUILD-REPL-CACHE ( -- )
    HBT-REPL-OUT FILE? if HBT-REPL-OUT REMOVE-FILE then
@@ -435,9 +425,7 @@ public
    HBB-ARTIFACT-HIT @ 0 <> TTRUE
    HBB-MAKER-RUN @ 0= TTRUE
    HBT-REPL-OUT FILE? TTRUE
-   HB-BUILD:REPORT$ JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE HBT-JSON:CHECK-REPORT ;
-
-;package
+   HB-BUILD:REPORT$ JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
 
 : HBT-CACHE-KEY-CHANGES ( -- )
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
@@ -447,23 +435,13 @@ public
    HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL ;
 
-package HBT
-
-public
-
 : CLI-REPORT ( -- )
    HBT-ARGV-BASE
    HBT-ADD-REPORT
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 0 T=
    erru 0 T=
-   HBT-OUT outu JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE HBT-JSON:CHECK-REPORT ;
-
-;package
-
-package HBT-JSON
-
-public
+   HBT-OUT outu JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
 
 : CHECK-PATH-JSON ( -- )
    HBT-ARGV-BASE
@@ -493,8 +471,6 @@ public
    JR:NEXT JR:T-END T=
    JR:CLOSE ;
 
-;package
-
 : HBT-CHECK-PATH-TEXT ( -- )
    HBT-ARGV-BASE
    HBT-BAD-CACHE-ENV
@@ -504,17 +480,11 @@ public
    text-outu 0 T=
    HBT-ERR text-erru HBT-PATH-ERROR-TEXT$ T$= ;
 
-package HBT
-
-public
-
 : CLI-PATH-ERROR ( -- )
    HBT-BAD-OUT s" cache path file" WRITE-ALL
-   HBT-JSON:CHECK-PATH-JSON
+   CHECK-PATH-JSON
    HBT-CHECK-PATH-TEXT
    HBT-BAD-OUT REMOVE-FILE ;
-
-;package
 
 : HBT-REPORT-INVALIDATION ( -- )
    HB-BUILD:VALID? TTRUE
@@ -665,10 +635,6 @@ public
    HBT-AOT-HEX!
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
 
-package HBT
-
-public
-
 : BUILD-AOT-OBJECT-PRODUCER ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
@@ -678,7 +644,7 @@ public
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-OBJECT-STORE @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE HBT-JSON:CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT
    HBT-OBJ-LOAD? TTRUE
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
@@ -688,7 +654,7 @@ public
    HBB-OBJECT-STORE @ 0= TTRUE
    HBB-MAKER-RUN @ 0= TTRUE
    HBB-MAKER-BUILD @ 0= TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE HBT-JSON:CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT
    HBT-RUN-AOT
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
@@ -704,13 +670,11 @@ public
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-MAKER-HIT @ 0 <> TTRUE
    HBB-MAKER-RUN @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-TRUE HBT-JSON:CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    BF-TMP-RESET ;
-
-;package
 
 : HBT-BUILD-AOT-OBJECT-HIT ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
@@ -893,16 +857,15 @@ public
    HBB-KEY-LOAD-FILES
    CONTENT-KEY:BUF$ s" tools/dynamic-tail-manifest.f" CONTAINS? TTRUE ;
 
-package HBT
-
+\ Public so the driver below runs it with the package CLOSED: the subtests
+\ drive real builds, which resolve names in whatever package scope is open.
 public
-
-: MAIN ( -- )
+: HBT-MAIN ( -- )
    T-RESET
    HBT-MAKER-DIE-MSG
    HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
-   HBT-CAP:CHECK
+   CHECK
    BUILD-REPL
    REBUILD-REPL-CACHE
    CLI-REPORT
@@ -931,4 +894,4 @@ public
 
 ;using
 
-HBT:MAIN
+HB-BUILD-CLI:HBT-MAIN

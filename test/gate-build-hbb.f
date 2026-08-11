@@ -3,6 +3,7 @@
 \ Load after tools/hb-build-lib.f and test/gate-build-common.f.
 
 using BUILD-FIXPOINT                     \ the build tmp root
+using HB-BUILD-CLI                       \ the hb-build options and entry
 
 : GB-HBB-PREPARE ( -- )
    HBB-RESET-OPTIONS
@@ -30,4 +31,5 @@ using BUILD-FIXPOINT                     \ the build tmp root
    HBB-STRICT-ON
    GB-HBB-BUILD-OUT ;
 
-;using
+;using                                   \ HB-BUILD-CLI
+;using                                   \ BUILD-FIXPOINT
