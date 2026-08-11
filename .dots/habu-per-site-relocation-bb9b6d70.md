@@ -57,3 +57,35 @@ invisible to the window scan AND wrong to rebase by the window delta (their
 correct value is fixed by the prefix's own DP, which differs between
 metabuild host and bin/hb). Separate dot: habu-aot-pre-window (minted
 2026-08-11).
+
+DELIVERED AND MERGED (aotsite lane, 2026-08-11). The record replaced the value
+heuristic end to end for the ENGINE's own literals:
+ - stages 1-7 of the reloc work, including the per-site record and hir.addr;
+ - the chain's publisher records its address sites (addrmap-set);
+ - C-DATA-ADDR / C-DATA-ADDR-RAW record theirs, so the capture can FIND a
+   chain-compiled DATA address instead of recognising one by its value;
+ - the INLINER carries a copied chain's record with the chain
+   (SNAP-RELOC:CARRY-SITE). This was the defect the record alone would have
+   hidden: on the metabuild window the band recorded 21 DATA chains where 142
+   were present, because a `create`d data word's body is short enough that
+   C-CALL copies it into every caller and the copy landed at an offset nothing
+   had recorded. After the fix, 142 of 142, extra 0;
+ - the capture reads the bands and the value scans (ACAP-SCAN-DATA,
+   ACAP-LIT9?) are deleted; a recorded site the window cannot place is a named
+   refusal instead of silence;
+ - the captured window's DATA CONTENT is baked, with declared address cells
+   zeroed in the image and re-trapped at boot with the booting engine's own
+   defer-unset xt.
+Proven end to end, not by unit test: an engine-compiled DATA literal
+initialised inside a capture window is read back after capture and boot by a
+word compiled in that same window (PTY boot, test/aot-data-span-forge.f), so
+the bytes travel AND the address literal rebases.
+
+STILL OPEN, AND NOT REDEFINED DOWNWARD. Two acceptance demonstrations remain:
+the chain-compiled s-quote returning its bytes, and the host-vs-seeded binding
+mutation pair. Both need the native chain to run inside a capture window, so
+both are blocked by habu-seed-the-chain-e98b03d4 (Stage B) and by
+habu-aot-has-no-0b01043c, which is a precondition of that work rather than a
+follow-up to it: content-keyed interning hands a window word the PRE-window
+address of any body the prefix already interned.
+
