@@ -21,7 +21,34 @@ require tools/lint/lib.f
 package CLOBBER-CENSUS
 
 301 constant MIN-ROUTINES   \ observed production floor; lower counts need review
-470 constant MIN-CALLS      \ direct BL + wrapped emitter calls; lower counts need review
+\ Direct BL + wrapped emitter calls; lower counts need review. 470 -> 458 on
+\ 2026-08-11, reviewed and derived exactly, not fitted: the code-region
+\ protection flip became PROT:LOPEN / PROT:LCLOSE (dot
+\ habu-narrow-the-code-291b2cef), so 47 sites that read `LPROT LABEL@ BL,` now
+\ read `PROT:LOPEN LABEL@ BL,`, and one bare `LGROW LABEL@ BL,` site was added
+\ inside PROT:RESERVE. 504 - 47 + 1 = 458, measured on both trees.
+\
+\ WHY THOSE 47 STOPPED COUNTING, WHICH IS A DEFECT IN THIS FILE AND NOT IN THE
+\ ENGINE: START-L? below asks whether the FIRST character of the label token is
+\ `l`, so a package-qualified label fails it however its tail is spelled. The
+\ predicate is shared by COLLECT-OPENINGS and CALLEE?, so such a label is not
+\ merely uncounted - its routine is never analysed and its callers never see its
+\ clobbers. The tree's other packaged labels (SNAP-RELOC, HIDX, AOT-WINDOW,
+\ DEFER-DIAG, HOLD-EMIT, KWDATA) have been invisible the same way all along.
+\ Reading the segment after the LAST colon fixes it and was measured to work
+\ here: routines 335 -> 347, calls 504 -> 518, clean, once LCEMIT's and
+\ PROT:LGROW's PRESERVE-MASK rows and a PSEUDO? row for PROT:RESERVE are added.
+\ It is not applied here because every changed word in this file, its test and
+\ its fixture is a bare global, so package-diff-lint requires the whole legacy
+\ file to be packaged first: dot habu-clobber-lint-cannot-305ed456.
+\
+\ NOTHING THE LOWERED FLOOR HIDES IS NEW. The 47 sites clobber exactly what they
+\ clobbered before - PROT:LOPEN and PROT:LCLOSE cost their callers the same
+\ x0/x1/x2, syscall-number register and x30 that the whole-region LPROT flip they
+\ replaced cost - and the code around each site is unchanged. The one site whose
+\ surroundings moved (EM-SEED-AOT, which now reads the blob length before the
+\ flip instead of after) moved a value in x11, which no flip has ever touched.
+458 constant MIN-CALLS
 
 variable ROUTINE-N
 variable CALL-N

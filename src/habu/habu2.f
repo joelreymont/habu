@@ -449,9 +449,9 @@ s" c-bp-watch-head" s" --" TRUST
 s" c-bp-watch-row" s" --" TRUST
 
 : C-BP-RESTORE-ONESHOT ( -- )
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    8 SP 40 LDR,  11 8 0 LDR,  12 8 8 LDR,  12 11 0 STRW,
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL,
    9 11 0 ADDI,  LFLUSH LABEL@ BL,
    8 SP 40 LDR,  12 0 MOVZ,  12 8 0 STR, ;
 s" c-bp-restore-oneshot" s" --" TRUST
@@ -2424,7 +2424,7 @@ public
    LBL {: nocr :}
    LDOESPATCH LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                                \ region -> RW
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ region -> RW
    10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
    12 11 0 LDR,  13 11 8 LDR,  12 12 13 ADD,             \ x12 = RET addr
@@ -2433,7 +2433,7 @@ public
    5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
    14 12 0 STRW,
    12 SP 16 STR,
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                                \ region -> RX
+   PROT:LCLOSE LABEL@ BL,                                \ region -> RX
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
@@ -2469,6 +2469,7 @@ public
       10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  16 10 CMP,  C-LT capok BCOND,
          fail B,
       capok LBL,
+      1 15 0 ADDI,  PROT:RESERVE                 \ a long name is a direct write at CP
       CP 9 24 STR,
       10 DATA TKA-CELL LDR,
       11 CP 0 ADDI,
@@ -2763,7 +2764,7 @@ s" c-store-def-name" s" --" TRUST
    LBL {: nokind :}
    LCREATE LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    LTOK LABEL@ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
@@ -2777,7 +2778,7 @@ s" c-store-def-name" s" --" TRUST
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    9 DATA LASTC-CELL STR,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE 6 C-DEFHOOK
    nokind LBL,
@@ -2803,7 +2804,7 @@ package INTERP-EMIT
 \ check-all-errors-test const-layout-narrow fixture.
 : C-CONSTANT ( -- )
    C-TASK-LIVE-GUARD
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,  LTOK LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,  LTOK LABEL@ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -2816,7 +2817,7 @@ package INTERP-EMIT
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    9 DATA LASTC-CELL STR,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    LKWCONST 8 C-DEFHOOK
    LASTC-TRUST:PUBLISH-A ;
 
@@ -2852,7 +2853,7 @@ package INTERP-EMIT
 : C-TRUSTED ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL LBL {: cpok ndok done :}
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       C-DIE-CODE-FULL
    cpok LBL,
@@ -2986,6 +2987,7 @@ s" c-defer-cell" s" --" TRUST
 s" c-defer-emit-code" s" --" TRUST
 
 : C-DEFER-META-WRITE ( -- )
+   1 16 MOVZ,  PROT:RESERVE                        \ two cells written straight at CP
    11 DEFER-MAGIC LIT64,  11 28 0 STR,  28 28 8 ADDI,
    11 DATA DEFER-XT-CELL LDR,  11 28 0 STR,  28 28 8 ADDI, ;
 s" c-defer-meta-write" s" --" TRUST
@@ -3059,7 +3061,7 @@ s" c-pretrust-ready?" s" --" TRUST
 : C-DEFER ( -- )
    C-TASK-LIVE-GUARD
    LBL {: named :}
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    C-DEFER-ROOM
    LTOK LABEL@ BL,  0 named CBNZ,
       DEFER-DIAG:DIE-NO-NAME
@@ -3079,7 +3081,7 @@ s" c-pretrust-ready?" s" --" TRUST
    C-DEFER-META-WRITE
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    LBL LBL {: ready pdone :}                          \ typed-local-lint: allow-bare-local — pre-trust defer capability (dot habu-engine-pre-trust-77410827)
    C-PRETRUST-READY?  13 ready CBNZ,
       C-PD-CAPTURE  pdone B,                          \ trust/checker-defer absent: record into the pending table
@@ -3156,10 +3158,10 @@ s" j-is" s" --" TRUST
 s" bdrainpretrust" s" --" TRUST
 
 : C-IMMEDIATE ( -- )
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 9 16 STR,
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL, ;
+   PROT:LCLOSE LABEL@ BL, ;
 
 : C-POSTPONE ( -- )
    LBL LBL LBL {: pok pnimm pdone :}
@@ -3759,6 +3761,7 @@ s" c-lbrace-die" s" --" TRUST
    12 CP 0 ADDI,
    C-QUOTE-RESTORE
    11 16 0 ADDI,  9 10 0 ADDI,
+   1 10 0 ADDI,  PROT:RESERVE                      \ the literal's bytes go straight at CP
    cl LBL,  9 cd CBZ,
       14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
    cd LBL,
@@ -3782,6 +3785,7 @@ s" c-lbrace-die" s" --" TRUST
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT LABEL@ BL,
    12 CP 0 ADDI,
    C-QUOTE-RESTORE
+   1 10 1 ADDI,  PROT:RESERVE                      \ count byte + the literal's bytes, at CP
    10 28 0 STRB,  28 28 1 ADDI,
    11 16 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
@@ -3810,6 +3814,7 @@ s" c-lbrace-die" s" --" TRUST
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,
    13 CP 0 ADDI,
    C-ESC-QUOTE-RESTORE
+   1 10 0 ADDI,  PROT:RESERVE                      \ the decoded bytes go straight at CP
    11 16 0 ADDI,  12 16 15 ADD,  17 28 0 ADDI,
    C-ESC-COPY-X17
    28 17 0 ADDI,
@@ -3833,6 +3838,7 @@ s" c-lbrace-die" s" --" TRUST
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,
    13 CP 0 ADDI,
    C-ESC-QUOTE-RESTORE
+   1 10 1 ADDI,  PROT:RESERVE                      \ count byte + the decoded bytes, at CP
    10 28 0 STRB,  28 28 1 ADDI,
    11 16 0 ADDI,  12 16 15 ADD,  17 28 0 ADDI,
    C-ESC-COPY-X17
@@ -4393,9 +4399,9 @@ public
    11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N
    11 askip CBZ,                                    \ nothing captured -> skip
    bad EM-AOT-VALIDATE
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                       \ region -> RW
-   11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length (for the copy)
-   EM-AOT-COPY-BLOB
+   11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length, read before the flip
+   1 CP 11 ADD,  PROT:LOPEN LABEL@ BL,              \ region -> RW over the blob's landing span
+   EM-AOT-COPY-BLOB                                 \ x11 rides the kernel-preserved x2-x15 band
    EM-AOT-REGISTER-RECS
    EM-AOT-PATCH-SITES
    EM-AOT-RELOC-DATA
@@ -4403,7 +4409,7 @@ public
    9 CP 0 ADDI,                                     \ x9 = blob base (= CP before advance) for the flush
    11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length again
    CP CP 11 ADD,                                    \ code area top past the blob
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                       \ region -> RX
+   PROT:LCLOSE LABEL@ BL,                           \ region -> RX
    LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
    EM-AOT-BOOTRUN                                   \ install the REPL (no source): LFIND+blr the entry words
    askip B,
@@ -4827,8 +4833,18 @@ public
    11 16 8 SUB,
    SNAP-RELOC:LADDRS LABEL@ BL, ;
 
+\ The region at rest, established once at the end of EM-STARTUP on BOTH boot
+\ paths. It is the only whole-region flip left and the only caller of the
+\ unbounded LPROT: everything else flips the window it opened. The cold path
+\ needs it because EM-MMAP-CODE-REGION maps the region RW and the narrow closes
+\ would then never touch the pages above the seeded code; the snapshot path needs
+\ it because the restore writes the whole region. Clearing PROT:WINDOW belongs
+\ here with it: "whole region RX" and "no window open" are one state, and a
+\ restored image's DATA copy can otherwise carry a window end from the run that
+\ wrote it.
 : EM-SNAPSHOT-RX-FLUSH ( -- )
    2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   9 0 MOVZ,  9 DATA PROT:WINDOW STR,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH LABEL@ BL, ;
 
 : EM-SNAPSHOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
@@ -4969,7 +4985,6 @@ public
    \ verbatim, so nothing else would ever move these cells.
    10 DBASE 0 ADDI,  9 RBASE-VA LIT64,  10 10 9 SUB,
    SNAP-RELOC:LXT LABEL@ BL,
-   EM-SNAPSHOT-RX-FLUSH
    24 1 MOVZ,
    24 DATA SNAP-CELL STR,
    snomag LBL, ;
@@ -5047,7 +5062,8 @@ public
    EM-MMAP-DATA-REGION
    EM-DATA-INIT
    EM-SNAPSHOT-RESTORE
-   EM-STARTUP-RUNTIME-STATE ;
+   EM-STARTUP-RUNTIME-STATE
+   EM-SNAPSHOT-RX-FLUSH ;                \ the region at rest: whole region RX, no window open
 
 \ Checker package-scope resync drain (dot habu-recovery-pkg-scope-e0bd98e2). A
 \ compile-error recovery rolls the ENGINE package scope back to the boundary
@@ -5103,7 +5119,7 @@ public
          76 C-DIE-TOKEN-NL
       p2ok LBL,
       C-TASK-LIVE-GUARD
-      2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+      1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
          C-DIE-CODE-FULL
       cpok LBL,
@@ -5310,9 +5326,9 @@ s" c-package-seal-guard" s" --" TRUST
    hastok LBL,
    C-CALL-CHECKER-PACKAGE
    C-PACKAGE-SEAL-GUARD
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    C-PACKAGE-ENSURE
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL,
    \ remember the using-scope depth at package open; `;package` restores it so usings
    \ opened inside this package block end at ;package (x9=addr, x10=value scratch;
    \ x11/x12/x5 hold the package wids/record and stay live for the stores below).
@@ -5596,7 +5612,7 @@ s" c-end-using" s" --" TRUST
    ret LBL,  RET,
    amb LBL,
       0 2 MOVZ,  1 ambmsg ADR,  2 60 MOVZ,  NR-WRITE SYS,
-      2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                                  \ region -> RX (idempotent; a compile-path caller is RW here)
+      PROT:LCLOSE LABEL@ BL,                                  \ region -> RX (idempotent; a compile-path caller is RW here)
       94 C-DIE-TOKEN-NL                               \ 94 = ENGINE-ERROR:USING-AMBIGUOUS
    ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
 s" emit-find-used" s" --" TRUST
@@ -5674,7 +5690,7 @@ s" c-export-tail!" s" --" TRUST
    11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,      \ checker sees the ORIGINAL spelling
    12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
    C-CALL-CHECKER-EXPORT
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    C-EXPORT-TAIL!                                        \ tail again for the publish (pure rescan)
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    C-STORE-DEF-NAME
@@ -5687,7 +5703,7 @@ s" c-export-tail!" s" --" TRUST
    16 14 $FF00 ANDI,  16 16 44 LSLI,  15 15 16 ORR,     \ flag bits 8-15 -> DNAME-MIN-IN (same body, same certified arity)
    15 9 16 STR,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL,
    SP SP 32 ADDI,
    done LBL, ;
 s" c-export" s" --" TRUST
@@ -6583,7 +6599,7 @@ public
 \ reset the per-definition compile state exactly as EM-INTERPRET-COLON does,
 \ re-emit the prologue, and re-run the compile loop width-aware.
 : EM-P2-START ( -- )
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    LOWER-TXN:SEAL
    9 DATA INP-CELL LDR,  9 DATA P2INP-CELL STR,
    9 DATA INE-CELL LDR,  9 DATA P2INE-CELL STR,
@@ -6665,7 +6681,7 @@ s" em-p2-finish" s" --" TRUST
 : EM-COMPILE-FLUSH-PEND ( -- )
    11 DATA PEND-CELL LDR,
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL, ;
+   PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
 s" em-compile-flush-pend" s" --" TRUST
 
 : EM-COMPILE-PUBLISH-TRUSTED ( label -- ) {: publish:label :}
@@ -6982,7 +6998,7 @@ s" em-compile-ops" s" --" TRUST
       LP2CWAT LABEL@ BL,                          \ x10 = extra pads, x11 = found
       11 noxc CBZ,                                \ ordinary call (no fact): normal lowering
       SP SP 16 SUBI,  10 SP 0 STR,                \ frame the count across LVPUSHC spills
-      2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                 \ region -> RW for emission
+      1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                 \ region -> RW for emission
       ploop LBL,
          10 SP 0 LDR,  10 pdone CBZ,
          11 0 MOVZ,  LVPUSHC LABEL@ BL,           \ push one extra zero pad below the declared body's pads
@@ -7001,7 +7017,7 @@ s" em-compile-ops" s" --" TRUST
          10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ compile-time depth < declared inputs -> named reject BEFORE the immediate BLRs below the interpret base (dict region still RW here; LDIAGRET restores RX)
       depthok LBL,
       SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
-      2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+      PROT:LCLOSE LABEL@ BL,
       9 DATA HOOK-CELL LDR,  9 callimm CBZ,
       9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ,  9 SP 16 STR,
       9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
@@ -7012,7 +7028,7 @@ s" em-compile-ops" s" --" TRUST
       9 SP 16 LDR,  9 BLR,
       callimm LBL,
       11 SP 8 LDR,  11 BLR,
-      2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+      1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
       30 SP 0 LDR,  SP SP 32 ADDI,
       LMAIN LABEL@ B,
    notimm LBL,
@@ -7193,7 +7209,7 @@ s" em-repl-recover" s" --" TRUST
       \ (CP/NDICT/XDS/DP) -- and delivers to the enclosing catch, or fails closed with
       \ rc70 when no handler exists (exactly like LRDIE). We abort mid-compile with the
       \ dict region RW; restore RX before re-entering executable (EV/handler) code.
-      2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                           \ region -> RX
+      PROT:LCLOSE LABEL@ BL,                           \ region -> RX
       15 RC-REJECT MOVZ,                                    \ x15 = throw code
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (frame unwind + deliver)
    LUN0 LABEL@ LBL,
@@ -7205,7 +7221,7 @@ s" em-repl-recover" s" --" TRUST
    \ above and LCOMPILEDIE's ldie leg already do; idempotent for the interpret-level diagnostics
    \ (LWIDE/LINTERNAL/LMININ) that share this LUN0 tail with the region already RX. Pre-existing
    \ crash surfaced by the REPL package-scope fixture (in-package `: FOO NOPEWORD ;` at the tty).
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL,
    EM-REPL-RECOVER
    LRDIE LABEL@ LBL,
    0 70 MOVZ,  NR-EXIT-GROUP SYS,
@@ -7260,11 +7276,11 @@ s" em-compile-undef" s" --" TRUST
    LCOMPILEDIE LABEL@ LBL,                                  \ entry: x0 = sysexits exit/throw code (die site just wrote its diagnostic)
    15 0 0 ADDI,                                             \ x15 = code (survives LPROT; LEVALREC delivers it as the throw code)
    9 DATA EVALD-CELL LDR,  9 ldie CBZ,                      \ EVALD==0 -> no eval frame (top level / tty REPL); EVALD>0 -> unwind escaped eval frames
-      2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                           \ region -> RX
+      PROT:LCLOSE LABEL@ BL,                           \ region -> RX
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
    ldie LBL,
    9 DATA REPLH-CELL LDR,  9 rdie CBZ,                      \ tty-REPL parity (dot habu-convert-residual-compile-f460b9f2): REPLH!=0 -> recover the interactive session exactly like LUNDEF/LDIAGRET's LUN0 leg instead of exiting; REPLH==0 (script/--load/stdin) -> fail-closed exit byte-identically
-      2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                           \ region -> RX (idempotent) before re-entering REPL read/handler code: a compile die mid-:-body leaves the region RW
+      PROT:LCLOSE LABEL@ BL,                           \ region -> RX (idempotent) before re-entering REPL read/handler code: a compile die mid-:-body leaves the region RW
       LRREC LABEL@ B,                                       \ -> EM-REPL-RECOVER: roll back to the REPL line-start snapshot (same CP/NDICT/DP/XDS/compile-state surface + HIDX stale-skip as the eval-frame recovery) and re-read
    rdie LBL,
    NR-EXIT-GROUP SYS,                                       \ x0 still = code (REPLH==0): fail-closed exit unchanged
@@ -7367,7 +7383,7 @@ s" em-compile-exit" s" --" TRUST
       \ mid-compile with the dict region RW, so restore RX before the unwind
       \ re-enters executable (handler) code; mprotect is idempotent when the
       \ guard fired at interpret level with the region already RX.
-      2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                       \ region -> RX
+      PROT:LCLOSE LABEL@ BL,                           \ region -> RX
       15 RC-REJECT MOVZ,                                \ x15 = throw code
       10 DATA EVALREC-CELL LDR,  10 BR,                 \ -> LEVALREC (frame unwind + deliver)
    uf0 LBL,
@@ -7411,7 +7427,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 : EM-ADT-CON-FAM ( -- )                 \ CMM=1 leg: resolve family, arm state 2
    LBL LBL {: fmsg:label fok:label :}
    LBCAP LABEL@ BL,                     \ operand reaches the checker's body too
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,          \ region -> RX: checker-call window
+   PROT:LCLOSE LABEL@ BL,          \ region -> RX: checker-call window
    LTFLCONFAM 12 C-FIND-GLOBAL
    LADTPUSHTOK LABEL@ BL,
    C-CALL-X11-SAVED
@@ -7423,14 +7439,14 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    fok LBL,
    9 DATA CMFAM-CELL STR,
    12 2 MOVZ,  12 DATA CMM-CELL STR,
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,          \ region -> RW: resume emission
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,          \ region -> RW: resume emission
    LMAIN LABEL@ B, ;
 s" em-adt-con-fam" s" --" TRUST
 
 : EM-ADT-CON-PUSHES ( -- )              \ pads x 0 + tag as VS constants (x12=pads, x13=tag)
    LBL LBL {: ploop:label pdone:label :}
    SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,   \ frame the counters: LVPUSHC may
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                  \ spill (emission -> region RW first)
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ spill (emission -> region RW first)
    ploop LBL,
       12 SP 0 LDR,  12 pdone CBZ,
       11 0 MOVZ,  LVPUSHC LABEL@ BL,
@@ -7443,7 +7459,7 @@ s" em-adt-con-pushes" s" --" TRUST
 : EM-ADT-CON-VAR ( -- )                 \ CMM=2 leg: resolve variant, emit, mode off
    LBL LBL LBL {: vmsg:label vok:label nox:label :}
    LBCAP LABEL@ BL,                     \ operand reaches the checker's body too
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,          \ region -> RX: checker-call window
+   PROT:LCLOSE LABEL@ BL,          \ region -> RX: checker-call window
    LTFLCVAR 9 C-FIND-GLOBAL
    LADTPUSHTOK LABEL@ BL,
    9 DATA CMFAM-CELL LDR,  9 G-PUSH
@@ -7494,6 +7510,7 @@ s" em-adt-con-var" s" --" TRUST
    15 CP 0 ADDI,  15 SP 16 STR,                        \ B-over addr (patch target)
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ emit B placeholder
    16 CP 0 ADDI,  16 SP 24 STR,                        \ msg start addr
+   1 12 13 ADDI,  PROT:RESERVE                      \ the whole message, copied at CP
    11 LBADTAGPFX LABEL@ ADR,  9 8 MOVZ,                \ copy "hb: bad " (8)
    p1 LBL,  9 p2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  p1 B,
    p2 LBL,
@@ -7522,7 +7539,7 @@ s" c-die-bad-tag" s" --" TRUST
 
 : EM-MATCH-SEMI ( -- )                  \ ;match: invalid-tag die + join + pop frame
    LBL LBL {: jl:label jd:label :}
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,          \ region -> RX: checker-friend call window
+   PROT:LCLOSE LABEL@ BL,          \ region -> RX: checker-friend call window
    LTFLNAME 10 C-FIND-GLOBAL
    LMFRTOP LABEL@ BL,  9 15 0 LDR,
    9 G-PUSH                             \ top match-frame family id
@@ -7530,7 +7547,7 @@ s" c-die-bad-tag" s" --" TRUST
    12 G-POP                             \ family name length
    11 G-POP                             \ family name address
    SP SP 16 SUBI,  11 SP 0 STR,  12 SP 8 STR,    \ frame the name span across the RW flip
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,          \ region -> RW: emission
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,          \ region -> RW: emission
    11 SP 0 LDR,  12 SP 8 LDR,  SP SP 16 ADDI,
    C-DIE-BAD-TAG                        \ emit the inline bad-tag die (no continuation)
    jl LBL,                              \ J-ENDCASE-style: patch every ENDOF B to the join
@@ -7547,7 +7564,7 @@ s" em-match-semi" s" --" TRUST
 : EM-ADT-MATCH-FAM ( -- )               \ CMM=3: resolve match family (signature scope)
    LBL LBL {: fmsg:label fok:label :}
    LBCAP LABEL@ BL,
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL,
    LTFLMATCHFAM 14 C-FIND-GLOBAL
    LADTPUSHTOK LABEL@ BL,
    C-CALL-X11-SAVED
@@ -7559,7 +7576,7 @@ s" em-match-semi" s" --" TRUST
    fok LBL,
    LMFRTOP LABEL@ BL,  9 15 0 STR,
    12 4 MOVZ,  12 DATA CMM-CELL STR,
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    LMAIN LABEL@ B, ;
 s" em-adt-match-fam" s" --" TRUST
 
@@ -7570,7 +7587,7 @@ s" em-adt-match-fam" s" --" TRUST
    0 notsemi CBZ,
       EM-MATCH-SEMI
    notsemi LBL,
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL,
    LTFLCVAR 9 C-FIND-GLOBAL
    LADTPUSHTOK LABEL@ BL,
    LMFRTOP LABEL@ BL,  9 15 0 LDR,  9 G-PUSH
@@ -7585,7 +7602,7 @@ s" em-adt-match-fam" s" --" TRUST
    13 DATA CMTAG-CELL STR,
    12 DATA CMPADS-CELL STR,
    12 5 MOVZ,  12 DATA CMM-CELL STR,
-   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    LMAIN LABEL@ B, ;
 s" em-adt-match-var" s" --" TRUST
 
@@ -7743,6 +7760,7 @@ package LABELS
 : CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL PROT:LOPEN !  LBL PROT:LCLOSE !  LBL PROT:LGROW !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !

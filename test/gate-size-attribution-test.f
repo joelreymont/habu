@@ -489,9 +489,41 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 16 KiB page, so MACOS-SIGNATURE 1295 and MACOS-TOTAL 148855 are unchanged and
 \ FILE-SIZE bin/hb stays 148855). The gate's candidate then confirmed it.
 \ The linux row below is owed a linux-host re-measure for both deltas.
-125160 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-11 macOS 125160 -> 125412 (+252): the code-region protection flip
+\ became a WINDOW - open it over the addresses a bracket will write, close
+\ exactly what was opened, grow it when emission runs past its end (dot
+\ habu-narrow-the-code-291b2cef). Predicted from the source before the candidate
+\ was measured and then reconciled instruction class by instruction class against
+\ the two binaries with ZERO residue - 63 instructions, 252 bytes:
+\   -96 MOVZ  the 48 EMITTED flip sites each lose `2 x MOVZ,` and `1 REGION
+\             LIT64,`. Forty-eight EMITTED, not 48 source sites: that is the same
+\             multiplicity the +192 row above measured as 49, of which the boot
+\             whole-region flip is the one left unconverted.
+\   +23       one length instruction at each OPEN site (21 ADDI + 2 ADD - the
+\             bulk publication and the AOT blob pass their own span). The 25
+\             CLOSE sites gain nothing: a close reads the window it is closing.
+\   +10 ADDI  the length each PROT:RESERVE site puts in x1 (11 emissions, one of
+\             which is a MOVZ constant).
+\   +66       11 emitted PROT:RESERVE expansions of 6 instructions. Eleven from
+\             seven source sites because C-STORE-NAME is an emit-time macro
+\             pasted at three definers and two more repeat.
+\   +46       the three window bodies: PROT:LOPEN 20, PROT:LCLOSE 8,
+\             PROT:LGROW 18 = +184 bytes, all in primitives/protect.
+\   +11       LCEMIT's 3-instruction window check and 8-instruction miss path,
+\             +44 bytes, all in primitives/cemit.
+\   +2        EM-SNAPSHOT-RX-FLUSH clears the window cell, +8 bytes in
+\             main/startup.
+\   +7  MOVZ  inside those new bodies and sites.
+\ Floor follows by the same +252 (MACOS-MODEL-FLOOR is (CODE-OFF + CODE-TEXT)
+\ mod 16 KiB): 14568 -> 14820, still the eighth 16 KiB page. The text pad absorbs
+\ it exactly, so MACOS-SIGNATURE (1295) and MACOS-TOTAL (148855) do not move and
+\ test/gate-build-size.f stays green on its own row - which is why BOTH ratchets
+\ had to be read: the whole-file one measures the page-rounded container and this
+\ one measures the bytes.
+\ The linux row below is owed a linux-host re-measure for this delta.
+125412 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-14568 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+14820 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

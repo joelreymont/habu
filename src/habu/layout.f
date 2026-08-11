@@ -400,6 +400,21 @@ package HIDX
 public
 $27C8 constant CLAIMS
 ;package
+\ PROT:WINDOW: the end address of the RW window a code-region bracket has open,
+\ or 0 when the region is at rest (whole region RX). ONE cell is what makes the
+\ narrow flip sound: the brackets emit between open and close, so CP differs at
+\ the two ends and a recomputed close would flip a different range than the open
+\ made writable, orphaning RW pages above it. The open records its end here and
+\ the close flips exactly that range back, so the region tail above the window is
+\ never RW at all — it is RX from boot and stays RX. src/habu/habu1.f
+\ EMIT-PROT-WINDOW owns every read and write of this cell; engine-emitted code is
+\ its only writer. Lives at $27D0 in the reclaimed $27C0..$27E8 band
+\ (rg-verified unused repo-wide), in a package for the same reason HIDX:CLAIMS
+\ above is.
+package PROT
+public
+$27D0 constant WINDOW
+;package
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (LEVALREC,
 \ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
 \ cannot name emit-time labels) can branch to it. It must sit in a DATA slot no
@@ -539,7 +554,8 @@ $258 constant DEF-TKL-CELL
 \ $250..$350, and DEF-TKA/DEF-TKL survive inside it only because their liveness
 \ is confined to the definition NAME token, when the virtual stack is empty.
 $27A8 constant CMM-CELL
-\ PKG-* ($27C0..$27D8), the old DEFER-META slot ($27E0), and the old
+\ PKG-* ($27C0..$27D8, less HIDX:CLAIMS at $27C8 and PROT:WINDOW at $27D0), the
+\ old DEFER-META slot ($27E0), and the old
 \ $2780..$27A0 pass-2 cells are reclaimed by the immutable lowering
 \ transaction. The final old defer slot is the protected compile-immediate
 \ preflight hook. The
