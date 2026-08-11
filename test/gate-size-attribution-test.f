@@ -452,9 +452,27 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ the same number: 8428 -> 14372, still inside the same 16 KiB page, so the text
 \ pad absorbs it and neither MACOS-SIGNATURE (1295) nor MACOS-TOTAL (148855)
 \ moves.
-124964 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-11 macOS 124964 -> 125156 (+192): the region-protection flip's extent
+\ moved out of the LPROT body and became the caller's argument, so each call site
+\ now carries its own one-instruction length operand. The gate's own map measured
+\ the candidate at 125156; the derivation is exactly 49 EMITTED call sites at 4
+\ bytes each, less the one 4-byte instruction removed from the body: +196 - 4.
+\ FORTY-NINE, not the 48 sites in the source - two builder words that carry a
+\ flip are themselves emitted more than once (one three times, one twice, 46
+\ singletons), which is pre-existing structure the change does not touch and is
+\ the whole reason the arithmetic looks off by one site.
+\ Floor follows from the same number - MACOS-MODEL-FLOOR is (CODE-OFF +
+\ CODE-TEXT) mod 16 KiB - so 14372 -> 14564, the same +192, still inside the same
+\ 16 KiB page. The text pad absorbs it (2012 -> 1820, read off the candidate's own
+\ map, where header 4096 + text 125156 + pad 1820 lands exactly on the eighth
+\ 16 KiB page), so neither MACOS-SIGNATURE
+\ (1295) nor MACOS-TOTAL (148855) moves and `FILE-SIZE bin/hb` is unchanged,
+\ which is exactly why test/gate-build-size.f stayed green and this row did not:
+\ the whole-file ratchet measures the page-rounded container and this one
+\ measures the bytes.
+125156 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-14372 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+14564 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

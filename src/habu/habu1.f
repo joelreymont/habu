@@ -1308,10 +1308,10 @@ variable SZA-I
 : BCOMPILE ( -- )
    A G-POP  11 9 0 ADDI,
    SP SP 16 SUBI,  11 SP 8 STR,
-   2 3 MOVZ,  LPROT LABEL@ BL,
+   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
    11 SP 8 LDR,
    LCEMITBL LABEL@ BL,                         \ one direct BL to the popped xt (x11)
-   2 5 MOVZ,  LPROT LABEL@ BL,
+   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
    SP SP 16 ADDI, ;
 
 : BEMIT ( -- )
@@ -1955,9 +1955,9 @@ variable SZA-I
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,     \ save w/addr first: the guard call clobbers x10 (B)
    7 4 MOVZ,  A 7 PROT-GUARD:CALL \ x9 is the target; protect its exact 4-byte write
-   2 3 MOVZ,  LPROT LABEL@ BL,
+   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
    9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
-   2 5 MOVZ,  LPROT LABEL@ BL,
+   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
    9 SP 8 LDR,  C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 
@@ -2052,7 +2052,7 @@ public
    10 CP CMP,  C-EQ atcp BCOND,                 \ a publication is an append, or nothing
       0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    atcp LBL,
-   2 3 MOVZ,  LPROT LABEL@ BL,                  \ region -> RW, once
+   2 3 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                  \ region -> RW, once
    9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
    12 0 MOVZ,                                    \ x12 = byte offset into the copy
    loop LBL,
@@ -2062,7 +2062,7 @@ public
    12 12 4 ADDI,
    loop B,
    done LBL,
-   2 5 MOVZ,  LPROT LABEL@ BL,                  \ region -> RX, once
+   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,                  \ region -> RX, once
    9 SP 8 LDR,  10 SP 16 LDR,
    CLEAR-CALLMAP-SPAN                            \ the span's relocation record, reset with it
    9 SP 8 LDR,  10 SP 16 LDR,
@@ -2965,9 +2965,19 @@ package ENGINE-EMIT
    RET,
    end LBL, ;
 
+\ THE EXTENT IS THE CALLER'S ARGUMENT ( x1 = byte length from DBASE, x2 = prot ).
+\ It used to be REGION, baked into this body, so "flip the whole 8 MB" was the
+\ silent default at all 48 call sites and no site said what it was opening. The
+\ length now travels with the call. A site that has not derived a bound passes
+\ REGION and says so at the call: that is this engine's correct behaviour made
+\ visible, not a fallback, and it is what lets the sites that CAN bound
+\ themselves be narrowed one at a time against a measurement.
+\ x0/x1 are already clobbered across this call today (the kernel preserves only
+\ x2-x15, which is what habu2.f's LUNCAUGHT reporter relies on), so writing x1
+\ at the site costs a caller nothing it was not already losing.
 : EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
-   0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET,
+   0 DBASE 0 ADDI,  NR-MPROTECT SYS,  RET,
    \ Narrow record-page flip ( x9 = target dict-record address, x2 = prot ):
    \ mprotect only the two pages ($8000 = 2 * 16 KB) covering the record's flags
    \ cell, instead of the whole 4/8 MB REGION. The dict-record flag pokes
