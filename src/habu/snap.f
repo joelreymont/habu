@@ -11,11 +11,11 @@
 \ line below retires that tail — dictionary names, compacted code region, and
 \ checker signatures — before the snapshot header is built, so the persisted
 \ image carries only the keep surface. The retired code stays executable in
-\ this process, which is all SNAPGO needs; the REPL hook in the image is the
+\ this process, which is all the writer needs; the REPL hook in the image is the
 \ standard HOOK from the retained check-hook.f.
 \
-\ SNAP-RETIRE-GO is a named TRUSTED: build-driver boundary: SNAPGO lives in
-\ require'd snap-lib.f outside the assembled
+\ RETIRE-AND-PERSIST is a named TRUSTED: build-driver boundary: SNAP:PERSIST
+\ lives in require'd snap-lib.f outside the assembled
 \ snap source the staged fixpoint pre-pass certifies, and CHECKER-SNAPSHOT-
 \ PREPARE/INCLUDE-SNAPSHOT-PREPARE are prefix-internal words with no charted
 \ effects. The word never survives into the image (its own entry and code sit
@@ -29,7 +29,7 @@ require src/habu/snap-lib.f
 
 \ The image writer lives in package SNAP (src/habu/snap-lib.f). Import its
 \ public wordlist for the rest of this file so the driver below can call
-\ SNAPGO by its plain name; the import ends with this load file.
+\ PERSIST by its plain name; the import ends with this load file.
 using SNAP
 
 \ Seal the test-only final-close fault seam: a snapshot suite arms it by
@@ -46,17 +46,17 @@ package SNAPSHOT
 
 $4A constant E-SNAP-HOOK
 
-TRUSTED: SNAP-RETIRE-GO ( -- )
+TRUSTED: RETIRE-AND-PERSIST ( -- )
    s" SNAP-TAIL-MARK" FORGET-DEFS-FROM
    data-base ENGINE-SNAP-XT-CELL + @ dup 0= if
       s" snap: engine snapshot hook missing" E-SNAP-HOOK die
    then execute
    CHECKER-SNAPSHOT-PREPARE
    INCLUDE-SNAPSHOT-PREPARE
-   SNAPGO ;
+   PERSIST ;
 
 : ACTION ( -- [ -- ] )
-   [: SNAP-RETIRE-GO ;] ;
+   [: RETIRE-AND-PERSIST ;] ;
 
 ACTION
 

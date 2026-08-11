@@ -195,7 +195,7 @@ public
    endcase ;
 
 \ ---- 2. the frozen writer bodies ---------------------------------------------
-\ src/habu/snap-lib.f is builder-only: SNAP-RETIRE-GO forgets the whole writer
+\ src/habu/snap-lib.f is builder-only: RETIRE-AND-PERSIST forgets the whole writer
 \ before an image is written, and nothing in the test tree can load it. Its
 \ three address-cell words are therefore frozen as exact token runs, read back
 \ through the shared source lexer, rather than executed. Every other half of

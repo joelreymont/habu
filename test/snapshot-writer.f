@@ -1,12 +1,12 @@
 \ snapshot-writer.f - adversarial proofs for the snapshot image writer.
 \
 \ Two properties of src/habu/snap-lib.f, each driven through a real snapshot
-\ build in a child process (SNAPGO forgets its definitions and exits, so the
+\ build in a child process (the writer forgets its definitions and exits, so the
 \ writer path can only be exercised out of process):
 \
 \   1. Return-stack zeroing. test/snapshot-writer-poison.f plants fixed
 \      non-zero canaries in the return-stack window of the live DATA region just
-\      before SNAPGO. The build only succeeds if those writes took (the fixture
+\      before SNAP:PERSIST. The build only succeeds if those writes took (the fixture
 \      dies 70 otherwise), so a green build proves the window was non-zero. The
 \      persisted image must then read back all zeros there, proving
 \      SND-ZERO-RSTK cleared every stale return-stack frame.
@@ -39,7 +39,7 @@
 \
 \ The snapshot source is emitted with BF-EMIT-SNAP-RUN-SOURCE-WITH, which inserts
 \ the fixture after the builder tail and before the snap driver. Both fixtures
-\ live above SNAP-TAIL-MARK, so SNAP-RETIRE-GO forgets them before the image is
+\ live above SNAP-TAIL-MARK, so RETIRE-AND-PERSIST forgets them before the image is
 \ written; nothing reaches a shipped snapshot.
 
 require lib/errors.f

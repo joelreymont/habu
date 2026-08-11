@@ -102,7 +102,7 @@ answers the question from the dictionary instead. It prints two maps:
 It has to run inside a process that has the source under investigation loaded and
 has not retired its dictionary, because that is the only place the names exist.
 The way to get one is to add two lines to `src/habu/snap.f` just above the final
-`SNAP-RETIRE-GO`, run a snapshot build, and take the lines off again:
+`RETIRE-AND-PERSIST`, run a snapshot build, and take the lines off again:
 
 ```
 require tools/snap-heap-owner.f

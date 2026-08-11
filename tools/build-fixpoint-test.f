@@ -714,7 +714,7 @@ package BUILD-FIXPOINT
    BFT-READ-BUF u s" S2-SOURCE-CAP allot" CONTAINS? TFALSE
    BFT-READ-BUF u s" stage2: source mmap failed" CONTAINS? TTRUE ;
 
-\ The snap tail's SNAP-RETIRE-GO is a named TRUSTED: boundary,
+\ The snap tail's RETIRE-AND-PERSIST is a named TRUSTED: boundary,
 \ not a `0 set-check` window: the emitted snap source carries NO raw
 \ check-off line - BFR-CHECK-OFF (src/habu/hide.f) is the one named
 \ checking-disabled boundary a generated source may call.
@@ -725,7 +725,7 @@ package BUILD-FIXPOINT
    BFT-READ-BUF u s" : SNAP-TAIL-MARK" BFT-FIND BFT-FOUND {: mark:n :}
    BFT-READ-BUF u mark s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
    BFT-READ-BUF u seal s" : ASM-CODELEN!" BFT-FIND-AFTER BFT-FOUND {: build:n :}
-   BFT-READ-BUF u build s" TRUSTED: SNAP-RETIRE-GO ( -- )" BFT-FIND-AFTER BFT-FOUND {: retire:n :}
+   BFT-READ-BUF u build s" TRUSTED: RETIRE-AND-PERSIST ( -- )" BFT-FIND-AFTER BFT-FOUND {: retire:n :}
    mark seal < TTRUE
    seal build < TTRUE
    build retire < TTRUE
@@ -748,7 +748,7 @@ package BUILD-FIXPOINT
 \ is built through the SAME gated route
 \ the pipeline uses (BF-SNAP-SOURCE + BF-CERTIFY-SNAP + hb-stdin --build
 \ hb-snap-src -> hb-snap0, the BF-BUILD-SNAP-FROM-STDIN mechanism): snap.f's
-\ former 0 set-check window is now the TRUSTED: SNAP-RETIRE-GO boundary, so
+\ former 0 set-check window is now the TRUSTED: RETIRE-AND-PERSIST boundary, so
 \ the emitted snap source certifies clean and the `-- snap` route is gated
 \ end-to-end again (dot habu-tfam-12-item-346f03c2 part 1).
 \ The target header's full 64-bit text-size field owns the trailer location;

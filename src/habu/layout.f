@@ -415,7 +415,8 @@ $3CA8 constant AOT-SEED-DONE-CELL
 \ AOT-SEED-ARM-CELL: set to 1 only on the interactive repl entry (C-SOURCE SRC-REPL),
 \ so the AOT REPL seed runs solely when the engine is about to present the REPL --
 \ never for pipe programs, `--load` tool runs, or the snapshot builder (which retires
-\ the toolchain and runs SNAPGO before LEXIT). Zeroed by DATA-INIT for every boot.
+\ the toolchain and runs SNAP:PERSIST before LEXIT). Zeroed by DATA-INIT for every
+\ boot.
 $3CB0 constant AOT-SEED-ARM-CELL
 \ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Records the WIDs of
 \ sealed system / generated constructor packages created in the friend window;

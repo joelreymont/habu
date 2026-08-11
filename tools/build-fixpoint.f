@@ -950,7 +950,7 @@ package BUILD-FIXPOINT
 \ Snapshot source layout: the dev-engine keep surface (the same files the
 \ plain engine bakes as its startup prefix, plus the baked REPL sources)
 \ loads FIRST, then SNAP-TAIL-MARK opens the builder-only tail. snap.f
-\ retires everything from the marker before SNAPGO, so the persisted image
+\ retires everything from the marker before SNAP:PERSIST, so the persisted image
 \ carries only the keep surface.
 : BF-APPEND-SNAP-KEEP ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu BF-APPEND-ROLES
@@ -1032,8 +1032,8 @@ package BUILD-FIXPOINT
 \ Snapshot source with one extra test source appended after the builder tail
 \ (snap-lib.f and the target image words are live by then) and just before the
 \ driver, so a snapshot fixture can plant return-stack canaries or arm
-\ the test-only close seam before SNAPGO runs. Builder-only: the injected source
-\ sits above the SNAP-TAIL-MARK, so SNAP-RETIRE-GO forgets it before the image is
+\ the test-only close seam before SNAP:PERSIST runs. Builder-only: the injected
+\ source sits above the SNAP-TAIL-MARK, so RETIRE-AND-PERSIST forgets it before the
 \ written and nothing reaches a shipped snapshot.
 : BF-APPEND-SNAP-SEALED-WITH ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: out:ptr outu:n inject:ptr injectu:n driver:ptr driveru:n :}

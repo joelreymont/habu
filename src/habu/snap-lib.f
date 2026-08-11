@@ -2,19 +2,20 @@
 \
 \ Load after target image emission words (`BUILD-SNAP-HDR`, `SNAP-DROP`,
 \ `SNAP-EXTRA-PTR`, `SNAP-EXTRA-SIZE`) and driver I/O. Entry files decide when
-\ to prepare checker/include state and call the writer's `SNAPGO`.
+\ to prepare checker/include state and call the writer's `PERSIST`.
 \
 \ Everything here belongs to package SNAP. The only word an entry file needs is
-\ the public `SNAP:SNAPGO`; `SNAP:INSTALL-HOOK` is the audited trusted entry
+\ the public `SNAP:PERSIST`; `SNAP:INSTALL-HOOK` is the audited trusted entry
 \ that freezes the verify-on-definition hook into an emitted image. The writer
 \ state and the scratch-copy machinery stay package-private.
 \
-\ The public entry keeps its historic spelling `SNAPGO` rather than a shorter
-\ tail: src/habu/snap.f still defines global words, so renaming the call site
-\ would make its driver a changed global definition and pull that file (and the
-\ build-fixpoint test that pins its emitted text) into this change. Those files
-\ get their own package owners under a separate dot; snap.f imports this
-\ package with `using SNAP` in the meantime.
+\ The entry is `SNAP:PERSIST` - it builds the header, canonicalises the two
+\ regions and writes the image, then exits. The tail is deliberately not `GO`:
+\ several other files already define a `GO`, the name says nothing about what
+\ the word does, and snap.f calls this entry from an UNCHECKED `TRUSTED:` body,
+\ where the engine's global-first order would bind a same-named global ahead of
+\ the used public with no diagnostic. snap.f imports this package with
+\ `using SNAP` and calls the entry by its plain tail.
 
 package SNAP
 
@@ -308,7 +309,7 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 ;package
 
 \ ---- test-only final-close fault seam ----
-\ snap-lib.f is builder-only: SNAP-RETIRE-GO forgets this whole tail before the
+\ snap-lib.f is builder-only: RETIRE-AND-PERSIST forgets this whole tail before
 \ snapshot header is written, so nothing here reaches a shipped image. The seam
 \ lets the snapshot-writer suite force the final close to fail and prove
 \ the writer's WRITE-BYTES fails closed (rc 74) instead of accepting a
@@ -376,7 +377,7 @@ TRUSTED: CHECK-HOOK ( ptr u8 n -- n )
 
 public
 
-: SNAPGO ( -- )
+: PERSIST ( -- )
    HDR
    CANON-REGION
    CANON-DATA
