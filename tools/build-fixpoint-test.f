@@ -21,7 +21,14 @@ require tools/build-fixpoint.f
 require tools/source-arena-policy.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 
-using STAMP-KEY                          \ the stamp key derivation this file drives
+\ This fixture drives the tool's internals - the emitted stage sources, the
+\ stamp preimage, the chain fold - so it REOPENS package BUILD-FIXPOINT rather
+\ than importing a public surface. Exporting those internals would widen the
+\ tool's own interface for the benefit of its own test. The local fixture
+\ scopes this file used to carry (BFT-SNAP-HOOK, BFT-CAP, BFT-CHAIN,
+\ STALE-SEED) were there only because the file had no package of its own; they
+\ are ordinary private words of the tool's package now.
+package BUILD-FIXPOINT
 
 8192 constant BFT-CAPTURE-CAP
 $40000 constant BFT-BIG-CAP
@@ -33,11 +40,8 @@ $40000 constant BFT-BIG-CAP
 \ SNAP-TRL-VERSION); the writer, the loader and this fixture all read them from
 \ there, so a format change cannot leave one side addressing the wrong cells.
 
-package BFT-SNAP-HOOK
-private
 $A5 constant FORGE
 $4A constant MISSING-RC
-;package
 
 variable BFT-ROOT-U
 variable BFT-HB-NEW-U
@@ -537,7 +541,6 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 \ stamp key uses - so the sandbox tracks the tool's own requires. src/ and lib/
 \ still come over whole, because the stage build reads far more of them than
 \ build-fixpoint.f's own requires name.
-package STALE-SEED
 
 variable IX
 
@@ -548,8 +551,6 @@ variable IX
       IX @ EC:PATH$ BFT-STALE-COPY-ENTRY
       IX @ 1+ IX !
    repeat ;
-
-public
 
 : BFT-STALE-PREPARE ( -- )
    BFT-STALE-PATHS!
@@ -562,9 +563,6 @@ public
    s" bin/hb" BFT-STALE-COPY-FILE
    BFT-STALE-HB CHMOD-X
    BFT-STALE-SABOTAGE ;
-
-;package
-using STALE-SEED
 
 : BFT-STALE-ARGV ( -- )
    PROC-ARGV-RESET
@@ -625,10 +623,14 @@ using STALE-SEED
 
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
 \ project the option<CAD-NUM:index> result back to the switchover option<idx>.
+;package
+
 package CAD-NUM
 public
 : BFT-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
 ;package
+
+package BUILD-FIXPOINT
 : BFT-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
@@ -790,9 +792,6 @@ public
 : BFT-BYTE! ( n n -- ) {: val:n off:n :}
    val BFT-BYTES off BYTE+ c! ;
 
-package BFT-SNAP-HOOK
-private
-
 : U64@ ( n -- n ) {: off:n :}
    0
    8 0 ?do
@@ -807,8 +806,6 @@ private
 
 : HOOK-OFF ( -- n )
    DATA-OFF ENGINE-SNAP-XT-CELL + ;
-
-;package
 
 : BFT-DOCTOR-WRITE ( -- )
    s" hb-doctored" BF-REMOVE-TMP
@@ -853,9 +850,6 @@ variable BFT-DOC-CODE
    BFT-DOC-EXITED @ TTRUE
    BFT-DOC-CODE @ code T=
    BFT-DOC-ERR$ msg msgu CONTAINS? TTRUE ;
-
-package BFT-SNAP-HOOK
-private
 
 : PROBE! ( -- )
    s" snap-hook-probe.f" BF-A$
@@ -932,8 +926,6 @@ private
    ou LEN>N BFT-DOC-OUT-U !
    eu LEN>N BFT-DOC-ERR-U ! ;
 
-public
-
 : VERIFY-IMAGE ( -- )
    RAW
    STARTUP ;
@@ -948,11 +940,6 @@ public
    BFT-DOC-OUT$ BFT-EMPTY$ T$=
    BFT-DOC-ERR$ s" snap: engine snapshot hook missing" T$=
    BF-TMP-RESET ;
-
-;package
-
-package BFT-SNAP-HOOK
-private
 
 : TEST-TRAILER ( -- )
    BFT-ROOT BF-TMP!
@@ -976,14 +963,11 @@ private
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
    BF-TMP-RESET ;
 
-;package
-
 \ ---- effective source boundary --------------------------------------------
 \ The cold prefix already occupies IBUFSZ and the reader performs an EOF probe,
 \ so IBUFSZ+1 is not the runtime input boundary. Bracket the boundary with a
 \ bounded exponential search, refine it by binary search, then rerun the adjacent
 \ successful/failing sizes against the freshly built candidate's --build path.
-package BFT-CAP
 
 $10000 constant PROBE-START
 1 constant EOF-BYTES
@@ -1095,8 +1079,6 @@ variable BAD-N
    SOURCE-ARENA-CAP need >= TTRUE
    need SOURCE-ARENA:NEXT-POW2 SOURCE-ARENA-CAP T= ;
 
-public
-
 : SOURCE-BOUNDARY ( -- )
    BFT-ROOT BF-TMP!
    SRC-ALLOC
@@ -1108,8 +1090,6 @@ public
    BAD-N @ PROBE TFALSE
    POLICY
    BF-TMP-RESET ;
-
-private
 
 : RUN-BUILD ( ptr u8 n -- )
    PROC-ARGV-RESET
@@ -1150,8 +1130,6 @@ private
 : WRITE-SPACES ( ptr u8 n n -- ) {: path:ptr pathu:n u:n :}
    path pathu SRC-BUF u WRITE-ALL ;
 
-public
-
 : STAGE2 ( -- )
    BFT-ROOT BF-TMP!
    SRC-ALLOC
@@ -1163,8 +1141,6 @@ public
    STAGE2-DRIVER RUN-BUILD
    s" stage2: source exceeds buffer" EXPECT-74
    BF-TMP-RESET ;
-
-private
 
 : MAKER-SOURCE ( -- ptr u8 n )
    s" hb-maker-src" BF-A$ ;
@@ -1184,8 +1160,6 @@ private
    out outu s" : BFT-MK-READ-EXIT ( -- ) MK-READ-SRC DRV-EXIT-OK ;" BF-APPEND-LINE
    out outu s" BFT-MK-READ-EXIT" BF-APPEND-LINE ;
 
-public
-
 : MAKER ( -- )
    BFT-ROOT BF-TMP!
    SRC-ALLOC
@@ -1197,8 +1171,6 @@ public
    MAKER-DRIVER RUN-BUILD
    s" maker: source exceeds buffer" EXPECT-74
    BF-TMP-RESET ;
-
-;package
 
 : BFT-TEST-TMP-OVERRIDE ( -- )
    BFT-ROOT BF-TMP!
@@ -1399,7 +1371,6 @@ public
 \ bytes in the preimage. The same fragment built from the fixture entry's digest
 \ must be absent, so keying the wrong entry file fails here rather than passing
 \ on the tag alone.
-package BFT-CHAIN
 
 variable ENTRY-U
 variable DEP-U
@@ -1411,12 +1382,9 @@ create DG-A 40 allot
 create DG-B 40 allot
 create DG-C 40 allot
 
-: ENTRY$ ( -- ptr u8 n )   ENTRY-BUF ENTRY-U @ ;
+: FIXTURE-ENTRY$ ( -- ptr u8 n )   ENTRY-BUF ENTRY-U @ ;
 : DEP$ ( -- ptr u8 n )     DEP-BUF DEP-U @ ;
 : OTHER$ ( -- ptr u8 n )   OTHER-BUF OTHER-U @ ;
-
-: PROD-ENTRY$ ( -- ptr u8 n )
-   s" src/compiler/native/migrate.f" ;
 
 \ Entry source: one real `require`, plus the same loader text hidden in a
 \ comment and in a string literal.
@@ -1430,7 +1398,7 @@ create DG-C 40 allot
 : WRITE-FIXTURES ( -- )
    DEP$ s\" \\ dep v1\n" WRITE-ALL
    OTHER$ s\" \\ other v1\n" WRITE-ALL
-   ENTRY$ ENTRY-SRC$ WRITE-ALL ;
+   FIXTURE-ENTRY$ ENTRY-SRC$ WRITE-ALL ;
 
 : MEMBER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 begin dup EC:COUNT < while
@@ -1454,8 +1422,6 @@ create DG-C 40 allot
 : PREIMAGE-HAS? ( ptr u8 n -- bool )
    BF-STAMP-BUF BF-STAMP-U @ 2swap CONTAINS? ;
 
-public
-
 : PREP ( -- )
    BFT-ROOT s" chain-entry.f" ENTRY-BUF ENTRY-U BFT-PATH!
    BFT-ROOT s" chain-dep.f" DEP-BUF DEP-U BFT-PATH!
@@ -1464,33 +1430,31 @@ public
 : TEST-CLOSURE-KEY ( -- )
    PREP
    WRITE-FIXTURES
-   ENTRY$ EC:BUILD
+   FIXTURE-ENTRY$ EC:BUILD
    EC:COUNT 2 T=
-   ENTRY$ MEMBER? TTRUE
+   FIXTURE-ENTRY$ MEMBER? TTRUE
    DEP$ MEMBER? TTRUE
    OTHER$ MEMBER? TFALSE
-   ENTRY$ DG-A STAMP-KEY:CHAIN-DIGEST!
+   FIXTURE-ENTRY$ DG-A CHAIN-DIGEST!
    DEP$ s\" \\ dep v2\n" APPEND-FILE
-   ENTRY$ DG-B STAMP-KEY:CHAIN-DIGEST!
+   FIXTURE-ENTRY$ DG-B CHAIN-DIGEST!
    DG-A BF-STAMP-DG-U DG-B BF-STAMP-DG-U STR= TFALSE
    OTHER$ s\" \\ other v2\n" APPEND-FILE
-   ENTRY$ DG-C STAMP-KEY:CHAIN-DIGEST!
+   FIXTURE-ENTRY$ DG-C CHAIN-DIGEST!
    DG-B BF-STAMP-DG-U DG-C BF-STAMP-DG-U STR= TTRUE
    DEP$ s\" \\ dep v1\n" WRITE-ALL
-   ENTRY$ DG-C STAMP-KEY:CHAIN-DIGEST!
+   FIXTURE-ENTRY$ DG-C CHAIN-DIGEST!
    DG-A BF-STAMP-DG-U DG-C BF-STAMP-DG-U STR= TTRUE ;
 
 : TEST-STAMP-FOLD ( -- )
    PREP
    WRITE-FIXTURES
-   PROD-ENTRY$ DG-A STAMP-KEY:CHAIN-DIGEST!
-   ENTRY$ DG-B STAMP-KEY:CHAIN-DIGEST!
+   ENTRY$ DG-A CHAIN-DIGEST!
+   FIXTURE-ENTRY$ DG-B CHAIN-DIGEST!
    DG-A BF-STAMP-DG-U DG-B BF-STAMP-DG-U STR= TFALSE
    BF-STAMP-KEY-BEGIN
    DG-A FRAGMENT$ PREIMAGE-HAS? TTRUE
    DG-B FRAGMENT$ PREIMAGE-HAS? TFALSE ;
-
-;package
 
 \ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
@@ -1500,10 +1464,12 @@ public
    a u type s" : throw " type rc . cr
    s" build-fixpoint-test: subtest threw" T-EX-FAIL die ;
 
-package BFT-SNAP-HOOK
+\ Public so the driver below can run it with the package CLOSED: the subtests
+\ certify generated engine sources in this process (VERIFY:SOURCE-BUF), and the
+\ checker resolves the verified source's names in whatever package scope is open
+\ when it runs.
 public
-
-: RUN ( -- )
+: BFT-RUN-ALL ( -- )
    T-RESET
    BFT-PREPARE
    s" tmp override" [: BFT-TEST-TMP-OVERRIDE ;] BFT-STEP
@@ -1517,8 +1483,8 @@ public
    s" stale seed install" [: BFT-TEST-STALE-INSTALL ;] BFT-STEP
    s" cert inject install" [: BFT-TEST-CERT-INJECT-INSTALL ;] BFT-STEP
    s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
-   s" chain closure key" [: BFT-CHAIN:TEST-CLOSURE-KEY ;] BFT-STEP
-   s" chain stamp fold" [: BFT-CHAIN:TEST-STAMP-FOLD ;] BFT-STEP
+   s" chain closure key" [: TEST-CLOSURE-KEY ;] BFT-STEP
+   s" chain stamp fold" [: TEST-STAMP-FOLD ;] BFT-STEP
    s" stamp corrupt" [: BFT-TEST-STAMP-CORRUPT ;] BFT-STEP
    s" stamp engine" [: BFT-TEST-STAMP-ENGINE ;] BFT-STEP
    s" all stamp guard" [: BFT-TEST-ALL-STAMP-GUARD ;] BFT-STEP
@@ -1538,11 +1504,11 @@ public
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
-   s" snap missing hook" [: BFT-SNAP-HOOK:MISSING ;] BFT-STEP
+   s" snap missing hook" [: MISSING ;] BFT-STEP
    s" snap trailer" [: TEST-TRAILER ;] BFT-STEP
-   s" source boundary" [: BFT-CAP:SOURCE-BOUNDARY ;] BFT-STEP
-   s" stage2 source cap" [: BFT-CAP:STAGE2 ;] BFT-STEP
-   s" maker source cap" [: BFT-CAP:MAKER ;] BFT-STEP
+   s" source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
+   s" stage2 source cap" [: STAGE2 ;] BFT-STEP
+   s" maker source cap" [: MAKER ;] BFT-STEP
    CLEANUP-RUN
    BFT-ROOT EXISTS? TFALSE
    T-REPORT
@@ -1550,4 +1516,4 @@ public
 
 ;package
 
-BFT-SNAP-HOOK:RUN
+BUILD-FIXPOINT:BFT-RUN-ALL

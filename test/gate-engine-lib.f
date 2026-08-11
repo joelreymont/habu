@@ -10,6 +10,8 @@ require lib/test/budget.f                 \ TEST-BUDGET:PERF-MS - runtime-slice 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer (switchover wave A)
 require lib/type/deftype.f               \ DEFTYPE - declared-nominal role exemplar in the runtime role source
 
+using BUILD-FIXPOINT                      \ the self-rebuild steps this gate drives
+
 \ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
 \ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB index
 \ back to its raw cell, keeping the shape-find helpers byte-identical. A plain
@@ -2313,3 +2315,5 @@ public
    s" PASS: native engine gate phase" type cr ;
 
 ;package
+
+;using

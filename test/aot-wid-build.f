@@ -62,6 +62,7 @@ require lib/date.f
 require tools/build-fixpoint.f
 
 package AOT-WID-BUILD
+using BUILD-FIXPOINT
 
 : STDIN-SRC-PATH ( -- ptr u8 n ) s" src/habu/stdin.f" ;
 

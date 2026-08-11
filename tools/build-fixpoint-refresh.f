@@ -16,7 +16,7 @@ package BUILD-FIXPOINT-REFRESH
 public
 
 : RUN ( -- )
-   BF-CLI ;
+   BUILD-FIXPOINT:BF-CLI ;
 
 ;package
 

@@ -14,6 +14,8 @@ require tools/hb-build-report.f
 require tools/object-image.f
 require tools/event-closure-lib.f
 
+using BUILD-FIXPOINT                     \ the emitted-source and tmp-root surface
+
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
 74 constant HBB-BUILD-RC
@@ -1046,3 +1048,5 @@ HBB-INSTALL-CHILD-LINTS
    HBB-PREPARE-TMP
    HBB-BUILD-CLI
    HBB-CLEANUP ;
+
+;using

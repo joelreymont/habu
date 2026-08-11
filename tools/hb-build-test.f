@@ -31,6 +31,8 @@ require tools/hb-build-report.f
 require tools/hb-build-lib.f
 require tools/source-arena-policy.f
 
+using BUILD-FIXPOINT                     \ the build tmp root and engine override
+
 64 constant HBT-KEY-U
 65536 constant HBT-CAPTURE-CAP
 120000 constant HBT-TIMEOUT-MS
@@ -926,5 +928,7 @@ public
    s" hb-build-test: ok" type cr ;
 
 ;package
+
+;using
 
 HBT:MAIN

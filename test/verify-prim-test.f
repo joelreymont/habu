@@ -22,6 +22,7 @@ require src/habu/verify-source.f
 require tools/build-fixpoint.f
 
 package VERIFY-PRIM-TEST
+using BUILD-FIXPOINT
 
 $2000 constant DIAG-MAX
 $22 constant QUOTE-C

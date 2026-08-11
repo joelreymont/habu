@@ -5,11 +5,18 @@
 \ The stamp key hashes the engine and the emitted stage sources with the baked
 \ SHA256 words; only the native-chain fold below reaches for lib/content-key.f
 \ and the shared closure walk, because that input is a file LIST rather than one
-\ file (see package STAMP-KEY).
+\ file (see the stamp key section below).
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require src/habu/verify-source.f
 require tools/stdin-closure-lib.f
+
+\ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
+\ to it; the export block at the end of the file names the whole surface other
+\ files call. The sibling packages in this file (COMPILER-BUILD, BUILD-EXT,
+\ CAD-NUM, VERIFY) close and reopen BUILD-FIXPOINT around themselves, because
+\ packages do not nest, and import what they need with `using BUILD-FIXPOINT`.
+package BUILD-FIXPOINT
 
 262144 constant BF-SOURCE-CAP
 32768 constant BF-CMP-CAP
@@ -35,17 +42,29 @@ $2F constant BF-SLASH
 \ `E-UNDEFINED: FS-PATH-CAP`; name the required load list instead. FS-PATH-CAP
 \ (lib/fs.f) is the preamble sentinel - it is the first preamble word this file
 \ references, so its absence is exactly the missing-preamble case.
+\
+\ The guard is public and is asked from OUTSIDE the package below, because
+\ CHECKER-DEFINED? answers in the checker's currently open package scope: asked
+\ with BUILD-FIXPOINT open it would look for a private BUILD-FIXPOINT tail and
+\ report a loaded preamble as missing.
+public
 : BF-NEED-PREAMBLE ( -- )
    s" FS-PATH-CAP" CHECKER-DEFINED? if exit then
    S\" build-fixpoint: missing required load; --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb\n" BF-USAGE-RC die ;
-BF-NEED-PREAMBLE
+private
+
+;package
+
+BUILD-FIXPOINT:BF-NEED-PREAMBLE
 
 \ These two come AFTER the guard on purpose. Both pull the preamble libraries in
 \ through their own requires, so requiring them above would satisfy FS-PATH-CAP
 \ by side effect and the missing-preamble case would stop being reported at all.
 \ The guard answers first; only then does the chain fold pull what it needs.
-require lib/content-key.f                \ package STAMP-KEY: the chain fold
-require tools/event-closure-lib.f        \ package STAMP-KEY: the chain fold
+require lib/content-key.f                \ the chain fold
+require tools/event-closure-lib.f        \ the chain fold
+
+package BUILD-FIXPOINT
 
 create BF-LF-BUF 1 allot
 create BF-PIN-KEYS BF-PIN-CAP BF-STAMP-DG-U * allot
@@ -342,7 +361,23 @@ variable BF-CERT-PATH-U
    out outu a u BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
 
+\ Promoted for the sibling packages further down this file: they are separate
+\ packages, so they reach these through `using BUILD-FIXPOINT` and cannot see
+\ private tails. Everything the rest of the repository calls is promoted in one
+\ block at the end of the file.
+public
+EXPORT BF-A$
+EXPORT BF-APPEND-LINE
+EXPORT BF-B$
+EXPORT BF-FINISH-PID
+EXPORT BF-PREPARE-ENV
+EXPORT BF-TMP$
+private
+
+;package
+
 package COMPILER-BUILD
+using BUILD-FIXPOINT
 
 : ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr a ) {: exe:ptr exeu:n src:ptr srcu:n :}
    PROC-ARGV-RESET
@@ -366,7 +401,10 @@ public
 : SEAL ( ptr u8 n -- )
    s" SEAL-FRIEND" BF-APPEND-LINE ;
 
+;using
 ;package
+
+package BUILD-FIXPOINT
 
 : BF-APPEND-HIDE-CALL ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n name:ptr nameu:n word:ptr wordu:n :}
    out outu s" s" BF-APPEND-BYTES
@@ -510,7 +548,15 @@ public
    src srcu out outu BF-OUT$ BF-APPEND-FILE-STREAM
    out outu BF-APPEND-LF ;
 
+public
+EXPORT BF-APPEND-SOURCE
+EXPORT BF-BUILD-RC
+private
+
+;package
+
 package BUILD-EXT
+using BUILD-FIXPOINT
 
 variable PATH-A
 variable PATH-U
@@ -556,7 +602,10 @@ public
       out outu KEEP@ KEEP-U @ BF-APPEND-SOURCE
    then ;
 
+;using
 ;package
+
+package BUILD-FIXPOINT
 
 : BF-READ-SOURCE ( ptr u8 n -- )
    BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN ! ;
@@ -566,10 +615,15 @@ public
 
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
 \ project the option<CAD-NUM:index> result back to the switchover option<idx>.
+;package
+
 package CAD-NUM
 public
 : BF-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
 ;package
+
+package BUILD-FIXPOINT
+
 : BF-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
@@ -1127,6 +1181,8 @@ public
 \ certify scanner verified. The count is per target: the assembled stage2 source
 \ includes the target's src/os leg, so linux-arm64 and macos-arm64 measure their
 \ own totals, mirroring the per-target CODELEN rows in test/gate-build-size.f.
+;package
+
 package VERIFY
 variable CENSUS-N
 : CENSUS-SKIP-BODY ( -- )
@@ -1142,6 +1198,8 @@ public
    repeat 2drop
    CENSUS-N @ ;
 ;package
+
+package BUILD-FIXPOINT
 
 : BF-CENSUS-TARGET$ ( -- ptr u8 n )
    HB-TARGET-LINUX? if s" linux-arm64" exit then
@@ -1388,7 +1446,7 @@ public
    s" engine" BF-STAMP-DG BF-STAMP-DG+ ;
 
 \ ---------------------------------------------------------------------------
-\ package STAMP-KEY - what the refresh weighs when it decides a rebuild is
+\ The stamp key - what the refresh weighs when it decides a rebuild is
 \ unnecessary: the key's preimage, and the comparison against the stored stamp.
 \
 \ The native compiler chain is the one build input this key cannot reach by
@@ -1410,7 +1468,6 @@ public
 \ edit landing mid-build would be written into the stamp and the next refresh
 \ would skip over an engine built from the older chain. Capturing first can only
 \ over-invalidate, which costs one rebuild and never ships a stale engine.
-package STAMP-KEY
 
 create CHAIN-DG 40 allot
 variable CHAIN-DONE?
@@ -1427,8 +1484,6 @@ variable CHAIN-I
       CHAIN-I @ 1+ CHAIN-I !
    repeat ;
 
-public
-
 \ The ordered closure of one entry file, hashed into a 32-byte digest.
 : CHAIN-DIGEST! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
    CONTENT-KEY:RESET
@@ -1436,14 +1491,10 @@ public
    a u CLOSURE+
    dst CONTENT-KEY:FINAL ;
 
-private
-
 : CHAIN-RECORD ( -- )
    CHAIN-DONE? @ if exit then
    ENTRY$ CHAIN-DG CHAIN-DIGEST!
    BF-TRUE CHAIN-DONE? ! ;
-
-public
 
 : BF-STAMP-KEY-BEGIN ( -- )
    CHAIN-RECORD
@@ -1480,16 +1531,12 @@ public
    s" stdin-src" BF-REC-STDIN-DG BF-STAMP-DG+
    BF-STAMP-KEY-END ;
 
-private
-
 : BF-STAMP-READ? ( -- bool )
    BF-STAMP-PATH$ FILE? 0= if BF-FALSE exit then
    BF-STAMP-PATH$ FILE-SIZE BF-STAMP-HEX-U 1 + <> if BF-FALSE exit then
    BF-STAMP-PATH$ BF-STAMP-OLD BF-STAMP-HEX-U 1 + READ-ALL BF-STAMP-HEX-U 1 + <> if BF-FALSE exit then
    BF-STAMP-OLD BF-STAMP-HEX-U + c@ BF-LF <> if BF-FALSE exit then
    BF-TRUE ;
-
-public
 
 \ Every stamped verb asks this first, so it is where the chain capture lands
 \ before the build starts. `--force` answers false without deriving a key, so
@@ -1500,9 +1547,6 @@ public
    BF-STAMP-READ? 0= if BF-FALSE exit then
    BF-STAMP-KEY!
    BF-STAMP-OLD BF-STAMP-HEX-U BF-STAMP-KEY BF-STAMP-HEX-U STR= ;
-
-;package
-using STAMP-KEY
 
 : BF-STAMP-WRITE ( -- )
    BF-STAMP-ENSURE-DIR
@@ -1629,6 +1673,8 @@ variable BF-CLI-RAN
 
 \ Compiled callers retain direct xts; erase the mutable extension authority so
 \ reopening BUILD-EXT cannot select an arbitrary source file.
+;package
+
 package BUILD-EXT
 undefine SET
 undefine CLEAR
@@ -1641,6 +1687,8 @@ undefine KEEP@
 undefine KEEP-A
 undefine KEEP-U
 ;package
+
+package BUILD-FIXPOINT
 
 \ Fail-closed CLI self-dispatch. tools/build-fixpoint-main.f and
 \ tools/build-fixpoint-refresh.f are explicit wrappers that call BF-CLI. Before
@@ -1673,4 +1721,57 @@ undefine KEEP-U
    SCRIPT-NAMED-LOAD? 0= if exit then
    BF-CLI-VERB-ARG0? 0= if exit then
    BF-CLI ;
-BF-CLI-SELF-DISPATCH
+
+\ ---------------------------------------------------------------------------
+\ The BUILD-FIXPOINT surface. Everything above is private to the tool; these
+\ are the words other files call, promoted here in one place so the whole
+\ export list is readable at a glance. Consumers `require
+\ tools/build-fixpoint.f` and then `using BUILD-FIXPOINT`; the tool's own test
+\ reopens `package BUILD-FIXPOINT` instead, because it drives internals no
+\ caller is meant to see.
+
+public
+
+EXPORT BF-APPEND-BYTES
+EXPORT BF-APPEND-COMMON
+EXPORT BF-APPEND-DRIVER-IO
+EXPORT BF-APPEND-LF
+EXPORT BF-APPEND-RUN-PRELUDE
+EXPORT BF-BUILD-STDIN-FROM-STAGE
+EXPORT BF-CERTIFY-STDIN
+EXPORT BF-CHMOD-X-TMP
+EXPORT BF-CLI
+EXPORT BF-CLI-SELF-DISPATCH
+EXPORT BF-CODESIGN-FORCE-TMP
+EXPORT BF-CODESIGN-VERIFY-TMP
+EXPORT BF-EMIT-SNAP-RUN-SOURCE-WITH
+EXPORT BF-EMIT-STDIN-RUN-SOURCE
+EXPORT BF-ENGINE!
+EXPORT BF-ENGINE$
+EXPORT BF-ENGINE-RESET
+EXPORT BF-EXPECT
+EXPORT BF-OUT$
+EXPORT BF-PREFLIGHT
+EXPORT BF-RC0
+EXPORT BF-REMOVE-TMP
+EXPORT BF-RENAME-TMP
+EXPORT BF-RESET-OUT
+EXPORT BF-RUN-ENV-TMP
+EXPORT BF-RUN-STAGE
+EXPORT BF-SOURCE-BUF
+EXPORT BF-SOURCE-CAP
+EXPORT BF-SOURCE-LEN
+EXPORT BF-STAGE-FIXPOINT
+EXPORT BF-STAGE-FIXPOINT-FROM-SOURCE
+EXPORT BF-STAGE2-SOURCE
+EXPORT BF-TMP!
+EXPORT BF-TMP-RESET
+
+;package
+
+\ Run the CLI with the package CLOSED. A build certifies its own generated
+\ sources in this process (BF-CERTIFY-ACT calls VERIFY:SOURCE-BUF), and the
+\ checker records and resolves names in whatever package scope is open when it
+\ runs, so driving a build from inside BUILD-FIXPOINT would verify the emitted
+\ engine source against this package's wordlist instead of the global one.
+BUILD-FIXPOINT:BF-CLI-SELF-DISPATCH

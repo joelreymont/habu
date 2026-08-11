@@ -62,6 +62,7 @@ require tools/build-fixpoint.f
 require lib/test.f
 
 package SNAP-WRITER-TEST
+using BUILD-FIXPOINT
 
 $8000 constant CAP
 240000 constant TIMEOUT-MS
