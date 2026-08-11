@@ -5758,6 +5758,56 @@ PRIM: munmap   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0
 \ unique name makes row order immaterial; it only must be registered before PTABLE-END.
 PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 
+\ ---- what the boot prefix answers the native chain ---------------------------
+\ THE SAME AXIOM SHAPE AS EXT-MARK-FREE-TAIL ABOVE, FOR A WHOLE CLASS. The type
+\ family registry (src/core/type-family.f) and the effect store (this file) are
+\ read by src/compiler/native/{family,dict,reach}.f, and their readers are
+\ signature-less colon words the seal marks internal - so without a row here the
+\ checker has no symbol for one and a checked body naming it is E-UNDEFINED.
+\ That wall is why those three files carried twenty-one one-line `TRUSTED:`
+\ bridges whose whole body was the call: the only route the checker admitted.
+\ A row states the effect the reader's own definition declares, which is the
+\ same assertion the bridge made, made once and where the reader lives - so the
+\ bridges are gone and their callers are ordinary checked Habu
+\ (dot habu-turn-the-registry-4c064064).
+\
+\ THESE ARE NOT ENGINE PRIMITIVES and the table does not require them to be: a
+\ row interns a symbol and stores an effect, and EXT-MARK-FREE-TAIL (a colon
+\ word at line 2941 of this file) and CHECKER-DEFFAMILY (one in sumtype.f) have
+\ ridden that for as long as they have existed. What a row buys is exactly what
+\ its comment says - the checker knows the effect, and the seal-time
+\ internal-word marking pass leaves the word callable.
+\
+\ WHAT IS DELIBERATELY NOT HERE. `patch32`, `code-publish`, `callmap-set`,
+\ `addrmap-set` and `xref-retarget` already have rows above, marked
+\ PRIM-TRUSTED-ONLY! so a CHECKED caller is refused; `min-in-mark` and
+\ `evaluate` belong with them. Giving any of those an open row would delete the
+\ trust boundary rather than cross it, so their wrappers stay named boundaries.
+\ `execute` and the two raw-address casts stay for the reasons their own files
+\ give (owners habu-typed-xt-storage-ddad4af8, habu-guard-an-executed-8a0f2f77).
+PRIM: TFL-MATCH-FAM?  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: TFL-CON-FAM?    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: TFL-VAR?        PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: TFAM-SLOTS@     PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: TFAM-VAR-COUNT@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: TFAM-NAME$      PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: SUMV-TAG@       PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: TFL-VPADS       PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: SUMV-PAYCELLS@  PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: SUMV-PAY-N      PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: EFFECT-DIN-N       PE-N PE-OUT PRIM;
+PRIM: EFFECT-DOUT-N      PE-N PE-OUT PRIM;
+PRIM: EFFECT-DIN-CELLS   PE-N PE-OUT PRIM;
+PRIM: EFFECT-DOUT-CELLS  PE-N PE-OUT PRIM;
+PRIM: EFFECT-DIN-SLOT    PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: EFFECT-DOUT-SLOT   PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: EFFECT-DIN-QUOT    PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: EFFECT-DOUT-QUOT   PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: EFFECT-QUOT-SIMPLE? PE-F PE-OUT PRIM;
+PRIM: EFFECT-QUOT-UP      PE-F PE-OUT PRIM;
+PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+
 PTABLE-END
 
 variable CHECKER-COLON-N
@@ -7269,6 +7319,18 @@ variable NORET-FMEND
 
 : CTL-FLAGS {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
+
+\ Whether control comes back from a call to the word this spelling denotes.
+\
+\ THE MASK BELONGS WITH THE ENCODING IT READS. Which bit means dead is this
+\ file's, and src/compiler/native/dict.f's own comment says so - it wants to know
+\ whether the call comes back, not which bit says it. That file used to hold a
+\ second copy of `CTL-DEAD and 0 <>` behind a trusted boundary because a boot
+\ prefix reader was all it could reach; with the axiom row above it reaches this,
+\ and the copy is gone. DEAD-CUR? below asks the same question of the walk's
+\ current symbol, which is the other half of the same encoding and stays here too.
+: CTL-DEAD? ( ptr u8 n -- bool )
+   CTL-FLAGS CTL-DEAD and 0 <> ;
 
 \ M5: OR CTL-BARRIER into a symbol's control flags (append later-wins, preserving
 \ any dead/throw already recorded), then arm the E-ADD-EFFECT hook.

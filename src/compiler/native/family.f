@@ -29,16 +29,17 @@
 \ (src/core/type-family.f, docs/type-families.md §12 and §14). Asking the wrong
 \ one here would let a body construct a value of somebody else's family.
 \
-\ WHY EVERY ANSWER ARRIVES PAST A TRUSTED BOUNDARY, AND WHY THE BOUNDARY IS ONE
-\ LINE WIDE. The registry lives in the boot prefix, where its readers are
-\ signature-less colon words the seal strips, so the checker has no symbol for
-\ them and checked code cannot name one - measured: `: P ( ptr u8 n -- n bool )
-\ TFL-MATCH-FAM? ;` is E-UNDEFINED and the definition is refused. That is the
-\ same wall src/compiler/native/dict.f meets at the checker's effect store and it
-\ is answered the same way: one declared word per question, whose whole body is
-\ the call, and every decision above it ordinary checked Habu. Each boundary
-\ asserts the effect the registry's own definition declares in its stack comment,
-\ and the fixture beside this file calls each one on a real declaration.
+\ EVERY ANSWER IS AN ORDINARY CHECKED CALL, AND IT USED NOT TO BE. The registry
+\ lives in the boot prefix, where its readers are signature-less colon words the
+\ seal marks internal, so the checker had no symbol for one and checked code
+\ could not name it - measured: `: P ( ptr u8 n -- n bool ) TFL-MATCH-FAM? ;` was
+\ E-UNDEFINED and the definition refused. This file answered that with ten
+\ one-line `TRUSTED:` bridges, one per question, and so did
+\ src/compiler/native/dict.f at the checker's effect store. The bridges are gone.
+\ src/core/checker.f now carries a `PRIM:` row per reader stating the effect the
+\ registry's own definition declares - the same assertion the bridge made, made
+\ once and where the reader lives - so the words below call the registry
+\ directly and nothing here is unchecked (dot habu-turn-the-registry-4c064064).
 \
 \ WHAT IT REFUSES, AND WHERE THE REFUSING IS DONE. Nothing here refuses: a
 \ declining resolver answers false and the caller decides. The caller is
@@ -51,22 +52,6 @@ require lib/prelude.f
 require lib/errors.f
 
 package NFAM
-private
-
-\ ---- the boundary ------------------------------------------------------------
-\ One word per registry question. The effects are the ones src/core/type-family.f
-\ declares for each of them; nothing here computes, so a body longer than the
-\ call would be this file deciding something.
-TRUSTED: R-MATCH-FAM ( ptr u8 n -- n bool )   TFL-MATCH-FAM? ;
-TRUSTED: R-CON-FAM ( ptr u8 n -- n bool )     TFL-CON-FAM? ;
-TRUSTED: R-VAR ( ptr u8 n n -- n bool )       TFL-VAR? ;
-TRUSTED: R-SLOTS ( n -- n )                   TFAM-SLOTS@ ;
-TRUSTED: R-VCOUNT ( n -- n )                  TFAM-VAR-COUNT@ ;
-TRUSTED: R-FAM-NAME ( n -- ptr u8 n )         TFAM-NAME$ ;
-TRUSTED: R-TAG ( n -- n )                     SUMV-TAG@ ;
-TRUSTED: R-PADS ( n n -- n )                  TFL-VPADS ;
-TRUSTED: R-PAY-CELLS ( n -- n )               SUMV-PAYCELLS@ ;
-TRUSTED: R-PAY-N ( n -- n )                   SUMV-PAY-N ;
 
 public
 
@@ -76,16 +61,16 @@ public
 \ nor an enum, both answer false - the registry makes both refusals itself, so
 \ this file states neither.
 : MATCH-FAM ( ptr u8 n -- n bool )
-   R-MATCH-FAM ;
+   TFL-MATCH-FAM? ;
 
 \ Owner scope, for a `construct`: minting a value of a family belongs to the
 \ package that declared it.
 : CON-FAM ( ptr u8 n -- n bool )
-   R-CON-FAM ;
+   TFL-CON-FAM? ;
 
 \ ---- the variant a form's second operand names -------------------------------
 : VARIANT ( ptr u8 n n -- n bool )
-   R-VAR ;
+   TFL-VAR? ;
 
 \ ---- what a value of the family is on the data stack -------------------------
 \ How many cells one value occupies: the tag, plus the payload slots the family
@@ -103,7 +88,7 @@ public
 \ the two can be compared. A value wider than this is refused there by name
 \ rather than compiled against the wrong number.
 : WIDTH ( n -- n )
-   R-SLOTS 1+ ;
+   TFAM-SLOTS@ 1+ ;
 
 \ How many variants the family has, which is how many arms an exhaustive dispatch
 \ over it must have. The chain does not enforce exhaustiveness - the checker
@@ -111,18 +96,18 @@ public
 \ body left out - but the count decides where the mismatch edge of the LAST arm
 \ goes, so the number is read rather than counted from the tokens.
 : VARIANTS ( n -- n )
-   R-VCOUNT ;
+   TFAM-VAR-COUNT@ ;
 
 \ The family's own name, which is the only name a trap over it could usefully
 \ print, and the key src/compiler/native/trap.f gives an ordinal to.
 : NAME$ ( n -- ptr u8 n )
-   R-FAM-NAME ;
+   TFAM-NAME$ ;
 
 \ ---- what one variant is -----------------------------------------------------
 \ Its tag, which is its position in the declaration and the value the dispatch
 \ compares against.
 : TAG ( n -- n )
-   R-TAG ;
+   SUMV-TAG@ ;
 
 \ How many cells of the bundle this variant leaves as zero pads: the family
 \ reserves room for its widest variant, so a narrower one is padded up to it. The
@@ -131,7 +116,7 @@ public
 \ generated constructors, and the same count the engine's own arm subtracts from
 \ the data-stack pointer (src/habu/habu2.f EM-ADT-MATCH-OF).
 : PADS ( n n -- n )
-   R-PADS ;
+   TFL-VPADS ;
 
 \ How many cells its payload occupies, and how many VALUES those cells are.
 \
@@ -145,10 +130,10 @@ public
 \ is not - which is exactly the distinction src/compiler/native/dict.f already
 \ draws over a declared row's terms and cells, and it answers it the same way.
 : PAY-CELLS ( n -- n )
-   R-PAY-CELLS ;
+   SUMV-PAYCELLS@ ;
 
 : PAY-TERMS ( n -- n )
-   R-PAY-N ;
+   SUMV-PAY-N ;
 
 private
 get-current prot-wid-add

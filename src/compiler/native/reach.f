@@ -109,16 +109,23 @@ private
 \ src/compiler/native/branch.f builds from that address and the target.
 \ src/compiler/native/publish.f and src/habu/xref.f wrap the same primitive the
 \ same way for the same reason.
+\
+\ IT IS REFUSED BY DESIGN AND SO THIS WRAPPER STAYS. `patch32` already carries a
+\ `PRIM:` row, marked PRIM-TRUSTED-ONLY! so a checked caller earns E-CAP-TRUSTED;
+\ dot habu-turn-the-registry-4c064064 converted the chain's other TRUSTED: sites
+\ and left this one, because converting it means deleting that flag rather than
+\ crossing the boundary it draws.
 TRUSTED: POKE ( n ptr a -- )
    patch32 ;
 
 \ ---- the one reader of a declared effect ------------------------------------
-\ The checker's effect-read export is name-stripped past the seal, so it is
-\ reachable only from an unchecked boundary - the shape src/core/top-row.f's
-\ hook and test/effect-read-api-test.f both use. One boundary, both halves of
-\ the answer, and a name the checker holds no effect for answers a pair nothing
-\ can be mistaken for.
-TRUSTED: EFFECT ( ptr u8 n -- n n )
+\ Both halves of the answer in one word, so a name the checker holds no effect
+\ for answers a pair nothing can be mistaken for. This was an unchecked boundary
+\ because the store's readers are name-stripped past the seal; src/core/checker.f
+\ now carries a `PRIM:` row for each of the three, so the body is ordinary
+\ checked Habu (dot habu-turn-the-registry-4c064064). src/core/top-row.f's hook
+\ and test/effect-read-api-test.f still reach the same readers their own way.
+: EFFECT ( ptr u8 n -- n n )
    EFFECT-QUERY if EFFECT-DIN-N EFFECT-DOUT-N else -1 -1 then ;
 
 -1 constant EFFECT-NONE

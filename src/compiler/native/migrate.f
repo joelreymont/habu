@@ -92,6 +92,14 @@ private
 \ ---- the one boundary this file needs ---------------------------------------
 \ `evaluate` is the metaprogramming boundary the checker does not model, and it
 \ is how a definition reaches the engine's own compile path from inside a word.
+\
+\ AND IT IS THE ONE SITE A SWEEP MUST NOT TOUCH. Dot
+\ habu-turn-the-registry-4c064064 converted the chain's TRUSTED: bridges into
+\ `PRIM:` rows wherever the wrapped word was a boot prefix reader the seal had put
+\ out of the checker's reach. `evaluate` is not that: it compiles whatever text it
+\ is handed, so a row for it would not restore a reachable word's declared effect,
+\ it would hand every checked body in the tree the compile-arbitrary-source door.
+\ The wrapper stays, one word wide, and the text it is handed is built above.
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
 

@@ -223,15 +223,16 @@ TRUSTED: RELOC-EXTERNAL ( n -- )
 
 \ One address chain recorded, at the word its first move-wide sits in.
 \
-\ THE FIFTH TRUSTED: SITE IN THIS FILE, and it is one instance of a pattern being
-\ retired rather than a new pattern. `addrmap-set` is a trust-boundary primitive
-\ (src/core/checker.f PRIM-TRUSTED-ONLY!) for the same reason `callmap-set` is -
-\ it writes the relocation metadata a restored image is rewritten from - and a
-\ TRUSTED: body is the only route the checker admits one through: a checked
-\ caller earns E-CAP-TRUSTED at the call. Dot habu-turn-the-registry-4c064064
-\ converts every TRUSTED: site in the chain to a PRIM: row in one boot-prefix
-\ landing; this row joins CODE-WINDOW, RELOC-EXTERNAL, RETARGET-REC and
-\ MIN-IN-REC in that sweep and is listed on the leaf.
+\ THE FIFTH TRUSTED: SITE IN THIS FILE, AND IT STAYS ONE. `addrmap-set` is a
+\ trust-boundary primitive (src/core/checker.f PRIM-TRUSTED-ONLY!) for the same
+\ reason `callmap-set` is - it writes the relocation metadata a restored image is
+\ rewritten from - and a TRUSTED: body is the only route the checker admits one
+\ through: a checked caller earns E-CAP-TRUSTED at the call. That is the point of
+\ the flag, not an accident of it. Dot habu-turn-the-registry-4c064064 swept the
+\ chain's TRUSTED: sites into `PRIM:` rows and deliberately left this file's five
+\ alone: these primitives already HAVE rows, and converting one means deleting its
+\ PRIM-TRUSTED-ONLY! - opening code injection and relocation metadata to any
+\ checked caller. The sweep's own note in checker.f records the five by name.
 \
 \ WHAT IT DOES NOT DO IS CLEAR. The bulk window clears the CALL map over the span
 \ it writes and not this one, so a bit left under a reclaimed routine's chain is

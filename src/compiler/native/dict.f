@@ -216,11 +216,13 @@ public
 \ the width field existed restores - and that arrives here as ARITY-NONE and a
 \ named refusal, exactly as an uncertified name does.
 
-\ The checker's effect store answers only past a trusted boundary: its readers
-\ are sig-less colon words that the seal strips, so checked code reaches them as
-\ compiled calls behind a declared signature. The boundary is one word wide and
-\ does no deciding - the refusing above it is ordinary checked Habu.
-TRUSTED: EFF-CELLS ( ptr u8 n -- n n )
+\ The store's readers are sig-less colon words the seal marks internal, so this
+\ used to arrive past a one-word trusted boundary - the only route the checker
+\ admitted. src/core/checker.f now carries a `PRIM:` row per reader stating the
+\ effect its own definition declares, so the call is ordinary checked Habu and
+\ the word below is the file's own vocabulary rather than a boundary
+\ (dot habu-turn-the-registry-4c064064).
+: EFF-CELLS ( ptr u8 n -- n n )
    EFFECT-QUERY if EFFECT-DIN-CELLS EFFECT-DOUT-CELLS else -1 -1 then ;
 
 \ ---- and whether control comes back from it ----------------------------------
@@ -243,11 +245,12 @@ TRUSTED: EFF-CELLS ( ptr u8 n -- n n )
 \ hard way: keying deadness on a spelling certified a body whose arm returned
 \ nothing where its signature promised a cell.
 \
-\ THE BOUNDARY ANSWERS THE QUESTION AND NOT THE BITS, which is why the mask is
-\ inside it. Which bit means dead is the checker's encoding; that this file
-\ needs to know is whether the call comes back.
-TRUSTED: EFF-DEAD? ( ptr u8 n -- bool )
-   CTL-FLAGS CTL-DEAD and 0 <> ;
+\ THE QUESTION IS ASKED AND NOT THE BITS, and the mask has moved to the encoding
+\ it reads. Which bit means dead is the checker's; what this file needs to know
+\ is whether the call comes back. That used to be a copy of `CTL-DEAD and 0 <>`
+\ here behind a trusted boundary, because a boot prefix reader was all this file
+\ could reach; src/core/checker.f CTL-DEAD? now answers the question itself and
+\ SPELL-DEAD? below calls it, so there is one mask and it lives with its encoding.
 
 \ ---- which cells of a row may not be separated from one another ---------------
 \ WHY A CALL SITE HAS TO KNOW THIS AND CANNOT WORK IT OUT. A value of a layout
@@ -309,16 +312,14 @@ TRUSTED: EFF-DEAD? ( ptr u8 n -- bool )
 \ no throw edge, and the fall-through is live - and a body failing any of them is
 \ not something a caller may reach with a branch and come back from. Nothing here
 \ re-derives those clauses; this asks the one word that owns them.
-TRUSTED: EFF-QUOT-DIN ( n -- bool )      EFFECT-DIN-QUOT ;
-TRUSTED: EFF-QUOT-DOUT ( n -- bool )     EFFECT-DOUT-QUOT ;
-TRUSTED: EFF-QUOT-SIMPLE? ( -- bool )    EFFECT-QUOT-SIMPLE? ;
-TRUSTED: EFF-QUOT-UP ( -- bool )         EFFECT-QUOT-UP ;
-
-TRUSTED: EFF-QUERY ( ptr u8 n -- bool )   EFFECT-QUERY ;
-TRUSTED: EFF-COUNTS ( -- n n n n )        \ din terms, din cells, dout terms, dout cells
+\ The seven readers those clauses need are named directly at the call sites
+\ below. Each used to have a one-line `TRUSTED:` bridge here whose whole body was
+\ the call, and a bridge that renames a word it can now simply call would be a
+\ second name for one question. The one row that is still written out is the one
+\ that computes: four reads in a fixed order, so a caller takes the counts of ONE
+\ row rather than four answers it has to keep straight itself.
+: EFF-COUNTS ( -- n n n n )        \ din terms, din cells, dout terms, dout cells
    EFFECT-DIN-N EFFECT-DIN-CELLS EFFECT-DOUT-N EFFECT-DOUT-CELLS ;
-TRUSTED: EFF-DIN-SLOT ( n -- n )          EFFECT-DIN-SLOT ;
-TRUSTED: EFF-DOUT-SLOT ( n -- n )         EFFECT-DOUT-SLOT ;
 
 public
 0 constant GLUE-NONE                 \ no cell of the row belongs to a bundle
@@ -361,7 +362,7 @@ variable RG-MASK   variable RG-I   variable RG-S
    GLUE-NONE RG-MASK !
    0 RG-I !
    begin RG-I @ terms < while
-      din if RG-I @ EFF-DIN-SLOT else RG-I @ EFF-DOUT-SLOT then RG-S !
+      din if RG-I @ EFFECT-DIN-SLOT else RG-I @ EFFECT-DOUT-SLOT then RG-S !
       RG-S @ 2 < if
          RG-I @ 1 + RG-I !
       else
@@ -453,7 +454,7 @@ public
 \ answer as "nothing here is bundled" and safe to be: a name with no effect is
 \ refused by SPELL-ARITY before any caller reaches for its glue.
 : SPELL-GLUE ( ptr u8 n -- n n )
-   EFF-QUERY 0= if GLUE-NONE GLUE-NONE exit then
+   EFFECT-QUERY 0= if GLUE-NONE GLUE-NONE exit then
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
    dn dc true ROW-GLUE
    on oc false ROW-GLUE ;
@@ -468,9 +469,9 @@ private
 \ which is what makes a caller's next question about the row it thinks it is
 \ about.
 : QUOT-CELLS ( -- n n )
-   EFF-QUOT-SIMPLE? {: simple:bool :}
+   EFFECT-QUOT-SIMPLE? {: simple:bool :}
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
-   EFF-QUOT-UP 0= if QUOT-NONE QUOT-NONE exit then
+   EFFECT-QUOT-UP 0= if QUOT-NONE QUOT-NONE exit then
    simple 0= if QUOT-NONE QUOT-NONE exit then
    dc 0 < oc 0 < or if QUOT-NONE QUOT-NONE exit then
    dn dc <> on oc <> or if QUOT-NONE QUOT-NONE exit then
@@ -493,17 +494,17 @@ public
 \ caller may reach with a branch and come back from.
 : SPELL-QUOT-DIN ( ptr u8 n n -- n n )
    {: a u:n i:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a u EFF-QUERY 0= if QUOT-NONE QUOT-NONE exit then
+   a u EFFECT-QUERY 0= if QUOT-NONE QUOT-NONE exit then
    true ROW-INDEXABLE? 0= if QUOT-NONE QUOT-NONE exit then
-   i EFF-QUOT-DIN 0= if QUOT-NONE QUOT-NONE exit then
+   i EFFECT-DIN-QUOT 0= if QUOT-NONE QUOT-NONE exit then
    QUOT-CELLS ;
 
 \ The same for term `i` of its OUTPUT row.
 : SPELL-QUOT-DOUT ( ptr u8 n n -- n n )
    {: a u:n i:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a u EFF-QUERY 0= if QUOT-NONE QUOT-NONE exit then
+   a u EFFECT-QUERY 0= if QUOT-NONE QUOT-NONE exit then
    false ROW-INDEXABLE? 0= if QUOT-NONE QUOT-NONE exit then
-   i EFF-QUOT-DOUT 0= if QUOT-NONE QUOT-NONE exit then
+   i EFFECT-DOUT-QUOT 0= if QUOT-NONE QUOT-NONE exit then
    QUOT-CELLS ;
 
 \ Whether control comes back from a call to the word this spelling denotes.
@@ -512,7 +513,7 @@ public
 \ needs no permission for. A name the checker certified nothing at all for is
 \ refused by SPELL-ARITY before any caller reaches for this.
 : SPELL-DEAD? ( ptr u8 n -- bool )
-   EFF-DEAD? ;
+   CTL-DEAD? ;
 
 private
 
