@@ -5970,3 +5970,15 @@ unpackaged legacy file, so "fix the lint" can be gated behind
 "package the lint" - check before planning a lint fix into a lane;
 (6) the crash handler exits 134 itself, so a refused write is an
 EXIT not a signal on both targets - assert T-OUTCOME-EXITED= 134.
+
+## A profile of a system that no longer exists (2026-08-11)
+
+The guard inline-latch was specified from a 16.2ms profile taken
+BEFORE the write window landed. On the post-window engine the win is
+inside the noise floor in both directions, and deleting the guard
+call outright wins nothing - the guard's apparent cost had been
+serialisation behind the 8MB mprotect churn the window removed. Two
+optimizations measured against the same baseline are not additive if
+they share a cost; re-profile after the first lands before building
+the second. The refutation is recorded on the leaf so the idea is
+dead, not pending.
