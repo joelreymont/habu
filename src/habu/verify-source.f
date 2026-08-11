@@ -319,11 +319,21 @@ TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
       APPEND-BODY-TOKEN
    AGAIN ;
 
+\ The two registrars, kept apart here for the same reason the engine keeps them
+\ apart (src/core/checker.f TRUST-DECL, dot habu-make-trust-refuse-cc8e19de).
+\ This scanner is a PRE-PASS: it reads a whole source buffer before any of it is
+\ compiled, so a definer it replays names a word that does not exist in this
+\ process and cannot be asked to prove otherwise. A bare `s" NAME" s" SIG" trust`
+\ row is the opposite - it asserts an effect for a word it CLAIMS already exists,
+\ which is a claim the dictionary can answer and now does.
+TRUSTED: DECL-SIGNATURE ( ptr u8 n ptr u8 n -- )
+   TRUST-DECL ;
+
 TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    TRUST ;
 
 : CAST-TRUST ( -- )
-   DTC-NAME$ DTC-SIG$ TRUST-SIGNATURE ;
+   DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
 
 : RECORD-CAST-IN ( ptr u8 n ptr u8 n -- )
    DTC-BUILD-IN
@@ -349,7 +359,7 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 : TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
    NEXT-SCAN
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
-   sig sigu TRUST-SIGNATURE ;
+   sig sigu DECL-SIGNATURE ;
 
 \ SIG-RAW-DEFINER! is a checker-internal word (no charted effect), so it rides a
 \ TRUSTED: boundary here exactly like MULTI-ERR-MODE? above.
@@ -364,11 +374,11 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
    NEXT-SCAN
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
    -1 SIG-RAW-MODE!
-   sig sigu TRUST-SIGNATURE
+   sig sigu DECL-SIGNATURE
    0 SIG-RAW-MODE! ;
 
 : TRUST-DEFER-SIGNATURE ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu REQUIRE-SIGNATURE TRUST-SIGNATURE
+   name nameu REQUIRE-SIGNATURE DECL-SIGNATURE
    name nameu CHECKER-DEFER ;
 
 : TRUST-DEFER ( -- )
@@ -387,7 +397,7 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
 : TRUSTED-DEFINITION ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing trusted name" 74 die THEN
-   name nameu REQUIRE-SIGNATURE TRUST-SIGNATURE
+   name nameu REQUIRE-SIGNATURE DECL-SIGNATURE
    SKIP-TRUSTED-BODY ;
 
 : UNDEFINE-WORD ( -- )
@@ -717,7 +727,7 @@ variable STG-START
    s" +FIELD" STR=CI ;
 
 : TRUST-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- )
-   TRUST-SIGNATURE ;
+   DECL-SIGNATURE ;
 
 : RECORD-STRUCTURE-FIELD ( ptr u8 n -- ) {: sig:ptr sigu:n :}
    NEXT-SCAN {: name:ptr nameu:n :}
@@ -729,7 +739,7 @@ variable STG-START
 : RECORD-STRUCTURE ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing structure name" 74 die THEN
-   name nameu s" -- n" TRUST-SIGNATURE
+   name nameu s" -- n" DECL-SIGNATURE
    BEGIN
       NEXT-SCAN
       dup 0= IF s" verify-source: missing END-STRUCTURE" 74 die THEN

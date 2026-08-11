@@ -21,6 +21,77 @@
 \ n/f/r; the domains themselves are independent, and space-global stays concrete.
 
 require test/checker-assert.f
+
+\ The whole suite is one package, and that is what lets the fixture words below
+\ be DEFINITIONS at all. A test file may not publish new global names (the
+\ package diff lint reports every one), and the abstract boundaries this suite
+\ invents have to be reachable by BARE name from the candidates it hands the
+\ checker - a candidate is certified with this package still open, so bare
+\ lookup finds the private tails here before it reaches the global wordlist.
+\ Nothing is exported: the report is called below, inside the package.
+package RIGID-REGION
+
+\ Trusted host/index constructors and equality consumers. `space-global` is a
+\ concrete device atom; the rigid identities sit in the following early slots.
+\
+\ THEY ARE `TRUSTED:` DEFINITIONS AND NOT `trust` ROWS. Each one is an abstract
+\ boundary this suite invents - a producer of a rigid matrix out of nothing has
+\ no checked body, which is the whole reason it is declared rather than written.
+\ A bare row would ASSERT that the word already exists somewhere, and nothing
+\ defines these; that claim is now refused at the row (src/core/checker.f
+\ TRUST-RESOLVES?, dot habu-make-trust-refuse-cc8e19de). `TRUSTED:` says exactly
+\ what was meant all along - here is a word, here is its effect, its body is not
+\ checkable - and the stub bodies are never run: every case below certifies a
+\ CANDIDATE against these effects and none of them executes.
+\
+\ THEY SIT ABOVE THE `0 set-check` WINDOW, AND THAT POSITION IS LOAD-BEARING.
+\ A declared signature is registered with the checker by the definer's own
+\ publish tail (src/habu/habu2.f EM-COMPILE-PUBLISH, which reaches
+\ EM-COMPILE-PUBLISH-TRUSTED -> DEF-TRUST:REGISTER only when HOOK-CELL is
+\ non-zero). `0 set-check` zeroes that cell, so a `TRUSTED:` inside the window
+\ publishes the WORD and registers NO EFFECT, and every case below then answers
+\ 1 (uncheckable) instead of -1/0. A bare `trust` row was immune because it is
+\ an ordinary call that records the row itself. The harness below still needs
+\ the window - it reads checker-internal state that has no charted effect - so
+\ the declarations moved above it rather than the window moving.
+TRUSTED: RR-UEQ ( matrix<space-global,a,b,f32> matrix<space-global,a,b,f32> -- ) drop drop ;
+TRUSTED: RR-UONE ( matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> -- ) drop drop ;
+TRUSTED: RR-UBOX ( span<space-global,f32,x> span<space-global,f32,x> -- ) drop drop ;
+\ one call, two outputs sharing region AND generation
+TRUSTED: RR-SHARE ( -- matrix<space-global,fresh-region-a,fresh-gen-g,f32> matrix<space-global,fresh-region-a,fresh-gen-g,f32> ) 0 0 ;
+\ equal extent (shared), distinct region
+TRUSTED: RR-XRGN ( -- matrix<space-global,fresh-region-a,fresh-extent-x,f32> matrix<space-global,fresh-region-b,fresh-extent-x,f32> ) 0 0 ;
+\ shared region, distinct extent
+TRUSTED: RR-XEXT ( -- matrix<space-global,fresh-region-a,fresh-extent-x,f32> matrix<space-global,fresh-region-a,fresh-extent-y,f32> ) 0 0 ;
+\ shared region, distinct generation
+TRUSTED: RR-XGEN ( -- matrix<space-global,fresh-region-a,fresh-gen-g,f32> matrix<space-global,fresh-region-a,fresh-gen-h,f32> ) 0 0 ;
+\ region-only owner (each call is a fresh allocation)
+TRUSTED: RR-OWN ( -- matrix<space-global,fresh-region-a,f32,f32> ) 0 ;
+\ region+extent host, one identity per call (used by the exhaustion probe)
+TRUSTED: RR-MK1 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,f32> ) 0 ;
+\ a region and a generation carried in the SAME slot of two boxes
+TRUSTED: RR-BOXR ( -- span<space-global,f32,fresh-region-a> ) 0 ;
+TRUSTED: RR-BOXG ( -- span<space-global,f32,fresh-gen-a> ) 0 ;
+\ a mask identity (fresh-mask-*): the LEGACY shared RIGID-FRESH domain, the
+\ catch-all every non-region/extent/gen fresh atom still mints from.
+TRUSTED: RR-BOXM ( -- span<space-global,f32,fresh-mask-a> ) 0 ;
+\ one call, two outputs sharing ONE mask id (the equal-id ⇒ unify anchor).
+TRUSTED: RR-SHM ( -- span<space-global,f32,fresh-mask-a> span<space-global,f32,fresh-mask-a> ) 0 0 ;
+
+\ THREE co-resident identities on ONE owner (region+extent+generation), the shape
+\ habu-add-unique-bounded needs. Consumer binds all three with non-reserved vars
+\ a/b/c; each producer is one allocation whose two outputs share all three ids.
+\ (TRUSTED probe rows owner = habu-add-bounded-host-b40b048f.)
+TRUSTED: RR-UEQ3 ( matrix<space-global,a,b,c> matrix<space-global,a,b,c> -- ) drop drop ;
+TRUSTED: RR-SHARE3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> ) 0 0 ;
+TRUSTED: RR-XRGN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-b,fresh-extent-x,fresh-gen-g> ) 0 0 ;
+TRUSTED: RR-XEXT3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-y,fresh-gen-g> ) 0 0 ;
+TRUSTED: RR-XGEN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-h> ) 0 0 ;
+\ SAME shape as RR-UEQ3 but the region slot is spelled `r` — the reserved FLOAT con,
+\ not a type var, so it can never bind a fresh-region atom (the sole reason the
+\ >=3-identity owner looked "unbindable"; the fix is a non-reserved letter).
+TRUSTED: RR-U3R ( matrix<space-global,r,b,c> matrix<space-global,r,b,c> -- ) drop drop ;
+
 0 set-check
 
 variable #FAIL
@@ -57,46 +128,6 @@ variable RR-EC
    RIGID-MAX @  2 RIGID-MAX !
    [: s" RRWM ( -- ) RR-BOXM drop RR-BOXM drop" CHECK-CANDIDATE! drop ;] catch RR-EC !
    RIGID-MAX ! ;
-
-\ Trusted host/index constructors and equality consumers. `space-global` is a
-\ concrete device atom; the rigid identities sit in the following early slots.
-s" RR-UEQ"  s" matrix<space-global,a,b,f32> matrix<space-global,a,b,f32> --" TRUST
-s" RR-UONE" s" matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> --" TRUST
-s" RR-UBOX" s" span<space-global,f32,x> span<space-global,f32,x> --" TRUST
-\ one call, two outputs sharing region AND generation
-s" RR-SHARE" s" -- matrix<space-global,fresh-region-a,fresh-gen-g,f32> matrix<space-global,fresh-region-a,fresh-gen-g,f32>" TRUST
-\ equal extent (shared), distinct region
-s" RR-XRGN"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,f32> matrix<space-global,fresh-region-b,fresh-extent-x,f32>" TRUST
-\ shared region, distinct extent
-s" RR-XEXT"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,f32> matrix<space-global,fresh-region-a,fresh-extent-y,f32>" TRUST
-\ shared region, distinct generation
-s" RR-XGEN"  s" -- matrix<space-global,fresh-region-a,fresh-gen-g,f32> matrix<space-global,fresh-region-a,fresh-gen-h,f32>" TRUST
-\ region-only owner (each call is a fresh allocation)
-s" RR-OWN"  s" -- matrix<space-global,fresh-region-a,f32,f32>" TRUST
-\ region+extent host, one identity per call (used by the exhaustion probe)
-s" RR-MK1"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,f32>" TRUST
-\ a region and a generation carried in the SAME slot of two boxes
-s" RR-BOXR" s" -- span<space-global,f32,fresh-region-a>" TRUST
-s" RR-BOXG" s" -- span<space-global,f32,fresh-gen-a>" TRUST
-\ a mask identity (fresh-mask-*): the LEGACY shared RIGID-FRESH domain, the
-\ catch-all every non-region/extent/gen fresh atom still mints from.
-s" RR-BOXM" s" -- span<space-global,f32,fresh-mask-a>" TRUST
-\ one call, two outputs sharing ONE mask id (the equal-id ⇒ unify anchor).
-s" RR-SHM"  s" -- span<space-global,f32,fresh-mask-a> span<space-global,f32,fresh-mask-a>" TRUST
-
-\ THREE co-resident identities on ONE owner (region+extent+generation), the shape
-\ habu-add-unique-bounded needs. Consumer binds all three with non-reserved vars
-\ a/b/c; each producer is one allocation whose two outputs share all three ids.
-\ (TRUSTED probe rows owner = habu-add-bounded-host-b40b048f.)
-s" RR-UEQ3"   s" matrix<space-global,a,b,c> matrix<space-global,a,b,c> --" TRUST
-s" RR-SHARE3" s" -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g>" TRUST
-s" RR-XRGN3"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-b,fresh-extent-x,fresh-gen-g>" TRUST
-s" RR-XEXT3"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-y,fresh-gen-g>" TRUST
-s" RR-XGEN3"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-h>" TRUST
-\ SAME shape as RR-UEQ3 but the region slot is spelled `r` — the reserved FLOAT con,
-\ not a type var, so it can never bind a fresh-region atom (the sole reason the
-\ >=3-identity owner looked "unbindable"; the fix is a non-reserved letter).
-s" RR-U3R"    s" matrix<space-global,r,b,c> matrix<space-global,r,b,c> --" TRUST
 
 \ (1) two accesses within one region+generation certify.
 s" C-CERT ( -- ) RR-SHARE RR-UEQ"  RR-CHECK -1 T=
@@ -150,3 +181,4 @@ RR-WRAPM  RR-EC @ E-RIGID-EXHAUST T=
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" rigid-region-suite: failures" 1 die ;
 REPORT
+;package

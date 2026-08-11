@@ -609,6 +609,11 @@ public
    \ scheduled runner at all: the only slice that reaches an unselected label is
    \ the bare (ALL) one, and no phase of test/run.f has ever run it.
    s" test/export-package.f" GSI-FORK-INCLUDE
+   \ Forked, not in-process: every case evaluates a source string that defines
+   \ global words, and the suite carries the same #FAIL/#CASE/T= vocabulary its
+   \ nearest sibling test/using-test.f does. Sharing an in-process group with
+   \ another suite that owns those names throws 78 before the first case runs.
+   s" test/trust-row-test.f" GSI-FORK-INCLUDE
    s" test/gate-runner-entry-test.f" GSI-FORK-INCLUDE
    s" lib/process-test.f" GSI-FORK-INCLUDE
    s" lib/process-command-test.f" GSI-FORK-INCLUDE

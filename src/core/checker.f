@@ -5992,6 +5992,29 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
 \ certifies), or rename the collision to reach the global (the grammar has no
 \ bare qualifier for the global "" wordlist).
 7141 constant E-USING-SHADOW-GLOBAL
+\ A `trust` row whose name the engine's own scope chain resolves to nothing.
+\ It sits beside E-USING-SHADOW-GLOBAL because that is the diagnostic it exists
+\ to prevent: a stale row minted a bare global checker symbol out of nothing,
+\ and the collision surfaced at some later file's `using` instead of at the row.
+7143 constant E-TRUST-UNRESOLVED
+variable TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
+defer TSTALE-DIAG-XT ( -- )                 \ render.f installs the row-site diagnostic
+: TSTALE-DIAG-DEFAULT ( -- ) [: ;] is TSTALE-DIAG-XT ;
+TSTALE-DIAG-DEFAULT
+
+\ A refused row behaves exactly like its sibling row error, the unparseable
+\ stored signature in USIG-ADD-BAD above: on the ordinary load path it is a hard
+\ stop, and under a MULTI-ERROR load it is rendered and COUNTED instead, so the
+\ pass reaches every other error in the file and the driver still exits nonzero
+\ at the end. Throwing here would abort the load at the first bad row and hide
+\ every finding behind it - which is what it did, silently, before this line.
+\ Neither path stores a row, so a later caller rejects as undefined rather than
+\ certifying against an effect nothing can reach.
+: TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a TSR-TOK-A !  u TSR-TOK-U !
+   TSTALE-DIAG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   E-TRUST-UNRESOLVED throw ;
 variable USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 variable USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
@@ -9770,7 +9793,50 @@ s" <input>" DIAG-FILE!
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
 \ Usage:  s" myword" s" n n -- n" trust
+\ ---- what a bare `trust` row may assert -------------------------------------
+\ A row is a CLAIM that a word exists, so the dictionary gets to answer it.
+\ Resolution is the ENGINE's own walk and not the checker's tables: the open
+\ package's private wordlist, then its public one, then the global wordlist,
+\ read through `search-wl` exactly as CK-OPEN-CLAIMS? reads them. The checker's
+\ own tables answer a different question - what a word's effect is - and a row
+\ naming a word with no effect recorded yet is the ordinary case, so asking
+\ them here would refuse almost every row in the tree.
+\
+\ A REPLAY IS NOT ASKED, for the same reason CK-OPEN-CLAIMS? declines under
+\ mirror authority: the source being replayed has not been compiled in this
+\ process, so this dictionary is not the one the row is a claim about. A row
+\ sitting directly under its own definition - the src/os/env-base.f and
+\ src/habu/hide.f idiom - would otherwise be refused during
+\ VERIFY:SOURCE-BUF, which is how tools/build-fixpoint.f certifies a generated
+\ stage source, and the refusal would be about a word the replayed text defines
+\ two lines up. Nothing is lost by declining: every row is still asked on the
+\ load path that compiles it, where the engine IS the authority, and that path
+\ runs for every file in the tree. Answering from the checker's replayed tables
+\ instead would be a second authority for one question and would still have to
+\ special-case every primitive axiom, which have no recorded effect to find.
+\
+\ A QUALIFIED SPELLING IS ACCEPTED, and that is a stated gap rather than an
+\ oversight. `search-wl` answers per wordlist on the raw spelling; measured, a
+\ CLOSED package's publics are in no wordlist it can reach and a package name is
+\ not itself a dictionary word, so PKG:TAIL has no resolver in the boot prefix
+\ today (dot habu-a-qualified-name-3913fe54). It is also the narrower half of
+\ the hole: only a BARE top-level name mints the global checker symbol that
+\ surfaces two layers away as E-USING-SHADOW-GLOBAL, which is the failure this
+\ refusal exists to stop. A malformed token is passed through for the same
+\ reason CHECKER-RECORD-SYM passes it: refusing it here would report the wrong
+\ thing about it.
+: TRUST-RESOLVES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF RES-TRUE EXIT THEN
+   CHECKER-QBAD-TOK @ IF RES-TRUE EXIT THEN
+   CHECKER-PKG-MIRROR-AUTHORITY? IF RES-TRUE EXIT THEN
+   a u 0 CK-WL-CLAIMS? IF RES-TRUE EXIT THEN
+   data-base CK-PKG-PRI-OFF + @ {: pri:n :}
+   pri 0= IF RES-FALSE EXIT THEN
+   a u pri CK-WL-CLAIMS? IF RES-TRUE EXIT THEN
+   a u data-base CK-PKG-PUB-OFF + @ CK-WL-CLAIMS? ;
+
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
+   na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    na nu sa su TRUST-USIG! ;
 
 \ TRUST-RAW: the raw-dictionary-storage form of TRUST, and the single authority

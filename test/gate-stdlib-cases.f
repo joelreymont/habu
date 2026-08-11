@@ -1109,6 +1109,10 @@ SUITE using-import
    test/using-test.f
 ;SUITE
 
+SUITE trust-row-refusal
+   test/trust-row-test.f
+;SUITE
+
 SUITE gate-runner-entry-load
    test/gate-runner-entry-test.f
 ;SUITE

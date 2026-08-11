@@ -1921,12 +1921,36 @@ TWX-MULTI-ERR-END 2 T=
 s" TDSME1" TWX-CHECKER-FIND-USIG 0 T=
 s" TDSME2" TWX-CHECKER-FIND-USIG 0 T=
 s" TDSME3" TWX-CHECKER-FIND-USIG -1 T=
-\ a raw TRUST row with an unparseable signature: counted + reported, no row.
+\ A raw TRUST row with an unparseable SIGNATURE: counted + reported, and the
+\ malformed effect is not stored.
+\
+\ THE ROW NAMES A WORD THE SAME SOURCE DEFINES, and both halves of that matter.
+\ A row must now name a word the engine resolves (src/core/checker.f
+\ TRUST-RESOLVES?, dot habu-make-trust-refuse-cc8e19de), so a row for a word
+\ nothing defines is refused for its NAME and never reaches the signature parser
+\ - which is the case below, not this one. And the row is written AFTER a second
+\ definition on purpose: USIG-ADD-BAD suppresses the row whose name is the
+\ definition CHECK just handled (that one was already diagnosed and counted), so
+\ naming TDTBAD immediately after defining it would report nothing at all.
+\
+\ "No row stored" is asserted as the effect TDTBAD KEEPS, because a defined word
+\ always has one. That is the invariant the original spelling was reaching for:
+\ a signature that does not parse must never become a word's effect.
 TWX-MULTI-ERR-BEGIN
-s\" s\" TDTBAD\" s\" nope<n> -- n\" TRUST : TDTOK ( n -- n ) ;" evaluate
+s\" : TDTBAD ( n -- n ) ; : TDTOK ( n -- n ) ; s\" TDTBAD\" s\" nope<n> -- n\" TRUST" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDTBAD" TWX-CHECKER-FIND-USIG 0 T=
 s" TDTOK" TWX-CHECKER-FIND-USIG -1 T=
+s" TDTKEPT ( n -- n ) TDTBAD" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDTTOOK ( -- n ) TDTBAD" CHECK-QUIET-CANDIDATE! 0 T=
+\ A raw TRUST row naming NO word: the same treatment as its sibling above -
+\ counted, reported, no row - rather than a throw that would abort the load at
+\ the first bad row and hide every finding behind it. TDTOK2's row is the proof
+\ that the pass really did continue past the refusal.
+TWX-MULTI-ERR-BEGIN
+s\" s\" TDTGONE\" s\" -- n\" TRUST : TDTOK2 ( n -- n ) ;" evaluate
+TWX-MULTI-ERR-END 1 T=
+s" TDTGONE" TWX-CHECKER-FIND-USIG 0 T=
+s" TDTOK2" TWX-CHECKER-FIND-USIG -1 T=
 DIAG-BUFFER-OFF
 
 \ ---------------------------------------------------------------------------

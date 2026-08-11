@@ -30,7 +30,7 @@ $4000 constant TEST-OUT-CAP
 96 constant TEST-TICK-C   \ backtick: the report's finding-subject delimiter
 $0B constant TEST-VT-C
 9 constant TEST-PATH#     \ rows in the grammar-fixture path table
-13 constant TEST-OPENER#  \ declaration openers the category knows
+14 constant TEST-OPENER#  \ declaration openers the category knows
 5 constant TEST-PREFIX-U  \ length of the `test/` every listed path begins with
 32 constant TEST-CASE-DELTA   \ lower-case byte minus its upper-case twin
 
@@ -791,7 +791,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    o 9 = if s" DEFER-LAYOUT-BUFFER" exit then
    o 10 = if s" TYPED-VARIABLE" exit then
    o 11 = if s" TYPED-BUFFER" exit then
-   s" PTR-VARIABLE" ;
+   o 12 = if s" PTR-VARIABLE" exit then
+   s" TRUSTED:" ;
 
 \ One complete top-level declaration per opener, closer included where the form
 \ needs one, so every cell presents a real definition rather than a fragment.
@@ -808,7 +809,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    o 9 = if s" DEFER-LAYOUT-BUFFER pdlx" TEST-SOURCE-LINE exit then
    o 10 = if s" TYPED-VARIABLE pdlx" TEST-SOURCE-LINE exit then
    o 11 = if s" TYPED-BUFFER pdlx" TEST-SOURCE-LINE exit then
-   s" PTR-VARIABLE pdlx" TEST-SOURCE-LINE ;
+   o 12 = if s" PTR-VARIABLE pdlx" TEST-SOURCE-LINE exit then
+   s" TRUSTED: PDLX ( -- n ) 1 ;" TEST-SOURCE-LINE ;
 
 \ Bit i of a row means opener i above.  Each comment spells the row out, so the
 \ mask and the prose have to be edited together to move a pin.
@@ -830,8 +832,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    p 6 = if $1157 exit then
    \ SUMTYPE NEWTYPE DEFLINEAR DEFER-LAYOUT-BUFFER
    p 7 = if $0251 exit then
-   \ VALUE-RECORD NEWTYPE DEFTYPE DEFLINEAR LAYOUT-BUFFER
-   $0178 ;
+   \ VALUE-RECORD NEWTYPE DEFTYPE DEFLINEAR LAYOUT-BUFFER TRUSTED:
+   $2178 ;
 
 : TEST-ALLOWED? ( n n -- bool ) {: p:n o:n :}
    p TEST-PATH-MASK  1 o lshift and  0<> ;
@@ -872,18 +874,30 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    repeat drop
    s" each path admits exactly the openers its own fixtures declare with" T-LABEL
    TEST-CELL-BAD @ 0 T=
-   s" the nine rows admit 35 of the 117 path-and-opener pairs" T-LABEL
-   TEST-CELL-OK @ 35 T= ;
+   s" the nine rows admit 36 of the 126 path-and-opener pairs" T-LABEL
+   TEST-CELL-OK @ 36 T= ;
 
-\ The narrowing itself.  Each of these five stands in a listed file beside real
+\ The narrowing itself.  Each of these four stands in a listed file beside real
 \ fixtures, and every one of them reports in every row.  Under the file-wide
-\ admission this replaced, all five passed.
+\ admission this replaced, all four passed.
+\
+\ TRUSTED: IS NOT ONE OF THEM ANY MORE, and belongs in the matrix above instead,
+\ exactly where CAST: sits: it now carries an opener bit, so "is it admitted" is
+\ a per-path question and a blanket "every row rejects it" would be false by
+\ construction.  The matrix answers it at all nine paths - admitted at
+\ test/engine-suite.f alone, reported at the other eight.  The plain `:` stays
+\ here, and its presence at every path is what keeps the engine-suite row from
+\ reading as a file-wide exemption.
 : TEST-ADD-ORDINARY-GLOBALS ( -- )
    s" : PDL-HELPER ( -- n ) 1 ;" TEST-SOURCE-LINE
-   s" TRUSTED: PDL-WRAPPER ( -- n ) 2 ;" TEST-SOURCE-LINE
    s" variable PDL-STATE" TEST-SOURCE-LINE
    s" constant PDL-LIMIT" TEST-SOURCE-LINE
    s" create PDL-CELL" TEST-SOURCE-LINE ;
+
+\ The effect declarer, kept separate because it is admitted in ONE grammar-fixture
+\ row and in no stage0 row at all.  A caller that wants it says so.
+: TEST-ADD-TRUSTED-GLOBAL ( -- )
+   s" TRUSTED: PDL-WRAPPER ( -- n ) 2 ;" TEST-SOURCE-LINE ;
 
 : TEST-OPENER-CASE-AT ( ptr u8 n -- ) {: opener:ptr openeru:n :}
    TEST-SOURCE-RESET
@@ -986,7 +1000,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
 : TEST-ORDINARY-ROW? ( n -- bool ) {: p:n :}
    TEST-SOURCE-RESET TEST-ADD-ORDINARY-GLOBALS
    TEST-DIFF-RESET p TEST-PATH$ TEST-ADD-SOURCE-SECTION
-   5 TEST-RUN-EXPECT? ;
+   4 TEST-RUN-EXPECT? ;
 
 : TEST-STRUCTURE-ROW? ( n -- bool ) {: p:n :}
    TEST-SOURCE-RESET
@@ -1081,7 +1095,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" the ordinary-global report names each ordinary global" T-LABEL
    TEST-SOURCE-RESET TEST-ADD-ORDINARY-GLOBALS
    TEST-DIFF-RESET s" test/type-decl-suite.f" TEST-ADD-SOURCE-SECTION
-   5 TEST-EXPECT-FINDINGS
+   4 TEST-EXPECT-FINDINGS
    s" PDL-HELPER" TEST-NAMES
    s" PDL-STATE" TEST-NAMES
    s" PDL-CELL" TEST-NAMES
@@ -1180,12 +1194,15 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    1 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
    TEST-EXPECT-CLEAN ;
 
-\ The narrowing.  The five ordinary globals stand in a LISTED stage0 fixture and
-\ exactly one of them - the plain colon word - is admitted; the other four report
-\ by name.  Under a file-wide admission all five would pass.
+\ The narrowing.  Five globals stand in a LISTED stage0 fixture and exactly one
+\ of them - the plain colon word - is admitted; the other four report by name.
+\ Under a file-wide admission all five would pass.  TRUSTED: is spelled out here
+\ rather than taken from the ordinary set because this is the row that has to
+\ prove a stage0 fixture never inherits it: it is an admitted opener in one
+\ grammar-fixture row, and this category admits the plain `:` and nothing else.
 : TEST-STAGE0-NARROW ( -- )
    s" only the plain colon word is admitted in a listed fixture" T-LABEL
-   TEST-SOURCE-RESET TEST-ADD-ORDINARY-GLOBALS
+   TEST-SOURCE-RESET TEST-ADD-ORDINARY-GLOBALS TEST-ADD-TRUSTED-GLOBAL
    TEST-DIFF-RESET 0 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
    4 TEST-EXPECT-FINDINGS
    s" PDL-WRAPPER" TEST-NAMES

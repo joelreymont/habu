@@ -1171,8 +1171,25 @@ variable GE-DFULL-I                 \ copy/definition loop index
    SB$ s" nonzero div/mod output" GE-EXPECT-OUT
    s" PASS: div/mod by zero traps (no silent 0)" type cr ;
 
+\ These runtime checks belong to RUNTIME-CHECKS, the package whose REST word
+\ already drives them. They are here rather than at global top level because a
+\ change to a test file may publish no new global name and may not edit a global
+\ definition's body (tools/package-diff-lint.f reports both), and the trust-row
+\ rule below required editing these two source builders. REST calls them by bare
+\ name from inside this same package, so nothing else moves.
+package RUNTIME-CHECKS
+private
+
+\ The smoke line defines `w` before trusting it, and that is the point of the
+\ first line rather than scaffolding. A bare `trust` row is a CLAIM that the
+\ word exists (src/core/checker.f TRUST-RESOLVES?, dot
+\ habu-make-trust-refuse-cc8e19de); this fixture used to name a word nothing
+\ defined, so it asserted the old fail-open behaviour and would now be refused
+\ at the row - correctly. What it is FOR is unchanged: a row is accepted and the
+\ statements after it still run, which the `7 .` and the compiled `Q` show.
 : GE-TRUST-SOURCE ( -- )
    GE-SRC-RESET
+   s" : w ( n -- n ) ;" GE-SRC-LINE
    s" w" GE-SRC-S"
    GE-SRC-SP
    s" n -- n" GE-SRC-S"
@@ -1191,6 +1208,8 @@ variable GE-DFULL-I                 \ copy/definition loop index
    RUNTIME-RUNNER:BUFFER
    SB-RESET s" -1" SB-APPEND GE-SB-LF
    SB$ s" getenv output" GE-EXPECT-OUT ;
+
+;package
 
 : GE-WRITE-SCRIPT-ARGV ( -- )
    GT-ROOT s" hb-script-argv.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
@@ -1276,21 +1295,28 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" 5" SB-APPEND GE-SB-LF
    SB$ s" hb TRUSTED: effect recording output" GE-EXPECT-OUT ;
 
-: GE-SRC-TRUST ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n sig:ptr sigu:n :}
-   name nameu GE-SRC-S"
-   GE-SRC-SP
-   sig sigu GE-SRC-S"
-   s"  TRUST" GE-SRC-LINE ;
+\ Same package, same reason as the GE-TRUST-SOURCE block above.
+package RUNTIME-CHECKS
+private
 
 : GE-ROLE-SOURCE ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
    s" DEFTYPE size" GE-SRC-LINE
-   s" NEED-IDX" s" idx --" GE-SRC-TRUST
-   s" NEED-LEN" s" len --" GE-SRC-TRUST
-   s" NEED-SIZE" s" size --" GE-SRC-TRUST
-   s" >SIZE" s" n -- size" GE-SRC-TRUST
-   s" SIZE>N" s" size -- n" GE-SRC-TRUST
+   \ The three role SINKS are defined, not trusted. Each is a checked stub whose
+   \ signature IS the effect the cases below are certified against, which is all
+   \ this fixture ever wanted from them - nothing calls one. They used to be bare
+   \ `trust` rows for words nothing defined, which asserted a fail-open behaviour
+   \ that no longer exists: a row is a claim that the word is there
+   \ (src/core/checker.f TRUST-RESOLVES?, dot habu-make-trust-refuse-cc8e19de).
+   \ The verdicts are unchanged, because a checked stub records the same effect
+   \ the row declared.
+   s" : NEED-IDX ( idx -- ) drop ;" GE-SRC-LINE
+   s" : NEED-LEN ( len -- ) drop ;" GE-SRC-LINE
+   s" : NEED-SIZE ( size -- ) drop ;" GE-SRC-LINE
+   \ `>SIZE` and `SIZE>N` need no row at all: `DEFTYPE size` above publishes both
+   \ conversions itself, with these effects. The rows were redundant before this
+   \ change and only looked load-bearing next to the three above.
    s" GE-ROLE-ALL-CHECK ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N >ASM ASM>N >IMG IMG>N >SNAP SNAP>N" GE-SRC-CHECK-LINE
    s" GE-ROLE-OK ( n -- ) >IDX NEED-IDX" GE-SRC-CHECK-LINE
    s" GE-ROLE-BAD ( n -- ) >IDX NEED-LEN" GE-SRC-CHECK-LINE
@@ -1332,6 +1358,8 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-DEPTH
    GE-TRUSTED-EFFECT
    GE-ROLE-TYPES ;
+
+;package
 
 : GE-TIMEOUT-ATTRIBUTION ( -- )
    GE-HB-RESET

@@ -1009,3 +1009,31 @@ REC-SIG-INSTALL
    0 RDST !  0 RSN ! ;
 : USHADOW-DIAG-INSTALL ( -- ) [: USHADOW-DIAG ;] is USHADOW-DIAG-XT ;
 USHADOW-DIAG-INSTALL
+
+\ --- a `trust` row naming a word the engine resolves to nothing. Rendered on
+\ the same template as the shadow diagnostic above, and beside it on purpose:
+\ this is the refusal that stops a stale row from becoming that one.
+: TSTALE-PROSE ( -- )
+   s" E-TRUST-UNRESOLVED habu: trust row for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
+   s" ' names no word: nothing in the open package or the global wordlist" DTXT
+   s"  is spelled that way, so the effect would be recorded against a symbol" DTXT
+   s"  no call can ever reach. Delete the row, or correct the name to the word" DTXT
+   s"  it was meant to describe" DTXT ;
+: TSTALE-JSON ( -- )
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-TRUST-UNRESOLVED" JSTR 44 EMIT1
+   s" repair_class" JKEY s" fix_stale_trust_row" JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" suggestion" JKEY s" This trust row names a word the engine cannot resolve here. Delete the row if the word is gone, or correct the spelling; a qualified PKG:TAIL name is not checked yet." JSTR
+   125 EMIT1 ;
+: TSTALE-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF TSTALE-JSON ELSE TSTALE-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
+: TSTALE-DIAG-INSTALL ( -- ) [: TSTALE-DIAG ;] is TSTALE-DIAG-XT ;
+TSTALE-DIAG-INSTALL

@@ -410,8 +410,34 @@ TC-UEND=? -1 T=
 TC-NEND=? -1 T=
 TC-SYMN=? -1 T=
 TC-SYMU=? -1 T=
+\ ---------------------------------------------------------------------------
+\ THE T-* BOUNDARY WORDS BELOW ARE `TRUSTED:` DEFINITIONS AT GLOBAL SCOPE.
+\
+\ They used to be bare `s" NAME" s" SIG" trust` rows for words nothing defined.
+\ A row is now a CLAIM that the word exists and is refused otherwise
+\ (src/core/checker.f TRUST-RESOLVES?, dot habu-make-trust-refuse-cc8e19de), so
+\ each one says what it always meant: here is a word, here is its effect, its
+\ body is not checkable. No body is ever executed - every case hands the checker
+\ a CANDIDATE that merely names them.
+\
+\ THEY ARE GLOBAL, AND THIS FILE IS THE ONE PLACE THAT IS ALLOWED. What this
+\ suite tests is what the engine and the checker do at genuine global top level:
+\ which scope claims a bare tail, what a package private shadows, what a checker
+\ scope retires. T-PRESO is the case that pins it - a package-owned outer word
+\ does not come back after `;package` (measured: the candidate answers 1, and
+\ the case requires -1), so packaging these would delete the property under
+\ test. tools/package-diff-lint-core.f carries the exact-path row that admits
+\ `TRUSTED:` here and nowhere else, with the same reasoning written out, and
+\ tools/package-diff-lint-test.f pins that it admits this fixture rather than
+\ the pattern.
+\ ---------------------------------------------------------------------------
 \ later-wins redefinition through the audited TRUST override path: the second
 \ row must replace the first for all later callers (in-place index update).
+\ T-RDF is DEFINED once and then overridden by the two rows below, which is
+\ what this case is about. A row must name a word the engine resolves, and a
+\ second TRUSTED: would be a duplicate definition; one definition plus two
+\ rows leaves the later-wins override exactly as it was.
+TRUSTED: T-RDF ( n -- n ) ;
 s" T-RDF" s" n -- n" TRUST
 s" caller of first TRUST effect certifies" T-LABEL
 s" COK-RDF-V1 ( n -- n ) T-RDF" CHECK-QUIET-CANDIDATE! -1 T=
@@ -422,7 +448,7 @@ s" caller of stale first effect rejects" T-LABEL
 s" CBAD-RDF-V1 ( n -- n ) T-RDF" CHECK-QUIET-CANDIDATE! 0 T=
 \ candidate rollback restores the pre-candidate effect: a candidate may shadow
 \ T-RDF, but after its scope ends the shadow must be gone for later checks.
-s" T-SCV" s" n -- n" TRUST
+TRUSTED: T-SCV ( n -- n ) drop 0 ;
 s" candidate shadow of TRUSTed word certifies" T-LABEL
 s" T-SCV ( -- n ) 5" CHECK-QUIET-CANDIDATE! -1 T=
 s" pre-candidate effect restored after scope" T-LABEL
@@ -432,14 +458,14 @@ s" CBAD-SCV-LEAK ( -- n ) T-SCV" CHECK-QUIET-CANDIDATE! 0 T=
 \ control-flag rollback: a candidate that turns T-CTV into a no-return thrower
 \ records CTL flags inside its scope only; after the scope the caller's code
 \ after T-CTV is live again.
-s" T-CTV" s" --" TRUST
+TRUSTED: T-CTV ( -- ) ;
 s" candidate no-return redefinition certifies" T-LABEL
 s" T-CTV ( -- ) 1 throw" CHECK-QUIET-CANDIDATE! -1 T=
 s" ctl flags rolled back with the scope" T-LABEL
 s" COK-CTV-LIVE ( -- n ) T-CTV 5" CHECK-QUIET-CANDIDATE! -1 T=
 \ checker scope: a name interned inside the scope stops resolving after it.
 CHECKER-SCOPE-START
-s" T-SCOPED-W" s" -- n" TRUST
+TRUSTED: T-SCOPED-W ( -- n ) 0 ;
 s" scoped TRUST resolves inside the scope" T-LABEL
 s" COK-SCOPED-IN ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! -1 T=
 CHECKER-SCOPE-DONE
@@ -447,7 +473,7 @@ s" scoped TRUST retired with the scope" T-LABEL
 s" CUNK-SCOPED-OUT ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! 1 T=
 \ package resolution order: private wins over public and global inside the
 \ open package; the private row never leaks as qualified or global outside.
-s" T-PRESO" s" -- n" TRUST
+TRUSTED: T-PRESO ( -- n ) 0 ;
 package ES-PRES
 : T-PRESO ( -- n n ) 1 2 ;
 public
@@ -654,7 +680,7 @@ s" over-budget quot refuses recording and names the word" T-LABEL
 DIAG-BUFFER$ s" rsq7" T-HAS? -1 T=
 s" over-budget quot refusal names the unmodeled-tag reason" T-LABEL
 DIAG-BUFFER$ s" unmodeled type tag" T-HAS? -1 T=
-s" T-V14" s" -- a b c d e g h i j k l m o p" TRUST
+TRUSTED: T-V14 ( -- a b c d e g h i j k l m o p ) 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ;
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" rec-refuse var overflow still certifies" T-LABEL
 s" RSV28 T-V14 T-V14" CHECK-QUIET-CANDIDATE! -1 T=
@@ -674,8 +700,8 @@ s" CREC-SIGLESS dup recurse" CHECK-QUIET-CANDIDATE! 1 T=
 \ colon never resolves (FIND-QBAD); edge colons stay ordinary names.
 s" a:b:c" s" -- n" TRUST
 s" a:b:" s" -- n" TRUST
-s" x:" s" -- n" TRUST
-s" ::x" s" -- n" TRUST
+TRUSTED: x: ( -- n ) 0 ;
+TRUSTED: ::x ( -- n ) 0 ;
 s" tq:tail" s" -- n" TRUST
 s" double-colon token rejects" T-LABEL
 s" CBAD-QUAL-DOUBLE ( -- n ) a:b:c" CHECK-QUIET-CANDIDATE! 1 T=
@@ -742,7 +768,7 @@ UEND @ 0 T=
 TG-USIGS @ 0 T=
 UEND @ 128 + USIGS-CAP-U !
 USIGS-CAP-U @ TG-SMALL-CAP !
-s" T-GROW-PAIR" s" ptr u8 n ptr u8 n -- ptr u8 n" TRUST
+TRUSTED: T-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) drop drop drop drop 0 0 ;
 s" COK-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) T-GROW-PAIR" T-CHECK-PASSES
 \ growth is geometric: one forced grow at least doubles the old cap
 s" usigs-grow-geometric" T-LABEL
@@ -783,28 +809,28 @@ s" tv-arena-restored-cap" T-LABEL
 TV-CAP @ MAXTV-INIT T=
 s" tv-arena-restored-boot" T-LABEL
 TG-TVT TVT-BOOT = -1 T=
-s" T-PHASE-ID" s" img -- img" TRUST
+TRUSTED: T-PHASE-ID ( img -- img ) drop 0 ;
 s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" T-CHECK-PASSES
 s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS
-s" T-ASM-CODE" s" -- asm" TRUST
-s" T-BUILD-IMAGE" s" asm -- img" TRUST
-s" T-CODESIG2" s" img -- img" TRUST
-s" T-BUILD-SNAP-HDR" s" n -- snap n" TRUST
-s" T-SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
-s" T-SNAP-EXTRA-SIZE" s" -- n" TRUST
+TRUSTED: T-ASM-CODE ( -- asm ) 0 ;
+TRUSTED: T-BUILD-IMAGE ( asm -- img ) drop 0 ;
+TRUSTED: T-CODESIG2 ( img -- img ) drop 0 ;
+TRUSTED: T-BUILD-SNAP-HDR ( n -- snap n ) drop 0 0 ;
+TRUSTED: T-SNAP-EXTRA-PTR ( -- ptr u8 ) 0 ;
+TRUSTED: T-SNAP-EXTRA-SIZE ( -- n ) 0 ;
 s" COK-BUILD-IMAGE ( -- img ) T-ASM-CODE T-BUILD-IMAGE" T-CHECK-PASSES
 s" COK-CODESIG2 ( -- img ) T-ASM-CODE T-BUILD-IMAGE T-CODESIG2" T-CHECK-PASSES
 s" COK-SNAP-HDR ( n -- snap n ) T-BUILD-SNAP-HDR" T-CHECK-PASSES
 s" COK-SNAP-EXTRA ( -- ptr u8 n ) T-SNAP-EXTRA-PTR T-SNAP-EXTRA-SIZE" T-CHECK-PASSES
 s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" T-CHECK-PASSES
 s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" T-CHECK-PASSES
-s" T-PTX-LOAD" s" span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live>" TRUST
-s" T-PTX-ADD" s" tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> -- tile<f32,block-256,mask-live>" TRUST
-s" T-PTX-GRID" s" span<space-global,f32,e> -- gridctx<block-256,e,fresh-mask-live>" TRUST
-s" T-PTX-MLOAD" s" span<space-global,f32,e> gridctx<block-256,e,m> -- tile<f32,block-256,m>" TRUST
-s" T-PTX-MADD" s" tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block-256,m>" TRUST
-s" T-MK-SPAN" s" n -- span<space-global,f32,fresh-extent-n>" TRUST
-s" T-MK-SPAN=" s" n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n>" TRUST
+TRUSTED: T-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) drop drop 0 ;
+TRUSTED: T-PTX-ADD ( tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> -- tile<f32,block-256,mask-live> ) drop drop 0 ;
+TRUSTED: T-PTX-GRID ( span<space-global,f32,e> -- gridctx<block-256,e,fresh-mask-live> ) drop 0 ;
+TRUSTED: T-PTX-MLOAD ( span<space-global,f32,e> gridctx<block-256,e,m> -- tile<f32,block-256,m> ) drop drop 0 ;
+TRUSTED: T-PTX-MADD ( tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block-256,m> ) drop drop 0 ;
+TRUSTED: T-MK-SPAN ( n -- span<space-global,f32,fresh-extent-n> ) drop 0 ;
+TRUSTED: T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n> ) drop 0 0 ;
 \ --- growable decoupled scratch arenas: crossing each init cap mid-check no
 \ longer dies and does not corrupt (each grow relocates its mmap store). Reuses
 \ T-MK-SPAN above so no new TRUST site is introduced.
@@ -1300,7 +1326,7 @@ s" DNI-RENDER ( frame-idx -- n )" CHECK! drop
 s" nominal type renders by name in diagnostic" T-LABEL
 DIAG-BUFFER$ s\" frame-idx" MEO-CONTAINS? -1 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
-s" T-PTX-SAME-EXTENT" s" span<space-global,f32,e> span<space-global,f32,e> --" TRUST
+TRUSTED: T-PTX-SAME-EXTENT ( span<space-global,f32,e> span<space-global,f32,e> -- ) drop drop ;
 s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-PASSES
 s" COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
 s" COK-PTX-ID-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-PTX-ID" T-CHECK-PASSES
@@ -1386,8 +1412,8 @@ s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | a -- a -- ],f32> -- ) drop" 2dup T-LAB
 \ Render acceptance (destruction review): a mismatch diagnostic must render the
 \ full parametric type — all six args of an arity-6 application, and an SC-QUOT
 \ arg's din/dout rows plus the return clause — never a collapsed string or '?'.
-s" T-BIG6-MK" s" -- tfam6r-big<n,f32,u8,u16,i64,bool>" TRUST
-s" T-SCQ-MK" s" -- scq-fam<[ n -- n | a -- a ],f32>" TRUST
+TRUSTED: T-BIG6-MK ( -- tfam6r-big<n,f32,u8,u16,i64,bool> ) 0 ;
+TRUSTED: T-SCQ-MK ( -- scq-fam<[ n -- n | a -- a ],f32> ) 0 ;
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" arity-6 mismatch diagnostic rejects" T-LABEL
 s" CBAD-BIG6-REND ( -- n ) T-BIG6-MK" CHECK-CANDIDATE! 0 T=
@@ -1418,13 +1444,13 @@ s" COK-SHOW-INFERRED ( i64 -- i64 ) {: x:? :} x" T-CHECK-PASSES
 s" CBAD-SHOW-INFERRED ( i64 -- ) {: x:? :} x x" T-CHECK-REJECTS
 TSHOW-N @ 2 T=
 TSHOW-RESTORE
-s" T-NEED-I64" s" i64 --" TRUST
-s" T-NEED-U32" s" u32 --" TRUST
-s" T-NEED-U16" s" u16 --" TRUST
-s" T-NEED-U8" s" u8 --" TRUST
-s" T-GIVE-U16" s" -- u16" TRUST
-s" T-GIVE-U8" s" -- u8" TRUST
-s" T-GIVE-I64" s" -- i64" TRUST
+TRUSTED: T-NEED-I64 ( i64 -- ) drop ;
+TRUSTED: T-NEED-U32 ( u32 -- ) drop ;
+TRUSTED: T-NEED-U16 ( u16 -- ) drop ;
+TRUSTED: T-NEED-U8 ( u8 -- ) drop ;
+TRUSTED: T-GIVE-U16 ( -- u16 ) 0 ;
+TRUSTED: T-GIVE-U8 ( -- u8 ) 0 ;
+TRUSTED: T-GIVE-I64 ( -- i64 ) 0 ;
 s" COK-U8-WIDEN-IN ( u8 -- ) T-NEED-I64" T-CHECK-PASSES
 s" COK-U8-WIDEN-OUT ( -- i64 ) T-GIVE-U8" T-CHECK-PASSES
 s" COK-U16-WIDEN-IN ( u16 -- ) T-NEED-U32" T-CHECK-PASSES
@@ -1433,16 +1459,16 @@ s" CBAD-I64-NARROW-IN ( i64 -- ) T-NEED-U8" T-CHECK-REJECTS
 s" CBAD-I64-NARROW-OUT ( -- u8 ) T-GIVE-I64" T-CHECK-REJECTS
 s" CBAD-U32-NARROW-IN ( u32 -- ) T-NEED-U16" T-CHECK-REJECTS
 DEFTYPE node
-s" T->NODE" s" n -- node" TRUST
-s" T-NODE>N" s" node -- n" TRUST
-s" T-NEED-NODE" s" node --" TRUST
+TRUSTED: T->NODE ( n -- node ) drop 0 ;
+TRUSTED: T-NODE>N ( node -- n ) drop 0 ;
+TRUSTED: T-NEED-NODE ( node -- ) drop ;
 s" COK-NODE-ROLE ( n -- n ) T->NODE T-NODE>N" T-CHECK-PASSES
 s" CBAD-NODE-LEN ( n -- len ) T->NODE" T-CHECK-REJECTS
 s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
 s" CBAD-UNKNOWN-ROLE ( n -- track ) T->NODE" T-CHECK-REJECTS
 DEFLINEAR own
-s" T-MAKE-OWN" s" -- own" TRUST
-s" T-FREE-OWN" s" own --" TRUST
+TRUSTED: T-MAKE-OWN ( -- own ) 0 ;
+TRUSTED: T-FREE-OWN ( own -- ) drop ;
 s" COK-OWN-PASS ( own -- own )" T-CHECK-PASSES
 s" COK-OWN-MAKE ( -- own ) T-MAKE-OWN" T-CHECK-PASSES
 s" COK-OWN-FREE ( own -- ) T-FREE-OWN" T-CHECK-PASSES
@@ -1623,10 +1649,10 @@ s" CBAD-SNAP-HDR ( n -- n ) T-BUILD-SNAP-HDR" T-CHECK-REJECTS
 s" CBAD-THROW-DUMMY ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-DIE-DUMMY ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-EXIT-DUMMY ( i64 -- i64 ) exit 0" T-CHECK-REJECTS
-s" T-LINUX-DUP2-FD" s" reg fd reg --" TRUST
-s" T-LINUX-SPAWN" s" reg reg reg reg reg reg reg --" TRUST
-s" T-SPAWN-DUP2-ACTION" s" reg fd --" TRUST
-s" T-SPAWN-DARWIN-FINISH" s" label label --" TRUST
+TRUSTED: T-LINUX-DUP2-FD ( reg fd reg -- ) drop drop drop ;
+TRUSTED: T-LINUX-SPAWN ( reg reg reg reg reg reg reg -- ) drop drop drop drop drop drop drop ;
+TRUSTED: T-SPAWN-DUP2-ACTION ( reg fd -- ) drop drop ;
+TRUSTED: T-SPAWN-DARWIN-FINISH ( label label -- ) drop drop ;
 s" TROLE-LINUX-DUP2 ( reg fd reg -- ) T-LINUX-DUP2-FD" T-CHECK-PASSES
 s" CBAD-LINUX-DUP2-FD ( reg reg reg -- ) T-LINUX-DUP2-FD" T-CHECK-REJECTS
 s" CBAD-LINUX-SPAWN ( reg reg reg fd reg reg reg -- ) T-LINUX-SPAWN" T-CHECK-REJECTS

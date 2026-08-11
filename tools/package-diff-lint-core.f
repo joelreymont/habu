@@ -382,6 +382,11 @@ $0200 constant O-DEFER-LAYOUT
 $0400 constant O-TYPED-VARIABLE
 $0800 constant O-TYPED-BUFFER
 $1000 constant O-PTR-VARIABLE
+\ TRUSTED: is the one opener here that declares an EFFECT rather than a type.
+\ It earns a bit for the same reason the others have one: a listed suite has to
+\ declare with it at genuine top level, and no suite that does not gets the bit
+\ in its row.
+$2000 constant O-TRUSTED
 
 \ Each set is the EXACT set of openers that path's own fixtures declare with,
 \ measured by replaying that file through this lint with the category off and
@@ -419,10 +424,31 @@ O-DEFLINEAR or O-LAYOUT-BUFFER or O-PTR-VARIABLE or constant LAYOUT-BUFFER-SET
 \ DEFER-LAYOUT-BUFFER 2, SUMTYPE 1, NEWTYPE 1, DEFLINEAR 1 - the deferred form
 \ over a top-level arity-0 nominal scalar, same obligation.
 O-DEFER-LAYOUT O-SUMTYPE or O-NEWTYPE or O-DEFLINEAR or constant LAYOUT-DEFER-SET
-\ VALUE-RECORD 8, DEFTYPE 3, NEWTYPE 1, LAYOUT-BUFFER 1, DEFLINEAR 1 - the
-\ engine's own behaviour suite: its nominal scalar backs the only checked source
-\ of a pointee accessor, declared where the engine sees user source.
-O-VALUE-RECORD O-NEWTYPE or O-DEFTYPE or
+\ VALUE-RECORD 8, DEFTYPE 3, NEWTYPE 1, LAYOUT-BUFFER 1, DEFLINEAR 1,
+\ TRUSTED: 42 - the engine's own behaviour suite: its nominal scalar backs the
+\ only checked source of a pointee accessor, declared where the engine sees user
+\ source.
+\
+\ WHY THIS ROW ALONE CARRIES O-TRUSTED.  The suite's subject is what the engine
+\ and the checker do at genuine GLOBAL top level: which scope claims a bare tail,
+\ what a package private shadows, what survives a checker scope, what a `using`
+\ collides with.  Its abstract boundary words used to be bare `trust` rows, which
+\ declare an effect without defining anything; since a row must now name a word
+\ the engine resolves (src/core/checker.f TRUST-RESOLVES?, dot
+\ habu-make-trust-refuse-cc8e19de) each of them is a `TRUSTED:` definition, and
+\ 41 of the 42 could sit in the suite's own ENGINE-SUITE package.  T-PRESO cannot:
+\ its case asserts that a package private shadows the GLOBAL binding and that the
+\ global one comes back after `;package`, and measured, a package-owned outer word
+\ does not come back - the candidate answers 1 (uncheckable) where the case
+\ requires -1.  Packaging that fixture would delete the property under test, which
+\ is the same argument that admits the two stage0 recovery fixtures below, and the
+\ global leg is precisely the leg E-USING-SHADOW-GLOBAL exists to guard.
+\
+\ The row admits the FIXTURE, not the pattern.  It is one path and one opener: a
+\ `TRUSTED:` at global scope in any other file is reported, a plain `:` in this
+\ file is reported, and a neighbouring path is not implicitly exempt.
+\ tools/package-diff-lint-test.f pins all three.
+O-VALUE-RECORD O-NEWTYPE or O-DEFTYPE or O-TRUSTED or
 O-DEFLINEAR or O-LAYOUT-BUFFER or constant ENGINE-SET
 
 \ ---- the row table -----------------------------------------------------------
@@ -944,9 +970,18 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    k s" PTR-VARIABLE" TOK=CI if O-PTR-VARIABLE exit then
    0 ;
 
+\ The effect declarer.  Like CAST: above it gets a bit even though DEFINER-KIND
+\ lexes it as a colon block, because these bits name declaration ROLE.  A plain
+\ `:` deliberately has no bit and never will: it is the ordinary definer, and a
+\ bit for it would turn any listed row into a blanket exemption for its file.
+: EFFECT-OPENER-BIT ( n -- n ) {: k:n :}
+   k s" TRUSTED:" TOK=CI if O-TRUSTED exit then
+   0 ;
+
 : OPENER-BIT ( n -- n ) {: k:n :}
    k COMPOSITE-OPENER-BIT dup 0<> if exit then drop
    k FAMILY-OPENER-BIT dup 0<> if exit then drop
+   k EFFECT-OPENER-BIT dup 0<> if exit then drop
    k STORAGE-OPENER-BIT ;
 
 \ A listed path is necessary but not sufficient, and neither is a declaration in
