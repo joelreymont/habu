@@ -5942,3 +5942,12 @@ absorb growth; gate-size-attribution-test.f measures the bytes and
 trips. One green is not evidence about the other - it is evidence
 the padding hid the growth, which is the gap the byte ratchet
 exists to close.
+
+## An engine older than a two-stage landing cannot skip the stages (2026-08-11)
+
+A pre-stage-1 bin/hb dies at install on stage-2 source (its baked
+publish tails call `trust` on not-yet-findable names, which stage 2
+refuses - exit 67 mid-boot). That is the two-stage constraint
+working, not a defect. Recovery for a stale workspace engine: copy a
+current fixpoint binary from a sibling workspace (then install
+--force to confirm), pass through the stage-1 tree, or bootstrap.
