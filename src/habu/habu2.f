@@ -1638,6 +1638,23 @@ create ENDLOC-KW 58 c, 125 c,
 \ with: this file writes the trailer and checks it, and the native chain's
 \ src/compiler/native/dict.f checks it too, so the number has one definition.
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
+\ The defer/is misuse diagnostics own one concern between them - telling the
+\ source what it got wrong with `defer` or `is` - so they live in their own
+\ package, on the HOLD-EMIT model below, rather than joining the global emitter
+\ surface around them. The label cells are public because KWDATA:EMIT bakes
+\ their strings and the LABELS allocator mints their ids; each message's byte
+\ length is private, stated once beside the string it measures. The emitters
+\ that write them reopen this package further down, next to the defer rows.
+package DEFER-DIAG
+34 constant NOTOKEN-LEN    \ byte length of "hb: is: missing target word after " (LDEFNOTOKEN)
+31 constant NOTFOUND-LEN   \ byte length of "hb: is: no deferred word named " (LDEFNOTFOUND)
+29 constant NOTDEFER-LEN   \ byte length of "hb: is: not a deferred word: " (LDEFNOTDEFER)
+30 constant NONAME-LEN     \ byte length of "hb: defer: missing name after " (LDEFNONAME)
+72 constant HINT-LEN       \ byte length of "hb: is: parsing words resolve outside using-imports; qualify the target\n" (LDEFHINT)
+public
+variable LDEFNOTOKEN  variable LDEFNOTFOUND  variable LDEFNOTDEFER  variable LDEFNONAME
+variable LDEFHINT
+;package
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2DOESW
 
 \ The held-publication seam's own two names: the label cell holding the spelling
@@ -1724,7 +1741,7 @@ variable LKWTRUSTRAW
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  HOLD-EMIT:LHOLDQ LABEL@ LBL, s" checker-hold?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  HOLD-EMIT:LHOLDQ LABEL@ LBL, s" checker-hold?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
@@ -2830,10 +2847,69 @@ package INTERP-EMIT
    9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
    done LBL, ;
 
-: C-DEFER-DIE-TOKEN ( n -- ) {: rc:n :}               \ source misuse of defer/is (malformed syntax $4A, undefined/unset target $46, non-defer target $4C): recoverable inside evaluate, fail-closed exit rc at top level. Every caller fires before the defer record is counted into NDICT (C-DEFER at 2385 pre-publish; C-DEFER-FIND-UNSET before its DP alloc; the is/C-DEFER-TARGET-META sites before DEFER-META-CELL is written), so the eval-frame / REPL rollback drops only compile-state + region prot. Distinct from the pre-trust boot-integrity backstops (C-PD-DIE-FULL exit 72, BSEALCAP exit 73) which do NOT route here and STAY hard exits; C-PD-CAPTURE runs only on C-DEFER's success path (after NDICT bump), so a converted failure never leaves a stale pending-table entry.
+: C-DEFER-DIE-TOKEN ( n -- ) {: rc:n :}               \ boot-integrity backstop: the bare token, then exit rc; recoverable inside evaluate, fail-closed exit rc at top level. Its ONE caller is C-DEFER-FIND-UNSET ($46), which fires before its DP alloc, so the eval-frame / REPL rollback drops only compile-state + region prot. It stays token-only on purpose: the token there is the engine's own `defer-unset` primitive name, not a name the source wrote, so there is no source misuse to explain. The four causes that ARE source misuse each name themselves through DEFER-DIAG below. Distinct from the pre-trust boot-integrity backstops (C-PD-DIE-FULL exit 72, BSEALCAP exit 73) which do NOT route here and STAY hard exits.
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 s" c-defer-die-token" s" n --" TRUST
+
+\ The defer/is misuse causes each get their own line: what went wrong, then the
+\ token it went wrong on, then a newline. They used to share C-DEFER-DIE-TOKEN,
+\ which wrote the bare token and nothing else - a build that failed here printed
+\ `HOOK` and exited 70, with no code, no cause and no hint (dot
+\ habu-a-failed-defer-b83bcfa5). The codes were already distinct at the call
+\ sites; only the message was missing.
+\ Recovery is unchanged by the move: every one of these fires before the defer
+\ record is counted into NDICT - C-DEFER pre-publish, and the two
+\ C-DEFER-TARGET-META sites before DEFER-META-CELL is written - so an abort
+\ inside `evaluate` rolls back compile state and region protection and nothing
+\ else, and C-PD-CAPTURE runs only on C-DEFER's success path, after the NDICT
+\ bump, so a failure here never leaves a stale pending-table entry.
+package DEFER-DIAG
+
+: DIE-HEAD ( label n -- ) {: msg:label len:n :}
+   0 2 MOVZ,  1 msg ADR,  2 len MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 1 MOVZ,  NR-WRITE SYS, ;
+s" die-head" s" label n --" TRUST
+
+: DIE-MSG ( label n n -- ) {: msg:label len:n rc:n :}
+   msg len DIE-HEAD
+   0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
+s" die-msg" s" label n n --" TRUST
+
+public
+
+\ One word per cause, so a die site names the cause and nothing else: a message,
+\ its length and its exit code are one fact about that cause and are stated once,
+\ here, instead of being spelled out again at every site that can fail.
+: DIE-NO-NAME ( -- )                       \ `defer` with no following token
+   LDEFNONAME LABEL@ NONAME-LEN $4A DIE-MSG ;
+s" die-no-name" s" --" TRUST
+
+: DIE-NO-TARGET ( -- )                     \ `is` with no following token
+   LDEFNOTOKEN LABEL@ NOTOKEN-LEN $4A DIE-MSG ;
+s" die-no-target" s" --" TRUST
+
+: DIE-NOT-DEFER ( -- )                     \ `is` target exists but is not deferred
+   LDEFNOTDEFER LABEL@ NOTDEFER-LEN $4C DIE-MSG ;
+s" die-not-defer" s" --" TRUST
+
+\ `is` parses its target and resolves it through the engine's own lookup, which
+\ does not consult the packages a `using` imported - so a bare tail that only a
+\ used public exports is genuinely not found here, and the reader needs telling
+\ that qualifying it is the fix. The advice is checked, not guessed: with a
+\ public `defer` in DPKG, `is DPKG:DHOOK` compiles and runs where the bare
+\ `is DHOOK` under `using DPKG` dies here. A tail that a global AND a live used
+\ public both claim is a different case and already refused - the checker stops
+\ it at the reference site with E-USING-SHADOW-GLOBAL (throw 7141), naming both
+\ candidates - which is why this dot's repair is the message and not a new rule.
+: DIE-NOT-FOUND ( -- )                     \ `is` target resolves to nothing
+   LDEFNOTFOUND LABEL@ NOTFOUND-LEN DIE-HEAD
+   0 2 MOVZ,  1 LDEFHINT LABEL@ ADR,  2 HINT-LEN MOVZ,  NR-WRITE SYS,
+   0 $46 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+s" die-not-found" s" --" TRUST
+
+;package
 
 \ This and the following defer rows emit dispatch cells/code/metadata, pending
 \ pre-trust capture, IS retargeting, and capacity and misuse failures.
@@ -2951,7 +3027,7 @@ s" c-pretrust-ready?" s" --" TRUST
    2 3 MOVZ,  LPROT LABEL@ BL,
    C-DEFER-ROOM
    LTOK LABEL@ BL,  0 named CBNZ,
-      $4A C-DEFER-DIE-TOKEN
+      DEFER-DIAG:DIE-NO-NAME
    named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,
    C-CLEAR-TRUSTED-STATE
@@ -2984,18 +3060,18 @@ s" c-defer" s" --" TRUST
 : C-DEFER-TARGET-META ( -- )
    LBL LBL LBL {: named found ok :}
    LTOK LABEL@ BL,  0 named CBNZ,
-      $4A C-DEFER-DIE-TOKEN
+      DEFER-DIAG:DIE-NO-TARGET
    named LBL,
    LBCAP LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 found CBNZ,
-      $46 C-DEFER-DIE-TOKEN
+      DEFER-DIAG:DIE-NOT-FOUND
    found LBL,
    14 11 12 ADD,
    15 14 0 LDR,
    5 DEFER-MAGIC LIT64,
    15 5 CMP,  C-EQ ok BCOND,
-      $4C C-DEFER-DIE-TOKEN
+      DEFER-DIAG:DIE-NOT-DEFER
    ok LBL,
    14 14 8 ADDI,  14 14 0 LDR,
    14 DATA DEFER-META-CELL STR, ;
@@ -7614,6 +7690,8 @@ package LABELS
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
+   LBL DEFER-DIAG:LDEFNOTOKEN !  LBL DEFER-DIAG:LDEFNOTFOUND !
+   LBL DEFER-DIAG:LDEFNOTDEFER !  LBL DEFER-DIAG:LDEFNONAME !  LBL DEFER-DIAG:LDEFHINT !
    LBL LSIGPTRA !  LBL LSIGA !
    LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
    LBL LTFLCONFAM !  LBL LTFLCVAR !

@@ -298,6 +298,42 @@ variable START-NS
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
    76 s" does>" s" hb trusted DOES> without created signature diagnostic" GE-EVAL-FORK-BAD ;
 
+\ A failed `is` used to print the bare offending token and nothing else - no
+\ code, no cause, no hint - so a build that tripped it showed `HOOK` and exit 70
+\ (dot habu-a-failed-defer-b83bcfa5). Each cause now names itself, and the
+\ not-found case says why a bare tail under an open `using` is not found: `is`
+\ parses its target and resolves it through the engine's own lookup, which does
+\ not consult used publics. The MESSAGE is asserted, not just the exit code -
+\ the exit codes were already distinct and were not the thing that was missing.
+: BAD-IS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" defer DHOOK ( -- )" GE-SRC-LINE
+   s" : DMINE ( -- ) ;" GE-SRC-LINE
+   s" : DARM ( -- ) [: DMINE ;] is DNOSUCH ;" GE-SRC-LINE
+   70 s" hb: is: no deferred word named DNOSUCH" s" hb is-target-not-found names the word" GE-EVAL-FORK-BAD
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" defer DHOOK2 ( -- )" GE-SRC-LINE
+   s" : DMINE2 ( -- ) ;" GE-SRC-LINE
+   s" : DARM2 ( -- ) [: DMINE2 ;] is DNOSUCH2 ;" GE-SRC-LINE
+   70 s" parsing words resolve outside using-imports" s" hb is-target-not-found explains the using rule" GE-EVAL-FORK-BAD
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : DPLAIN ( -- ) ;" GE-SRC-LINE
+   s" : DMINE3 ( -- ) ;" GE-SRC-LINE
+   s" : DARM3 ( -- ) [: DMINE3 ;] is DPLAIN ;" GE-SRC-LINE
+   76 s" hb: is: not a deferred word: DPLAIN" s" hb is-target-not-a-defer names the word" GE-EVAL-FORK-BAD
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : DMINE4 ( -- ) ;" GE-SRC-LINE
+   s" : DARM4 ( -- ) [: DMINE4 ;] is" GE-SRC-LINE
+   74 s" hb: is: missing target word after" s" hb is-missing-target names the cause" GE-EVAL-FORK-BAD
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" defer" GE-SRC-LINE
+   74 s" hb: defer: missing name after" s" hb defer-missing-name names the cause" GE-EVAL-FORK-BAD ;
+
 : ROW-QUOT-CHECKS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -1295,6 +1331,7 @@ public
    s" dictionary/long-name" [: LONG-NAME ;] CASE-RUN
    s" dictionary/trusted-does" [: TRUSTED-DOES ;] CASE-RUN
    s" dictionary/bad-does" [: BAD-DOES ;] CASE-RUN
+   s" dictionary/bad-is" [: BAD-IS ;] CASE-RUN
    s" dictionary/row-quot" [: ROW-QUOT-CHECKS ;] CASE-RUN
    s" dictionary/primitives" [: PRIMITIVE-CHECKS ;] CASE-RUN
    s" dictionary/return" [: RETURN-CHECKS ;] CASE-RUN

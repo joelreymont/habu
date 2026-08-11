@@ -415,9 +415,26 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ measured the candidate at 118636 (was 118296), +340 = 5 * 17 * 4. Floor follows
 \ from the same number: 7704 -> 8044, inside the same 16 KiB page, so the text
 \ pad absorbs it and neither MACOS-SIGNATURE nor MACOS-TOTAL moves.
-118636 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-11, a failed defer/is says what went wrong (dot
+\ habu-a-failed-defer-b83bcfa5): the four source-misuse causes used to share
+\ C-DEFER-DIE-TOKEN, which wrote the offending token and nothing else, so a
+\ build that tripped one printed a bare `HOOK` and exited 70. Each cause now
+\ writes its own message, and the not-found case adds the using-import hint.
+\ Two parts to the delta. The baked strings are 34 + 31 + 29 + 30 + 72 = 196
+\ bytes, but `BYTES,` pads each label's data up to the next instruction word,
+\ so they occupy 36 + 32 + 32 + 32 + 72 = 204. The emitted code replaces
+\ C-DEFER-DIE-TOKEN's seven words (a three-word write of the token with its
+\ two-word syscall, then the code and the branch) at four sites, 4 * 7 * 4 =
+\ 112 bytes, with DEFER-DIAG's words: DIE-HEAD is three five-word writes
+\ (message, token, newline), so DIE-MSG is seventeen words at three sites and
+\ DIE-NOT-FOUND is twenty-two, (3 * 17 + 22) * 4 = 292. The exact-CODELEN
+\ ratchet measured the candidate at 119020 (was 118636), +384 = 204 + 292 -
+\ 112. Floor follows from the same number: 8044 -> 8428, inside the same 16 KiB
+\ page, so the text pad absorbs it and neither MACOS-SIGNATURE nor MACOS-TOTAL
+\ moves.
+119020 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-8044 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+8428 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
