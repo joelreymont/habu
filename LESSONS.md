@@ -5820,3 +5820,17 @@ other lane's build mid-flight. Every gate invocation names a temp root
 private to its lane (and ideally to the run); a gate that ran during a
 shared-root window proves nothing and must be rerun. This is also the
 likeliest source of paired timing-assertion flakes across lanes.
+
+## Packaging a legacy tool file: three checker-scope facts (2026-08-11)
+
+From the BUILD-FIXPOINT packaging. (1) CHECKER-DEFINED? answers in the
+checker's currently OPEN package scope - a bare global name asked from
+inside a package answers "no", so a load-discipline guard silently
+inverts when its file gains a package; make the guard public and ask it
+with the package closed (audit dot 1504bbde). (2) Anything that runs a
+build or in-process certification (VERIFY:SOURCE-BUF) must execute
+after ;package, or the verified source is checked against that
+package's wordlist. (3) EXPORT NAME inside a public section is the tool
+for packaging a large legacy file: definitions stay private in place
+and the export list reads in one block - no forwarding bodies, no
+toggles scattered through 300 definitions.
