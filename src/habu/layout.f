@@ -783,13 +783,36 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ rewrite completely different fields, and a two-bit call map would cost the same
 \ bytes while forcing the already-proven call pass to decode a tag it does not
 \ need. Two one-bit maps also let each pass keep the identical bit-scan loop.
-\ Membership is recorded where the compiler decides the literal is an address of
-\ CODE: habu2.f C-CODE-ADDR is the single emit point, and the AOT seed's code-
-\ literal rebase (EM-AOT-RELOC-CODE) is the second producer, which knows its sites
-\ are code literals because they come from the captured code-site list rather than
-\ the data-site list. The sibling C-DATA-ADDR literals are deliberately NOT
-\ recorded: they hold DATA addresses, and DATA is mapped at a fixed address in
-\ every run, so they are already the same in the writing and the restoring run.
+\ Membership is recorded where the compiler decides the literal IS an address, of
+\ either kind: habu2.f C-CODE-ADDR, C-DATA-ADDR and C-DATA-ADDR-RAW are the three
+\ emit points, the native chain's publication seam is the fourth, and the AOT
+\ seed's code-literal rebase (EM-AOT-RELOC-CODE) is the fifth.
+\
+\ THE DATA LITERALS USED TO BE LEFT OUT, and the reason given was true of the
+\ wrong consumer. DATA is mapped at a fixed address in every run, so a DATA chain
+\ is already correct in the run that restores a snapshot and this map's snapshot
+\ reader has nothing to do for it. But the AOT CAPTURE is the other reader, and it
+\ has to FIND a DATA chain: the captured blob lands at a different DP in the
+\ seeded engine, so a chain-compiled word's DATA address is the metabuild host's
+\ and is wrong there. Capture used to find them by scanning the blob for the
+\ chain's shape and testing the value against the window's DATA span - a value
+\ heuristic of exactly the kind the next paragraph forbids. So both kinds are
+\ recorded, and the ONE question this band answers is where a chain starts.
+\
+\ RECORDING BOTH KINDS COSTS THE SNAPSHOT PASS NOTHING, because that pass is
+\ parameterised by band. habu2.f EMIT-ADDRS is called once per band and rewrites a
+\ chain only when the address it spells out falls inside that band, leaving one
+\ that names neither alone rather than guessing. Its bands are the JIT region and
+\ the engine's __text; DATA is mapped MAP_FIXED at DATA-VA, which is far above
+\ both in every run and at both ends of a snapshot - the writer folds the region
+\ to the RBASE-VA sentinel and the loader maps that sentinel onto the live region
+\ base. So a recorded DATA site is visited by both calls and rewritten by neither.
+\
+\ WHICH KIND a recorded site is, is NOT in this band. A kind is meaningful per
+\ relocation window and is written beside the window that needs it - the AOT
+\ capture's own kind list - while this bit is a permanent property of a region
+\ word. A second band would have cost REGION/32 more bytes of engine DATA to
+\ answer a question this one is never asked.
 \ Nothing ever recognises a chain by looking at region bytes or at the value a
 \ chain carries: a compiled word may hold inline non-instruction data, and an
 \ ordinary integer may hold any value at all.

@@ -387,9 +387,21 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 116584 (was 116384), +200. Floor follows from the same number: 5792 -> 5992,
 \ inside the same 16 KiB page, so the text pad absorbs it and neither
 \ MACOS-SIGNATURE nor MACOS-TOTAL moves.
-118284 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-11, the address map records DATA chains too (dot
+\ habu-per-site-relocation-bb9b6d70): C-DATA-ADDR and C-DATA-ADDR-RAW now record
+\ their site through SNAP-RELOC:MARK-SITE, the way C-CODE-ADDR always has, so the
+\ AOT capture can FIND a chain-compiled DATA address instead of recognising one
+\ by the value it carries. One BL per emit site and there are three of them -
+\ EMIT-CREATE's pushed address and the two deferred-word dispatch-cell addresses.
+\ The snapshot pass is unaffected: it is called once per band and a DATA address
+\ is in neither of its bands, so a recorded DATA site is visited and rewritten by
+\ neither. The exact-CODELEN ratchet measured the candidate at 118296 (was
+\ 118284), +12 = 3 * 4. Floor follows from the same number: 7692 -> 7704, inside
+\ the same 16 KiB page, so the text pad absorbs it and neither MACOS-SIGNATURE
+\ nor MACOS-TOTAL moves.
+118296 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-7692 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+7704 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

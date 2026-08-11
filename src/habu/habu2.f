@@ -219,16 +219,53 @@ $1F constant ADDR-RD-MASK
 \ Same instruction shape for all three; what differs is what the address means,
 \ which is why the kind is decided here, at the emit site, and never later by
 \ looking at the bytes.
-\ push a DATA-region address (create/variable data field). DATA is mapped at a
-\ fixed address in every run, so a persisted DATA literal is already correct in
-\ the run that restores it and is deliberately not recorded.
-: C-DATA-ADDR ( -- )  C-ADDR-PUSH ;
+\
+\ ALL THREE RECORD THEIR SITE, AND THE MAP ANSWERS ONE QUESTION: WHERE A CHAIN
+\ STARTS. It used to answer only for code addresses, and the DATA ones were left
+\ out on the argument that DATA is mapped at a fixed address in every run, so a
+\ persisted DATA literal is already correct in the run that restores it. That
+\ argument is TRUE and it was an argument about the wrong consumer. A snapshot
+\ restore does not have to move a DATA chain; an AOT CAPTURE has to FIND one -
+\ the captured blob is copied to a different DP in the seeded engine, so the
+\ address a chain-compiled word holds is the metabuild host's and is wrong there.
+\ Capture used to find them by scanning the blob for the chain's shape and
+\ testing the value against the window's DATA span, which is a value heuristic:
+\ an ordinary integer may hold any value at all, and a compiled word may carry
+\ inline data that decodes as a move-wide chain. So the record is written where
+\ the kind is KNOWN, which is here, and the two consumers read the one map.
+\
+\ AND WHY ONE BAND STILL SERVES BOTH KINDS. SNAP-RELOC:EMIT-ADDRS is called ONCE
+\ PER BAND with the band it is moving (x21 = base, x22 = length) and rewrites a
+\ chain only when the address it spells out lies inside that band; a chain naming
+\ neither band is left alone rather than guessed at. Its two calls are the live
+\ JIT region and the engine's loaded __text. A DATA address is in neither, in
+\ every run and at both ends of a snapshot: DATA is mapped MAP_FIXED at DATA-VA
+\ ($340000000 on Linux, $44000000000 on macOS), the writer canonicalises the
+\ region to the RBASE-VA sentinel ($300000000, span REGION = $800000, so the band
+\ ends at $300800000) and the loader maps the sentinel onto the live region base,
+\ which sits REGION-OFF above __text. Every one of those bands is far below
+\ DATA-VA and none of them can reach it. So a DATA site recorded here is VISITED
+\ by both calls and rewritten by NEITHER - which is exactly right, because DATA
+\ does not move - and what the record buys is a capture that no longer has to
+\ recognise a chain by what it contains.
+\
+\ WHAT THE KIND COSTS TO KEEP. The band says where a chain is and not what kind
+\ it is, because a kind is per relocation window and belongs beside the window
+\ (the capture's own kind list) rather than in a permanent per-region bit. A
+\ second band would have cost REGION/32 more bytes of engine DATA to answer a
+\ question this one is not asked.
+\ push a DATA-region address (create/variable data field).
+: C-DATA-ADDR ( -- )
+   SNAP-RELOC:MARK-SITE
+   C-ADDR-PUSH ;
 \ raw DATA-region address into x9, no push (the defer dispatch-cell address).
-: C-DATA-ADDR-RAW ( -- )  C-ADDR-RAW ;
+: C-DATA-ADDR-RAW ( -- )
+   SNAP-RELOC:MARK-SITE
+   C-ADDR-RAW ;
 \ push a CODE address (quotation entry xt, ['] / postpone target xt). The word it
 \ names lives in the JIT region or in the engine's loaded __text, and neither of
 \ those is at the same address in the run that restores a snapshot image, so the
-\ site goes in the address-literal map for the relocation pass to rewrite.
+\ relocation pass rewrites this one where it leaves a DATA chain alone.
 : C-CODE-ADDR ( -- )
    SNAP-RELOC:MARK-SITE
    C-ADDR-PUSH ;

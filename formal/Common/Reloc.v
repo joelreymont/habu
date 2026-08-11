@@ -162,7 +162,10 @@
       because it records each chain it rewrites in the same address-literal
       map the compiler writes — not because the seed walks its own list.
       `EM-AOT-RELOC-DATA` writes chains that name DATA, which is mapped at a
-      fixed address in every run and therefore needs no table.
+      fixed address in every run and therefore needs no table to be CORRECT
+      after a restore.  The compiler's own DATA producers are recorded anyway,
+      and the note above `classify` says why: a table answers "where is the
+      chain", which the AOT capture needs, and not only "does it move".
 
    9. The band a chain is measured against is a parameter here, exactly as it
       is in the shipped pass.  That the two bands the engine passes — the JIT
@@ -1368,14 +1371,39 @@ Inductive klass : Type :=
   | Recorded (r : recorder)
   .
 
+(* WHY A DATA ADDRESS IS `Recorded` AND NOT `Fixed_mapping`, THOUGH IT DOES NOT
+   MOVE.  The two questions this file asks about a producer are independent, and
+   the compiler's DATA-address chains are the pair that separates them:
+
+     classify         — is this site NAMED IN A TABLE, so a later pass can find
+                        it without decoding region bytes?
+     region_dependent — does the value it bakes CHANGE when the region moves?
+
+   A DATA address answers yes to the first and no to the second.  It is recorded
+   because a consumer has to FIND it: the AOT capture copies a blob to a
+   different DP in the seeded engine, so a chain-compiled word's DATA address is
+   the metabuild host's and is wrong there, and the alternative to a record is
+   recognising one by the value it carries — which is a guess, because an
+   ordinary integer may hold any value at all.  It is not region-dependent
+   because DATA is mapped at a fixed VA in every run.
+
+   `Fixed_mapping` therefore stops meaning "not in a table" and keeps meaning
+   what it says: an address in a band mapped at a fixed VA.  Being recorded costs
+   the snapshot pass nothing, because that pass is parameterised by band and
+   rewrites a chain only when its value is inside the band it was handed
+   (`addr_out_of_band_untouched`); a DATA address is inside neither band the
+   engine passes, so a recorded DATA site is visited by both calls and rewritten
+   by neither.  `region_dependent` below is what still says so, and
+   `every_region_dependent_producer_is_recorded` is the implication that matters
+   — it does not run the other way, and this pair is the witness. *)
 Definition classify (p : producer) : klass :=
   match p with
   | P_scalar_lit => Not_an_address
   | P_scalar_raw_lit => Not_an_address
   | P_addr_carrier => Named_at_site
   | P_addr_carrier_push => Named_at_site
-  | P_data_addr => Fixed_mapping
-  | P_data_addr_raw => Fixed_mapping
+  | P_data_addr => Recorded R_addrmap
+  | P_data_addr_raw => Recorded R_addrmap
   | P_code_addr => Recorded R_addrmap
   | P_pc_relative_adr => Position_independent
   | P_direct_call => Recorded R_callmap

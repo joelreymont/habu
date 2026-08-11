@@ -278,8 +278,8 @@ public
       1 of s" Not_an_address" endof
       2 of s" Named_at_site" endof
       3 of s" Named_at_site" endof
-      4 of s" Fixed_mapping" endof
-      5 of s" Fixed_mapping" endof
+      4 of s" Recorded R_addrmap" endof
+      5 of s" Recorded R_addrmap" endof
       6 of s" Recorded R_addrmap" endof
       7 of s" Position_independent" endof
       8 of s" Recorded R_callmap" endof
@@ -348,7 +348,7 @@ public
       6 of s" C-SDQ C-CQ C-ESDQ C-ECQ" endof
       7 of s" C-CALL EMIT-CEMITBL EMIT-P2-VALID-EMIT EMIT-P2-STORE CORE" endof
       8 of s" EM-STARTUP-RUNTIME-STATE" endof
-      9 of s" C-CODE-ADDR" endof
+      9 of s" C-DATA-ADDR C-DATA-ADDR-RAW C-CODE-ADDR" endof
       10 of s" EM-AOT-RELOC-CODE" endof
       11 of s" BSNAPREBASE EM-SNAPSHOT-RESTORE CORE" endof
       12 of s" MARK-CELL EMIT-MARK BXTSTORE" endof
