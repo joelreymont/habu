@@ -84,6 +84,15 @@ public
 : PUB-KEEP ( n -- n )
    3 * ;
 
+\ A data word and a word that pushes its address. The address is what the
+\ elaborator stages as an address literal and selection turns into the four-lane
+\ carrier, so republishing PUB-ADDR through the chain is the shortest route to an
+\ emission that carries one.
+create PUB-CELL 1 cells allot
+
+: PUB-ADDR ( -- ptr a )
+   PUB-CELL ;
+
 \ The wordlist those two records live in. A word is a tail in a wordlist, and
 \ these tails are in this package's export wordlist rather than the global one,
 \ so it is read off the live namespace state rather than assumed to be zero.
@@ -130,6 +139,25 @@ here CELL 1- and CELL swap - CELL 1- and allot
 
 variable OLD-START
 variable OLD-LEN
+
+\ The same build path with a body that makes an address chain. A `create`d data
+\ word pushes the address of its data field, which the elaborator stages as an
+\ address literal and selection turns into the four-lane carrier - the same
+\ chain a string literal's body address becomes, reached through the word model
+\ this suite already has rather than through the string interner it does not.
+\ The data word is defined at the head of this package, so the model's question
+\ about the spelling has an answer in the scope this suite runs in.
+: COMPILE-ADDR ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c NSRC:HIR-BUILDER 0 R-BLD !
+   CC BB s" NPUB-TEST:PUB-CELL" NSRC:MODEL-DATA {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   s" PUB-ADDR NPUB-TEST:PUB-CELL" NSRC:TEXT!
+   CC BB NSRC:TAPE {: tp:IR-ARENA:arena :}
+   CC NSRC:LEX
+   tp NTAPE:SEAL {: v:IR-ARENA:view :}
+   CC BB v p r 0 1 NELAB:COLON drop
+   CC BB NSRC:TEXT$ 0 REGS 0 1 NFIX:RUN-HABU ;
 
 : COMPILE-SQ ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -444,6 +472,55 @@ variable PT-WID
 : BYTES-CASE ( -- )
    NFIX:BINDING [: BYTES-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ ---- the address chains the publication records ------------------------------
+\ WHAT THIS IS FOR. An address chain a compiled routine carries has to be found
+\ again after publication, by a relocation pass that may not decode region bytes
+\ to recognise one. src/compiler/native/emit.f records each chain's INSTRUCTION
+\ INDEX while it writes the instructions, having checked it is exactly the
+\ carrier's width in one register; RELOC-ADDRS turns those indices into addresses
+\ and sets the region's address-map bit at each. Until it did, a chain-compiled
+\ DATA address was invisible to both authorities - the map had no bit and the AOT
+\ capture could only have found it by testing what the chain's value happened to
+\ equal, which an ordinary integer may equal too.
+\
+\ THE FIXTURE IS A `create`d DATA WORD AND A BODY THAT PUSHES ITS ADDRESS, which
+\ is the shortest form THIS suite can reach a chain through: the address of a data
+\ field is what the elaborator stages as an address literal, and the word model
+\ this suite already carries can answer for the spelling. A string literal makes
+\ the same chain out of its interned body, and needs the string interner, which
+\ this suite does not have - test/compiler/native-string.f owns that route.
+\
+\ What is asserted is the exact WORD the bit sits in - the chain's first - and
+\ that no other word of the routine carries one, because a bit one instruction off
+\ names bytes that are not a chain start and the loader refuses such an image
+\ (ADDRMAP-RC) rather than rewriting it.
+: ADDR-BIT@ ( n -- n ) {: at:n :}
+   at dbase@ - {: off:n :}
+   DATA-A SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + c@
+   off 2 rshift 7 and rshift 1 and ;
+
+: ADDR-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c COMPILE-ADDR
+   NPUB:NEXT-SLOT {: at:n :}
+   s" PUB-ADDR" PUB-WID NPUB:REPUBLISH
+
+   s" the emitter recorded exactly one address chain" T-LABEL
+   A64EMIT:ADDR-SITES 1 T=
+
+   s" the map bit is set at the word the chain starts in" T-LABEL
+   at  0 A64EMIT:ADDR-SITE@ INSN-BYTES * +  ADDR-BIT@ 1 T=
+
+   s" and at no other word of the routine" T-LABEL
+   A64EMIT:INSNS 0 ?do
+      i 0 A64EMIT:ADDR-SITE@ <> if
+         at i INSN-BYTES * + ADDR-BIT@ 0 T=
+      then
+   loop ;
+
+: ADDR-CASE ( -- )
+   NFIX:BINDING [: ADDR-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : SEALED-CASES ( -- )
    RECORD-CASE
    UNKNOWN-CASE
@@ -675,6 +752,7 @@ public
    PLACE-CASE
    ATOMIC-CASES
    BYTES-CASE
+   ADDR-CASE
    GROW-CASES
    T-REPORT ;
 

@@ -12,8 +12,8 @@ ESCALATED AND WIDENED 2026-08-11 (user directive: the tree's standard is
 PRIM, not TRUSTED). Scope is now EVERY TRUSTED: site in the chain, not just
 family.f/dict.f - inventory on master 077e69a3: family.f 10 (registry
 bridges), dict.f 12 (RUN-WORD, EFF-CELLS, EFF-DEAD?, the five quotation
-readers, EFF-QUERY/COUNTS, the two slot readers, TRAILER@), publish.f 4
-(CODE-WINDOW, RELOC-EXTERNAL, RETARGET-REC, MIN-IN-REC), migrate.f 1 (EV),
+readers, EFF-QUERY/COUNTS, the two slot readers, TRAILER@), publish.f 5
+(CODE-WINDOW, RELOC-EXTERNAL, RELOC-ADDR, RETARGET-REC, MIN-IN-REC), migrate.f 1 (EV),
 reach.f 2 (POKE, EFFECT), string.f 1 (PTR>N - its retirement owner note
 stays valid). Campaign-added sites cited the dict.f precedent each time -
 the precedent must die in one landing. ONE boot-prefix pass: a PRIM: row per
@@ -25,3 +25,11 @@ lint proving none returns. The new addrmap-set already landed as PRIM - the
 worked example. PAIR WITH the fail-closed TRUST fix (see
 habu-make-trust-fail dot): converting rows while TRUST silently mints
 symbols for typos would hide mistakes the conversion makes.
+
+INVENTORY UPDATE 2026-08-11 (aotsite lane): publish.f is now FIVE sites, not
+four - RELOC-ADDR joined it with the per-site address record. It wraps
+`addrmap-set`, which is PRIM-TRUSTED-ONLY! for the same reason `callmap-set`
+is, so a checked caller earns E-CAP-TRUSTED at the call and TRUSTED: is the
+only route the checker admits today. It is one more instance of the pattern
+this dot retires, not a new pattern, and it converts with the other four in
+the one boot-prefix landing.

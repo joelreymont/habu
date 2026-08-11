@@ -221,6 +221,28 @@ TRUSTED: CODE-WINDOW ( ptr u8 n n -- )
 TRUSTED: RELOC-EXTERNAL ( n -- )
    callmap-set ;
 
+\ One address chain recorded, at the word its first move-wide sits in.
+\
+\ THE FIFTH TRUSTED: SITE IN THIS FILE, and it is one instance of a pattern being
+\ retired rather than a new pattern. `addrmap-set` is a trust-boundary primitive
+\ (src/core/checker.f PRIM-TRUSTED-ONLY!) for the same reason `callmap-set` is -
+\ it writes the relocation metadata a restored image is rewritten from - and a
+\ TRUSTED: body is the only route the checker admits one through: a checked
+\ caller earns E-CAP-TRUSTED at the call. Dot habu-turn-the-registry-4c064064
+\ converts every TRUSTED: site in the chain to a PRIM: row in one boot-prefix
+\ landing; this row joins CODE-WINDOW, RELOC-EXTERNAL, RETARGET-REC and
+\ MIN-IN-REC in that sweep and is listed on the leaf.
+\
+\ WHAT IT DOES NOT DO IS CLEAR. The bulk window clears the CALL map over the span
+\ it writes and not this one, so a bit left under a reclaimed routine's chain is
+\ a hazard - and it is the engine's own, shared with C-CODE-ADDR, which has never
+\ cleared either. The address pass answers it where the call pass cannot: a
+\ recorded site must still hold a whole four-lane chain naming ONE register, and
+\ a bit under bytes that are no longer that chain refuses the image (ADDRMAP-RC)
+\ instead of rewriting them.
+TRUSTED: RELOC-ADDR ( n -- )
+   addrmap-set ;
+
 \ The record's two cells, written whole and in one order: length, then the start
 \ address with a store-release.
 TRUSTED: RETARGET-REC ( n n n -- )
@@ -726,6 +748,22 @@ variable CLAIMED
       then
    loop ;
 
+\ Set the bit for every address chain of the routine just published, at the word
+\ the chain starts in. The sites are not searched for and the bytes are never
+\ decoded: src/compiler/native/emit.f recorded each one while it wrote the
+\ instructions, having checked that it is exactly the carrier's width in one
+\ register, so this walk turns an instruction index into the address that index
+\ landed at by the same arithmetic RELOC-CALLS uses for a call site.
+\
+\ IT IS THE SAME RECORD THE ENGINE'S OWN COMPILER WRITES. habu2.f C-DATA-ADDR,
+\ C-DATA-ADDR-RAW and C-CODE-ADDR record theirs through SNAP-RELOC:MARK-SITE into
+\ this map; this is that record, written by the other generator's publisher, so
+\ one relocation pass and one AOT capture read both generators' chains.
+: RELOC-ADDRS ( n -- ) {: fn:n :}
+   A64EMIT:ADDR-SITES 0 ?do
+      fn  i A64EMIT:ADDR-SITE@ INSN-BYTES * +  RELOC-ADDR
+   loop ;
+
 \ ---- how much of the routine a caller may copy --------------------------------
 \ The engine stores a word's code length EXCLUDING its trailing return
 \ (src/habu/habu2.f EM-COMPILE-FLUSH-PEND writes `CP - entry - 4`), because that
@@ -799,6 +837,7 @@ public
 : COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
    A64EMIT:BYTES fn size CODE-WINDOW
    fn RELOC-CALLS
+   fn RELOC-ADDRS
    fn  size RECORDED-LEN  idx RETARGET-REC
    fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD
    fn size CLAIM ;
