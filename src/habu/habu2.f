@@ -4203,6 +4203,60 @@ s" c-local-ref" s" label label --" TRUST
 \ ENGINE-ERROR:AOT-SEED=82, the AOT seed-pass boot-integrity code), not LCOMPILEDIE. The die
 \ is inlined between the check and the reserve; the pass path branches over it (ok)
 \ so this word still falls through to EM-AOT-RELOC-CODE (it is inlined, not a call).
+\ Copy the captured window's DATA content to the seed DP. x3 = destination (seed
+\ DP), x5 = span; both survive. Byte at a time, like EM-AOT-COPY-BLOB - a few KB
+\ once at boot, and the span has no alignment guarantee.
+package AOT-WINDOW
+public
+: COPY-DATA ( -- )
+   LBL LBL {: dcopy:label dcdone:label :}
+   9 LDATA LABEL@ ADR,  12 0 MOVZ,                  \ x9 = content src (__text), x12 = i
+   dcopy LBL,  12 5 CMP,  C-GE dcdone BCOND,
+      13 9 12 ADD,  13 13 0 LDRB,  14 3 12 ADD,  13 14 0 STRB,
+      12 12 1 ADDI,  dcopy B,
+   dcdone LBL, ;
+
+\ Put the trap xt into every declared address cell the window carried.
+\ WHAT THE BYTES COULD NOT SAY. The capture zeroed these cells because the value
+\ they held was a code address in the BUILDING host, which must not enter the
+\ image (aot-capture.f ACAP-BAKE-DATA states the invariant: a declared address
+\ cell's value is owned by whatever declares it, never by the window's bytes).
+\ Zero is not what "no implementation yet" means here, though - a dispatch cell is
+\ read and branched to (`ldr x16,[x9]; blr x16`), so a zero cell is a jump to
+\ address 0. What it means is the xt of `defer-unset`, which is exactly what a
+\ freshly declared cell holds, and it is found the same way C-DEFER-FIND-UNSET
+\ finds it at compile time: LFIND on the keyword this engine already carries. One
+\ authority for what unset means, resolved in the engine being booted.
+\ The boot-run list installs the real vectors immediately after the seed and that
+\ is what owns them; this is the value a cell keeps if the boot-run has no entry
+\ for it, and then the first call dies "defer: unset execution vector" instead of
+\ branching into whatever the bytes happened to hold.
+\ Runs after the copy and the DP advance, so the window base is DP - span. LFIND
+\ clobbers x3-x16, hence the reload.
+28 constant TRAP-MSG-LEN   \ byte length of "hb: AOT defer-unset missing\n"
+
+: TRAP-XTCELLS ( -- )
+   LBL LBL LBL LBL {: xloop:label xdone:label xbad:label msg:label :}
+   23 LNXTOFF LABEL@ ADR,  23 23 0 LDR,             \ x23 = declared-cell count
+   23 xdone CBZ,
+   9 LKWDEFERUNSET LABEL@ ADR,  10 11 MOVZ,  LFIND LABEL@ BL,   \ x11 = trap xt, x13 = found?
+   13 xbad CBZ,
+   3 DATA DP-CELL LDR,                              \ x3 = DP, now past the window
+   5 LAOTDATASIZE LABEL@ ADR,  5 5 0 LDR,  3 3 5 SUB,   \ x3 = window base
+   21 LXTOFFS LABEL@ ADR,
+   23 LNXTOFF LABEL@ ADR,  23 23 0 LDR,
+   22 0 MOVZ,
+   xloop LBL,  22 23 CMP,  C-GE xdone BCOND,
+      24 21 0 LDRB,  4 21 1 LDRB,  4 4 8 LSLI,  24 24 4 ORR,   \ x24 = window offset (u16 LE)
+      9 3 24 ADD,  11 9 0 STR,                      \ the cell traps until the boot-run installs it
+      21 21 2 ADDI,  22 22 1 ADDI,  xloop B,
+   xbad LBL,
+      1 msg ADR,  0 2 MOVZ,  2 TRAP-MSG-LEN MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT defer-unset missing" BYTES,  NL-KW 1 BYTES,
+   xdone LBL, ;
+;package
+
 : EM-AOT-RELOC-DATA ( -- )
    LBL LBL LBL LBL {: dloop:label drdone:label ok:label msg:label :}
    3 DATA DP-CELL LDR,                              \ x3 = seed DP (abs) = REPL DATA base at boot
@@ -4215,7 +4269,8 @@ s" c-local-ref" s" label label --" TRUST
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  s" hb: AOT data span out of range" BYTES,  NL-KW 1 BYTES,
    ok LBL,
-   3 3 5 ADD,  3 DATA DP-CELL STR,                  \ reserve: DP += span (bounded; zeroed by anon mmap)
+   AOT-WINDOW:COPY-DATA                             \ the window's own bytes, not a zeroed reserve
+   3 3 5 ADD,  3 DATA DP-CELL STR,                  \ DP += span (bounded)
    21 LAOTDSITES LABEL@ ADR,                        \ x21 = DATA-site cursor (u16 offsets)
    23 LAOTNDSITE LABEL@ ADR,  23 23 0 LDR,          \ x23 = DATA-site count
    22 0 MOVZ,
@@ -4232,7 +4287,8 @@ s" c-local-ref" s" label label --" TRUST
       10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
       21 21 2 ADDI,  22 22 1 ADDI,  dloop B,
-   drdone LBL, ;
+   drdone LBL,
+   AOT-WINDOW:TRAP-XTCELLS ;
 
 \ CODE-literal relocation (fourth relocation class): rebase every captured movz/movk
 \ x9 literal whose value pointed into the capture-time code blob [B0,B1) (anonymous
@@ -7655,6 +7711,7 @@ package LABELS
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !
+   LBL AOT-WINDOW:LDATA !  LBL AOT-WINDOW:LNXTOFF !  LBL AOT-WINDOW:LXTOFFS !
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL LAOTBOOTRUN !
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LAOTPROT !  LBL LPROTWIDQ !
@@ -7813,6 +7870,28 @@ create AOT-NAMES-BUF AOT-NAMES-CAP allot    variable AOT-NAMES-LEN
 512 constant AOT-DSITE-MAX
 create AOT-DSITE-BUF AOT-DSITE-MAX 2 * allot    variable AOT-DSITE-N   \ packed u16 blob offsets (DATA then CODE)
 variable AOT-DATA-D0    variable AOT-DATA-SIZE
+\ The window's DATA CONTENT, and the offsets the seed must not take from it.
+\ Reserving the span zeroed was right only while every byte in it was zero. It is
+\ not: the REPL sources put real bytes there - a TRUST row's name and signature
+\ are `s"` literals interned into DP - and those arrived in the seeded engine as
+\ zeros. So the span travels as bytes, sized by AOT-DATA-SIZE (one authority for
+\ the length; the buffer never carries more than the span).
+\ A DECLARED ADDRESS CELL IS THE ONE THING THE BYTES MAY NOT CARRY. `defer` in the
+\ window allots a dispatch cell and registers it (SNAP-RELOC's XTCELL table), and
+\ what it holds is a code address in the BUILDING host - ASLR-varying on macOS.
+\ Baking that would make the image depend on the run that built it and the byte
+\ fixpoint would never close, which is the same reason the code literals are
+\ stored b0-relative. Those cells are therefore zeroed in the image and their
+\ offsets listed here; EM-AOT-RELOC-DATA stores the seeded engine's own
+\ `defer-unset` trap xt into each one at boot. u16 offsets are exact because the
+\ span cannot exceed AOT-DATA-CAP.
+package AOT-WINDOW
+public
+$10000 constant DATA-CAP
+create DATA-BUF DATA-CAP allot
+64 constant XTOFF-MAX
+create XTOFF-BUF XTOFF-MAX 2 * allot    variable XTOFF-N   \ packed u16 window offsets
+;package
 \ CODE-literal relocation table (fourth relocation class): blob offsets of the
 \ movz/movk x9 literals whose value lands in the captured code range [B0,B1) --
 \ anonymous quotation-body entry addresses (J-SEMIQUOT `C-CODE-ADDR QENT`). Rebased by
@@ -7825,6 +7904,14 @@ variable AOT-CODE-B0
 \ words (INSTALL/BPW-INSTALL/S-INSTALL) the metabuild ran at the tail of the REPL
 \ source. With the source dropped, EM-SEED-AOT LFINDs + calls each after RX/flush so
 \ the seeded engine installs the REPL with no embedded source.
+\ THIS LIST RUNS ON ONE PATH ONLY, and knowing which one is the difference between
+\ reading a seeded engine and reading nothing. The whole AOT seed is armed at the
+\ interactive REPL entry and nowhere else (C-SOURCE's SRC-REPL arm sets
+\ AOT-SEED-ARM-CELL; EM-COMPILE-EXIT tests it before calling EM-SEED-AOT), so a
+\ batch run - piped stdin or --load - never seeds the blob, never registers the
+\ records and never walks this list. That is why a captured word is not in the
+\ dictionary of an engine you ran a program through, and why anything that has to
+\ OBSERVE the seed has to enter the engine on a tty.
 $400 constant AOT-BOOTRUN-CAP
 create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
@@ -7851,6 +7938,13 @@ s" AOT-SITE-BUF@" s" -- ptr u8" TRUST
 s" AOT-NAMES-BUF@" s" -- ptr u8" TRUST
 : AOT-DSITE-BUF@ ( -- ptr u8 ) AOT-DSITE-BUF ;
 s" AOT-DSITE-BUF@" s" -- ptr u8" TRUST
+package AOT-WINDOW
+public
+: DATA-BUF@ ( -- ptr u8 ) DATA-BUF ;
+s" AOT-WINDOW:DATA-BUF@" s" -- ptr u8" TRUST
+: XTOFF-BUF@ ( -- ptr u8 ) XTOFF-BUF ;
+s" AOT-WINDOW:XTOFF-BUF@" s" -- ptr u8" TRUST
+;package
 : AOT-BOOTRUN-BUF@ ( -- ptr u8 ) AOT-BOOTRUN-BUF ;
 s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
 \ Retirement for the six accessors above: habu-builder-trust-rows-c5d41af6.
@@ -7867,6 +7961,13 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    AOT-DSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 2 * BYTES, THEN ;
 : EMIT-AOT-CSITES ( -- )   \ packed u16 CODE-site offsets (after the AOT-DSITE-N DATA u16s)
    AOT-CSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 2 * + AOT-CSITE-N @ 2 * BYTES, THEN ;
+package AOT-WINDOW
+public
+: EMIT-DATA ( -- )   \ the window's DATA content, declared address cells zeroed
+   AOT-DATA-SIZE @ 0 > IF DATA-BUF@ AOT-DATA-SIZE @ BYTES, THEN ;
+: EMIT-XTOFFS ( -- )   \ packed u16 window offsets of the declared address cells
+   XTOFF-N @ 0 > IF XTOFF-BUF@ XTOFF-N @ 2 * BYTES, THEN ;
+;package
 : EMIT-AOT-SEED ( -- )
    LAOTCODELEN LABEL@ LBL,  AOT-BLOB-LEN @ DCQ,
    LAOTCODE LABEL@ LBL,
@@ -7883,6 +7984,9 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    LAOTDATAD0 LABEL@ LBL,  AOT-DATA-D0 @ DCQ,
    LAOTNDSITE LABEL@ LBL,  AOT-DSITE-N @ DCQ,
    LAOTDSITES LABEL@ LBL,  EMIT-AOT-DSITES
+   AOT-WINDOW:LNXTOFF LABEL@ LBL,  AOT-WINDOW:XTOFF-N @ DCQ,
+   AOT-WINDOW:LXTOFFS LABEL@ LBL,  AOT-WINDOW:EMIT-XTOFFS
+   AOT-WINDOW:LDATA LABEL@ LBL,  AOT-WINDOW:EMIT-DATA
    LAOTCODEB0 LABEL@ LBL,  AOT-CODE-B0 @ DCQ,
    LAOTNCSITE LABEL@ LBL,  AOT-CSITE-N @ DCQ,
    LAOTCSITES LABEL@ LBL,  EMIT-AOT-CSITES

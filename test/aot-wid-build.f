@@ -21,7 +21,7 @@
 \ it never adds a public tail to either. The rest of the build reuses
 \ tools/build-fixpoint.f exactly as the normal stdin build does.
 \
-\ Five modes, selected by environment so one builder serves every case its
+\ Seven modes, selected by environment so one builder serves every case its
 \ companion test/aot-wid-suite.f needs:
 \
 \   (default)          bake the two fixture ids, after checking the capture's own
@@ -39,6 +39,17 @@
 \                      walking the read loop out of the band.
 \   HABU_AOT_SPAN=N    overwrite the captured AOT DATA span (the sibling
 \                      test/aot-data-span-forge.f forge; see SPAN-FORGE-LINE).
+\   HABU_AOT_BAKE=1    put an INITIALISED data cell and a word that reads it inside
+\                      the capture window, and run that word from the boot-run
+\                      list. The built engine reports the value when it is entered
+\                      on a tty, and the value is zero unless the window's DATA
+\                      content travelled into the image.
+\   HABU_AOT_TRAP=1    put a `defer` inside the capture window and run a word that
+\                      CALLS it from the boot-run list, installing nothing. Its
+\                      dispatch cell is a declared address cell, so the capture
+\                      zeroed it and the seed re-trapped it; entering the engine
+\                      must die "defer: unset execution vector" rather than branch
+\                      into whatever the baked bytes held.
 \   HABU_AOT_D0_SKEW=N run the capture a SECOND time over the same window with
 \                      its DATA span start raised by N bytes. Hand it an N past
 \                      the whole span and the window then contains none of the
@@ -196,13 +207,25 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 : OOR-ENV$ ( -- ptr u8 n )       s" HABU_PWID_OOR" GETENV ;
 : LEGACY-ENV$ ( -- ptr u8 n )    s" HABU_PWID_LEGACY_N" GETENV ;
 : SKEW-ENV$ ( -- ptr u8 n )      s" HABU_AOT_D0_SKEW" GETENV ;
+: BAKE-ENV$ ( -- ptr u8 n )      s" HABU_AOT_BAKE" GETENV ;
+: TRAP-ENV$ ( -- ptr u8 n )      s" HABU_AOT_TRAP" GETENV ;
 
 : REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
    v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
 
-: FIXTURE-BODY ( -- )
+: CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
+   OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and
+   BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and ;
+
+\ The two shape checks are only DEFINED for the plain fixture build
+\ (CHECKS-WANTED?), so the window-content modes, which reuse the two bits and
+\ nothing else, must not call them.
+: FIXTURE-CHECK-LINES ( -- )
    s" PWID-SHAPE-CHECK" DRV-LINE
-   s" PWID-LEGACY-CHECK" DRV-LINE
+   s" PWID-LEGACY-CHECK" DRV-LINE ;
+
+: FIXTURE-BODY ( -- )
+   CHECKS-WANTED? if FIXTURE-CHECK-LINES then
    FIXTURE-A$ DRV+  s"  ACAP-PWID-SET" DRV-LINE
    FIXTURE-B$ DRV+  s"  ACAP-PWID-SET" DRV-LINE ;
 
@@ -236,8 +259,47 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 
 \ Append the checks the fixture build needs, then stdin.f's own terminal sequence
 \ with the protected-WID work spliced in after CAPTURE-REPL.
-: CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
-   OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and ;
+\ --- the two window-content fixtures ------------------------------------------
+\ Both work the way SKEW-BODY does: define at top level, then hand the REAL entry
+\ point (AOT-CAPTURE's public CAPTURE) a window widened to take in what was just
+\ defined. stdin.f's own window variables supply the START of every span, so the
+\ blob, record and DATA spans all still begin exactly where CAPTURE-REPL began
+\ them; only the ends move out to the live cursors. Nothing about the capture, the
+\ bake or the seed is stood in for.
+\ The boot-run list is re-stated because CAPTURE resets it, and the three REPL
+\ entries come first so the engine still installs its REPL before the fixture runs.
+: RECAPTURE-LINE ( -- )
+   s" REPL-B0 @ cp@  REPL-R0 @ ndict@  REPL-D0 @ here  AOT-CAPTURE:CAPTURE" DRV-LINE ;
+
+: REPL-BOOTRUN-LINES ( -- )
+   S\" s\" INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
+   S\" s\" BPW-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
+   S\" s\" S-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
+\ An initialised cell plus a word that reads it. The word's reference to the cell
+\ is a DATA address literal in the widened window, so the value only reaches the
+\ report if the content travelled AND that literal was rebased onto the seeded DP.
+: BAKE-FIXTURE-LINES ( -- )
+   s" create AWB-CELL 8 allot" DRV-LINE
+   s" $5A5AC0DEC0DE5A5A AWB-CELL !" DRV-LINE
+   S\" : AWB-REPORT ( -- ) s\" awb-cell=\" type AWB-CELL @ . cr ;" DRV-LINE
+   RECAPTURE-LINE
+   REPL-BOOTRUN-LINES
+   S\" s\" AWB-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
+\ A deferred word nothing installs, called from the boot-run. Its dispatch cell is
+\ a declared address cell inside the window, so the capture zeroed it and the seed
+\ wrote the trap xt back; calling it must reach DEFER-UNSET's named die.
+: TRAP-FIXTURE-LINES ( -- )
+   s" defer AWB-VEC ( -- )" DRV-LINE
+   s" : AWB-CALL ( -- ) AWB-VEC ;" DRV-LINE
+   RECAPTURE-LINE
+   REPL-BOOTRUN-LINES
+   S\" s\" AWB-CALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
+: FIXTURE-LINES ( -- )
+   BAKE-ENV$ nip 0 > if BAKE-FIXTURE-LINES exit then
+   TRAP-ENV$ nip 0 > if TRAP-FIXTURE-LINES then ;
 
 : INJECT ( -- )
    CHECKS-WANTED? if
@@ -248,6 +310,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    s" package AOT-CAPTURE" DRV-LINE
    PWID-BODY
    s" ;package" DRV-LINE
+   FIXTURE-LINES
    SPAN-FORGE-LINE
    s" 0 0= STDIN? !" DRV-LINE
    s" HB@ 0 ENGINE-EMIT:FORTH" DRV-LINE

@@ -432,9 +432,29 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 112. Floor follows from the same number: 8044 -> 8428, inside the same 16 KiB
 \ page, so the text pad absorbs it and neither MACOS-SIGNATURE nor MACOS-TOTAL
 \ moves.
-119020 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-11, the AOT capture window's DATA content is baked (dot
+\ habu-bake-the-aot-7ececce8): EM-AOT-RELOC-DATA reserved the span as zeroed
+\ anon-mmap and copied nothing, on the reading that a REPL window is all
+\ allot/variable and therefore all zero. It is not - a TRUST row's name and
+\ signature are `s"` literals interned into the DP heap - so the window now
+\ travels as bytes in its own baked section.
+\ THE DELTA IS MOSTLY THE CONTENT, not code. The window measured 5726 bytes and
+\ that is the section's whole size; the remaining 226 are the two new boot
+\ routines (EM-AOT-COPY-DATA and EM-AOT-TRAP-XTCELLS), the named
+\ "hb: AOT defer-unset missing" die, the declared-cell count cell and the u16
+\ offsets table beside it, with that surface owned by package AOT-WINDOW. A
+\ declared address cell inside the window is zeroed
+\ rather than baked - its value is a code address in the BUILDING host, and
+\ baking one made two builds of identical source differ by 34 bytes (2 of cell
+\ plus the 32-byte signature that follows), which is the fixpoint this row is
+\ measured at. The exact-CODELEN ratchet measured the candidate at 124964 (was
+\ 119020), +5944 = 5726 of content + 218 of code and tables. Floor follows from
+\ the same number: 8428 -> 14372, still inside the same 16 KiB page, so the text
+\ pad absorbs it and neither MACOS-SIGNATURE (1295) nor MACOS-TOTAL (148855)
+\ moves.
+124964 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-8428 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+14372 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

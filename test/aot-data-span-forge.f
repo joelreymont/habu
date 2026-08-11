@@ -1,9 +1,14 @@
-\ aot-data-span-forge.f - AOT DATA-reserve span-guard boot regression
-\ (dot habu-guard-aot-data-49de2ee6).
+\ aot-data-span-forge.f - AOT seed-pass boot regressions that need a real terminal
+\ (dots habu-guard-aot-data-49de2ee6 and habu-bake-the-aot-7ececce8).
 \
-\ Proves EM-AOT-RELOC-DATA's span bound (habu2.f) both directions. That reserve --
-\ and its guard -- runs ONLY on interactive REPL entry (AOT-SEED-ARM-CELL), so both
-\ cases boot an engine UNDER A PTY; a piped/batch boot never reaches the reserve.
+\ Everything here shares one reason for existing: the AOT seed is armed at the
+\ INTERACTIVE REPL ENTRY and nowhere else (AOT-SEED-ARM-CELL), so a claim about
+\ what the seed does can only be made by booting a built engine under a PTY. A
+\ piped or --load boot never seeds the blob, never registers the records and never
+\ walks the boot-run list, which makes it silent about every case below rather
+\ than a weaker test of them.
+\
+\ THE SPAN GUARD. Proves EM-AOT-RELOC-DATA's span bound (habu2.f) both directions.
 \   RED : a forged image whose baked LAOTDATASIZE exceeds the DATA region
 \         (HABU_AOT_SPAN = 2*DATA-SIZE, well past the seed headroom top - seedDP)
 \         must die at boot naming "hb: AOT data span out of range" and exit 82
@@ -11,6 +16,21 @@
 \         forged span is accepted with no bound check), so this case is red-first.
 \   GREEN: the unforged engine (its real few-KB span) must still boot to the REPL
 \         prompt and exit 0 -- the maximal legal reserve must not be over-rejected.
+\
+\ THE WINDOW'S CONTENT. Proves what EM-AOT-RELOC-DATA carries, now that it copies
+\ the captured DATA window instead of reserving it zeroed.
+\   CONTENT: a variant whose window holds an INITIALISED cell and a word that reads
+\         it must report that value at boot. On the zeroed reserve the same engine
+\         reports 0, so this case is red-first.
+\   TRAP  : a variant whose window holds a `defer` nothing installs must die
+\         "defer: unset execution vector" (exit 76) when the boot-run calls it.
+\         The capture zeroes every declared address cell, because the value there
+\         is a code address in the BUILDING host and baking one would make the
+\         image depend on the run that produced it; the seed then writes the
+\         engine's own defer-unset xt back. Zero would have been a jump to address
+\         0 - measured as SIGSEGV, no diagnostic - so this case is what says the
+\         masking cannot silently break a vector, only surface a missing boot-run
+\         entry.
 \
 \ Spawn-only helper: test/aot-wid-suite.f runs it as a child and gates on its exit
 \ code; it is not a TEST:SUITE member, like test/aot-wid-build.f. The PTY
@@ -109,6 +129,29 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
             s" aot-data-span-forge: forged build failed" c RC>N die ENDOF
    ;MATCH ;
 
+\ --- build a window-content variant: same builder, a different mode. The fixture
+\ is defined at top level in the maker and taken in by a widened re-capture, so the
+\ engine under test carries it in its own capture window (aot-wid-build.f
+\ BAKE-FIXTURE-LINES / TRAP-FIXTURE-LINES). ---
+: BUILD-MODE ( ptr u8 n -- ) {: k:ptr ku:n :}
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
+   k ku >LEN  s" 1" >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/aot-wid-build.f" >LEN PROC-ARGV+
+   PLAIN$ >LEN  OUT CAP >LEN  ERR CAP >LEN  BUILD-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
+            o LEN>N OUT-U !  e LEN>N ERR-U ! ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
+            o LEN>N OUT-U !  e LEN>N ERR-U !
+            s" aot-data-span-forge: window-content builder stderr:" type cr  ERR$ type cr
+            s" aot-data-span-forge: window-content build failed" c RC>N die ENDOF
+   ;MATCH ;
+
 \ --- PTY plumbing (mirror test/proc-pty.f) ---
 : READ+ {: fd :} ( fd -- )
    fd FD>N RBUF RN @ + 4096 RN @ - read
@@ -187,6 +230,48 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    ;MATCH
    MFD @ close ;
 
+\ --- the window's content, both halves ---------------------------------------
+\ The magic is the value aot-wid-build.f stores into the fixture cell; matching it
+\ in the boot report means the bytes travelled from the capture window into the
+\ image and the cell's DATA address literal was rebased onto the seeded DP.
+: CONTENT-MAGIC$ ( -- ptr u8 n )
+   s" awb-cell=6510728274268543578" ;
+
+: ASSERT-CONTENT-TRAVELS ( -- )
+   HBPWID$ PTY-SPAWN
+   s" AOT window content: the initialised cell reports its value at boot" T-LABEL
+   CONTENT-MAGIC$ WAIT-FOR TTRUE
+   s" AOT window content: it is not the zeroed reserve's answer" T-LABEL
+   RBUF$ s" awb-cell=0" CONTAINS? 0= TTRUE
+   4 SEND-C
+   s" AOT window content: the engine still exits 0" T-LABEL
+   PID @ >PID PROC-WAIT-RC MATCH result
+     ok  OF 0 T= ENDOF
+     err OF drop 1 0 T= ENDOF
+   ;MATCH
+   MFD @ close ;
+
+: ASSERT-TRAP-DIES-NAMED ( -- )
+   HBPWID$ PTY-SPAWN
+   s" AOT declared cell: an uninstalled vector dies by name" T-LABEL
+   s" defer: unset execution vector" WAIT-FOR TTRUE
+   s" AOT declared cell: it exits 76 (EXEC-VECTOR-RC), not a fault" T-LABEL
+   PID @ >PID PROC-WAIT-RC MATCH result
+     ok  OF drop 1 0 T= ENDOF
+     err OF 76 T= ENDOF
+   ;MATCH
+   MFD @ close ;
+
+: PROBE-WINDOW-CONTENT ( -- )
+   s" HABU_AOT_BAKE" BUILD-MODE
+   s" AOT window content: the content variant built" T-LABEL
+   HBPWID$ EXISTS? TTRUE
+   ASSERT-CONTENT-TRAVELS
+   s" HABU_AOT_TRAP" BUILD-MODE
+   s" AOT declared cell: the trap variant built" T-LABEL
+   HBPWID$ EXISTS? TTRUE
+   ASSERT-TRAP-DIES-NAMED ;
+
 : BODY ( -- )
    RENDER-SPAN
    s" AOT data span guard: rendered span text parses back to 2*DATA-SIZE" T-LABEL
@@ -201,7 +286,8 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" AOT data span guard: forged variant image exists after build" T-LABEL
    HBPWID$ EXISTS? TTRUE
    ASSERT-FORGED-DIES
-   ASSERT-LEGAL-BOOTS ;
+   ASSERT-LEGAL-BOOTS
+   PROBE-WINDOW-CONTENT ;
 
 public
 

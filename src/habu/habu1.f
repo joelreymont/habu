@@ -178,6 +178,14 @@ variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LP
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
 variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
+\ The captured DATA window's own CONTENT, and the window-relative offsets of the
+\ declared address cells inside it, which the seed re-traps rather than copies.
+\ These are the window-content bake's label ids; the rest of its surface (buffers,
+\ section emitters, boot routines) is in src/habu/habu2.f under the same package.
+package AOT-WINDOW
+public
+variable LDATA  variable LNXTOFF  variable LXTOFFS
+;package
 variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
 variable LAOTBOOTRUN
 variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)

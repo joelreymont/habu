@@ -26,6 +26,7 @@ package AOT-CAPTURE
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: AOT-DBASE ( -- ptr a ) dbase@ ;
 TRUSTED: AOT-DBASE-N ( -- n ) dbase@ ;
+TRUSTED: AOT-DATA-N ( -- n ) data-base ;
 TRUSTED: AOT-A>U8 ( ptr a -- ptr u8 ) ;
 TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
 : AOT-LIVE-DATA ( -- ptr a ) data-base ;
@@ -361,9 +362,72 @@ variable ACAP-P
       ACAP-P @ 4 + ACAP-P !
    repeat ;
 
+\ --- the captured window's DATA content ---------------------------------------
+\ WHY THE BYTES HAVE TO TRAVEL. The seed used to reserve the span and copy
+\ nothing, on the reading that a REPL window is all `allot`/`variable` and so all
+\ zero. It is not: a TRUST row's name and signature are `s"` literals interned
+\ into the DP heap, so the window carries real bytes and the seeded engine read
+\ zeros where they should have been. Measured on the metabuild window before this
+\ changed: 5726 bytes of span, 24 of them nonzero.
+\
+\ AND WHY ONE KIND OF BYTE MAY NOT. A `defer` compiled inside the window allots a
+\ dispatch cell and registers it in the declared-address-cell table
+\ (src/habu/layout.f SNAP-RELOC:XTCELL-*), and that cell holds a code address in
+\ the BUILDING host. On macOS the JIT region is __text-relative and ASLR-varying,
+\ so baking one would make the image depend on the run that produced it and the
+\ byte fixpoint would never close - the same defect the code literals avoid by
+\ being stored b0-relative. THE INVARIANT: a declared address cell's value is
+\ owned by whatever declares it, never by the window's bytes. So those cells are
+\ zeroed here and their offsets recorded, and the seed puts the `defer-unset`
+\ trap xt of the engine it is booting into each one - the same value a freshly
+\ declared cell holds, found through the same keyword lookup the compiler uses.
+\ The boot-run list then installs the real vectors, which is what owns them; a
+\ cell the boot-run misses dies "defer: unset execution vector" at first use
+\ instead of branching to whatever the bytes held.
+\ The set is taken from the table and never from what a cell contains: the table
+\ is written where a cell's kind is decided, which is the only place it is known.
+: ACAP-ADD-XTOFF ( n -- ) {: woff:n :}
+   AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-MAX >= if s" aot-capture: too many declared address cells" 74 die then
+   woff  AOT-WINDOW:XTOFF-N @ 2 * AOT-WINDOW:XTOFF-BUF@ +  AOT-P16!
+   AOT-WINDOW:XTOFF-N @ 1+ AOT-WINDOW:XTOFF-N ! ;
+
+: ACAP-ZERO-CELL ( n -- ) {: woff:n :}
+   8 0 ?do 0 AOT-WINDOW:DATA-BUF@ woff + i + c! loop ;
+
+: ACAP-COPY-DATA ( n n -- ) {: d0:n len:n :}
+   len AOT-WINDOW:DATA-CAP > if s" aot-capture: DATA window exceeds the AOT data buffer" 74 die then
+   len 0 ?do
+      d0 i + AOT-N>U8 c@  AOT-WINDOW:DATA-BUF@ i + c!
+   loop ;
+
+\ A row that overlaps the window without lying wholly inside it would leave half a
+\ host address in the baked bytes, so it ends the build rather than being skipped.
+: ACAP-XTCELL-STRADDLES ( n -- ) {: woff:n :}
+   s" aot-capture: declared address cell straddles the window edge at offset " type woff . cr
+   s" aot-capture: declared address cell straddles the window edge" 74 die ;
+
+: ACAP-MASK-XTCELL ( n n -- ) {: woff:n len:n :}
+   woff 8 + len <= if woff ACAP-ADD-XTOFF  woff ACAP-ZERO-CELL exit then
+   woff ACAP-XTCELL-STRADDLES ;
+
+: ACAP-BAKE-DATA ( n n -- ) {: d0:n d1:n :}
+   d1 d0 - {: len:n :}
+   d0 len ACAP-COPY-DATA
+   d0 AOT-DATA-N - {: d0off:n :}
+   AOT-LIVE-DATA SNAP-RELOC:XTCELL-N-CELL + AOT-CELL@ {: rows:n :}
+   rows 0 ?do
+      AOT-LIVE-DATA SNAP-RELOC:XTCELL-ROWS-OFF + i cells + AOT-CELL@ d0off - {: woff:n :}
+      woff 0 >= woff len < and if woff len ACAP-MASK-XTCELL then
+   loop ;
+
 \ --- boot-run list: append a top-level entry-word NAME to the 0-terminated
 \ [len][name] list EM-AOT-BOOTRUN walks (LFIND + blr) after the seed installs the
-\ REPL. Keeps a live trailing 0 terminator (uncounted) so the bake needs no pad. ---
+\ REPL. Keeps a live trailing 0 terminator (uncounted) so the bake needs no pad.
+\ The seed that walks it is armed at the INTERACTIVE REPL ENTRY and nowhere else
+\ (src/habu/habu2.f, AOT-BOOTRUN-CAP), so a name added here runs when the built
+\ engine is entered on a tty and never on a batch run. A fixture that reports from
+\ inside a capture window therefore has to be booted under a pty; piping a program
+\ to the engine tests a path where none of this happened. ---
 public
 
 : BOOTRUN+ ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -455,7 +519,7 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
 : ACAP-RESET ( -- )
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
    0 AOT-EXT-N !  0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
-   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  ACAP-PWID-CLEAR
+   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  ACAP-PWID-CLEAR
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public
 
@@ -466,6 +530,7 @@ public
    ACAP-SCAN-CALLS
    bstart bend d0 d1 ACAP-SCAN-DSITES
    bstart bend ACAP-SCAN-CSITES
+   d0 d1 ACAP-BAKE-DATA                         \ the window's own DATA bytes, declared cells trapped
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
    ACAP-PWID-CAPTURE                            \ serialize the protected-WID bitmap
