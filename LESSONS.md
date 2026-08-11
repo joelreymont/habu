@@ -5951,3 +5951,22 @@ refuses - exit 67 mid-boot). That is the two-stage constraint
 working, not a defect. Recovery for a stale workspace engine: copy a
 current fixpoint binary from a sibling workspace (then install
 --force to confirm), pass through the stage-1 tree, or bootstrap.
+
+## The write-window landing's six (2026-08-11)
+
+From the code-region window lane, verbatim: (1) a design sentence
+about a hot path must be checked against EVERY writer, not the one
+that names it - "LCEMIT is str/add so a write never runs ahead of
+CP" was true of LCEMIT and false of seven byte-spill sites; (2) a
+stores-based-at-R scan must follow one level of register copy AND
+both spellings of the register (CP and 28); (3) install --force
+after every mutation experiment, not just before the gate - a
+mutant whose build succeeds replaces bin/hb and every later mutant
+runs on a broken host; (4) an emit-time macro carrying a bare
+register number leaves it in front of the next instruction where a
+positional reader takes the wrong operand - give macros a register
+ABI; (5) package-diff-lint refuses any changed word in an
+unpackaged legacy file, so "fix the lint" can be gated behind
+"package the lint" - check before planning a lint fix into a lane;
+(6) the crash handler exits 134 itself, so a refused write is an
+EXIT not a signal on both targets - assert T-OUTCOME-EXITED= 134.
