@@ -296,6 +296,18 @@ variable FILE-USED
 \ package/public/private/;package and `using`), which is what the entry's removal
 \ had to establish first.  A global added to asm.f now reports, and its fixtures
 \ below pin that.
+\ src/core/layout-buffer.f is the fourth file of the sumtype.f class: a pre-hook
+\ core surface whose reason for being global is that it OWNS a global declaring
+\ word -- LAYOUT-BUFFER, the way sumtype.f owns NEWTYPE/SUMTYPE/ENUM/PRODUCT,
+\ roles.f owns its role declarers and structures.f owns the structure grammar.
+\ Its absence here was an asymmetry rather than a decision: the identical edit --
+\ retargeting a duplicate-definition guard from the retired CHECKER-DEFINED? to
+\ CHECKER-DEFINED-HERE? (dot habu-checker-defined-answers-1504bbde) -- passed
+\ silently in sumtype.f and was refused in layout-buffer.f, for two files with
+\ the same standing.  Giving it a package is a real change and a large one (71
+\ files reference LAYOUT-BUFFER), which is why it is not the price of a one-word
+\ edit; when someone does it, this row goes with it, exactly as asm.f's did.
+\
 \ Package-boundary changes are still reported for every file here
 \ (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files with only
 \ one global declarer are handled by GLOBAL-SURFACE? below, so an unrelated
@@ -305,6 +317,7 @@ variable FILE-USED
    FILE$ s" src/core/util.f" LINT-STR= if true exit then          \ first prefix source; see header
    FILE$ s" src/core/sha256.f" LINT-STR= if true exit then       \ standalone stage-0 prefix; tools/bootstrap.sh:81
    FILE$ s" src/core/sumtype.f" LINT-STR= if true exit then
+   FILE$ s" src/core/layout-buffer.f" LINT-STR= if true exit then
    FILE$ s" src/core/roles.f" LINT-STR= if true exit then
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then
    FILE$ s" src/core/type-family.f" LINT-STR= if true exit then  \ core surface, interim; see header

@@ -123,5 +123,59 @@ s" : CVPS-T1 ( n -- n ) ;" CVPS:REPLAY 0 T=
 s" top level: second replay certifies" T-LABEL
 s" : CVPS-T2 ( n -- n ) ;" CVPS:REPLAY 0 T=
 
+\ ---- the two scope questions a name query can ask --------------------------
+\ A query about a name has TWO readings, and they are not the same question:
+\   CHECKER-DEFINED-HERE?  is this name already defined in the scope a new
+\                          definition would land in?  (duplicate-definition
+\                          guards want this, and only this)
+\   CHECKER-RESOLVES?      does the checker know an effect for the word this
+\                          token would BIND to here?  (load-discipline guards,
+\                          vocabulary probes and absence assertions want this)
+\
+\ They used to share one spelling wired to the first reading, so a guard asking
+\ the second got the first's answer: a global the engine resolves and RUNS in
+\ the open package was reported absent, and the report inverted the moment its
+\ file gained a package (dot habu-checker-defined-answers-1504bbde). The pin is
+\ that the second question gives the SAME answer inside a package as outside,
+\ for a word that is global - and that the first question still gives the
+\ narrow answer, or the duplicate guards would start refusing legal shadowing.
+
+\ The sentinel is an EXISTING global - lib/errors.f's error codes are the
+\ repository's documented global vocabulary - so this pins the real case
+\ without adding an unpackaged global of its own.
+
+s" top level: RESOLVES? sees a global" T-LABEL
+s" E-STR-BOUNDS" CHECKER-RESOLVES? TTRUE
+s" top level: DEFINED-HERE? sees a global" T-LABEL
+s" E-STR-BOUNDS" CHECKER-DEFINED-HERE? TTRUE
+
+package CVPS-SCOPE
+private
+
+\ The word is not defined in THIS package, and the engine still binds it here.
+s" in a package: RESOLVES? still sees the global" T-LABEL
+s" E-STR-BOUNDS" CHECKER-RESOLVES? TTRUE
+s" in a package: DEFINED-HERE? correctly does not" T-LABEL
+s" E-STR-BOUNDS" CHECKER-DEFINED-HERE? TFALSE
+s" in a package: the engine binds and runs it" T-LABEL
+E-STR-BOUNDS -2200 T=
+
+\ A name that is genuinely nowhere answers no to both, so the two rows above
+\ are not passing on a query that always says yes.
+s" in a package: RESOLVES? says no to an absent name" T-LABEL
+s" CVPS-NO-SUCH-WORD" CHECKER-RESOLVES? TFALSE
+s" in a package: DEFINED-HERE? says no to an absent name" T-LABEL
+s" CVPS-NO-SUCH-WORD" CHECKER-DEFINED-HERE? TFALSE
+
+\ A tail this package DOES own answers yes to both, which pins that
+\ DEFINED-HERE? is answering about this scope rather than always saying no.
+: CVPS-OWN-TAIL ( -- n ) 9 ;
+s" in a package: DEFINED-HERE? sees its own tail" T-LABEL
+s" CVPS-OWN-TAIL" CHECKER-DEFINED-HERE? TTRUE
+s" in a package: RESOLVES? sees its own tail" T-LABEL
+s" CVPS-OWN-TAIL" CHECKER-RESOLVES? TTRUE
+
+;package
+
 T-REPORT
 s" checker-verify-pkg-scope: ok" type cr

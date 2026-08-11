@@ -1124,7 +1124,7 @@ TDECL-SCRATCH-SNAPSHOT-INSTALL
    10 TDPLAN-C, ;
 
 : TDPLAN-NAME+ ( -- n )
-   TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED? IF
+   TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED-HERE? IF
       s" sumtype: generated declaration already defined" 76 die
    THEN
    TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM dup TDPLAN-SYM+ ;

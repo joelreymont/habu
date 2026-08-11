@@ -43,24 +43,25 @@ $2F constant BF-SLASH
 \ (lib/fs.f) is the preamble sentinel - it is the first preamble word this file
 \ references, so its absence is exactly the missing-preamble case.
 \
-\ The guard is public and is asked from OUTSIDE the package below, because
-\ CHECKER-DEFINED? answers in the checker's currently open package scope: asked
-\ with BUILD-FIXPOINT open it would look for a private BUILD-FIXPOINT tail and
-\ report a loaded preamble as missing.
-public
+\ CHECKER-RESOLVES? asks which word this token would BIND to here, so the guard
+\ answers the same inside this package as outside it. It used to have to be a
+\ PUBLIC word called after `;package`, because the query it had then answered in
+\ the defining scope and reported a loaded preamble as missing from inside the
+\ package (dot habu-checker-defined-answers-1504bbde). It is an ordinary private
+\ word now.
 : BF-NEED-PREAMBLE ( -- )
-   s" FS-PATH-CAP" CHECKER-DEFINED? if exit then
+   s" FS-PATH-CAP" CHECKER-RESOLVES? if exit then
    S\" build-fixpoint: missing required load; --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb\n" BF-USAGE-RC die ;
-private
+BF-NEED-PREAMBLE
 
 ;package
 
-BUILD-FIXPOINT:BF-NEED-PREAMBLE
-
-\ These two come AFTER the guard on purpose. Both pull the preamble libraries in
-\ through their own requires, so requiring them above would satisfy FS-PATH-CAP
-\ by side effect and the missing-preamble case would stop being reported at all.
-\ The guard answers first; only then does the chain fold pull what it needs.
+\ The package closes for these two requires, and not for the guard above: both
+\ files open packages of their own, and `package` inside an open package is
+\ rejected as nesting. They also come AFTER the guard on purpose - both pull the
+\ preamble libraries in through their own requires, so requiring them earlier
+\ would satisfy FS-PATH-CAP by side effect and the missing-preamble case would
+\ stop being reported at all.
 require lib/content-key.f                \ the chain fold
 require tools/event-closure-lib.f        \ the chain fold
 

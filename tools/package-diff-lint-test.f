@@ -589,10 +589,18 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" UTIL-GLOBAL" s" src/core/util.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" SHA256-GLOBAL" s" src/core/sha256.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" SUMTYPE-GLOBAL" s" src/core/sumtype.f" TEST-ADD-WHOLE-CORE-EXEMPTION
+   s" LBUF-GLOBAL" s" src/core/layout-buffer.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" ROLE-GLOBAL" s" src/core/roles.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" STRUCTURE-GLOBAL" s" src/core/structures.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" ENUM-GLOBAL" s" src/core/enums.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    TEST-EXPECT-CLEAN
+   \ The layout-buffer row is an EXACT path, like every other row here: a global
+   \ in a file that merely ends with the same name is still reported.
+   TEST-SOURCE-RESET
+   s" LBUF-GLOBAL" TEST-GLOBAL-SOURCE
+   TEST-DIFF-RESET s" test/layout-buffer.f" TEST-ADD-SOURCE-SECTION
+   s" a global in test/layout-buffer.f is still reported" T-LABEL
+   1 TEST-EXPECT-FINDINGS
    TEST-SOURCE-RESET
    s" : DEFTYPE ( -- ) ;" TEST-SOURCE-LINE
    s" : UNRELATED ( -- ) ;" TEST-SOURCE-LINE

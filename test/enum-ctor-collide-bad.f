@@ -5,7 +5,7 @@
 \ WHAT THIS PINS, AND WHY IT IS A FIXTURE RATHER THAN AN ASSERTION.
 \ The ORDER 820 constructor participant renders one `PKG:VARIANT` definition per
 \ variant and hands the whole plan to the evaluator. Before a definition enters
-\ the plan, sumtype.f's TDPLAN-NAME+ asks CHECKER-DEFINED? whether that exact
+\ the plan, sumtype.f's TDPLAN-NAME+ asks CHECKER-DEFINED-HERE? whether that exact
 \ name already exists, and answers a collision with
 \   s" sumtype: generated declaration already defined" 76 die
 \ `die` is a process exit, not a throw: nothing unwinds, the declaration

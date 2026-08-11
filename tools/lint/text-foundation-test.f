@@ -918,9 +918,15 @@ variable REG-I
    \ habu-per-site-relocation-bb9b6d70) added the trusted-only axiom
    \ `addrmap-set`, the sibling of `callmap-set` for the second relocation map -
    \ the one that records where an address chain starts.
+   \ It was 350 before the name-query split (dot
+   \ habu-checker-defined-answers-1504bbde) replaced the single
+   \ `CHECKER-DEFINED?` axiom with two: `CHECKER-DEFINED-HERE?`, the
+   \ defining-scope question a duplicate guard asks, and `CHECKER-RESOLVES?`,
+   \ the reference-scope question everything else was asking and getting the
+   \ first one's answer. One row out, two in, so the count rose by one.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 350 ASSERT=
+   REG-COUNT 351 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

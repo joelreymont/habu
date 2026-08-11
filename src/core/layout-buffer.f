@@ -66,7 +66,7 @@ variable LBUF-BYTES
 
 : LBUF-NAME-GUARD ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu CHECKER-LBUF-NAME-GUARD
-   name nameu CHECKER-DEFINED? if E-DUP-DEFINITION throw then
+   name nameu CHECKER-DEFINED-HERE? if E-DUP-DEFINITION throw then
    name nameu get-current search-wl 0 <> if E-DUP-DEFINITION throw then ;
 
 : LBUF-ZERO ( ptr a n -- ) {: base:ptr bytes:n :}

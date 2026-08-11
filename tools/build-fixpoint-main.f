@@ -17,7 +17,7 @@ package BUILD-FIXPOINT
 
 64 constant BFM-USAGE-RC
 : BFM-NEED-PREAMBLE ( -- )
-   s" BUILD-FIXPOINT:BF-CLI" CHECKER-DEFINED? if exit then
+   s" BUILD-FIXPOINT:BF-CLI" CHECKER-RESOLVES? if exit then
    S\" build-fixpoint: missing required load; --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb\n" BFM-USAGE-RC die ;
 BFM-NEED-PREAMBLE
 

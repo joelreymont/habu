@@ -29,7 +29,7 @@ private
 defer VOCAB-WORD? ( ptr u8 n -- bool )
 
 : VOCAB-LIVE? ( ptr u8 n -- bool )
-   CHECKER-DEFINED? ;
+   CHECKER-RESOLVES? ;
 
 : VOCAB-LIVE! ( -- )
    [: VOCAB-LIVE? ;] is VOCAB-WORD? ;

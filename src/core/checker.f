@@ -5513,7 +5513,18 @@ PRIM: CHECKER-DEFTYPED-BUFFER
 PRIM: CHECKER-DEFTYPED-VARIABLE
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM: CHECKER-DEFINED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+\ Two name queries, because a query about a name asks one of two different
+\ questions and they need different answers. CHECKER-DEFINED-HERE? asks whether
+\ the name is already defined in the scope a NEW DEFINITION would land in - the
+\ duplicate-definition guards' question, and theirs alone. CHECKER-RESOLVES?
+\ asks whether the checker knows an effect for the word this token would BIND
+\ to here, resolving through the same scope chain a reference site uses.
+\ They had one spelling, wired to the first question, so every caller asking the
+\ second got the first's answer: a global the engine resolves and runs inside an
+\ open package was reported absent, and a load-discipline guard inverted the
+\ moment its file gained a package (dot habu-checker-defined-answers-1504bbde).
+PRIM: CHECKER-DEFINED-HERE? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CHECKER-RESOLVES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ CAST-PEND! ( name$ -- ) arms the one-shot cast-certification window (defined
 \ near CTOR-PEND below). The axiom keeps it checker-known so the roles.f CAST:
 \ declarer — an ordinary checked word — can call it; unlike CTOR-PEND!/LBUF-PEND!
@@ -6729,8 +6740,26 @@ variable DFER-POS
    CHK-CAND @ 0 <> IF RES-FALSE EXIT THEN
    CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-FIND-USIG ;
 
-: CHECKER-DEFINED? ( ptr u8 n -- bool )
+\ The DEFINING-scope question: CHECKER-FIND-USIG resolves through
+\ CHECKER-RECORD-SYM, which names the wordlist a new definition would be
+\ recorded into. A duplicate guard must ask exactly this and nothing wider, or
+\ it would refuse a package-local tail that merely shadows an unrelated global -
+\ shadowing a global from inside a package is legal (docs/forth.md § Packages).
+: CHECKER-DEFINED-HERE? ( ptr u8 n -- bool )
    CHECKER-FIND-USIG ;
+
+\ The REFERENCE-scope question: which word would this token bind to here, and
+\ does the checker know its effect? CHECKER-FIND-ACTIVE-SYM is the resolver the
+\ checker already uses at a reference site, so this answers with the engine's
+\ own binding order and the engine's deciding vote at the package and
+\ used-publics legs. It inherits that resolver's refusal: a bare tail that a
+\ global and a live used public both claim throws E-USING-SHADOW-GLOBAL rather
+\ than answering, which is the same ambiguity a reference to it would hit.
+\ Effect-only, like the question it replaces: a primitive with an axiom but no
+\ recorded signature still answers false here, and whether it should is a
+\ separate question with no consumer yet.
+: CHECKER-RESOLVES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM ;
 
 : CHECKER-DUP-DEFINITION ( -- )
    $4E throw ;
