@@ -5916,3 +5916,29 @@ two workers:
     in a capture window, so the intern leaf's acceptance had nothing
     to observe. The feature can be fine while the observation path
     does not exist.
+
+## A refusal that aborts hides every finding behind it (2026-08-11)
+
+The first fail-closed TRUST sweep reported ONE stale row per file -
+the first throw hit. Multi-error participation revealed 42 in one
+file and a 53rd site that had been exiting with a bare code and no
+diagnostic. A check that stops the load at the first finding
+understates the work by whatever hides behind it; a fail-closed
+check should fail the load, not fail it mute and early.
+
+## A declaration inside an unchecked window is name-only (2026-08-11)
+
+0 set-check zeroes the hook cell, and the definer's publish tail is
+gated on it - a TRUSTED: inside such a window publishes the word and
+registers NO effect. It fails closed downstream (uncheckable) but
+looks exactly like a broken fixture, and it silently turned a
+suite's 19 declarations into stubs. Declarations go above the
+window. Engine-side loudness is dot 527eea9a.
+
+## A __text change answers two ratchets (2026-08-11)
+
+gate-build-size.f measures the page-rounded file and padding can
+absorb growth; gate-size-attribution-test.f measures the bytes and
+trips. One green is not evidence about the other - it is evidence
+the padding hid the growth, which is the gap the byte ratchet
+exists to close.
