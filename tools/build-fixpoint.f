@@ -1476,7 +1476,7 @@ variable CHAIN-I
 : ENTRY$ ( -- ptr u8 n )
    s" src/compiler/native/migrate.f" ;
 
-: CLOSURE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: CLOSURE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
    a u EC:BUILD
    0 CHAIN-I !
    begin CHAIN-I @ EC:COUNT < while
@@ -1486,7 +1486,7 @@ variable CHAIN-I
 
 \ The ordered closure of one entry file, hashed into a 32-byte digest.
 : CHAIN-DIGEST! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    s" native-chain-closure-v1" CONTENT-KEY:TEXT+
    a u CLOSURE+
    dst CONTENT-KEY:FINAL ;

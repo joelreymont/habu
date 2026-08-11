@@ -82,7 +82,7 @@ variable ECT-I
    s" unrelated.f" ECT-UN ECT-UN-U ECT-MK ;
 
 : ECT-CLOSURE-KEY ( ptr u8 -- ) {: dst:ptr :}
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    s" ect-closure-v1" CONTENT-KEY:TEXT+
    ECT-ENTRY$ EC:BUILD
    0 ECT-I !

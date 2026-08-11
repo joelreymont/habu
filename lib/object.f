@@ -489,7 +489,7 @@ public
 
 : KEY-HEX ( ptr u8 -- ) {: dst:ptr :}
    BYTES$ DG SHA256
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    s" habu-object-record-key" CONTENT-KEY:TEXT+
    DG CONTENT-KEY:DIGEST+
    dst CONTENT-KEY:FINAL-HEX ;

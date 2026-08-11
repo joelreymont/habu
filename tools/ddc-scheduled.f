@@ -57,7 +57,7 @@ variable MARKER-PATH-U
 \ CONTENT-KEY:FILE+ folds the path plus the SHA256 of the content (never mtime), so the
 \ key tracks a rename, an edit, an add, or a delete of any file.
 : KEY-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    a u CONTENT-KEY:FILE+
    FILE-DG CONTENT-KEY:FINAL
    ACC-XOR ;

@@ -853,9 +853,10 @@ create READER-STATE JR:STORAGE-BYTES allot
 \ HBB-KEY-LOAD-FILES a manifest edit silently reuses a stale hb-build maker artifact.
 : HBT-MAKER-KEY-FOLDS-MANIFEST ( -- )
    CONTENT-KEY:CACHE-CLEAR!
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    HBB-KEY-LOAD-FILES
-   CONTENT-KEY:BUF$ s" tools/dynamic-tail-manifest.f" CONTAINS? TTRUE ;
+   dup CONTENT-KEY:BUF$ s" tools/dynamic-tail-manifest.f" CONTAINS? TTRUE
+   CONTENT-KEY:DISCARD ;
 
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.

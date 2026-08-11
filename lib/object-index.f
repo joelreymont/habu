@@ -97,7 +97,7 @@ public
 : SOURCE-KEY-HEX ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 -- )
    {: src:ptr srcu:n target:ptr targetu:n checker:ptr checkeru:n compiler:ptr compileru:n dst:ptr :}
    src srcu KEY-CHECK
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    s" obj-source-index-v1" CONTENT-KEY:TEXT+
    src srcu CONTENT-KEY:TEXT+
    target targetu CONTENT-KEY:TEXT+

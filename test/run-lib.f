@@ -727,8 +727,27 @@ private
    s" --pool-slots" TR-ARG+
    TR-NUM-ARG+ ;
 
+\ The phase-key fold is parked in a typed cell for the length of the key rather
+\ than threaded on the stack. The declared file sets are walked by a generic
+\ walker (test/run-files.f TR-FILES-WALK) whose callback contract is
+\ ( ptr u8 n -- ), so a threaded handle cannot ride through it, and the handle
+\ is a sealed nominal that cannot be smuggled as a cell. This parks ONE fold
+\ owned by this package: it is not the shared accumulator the fold handles
+\ replaced, because the bytes live in that fold's own slot and no other module
+\ can reach them.
+1 LAYOUT-BUFFER TR-KEY-FOLD CONTENT-KEY:fold
+
+: TR-KEY-FOLD! ( CONTENT-KEY:fold -- )
+   0 TR-KEY-FOLD ! ;
+
+: TR-KEY-FOLD@ ( -- CONTENT-KEY:fold )
+   0 TR-KEY-FOLD @ ;
+
 : TR-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CONTENT-KEY:FILE+ ;
+   TR-KEY-FOLD@ a u CONTENT-KEY:FILE+ TR-KEY-FOLD! ;
+
+: TR-KEY-TEXT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   TR-KEY-FOLD@ a u CONTENT-KEY:TEXT+ TR-KEY-FOLD! ;
 
 : TR-BUILD-COMMON ( -- )
    TR-COMMON
@@ -1362,17 +1381,17 @@ private
    idx PHASE-UNDER? 0= if TR-TRUE exit then
    TR-UNDER-READY @ 0= if TR-FALSE exit then
    TR-UNDER-SHA!
-   TR-UNDER-HEX 64 CONTENT-KEY:TEXT+
+   TR-UNDER-HEX 64 TR-KEY-TEXT+
    TR-TRUE ;
 
 : TR-RESULT-KEY? ( idx -- bool ) {: idx:idx :}
-   CONTENT-KEY:RESET
-   s" gate-phase-pass-v1" CONTENT-KEY:TEXT+
-   idx PHASE-LABEL CONTENT-KEY:TEXT+
+   CONTENT-KEY:OPEN TR-KEY-FOLD!
+   s" gate-phase-pass-v1" TR-KEY-TEXT+
+   idx PHASE-LABEL TR-KEY-TEXT+
    s" bin/hb" TR-KEY-FILE+
-   idx TR-RESULT-UNDER-KEY? 0= if TR-FALSE exit then
-   idx TR-RESULT-KEY-FILES? 0= if TR-FALSE exit then
-   TR-RESULT-KEY-HEX CONTENT-KEY:FINAL-HEX
+   idx TR-RESULT-UNDER-KEY? 0= if TR-KEY-FOLD@ CONTENT-KEY:DISCARD TR-FALSE exit then
+   idx TR-RESULT-KEY-FILES? 0= if TR-KEY-FOLD@ CONTENT-KEY:DISCARD TR-FALSE exit then
+   TR-KEY-FOLD@ TR-RESULT-KEY-HEX CONTENT-KEY:FINAL-HEX
    TR-TRUE ;
 
 public

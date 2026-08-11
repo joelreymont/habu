@@ -6,6 +6,8 @@ require lib/process-fork.f
 require test/gate-stats.f
 require tools/why-threw.f
 
+using WHY-THREW                          \ the fork-throw self-identifying report
+
 16 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
 8 constant GT-POOL-MACOS-DEFAULT
@@ -1153,3 +1155,5 @@ GT-POOL-ABORT-KILL!
    GT-POOL-DRAIN-SOFT
    GT-POOL-RED# 0 > if GT-POOL-RED-DIE then
    GT-POOL-SCHEDULE-CHECK ;
+
+;using

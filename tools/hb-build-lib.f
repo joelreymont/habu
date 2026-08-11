@@ -477,10 +477,10 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-ARTIFACT-NAME$ ( -- ptr u8 n )
    HBB-ARTIFACT-NAME-BUF HBB-ARTIFACT-NAME-U @ ;
 
-: HBB-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: HBB-KEY-FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
    a u CONTENT-KEY:FILE+ ;
 
-: HBB-KEY-LOAD-FILES ( -- )
+: HBB-KEY-LOAD-FILES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" lib/errors.f" HBB-KEY-FILE+
    s" lib/string.f" HBB-KEY-FILE+
    s" lib/memory.f" HBB-KEY-FILE+
@@ -512,7 +512,7 @@ HBB-INSTALL-CHILD-LINTS
    s" tools/hb-build-report.f" HBB-KEY-FILE+
    s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
 
-: HBB-KEY-COMMON-SOURCES ( -- )
+: HBB-KEY-COMMON-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" src/habu/hide.f" HBB-KEY-FILE+
    s" src/core/util.f" HBB-KEY-FILE+
    s" src/core/cell.f" HBB-KEY-FILE+
@@ -565,7 +565,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/habu/driver-io.f" HBB-KEY-FILE+
    s" src/habu/maker.f" HBB-KEY-FILE+ ;
 
-: HBB-KEY-LINUX-SOURCES ( -- )
+: HBB-KEY-LINUX-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-aarch64" CONTENT-KEY:TEXT+
    s" src/os/linux/target.f" HBB-KEY-FILE+
    s" src/os/linux/layout.f" HBB-KEY-FILE+
@@ -575,7 +575,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/os/linux/elf.f" HBB-KEY-FILE+
    s" src/os/linux/sign.f" HBB-KEY-FILE+ ;
 
-: HBB-KEY-MACOS-SOURCES ( -- )
+: HBB-KEY-MACOS-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:macos-aarch64" CONTENT-KEY:TEXT+
    s" src/os/macos/target.f" HBB-KEY-FILE+
    s" src/os/macos/layout.f" HBB-KEY-FILE+
@@ -585,12 +585,12 @@ HBB-INSTALL-CHILD-LINTS
    s" src/os/macos/macho.f" HBB-KEY-FILE+
    s" src/os/macos/sign2.f" HBB-KEY-FILE+ ;
 
-: HBB-KEY-TARGET-SOURCES ( -- )
+: HBB-KEY-TARGET-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    HB-TARGET-LINUX? if HBB-KEY-LINUX-SOURCES exit then
    HB-TARGET-MACOS? if HBB-KEY-MACOS-SOURCES exit then
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
-: HBB-KEY-DRIVER-SOURCES ( -- )
+: HBB-KEY-DRIVER-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    HBB-REPL @ if
       s" maker-mode:repl" CONTENT-KEY:TEXT+
       s" src/habu/verify-source.f" HBB-KEY-FILE+
@@ -603,7 +603,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/habu/aot.f" HBB-KEY-FILE+ ;
 
 : HBB-MAKER-KEY! ( -- )
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    s" hb-build-maker-cache-v2" CONTENT-KEY:TEXT+
    BF-ENGINE$ HBB-KEY-FILE+
    HBB-KEY-LOAD-FILES
@@ -794,14 +794,14 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-ARTIFACT-LOCK$ ( -- ptr u8 n )
    HBB-ARTIFACT-LOCK-PATH HBB-ARTIFACT-LOCK-U @ ;
 
-: HBB-OPTION-TEXT+ ( ptr u8 n bool -- )
+: HBB-OPTION-TEXT+ ( CONTENT-KEY:fold ptr u8 n bool -- CONTENT-KEY:fold )
    if CONTENT-KEY:TEXT+ else 2drop then ;
 
 \ The user program's behaviour depends on every file its require/include closure
 \ actually loads, so the cache keys fold the whole ordered closure content, not
 \ only the top-level source. Discovery rejects fail-closed, so a closure that
 \ cannot be reproduced cannot be keyed.
-: HBB-CLOSURE-CK+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: HBB-CLOSURE-CK+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
    a u EC:BUILD
    0 HBB-KEY-I !
    begin HBB-KEY-I @ EC:COUNT < while
@@ -814,19 +814,19 @@ HBB-INSTALL-CHILD-LINTS
 \ but for a preseeded run it diverges every cache layer in lockstep: the artifact
 \ key, the source-index key (via HBB-CLOSURE-HEX!), and the object source header.
 \ Without it a preseeded run would restore a stale normal-MAIN artifact.
-: HBB-PRESEED-CK+ ( -- )
+: HBB-PRESEED-CK+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    HBB-PRESEED? 0= if exit then
    s" preseed-entry-v1" CONTENT-KEY:TEXT+
    HBB-ENTRY-NAME$ CONTENT-KEY:TEXT+
    HBB-SEED-HEX$ CONTENT-KEY:TEXT+
    SB-RESET s" mode:" SB-APPEND HBB-PRESEED-MODE @ FS-MUT-SB-U SB$ CONTENT-KEY:TEXT+ ;
 
-: HBB-SRC-CLOSURE+ ( -- )
+: HBB-SRC-CLOSURE+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" user-source-closure-v1" CONTENT-KEY:TEXT+
    HBB-SRC$ HBB-CLOSURE-CK+ ;
 
 : HBB-CLOSURE-HEX! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    s" user-source-closure-v1" CONTENT-KEY:TEXT+
    a u HBB-CLOSURE-CK+
    HBB-PRESEED-CK+
@@ -858,7 +858,7 @@ HBB-INSTALL-CHILD-LINTS
 
 : HBB-ARTIFACT-KEY! ( -- )
    HBB-MAKER-KEY!
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    s" hb-build-artifact-cache-v2" CONTENT-KEY:TEXT+
    HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
    s" strict" HBB-STRICT @ 0 <> HBB-OPTION-TEXT+

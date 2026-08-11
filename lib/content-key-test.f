@@ -41,6 +41,10 @@ create CKT-SRC FS-PATH-CAP allot
 create CKT-CACHE FS-PATH-CAP allot
 create CKT-KEY1 80 allot
 create CKT-KEY2 80 allot
+create CKT-SEQ-A 80 allot
+create CKT-SEQ-B 80 allot
+create CKT-INT-A 80 allot
+create CKT-INT-B 80 allot
 create CKT-READ CKT-READ-CAP allot
 create CKT-DG 40 allot
 create CKT-DGHEX 80 allot
@@ -75,7 +79,7 @@ create CKT-BADCACHE FS-PATH-CAP allot
    CKT-CACHE$ CACHE-PATH! ;
 
 : CKT-KEY! ( ptr u8 -- ) {: dst:ptr :}
-   RESET
+   OPEN
    s" content-key-test" TEXT+
    CKT-SRC$ FILE+
    dst FINAL-HEX ;
@@ -370,8 +374,84 @@ create CKT-BADCACHE FS-PATH-CAP allot
    CLEANUP-RUN
    CKT-ROOT$ EXISTS? TFALSE ;
 
+\ ---- overlapping folds ------------------------------------------------------
+\ The regression this module's fold handles exist for. Two folds run one after
+\ the other, then the SAME two folds run overlapping - the second opened while
+\ the first is still being folded into, which is what a key derived inside
+\ another key's derivation does. The two must agree: a fold's bytes belong to
+\ its own handle, not to whoever folded last.
+\
+\ Against the single shared accumulator this module used to have, they did not:
+\ the overlapping run produced ONE key and handed the same wrong value back for
+\ both folds. Restoring that behaviour - one slot, never released - turns these
+\ equalities red and flips the "the two keys differ" guard to true, which is the
+\ silent-mixing signature itself.
+: CKT-FOLD-SEQUENTIAL ( -- )
+   OPEN
+   s" alpha-1" TEXT+
+   s" alpha-2" TEXT+
+   CKT-SEQ-A FINAL-HEX
+   OPEN
+   s" beta-1" TEXT+
+   s" beta-2" TEXT+
+   CKT-SEQ-B FINAL-HEX ;
+
+: CKT-FOLD-OVERLAPPED ( -- )
+   OPEN
+   s" alpha-1" TEXT+
+   OPEN
+   s" beta-1" TEXT+
+   swap
+   s" alpha-2" TEXT+
+   swap
+   s" beta-2" TEXT+
+   CKT-INT-B FINAL-HEX
+   CKT-INT-A FINAL-HEX ;
+
+: CKT-FOLD-OVERLAP-MATCHES ( -- )
+   CKT-FOLD-SEQUENTIAL
+   CKT-FOLD-OVERLAPPED
+   CKT-SEQ-A CK-HEX-LEN CKT-INT-A CK-HEX-LEN STR= TTRUE
+   CKT-SEQ-B CK-HEX-LEN CKT-INT-B CK-HEX-LEN STR= TTRUE
+   \ and the two keys are genuinely different keys, so the equalities above are
+   \ not both passing on one repeated value.
+   CKT-SEQ-A CK-HEX-LEN CKT-SEQ-B CK-HEX-LEN STR= TFALSE
+   CKT-INT-A CK-HEX-LEN CKT-INT-B CK-HEX-LEN STR= TFALSE ;
+
+\ A handle is done when its key is taken: reusing it names a slot it no longer
+\ owns, and that throws rather than folding into whatever holds the slot now.
+\ The stale copy is parked in a typed cell because `catch` takes a ( -- )
+\ quotation, so the retry cannot be handed its handle on the stack.
+1 LAYOUT-BUFFER CKT-STALE-BUF fold
+
+: CKT-STALE! ( fold -- )
+   0 CKT-STALE-BUF ! ;
+
+: CKT-STALE@ ( -- fold )
+   0 CKT-STALE-BUF @ ;
+
+: CKT-STALE-USE ( -- )
+   CKT-STALE@ s" delta" TEXT+ drop ;
+
+: CKT-FOLD-STALE-THROWS ( -- )
+   OPEN dup CKT-STALE!
+   s" gamma" TEXT+ CKT-SEQ-A FINAL-HEX
+   [: CKT-STALE-USE ;] catch E-CK-STALE T= ;
+
+\ Every fold slot is released by FINAL, so a run that opens and finishes folds
+\ forever never exhausts the pool.
+: CKT-FOLD-SLOTS-RECYCLE ( -- )
+   0 begin dup FOLDS 2 * < while
+      OPEN s" recycle" TEXT+ CKT-SEQ-A FINAL-HEX
+      1+
+   repeat drop
+   0 FOLD-FILL 0 T= ;
+
 : CKT-MAIN ( -- )
    T-RESET
+   CKT-FOLD-OVERLAP-MATCHES
+   CKT-FOLD-STALE-THROWS
+   CKT-FOLD-SLOTS-RECYCLE
    CKT-SETUP
    CKT-CACHE-STABLE-HIT
    CKT-CACHE-INVALIDATES

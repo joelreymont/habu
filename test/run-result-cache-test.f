@@ -49,7 +49,7 @@ variable CACHE-LEN
    ROOT$ TRC:ROOT! ;
 
 : KEY! ( ptr u8 -- ) {: dst:ptr :}
-   CONTENT-KEY:RESET
+   CONTENT-KEY:OPEN
    s" result-cache-test" CONTENT-KEY:TEXT+
    SRC$ CONTENT-KEY:FILE+
    dst CONTENT-KEY:FINAL-HEX ;
