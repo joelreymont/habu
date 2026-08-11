@@ -5845,3 +5845,15 @@ its target name needs the qualified spelling even inside the import.
 Also: a package whose exported tails share the package's own prefix
 walls off future head edits (E-REDUNDANT-PACKAGE-PREFIX fires on the
 next change) - pick the package name so the tails don't repeat it.
+
+## Editing keyed phase files runs the gate cold (2026-08-11)
+
+The gate caches phase results keyed on declared file sets
+(test/run-files.f). An edit to any file in those sets - lib/content-key.f,
+test/run-lib.f itself - invalidates every phase key, so the next battery
+runs fully cold and takes minutes longer; under a concurrent lane that is
+exactly when timing assertions red (TIMEOUT-UNDER-LOAD, group-time
+ratchets). A red whose failing member does not reference the changed
+code, on a fully-cold run, is this - prove it (the fold census reporter
+reads clean at the throw site), then rerun sequentially. Two sequential
+greens settle it.
