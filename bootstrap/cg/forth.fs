@@ -447,7 +447,7 @@ variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
-variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
+variable LKWTRUSTED variable LKWTRUSTDECL variable LKWCHKDOES variable LKWKERNEL
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
@@ -2591,7 +2591,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWDEFERUNSET @ LBL,  s" defer-unset" BYTES,
    LKWTRUSTED @ LBL, s" trusted:" BYTES,
    LKWKERNEL @ LBL, s" kernel:" BYTES,
-   LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
+   LKWTRUSTDECL @ LBL, s" trust-decl" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWPACKAGE @ LBL, s" package" BYTES,  LKWPUBLIC @ LBL, s" public" BYTES,
    LKWPRIVATE @ LBL, s" private" BYTES,  LKWSEMIPACKAGE @ LBL, s" ;package" BYTES,
    LKWUSING @ LBL, s" using" BYTES,  LKWSEMIUSING @ LBL, s" ;using" BYTES,
@@ -2852,10 +2852,16 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : J-RECURSE ( -- )
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
-: C-FIND-TRUST ( -- )  LBL {: ok :}
-   9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
+\ MIRROR of src/habu/habu2.f DEF-TRUST:FIND (this file has no packages, so the
+\ name is flat). Resolve `trust-decl`, the checker's definer-facing effect
+\ registrar: the publish tails and the pre-trust defer drain register a
+\ signature for a record that is not findable yet, so they must not route
+\ through `trust`, which fails closed on a name the dictionary cannot resolve
+\ (dot habu-make-trust-refuse-cc8e19de).
+: C-FIND-TRUST-DECL ( -- )  LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   9 LKWTRUSTDECL @ ADR,  10 10 MOVZ,  LFIND @ BL,
    13 ok CBNZ,
-      0 2 MOVZ,  1 LKWTRUST @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LKWTRUSTDECL @ ADR,  2 10 MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
@@ -2898,7 +2904,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-CALL-TRUST-LASTC ( -- )
    LBL {: nohook :} \ typed-local-lint: allow-bare-local
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST
+   C-FIND-TRUST-DECL
    12 DATA LASTC-CELL LDR,
    C-PUSH-DREC-NAME
    CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
@@ -2906,7 +2912,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    nohook LBL, ;
 
 : C-CALL-TRUST-PEND ( -- )
-   C-FIND-TRUST
+   C-FIND-TRUST-DECL
    12 DATA PEND-CELL LDR,
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
@@ -4719,7 +4725,7 @@ variable CFSK2
 
 : C-PRETRUST-READY? ( -- )                           \ x13 <- both `trust` and `checker-defer` are defined (non-dying)
    LBL {: done :}   \ typed-local-lint: allow-bare-local
-   9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
+   9 LKWTRUSTDECL @ ADR,  10 10 MOVZ,  LFIND @ BL,
    13 done CBZ,                                      \ trust absent -> x13=0
    LCHKDEFER 13 C-P2-FIND-GLOBAL?                    \ x13 = checker-defer found? (global scope)
    done LBL, ;
@@ -4798,7 +4804,7 @@ variable CFSK2
    LBL LBL {: loop done :}   \ typed-local-lint: allow-bare-local
    loop LBL,
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 done CBZ,   \ remaining==0 -> done
-      C-FIND-TRUST                                    \ x11 = trust XT (clobbers x12-x16)
+      C-FIND-TRUST-DECL                               \ x11 = trust-decl XT (clobbers x12-x16)
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  \ index = remaining-1
       15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = slot base (x11 preserved)
       9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
@@ -6331,7 +6337,7 @@ variable P2SK
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
-   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
+   LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !

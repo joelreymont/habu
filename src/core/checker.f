@@ -5536,6 +5536,14 @@ PRIM: CAST-PEND! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ habu-hb-crash-bare-c5be6634); UNSAFE-TOK? still rejects `trust` inside
 \ checked bodies, so the axiom adds no checked-code capability.
 PRIM: TRUST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+\ TRUST-DECL ( name$ effect$ -- ) is the definer-facing half of TRUST: the same
+\ registration, called by the ENGINE from its publish tail and from the
+\ pre-trust defer drain rather than written in source. It needs the same axiom
+\ as TRUST to survive the seal-time internal-word marking pass and stay
+\ findable when the engine looks it up for a user definition; UNSAFE-TOK?
+\ rejects `trust-decl` inside checked bodies exactly like `trust`, so the axiom
+\ adds no checked-code capability.
+PRIM: TRUST-DECL PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ TRUST-RAW ( name$ effect$ -- ) is TRUST for a raw storage cell: same
 \ registration, every type variable in the effect minted TVK-RAW. The native
 \ engine calls it by name from each created-word publish site, so it needs the
@@ -7393,6 +7401,7 @@ variable CURSYM
 : UNSAFE-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" evaluate" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" trust-decl" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust-raw" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ptx-barrier!" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -9734,6 +9743,30 @@ s" <input>" DIAG-FILE!
    na nu TOKFOLD drop
    sa su  TKF TKFU @  CHECKER-USIG-ADD ;
 
+\ TRUST-DECL: record the effect a DEFINER just declared for the word it is
+\ publishing. The engine calls it by name from its publish tail and from the
+\ pre-trust defer drain, and from nowhere else.
+\
+\ WHY IT IS NOT `trust`. One spelling was answering two different questions.
+\ A definer re-recording its own declared signature knows the word exists — it
+\ is publishing it — and asks for the row to be stored. Source writing
+\ `s" NAME" s" SIG" trust` is asserting an effect for a word it CLAIMS already
+\ exists, and that claim can be wrong: a stale row for a word that has been
+\ renamed or deleted used to be accepted in silence, minting a global checker
+\ symbol out of nothing (dot habu-make-trust-refuse-cc8e19de). Only the second
+\ question can be answered by asking the dictionary, and it can only be asked
+\ of a word with one caller class. So the two questions get two words, rather
+\ than one word inspecting who called it.
+\
+\ The order here is not free. The engine's publish tail runs BEFORE the record
+\ becomes findable — measured: a definition is absent from `search-wl` at its
+\ own tail and present one statement later — so a definer-facing registration
+\ must never consult the dictionary, and `trust` may only start doing so once
+\ nothing but source reaches it. That is why the retarget below lands a stage
+\ ahead of the check on TRUST.
+: TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
+   na nu sa su TRUST-USIG! ;
+
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
 \ Usage:  s" myword" s" n n -- n" trust
@@ -9767,12 +9800,16 @@ s" <input>" DIAG-FILE!
    na nu sa su TRUST-USIG!
    RES-FALSE SIG-RAW-DEFINER! ;
 
-\ Pre-trust defer capability (dot habu-engine-pre-trust-77410827): `trust` (above)
-\ and `checker-defer` (5208) are both defined now — the earliest safe point — so
-\ drain the pending table, replaying trust+checker-defer for every defer declared
-\ before this line. DRAIN-PRETRUST is a baked engine primitive (native habu2.f
-\ + stage0 mirror forth.fs); it is called here by its bare token at exactly the
-\ boot-prefix point where the pending table must be flushed. The engine backstop
+\ Pre-trust defer capability (dot habu-engine-pre-trust-77410827): `trust-decl`
+\ (above) and `checker-defer` (5208) are both defined now — the earliest safe
+\ point — so drain the pending table, replaying trust-decl+checker-defer for every
+\ defer declared before this line. The drain replays a DEFINER's registration, so
+\ it goes through `trust-decl` and not `trust`, and `trust-decl` is defined above
+\ `trust`, which is why this point still satisfies the precondition and the
+\ sentinels below did not have to move. DRAIN-PRETRUST is a baked engine
+\ primitive (native habu2.f + stage0 mirror forth.fs); it is called here by its
+\ bare token at exactly the boot-prefix point where the pending table must be
+\ flushed. The engine backstop
 \ (BSEALCAP, src/habu/habu1.f) dies fail-closed at SEAL-CAPTURE (exit 73, naming
 \ each undrained defer) if the table is non-empty because the drain never ran, so
 \ a removed or botched drain can never boot silently.
@@ -9780,7 +9817,7 @@ s" <input>" DIAG-FILE!
 \ owner habu-checker-exec-of-5923c543, which resolved the prim by `search-wl` so a
 \ previous-fixpoint engine lacking the prim could still load this boot prefix) was
 \ removed once this tree began declaring real pre-trust defers of its own — the
-\ TFAM query hooks TFAM-RESOLVE-XT.. above, before `: TRUST`, captured into the
+\ TFAM query hooks TFAM-RESOLVE-XT.. above, before `: TRUST-DECL`, captured into the
 \ pending table. With those present, an engine without DRAIN-PRETRUST cannot load
 \ this prefix regardless of the shim: the bare token is E-UNDEFINED (exit 70) on
 \ it, and even the shim's lookup-miss branch would leave the table undrained and

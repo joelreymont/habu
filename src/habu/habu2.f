@@ -1710,6 +1710,11 @@ public
 \ resolves it, and the LABELS allocator mints its id.
 variable LKWTRUSTRAW
 
+\ The same, for the baked `trust-decl` keyword string: which registrar the
+\ engine's publish tail reaches is a habu2.f concern too, DEF-TRUST:FIND
+\ resolves it, and the row below bakes it.
+variable LKWTRUSTDECL
+
 : EMIT ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
    LKWELSE LABEL@ LBL,   s" else"   BYTES,    LKWBEGIN LABEL@ LBL,  s" begin"  BYTES,
@@ -1740,7 +1745,7 @@ variable LKWTRUSTRAW
    LKWDOES LABEL@ LBL,  s" does>" BYTES,
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
-   LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
+   LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  HOLD-EMIT:LHOLDQ LABEL@ LBL, s" checker-hold?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
@@ -1989,13 +1994,6 @@ package LOOP-EMIT
 : W-STRX ( n n n -- n ) {: rt RN off :}                               \ str rt,[rn,#off]
    $F9000000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
 
-: C-FIND-TRUST ( -- )  LBL {: ok :}
-   9 LKWTRUST LABEL@ ADR,  10 5 MOVZ,  LFIND LABEL@ BL,
-   13 ok CBNZ,
-      0 2 MOVZ,  1 LKWTRUST LABEL@ ADR,  2 5 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
-
 \ Native task guard and dictionary/checker lookup bridge operate on generated
 \ registers and dynamically found checker words.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
@@ -2020,7 +2018,7 @@ s" c-task-live-guard" s" --" TRUST
 \ calls the engine rejects (dot habu-qualified-defs-leak-aadeb5c9). Unqualified
 \ defs are unchanged (first token == whole name). The Gforth stage0 mirror keeps
 \ the record-name form: it has no package system, so its name cannot diverge.
-\ Scratch stays off x11: C-FIND-TRUST/C-FIND-GLOBAL leave the record XT in x11
+\ Scratch stays off x11: DEF-TRUST:FIND/C-FIND-GLOBAL leave the record XT in x11
 \ for the caller's later C-CALL-X11-SAVED, so this word must preserve it.
 : C-PUSH-DREC-NAME ( -- )
    LBL LBL {: scan:label done:label :}
@@ -2049,11 +2047,48 @@ s" c-task-live-guard" s" --" TRUST
    11 BLR,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
-: C-CALL-TRUST-PEND ( -- )
-   C-FIND-TRUST
+\ ---- reaching the checker's definer-facing registrar --------------------------
+\ One concern: how the engine hands the checker a signature a DEFINER just
+\ declared. It is the sibling of LASTC-TRUST below, which does the same job for
+\ a created word's raw storage cell, and it is a package for the same reason.
+\
+\ WHY IT IS `trust-decl` AND NOT `trust`. Both spellings register the same row.
+\ The difference is what the caller may be asked to prove. A definer publishing
+\ a record has not made it findable yet - measured, a definition is absent from
+\ `search-wl` at its own publish tail and present one statement later - so a
+\ registrar reached from here must never consult the dictionary. Source writing
+\ `s" NAME" s" SIG" trust` is in the opposite position: it claims a word exists,
+\ and that claim is exactly what used to go unchecked, minting a global checker
+\ symbol for a stale row in silence (dot habu-make-trust-refuse-cc8e19de). Two
+\ questions, two words, so neither has to guess which caller it has.
+package DEF-TRUST
+
+public
+
+\ Resolve `trust-decl` (checker.f TRUST-DECL) into x11. Same fail-closed shape
+\ as LASTC-TRUST:FIND-RAW: a missing registrar names itself on fd 2 and exits 70
+\ rather than publishing a definition whose effect nothing recorded. Public
+\ because BDRAINPRETRUST needs the XT for its own push sequence.
+: FIND ( -- )  LBL {: ok:label :}
+   9 KWDATA:LKWTRUSTDECL LABEL@ ADR,  10 10 MOVZ,  LFIND LABEL@ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 KWDATA:LKWTRUSTDECL LABEL@ ADR,  2 10 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+\ Register the pending definition's declared signature: name from the body
+\ buffer, signature from the TSIG cells. NOT named `CALL`: an upper-case
+\ `PKG:CALL` is a reserved shape - tools/lint/clobber-lint.f reads it as a
+\ register-move prelude plus a branch to a shared engine helper (today only
+\ PROT-GUARD:CALL) and fails closed on any other, which is the right refusal
+\ and not a model to widen.
+: REGISTER ( -- )
+   FIND
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
+
+;package
 
 \ ---- created-word effect publication -----------------------------------------
 \ The three public words below are every place the engine gives a defining
@@ -2074,7 +2109,7 @@ package LASTC-TRUST
 \ TRUST-RAW). Every word the engine publishes from a defining word owns a cell
 \ of raw dictionary storage, so its effect must be registered with raw type
 \ variables that cannot bind a nominal family; the publish words below all
-\ route here instead of at `trust`. Same fail-closed shape as C-FIND-TRUST: a
+\ route here instead of at `trust-decl`. Same shape as DEF-TRUST:FIND: a
 \ missing registrar names itself on fd 2 and exits 70 rather than publishing
 \ the word unsealed.
 : FIND-RAW ( -- )  LBL {: ok:label :}
@@ -2967,7 +3002,7 @@ s" c-defer-room" s" --" TRUST
 
 \ --- Pre-trust defer pending registration (dot habu-engine-pre-trust-77410827) ---
 \ A `defer NAME ( E )` declared before checker.f defines `trust`/`checker-defer`
-\ cannot run C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER (they LFIND those words and
+\ cannot run DEF-TRUST:REGISTER / C-CALL-CHECKER-DEFER (they LFIND those words and
 \ die exit 70). C-DEFER instead copies the defer's qualified name + effect
 \ signature into the pending table (src/habu/layout.f PD-*); DRAIN-PRETRUST
 \ replays both registrations after `: TRUST`.
@@ -3013,10 +3048,10 @@ s" c-pd-die-full" s" --" TRUST
    13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR, ;       \ count++
 s" c-pd-capture" s" --" TRUST
 
-: C-PRETRUST-READY? ( -- )                           \ x13 <- both `trust` and `checker-defer` are defined (non-dying)
+: C-PRETRUST-READY? ( -- )                           \ x13 <- both `trust-decl` and `checker-defer` are defined (non-dying)
    LBL {: done :}   \ typed-local-lint: allow-bare-local
-   9 LKWTRUST LABEL@ ADR,  10 5 MOVZ,  LFIND LABEL@ BL,
-   13 done CBZ,                                      \ trust absent -> x13=0
+   9 KWDATA:LKWTRUSTDECL LABEL@ ADR,  10 10 MOVZ,  LFIND LABEL@ BL,
+   13 done CBZ,                                      \ trust-decl absent -> x13=0
    LCHKDEFER 13 C-FIND-GLOBAL?                       \ x13 = checker-defer found? (global scope)
    done LBL, ;
 s" c-pretrust-ready?" s" --" TRUST
@@ -3049,7 +3084,7 @@ s" c-pretrust-ready?" s" --" TRUST
    C-PRETRUST-READY?  13 ready CBNZ,
       C-PD-CAPTURE  pdone B,                          \ trust/checker-defer absent: record into the pending table
    ready LBL,
-      C-CALL-TRUST-PEND
+      DEF-TRUST:REGISTER
       C-CALL-CHECKER-DEFER
    pdone LBL,
    EM-REC-WIDE-PUBLISH
@@ -3093,9 +3128,9 @@ s" c-defer-target-meta" s" --" TRUST
    16 9 0 W-STRX C-EMITW ;
 s" j-is" s" --" TRUST
 
-\ DRAIN-PRETRUST ( -- ): replay C-CALL-TRUST-PEND + C-CALL-CHECKER-DEFER
+\ DRAIN-PRETRUST ( -- ): replay DEF-TRUST:REGISTER + C-CALL-CHECKER-DEFER
 \ for every pending pre-trust defer, then empty the table. Called once from
-\ src/core/checker.f right after `: TRUST` (the earliest point both `trust`:7685
+\ src/core/checker.f right after `: TRUST` (the earliest point both `trust-decl`
 \ and `checker-defer`:5208 exist). Drains from the top down using the band count
 \ itself as the loop state so it survives across the checker BLR calls; each slot
 \ supplies the copied name+sig, so no body-buffer/record read is needed at drain
@@ -3104,12 +3139,12 @@ s" j-is" s" --" TRUST
    LBL LBL {: loop done :}   \ typed-local-lint: allow-bare-local
    loop LBL,
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 done CBZ,   \ remaining==0 -> done
-      C-FIND-TRUST                                    \ x11 = trust XT (clobbers x12-x16)
+      DEF-TRUST:FIND                                  \ x11 = trust-decl XT (clobbers x12-x16)
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  \ index = remaining-1
       15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = slot base (x11 preserved)
       9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
       9 14 PD-SIG-OFF ADDI,   9 G-PUSH   9 14 PD-SLEN-OFF LDR,  9 G-PUSH        \ push sig addr,len
-      C-CALL-X11-SAVED                                \ trust( na nu sa su )
+      C-CALL-X11-SAVED                                \ trust-decl( na nu sa su )
       LCHKDEFER 13 C-FIND-GLOBAL                      \ x11 = checker-defer XT (clobbers x12-x16)
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,
       15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,
@@ -6649,7 +6684,7 @@ s" em-compile-flush-pend" s" --" TRUST
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
    ndchk LBL,
-   C-CALL-TRUST-PEND
+   DEF-TRUST:REGISTER
    publish B, ;
 s" em-compile-publish-trusted" s" label --" TRUST
 
@@ -7739,7 +7774,7 @@ package LABELS
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
-   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
+   LBL LKWTRUSTED !  LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !

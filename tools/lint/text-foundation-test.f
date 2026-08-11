@@ -939,9 +939,13 @@ variable REG-I
    \ since PRIM-FIRST-SCAN answers with the first slot.
    \ Rows for boot-prefix HABU words, not engine primitives, which the table has
    \ admitted since EXT-MARK-FREE-TAIL and CHECKER-DEFFAMILY.
+   \ It was 371 before the definer-facing registrar split (dot
+   \ habu-make-trust-refuse-cc8e19de) added `TRUST-DECL`, which needs the same
+   \ axiom as `TRUST` for the same reason: the engine looks it up by name, so
+   \ the seal-time internal-word marking pass has to leave it findable.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 371 ASSERT=
+   REG-COUNT 372 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.
