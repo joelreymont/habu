@@ -190,7 +190,7 @@ variable FAILS
 \ here. The whitebox test reads these back out of this source and checks them
 \ against the enumerated rows, so a case dropped without adjusting its count
 \ trips loudly. The lone top-row case is a positive, counted here too.
-34 constant N-POSITIVE
+35 constant N-POSITIVE
 5 constant N-DIAGNOSTIC
 13 constant N-NEGATIVE
 
@@ -253,6 +253,7 @@ variable FAILS
    s" test/wide-store-seal.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/protection-span.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/addrmap-set.f" construct case-kind positive 0 s" " s" " RUN-CASE
+   s" test/addrmap-inline.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/lower-txn-protection.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/lower-txn-large.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/bootstrap-wide-memory-src.f" construct case-kind positive 0 s" " s" " RUN-CASE

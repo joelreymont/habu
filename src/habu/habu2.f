@@ -34,91 +34,10 @@ using A64ASM
 : C-ADDR-PUSH ( -- )
    C-ADDR-RAW
    9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
-\ The three words that NAME the relocation kind of a chain are defined further
-\ down, right after the snapshot-relocation labels, because the code-address one
-\ has to record its site through SNAP-RELOC:MARK-SITE.
-\ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
-$28 constant INL-MAX
-$D10043FF constant C-CALL-PROLOGUE-INSTR
-$D65F03C0 constant C-CALL-RET-INSTR
-$FC000000 constant C-CALL-B-IMM-MASK
-$94000000 constant C-CALL-BL-IMM
-$14000000 constant C-CALL-B-IMM
-$FF000010 constant C-CALL-B-COND-MASK
-$54000000 constant C-CALL-B-COND
-$7E000000 constant C-CALL-CBZ-TBZ-MASK
-$34000000 constant C-CALL-CBZ
-$36000000 constant C-CALL-TBZ
-$FFFFFC1F constant C-CALL-BR-MASK
-$D63F0000 constant C-CALL-BLR
-$D61F0000 constant C-CALL-BR
-$1F000000 constant C-CALL-ADR-MASK
-$10000000 constant C-CALL-ADR
-$D2800010 constant C-CALL-MOVZ-X16    \ movz x16 scaffold: ADT-match tag compare (not a call)
-$D63F0200 constant C-CALL-BLR-X16     \ blr x16: kept for the deferred-word indirect call (C-DEFER-EMIT-CODE)
-
-: C-CALL-BRANCH-NO-PROLOGUE ( label -- ) {: lnopro:label :}
-   9 11 0 LDRW,  8 C-CALL-PROLOGUE-INSTR LIT64,
-   9 8 CMP,  C-NE lnopro BCOND, ;
-
-: C-CALL-PROLOGUE-SPAN ( label -- ) {: lcall:label :}
-   12 INL-MAX 16 + CMPI,  C-GT lcall BCOND,
-   13 11 8 ADDI,  14 11 12 ADD,  14 14 8 SUBI, ;
-
-: C-CALL-REQUIRE-RET-SLOT ( label -- ) {: lcall:label :}
-   9 14 0 LDRW,  8 C-CALL-RET-INSTR LIT64,
-   9 8 CMP,  C-NE lcall BCOND, ;
-
-: C-CALL-PLAIN-SPAN ( label -- ) {: lcall:label :}
-   12 INL-MAX CMPI,  C-GT lcall BCOND,
-   13 11 0 ADDI,  14 11 12 ADD,
-   lcall C-CALL-REQUIRE-RET-SLOT ;   \ ret slot patched (does>) -> never inline
-
-: C-CALL-REJECT-MASKED ( n n label -- ) {: mask:n op:n lcall:label :}
-   8 mask LIT64,  10 9 8 AND,
-   8 op LIT64,  10 8 CMP,  C-EQ lcall BCOND, ;
-
-: C-CALL-REJECT-EXACT ( n label -- ) {: op:n lcall:label :}
-   8 op LIT64,  9 8 CMP,  C-EQ lcall BCOND, ;
-
-: C-CALL-REJECT-UNSAFE ( label -- ) {: lcall:label :}
-   C-CALL-B-IMM-MASK C-CALL-BL-IMM lcall C-CALL-REJECT-MASKED
-   C-CALL-B-IMM-MASK C-CALL-B-IMM lcall C-CALL-REJECT-MASKED
-   C-CALL-B-COND-MASK C-CALL-B-COND lcall C-CALL-REJECT-MASKED
-   C-CALL-CBZ-TBZ-MASK C-CALL-CBZ lcall C-CALL-REJECT-MASKED
-   C-CALL-CBZ-TBZ-MASK C-CALL-TBZ lcall C-CALL-REJECT-MASKED
-   C-CALL-BR-MASK C-CALL-BLR lcall C-CALL-REJECT-MASKED
-   C-CALL-BR-MASK C-CALL-BR lcall C-CALL-REJECT-MASKED
-   C-CALL-RET-INSTR lcall C-CALL-REJECT-EXACT
-   C-CALL-ADR-MASK C-CALL-ADR lcall C-CALL-REJECT-MASKED ;
-
-: C-CALL-SCAN-SAFE ( label label label -- ) {: lcopy:label lcall:label lsbody:label :}
-   15 13 0 ADDI,
-   lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
-      9 15 0 LDRW,  15 15 4 ADDI,
-      lcall C-CALL-REJECT-UNSAFE
-      lsbody B, ;
-
-: C-CALL-COPY-INLINE ( label label -- ) {: linl:label ldone:label :}
-   15 13 0 ADDI,
-   linl LBL,  15 14 CMP,  C-GE ldone BCOND,
-      9 15 0 LDRW,  15 15 4 ADDI,  LCEMIT LABEL@ BL,  linl B, ;
-
-: C-CALL ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: lcall lcopy lscan lsbody lnopro linl ldone :}
-   lnopro C-CALL-BRANCH-NO-PROLOGUE
-      lcall C-CALL-PROLOGUE-SPAN
-      lscan B,
-   lnopro LBL,
-      lcall C-CALL-PLAIN-SPAN
-   lscan LBL,
-      lcopy lcall lsbody C-CALL-SCAN-SAFE
-   lcopy LBL,
-      linl ldone C-CALL-COPY-INLINE
-   lcall LBL,
-      LCEMITBL LABEL@ BL,       \ one direct BL imm26 to the statically known target in x11
-   ldone LBL, ;
-
+\ The three words that NAME the relocation kind of a chain, and the compile-mode
+\ CALL-or-INLINE emitter, are defined further down, right after the snapshot-
+\ relocation labels. All four record a site through SNAP-RELOC:MARK-SITE: the
+\ three because they are creating a chain, the inliner because it is copying one.
 \ ---- source setup: baked LSRC or stdin ----
 variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBADLOC
 variable LSRCRD   variable LSHBANG   variable LOPENERR   variable LOPENNL
@@ -213,6 +132,44 @@ $1F constant ADDR-RD-MASK
 : MARK-SITE ( -- )
    LADDRSITE LABEL@ BL, ;
 
+\ Carry one copied word's address-literal record across with its bytes, for the
+\ compile-mode inliner's copy loop below - the one thing in the engine that
+\ REPRODUCES a chain instead of creating one.
+\ AN INLINED BODY IS A SECOND COPY OF ITS CODE, AND ONLY ITS BYTES USED TO TRAVEL.
+\ This band is keyed by region offset, so the record a chain got when it was
+\ created describes the ONE place it was created; the copy lands somewhere else, at
+\ an offset nothing has recorded. The chain's VALUE needs no fixing - an absolute
+\ address means the same thing wherever the four words sit - so the record is the
+\ only thing that has to be reissued. The caller has the word it is about to copy
+\ in x15; if that word carries the bit, MARK-SITE marks the word at CP, which is
+\ exactly where the copy is about to land.
+\ It must run BEFORE the caller loads and emits the word, because MARK-SITE
+\ clobbers x9 - the register the copy carries the word in - and because emitting
+\ advances CP past the destination.
+\ A chain is the only relocation-meaningful thing an inlined body can carry: the
+\ inliner's safety scan has already refused every BL, B, B.cond, CBZ, TBZ, BLR, BR,
+\ RET and ADR, so no call site and no PC-relative material ever reaches here.
+\ THE BAND IS ASKED ONLY INSIDE ITS OWN DOMAIN, and that is the region's extent
+\ rather than a guess about a value, exactly as in EMIT-CEMITBL. It covers the JIT
+\ region and nothing else, while the body being inlined is very often in the
+\ engine's loaded __text - `dup` and `drop` both live there and both inline - whose
+\ region offset is a large unsigned number. Nothing is lost by skipping those:
+\ every writer of this band records at CP, so a recorded word is a region word by
+\ construction.
+\ Clobbers x5, x6, x9 and x10, all dead at the inliner's copy step; x13, x14 and
+\ x15 carry the copy and are untouched here and by MARK-SITE.
+: CARRY-SITE ( -- )
+   LBL {: lnosite:label :}
+   6 15 DBASE SUB,  5 REGION LIT64,  6 5 CMP,          \ source word inside the band's domain?
+   C-CS lnosite BCOND,                                 \ no: engine __text carries no records
+   9 6 0 ADDI,  9 9 2 LSRI,  9 9 7 ANDI,               \ x9 = bit number = word index & 7
+   6 6 5 LSRI,                                         \ x6 = map byte index = offset >> 5
+   5 ADDRMAP-OFF LIT64,  6 6 5 ADD,  6 DATA 6 ADD,     \ x6 = map byte address
+   10 6 0 LDRB,  10 10 9 LSRV,  10 10 1 ANDI,          \ x10 = this word's recorded bit
+   10 lnosite CBZ,
+      MARK-SITE                                        \ records the destination word, which is CP
+   lnosite LBL, ;
+
 ;package
 
 \ ---- the three words that name a chain's relocation kind ---------------------
@@ -269,6 +226,91 @@ $1F constant ADDR-RD-MASK
 : C-CODE-ADDR ( -- )
    SNAP-RELOC:MARK-SITE
    C-ADDR-PUSH ;
+
+\ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
+$28 constant INL-MAX
+$D10043FF constant C-CALL-PROLOGUE-INSTR
+$D65F03C0 constant C-CALL-RET-INSTR
+$FC000000 constant C-CALL-B-IMM-MASK
+$94000000 constant C-CALL-BL-IMM
+$14000000 constant C-CALL-B-IMM
+$FF000010 constant C-CALL-B-COND-MASK
+$54000000 constant C-CALL-B-COND
+$7E000000 constant C-CALL-CBZ-TBZ-MASK
+$34000000 constant C-CALL-CBZ
+$36000000 constant C-CALL-TBZ
+$FFFFFC1F constant C-CALL-BR-MASK
+$D63F0000 constant C-CALL-BLR
+$D61F0000 constant C-CALL-BR
+$1F000000 constant C-CALL-ADR-MASK
+$10000000 constant C-CALL-ADR
+$D2800010 constant C-CALL-MOVZ-X16    \ movz x16 scaffold: ADT-match tag compare (not a call)
+$D63F0200 constant C-CALL-BLR-X16     \ blr x16: kept for the deferred-word indirect call (C-DEFER-EMIT-CODE)
+
+: C-CALL-BRANCH-NO-PROLOGUE ( label -- ) {: lnopro:label :}
+   9 11 0 LDRW,  8 C-CALL-PROLOGUE-INSTR LIT64,
+   9 8 CMP,  C-NE lnopro BCOND, ;
+
+: C-CALL-PROLOGUE-SPAN ( label -- ) {: lcall:label :}
+   12 INL-MAX 16 + CMPI,  C-GT lcall BCOND,
+   13 11 8 ADDI,  14 11 12 ADD,  14 14 8 SUBI, ;
+
+: C-CALL-REQUIRE-RET-SLOT ( label -- ) {: lcall:label :}
+   9 14 0 LDRW,  8 C-CALL-RET-INSTR LIT64,
+   9 8 CMP,  C-NE lcall BCOND, ;
+
+: C-CALL-PLAIN-SPAN ( label -- ) {: lcall:label :}
+   12 INL-MAX CMPI,  C-GT lcall BCOND,
+   13 11 0 ADDI,  14 11 12 ADD,
+   lcall C-CALL-REQUIRE-RET-SLOT ;   \ ret slot patched (does>) -> never inline
+
+: C-CALL-REJECT-MASKED ( n n label -- ) {: mask:n op:n lcall:label :}
+   8 mask LIT64,  10 9 8 AND,
+   8 op LIT64,  10 8 CMP,  C-EQ lcall BCOND, ;
+
+: C-CALL-REJECT-EXACT ( n label -- ) {: op:n lcall:label :}
+   8 op LIT64,  9 8 CMP,  C-EQ lcall BCOND, ;
+
+: C-CALL-REJECT-UNSAFE ( label -- ) {: lcall:label :}
+   C-CALL-B-IMM-MASK C-CALL-BL-IMM lcall C-CALL-REJECT-MASKED
+   C-CALL-B-IMM-MASK C-CALL-B-IMM lcall C-CALL-REJECT-MASKED
+   C-CALL-B-COND-MASK C-CALL-B-COND lcall C-CALL-REJECT-MASKED
+   C-CALL-CBZ-TBZ-MASK C-CALL-CBZ lcall C-CALL-REJECT-MASKED
+   C-CALL-CBZ-TBZ-MASK C-CALL-TBZ lcall C-CALL-REJECT-MASKED
+   C-CALL-BR-MASK C-CALL-BLR lcall C-CALL-REJECT-MASKED
+   C-CALL-BR-MASK C-CALL-BR lcall C-CALL-REJECT-MASKED
+   C-CALL-RET-INSTR lcall C-CALL-REJECT-EXACT
+   C-CALL-ADR-MASK C-CALL-ADR lcall C-CALL-REJECT-MASKED ;
+
+: C-CALL-SCAN-SAFE ( label label label -- ) {: lcopy:label lcall:label lsbody:label :}
+   15 13 0 ADDI,
+   lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
+      9 15 0 LDRW,  15 15 4 ADDI,
+      lcall C-CALL-REJECT-UNSAFE
+      lsbody B, ;
+
+: C-CALL-COPY-INLINE ( label label -- ) {: linl:label ldone:label :}
+   15 13 0 ADDI,
+   linl LBL,  15 14 CMP,  C-GE ldone BCOND,
+      SNAP-RELOC:CARRY-SITE
+      9 15 0 LDRW,  15 15 4 ADDI,  LCEMIT LABEL@ BL,  linl B, ;
+
+: C-CALL ( -- )
+   LBL LBL LBL LBL LBL LBL LBL
+   {: lcall:label lcopy:label lscan:label lsbody:label lnopro:label
+      linl:label ldone:label :}
+   lnopro C-CALL-BRANCH-NO-PROLOGUE
+      lcall C-CALL-PROLOGUE-SPAN
+      lscan B,
+   lnopro LBL,
+      lcall C-CALL-PLAIN-SPAN
+   lscan LBL,
+      lcopy lcall lsbody C-CALL-SCAN-SAFE
+   lcopy LBL,
+      linl ldone C-CALL-COPY-INLINE
+   lcall LBL,
+      LCEMITBL LABEL@ BL,       \ one direct BL imm26 to the statically known target in x11
+   ldone LBL, ;
 
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
 30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL IBUFSZ overflow)

@@ -399,9 +399,25 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 118284), +12 = 3 * 4. Floor follows from the same number: 7692 -> 7704, inside
 \ the same 16 KiB page, so the text pad absorbs it and neither MACOS-SIGNATURE
 \ nor MACOS-TOTAL moves.
-118296 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-11, the inliner carries a copied chain's record (dot
+\ habu-per-site-relocation-bb9b6d70): C-CALL copies a short callee's body into
+\ its caller instead of calling it, and an address chain in that body used to
+\ arrive at its new region offset with no record, invisible to everything that
+\ reads the map by offset. The copy loop now asks the map about the SOURCE word
+\ and, when it is recorded, records the destination - SNAP-RELOC:CARRY-SITE.
+\ The delta is that routine emitted at every C-CALL emission site, and there are
+\ five of them (postpone's two arms, `."`, `.\"` and the compile-mode main loop).
+\ Seventeen instruction words each: the region-domain test is a SUB, a one-lane
+\ LIT64 for REGION ($800000 needs a single shifted move-wide) and a CMP with its
+\ B.CS; the index arithmetic is four; the map address is a two-lane LIT64 for
+\ ADDRMAP-OFF (302240 needs two) plus two ADDs; the bit is an LDRB, an LSRV and
+\ an ANDI; then the CBZ and the BL to the recorder. The exact-CODELEN ratchet
+\ measured the candidate at 118636 (was 118296), +340 = 5 * 17 * 4. Floor follows
+\ from the same number: 7704 -> 8044, inside the same 16 KiB page, so the text
+\ pad absorbs it and neither MACOS-SIGNATURE nor MACOS-TOTAL moves.
+118636 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-7704 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+8044 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

@@ -788,6 +788,16 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ emit points, the native chain's publication seam is the fourth, and the AOT
 \ seed's code-literal rebase (EM-AOT-RELOC-CODE) is the fifth.
 \
+\ THE SIXTH WRITER IS THE ONE THAT DOES NOT CREATE A CHAIN. habu2.f C-CALL copies
+\ a short callee's body into its caller instead of calling it, and a chain in that
+\ body arrives at a second region offset that none of the five above ever visited.
+\ Its VALUE is fine - an absolute address means the same thing wherever the four
+\ words sit - so only the record has to travel, and SNAP-RELOC:CARRY-SITE makes it
+\ travel. Leaving it out is not a small hole: a `create`d data word's whole body is
+\ one chain plus the push stencil, short enough to inline everywhere it is named,
+\ so the copies outnumber the originals by a wide margin. Measured on the metabuild
+\ AOT capture window: 21 chains created, 142 present.
+\
 \ THE DATA LITERALS USED TO BE LEFT OUT, and the reason given was true of the
 \ wrong consumer. DATA is mapped at a fixed address in every run, so a DATA chain
 \ is already correct in the run that restores a snapshot and this map's snapshot
