@@ -5834,3 +5834,14 @@ package's wordlist. (3) EXPORT NAME inside a public section is the tool
 for packaging a large legacy file: definitions stay private in place
 and the export list reads in one block - no forwarding bodies, no
 toggles scattered through 300 definitions.
+
+## `using` covers calls, not parsing words (2026-08-11)
+
+From the hb-build packaging: `is` resolves the name it parses through
+the engine's own lookup, which does not consult used publics - a bare
+defer target under an open `using` import fails (rc 70, bare token on
+stderr, no location; diagnostic dot b83bcfa5). Anything that PARSES
+its target name needs the qualified spelling even inside the import.
+Also: a package whose exported tails share the package's own prefix
+walls off future head edits (E-REDUNDANT-PACKAGE-PREFIX fires on the
+next change) - pick the package name so the tails don't repeat it.
