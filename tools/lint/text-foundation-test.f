@@ -925,18 +925,23 @@ variable REG-I
    \ the reference-scope question everything else was asking and getting the
    \ first one's answer. One row out, two in, so the count rose by one.
    \ It was 351 before the boot-prefix reader sweep (dot
-   \ habu-turn-the-registry-4c064064) added twenty-two rows in one block: the ten
-   \ type-family registry readers src/compiler/native/family.f used to reach
-   \ through TRUSTED: bridges, the eleven effect-store readers dict.f and reach.f
-   \ reached the same way, and `CTL-DEAD?`, the one new checker word - the
-   \ dead-flag question dict.f used to answer with its own copy of the mask.
+   \ habu-turn-the-registry-4c064064) added twenty rows in one block: eight of
+   \ the ten type-family registry readers src/compiler/native/family.f used to
+   \ reach through TRUSTED: bridges, the eleven effect-store readers dict.f and
+   \ reach.f reached the same way, and `CTL-DEAD?`, the one new checker word -
+   \ the dead-flag question dict.f used to answer with its own copy of the mask.
    \ Twenty-one one-line trusted boundaries went out of the native chain for
-   \ them, so the count rose by twenty-two while the tree's unchecked surface
-   \ shrank. Rows for boot-prefix HABU words, not engine primitives, which the
-   \ table has admitted since EXT-MARK-FREE-TAIL and CHECKER-DEFFAMILY.
+   \ them, so the count rose by twenty while the tree's unchecked surface shrank.
+   \ It rose by twenty and not twenty-two because two of those readers,
+   \ TFAM-VAR-COUNT@ and TFAM-NAME$, already had rows in the public-signature
+   \ metadata block; the sweep first landed duplicates for them, which this
+   \ ratchet is why anyone would notice - a second row for a symbol is dead,
+   \ since PRIM-FIRST-SCAN answers with the first slot.
+   \ Rows for boot-prefix HABU words, not engine primitives, which the table has
+   \ admitted since EXT-MARK-FREE-TAIL and CHECKER-DEFFAMILY.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 373 ASSERT=
+   REG-COUNT 371 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

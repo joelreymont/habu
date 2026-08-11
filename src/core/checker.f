@@ -5789,8 +5789,11 @@ PRIM: TFL-MATCH-FAM?  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: TFL-CON-FAM?    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: TFL-VAR?        PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: TFAM-SLOTS@     PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: TFAM-VAR-COUNT@ PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: TFAM-NAME$      PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+\ TFAM-VAR-COUNT@ and TFAM-NAME$ are NOT repeated here: the public-signature
+\ metadata block above already states both, with the effects this file needs.
+\ family.f's VARIANTS and NAME$ read those rows. A second row for a symbol is
+\ dead - PRIM-FIRST-SCAN answers with the first slot - so it would be a name
+\ with two authorities and no way to tell which one a caller got.
 PRIM: SUMV-TAG@       PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: TFL-VPADS       PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: SUMV-PAYCELLS@  PE-N PE-IN  PE-N PE-OUT PRIM;
