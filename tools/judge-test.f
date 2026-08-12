@@ -27,6 +27,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require src/compiler/native/dict.f
 require tools/judge/check.f
 
 package JUDGE-TEST
@@ -46,7 +47,62 @@ private
 
 : ARTIFACT-CASES ( -- )
    JUDGE-CHECK:DIFF-AT -1 T=
-   JUDGE-ROW:LARGER-ROWS 0 T= ;
+   JUDGE-ROW:LARGER-ROWS 0 T=
+   JUDGE-ROW:DISAGREEING-ROWS 0 T= ;
+
+\ ---- the generated bodies, attacked ------------------------------------------
+\ tools/judge/cost.f builds a body out of a row's input text and one column's
+\ word. A body that compiles is not a body that measures the row, so every way
+\ of getting one wrong is checked here against the shipped generator.
+
+: FAN$ ( -- ptr u8 n )
+   s" CODEGEN-CORPUS4:CALL-FAN" ;
+
+: FAN-J$ ( -- ptr u8 n )
+   s" CALL-FAN-J4" ;
+
+: FAN-ENTRY ( -- n )
+   FAN$ NDICT:CALL-TARGET ;
+
+: FAN-J-ENTRY ( -- n )
+   s" CALL-FAN" JUDGE-SRC:FIND JUDGE-CHAIN:ENTRY ;
+
+\ THE ONE A COMPARISON OF ANSWERS CANNOT SEE. A body built for the chain's
+\ column that names the ENGINE's word is the right program in the wrong column:
+\ it computes what the row computes, so every answer agrees, and the cost
+\ reported for the chain is the engine's. The address is what catches it.
+: WRONG-COLUMN-CASES ( -- )
+   FAN-ENTRY 0 T<>
+   FAN-J-ENTRY 0 T<>
+   FAN-ENTRY FAN-J-ENTRY T<>
+   [: FAN$ FAN-J-ENTRY JUDGE-COST:COLUMN-CK ;] E-JUDGE-COST-COLUMN TTHROWSQ
+   [: FAN-J$ FAN-ENTRY JUDGE-COST:COLUMN-CK ;] E-JUDGE-COST-COLUMN TTHROWSQ
+   [: s" CODEGEN-CORPUS4:NO-SUCH-WORD" FAN-ENTRY JUDGE-COST:COLUMN-CK ;]
+      E-JUDGE-COST-COLUMN TTHROWSQ
+   FAN$ FAN-ENTRY JUDGE-COST:COLUMN-CK
+   FAN-J$ FAN-J-ENTRY JUDGE-COST:COLUMN-CK ;
+
+\ AND THE ONES IT CAN. An input list one number short does not type, so the
+\ checker declines the generated body rather than the run timing a program with
+\ a stack it never had; an input list with the WRONG number computes something
+\ else, which is what the answers column exists to notice.
+: WRONG-INPUT-CASES ( -- )
+   [: s" " FAN$ JUDGE-COST:VALUE drop ;] E-JUDGE-COST-CHECK TTHROWSQ
+   [: s" 7 7" FAN$ JUDGE-COST:VALUE drop ;] E-JUDGE-COST-CHECK TTHROWSQ
+   s" 7" FAN$ JUDGE-COST:VALUE  s" 8" FAN$ JUDGE-COST:VALUE T<> ;
+
+\ THE BOUNDARY INPUTS, THROUGH BOTH CODE GENERATORS. The pinned input a row is
+\ timed on runs the longest path through it; these run the arithmetic off the
+\ ends of the signed range, where a lost sign or a narrowed width is visible and
+\ nowhere else is. Both columns compile the same corpus text, so the two must
+\ answer the same cell.
+: BOUNDARY-CASES ( -- )
+   s" $8000000000000000" FAN$ JUDGE-COST:VALUE
+   s" $8000000000000000" FAN-J$ JUDGE-COST:VALUE T=
+   s" $7FFFFFFFFFFFFFFF" FAN$ JUDGE-COST:VALUE
+   s" $7FFFFFFFFFFFFFFF" FAN-J$ JUDGE-COST:VALUE T=
+   s" -1" FAN$ JUDGE-COST:VALUE
+   s" -1" FAN-J$ JUDGE-COST:VALUE T= ;
 
 \ Every refusal in the table is the allocator declining to spill inside a loop,
 \ which is dot habu-spill-from-a-4145325c. A refusal for some other reason is a
@@ -71,6 +127,9 @@ public
    ARTIFACT-CASES
    REFUSAL-CASES
    TEXT-CASES
+   WRONG-COLUMN-CASES
+   WRONG-INPUT-CASES
+   BOUNDARY-CASES
    T-REPORT ;
 
 ;package

@@ -29,6 +29,8 @@ require lib/string.f
 require lib/fmt.f
 require tools/codegen-compare-clang.f
 require tools/judge/row.f
+require tools/codegen-compare-core.f
+require tools/judge/corpus4.f
 
 package JUDGE-REPORT
 
@@ -40,6 +42,7 @@ variable TEXT-U
 
 32 constant NAME-COL
 7 constant NUM-COL
+9 constant COST-COL
 
 : APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
    TEXT-U @ u + TEXT-MAX > if E-JUDGE-REPORT-CAP throw then
@@ -114,11 +117,12 @@ variable TEXT-U
    s" is a raw measurement printed with its code: the capability it waits for is a" LINE
    s" dot, and a check that failed on it would fail every day until that dot lands." LINE
    NL
-   s" WHAT IS NOT HERE YET: the cost column. Timing a row means calling it, and a" LINE
-   s" call has to name the word, which a refused subject does not have. The three" LINE
-   s" columns' costs are measured today by bin/hb --load tools/codegen-compare.f," LINE
-   s" run by hand on a quiet machine, and dot habu-judge-both-chains-2b07fd19" LINE
-   s" carries bringing them here." LINE
+   s" THE COSTS ARE BELOW THIS TABLE AND ARE NOT PART OF THE CHECK. A byte count" LINE
+   s" is the same number on every host in every run; a cost is a measurement, and" LINE
+   s" a machine with every core busy - which is what a gate is - moves one by more" LINE
+   s" than any honest tolerance would catch. So the check compares everything down" LINE
+   s" to the line that says so, and the costs are printed under it as what they" LINE
+   s" are, with the spread this run actually measured beside them." LINE
    NL
    s" word                                old  chain  clang  verdict" LINE
    s" --------------------------------  -----  -----  -----  -------" LINE ;
@@ -135,17 +139,103 @@ variable TEXT-U
    NL
    s" rows: " APPEND JUDGE-ROW:ROWS NUM$ APPEND
    s" , refused by the chain: " APPEND JUDGE-ROW:REFUSED-ROWS NUM$ APPEND
-   s" , larger than the engine's: " APPEND JUDGE-ROW:LARGER-ROWS NUM$ LINE ;
+   s" , larger than the engine's: " APPEND JUDGE-ROW:LARGER-ROWS NUM$ APPEND
+   s" , columns disagreeing on the answer: " APPEND JUDGE-ROW:DISAGREEING-ROWS NUM$ LINE ;
+
+\ ---- the measured half -------------------------------------------------------
+\ Everything below MARK is printed and none of it is compared.
+
+: MARK$ ( -- ptr u8 n )
+   s" ---- measured on this host, printed and not checked -------------------" ;
+
+\ The machine a cost was measured on, as far as the engine can say: the target
+\ it was built for. The numbers below are local to one host and are not
+\ comparable with numbers from another - which is the whole reason they are
+\ printed here rather than checked.
+: TARGET$ ( -- ptr u8 n )
+   HB-TARGET-LINUX? if s" linux-arm64" exit then
+   HB-TARGET-MACOS? if s" macos-arm64" exit then
+   s" unknown-target" ;
+
+\ Nanoseconds, to two places, from picoseconds. A body smaller than the
+\ measurement's own floor can come out slightly negative; that is the noise and
+\ it is printed rather than clamped, because a clamped zero would read as a
+\ measurement.
+: NS-COL ( n n -- ) {: picos:n width:n :}
+   SB-RESET picos s>f 1000.0 f/ 2 FMT:SB-FIX SB$ {: a:ptr u:n :}
+   width u > if width u - PAD then
+   a u APPEND ;
+
+: DASH-NS ( n -- ) {: width:n :}
+   width 1- PAD s" -" APPEND ;
+
+: COST-LINE ( n -- ) {: k:n :}
+   k JUDGE-ROW:NAME$ NAME-COL PAD-RIGHT
+   k JUDGE-ROW:OLD-PICOS@ JUDGE-ROW:FLOOR@ - COST-COL NS-COL
+   k JUDGE-ROW:REFUSED? if COST-COL DASH-NS
+   else k JUDGE-ROW:NEW-PICOS@ JUDGE-ROW:FLOOR@ - COST-COL NS-COL then
+   k JUDGE-ROW:COVERED? if
+      k JUDGE-ROW:REF-PICOS@ k JUDGE-ROW:REF-FLOOR@ - COST-COL NS-COL
+   else COST-COL DASH-NS then
+   NL ;
+
+: COSTS ( -- )
+   NL
+   MARK$ LINE
+   NL
+   s" One call, in nanoseconds, with the measurement's own floor taken off. The" LINE
+   s" two habu columns are entered the same way - a quotation that calls one word" LINE
+   s" - so they lose the same constant and their difference is exact. The" LINE
+   s" reference column is reached through a foreign call, so it loses a floor of" LINE
+   s" its own: the row's own body run again against an empty C function of the" LINE
+   s" same arity, which marshals the same arguments into the same places." LINE
+   NL
+   s" MACHINE: " APPEND TARGET$ APPEND
+   s" . These numbers are local to one host and mean nothing" LINE
+   s" against numbers measured on another." LINE
+   NL
+   s" METHOD. Each body is generated from the row's ONE pinned input, certified by" LINE
+   s" the checker and compiled, then run " APPEND
+   CODEGEN-COMPARE:REPS NUM$ APPEND
+   s"  times per timed run, " APPEND
+   CODEGEN-COMPARE:RUNS NUM$ APPEND
+   s"  timed" LINE
+   s" runs, fastest run kept. The whole row list is measured " APPEND
+   JUDGE-CORPUS4:TIME-PASSES NUM$ APPEND
+   s"  times over, so the columns" LINE
+   s" are interleaved rather than measured in blocks; each column keeps its" LINE
+   s" fastest." LINE
+   NL
+   s" EVERY PASS GENERATES ITS OWN BODY, so a row's two measurements sit at" LINE
+   s" different addresses with a cold instruction cache each time. That widens the" LINE
+   s" spread and it is deliberate: a placement a row was lucky in once is not a" LINE
+   s" property of the code the compiler emitted." LINE
+   NL
+   s" NOISE FLOOR, MEASURED THIS RUN: " APPEND JUDGE-ROW:SPREAD@ NUM$ APPEND
+   s"  permille. That is the widest gap between" LINE
+   s" two measurements of ONE program in this process, so a difference between two" LINE
+   s" columns smaller than it is not a difference. The floor itself measured " APPEND
+   JUDGE-ROW:FLOOR@ NUM$ APPEND s"  ps." LINE
+   NL
+   s" word                                  old    chain    clang" LINE
+   s" --------------------------------  -------  -------  -------" LINE
+   JUDGE-ROW:ROWS 0 ?do i COST-LINE loop ;
 
 public
 
-\ The whole artifact, as the bytes a committed file holds.
+\ Everything a committed artifact holds, checked half first.
 : TEXT$ ( -- ptr u8 n )
    0 TEXT-U !
    HEAD
    JUDGE-ROW:ROWS 0 ?do i ROW-LINE loop
    REFERENCE-NOTE
    TALLY
+   COSTS
    TEXT TEXT-U @ ;
+
+\ Where the checked half ends. The check compares the bytes before this line
+\ and prints what follows it.
+: MARK-TEXT$ ( -- ptr u8 n )
+   MARK$ ;
 
 ;package

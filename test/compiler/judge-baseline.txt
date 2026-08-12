@@ -24,11 +24,12 @@ A LARGER row is a finding and the check exits non-zero on it. A REFUSED row
 is a raw measurement printed with its code: the capability it waits for is a
 dot, and a check that failed on it would fail every day until that dot lands.
 
-WHAT IS NOT HERE YET: the cost column. Timing a row means calling it, and a
-call has to name the word, which a refused subject does not have. The three
-columns' costs are measured today by bin/hb --load tools/codegen-compare.f,
-run by hand on a quiet machine, and dot habu-judge-both-chains-2b07fd19
-carries bringing them here.
+THE COSTS ARE BELOW THIS TABLE AND ARE NOT PART OF THE CHECK. A byte count
+is the same number on every host in every run; a cost is a measurement, and
+a machine with every core busy - which is what a gate is - moves one by more
+than any honest tolerance would catch. So the check compares everything down
+to the line that says so, and the costs are printed under it as what they
+are, with the spread this run actually measured beside them.
 
 word                                old  chain  clang  verdict
 --------------------------------  -----  -----  -----  -------
@@ -47,4 +48,46 @@ CODEGEN-CORPUS4:STORE-LOAD          312     60     36  smaller
 
 clang flags: -O2 -arch arm64 -fno-math-errno
 
-rows: 12, refused by the chain: 2, larger than the engine's: 0
+rows: 12, refused by the chain: 2, larger than the engine's: 0, columns disagreeing on the answer: 0
+
+---- measured on this host, printed and not checked -------------------
+
+One call, in nanoseconds, with the measurement's own floor taken off. The
+two habu columns are entered the same way - a quotation that calls one word
+- so they lose the same constant and their difference is exact. The
+reference column is reached through a foreign call, so it loses a floor of
+its own: the row's own body run again against an empty C function of the
+same arity, which marshals the same arguments into the same places.
+
+MACHINE: macos-arm64. These numbers are local to one host and mean nothing
+against numbers measured on another.
+
+METHOD. Each body is generated from the row's ONE pinned input, certified by
+the checker and compiled, then run 250000 times per timed run, 7 timed
+runs, fastest run kept. The whole row list is measured 2 times over, so the columns
+are interleaved rather than measured in blocks; each column keeps its
+fastest.
+
+EVERY PASS GENERATES ITS OWN BODY, so a row's two measurements sit at
+different addresses with a cold instruction cache each time. That widens the
+spread and it is deliberate: a placement a row was lucky in once is not a
+property of the code the compiler emitted.
+
+NOISE FLOOR, MEASURED THIS RUN: 174 permille. That is the widest gap between
+two measurements of ONE program in this process, so a difference between two
+columns smaller than it is not a difference. The floor itself measured 1994 ps.
+
+word                                  old    chain    clang
+--------------------------------  -------  -------  -------
+CODEGEN-CORPUS4:CALL-FAN             5.29    -0.10    -0.28
+CODEGEN-CORPUS4:CALL-FAN-BIG        11.49    -0.03    -0.03
+CODEGEN-CORPUS4:CALL-LOOP-3         49.12     5.64     3.27
+CODEGEN-CORPUS4:WIDE-ARITY           2.89     1.16     0.28
+CODEGEN-CORPUS4:LADDER               2.41     0.94     0.23
+CODEGEN-CORPUS4:PRESSURE-LOOP      203.81        -     0.07
+CODEGEN-CORPUS4:CALL-PRESSURE      160.42        -     2.71
+CODEGEN-CORPUS4:BIG-CONSTS          80.20     8.17     1.66
+CODEGEN-CORPUS4:MANY-LOCALS        126.10     2.18     0.24
+CODEGEN-CORPUS4:TINY-CALLEE         58.58     0.32    -0.43
+CODEGEN-CORPUS4:FLOAT-MIX           32.42     3.39     1.33
+CODEGEN-CORPUS4:STORE-LOAD          36.19     3.38     3.00

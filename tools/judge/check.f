@@ -44,6 +44,26 @@ public
 
 private
 
+\ Where a text says its checked half ends. The artifact carries a costs section
+\ under a marker line, and none of it is compared: a cost is a measurement and
+\ a gate is a loaded machine. A text with no marker is refused rather than
+\ compared whole - a truncated artifact would otherwise be checked against a
+\ prefix of itself and pass.
+: MARK-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   JUDGE-REPORT:MARK-TEXT$ {: ma:ptr mu:n :}
+   -1
+   u mu < if 0 else u mu - 1+ then 0 ?do
+      dup 0 < if
+         a i + mu ma mu STR= if drop i then
+      then
+   loop
+   dup 0 < if E-JUDGE-CHECK-MARK throw then ;
+
+\ The half of a text that is compared: everything before the marker line.
+: CHECKED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u MARK-AT {: at:n :}
+   a at ;
+
 \ The first byte at which two texts differ, or -1 when one is a prefix of the
 \ other and they are the same length. A shorter file is a disagreement at its
 \ own end, which is what a truncated artifact looks like.
@@ -59,9 +79,9 @@ private
 public
 
 \ Where this tree's judgement and the committed artifact first differ, or -1
-\ when they are the same bytes.
+\ when their checked halves are the same bytes.
 : DIFF-AT ( -- n )
-   JUDGE-REPORT:TEXT$ COMMITTED$ FIRST-DIFF ;
+   JUDGE-REPORT:TEXT$ CHECKED$ COMMITTED$ CHECKED$ FIRST-DIFF ;
 
 \ Which line of the rendered artifact a byte offset falls on, counting from one.
 : LINE-OF ( n -- n ) {: at:n :}

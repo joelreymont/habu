@@ -1269,3 +1269,15 @@ public
 -8709 constant E-JUDGE-CHAIN-ORDER  \ a corpus definition that calls one defined at or after it: the engine compiled that file top to bottom, so no order exists in which both the callee and the caller could have been published, and publishing them in the wrong one would measure a body whose call resolved to nothing
 -8713 constant E-JUDGE-CHAIN-DEP    \ the chain refused a definition a subject CALLS. Answering it as the subject's own refusal would record the compiler declining a callee as the compiler declining the subject, which is a different fact about a different body
 -8714 constant E-JUDGE-REPORT-CAP   \ a rendered artifact longer than the report's text buffer
+
+\ The code generator judge's generated bodies: -8715..-8717 (same sub-block)
+\
+\ tools/judge/cost.f builds a timed or valued body out of a row's pinned input
+\ text and one column's word, and hands it to the checker and then to the
+\ compiler. A body the checker declines is not a measurement, and neither is one
+\ that will not compile.
+-8715 constant E-JUDGE-COST-CHECK    \ a generated body the checker declined: the text is printed with it, because what it says about the row's pinned input or the column's spelling is the finding
+-8716 constant E-JUDGE-COST-COMPILE  \ a generated body the checker certified and the compiler then refused
+-8717 constant E-JUDGE-COST-DISAGREE \ two columns computed different answers from the same generated shape on the same pinned input: one of the two bodies is not the program the row is about, so neither one's time means anything
+-8718 constant E-JUDGE-CHECK-MARK   \ an artifact with no line saying where its checked half ends: comparing a text that lost its marker against a prefix of itself would pass a truncated file
+-8719 constant E-JUDGE-COST-COLUMN  \ a generated body whose call text does not resolve to the routine of the column it was built for: it computes the right answer in the wrong column, which no comparison of answers can see, so the address is held against the column instead

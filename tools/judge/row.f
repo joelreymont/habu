@@ -60,8 +60,17 @@ create OLD-BYTES CAP-MAX cells allot
 create NEW-BYTES CAP-MAX cells allot
 create NEW-RC CAP-MAX cells allot          \ 0, or the code the chain refused with
 create REF-BYTES CAP-MAX cells allot       \ -1 when the subject has no C twin
+create OLD-PICOS CAP-MAX cells allot
+create NEW-PICOS CAP-MAX cells allot
+create REF-PICOS CAP-MAX cells allot
+create REF-FLOOR CAP-MAX cells allot       \ the twin's own entry, same arity, empty body
+create OLD-VALUE CAP-MAX cells allot
+create NEW-VALUE CAP-MAX cells allot
+create REF-VALUE CAP-MAX cells allot
 
 variable FILL
+variable WORST-SPREAD              \ permille, the worst gap between two measurements of one program
+variable FLOOR-CELL                \ what every habu column's cost carries in common
 
 : SLOT ( ptr a n -- ptr a )
    cells + ;
@@ -77,7 +86,39 @@ public
 -1 constant NO-REFERENCE           \ this subject has no C twin
 
 : RESET ( -- )
-   0 FILL ! ;
+   0 FILL !
+   0 WORST-SPREAD !
+   0 FLOOR-CELL ! ;
+
+\ ---- the measurement's own floor and its measured noise ----------------------
+
+\ The cost every habu column carries in common - the timing loop, the call into
+\ the quotation and the return - measured over an empty quotation. Subtracting
+\ it leaves the cost of the one call a row's body makes.
+: FLOOR! ( n -- )
+   FLOOR-CELL ! ;
+
+: FLOOR@ ( -- n )
+   FLOOR-CELL @ ;
+
+\ Keep the faster of two measurements of ONE program, and remember how far
+\ apart they were. That gap is not an estimate of the noise on this host, it is
+\ the noise this run actually saw: the same body, the same inputs, the same
+\ process, measured twice with the other columns in between. A run reports its
+\ worst, so a reader of a cost column knows what a difference has to exceed
+\ before it is a difference.
+: SAMPLE ( n n -- n ) {: had:n got:n :}
+   had 0= if got exit then
+   had got < if had else got then {: lo:n :}
+   had got - dup 0 < if negate then {: gap:n :}
+   lo 0 > if
+      gap 1000 * lo / {: permille:n :}
+      permille WORST-SPREAD @ > if permille WORST-SPREAD ! then
+   then
+   lo ;
+
+: SPREAD@ ( -- n )
+   WORST-SPREAD @ ;
 
 : ROWS ( -- n )
    FILL @ ;
@@ -94,6 +135,13 @@ public
    0 NEW-BYTES FILL @ SLOT !
    0 NEW-RC FILL @ SLOT !
    NO-REFERENCE REF-BYTES FILL @ SLOT !
+   0 OLD-PICOS FILL @ SLOT !
+   0 NEW-PICOS FILL @ SLOT !
+   0 REF-PICOS FILL @ SLOT !
+   0 REF-FLOOR FILL @ SLOT !
+   0 OLD-VALUE FILL @ SLOT !
+   0 NEW-VALUE FILL @ SLOT !
+   0 REF-VALUE FILL @ SLOT !
    FILL @
    FILL @ 1+ FILL ! ;
 
@@ -112,6 +160,26 @@ public
 : OLD! ( n n -- ) {: k:n bytes:n :}
    k OK drop
    bytes OLD-BYTES k SLOT ! ;
+
+\ A column's cost and the answer it computed. The two arrive together because a
+\ time without the answer that program produced is a number about an unknown
+\ program: tools/judge/cost.f builds both bodies from one input text, and a
+\ column whose answer differs from another's was not running the row.
+: OLD-COST! ( n n n -- ) {: k:n picos:n value:n :}
+   k OK drop
+   picos OLD-PICOS k SLOT !
+   value OLD-VALUE k SLOT ! ;
+
+: NEW-COST! ( n n n -- ) {: k:n picos:n value:n :}
+   k OK drop
+   picos NEW-PICOS k SLOT !
+   value NEW-VALUE k SLOT ! ;
+
+: REF-COST! ( n n n n -- ) {: k:n picos:n floor:n value:n :}
+   k OK drop
+   picos REF-PICOS k SLOT !
+   floor REF-FLOOR k SLOT !
+   value REF-VALUE k SLOT ! ;
 
 \ The chain compiled it, into this many bytes.
 : NEW! ( n n -- ) {: k:n bytes:n :}
@@ -136,6 +204,14 @@ public
 : NEW-BYTES@ ( n -- n ) {: k:n :}  NEW-BYTES k OK SLOT @ ;
 : NEW-RC@ ( n -- n ) {: k:n :}     NEW-RC k OK SLOT @ ;
 : REF-BYTES@ ( n -- n ) {: k:n :}  REF-BYTES k OK SLOT @ ;
+
+: OLD-PICOS@ ( n -- n ) {: k:n :}  OLD-PICOS k OK SLOT @ ;
+: NEW-PICOS@ ( n -- n ) {: k:n :}  NEW-PICOS k OK SLOT @ ;
+: REF-PICOS@ ( n -- n ) {: k:n :}  REF-PICOS k OK SLOT @ ;
+: REF-FLOOR@ ( n -- n ) {: k:n :}  REF-FLOOR k OK SLOT @ ;
+: OLD-VALUE@ ( n -- n ) {: k:n :}  OLD-VALUE k OK SLOT @ ;
+: NEW-VALUE@ ( n -- n ) {: k:n :}  NEW-VALUE k OK SLOT @ ;
+: REF-VALUE@ ( n -- n ) {: k:n :}  REF-VALUE k OK SLOT @ ;
 
 : REFUSED? ( n -- bool ) {: k:n :}
    k NEW-RC@ 0<> ;
@@ -162,6 +238,31 @@ public
    v V-LARGER = if s" LARGER" exit then
    v V-REFUSED = if s" REFUSED" exit then
    E-JUDGE-ROW-STATE throw ;
+
+\ ---- do the columns compute the same thing? ----------------------------------
+\ Every column that ran is checked against the engine's answer on the same
+\ pinned input. A refused column never ran and is not compared; a subject with
+\ no C twin has no reference answer to compare. A disagreement means one of the
+\ generated bodies is not the program the row is about, so neither its time nor
+\ its bytes mean anything - it is the one condition that makes a whole row
+\ worthless rather than merely worse.
+
+: NEW-AGREES? ( n -- bool ) {: k:n :}
+   k REFUSED? if true exit then
+   k NEW-VALUE@ k OLD-VALUE@ = ;
+
+: REF-AGREES? ( n -- bool ) {: k:n :}
+   k COVERED? 0= if true exit then
+   k REF-VALUE@ k OLD-VALUE@ = ;
+
+: AGREES? ( n -- bool ) {: k:n :}
+   k NEW-AGREES? k REF-AGREES? and ;
+
+: DISAGREEING-ROWS ( -- n )
+   0
+   FILL @ 0 ?do
+      i AGREES? 0= if 1+ then
+   loop ;
 
 \ How many rows the chain compiled into more bytes than the engine's emitter
 \ wrote for the same body. The one verdict a run exits non-zero on.

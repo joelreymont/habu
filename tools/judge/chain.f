@@ -198,6 +198,11 @@ public
    loop
    k PUBLISH ;
 
+\ Where the derived word's code starts, asked the way the chain asks it. What a
+\ measurement holds its generated body against.
+: ENTRY ( n -- n ) {: k:n :}
+   k WORD$ NDICT:CALL-TARGET ;
+
 \ How many bytes of machine code the derived word is, and whether it leaves by a
 \ branch to a callee. Both are read off the word's own dictionary record by the
 \ one reader the comparison already uses for the engine's words, so the two
