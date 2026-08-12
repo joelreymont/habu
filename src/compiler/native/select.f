@@ -1379,36 +1379,16 @@ variable KEPT-F
    id m i + 1+ RESULT-AT ;
 
 \ ---- the residency of one call site ------------------------------------------
-\ The store run, applied to the map: the answer is one bit per position, set
-\ where the cell already held the value that position publishes. A run longer
-\ than the mask carries reports no position at all, so a site past the bound
-\ emits every store exactly as it did before this pass existed.
+\ ONE BIT PER POSITION OF THE STORE RUN, set where the cell already held the
+\ value that position publishes. A run longer than the mask carries reports no
+\ position at all, so a site past the bound emits every store exactly as it did
+\ before this pass existed. THE BITS ARE NOT COMPUTED HERE and cannot be: the
+\ transfer that answers them stands below every builder of this file, so what a
+\ builder has is the answer it was handed. This is how it reads one bit of it.
 : DBIT? ( n n -- bool )
    {: mask:n i:n :}
    i DELIDE-MAX >= if false exit then
    mask 1 i lshift and 0<> ;
-
-: DSAVE-XFER ( IR-ID:ir-op-id n n n -- n )
-   {: id:IR-ID:ir-op-id kk:n m:n a:n :}
-   0
-   kk a + 0 ?do
-      id kk m i DSAVE-VAL  i  DPUT? if
-         i DELIDE-MAX < if 1 i lshift or then
-      then
-   loop ;
-
-\ AND WHAT THE BRANCH ITSELF DOES TO THE MAP. Every slot the callee could have
-\ written stops holding anything this routine can name, which is every slot at or
-\ above the callee's own base - and the callee's base is the caller's slot `kk`,
-\ so the saved values below it are exactly the ones that survive. The run then
-\ names all of `kk + r` again from the operation's own results, which covers the
-\ survivors and the callee's answers in one statement.
-: DBACK-XFER ( IR-ID:ir-op-id n n n -- )
-   {: id:IR-ID:ir-op-id kk:n m:n r:n :}
-   DKILL
-   kk r + 0 ?do
-      id kk m i DBACK-VAL  i  DRES!
-   loop ;
 
 \ A CALL SITE'S SAVES ARE ALWAYS IN THE GENERAL FILE, and that is a consequence
 \ of the placement rule rather than a case left out of it. A value is placed only
@@ -1427,9 +1407,8 @@ variable KEPT-F
 \ values, kk+1..kk+m the kept ones and the rest the callee's answers - so no
 \ value is bound twice and the file it is loaded into cannot be contradicted by a
 \ second binding.
-: CALL-SAVE ( IR-ID:ir-op-id n n n -- )
-   {: id:IR-ID:ir-op-id kk:n m:n a:n :}
-   id kk m a DSAVE-XFER {: mask:n :}
+: CALL-SAVE ( IR-ID:ir-op-id n n n n -- )
+   {: id:IR-ID:ir-op-id kk:n m:n a:n mask:n :}
    kk a + 0 ?do
       mask i DBIT? 0= if
          id  id kk m i DSAVE-VAL VOF  i A64IR:SLOT-WIDTH *
@@ -1439,7 +1418,6 @@ variable KEPT-F
 
 : CALL-RESTORE ( IR-ID:ir-op-id n n n -- )
    {: id:IR-ID:ir-op-id kk:n m:n r:n :}
-   id kk m r DBACK-XFER
    kk r + 0 ?do
       id kk m i DBACK-VAL {: v:IR-ID:ir-value-id :}
       v DNEED? if
@@ -1466,11 +1444,11 @@ variable KEPT-F
    id a r CALL-LIVE {: k:n :}
    a r k 0 ;
 
-: EMIT-CALL ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-CALL ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    id SELF-SHAPE {: a:n r:n kk:n m:n :}
    id 0 OPERAND TOK!
-   id kk m a CALL-SAVE
+   id kk m a mask CALL-SAVE
    id  kk a + A64IR:SLOT-WIDTH *  kk r + A64IR:SLOT-WIDTH *  EMIT-BL
    id kk m r CALL-RESTORE ;
 
@@ -1525,12 +1503,12 @@ variable KEPT-F
    id  id WORD-ENTRY  k KEEP-N {: m:n :}
    a r  k m -  m ;
 
-: EMIT-WORD-CALL ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-WORD-CALL ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    id WORD-SHAPE {: a:n r:n kk:n m:n :}
    id WORD-ENTRY {: e:n :}
    id 0 OPERAND TOK!
-   id kk m a CALL-SAVE
+   id kk m a mask CALL-SAVE
    id  kk a + A64IR:SLOT-WIDTH *  kk r + A64IR:SLOT-WIDTH *
    e EMIT-WBL
    id kk m r CALL-RESTORE ;
@@ -2015,28 +1993,13 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ data-stack convention each of them is written into the slot its declared place
 \ names first, the pointer is moved up over them, and the return carries nothing:
 \ the results are already published where the caller will look.
-\ The exit run, applied to the map, answering which of the routine's results are
-\ already in the cells the convention publishes them from. A result the caller
-\ handed in and the routine only passed along is such a value, which is the whole
-\ of what this pass is for.
-\ THE ARITY IS HELD HERE AND NOT AT THE LOWERING, because this is where the
-\ return is first read: the residency pass walks the operations before a single
-\ one is lowered, so a return whose operand list disagrees with the convention
-\ has to be refused by name here or it would be read past instead.
-: DEXIT-XFER ( IR-ID:ir-op-id n -- n )
-   {: id:IR-ID:ir-op-id r:n :}
-   id OPERANDS-OF r <> if E-A64SEL-PLACE throw then
-   0
-   r 0 ?do
-      id i OPERAND-AT  OUTS i A64EFF:SEQ-SLOT@  DPUT? if
-         i DELIDE-MAX < if 1 i lshift or then
-      then
-   loop ;
-
-: EMIT-EXIT ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+\ Which of the routine's results are already in the cells the convention
+\ publishes them from is the exit run's bit, answered by the transfer below and
+\ handed here. A result the caller passed in and the routine only passed along is
+\ such a value, which is the whole of what this pass is for.
+: EMIT-EXIT ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    OUTS SLOT-POSITIONS {: r:n :}
-   id r DEXIT-XFER {: mask:n :}
    r 0 ?do
       mask i DBIT? 0= if
          id  id i OPERAND  OUTS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
@@ -2045,9 +2008,9 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    loop
    id  r A64IR:SLOT-WIDTH *  EMIT-DPUBLISH ;
 
-: EMIT-RETURN ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   DSTACK? if id EMIT-EXIT then
+: EMIT-RETURN ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
+   DSTACK? if id mask EMIT-EXIT then
    id EPILOGUE
    id A64IR-OPCODE:RET OPEN
    DSTACK? 0= if
@@ -3623,12 +3586,12 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ saved return address are given back while this routine is still running, and
 \ then it leaves. A routine whose only call is this one has no epilogue at all -
 \ CALLS? is false, so PROLOGUE and EPILOGUE build nothing - and that is the win.
-: EMIT-TAIL-CALL ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-TAIL-CALL ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    id WORD-SHAPE {: a:n r:n kk:n m:n :}
    a r kk m TAIL-CK
    id 0 OPERAND TOK!
-   id kk m a CALL-SAVE
+   id kk m a mask CALL-SAVE
    id EPILOGUE
    id  id WORD-ENTRY  EMIT-TAIL-BR
    N-TAILS @ 1+ N-TAILS ! ;
@@ -3688,15 +3651,15 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ call that is the operation the routine leaves through becomes the branch, and
 \ the return it stood in front of becomes nothing at all, because the branch is
 \ already the block's terminator.
-: EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id TAIL-OP? if id EMIT-TAIL-CALL exit then
-   id EMIT-WORD-CALL ;
+: EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
+   id TAIL-OP? if id mask EMIT-TAIL-CALL exit then
+   id mask EMIT-WORD-CALL ;
 
-: EMIT-RETURN-OR-TAILED ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-RETURN-OR-TAILED ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    TAIL-HERE? if exit then
-   id EMIT-RETURN ;
+   id mask EMIT-RETURN ;
 
 \ ---- selecting the address of another function of this emission ---------------
 \ ONE INSTRUCTION, AND THE ORDINAL RIDES ACROSS UNCHANGED. `hir.quot` names a
@@ -3727,10 +3690,104 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
 
+\ ---- the effect of one source operation on the map ---------------------------
+\ EVERY WALK OVER A BLOCK'S OPERATIONS GOES THROUGH DOP-XFER: the fixpoint that
+\ computes the map, the pass that reads the register need off it, and the
+\ lowering below. So there is ONE statement of what an operation does to the
+\ caller's stack, and the answer a lowering acts on is the answer the fixpoint
+\ reached - not a second derivation that has to be kept in step by hand.
+\
+\ IT USED TO BE TWO, AND THAT WAS THE DEFECT. The builders above re-ran the two
+\ halves themselves, either side of the branch they built, and their copy left
+\ out what an addressed store did to the map. So the need pass planned a
+\ save-store the emission then elided, the restore load it had ordered was read
+\ by nothing, and the register verifier refused the chain's own emission for a
+\ data-stack access it had no reason to make - 122 definitions of the tree.
+\
+\ SO IT STANDS HERE, BELOW EVERY BUILDER AND ABOVE THE ONE WALK THAT LOWERS, and
+\ the position is the guarantee. A builder cannot advance the map because at the
+\ point a builder is compiled these names do not exist yet: a second application
+\ is a word this file has not defined, which is a compilation failure and not a
+\ mask silently taken twice. THAT is what makes the answer single-writer - not a
+\ convention anybody has to keep.
+\
+\ AND APPLYING THE WHOLE TRANSFER BEFORE THE BRANCH IS BUILT IS SOUND, though the
+\ two halves belong either side of it: nothing the site emits between them reads
+\ the map. The store run reads the mask, the load run reads the register need,
+\ and neither asks a slot what it holds.
+\
+\ The store run, applied to the map: the answer is one bit per position, set
+\ where the cell already held the value that position publishes. DBIT? above is
+\ how a builder reads one of those bits back.
+: DSAVE-XFER ( IR-ID:ir-op-id n n n -- n )
+   {: id:IR-ID:ir-op-id kk:n m:n a:n :}
+   0
+   kk a + 0 ?do
+      id kk m i DSAVE-VAL  i  DPUT? if
+         i DELIDE-MAX < if 1 i lshift or then
+      then
+   loop ;
+
+\ AND WHAT THE BRANCH ITSELF DOES TO THE MAP. Every slot the callee could have
+\ written stops holding anything this routine can name, which is every slot at or
+\ above the callee's own base - and the callee's base is the caller's slot `kk`,
+\ so the saved values below it are exactly the ones that survive. The run then
+\ names all of `kk + r` again from the operation's own results, which covers the
+\ survivors and the callee's answers in one statement.
+: DBACK-XFER ( IR-ID:ir-op-id n n n -- )
+   {: id:IR-ID:ir-op-id kk:n m:n r:n :}
+   DKILL
+   kk r + 0 ?do
+      id kk m i DBACK-VAL  i  DRES!
+   loop ;
+
+\ The exit run, applied to the map, answering which of the routine's results are
+\ already in the cells the convention publishes them from.
+\ THE ARITY IS HELD HERE AND NOT AT THE LOWERING, because this is where the
+\ return is first read: the residency pass walks the operations before a single
+\ one is lowered, so a return whose operand list disagrees with the convention
+\ has to be refused by name here or it would be read past instead.
+: DEXIT-XFER ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id r:n :}
+   id OPERANDS-OF r <> if E-A64SEL-PLACE throw then
+   0
+   r 0 ?do
+      id i OPERAND-AT  OUTS i A64EFF:SEQ-SLOT@  DPUT? if
+         i DELIDE-MAX < if 1 i lshift or then
+      then
+   loop ;
+
+: DCALL-XFER ( IR-ID:ir-op-id n n n n -- n )
+   {: id:IR-ID:ir-op-id a:n r:n kk:n m:n :}
+   id kk m a DSAVE-XFER {: mask:n :}
+   id kk m r DBACK-XFER
+   mask ;
+
+\ An addressed store has no arm, and the section at DOUT-AT below says why: it
+\ destroys nothing this map holds. Falling through to "no position at all" is the
+\ statement, and it is the same statement every operation that touches no slot
+\ makes.
+: DOP-XFER ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT {: s:n :}
+   s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
+   s O-WORDCALL = if id  id WORD-SHAPE  DCALL-XFER exit then
+   s O-RETURN = if
+      DSTACK? 0= if 0 exit then
+      id  OUTS SLOT-POSITIONS  DEXIT-XFER exit
+   then
+   0 ;
+
+\ ---- one source operation, lowered -------------------------------------------
+\ The transfer is applied HERE and once, and the three forms whose emission
+\ depends on it are handed the answer. Every other arm ignores it, which is the
+\ shape that says what is true: an operation that moves no data-stack slot has
+\ nothing to be told.
 : RULE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
    sym OPCODE-SLOT SLOT-OPCODE  sym TRAP-CK
+   id DOP-XFER {: mask:n :}
    MATCH HIR:opcode
       const  OF id EMIT-CONST ENDOF
       add    OF id A64IR-OPCODE:ADD EMIT-BINARY ENDOF
@@ -3756,9 +3813,9 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       bstore OF id A64IR-OPCODE:ABSTORE EMIT-ASTORE ENDOF
       br     OF id EMIT-BR ENDOF
       brz    OF id EMIT-BRANCH ENDOF
-      call   OF id EMIT-CALL ENDOF
-      wordcall OF id EMIT-CALL-OR-TAIL ENDOF
-      return OF id EMIT-RETURN-OR-TAILED ENDOF
+      call   OF id mask EMIT-CALL ENDOF
+      wordcall OF id mask EMIT-CALL-OR-TAIL ENDOF
+      return OF id mask EMIT-RETURN-OR-TAILED ENDOF
       trap   OF id EMIT-TRAP ENDOF
       fconst   OF id EMIT-FCONST ENDOF
       fadd     OF id A64IR-OPCODE:FADD EMIT-FBINARY ENDOF
@@ -3810,11 +3867,29 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ `kk + r` from the operation's results, so the survivors and the answers are one
 \ statement.
 \
-\ AND WHAT AN ADDRESSED STORE DESTROYS: everything. A value the program computed
-\ may be the address of a data-stack cell - which is exactly what the dialect
-\ declares when it puts a64.astr in the same space and the same chain as the
-\ data-stack forms - so a store through one says nothing about which cell it
-\ reached and every slot stops holding anything this pass can name.
+\ AND WHAT AN ADDRESSED STORE DESTROYS: NOTHING THIS MAP HOLDS. That reads like
+\ optimism and is not; it is the only answer that agrees with the machine the
+\ rest of the chain is measured against, and it was MEASURED rather than assumed.
+\
+\ A program CAN reach these cells. `run-in-stack` is a checked primitive that
+\ makes a buffer the caller owns into the data stack a routine's slots live in,
+\ so checked code can hold the address of this very region and store through it -
+\ the earlier claim here, that the type system forbids it, is false and is
+\ withdrawn. What is true is which answer such a program gets. MEMORY IS
+\ AUTHORITATIVE AT THE TRANSFER POINTS AND REGISTERS LIVE ONLY BETWEEN THEM: a
+\ slot is read at the store run and written at the load run, and in between the
+\ value is in a register where no address reaches it. Eliding a store therefore
+\ leaves the cell exactly as the program last wrote it, and KEEPING the store
+\ writes the register copy back OVER what the program put there.
+\
+\ So where checked code aliases its own stack, the elision is the faithful choice
+\ and the kill is the unfaithful one - which is why this agrees with the engine's
+\ own emitter by construction, that emitter keeping nothing in a register across
+\ a store. A kill can only ADD stores, an added store can only overwrite what the
+\ program wrote, and the engine always shows what the program wrote; so the kill
+\ is weakly worse on every program of this class. Measured on one: a checked body
+\ that pokes the low byte of its own live slot answers 200 under the engine and
+\ under this pass, and 7 with the kill restored.
 : DOUT-AT ( n n -- n )
    {: b:n s:n :}
    s DIN-WINDOW? 0= if DNONE exit then
@@ -3832,31 +3907,6 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : DOUT<CUR ( n -- )
    {: b:n :}
    DSLOT-MAX 0 ?do  i cells D-CUR + @  b i DOUT-AT!  loop ;
-
-\ ---- the effect of one source operation on the map ---------------------------
-\ Every walk over a block's operations goes through this one word - the fixpoint
-\ that computes the map, the pass that reads the register need off it, and the
-\ lowering itself, which calls the same two halves either side of the branch it
-\ builds. So there is one statement of what an operation does to the caller's
-\ stack, and the answer a lowering acts on is the answer the fixpoint reached.
-: DCALL-XFER ( IR-ID:ir-op-id n n n n -- n )
-   {: id:IR-ID:ir-op-id a:n r:n kk:n m:n :}
-   id kk m a DSAVE-XFER {: mask:n :}
-   id kk m r DBACK-XFER
-   mask ;
-
-: DOP-XFER ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   id OP-SLOT {: s:n :}
-   s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
-   s O-WORDCALL = if id  id WORD-SHAPE  DCALL-XFER exit then
-   s O-RETURN = if
-      DSTACK? 0= if 0 exit then
-      id  OUTS SLOT-POSITIONS  DEXIT-XFER exit
-   then
-   s O-STORE = if DKILL 0 exit then
-   s O-BSTORE = if DKILL 0 exit then
-   0 ;
 
 : DXFER-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
@@ -4540,6 +4590,15 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
 \ replaced, and a fused comparison selects to nothing here for exactly the
 \ reason it selects to nothing under the fused branch - the select below stands
 \ for both.
+\
+\ AND WHAT THE TWO SKIPPED OPERATIONS DO TO THE RESIDENCY MAP IS NOTHING, which
+\ is what makes skipping them here agree with the fixpoint, which skips nothing.
+\ The terminator is a branch and the comparison is pure, and DOP-XFER moves the
+\ map for calls and returns alone. An ABSORBED member's operations are all pure
+\ besides - MEMBER-OK? admits a member only when every operation but its
+\ terminator is SPECULABLE?, which is a schema with no memory effect - so the
+\ straight line this emits leaves the map where the head's own operations left
+\ it, and the head's operations do run through RULE.
 : REGION-OPS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk FUSE-INDEX {: fz:n :}
@@ -4681,6 +4740,12 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
 \ it. That is what the single-use fact bought, and it is held rather than
 \ assumed - a second reader would ask the map for a value nothing bound and be
 \ refused by name.
+\
+\ SKIPPING IT DOES NOT SKIP A TRANSFER. The residency fixpoint walks every
+\ operation of the block and this walk walks all but the fused comparison, so the
+\ two agree exactly while the operation passed over moves no data-stack slot - and
+\ a comparison moves none, DOP-XFER answering for calls and returns alone. The
+\ block's own map starts from its DIN for the same reason the fixpoint's does.
 : WALK-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id ord:n :}
    ord R-ABSORB? if exit then

@@ -1690,11 +1690,20 @@ private
 \ running engine's own memory, reached through the pointer register the engine
 \ keeps it in. The space says so, which is how a consumer tells a frame access
 \ from a data-stack access without asking which opcode it is looking at. The
-\ aliasing is unrestricted because a module of this dialect can now reach that
-\ region another way: a64.aldr and a64.astr take their address as a value, and a
-\ value can be the address of a data-stack slot. That is the same declaration
-\ those two forms make, and the two families share one token chain for exactly
-\ this reason.
+\ aliasing is unrestricted because a module of this dialect can reach that region
+\ another way: a64.aldr and a64.astr take their address as a value, and a value
+\ can be the address of a data-stack slot - `run-in-stack` is a checked primitive
+\ that makes a buffer the caller owns into exactly this region. That is the same
+\ declaration those two forms make, and the two families share one token chain
+\ for exactly this reason.
+\
+\ WHAT THAT DECLARATION IS FOR, SAID PLAINLY, because a reader has taken it for
+\ more than it says. It is an ORDERING statement: it forbids a later pass from
+\ moving one of these accesses across another it cannot prove is elsewhere. It is
+\ NOT a statement that a pass reasoning about slot CONTENTS must forget what it
+\ knows at an addressed store - src/compiler/native/select.f, at DOUT-AT, gives
+\ the measurement for why forgetting there is the wrong answer rather than the
+\ cautious one.
 : DSTACK-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
@@ -1771,7 +1780,8 @@ private
 \ same generic space as the data-stack forms and thread the same chain, because
 \ an address the program computed may name a data-stack slot; the aliasing is
 \ unrestricted, which is the declaration that forbids a later pass from moving
-\ one of these across another access it cannot prove is elsewhere.
+\ one of these across another access it cannot prove is elsewhere. That is all it
+\ forbids - the note at DSTACK-MEM above says what it does not.
 : ADDR-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
