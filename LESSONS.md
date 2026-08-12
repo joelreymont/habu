@@ -6018,3 +6018,15 @@ the stdlib's own multishot site. A fix proved on one corpus shape is
 proved for that shape's callee class. "The hazard is enforced
 downstream" answers safety; it does not answer whether the mechanism
 was also the only place the value could live.
+
+## The literal-authority landing's three (2026-08-12)
+
+(1) "The value doesn't exist yet at that point" is a measurable
+question, not a taste question - one read of the engine's literal
+hook (bytes handed over, never the number) settled a two-shape
+design. (2) A mutation that dies before the assertions run is not
+evidence - the register-swap mutant exited 134 and proved nothing;
+the +1 mutant lit 27 assertions. (3) Deleting a decoder deletes its
+ratchet debt - real-lit.f carried a standing obligation to track a
+known engine float bug; asking the engine directly retired the
+obligation for free.
