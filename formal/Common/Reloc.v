@@ -1351,6 +1351,14 @@ Inductive producer : Type :=
   | P_direct_call       (* EMIT-CEMITBL: one direct BL imm26 *)
   | P_aot_call_patch    (* EM-AOT-PATCH-SITES: rewrites BL imm26 sites *)
   | P_aot_code_reloc    (* EM-AOT-RELOC-CODE: rebases seeded code chains *)
+  | P_aot_xt_patch      (* AOT-XTSITE:PATCH-CHAINS: writes a NAMED word's entry
+                           into a seeded code chain.  Its answer comes from
+                           LFIND in the booting engine rather than from a
+                           delta, which is what a chain naming a word OUTSIDE
+                           the captured window needs; the value it bakes is
+                           still a region address, so it is region_dependent
+                           and it marks the address map exactly as
+                           EM-AOT-RELOC-CODE does. *)
   | P_aot_data_reloc    (* EM-AOT-RELOC-DATA: rebases seeded DATA chains *)
   | P_defer_cell        (* SNAP-RELOC:EMIT-MARK: declares a persisted cell *)
   .
@@ -1409,6 +1417,7 @@ Definition classify (p : producer) : klass :=
   | P_direct_call => Recorded R_callmap
   | P_aot_call_patch => Recorded R_callmap
   | P_aot_code_reloc => Recorded R_addrmap
+  | P_aot_xt_patch => Recorded R_addrmap
   | P_aot_data_reloc => Fixed_mapping
   | P_defer_cell => Recorded R_xtcell
   end.
@@ -1429,6 +1438,7 @@ Definition region_dependent (p : producer) : bool :=
   | P_direct_call => true
   | P_aot_call_patch => true
   | P_aot_code_reloc => true
+  | P_aot_xt_patch => true
   | P_aot_data_reloc => false
   | P_defer_cell => true
   end.

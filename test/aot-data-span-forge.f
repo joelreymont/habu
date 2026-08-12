@@ -51,6 +51,12 @@
 \         boot-run exits $52 silently, so the reported magic is the cell's proof.
 \         On the pre-widening format the build never got this far either: the
 \         capture refused the record outright.
+\   XTSITE: a variant in which one of the window's own code-address chains was
+\         turned into a NAMED code site keyed on a different word. The seed must
+\         resolve that name and write its entry into the chain, so the engine
+\         reports 22 (the named word) rather than 11 (the address the rebase
+\         would have written) - and the capture zeroed the lanes, so there is no
+\         host address underneath either answer.
 \
 \ Spawn-only helper: test/aot-wid-suite.f runs it as a child and gates on its exit
 \ code; it is not a TEST:SUITE member, like test/aot-wid-build.f. The PTY
@@ -346,6 +352,34 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    HBPWID$ EXISTS? TTRUE
    ASSERT-EXT-NAME-BOOTS ;
 
+\ The named code site, whose whole content is WHICH of two addresses ends up in
+\ the chain. The window holds a quotation returning 11 and a word returning 22;
+\ the capture moved the quotation's chain out of the rebased list and into the
+\ named list keyed on the word. So 22 is the named row, 11 is the rebase that
+\ would have happened without it, and the zero the capture left is a fault.
+: XT-MAGIC$ ( -- ptr u8 n )       s" awb-xt=22" ;
+: XT-REBASED$ ( -- ptr u8 n )     s" awb-xt=11" ;
+
+: ASSERT-XTSITE-BOOTS ( -- )
+   HBPWID$ PTY-SPAWN
+   s" AOT named code site: the chain carries the word the row names" T-LABEL
+   XT-MAGIC$ WAIT-FOR TTRUE
+   s" AOT named code site: not the address the rebase would have written" T-LABEL
+   RBUF$ XT-REBASED$ CONTAINS? 0= TTRUE
+   4 SEND-C
+   s" AOT named code site: the engine exits 0" T-LABEL
+   PID @ >PID PROC-WAIT-RC MATCH result
+     ok  OF 0 T= ENDOF
+     err OF drop 1 0 T= ENDOF
+   ;MATCH
+   MFD @ close ;
+
+: PROBE-XTSITE ( -- )
+   s" HABU_AOT_XTSITE" BUILD-MODE
+   s" AOT named code site: the variant built" T-LABEL
+   HBPWID$ EXISTS? TTRUE
+   ASSERT-XTSITE-BOOTS ;
+
 : BODY ( -- )
    RENDER-SPAN
    s" AOT data span guard: rendered span text parses back to 2*DATA-SIZE" T-LABEL
@@ -363,7 +397,8 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    ASSERT-LEGAL-BOOTS
    PROBE-WINDOW-CONTENT
    PROBE-BIG-WINDOW
-   PROBE-EXT-NAME ;
+   PROBE-EXT-NAME
+   PROBE-XTSITE ;
 
 public
 

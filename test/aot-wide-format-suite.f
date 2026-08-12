@@ -31,17 +31,27 @@
 \ unless the capture really produced an out-of-line record, so the case cannot
 \ pass on a window whose names all shrank back under the limit.
 \
+\ THE THIRD THING, and the one whose producer is still ahead of it: a NAMED code
+\ site. A code-address literal whose value is a word's entry can be resolved by
+\ name at boot instead of rebased - which is the only correct answer for a
+\ literal naming a PRE-WINDOW word, whose address the window cannot describe (dot
+\ habu-aot-pre-window-0b01043c owns deciding which sites those are). The row and
+\ its boot arm ship with the rest of the format so it migrates once. The
+\ HABU_AOT_XTSITE=1 mode makes such a row out of a real capture, through the
+\ capture's own writer, and dies unless exactly one was made.
+\
 \ NOT COVERED HERE, and covered rather than faked: that the engines so built
 \ actually BOOT - the over-64 KiB one reporting its magic, the out-of-line-named
-\ one being FOUND by its long name. The AOT seed is armed at the interactive REPL
-\ entry and nowhere else, so only a PTY boot can observe either; that half lives
-\ in test/aot-data-span-forge.f beside the other seed-pass boot regressions, and
-\ runs on Linux hosts, which are the ones this tree's PTY helper supports. What
-\ this suite adds on every host is that the capture and the bake succeed at all,
-\ which is the half that used to be impossible in both cases.
+\ one being FOUND by its long name, the named code site resolving to the word it
+\ names rather than the one the chain pointed at. The AOT seed is armed at the
+\ interactive REPL entry and nowhere else, so only a PTY boot can observe any of
+\ them; that half lives in test/aot-data-span-forge.f beside the other seed-pass
+\ boot regressions, and runs on Linux hosts, which are the ones this tree's PTY
+\ helper supports. What this suite adds on every host is that the capture and the
+\ bake succeed at all - the half that used to be impossible in all three cases.
 \
-\ Cost: two child engine builds; the big-window one is larger than the plain
-\ variant because the maker compiles the filler. Registered as
+\ Cost: three child engine builds; the big-window one is larger than the others
+\ because the maker compiles the filler. Registered as
 \ `TEST:SUITE aot-wide-format` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-wide-format-suite.f
 
@@ -155,9 +165,24 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    s" and computes with it" T-LABEL
    OUT$ s" 42" CONTAINS? TTRUE ;
 
+: PROBE-XTSITE ( -- )
+   SETUP
+   s" HABU_AOT_XTSITE" BUILD-MODE
+   s" a window carrying a named code site builds cleanly" REQUIRE-BUILD
+   s" the capture turned one code site into a named row" T-LABEL
+   OUT$ s" aot-wid-build: xtsite " CONTAINS? TTRUE
+   s" the named-code-site variant image exists after the build" T-LABEL
+   HB$ EXISTS? TTRUE
+   BATCH-OK
+   s" the named-code-site variant still runs a batch program" T-LABEL
+   RC @ 0 T=
+   s" and computes with it" T-LABEL
+   OUT$ s" 42" CONTAINS? TTRUE ;
+
 : BODY ( -- )
    PROBE-BIG-WINDOW
-   PROBE-EXT-NAME ;
+   PROBE-EXT-NAME
+   PROBE-XTSITE ;
 
 public
 

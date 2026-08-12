@@ -571,9 +571,18 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ (+16), floor distance 144 -> 160. The extra sixteen bytes stay inside the 16 KiB
 \ __TEXT page the widening just moved into, so MACOS-SIGNATURE (1423) and
 \ MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
-127136 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-12 re-measured live at the macOS byte-fixpoint for the third piece of
+\ the same dot: the named code-site row and its boot arm. The format gains a
+\ fifth relocation class - a code-address chain paired with the NAME of the word
+\ whose entry belongs in it - so AOT-XTSITE:PATCH-CHAINS joins the seed: a row walk,
+\ an LFIND, the sealed-WID gate, the same four-lane immediate rewrite the two
+\ rebase passes use, the address-map mark, and a named fd-2 refusal with its
+\ message bytes. CODELEN 127136 -> 127508 (+372), floor distance 160 -> 532.
+\ Still inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and
+\ MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
+127508 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-160 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+532 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

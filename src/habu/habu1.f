@@ -197,6 +197,14 @@ public
 variable LDATA  variable LNXTOFF  variable LXTOFFS
 ;package
 variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
+\ Named code sites: a code-address literal whose value is the entry of a WORD, so
+\ the seed resolves it by name instead of rebasing it. Count + 8-byte rows.
+\ These are the row kind's label ids; its buffers, section emitter and boot pass
+\ are in src/habu/habu2.f under the same package, the way AOT-WINDOW is split.
+package AOT-XTSITE
+public
+variable LCOUNT  variable LROWS
+;package
 variable LAOTBOOTRUN
 variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)
 variable LPROTWIDQ

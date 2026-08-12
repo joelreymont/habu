@@ -21,7 +21,7 @@
 \ it never adds a public tail to either. The rest of the build reuses
 \ tools/build-fixpoint.f exactly as the normal stdin build does.
 \
-\ Nine modes, selected by environment so one builder serves every case its
+\ Ten modes, selected by environment so one builder serves every case its
 \ companion suites need - test/aot-wid-suite.f, test/aot-wide-format-suite.f and
 \ the PTY half in test/aot-data-span-forge.f:
 \
@@ -67,6 +67,11 @@
 \                      which the capture used to refuse outright; the build now
 \                      asserts one was captured, and the engine can only report
 \                      when the boot-run's LFIND matches that out-of-line name.
+\   HABU_AOT_XTSITE=1  turn one of the window's own code-address chains into a
+\                      NAMED code site keyed on a different word, so the seed must
+\                      resolve that name and write its entry where the rebase
+\                      would have written the chain's own target. The engine
+\                      reports which of the two ran.
 \   HABU_AOT_D0_SKEW=N run the capture a SECOND time over the same window with
 \                      its DATA span start raised by N bytes. Hand it an N past
 \                      the whole span and the window then contains none of the
@@ -237,6 +242,7 @@ create DRV-CH 1 allot
 : TRAP-ENV$ ( -- ptr u8 n )      s" HABU_AOT_TRAP" GETENV ;
 : BIG-ENV$ ( -- ptr u8 n )       s" HABU_AOT_BIG" GETENV ;
 : EXT-ENV$ ( -- ptr u8 n )       s" HABU_AOT_EXT" GETENV ;
+: XT-ENV$ ( -- ptr u8 n )        s" HABU_AOT_XTSITE" GETENV ;
 
 : REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
    v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
@@ -244,7 +250,7 @@ create DRV-CH 1 allot
 : CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
    OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and
    BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and  BIG-ENV$ nip 0 =  and
-   EXT-ENV$ nip 0 =  and ;
+   EXT-ENV$ nip 0 =  and  XT-ENV$ nip 0 =  and ;
 
 \ The two shape checks are only DEFINED for the plain fixture build
 \ (CHECKS-WANTED?), so the window-content modes, which reuse the two bits and
@@ -412,11 +418,88 @@ create DRV-CH 1 allot
    REPL-BOOTRUN-LINES
    S\" s\" AWB-A-DELIBERATELY-LONG-REPORT-NAME\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
+\ --- the named code-site fixture (dot habu-widen-the-aot-089f5faf) -------------
+\ The row kind under test says: the chain at this blob offset holds the entry of
+\ the word called NAME, so resolve NAME at boot instead of rebasing what the chain
+\ holds. Its production producer is the pre-window work (dot
+\ habu-aot-pre-window-0b01043c) and does not exist yet, so the fixture makes a
+\ row the only other way it can be made - out of a real capture, through the
+\ capture's own row writer, on the real bake and boot path.
+\
+\ WHAT IT DOES, AND WHY THE ANSWER DISCRIMINATES. The window holds a quotation
+\ that returns 11 and a separate named word that returns 22. The quotation gives
+\ the window a genuine code-address chain, which the capture records as an
+\ ordinary CODE site. The doctoring then moves THAT site out of the rebased list
+\ and into the named list keyed on the OTHER word's name. So at boot the chain can
+\ carry one of three things: the quotation's own address (the rebase ran, the
+\ named row did not) and the engine prints 11; the named word's address (the row
+\ was applied) and it prints 22; or the zero the capture left, which is a jump to
+\ address 0. Only one of those three is the row working, and it is the one the
+\ PTY case asserts.
+\
+\ Nothing here is positional: the site is found through the captured dict record
+\ of the word that contains it, by NAME, and the build dies unless exactly one
+\ code site lies inside that word.
+: XT-DOCTOR-DEF ( -- )
+   s" package AOT-CAPTURE" DRV-LINE
+   s" variable XT-HIT" DRV-LINE
+   s" : XT-NAME= ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr u:n :}" DRV-LINE
+   s"    u 0 ?do a i + c@ b i + c@ <> if 0 0= 0= unloop exit then loop  0 0= ;" DRV-LINE
+   s" : XT-REC-BY-NAME ( ptr u8 n -- n ) {: a:ptr u:n :}" DRV-LINE
+   s"    AOT-REC-N @ 0 ?do" DRV-LINE
+   s"       i ACAP-REC-DST {: v:ptr :}" DRV-LINE
+   s"       v 16 + ACAP-W32@ u = if" DRV-LINE
+   s"          v 24 + a u XT-NAME= if i unloop exit then" DRV-LINE
+   s"       then" DRV-LINE
+   s"    loop  -1 ;" DRV-LINE
+   s" : XT-CSITE-OFF ( n -- n ) {: ci:n :}" DRV-LINE
+   s"    AOT-DSITE-N @ ci + 4 * AOT-DSITE-BUF@ + ACAP-W32@ ;" DRV-LINE
+   s" : XT-FIND-SITE ( n n -- n ) {: start:n clen:n :}" DRV-LINE
+   s"    -1 XT-HIT !" DRV-LINE
+   s"    AOT-CSITE-N @ 0 ?do" DRV-LINE
+   s"       i XT-CSITE-OFF {: off:n :}" DRV-LINE
+   s"       off start >= off start clen + < and if" DRV-LINE
+   s"          XT-HIT @ 0 >= if" DRV-LINE
+   S\"             s\" aot-wid-build: xt fixture holds more than one code site\" 74 die then" DRV-LINE
+   s"          i XT-HIT !" DRV-LINE
+   s"       then" DRV-LINE
+   s"    loop" DRV-LINE
+   s"    XT-HIT @ ;" DRV-LINE
+   s" : XT-DROP-CSITE ( n -- ) {: ci:n :}" DRV-LINE
+   s"    AOT-CSITE-N @ 1- XT-CSITE-OFF" DRV-LINE
+   s"    AOT-DSITE-N @ ci + 4 * AOT-DSITE-BUF@ + AOT-P32!" DRV-LINE
+   s"    AOT-CSITE-N @ 1- AOT-CSITE-N ! ;" DRV-LINE
+   s" : XT-DOCTOR ( -- )" DRV-LINE
+   S\"    s\" AWB-XT-REPORT\" XT-REC-BY-NAME {: k:n :}" DRV-LINE
+   s"    k 0 < if" DRV-LINE
+   S\"       s\" aot-wid-build: xt fixture record not found\" 74 die then" DRV-LINE
+   s"    k ACAP-REC-DST {: v:ptr :}" DRV-LINE
+   s"    v ACAP-W32@ v 8 + ACAP-W32@ XT-FIND-SITE {: ci:n :}" DRV-LINE
+   s"    ci 0 < if" DRV-LINE
+   S\"       s\" aot-wid-build: xt fixture holds no code site\" 74 die then" DRV-LINE
+   s"    ci XT-CSITE-OFF {: off:n :}" DRV-LINE
+   s"    ci XT-DROP-CSITE" DRV-LINE
+   S\"    off s\" AWB-XT-B\" ACAP-ADD-XTSITE" DRV-LINE
+   s"    AOT-XTSITE:N @ 1 <> if" DRV-LINE
+   S\"       s\" aot-wid-build: xt fixture did not make exactly one named row\" 74 die then" DRV-LINE
+   S\"    s\" aot-wid-build: xtsite \" type off . cr ;" DRV-LINE
+   s" XT-DOCTOR" DRV-LINE
+   s" ;package" DRV-LINE ;
+
+: XT-FIXTURE-LINES ( -- )
+   s" : AWB-XT-B ( -- n ) 22 ;" DRV-LINE
+   S\" : AWB-XT-REPORT ( -- ) s\" awb-xt=\" type [: 11 ;] execute . cr ;" DRV-LINE
+   RECAPTURE-LINE
+   XT-DOCTOR-DEF
+   REPL-BOOTRUN-LINES
+   S\" s\" AWB-XT-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
 : FIXTURE-LINES ( -- )
    BAKE-ENV$ nip 0 > if BAKE-FIXTURE-LINES exit then
    TRAP-ENV$ nip 0 > if TRAP-FIXTURE-LINES exit then
    BIG-ENV$ nip 0 > if BIG-FIXTURE-LINES exit then
-   EXT-ENV$ nip 0 > if EXT-FIXTURE-LINES then ;
+   EXT-ENV$ nip 0 > if EXT-FIXTURE-LINES exit then
+   XT-ENV$ nip 0 > if XT-FIXTURE-LINES then ;
 
 : INJECT ( -- )
    CHECKS-WANTED? if

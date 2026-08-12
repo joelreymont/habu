@@ -4377,6 +4377,58 @@ public
       21 21 4 ADDI,  22 22 1 ADDI,  cloop B,
    crdone LBL, ;
 
+\ NAMED code-literal relocation (fifth relocation class): for each baked row
+\ (blob-off u32, name-off u32 into the same deduped pool the call sites use)
+\ resolve the word by NAME in THIS engine and write its xt into the four immediate
+\ lanes of the movz/movk chain at CP + blob-off, keeping each instruction's opcode
+\ and destination register. It is the call-site pass's answer for a site that is
+\ not a BL: a call site is patched by name because the callee's address differs
+\ between the building host and this engine, and a code literal naming a word has
+\ exactly the same problem and exactly the same answer.
+\ The capture zeroes the lanes, so the value written here is the only address the
+\ chain can carry - there is no host address underneath to fall back to.
+\ Like EM-AOT-RELOC-CODE this is a producer of code-address chains in the region,
+\ so it records each site in the map C-CODE-ADDR writes; and like
+\ EM-AOT-PATCH-SITES it puts the resolved xt through the sealed-WID gate before
+\ using it. Runs while the region is RW, after the records are registered.
+\ A missing name is a build/seed inconsistency and cannot be recovered from at
+\ boot: it names the failure on fd 2 and exits ENGINE-ERROR:AOT-SEED, the same
+\ shape EM-SEED-AOT's metadata check uses.
+package AOT-XTSITE
+public
+36 constant MSG-LEN   \ byte length of "hb: AOT named code site unresolved\n"
+: PATCH-CHAINS ( -- )
+   LBL LBL LBL LBL {: xloop:label xdone:label xnf:label msg:label :}
+   21 LROWS LABEL@ ADR,                           \ x21 = row cursor (8B rows)
+   23 LCOUNT LABEL@ ADR,  23 23 0 LDR,            \ x23 = row count
+   22 0 MOVZ,
+   xloop LBL,  22 23 CMP,  C-GE xdone BCOND,
+      24 21 0 LDRW,                               \ x24 = blob offset u32 (survives LFIND)
+      4 21 4 LDRW,                                \ x4 = name-off u32
+      5 LAOTNAMES LABEL@ ADR,  9 5 4 ADD,         \ x9 = pool entry ptr
+      10 9 0 LDRB,                                \ x10 = name length
+      9 9 1 ADDI,                                 \ x9 = name ptr
+      LFIND LABEL@ BL,                            \ x11 = xt, x13 = found?
+      13 xnf CBZ,
+      LAOTWIDGATE LABEL@ BL,                      \ reject a resolve into a protected WID (x24 survives)
+      9 CP 24 ADD,                                \ x9 = chain addr = CP + blob offset
+      10 9 0 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 0 ADDI,   5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
+      10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
+      10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
+      10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
+      14 9 DBASE SUB,                             \ x14 = chain byte offset within the region
+      4 14 0 ADDI,  4 4 2 LSRI,  4 4 7 ANDI,      \ x4 = bit number = word index & 7
+      14 14 5 LSRI,                               \ x14 = map byte index = offset >> 5
+      5 SNAP-RELOC:ADDRMAP-OFF LIT64,  14 14 5 ADD,  14 DATA 14 ADD,
+      5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
+      21 21 8 ADDI,  22 22 1 ADDI,  xloop B,
+   xnf LBL,
+      1 msg ADR,  0 2 MOVZ,  2 MSG-LEN MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT named code site unresolved" BYTES,  NL-KW 1 BYTES,
+   xdone LBL, ;
+;package
+
 \ Boot-run the captured top-level entry words (INSTALL/BPW-INSTALL/S-INSTALL) once
 \ the seeded blob is RX + icache-flushed: walk the 0-terminated [len][name] list,
 \ LFIND each in the now-registered dict, and blr its xt. This replaces the embedded
@@ -4416,6 +4468,7 @@ public
    EM-AOT-PATCH-SITES
    EM-AOT-RELOC-DATA
    EM-AOT-RELOC-CODE
+   AOT-XTSITE:PATCH-CHAINS                          \ named code literals, after the rebased ones
    9 CP 0 ADDI,                                     \ x9 = blob base (= CP before advance) for the flush
    11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length again
    CP CP 11 ADD,                                    \ code area top past the blob
@@ -7776,6 +7829,7 @@ package LABELS
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !
    LBL AOT-WINDOW:LDATA !  LBL AOT-WINDOW:LNXTOFF !  LBL AOT-WINDOW:LXTOFFS !
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
+   LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
    LBL LAOTBOOTRUN !
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LAOTPROT !  LBL LPROTWIDQ !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
@@ -7983,6 +8037,26 @@ create XTOFF-BUF XTOFF-MAX 4 * allot    variable XTOFF-N   \ packed u32 window o
 \ view), and baked as its own contiguous LAOTCSITES section.
 variable AOT-CSITE-N
 variable AOT-CODE-B0
+\ NAMED code sites (fifth relocation class): blob offsets of movz/movk literals
+\ whose value is the ENTRY OF A WORD, paired with that word's name in the pool.
+\ The seed LFINDs the name in the engine it is booting and writes the xt into the
+\ four immediate lanes -- the same answer the call-site table gets for a BL, for a
+\ site that is not a BL. A capture stores 0 in the lanes, so the baked blob carries
+\ no host address and the patch is the only thing that can put a real one there.
+\ WHY THIS EXISTS BEFORE ITS PRODUCER. A code literal that names a PRE-WINDOW word
+\ cannot be rebased: its correct value is fixed by the prefix's own layout and
+\ differs between the metabuild host and bin/hb, which is why ACAP-SCAN-DSITES
+\ still refuses one. Resolving it by name is the answer, and the row is the format
+\ half of that answer; the pass that decides WHICH sites become named rows is the
+\ inliner-decline work, dot habu-aot-pre-window-0b01043c. The format is baked into
+\ the engine, so it migrates once - a row kind added later is a second migration
+\ of every baked-code route. In-window code literals stay b0-relative: rebasing
+\ them is correct and costs no lookup.
+package AOT-XTSITE
+public
+16384 constant MAX
+create BUF MAX 8 * allot    variable N   \ 8B rows: blob-off u32 + name-off u32
+;package
 \ boot-run name list: 0-terminated [len][name-bytes] records of the top-level entry
 \ words (INSTALL/BPW-INSTALL/S-INSTALL) the metabuild ran at the tail of the REPL
 \ source. With the source dropped, EM-SEED-AOT LFINDs + calls each after RX/flush so
@@ -8021,6 +8095,11 @@ s" AOT-SITE-BUF@" s" -- ptr u8" TRUST
 s" AOT-NAMES-BUF@" s" -- ptr u8" TRUST
 : AOT-DSITE-BUF@ ( -- ptr u8 ) AOT-DSITE-BUF ;
 s" AOT-DSITE-BUF@" s" -- ptr u8" TRUST
+package AOT-XTSITE
+public
+: BUF@ ( -- ptr u8 ) BUF ;
+s" AOT-XTSITE:BUF@" s" -- ptr u8" TRUST
+;package
 package AOT-WINDOW
 public
 : DATA-BUF@ ( -- ptr u8 ) DATA-BUF ;
@@ -8045,6 +8124,11 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    AOT-DSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * BYTES, THEN ;
 : EMIT-AOT-CSITES ( -- )   \ packed u32 CODE-site offsets (after the AOT-DSITE-N DATA u32s)
    AOT-CSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * + AOT-CSITE-N @ 4 * BYTES, THEN ;
+package AOT-XTSITE
+public
+: EMIT-ROWS ( -- )   \ packed 8B rows (blob-off u32 + name-off u32)
+   N @ 0 > IF BUF@ N @ 8 * BYTES, THEN ;
+;package
 package AOT-WINDOW
 public
 : EMIT-DATA ( -- )   \ the window's DATA content, declared address cells zeroed
@@ -8074,6 +8158,8 @@ public
    LAOTCODEB0 LABEL@ LBL,  AOT-CODE-B0 @ DCQ,
    LAOTNCSITE LABEL@ LBL,  AOT-CSITE-N @ DCQ,
    LAOTCSITES LABEL@ LBL,  EMIT-AOT-CSITES
+   AOT-XTSITE:LCOUNT LABEL@ LBL,  AOT-XTSITE:N @ DCQ,
+   AOT-XTSITE:LROWS LABEL@ LBL,  AOT-XTSITE:EMIT-ROWS
    LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
    LAOTNPWID LABEL@ LBL,  PROT-REG-TAG DCQ,                                  \ protected-WID frame: shape tag
    LAOTPWID LABEL@ LBL,                                                      \ then the fixed-width bitmap (TFAM 2b-v)

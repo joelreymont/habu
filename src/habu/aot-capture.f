@@ -351,6 +351,26 @@ variable ACAP-P
    boff  AOT-DSITE-N @ AOT-CSITE-N @ + 4 * AOT-DSITE-BUF@ +  AOT-P32!
    AOT-CSITE-N @ 1+ AOT-CSITE-N ! ;
 
+\ A NAMED code site: the chain at this blob offset holds the entry of the word
+\ called `a u`, and the seed is to resolve that name in the engine it is booting
+\ rather than rebase what the chain holds now. The value in the blob is zeroed for
+\ the same reason a recorded BL's imm26 is - a captured host address is both
+\ builder-dependent and wrong in the seeded engine - and zeroing it means the boot
+\ patch is the only thing that can put an address there.
+\ ITS PRODUCER IS NOT HERE YET. A code literal naming a PRE-WINDOW word is what
+\ needs this, and ACAP-SCAN-DSITES still refuses one below; deciding which sites
+\ become named rows is dot habu-aot-pre-window-0b01043c. The row and its boot arm
+\ ship now because the format is baked into the engine and migrating it twice
+\ would migrate every baked-code route twice. An in-window code literal is NOT a
+\ candidate: rebasing it by the code delta is correct and costs no lookup.
+: ACAP-ADD-XTSITE ( n ptr u8 n -- ) {: boff:n a:ptr u:n :}
+   AOT-XTSITE:N @ AOT-XTSITE:MAX >= if s" aot-capture: too many named code sites" 74 die then
+   a u ACAP-POOL-ADD {: noff:n :}
+   AOT-XTSITE:N @ 8 * AOT-XTSITE:BUF@ + {: r:ptr :}
+   boff r AOT-P32!  noff r 4 + AOT-P32!
+   AOT-BLOB-BUF@ boff +  0 ACAP-SET-CHAIN                 \ no host address travels in the blob
+   AOT-XTSITE:N @ 1+ AOT-XTSITE:N ! ;
+
 \ The refusal, with the site named. A capture that cannot classify one of its own
 \ recorded chains has nothing correct to bake, so it dies rather than choosing.
 : ACAP-UNCLASSIFIED ( n n -- ) {: boff:n v:n :}
@@ -563,6 +583,7 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
    0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  ACAP-PWID-CLEAR
+   0 AOT-XTSITE:N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public
 

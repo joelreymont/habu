@@ -234,7 +234,7 @@ public
 \ Rocq error rather than an omission; this table is what holds that vocabulary
 \ to the one the shipped emitter actually has.
 
-13 constant PROD-COUNT
+14 constant PROD-COUNT
 
 : PROD-NAME$ ( n -- ptr u8 n )
    case
@@ -249,8 +249,9 @@ public
       8 of s" EMIT-CEMITBL" endof
       9 of s" EM-AOT-PATCH-SITES" endof
       10 of s" EM-AOT-RELOC-CODE" endof
-      11 of s" EM-AOT-RELOC-DATA" endof
-      12 of s" EMIT-MARK" endof
+      11 of s" PATCH-CHAINS" endof
+      12 of s" EM-AOT-RELOC-DATA" endof
+      13 of s" EMIT-MARK" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -267,8 +268,9 @@ public
       8 of s" P_direct_call" endof
       9 of s" P_aot_call_patch" endof
       10 of s" P_aot_code_reloc" endof
-      11 of s" P_aot_data_reloc" endof
-      12 of s" P_defer_cell" endof
+      11 of s" P_aot_xt_patch" endof
+      12 of s" P_aot_data_reloc" endof
+      13 of s" P_defer_cell" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -285,8 +287,9 @@ public
       8 of s" Recorded R_callmap" endof
       9 of s" Recorded R_callmap" endof
       10 of s" Recorded R_addrmap" endof
-      11 of s" Fixed_mapping" endof
-      12 of s" Recorded R_xtcell" endof
+      11 of s" Recorded R_addrmap" endof
+      12 of s" Fixed_mapping" endof
+      13 of s" Recorded R_xtcell" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -349,7 +352,7 @@ public
       7 of s" C-CALL EMIT-CEMITBL EMIT-P2-VALID-EMIT EMIT-P2-STORE CORE" endof
       8 of s" EM-STARTUP-RUNTIME-STATE" endof
       9 of s" C-DATA-ADDR C-DATA-ADDR-RAW C-CODE-ADDR" endof
-      10 of s" EM-AOT-RELOC-CODE" endof
+      10 of s" EM-AOT-RELOC-CODE PATCH-CHAINS" endof
       11 of s" BSNAPREBASE EM-SNAPSHOT-RESTORE CORE" endof
       12 of s" MARK-CELL EMIT-MARK BXTSTORE" endof
       13 of s" C-DEFER-CELL J-IS CORE" endof
