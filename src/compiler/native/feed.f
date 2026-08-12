@@ -59,9 +59,10 @@
 \ WHAT IT REFUSES. A foreign or second scan, a scan longer than the caller's
 \ text buffer, a token whose bytes are not the bytes at the offset it claims,
 \ an append that lands anywhere but the next ordinal, a literal class this
-\ stage has no tape kind for, an integer literal whose value it cannot read
-\ back, and a string literal whose body is longer than the source it decoded
-\ from or whose span leaves the kept text. Refusals another authority owns keep that authority's name: a full tape
+\ stage has no tape kind for, a literal the reader classified one way and the
+\ engine's own number reader reads the other way or not at all, and a string
+\ literal whose body is longer than the source it decoded from or whose span
+\ leaves the kept text. Refusals another authority owns keep that authority's name: a full tape
 \ is E-NTAPE-CAP, a span outside its source is IR-SOURCE's, and a tape that
 \ belongs to another module than the builder is NTAPE's own owner check at the
 \ first token.
@@ -82,7 +83,6 @@ require src/compiler/ir/source.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
 require src/compiler/native/tape.f
-require src/compiler/native/real-lit.f
 
 package NFEED
 private
@@ -164,31 +164,42 @@ variable F-VERDICT
    first 0 <> if NTAPE-MODE:INTERPRETING exit then
    NTAPE-MODE:COMPILING ;
 
-\ The value an integer-literal token carries. The engine's own parser is what
-\ pushes the value at run time and it is not reachable from here, so this reads
-\ the spelling back with the stdlib's one decimal reader and REFUSES every
-\ spelling that reader declines - a hexadecimal or out-of-range literal is a
-\ token this stage cannot record honestly, not a token to record as zero. Dot
-\ habu-record-the-engine-79c570ed tracks giving the tape the engine's own
-\ value.
-: INT-VALUE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u STR>NUMBER? MATCH option
-      none OF E-NFEED-LITERAL throw ENDOF
-      some OF ENDOF
-   ;MATCH ;
+\ The cell a literal token carries, asked of the one authority on the question:
+\ the engine's own number reader, through the `num-parse` primitive. That
+\ routine is what the interpret and compile dispatches call for every literal
+\ token they meet (src/habu/habu2.f EM-INTERPRET-NUMBER, EM-COMPILE-LITERAL),
+\ so the cell it answers for these bytes is the cell the engine pushes for them
+\ - the same code on the same bytes, not a second reader that agrees on the
+\ spellings somebody tested.
+\
+\ WHY IT IS ASKED HERE AND NOT CARRIED ON THE EVENT. The engine reads a literal
+\ while it compiles the body and spends the answer immediately on a push
+\ instruction; the tape's token event happens later, in the checker's own scan
+\ of the definition text the engine reconstructed, and no engine surface keeps a
+\ parsed value in between - even the top-row literal hook (src/habu/layout.f
+\ TOP-EV-NUM) hands its hook the token's bytes and never the number. So there is
+\ no recorded value to carry: the honest way to have the engine's answer is to
+\ ask the engine's reader, which is what this does.
+\
+\ AND WHAT THE REFUSAL MEANS NOW. The reader upstream already decided this token
+\ is an integer literal or a real one, with the predicates the checker types it
+\ by (src/core/checker.f ALLDIG?/FLODIG?). If the engine's reader disagrees -
+\ reads no number at all, or reads a float where the checker saw an integer -
+\ then the checker's literal language and the runtime's have drifted apart, and
+\ this is the one place both are in the same room. That is E-NFEED-LITERAL's
+\ whole job: not a spelling this stage cannot decode, but a disagreement about
+\ what the runtime does.
+: NUM-VALUE ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   a u num-parse {: v:n flt:bool ok:bool :}
+   ok if v flt exit then
+   E-NFEED-LITERAL throw ;
 
-\ The cell a real-literal token carries, which is the double's own bit pattern.
-\ It is read back from the spelling the way the integer value above is, and by
-\ the same authority argument: the engine's parser is not reachable from here, so
-\ the value is re-derived - and src/compiler/native/real-lit.f re-derives it
-\ along the engine's own route rather than a better one, so a compiled literal
-\ and an interpreted literal are the same double to the bit. A spelling that
-\ reader declines is refused here rather than recorded as some other number.
-: REAL-VALUE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u NREAL:READ MATCH option
-      none OF E-NFEED-LITERAL throw ENDOF
-      some OF ENDOF
-   ;MATCH ;
+: INT-VALUE ( ptr u8 n -- n )
+   NUM-VALUE if E-NFEED-LITERAL throw then ;
+
+: REAL-VALUE ( ptr u8 n -- n )
+   NUM-VALUE if exit then
+   E-NFEED-LITERAL throw ;
 
 \ Append the row. The span is built from the offset the reader reported and the
 \ spelling is interned from the bytes it handed over, both against the module

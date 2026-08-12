@@ -41,8 +41,7 @@ private
 \ that is neither is a capability gap nobody has written down, and the count
 \ below is what makes that fail rather than read as one more REFUSED row.
 : NAMED-CODE? ( n -- bool ) {: rc:n :}
-   rc E-A64RA-SPILL = if true exit then
-   rc E-NFEED-LITERAL = ;
+   rc E-A64RA-SPILL = ;
 
 : NAMED-REFUSALS ( -- n )
    0
@@ -115,20 +114,26 @@ private
    s" -1" FAN$ 1 JUDGE-COST:P-CELL JUDGE-COST:VALUE
    s" -1" FAN-J$ 1 JUDGE-COST:P-CELL JUDGE-COST:VALUE T= ;
 
-\ Every refusal in the table is one of two named capability gaps: the allocator
-\ declining to spill inside a loop (dot habu-spill-from-a-4145325c) and the
-\ chain's tape declining to record a hexadecimal literal (dot
-\ habu-record-the-engine-79c570ed). A refusal for some other reason is a
-\ different finding and must not read as one of these.
+\ Every refusal in the table is the one named capability gap: the allocator
+\ declining to spill inside a loop (dot habu-spill-from-a-4145325c). A refusal
+\ for some other reason is a different finding and must not read as that one.
+\ CODEGEN-CORPUS2:SYM-FOLD-C was the second, until its tape learned to record a
+\ hexadecimal literal (dot habu-record-the-engine-79c570ed); it is a compiled
+\ row now, and the case below requires exactly that rather than leaving the
+\ capability's arrival invisible.
 : REFUSAL-CASES ( -- )
    JUDGE-ROW:REFUSED-ROWS NAMED-REFUSALS T=
    s" CODEGEN-CORPUS4:PRESSURE-LOOP" ROW-OF JUDGE-ROW:NEW-RC@ E-A64RA-SPILL T=
    s" CODEGEN-CORPUS4:CALL-PRESSURE" ROW-OF JUDGE-ROW:NEW-RC@ E-A64RA-SPILL T=
-   s" CODEGEN-CORPUS2:SYM-FOLD-C" ROW-OF JUDGE-ROW:NEW-RC@ E-NFEED-LITERAL T= ;
+   s" CODEGEN-CORPUS2:SYM-FOLD-C" ROW-OF JUDGE-ROW:REFUSED? TFALSE ;
 
 \ A compiled row vouches for its own text: the chain read it, the checker
 \ certified it and a routine came out. A REFUSED row has no such witness, so the
 \ text the chain was handed is checked here against the corpus's own program.
+\ SYM-FOLD-C keeps its case now that it compiles, for the other half of the
+\ argument its row used to carry in the head of the artifact: its constants are
+\ written $41, $5A and $20, and a corpus quietly respelled in decimal to make a
+\ row green would be a different program measured under the same name.
 \ The source is loaded first because the reader holds ONE file at a time and
 \ the pass that judged every corpus left the last of them in it.
 : TEXT-CASES ( -- )

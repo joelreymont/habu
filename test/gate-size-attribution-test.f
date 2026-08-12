@@ -521,9 +521,34 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ had to be read: the whole-file one measures the page-rounded container and this
 \ one measures the bytes.
 \ The linux row below is owed a linux-host re-measure for this delta.
-125412 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-12 macOS 125412 -> 125560 (+148): the engine publishes its own number
+\ reader as the primitive `num-parse` (dot habu-record-the-engine-79c570ed), so a
+\ checked stage that has to know what cell a literal spelling stands for asks the
+\ routine the interpret and compile dispatches already call at LNUM instead of
+\ decoding the spelling a second time. MEASURED with HABU_ENGINE_SIZE_MAP=1 on
+\ both trees at the byte fixpoint and reconciled with zero residue, two rows:
+\   +100  primitives/base, ENGINE-EMIT:BNUMPARSE's own emitted body - 25
+\         instructions. Two pop the address and the length into the registers
+\         LNUM is entered with, one zeroes the float register the routine writes
+\         only after it has chosen a base, one is the call, six turn the two
+\         answers into Habu flags (CMPI, CSET and the negate that makes -1), two
+\         AND the value and the float flag with the number flag so a spelling the
+\         routine declined answers nothing at all, six push the three answers,
+\         and five are FPRIM's frame and return - the prim is framed rather than
+\         leaf because its body branches with link.
+\   +48   seed-dictionary, the one 48-byte record (layout.f DREC) the new name
+\         takes. `num-parse` is nine bytes, inside the 16-byte inline-name band
+\         (DNAME-INL), so the dictionary-code region does not move and no name
+\         bytes are emitted beside the record.
+\ Floor follows from the same number (MACOS-MODEL-FLOOR is (CODE-OFF +
+\ CODE-TEXT) mod 16 KiB): 14820 -> 14968, still the eighth 16 KiB page. The text
+\ pad absorbs it exactly - 1564 -> 1416, read off the two maps - so
+\ MACOS-SIGNATURE (1295) and MACOS-TOTAL (148855) do not move and `FILE-SIZE
+\ bin/hb` is still 148855.
+\ The linux row below is owed a linux-host re-measure for this delta too.
+125560 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-14820 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+14968 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

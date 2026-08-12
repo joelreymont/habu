@@ -213,16 +213,8 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
    s" ;package" LINE
    FIX$ ;
 
-\ A refusal code the census's own table does not name. A hexadecimal literal is one
-\ the tape's producer cannot read back, and it throws a code no row here predicts -
-\ exactly the case that must widen the report instead of ending the run.
-: UNL-SRC ( -- ptr u8 n )
-   FIX-RESET
-   s" package CENSUS-FIX-UNLISTED" LINE
-   s" public" LINE
-   s" : CFU-HEX ( -- n ) $FF ;" LINE
-   s" ;package" LINE
-   FIX$ ;
+\ UNL-SRC, the fixture for a refusal code this table does not name, is written
+\ after the step generator below because it is built out of it.
 
 \ A definition at GLOBAL scope, so the suite can ask the dictionary about it by the
 \ name the file gave it.
@@ -290,6 +282,30 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
    s" package CENSUS-FIX-LONG" LINE
    s" public" LINE
    s" : CFL-MID ( n -- n ) " FIX+ MID-STEPS STEPS s" ;" LINE
+   s" ;package" LINE
+   FIX$ ;
+
+\ A refusal code the census's own table does not name, which is the case that has
+\ to widen the report instead of ending the run. It used to be a hexadecimal
+\ literal, until the tape learned to record one from the engine's own reader (dot
+\ habu-record-the-engine-79c570ed); it is now a body with more TOKENS than a
+\ recording unit's tape holds - src/compiler/native/migrate.f TAPE-CAP is 128
+\ rows and the definition's name takes one of them, so the sixty-fourth
+\ `1+ 1- ` pair is the append the tape refuses, while the text stays well inside
+\ the same unit's 512-byte ceiling so the longer-text refusal above cannot fire
+\ first.
+\
+\ IF SOMEBODY GIVES E-NTAPE-CAP A ROW, this fixture has to move to whatever is
+\ unlisted then. The case is about the mechanism - an unpredicted code printed
+\ raw and read conservatively as a dialect gap - and it tests that mechanism only
+\ while its own code is genuinely absent from the table.
+64 constant UNL-STEPS
+
+: UNL-SRC ( -- ptr u8 n )
+   FIX-RESET
+   s" package CENSUS-FIX-UNLISTED" LINE
+   s" public" LINE
+   s" : CFU-MANY ( n -- n ) " FIX+ UNL-STEPS STEPS s" ;" LINE
    s" ;package" LINE
    FIX$ ;
 
@@ -640,11 +656,11 @@ variable ACC
    s" unlisted: the run finished" T-LABEL
       CHAIN-CENSUS:BUCKETS 1 T=
    s" unlisted: with the code the chain really threw" T-LABEL
-      0 CHAIN-CENSUS:BUCKET-CODE E-NFEED-LITERAL T=
+      0 CHAIN-CENSUS:BUCKET-CODE E-NTAPE-CAP T=
    s" unlisted: no row names it" T-LABEL
-      E-NFEED-LITERAL CHAIN-CENSUS:CLASS-OF CHAIN-CENSUS:CL-DIALECT T=
+      E-NTAPE-CAP CHAIN-CENSUS:CLASS-OF CHAIN-CENSUS:CL-DIALECT T=
    s" unlisted: the report prints it raw" T-LABEL
-      ra ru s" unlisted code -8405" LINT-CONTAINS? TTRUE ;
+      ra ru s" unlisted code -8243" LINT-CONTAINS? TTRUE ;
 
 \ ---- a refusal that never reached the elaborator carries no spelling ------------------------------------------
 \ The elaborator's refused-token record is cleared when its walk is ENTERED, so a

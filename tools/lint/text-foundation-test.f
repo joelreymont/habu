@@ -943,9 +943,16 @@ variable REG-I
    \ habu-make-trust-refuse-cc8e19de) added `TRUST-DECL`, which needs the same
    \ axiom as `TRUST` for the same reason: the engine looks it up by name, so
    \ the seal-time internal-word marking pass has to leave it findable.
+   \ It was 372 before the literal-value authority (dot
+   \ habu-record-the-engine-79c570ed) added `num-parse`, the engine's own number
+   \ reader over bytes a caller already holds. That one is an engine primitive
+   \ rather than a boot-prefix word, and it is the row that let
+   \ src/compiler/native/feed.f stop reading a literal's spelling back with a
+   \ decoder of its own - a whole file of re-derived float arithmetic
+   \ (src/compiler/native/real-lit.f) went out with it.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 372 ASSERT=
+   REG-COUNT 373 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

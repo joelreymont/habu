@@ -125,20 +125,10 @@ variable TEXT-U
    s" A LARGER row is a finding and the check exits non-zero on it. A REFUSED row" LINE
    s" is a raw measurement printed with its code: the capability it waits for is a" LINE
    s" dot, and a check that failed on it would fail every day until that dot lands." LINE
-   s" Two codes appear in the chain column and each is a named capability gap:" LINE
+   s" One code appears in the chain column and it is a named capability gap:" LINE
    s" -8508 is the allocator declining to spill inside a loop, dot" LINE
-   s" habu-spill-from-a-4145325c; -8405 is the chain's tape declining to record a" LINE
-   s" hexadecimal literal, dot habu-record-the-engine-79c570ed. tools/judge-test.f" LINE
-   s" fails on a refusal that is neither, so a third gap cannot arrive unnamed." LINE
-   NL
-   s" CODEGEN-CORPUS2:SYM-FOLD-C IS A DELIBERATE DISAGREEMENT WITH THE OLD" LINE
-   s" HARNESS, which reads that row green. The two harnesses are not compiling the" LINE
-   s" same program: the corpus writes the checker's own body with $41, $5A and $20" LINE
-   s" in it, and the old harness's hand-copied column respells those literals in" LINE
-   s" decimal - tools/codegen-compare-migrated2.f:100, admitted at its line 28 -" LINE
-   s" because the chain cannot read a hexadecimal spelling back. Green there is" LINE
-   s" measured against a program the corpus does not contain. REFUSED here is the" LINE
-   s" truth about the corpus text, and the corpus is not respelled to buy the row." LINE
+   s" habu-spill-from-a-4145325c. tools/judge-test.f fails on a refusal that is" LINE
+   s" not that one, so a second gap cannot arrive unnamed." LINE
    NL
    s" THE TABLE IS FINITE AND THE ORACLE BESIDE IT IS NOT. Every row here is a" LINE
    s" program somebody wrote on an input somebody pinned, so what it can catch is" LINE

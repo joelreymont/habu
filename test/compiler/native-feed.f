@@ -229,6 +229,37 @@ create UTXT TEXT-CAP allot
    BND [: LIT-BODY ;] IR-CTX:WITH-CONTEXT
    41 T= 41 T= ;
 
+\ EVERY SPELLING THE ENGINE ACCEPTS, against the word the engine compiled from
+\ it. Each definition is compiled with the tape recording and then RUN, so the
+\ number on the right of every pair below is the cell the compiled word actually
+\ leaves on the stack - not a number this test worked out from the spelling.
+\ Hexadecimal (either case, signed or not) and a literal past the width of a
+\ cell are the four this producer could not record at all while it read the
+\ spelling back with a decoder of its own.
+: HEX-BODY ( IR-CTX:ctx -- n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c s" : NF-HEX ( -- n ) $FF ;" 0 REC
+   0 1 LIT   0 1 LIT   s" NF-HEX" EV-N
+   c s" : NF-HEXLC ( -- n ) $beef ;" 1 REC
+   1 1 LIT   1 1 LIT   s" NF-HEXLC" EV-N ;
+
+: WIDE-BODY ( IR-CTX:ctx -- n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c s" : NF-NEGHEX ( -- n ) -$FF ;" 0 REC
+   0 1 LIT   0 1 LIT   s" NF-NEGHEX" EV-N
+   c s" : NF-WRAP ( -- n ) 18446744073709551617 ;" 1 REC
+   1 1 LIT   1 1 LIT   s" NF-WRAP" EV-N ;
+
+: SPELLINGS-CASE ( -- )
+   s" a hexadecimal literal is the cell the engine reads it as" T-LABEL
+   BND [: HEX-BODY ;] IR-CTX:WITH-CONTEXT
+   T= 48879 T=                            \ $beef
+   T= 255 T=                              \ $FF
+   s" a signed hexadecimal and an out-of-range literal are too" T-LABEL
+   BND [: WIDE-BODY ;] IR-CTX:WITH-CONTEXT
+   T= 1 T=                                \ the engine's own wrap past 64 bits
+   T= -255 T= ;                           \ -$FF
+
 \ Two rows can name the same spelling and must still be two rows: the interner
 \ deduplicates the name, the tape does not deduplicate the token.
 : REPEAT-BODY ( IR-CTX:ctx -- n bool bool )
@@ -669,32 +700,23 @@ create UTXT-TINY TINY-CAP allot
 : TWO-UNITS ( -- )
    BND [: TWO-UNITS-BODY ;] IR-CTX:WITH-CONTEXT throw ;
 
-\ A literal this stage cannot record honestly is refused rather than recorded
-\ as something else: a hexadecimal spelling has no value this producer can read
-\ back, and a float has no tape kind at all.
-: HEX-BODY ( IR-CTX:ctx -- n )
-   OPEN-SCRATCH
-   s" : NF-HEX ( -- n ) $FF ;" EV-CATCH {: rc:n :}
-   NFEED:ABANDON-UNIT
-   rc ;
-
-: HEX ( -- )
-   BND [: HEX-BODY ;] IR-CTX:WITH-CONTEXT throw ;
-
 \ A float literal records the CELL the engine's own reader would have pushed for
 \ that spelling. The row's kind says a real literal and its value is that cell,
 \ so the comparison below is against the engine's literal and not against a
 \ number this test worked out for itself.
-: REAL-BODY ( IR-CTX:ctx -- bool bool n )
+: REAL-BODY ( IR-CTX:ctx -- bool bool n n n )
    {: c:IR-CTX:ctx :}
    c s" : NF-REAL ( -- r ) 1.5 ;" 0 REC
    0 1 NTAPE-KIND:REAL-LITERAL KIND-IS?
    0 1 s" 1.5" SPELL-IS?
-   0 1 LIT ;
+   0 1 LIT
+   0 1 LIT
+   s" NF-REAL" EV-N ;
 
 : REAL-CASE ( -- )
    s" a float literal is recorded as the cell the engine reads it as" T-LABEL
    BND [: REAL-BODY ;] IR-CTX:WITH-CONTEXT
+   T=                      \ the row's cell IS what the compiled word leaves
    1.5 REAL-CELL T=
    TTRUE TTRUE ;
 
@@ -735,31 +757,86 @@ create UTXT-TINY TINY-CAP allot
    0.11471049746507529 REAL-CELL T=
    1.9482199351819093 REAL-CELL T= ;
 
-\ What the reader behind the recording refuses. Every one of these is a spelling
-\ the engine's own float path cannot read either, so a tape that accepted one
-\ would carry a value no interpreted literal has.
-: READ-NONE? ( ptr u8 n -- bool )
-   NREAL:READ MATCH option
-      none OF true ENDOF
-      some OF drop false ENDOF
-   ;MATCH ;
+\ ---- the one reader, asked twice ---------------------------------------------
+\ The producer no longer has a reader of its own: it asks `num-parse`, which is
+\ the engine's own number routine over bytes a caller holds. These cases are
+\ about that routine, and each one asks the engine the SAME question a second
+\ way so the answer is checked against the engine rather than against this file.
+: PARSED? ( ptr u8 n -- bool )
+   num-parse {: v:n flt:bool ok:bool :} ok ;
 
-: READ-SOME ( ptr u8 n -- n )
-   NREAL:READ MATCH option
-      none OF 0 ENDOF
-      some OF ENDOF
-   ;MATCH ;
+: PARSED-FLOAT? ( ptr u8 n -- bool )
+   num-parse {: v:n flt:bool ok:bool :} flt ;
 
-: READER-CASE ( -- )
-   s" the literal reader declines every spelling the engine declines" T-LABEL
-   s" 5." READ-NONE? TTRUE
-   s" 12" READ-NONE? TTRUE
-   s" 1.2.3" READ-NONE? TTRUE
-   s" 1.5e3" READ-NONE? TTRUE
-   s" " READ-NONE? TTRUE
-   s" a dot-leading spelling is a float literal, as the engine has it" T-LABEL
-   s" .5" READ-SOME .5 REAL-CELL T=
-   s" -.5" READ-SOME -.5 REAL-CELL T= ;
+: PARSED-VALUE ( ptr u8 n -- n )
+   num-parse {: v:n flt:bool ok:bool :} v ;
+
+\ The second way of asking is the interpreter itself: `evaluate` on the bare
+\ spelling makes the engine's interpret dispatch read that token and push what
+\ it read, which is the very routine `num-parse` enters. A prim wired to some
+\ other reader, or entered with the arguments swapped, disagrees here.
+: AUTHORITY-CASE ( -- )
+   s" the primitive answers what the interpreter pushes for the same spelling" T-LABEL
+   s" 255" PARSED-VALUE                  s" 255" EV-N T=
+   s" $FF" PARSED-VALUE                  s" $FF" EV-N T=
+   s" -$FF" PARSED-VALUE                 s" -$FF" EV-N T=
+   s" $beef" PARSED-VALUE                s" $beef" EV-N T=
+   s" 18446744073709551617" PARSED-VALUE s" 18446744073709551617" EV-N T=
+   s" 1.5" PARSED-VALUE                  s" 1.5" EV-N T=
+   s" -0.0" PARSED-VALUE                 s" -0.0" EV-N T=
+   s" .5" PARSED-VALUE                   s" .5" EV-N T=
+   s" 1.9482199351819093" PARSED-VALUE   s" 1.9482199351819093" EV-N T= ;
+
+\ A spelling the engine declines answers nothing at all. `12a` is the one that
+\ matters: the routine stops at the `a` holding 12, and a caller that could read
+\ that cell would record a literal the engine never pushes.
+: DECLINE-CASE ( -- )
+   s" the engine's reader declines what the engine declines" T-LABEL
+   s" 5." PARSED? TFALSE
+   s" 1.2.3" PARSED? TFALSE
+   s" 1.5e3" PARSED? TFALSE
+   s" 12a" PARSED? TFALSE
+   s" $" PARSED? TFALSE
+   s" -" PARSED? TFALSE
+   s" " PARSED? TFALSE
+   s" a declined spelling answers no value and no float flag" T-LABEL
+   s" 12a" PARSED-VALUE 0 T=
+   s" 12a" PARSED-FLOAT? TFALSE
+   s" 5." PARSED-VALUE 0 T=
+   s" 5." PARSED-FLOAT? TFALSE ;
+
+\ THE DISAGREEMENT E-NFEED-LITERAL EXISTS FOR. The reader classifies a token
+\ with the checker's own predicates and the producer asks the engine's routine
+\ for the value, so the two languages have to be the same language: a token the
+\ checker calls an integer literal that the engine reads as a float, or does not
+\ read at all, is a definition whose certificate describes a program the runtime
+\ never runs. These fixtures are the number-shaped tokens that are WORDS - `1+`
+\ starts with a digit and `-` is a bare sign - plus the dot-leading float that
+\ only the engine's grammar admits. Every one is recorded through the real chain
+\ and its kind read off the tape, then the same bytes are put to the engine's
+\ reader: the two answers have to agree.
+: AGREE-BODY ( IR-CTX:ctx -- bool bool bool bool n n )
+   {: c:IR-CTX:ctx :}
+   c s" : NF-ONEPLUS ( n -- n ) 1+ ;" 0 REC
+   0 1 NTAPE-KIND:NAME KIND-IS?
+   c s" : NF-SUB ( n n -- n ) - ;" 0 REC
+   0 1 NTAPE-KIND:NAME KIND-IS?
+   c s" : NF-DOT5 ( -- r ) .5 ;" 0 REC
+   0 1 NTAPE-KIND:REAL-LITERAL KIND-IS?
+   0 1 s" .5" SPELL-IS?
+   0 1 LIT
+   s" NF-DOT5" EV-N ;
+
+: AGREE-CASE ( -- )
+   s" a number-shaped word is a word to both readers" T-LABEL
+   s" 1+" PARSED? TFALSE
+   s" -" PARSED? TFALSE
+   s" a dot-leading float is a float to both readers" T-LABEL
+   s" .5" PARSED? TTRUE
+   s" .5" PARSED-FLOAT? TTRUE
+   BND [: AGREE-BODY ;] IR-CTX:WITH-CONTEXT
+   T=
+   TTRUE TTRUE TTRUE TTRUE ;
 
 \ A definition whose reconstructed text does not fit the buffer the unit was
 \ opened with. The producer refuses the scan rather than recording spans into
@@ -811,11 +888,13 @@ TRUSTED: FAKE-TOKEN ( ptr u8 n n n -- ) CHECKER-TAPE:TOKEN ;
    BND [: XMOD-BODY ;] IR-CTX:WITH-CONTEXT throw ;
 
 \ After a refusal a new unit opens and records normally: the state machine is
-\ left clean by ABANDON-UNIT, not by luck.
+\ left clean by ABANDON-UNIT, not by luck. The refusal is a definition whose
+\ text is longer than the unit's own buffer, which the producer refuses in the
+\ middle of the scan it had already started.
 : RECOVER-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
-   c OPEN-SCRATCH
-   s" : NF-RCV1 ( -- n ) $FF ;" EV-CATCH drop
+   c OPEN-TINY
+   s" : NF-RCV1 ( n -- n ) 2 * ;" EV-CATCH drop
    NFEED:ABANDON-UNIT
    c s" : NF-RCV2 ( -- n ) 6 ;" 0 REC
    0 TOKENS ;
@@ -832,8 +911,6 @@ TRUSTED: FAKE-TOKEN ( ptr u8 n n n -- ) CHECKER-TAPE:TOKEN ;
    [: NO-SCAN ;] E-NFEED-STATE TTHROWSQ
    s" a second unit over a live one is refused" T-LABEL
    [: TWO-UNITS ;] E-NFEED-STATE TTHROWSQ
-   s" a hexadecimal literal is refused, never recorded as zero" T-LABEL
-   [: HEX ;] E-NFEED-LITERAL TTHROWSQ
    s" a definition longer than the unit's text buffer is refused" T-LABEL
    [: BIGTEXT ;] E-NFEED-TEXT TTHROWSQ
    s" a token event that lies about its offset is refused" T-LABEL
@@ -849,6 +926,7 @@ public
    GRID-B-CASE
    GRID-C-CASE
    LIT-CASE
+   SPELLINGS-CASE
    REPEAT-CASE
    TRIM-CASE
    SWALLOW-CASE
@@ -868,7 +946,9 @@ public
    REAL-CASE
    NEG-ZERO-CASE
    AWKWARD-CASE
-   READER-CASE
+   AUTHORITY-CASE
+   DECLINE-CASE
+   AGREE-CASE
    REFUSE-CASES
    RECOVER-CASE
    T-REPORT ;

@@ -5457,6 +5457,14 @@ PRIM: get-current    PE-N PE-OUT PRIM;
 PRIM: set-current    PE-N PE-IN PRIM;
 PRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+\ num-parse ( ptr u8 n -- n bool bool ) : the engine's own number reader, over
+\ bytes the caller already holds - the routine the interpret and compile
+\ dispatches call for every literal token (habu1.f BNUMPARSE, at LNUM). It
+\ answers the value, whether that value is a double's bits, and whether the
+\ bytes were a number at all. A checked stage that has to know what cell a
+\ literal spelling stands for asks this rather than reading the spelling back
+\ with a second decoder (src/compiler/native/feed.f).
+PRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT PRIM;
 PRIM: CORE-STR=      PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CORE-STR=CI    PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: PATHZ          PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PRIM;

@@ -2718,6 +2718,36 @@ package ENGINE-EMIT
       9 0 MOVZ,  9 G-PUSH
    PARSE-DONE LABEL@ LBL, ;
 
+\ num-parse ( ptr u8 n -- n bool bool ) : the engine's OWN number reader, over
+\ bytes a caller already holds. It is the routine EM-INTERPRET-NUMBER and
+\ EM-COMPILE-LITERAL call at LNUM, entered with the same two registers they
+\ load it with, so the cell it answers is the cell the interpreter pushes and
+\ the compiler compiles for that spelling - not a second reader that agrees.
+\ The three answers are the routine's own: x11 the value (a double's bits when
+\ the spelling was a float), x2 whether it read a float, x12 whether it read a
+\ number at all.
+\
+\ A REFUSED SPELLING ANSWERS NOTHING, and that is what the two ANDs are for. The
+\ routine stops at the first byte it cannot read and leaves whatever it had
+\ accumulated in x11 - `12a` leaves 12 - and it writes x2 only after the base is
+\ chosen, so the two early refusals (an empty token, a lone sign) never write it
+\ at all. Neither is a value the engine ever pushes, so a caller must not be able
+\ to read one: with the flag false both answers are zero.
+package ENGINE-EMIT
+public
+
+: BNUMPARSE ( -- )
+   B G-POP  A G-POP
+   2 0 MOVZ,
+   LNUM LABEL@ BL,
+   12 0 CMPI,  12 C-NE CSET,  12 SP 12 SUB,
+   2 0 CMPI,   2 C-NE CSET,   2 SP 2 SUB,
+   2 2 12 AND,
+   C C 12 AND,
+   C G-PUSH  2 G-PUSH  12 G-PUSH ;
+
+;package
+
 : EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
    s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
@@ -2763,6 +2793,7 @@ package ENGINE-EMIT
    s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
+   s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
    s" evaluate" ['] B-EVAL 2 GDEREF-L ;
 
 : EMIT-PROCESS-PRIMS ( -- )

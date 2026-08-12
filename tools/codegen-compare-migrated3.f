@@ -35,7 +35,7 @@
 \ WHY THE FLOAT LITERALS NEED NO SUBSTITUTION, WHICH IS THE POINT OF THE LEAF.
 \ Both bodies carry a float literal - SGD's arguments are doubles the caller
 \ pushes but SEG-1/SQRT writes `1.0` - and the tape records a real literal's own
-\ cell, read back along the engine's own route (src/compiler/native/real-lit.f).
+\ cell, as the engine's own number reader read it (the `num-parse` primitive).
 \ So a literal here is the same double the interpreted word pushes, to the bit,
 \ and the head-to-head check below is what says so rather than this sentence.
 \
