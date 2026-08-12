@@ -1246,3 +1246,26 @@ public
 -8703 constant E-JUDGE-SRC-SIG  \ a definition whose stack comment is missing, holds no `--`, holds two, leaves a pointer without its element type, or is written in a shape this counter cannot count: the arity is what the migration entry is told, and guessing it would invent the fact the reader exists to read
 -8704 constant E-JUDGE-SRC-ROW  \ a definition or callee index outside the recorded count
 -8705 constant E-JUDGE-SRC-DUP  \ a name this source defines twice: a caller asking for it would be answered about one of two programs, and which one is not a question a measurement should have
+
+\ The code generator judge's chain column: -8706..-8709 (same sub-block)
+\
+\ tools/judge/chain.f hands one canonical definition to the native chain's
+\ migration entry and records what the chain did with it. A refusal BY THE CHAIN
+\ is not an error here - it is the measurement, answered to the caller as the
+\ code the chain used - so the codes below are only this file failing to ask the
+\ question at all.
+-8706 constant E-JUDGE-CHAIN-CAP    \ a derived word name or a suffix longer than this file's store holds
+-8707 constant E-JUDGE-CHAIN-SUFFIX \ a derived word asked about before a suffix was set: the judge measures one corpus at a time and their derived words share one dictionary, so the suffix is what keeps two corpora that spell a subject the same way from publishing over each other, and there is no default that would hide the choice
+-8708 constant E-JUDGE-CHAIN-NAME   \ a derived name that already denotes a routine a call may branch to: publishing over it would leave the size reader answering about whichever of the two the dictionary reached first
+
+\ The code generator judge's table: -8710..-8713 (same sub-block)
+\
+\ tools/judge/row.f holds one row per corpus subject - three columns of bytes
+\ and cost, and the verdict the row comes to. Its refusals are the table being
+\ asked something it does not hold.
+-8710 constant E-JUDGE-ROW-CAP    \ more rows than the table holds, or a subject name longer than one row's name
+-8711 constant E-JUDGE-ROW-INDEX  \ a row index outside the recorded count
+-8712 constant E-JUDGE-ROW-STATE  \ a refusal recorded as the code zero, which is what a compiled row answers, or a verdict ordinal no verdict goes by
+-8709 constant E-JUDGE-CHAIN-ORDER  \ a corpus definition that calls one defined at or after it: the engine compiled that file top to bottom, so no order exists in which both the callee and the caller could have been published, and publishing them in the wrong one would measure a body whose call resolved to nothing
+-8713 constant E-JUDGE-CHAIN-DEP    \ the chain refused a definition a subject CALLS. Answering it as the subject's own refusal would record the compiler declining a callee as the compiler declining the subject, which is a different fact about a different body
+-8714 constant E-JUDGE-REPORT-CAP   \ a rendered artifact longer than the report's text buffer

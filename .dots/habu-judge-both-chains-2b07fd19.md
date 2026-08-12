@@ -28,4 +28,19 @@ time in tools/codegen-compare-c*.f, and the two rows the chain cannot compile
 CODEGEN-GAP - measured here as E-A64RA-SPILL (-8508), which is what replaces the
 list.
 
+LANDED SO FAR IN THIS LANE: tools/judge/src.f reads a corpus source file
+structurally and derives each definition's text, arity and callees; tools/judge/
+chain.f compiles that text through the chain and records the routine or the
+MEASURED refusal code; tools/judge.f writes test/compiler/judge-baseline.txt,
+which the gate checks byte for byte through tools/judge-test.f. Corpus 4 only,
+bytes only.
+
+STILL OPEN, IN ORDER: (1) the cost column - timing a row means calling it and a
+call has to name the word, which a REFUSED subject has none of, so the timing
+body has to be generated from the pinned input text rather than written as a
+static quotation; (2) corpora 1, 2, 3 and 5, whose float, create'd-data and
+tail-branch shapes are unprobed; (3) the seeded-random differential oracle over
+generated straight-line bodies, which is what replaces the finite recorded
+vectors.
+
 CG-27 + CG-28, transition evidence. Old subjects live in tools/codegen-compare-corpus*.f while new subjects are hand-copied strings in tools/codegen-compare-migrated*.f with inputs/results repeated; the gate compares finite recorded vectors and its own tests fabricate comparator rows. Corpus 4 compiles 11/13 rows, and name-based known-loss/unsupported exemptions (compare-report.f:519-575,625-633,675-679) let the gate exit clean despite CALL-FAN-BIG 88-vs-36 and two uncompiled rows. Fix: compile one canonical source artifact through both chains and judge against an independent semantic oracle or property set; committed gaps and size losses are explicit failures or explicit raw measurements, never name exemptions; add adversarial inputs (MIN-INT/MAX-INT overflow boundaries, seeded random bodies, spill-pressure words). After the cut, delete the old-vs-new harness and keep the oracle, a compact production corpus, the new chain's committed baseline, and the optional clang reference.

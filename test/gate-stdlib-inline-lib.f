@@ -545,6 +545,11 @@ public
    \ reads no clock, so it belongs in this parallel group with its two
    \ neighbours.
    s" tools/judge/src-test.f" GSI-FORK-INCLUDE
+   \ And the judged table that reader feeds: both code generators over one text,
+   \ clang beside them, and the committed artifact. Its chain column holds a
+   \ refusal CODE where the chain declined a subject, measured every run, so it
+   \ reads no clock either and belongs in this group.
+   s" tools/judge-test.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the end-to-end workload measurement - the engine's
    \ call-or-copy rule read off compiled code, each arm's wiring to its own code
    \ generator's word, and the answers the two arms compute. The deltas are

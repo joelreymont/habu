@@ -1,0 +1,50 @@
+habu code generator judge
+=========================
+
+One row per corpus subject, three code generators, judged on the bytes of
+machine code each emitted for the SAME program. The engine's emitter and the
+native chain compile one text - the corpus source file itself, read by
+tools/judge/src.f - and clang -O2 compiles a C twin of it.
+
+Regenerate this file with ONE command, from the repository root:
+
+  bin/hb --load tools/judge.f > test/compiler/judge-baseline.txt
+
+and check the tree against it with:
+
+  bin/hb --load tools/judge.f -- --check
+
+THE CHAIN COLUMN HOLDS EITHER BYTES OR A REFUSAL CODE, and which of the two
+is what the verdict says. A refusal is measured every run by handing the
+subject to the chain and recording what came back, so a subject that starts
+being refused and one that stops both move this file. Nothing here is a list
+of names anybody keeps in step by hand.
+
+A LARGER row is a finding and the check exits non-zero on it. A REFUSED row
+is a raw measurement printed with its code: the capability it waits for is a
+dot, and a check that failed on it would fail every day until that dot lands.
+
+WHAT IS NOT HERE YET: the cost column. Timing a row means calling it, and a
+call has to name the word, which a refused subject does not have. The three
+columns' costs are measured today by bin/hb --load tools/codegen-compare.f,
+run by hand on a quiet machine, and dot habu-judge-both-chains-2b07fd19
+carries bringing them here.
+
+word                                old  chain  clang  verdict
+--------------------------------  -----  -----  -----  -------
+CODEGEN-CORPUS4:CALL-FAN            220     44     28  smaller
+CODEGEN-CORPUS4:CALL-FAN-BIG         40     40     16  equal
+CODEGEN-CORPUS4:CALL-LOOP-3         480    104     48  smaller
+CODEGEN-CORPUS4:WIDE-ARITY          152     56     24  smaller
+CODEGEN-CORPUS4:LADDER              404    168    104  smaller
+CODEGEN-CORPUS4:PRESSURE-LOOP      1096  -8508     72  REFUSED
+CODEGEN-CORPUS4:CALL-PRESSURE       612  -8508     96  REFUSED
+CODEGEN-CORPUS4:BIG-CONSTS          640    148    392  smaller
+CODEGEN-CORPUS4:MANY-LOCALS         608    108     80  smaller
+CODEGEN-CORPUS4:TINY-CALLEE         364     56     12  smaller
+CODEGEN-CORPUS4:FLOAT-MIX           364     84    236  smaller
+CODEGEN-CORPUS4:STORE-LOAD          312     60     36  smaller
+
+clang flags: -O2 -arch arm64 -fno-math-errno
+
+rows: 12, refused by the chain: 2, larger than the engine's: 0
