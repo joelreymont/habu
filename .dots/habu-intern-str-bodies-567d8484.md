@@ -42,3 +42,9 @@ bound, which has its own named refusal. string.f's header sentence "DATA is the
 only home whose lifetime is the image's" is TRUE for a snapshot restore and
 FALSE for the AOT seed, and correcting it belongs in the same change.
 
+
+SUFFICIENCY ESTABLISHED (2026-08-12, prewindow lane): here/allot at intern
+time is necessary AND SUFFICIENT for NSTR, PROVIDED the chain is compiled
+entirely inside the window rather than split across d0 - the content-key
+sharing fear on this leaf materialises only if the chain loads on BOTH
+sides of d0. Keep it on one side and this dot's design stands as written.
