@@ -332,3 +332,19 @@ half today; the instrument gap is dotted. ALSO A CUT-DESIGN QUESTION the
 census surfaces: unchecked definitions (0 set-check regions, 114 rows
 E-NFEED-STATE) have no tape and cannot chain-compile — the sole-compiler
 design must state who compiles them, before the cut is scheduled.
+
+USER RULING 2026-08-12, SUPERSEDING ALL SEQUENCING ABOVE: THERE ARE NO
+ACCEPTABLE REFUSALS. Every class that refuses tree code is cut-blocking
+and gets fixed - no post-cut deferral exists for anything the census
+measures as refusing, because zero refusals IS the cut's precondition.
+Consequences: the register convention da01bd62 moves PRE-cut if the
+caller-save pricing (4055b7c7) falls short of the 140 POOL rows; the
+dialect classes (catch 6ceb7667, return stack 92993f27, [char]/[']
+ca9e5541+0750ac90, leave/again 018f3379, do 05b4e523, i/j locals
+9f38a8f6) are scheduled work, not backlog; DKEEP 2fa72257 and every
+newly-dotted class (reader-reentry, refused-tails, match-payloads,
+singletons, recorder caps, census reach) land before the cut; unchecked
+definitions get a tape-without-certification capability (the reader
+records tokens; certification stays absent) - dot it when the design
+lane answers the who-compiles-unchecked question. The only sequencing
+that remains is ORDER (dependency and lane capacity), never deferral.
