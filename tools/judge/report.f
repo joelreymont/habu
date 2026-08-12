@@ -140,6 +140,23 @@ variable TEXT-U
    s" measured against a program the corpus does not contain. REFUSED here is the" LINE
    s" truth about the corpus text, and the corpus is not respelled to buy the row." LINE
    NL
+   s" THE TABLE IS FINITE AND THE ORACLE BESIDE IT IS NOT. Every row here is a" LINE
+   s" program somebody wrote on an input somebody pinned, so what it can catch is" LINE
+   s" bounded by what anybody thought to write down. tools/judge/fuzz.f generates" LINE
+   s" straight-line integer programs from a CONSTANT seed, compiles each through" LINE
+   s" both code generators from one text, and requires the same cell back on the" LINE
+   s" ends of the signed range and on generated inputs. The gate runs a small" LINE
+   s" fixed number of them; the full sweep is a hand run:" LINE
+   NL
+   s"   bin/hb --load tools/judge-fuzz.f" LINE
+   NL
+   s" WHAT NEITHER THE ORACLE NOR THIS TABLE CAN SEE. Both columns of a two-way" LINE
+   s" row read ONE text. A reader that derived the wrong program hands the SAME" LINE
+   s" wrong program to both compilers, they agree about it, and no differential" LINE
+   s" test can notice - a shared-mode failure is the honest boundary of this" LINE
+   s" tool's coverage. What guards the shared half is the reader's own fixtures," LINE
+   s" tools/judge/src-test.f, which attack it with sources built to fool it." LINE
+   NL
    s" THE COSTS ARE BELOW THIS TABLE AND ARE NOT PART OF THE CHECK. A byte count" LINE
    s" is the same number on every host in every run; a cost is a measurement, and" LINE
    s" a machine with every core busy - which is what a gate is - moves one by more" LINE

@@ -550,6 +550,11 @@ public
    \ refusal CODE where the chain declined a subject, measured every run, so it
    \ reads no clock either and belongs in this group.
    s" tools/judge-test.f" GSI-FORK-INCLUDE
+   \ And the differential oracle: generated straight-line programs through both
+   \ code generators from one text, on the ends of the signed range and on
+   \ seeded inputs. Its seed is a constant and its assertions are counts, so it
+   \ reads no clock and belongs in this group with its neighbours.
+   s" tools/judge-fuzz-test.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the end-to-end workload measurement - the engine's
    \ call-or-copy rule read off compiled code, each arm's wiring to its own code
    \ generator's word, and the answers the two arms compute. The deltas are

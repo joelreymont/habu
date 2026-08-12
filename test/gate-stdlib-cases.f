@@ -306,6 +306,17 @@ SUITE judge
    tools/judge-test.f
 ;SUITE
 
+\ And the differential oracle beside it: straight-line integer programs nobody
+\ wrote, generated from a CONSTANT seed, compiled by both code generators from
+\ one text and required to answer the same cell on the ends of the signed range
+\ and on generated inputs. It runs a small fixed number of the same programs the
+\ hand-run sweep `bin/hb --load tools/judge-fuzz.f` runs, in the same order, so
+\ this member is a prefix of that sweep. It also proves the comparison can SEE a
+\ difference, by handing the two columns two texts that differ by one literal.
+\ The seed is a constant and no assertion is a duration, so it reads no clock.
+SUITE judge-fuzz
+   tools/judge-fuzz-test.f
+;SUITE
 
 \ The fork question, which used to be a third member of the registration above
 \ and was the one member nothing scheduled. It is its own registration because it

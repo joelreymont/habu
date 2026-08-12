@@ -174,6 +174,28 @@ variable RUN-NAME-U
 
 public
 
+\ Compile one whole definition through the ENGINE: the checker first, then the
+\ engine's own compiler, over the same audited evaluate boundary every generated
+\ body crosses. It is here rather than in the caller because the boundary is
+\ here: the differential oracle's engine column has to be the production compile
+\ path and not a second way in.
+: DEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CERTIFY-DEF
+   a u EV ;
+
+\ The same, and then RUN it, by appending the invocation after the definition's
+\ `;` so one evaluate does both - which is what COMPILE-AND-RUN above does for a
+\ body this file generated itself. A caller that compiles a driver once and runs
+\ it over many inputs needs this rather than a fresh definition per input: every
+\ generated word is a dictionary record that is never reclaimed.
+: DEFINE-RUN ( ptr u8 n ptr u8 n -- ) {: da:ptr du:n na:ptr nu:n :}
+   da du CERTIFY-DEF
+   TXT CODEGEN:RESET
+   da du TXT CODEGEN:APPEND-STRING
+   s"  " TXT CODEGEN:APPEND-STRING
+   na nu TXT CODEGEN:APPEND-STRING
+   TXT CODEGEN:CONTENTS EV ;
+
 \ Where a generated timing body leaves its measurement, and a generated value
 \ body its answer. Public because the generated text names them.
 : PICOS! ( n -- )

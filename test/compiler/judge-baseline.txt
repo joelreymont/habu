@@ -45,6 +45,23 @@ because the chain cannot read a hexadecimal spelling back. Green there is
 measured against a program the corpus does not contain. REFUSED here is the
 truth about the corpus text, and the corpus is not respelled to buy the row.
 
+THE TABLE IS FINITE AND THE ORACLE BESIDE IT IS NOT. Every row here is a
+program somebody wrote on an input somebody pinned, so what it can catch is
+bounded by what anybody thought to write down. tools/judge/fuzz.f generates
+straight-line integer programs from a CONSTANT seed, compiles each through
+both code generators from one text, and requires the same cell back on the
+ends of the signed range and on generated inputs. The gate runs a small
+fixed number of them; the full sweep is a hand run:
+
+  bin/hb --load tools/judge-fuzz.f
+
+WHAT NEITHER THE ORACLE NOR THIS TABLE CAN SEE. Both columns of a two-way
+row read ONE text. A reader that derived the wrong program hands the SAME
+wrong program to both compilers, they agree about it, and no differential
+test can notice - a shared-mode failure is the honest boundary of this
+tool's coverage. What guards the shared half is the reader's own fixtures,
+tools/judge/src-test.f, which attack it with sources built to fool it.
+
 THE COSTS ARE BELOW THIS TABLE AND ARE NOT PART OF THE CHECK. A byte count
 is the same number on every host in every run; a cost is a measurement, and
 a machine with every core busy - which is what a gate is - moves one by more
@@ -128,55 +145,55 @@ different addresses with a cold instruction cache each time. That widens the
 spread and it is deliberate: a placement a row was lucky in once is not a
 property of the code the compiler emitted.
 
-NOISE FLOOR, MEASURED THIS RUN: 896 permille. That is the widest gap between
+NOISE FLOOR, MEASURED THIS RUN: 401 permille. That is the widest gap between
 two measurements of ONE program in this process, so a difference between two
-columns smaller than it is not a difference. The floor itself measured 1928 ps.
+columns smaller than it is not a difference. The floor itself measured 1934 ps.
 
 word                                  old    chain    clang
 --------------------------------  -------  -------  -------
-CODEGEN-CORPUS:ADD3                  1.42     0.20    -0.40
-CODEGEN-CORPUS:SQUARE-SUM            4.79    -0.11    -0.36
-CODEGEN-CORPUS:MAX2                  3.64    -0.03    -0.89
-CODEGEN-CORPUS:LERP                  3.47     0.24    -0.18
-CODEGEN-CORPUS:SUM-TO               25.29     0.13     0.69
-CODEGEN-CORPUS:COUNT-DOWN           45.34     4.88    -0.78
-CODEGEN-CORPUS:FACT                 42.78    12.96     1.08
-CODEGEN-CORPUS:CELL-BUMP             6.76     0.32    -0.33
-CODEGEN-CORPUS:BYTE-SUM             64.34     7.02     2.94
-CODEGEN-CORPUS:BYTE-FIND            38.30     4.11     2.01
-CODEGEN-CORPUS2:TAG                  0.29    -0.16     0.28
-CODEGEN-CORPUS2:WS?                 11.25     2.27     1.20
-CODEGEN-CORPUS2:SYM-FOLD-C           0.96        -     0.24
-CODEGEN-CORPUS2:MAX-DIM              0.82    -0.13    -0.33
-CODEGEN-CORPUS2:COUNT-CHAR          83.38     7.54     3.29
-CODEGEN-CORPUS2:T-RES-WALK          28.84     7.93     1.19
-CODEGEN-CORPUS2:VEC-COPY-CELLS      25.44     2.47     1.81
-CODEGEN-CORPUS3:T-SUM               22.16     2.46     1.02
-CODEGEN-CORPUS3:T-SGD!              43.41     2.87     3.66
-CODEGEN-CORPUS3:T-DIST2             48.28     2.94     1.53
-CODEGEN-CORPUS3:T-NORM2             23.80     2.40     0.24
-CODEGEN-CORPUS3:T-REL-L2           103.02     6.47     3.66
-CODEGEN-CORPUS3:RELU-F               1.26    -0.09    -1.08
-CODEGEN-CORPUS3:MAX-F                2.35    -0.13     0.31
-CODEGEN-CORPUS3:SGD                  0.90    -0.00    -0.33
-CODEGEN-CORPUS3:SEG-1/SQRT           3.53    -0.11     0.05
-CODEGEN-CORPUS3:FROUND               2.91     0.11    -0.02
-CODEGEN-CORPUS4:CALL-FAN             5.35    -0.17     0.03
-CODEGEN-CORPUS4:CALL-FAN-BIG        11.32     0.01    -0.30
-CODEGEN-CORPUS4:CALL-LOOP-3         48.38     3.43     3.12
-CODEGEN-CORPUS4:WIDE-ARITY           2.61     1.22    -1.04
-CODEGEN-CORPUS4:LADDER               2.39     1.01     0.60
-CODEGEN-CORPUS4:PRESSURE-LOOP      197.64        -    -0.84
-CODEGEN-CORPUS4:CALL-PRESSURE      146.31        -     4.02
-CODEGEN-CORPUS4:BIG-CONSTS          78.41     7.69     2.92
-CODEGEN-CORPUS4:MANY-LOCALS        117.27     2.39     1.74
-CODEGEN-CORPUS4:TINY-CALLEE         56.14     0.23     0.13
-CODEGEN-CORPUS4:FLOAT-MIX           31.46     3.35     1.12
-CODEGEN-CORPUS4:STORE-LOAD          35.68     3.22     3.06
-CODEGEN-CORPUS5:TAIL-BIG            11.53     0.25     0.83
-CODEGEN-CORPUS5:TAIL-WORK           12.89     0.42    -0.28
-CODEGEN-CORPUS5:NONTAIL             13.03     0.51     0.55
-CODEGEN-CORPUS5:TAIL-MID            11.57     0.29     0.32
-CODEGEN-CORPUS5:TAIL-CHAIN          11.85     0.51     0.68
-CODEGEN-CORPUS5:TAIL-PAIR            1.72     0.42    -0.03
-CODEGEN-CORPUS5:TAIL-AFTER          24.55     0.81     0.74
+CODEGEN-CORPUS:ADD3                  1.43     0.05     0.47
+CODEGEN-CORPUS:SQUARE-SUM            4.76    -0.11    -0.72
+CODEGEN-CORPUS:MAX2                  3.72    -0.03    -0.46
+CODEGEN-CORPUS:LERP                  3.47     0.41     0.14
+CODEGEN-CORPUS:SUM-TO               25.75     0.01     0.41
+CODEGEN-CORPUS:COUNT-DOWN           45.56     4.83    -0.20
+CODEGEN-CORPUS:FACT                 42.83    13.07     0.94
+CODEGEN-CORPUS:CELL-BUMP             6.92     0.31     0.82
+CODEGEN-CORPUS:BYTE-SUM             63.06     7.15     3.41
+CODEGEN-CORPUS:BYTE-FIND            37.90     4.07     3.20
+CODEGEN-CORPUS2:TAG                  0.54    -0.06     0.45
+CODEGEN-CORPUS2:WS?                 11.34     2.38     0.09
+CODEGEN-CORPUS2:SYM-FOLD-C           0.88        -     0.65
+CODEGEN-CORPUS2:MAX-DIM              0.83    -0.15    -0.44
+CODEGEN-CORPUS2:COUNT-CHAR          82.50     7.68     3.27
+CODEGEN-CORPUS2:T-RES-WALK          29.20     7.82     1.42
+CODEGEN-CORPUS2:VEC-COPY-CELLS      24.94     2.13     2.61
+CODEGEN-CORPUS3:T-SUM               22.36     2.45     1.46
+CODEGEN-CORPUS3:T-SGD!              45.19     2.63     2.76
+CODEGEN-CORPUS3:T-DIST2             44.84     3.11     2.61
+CODEGEN-CORPUS3:T-NORM2             23.85     3.05     1.36
+CODEGEN-CORPUS3:T-REL-L2           102.26     6.83     2.51
+CODEGEN-CORPUS3:RELU-F               1.23    -0.14    -0.13
+CODEGEN-CORPUS3:MAX-F                2.00     1.05    -0.65
+CODEGEN-CORPUS3:SGD                  0.93     0.15    -1.68
+CODEGEN-CORPUS3:SEG-1/SQRT           3.41    -0.01     0.45
+CODEGEN-CORPUS3:FROUND               2.95     0.00     1.37
+CODEGEN-CORPUS4:CALL-FAN             4.81    -0.17    -0.16
+CODEGEN-CORPUS4:CALL-FAN-BIG        11.42     0.06     0.52
+CODEGEN-CORPUS4:CALL-LOOP-3         47.41     3.73     1.47
+CODEGEN-CORPUS4:WIDE-ARITY           2.89     1.22     0.70
+CODEGEN-CORPUS4:LADDER               2.12     0.77     0.09
+CODEGEN-CORPUS4:PRESSURE-LOOP      195.88        -    -1.13
+CODEGEN-CORPUS4:CALL-PRESSURE      150.07        -     4.11
+CODEGEN-CORPUS4:BIG-CONSTS          78.61     7.58     2.88
+CODEGEN-CORPUS4:MANY-LOCALS        117.74     2.11     0.23
+CODEGEN-CORPUS4:TINY-CALLEE         56.31     0.21     0.17
+CODEGEN-CORPUS4:FLOAT-MIX           31.13     3.12     0.89
+CODEGEN-CORPUS4:STORE-LOAD          34.59     3.73     2.50
+CODEGEN-CORPUS5:TAIL-BIG            11.45     0.41     1.04
+CODEGEN-CORPUS5:TAIL-WORK           12.63     0.24     0.15
+CODEGEN-CORPUS5:NONTAIL             12.68     0.51    -0.17
+CODEGEN-CORPUS5:TAIL-MID            11.35     0.23     0.45
+CODEGEN-CORPUS5:TAIL-CHAIN          11.58     0.50    -0.06
+CODEGEN-CORPUS5:TAIL-PAIR            1.60     0.41    -0.59
+CODEGEN-CORPUS5:TAIL-AFTER          23.68     1.04    -0.97
