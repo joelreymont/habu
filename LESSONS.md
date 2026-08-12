@@ -5982,3 +5982,11 @@ optimizations measured against the same baseline are not additive if
 they share a cost; re-profile after the first lands before building
 the second. The refutation is recorded on the leaf so the idea is
 dead, not pending.
+
+## A mutant that fails to compile tests nothing (2026-08-12)
+
+A mutation whose edit leaves the file uncompilable produces no red
+and no green - the suite never ran. Before reading any mutation
+result: prove the edit landed (assert the text changed, read it
+back) and prove the mutant COMPILES and differs from the original.
+"No TFAIL in the output" of a file that never loaded is not a pass.
