@@ -1984,28 +1984,73 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
       sy i LNAME @ NFROZEN:SAME-SYM? or
    loop ;
 
+\ ---- the one name a local may not take ----------------------------------------
+\ A NAME THE DIALECT ALREADY MEANS IS STILL THE PROGRAM'S, AND THAT IS THE
+\ ENGINE'S ANSWER RATHER THAN THIS FILE'S. It was measured, not reasoned about
+\ (dot habu-decide-what-a-9f38a8f6):
+\
+\   : T ( n -- n ) {: i:n :} 0 3 0 ?do i + loop ;               5 T -> 15
+\   : U ( n -- n ) drop 0 3 0 ?do i + loop ;                    5 U -> 3
+\   : V ( n -- n ) {: j:n :} 0 2 0 ?do 3 0 ?do j + loop loop ;  7 V -> 42
+\   : W ( n -- n ) {: dup:n :} dup dup + ;                      5 W -> 10
+\   : X ( n -- n ) {: if:n :} if if + ;                         5 X -> 10
+\
+\ The declared name WINS - over a loop index, over a primitive and over a
+\ keyword alike - from its group's closer onwards, and only from there:
+\ `0 3 0 ?do i + loop {: s:n i:n :} s i +` answers 8 for 5, the index three
+\ times and then the local once. That is LIVE-AT? exactly, and it is what
+\ docs/forth.md has always said: locals are lexical and local-first. So the
+\ collision needs no rule of this file's own: every pass that reads a body token
+\ for what it MEANS asks LOCAL-OF first - RESOLVE-STEP, INLINE-SCAN, MSCAN-STEP,
+\ DSCAN-STEP, MEM-SCAN, CROSS-STEP, SK-STEP and STEP. BACK-SCAN is the one
+\ reader that does not, and it is the one whose answer cannot be wrong either
+\ way: what it decides is whether this body makes a call it comes BACK from, and
+\ a bound name it counted as one would keep a frame that is not needed rather
+\ than drop one that is.
+\
+\ ONE PASS CANNOT ASK, AND THAT IS THE WHOLE REFUSAL LEFT. QUOT-SCAN runs before
+\ this one, because the spans it finds are what every later walk steps over - so
+\ at the moment it reads `[:` and `;]` there is no locals frame to consult, and a
+\ body that bound one of those names would have its spans taken from a token that
+\ means something else.
+\
+\ AND OF THE FOUR DELIMITERS ONLY ONE CAN REACH HERE AS A NAME, which is why one
+\ test is the whole of it. A local's NAME is the bytes before the annotation's
+\ `:` (HIR-WORD:LOCAL-NAME-LEN), so no name contains a colon at all - a group
+\ writing `[:` declares `[`, which is nobody's word. `{:` and `:}` never arrive:
+\ SCAN-STEP above reads both as what they are before a declaration is reached.
+\ And a group that writes `[:` has put its own closer inside the span that token
+\ opened, which QLOCALS-CK refuses as the QUOTATION's - test/compiler/native-
+\ elaborate.f holds that refusal against its owner rather than letting this one
+\ claim it. `;]` carries no colon and opens nothing, so it arrives here, and here
+\ is where it is refused.
+\
+\ THE QUESTION IS ASKED UNDER THE FOLD, and it is the only question here that is.
+\ What it decides is how a MENTION of this name will be read by that pre-scan,
+\ and a mention reaches the word model through WSYM, which is the spelling's
+\ fold. The NAME itself is the bytes the body wrote (below).
+: PRE-FRAME? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if false exit then
+   r sy HIR-WORD:CTRL@ HIR-CTRL:CLOSE-QUOT HIR-CTRL:EQ ;
+
 \ One declared local: its bare name, interned into this module so that every
 \ later mention of it in the body is the same identity. The annotation is cut
 \ off by the word model, which owns how a source word of this dialect is
-\ spelled. A name the dialect already models is refused rather than allowed to
-\ shadow it: `{: i:n :}` inside a counted loop would otherwise make `i` mean two
-\ things, and which one it means is a rule this file has no business inventing
-\ (dot habu-decide-what-a-9f38a8f6).
+\ spelled.
 \
 \ THE NAME IS THE BYTES THE BODY WROTE, AND IS NOT FOLDED. Everywhere else this
 \ file asks the word model under the spelling's FOLD, because that is the
 \ identity the engine's keyword and dictionary compares give a name. A local is
 \ the one thing the engine does NOT fold: src/habu/habu2.f EMIT-LOC-FIND compares
 \ a local's name byte for byte, and the engine was asked rather than assumed -
-\ `: TUP ( n -- n ) {: I:n :} 0 3 0 ?do I + loop ;` answers 15 for 5, the LOCAL,
-\ while the same definition written `?do i + loop` answers 3, the loop INDEX. So
-\ the name is interned as written and matched as written (LOCAL-OF), and the
-\ collision question above is asked of that same raw name: `{: i:n :}` is refused
-\ exactly as it was, `{: I:n :}` is the program's own name exactly as it was, and
-\ a mention in the OTHER case is not a local here for the same reason it is not
-\ one in the engine - it goes to the word model under its key and is the dialect's
-\ word. Folding this would refuse a program the engine compiles; folding LOCAL-OF
-\ instead would bind a mention the engine gives to something else.
+\ `: TUP ( n -- n ) {: i:n :} 0 3 0 ?do i + loop ;` answers 15 for 5, the LOCAL,
+\ while the same definition written `?do I + loop` answers 3, the loop INDEX. So
+\ the name is interned as written and matched as written (LOCAL-OF), and a
+\ mention in the OTHER case is not a local here for the same reason it is not one
+\ in the engine - it goes to the word model under its key and is the dialect's
+\ word. Folding LOCAL-OF would bind a mention the engine gives to something else.
 : DECLARE-LOCAL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    LN @ LMAX >= if E-NELAB-LOCAL-CAP throw then
@@ -2013,7 +2058,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    LBUF u HIR-WORD:LOCAL-NAME-LEN {: nu:n :}
    nu 1 < if E-NELAB-LOCAL throw then
    CTX BLD LBUF nu IR-BUILD:INTERN-SYMBOL {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:MODELS? if E-NELAB-LOCAL throw then
+   r  CTX BLD sy HIR-WORD:KEY-SYM  PRE-FRAME? if E-NELAB-LOCAL throw then
    sy DUP-LOCAL? if E-NELAB-LOCAL throw then
    sy LN @ LNAME !
    -1 LN @ LROW!
@@ -2732,6 +2777,16 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ One row, dispatched on the mode. The operand modes accept nothing else, which
 \ is what makes a form whose operand is missing a refusal here rather than a
 \ family resolved from the wrong token.
+\
+\ A BOUND LOCAL'S NAME IS NOT A KEYWORD HERE, and the test stands where it does
+\ for a reason. It is BELOW the operand modes because those read by POSITION -
+\ the token after `MATCH` is a type family and the token after a variant is
+\ `of`, and the engine's own token machine consumes them the same way, so a
+\ mention passed over there would move which token the family came from. It is
+\ ABOVE the two keyword readers because that is where this pass reads a token as
+\ a WORD, and a body that named a local `of` or `endcase` means its own value
+\ there (DECLARE-LOCAL). The locals pass runs before this one, which is what
+\ makes the question answerable at all.
 : MSCAN-STEP ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
    ix IN-DECL? if exit then
    MM @ MM-FAM = if ix MSCAN-MATCH-FAM exit then
@@ -2745,6 +2800,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    then
    MM @ MM-CON-FAM = if ix MSCAN-CON-FAM exit then
    MM @ MM-CON-VAR = if ix MSCAN-CON-VAR exit then
+   ix LOCAL-OF 0 >= if exit then
    r ix MSCAN-OPEN if exit then
    r ix MSCAN-CLOSE drop ;
 
@@ -2777,9 +2833,19 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \
 \ IT RUNS AFTER THE TAG-DISPATCH PASS because that pass clears every role, and
 \ before the pass that resolves names, because that is the first reader of a
-\ role. Both orders are stated in COLON.
+\ role. It also runs after the locals pass, which is what lets it pass over a
+\ declaration row and a bound name the way every other reader of a body token
+\ does. All three orders are stated in COLON.
+\
+\ PASSING OVER A BOUND NAME IS NOT DECORATION. The role this marks makes the
+\ NEXT row an operand, and an operand is a row the walk steps over - so a body
+\ that named a local `is` would, without these two tests, have lost the two
+\ tokens after each mention and compiled a shorter program with no refusal
+\ anywhere.
 : DSCAN-STEP ( IR-ARENA:arena n n -- )
    {: r:IR-ARENA:arena n:n ix:n :}
+   ix IN-DECL? if exit then
+   ix LOCAL-OF 0 >= if exit then
    r ix HIR-CTRL:BIND-DEFER ROW-CTRL? 0= if exit then
    ix 1+ {: t:n :}
    t n >= if E-NELAB-DEFER throw then

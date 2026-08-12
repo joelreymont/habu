@@ -992,12 +992,13 @@ public
 \ elaborator is the only stage that ever sees a local: a bound name is a value
 \ of the compile-time vector, so nothing downstream of the elaborator learns a
 \ new concept and no other package gains a code here. A refusal another
-\ authority already owns keeps that authority's name - a local named after a
-\ word the dialect models is still E-HIR-DUP's kind of collision but it is this
-\ elaborator that has no rule for it, and a source word the dialect cannot
-\ compile at all is still E-HIR-UNMODELED, which is what a rebinding or an
-\ address-of by name is refused as.
--8540 constant E-NELAB-LOCAL     \ a locals declaration this elaborator has no rule for: a group opened inside another group or inside a control structure, a group left unclosed, a closer with no opener, a declared name the dialect already models, the same name declared twice, or a token in the group that is not a name
+\ authority already owns keeps that authority's name - a source word the dialect
+\ cannot compile at all is still E-HIR-UNMODELED, which is what a rebinding or an
+\ address-of by name is refused as. A name the dialect already models is NOT one
+\ of these: a local means the local, which is what the engine does, so the only
+\ name refused here is the quotation's closer, whose spans are found before the
+\ locals frame exists.
+-8540 constant E-NELAB-LOCAL     \ a locals declaration this elaborator has no rule for: a group opened inside another group or inside a control structure, a group left unclosed, a closer with no opener, a declared name the quotation pre-scan reads before there is a locals frame to consult (`;]`), the same name declared twice, or a token in the group that is not a name
 -8541 constant E-NELAB-LOCAL-CAP \ more locals, or more locals groups, in one definition than the elaborator's tables hold
 
 \ Native calls: -8550..-8559

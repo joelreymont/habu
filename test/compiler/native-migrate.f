@@ -2055,12 +2055,115 @@ variable MEAS-PUB0
    s" 5 LGP-EXIT" EV-N  s" 5 LGI-EXIT" EV-N T=
    s" -2 LGP-EXIT" EV-N  s" -2 LGI-EXIT" EV-N T= ;
 
+\ ---- a local named after a word of the dialect -------------------------------
+\ WHAT SUCH A NAME MEANS IS THE ENGINE'S ANSWER, and every case here holds the
+\ chain's compilation of a body against the ENGINE's compilation of the same
+\ text, exactly as the section above does. The numbers are not decoration: each
+\ one is different from what the other reading of the name would answer, so a
+\ chain that resolved the name the other way could not pass by accident.
+\
+\   LGP-IDX     `{: i:n :}` and then a counted loop that writes `i`. The local
+\               is 5 and the loop runs three turns, so the LOCAL answers 15 and
+\               the loop INDEX would answer 0+1+2 = 3.
+\   LGP-JDX     the same question one loop deeper, where `j` is the outer index:
+\               six turns of the local 7 is 42, and the outer index would be 3.
+\   LGP-CAPI    the same body writing the mention in the OTHER case. A local's
+\               name is matched by its bytes, so `I` is not this local and goes
+\               to the dialect: 3, the index, from a body that binds 5.
+\   LGP-BEFORE  mentions on both sides of the declaration. The three before it
+\               are the index and the one after it is the local, so 5 answers
+\               0+1+2 = 3 and then 3+5 = 8; one reading throughout would answer
+\               15+5 or 3+3.
+\   LGP-IF      the name is a KEYWORD, which is the case that also asks the
+\               block builder: `{: if:n :} if if +` doubles, and a skeleton that
+\               read either mention as a branch would count blocks the walk does
+\               not build.
+\
+\ THE FOUR LOOP BODIES ARE MIGRATED AT THE LOOP BUDGET, for the reason every
+\ other counted loop in this suite is: a loop carries its accumulator, its index
+\ and its limit across every edge, and three of these four are refused at four
+\ registers as E-A64RA-SPILL (measured) - which is an answer about the budget and
+\ not about the name. LGP-IF carries no loop and is migrated at the ordinary one.
+: LGP-IDX-SRC ( -- ptr u8 n )
+   s" : LGP-IDX ( n -- n ) {: i:n :} 0 3 0 ?do i + loop ;" ;
+
+: LGP-JDX-SRC ( -- ptr u8 n )
+   s" : LGP-JDX ( n -- n ) {: j:n :} 0 2 0 ?do 3 0 ?do j + loop loop ;" ;
+
+: LGP-CAPI-SRC ( -- ptr u8 n )
+   s" : LGP-CAPI ( n -- n ) {: i:n :} 0 3 0 ?do I + loop ;" ;
+
+: LGP-BEFORE-SRC ( -- ptr u8 n )
+   s" : LGP-BEFORE ( n -- n ) 0 3 0 ?do i + loop {: s:n i:n :} s i + ;" ;
+
+: LGP-IF-SRC ( -- ptr u8 n )
+   s" : LGP-IF ( n -- n ) {: if:n :} if if + ;" ;
+
+: MIGRATE-LGP-IDX ( -- )
+   LGP-IDX-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-LGP-JDX ( -- )
+   LGP-JDX-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-LGP-CAPI ( -- )
+   LGP-CAPI-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-LGP-BEFORE ( -- )
+   LGP-BEFORE-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-LGP-IF ( -- )
+   LGP-IF-SRC 1 1 REGS NMIGRATE:DEFINE ;
+
+\ The engine's own compilations of the same five texts, under names of their own.
+: LGD-INTERPRETED ( -- )
+   s" : LGD-IDX ( n -- n ) {: i:n :} 0 3 0 ?do i + loop ;" EV
+   s" : LGD-JDX ( n -- n ) {: j:n :} 0 2 0 ?do 3 0 ?do j + loop loop ;" EV
+   s" : LGD-CAPI ( n -- n ) {: i:n :} 0 3 0 ?do I + loop ;" EV
+   s" : LGD-BEFORE ( n -- n ) 0 3 0 ?do i + loop {: s:n i:n :} s i + ;" EV
+   s" : LGD-IF ( n -- n ) {: if:n :} if if + ;" EV ;
+
+: DIALECT-NAME-CASE ( -- )
+   LGD-INTERPRETED
+
+   s" a local named after the loop index is the LOCAL inside the loop" T-LABEL
+   MIGRATE-LGP-IDX
+   s" LGP-IDX" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" 5 LGP-IDX" EV-N 15 T=
+   s" 5 LGP-IDX" EV-N  s" 5 LGD-IDX" EV-N T=
+   s" 4 LGP-IDX" EV-N  s" 4 LGD-IDX" EV-N T=
+
+   s" and one named after the outer index of a nested loop is the local too" T-LABEL
+   MIGRATE-LGP-JDX
+   s" 7 LGP-JDX" EV-N 42 T=
+   s" 7 LGP-JDX" EV-N  s" 7 LGD-JDX" EV-N T=
+   s" 3 LGP-JDX" EV-N  s" 3 LGD-JDX" EV-N T=
+
+   s" a mention in the other case is not that local and is the dialect's word" T-LABEL
+   MIGRATE-LGP-CAPI
+   s" 5 LGP-CAPI" EV-N 3 T=
+   s" 5 LGP-CAPI" EV-N  s" 5 LGD-CAPI" EV-N T=
+   s" 9 LGP-CAPI" EV-N  s" 9 LGD-CAPI" EV-N T=
+
+   s" the mentions before the declaration are still the dialect's word" T-LABEL
+   MIGRATE-LGP-BEFORE
+   s" 5 LGP-BEFORE" EV-N 8 T=
+   s" 5 LGP-BEFORE" EV-N  s" 5 LGD-BEFORE" EV-N T=
+   s" 11 LGP-BEFORE" EV-N  s" 11 LGD-BEFORE" EV-N T=
+
+   s" and a local named after a control keyword builds no block" T-LABEL
+   MIGRATE-LGP-IF
+   s" LGP-IF" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" 5 LGP-IF" EV-N 10 T=
+   s" 5 LGP-IF" EV-N  s" 5 LGD-IF" EV-N T=
+   s" -3 LGP-IF" EV-N  s" -3 LGD-IF" EV-N T= ;
+
 : RUN ( -- )
    T-RESET
    MOD-CONST
    RESOLVED-CASE
    STALE-CASE
    LOCALS-GROUPS-CASE
+   DIALECT-NAME-CASE
    MIGRATED-CASE
    VOID-CALL-CASE
    SPILL-CASE

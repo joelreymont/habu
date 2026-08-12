@@ -6105,3 +6105,29 @@ definition - examined=0 looks like a broken path. (5) The class's
 fix was invisible to its own leaf because the leaf named a mechanism
 instead of a measurement - the four-verdict experiment (same body,
 constant vs digit) was the whole diagnosis.
+
+## The i/j-locals landing's five (2026-08-13)
+
+(1) A refusal can outlive the collision it guards: the elaborator
+refused every local whose name the dialect models, yet six of its
+eight body-token readers already asked LOCAL-OF before the word
+model, so the two meanings could not have met. Read the pass list
+before believing a refusal's own reason. (2) The ENGINE settles what
+a name means and it had already been written down - docs/forth.md
+said "local-first", and `{: i:n :} 0 3 0 ?do i + loop` answers three
+turns of the LOCAL (15 for 5) while the same body without the
+declaration answers the index (3). Check the documented convention
+before designing a rule. (3) The two passes that read a body token
+WITHOUT asking the frame were found by reading COLON's pass order,
+not by testing: `is` marks the row after it as an operand, and an
+operand is a row the walk steps over, so a local named `is` would
+have compiled a SHORTER program with no refusal anywhere. A refusal
+list would have hidden that hole; guarding the passes exposed it.
+(4) A local's name is the bytes before the annotation's colon, so no
+local name can contain one - which quietly makes `[:`, `{:` and `:}`
+unspellable as names and left exactly one token to refuse. Derive the
+refusal set from what can REACH the check, or half of it is dead
+code. (5) The census over `src lib` is reproducible; over `tools` it
+is not - most of tools/ runs a MAIN word at load and one of them
+(build-fixpoint-main.f) exits the process, so a whole-tree census
+stops there and prints no report at all.

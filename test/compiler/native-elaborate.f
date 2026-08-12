@@ -1693,6 +1693,115 @@ variable LK-N
    TTRUE TTRUE TTRUE TTRUE
    3 T= ;
 
+\ ---- a local named after a word the dialect models ---------------------------
+\ THE NAME IS THE PROGRAM'S, AND THAT IS THE ENGINE'S ANSWER RATHER THAN A
+\ CHOICE. `: T ( n -- n ) {: i:n :} 0 3 0 ?do i + loop ;` answers 15 for 5 -
+\ three turns of the LOCAL - while the same body without the declaration answers
+\ 3, the loop INDEX; `{: dup:n :} dup dup +` doubles; `{: if:n :} if if +`
+\ doubles. test/compiler/native-migrate.f holds each of those answers against
+\ the engine's own compilation of the same text. What is measured HERE is the
+\ module, because an answer cannot say which of two readings produced it when
+\ both readings are legal programs.
+\
+\ THE FOUR BODIES ASK FOUR DIFFERENT READERS. A primitive's name asks the walk;
+\ the loop index's name asks the block builder as well, since a mention read as
+\ the index would take the header's argument instead of the body's; `of` is read
+\ by the tag-dispatch pre-pass and `is` by the deferred-word pre-pass, and
+\ neither of those two passes builds anything the walk would refuse - a mention
+\ they claimed would silently become an operand of a form that is not there.
+: PRIMLOC-BODY ( IR-CTX:ctx -- n bool bool bool bool n )
+   {: c:IR-CTX:ctx :}
+   s" PRIML {: dup:n :} dup dup +" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk F-OPS
+   m blk 0 F-OP {: ad:IR-ID:ir-op-id :}
+   m ad s" hir.add" F-OPC?
+   m  m blk 1 F-OP  s" hir.return" F-OPC?
+   m ad 0 F-IN  m blk 0 F-ARG SAME?
+   m ad 1 F-IN  m blk 0 F-ARG SAME?
+   m F-VALUES ;
+
+: PRIMLOC-CASE ( -- )
+   s" a local named after a primitive is that local, and stages no operation of its own" T-LABEL
+   BND [: PRIMLOC-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= TTRUE TTRUE TTRUE TTRUE 2 T= ;
+
+\ `IDXL {: i:n :} 0 3 0 ?do i + loop`. The block shape is SUM-TO's, which this
+\ file already measures: seven blocks, and a header taking the accumulator, the
+\ index and the limit - three arguments, because those are the three values a
+\ turn of the loop changes.
+\
+\ WHICH VALUE THE ADDITION READS IS THE WHOLE CASE, and the two readings are
+\ told apart by exactly that. The accumulator is the header's first argument in
+\ both readings. The second operand is the header's SECOND argument if `i` is
+\ the loop index, and the DEFINITION'S OWN ENTRY ARGUMENT if `i` is the local -
+\ a value the entry block defines and therefore dominates the loop with, so it
+\ needs no argument of the header at all. Both are asserted, one true and one
+\ false, because the count alone says nothing: SUM-TO's header has three
+\ arguments too.
+: IDXLOC-BODY ( IR-CTX:ctx -- n n bool bool bool )
+   {: c:IR-CTX:ctx :}
+   s" IDXL {: i:n :} 0 3 0 ?do i + loop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: hd:IR-ID:ir-block-id :}
+   m hd F-ARGS
+   m hd s" hir.add" 0 F-OPC-AT {: ad:IR-ID:ir-op-id :}
+   m ad 0 F-IN  m hd 0 F-ARG SAME?
+   m ad 1 F-IN  m e 0 F-ARG SAME?
+   m ad 1 F-IN  m hd 1 F-ARG SAME? ;
+
+: IDXLOC-CASE ( -- )
+   s" a local named after the loop index is the local the loop body adds, not the index" T-LABEL
+   BND [: IDXLOC-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE 3 T= 7 T= ;
+
+: OFLOC-BODY ( IR-CTX:ctx -- n bool bool bool )
+   {: c:IR-CTX:ctx :}
+   s" OFL {: of:n :} of of +" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk F-OPS
+   m blk 0 F-OP {: ad:IR-ID:ir-op-id :}
+   m ad s" hir.add" F-OPC?
+   m ad 0 F-IN  m blk 0 F-ARG SAME?
+   m ad 1 F-IN  m blk 0 F-ARG SAME? ;
+
+: OFLOC-CASE ( -- )
+   s" a local named after an arm keyword opens no arm" T-LABEL
+   BND [: OFLOC-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE 2 T= ;
+
+: ISLOC-BODY ( IR-CTX:ctx -- n bool bool bool )
+   {: c:IR-CTX:ctx :}
+   s" ISL {: is:n :} is is +" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk F-OPS
+   m blk 0 F-OP {: ad:IR-ID:ir-op-id :}
+   m ad s" hir.add" F-OPC?
+   m ad 0 F-IN  m blk 0 F-ARG SAME?
+   m ad 1 F-IN  m blk 0 F-ARG SAME? ;
+
+: ISLOC-CASE ( -- )
+   s" a local named after the deferred-word keyword claims no operand" T-LABEL
+   BND [: ISLOC-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE 2 T= ;
+
 \ ---- what a locals frame refuses ---------------------------------------------
 \ Each body below is a shape this elaborator has no rule for, or one ceiling it
 \ will not overrun, and each one is refused by name rather than compiled into
@@ -1761,15 +1870,44 @@ variable LK-N
 : OPEN-GROUP ( -- )
    BND [: OPEN-GROUP-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-: SHADOW-BODY ( IR-CTX:ctx -- )
+\ The one name a local may not take. Every pass that reads a body token for what
+\ it MEANS asks LOCAL-OF before it asks the word model - so a declared name means
+\ the local everywhere - except the one that runs BEFORE the locals frame exists: the
+\ quotation pre-scan, whose spans every later walk steps over. Its two tokens are
+\ `[:` and `;]`, and only the closer can ever BE a local's name: a name is the
+\ bytes before the annotation's colon, so `[:` names `[`.
+\
+\ THE BODY PAIRS THE QUOTATION SO THAT THE PRE-SCAN IS SATISFIED, which is what
+\ makes this refusal the locals frame's and not the quotation's: a stray `;]`
+\ with no opener is refused as E-NELAB-QUOT before the locals pass ever runs,
+\ and would prove nothing about a declared name. So the pair is opened outside
+\ the group and closed inside it, and the token the group reads as a name is the
+\ closer.
+: QCLOSE-NAME-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" SHADOW {: dup:n :} 0" TEXT!
+   s" QCN [: {: ;] :} 0" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 1 1 NELAB:COLON drop ;
 
-: SHADOW ( -- )
-   BND [: SHADOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+: QCLOSE-NAME ( -- )
+   BND [: QCLOSE-NAME-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ And the other half of the same sentence, held against its real owner. A group
+\ that writes the OPENER declares `[` - which is nobody's word - and has put its
+\ own closer inside the span that token opened, so what refuses this body is the
+\ quotation's own check on a locals group, by the quotation's code. Without this
+\ case the section above could claim the opener for itself and nothing would say
+\ otherwise.
+: QOPEN-NAME-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" QON {: [: :} ;] 0" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: QOPEN-NAME ( -- )
+   BND [: QOPEN-NAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : TWICE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -1813,9 +1951,13 @@ variable LK-N
    s" a locals group the body never closes is refused" T-LABEL
    [: OPEN-GROUP ;] E-NELAB-LOCAL TTHROWSQ ;
 
-: SHADOW-CASE ( -- )
-   s" a local named after a word the dialect models is refused" T-LABEL
-   [: SHADOW ;] E-NELAB-LOCAL TTHROWSQ ;
+: QCLOSE-NAME-CASE ( -- )
+   s" a local named after the quotation closer is refused" T-LABEL
+   [: QCLOSE-NAME ;] E-NELAB-LOCAL TTHROWSQ ;
+
+: QOPEN-NAME-CASE ( -- )
+   s" and a group that writes the opener is refused as the quotation's" T-LABEL
+   [: QOPEN-NAME ;] E-NELAB-QUOT TTHROWSQ ;
 
 : TWICE-CASE ( -- )
    s" the same local declared twice is refused" T-LABEL
@@ -2163,18 +2305,19 @@ create TW-BUF TW-CAP allot
 : CAPS-QUOT ( -- )
    BND [: CAPS-QUOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A local named after a word the dialect models is still refused, and a local
-\ whose name only FOLDS onto one is still the program's own name - which is the
-\ decision the section head states, held in both directions.
-: LOCAL-LOWER-BODY ( IR-CTX:ctx -- )
+\ The section's decision held in the other direction. A name is the local's when
+\ the mention writes the same BYTES, whichever case those bytes are in - so a
+\ group declaring `i` and a body writing `i` is the same program as a group
+\ declaring `I` and a body writing `I`, and both are the local rather than the
+\ loop index. The pair above says the two spellings are not each other; this
+\ says neither of them is the dialect's word.
+: LOCAL-LOWER-BODY ( IR-CTX:ctx -- bool )
    {: c:IR-CTX:ctx :}
-   s" LOCI {: i:n :} 0" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON drop ;
-
-: LOCAL-LOWER ( -- )
-   BND [: LOCAL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
+   c s" LOCI {: i:n :} 0 3 0 ?do i + loop" 1 1 BUILT
+   {: ma:IR-BUILD:module fa:IR-ID:ir-fun-id :}
+   c s" LOCI {: I:n :} 0 3 0 ?do I + loop" 1 1 BUILT
+   {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
+   ma fa mb fb TW-FUN? ;
 
 : CAPS-REFUSE-CASE ( -- )
    s" a word the dialect never modelled is refused in capitals too, and named by its own spelling" T-LABEL
@@ -2698,8 +2841,9 @@ create QHID-TXT
    NELAB:REFUSED$ s" [:" T$= ;
 
 : LOCAL-LOWER-CASE ( -- )
-   s" a local named exactly as a word the dialect models is refused" T-LABEL
-   [: LOCAL-LOWER ;] E-NELAB-LOCAL TTHROWSQ ;
+   s" a local named exactly as a word the dialect models is still that local" T-LABEL
+   BND [: LOCAL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE ;
 
 public
 
@@ -2712,12 +2856,17 @@ public
    LITKIND-CASE
    LERP-CASE
    TWO-GROUPS-CASE
+   PRIMLOC-CASE
+   IDXLOC-CASE
+   OFLOC-CASE
+   ISLOC-CASE
    BND [: drop NESTED-GROUP-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop ORPHAN-CLOSE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop LONE-CLOSE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop GROUP-CAP-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop OPEN-GROUP-CASE ;] IR-CTX:WITH-CONTEXT
-   BND [: drop SHADOW-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop QCLOSE-NAME-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop QOPEN-NAME-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop TWICE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop NESTED-CASE ;] IR-CTX:WITH-CONTEXT
    COUNTDOWN-CASE
@@ -2785,7 +2934,7 @@ public
    QUOT-SHAPE-CASES
    QUOT-REFUSE-CASES
    DEFER-CASES
-   BND [: drop LOCAL-LOWER-CASE ;] IR-CTX:WITH-CONTEXT
+   LOCAL-LOWER-CASE
    T-REPORT ;
 
 ;package

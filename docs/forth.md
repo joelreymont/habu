@@ -45,6 +45,15 @@ file.
   named `i`, `count`, or `dup` must resolve to that local inside its scope.
   Prefer clearer names (`idx`, `len`, `value`) when they improve readability,
   but do not encode global dictionary collision workarounds into local names.
+  Local-first is measured on the engine, not assumed: `{: i:n :} 0 3 0 ?do i +
+  loop` answers three turns of the LOCAL, and the same body without the
+  declaration answers the loop index. It holds from the group's closer onwards
+  and byte for byte — mentions before the closer, and mentions in another case,
+  are still whatever else the name means. The quotation's two tokens are the
+  exception, because the native chain finds a body's quotation spans before it
+  knows what the body's locals are: a local named `;]` is refused
+  (`E-NELAB-LOCAL`), and a group that writes `[:` is refused as the quotation's
+  own (`E-NELAB-QUOT`).
 - **Check for collisions with built-ins** before naming — Forth dictionaries are
   case-insensitive here, so `CON?`/`VAR?` clash with existing words. Prefix to
   disambiguate (`TYCON?`, `TYVAR?`). When in doubt, `' NAME` in a REPL: if it
