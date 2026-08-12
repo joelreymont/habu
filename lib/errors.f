@@ -538,7 +538,11 @@ public
 \                 machine dialect (A64IR) gained, the control words the
 \                 straight-line source-word model (HIR-WORD) gained, and the
 \                 block construction the elaborator (NELAB) gained with them
-\   -8420..-8439, -8487..-8499, -8520..-8999  unassigned. The remaining dialect packages
+\   -8700..-8719  the code generator judge: reading a canonical corpus source
+\                 file as the definitions both code generators compile
+\                 (package JUDGE-SRC)
+\   -8420..-8439, -8487..-8499, -8520..-8599, -8666..-8699, -8720..-8999
+\                 unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
 \                 ends take sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
@@ -1221,3 +1225,24 @@ public
 -8652 constant E-NELAB-QUOT-CAP \ more quotation bodies in one definition than a module of the native chain holds functions for
 
 -8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, or a scrutinee whose bundle on that vector is not the width its family declares - which is what an instantiation wider than the declared one looks like from here
+
+\ The code generator judge's source reader: -8700..-8719
+\
+\ tools/judge/src.f reads ONE canonical corpus source file and answers, per
+\ definition, the exact body text, the arity its own stack comment declares, and
+\ the definitions of that file its body calls. Both code generators are then
+\ handed the same text, which is what the reader exists for: the comparison used
+\ to keep a second, hand-retyped copy of every subject, and two texts that are
+\ supposed to be one program is a claim nothing checked.
+\
+\ Every code here is the reader refusing to guess. A source it cannot lex, a
+\ definition that never closes, a signature it cannot count, a name the file
+\ defines twice and an index outside what it recorded are all questions with no
+\ answer, and answering one of them wrongly would put a different program in one
+\ of the two columns and report the difference as a code generator result.
+-8700 constant E-JUDGE-SRC-CAP  \ a source, definition, name, callee list or derived text larger than this reader's store: the store is what one corpus file fits in, and a truncated program would be measured as if it were the whole one
+-8701 constant E-JUDGE-SRC-LEX  \ source the shared lexer refused - an unterminated string literal or a malformed primitive-axiom row - so no token stream exists to read definitions out of
+-8702 constant E-JUDGE-SRC-DEF  \ a `:` with no name after it, an empty name, or a definition the file never closes with a bare `;`: a reader that ran such a definition to end of file would compile the rest of the corpus as one body
+-8703 constant E-JUDGE-SRC-SIG  \ a definition whose stack comment is missing, holds no `--`, holds two, leaves a pointer without its element type, or is written in a shape this counter cannot count: the arity is what the migration entry is told, and guessing it would invent the fact the reader exists to read
+-8704 constant E-JUDGE-SRC-ROW  \ a definition or callee index outside the recorded count
+-8705 constant E-JUDGE-SRC-DUP  \ a name this source defines twice: a caller asking for it would be answered about one of two programs, and which one is not a question a measurement should have

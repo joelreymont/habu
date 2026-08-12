@@ -279,6 +279,20 @@ SUITE codegen-compare
    tools/codegen-compare-clang-test.f
 ;SUITE
 
+\ The reader that makes the comparison's two columns compile ONE text. The
+\ comparison used to keep every subject twice - a real definition in the corpus
+\ file and a hand-retyped string literal beside it - and two texts that are
+\ supposed to be the same program is a claim nothing checked. Its fixtures are
+\ sources built to fool a reader that searched for text: the definition hidden
+\ in a comment, in a string, the `;]` that closes a quotation rather than the
+\ definition, the corpus name written in the signature instead of the body, and
+\ the name defined twice. The last group runs the shipped file entry over a real
+\ corpus in this repository and pins the derived text against the program the
+\ retyped column carried. Nothing it asserts reads a clock.
+SUITE judge-src
+   tools/judge/src-test.f
+;SUITE
+
 \ The fork question, which used to be a third member of the registration above
 \ and was the one member nothing scheduled. It is its own registration because it
 \ needs a runner the other two do not: its first claim is that PROC-FORK:CHILD?

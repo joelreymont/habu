@@ -539,6 +539,12 @@ public
    \ bytes come out of, the chain's own committed baseline, and the twins
    \ themselves on the real corpora. No assertion in it reads a clock either.
    s" tools/codegen-compare-clang-test.f" GSI-FORK-INCLUDE
+   \ And the reader that ends the comparison's one hand-kept duplicate: the
+   \ canonical corpus source, read structurally, so both code generators compile
+   \ one text. Its fixtures are sources built to fool a text matcher and it
+   \ reads no clock, so it belongs in this parallel group with its two
+   \ neighbours.
+   s" tools/judge/src-test.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the end-to-end workload measurement - the engine's
    \ call-or-copy rule read off compiled code, each arm's wiring to its own code
    \ generator's word, and the answers the two arms compute. The deltas are
