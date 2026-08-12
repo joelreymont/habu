@@ -6038,3 +6038,15 @@ mutant that swaps the staged row changes nothing and proves nothing
 - one ineffective mutation and one dead helper came from assuming
 otherwise. The probe file's prose now says where the callee really
 comes from.
+
+## A measured number lives in its instrument's units (2026-08-12)
+
+The bitmask landing's row deltas looked either regressed or fabricated
+on today's master - but the byte column changed UNITS one commit after
+the fold (df83ade99 made it count the trailing return, +4 every row),
+exactly cancelling the fold's -4 in absolute numbers. Both lanes
+measured truly; the discrepancy was manufactured by comparing across
+the unit boundary. Before declaring a cross-commit discrepancy in a
+measured number: re-measure both endpoints with each tree's OWN
+instrument, and check the instrument's fixed point - the NOOP row's
+0->4 announced the change in every report.
