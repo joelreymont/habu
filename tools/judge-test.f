@@ -117,15 +117,23 @@ private
 \ Every refusal in the table is the one named capability gap: the allocator
 \ declining to spill inside a loop (dot habu-spill-from-a-4145325c). A refusal
 \ for some other reason is a different finding and must not read as that one.
-\ CODEGEN-CORPUS2:SYM-FOLD-C was the second, until its tape learned to record a
-\ hexadecimal literal (dot habu-record-the-engine-79c570ed); it is a compiled
-\ row now, and the case below requires exactly that rather than leaving the
-\ capability's arrival invisible.
+\
+\ TWO ROWS WERE THE OTHER GAPS AND BOTH ARE MEASURED NOW, and each keeps a case
+\ saying so rather than simply leaving the list. CODEGEN-CORPUS2:SYM-FOLD-C
+\ waited on a tape that could record a hexadecimal literal (dot
+\ habu-record-the-engine-79c570ed). CODEGEN-CORPUS4:CALL-PRESSURE carried the
+\ loop-spill code until the elaborator learnt to leave a crossing local in a
+\ register the callee spares (src/compiler/native/elaborate.f CALL-KEEPS?).
+\
+\ THE CASES ARE WRITTEN AS "NOT REFUSED" AND NOT AS A COUNT, because a count
+\ would not notice. A regression in either capability puts its row back among
+\ the refusals carrying the code this file still names for the row above, so the
+\ balance would hold and nothing else here would see it.
 : REFUSAL-CASES ( -- )
    JUDGE-ROW:REFUSED-ROWS NAMED-REFUSALS T=
    s" CODEGEN-CORPUS4:PRESSURE-LOOP" ROW-OF JUDGE-ROW:NEW-RC@ E-A64RA-SPILL T=
-   s" CODEGEN-CORPUS4:CALL-PRESSURE" ROW-OF JUDGE-ROW:NEW-RC@ E-A64RA-SPILL T=
-   s" CODEGEN-CORPUS2:SYM-FOLD-C" ROW-OF JUDGE-ROW:REFUSED? TFALSE ;
+   s" CODEGEN-CORPUS2:SYM-FOLD-C" ROW-OF JUDGE-ROW:REFUSED? TFALSE
+   s" CODEGEN-CORPUS4:CALL-PRESSURE" ROW-OF JUDGE-ROW:REFUSED? TFALSE ;
 
 \ A compiled row vouches for its own text: the chain read it, the checker
 \ certified it and a routine came out. A REFUSED row has no such witness, so the

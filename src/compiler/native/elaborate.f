@@ -110,6 +110,7 @@ require src/compiler/ir/type.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/tape.f
+require src/compiler/native/clobber.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
 require src/compiler/native/string.f
@@ -651,11 +652,44 @@ create LBUF LNAME-CAP allot
 : LG-K@ ( n -- n )
    LGAT cells LG-K + @ ;
 
-\ Whether this local's value has to survive a call - which is what makes it
-\ travel. CROSS-SCAN below decides it for the whole definition before the walk
-\ starts, and the section above CS-PENDING says what turns on the answer.
+\ Whether ONE of this body's calls keeps no register for the caller, which is the
+\ half of "does this local travel" that is about the CALLEES rather than about
+\ where the name is written. CROSS-SCAN writes it, once, before the walk starts;
+\ it stands here because this is where it is read.
+variable CALL-BARE
+
+\ Whether this local's value has to TRAVEL - be handed over at every call and
+\ taken back from it, and carried across every block edge in between. CROSS-SCAN
+\ below decides both halves of the answer for the whole definition before the
+\ walk starts, and the section above CS-PENDING says what turns on it.
+\
+\ TWO FACTS MEET HERE AND NEITHER IS ENOUGH ALONE. The mark says a call can reach
+\ a mention of this name, which is a property of where the name is written.
+\ CALL-BARE says one of this body's calls keeps no register for the caller, which
+\ is a property of the CALLEES. A local only has to travel when both are true: a
+\ value a call can reach still needs somewhere to be, and a register the callee
+\ leaves alone is somewhere - the allocator keeps it out of the destroyed ones
+\ (src/compiler/native/regalloc.f MB-FORBID) and the validator refuses the
+\ allocation if it did not (regalloc-verify.f CLOB-AT). Travelling is what buys a
+\ DATA-STACK SLOT instead, and that is only worth its price when there is no
+\ register to be had.
+\
+\ AND THE PRICE IS WHY THIS IS A QUESTION AT ALL. A travelling local is an
+\ operand and a result of every call it survives and a block argument of every
+\ block on the path, and those are what put its class beyond MB-SPILLABLE? -
+\ measured in tools/codegen-spill-probe.f, which straddles both walls.
+\
+\ THE SECOND FACT IS READ HERE AND NOT WRITTEN AT THE MARK, and that is not a
+\ style choice. The scan meets the calls in tape order, so a body whose LAST call
+\ is the bare one would have marked nothing by the time it reached it. What the
+\ scan records is reachability, which is final the moment the row is walked; what
+\ this word does is price it, which is only answerable once the whole body has
+\ been seen. One reader, one place, and every consumer of the mark - CROSS-L, the
+\ operand and argument lists, the results taken back, and the binding that puts a
+\ travelling double into a cell - inherits the same answer.
 : LCROSS? ( n -- bool )
-   LAT cells LCROSS + @ 0<> ;
+   LAT cells LCROSS + @ 0<>
+   CALL-BARE @ 0<> and ;
 
 : LCROSS+ ( n -- )
    LAT cells LCROSS +  1 swap ! ;
@@ -3164,10 +3198,46 @@ private
    then
    false ;
 
+\ ---- and does the call leave the caller anything? ----------------------------
+\ A CALL DESTROYS REGISTERS, AND WHICH ONES IS A FACT THE CALLEE PUBLISHED OR DID
+\ NOT. A routine this chain compiled records what its accepted allocation writes
+\ (src/compiler/native/clobber.f), and everything downstream reads that record:
+\ the allocator keeps a crossing value out of those registers
+\ (src/compiler/native/regalloc.f MB-FORBID) and the validator re-derives the
+\ same bar from the same record (src/compiler/native/regalloc-verify.f CLOB-AT).
+\ A routine with NO row is taken to destroy the whole pool by both of them, and
+\ then no register at all survives the branch.
+\
+\ WHICH IS WHY THIS QUESTION IS ASKED HERE, of all places. What the section below
+\ decides is whether a local has to TRAVEL - be handed over at the call and taken
+\ back from it, which puts it in a data-stack slot. That is worth doing exactly
+\ when there is no register for it to stay in, and this is the fact that says so.
+\ Asking it costs the elaborator a read of the callee's row, which is the same
+\ class of fact as the callee's ADDRESS and its declared effect, both of which
+\ this file already reads off the word model to build the call at all.
+\
+\ ONLY A NAMED CALLEE CAN ANSWER IT, AND EVERYTHING ELSE ANSWERS NO. A call this
+\ file makes to an address it cannot name here - `execute`, `is`, RECURSE, every
+\ control form CTRL-CALL? admits - has no row to consult, so it keeps nothing and
+\ says so. That is the fail-closed direction: a call wrongly believed to keep a
+\ register would leave a local in one the callee overwrites, and the two readers
+\ named above would then be barring registers for a value that never told them it
+\ was there.
+\
+\ IT IS ASKED ONLY OF A ROW WORD-CALL? HAS ALREADY ADMITTED, which is what
+\ entitles it to read the meaning without asking whether the row models a word.
+: CALL-KEEPS? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena ix:n :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MEANING@ HIR-MEANING:CALLABLE HIR-MEANING:EQ 0= if false exit then
+   r sy HIR-WORD:ENTRY@ NCLOB:KNOWN? ;
+
 \ ---- which locals a call can reach -------------------------------------------
-\ A local's value travels only if a call can destroy the register it is in before
-\ something reads it again. The answer is a walk of the tape, and it has two
-\ parts because control has two directions.
+\ WHICH IS ONE OF THE TWO HALVES OF WHETHER A LOCAL TRAVELS, and this is the half
+\ about the NAME: can a call get in front of a read of it. LCROSS? above holds
+\ the other half and puts the two together, so what is recorded here is
+\ reachability and nothing about the price. The answer is a walk of the tape, and
+\ it has two parts because control has two directions.
 \
 \ FORWARD IS THE EASY HALF: once a call has been met, every later mention of a
 \ local is a read that a call could have got in front of, so the local travels.
@@ -3239,13 +3309,18 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
       CALL-NEED @ 0<> if k LCROSS+ exit then
       k LS-PEND+ exit
    then
-   r ix WORD-CALL? if 1 CALL-NEED ! LS-CALL+ exit then
+   r ix WORD-CALL? if
+      1 CALL-NEED !
+      r ix CALL-KEEPS? 0= if 1 CALL-BARE ! then
+      LS-CALL+ exit
+   then
    r ix OPENS-LOOP? if LS-PUSH exit then
    r ix CLOSES-LOOP? if LS-POP then ;
 
 : CROSS-SCAN ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena n:n :}
    0 CALL-NEED !
+   0 CALL-BARE !
    0 LSN !
    n 1 ?do
       r i CROSS-STEP

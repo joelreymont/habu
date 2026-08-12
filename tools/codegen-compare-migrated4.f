@@ -11,14 +11,21 @@
 \ does not compile at all, and nothing here catches: a body the chain refuses is
 \ a claim this file made and did not keep.
 \
-\ TEN OF THE TWELVE, AND THE TWO THAT ARE NOT HERE. PRESSURE-LOOP and
-\ CALL-PRESSURE are absent, and their absence is the finding rather than an
-\ omission: the chain refuses both, by name, with E-A64RA-SPILL, and
-\ tools/codegen-compare-new4.f declares each a gap naming the capability it waits
-\ for. tools/codegen-compare-test.f hands the corpus's own text to the same
-\ migration entry this file uses and checks that each refusal is that code and
-\ not some other, with the largest accepted neighbour beside it, so "the chain
-\ cannot compile it" is a measurement here and not a sentence.
+\ ELEVEN OF THE TWELVE, AND THE ONE THAT IS NOT HERE. PRESSURE-LOOP is absent,
+\ and its absence is the finding rather than an omission: the chain refuses it,
+\ by name, with E-A64RA-SPILL, and tools/codegen-compare-new4.f declares it a gap
+\ naming the capability it waits for. tools/codegen-compare-test.f hands the
+\ corpus's own text to the same migration entry this file uses and checks that
+\ the refusal is that code and not some other, with the largest accepted
+\ neighbour beside it, so "the chain cannot compile it" is a measurement here and
+\ not a sentence.
+\
+\ CALL-PRESSURE WAS THE TWELFTH AND IS NOW A ROW. It was refused for as long as
+\ every local a call could reach was handed over at the call whatever the callee
+\ destroyed; the elaborator now asks whether the callee published a record and
+\ hands over only when nothing survives the branch. Its callee here is the
+\ chain's own C-LONG-N, which published one, so the row's eight crossing values
+\ stay in registers the callee leaves alone and the body compiles.
 \
 \ THE SUBSTITUTIONS, AND THERE IS ONLY THE ONE KIND. Every body carries `-N` on
 \ the name it defines, which is the migration's own convention, and the four call
@@ -81,11 +88,15 @@ private
 \ C-MAD is what CALL-FAN-BIG-N calls, and the chain copies it: that row's whole
 \ point is that the two inlining rules disagree about this one callee.
 \
-\ C-LONG has NO row here, and is migrated anyway, because CALL-PRESSURE is the
-\ row the chain refuses. tools/codegen-compare-test.f hands the corpus's own text
-\ to this same migration entry to check that the refusal is E-A64RA-SPILL, and a
-\ body whose callee the chain had never published would be refused for the callee
-\ instead - which would make the measurement say nothing about the allocator.
+\ C-LONG is what CALL-PRESSURE-N calls, and neither generator copies it, so what
+\ crosses that row's call is crossing a call and not an inlined body. It matters
+\ MORE than the others that this one is the chain's compilation: a routine the
+\ chain published records what its accepted allocation destroys
+\ (src/compiler/native/clobber.f), the elaborator asks for that record before it
+\ decides whether the row's crossing locals have to travel through a data-stack
+\ slot, and the row compiles at all because the answer is yes. Against the
+\ engine's C-LONG the same body is refused, which is the pair
+\ tools/codegen-spill-probe.f pins.
 : C-MAD ( -- )
    s" : C-MAD-N ( n -- n ) 3 * 5 + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
@@ -126,6 +137,14 @@ private
    s" : TINY-CALLEE-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do C-ADD1-N C-ADD1-N C-ADD1-N C-ADD1-N loop ;"
    2 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 
+\ Eight values live across a call the loop really makes, read only after it: the
+\ seven locals and the trip count. The callee is C-LONG-N, which neither
+\ generator copies.
+: CALL-PRESSURE ( -- )
+   s" C-LONG-N" s" CODEGEN-CORPUS4:C-LONG-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
+   s" : CALL-PRESSURE-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do C-LONG-N loop a + b + c + d + e + f + g + len + ;"
+   9 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
 \ ---- the two straight-line rows -----------------------------------------------
 
 : WIDE-ARITY ( -- )
@@ -156,7 +175,7 @@ private
 
 public
 
-\ Publish the nine, and the four callees the call rows reach through first,
+\ Publish the ten, and the four callees the call rows reach through first,
 \ because a call site is given the address its callee's record already carries.
 \ It is one word rather than thirteen top-level lines because a migration claims
 \ code space at the engine's free slot, and the interpreter uses that slot for
@@ -172,6 +191,7 @@ public
    CALL-FAN-BIG
    CALL-LOOP-3
    TINY-CALLEE
+   CALL-PRESSURE
    WIDE-ARITY
    LADDER
    BIG-CONSTS

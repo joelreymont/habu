@@ -2,13 +2,14 @@
 \ measured through the real migration entry. One concern: pinning the five facts
 \ that say WHICH property of a body reaches E-A64RA-SPILL.
 \
-\ WHY THIS EXISTS. Two corpus rows are refused with the same code, -8508, and the
-\ obvious reading of them - "too many values live inside a loop" - is wrong for
-\ one of the two. Reading it wrongly sends the fix at the wrong pass, so the
+\ WHY THIS EXISTS. Two corpus rows were refused with the same code, -8508, and
+\ the obvious reading of them - "too many values live inside a loop" - was wrong
+\ for one of the two. Reading it wrongly sends the fix at the wrong pass, so the
 \ discriminating cases are kept here and run as a suite member rather than left
-\ in a scratch file. Every case below goes through NMIGRATE's own entry, the same
-\ one tools/codegen-compare-new4.f uses, so what is measured is the production
-\ chain and not a model of it.
+\ in a scratch file. One of the two rows compiles now, and this file is where
+\ what moved it is measured. Every case below goes through NMIGRATE's own entry,
+\ the same one tools/codegen-compare-new4.f uses, so what is measured is the
+\ production chain and not a model of it.
 \
 \ WHAT THE CASES ESTABLISH, IN ORDER.
 \
@@ -16,8 +17,8 @@
 \   held live inside the body is refused; thirteen compiles. Nothing crosses a
 \   call here, so this row really is about how much a loop body may hold.
 \
-\   CALL-PRESSURE's wall is NOT that. Eight values live ACROSS a loop that makes
-\   no call compile fine, so being live across a loop is not what refuses them.
+\   A CROSSING WALL IS NOT THAT. Eight values live ACROSS a loop that makes no
+\   call compile fine, so being live across a loop is not what refuses them.
 \
 \   NOR IS IT THE CALL BY ITSELF. The same eight values live across the same call
 \   with NO loop around it compile fine. So neither the loop alone nor the call
@@ -25,10 +26,11 @@
 \
 \   IT IS THE TWO TOGETHER, AND THE MECHANISM IS THE CROSSING. A local read after
 \   a call is marked as one that must survive one (src/compiler/native/
-\   elaborate.f CROSS-STEP), and a surviving local is then threaded through the
-\   loop twice over: as a BLOCK ARGUMENT of every block on the path (LOCAL-ARGS+)
-\   and as an OPERAND AND RESULT of the call itself (CALL-OPERANDS+). Both of
-\   those are what put it beyond MB-SPILLABLE? in src/compiler/native/regalloc.f.
+\   elaborate.f CROSS-STEP), and a surviving local that has to TRAVEL is threaded
+\   through the loop twice over: as a BLOCK ARGUMENT of every block on the path
+\   (LOCAL-ARGS+) and as an OPERAND AND RESULT of the call itself
+\   (CALL-OPERANDS+). Both of those are what put it beyond MB-SPILLABLE? in
+\   src/compiler/native/regalloc.f.
 \
 \   AND WHICH OF THE TWO IS LOAD-BEARING IS A MEASUREMENT, NOT A READING. Neither
 \   alone is. Removing the block-argument marking from MB-KEEP-BLOCK leaves the
@@ -43,39 +45,44 @@
 \   and fixing it will find the refusal unmoved; that is what these mutations are
 \   recorded for.
 \
-\   AND THE DECIDING PAIR IS SP-PRE8-N AND SP-POST8-N. The same eight locals,
-\   the same loop, the same call, the same budget - read BEFORE the loop they
+\   AND THE DECIDING PAIR IS SP-PRE8-N AND SP-POST8-N. The same eight locals, the
+\   same loop, the same call, the same budget - read BEFORE the loop they
 \   compile, read AFTER it they are refused. Nothing else differs, so the
-\   crossing is the whole of it, and a fix has to stop the crossing rather than
-\   re-place what it creates.
+\   crossing is the whole of it.
 \
-\   AND STOPPING THE CROSSING IS NOT FREE, WHICH IS THE FIFTH FACT. The crossing
-\   is also the only HOME a surviving local has when the callee publishes no
-\   record of what it destroys, and the wall sits one value lower there: seven
-\   cross the chain's C-LONG-N and compile, seven cross the engine's C-LONG - the
-\   same text, the other compiler - and are refused. The section at RECORD-CASES
-\   says what suppressing the threading does to each of those walls, measured.
+\   AND WHETHER A LOCAL TRAVELS AT ALL IS THE CALLEE'S ANSWER, WHICH IS THE FIFTH
+\   FACT AND THE ONE THAT MOVED A CORPUS ROW. Travelling buys a data-stack slot,
+\   and it is worth buying only when no register would have survived the call.
+\   There is one exactly when the callee published what it destroys, so the
+\   elaborator asks (elaborate.f CALL-KEEPS?) and hands the local over only when
+\   the answer is no. The corpus writes C-LONG once and both compilers make a
+\   routine of it, so the two answers are measured with everything else held
+\   still: the body SP-POST8-N is refused for compiles unchanged the moment it
+\   names the chain's compilation of the same callee. That body is corpus 4's
+\   CALL-PRESSURE, which was the second -8508 row and is a measured row now.
 \
-\ WHERE THE WALL SITS, AND WHY THE COUNT IN THESE CASES MOVED ONCE. It is at
-\ EIGHT crossing values today and it was at seven until the selection stage began
-\ emitting the add and subtract immediate forms. That is a measurement through
-\ the entry below and not a reading of the allocator: the same body that threw
-\ -8508 at seven compiles at seven now, and eight is what throws. WHICH register
-\ the immediate forms handed back is deliberately not claimed here - it would be
-\ a guess, and the cases below are worth having precisely because the wall's
-\ position is not derivable by reading the pass that moved it. The cases were
-\ re-derived to straddle the new wall rather than re-pinned to the new answers,
-\ because what this file is for is the DISCRIMINATION - which property reaches
-\ the refusal - and a case that has drifted to the compiling side of the wall
-\ discriminates nothing. The seven-value body is kept as the control directly
-\ beneath, so the wall's position is pinned from both sides.
+\ WHERE THE WALL SITS, AND WHY THE COUNT IN THESE CASES HAS MOVED BEFORE. It is
+\ at SEVEN crossing values against a callee that published nothing, and six is
+\ the control beside it, so it is pinned from both sides. It has moved once
+\ already: when every local travelled whatever the callee did, the same shape's
+\ wall was at seven and had been at six until the selection stage began emitting
+\ the add and subtract immediate forms. WHICH register those forms handed back
+\ was deliberately not claimed then and is not claimed now - it would be a guess,
+\ and these cases are worth having precisely because the wall's position is not
+\ derivable by reading the pass that moved it. Whether that stage moved the wall
+\ these cases now straddle by the same one is NOT measured, and is not asserted.
+\
+\ EACH TIME, THE CASES WERE RE-DERIVED TO STRADDLE THE WALL RATHER THAN RE-PINNED
+\ to the new answers. What this file is for is the DISCRIMINATION - which
+\ property reaches the refusal - and a case that has drifted to the compiling
+\ side discriminates nothing.
 \
 \ WHAT A CHANGE TO THIS FILE MEANS. These are the current walls, not desired
 \ ones. A pass that lets a crossing local live in a frame slot across a loop
-\ turns POST8 AND EPOST7 green - both walls at once, because both are the same
-\ shortage of somewhere to put a value - and this file is where that is recorded
-\ rather than discovered, so each case is asserted with its code and a fix must
-\ come here and say what it moved.
+\ turns SP-PP14-N and SP-EPOST7-N green - both walls at once, because both are
+\ the same shortage of somewhere to put a value - and this file is where that is
+\ recorded rather than discovered, so each case is asserted with its code and a
+\ fix must come here and say what it moved.
 
 require lib/test.f
 require lib/string.f
@@ -166,58 +173,55 @@ variable TRY-IN
    9 TRY-CALLING 0 T= ;
 
 \ ---- what it IS: the crossing, measured by moving one thing ------------------
-\ The same seven locals, the same loop, the same call, the same budget. The only
+\ The same eight locals, the same loop, the same call, the same budget. The only
 \ difference between the two cases is whether the locals are read before the loop
 \ or after it, which is exactly what decides whether they must survive the call.
-
+\
+\ AND THE CALLEE IS THE ENGINE'S C-LONG, WHICH IS NOT A DETAIL. A local is handed
+\ over at a call only when no register would have survived it, and what decides
+\ that is whether the callee published a record of what it destroys. The engine's
+\ compilation published none, so against it the locals really do travel and this
+\ pair measures the crossing. Against a callee that DID publish one they do not
+\ travel at all, and the same two bodies both compile - which is the next
+\ section, not a hole in this one.
 : CROSSING-CASES ( -- )
    s" eight locals read BEFORE a loop that calls compile" T-LABEL
-   s" : SP-PRE8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} a b + c + d + e + f + g + h + seed + len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop ;"
+   s" : SP-PRE8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} a b + c + d + e + f + g + h + seed + len 0 ?do CODEGEN-CORPUS4:C-LONG loop ;"
    10 TRY-CALLING 0 T=
 
-   s" and read AFTER it they are refused - this is CALL-PRESSURE" T-LABEL
-   s" : SP-POST8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + h + ;"
-   10 TRY-CALLING E-A64RA-SPILL T=
+   s" and read AFTER it they are refused: they had to travel" T-LABEL
+   s" : SP-POST8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + g + h + ;"
+   10 TRY-CALLING E-A64RA-SPILL T= ;
 
-   s" seven across the same call in the same loop compiles" T-LABEL
-   s" : SP-POST7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + ;"
-   9 TRY-CALLING 0 T= ;
-
-\ ---- and what the threading is FOR, which is a second wall -------------------
-\ THE CASES ABOVE ARE ALL MEASURED AGAINST A CALLEE THE CHAIN PUBLISHED, and that
-\ is not a neutral choice: such a routine records which registers its accepted
-\ allocation writes (src/compiler/native/clobber.f), so some register survives the
-\ branch and a crossing value may stay in one. A routine with no such row destroys
-\ the whole pool as far as every reader is concerned, and then NO register
-\ survives - the only place a crossing value can be is the data-stack slot the
-\ call's own operand list buys it.
+\ ---- and what decides whether the crossing happens at all --------------------
+\ WHAT THE CASES ABOVE MEASURE IS THE PRICE OF TRAVELLING, AND THIS SECTION IS
+\ WHAT DECIDES WHETHER IT IS PAID. A routine this chain compiled records which
+\ registers its accepted allocation writes (src/compiler/native/clobber.f), and
+\ everything downstream reads that record: the allocator keeps a crossing value
+\ out of those registers (src/compiler/native/regalloc.f MB-FORBID) and the
+\ validator re-derives the same bar (regalloc-verify.f CLOB-AT). So against such
+\ a callee a value that survives the call has somewhere to be, and the elaborator
+\ leaves it there (src/compiler/native/elaborate.f CALL-KEEPS?). A routine with NO
+\ row is taken to destroy the whole pool by both readers, nothing survives, and
+\ the data-stack slot the call's operand list buys is the only home left.
 \
-\ SO THE SAME BODY HAS TWO WALLS AND THE RECORD IS THE DIFFERENCE. The corpus
-\ writes C-LONG once; the engine compiles it and the chain compiles it again as
-\ C-LONG-N, and the case below names the engine's where SP-POST7-N above names
-\ the chain's. Seven values cross the chain's and compile; seven cross the
-\ engine's and are refused, and six compile. Nothing else about the two cases
-\ differs - same locals, same loop, same budget, same text for the callee - so
-\ the record is worth exactly one crossing value here, and it is measured rather
-\ than reasoned from what a record ought to buy.
+\ THE CORPUS WRITES C-LONG ONCE AND BOTH COMPILERS MAKE A ROUTINE OF IT, which is
+\ what lets the difference be measured with everything else held still. The very
+\ body the section above is refused for compiles when the only change is which
+\ compilation of the callee it names - and that is CALL-PRESSURE, corpus 4's row,
+\ which was refused until the elaborator started asking.
 \
-\ AND THE ENGINE'S CALLEE IS REALLY CALLED AND NOT COPIED, which the pair says
-\ without a second reader: a body the chain had inlined would hold no call at
-\ all, and SP-ACROSS8-N above is exactly that body - eight values across a
-\ callless loop - and compiles. Seven refused is therefore a call.
-\
-\ WHICH IS WHY THE THREADING CANNOT SIMPLY BE DELETED, and that was measured too
-\ rather than argued. Suppressing it - making CROSS-L answer nought, so a
-\ surviving local is neither a block argument of the blocks on its path nor an
-\ operand of the call - lifts the chain-callee wall from seven to eight and turns
-\ CALL-PRESSURE green, and it takes the engine-callee wall from six to NONE: a
-\ body with ONE local live across a call to a routine with no record is refused
-\ E-A64RA-POOL, because the value has nowhere at all to be. Two programs the tree
-\ compiles today are exactly that shape - the stdlib's own multishot site
-\ ARRAY:A-MAPI!, migrated at file level in test/compiler/native-exec.f, and
-\ LGP-CALL in test/compiler/native-migrate.f - and both refuse under the
-\ suppression. The threading is a HOME and not only a guard, and a change that
-\ removes it has to give the value another one.
+\ THE ENGINE-CALLEE WALL IS STILL THERE AND IS PINNED FROM BOTH SIDES. Seven
+\ crossing values are refused and six compile, so a change that moved it says so
+\ here. The chain-callee wall is not pinned from its far side and cannot be on
+\ this shape: nothing travels, so what would refuse is ordinary register
+\ pressure, and eight is already the widest crossing this shape reaches - a ninth
+\ needs an eleventh argument, and src/compiler/a64-effect.f refuses a routine of
+\ eleven places (E-A64EFF-SEQ, and it is a place list rather than a register
+\ budget). Two traps for whoever writes the next case here: that arity ceiling,
+\ and a generated locals list that reaches `i`, which declares a name the dialect
+\ already models and is refused E-NELAB-LOCAL - a code that reads exactly like a
+\ register wall and is not one.
 : RECORD-CASES ( -- )
    s" the chain's callee publishes what it destroys" T-LABEL
    s" CODEGEN-CORPUS4:C-LONG-N" PUBLISHES-CLOBBER? TTRUE
@@ -225,8 +229,11 @@ variable TRY-IN
    s" and the engine's compilation of the same text does not" T-LABEL
    s" CODEGEN-CORPUS4:C-LONG" PUBLISHES-CLOBBER? TFALSE
 
-   s" seven crossing the engine's callee are refused where seven crossed the chain's"
-   T-LABEL
+   s" the refused body compiles against the callee that published one" T-LABEL
+   s" : SP-CPOST8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + h + ;"
+   10 TRY-CALLING 0 T=
+
+   s" seven crossing the callee that published none are refused" T-LABEL
    s" : SP-EPOST7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + g + ;"
    9 TRY-CALLING E-A64RA-SPILL T=
 

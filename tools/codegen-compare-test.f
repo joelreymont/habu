@@ -1590,16 +1590,25 @@ private
 : REAL-RUN-CASES4 ( -- )
    13 ACCOUNT-CASES
 
-   s" the fourth corpus compiles ten rows and declares two gaps" T-LABEL
-   CODEGEN-GAP:GAPS 2 T=
-   NEW-ROWS 11 T=
+   s" the fourth corpus compiles eleven rows and declares one gap" T-LABEL
+   CODEGEN-GAP:GAPS 1 T=
+   NEW-ROWS 12 T=
 
-   s" and both gaps are loops that hold a value the allocator cannot place" T-LABEL
+   s" and the gap is a loop that holds a value the allocator cannot place"
+   T-LABEL
    s" CODEGEN-CORPUS4:PRESSURE-LOOP" NAMED-GAP-AMONG? TTRUE
    s" CODEGEN-CORPUS4:PRESSURE-LOOP" MEASURED? TFALSE
-   s" CODEGEN-CORPUS4:CALL-PRESSURE" NAMED-GAP-AMONG? TTRUE
-   s" CODEGEN-CORPUS4:CALL-PRESSURE" MEASURED? TFALSE
-   CODEGEN--GAP-CAP:LOOP-SPILL GAPS-WANTING 2 T=
+   CODEGEN--GAP-CAP:LOOP-SPILL GAPS-WANTING 1 T=
+
+   \ CALL-PRESSURE was the second row against that capability and is a measured
+   \ row now. It is asserted BOTH ways: a regression that put it back among the
+   \ refusals would restore a gap declaration this file no longer expects, and
+   \ the count above would catch that - but a row can also be dropped from the
+   \ column altogether, which moves the same count the same way while deleting
+   \ the measurement. Only MEASURED? tells those two apart.
+   s" and the row that used to be the second gap is measured" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-PRESSURE" NAMED-GAP-AMONG? TFALSE
+   s" CODEGEN-CORPUS4:CALL-PRESSURE" MEASURED? TTRUE
 
    s" no other row of it waits for anything" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN" NAMED-GAP-AMONG? TFALSE
@@ -1608,7 +1617,7 @@ private
    s" CODEGEN-CORPUS4:TINY-CALLEE" NAMED-GAP-AMONG? TFALSE
    s" CODEGEN-CORPUS4:MANY-LOCALS" NAMED-GAP-AMONG? TFALSE
 
-   s" and the ten it does compile are measured rows" T-LABEL
+   s" and the eleven it does compile are measured rows" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN" MEASURED? TTRUE
    s" CODEGEN-CORPUS4:CALL-FAN-BIG" MEASURED? TTRUE
    s" CODEGEN-CORPUS4:CALL-LOOP-3" MEASURED? TTRUE
@@ -1853,25 +1862,29 @@ variable TRY-REGS
 \ package publishes it, which is a spelling the migration's own resolver has to
 \ take (test/compiler/native-inline.f pins that it does).
 \
-\ WHAT MAKES THE PRESSURE HERE SURVIVE A TRANSFORM. Every value that crosses the
-\ call is a distinct argument of the routine, read exactly once after the loop.
-\ There is no constant to fold into an instruction, no repeated subexpression for
-\ a memo to share and nothing for a reassociation to merge, so no selection or
-\ combining pass can take a crossing value out of this body: what is live across
-\ the call is live because the caller passed it in and the body reads it later.
-\ That is deliberate. This case sat at SEVEN crossing values until the add and
-\ subtract immediate forms landed, and then the seven-value body compiled: the
-\ wall this case is about moved by one. The body was re-derived to sit past the
-\ new wall - not re-pinned to "compiles", which would have deleted the refusal
-\ this case exists for - and the survey that pins the wall from both sides is
-\ tools/codegen-spill-probe.f, which also says why no mechanism for the move is
-\ claimed.
+\ THIS BODY WAS A REFUSAL AND IS A ROW, AND WHAT DECIDES WHICH IS THE CALLEE.
+\ Every value that crosses the call is a distinct argument of the routine, read
+\ exactly once after the loop, so no selection or combining pass can take one out
+\ of the body: what is live across the call is live because the caller passed it
+\ in and the body reads it later. What changed is not the count but where those
+\ eight values may be. The chain's C-LONG-N published what it destroys
+\ (src/compiler/native/clobber.f), so the elaborator leaves the locals in
+\ registers the callee spares instead of handing them over at the call, and the
+\ body compiles. The pair below is the whole of the claim: this text against the
+\ chain's callee compiles, and against the ENGINE's compilation of the same
+\ callee - which published nothing - it is still refused by name.
 : SPILL-CALL-8$ ( -- ptr u8 n )
    s" : CALL-PRESSURE-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + len + ;" ;
 
-\ The same body with one value fewer live across the call, which is the control.
-: SPILL-CALL-7$ ( -- ptr u8 n )
-   s" : CALL-PRESSURE-7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + ;" ;
+\ The same body, character for character, against the engine's compilation of the
+\ callee instead of the chain's.
+: SPILL-CALL-8-ENG$ ( -- ptr u8 n )
+   s" : CALL-PRESSURE-E-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + g + len + ;" ;
+
+\ The same body against the engine's callee with one value fewer live across the
+\ call, which is the control the refusal above needs.
+: SPILL-CALL-7-ENG$ ( -- ptr u8 n )
+   s" : CALL-PRESSURE-E7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + ;" ;
 
 \ One staged callee, named the way a migrated body would spell it and addressed
 \ off its own dictionary record.
@@ -1919,11 +1932,14 @@ variable TRY-REGS
    s" and it is the loop and not the budget: one field fewer compiles there" T-LABEL
    SPILL-13$ 2 18 TRY 0 T=
 
-   s" the corpus's own call-pressure loop is refused at the same pool" T-LABEL
-   SPILL-CALL-8$ 9 18 TRY-CALLING E-A64RA-SPILL T=
+   s" the corpus's own call-pressure loop compiles at the same pool" T-LABEL
+   SPILL-CALL-8$ 9 18 TRY-CALLING 0 T=
 
-   s" and it is the eighth live value and not the budget: seven compiles there" T-LABEL
-   SPILL-CALL-7$ 9 18 TRY-CALLING 0 T=
+   s" and against a callee that published nothing the same text is refused" T-LABEL
+   SPILL-CALL-8-ENG$ 9 18 TRY-CALLING E-A64RA-SPILL T=
+
+   s" and it is the seventh live value there and not the budget: six compiles" T-LABEL
+   SPILL-CALL-7-ENG$ 9 18 TRY-CALLING 0 T=
 
    s" a routine of eleven arguments is refused by the place list" T-LABEL
    WIDE-11$ 11 18 TRY E-A64EFF-SEQ T=

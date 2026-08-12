@@ -2,23 +2,14 @@
 \ comparison. One concern: what the new chain makes of the corpus built to beat
 \ it, and what it refuses.
 \
-\ TWELVE ROWS AND TWO GAPS. Ten of the twelve subjects compile; PRESSURE-LOOP and
-\ CALL-PRESSURE do not, and what stops each is a refusal by name rather than a
-\ shortage of anything a bigger number would buy. Both rows below are declared
-\ against the `loop-spill` capability, and the account in
-\ tools/codegen-compare-gap.f says what that word covers and why it is a
-\ capability rather than register pressure in general.
+\ TWELVE ROWS AND ONE GAP. Eleven of the twelve subjects compile; PRESSURE-LOOP
+\ does not, and what stops it is a refusal by name rather than a shortage of
+\ anything a bigger number would buy. That row is declared against the
+\ `loop-spill` capability, and the account in tools/codegen-compare-gap.f says
+\ what that word covers and why it is a capability rather than register pressure
+\ in general.
 \
-\ THE TWO REFUSALS ARE ONE REFUSAL REACHED TWO WAYS, which is why they name one
-\ capability. PRESSURE-LOOP holds fourteen values live inside a loop and
-\ CALL-PRESSURE holds eight across a call inside one; both are values the
-\ allocator has to put somewhere other than a register while control is in the
-\ body of a loop, and MB-SPILLABLE? refuses exactly that. The second row exists
-\ because the first reaches the wall with a shape nobody writes - fourteen live
-\ loads - while eight values live across a call in a loop is an ordinary program,
-\ and a capability whose only witness is a contrived body is easy to leave.
-\
-\ THE FIRST REFUSAL, MEASURED. The corpus's own text, handed to the same migration
+\ THE REFUSAL, MEASURED. The corpus's own text, handed to the same migration
 \ entry every other row here uses, with the largest register pool the
 \ architecture allows:
 \
@@ -39,32 +30,36 @@
 \ tools/codegen-compare-test.f runs that migration and checks the code, so the
 \ paragraph above is a measurement rather than a claim.
 \
-\ AND THE SECOND REFUSAL, MEASURED THE SAME WAY. CALL-PRESSURE's own text, at the
-\ same eighteen registers, with the callee the chain published beside it so that
-\ what is being refused is the body and not a missing routine:
+\ CALL-PRESSURE WAS THE SECOND GAP AND IS NOW A ROW, AND WHAT CLOSED IT IS NOT
+\ THE ALLOCATOR. That row holds eight values across a call inside a loop, and it
+\ was refused with the same -8508 for as long as the elaborator handed EVERY
+\ local a call could reach over at the call - operand, result, and a block
+\ argument of every block on the path - whatever the callee did with its
+\ registers. Handing a value over is what buys it a data-stack slot, and it is
+\ worth buying only when there is no register the value could have stayed in.
+\ There is one exactly when the callee published what it destroys
+\ (src/compiler/native/clobber.f), so the elaborator now asks
+\ (src/compiler/native/elaborate.f CALL-KEEPS?) and hands the local over only
+\ when the answer is no. This row's callee is the chain's own C-LONG-N, which
+\ published a record, so its eight values stay in registers the callee leaves
+\ alone and the body compiles at the same eighteen.
 \
-\     : CALL-PRESSURE-N ( n n n n n n n n n -- n )
-\        {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :}
-\        seed len 0 ?do C-LONG-N loop a + b + c + d + e + f + g + len + ;
-\                                          18 registers   threw -8508  E-A64RA-SPILL
+\ WHICH IS NOT THE SAME AS SAYING THE CROSSING NEVER COSTS ANYTHING. Against a
+\ callee with NO record - every word the engine's own emitter compiled, and every
+\ `execute` - the locals still travel and the wall on this shape is still there,
+\ one value lower at six. tools/codegen-spill-probe.f straddles both walls with
+\ the corpus's own C-LONG compiled each way, so what the record is worth is a
+\ measurement in a suite and not a sentence here.
 \
-\ It is not the budget here either, and the control is the neighbour: the same
-\ body with SEVEN values live across the call instead of eight compiles at the
-\ same eighteen. So the wall on this shape is at eight, the same allocator rule
-\ puts it there, and tools/codegen-compare-test.f runs both migrations and checks
-\ both codes. The two rows together say the refusal is about WHERE a value has to
-\ live and not about how many there are: fourteen without a call, eight with one.
-\
-\ THE WALL ON THIS SHAPE MOVED BY ONE, ONCE, AND THE ROW WAS RE-DERIVED RATHER
-\ THAN RE-PINNED. It was at seven until the selection stage began emitting the
-\ add and subtract immediate forms, and then seven compiled - measured through
-\ the migration entry, with the mechanism deliberately not guessed at; the survey
-\ in tools/codegen-spill-probe.f says why. A row whose gap declaration survived
-\ that would have been a false statement about the chain. The
-\ row was therefore given an eighth surviving value - the trip count, read after
-\ the loop, so the arity it is measured at did not change - and it is past the
-\ wall again. Re-pinning it to "compiles" instead would have deleted the only
-\ witness this capability has that is a shape somebody would really write.
+\ THE WALL ON THIS SHAPE MOVED BY ONE BEFORE THAT, AND THE ROW WAS RE-DERIVED
+\ RATHER THAN RE-PINNED. It was at seven until the selection stage began emitting
+\ the add and subtract immediate forms, and then seven compiled - measured
+\ through the migration entry, with the mechanism deliberately not guessed at;
+\ the survey in tools/codegen-spill-probe.f says why. A row whose gap declaration
+\ survived that would have been a false statement about the chain. The row was
+\ therefore given an eighth surviving value - the trip count, read after the
+\ loop, so the arity it is measured at did not change. It is a row now, and what
+\ it measures is that the eight cross and cost nothing.
 \
 \ ============================================================================
 \ WHERE THE CHAIN LOST, WHICH IS WHY THIS CORPUS EXISTS, AND WHAT CLOSED IT
@@ -241,8 +236,7 @@ private
 \ E-A64RA-SPILL at the largest register pool the architecture allows, and
 \ tools/codegen-compare-test.f is where that is checked rather than described.
 : GAPS ( -- )
-   s" CODEGEN-CORPUS4:PRESSURE-LOOP" CODEGEN--GAP-CAP:LOOP-SPILL CODEGEN-GAP:GAP
-   s" CODEGEN-CORPUS4:CALL-PRESSURE" CODEGEN--GAP-CAP:LOOP-SPILL CODEGEN-GAP:GAP ;
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" CODEGEN--GAP-CAP:LOOP-SPILL CODEGEN-GAP:GAP ;
 
 \ ---- the three call rows ------------------------------------------------------
 \ The pinned inputs are the old column's, written as the same literals
@@ -287,6 +281,20 @@ private
       5 0 CODEGEN-CORPUS4:TINY-CALLEE-N CODEGEN-COMPARE:VECTOR
       -3 CODEGEN-CORPUS4:LOOP-LEN CODEGEN-CORPUS4:TINY-CALLEE-N
       CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+\ Eight values live across a call the loop really makes, read only after it. The
+\ inputs are the old column's, and the third of them runs every crossing value
+\ negative so a lost sign on a value that travelled would show.
+: CALL-PRESSURE-CASE ( -- )
+   s" CODEGEN-CORPUS4:CALL-PRESSURE" s" CODEGEN-CORPUS4:CALL-PRESSURE-N"
+   [: 1 2 3 4 5 6 7 9 CODEGEN-CORPUS4:LOOP-LEN
+      CODEGEN-CORPUS4:CALL-PRESSURE-N drop ;]
+   [: 1 2 3 4 5 6 7 9 CODEGEN-CORPUS4:LOOP-LEN
+      CODEGEN-CORPUS4:CALL-PRESSURE-N CODEGEN-COMPARE:VECTOR
+      1 2 3 4 5 6 7 9 0 CODEGEN-CORPUS4:CALL-PRESSURE-N CODEGEN-COMPARE:VECTOR
+      -1 -2 -3 -4 -5 -6 -7 -9 CODEGEN-CORPUS4:LOOP-LEN
+      CODEGEN-CORPUS4:CALL-PRESSURE-N CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
 
 \ ---- the two straight-line rows -----------------------------------------------
@@ -366,6 +374,7 @@ private
    CALL-FAN-BIG-CASE
    CALL-LOOP-3-CASE
    TINY-CALLEE-CASE
+   CALL-PRESSURE-CASE
    WIDE-ARITY-CASE
    LADDER-CASE
    BIG-CONSTS-CASE
