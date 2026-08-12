@@ -11,14 +11,15 @@
 \ does not compile at all, and nothing here catches: a body the chain refuses is
 \ a claim this file made and did not keep.
 \
-\ ELEVEN OF THE TWELVE, AND THE ONE THAT IS NOT HERE. PRESSURE-LOOP is absent,
-\ and its absence is the finding rather than an omission: the chain refuses it,
-\ by name, with E-A64RA-SPILL, and tools/codegen-compare-new4.f declares it a gap
-\ naming the capability it waits for. tools/codegen-compare-test.f hands the
-\ corpus's own text to the same migration entry this file uses and checks that
-\ the refusal is that code and not some other, with the largest accepted
-\ neighbour beside it, so "the chain cannot compile it" is a measurement here and
-\ not a sentence.
+\ ALL TWELVE, AND THE ONE THAT WAS NOT HERE. PRESSURE-LOOP was absent for as long
+\ as the chain refused it by name with E-A64RA-SPILL, and its absence was the
+\ finding rather than an omission. What closed it is not the allocator either:
+\ src/compiler/native/loop.f now takes the fourteen reads and the thirteen
+\ additions between them OUT of the loop body - none of them can change with the
+\ turn and nothing in the body writes - and what is left is one addition into one
+\ accumulator, which is the shape that pass already replaced with the arithmetic
+\ the loop would have computed. So the row holds no loop at all, and the values
+\ the allocator could not place inside a body are placed in the block above it.
 \
 \ CALL-PRESSURE WAS THE TWELFTH AND IS NOW A ROW. It was refused for as long as
 \ every local a call could reach was handed over at the call whatever the callee
@@ -155,7 +156,11 @@ private
    s" : LADDER-N ( n -- n ) {: x:n :} x 1 < if 0 exit then x 2 < if 1 exit then x 4 < if 2 exit then x 8 < if 3 exit then x 16 < if 4 exit then x 32 < if 5 exit then x 64 < if 6 exit then x 128 < if 7 exit then 8 ;"
    1 1 REGS NMIGRATE:DEFINE ;
 
-\ ---- the four loop rows with no call in them ----------------------------------
+\ ---- the five loop rows with no call in them ----------------------------------
+
+: PRESSURE-LOOP ( -- )
+   s" : PRESSURE-LOOP-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;"
+   2 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 : BIG-CONSTS ( -- )
    s" : BIG-CONSTS-N ( n -- n ) {: len:n :} 0 len 0 ?do i 1234605616436508552 xor + i 7378697629483820646 xor + i -6148914691236517206 xor + i 1311768467294899695 xor + loop ;"
@@ -194,6 +199,7 @@ public
    CALL-PRESSURE
    WIDE-ARITY
    LADDER
+   PRESSURE-LOOP
    BIG-CONSTS
    MANY-LOCALS
    FLOAT-MIX

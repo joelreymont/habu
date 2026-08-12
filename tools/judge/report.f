@@ -125,10 +125,12 @@ variable TEXT-U
    s" A LARGER row is a finding and the check exits non-zero on it. A REFUSED row" LINE
    s" is a raw measurement printed with its code: the capability it waits for is a" LINE
    s" dot, and a check that failed on it would fail every day until that dot lands." LINE
-   s" One code appears in the chain column and it is a named capability gap:" LINE
-   s" -8508 is the allocator declining to spill inside a loop, dot" LINE
-   s" habu-spill-from-a-4145325c. tools/judge-test.f fails on a refusal that is" LINE
-   s" not that one, so a second gap cannot arrive unnamed." LINE
+   s" NO ROW IS REFUSED. The last one was PRESSURE-LOOP, whose -8508 was the" LINE
+   s" allocator declining to spill inside a loop; it closed by the loop no longer" LINE
+   s" holding the values, because src/compiler/native/loop.f moves reads that" LINE
+   s" cannot change with the turn out of the body. tools/judge-test.f asserts the" LINE
+   s" count at zero AND fails on a refusal carrying any other code, so a gap" LINE
+   s" cannot arrive unnamed and a row cannot go back unnoticed." LINE
    NL
    s" THE TABLE IS FINITE AND THE ORACLE BESIDE IT IS NOT. Every row here is a" LINE
    s" program somebody wrote on an input somebody pinned, so what it can catch is" LINE

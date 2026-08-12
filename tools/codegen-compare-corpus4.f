@@ -151,7 +151,12 @@
 \   PRESSURE-LOOP   fourteen values loaded and held live at once inside a counted
 \                   loop, which is more than the machine has registers for. The
 \                   row asks what the chain does when it must put a loop-carried
-\                   value in a frame slot.
+\                   value in a frame slot, and the answer it got is that it need
+\                   not: none of the fourteen reads can change with the turn and
+\                   nothing in the body writes, so src/compiler/native/loop.f
+\                   moves them above the loop and folds what is left. The
+\                   question the row asks is still open for a body whose reads
+\                   really do depend on the turn.
 \   BIG-CONSTS      four distinct sixty-four-bit literals per turn. Neither
 \                   compiler has a constant pool, so each one is a chain of four
 \                   move-wide instructions, four times a turn.

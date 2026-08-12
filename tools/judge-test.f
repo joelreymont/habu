@@ -114,30 +114,38 @@ private
    s" -1" FAN$ 1 JUDGE-COST:P-CELL JUDGE-COST:VALUE
    s" -1" FAN-J$ 1 JUDGE-COST:P-CELL JUDGE-COST:VALUE T= ;
 
-\ Every refusal in the table is the one named capability gap: the allocator
-\ declining to spill inside a loop (dot habu-spill-from-a-4145325c). A refusal
-\ for some other reason is a different finding and must not read as that one.
+\ NO ROW OF THE TABLE IS REFUSED. The count is asserted at zero, and the balance
+\ between it and the codes the artifact's head names is kept because a refusal
+\ carrying some OTHER code would be a capability gap nobody has written down and
+\ must not read as the one that closed.
 \
-\ TWO ROWS WERE THE OTHER GAPS AND BOTH ARE MEASURED NOW, and each keeps a case
-\ saying so rather than simply leaving the list. CODEGEN-CORPUS2:SYM-FOLD-C
-\ waited on a tape that could record a hexadecimal literal (dot
-\ habu-record-the-engine-79c570ed). CODEGEN-CORPUS4:CALL-PRESSURE carried the
-\ loop-spill code until the elaborator learnt to leave a crossing local in a
-\ register the callee spares (src/compiler/native/elaborate.f CALL-KEEPS?).
+\ THE THREE ROWS THAT WERE GAPS EACH KEEP A CASE saying so rather than simply
+\ leaving the list. CODEGEN-CORPUS2:SYM-FOLD-C waited on a tape that could
+\ record a hexadecimal literal (dot habu-record-the-engine-79c570ed).
+\ CODEGEN-CORPUS4:CALL-PRESSURE carried the loop-spill code until the elaborator
+\ learnt to leave a crossing local in a register the callee spares
+\ (src/compiler/native/elaborate.f CALL-KEEPS?). CODEGEN-CORPUS4:PRESSURE-LOOP
+\ was the last one of all and carried the same code until
+\ src/compiler/native/loop.f moved the reads that cannot change with the turn out
+\ of its body, so it never holds the fourteen values the allocator refused to
+\ place.
 \
-\ THE CASES ARE WRITTEN AS "NOT REFUSED" AND NOT AS A COUNT, because a count
-\ would not notice. A regression in either capability puts its row back among
-\ the refusals carrying the code this file still names for the row above, so the
+\ THE CASES ARE WRITTEN AS "NOT REFUSED" AND NOT ONLY AS A COUNT, because a count
+\ would not notice which row came back. A regression in any of the three puts its
+\ row back among the refusals carrying the code this file still names, so the
 \ balance would hold and nothing else here would see it.
 : REFUSAL-CASES ( -- )
+   JUDGE-ROW:REFUSED-ROWS 0 T=
    JUDGE-ROW:REFUSED-ROWS NAMED-REFUSALS T=
-   s" CODEGEN-CORPUS4:PRESSURE-LOOP" ROW-OF JUDGE-ROW:NEW-RC@ E-A64RA-SPILL T=
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" ROW-OF JUDGE-ROW:REFUSED? TFALSE
    s" CODEGEN-CORPUS2:SYM-FOLD-C" ROW-OF JUDGE-ROW:REFUSED? TFALSE
    s" CODEGEN-CORPUS4:CALL-PRESSURE" ROW-OF JUDGE-ROW:REFUSED? TFALSE ;
 
 \ A compiled row vouches for its own text: the chain read it, the checker
-\ certified it and a routine came out. A REFUSED row has no such witness, so the
-\ text the chain was handed is checked here against the corpus's own program.
+\ certified it and a routine came out. PRESSURE-LOOP keeps its case from the
+\ years it had no such witness, because the corpus's own program is what the
+\ whole row means and a body quietly narrowed to make it compile would be a
+\ different program measured under the same name.
 \ SYM-FOLD-C keeps its case now that it compiles, for the other half of the
 \ argument its row used to carry in the head of the artifact: its constants are
 \ written $41, $5A and $20, and a corpus quietly respelled in decimal to make a

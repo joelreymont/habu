@@ -40,13 +40,22 @@
 \ stopped folding would otherwise ask the machine to run two to the sixty-third
 \ turns and never come back, and a gate that hangs is worse than one that fails.
 \
-\ THE REFUSALS ARE THE OTHER HALF OF THE SUITE, and there are twelve of them.
-\ Each is a loop that must NOT be folded, and each fails a different clause: an
-\ effect in the body, a call, a second accumulator, a third one, an operation
-\ that is not an addition, an addend on the wrong side, an operation nothing
-\ reads, a start that is not a number, a start at the top of the range, and a
-\ loop that is not counted at all. They are written to look as much like the
-\ folded shapes as their one difference allows.
+\ THE REFUSALS ARE THE OTHER HALF OF THE SUITE, and there are thirteen of them.
+\ Each is a loop that must NOT be folded, and each fails a different clause: a
+\ write in the body, a write beside a read, a read whose address the turn
+\ decides, a call, a second accumulator, a third one, an operation that is not an
+\ addition, an addend on the wrong side, an operation nothing reads, a start that
+\ is not a number, a start at the top of the range, and a loop that is not
+\ counted at all. They are written to look as much like the folded shapes as
+\ their one difference allows.
+\
+\ THE THREE MEMORY ROWS ARE NOT ONE ROW UNDER THREE NAMES, and the difference is
+\ which clause each one lands on. NLPT-LOAD reads a cell no turn can change and
+\ FOLDS, so it stands with the folded shapes. NLPT-VARLOAD reads a cell the turn
+\ chooses, so the address is what keeps it. NLPT-RW reads the same cell every
+\ turn and would move if the address were the only question - a write in the body
+\ is the whole of why it does not, and it answers differently the moment that
+\ rule is removed, where the other two do not.
 
 require lib/test.f
 require lib/prelude.f
@@ -59,9 +68,11 @@ package NLPT-FIXTURE
 
 private
 
-\ The cell the two memory refusals step, and one cell after it that a loop which
-\ ran one turn too far would reach.
-create NLPT-CELL 2 cells allot
+\ The cells the memory rows step. The first two are what a loop which ran one
+\ turn too far would reach; all fourteen are the record the wide row reads a
+\ field at a time, which is the width the corpus row PRESSURE-LOOP has.
+14 constant NLPT-CELLS
+create NLPT-CELL NLPT-CELLS cells allot
 
 public
 
@@ -73,7 +84,19 @@ public
 
 : NLPT-FILL ( -- )
    100 NLPT-CELL !
-   -7 NLPT-CELL 1 cells + ! ;
+   -7 NLPT-CELL 1 cells + !
+   $4000000000000001 NLPT-CELL 2 cells + !
+   -3 NLPT-CELL 3 cells + !
+   $7FFFFFFFFFFFFFFF NLPT-CELL 4 cells + !
+   5 NLPT-CELL 5 cells + !
+   $8000000000000000 NLPT-CELL 6 cells + !
+   1 NLPT-CELL 7 cells + !
+   -1 NLPT-CELL 8 cells + !
+   0 NLPT-CELL 9 cells + !
+   $0DEADBEEFCAFEBAB NLPT-CELL 10 cells + !
+   42 NLPT-CELL 11 cells + !
+   -100000 NLPT-CELL 12 cells + !
+   $0123456789ABCDEF NLPT-CELL 13 cells + ! ;
 
 \ ---- the engine's compilation: the reference ---------------------------------
 \ Ordinary definitions. bin/hb compiles these with the emitter it has always
@@ -119,18 +142,58 @@ public
 : NLPT-AFTER-LOAD ( ptr n n -- n ) {: cell:ptr len:n :}
    cell @ len 0 ?do 1 + loop ;
 
-\ ---- the twelve refusals -----------------------------------------------------
+\ A load in the body and nothing written. The address cannot change with the
+\ turn and nothing in the loop writes, so the read answers the same cell every
+\ turn: it moves to the pre-header and what is left is one addition.
+: NLPT-LOAD ( ptr n n -- n ) {: cell:ptr len:n :}
+   0 len 0 ?do cell @ + loop ;
+
+\ Four fields of one record read and added a turn, which is the corpus row
+\ PRESSURE-LOOP at a width a test can check by hand. Every read AND every
+\ addition between them moves; the body keeps one addition into one accumulator.
+: NLPT-FIELDS ( ptr n n -- n ) {: base:ptr len:n :}
+   0 len 0 ?do
+      base 16 + @  base 24 + @  base 32 + @  base 40 + @  + + + +
+   loop ;
+
+\ The corpus row PRESSURE-LOOP itself, at its own width and character for
+\ character but for the fixture prefix on its name. The row is here rather than
+\ only in the comparison corpus because what the corpus harness pins is two
+\ inputs, and the arithmetic of a closed form has to answer at the trip counts
+\ nobody would run: one turn, no turns, a count that runs the loop backwards, and
+\ counts past where any loop could be run at all.
+: NLPT-WIDE ( ptr n n -- n ) {: base:ptr len:n :}
+   0 len 0 ?do
+      base @  base 8 + @  base 16 + @  base 24 + @  base 32 + @
+      base 40 + @  base 48 + @  base 56 + @  base 64 + @  base 72 + @
+      base 80 + @  base 88 + @  base 96 + @  base 104 + @
+      + + + + + + + + + + + + + +
+   loop ;
+
+\ ---- the refusals ------------------------------------------------------------
 
 \ A store in the body. The loop's whole point is the cell it leaves behind, and a
-\ closed form of its arithmetic would be right and its memory gone.
+\ closed form of its arithmetic would be right and its memory gone. The read
+\ beside it is what makes this row the one that holds the WRITE rule: its address
+\ cannot change with the turn either, so nothing but the write stops the body
+\ from moving whole.
 : NLPT-STORE ( ptr n n -- n ) {: cell:ptr len:n :}
    len 0 ?do cell @ 3 + cell ! loop
    cell @ ;
 
-\ A load in the body and nothing written. Reading is an effect this pass has no
-\ rule for either: the address could be anything, and the loop is declined.
-: NLPT-LOAD ( ptr n n -- n ) {: cell:ptr len:n :}
-   0 len 0 ?do cell @ + loop ;
+\ A read AND a write in one body, with an accumulator beside them. This is the
+\ row the WRITE rule holds up on its own: both addresses are the same cell every
+\ turn, so the read would move if the address were the only question - and moving
+\ it would read the cell once where the loop reads it again after each write. The
+\ loop is kept because one operation in the body declares a write.
+: NLPT-RW ( ptr n n -- n ) {: cell:ptr len:n :}
+   0 len 0 ?do cell @ + 5 cell ! loop ;
+
+\ A load whose address the turn decides. Nothing writes, so the reads do not
+\ alias anything - and they still cannot move, because each turn reads a
+\ different cell. The loop is kept.
+: NLPT-VARLOAD ( ptr n n -- n ) {: base:ptr len:n :}
+   0 len 0 ?do base i cells + @ + loop ;
 
 \ The callee is long enough that neither generator copies it, so what crosses
 \ this loop's body really is a call.
@@ -233,12 +296,28 @@ private
    s" : NLPT-AFTER-LOAD-N ( ptr n n -- n ) {: cell:ptr len:n :} cell @ len 0 ?do 1 + loop ;"
    2 1 REGS NMIGRATE:DEFINE ;
 
+: RW ( -- )
+   s" : NLPT-RW-N ( ptr n n -- n ) {: cell:ptr len:n :} 0 len 0 ?do cell @ + 5 cell ! loop ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
 : STORE ( -- )
    s" : NLPT-STORE-N ( ptr n n -- n ) {: cell:ptr len:n :} len 0 ?do cell @ 3 + cell ! loop cell @ ;"
    2 1 REGS NMIGRATE:DEFINE ;
 
 : LOAD ( -- )
    s" : NLPT-LOAD-N ( ptr n n -- n ) {: cell:ptr len:n :} 0 len 0 ?do cell @ + loop ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
+: FIELDS ( -- )
+   s" : NLPT-FIELDS-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base 16 + @ base 24 + @ base 32 + @ base 40 + @ + + + + loop ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
+: WIDE ( -- )
+   s" : NLPT-WIDE-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
+: VARLOAD ( -- )
+   s" : NLPT-VARLOAD-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base i cells + @ + loop ;"
    2 1 REGS NMIGRATE:DEFINE ;
 
 : CALLEE ( -- )
@@ -291,7 +370,8 @@ public
 
 : RUN ( -- )
    SUM TINY MANY MIX TWICE FROM5 FROMNEG AFTER-LOAD
-   STORE LOAD
+   LOAD FIELDS WIDE
+   STORE RW VARLOAD
    CALLEE CALL
    TWO THREE MUL SUB SWAPPED DEAD VARSTART MAXSTART NOTCOUNTED ;
 
@@ -367,6 +447,27 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    NLPT-FIXTURE:NLPT-FILL
    NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-LOAD
    NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-LOAD-N  T= ;
+
+: FIELDS= ( n -- ) {: l:n :}
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-FIELDS
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-FIELDS-N  T= ;
+
+: WIDE= ( n -- ) {: l:n :}
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-WIDE
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-WIDE-N  T= ;
+
+: RW= ( n -- ) {: l:n :}
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-RW
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-RW-N  T= ;
+
+: VARLOAD= ( n -- ) {: l:n :}
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-VARLOAD
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-VARLOAD-N  T= ;
 
 : CALL= ( n n -- ) {: a:n b:n :}
    a b NLPT-FIXTURE:NLPT-CALL  a b NLPT-FIXTURE:NLPT-CALL-N  T= ;
@@ -477,7 +578,76 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    s" NLPT-FIXTURE:NLPT-AFTER-LOAD-N" GONE
    0 AFTER-LOAD= 1 AFTER-LOAD= 5 AFTER-LOAD= -2 AFTER-LOAD= ;
 
+\ ---- what the pre-header takes off the body ----------------------------------
+\ WHY A READ IN THE BODY IS NOT A REFUSAL ANY MORE. A read whose address cannot
+\ change with the turn, in a body that writes nothing and calls nothing, answers
+\ the same bytes every turn: it is work the loop repeats for no reason, and the
+\ pre-header takes it. What is left is one addition into one accumulator, which
+\ is the shape this pass already folded. NLPT-LOAD was a refusal until the move
+\ landed - its two answers agreed then too, because the engine ran the loop and
+\ so did the chain; what changed is that the chain now computes the answer
+\ instead. NLPT-FIELDS is new, and it is the corpus row's own shape at a width a
+\ reader can check: four reads and the additions between them all move, and its
+\ record holds the ends of the signed range so a term dropped from the sum shows.
+: LOAD-CASE ( -- )
+   s" a loop that reads one cell moves the read and folds" T-LABEL
+   s" NLPT-FIXTURE:NLPT-LOAD-N" GONE
+   0 LOAD= 1 LOAD= 5 LOAD= -2 LOAD= ;
+
+: FIELDS-CASE ( -- )
+   s" four fields read and added a turn, the corpus row's own shape" T-LABEL
+   s" NLPT-FIXTURE:NLPT-FIELDS-N" GONE
+   0 FIELDS= 1 FIELDS= 2 FIELDS= 7 FIELDS= -2 FIELDS= ;
+
+\ The trip counts no loop can be run at, stated rather than run, on the row whose
+\ reads move: the reference is the four fields NLPT-FILL wrote, summed once and
+\ multiplied by the count in wrapping sixty-four-bit arithmetic.
+: FIELDS-BIG-CASE ( -- )
+   s" the moved reads answer a trip count no loop could run" T-LABEL
+   s" NLPT-FIXTURE:NLPT-FIELDS-N" STILL-A-LOOP? if exit then
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT MAX-INT NLPT-FIXTURE:NLPT-FIELDS-N
+   4611686018427387902 T=
+   NLPT-FIXTURE:NLPT-AT 8589934592 NLPT-FIXTURE:NLPT-FIELDS-N
+   17179869184 T= ;
+
 \ ---- the refusals ------------------------------------------------------------
+\ The corpus row's own width, against the loop the engine really runs. Fourteen
+\ reads and thirteen additions move; one addition into one accumulator is left,
+\ and the record holds both ends of the signed range so a term dropped from the
+\ sum or a product taken in the wrong width shows.
+: WIDE-CASE ( -- )
+   s" fourteen fields read a turn: the corpus row, against the loop" T-LABEL
+   s" NLPT-FIXTURE:NLPT-WIDE-N" GONE
+   0 WIDE= 1 WIDE= 2 WIDE= 3 WIDE= 8 WIDE= 100 WIDE=
+   -1 WIDE= -2 WIDE= MIN-INT WIDE= ;
+
+\ And the counts no loop can be run at. The sum of the fourteen cells is
+\ 5696527234175218563 as a signed cell, and the answer is that sum times the trip
+\ count in wrapping sixty-four-bit arithmetic - which is a different number from
+\ what any narrower or unwrapped product would give.
+: WIDE-BIG-CASE ( -- )
+   s" the corpus row answers a trip count no loop could run" T-LABEL
+   s" NLPT-FIXTURE:NLPT-WIDE-N" STILL-A-LOOP? if exit then
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT MAX-INT NLPT-FIXTURE:NLPT-WIDE-N
+   3526844802679557245 T=
+   NLPT-FIXTURE:NLPT-AT 8589934592 NLPT-FIXTURE:NLPT-WIDE-N
+   915469899730518016 T= ;
+
+: VARLOAD-CASE ( -- )
+   s" a read whose address the turn decides keeps its loop" T-LABEL
+   s" NLPT-FIXTURE:NLPT-VARLOAD-N" KEPT
+   0 VARLOAD= 1 VARLOAD= 2 VARLOAD= 6 VARLOAD= -2 VARLOAD= ;
+
+: RW-CASE ( -- )
+   s" a body that reads and writes one cell keeps its loop, and its answers" T-LABEL
+   s" NLPT-FIXTURE:NLPT-RW-N" KEPT
+   0 RW= 1 RW= 2 RW= 8 RW= -2 RW=
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT 8 NLPT-FIXTURE:NLPT-RW-N 135 T=
+   0 NLPT-FIXTURE:NLPT-CELL@ 5 T= ;
+
 : STORE-CASE ( -- )
    s" a loop that writes memory keeps its loop and its cells" T-LABEL
    s" NLPT-FIXTURE:NLPT-STORE-N" KEPT
@@ -488,11 +658,6 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    NLPT-FIXTURE:NLPT-FILL
    NLPT-FIXTURE:NLPT-AT 0 NLPT-FIXTURE:NLPT-STORE-N 100 T=
    0 NLPT-FIXTURE:NLPT-CELL@ 100 T= ;
-
-: LOAD-CASE ( -- )
-   s" a loop that reads memory keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-LOAD-N" KEPT
-   0 LOAD= 1 LOAD= 5 LOAD= -2 LOAD= ;
 
 : CALL-CASE ( -- )
    s" a loop with a call in it keeps its loop" T-LABEL
@@ -564,8 +729,14 @@ public
    FROM5-CASE
    FROMNEG-CASE
    AFTER-LOAD-CASE
-   STORE-CASE
    LOAD-CASE
+   FIELDS-CASE
+   FIELDS-BIG-CASE
+   WIDE-CASE
+   WIDE-BIG-CASE
+   VARLOAD-CASE
+   RW-CASE
+   STORE-CASE
    CALL-CASE
    TWO-CASE
    THREE-CASE

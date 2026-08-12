@@ -877,17 +877,23 @@ private
 \ disassembly that establishes it is recorded beside the twin in
 \ tools/clang/twins.c. It is named here the way this file names a known byte
 \ loss - one row, not a tolerance - so that it absorbs itself and nothing else.
-\ Unlike a known byte loss it carries NO staleness check, and that is a real
-\ difference rather than an oversight: a loss stops being a loss in a way the
-\ two columns show, and there is no number in this table that would change if
-\ clang stopped hoisting the loop. The evidence is the recorded disassembly, and
-\ a reader who doubts it should re-read the twin.
+\ WHAT IS LEFT OF THE DIFFERENCE HAS NARROWED AND IS STILL REAL: the chain now
+\ hoists the row's fourteen reads out of the loop too and multiplies by the trip
+\ count, so the two columns finally compute the answer the same way, and what
+\ remains is that clang VECTORISES the hoisted reads. That is a difference in
+\ instructions per field rather than in what the program does, and it is why the
+\ row is still the widest byte gap in the table. Unlike a known byte loss it
+\ carries NO staleness check, and that is a real difference rather than an
+\ oversight: a loss stops being a loss in a way the two columns show, and there
+\ is no number in this table that would change if clang stopped vectorising. The
+\ evidence is the recorded disassembly, and a reader who doubts it should re-read
+\ the twin.
 
 : REF-DIFFERENT$ ( -- ptr u8 n )
    s" CODEGEN-CORPUS4:PRESSURE-LOOP" ;
 
 : REF-DIFFERENT-WHY$ ( -- ptr u8 n )
-   s" clang: hoists all fourteen loads out of the loop and multiplies by the trip count, so the reference never holds the values the row is named for" ;
+   s" clang: vectorises the fourteen hoisted loads before multiplying by the trip count, so the reference reads the record in four instructions where the chain reads it in fourteen" ;
 
 : NOTE-ROW ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n wa:ptr wu:n :}
    s"   " APPEND

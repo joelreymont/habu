@@ -2,33 +2,42 @@
 \ comparison. One concern: what the new chain makes of the corpus built to beat
 \ it, and what it refuses.
 \
-\ TWELVE ROWS AND ONE GAP. Eleven of the twelve subjects compile; PRESSURE-LOOP
-\ does not, and what stops it is a refusal by name rather than a shortage of
-\ anything a bigger number would buy. That row is declared against the
-\ `loop-spill` capability, and the account in tools/codegen-compare-gap.f says
-\ what that word covers and why it is a capability rather than register pressure
-\ in general.
+\ TWELVE ROWS AND NO GAP. Every subject of this corpus compiles, so there is
+\ nothing here for CODEGEN-GAP:GAP to declare - the shape corpus 5 has always
+\ had. PRESSURE-LOOP was the one row that did not compile, and it is what this
+\ file's account below is about.
 \
-\ THE REFUSAL, MEASURED. The corpus's own text, handed to the same migration
-\ entry every other row here uses, with the largest register pool the
-\ architecture allows:
+\ THE REFUSAL THAT WAS, AND WHAT ACTUALLY CLOSED IT. The corpus's own text, handed
+\ to the same migration entry every other row here uses, with the largest register
+\ pool the architecture allows, threw -8508 E-A64RA-SPILL:
 \
 \     : PRESSURE-LOOP-N ( ptr n n -- n ) {: base:ptr len:n :}
 \        0 len 0 ?do base @ base 8 + @ ... base 104 + @ + + + + + + + + + + + + + +
 \        loop ;
-\                                          18 registers   threw -8508  E-A64RA-SPILL
 \
-\ It is not the budget. The same body with THIRTEEN fields instead of fourteen
-\ compiles at eighteen registers, and the fourteen-field body is refused at every
-\ budget between one and eighteen; nineteen is not a budget at all, because
-\ src/compiler/a64-effect.f refuses x18 in a routine's register set (E-A64EFF-GPR)
-\ and the platform reserves it. So the wall is at fourteen values live at once
-\ inside a loop, and it is exactly where src/compiler/native/regalloc.f says it
-\ is: MB-SPILLABLE? will not take a class defined or read in a block that is
-\ neither the entry nor the exit, because a frame access there would sit where the
-\ memory order cannot be stated - and the body of a counted loop is such a block.
-\ tools/codegen-compare-test.f runs that migration and checks the code, so the
-\ paragraph above is a measurement rather than a claim.
+\ It was never the budget. The same body with THIRTEEN fields compiled at eighteen
+\ registers and the fourteen-field body was refused at every budget between one
+\ and eighteen; nineteen is not a budget at all, because src/compiler/a64-effect.f
+\ refuses x18 in a routine's register set (E-A64EFF-GPR) and the platform reserves
+\ it. The wall was fourteen values live at once inside a LOOP BODY, exactly where
+\ src/compiler/native/regalloc.f says it is: MB-SPILLABLE? will not take a class
+\ defined or read in a block that is neither the entry nor the exit, because a
+\ frame access there would sit where the memory order cannot be stated.
+\
+\ SO THE ANSWER WAS NOT TO FIND THE VALUES A PLACE BUT TO STOP THE BODY HOLDING
+\ THEM. Nothing in this body writes memory, calls, or can trap, and the address
+\ each read computes cannot change with the turn - so the reads answer the same
+\ bytes every turn and are work the loop repeats for no reason.
+\ src/compiler/native/loop.f moves them, and the thirteen additions between them,
+\ into the pre-header; what is left is one addition into one accumulator, which is
+\ the shape that pass already replaces with the arithmetic the loop would have
+\ computed. The row holds no loop and never holds fourteen values inside one,
+\ which is also what the C twin does with the same program.
+\
+\ AND THE PRE-HEADER HAS A WALL OF ITS OWN, TWO WIDER. tools/codegen-spill-probe.f
+\ straddles it: fifteen fields read a turn compile and sixteen are refused with
+\ the same E-A64RA-SPILL, where the pair was thirteen and fourteen before the move
+\ landed. This corpus's fourteen sit inside that pair.
 \
 \ CALL-PRESSURE WAS THE SECOND GAP AND IS NOW A ROW, AND WHAT CLOSED IT IS NOT
 \ THE ALLOCATOR. That row holds eight values across a call inside a loop, and it
@@ -231,13 +240,6 @@ package CODEGEN-NEW4
 
 private
 
-\ ---- the one declaration ------------------------------------------------------
-\ The row the chain refuses, against the capability it waits for. The refusal is
-\ E-A64RA-SPILL at the largest register pool the architecture allows, and
-\ tools/codegen-compare-test.f is where that is checked rather than described.
-: GAPS ( -- )
-   s" CODEGEN-CORPUS4:PRESSURE-LOOP" CODEGEN--GAP-CAP:LOOP-SPILL CODEGEN-GAP:GAP ;
-
 \ ---- the three call rows ------------------------------------------------------
 \ The pinned inputs are the old column's, written as the same literals
 \ tools/codegen-compare-cases4.f writes, so the two columns are handed the same
@@ -321,7 +323,20 @@ private
       1000 CODEGEN-CORPUS4:LADDER-N CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ ---- the four loop rows with no call in them ----------------------------------
+\ ---- the five loop rows with no call in them ----------------------------------
+
+\ Fourteen fields of one record read and added a turn. The pinned inputs are the
+\ old column's, and the second of them is a trip count of zero, which is the edge
+\ the closed form has to answer without running anything.
+: PRESSURE-LOOP-CASE ( -- )
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" s" CODEGEN-CORPUS4:PRESSURE-LOOP-N"
+   [: CODEGEN-CORPUS4:REC CODEGEN-CORPUS4:LOOP-LEN
+      CODEGEN-CORPUS4:PRESSURE-LOOP-N drop ;]
+   [: CODEGEN-CORPUS4:REC CODEGEN-CORPUS4:LOOP-LEN
+      CODEGEN-CORPUS4:PRESSURE-LOOP-N CODEGEN-COMPARE:VECTOR
+      CODEGEN-CORPUS4:REC 0 CODEGEN-CORPUS4:PRESSURE-LOOP-N
+      CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
 : BIG-CONSTS-CASE ( -- )
    s" CODEGEN-CORPUS4:BIG-CONSTS" s" CODEGEN-CORPUS4:BIG-CONSTS-N"
@@ -377,6 +392,7 @@ private
    CALL-PRESSURE-CASE
    WIDE-ARITY-CASE
    LADDER-CASE
+   PRESSURE-LOOP-CASE
    BIG-CONSTS-CASE
    MANY-LOCALS-CASE
    FLOAT-MIX-CASE
@@ -388,6 +404,6 @@ public
 \ them they account for all of it. Runs after the old column, whose rows every
 \ name here is checked against.
 : RUN ( -- )
-   [: GAPS COVERED-CASES ;] CODEGEN-GAP:ACCOUNT ;
+   [: COVERED-CASES ;] CODEGEN-GAP:ACCOUNT ;
 
 ;package

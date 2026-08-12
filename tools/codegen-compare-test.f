@@ -1516,14 +1516,16 @@ private
 \ below pin is the answer that corpus got, so a change in either direction has to
 \ be looked at rather than absorbed.
 \
-\ TEN COMPILED ROWS AND TWO GAPS. PRESSURE-LOOP and CALL-PRESSURE are refused,
-\ and they are the first gaps in this harness whose cause is neither a missing
-\ operation nor a missing type: the chain has every capability either body needs
-\ and will not put a loop-carried value in a frame slot. The `loop-spill`
-\ capability names that, and REFUSAL-CASES below hands the corpus's own text to
-\ the real migration entry and checks that each refusal is E-A64RA-SPILL and not
-\ some other code, with the largest accepted neighbour beside it so that
-\ "refused" cannot mean "the register budget was too small".
+\ TWELVE COMPILED ROWS AND NO GAP. PRESSURE-LOOP and CALL-PRESSURE were refused,
+\ and they were the first gaps in this harness whose cause was neither a missing
+\ operation nor a missing type: the chain had every capability either body needs
+\ and would not put a loop-carried value in a frame slot. Neither closed by
+\ finding those values a place. CALL-PRESSURE closed when the elaborator stopped
+\ handing every call-reachable local over to a callee that published what it
+\ destroys, and PRESSURE-LOOP closed when src/compiler/native/loop.f moved its
+\ fourteen reads and their additions out of the loop body and folded what was
+\ left. REFUSAL-CASES below still hands the corpus's own text to the real
+\ migration entry, and now checks that both bodies compile there.
 \
 \ WHICH ROWS COST MORE. NONE of the nine does any more. TINY-CALLEE was the last
 \ one that did - its loop body is nothing but calls, and the engine copied the
@@ -1590,15 +1592,18 @@ private
 : REAL-RUN-CASES4 ( -- )
    13 ACCOUNT-CASES
 
-   s" the fourth corpus compiles eleven rows and declares one gap" T-LABEL
-   CODEGEN-GAP:GAPS 1 T=
-   NEW-ROWS 12 T=
+   s" the fourth corpus compiles twelve rows and declares no gap" T-LABEL
+   CODEGEN-GAP:GAPS 0 T=
+   NEW-ROWS 13 T=
 
-   s" and the gap is a loop that holds a value the allocator cannot place"
-   T-LABEL
-   s" CODEGEN-CORPUS4:PRESSURE-LOOP" NAMED-GAP-AMONG? TTRUE
-   s" CODEGEN-CORPUS4:PRESSURE-LOOP" MEASURED? TFALSE
-   CODEGEN--GAP-CAP:LOOP-SPILL GAPS-WANTING 1 T=
+   \ PRESSURE-LOOP was the last row of any corpus the chain refused. It is
+   \ asserted both ways for CALL-PRESSURE's reason: a regression that put it back
+   \ among the refusals restores a gap declaration, and a row dropped from the
+   \ column altogether leaves no gap either - only MEASURED? tells those apart.
+   s" and the row that was the last refusal anywhere is measured" T-LABEL
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" NAMED-GAP-AMONG? TFALSE
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" MEASURED? TTRUE
+   CODEGEN--GAP-CAP:LOOP-SPILL GAPS-WANTING 0 T=
 
    \ CALL-PRESSURE was the second row against that capability and is a measured
    \ row now. It is asserted BOTH ways: a regression that put it back among the
@@ -1617,7 +1622,7 @@ private
    s" CODEGEN-CORPUS4:TINY-CALLEE" NAMED-GAP-AMONG? TFALSE
    s" CODEGEN-CORPUS4:MANY-LOCALS" NAMED-GAP-AMONG? TFALSE
 
-   s" and the eleven it does compile are measured rows" T-LABEL
+   s" and the other eleven are measured rows too" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN" MEASURED? TTRUE
    s" CODEGEN-CORPUS4:CALL-FAN-BIG" MEASURED? TTRUE
    s" CODEGEN-CORPUS4:CALL-LOOP-3" MEASURED? TTRUE
@@ -1724,8 +1729,8 @@ private
 
 \ ---- the fourth corpus's committed table, on fixtures built to fool it --------
 \ The same attack as the second and third corpora's, over the whole of the fourth
-\ table - thirteen old rows, two of which are gaps in the new column - broken in
-\ one place at a time. The measurement they read is whatever pass the caller ran last,
+\ table - thirteen old rows, every one of them measured in the new column -
+\ broken in one place at a time. The measurement they read is whatever pass the caller ran last,
 \ so MAIN runs the fourth corpus immediately before calling them.
 : CORPUS4-TABLE-CASES ( -- )
    s" the fourth corpus's own table, written honestly, reports nothing" T-LABEL
@@ -1734,7 +1739,7 @@ private
    s" one instruction added to a call row's byte count is reported" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN" ONE-INSN BYTE-DELTA-CK
 
-   s" and so is one taken off the row the chain refuses" T-LABEL
+   s" and so is one taken off the row that used to be refused" T-LABEL
    s" CODEGEN-CORPUS4:PRESSURE-LOOP" ONE-INSN negate BYTE-DELTA-CK
 
    s" a wrong sixty-four-bit output is reported" T-LABEL
@@ -1802,21 +1807,24 @@ private
 \ whole new column goes through - and check the codes, so each account is a
 \ measurement rather than a sentence.
 \
-\ THE REFUSED ROWS ARE THE ONES THAT MATTER. "The chain refuses PRESSURE-LOOP" is
-\ a claim about a compiler, and the honest way to check it is to hand the compiler
-\ the corpus's own text. Each body below is the corpus's, character for character,
-\ under the `-N` name tools/codegen-compare-migrated4.f would have given it, at
-\ EIGHTEEN registers - the largest pool src/compiler/a64-effect.f allows, x18
-\ being platform-reserved. Each has a control beside it - the same body one value
-\ smaller, which compiles at the same budget - because without the control
-\ "refused" could mean "the number was too small".
+\ THE ROWS THAT WERE REFUSED ARE THE ONES THAT MATTER. "The chain refuses
+\ PRESSURE-LOOP" was a claim about a compiler, and the honest way to check it -
+\ then and now - is to hand the compiler the corpus's own text. Each body below is
+\ the corpus's, character for character, under the `-N` name
+\ tools/codegen-compare-migrated4.f gives it, at EIGHTEEN registers - the largest
+\ pool src/compiler/a64-effect.f allows, x18 being platform-reserved. Each has a
+\ neighbour beside it on the other side of its wall, because without one
+\ "compiles" and "refused" are both just numbers.
 \
-\ THE TWO REFUSALS REACH ONE RULE BY TWO ROADS. PRESSURE-LOOP holds fourteen
-\ values live in a loop body and nothing else; CALL-PRESSURE holds eight across a
-\ call the loop makes, which is a shape programs really have. Their walls are at
-\ different counts and the reason is one: MB-SPILLABLE? will not place a value
-\ defined or read in a block that is neither the entry nor the exit, and a call
-\ costs the allocator registers it then cannot get back inside the loop.
+\ THE TWO REFUSALS REACHED ONE RULE BY TWO ROADS AND NEITHER CLOSED BY MOVING
+\ THAT RULE. PRESSURE-LOOP held fourteen values live in a loop body and nothing
+\ else; CALL-PRESSURE holds eight across a call the loop makes, which is a shape
+\ programs really have. Both walls were MB-SPILLABLE? refusing a value defined or
+\ read in a block that is neither the entry nor the exit. CALL-PRESSURE stopped
+\ handing its values over at the call; PRESSURE-LOOP stopped holding its values
+\ in the body at all, because src/compiler/native/loop.f moves reads that cannot
+\ change with the turn into the block above it. The rule is untouched, and the
+\ sixteen-field body below is where it still bites.
 
 PTR-VARIABLE TRY-SRC
 variable TRY-U
@@ -1844,7 +1852,13 @@ variable TRY-REGS
 : SPILL-14$ ( -- ptr u8 n )
    s" : PRESSURE-LOOP-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;" ;
 
-\ The same body with one field fewer, which is the control.
+\ The same body two fields WIDER, which is the wall the reads meet once they have
+\ been moved: sixteen values in the pre-header is where E-A64RA-SPILL now is.
+: SPILL-16$ ( -- ptr u8 n )
+   s" : PRESSURE-16-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ base 112 + @ base 120 + @ + + + + + + + + + + + + + + + + loop ;" ;
+
+\ The same body with one field fewer, which was the control for the old wall and
+\ is the count that compiled before the reads moved.
 : SPILL-13$ ( -- ptr u8 n )
    s" : PRESSURE-13-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ + + + + + + + + + + + + + loop ;" ;
 
@@ -1926,11 +1940,14 @@ variable TRY-REGS
    [: SPEND-FOUR ;] catch ;
 
 : REFUSAL-CASES ( -- )
-   s" the corpus's own pressure loop is refused at the largest register pool" T-LABEL
-   SPILL-14$ 2 18 TRY E-A64RA-SPILL T=
+   s" the corpus's own pressure loop compiles at the largest register pool" T-LABEL
+   SPILL-14$ 2 18 TRY 0 T=
 
-   s" and it is the loop and not the budget: one field fewer compiles there" T-LABEL
+   s" and so does the thirteen-field body that compiled before the reads moved" T-LABEL
    SPILL-13$ 2 18 TRY 0 T=
+
+   s" and it is width and not the budget: two fields wider is still refused" T-LABEL
+   SPILL-16$ 2 18 TRY E-A64RA-SPILL T=
 
    s" the corpus's own call-pressure loop compiles at the same pool" T-LABEL
    SPILL-CALL-8$ 9 18 TRY-CALLING 0 T=

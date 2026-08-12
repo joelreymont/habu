@@ -40,6 +40,42 @@
 \ zero, the caller keeps the module it has, and the routine is compiled exactly
 \ as it was before this file existed.
 \
+\ ---- AND WHAT IS MOVED, BECAUSE THE TWO ARE ONE PASS -------------------------
+\ "A value that cannot change with the turn" used to mean a value from OUTSIDE
+\ the loop, and that left the shape the corpus was built around outside the rule:
+\ a body that reads fourteen fields of one record and adds them up computes its
+\ addend INSIDE the header, out of a base pointer and some offsets, none of which
+\ the turn touches. So the pass now moves such work into the pre-header first and
+\ recognises what is left.
+\
+\ THE PRECONDITION IS ONE SCAN OF THE SCHEMA AND NOT AN ALIAS ANALYSIS. What
+\ licenses moving a READ above a loop is that nothing in the loop WRITES, calls,
+\ or can trap - and the dialect declares each of those about every operation it
+\ has (src/compiler/native/hir.f GENERIC-MEM), so the question is asked of the
+\ schema the module carries rather than of the addresses the program computes. A
+\ body with a write in it moves nothing, whatever its reads look like.
+\
+\ THE READS MOVE TOGETHER OR NOT AT ALL, and that is what the memory ORDER needs.
+\ It is threaded read to read, so a rule that asked each read's order operand to
+\ be unchanging would ask the reads of one body to support each other in a circle
+\ that never starts. With no write anywhere in the loop the reads answer the same
+\ bytes every turn, so they go as a group and the thread through the body is then
+\ empty - which is also why the position the order arrives in stops changing and
+\ the recogniser below sees one accumulator instead of two.
+\
+\ WHAT IS NOT MOVED IS A NUMBER THE BLOCK BUILDS. A single constant addend is
+\ folded into what one turn adds at compile time and always was; a TREE of
+\ constants is the same number spread over several operations, and moving it
+\ would put arithmetic above the loop that one literal expresses. Such a loop is
+\ declined exactly as it was before, which is what keeps every routine that
+\ already folded folding to the same bytes.
+\
+\ AND MOVING IS NOT AN OPTIMISATION ON ITS OWN HERE. Only work the closed form
+\ READS is moved, so a loop this pass does not go on to fold moves nothing: the
+\ two halves are one decision, and a hoist that left the loop standing would have
+\ made the routine hold its values across the loop's edges instead of inside its
+\ body, which is worse and was measured to be worse.
+\
 \ ---- THE SHAPE, BLOCK BY BLOCK -----------------------------------------------
 \ This is what src/compiler/native/elaborate.f builds for `?do … loop`, and
 \ test/compiler/native-elaborate.f's SUMTO-CASE pins it independently:
@@ -139,12 +175,15 @@
 \   reference. The values that LEAVE the loop are the ones the exit stub hands the
 \   join, and the arms hand the join the same list.
 \
-\   THEY HAVE NO EFFECT TO PRESERVE. The header holds only additions, one
-\   constant and its terminator - the coverage check below accounts for every
-\   operation in it - so there is no store, no load, no call and no trap in the
-\   loop. Deleting it removes no event. This is also why a body that touches
-\   memory is declined rather than folded: the closed form of its ARITHMETIC
-\   would be right and its memory would be gone.
+\   THEY HAVE NO EFFECT TO PRESERVE. Every operation of the header is either
+\   accounted for by a rule here or MOVED into the pre-header - the coverage
+\   check below admits nothing else - so what is deleted is additions, constants
+\   and the terminator. There is no store, no call and no trap in the loop,
+\   because the move's own precondition refuses every body that has one, and
+\   there is no read left in it, because the reads went with the move. Deleting
+\   the blocks removes no event. A body that WRITES is declined rather than
+\   folded, for the reason this paragraph gives: the closed form of its
+\   ARITHMETIC would be right and its memory would be gone.
 \
 \   AND THEY TERMINATE. A counted loop with the shape above runs T turns and
 \   stops; the closed form is what it leaves. The one case where that is not
@@ -306,10 +345,14 @@ variable P-KCONST                    \ the constant part of what one turn adds
 variable P-INV-N                     \ how many non-constant values one turn adds
 variable P-ONE                       \ the arm that runs the T=1 form, as a new block ordinal
 variable P-MANY                      \ the arm that runs the general form
+variable P-MOV-N                     \ how many operations the pre-header takes off the body
 
 INV-MAX TYPED-BUFFER P-INV IR-ID:ir-value-id
 create P-NEW BMAX cells allot        \ old block ordinal -> new ordinal, or -1 when dropped
 create P-COV COV-MAX cells allot     \ scratch: which operations of the header are accounted for
+create P-FIX COV-MAX cells allot     \ scratch: which of them cannot change with the turn
+create P-MOV COV-MAX cells allot     \ scratch: which of THOSE the pre-header really takes
+create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as a moved answer
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -662,6 +705,210 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
 : COVERED? ( n -- bool )
    cells P-COV + @ 0<> ;
 
+\ ---- the work one turn repeats -----------------------------------------------
+\ HOW ONE OPERATION STANDS TO THE TURN. Not fixed at all; fixed but computed from
+\ nothing but numbers this block builds; or fixed AND reading something the loop
+\ was handed. The last two are told apart because only the third is WORK.
+\
+\ A TREE OF CONSTANTS IS A NUMBER, AND THIS PASS FOLDS NUMBERS RATHER THAN MOVING
+\ THEM. One constant addend is added into what a turn adds at compile time
+\ (CHAIN-ADDEND), and a tree of them is the same number written across several
+\ operations - so moving twenty-nine additions of constants above the loop would
+\ put arithmetic there that one literal expresses, and it is the shape that first
+\ makes a rewritten module big enough to meet the migration context's scratch
+\ (E-IR-CTX-SCRATCH, measured at twenty-seven constants). Until this pass can work
+\ such a tree out, a loop whose turn adds one is DECLINED exactly as it was before
+\ the move existed. Moving it is not the missing capability; folding it is.
+0 constant FIX-NO
+1 constant FIX-NUMBER
+2 constant FIX-OUTSIDE
+
+: FIX@ ( n -- n )         cells P-FIX + @ ;
+: FIXED? ( n -- bool )    FIX@ FIX-NO <> ;
+: WORK? ( n -- bool )     FIX@ FIX-OUTSIDE = ;
+: MOVED? ( n -- bool )    cells P-MOV + @ 0<> ;
+: THRU? ( n -- bool )     cells P-THRU + @ 0<> ;
+
+: SLOT-CK ( n -- n )
+   {: k:n :}
+   k 0 < k COV-MAX >= or if E-NLOOP-CAP throw then
+   k ;
+
+: FIX! ( n n -- )
+   {: k:n c:n :}
+   c  k SLOT-CK cells P-FIX +  ! ;
+
+: THRU! ( n -- )    1 swap SLOT-CK cells P-THRU + ! ;
+
+: MOV! ( n -- )
+   {: k:n :}
+   k MOVED? if exit then
+   1 k SLOT-CK cells P-MOV + !
+   P-MOV-N @ 1+ P-MOV-N ! ;
+
+\ The three tables over the header, cleared together: how each operation stands
+\ to the turn, which of them the pre-header really takes, and which carried
+\ positions leave the loop as one of the moved answers. A block bigger than they
+\ hold is DECLINED, for COV-INIT?'s reason.
+: FIX-INIT? ( IR-ID:ir-block-id -- bool )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT {: n:n :}
+   bk ARG-COUNT {: an:n :}
+   n COV-MAX > an COV-MAX > or if false exit then
+   0 P-MOV-N !
+   n 0 ?do  i FIX-NO FIX!  0 i cells P-MOV + !  loop
+   an 0 ?do  0 i cells P-THRU + !  loop
+   true ;
+
+\ ---- what the schema says an operation does ----------------------------------
+\ An operation may be lifted off a loop only if its whole content is the value it
+\ answers. The dialect declares that of every operation it has - the effect class
+\ and whether it may trap are fields of the schema the module carries
+\ (src/compiler/native/hir.f GENERIC-MEM) - so it is READ here rather than
+\ restated as a list of opcodes this file would have to remember to extend.
+: EFFECT-QUIET? ( IR-SCHEMA:effect -- bool )
+   MATCH IR-SCHEMA:effect
+      pure       OF true  ENDOF
+      read       OF true  ENDOF
+      write      OF false ENDOF
+      read-write OF false ENDOF
+   ;MATCH ;
+
+: EFFECT-MEM? ( IR-SCHEMA:effect -- bool )
+   MATCH IR-SCHEMA:effect
+      pure       OF false ENDOF
+      read       OF true  ENDOF
+      write      OF true  ENDOF
+      read-write OF true  ENDOF
+   ;MATCH ;
+
+: OP-QUIET? ( IR-ID:ir-op-id -- bool )
+   OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
+   V-SCHR VW sym IR-SCHEMA:FTRAPS? if false exit then
+   V-SCHR VW sym IR-SCHEMA:FEFFECT@ EFFECT-QUIET? ;
+
+: OP-MEMORY? ( IR-ID:ir-op-id -- bool )
+   OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
+   V-SCHR VW sym IR-SCHEMA:FEFFECT@ EFFECT-MEM? ;
+
+\ The memory ORDER, told apart from the numbers a program computes with by its
+\ TYPE, which is how src/compiler/native/elaborate.f tells them apart too. It
+\ names no value and holds no register: it is the thread that says what happened
+\ before what, and the group rule below is what answers for it.
+: MEM-VALUE? ( IR-ID:ir-value-id -- bool )
+   VALUE-TYPE-AT  0 BND-MEM @  SAME-TYPE? ;
+
+\ ---- which operations cannot change with the turn ----------------------------
+: OP-READS? ( IR-ID:ir-op-id IR-ID:ir-value-id -- bool )
+   {: id:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
+   false
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT v SAME-VALUE? if drop true leave then
+   loop ;
+
+: STAYING-READS? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
+   {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
+   false
+   hb OP-COUNT 0 ?do
+      i FIXED? 0= if
+         hb i OP-AT v OP-READS? if drop true leave then
+      then
+   loop ;
+
+: MOVED-READS? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
+   {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
+   false
+   hb OP-COUNT 0 ?do
+      i MOVED? if
+         hb i OP-AT v OP-READS? if drop true leave then
+      then
+   loop ;
+
+\ An argument the loop hands back untouched. It holds the same value on every
+\ turn - the one the pre-header handed over - so an operation reading it reads
+\ the same thing every turn too.
+: ARG-KEPT? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id a:n :}
+   f P-LA @ BLOCK-AT TERM-AT a OPERAND-AT
+   f P-H @ BLOCK-AT a ARG-AT
+   SAME-VALUE? ;
+
+\ One operand, in the same three answers. A value from OUTSIDE the header is the
+\ thing the loop was handed, and an argument it hands back untouched is one too:
+\ both are values the pre-header holds, and reading either is work.
+: VAL-FIX ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-value-id -- n )
+   {: f:IR-ID:ir-fun-id hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
+   hb v ARG-INDEX {: a:n :}
+   a 0 >= if f a ARG-KEPT? if FIX-OUTSIDE else FIX-NO then exit then
+   hb v DEF-INDEX {: d:n :}
+   d 0 < if FIX-OUTSIDE exit then
+   d FIX@ ;
+
+\ THE ORDER IS LEFT OUT OF THIS TEST ON PURPOSE. A read's order operand is the
+\ previous read's answer, so asking it to be unchanging would make the reads of
+\ one body support each other in a circle that never starts, and the whole body
+\ would be declined for a value that is not a number at all. What answers for the
+\ order instead is MEM-GROUP? below: with no write anywhere in the loop, the
+\ reads move TOGETHER and the thread through the body is then empty.
+: OP-FIX ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-op-id -- n )
+   {: f:IR-ID:ir-fun-id hb:IR-ID:ir-block-id id:IR-ID:ir-op-id :}
+   id OP-QUIET? 0= if FIX-NO exit then
+   FIX-NUMBER
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT MEM-VALUE? 0= if
+         f hb  id i OPERAND-AT  VAL-FIX {: c:n :}
+         c FIX-NO = if drop FIX-NO leave then
+         c FIX-OUTSIDE = if drop FIX-OUTSIDE then
+      then
+   loop ;
+
+: FIX-ROUND ( IR-ID:ir-fun-id -- bool )
+   {: f:IR-ID:ir-fun-id :}
+   f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
+   false
+   hb OP-COUNT 1- 0 ?do
+      i FIXED? 0= if
+         f hb  hb i OP-AT  OP-FIX {: c:n :}
+         c FIX-NO <> if i c FIX! drop true then
+      then
+   loop ;
+
+\ The memory the body reads moves whole or not at all. What licenses moving a
+\ read above the loop is that nothing in the loop WRITES - OP-QUIET? has already
+\ refused every operation that does, and every call and everything that may trap
+\ with them - and once that holds a read answers the same bytes on every turn.
+\ Leaving one behind would leave the order threaded through the body, so a body
+\ with a read the addressing keeps inside it keeps them all.
+: MEM-GROUP? ( IR-ID:ir-block-id -- bool )
+   {: hb:IR-ID:ir-block-id :}
+   true
+   hb OP-COUNT 0 ?do
+      hb i OP-AT OP-MEMORY? if
+         i FIXED? 0= if drop false leave then
+      then
+   loop ;
+
+: FIX-CLEAR ( IR-ID:ir-block-id -- )
+   OP-COUNT 0 ?do  i FIX-NO FIX!  loop ;
+
+\ Every operation of the body that cannot change with the turn, found by asking
+\ again until nothing more answers yes. An operation joins the set when the
+\ operands it computes with are already fixed, and joining it fixes ITS results
+\ for the next round, so one round per operation is more than enough. The
+\ terminator is never asked: a block ends where it ends.
+\
+\ NOTHING IS REFUSED HERE. A body whose work all changes with the turn leaves the
+\ set empty, and an empty set is the pass exactly as it was before this section
+\ existed - which is what keeps every loop that already folded folding to the
+\ same bytes.
+: PLAN-FIX ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
+   hb OP-COUNT 0 ?do
+      f FIX-ROUND 0= if leave then
+   loop
+   hb MEM-GROUP? 0= if hb FIX-CLEAR then ;
+
 \ A block that hands control on and does nothing else: exactly one operation, its
 \ terminator, and no arguments of its own. Both stubs of a counted loop are one,
 \ and a stub that had grown an operation would be work this pass is about to
@@ -767,6 +1014,7 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
    pt OPERANDS-OF n <> if false exit then
    xtt OPERANDS-OF P-A @ <> if false exit then
    hb COV-INIT? 0= if false exit then
+   hb FIX-INIT? 0= if false exit then
    hb OP-COUNT 1- COV!
    true ;
 
@@ -843,6 +1091,29 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
    sofar ACC-NONE <> if ACC-MANY exit then
    at ;
 
+\ A position the loop changes that is NOT an accumulator: the latch hands on the
+\ answer of work that moves to the pre-header, and nothing left in the body reads
+\ the argument the position arrives in. So after the move the loop neither reads
+\ nor writes it, what leaves at that position is the moved definition itself, and
+\ the arms hand the join exactly that. The memory order is the position this is
+\ written for - the loop's reads leave it holding "after the last read" - and no
+\ shape measured so far answers yes to it any other way.
+: POS-THRU? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id a:n :}
+   f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
+   hb  f P-LA @ BLOCK-AT TERM-AT a OPERAND-AT  DEF-INDEX {: d:n :}
+   d 0 < if false exit then
+   d FIXED? 0= if false exit then
+   hb  hb a ARG-AT  STAYING-READS? 0= ;
+
+\ What the exit stub must be handing the join at one position: the accumulator's
+\ new value where the loop accumulates, the moved answer where it hands one
+\ through, and the argument the header took everywhere else.
+: ACC-EXPECT ( IR-ID:ir-op-id IR-ID:ir-block-id n n -- IR-ID:ir-value-id )
+   {: lat:IR-ID:ir-op-id hb:IR-ID:ir-block-id k:n i:n :}
+   i k =  i THRU?  or if lat i CARRY-ARG OPERAND-AT exit then
+   hb i CARRY-ARG ARG-AT ;
+
 : PLAN-ACC? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
@@ -851,16 +1122,14 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
    ACC-NONE
    P-A @ 0 ?do
       lat i CARRY-ARG OPERAND-AT  hb i CARRY-ARG ARG-AT  SAME-VALUE? 0= if
-         i ACC-SEEN
+         f i CARRY-ARG POS-THRU? if i THRU! else i ACC-SEEN then
       then
    loop {: k:n :}
    k 0 < if false exit then
    k P-K !
    true
    P-A @ 0 ?do
-      xtt i OPERAND-AT
-      i k = if lat k CARRY-ARG OPERAND-AT else hb i CARRY-ARG ARG-AT then
-      SAME-VALUE? 0= if drop false leave then
+      xtt i OPERAND-AT  lat hb k i ACC-EXPECT  SAME-VALUE? 0= if drop false leave then
    loop ;
 
 \ ---- what one turn adds ------------------------------------------------------
@@ -881,10 +1150,17 @@ variable CH-STATE
    v n P-INV !
    n 1+ P-INV-N ! ;
 
-\ One addend classified: the loop index, a number this block builds, or a value
-\ from outside the loop. A header argument that is not the index is declined -
-\ it would be loop-invariant in effect, but reading one would mean carrying the
-\ header's argument list into the arms, and no measured row needs it.
+\ One addend classified: the loop index, a number this block builds, a value from
+\ outside the loop, or - the last clause - the answer of work inside the body
+\ that cannot change with the turn, which the pre-header takes off it. A header
+\ argument that is not the index is declined: it would be unchanging in effect,
+\ but reading one would mean carrying the header's argument list into the arms,
+\ and no measured row needs it.
+\
+\ A NUMBER THE BLOCK BUILDS IS FOLDED AND NOT MOVED, and the order of the last
+\ two clauses is what says so: four additions of one become one number at compile
+\ time, where moving them would leave four values for the arms to add. That is
+\ also why every loop this pass already folded still folds to the same bytes.
 : CHAIN-ADDEND ( IR-ID:ir-block-id IR-ID:ir-value-id -- )
    {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    v  hb P-IDX @ ARG-AT  SAME-VALUE? if P-M @ 1+ P-M ! exit then
@@ -892,9 +1168,13 @@ variable CH-STATE
    hb v DEF-INDEX {: d:n :}
    d 0 < if v CHAIN-INV+ exit then
    hb d OP-AT CONST-VALUE {: val:n ok:bool :}
-   ok 0= if CH-NO CH-STATE ! exit then
-   P-KCONST @ val + P-KCONST !
-   d COV! ;
+   ok if
+      P-KCONST @ val + P-KCONST !
+      d COV!
+      exit
+   then
+   d WORK? 0= if CH-NO CH-STATE ! exit then
+   v CHAIN-INV+ ;
 
 : CHAIN-STEP ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
@@ -921,16 +1201,102 @@ variable CH-STATE
    loop
    CH-STATE @ CH-DONE = ;
 
+\ ---- which of the unchanging operations the pre-header really takes ----------
+\ The closed form reads two things the body computed: the values one turn adds,
+\ and whatever leaves the loop at a position it hands a moved answer through.
+\ Those are the seeds; everything they read in turn joins them, and the set is
+\ then closed under reading.
+\
+\ AN OPERATION NOTHING ASKS FOR IS NOT MOVED. Moving it would put work above the
+\ loop that the loop's own answer never needed, and it is then an operation no
+\ rule here accounted for - which PLAN-COVER? declines, exactly as it declines
+\ any other. So a body carrying a dead operation keeps its loop, which is the
+\ answer it had before this section existed.
+
+\ One value asked for: when an unchanging operation of this block defines it and
+\ has not been asked for yet, it joins the set and the answer says the set grew.
+: MOVE-ASK ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
+   {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
+   hb v DEF-INDEX {: d:n :}
+   d 0 < if false exit then
+   d FIXED? 0= if false exit then
+   d MOVED? if false exit then
+   d MOV!
+   true ;
+
+: MOVE-SEEDS ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
+   f P-LA @ BLOCK-AT TERM-AT {: lat:IR-ID:ir-op-id :}
+   P-INV-N @ 0 ?do  hb  i P-INV @  MOVE-ASK drop  loop
+   P-A @ 0 ?do
+      i THRU? if  hb  lat i CARRY-ARG OPERAND-AT  MOVE-ASK drop  then
+   loop ;
+
+: MOVE-OP ( IR-ID:ir-block-id IR-ID:ir-op-id -- bool )
+   {: hb:IR-ID:ir-block-id id:IR-ID:ir-op-id :}
+   false
+   id OPERANDS-OF 0 ?do
+      hb  id i OPERAND-AT  MOVE-ASK if drop true then
+   loop ;
+
+: MOVE-ROUND ( IR-ID:ir-block-id -- bool )
+   {: hb:IR-ID:ir-block-id :}
+   false
+   hb OP-COUNT 0 ?do
+      i MOVED? if
+         hb  hb i OP-AT  MOVE-OP if drop true then
+      then
+   loop ;
+
+\ Every operand of every moved operation reachable from where it now stands: a
+\ value from outside the loop, an argument the loop hands back untouched or hands
+\ a moved answer through, or another moved operation's result. The analysis above
+\ already implies this - it is why each of those operations was called unchanging
+\ in the first place - and it is asked again because the EMISSION rests on it: an
+\ operand of any other kind would be copied into the pre-header naming a value
+\ that block cannot see.
+: MOVE-OPERAND-OK? ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
+   {: f:IR-ID:ir-fun-id hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
+   hb v ARG-INDEX {: a:n :}
+   a 0 >= if  f a ARG-KEPT?  f a POS-THRU?  or exit then
+   hb v DEF-INDEX {: d:n :}
+   d 0 < if true exit then
+   d MOVED? ;
+
+: MOVE-CLOSED-OP? ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-op-id -- bool )
+   {: f:IR-ID:ir-fun-id hb:IR-ID:ir-block-id id:IR-ID:ir-op-id :}
+   true
+   id OPERANDS-OF 0 ?do
+      f hb  id i OPERAND-AT  MOVE-OPERAND-OK? 0= if drop false leave then
+   loop ;
+
+: PLAN-MOVE? ( IR-ID:ir-fun-id -- bool )
+   {: f:IR-ID:ir-fun-id :}
+   f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
+   f MOVE-SEEDS
+   hb OP-COUNT 0 ?do
+      hb MOVE-ROUND 0= if leave then
+   loop
+   true
+   hb OP-COUNT 0 ?do
+      i MOVED? if
+         f hb  hb i OP-AT  MOVE-CLOSED-OP? 0= if drop false leave then
+      then
+   loop ;
+
 \ Every operation of the header accounted for. This is the coverage check the
-\ soundness argument rests on: a store, a load, a call, a trap, a second
-\ accumulator or an operation whose result nothing reads is an operation no rule
-\ here claimed, and the loop is declined rather than folded around it.
+\ soundness argument rests on: a store, a load the addressing keeps inside the
+\ body, a call, a trap, a second accumulator or an operation whose result nothing
+\ reads is an operation no rule here claimed, and the loop is declined rather
+\ than folded around it. An operation the pre-header takes is accounted for by
+\ being taken.
 : PLAN-COVER? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
    true
    hb OP-COUNT 0 ?do
-      i COVERED? 0= if drop false leave then
+      i COVERED?  i MOVED?  or 0= if drop false leave then
    loop ;
 
 \ ---- the start, which has to be a number this pass can read ------------------
@@ -1005,8 +1371,10 @@ $7FFFFFFFFFFFFFFF constant MAX-START
    f PLAN-ENTRY? 0= if exit then
    f PLAN-SHAPE? 0= if exit then
    f PLAN-STEP? 0= if exit then
+   f PLAN-FIX
    f PLAN-ACC? 0= if exit then
    f PLAN-CHAIN? 0= if exit then
+   f PLAN-MOVE? 0= if exit then
    f PLAN-COVER? 0= if exit then
    f PLAN-GUARD? 0= if exit then
    f PLAN-START? 0= if exit then
@@ -1183,6 +1551,35 @@ $7FFFFFFFFFFFFFFF constant MAX-START
 : CLOSE-BLOCK ( -- )
    CTX BLD IR-BUILD:END-BLOCK drop ;
 
+\ ---- the work the pre-header takes off the body ------------------------------
+\ The arguments first. A moved operation may read one, and what such an argument
+\ holds on every turn is the value the pre-header was handing the header - which
+\ is the plan's own sentence about it: the loop either hands that argument back
+\ untouched, or nothing that stays behind reads it at all. So the argument is
+\ bound to the pre-header's operand, and the operations copied afterwards find it
+\ under the name they already used.
+: BIND-MOVED-ARGS ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
+   f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
+   hb ARG-COUNT 0 ?do
+      hb  hb i ARG-AT  MOVED-READS? if
+         hb i ARG-AT  pt i OPERAND-AT VOF  VBIND
+      then
+   loop ;
+
+\ And then the operations, in the order the body had them. That order is a legal
+\ one here because the set is closed under what each operation reads: everything
+\ a moved operation names is either bound above, defined outside the loop, or
+\ defined by a moved operation standing earlier in the same block.
+: EMIT-MOVED ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BIND-MOVED-ARGS
+   f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
+   hb OP-COUNT 0 ?do
+      i MOVED? if hb i OP-AT COPY-OP then
+   loop ;
+
 : COPY-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
@@ -1258,17 +1655,19 @@ variable W-K?
 \ accumulator's position, and at every other position the value the pre-header
 \ was handing the header - which is the same value, because the recogniser
 \ established that the latch hands every other position back unchanged.
-: ARM-OPERAND ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: pt:IR-ID:ir-op-id i:n :}
+: ARM-OPERAND ( IR-ID:ir-op-id IR-ID:ir-op-id n -- IR-ID:ir-value-id )
+   {: pt:IR-ID:ir-op-id lat:IR-ID:ir-op-id i:n :}
    i P-K @ = if 0 W-ACC @ exit then
+   i THRU? if lat i CARRY-ARG OPERAND-AT VOF exit then
    pt i CARRY-ARG OPERAND-AT VOF ;
 
 : ARM-TERM ( IR-ID:ir-fun-id IR-ID:ir-op-id -- )
    {: f:IR-ID:ir-fun-id sp:IR-ID:ir-op-id :}
    f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
+   f P-LA @ BLOCK-AT TERM-AT {: lat:IR-ID:ir-op-id :}
    sp HIR-OPCODE:BR OPEN
    P-A @ 0 ?do
-      pt i ARM-OPERAND OPERAND+
+      pt lat i ARM-OPERAND OPERAND+
    loop
    P-JN @ SUCC+
    CLOSE drop ;
@@ -1323,6 +1722,7 @@ variable W-K?
    f P-PR @ BLOCK-AT {: pb:IR-ID:ir-block-id :}
    pb TERM-AT {: pt:IR-ID:ir-op-id :}
    pb OPEN-BLOCK
+   f EMIT-MOVED
    pt EMIT-K
    pt HIR-OPCODE:LT
    pt P-IDX @ OPERAND-AT VOF

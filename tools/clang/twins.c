@@ -78,6 +78,14 @@
  * C that makes the reference face the allocator question the row asks, so the
  * row's reference column is a lower bound on a different program, and the report
  * says so beside it rather than this file pretending otherwise.
+ *
+ * THE CHAIN HAS SINCE TAKEN THE SAME ROAD, WHICH NARROWS THIS NOTE WITHOUT
+ * RETIRING IT. src/compiler/native/loop.f now hoists the row's fourteen reads
+ * out of the loop and multiplies by the trip count as well, so the two columns
+ * compute the answer the same way and the row is no longer refused. What clang
+ * still does and the chain does not is VECTORISE the hoisted reads, so the
+ * reference column remains a lower bound - by instructions per field now rather
+ * than by holding a different set of values.
  */
 
 #include <stdint.h>

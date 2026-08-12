@@ -13,9 +13,14 @@
 \
 \ WHAT THE CASES ESTABLISH, IN ORDER.
 \
-\   PRESSURE-LOOP's wall is width inside a loop body. Fourteen values loaded and
-\   held live inside the body is refused; thirteen compiles. Nothing crosses a
-\   call here, so this row really is about how much a loop body may hold.
+\   PRESSURE-LOOP's wall is width, and WHERE the values are held decides it. The
+\   reads and the additions between them no longer live inside the body at all -
+\   src/compiler/native/loop.f moves work that cannot change with the turn into
+\   the pre-header and folds what is left - so the count that matters is what the
+\   PRE-HEADER may hold, and it is two wider: fifteen compile and sixteen are
+\   refused, where thirteen and fourteen were the pair before the move landed.
+\   Nothing crosses a call here, so this row really is about how much one block
+\   may hold and about nothing else.
 \
 \   A CROSSING WALL IS NOT THAT. Eight values live ACROSS a loop that makes no
 \   call compile fine, so being live across a loop is not what refuses them.
@@ -62,12 +67,15 @@
 \   CALL-PRESSURE, which was the second -8508 row and is a measured row now.
 \
 \   AND A CONSTANT IS NOT A LOAD, WHICH IS WHERE THE LAST FOUR CASES START.
-\   Fourteen values live inside one body is refused when they are loads and
-\   compiles when they are one-move-wide constants, and that was true before any
+\   Fourteen values live inside one body was refused when they were loads and
+\   compiled when they were one-move-wide constants, and that was true before any
 \   of this: the count was never the rule. What the re-emission answer then
 \   moved is the constants' own wall, from fourteen to the point where the
 \   migration context runs out; what it left exactly where it was is the same
-\   constants live ACROSS the loop, and the sixty-four-bit ones.
+\   constants live ACROSS the loop, and the sixty-four-bit ones. The
+\   loop-invariant move has since taken the LOADS out of the body altogether and
+\   left the constants where they were, for the reason the last section here
+\   gives, so the two shapes now differ in whether the body still exists.
 \
 \ WHERE THE WALL SITS, AND WHY THE COUNT IN THESE CASES HAS MOVED BEFORE. It is
 \ at SEVEN crossing values against a callee that published nothing, and six is
@@ -86,11 +94,13 @@
 \ side discriminates nothing.
 \
 \ WHAT A CHANGE TO THIS FILE MEANS. These are the current walls, not desired
-\ ones. A pass that lets a crossing local live in a frame slot across a loop
-\ turns SP-PP14-N and SP-EPOST7-N green - both walls at once, because both are
-\ the same shortage of somewhere to put a value - and this file is where that is
-\ recorded rather than discovered, so each case is asserted with its code and a
-\ fix must come here and say what it moved.
+\ ones. SP-PP14-N is the worked example: it was the refusal this file was opened
+\ for, and the loop-invariant move turned it green by taking the values out of
+\ the body rather than by finding somewhere to put them, so the pair around it
+\ was re-derived to fifteen and sixteen and the old count kept as a row. A pass
+\ that lets a crossing local live in a frame slot across a loop would turn
+\ SP-EPOST7-N green the other way, by finding the place. Each case is asserted
+\ with its code, and a fix must come here and say what it moved.
 
 require lib/test.f
 require lib/string.f
@@ -239,12 +249,30 @@ variable SRC-U
 
 \ ---- the two walls the corpus already names ----------------------------------
 
+\ THE PAIR IS PINNED FROM BOTH SIDES AND THE ROW BETWEEN THEM IS THE COROLLARY.
+\ Fifteen fields read a turn compile and sixteen are refused; the corpus row's own
+\ fourteen sit inside that pair and compile, which is the whole of what the
+\ loop-invariant move bought this shape. Before the move the pair was thirteen and
+\ fourteen, measured the same way through the same entry, so the two rows below
+\ also say WHICH block the count belongs to: the body held them then, the
+\ pre-header holds them now.
 : LOOP-WIDTH-CASES ( -- )
-   s" fourteen values live inside a loop body is refused (PRESSURE-LOOP)" T-LABEL
-   s" : SP-PP14-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;"
+   s" sixteen values read a turn are still refused (the pre-header's own wall)"
+   T-LABEL
+   s" : SP-PP16-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ base 112 + @ base 120 + @ + + + + + + + + + + + + + + + + loop ;"
    2 TRY E-A64RA-SPILL T=
 
-   s" and thirteen in the same body compiles" T-LABEL
+   s" and fifteen in the same body compile" T-LABEL
+   s" : SP-PP15-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ base 112 + @ + + + + + + + + + + + + + + + loop ;"
+   2 TRY 0 T=
+
+   s" the corpus row's own fourteen, which was the refusal this file opened for"
+   T-LABEL
+   s" : SP-PP14-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;"
+   2 TRY 0 T=
+
+   s" and thirteen, which is the count that compiled before the move landed"
+   T-LABEL
    s" : SP-PP13-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ + + + + + + + + + + + + + loop ;"
    2 TRY 0 T= ;
 
@@ -387,13 +415,15 @@ variable SRC-U
 \   habu-fit-a-rewritten-59aa92b7 is the same capacity seen from the rewrite's
 \   side.
 \
-\ AND WHAT THE COUNTS SAY ABOUT THE WALL AT THE TOP OF THIS FILE. Fourteen values
-\ live inside one loop body is refused when they are LOADS (PRESSURE-LOOP, the
-\ first case here) and compiles when they are one-movz CONSTANTS - it always did,
-\ before any of this. So "fourteen values inside a body" was never the rule: what
-\ a body may hold depends on what the values ARE, and the loads shape also holds
-\ its base pointer live across the whole body while the constants shape holds
-\ nothing else at all. The loads are dot habu-rematerialize-the-loop-1faad3e1.
+\ AND WHAT THE COUNTS SAY ABOUT THE WALL AT THE TOP OF THIS FILE. The constants
+\ shape keeps its loop where the loads shape no longer has one, and that is not
+\ about how many values either holds: a turn's worth of constants is a NUMBER, and
+\ src/compiler/native/loop.f folds numbers into what a turn adds rather than
+\ moving them, so a body whose addend is a TREE of constants is declined and its
+\ values are still held a turn at a time. What a body may hold therefore still
+\ depends on what the values ARE - the loads shape also holds its base pointer
+\ live across the whole body while the constants shape holds nothing else at all -
+\ and the counts below are that shape's own, unmoved by the loop-invariant move.
 : REMAT-INSIDE-CASES ( -- )
    s" fourteen one-movz constants inside a loop body fit with nothing decided"
    T-LABEL

@@ -81,19 +81,20 @@ that leave by a branch and have no return to add - which is the check that
 it was an accounting change: not one routine's instructions moved, and the
 rows that did not move are exactly the rows the code says should not.
 
-rows: 12
+rows: 13
 
 path  word                          bytes    cost  outputs
 ----  ----------------------------  -----  ------  -------
 new   CODEGEN-CORPUS:NOOP               4    1000
-new   CODEGEN-CORPUS4:CALL-FAN         44    1401  6 8 6 6
-new   CODEGEN-CORPUS4:CALL-FAN-BIG     40    1128  2306 605 362 62570
-new   CODEGEN-CORPUS4:CALL-LOOP-3     104    2986  2567 13 -2053
-new   CODEGEN-CORPUS4:TINY-CALLEE      56    1225  32 5 29
-new   CODEGEN-CORPUS4:CALL-PRESSURE    148    8218  289587073345441 37 -241122708068503
-new   CODEGEN-CORPUS4:WIDE-ARITY       56    1635  -3 3 0 3
-new   CODEGEN-CORPUS4:LADDER          144    1586  0 0 1 2 5 7 7 8
-new   CODEGEN-CORPUS4:BIG-CONSTS      148    5271  -6684231971589409744 0 3776157021978711687
-new   CODEGEN-CORPUS4:MANY-LOCALS     108    2361  288 0 32
-new   CODEGEN-CORPUS4:FLOAT-MIX        84    3020  12 0 -99
-new   CODEGEN-CORPUS4:STORE-LOAD       60    3718  124 124 -7 100
+new   CODEGEN-CORPUS4:CALL-FAN         44    1406  6 8 6 6
+new   CODEGEN-CORPUS4:CALL-FAN-BIG     40    1109  2306 605 362 62570
+new   CODEGEN-CORPUS4:CALL-LOOP-3     104    2969  2567 13 -2053
+new   CODEGEN-CORPUS4:TINY-CALLEE      56    1195  32 5 29
+new   CODEGEN-CORPUS4:CALL-PRESSURE    148    8120  289587073345441 37 -241122708068503
+new   CODEGEN-CORPUS4:WIDE-ARITY       56    1654  -3 3 0 3
+new   CODEGEN-CORPUS4:LADDER          144    1536  0 0 1 2 5 7 7 8
+new   CODEGEN-CORPUS4:PRESSURE-LOOP    216    1917  4512 0
+new   CODEGEN-CORPUS4:BIG-CONSTS      148    5027  -6684231971589409744 0 3776157021978711687
+new   CODEGEN-CORPUS4:MANY-LOCALS     108    2218  288 0 32
+new   CODEGEN-CORPUS4:FLOAT-MIX        84    2816  12 0 -99
+new   CODEGEN-CORPUS4:STORE-LOAD       60    3806  124 124 -7 100

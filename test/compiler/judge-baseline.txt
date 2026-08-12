@@ -30,10 +30,12 @@ Read the gap on those rows as arithmetic rather than as a verdict.
 A LARGER row is a finding and the check exits non-zero on it. A REFUSED row
 is a raw measurement printed with its code: the capability it waits for is a
 dot, and a check that failed on it would fail every day until that dot lands.
-One code appears in the chain column and it is a named capability gap:
--8508 is the allocator declining to spill inside a loop, dot
-habu-spill-from-a-4145325c. tools/judge-test.f fails on a refusal that is
-not that one, so a second gap cannot arrive unnamed.
+NO ROW IS REFUSED. The last one was PRESSURE-LOOP, whose -8508 was the
+allocator declining to spill inside a loop; it closed by the loop no longer
+holding the values, because src/compiler/native/loop.f moves reads that
+cannot change with the turn out of the body. tools/judge-test.f asserts the
+count at zero AND fails on a refusal carrying any other code, so a gap
+cannot arrive unnamed and a row cannot go back unnoticed.
 
 THE TABLE IS FINITE AND THE ORACLE BESIDE IT IS NOT. Every row here is a
 program somebody wrote on an input somebody pinned, so what it can catch is
@@ -93,7 +95,7 @@ CODEGEN-CORPUS4:CALL-FAN-BIG         40     40     16  equal
 CODEGEN-CORPUS4:CALL-LOOP-3         480    104     48  smaller
 CODEGEN-CORPUS4:WIDE-ARITY          152     56     24  smaller
 CODEGEN-CORPUS4:LADDER              404    144    104  smaller
-CODEGEN-CORPUS4:PRESSURE-LOOP      1096  -8508     72  REFUSED
+CODEGEN-CORPUS4:PRESSURE-LOOP      1096    216     72  smaller
 CODEGEN-CORPUS4:CALL-PRESSURE       612    148     96  smaller
 CODEGEN-CORPUS4:BIG-CONSTS          640    148    392  smaller
 CODEGEN-CORPUS4:MANY-LOCALS         608    108     80  smaller
@@ -110,7 +112,7 @@ CODEGEN-CORPUS5:TAIL-AFTER           28     24     72  smaller (tail)
 
 clang flags: -O2 -arch arm64 -fno-math-errno
 
-rows: 46, refused by the chain: 1, larger than the engine's: 0, columns disagreeing on the answer: 0, leaving by a tail branch: 6
+rows: 46, refused by the chain: 0, larger than the engine's: 0, columns disagreeing on the answer: 0, leaving by a tail branch: 6
 
 ---- measured on this host, printed and not checked -------------------
 
@@ -135,55 +137,55 @@ different addresses with a cold instruction cache each time. That widens the
 spread and it is deliberate: a placement a row was lucky in once is not a
 property of the code the compiler emitted.
 
-NOISE FLOOR, MEASURED THIS RUN: 504 permille. That is the widest gap between
+NOISE FLOOR, MEASURED THIS RUN: 509 permille. That is the widest gap between
 two measurements of ONE program in this process, so a difference between two
-columns smaller than it is not a difference. The floor itself measured 1910 ps.
+columns smaller than it is not a difference. The floor itself measured 1906 ps.
 
 word                                  old    chain    clang
 --------------------------------  -------  -------  -------
-CODEGEN-CORPUS:ADD3                  1.43     0.09    -0.43
-CODEGEN-CORPUS:SQUARE-SUM            4.71    -0.09    -0.25
-CODEGEN-CORPUS:MAX2                  3.72     0.15     0.04
-CODEGEN-CORPUS:LERP                  3.49     0.44    -0.25
-CODEGEN-CORPUS:SUM-TO               25.62     0.14    -0.03
-CODEGEN-CORPUS:COUNT-DOWN           47.27     4.90     0.04
-CODEGEN-CORPUS:FACT                 44.35    13.51     1.19
-CODEGEN-CORPUS:CELL-BUMP             6.76     0.28    -0.00
-CODEGEN-CORPUS:BYTE-SUM             65.06     7.27     3.96
-CODEGEN-CORPUS:BYTE-FIND            39.17     4.16     3.11
-CODEGEN-CORPUS2:TAG                  0.31     0.00     0.16
-CODEGEN-CORPUS2:WS?                 11.81     2.68     0.54
-CODEGEN-CORPUS2:SYM-FOLD-C           0.91     0.03     1.33
-CODEGEN-CORPUS2:MAX-DIM              1.07     0.04    -0.47
-CODEGEN-CORPUS2:COUNT-CHAR          85.20     7.60     3.03
-CODEGEN-CORPUS2:T-RES-WALK          29.78     8.07     1.56
-CODEGEN-CORPUS2:VEC-COPY-CELLS      25.35     2.49     2.45
-CODEGEN-CORPUS3:T-SUM               22.36     2.42     2.06
-CODEGEN-CORPUS3:T-SGD!              45.58     2.77     1.51
-CODEGEN-CORPUS3:T-DIST2             46.71     3.16     0.89
-CODEGEN-CORPUS3:T-NORM2             23.68     2.73     1.27
-CODEGEN-CORPUS3:T-REL-L2           105.22     7.31     4.26
-CODEGEN-CORPUS3:RELU-F               1.10     0.02    -0.04
-CODEGEN-CORPUS3:MAX-F                1.96     0.05    -0.21
-CODEGEN-CORPUS3:SGD                  1.10     0.11     0.80
-CODEGEN-CORPUS3:SEG-1/SQRT           5.24    -0.13     0.94
-CODEGEN-CORPUS3:FROUND               2.85     0.14    -0.33
-CODEGEN-CORPUS4:CALL-FAN             5.00    -0.11    -0.03
-CODEGEN-CORPUS4:CALL-FAN-BIG        10.52     0.05    -0.21
-CODEGEN-CORPUS4:CALL-LOOP-3         43.29     3.49     2.92
-CODEGEN-CORPUS4:WIDE-ARITY           2.95     1.03     0.64
-CODEGEN-CORPUS4:LADDER               2.31     0.88     0.40
-CODEGEN-CORPUS4:PRESSURE-LOOP      199.61        -     0.06
-CODEGEN-CORPUS4:CALL-PRESSURE      150.87    13.51     3.75
-CODEGEN-CORPUS4:BIG-CONSTS          80.34     7.96     2.11
-CODEGEN-CORPUS4:MANY-LOCALS        122.86     2.34     1.33
-CODEGEN-CORPUS4:TINY-CALLEE         55.91     0.22    -0.04
-CODEGEN-CORPUS4:FLOAT-MIX           32.02     3.42     0.91
-CODEGEN-CORPUS4:STORE-LOAD          35.91     4.37     2.97
-CODEGEN-CORPUS5:TAIL-BIG            12.24     0.28    -0.11
-CODEGEN-CORPUS5:TAIL-WORK           12.83     0.29    -0.47
-CODEGEN-CORPUS5:NONTAIL             13.20     0.55     0.29
-CODEGEN-CORPUS5:TAIL-MID            12.25     0.37    -0.04
-CODEGEN-CORPUS5:TAIL-CHAIN          11.96     0.53    -0.25
-CODEGEN-CORPUS5:TAIL-PAIR            1.91     0.44     0.27
-CODEGEN-CORPUS5:TAIL-AFTER          25.14     0.88     0.36
+CODEGEN-CORPUS:ADD3                  1.54     0.24     0.00
+CODEGEN-CORPUS:SQUARE-SUM            4.72     0.06     0.14
+CODEGEN-CORPUS:MAX2                  3.60    -0.00     0.12
+CODEGEN-CORPUS:LERP                  3.17     0.44    -0.02
+CODEGEN-CORPUS:SUM-TO               25.65     0.18     0.00
+CODEGEN-CORPUS:COUNT-DOWN           45.23     4.86    -0.41
+CODEGEN-CORPUS:FACT                 41.81    12.58     1.64
+CODEGEN-CORPUS:CELL-BUMP             6.55    -0.11     0.00
+CODEGEN-CORPUS:BYTE-SUM             63.97     7.07     3.78
+CODEGEN-CORPUS:BYTE-FIND            36.51     4.05     3.02
+CODEGEN-CORPUS2:TAG                  0.31     0.00    -0.00
+CODEGEN-CORPUS2:WS?                 11.22     2.27     0.00
+CODEGEN-CORPUS2:SYM-FOLD-C           1.15     0.01     1.13
+CODEGEN-CORPUS2:MAX-DIM              1.07     0.03     0.10
+CODEGEN-CORPUS2:COUNT-CHAR          81.20     7.56     2.72
+CODEGEN-CORPUS2:T-RES-WALK          28.85     7.89     1.47
+CODEGEN-CORPUS2:VEC-COPY-CELLS      25.46     2.50     2.29
+CODEGEN-CORPUS3:T-SUM               16.83     2.52     2.22
+CODEGEN-CORPUS3:T-SGD!              44.54     2.82     2.36
+CODEGEN-CORPUS3:T-DIST2             47.52     3.05     2.34
+CODEGEN-CORPUS3:T-NORM2             23.65     2.43     0.89
+CODEGEN-CORPUS3:T-REL-L2            99.39     6.67     2.37
+CODEGEN-CORPUS3:RELU-F               1.26     0.03     0.03
+CODEGEN-CORPUS3:MAX-F                2.17     0.01     1.80
+CODEGEN-CORPUS3:SGD                  1.16     0.18    -0.01
+CODEGEN-CORPUS3:SEG-1/SQRT           3.22     0.02    -0.03
+CODEGEN-CORPUS3:FROUND               2.94     0.15     0.04
+CODEGEN-CORPUS4:CALL-FAN             4.86     0.22     0.00
+CODEGEN-CORPUS4:CALL-FAN-BIG        10.80     0.04     0.00
+CODEGEN-CORPUS4:CALL-LOOP-3         46.67     3.34     4.12
+CODEGEN-CORPUS4:WIDE-ARITY           2.89     1.24    -0.21
+CODEGEN-CORPUS4:LADDER               2.16     1.03     0.29
+CODEGEN-CORPUS4:PRESSURE-LOOP      193.29     1.46     0.01
+CODEGEN-CORPUS4:CALL-PRESSURE      142.29    13.13     3.43
+CODEGEN-CORPUS4:BIG-CONSTS          77.50     7.61     2.22
+CODEGEN-CORPUS4:MANY-LOCALS        114.87     2.13     0.58
+CODEGEN-CORPUS4:TINY-CALLEE         52.58     0.28     0.33
+CODEGEN-CORPUS4:FLOAT-MIX           31.41     3.47     1.52
+CODEGEN-CORPUS4:STORE-LOAD          34.79     5.13     3.18
+CODEGEN-CORPUS5:TAIL-BIG            11.47     0.26     0.00
+CODEGEN-CORPUS5:TAIL-WORK           12.47     0.27     0.00
+CODEGEN-CORPUS5:NONTAIL             12.48     0.53     0.00
+CODEGEN-CORPUS5:TAIL-MID            11.41     0.30     0.00
+CODEGEN-CORPUS5:TAIL-CHAIN          11.42     0.73     0.00
+CODEGEN-CORPUS5:TAIL-PAIR            1.90     0.44     0.19
+CODEGEN-CORPUS5:TAIL-AFTER          23.22     0.80     0.29
