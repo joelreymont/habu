@@ -317,9 +317,10 @@ THE MEASURED REMAINDER AFTER IN-FLIGHT FIXES (~460 rows): POOL 140
 (zero-arity call shapes under caller-save-everything — SEQUENCING
 CONTRADICTION: the named owner da01bd62 is post-cut BY THIS PLAN; the
 pre-cut closer is habu-close-a-routine-4055b7c7, unblocked, must be priced
-against the 140), DKEEP 112 (the validator refusing the chain's own
+against the 140), DKEEP 112 -> 0 (the validator refusing the chain's own
 needless data-stack emissions — owning dot 2fa72257 was scoped at SIX,
-under-scoped 19x, rescoped by this census), LOCAL 61 (47 = locals named
+under-scoped 19x, rescoped by this census; CLEARED by the single-writer
+restructure, re-measured on the fix tree), LOCAL 61 (47 = locals named
 i/j vs loop-index modeling, 9f38a8f6), CTRL/do 41 (05b4e523), UNMODELED 38
 (catch 18 / >r 15 / [char] / ['] / leave-masked — owners 6ceb7667,
 92993f27, ca9e5541+0750ac90, 018f3379; usage counts in the report), SEQ 26
