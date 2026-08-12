@@ -363,3 +363,19 @@ tree stopped producing.
   checker/compiler RCA before editing downstream code.
 - The dictionary search returns the newest definition; use the checker and
   shadow lint when a new word appears to change built-in behavior.
+
+## Performance measurement tools (tools/perf/)
+
+- `tools/perf/protcost.py` — attributes a boot's samples to the engine's
+  mprotect stubs and the `(PROT-SPAN)` guard. It re-derives the stub
+  addresses and the guard's extent from the disassembly on every run, so
+  it survives a rebuild instead of pinning literal offsets. Built for the
+  write-window landing (2026-08-11); the method is documented in its
+  header. Start here for any "where does boot time go" protection question.
+- `tools/perf/boot-census-watcher.c` + `boot-census-analyze.py` — follow a
+  command's whole process tree via kqueue `EVFILT_PROC` and classify every
+  child fork-vs-exec by image path and argv (fork children keep the
+  parent's argv). Built to count the gate's cold engine boots for the
+  Stage B refutation; cross-checked exactly against `lib/process.f`
+  PROCESS-TRACE at the top level. Start here for any "how many engines
+  does this run actually start" question.
