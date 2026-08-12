@@ -61,7 +61,8 @@ package JUDGE-CHAIN
 
 private
 
-64 constant NAME-MAX              \ bytes of one derived word name
+96 constant NAME-MAX              \ bytes of one derived word name, qualifier and all
+48 constant QUAL-MAX              \ bytes of the package qualifier a corpus is opened under
 16 constant SUFFIX-MAX            \ bytes of the suffix derived names carry
 
 create NAME NAME-MAX allot
@@ -102,7 +103,10 @@ public
    SUFFIX-U @ 0= if E-JUDGE-CHAIN-SUFFIX throw then
    SUFFIX SUFFIX-U @ ;
 
-\ What definition k's derived word is called.
+private
+
+\ What definition k's derived word is called, unqualified: the spelling the
+\ migration publishes it under, in whatever wordlist is current then.
 : WORD$ ( n -- ptr u8 n ) {: k:n :}
    k JUDGE-SRC:NAME$ NAME!
    SUFFIX$ NAME+
@@ -116,15 +120,35 @@ public
 
 private
 
-\ The migration itself, reached through a quotation so a refusal can be caught.
-\ The definition it is about is in STAGED rather than in a local, because a
-\ quotation does not see the locals of the definition that writes it.
+\ ---- which migration entry a body needs --------------------------------------
+\ A body that names one of the corpus file's own storage words is a different
+\ migration from one that does not: the address that word pushes is the
+\ ENGINE's to answer, so the chain is handed the spelling and asks
+\ src/compiler/native/dict.f for it while it declares the row. Measured: corpus
+\ 1's CELL-BUMP, which WRITES its cell, is refused with E-A64RAV-DKEEP under
+\ the plain entry and compiles under this one; corpus 2's TV-NEXT?, which only
+\ READS its table, compiles under either. The distinction is not one this file
+\ tries to draw - a body that names storage gets the entry that can express
+\ storage, whichever way it uses it.
+\
+\ AND A BODY THAT NAMES TWO IS REFUSED HERE. The entry takes ONE spelling.
+\ Handing it the first of two would compile a body whose other storage word
+\ resolved to whatever the scope happened to hold, which is a measurement of a
+\ program nobody wrote. There is no shape for it, so it is a named refusal.
+
 : MIGRATE ( -- )
    STAGED @ {: k:n :}
-   k SUFFIX$ JUDGE-SRC:TEXT$
+   k JUDGE-SRC:USES {: uses:n :}
+   uses 1 > if E-JUDGE-CHAIN-DATA throw then
+   k SUFFIX$ JUDGE-SRC:TEXT$ {: sa:ptr su:n :}
+   uses 0= if
+      sa su k JUDGE-SRC:IN k JUDGE-SRC:OUT REGS NMIGRATE:DEFINE exit
+   then
+   sa su
+   k 0 JUDGE-SRC:USE@ JUDGE-SRC:DATA-NAME$
    k JUDGE-SRC:IN
    k JUDGE-SRC:OUT
-   REGS NMIGRATE:DEFINE ;
+   REGS NMIGRATE:DEFINE-DATA ;
 
 public
 
@@ -198,19 +222,39 @@ public
    loop
    k PUBLISH ;
 
-\ Where the derived word's code starts, asked the way the chain asks it. What a
-\ measurement holds its generated body against.
-: ENTRY ( n -- n ) {: k:n :}
-   k WORD$ NDICT:CALL-TARGET ;
+\ ---- reading a derived word's record -----------------------------------------
+\ A derived word is published where its corpus's own package points, so that a
+\ body naming that corpus's private storage compiles at all. The reader that
+\ takes a size off a dictionary record does NOT walk the open package's
+\ wordlists - it resolves a spelling as written - so a size is asked for under
+\ the qualified name. The qualifier is the corpus's package, stated once by the
+\ caller that opened it, and there is no default: a wrong or absent qualifier
+\ would answer about some other word or about none, and both are worse than
+\ refusing.
 
-\ How many bytes of machine code the derived word is, and whether it leaves by a
-\ branch to a callee. Both are read off the word's own dictionary record by the
-\ one reader the comparison already uses for the engine's words, so the two
-\ columns' byte counts are the same kind of number.
+create QUAL QUAL-MAX allot
+variable QUAL-U
+
+public
+
+: QUALIFIER! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if E-JUDGE-CHAIN-QUALIFIER throw then
+   u QUAL-MAX > if E-JUDGE-CHAIN-CAP throw then
+   a QUAL u STR-LEN BYTE-COPY-LEN
+   u QUAL-U ! ;
+
+\ Definition k's derived word under the qualifier its corpus was opened with.
+: QUALIFIED$ ( n -- ptr u8 n ) {: k:n :}
+   QUAL-U @ 0= if E-JUDGE-CHAIN-QUALIFIER throw then
+   QUAL QUAL-U @ NAME!
+   k JUDGE-SRC:NAME$ NAME+
+   SUFFIX$ NAME+
+   NAME NAME-U @ ;
+
+\ How many bytes of machine code the derived word is, read off the word's own
+\ dictionary record by the one reader the comparison already uses for the
+\ engine's words, so the two columns' byte counts are the same kind of number.
 : SIZE ( n -- n ) {: k:n :}
-   k WORD$ NTAILPROBE:CODE-BYTES ;
-
-: TAIL? ( n -- bool ) {: k:n :}
-   k WORD$ NTAILPROBE:TAIL-BRANCH? ;
+   k QUALIFIED$ NTAILPROBE:CODE-BYTES ;
 
 ;package

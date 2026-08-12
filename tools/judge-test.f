@@ -28,6 +28,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require src/compiler/native/dict.f
+require tools/codegen-compare-corpus.f
 require tools/judge/check.f
 
 package JUDGE-TEST
@@ -59,13 +60,13 @@ private
    s" CODEGEN-CORPUS4:CALL-FAN" ;
 
 : FAN-J$ ( -- ptr u8 n )
-   s" CALL-FAN-J4" ;
+   s" CODEGEN-CORPUS4:CALL-FAN-J4" ;
 
 : FAN-ENTRY ( -- n )
    FAN$ NDICT:CALL-TARGET ;
 
 : FAN-J-ENTRY ( -- n )
-   s" CALL-FAN" JUDGE-SRC:FIND JUDGE-CHAIN:ENTRY ;
+   FAN-J$ NDICT:CALL-TARGET ;
 
 \ THE ONE A COMPARISON OF ANSWERS CANNOT SEE. A body built for the chain's
 \ column that names the ENGINE's word is the right program in the wrong column:
@@ -119,7 +120,37 @@ private
    s" PRESSURE-LOOP" JUDGE-SRC:FIND s" -J4" JUDGE-SRC:TEXT$
    S\" : PRESSURE-LOOP-J4 ( ptr n n -- n ) {: base:ptr len:n :}\n   0\n   len 0 ?do\n      base @  base 8 + @  base 16 + @  base 24 + @  base 32 + @\n      base 40 + @  base 48 + @  base 56 + @  base 64 + @  base 72 + @\n      base 80 + @  base 88 + @  base 96 + @  base 104 + @\n      + + + + + + + + + + + + + +\n   loop ;" T$= ;
 
+\ ---- the storage entry, on real corpus data ----------------------------------
+\ A body that names one of its file's storage words needs the migration entry
+\ that can express storage. Measured rather than described: corpus 1's
+\ CELL-BUMP, which WRITES its cell, is refused with E-A64RAV-DKEEP under the
+\ plain entry and compiles under this one; corpus 2's FILL-COPY names TWO and
+\ is refused here, because the entry takes one spelling and picking the first
+\ would compile a body whose other cell resolved to whatever the scope held.
+\
+\ THE PUBLICATION IS AT THE FOOT OF THIS FILE, inside corpus 1's own package,
+\ because a migration publishes where the interpreter's wordlist points and
+\ BUMP-CELL is private to that corpus. What is asserted here is what that line
+\ left behind.
+
+variable BUMP-RC
+
+: STORAGE-CASES ( -- )
+   BUMP-RC @ 0 T=
+   s" tools/codegen-compare-corpus.f" JUDGE-SRC:LOAD
+   s" CODEGEN-CORPUS:" JUDGE-CHAIN:QUALIFIER!
+   s" -JT1" JUDGE-CHAIN:SUFFIX!
+   s" CELL-BUMP" JUDGE-SRC:FIND JUDGE-CHAIN:SIZE 0 T<>
+
+   s" tools/codegen-compare-corpus2.f" JUDGE-SRC:LOAD
+   s" -JT2" JUDGE-CHAIN:SUFFIX!
+   s" FILL-COPY" JUDGE-SRC:FIND JUDGE-CHAIN:PUBLISH E-JUDGE-CHAIN-DATA T= ;
+
 public
+
+\ Where corpus 1's derived cell-stepping word records what the chain answered.
+: BUMP-RC! ( n -- )
+   BUMP-RC ! ;
 
 : RUN ( -- )
    T-RESET
@@ -130,8 +161,26 @@ public
    WRONG-COLUMN-CASES
    WRONG-INPUT-CASES
    BOUNDARY-CASES
+   STORAGE-CASES
    T-REPORT ;
 
+;package
+
+\ Corpus 1's CELL-BUMP through the storage entry, published where its private
+\ cell is reachable. The line is here rather than inside a word because
+\ `package` is read at load and a migration lands where the interpreter points.
+package JUDGE-TEST
+public
+: PUBLISH-BUMP ( -- )
+   s" CODEGEN-CORPUS:" JUDGE-CHAIN:QUALIFIER!
+   s" -JT1" JUDGE-CHAIN:SUFFIX!
+   s" tools/codegen-compare-corpus.f" JUDGE-SRC:LOAD
+   s" CELL-BUMP" JUDGE-SRC:FIND JUDGE-CHAIN:PUBLISH-CALLING JUDGE-TEST:BUMP-RC! ;
+;package
+
+package CODEGEN-CORPUS
+public
+JUDGE-TEST:PUBLISH-BUMP
 ;package
 
 JUDGE-TEST:RUN

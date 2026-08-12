@@ -207,6 +207,54 @@ private
    s" H" JUDGE-SRC:FIND JUDGE-SRC:CALLS 1 T=
    s" H" JUDGE-SRC:FIND 0 JUDGE-SRC:CALL@ s" K" JUDGE-SRC:FIND T= ;
 
+\ ---- the storage a file declares ---------------------------------------------
+\ `create NAME` and `variable NAME` OUTSIDE every definition. Inside one,
+\ `create` is a defining word a program RUNS, which is a different thing and no
+\ declaration at all - so a body that uses the word cannot register one. A
+\ storage word is never renamed either: a derived word names the same cell the
+\ word it is compared against names, which is what lets both columns step one
+\ cell and is exactly what a rename would break.
+
+: STORAGE$ ( -- ptr u8 n )
+   S\" create CELL 1 cells allot\nvariable FLAG\n: A ( n -- n ) CELL ! CELL @ FLAG @ + ;\n" ;
+
+: RUNTIME-CREATE$ ( -- ptr u8 n )
+   S\" : MAKER ( -- ) create 8 allot ;\n: A ( n -- n ) 1 + ;\n" ;
+
+: STORAGE-CASES ( -- )
+   STORAGE$ JUDGE-SRC:SCAN
+   JUDGE-SRC:DATA-DEFS 2 T=
+   0 JUDGE-SRC:DATA-NAME$ s" CELL" T$=
+   1 JUDGE-SRC:DATA-NAME$ s" FLAG" T$=
+   s" CELL" JUDGE-SRC:DATA-FIND 0 T=
+   s" NOPE" JUDGE-SRC:DATA-FIND -1 T=
+   s" A" JUDGE-SRC:FIND JUDGE-SRC:USES 2 T=
+   s" A" JUDGE-SRC:FIND 0 JUDGE-SRC:USE@ 0 T=
+   s" A" JUDGE-SRC:FIND 1 JUDGE-SRC:USE@ 1 T=
+   s" A" JUDGE-SRC:FIND SUFFIX$ JUDGE-SRC:TEXT$
+      s" : A-J ( n -- n ) CELL ! CELL @ FLAG @ + ;" T$=
+
+   RUNTIME-CREATE$ JUDGE-SRC:SCAN
+   JUDGE-SRC:DATA-DEFS 0 T=
+   s" A" JUDGE-SRC:FIND JUDGE-SRC:USES 0 T= ;
+
+\ The same two questions on the corpora themselves, where the answers decide
+\ which migration entry a subject needs.
+: FILE-STORAGE-CASES ( -- )
+   s" tools/codegen-compare-corpus.f" JUDGE-SRC:LOAD
+   JUDGE-SRC:DATA-DEFS 1 T=
+   0 JUDGE-SRC:DATA-NAME$ s" BUMP-CELL" T$=
+   s" CELL-BUMP" JUDGE-SRC:FIND JUDGE-SRC:USES 1 T=
+   s" NOOP" JUDGE-SRC:FIND JUDGE-SRC:USES 0 T=
+   s" CELL-BUMP" JUDGE-SRC:FIND s" -N" JUDGE-SRC:TEXT$
+      S\" : CELL-BUMP-N ( n -- n )\n   BUMP-CELL !\n   BUMP-CELL @ 1+ dup BUMP-CELL ! ;" T$=
+
+   s" tools/codegen-compare-corpus2.f" JUDGE-SRC:LOAD
+   JUDGE-SRC:DATA-DEFS 3 T=
+   s" TV-NEXT?" JUDGE-SRC:FIND JUDGE-SRC:USES 1 T=
+   s" FILL-COPY" JUDGE-SRC:FIND JUDGE-SRC:USES 2 T=
+   s" T-RES-WALK" JUDGE-SRC:FIND JUDGE-SRC:USES 0 T= ;
+
 \ ---- the real corpus file, through the real entry ------------------------------
 \ The claim the transition rests on. `-N` is the suffix the hand-retyped column
 \ in tools/codegen-compare-migrated4.f used, so the derived texts below are
@@ -267,6 +315,8 @@ public
    REFUSAL-CASES
    ROW-CASES
    CALL-CASES
+   STORAGE-CASES
+   FILE-STORAGE-CASES
    FILE-CASES
    T-REPORT ;
 

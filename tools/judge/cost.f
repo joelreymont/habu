@@ -196,11 +196,6 @@ public
       E-JUDGE-COST-COLUMN throw
    then ;
 
-\ How many bodies this process has generated. A reader of a failed run wants it,
-\ and tools/judge/cost-test.f asserts that a refused subject added none.
-: BODIES ( -- n )
-   SEQ @ ;
-
 \ Time one row's program in one column: the row's pinned inputs as text, and the
 \ text that consumes them and leaves the answer. Answers picoseconds per call,
 \ measured the way every other row of this repository is measured - the

@@ -32,6 +32,13 @@ public
 
 \ Measure every corpus into the table. One pass, in one process, because the
 \ chain publishes its derived words into the dictionary this process holds.
+\
+\ THE CHAIN'S WORDS ARE ALREADY PUBLISHED when this runs. Each corpus file
+\ publishes its own at load, from a top-level line inside its corpus's package,
+\ because a migration publishes where the INTERPRETER's wordlist points and a
+\ derived body may name storage private to that corpus. What is left here is
+\ the measuring, which needs no package open: every generated body names its
+\ words qualified.
 : JUDGE-ALL ( -- )
    JUDGE-ROW:RESET
    JUDGE-CORPUS4:JUDGE ;

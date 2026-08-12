@@ -89,6 +89,24 @@ create D-OUT DEF-MAX cells allot
 create D-CALLS DEF-MAX cells allot         \ how many distinct callees
 create D-CALLEE DEF-MAX CALL-MAX * cells allot  \ which definitions they are
 
+\ ---- the file's own storage --------------------------------------------------
+\ A corpus declares cells and tables with `create` and `variable`, outside any
+\ definition, and a subject that names one is a different migration from a
+\ subject that does not: the chain has to be told the spelling, because the
+\ address that word pushes is the ENGINE's to answer. These are NOT renamed by
+\ TEXT$ - a derived word names the same storage the word it is compared against
+\ names, which is what lets both columns step one cell - so they are kept apart
+\ from the definitions rather than among them.
+32 constant DATA-MAX               \ storage words one corpus file may declare
+8 constant USE-MAX                 \ distinct storage words one body may name
+
+DATA-MAX NAME-MAX * BUFFER: DATA-NAMES
+create DATA-LENS DATA-MAX cells allot
+create D-USES DEF-MAX cells allot          \ how many distinct storage words
+create D-USE DEF-MAX USE-MAX * cells allot \ which storage words they are
+
+variable DATA-N
+
 create TEXT TEXT-MAX allot
 variable TEXT-U
 variable CURSOR                            \ where the splice stands in BYTES
@@ -106,6 +124,12 @@ variable DEF-N
 
 : CALL-SLOT ( n n -- ptr n ) {: k:n j:n :}
    D-CALLEE k CALL-MAX * j + cells + ;
+
+: DATA-AT ( n -- ptr u8 )
+   NAME-MAX * DATA-NAMES + ;
+
+: USE-SLOT ( n n -- ptr n ) {: k:n j:n :}
+   D-USE k USE-MAX * j + cells + ;
 
 \ ---- what the lexer's tokens mean here ---------------------------------------
 
@@ -255,6 +279,7 @@ private
    k CLOSE-AT D-CLOSE DEF-N @ SLOT !
    k ARITY
    0 D-CALLS DEF-N @ SLOT !
+   0 D-USES DEF-N @ SLOT !
    DEF-N @ 1+ DEF-N ! ;
 
 \ ---- the callees a body names ------------------------------------------------
@@ -285,7 +310,99 @@ private
       1+
    repeat drop ;
 
+\ ---- the storage a file declares, and the storage a body names ---------------
+\ A declaration is `create NAME` or `variable NAME` OUTSIDE every definition.
+\ Inside one, `create` is a defining word a program runs, which is a different
+\ thing entirely and none of this reader's business; the test is structural
+\ rather than positional, so a body that uses the word cannot register a
+\ declaration.
+
+: IN-DEF? ( n -- bool ) {: at:n :}
+   false
+   DEF-N @ 0 ?do
+      at D-OPEN i SLOT @ >= at D-CLOSE i SLOT @ <= and if drop true then
+   loop ;
+
+: DECLARER? ( n -- bool ) {: k:n :}
+   k WORD? 0= if false exit then
+   k LINT-LEX:TOKEN 2dup s" create" STR=CI if 2drop true exit then
+   s" variable" STR=CI ;
+
 public
+
+\ How many storage words this file declares, and what they are called.
+: DATA-DEFS ( -- n )
+   DATA-N @ ;
+
+: DATA-NAME$ ( n -- ptr u8 n ) {: k:n :}
+   k 0 < k DATA-N @ >= or if E-JUDGE-SRC-ROW throw then
+   k DATA-AT
+   DATA-LENS k SLOT @ ;
+
+: DATA-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   -1
+   DATA-N @ 0 ?do
+      i DATA-NAME$ a u STR= if drop i then
+   loop ;
+
+private
+
+: KEEP-DATA ( n -- ) {: k:n :}
+   DATA-N @ DATA-MAX >= if E-JUDGE-SRC-CAP throw then
+   k 1+ LINT-LEX:COUNT >= if E-JUDGE-SRC-DEF throw then
+   k 1+ WORD? 0= if E-JUDGE-SRC-DEF throw then
+   k 1+ LINT-LEX:TOKEN {: a:ptr u:n :}
+   u 0= if E-JUDGE-SRC-DEF throw then
+   u NAME-MAX > if E-JUDGE-SRC-CAP throw then
+   a u DATA-FIND 0 >= if E-JUDGE-SRC-DUP throw then
+   a  DATA-N @ DATA-AT  u STR-LEN BYTE-COPY-LEN
+   u DATA-LENS DATA-N @ SLOT !
+   DATA-N @ 1+ DATA-N ! ;
+
+: SCAN-DATA ( -- )
+   0 DATA-N !
+   0 begin dup LINT-LEX:COUNT < while
+      dup IN-DEF? 0= if
+         dup DECLARER? if dup KEEP-DATA then
+      then
+      1+
+   repeat drop ;
+
+: USES-ALREADY? ( n n -- bool ) {: k:n d:n :}
+   false
+   D-USES k SLOT @ 0 ?do
+      k i USE-SLOT @ d = if drop true then
+   loop ;
+
+: KEEP-USE ( n n -- ) {: k:n d:n :}
+   k d USES-ALREADY? if exit then
+   D-USES k SLOT @ USE-MAX >= if E-JUDGE-SRC-CAP throw then
+   d  k D-USES k SLOT @ USE-SLOT  !
+   D-USES k SLOT @ 1+ D-USES k SLOT ! ;
+
+: SCAN-USES ( n -- ) {: k:n :}
+   D-OPEN k SLOT @ 2 +
+   D-CLOSE k SLOT @ {: last:n :}
+   begin dup last < while
+      dup WORD? if
+         dup LINT-LEX:TOKEN DATA-FIND {: d:n :}
+         d 0 >= if k d KEEP-USE then
+      then
+      1+
+   repeat drop ;
+
+public
+
+\ How many distinct storage words body k names, and which they are. A body that
+\ names one is a migration the chain has to be told the spelling for; a body
+\ that names two is one the migration entry has no shape for, which is the
+\ caller's refusal to make rather than this reader's to hide.
+: USES ( n -- n ) {: k:n :}
+   D-USES k ROW-OK SLOT @ ;
+
+: USE@ ( n n -- n ) {: k:n j:n :}
+   j 0 < j k USES >= or if E-JUDGE-SRC-ROW throw then
+   k j USE-SLOT @ ;
 
 \ How many distinct definitions of this file body k names, and which they are.
 : CALLS ( n -- n ) {: k:n :}
@@ -345,7 +462,9 @@ private
       dup DEFINER? if dup KEEP-DEF then
       1+
    repeat drop
-   DEF-N @ 0 ?do i SCAN-CALLS loop ;
+   SCAN-DATA
+   DEF-N @ 0 ?do i SCAN-CALLS loop
+   DEF-N @ 0 ?do i SCAN-USES loop ;
 
 public
 

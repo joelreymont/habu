@@ -107,6 +107,15 @@ private
 : SUFFIX$ ( -- ptr u8 n )
    s" -J4" ;
 
+\ The package this corpus publishes its subjects in, and therefore the package
+\ the derived words are published in too. A derived body may name storage that
+\ is PRIVATE to it - the corpus's own cell, which both columns step - and a
+\ word compiled anywhere else could not see it. So JUDGE runs with this package
+\ open, and the reader that takes a size off a dictionary record is given the
+\ qualifier, because that reader resolves a spelling as written.
+: QUALIFIER$ ( -- ptr u8 n )
+   s" CODEGEN-CORPUS4:" ;
+
 \ ---- the twelve rows, written once -------------------------------------------
 \ Each is: the name the corpus publishes it under, the storage it reads, its
 \ pinned input, and the C symbol that is its twin.
@@ -210,17 +219,21 @@ variable NAME-TXT-U
 \ The name a row is printed and found under: the subject as the corpus publishes
 \ it, which is also how the engine's word is spelled.
 : QUAL! ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" CODEGEN-CORPUS4:" NAME-TXT NAME-TXT-U PUT
+   QUALIFIER$ NAME-TXT NAME-TXT-U PUT
    a u NAME-TXT NAME-TXT-U ADD ;
 
 \ ---- the three columns' call texts -------------------------------------------
 
 : OLD-CALL! ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" CODEGEN-CORPUS4:" CALL-TXT CALL-TXT-U PUT
+   QUALIFIER$ CALL-TXT CALL-TXT-U PUT
    a u CALL-TXT CALL-TXT-U ADD ;
 
+\ The chain's word is published in the corpus's package, so a body generated at
+\ the top level names it qualified. The engine's word is qualified for the same
+\ reason and always was.
 : NEW-CALL! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CALL-TXT CALL-TXT-U PUT
+   QUALIFIER$ CALL-TXT CALL-TXT-U PUT
+   a u CALL-TXT CALL-TXT-U ADD
    SUFFIX$ CALL-TXT CALL-TXT-U ADD ;
 
 \ The foreign call that reaches a twin. The arity is the SUBJECT's own, read off
@@ -240,16 +253,44 @@ variable EMPTY-NAME-U
    SB-RESET arity FMT:SB-U SB$ EMPTY-NAME EMPTY-NAME-U ADD
    EMPTY-NAME EMPTY-NAME-U @ ;
 
+\ ---- pass zero: publishing, which happens at load ----------------------------
+\ A migration publishes where the INTERPRETER's current wordlist points when it
+\ runs, and executing a word does not move that: `package` is a parsing word
+\ read at load. So the derived words are published by a top-level line at the
+\ foot of this file, inside the corpus's own package block, exactly as
+\ tools/codegen-compare-migrated4.f publishes its column - and for the same
+\ reason, which is that a derived body may name storage private to the corpus.
+\ What the chain answered about each subject is kept here, because the row it
+\ belongs to is opened long afterwards.
+
+16 constant SUB-MAX
+create SUB-RC SUB-MAX cells allot
+variable SUB-N
+
+: PUBLISH-ROW ( ptr u8 n JUDGE-CORPUS4:store ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n st:JUDGE-CORPUS4:store ia:ptr iu:n ta:ptr tu:n :}
+   SUB-N @ SUB-MAX >= if E-JUDGE-ROW-CAP throw then
+   a u JUDGE-SRC:FIND {: d:n :}
+   d 0 < if E-JUDGE-SRC-ROW throw then
+   d JUDGE-CHAIN:PUBLISH-CALLING SUB-RC SUB-N @ cells + !
+   SUB-N @ 1+ SUB-N ! ;
+
+: SUB-RC@ ( n -- n ) {: j:n :}
+   j 0 < j SUB-N @ >= or if E-JUDGE-ROW-INDEX throw then
+   SUB-RC j cells + @ ;
+
 \ ---- pass one: the bytes -----------------------------------------------------
+
+variable ROW-IX                    \ which subject of EACH's order a pass is on
 
 : BYTES-ROW ( ptr u8 n JUDGE-CORPUS4:store ptr u8 n ptr u8 n -- )
    {: a:ptr u:n st:JUDGE-CORPUS4:store ia:ptr iu:n ta:ptr tu:n :}
    a u JUDGE-SRC:FIND {: d:n :}
-   d 0 < if E-JUDGE-SRC-ROW throw then
    a u QUAL!
    NAME$ JUDGE-ROW:OPEN {: k:n :}
    k  NAME$ NTAILPROBE:CODE-BYTES  JUDGE-ROW:OLD!
-   d JUDGE-CHAIN:PUBLISH-CALLING {: rc:n :}
+   ROW-IX @ SUB-RC@ {: rc:n :}
+   ROW-IX @ 1+ ROW-IX !
    rc 0<> if k rc JUDGE-ROW:REFUSED!
    else k  d JUDGE-CHAIN:SIZE  JUDGE-ROW:NEW! then
    CODEGEN-CLANG:PRESENT? 0= if exit then
@@ -271,7 +312,7 @@ variable EMPTY-NAME-U
    k  0  HABU-IN$ CALL$ JUDGE-COST:VALUE  JUDGE-ROW:OLD-COST!
    k JUDGE-ROW:REFUSED? 0= if
       a u NEW-CALL!
-      CALL$ a u JUDGE-SRC:FIND JUDGE-CHAIN:ENTRY JUDGE-COST:COLUMN-CK
+      CALL$ CALL$ NDICT:CALL-TARGET JUDGE-COST:COLUMN-CK
       k  0  HABU-IN$ CALL$ JUDGE-COST:VALUE  JUDGE-ROW:NEW-COST!
    then
    k JUDGE-ROW:COVERED? 0= if exit then
@@ -297,7 +338,7 @@ variable EMPTY-NAME-U
       k JUDGE-ROW:OLD-VALUE@  JUDGE-ROW:OLD-COST!
    k JUDGE-ROW:REFUSED? 0= if
       a u NEW-CALL!
-      CALL$ a u JUDGE-SRC:FIND JUDGE-CHAIN:ENTRY JUDGE-COST:COLUMN-CK
+      CALL$ CALL$ NDICT:CALL-TARGET JUDGE-COST:COLUMN-CK
       k  k JUDGE-ROW:NEW-PICOS@ HABU-IN$ CALL$ JUDGE-COST:TIME JUDGE-ROW:SAMPLE
          k JUDGE-ROW:NEW-VALUE@  JUDGE-ROW:NEW-COST!
    then
@@ -316,16 +357,39 @@ public
 \ needs: one ordering of the columns and one more of them warm.
 2 constant TIME-PASSES
 
+\ Read the corpus source and compile every subject through the chain. Runs at
+\ load, from inside the corpus's package.
+: PUBLISH-ALL ( -- )
+   0 SUB-N !
+   SUFFIX$ JUDGE-CHAIN:SUFFIX!
+   QUALIFIER$ JUDGE-CHAIN:QUALIFIER!
+   SOURCE$ JUDGE-SRC:LOAD
+   [: PUBLISH-ROW ;] EACH ;
+
 \ Judge every subject of this corpus: the bytes, then the answers, then the
-\ times. The corpus source is read once and the chain is asked about each
-\ subject in the order the corpus file defines them, which is the order a call
-\ site's callee has to be published in.
+\ times. The source is read again because the reader holds one file at a time
+\ and other corpora are judged between the load that published these words and
+\ this measurement.
 : JUDGE ( -- )
    SUFFIX$ JUDGE-CHAIN:SUFFIX!
+   QUALIFIER$ JUDGE-CHAIN:QUALIFIER!
    SOURCE$ JUDGE-SRC:LOAD
+   0 ROW-IX !
    [: BYTES-ROW ;] EACH
    [: VALUE-ROW ;] EACH
    TIME-PASSES 0 ?do [: TIME-ROW ;] EACH loop
    JUDGE-COST:FLOOR JUDGE-COST:FLOOR JUDGE-ROW:SAMPLE JUDGE-ROW:FLOOR! ;
+
+;package
+
+\ The corpus's package, open around the judging, so the derived words are
+\ published where the corpus's own private storage is reachable and land beside
+\ the words they are compared against. It is written out here because `package`
+\ parses its operand: the package a corpus is judged in cannot be a parameter,
+\ so it is a line of this file rather than a cell.
+package CODEGEN-CORPUS4
+public
+
+JUDGE-CORPUS4:PUBLISH-ALL
 
 ;package

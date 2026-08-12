@@ -540,8 +540,12 @@ public
 \                 block construction the elaborator (NELAB) gained with them
 \   -8700..-8719  the code generator judge: reading a canonical corpus source
 \                 file as the definitions both code generators compile
-\                 (package JUDGE-SRC)
-\   -8420..-8439, -8487..-8499, -8520..-8599, -8666..-8699, -8720..-8999
+\                 (package JUDGE-SRC), and the tables, generated bodies and
+\                 chain column built on it
+\   -8720..-8739  the judge's second block, taken when the first filled: the
+\                 storage a corpus declares, and the package a derived word is
+\                 published in (package JUDGE-CHAIN)
+\   -8420..-8439, -8487..-8499, -8520..-8599, -8666..-8699, -8740..-8999
 \                 unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
 \                 ends take sub-blocks from here, each named above its codes.
@@ -1281,3 +1285,10 @@ public
 -8717 constant E-JUDGE-COST-DISAGREE \ two columns computed different answers from the same generated shape on the same pinned input: one of the two bodies is not the program the row is about, so neither one's time means anything
 -8718 constant E-JUDGE-CHECK-MARK   \ an artifact with no line saying where its checked half ends: comparing a text that lost its marker against a prefix of itself would pass a truncated file
 -8719 constant E-JUDGE-COST-COLUMN  \ a generated body whose call text does not resolve to the routine of the column it was built for: it computes the right answer in the wrong column, which no comparison of answers can see, so the address is held against the column instead
+\ The code generator judge's second block: -8720..-8739
+\
+\ Taken when -8700..-8719 filled. Both codes below are about a fact the judge
+\ cannot obtain rather than a measurement it took: what storage a body reaches,
+\ and where a derived word was published.
+-8720 constant E-JUDGE-CHAIN-DATA      \ a body naming two of its file's storage words: the migration entry takes ONE spelling, and handing it the first of two would compile a body whose other storage word resolved to whatever the scope held
+-8721 constant E-JUDGE-CHAIN-QUALIFIER \ a derived word's record asked for before the package it is published in was named: the record reader resolves a spelling as written rather than through the open package, so an absent qualifier would answer about some other word or about none
