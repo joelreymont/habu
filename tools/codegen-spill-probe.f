@@ -1,5 +1,5 @@
 \ codegen-spill-probe.f - where the register allocator's spill wall actually is,
-\ measured through the real migration entry. One concern: pinning the four facts
+\ measured through the real migration entry. One concern: pinning the five facts
 \ that say WHICH property of a body reaches E-A64RA-SPILL.
 \
 \ WHY THIS EXISTS. Two corpus rows are refused with the same code, -8508, and the
@@ -43,11 +43,18 @@
 \   and fixing it will find the refusal unmoved; that is what these mutations are
 \   recorded for.
 \
-\   AND THE DECIDING PAIR IS THE LAST TWO CASES. The same eight locals, the same
-\   loop, the same call, the same budget - read BEFORE the loop they compile, read
-\   AFTER it they are refused. Nothing else differs, so the crossing is the whole
-\   of it, and a fix has to stop the crossing rather than re-place what it
-\   creates.
+\   AND THE DECIDING PAIR IS SP-PRE8-N AND SP-POST8-N. The same eight locals,
+\   the same loop, the same call, the same budget - read BEFORE the loop they
+\   compile, read AFTER it they are refused. Nothing else differs, so the
+\   crossing is the whole of it, and a fix has to stop the crossing rather than
+\   re-place what it creates.
+\
+\   AND STOPPING THE CROSSING IS NOT FREE, WHICH IS THE FIFTH FACT. The crossing
+\   is also the only HOME a surviving local has when the callee publishes no
+\   record of what it destroys, and the wall sits one value lower there: seven
+\   cross the chain's C-LONG-N and compile, seven cross the engine's C-LONG - the
+\   same text, the other compiler - and are refused. The section at RECORD-CASES
+\   says what suppressing the threading does to each of those walls, measured.
 \
 \ WHERE THE WALL SITS, AND WHY THE COUNT IN THESE CASES MOVED ONCE. It is at
 \ EIGHT crossing values today and it was at seven until the selection stage began
@@ -65,13 +72,15 @@
 \
 \ WHAT A CHANGE TO THIS FILE MEANS. These are the current walls, not desired
 \ ones. A pass that lets a crossing local live in a frame slot across a loop
-\ turns POST8 green, and this file is where that is recorded rather than
-\ discovered - so the case is asserted with its code and a fix must come here and
-\ say what it moved.
+\ turns POST8 AND EPOST7 green - both walls at once, because both are the same
+\ shortage of somewhere to put a value - and this file is where that is recorded
+\ rather than discovered, so each case is asserted with its code and a fix must
+\ come here and say what it moved.
 
 require lib/test.f
 require lib/string.f
 require tools/codegen-compare-cases4.f
+require src/compiler/native/clobber.f
 require src/compiler/native/migrate.f
 
 package CODEGEN-SPILL-PROBE
@@ -94,12 +103,24 @@ variable TRY-IN
 : MIGRATE-CALLING-RC ( -- n )
    [: TRY-SRC @ TRY-U @ TRY-IN @ 1 REGS NMIGRATE:DEFINE-CALLING ;] catch ;
 
+\ Where a word's code starts, read off its own dictionary record. A name this
+\ image does not hold is refused rather than answered with an address, because
+\ every case below is about WHICH routine is branched to.
+: ENTRY-OF ( ptr u8 n -- n ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-NMIGRATE-CALLEE throw then
+   XREF-START ;
+
 \ The callee the calling cases branch to, staged from the dictionary so that what
 \ is refused is the body under test and never a missing routine.
 : CALLEE-AT ( ptr u8 n -- ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    a u
-   a u XREF-FIND dup XREF-FOUND? 0= if drop E-NMIGRATE-CALLEE throw then
-   XREF-START 1 1 NMIGRATE:CALLEE ;
+   a u ENTRY-OF 1 1 NMIGRATE:CALLEE ;
+
+\ Does this routine publish what it destroys? It is the one property the two
+\ callees below differ in, so it is measured off the record rather than argued
+\ from which compiler made them.
+: PUBLISHES-CLOBBER? ( ptr u8 n -- bool )
+   ENTRY-OF NCLOB:KNOWN? ;
 
 : STAGE ( ptr u8 n n -- ) {: a:ptr u:n in:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    a TRY-SRC ! u TRY-U ! in TRY-IN ! ;
@@ -107,6 +128,13 @@ variable TRY-IN
 : TRY ( ptr u8 n n -- n )
    STAGE MIGRATE-RC ;
 
+\ WHICH ROUTINE A CASE BRANCHES TO IS ITS OWN TEXT'S ANSWER, NOT THIS STAGING'S,
+\ and it was measured rather than assumed: staging the chain's C-LONG-N under a
+\ body that names the engine's C-LONG changes no answer below, because
+\ DEFINE-CALLING resolves the body's names off the dictionary. What the staging
+\ is for is the entry's own precondition - a migration with no callee staged is
+\ refused - so one staged row serves every calling case here, and a case that
+\ wants the other compilation of the callee says so in its own source.
 : TRY-CALLING ( ptr u8 n n -- n )
    STAGE
    s" CODEGEN-CORPUS4:C-LONG-N" CALLEE-AT
@@ -155,6 +183,57 @@ variable TRY-IN
    s" : SP-POST7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + ;"
    9 TRY-CALLING 0 T= ;
 
+\ ---- and what the threading is FOR, which is a second wall -------------------
+\ THE CASES ABOVE ARE ALL MEASURED AGAINST A CALLEE THE CHAIN PUBLISHED, and that
+\ is not a neutral choice: such a routine records which registers its accepted
+\ allocation writes (src/compiler/native/clobber.f), so some register survives the
+\ branch and a crossing value may stay in one. A routine with no such row destroys
+\ the whole pool as far as every reader is concerned, and then NO register
+\ survives - the only place a crossing value can be is the data-stack slot the
+\ call's own operand list buys it.
+\
+\ SO THE SAME BODY HAS TWO WALLS AND THE RECORD IS THE DIFFERENCE. The corpus
+\ writes C-LONG once; the engine compiles it and the chain compiles it again as
+\ C-LONG-N, and the case below names the engine's where SP-POST7-N above names
+\ the chain's. Seven values cross the chain's and compile; seven cross the
+\ engine's and are refused, and six compile. Nothing else about the two cases
+\ differs - same locals, same loop, same budget, same text for the callee - so
+\ the record is worth exactly one crossing value here, and it is measured rather
+\ than reasoned from what a record ought to buy.
+\
+\ AND THE ENGINE'S CALLEE IS REALLY CALLED AND NOT COPIED, which the pair says
+\ without a second reader: a body the chain had inlined would hold no call at
+\ all, and SP-ACROSS8-N above is exactly that body - eight values across a
+\ callless loop - and compiles. Seven refused is therefore a call.
+\
+\ WHICH IS WHY THE THREADING CANNOT SIMPLY BE DELETED, and that was measured too
+\ rather than argued. Suppressing it - making CROSS-L answer nought, so a
+\ surviving local is neither a block argument of the blocks on its path nor an
+\ operand of the call - lifts the chain-callee wall from seven to eight and turns
+\ CALL-PRESSURE green, and it takes the engine-callee wall from six to NONE: a
+\ body with ONE local live across a call to a routine with no record is refused
+\ E-A64RA-POOL, because the value has nowhere at all to be. Two programs the tree
+\ compiles today are exactly that shape - the stdlib's own multishot site
+\ ARRAY:A-MAPI!, migrated at file level in test/compiler/native-exec.f, and
+\ LGP-CALL in test/compiler/native-migrate.f - and both refuse under the
+\ suppression. The threading is a HOME and not only a guard, and a change that
+\ removes it has to give the value another one.
+: RECORD-CASES ( -- )
+   s" the chain's callee publishes what it destroys" T-LABEL
+   s" CODEGEN-CORPUS4:C-LONG-N" PUBLISHES-CLOBBER? TTRUE
+
+   s" and the engine's compilation of the same text does not" T-LABEL
+   s" CODEGEN-CORPUS4:C-LONG" PUBLISHES-CLOBBER? TFALSE
+
+   s" seven crossing the engine's callee are refused where seven crossed the chain's"
+   T-LABEL
+   s" : SP-EPOST7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + g + ;"
+   9 TRY-CALLING E-A64RA-SPILL T=
+
+   s" and six across it compile" T-LABEL
+   s" : SP-EPOST6-N ( n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + ;"
+   8 TRY-CALLING 0 T= ;
+
 public
 
 : RUN ( -- )
@@ -163,6 +242,7 @@ public
    NOT-THE-LOOP-CASES
    NOT-THE-CALL-CASES
    CROSSING-CASES
+   RECORD-CASES
    T-REPORT ;
 
 ;package
