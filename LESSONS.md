@@ -6050,3 +6050,19 @@ the unit boundary. Before declaring a cross-commit discrepancy in a
 measured number: re-measure both endpoints with each tree's OWN
 instrument, and check the instrument's fixed point - the NOOP row's
 0->4 announced the change in every report.
+
+## The widen landing's four (2026-08-12)
+
+(1) An emitter that writes an address into region bytes obligates
+BOTH halves of the relocation parity gate - formal/Common/Reloc.v
+AND the frozen manifest in reloc-schema.f, which names the bare
+source tail, so a package rename is a manifest edit. (2) Never edit
+the tree while test/run.f runs - forked workers load source files
+mid-run and produce reds that are not about your change. (3) jj op
+restore is unavailable for undoing one lane's interleaving - the op
+log is repo-wide and shared; `jj --at-operation <op>
+--ignore-working-copy file show` reads a past state without touching
+anything (recovery verified by rebuilding a byte-identical engine).
+(4) A new package in a legacy engine file is byte-neutral for the
+engine size but shifts baked WIDs - the sha changes while the size
+does not; expect it, don't chase it.
