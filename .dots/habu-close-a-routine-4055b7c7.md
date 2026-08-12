@@ -12,3 +12,13 @@ A call site in src/compiler/native/select.f writes EVERY value the caller still 
 NOTE 2026-08-09: the blocker this leaf names, habu-resolve-a-callee-0340dfde,
 no longer exists (closed and merged - name resolution landed). This dot is
 unblocked; re-derive its premise on the current tree before claiming.
+
+PRICED AS THE PRE-CUT POOL CLOSER (census 2026-08-12): 140 first-refusals
+E-A64RA-POOL - zero/low-arity routines whose calls put every live value
+across the data stack under caller-save-everything. The register
+convention (da01bd62) also closes the class but is sequenced POST-CUT by
+the plan, so THIS dot is the pre-cut road; its first deliverable is the
+pricing - how many of the 140 does caller-save narrowing close, measured
+against /tmp/hb-census-scout/refusals.tsv's POOL rows (or a re-census).
+If the answer is materially short of 140, the cut plan has a sequencing
+decision to make and the orchestrator needs the number, not a fix.

@@ -308,3 +308,27 @@ design (spill-rewrite loop + CROSS-L pressure retry), self-host byte
 fixpoint, every gate on the sole path. The dialect gaps (>r family, catch,
 [char]/['], leave) are blockers ONLY where the census says the tree uses
 them — the census decides, not memory.
+
+CENSUS 2026-08-12 (tree 1e22998a, full report in the orchestrator session;
+raw /tmp/hb-census-scout/): 3944 examined, 2728 compiled, 1216 refused —
+527 of those are the INSTRUMENT (package-reopen misses using-visible
+callees 258; >512B recorder cap 151 UNMEASURED; unchecked regions 114).
+THE MEASURED REMAINDER AFTER IN-FLIGHT FIXES (~460 rows): POOL 140
+(zero-arity call shapes under caller-save-everything — SEQUENCING
+CONTRADICTION: the named owner da01bd62 is post-cut BY THIS PLAN; the
+pre-cut closer is habu-close-a-routine-4055b7c7, unblocked, must be priced
+against the 140), DKEEP 112 (the validator refusing the chain's own
+needless data-stack emissions — owning dot 2fa72257 was scoped at SIX,
+under-scoped 19x, rescoped by this census), LOCAL 61 (47 = locals named
+i/j vs loop-index modeling, 9f38a8f6), CTRL/do 41 (05b4e523), UNMODELED 38
+(catch 18 / >r 15 / [char] / ['] / leave-masked — owners 6ceb7667,
+92993f27, ca9e5541+0750ac90, 018f3379; usage counts in the report), SEQ 26
+(dbe22efb P3), QUOT 9 (de9829f9), SCAN 9 + TAIL 7 + MATCH 4 + singletons
+(newly dotted), BUNDLE 5 (143c0331).
+COVERAGE BOUND, NOT FOOTNOTE: 4423 sealed-package + 2318 seal-stripped
+definitions are LOADED BY THE TREE but unmeasurable by the census —
+"zero refusals over everything the tree loads" is proven over less than
+half today; the instrument gap is dotted. ALSO A CUT-DESIGN QUESTION the
+census surfaces: unchecked definitions (0 set-check regions, 114 rows
+E-NFEED-STATE) have no tape and cannot chain-compile — the sole-compiler
+design must state who compiles them, before the cut is scheduled.
