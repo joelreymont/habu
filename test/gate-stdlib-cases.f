@@ -568,6 +568,14 @@ SUITE native-dead-path
    test/compiler/native-dead-path.f
 ;SUITE
 
+\ What the data-stack residency answers when a checked program stores through an
+\ address that lands in the routine's own slots. It runs after the chain leaves
+\ because it executes migrated bodies on a data stack of its own, which is the
+\ end-to-end path those leaves prove one stage at a time.
+SUITE native-dstack-alias
+   test/compiler/native-dstack-alias.f
+;SUITE
+
 \ The three tag-dispatch forms - `MATCH`, `case` and `construct` - from source
 \ text to executed machine code, every case comparing the chain's answer with the
 \ engine's on the same body. It runs after the trap leaf and the dead-path leaf

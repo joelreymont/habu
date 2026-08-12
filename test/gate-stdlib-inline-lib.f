@@ -490,6 +490,10 @@ public
    s" test/compiler/native-reach.f" GSI-FORK-INCLUDE
    s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
    s" test/compiler/native-dead-path.f" GSI-FORK-INCLUDE
+   \ The data-stack aliasing witness, listed here as well as in
+   \ test/gate-stdlib-cases.f for the reason given above: only this list is what
+   \ test/run.f actually forks.
+   s" test/compiler/native-dstack-alias.f" GSI-FORK-INCLUDE
    \ The three tag-dispatch forms through the whole chain. It follows the trap
    \ and dead-path leaves because it is their first source-level consumer, and it
    \ is listed here as well as in test/gate-stdlib-cases.f for the reason given
