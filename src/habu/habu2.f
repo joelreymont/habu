@@ -4054,9 +4054,9 @@ s" c-local-ref" s" label label --" TRUST
 \ Register the LAOTNREC baked records at &dict[NDICT], rebasing each [0] xt from a
 \ blob offset to CP+offset, and hash-indexing it (LHIDXADD). All records first, so
 \ EM-AOT-PATCH-SITES can resolve sibling calls by name.
-\ Each source record is a compact 16 bytes (word0 = blob-off-or-package-public u32;
-\ word1 = code-len-or-package-private u32; word2 = name-off u16 | flags u8<<16 |
-\ min-in u8<<24; word3 = wid u32). Expand it to the full 48B dict record, rebasing
+\ Each source record is a compact 20 bytes (word0 = blob-off-or-package-public u32;
+\ word1 = code-len-or-package-private u32; word2 = name-off u32; word3 = flags u8 |
+\ min-in u8<<8; word4 = wid u32). Expand it to the full 48B dict record, rebasing
 \ ordinary [0] to CP+blob-off while package [0]/[8] remain raw u32 WID roles, and reconstructing [16]
 \ flags|len, the [24..40) inline name (from the deduped LAOTNAMES pool, zero-padded),
 \ and [40] wid (full u32 so wordlist IDs above 255 survive) -- the EXACT inverse of
@@ -4069,11 +4069,11 @@ s" c-local-ref" s" label label --" TRUST
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: rloop:label rdone:label pkg:label fields:label nloop:label ndone:label
       pkg-wid:label widok:label next:label :}
-   9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (16B stride), x12 = k
+   9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (AOT-CREC-ROW stride), x12 = k
    11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N (survives LHIDXADD)
    rloop LBL,  12 11 CMP,  C-GE rdone BCOND,
       10 DREC MOVZ,  10 NDICT 10 MUL,  10 DBASE 10 ADD,   \ x10 = &dict[NDICT]
-      6 9 12 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg BCOND,
+      6 9 16 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg BCOND,
       3 9 0 LDRW,  3 CP 3 ADD,  3 10 0 STR,         \ ordinary [0] = CP + blob-off u32
       3 9 4 LDRW,  3 10 8 STR,                      \ ordinary [8] = code length u32
       fields B,
@@ -4081,13 +4081,13 @@ s" c-local-ref" s" label label --" TRUST
       3 9 0 LDRW,  3 10 0 STR,                     \ package [0] = public WID u32
       3 9 4 LDRW,  3 10 8 STR,                     \ package [8] = private WID u32
       fields LBL,
-      6 9 8 LDRW,                                   \ x6 = word2 = name-off | flags<<16 | min-in<<24
-      5 $FFFF LIT64,  4 6 5 AND,                     \ x4 = name-off
+      4 9 8 LDRW,                                   \ x4 = word2 = name-off u32
       7 LAOTNAMES LABEL@ ADR,  4 7 4 ADD,           \ x4 = pool entry ptr (len byte)
       5 4 0 LDRB,                                   \ x5 = name length = pool[entry]
-      7 6 16 LSRI,  3 $FF LIT64,  7 7 3 AND,        \ x7 = flags = (word1>>16)&0xFF
+      6 9 12 LDRW,                                  \ x6 = word3 = flags | min-in<<8
+      7 6 $FF ANDI,                                 \ x7 = flags
       7 7 60 LSLI,  7 7 5 ORR,                      \ flags<<60 | len
-      3 6 24 LSRI,  3 3 $FF ANDI,  3 3 52 LSLI,     \ min-in byte = word1>>24 -> DNAME-MIN-IN bits 52-59
+      3 6 8 LSRI,  3 3 $FF ANDI,  3 3 52 LSLI,      \ min-in byte = word3>>8 -> DNAME-MIN-IN bits 52-59
       7 7 3 ORR,  7 10 16 STR,                      \ [16] = flags<<60 | min-in<<52 | len
       2 0 MOVZ,  2 10 24 STR,  2 10 32 STR,         \ zero [24..40)
       4 4 1 ADDI,                                   \ x4 = name src (entry+1)
@@ -4097,8 +4097,8 @@ s" c-local-ref" s" label label --" TRUST
          7 10 24 ADDI,  7 7 3 ADD,  2 7 0 STRB,     \ dict[24+i] = name[i]
          3 3 1 ADDI,  nloop B,
       ndone LBL,
-      6 9 12 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg-wid BCOND,
-      6 10 40 STR,                                  \ ordinary [40] wid = word3 (full u32, hi=0)
+      6 9 16 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg-wid BCOND,
+      6 10 40 STR,                                  \ ordinary [40] wid = word4 (full u32, hi=0)
       4 6 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE widok BCOND,   \ WIDN = max(WIDN, wid+1)
          4 DATA WIDN-CELL STR,                       \ advance so post-seed allocs clear restored wids
       widok LBL,  next B,
@@ -4188,7 +4188,7 @@ s" c-local-ref" s" label label --" TRUST
    pool-done LBL,
       4 21 CMP,  C-NE bad BCOND, ;
 
-\ For each baked call site (packed 4B row = blob-off u16 | name-off u16<<16 into the
+\ For each baked call site (packed 8B row = blob-off u32 then name-off u32 into the
 \ deduped [len][bytes] name pool at LAOTNAMES) resolve the callee by NAME in THIS
 \ engine (LFIND over primitives, cold-prefix words, and the just-registered
 \ siblings) and re-encode ONLY the BL imm26 at CP+blob-offset to that address
@@ -4201,13 +4201,12 @@ s" c-local-ref" s" label label --" TRUST
 \ the DATA region is mapped, so the map is writable here.
 : EM-AOT-PATCH-SITES ( -- )
    LBL LBL LBL LBL {: ploop:label pdone:label pnf:label pnomark:label :}
-   21 LAOTSITES LABEL@ ADR,                          \ x21 = row cursor (4B rows)
+   21 LAOTSITES LABEL@ ADR,                          \ x21 = row cursor (8B rows)
    23 LAOTNSITE LABEL@ ADR,  23 23 0 LDR,            \ x23 = site count M
    22 0 MOVZ,                                        \ x22 = site index
    ploop LBL,  22 23 CMP,  C-GE pdone BCOND,
-      24 21 0 LDRW,                                  \ x24 = row = blob-off | name-off<<16
-      4 24 16 LSRI,                                  \ x4 = name-off (row>>16)
-      5 $FFFF LIT64,  24 24 5 AND,                   \ x24 = blob offset (row & 0xFFFF; survives LFIND)
+      24 21 0 LDRW,                                  \ x24 = blob offset u32 (survives LFIND)
+      4 21 4 LDRW,                                   \ x4 = name-off u32
       5 LAOTNAMES LABEL@ ADR,  9 5 4 ADD,            \ x9 = pool entry ptr = LAOTNAMES + name-off
       10 9 0 LDRB,                                   \ x10 = name length = pool[entry]
       9 9 1 ADDI,                                    \ x9 = name ptr = entry + 1
@@ -4225,7 +4224,7 @@ s" c-local-ref" s" label label --" TRUST
          5 SNAP-RELOC:CALLMAP-OFF LIT64,  14 14 5 ADD,  14 DATA 14 ADD,
          5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
       pnomark LBL,
-      21 21 4 ADDI,  22 22 1 ADDI,  ploop B,
+      21 21 8 ADDI,  22 22 1 ADDI,  ploop B,
    pnf LBL,  0 $51 MOVZ,  NR-EXIT-GROUP SYS,
    pdone LBL, ;
 
@@ -4288,9 +4287,9 @@ public
    23 LNXTOFF LABEL@ ADR,  23 23 0 LDR,
    22 0 MOVZ,
    xloop LBL,  22 23 CMP,  C-GE xdone BCOND,
-      24 21 0 LDRB,  4 21 1 LDRB,  4 4 8 LSLI,  24 24 4 ORR,   \ x24 = window offset (u16 LE)
+      24 21 0 LDRW,                                 \ x24 = window offset u32
       9 3 24 ADD,  11 9 0 STR,                      \ the cell traps until the boot-run installs it
-      21 21 2 ADDI,  22 22 1 ADDI,  xloop B,
+      21 21 4 ADDI,  22 22 1 ADDI,  xloop B,
    xbad LBL,
       1 msg ADR,  0 2 MOVZ,  2 TRAP-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
@@ -4312,11 +4311,11 @@ public
    ok LBL,
    AOT-WINDOW:COPY-DATA                             \ the window's own bytes, not a zeroed reserve
    3 3 5 ADD,  3 DATA DP-CELL STR,                  \ DP += span (bounded)
-   21 LAOTDSITES LABEL@ ADR,                        \ x21 = DATA-site cursor (u16 offsets)
+   21 LAOTDSITES LABEL@ ADR,                        \ x21 = DATA-site cursor (u32 offsets)
    23 LAOTNDSITE LABEL@ ADR,  23 23 0 LDR,          \ x23 = DATA-site count
    22 0 MOVZ,
    dloop LBL,  22 23 CMP,  C-GE drdone BCOND,
-      24 21 0 LDRB,  4 21 1 LDRB,  4 4 8 LSLI,  24 24 4 ORR,   \ x24 = blob offset (u16 LE)
+      24 21 0 LDRW,                                 \ x24 = blob offset u32
       9 CP 24 ADD,                                  \ x9 = literal addr = CP + blob offset
       10 9 0 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  11 10 0 ADDI,
       10 9 4 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  11 11 10 ORR,
@@ -4327,7 +4326,7 @@ public
       10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
       10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
-      21 21 2 ADDI,  22 22 1 ADDI,  dloop B,
+      21 21 4 ADDI,  22 22 1 ADDI,  dloop B,
    drdone LBL,
    AOT-WINDOW:TRAP-XTCELLS ;
 
@@ -4340,11 +4339,11 @@ public
    LBL LBL {: cloop:label crdone:label :}
    5 LAOTCODEB0 LABEL@ ADR,  5 5 0 LDR,            \ x5 = capture-time code base (B0)
    6 CP 5 SUB,                                     \ x6 = code delta = seedCP - B0 (survives loop)
-   21 LAOTCSITES LABEL@ ADR,                       \ x21 = CODE-site cursor (u16 offsets)
+   21 LAOTCSITES LABEL@ ADR,                       \ x21 = CODE-site cursor (u32 offsets)
    23 LAOTNCSITE LABEL@ ADR,  23 23 0 LDR,         \ x23 = CODE-site count
    22 0 MOVZ,
    cloop LBL,  22 23 CMP,  C-GE crdone BCOND,
-      24 21 0 LDRB,  4 21 1 LDRB,  4 4 8 LSLI,  24 24 4 ORR,   \ x24 = blob offset (u16 LE)
+      24 21 0 LDRW,                                \ x24 = blob offset u32
       9 CP 24 ADD,                                 \ x9 = literal addr = CP + blob offset
       10 9 0 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  11 10 0 ADDI,
       10 9 4 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  11 11 10 ORR,
@@ -4364,7 +4363,7 @@ public
       14 14 5 LSRI,                                  \ x14 = map byte index = offset >> 5
       5 SNAP-RELOC:ADDRMAP-OFF LIT64,  14 14 5 ADD,  14 DATA 14 ADD,
       5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
-      21 21 2 ADDI,  22 22 1 ADDI,  cloop B,
+      21 21 4 ADDI,  22 22 1 ADDI,  cloop B,
    crdone LBL, ;
 
 \ Boot-run the captured top-level entry words (INSTALL/BPW-INSTALL/S-INSTALL) once
@@ -7904,24 +7903,44 @@ public
 \ (site blob-offset -> callee dict NAME); EM-SEED-AOT copies/registers/relocates at
 \ boot. Site rows and dict records are stored as cells here for @/! access; the bake
 \ packs sites to u32 triples.
-$10000 constant AOT-BLOB-CAP
+\
+\ EVERY OFFSET IN THE BAKED FORMAT IS A u32, and the capacities below are what
+\ makes that the only bound worth stating. The format was u16 throughout, which
+\ put a hard 64 KiB ceiling on a captured blob; the compiler chain this seed
+\ exists to carry measures 1.15 MiB, so the ceiling was the format's, not the
+\ engine's. Widening the fields alone would have moved the wall to the buffers,
+\ so the two travel together: each cap below is sized past the chain's measured
+\ demand and every one of them is far below 2^32, which is why no field needs a
+\ range check of its own -- the buffer's own overflow refusal is the bound, and
+\ it is named and fail-closed.
+\ Host cost: these are `allot`ed in the METABUILD HOST's DATA (never in bin/hb),
+\ where a full metabuild reaches DP = 10,034,713 bytes measured on 2026-08-12.
+\ The buffers below add ~4.6 MiB, which leaves ~17 MiB of headroom on the
+\ smaller of the two targets (Linux DATA-SIZE 32 MiB).
+$200000 constant AOT-BLOB-CAP     \ 2 MiB: the chain's 1.15 MiB of code with room to grow
 create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
-256 constant AOT-REC-MAX
+\ 16384: the chain needs ~6554 records, and DICT-CAP (32768) is the absolute
+\ ceiling a capture window can reach, since the window is a dictionary subrange.
+16384 constant AOT-REC-MAX
 \ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
 \   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)
-\   [MAX*48 .. +MAX*CREC-ROW)  compact 16B records (two u32 role/code fields + metadata + wid)
+\   [MAX*48 .. +MAX*CREC-ROW)  compact 20B records (three u32 role/code/name fields + metadata + wid)
 \   [+MAX*CREC-ROW .. +48)     48B scratch for the build-time expand==verbatim proof
 create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + 48 + allot    variable AOT-REC-N
-2048 constant AOT-SITE-MAX
-create AOT-SITE-BUF AOT-SITE-MAX 4 * allot    variable AOT-SITE-N   \ packed 4B rows: blob-off u16 + name-off u16
+\ 32768 call sites: the metabuild window carries one BL site per 83 blob bytes,
+\ so the chain's 1.15 MiB projects to ~14k sites.
+32768 constant AOT-SITE-MAX
+create AOT-SITE-BUF AOT-SITE-MAX 8 * allot    variable AOT-SITE-N   \ packed 8B rows: blob-off u32 + name-off u32
 create AOT-NAMES-BUF AOT-NAMES-CAP allot    variable AOT-NAMES-LEN
 \ DATA-literal relocation table (third relocation class): blob offsets of the
 \ movz/movk x9 DATA-address literals (create/variable buffer refs). AOT-DATA-D0 =
 \ the capture engine's REPL-DATA base (abs); AOT-DATA-SIZE = the REPL DATA span
 \ (all allot/variable => zero content). EM-SEED-AOT reserves DATA and rebases each
 \ literal by (seed-DP - AOT-DATA-D0).
-512 constant AOT-DSITE-MAX
-create AOT-DSITE-BUF AOT-DSITE-MAX 2 * allot    variable AOT-DSITE-N   \ packed u16 blob offsets (DATA then CODE)
+\ 16384 shared rows: the metabuild window records one address chain per 127 blob
+\ bytes, so the chain's 1.15 MiB projects to ~9k DATA plus CODE sites together.
+16384 constant AOT-DSITE-MAX
+create AOT-DSITE-BUF AOT-DSITE-MAX 4 * allot    variable AOT-DSITE-N   \ packed u32 blob offsets (DATA then CODE)
 variable AOT-DATA-D0    variable AOT-DATA-SIZE
 \ The window's DATA CONTENT, and the offsets the seed must not take from it.
 \ Reserving the span zeroed was right only while every byte in it was zero. It is
@@ -7936,14 +7955,14 @@ variable AOT-DATA-D0    variable AOT-DATA-SIZE
 \ fixpoint would never close, which is the same reason the code literals are
 \ stored b0-relative. Those cells are therefore zeroed in the image and their
 \ offsets listed here; EM-AOT-RELOC-DATA stores the seeded engine's own
-\ `defer-unset` trap xt into each one at boot. u16 offsets are exact because the
-\ span cannot exceed AOT-DATA-CAP.
+\ `defer-unset` trap xt into each one at boot. The offsets are u32, so the window
+\ they index is bounded by DATA-CAP alone.
 package AOT-WINDOW
 public
-$10000 constant DATA-CAP
+$100000 constant DATA-CAP        \ 1 MiB; the metabuild REPL window measures 5724 bytes
 create DATA-BUF DATA-CAP allot
-64 constant XTOFF-MAX
-create XTOFF-BUF XTOFF-MAX 2 * allot    variable XTOFF-N   \ packed u16 window offsets
+4096 constant XTOFF-MAX          \ declared address cells in the window (metabuild REPL: 1)
+create XTOFF-BUF XTOFF-MAX 4 * allot    variable XTOFF-N   \ packed u32 window offsets
 ;package
 \ CODE-literal relocation table (fourth relocation class): blob offsets of the
 \ movz/movk x9 literals whose value lands in the captured code range [B0,B1) --
@@ -8004,22 +8023,23 @@ s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
 : AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
 s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 
-\ Bake the AOT section: blob length + blob, record count + N 48-byte dict records
-\ (xt/end blob-relative, inline name), site count + M u32 triples (blob-off,
-\ name-off, name-len), then the name pool. Placed last so it never shifts engine
+\ Bake the AOT section: blob length + blob, record count + N compact AOT-CREC-ROW
+\ records (blob-relative code span, name-pool reference, flags, wid), call-site
+\ count + M 8-byte rows (blob-off u32, name-off u32), then the name pool and the
+\ DATA/CODE/window offset tables, all u32. Placed last so it never shifts engine
 \ offsets. LAOTNREC = 0 makes EM-SEED-AOT skip the whole pass (stage2/maker/snap).
-: EMIT-AOT-SITES ( -- )   \ packed 4B rows (blob-off u16 + name-off u16)
-   AOT-SITE-N @ 0 > IF AOT-SITE-BUF@ AOT-SITE-N @ 4 * BYTES, THEN ;
-: EMIT-AOT-DSITES ( -- )   \ packed u16 DATA-site offsets
-   AOT-DSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 2 * BYTES, THEN ;
-: EMIT-AOT-CSITES ( -- )   \ packed u16 CODE-site offsets (after the AOT-DSITE-N DATA u16s)
-   AOT-CSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 2 * + AOT-CSITE-N @ 2 * BYTES, THEN ;
+: EMIT-AOT-SITES ( -- )   \ packed 8B rows (blob-off u32 + name-off u32)
+   AOT-SITE-N @ 0 > IF AOT-SITE-BUF@ AOT-SITE-N @ 8 * BYTES, THEN ;
+: EMIT-AOT-DSITES ( -- )   \ packed u32 DATA-site offsets
+   AOT-DSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * BYTES, THEN ;
+: EMIT-AOT-CSITES ( -- )   \ packed u32 CODE-site offsets (after the AOT-DSITE-N DATA u32s)
+   AOT-CSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * + AOT-CSITE-N @ 4 * BYTES, THEN ;
 package AOT-WINDOW
 public
 : EMIT-DATA ( -- )   \ the window's DATA content, declared address cells zeroed
    AOT-DATA-SIZE @ 0 > IF DATA-BUF@ AOT-DATA-SIZE @ BYTES, THEN ;
-: EMIT-XTOFFS ( -- )   \ packed u16 window offsets of the declared address cells
-   XTOFF-N @ 0 > IF XTOFF-BUF@ XTOFF-N @ 2 * BYTES, THEN ;
+: EMIT-XTOFFS ( -- )   \ packed u32 window offsets of the declared address cells
+   XTOFF-N @ 0 > IF XTOFF-BUF@ XTOFF-N @ 4 * BYTES, THEN ;
 ;package
 : EMIT-AOT-SEED ( -- )
    LAOTCODELEN LABEL@ LBL,  AOT-BLOB-LEN @ DCQ,

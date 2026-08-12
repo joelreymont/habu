@@ -32,6 +32,18 @@
 \         masking cannot silently break a vector, only surface a missing boot-run
 \         entry.
 \
+\ THE WIDE FORMAT (dot habu-widen-the-aot-089f5faf). Proves what only a boot can
+\ say about a capture window past the 64 KiB world the format used to live in.
+\   BIG   : a variant whose window is several times 65535 bytes, with a data cell,
+\         a non-inlinable callee and a reporter defined ABOVE the filler, must
+\         report the cell's magic at boot. That value can only arrive if a call
+\         site AND a DATA site whose blob offsets do not fit sixteen bits were
+\         both recorded and patched by the seed. On the pre-widening format the
+\         build never got this far - the capture died "aot-capture: blob exceeds
+\         buffer" - so the case is red-first by refusal rather than by a wrong
+\         answer. test/aot-wide-format-suite.f owns the build half, which runs on
+\         every host; this is the half that needs the terminal.
+\
 \ Spawn-only helper: test/aot-wid-suite.f runs it as a child and gates on its exit
 \ code; it is not a TEST:SUITE member, like test/aot-wid-build.f. The PTY
 \ primitives below mirror test/proc-pty.f
@@ -272,6 +284,33 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    HBPWID$ EXISTS? TTRUE
    ASSERT-TRAP-DIES-NAMED ;
 
+\ --- the wide format's boot half ----------------------------------------------
+\ The magic is the value aot-wid-build.f stores into the big-window fixture cell.
+\ Reading it back at boot means the seed resolved a call site and rebased a DATA
+\ literal whose blob offsets are both far past 65535.
+: BIG-MAGIC$ ( -- ptr u8 n )
+   s" awb-big=6510711284817812058" ;
+
+: ASSERT-BIG-WINDOW-BOOTS ( -- )
+   HBPWID$ PTY-SPAWN
+   s" AOT wide format: an over-64 KiB window reports its magic at boot" T-LABEL
+   BIG-MAGIC$ WAIT-FOR TTRUE
+   s" AOT wide format: it is not the zeroed or unrelocated answer" T-LABEL
+   RBUF$ s" awb-big=0" CONTAINS? 0= TTRUE
+   4 SEND-C
+   s" AOT wide format: the over-64 KiB engine exits 0" T-LABEL
+   PID @ >PID PROC-WAIT-RC MATCH result
+     ok  OF 0 T= ENDOF
+     err OF drop 1 0 T= ENDOF
+   ;MATCH
+   MFD @ close ;
+
+: PROBE-BIG-WINDOW ( -- )
+   s" HABU_AOT_BIG" BUILD-MODE
+   s" AOT wide format: the over-64 KiB variant built" T-LABEL
+   HBPWID$ EXISTS? TTRUE
+   ASSERT-BIG-WINDOW-BOOTS ;
+
 : BODY ( -- )
    RENDER-SPAN
    s" AOT data span guard: rendered span text parses back to 2*DATA-SIZE" T-LABEL
@@ -287,7 +326,8 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    HBPWID$ EXISTS? TTRUE
    ASSERT-FORGED-DIES
    ASSERT-LEGAL-BOOTS
-   PROBE-WINDOW-CONTENT ;
+   PROBE-WINDOW-CONTENT
+   PROBE-BIG-WINDOW ;
 
 public
 

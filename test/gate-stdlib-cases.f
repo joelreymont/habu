@@ -1116,6 +1116,10 @@ SUITE aot-wid-restore
    test/aot-wid-suite.f
 ;SUITE
 
+SUITE aot-wide-format
+   test/aot-wide-format-suite.f
+;SUITE
+
 SUITE friend-arena-absence
    test/seal-absence.f
 ;SUITE

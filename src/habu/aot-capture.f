@@ -37,8 +37,6 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
    v 32 rshift p 4 + c!  v 40 rshift p 5 + c!  v 48 rshift p 6 + c!  v 56 rshift p 7 + c! ;
 : AOT-P32! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store low 32 bits as 4 LE bytes
    v p c!  v 8 rshift p 1+ c!  v 16 rshift p 2 + c!  v 24 rshift p 3 + c! ;
-: AOT-P16! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store low 16 bits as 2 LE bytes
-   v p c!  v 8 rshift p 1+ c! ;
 
 \ --- host dictionary record k (48 bytes): field readers (ptr-first byte offsets) ---
 : AOT-REC ( n -- ptr a ) 48 * AOT-DBASE swap + ;
@@ -118,15 +116,20 @@ variable ACAP-PP                                             \ pool scan cursor
    off 1+ u + AOT-NAMES-LEN !
    off ;
 
-\ --- call-site reloc rows: packed 4 bytes = blob-off u16 + name-off u16 (into pool) ---
-: ACAP-SITE-ROW ( n -- ptr u8 ) 4 * AOT-SITE-BUF@ + ;
+\ --- call-site reloc rows: packed 8 bytes = blob-off u32 + name-off u32 (into pool) ---
+\ Both fields are u32 and neither carries a range check of its own, because
+\ neither value can reach one: a blob offset is an index into a blob the copy
+\ already refused past AOT-BLOB-CAP, and a pool offset is an index into a pool
+\ ACAP-POOL-ADD already refused past AOT-NAMES-CAP. Both caps are megabytes below
+\ 2^32, so the refusals that exist are the whole bound. The u16 fields these
+\ replaced DID need their own checks, because their bound (64 KiB) sat below the
+\ buffer caps and nothing else would have caught a crossing.
+: ACAP-SITE-ROW ( n -- ptr u8 ) 8 * AOT-SITE-BUF@ + ;
 : ACAP-ADD-SITE ( n ptr u8 n -- ) {: boff:n a:ptr u:n :}
    AOT-SITE-N @ AOT-SITE-MAX >= if s" aot-capture: too many call sites" 74 die then
-   boff $FFFF > if s" aot-capture: call blob-off exceeds u16" 74 die then
    a u ACAP-POOL-ADD {: noff:n :}
-   noff $FFFF > if s" aot-capture: name pool offset exceeds u16" 74 die then
    AOT-SITE-N @ ACAP-SITE-ROW {: r:ptr :}
-   boff r AOT-P16!  noff r 2 + AOT-P16!
+   boff r AOT-P32!  noff r 4 + AOT-P32!
    AOT-SITE-N @ 1+ AOT-SITE-N ! ;
 
 \ --- records: copy host record (48 bytes), rebase ordinary [0] xt to blob offset ---
@@ -143,10 +146,11 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    then                                                        \ package [0]/[8] are raw u32 WID roles
    AOT-REC-N @ 1+ AOT-REC-N ! ;
 
-\ --- compact 16B records: blob-off-or-package-public u32 + code-len-or-package-
-\ private u32 + name-off u16 + flags u8 + min-in u8 + wid u32. Built from the
+\ --- compact AOT-CREC-ROW records: blob-off-or-package-public u32 + code-len-or-
+\ package-private u32 + name-off u32 + (flags u8 | min-in u8<<8) u32 +
+\ wid u32. Built from the
 \ verbatim 48B records; each record's inline name is added to the deduped pool.
-\ EM-AOT-REGISTER-RECS expands each 16B record
+\ EM-AOT-REGISTER-RECS expands each compact record
 \ back to the full 48B dict record at boot. All the constant/derivable fields
 \ (flags nibble, DNAME-MIN-IN byte, wid, name length, and the [24..40)
 \ inline-name zero padding) are asserted or reconstructed; the ACAP-PROVE-RECS
@@ -175,27 +179,26 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
       pkg if $FFFFFFFF else v 40 + ACAP-W32@ then {: wid:n :} \ package marker or full ordinary u32 WID
       v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}
       v 24 + len ACAP-POOL-ADD {: noff:n :}                   \ inline name -> deduped pool entry
-      noff $FFFF > if s" aot-capture: rec name-off exceeds u16" 74 die then
-      i ACAP-CREC-DST {: c:ptr :}                             \ 16B: start u32 + len u32 + name-off u16 + flags u8 + min-in u8 + wid u32
-      start c AOT-P32!  clen c 4 + AOT-P32!
-      noff c 8 + AOT-P16!  flags c 10 + c!  minin c 11 + c!  wid c 12 + AOT-P32!
+      i ACAP-CREC-DST {: c:ptr :}                             \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + wid u32
+      start c AOT-P32!  clen c 4 + AOT-P32!  noff c 8 + AOT-P32!
+      flags  minin 8 lshift or  c 12 + AOT-P32!    \ one store so the two spare bytes are written zero
+      wid c 16 + AOT-P32!
    loop ;
 
-\ Expand a compact 16B record to a 48B dict record image -- the EXACT field
+\ Expand a compact AOT-CREC-ROW record to a 48B dict record image -- the EXACT field
 \ reconstruction EM-AOT-REGISTER-RECS runs at boot. Ordinary [0] remains a blob
 \ offset for the build-time inverse proof; boot adds CP. Package [0]/[8] stay raw.
-: ACAP-U16@ ( ptr u8 -- n ) {: p:ptr :}  p c@  p 1+ c@ 8 lshift or ;
-: ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact 16B, s=48B out
+: ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact record, s=48B out
    c ACAP-W32@ s AOT-N-C!                                     \ [0..8) = blob-off or package public WID
    c 4 + ACAP-W32@ s 8 + AOT-N-C!                             \ [8..16) = code len or package private WID
-   c 8 + ACAP-U16@ {: noff:n :}                               \ name-off u16
+   c 8 + ACAP-W32@ {: noff:n :}                               \ name-off u32
    AOT-NAMES-BUF@ noff + c@ {: len:n :}                       \ len = pool[entry]
-   c 10 + c@ {: flags:n :}
-   c 11 + c@ {: minin:n :}
+   c 12 + c@ {: flags:n :}
+   c 13 + c@ {: minin:n :}
    flags 60 lshift  minin 52 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | len
    0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
    len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
-   c 12 + ACAP-W32@ dup $FFFFFFFF = if drop -1 then
+   c 16 + ACAP-W32@ dup $FFFFFFFF = if drop -1 then
    s 40 + AOT-N-C! ;                                          \ package marker sign-extends; ordinary wid stays u32
 variable ACAP-RECMM                                           \ record-proof mismatch count
 : ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
@@ -296,16 +299,14 @@ variable ACAP-P
    p 8 + ACAP-W32@ 5 rshift $FFFF and 32 lshift or
    p 12 + ACAP-W32@ 5 rshift $FFFF and 48 lshift or ;
 
-: ACAP-ADD-DSITE ( n -- ) {: boff:n :}   \ store blob offset as u16 (blob < 64K)
+: ACAP-ADD-DSITE ( n -- ) {: boff:n :}   \ store blob offset as u32
    AOT-DSITE-N @ AOT-DSITE-MAX >= if s" aot-capture: too many DATA sites" 74 die then
-   boff $FFFF > if s" aot-capture: DATA site offset exceeds u16" 74 die then
-   boff  AOT-DSITE-N @ 2 * AOT-DSITE-BUF@ +  AOT-P16!
+   boff  AOT-DSITE-N @ 4 * AOT-DSITE-BUF@ +  AOT-P32!
    AOT-DSITE-N @ 1+ AOT-DSITE-N ! ;
 
-: ACAP-ADD-CSITE ( n -- ) {: boff:n :}   \ append (as u16) after the DATA offsets in the DSITE buffer
+: ACAP-ADD-CSITE ( n -- ) {: boff:n :}   \ append (as u32) after the DATA offsets in the DSITE buffer
    AOT-DSITE-N @ AOT-CSITE-N @ + AOT-DSITE-MAX >= if s" aot-capture: too many reloc sites" 74 die then
-   boff $FFFF > if s" aot-capture: CODE site offset exceeds u16" 74 die then
-   boff  AOT-DSITE-N @ AOT-CSITE-N @ + 2 * AOT-DSITE-BUF@ +  AOT-P16!
+   boff  AOT-DSITE-N @ AOT-CSITE-N @ + 4 * AOT-DSITE-BUF@ +  AOT-P32!
    AOT-CSITE-N @ 1+ AOT-CSITE-N ! ;
 
 \ The refusal, with the site named. A capture that cannot classify one of its own
@@ -388,7 +389,7 @@ variable ACAP-P
 \ is written where a cell's kind is decided, which is the only place it is known.
 : ACAP-ADD-XTOFF ( n -- ) {: woff:n :}
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-MAX >= if s" aot-capture: too many declared address cells" 74 die then
-   woff  AOT-WINDOW:XTOFF-N @ 2 * AOT-WINDOW:XTOFF-BUF@ +  AOT-P16!
+   woff  AOT-WINDOW:XTOFF-N @ 4 * AOT-WINDOW:XTOFF-BUF@ +  AOT-P32!
    AOT-WINDOW:XTOFF-N @ 1+ AOT-WINDOW:XTOFF-N ! ;
 
 : ACAP-ZERO-CELL ( n -- ) {: woff:n :}
@@ -544,8 +545,8 @@ private
    s" blob=" type AOT-BLOB-LEN @ . s" names=" type AOT-NAMES-LEN @ . cr
    AOT-SITE-N @ 0 ?do
       i ACAP-SITE-ROW {: r:ptr :}
-      r c@  r 1+ c@ 8 lshift or {: boff:n :}           \ blob-off u16
-      r 2 + c@  r 3 + c@ 8 lshift or {: noff:n :}      \ name-off u16
+      r ACAP-W32@ {: boff:n :}                         \ blob-off u32
+      r 4 + ACAP-W32@ {: noff:n :}                     \ name-off u32
       s"   site off=" type boff .
       s" name=" type
       AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@  type cr
@@ -571,7 +572,7 @@ private
    1 AOT-REC-N !
    ACAP-COMPACT-RECS                                 \ pack -> 16B compact
    ACAP-PROVE-RECS                                   \ expand==verbatim, field-for-field (incl [40] wid)
-   0 ACAP-CREC-DST 12 + ACAP-W32@ 1000 <> if
+   0 ACAP-CREC-DST 16 + ACAP-W32@ 1000 <> if
       s" aot-capture: wid>255 self-test: compact wid corrupted" 74 die then
    0 AOT-REC-N !  0 AOT-NAMES-LEN ! ;               \ leave buffers clean for the real capture
 ACAP-WID-SELFTEST

@@ -497,8 +497,12 @@ PROT-BITS-OFF constant PROT-WID-LEGACY-OFF
 \ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
 \ DATA region is zero until boot).
 $40C0 constant UNCGH-CELL
-16 constant AOT-CREC-ROW
-$4000 constant AOT-NAMES-CAP
+\ Compact AOT dict record: five u32 words (blob-off/public-WID, code-len/private-WID,
+\ name-off, flags|min-in, wid). The name-off word is a full u32 so the deduped name
+\ pool can outgrow 64 KiB with the captured window; the compiler chain needs ~51 KiB
+\ of names where the metabuild REPL window needs 953 bytes.
+20 constant AOT-CREC-ROW
+$20000 constant AOT-NAMES-CAP
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
 \ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 32768: HIDX-SLOTS $10000

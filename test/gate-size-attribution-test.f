@@ -546,10 +546,27 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ MACOS-SIGNATURE (1295) and MACOS-TOTAL (148855) do not move and `FILE-SIZE
 \ bin/hb` is still 148855.
 \ The linux row below is owed a linux-host re-measure for this delta too.
-125560 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
-1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-14968 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
-148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
+\ 2026-08-12 re-measured live at the macOS byte-fixpoint for the AOT capture
+\ format widening (dot habu-widen-the-aot-089f5faf). Every offset in the baked
+\ AOT frame moves u16 -> u32, which is what lifts the format's hard 64 KiB blob
+\ ceiling: call-site rows 4 -> 8 bytes, compact dict records 16 -> 20, and the
+\ DATA-site, CODE-site and window declared-cell offset lists 2 -> 4 bytes each.
+\ On the metabuild REPL window (217 call sites, 115 records, 142 DATA sites, 3
+\ CODE sites, 1 declared cell) that is +1620 bytes of baked table; the boot
+\ walkers get SMALLER by about 60, because a u32 offset loads with one LDRW where
+\ the u16 pair needed LDRB, LDRB, LSL and ORR. Composed: CODELEN 125560 ->
+\ 127120 (+1560), all of it in aot-seed. Unlike every delta above it, this one
+\ does not fit the pad: floor distance 14968 + 1560 = 16528, so header + code
+\ takes one more 16 KiB __TEXT page (floor 14968 -> 144), the signature gains
+\ four code-directory hash slots (1295 -> 1423), and the whole file moves 148855
+\ -> 165367. MACOS-DATA-CONST and MACOS-LINKEDIT are unchanged, the model sum
+\ reconstructs 165367 exactly, and MACOS-TOTAL still equals
+\ BUILD-SIZE:BASELINE-MACOS in test/gate-build-size.f.
+\ The Linux rows below are owed a linux-host re-measure for this delta too.
+127120 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
+144 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
 \ Spark, linux-arm64) after the shared PROT-GUARD:CALL span-guard fold (CODELEN

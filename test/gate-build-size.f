@@ -94,7 +94,18 @@ package BUILD-SIZE
 \ row in test/gate-size-attribution-test.f now carries the same number; that
 \ file's Linux DECOMPOSITION is marked owed, because a page-rounded total does not
 \ determine it and no Linux host has measured this binary.
-148855 constant BASELINE-MACOS
+\ 2026-08-12 macOS 148855 -> 165367: widening the AOT capture format from u16 to
+\ u32 (dot habu-widen-the-aot-089f5faf). The baked tables carry wider rows - call
+\ sites 4 -> 8 bytes, compact dict records 16 -> 20, and the DATA/CODE/window
+\ offset lists 2 -> 4 - which on the metabuild REPL window is +1620 bytes of baked
+\ data, against -60 bytes of boot-walker code (each u32 offset now loads with one
+\ LDRW instead of two LDRB plus a shift and an or). CODELEN 125560 -> 127120 = the
+\ measured +1560. That crosses the 16 KiB __TEXT page floor (floor distance 14968
+\ -> 144), so the file takes one more page and the code signature gains four
+\ code-directory hash slots (+128): 148855 + 16384 + 128 = 165367. Exact
+\ CODE-TEXT/signature/floor rows in test/gate-size-attribution-test.f. The Linux
+\ row below is owed a linux-host re-measure for the same delta.
+165367 constant BASELINE-MACOS
 127168 constant BASELINE-LINUX
 
 : BASELINE ( -- n )

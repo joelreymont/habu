@@ -50,6 +50,16 @@
 \                      zeroed it and the seed re-trapped it; entering the engine
 \                      must die "defer: unset execution vector" rather than branch
 \                      into whatever the baked bytes held.
+\   HABU_AOT_BIG=1     grow the capture window past the 64 KiB world the format
+\                      used to live in (dot habu-widen-the-aot-089f5faf): compile
+\                      BIG-FILLER-N filler words, then a data cell, a callee and a
+\                      reporter ABOVE them, and take the lot in with a widened
+\                      re-capture. The build then asserts the three offsets that
+\                      no u16 field could have held - the blob length, the highest
+\                      call-site blob offset and the highest DATA-site blob offset
+\                      are each past 65535 - and dies named if any of them is not,
+\                      so the fixture cannot quietly stop testing what it is for.
+\                      It prints the three measurements for its callers to read.
 \   HABU_AOT_D0_SKEW=N run the capture a SECOND time over the same window with
 \                      its DATA span start raised by N bytes. Hand it an N past
 \                      the whole span and the window then contains none of the
@@ -84,7 +94,9 @@ using BUILD-FIXPOINT
 : STDIN-SRC-PATH ( -- ptr u8 n ) s" src/habu/stdin.f" ;
 
 $4000 constant SRC-CAP             \ src/habu/stdin.f is ~4 KB
-$4000 constant DRV-CAP             \ driver = source (minus GO) + injection
+\ Driver = source (minus GO) + injection. The big-window mode writes BIG-FILLER-N
+\ definitions into it, which is what sets this cap rather than the ~4 KB source.
+$10000 constant DRV-CAP
 
 create SRC-BUF SRC-CAP allot   variable SRC-U
 create DRV-BUF DRV-CAP allot   variable DRV-U
@@ -138,6 +150,13 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    DRV-U @ 1+ DRV-U ! ;
 
 : DRV-LINE ( ptr u8 n -- ) DRV+ DRV-NL ;
+
+create DRV-CH 1 allot
+: DRV-CH+ ( n -- ) {: c:n :}
+   c DRV-CH c!  DRV-CH 1 DRV+ ;
+: DRV-U+ ( n -- ) {: v:n :}        \ decimal, for the generated filler names
+   v 10 >= if v 10 / recurse then
+   v 10 mod 48 + DRV-CH+ ;
 
 \ Optional AOT DATA-span forge (dot habu-guard-aot-data-49de2ee6). The reserve in
 \ EM-AOT-RELOC-DATA advances DP by the baked LAOTDATASIZE span read straight from
@@ -209,13 +228,14 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 : SKEW-ENV$ ( -- ptr u8 n )      s" HABU_AOT_D0_SKEW" GETENV ;
 : BAKE-ENV$ ( -- ptr u8 n )      s" HABU_AOT_BAKE" GETENV ;
 : TRAP-ENV$ ( -- ptr u8 n )      s" HABU_AOT_TRAP" GETENV ;
+: BIG-ENV$ ( -- ptr u8 n )       s" HABU_AOT_BIG" GETENV ;
 
 : REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
    v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
 
 : CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
    OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and
-   BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and ;
+   BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and  BIG-ENV$ nip 0 =  and ;
 
 \ The two shape checks are only DEFINED for the plain fixture build
 \ (CHECKS-WANTED?), so the window-content modes, which reuse the two bits and
@@ -297,9 +317,65 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    REPL-BOOTRUN-LINES
    S\" s\" AWB-CALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
+\ --- the big-window fixture (dot habu-widen-the-aot-089f5faf) ------------------
+\ THE POINT IS THE OFFSETS, not the size. Until the format widened, a call-site
+\ row, a DATA-site offset and a CODE-site offset were each u16, so a captured
+\ window could not describe anything past its 65535th byte and the capture died
+\ at AOT-BLOB-CAP before it ever got there. This fixture builds a window that is
+\ several times that, with the three things that have to survive it defined ABOVE
+\ the filler: a data cell, a callee too long for the inliner to copy (habu2.f
+\ INL-MAX), and a reporter that calls the callee and prints the cell. So the
+\ engine can only report the magic if a call site AND a DATA site whose blob
+\ offsets do not fit sixteen bits were both recorded and patched at boot.
+\ The filler words carry no calls of their own; they exist to push the three
+\ words that matter past the old ceiling.
+200 constant BIG-FILLER-N          \ ~454 blob bytes each: 200 puts the window near 109 KB
+
+: BIG-FILLER ( -- )
+   BIG-FILLER-N 0 ?do
+      s" : AWB-BIG-F" DRV+  i DRV-U+
+      s"  ( n -- n ) dup + dup + dup + dup + dup + dup + dup + dup + ;" DRV-LINE
+   loop ;
+
+\ The three measurements, taken from the capture's own tables through its own
+\ private row readers, and each one fatal if it does not clear 65535. A window
+\ that stopped exceeding the old ceiling would make this fixture prove nothing,
+\ so it ends the build instead of quietly passing.
+: BIG-CHECK-DEF ( -- )
+   s" package AOT-CAPTURE" DRV-LINE
+   s" : BIG-MAX-SITE ( -- n )" DRV-LINE
+   s"    0 AOT-SITE-N @ 0 ?do i ACAP-SITE-ROW ACAP-W32@ max loop ;" DRV-LINE
+   s" : BIG-MAX-DSITE ( -- n )" DRV-LINE
+   s"    0 AOT-DSITE-N @ 0 ?do AOT-DSITE-BUF@ i 4 * + ACAP-W32@ max loop ;" DRV-LINE
+   s" : BIG-CHECK ( -- )" DRV-LINE
+   s"    AOT-BLOB-LEN @ $10000 > 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: big-window blob still fits the old 64KB world\" 74 die then" DRV-LINE
+   s"    BIG-MAX-SITE $FFFF > 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: big-window call site still fits a u16 offset\" 74 die then" DRV-LINE
+   s"    BIG-MAX-DSITE $FFFF > 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: big-window DATA site still fits a u16 offset\" 74 die then" DRV-LINE
+   S\"    s\" aot-wid-build: big-blob \" type AOT-BLOB-LEN @ . cr" DRV-LINE
+   S\"    s\" aot-wid-build: big-site \" type BIG-MAX-SITE . cr" DRV-LINE
+   S\"    s\" aot-wid-build: big-dsite \" type BIG-MAX-DSITE . cr ;" DRV-LINE
+   s" BIG-CHECK" DRV-LINE                  \ private to the package: run it while the block is open
+   s" ;package" DRV-LINE ;
+
+: BIG-FIXTURE-LINES ( -- )
+   BIG-FILLER
+   s" create AWB-BIG-CELL 8 allot" DRV-LINE
+   s" $5A5AB16B16B15A5A AWB-BIG-CELL !" DRV-LINE
+   s" : AWB-BIG-CORE ( -- ) 0 dup + dup + dup + dup + dup + dup + dup + dup + drop ;" DRV-LINE
+   s" : AWB-BIG-LAST ( -- n ) AWB-BIG-CORE AWB-BIG-CELL @ ;" DRV-LINE
+   S\" : AWB-BIG-REPORT ( -- ) s\" awb-big=\" type AWB-BIG-LAST . cr ;" DRV-LINE
+   RECAPTURE-LINE
+   BIG-CHECK-DEF
+   REPL-BOOTRUN-LINES
+   S\" s\" AWB-BIG-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
 : FIXTURE-LINES ( -- )
    BAKE-ENV$ nip 0 > if BAKE-FIXTURE-LINES exit then
-   TRAP-ENV$ nip 0 > if TRAP-FIXTURE-LINES then ;
+   TRAP-ENV$ nip 0 > if TRAP-FIXTURE-LINES exit then
+   BIG-ENV$ nip 0 > if BIG-FIXTURE-LINES then ;
 
 : INJECT ( -- )
    CHECKS-WANTED? if
