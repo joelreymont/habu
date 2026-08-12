@@ -116,6 +116,30 @@ public
 : NCT-IOVER ( n -- n )
    4096 + ;
 
+: NCT-CEQ ( n -- bool )
+   7 = ;
+
+: NCT-CZERO ( n -- bool )
+   0= ;
+
+: NCT-CMAX ( n -- bool )
+   4095 = ;
+
+: NCT-COVER ( n -- bool )
+   4096 = ;
+
+: NCT-CNEG ( n -- bool )
+   -1 = ;
+
+: NCT-CSWAP ( n -- bool )
+   7 swap < ;
+
+: NCT-CBR ( n n -- n ) {: a:n b:n :}
+   a 7 < if 0 exit then a b / ;
+
+: NCT-CSHARED ( n n -- n ) {: a:n b:n :}
+   a 9 < if 9 exit then a b / ;
+
 ;package
 
 \ ---- the chain's compilation: the subject ------------------------------------
@@ -185,6 +209,67 @@ private
 : IOVER ( -- )
    s" : NCT-IOVER-N ( n -- n ) 4096 + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
+\ ---- the folded comparison ---------------------------------------------------
+\ A comparison against a small constant, whose flag the routine ANSWERS - so the
+\ machine form is the flag-materialising one and what folds is its immediate.
+: CEQ ( -- )
+   s" : NCT-CEQ-N ( n -- bool ) 7 = ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ THE ROW THE SURVEY IS ABOUT. `0=` is a constant zero and an equality, so it is
+\ this fold's largest single consumer, and zero is a value the field holds.
+: CZERO ( -- )
+   s" : NCT-CZERO-N ( n -- bool ) 0= ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ THE THREE ENDS OF THE FIELD. 4095 is the largest value the compare immediate
+\ carries and folds; 4096 is the first that does not fit; -1 is the other side
+\ of the bound entirely - the field is unsigned, and `cmp rn, #-1` is a `cmn`
+\ this dialect does not carry. All three are comparisons against small-LOOKING
+\ numbers, which is what makes the trio the check that the bound is the
+\ encoder's field and not somebody's idea of small.
+: CMAX ( -- )
+   s" : NCT-CMAX-N ( n -- bool ) 4095 = ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: COVER ( -- )
+   s" : NCT-COVER-N ( n -- bool ) 4096 = ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: CNEG ( -- )
+   s" : NCT-CNEG-N ( n -- bool ) -1 = ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ THE CONSTANT ON THE LEFT. `7 x <` compares seven against the value, and the
+\ instruction subtracts the immediate FROM the register - so folding this one
+\ would compute the mirrored relation. It must keep the register form however
+\ small the number is, and it is the case a fold written as "either operand"
+\ would get wrong while every corpus row still passed.
+: CSWAP ( -- )
+   s" : NCT-CSWAP-N ( n -- bool ) 7 swap < ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ The same fold where the comparison is FUSED INTO A BRANCH rather than
+\ answered, which is the second of the two machine forms and the one that
+\ carries successors across.
+\
+\ THE DIVISION IN THE SECOND ARM IS WHAT KEEPS THE BRANCH THERE, and it is a
+\ schema property rather than a size. A small two-armed body is if-converted
+\ into a conditional select, which is a third machine form and not one this
+\ fold claims, so a fixture written as `dup 7 < if drop 0 exit then 1+` measures
+\ nothing about the fused branch at all - it never becomes one. A division may
+\ trap, and src/compiler/native/select.f refuses to run anything that may trap
+\ on a path the program would not have taken, so this body keeps its branch for
+\ the same stated reason test/compiler/native-select.f's own branch fixture
+\ does. The divisor is never zero on any path that reaches the division.
+: CBR ( -- )
+   s" : NCT-CBR-N ( n n -- n ) {: a:n b:n :} a 7 < if 0 exit then a b / ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
+\ A constant the comparison shares with a SECOND reader - here the value the
+\ word answers on the arm the comparison chose. Folding it would delete a
+\ move-wide that arm still needs. It is CBR's body with one character changed,
+\ so the ONLY difference between the row that folds and the row that does not
+\ is the second reader: a fixture whose comparison could not have folded anyway
+\ would say nothing about the use count.
+: CSHARED ( -- )
+   s" : NCT-CSHARED-N ( n n -- n ) {: a:n b:n :} a 9 < if 9 exit then a b / ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
 \ ---- the folded mask ---------------------------------------------------------
 \ One small mask over a value, in each of the three bitwise forms. 7 is a run of
 \ three ones, which the logical field describes, so all three fold.
@@ -248,7 +333,15 @@ public
    IRSUB
    ISHARED
    IMAX
-   IOVER ;
+   IOVER
+   CEQ
+   CZERO
+   CMAX
+   COVER
+   CNEG
+   CSWAP
+   CBR
+   CSHARED ;
 
 ;package
 
@@ -358,6 +451,19 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    a u NCOMBINV:ROW!
    NCOMBINV:SUBI-INSNS ;
 
+\ How many comparisons the row makes against a register and how many against a
+\ number the instruction carries. Both are read, never only one: a fold that
+\ worked took a comparison OFF the register path and put it on the immediate
+\ one, so a row where the immediate count rose and the register count did not
+\ fall gained a comparison instead of folding one.
+: CMPS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u NCOMBINV:ROW!
+   NCOMBINV:CMP-INSNS ;
+
+: CMPIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u NCOMBINV:ROW!
+   NCOMBINV:CMPI-INSNS ;
+
 \ The same reading for the three logical immediate forms.
 : ANDIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u NCOMBINV:ROW!
@@ -426,6 +532,93 @@ public
 
    s" nor is the first value too large for the field" T-LABEL
    s" NCT-FIXTURE:NCT-IOVER-N" ADDIS-IN 0 T= ;
+
+: CMP-FIRED-CASES ( -- )
+   s" a comparison against a small constant carries it in the instruction"
+   T-LABEL
+   s" NCT-FIXTURE:NCT-CEQ-N" CMPIS-IN 1 T=
+   s" NCT-FIXTURE:NCT-CEQ-N" CMPS-IN 0 T=
+
+   s" and so does `0=`, which is a constant zero and an equality" T-LABEL
+   s" NCT-FIXTURE:NCT-CZERO-N" CMPIS-IN 1 T=
+   s" NCT-FIXTURE:NCT-CZERO-N" CMPS-IN 0 T=
+
+   s" the largest value the field holds still folds" T-LABEL
+   s" NCT-FIXTURE:NCT-CMAX-N" CMPIS-IN 1 T=
+   s" NCT-FIXTURE:NCT-CMAX-N" CMPS-IN 0 T=
+
+   s" and a comparison FUSED into a branch folds the same way" T-LABEL
+   s" NCT-FIXTURE:NCT-CBR-N" CMPIS-IN 1 T=
+   s" NCT-FIXTURE:NCT-CBR-N" CMPS-IN 0 T= ;
+
+: CMP-REFUSED-CASES ( -- )
+   s" a value one past the field is not folded" T-LABEL
+   s" NCT-FIXTURE:NCT-COVER-N" CMPIS-IN 0 T=
+   s" NCT-FIXTURE:NCT-COVER-N" CMPS-IN 1 T=
+
+   s" nor is a negative one, which is a `cmn` this dialect does not carry"
+   T-LABEL
+   s" NCT-FIXTURE:NCT-CNEG-N" CMPIS-IN 0 T=
+   s" NCT-FIXTURE:NCT-CNEG-N" CMPS-IN 1 T=
+
+   s" nor is a constant on the LEFT, which is the mirrored relation" T-LABEL
+   s" NCT-FIXTURE:NCT-CSWAP-N" CMPIS-IN 0 T=
+   s" NCT-FIXTURE:NCT-CSWAP-N" CMPS-IN 1 T=
+
+   s" nor is one a second reader still needs" T-LABEL
+   s" NCT-FIXTURE:NCT-CSHARED-N" CMPIS-IN 0 T=
+   s" NCT-FIXTURE:NCT-CSHARED-N" CMPS-IN 1 T= ;
+
+\ A Habu flag as the number the harness records for one, so that two flags can
+\ be compared with the same assertion every other row uses. It is
+\ tools/codegen-compare-core.f's VECTOR-FLAG written here rather than reached
+\ for, because this suite loads none of that harness.
+: FLAG>N ( bool -- n )
+   if 1 else 0 then ;
+
+: CEQ= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-CEQ FLAG>N  a NCT-FIXTURE:NCT-CEQ-N FLAG>N  T= ;
+
+: CZERO= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-CZERO FLAG>N  a NCT-FIXTURE:NCT-CZERO-N FLAG>N  T= ;
+
+: CMAX= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-CMAX FLAG>N  a NCT-FIXTURE:NCT-CMAX-N FLAG>N  T= ;
+
+: COVER= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-COVER FLAG>N  a NCT-FIXTURE:NCT-COVER-N FLAG>N  T= ;
+
+: CNEG= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-CNEG FLAG>N  a NCT-FIXTURE:NCT-CNEG-N FLAG>N  T= ;
+
+: CSWAP= ( n -- ) {: a:n :}
+   a NCT-FIXTURE:NCT-CSWAP FLAG>N  a NCT-FIXTURE:NCT-CSWAP-N FLAG>N  T= ;
+
+: CBR= ( n n -- ) {: a:n b:n :}
+   a b NCT-FIXTURE:NCT-CBR  a b NCT-FIXTURE:NCT-CBR-N  T= ;
+
+: CSHARED= ( n n -- ) {: a:n b:n :}
+   a b NCT-FIXTURE:NCT-CSHARED  a b NCT-FIXTURE:NCT-CSHARED-N  T= ;
+
+\ The inputs straddle every boundary the fold reads: the compared constant
+\ itself, the values either side of it, the ends of the range where a signed
+\ comparison and an unsigned field disagree if anything confused them, and the
+\ two values that make the refused rows answer differently from the folded ones.
+: CMP-ANSWER-CASES ( -- )
+   s" the folded comparisons answer what the engine's own code answers" T-LABEL
+   0 CEQ= 6 CEQ= 7 CEQ= 8 CEQ= -7 CEQ= MAX-INT CEQ= MIN-INT CEQ=
+   0 CZERO= 1 CZERO= -1 CZERO= MAX-INT CZERO= MIN-INT CZERO=
+   4094 CMAX= 4095 CMAX= 4096 CMAX= -4095 CMAX= MAX-INT CMAX= MIN-INT CMAX=
+   6 0 CBR= 7 3 CBR= 8 3 CBR= 0 0 CBR= -1 0 CBR=
+   MAX-INT 3 CBR= MAX-INT 1 CBR= MIN-INT 0 CBR=
+
+   s" and so do the four the pass refused, which still have to be right" T-LABEL
+   4095 COVER= 4096 COVER= 4097 COVER= 0 COVER= -4096 COVER=
+   MAX-INT COVER= MIN-INT COVER=
+   0 CNEG= -1 CNEG= 1 CNEG= 4095 CNEG= MAX-INT CNEG= MIN-INT CNEG=
+   6 CSWAP= 7 CSWAP= 8 CSWAP= 0 CSWAP= -1 CSWAP= MAX-INT CSWAP= MIN-INT CSWAP=
+   8 0 CSHARED= 9 3 CSHARED= 10 3 CSHARED= 0 0 CSHARED= -1 0 CSHARED=
+   MAX-INT 3 CSHARED= MAX-INT 1 CSHARED= MIN-INT 0 CSHARED= ;
 
 : IMM-ANSWER-CASES ( -- )
    s" the folded forms answer what the engine's own code answers" T-LABEL
@@ -574,6 +767,9 @@ public
    MASK-FIRED-CASES
    MASK-REFUSED-CASES
    MASK-ANSWER-CASES
+   CMP-FIRED-CASES
+   CMP-REFUSED-CASES
+   CMP-ANSWER-CASES
    ADDR-CASES ;
 
 ;using

@@ -121,9 +121,10 @@ private
 \ conditional selects that answer a cell in SELZ-SHAPE-CASE and
 \ CMPSEL-SHAPE-CASE, the two that answer a double in FSEL-SHAPE-CASE, the four
 \ whose flags an Fcmp wrote in FFSEL-SHAPE-CASE, the six that reach memory in the
-\ D file in D-ADDR-SHAPE-CASE and D-SLOT-SHAPE-CASE, and the six bitwise and
-\ shift forms in BITWISE-CASE, and the count covers all of them.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+\ D file in D-ADDR-SHAPE-CASE and D-SLOT-SHAPE-CASE, the six bitwise and
+\ shift forms in BITWISE-CASE, and the two comparisons against an immediate in
+\ CMPI-SHAPE-CASE, and the count covers all of them.
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -161,6 +162,8 @@ private
    c b A64IR-OPCODE:FDLOAD A64IR:OPCODE {: xd:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:FDSTORE A64IR:OPCODE {: xe:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:CODEADDR A64IR:OPCODE {: ca:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FLAGI A64IR:OPCODE {: gi:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:CMPBRI A64IR:OPCODE {: bi:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FDEFINED?
@@ -197,15 +200,17 @@ private
    rv xb IR-SCHEMA:FDEFINED?
    rv xd IR-SCHEMA:FDEFINED?
    rv xe IR-SCHEMA:FDEFINED?
-   rv ca IR-SCHEMA:FDEFINED? ;
+   rv ca IR-SCHEMA:FDEFINED?
+   rv gi IR-SCHEMA:FDEFINED?
+   rv bi IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the seventy-four machine opcodes" T-LABEL
+   s" registration defines exactly the seventy-six machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 74 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 76 T= ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one
@@ -253,7 +258,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   9 T= 0 T= TTRUE ;
+   10 T= 0 T= TTRUE ;
 
 \ The spellings themselves, because every reference this dialect stores is a
 \ symbol and a renamed opcode would still read back through the same accessor.
@@ -836,6 +841,62 @@ private
    T-LABEL
    BND [: CMPBR-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE TTRUE 1 T= 2 T= 0 T= 2 T= TTRUE ;
+
+\ ---- the two comparisons against a number the instruction carries ------------
+\ Each is its register form with the SECOND OPERAND GONE and a second attribute
+\ in its place, and that trade is the whole content of the pair: one fewer
+\ operand is one fewer value the allocator has to place, and the number rides in
+\ the instruction where it costs nothing. So the operand counts are asserted
+\ against ONE, not merely as "fewer" - a form that kept two operands and carried
+\ an immediate as well would be a comparison whose immediate nothing reads.
+\
+\ BOTH KEYS ARE REQUIRED AND BOTH ARE NAMED HERE. The condition says what the
+\ comparison MEANS and the immediate says what it compares against, so an
+\ operation missing either means nothing - IR-OP refuses one that omits a
+\ required key, and this case is what says these two are required rather than
+\ extension keys a rewrite could silently drop. The attribute list is read by
+\ ordinal and both ordinals are checked, so a form that declared the condition
+\ twice would not pass by having the right COUNT.
+\
+\ And the flag form is not a terminator while the fused branch is, exactly as
+\ their register namesakes are and are not.
+: CMPI-SHAPE-BODY ( IR-CTX:ctx -- bool bool n n n n bool bool bool n n n n bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:FLAGI A64IR:OPCODE {: g:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:CMPBRI A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-COND {: ck:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-OFF {: ok:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv g s" a64.flagi" IR-SYM:FEQ?
+   pv yv n s" a64.cmpbri" IR-SYM:FEQ?
+   rv g IR-SCHEMA:FOPERANDS
+   rv g IR-SCHEMA:FRESULTS
+   rv g IR-SCHEMA:FSUCCESSORS
+   rv g IR-SCHEMA:FATTRS
+   qv rv key g 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL =
+   qv rv key g 1 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ok IR-ID:SYMBOL-LOCAL =
+   rv g IR-SCHEMA:FTERMINATOR?
+   rv n IR-SCHEMA:FOPERANDS
+   rv n IR-SCHEMA:FRESULTS
+   rv n IR-SCHEMA:FSUCCESSORS
+   rv n IR-SCHEMA:FATTRS
+   qv rv key n 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL =
+   qv rv key n 1 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ok IR-ID:SYMBOL-LOCAL =
+   rv n IR-SCHEMA:FTERMINATOR?
+   rv n IR-SCHEMA:FTRAPS? ;
+
+: CMPI-SHAPE-CASE ( -- )
+   s" the two immediate comparisons read one register and carry two keys" T-LABEL
+   BND [: CMPI-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE TTRUE 2 T= 2 T= 0 T= 1 T=
+   TFALSE TTRUE TTRUE 2 T= 0 T= 1 T= 1 T=
+   TTRUE TTRUE ;
 
 \ ---- the two conditional selects ---------------------------------------------
 \ What makes them a select rather than a branch, measured off their own schemas:
@@ -1688,6 +1749,7 @@ private
    BRANCH-SHAPE-CASE
    BRANCH-TERM-CASE
    CMPBR-SHAPE-CASE
+   CMPI-SHAPE-CASE
    SELZ-SHAPE-CASE
    CMPSEL-SHAPE-CASE ;
 

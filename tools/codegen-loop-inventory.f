@@ -416,14 +416,16 @@ public
 \
 \ THAT TRANSFORM NOW EXISTS, so read this column as what is LEFT rather than as
 \ what is available. src/compiler/native/combine.f folds a small constant into
-\ the add or subtract that reads it, and this tool measures the code the chain
-\ finally emits, so a constant that folded is no longer a move-wide here at all.
-\ What still counts is the residue the fold deliberately leaves: a constant
-\ whose reader is not an add or a subtract - a comparison has no immediate form
-\ in this dialect - and a constant with more than one reader, which has to stay
-\ in a register for the readers that did not fold. Both are correct refusals,
-\ and counting them keeps them visible instead of letting a later reader assume
-\ the column went to zero because the work is finished.
+\ the add, the subtract, the bitwise operation or the COMPARISON that reads it,
+\ and this tool measures the code the chain finally emits, so a constant that
+\ folded is no longer a move-wide here at all. What still counts is the residue
+\ the fold deliberately leaves: a constant whose reader is one of the forms that
+\ has no immediate at all - a multiply is the one this corpus keeps hitting,
+\ which is why `cells` leaves an 8 in a register in every loop that indexes -
+\ and a constant with more than one reader, which has to stay in a register for
+\ the readers that did not fold. Both are correct refusals, and counting them
+\ keeps them visible instead of letting a later reader assume the column went to
+\ zero because the work is finished.
 : BODY-FOLDABLE ( n -- n ) {: k:n :}
    k LOOP-LO {: lo:n :}
    lo 0 < if 0 exit then

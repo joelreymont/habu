@@ -186,6 +186,23 @@ public
    w R2-OK? 0= if false exit then
    w FRD w FRN w FI12 ENC-SUBI w = ;
 
+\ The two compare forms, which are what every comparison of this chain begins
+\ with - the flag-materialising trio and the fused branch both open with one.
+\ The register form writes the zero register, so its destination field is not a
+\ register the allocator handed out and only the two sources are screened; the
+\ round trip still puts that field back, so a Subs writing a real register
+\ reproduces as something else and answers false, which is what it is.
+: CMP? ( n -- bool ) {: w:n :}
+   w FRN ENCODABLE? 0= if false exit then
+   w FRM ENCODABLE? 0= if false exit then
+   w FRN w FRM ENC-CMP w = ;
+
+\ And the immediate form: what a folded comparison constant became. It names one
+\ register and carries the number in the field the add and subtract immediates
+\ use, so it is recognised exactly as ADDI? is.
+: CMPI? ( n -- bool ) {: w:n :}
+   w FRN ENCODABLE? 0= if false exit then
+   w FRN w FI12 ENC-CMPI w = ;
 
 : LDR? ( n -- bool ) {: w:n :}
    w R2-OK? 0= if false exit then
@@ -426,6 +443,17 @@ public
 
 : EORI-INSNS ( -- n )
    [: EORI? ;] COUNT1 ;
+
+\ How many comparisons the row makes against a register, and how many against a
+\ number the instruction carries. The pair is read together: a fold that took a
+\ comparison off the register path has to show up as one fewer of the first and
+\ one more of the second, and a row where only the second moved gained a
+\ comparison rather than folding one.
+: CMP-INSNS ( -- n )
+   [: CMP? ;] COUNT1 ;
+
+: CMPI-INSNS ( -- n )
+   [: CMPI? ;] COUNT1 ;
 
 : MADDS ( -- n )
    [: MADD-PAIR? ;] COUNT2 ;

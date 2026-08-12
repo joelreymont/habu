@@ -237,7 +237,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-74 constant OPCODES-N
+76 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -312,6 +312,8 @@ private
 71 constant O-FDSTORE
 72 constant O-TRAP
 73 constant O-CODEADDR
+74 constant O-FLAGI
+75 constant O-CMPBRI
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -565,6 +567,8 @@ variable N-FUNS                        \ how many functions the emission holds
       tailcall  OF O-TAILCALL  ENDOF
       trap      OF O-TRAP      ENDOF
       codeaddr  OF O-CODEADDR  ENDOF
+      flagi     OF O-FLAGI     ENDOF
+      cmpbri    OF O-CMPBRI    ENDOF
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
@@ -643,6 +647,8 @@ variable N-FUNS                        \ how many functions the emission holds
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       O-TRAP      of A64IR-OPCODE:TRAP      endof
       O-CODEADDR  of A64IR-OPCODE:CODEADDR  endof
+      O-FLAGI     of A64IR-OPCODE:FLAGI     endof
+      O-CMPBRI    of A64IR-OPCODE:CMPBRI    endof
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
@@ -1164,12 +1170,14 @@ variable N-FUNS                        \ how many functions the emission holds
    k O-FCMPSELD = if 2 exit then
    k O-FCMPSELZD = if 2 exit then
    k O-FLAG = if 3 exit then
+   k O-FLAGI = if 3 exit then
    k O-FFLAG = if 3 exit then
    k O-FFLAGZ = if 3 exit then
    k O-SDIV = if 3 exit then
    k O-CALL = if 3 exit then
    k O-WORDCALL = if 3 exit then
    k O-CMPBR = if 3 exit then
+   k O-CMPBRI = if 3 exit then
    k O-FCMPBR = if 3 exit then
    k O-FCMPBRZ = if 3 exit then
    k O-BRZ = if 2 exit then
@@ -1190,6 +1198,7 @@ variable N-FUNS                        \ how many functions the emission holds
    k O-BR = if 0 exit then
    k O-BRZ = if 1 exit then
    k O-CMPBR = if 1 exit then
+   k O-CMPBRI = if 1 exit then
    k O-FCMPBR = if 1 exit then
    k O-FCMPBRZ = if 1 exit then
    -1 ;
@@ -1775,6 +1784,18 @@ variable CH-AT
    id home FALL-THRU? if exit then
    id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
+\ The same fused branch against a number the operation carries. Only the first
+\ instruction differs - one register and the immediate instead of two registers -
+\ and the two branches after it are the register form's, unchanged, because what
+\ they read is the flags and not what wrote them. The fall-through rule is the
+\ same rule for the same reason.
+: PUT-CMPBRI ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id home:n :}
+   id  id 0 OPERAND-REG id OFF-IMM ENC-CMPI  APPEND
+   id  id 0 SUCC-BLOCK GOTO-OF DELTA  id COND-OF  BCOND-WORD  APPEND
+   id home FALL-THRU? if exit then
+   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
+
 \ The two fused FLOAT compare-and-branches, which are the same three instructions
 \ with an Fcmp in front instead of a Cmp - the two-register form for the three
 \ comparisons that take two doubles, and the compare-against-zero form for the
@@ -1813,6 +1834,16 @@ variable CH-AT
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
+   id  rd id COND-OF ENC-CSET  APPEND
+   id  rd rd ENC-NEG  APPEND ;
+
+\ The same comparison against a number the operation carries. Only the first
+\ instruction differs; the Cset and the negation are the register form's, because
+\ what they read is the flags and a Habu flag is the same number either way.
+: PUT-FLAGI ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG {: rd:n :}
+   id  id 0 OPERAND-REG id OFF-IMM ENC-CMPI  APPEND
    id  rd id COND-OF ENC-CSET  APPEND
    id  rd rd ENC-NEG  APPEND ;
 
@@ -2204,11 +2235,13 @@ variable CH-AT
       abload   OF id  id WORD-ABLOAD  APPEND ENDOF
       abstore  OF id  id WORD-ABSTORE  APPEND ENDOF
       flag     OF id PUT-FLAG ENDOF
+      flagi    OF id PUT-FLAGI ENDOF
       selz     OF id PUT-SELZ ENDOF
       cmpsel   OF id PUT-CMPSEL ENDOF
       br       OF id home PUT-BR ENDOF
       brz      OF id home PUT-BRZ ENDOF
       cmpbr    OF id home PUT-CMPBR ENDOF
+      cmpbri   OF id home PUT-CMPBRI ENDOF
       call     OF id PUT-CALL ENDOF
       wordcall OF id PUT-WORD-CALL ENDOF
       linksave OF id  id WORD-LNKSTR  APPEND ENDOF
@@ -2265,7 +2298,7 @@ variable CH-AT
 \ that order.
 : TERMINATOR? ( IR-ID:ir-block-id n -- bool )
    OP-AT SLOT-AT {: k:n :}
-   k O-RET = k O-BR = or k O-BRZ = or k O-CMPBR = or
+   k O-RET = k O-BR = or k O-BRZ = or k O-CMPBR = or k O-CMPBRI = or
    k O-FCMPBR = or k O-FCMPBRZ = or k O-TAILCALL = or k O-TRAP = or ;
 
 : BLOCK-CK ( IR-ID:ir-block-id -- )
@@ -2497,6 +2530,8 @@ public
    c b A64IR-OPCODE:TAILCALL  BIND1
    c b A64IR-OPCODE:TRAP      BIND1
    c b A64IR-OPCODE:CODEADDR  BIND1
+   c b A64IR-OPCODE:FLAGI     BIND1
+   c b A64IR-OPCODE:CMPBRI    BIND1
    c b A64IR-OPCODE:MADD      BIND1
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1

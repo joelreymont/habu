@@ -139,7 +139,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-74 constant OPCODES-N
+76 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -214,6 +214,8 @@ private
 71 constant O-FDSTORE
 72 constant O-TRAP
 73 constant O-CODEADDR
+74 constant O-FLAGI
+75 constant O-CMPBRI
 
 \ One slot per attribute key the dialect declares.
 14 constant KEYS-N
@@ -340,6 +342,8 @@ create NAMEBUF NAME-CAP allot
       tailcall  OF O-TAILCALL  ENDOF
       trap      OF O-TRAP      ENDOF
       codeaddr  OF O-CODEADDR  ENDOF
+      flagi     OF O-FLAGI     ENDOF
+      cmpbri    OF O-CMPBRI    ENDOF
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
@@ -418,6 +422,8 @@ create NAMEBUF NAME-CAP allot
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       O-TRAP      of A64IR-OPCODE:TRAP      endof
       O-CODEADDR  of A64IR-OPCODE:CODEADDR  endof
+      O-FLAGI     of A64IR-OPCODE:FLAGI     endof
+      O-CMPBRI    of A64IR-OPCODE:CMPBRI    endof
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
@@ -616,10 +622,11 @@ create NAMEBUF NAME-CAP allot
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-FRAME  CTX BLD size A64IR:FRAME-ATTR  IR-BUILD:ADD-ATTR ;
 
-\ The arithmetic immediate. This pass introduces no add or subtract immediate of
-\ its own - folding a constant into one is the combine pass's - but it copies the
+\ The arithmetic immediate, which four forms carry: the add and subtract
+\ immediates and the two comparisons against a number. This pass introduces none
+\ of them - folding a constant into one is the combine pass's - but it copies the
 \ ones that pass built, and an immediate copied under the wrong key would be a
-\ routine adding the wrong number.
+\ routine adding, or comparing against, the wrong number.
 : OFF-ATTR+ ( n -- )
    {: imm:n :}
    CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD imm A64IR:OFF-ATTR  IR-BUILD:ADD-ATTR ;
@@ -1200,6 +1207,8 @@ public
    c b A64IR-OPCODE:EORI      BIND1
    c b A64IR-OPCODE:TRAP      BIND1
    c b A64IR-OPCODE:CODEADDR  BIND1
+   c b A64IR-OPCODE:FLAGI     BIND1
+   c b A64IR-OPCODE:CMPBRI    BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-ADDR   K-ADDR  BND-KEY !

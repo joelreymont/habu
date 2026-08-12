@@ -1358,17 +1358,18 @@ variable BACK-N
 
    MIGRATE-UNTIL
 
-   \ NINE AND NOT TEN FOR THE DECREMENT'S SAKE. `begin 1- dup 0 <= until` holds
-   \ two constants, and exactly one of them folds: the 1 is subtracted from a
-   \ register, so it becomes the subtraction's own immediate and its move-wide is
-   \ never written, while the 0 is read by the COMPARISON, which has no immediate
-   \ form in this dialect and still needs the number in a register. One
-   \ instruction goes and the block count does not move, which is the point of
-   \ pinning both here.
+   \ EIGHT AND NOT TEN, ONE INSTRUCTION PER CONSTANT. `begin 1- dup 0 <= until`
+   \ holds two constants and BOTH of them now fold: the 1 is subtracted from a
+   \ register, so it becomes the subtraction's own immediate, and the 0 is what
+   \ the loop test compares against, so it becomes the fused compare-and-branch's
+   \ immediate. Neither move-wide is written. Two instructions go and the block
+   \ count does not move, which is the point of pinning both here - a fold that
+   \ took an instruction out by changing the SHAPE of the loop would have moved
+   \ the block count too.
    s" a loop whose build order was already the best is written out unmoved" T-LABEL
    A64EMIT:BLOCKS 4 T=
    SELF-PLACED  A64EMIT:BLOCKS T=
-   A64EMIT:INSNS 9 T=
+   A64EMIT:INSNS 8 T=
 
    s" and it too keeps only its back edge" T-LABEL
    s" NMG-UNTIL" UNCOND-IN 1 T=

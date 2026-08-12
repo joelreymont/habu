@@ -213,16 +213,26 @@ public
    FOLDABLE-TOTAL 0 T=
 
    \ THE CLASSIFIER STILL HAS TO ANSWER YES SOMEWHERE, or nothing tests it. What
-   \ is left foldable-SHAPED after the fold is the constant whose reader is not
-   \ an add or a subtract: this row's loop test compares against zero, and a
-   \ comparison has no immediate form in this dialect, so the zero is still a
-   \ move-wide small enough for an arithmetic field and the column still counts
-   \ it. That is the residue the fold deliberately leaves, named here so it is
+   \ is left foldable-SHAPED after the folds is the constant whose reader is a
+   \ form with no immediate at all, and in this corpus that form is the MULTIPLY:
+   \ `cells` is a multiply by eight, so every loop that indexes an array leaves
+   \ an 8 in a register with nowhere to fold it. This row's body is that shape.
+   \ That is the residue the folds deliberately leave, named here so it is
    \ measured rather than assumed.
-   s" a small constant a comparison reads is still counted foldable" T-LABEL
-   s" CODEGEN-CORPUS:COUNT-DOWN-N" ROW!
+   \
+   \ IT USED TO BE COUNT-DOWN'S LOOP-TEST ZERO, and that row is now zero here:
+   \ the comparison immediate landed and the zero rides in the instruction. A
+   \ row is chosen for the REASON its constant cannot fold, so when the reason
+   \ stops holding the row moves rather than the assertion.
+   s" a small constant a multiply reads is still counted foldable" T-LABEL
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS-N" ROW!
    CONSTS-TOTAL 1 T=
    FOLDABLE-TOTAL 1 T=
+
+   s" and the loop test that used to be that residue no longer is" T-LABEL
+   s" CODEGEN-CORPUS:COUNT-DOWN-N" ROW!
+   CONSTS-TOTAL 0 T=
+   FOLDABLE-TOTAL 0 T=
 
    s" no loop of this corpus holds a load the body leaves invariant" T-LABEL
    s" CODEGEN-CORPUS:BYTE-SUM-N" ROW!

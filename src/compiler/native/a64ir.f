@@ -63,6 +63,9 @@
 \   a64.dpublish Addi ds ds n    - make the results the caller's
 \   a64.flag     Cmp rn rm; Cset rd cc; Sub rd xzr rd
 \                                - leave the Habu flag of one comparison
+\   a64.flagi    Cmp rn #imm; Cset rd cc; Sub rd xzr rd
+\                                - the same against a number the instruction
+\                                  carries instead of a second register
 \   a64.selz     Cmp rn #0; Csel rd rn rm ne
 \                                - choose between two registers on whether a
 \                                  third is not zero
@@ -78,6 +81,9 @@
 \                                  block when the condition holds and to the
 \                                  second when it does not, without ever
 \                                  materialising the flag as a number
+\   a64.cmpbri   Cmp rn #imm; B.cc target; B other
+\                                - the same against a number the instruction
+\                                  carries instead of a second register
 \   a64.fflag    Fcmp dn dm; Cset rd cc; Sub rd xzr rd
 \                                - leave the Habu flag of one float comparison
 \   a64.fflagz   Fcmp dn #0.0; Cset rd cc; Sub rd xzr rd
@@ -459,6 +465,8 @@ ENUM opcode DERIVE eq
    andi
    orri
    eori
+   flagi
+   cmpbri
    codeaddr
 ;ENUM
 
@@ -644,6 +652,8 @@ public
 : NAME ( -- ptr u8 n )
    s" a64" ;
 
+\ Version 0.10 adds the two comparison forms that compare against a number the
+\ instruction carries rather than against a second register.
 \ Version 0.9 adds the third required attribute on the move-wide forms: what kind
 \ of thing the chain a move belongs to is building. A table with it and one
 \ without disagree about what a movz IS, so the version moves with it.
@@ -657,7 +667,7 @@ public
 \ and one without are two different tables and every consumer compares the
 \ version exactly.
 0 constant MAJOR
-9 constant MINOR
+10 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 \ A pass that materialises a constant walks the halves of a register, and it asks
@@ -730,14 +740,17 @@ private
    dup A64EFF:FRAME-MAX > if E-A64IR-FRAME throw then
    dup FRAME-LIM > if E-A64IR-FRAME throw then ;
 
-\ An immediate the add and subtract forms can carry in the instruction itself.
-\ It is the same twelve-bit field a frame is claimed with, and unlike a frame it
-\ takes no alignment: any value the field holds is an immediate an arithmetic
-\ instruction can name. It is UNSIGNED and it takes no shift, because the
-\ encoders src/arch/arm64/asm.f ships hardwire the shift bit to zero
-\ (ENC-ADDI, ENC-SUBI) - so a negative immediate is not "subtract instead", it
-\ is a value this form cannot express, and the caller that wanted one has to
-\ choose the other opcode itself.
+\ An immediate the add, subtract and compare forms can carry in the instruction
+\ itself. It is the same twelve-bit field a frame is claimed with, and unlike a
+\ frame it takes no alignment: any value the field holds is an immediate an
+\ arithmetic instruction can name. It is UNSIGNED and it takes no shift, because
+\ the encoders src/arch/arm64/asm.f ships hardwire the shift bit to zero
+\ (ENC-ADDI, ENC-SUBI, ENC-CMPI) - so a negative immediate is not "subtract
+\ instead", it is a value these forms cannot express, and the caller that wanted
+\ one has to choose the register form itself. For a COMPARISON the same sentence
+\ reads: `cmp rn, #-k` is `cmn rn, #k`, which is a different instruction this
+\ dialect does not carry, so a comparison against a negative literal stays a
+\ comparison against a register.
 : OFF ( n -- n )
    dup 0 < if E-A64IR-OFF throw then
    dup OFF-MAX > if E-A64IR-OFF throw then ;
@@ -943,6 +956,8 @@ public
       andi      OF s" a64.andi"     ENDOF
       orri      OF s" a64.orri"     ENDOF
       eori      OF s" a64.eori"     ENDOF
+      flagi     OF s" a64.flagi"    ENDOF
+      cmpbri    OF s" a64.cmpbri"   ENDOF
       codeaddr  OF s" a64.codeaddr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -1045,12 +1060,24 @@ public
 : FRAME-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    FRAME IR-BUILD:INTERN-INT-ATTR ;
 
-\ The one attribute key the add and subtract immediate forms require: the number
-\ the instruction carries in its own field. It is its own key rather than the
-\ move-wide's `a64.imm`, for the reason the data-stack keys are their own below:
-\ the two fields have different widths, so one key answering both would let a
-\ sixteen-bit move-wide check pass a value the twelve-bit arithmetic field
+\ The one attribute key the four immediate forms of the arithmetic field require:
+\ the number the instruction carries in its own field. It is its own key rather
+\ than the move-wide's `a64.imm`, for the reason the data-stack keys are their own
+\ below: the two fields have different widths, so one key answering both would let
+\ a sixteen-bit move-wide check pass a value the twelve-bit arithmetic field
 \ cannot hold.
+\
+\ AND ONE KEY SERVES FOUR FORMS BECAUSE THEY SHARE ONE FIELD. The add and
+\ subtract immediates and the two comparison immediates all drop their number
+\ into the same twelve-bit unsigned field with the shift bit hardwired to zero -
+\ src/arch/arm64/asm.f's ENC-ADDI, ENC-SUBI and ENC-CMPI are one `?IMM12` and
+\ one `RRI`-shaped layout between them - so the set of values each can carry is
+\ the same set, and OFF below is the one bound that describes it. A second key
+\ over the same field would be a second copy of that bound, free to drift; what
+\ distinguishes an addend from a comparison operand is the OPCODE, which every
+\ reader of an operation already has. That is why this is not the split
+\ `a64.mask` and `a64.trap-entry` are: those two exist because the values or the
+\ readings really do differ, and here neither does.
 : KEY-OFF ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.off" IR-BUILD:INTERN-SYMBOL ;
 
@@ -1258,6 +1285,8 @@ private
       andi      OF s" a64.rule.andi"     ENDOF
       orri      OF s" a64.rule.orri"     ENDOF
       eori      OF s" a64.rule.eori"     ENDOF
+      flagi     OF s" a64.rule.flagi"    ENDOF
+      cmpbri    OF s" a64.rule.cmpbri"   ENDOF
       codeaddr  OF s" a64.rule.codeaddr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -1337,6 +1366,8 @@ private
       andi      OF s" a64.render.andi"     ENDOF
       orri      OF s" a64.render.orri"     ENDOF
       eori      OF s" a64.render.eori"     ENDOF
+      flagi     OF s" a64.render.flagi"    ENDOF
+      cmpbri    OF s" a64.render.cmpbri"   ENDOF
       codeaddr  OF s" a64.render.codeaddr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -1854,6 +1885,39 @@ private
    c b A64IR-OPCODE:FLAG NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Flagi: the same comparison against a number the instruction carries instead of
+\ against a second register. It is the form above with its second operand moved
+\ into the instruction, which is the whole of the difference and the whole of the
+\ saving: an operand names a VALUE and a value has to be in a register, so the
+\ register form obliges whatever selects it to build the number first, and this
+\ form obliges nobody.
+\
+\ THE OPERAND IS THE LEFT-HAND SIDE AND THE IMMEDIATE IS THE RIGHT. `cmp rn,
+\ #imm` sets its flags from rn - imm, so the condition is read the way it is read
+\ for the register form and the two are the same comparison with the same
+\ condition. A rewriter may therefore fold only the SECOND operand of a
+\ comparison: folding the first would be comparing the number against the value,
+\ which is the mirrored relation, and no instruction of this dialect spells it.
+\ That rule is the caller's to keep; this schema only says which of the two the
+\ operand is.
+\
+\ WHICH VALUES IT CAN CARRY IS THE ENCODER'S RULE AND NOT A TASTE. OFF above is
+\ the bound, so a comparison against a number the field cannot hold is not
+\ representable in this dialect at all and no pass can leave the die for the
+\ emitter to reach.
+: DEF-FLAG-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FLAGI OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   c b KEY-OFF IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:FLAGI NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the two conditional-select forms ----------------------------------------
 \ A selection whose two answers are already computed does not need a branch at
 \ all: the machine's Csel writes one of two registers into a third on a
@@ -2027,6 +2091,26 @@ private
    TOTAL
    TARGET
    c b A64IR-OPCODE:CMPBR NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Cmpbri: the fused branch against a number the instruction carries. It stands to
+\ a64.cmpbr exactly as a64.flagi stands to a64.flag, and every sentence of the
+\ form above carries over unchanged - the first successor is still the
+\ condition-holds one, neither successor may take arguments, and it defines no
+\ value. The one operand it keeps is the comparison's LEFT-hand side, for the
+\ reason a64.flagi's is: the machine subtracts the immediate FROM the register,
+\ so a rewriter may fold only the second operand of a comparison.
+: DEF-CMPBR-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:CMPBRI OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   c b KEY-OFF IR-SCHEMA:ADD-ATTR
+   true 2 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:CMPBRI NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Ret: the block's one terminator. Design line 237 makes it a terminator and
@@ -2620,11 +2704,13 @@ public
    c b t k DEF-ALDRB
    c b t k DEF-ASTRB
    c b t DEF-FLAG
+   c b t DEF-FLAG-IMM
    c b t DEF-SELZ
    c b t DEF-CMPSEL
    c b t DEF-BR
    c b t DEF-BRZ
    c b t DEF-CMPBR
+   c b t DEF-CMPBR-IMM
    c b k DEF-CALL
    c b k DEF-WORDCALL
    c b k DEF-TAILCALL

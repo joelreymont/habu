@@ -1,6 +1,8 @@
-\ combine.f - the module in which a multiply and the addition that reads its
-\ product are one multiply-add. One concern: finding those pairs and writing the
-\ module that holds the combined form.
+\ combine.f - the module in which an operation and the one instruction-field it
+\ could have stood in are one instruction: a multiply and the addition that reads
+\ its product, and a constant and the arithmetic, bitwise or comparison that
+\ reads it. One concern: finding those pairs and writing the module that holds
+\ the combined form.
 \
 \ WHY THE PASS EXISTS, AND WHY IT IS THIS PATTERN AND NOT A LIBRARY OF THEM.
 \ ARM64 has a multiply-add: `madd rd, rn, rm, ra` computes ra + rn*rm in one
@@ -107,7 +109,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it here too.
-74 constant OPCODES-N
+76 constant OPCODES-N
 
 0 constant O-MOVZ
 1 constant O-MOVK
@@ -183,6 +185,8 @@ private
 71 constant O-FDSTORE
 72 constant O-TRAP
 73 constant O-CODEADDR
+74 constant O-FLAGI
+75 constant O-CMPBRI
 \ One slot per attribute key the dialect declares. This pass writes no attribute
 \ of its own - the form it introduces carries none - but it COPIES every one the
 \ selector built, and a field copied under the wrong key would be a routine
@@ -242,6 +246,7 @@ create FOLD-AT OPS-MAX cells allot
 create FOLDED OPS-MAX cells allot
 create IMM-AT OPS-MAX cells allot
 create MASK-AT OPS-MAX cells allot
+create CMP-AT OPS-MAX cells allot
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -310,6 +315,8 @@ create MASK-AT OPS-MAX cells allot
       tailcall  OF O-TAILCALL  ENDOF
       trap      OF O-TRAP      ENDOF
       codeaddr  OF O-CODEADDR  ENDOF
+      flagi     OF O-FLAGI     ENDOF
+      cmpbri    OF O-CMPBRI    ENDOF
       madd      OF O-MADD      ENDOF
       addi      OF O-ADDI      ENDOF
       subi      OF O-SUBI      ENDOF
@@ -388,6 +395,8 @@ create MASK-AT OPS-MAX cells allot
       O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
       O-TRAP      of A64IR-OPCODE:TRAP      endof
       O-CODEADDR  of A64IR-OPCODE:CODEADDR  endof
+      O-FLAGI     of A64IR-OPCODE:FLAGI     endof
+      O-CMPBRI    of A64IR-OPCODE:CMPBRI    endof
       O-MADD      of A64IR-OPCODE:MADD      endof
       O-ADDI      of A64IR-OPCODE:ADDI      endof
       O-SUBI      of A64IR-OPCODE:SUBI      endof
@@ -723,6 +732,56 @@ create MASK-AT OPS-MAX cells allot
    f bk d1 k MASK-FOLDS-HERE? if d1 exit then
    -1 ;
 
+\ ---- which constants this block compares against without a register -----------
+\ THE FOURTH PATTERN. ARM64's compare carries a small number in the instruction
+\ too, and until now this chain reached it for exactly one thing - the zero a
+\ conditional select tests its flag against, which the select form holds itself.
+\ Every comparison a PROGRAM writes went the other way: `x 0=` is a constant zero
+\ and an equality, `x 1 <=` is a constant one and a comparison, and the constant
+\ was built into a register by a move-wide and compared against. Measured over
+\ the five corpora's rows, 45 comparisons reach the machine and 17 of them are
+\ against a constant this field could have held - LADDER's eight-step ladder
+\ alone is seven of them - and every one of the 17 has the constant in the
+\ SECOND operand.
+\
+\ The conditions are the arithmetic fold's, with the two that differ:
+\
+\   THE READER IS A COMPARISON, WHICH IS EITHER OF TWO FORMS. This dialect has no
+\   standalone compare: a comparison reaches the machine only fused, as the flag
+\   it materialises (a64.flag) or as the branch that reads it (a64.cmpbr), so the
+\   fold has two readers to recognise and writes the immediate variant of
+\   whichever one it found. The two conditional selects are deliberately NOT
+\   here: a64.selz already compares against the immediate zero and a64.cmpsel's
+\   comparison feeds a select rather than a flag, so folding into them is a
+\   separate shape with its own measurement.
+\
+\   AND ONLY THE SECOND OPERAND MAY BE FOLDED, which is the subtraction's rule
+\   arriving for a different reason. `cmp rn, #imm` sets its flags from rn minus
+\   imm, so moving the constant into the field only works where the constant was
+\   the RIGHT-hand side; a constant on the left is the mirrored relation - `5 < x`
+\   is `x > 5` - and turning it round means changing the condition as well, which
+\   is a second rewrite and not this one. The measurement says that rewrite has
+\   no consumer in this corpus: of the 17 foldable constants, 17 are on the right
+\   and none on the left. So the position is read by ordinal, exactly as the
+\   subtraction's is, and a left-hand constant keeps the register form.
+\
+\ Nothing here cross-checks the other three folds, for the reason the mask fold
+\ gives: those claim a multiply, an addition, a subtraction or a bitwise
+\ operation, and this claims a comparison, so no operation is a candidate for two
+\ of them and no movz can be claimed twice.
+: COMPARE-OP? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-FLAG =  id OP-SLOT O-CMPBR =  or ;
+
+: CMP-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   id COMPARE-OP? 0= if -1 exit then
+   id OPERANDS-OF 2 <> if -1 exit then
+   bk  id 1 OPERAND-AT  DEF-INDEX {: d1:n :}
+   f bk d1 k IMM-FOLDS-HERE? if d1 exit then
+   -1 ;
+
 \ The whole block's plan, read once before a single operation of it is copied,
 \ so the walk and the operation it reaches later agree about what was decided.
 : PLAN-BLOCK ( IR-ID:ir-fun-id IR-ID:ir-block-id -- )
@@ -733,6 +792,7 @@ create MASK-AT OPS-MAX cells allot
       -1 i cells FOLD-AT + !
       -1 i cells IMM-AT + !
       -1 i cells MASK-AT + !
+      -1 i cells CMP-AT + !
       0 i cells FOLDED + !
    loop
    n 0 ?do
@@ -755,6 +815,13 @@ create MASK-AT OPS-MAX cells allot
          d i cells MASK-AT + !
          1 d cells FOLDED + !
       then
+   loop
+   n 0 ?do
+      f bk i CMP-FOLD-FOR {: d:n :}
+      d 0 >= if
+         d i cells CMP-AT + !
+         1 d cells FOLDED + !
+      then
    loop ;
 
 : FOLD-OF ( n -- n )
@@ -765,6 +832,9 @@ create MASK-AT OPS-MAX cells allot
 
 : MASK-OF ( n -- n )
    cells MASK-AT + @ ;
+
+: CMP-OF ( n -- n )
+   cells CMP-AT + @ ;
 
 : FOLDED? ( n -- bool )
    cells FOLDED + @ 0<> ;
@@ -960,6 +1030,56 @@ create MASK-AT OPS-MAX cells allot
    lg  CLOSE  BIND-RESULTS
    1 N-FUSED +! ;
 
+\ The condition an operation was made under, as the code the module stores. A
+\ comparison of this dialect carries it under a REQUIRED key, so an operation
+\ that reached this pass without one is a module the freeze verifier should have
+\ refused; it is checked rather than defaulted, because a defaulted condition is
+\ a comparison that answers the wrong relation and nothing downstream would say
+\ so.
+: COND-CODE-OF ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id K-COND ATTR-BY-KEY {: v:n :}
+   v 0 < if E-A64COMB-SHAPE throw then
+   v ;
+
+\ The comparison with its constant in the instruction, written where the register
+\ form stood. It is EMIT-ADDI's shape with two differences that both come from
+\ what a comparison is.
+\
+\ THE OPERAND IS TAKEN BY POSITION AND NOT BY IDENTITY. EMIT-ADDI asks which of
+\ the addition's two operands is not the constant, because either may be; here
+\ only operand 1 was ever a candidate, so operand 0 is the one that stays and
+\ reading it by ordinal is what keeps a mirrored comparison out.
+\
+\ AND WHICH SHAPE IS REBUILT DEPENDS ON WHETHER THE COMPARISON WAS FUSED. The
+\ flag form defines a value and ends nothing; the branch form defines none and
+\ ends the block, so it carries its two successors across. Both keep the
+\ condition they were made under - the immediate changes what is compared, never
+\ how the answer is read.
+\ AND A FORM IT DOES NOT KNOW IS REFUSED RATHER THAN TREATED AS THE FLAG ONE.
+\ Two opcodes reach here today and each is asked for by name; a third comparison
+\ form admitted by COMPARE-OP? above and forgotten here would otherwise be
+\ written as a flag-materialising one, which for a select would drop the two
+\ registers it chooses between.
+: EMIT-CMPI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
+   {: mz:IR-ID:ir-op-id cm:IR-ID:ir-op-id :}
+   cm OP-SLOT {: s:n :}
+   s O-FLAG =  s O-CMPBR =  or 0= if E-A64COMB-SHAPE throw then
+   s O-CMPBR =
+   if A64IR-OPCODE:CMPBRI else A64IR-OPCODE:FLAGI then {: o:A64IR:opcode :}
+   cm o OPEN
+   cm 0 OPERAND-AT VOF OPERAND+
+   s O-FLAG = if
+      CTX BLD  cm 0 RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
+   then
+   cm COPY-SUCCS
+   CTX BLD  CTX BLD A64IR:KEY-COND
+   CTX BLD  cm COND-CODE-OF A64IR:N>COND A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD mz WHOLE-IMM A64IR:OFF-ATTR
+   IR-BUILD:ADD-ATTR
+   cm  CLOSE  BIND-RESULTS
+   1 N-FUSED +! ;
+
 \ ---- the block ---------------------------------------------------------------
 \ The old block's arguments are the new block's arguments, one for one. The value
 \ map is NOT cleared here: a value defined in one block is read in the blocks it
@@ -990,11 +1110,13 @@ create MASK-AT OPS-MAX cells allot
          i FOLD-OF {: d:n :}
          i IMM-OF {: e:n :}
          i MASK-OF {: g:n :}
+         i CMP-OF {: h:n :}
          d 0 >= if bk d OP-AT  bk i OP-AT  EMIT-MADD else
          e 0 >= if bk e OP-AT  bk i OP-AT  EMIT-ADDI else
          g 0 >= if bk g OP-AT  bk i OP-AT  EMIT-MASKI else
+         h 0 >= if bk h OP-AT  bk i OP-AT  EMIT-CMPI else
                    bk i OP-AT COPY-OP
-         then then then
+         then then then then
       then
    loop
    CTX BLD IR-BUILD:END-BLOCK drop ;
@@ -1139,6 +1261,8 @@ public
    c b A64IR-OPCODE:TAILCALL  BIND1
    c b A64IR-OPCODE:TRAP      BIND1
    c b A64IR-OPCODE:CODEADDR  BIND1
+   c b A64IR-OPCODE:FLAGI     BIND1
+   c b A64IR-OPCODE:CMPBRI    BIND1
    c b A64IR-OPCODE:MADD      BIND1
    c b A64IR-OPCODE:ADDI      BIND1
    c b A64IR-OPCODE:SUBI      BIND1
@@ -1194,6 +1318,7 @@ public
             f bk i FOLD-FOR 0 >= if 1+ then
             f bk i IMM-FOLD-FOR 0 >= if 1+ then
             f bk i MASK-FOLD-FOR 0 >= if 1+ then
+            f bk i CMP-FOLD-FOR 0 >= if 1+ then
          loop
       loop
    loop ;
