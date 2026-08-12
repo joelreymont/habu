@@ -15,6 +15,9 @@ require lib/string.f
 require tools/lint/text.f
 require tools/judge/row.f
 require tools/judge/report.f
+require tools/judge/corpus1.f
+require tools/judge/corpus2.f
+require tools/judge/corpus3.f
 require tools/judge/corpus4.f
 require tools/judge/corpus5.f
 
@@ -42,6 +45,9 @@ public
 \ words qualified.
 : JUDGE-ALL ( -- )
    JUDGE-ROW:RESET
+   JUDGE-CORPUS1:JUDGE
+   JUDGE-CORPUS2:JUDGE
+   JUDGE-CORPUS3:JUDGE
    JUDGE-CORPUS4:JUDGE
    JUDGE-CORPUS5:JUDGE ;
 

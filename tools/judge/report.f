@@ -30,7 +30,7 @@ require lib/fmt.f
 require tools/codegen-compare-clang.f
 require tools/judge/row.f
 require tools/codegen-compare-core.f
-require tools/judge/corpus4.f
+require tools/judge/pass.f
 
 package JUDGE-REPORT
 
@@ -125,6 +125,20 @@ variable TEXT-U
    s" A LARGER row is a finding and the check exits non-zero on it. A REFUSED row" LINE
    s" is a raw measurement printed with its code: the capability it waits for is a" LINE
    s" dot, and a check that failed on it would fail every day until that dot lands." LINE
+   s" Two codes appear in the chain column and each is a named capability gap:" LINE
+   s" -8508 is the allocator declining to spill inside a loop, dot" LINE
+   s" habu-spill-from-a-4145325c; -8405 is the chain's tape declining to record a" LINE
+   s" hexadecimal literal, dot habu-record-the-engine-79c570ed. tools/judge-test.f" LINE
+   s" fails on a refusal that is neither, so a third gap cannot arrive unnamed." LINE
+   NL
+   s" CODEGEN-CORPUS2:SYM-FOLD-C IS A DELIBERATE DISAGREEMENT WITH THE OLD" LINE
+   s" HARNESS, which reads that row green. The two harnesses are not compiling the" LINE
+   s" same program: the corpus writes the checker's own body with $41, $5A and $20" LINE
+   s" in it, and the old harness's hand-copied column respells those literals in" LINE
+   s" decimal - tools/codegen-compare-migrated2.f:100, admitted at its line 28 -" LINE
+   s" because the chain cannot read a hexadecimal spelling back. Green there is" LINE
+   s" measured against a program the corpus does not contain. REFUSED here is the" LINE
+   s" truth about the corpus text, and the corpus is not respelled to buy the row." LINE
    NL
    s" THE COSTS ARE BELOW THIS TABLE AND ARE NOT PART OF THE CHECK. A byte count" LINE
    s" is the same number on every host in every run; a cost is a measurement, and" LINE
@@ -211,7 +225,7 @@ variable TEXT-U
    CODEGEN-COMPARE:RUNS NUM$ APPEND
    s"  timed" LINE
    s" runs, fastest run kept. The whole row list is measured " APPEND
-   JUDGE-CORPUS4:TIME-PASSES NUM$ APPEND
+   JUDGE-PASS:TIME-PASSES NUM$ APPEND
    s"  times over, so the columns" LINE
    s" are interleaved rather than measured in blocks; each column keeps its" LINE
    s" fastest." LINE

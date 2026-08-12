@@ -1287,8 +1287,14 @@ public
 -8719 constant E-JUDGE-COST-COLUMN  \ a generated body whose call text does not resolve to the routine of the column it was built for: it computes the right answer in the wrong column, which no comparison of answers can see, so the address is held against the column instead
 \ The code generator judge's second block: -8720..-8739
 \
-\ Taken when -8700..-8719 filled. Both codes below are about a fact the judge
+\ Taken when -8700..-8719 filled. The codes below are about a fact the judge
 \ cannot obtain rather than a measurement it took: what storage a body reaches,
-\ and where a derived word was published.
+\ where a derived word was published, what a row said about itself, and how a
+\ generated body is supposed to account for what its subject left.
 -8720 constant E-JUDGE-CHAIN-DATA      \ a body naming two of its file's storage words: the migration entry takes ONE spelling, and handing it the first of two would compile a body whose other storage word resolved to whatever the scope held
 -8721 constant E-JUDGE-CHAIN-QUALIFIER \ a derived word's record asked for before the package it is published in was named: the record reader resolves a spelling as written rather than through the open package, so an absent qualifier would answer about some other word or about none
+-8722 constant E-JUDGE-PASS-CAP        \ a generated body's part, a C call shape, or the refusal ledger larger than the shared pass's store holds
+-8723 constant E-JUDGE-PASS-ROW        \ a pass reached before its row was stated, a corpus whose package was never named, a refusal asked for under a name no publication recorded, or one name claimed by two rows
+-8724 constant E-JUDGE-PASS-SHAPE      \ a C call shape whose last character is neither the `D` of a double answer nor the `I` or digit of an integer one: what a twin answers decides whether a reference value is projected to its bits, and a shape nobody can read that off is refused rather than guessed at
+-8725 constant E-JUDGE-COST-FOLD       \ a subject leaving more than one value where one of them is a double or a flag, or a projection no generated body knows: a body folds what a subject left into one cell with `xor`, and reaching past the top of that stack to project a value under it is a shape no corpus has and none is invented for it
+-8726 constant E-JUDGE-COST-WITNESS    \ a memory witness asked for with no reader to read it back: the witness IS the reader's answer, so an empty one would record the subject's own value under a second name and read as a second observation

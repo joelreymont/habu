@@ -126,6 +126,34 @@ private
    0 JUDGE-SRC:IN 3 T=
    0 JUDGE-SRC:OUT 1 T= ;
 
+\ ---- which of the outputs are not plain cells ---------------------------------
+\ A generated body has to project a double or a flag before another column's
+\ answer can be compared with it, so the reader counts them - among the OUTPUTS
+\ only, and only where the token is the value's own. The `r` of `ptr r` is what
+\ the pointer points at and the value is the pointer, which is the one way a
+\ counter of tokens would get this wrong.
+
+: KINDS$ ( -- ptr u8 n )
+   S\" : A ( n -- r ) ;\n: B ( r -- bool ) ;\n: C ( n -- ptr r ) ;\n: D ( r r -- n ) ;\n: E ( n -- n r ) ;\n" ;
+
+: KIND-CASES ( -- )
+   KINDS$ JUDGE-SRC:SCAN
+   JUDGE-SRC:DEFS 5 T=
+
+   s" A" JUDGE-SRC:FIND JUDGE-SRC:OUT 1 T=
+   s" A" JUDGE-SRC:FIND JUDGE-SRC:REALS 1 T=
+   s" A" JUDGE-SRC:FIND JUDGE-SRC:FLAGS 0 T=
+
+   s" B" JUDGE-SRC:FIND JUDGE-SRC:REALS 0 T=       \ the `r` is an INPUT
+   s" B" JUDGE-SRC:FIND JUDGE-SRC:FLAGS 1 T=
+
+   s" C" JUDGE-SRC:FIND JUDGE-SRC:OUT 1 T=         \ `ptr r` is ONE value
+   s" C" JUDGE-SRC:FIND JUDGE-SRC:REALS 0 T=       \ and that value is a pointer
+
+   s" D" JUDGE-SRC:FIND JUDGE-SRC:REALS 0 T=       \ two `r` inputs, neither an output
+   s" E" JUDGE-SRC:FIND JUDGE-SRC:OUT 2 T=
+   s" E" JUDGE-SRC:FIND JUDGE-SRC:REALS 1 T= ;
+
 \ ---- what the reader refuses to guess -----------------------------------------
 \ Every one of these has more than one possible answer, and a reader that picked
 \ one would be inventing the fact it exists to read.
@@ -312,6 +340,7 @@ public
    FORGERY-CASES
    CLOSER-CASES
    ARITY-CASES
+   KIND-CASES
    REFUSAL-CASES
    ROW-CASES
    CALL-CASES

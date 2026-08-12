@@ -297,13 +297,15 @@ SUITE judge-src
 \ code generators from ONE text, with clang beside them, and the committed
 \ artifact that says what this tree emits. It runs the same words
 \ `bin/hb --load tools/judge.f -- --check` drives, so what passes here is what
-\ that command does. What it pins that the old comparison could not: the two
-\ subjects the chain declines are checked against the CODE the compiler refused
-\ them with, measured this run, rather than against a list of their names.
-\ Nothing it asserts reads a clock.
+\ that command does. What it pins that the old comparison could not: every
+\ subject the chain declines is checked against the CODE the compiler refused it
+\ with, measured this run, rather than against a list of their names, and a
+\ refusal for a reason nobody has named fails the member. Nothing it asserts
+\ reads a clock.
 SUITE judge
    tools/judge-test.f
 ;SUITE
+
 
 \ The fork question, which used to be a third member of the registration above
 \ and was the one member nothing scheduled. It is its own registration because it

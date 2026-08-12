@@ -86,6 +86,8 @@ create D-OPEN DEF-MAX cells allot          \ token index of the `:`
 create D-CLOSE DEF-MAX cells allot         \ token index of the `;`
 create D-IN DEF-MAX cells allot
 create D-OUT DEF-MAX cells allot
+create D-REALS DEF-MAX cells allot         \ how many of the outputs are doubles
+create D-FLAGS DEF-MAX cells allot         \ how many of the outputs are flags
 create D-CALLS DEF-MAX cells allot         \ how many distinct callees
 create D-CALLEE DEF-MAX CALL-MAX * cells allot  \ which definitions they are
 
@@ -167,14 +169,34 @@ variable DEF-N
 \ type after it: `ptr u8` is one value, `ptr ptr u8` is one value, and
 \ `ptr u8 n` - a string - is two. A-NEED counts how many element types are still
 \ owed to open pointers, so the whole grammar is read in one pass with one cell.
+\
+\ THE OUTPUT DOUBLES AND FLAGS ARE COUNTED TOO, and for the same reason the
+\ arity is: a generated body has to account for every value its subject leaves,
+\ and neither a double nor a flag is a cell another column's answer can be
+\ compared with until it is projected. Only a value's OWN token counts, never a
+\ pointer's element type - the `r` of `ptr r` is what the pointer points at, and
+\ the value is the pointer.
+\
+\ THE FLAG TOKEN COUNTED HERE IS `bool`, which is how this repository's checked
+\ signatures spell one. A signature that spelled it some other way would leave
+\ its generated body unprojected, and the checker would decline that body by
+\ name rather than let it certify: the miss is loud, not silent.
 
 variable A-NEED
 variable A-CNT
+variable A-REAL
+variable A-FLAG
 variable A-ARROW
 
 : ARITY-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" ptr" STR= {: pointer:bool :}
-   A-NEED @ 0 > if A-NEED @ 1- A-NEED ! else A-CNT @ 1+ A-CNT ! then
+   A-NEED @ 0 > if
+      A-NEED @ 1- A-NEED !
+   else
+      A-CNT @ 1+ A-CNT !
+      a u s" r" STR= if A-REAL @ 1+ A-REAL ! then
+      a u s" bool" STR= if A-FLAG @ 1+ A-FLAG ! then
+   then
    pointer if A-NEED @ 1+ A-NEED ! then ;
 
 \ What a signature may hold that this reader cannot count. A quotation type is
@@ -191,7 +213,7 @@ variable A-ARROW
    A-ARROW @ if E-JUDGE-SRC-SIG throw then
    true A-ARROW !
    A-CNT @ D-IN DEF-N @ SLOT !
-   0 A-CNT ! 0 A-NEED ! ;
+   0 A-CNT ! 0 A-NEED ! 0 A-REAL ! 0 A-FLAG ! ;
 
 \ Walk the signature comment's body one space-delimited token at a time. The two
 \ position tests are separate words so that neither reads a byte past the span
@@ -226,13 +248,15 @@ variable A-END
 \ is told, and guessing it from the body would be this file inventing the very
 \ fact it exists to read.
 : ARITY ( n -- ) {: k:n :}
-   0 A-NEED ! 0 A-CNT ! false A-ARROW !
+   0 A-NEED ! 0 A-CNT ! 0 A-REAL ! 0 A-FLAG ! false A-ARROW !
    k 2 + LINT-LEX:COUNT >= if E-JUDGE-SRC-SIG throw then
    k 2 + LINT-LEX:KIND@ LINT-LEX:COMMENT <> if E-JUDGE-SRC-SIG throw then
    k 2 + LINT-LEX:CONTENT ARITY-SCAN
    A-ARROW @ 0= if E-JUDGE-SRC-SIG throw then
    A-NEED @ 0<> if E-JUDGE-SRC-SIG throw then
-   A-CNT @ D-OUT DEF-N @ SLOT ! ;
+   A-CNT @ D-OUT DEF-N @ SLOT !
+   A-REAL @ D-REALS DEF-N @ SLOT !
+   A-FLAG @ D-FLAGS DEF-N @ SLOT ! ;
 
 public
 
@@ -251,6 +275,13 @@ public
 
 : OUT ( n -- n ) {: k:n :}
    D-OUT k ROW-OK SLOT @ ;
+
+\ How many of those output values are doubles, and how many are flags.
+: REALS ( n -- n ) {: k:n :}
+   D-REALS k ROW-OK SLOT @ ;
+
+: FLAGS ( n -- n ) {: k:n :}
+   D-FLAGS k ROW-OK SLOT @ ;
 
 \ Which definition of this file goes by a name, or -1. Names are matched whole
 \ and case-sensitively.

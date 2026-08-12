@@ -21,16 +21,24 @@
 \ built, which needs no list and no exception: nothing was ever written down
 \ that has to be kept in step.
 \
-\ WHAT IS GENERATED, EXACTLY. Two shapes, and nothing else:
+\ WHAT IS GENERATED, EXACTLY. Three shapes, and nothing else:
 \
 \   : <name> ( -- ) [: <inputs> <call> drop ;] TIME-ONLY PICOS! ;
-\   : <name> ( -- ) <inputs> <call> RESULT! ;
+\   : <name> ( -- ) <inputs> <call> <fold> RESULT! ;
+\   : <name> ( -- ) <inputs> <call> drop… <readback> RESULT! ;
 \
 \ `<inputs>` is the row's own text and `<call>` is the column's - the engine's
 \ word, the chain's word, or the foreign-call shape that reaches the C twin. The
 \ timed shape is the same one tools/codegen-compare-cases4.f writes by hand, so
 \ what is timed here is what that harness times: a quotation that calls the
 \ subject once and drops its answer.
+\
+\ `<fold>` accounts for what the subject left - `xor` for several values, the
+\ float or flag projection for one that is not a plain cell, a literal zero for
+\ a subject that leaves nothing. The third shape is for a subject whose point is
+\ a STORE: it runs the same program and then the row's own reader for the memory
+\ the subject wrote. It is a separate number rather than a fold into the first
+\ for the reason WITNESS gives below.
 \
 \ AND THE GENERATOR CANNOT SILENTLY TIME THE WRONG PROGRAM. A generated body is
 \ text, and text that compiles is not text that computes the right thing: an
@@ -39,7 +47,7 @@
 \ VALUED, by the second shape above, in every column - and the columns must
 \ agree. A generator that built one column's body wrong makes that column answer
 \ something else, and the run fails on the answers rather than reporting a time
-\ for a program nobody meant to run. tools/judge/cost-test.f hands the generator
+\ for a program nobody meant to run. tools/judge-test.f hands the generator
 \ deliberately wrong bodies and checks that each one is caught.
 \
 \ THE EVALUATE BOUNDARY, WHICH IS NAMED AND SMALL. The checker rejects
@@ -204,9 +212,28 @@ public
 : DROPS+ ( n -- ) {: outs:n :}
    outs 0 ?do s"  drop" TXT CODEGEN:APPEND-STRING loop ;
 
-: FOLD+ ( n -- ) {: outs:n :}
-   outs 0= if s"  0" TXT CODEGEN:APPEND-STRING exit then
-   outs 1- 0 ?do s"  xor" TXT CODEGEN:APPEND-STRING loop ;
+\ A DOUBLE and a FLAG are not cells a row can be compared on until they are
+\ projected, and each is projected by the one word the comparison already
+\ records that kind through, so two columns crossing from a float or a flag to a
+\ recorded cell by two routes of their own cannot read as a difference in the
+\ compiled code. Neither projection reaches past the value on top, so a subject
+\ leaving one UNDER another value is refused rather than folded through a swap
+\ nobody wrote: no corpus has that shape and inventing one here would be
+\ inventing the program.
+0 constant P-CELL
+1 constant P-REAL
+2 constant P-FLAG
+
+: FOLD+ ( n n -- ) {: outs:n proj:n :}
+   proj P-CELL = if
+      outs 0= if s"  0" TXT CODEGEN:APPEND-STRING exit then
+      outs 1- 0 ?do s"  xor" TXT CODEGEN:APPEND-STRING loop
+      exit
+   then
+   outs 1 <> if E-JUDGE-COST-FOLD throw then
+   proj P-REAL = if s"  CODEGEN-COMPARE:REAL-BITS" TXT CODEGEN:APPEND-STRING exit then
+   proj P-FLAG = if s"  CODEGEN-COMPARE:FLAG-BITS" TXT CODEGEN:APPEND-STRING exit then
+   E-JUDGE-COST-FOLD throw ;
 
 \ Time one row's program in one column: the row's pinned inputs as text, the
 \ text that consumes them, and how many values the subject leaves. Answers
@@ -242,13 +269,37 @@ public
 
 \ The value that same program computes, on the same pinned inputs, through the
 \ same column. What makes a time a measurement of the right program.
-: VALUE ( ptr u8 n ptr u8 n n -- n ) {: ia:ptr iu:n ca:ptr cu:n outs:n :}
+: VALUE ( ptr u8 n ptr u8 n n n -- n )
+   {: ia:ptr iu:n ca:ptr cu:n outs:n proj:n :}
    0 RESULT-CELL !
    OPEN+
    ia iu TXT CODEGEN:APPEND-STRING
    s"  " TXT CODEGEN:APPEND-STRING
    ca cu TXT CODEGEN:APPEND-STRING
-   outs FOLD+
+   outs proj FOLD+
+   s"  JUDGE-COST:RESULT!" TXT CODEGEN:APPEND-STRING
+   CLOSE+
+   COMPILE-AND-RUN
+   RESULT-CELL @ ;
+
+\ What the same program LEFT IN MEMORY, read back through the row's own reader
+\ after the call and answered as one cell. It is a second number and not a fold
+\ into the first, and that is the whole point: a subject's answer and the memory
+\ it wrote are two observations, and combining them into one cell lets a column
+\ that got both wrong the same way cancel out - CELL-BUMP answers exactly what
+\ its cell holds, so the two folded together are identically zero and prove
+\ nothing at all. Compared separately, neither can hide the other.
+: WITNESS ( ptr u8 n ptr u8 n ptr u8 n n -- n )
+   {: ia:ptr iu:n ca:ptr cu:n ra:ptr ru:n outs:n :}
+   ru 0= if E-JUDGE-COST-WITNESS throw then
+   0 RESULT-CELL !
+   OPEN+
+   ia iu TXT CODEGEN:APPEND-STRING
+   s"  " TXT CODEGEN:APPEND-STRING
+   ca cu TXT CODEGEN:APPEND-STRING
+   outs DROPS+
+   s"  " TXT CODEGEN:APPEND-STRING
+   ra ru TXT CODEGEN:APPEND-STRING
    s"  JUDGE-COST:RESULT!" TXT CODEGEN:APPEND-STRING
    CLOSE+
    COMPILE-AND-RUN

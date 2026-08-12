@@ -67,6 +67,10 @@ create REF-FLOOR CAP-MAX cells allot       \ the twin's own entry, same arity, e
 create OLD-VALUE CAP-MAX cells allot
 create NEW-VALUE CAP-MAX cells allot
 create REF-VALUE CAP-MAX cells allot
+create OLD-WIT CAP-MAX cells allot         \ what the memory held after the call
+create NEW-WIT CAP-MAX cells allot
+create REF-WIT CAP-MAX cells allot
+create HAS-WIT CAP-MAX cells allot         \ this row has a reader for that memory
 create OUTS CAP-MAX cells allot            \ how many values the subject leaves
 create NEW-TAIL CAP-MAX cells allot        \ the chain's routine leaves by a branch
 
@@ -144,6 +148,10 @@ public
    0 OLD-VALUE FILL @ SLOT !
    0 NEW-VALUE FILL @ SLOT !
    0 REF-VALUE FILL @ SLOT !
+   0 OLD-WIT FILL @ SLOT !
+   0 NEW-WIT FILL @ SLOT !
+   0 REF-WIT FILL @ SLOT !
+   0 HAS-WIT FILL @ SLOT !
    1 OUTS FILL @ SLOT !
    0 NEW-TAIL FILL @ SLOT !
    FILL @
@@ -184,6 +192,35 @@ public
    picos REF-PICOS k SLOT !
    floor REF-FLOOR k SLOT !
    value REF-VALUE k SLOT ! ;
+
+\ ---- the memory a subject wrote ----------------------------------------------
+\ A second number per column, read back through the row's own reader after the
+\ same call. It is kept apart from the answer rather than folded into it: a
+\ subject's answer and the memory it wrote are two observations, and one cell
+\ holding both lets a column that got both wrong the same way cancel out.
+\ CODEGEN-CORPUS:CELL-BUMP answers exactly what its cell holds, so folded
+\ together the two are identically zero and prove nothing; compared separately
+\ neither can hide the other.
+
+: OLD-WITNESS! ( n n -- ) {: k:n value:n :}
+   k OK drop
+   value OLD-WIT k SLOT !
+   1 HAS-WIT k SLOT ! ;
+
+: NEW-WITNESS! ( n n -- ) {: k:n value:n :}
+   k OK drop
+   value NEW-WIT k SLOT ! ;
+
+: REF-WITNESS! ( n n -- ) {: k:n value:n :}
+   k OK drop
+   value REF-WIT k SLOT ! ;
+
+: WITNESSED? ( n -- bool ) {: k:n :}
+   HAS-WIT k OK SLOT @ 0<> ;
+
+: OLD-WITNESS@ ( n -- n ) {: k:n :}  OLD-WIT k OK SLOT @ ;
+: NEW-WITNESS@ ( n -- n ) {: k:n :}  NEW-WIT k OK SLOT @ ;
+: REF-WITNESS@ ( n -- n ) {: k:n :}  REF-WIT k OK SLOT @ ;
 
 \ The chain compiled it, into this many bytes.
 : NEW! ( n n bool -- ) {: k:n bytes:n tail:bool :}
@@ -275,16 +312,24 @@ public
 
 : NEW-AGREES? ( n -- bool ) {: k:n :}
    k REFUSED? if true exit then
-   k NEW-VALUE@ k OLD-VALUE@ = ;
+   k NEW-VALUE@ k OLD-VALUE@ <> if false exit then
+   k WITNESSED? 0= if true exit then
+   k NEW-WITNESS@ k OLD-WITNESS@ = ;
 
-\ A reference row answers what a FOREIGN call answers, which is one value
+\ A reference row's ANSWER is what a FOREIGN call answers, which is one value
 \ however many the habu subject leaves. A subject that leaves more than one is
 \ compared across the two habu columns and not against the twin: there is no
 \ single number on the reference side to compare it with, and folding a C
-\ function's one result against a fold of two habu results would be comparing
-\ two different things and calling their difference a finding.
+\ function's one result against a fold of two habu results would be comparing two
+\ different things and calling their difference a finding. Its MEMORY is a
+\ different matter - the twin writes its own copy of the same data and the row's
+\ reader reads that copy back - so a witness is compared however many values the
+\ subject left.
 : REF-AGREES? ( n -- bool ) {: k:n :}
    k COVERED? 0= if true exit then
+   k WITNESSED? if
+      k REF-WITNESS@ k OLD-WITNESS@ <> if false exit then
+   then
    k MULTI? if true exit then
    k REF-VALUE@ k OLD-VALUE@ = ;
 

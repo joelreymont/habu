@@ -236,13 +236,20 @@ public
    value OUT-VALUES ROW-N @ OUTPUT-MAX * OUT-N @ + SLOT !
    OUT-N @ 1+ OUT-N ! ;
 
-\ Record one flag the subject word left on the stack. A row holds numbers and a
-\ Habu flag is not one, so a flag has to become a number somewhere; it becomes
-\ one HERE, in the word both columns call, because two columns turning a flag
-\ into a number by two routes of their own would let a difference in the routes
-\ read as a difference in the compiled code.
+\ A flag, as the number a row can hold. A row holds numbers and a Habu flag is
+\ not one, so a flag has to become a number somewhere; it becomes one HERE,
+\ because two columns turning a flag into a number by two routes of their own
+\ would let a difference in the routes read as a difference in the compiled
+\ code. It is public for the reason REAL-BITS below is: the code generator
+\ judge's generated bodies cross the same boundary and must cross it the same
+\ way.
+: FLAG-BITS ( bool -- n )
+   if 1 else 0 then ;
+
+\ Record one flag the subject word left on the stack, through that one
+\ projection.
 : VECTOR-FLAG ( bool -- )
-   if 1 else 0 then VECTOR ;
+   FLAG-BITS VECTOR ;
 
 \ A double, as the cell it already is. The engine keeps a double unboxed in one
 \ data-stack cell as its raw IEEE754 bit pattern - the survey at the head of
