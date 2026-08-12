@@ -5990,3 +5990,19 @@ and no green - the suite never ran. Before reading any mutation
 result: prove the edit landed (assert the text changed, read it
 back) and prove the mutant COMPILES and differs from the original.
 "No TFAIL in the output" of a file that never loaded is not a pass.
+
+## The judge lane's four (2026-08-12)
+
+From the five-corpus landing, verbatim: (1) an xor fold of two
+observations is vacuous whenever one determines the other -
+CELL-BUMP's answer IS its cell, so folding them is identically zero
+and hides a column wrong in both; compare separately or prove
+independence before folding. (2) Every generated definition is a
+dictionary record never reclaimed - a fuzz driver minting one per
+(program, input) makes sweep size a dictionary question; one driver
+per column reading input cells removes the ceiling and the
+literal-spelling problem at once. (3) A generated diagnostic that
+prints a shared buffer names the wrong subject the moment two texts
+differ. (4) `rg -rn` is --replace n, not recursive-with-line-numbers
+- it silently rewrites every match and made a scheduled suite look
+unregistered.
