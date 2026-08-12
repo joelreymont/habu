@@ -43,10 +43,38 @@ line and never compared; the check stops at that line. Every generated body is
 held against the address of the column it was built for, which is the one way a
 body can be wrong that comparing answers cannot see.
 
-STILL OPEN, IN ORDER: (1) corpora 1, 2, 3 and 5, whose float, create'd-data
-(DEFINE-DATA) and tail-branch shapes are unprobed - each refusal there is a
-measured finding row, not a blocker; (2) the seeded-random differential oracle
-over generated straight-line bodies, which is what replaces the finite recorded
-vectors, with the shared-corpus-text blind spot stated in the artifact header.
+CORPORA 1/2/3/5 SWEPT 2026-08-12, master 497e50c2. Every definition of each
+corpus handed to the chain through the judge's own reader, with the corpus
+package open so private names resolve. Results, subjects only:
+
+- corpus5: all six compile. Nothing new needed.
+- corpus3: all ten subjects compile, floats and `ptr a` signatures included.
+  Only the FILL-* setup helpers refuse (E-A64RA-POOL), and they are not rows.
+- corpus2: TV-NEXT? and T-RES-WALK compile - a `create`d table READ needs
+  nothing special. SYM-FOLD-C refuses with E-NFEED-LITERAL (-8405); see below.
+- corpus1: CELL-BUMP refuses with E-A64RAV-DKEEP (-8611) under plain DEFINE and
+  COMPILES under NMIGRATE:DEFINE-DATA with the data word's spelling, measured.
+  A `create`d cell that is WRITTEN needs the data declaration; one that is only
+  read does not.
+
+SYM-FOLD-C IS THE FINDING. The corpus writes `$41`, `$5A`, `$20`; the chain
+cannot record a hexadecimal literal on its tape (dot
+habu-record-the-engine-79c570ed) and refuses the corpus's own program. The old
+harness's column does not hit that because it RESPELLS the body in decimal -
+tools/codegen-compare-migrated2.f:100 writes 65, 90 and 32, and its head says
+so at line 28 - so the row reads green today while the chain cannot compile the
+text the engine compiled. Under the judge that is a REFUSED row with -8405 and
+that dot. It is the hand-copy divergence this leaf predicted, found by
+measurement rather than by reading.
+
+STILL OPEN, IN ORDER: (1) the four corpus judge files. Needs JUDGE-SRC to also
+read `create`/`variable` declarations and report which data words each body
+names, JUDGE-CHAIN to pick DEFINE-DATA when there is exactly one (and refuse,
+named, when there is more than one - the migration entry takes one), and
+publication to run inside the corpus's package with derived names qualified for
+the size reader, the way tools/codegen-compare-migrated.f does it. (2) the
+seeded-random differential oracle over generated straight-line bodies, which is
+what replaces the finite recorded vectors, with the shared-corpus-text blind
+spot stated in the artifact header.
 
 CG-27 + CG-28, transition evidence. Old subjects live in tools/codegen-compare-corpus*.f while new subjects are hand-copied strings in tools/codegen-compare-migrated*.f with inputs/results repeated; the gate compares finite recorded vectors and its own tests fabricate comparator rows. Corpus 4 compiles 11/13 rows, and name-based known-loss/unsupported exemptions (compare-report.f:519-575,625-633,675-679) let the gate exit clean despite CALL-FAN-BIG 88-vs-36 and two uncompiled rows. Fix: compile one canonical source artifact through both chains and judge against an independent semantic oracle or property set; committed gaps and size losses are explicit failures or explicit raw measurements, never name exemptions; add adversarial inputs (MIN-INT/MAX-INT overflow boundaries, seeded random bodies, spill-pressure words). After the cut, delete the old-vs-new harness and keep the oracle, a compact production corpus, the new chain's committed baseline, and the optional clang reference.
