@@ -99,6 +99,21 @@ require src/compiler/native/regalloc.f
 
 package A64RAV
 using NFROZEN
+
+\ ---- the one door this check opens for a reader ------------------------------
+\ A residency refusal names one code for three different findings, and the
+\ module it was about lives in an arena torn down with the run - so a reader
+\ that wants either has to be called WHILE the run is standing. This is that
+\ moment. It is declared here, before everything, because the refusal that calls
+\ it is far below and the name has to be the PUBLIC deferred word for a tool to
+\ install into; it is a door rather than a printer because no compiler file here
+\ formats diagnostics, and a formatter installed at the refusal site would be
+\ carried into every engine build. tools/codegen-verify-dump.f is the reader.
+\ The default does nothing, and is installed as soon as there is a body for it.
+public
+
+defer DKEEP-HOOK ( -- )
+
 private
 
 \ No position at all: what the tables hold for a value this check has not
@@ -1741,6 +1756,42 @@ variable VD-BCOST
       i VDD@  VD-BOT swap  i VDPUT
    loop ;
 
+\ ---- what a data-stack refusal was about, kept for a reader -------------------
+\ ONE CODE, THREE REASONS, AND A CALLER WHO SEES NEITHER THE OPERATION NOR THE
+\ REASON. E-A64RAV-DKEEP says a data-stack access the emission had no reason to
+\ make, and which access and which of the three reasons are exactly what someone
+\ diagnosing it needs; a scratch build that split the code into three was how the
+\ 122-definition residency defect was found at all, and rebuilding that by hand
+\ is what this records instead.
+\
+\ IT IS KEPT THE WAY src/compiler/native/regalloc.f KEEPS A SEALED WALK: written
+\ as the run goes and readable until the next run starts. Nothing resets it on
+\ the way out of a refusal, which is what makes it readable AFTER the throw -
+\ tools/codegen-verify-dump.f prints the operation and the reason from here.
+1 constant DKEEP-NAMED       \ a load into a slot already holding a named value
+2 constant DKEEP-DEAD        \ a load whose result nothing reads
+3 constant DKEEP-SAME        \ a store of the value the slot already holds
+
+1 TYPED-BUFFER LAST-FUN IR-ID:ir-fun-id
+1 TYPED-BUFFER LAST-OP IR-ID:ir-op-id
+variable LAST-CLAUSE
+variable LAST-HELD           \ has a residency run ever filled the three above
+
+\ The hook declared at the head of this file does nothing until someone installs
+\ a reader, and it is called once per residency run - at the refusal below, or
+\ at the end of a run that reached it.
+: DKEEP-HOOK-NONE ( -- ) ;
+: DKEEP-HOOK-DEFAULT ( -- )
+   [: DKEEP-HOOK-NONE ;] is A64RAV:DKEEP-HOOK ;
+DKEEP-HOOK-DEFAULT
+
+: DKEEP! ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id clause:n :}
+   id 0 LAST-OP !
+   clause LAST-CLAUSE !
+   DKEEP-HOOK
+   E-A64RAV-DKEEP throw ;
+
 \ ---- one operation, measured -------------------------------------------------
 \ The refusals are here rather than in a second walk because the map they judge
 \ is the map at that operation, and re-deriving it twice would be two answers.
@@ -1748,16 +1799,16 @@ variable VD-BCOST
    {: id:IR-ID:ir-op-id :}
    id VDSLOT-CELL {: s:n :}
    s VDD@ VD-DEF <> if E-A64RAV-DRES throw then
-   s VDV@ VD-NAMED? if E-A64RAV-DKEEP throw then
+   s VDV@ VD-NAMED? if id DKEEP-NAMED DKEEP! then
    id 0 RESULT-AT SLOT {: k:n :}
-   k USES-AT 0= if E-A64RAV-DKEEP throw then
+   k USES-AT 0= if id DKEEP-DEAD DKEEP! then
    k VD-DEF s VDPUT ;
 
 : VDSTORE-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id VDSLOT-CELL {: s:n :}
    id 0 OPERAND-AT SLOT {: k:n :}
-   s VDV@ k = if E-A64RAV-DKEEP throw then
+   s VDV@ k = if id DKEEP-SAME DKEEP! then
    k VD-DEF s VDPUT ;
 
 \ Every slot the branch publishes holds something. A store in front of it is one
@@ -1948,10 +1999,13 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
 
 : VDRES-CK ( IR-ID:ir-fun-id n n n A64EFF:placeseq A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n a:n r:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   f 0 LAST-FUN !
+   0 LAST-CLAUSE !
+   1 LAST-HELD !
    f a args VDRES-FIX
    V-BLKS @ 0 ?do f i VDCK-BLOCK loop
-   rb NO-RET = if exit then
-   f rb r outs VDCK-EXIT ;
+   rb NO-RET <> if f rb r outs VDCK-EXIT then
+   DKEEP-HOOK ;
 
 \ ---- the entry and exit sequences, re-derived --------------------------------
 \ Which loads and stores the two sequences really carry is not fixed any more:
@@ -2683,6 +2737,35 @@ public
    FRESH-CK
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
    REGGED? ;
+
+\ ---- reading back what the last residency run was about ----------------------
+\ The answers a data-stack refusal leaves behind, for the reason given where they
+\ are written. The clause is zero when the last run reached the end without one,
+\ so a reader is told "no refusal" rather than shown the previous run's operation
+\ under this run's function.
+\
+\ THE FOUR COLUMNS BELOW THE FIRST THREE ARE THE ONES THE THREE CLAUSES ARE ABOUT,
+\ and they are published rather than re-derived for the reason
+\ src/compiler/native/regalloc.f publishes its sealed walk: a reader that
+\ recomputed them would be a second answer, and the whole defect this recording
+\ exists for was two answers to one question. Structure comes from NFROZEN, which
+\ is public already; these are the residency facts only this check holds.
+: DKEEP-HELD? ( -- bool )            LAST-HELD @ 0<> ;
+: DKEEP-FUN ( -- IR-ID:ir-fun-id )   0 LAST-FUN @ ;
+: DKEEP-OP ( -- IR-ID:ir-op-id )     0 LAST-OP @ ;
+: DKEEP-CLAUSE ( -- n )              LAST-CLAUSE @ ;
+
+: DKEEP-CALL? ( IR-ID:ir-op-id -- bool )    DCALL? ;
+: DKEEP-STORES? ( IR-ID:ir-op-id -- bool )  STORES? ;
+: DKEEP-DSLOT ( IR-ID:ir-op-id -- n )       DSLOT-OF ;
+: DKEEP-USES ( IR-ID:ir-value-id -- n )     SLOT USES-AT ;
+
+: DKEEP-CLAUSE$ ( n -- ptr u8 n )
+   {: c:n :}
+   c DKEEP-NAMED = if s" load into a slot already holding a named value" exit then
+   c DKEEP-DEAD = if s" load whose result nothing reads" exit then
+   c DKEEP-SAME = if s" store of the value the slot already holds" exit then
+   s" none" ;
 
 private
 get-current prot-wid-add

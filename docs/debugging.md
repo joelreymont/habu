@@ -364,6 +364,36 @@ tree stopped producing.
 - The dictionary search returns the newest definition; use the checker and
   shadow lint when a new word appears to change built-in behavior.
 
+## Native codegen refusals — what the pass actually decided
+
+A migration that throws gives one number and no operation. Two dumpers turn
+that number back into the decisions behind it. Both compile the source through
+the production migration entry (`NMIGRATE:MEASURE-HELD`) and publish nothing,
+so a body can be dumped as many times as it takes.
+
+- `tools/codegen-alloc-dump.f` — what the REGISTER ALLOCATOR decided: the walk
+  generation, the spill slots, every plan row (store/move/remat/reload) and
+  every value it gave no register to. Start here for `E-A64RAV-REGISTER` and
+  anything that smells like an eviction.
+- `tools/codegen-verify-dump.f` — what the RESIDENCY VERIFIER judged: the
+  machine module block by block, each operation's shape, the data-stack slot it
+  moves, and the use count the verifier itself computed for each result. It also
+  names which of the three findings behind `E-A64RAV-DKEEP` fired and at which
+  block and position — that code covers a load into a slot that already holds a
+  named value, a load whose result nothing reads, and a store of the value the
+  slot already holds, and the three have different causes. A `dload` printed
+  with `u0` in front of an elided store is the planning pass and the emission
+  disagreeing about the map.
+
+Drive either with a one-line second file, e.g.
+
+```
+bin/hb --load tools/codegen-verify-dump.f /tmp/dump-run.f
+```
+
+where `/tmp/dump-run.f` is a single `VERIFY-DUMP:REPORT` call carrying the
+source text, its two arities and the register budget.
+
 ## Performance measurement tools (tools/perf/)
 
 - `tools/perf/protcost.py` — attributes a boot's samples to the engine's
