@@ -88,9 +88,9 @@ private
 \ a stack it never had; an input list with the WRONG number computes something
 \ else, which is what the answers column exists to notice.
 : WRONG-INPUT-CASES ( -- )
-   [: s" " FAN$ JUDGE-COST:VALUE drop ;] E-JUDGE-COST-CHECK TTHROWSQ
-   [: s" 7 7" FAN$ JUDGE-COST:VALUE drop ;] E-JUDGE-COST-CHECK TTHROWSQ
-   s" 7" FAN$ JUDGE-COST:VALUE  s" 8" FAN$ JUDGE-COST:VALUE T<> ;
+   [: s" " FAN$ 1 JUDGE-COST:VALUE drop ;] E-JUDGE-COST-CHECK TTHROWSQ
+   [: s" 7 7" FAN$ 1 JUDGE-COST:VALUE drop ;] E-JUDGE-COST-CHECK TTHROWSQ
+   s" 7" FAN$ 1 JUDGE-COST:VALUE  s" 8" FAN$ 1 JUDGE-COST:VALUE T<> ;
 
 \ THE BOUNDARY INPUTS, THROUGH BOTH CODE GENERATORS. The pinned input a row is
 \ timed on runs the longest path through it; these run the arithmetic off the
@@ -98,12 +98,12 @@ private
 \ nowhere else is. Both columns compile the same corpus text, so the two must
 \ answer the same cell.
 : BOUNDARY-CASES ( -- )
-   s" $8000000000000000" FAN$ JUDGE-COST:VALUE
-   s" $8000000000000000" FAN-J$ JUDGE-COST:VALUE T=
-   s" $7FFFFFFFFFFFFFFF" FAN$ JUDGE-COST:VALUE
-   s" $7FFFFFFFFFFFFFFF" FAN-J$ JUDGE-COST:VALUE T=
-   s" -1" FAN$ JUDGE-COST:VALUE
-   s" -1" FAN-J$ JUDGE-COST:VALUE T= ;
+   s" $8000000000000000" FAN$ 1 JUDGE-COST:VALUE
+   s" $8000000000000000" FAN-J$ 1 JUDGE-COST:VALUE T=
+   s" $7FFFFFFFFFFFFFFF" FAN$ 1 JUDGE-COST:VALUE
+   s" $7FFFFFFFFFFFFFFF" FAN-J$ 1 JUDGE-COST:VALUE T=
+   s" -1" FAN$ 1 JUDGE-COST:VALUE
+   s" -1" FAN-J$ 1 JUDGE-COST:VALUE T= ;
 
 \ Every refusal in the table is the allocator declining to spill inside a loop,
 \ which is dot habu-spill-from-a-4145325c. A refusal for some other reason is a
@@ -116,7 +116,10 @@ private
 \ A compiled row vouches for its own text: the chain read it, the checker
 \ certified it and a routine came out. A REFUSED row has no such witness, so the
 \ text the chain was handed is checked here against the corpus's own program.
+\ The source is loaded first because the reader holds ONE file at a time and
+\ the pass that judged every corpus left the last of them in it.
 : TEXT-CASES ( -- )
+   s" tools/codegen-compare-corpus4.f" JUDGE-SRC:LOAD
    s" PRESSURE-LOOP" JUDGE-SRC:FIND s" -J4" JUDGE-SRC:TEXT$
    S\" : PRESSURE-LOOP-J4 ( ptr n n -- n ) {: base:ptr len:n :}\n   0\n   len 0 ?do\n      base @  base 8 + @  base 16 + @  base 24 + @  base 32 + @\n      base 40 + @  base 48 + @  base 56 + @  base 64 + @  base 72 + @\n      base 80 + @  base 88 + @  base 96 + @  base 104 + @\n      + + + + + + + + + + + + + +\n   loop ;" T$= ;
 

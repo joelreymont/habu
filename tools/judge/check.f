@@ -16,6 +16,7 @@ require tools/lint/text.f
 require tools/judge/row.f
 require tools/judge/report.f
 require tools/judge/corpus4.f
+require tools/judge/corpus5.f
 
 package JUDGE-CHECK
 
@@ -41,7 +42,8 @@ public
 \ words qualified.
 : JUDGE-ALL ( -- )
    JUDGE-ROW:RESET
-   JUDGE-CORPUS4:JUDGE ;
+   JUDGE-CORPUS4:JUDGE
+   JUDGE-CORPUS5:JUDGE ;
 
 \ What the committed artifact holds.
 : COMMITTED$ ( -- ptr u8 n )

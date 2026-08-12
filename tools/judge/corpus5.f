@@ -1,49 +1,27 @@
-\ judge/corpus4.f - the judged rows of tools/codegen-compare-corpus4.f: twelve
-\ shapes chosen because somebody had a reason to believe the native chain
-\ handles them WORSE than the engine's emitter. One concern: which subject is
-\ judged, on which pinned input, against which C twin.
+\ judge/corpus5.f - the judged rows of tools/codegen-compare-corpus5.f: seven
+\ shapes about one decision, a call in tail position. One concern: which
+\ subject is judged, on which pinned input, against which C twin.
 \
-\ WHAT THIS FILE STATES AND WHAT IT DOES NOT. It states the twelve subjects,
-\ ONE pinned input per subject, the storage each subject reads, and the C symbol
-\ that is its twin. It states NOTHING about the programs: the engine compiled
-\ them when the corpus file was loaded, and the chain's copies are derived from
-\ that same file's bytes by tools/judge/src.f and compiled by
-\ tools/judge/chain.f. There is no retyped body here.
+\ WHAT THIS FILE STATES is what tools/judge/corpus4.f states and no more: the
+\ subjects, one pinned input each, and the C symbol that is each one's twin.
+\ The programs come from the corpus file's own bytes, and what the chain can
+\ and cannot compile is measured rather than listed.
 \
-\ AND IT STATES NOTHING ABOUT WHAT THE CHAIN CANNOT COMPILE. The comparison this
-\ replaces kept a hand-written list of those subjects, and a list cannot notice a
-\ row that started refusing or one that stopped. Here the chain is asked, every
-\ run, and what it answers - the routine, or the code it declined with - is the
-\ row's verdict.
+\ THIS CORPUS READS NO STORAGE. Every subject takes its argument and hands it
+\ to a callee, so the storage vocabulary below has one arm. It is still
+\ declared, because a row is written the same way in every corpus and one that
+\ needed a second arm would add it rather than invent a form of its own.
 \
-\ THE INPUT IS WRITTEN ONCE, WHICH IS THE OTHER DUPLICATE GONE. The old harness
-\ writes each row's pinned input three times: tools/codegen-compare-cases4.f for
-\ the engine, tools/codegen-compare-new4.f for the chain, and
-\ tools/codegen-compare-c4.f for the C twin. Three copies of a number is three
-\ chances to measure one column on a different program from the other two. Here
-\ the numbers are stated once and tools/judge/cost.f builds each column's body
-\ from them.
+\ SIX OF THE SEVEN LEAVE BY A BRANCH, which is what the corpus exists to
+\ measure, and it is why their byte counts are not the whole of their program:
+\ a routine that tail-branches carries four bytes and the callee it reaches
+\ carries the rest. The judged table says so on those rows rather than adding a
+\ shared callee into each of them, which would claim its bytes six times over.
 \
-\ THE INPUT IS THE LONGEST PATH THROUGH THE SUBJECT, which is the rule
-\ tools/codegen-compare-cases4.f set for the same twelve: LADDER is measured at
-\ 1000, the input that runs every one of its eight compares, because timing the
-\ short way out would measure the first guard and call it a ladder. Every input
-\ here is that file's timed input, unchanged.
-\
-\ THE STORAGE ORDINAL IS WHY A POINTER IS NOT WRITTEN OUT. Two subjects read
-\ memory the corpus owns, and the C twins cannot share it - they are a different
-\ program, not a second compilation of the same one, so they carry their own,
-\ filled from the same constants. A row says WHICH storage it reads and each
-\ column resolves that to its own. The stepped cell is also the one subject that
-\ is not idempotent, so its ordinal carries the reset a VALUE body runs first;
-\ the timing body does not reset, because a reset inside it would be timing a
-\ fill as well as a step.
-\
-\ ONE LIST, THREE PASSES. The twelve rows are written once, in EACH, and the
-\ three passes hand it their own body: the bytes, the answers, and the times.
-\ The times are measured by running that list more than once and keeping each
-\ column's fastest, so the columns are interleaved in time rather than measured
-\ in three blocks a scheduler could treat differently.
+\ TAIL-PAIR LEAVES TWO VALUES. A generated body accounts for every value its
+\ subject leaves - a timed one drops them, a valued one folds them together
+\ with `xor` - so the row is compared on both of its results rather than on
+\ whichever was on top.
 
 require lib/errors.f
 require lib/prelude.f
@@ -52,7 +30,7 @@ require lib/fmt.f
 require tools/codegen-compare-cabi.f
 require tools/codegen-compare-macho.f
 require tools/codegen-compare-clang.f
-require tools/codegen-compare-corpus4.f
+require tools/codegen-compare-corpus5.f
 require tools/codegen-tail-probe.f
 require tools/judge/src.f
 require tools/judge/chain.f
@@ -60,52 +38,28 @@ require tools/judge/row.f
 require src/compiler/native/dict.f
 require tools/judge/cost.f
 
-package JUDGE-CORPUS4
-
-private
-
-variable REC-CELL
-variable STEP-CELL
+package JUDGE-CORPUS5
 
 public
 
-\ The storage a subject reads. `none` for ten of the twelve.
+\ The storage a subject reads. This corpus reads none: every row is a call in
+\ tail position over an argument. The vocabulary is still declared, because the
+\ shape a row is written in is one shape across the corpora and a corpus that
+\ needed a second arm would add it rather than invent a form of its own.
 ENUM store DERIVE eq
    none
-   record
-   stepped
 ;ENUM
-
-\ The C twins' own copies of the pinned data, reached through the reference
-\ library. Public because a generated reference body names them.
-\
-\ THE TWO POINTERS ARE ASKED FOR ONCE. They are constants of the mapped
-\ library, and a generated TIMING body runs its inputs on every one of a
-\ quarter of a million repetitions: resolving a symbol and making a foreign
-\ call inside that loop put four hundred nanoseconds into both a row and its
-\ floor, where it cancelled but left the row's cost as the difference of two
-\ large nearly equal numbers. Cached, the input costs a load.
-: C-REC ( -- n )
-   REC-CELL @ 0<> if REC-CELL @ exit then
-   s" hc4_rec_ptr" CODEGEN-CABI:FN CODEGEN-CABI:I0 dup REC-CELL ! ;
-
-: C-STEP ( -- n )
-   STEP-CELL @ 0<> if STEP-CELL @ exit then
-   s" hc4_step_ptr" CODEGEN-CABI:FN CODEGEN-CABI:I0 dup STEP-CELL ! ;
-
-: C-RESET ( -- )
-   s" hc4_step_reset" CODEGEN-CABI:FN CODEGEN-CABI:I0 drop ;
 
 private
 
 : SOURCE$ ( -- ptr u8 n )
-   s" tools/codegen-compare-corpus4.f" ;
+   s" tools/codegen-compare-corpus5.f" ;
 
 \ A suffix of this corpus's own, because the judge measures the corpora one
 \ after another into one dictionary and two of them may spell a subject the same
 \ way.
 : SUFFIX$ ( -- ptr u8 n )
-   s" -J4" ;
+   s" -J5" ;
 
 \ The package this corpus publishes its subjects in, and therefore the package
 \ the derived words are published in too. A derived body may name storage that
@@ -114,38 +68,21 @@ private
 \ open, and the reader that takes a size off a dictionary record is given the
 \ qualifier, because that reader resolves a spelling as written.
 : QUALIFIER$ ( -- ptr u8 n )
-   s" CODEGEN-CORPUS4:" ;
+   s" CODEGEN-CORPUS5:" ;
 
 \ ---- the twelve rows, written once -------------------------------------------
 \ Each is: the name the corpus publishes it under, the storage it reads, its
 \ pinned input, and the C symbol that is its twin.
 \ typed-local-lint: allow-bare-local - row is the caller's own body, and a local
 \ annotation cannot carry a quotation effect.
-: EACH ( [ ptr u8 n JUDGE-CORPUS4:store ptr u8 n ptr u8 n -- ] -- ) {: row :}
-   s" CALL-FAN"      JUDGE--CORPUS4-STORE:NONE    s" 7"
-      s" hc4_call_fan"      row execute
-   s" CALL-FAN-BIG"  JUDGE--CORPUS4-STORE:NONE    s" 7"
-      s" hc4_call_fan_big"  row execute
-   s" CALL-LOOP-3"   JUDGE--CORPUS4-STORE:NONE    s" 1 2 3 7 CODEGEN-CORPUS4:LOOP-LEN"
-      s" hc4_call_loop_3"   row execute
-   s" WIDE-ARITY"    JUDGE--CORPUS4-STORE:NONE    s" 1 2 3 4 5 6"
-      s" hc4_wide_arity"    row execute
-   s" LADDER"        JUDGE--CORPUS4-STORE:NONE    s" 1000"
-      s" hc4_ladder"        row execute
-   s" PRESSURE-LOOP" JUDGE--CORPUS4-STORE:RECORD  s" CODEGEN-CORPUS4:LOOP-LEN"
-      s" hc4_pressure_loop" row execute
-   s" CALL-PRESSURE" JUDGE--CORPUS4-STORE:NONE    s" 1 2 3 4 5 6 7 9 CODEGEN-CORPUS4:LOOP-LEN"
-      s" hc4_call_pressure" row execute
-   s" BIG-CONSTS"    JUDGE--CORPUS4-STORE:NONE    s" CODEGEN-CORPUS4:LOOP-LEN"
-      s" hc4_big_consts"    row execute
-   s" MANY-LOCALS"   JUDGE--CORPUS4-STORE:NONE    s" 1 2 3 4 5 6 7 8 CODEGEN-CORPUS4:LOOP-LEN"
-      s" hc4_many_locals"   row execute
-   s" TINY-CALLEE"   JUDGE--CORPUS4-STORE:NONE    s" 0 CODEGEN-CORPUS4:LOOP-LEN"
-      s" hc4_tiny_callee"   row execute
-   s" FLOAT-MIX"     JUDGE--CORPUS4-STORE:NONE    s" 0 CODEGEN-CORPUS4:LOOP-LEN"
-      s" hc4_float_mix"     row execute
-   s" STORE-LOAD"    JUDGE--CORPUS4-STORE:STEPPED s" CODEGEN-CORPUS4:LOOP-LEN"
-      s" hc4_store_load"    row execute ;
+: EACH ( [ ptr u8 n JUDGE-CORPUS5:store ptr u8 n ptr u8 n -- ] -- ) {: row :}
+   s" TAIL-BIG"    JUDGE--CORPUS5-STORE:NONE  s" 7"  s" hc5_tail_big"    row execute
+   s" TAIL-WORK"   JUDGE--CORPUS5-STORE:NONE  s" 7"  s" hc5_tail_work"   row execute
+   s" NONTAIL"     JUDGE--CORPUS5-STORE:NONE  s" 7"  s" hc5_nontail"     row execute
+   s" TAIL-MID"    JUDGE--CORPUS5-STORE:NONE  s" 7"  s" hc5_tail_mid"    row execute
+   s" TAIL-CHAIN"  JUDGE--CORPUS5-STORE:NONE  s" 7"  s" hc5_tail_chain"  row execute
+   s" TAIL-PAIR"   JUDGE--CORPUS5-STORE:NONE  s" 7 9"  s" hc5_tail_pair"  row execute
+   s" TAIL-AFTER"  JUDGE--CORPUS5-STORE:NONE  s" 7"  s" hc5_tail_after"  row execute ;
 
 \ ---- the texts a column's body is built from ---------------------------------
 
@@ -170,34 +107,26 @@ variable NAME-TXT-U
    lenp @ u + lenp ! ;
 
 \ The pointer a subject's storage is reached by, in each of the two worlds.
-: HABU-STORE$ ( JUDGE-CORPUS4:store -- ptr u8 n ) {: st:JUDGE-CORPUS4:store :}
+: HABU-STORE$ ( JUDGE-CORPUS5:store -- ptr u8 n ) {: st:JUDGE-CORPUS5:store :}
    st MATCH store
       none OF s" " ENDOF
-      record OF s" CODEGEN-CORPUS4:REC " ENDOF
-      stepped OF s" CODEGEN-CORPUS4:STEP-AT " ENDOF
    ;MATCH ;
 
-: REF-STORE$ ( JUDGE-CORPUS4:store -- ptr u8 n ) {: st:JUDGE-CORPUS4:store :}
+: REF-STORE$ ( JUDGE-CORPUS5:store -- ptr u8 n ) {: st:JUDGE-CORPUS5:store :}
    st MATCH store
       none OF s" " ENDOF
-      record OF s" JUDGE-CORPUS4:C-REC " ENDOF
-      stepped OF s" JUDGE-CORPUS4:C-STEP " ENDOF
    ;MATCH ;
 
 \ What a VALUE body runs before the subject, so that the one subject which steps
 \ a cell answers from the pinned fill however many timing passes ran before it.
-: HABU-SETUP$ ( JUDGE-CORPUS4:store -- ptr u8 n ) {: st:JUDGE-CORPUS4:store :}
+: HABU-SETUP$ ( JUDGE-CORPUS5:store -- ptr u8 n ) {: st:JUDGE-CORPUS5:store :}
    st MATCH store
       none OF s" " ENDOF
-      record OF s" " ENDOF
-      stepped OF s" CODEGEN-CORPUS4:S-RESET " ENDOF
    ;MATCH ;
 
-: REF-SETUP$ ( JUDGE-CORPUS4:store -- ptr u8 n ) {: st:JUDGE-CORPUS4:store :}
+: REF-SETUP$ ( JUDGE-CORPUS5:store -- ptr u8 n ) {: st:JUDGE-CORPUS5:store :}
    st MATCH store
       none OF s" " ENDOF
-      record OF s" " ENDOF
-      stepped OF s" JUDGE-CORPUS4:C-RESET " ENDOF
    ;MATCH ;
 
 : HABU-IN$ ( -- ptr u8 n )   HABU-IN HABU-IN-U @ ;
@@ -207,8 +136,8 @@ variable NAME-TXT-U
 
 \ Build the two input texts for a row. `valued` adds the setup a value body
 \ needs and a timing body must not have.
-: INPUTS! ( JUDGE-CORPUS4:store ptr u8 n bool -- )
-   {: st:JUDGE-CORPUS4:store a:ptr u:n valued:bool :}
+: INPUTS! ( JUDGE-CORPUS5:store ptr u8 n bool -- )
+   {: st:JUDGE-CORPUS5:store a:ptr u:n valued:bool :}
    valued if st HABU-SETUP$ else s" " then HABU-IN HABU-IN-U PUT
    st HABU-STORE$ HABU-IN HABU-IN-U ADD
    a u HABU-IN HABU-IN-U ADD
@@ -267,8 +196,8 @@ variable EMPTY-NAME-U
 create SUB-RC SUB-MAX cells allot
 variable SUB-N
 
-: PUBLISH-ROW ( ptr u8 n JUDGE-CORPUS4:store ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n st:JUDGE-CORPUS4:store ia:ptr iu:n ta:ptr tu:n :}
+: PUBLISH-ROW ( ptr u8 n JUDGE-CORPUS5:store ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n st:JUDGE-CORPUS5:store ia:ptr iu:n ta:ptr tu:n :}
    SUB-N @ SUB-MAX >= if E-JUDGE-ROW-CAP throw then
    a u JUDGE-SRC:FIND {: d:n :}
    d 0 < if E-JUDGE-SRC-ROW throw then
@@ -288,12 +217,14 @@ variable OUTS-CELL                 \ how many values the subject being measured 
    OUTS-CELL @ ;
 
 \ A foreign call leaves ONE value however many its habu twin leaves: that is
-\ the C calling convention and not a property of the row.
+\ the C calling convention and not a property of the row. So a reference body
+\ accounts for one, and a subject that leaves more has no single reference
+\ answer to be compared with - which the table says rather than hides.
 : REF-OUTS ( -- n )
    1 ;
 
-: BYTES-ROW ( ptr u8 n JUDGE-CORPUS4:store ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n st:JUDGE-CORPUS4:store ia:ptr iu:n ta:ptr tu:n :}
+: BYTES-ROW ( ptr u8 n JUDGE-CORPUS5:store ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n st:JUDGE-CORPUS5:store ia:ptr iu:n ta:ptr tu:n :}
    a u JUDGE-SRC:FIND {: d:n :}
    a u QUAL!
    NAME$ JUDGE-ROW:OPEN {: k:n :}
@@ -312,8 +243,8 @@ variable OUTS-CELL                 \ how many values the subject being measured 
 \ compiles is not a body that computes the row, and a column that answers
 \ something else is caught here rather than reported as a cost.
 
-: VALUE-ROW ( ptr u8 n JUDGE-CORPUS4:store ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n st:JUDGE-CORPUS4:store ia:ptr iu:n ta:ptr tu:n :}
+: VALUE-ROW ( ptr u8 n JUDGE-CORPUS5:store ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n st:JUDGE-CORPUS5:store ia:ptr iu:n ta:ptr tu:n :}
    a u QUAL!
    a u JUDGE-SRC:FIND JUDGE-SRC:OUT OUTS-CELL !
    NAME$ JUDGE-ROW:FIND {: k:n :}
@@ -338,8 +269,8 @@ variable OUTS-CELL                 \ how many values the subject being measured 
 \ while they are warm, so keeping the best of an interleaved sequence is what
 \ stops the order of the columns from being part of the answer.
 
-: TIME-ROW ( ptr u8 n JUDGE-CORPUS4:store ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n st:JUDGE-CORPUS4:store ia:ptr iu:n ta:ptr tu:n :}
+: TIME-ROW ( ptr u8 n JUDGE-CORPUS5:store ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n st:JUDGE-CORPUS5:store ia:ptr iu:n ta:ptr tu:n :}
    a u QUAL!
    a u JUDGE-SRC:FIND JUDGE-SRC:OUT OUTS-CELL !
    NAME$ JUDGE-ROW:FIND {: k:n :}
@@ -399,9 +330,9 @@ public
 \ the words they are compared against. It is written out here because `package`
 \ parses its operand: the package a corpus is judged in cannot be a parameter,
 \ so it is a line of this file rather than a cell.
-package CODEGEN-CORPUS4
+package CODEGEN-CORPUS5
 public
 
-JUDGE-CORPUS4:PUBLISH-ALL
+JUDGE-CORPUS5:PUBLISH-ALL
 
 ;package

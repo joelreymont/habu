@@ -20,6 +20,13 @@ subject to the chain and recording what came back, so a subject that starts
 being refused and one that stops both move this file. Nothing here is a list
 of names anybody keeps in step by hand.
 
+A ROW MARKED (tail) IS NOT LIKE FOR LIKE. The chain's routine there leaves by
+a branch to a callee, so its byte count is the routine and not the whole of
+the program: the callee is real and its bytes are under some other row or
+under none. The callee is NOT added in, because one callee is reached by
+several rows and adding it to each would claim its bytes several times over.
+Read the gap on those rows as arithmetic rather than as a verdict.
+
 A LARGER row is a finding and the check exits non-zero on it. A REFUSED row
 is a raw measurement printed with its code: the capability it waits for is a
 dot, and a check that failed on it would fail every day until that dot lands.
@@ -45,10 +52,17 @@ CODEGEN-CORPUS4:MANY-LOCALS         608    108     80  smaller
 CODEGEN-CORPUS4:TINY-CALLEE         364     56     12  smaller
 CODEGEN-CORPUS4:FLOAT-MIX           364     84    236  smaller
 CODEGEN-CORPUS4:STORE-LOAD          312     60     36  smaller
+CODEGEN-CORPUS5:TAIL-BIG             24      4     40  smaller (tail)
+CODEGEN-CORPUS5:TAIL-WORK            64     16     44  smaller (tail)
+CODEGEN-CORPUS5:NONTAIL              64     36     44  smaller
+CODEGEN-CORPUS5:TAIL-MID             24      4     40  smaller (tail)
+CODEGEN-CORPUS5:TAIL-CHAIN           24      4     40  smaller (tail)
+CODEGEN-CORPUS5:TAIL-PAIR            24      4     52  smaller (tail)
+CODEGEN-CORPUS5:TAIL-AFTER           28     24     72  smaller (tail)
 
 clang flags: -O2 -arch arm64 -fno-math-errno
 
-rows: 12, refused by the chain: 2, larger than the engine's: 0, columns disagreeing on the answer: 0
+rows: 19, refused by the chain: 2, larger than the engine's: 0, columns disagreeing on the answer: 0, leaving by a tail branch: 6
 
 ---- measured on this host, printed and not checked -------------------
 
@@ -73,21 +87,28 @@ different addresses with a cold instruction cache each time. That widens the
 spread and it is deliberate: a placement a row was lucky in once is not a
 property of the code the compiler emitted.
 
-NOISE FLOOR, MEASURED THIS RUN: 174 permille. That is the widest gap between
+NOISE FLOOR, MEASURED THIS RUN: 259 permille. That is the widest gap between
 two measurements of ONE program in this process, so a difference between two
-columns smaller than it is not a difference. The floor itself measured 1994 ps.
+columns smaller than it is not a difference. The floor itself measured 1909 ps.
 
 word                                  old    chain    clang
 --------------------------------  -------  -------  -------
-CODEGEN-CORPUS4:CALL-FAN             5.29    -0.10    -0.28
-CODEGEN-CORPUS4:CALL-FAN-BIG        11.49    -0.03    -0.03
-CODEGEN-CORPUS4:CALL-LOOP-3         49.12     5.64     3.27
-CODEGEN-CORPUS4:WIDE-ARITY           2.89     1.16     0.28
-CODEGEN-CORPUS4:LADDER               2.41     0.94     0.23
-CODEGEN-CORPUS4:PRESSURE-LOOP      203.81        -     0.07
-CODEGEN-CORPUS4:CALL-PRESSURE      160.42        -     2.71
-CODEGEN-CORPUS4:BIG-CONSTS          80.20     8.17     1.66
-CODEGEN-CORPUS4:MANY-LOCALS        126.10     2.18     0.24
-CODEGEN-CORPUS4:TINY-CALLEE         58.58     0.32    -0.43
-CODEGEN-CORPUS4:FLOAT-MIX           32.42     3.39     1.33
-CODEGEN-CORPUS4:STORE-LOAD          36.19     3.38     3.00
+CODEGEN-CORPUS4:CALL-FAN             5.22     0.32     0.00
+CODEGEN-CORPUS4:CALL-FAN-BIG        11.35     0.18    -0.15
+CODEGEN-CORPUS4:CALL-LOOP-3         51.66     3.76     2.79
+CODEGEN-CORPUS4:WIDE-ARITY           3.03     1.29    -0.56
+CODEGEN-CORPUS4:LADDER               2.58     1.02     0.34
+CODEGEN-CORPUS4:PRESSURE-LOOP      204.13        -    -0.45
+CODEGEN-CORPUS4:CALL-PRESSURE      163.82        -     2.76
+CODEGEN-CORPUS4:BIG-CONSTS          81.43     8.41     2.17
+CODEGEN-CORPUS4:MANY-LOCALS        126.30     2.44     0.19
+CODEGEN-CORPUS4:TINY-CALLEE         59.82     0.40    -0.29
+CODEGEN-CORPUS4:FLOAT-MIX           40.55     4.24     1.55
+CODEGEN-CORPUS4:STORE-LOAD          36.56     3.79     3.74
+CODEGEN-CORPUS5:TAIL-BIG            12.53     0.44     1.06
+CODEGEN-CORPUS5:TAIL-WORK           13.87     0.45     0.22
+CODEGEN-CORPUS5:NONTAIL             13.82     0.73     0.13
+CODEGEN-CORPUS5:TAIL-MID            12.60     0.28    -0.04
+CODEGEN-CORPUS5:TAIL-CHAIN          12.74     0.73    -0.18
+CODEGEN-CORPUS5:TAIL-PAIR            1.97     0.44     0.12
+CODEGEN-CORPUS5:TAIL-AFTER          25.90     1.07     0.32

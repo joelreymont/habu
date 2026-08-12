@@ -88,7 +88,9 @@ variable TEXT-U
    k CHAIN-CELL
    k REF-CELL
    s"   " APPEND
-   k JUDGE-ROW:VERDICT JUDGE-ROW:VERDICT$ LINE ;
+   k JUDGE-ROW:VERDICT JUDGE-ROW:VERDICT$ APPEND
+   k JUDGE-ROW:NEW-TAIL? if s"  (tail)" APPEND then
+   NL ;
 
 : HEAD ( -- )
    s" habu code generator judge" LINE
@@ -112,6 +114,13 @@ variable TEXT-U
    s" subject to the chain and recording what came back, so a subject that starts" LINE
    s" being refused and one that stops both move this file. Nothing here is a list" LINE
    s" of names anybody keeps in step by hand." LINE
+   NL
+   s" A ROW MARKED (tail) IS NOT LIKE FOR LIKE. The chain's routine there leaves by" LINE
+   s" a branch to a callee, so its byte count is the routine and not the whole of" LINE
+   s" the program: the callee is real and its bytes are under some other row or" LINE
+   s" under none. The callee is NOT added in, because one callee is reached by" LINE
+   s" several rows and adding it to each would claim its bytes several times over." LINE
+   s" Read the gap on those rows as arithmetic rather than as a verdict." LINE
    NL
    s" A LARGER row is a finding and the check exits non-zero on it. A REFUSED row" LINE
    s" is a raw measurement printed with its code: the capability it waits for is a" LINE
@@ -140,7 +149,8 @@ variable TEXT-U
    s" rows: " APPEND JUDGE-ROW:ROWS NUM$ APPEND
    s" , refused by the chain: " APPEND JUDGE-ROW:REFUSED-ROWS NUM$ APPEND
    s" , larger than the engine's: " APPEND JUDGE-ROW:LARGER-ROWS NUM$ APPEND
-   s" , columns disagreeing on the answer: " APPEND JUDGE-ROW:DISAGREEING-ROWS NUM$ LINE ;
+   s" , columns disagreeing on the answer: " APPEND JUDGE-ROW:DISAGREEING-ROWS NUM$ APPEND
+   s" , leaving by a tail branch: " APPEND JUDGE-ROW:TAIL-ROWS NUM$ LINE ;
 
 \ ---- the measured half -------------------------------------------------------
 \ Everything below MARK is printed and none of it is compared.

@@ -196,19 +196,33 @@ public
       E-JUDGE-COST-COLUMN throw
    then ;
 
-\ Time one row's program in one column: the row's pinned inputs as text, and the
-\ text that consumes them and leaves the answer. Answers picoseconds per call,
+\ How a body disposes of what the subject left. A row's subject leaves as many
+\ values as its stack comment declares, and a generated body has to account for
+\ every one of them or the checker declines it. A TIMED body drops them all; a
+\ VALUED body folds them into one cell with `xor`, so a row that leaves two
+\ results is compared on both rather than on whichever happened to be on top.
+: DROPS+ ( n -- ) {: outs:n :}
+   outs 0 ?do s"  drop" TXT CODEGEN:APPEND-STRING loop ;
+
+: FOLD+ ( n -- ) {: outs:n :}
+   outs 0= if s"  0" TXT CODEGEN:APPEND-STRING exit then
+   outs 1- 0 ?do s"  xor" TXT CODEGEN:APPEND-STRING loop ;
+
+\ Time one row's program in one column: the row's pinned inputs as text, the
+\ text that consumes them, and how many values the subject leaves. Answers
+\ picoseconds per call,
 \ measured the way every other row of this repository is measured - the
 \ comparison harness's own timing word, which runs a fixed number of repetitions
 \ a fixed number of times and keeps the fastest run.
-: TIME ( ptr u8 n ptr u8 n -- n ) {: ia:ptr iu:n ca:ptr cu:n :}
+: TIME ( ptr u8 n ptr u8 n n -- n ) {: ia:ptr iu:n ca:ptr cu:n outs:n :}
    0 PICOS-CELL !
    OPEN+
    s" [: " TXT CODEGEN:APPEND-STRING
    ia iu TXT CODEGEN:APPEND-STRING
    s"  " TXT CODEGEN:APPEND-STRING
    ca cu TXT CODEGEN:APPEND-STRING
-   s"  drop ;] CODEGEN-COMPARE:TIME-ONLY JUDGE-COST:PICOS!" TXT CODEGEN:APPEND-STRING
+   outs DROPS+
+   s"  ;] CODEGEN-COMPARE:TIME-ONLY JUDGE-COST:PICOS!" TXT CODEGEN:APPEND-STRING
    CLOSE+
    COMPILE-AND-RUN
    PICOS-CELL @ ;
@@ -228,12 +242,13 @@ public
 
 \ The value that same program computes, on the same pinned inputs, through the
 \ same column. What makes a time a measurement of the right program.
-: VALUE ( ptr u8 n ptr u8 n -- n ) {: ia:ptr iu:n ca:ptr cu:n :}
+: VALUE ( ptr u8 n ptr u8 n n -- n ) {: ia:ptr iu:n ca:ptr cu:n outs:n :}
    0 RESULT-CELL !
    OPEN+
    ia iu TXT CODEGEN:APPEND-STRING
    s"  " TXT CODEGEN:APPEND-STRING
    ca cu TXT CODEGEN:APPEND-STRING
+   outs FOLD+
    s"  JUDGE-COST:RESULT!" TXT CODEGEN:APPEND-STRING
    CLOSE+
    COMPILE-AND-RUN

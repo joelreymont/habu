@@ -257,4 +257,12 @@ public
 : SIZE ( n -- n ) {: k:n :}
    k QUALIFIED$ NTAILPROBE:CODE-BYTES ;
 
+\ Does the derived word leave by a branch to a callee? Then its byte count is
+\ not the whole of its program: the callee it reaches carries the rest, and a
+\ column that subtracted the two would have the sign of a real difference
+\ wrong. Read off the emitted code by the same probe, so the answer cannot go
+\ stale against a compiler that stops emitting the branch.
+: TAIL? ( n -- bool ) {: k:n :}
+   k QUALIFIED$ NTAILPROBE:TAIL-BRANCH? ;
+
 ;package
