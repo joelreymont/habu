@@ -6066,3 +6066,13 @@ anything (recovery verified by rebuilding a byte-identical engine).
 (4) A new package in a legacy engine file is byte-neutral for the
 engine size but shifts baked WIDs - the sha changes while the size
 does not; expect it, don't chase it.
+
+## The residency landing's three (2026-08-12)
+
+(1) A build that never loads the mutated file proves nothing -
+install --force does not compile the native chain (only migrate.f
+requires select.f), so an install rc 0 after a chain mutation is
+silence, not evidence; the consumer load is the check. (2) One HB_TMP
+per RUN, not just per lane - two gate runs of one lane sharing a root
+wiped each other mid-flight. (3) The rg wrapper rewrote matched text
+in search output (--replace struck again); file lists came from grep.
