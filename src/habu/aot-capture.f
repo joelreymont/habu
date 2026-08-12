@@ -134,10 +134,9 @@ variable ACAP-PP                                             \ pool scan cursor
 
 \ --- records: copy host record (48 bytes), rebase ordinary [0] xt to blob offset ---
 : ACAP-REC-DST ( n -- ptr u8 ) 48 * AOT-REC-BUF@ swap + ;
-variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names / unresolved call sites
+variable AOT-UNRES-N                          \ kept-source counter: unresolved call sites
 : ACAP-ADD-REC ( n n -- ) {: k:n bstart:n :}
    AOT-REC-N @ AOT-REC-MAX >= if s" aot-capture: too many records" 74 die then
-   k AOT-REC AOT-REXT? if 1 AOT-EXT-N +! then         \ EXT (long) name -> kept-source (counted)
    k AOT-REC AOT-A>U8 {: src:ptr :}
    AOT-REC-N @ ACAP-REC-DST {: d:ptr :}
    48 0 ?do src i + c@  d i + c!  loop                        \ verbatim 48-byte copy
@@ -161,6 +160,21 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
 \ the former pad byte so certified arity survives the seed round-trip. ---
 : ACAP-CREC-DST ( n -- ptr u8 ) AOT-CREC-ROW * AOT-REC-MAX 48 * +  AOT-REC-BUF@ swap + ;
 : ACAP-REC48@ ( -- ptr u8 ) AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * +  AOT-REC-BUF@ swap + ;
+
+\ A 48B record's EXT bit, read off the copy rather than the live dictionary.
+: ACAP-REC-EXT? ( ptr u8 -- bool ) {: v:ptr :}
+   v 20 + ACAP-W32@ 28 rshift 2 and 0= 0= ;
+
+\ A record's name bytes. An inline name (up to DNAME-INL = 16) sits in the record
+\ at [24]. A longer one does not: the engine's own definer writes it at CP, inside
+\ the code region (habu2.f C-STORE-NAME), and puts that address in the cell at
+\ [24]. Either kind goes into the deduped pool from here, so the seed reads every
+\ name the same way whatever its length -- which is what makes an EXT-named word
+\ capturable at all. It used to be refused outright, and the compiler chain has
+\ 45 records the refusal would have thrown out.
+: ACAP-REC-NAME ( ptr u8 bool -- ptr u8 ) {: v:ptr ext:bool :}
+   ext 0= if v 24 + exit then
+   v 24 + ACAP-W32@  v 28 + ACAP-W32@ 32 lshift or  AOT-N>U8 ;
 : ACAP-COMPACT-RECS ( -- )
    AOT-REC-N @ 0 ?do
       i ACAP-REC-DST {: v:ptr :}                              \ verbatim 48B record
@@ -173,21 +187,29 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
       v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
       v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
       v 20 + ACAP-W32@ $000FFFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
-      flags 2 and 0= 0= if s" aot-capture: rec has EXT name (uncompactable)" 74 die then
+      v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
       v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
-      len 16 > if s" aot-capture: rec name too long for inline" 74 die then
+      ext 0= len 16 > and if s" aot-capture: rec name too long for inline" 74 die then
       pkg if $FFFFFFFF else v 40 + ACAP-W32@ then {: wid:n :} \ package marker or full ordinary u32 WID
       v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}
-      v 24 + len ACAP-POOL-ADD {: noff:n :}                   \ inline name -> deduped pool entry
+      v ext ACAP-REC-NAME len ACAP-POOL-ADD {: noff:n :}      \ the name -> deduped pool entry
       i ACAP-CREC-DST {: c:ptr :}                             \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + wid u32
       start c AOT-P32!  clen c 4 + AOT-P32!  noff c 8 + AOT-P32!
       flags  minin 8 lshift or  c 12 + AOT-P32!    \ one store so the two spare bytes are written zero
       wid c 16 + AOT-P32!
    loop ;
 
-\ Expand a compact AOT-CREC-ROW record to a 48B dict record image -- the EXACT field
+\ Expand a compact AOT-CREC-ROW record to a 48B dict record image -- the field
 \ reconstruction EM-AOT-REGISTER-RECS runs at boot. Ordinary [0] remains a blob
 \ offset for the build-time inverse proof; boot adds CP. Package [0]/[8] stay raw.
+\ ONE CELL IS NOT MODELLED, AND CANNOT BE. For an EXT-named record the boot pass
+\ stores the RUNTIME address of the pool entry's bytes in [24], and that address
+\ exists only in the engine being booted -- the same reason the code literals
+\ travel b0-relative. So the model leaves [24..32) zero for those records and
+\ ACAP-PROVE-RECS proves the NAME rather than the pointer: the pooled name the
+\ seed will hand the record is the host record's own name, byte for byte. The
+\ pointer's proof is a boot, and it is a direct one - EM-AOT-BOOTRUN resolves an
+\ entry word through LFIND, which reads exactly this cell for an EXT name.
 : ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact record, s=48B out
    c ACAP-W32@ s AOT-N-C!                                     \ [0..8) = blob-off or package public WID
    c 4 + ACAP-W32@ s 8 + AOT-N-C!                             \ [8..16) = code len or package private WID
@@ -197,17 +219,37 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    c 13 + c@ {: minin:n :}
    flags 60 lshift  minin 52 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | len
    0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
-   len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
+   flags 2 and 0= if                                          \ inline name: the bytes live in the record
+      len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
+   then
    c 16 + ACAP-W32@ dup $FFFFFFFF = if drop -1 then
    s 40 + AOT-N-C! ;                                          \ package marker sign-extends; ordinary wid stays u32
 variable ACAP-RECMM                                           \ record-proof mismatch count
+\ The pooled name a record will resolve to at boot IS the name the host record
+\ carries: same length byte, same bytes. This is what stands in for comparing an
+\ EXT record's [24] cell, which holds two different addresses for the same name.
+: ACAP-PROVE-NAME ( ptr u8 ptr u8 -- ) {: c:ptr v:ptr :}      \ c=compact row, v=verbatim record
+   c 8 + ACAP-W32@ {: noff:n :}
+   v 16 + ACAP-W32@ {: len:n :}
+   v  v ACAP-REC-EXT?  ACAP-REC-NAME {: nm:ptr :}
+   AOT-NAMES-BUF@ noff + c@ len = 0= if 1 ACAP-RECMM +! then
+   len 0 ?do
+      nm i + c@  AOT-NAMES-BUF@ noff 1+ + i + c@  = 0= if 1 ACAP-RECMM +! then
+   loop ;
 : ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
    0 ACAP-RECMM !
    ACAP-REC48@ {: s:ptr :}
    AOT-REC-N @ 0 ?do
-      i ACAP-CREC-DST s ACAP-EXPAND-REC                       \ rebuild 48B from compact
+      i ACAP-CREC-DST {: c:ptr :}
+      c s ACAP-EXPAND-REC                                     \ rebuild 48B from compact
       i ACAP-REC-DST {: v:ptr :}
-      48 0 ?do  s i + c@  v i + c@  = 0= if 1 ACAP-RECMM +! then  loop
+      v ACAP-REC-EXT? {: ext:bool :}
+      48 0 ?do
+         ext  i 24 >= and  i 32 < and  0= if                  \ EXT: [24..32) is the out-of-line pointer
+            s i + c@  v i + c@  = 0= if 1 ACAP-RECMM +! then
+         then
+      loop
+      ext if c v ACAP-PROVE-NAME then                         \ ... and the name stands in for it
    loop
    ACAP-RECMM @ 0= 0= if
       s" aot-capture: RECORD EXPANSION MISMATCH count=" type ACAP-RECMM @ . cr
@@ -519,7 +561,7 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
 \ region [blob-start, blob-end); [d0,d1) is the REPL DATA span (create/variable).
 : ACAP-RESET ( -- )
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
-   0 AOT-EXT-N !  0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
+   0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  ACAP-PWID-CLEAR
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public

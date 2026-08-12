@@ -4066,9 +4066,9 @@ s" c-local-ref" s" label label --" TRUST
 \ x2..x7 are LHIDXADD's saved set; x9/x11/x12 survive it. Records are 4B-aligned so
 \ each 32-bit word loads with LDRW.
 : EM-AOT-REGISTER-RECS ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: rloop:label rdone:label pkg:label fields:label nloop:label ndone:label
-      pkg-wid:label widok:label next:label :}
+      pkg-wid:label widok:label next:label extname:label nameok:label :}
    9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (AOT-CREC-ROW stride), x12 = k
    11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N (survives LHIDXADD)
    rloop LBL,  12 11 CMP,  C-GE rdone BCOND,
@@ -4091,12 +4091,23 @@ s" c-local-ref" s" label label --" TRUST
       7 7 3 ORR,  7 10 16 STR,                      \ [16] = flags<<60 | min-in<<52 | len
       2 0 MOVZ,  2 10 24 STR,  2 10 32 STR,         \ zero [24..40)
       4 4 1 ADDI,                                   \ x4 = name src (entry+1)
+      \ A name past DNAME-INL does not fit the record, and the engine's own
+      \ definer keeps such a name out of line with [24] pointing at its bytes
+      \ (C-STORE-NAME). The pool entry in __text IS those bytes and outlives the
+      \ boot, so the record points there -- exactly how the baked cold-prefix
+      \ records carry their long names (ENGINE-EMIT:EMIT-DICT + EM-SEED-DICT).
+      \ The snapshot walk already knows this shape: LSNAPRBD's text-band pass
+      \ folds a dictionary [24] that lands in __text to a canonical 0 on the way
+      \ out and back to the live text base on the way in.
+      6 6 2 ANDI,  6 extname CBNZ,                  \ word3 flags & DNAME-EXT
       3 0 MOVZ,                                     \ x3 = i
       nloop LBL,  3 5 CMP,  C-GE ndone BCOND,
          2 4 3 ADD,  2 2 0 LDRB,                    \ x2 = name[i]
          7 10 24 ADDI,  7 7 3 ADD,  2 7 0 STRB,     \ dict[24+i] = name[i]
          3 3 1 ADDI,  nloop B,
-      ndone LBL,
+      ndone LBL,  nameok B,
+      extname LBL,  4 10 24 STR,                    \ [24] = the pool entry's bytes
+      nameok LBL,
       6 9 16 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg-wid BCOND,
       6 10 40 STR,                                  \ ordinary [40] wid = word4 (full u32, hi=0)
       4 6 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE widok BCOND,   \ WIDN = max(WIDN, wid+1)

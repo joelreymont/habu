@@ -1,4 +1,4 @@
-\ aot-wide-format-suite.f - the AOT capture format past its 64 KiB world
+\ aot-wide-format-suite.f - what the widened AOT capture format can now carry
 \ (dot habu-widen-the-aot-089f5faf).
 \
 \ WHAT THIS LOCKS. Every offset in the baked ahead-of-time frame used to be a
@@ -23,17 +23,26 @@
 \ suite matches are printed only on the far side of them, so a window that
 \ stopped being big enough fails the build instead of quietly proving nothing.
 \
-\ NOT COVERED HERE, and covered rather than faked: that the engine so built
-\ actually BOOTS and reports the magic. The AOT seed is armed at the interactive
-\ REPL entry and nowhere else, so only a PTY boot can observe it; that half lives
+\ THE SECOND THING THE WIDENING BUYS, and the second case here: a NAME that does
+\ not fit its dictionary record. Past DNAME-INL the definer keeps the name out of
+\ line and the record's [24] cell points at the bytes; the capture used to refuse
+\ such a record by name ("rec has EXT name (uncompactable)"), and the compiler
+\ chain has 45 of them. The HABU_AOT_EXT=1 mode puts one in the window and dies
+\ unless the capture really produced an out-of-line record, so the case cannot
+\ pass on a window whose names all shrank back under the limit.
+\
+\ NOT COVERED HERE, and covered rather than faked: that the engines so built
+\ actually BOOT - the over-64 KiB one reporting its magic, the out-of-line-named
+\ one being FOUND by its long name. The AOT seed is armed at the interactive REPL
+\ entry and nowhere else, so only a PTY boot can observe either; that half lives
 \ in test/aot-data-span-forge.f beside the other seed-pass boot regressions, and
 \ runs on Linux hosts, which are the ones this tree's PTY helper supports. What
-\ this suite adds on every host is that the capture and the bake of an
-\ over-64 KiB window succeed at all, which is the half that used to be impossible.
+\ this suite adds on every host is that the capture and the bake succeed at all,
+\ which is the half that used to be impossible in both cases.
 \
-\ Cost: one child engine build, larger than the plain variant because the maker
-\ compiles the filler. Registered as `TEST:SUITE aot-wide-format` in
-\ test/gate-stdlib-cases.f. Run standalone:
+\ Cost: two child engine builds; the big-window one is larger than the plain
+\ variant because the maker compiles the filler. Registered as
+\ `TEST:SUITE aot-wide-format` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-wide-format-suite.f
 
 require lib/errors.f
@@ -67,8 +76,9 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 
+\ One tree per build, each registered for cleanup, so "the image exists" is a
+\ statement about the build that just ran and never about a leftover.
 : SETUP ( -- )
-   CLEANUP-RESET
    s" habu-aot-wide" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
@@ -79,10 +89,10 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    s" --load" >LEN PROC-ARGV+
    s" test/aot-wid-build.f" >LEN PROC-ARGV+ ;
 
-: BUILD-BIG ( -- )
+: BUILD-MODE ( ptr u8 n -- ) {: k:ptr ku:n :}
    PROC-ENV-RESET
    s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
-   s" HABU_AOT_BIG" >LEN s" 1" >LEN PROC-ENV+
+   k ku >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    BUILDER-ARGV
    PLAIN$ >LEN  OUT CAP >LEN  ERR CAP >LEN  BUILD-TIMEOUT-MS >MS
@@ -108,12 +118,15 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
 
-: BODY ( -- )
-   SETUP
-   BUILD-BIG
-   s" a capture window past the old 64 KiB ceiling builds cleanly" T-LABEL
+: REQUIRE-BUILD ( ptr u8 n -- ) {: m:ptr mu:n :}
+   m mu T-LABEL
    RC @ 0 T=
-   RC @ 0 <> if s" aot-wide-format: builder stderr:" type cr  ERR$ type cr  RC @ throw then
+   RC @ 0 <> if s" aot-wide-format: builder stderr:" type cr  ERR$ type cr  RC @ throw then ;
+
+: PROBE-BIG-WINDOW ( -- )
+   SETUP
+   s" HABU_AOT_BIG" BUILD-MODE
+   s" a capture window past the old 64 KiB ceiling builds cleanly" REQUIRE-BUILD
    s" the captured blob passed 64 KiB" T-LABEL
    OUT$ s" aot-wid-build: big-blob " CONTAINS? TTRUE
    s" a call site was recorded above the old u16 offset ceiling" T-LABEL
@@ -127,6 +140,24 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    RC @ 0 T=
    s" and computes with it" T-LABEL
    OUT$ s" 42" CONTAINS? TTRUE ;
+
+: PROBE-EXT-NAME ( -- )
+   SETUP
+   s" HABU_AOT_EXT" BUILD-MODE
+   s" a window holding an out-of-line name builds cleanly" REQUIRE-BUILD
+   s" the capture produced an out-of-line-named record" T-LABEL
+   OUT$ s" aot-wid-build: ext-recs " CONTAINS? TTRUE
+   s" the out-of-line-name variant image exists after the build" T-LABEL
+   HB$ EXISTS? TTRUE
+   BATCH-OK
+   s" the out-of-line-name variant still runs a batch program" T-LABEL
+   RC @ 0 T=
+   s" and computes with it" T-LABEL
+   OUT$ s" 42" CONTAINS? TTRUE ;
+
+: BODY ( -- )
+   PROBE-BIG-WINDOW
+   PROBE-EXT-NAME ;
 
 public
 

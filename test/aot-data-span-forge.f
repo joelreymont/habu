@@ -43,6 +43,14 @@
 \         buffer" - so the case is red-first by refusal rather than by a wrong
 \         answer. test/aot-wide-format-suite.f owns the build half, which runs on
 \         every host; this is the half that needs the terminal.
+\   EXT   : a variant whose window holds a word whose NAME is too long for its
+\         dictionary record must find that word at boot. The boot-run resolves
+\         its entry words through LFIND, and for such a record LFIND compares the
+\         token against the bytes the record's [24] cell points at - which the
+\         seed sets to the baked name pool. A wrong pointer finds nothing and the
+\         boot-run exits $52 silently, so the reported magic is the cell's proof.
+\         On the pre-widening format the build never got this far either: the
+\         capture refused the record outright.
 \
 \ Spawn-only helper: test/aot-wid-suite.f runs it as a child and gates on its exit
 \ code; it is not a TEST:SUITE member, like test/aot-wid-build.f. The PTY
@@ -311,6 +319,33 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    HBPWID$ EXISTS? TTRUE
    ASSERT-BIG-WINDOW-BOOTS ;
 
+\ The out-of-line name, proved where it can only be proved. The reporter's own
+\ name is longer than a dictionary record can hold, so its record keeps the name
+\ elsewhere and the seed points [24] at the pooled bytes. The boot-run resolves
+\ its entries through LFIND, which for such a record compares the token against
+\ the bytes at [24] - so a wrong pointer there finds nothing and EM-AOT-BOOTRUN
+\ exits $52 with no report at all. Reading the magic back is the pointer's proof.
+: EXT-MAGIC$ ( -- ptr u8 n )
+   s" awb-ext=6510767442340633178" ;
+
+: ASSERT-EXT-NAME-BOOTS ( -- )
+   HBPWID$ PTY-SPAWN
+   s" AOT out-of-line name: the long-named word is found and runs at boot" T-LABEL
+   EXT-MAGIC$ WAIT-FOR TTRUE
+   4 SEND-C
+   s" AOT out-of-line name: the engine exits 0, not the boot-run's not-found" T-LABEL
+   PID @ >PID PROC-WAIT-RC MATCH result
+     ok  OF 0 T= ENDOF
+     err OF drop 1 0 T= ENDOF
+   ;MATCH
+   MFD @ close ;
+
+: PROBE-EXT-NAME ( -- )
+   s" HABU_AOT_EXT" BUILD-MODE
+   s" AOT out-of-line name: the variant built" T-LABEL
+   HBPWID$ EXISTS? TTRUE
+   ASSERT-EXT-NAME-BOOTS ;
+
 : BODY ( -- )
    RENDER-SPAN
    s" AOT data span guard: rendered span text parses back to 2*DATA-SIZE" T-LABEL
@@ -327,7 +362,8 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    ASSERT-FORGED-DIES
    ASSERT-LEGAL-BOOTS
    PROBE-WINDOW-CONTENT
-   PROBE-BIG-WINDOW ;
+   PROBE-BIG-WINDOW
+   PROBE-EXT-NAME ;
 
 public
 

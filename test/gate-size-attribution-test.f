@@ -563,9 +563,17 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ reconstructs 165367 exactly, and MACOS-TOTAL still equals
 \ BUILD-SIZE:BASELINE-MACOS in test/gate-build-size.f.
 \ The Linux rows below are owed a linux-host re-measure for this delta too.
-127120 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-12 re-measured live at the macOS byte-fixpoint for the second half of
+\ the same dot: an out-of-line name (past DNAME-INL) is no longer refused by the
+\ capture, so EM-AOT-REGISTER-RECS gains the arm that points such a record's [24]
+\ cell at the baked name pool instead of copying bytes into the record - four
+\ instructions (test the flag, branch, store, join). CODELEN 127120 -> 127136
+\ (+16), floor distance 144 -> 160. The extra sixteen bytes stay inside the 16 KiB
+\ __TEXT page the widening just moved into, so MACOS-SIGNATURE (1423) and
+\ MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
+127136 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-144 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+160 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

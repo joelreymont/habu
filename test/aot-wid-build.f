@@ -21,8 +21,9 @@
 \ it never adds a public tail to either. The rest of the build reuses
 \ tools/build-fixpoint.f exactly as the normal stdin build does.
 \
-\ Seven modes, selected by environment so one builder serves every case its
-\ companion test/aot-wid-suite.f needs:
+\ Nine modes, selected by environment so one builder serves every case its
+\ companion suites need - test/aot-wid-suite.f, test/aot-wide-format-suite.f and
+\ the PTY half in test/aot-data-span-forge.f:
 \
 \   (default)          bake the two fixture ids, after checking the capture's own
 \                      shape contract on the live host: the band carries
@@ -60,6 +61,12 @@
 \                      are each past 65535 - and dies named if any of them is not,
 \                      so the fixture cannot quietly stop testing what it is for.
 \                      It prints the three measurements for its callers to read.
+\   HABU_AOT_EXT=1     put a word whose NAME is longer than a dictionary record can
+\                      hold inside the capture window, and run it from the
+\                      boot-run list. Such a record keeps its name out of line,
+\                      which the capture used to refuse outright; the build now
+\                      asserts one was captured, and the engine can only report
+\                      when the boot-run's LFIND matches that out-of-line name.
 \   HABU_AOT_D0_SKEW=N run the capture a SECOND time over the same window with
 \                      its DATA span start raised by N bytes. Hand it an N past
 \                      the whole span and the window then contains none of the
@@ -229,13 +236,15 @@ create DRV-CH 1 allot
 : BAKE-ENV$ ( -- ptr u8 n )      s" HABU_AOT_BAKE" GETENV ;
 : TRAP-ENV$ ( -- ptr u8 n )      s" HABU_AOT_TRAP" GETENV ;
 : BIG-ENV$ ( -- ptr u8 n )       s" HABU_AOT_BIG" GETENV ;
+: EXT-ENV$ ( -- ptr u8 n )       s" HABU_AOT_EXT" GETENV ;
 
 : REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
    v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
 
 : CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
    OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and
-   BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and  BIG-ENV$ nip 0 =  and ;
+   BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and  BIG-ENV$ nip 0 =  and
+   EXT-ENV$ nip 0 =  and ;
 
 \ The two shape checks are only DEFINED for the plain fixture build
 \ (CHECKS-WANTED?), so the window-content modes, which reuse the two bits and
@@ -372,10 +381,42 @@ create DRV-CH 1 allot
    REPL-BOOTRUN-LINES
    S\" s\" AWB-BIG-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
+\ --- the out-of-line name fixture (dot habu-widen-the-aot-089f5faf) ------------
+\ A name longer than DNAME-INL is not kept in its dictionary record: the definer
+\ writes the bytes at CP and the record's [24] cell points at them. The capture
+\ used to refuse such a record outright ("rec has EXT name (uncompactable)"), and
+\ the compiler chain has 45 of them. Now the name travels in the deduped pool
+\ like every other name and the seed points [24] at the pooled bytes.
+\ WHAT MAKES THE BOOT HALF DIRECT: the reporter's own name is the long one, and
+\ the boot-run list resolves its entry words through LFIND - which, for an EXT
+\ record, compares the caller's token against the bytes at [24]. A wrong pointer
+\ there cannot find the word, and EM-AOT-BOOTRUN exits $52 instead of reporting.
+: EXT-CHECK-DEF ( -- )
+   s" package AOT-CAPTURE" DRV-LINE
+   s" : EXT-REC-N ( -- n )" DRV-LINE
+   s"    0 AOT-REC-N @ 0 ?do i ACAP-CREC-DST 12 + c@ 2 and 0= 0= if 1+ then loop ;" DRV-LINE
+   s" : EXT-CHECK ( -- )" DRV-LINE
+   s"    EXT-REC-N {: n:n :}" DRV-LINE
+   s"    n 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: ext fixture captured no out-of-line name\" 74 die then" DRV-LINE
+   S\"    s\" aot-wid-build: ext-recs \" type n . cr ;" DRV-LINE
+   s" EXT-CHECK" DRV-LINE
+   s" ;package" DRV-LINE ;
+
+: EXT-FIXTURE-LINES ( -- )
+   s" create AWB-EXT-CELL 8 allot" DRV-LINE
+   s" $5A5AE47E47E45A5A AWB-EXT-CELL !" DRV-LINE
+   S\" : AWB-A-DELIBERATELY-LONG-REPORT-NAME ( -- ) s\" awb-ext=\" type AWB-EXT-CELL @ . cr ;" DRV-LINE
+   RECAPTURE-LINE
+   EXT-CHECK-DEF
+   REPL-BOOTRUN-LINES
+   S\" s\" AWB-A-DELIBERATELY-LONG-REPORT-NAME\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
 : FIXTURE-LINES ( -- )
    BAKE-ENV$ nip 0 > if BAKE-FIXTURE-LINES exit then
    TRAP-ENV$ nip 0 > if TRAP-FIXTURE-LINES exit then
-   BIG-ENV$ nip 0 > if BIG-FIXTURE-LINES then ;
+   BIG-ENV$ nip 0 > if BIG-FIXTURE-LINES exit then
+   EXT-ENV$ nip 0 > if EXT-FIXTURE-LINES then ;
 
 : INJECT ( -- )
    CHECKS-WANTED? if
