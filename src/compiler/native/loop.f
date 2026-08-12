@@ -47,12 +47,23 @@
 \   g    the guard. `d = sub(limit, start)` and `brz d -> (sk, pr)`.
 \   sk   the skip stub, reached when d is zero. Untouched by this pass.
 \   pr   the pre-header. `br pr -> h` handing the header its arguments.
-\   h    the header. Takes the live vector, then the index, then the limit. Holds
-\        the body, then `one = const 1`, `nx = add(idx, one)`,
+\   h    the header. Takes the live vector, then the index and the limit, then
+\        the locals that cross and the memory order when the definition has
+\        either. Holds the body, then `one = const 1`, `nx = add(idx, one)`,
 \        `f = lt(nx, lim)` and `brz f -> (xt, la)`.
 \   xt   the exit stub. `br xt -> jn` handing on the vector.
 \   la   the latch. `br la -> h` handing back the vector, `nx` and the limit.
 \   jn   the join both exits meet in.
+\
+\ THE TWO COUNTERS ARE FOUND BY THEIR USE AND NOT BY WHERE THEY SIT. They are the
+\ last two arguments only when the body binds no crossing local and touches no
+\ memory at all; a definition that loads anything gives every block it opens a
+\ memory-order argument after them, and a call gives it one per crossing local
+\ (src/compiler/native/elaborate.f OPEN-ARGS-H). So the index is read off the
+\ addition that counts and the limit off the comparison that stops, and PLAN-
+\ COUNTERS? below records where the pair really is. Everything else the header
+\ carries is a CARRIED position, numbered the way the exit stub hands them on,
+\ and CARRY-ARG is the one place that turns such a number into an argument.
 \
 \ THE GUARD IS READ, NOT ASSUMED, and it is the whole reason the trip count can
 \ be written down. `brz` takes its FIRST successor when the tested value is zero,
@@ -287,6 +298,7 @@ variable P-XT                        \ the exit stub
 variable P-LA                        \ the latch
 variable P-JN                        \ the join both exits meet in
 variable P-A                         \ how many live values the header carries besides the counters
+variable P-IDX                       \ which argument of the header the index is; the limit is the next
 variable P-K                         \ which of them is the accumulator
 variable P-M                         \ how many times a turn the index is added
 variable P-START                     \ the start, as the number its constant carries
@@ -539,14 +551,22 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
 \ Where in this block the operation defining a value is, or -1 when the value is
 \ not defined by an operation of this block at all - a block argument, or a value
 \ from another block.
+\ ANY of an operation's results answers, not only a lone one. An operation that
+\ leaves two - a load leaves the cell it read AND the memory it read it out of -
+\ defines both, and reading "no operation of this block" for one of them would
+\ make a value the block really computes look like a value from outside it.
+: DEFINES? ( IR-ID:ir-op-id IR-ID:ir-value-id -- bool )
+   {: id:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
+   false
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT v SAME-VALUE? if drop true leave then
+   loop ;
+
 : DEF-INDEX ( IR-ID:ir-block-id IR-ID:ir-value-id -- n )
    {: bk:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    -1
    bk OP-COUNT 0 ?do
-      bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id RESULTS-OF 1 = if
-         id 0 RESULT-AT v SAME-VALUE? if drop i leave then
-      then
+      bk i OP-AT v DEFINES? if drop i leave then
    loop ;
 
 : ARG-INDEX ( IR-ID:ir-block-id IR-ID:ir-value-id -- n )
@@ -609,7 +629,22 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
 : PLAN-RESET ( -- )
    0 P-OK !
    -1 P-G !  -1 P-PR !  -1 P-H !  -1 P-XT !  -1 P-LA !  -1 P-JN !
-   0 P-A !  -1 P-K !  0 P-M !  0 P-START !  0 P-KCONST !  0 P-INV-N ! ;
+   0 P-A !  -1 P-IDX !  -1 P-K !  0 P-M !  0 P-START !  0 P-KCONST !
+   0 P-INV-N ! ;
+
+\ WHERE ONE CARRIED VALUE SITS IN THE HEADER'S ARGUMENT LIST. The elaborator
+\ opens a loop's header with the live vector first, then the two counters of
+\ every loop the edge crosses, then the locals that cross, then the memory order
+\ (src/compiler/native/elaborate.f OPEN-ARGS-H). So the counters are the last two
+\ arguments only when the body binds no crossing local and touches no memory at
+\ all, and they are in the MIDDLE of the list otherwise. Everything else the
+\ header carries - the accumulator, a local, the order - is a CARRIED position,
+\ numbered the way the exit stub hands them to the join, and this is the one
+\ place that turns such a number into an argument of the header.
+: CARRY-ARG ( n -- n )
+   {: i:n :}
+   i P-IDX @ < if i exit then
+   i 2 + ;
 
 \ A header with more operations than the coverage table holds is DECLINED and not
 \ refused: a capacity here must cost a routine its fold, never its compilation.
@@ -710,8 +745,8 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
    sb O-SUB OP-IS? 0= if false exit then
    sb OPERANDS-OF 2 <> if false exit then
    f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
-   sb 0 OPERAND-AT  pt P-A @ 1+ OPERAND-AT  SAME-VALUE? 0= if false exit then
-   sb 1 OPERAND-AT  pt P-A @ OPERAND-AT     SAME-VALUE? 0= if false exit then
+   sb 0 OPERAND-AT  pt P-IDX @ 1+ OPERAND-AT  SAME-VALUE? 0= if false exit then
+   sb 1 OPERAND-AT  pt P-IDX @ OPERAND-AT     SAME-VALUE? 0= if false exit then
    true ;
 
 \ ---- the header's own shape --------------------------------------------------
@@ -731,10 +766,31 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
    lat OPERANDS-OF n <> if false exit then
    pt OPERANDS-OF n <> if false exit then
    xtt OPERANDS-OF P-A @ <> if false exit then
-   hb P-A @ 1+ ARG-AT {: lim:IR-ID:ir-value-id :}
-   lat P-A @ 1+ OPERAND-AT lim SAME-VALUE? 0= if false exit then
    hb COV-INIT? 0= if false exit then
    hb OP-COUNT 1- COV!
+   true ;
+
+\ The two counters, found by their USE and then located in the header's argument
+\ list. The index is the value the loop's own addition adds one to and the limit
+\ is what the comparison holds the sum against, so both are read off the
+\ operations that count rather than taken from where the list usually puts them.
+\ WHERE they sit is then recorded, and CARRY-ARG numbers everything else around
+\ them.
+\
+\ THEY ARE ADJACENT, INDEX FIRST, because one edge hands the pair over together
+\ (src/compiler/native/elaborate.f LOOP-ARG+ adds them in that order and nothing
+\ else writes that list), and the latch hands the incremented index back into the
+\ first of the two and the limit unchanged into the second. A header whose
+\ counters sit anywhere else is not a shape this pass has a plan for.
+: PLAN-COUNTERS? ( IR-ID:ir-fun-id IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- bool )
+   {: f:IR-ID:ir-fun-id idx:IR-ID:ir-value-id lim:IR-ID:ir-value-id nx:IR-ID:ir-value-id :}
+   f P-H @ BLOCK-AT  idx ARG-INDEX {: a:n :}
+   a 0 < if false exit then
+   f P-H @ BLOCK-AT  lim ARG-INDEX  a 1+ <> if false exit then
+   f P-LA @ BLOCK-AT TERM-AT {: lat:IR-ID:ir-op-id :}
+   lat a OPERAND-AT     nx  SAME-VALUE? 0= if false exit then
+   lat a 1+ OPERAND-AT  lim SAME-VALUE? 0= if false exit then
+   a P-IDX !
    true ;
 
 \ The comparison the loop leaves on, the addition it counts with, and the one
@@ -744,28 +800,24 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
 : PLAN-STEP? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
-   hb P-A @ ARG-AT {: idx:IR-ID:ir-value-id :}
-   hb P-A @ 1+ ARG-AT {: lim:IR-ID:ir-value-id :}
    hb TERM-AT {: ht:IR-ID:ir-op-id :}
    hb  ht 0 OPERAND-AT  DEF-INDEX {: fi:n :}
    fi 0 < if false exit then
    hb fi OP-AT {: fop:IR-ID:ir-op-id :}
    fop O-LT OP-IS? 0= if false exit then
    fop OPERANDS-OF 2 <> if false exit then
-   fop 1 OPERAND-AT lim SAME-VALUE? 0= if false exit then
    hb  fop 0 OPERAND-AT  DEF-INDEX {: ni:n :}
    ni 0 < if false exit then
    hb ni OP-AT {: nop:IR-ID:ir-op-id :}
    nop O-ADD OP-IS? 0= if false exit then
    nop OPERANDS-OF 2 <> if false exit then
-   nop 0 OPERAND-AT idx SAME-VALUE? 0= if false exit then
    hb  nop 1 OPERAND-AT  DEF-INDEX {: oi:n :}
    oi 0 < if false exit then
    hb oi OP-AT CONST-VALUE {: one:n ok:bool :}
    ok 0= if false exit then
    one 1 <> if false exit then
-   f P-LA @ BLOCK-AT TERM-AT  P-A @ OPERAND-AT
-   nop 0 RESULT-AT SAME-VALUE? 0= if false exit then
+   f  nop 0 OPERAND-AT  fop 1 OPERAND-AT  nop 0 RESULT-AT
+   PLAN-COUNTERS? 0= if false exit then
    fi COV!  ni COV!  oi COV!
    true ;
 
@@ -798,7 +850,7 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
    f P-XT @ BLOCK-AT TERM-AT {: xtt:IR-ID:ir-op-id :}
    ACC-NONE
    P-A @ 0 ?do
-      lat i OPERAND-AT  hb i ARG-AT  SAME-VALUE? 0= if
+      lat i CARRY-ARG OPERAND-AT  hb i CARRY-ARG ARG-AT  SAME-VALUE? 0= if
          i ACC-SEEN
       then
    loop {: k:n :}
@@ -807,7 +859,7 @@ create P-COV COV-MAX cells allot     \ scratch: which operations of the header a
    true
    P-A @ 0 ?do
       xtt i OPERAND-AT
-      i k = if lat k OPERAND-AT else hb i ARG-AT then
+      i k = if lat k CARRY-ARG OPERAND-AT else hb i CARRY-ARG ARG-AT then
       SAME-VALUE? 0= if drop false leave then
    loop ;
 
@@ -835,7 +887,7 @@ variable CH-STATE
 \ header's argument list into the arms, and no measured row needs it.
 : CHAIN-ADDEND ( IR-ID:ir-block-id IR-ID:ir-value-id -- )
    {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
-   v  hb P-A @ ARG-AT  SAME-VALUE? if P-M @ 1+ P-M ! exit then
+   v  hb P-IDX @ ARG-AT  SAME-VALUE? if P-M @ 1+ P-M ! exit then
    hb v ARG-INDEX 0 >= if CH-NO CH-STATE ! exit then
    hb v DEF-INDEX {: d:n :}
    d 0 < if v CHAIN-INV+ exit then
@@ -847,7 +899,7 @@ variable CH-STATE
 : CHAIN-STEP ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
-   0 CH-V @  hb P-K @ ARG-AT  SAME-VALUE? if CH-DONE CH-STATE ! exit then
+   0 CH-V @  hb P-K @ CARRY-ARG ARG-AT  SAME-VALUE? if CH-DONE CH-STATE ! exit then
    hb 0 CH-V @ DEF-INDEX {: d:n :}
    d 0 < if CH-NO CH-STATE ! exit then
    hb d OP-AT {: id:IR-ID:ir-op-id :}
@@ -861,7 +913,7 @@ variable CH-STATE
 : PLAN-CHAIN? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
-   f P-LA @ BLOCK-AT TERM-AT  P-K @ OPERAND-AT  0 CH-V !
+   f P-LA @ BLOCK-AT TERM-AT  P-K @ CARRY-ARG OPERAND-AT  0 CH-V !
    0 P-M !  0 P-KCONST !  0 P-INV-N !
    CH-WALK CH-STATE !
    hb OP-COUNT 1+ 0 ?do
@@ -890,7 +942,7 @@ $7FFFFFFFFFFFFFFF constant MAX-START
 : PLAN-START? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
-   f  pt P-A @ OPERAND-AT  FUN-CONST {: v:n ok:bool :}
+   f  pt P-IDX @ OPERAND-AT  FUN-CONST {: v:n ok:bool :}
    ok 0= if false exit then
    v MAX-START = if false exit then
    v P-START !
@@ -1209,7 +1261,7 @@ variable W-K?
 : ARM-OPERAND ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: pt:IR-ID:ir-op-id i:n :}
    i P-K @ = if 0 W-ACC @ exit then
-   pt i OPERAND-AT VOF ;
+   pt i CARRY-ARG OPERAND-AT VOF ;
 
 : ARM-TERM ( IR-ID:ir-fun-id IR-ID:ir-op-id -- )
    {: f:IR-ID:ir-fun-id sp:IR-ID:ir-op-id :}
@@ -1232,7 +1284,7 @@ variable W-K?
    f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD  f P-H @ BLOCK-AT BLOCK-SPAN  IR-BUILD:SET-BLOCK-SPAN
-   pt P-K @ OPERAND-AT VOF 0 W-ACC !
+   pt P-K @ CARRY-ARG OPERAND-AT VOF 0 W-ACC !
    W-K? @ 0<> if sp  0 W-K @  ACC-ADD then
    P-M @ P-START @ * {: ms:n :}
    ms 0<> if sp  sp ms MKC  ACC-ADD then
@@ -1250,13 +1302,13 @@ variable W-K?
    f P-G @ BLOCK-AT TERM-AT 0 OPERAND-AT VOF {: t:IR-ID:ir-value-id :}
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD  f P-H @ BLOCK-AT BLOCK-SPAN  IR-BUILD:SET-BLOCK-SPAN
-   pt P-K @ OPERAND-AT VOF 0 W-ACC !
+   pt P-K @ CARRY-ARG OPERAND-AT VOF 0 W-ACC !
    W-K? @ 0<> if sp HIR-OPCODE:MUL  0 W-K @  t MK2 {: kt:IR-ID:ir-value-id :}
       sp kt ACC-ADD
    then
    P-M @ 0 > if
       sp 1 MKC {: one:IR-ID:ir-value-id :}
-      sp t one  pt P-A @ OPERAND-AT VOF  EMIT-INDEX {: ix:IR-ID:ir-value-id :}
+      sp t one  pt P-IDX @ OPERAND-AT VOF  EMIT-INDEX {: ix:IR-ID:ir-value-id :}
       sp ix ACC-ADD
    then
    f sp ARM-TERM
@@ -1273,8 +1325,8 @@ variable W-K?
    pb OPEN-BLOCK
    pt EMIT-K
    pt HIR-OPCODE:LT
-   pt P-A @ OPERAND-AT VOF
-   pt P-A @ 1+ OPERAND-AT VOF
+   pt P-IDX @ OPERAND-AT VOF
+   pt P-IDX @ 1+ OPERAND-AT VOF
    MK2 {: fl:IR-ID:ir-value-id :}
    pt HIR-OPCODE:BRZ OPEN
    fl OPERAND+

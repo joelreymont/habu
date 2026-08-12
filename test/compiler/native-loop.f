@@ -111,6 +111,14 @@ public
 : NLPT-FROMNEG ( n n -- n ) {: seed:n len:n :}
    seed len -3 ?do i + loop ;
 
+\ A loop whose own body touches nothing, in a definition that has ALREADY read
+\ memory. The read mints the order, so every block the elaborator opens after it
+\ takes the order as one more argument and the loop's two counters stop being the
+\ last two the header holds. Nothing about the loop changed; where its counters
+\ sit did, and this row is what says the recogniser finds them by their use.
+: NLPT-AFTER-LOAD ( ptr n n -- n ) {: cell:ptr len:n :}
+   cell @ len 0 ?do 1 + loop ;
+
 \ ---- the twelve refusals -----------------------------------------------------
 
 \ A store in the body. The loop's whole point is the cell it leaves behind, and a
@@ -221,6 +229,10 @@ private
    s" : NLPT-FROMNEG-N ( n n -- n ) {: seed:n len:n :} seed len -3 ?do i + loop ;"
    2 1 REGS NMIGRATE:DEFINE ;
 
+: AFTER-LOAD ( -- )
+   s" : NLPT-AFTER-LOAD-N ( ptr n n -- n ) {: cell:ptr len:n :} cell @ len 0 ?do 1 + loop ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
 : STORE ( -- )
    s" : NLPT-STORE-N ( ptr n n -- n ) {: cell:ptr len:n :} len 0 ?do cell @ 3 + cell ! loop cell @ ;"
    2 1 REGS NMIGRATE:DEFINE ;
@@ -278,7 +290,7 @@ private
 public
 
 : RUN ( -- )
-   SUM TINY MANY MIX TWICE FROM5 FROMNEG
+   SUM TINY MANY MIX TWICE FROM5 FROMNEG AFTER-LOAD
    STORE LOAD
    CALLEE CALL
    TWO THREE MUL SUB SWAPPED DEAD VARSTART MAXSTART NOTCOUNTED ;
@@ -345,6 +357,11 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 
 : FROMNEG= ( n n -- ) {: a:n b:n :}
    a b NLPT-FIXTURE:NLPT-FROMNEG  a b NLPT-FIXTURE:NLPT-FROMNEG-N  T= ;
+
+: AFTER-LOAD= ( n -- ) {: l:n :}
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-AFTER-LOAD
+   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-AFTER-LOAD-N  T= ;
 
 : LOAD= ( n -- ) {: l:n :}
    NLPT-FIXTURE:NLPT-FILL
@@ -455,6 +472,11 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    0 -3 FROMNEG= 0 -2 FROMNEG= 0 0 FROMNEG= 0 5 FROMNEG= 0 -9 FROMNEG=
    11 200 FROMNEG= ;
 
+: AFTER-LOAD-CASE ( -- )
+   s" a memory-free loop after a read, whose counters are no longer last" T-LABEL
+   s" NLPT-FIXTURE:NLPT-AFTER-LOAD-N" GONE
+   0 AFTER-LOAD= 1 AFTER-LOAD= 5 AFTER-LOAD= -2 AFTER-LOAD= ;
+
 \ ---- the refusals ------------------------------------------------------------
 : STORE-CASE ( -- )
    s" a loop that writes memory keeps its loop and its cells" T-LABEL
@@ -541,6 +563,7 @@ public
    TWICE-CASE
    FROM5-CASE
    FROMNEG-CASE
+   AFTER-LOAD-CASE
    STORE-CASE
    LOAD-CASE
    CALL-CASE
