@@ -282,3 +282,29 @@ old emitter compiles the chain at every boot, so
 habu-delete-the-old-679cfd35 is UNREACHABLE until the baked-code stage
 (Stage F: AOT format change, REC-MAX 256->7500+, BLOB-CAP 64KB->1.1MB+).
 Staged plan A-F on the seed dots minted 2026-08-11.
+
+THE PLAN TO THE CUT (2026-08-12, ordered; each item's design is on its leaf):
+WAVE 1 (in flight): (a) the two corpus spill refusals — split-call-crossed
+6eda1613 (proven one-line CROSS-L fix, allocator hazard already enforced
+twice downstream) and the remat pair cdce9a24 constants-first then 1faad3e1
+loads (PRESSURE-LOOP's 14 live values are pure loop-invariant loads; no
+frame work needed); (b) hex/char/float literals 79c570ed P1 (engine parser
+becomes the one authority — checked prim or literal-value token field,
+design-first); (c) a fresh TREE-WIDE refusal census (tools/chain-census.f)
+classifying every remaining refusal with counts — the cut needs ZERO
+refusals over everything the tree loads, and the corpus's 3-of-46 is not
+that measurement.
+WAVE 2: the bake infrastructure — widen-the-aot 089f5faf (u16 world; the
+name-keyed pre-window CODE row rides in), arm-the-seed 5234727b (user
+ruled: everywhere), pre-window inliner decline (0b01043c implementation,
+needs the small capture-active+d0 compiler state design first).
+WAVE 3: bake the chain; host-side seeding design (stage engines use the
+base prefix which lacks the stdlib the chain needs — unscoped; probe
+whether fixing metabuild-loads-prefix-twice 87a370ae first makes host and
+target layouts identical and the problem smaller); assert-no-held df97f7e9;
+blob-caps re-measure (likely subsumed by widening).
+WAVE 4: THE CUT — route EM-COMPILE through the chain per this leaf's
+design (spill-rewrite loop + CROSS-L pressure retry), self-host byte
+fixpoint, every gate on the sole path. The dialect gaps (>r family, catch,
+[char]/['], leave) are blockers ONLY where the census says the tree uses
+them — the census decides, not memory.
