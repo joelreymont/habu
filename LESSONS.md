@@ -6076,3 +6076,17 @@ silence, not evidence; the consumer load is the check. (2) One HB_TMP
 per RUN, not just per lane - two gate runs of one lane sharing a root
 wiped each other mid-flight. (3) The rg wrapper rewrote matched text
 in search output (--replace struck again); file lists came from grep.
+
+## The hoist landing's four (2026-08-13)
+
+(1) RUN THE GATE WITH STDIN FROM /dev/null in agent shells - children
+inherit a unix-socket stdin and some block forever probing fd 0; the
+hang surfaced as timeouts on UNRELATED process phases (diagnosed with
+sample + lsof, fd 0 = unix socket; < /dev/null turned two reds green).
+(2) One gate at a time even in your own lane root - a second run
+against the same HB_TMP reproduces the shared-root incident within
+one lane. (3) A mutation of an analysis in a pass that VALIDATES its
+plan yields a decline, not wrong code - check which guard caught it
+before claiming the mutation proves the one you edited. (4) A fixture
+that merely contains a store may not test the write rule - the rule
+needed a read, a write AND an accumulator in one body to be reachable.
