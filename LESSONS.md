@@ -6006,3 +6006,15 @@ prints a shared buffer names the wrong subject the moment two texts
 differ. (4) `rg -rn` is --replace n, not recursive-with-line-numbers
 - it silently rewrites every match and made a scheduled suite look
 unregistered.
+
+## Check what a mechanism buys, not only what it guards (2026-08-12)
+
+The call-crossing threading looked like a duplicate of two downstream
+safety nets, and suppressing it passed the corpus row it was blamed
+for - but the corpus row's callee was chain-published. Against an
+ENGINE-compiled callee (no clobber record) the threading was the only
+home a call-surviving value had, and the "proven one-line fix" broke
+the stdlib's own multishot site. A fix proved on one corpus shape is
+proved for that shape's callee class. "The hazard is enforced
+downstream" answers safety; it does not answer whether the mechanism
+was also the only place the value could live.
