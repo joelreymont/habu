@@ -6030,3 +6030,11 @@ the +1 mutant lit 27 assertions. (3) Deleting a decoder deletes its
 ratchet debt - real-lit.f carried a standing obligation to track a
 known engine float bug; asking the engine directly retired the
 obligation for free.
+
+## A staged callee list is not a callee selector (2026-08-12)
+
+DEFINE-CALLING resolves the body's names off the dictionary, so a
+mutant that swaps the staged row changes nothing and proves nothing
+- one ineffective mutation and one dead helper came from assuming
+otherwise. The probe file's prose now says where the callee really
+comes from.
