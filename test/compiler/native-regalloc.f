@@ -628,6 +628,23 @@ create TXT
    M-RESULT+
    CLOSE-VALUE ;
 
+\ A CONSTANT NO RE-EMISSION CAN STAND FOR, which is what every fixture below
+\ that is about the FRAME has to hold its pressure in. A class whose one value
+\ was written by a move-wide is re-emitted where it is read rather than put away
+\ (src/compiler/native/regalloc.f MB-REMATABLE?), and a fixture built out of
+\ those measures the re-emission and not the slot - so a body meant to spill
+\ doubles each literal into the value it is added to itself, whose defining
+\ operation READS a register and is therefore excluded by the eligibility test
+\ structurally rather than by a count.
+\
+\ THE SEED IS LIVE FOR EXACTLY ONE POSITION, which is what keeps the shape these
+\ fixtures were written for: it is read by the addition standing right after it,
+\ so at every later position the live values are the doubled ones alone and the
+\ peak is the same as it was when each was one move-wide.
+: M-CONST ( n -- IR-ID:ir-value-id )
+   M-MOVZ {: z:IR-ID:ir-value-id :}
+   z z M-ADD ;
+
 : M-RET ( IR-ID:ir-value-id -- )
    {: v:IR-ID:ir-value-id :}
    A64IR-OPCODE:RET M-OPEN
@@ -938,12 +955,34 @@ create TXT
    CLOSE-VALUE ;
 
 \ ---- the shape that cannot fit -----------------------------------------------
-\ Five literals are materialised before any of them is read, so all five are live
-\ at once and no pool of three can hold them. The sum then reads them in the
-\ order they were made, which is what makes the cost rule visible: the two values
-\ read LAST are the two the allocator has to put away.
+\ Five values are made before any of them is read, so all five are live at once
+\ and no pool of three can hold them. The sum then reads them in the order they
+\ were made, which is what makes the cost rule visible: the two values read LAST
+\ are the two the allocator has to put away.
+\
+\ AND NONE OF THE FIVE IS A CONSTANT THE WALK COULD WRITE AGAIN, which is what
+\ keeps this the FRAME's shape. Each is a literal added to itself, so its
+\ defining operation reads a register and no re-emission can stand for it - see
+\ M-CONST. BUILD-REMAT-CHAIN below is the same shape in plain move-wides, and
+\ the pair is what holds the two lowerings apart.
 : BUILD-CHAIN ( -- )
    s" CHAIN" 0 1 OPEN-FUN
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   $22 M-CONST {: b:IR-ID:ir-value-id :}
+   $33 M-CONST {: c:IR-ID:ir-value-id :}
+   $44 M-CONST {: d:IR-ID:ir-value-id :}
+   $55 M-CONST {: e:IR-ID:ir-value-id :}
+   a b M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 c M-ADD {: s2:IR-ID:ir-value-id :}
+   s2 d M-ADD {: s3:IR-ID:ir-value-id :}
+   s3 e M-ADD M-RET
+   CLOSE-FUN ;
+
+\ The same five values as plain move-wides. Every one of them is then a class the
+\ walk can write again where it is read, so this is the body the RE-EMISSION
+\ fixtures are built on and the one above is the body the frame fixtures are.
+: BUILD-REMAT-CHAIN ( -- )
+   s" RCHAIN" 0 1 OPEN-FUN
    $11 M-MOVZ {: a:IR-ID:ir-value-id :}
    $22 M-MOVZ {: b:IR-ID:ir-value-id :}
    $33 M-MOVZ {: c:IR-ID:ir-value-id :}
@@ -968,11 +1007,11 @@ create TXT
    $77 M-MOVZ M-RET
    CLOSE-FUN
    s" SECOND" 0 1 OPEN-FUN
-   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
-   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
-   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
-   $44 M-MOVZ {: d:IR-ID:ir-value-id :}
-   $55 M-MOVZ {: e:IR-ID:ir-value-id :}
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   $22 M-CONST {: b:IR-ID:ir-value-id :}
+   $33 M-CONST {: c:IR-ID:ir-value-id :}
+   $44 M-CONST {: d:IR-ID:ir-value-id :}
+   $55 M-CONST {: e:IR-ID:ir-value-id :}
    a b M-ADD {: s1:IR-ID:ir-value-id :}
    s1 c M-ADD {: s2:IR-ID:ir-value-id :}
    s2 d M-ADD {: s3:IR-ID:ir-value-id :}
@@ -985,9 +1024,9 @@ create TXT
 \ lower register number.
 : BUILD-TIE ( -- )
    s" TIE" 0 1 OPEN-FUN
-   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
-   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
-   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   $22 M-CONST {: b:IR-ID:ir-value-id :}
+   $33 M-CONST {: c:IR-ID:ir-value-id :}
    a b M-ADD {: s1:IR-ID:ir-value-id :}
    s1 c M-ADD M-RET
    CLOSE-FUN ;
@@ -997,9 +1036,9 @@ create TXT
 \ take a second register and spill something else to get it.
 : BUILD-DOUBLE ( -- )
    s" DOUBLE" 0 1 OPEN-FUN
-   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
-   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
-   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   $22 M-CONST {: b:IR-ID:ir-value-id :}
+   $33 M-CONST {: c:IR-ID:ir-value-id :}
    b c M-ADD {: s1:IR-ID:ir-value-id :}
    a a M-ADD {: s2:IR-ID:ir-value-id :}
    s1 s2 M-ADD M-RET
@@ -1444,15 +1483,15 @@ create TXT
 \ what they are rather than whatever fell out.
 : BUILD-MB-CHAIN ( -- )
    s" MBCHAIN" 0 1 OPEN-FUN
-   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
-   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
-   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
-   $44 M-MOVZ {: d:IR-ID:ir-value-id :}
+   $33 M-CONST {: c:IR-ID:ir-value-id :}
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   $22 M-CONST {: b:IR-ID:ir-value-id :}
+   $44 M-CONST {: d:IR-ID:ir-value-id :}
    d 1 M-BR1
    M-BLOCK+
    ARG+ {: x:IR-ID:ir-value-id :}
    a b M-ADD {: s1:IR-ID:ir-value-id :}
-   $55 M-MOVZ {: t:IR-ID:ir-value-id :}
+   $55 M-CONST {: t:IR-ID:ir-value-id :}
    s1 t M-ADD {: s2:IR-ID:ir-value-id :}
    s2 c M-ADD {: s3:IR-ID:ir-value-id :}
    s3 x M-ADD M-RET
@@ -1592,7 +1631,7 @@ create TXT
    s" a spill decision in a routine that branches names the block it belongs in"
    T-LABEL
    WBND [: MB-PLAN-BODY ;] IR-CTX:WITH-CONTEXT
-   3 T= 1 T= 0 T= 1 T= 0 T= 0 T= 2 T= 1 T= ;
+   4 T= 1 T= 1 T= 2 T= 0 T= 1 T= 2 T= 1 T= ;
 
 \ ---- the multi-block refusals ------------------------------------------------
 : MB-EDGE-CLASH-BODY ( IR-CTX:ctx -- )
@@ -1694,11 +1733,14 @@ create TXT
    m1 ;
 
 \ What the walk decided, before anything was lowered. Five values are live where
-\ the fifth literal is written and three registers hold them, so two have to go
-\ into the frame - and WHICH two is the cost rule: the sum reads the literals in
-\ the order they were made, so the third and fourth are the ones read furthest
-\ away when the register runs out.
-: PLAN-BODY ( IR-CTX:ctx -- n n n n n n n n n n )
+\ the fifth is made and three registers hold them, so two have to go into the
+\ frame - and WHICH two is the cost rule: the sum reads them in the order they
+\ were made, so the third and fourth are the ones read furthest away when the
+\ register runs out. Those are values 5 and 7 of the module, each the addition
+\ that doubles the literal under it, and the four rows are their two stores and
+\ their two loads: a store stands at the operation after the one that made the
+\ value, a load in front of the addition that reads it.
+: PLAN-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n )
    A64-MOD
    SPILL-BIND
    BUILD-CHAIN
@@ -1713,13 +1755,15 @@ create TXT
    1 A64RA:PLAN-POS@
    2 A64RA:PLAN-VALUE@
    2 A64RA:PLAN-POS@
-   2 A64RA:SLOT@
-   3 A64RA:SLOT@ ;
+   3 A64RA:PLAN-VALUE@
+   3 A64RA:PLAN-POS@
+   5 A64RA:SLOT@
+   7 A64RA:SLOT@ ;
 
 : PLAN-CASE ( -- )
    s" the values read furthest away are the ones that lose their register" T-LABEL
    WBND [: PLAN-BODY ;] IR-CTX:WITH-CONTEXT
-   8 T= 0 T= 6 T= 2 T= 4 T= 3 T= 3 T= 2 T= 4 T= 2 T= ;
+   8 T= 0 T= 12 T= 7 T= 11 T= 5 T= 8 T= 7 T= 6 T= 5 T= 4 T= 2 T= ;
 
 \ The lowered module allocates with no spill left, and every value of it is
 \ accepted. The exact registers are asserted, so a cost rule that chose another
@@ -1742,15 +1786,15 @@ create TXT
 : LOWER-CASE ( -- )
    s" a block that does not fit is lowered and then allocates" T-LABEL
    WBND [: LOWER-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= TFALSE 2 T= 1 T= 0 T= TFALSE TTRUE 16 T= 0 T= ;
+   2 T= TTRUE 1 T= 0 T= 0 T= TFALSE TTRUE 21 T= 0 T= ;
 
 \ The same program through the whole route: lower the store and the load into
 \ operations of the blocks they belong to, allocate the module that holds them,
 \ and have the validator accept it. The second walk decides nothing, because it
 \ reads a module whose operations already are the ones the first walk assumed.
-\ Value zero of the lowered module is the memory order the reserve mints, value
-\ one is the literal that goes into the frame, and value ten is the register the
-\ load brings it back into.
+\ Value zero of the lowered module is the memory order the reserve mints, so it
+\ holds no register at all; the other two registers are asserted exactly, so a
+\ lowering that put the store or the load anywhere else moves them.
 : MB-LOWER-BODY ( IR-CTX:ctx -- n n bool bool n n )
    A64-MOD
    SPILL-BIND
@@ -1767,7 +1811,60 @@ create TXT
    s" a routine that branches and does not fit is lowered and then allocates"
    T-LABEL
    WBND [: MB-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 0 T= TFALSE TTRUE 14 T= 0 T= ;
+   2 T= 0 T= TFALSE TTRUE 19 T= 0 T= ;
+
+\ ---- the same shape, written again instead of put away -----------------------
+\ THE FIVE VALUES AS PLAIN MOVE-WIDES, which is the only difference from the two
+\ cases above. Each is then a class of one value whose defining operation reads
+\ no register, so the walk takes the two it cannot hold by arranging to write
+\ them AGAIN in front of the addition that reads them rather than by putting them
+\ in the frame - and the routine needs no frame at all, which is what the
+\ contract declaring ZERO and the acceptance of it say together.
+\
+\ THE COST RULE IS THE SAME ONE, so the two victims are the same two values the
+\ frame cases name: the third and fourth made are the ones read furthest away.
+\ What differs is the decision taken about them, and that is the whole pair.
+: REMAT-PLAN-BODY ( IR-CTX:ctx -- n n n n n n n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-REMAT-CHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 3 0 LEAF-FRAMED A64RA:ALLOCATE
+   A64SPILL:RELEASE
+   A64RA:SPILLS
+   A64RA:REMATS
+   A64RA:PLAN-N
+   0 A64RA:PLAN-VALUE@
+   0 A64RA:PLAN-POS@
+   1 A64RA:PLAN-VALUE@
+   1 A64RA:PLAN-POS@ ;
+
+: REMAT-PLAN-CASE ( -- )
+   s" a value a move-wide wrote is re-emitted where it is read, and takes no slot"
+   T-LABEL
+   WBND [: REMAT-PLAN-BODY ;] IR-CTX:WITH-CONTEXT
+   7 T= 3 T= 6 T= 2 T= 2 T= 2 T= 0 T= ;
+
+\ The same program through the whole route. The lowered module holds the two
+\ re-emissions as real move-wides, needs no further decision, and is accepted
+\ against a contract that declares NO frame - a lowering that reached for a slot
+\ instead would be refused for the frame it did not declare.
+: REMAT-LOWER-BODY ( IR-CTX:ctx -- n n n bool n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-REMAT-CHAIN
+   3 0 LOWERED drop
+   A64RA:SPILLS
+   A64RA:REMATS
+   A64RA:VALUES
+   A64RAV:ACCEPTED?
+   A64RA:VALUES 1- A64RAV:REG@ ;
+
+: REMAT-LOWER-CASE ( -- )
+   s" and the module it is lowered into allocates with no frame and is accepted"
+   T-LABEL
+   WBND [: REMAT-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= TTRUE 11 T= 0 T= 0 T= ;
 
 \ Which of two equally distant values loses its register. Both are read by the
 \ same operation, so the cost rule cannot separate them and the tie rule does:
@@ -1790,7 +1887,7 @@ create TXT
 : TIE-SPILL-CASE ( -- )
    s" a tie between two equally distant values goes to the lower register" T-LABEL
    WBND [: TIE-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 0 T= 2 T= ;
+   2 T= 1 T= 2 T= ;
 
 \ One reload serves every read of one value by one operation. A reload per read
 \ would need a second register at that operation, and taking one means spilling
@@ -1808,7 +1905,7 @@ create TXT
 : DOUBLE-CASE ( -- )
    s" one reload serves both reads of a value by one operation" T-LABEL
    WBND [: DOUBLE-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 0 T= 2 T= 1 T= ;
+   2 T= 1 T= 2 T= 1 T= ;
 
 \ ---- a returned value that has to be moved -----------------------------------
 \ The value the return carries is an argument, pinned where the caller put it, and
@@ -1964,7 +2061,7 @@ create TXT
 : DECL-SPILL-CASE ( -- )
    s" a program that spills still leaves its result where it is declared" T-LABEL
    WBND [: DECL-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 16 T= 0 T= 0 T= ;
+   1 T= 21 T= 0 T= 0 T= ;
 
 \ Two returned values whose declared registers cross. The first literal is still
 \ live when the second is written, so the value that has to leave in x0 cannot
@@ -2973,6 +3070,8 @@ public
    PLAN-CASE
    TIE-SPILL-CASE
    DOUBLE-CASE
+   REMAT-PLAN-CASE
+   REMAT-LOWER-CASE
    LOWER-CASE
    DIFF-CASE
    SUM3-CASE

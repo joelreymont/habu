@@ -268,6 +268,13 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 VMAX TYPED-BUFFER RMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
+\ THE OPERATION THAT DEFINED EACH VALUE OF THE MODULE BEING REWRITTEN. A value
+\ the allocator marked for re-emission is written again where it is read, and
+\ what is written is that operation's own immediate - so the pass has to be able
+\ to reach it from the value. It is filled as the walk copies each operation and
+\ read only at a later position, which is sound for the reason the plan cursor
+\ is: SSA puts a definition before every read of it and this walk is in order.
+VMAX TYPED-BUFFER DOP IR-ID:ir-op-id
 create RPOS VMAX cells allot
 create NAMEBUF NAME-CAP allot
 
@@ -689,6 +696,41 @@ create NAMEBUF NAME-CAP allot
    {: id:IR-ID:ir-op-id i:n :}
    CTX BLD id i IR-BUILD:OP-RESULT@ ;
 
+\ Every attribute of one operation, put on the operation being built. It stands
+\ here rather than beside the operation copier because two callers want it: the
+\ copier, and the re-emission below, which rebuilds a move-wide out of the
+\ immediate its original carried.
+: COPY-ATTRS ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id ATTRS-OF {: n:n :}
+   n 0 ?do
+      id i ATTR-KEY-AT KEY-SLOT-OF {: k:n :}
+      id i ATTR-INT-AT {: v:n :}
+      k K-IMM = if
+         CTX BLD  CTX BLD A64IR:KEY-IMM  CTX BLD v A64IR:IMM-ATTR
+         IR-BUILD:ADD-ATTR
+      then
+      k K-SHIFT = if
+         CTX BLD  CTX BLD A64IR:KEY-SHIFT  CTX BLD v A64IR:SHIFT-ATTR
+         IR-BUILD:ADD-ATTR
+      then
+      k K-ADDR = if
+         CTX BLD  CTX BLD A64IR:KEY-ADDR  CTX BLD v A64IR:ADDR-ATTR
+         IR-BUILD:ADD-ATTR
+      then
+      k K-SLOT = if v SLOT-ATTR+ then
+      k K-FRAME = if v FRAME-ATTR+ then
+      k K-DSLOT = if v DSLOT-ATTR+ then
+      k K-DBYTES = if v DBYTES-ATTR+ then
+      k K-COND = if v COND-ATTR+ then
+      k K-DBACK = if v DBACK-ATTR+ then
+      k K-ENTRY = if v ENTRY-ATTR+ then
+      k K-OFF = if v OFF-ATTR+ then
+      k K-MASK = if v MASK-ATTR+ then
+      k K-TRAP-ENTRY = if v TRAP-ENTRY-ATTR+ then
+      k K-FUN = if v FUN-ATTR+ then
+   loop ;
+
 \ ---- the four operations this pass inserts -----------------------------------
 \ The routine takes its frame, and the memory order starts.
 : EMIT-RESERVE ( IR-ID:ir-op-id -- )
@@ -755,6 +797,22 @@ create NAMEBUF NAME-CAP allot
    CLOSE {: id:IR-ID:ir-op-id :}
    k pos  id 0 RESULT@  RBIND ;
 
+\ The value is written AGAIN, in front of the operation that reads it, instead of
+\ being read back out of a slot. What is re-emitted is the operation that defined
+\ it - one movz, carrying the immediate it always carried - so this insert names
+\ no slot, takes no memory token and answers none: it joins no memory order at
+\ all, which is the whole reason the allocator is allowed to choose it for a
+\ class that may not go in the frame. Like a load, what it writes is a value of
+\ its own, so the operation below reads this one and not the original.
+: EMIT-REMAT ( IR-ID:ir-op-id n n -- )
+   {: at:IR-ID:ir-op-id k:n pos:n :}
+   k DOP @ {: d:IR-ID:ir-op-id :}
+   at A64IR-OPCODE:MOVZ OPEN
+   k FILE-RESULT+
+   d COPY-ATTRS
+   CLOSE {: id:IR-ID:ir-op-id :}
+   k pos  id 0 RESULT@  RBIND ;
+
 \ Every decision the allocator anchored to this position, in the order it made
 \ them. The plan is in that order already - a walk decides one operation's spills
 \ before the next one's - so this reads it with a cursor rather than searching
@@ -768,6 +826,7 @@ create NAMEBUF NAME-CAP allot
    j A64RA:PLAN-VALUE@ {: k:n :}
    j A64RA:PLAN-STORE? if at k EMIT-STORE exit then
    j A64RA:PLAN-MOVE? if at k pos EMIT-MOVE exit then
+   j A64RA:PLAN-REMAT? if at k pos EMIT-REMAT exit then
    at k pos EMIT-LOAD ;
 
 \ Does the row the cursor stands on belong in front of this operation? Both the
@@ -804,36 +863,6 @@ create NAMEBUF NAME-CAP allot
    repeat ;
 
 \ ---- copying one operation of the old block ----------------------------------
-: COPY-ATTRS ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id ATTRS-OF {: n:n :}
-   n 0 ?do
-      id i ATTR-KEY-AT KEY-SLOT-OF {: k:n :}
-      id i ATTR-INT-AT {: v:n :}
-      k K-IMM = if
-         CTX BLD  CTX BLD A64IR:KEY-IMM  CTX BLD v A64IR:IMM-ATTR
-         IR-BUILD:ADD-ATTR
-      then
-      k K-SHIFT = if
-         CTX BLD  CTX BLD A64IR:KEY-SHIFT  CTX BLD v A64IR:SHIFT-ATTR
-         IR-BUILD:ADD-ATTR
-      then
-      k K-ADDR = if
-         CTX BLD  CTX BLD A64IR:KEY-ADDR  CTX BLD v A64IR:ADDR-ATTR
-         IR-BUILD:ADD-ATTR
-      then
-      k K-SLOT = if v SLOT-ATTR+ then
-      k K-FRAME = if v FRAME-ATTR+ then
-      k K-DSLOT = if v DSLOT-ATTR+ then
-      k K-DBYTES = if v DBYTES-ATTR+ then
-      k K-COND = if v COND-ATTR+ then
-      k K-DBACK = if v DBACK-ATTR+ then
-      k K-ENTRY = if v ENTRY-ATTR+ then
-      k K-OFF = if v OFF-ATTR+ then
-      k K-MASK = if v MASK-ATTR+ then
-      k K-TRAP-ENTRY = if v TRAP-ENTRY-ATTR+ then
-      k K-FUN = if v FUN-ATTR+ then
-   loop ;
 
 \ The blocks a terminator hands control to. Blocks are copied one for one and in
 \ order, so block b of the old module is block b of the new one and a successor
@@ -879,6 +908,7 @@ create NAMEBUF NAME-CAP allot
       old i RESULT-AT {: v:IR-ID:ir-value-id :}
       new i RESULT@ {: nv:IR-ID:ir-value-id :}
       v nv VBIND
+      old  v VSLOT DOP !
       frame  v MEM-VALUE?  and if nv TOK! then
    loop ;
 

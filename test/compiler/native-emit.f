@@ -660,12 +660,41 @@ $1000 constant BUMP-ADDR
 : BIND-SPILL ( -- )
    CC BB A64SPILL:BIND-DIALECT ;
 
-\ Five literals materialised before any of them is read, so five values are live
-\ at once and three registers cannot hold them. This is the shape the whole
-\ spill route exists for, and the only way to know the route is right is to run
-\ the bytes it produces.
+\ A CONSTANT NO RE-EMISSION CAN STAND FOR. A class whose one value was written
+\ by a move-wide is written AGAIN where it is read rather than put away
+\ (src/compiler/native/regalloc.f MB-REMATABLE?), so a body meant to reach the
+\ FRAME cannot hold its pressure in plain literals. Each of these is a literal
+\ added to itself: its defining operation reads a register, which is what
+\ excludes it structurally, and the seed is live for exactly one position so the
+\ peak is the same as five plain literals.
+: M-CONST ( n -- IR-ID:ir-value-id )
+   M-MOVZ {: z:IR-ID:ir-value-id :}
+   z z M-ADD ;
+
+\ Five values made before any of them is read, so five are live at once and
+\ three registers cannot hold them. This is the shape the whole spill route
+\ exists for, and the only way to know the route is right is to run the bytes it
+\ produces. BUILD-REMAT-CHAIN below is the same shape in plain move-wides, which
+\ takes the OTHER route and no frame at all.
 : BUILD-CHAIN ( -- )
    s" CHAIN" 0 1 OPEN-FUN
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   $22 M-CONST {: b:IR-ID:ir-value-id :}
+   $33 M-CONST {: c:IR-ID:ir-value-id :}
+   $44 M-CONST {: d:IR-ID:ir-value-id :}
+   $55 M-CONST {: e:IR-ID:ir-value-id :}
+   a b M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 c M-ADD {: s2:IR-ID:ir-value-id :}
+   s2 d M-ADD {: s3:IR-ID:ir-value-id :}
+   s3 e M-ADD M-RET
+   CLOSE-FUN ;
+
+\ The same five values as plain move-wides. Every one of them is a class the walk
+\ can write again where it is read, so this body takes NO frame: what the bytes
+\ show is a routine with no reserve at all and a move-wide standing in front of
+\ each addition that reads one of the two the registers could not hold.
+: BUILD-REMAT-CHAIN ( -- )
+   s" RCHAIN" 0 1 OPEN-FUN
    $11 M-MOVZ {: a:IR-ID:ir-value-id :}
    $22 M-MOVZ {: b:IR-ID:ir-value-id :}
    $33 M-MOVZ {: c:IR-ID:ir-value-id :}
@@ -844,14 +873,14 @@ $1000 constant BUMP-ADDR
    SPILL-EMITTED
    A64EMIT:INSNS
    0 A64EMIT:WORD@                   \ sub sp, sp, #16 - the routine takes its frame
-   4 A64EMIT:WORD@                   \ str x2, [sp, #0] - the third literal is put away
-   9 A64EMIT:WORD@                   \ ldr x1, [sp, #0] - and comes back for the sum
+   7 A64EMIT:WORD@                   \ str x2, [sp, #0] - the third value is put away
+   14 A64EMIT:WORD@                  \ ldr x1, [sp, #0] - and comes back for the sum
    NFIX:RESULT-REG ;
 
 : SPILL-CASE ( -- )
    s" a block that does not fit reserves a frame and spills into it" T-LABEL
    WBND [: SPILL-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= $F94003E1 T= $F90003E2 T= $D10043FF T= 16 T= ;
+   0 T= $F94003E1 T= $F90003E2 T= $D10043FF T= 21 T= ;
 
 : RUN-SPILL-BODY ( IR-CTX:ctx -- n n )
    SPILL-EMITTED
@@ -861,6 +890,56 @@ $1000 constant BUMP-ADDR
 : RUN-SPILL-CASE ( -- )
    s" the emitted spilled program computes what its values add up to" T-LABEL
    WBND [: RUN-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
+   $11 $22 + $33 + $44 + $55 + 2 * T= 0 T= ;
+
+\ ---- the same program, written again instead of put away ---------------------
+\ THE FIVE VALUES AS PLAIN MOVE-WIDES. Each is then a class the walk can write
+\ AGAIN in front of the addition that reads it, so the two it cannot hold cost
+\ two move-wides and no frame: the routine reserves nothing, gives nothing back,
+\ and its contract declares a frame of zero. What the bytes show is the whole of
+\ that - the first instruction is a move-wide and not a stack adjustment - and
+\ what the run shows is that a re-emitted constant is the constant it stood for,
+\ which no table of expected words can say.
+: REMAT-EMITTED ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c A64-NEW
+   BIND-RA
+   BIND-SPILL
+   BUILD-REMAT-CHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   c m0 3 0 NFIX:LEAF-FRAMED A64RA:ALLOCATE
+   IR-BUILD:PLAN-BEGIN
+   IR-BUILD:PLAN-DEFAULT
+   c A64IR:NEW-BUILDER {: nb:IR-BUILD:builder :}
+   c nb A64RA:BIND-DIALECT
+   c nb A64RAV:BIND-DIALECT
+   c nb A64EMIT:BIND-DIALECT
+   c m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   c m1 3 0 NFIX:LEAF-FRAMED A64RA:ALLOCATE
+   m1 3 0 NFIX:LEAF-FRAMED A64RAV:ACCEPT
+   c m1 A64EMIT:EMIT ;
+
+: REMAT-EMIT-BODY ( IR-CTX:ctx -- n n n )
+   REMAT-EMITTED
+   A64EMIT:INSNS
+   0 A64EMIT:WORD@                   \ movz x0, #$11 - no stack adjustment at all
+   NFIX:RESULT-REG ;
+
+: REMAT-EMIT-CASE ( -- )
+   s" a block that does not fit writes its constants again and takes no frame"
+   T-LABEL
+   WBND [: REMAT-EMIT-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= $D2800220 T= 12 T= ;
+
+: RUN-REMAT-BODY ( IR-CTX:ctx -- n n )
+   REMAT-EMITTED
+   NFIX:RESULT-REG
+   PUBLISH EXEC0 ;
+
+: RUN-REMAT-CASE ( -- )
+   s" the emitted re-emitting program computes what its constants add up to"
+   T-LABEL
+   WBND [: RUN-REMAT-BODY ;] IR-CTX:WITH-CONTEXT
    $11 $22 + $33 + $44 + $55 + T= 0 T= ;
 
 \ ---- a returned value put where the contract says it leaves ------------------
@@ -1235,6 +1314,8 @@ public
    TWO-FUNS-CASE
    SPILL-CASE
    RUN-SPILL-CASE
+   REMAT-EMIT-CASE
+   RUN-REMAT-CASE
    SECOND-CASE
    RUN-SECOND-CASE
    WBND [: GROUP-ADDR ;] IR-CTX:WITH-CONTEXT

@@ -61,6 +61,14 @@
 \   names the chain's compilation of the same callee. That body is corpus 4's
 \   CALL-PRESSURE, which was the second -8508 row and is a measured row now.
 \
+\   AND A CONSTANT IS NOT A LOAD, WHICH IS WHERE THE LAST FOUR CASES START.
+\   Fourteen values live inside one body is refused when they are loads and
+\   compiles when they are one-move-wide constants, and that was true before any
+\   of this: the count was never the rule. What the re-emission answer then
+\   moved is the constants' own wall, from fourteen to the point where the
+\   migration context runs out; what it left exactly where it was is the same
+\   constants live ACROSS the loop, and the sixty-four-bit ones.
+\
 \ WHERE THE WALL SITS, AND WHY THE COUNT IN THESE CASES HAS MOVED BEFORE. It is
 \ at SEVEN crossing values against a callee that published nothing, and six is
 \ the control beside it, so it is pinned from both sides. It has moved once
@@ -86,6 +94,7 @@
 
 require lib/test.f
 require lib/string.f
+require lib/fmt.f
 require tools/codegen-compare-cases4.f
 require src/compiler/native/clobber.f
 require src/compiler/native/migrate.f
@@ -146,6 +155,87 @@ variable TRY-IN
    STAGE
    s" CODEGEN-CORPUS4:C-LONG-N" CALLEE-AT
    MIGRATE-CALLING-RC ;
+
+\ ---- a body of N constants, written by counting rather than by hand ----------
+\ THE CASES BELOW STRADDLE THREE WALLS AND ONE OF THEM IS AT FORTY-FOUR, so the
+\ bodies are BUILT from their count instead of transcribed. What each case then
+\ states is a number - the count either side of a wall - rather than a line of
+\ literals a reader has to count to check, and moving a wall means changing the
+\ number and nothing else.
+512 constant SRC-CAP
+create SRC-BUF SRC-CAP allot
+variable SRC-U
+
+: SRC-RESET ( -- )
+   0 SRC-U ! ;
+
+: SRC+ ( ptr u8 n -- )
+   {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   SRC-U @ u + SRC-CAP > if E-CODEGEN-COMPARE-CAP throw then
+   a  SRC-BUF SRC-U @ +  u STR-LEN BYTE-COPY-LEN
+   SRC-U @ u + SRC-U ! ;
+
+\ One number, spelled the way the source spells it. It goes through the shared
+\ string builder and is copied straight back out, so the assembled source lives
+\ in this file's own buffer: what is handed to a migration has to survive
+\ everything the migration itself does with that builder.
+: SRC-N+ ( n -- )
+   SB-RESET FMT:SB-INT SB$ SRC+ ;
+
+: SRC$ ( -- ptr u8 n )
+   SRC-BUF SRC-U @ ;
+
+\ The smallest constant here needs a move-wide of its own, and the step keeps
+\ every one of them distinct AND past the addition's own immediate field - so
+\ each really is a value the body has to hold, rather than an operand the combine
+\ pass folds into the add that reads it.
+40001 constant NARROW-BASE
+37 constant CONST-STEP
+
+\ A constant every one of whose four halfwords is non-zero. Materialising it is a
+\ move-wide and three overwrites, which is the CHAIN a re-emission may never
+\ stand for: the step is small enough that every constant built from it keeps all
+\ four halfwords.
+1234605616436508552 constant WIDE-BASE
+
+: HEAD+ ( ptr u8 n n -- )
+   {: a:ptr u:n k:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   s" : SP-" SRC+ a u SRC+ k SRC-N+
+   s" -N ( n n -- n ) {: s:n l:n :} " SRC+ ;
+
+: CONSTS+ ( n n -- )
+   {: base:n k:n :}
+   k 0 ?do base i CONST-STEP * + SRC-N+ s"  " SRC+ loop ;
+
+: ADDS+ ( n -- )
+   0 ?do s" + " SRC+ loop ;
+
+\ K constants materialised INSIDE the loop body and folded into the accumulator
+\ there. Every one of them is written and read within one turn, so all K are live
+\ at once at the point the last is written and none of them crosses a block edge.
+: INSIDE-SRC ( n n ptr u8 n -- ptr u8 n )
+   {: base:n k:n a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   SRC-RESET
+   a u k HEAD+
+   s" s l 0 ?do " SRC+
+   base k CONSTS+
+   k ADDS+
+   s" loop ;" SRC+
+   SRC$ ;
+
+\ The same K constants written BEFORE the loop and read AFTER it. Each one is
+\ then live across the loop's edges, which makes it a class of more than one
+\ value, and the eligibility test refuses such a class before it ever looks at
+\ the operation that wrote it.
+: ACROSS-SRC ( n n ptr u8 n -- ptr u8 n )
+   {: base:n k:n a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   SRC-RESET
+   a u k HEAD+
+   base k CONSTS+
+   s" s l 0 ?do 1 + loop " SRC+
+   k ADDS+
+   s" ;" SRC+
+   SRC$ ;
 
 \ ---- the two walls the corpus already names ----------------------------------
 
@@ -241,6 +331,106 @@ variable TRY-IN
    s" : SP-EPOST6-N ( n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + ;"
    8 TRY-CALLING 0 T= ;
 
+\ ---- the wall a value that can be WRITTEN AGAIN moves ------------------------
+\ A CLASS WHOSE ONE VALUE WAS WRITTEN BY A MOVE-WIDE NEEDS NO FRAME SLOT, because
+\ writing it again where it is read costs exactly the one instruction the load it
+\ replaces would have been (src/compiler/native/regalloc.f MB-REMATABLE?). These
+\ four cases are what that moved, what it did NOT move, and where it stops.
+\
+\   THE WALL IT MOVED. Constants materialised inside a loop body used to run out
+\   at fourteen. Fifteen is now compiled by re-emitting one of them and forty-
+\   three by re-emitting twenty-nine, with an EMPTY FRAME either way - which is
+\   the whole of the claim: this is not a spill that found somewhere to put the
+\   value, it is a value that needed nowhere.
+\
+\   THE WALL IT DID NOT MOVE, AND WHY THAT IS THE SAME RULE. The same constants
+\   written before the loop and read after it are refused at fourteen exactly as
+\   they were, with the same code. Each of them is live across the loop's edges,
+\   which joins it with the block arguments carrying it round into a class of
+\   MORE THAN ONE value, and a class of more than one value is not a constant
+\   this pass can write again - there is no single operation to re-emit. So the
+\   count either side of that wall is unchanged, and the pair is what says the
+\   eligibility test reads the class and not the literal.
+\
+\   AND THE CHAIN IS REFUSED WHERE THE SINGLE MOVE-WIDE IS ADMITTED, which is the
+\   one-variable contrast this file is for. Sixteen constants inside the body
+\   compile when each is one move-wide and are REFUSED, with the code they always
+\   had, when each is sixty-four bits wide: same count, same shape, same budget,
+\   and the only difference is that a wide constant is a move-wide followed by
+\   three overwrites. Re-emitting the end of that chain would mean re-emitting
+\   all of it, so it is not one instruction and not a candidate. That is what
+\   protects CODEGEN-CORPUS4:BIG-CONSTS, whose four constants are exactly this
+\   shape, and it is asserted here as a refusal rather than as a byte count
+\   because a byte count would pass for a body that never reached the wall.
+\
+\   WHICH OF THE TWO EXCLUSIONS EACH CASE HOLDS IS A MEASUREMENT. The pass
+\   refuses a chain twice over - the tie makes it a class of MORE THAN ONE value,
+\   and the opcode is not the one form that stands alone - and only one of the
+\   two is what this wide case moves. Deleting the class-size exclusion turns it
+\   from E-A64RA-SPILL into eleven re-emissions and E-IR-OP-OWNER, so the wide
+\   case holds that one; deleting the OPCODE test leaves it exactly where it is,
+\   because the size test has already refused the chain before the opcode is
+\   read. What holds the opcode test is the FIRST case in this file: fourteen
+\   LOADS become one re-emission and E-IR-VERIFY-ATTRKEY without it, because a
+\   load is a class of one value that no move-wide wrote - a move-wide is then
+\   emitted carrying the load's own attributes and the module itself refuses it.
+\   Neither case covers both,
+\   and a reader taking one of them for the whole rule would find a deletion it
+\   expected to redden going green.
+\
+\   WHERE IT STOPS IS NOT THE ALLOCATOR. Forty-four of them is refused with
+\   E-IR-CTX-SCRATCH, which is a scratch capacity of the migration context and
+\   not a register at all: the rewritten module's arenas do not fit beside the
+\   two the run already holds. It is pinned from both sides here because it is
+\   now the FIRST wall this shape meets, and it is held out against dot
+\   habu-who-owns-the-82b7ceb2, which asks who owns that limit;
+\   habu-fit-a-rewritten-59aa92b7 is the same capacity seen from the rewrite's
+\   side.
+\
+\ AND WHAT THE COUNTS SAY ABOUT THE WALL AT THE TOP OF THIS FILE. Fourteen values
+\ live inside one loop body is refused when they are LOADS (PRESSURE-LOOP, the
+\ first case here) and compiles when they are one-movz CONSTANTS - it always did,
+\ before any of this. So "fourteen values inside a body" was never the rule: what
+\ a body may hold depends on what the values ARE, and the loads shape also holds
+\ its base pointer live across the whole body while the constants shape holds
+\ nothing else at all. The loads are dot habu-rematerialize-the-loop-1faad3e1.
+: REMAT-INSIDE-CASES ( -- )
+   s" fourteen one-movz constants inside a loop body fit with nothing decided"
+   T-LABEL
+   NARROW-BASE 14 s" RIN" INSIDE-SRC 2 TRY 0 T=
+   NMIGRATE:REMATS 0 T=
+
+   s" and fifteen compile by writing one of them again, taking no frame" T-LABEL
+   NARROW-BASE 15 s" RIN" INSIDE-SRC 2 TRY 0 T=
+   NMIGRATE:REMATS 1 T=
+   NMIGRATE:SPILLS 0 T= ;
+
+: REMAT-ACROSS-CASES ( -- )
+   s" thirteen of the same constants live ACROSS the loop compile" T-LABEL
+   NARROW-BASE 13 s" RAC" ACROSS-SRC 2 TRY 0 T=
+
+   s" and fourteen are refused, unmoved: a class of two values is no candidate"
+   T-LABEL
+   NARROW-BASE 14 s" RAC" ACROSS-SRC 2 TRY E-A64RA-SPILL T= ;
+
+: REMAT-WIDE-CASES ( -- )
+   s" sixteen one-movz constants inside the body compile" T-LABEL
+   NARROW-BASE 16 s" RIN" INSIDE-SRC 2 TRY 0 T=
+   NMIGRATE:REMATS 2 T=
+
+   s" and sixteen sixty-four-bit ones are refused: a chain is not one form"
+   T-LABEL
+   WIDE-BASE 16 s" RWI" INSIDE-SRC 2 TRY E-A64RA-SPILL T= ;
+
+: REMAT-SCRATCH-CASES ( -- )
+   s" forty-three re-emitted constants compile" T-LABEL
+   NARROW-BASE 43 s" RIN" INSIDE-SRC 2 TRY 0 T=
+   NMIGRATE:REMATS 29 T=
+
+   s" and forty-four do not fit the migration context (who-owns-the-scratch)"
+   T-LABEL
+   NARROW-BASE 44 s" RIN" INSIDE-SRC 2 TRY E-IR-CTX-SCRATCH T= ;
+
 public
 
 : RUN ( -- )
@@ -250,6 +440,10 @@ public
    NOT-THE-CALL-CASES
    CROSSING-CASES
    RECORD-CASES
+   REMAT-INSIDE-CASES
+   REMAT-ACROSS-CASES
+   REMAT-WIDE-CASES
+   REMAT-SCRATCH-CASES
    T-REPORT ;
 
 ;package

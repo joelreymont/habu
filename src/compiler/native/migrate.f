@@ -224,6 +224,7 @@ variable M-OPEN                      \ a migration is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
 variable M-SPILLS                    \ frame slots this definition proved it needs
+variable M-REMATS                    \ values it writes again instead of putting away
 
 \ ---- compiling without publishing --------------------------------------------
 \ A DEFAULT migration lets the engine publish the definition and then points the
@@ -814,12 +815,30 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ and src/compiler/native/regalloc-verify.f refuses the difference by name. Making
 \ a calling routine spill starts at the selector and is dot
 \ habu-exercise-a-call-dda45093.
+\
+\ THE TWO QUESTIONS THIS WORD ASKS THE WALK ARE DIFFERENT ONES AND ARE ASKED
+\ SEPARATELY. How much FRAME the routine needs is a count of slots, and the
+\ contract above declares exactly that. Whether the module the emitter reads is
+\ the one the walk decided is a count of DECISIONS: every row of the plan is an
+\ operation the module does not contain yet, and a walk with no rows described
+\ the module it read. The two used to be one number because every row implied a
+\ slot - a value put away had one, and a value read back came out of it - and
+\ they came apart the moment a walk could decide something that needs no slot at
+\ all: a value RE-EMITTED where it is read (src/compiler/native/regalloc.f
+\ MB-EVICT) takes no frame, and a returned value that has to be copied into the
+\ register it leaves in never did. Asked through the slot count, such a walk
+\ looks like one that decided nothing, the lowering never runs, and what reaches
+\ the emitter is the module the walk REFUSED to allocate - values with no
+\ register and no slot, which src/compiler/native/regalloc-verify.f REGISTER-CK
+\ refuses by name (E-A64RAV-REGISTER). tools/codegen-alloc-dump.f is what reads
+\ the two counts apart on a refused migration.
 : EMITTED ( -- )
    TEXT-LEN {: len:n :}
    len SELECTED len COMBINED {: m:IR-BUILD:module :}
    CC m ROUTINE A64RA:ALLOCATE
    A64RA:SPILLS M-SPILLS !
-   M-SPILLS @ 0= if
+   A64RA:REMATS M-REMATS !
+   A64RA:PLAN-N 0= if
       A64SPILL:RELEASE
       m EMIT-AT
       exit
@@ -972,7 +991,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
    in M-IN ! out M-OUT ! regs M-REGS !
-   0 M-DATA-U ! 0 M-SPILLS !
+   0 M-DATA-U ! 0 M-SPILLS ! 0 M-REMATS !
    0 M-HELD ! 0 M-HELD-PENDING ! 0 M-MEASURE ! ;
 
 public
@@ -1083,14 +1102,22 @@ public
 : WID ( -- n )
    NAME-WID @ ;
 
-\ How many values the last migration could not keep in registers, and therefore
-\ how many slots its routine's frame holds. Zero for every definition that fits,
-\ which is nearly all of them. It is published because it is the only way to tell
-\ from outside that a migration took the lowering path at all: the code a spilling
-\ definition and a fitting one publish are both just code, and a test that only
-\ checked the answers could not tell which route produced them.
+\ How many values the last migration put in the frame, and therefore how many
+\ slots its routine's frame holds. Zero for every definition that fits, which is
+\ nearly all of them.
+\
+\ IT IS NO LONGER THE WHOLE ANSWER TO "DID THIS ONE TAKE THE LOWERING PATH", and
+\ that is what REMATS below is for. A value the walk decided to write again where
+\ it is read goes through the same lowering and takes no slot, so a definition
+\ can be lowered with nothing in its frame. Both counts are published because the
+\ code a lowered definition and a fitting one publish are both just code, and a
+\ test that only checked the answers could not tell which route produced them.
 : SPILLS ( -- n )
    M-SPILLS @ ;
+
+\ How many values it re-emitted where they are read instead of putting them away.
+: REMATS ( -- n )
+   M-REMATS @ ;
 
 private
 

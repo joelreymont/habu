@@ -211,6 +211,64 @@ variable OLD-LEN
    s" : NMG-SPILL-CALL ( n -- n ) NMG-SPILL ;" EV
    s" 100 NMG-SPILL-CALL" EV-N 836 T= ;
 
+\ ---- a definition that is lowered and puts NOTHING in a frame ----------------
+\ SIXTEEN CONSTANTS MATERIALISED INSIDE A LOOP BODY, at eighteen registers. All
+\ sixteen are live at once where the last is written, two more than the body can
+\ hold, and the two that lose their register are WRITTEN AGAIN in front of the
+\ addition that reads them rather than put away
+\ (src/compiler/native/regalloc.f MB-REMATABLE?). So this definition goes through
+\ the whole lowering - allocate, rewrite, allocate the rewritten module, accept -
+\ with an empty frame, which is the case the driver above SPILL-CASE could not
+\ have: a walk that hands out no slot used to look to
+\ src/compiler/native/migrate.f like a walk that decided nothing at all, and what
+\ reached the emitter was the module the walk had refused to allocate
+\ (E-A64RAV-REGISTER, and tools/codegen-alloc-dump.f is what reads the two counts
+\ apart).
+\
+\ WHY THE ANSWERS ARE THE PROOF AND THE COUNTS ARE NOT. A re-emission is one
+\ move-wide carrying the immediate the original carried, and the ways of getting
+\ it wrong - the wrong immediate, the wrong operation re-emitted, the value bound
+\ to the wrong read - all leave a routine that still compiles and answers
+\ something else. The sixteen constants sum to 644456 per turn, so the routine is
+\ its first argument plus that many times its second: a dropped constant, a
+\ doubled one or a wrong immediate moves the answer, and the three calls pin it
+\ at zero turns, at one, and at several. This is the same standard the reload
+\ lowering is held to today and it is not a proof that the rewrite preserves the
+\ program - that check reads two modules and is dot
+\ habu-prove-the-spill-0294e0e8, which re-emission now shares.
+\
+\ AND THE COUNTS ARE STILL ASSERTED, because the answers cannot see the route.
+\ The same body at a wider budget answers 644463 too. REMATS is what says two
+\ values were written again, and SPILLS being zero is what says neither of them
+\ was put in a frame instead.
+: REMAT-SRC ( -- ptr u8 n )
+   s" : NMG-REMAT ( n n -- n ) {: s:n l:n :} s l 0 ?do 40001 40038 40075 40112 40149 40186 40223 40260 40297 40334 40371 40408 40445 40482 40519 40556 + + + + + + + + + + + + + + + + loop ;" ;
+
+18 constant REMAT-REGS
+
+: MIGRATE-REMAT ( -- )
+   REMAT-SRC 2 1 REMAT-REGS NMIGRATE:DEFINE ;
+
+: REMAT-CASE ( -- )
+   MIGRATE-REMAT
+
+   s" two values were written again, and none went to the frame" T-LABEL
+   NMIGRATE:REMATS 2 T=
+   NMIGRATE:SPILLS 0 T=
+
+   s" the record points at the code the publication seam claimed" T-LABEL
+   s" NMG-REMAT" REC-START
+   s" NMG-REMAT" GLOBAL-WID NPUB:NEW-START T=
+
+   s" the interpreter enters it and every constant is the one it was" T-LABEL
+   s" 5 0 NMG-REMAT" EV-N 5 T=
+   s" 0 1 NMG-REMAT" EV-N 644456 T=
+   s" -3 5 NMG-REMAT" EV-N 3222277 T=
+
+   s" a definition compiled afterwards calls it" T-LABEL
+   s" : NMG-REMAT-CALL ( n -- n ) 3 NMG-REMAT ;" EV
+   s" 100 NMG-REMAT-CALL" EV-N 1933468 T= ;
+
 \ ---- one chain-compiled word calling another ---------------------------------
 \ THE FIRST TWO-WORD PROGRAM THE CHAIN HAS COMPILED. Both words are migrated:
 \ the callee first, so that it is a published record with an address of its own,
@@ -2006,6 +2064,7 @@ variable MEAS-PUB0
    MIGRATED-CASE
    VOID-CALL-CASE
    SPILL-CASE
+   REMAT-CASE
    CALL-CASE
    DEEP-CASE
    INTEROP-CASE

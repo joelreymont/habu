@@ -232,10 +232,11 @@ private
 \ two ceilings; this is the flat one both this pass and the lowering pass carry.
 1024 constant PLMAX
 
-\ The three kinds of decision.
+\ The four kinds of decision.
 0 constant P-STORE
 1 constant P-RELOAD
 2 constant P-MOVE                    \ a returned value put where it has to leave
+3 constant P-REMAT                   \ a value written again where it is read, instead of reloaded
 
 \ The three value classes this dialect has: a general register, a floating
 \ register, and the memory token the frame forms thread. Two of them are held in
@@ -344,6 +345,7 @@ variable OUTS-N
 1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MOV IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-MOVZ IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
 DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
@@ -358,6 +360,7 @@ create V-REG VMAX cells allot
 create V-SET VMAX cells allot
 create V-CLS VMAX cells allot
 create V-SLOT VMAX cells allot
+create V-REMAT VMAX cells allot
 create V-DECL DECLS-N VMAX * cells allot
 create A-REG FIXED-MAX cells allot
 create O-REG FIXED-MAX cells allot
@@ -415,6 +418,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
 : CLS-AT ( n -- n )                  cells V-CLS + @ ;
 : FILE-AT ( n -- n )                 CLS-AT FILE-OF ;
 : SLOT-AT ( n -- n )                 cells V-SLOT + @ ;
+: REMAT-AT ( n -- bool )             cells V-REMAT + @ 0<> ;
 
 : DECL-IX ( n n -- n )               {: d:n k:n :} d VMAX * k + ;
 : DECL-AT ( n n -- n )               DECL-IX cells V-DECL + @ ;
@@ -426,6 +430,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
 : SET! ( n n -- )                    {: v:n k:n :} v k cells V-SET + ! ;
 : CLS! ( n n -- )                    {: v:n k:n :} v k cells V-CLS + ! ;
 : SLOT! ( n n -- )                   {: v:n k:n :} v k cells V-SLOT + ! ;
+: REMAT! ( n n -- )                  {: v:n k:n :} v k cells V-REMAT + ! ;
 
 \ The holder table's key is a register, and a register is a file and a number.
 \ The file is checked against the table's own shape here rather than trusted from
@@ -458,6 +463,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
       NOBODY i REG!
       C-GPR i CLS!
       NOSLOT i SLOT!
+      0 i REMAT!
       DECLS-N 0 ?do NOBODY i j DECL! loop
    loop
    HOLDERS-CLEAR
@@ -479,14 +485,16 @@ variable SHORT-FUN                           \ the function whose scan ran short
    k j cells PL-VAL + !
    j 1+ N-PLAN ! ;
 
-\ Is this value already being reloaded in front of this operation? One reload
-\ serves every read of one value by one operation, so an operation that reads a
-\ spilled value twice takes one register for it and not two.
+\ Is this value already being brought back in front of this operation? One row
+\ serves every read of one value by one operation, so an operation that reads an
+\ evicted value twice takes one register for it and not two - and the question is
+\ about the VALUE arriving, not about which of the two ways it arrives, because
+\ one operation cannot want it both ways.
 : RELOADED? ( n n n -- bool )
    {: blk:n k:n pos:n :}
    false
    N-PLAN @ 0 ?do
-      i cells PL-KIND + @ P-RELOAD =
+      i cells PL-KIND + @ P-RELOAD =  i cells PL-KIND + @ P-REMAT = or
       i cells PL-BLK + @ blk = and
       i cells PL-POS + @ pos = and
       i cells PL-VAL + @ k = and
@@ -957,6 +965,7 @@ create UF VMAX cells allot
 create CL-LO VMAX cells allot
 create CL-HI VMAX cells allot
 create CL-SLOT VMAX cells allot      \ the frame slot a spilled class went into
+create CL-REMAT VMAX cells allot     \ or, instead of a slot, that it is re-emitted at its reads
 create CL-DEF VMAX cells allot       \ where a spilled class is written
 create CL-ANCH VMAX cells allot      \ where the store that puts it away stands
 create CL-SIZE VMAX cells allot      \ how many values one class holds
@@ -1493,9 +1502,30 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 : KEEP? ( n -- bool )
    cells CL-KEEP + @ 0<> ;
 
+\ ---- what "this class lost its register" means -------------------------------
+\ CL-SLOT USED TO ANSWER TWO QUESTIONS AND THEY HAVE COME APART. A class the fit
+\ took a register from used to be exactly a class holding a frame slot, so one
+\ cell said both "the walk has already dealt with this one" and "here is where it
+\ lives now". A class that is RE-EMITTED at its reads instead is dealt with and
+\ holds no slot, so a reader asking the first question through the slot would
+\ decide the walk still owes it a decision and evict it a second time.
+\
+\ SO THE FIRST QUESTION IS THIS WORD AND THE SECOND STAYS THE SLOT, and every
+\ reader below is one or the other on purpose. Three ask this one - the
+\ candidacy test, the per-file demand count and the due test - because all three
+\ mean "has the walk taken this class's register away". FRAME-ONCE-CK asks the
+\ slot, because it is about which function owns the module's one frame and a
+\ class with no slot owns none of it. MB-FINISH asks both, in that order,
+\ because it has three answers to give and not two.
+: CL-EVICTED? ( n -- bool )
+   {: r:n :}
+   r cells CL-SLOT + @ NOSLOT <> if true exit then
+   r cells CL-REMAT + @ 0<> ;
+
 : MB-KIND-CLEAR ( -- )
    VMAX 0 ?do
       NOSLOT i cells CL-SLOT + !
+      0 i cells CL-REMAT + !
       NOPOS i cells CL-DEF + !
       NOPOS i cells CL-ANCH + !
       0 i cells CL-SIZE + !
@@ -1534,7 +1564,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 
 : MB-SPILLABLE? ( n -- bool )
    {: r:n :}
-   r cells CL-SLOT + @ NOSLOT <> if false exit then
+   r CL-EVICTED? if false exit then
    r cells CL-SIZE + @ 1 <> if false exit then
    r KEEP? if false exit then
    r CLS-AT C-TOKEN = if false exit then
@@ -1689,7 +1719,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 : MB-FRAMED? ( n n -- bool )
    {: r:n fl:n :}
    r UF-FIND r =  r FILE-AT fl =  and
-   r cells CL-SLOT + @ NOSLOT <>  and ;
+   r CL-EVICTED?  and ;
 
 \ What the frame's classes need while this position READS: every load in front of
 \ it, plus every class held across it.
@@ -1777,7 +1807,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    {: r:n pos:n :}
    r cells CL-LO + @ pos <> if false exit then
    r CLS-AT C-TOKEN = if false exit then
-   r cells CL-SLOT + @ NOSLOT = ;
+   r CL-EVICTED? 0= ;
 
 \ A class the contract pins to one register arrives in exactly that one, and
 \ three things make that impossible rather than merely awkward: a register the
@@ -1902,15 +1932,83 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    false
    REGS-N 0 ?do fl i HOLD-AT r = if drop true leave then loop ;
 
-\ A class the scan could take a register from here. It has to hold one, it has to
-\ be one this pass may put in the frame, and this position must not touch it: a
-\ class the operation here reads would need a load at once, which puts the same
-\ demand back.
+\ ---- the class that can be WRITTEN AGAIN instead of put away -----------------
+\ THE ONE FORM THIS DIALECT HAS THAT COSTS THE SAME TO RE-EMIT AS TO RELOAD. A
+\ movz reads no register and writes one from an immediate the operation carries,
+\ so writing it again where its value is read is ONE instruction - exactly what
+\ the load it replaces would have been. Nothing else in the dialect is: a movk
+\ merges its half into the value the previous half left, so a materialised
+\ sixty-four-bit constant is a CHAIN, and re-emitting the end of one means
+\ re-emitting all of it.
+\
+\ THE CHAIN IS REFUSED TWICE OVER AND NEITHER REFUSAL IS ARITHMETIC. A movk is
+\ tied to its operand by its own schema, so the two halves are one class - and a
+\ class of more than one value is excluded below before the opcode is ever
+\ looked at. Then the opcode test excludes it again by naming the one form that
+\ stands alone. So the rule is not "count the chain and compare it with a load";
+\ it is "the class's defining operation is the form that needs nothing else",
+\ which is a fact about the schema rather than a number somebody tuned.
+\ CODEGEN-CORPUS4:BIG-CONSTS is the fixture that would notice: its four constants
+\ are sixty-four bits wide and every one of them ends in a movk.
+\
+\ THE NAME IS THE DIALECT'S OWN, learned at BIND-DIALECT, exactly as MB-COPY?
+\ learns the move's - this pass never spells an opcode itself.
+: MB-MOVZ? ( IR-ID:ir-op-id -- bool )
+   OPCODE-AT 0 BND-MOVZ @ SAME-SYM? ;
+
+\ Where the class's one value is written. A class of one value has its hull start
+\ AT that definition, so the interval already holds the answer and no second walk
+\ of the positions is needed. A position that is a block's own first is a block
+\ ARGUMENT and names no operation, which is answered rather than resolved.
+: MB-DEF-OP? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id r:n :}
+   r cells CL-LO + @ {: p:n :}
+   p POS-OP? 0= if false exit then
+   f p POS-OP MB-MOVZ? ;
+
+\ Is this a class the walk may take a register from by arranging to write it
+\ again? Everything MB-SPILLABLE? asks except the one clause remat does not need,
+\ and that exception is the whole of this word - see MB-CANDIDATE? below for why
+\ it is sound.
+: MB-REMATABLE? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id r:n :}
+   r CL-EVICTED? if false exit then
+   r cells CL-SIZE + @ 1 <> if false exit then
+   r CLS-AT C-TOKEN = if false exit then
+   f r MB-DEF-OP? ;
+
+\ A class the scan could take a register from here. It has to hold one, this
+\ position must not touch it - a class the operation here reads would need its
+\ value back at once, which puts the same demand back - and it has to be one the
+\ walk may take a register FROM, which is two different things.
+\
+\ THE SECOND ANSWER IS WHY THIS WORD EXISTS RATHER THAN MB-SPILLABLE? ALONE, and
+\ what it turns on is KEEP?. A class read or written in a block that is neither
+\ the entry nor the exit may not go in the frame, and the reason is memory
+\ ORDER: a store or a load there sits where this pass cannot state where it
+\ stands in the order the frame forms thread, so MB-SPILLABLE? refuses it. A
+\ RE-EMISSION is not a frame access. It touches no slot, takes no memory token
+\ and joins no order - it is one arithmetic instruction writing a register from
+\ an immediate - so the reason KEEP? exists does not reach it, and remat may
+\ override KEEP? where nothing else may.
+\
+\ AND ONLY REMAT-ELIGIBILITY MAY OVERRIDE IT. The override is not "a kept class
+\ can be taken after all"; it is "a class that will be written again rather than
+\ stored can be taken". A kept class that is not re-emittable stays refused here
+\ and reaches MB-VICTIM's throw exactly as before. tools/codegen-spill-probe.f
+\ pins that edge by widening it wrongly and reading what the allocation
+\ validator says.
+\
+\ THIS PAIR IS THE SEAM. What may be taken from a register, and what taking it
+\ means, are answered here and at MB-EVICT; a later rewrite the fit can try -
+\ the cut's crossing-local retry is the named next one - is another answer at
+\ these two words and needs no loop of its own, because MB-FIT already is one.
 : MB-CANDIDATE? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
    r MB-HELD? 0= if false exit then
    f r p MB-TOUCHES? if false exit then
-   r MB-SPILLABLE? ;
+   r MB-SPILLABLE? if true exit then
+   f r MB-REMATABLE? ;
 
 \ How many classes hold a register here that this position does not touch. A
 \ position with none of them is the one register pressure no spill can serve:
@@ -1961,10 +2059,16 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    loop
    dup 0 < if E-A64RA-SPILL throw then ;
 
+\ What taking the register MEANS, which is the other half of the seam above. A
+\ class that can be written again is marked and given no slot - frame.f is not
+\ reached at all, and the module's frame does not grow - and every other class
+\ goes to the frame as it always did. The two are told apart by the same word the
+\ candidacy test used, so a class can never be taken for one reason and dealt
+\ with by the other.
 : MB-EVICT ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id p:n fl:n :}
    f p fl MB-VICTIM {: r:n :}
-   NEW-SLOT r cells CL-SLOT + !
+   f r MB-REMATABLE? if 1 r cells CL-REMAT + ! else NEW-SLOT r cells CL-SLOT + ! then
    f r MB-DEF-POS {: d:n :}
    d r cells CL-DEF + !
    f d MB-ANCH-POS  r cells CL-ANCH + ! ;
@@ -1975,7 +2079,15 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 \ readers are declared further down.
 
 \ Every value takes the register its class was given, or the slot its class was
-\ given. A memory token is in no class that holds either and takes neither.
+\ given, or the mark that says it is written again where it is read. A memory
+\ token is in no class that holds any of the three and takes none of them.
+\
+\ THREE ANSWERS AND THEY ARE ASKED IN ORDER. A class that was never evicted has a
+\ register; a class that was evicted has either a slot or the mark, and never
+\ both, because MB-EVICT writes one of the two and CL-EVICTED? is what the rest of
+\ the walk reads. The slot is asked first for the same reason it is written
+\ first: NOSLOT is the value the reset leaves, so asking the mark first would
+\ read the reset's zero as an answer about a class nobody had reached yet.
 : MB-FINISH ( -- )
    N-VALS @ 0 ?do
       i CLS-AT C-TOKEN = if
@@ -1983,11 +2095,16 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
       else
          i UF-FIND {: r:n :}
          r cells CL-SLOT + @ {: s:n :}
-         s NOSLOT = if
-            r REG-AT i REG!
-         else
+         s NOSLOT <> if
             NOBODY i REG!
             s i SLOT!
+         else
+            r cells CL-REMAT + @ 0<> if
+               NOBODY i REG!
+               1 i REMAT!
+            else
+               r REG-AT i REG!
+            then
          then
       then
    loop ;
@@ -2012,13 +2129,20 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
       k SLOT-AT NOSLOT <> if b P-STORE at k PLAN+ then
    loop ;
 
+\ A value that lost its register comes back in front of the operation that reads
+\ it, and HOW it comes back is the eviction's own answer: out of its slot, or
+\ written again from the immediate its defining operation carries. One row per
+\ value per operation either way - RELOADED? counts both kinds, because an
+\ operation that reads one value twice wants one register for it whichever way
+\ the value arrives.
 : MB-PLAN-LOADS ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id b:n at:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
    id OPERANDS-OF 0 ?do
       id i OPERAND-AT SLOT {: k:n :}
-      k SLOT-AT NOSLOT <>  b k at RELOADED? 0=  and if
-         b P-RELOAD at k PLAN+
+      b k at RELOADED? 0= if
+         k SLOT-AT NOSLOT <> if b P-RELOAD at k PLAN+ then
+         k REMAT-AT if b P-REMAT at k PLAN+ then
       then
    loop ;
 
@@ -2419,6 +2543,7 @@ public
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
    c b A64IR-OPCODE:MOV A64IR:OPCODE 0 BND-MOV !
+   c b A64IR-OPCODE:MOVZ A64IR:OPCODE 0 BND-MOVZ !
    BOUND-YES BND-MODE ! ;
 
 \ Whether a binding is live, for a caller cleaning up after a refused run. See
@@ -2581,6 +2706,12 @@ public
 : PLAN-STORE? ( n -- bool )
    SEAL-CK PLAN-ORD-CK cells PL-KIND + @ P-STORE = ;
 
+\ Whether this row says the value is written again rather than read back. The
+\ lowering pass asks it beside PLAN-STORE? and PLAN-MOVE?, and a row that is
+\ none of the three is a reload, which is how that dispatch has always ended.
+: PLAN-REMAT? ( n -- bool )
+   SEAL-CK PLAN-ORD-CK cells PL-KIND + @ P-REMAT = ;
+
 \ A decision of the third kind: the value at this row has to be put into the
 \ register the contract says it leaves in, by a register-to-register move in
 \ front of the return. The register itself is not carried here - the lowered
@@ -2589,13 +2720,24 @@ public
 : PLAN-MOVE? ( n -- bool )
    SEAL-CK PLAN-ORD-CK cells PL-KIND + @ P-MOVE = ;
 
-\ How many moves this walk decided. A walk that answers zero and spills nothing
-\ decided a module that already is the one it read.
+\ How many moves this walk decided.
 : MOVES ( -- n )
    SEAL-CK
    0
    N-PLAN @ 0 ?do
       i cells PL-KIND + @ P-MOVE = if 1+ then
+   loop ;
+
+\ And how many re-emissions. It is counted for the same reason MOVES is: a
+\ decision that needs no frame slot is invisible in SPILLS, so a caller that
+\ wants to know whether THIS answer is why a routine fits has to be able to ask.
+\ PLAN-N is what says the module the emitter reads is not the one the walk read;
+\ this says which kind of decision made it so.
+: REMATS ( -- n )
+   SEAL-CK
+   0
+   N-PLAN @ 0 ?do
+      i cells PL-KIND + @ P-REMAT = if 1+ then
    loop ;
 
 private
