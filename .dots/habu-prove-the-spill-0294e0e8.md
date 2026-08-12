@@ -13,3 +13,22 @@ no longer in the graph: it was closed and archived by commit bc6485eb7 "Close th
 spill-lowering dot". The lowering it delivered is in the tree at src/compiler/native/spill.f
 (package A64SPILL), which is the rewrite this dot has to prove preserves the program, so the
 dependency is satisfied and the subject exists. Nothing blocks this dot now.
+
+SECOND CONSUMER NAMED 2026-08-12 (lane spill-close). The allocator can now take a
+class's register by arranging to write its constant AGAIN in front of each read
+(src/compiler/native/regalloc.f MB-REMATABLE?, spill.f EMIT-REMAT), so the
+rewrite this dot has to prove now inserts three kinds of operation and not two.
+The gap is the same one and the answer is the same lockstep walk: from one module
+alone, "this move-wide carries the immediate the class it stands for held" is as
+unprovable as "this load reads the slot its value was stored to". Each operand of
+a copied operation is either the value the old operand mapped to, or a load whose
+slot's last store carried that value, or a re-emission of the operation that
+defined it - one more arm on the walk already described above.
+
+WANTED PROMPTLY. Until it exists both lowerings are held by execution alone: the
+chain's answers against the engine's own compilation of the same text, plus
+hand-derived arithmetic (test/compiler/native-migrate.f SPILL-CASE and
+REMAT-CASE). That does falsify a wrong immediate and a wrong slot, so the claim
+is testable today - but it is a differential over answers, not a proof about the
+rewrite, and the number of shapes it covers is the number of fixtures somebody
+wrote.
