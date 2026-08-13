@@ -237,14 +237,19 @@ public
 \ ceilings were measured on this tree before these two rows were written, and
 \ none of them is this landing's:
 \
-\   `[: dup 3 > if 9 throw then 3 * ;] catch`   -> E-IR-VERIFY-SUCCARG (-8088)
-\   `[: NAMED-WORD ;] catch` with any live local -> E-IR-VERIFY-SCOPE (-8092)
+\   `[: dup 3 > if 9 throw then 3 * ;] catch`   -> a body holding control flow
+\   `[: NAMED-WORD ;] catch` with any live local -> a body that CALLS under a group
 \   `[: drop 9 throw ;] catch`                   -> E-NELAB-QUOT (-8651)
 \
 \ The first two reproduce on base bc72170f with no group inside a structure at
 \ all - `{: k:n lim:n :} lim [: T ;] catch drop k 3 * +` answers -8092 there - so
-\ they are the catch lane's and not this one's. The third is DO-CATCH's own
-\ documented refusal of a body that never returns, dot
+\ they are the quotation path's and not this one's. The SECOND has since been
+\ lifted: a body is now built with no local scope of its own to inherit
+\ (src/compiler/native/elaborate.f FUN-STATE!, measured in
+\ test/compiler/native-quot-scope.f), so a calling body under a group compiles.
+\ The first is still refused, by the register allocator now rather than by the
+\ freeze verifier, and dot habu-let-a-quotation-fc37262a carries it. The third is
+\ DO-CATCH's own documented refusal of a body that never returns, dot
 \ habu-compile-a-quotation-7efa798e. What is left, and what these two measure, is
 \ the intersection this landing really does own: a name bound INSIDE a structure
 \ is live across the call `catch` stages, travels as its operand and comes back as

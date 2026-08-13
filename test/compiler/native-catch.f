@@ -261,10 +261,11 @@ public
    [: NCA-OK1 ;] catch ;
 
 \ The production shape: the code into a local, then a decision on it. Twenty of
-\ the forty catch sites in src and lib are written this way. Its body is written
-\ WITHOUT a call, because a body that calls and a locals group in the definition
-\ around it is one of the two quotation-path ceilings pinned at the end of this
-\ file - a ceiling that predates catch and is measured on the parent binary.
+\ the forty catch sites in src and lib are written this way. Its body calls
+\ nothing, which used to be forced - a body that calls under a definition with a
+\ locals group was a quotation-path ceiling - and now is only what this case
+\ happens to measure: the calling twin of the same shape is a differential of its
+\ own in test/compiler/native-quot-scope.f.
 : NCA-D4 ( n -- n n )
    [: 1+ ;] catch {: rc:n :}
    rc 0 <> if 77 else 0 then ;
@@ -544,10 +545,22 @@ public
    0 TTHROWSQ ;
 
 \ NOT A CATCH REFUSAL, and it is here because it is what bounds the bodies above.
-\ A quotation body holding any control structure is refused by the IR verifier,
-\ and it is refused through the route a body reached before `catch` existed - an
-\ argument a callee declares - so it is the quotation path's ceiling and not this
-\ lane's. Measured on the parent binary the same way.
+\ A quotation body holding any control structure is still refused, through the
+\ route a body reached before `catch` existed - an argument a callee declares -
+\ so it is the quotation path's ceiling and not this lane's.
+\
+\ WHOSE REFUSAL IT IS MOVED, AND THE CODE HERE MOVED WITH IT. It used to be the
+\ freeze verifier's, and which of its refusals arrived depended on the enclosing
+\ routine's block count, because a body named its successors by ordinals in that
+\ routine's block window (E-IR-VERIFY-SUCCARG under a straight-line definition,
+\ E-IR-VERIFY-DOM under one holding an `if`). The elaborator now names them in
+\ the module's own block table, so the module reaches the machine passes intact
+\ and the one refusal left is the register allocator's: it reads a successor back
+\ as an ordinal in the function it is lowering (src/compiler/native/regalloc.f
+\ SUCC-ORD), which is the same missing rebasing on the machine side. Dot
+\ habu-let-a-quotation-fc37262a carries it, and
+\ test/compiler/native-quot-scope.f holds the twin case that pins the refusal as
+\ ONE refusal whatever encloses the body.
 : BODY-CONTROL-CASE ( -- )
    s" the engine runs a caught body holding a control structure" T-LABEL
    7 NCA-FIXTURE:NCA-BC {: cu:n cr:n :}
@@ -555,27 +568,29 @@ public
 
    s" and the chain refuses it, while its straight-line twin compiles" T-LABEL
    [: s" : NCA-BC1 ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;" 1 2 MEASURE-AT ;]
-   E-IR-VERIFY-SUCCARG TTHROWSQ
+   E-A64RA-SHAPE TTHROWSQ
    [: s" : NCA-BC2 ( n -- n n ) [: 1+ ;] catch ;" 1 2 MEASURE-AT ;]
    0 TTHROWSQ ;
 
-\ THE SECOND CEILING, AND IT IS NOT A CATCH REFUSAL EITHER. A quotation body that
-\ CALLS, with a locals group in the definition around it, is refused as an
-\ operand naming a value of another function. It is measured on the parent binary
-\ through the same pre-catch route as the case above - a body handed to a callee
-\ that declares a quotation argument - so it is the quotation path's and not this
-\ lane's. It is pinned here because it is what decides the shape of the
-\ production-shape case above: that case's body does not call.
+\ THE SECOND CEILING IS GONE, and this case is what it left behind: the same two
+\ texts, now both compiled. A quotation body that CALLS, with a locals group in
+\ the definition around it, used to be refused as an operand naming a value of
+\ another function - the body was built with the enclosing routine's local scope
+\ still open, so its call carried the enclosing routine's local values. The body
+\ is now built with no local scope at all, which is what a quotation has (dot
+\ habu-let-a-calling-7578eaaa). What the compiled shape ANSWERS is measured in
+\ test/compiler/native-quot-scope.f, against the engine, on both paths; this case
+\ keeps the acceptance beside the refusal it replaced.
 : BODY-CALL-LOCALS-CASE ( -- )
    s" the engine runs a caught calling body under a definition with locals" T-LABEL
    7 NCA-FIXTURE:NCA-BL {: bu:n br:n :}
    br 0 T=  bu 8 T=
 
-   s" and the chain refuses it, while the same body without the locals compiles" T-LABEL
+   s" and the chain compiles it now, with the group and without it" T-LABEL
    [: CALLEE-OK1
       s" : NCA-BL1 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
       1 2 DEFINE-AT ;]
-   E-IR-VERIFY-SCOPE TTHROWSQ
+   0 TTHROWSQ
    [: CALLEE-OK1
       s" : NCA-BL2 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch ;"
       1 2 DEFINE-AT ;]

@@ -566,6 +566,18 @@ SUITE compiler-native-locals-scope
    test/compiler/native-locals-scope.f
 ;SUITE
 
+\ The scope a quotation BODY is built in, which is nobody's but its own. It runs
+\ beside the catch and locals suites because it is their intersection: the
+\ production catch shape is a definition with a group around a body that calls,
+\ and until the body stopped inheriting the enclosing routine's local scope that
+\ shape could not be compiled at all. Every case is differential against the
+\ engine's own compilation, and every name is weighted with its own odd factor,
+\ because what a body carried wrongly across its call comes back as a wrong
+\ NUMBER rather than as a wrong shape.
+SUITE compiler-native-quot-scope
+   test/compiler/native-quot-scope.f
+;SUITE
+
 \ Counting the instruction PAIRS one three-source instruction would replace,
 \ which is the measurement the combining lane decides what to build from. It
 \ runs beside the tail probe because it reads emitted code through that tool's

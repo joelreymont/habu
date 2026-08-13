@@ -543,6 +543,11 @@ public
    \ the loop edges and the calls those leaves measure, it compiles to no
    \ instruction of its own, and every case goes through the same migration entry.
    s" test/compiler/native-locals-scope.f" GSI-FORK-INCLUDE
+   \ And the scope a quotation BODY is built in, beside both: it is where the
+   \ catch shape and the locals groups meet, and its cases are differentials
+   \ through the same migration entry with every name weighted so an exchange
+   \ answers a different number.
+   s" test/compiler/native-quot-scope.f" GSI-FORK-INCLUDE
    \ And the instrument the combining lane decides with, beside it for the same
    \ reason: it reads emitted code through that probe's walk, and its rows are
    \ routines the chain really compiled.

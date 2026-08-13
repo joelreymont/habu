@@ -2082,6 +2082,26 @@ variable DOK                         \ counted loops the search below has passed
 \ forward to is worked out before the walk starts, by SKELETON below.
 variable NB                          \ blocks closed so far; also the open block's ordinal
 
+\ WHERE THIS FUNCTION'S BLOCKS STAND IN THE MODULE, and it is a second number
+\ because a block has two ordinals. NB is the one this walk counts and every
+\ table here is keyed by - the join argument record, the skeleton's forward
+\ ordinals, EXIT-ORD - and it starts at zero for every function. What a
+\ SUCCESSOR names is the other one: IR-FUN gives a block the next ordinal in the
+\ MODULE's block table (src/compiler/ir/fun.f END-BLOCK, and BLOCK@ reads a
+\ function's blocks as its own window of that table), and
+\ src/compiler/native/select.f subtracts this very base back off every successor
+\ it reads (SUCC-IDX, over R-BASE). The two agreed for as long as a module held
+\ one function, because that function's blocks start at zero; a quotation body
+\ is a second function whose blocks start where the enclosing one's ended, so a
+\ body that named a successor named a block of the enclosing routine. That is
+\ what bounded a body holding any control structure (dot
+\ habu-let-a-quotation-fc37262a): a straight-line body names no successor at all
+\ and never met it, while a body with one was refused by the freeze verifier for
+\ whatever the enclosing function's block at that ordinal happened to be -
+\ E-IR-VERIFY-SUCCARG where its argument count differed, E-IR-VERIFY-DOM where
+\ it did not.
+variable BBASE                       \ the module ordinal this function's first block takes
+
 \ ---- leaving from the middle of a definition ---------------------------------
 \ `exit` leaves the word from wherever it is written, and a definition has ONE
 \ place control leaves through: the block that holds `hir.return`. So an `exit`
@@ -2143,13 +2163,25 @@ variable PATH-END
    -1 EXIT-ORD !
    PATH-LIVE PATH-END ! ;
 
+\ The ordinal a successor is named by: this walk's own, raised into the module's
+\ block table. The bound is checked on the WALK's ordinal, because BMAX is how
+\ many blocks one function may have; how many the module may have is IR-FUN's
+\ own question and it asks it where the block is appended.
 : BLOCK-ORD ( n -- IR-ID:ir-block-id )
    {: k:n :}
    k 0 < k NFROZEN:BMAX >= or if E-NELAB-BLOCK throw then
-   MKEY k IR-ID:PACK-BLOCK ;
+   MKEY  BBASE @ k +  IR-ID:PACK-BLOCK ;
 
+\ THE BASE IS HELD AGAINST THE MODULE AT EVERY BLOCK, which is the same
+\ discipline the function ordinal is held to where a body is built. Every
+\ successor this walk named was named as the base plus a walk-local ordinal, and
+\ the answer END-BLOCK gives is where the block really landed; a base that was
+\ wrong by one would leave every branch naming a block of some other function
+\ with nothing downstream able to tell, because a successor is an ordinary
+\ number to every pass after this one.
 : CLOSE-BLOCK ( -- )
-   CTX BLD IR-BUILD:END-BLOCK drop
+   CTX BLD IR-BUILD:END-BLOCK IR-ID:BLOCK-LOCAL {: ord:n :}
+   ord  BBASE @ NB @ +  <> if E-NELAB-BLOCK throw then
    NB @ 1+ {: k:n :}
    k NFROZEN:BMAX > if E-NELAB-BLOCK throw then
    k NB ! ;
@@ -2261,6 +2293,38 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    VGLUE @  n VGLUE-LOW  t ARG-BLOCK-CK cells ARG-G + !
    RN @ t ARG-BLOCK-CK cells ARG-R + !
    n t ARG-BLOCK-CK cells ARG-N + ! ;
+
+\ ---- what a function is built from -------------------------------------------
+\ THE STATE THAT IS THE FUNCTION'S AND NOT THE TAPE'S, established where each
+\ function is opened. A module holds more than one now - the definition's own
+\ routine and one per quotation body - and they are built one after another by
+\ walks over ranges of the SAME tape, so everything below would otherwise be
+\ read at whatever the walk before it left.
+\
+\ THE BLOCK BASE is where this function's blocks land in the module, which is
+\ how many the module already holds: blocks are appended in the order they are
+\ closed, so the next one to be closed takes this ordinal.
+\
+\ THE JOIN ARGUMENT RECORD is keyed by the walk's OWN block ordinal, and those
+\ start again at zero for every function - so a body's join would otherwise be
+\ held to the width, the glue, the parked count and the types of whichever block
+\ of the enclosing routine shares its ordinal (EDGE-STAGE below stating nothing
+\ because the row was already stated).
+\
+\ THE LOCAL SCOPE IS EMPTY, because a quotation body is entered through an
+\ address and no name of the enclosing routine reaches into it: the engine
+\ refuses a body that so much as mentions one (`{: k:n :} [: k 1+ ;]` reports
+\ `k` undefined and exits 75). Every carrier that hands locals over reads
+\ CROSS-L, which counts the LIVE ones - so an empty scope is what makes a call
+\ inside a body carry none of the enclosing function's values. Without it the
+\ call took them as operands and the freeze verifier named it E-IR-VERIFY-SCOPE,
+\ an operand naming a value defined in another function (dot
+\ habu-let-a-calling-7578eaaa).
+: FUN-STATE! ( IR-BUILD:builder -- )
+   {: b:IR-BUILD:builder :}
+   b IR-BUILD:BLOCKS BBASE !
+   ARG-RESET
+   0 LBN ! ;
 
 \ A block that takes its live values as arguments. Every value the vector held
 \ is handed over by the branch that reached it, so the vector is replaced by the
@@ -6363,8 +6427,10 @@ variable QNAME-P                     \ the place value the digit loop is on
    b IR-BUILD:FUNS  k QFUN@  <> if k QAT@ QUOT-REFUSE then
    k QLO@ {: lo:n :}
    k QHI@ {: hi:n :}
+   LBN @ {: lb:n :}
    k QCUR !
    r lo hi SKELETON-TRY
+   b FUN-STATE!
    c b v key k QOPEN-FUN
    c b v key k QOPEN-BLOCK
    TOK-NEED @ 0<> if k QAT@ EMIT-MEM then
@@ -6391,6 +6457,11 @@ variable QNAME-P                     \ the place value the digit loop is on
    c b v key k QEMIT-RETURN
    c b IR-BUILD:END-BLOCK drop
    c b IR-BUILD:END-FUN drop
+   \ The enclosing walk's scope, put back: this word borrowed the tables to build
+   \ a function that has no names of its own, and the next body borrows them from
+   \ the same place. A refusal above leaves them empty, which is what an abandoned
+   \ definition's tables are for - COLON's own pre-scan fills them again.
+   lb LBN !
    QOWNER-DEF QCUR ! ;
 
 : QBUILD-ALL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena -- )
@@ -6635,7 +6706,6 @@ EXPORT SPLICE-MEANING?
    n 1 < if E-NELAB-SHAPE throw then
    v NAME-READ
    TOK-RESET
-   ARG-RESET
    in IN-N !
    out OUT-N !
    FR-GIN @ IN-GLUE !  FR-GOUT @ OUT-GLUE !
@@ -6651,6 +6721,7 @@ EXPORT SPLICE-MEANING?
    r n MEM-SCAN
    r n CROSS-SCAN
    r 1 n SKELETON-TRY
+   b FUN-STATE!
    c b v key in out OPEN-FUN
    c b v key in OPEN-BLOCK
    TOK-NEED @ 0<> if 0 EMIT-MEM then
