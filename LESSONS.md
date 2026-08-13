@@ -6318,3 +6318,19 @@ the axes before any design was written.
 from ONE process - two runs of the same instrument over the same
 tree disagreed by one row; the run printing both numbers agreed
 with itself.
+
+## The quotation-scope landing's three (2026-08-13)
+
+(1) A refusal whose CODE depends on the shape of the surrounding
+routine is a missing per-function fact, not a dialect limit - the
+same body text refused -8088 under a straight-line definition and
+-8091 under one holding an if. Vary the enclosing shape before
+designing to the code.
+(2) After fixing a producer, look for the mirror bug in every
+consumer that rebases the same number: the fix moved the refusal
+from the verifier to the allocator because only select.f had done
+the R-BASE subtraction. Grep the number's readers, not just its
+writer.
+(3) A differential over a caught rethrow cannot compare the value
+under the code - depth is restored, contents are not, and on that
+path the routine that threw is the subject compiled two ways.
