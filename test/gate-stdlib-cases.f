@@ -491,6 +491,18 @@ SUITE compiler-codegen-tail-probe
    test/compiler/codegen-tail-probe.f
 ;SUITE
 
+\ The call a routine leaves through while its own names are still standing - the
+\ checked accessor's guard-then-convert shape and the checked constructor's
+\ validate-then-MAKE shape, which between them are most of what the tree writes.
+\ Every case is differential against the engine's own compilation, because what a
+\ tail site leaves unpublished cannot be seen in the shape of the code and only
+\ the ANSWER separates a site that dropped what it needed from one that did not.
+\ It runs beside the tail probe because it uses that instrument to say the branch
+\ is really there.
+SUITE compiler-native-tail
+   test/compiler/native-tail.f
+;SUITE
+
 \ The multiply-add the chain writes, held against the two instructions it
 \ replaces: the same source compiled by the engine's emitter, which never fuses,
 \ and by the chain, which does, run against each other to the ends of the signed

@@ -2659,6 +2659,116 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" a convention naming more data-stack arguments than the word has is refused" T-LABEL
    [: DARITY ;] E-A64SEL-PLACE TTHROWSQ ;
 
+\ ---- the site a routine leaves through ---------------------------------------
+\ WHAT THE PASS IS ALLOWED TO LEAVE OUT AT A TAIL SITE, AND THE PROOF IT NEEDS
+\ FIRST. The source dialect states that a call consumes every value the caller
+\ still holds and answers each of them again, and at the call control leaves by
+\ that statement is about values no instruction of the routine will ever read:
+\ there is no afterwards. So the site saves none of them and publishes the
+\ arguments into slots zero upwards - which are this routine's own argument
+\ cells, and where the callee expects to find them.
+\
+\ THE TWO FIXTURES ARE THE SAME MODULE WITH ONE OPERAND CHANGED, which is what
+\ makes the pair say something. Each is a one-argument function whose block is a
+\ memory order, a call to another word carrying one value besides its argument,
+\ and a return. In the first the return names the CALLEE's answer, so the carried
+\ value is dead and the site may leave it out; in the second the return names the
+\ carried value's own result, so something really does read it, and lowering that
+\ into a branch would leave the reader waiting for a register the callee
+\ destroys. The second is refused by name.
+\
+\ IT IS BUILT HERE AND NOT MIGRATED BECAUSE THE ELABORATOR CANNOT WRITE IT. A
+\ body whose last call is the last thing it does leaves every carried value dead,
+\ and a body that reads one after the call has an operation between the call and
+\ the return, which is not this shape at all. test/compiler/native-tail.f
+\ measures the whole class through the production entry; what is left for a
+\ hand-built module is the fail-closed half.
+: MEMOP ( -- IR-ID:ir-value-id )
+   HIR-OPCODE:MEM BODY-ST BODY-LN OPEN-OP
+   CC BB  CC BB HIR:MEM-TYPE  IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: WCALL-ATTRS ( n n n -- )
+   {: e:n in:n out:n :}
+   CC BB  CC BB HIR:KEY-ENTRY  CC BB e IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-IN     CC BB in IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-OUT    CC BB out IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR ;
+
+$400 constant CALLEE-ENTRY            \ an address; nothing here branches to it
+
+\ One call to a one-in one-out callee, carrying one value besides its argument.
+\ Its operands are the memory order, the carried value and the argument, and its
+\ results are the order, the carried value again and the callee's answer - which
+\ is the operand and result order src/compiler/native/elaborate.f hands over in.
+: WCALL1 ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-op-id )
+   {: tok:IR-ID:ir-value-id live:IR-ID:ir-value-id arg:IR-ID:ir-value-id :}
+   HIR-OPCODE:WORDCALL BODY-ST BODY-LN OPEN-OP
+   CC BB tok IR-BUILD:ADD-OPERAND
+   CC BB live IR-BUILD:ADD-OPERAND
+   CC BB arg IR-BUILD:ADD-OPERAND
+   CC BB  CC BB HIR:MEM-TYPE  IR-BUILD:ADD-RESULT
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CALLEE-ENTRY 1 1 WCALL-ATTRS
+   CC BB IR-BUILD:END-OP ;
+
+\ A contract that declares control leaves through a callee. It declares no call
+\ trait and no frame, which is what a routine whose ONLY call is the one it
+\ leaves through really has: nothing is saved, so there is no epilogue and no
+\ return address to keep.
+: TAIL-CONV ( n n -- A64EFF:routine )
+   {: in:n out:n :}
+   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-ALL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:TAIL-CALL
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
+: SELECTED-TAIL ( n n -- IR-BUILD:module )
+   {: in:n out:n :}
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m A64-BUILDER TXT TXT-N  in out TAIL-CONV  A64SEL:SELECT ;
+
+: BUILD-TAIL-DEAD ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEMOP {: tok:IR-ID:ir-value-id :}
+   tok a a WCALL1 {: id:IR-ID:ir-op-id :}
+   CC BB id 2 IR-BUILD:OP-RESULT@ RET1
+   CLOSE-FUN ;
+
+: BUILD-TAIL-LIVE ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEMOP {: tok:IR-ID:ir-value-id :}
+   tok a a WCALL1 {: id:IR-ID:ir-op-id :}
+   CC BB id 1 IR-BUILD:OP-RESULT@ RET1
+   CLOSE-FUN ;
+
+: TAIL-DEAD-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-TAIL-DEAD
+   1 1 SELECTED-TAIL drop ;
+
+: TAIL-LIVE-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-TAIL-LIVE
+   1 1 SELECTED-TAIL drop ;
+
+: TAIL-DEAD ( -- )
+   WBND [: TAIL-DEAD-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TAIL-LIVE ( -- )
+   WBND [: TAIL-LIVE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TAIL-DEAD-CASE ( -- )
+   s" a tail site whose carried value nothing reads is selected" T-LABEL
+   [: TAIL-DEAD ;] catch 0 T= ;
+
+: TAIL-LIVE-REFUSE-CASE ( -- )
+   s" a tail site whose carried value the return reads is refused" T-LABEL
+   [: TAIL-LIVE ;] E-A64SEL-TAIL TTHROWSQ ;
+
 \ ---- groups ------------------------------------------------------------------
 : GROUP-BIND-REFUSE ( IR-CTX:ctx -- )
    drop
@@ -2699,6 +2809,10 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : GROUP-CALL-NONE-REFUSE ( IR-CTX:ctx -- )
    drop
    CALL-NONE-REFUSE-CASE ;
+
+: GROUP-TAIL-LIVE-REFUSE ( IR-CTX:ctx -- )
+   drop
+   TAIL-LIVE-REFUSE-CASE ;
 
 public
 
@@ -2750,6 +2864,7 @@ public
    FPLACE-USED-CASE
    FPLACE-ADDED-CASE
    FPLACE-ADDRESS-CASE
+   TAIL-DEAD-CASE
    WBND [: GROUP-BIND-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SOURCE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE-REFUSE ;] IR-CTX:WITH-CONTEXT
@@ -2760,6 +2875,7 @@ public
    WBND [: GROUP-CALL-NOFRAME-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-DARITY-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-CALL-NONE-REFUSE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-TAIL-LIVE-REFUSE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 
 ;package

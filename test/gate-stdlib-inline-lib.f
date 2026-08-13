@@ -505,6 +505,13 @@ public
    \ it leaves, read off the emitted code. It belongs beside the chain's own
    \ leaves because one of its fixtures is migrated through the chain.
    s" test/compiler/codegen-tail-probe.f" GSI-FORK-INCLUDE
+   \ And the call a routine leaves through while its own names are still
+   \ standing, measured with that instrument: the checked accessor's
+   \ guard-then-convert shape and the checked constructor's validate-then-MAKE
+   \ shape, each against the engine's own compilation. It is listed here as well
+   \ as in test/gate-stdlib-cases.f for the reason given above: only this list is
+   \ what test/run.f actually forks.
+   s" test/compiler/native-tail.f" GSI-FORK-INCLUDE
    \ The multiply-add the chain writes, against the two instructions it replaces,
    \ differentially and to the ends of the signed range.
    s" test/compiler/native-combine.f" GSI-FORK-INCLUDE

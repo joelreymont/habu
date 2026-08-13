@@ -292,6 +292,7 @@ variable S-DECL-IN                   \ how many values the contract declares the
 variable S-DECL-OUT                  \ and how many it declares it leaves
 variable N-CALLS                     \ calls this selection built
 variable N-TAILS                     \ tail branches this selection built
+variable TAIL-SITE                   \ the operation this function leaves through, or -1
 variable N-TRAPS                     \ trap branches this selection built
 variable S-TAIL                      \ whether the contract says control leaves through a callee
 variable S-DSTACK                    \ whether the contract declares the data-stack convention
@@ -1205,6 +1206,32 @@ variable D-RETS                                    \ returns seen while surveyin
    at A64IR-OPCODE:LINKLOAD EMIT-LINK
    at EMIT-RELEASE ;
 
+\ ---- which operation this function leaves through ----------------------------
+\ ONE ANSWER FOR THE WHOLE FUNCTION, AND FOUR PASSES READ IT. Whether a call is
+\ the one control leaves by decides what its site publishes, what it takes back,
+\ and which places the pointer has to reach - so the residency fixpoint, the
+\ register-need pass, the pointer survey and the lowering all have to give the
+\ same answer about the same operation. Three of the four run before a block is
+\ opened, where "the block being lowered" means nothing, so the answer is
+\ derived once per function by TAIL-SITE! below and read here.
+\
+\ IT IS AN OPERATION AND NOT A POSITION because a position is only meaningful
+\ beside the block it counts in, and two of the readers hand an operation on
+\ without its block. Identity is the module's own: a source operation's local
+\ ordinal names one operation of one function.
+: TAIL-OP? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   TAIL-SITE @ 0 < if false exit then
+   id IR-ID:OP-LOCAL TAIL-SITE @ = ;
+
+\ Does the block being lowered hold that operation? It is the block's last but
+\ one, because the site stands in front of the return it replaces.
+: TAIL-HERE? ( -- bool )
+   TAIL-SITE @ 0 < if false exit then
+   BLK OP-COUNT {: n:n :}
+   n 2 < if false exit then
+   BLK n 2 - OP-AT TAIL-OP? ;
+
 \ ---- selecting a call --------------------------------------------------------
 \ THE CALL-SITE INVARIANT, WHICH IS WHAT THIS WORD BUILDS.
 \
@@ -1360,10 +1387,18 @@ variable KEPT-F
 \ come to disagree about which operand names which slot, which is exactly the
 \ kind of disagreement that would publish one value where a callee reads another.
 \
-\ `kk` live values go out to slots zero upwards, then the `a` arguments; `m` are
-\ kept, and a kept value has no operation here at all - it is in a register the
-\ callee does not write, and the restore below says so by binding the source
-\ value that comes back out of the call to the very value that went in.
+\ `kk` live values go out to slots zero upwards, then the `a` arguments; the
+\ other `m` are not written down here at all, and `kk + m` is therefore how many
+\ operands stand in front of the arguments however the site splits them. THERE
+\ ARE TWO REASONS A SITE WRITES NONE OF A VALUE DOWN, and both leave the same
+\ arithmetic behind. An ordinary site KEEPS it: it is in a register the callee
+\ does not write, and CALL-RESTORE below says so by binding the source value that
+\ comes back out of the call to the very value that went in. A site the routine
+\ leaves through DROPS it: control never comes back, so no value of this routine
+\ is ever read again, there is nothing to bind and nothing to load. The only
+\ reader that has to tell the two apart is the register-need pass - a kept value
+\ needs a register across the branch and a dropped one needs nothing - and it
+\ asks TAIL-OP? where it stands.
 : DSAVE-VAL ( IR-ID:ir-op-id n n n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id kk:n m:n i:n :}
    i kk < if id i 1+ OPERAND-AT exit then
@@ -1503,9 +1538,38 @@ variable KEPT-F
    id  id WORD-ENTRY  k KEEP-N {: m:n :}
    a r  k m -  m ;
 
+\ THE SHAPE OF THE SITE, WHICH IS NOT THE SHAPE OF THE OPERATION AT THE ONE
+\ OPERATION A ROUTINE LEAVES THROUGH. The source dialect states that a call
+\ consumes every value the caller still holds and answers each of them again,
+\ because no register survives a branch-with-link whatever the callee destroys.
+\ At the call control comes back from that is the honest statement and the site
+\ pays for it: each of those values is written into a slot of this routine's own
+\ stack below the callee's base and read back out of it afterwards.
+\
+\ AT THE CALL CONTROL DOES NOT COME BACK FROM IT IS NOT. There is no afterwards -
+\ no load run, no return, no operation of this routine at all - so not one of
+\ those values is ever read again, and a site that saved them would write cells
+\ nothing reads and, far worse, would push the callee's argument base up over
+\ them: the branch would hand the callee somebody else's cells as its arguments.
+\ So the site saves NONE of them and publishes the arguments into slots zero
+\ upwards, which are this routine's own argument cells and where the callee
+\ expects to find them.
+\
+\ THE DEADNESS IS PROVED AND NOT ASSUMED, at TAIL-SITE! below, where the site is
+\ derived: no result of the operation in front of the callee's own answers may be
+\ read anywhere in this function, or the site is refused by name. What this word
+\ does is state the split every reader then builds from - nothing saved, and
+\ `kk + m` operands still standing in front of the arguments, so the position of
+\ every argument is the one the operation gave it.
+: SITE-SHAPE ( IR-ID:ir-op-id -- n n n n )
+   {: id:IR-ID:ir-op-id :}
+   id WORD-SHAPE {: a:n r:n kk:n m:n :}
+   id TAIL-OP? 0= if a r kk m exit then
+   a r 0  kk m + ;
+
 : EMIT-WORD-CALL ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
-   id WORD-SHAPE {: a:n r:n kk:n m:n :}
+   id SITE-SHAPE {: a:n r:n kk:n m:n :}
    id WORD-ENTRY {: e:n :}
    id 0 OPERAND TOK!
    id kk m a mask CALL-SAVE
@@ -3519,9 +3583,9 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ WHICH OPERATION THE ROUTINE LEAVES THROUGH, read off the module. It is the
 \ operation immediately in front of the terminator of a block whose terminator is
 \ the return - which, for a body the elaborator called a tail call, is the only
-\ block there is. Asked of a position, because both the placement below and the
-\ lowering above have one; and asked of the CONTRACT first, so a routine that was
-\ not declared a tail caller never grows one.
+\ block there is. Asked of a position, because the derivation below walks blocks;
+\ and asked of the CONTRACT first, so a routine that was not declared a tail
+\ caller never grows one.
 : TAIL-AT? ( IR-ID:ir-block-id n -- bool )
    {: bk:IR-ID:ir-block-id at:n :}
    TAIL? 0= if false exit then
@@ -3531,18 +3595,94 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    bk at OP-AT OP-SLOT O-WORDCALL <> if false exit then
    bk n 1- OP-AT OP-SLOT O-RETURN = ;
 
-\ Does the block being lowered leave through a callee? The walk hands each
-\ operation down on its own, so the position is found by asking the block.
-: TAIL-HERE? ( -- bool )
-   TAIL? 0= if false exit then
-   BLK OP-COUNT {: n:n :}
-   n 2 < if false exit then
-   BLK n 2 - TAIL-AT? ;
+\ Is this value read by any operation of this function? A value nothing reads is
+\ a value the pass may decline to produce; a value something reads has to be
+\ where the reader expects it. The walk is over the whole function rather than
+\ over the block the definition is in, because a block argument carries a value
+\ into another block under a new name and only the operands say who reads what.
+: VALUE-READ? ( IR-ID:ir-fun-id IR-ID:ir-value-id -- bool )
+   {: f:IR-ID:ir-fun-id v:IR-ID:ir-value-id :}
+   false
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      bk OP-COUNT 0 ?do
+         bk i OP-AT {: id:IR-ID:ir-op-id :}
+         id OPERANDS-OF 0 ?do
+            id i OPERAND-AT v SAME-VALUE? if drop true then
+         loop
+      loop
+   loop ;
 
-: TAIL-OP? ( IR-ID:ir-op-id -- bool )
-   {: id:IR-ID:ir-op-id :}
-   TAIL-HERE? 0= if false exit then
-   BLK  BLK OP-COUNT 2 -  OP-AT IR-ID:OP-LOCAL  id IR-ID:OP-LOCAL = ;
+\ NOTHING THE SITE WOULD CARRY IS READ AGAIN, WHICH IS THE ONE THING A TAIL
+\ BRANCH NEEDS THAT THE SOURCE OPERATION DOES NOT SAY. The dialect states that a
+\ call consumes every value the caller still holds and answers each of them
+\ again, and at the operation control leaves by that statement is about values no
+\ instruction of this routine will ever read: there is nothing after the branch.
+\ SITE-SHAPE above builds the site from that, so it is proved here, from the
+\ module, before the site is recorded - a result in front of the callee's own
+\ answers that something DOES read is a module this pass must not lower into a
+\ branch, because the value would be left in a register the callee destroys with
+\ a reader still waiting for it.
+\
+\ THE CALLEE'S OWN ANSWERS ARE THE LAST `r` RESULTS and they are exactly what the
+\ return behind the site reads, so they are skipped: they are published by the
+\ callee into the very cells this routine's caller reads its results out of,
+\ which is the whole of why the branch is legal.
+: TAIL-DEAD-CK ( IR-ID:ir-fun-id IR-ID:ir-op-id n -- )
+   {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id k:n :}
+   k 0 ?do
+      f  id i 1+ RESULT-AT  VALUE-READ? if E-A64SEL-TAIL throw then
+   loop ;
+
+\ Where in this block the site stands, or -1 for a block that is not one.
+: TAIL-POS ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT {: n:n :}
+   n 2 < if -1 exit then
+   bk n 2 - TAIL-AT? 0= if -1 exit then
+   n 2 - ;
+
+\ How many values the operation names in front of the callee's arguments,
+\ whichever way the site splits them. The two numbers are added rather than the
+\ operand list counted again, so this and the site agree by construction.
+: SITE-CROSSED ( IR-ID:ir-op-id -- n )
+   WORD-SHAPE {: kk:n m:n :}
+   2drop
+   kk m + ;
+
+\ One block, examined. A SECOND SITE IN ONE FUNCTION IS REFUSED rather than one
+\ of them being chosen: it takes two blocks each ending in a return, which is
+\ already a routine that publishes its results twice - DPLACE-RETURN below
+\ refuses that as well - and a pass that picked one of them would be guessing
+\ which return this routine's caller is going to read.
+: TAIL-SITE-TRY ( IR-ID:ir-fun-id IR-ID:ir-block-id -- )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id :}
+   bk TAIL-POS {: at:n :}
+   at 0 < if exit then
+   TAIL-SITE @ 0 >= if E-A64SEL-TAIL throw then
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id IR-ID:OP-LOCAL TAIL-SITE !
+   f id  id SITE-CROSSED  TAIL-DEAD-CK ;
+
+\ THE ONE DERIVATION, MADE ONCE PER FUNCTION. Four passes ask whether a given
+\ call is the one control leaves by - the residency fixpoint, the register-need
+\ pass, the pointer survey and the lowering - and three of them run before any
+\ block is opened, so the question cannot be answered from "the block being
+\ lowered". It is settled here instead, and TAIL-OP? above is what the four read.
+\
+\ ONLY FUNCTION ZERO CAN HOLD IT. An emission holds the published word's routine
+\ and one routine per quotation its body makes, and the contract describes the
+\ FIRST of them: it is the published word that was declared to leave through a
+\ callee, exactly as FUN-PLACES! above holds the contract's own place lists
+\ against function zero and no other. A quotation body that happens to end in a
+\ call is an ordinary routine entered through an address by whoever executes it,
+\ and branching out of it would return to that executor's caller.
+: TAIL-SITE! ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id ord:n :}
+   -1 TAIL-SITE !
+   TAIL? 0= if exit then
+   ord 0<> if exit then
+   f BLOCK-COUNT 0 ?do  f  f i BLOCK-AT  TAIL-SITE-TRY  loop ;
 
 \ ---- leaving through the callee ----------------------------------------------
 \ WHAT A TAIL CALL IS, AND WHY IT IS NOT A CALL SITE WITH THE END CUT OFF. A call
@@ -3554,20 +3694,20 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ this routine's caller will read them out of, and the callee's own return goes
 \ to the address x30 holds, which is this routine's caller's.
 \
-\ THE FOUR THINGS THAT MAKE THAT TRUE ARE HELD HERE, NOT ASSUMED. The elaborator
+\ THE THREE THINGS THAT MAKE THAT TRUE ARE HELD HERE, NOT ASSUMED. The elaborator
 \ decided this routine leaves through its last call and the contract says so;
 \ this is the second derivation, made from the module, and it refuses by name
 \ rather than lowering a branch that would hand the caller a stack it does not
 \ expect:
-\   nothing is live across the branch, because nothing follows it;
+\   nothing the site would carry is read again, because nothing follows the
+\   branch - proved at TAIL-SITE! above, where the site is derived, so that the
+\   three passes that read the site's shape read it after the proof;
 \   the callee takes exactly what this routine takes and leaves exactly what it
 \   leaves, so the cells are the same cells at both ends;
 \   and the pointer already stands at the callee's entry base, so the site has no
 \   adjustment - which is what DPLACE below makes true rather than hopes for.
-: TAIL-CK ( n n n n -- )
-   {: a:n r:n kk:n m:n :}
-   kk 0<> if E-A64SEL-TAIL throw then
-   m 0<> if E-A64SEL-TAIL throw then
+: TAIL-CK ( n n -- )
+   {: a:n r:n :}
    a ARGS SLOT-POSITIONS <> if E-A64SEL-TAIL throw then
    r OUTS SLOT-POSITIONS <> if E-A64SEL-TAIL throw then
    a A64IR:SLOT-WIDTH * DPLACED 0<> if E-A64SEL-TAIL throw then
@@ -3588,8 +3728,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ CALLS? is false, so PROLOGUE and EPILOGUE build nothing - and that is the win.
 : EMIT-TAIL-CALL ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
-   id WORD-SHAPE {: a:n r:n kk:n m:n :}
-   a r kk m TAIL-CK
+   id SITE-SHAPE {: a:n r:n kk:n m:n :}
+   a r TAIL-CK
    id 0 OPERAND TOK!
    id kk m a mask CALL-SAVE
    id EPILOGUE
@@ -3771,7 +3911,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
    s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
-   s O-WORDCALL = if id  id WORD-SHAPE  DCALL-XFER exit then
+   s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
    s O-RETURN = if
       DSTACK? 0= if 0 exit then
       id  OUTS SLOT-POSITIONS  DEXIT-XFER exit
@@ -4085,12 +4225,23 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    {: id:IR-ID:ir-op-id :}
    id OPERANDS-OF 0 ?do id i OPERAND-AT DNEED+ loop ;
 
+\ A value the site writes down needs a register to be written out of, and a value
+\ it KEEPS needs one to stay in across the branch. A value it DROPS needs
+\ nothing: the site the routine leaves through is the one place where an operand
+\ of a call is read by no instruction at all, because the branch is the last
+\ thing this routine does.
+\
+\ AND THIS ONE IS NOT AN OPTIMISATION, WHICH IS WORTH SAYING PLAINLY. A dead
+\ value asked for a register keeps the entry load that defined it alive, and the
+\ register verifier refuses an emission holding a load whose result nothing reads
+\ (E-A64RAV-DKEEP) - measured, by taking this question out again.
 : DNEED-CALL ( IR-ID:ir-op-id n n n n n -- )
    {: id:IR-ID:ir-op-id mask:n a:n r:n kk:n m:n :}
    id 0 OPERAND-AT DNEED+
    kk a + 0 ?do
       mask i DBIT? 0= if id kk m i DSAVE-VAL DNEED+ then
    loop
+   id TAIL-OP? if exit then
    m 0 ?do id kk i + 1+ OPERAND-AT DNEED+ loop ;
 
 : DNEED-EXIT ( IR-ID:ir-op-id n -- )
@@ -4106,7 +4257,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    id OP-SLOT {: s:n :}
    s O-BR = if exit then
    s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
-   s O-WORDCALL = if id mask  id WORD-SHAPE  DNEED-CALL exit then
+   s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
    s O-RETURN = if id mask DNEED-EXIT exit then
    s O-TRAP = if id DNEED-OPERANDS exit then
    id DNEED-OPERANDS ;
@@ -4206,7 +4357,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
    s O-CALL = if id SELF-SHAPE DPLACE-CALL exit then
-   s O-WORDCALL = if id WORD-SHAPE DPLACE-CALL exit then
+   s O-WORDCALL = if id SITE-SHAPE DPLACE-CALL exit then
    s O-TRAP = if DPLACE-TRAP exit then
    s O-RETURN = if DPLACE-RETURN then ;
 
@@ -4774,6 +4925,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    n 1 < if E-A64SEL-SHAPE throw then
    n NFROZEN:BMAX > if E-A64SEL-CAP throw then
    f ord FUN-PLACES!
+   f ord TAIL-SITE!
    f 0 S-FUN !
    f OPEN-FUN
    VCLEAR
@@ -4947,6 +5099,7 @@ public
    t l A64FRAME:LINK-KEPT? if 1 else 0 then S-LSAVE !
    0 N-CALLS !
    0 N-TAILS !
+   -1 TAIL-SITE !
    0 N-TRAPS !
    0 R-NEWBASE !
    CONTRACT-CK
