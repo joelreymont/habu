@@ -550,12 +550,15 @@ RMAX TYPED-BUFFER RSTK IR-ID:ir-value-id
 \ definition in src, lib, tools, test and maki uses four or fewer. A body that
 \ wants more is a capability to raise here, not a ceiling to widen silently.
 \
-\ AND NOTHING CHECKED CAN REACH IT TODAY, which is worth writing down rather than
-\ leaving for the next reader to discover. Seventeen `>r`s in one body is refused
-\ by the CHECKER before this file sees the tape, so the E-NELAB-CAP below is an
-\ assertion about this vector's own storage and not a refusal a program can
-\ provoke. It stays because the storage is real and a ceiling nobody checks is a
-\ silent overwrite the day a second producer of tapes appears.
+\ AND IT IS THE FIRST WALL A DEEP BODY MEETS, which is worth writing down rather
+\ than leaving for the next reader to discover. The CHECKER has no return-depth
+\ ceiling at all: a body that pushes seventeen literals, parks every one of them
+\ and takes every one back certifies and RUNS under `bin/hb`, answering their
+\ sum. So the E-NELAB-CAP below is a refusal an ordinary program can provoke and
+\ not an assertion about storage nothing reaches - test/compiler/native-rstack.f
+\ measures it through the production migration entry, against a sixteen-deep twin
+\ that compiles. It stays because the storage is real and because a ceiling
+\ nobody checks is a silent overwrite the day a second producer of tapes appears.
 \
 \ The i-th parked value from the bottom. One reader, so an index outside what the
 \ vector holds is one refusal rather than several - the rule VAT keeps.

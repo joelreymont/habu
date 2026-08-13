@@ -42,6 +42,18 @@
 \ reds the first, a reader keyed on the clause's presence reds the second, and
 \ only a reader of what the ROWS SAY answers all three.
 \
+\ AND TWO MORE REFUSALS ARE ABOUT THIS BODY, each measured beside a twin that
+\ COMPILES so the row says where the cut falls rather than that deep or awkward
+\ bodies are refused in general. The first is the elaborator's own ceiling: the
+\ compile-time return vector holds sixteen cells, so a body parking seventeen is
+\ refused and one parking sixteen is not. The checker has no return-depth ceiling
+\ of its own - the seventeen-deep body certifies and RUNS under `bin/hb` - so the
+\ elaborator's wall is the first one such a body meets and an ordinary program
+\ can provoke it. The second is the parked QUOTATION, which is the shape
+\ src/core/combinators.f BI and TRI arrive here in: a parked cell may only ever
+\ be a plain one, and its twin parks the plain cell out of the same body and
+\ compiles.
+\
 \ Run: bin/hb --load test/compiler/native-rstack.f
 
 require lib/errors.f
@@ -203,6 +215,10 @@ private
 variable RC-BAL                      \ what a call to a body-mentions-`>r` word answered
 variable RC-RVAR                     \ and to one whose clause moves nothing
 variable RC-PUSH                     \ and to one whose clause really moves a cell
+variable RC-D17                      \ what a body parking seventeen cells answered
+variable RC-D16                      \ and one parking sixteen, which is the ceiling
+variable RC-QUOT                     \ what a body parking a QUOTATION answered
+variable RC-CELL                     \ and the same body parking the plain cell
 
 : TOR ( -- )
    s" : NRS-TOR-N ( n -- n ) >r 5 r> + ;" 1 1 REGS NMIGRATE:DEFINE ;
@@ -312,11 +328,61 @@ variable RC-PUSH                     \ and to one whose clause really moves a ce
 : TRY-PUSH ( -- )
    s" : NRS-Z3-N ( n -- n ) NRS-PUSH NRS-POP 1 + ;" 1 1 REGS NMIGRATE:MEASURE-HELD ;
 
+\ ---- the ceiling, and the depth just below it --------------------------------
+\ SEVENTEEN PARKED CELLS IS ONE PAST WHAT THE COMPILE-TIME RETURN VECTOR HOLDS
+\ (src/compiler/native/elaborate.f RMAX, sixteen), and this is the pair that says
+\ so. The CHECKER has no return-depth ceiling: this exact body certifies and runs
+\ under `bin/hb`, answering 153. So the wall is the elaborator's, an ordinary
+\ program reaches it, and the sixteen-deep twin below compiles - without it the
+\ row would read as "a deep body is refused" and would still pass against a
+\ chain that refused every depth over four.
+\
+\ THE LITERALS ARE PUSHED BEFORE THE PARKING so the definition declares no inputs
+\ at all: what is measured is the vector's own ceiling, and nothing here depends
+\ on how many cells a routine may be entered with.
+: TRY-D17 ( -- )
+   s" : NRS-Z4-N ( -- n ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> + + + + + + + + + + + + + + + + ;"
+   0 1 REGS NMIGRATE:MEASURE-HELD ;
+
+: TRY-D16 ( -- )
+   s" : NRS-Z5-N ( -- n ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> + + + + + + + + + + + + + + + ;"
+   0 1 REGS NMIGRATE:MEASURE-HELD ;
+
+\ ---- a parked quotation, and the same body parking a plain cell --------------
+\ THIS IS THE ARRIVAL SHAPE THE REFUSAL WAS WRITTEN FOR, reduced to one line.
+\ src/core/combinators.f BI and TRI take a quotation as a parameter and park it
+\ with `>r`; here the quotation arrives the same way, `>r` parks it and `r>`
+\ takes it back for `execute`. The elaborator refuses the PARK, because a
+\ quotation mark says "this cell is body k of this emission" and the return
+\ vector carries no marks - so parking one would hand its consumer a cell nobody
+\ can name a body for (elaborate.f RSTACK-CK).
+\
+\ THE TWIN PARKS THE PLAIN CELL OUT OF THE SAME BODY, which is what makes the row
+\ above about the MARK and not about the neighbourhood. Both texts declare a
+\ quotation parameter, both park with `>r`, both take it back with `r>` and both
+\ end in `execute`; only WHICH of the two cells is parked differs. A reader keyed
+\ on "this body holds a quotation and parks something" refuses both and reds the
+\ twin.
+\
+\ THE CODE IS SHARED TODAY AND THIS ASSERTION IS THE ONE THAT MOVES. E-NELAB-BUNDLE
+\ carries both the quotation-mark clause and the real multi-cell-value clause; dot
+\ habu-give-the-quotation-df06937c mints the quotation mark a code of its own, and
+\ when it lands the expected code here changes with it.
+: TRY-QUOT ( -- )
+   s" : NRS-Z6-N ( n [ n -- n ] -- n ) >r r> execute ;" 2 1 REGS NMIGRATE:MEASURE-HELD ;
+
+: TRY-CELL ( -- )
+   s" : NRS-Z7-N ( n [ n -- n ] -- n ) swap >r r> swap execute ;" 2 1 REGS NMIGRATE:MEASURE-HELD ;
+
 public
 
 : RC-BAL@ ( -- n ) RC-BAL @ ;
 : RC-RVAR@ ( -- n ) RC-RVAR @ ;
 : RC-PUSH@ ( -- n ) RC-PUSH @ ;
+: RC-D17@ ( -- n ) RC-D17 @ ;
+: RC-D16@ ( -- n ) RC-D16 @ ;
+: RC-QUOT@ ( -- n ) RC-QUOT @ ;
+: RC-CELL@ ( -- n ) RC-CELL @ ;
 
 : RUN ( -- )
    TOR FET PAIR TWOFET DEEP
@@ -325,7 +391,11 @@ public
    CALLEE CALL TWOCALL CALLLOOP
    [: TRY-BAL ;] catch RC-BAL !
    [: TRY-RVAR ;] catch RC-RVAR !
-   [: TRY-PUSH ;] catch RC-PUSH ! ;
+   [: TRY-PUSH ;] catch RC-PUSH !
+   [: TRY-D17 ;] catch RC-D17 !
+   [: TRY-D16 ;] catch RC-D16 !
+   [: TRY-QUOT ;] catch RC-QUOT !
+   [: TRY-CELL ;] catch RC-CELL ! ;
 
 ;package
 
@@ -467,6 +537,22 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    NRS-MIGRATED:RC-RVAR@ 0 T=
    NRS-MIGRATED:RC-PUSH@ E-HIR-UNMODELED T= ;
 
+\ ---- what this body itself is refused for ------------------------------------
+\ THE PAIR IS THE ASSERTION IN BOTH ROWS BELOW. A depth of seventeen is refused
+\ and a depth of sixteen is not, so the row measures a CEILING at sixteen rather
+\ than a dislike of deep bodies; a parked quotation is refused and the plain cell
+\ parked out of that same body is not, so the row measures the MARK rather than
+\ the company the `>r` keeps.
+: CEILING-CASE ( -- )
+   s" a seventeenth parked cell is refused by the vector's own ceiling" T-LABEL
+   NRS-MIGRATED:RC-D17@ E-NELAB-CAP T=
+   NRS-MIGRATED:RC-D16@ 0 T= ;
+
+: PARKED-QUOT-CASE ( -- )
+   s" a parked quotation is refused, by the mark and not by the body" T-LABEL
+   NRS-MIGRATED:RC-QUOT@ E-NELAB-BUNDLE T=
+   NRS-MIGRATED:RC-CELL@ 0 T= ;
+
 public
 
 : RUN ( -- )
@@ -476,7 +562,9 @@ public
    EARLY-EXIT-CASE
    CASE-CASE
    CALL-CASE
-   CALLEE-CASE ;
+   CALLEE-CASE
+   CEILING-CASE
+   PARKED-QUOT-CASE ;
 
 ;package
 
