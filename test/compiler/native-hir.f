@@ -582,7 +582,7 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 73 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 75 T= ;
 
 \ The nine float words, each read back off a real model. `f-` binds to hir.fsub
 \ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
@@ -1031,7 +1031,7 @@ variable BC-OUT
 \ Declaration order is observable, which is what an inventory walks: the four
 \ arithmetic words are declared first, then the six comparisons, the six bitwise
 \ words, the four step words, the four memory words, the nine float words, the
-\ five float comparisons, the fourteen control words, the seven words of the
+\ five float comparisons, the sixteen control words, the seven words of the
 \ three tag-dispatch forms, the two halves of a locals group, the two halves of
 \ a quotation and the two words a program uses one with, with the renames at the
 \ end of the walk.
@@ -1043,11 +1043,11 @@ variable BC-OUT
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 65 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 67 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 70 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 72 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 74 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -1824,6 +1824,36 @@ variable BC-OUT
    BND [: DO-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE ;
 
+\ THE THIRD CLOSER OF `begin` AND THE WORD THAT LEAVES A COUNTED LOOP, read back
+\ the same way and for the same reason as the two openers above: nothing after
+\ the row can tell `again` from `repeat` or `leave` from `exit`, so what does is
+\ the control action the row names. A table that gave `again` the `repeat` action
+\ would compile a loop that opens a block after it that nothing reaches, and one
+\ that gave `leave` the `exit` action would branch out of the DEFINITION where
+\ the source leaves a loop.
+\
+\ THE LAST TWO LINES ARE WHAT MAKE THE FIRST FOUR DO WORK: the four actions are
+\ pairwise different. Without them an ENUM whose members all compared equal would
+\ pass every line above.
+: AGAIN-LEAVE-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r  c b s" again" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:CLOSE-AGAIN HIR-CTRL:EQ
+   r  c b s" LEAVE" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:EARLY-LEAVE HIR-CTRL:EQ
+   r  c b s" again" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:CLOSE-REPEAT HIR-CTRL:EQ 0=
+   r  c b s" leave" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:EARLY-EXIT HIR-CTRL:EQ 0=
+   HIR-CTRL:CLOSE-AGAIN HIR-CTRL:CLOSE-REPEAT HIR-CTRL:EQ 0=
+   HIR-CTRL:EARLY-LEAVE HIR-CTRL:EARLY-EXIT HIR-CTRL:EQ 0= ;
+
+: AGAIN-LEAVE-MODEL-CASE ( -- )
+   s" again and leave are rows of their own, not repeat and exit" T-LABEL
+   BND [: AGAIN-LEAVE-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
 \ One word is one row whichever case each declaration wrote, which is the same
 \ statement the two cases above make from the reading side. It is worth making
 \ from the writing side too: a table that took a second row for `FOO` would have
@@ -1868,6 +1898,7 @@ variable BC-OUT
    MISS-CASE
    QUOT-MODEL-CASE
    DO-MODEL-CASE
+   AGAIN-LEAVE-MODEL-CASE
    STATED-KEY-CASE
    s" one word declared twice in two cases is one row declared twice" T-LABEL
    [: DUP-CASE ;] E-HIR-DUP TTHROWSQ ;

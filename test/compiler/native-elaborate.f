@@ -1304,6 +1304,74 @@ variable LK-N
    BND [: SUMTO-DO-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= 4 T= 3 T= 2 T= 3 T= 1 T= 1 T= 5 T= ;
 
+\ `FOREVER begin 1- again`. TWO blocks: the entry and the loop header - and the
+\ absence of a third is the whole of what `again` is. `until` closes the same
+\ loop with a latch and an exit and builds four (COUNTDOWN above); `again` has no
+\ test, so it has no two-way branch and no latch stub, and it has no exit edge,
+\ so no block after the loop is opened. The header's terminator therefore names
+\ ONE successor and that successor is the header itself: the back edge is the
+\ block's own last operation rather than a stub branching to it.
+\
+\ AND THE FUNCTION HAS NO BLOCK CONTROL LEAVES THROUGH, which is pinned here as
+\ the count: two blocks, each with a successor. That is the shape
+\ src/compiler/native/regalloc.f calls NO-RET, and it is what makes a
+\ `begin … again` word a routine with no return convention at all rather than one
+\ whose return nothing branches to.
+: FOREVER-BODY ( IR-CTX:ctx -- n n n n n )
+   {: c:IR-CTX:ctx :}
+   s" FOREVER begin 1- again" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
+   m f 1 F-BLK-AT {: hd:IR-ID:ir-block-id :}
+   m  m e F-TERM  0 F-SUCC
+   m hd F-ARGS
+   m  m hd F-TERM  F-SUCCS
+   m  m hd F-TERM  0 F-SUCC ;
+
+: FOREVER-CASE ( -- )
+   s" a begin-again loop is a header branching to itself and no block after it" T-LABEL
+   BND [: FOREVER-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 1 T= 1 T= 1 T= 2 T= ;
+
+\ `SUMLV 0 swap 0 ?do i 2 = if leave then i + loop`. TEN blocks: the seven a
+\ `?do` already builds (SUMTO above), plus the three the `if` adds - the stub its
+\ false edge leaves through, the arm the `leave` ends, and the block `then`
+\ opens. The `leave`'s own block IS that arm: it opens no block of its own,
+\ because the block it branches to is one the loop was always going to have.
+\
+\ THE ORDINAL IT BRANCHES TO IS THE LOOP'S JOIN, AND THAT IS WHAT THIS CASE
+\ MEASURES. Block 9 is the block after the loop, and here THREE edges reach it
+\ where two reach it in SUMTO: the skip stub the guard takes when the loop runs
+\ no turns, the exit stub at `loop` (block 7, whose successor is pinned below),
+\ and the `leave` in block 5. A `leave` wired to the latch, to the header, or to
+\ the `if`'s own join would show a different ordinal on the arm's edge while the
+\ exit stub's stayed put, and the join's argument count says what it carries is
+\ the loop's live vector rather than the arm's.
+: SUMLV-BODY ( IR-CTX:ctx -- n n n n n )
+   {: c:IR-CTX:ctx :}
+   s" SUMLV 0 swap 0 ?do i 2 = if leave then i + loop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 5 F-BLK-AT {: arm:IR-ID:ir-block-id :}
+   m f 9 F-BLK-AT {: jn:IR-ID:ir-block-id :}
+   m  m arm F-TERM  F-SUCCS
+   m  m arm F-TERM  0 F-SUCC
+   m jn F-ARGS
+   m f 7 F-BLK-AT {: xt:IR-ID:ir-block-id :}
+   m  m xt F-TERM  0 F-SUCC ;
+
+: SUMLV-CASE ( -- )
+   s" a leave branches out of the loop to the block loop's own exit reaches" T-LABEL
+   BND [: SUMLV-BODY ;] IR-CTX:WITH-CONTEXT
+   9 T= 1 T= 9 T= 1 T= 10 T= ;
+
 \ `WCOUNT begin dup 0 > while 1- repeat`. Five blocks: the entry, the loop
 \ header, the stub the `while` leaves through, the body, and the block after the
 \ loop. THE POLARITY IS THE WHOLE OF WHAT THIS CASE MEASURES, and it is the
@@ -3001,6 +3069,8 @@ public
    COUNTDOWN-CASE
    SUMTO-CASE
    SUMTO-DO-CASE
+   FOREVER-CASE
+   SUMLV-CASE
    WCOUNT-CASE
    PICK2-CASE
    TWOW-CASE

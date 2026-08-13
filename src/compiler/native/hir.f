@@ -310,8 +310,8 @@ ENUM opcode DERIVE eq
 
 \ What a structured control word does to the blocks a definition is made of.
 \ Each member names one Habu source word, and the pairs are openers and closers
-\ of one structure: `if` closes with `then`, `begin` with either `until` or
-\ `repeat`, and either `do` or `?do` with `loop`. `index` is the loop index `i`,
+\ of one structure: `if` closes with `then`, `begin` with `until`, `repeat` or
+\ `again`, and either `do` or `?do` with `loop`. `index` is the loop index `i`,
 \ which is neither - it reads the innermost open counted loop's index and stages
 \ no operation of its own. `self-call` is `RECURSE`: it calls the word being compiled. It is a
 \ control action rather than an operation word because how many values it takes
@@ -329,6 +329,34 @@ ENUM opcode DERIVE eq
 \ them a third kind rather than a badly-named opener: a structure that has met
 \ one of them is still open and still has to be closed by the closer it began
 \ with.
+\
+\ `begin` HAS A THIRD CLOSER AND IT IS THE ONE THAT NEVER LEAVES. `until` leaves
+\ the loop when its test is true and `repeat` leaves it through the `while` that
+\ stands in the middle of it; `close-again` is `again`, whose back edge is
+\ unconditional and whose loop has no exit edge at all - so the block after it is
+\ reached by nothing and none is built. That is a member of its own rather than a
+\ spelling of `repeat` because the two build different things: `repeat` opens the
+\ block its `while`s branched out to and `again` opens no block.
+\
+\ AND IT CANNOT BE GIVEN AN EXIT BY A `while`, which is the engine's and the
+\ checker's answer rather than a rule invented here. src/habu/habu2.f J-AGAIN
+\ pops ONE control frame and branches back, leaving a `while`'s forward branch
+\ unresolved; src/core/checker.f CF-AGAIN refuses any frame a `while` has touched
+\ (it requires frame kind 3, and `while` makes it 4), exactly as CF-UNTIL does.
+\ So `begin … while … again` is refused where it is written - measured on this
+\ engine, `: T ( -- ) begin true while again ;` is rejected at `again` - and no
+\ checked body can present one here.
+\
+\ `early-leave` IS `exit` FOR A COUNTED LOOP RATHER THAN FOR THE DEFINITION,
+\ which is why it stands beside `early-exit`. Both end the path they are written
+\ on and hand the live values to a block some OTHER word opens: `exit` to the
+\ definition's one return block, `leave` to the block after the innermost counted
+\ loop the walk is inside - the block `loop`'s own exit stub branches to and
+\ `?do`'s skip stub already branched to. So it is one more edge into a block the
+\ loop was always going to have rather than a construction of its own, and which
+\ loop it leaves is the frame search `i` and `unloop` already make.
+\ src/core/checker.f CF-LEAVE says the same two things: it unifies the stack at
+\ the `leave` with the row the `do` point recorded, and then marks the path dead.
 \
 \ THE COUNTED LOOP HAS TWO OPENERS AND ONE CLOSER, WHICH IS THE ENGINE'S SHAPE.
 \ `open-do` is `do` and `open-do-skip` is `?do`; both take a limit and a start
@@ -393,11 +421,13 @@ ENUM ctrl DERIVE eq
    mid-while
    close-until
    close-repeat
+   close-again
    open-do
    open-do-skip
    close-loop
    index
    drop-loop
+   early-leave
    early-exit
    self-call
    open-match

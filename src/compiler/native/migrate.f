@@ -651,9 +651,19 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ is asked before the questions about what to do with one. No body measured so
 \ far answers yes to this and to the tail question both, so the order is a
 \ statement about what the arms MEAN rather than a refusal anything has hit.
+\ AND A BODY THAT NEVER RETURNS ANSWERS THE CALL QUESTION TOO, which the three
+\ arms below already ask and this one used not to. A body that dies in a call
+\ contains one by construction; a `begin … again` loop contains none, and the
+\ selector refuses a contract declaring a call over a module that has none
+\ (E-A64SEL-CALL). So the same question CALLED? answers for the returning forms
+\ decides which of the two no-return forms this is, and it is the module's own
+\ answer rather than a second reading of the checker's certificate.
 : ROUTINE ( -- A64EFF:routine )
    NO-RETURN? if
-      0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-FRAMED exit
+      NELAB:CALLED? if
+         0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-FRAMED exit
+      then
+      0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-LEAF-FRAMED exit
    then
    NELAB:TAIL-CALLED?  NELAB:TAIL-ENTRY@ NPUB:IN-REGION?  and if
       NELAB:CALLS-BACK? if

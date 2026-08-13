@@ -3393,6 +3393,7 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
    {: r:IR-ARENA:arena ix:n :}
    r ix HIR-CTRL:CLOSE-UNTIL ROW-CTRL?
    r ix HIR-CTRL:CLOSE-REPEAT ROW-CTRL? or
+   r ix HIR-CTRL:CLOSE-AGAIN ROW-CTRL? or
    r ix HIR-CTRL:CLOSE-LOOP ROW-CTRL? or ;
 
 : LS-PUSH ( -- )
@@ -3606,6 +3607,43 @@ create JOIN-TAB TMAX cells allot
    NB @ 2 + NB !
    CS-POP ;
 
+\ `again`: the body ends with the branch back to the header and NOTHING opens
+\ after it. That is one block where `until` counts two and `repeat` counts one,
+\ and the missing one is the whole of what this word is: the block after the loop
+\ is reached by no edge, so it is not opened and not counted, and the path the
+\ walk was on has ended exactly as a call that does not come back ends one.
+\
+\ A LOOP A `while` HAS LEFT CANNOT BE CLOSED THIS WAY, which is the same refusal
+\ SK-UNTIL makes above and for the same reason: the block a `while` branches out
+\ to is opened by `repeat`, this word opens no such block, and the values that
+\ `while` handed over would arrive nowhere. The checker refuses the shape first -
+\ CF-AGAIN in src/core/checker.f wants a frame no `while` has touched - so no
+\ checked body reaches this line; it is written because the two derivations of
+\ what this loop's blocks are have to agree here as everywhere else.
+: SK-AGAIN ( -- )
+   HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
+   t CS-NW@ 0<> if E-NELAB-CTRL throw then
+   NB @ 1+ NB !
+   CS-POP
+   PATH-DEAD PATH-END ! ;
+
+\ `leave`: the block the walk is in ends with a branch out of the innermost
+\ counted loop, and no block opens after it. One block, exactly as `again` counts
+\ one - and for the same reason, since both are a path ending in a branch to a
+\ block somebody else opens. WHICH block it goes to needs no answer from this
+\ walk: the loop's own frame carries the ordinal its openers read out of the
+\ table, and `leave` reads that frame rather than a row of its own.
+\
+\ THE LOOP IS SEARCHED FOR RATHER THAN ASSUMED, which is what "innermost counted
+\ loop" means: `leave` inside an `if` inside a `begin` inside a `?do` leaves the
+\ `?do`. Only that the loop EXISTS can be asked here - DO-OPEN-N is the count and
+\ it is the same table DO-FRAME searches below - because a `leave` with no
+\ counted loop open is a body the walk after this one could not build either.
+: SK-LEAVE ( -- )
+   DO-OPEN-N 0= if E-NELAB-CTRL throw then
+   NB @ 1+ NB !
+   PATH-DEAD PATH-END ! ;
+
 \ ---- what a tag dispatch counts ----------------------------------------------
 \ `MATCH` and `case` build NOTHING when they open: the block the form stands in
 \ becomes its first arm's test block, so a dispatch costs no block until an arm
@@ -3718,6 +3756,7 @@ create JOIN-TAB TMAX cells allot
       mid-while    OF SK-WHILE ENDOF
       close-until  OF SK-UNTIL ENDOF
       close-repeat OF SK-REPEAT ENDOF
+      close-again  OF SK-AGAIN ENDOF
       \ Both counted-loop openers push the same frame kind, because a frame
       \ records the structure and `loop` closes one structure. They differ in
       \ what they BUILD: a `do` ends the block it stands in and opens the header,
@@ -3728,6 +3767,7 @@ create JOIN-TAB TMAX cells allot
                       NB @ 3 + NB !  NB @ JOIN!  CS-POP ENDOF
       index        OF ENDOF
       drop-loop    OF ENDOF
+      early-leave  OF SK-LEAVE ENDOF
       early-exit   OF NB @ 1+ NB !  1 EXIT-USED !  PATH-EXIT PATH-END ! ENDOF
       self-call    OF ENDOF
       open-match   OF HIR-CTRL:OPEN-MATCH ix SK-PUSH ENDOF
@@ -3981,6 +4021,42 @@ create JOIN-TAB TMAX cells allot
    ix OPEN-PLAIN
    CS-POP ;
 
+\ `again` ( -- ): go round, always. The body ends by branching back to the header
+\ carrying the loop's live values, which is the edge `repeat` builds too - and
+\ then nothing else is built, because nothing reaches the block after this loop.
+\ There is no test, so there is no two-way branch and no stub; there is no exit
+\ edge, so there is no block for one to arrive at.
+\
+\ THE PATH HAS ENDED AND IT ENDS THE WAY A DEAD CALL ENDS ONE. What PATH-DEAD
+\ records is that the block is closed and no edge into any block the walk opens
+\ NEXT exists, and both of those are true here: the one edge this word makes goes
+\ backwards, to a block that was opened before it. Everything downstream of that
+\ record is what an `again` needs - `then`, `else`, `endof` and `endcase` may
+\ follow, the body may simply stop, and a definition whose last path ended has no
+\ fall-through and may have no return at all. A `begin … again` with no `exit` in
+\ it is exactly that routine: every block of it names a successor, so it has no
+\ block the results leave through, which is the NO-RET shape
+\ src/compiler/native/regalloc.f already knows and the contract
+\ src/compiler/native/migrate.f already picks for a word the checker certified as
+\ never returning. The checker certifies this one for the same reason this walk
+\ ends the path (src/core/checker.f DO-TOK1 makes `again` a dead owner), so the
+\ two answers come from one fact.
+\
+\ THE BACK EDGE IS HELD TO THE HEADER'S WIDTH, as `repeat`'s is: the header takes
+\ what the `begin` found on the vector, and a body that left some other number of
+\ values would be handing that block a different list on the second turn than on
+\ the first.
+: DO-AGAIN ( n -- )
+   {: ix:n :}
+   HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
+   t CS-NW@ 0<> if E-NELAB-CTRL throw then
+   t CS-DEPTH@ {: d:n :}
+   t CS-JOIN@ {: h:n :}
+   VN @ d <> if E-NELAB-JOIN throw then
+   ix h TERM-BR
+   CS-POP
+   PATH-DEAD PATH-END ! ;
+
 \ THE COUNTED LOOP, WHICH TWO WORDS OPEN AND ONE CLOSES. `do` ( limit start -- )
 \ and `?do` ( limit start -- ) build the same loop out of the same pieces; `?do`
 \ puts one test in front of it. Everything after that test is DO-ENTER below,
@@ -4141,6 +4217,43 @@ create JOIN-TAB TMAX cells allot
 
 : DO-INDEX ( -- )
    DO-FRAME CS-IDX @ VPUSH ;
+
+\ `leave` ( -- ): leave the innermost counted loop from the middle of its body.
+\ It is a branch to the block after that loop, carrying the live values - and
+\ that block already exists as far as this walk is concerned: its ordinal is the
+\ one the loop's opener read out of the skeleton's table and put in the frame, and
+\ `loop`'s own exit stub and `?do`'s skip stub branch to the same one. So there
+\ is no stub here and no new block: an unconditional branch carries values, and
+\ what it carries is what a stub would have handed on.
+\
+\ WHICH LOOP IT LEAVES IS THE FRAME SEARCH `i` MAKES, and for the same reason: a
+\ `begin` or an `if` between the `leave` and its `?do` changes nothing, because
+\ Forth's `leave` names the innermost COUNTED loop. src/core/checker.f CF-LEAVE
+\ searches the same way and stops at a quotation boundary; a quotation's body is
+\ walked here with its own control stack, so a `leave` written inside one finds
+\ no counted loop and is refused, which is that same rule arrived at from the
+\ other side.
+\
+\ THE VECTOR HAS TO BE WHAT THE LOOP WAS ENTERED WITH, and this is not a rule of
+\ this file's own: the block after the loop takes the values `loop`'s exit stub
+\ hands it, which is the vector at the `do`, and the checker holds a `leave` to
+\ exactly that row (CF-LEAVE unifies the stack at the `leave` with the DO-point
+\ row). A body that left some other number of values would be handing one block
+\ two different lists.
+\
+\ AND IT CROSSES WITH ONE LOOP FEWER, which is the seam EXIT-CROSS-DO already
+\ names for `loop`'s exit stub: the block after the loop is OUTSIDE it, so this
+\ loop's counters are dead on the way there and only the enclosing loops' travel.
+\ The frame is still on the control stack when this runs, exactly as it is at
+\ that stub, so the two ranges are written the same way and mean the same thing.
+: DO-LEAVE ( n -- )
+   {: ix:n :}
+   DO-FRAME {: t:n :}
+   t CS-DEPTH@ {: d:n :}
+   t CS-JOIN@ JOIN-CK {: j:n :}
+   VN @ d <> if E-NELAB-JOIN throw then
+   ix j  EXIT-CROSS-DO CROSS-L  TERM-BR-H
+   PATH-DEAD PATH-END ! ;
 
 \ ---- the three tag-dispatch forms --------------------------------------------
 \ WHAT A `MATCH` IS ONCE IT IS BLOCKS. A value of a sum family is W flat cells
@@ -5045,11 +5158,13 @@ create DN-BUF DN-CAP allot
       mid-while    OF ix DO-WHILE ENDOF
       close-until  OF ix DO-CLOSE-UNTIL ENDOF
       close-repeat OF ix DO-CLOSE-REPEAT ENDOF
+      close-again  OF ix DO-AGAIN ENDOF
       open-do      OF ix DO-OPEN-DO ENDOF
       open-do-skip OF ix DO-OPEN-DO-SKIP ENDOF
       close-loop   OF ix DO-CLOSE-LOOP ENDOF
       index        OF DO-INDEX ENDOF
       drop-loop    OF DO-UNLOOP ENDOF
+      early-leave  OF ix DO-LEAVE ENDOF
       early-exit   OF ix DO-EXIT ENDOF
       self-call    OF ix DO-SELF-CALL ENDOF
       open-match   OF ix DO-OPEN-MATCH ENDOF

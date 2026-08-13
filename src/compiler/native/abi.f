@@ -230,11 +230,16 @@ public
 \ and that is the number declared - which A64EFF:DELTA-CK bounds and
 \ A64EFF:BALANCE-CK permits only for a routine that never returns.
 \
-\ WHAT IS NOT MINTED HERE, and why that is not an omission: a routine that never
-\ returns and does NOT call. What makes a body all-dead is the call it dies in,
-\ so every routine this chain compiles under a no-return contract contains one.
-\ A hand-built module whose only terminator is a trap is a fixture's, and a
-\ fixture states its own contract.
+\ IT IS THE FORM FOR A BODY THAT DIES IN A CALL, AND THERE IS A SECOND WAY TO
+\ NEVER RETURN. This note used to say a callless no-return routine could not
+\ arise, because what makes a body all-dead is the call it dies in. `begin …
+\ again` falsified that: its back edge is unconditional and its loop has no exit,
+\ so every block of `: T ( n -- n ) begin 1 - again ;` names a successor, the
+\ routine has no block the results leave through, and it contains no call at all.
+\ Compiled under the contract below it was refused by name - E-A64SEL-CALL, "a
+\ contract declaring a call in a module that contains none" - which is the
+\ selector holding this declaration against the module and finding it false.
+\ NORET-LEAF-FRAMED is that routine's contract.
 : NORET-FRAMED ( n n n n n -- A64EFF:routine )
    {: base:n n:n in:n out:n spills:n :}
    A64EFF-CONV:DSTACK
@@ -244,6 +249,42 @@ public
    A64EFF-NZCV:CLOBBERED A64EFF-LINK:CLOBBERED A64EFF-CONTROL:NO-RETURN
    A64EFF:T-CALL
    A64EFF:T-CALL A64EFF-LINK:CLOBBERED spills FRAME-FOR
+   dup negate A64EFF:ROUTINE ;
+
+\ The same, for a word that never comes back and never calls: a loop written with
+\ `again`, which goes round unconditionally and has no exit edge for control to
+\ leave through. Two fields change against the form above and both are the plain
+\ truth about such a routine rather than a relaxation. It contains no direct call,
+\ so it declares no trait - and that is the field the selector holds against the
+\ module, which is where the first one of these was refused. And nothing in it
+\ writes x30, so the caller's return address is still there where control would
+\ leave: `link preserved` is the honest declaration, and it costs the routine
+\ nothing because A64FRAME:LINK-KEPT? asks for the trait first, so no slot at the
+\ bottom of the frame is owned either way.
+\
+\ THE CONTROL FIELD IS THE ONE THAT DOES NOT CHANGE, and it is the whole reason
+\ this is a form of its own rather than LEAF-FRAMED. `control no-return` is what
+\ every caller of this word was compiled against - the checker certifies the word
+\ dead where `again` is written (src/core/checker.f DO-TOK1) - so a contract
+\ saying anything else would be a routine disagreeing with what its callers were
+\ told. src/compiler/native/regalloc-verify.f VNORET-CK holds the declaration
+\ against the module: under it, the module must really have no block the results
+\ leave through.
+\
+\ AND THE STACK POINTER IS DECLARED WHERE NORET-FRAMED DECLARES IT, for the same
+\ reason: a routine with no epilogue never gives its frame back, so where control
+\ would leave the pointer stands its whole frame below where it was entered. With
+\ nothing spilled that frame is empty and the delta is zero, which is what a
+\ frameless routine has always declared.
+: NORET-LEAF-FRAMED ( n n n n n -- A64EFF:routine )
+   {: base:n n:n in:n out:n spills:n :}
+   A64EFF-CONV:DSTACK
+   in SLOT-SEQ  out SLOT-SEQ
+   base n POOL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
+   A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:NO-RETURN
+   A64EFF:TRAITS-NONE
+   A64EFF:TRAITS-NONE A64EFF-LINK:PRESERVED spills FRAME-FOR
    dup negate A64EFF:ROUTINE ;
 
 private

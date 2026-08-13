@@ -340,6 +340,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       bind-defer   OF 22 ENDOF
       exec         OF 23 ENDOF
       open-do-skip OF 24 ENDOF
+      close-again  OF 25 ENDOF
+      early-leave  OF 26 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -369,6 +371,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       22 of HIR-CTRL:BIND-DEFER endof
       23 of HIR-CTRL:EXEC endof
       24 of HIR-CTRL:OPEN-DO-SKIP endof
+      25 of HIR-CTRL:CLOSE-AGAIN endof
+      26 of HIR-CTRL:EARLY-LEAVE endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -1244,8 +1248,11 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ either of them does. The counted loop has two openers and adds one more word
 \ and no picks: `do` and `?do` open the same structure and differ only in the
 \ code the engine emits for them, and neither moves anything on the vector that
-\ the other does not.
-73 constant WORDS
+\ the other does not. `again` and `leave` add one word each and no picks: `again`
+\ closes a `begin` loop with a back edge and `leave` branches out of the
+\ innermost counted loop, and neither takes anything off the compile-time vector
+\ or puts anything back on it.
+75 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1363,17 +1370,20 @@ private
    c b r c b s" f0=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FEQZ BDECLARE-OP ;
 
 \ The structured control words. Three structures, the two words that stand in
-\ the middle of one, the loop index, the two words that leave a structure, and
+\ the middle of one, the loop index, the word that drops a loop frame, the two
+\ words that leave from the middle - one the innermost counted loop and one the
+\ definition - and
 \ `RECURSE`; nothing else of Habu's control vocabulary is declared, because
 \ nothing else has a block construction in src/compiler/native/elaborate.f yet,
 \ and a word declared here without one would be a promise rather than a model.
 \
-\ `begin` HAS TWO CLOSERS, WHICH IS THE SOURCE LANGUAGE'S SHAPE AND NOT A
-\ CHOICE MADE HERE. `begin … until` goes round while its test is false and
+\ `begin` HAS THREE CLOSERS, WHICH IS THE SOURCE LANGUAGE'S SHAPE AND NOT A
+\ CHOICE MADE HERE. `begin … until` goes round while its test is false,
 \ `begin … while … repeat` goes round while its test is true and leaves through
-\ the `while`; both open with the same word, so the row for `begin` says only
-\ that a loop opens and the elaborator's control stack learns which closer it
-\ met. `else` is the same kind of fact for `if`.
+\ the `while`, and `begin … again` goes round unconditionally and never leaves at
+\ all; all three open with the same word, so the row for `begin` says only that a
+\ loop opens and the elaborator's control stack learns which closer it met.
+\ `else` is the same kind of fact for `if`.
 \
 \ THE COUNTED LOOP IS THE MIRROR OF THAT: TWO OPENERS AND ONE CLOSER. `do` and
 \ `?do` take the same pair and close with the same `loop`, and the row is what
@@ -1400,11 +1410,13 @@ private
    c b r c b s" while" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MID-WHILE BDECLARE-CONTROL
    c b r c b s" until" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-UNTIL BDECLARE-CONTROL
    c b r c b s" repeat" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-REPEAT BDECLARE-CONTROL
+   c b r c b s" again" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-AGAIN BDECLARE-CONTROL
    c b r c b s" do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO BDECLARE-CONTROL
    c b r c b s" ?do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO-SKIP BDECLARE-CONTROL
    c b r c b s" loop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
    c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL
    c b r c b s" unloop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:DROP-LOOP BDECLARE-CONTROL
+   c b r c b s" leave" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-LEAVE BDECLARE-CONTROL
    c b r c b s" exit" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-EXIT BDECLARE-CONTROL
    c b r c b s" RECURSE" IR-BUILD:INTERN-SYMBOL HIR-CTRL:SELF-CALL BDECLARE-CONTROL ;
 
