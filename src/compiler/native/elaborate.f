@@ -2191,9 +2191,24 @@ variable PATH-END
 \ wrong by one would leave every branch naming a block of some other function
 \ with nothing downstream able to tell, because a successor is an ordinary
 \ number to every pass after this one.
-: CLOSE-BLOCK ( -- )
+\
+\ EVERY BLOCK MEANS THE BODY'S LAST ONE TOO, and that is why the check and the
+\ COUNT are two words. A control word closes a block another block follows, so it
+\ advances the count and the count is the ordinal that next block takes. The
+\ block a body ends in - the one COLON and QBUILD close after staging the return
+\ - has no next block, and counting it would be a statement about a block that
+\ does not exist. It is not free to count it either: TAIL-SCAN below reads
+\ `NB @ 0<>` as "this body is more than one block" when it decides whether the
+\ last call may be left through rather than returned from, so a count advanced
+\ here turns the tail call off for every straight-line definition in the tree -
+\ measured, with no refusal anywhere and nothing red. So the wall is factored out
+\ and both closers stand on it; only one of them counts.
+: CLOSE-HELD ( -- )
    CTX BLD IR-BUILD:END-BLOCK IR-ID:BLOCK-LOCAL {: ord:n :}
-   ord  BBASE @ NB @ +  <> if E-NELAB-BLOCK throw then
+   ord  BBASE @ NB @ +  <> if E-NELAB-BLOCK throw then ;
+
+: CLOSE-BLOCK ( -- )
+   CLOSE-HELD
    NB @ 1+ {: k:n :}
    k NFROZEN:BMAX > if E-NELAB-BLOCK throw then
    k NB ! ;
@@ -6524,7 +6539,7 @@ variable QNAME-P                     \ the place value the digit loop is on
    \ per-function (dot habu-compile-a-quotation-7efa798e).
    PATH-DEAD? if k QAT@ QUOT-REFUSE then
    c b v key k QEMIT-RETURN
-   c b IR-BUILD:END-BLOCK drop
+   CLOSE-HELD
    c b IR-BUILD:END-FUN drop
    \ The enclosing walk's scope, put back: this word borrowed the tables to build
    \ a function that has no names of its own, and the next body borrows them from
@@ -6819,7 +6834,7 @@ EXPORT SPLICE-MEANING?
    dead  EXIT-USED @ 0=  and 0= if
       out QRET-FILL
       c b v key out EMIT-RETURN
-      c b IR-BUILD:END-BLOCK drop
+      CLOSE-HELD
    then
    r n TAIL-SCAN
    QCONSUMED-CK
