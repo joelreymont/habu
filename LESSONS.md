@@ -6286,3 +6286,21 @@ carrier's value to a constant and check something reds - the
 crossing-locals carrier was dead-tested across five suites
 because every fixture's callee had a clobber row and nothing
 ever travelled.
+
+## The j landing's four (2026-08-13)
+
+(1) The census's pressure/capacity refusal codes are not
+reproducible run to run (one definition swapped E-A64SEL-CAP for
+E-A64RA-SPILL over the same tree); the totals and dialect buckets
+are stable. Never attribute a code swap inside that class to a
+change.
+(2) A backgrounded subshell survives the harness's completion
+report - two censuses collided on one HB_TMP. Let the harness own
+background jobs.
+(3) The reserved-word rule bites in test fixtures: private
+helpers named IF and LEAVE died as "closer without opener" before
+any assertion ran.
+(4) Compiler test leaves need the fork harness's deps (lib/date,
+lib/test, lib/source) - a bare --load of native-hir.f fails on
+master too. Run leaves through the gate before concluding your
+change broke them.
