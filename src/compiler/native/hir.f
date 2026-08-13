@@ -441,6 +441,7 @@ ENUM ctrl DERIVE eq
    close-quot
    bind-defer
    exec
+   catch
 ;ENUM
 
 \ WHICH WAY A RETURN-STACK WORD MOVES CELLS, and it is three actions rather than

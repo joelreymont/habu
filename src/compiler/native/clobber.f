@@ -73,6 +73,20 @@
 \ emitter compiled has no row here and never will, and a site that calls one
 \ saves everything it holds - so the narrowing is something a chain-compiled
 \ callee EARNS, and the discipline is unchanged everywhere else.
+\
+\ THE ENGINE'S OWN `catch` IS THAT CASE AND MUST STAY THAT CASE. A compiled
+\ `catch` is an ordinary branch-with-link to the engine's catch entry
+\ (src/compiler/native/elaborate.f DO-CATCH), so a row here would narrow what its
+\ callers save across it - and what runs behind that address is not one routine
+\ but the engine's handler AND whatever quotation it was handed, which is a
+\ different body at every site. A row narrowed against one of them would be a
+\ caller told it may keep a register that another body destroys, and nothing
+\ downstream could tell. It is structurally impossible today rather than merely
+\ avoided: the only writer is the publication seam, which records the emission it
+\ has just written at the slot it claimed, and the engine's entries are not
+\ emissions of this chain and are never published through it. Nothing may add a
+\ row for an address this chain did not emit, and no optimisation of a call site
+\ may treat the engine's catch as a routine with a known clobber set.
 
 require lib/prelude.f
 require lib/errors.f

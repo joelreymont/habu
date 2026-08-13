@@ -3433,11 +3433,12 @@ private
    loop ;
 
 \ ---- which control actions stage a call, and which call ----------------------
-\ THREE OF THEM DO, AND THE LIST IS WRITTEN ONCE. `RECURSE` calls the definition
-\ being compiled, `is` calls the engine's store-and-declare primitive, and
-\ `execute` calls the engine's own `execute`. Two questions turn on that list -
-\ whether the body calls at all, and whether it needs the memory order - and a
-\ reader that kept two lists of the same three members would eventually not.
+\ FOUR OF THEM DO, AND THE LIST IS WRITTEN ONCE. `RECURSE` calls the definition
+\ being compiled, `is` calls the engine's store-and-declare primitive,
+\ `execute` calls the engine's own `execute`, and `catch` calls the engine's own
+\ `catch`. Two questions turn on that list - whether the body calls at all, and
+\ whether it needs the memory order - and a reader that kept two lists of the
+\ same four members would eventually not.
 \
 \ AND THE ANSWER CARRIES THE OPERATION, because the order question is asked of
 \ the SCHEMA and not assumed: `RECURSE` goes to a block of this function and the
@@ -3449,6 +3450,7 @@ private
    k HIR-CTRL:SELF-CALL HIR-CTRL:EQ if HIR-OPCODE:CALL true exit then
    k HIR-CTRL:BIND-DEFER HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
    k HIR-CTRL:EXEC HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
+   k HIR-CTRL:CATCH HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
    HIR-OPCODE:CALL false ;
 
 \ Does this word stage an operation that takes the definition's memory order?
@@ -4075,10 +4077,14 @@ create JOIN-TAB TMAX cells allot
       \ refuses rather than agreeing silently with a pre-scan that lost a span.
       open-quot    OF ENDOF
       close-quot   OF ix QUOT-REFUSE ENDOF
-      \ `is` and `execute` each stage one call and no block, so they count the
-      \ same as an ordinary call does here: nothing.
+      \ `is`, `execute` and `catch` each stage one call and no block, so they
+      \ count the same as an ordinary call does here: nothing. `catch` builds no
+      \ block for its exceptional path either - the engine's handler resumes
+      \ inside the routine this site branches to and leaves through the one
+      \ return, so there is no second edge here to give a block to.
       bind-defer   OF ENDOF
       exec         OF ENDOF
+      catch        OF ENDOF
    ;MATCH ;
 
 \ Walk the body once, counting. A structure left open at the end of the body is
@@ -5382,6 +5388,101 @@ create DN-BUF DN-CAP allot
    entry 0= if ix QUOT-REFUSE then
    ix entry  qin 1+  qout  NDICT:GLUE-NONE  STAGE-WCALL ;
 
+\ ---- running a quotation and coming back either way --------------------------
+\ WHAT `catch` COMPILES TO, AND WHY IT IS THE SAME KIND OF THING `execute` IS. A
+\ branch-with-link to the engine's own `catch`, which is what a compiled `catch`
+\ is in the engine too. The exceptional path is not a second edge out of this
+\ site and there is nothing here to model one with: the engine's handler resumes
+\ INSIDE its own `catch`, and both paths leave it through the one return to the
+\ one caller, so a two-successor terminator would describe a control transfer the
+\ machine does not make.
+\
+\ WHAT THE TWO COUNTS SAY, AND WHY BOTH OF THEM ARE THE WINDOW. The engine puts
+\ the data stack back to its DEPTH when a caught body throws, and never to its
+\ CONTENTS: every cell of the window may hold something the body left there, and
+\ the caller is expected to read it. Residency across the call is NOT what this
+\ site has to arrange - CALL-OPERANDS+ hands the WHOLE vector over and
+\ CALL-CLOSE takes it back, so every live value crosses any call through its
+\ data-stack home and comes back a new value. What this site has to state is
+\ which of those cells are the callee's OUTPUTS rather than survivors, and the
+\ window is all of them: a survivor comes back in the position it left and keeps
+\ what the vector knew about it, and an output is a value the callee produced.
+\ A caught throw can replace any cell of the window - including one that held the
+\ address of a quotation body - so calling those cells survivors would carry a
+\ mark across a call that may have overwritten what it names.
+\
+\ AND THE TWO COUNTS HAVE TO AGREE WITH EACH OTHER. Measured: declaring the
+\ window on one side only leaves the vector `win` cells short or long at the
+\ return and is refused (E-NELAB-ARITY, both directions). Declaring it on
+\ NEITHER side compiles and answers correctly today, because the whole-vector
+\ crossing above already puts the cells through memory - which is why the
+\ statement here is the callee's real contract rather than a residency trick:
+\ what the engine's `catch` consumes and produces at this site is the window
+\ plus one, twice over.
+\
+\ AND THE WINDOW IS THE CHECKER'S ANSWER AND NOT THIS SITE'S STACK DEPTH. The
+\ vector's depth would let a guess through at every catch, exactly as it would at
+\ `execute` - the refusal above says so for the same reason - and it would be
+\ WRONG in the ordinary direction too: a body that takes nothing may be caught
+\ over a stack ten deep. src/compiler/native/dict.f answers what the checker
+\ certified for THIS site, and a site it has no answer for is refused by name.
+\
+\ A PARKED VALUE CROSSES THIS CALL THE WAY IT CROSSES ANY OTHER, and that is a
+\ consequence of going through STAGE-WCALL rather than a rule stated here. The
+\ return stack's live values are operands and results of every call - R-OPERANDS+
+\ stands inside CALL-OPERANDS+ and R-RESULTS@ inside CALL-CLOSE - so a `>r` whose
+\ `r>` is on the far side of a catch is handed over and answered again exactly as
+\ a data value is, and there is nothing about the exceptional path for this site
+\ to do about it: the engine's handler restores the user return stack's depth
+\ itself (src/habu/habu2.f), and under this lowering the parked values were never
+\ in that memory to begin with. Measured both ways in
+\ test/compiler/native-catch.f: 42 parked across a catch comes back 42 whether
+\ the caught body threw or returned, while the window cell under it answers the
+\ body's leavings on one path and its result on the other.
+\
+\ THE TOKEN AND THE CODE ARE THE SAME CELL'S WORTH. The execution token is
+\ consumed by the engine before it branches and the throw code is pushed in its
+\ place, so the call takes the window plus the token and leaves the window plus
+\ the code. The two counts being equal is a fact about `catch` rather than an
+\ arithmetic coincidence: catch is stack-preserving by construction, which is why
+\ the checker can fit-check one live row against both of the quotation's rows,
+\ and this site holds the two widths it was given against each other.
+\
+\ A BODY THAT NEVER RETURNS IS REFUSED HERE, AND THE REASON IS NOT THIS SITE'S.
+\ The checker answers absent for such a body's output row - it has no
+\ fall-through to instantiate one for - and everything this site would do with it
+\ is settled: the window is the same on both sides, because the engine restores
+\ the depth it took. What cannot be built is the BODY, and the ceiling is one
+\ module further down: src/compiler/native/select.f takes ONE routine contract
+\ for the whole module and lowers every function under it, so a routine with no
+\ return inside a definition that has one is lowered as though a return followed
+\ and leaves its last memory order unread. Measured both ways on this tree:
+\ `: X ( n -- n n ) [: drop 5 throw ;] catch ;` is refused by the allocation
+\ validator (E-A64RAV-ORDER), and the same body inside a definition that ends in
+\ a throw of its own compiles and runs. Refusing it here rather than letting the
+\ first shape through is the fail-closed direction AND the honest one: a rule
+\ that admitted a body because the definition around it happens to be dead would
+\ be resting on the enclosing word's shape, which is not what makes it sound. The
+\ capability is dot habu-compile-a-quotation-7efa798e, which already carries this
+\ exact finding - a contract describes function zero only, and a body that never
+\ returns needs a per-function control statement no contract field expresses. The
+\ engine's answers for the refused shape are pinned in
+\ test/compiler/native-catch.f so they are ready for it.
+: DO-CATCH ( n -- )
+   {: ix:n :}
+   VN @ 1 < if E-NELAB-UNDER throw then
+   VN @ 1- VQ@ {: k:n :}
+   k 0 < if ix QUOT-REFUSE then
+   ix NDICT:CATCH-CELLS {: win:n back:n :}
+   win NDICT:CATCH-NONE = if ix QUOT-REFUSE then
+   back NDICT:CATCH-NONE = if ix QUOT-REFUSE then
+   back win <> if ix QUOT-REFUSE then
+   VN @ 1- win < if E-NELAB-UNDER throw then
+   s" catch" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if ix QUOT-REFUSE then
+   k win win QFILL
+   ix entry  win 1+  win 1+  NDICT:GLUE-NONE  STAGE-WCALL ;
+
 \ Either way of reaching another word's body. Which one this token is was decided
 \ once, before any walk started, and is read here rather than asked again.
 \
@@ -5538,6 +5639,7 @@ create DN-BUF DN-CAP allot
       close-quot   OF ix QUOT-REFUSE ENDOF
       bind-defer   OF ix DO-IS ENDOF
       exec         OF ix DO-EXEC ENDOF
+      catch        OF ix DO-CATCH ENDOF
    ;MATCH ;
 
 \ ---- the walk ----------------------------------------------------------------
@@ -5839,6 +5941,20 @@ variable QNAME-P                     \ the place value the digit loop is on
    CS-N @ 0<> if E-NELAB-CTRL throw then
    PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
    EXIT-USED @ 0<> if k QAT@ QUOT-REFUSE then
+   \ A BODY WITH NO FALL-THROUGH WOULD HAVE NO RETURN, and this chain cannot
+   \ compile one yet. It is not the elaborator that stops it: the shape is
+   \ straightforward here - stage no return, exactly as a definition's own
+   \ function does when its last path ended - and it was measured working, but
+   \ only inside a definition that never returns either. The reason is one module
+   \ ceiling further down: src/compiler/native/select.f takes ONE routine contract
+   \ for the whole module and lowers every function of it under that contract, so
+   \ a never-returning body inside a definition that DOES return is lowered as if
+   \ a return followed it and leaves its memory order unread (E-A64RAV-ORDER,
+   \ measured). Both consumers refuse such a body before it reaches here - DO-CATCH
+   \ by name, and `execute` because src/compiler/native/dict.f declines the descent
+   \ for a quotation that can throw - so this is the wall that keeps the refusal a
+   \ loud failure if either of them is ever relaxed without the contract becoming
+   \ per-function (dot habu-compile-a-quotation-7efa798e).
    PATH-DEAD? if k QAT@ QUOT-REFUSE then
    c b v key k QEMIT-RETURN
    c b IR-BUILD:END-BLOCK drop

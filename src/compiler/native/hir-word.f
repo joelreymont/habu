@@ -344,6 +344,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       open-do-skip OF 24 ENDOF
       close-again  OF 25 ENDOF
       early-leave  OF 26 ENDOF
+      catch        OF 27 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -375,6 +376,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       24 of HIR-CTRL:OPEN-DO-SKIP endof
       25 of HIR-CTRL:CLOSE-AGAIN endof
       26 of HIR-CTRL:EARLY-LEAVE endof
+      27 of HIR-CTRL:CATCH endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -1319,13 +1321,16 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ the other does not. `again` and `leave` add one word each and no picks: `again`
 \ closes a `begin` loop with a back edge and `leave` branches out of the
 \ innermost counted loop, and neither takes anything off the compile-time vector
-\ or puts anything back on it.
+\ or puts anything back on it. `catch` adds one more word and no picks, for the
+\ same reason `execute` does: it stages one call, and what it moves on the
+\ compile-time vector is the window the checker certified at that site rather
+\ than a permutation this table could record.
 \ The return-stack transfers add SIX and no picks: three actions at two widths
 \ each, and a pick cell records how the compile-time DATA vector is permuted,
 \ which is not what any of them does - what they move, they move between two
 \ vectors, and the row says which way and how many cells rather than which
 \ position went where.
-81 constant WORDS
+82 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1530,18 +1535,21 @@ private
    c b r c b s" [:" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-QUOT BDECLARE-CONTROL
    c b r c b s" ;]" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-QUOT BDECLARE-CONTROL ;
 
-\ The two words a program uses a quotation with. Neither carries a payload, and
+\ The three words a program uses a quotation with. None carries a payload, and
 \ that is the whole reason they are control rows rather than callable ones: a
-\ callable row states its callee's entry AND its declared arity, and neither of
+\ callable row states its callee's entry AND its declared arity, and none of
 \ these has an arity to state - `is` moves what the DEFERRED WORD declares, and
 \ the token after it names which; `execute` moves one cell more than whatever
-\ quotation reaches it, which is a fact about the site. Where each branches to
-\ is a question for src/compiler/native/dict.f at the site, exactly as every
-\ other callee's entry is, so no address is recorded here either.
+\ quotation reaches it, which is a fact about the site; and `catch` moves the
+\ window that quotation takes, which the checker certified at the site and
+\ nowhere else. Where each branches to is a question for
+\ src/compiler/native/dict.f at the site, exactly as every other callee's entry
+\ is, so no address is recorded here either.
 : DEF-QUOT-USE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" is" IR-BUILD:INTERN-SYMBOL HIR-CTRL:BIND-DEFER BDECLARE-CONTROL
-   c b r c b s" execute" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EXEC BDECLARE-CONTROL ;
+   c b r c b s" execute" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EXEC BDECLARE-CONTROL
+   c b r c b s" catch" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CATCH BDECLARE-CONTROL ;
 
 \ The two halves of a typed locals group. Neither stages an operation and
 \ neither carries a payload: what the opener does is start reading the names
