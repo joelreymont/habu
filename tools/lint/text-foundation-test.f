@@ -963,9 +963,17 @@ variable REG-I
    \ reader in the effect-read API that is not asked about a name: `catch` has no
    \ declared effect, its rows are built per site, and the row is what lets the
    \ native chain ask how many stack cells a caught body may disturb.
+   \ It was 375 before the instantiated-width export (dot
+   \ habu-read-the-instantiated-b88ff72a) added `EFFECT-MATCH-CELLS`, the second
+   \ reader keyed by TOKEN rather than by name. A parametric family instantiated
+   \ with a multi-cell argument occupies more cells than its declaration
+   \ reserves, and the arg-aware number is a function of a resolved type term -
+   \ the checker's value, which never reaches the native chain - so without an
+   \ axiom the chain had to hold the registry's declared width against the bundle
+   \ its value vector really carried and refuse the disagreement by name.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 375 ASSERT=
+   REG-COUNT 376 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

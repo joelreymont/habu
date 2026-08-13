@@ -5871,6 +5871,7 @@ PRIM: EFFECT-QUOT-SIMPLE? PE-F PE-OUT PRIM;
 PRIM: EFFECT-QUOT-UP      PE-F PE-OUT PRIM;
 PRIM: EFFECT-RET-NEUTRAL? PE-F PE-OUT PRIM;
 PRIM: EFFECT-CATCH-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
+PRIM: EFFECT-MATCH-CELLS PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 
 PTABLE-END
@@ -6772,14 +6773,27 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \ of src and lib), and a definition that wants more gets a named refusal from its
 \ consumer rather than a wrong window: a capability to raise here, where every
 \ reader sees it.
+
+\ ---- the recording unit both tables below are filed against -------------------
+\ ONE UNIT, ONE ORDINAL, AND THAT IS THE WHOLE REASON THESE TWO CELLS ARE NOT
+\ EACH TABLE'S OWN. The paragraphs above rejected numbering catch sites within
+\ the definition because it makes "two counters that have to agree about one
+\ fact"; a second table filed under a second counter would be the same mistake
+\ one level up. The reported-token ordinal is the coordinate, both tables are
+\ filed against it, and it is stepped in one place.
+variable REC-ON                      \ a recording unit is open
+variable REC-IX                      \ the ordinal the next reported token takes
+
+: REC-STEP ( -- )                    \ one token reported, so the next takes the next ordinal
+   REC-ON @ 0= IF EXIT THEN
+   REC-IX @ 1 + REC-IX ! ;
+
 16 constant CWIN-MAX                 \ catch sites one recorded definition may hold
 0 constant CW-ORD                    \ the token ordinal the site stands on
 1 constant CW-IN                     \ its window in cells
 2 constant CW-OUT                    \ what the body leaves, or CELLS-NONE for one that never returns
 3 constant CW-ROW                    \ cells one recorded site occupies
 
-variable CWIN-ON                     \ a recording unit is open
-variable CWIN-IX                     \ the ordinal the next reported token takes
 variable CWIN-N                      \ sites recorded for the open unit
 create CWIN-TAB CWIN-MAX CW-ROW * cells allot
 
@@ -6787,35 +6801,124 @@ create CWIN-TAB CWIN-MAX CW-ROW * cells allot
    {: i:n f:n :}
    CWIN-TAB  i CW-ROW * f + cells + ;
 
-\ Opened by the observer that wants the tape, so the table describes exactly the
-\ definition that tape is of.
 : CWIN-RESET ( -- )
-   0 CWIN-IX !  0 CWIN-N !  -1 CWIN-ON !
+   0 CWIN-N !
    0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT ! ;
-
-\ Recording stops with the unit; the rows stay, because the consumer reads them
-\ after the unit has closed and the reader's whole purpose is to be asked then.
-: CWIN-OFF ( -- )
-   0 CWIN-ON ! ;
-
-: CWIN-STEP ( -- )                   \ one token reported, so the next takes the next ordinal
-   CWIN-ON @ 0= IF EXIT THEN
-   CWIN-IX @ 1 + CWIN-IX ! ;
 
 \ Write down what the catch on the token now being reported instantiated. It runs
 \ from the report itself, so the row and the ordinal it is filed under are made in
 \ one step and cannot drift; a token that was not a catch has nothing latched and
 \ writes nothing.
 : CWIN-COMMIT ( -- )
-   CWIN-ON @ 0= IF EXIT THEN
    CWIN-HIT @ 0= IF EXIT THEN
    0 CWIN-HIT !
    CWIN-N @ CWIN-MAX >= IF EXIT THEN
    CWIN-N @ {: i:n :}
-   CWIN-IX @   i CW-ORD CWIN-AT !
+   REC-IX @    i CW-ORD CWIN-AT !
    CWIN-IN @   i CW-IN CWIN-AT !
    CWIN-OUT @  i CW-OUT CWIN-AT !
    i 1 + CWIN-N ! ;
+
+\ ---- the cells a recorded definition's MATCH forms really occupy --------------
+\ WHY A SECOND TABLE AND NOT A SECOND READING OF THE REGISTRY. A value of a
+\ parametric family instantiated with a multi-cell argument occupies MORE cells
+\ than the family's declaration reserves: `option<a>` reserves one payload slot,
+\ and `option<obj:line>` needs two because `obj:line` is two cells. The registry
+\ can only answer the DECLARED number - the instantiated one is a function of a
+\ resolved type TERM, which is this file's value and nobody else's - so a
+\ consumer that models the data stack cell by cell either gets the number from
+\ here or compiles the arms against the wrong width. src/compiler/native/family.f
+\ says exactly this at WIDTH, and src/compiler/native/elaborate.f BUNDLE-CK is
+\ where the two used to be held against each other and the disagreement refused.
+\
+\ TWO KINDS OF TOKEN CARRY A NUMBER AND THEY ARE THE TWO A DISPATCH IS BUILT
+\ FROM. The family token of a `MATCH` carries the instantiated bundle width, which
+\ is what MATCH-SCRUT? walked off the row a moment earlier; the `of` token of each
+\ arm carries that arm's instantiated PAD count, which TFAM-MATCH-XPAD-RECORD
+\ computes as it decides whether the engine's pass 2 needs extra cells. Both are
+\ counts of cells, both are what a consumer has to drop or keep, and neither is a
+\ delta the consumer would have to re-add to a declared number - so there is no
+\ arithmetic here for two stages to disagree about.
+\
+\ IT IS NOT A ROW OF THE LOWERING CERTIFICATE, AND THAT IS FORCED. The engine's
+\ pass-2 replay walks the certificate's width facts with a single in-order cursor
+\ (src/habu/habu2.f LOWER-TXN-LOOKUP EMIT-WIDTH-LOOKUP): a query whose offset is
+\ past the cursor's row is replay DRIFT and ends the build. A width row at the
+\ family token would sit BEFORE the arms' extra-pad rows, no pass-2 leg would
+\ consume it, and the next arm query would drift. So the fact the chain needs
+\ lives here, in the per-CHECK scratch the tape observer already resets, and the
+\ certificate keeps exactly the rows pass 2 consumes.
+\
+\ ABSENT IS FAIL-CLOSED, AND A DROPPED ROW IS ABSENT LIKE ANY OTHER. The rows are
+\ filed in reported-token order, so a table that fills drops a SUFFIX of the
+\ definition's dispatch tokens - and the consumer asks about every one of them,
+\ because a family token and an arm's `of` are exactly the tokens it has to shape
+\ a dispatch from. So the first dropped row is a token the consumer asks about
+\ and gets no cells for, and it refuses the whole body by name rather than
+\ compiling the rows that did fit and guessing the rest. A separate "this unit
+\ overflowed" flag was written, measured and removed: no program could tell the
+\ two apart, because the query that would have read it is the query that already
+\ answers absent.
+\
+\ THE CEILING IS REACHABLE, MEASURED THROUGH THE CONSUMER'S OWN CAPS. A recorded
+\ definition is one src/compiler/native/migrate.f is recording, and that unit
+\ holds 512 source bytes (TEXT-CAP) and 128 tokens (TAPE-CAP). A `MATCH` form
+\ with A arms is 3 + 3A tokens and files 1 + A rows, so the tape alone caps a
+\ definition at 42 rows and the byte count caps it lower: the densest body that
+\ actually COMPILES on this tree files 22 rows (eleven single-arm dispatches,
+\ 470 bytes - measured), and 24 rows is already 511 bytes. Twenty-four therefore
+\ refuses nothing the chain compiles today, and a body of 27 rows still fits both
+\ caps, so the overflow branch is one a fixture can take.
+24 constant MWIN-MAX                 \ match rows one recorded definition may hold
+0 constant MW-ORD                    \ the token ordinal the row stands on
+1 constant MW-VAL                    \ its cells: a family token's bundle width, an arm's pads
+2 constant MW-ROW                    \ cells one recorded row occupies
+
+variable MWIN-N                      \ rows recorded for the open unit
+variable MWIN-HIT                    \ the token now being reported published a number
+variable MWIN-VAL                    \ and this is it
+create MWIN-TAB MWIN-MAX MW-ROW * cells allot
+
+: MWIN-AT ( n n -- ptr a )           \ field f of row i
+   {: i:n f:n :}
+   MWIN-TAB  i MW-ROW * f + cells + ;
+
+: MWIN-RESET ( -- )
+   0 MWIN-N !
+   0 MWIN-HIT !  0 MWIN-VAL ! ;
+
+: MWIN-COMMIT ( -- )
+   MWIN-HIT @ 0= IF EXIT THEN
+   0 MWIN-HIT !
+   MWIN-N @ MWIN-MAX >= IF EXIT THEN
+   MWIN-N @ {: i:n :}
+   REC-IX @    i MW-ORD MWIN-AT !
+   MWIN-VAL @  i MW-VAL MWIN-AT !
+   i 1 + MWIN-N ! ;
+
+\ Latch the number the token now being read publishes. Outside a recording unit
+\ it writes nothing at all, which is every certification the engine does for
+\ itself; the row is filed by the report that follows, under that token's own
+\ ordinal.
+: MWIN-CELLS! ( n -- ) {: w:n :}
+   REC-ON @ 0= IF EXIT THEN
+   w MWIN-VAL !  -1 MWIN-HIT ! ;
+
+\ ---- the recording unit's lifecycle ------------------------------------------
+\ Opened by the observer that wants the tape, so both tables describe exactly the
+\ definition that tape is of. Recording stops with the unit; the rows stay,
+\ because the consumer reads them after the unit has closed and the readers'
+\ whole purpose is to be asked then.
+: REC-RESET ( -- )
+   0 REC-IX !  -1 REC-ON !
+   CWIN-RESET  MWIN-RESET ;
+
+: REC-OFF ( -- )
+   0 REC-ON ! ;
+
+: REC-COMMIT ( -- )
+   REC-ON @ 0= IF EXIT THEN
+   CWIN-COMMIT  MWIN-COMMIT ;
 
 \ What the catch on tape token `ix` instantiated: the cells its caught body takes,
 \ and the cells it leaves. CELLS-NONE twice for a token no catch was recorded on.
@@ -6831,6 +6934,20 @@ create CWIN-TAB CWIN-MAX CW-ROW * cells allot
       1 +
    REPEAT drop
    CELLS-NONE CELLS-NONE ;
+
+\ How many cells the tag-dispatch token `ix` really moves: a `MATCH` family
+\ token's instantiated bundle width, or an arm's `of` token's instantiated pad
+\ count. CELLS-NONE for a token that published no such number, for a definition
+\ nobody recorded, and for a row the table had no room for - which is one answer
+\ meaning "nobody proved a number for this", and a consumer that gets it refuses
+\ the body by name.
+: EFFECT-MATCH-CELLS ( n -- n )
+   {: ix:n :}
+   0 BEGIN dup MWIN-N @ < WHILE
+      dup MW-ORD MWIN-AT @ ix = IF MW-VAL MWIN-AT @ EXIT THEN
+      1 +
+   REPEAT drop
+   CELLS-NONE ;
 
 \ ---- ARM64 contract link: stable link from an emitted primitive/callable
 \ contract to its checker primitive-effect (PES) row (dot
@@ -9468,6 +9585,7 @@ variable MDIAG-VCNT   \ nonexhaustive: variant count
    1 MM ! ;   \ enter match mode; an unarmed registry fails closed at the family resolve (MATCH-FAM-XT default rejects)
 
 variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
+variable MTCH-W                      \ the bundle width the walk below really consumed
 
 : MATCH-SCRUT-CELL? ( n n n -- bool ) {: fam:n w:n j:n :}   \ one bundle level, top-down
    MTCH-ROW @ R-RES TAG S-PUSH <> IF RES-FALSE EXIT THEN
@@ -9483,7 +9601,7 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    DCUR @ R-RES {: node:n :}
    node TAG S-PUSH <> IF RES-FALSE EXIT THEN
    node P>TYPE T-WIDTH {: w:n :}            \ arg-aware bundle width from the scrutinee tag
-   DCUR @ MTCH-ROW !  0 MTCH-I !  0 MTCH-TAGT !
+   DCUR @ MTCH-ROW !  0 MTCH-I !  0 MTCH-TAGT !  w MTCH-W !
    BEGIN MTCH-I @ w < WHILE
       fam w MTCH-I @ MATCH-SCRUT-CELL? 0= IF RES-FALSE EXIT THEN
       MTCH-I @ 1 + MTCH-I !
@@ -9503,6 +9621,7 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    {: fam:n :}
    #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-REJECT EXIT THEN   \ two CFS frames per match: reject, never UNCK
    fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-DIAG MATCH-REJECT EXIT THEN
+   MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop
    MF-ENSURE
    MF-DEPTH @ 1 + MF-DEPTH !
    MF-CUR {: r:ptr :}
@@ -10976,11 +11095,11 @@ variable ARMED   0 ARMED !
    SET @ 0= if s" checker: no source-tape observer to arm" 76 die then
    ARMED @ 0 <> if s" checker: source-tape observer already armed" 76 die then
    1 ARMED !
-   CWIN-RESET ;
+   REC-RESET ;
 
 : DISARM ( -- )
    0 ARMED !
-   CWIN-OFF ;
+   REC-OFF ;
 
 \ ---- withholding the definition this tape is being recorded for -------------
 \ A definition whose tape is being recorded is one the native chain is about to
@@ -11039,7 +11158,7 @@ public
 \ offset means.
 : TOKEN ( ptr u8 n n n -- ) {: a:ptr u:n off:n first:n :}
    a u off u  a u KIND  first TOKEN-XT
-   CWIN-STEP ;
+   REC-STEP ;
 
 \ One string literal, as the reader consumed it: the literal's BODY, and the
 \ span of source the literal's payload occupied. The two differ whenever an
@@ -11052,7 +11171,7 @@ public
 \ question this event can be asked.
 : STRING ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
    a u off ru K-STRING 0 TOKEN-XT
-   CWIN-STEP ;
+   REC-STEP ;
 
 \ The verdict that scan reached, with the text it reached it over.
 : DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
@@ -11133,11 +11252,11 @@ variable SCAN-TOK0    \ was it the definition's name token?
    0 IS-PEND !
    IS-PEND-OFF @ TADDR  IS-PEND-U @  IS-PEND-OFF @  0  CHECKER-TAPE:TOKEN ;
 
-\ The window a catch on THIS token instantiated is filed before the token is
-\ reported, so the row and the ordinal it is filed under are made in one step:
-\ the ordinal a report is about is the one the observer has not yet advanced.
+\ What THIS token instantiated is filed before the token is reported, so the row
+\ and the ordinal it is filed under are made in one step: the ordinal a report is
+\ about is the one the observer has not yet advanced.
 : SCAN-REPORT ( -- )
-   CWIN-COMMIT
+   REC-COMMIT
    SPAY-ON @ IF
       SPAY-BYTES  SPAY-B @ SPAY-U @  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT

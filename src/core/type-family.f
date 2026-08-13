@@ -2675,11 +2675,26 @@ TFC-QUOT-ROW-INSTALL
 \ non-SUM/ENUM family (MD-FAM-KIND) before any arm is recorded, and a STRUCTURE UNMAKE
 \ takes a separate field-projection path, not this one. So the tag cell is always present
 \ here and `rt T-WIDTH 1 -` needs no kind guard.
+\
+\ THE SAME WALK ANSWERS BOTH CONSUMERS, WHICH IS WHY THE PAD COUNT IS LATCHED
+\ HERE AND NOT COMPUTED A SECOND TIME. Pass 2 needs the DIFFERENCE from the
+\ declared pads, because its lowering already emitted the declared ones and can
+\ only add; a compiler that models the data stack cell by cell needs the pad
+\ count ITSELF, because it has emitted nothing yet. Both come off the one
+\ subtraction below, so the two can never drift; MWIN-CELLS! files the count
+\ under this `of` token for src/compiler/native/elaborate.f, and the WF row
+\ carries the difference to pass 2 exactly as before. An arm whose term is not
+\ closed latches nothing and reaches neither consumer: the cell-accurate one
+\ then refuses the definition by name rather than unpacking a width nobody
+\ proved.
 : TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact, or fail closed on a genuine narrower-than-declared arm
    term T-RES {: rt:n :}
    rt TYPE-CLOSED? 0= IF EXIT THEN               \ open nested term/row: leave declared width, stay fail-closed
    rt T-WIDTH 1 -                                \ instantiated payload slots (MATCH families are always tagged: subtract the one tag cell)
    vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
+   {: ipads:n :}
+   ipads MWIN-CELLS!                             \ the pads this arm really drops, for a cell-accurate consumer
+   ipads
    vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -   \ - declared pads = extra pads
    {: extra:n :}
    extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
