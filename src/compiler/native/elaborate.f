@@ -1078,8 +1078,39 @@ variable LIT-N
 : LIT-MARK ( -- n )
    LIT-N @ ;
 
+\ A release only ever DROPS rows. It is written as the smaller of the two counts
+\ rather than as a store because the memo has a second way of shrinking - the
+\ barrier below empties it at a call nothing survives - and a mark taken before
+\ such a call would otherwise put the emptied rows back, still holding the value
+\ ids the call consumed. Dropping too much costs a fold; putting a row back costs
+\ a value that has to live where no register may hold it.
 : LIT-RELEASE ( n -- )
-   LIT-N ! ;
+   {: m:n :}
+   m LIT-N @ > if exit then
+   m LIT-N ! ;
+
+\ ---- and what a call does to it ----------------------------------------------
+\ A CALL WHOSE CALLEE PUBLISHED NOTHING DESTROYS EVERY REGISTER, so a value
+\ defined before it and read after it has nowhere to be: the allocator bars the
+\ whole pool for a class that crosses such a call (regalloc.f MB-FORBID over a
+\ callee with no row) and refuses the definition with E-A64RA-POOL. A literal is
+\ the one value that never has to cross anything - it has no inputs, so the far
+\ side of the call can simply stage it again for the price of the move that
+\ materialises it. So the memo is emptied there, and the second mention of a
+\ number becomes a second literal instead of a live range no register may hold.
+\
+\ THE RULE IS THE ONE CALL-KEEPS? ALREADY STATES ABOUT LOCALS, asked the same way
+\ of the same fact: a callee with a clobber record leaves registers a crossing
+\ value can sit in, and the fold across it is the corpus win the memo was
+\ measured for, so it is kept. Only the call that keeps nothing empties the memo.
+\
+\ IT IS ASKED OF THE ENTRY ADDRESS rather than passed in by the three callers
+\ that stage a call, because the address is what the record is keyed on and one
+\ of those callers - `execute` - has no name to ask about at all.
+: LIT-CALL-BARRIER ( n -- )
+   {: entry:n :}
+   entry NCLOB:KNOWN? if exit then
+   LIT-RESET ;
 
 \ Which memo row holds this literal, or -1.
 \
@@ -1223,13 +1254,17 @@ variable LIT-N
    {: r:IR-ARENA:arena ix:n :}
    r ix  ix WSYM  EMIT-OP-SYM ;
 
-\ A word that pushes one fixed value - the address a `create`d data word names.
-\ The value is the word model's, so this stages the same operation an integer
-\ literal in the source would, and says so: the number IS an address of DATA, and
-\ this is the point at which that is still known. Below here it is a number.
+\ A word that pushes one fixed value - the address a `create`d data word names,
+\ or the number a `constant` names. The value is the word model's, so this stages
+\ the same operation an integer literal in the source would, and WHAT the number
+\ is comes from the same row: a data word's is an address of DATA, and this is
+\ the point at which that is still known, while a constant's is an ordinary
+\ number and is staged exactly as the digits would have been. Below here both are
+\ numbers, which is why the kind cannot be recovered further down and is not
+\ re-derived there.
 : EMIT-FIXED-SYM ( IR-ARENA:arena n IR-ID:ir-symbol-id -- )
    {: r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
-   ix  r sy HIR-WORD:FIXED-VALUE@  HIR:ADDR-DATA  EMIT-KIND-LIT ;
+   ix  r sy HIR-WORD:FIXED-VALUE@  r sy HIR-WORD:FIXED-KIND@  EMIT-KIND-LIT ;
 
 : EMIT-FIXED ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
@@ -2866,6 +2901,17 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ every name in the body that the model does not carry is put to the engine, and
 \ the ones it and the checker can both answer for become callable rows.
 \
+\ AND NOT EVERY NAME OUTSIDE THE DIALECT IS A CALL. A `constant` and a `create`d
+\ word are records whose whole body is one push of a value their definer decided,
+\ and a body that writes such a name means that value - not a branch to the four
+\ instructions that push it. The engine's record says which definer made it
+\ (src/habu/layout.f DKIND), so that question is asked first here and the name
+\ becomes a literal row rather than a callable one. It is worth more than the
+\ instructions it saves: a call bars every register a callee with no clobber
+\ record could destroy, so a body that named two constants could not be allocated
+\ at all where the same body with the digits spelled out compiled (149 of the
+\ chain census's refusals, dot habu-fold-a-named-052f4c4b).
+\
 \ THIS IS WHERE THE STAGING WENT. It used to be the CALLER of the migration that
 \ named a body's callees and stated each one's entry address and arity by hand,
 \ up to a fixed ceiling of four. Every one of those facts was already in the
@@ -2908,6 +2954,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? if exit then
+   CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
    CTX BLD r sy HIR-WORD:RESOLVE-CALLABLE drop ;
 
 : RESOLVE-SCAN ( IR-ARENA:arena n -- )
@@ -4486,6 +4533,10 @@ create DN-BUF DN-CAP allot
    CLOSE-BLOCK
    PATH-DEAD PATH-END ! ;
 
+\ A self-call empties the memo without asking, because the routine it calls is
+\ the one being compiled: its clobber record is written when its allocation is
+\ accepted, which is after this walk, so there is nothing to ask and the whole
+\ pool is what a crossing value is refused.
 : DO-SELF-CALL ( n -- )
    {: ix:n :}
    IN-N @ OUT-N @ CALL-LIVE  OUT-N @ + {: back:n :}
@@ -4494,7 +4545,8 @@ create DN-BUF DN-CAP allot
    CTX BLD VW MKEY ix op OPEN
    CALL-OPERANDS+
    back CALL-RESULTS+
-   back OUT-N @ OUT-GLUE @ CALL-CLOSE ;
+   back OUT-N @ OUT-GLUE @ CALL-CLOSE
+   LIT-RESET ;
 
 \ The three fields a call to another word carries: where the callee starts, and
 \ what its declared effect is. Nothing here decides any of them - they are the
@@ -4532,7 +4584,8 @@ create DN-BUF DN-CAP allot
    CALL-OPERANDS+
    back CALL-RESULTS+
    entry a o WCALL-ATTRS+
-   back o oglue CALL-CLOSE ;
+   back o oglue CALL-CLOSE
+   entry LIT-CALL-BARRIER ;
 
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}

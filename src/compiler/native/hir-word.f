@@ -654,10 +654,19 @@ private
 \ word means is the value and not an operation. The value sits in the same cell
 \ a constant-and-operation row keeps its constant in, so the two readers below
 \ read one concept out of one place.
-: FIXED-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n -- )
-   {: v:n :}
+\
+\ AND IT CARRIES WHAT THE NUMBER IS, in the cell an operation row keeps its
+\ opcode in. A `constant`'s number is a number; a `create`d or `variable` word's
+\ is the address of storage in the engine's DATA region, which a snapshot moves
+\ with that region - so the two are not interchangeable one line further down,
+\ where the literal is staged and the address kind decides whether the site is
+\ recorded for relocation. The distinction is the DEFINER's, read off the record
+\ (src/compiler/native/dict.f SPELL-FIXED), and it travels with the value rather
+\ than being worked out again from the value's size or its range.
+: FIXED-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n -- )
+   {: v:n kind:n :}
    HIR-MEANING:FIXED MEAN-CODE
-   UNUSED
+   kind
    v UNUSED UNUSED UNUSED
    ROW-ADD ;
 
@@ -669,6 +678,18 @@ private
 64 constant FIX-NAME-CAP
 
 create FIX-NAME FIX-NAME-CAP allot
+
+\ What the number a definer decided IS, as the literal staging says it: an
+\ address of the DATA region for the two definers that hand out storage, an
+\ ordinary number for the one that hands out a number. This is the whole of the
+\ translation between the dictionary's vocabulary for definers and this chain's
+\ vocabulary for literals, and it lives here because this file is the one that
+\ already speaks both. A kind neither definer stamped never reaches it: the
+\ value's own reader refuses that spelling before there is anything to classify.
+: LIT-KIND ( n -- n )
+   {: k:n :}
+   k NDICT:FIXED-ADDR = if HIR:ADDR-DATA exit then
+   HIR:ADDR-NONE ;
 
 \ The row a word that is CALLED writes: where the callee's code starts, and how
 \ many values it takes and leaves. Those three are the whole of what a call site
@@ -787,7 +808,8 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
    c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   c r  c b id BKEY-CK  FIX-NAME u NDICT:FIXED-VALUE FIXED-ROW ;
+   c r  c b id BKEY-CK
+   FIX-NAME u NDICT:FIXED-VALUE  FIX-NAME u NDICT:SPELL-FIXED LIT-KIND  FIXED-ROW ;
 
 \ Declare that a source word is another word this definition CALLS: where its
 \ code starts and what its declared effect is. This is how a call to a word that
@@ -804,6 +826,35 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id entry:n in:n out:n :}
    c r  c b id BKEY-CK  entry in out NDICT:GLUE-NONE COMES-BACK CALLABLE-ROW ;
+
+\ Make a FIXED row for a spelling nobody staged, by asking the engine which
+\ definer made it.
+\
+\ WHY THIS IS ASKED BEFORE THE CALLABLE QUESTION AND NOT INSTEAD OF IT. A name a
+\ body writes for a `constant` or a `create`d word denotes a value that was
+\ decided when that word was defined, and the only reason it used to compile into
+\ a call is that nothing here could tell such a record from an ordinary one. Now
+\ the record says, so the question is asked first: a stamped record is never a
+\ call, and an unstamped one is never anything but. The two answers cannot both
+\ be true of one record, so the order is not a preference between them - it is
+\ the cheaper question first.
+\
+\ NO IS AN ORDINARY ANSWER, exactly as it is below. A spelling too long to ask
+\ about, one that denotes nothing here, one whose record no definer stamped, one
+\ retired since - all answer false and leave the token to the callable question,
+\ which leaves it to be refused by name if it cannot answer either. Nothing here
+\ decides that a name is not foldable; it reports that the engine did not say it
+\ was.
+: RESOLVE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id :}
+   c b id IR-BUILD:SYMBOL-LEN FIX-NAME-CAP > if false exit then
+   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   FIX-NAME u NDICT:SPELL-FIXED {: k:n :}
+   k NDICT:FIXED-NONE = if false exit then
+   c r  c b id BKEY-CK
+   FIX-NAME u NDICT:FIXED-VALUE  k LIT-KIND  FIXED-ROW
+   true ;
 
 \ Make that row for a spelling nobody staged, by asking the engine about it.
 \
@@ -1054,6 +1105,13 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:FIXED ROW-AS {: l:n :}
    r l OFF-IN RC@ ;
+
+\ And what that value IS, which the site staging it needs before the number is
+\ just a number: an address of the DATA region, or an ordinary integer.
+: FIXED-KIND@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:FIXED ROW-AS {: l:n :}
+   r l OFF-A RC@ ;
 
 \ Where a callable word's code starts, and its declared effect. Each is asked of
 \ a row that carries that meaning, which is ROW-AS's rule: asking a rename for an

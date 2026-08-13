@@ -656,20 +656,28 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
 \ ---- and the same shape the chain CAN compile ---------------------------------
 \ The capability the refusal above is measured against, asserted rather than
 \ assumed. A named constant reached the ordinary way - a global spelling, in
-\ scope - is a word the engine names and the checker sizes at one cell, so the
-\ chain compiles a call to it. That is what dot habu-export-the-checker-2bbc831c
-\ landed: before it, the checker published an effect as a count of TERMS and a
-\ per-term family that left `-- a` gray, and a body naming ANY constant was
-\ refused exactly as the `using` body above still is. The two cases differ in one
-\ thing only - whether the chain's resolver can reach the spelling - so putting
-\ them beside each other is what stops the refusal from passing for the wrong
-\ reason. The migrated word is RUN, because a call compiled against a width the
-\ chain guessed would still migrate; only the answer shows the width was right.
+\ scope - is a record the `constant` definer stamped, so the chain compiles the
+\ VALUE and no call at all (dot habu-fold-a-named-052f4c4b). The two cases differ
+\ in one thing only - whether the chain's resolver can reach the spelling - so
+\ putting them beside each other is what stops the refusal from passing for the
+\ wrong reason. The migrated word is RUN, because a fold to the wrong number
+\ would still migrate; only the answer shows the number was right.
+\
+\ AND THE FOLD IS MEASURED AGAINST THE DIGITS RATHER THAN DESCRIBED. The same
+\ body with `5` written where `NMG-GK` stands is migrated beside it and the two
+\ emissions are compared instruction word by instruction word. Equal spans is the
+\ whole claim: not "it compiled", not "it is shorter than a call", but that
+\ naming the constant and spelling its value produce one program. A fold that
+\ reached the value by some other road - a call that happens to return 5, a
+\ literal of a different kind - fails this even while every answer below passes.
 : CONST-GLOBAL ( -- )
    s" 5 constant NMG-GK" EV ;
 
 : MIGRATE-CONST ( -- )
    s" : NMG-KC ( n -- n ) NMG-GK + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-DIGIT ( -- )
+   s" : NMG-KD ( n -- n ) 5 + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : CONST-CALL-CASE ( -- )
    CONST-GLOBAL
@@ -847,11 +855,25 @@ variable KEEP-N
    s" NMG-DAT" 1 1 REGS NMIGRATE:DEFINE-DATA ;
 
 \ The two shapes the query has no answer for. A word that leaves nothing and a
-\ word that leaves two are both refused: what a fixed row holds is the one value
-\ a word of that kind pushes, and neither of these is a word of that kind.
+\ word that leaves two are both refused, and BOTH are refused before either is
+\ entered: what a fixed row holds is the one value a word of that kind pushes,
+\ and a colon word is not a word of that kind whatever it leaves. That is the
+\ point of the refusal being the KIND's rather than the depth's - the depth could
+\ only be measured by running the body, and running an ordinary body to find out
+\ whether it was safe to run is the thing no compiler may do.
 : VOID-WORDS ( -- )
    s" : NMG-VOID ( -- ) ;" EV
    s" : NMG-TWO ( -- n n ) 1 2 ;" EV ;
+
+\ A word `create` made and a `does>` clause then took over. The record was
+\ stamped when the storage was made and the clause replaced the body that pushed
+\ its address, so the stamp is gone and the spelling is refused exactly as a
+\ colon word's is. This is the fixture for the one writer that can make a stamp
+\ false: with the clear removed from src/habu/habu2.f DOESPATCH:EMIT, this word
+\ answers a number - the address of storage in place of a call to behaviour.
+: DOES-WORD ( -- )
+   s" : NMG-MK ( -- ) create 0 , does> ( -- ptr a ) ;" EV
+   s" NMG-MK NMG-DOES" EV ;
 
 : ASK-ABSENT ( -- )
    s" NMG-NOT-A-WORD" NDICT:FIXED-VALUE drop ;
@@ -862,21 +884,57 @@ variable KEEP-N
 : ASK-TWO ( -- )
    s" NMG-TWO" NDICT:FIXED-VALUE drop ;
 
+: ASK-DOES ( -- )
+   s" NMG-DOES" NDICT:FIXED-VALUE drop ;
+
+\ ---- and the fold measured against the digits --------------------------------
+\ THE WHOLE CLAIM IN ONE COMPARISON. `NMG-KC` names a constant where `NMG-KD`
+\ writes the number behind it, and nothing else differs between the two bodies.
+\ Equal spans is what "folded" means: not that the body compiled, not that it is
+\ shorter than a call would have been, but that a program naming the constant and
+\ a program spelling its value are ONE program. A fold that reached the number
+\ some other way - a call that happens to answer 5, a literal carrying the wrong
+\ kind - passes every answer assertion above and fails here.
+\
+\ It stands here rather than beside CONST-CALL-CASE because the walker that reads
+\ a published word's instruction words is declared above this line and not above
+\ that one.
+: CONST-FOLD-CASE ( -- )
+   s" a body naming a constant is the code the digits themselves compile to" T-LABEL
+   MIGRATE-DIGIT
+   s" NMG-KC" SPAN-READ SPAN-KEEP
+   s" NMG-KD" SPAN-READ SPAN-SAME? TTRUE
+
+   s" and the digit-spelled twin answers what the named one answers" T-LABEL
+   s" 12 NMG-KD" EV-N 17 T=
+   s" 40 NMG-KD" EV-N 45 T= ;
+
 : DATA-CASES ( -- )
    DAT-NEW
    VOID-WORDS
+   DOES-WORD
 
    s" the engine's answer for a data word is the address its own name evaluates to" T-LABEL
    s" NMG-DAT" NDICT:FIXED-VALUE  s" NMG-DAT" EV-N T=
 
+   s" and the definer that made it is the one the record says made it" T-LABEL
+   s" NMG-DAT" NDICT:SPELL-FIXED NDICT:FIXED-ADDR T=
+   s" NMG-GK" NDICT:SPELL-FIXED NDICT:FIXED-VAL T=
+
    s" a spelling that denotes no word has no answer" T-LABEL
    [: ASK-ABSENT ;] E-NDICT-NAME TTHROWSQ
 
-   s" nor has a word that leaves no value where it was entered" T-LABEL
-   [: ASK-VOID ;] E-NDICT-VALUE TTHROWSQ
+   s" nor has a word no definer of fixed values made" T-LABEL
+   s" NMG-VOID" NDICT:SPELL-FIXED NDICT:FIXED-NONE T=
+   [: ASK-VOID ;] E-NDICT-KIND TTHROWSQ
 
-   s" nor one that leaves two" T-LABEL
-   [: ASK-TWO ;] E-NDICT-VALUE TTHROWSQ
+   s" nor one that would leave two" T-LABEL
+   s" NMG-TWO" NDICT:SPELL-FIXED NDICT:FIXED-NONE T=
+   [: ASK-TWO ;] E-NDICT-KIND TTHROWSQ
+
+   s" nor a created word a does> clause took over" T-LABEL
+   s" NMG-DOES" NDICT:SPELL-FIXED NDICT:FIXED-NONE T=
+   [: ASK-DOES ;] E-NDICT-KIND TTHROWSQ
 
    BUMP1
    BUMP2
@@ -2174,6 +2232,7 @@ variable MEAS-PUB0
    LOOP-CALL-CASE
    CALL-REFUSAL-CASES
    CONST-CALL-CASE
+   CONST-FOLD-CASE
    REFUSED-CASE
    UNTOUCHED-CASE
    ENTRY-CASES

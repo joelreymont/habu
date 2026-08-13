@@ -2416,6 +2416,16 @@ s" c-call-checker-defer" s" --" TRUST
 
 \ The does>-patch runtime routine emitter (LDOESPATCH): patches the created
 \ word's RET into a branch and publishes the declared runtime effect.
+\
+\ AND CLEARS THE CREATED RECORD'S DEFINER KIND, which is the one place that fact
+\ can stop being true. `create` stamped the record DKIND:ADDR because the body it
+\ emitted pushes the word's data address and returns; the patch below replaces
+\ that return with a branch into a clause body, so from here the word runs
+\ whatever the clause says and its address is no longer what a mention of it
+\ means. A reader that folded the stale stamp would compile the address of the
+\ storage in place of a call to the behaviour - the miscompile the stamp exists
+\ to make impossible - so the clear happens in the same protected window as the
+\ patch, on the same record, and never a step apart from it.
 package DOESPATCH
 
 public
@@ -2432,6 +2442,7 @@ public
    5 $3FFFFFF LIT64,  14 14 5 AND,
    5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
    14 12 0 STRW,
+   13 11 16 LDR,  5 DKIND:MASK -1 xor LIT64,  13 13 5 AND,  13 11 16 STR,   \ the body is a clause now, not a push
    12 SP 16 STR,
    PROT:LCLOSE LABEL@ BL,                                \ region -> RX
    12 SP 16 LDR,
@@ -2544,7 +2555,7 @@ s" c-dup-def-fail" s" --" TRUST
    nloop LBL,
       6 nend CBZ,
       14 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,
+      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,
       15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
@@ -2675,7 +2686,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    nloop LBL,
       6 nend CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 17 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 17 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
          16 5 24 LDR,
@@ -2776,6 +2787,7 @@ s" c-store-def-name" s" --" TRUST
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
+   10 9 16 LDR,  10 10 DKIND:ADDR ORRI,  10 9 16 STR,     \ this record's body pushes its DATA address
    9 DATA LASTC-CELL STR,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
@@ -2815,6 +2827,7 @@ package INTERP-EMIT
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
+   10 9 16 LDR,  10 10 DKIND:VAL ORRI,  10 9 16 STR,      \ this record's body pushes a decided number
    9 DATA LASTC-CELL STR,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
@@ -4088,7 +4101,9 @@ s" c-local-ref" s" label label --" TRUST
       7 6 $FF ANDI,                                 \ x7 = flags
       7 7 60 LSLI,  7 7 5 ORR,                      \ flags<<60 | len
       3 6 8 LSRI,  3 3 $FF ANDI,  3 3 52 LSLI,      \ min-in byte = word3>>8 -> DNAME-MIN-IN bits 52-59
-      7 7 3 ORR,  7 10 16 STR,                      \ [16] = flags<<60 | min-in<<52 | len
+      7 7 3 ORR,
+      3 6 16 LSRI,  3 3 3 ANDI,  3 3 50 LSLI,       \ definer-kind byte = word3>>16 -> DKIND bits 50-51
+      7 7 3 ORR,  7 10 16 STR,                      \ [16] = flags<<60 | min-in<<52 | dkind<<50 | len
       2 0 MOVZ,  2 10 24 STR,  2 10 32 STR,         \ zero [24..40)
       4 4 1 ADDI,                                   \ x4 = name src (entry+1)
       \ A name past DNAME-INL does not fit the record, and the engine's own
@@ -5318,7 +5333,7 @@ s" c-package-existing-private" s" label --" TRUST
 : C-PACKAGE-RECORD-MATCH ( label label -- ) {: hit:label miss:label :}
    LBL LBL {: cmp:label inline:label :}
    14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
-   14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,
+   14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    16 5 24 ADDI,
    14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
@@ -5598,7 +5613,7 @@ s" c-end-using" s" --" TRUST
       11 11 1 SUBI,  11 NDICT CMP,  C-GE pnext BCOND,              \ stale (truncated) index
       12 DREC MOVZ,  12 11 12 MUL,  12 DBASE 12 ADD,               \ x12 = record ptr
       11 12 40 LDR,  11 2 CMP,  C-NE pnext BCOND,                  \ wid mismatch
-      11 12 16 LDR,  11 11 12 LSLI,  11 11 12 LSRI,  11 10 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      11 12 16 LDR,  11 11 14 LSLI,  11 11 14 LSRI,  11 10 CMP,  C-NE pnext BCOND,  \ name-len mismatch
       17 12 24 ADDI,
       11 12 16 LDR,  11 11 DNAME-EXT ANDI,  11 pinl CBZ,
          17 12 24 LDR,
@@ -5640,7 +5655,7 @@ s" c-end-using" s" --" TRUST
          15 14 CMP,  C-EQ member BCOND,
          3 3 1 ADDI,  mloop B,
       member LBL,
-         15 5 16 LDR,  15 15 12 LSLI,  15 15 12 LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
+         15 5 16 LDR,  15 15 14 LSLI,  15 15 14 LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
          2 5 24 ADDI,
          14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
             2 5 24 LDR,

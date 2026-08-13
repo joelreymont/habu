@@ -154,7 +154,54 @@ package WID
 public
 $FFFFFFFE constant MAX
 ;package
-$000FFFFFFFFFFFFF constant DNAME-LEN-MASK
+\ ---- which definer made this record ------------------------------------------
+\ WHY A RECORD HAS TO SAY THIS AND WHY NOTHING ELSE CAN. A `constant` and a
+\ `create`d word are compiled into a body that pushes one decided value and
+\ returns, and a caller that mentions one means that value - not a call to it.
+\ Whether a record is one of those is a fact of the DEFINER, known when the
+\ record is made and at no later moment: the value lives only in the
+\ instructions the definer emitted, and the rule below about the region forbids
+\ recovering it by reading them - "an ordinary integer may hold any value at
+\ all". Running the word is the honest way to obtain the VALUE (src/compiler/
+\ native/dict.f says why), but running an ordinary word to find out whether it
+\ is one of these is not a question, it is the answer's own side effects. So the
+\ definer stamps its kind here, in the record it just made, and every reader
+\ asks the record.
+\
+\ TWO BITS AND NOT ONE, because the two kinds are not the same fact downstream.
+\ A `constant` pushes a number; a `create`d or `variable` word pushes an address
+\ of the DATA region, which a snapshot must move with the region. A compiler
+\ that folded the second as if it were the first would bake an address a restore
+\ cannot relocate, so the kinds travel separately all the way to the literal.
+\
+\ THE ONE WRITER THAT FALSIFIES A STAMP CLEARS IT. `does>` patches the created
+\ word's RET into a branch to a clause body (habu2.f DOESPATCH:EMIT), and from
+\ that instant the record no longer pushes its address and nothing else: it runs
+\ whatever the clause says. That patch clears these bits in the same window it
+\ writes the branch in, so a stamped record is one whose body is still the
+\ definer's own.
+\
+\ Claimed band: bits 50-51 of the record flags cell [16], below DNAME-MIN-IN
+\ (52-59) and above the narrowed name-length field (bits 0-49); native length
+\ reads clear the top 14 bits (LSLI 14 / LSRI 14), and the AOT seed carries the
+\ pair as a byte of its compact record (src/habu/aot-capture.f) so a stamp
+\ survives the round trip exactly as the min-in byte does.
+\
+\ THE GFORTH RECOVERY CORPUS KEEPS THE WIDER FIELD ON PURPOSE. bootstrap/cg's
+\ stage-0 engine has no definer that stamps anything, so no record it makes can
+\ carry these bits and its own twelve-bit clear is exact for its own dictionary.
+\ Narrowing it there would be a change with no reader. What the seed hands the
+\ engine it builds is captured through aot-capture.f, which reads a seed record
+\ with the mask above and finds those bits zero, so the two conventions meet
+\ without either being converted. A stamping definer in the recovery corpus is
+\ what would make this band its business too.
+package DKIND
+public
+$0004000000000000 constant VAL       \ bit 50: the body pushes a decided number
+$0008000000000000 constant ADDR      \ bit 51: the body pushes its DATA address
+VAL ADDR or constant MASK
+;package
+$0003FFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time
 \ internal-mark pass; dot habu-habu-certified-words-84e84eaf). LFIND folds the
@@ -164,8 +211,9 @@ $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ words without signatures: the documented boundary). Compiled calls inside
 \ checked words are checker-proven and carry no guard. Claimed band: bits
 \ 52-59 of the record flags cell [16], below IMM/EXT/WIDE/INT (bits 60-63)
-\ and above the narrowed name-length field (bits 0-51); native length reads
-\ clear the top 12 bits (LSLI 12 / LSRI 12).
+\ and above the definer-kind pair (bits 50-51) and the narrowed name-length
+\ field (bits 0-49); native length reads clear the top 14 bits
+\ (LSLI 14 / LSRI 14).
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT

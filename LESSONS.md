@@ -6143,3 +6143,34 @@ Deleting the list and naming the invariant - every meaning-reader asks
 the frame first - exposed and closed the hole the list hid. Derive
 refusals from what can structurally reach a check, never from a list of
 spellings.
+
+## The definer-kind fold's five (2026-08-13)
+
+(1) A field carve in a full cell is never one edit: the name-length
+band's 12-bit clear had FOURTEEN native readers plus a hardcoded
+duplicate of the mask in aot-capture.f, and the AOT seed's compact
+record refuses any record with stray bits in the band it does not
+carry (`rec [16] stray high bits`, rc 74) - which is the capture
+failing closed on an unconverted record, so the build tells you where
+the rest of the owners are. Grep the mask AND the shift.
+(2) Folding a named word to a value can make a body WORSE, and the
+reason is the literal memo, not the fold: two mentions of one number
+become ONE value, and a value defined before a call to a callee with
+no clobber record and read after it is barred from every register.
+The engine test suite found it (native-migrate.f VOID-CALL-CASE, a
+body naming one `variable` twice around two calls). The fix is the
+rule the file already states about locals - a call that keeps nothing
+ends what may be carried across it - so the memo is emptied at that
+call and the second mention is staged again for the price of a move.
+(3) A memo with a mark/release scope needs a MONOTONIC release once
+anything else can empty it: a mark taken before such a call would put
+the emptied rows back, holding value ids the call consumed.
+(4) The engine already folds named constants and has since before this
+lane: its compile-mode inliner copies a short safe body inline, so
+`K7 +` and `7 +` are both 56 bytes of engine code. The chain was the
+only compiler in the tree that made a call. Measure the engine's own
+answer before calling a shape unsupported.
+(5) Wrapping each case of a test file in `catch` HID the failure - the
+case that threw ran clean under the wrapper and died without it. Run
+the cases SEQUENTIALLY and unwrapped, printing each name before it
+runs, when locating a throw; the catch changes what the case does.

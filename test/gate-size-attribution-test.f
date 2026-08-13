@@ -580,9 +580,21 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ message bytes. CODELEN 127136 -> 127508 (+372), floor distance 160 -> 532.
 \ Still inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and
 \ MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
-127508 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-13 re-measured live at the macOS byte-fixpoint for the definer-kind
+\ stamp (dot habu-fold-a-named-052f4c4b): a record now says which definer made
+\ it, so the two definers that emit a push-only body stamp their record and the
+\ one writer that replaces such a body clears the stamp, and the AOT seed's boot
+\ expander puts the pair back. Fourteen instructions, all of them
+\ read-modify-write of the flags cell or its reconstruction: EMIT-CREATE 3 (LDR,
+\ ORRI, STR), C-CONSTANT 3 (the same three), DOESPATCH:EMIT 4 (LDR, the clearing
+\ mask, AND, STR - one instruction for the mask because $FFF3FFFFFFFFFFFF is one
+\ run of ones and ENC-LIT takes the MOVN form), EM-AOT-REGISTER-RECS 4 (LSRI,
+\ ANDI, LSLI, ORR). CODELEN 127508 -> 127564 (+56), floor distance 532 -> 588.
+\ Still inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and
+\ MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
+127564 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-532 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+588 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

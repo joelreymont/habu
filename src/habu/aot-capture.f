@@ -43,7 +43,7 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
 : AOT-RXT ( ptr a -- n ) AOT-CELL@ ;                          \ [0] code entry (xt)
 : AOT-REND ( ptr a -- n ) 8 + AOT-CELL@ ;                     \ [8] code end or package private WID
 : AOT-RFLAGS ( ptr a -- n ) 16 + AOT-CELL@ ;                  \ [16] flags | name len
-: AOT-RNLEN ( ptr a -- n ) AOT-RFLAGS $000FFFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 12 bits are flags + DNAME-MIN-IN)
+: AOT-RNLEN ( ptr a -- n ) AOT-RFLAGS $0003FFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 14 bits are flags + DNAME-MIN-IN + DKIND)
 : AOT-REXT? ( ptr a -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
 : AOT-RNPTR ( ptr a -- ptr u8 )
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else AOT-A>U8 24 + then ;
@@ -146,13 +146,13 @@ variable AOT-UNRES-N                          \ kept-source counter: unresolved 
    AOT-REC-N @ 1+ AOT-REC-N ! ;
 
 \ --- compact AOT-CREC-ROW records: blob-off-or-package-public u32 + code-len-or-
-\ package-private u32 + name-off u32 + (flags u8 | min-in u8<<8) u32 +
-\ wid u32. Built from the
+\ package-private u32 + name-off u32 + (flags u8 | min-in u8<<8 | dkind u8<<16)
+\ u32 + wid u32. Built from the
 \ verbatim 48B records; each record's inline name is added to the deduped pool.
 \ EM-AOT-REGISTER-RECS expands each compact record
 \ back to the full 48B dict record at boot. All the constant/derivable fields
-\ (flags nibble, DNAME-MIN-IN byte, wid, name length, and the [24..40)
-\ inline-name zero padding) are asserted or reconstructed; the ACAP-PROVE-RECS
+\ (flags nibble, DNAME-MIN-IN byte, DKIND pair, wid, name length, and the
+\ [24..40) inline-name zero padding) are asserted or reconstructed; the ACAP-PROVE-RECS
 \ pass then proves the expansion is byte-identical. The wid is a full u32
 \ (matching the verbatim [40] cell's checked u32 domain) so wordlist IDs above
 \ 255 round-trip through the seed -- the field was a truncating u8. The min-in
@@ -186,16 +186,17 @@ variable AOT-UNRES-N                          \ kept-source counter: unresolved 
       then
       v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
       v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
-      v 20 + ACAP-W32@ $000FFFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
+      v 20 + ACAP-W32@ 18 rshift 3 and {: dkind:n :}          \ DKIND pair ([16] bits 50-51)
+      v 20 + ACAP-W32@ $0003FFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
       v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
       v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
       ext 0= len 16 > and if s" aot-capture: rec name too long for inline" 74 die then
       pkg if $FFFFFFFF else v 40 + ACAP-W32@ then {: wid:n :} \ package marker or full ordinary u32 WID
       v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}
       v ext ACAP-REC-NAME len ACAP-POOL-ADD {: noff:n :}      \ the name -> deduped pool entry
-      i ACAP-CREC-DST {: c:ptr :}                             \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + wid u32
+      i ACAP-CREC-DST {: c:ptr :}                             \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + dkind u8 + wid u32
       start c AOT-P32!  clen c 4 + AOT-P32!  noff c 8 + AOT-P32!
-      flags  minin 8 lshift or  c 12 + AOT-P32!    \ one store so the two spare bytes are written zero
+      flags  minin 8 lshift or  dkind 16 lshift or  c 12 + AOT-P32!    \ one store so the spare byte is written zero
       wid c 16 + AOT-P32!
    loop ;
 
@@ -217,7 +218,8 @@ variable AOT-UNRES-N                          \ kept-source counter: unresolved 
    AOT-NAMES-BUF@ noff + c@ {: len:n :}                       \ len = pool[entry]
    c 12 + c@ {: flags:n :}
    c 13 + c@ {: minin:n :}
-   flags 60 lshift  minin 52 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | len
+   c 14 + c@ {: dkind:n :}
+   flags 60 lshift  minin 52 lshift or  dkind 50 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | dkind<<50 | len
    0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
    flags 2 and 0= if                                          \ inline name: the bytes live in the record
       len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop

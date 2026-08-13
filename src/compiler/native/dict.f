@@ -36,6 +36,16 @@
 \ `-- a`; both bodies push one value and return, so running one IS the engine
 \ answering.
 \
+\ AND WHY IT IS SAFE TO ENTER ONE, WHICH IS A DIFFERENT QUESTION. Entering a word
+\ to see what it leaves is only honest if the word's body is a push and nothing
+\ else; entering an ordinary word to find that out would be finding out by doing
+\ whatever it does. That is why WHICH DEFINER made a record is RECORDED and never
+\ recognised: `constant`, `create` and `variable` stamp the record's flags cell
+\ (src/habu/layout.f DKIND) at the moment they emit the body, and `does>` - the
+\ one writer that replaces such a body with a clause - clears the stamp in the
+\ same window it patches the return. So SPELL-FIXED below asks the record, and
+\ only a record whose body is still the definer's own is ever entered.
+\
 \ AND WHY THAT IS THE HONEST PLACE FOR THE ANSWER RATHER THAN THE CALLER'S. The
 \ address is a fact of the running process, and a caller that states it states a
 \ number it obtained the same way a moment earlier. Two authorities for one fact
@@ -163,12 +173,46 @@ public
    q 0 >= if a u q QUAL-START exit then
    a u BARE-START ;
 
+\ ---- which definer made the record a spelling denotes -------------------------
+\ THE THREE ANSWERS ARE THE THREE THINGS A MENTION OF A NAME CAN MEAN. A record
+\ the `constant` definer made means a number; one `create` or `variable` made
+\ means the address of that word's own storage, which a snapshot moves with the
+\ DATA region and which therefore may not be compiled as an ordinary number; and
+\ anything else means a call. The stamp is the definer's, made when the body was
+\ emitted and cleared by the only writer that replaces such a body, so this is a
+\ question about the record and not a guess about the bytes it points at.
+\
+\ IT IS ASKED THROUGH THE SAME WALK AND THE SAME THREE REFUSALS CALL-TARGET USES,
+\ because a stamp on a record nobody can reach by this name says nothing about
+\ what this body means. A record the finder does not agree with the engine's own
+\ start about, and a retired one, answer NONE - the second is the staleness that
+\ matters most here, since a retired data word's address is still a perfectly
+\ ordinary integer.
+0 constant FIXED-NONE                \ nothing a mention of this name folds to
+1 constant FIXED-VAL                 \ `constant`: the body pushes a decided number
+2 constant FIXED-ADDR                \ `create`/`variable`: the body pushes a DATA address
+
+: SPELL-FIXED ( ptr u8 n -- n )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u SPELL-START {: start:n :}
+   start 0= if FIXED-NONE exit then
+   a u SPELL-REC {: rec:ptr :}
+   rec XREF-FOUND? 0= if FIXED-NONE exit then
+   rec XREF-START start <> if FIXED-NONE exit then
+   rec XREF-RETIRED? if FIXED-NONE exit then
+   rec XREF-FLAGS {: f:n :}
+   f DKIND:VAL and 0<> if FIXED-VAL exit then
+   f DKIND:ADDR and 0<> if FIXED-ADDR exit then
+   FIXED-NONE ;
+
 \ The value the word this spelling denotes pushes: a `create`d word's address, a
-\ `constant`'s number. The two refusals are the two ways the question has no
+\ `constant`'s number. The three refusals are the three ways the question has no
 \ answer. A spelling that denotes nothing is refused because there is no second
-\ authority to prefer and no number to fall back on. A word that did not leave
-\ exactly one value where it was entered is refused because it is not a word of
-\ this kind at all, and whatever is on the stack is not its answer.
+\ authority to prefer and no number to fall back on. A spelling whose record no
+\ definer stamped is refused BEFORE the word is entered, because entering it is
+\ what a caller may only do to a body that is a push. And a word that did not
+\ leave exactly one value where it was entered is refused because it is not a
+\ word of this kind at all, and whatever is on the stack is not its answer.
 \
 \ WHAT THE COUNT PROVES AND WHAT IT LEAVES TO THE MISSING CAPABILITY. It settles
 \ the arity: a word that leaves none, or two, or that consumed one and left none,
@@ -178,8 +222,10 @@ public
 \ that is precisely the typed result row dot habu-guard-an-executed-8a0f2f77
 \ carries. The residual gap is named rather than papered over.
 : FIXED-VALUE ( ptr u8 n -- n )
-   SPELL-START {: start:n :}
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a u SPELL-START {: start:n :}
    start 0= if E-NDICT-NAME throw then
+   a u SPELL-FIXED FIXED-NONE = if E-NDICT-KIND throw then
    depth FX-BASE !
    start RUN-WORD
    depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
