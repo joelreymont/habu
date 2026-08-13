@@ -347,6 +347,8 @@ variable N-INS
 0 N-INS !
 variable N-BLK
 0 N-BLK !
+variable B-BASE                      \ where this function's blocks start in the module
+0 B-BASE !
 variable LAY-AT
 0 LAY-AT !
 
@@ -1152,8 +1154,28 @@ variable N-FUNS                        \ how many functions the emission holds
 : BLK-ORD-CK ( n -- n )
    dup 0 < over N-BLK @ >= or if E-A64EMIT-BLOCK throw then ;
 
+\ A successor carries a block's ordinal in the MODULE and the tables above are
+\ keyed by its ordinal in the FUNCTION being laid out, so the base filed with
+\ that function comes off it here. The bound then says what it always said - an
+\ edge leaving the function is a module this layout cannot serve - and it says it
+\ truly, where before the subtraction a successor of a later function landed
+\ inside the range and named a block of the earlier one.
 : SUCC-BLOCK ( IR-ID:ir-op-id n -- n )
-   SUCC-AT IR-ID:BLOCK-LOCAL BLK-ORD-CK ;
+   SUCC-AT IR-ID:BLOCK-LOCAL  B-BASE @ -  BLK-ORD-CK ;
+
+\ WHERE THIS FUNCTION'S BLOCKS START IN THE MODULE, filed with the layout that is
+\ keyed by their function ordinals and proved contiguous while it is filed. That
+\ contiguity is how src/compiler/ir/fun.f mints a function's blocks and what
+\ src/compiler/native/select.f preserves when it writes a module out again; the
+\ whole of the subtraction above rests on it, so it is measured rather than
+\ assumed.
+: B-BASE! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f 0 BLOCK-AT IR-ID:BLOCK-LOCAL B-BASE !
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT IR-ID:BLOCK-LOCAL  B-BASE @ -  i <>
+      if E-A64EMIT-SHAPE throw then
+   loop ;
 
 \ How many instructions a FORM is, is a property of the form: one for all but the
 \ three comparisons, the division, the two calls and the three
@@ -1662,6 +1684,7 @@ variable CH-AT
    n 1 < if E-A64EMIT-SHAPE throw then
    n BMAX > if E-A64EMIT-CAP throw then
    n N-BLK !
+   f B-BASE!
    f GOTO!
    f KEEP!
    KEPT-COUNT {: k:n :}

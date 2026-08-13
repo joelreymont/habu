@@ -186,6 +186,8 @@ variable N-VALS
 0 N-VALS !
 variable NB-N                        \ blocks in the function being checked
 0 NB-N !
+variable VB-BASE                     \ where that function's blocks start in the module
+0 VB-BASE !
 variable V-DSTACK                    \ whether the contract declares the data-stack convention
 0 V-DSTACK !
 
@@ -366,6 +368,29 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       then
    loop ;
 
+\ ---- where one function's blocks stand in the module --------------------------
+\ A block names itself twice over: by its ordinal in the MODULE, which is what a
+\ successor carries, and by its ordinal in its OWN function, which is what every
+\ table here is keyed by - the block windows, the liveness planes, the residency
+\ map. The two are one subtraction apart exactly while a function's blocks are
+\ contiguous, which is how src/compiler/ir/fun.f mints them and how
+\ src/compiler/native/select.f writes them back; it is proved here rather than
+\ assumed, because a check reading another function's block would accept an
+\ assignment nobody made. This is re-derived from the module rather than taken
+\ from the allocator, for the reason the whole file exists.
+\
+\ IT IS SET WHERE A FUNCTION'S BLOCK WINDOW IS ESTABLISHED and at no other
+\ moment - VLAYOUT for the walks keyed by V-BLKS, ORDER-CK for the walk keyed by
+\ NB-N - so no reader has to know which walk it is in, and neither setter can
+\ disagree with the other: both derive the base from the function itself.
+: VB-BASE! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f 0 BLOCK-AT IR-ID:BLOCK-LOCAL VB-BASE !
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT IR-ID:BLOCK-LOCAL  VB-BASE @ -  i <>
+      if E-A64RAV-SHAPE throw then
+   loop ;
+
 \ ---- what the module says about each value -----------------------------------
 : NOTE-DEF ( IR-ID:ir-value-id n -- )
    {: id:IR-ID:ir-value-id pos:n :}
@@ -532,7 +557,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    NB-N @ 0 ?do 0 i cells RCH + ! loop ;
 
 : SUCC-ORD ( IR-ID:ir-op-id n -- n )
-   SUCC-AT IR-ID:BLOCK-LOCAL
+   SUCC-AT IR-ID:BLOCK-LOCAL  VB-BASE @ -
    dup 0 < over NB-N @ >= or if E-A64RAV-SHAPE throw then ;
 
 \ Mark every successor of this block except the one held out, and answer whether
@@ -618,6 +643,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    f 0 S-FUN !
    f BLOCK-COUNT NB-N !
    NB-N @ BMAX > if E-A64RAV-SHAPE throw then
+   f VB-BASE!
    N-VALS @ 0 ?do 0 i USES! 0 i UB! -1 i DB! loop
    NB-N @ 0 ?do f i COUNT-BLOCK loop
    N-VALS @ 0 ?do
@@ -1077,6 +1103,7 @@ create V-TMP SETC cells allot
    f BLOCK-COUNT {: n:n :}
    n BMAX > if E-A64RAV-COVER throw then
    n V-BLKS !
+   f VB-BASE!
    base V-AT !
    n 0 ?do f i VLAY1 loop ;
 
@@ -1110,7 +1137,7 @@ create V-TMP SETC cells allot
    bk OP-COUNT 0 ?do  b  bk i OP-AT   VOP-UD loop ;
 
 : VSUCC-ORD ( IR-ID:ir-op-id n -- n )
-   SUCC-AT IR-ID:BLOCK-LOCAL
+   SUCC-AT IR-ID:BLOCK-LOCAL  VB-BASE @ -
    dup 0 < over V-BLKS @ >= or if E-A64RAV-SHAPE throw then ;
 
 : VOUT-ADD ( n n -- )
@@ -1886,7 +1913,7 @@ DKEEP-HOOK-DEFAULT
    {: t:IR-ID:ir-op-id b:n :}
    false
    t SUCCS-OF 0 ?do
-      t i SUCC-AT IR-ID:BLOCK-LOCAL b = if drop true leave then
+      t i VSUCC-ORD b = if drop true leave then
    loop ;
 
 : VDMEET-FROM ( IR-ID:ir-fun-id n n -- )

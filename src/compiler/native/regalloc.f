@@ -946,6 +946,8 @@ $3FFFFFFF constant POS-INF
 here CELL 1- and CELL swap - CELL 1- and allot
 variable N-BLKS
 0 N-BLKS !
+variable B-BASE                      \ where this function's blocks start in the module
+0 B-BASE !
 variable MB-AT
 0 MB-AT !
 variable CHANGED
@@ -1010,6 +1012,24 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    PLANES BMAX * SETC * 0 ?do 0 i cells L-SETS + ! loop ;
 
 \ ---- step one: the linear order ----------------------------------------------
+\ WHERE THIS FUNCTION'S BLOCKS START IN THE MODULE, and that they run on from
+\ there without a gap. A block names itself twice over: by its ordinal in the
+\ MODULE, which is what a successor carries (src/compiler/ir/fun.f END-BLOCK
+\ mints them that way and src/compiler/native/select.f writes them back that way),
+\ and by its ordinal in its OWN function, which is what every table here is keyed
+\ by - the block ranges, the liveness planes, the plan's rows. The two are one
+\ subtraction apart exactly while the function's blocks are contiguous, which is
+\ how IR-BUILD mints them; it is proved here rather than assumed because
+\ everything downstream of the subtraction would be reading another function's
+\ block if it were not so. The same discipline select.f holds through R-BASE!.
+: B-BASE! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f 0 BLOCK-AT IR-ID:BLOCK-LOCAL B-BASE !
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT IR-ID:BLOCK-LOCAL  B-BASE @ -  i <>
+      if E-A64RA-SHAPE throw then
+   loop ;
+
 : MB-LAY1 ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    MB-AT @ b cells B-ST + !
@@ -1028,6 +1048,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    f BLOCK-COUNT {: n:n :}
    n BMAX > if E-A64RA-CAP throw then
    n N-BLKS !
+   f B-BASE!
    base MB-AT !
    base F-LO !
    n 0 ?do f i MB-LAY1 loop ;
@@ -1061,8 +1082,14 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    bk ARG-COUNT 0 ?do b  bk i ARG-AT  MB-DEF1 loop
    bk OP-COUNT 0 ?do  b  bk i OP-AT   MB-OP-UD loop ;
 
+\ A successor names a block of the MODULE and this pass indexes by a block of the
+\ FUNCTION, so the base laid out with the function comes off it here. The bound
+\ that follows is what says the edge stays inside the function being allocated: a
+\ successor naming another function's block lands outside 0..N-BLKS and is
+\ refused, where before the base was subtracted it landed inside and named the
+\ wrong block of this one.
 : SUCC-ORD ( IR-ID:ir-op-id n -- n )
-   SUCC-AT IR-ID:BLOCK-LOCAL
+   SUCC-AT IR-ID:BLOCK-LOCAL  B-BASE @ -
    dup 0 < over N-BLKS @ >= or if E-A64RA-SHAPE throw then ;
 
 : MB-OUT-ADD ( n n -- )
