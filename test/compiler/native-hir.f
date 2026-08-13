@@ -582,7 +582,7 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 75 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 81 T= ;
 
 \ The nine float words, each read back off a real model. `f-` binds to hir.fsub
 \ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
@@ -1033,9 +1033,11 @@ variable BC-OUT
 \ words, the four step words, the four memory words, the nine float words, the
 \ five float comparisons, the sixteen control words, the seven words of the
 \ three tag-dispatch forms, the two halves of a locals group, the two halves of
-\ a quotation and the two words a program uses one with, with the renames at the
-\ end of the walk.
-: AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
+\ a quotation and the two words a program uses one with, then the renames, and
+\ the six return-stack transfers at the end of the walk. The last two rows pin
+\ the transfers' own ends: a group appended anywhere but the end would move
+\ 2drop, and a group declared in another order would move 2r@ off 80.
+: AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
@@ -1048,12 +1050,16 @@ variable BC-OUT
    r key 72 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 74 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
+      c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 75 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" >r" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 80 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" 2r@" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
    s" declared words walk in declaration order" T-LABEL
    BND [: AT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ ---- a word model without a module builder -----------------------------------
 \ Every refusal below is measured against a light model: a plain module of the

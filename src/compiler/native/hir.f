@@ -443,6 +443,19 @@ ENUM ctrl DERIVE eq
    exec
 ;ENUM
 
+\ WHICH WAY A RETURN-STACK WORD MOVES CELLS, and it is three actions rather than
+\ two because a peek is not a pop. `to-r` takes cells off the data stack and puts
+\ them on the return stack, `from-r` does the reverse, and `fetch-r` copies the
+\ return stack's top cells onto the data stack WITHOUT taking them off - so a
+\ body may read a parked value as often as it likes and still owe exactly one
+\ `r>`. How MANY cells is the row's other number, which is what lets one action
+\ serve `>r` and `2>r`.
+ENUM rmove DERIVE eq
+   to-r
+   from-r
+   fetch-r
+;ENUM
+
 \ What a Habu source word, or a source-tape token, means to this dialect.
 \ `literal` is a token's meaning and never a word's: an integer literal is not a
 \ call, and the tape's own token kind is what makes it one. The other three are
@@ -476,6 +489,20 @@ ENUM ctrl DERIVE eq
 \ and the two stage two different operations leaving values of two different
 \ types. The tape's own token kind is what makes a token one or the other, and
 \ neither is ever a word's meaning.
+\ `rstack` is `>r`, `r>` and `r@` with their two-cell forms, and it is a meaning
+\ beside `rename` rather than a kind of it. What the two have in common is that
+\ they stage NO operation and emit no instruction: both only move value ids
+\ around at compile time, and the machine never learns that either happened. What
+\ separates them is which vectors they move between - a rename permutes the data
+\ vector, and these carry a value from it to the return vector or back - and a
+\ rename row has no cell that could say so. The engine's own `>r` writes a cell
+\ into a data-region stack and bumps a depth counter; this dialect keeps the
+\ parked value in the vector it already keeps every other live value in, so the
+\ counter has nothing to count and the region is never touched. That is sound
+\ because the checker has already PROVED the return stack's depth at every point
+\ of a certified body: it unifies the return row at every join and loop edge and
+\ refuses a body that does not leave the row as it found it, so the depth is a
+\ compile-time number and not a run-time one.
 ENUM meaning DERIVE eq
    literal
    real-literal
@@ -484,6 +511,7 @@ ENUM meaning DERIVE eq
    const-op
    control
    rename
+   rstack
    fixed
    callable
    open-locals

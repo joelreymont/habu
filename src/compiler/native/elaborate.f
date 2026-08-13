@@ -12,15 +12,33 @@
 \ comparison and bitwise words, the float words, compile-time stack renames, the
 \ structured control words, the three tag-dispatch forms - `MATCH … ;MATCH`,
 \ `case … endcase` and `construct` - the cell and byte memory words, `RECURSE`,
-\ a call to a declared callee or a declared data word, and one `{: … :}` group
-\ of typed locals read by name. Nothing else.
+\ a call to a declared callee or a declared data word, one `{: … :}` group
+\ of typed locals read by name, and the return-stack transfers. Nothing else.
 \
 \ WHAT IT DOES NOT TRANSLATE, because a reader deciding whether a program can
 \ compile here should not have to infer it from silence: character literals,
-\ quotations, `does>`, plain `do`, `+loop`, `leave`, `j`, the return-stack
-\ words, and `execute`. The modeled vocabulary is the table in
+\ `does>`, `+loop`, `leave` and `j`. The modeled vocabulary is the table in
 \ src/compiler/native/hir-word.f and it is the authority; anything absent from
 \ it is E-HIR-UNMODELED.
+\
+\ THIS PARAGRAPH WAS WRONG BEFORE IT WAS THIS, and the correction is worth
+\ recording because the list is a contract a reader is entitled to trust. It
+\ named plain `do`, quotations and `execute` as untranslated long after all
+\ three had entered the table - test/compiler/native-do.f runs plain `do`
+\ against the engine on pinned inputs and has since it was written. A list kept
+\ by hand beside a table drifts from it; this one is now checked against the
+\ table by test/compiler/native-hir.f's declaration-order walk, which names the
+\ vocabulary's ends.
+\
+\ AND THE RETURN-STACK TRANSFERS EMIT NOTHING, WHICH IS THE WHOLE OF THEM. `>r`,
+\ `r>`, `r@` and their pair forms move value ids between the two compile-time
+\ vectors below and stage no operation at all, so the machine never learns that
+\ any of them happened. A parked value crosses a join, a loop edge and a call
+\ with the values on the data vector and by the same machinery; what that
+\ machinery cannot re-derive is the SPLIT between the two vectors, so the control
+\ frame carries it and the join openers state it. The seams are named where they
+\ stand: R-SPILL and R-FILL below, the frame's `rd`, `armr` and `xr` fields, and
+\ the FRONT operand group at a call.
 \
 \ THE UNIT IS THE DEFINITION, AND THAT IS WHY THERE IS NO FRAME TO FIND. The
 \ tape this pass reads is produced by src/compiler/native/feed.f from the
@@ -363,8 +381,18 @@ create VQ    VMAX cells allot        \ the quotation body entry i names, or VQ-N
 create VQWIN VMAX cells allot        \ the same for the window a rename consumed
 create VQSAV VMAX cells allot        \ and for the entries a call hands over and takes back
 
+\ The RETURN vector's storage. Its operations and the whole argument for why it
+\ needs none of the three facts per entry that the data vector carries are below,
+\ under "the compile-time RETURN vector"; only the declarations are here, so that
+\ VRESET can empty both in one place and no caller can empty one and forget the
+\ other.
+16 constant RMAX                     \ measured: the tree's deepest nest is ten
+variable RN                          \ how many values the return vector holds
+RMAX TYPED-BUFFER RSTK IR-ID:ir-value-id
+
 : VRESET ( -- )
    0 VN !
+   0 RN !
    0 VGLUE !
    VMAX 0 ?do  VQ-NONE i cells VQ + !  loop ;
 
@@ -474,6 +502,106 @@ create VQSAV VMAX cells allot        \ and for the entries a call hands over and
    {: n:n :}
    n 0 ?do  i cells VQSAV + @  i cells VQ + !  loop ;
 
+\ ---- the compile-time RETURN vector ------------------------------------------
+\ `>r` does not compile to anything. The engine's own `>r` writes a cell into a
+\ data-region stack and bumps a depth counter (src/habu/habu2.f J-TOR); this pass
+\ moves a value id from one compile-time vector to another and emits no
+\ instruction at all, exactly as a rename moves one within a single vector. The
+\ parked value goes on living wherever the register allocator already keeps live
+\ values, so the return-stack region is never read, never written, and its depth
+\ counter never moves in code this chain emits.
+\
+\ WHAT MAKES THAT SOUND IS A PROOF THE CHECKER HAS ALREADY DONE, and it is worth
+\ stating exactly because everything here rests on it. The return stack's DEPTH
+\ AT EVERY POINT OF A CERTIFIED BODY IS A COMPILE-TIME NUMBER. src/core/checker.f
+\ carries a typed return row beside the data row (RCUR/RBROW), unifies it at
+\ every branch join and every loop edge, and refuses a definition that does not
+\ leave it exactly as it found it. So a body that reaches this pass cannot pop
+\ what it did not push, cannot leave a cell behind, cannot grow the row a turn at
+\ a time, and cannot arrive at a join with two arms disagreeing about the depth -
+\ every one of those is refused before the tape is built. This vector therefore
+\ never has to ask how deep it is at run time, because nothing can make the
+\ answer vary.
+\
+\ AND IT RIDES THE DATA VECTOR ACROSS EVERY SEAM RATHER THAN BESIDE IT. A join, a
+\ call and a return each already have machinery that hands the data vector over,
+\ agrees its width, agrees which cells are bundled, and crosses a value whose
+\ type differs from the one the destination stated. The parked values need all
+\ four of those and nothing else, so at each seam they are pushed onto the data
+\ vector, carried by that machinery unchanged, and taken back off at the far end.
+\
+\ WHAT RIDING ALONG CANNOT CARRY IS THE SPLIT, and that is the one thing this
+\ costs. Once the two vectors are one list, no arithmetic at the far end recovers
+\ how many of its entries were parked - which vector a value belongs to is a fact
+\ about the value, not about its position - so the split is carried explicitly
+\ everywhere the width is: ARG-R@ records it per block beside the width and the
+\ glue, and the control frame's `rd`, `armr` and `xr` are the parked halves of
+\ `depth`, `arm` and `xd` so that a join opener can state it. Two arms carrying
+\ the same TOTAL and disagreeing about how it splits is then a named refusal
+\ rather than a guess.
+\
+\ THE ORDER IS BOTTOM FIRST, which is what makes a pair form work: `2>r` moves the
+\ top two cells keeping the lower one lower, so the vector's own order is the
+\ order the return stack has them in, and `2r>` puts them back by reading the
+\ same two positions in the same direction.
+\
+\ SIXTEEN IS THE CEILING AND IT IS A MEASUREMENT. The deepest return-stack nest
+\ anywhere in the tree is ten, in lib/process-pty-handle.f COMMIT; every other
+\ definition in src, lib, tools, test and maki uses four or fewer. A body that
+\ wants more is a capability to raise here, not a ceiling to widen silently.
+\
+\ AND NOTHING CHECKED CAN REACH IT TODAY, which is worth writing down rather than
+\ leaving for the next reader to discover. Seventeen `>r`s in one body is refused
+\ by the CHECKER before this file sees the tape, so the E-NELAB-CAP below is an
+\ assertion about this vector's own storage and not a refusal a program can
+\ provoke. It stays because the storage is real and a ceiling nobody checks is a
+\ silent overwrite the day a second producer of tapes appears.
+\
+\ The i-th parked value from the bottom. One reader, so an index outside what the
+\ vector holds is one refusal rather than several - the rule VAT keeps.
+: RAT ( n -- IR-ID:ir-value-id )
+   {: i:n :}
+   i 0 < i RN @ >= or if E-NELAB-UNDER throw then
+   i RSTK @ ;
+
+: RPUSH ( IR-ID:ir-value-id -- )
+   {: val:IR-ID:ir-value-id :}
+   RN @ RMAX >= if E-NELAB-CAP throw then
+   val RN @ RSTK !
+   RN @ 1+ RN ! ;
+
+: RDROP ( n -- )
+   {: k:n :}
+   k 0 < k RN @ > or if E-NELAB-UNDER throw then
+   RN @ k - RN ! ;
+
+\ How the parked values get across a seam. SPILL COPIES them onto the top of the
+\ data vector, bottom first, and leaves the return vector alone; the seam then
+\ runs the machinery that was already there, over a vector that is data-then-
+\ parked; and the copies come off again with `RN @ VDROP`. FILL is the far side:
+\ the destination takes the top k arrivals into its own return vector.
+\
+\ SPILL COPIES RATHER THAN MOVES, AND THAT IS WHAT MAKES A STUB SAFE. The block a
+\ two-way branch splits off hands over the same values the arm below it goes on
+\ to read, so a seam that EMPTIED the return vector would leave the sibling path
+\ with nothing parked and no way to know it. Copying means the source side's own
+\ state is exactly what it was before the seam, which is the property STUB-H's
+\ whole existence depends on.
+\
+\ NEITHER CARRIES GLUE OR A QUOTATION MARK, and that is not an omission:
+\ RSTACK-STEP below refuses to park a cell holding either, so a parked value can
+\ only ever be a plain cell. VPUSH clears both facts for exactly the entries this
+\ pushes, which is the answer those entries need rather than a fact being lost.
+: R-SPILL ( -- )
+   RN @ 0 ?do  i RAT VPUSH  loop ;
+
+: R-FILL ( n -- )
+   {: k:n :}
+   VN @ k < if E-NELAB-UNDER throw then
+   0 RN !
+   k 0 ?do  VN @ k - i + VAT RPUSH  loop
+   k VDROP ;
+
 \ ---- compile-time stack renames ----------------------------------------------
 \ The consumed window is copied aside before the vector is shortened, because a
 \ rename may put a value back below where it read it from: `swap` writes its
@@ -518,6 +646,78 @@ create VQSAV VMAX cells allot        \ and for the entries a call hands over and
    picks 0 ?do
       in 1- p r sym i HIR-WORD:PICK@ -  RENAME-PICK
    loop ;
+
+\ ---- the return-stack transfers ----------------------------------------------
+\ `>r`, `r>`, `r@` and their pair forms. Each moves whole cells between the two
+\ compile-time vectors and stages nothing, so the whole of the lowering is here.
+\
+\ THE TWO REFUSALS ARE ABOUT WHAT A CELL IS, not about how many there are. A cell
+\ of a MULTI-CELL value may not be parked, for the reason a rename may not permute
+\ one: the value's cells would be separated, every count would still add up, and
+\ nothing further down would object - the same silent wrongness dot
+\ habu-rename-over-rows-982167af measured, reached by the other door. And a cell
+\ carrying a QUOTATION MARK may not be parked, because the mark says "this entry
+\ is body k of this emission" and only the data vector's own motions carry it;
+\ parking one would hand its consumer a cell nobody can name a body for. Both are
+\ refused by name rather than repaired, which turns a wrong program into one that
+\ does not compile. The whole window is tested, not only its lower edge, because a
+\ value lying entirely inside a `2>r` pair is as easily separated as one
+\ straddling it.
+\
+\ ONE OF THE TWO IS REACHED BY REAL SOURCE AND THE OTHER IS NOT, and the
+\ difference is worth writing down because they share a code. The MULTI-CELL
+\ clause is unreachable from checked source today: `2>r` over a two-cell layout
+\ value is refused by the CHECKER, which reads that value as ONE term of two
+\ cells while the transfer's axiom takes two terms, so the tape never carries the
+\ shape. The QUOTATION clause fires on the tree as it stands - src/core/combinators.f
+\ BI and TRI park a quotation parameter with `>r`, and the census measures both
+\ arriving here. They are the two definitions this refusal is FOR, and their real
+\ blocker is the multishot-quotation capability (dot
+\ habu-multishot-quotations-typed-8832cace) rather than anything about parking.
+\ Sharing E-NELAB-BUNDLE between the two clauses is imprecise - a quotation mark
+\ is not a bundle - and a code of its own is worth minting the next time this
+\ file's error vocabulary is opened.
+: RSTACK-CK ( n -- )
+   {: base:n :}
+   base VGLUE-ABOVE? if E-NELAB-BUNDLE throw then
+   VN @ base ?do  i VQ@ VQ-NONE <> if E-NELAB-BUNDLE throw then  loop ;
+
+: TO-R ( n -- )
+   {: cells:n :}
+   cells VN @ > if E-NELAB-UNDER throw then
+   VN @ cells - {: base:n :}
+   base RSTACK-CK
+   RN @ cells + RMAX > if E-NELAB-CAP throw then
+   cells 0 ?do  base i + VAT RPUSH  loop
+   cells VDROP ;
+
+: FROM-R ( n -- )
+   {: cells:n :}
+   cells RN @ > if E-NELAB-UNDER throw then
+   VN @ cells + VMAX > if E-NELAB-CAP throw then
+   RN @ cells - {: base:n :}
+   cells 0 ?do  base i + RAT VPUSH  loop
+   cells RDROP ;
+
+\ A peek is a pop that does not take: the same cells arrive on the data vector
+\ and the return vector keeps them, so a body may read a parked value as often as
+\ it likes and still owes exactly one `r>`.
+: FETCH-R ( n -- )
+   {: cells:n :}
+   cells RN @ > if E-NELAB-UNDER throw then
+   VN @ cells + VMAX > if E-NELAB-CAP throw then
+   RN @ cells - {: base:n :}
+   cells 0 ?do  base i + RAT VPUSH  loop ;
+
+: RSTACK-STEP ( IR-ARENA:arena IR-ID:ir-symbol-id -- )
+   {: r:IR-ARENA:arena sym:IR-ID:ir-symbol-id :}
+   r sym HIR-WORD:RSTACK-CELLS@ {: cells:n :}
+   r sym HIR-WORD:RSTACK@
+   MATCH HIR:rmove
+      to-r    OF cells TO-R ENDOF
+      from-r  OF cells FROM-R ENDOF
+      fetch-r OF cells FETCH-R ENDOF
+   ;MATCH ;
 
 \ ---- the names a `{: … :}` group binds ---------------------------------------
 \ A typed local is a named SSA VALUE and nothing else. It is bound once, when
@@ -838,9 +1038,16 @@ variable OPJ                         \ general operands taken so far by the open
 \ Reaching it means a double was staged onto the vector between the crossing and
 \ the operation, which would be eight bytes read by the wrong instruction at the
 \ other end.
+\ BOTH VECTORS ARE ASKED, because both of them go into data-stack slots at a
+\ call and a slot is a cell. A parked value is as able to be a double as a value
+\ on the data vector is - `f+ >r` parks one - so a crossing skipped there is the
+\ same wrongness skipped here, and one refusal covers the two.
 : NO-REAL-CK ( -- )
    VN @ 0 ?do
       i VAT REAL-VALUE? if E-NELAB-TYPE throw then
+   loop
+   RN @ 0 ?do
+      i RAT REAL-VALUE? if E-NELAB-TYPE throw then
    loop ;
 
 : TOKEN-OPERANDS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
@@ -966,6 +1173,21 @@ variable OPJ                         \ general operands taken so far by the open
 : CELL-CROSS ( n n -- )
    {: ix:n n:n :}
    ix 0 n CELL-CROSS-RUN ;
+
+\ THE PARKED VALUES AS CELLS, for the same sentence and the same reason. A call
+\ site hands every live value through a data-stack slot, a parked value is live
+\ across the call, and a slot is sixty-four bits with no register file - so a
+\ parked double crosses as the cell it is and comes back a cell that the next
+\ float word crosses again. It replaces the value in the return vector in place,
+\ exactly as CROSS1 does in the data vector, because the crossing consumes one
+\ value and answers one and the parked value's position is not what changes.
+: R-CROSS ( n -- )
+   {: ix:n :}
+   RN @ 0 ?do
+      i RAT REAL-VALUE? if
+         ix  i RAT  HIR-OPCODE:REALBITS CROSS-VALUE  i RSTK !
+      then
+   loop ;
 
 \ Make the value at one vector position answer to the type the position wants.
 \ ONE difference is a crossing and every other difference is a refusal, and the
@@ -1333,10 +1555,20 @@ create SB-BUF SB-CAP allot
 : RETURN-CROSS ( n -- )
    0 swap CELL-CROSS ;
 
+\ THE RETURN VECTOR IS EMPTY HERE, AND THAT IS ASKED RATHER THAN ASSUMED. A
+\ routine leaves through this operation, and a parked value at that moment is a
+\ cell the caller's own return stack would have to hold - which this chain never
+\ writes, because the whole lowering is that a parked value stays wherever the
+\ register allocator keeps live values. The checker has already refused every body
+\ that leaves the return row anything but as it found it, so nothing is meant to
+\ reach this refusal; it is asked for the reason NO-REAL-LOCAL-CK is asked, since
+\ reaching it means the one fact the lowering rests on stopped being true and the
+\ alternative is a routine that returns with a cell nobody can name.
 : EMIT-RETURN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       out:n :}
    VN @ out <> if E-NELAB-ARITY throw then
+   RN @ 0<> if E-NELAB-JOIN throw then
    out RETURN-CROSS
    c b HIR-OPCODE:RETURN HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    c b v key 0 op OPEN
@@ -1367,6 +1599,18 @@ create SB-BUF SB-CAP allot
 \ ordinal has to be written against; during the build both hold block ordinals
 \ and `arm` holds the depth the first arm left. Either way each field means "what
 \ this walk has to remember about that word", and `-1` means it has not met one.
+\
+\ AND THREE MORE, WHICH ARE `depth`, `arm` AND `xd` ASKED ABOUT THE OTHER VECTOR.
+\ A seam hands over the data values AND the parked ones, so each of the three
+\ numbers a join opener needs is really a PAIR - how many data values and how many
+\ parked - and the second half has to be carried the same way the first is. It
+\ cannot be re-derived at the opener and it cannot be taken from the walk's live
+\ `RN`: an arm may pop what the `if` parked (`1 >r if r> drop 2 else r> drop 3
+\ then` leaves nothing parked at its join and one at its `else`), so the parked
+\ depth AT A JOIN is no more the frame's opening depth than the data depth is.
+\ `rd` is what the structure opened holding, which is what its own stub carries;
+\ `armr` is what the first arm of an `if` left, beside `arm`; and `xr` is what the
+\ first `while` of a loop left, beside `xd`.
 32 constant CMAX
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -1384,6 +1628,9 @@ create CS-W CMAX cells allot         \ cells one value of a tag-dispatch frame's
 create CS-TRAP CMAX cells allot      \ the ordinal a `MATCH` mismatch traps with
 create CS-OFIX CMAX cells allot      \ the row of the `of` that opened the arm being read, or -1
 create CS-JOINED CMAX cells allot    \ whether any arm of this frame reached its join
+create CS-RD CMAX cells allot        \ parked values the return vector held when this structure opened
+create CS-ARMR CMAX cells allot      \ parked values the first arm of an `if` left, beside CS-ARM
+create CS-XR CMAX cells allot        \ parked values the first `while` of a loop left, beside CS-XD
 CMAX TYPED-BUFFER CS-IDX IR-ID:ir-value-id
 CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 
@@ -1417,6 +1664,9 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
    0 t cells CS-TRAP + !
    -1 t cells CS-OFIX + !
    0 t cells CS-JOINED + !
+   RN @ t cells CS-RD + !
+   -1 t cells CS-ARMR + !
+   -1 t cells CS-XR + !
    t 1+ CS-N ! ;
 
 : CS-POP ( -- )
@@ -1443,10 +1693,15 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 : CS-TRAP@ ( n -- n )     cells CS-TRAP + @ ;
 : CS-OFIX@ ( n -- n )     cells CS-OFIX + @ ;
 : CS-JOINED? ( n -- bool ) cells CS-JOINED + @ 0<> ;
+: CS-RD@ ( n -- n )       cells CS-RD + @ ;
+: CS-ARMR@ ( n -- n )     cells CS-ARMR + @ ;
+: CS-XR@ ( n -- n )       cells CS-XR + @ ;
 
 : CS-JOIN! ( n n -- )     cells CS-JOIN + ! ;
 : CS-ARM! ( n n -- )      cells CS-ARM + ! ;
+: CS-ARMR! ( n n -- )     cells CS-ARMR + ! ;
 : CS-XD! ( n n -- )       cells CS-XD + ! ;
+: CS-XR! ( n n -- )       cells CS-XR + ! ;
 : CS-EXIT! ( n n -- )     cells CS-EXIT + ! ;
 : CS-END! ( n n -- )      cells CS-END + ! ;
 : CS-W! ( n n -- )        cells CS-W + ! ;
@@ -1776,11 +2031,14 @@ NFROZEN:BMAX VMAX * constant ARG-CAP
 here CELL 1- and CELL swap - CELL 1- and allot
 create ARG-N NFROZEN:BMAX cells allot   \ vector positions stated for this block, or -1
 create ARG-G NFROZEN:BMAX cells allot   \ which of those positions are cells of a multi-cell value
+create ARG-R NFROZEN:BMAX cells allot   \ how many of the TOP positions are parked return values
 ARG-CAP TYPED-BUFFER ARG-T IR-ID:ir-type-id  \ the type each of those positions has
 VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hands over
 
 : ARG-RESET ( -- )
-   NFROZEN:BMAX 0 ?do  -1 i cells ARG-N + !  0 i cells ARG-G + !  loop ;
+   NFROZEN:BMAX 0 ?do
+      -1 i cells ARG-N + !  0 i cells ARG-G + !  0 i cells ARG-R + !
+   loop ;
 
 : ARG-BLOCK-CK ( n -- n )
    dup 0 < over NFROZEN:BMAX >= or if E-NELAB-BLOCK throw then ;
@@ -1804,6 +2062,17 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 : ARG-G@ ( n -- n )
    ARG-BLOCK-CK cells ARG-G + @ ;
 
+\ How many of a block's argument positions - counted from the TOP, which is where
+\ R-SPILL put them - are parked return values rather than data-stack values. It
+\ crosses with the width for the reason the glue does: which vector a value
+\ belongs to is a fact about the value, and re-deriving it after the join is not
+\ possible at all. The WIDTH agreement already refuses two arms that carry
+\ different totals; this refuses two that agree on the total and disagree about
+\ how it splits, which is a program the checker cannot produce and this file must
+\ still not compile into a guess.
+: ARG-R@ ( n -- n )
+   ARG-BLOCK-CK cells ARG-R + @ ;
+
 \ The first edge into a block, stating one type per vector position it hands
 \ over. A block whose types were already stated is never restated: the whole
 \ point is that the second edge is held to the first one's answer.
@@ -1815,6 +2084,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
       i VAT VTYPE-OF  t VMAX * i +  ARG-T !
    loop
    VGLUE @  n VGLUE-LOW  t ARG-BLOCK-CK cells ARG-G + !
+   RN @ t ARG-BLOCK-CK cells ARG-R + !
    n t ARG-BLOCK-CK cells ARG-N + ! ;
 
 \ A block that takes its live values as arguments. Every value the vector held
@@ -1851,6 +2121,15 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ construction - DO-CLOSE-LOCALS puts it in one, because a call carries it
 \ through a data-stack slot and a slot is a cell. And the memory order has its
 \ own type and holds no register at all.
+\
+\ `n` IS THE WHOLE WIDTH: the data values AND the parked ones above them, which
+\ is what the edge into this block handed over and what ARG-WIDTH@ recorded. The
+\ caller states it as two numbers added, and every one of them takes the second
+\ from its own control frame, because which vector a value belongs to is a fact
+\ about the value and no arithmetic here could recover the split. R-FILL below
+\ then takes the top ARG-R@ of them off into the return vector, which restores the
+\ one invariant this file keeps everywhere else: between seams the DATA vector
+\ holds data values only and the RETURN vector holds parked values only.
 : OPEN-ARGS-H ( n n n n n -- )
    {: ix:n n:n lo:n h:n l:n :}
    NB @ ARG-STATED? 0= if E-NELAB-JOIN throw then
@@ -1863,6 +2142,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
       CTX BLD  NB @ i ARG-T@  IR-BUILD:ADD-BLOCK-ARG VPUSH
    loop
    0 NB @ ARG-G@ VGLUE-RUN
+   NB @ ARG-R@ R-FILL
    lo h LOOP-ARGS+
    l LOCAL-ARGS+
    TOK-LIVE @ 0<> if
@@ -1927,6 +2207,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
       exit
    then
    t ARG-WIDTH@ VN @ <> if E-NELAB-JOIN throw then
+   t ARG-R@ RN @ <> if E-NELAB-JOIN throw then
    t ARG-G@  VGLUE @ VN @ VGLUE-LOW  <> if E-NELAB-JOIN throw then
    VN @ 0 ?do
       ix i  t i ARG-T@  EDGE-VALUE  i XV !
@@ -1938,6 +2219,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ OPEN-ARGS-H gives them.
 : TERM-BR-H ( n n n n n -- )
    {: ix:n t:n lo:n h:n l:n :}
+   R-SPILL
    ix t EDGE-STAGE
    CTX BLD  CTX BLD HIR-OPCODE:BR HIR:OPCODE  IR-BUILD:BEGIN-OP
    CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-OP-SPAN
@@ -1951,7 +2233,8 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    then
    CTX BLD  t BLOCK-ORD  IR-BUILD:ADD-SUCCESSOR
    CTX BLD IR-BUILD:END-OP drop
-   CLOSE-BLOCK ;
+   CLOSE-BLOCK
+   RN @ VDROP ;
 
 : TERM-BR ( n n -- )
    CROSS-DO CROSS-L TERM-BR-H ;
@@ -3085,7 +3368,14 @@ private
 \
 \ WHY EACH `call` IS A `call`. A control word would build blocks this walk's
 \ skeleton never counted; a callable would copy a call into a body that must hold
-\ none; either half of a locals group would bind names in the caller's own scope.
+\ none; either half of a locals group would bind names in the caller's own scope;
+\ and a return-stack transfer would move a value between the CALLER's two vectors
+\ while the copied body believes it is moving between its own. A copied body is
+\ balanced in itself - the checker proved that of the callee - so splicing one
+\ could be made to work by splicing the two vectors together as well, but nothing
+\ measured asks for it: no definition in the tree both parks a value and is short
+\ enough to copy. So the site calls the callee, which is what it did before this
+\ meaning existed.
 \
 \ AND THE THREE LITERAL MEANINGS ANSWER `call`, WHICH IS HONEST RATHER THAN
 \ ABSENT. All three belong to a TOKEN and never to a word:
@@ -3103,6 +3393,7 @@ private
       const-op     OF NELAB-STAGING:CONST-OP ENDOF
       fixed        OF NELAB-STAGING:FIXED ENDOF
       rename       OF NELAB-STAGING:RENAME ENDOF
+      rstack       OF NELAB-STAGING:CALL ENDOF
       callable     OF NELAB-STAGING:CALL ENDOF
       control      OF NELAB-STAGING:CALL ENDOF
       open-locals  OF NELAB-STAGING:CALL ENDOF
@@ -3881,20 +4172,23 @@ create JOIN-TAB TMAX cells allot
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
    t CS-ELSE? if E-NELAB-CTRL throw then
    t CS-DEPTH@ {: d:n :}
+   t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: e:n :}
    ix JOIN-OF {: j:n :}
    PATH-ENDED? if
       -1 t CS-END!
       0 t CS-ARM!
+      0 t CS-ARMR!
       PATH-LIVE PATH-END !
    else
       j JOIN-CK drop
       VN @ t CS-ARM!
+      RN @ t CS-ARMR!
       ix j TERM-BR
    then
    NB @ e <> if E-NELAB-CTRL throw then
    j t CS-JOIN!
-   ix d OPEN-ARGS ;
+   ix  d rd +  OPEN-ARGS ;
 
 \ `then`: the arm the walk is in reaches the join too, and the join takes as many
 \ arguments as every edge into it carries. An arm that left the stack a different
@@ -3912,16 +4206,30 @@ create JOIN-TAB TMAX cells allot
    t CS-END@ 0<> if VN @ exit then
    t CS-ARM@ ;
 
+\ The same three answers about the parked values, and each for the reason its
+\ data half is what it is. With no `else` the `if`'s own false stub is an edge
+\ into the join and it carried what the `if` was holding. With an `else` whose
+\ first arm ENDED the surviving arm is the only edge, so the walk's own live
+\ count is the answer. And with two live arms the first arm's is, because the
+\ join takes what that arm handed it and this arm is held to it below.
+: DO-JOIN-RD ( n -- n )
+   {: t:n :}
+   t CS-ELSE? 0= if t CS-RD@ exit then
+   t CS-END@ 0<> if RN @ exit then
+   t CS-ARMR@ ;
+
 : DO-CLOSE-IF ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
    PATH-ENDED? {: armend:bool :}
    t DO-JOIN-WIDTH {: w:n :}
+   t DO-JOIN-RD {: rd:n :}
    t CS-JOIN@ {: j:n :}
    armend if
       PATH-LIVE PATH-END !
    else
       VN @ w <> if E-NELAB-JOIN throw then
+      RN @ rd <> if E-NELAB-JOIN throw then
       ix j TERM-BR
    then
    t armend SK-BOTH-ENDED? if
@@ -3930,7 +4238,7 @@ create JOIN-TAB TMAX cells allot
       exit
    then
    NB @ j <> if E-NELAB-CTRL throw then
-   ix w OPEN-ARGS
+   ix  w rd +  OPEN-ARGS
    CS-POP ;
 
 \ `begin`: the loop header is a block of its own, because control reaches it
@@ -3949,7 +4257,7 @@ create JOIN-TAB TMAX cells allot
    HIR-CTRL:OPEN-BEGIN d h CS-PUSH
    ix JOIN-OF CS-TOP CS-EXIT!
    ix h TERM-BR
-   ix d OPEN-ARGS ;
+   ix  d CS-TOP CS-RD@ +  OPEN-ARGS ;
 
 \ `while` ( flag -- ): stay in the loop while the flag is true and leave it when
 \ it is false. That is one two-way branch and the two blocks `if` builds for the
@@ -3975,10 +4283,12 @@ create JOIN-TAB TMAX cells allot
    VN @ 1 < if E-NELAB-UNDER throw then
    t CS-NW@ 0<> if
       VN @ 1- t CS-XD@ <> if E-NELAB-JOIN throw then
+      RN @ t CS-XR@ <> if E-NELAB-JOIN throw then
    then
    NB @ {: c:n :}
    ix  c 1+  c 2 +  TERM-BRZ
    VN @ t CS-XD!
+   RN @ t CS-XR!
    t CS-WHILE+
    ix j STUB
    ix OPEN-PLAIN ;
@@ -3993,13 +4303,16 @@ create JOIN-TAB TMAX cells allot
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
    t CS-NW@ 0= if E-NELAB-CTRL throw then
    t CS-DEPTH@ {: d:n :}
+   t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: h:n :}
    t CS-EXIT@ JOIN-CK {: j:n :}
    t CS-XD@ {: xd:n :}
+   t CS-XR@ {: xr:n :}
    VN @ d <> if E-NELAB-JOIN throw then
+   RN @ rd <> if E-NELAB-JOIN throw then
    ix h TERM-BR
    NB @ j <> if E-NELAB-CTRL throw then
-   ix xd OPEN-ARGS
+   ix  xd xr +  OPEN-ARGS
    CS-POP ;
 
 \ `until` ( flag -- ): leave when the flag is true, go round when it is false.
@@ -4012,9 +4325,11 @@ create JOIN-TAB TMAX cells allot
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
    t CS-NW@ 0<> if E-NELAB-CTRL throw then
    t CS-DEPTH@ {: d:n :}
+   t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: h:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- d <> if E-NELAB-JOIN throw then
+   RN @ rd <> if E-NELAB-JOIN throw then
    NB @ {: c:n :}
    ix  c 1+  c 2 +  TERM-BRZ
    ix h STUB
@@ -4051,8 +4366,10 @@ create JOIN-TAB TMAX cells allot
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
    t CS-NW@ 0<> if E-NELAB-CTRL throw then
    t CS-DEPTH@ {: d:n :}
+   t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: h:n :}
    VN @ d <> if E-NELAB-JOIN throw then
+   RN @ rd <> if E-NELAB-JOIN throw then
    ix h TERM-BR
    CS-POP
    PATH-DEAD PATH-END ! ;
@@ -4128,7 +4445,7 @@ create JOIN-TAB TMAX cells allot
    st CS-TOP CS-IDX !
    lm CS-TOP CS-LIM !
    ix h  HEAD-CROSS-DO CROSS-L  TERM-BR-H
-   ix d  HEAD-CROSS-DO CROSS-L  OPEN-ARGS-H ;
+   ix  d CS-TOP CS-RD@ +  HEAD-CROSS-DO CROSS-L  OPEN-ARGS-H ;
 
 \ `do` ( limit start -- ): the loop with no guard in front of it. The block the
 \ walk is in ends by branching into the header, so this builds ONE block where
@@ -4181,11 +4498,13 @@ create JOIN-TAB TMAX cells allot
    {: ix:n :}
    HIR-CTRL:OPEN-DO CS-OPENER-CK {: t:n :}
    t CS-DEPTH@ {: d:n :}
+   t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: j:n :}
    t CS-HEAD@ {: h:n :}
    t CS-IDX @ {: iv:IR-ID:ir-value-id :}
    t CS-LIM @ {: lv:IR-ID:ir-value-id :}
    VN @ d <> if E-NELAB-JOIN throw then
+   RN @ rd <> if E-NELAB-JOIN throw then
    iv VPUSH
    ix 1 EMIT-LIT
    ix HIR-OPCODE:ADD EMIT-OPCODE
@@ -4199,7 +4518,7 @@ create JOIN-TAB TMAX cells allot
    nx t CS-IDX !
    ix h  HEAD-CROSS-DO CROSS-L  TERM-BR-H
    CS-POP
-   ix d OPEN-ARGS
+   ix  d rd +  OPEN-ARGS
    NB @ j <> if E-NELAB-CTRL throw then ;
 
 \ `i`: the index of the innermost counted loop the walk is inside. A `begin`
@@ -4250,8 +4569,10 @@ create JOIN-TAB TMAX cells allot
    {: ix:n :}
    DO-FRAME {: t:n :}
    t CS-DEPTH@ {: d:n :}
+   t CS-RD@ {: rd:n :}
    t CS-JOIN@ JOIN-CK {: j:n :}
    VN @ d <> if E-NELAB-JOIN throw then
+   RN @ rd <> if E-NELAB-JOIN throw then
    ix j  EXIT-CROSS-DO CROSS-L  TERM-BR-H
    PATH-DEAD PATH-END ! ;
 
@@ -4340,9 +4661,18 @@ create JOIN-TAB TMAX cells allot
 \ What the vector has to hold when an arm's test is reached: the values below the
 \ form, and its subject - a `MATCH`'s whole bundle, or a `case`'s selector with
 \ the key this arm just computed on top of it.
+\
+\ AND WHAT THE RETURN VECTOR HAS TO HOLD, which is what the form opened holding.
+\ Every arm's test block is reached from the previous arm's mismatch stub, and a
+\ stub carries what the block above it held; the first is the block the form
+\ itself stands in. So a key computation between two arms that parked a value and
+\ did not take it back would reach this test with a parked value the block was
+\ never opened with, which is a program the checker cannot produce and this file
+\ refuses rather than compiles into a guess.
 : ARM-WIDTH-CK ( n -- ) {: t:n :}
    t CS-MATCH? if t CS-DEPTH@ t CS-W@ + else t CS-DEPTH@ 2 + then
-   VN @ <> if E-NELAB-JOIN throw then ;
+   VN @ <> if E-NELAB-JOIN throw then
+   RN @ t CS-RD@ <> if E-NELAB-JOIN throw then ;
 
 \ The flag one arm tests. A `MATCH` compares the scrutinee's TAG, which is the
 \ top cell of its bundle, with the constant its variant's declaration order is; a
@@ -4450,7 +4780,7 @@ create JOIN-TAB TMAX cells allot
    ofix MEND@ if exit then
    ofix JOIN-OF JOIN-CK {: nx:n :}
    NB @ nx <> if E-NELAB-CTRL throw then
-   ix  t CS-DEPTH@ t CS-W@ +  OPEN-ARGS ;
+   ix  t CS-DEPTH@ t CS-W@ +  t CS-RD@ +  OPEN-ARGS ;
 
 \ The block after either form, taking the values every arm handed it. Its width
 \ is the one the FIRST edge into it stated and every later edge was held to, so
@@ -4561,8 +4891,8 @@ create JOIN-TAB TMAX cells allot
    k ;
 
 \ The operands of either call form: the order, then two per open counted loop,
-\ then one per bound local, then the WHOLE vector bottom first, whose top `a`
-\ values are the arguments.
+\ then one per bound local, then one per parked return value, then the WHOLE
+\ vector bottom first, whose top `a` values are the arguments.
 \
 \ THE ARGUMENTS ARE LAST AND NOTHING MAY COME AFTER THEM. The machine stage
 \ writes operand i+1 into data-stack slot i and enters the callee with the
@@ -4592,7 +4922,20 @@ create JOIN-TAB TMAX cells allot
 \ cannot be opened inside another one - so both call forms cross first and stage
 \ second, and NO-REAL-CK below states that they did.
 : CALL-CROSS ( n -- )
-   VN @ CELL-CROSS ;
+   {: ix:n :}
+   ix VN @ CELL-CROSS
+   ix R-CROSS ;
+
+\ The parked values as operands, bottom first, and they stand IN FRONT of the
+\ vector for the reason the counters and the locals do: the arguments are the
+\ last operands and nothing may come after them. They are live across the call
+\ exactly as a crossing local is - the callee runs on the same machine and keeps
+\ no register of the caller's - so a call consumes each of them and answers it
+\ again, which is what puts them back below.
+: R-OPERANDS+ ( -- )
+   RN @ 0 ?do
+      CTX BLD  i RAT  IR-BUILD:ADD-OPERAND
+   loop ;
 
 : CALL-OPERANDS+ ( -- )
    CALL-CROSS-CK
@@ -4600,16 +4943,22 @@ create JOIN-TAB TMAX cells allot
    CTX BLD TOK IR-BUILD:ADD-OPERAND
    CROSS-DO LOOP-OPERANDS+
    CROSS-L LOCAL-OPERANDS+
+   R-OPERANDS+
    VN @ 0 ?do
       CTX BLD  i VAT  IR-BUILD:ADD-OPERAND
    loop ;
 
 \ Its results, one for one against those operands: the order again, then the
-\ counters, then the locals, then one value per survivor and one per output.
-\ `n` is the last group - what goes back on the vector - because that is the only
-\ count either caller works out for itself.
+\ counters, then the locals, then the parked values, then one value per survivor
+\ and one per output. `n` is the last group - what goes back on the vector -
+\ because that is the only count either caller works out for itself.
+\
+\ IT READS `RN` AND SO IT IS ONE NUMBER ONLY WHILE ONE CALL IS BEING STAGED, which
+\ is all either reader needs: CALL-RESULTS+ declares the results and CALL-CLOSE
+\ reads them back, both inside the same staging, and nothing between them moves a
+\ value between the two vectors.
 : CROSS-RESULTS ( -- n )
-   CROSS-N 2 *  CROSS-L + ;
+   CROSS-N 2 *  CROSS-L +  RN @ + ;
 
 : CALL-RESULTS+ ( n -- )
    {: n:n :}
@@ -4633,6 +4982,16 @@ create JOIN-TAB TMAX cells allot
 \ And its answer for the locals, which stand behind the counters.
 variable LRK                         \ crossing locals the walk below has taken back
 
+\ And its answer for the parked values, which stand behind the locals. Each one
+\ comes back a NEW value id, because the call really did consume it: the value the
+\ caller parked is in a register the callee may destroy, and what the site holds
+\ afterwards is the result the operation answered.
+: R-RESULTS@ ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   RN @ 0 ?do
+      CTX BLD id  CROSS-N 2 * CROSS-L + i + 1+  IR-BUILD:OP-RESULT@  i RSTK !
+   loop ;
+
 : LOCAL-RESULTS@ ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id l:n :}
    l LOCAL-CK 0= if exit then
@@ -4646,8 +5005,8 @@ variable LRK                         \ crossing locals the walk below has taken 
 
 \ Closing either call form: everything it consumed goes and what it answered
 \ takes its place - the order into its slot, each loop's counters back into their
-\ frame, each local's value back under its name, and the survivors and outputs
-\ onto the vector.
+\ frame, each local's value back under its name, each parked value back into the
+\ return vector, and the survivors and outputs onto the vector.
 \ THE SURVIVORS COME BACK AS THE SAME VALUES AND SO WITH THE SAME MARKS. A call
 \ hands the whole vector over and takes it back, so every value the caller still
 \ held is answered again; a value that was several cells before the call is the
@@ -4664,6 +5023,7 @@ variable LRK                         \ crossing locals the walk below has taken 
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK!
    id CROSS-DO LOOP-RESULTS@
    id CROSS-L LOCAL-RESULTS@
+   id R-RESULTS@
    n 0 ?do
       CTX BLD id  i 1+ CROSS-RESULTS +  IR-BUILD:OP-RESULT@ VPUSH
    loop
@@ -5224,6 +5584,7 @@ variable IX                          \ the body token the walk stands on
       callable     OF p r ix DO-CALL ENDOF
       control      OF r ix DO-CONTROL ENDOF
       rename       OF p r  ix WSYM  RENAME ENDOF
+      rstack       OF r  ix WSYM  RSTACK-STEP ENDOF
       open-locals  OF E-NELAB-LOCAL throw ENDOF
       close-locals OF ix DO-CLOSE-LOCALS ENDOF
       unmodeled    OF E-HIR-UNMODELED throw ENDOF
@@ -5445,6 +5806,7 @@ variable QNAME-P                     \ the place value the digit loop is on
       k:n :}
    k QOUT@ {: out:n :}
    VN @ out <> if k QAT@ QUOT-REFUSE then
+   RN @ 0<> if k QAT@ QUOT-REFUSE then
    out RETURN-CROSS
    c b HIR-OPCODE:RETURN HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    c b v key  k QHI@  op OPEN

@@ -126,17 +126,20 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
 
 \ One word the dialect does not model, written where the chain will meet it.
 \
-\ WHY THE RETURN STACK IS THE FIXTURE. A body word the dialect has no operation
+\ WHY A CHARACTER LITERAL IS THE FIXTURE. A body word the dialect has no operation
 \ for is not refused for that alone: src/compiler/native/elaborate.f RESOLVE-SCAN
 \ puts every unmodelled name to the running engine, and a word the engine can
 \ name and the checker can size becomes a CALL. `mod`, which this fixture used to
 \ be written with, compiles that way now, and so does a named CONSTANT, which is
 \ what it was written with after that: dot habu-export-the-checker-2bbc831c gave
 \ the checker's stored effects a per-cell width, so `-- a` sizes at one cell.
-\ `>r` is refused for a reason no width can settle - the dialect stages no
-\ operation for the return stack at all, and there is nothing to ask the engine
-\ about. The elaborator refuses the body by the dialect's own name and says which
-\ token it was.
+\ `>r` was the fixture after THAT, and it stopped being one exactly as the
+\ paragraph below said it would: dot habu-thread-parked-values-3cabd3aa lowered
+\ the return-stack transfers, so `>r CFM-K r> +` compiles and the refusal this
+\ file is about went away. `[char]` is refused for the reason `>r` used to be and
+\ that no width can settle - the dialect stages nothing for a character literal
+\ at all, and there is nothing to ask the engine about. The elaborator refuses
+\ the body by the dialect's own name and says which token it was.
 \
 \ THE CONSTANT STAYS, AS A CONTROL. It is still a definition of the file that is
 \ not a colon definition, so it still holds the population line below; and it is
@@ -144,16 +147,18 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
 \ refusal below unambiguously about the return-stack token. A fixture that only
 \ said "this body is refused" would not distinguish the two.
 \
-\ AND THE COUPLING TO A MISSING CAPABILITY IS STILL DELIBERATE. When the dialect
-\ models the return stack this body compiles and this fixture must change with
-\ it. That is what a fixture is for: it fails when the thing it describes stops
-\ being true.
+\ AND THE COUPLING TO A MISSING CAPABILITY IS STILL DELIBERATE, and it has now
+\ been paid twice. When the dialect models character literals this body compiles
+\ and this fixture must change with it, exactly as it changed when the return
+\ stack landed. That is what a fixture is for: it fails when the thing it
+\ describes stops being true, and the tell is that it fails at the assertion that
+\ names the token rather than at a count.
 : MOD-SRC ( -- ptr u8 n )
    FIX-RESET
    s" package CENSUS-FIX-MOD" LINE
    s" public" LINE
    s" 3 constant CFM-K" LINE
-   s" : CFM-MOD ( n -- n ) >r CFM-K r> + ;" LINE
+   s" : CFM-MOD ( n -- n ) [char] A + CFM-K + ;" LINE
    s" ;package" LINE
    FIX$ ;
 
@@ -243,7 +248,7 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
    s" ;package" LINE
    s" using CENSUS-FIX-STALE" LINE
    s" 3 constant CFT-K" LINE
-   s" : CFT-FIRST ( n -- n ) >r CFT-K r> + ;" LINE
+   s" : CFT-FIRST ( n -- n ) [char] A + CFT-K + ;" LINE
    s" : CFT-SECOND ( n -- n ) CFT-HELPER 1+ ;" LINE
    FIX$ ;
 
@@ -508,11 +513,11 @@ variable ACC
    s" unmodeled: refused as unmodeled" T-LABEL
       0 CHAIN-CENSUS:DEF-CODE E-HIR-UNMODELED T=
    s" unmodeled: the refusal names the word" T-LABEL
-      0 CHAIN-CENSUS:DEF-SPELL$ s" >r" T$=
+      0 CHAIN-CENSUS:DEF-SPELL$ s" [char]" T$=
    s" unmodeled: the sub-histogram has one entry" T-LABEL
       CHAIN-CENSUS:SPELLS 1 T=
    s" unmodeled: and it is that word" T-LABEL
-      0 CHAIN-CENSUS:SPELL$ s" >r" T$= ;
+      0 CHAIN-CENSUS:SPELL$ s" [char]" T$= ;
 
 \ ---- (c) a string literal ----------------------------------------------------------------------
 \ The chain compiles one now, so the verdict is no verdict: the body reaches the
@@ -676,7 +681,7 @@ variable ACC
    s" stale: the helper compiled" T-LABEL
       s" CFT-HELPER" CODE-AT-NAME 0 T=
    s" stale: the first global was refused by the elaborator, for its word" T-LABEL
-      s" CFT-FIRST" SPELL-AT-NAME$ s" >r" T$=
+      s" CFT-FIRST" SPELL-AT-NAME$ s" [char]" T$=
    s" stale: the second was refused by the engine instead" T-LABEL
       s" CFT-SECOND" CODE-AT-NAME CHAIN-CENSUS:RC-UNDEFINED T=
    s" stale: and carries no spelling of its own" T-LABEL

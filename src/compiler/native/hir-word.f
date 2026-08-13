@@ -142,8 +142,8 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 3 constant HDR-CELLS
 0 constant OFF-SYM                   \ the source word's symbol ordinal
 1 constant OFF-MEAN                  \ the stored meaning code
-2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; unmodeled: the reason ordinal plus one; callable: the callee's entry address
-3 constant OFF-IN                    \ rename: the number of values consumed; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
+2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; rstack: the transfer code; unmodeled: the reason ordinal plus one; callable: the callee's entry address
+3 constant OFF-IN                    \ rename: the number of values consumed; rstack: the number of cells moved; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
 4 constant OFF-N                     \ rename: the number of values put back; callable: the values the callee leaves; otherwise zero
 5 constant OFF-GLUE                  \ callable: which of the callee's result cells belong to a multi-cell value; otherwise zero
 6 constant OFF-DEAD                  \ callable: whether control comes back from the callee; otherwise zero
@@ -183,6 +183,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       string-literal OF 11 ENDOF
       op        OF 1 ENDOF
       rename    OF 2 ENDOF
+      rstack    OF 12 ENDOF
       unmodeled OF 3 ENDOF
       const-op  OF 4 ENDOF
       control   OF 5 ENDOF
@@ -206,6 +207,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       7 of HIR-MEANING:OPEN-LOCALS endof
       8 of HIR-MEANING:CLOSE-LOCALS endof
       9 of HIR-MEANING:CALLABLE endof
+      12 of HIR-MEANING:RSTACK endof
       E-HIR-CLASS throw
    endcase ;
 
@@ -374,6 +376,24 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       25 of HIR-CTRL:CLOSE-AGAIN endof
       26 of HIR-CTRL:EARLY-LEAVE endof
       E-HIR-CONTROL throw
+   endcase ;
+
+\ The return-stack transfers, under the discipline the two above are under. The
+\ codes start at zero because they are read out of a payload cell this meaning
+\ owns outright, and a row of any other meaning is never decoded through here.
+: RSTACK-CODE ( HIR:rmove -- n )
+   MATCH rmove
+      to-r    OF 0 ENDOF
+      from-r  OF 1 ENDOF
+      fetch-r OF 2 ENDOF
+   ;MATCH ;
+
+: N>RSTACK ( n -- HIR:rmove )
+   case
+      0 of HIR-RMOVE:TO-R endof
+      1 of HIR-RMOVE:FROM-R endof
+      2 of HIR-RMOVE:FETCH-R endof
+      E-HIR-CLASS throw
    endcase ;
 
 \ ---- cell access -------------------------------------------------------------
@@ -754,6 +774,26 @@ create FIX-NAME FIX-NAME-CAP allot
    UNUSED UNUSED UNUSED UNUSED
    ROW-ADD ;
 
+\ The row a return-stack transfer writes: which way it moves cells and how many.
+\ Like a control row it stages no operation, so those two numbers are the whole
+\ payload.
+\
+\ THE COUNT IS HELD AGAINST WHAT A ROW CAN MEAN, not merely against a ceiling. A
+\ transfer of no cells is a word that does nothing and would elaborate to a
+\ silent no-op rather than a refusal; a transfer wider than the pair forms the
+\ dialect spells is a row no declarer here writes, and letting one exist would
+\ let a later reader move cells this file never sanctioned.
+2 constant RSTACK-CELLS-MAX          \ `2>r` and its two siblings are the widest forms
+
+: RSTACK-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:rmove n -- )
+   {: k:HIR:rmove cells:n :}
+   cells 1 < cells RSTACK-CELLS-MAX > or if E-HIR-CLASS throw then
+   HIR-MEANING:RSTACK MEAN-CODE
+   k RSTACK-CODE
+   cells
+   UNUSED UNUSED UNUSED
+   ROW-ADD ;
+
 \ The row a word with no payload at all writes. The two halves of a typed
 \ locals group are the only words of this dialect like that: `{:` starts reading
 \ the names that follow and `:}` binds them, and both of those are the
@@ -792,6 +832,11 @@ create FIX-NAME FIX-NAME-CAP allot
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id k:HIR:ctrl :}
    c r  c b id BKEY-CK  k CONTROL-ROW ;
+
+: BDECLARE-RSTACK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:rmove n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id k:HIR:rmove cells:n :}
+   c r  c b id BKEY-CK  k cells RSTACK-ROW ;
 
 public
 
@@ -1152,6 +1197,19 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:CONTROL ROW-AS {: l:n :}
    r l OFF-A RC@ N>CTRL ;
 
+\ Which way a return-stack word moves cells, and how many. Both go through
+\ ROW-AS, so asking either of a row of another meaning is a category error rather
+\ than a number read out of a cell that means something else.
+: RSTACK@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:rmove )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:RSTACK ROW-AS {: l:n :}
+   r l OFF-A RC@ N>RSTACK ;
+
+: RSTACK-CELLS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:RSTACK ROW-AS {: l:n :}
+   r l OFF-IN RC@ ;
+
 \ Which of a callee's result cells belong to a multi-cell value, as the bitmask
 \ src/compiler/native/dict.f builds: bit i for the i-th cell from the bottom of
 \ the row, which is the order they reach the caller's value vector.
@@ -1252,7 +1310,12 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ closes a `begin` loop with a back edge and `leave` branches out of the
 \ innermost counted loop, and neither takes anything off the compile-time vector
 \ or puts anything back on it.
-75 constant WORDS
+\ The return-stack transfers add SIX and no picks: three actions at two widths
+\ each, and a pick cell records how the compile-time DATA vector is permuted,
+\ which is not what any of them does - what they move, they move between two
+\ vectors, and the row says which way and how many cells rather than which
+\ position went where.
+81 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1550,13 +1613,34 @@ private
    2 ADD-PICK
    c b p r c b s" rot" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
 
+\ ---- the return-stack words --------------------------------------------------
+\ >r r> r@ and their two-cell forms. Six rows over three actions and two widths,
+\ and the widths are declared rather than derived because `2>r` is its own source
+\ word: a body that spells it moves the pair in one step, and a table that only
+\ knew `>r` would have to decide that two of them are the same thing, which is a
+\ rule about the SOURCE and not about the transfer.
+\
+\ THE PAIR FORMS PRESERVE ORDER, which is the one thing about them that is not
+\ obvious and is the elaborator's business rather than this table's. `2>r` moves
+\ the top two cells so that the LOWER one stays lower on the return stack, so
+\ `2r>` puts them back the way they came; the row says only "two cells, this
+\ direction", and src/compiler/native/elaborate.f is where that order is kept.
+: DEF-RSTACK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" >r"  IR-BUILD:INTERN-SYMBOL HIR-RMOVE:TO-R    1 BDECLARE-RSTACK
+   c b r c b s" r>"  IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FROM-R  1 BDECLARE-RSTACK
+   c b r c b s" r@"  IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FETCH-R 1 BDECLARE-RSTACK
+   c b r c b s" 2>r" IR-BUILD:INTERN-SYMBOL HIR-RMOVE:TO-R    2 BDECLARE-RSTACK
+   c b r c b s" 2r>" IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FROM-R  2 BDECLARE-RSTACK
+   c b r c b s" 2r@" IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FETCH-R 2 BDECLARE-RSTACK ;
+
 public
 
 \ Declare the whole straight-line source vocabulary into one word model: the
 \ arithmetic, comparison and bitwise words this dialect has operations for, the
 \ four step words that are a literal and an operation, the four memory words,
-\ the structured control words, the two halves of a typed locals group, and the
-\ stack words that only rename values.
+\ the structured control words, the two halves of a typed locals group, the
+\ stack words that only rename values, and the return-stack transfers.
 \ The builder is the module's symbol
 \ interner, so the spellings become identities of the same module the table is
 \ bound to. A `create`d data word is NOT here, and neither is a word this
@@ -1585,7 +1669,8 @@ public
    c b p r DEF-OVER
    c b p r DEF-NIP
    c b p r DEF-ROT
-   c b p r DEF-2DROP ;
+   c b p r DEF-2DROP
+   c b r DEF-RSTACK ;
 
 private
 get-current prot-wid-add
