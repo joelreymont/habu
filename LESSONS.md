@@ -6359,3 +6359,21 @@ registration (the two suites ran only via the fork list), and a
 false measured claim guarding an untested reachable refusal. The
 cross-landing interaction probes all passed - the holes were in
 registration topology and prose, exactly where fresh eyes look.
+
+## The width-export landing's four (2026-08-14)
+
+(1) To call a failure pre-existing, the base thing must be the
+test's INPUT, not the binary that runs it - a source-reading lint
+run with an old engine over a modified tree measures the tree.
+(2) A lane that adds a checker axiom owns a ratchet it never
+opened. Grep finds names; a ratchet is a NUMBER - find it by
+asking which tests READ the file you changed.
+(3) Belt-and-braces is dead code until a mutation binds it: the
+saturation flag survived design review and died in one measurement
+(overflow drops a suffix; every suffix token already refuses on
+absence). Write it, measure it, delete it, and say why in place.
+(4) Publish the count the consumer needs, not a delta it re-adds -
+two stages with separate arithmetic can drift; two readings of one
+subtraction cannot. And file every new per-token fact against the
+ONE shared recording ordinal; a second counter is the mistake the
+first table's prose already names.
