@@ -6182,3 +6182,29 @@ mid-census corrupts the measurement exactly as editing during
 test/run.f does. (2) pgrep -f <pattern> in a wait loop matches the
 waiting shell itself - two wait loops never returned. Wait on a
 file, not a process name.
+
+## The return-stack lane's four (2026-08-13)
+
+(1) A leaf can name a capability the tree already has under a
+different owner. "Explicit typed return-stack state" was the
+checker's return row all along; one grep for the acceptance's own
+vocabulary (RCUR) found it before any design work started.
+(2) A syntax flag is never the invariant. ER.HASR says whether an
+author WROTE a `| rin -- rout` clause; `( n | R -- n | R )` writes
+one and moves nothing. Expose what the recorded rows SAY, and build
+the fixture as an adversarial pair - two words identical in the
+syntax dimension, opposite in the fact dimension - so a reader keyed
+on syntax reds one of them whichever way it answers.
+(3) An analogy to an existing mechanism must be checked against the
+new member's discipline before it prices the work. "A fourth carrier
+beside loop counters and crossing locals" was wrong in the way that
+mattered: those are scalar carriers with pre-scanned counts, while a
+parked-value vector is a variable-height typed stack needing the
+data vector's width/glue agreement at every join opener. The seam
+map showed this BEFORE the coding started; the lane pressed on
+instead of checkpointing. Checkpoint on the first structural
+surprise - the half-feature that resulted cost a second lane.
+(4) Fixtures for a checker refusal must be type-correct in every
+dimension NOT under test: four branch-imbalance probes were refused
+for a data-stack arity error and proved nothing about the return
+row.
