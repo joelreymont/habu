@@ -6252,3 +6252,18 @@ were found by the gate, not by reading. install --force does NOT
 compile src/compiler/native/*.f (the chain loads on demand), so a
 syntax error there passes the build and only a slice run catches
 it.
+
+## The catch landing's three (2026-08-13)
+
+(1) A row measured AFTER unification is the live stack, not the
+row: the fit-check binds the quotation's open tail to the rest of
+the stack and the two rows become one row. Ask width questions
+BEFORE the check that binds - there is no reading of the graph
+afterwards that can tell the two apart.
+(2) A differential over a multi-cell answer must bind both
+compilations' results before comparing; A B T= T= holds each
+answer against itself and passes on wrong code.
+(3) Size a refusal ceiling so the refusal is REACHABLE: a
+32-site catch table could never fire (the 128-token tape refuses
+first at 31 sites), so its guard branch would be untestable. The
+ceiling below the shadowing cap is the one a test can take.
