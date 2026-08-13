@@ -511,6 +511,15 @@ SUITE compiler-native-loop
    test/compiler/native-loop.f
 ;SUITE
 
+\ The plain `do`, which is `?do` without the test that skips an empty loop. Every
+\ case runs both openers against the engine's own compilation of the same text,
+\ because the one pair that tells them apart is the limit that equals the start -
+\ one turn against none. It runs beside the loop suite because it is the same
+\ counted loop measured through the same migration entry.
+SUITE compiler-native-do
+   test/compiler/native-do.f
+;SUITE
+
 \ Counting the instruction PAIRS one three-source instruction would replace,
 \ which is the measurement the combining lane decides what to build from. It
 \ runs beside the tail probe because it reads emitted code through that tool's

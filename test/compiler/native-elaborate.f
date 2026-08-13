@@ -1266,6 +1266,44 @@ variable LK-N
    BND [: SUMTO-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= 6 T= 3 T= 3 T= 3 T= 6 T= 2 T= 1 T= 7 T= ;
 
+\ `SUM-TO-D 0 swap 0 do i + loop` - the same loop written with `do`. FIVE blocks
+\ where `?do` has seven, and the two missing ones are exactly the guard's: the
+\ block that tests `limit - start` and the stub it takes when they are equal.
+\ Everything else is the same shape at the same widths - a header taking the
+\ accumulator, the index and the limit, an exit stub, a latch back to the header,
+\ and one join - which is what "`?do` is `do` with a zero-trip guard" means once
+\ it is blocks. The entry block therefore ends on ONE successor here and on a
+\ two-way branch there, and that single ordinal is what says no test was built.
+\
+\ IT IS PINNED BESIDE SUM-TO ON PURPOSE. The two cases share every number but
+\ the block count and the entry's terminator, so a change that gave `do` a guard,
+\ or took `?do`'s away, moves one of them and not the other.
+: SUMTO-DO-BODY ( IR-CTX:ctx -- n n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   s" SUM-TO-D 0 swap 0 do i + loop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
+   m f 1 F-BLK-AT {: hd:IR-ID:ir-block-id :}
+   m f 2 F-BLK-AT {: xt:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: la:IR-ID:ir-block-id :}
+   m f 4 F-BLK-AT {: jn:IR-ID:ir-block-id :}
+   m  m e F-TERM  F-SUCCS
+   m  m e F-TERM  0 F-SUCC
+   m hd F-ARGS
+   m  m hd F-TERM  0 F-SUCC
+   m  m hd F-TERM  1 F-SUCC
+   m  m xt F-TERM  0 F-SUCC
+   m  m la F-TERM  0 F-SUCC ;
+
+: SUMTO-DO-CASE ( -- )
+   s" a plain do builds the same loop without the guard block and its stub" T-LABEL
+   BND [: SUMTO-DO-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 4 T= 3 T= 2 T= 3 T= 1 T= 1 T= 5 T= ;
+
 \ `WCOUNT begin dup 0 > while 1- repeat`. Five blocks: the entry, the loop
 \ header, the stub the `while` leaves through, the body, and the block after the
 \ loop. THE POLARITY IS THE WHOLE OF WHAT THIS CASE MEASURES, and it is the
@@ -1539,6 +1577,77 @@ variable LK-N
 : EXITELSE ( -- )
    BND [: EXITELSE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ ---- what a plain `do` still refuses -----------------------------------------
+\ `do` takes the same pair `?do` takes, so it refuses the same two things about
+\ it, and the four cases below are what says the new opener kept them.
+
+\ Only one value under the pair the loop opens with.
+: DOUNDER-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" DOUNDER 1 do 2 loop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: DOUNDER ( -- )
+   BND [: DOUNDER-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A double as the limit. It is made with `s>f` rather than written as a float
+\ literal because this suite's lexer has no float literals - a run of digits is
+\ an integer and everything else is a name - so `1.0` would arrive as an
+\ unmodelled NAME and the case would be measuring the lexer.
+\
+\ THE PAIR IS THE PIN ON DO-PAIR BEING ONE SEAM: `?do` would refuse this at its
+\ own subtraction whatever this file said, so the `do` half is what the shared
+\ rule buys, and both are here because a rule that held for one opener and not
+\ the other is exactly the bug worth catching.
+: DODBL-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" DODBL 0 s>f 0 do 2 + loop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: DODBL ( -- )
+   BND [: DODBL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: QDODBL-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" QDODBL 0 s>f 0 ?do 2 + loop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: QDODBL ( -- )
+   BND [: QDODBL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A `do` nothing closes. It is refused by CROSS-SCAN, which counts loop openers
+\ and closers before either of the two block walks runs - and that is the site
+\ this whole leaf turns on: before `do` was modelled it was the `loop` of a
+\ perfectly good plain-do body that arrived here with nothing open, so the
+\ refusal named a balanced program.
+: DOOPEN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" DOOPEN 3 0 do 1" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: DOOPEN ( -- )
+   BND [: DOOPEN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A `do` closed by `until`. The frame a counted loop pushes is not a `begin`'s,
+\ whichever of the two words opened it.
+: DOUNTIL-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" DOUNTIL 3 0 do 1 until" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: DOUNTIL ( -- )
+   BND [: DOUNTIL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ A refused elaboration leaves its context standing, so each of these gets an
 \ enclosing context of its own in RUN, one case at a time, exactly as every
 \ other refusal in this suite does.
@@ -1561,6 +1670,26 @@ variable LK-N
 : STRAY-INDEX-CASE ( -- )
    s" a loop index outside any counted loop is refused" T-LABEL
    [: STRAY-INDEX ;] E-NELAB-CTRL TTHROWSQ ;
+
+: DOUNDER-CASE ( -- )
+   s" a do with only one value under it is refused" T-LABEL
+   [: DOUNDER ;] E-NELAB-UNDER TTHROWSQ ;
+
+: DODBL-CASE ( -- )
+   s" a do whose limit is a double is refused" T-LABEL
+   [: DODBL ;] E-NELAB-TYPE TTHROWSQ ;
+
+: QDODBL-CASE ( -- )
+   s" a ?do whose limit is a double is refused at the same seam" T-LABEL
+   [: QDODBL ;] E-NELAB-TYPE TTHROWSQ ;
+
+: DOOPEN-CASE ( -- )
+   s" a do nothing closes is refused" T-LABEL
+   [: DOOPEN ;] E-NELAB-CTRL TTHROWSQ ;
+
+: DOUNTIL-CASE ( -- )
+   s" a do closed by until is refused" T-LABEL
+   [: DOUNTIL ;] E-NELAB-CTRL TTHROWSQ ;
 
 : STRAYW-CASE ( -- )
    s" a while outside any loop is refused" T-LABEL
@@ -2871,6 +3000,7 @@ public
    BND [: drop NESTED-CASE ;] IR-CTX:WITH-CONTEXT
    COUNTDOWN-CASE
    SUMTO-CASE
+   SUMTO-DO-CASE
    WCOUNT-CASE
    PICK2-CASE
    TWOW-CASE
@@ -2879,6 +3009,11 @@ public
    BND [: drop UNCLOSED-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop LOPSIDED-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRAY-INDEX-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop DOUNDER-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop DODBL-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop QDODBL-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop DOOPEN-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop DOUNTIL-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRAYW-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop NOWHILE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop WUNTIL-CASE ;] IR-CTX:WITH-CONTEXT

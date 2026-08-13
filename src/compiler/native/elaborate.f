@@ -1399,8 +1399,8 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 \ Opening a structure clears every field the words inside it may write, so a
 \ frame never answers with what the structure that stood at this depth before it
 \ left behind. `head`, the index and the limit are not cleared here because
-\ `?do` writes all three before its own frame is read, and clearing them would
-\ need a value id this file has no way to mint.
+\ DO-ENTER writes all three before its own frame is read, and clearing them
+\ would need a value id this file has no way to mint.
 : CS-PUSH ( HIR:ctrl n n -- )
    {: k:HIR:ctrl d:n j:n :}
    CS-N @ CMAX >= if E-NELAB-BLOCK throw then
@@ -1487,9 +1487,9 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 \ FOUR LISTS AND NO FIFTH. What this walk holds live is the compile-time value
 \ vector, the index and the limit of every counted loop it is inside, the value
 \ of every bound local, and the memory order. The first is the Forth data stack;
-\ the second is what `?do` took off it and the body may no longer see; the third
-\ is what a `{: … :}` group named; the fourth is what a load and a store pass
-\ along. Everything in this file that CARRIES live values - a branch's operands,
+\ the second is what `do` or `?do` took off it and the body may no longer see;
+\ the third is what a `{: … :}` group named; the fourth is what a load and a
+\ store pass along. Everything in this file that CARRIES live values - a branch's operands,
 \ a block's arguments, and a call's operands and results - carries all four, in
 \ that order: vector, loop counters, locals, order.
 \
@@ -1522,6 +1522,11 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 \ a RANGE of open loops - the first one and how many, counting outermost first -
 \ rather than a count alone, and each seam names its own range where it stands
 \ and says why.
+\
+\ ONE KIND ANSWERS FOR BOTH OPENERS OF A COUNTED LOOP, because a frame records
+\ the STRUCTURE and `do` and `?do` open one - an index, a limit, and `loop` for a
+\ closer. DO-ENTER is the only word in this file that pushes such a frame, so
+\ there is no second spelling for this question to miss.
 : DO-FRAME-IS? ( n -- bool )
    CS-KIND @ HIR-CTRL:OPEN-DO HIR-CTRL:EQ ;
 
@@ -1840,9 +1845,9 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ disagree about what reaches this block.
 \
 \ THE OTHER THREE GROUPS NEED NO TABLE, and each for its own reason. A counted
-\ loop's index and limit are integers: `?do` subtracts them with `hir.sub`, whose
-\ operands are cells, so a double in either is E-NELAB-TYPE before the loop's
-\ header is ever opened. A bound local that crosses anything is a CELL by
+\ loop's index and limit are integers, and DO-PAIR refuses a double at either
+\ opener, so a double in either is E-NELAB-TYPE before the loop's header is ever
+\ opened. A bound local that crosses anything is a CELL by
 \ construction - DO-CLOSE-LOCALS puts it in one, because a call carries it
 \ through a data-stack slot and a slot is a cell. And the memory order has its
 \ own type and holds no register at all.
@@ -3373,10 +3378,16 @@ variable LSN                         \ loops the scan is inside
 create LS-CALL LSMAX cells allot     \ whether a call has been met inside this loop
 create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call was met
 
+\ Every word that opens a loop this scan has to count, which is both openers of
+\ the counted loop as well as `begin`. This is the ONE reader of the loop
+\ openers that is not a MATCH over the whole control vocabulary, so it is the one
+\ that a new opener can be left out of - and leaving `?do` or `do` out shows up
+\ at once as a closer with nothing open, which is LS-POP's own refusal.
 : OPENS-LOOP? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    r ix HIR-CTRL:OPEN-BEGIN ROW-CTRL?
-   r ix HIR-CTRL:OPEN-DO ROW-CTRL? or ;
+   r ix HIR-CTRL:OPEN-DO ROW-CTRL? or
+   r ix HIR-CTRL:OPEN-DO-SKIP ROW-CTRL? or ;
 
 : CLOSES-LOOP? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
@@ -3452,8 +3463,9 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
 \
 \ THE RULES IT COUNTS WITH ARE THE ONES BELOW, AND THEY ARE CHECKED. `if` makes
 \ two blocks, `else` one, `then` one, `begin` one, `while` two, `until` two,
-\ `repeat` one, `?do` three and `loop` three; everything else makes none. Getting
-\ one of them wrong here would put a branch somewhere else, so every closer
+\ `repeat` one, `do` one, `?do` three and `loop` three; everything else makes
+\ none. Getting one of them wrong here would put a branch somewhere else, so
+\ every closer
 \ compares the ordinal the build really reached against the one the opener
 \ branched to, and a disagreement is refused by name. Two derivations of one
 \ number, and they have to agree.
@@ -3706,7 +3718,12 @@ create JOIN-TAB TMAX cells allot
       mid-while    OF SK-WHILE ENDOF
       close-until  OF SK-UNTIL ENDOF
       close-repeat OF SK-REPEAT ENDOF
-      open-do      OF HIR-CTRL:OPEN-DO ix SK-PUSH  NB @ 3 + NB ! ENDOF
+      \ Both counted-loop openers push the same frame kind, because a frame
+      \ records the structure and `loop` closes one structure. They differ in
+      \ what they BUILD: a `do` ends the block it stands in and opens the header,
+      \ and a `?do` puts a guard, a skip stub and a pre-header in front of that.
+      open-do      OF HIR-CTRL:OPEN-DO ix SK-PUSH  NB @ 1+ NB ! ENDOF
+      open-do-skip OF HIR-CTRL:OPEN-DO ix SK-PUSH  NB @ 3 + NB ! ENDOF
       close-loop   OF HIR-CTRL:OPEN-DO CS-OPENER-CK CS-JOIN@
                       NB @ 3 + NB !  NB @ JOIN!  CS-POP ENDOF
       index        OF ENDOF
@@ -3964,20 +3981,29 @@ create JOIN-TAB TMAX cells allot
    ix OPEN-PLAIN
    CS-POP ;
 
-\ `?do` ( limit start -- ): run the body once per index from start up to limit,
-\ and not at all when the two are equal - which is the whole difference between
-\ `?do` and `do`, and it is the engine's own rule. The test is the subtraction of
-\ the two, which is zero exactly when they are equal, wrap-around included. The
-\ index and the limit then travel as live values of the loop, because they change
-\ on every turn and the header is reached more than once.
+\ THE COUNTED LOOP, WHICH TWO WORDS OPEN AND ONE CLOSES. `do` ( limit start -- )
+\ and `?do` ( limit start -- ) build the same loop out of the same pieces; `?do`
+\ puts one test in front of it. Everything after that test is DO-ENTER below,
+\ which both of them call, so "`?do` is `do` with a zero-trip guard" is one word
+\ shared rather than two constructions written twice and compared by eye.
 \
-\ THE FRAME OPENS AFTER THE EXIT STUB AND BEFORE THE LATCH, WHICH IS THE WHOLE
-\ POINT OF WHERE CS-PUSH STANDS. The stub is the edge taken when the loop runs no
+\ WHAT THE ENGINE DOES, WHICH IS WHAT THESE TWO HAVE TO AGREE WITH. `loop` adds
+\ one to the index and goes round while the sum is still BELOW the limit, signed.
+\ So the body of a `do` always runs at least one turn - the test comes after it -
+\ and `?do` is that same loop with `cmp start,limit` and a branch out when the
+\ two are EQUAL in front (src/habu/habu2.f J-DO and J-?DO). Measured on this
+\ engine: `0 0 do … loop` runs one turn and `0 0 ?do … loop` runs none, while
+\ `0 5 do` and `0 5 ?do` both run one and `5 0 do` and `5 0 ?do` both run five.
+\ Equality is the whole of the difference.
+\
+\ THE FRAME OPENS ONCE THE GUARD IS BEHIND US, WHICH IS THE WHOLE POINT OF WHERE
+\ DO-ENTER STANDS. `?do`'s skip stub is the edge taken when the loop runs no
 \ turns at all: it goes to the block AFTER the loop, where this loop's counters
 \ are not live, so it is built while the frame is still closed. The branch into
 \ the header goes INSIDE the loop, where they are, so the frame is open by then
 \ and carries the starting index and limit; the header takes them back as
-\ arguments and the frame names those from the first turn on.
+\ arguments and the frame names those from the first turn on. A `do` has no such
+\ stub, so it reaches DO-ENTER from the block it stands in.
 \
 \ AND THAT ONE EDGE CARRIES THIS LOOP'S COUNTERS WHETHER OR NOT ANYTHING RENAMES
 \ THEM, which is why it names its own range instead of taking CROSS-DO. The
@@ -3989,11 +4015,70 @@ create JOIN-TAB TMAX cells allot
    CALL-NEED @ 0<> if 0 DO-OPEN-N exit then
    DO-OPEN-N 1- 1 ;
 
-: DO-OPEN-DO ( n -- )
-   {: ix:n :}
+\ The two counters, read off the vector where the source left them: the start on
+\ top and the limit under it. They are only READ here - what takes them off is
+\ each opener's own business, because `?do` spends them on the subtraction it
+\ tests and `do` has nothing to spend them on.
+\
+\ NEITHER MAY BE A DOUBLE, and this is the one place that says so for both. For
+\ `?do` it would be said anyway, one step later: its subtraction is `hir.sub`,
+\ whose operands are cells, so COERCE1 refuses a double there. A `do` stages no
+\ operation over the pair at all, so without this the refusal would arrive at
+\ `loop`'s own addition, a whole body further on and against a different token.
+\ One rule, one seam, one error code, for two words that take the same pair.
+: DO-PAIR ( -- IR-ID:ir-value-id IR-ID:ir-value-id )
    VN @ 2 < if E-NELAB-UNDER throw then
    VN @ 1- VAT {: st:IR-ID:ir-value-id :}
    VN @ 2 - VAT {: lm:IR-ID:ir-value-id :}
+   st REAL-VALUE? if E-NELAB-TYPE throw then
+   lm REAL-VALUE? if E-NELAB-TYPE throw then
+   st lm ;
+
+\ Open the frame and go into the header. Both openers end here, with the same
+\ arguments meaning the same things: the block the header will be, the depth the
+\ vector has once the counters are off it, and the block after the loop.
+\
+\ THE FRAME'S KIND IS `open-do` FOR BOTH, AND THAT IS THE STRUCTURE RATHER THAN
+\ THE WORD. What a frame records is which structure is open, so that its closer
+\ can check it has met the right one and so that `i`, `unloop` and every carrier
+\ can find the counted loops they are inside. `do` and `?do` open ONE structure -
+\ a counted loop closed by `loop` - so there is one kind here, exactly as
+\ `begin`'s one kind serves both of its closers. The two words differ in the code
+\ their openers emit, and that difference is spent by the time the frame exists.
+: DO-ENTER ( IR-ID:ir-value-id IR-ID:ir-value-id n n n n -- )
+   {: st:IR-ID:ir-value-id lm:IR-ID:ir-value-id ix:n h:n d:n j:n :}
+   HIR-CTRL:OPEN-DO d j CS-PUSH
+   h CS-TOP cells CS-HEAD + !
+   st CS-TOP CS-IDX !
+   lm CS-TOP CS-LIM !
+   ix h  HEAD-CROSS-DO CROSS-L  TERM-BR-H
+   ix d  HEAD-CROSS-DO CROSS-L  OPEN-ARGS-H ;
+
+\ `do` ( limit start -- ): the loop with no guard in front of it. The block the
+\ walk is in ends by branching into the header, so this builds ONE block where
+\ `?do` builds three, and the skeleton counts it as one.
+\
+\ THE COUNTERS LEAVE THE VECTOR WITHOUT AN OPERATION, which is what `do` IS:
+\ Forth's loop parameters are not on the data stack, and nothing computes
+\ anything on the way in. They are not lost - DO-ENTER puts both into the frame
+\ and hands them to the header - so this drop is the same motion `?do`'s
+\ subtraction and its test make, with the arithmetic that only the guard needed
+\ left out.
+: DO-OPEN-DO ( n -- )
+   {: ix:n :}
+   DO-PAIR {: st:IR-ID:ir-value-id lm:IR-ID:ir-value-id :}
+   2 VDROP
+   ix JOIN-OF JOIN-CK {: j:n :}
+   st lm  ix  NB @ 1+  VN @  j  DO-ENTER ;
+
+\ `?do` ( limit start -- ): the same loop, skipped when the limit and the start
+\ are equal. The test is the subtraction of the two, which is zero exactly when
+\ they are equal, wrap-around included; TERM-BRZ takes its FIRST successor on
+\ zero, so the stub out of the loop is the zero edge and the loop is the other.
+\ Turning the two round compiles a loop that runs exactly when it should not.
+: DO-OPEN-DO-SKIP ( n -- )
+   {: ix:n :}
+   DO-PAIR {: st:IR-ID:ir-value-id lm:IR-ID:ir-value-id :}
    ix HIR-OPCODE:SUB EMIT-OPCODE
    VN @ 1- {: d:n :}
    NB @ {: c:n :}
@@ -4001,12 +4086,7 @@ create JOIN-TAB TMAX cells allot
    ix  c 1+  c 2 +  TERM-BRZ
    ix j STUB
    ix OPEN-PLAIN
-   HIR-CTRL:OPEN-DO d j CS-PUSH
-   c 3 + CS-TOP cells CS-HEAD + !
-   st CS-TOP CS-IDX !
-   lm CS-TOP CS-LIM !
-   ix  c 3 +  HEAD-CROSS-DO CROSS-L  TERM-BR-H
-   ix d  HEAD-CROSS-DO CROSS-L  OPEN-ARGS-H ;
+   st lm  ix  c 3 +  d  j  DO-ENTER ;
 
 \ `loop`: the index goes up by one, and the body runs again while it is still
 \ below the limit - the engine's own signed test. The exit is a stub because the
@@ -4966,6 +5046,7 @@ create DN-BUF DN-CAP allot
       close-until  OF ix DO-CLOSE-UNTIL ENDOF
       close-repeat OF ix DO-CLOSE-REPEAT ENDOF
       open-do      OF ix DO-OPEN-DO ENDOF
+      open-do-skip OF ix DO-OPEN-DO-SKIP ENDOF
       close-loop   OF ix DO-CLOSE-LOOP ENDOF
       index        OF DO-INDEX ENDOF
       drop-loop    OF DO-UNLOOP ENDOF

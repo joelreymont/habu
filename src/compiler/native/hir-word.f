@@ -339,6 +339,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       close-quot   OF 21 ENDOF
       bind-defer   OF 22 ENDOF
       exec         OF 23 ENDOF
+      open-do-skip OF 24 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -367,6 +368,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       21 of HIR-CTRL:CLOSE-QUOT endof
       22 of HIR-CTRL:BIND-DEFER endof
       23 of HIR-CTRL:EXEC endof
+      24 of HIR-CTRL:OPEN-DO-SKIP endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -1239,8 +1241,11 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ tokens, so none of them is a row of this table either. `is` and `execute` add
 \ two more and no picks: each stages one call, and the one thing a pick cell
 \ could record - how the compile-time vector is permuted - is not something
-\ either of them does.
-72 constant WORDS
+\ either of them does. The counted loop has two openers and adds one more word
+\ and no picks: `do` and `?do` open the same structure and differ only in the
+\ code the engine emits for them, and neither moves anything on the vector that
+\ the other does not.
+73 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1370,6 +1375,14 @@ private
 \ that a loop opens and the elaborator's control stack learns which closer it
 \ met. `else` is the same kind of fact for `if`.
 \
+\ THE COUNTED LOOP IS THE MIRROR OF THAT: TWO OPENERS AND ONE CLOSER. `do` and
+\ `?do` take the same pair and close with the same `loop`, and the row is what
+\ tells them apart, because the engine emits different code for them - J-?DO is
+\ J-DO with a comparison and a branch out in front (src/habu/habu2.f). So the
+\ two rows differ and the FRAME both openers push does not: the elaborator's
+\ control stack records the structure, which is one counted loop either way, and
+\ `loop` closes it without having to know which word opened it.
+\
 \ `RECURSE` IS SPELLED IN UPPER CASE, WHICH IS NOT AN EXCEPTION TO THE RULE ABOVE.
 \ The rule is that this table interns each word exactly as `docs/forth.md` spells
 \ it, and § "RECURSE uses the declared effect" spells this one in capitals - so
@@ -1387,7 +1400,8 @@ private
    c b r c b s" while" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MID-WHILE BDECLARE-CONTROL
    c b r c b s" until" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-UNTIL BDECLARE-CONTROL
    c b r c b s" repeat" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-REPEAT BDECLARE-CONTROL
-   c b r c b s" ?do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO BDECLARE-CONTROL
+   c b r c b s" do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO BDECLARE-CONTROL
+   c b r c b s" ?do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO-SKIP BDECLARE-CONTROL
    c b r c b s" loop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
    c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL
    c b r c b s" unloop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:DROP-LOOP BDECLARE-CONTROL

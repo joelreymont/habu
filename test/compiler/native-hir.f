@@ -582,7 +582,7 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 72 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 73 T= ;
 
 \ The nine float words, each read back off a real model. `f-` binds to hir.fsub
 \ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
@@ -1031,7 +1031,7 @@ variable BC-OUT
 \ Declaration order is observable, which is what an inventory walks: the four
 \ arithmetic words are declared first, then the six comparisons, the six bitwise
 \ words, the four step words, the four memory words, the nine float words, the
-\ five float comparisons, the thirteen control words, the seven words of the
+\ five float comparisons, the fourteen control words, the seven words of the
 \ three tag-dispatch forms, the two halves of a locals group, the two halves of
 \ a quotation and the two words a program uses one with, with the renames at the
 \ end of the walk.
@@ -1043,11 +1043,11 @@ variable BC-OUT
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 64 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 65 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 69 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 70 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 71 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 72 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -1796,6 +1796,34 @@ variable BC-OUT
    BND [: QUOT-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE ;
 
+\ THE TWO OPENERS OF A COUNTED LOOP ARE TWO ROWS, and this is where that is
+\ stated rather than left to be inferred from what the elaborator builds. `do`
+\ and `?do` take the same pair and close with the same `loop`, so nothing after
+\ the row can tell them apart; what does is which control action the row names,
+\ and a table that gave them one row would compile a `do` with `?do`'s zero-trip
+\ guard, or the other way round. Reading a row back goes through the stored code
+\ and its decoder, so these four lines are also the round trip for the code the
+\ new action was given.
+\
+\ THE LAST LINE IS WHAT MAKES THE FIRST THREE DO WORK: the two actions are not
+\ equal. Without it, an ENUM whose members all compared equal would pass every
+\ line above.
+: DO-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r  c b s" do" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:OPEN-DO HIR-CTRL:EQ
+   r  c b s" ?DO" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:OPEN-DO-SKIP HIR-CTRL:EQ
+   r  c b s" do" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:OPEN-DO-SKIP HIR-CTRL:EQ 0=
+   HIR-CTRL:OPEN-DO HIR-CTRL:OPEN-DO-SKIP HIR-CTRL:EQ 0= ;
+
+: DO-MODEL-CASE ( -- )
+   s" do and ?do are two rows naming two control actions" T-LABEL
+   BND [: DO-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE ;
+
 \ One word is one row whichever case each declaration wrote, which is the same
 \ statement the two cases above make from the reading side. It is worth making
 \ from the writing side too: a table that took a second row for `FOO` would have
@@ -1839,6 +1867,7 @@ variable BC-OUT
    CASE-CASE
    MISS-CASE
    QUOT-MODEL-CASE
+   DO-MODEL-CASE
    STATED-KEY-CASE
    s" one word declared twice in two cases is one row declared twice" T-LABEL
    [: DUP-CASE ;] E-HIR-DUP TTHROWSQ ;

@@ -513,6 +513,10 @@ public
    \ refuse. It sits beside the combine leaf because it is the other module-in,
    \ module-out rewrite and its fixtures go through the same migration entry.
    s" test/compiler/native-loop.f" GSI-FORK-INCLUDE
+   \ And the plain `do` beside it, for the same reason: the same counted loop
+   \ through the same migration entry, with both openers run against the engine
+   \ so the limit that equals the start tells them apart.
+   s" test/compiler/native-do.f" GSI-FORK-INCLUDE
    \ And the instrument the combining lane decides with, beside it for the same
    \ reason: it reads emitted code through that probe's walk, and its rows are
    \ routines the chain really compiled.

@@ -311,9 +311,9 @@ ENUM opcode DERIVE eq
 \ What a structured control word does to the blocks a definition is made of.
 \ Each member names one Habu source word, and the pairs are openers and closers
 \ of one structure: `if` closes with `then`, `begin` with either `until` or
-\ `repeat`, `?do` with `loop`. `index` is the loop index `i`, which is neither -
-\ it reads the innermost open counted loop's index and stages no operation of
-\ its own. `self-call` is `RECURSE`: it calls the word being compiled. It is a
+\ `repeat`, and either `do` or `?do` with `loop`. `index` is the loop index `i`,
+\ which is neither - it reads the innermost open counted loop's index and stages
+\ no operation of its own. `self-call` is `RECURSE`: it calls the word being compiled. It is a
 \ control action rather than an operation word because how many values it takes
 \ and leaves is the DEFINITION's arity, which no schema-driven staging can read
 \ off an opcode - the elaborator stages it by hand, exactly as it stages the
@@ -329,6 +329,22 @@ ENUM opcode DERIVE eq
 \ them a third kind rather than a badly-named opener: a structure that has met
 \ one of them is still open and still has to be closed by the closer it began
 \ with.
+\
+\ THE COUNTED LOOP HAS TWO OPENERS AND ONE CLOSER, WHICH IS THE ENGINE'S SHAPE.
+\ `open-do` is `do` and `open-do-skip` is `?do`; both take a limit and a start
+\ and both close with `loop`. The difference is one test and nothing else:
+\ src/habu/habu2.f J-DO opens the loop frame and falls into the body, and J-?DO
+\ emits that same opening preceded by `cmp start,limit` and a branch out when
+\ they are EQUAL. So `do` runs its body at least once - `0 0 do … loop` runs one
+\ turn, measured on this engine - and `?do` runs it no times there. Every other
+\ pair of limit and start, the two words are the same loop: at `5 0 do` and
+\ `5 0 ?do` alike the body runs five times, and at `0 5 do` and `0 5 ?do` alike
+\ it runs once, because the test at `loop` is `index + 1 < limit` signed and the
+\ first increment is already past. Two members rather than one because they emit
+\ different code; one closer because the structure they open is the same one.
+\ The checker makes no distinction at all (src/core/checker.f CF-DO answers for
+\ both), which is right there and not here: what the two words take and leave is
+\ the same, and what they EMIT is not.
 \
 \ SEVEN MEMBERS BELONG TO THE THREE TAG-DISPATCH FORMS, and they are control
 \ actions for the same reason `self-call` is: what they take and leave is a fact
@@ -378,6 +394,7 @@ ENUM ctrl DERIVE eq
    close-until
    close-repeat
    open-do
+   open-do-skip
    close-loop
    index
    drop-loop
