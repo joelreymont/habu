@@ -517,6 +517,11 @@ public
    \ through the same migration entry, with both openers run against the engine
    \ so the limit that equals the start tells them apart.
    s" test/compiler/native-do.f" GSI-FORK-INCLUDE
+   \ And `j` beside it, for the same reason and through the same entry: the
+   \ index of the counted loop one frame out, measured against the engine's own
+   \ `j` because the reader stages no operation and only the answer says which
+   \ frame it found.
+   s" test/compiler/native-j.f" GSI-FORK-INCLUDE
    \ And the two loop words that landed beside it, listed here as well as in
    \ test/gate-stdlib-cases.f for the reason given above: only this list is what
    \ test/run.f actually forks. `again` closes a loop with no exit and is

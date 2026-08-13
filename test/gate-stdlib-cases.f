@@ -520,6 +520,16 @@ SUITE compiler-native-do
    test/compiler/native-do.f
 ;SUITE
 
+\ `j`, the index of the counted loop one frame further out. It runs beside the
+\ plain `do` because it is the same counted loop measured through the same
+\ migration entry, and every case is differential for a reason of its own: `j`
+\ stages no operation, so a chain that answered with the inner loop's index, the
+\ outermost loop's, or an enclosing `if`'s frame emits exactly the same code and
+\ only the ANSWER tells them apart.
+SUITE compiler-native-j
+   test/compiler/native-j.f
+;SUITE
+
 \ The return-stack transfers, which compile to nothing at all: `>r` moves a value
 \ id between two COMPILE-TIME vectors and emits no instruction. Every case is
 \ differential against the engine's own compilation, because nothing about the
