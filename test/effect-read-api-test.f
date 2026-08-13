@@ -17,6 +17,7 @@
 \   EFFECT-DOUT-QUOT ( i -- bool )        the same for a dout term
 \   EFFECT-QUOT-UP ( -- bool )            put the displaced rows back
 \   EFFECT-QUOT-SIMPLE? ( -- bool )       is the latched quotation an ordinary routine?
+\   EFFECT-RET-NEUTRAL? ( -- bool )       does the queried WORD leave the return stack alone?
 \ Family ABI (EFAM-*, mirrored below as ERA-* to pin the numeric contract):
 \   0 gray (var/row/atom/param)   1 scalar (con)   2 pointer (ptr)   3 xt (quot)
 \
@@ -110,6 +111,35 @@ public
 : QRET ( n [ n -- n | a -- a ] -- n )
    {: a:n q :} \ typed-local-lint: allow-bare-local - q keeps the quotation's own effect
    a ;
+
+\ ---- the four words EFFECT-RET-NEUTRAL? is asked about -----------------------
+\ THE MIDDLE TWO ARE A PAIR AND THAT IS THE WHOLE FIXTURE. Both of them WRITE a
+\ `| rin -- rout` clause, so a reader that answered from the clause's presence -
+\ from ER.HASR, the obvious thing to expose - gives both the same answer and one
+\ of the two assertions below reds. They differ in what the rows SAY: RETVAR
+\ names one row variable on both sides and therefore moves nothing, while
+\ RETPUSH names an empty row in and a one-term row out and therefore leaves a
+\ cell on its caller's return stack. Neutrality is a fact about the rows; the
+\ clause is a fact about the spelling.
+\
+\ RETNONE is the ordinary case that must not be collateral damage - almost every
+\ word in the tree is shaped like it - and RETPOP is RETPUSH's mirror, so a
+\ reader that happened to look at only one of the two rows is caught by whichever
+\ side it ignored.
+: RETNONE ( n -- n ) ;                              \ no clause at all: neutral
+
+\ The case the first consumer actually meets: a word with no clause that USES the
+\ return stack inside itself. It is neutral to its CALLER - which is the only
+\ thing neutrality claims - and a reader that answered "this word mentions >r"
+\ rather than "this word's rows move nothing" would get it wrong and refuse
+\ every internal use in the tree.
+: RETBAL  ( n -- n ) >r r> ;                        \ balanced internal use: still neutral
+
+: RETVAR  ( n | R -- n | R ) ;                      \ a clause that moves nothing: neutral
+
+: RETPUSH ( n | -- | n ) >r ;                       \ leaves a cell on the caller's return stack
+
+: RETPOP  ( | n -- n | ) r> ;                       \ takes one off it
 
 ;package
 
@@ -454,6 +484,91 @@ public
 
 ;package
 
+\ ---- does the queried WORD leave its caller's return stack alone? -------------
+\ EFFECT-RET-NEUTRAL? ( -- bool ), the reader a compiler that models the return
+\ stack at COMPILE time has to consult before it may compile a call. Its first
+\ consumer is the native chain's return-stack lowering
+\ (src/compiler/native/dict.f), which has no cell to put a call's return-stack
+\ motion in and refuses any callee that has one.
+\
+\ WHY THE FIXTURES ARE A PAIR RATHER THAN A LIST. RETVAR and RETPUSH both carry a
+\ `| rin -- rout` clause, so the two assertions below disagree only if the reader
+\ reads the ROWS; a reader keyed on the clause's presence answers them the same
+\ way and reds one of them whichever way it answers. That is the mutation this
+\ file cannot make for itself - the clause flag is not exposed - so the pair
+\ stands in for it, and it is why exposing ER.HASR instead would have been the
+\ wrong export rather than merely a coarser one.
+\
+\ TRANSCRIPT, on this tree, 2026-08-13. Each mutation is made at
+\ EFFECT-RET-NEUTRAL? in src/core/checker.f, rebuilt with `install --force`, and
+\ reverted after the run. Every clause reds a DIFFERENT assertion, so none of
+\ them is carried by another:
+\   returning `EFFQ-RIN @ 0= EFFQ-ROUT @ 0= and` alone - which is the reader that
+\     exposing ER.HASR would have given, neutrality keyed on whether a clause was
+\     written - reds assert 4, RETVAR, and nothing else;
+\   deleting the absent-rows clause, so a word with no clause falls through to
+\     the row comparison, reds asserts 2 and 6 (RETNONE, RETBAL);
+\   returning true whenever a name resolved reds asserts 8 and 10
+\     (RETPUSH, RETPOP);
+\   deleting the EFFQ-OK guard reds assert 18 (the unresolved name).
+package ERA-RET
+
+private
+
+: NEUTRAL ( -- )
+   s" a word with no return clause leaves the return stack alone" T-LABEL
+   s" ERA-FIX:RETNONE" EFFECT-QUERY TTRUE
+   EFFECT-RET-NEUTRAL? TTRUE
+
+   s" a clause naming one row variable on both sides also moves nothing" T-LABEL
+   s" ERA-FIX:RETVAR" EFFECT-QUERY TTRUE
+   EFFECT-RET-NEUTRAL? TTRUE
+
+   s" a balanced internal >r/r> is invisible to the caller" T-LABEL
+   s" ERA-FIX:RETBAL" EFFECT-QUERY TTRUE
+   EFFECT-RET-NEUTRAL? TTRUE ;
+
+: MOVING ( -- )
+   s" a word that leaves a cell on the caller's return stack is not neutral" T-LABEL
+   s" ERA-FIX:RETPUSH" EFFECT-QUERY TTRUE
+   EFFECT-RET-NEUTRAL? TFALSE
+
+   s" nor is one that takes a cell off it" T-LABEL
+   s" ERA-FIX:RETPOP" EFFECT-QUERY TTRUE
+   EFFECT-RET-NEUTRAL? TFALSE ;
+
+\ The data rows say nothing about this, which is what makes the reader worth
+\ having: RETPUSH and RETPOP disagree with RETNONE about the return stack while
+\ RETVAR agrees with it, and no din/dout reader can tell RETVAR from RETPUSH's
+\ neighbourhood - so these assertions pin the return rows specifically.
+: NOT-THE-DATA-ROWS ( -- )
+   s" the data rows do not answer the return question" T-LABEL
+   s" ERA-FIX:RETVAR" EFFECT-QUERY TTRUE
+   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 1 T=
+   s" ERA-FIX:RETNONE" EFFECT-QUERY TTRUE
+   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 1 T= ;
+
+\ Nothing resolved means nothing promised. It is the same fail-closed direction
+\ EFFECT-QUOT-SIMPLE? takes with no descent open: answering true here would let a
+\ caller compile an unresolved name as a neutral one.
+: UNRESOLVED ( -- )
+   s" an unknown word is not neutral, because it is not anything" T-LABEL
+   s" ZZ-NO-SUCH-WORD" EFFECT-QUERY TFALSE
+   EFFECT-RET-NEUTRAL? TFALSE ;
+
+public
+
+: MAIN ( -- )
+   T-RESET
+   NEUTRAL
+   MOVING
+   NOT-THE-DATA-ROWS
+   UNRESOLVED
+   T-REPORT
+   s" effect-read-api return rows: ok" type cr ;
+
+;package
+
 : ERA-MAIN ( -- )
    T-RESET
    ERA-SCALAR-PRODUCER
@@ -467,3 +582,4 @@ public
 ERA-MAIN
 ERA-WIDTH:MAIN
 ERA-QUOT:MAIN
+ERA-RET:MAIN

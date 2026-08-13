@@ -6420,6 +6420,8 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 variable EFFQ-OK            \ bool: last EFFECT-QUERY resolved an active effect
 variable EFFQ-DIN           \ din row offset (E-OFF) of the queried effect, 0 = none
 variable EFFQ-DOUT          \ dout row offset
+variable EFFQ-RIN           \ rin row offset — the RETURN stack the word takes
+variable EFFQ-ROUT          \ rout row offset — the return stack it leaves
 
 \ ---- reading INSIDE a quotation term -----------------------------------------
 \ A quotation is one term of a row and it carries a whole effect of its own: its
@@ -6532,7 +6534,8 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    FIND-SIG dup EFFQ-OK !
    if FEP @ ER.DIN @ EFFQ-DIN !  FEP @ ER.DOUT @ EFFQ-DOUT !
-   else 0 EFFQ-DIN !  0 EFFQ-DOUT ! then
+      FEP @ ER.RIN @ EFFQ-RIN !  FEP @ ER.ROUT @ EFFQ-ROUT !
+   else 0 EFFQ-DIN !  0 EFFQ-DOUT !  0 EFFQ-RIN !  0 EFFQ-ROUT ! then
    EFFQ-OK @ ;
 
 \ EFF-ROW-CELLS: the row's width in STACK CELLS — what a call site actually
@@ -6613,6 +6616,41 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    a EFF-TAG@ EN-ROW = 0= if 0 0= 0= exit then
    b EFF-TAG@ EN-ROW = 0= if 0 0= 0= exit then
    a EFF-A@ b EFF-A@ = ;
+
+\ THE SAME QUESTION ABOUT THE QUERIED WORD ITSELF, which is what a caller
+\ compiling a CALL has to ask before it may treat the return stack as its own.
+\ A word whose rin and rout are the same stack touches nothing of its caller's
+\ return stack across the call; one whose rows differ moves cells the caller
+\ cannot see, and a compiler that models the return stack at compile time has
+\ nowhere to put that motion.
+\
+\ IT ASKS THE ROWS AND NOT THE `|` CLAUSE, and that is the whole point of
+\ exposing it here rather than exposing ER.HASR. The clause is SYNTAX - whether
+\ an author wrote `| rin -- rout` - and a signature may carry one and still be
+\ neutral: `( n | R -- n | R )` names a row variable on both sides and moves
+\ nothing. Refusing on the clause would refuse that word for how it is spelled.
+\ What decides is what the rows SAY, which is the invariant a caller depends on,
+\ and EFF-RET-NEUTRAL? above already derives it correctly across the term-graph
+\ copy.
+\
+\ NO RECORDED ROWS IS THE NEUTRAL ANSWER, AND IT IS A PROOF RATHER THAN A
+\ DEFAULT. E-BUILD-EFFECT copies rin and rout only when the signature carried a
+\ clause, so a word without one records two zeros - and a word without one is
+\ exactly the word CHECK held to `RCUR @ R-RES RBROW @ R-RES <>`, the balance
+\ check that refuses a body leaving the return row anything but as it found it.
+\ The absent rows are therefore where the checker WROTE DOWN that it proved
+\ neutrality, which is why reading them as neutral is not the same move as
+\ reading the clause: the clause says what an author spelled, the absence says
+\ what the checker established. Almost every word in the tree is this case.
+\
+\ False when no name is resolved: nothing was asked, so nothing is promised, and
+\ answering true would let a caller compile an unresolved name as a neutral one.
+\ That is the same fail-closed direction EFFECT-QUOT-SIMPLE? takes with no
+\ descent open.
+: EFFECT-RET-NEUTRAL? ( -- bool )
+   EFFQ-OK @ 0= if 0 0= 0= exit then
+   EFFQ-RIN @ 0=  EFFQ-ROUT @ 0=  and if 0 0= exit then
+   EFFQ-RIN @ EFFQ-ROUT @ EFF-RET-NEUTRAL? ;
 
 \ IS THE QUOTATION THE LATCH IS INSIDE ONE A CALLER MAY COMPILE AS AN ORDINARY
 \ ROUTINE? Three clauses, and none of them is decoration.
