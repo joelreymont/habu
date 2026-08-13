@@ -311,9 +311,9 @@ ENUM opcode DERIVE eq
 \ What a structured control word does to the blocks a definition is made of.
 \ Each member names one Habu source word, and the pairs are openers and closers
 \ of one structure: `if` closes with `then`, `begin` with `until`, `repeat` or
-\ `again`, and either `do` or `?do` with `loop`. `index` is the loop index `i`,
-\ which is neither - it reads the innermost open counted loop's index and stages
-\ no operation of its own. `self-call` is `RECURSE`: it calls the word being compiled. It is a
+\ `again`, and either `do` or `?do` with `loop`. `index` is the loop index `i`
+\ and `outer-index` is `j`, which are neither - each reads an open counted loop's
+\ index and stages no operation of its own. `self-call` is `RECURSE`: it calls the word being compiled. It is a
 \ control action rather than an operation word because how many values it takes
 \ and leaves is the DEFINITION's arity, which no schema-driven staging can read
 \ off an opcode - the elaborator stages it by hand, exactly as it stages the
@@ -374,6 +374,22 @@ ENUM opcode DERIVE eq
 \ both), which is right there and not here: what the two words take and leave is
 \ the same, and what they EMIT is not.
 \
+\ AND IT HAS TWO INDICES, WHICH ARE TWO MEMBERS AND NOT ONE WITH A DEPTH. `index`
+\ is `i`, the innermost open counted loop's index, and `outer-index` is `j`, the
+\ index of the loop ONE FRAME FURTHER OUT. src/habu/habu2.f J-J is J-I's eight
+\ instructions with one number changed - `sub x11,x11,#2` where J-I subtracts one
+\ from the loop-frame depth - so a row that carried a depth would say exactly
+\ what these two members say. It is not written that way for two reasons. A
+\ control row carries no payload at all (src/compiler/native/hir-word.f
+\ CONTROL-ROW writes the action and four unused cells), so a depth would be the
+\ first field of a family that has none, meaningless in twenty-seven members out
+\ of twenty-nine. And there is no third depth to generalise over: `k` is not a
+\ word of this Forth - neither the engine's keyword table nor src/core/checker.f
+\ CF-TOK? knows the spelling, measured, `k` inside three loops is refused as an
+\ undefined word - so the field would have exactly two values for ever. Two
+\ members is how every other distinction of this family is drawn, `do` and `?do`
+\ included.
+\
 \ SEVEN MEMBERS BELONG TO THE THREE TAG-DISPATCH FORMS, and they are control
 \ actions for the same reason `self-call` is: what they take and leave is a fact
 \ about the FAMILY the source names rather than about an opcode, so no
@@ -426,6 +442,7 @@ ENUM ctrl DERIVE eq
    open-do-skip
    close-loop
    index
+   outer-index
    drop-loop
    early-leave
    early-exit

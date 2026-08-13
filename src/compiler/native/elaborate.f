@@ -1954,6 +1954,24 @@ variable DOK                         \ counted loops the search below has passed
    loop
    dup 0 < if E-NELAB-CTRL throw then ;
 
+\ The same frames counted from the other end - INNERMOST FIRST - which is the
+\ order the source words that NAME a loop count in: `i`, `unloop` and `leave`
+\ mean the innermost, and `j` means the one outside it. It is DO-NTH read
+\ backwards rather than a second search, so there is still one scan in this file
+\ and the two orders cannot fall out of step.
+\
+\ HOW MANY HAVE TO BE OPEN IS ASKED HERE AND REFUSED BY NAME, because that is
+\ the whole difference between the readers: `i` in a body with no counted loop
+\ and `j` in a body with one are the same mistake one step apart, and answering
+\ either with some other loop's frame would compile a body that reads a counter
+\ the source never named. src/core/checker.f says the same thing from its own
+\ side - CF-I wants one counted frame open and CF-J wants two - so a checked body
+\ never reaches this refusal, and the two derivations agree where they meet.
+: DO-INNER-NTH ( n -- n )
+   {: k:n :}
+   DO-OPEN-N k 1+ < if E-NELAB-CTRL throw then
+   DO-OPEN-N 1- k - DO-NTH ;
+
 \ Which counted loops' counters cross an ORDINARY edge here - one that stays
 \ inside every loop the walk is in: all of them, outermost first. With no call in
 \ the body nothing renames them, so none of them cross.
@@ -2681,6 +2699,7 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
       open-do-skip OF SS-PUSH ENDOF
       close-loop   OF ix SS-CLOSE ENDOF
       index        OF ENDOF
+      outer-index  OF ENDOF
       drop-loop    OF ENDOF
       early-leave  OF ENDOF
       early-exit   OF ENDOF
@@ -4394,7 +4413,11 @@ create JOIN-TAB TMAX cells allot
       open-do-skip OF HIR-CTRL:OPEN-DO ix SK-PUSH  NB @ 3 + NB ! ENDOF
       close-loop   OF HIR-CTRL:OPEN-DO CS-OPENER-CK CS-JOIN@
                       NB @ 3 + NB !  NB @ JOIN!  CS-POP ENDOF
+      \ Neither loop index builds a block: each puts a value that already exists
+      \ back on the vector, and which loop's value that is, is the other walk's
+      \ question.
       index        OF ENDOF
+      outer-index  OF ENDOF
       drop-loop    OF ENDOF
       early-leave  OF SK-LEAVE ENDOF
       early-exit   OF NB @ 1+ NB !  1 EXIT-USED !  PATH-EXIT PATH-END ! ENDOF
@@ -4874,18 +4897,37 @@ create JOIN-TAB TMAX cells allot
 \ `i`: the index of the innermost counted loop the walk is inside. A `begin`
 \ between it and the `?do` changes nothing - Forth's `i` names the innermost
 \ COUNTED loop - so the frame is searched for rather than assumed to be on top.
-\ DO-FRAME-IS? is up with the live-value carriers, which ask the same question.
+\ DO-INNER-NTH is up with the live-value carriers, which search the same table
+\ for the same reason, and `unloop` and `leave` ask it through this word.
 : DO-FRAME ( -- n )
-   -1
-   CS-N @ 0 ?do
-      CS-N @ 1- i - DO-FRAME-IS? if
-         drop CS-N @ 1- i - leave
-      then
-   loop
-   dup 0 < if E-NELAB-CTRL throw then ;
+   0 DO-INNER-NTH ;
 
 : DO-INDEX ( -- )
    DO-FRAME CS-IDX @ VPUSH ;
+
+\ `j`: the index of the counted loop ONE FRAME FURTHER OUT, which is that same
+\ search one step longer. Everything true of `i` is true of it - a structure that
+\ is not a counted loop between the reader and its loops is passed over, because
+\ what is counted is LOOPS and not frames, so a `j` under an `if` under the inner
+\ loop still means the outer loop - and the one thing that is not is how many
+\ have to be open, which DO-INNER-NTH holds.
+\
+\ THE ENGINE READS THE SECOND FRAME FROM THE TOP OF ITS RUNTIME LOOP STACK AND
+\ NOTHING ELSE, which is why this is "one out from the innermost" and not "the
+\ outermost": src/habu/habu2.f J-J is J-I's eight instructions with `sub
+\ x11,x11,#2` where J-I subtracts one. The two readings agree whenever exactly
+\ two loops are open and part company at three, where `j` is the MIDDLE one -
+\ measured on this engine, `0 2 0 ?do 3 0 ?do 4 0 ?do i j + + loop loop loop`
+\ answers 60.
+\
+\ AND THE VALUE IS ALREADY WHERE IT IS NEEDED, so there is no crossing to add.
+\ The outer loop's header dominates the whole of its body, which is where the
+\ inner loop stands; and once a call is anywhere in the definition, every edge
+\ hands over EVERY open loop's counters (CROSS-DO) and every call answers with
+\ them (LOOP-RESULTS@), the outer loop's included. So this reads the frame's
+\ current index exactly as `i` does, and whichever of those two put it there.
+: DO-OUTER-INDEX ( -- )
+   1 DO-INNER-NTH CS-IDX @ VPUSH ;
 
 \ `leave` ( -- ): leave the innermost counted loop from the middle of its body.
 \ It is a branch to the block after that loop, carrying the live values - and
@@ -6013,6 +6055,7 @@ create DN-BUF DN-CAP allot
       open-do-skip OF ix DO-OPEN-DO-SKIP ENDOF
       close-loop   OF ix DO-CLOSE-LOOP ENDOF
       index        OF DO-INDEX ENDOF
+      outer-index  OF DO-OUTER-INDEX ENDOF
       drop-loop    OF DO-UNLOOP ENDOF
       early-leave  OF ix DO-LEAVE ENDOF
       early-exit   OF ix DO-EXIT ENDOF

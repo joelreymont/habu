@@ -582,7 +582,7 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 82 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 83 T= ;
 
 \ The nine float words, each read back off a real model. `f-` binds to hir.fsub
 \ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
@@ -1031,12 +1031,12 @@ variable BC-OUT
 \ Declaration order is observable, which is what an inventory walks: the four
 \ arithmetic words are declared first, then the six comparisons, the six bitwise
 \ words, the four step words, the four memory words, the nine float words, the
-\ five float comparisons, the sixteen control words, the seven words of the
+\ five float comparisons, the seventeen control words, the seven words of the
 \ three tag-dispatch forms, the two halves of a locals group, the two halves of
 \ a quotation and the three words a program uses one with, then the renames, and
 \ the six return-stack transfers at the end of the walk. The last two rows pin
 \ the transfers' own ends: a group appended anywhere but the end would move
-\ 2drop, and a group declared in another order would move 2r@ off 81.
+\ 2drop, and a group declared in another order would move 2r@ off 82.
 : AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -1045,15 +1045,15 @@ variable BC-OUT
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 68 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 69 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 73 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 74 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 75 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 76 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 77 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" >r" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 81 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 82 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2r@" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -1860,6 +1860,34 @@ variable BC-OUT
    BND [: AGAIN-LEAVE-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
+\ THE TWO LOOP INDICES, read back the same way and for the same reason: nothing
+\ after the row can tell `i` from `j`, because neither stages an operation - each
+\ puts a value that already exists back on the compile-time vector. What tells
+\ them apart is the control action the row names, and a table that gave `j` the
+\ `index` action would compile a body that reads the INNERMOST loop where the
+\ source asks for the one outside it, at the same size and with the same blocks.
+\
+\ THE LAST TWO LINES ARE WHAT MAKE THE FIRST FOUR DO WORK: the two actions are
+\ different, and neither is the action of the word that DROPS a loop frame.
+: INDEX-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r  c b s" i" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:INDEX HIR-CTRL:EQ
+   r  c b s" J" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:OUTER-INDEX HIR-CTRL:EQ
+   r  c b s" i" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:OUTER-INDEX HIR-CTRL:EQ 0=
+   r  c b s" j" HIR-WORD:KEY-SPELL  HIR-WORD:CTRL@
+      HIR-CTRL:INDEX HIR-CTRL:EQ 0=
+   HIR-CTRL:INDEX HIR-CTRL:OUTER-INDEX HIR-CTRL:EQ 0=
+   HIR-CTRL:OUTER-INDEX HIR-CTRL:DROP-LOOP HIR-CTRL:EQ 0= ;
+
+: INDEX-MODEL-CASE ( -- )
+   s" i and j are two rows naming two control actions" T-LABEL
+   BND [: INDEX-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
 \ One word is one row whichever case each declaration wrote, which is the same
 \ statement the two cases above make from the reading side. It is worth making
 \ from the writing side too: a table that took a second row for `FOO` would have
@@ -1905,6 +1933,7 @@ variable BC-OUT
    QUOT-MODEL-CASE
    DO-MODEL-CASE
    AGAIN-LEAVE-MODEL-CASE
+   INDEX-MODEL-CASE
    STATED-KEY-CASE
    s" one word declared twice in two cases is one row declared twice" T-LABEL
    [: DUP-CASE ;] E-HIR-DUP TTHROWSQ ;

@@ -345,6 +345,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       close-again  OF 25 ENDOF
       early-leave  OF 26 ENDOF
       catch        OF 27 ENDOF
+      outer-index  OF 28 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -377,6 +378,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       25 of HIR-CTRL:CLOSE-AGAIN endof
       26 of HIR-CTRL:EARLY-LEAVE endof
       27 of HIR-CTRL:CATCH endof
+      28 of HIR-CTRL:OUTER-INDEX endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -1330,7 +1332,11 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ which is not what any of them does - what they move, they move between two
 \ vectors, and the row says which way and how many cells rather than which
 \ position went where.
-82 constant WORDS
+\ The counted loop's OUTER index adds one more word and no picks: `j` puts a
+\ value that already exists back on the compile-time vector, exactly as `i` does,
+\ and where that value came from is a question for the elaborator's control stack
+\ rather than a permutation this table could record.
+83 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1448,9 +1454,9 @@ private
    c b r c b s" f0=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FEQZ BDECLARE-OP ;
 
 \ The structured control words. Three structures, the two words that stand in
-\ the middle of one, the loop index, the word that drops a loop frame, the two
-\ words that leave from the middle - one the innermost counted loop and one the
-\ definition - and
+\ the middle of one, the two loop indices, the word that drops a loop frame, the
+\ two words that leave from the middle - one the innermost counted loop and one
+\ the definition - and
 \ `RECURSE`; nothing else of Habu's control vocabulary is declared, because
 \ nothing else has a block construction in src/compiler/native/elaborate.f yet,
 \ and a word declared here without one would be a promise rather than a model.
@@ -1493,6 +1499,7 @@ private
    c b r c b s" ?do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO-SKIP BDECLARE-CONTROL
    c b r c b s" loop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
    c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL
+   c b r c b s" j" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OUTER-INDEX BDECLARE-CONTROL
    c b r c b s" unloop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:DROP-LOOP BDECLARE-CONTROL
    c b r c b s" leave" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-LEAVE BDECLARE-CONTROL
    c b r c b s" exit" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-EXIT BDECLARE-CONTROL
