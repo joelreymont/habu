@@ -2100,6 +2100,15 @@ variable NB                          \ blocks closed so far; also the open block
 \ whatever the enclosing function's block at that ordinal happened to be -
 \ E-IR-VERIFY-SUCCARG where its argument count differed, E-IR-VERIFY-DOM where
 \ it did not.
+\
+\ AND THE MACHINE PASSES NOW MAKE THE SAME SUBTRACTION SELECT.F ALWAYS MADE. The
+\ register allocator, its verifier and the emitter each file the base their
+\ function's blocks start at where they lay that function out - regalloc.f
+\ B-BASE!, regalloc-verify.f VB-BASE!, emit.f B-BASE! - and take it off every
+\ successor they read, so a body holding control flow compiles the whole way
+\ through. Fixing this end alone only moved the refusal from the verifier to the
+\ allocator; the lesson worth keeping is that a producer's fix has a mirror in
+\ every consumer that rebases the same number.
 variable BBASE                       \ the module ordinal this function's first block takes
 
 \ ---- leaving from the middle of a definition ---------------------------------

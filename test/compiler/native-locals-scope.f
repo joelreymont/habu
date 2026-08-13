@@ -247,8 +247,10 @@ public
 \ lifted: a body is now built with no local scope of its own to inherit
 \ (src/compiler/native/elaborate.f FUN-STATE!, measured in
 \ test/compiler/native-quot-scope.f), so a calling body under a group compiles.
-\ The first is still refused, by the register allocator now rather than by the
-\ freeze verifier, and dot habu-let-a-quotation-fc37262a carries it. The third is
+\ The FIRST has been lifted too: a body's successors are named in the module's
+\ own block table and every machine pass now subtracts the base its function's
+\ blocks start at, so a body holding control flow compiles and answers what the
+\ engine's compilation of it answers (measured in the same file). The third is
 \ DO-CATCH's own documented refusal of a body that never returns, dot
 \ habu-compile-a-quotation-7efa798e. What is left, and what these two measure, is
 \ the intersection this landing really does own: a name bound INSIDE a structure

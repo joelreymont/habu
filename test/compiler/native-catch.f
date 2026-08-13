@@ -305,10 +305,13 @@ public
 : NCA-PN ( n -- n n n )
    42 >r [: NCA-OK1 ;] catch r> ;
 
-\ ---- the three shapes the chain still refuses, compiled by the engine ---------
-\ Each is here so the refusal cases below can measure what the ENGINE answers for
-\ the very text the chain declines: a refusal is only interesting beside a
-\ working program.
+\ ---- the shapes that were once refused, compiled by the engine ----------------
+\ Each is here so the cases below can measure what the ENGINE answers for the
+\ very text the chain declined: a refusal is only interesting beside a working
+\ program, and an acceptance that replaced one is only interesting beside the
+\ same. Two of the three now compile through the chain as well, and their cases
+\ hold the two compilations against each other; the body that never returns is
+\ the one that is still refused.
 : NCA-NR ( n -- n n )
    [: drop 5 throw ;] catch ;
 
@@ -381,10 +384,17 @@ private
    s" : NCA-PN-N ( n -- n n n ) 42 >r [: NCA-OK1 ;] catch r> ;"
    1 3 REGS NMIGRATE:DEFINE-CALLING ;
 
+\ The caught body holding a control structure of its own, which used to be the
+\ ceiling this file's last refusal case pinned. It calls nothing, so it goes
+\ through the entry that stages no callee.
+: BC ( -- )
+   s" : NCA-BC-N ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;"
+   1 2 REGS NMIGRATE:DEFINE ;
+
 public
 
 : RUN ( -- )
-   D1 D2 D4 D5 D6 D7 D8 D9 PT PN ;
+   D1 D2 D4 D5 D6 D7 D8 D9 PT PN BC ;
 
 ;package
 
@@ -471,6 +481,11 @@ private
    {: eu:n er:n ep:n cu:n cr:n cp:n :}
    ep cp T=  er cr T=  eu cu T= ;
 
+: BC= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-BC   v NCA-FIXTURE:NCA-BC-N
+   {: eu:n er:n cu:n cr:n :}
+   er cr T=  eu cu T= ;
+
 public
 
 \ THE ONE ANSWER THAT DECIDES THIS WHOLE LANE. `7 NCA-D1` is 9 over 5, not 9 over
@@ -544,31 +559,37 @@ public
    [: s" : NCA-NR2 ( n -- n n ) [: 1+ ;] catch ;" 1 2 MEASURE-AT ;]
    0 TTHROWSQ ;
 
-\ NOT A CATCH REFUSAL, and it is here because it is what bounds the bodies above.
-\ A quotation body holding any control structure is still refused, through the
-\ route a body reached before `catch` existed - an argument a callee declares -
-\ so it is the quotation path's ceiling and not this lane's.
+\ THE THIRD CEILING IS GONE TOO, and this case is what it left behind. A
+\ quotation body holding any control structure used to be refused - through this
+\ route and through the older one, an argument a callee declares - and it was
+\ never `catch`'s ceiling but the body's.
 \
-\ WHOSE REFUSAL IT IS MOVED, AND THE CODE HERE MOVED WITH IT. It used to be the
-\ freeze verifier's, and which of its refusals arrived depended on the enclosing
-\ routine's block count, because a body named its successors by ordinals in that
-\ routine's block window (E-IR-VERIFY-SUCCARG under a straight-line definition,
-\ E-IR-VERIFY-DOM under one holding an `if`). The elaborator now names them in
-\ the module's own block table, so the module reaches the machine passes intact
-\ and the one refusal left is the register allocator's: it reads a successor back
-\ as an ordinal in the function it is lowering (src/compiler/native/regalloc.f
-\ SUCC-ORD), which is the same missing rebasing on the machine side. Dot
-\ habu-let-a-quotation-fc37262a carries it, and
-\ test/compiler/native-quot-scope.f holds the twin case that pins the refusal as
-\ ONE refusal whatever encloses the body.
+\ WHAT THE REFUSAL WAS. A block names itself by an ordinal in the MODULE's block
+\ table, which is what a successor carries, and by an ordinal in its OWN
+\ function, which is what the passes index by; a body is a second function, so it
+\ was the first thing in the tree whose two ordinals differed. The refusal
+\ started as the freeze verifier's and depended on the ENCLOSING routine's block
+\ count (E-IR-VERIFY-SUCCARG under a straight-line definition, E-IR-VERIFY-DOM
+\ under one holding an `if`); the elaborator then named a body's successors in
+\ the module's own table, which made it one refusal - the register allocator's -
+\ and the machine passes then learnt the same subtraction the selector already
+\ made (src/compiler/native/regalloc.f B-BASE!, and its two siblings in
+\ regalloc-verify.f and emit.f).
+\
+\ WHAT IS LEFT HERE IS THE ANSWER. The straight-line twin is kept beside it,
+\ because a body with no control structure names no successor at all and is the
+\ row that would still pass if the subtraction were wrong.
+\ test/compiler/native-quot-scope.f measures the branching body under every
+\ enclosing shape and through both routes.
 : BODY-CONTROL-CASE ( -- )
-   s" the engine runs a caught body holding a control structure" T-LABEL
+   s" a caught body holding a control structure, against the engine" T-LABEL
    7 NCA-FIXTURE:NCA-BC {: cu:n cr:n :}
    cr 0 T=  cu 8 T=
+   7 BC=  3 BC=  4 BC=  0 BC=  -5 BC=
 
-   s" and the chain refuses it, while its straight-line twin compiles" T-LABEL
+   s" and both it and its straight-line twin compile" T-LABEL
    [: s" : NCA-BC1 ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;" 1 2 MEASURE-AT ;]
-   E-A64RA-SHAPE TTHROWSQ
+   0 TTHROWSQ
    [: s" : NCA-BC2 ( n -- n n ) [: 1+ ;] catch ;" 1 2 MEASURE-AT ;]
    0 TTHROWSQ ;
 
