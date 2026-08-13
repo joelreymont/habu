@@ -6267,3 +6267,22 @@ answer against itself and passes on wrong code.
 32-site catch table could never fire (the 128-token tape refuses
 first at 31 sites), so its guard branch would be untestable. The
 ceiling below the shadowing cap is the one a test can take.
+
+## The locals-scope landing's three (2026-08-13)
+
+(1) A clean textual merge across an exhaustive MATCH is not a
+merge: the new enum member from the other lane red the load with
+"missing variants" - and only BECAUSE the match is exhaustive.
+Non-exhaustive dispatches would have silently skipped it. After a
+rebase, the honest check is "what did the other lane newly
+SCHEDULE and newly ENUMERATE", not just "what did it edit".
+(2) A new pass over body tokens must ask the locals question
+before any classification - the file already said so, and the
+pass that didn't broke {: again:n :} by reading the local as the
+loop closer. One structural question covers every reserved
+spelling; a list never does.
+(3) Before believing a fixture exercises a carrier, force the
+carrier's value to a constant and check something reds - the
+crossing-locals carrier was dead-tested across five suites
+because every fixture's callee had a clobber row and nothing
+ever travelled.
