@@ -1487,6 +1487,44 @@ variable TWALK-D
 : HIDDEN-SLOT@ ( n -- n ) {: t:n :}         \ physical slot index; dies on a non-hidden term
    t HIDDEN-PARAM? 0= IF s" checker: hidden-slot@ on non-hidden param" 76 die THEN
    t T-RES PARAM>HID 1 - ;
+
+\ ---- the one authority for a row's width in stack cells ------------------------
+\ ROW-TERM-CELLS and ROW-CELLS sit HIGH IN THE FILE because three passes far
+\ apart have to ask one question the same way: E-COPY* records each fixed term's
+\ width as the copy walks past the live term, EFFECT-MIN-IN reads the floor a
+\ call must provide, and RSCATCH measures the window a caught quotation takes
+\ before the fit-check binds anything. There is no second implementation of the
+\ rule anywhere, and this is the highest of those three callers.
+\
+\ A hidden layout parameter already denotes one physical cell; charging its
+\ family's full logical width again would turn a W-cell bundle into W^2 cells.
+: ROW-TERM-CELLS ( n -- n ) {: t:n :}
+   t T-RES dup HIDDEN-PARAM? if drop 1 exit then
+   T-WIDTH ;
+
+\ ROW-CELLS: total physical width of a row's fixed entries — the minimum stack
+\ depth any call must provide for that row. Row-polymorphic tails match zero
+\ cells, so the fixed prefix IS the floor (dot habu-habu-certified-words-84e84eaf).
+\
+\ IT FOLLOWS A BOUND TAIL, which is right for every caller and is the trap a
+\ fourth one has to know about. A row variable that unification has bound is the
+\ row it was bound TO, so a row measured after it was fit-checked against a
+\ deeper stack reports that whole stack. A caller that wants what a row's own
+\ entries occupy therefore has to ask BEFORE the check that binds the tail; there
+\ is no second reading of the graph afterwards that could tell the two apart,
+\ because after the unification the two rows are one row.
+: ROW-CELLS ( n -- n ) {: s:n :}
+   0 s                                   \ ( acc cur )
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE ROW-TERM-CELLS rot + swap
+      P>REST
+   REPEAT drop ;
+
+\ The width vocabulary's absent answer: a row nothing can state a width for.
+\ EFF-ROW-CELLS answers it for a stored row whose cells carry no recorded width,
+\ and RSCATCH answers it for the output row of a caught body that never returns.
+-1 constant CELLS-NONE
+
 \ MK-HIDDEN ( n n -- n ) : mint the hidden field term for slot `slot:n` of a
 \ resolved LOGICAL layout T-PARAM `src0:n`, copying src's name/family-id/arg terms
 \ and tagging PARAMHID = slot+1. `slot` ranges over [0,W): 0..W-2 payload slots,
@@ -2232,16 +2270,44 @@ variable CATCH-OPAQUE  \ RSCATCH rejected a catch of an opaque (untyped-memory) 
 
 variable RSRET
 
+\ ---- how wide the window a catch site takes is, measured where it is knowable --
+\ WHAT THE NUMBER IS FOR. A compiler that turns a catch site into a call has to
+\ know how many stack cells the caught body may disturb, because the engine puts
+\ the stack back to its DEPTH on a throw and never to its CONTENTS: every cell in
+\ that window has to be in its data-stack home across the call, or the site
+\ answers the value it had before, which is the one answer the engine never
+\ gives. That number is the caught quotation's own input row in cells.
+\
+\ AND IT IS MEASURED BEFORE THE FIT-CHECK, WHICH IS THE WHOLE SUBTLETY. The
+\ quotation's din ends in a row variable, and UNIFY-IN below binds that variable
+\ to the rest of the live stack - so after the check the din row IS the live row,
+\ and ROW-CELLS asked then reports the whole compile-time stack depth rather than
+\ the window. Measured a moment earlier the tail is still open and ROW-CELLS
+\ stops at it, which is exactly the quotation's own fixed prefix, with every term
+\ already carrying its instantiated width. Measured: `[: 1 2 3 throw ;] catch`
+\ over a one-deep stack answers 0 here and would answer 1 after the check.
+\
+\ A BODY THAT NEVER RETURNS HAS NO OUTPUT ROW AND SAYS SO. The fit-check skips
+\ the dout of a quotation whose fall-through is dead, so there is no instantiated
+\ output row to measure and CELLS-NONE is what is recorded - not a zero, which is
+\ a real width a window-0 body has.
+variable CWIN-HIT     \ this token was a catch of a quotation the checker modeled
+variable CWIN-IN      \ the window the caught body takes, in stack cells
+variable CWIN-OUT     \ what it leaves, or CELLS-NONE when it never returns
+
 : RSCATCH   \ catch: stack-preserving quotation -> same stack plus throw code
    \ Catchable `throw` is not process no-return. The checker tracks throw paths
    \ as an exceptional edge owned by `catch`; `die` remains separate no-return
    \ metadata because it cannot be recovered by a quotation catch.
-   -1 RSRET !
+   -1 RSRET !  0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
+     QTT @ Q>DIN ROW-CELLS CWIN-IN !          \ the window, while the tails are still open
+     QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT ROW-CELLS THEN CWIN-OUT !
+     -1 CWIN-HIT !
      DCUR @ QTT @ Q>DIN   UNIFY-IN OK @ and OK !
      RCUR @ QTT @ Q>RIN   UNIFY-IN OK @ and OK !
      QTT @ Q>XDEAD IF
@@ -4409,28 +4475,6 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : E-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
 
-\ ---- the one authority for a row's width in stack cells ------------------------
-\ ROW-TERM-CELLS and ROW-CELLS sit ABOVE E-COPY* because the copy has to call
-\ them: a stored effect records each fixed term's width as the copy walks past
-\ the live term, and there is no second implementation of the rule anywhere.
-\ EFFECT-MIN-IN, further down, is the other caller.
-\
-\ A hidden layout parameter already denotes one physical cell; charging its
-\ family's full logical width again would turn a W-cell bundle into W^2 cells.
-: ROW-TERM-CELLS ( n -- n ) {: t:n :}
-   t T-RES dup HIDDEN-PARAM? if drop 1 exit then
-   T-WIDTH ;
-
-\ ROW-CELLS: total physical width of a row's fixed entries — the minimum stack
-\ depth any call must provide for that row. Row-polymorphic tails match zero
-\ cells, so the fixed prefix IS the floor (dot habu-habu-certified-words-84e84eaf).
-: ROW-CELLS ( n -- n ) {: s:n :}
-   0 s                                   \ ( acc cur )
-   BEGIN R-RES dup TAG S-PUSH = WHILE
-      dup P>TYPE ROW-TERM-CELLS rot + swap
-      P>REST
-   REPEAT drop ;
-
 : E-COPY* ( n -- n ) {: x:n :}
    x 0= if 0 exit then
    x E-RES TAG case
@@ -5826,6 +5870,7 @@ PRIM: EFFECT-DOUT-QUOT   PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: EFFECT-QUOT-SIMPLE? PE-F PE-OUT PRIM;
 PRIM: EFFECT-QUOT-UP      PE-F PE-OUT PRIM;
 PRIM: EFFECT-RET-NEUTRAL? PE-F PE-OUT PRIM;
+PRIM: EFFECT-CATCH-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 
 PTABLE-END
@@ -6548,7 +6593,6 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \ term above. CELLS-NONE when any fixed cell carries no recorded width, which is
 \ what a pre-field snapshot restores: the row is then unsizeable and says so,
 \ instead of reporting a total that silently omits the cells it could not see.
--1 constant CELLS-NONE
 : EFF-ROW-CELLS ( n -- n ) {: off:n :}
    0 off                                     \ ( acc cur )
    begin dup EFF-IS-PUSH? while
@@ -6674,6 +6718,119 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    q EFF-C@ q EFF-D@ EFF-RET-NEUTRAL? 0= if 0 0= 0= exit then
    q EFF-E@ 0= 0= if 0 0= 0= exit then
    q EFF-F@ 0= ;
+
+\ ---- HOW WIDE THE WINDOW A CATCH SITE INSTANTIATED IS -------------------------
+\ WHAT THE QUESTION IS AND WHY NO READER ABOVE ANSWERS IT. `catch` runs a
+\ quotation and, when that quotation throws, the engine puts the data stack back
+\ to the DEPTH it had when the call was made and never to its CONTENTS: the cells
+\ the body may have written are still whatever it left there. So a compiler that
+\ makes a catch site into a call has to know exactly how many cells the body may
+\ disturb, and it has to have every one of them in its data-stack home across the
+\ call - anything it kept in a register would answer the value the site had
+\ BEFORE, which is the one answer the engine never gives. That number is the
+\ caught quotation's own input row measured in cells. The readers above cannot
+\ answer it: they answer about a NAME's declared effect, and `catch` has no
+\ declared effect at all - its rows are built per site by RSCATCH, out of the
+\ quotation in hand and the live stack under it.
+\
+\ THE ANSWER IS KEYED BY THE TOKEN, AND THE TOKEN IS A COORDINATE BOTH SIDES
+\ ALREADY SHARE. A definition may hold several catch sites with different window
+\ widths, so a single latch holding the last one would answer every site with
+\ some other site's number - quietly, and only in bodies with more than one
+\ catch. What identifies a site exactly is the token it stands on: the reader
+\ below reports each token it consumes to the source-tape observer, in
+\ consumption order and exactly once, and the tape producer appends one row per
+\ report and refuses any other order (src/compiler/native/feed.f ORDER-CK). So
+\ report ordinal k IS tape ordinal k, and a consumer elaborating tape row k asks
+\ about row k. The two alternatives were both rejected: taking the width from the
+\ compile-time stack DEPTH at the site is the guess src/compiler/native/elaborate.f
+\ already refuses to make about a quotation's arity, and numbering the catch
+\ sites, or the quotations, within the definition makes two counters that have to
+\ agree about one fact.
+\
+\ IT RECORDS ONLY WHILE A UNIT IS RECORDING, AND IT IS RESET WHEN ONE OPENS. The
+\ ordinal means nothing outside an armed window - there is no tape for it to be
+\ an ordinal INTO - so a certification nobody is recording pays one flag test per
+\ catch and stores nothing, which is every certification the engine does for
+\ itself. One unit is one certification (a second scan inside an open unit is
+\ refused by name), so clearing the table when the observer is armed makes the
+\ table's contents always the definition the consumer is about to elaborate.
+\
+\ ABSENT IS THE FAIL-CLOSED ANSWER, exactly as it is for EFFECT-RET-NEUTRAL?
+\ with no name resolved: a token that is not a catch site, a site recorded past
+\ this table's ceiling, and a query outside any recording all answer no width,
+\ and a consumer that cannot get a width refuses the body by name instead of
+\ compiling it against a number nobody proved. The ceiling is a count of catch
+\ SITES in one definition, which is a small number the tree measures in single
+\ digits.
+\ THE CEILING IS REACHABLE, WHICH IS WHY IT IS THIS LOW. A ceiling no source can
+\ get to is a branch no test can take, and the source tape a recording unit fills
+\ holds 128 tokens (src/compiler/native/migrate.f TAPE-CAP), which is 31 catch
+\ sites at four tokens each - so a ceiling of 32 would be answered by the tape's
+\ refusal every time and this one would never fire. Sixteen sites in ONE
+\ definition is already far past anything the tree writes (40 catch sites in all
+\ of src and lib), and a definition that wants more gets a named refusal from its
+\ consumer rather than a wrong window: a capability to raise here, where every
+\ reader sees it.
+16 constant CWIN-MAX                 \ catch sites one recorded definition may hold
+0 constant CW-ORD                    \ the token ordinal the site stands on
+1 constant CW-IN                     \ its window in cells
+2 constant CW-OUT                    \ what the body leaves, or CELLS-NONE for one that never returns
+3 constant CW-ROW                    \ cells one recorded site occupies
+
+variable CWIN-ON                     \ a recording unit is open
+variable CWIN-IX                     \ the ordinal the next reported token takes
+variable CWIN-N                      \ sites recorded for the open unit
+create CWIN-TAB CWIN-MAX CW-ROW * cells allot
+
+: CWIN-AT ( n n -- ptr a )           \ field f of row i
+   {: i:n f:n :}
+   CWIN-TAB  i CW-ROW * f + cells + ;
+
+\ Opened by the observer that wants the tape, so the table describes exactly the
+\ definition that tape is of.
+: CWIN-RESET ( -- )
+   0 CWIN-IX !  0 CWIN-N !  -1 CWIN-ON !
+   0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT ! ;
+
+\ Recording stops with the unit; the rows stay, because the consumer reads them
+\ after the unit has closed and the reader's whole purpose is to be asked then.
+: CWIN-OFF ( -- )
+   0 CWIN-ON ! ;
+
+: CWIN-STEP ( -- )                   \ one token reported, so the next takes the next ordinal
+   CWIN-ON @ 0= IF EXIT THEN
+   CWIN-IX @ 1 + CWIN-IX ! ;
+
+\ Write down what the catch on the token now being reported instantiated. It runs
+\ from the report itself, so the row and the ordinal it is filed under are made in
+\ one step and cannot drift; a token that was not a catch has nothing latched and
+\ writes nothing.
+: CWIN-COMMIT ( -- )
+   CWIN-ON @ 0= IF EXIT THEN
+   CWIN-HIT @ 0= IF EXIT THEN
+   0 CWIN-HIT !
+   CWIN-N @ CWIN-MAX >= IF EXIT THEN
+   CWIN-N @ {: i:n :}
+   CWIN-IX @   i CW-ORD CWIN-AT !
+   CWIN-IN @   i CW-IN CWIN-AT !
+   CWIN-OUT @  i CW-OUT CWIN-AT !
+   i 1 + CWIN-N ! ;
+
+\ What the catch on tape token `ix` instantiated: the cells its caught body takes,
+\ and the cells it leaves. CELLS-NONE twice for a token no catch was recorded on.
+\ A recorded site whose body never returns answers its real input width and
+\ CELLS-NONE for the output, which is the difference between "no catch here" and
+\ "this catch's body never comes back" without a second sentinel to know.
+: EFFECT-CATCH-CELLS ( n -- n n )
+   {: ix:n :}
+   0 BEGIN dup CWIN-N @ < WHILE
+      dup CW-ORD CWIN-AT @ ix = IF
+         dup CW-IN CWIN-AT @  swap CW-OUT CWIN-AT @  EXIT
+      THEN
+      1 +
+   REPEAT drop
+   CELLS-NONE CELLS-NONE ;
 
 \ ---- ARM64 contract link: stable link from an emitted primitive/callable
 \ contract to its checker primitive-effect (PES) row (dot
@@ -10818,10 +10975,12 @@ variable ARMED   0 ARMED !
 : ARM ( -- )
    SET @ 0= if s" checker: no source-tape observer to arm" 76 die then
    ARMED @ 0 <> if s" checker: source-tape observer already armed" 76 die then
-   1 ARMED ! ;
+   1 ARMED !
+   CWIN-RESET ;
 
 : DISARM ( -- )
-   0 ARMED ! ;
+   0 ARMED !
+   CWIN-OFF ;
 
 \ ---- withholding the definition this tape is being recorded for -------------
 \ A definition whose tape is being recorded is one the native chain is about to
@@ -10879,7 +11038,8 @@ public
 \ observer must not have to know which class it is holding to know what the
 \ offset means.
 : TOKEN ( ptr u8 n n n -- ) {: a:ptr u:n off:n first:n :}
-   a u off u  a u KIND  first TOKEN-XT ;
+   a u off u  a u KIND  first TOKEN-XT
+   CWIN-STEP ;
 
 \ One string literal, as the reader consumed it: the literal's BODY, and the
 \ span of source the literal's payload occupied. The two differ whenever an
@@ -10891,7 +11051,8 @@ public
 \ that one token before it has consumed any payload at all, so `first` is not a
 \ question this event can be asked.
 : STRING ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
-   a u off ru K-STRING 0 TOKEN-XT ;
+   a u off ru K-STRING 0 TOKEN-XT
+   CWIN-STEP ;
 
 \ The verdict that scan reached, with the text it reached it over.
 : DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
@@ -10972,7 +11133,11 @@ variable SCAN-TOK0    \ was it the definition's name token?
    0 IS-PEND !
    IS-PEND-OFF @ TADDR  IS-PEND-U @  IS-PEND-OFF @  0  CHECKER-TAPE:TOKEN ;
 
+\ The window a catch on THIS token instantiated is filed before the token is
+\ reported, so the row and the ordinal it is filed under are made in one step:
+\ the ordinal a report is about is the one the observer has not yet advanced.
 : SCAN-REPORT ( -- )
+   CWIN-COMMIT
    SPAY-ON @ IF
       SPAY-BYTES  SPAY-B @ SPAY-U @  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT

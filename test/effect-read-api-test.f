@@ -583,3 +583,42 @@ ERA-MAIN
 ERA-WIDTH:MAIN
 ERA-QUOT:MAIN
 ERA-RET:MAIN
+
+\ ---- what a catch site instantiated, outside any recording --------------------
+\ EFFECT-CATCH-CELLS ( n -- n n ), the reader a compiler that turns a catch site
+\ into a call has to consult for the window that call moves. Unlike every reader
+\ above it is not asked about a NAME: `catch` has no declared effect, its rows are
+\ built per site, and the answer is filed under the token the site stands on while
+\ a source-tape observer is recording. Its first consumer is the native chain
+\ (src/compiler/native/dict.f CATCH-CELLS), and the recorded answers are measured
+\ where a recording exists, in test/compiler/native-catch.f.
+\
+\ WHAT IS MEASURABLE HERE IS THE OTHER HALF, and it is the half a consumer's
+\ safety rests on: with no unit recording, the ordinal is an ordinal into nothing
+\ and every token answers absent. That is the same fail-closed direction
+\ EFFECT-RET-NEUTRAL? takes with no name resolved - a width answered here would
+\ let a caller compile a call against a number nobody proved.
+package ERA-CATCH
+
+private
+
+: NO-RECORDING ( -- )
+   s" with no unit recording, no token carries a window" T-LABEL
+   0 EFFECT-CATCH-CELLS  CELLS-NONE T=  CELLS-NONE T=
+   1 EFFECT-CATCH-CELLS  CELLS-NONE T=  CELLS-NONE T=
+   99 EFFECT-CATCH-CELLS CELLS-NONE T=  CELLS-NONE T=
+
+   s" and a negative ordinal is no more recorded than any other" T-LABEL
+   -1 EFFECT-CATCH-CELLS CELLS-NONE T=  CELLS-NONE T= ;
+
+public
+
+: MAIN ( -- )
+   T-RESET
+   NO-RECORDING
+   T-REPORT
+   s" effect-read-api catch windows: ok" type cr ;
+
+;package
+
+ERA-CATCH:MAIN

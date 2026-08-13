@@ -553,6 +553,47 @@ public
    i EFFECT-DOUT-QUOT 0= if QUOT-NONE QUOT-NONE exit then
    QUOT-CELLS ;
 
+\ ---- and the window a catch site takes ---------------------------------------
+\ THE ONE QUESTION HERE THAT IS NOT ASKED BY NAME, because the word it is about
+\ has no answer under its name. `catch` is certified per SITE: its rows are built
+\ where it stands, out of the quotation in hand and the live stack under it, so
+\ SPELL-ARITY answers absent for it exactly as it does for `execute`. What a call
+\ site needs is the window - how many stack cells the caught body may disturb -
+\ and the checker records that where it makes it, filed under the TOKEN the catch
+\ stands on. That ordinal is a coordinate both stages already share: the checker
+\ reports each token it consumes to the source-tape observer in order and exactly
+\ once, and src/compiler/native/feed.f appends one tape row per report and
+\ refuses any other order. So a caller elaborating tape row `ix` asks about `ix`.
+\
+\ THE SECOND NUMBER IS NOT THE FIRST ONE AGAIN. A caught body that returns leaves
+\ the window it took - `catch` fit-checks the live row against both of the
+\ quotation's rows, so the two widths are the same number and a disagreement is a
+\ fault in this descent rather than a program to compile. A body that never
+\ returns has no output row at all, and that is what the absent second answer
+\ says: not a refusal, because a routine with no return is exactly what such a
+\ body compiles into, but a fact its caller has to be told rather than infer.
+\
+\ ABSENT IS SPELLED IN THIS FILE'S OWN VOCABULARY, for the reason SPELL-ARITY
+\ gives about its own: the checker spells no-width CELLS-NONE and this file
+\ spells no-catch CATCH-NONE, and no caller should have to know that the two
+\ vocabularies happen to agree on a value today.
+\ It is the one reader here whose name does not begin with SPELL, because it is
+\ the one that is not asked about a spelling: the key is a token of the tape the
+\ caller is elaborating.
+public
+-1 constant CATCH-NONE               \ no catch this chain may compile stands on that token
+
+\ What the catch on tape token `ix` takes and leaves, in cells. CATCH-NONE twice
+\ for a token no catch was recorded on - one that is not a catch at all, one
+\ whose definition was never recorded, and one past the ceiling the checker
+\ records catch sites up to. CATCH-NONE for the second alone when the caught body
+\ never comes back.
+: CATCH-CELLS ( n -- n n )
+   EFFECT-CATCH-CELLS {: in:n out:n :}
+   in 0 < if CATCH-NONE CATCH-NONE exit then
+   out 0 < if in CATCH-NONE exit then
+   in out ;
+
 \ Whether control comes back from a call to the word this spelling denotes.
 \ False for a name the checker holds no control flag for, which is every
 \ ordinary word: a call that comes back is the common case and the one a caller

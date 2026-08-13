@@ -958,9 +958,14 @@ variable REG-I
    \ checker's own comment named - could not call it at all. One row in, and it
    \ is an engine-adjacent checker word rather than a primitive, on the same
    \ terms as its siblings `EFFECT-QUOT-SIMPLE?` and `CTL-DEAD?`.
+   \ It was 374 before the catch-window export (dot
+   \ habu-lower-native-exceptions-6ceb7667) added `EFFECT-CATCH-CELLS`, the one
+   \ reader in the effect-read API that is not asked about a name: `catch` has no
+   \ declared effect, its rows are built per site, and the row is what lets the
+   \ native chain ask how many stack cells a caught body may disturb.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 374 ASSERT=
+   REG-COUNT 375 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

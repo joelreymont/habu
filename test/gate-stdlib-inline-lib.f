@@ -517,6 +517,17 @@ public
    \ through the same migration entry, with both openers run against the engine
    \ so the limit that equals the start tells them apart.
    s" test/compiler/native-do.f" GSI-FORK-INCLUDE
+   \ And the two loop words that landed beside it, listed here as well as in
+   \ test/gate-stdlib-cases.f for the reason given above: only this list is what
+   \ test/run.f actually forks. `again` closes a loop with no exit and is
+   \ measured through what it returns and what it throws; `leave` leaves a
+   \ counted loop from the middle and is measured under both openers.
+   s" test/compiler/native-again.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-leave.f" GSI-FORK-INCLUDE
+   \ And `catch` beside them, for the same reason and with the same measurement:
+   \ the caught bodies are run against the engine, so the window the chain keeps
+   \ across the call is held against the cells the engine really restores.
+   s" test/compiler/native-catch.f" GSI-FORK-INCLUDE
    \ And the return-stack transfers, beside both loop leaves for the same reason:
    \ a parked value crosses a loop edge, a join and a call through the same
    \ machinery the data values do, and every case is differential against the

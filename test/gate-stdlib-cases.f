@@ -531,6 +531,18 @@ SUITE compiler-native-rstack
    test/compiler/native-rstack.f
 ;SUITE
 
+\ `catch`, which runs a quotation and comes back either way. Its cases run the
+\ caught bodies against the engine's own compilation of the same text, because
+\ what has to be proved is an ANSWER and not a shape: the engine puts the stack
+\ back to its DEPTH on a throw and never to its CONTENTS, so a chain that kept
+\ the caught window in a register answers the value the site had before and
+\ every block count still agrees. It runs beside the leave suite because it is
+\ the other control word the dialect gained and it goes through the same
+\ migration entry.
+SUITE compiler-native-catch
+   test/compiler/native-catch.f
+;SUITE
+
 \ Counting the instruction PAIRS one three-source instruction would replace,
 \ which is the measurement the combining lane decides what to build from. It
 \ runs beside the tail probe because it reads emitted code through that tool's
