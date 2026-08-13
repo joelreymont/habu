@@ -6819,7 +6819,7 @@ create CWIN-TAB CWIN-MAX CW-ROW * cells allot
    CWIN-OUT @  i CW-OUT CWIN-AT !
    i 1 + CWIN-N ! ;
 
-\ ---- the cells a recorded definition's MATCH forms really occupy --------------
+\ ---- the cells a recorded definition's layout forms really occupy -------------
 \ WHY A SECOND TABLE AND NOT A SECOND READING OF THE REGISTRY. A value of a
 \ parametric family instantiated with a multi-cell argument occupies MORE cells
 \ than the family's declaration reserves: `option<a>` reserves one payload slot,
@@ -6831,14 +6831,28 @@ create CWIN-TAB CWIN-MAX CW-ROW * cells allot
 \ says exactly this at WIDTH, and src/compiler/native/elaborate.f BUNDLE-CK is
 \ where the two used to be held against each other and the disagreement refused.
 \
-\ TWO KINDS OF TOKEN CARRY A NUMBER AND THEY ARE THE TWO A DISPATCH IS BUILT
-\ FROM. The family token of a `MATCH` carries the instantiated bundle width, which
-\ is what MATCH-SCRUT? walked off the row a moment earlier; the `of` token of each
-\ arm carries that arm's instantiated PAD count, which TFAM-MATCH-XPAD-RECORD
-\ computes as it decides whether the engine's pass 2 needs extra cells. Both are
-\ counts of cells, both are what a consumer has to drop or keep, and neither is a
-\ delta the consumer would have to re-add to a declared number - so there is no
-\ arithmetic here for two stages to disagree about.
+\ THREE KINDS OF TOKEN CARRY A NUMBER: THE TWO A DISPATCH IS BUILT FROM, AND THE
+\ ONE THAT BUILDS THE VALUE A DISPATCH TAKES APART. The family token of a `MATCH`
+\ carries the instantiated bundle width, which is what MATCH-SCRUT? walked off the
+\ row a moment earlier; the `of` token of each arm carries that arm's instantiated
+\ PAD count, which TFAM-MATCH-XPAD-RECORD computes as it decides whether the
+\ engine's pass 2 needs extra cells; and a CONSTRUCTION's token - the variant of a
+\ `construct family variant`, or the generated-constructor call that is the same
+\ step under one token - carries the cells its instantiation adds beyond the
+\ DECLARED width, which is what TFC-CON-XPAD-RECORD computes for the same pass-2
+\ decision. Each is the count ITS consumer needs and none of the three is a number
+\ a consumer has to work out again.
+\
+\ THE CONSTRUCTION'S NUMBER IS A DIFFERENCE BECAUSE THE THING IT CORRECTS IS ONE.
+\ A `MATCH` arm DROPS cells and its consumer has emitted nothing yet, so it needs
+\ the whole pad count; a construction is lowered by pushing what the family
+\ DECLARES - the generated constructor's own body does it, and the chain's
+\ `construct` reads the same declared pads out of the registry - so what is
+\ missing at a wide instantiation is exactly the difference, and both the engine's
+\ pass 2 and the chain add that many cells at the same site. It is one subtraction
+\ read twice, not two subtractions that could drift: the declared pads the chain
+\ adds it to are TFL-VPADS, the same registry expression TFC-CON-XPAD-RECORD
+\ subtracts.
 \
 \ IT IS NOT A ROW OF THE LOWERING CERTIFICATE, AND THAT IS FORCED. The engine's
 \ pass-2 replay walks the certificate's width facts with a single in-order cursor
@@ -6851,14 +6865,31 @@ create CWIN-TAB CWIN-MAX CW-ROW * cells allot
 \
 \ ABSENT IS FAIL-CLOSED, AND A DROPPED ROW IS ABSENT LIKE ANY OTHER. The rows are
 \ filed in reported-token order, so a table that fills drops a SUFFIX of the
-\ definition's dispatch tokens - and the consumer asks about every one of them,
-\ because a family token and an arm's `of` are exactly the tokens it has to shape
-\ a dispatch from. So the first dropped row is a token the consumer asks about
+\ definition's tokens, and what that costs depends on which reader meets it.
+\
+\ A DISPATCH TOKEN'S READER REFUSES, because a family token and an arm's `of` are
+\ exactly the tokens it has to shape a dispatch from and it asks about every one
+\ of them. So the first dropped dispatch row is a token the consumer asks about
 \ and gets no cells for, and it refuses the whole body by name rather than
-\ compiling the rows that did fit and guessing the rest. A separate "this unit
-\ overflowed" flag was written, measured and removed: no program could tell the
-\ two apart, because the query that would have read it is the query that already
-\ answers absent.
+\ compiling the rows that did fit and guessing the rest.
+\
+\ A CONSTRUCTION'S READER PROCEEDS, AND THE ARITHMETIC IS WHAT MAKES THAT SAFE. A
+\ construction files a row only when its instantiation really adds cells, so
+\ absent means "this token adds nothing" - which is the truth for every
+\ construction of a family that is not parametric, and there are far more of those
+\ than a table could hold. A DROPPED construction row therefore reads as zero and
+\ the site is lowered one bundle short. That is not a wrong program: the deficit
+\ is CONSERVED. Every later cell count the chain makes - a join's two edges, a
+\ callee's declared inputs, the definition's own declared outputs - is against the
+\ width the checker instantiated, and nothing in the dialect discards a variable
+\ number of cells, so the missing cells cannot be absorbed anywhere and the first
+\ join, call or exit the value reaches refuses the definition by name
+\ (test/compiler/native-match.f ROW-CEILING-CASE holds both halves: a body at the
+\ ceiling compiles, and one past it whose dropped row is a wide construction is
+\ refused). A separate "this unit overflowed" flag was written, measured and
+\ removed by the dispatch half, and the construction half is the reader that could
+\ have told the two apart: it is still not worth one, because the arithmetic
+\ already refuses what the flag would have refused.
 \
 \ THE CEILING IS REACHABLE, MEASURED THROUGH THE CONSUMER'S OWN CAPS. A recorded
 \ definition is one src/compiler/native/migrate.f is recording, and that unit
@@ -6869,9 +6900,9 @@ create CWIN-TAB CWIN-MAX CW-ROW * cells allot
 \ 470 bytes - measured), and 24 rows is already 511 bytes. Twenty-four therefore
 \ refuses nothing the chain compiles today, and a body of 27 rows still fits both
 \ caps, so the overflow branch is one a fixture can take.
-24 constant MWIN-MAX                 \ match rows one recorded definition may hold
+24 constant MWIN-MAX                 \ layout rows one recorded definition may hold
 0 constant MW-ORD                    \ the token ordinal the row stands on
-1 constant MW-VAL                    \ its cells: a family token's bundle width, an arm's pads
+1 constant MW-VAL                    \ its cells: a family token's bundle width, an arm's pads, a construction's added cells
 2 constant MW-ROW                    \ cells one recorded row occupies
 
 variable MWIN-N                      \ rows recorded for the open unit
@@ -6935,12 +6966,14 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
    REPEAT drop
    CELLS-NONE CELLS-NONE ;
 
-\ How many cells the tag-dispatch token `ix` really moves: a `MATCH` family
-\ token's instantiated bundle width, or an arm's `of` token's instantiated pad
-\ count. CELLS-NONE for a token that published no such number, for a definition
-\ nobody recorded, and for a row the table had no room for - which is one answer
-\ meaning "nobody proved a number for this", and a consumer that gets it refuses
-\ the body by name.
+\ How many cells the layout token `ix` really moves: a `MATCH` family token's
+\ instantiated bundle width, an arm's `of` token's instantiated pad count, or a
+\ construction's added cells. CELLS-NONE for a token that published no such
+\ number, for a definition nobody recorded, and for a row the table had no room
+\ for - which is one answer meaning "nobody proved a number for this". What a
+\ caller does with it is the caller's, and the two policies are the paragraphs
+\ above: a dispatch reader refuses the body by name, a construction reader adds
+\ nothing and lets the conserved deficit be refused where it lands.
 : EFFECT-MATCH-CELLS ( n -- n )
    {: ix:n :}
    0 BEGIN dup MWIN-N @ < WHILE

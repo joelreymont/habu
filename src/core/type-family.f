@@ -2663,12 +2663,23 @@ TFC-QUOT-ROW-INSTALL
    dup TFAM-SUM? IF drop 1 EXIT THEN
    TFAM-ENUM? IF 1 ELSE 0 THEN ;
 
+\ THE ONE SUBTRACTION BELOW ANSWERS BOTH LOWERINGS, WHICH IS WHY THE NUMBER IS
+\ LATCHED HERE AND NOT WORKED OUT AGAIN. Both of them push what the family
+\ DECLARES and can only ADD: the engine's pass 1 emits the declared pads and its
+\ pass 2 adds the WF row's cells at the same site, and the native chain either
+\ calls the generated constructor - whose body is the declared pads and the tag,
+\ whatever the instantiation - or reads the same declared pads out of the registry
+\ for a `construct`. So what both are missing at a wide instantiation is the same
+\ difference, and MWIN-CELLS! files it under the token this step is judging for
+\ src/compiler/native/elaborate.f while the WF row carries it to pass 2 exactly as
+\ before. A construction that adds nothing files nothing: absent is "this token
+\ adds no cells", which src/core/checker.f states in full above the table.
 : TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}   \ record the wide construct's extra-pad fact, or fail closed on a genuine narrower-than-declared contradiction
    famterm T-WIDTH fam TFC-TAG-CELLS -          \ instantiated payload slots (subtract the tag cell only for a tagged family; a tagless product subtracts none)
    vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -        \ - declared pads = extra pads
    {: extra:n :}
-   extra 0 > IF 0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
+   extra 0 > IF extra MWIN-CELLS!  0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
    extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower than declared: add-only lowering cannot remove the surplus (until signed pass-2, dot habu-signed-pass-2-4fc2b960)
 
 \ MATCH only ever sees a TAGGED family: TFAM-MATCH-FAM and TFL-MATCH-FAM? both reject a
