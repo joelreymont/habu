@@ -61,6 +61,7 @@ package NMX
 private
 
 8 constant REGS
+18 constant WIDE-REGS                \ the pool the one row below needs, measured
 4 constant INSN-BYTES
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and the
@@ -102,6 +103,38 @@ SUMTYPE holder 0
    VARIANT empty ;VARIANT
    VARIANT full pt ;VARIANT
 ;SUMTYPE
+
+\ THREE cells, which `box` and `holder` between them do not reach. The widest
+\ payload either of them carries is two, so an arm that drops one pad too many
+\ or keeps one cell too few answers the same shape as an arm that is right; a
+\ third cell is what makes the drop count and the keep count two separate
+\ numbers a fixture can tell apart. `trio` carries three INDEPENDENT cells and
+\ `hold3` carries three cells that are ONE value, which is the same pair `box`
+\ and `holder` draw one cell narrower.
+PRODUCT pt3 0
+   FIELD x n
+   FIELD y n
+   FIELD z n
+;PRODUCT
+
+SUMTYPE trio 0
+   VARIANT t0 ;VARIANT
+   VARIANT t1 n ;VARIANT
+   VARIANT t3 n n n ;VARIANT
+;SUMTYPE
+
+SUMTYPE hold3 0
+   VARIANT empty3 ;VARIANT
+   VARIANT full3 pt3 ;VARIANT
+;SUMTYPE
+
+\ ONE VARIANT AND THE SHORTEST SPELLINGS IN THIS FILE, and both are forced by
+\ the ceiling case at the foot of the file. That case has to put MORE dispatch
+\ rows in one definition than the checker records, while staying inside the
+\ recorder's own 512-byte text cap - and the only budget it can buy the extra
+\ rows with is the spelling. One variant is two rows per form at seven tokens,
+\ which is the cheapest dispatch there is.
+ENUM sol ov ;ENUM
 
 \ Four arms, which is the shape the engine's own four-armed cost was measured on.
 ENUM quad
@@ -233,6 +266,94 @@ private
       some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
    ;MATCH ;
 
+\ The same one cell wider, so the arm's drop count and its keep count are two
+\ different numbers: `option<pt3>` is four cells, its `some` arm drops the tag
+\ alone and keeps three, and its `none` arm drops all four.
+\ The cheapest scrutinee this file can spell, for the ceiling case alone. Its
+\ name is two characters for the reason the family's is: every byte of it is
+\ spent thirteen times in the source that has to overflow the checker's table
+\ while staying inside the recorder's text cap.
+: MS ( -- sol ) construct sol ov ;
+
+: E-MKI3 ( n -- option<pt3> )
+   dup 0 > if  dup 3 *  over 5 *  rot 7 *  NMX-PT3:MAKE OPTION:SOME  else  drop OPTION:NONE  then ;
+
+: E-INST3 ( option<pt3> -- n )
+   MATCH option
+      none OF 0 ENDOF
+      some OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
+   ;MATCH ;
+
+\ TWO DISPATCHES OF DIFFERENT INSTANTIATED WIDTHS IN ONE BODY. The widths are
+\ filed under the tokens that publish them, so this body is what tells a reader
+\ keyed on the TOKEN from one keyed on the family, on the definition, or on the
+\ order the forms appear in: both forms name `option`, and one pops four cells
+\ where the other pops three. A store that answered per family would give one of
+\ them the other's width and drop the wrong cells with every count agreeing.
+: E-TWOW ( n -- n )
+   dup E-MKI3 MATCH option
+      none OF 0 ENDOF
+      some OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
+   ;MATCH
+   swap E-MKI MATCH option
+      none OF 0 ENDOF
+      some OF NMX-PT:UNMAKE 7 * swap 13 * + ENDOF
+   ;MATCH
+   + ;
+
+\ AND A STRING LITERAL IN FRONT OF ONE, whose body is dispatch grammar. A
+\ literal is ONE token and the reader reports it through its own event, so a
+\ report path that forgot to step the ordinal would file this form's width under
+\ the token before it - and the arms would be compiled against whatever that
+\ token published, which here is nothing at all.
+: E-STRINST ( n -- n )
+   s" MATCH option some OF ;MATCH" 2drop
+   E-MKI MATCH option
+      none OF 0 ENDOF
+      some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
+   ;MATCH ;
+
+\ ---- three payload cells, and what an arm may do with them -------------------
+\ Arms of three different widths joining, each cell weighted so an exchange
+\ shows in the answer.
+: E-TRIO ( trio -- n )
+   MATCH trio
+      t0 OF 0 ENDOF
+      t1 OF 3 * ENDOF
+      t3 OF 5 * swap 11 * + swap 17 * + ENDOF
+   ;MATCH ;
+
+\ A payload that crosses a nested `if` INSIDE its arm: the cells are live at the
+\ branch, at the join, and after it, so an arm that handed the inner structure
+\ the wrong number of them would disagree on one side only.
+: E-ARMIF ( trio -- n )
+   MATCH trio
+      t0 OF 0 ENDOF
+      t1 OF dup 0 > if 3 * else 5 * then ENDOF
+      t3 OF
+         over 0 > if  7 *  else  11 *  then
+         swap 13 * +  swap 17 * + ENDOF
+   ;MATCH ;
+
+\ And one that crosses a counted loop inside its arm. The trip count is a
+\ constant, so the loop terminates whatever the payload is; the payload's second
+\ cell is read on every turn, which is what makes it travel the back edge.
+: E-ARMLOOP ( trio -- n )
+   MATCH trio
+      t0 OF 0 ENDOF
+      t1 OF 3 * ENDOF
+      t3 OF  3 0 ?do  over i *  +  loop  nip  swap 5 * + ENDOF
+   ;MATCH ;
+
+\ Three cells that are ONE value, which is `holder` one cell wider: the arm
+\ keeps a bundle rather than three independent cells, and the glue it puts back
+\ is what stops a rename from taking a `pt3` apart.
+: E-HOLD3 ( hold3 -- n )
+   MATCH hold3
+      empty3 OF 0 ENDOF
+      full3 OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
+   ;MATCH ;
+
 \ The family's own name inside a comment, and inside a string literal. Neither is
 \ a token of the dispatch grammar; both bodies must compile and answer.
 : E-CMT ( hue -- n )
@@ -285,6 +406,27 @@ private
 : INST$ ( -- ptr u8 n )
    s" : C-INST ( option<pt> -- n ) MATCH option none OF 0 ENDOF some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF ;MATCH ;" ;
 
+: INST3$ ( -- ptr u8 n )
+   s" : C-INST3 ( option<pt3> -- n ) MATCH option none OF 0 ENDOF some OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF ;MATCH ;" ;
+
+: TWOW$ ( -- ptr u8 n )
+   s" : C-TWOW ( n -- n ) dup E-MKI3 MATCH option none OF 0 ENDOF some OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF ;MATCH swap E-MKI MATCH option none OF 0 ENDOF some OF NMX-PT:UNMAKE 7 * swap 13 * + ENDOF ;MATCH + ;" ;
+
+: STRINST$ ( -- ptr u8 n )
+   S\" : C-STRINST ( n -- n ) s\" MATCH option some OF ;MATCH\" 2drop E-MKI MATCH option none OF 0 ENDOF some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF ;MATCH ;" ;
+
+: TRIO$ ( -- ptr u8 n )
+   s" : C-TRIO ( trio -- n ) MATCH trio t0 OF 0 ENDOF t1 OF 3 * ENDOF t3 OF 5 * swap 11 * + swap 17 * + ENDOF ;MATCH ;" ;
+
+: ARMIF$ ( -- ptr u8 n )
+   s" : C-ARMIF ( trio -- n ) MATCH trio t0 OF 0 ENDOF t1 OF dup 0 > if 3 * else 5 * then ENDOF t3 OF over 0 > if 7 * else 11 * then swap 13 * + swap 17 * + ENDOF ;MATCH ;" ;
+
+: ARMLOOP$ ( -- ptr u8 n )
+   s" : C-ARMLOOP ( trio -- n ) MATCH trio t0 OF 0 ENDOF t1 OF 3 * ENDOF t3 OF 3 0 ?do over i * + loop nip swap 5 * + ENDOF ;MATCH ;" ;
+
+: HOLD3$ ( -- ptr u8 n )
+   s" : C-HOLD3 ( hold3 -- n ) MATCH hold3 empty3 OF 0 ENDOF full3 OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF ;MATCH ;" ;
+
 : MK$ ( -- ptr u8 n )
    s" : C-MK ( n -- box ) construct box one ;" ;
 
@@ -335,17 +477,52 @@ private
 : STRAY$ ( -- ptr u8 n )
    s" : C-STRAY ( n -- n ) 1 + ;match ;" ;
 
+\ ---- the two sides of the checker's dispatch-row ceiling ---------------------
+\ The checker files one row per `MATCH` family token and one per arm, and it
+\ records that it overflowed rather than dropping rows in silence - a dropped
+\ arm row would be indistinguishable from an arm with nothing to say, and the
+\ chain would then unpack that arm against a pad count nobody proved. So one
+\ overflow makes every query answer absent and the whole body is refused by
+\ name.
+\
+\ TWELVE SINGLE-ARM DISPATCHES IS TWENTY-FOUR ROWS, which is exactly the table,
+\ and thirteen is twenty-six. Both fit the recorder's 512-byte text cap (459 and
+\ 496 bytes) and its 128-token tape, so the pair straddles the ceiling with
+\ nothing else refusing either side: the first compiles and the second is
+\ refused by the table. Fourteen would be 517 bytes and the recorder's own cap
+\ would answer first, which is why the pair is where it is.
+: ROWS24$ ( -- ptr u8 n )
+   s" : C-ROWS24 ( -- n ) 0 MS MATCH sol ov OF 1 ENDOF ;MATCH + MS MATCH sol ov OF 3 ENDOF ;MATCH + MS MATCH sol ov OF 5 ENDOF ;MATCH + MS MATCH sol ov OF 7 ENDOF ;MATCH + MS MATCH sol ov OF 9 ENDOF ;MATCH + MS MATCH sol ov OF 11 ENDOF ;MATCH + MS MATCH sol ov OF 13 ENDOF ;MATCH + MS MATCH sol ov OF 15 ENDOF ;MATCH + MS MATCH sol ov OF 17 ENDOF ;MATCH + MS MATCH sol ov OF 19 ENDOF ;MATCH + MS MATCH sol ov OF 21 ENDOF ;MATCH + MS MATCH sol ov OF 23 ENDOF ;MATCH + ;" ;
+
+: ROWS26$ ( -- ptr u8 n )
+   s" : C-ROWS26 ( -- n ) 0 MS MATCH sol ov OF 1 ENDOF ;MATCH + MS MATCH sol ov OF 3 ENDOF ;MATCH + MS MATCH sol ov OF 5 ENDOF ;MATCH + MS MATCH sol ov OF 7 ENDOF ;MATCH + MS MATCH sol ov OF 9 ENDOF ;MATCH + MS MATCH sol ov OF 11 ENDOF ;MATCH + MS MATCH sol ov OF 13 ENDOF ;MATCH + MS MATCH sol ov OF 15 ENDOF ;MATCH + MS MATCH sol ov OF 17 ENDOF ;MATCH + MS MATCH sol ov OF 19 ENDOF ;MATCH + MS MATCH sol ov OF 21 ENDOF ;MATCH + MS MATCH sol ov OF 23 ENDOF ;MATCH + MS MATCH sol ov OF 25 ENDOF ;MATCH + ;" ;
+
 \ ---- driving one migration where its refusal can be read ----------------------
 \ A checked `catch` takes a stack-neutral quotation and a quotation cannot read
 \ the enclosing word's locals, so what the migration needs is parked first.
-variable M-A   variable M-U   variable M-IN   variable M-OUT
+variable M-A   variable M-U   variable M-IN   variable M-OUT   variable M-REGS
 
 : MIGRATE-RC ( -- n )
-   [: M-A @ M-U @ M-IN @ M-OUT @ REGS NMIGRATE:DEFINE ;] catch ;
+   [: M-A @ M-U @ M-IN @ M-OUT @ M-REGS @ NMIGRATE:DEFINE ;] catch ;
+
+: STAGE-ONE ( ptr u8 n n n n -- ) {: a:ptr u:n in:n out:n regs:n :}
+   a M-A !  u M-U !  in M-IN !  out M-OUT !  regs M-REGS !
+   NELAB:REFUSED-RESET ;
 
 : TRY ( ptr u8 n n n -- n ) {: a:ptr u:n in:n out:n :}
-   a M-A !  u M-U !  in M-IN !  out M-OUT !
-   NELAB:REFUSED-RESET
+   a u in out REGS STAGE-ONE
+   MIGRATE-RC ;
+
+\ THE POOL IS THE CALLER'S NUMBER AND ONE ROW NEEDS A BIGGER ONE. Eight scratch
+\ registers carry every other migration in this file, and they do not carry an
+\ arm that holds THREE payload cells live across a branch: measured, the
+\ allocator answers E-A64RA-SPILL there before the case can say anything about
+\ the payload at all. That is a fact about the pool the caller offered and not
+\ about the dispatch, so the row states its own pool rather than moving
+\ everybody else's - the emission sizes the cost case pins are measured at
+\ eight and must stay there.
+: TRY-WIDE ( ptr u8 n n n -- n ) {: a:ptr u:n in:n out:n :}
+   a u in out WIDE-REGS STAGE-ONE
    MIGRATE-RC ;
 
 \ ---- what the chain published, read back off the emission and the seam --------
@@ -388,7 +565,10 @@ NDICT:OPEN-PRI MY-WID !
 variable RC-HUE   variable RC-BOX   variable RC-UNW   variable RC-STEP
 variable RC-WIDE  variable RC-OVER  variable RC-CASE  variable RC-MK
 variable RC-QUAD  variable RC-SWAPPED variable RC-HOLD
-variable RC-DROPPED variable RC-INST
+variable RC-DROPPED variable RC-INST variable RC-INST3
+variable RC-TWOW  variable RC-STRINST
+variable RC-TRIO  variable RC-ARMIF variable RC-ARMLOOP variable RC-HOLD3
+variable RC-ROWS24 variable RC-ROWS26
 variable RC-MK0   variable RC-MK2   variable RC-DEAD
 variable RC-CMT   variable RC-STR
 variable RC-NONEXH variable RC-DUPVAR variable RC-NOFAM variable RC-NOTSUM
@@ -425,7 +605,15 @@ variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
    DEAD$ 1 1 TRY RC-DEAD !
    CMT$ 1 1 TRY RC-CMT !
    STR$ 1 1 TRY RC-STR !
-   INST$ 3 1 TRY RC-INST ! ;
+   INST$ 3 1 TRY RC-INST !
+   INST3$ 4 1 TRY RC-INST3 !
+   TWOW$ 1 1 TRY RC-TWOW !
+   STRINST$ 1 1 TRY RC-STRINST !
+   TRIO$ 4 1 TRY RC-TRIO !
+   ARMIF$ 4 1 TRY-WIDE RC-ARMIF !
+   ARMLOOP$ 4 1 TRY RC-ARMLOOP !
+   HOLD3$ 4 1 TRY RC-HOLD3 !
+   ROWS24$ 0 1 TRY RC-ROWS24 ! ;
 
 : RUN-THE-REFUSALS ( -- )
    NONEXH$ 1 1 TRY RC-NONEXH !  NELAB:REFUSED-ROW ROW-NONEXH !
@@ -434,7 +622,8 @@ variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
    NOTSUM$ 1 1 TRY RC-NOTSUM !
    NOOF$ 1 1 TRY RC-NOOF !      NELAB:REFUSED-ROW ROW-NOOF !
    STRAY$ 1 1 TRY RC-STRAY !    NELAB:REFUSED-ROW ROW-STRAY !
-   DROPPED$ 4 1 TRY RC-DROPPED ! ;
+   DROPPED$ 4 1 TRY RC-DROPPED !
+   ROWS26$ 0 1 TRY RC-ROWS26 ! ;
 
 RUN-THE-MIGRATIONS
 RUN-THE-REFUSALS
@@ -646,7 +835,94 @@ RUN-THE-REFUSALS
    5 E-MKI E-INST    5 E-MKI C-INST    T=
    3 E-MKI C-INST 204 T=
    5 E-MKI C-INST 340 T=
-   0 E-MKI C-INST 0 T= ;
+   0 E-MKI C-INST 0 T=
+
+   s" and one cell wider again, where drop and keep are different numbers" T-LABEL
+   RC-INST3 @ 0 T=
+   -1 E-MKI3 E-INST3  -1 E-MKI3 C-INST3  T=
+   0 E-MKI3 E-INST3   0 E-MKI3 C-INST3   T=
+   3 E-MKI3 E-INST3   3 E-MKI3 C-INST3   T=
+   7 E-MKI3 E-INST3   7 E-MKI3 C-INST3   T=
+   3 E-MKI3 C-INST3 423 T=
+   0 E-MKI3 C-INST3 0 T= ;
+
+\ ---- which token a width was filed under -------------------------------------
+\ Both rows here answer the same question from opposite sides: is the number the
+\ chain reads the one THIS token published? The first body holds two dispatches
+\ of different instantiated widths, so a reader keyed on the family, the
+\ definition or the form's position gives one of them the other's width. The
+\ second puts a string literal - one token, reported through its own event, whose
+\ body is dispatch grammar - in front of the form, so a report path that did not
+\ step the ordinal files the width one token early.
+: ORDINAL-CASE ( -- )
+   s" two dispatches of different widths in one body each get their own" T-LABEL
+   RC-TWOW @ 0 T=
+   -1 E-TWOW  -1 C-TWOW  T=
+   0 E-TWOW   0 C-TWOW   T=
+   1 E-TWOW   1 C-TWOW   T=
+   3 E-TWOW   3 C-TWOW   T=
+   9 E-TWOW   9 C-TWOW   T=
+   3 C-TWOW 645 T=
+   0 C-TWOW 0 T=
+
+   s" and a string literal in front of one does not shift the token" T-LABEL
+   RC-STRINST @ 0 T=
+   -1 E-STRINST  -1 C-STRINST  T=
+   0 E-STRINST   0 C-STRINST   T=
+   3 E-STRINST   3 C-STRINST   T=
+   5 E-STRINST   5 C-STRINST   T=
+   3 C-STRINST 204 T= ;
+
+\ ---- three payload cells -----------------------------------------------------
+\ `box` and `holder` stop at two, where an arm that drops one cell too many and
+\ one that keeps one too few answer the same shape. Every row below weights each
+\ cell with a distinct odd factor, so the ANSWER says which cell came back where.
+: TRIPLE-CASE ( -- )
+   s" arms of no, one and three payload cells join and agree" T-LABEL
+   RC-TRIO @ 0 T=
+   NMX-TRIO:T0 E-TRIO  NMX-TRIO:T0 C-TRIO  T=
+   7 NMX-TRIO:T1 E-TRIO  7 NMX-TRIO:T1 C-TRIO  T=
+   3 5 9 NMX-TRIO:T3 E-TRIO  3 5 9 NMX-TRIO:T3 C-TRIO  T=
+   3 5 9 NMX-TRIO:T3 C-TRIO 151 T=
+   9 5 3 NMX-TRIO:T3 C-TRIO 223 T=
+
+   s" a payload crossing a nested if inside its arm agrees on both sides" T-LABEL
+   RC-ARMIF @ 0 T=
+   NMX-TRIO:T0 E-ARMIF  NMX-TRIO:T0 C-ARMIF  T=
+   7 NMX-TRIO:T1 E-ARMIF   7 NMX-TRIO:T1 C-ARMIF   T=
+   -7 NMX-TRIO:T1 E-ARMIF  -7 NMX-TRIO:T1 C-ARMIF  T=
+   3 5 9 NMX-TRIO:T3 E-ARMIF   3 5 9 NMX-TRIO:T3 C-ARMIF   T=
+   3 -5 9 NMX-TRIO:T3 E-ARMIF  3 -5 9 NMX-TRIO:T3 C-ARMIF  T=
+   3 0 9 NMX-TRIO:T3 E-ARMIF   3 0 9 NMX-TRIO:T3 C-ARMIF   T=
+
+   s" and one crossing a counted loop inside its arm" T-LABEL
+   RC-ARMLOOP @ 0 T=
+   NMX-TRIO:T0 E-ARMLOOP  NMX-TRIO:T0 C-ARMLOOP  T=
+   7 NMX-TRIO:T1 E-ARMLOOP  7 NMX-TRIO:T1 C-ARMLOOP  T=
+   3 5 9 NMX-TRIO:T3 E-ARMLOOP  3 5 9 NMX-TRIO:T3 C-ARMLOOP  T=
+   9 5 3 NMX-TRIO:T3 E-ARMLOOP  9 5 3 NMX-TRIO:T3 C-ARMLOOP  T=
+   3 5 9 NMX-TRIO:T3 C-ARMLOOP 39 T=
+
+   s" and three cells that are ONE value are kept as one" T-LABEL
+   RC-HOLD3 @ 0 T=
+   NMX-HOLD3:EMPTY3 E-HOLD3  NMX-HOLD3:EMPTY3 C-HOLD3  T=
+   3 5 9 NMX-PT3:MAKE NMX-HOLD3:FULL3 E-HOLD3
+   3 5 9 NMX-PT3:MAKE NMX-HOLD3:FULL3 C-HOLD3  T=
+   3 5 9 NMX-PT3:MAKE NMX-HOLD3:FULL3 C-HOLD3 151 T= ;
+
+\ ---- the dispatch-row ceiling ------------------------------------------------
+\ Twenty-four rows in one body is exactly what the checker records and it
+\ compiles; twenty-six overflows the table and is refused by name rather than
+\ compiled against the rows that did fit. Neither side is refused for anything
+\ else: both are inside the recorder's text cap and its tape, and the arms are
+\ one apiece so no block or selector ceiling is anywhere near.
+: ROW-CEILING-CASE ( -- )
+   s" a body at the checker's dispatch-row ceiling compiles" T-LABEL
+   RC-ROWS24 @ 0 T=
+   C-ROWS24 144 T=
+
+   s" and one past it is refused by name, not compiled from the rows that fit" T-LABEL
+   RC-ROWS26 @ E-NELAB-MATCH T= ;
 
 \ ---- the arm ceiling ----------------------------------------------------------
 : CEILING-CASE ( -- )
@@ -795,6 +1071,9 @@ public
    AGREE-HUE
    AGREE-BOX
    PAYLOAD-CASE
+   ORDINAL-CASE
+   TRIPLE-CASE
+   ROW-CEILING-CASE
    AGREE-UNW
    AGREE-STEP
    AGREE-WIDE
