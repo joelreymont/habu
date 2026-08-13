@@ -6377,3 +6377,14 @@ two stages with separate arithmetic can drift; two readings of one
 subtraction cannot. And file every new per-token fact against the
 ONE shared recording ordinal; a second counter is the mistake the
 first table's prose already names.
+
+## The repair lane's two (2026-08-14)
+
+(1) "Reuse the existing wall" is one line only if nothing reads the
+wall's side effects: CLOSE-BLOCK looked like a drop-in at the final
+block until NB turned out to be the tail-call decision's input -
+the failure mode was a silently lost optimisation no suite catches.
+Grep the counter's readers before reusing the counter's word.
+(2) A refusal ceiling needs its neighbour measured: 17-refused
+alone passes against a chain refusing every depth over four;
+17-refused beside 16-compiled is the assertion.
