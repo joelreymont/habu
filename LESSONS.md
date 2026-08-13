@@ -6179,7 +6179,8 @@ runs, when locating a throw; the catch changes what the case does.
 
 (1) A census run re-reads src/lib file TEXT - editing the tree
 mid-census corrupts the measurement exactly as editing during
-test/run.f does. (2) pgrep -f <pattern> in a wait loop matches the
+test/run.f does. (2) (repeat of the no-return lane's lesson, hit
+again) pgrep -f <pattern> in a wait loop matches the
 waiting shell itself - two wait loops never returned. Wait on a
 file, not a process name.
 
@@ -6216,8 +6217,7 @@ row.
 elaborator cannot say unreachable" - were falsified by two cheap
 probes (the checker refuses while+again outright; PATH-DEAD landed
 with the dead-call work), and both falsifications made the work
-SMALLER. Probe the leaf's claims against the tree before designing
-to them.
+SMALLER.
 (2) A contract table's "this cannot arise" is a claim to falsify,
 not a wall: abi.f said a callless no-return routine cannot exist
 because what makes a body all-dead is the call it dies in;
