@@ -3301,8 +3301,8 @@ here CELL 1- and CELL swap - CELL 1- and allot
 create MROLE TMAX cells allot        \ which operand, if any, this row is
 create MTAG TMAX cells allot         \ an arm's variant tag, a `MATCH` row's trap ordinal, a `construct` row's tag
 create MPAD TMAX cells allot         \ the zero pads an arm drops, or a `construct` pushes
-create MPAY TMAX cells allot         \ the payload cells an arm keeps, or a `construct` consumes
-create MWID TMAX cells allot         \ a `MATCH` row's bundle width in cells
+create MPAY TMAX cells allot         \ the payload CELLS an arm keeps or a `construct` consumes - and, on a variant row, its payload FIELDS, which is the count the arm's `of` holds those cells against
+create MWID TMAX cells allot         \ a `MATCH` row's bundle width in cells, as the instantiation really occupies it
 create MONE TMAX cells allot         \ whether an arm's payload cells are ONE value
 create MEND TMAX cells allot         \ whether this `of` opens the LAST arm of its `MATCH`
 create MTOK MTOK-CAP allot
@@ -3310,6 +3310,7 @@ create MTOK MTOK-CAP allot
 CMAX constant MSMAX                  \ open tag-dispatch forms, as the control stack's own ceiling
 create MS-KIND MSMAX cells allot     \ MK-MATCH or MK-CASE
 create MS-FAM MSMAX cells allot      \ the family a `MATCH` frame is over
+create MS-WID MSMAX cells allot      \ and the cells one value of its instantiation occupies; a `case` frame's subject is the one cell DO-OPEN-CASE gives it
 create MS-ARM MSMAX cells allot      \ whether the pass is inside one of its arms
 create MS-OF MSMAX cells allot       \ the row of the `of` that opened the arm read last
 variable MSN                         \ how many forms are open
@@ -3349,6 +3350,16 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 : MROLE! ( n n -- ) {: ix:n r:n :}
    r ix TOK-CK cells MROLE + ! ;
 
+\ A variant row carries only what the REGISTRY knows about the variant, and that
+\ is two numbers rather than three: its tag, and how many FIELDS its payload has.
+\ The CELLS are the instantiation's business and the `of` that follows asks the
+\ checker for them, so a variant row has no pad count at all - which is why it is
+\ written here rather than through the three-column writer the arm and
+\ `construct` rows share, where a zero pad count would read as a real one.
+: MVAR! ( n n n -- ) {: ix:n tag:n terms:n :}
+   tag ix TOK-CK cells MTAG + !
+   terms ix TOK-CK cells MPAY + ! ;
+
 : MARM! ( n n n n -- ) {: ix:n tag:n pads:n pay:n :}
    tag ix TOK-CK cells MTAG + !
    pads ix TOK-CK cells MPAD + !
@@ -3373,10 +3384,11 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 : MS-TOP ( -- n )
    MSN @ 1- MS-AT ;
 
-: MS-PUSH ( n n -- ) {: kind:n fam:n :}
+: MS-PUSH ( n n n -- ) {: kind:n fam:n w:n :}
    MSN @ MSMAX >= if E-NELAB-BLOCK throw then
    kind MSN @ cells MS-KIND + !
    fam MSN @ cells MS-FAM + !
+   w MSN @ cells MS-WID + !
    0 MSN @ cells MS-ARM + !
    -1 MSN @ cells MS-OF + !
    MSN @ 1+ MSN ! ;
@@ -3387,6 +3399,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 
 : MS-MATCH? ( n -- bool )   MS-AT cells MS-KIND + @ MK-MATCH = ;
 : MS-FAM@ ( n -- n )        MS-AT cells MS-FAM + @ ;
+: MS-WID@ ( n -- n )        MS-AT cells MS-WID + @ ;
 : MS-ARM? ( n -- bool )     MS-AT cells MS-ARM + @ 0<> ;
 : MS-OF@ ( n -- n )         MS-AT cells MS-OF + @ ;
 
@@ -3413,36 +3426,80 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ mismatch traps with: registering a family with src/compiler/native/trap.f is
 \ idempotent, so asking here costs one row per family per process and the build
 \ reads a number.
+\
+\ THE WIDTH IS THE INSTANTIATED ONE AND IT COMES FROM THE CHECKER. The registry
+\ answers what the family DECLARES, and a parametric family instantiated with a
+\ multi-cell argument occupies more cells than that - `option<a>` reserves one
+\ payload slot and `option<obj:line>` needs two. src/compiler/native/family.f
+\ WIDTH says why it cannot answer the second number, and the checker files it
+\ under this very token while it walks the scrutinee off its row
+\ (src/core/checker.f MATCH-SCRUT?, MWIN-CELLS!). A token nobody proved a width
+\ for is refused here rather than compiled against the declaration.
+\
+\ AND THE DECLARATION IS STILL A FLOOR, held against it. An instantiation is
+\ never NARROWER than the family reserves - the checker refuses the one case
+\ that would be (type-family.f TFC-XPAD-NARROW-REJECT) - so a proved width below
+\ the declared one is two authorities disagreeing about one value, and this pass
+\ refuses rather than picks one.
 : MSCAN-MATCH-FAM ( n -- ) {: ix:n :}
    ix MTOK$ NFAM:MATCH-FAM {: fam:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-FAMILY MROLE!
-   CB-ROW @  fam NFAM:WIDTH  fam NFAM:NAME$ NTRAP:FAMILY  MMATCH!
-   MK-MATCH fam MS-PUSH
+   ix NDICT:MATCH-CELLS {: w:n :}
+   w NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
+   w fam NFAM:WIDTH < if E-NELAB-MATCH throw then
+   CB-ROW @  w  fam NFAM:NAME$ NTRAP:FAMILY  MMATCH!
+   MK-MATCH fam w MS-PUSH
    MM-VARIANT MM ! ;
 
-\ A variant of the open `MATCH`. Its numbers go onto its own row and the row of
-\ the `of` that follows it copies them, because the build reaches the arm at the
-\ `of`: the variant token itself stages nothing at all.
+\ A variant of the open `MATCH`. Only the two numbers the REGISTRY owns are
+\ written here - the tag the dispatch compares, and how many FIELDS the payload
+\ has - and they go onto the variant's own row for the `of` that follows it to
+\ read, because the build reaches the arm at the `of`: the variant token itself
+\ stages nothing at all. The cells are the instantiation's business and the
+\ step below asks the checker for them.
 : MSCAN-VARIANT ( n -- ) {: ix:n :}
    MS-TOP {: t:n :}
    ix MTOK$ t MS-FAM@ NFAM:VARIANT {: vid:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-VARIANT MROLE!
-   ix  vid NFAM:TAG  t MS-FAM@ vid NFAM:PADS  vid NFAM:PAY-CELLS  MARM!
-   ix  vid NFAM:PAY-TERMS  vid NFAM:PAY-CELLS  <>  MONE!
+   ix  vid NFAM:TAG  vid NFAM:PAY-TERMS  MVAR!
    ix MV-ROW !
    MM-OF MM ! ;
 
 \ The `of` that opens the arm the variant token named. The variant's row is the
 \ one the step above recorded rather than the row before this one, so a row this
 \ pass passed over cannot shift which token the numbers came from.
+\
+\ THE PADS ARE THE INSTANTIATED ONES AND THEY COME FROM THE CHECKER, for the
+\ reason the family token's width does: a variant of a parametric family padded
+\ up to a WIDER instantiation drops more cells than its declaration says, and
+\ the registry has no term to work that out from. src/core/type-family.f
+\ TFAM-MATCH-XPAD-RECORD computes it as it decides what the engine's pass 2 must
+\ add, and files it under this token. An arm nobody proved a pad count for -
+\ including every arm of a definition that filled the checker's table - is
+\ refused here.
+\
+\ WHAT THE ARM KEEPS IS THEN THE ONE SUBTRACTION LEFT: the bundle, less its tag,
+\ less those pads. A negative answer would be the family token's width and this
+\ arm's pads contradicting each other, which is refused rather than clamped.
+\
+\ AND WHETHER THOSE CELLS ARE ONE VALUE IS THE SAME QUESTION AS BEFORE, asked of
+\ the instantiated count: several cells are one value exactly when the payload
+\ has fewer FIELDS than cells. `option<pt>`'s `some` declares one field and one
+\ cell and would answer no; instantiated it is one field and TWO cells, and a
+\ rename that moved either of them would take a `pt` apart.
 : MSCAN-OF ( n -- ) {: ix:n :}
    MV-ROW @ {: vix:n :}
    vix 0 < if E-NELAB-MATCH throw then
-   ix  vix MTAG@ vix MPAD@ vix MPAY@  MARM!
-   ix  vix MONE@  MONE!
-   MS-TOP ix MS-ARM!
+   MS-TOP {: t:n :}
+   ix NDICT:MATCH-CELLS {: pads:n :}
+   pads NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
+   t MS-WID@ 1- pads - {: pay:n :}
+   pay 0 < if E-NELAB-MATCH throw then
+   ix  vix MTAG@  pads  pay  MARM!
+   ix  vix MPAY@ pay <>  MONE!
+   t ix MS-ARM!
    -1 MV-ROW !
    MM-OFF MM ! ;
 
@@ -3514,7 +3571,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
       ix CB-ROW !  MM-CON-FAM MM !  true exit
    then
    r ix HIR-CTRL:OPEN-CASE ROW-CTRL? if
-      MK-CASE 0 MS-PUSH  true exit
+      MK-CASE 0 1 MS-PUSH  true exit
    then
    false ;
 

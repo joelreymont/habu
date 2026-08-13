@@ -594,6 +594,39 @@ public
    out 0 < if in CATCH-NONE exit then
    in out ;
 
+\ ---- and how many cells a tag-dispatch token really moves ---------------------
+\ THE SECOND TOKEN-KEYED READER, AND IT EXISTS BECAUSE THE REGISTRY CANNOT
+\ ANSWER. src/compiler/native/family.f WIDTH says it plainly: it answers the
+\ width a family DECLARES, and a parametric family instantiated with a
+\ multi-cell argument occupies more cells than that - the arg-aware number is a
+\ function of a resolved type term, which is the checker's value and never
+\ reaches this chain. The same holds one level down for an arm: the pads a
+\ variant drops are the DECLARED pads unless the instantiation widened them. So
+\ the checker files both numbers under the token that publishes them, and a
+\ caller elaborating tape row `ix` asks about `ix` - the same coordinate, and
+\ for the same reason, as the catch window above.
+\
+\ WHAT THE TWO KINDS OF TOKEN ANSWER. A `MATCH` family token answers the whole
+\ bundle a value of that instantiation occupies, tag included; an arm's `of`
+\ token answers that arm's pad count, the cells between its payload and the tag.
+\ Both are cells the caller drops or keeps, so neither is a difference the
+\ caller would have to add back to a declared number.
+\
+\ MATCH-NONE IS FAIL-CLOSED AND MEANS EXACTLY ONE THING: nobody proved a number
+\ for this token. It covers a token that is no dispatch operand, a definition
+\ nobody recorded, an arm whose instantiation the checker could not close, and
+\ every token of a definition that filled the checker's table - because one
+\ dropped row would otherwise be indistinguishable from a token with nothing to
+\ say, and a caller reading "nothing" for an arm whose pads were dropped would
+\ compile the wrong drop with every count still agreeing. The caller refuses the
+\ body by name.
+-1 constant MATCH-NONE               \ no dispatch cell count was proved for that token
+
+: MATCH-CELLS ( n -- n )
+   EFFECT-MATCH-CELLS {: w:n :}
+   w 0 < if MATCH-NONE exit then
+   w ;
+
 \ Whether control comes back from a call to the word this spelling denotes.
 \ False for a name the checker holds no control flag for, which is every
 \ ordinary word: a call that comes back is the common case and the one a caller

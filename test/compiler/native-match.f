@@ -208,6 +208,31 @@ private
       blue OF 3 ENDOF
    ;MATCH ;
 
+\ ---- a parametric family instantiated WIDER than it declares -----------------
+\ `option<a>` reserves ONE payload slot and `option<pt>` needs two, so a value of
+\ it is three cells where the family's declaration says two. Nothing in the
+\ registry can say so - the width is a function of a resolved type term - and the
+\ chain used to refuse this body by name for exactly that reason. It compiles now
+\ because the checker files the instantiated bundle width and each arm's
+\ instantiated pad count under the tokens that publish them.
+\
+\ THE TWO PAYLOAD CELLS CARRY DISTINCT ODD WEIGHTS, and that is the whole point
+\ of the arithmetic: a payload combined with a commutative operator answers the
+\ same number whichever cell came back where, so it would prove only that the
+\ right NUMBER of cells survived. Exchanging the two weights changes the answer.
+\ The value the two bodies below dispatch over. A bare `OPTION:NONE` is
+\ `option<a>` and grounds to nothing, so the instantiation has to be stated
+\ somewhere; a maker whose declared output names it is where every other caller
+\ in the tree states it.
+: E-MKI ( n -- option<pt> )
+   dup 0 > if  dup 3 *  swap 5 *  NMX-PT:MAKE OPTION:SOME  else  drop OPTION:NONE  then ;
+
+: E-INST ( option<pt> -- n )
+   MATCH option
+      none OF 0 ENDOF
+      some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
+   ;MATCH ;
+
 \ The family's own name inside a comment, and inside a string literal. Neither is
 \ a token of the dispatch grammar; both bodies must compile and answer.
 : E-CMT ( hue -- n )
@@ -257,6 +282,9 @@ private
 : CASE$ ( -- ptr u8 n )
    s" : C-CASE ( n -- n ) case 1 of 10 endof 2 of 20 endof 99 swap endcase ;" ;
 
+: INST$ ( -- ptr u8 n )
+   s" : C-INST ( option<pt> -- n ) MATCH option none OF 0 ENDOF some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF ;MATCH ;" ;
+
 : MK$ ( -- ptr u8 n )
    s" : C-MK ( n -- box ) construct box one ;" ;
 
@@ -285,15 +313,6 @@ private
 \ two-cell value leaves half of it on the stack with every count still agreeing.
 : DROPPED$ ( -- ptr u8 n )
    s" : C-DROPPED ( n holder -- n ) MATCH holder empty OF ENDOF full OF drop ENDOF ;MATCH ;" ;
-
-\ And a scrutinee WIDER than the width its family declares, which is what a
-\ parametric family instantiated with a multi-cell argument is. The checker
-\ accepts it and records the extra cells as a fact of its own; the chain cannot
-\ ask for that fact, so it holds the registry's declared width against the bundle
-\ the value vector really carries and refuses the disagreement rather than
-\ dropping the wrong cells.
-: INST$ ( -- ptr u8 n )
-   s" : C-INST ( option<pt> -- n ) MATCH option none OF 0 ENDOF some OF NMX-PT:UNMAKE + ENDOF ;MATCH ;" ;
 
 \ ---- the bodies the CHECKER refuses -------------------------------------------
 \ Every one of these is rejected before the chain is handed anything. They are
@@ -405,7 +424,8 @@ variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
    MK0$ 0 3 TRY RC-MK0 !
    DEAD$ 1 1 TRY RC-DEAD !
    CMT$ 1 1 TRY RC-CMT !
-   STR$ 1 1 TRY RC-STR ! ;
+   STR$ 1 1 TRY RC-STR !
+   INST$ 3 1 TRY RC-INST ! ;
 
 : RUN-THE-REFUSALS ( -- )
    NONEXH$ 1 1 TRY RC-NONEXH !  NELAB:REFUSED-ROW ROW-NONEXH !
@@ -414,8 +434,7 @@ variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
    NOTSUM$ 1 1 TRY RC-NOTSUM !
    NOOF$ 1 1 TRY RC-NOOF !      NELAB:REFUSED-ROW ROW-NOOF !
    STRAY$ 1 1 TRY RC-STRAY !    NELAB:REFUSED-ROW ROW-STRAY !
-   DROPPED$ 4 1 TRY RC-DROPPED !
-   INST$ 3 1 TRY RC-INST ! ;
+   DROPPED$ 4 1 TRY RC-DROPPED ! ;
 
 RUN-THE-MIGRATIONS
 RUN-THE-REFUSALS
@@ -619,8 +638,15 @@ RUN-THE-REFUSALS
    s" and a rename reaching into it is refused by name" T-LABEL
    RC-DROPPED @ E-NELAB-BUNDLE T=
 
-   s" a scrutinee wider than its family declares is refused by name" T-LABEL
-   RC-INST @ E-NELAB-MATCH T= ;
+   s" a scrutinee wider than its family declares compiles, and agrees" T-LABEL
+   RC-INST @ 0 T=
+   -1 E-MKI E-INST   -1 E-MKI C-INST   T=
+   0 E-MKI E-INST    0 E-MKI C-INST    T=
+   3 E-MKI E-INST    3 E-MKI C-INST    T=
+   5 E-MKI E-INST    5 E-MKI C-INST    T=
+   3 E-MKI C-INST 204 T=
+   5 E-MKI C-INST 340 T=
+   0 E-MKI C-INST 0 T= ;
 
 \ ---- the arm ceiling ----------------------------------------------------------
 : CEILING-CASE ( -- )
