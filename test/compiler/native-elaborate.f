@@ -2489,6 +2489,43 @@ create TW-BUF TW-CAP allot
    {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
    ma fa mb fb TW-FUN? ;
 
+\ ---- the six return-stack transfers, which stage nothing ----------------------
+\ WHAT THIS PINS AND WHY THE DIFFERENTIALS CANNOT. src/compiler/native/elaborate.f
+\ compiles `>r`, `r>`, `r@` and their pair forms to no operation at all: each one
+\ moves a value id between two compile-time vectors, exactly as a rename moves one
+\ within a single vector. test/compiler/native-rstack.f measures what such bodies
+\ ANSWER, against the engine's own compilation - and a chain that staged a real
+\ move per transfer and moved the value back would answer every one of those rows
+\ correctly. What says the transfers cost NOTHING is the module.
+\
+\ THE PAIR IS ONE BODY USING ALL SIX AND ITS TRANSFER-FREE TWIN. Both are written
+\ over the same two names in the same order, so if the transfers stage nothing the
+\ two texts are the same program: the same operations, the same operands, the same
+\ values, the same single block. TW-FUN? holds them against each other operation
+\ for operation, and UNTWIN-CASE above is that comparator's own falsifier.
+\
+\ THE COUNTS ARE STATED OUTRIGHT BESIDE IT, because a twin comparison alone is
+\ satisfied by two bodies that grew the same wrong operation. One block; eleven
+\ operations, which are six additions, the two constants, the two multiplies and
+\ the return; and twelve values, which are the two arguments and one for each
+\ operation that answers.
+: RSTK-BODY ( IR-CTX:ctx -- n n n bool )
+   {: c:IR-CTX:ctx :}
+   c s" RSTK6 {: a:n b:n :} b a >r r@ + r> 3 * + a b 2>r 2r@ + 2r> 5 * + + +"
+   2 1 BUILT
+   {: ma:IR-BUILD:module fa:IR-ID:ir-fun-id :}
+   c s" RSTK6 {: a:n b:n :} b a + a 3 * + a b + a b 5 * + + +" 2 1 BUILT
+   {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
+   ma fa F-BLKS
+   ma  ma fa F-BLK  F-OPS
+   ma F-VALUES
+   ma fa mb fb TW-FUN? ;
+
+: RSTK-CASE ( -- )
+   s" the six return-stack transfers stage nothing: the module is the twin's" T-LABEL
+   BND [: RSTK-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 12 T= 11 T= 1 T= ;
+
 : CTRL-TWIN-CASE ( -- )
    s" a body that writes the control words in capitals compiles to its lower-case twin's module" T-LABEL
    BND [: CTRL-TWIN-BODY ;] IR-CTX:WITH-CONTEXT
@@ -3190,6 +3227,7 @@ public
    LOOP-TWIN-CASE
    SELF-TWIN-CASE
    UNTWIN-CASE
+   RSTK-CASE
    LOCAL-CASE-CASE
    BND [: drop CAPS-REFUSE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CAPS-NEAR-CASE ;] IR-CTX:WITH-CONTEXT
