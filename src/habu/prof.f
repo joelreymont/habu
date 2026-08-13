@@ -5,7 +5,17 @@
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 
+\ ---- package -----------------------------------------------------------------
+\ One concern: the sampling profiler's emitted code. The five names habu2.f
+\ reaches for are public and the rest is this file's own, which is what a package
+\ is for - before this the whole file was global, and a change to any word in it
+\ was refused by the package lint with nowhere to put the word
+\ (dot habu-fold-a-named-052f4c4b's field carve is what needed one).
+package PROF
+
+public
 variable LPROFH   variable LPROFDUMP
+private
 $1E0 constant PROF-TOT
 $1E8 constant PROF-LIM
 $1F8 constant PROF-OTHER      \ samples outside any dict word (main loop, helpers)
@@ -13,6 +23,8 @@ DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT   \ band base: PROF-CNT-BYTES (= DI
 14  constant SIGALRM
 $10000004 constant LINUX-SA-PROF-FLAGS
 $0042 constant MACOS-SA-PROF-FLAGS
+
+public
 
 : EMIT-PROFDUMP ( -- )
    LPROFDUMP LABEL@ LBL,
@@ -25,7 +37,13 @@ $0042 constant MACOS-SA-PROF-FLAGS
       0 1 MOVZ,  1 5 24 ADDI,  2 5 16 LDR,
       9 2 DNAME-EXT ANDI,  9 pinl CBZ,
          1 5 24 LDR,
-      pinl LBL,  2 2 12 LSLI,  2 2 12 LSRI,  NR-WRITE SYS,
+      \ The record's flags cell carries the name length in its low bits and
+      \ four fields above it: DKIND (50-51), DNAME-MIN-IN (52-59) and the
+      \ IMM/EXT/WIDE/INT nibble (60-63). Clearing the top FOURTEEN is what
+      \ leaves the length alone - src/habu/layout.f states the band. A clear
+      \ of twelve leaves a definer's stamp in the count and hands `write` a
+      \ length of 2^50 bytes, which writes nothing and loses the row's name.
+      pinl LBL,  2 2 14 LSLI,  2 2 14 LSRI,  NR-WRITE SYS,
       SP SP 16 SUBI,  12 32 MOVZ,  12 SP 0 STRB,
       0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       SP SP 16 ADDI,
@@ -37,6 +55,8 @@ $0042 constant MACOS-SA-PROF-FLAGS
       SP SP 16 ADDI,
       9 17 0 ADDI,  G-PRINT9
    dret LBL,  RET, ;
+
+private
 
 \ Profiler trust rows emit ARM64 signal-context, sigaction/timer-frame, syscall,
 \ sampling, and primitive-publication code.
@@ -55,6 +75,8 @@ s" c-prof-pc>r9" s" --" TRUST
 \ bump PROF-TOT once and test the limit, so every delivered sample is counted:
 \ sum(word counters) + PROF-OTHER == PROF-TOT exactly, including the sample that
 \ reaches the limit. Below the limit we sigreturn; at it we dump + exit(99).
+public
+
 : EMIT-PROF ( -- )
    LPROFH LABEL@ LBL,
    LBL LBL LBL LBL LBL {: pl pnext pdone prep psig :}
@@ -75,6 +97,8 @@ s" c-prof-pc>r9" s" --" TRUST
    11 DATA PROF-LIM LDR,  10 11 CMP,  C-GE prep BCOND,
    0 4 0 ADDI,  NR-SIGRETURN SYS,
    prep LBL,  LPROFDUMP LABEL@ BL,  0 99 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+private
 
 : C-PROF-SIGACTION-FRAME ( -- )
    SP SP 32 SUBI,
@@ -129,8 +153,12 @@ s" c-prof-timer-done" s" --" TRUST
 : BPROF-REPORT ( -- )  SP SP 16 SUBI,  30 SP 0 STR,  LPROFDUMP LABEL@ BL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
+public
+
 : EMIT-PROF-PRIMS ( -- )
    s" prof-on" ['] BPROF-ON FPRIM-L  s" prof-report" ['] BPROF-REPORT FPRIM-L ;
 s" emit-prof-prims" s" --" TRUST
 
 ;using
+
+;package
