@@ -6174,3 +6174,11 @@ answer before calling a shape unsupported.
 case that threw ran clean under the wrapper and died without it. Run
 the cases SEQUENTIALLY and unwrapped, printing each name before it
 runs, when locating a throw; the catch changes what the case does.
+
+## The do landing's two (2026-08-13)
+
+(1) A census run re-reads src/lib file TEXT - editing the tree
+mid-census corrupts the measurement exactly as editing during
+test/run.f does. (2) pgrep -f <pattern> in a wait loop matches the
+waiting shell itself - two wait loops never returned. Wait on a
+file, not a process name.
