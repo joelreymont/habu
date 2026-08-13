@@ -6230,3 +6230,25 @@ existing validator.
 reader checked: `over 0 =` hung the suite on a negative counter
 where `over 1 <` does not. Guard loops with an inequality, not
 equality.
+
+## The join threading's four (2026-08-13)
+
+(1) A differential fixture that combines carried values with a
+commutative operator cannot see them exchanged - it proves only
+that the right NUMBER of cells came back. Weight each value with a
+distinct odd factor; the order-reversal mutation passed until the
+weights went in.
+(2) A differential loop fixture must also terminate under the
+ENGINE's compilation: a trip count driven by the value under test
+hangs the suite at some inputs. Make the value affect the count
+without driving it.
+(3) When a brief names a field to add, ask whether the field is
+the PAIR of one existing field or of several. The join width lived
+in three frame fields, so its parked sibling needed three, not one
+- reading DO-JOIN-WIDTH clause by clause was the whole diagnosis.
+(4) A fixture whose comment says "this must change when X lands"
+is a promise to the lane that lands X - two came due here and both
+were found by the gate, not by reading. install --force does NOT
+compile src/compiler/native/*.f (the chain loads on demand), so a
+syntax error there passes the build and only a slice run catches
+it.
