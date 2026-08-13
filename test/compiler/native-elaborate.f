@@ -2116,11 +2116,60 @@ variable LK-N
 : TWICE ( -- )
    BND [: TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A group inside a branch would bind names on a path that does not reach the
-\ rest of the body, and this elaborator has no scoping rule for that.
+\ ---- a group inside a control structure, and the refusal that is left ---------
+\ A GROUP INSIDE A BRANCH IS AN ORDINARY GROUP NOW, which is what dot
+\ habu-scope-a-locals-2faa3d7a landed: its names come into scope at its own
+\ closer and go out again at the structure's, which is the checker's own rule
+\ (src/core/checker.f CF-LOC-REST, formal/Common/Control.v
+\ `every_closer_restores_the_locals_mark`). What the ANSWERS such a body computes
+\ are is measured against the engine in test/compiler/native-locals-scope.f;
+\ what is measured HERE is the module, because the claim is that the group
+\ stages nothing at all - no operation for the declaration, none for the closer
+\ and none for a mention.
+\
+\ THE TWO FIXTURES ARE ONE BYTE APART, and that is the point of the pair. Both
+\ open a group inside the arm of an `if` while a group at the top of the body is
+\ still in scope; the first names it `b` and the second names it `a`, which is
+\ the name already in scope. So a reader keyed on "a group closed while a
+\ structure was open" refuses both and reds the first, a reader keyed on "the
+\ spelling appears twice in the body" refuses both as well, and only a reader of
+\ what is in SCOPE where the declaration stands answers the two differently.
+\ WHAT THE MODULE HAS TO SHOW, AND IT IS NOT "it compiled". Four blocks - the
+\ entry, the `if`'s false stub, the arm and the join - and three operations in the
+\ entry block, which are the literal, the comparison and the two-way branch:
+\ neither group stages anything and neither does a mention of a name. The
+\ comparison's first operand is the DEFINITION'S OWN ENTRY ARGUMENT, which is what
+\ "the outer group bound a name to a value that already existed" means written
+\ down. And the arm takes NO block arguments while the join takes one: the inner
+\ group's name is defined in a block that dominates every mention of it and is
+\ gone by the `then`, so nothing carries it across either edge.
+: BRANCHG-BODY ( IR-CTX:ctx -- n n n n bool )
+   {: c:IR-CTX:ctx :}
+   s" NESTG {: a:n :} a a 0 > if {: b:n :} b 3 * then" TEXT!
+   c SEALED
+   {: bl:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c bl v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c bl IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 0 F-BLK-AT {: entry:IR-ID:ir-block-id :}
+   m entry F-OPS
+   m f 2 F-BLK-AT {: arm:IR-ID:ir-block-id :}
+   m arm F-ARGS
+   m f 3 F-BLK-AT {: jn:IR-ID:ir-block-id :}
+   m jn F-ARGS
+   m entry s" hir.gt" 0 F-OPC-AT {: gt:IR-ID:ir-op-id :}
+   m gt 0 F-IN  m entry 0 F-ARG SAME? ;
+
+\ The same body with the arm's group naming what the outer group already named.
+\ The two authorities that decide what a mention of a live duplicate MEANS do not
+\ agree - src/core/checker.f LOC-REF? counts down from #LOC and takes the
+\ innermost, src/habu/habu2.f EMIT-LOC-FIND counts up from zero and takes the
+\ outermost - so this chain refuses the declaration that creates the ambiguity
+\ rather than compiling against one of the two readings. Dot
+\ habu-reconcile-the-locals-ca3fdb26 carries the reconciliation.
 : NESTED-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" NESTG dup if {: a:n :} a then" TEXT!
+   s" NESTG {: a:n :} a a 0 > if {: a:n :} a 3 * then" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 1 1 NELAB:COLON drop ;
@@ -2161,8 +2210,17 @@ variable LK-N
    [: TWICE ;] E-NELAB-LOCAL TTHROWSQ ;
 
 : NESTED-CASE ( -- )
-   s" a locals group inside a control structure is refused" T-LABEL
+   s" a group naming what is already in scope is refused, and only that" T-LABEL
    [: NESTED ;] E-NELAB-LOCAL TTHROWSQ ;
+
+: BRANCHG-CASE ( -- )
+   s" a locals group inside a control structure stages nothing and compiles" T-LABEL
+   BND [: BRANCHG-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE
+   1 T=
+   0 T=
+   3 T=
+   4 T= ;
 
 \ ---- a double crossing a block edge, in both directions -----------------------
 \ THE SEAM THESE TWO CASES ARE ABOUT. A block argument's type has to be stated
@@ -3066,6 +3124,7 @@ public
    BND [: drop QOPEN-NAME-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop TWICE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop NESTED-CASE ;] IR-CTX:WITH-CONTEXT
+   BRANCHG-CASE
    COUNTDOWN-CASE
    SUMTO-CASE
    SUMTO-DO-CASE

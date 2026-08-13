@@ -543,6 +543,19 @@ SUITE compiler-native-catch
    test/compiler/native-catch.f
 ;SUITE
 
+\ The locals groups that open and close INSIDE a control structure, which compile
+\ to nothing at all in the same way the return-stack transfers do: `:}` moves
+\ value ids into named slots and emits no instruction, so only the answer says
+\ which name a slot held. Every case is differential against the engine's own
+\ compilation for that reason, and it runs beside the loop and return-stack
+\ suites because its seams are theirs - a name crosses a join, a loop edge, an
+\ arm and a call by the machinery those two already measure, and the two
+\ re-resolution rows prove a name out of scope is the WORD or the loop INDEX the
+\ engine gives it rather than a refusal.
+SUITE compiler-native-locals-scope
+   test/compiler/native-locals-scope.f
+;SUITE
+
 \ Counting the instruction PAIRS one three-source instruction would replace,
 \ which is the measurement the combining lane decides what to build from. It
 \ runs beside the tail probe because it reads emitted code through that tool's

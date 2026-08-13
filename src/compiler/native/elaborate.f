@@ -749,29 +749,60 @@ RMAX TYPED-BUFFER RSTK IR-ID:ir-value-id
 \ pre-pass recorded for the group it is binding next, which is the same
 \ two-derivations discipline SKELETON keeps.
 \
-\ AS MANY GROUPS AS THE BODY WRITES, EACH AT THE TOP LEVEL, READ-ONLY. A
+\ AS MANY GROUPS AS THE BODY WRITES, WHEREVER IT WRITES THEM, READ-ONLY. A
 \ definition may open a group wherever it stands, and the tree writes them that
 \ way constantly - bind the arguments, compute, name the results, compute again.
-\ The names one group declares come into scope at its OWN closer and stay in
-\ scope for the rest of the body, so the locals a given row can see are always a
-\ PREFIX of the declared names, and LBN is the length of that prefix. Every
-\ reader that hands locals across a seam reads that prefix rather than the whole
-\ table.
+\ A group inside a control structure is one of those places: the names it
+\ declares come into scope at its own closer and go OUT of scope at the closer of
+\ the structure that was open when it closed.
 \
-\ AND THE PREFIX IS STABLE ACROSS A CONTROL STRUCTURE, WHICH IS WHAT LETS THE
-\ SEAMS KEEP READING ONE COUNT. A group whose closer stands inside an open
-\ structure is refused (dot habu-scope-a-locals-2faa3d7a), so the prefix can only
-\ grow where no structure is open - and every edge of a structure therefore sees
-\ the same prefix its opener saw. That is a fact about the rules rather than
-\ about the corpus: it is what makes CROSS-L one number at both ends of an edge.
+\ THAT SCOPING RULE IS THE CHECKER'S, MEASURED RATHER THAN INVENTED. Every
+\ opener records the live name count and every closer restores it
+\ (src/core/checker.f CF-PUSH stores CF.LN, CF-LOC-REST puts it back), which
+\ formal/Common/Control.v records as `loc_rest = skipn` over a head-first stack
+\ and pins with `locals_are_scoped_to_their_frame` and
+\ `every_closer_restores_the_locals_mark`. `else` and `endof` restore too,
+\ because each opens a sibling arm; `while` does not, because its frame stays
+\ open. Run against bin/hb: `dup 0 > if {: x:n :} x 2 * else drop 7 then`
+\ certifies and the same body with an `x` after the `then` answers
+\ `E-UNDEFINED: x`.
 \
-\ A GROUP INSIDE A CONTROL STRUCTURE AND AN UNCLOSED GROUP ARE STILL REFUSED BY
-\ NAME, and so is a name the dialect already models (dot
-\ habu-decide-what-a-9f38a8f6). Rebinding a local and taking its address need no
-\ refusal here at all - no such word is in the dialect's vocabulary, so `to` and
-\ `^` are already refused as words this dialect cannot compile. Dots
-\ habu-rebind-a-typed-b2a3e369 and habu-take-the-addr-18a38b4f carry the two
-\ capabilities.
+\ AND OUT OF SCOPE IS A DIFFERENT MEANING, NOT AN ERROR, which is why LIVE-AT?
+\ carries an END as well as a start. `: HWX ( -- n ) 99 ;` followed by
+\ `dup 0 > if {: hwx:n :} hwx 2 * else drop 7 then hwx +` certifies and answers
+\ 109 - the mention after the `then` is the WORD. A reader that kept binding it
+\ as the local would compile a body that answers 10, so the end of a scope is
+\ load-bearing here in exactly the way the start already was.
+\
+\ SO THE NAMES A ROW CAN SEE ARE A STACK, AND THE SLOTS ARE REUSED. Two index
+\ spaces meet in this file and they are not the same number. A DECLARATION is one
+\ name token the body wrote: LN counts them in tape order and LNAME, LROW, LEND,
+\ LSLOT and LCROSS are keyed by it. A SLOT is a place in the live scope: LBN is
+\ how many are live where the walk stands and LVAL, LQ, LOWN and LSX are keyed by
+\ it. `{: p :} do {: a :} loop {: q :}` leaves p and q live, which is not a
+\ prefix of the three declarations - but it IS the prefix of two slots, because
+\ `a` gave its slot back at the `loop` and `q` took it. That is the checker's own
+\ model and the engine's, arrived at from the third side.
+\
+\ AND THE LIVE PREFIX IS STABLE ACROSS EVERY EDGE OF A STRUCTURE, WHICH IS WHAT
+\ LETS THE SEAMS KEEP READING ONE COUNT. It is no longer stable across the
+\ structure's BODY - a group inside one raises LBN and its closer lowers it
+\ again - so what every seam reads is the frame's own mark rather than the walk's
+\ live count: CS-LB is what the structure opened holding, CS-LARM what the arm
+\ being read opened holding, each closer restores its mark BEFORE it hands
+\ anything over, and the two seams that leave from the middle of a structure
+\ (`while`'s exit stub and `leave`) borrow the frame's mark for one edge and give
+\ it back. Both ends of every edge therefore read the same number again, and
+\ CROSS-L is one count at each of them for a stated reason rather than because
+\ the prefix could not move.
+\
+\ AN UNCLOSED GROUP IS STILL REFUSED BY NAME, and so is a name the dialect
+\ already models (dot habu-decide-what-a-9f38a8f6) and a name that shadows one
+\ still in scope (DUP-LOCAL? below, which says why). Rebinding a local and taking
+\ its address need no refusal here at all - no such word is in the dialect's
+\ vocabulary, so `to` and `^` are already refused as words this dialect cannot
+\ compile. Dots habu-rebind-a-typed-b2a3e369 and habu-take-the-addr-18a38b4f
+\ carry the two capabilities.
 16 constant LMAX                     \ locals, and groups, one definition may declare
 64 constant LNAME-CAP                \ bytes one declaration spelling may hold
 
@@ -781,7 +812,7 @@ variable LG-N                        \ how many groups the pre-pass found
 variable LG-OPEN                     \ the group the pre-pass is reading, or -1
 variable LG-K0                       \ the first name index of that open group
 variable LGB                         \ how many groups the walk has bound
-variable LBN                         \ how many declared locals are bound
+variable LBN                         \ how many slots are live where the walk stands
 LMAX TYPED-BUFFER LNAME IR-ID:ir-symbol-id
 LMAX TYPED-BUFFER LVAL IR-ID:ir-value-id
 create LCROSS LMAX cells allot       \ whether a call can reach a mention of this local
@@ -792,11 +823,25 @@ create LCROSS LMAX cells allot       \ whether a call can reach a mention of thi
 \ at the binding and every read of the name would be a cell nobody can name an
 \ arity for. The local is what the walk really moves here, so the fact rides on
 \ the local, exactly as it rides on the vector entry everywhere else.
-create LQ LMAX cells allot           \ the quotation row this local's value names, or VQ-NONE
+create LQ LMAX cells allot           \ the quotation row this slot's value names, or VQ-NONE
 create LROW LMAX cells allot         \ the row the group declaring this local closes on
+create LEND LMAX cells allot         \ and the row it goes out of scope on
+create LSLOT LMAX cells allot        \ the slot it takes while it is in scope, or -1
+\ THE TWO FACTS A LIVE SLOT CARRIES BESIDE ITS VALUE, and both are written where
+\ the slot is filled rather than derived at each reader. LOWN is which
+\ declaration is in it, which is this walk's own derivation of what the pre-pass
+\ recorded in LSLOT - a slot holding some other name than the one a reader
+\ resolved to means the static scope and the walk's stack have come apart, and
+\ LOCAL-READ? refuses that rather than answering with the wrong value. LSX is
+\ that name's crossing answer, copied here because two names may share one slot
+\ and only one of them is live: reading LCROSS by slot would give a name the
+\ other one's answer and put a value on the data stack that nothing needed there.
+create LOWN LMAX cells allot         \ which declaration is in this slot
+create LSX LMAX cells allot          \ and whether that one has to travel
 create LG-A LMAX cells allot         \ the row each group's `{:` is on
 create LG-B LMAX cells allot         \ the row its `:}` is on, or -1 while it is open
 create LG-K LMAX cells allot         \ how many names it declares
+create LG-F LMAX cells allot         \ the first declaration index it declares
 create LBUF LNAME-CAP allot
 
 : LRESET ( -- )
@@ -809,13 +854,33 @@ create LBUF LNAME-CAP allot
    LMAX 0 ?do
       0 i cells LCROSS + !
       VQ-NONE i cells LQ + !
+      -1 i cells LOWN + !
+      0 i cells LSX + !
    loop ;
 
 : LAT ( n -- n )
    dup 0 < over LN @ >= or if E-NELAB-LOCAL throw then ;
 
-: LQ@ ( n -- n )     LAT cells LQ + @ ;
-: LQ! ( n n -- )     {: k:n i:n :}  k i LAT cells LQ + ! ;
+\ The other index space's bound, and it is the TABLE's ceiling rather than LBN.
+\ A slot is filled before it is live - DO-CLOSE-LOCALS writes a group's values
+\ into its slots and raises LBN afterwards, because until every one of them is
+\ written the group is half bound - so a bound keyed on LBN would refuse the
+\ writes that make it true. What LSAT answers is that the index names a row of
+\ these tables at all; whether that row is LIVE is LBN's question and the readers
+\ that care ask it themselves.
+: LSAT ( n -- n )
+   dup 0 < over LMAX >= or if E-NELAB-LOCAL throw then ;
+
+: LQ@ ( n -- n )     LSAT cells LQ + @ ;
+: LQ! ( n n -- )     {: k:n i:n :}  k i LSAT cells LQ + ! ;
+
+: LOWN@ ( n -- n )   LSAT cells LOWN + @ ;
+: LOWN! ( n n -- )   {: k:n i:n :}  k i LSAT cells LOWN + ! ;
+
+: LSX@ ( n -- bool ) LSAT cells LSX + @ 0<> ;
+: LSX! ( bool n -- )
+   {: f:bool i:n :}
+   f if 1 else 0 then  i LSAT cells LSX + ! ;
 
 \ The row at which this local comes into scope: the one its group's `:}` is on,
 \ or -1 while that group is still being read.
@@ -830,15 +895,37 @@ create LBUF LNAME-CAP allot
    {: row:n k:n :}
    row k cells LROW + ! ;
 
-\ Whether this local is a name that row may use: its group has closed, and
-\ closed before the row.
+\ And the row at which it goes out of scope again: the one the closer of the
+\ structure that was open when its group closed is on, or the row after the
+\ body's last when no structure was open. -1 while the pre-pass has not reached
+\ that closer yet, which is also what "still in scope" means to the pre-pass.
+: LEND@ ( n -- n )
+   LAT cells LEND + @ ;
+
+: LEND! ( n n -- )
+   {: row:n k:n :}
+   row k cells LEND + ! ;
+
+: LSLOT@ ( n -- n )
+   LAT cells LSLOT + @ ;
+
+: LSLOT! ( n n -- )
+   {: s:n k:n :}
+   s k cells LSLOT + ! ;
+
+\ Whether this local is a name that row may use: its group has closed, closed
+\ before the row, and the scope it opened has not closed by the row. The upper
+\ end is what makes a mention after the structure whatever ELSE the body means by
+\ it rather than this local, which is the engine's own answer - measured, in the
+\ header above.
 : LIVE-AT? ( n n -- bool )
    {: k:n ix:n :}
    k LROW@ {: r:n :}
    r 0 < if false exit then
-   r ix < ;
+   r ix < if ix k LEND@ < exit then
+   false ;
 
-\ One group's three facts, each read through the same bound. A group index the
+\ One group's four facts, each read through the same bound. A group index the
 \ pre-pass has not filled is refused rather than answered.
 : LGAT ( n -- n )
    dup 0 < over LG-N @ >= or if E-NELAB-LOCAL throw then ;
@@ -851,6 +938,9 @@ create LBUF LNAME-CAP allot
 
 : LG-K@ ( n -- n )
    LGAT cells LG-K + @ ;
+
+: LG-F@ ( n -- n )
+   LGAT cells LG-F + @ ;
 
 \ Whether ONE of this body's calls keeps no register for the caller, which is the
 \ half of "does this local travel" that is about the CALLEES rather than about
@@ -1631,6 +1721,18 @@ create CS-JOINED CMAX cells allot    \ whether any arm of this frame reached its
 create CS-RD CMAX cells allot        \ parked values the return vector held when this structure opened
 create CS-ARMR CMAX cells allot      \ parked values the first arm of an `if` left, beside CS-ARM
 create CS-XR CMAX cells allot        \ parked values the first `while` of a loop left, beside CS-XD
+\ AND TWO MORE, WHICH ARE THE LOCALS SCOPE ASKED THE SAME WAY. A group may open
+\ and close inside a structure, so the number of names in scope is no longer the
+\ same at a structure's closer as at its opener - and what every seam of the
+\ structure has to hand over is the OPENER's, because that is what the blocks it
+\ branches to were opened with. `lb` is what the structure opened holding, which
+\ each closer restores before it hands anything over and which `while` and
+\ `leave` borrow for one edge; `larm` is what the arm being read opened holding,
+\ which `endof` restores, and it is a second field for the reason CF-OF pushes a
+\ second frame in src/core/checker.f - a name bound in one arm dies at that arm's
+\ `endof`, not at the form's own closer.
+create CS-LB CMAX cells allot        \ bound locals the walk held when this structure opened
+create CS-LARM CMAX cells allot      \ and when the arm being read opened, or -1
 CMAX TYPED-BUFFER CS-IDX IR-ID:ir-value-id
 CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 
@@ -1667,6 +1769,8 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
    RN @ t cells CS-RD + !
    -1 t cells CS-ARMR + !
    -1 t cells CS-XR + !
+   LBN @ t cells CS-LB + !
+   -1 t cells CS-LARM + !
    t 1+ CS-N ! ;
 
 : CS-POP ( -- )
@@ -1696,6 +1800,8 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 : CS-RD@ ( n -- n )       cells CS-RD + @ ;
 : CS-ARMR@ ( n -- n )     cells CS-ARMR + @ ;
 : CS-XR@ ( n -- n )       cells CS-XR + @ ;
+: CS-LB@ ( n -- n )       cells CS-LB + @ ;
+: CS-LARM@ ( n -- n )     cells CS-LARM + @ ;
 
 : CS-JOIN! ( n n -- )     cells CS-JOIN + ! ;
 : CS-ARM! ( n n -- )      cells CS-ARM + ! ;
@@ -1708,6 +1814,43 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 : CS-TRAP! ( n n -- )     cells CS-TRAP + ! ;
 : CS-OFIX! ( n n -- )     cells CS-OFIX + ! ;
 : CS-JOINED+ ( n -- )     cells CS-JOINED +  1 swap ! ;
+: CS-LARM! ( n n -- )     cells CS-LARM + ! ;
+
+\ ---- giving a structure's names back ------------------------------------------
+\ THE CLOSER RESTORES THE MARK, WHICH IS CF-LOC-REST ARRIVED AT FROM THE OTHER
+\ SIDE. Every name bound inside the structure stops being a name here, and the
+\ slot it held goes back so the next structure's group can take it. It is done
+\ BEFORE the closer hands anything over, because what it changes is what CROSS-L
+\ counts and what the operand and argument lists carry.
+\
+\ IT IS A REFUSAL AND NOT A CLAMP. Coming out of a structure holding FEWER names
+\ than went into it would mean a closer had given back slots its own structure
+\ never took - a group closed under one structure and its scope ended under
+\ another - and the next seam would hand a block a list shorter than the one that
+\ block was opened with. Nothing is meant to reach it: the pre-pass and the walk
+\ move the same stack over the same rows.
+: LOC-REST ( n -- )
+   {: m:n :}
+   LBN @ m < if E-NELAB-LOCAL throw then
+   m LBN ! ;
+
+\ AND A SEAM THAT LEAVES FROM THE MIDDLE BORROWS IT. `while` branches out of a
+\ loop it is still inside and `leave` branches out of one whose body goes on
+\ after it, so the block each reaches is the one the CLOSER opens and the edge
+\ has to carry what that block takes - while the walk itself goes on holding what
+\ it held, because the rest of the body is still inside the group. So the mark is
+\ taken for one edge and given back, and the give-back is checked the same way:
+\ coming back to fewer names than were held would mean the seam had dropped some.
+: LOC-BORROW ( n -- n )
+   {: m:n :}
+   LBN @ {: had:n :}
+   m LOC-REST
+   had ;
+
+: LOC-RETURN ( n -- )
+   {: had:n :}
+   had LBN @ < if E-NELAB-LOCAL throw then
+   had LBN ! ;
 
 \ One more `while` has been met by the loop this frame is.
 : CS-WHILE+ ( n -- )
@@ -1822,12 +1965,19 @@ variable DOK                         \ counted loops the search below has passed
    0 CROSS-N ;
 
 \ How many bound locals cross an edge: the ones a call can reach, which
-\ CROSS-SCAN worked out for the whole definition. Only the bound PREFIX counts -
-\ a name whose group has not closed yet holds no value to carry, whatever the
-\ declaration said - and before the first group has closed the prefix is empty.
+\ CROSS-SCAN worked out for the whole definition. Only the LIVE slots count - a
+\ name whose group has not closed yet holds no value to carry, and one whose
+\ scope has closed again holds a value nothing below the closer can name - and
+\ before the first group has closed nothing is live.
+\
+\ IT IS READ AT SEAMS WHERE LBN IS THE FRAME'S MARK, which is what makes it one
+\ number at both ends of an edge now that a group may close inside a structure.
+\ Every closer restores the mark before it hands anything over, and the two seams
+\ that leave from the middle borrow it (LOC-BORROW below), so a seam never reads
+\ a count that includes a name the block it is branching to has never heard of.
 : CROSS-L ( -- n )
    0
-   LBN @ 0 ?do  i LCROSS? if 1+ then  loop ;
+   LBN @ 0 ?do  i LSX@ if 1+ then  loop ;
 
 \ One open loop's two counters as operands of the branch or call being staged,
 \ index first. Which order they go in matters only in that all the carriers
@@ -1855,9 +2005,16 @@ variable DOK                         \ counted loops the search below has passed
    {: lo:n h:n :}
    h 0 ?do  lo i + DO-NTH LOOP-ARG+  loop ;
 
-\ The crossing locals, in declaration order, as operands and as arguments. A
-\ local is a name for a value and nothing else, so carrying one is carrying the
-\ value it names and rebinding the name to what arrived.
+\ The crossing locals, in SLOT order, as operands and as arguments. A local is a
+\ name for a value and nothing else, so carrying one is carrying the value it
+\ names and rebinding the name to what arrived.
+\
+\ SLOT ORDER IS DECLARATION ORDER AMONG THE NAMES THAT ARE LIVE TOGETHER, which
+\ is why one order serves both lists without either having to sort anything. A
+\ slot is taken when its group closes and given back at the closer of the
+\ structure that group was in, so two names live at the same time were declared
+\ in the same order their slots are in - and the ones between them, whose scopes
+\ have closed, are exactly the ones neither list carries.
 \
 \ `l` IS EITHER ALL OF THEM OR NONE, and it is checked rather than trusted: the
 \ seams that hand nothing over say so with a zero, and everything else takes
@@ -1879,7 +2036,7 @@ variable DOK                         \ counted loops the search below has passed
 : NO-REAL-LOCAL-CK ( n -- )
    LOCAL-CK 0= if exit then
    LBN @ 0 ?do
-      i LCROSS? if
+      i LSX@ if
          i LVAL @ REAL-VALUE? if E-NELAB-TYPE throw then
       then
    loop ;
@@ -1888,13 +2045,13 @@ variable DOK                         \ counted loops the search below has passed
    dup NO-REAL-LOCAL-CK
    LOCAL-CK 0= if exit then
    LBN @ 0 ?do
-      i LCROSS? if CTX BLD  i LVAL @  IR-BUILD:ADD-OPERAND then
+      i LSX@ if CTX BLD  i LVAL @  IR-BUILD:ADD-OPERAND then
    loop ;
 
 : LOCAL-ARGS+ ( n -- )
    LOCAL-CK 0= if exit then
    LBN @ 0 ?do
-      i LCROSS? if
+      i LSX@ if
          CTX BLD  CTX BLD CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG  i LVAL !
       then
    loop ;
@@ -2289,10 +2446,11 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 
 \ ---- finding the locals groups -----------------------------------------------
 \ One walk of the body before either of the other two, recording where each
-\ group is and which names it declares. It asks the word model only about rows
-\ the model could answer for: MODELS? is the one reader here that treats an
-\ undeclared word as an ordinary answer rather than a refusal, which is exactly
-\ what a name the program chose is.
+\ group is, which names it declares, and where each of those names stops being
+\ that local. It asks the word model only about rows the model could answer for:
+\ MODELS? is the one reader here that treats an undeclared word as an ordinary
+\ answer rather than a refusal, which is exactly what a name the program chose
+\ is.
 : MODELED-AS? ( IR-ARENA:arena n HIR:meaning -- bool )
    {: r:IR-ARENA:arena ix:n m:HIR:meaning :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
@@ -2300,11 +2458,39 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ m HIR-MEANING:EQ ;
 
+\ Whether the group being read can still SEE this declared name: it is one this
+\ same group has already declared - a group's names all come into scope at its
+\ one closer - or it is bound and its scope has not closed.
+: IN-SCOPE-NOW? ( n -- bool )
+   {: k:n :}
+   k LG-K0 @ >= if true exit then
+   k LROW@ 0 < if false exit then
+   k LEND@ 0 < ;
+
+\ THE DUPLICATE THIS FILE REFUSES IS A LIVE ONE, and only a live one. Two groups
+\ in structures that do not contain each other may declare the same name: their
+\ scopes never overlap, each mention resolves to exactly one of them, and the
+\ tree writes it constantly - a loop that binds `a` followed by another loop that
+\ binds `a`. So the question is asked about the names in scope where the
+\ declaration stands rather than about every name the body ever declared.
+\
+\ A LIVE ONE IS REFUSED BECAUSE THE TWO AUTHORITIES DISAGREE ABOUT WHAT THE
+\ MENTION MEANS, which is a measured fact and not a missing capability here. The
+\ checker resolves a mention to the MOST RECENT binding of that name
+\ (src/core/checker.f LOC-REF? counts down from #LOC); the engine resolves it to
+\ the OUTERMOST (src/habu/habu2.f EMIT-LOC-FIND counts up from zero). So
+\ `: SY ( n -- n ) {: v:n :} v 0 > if 1 0= {: v:bool :} v if 1 else 2 then else 0 then ;`
+\ certifies - only the inner `v:bool` makes `v if` type - and `5 SY` answers 1,
+\ which is the OUTER `v` branched on. A compiler cannot be right about a mention
+\ its two authorities read differently, so this one refuses the declaration that
+\ creates the ambiguity and says so. Dot habu-reconcile-the-locals-ca3fdb26
+\ carries the reconciliation; when it lands this refusal changes its reason or
+\ goes away entirely.
 : DUP-LOCAL? ( IR-ID:ir-symbol-id -- bool )
    {: sy:IR-ID:ir-symbol-id :}
    false
    LN @ 0 ?do
-      sy i LNAME @ NFROZEN:SAME-SYM? or
+      i IN-SCOPE-NOW? if  sy i LNAME @ NFROZEN:SAME-SYM? or  then
    loop ;
 
 \ ---- the one name a local may not take ----------------------------------------
@@ -2385,7 +2571,140 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    sy DUP-LOCAL? if E-NELAB-LOCAL throw then
    sy LN @ LNAME !
    -1 LN @ LROW!
+   -1 LN @ LEND!
+   -1 LN @ LSLOT!
    LN @ 1+ LN ! ;
+
+\ ---- the scopes the pre-pass is inside ---------------------------------------
+\ ONE MARK PER OPEN STRUCTURE, WHICH IS THE CHECKER'S CF.LN READ OFF THE TAPE
+\ INSTEAD OF OFF A RUNNING FRAME. The pre-pass is the only walk that can answer
+\ where a name stops being that local: eight later passes ask LOCAL-OF - the
+\ resolve, inline, tag-dispatch, defer, memory, crossing, skeleton and build
+\ walks - and only two of them keep a control stack of their own. So the answer
+\ is derived once, here, and every reader gets the same one.
+\
+\ THIS STACK REFUSES NOTHING ABOUT CONTROL BALANCE, and that is deliberate. A
+\ stray closer, an opener nothing closes, and a `then` over a `begin` are all
+\ refusals the skeleton and the build already make, by name and against their own
+\ row (CS-OPENER-CK, and COLON's own check that nothing is left open). Claiming
+\ them here would move a refusal off its owner and onto the first pass that
+\ happens to run. What this stack does instead is stop at the bottom: a closer
+\ with nothing open restores to nothing, and the body it came from is refused a
+\ few passes later, before any of these rows is read.
+variable SS-N                        \ open structures the pre-pass is inside
+variable SS-L                        \ names in scope where the pre-pass stands
+create SS-M CMAX cells allot         \ names in scope when each of them opened
+
+: SS-RESET ( -- )
+   0 SS-N !
+   0 SS-L ! ;
+
+\ The ceiling is the control stack's, because this is that stack counted a second
+\ time - a body too deep for one is too deep for the other, and E-NELAB-BLOCK is
+\ what CS-PUSH already calls it.
+: SS-PUSH ( -- )
+   SS-N @ CMAX >= if E-NELAB-BLOCK throw then
+   SS-L @  SS-N @ cells SS-M +  !
+   SS-N @ 1+ SS-N ! ;
+
+: SS-MARK ( -- n )
+   SS-N @ 1 < if 0 exit then
+   SS-N @ 1- cells SS-M + @ ;
+
+\ Every name bound above the mark goes out of scope on this row. Which names
+\ those are is asked of the declarations rather than kept in a second table: a
+\ name is above the mark when it holds a slot at or past it, and it is still in
+\ scope when nothing has ended it - an inner structure that already ended one got
+\ there first and this row leaves it alone.
+: SS-REST ( n -- )
+   {: ix:n :}
+   SS-MARK {: m:n :}
+   LN @ 0 ?do
+      i LROW@ 0 >=  i LEND@ 0 <  and  i LSLOT@ m >=  and if ix i LEND! then
+   loop
+   m SS-L ! ;
+
+: SS-CLOSE ( n -- )
+   SS-REST
+   SS-N @ 1 < if exit then
+   SS-N @ 1- SS-N ! ;
+
+\ WHETHER THIS ROW IS A MENTION OF A NAME THAT IS IN SCOPE HERE, which has to be
+\ asked before the row is read as a control word. It is LOCAL-OF's question asked
+\ while LOCAL-OF's own answer is still being built, so it cannot call it: LEND is
+\ what LIVE-AT? reads for the upper end and this scan is what fills it. What the
+\ scan holds instead is the same fact in the other direction - a name whose group
+\ closed before this row and whose scope has NOT been closed yet is exactly a name
+\ in scope here - and the spelling compare is LOCAL-OF's, byte for byte and
+\ unfolded, because that is what the engine's own local lookup does.
+\
+\ IT IS NOT AN OPTIMISATION, IT IS THE RULE THIS FILE ALREADY STATES: every pass
+\ that reads a body token for what it MEANS asks LOCAL-OF first. Without it
+\ `: W ( n -- n ) {: again:n :} again again + ;` - which test/compiler/
+\ native-again.f runs against the engine - reads its two mentions as the loop
+\ closer, gives back marks no structure ever took, and the walk after it meets a
+\ name the scan has already put out of scope. Every reserved spelling a body may
+\ bind is the same hazard: `of`, `i`, `is`, `then`.
+: SCOPE-LOCAL? ( n -- bool )
+   {: ix:n :}
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   false
+   LN @ 0 ?do
+      i LROW@ 0 >=  i LROW@ ix <  and  i LEND@ 0 <  and if
+         sy i LNAME @ NFROZEN:SAME-SYM? or
+      then
+   loop ;
+
+\ What one control word does to the scopes. Every opener takes a mark, every
+\ closer gives one back, `else` and `endof` give one back without closing the
+\ structure because each opens a sibling arm, and `while` does neither because
+\ its frame stays open - which is CF-ELSE, CF-ENDOF and CF-WHILE in
+\ src/core/checker.f, arm for arm. `of` takes a mark of its own for the same
+\ reason CF-OF pushes a frame: an arm's names die at its `endof` and not at the
+\ form's own closer.
+: SCOPE-STEP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   ix SCOPE-LOCAL? if exit then
+   r ix HIR-MEANING:CONTROL MODELED-AS? 0= if exit then
+   r  ix WSYM  HIR-WORD:CTRL@
+   MATCH HIR:ctrl
+      open-if      OF SS-PUSH ENDOF
+      mid-else     OF ix SS-REST ENDOF
+      close-if     OF ix SS-CLOSE ENDOF
+      open-begin   OF SS-PUSH ENDOF
+      mid-while    OF ENDOF
+      close-until  OF ix SS-CLOSE ENDOF
+      close-repeat OF ix SS-CLOSE ENDOF
+      close-again  OF ix SS-CLOSE ENDOF
+      open-do      OF SS-PUSH ENDOF
+      open-do-skip OF SS-PUSH ENDOF
+      close-loop   OF ix SS-CLOSE ENDOF
+      index        OF ENDOF
+      drop-loop    OF ENDOF
+      early-leave  OF ENDOF
+      early-exit   OF ENDOF
+      self-call    OF ENDOF
+      open-match   OF SS-PUSH ENDOF
+      match-arm    OF SS-PUSH ENDOF
+      close-arm    OF ix SS-CLOSE ENDOF
+      close-match  OF ix SS-CLOSE ENDOF
+      open-case    OF SS-PUSH ENDOF
+      close-case   OF ix SS-CLOSE ENDOF
+      make-bundle  OF ENDOF
+      open-quot    OF SS-PUSH ENDOF
+      close-quot   OF ix SS-CLOSE ENDOF
+      bind-defer   OF ENDOF
+      exec         OF ENDOF
+      \ `catch` opens no scope, for the reason DO-CATCH gives: it stages ONE call
+      \ to the engine's own `catch` and no block at all, so it is a call here
+      \ exactly as `execute` and `is` are. The quotation it consumes has already
+      \ been scoped by its own two tokens above. Measured rather than assumed:
+      \ `{: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} [: CW ;] catch drop a 3 * +
+      \ loop k 5 * +` certifies and answers 429 for 3 and 4, so the checker keeps
+      \ a name bound in a loop body in scope across a `catch` in that same body.
+      catch        OF ENDOF
+   ;MATCH ;
 
 \ A group opens. Its row is recorded, its names start where the ones declared so
 \ far end, and it is the group every row until the closer belongs to. The
@@ -2399,43 +2718,60 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    ix g cells LG-A + !
    -1 g cells LG-B + !
    0 g cells LG-K + !
+   LN @ g cells LG-F + !
    LN @ LG-K0 !
    g LG-OPEN ! ;
 
 \ And it closes. The row it closes on is where its names come into scope, which
 \ is what every later reader asks LIVE-AT? about, so it is written into each of
-\ them here rather than derived twice.
+\ them here rather than derived twice - and so is the SLOT each of them takes,
+\ which is where the live scope stood plus its place in the group. The scope
+\ grows by exactly the names this group declares, and it is the closer that grows
+\ it: a name declared here is not in scope until the group that declares it is
+\ closed.
 : GROUP-CLOSE ( n -- )
    {: ix:n :}
    LG-OPEN @ {: g:n :}
+   LG-K0 @ {: k0:n :}
+   SS-L @ {: s:n :}
    ix g cells LG-B + !
-   LN @ LG-K0 @ -  g cells LG-K + !
-   LN @ LG-K0 @ ?do
+   LN @ k0 -  g cells LG-K + !
+   LN @ k0 ?do
       ix i LROW!
+      s i + k0 -  i LSLOT!
    loop
+   LN @ k0 -  s +  SS-L !
    -1 LG-OPEN ! ;
 
-\ One row of the pre-pass. Outside a group the only row that matters is an
-\ opener; inside one, every row is a declared name until the closer. A second
-\ group is an ordinary group and not a refusal: the names it declares join the
-\ ones already declared, and come into scope at its own closer.
+\ One row of the pre-pass. Outside a group a row either opens one or moves the
+\ scopes; inside one, every row is a declared name until the closer. A second
+\ group is an ordinary group and not a refusal: the names it declares come into
+\ scope at its own closer and go out again where its structure closes.
 : SCAN-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    LG-OPEN @ 0 < if
-      r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if ix GROUP-OPEN then exit
+      r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if ix GROUP-OPEN exit then
+      r ix SCOPE-STEP exit
    then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-NELAB-LOCAL throw then
    r ix HIR-MEANING:CLOSE-LOCALS MODELED-AS? if ix GROUP-CLOSE exit then
    r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if E-NELAB-LOCAL throw then
    r ix DECLARE-LOCAL ;
 
+\ A name still in scope when the body ends is in scope for the whole of what is
+\ left of it, so its end is the row after the last - one past every row a reader
+\ can ask about, which is what makes LIVE-AT? answer true for all of them.
 : LOCALS-SCAN ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena n:n :}
    LRESET
+   SS-RESET
    n 1 ?do
       r i SCAN-STEP
    loop
-   LG-OPEN @ 0 >= if E-NELAB-LOCAL throw then ;
+   LG-OPEN @ 0 >= if E-NELAB-LOCAL throw then
+   LN @ 0 ?do
+      i LEND@ 0 < if n i LEND! then
+   loop ;
 
 \ ---- is this row a particular control word? ----------------------------------
 \ Asked by three passes below - the tag-dispatch pre-pass, the scan that decides
@@ -4177,6 +4513,7 @@ create JOIN-TAB TMAX cells allot
    {: ix:n :}
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
    t CS-ELSE? if E-NELAB-CTRL throw then
+   t CS-LB@ LOC-REST
    t CS-DEPTH@ {: d:n :}
    t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: e:n :}
@@ -4227,6 +4564,7 @@ create JOIN-TAB TMAX cells allot
 : DO-CLOSE-IF ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
+   t CS-LB@ LOC-REST
    PATH-ENDED? {: armend:bool :}
    t DO-JOIN-WIDTH {: w:n :}
    t DO-JOIN-RD {: rd:n :}
@@ -4296,7 +4634,9 @@ create JOIN-TAB TMAX cells allot
    VN @ t CS-XD!
    RN @ t CS-XR!
    t CS-WHILE+
+   t CS-LB@ LOC-BORROW {: had:n :}
    ix j STUB
+   had LOC-RETURN
    ix OPEN-PLAIN ;
 
 \ `repeat`: the body ends by branching back to the header, and the block that
@@ -4308,6 +4648,7 @@ create JOIN-TAB TMAX cells allot
    {: ix:n :}
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
    t CS-NW@ 0= if E-NELAB-CTRL throw then
+   t CS-LB@ LOC-REST
    t CS-DEPTH@ {: d:n :}
    t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: h:n :}
@@ -4330,6 +4671,7 @@ create JOIN-TAB TMAX cells allot
    {: ix:n :}
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
    t CS-NW@ 0<> if E-NELAB-CTRL throw then
+   t CS-LB@ LOC-REST
    t CS-DEPTH@ {: d:n :}
    t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: h:n :}
@@ -4371,6 +4713,7 @@ create JOIN-TAB TMAX cells allot
    {: ix:n :}
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
    t CS-NW@ 0<> if E-NELAB-CTRL throw then
+   t CS-LB@ LOC-REST
    t CS-DEPTH@ {: d:n :}
    t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: h:n :}
@@ -4503,6 +4846,7 @@ create JOIN-TAB TMAX cells allot
 : DO-CLOSE-LOOP ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-DO CS-OPENER-CK {: t:n :}
+   t CS-LB@ LOC-REST
    t CS-DEPTH@ {: d:n :}
    t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: j:n :}
@@ -4571,6 +4915,14 @@ create JOIN-TAB TMAX cells allot
 \ loop's counters are dead on the way there and only the enclosing loops' travel.
 \ The frame is still on the control stack when this runs, exactly as it is at
 \ that stub, so the two ranges are written the same way and mean the same thing.
+\
+\ AND WITH THE LOOP'S OWN NAMES AND NOT THE WALK'S, for the same reason read
+\ about the other carrier. A group closed inside the body binds names the block
+\ after the loop has never heard of - `loop`'s exit stub restores the mark before
+\ it branches there, and this edge lands in the same block - so the mark is
+\ borrowed for this one edge. It is given back because the body goes on: the
+\ `then` that closes the `if` this `leave` is in is still to come, and the names
+\ are in scope until it.
 : DO-LEAVE ( n -- )
    {: ix:n :}
    DO-FRAME {: t:n :}
@@ -4579,7 +4931,9 @@ create JOIN-TAB TMAX cells allot
    t CS-JOIN@ JOIN-CK {: j:n :}
    VN @ d <> if E-NELAB-JOIN throw then
    RN @ rd <> if E-NELAB-JOIN throw then
+   t CS-LB@ LOC-BORROW {: had:n :}
    ix j  EXIT-CROSS-DO CROSS-L  TERM-BR-H
+   had LOC-RETURN
    PATH-DEAD PATH-END ! ;
 
 \ ---- the three tag-dispatch forms --------------------------------------------
@@ -4764,6 +5118,7 @@ create JOIN-TAB TMAX cells allot
    ix MEND@ if ix t CS-TRAP@ MATCH-TRAP else ix  ix JOIN-OF JOIN-CK  STUB then
    ix OPEN-PLAIN
    ix t ARM-RESHAPE
+   LBN @ t CS-LARM!
    ix t CS-OFIX! ;
 
 \ `endof`: the arm reaches the join, and the block that opens is the one its own
@@ -4776,6 +5131,9 @@ create JOIN-TAB TMAX cells allot
    t CS-ADT? 0= if E-NELAB-CTRL throw then
    t CS-OFIX@ {: ofix:n :}
    ofix 0 < if E-NELAB-CTRL throw then
+   t CS-LARM@ {: lm:n :}
+   lm 0 < if E-NELAB-CTRL throw then
+   lm LOC-REST
    PATH-ENDED? if
       PATH-LIVE PATH-END !
    else
@@ -4783,6 +5141,7 @@ create JOIN-TAB TMAX cells allot
       t CS-JOINED+
    then
    -1 t CS-OFIX!
+   -1 t CS-LARM!
    ofix MEND@ if exit then
    ofix JOIN-OF JOIN-CK {: nx:n :}
    NB @ nx <> if E-NELAB-CTRL throw then
@@ -4809,6 +5168,7 @@ create JOIN-TAB TMAX cells allot
 : DO-CLOSE-MATCH ( n -- ) {: ix:n :}
    HIR-CTRL:OPEN-MATCH CS-OPENER-CK {: t:n :}
    t CS-OFIX@ 0 >= if E-NELAB-CTRL throw then
+   t CS-LB@ LOC-REST
    ix t ADT-JOIN
    CS-POP ;
 
@@ -4819,6 +5179,7 @@ create JOIN-TAB TMAX cells allot
 : DO-CLOSE-CASE ( n -- ) {: ix:n :}
    HIR-CTRL:OPEN-CASE CS-OPENER-CK {: t:n :}
    t CS-OFIX@ 0 >= if E-NELAB-CTRL throw then
+   t CS-LB@ LOC-REST
    PATH-ENDED? if
       PATH-LIVE PATH-END !
    else
@@ -5003,7 +5364,7 @@ variable LRK                         \ crossing locals the walk below has taken 
    l LOCAL-CK 0= if exit then
    0 LRK !
    LBN @ 0 ?do
-      i LCROSS? if
+      i LSX@ if
          CTX BLD id  CROSS-N 2 * LRK @ + 1+  IR-BUILD:OP-RESULT@  i LVAL !
          LRK @ 1+ LRK !
       then
@@ -5535,12 +5896,22 @@ create DN-BUF DN-CAP allot
 \ rule, and it is the one thing a locals group has to get right: `{: a b t :}`
 \ over a stack holding a, b, t must bind a to the deepest, not to the top.
 \
-\ The group's own place is checked twice. The row this closer is on has to be
-\ the row the pre-pass recorded for the NEXT group to bind, so the two walks
-\ agree about where the groups are and about their order; and no control
-\ structure may be open, because a group inside one would bind names on a path
-\ that does not dominate the rest of the body and this elaborator has no scoping
-\ rule for that (dot habu-scope-a-locals-2faa3d7a).
+\ The group's own place is checked twice, and so is every slot it takes. The row
+\ this closer is on has to be the row the pre-pass recorded for the NEXT group to
+\ bind, so the two walks agree about where the groups are and about their order;
+\ and each name's slot has to be the one the pre-pass worked out for it from the
+\ tape, which is the second derivation of the live scope itself. The walk's own
+\ LBN counts the slots it has filled and given back; the pre-pass's LSLOT counts
+\ the same thing off the structure nesting, and a body where they disagree is
+\ refused rather than compiled against one of the two answers.
+\
+\ A CONTROL STRUCTURE MAY BE OPEN, which is what dot
+\ habu-scope-a-locals-2faa3d7a lifted. A group inside one binds names that live
+\ until that structure's closer and no further, exactly as the checker's own
+\ CF-LOC-REST scopes them, and the slot each of them takes is given back there -
+\ so a later group in a sibling structure takes the same slot and the seams go on
+\ reading one count. The header above LMAX states the whole rule.
+\
 \ A local that a call can reach is put into a CELL here, once, and stays one. The
 \ reason is where it goes: the machine stage writes every value a call site hands
 \ over into a data-stack slot and reads it back out of that slot, and a slot is
@@ -5559,10 +5930,10 @@ create DN-BUF DN-CAP allot
 \ ones that can still hold a double: an earlier group's names were crossed at
 \ their own closer and a later group's hold no value at all.
 : BIND-CROSS-ONE ( n n -- )
-   {: ix:n k:n :}
-   k LCROSS? 0= if exit then
-   k LVAL @ REAL-VALUE? 0= if exit then
-   ix  k LVAL @  HIR-OPCODE:REALBITS CROSS-VALUE  k LVAL ! ;
+   {: ix:n s:n :}
+   s LSX@ 0= if exit then
+   s LVAL @ REAL-VALUE? 0= if exit then
+   ix  s LVAL @  HIR-OPCODE:REALBITS CROSS-VALUE  s LVAL ! ;
 
 : LOCAL-BIND-CROSS ( n n n -- )
    {: ix:n from:n k:n :}
@@ -5570,18 +5941,31 @@ create DN-BUF DN-CAP allot
       ix  from i +  BIND-CROSS-ONE
    loop ;
 
+\ One name of the group into one slot: the value, the quotation row that value
+\ names, which declaration is in the slot now, and whether THAT declaration has
+\ to travel. The last two are what let a slot be reused: the crossing answer is
+\ the name's and not the slot's, so it is copied in here where the name is known
+\ rather than read by slot at every seam.
+: BIND-ONE ( n n n -- )
+   {: base:n d:n s:n :}
+   d LSLOT@ s <> if E-NELAB-LOCAL throw then
+   base VAT  s LVAL !
+   base VQ@  s LQ!
+   d s LOWN!
+   d LCROSS?  s LSX! ;
+
 : DO-CLOSE-LOCALS ( n -- )
    {: ix:n :}
    LGB @ LG-N @ >= if E-NELAB-LOCAL throw then
    ix LGB @ LG-B@ <> if E-NELAB-LOCAL throw then
-   CS-N @ 0<> if E-NELAB-LOCAL throw then
    LGB @ LG-K@ {: k:n :}
+   LGB @ LG-F@ {: d0:n :}
    LBN @ {: from:n :}
+   from k +  LMAX > if E-NELAB-LOCAL-CAP throw then
    k VN @ > if E-NELAB-UNDER throw then
    VN @ k - {: base:n :}
    k 0 ?do
-      base i + VAT  from i + LVAL !
-      base i + VQ@  from i + LQ!
+      base i +  d0 i +  from i +  BIND-ONE
    loop
    k VDROP
    ix from k LOCAL-BIND-CROSS
@@ -5592,18 +5976,23 @@ create DN-BUF DN-CAP allot
 \ vector. It produces no operation, exactly as a rename does, because the value
 \ already exists - whatever computed it - and this only says where it is used.
 \
-\ THE SECOND TEST IS A BACKSTOP AND IS ASKED ANYWAY. LOCAL-OF answers only for a
-\ name whose group closed on an EARLIER row, and the walk reaches the rows in
-\ order and binds each group as it passes its closer, so a name it answers for
-\ is one the walk has already bound. Reaching the refusal would mean those two
-\ orders had come apart.
+\ THE TWO TESTS ARE BACKSTOPS AND ARE ASKED ANYWAY, and they are the two halves
+\ of the same agreement. LOCAL-OF answers only for a name whose scope the
+\ PRE-PASS says covers this row, and the walk reaches the rows in order, binds
+\ each group as it passes its closer and gives the slots back at each structure's
+\ closer - so a name the pre-pass calls live is one whose slot the walk is
+\ holding, and that slot holds that name. Reaching either refusal means the
+\ static scope and the walk's stack have come apart, and answering with the value
+\ in the slot would be reading whatever the other name left there.
 : LOCAL-READ? ( n -- bool )
    {: ix:n :}
    ix LOCAL-OF {: k:n :}
    k 0 < if false exit then
-   k LBN @ >= if E-NELAB-LOCAL throw then
-   k LAT LVAL @ VPUSH
-   k LQ@  VN @ 1-  VQ!
+   k LSLOT@ {: s:n :}
+   s 0 <  s LBN @ >=  or if E-NELAB-LOCAL throw then
+   s LOWN@ k <> if E-NELAB-LOCAL throw then
+   s LSAT LVAL @ VPUSH
+   s LQ@  VN @ 1-  VQ!
    true ;
 
 \ The whole control table. Every arm names the blocks one source control word

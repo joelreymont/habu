@@ -533,6 +533,11 @@ public
    \ machinery the data values do, and every case is differential against the
    \ engine through the same migration entry.
    s" test/compiler/native-rstack.f" GSI-FORK-INCLUDE
+   \ And the locals groups inside a control structure, beside all three for the
+   \ same reason again: a name bound in an arm or a loop body crosses the joins,
+   \ the loop edges and the calls those leaves measure, it compiles to no
+   \ instruction of its own, and every case goes through the same migration entry.
+   s" test/compiler/native-locals-scope.f" GSI-FORK-INCLUDE
    \ And the instrument the combining lane decides with, beside it for the same
    \ reason: it reads emitted code through that probe's walk, and its rows are
    \ routines the chain really compiled.
