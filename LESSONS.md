@@ -6304,3 +6304,17 @@ any assertion ran.
 lib/test, lib/source) - a bare --load of native-hir.f fails on
 master too. Run leaves through the gate before concluding your
 change broke them.
+
+## The match probe's two (2026-08-13)
+
+(1) A leaf's title can name the wrong axis: "multi-cell payloads
+in match" measured as fully supported, while the real blocker was
+the parametric instantiation wider than its declaration. Two of
+the leaf's three concrete claims were false, its requested
+fixtures already shipped registered, and an open dot already
+owned the real work. Eight cheap MEASURE-HELD probes separated
+the axes before any design was written.
+(2) A census histogram and a per-definition row scan must come
+from ONE process - two runs of the same instrument over the same
+tree disagreed by one row; the run printing both numbers agreed
+with itself.
