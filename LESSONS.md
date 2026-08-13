@@ -6131,3 +6131,15 @@ code. (5) The census over `src lib` is reproducible; over `tools` it
 is not - most of tools/ runs a MAIN word at load and one of them
 (build-fixpoint-main.f) exits the process, so a whole-tree census
 stops there and prints no report at all.
+
+## A refusal list can hide the miscompile it was meant to prevent (2026-08-13)
+
+The chain refused every local named after a dialect word - guarding a
+collision that could not happen (six of eight readers already asked the
+locals frame first) while the two readers that did NOT ask included one
+that silently MISCOMPILED a local named `is` (the deferred pre-pass
+stepped over it as an operand: shorter program, no refusal anywhere).
+Deleting the list and naming the invariant - every meaning-reader asks
+the frame first - exposed and closed the hole the list hid. Derive
+refusals from what can structurally reach a check, never from a list of
+spellings.
