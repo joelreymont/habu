@@ -36,6 +36,7 @@ require lib/prelude.f
 require lib/string.f
 require lib/errors.f
 require src/compiler/native/migrate.f
+require tools/codegen-compare-core.f
 
 package NCA-TEST
 
@@ -101,6 +102,11 @@ private
 \ the last site starts being recorded and the case below goes red, which is the
 \ signal to move this number too. It is built rather than written out because
 \ seventeen copies of one phrase is a line no reader can count.
+\
+\ AND THE CEILING IS REACHABLE THROUGH THE REAL ENTRY, which is why the case can
+\ measure the refusal rather than assert it in prose: seventeen sites is
+\ sixty-nine tokens, well inside the source tape's own ceiling of 128, so what
+\ answers first is the checker's table and not the tape's capacity.
 17 constant CAP-SITES                \ one more than the checker's CWIN-MAX
 4 constant SITE-TOKENS               \ [: ;] catch drop
 512 constant CAP-BUF-CAP
@@ -180,8 +186,12 @@ public
    16 SITES 2 T= ;
 
 : CAP-CASE ( -- )
-   s" past the ceiling a site is not recorded, and answers absent" T-LABEL
-   [: SRC-CAP ;] catch drop
+   s" past the ceiling a site is not recorded, and the chain refuses it by name" T-LABEL
+   [: SRC-CAP ;] E-NELAB-QUOT TTHROWSQ
+   NELAB:REFUSED-ROW  CAP-SITES 1 - CAP-SITE-TOK  T=
+   NELAB:REFUSED$ s" catch" T$=
+
+   s" and every site below the ceiling was recorded" T-LABEL
    0 CAP-SITE-TOK WIN-IN 0 T=
    CAP-SITES 2 - CAP-SITE-TOK WIN-IN 0 T=
    CAP-SITES 1 - CAP-SITE-TOK WIN-IN NDICT:CATCH-NONE T=
@@ -207,6 +217,387 @@ public
 
 ;package
 
+\ ---- the engine's compilation: the reference ---------------------------------
+\ Every body here is STRAIGHT-LINE, and that is a ceiling of the quotation path
+\ rather than of `catch`: a quotation body holding any control structure is
+\ refused by the IR verifier (E-IR-VERIFY-SUCCARG), measured on the parent binary
+\ through the pre-existing route a body reaches - an argument a callee declares -
+\ so it predates catch and is pinned as its own case below. What the bodies here
+\ CALL may branch as much as it likes, which is how the throwing cases are
+\ written.
+package NCA-FIXTURE
+
+public
+
+: NCA-OK1 ( n -- n )
+   1+ ;
+
+\ Drops the cell it was handed, puts another in its place and throws. It is the
+\ whole point of the differential: the caller gets the SECOND value back under
+\ the throw code, because a caught throw restores the stack's depth and leaves
+\ its contents alone. A chain that kept the window in a register answers the
+\ value the site started with.
+: NCA-CLOB ( n -- n )
+   drop 5 dup 3 > if 9 throw then ;
+
+\ A throw from two frames below the catch.
+: NCA-DEEP2 ( n -- n )
+   dup 3 > if 11 throw then ;
+
+: NCA-DEEP1 ( n -- n )
+   NCA-DEEP2 ;
+
+\ Leaves MORE cells than it took before it throws, so the cells above the window
+\ are written and the one IN the window is written with the first of them. The
+\ caller sees that first value, which no reading of "the stack is restored" other
+\ than the depth-only one predicts.
+: NCA-WIDE ( n -- n )
+   drop 1 2 3 4 dup 3 > if 7 throw then drop drop drop ;
+
+: NCA-D1 ( n -- n n )
+   [: NCA-CLOB ;] catch ;
+
+: NCA-D2 ( n -- n n )
+   [: NCA-OK1 ;] catch ;
+
+\ The production shape: the code into a local, then a decision on it. Twenty of
+\ the forty catch sites in src and lib are written this way. Its body is written
+\ WITHOUT a call, because a body that calls and a locals group in the definition
+\ around it is one of the two quotation-path ceilings pinned at the end of this
+\ file - a ceiling that predates catch and is measured on the parent binary.
+: NCA-D4 ( n -- n n )
+   [: 1+ ;] catch {: rc:n :}
+   rc 0 <> if 77 else 0 then ;
+
+: NCA-D5 ( n -- n )
+   3 0 ?do [: NCA-OK1 ;] catch drop loop ;
+
+: NCA-D6 ( n -- n n )
+   [: NCA-DEEP1 ;] catch ;
+
+: NCA-D7 ( n -- n n )
+   [: NCA-WIDE ;] catch ;
+
+\ Two catches in one definition whose windows are two different widths, and the
+\ shape a latched export would compile wrongly: the first takes two cells and the
+\ second one.
+: NCA-D8 ( n n -- n n n )
+   [: 1+ swap 1+ swap ;] catch drop [: 1+ ;] catch ;
+
+\ A string literal before the catch. The reader spends a literal's payload rather
+\ than tokenising it, so this is the definition whose site would move if the
+\ recorded window were filed against anything but the reader's own report count.
+: NCA-D9 ( n -- n n )
+   s" hi" 2drop [: NCA-OK1 ;] catch ;
+
+\ A value PARKED on the return stack across the catch, on both paths. The catch
+\ site is an ordinary bare call and a parked value crosses one exactly as a live
+\ data value does - src/compiler/native/elaborate.f R-OPERANDS+ and R-RESULTS@
+\ are inside CALL-OPERANDS+ and CALL-CLOSE, which is the staging DO-CATCH goes
+\ through - so what these two measure is that the seam really is the ordinary one
+\ and not a special case: the parked 42 comes back whether the body threw or not,
+\ while the window cell under it answers 5 on the throwing path and 8 on the
+\ other.
+: NCA-PT ( n -- n n n )
+   42 >r [: NCA-CLOB ;] catch r> ;
+
+: NCA-PN ( n -- n n n )
+   42 >r [: NCA-OK1 ;] catch r> ;
+
+\ ---- the three shapes the chain still refuses, compiled by the engine ---------
+\ Each is here so the refusal cases below can measure what the ENGINE answers for
+\ the very text the chain declines: a refusal is only interesting beside a
+\ working program.
+: NCA-NR ( n -- n n )
+   [: drop 5 throw ;] catch ;
+
+: NCA-BC ( n -- n n )
+   [: dup 3 > if 1+ then ;] catch ;
+
+: NCA-BL ( n -- n n )
+   [: NCA-OK1 ;] catch {: rc:n :}
+   rc 0 <> if 77 else 0 then ;
+
+;package
+
+\ ---- the chain's compilation: the subject ------------------------------------
+\ The same texts, character for character but for the fixture suffix on each
+\ name, compiled through the production migration entry.
+package NCA-MIGRATED
+
+private
+
+18 constant REGS
+
+: CALLEE1 ( ptr u8 n ptr u8 n -- )   \ the spelling the source writes, and the word it denotes
+   CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE ;
+
+: D1 ( -- )
+   s" NCA-CLOB" s" NCA-FIXTURE:NCA-CLOB" CALLEE1
+   s" : NCA-D1-N ( n -- n n ) [: NCA-CLOB ;] catch ;"
+   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+
+: D2 ( -- )
+   s" NCA-OK1" s" NCA-FIXTURE:NCA-OK1" CALLEE1
+   s" : NCA-D2-N ( n -- n n ) [: NCA-OK1 ;] catch ;"
+   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+
+: D4 ( -- )
+   s" : NCA-D4-N ( n -- n n ) [: 1+ ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
+   1 2 REGS NMIGRATE:DEFINE ;
+
+: D5 ( -- )
+   s" NCA-OK1" s" NCA-FIXTURE:NCA-OK1" CALLEE1
+   s" : NCA-D5-N ( n -- n ) 3 0 ?do [: NCA-OK1 ;] catch drop loop ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: D6 ( -- )
+   s" NCA-DEEP1" s" NCA-FIXTURE:NCA-DEEP1" CALLEE1
+   s" : NCA-D6-N ( n -- n n ) [: NCA-DEEP1 ;] catch ;"
+   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+
+: D7 ( -- )
+   s" NCA-WIDE" s" NCA-FIXTURE:NCA-WIDE" CALLEE1
+   s" : NCA-D7-N ( n -- n n ) [: NCA-WIDE ;] catch ;"
+   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+
+: D8 ( -- )
+   s" : NCA-D8-N ( n n -- n n n ) [: 1+ swap 1+ swap ;] catch drop [: 1+ ;] catch ;"
+   2 3 REGS NMIGRATE:DEFINE ;
+
+: D9 ( -- )
+   s" NCA-OK1" s" NCA-FIXTURE:NCA-OK1" CALLEE1
+   S\" : NCA-D9-N ( n -- n n ) s\q hi\q 2drop [: NCA-OK1 ;] catch ;"
+   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+
+: PT ( -- )
+   s" NCA-CLOB" s" NCA-FIXTURE:NCA-CLOB" CALLEE1
+   s" : NCA-PT-N ( n -- n n n ) 42 >r [: NCA-CLOB ;] catch r> ;"
+   1 3 REGS NMIGRATE:DEFINE-CALLING ;
+
+: PN ( -- )
+   s" NCA-OK1" s" NCA-FIXTURE:NCA-OK1" CALLEE1
+   s" : NCA-PN-N ( n -- n n n ) 42 >r [: NCA-OK1 ;] catch r> ;"
+   1 3 REGS NMIGRATE:DEFINE-CALLING ;
+
+public
+
+: RUN ( -- )
+   D1 D2 D4 D5 D6 D7 D8 D9 PT PN ;
+
+;package
+
+package NCA-FIXTURE
+public
+
+NCA-MIGRATED:RUN
+
+;package
+
+\ ---- the differentials -------------------------------------------------------
+package NCA-DIFF
+
+private
+
+18 constant REGS
+
+: MEASURE-AT ( ptr u8 n n n -- )
+   REGS NMIGRATE:MEASURE-HELD ;
+
+\ A migration that stages a callee cannot be measured without publishing - there
+\ is no held entry that takes a staged list - so the two halves of the calling
+\ case go through the publishing entry under names of their own.
+: DEFINE-AT ( ptr u8 n n n -- )
+   REGS NMIGRATE:DEFINE-CALLING ;
+
+\ The spelling is the QUALIFIED one, because these two migrations run with this
+\ suite's own package open rather than the fixture's: the source they compile is
+\ evaluated in the scope this file is in, so a bare tail would resolve to nothing.
+: CALLEE-OK1 ( -- )
+   s" NCA-FIXTURE:NCA-OK1" s" NCA-FIXTURE:NCA-OK1"
+   CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE ;
+
+\ THE TWO ANSWERS ARE BOUND BEFORE EITHER IS COMPARED, because a catch site
+\ leaves TWO cells and a bare pair of comparators over four stack cells would
+\ hold each answer against ITSELF: the top two values are the second call's
+\ under and code, not one value from each call. Naming them is what makes each
+\ assertion a comparison between the engine's answer and the chain's.
+: D1= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-D1   v NCA-FIXTURE:NCA-D1-N
+   {: eu:n er:n cu:n cr:n :}
+   er cr T=  eu cu T= ;
+
+: D2= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-D2   v NCA-FIXTURE:NCA-D2-N
+   {: eu:n er:n cu:n cr:n :}
+   er cr T=  eu cu T= ;
+
+: D4= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-D4   v NCA-FIXTURE:NCA-D4-N
+   {: eu:n er:n cu:n cr:n :}
+   er cr T=  eu cu T= ;
+
+: D5= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-D5   v NCA-FIXTURE:NCA-D5-N   T= ;
+
+: D6= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-D6   v NCA-FIXTURE:NCA-D6-N
+   {: eu:n er:n cu:n cr:n :}
+   er cr T=  eu cu T= ;
+
+: D7= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-D7   v NCA-FIXTURE:NCA-D7-N
+   {: eu:n er:n cu:n cr:n :}
+   er cr T=  eu cu T= ;
+
+: D8= ( n n -- ) {: a:n b:n :}
+   a b NCA-FIXTURE:NCA-D8  a b NCA-FIXTURE:NCA-D8-N
+   {: e1:n e2:n e3:n c1:n c2:n c3:n :}
+   e1 c1 T=  e2 c2 T=  e3 c3 T= ;
+
+: D9= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-D9   v NCA-FIXTURE:NCA-D9-N
+   {: eu:n er:n cu:n cr:n :}
+   er cr T=  eu cu T= ;
+
+: PT= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-PT   v NCA-FIXTURE:NCA-PT-N
+   {: eu:n er:n ep:n cu:n cr:n cp:n :}
+   ep cp T=  er cr T=  eu cu T= ;
+
+: PN= ( n -- ) {: v:n :}
+   v NCA-FIXTURE:NCA-PN   v NCA-FIXTURE:NCA-PN-N
+   {: eu:n er:n ep:n cu:n cr:n cp:n :}
+   ep cp T=  er cr T=  eu cu T= ;
+
+public
+
+\ THE ONE ANSWER THAT DECIDES THIS WHOLE LANE. `7 NCA-D1` is 9 over 5, not 9 over
+\ 7: the caught body dropped the caller's cell, wrote another in its slot and
+\ threw, and what the engine restores is the DEPTH. The differential holds the
+\ chain to that, and the number a chain that cached the window would answer - 7 -
+\ is the value the site started with, which no shape assertion would ever notice.
+: CONTENTS-CASE ( -- )
+   s" a caught throw restores the depth and not the contents" T-LABEL
+   7 NCA-FIXTURE:NCA-D1 {: eu:n er:n :}
+   er 9 T=  eu 5 T=
+   7 D1=  0 D1=  100 D1= ;
+
+: NORMAL-CASE ( -- )
+   s" the path where nothing throws answers the engine too" T-LABEL
+   7 NCA-FIXTURE:NCA-D2 {: eu:n er:n :}
+   er 0 T=  eu 8 T=
+   7 D2=  0 D2=  -3 D2= ;
+
+: LOCAL-CASE ( -- )
+   s" the code into a local and a decision on it: the production shape" T-LABEL
+   7 D4=  0 D4=  -3 D4= ;
+
+: LOOP-CASE ( -- )
+   s" a catch inside a counted loop, once per turn" T-LABEL
+   7 NCA-FIXTURE:NCA-D5 10 T=
+   7 D5=  0 D5=  -3 D5= ;
+
+: DEEP-CASE ( -- )
+   s" a throw from two frames below the catch, and the same body not throwing" T-LABEL
+   7 NCA-FIXTURE:NCA-D6 {: du:n dr:n :}
+   dr 11 T=  du 7 T=
+   7 D6=  2 D6=  4 D6=  -1 D6= ;
+
+: WIDEN-CASE ( -- )
+   s" a body that leaves more cells than it took before it throws" T-LABEL
+   7 NCA-FIXTURE:NCA-D7 {: wu:n wr:n :}
+   wr 7 T=  wu 1 T=
+   7 D7=  0 D7= ;
+
+: TWO-WINDOW-CASE ( -- )
+   s" two catches with two different windows, in one definition" T-LABEL
+   5 6 D8=  0 0 D8=  -2 9 D8= ;
+
+: STRING-SITE-CASE ( -- )
+   s" a catch after a string literal keeps its own window" T-LABEL
+   7 D9=  0 D9= ;
+
+: PARKED-CASE ( -- )
+   s" a value parked across the catch comes back, on both paths" T-LABEL
+   7 NCA-FIXTURE:NCA-PT {: tu:n tr:n tp:n :}
+   tp 42 T=  tr 9 T=  tu 5 T=
+   7 NCA-FIXTURE:NCA-PN {: nu:n nr:n np:n :}
+   np 42 T=  nr 0 T=  nu 8 T=
+   7 PT=  0 PT=  -3 PT=
+   7 PN=  0 PN=  -3 PN= ;
+
+\ ---- what the chain still refuses, and whose refusal each one is -------------
+\ Each pair is the same shape twice: the offending one and a twin without the
+\ offence, so what the refusal is about is the shape and not something else in
+\ the line. The engine compiles and runs every one of them, which the first line
+\ of each case measures - so both refusals are the chain's alone.
+: NORET-BODY-CASE ( -- )
+   s" the engine runs a caught body that never returns" T-LABEL
+   7 NCA-FIXTURE:NCA-NR {: nu:n nr:n :}
+   nr 5 T=  nu 5 T=
+
+   s" and the chain refuses it, while its returning twin compiles" T-LABEL
+   [: s" : NCA-NR1 ( n -- n n ) [: drop 5 throw ;] catch ;" 1 2 MEASURE-AT ;]
+   E-NELAB-QUOT TTHROWSQ
+   [: s" : NCA-NR2 ( n -- n n ) [: 1+ ;] catch ;" 1 2 MEASURE-AT ;]
+   0 TTHROWSQ ;
+
+\ NOT A CATCH REFUSAL, and it is here because it is what bounds the bodies above.
+\ A quotation body holding any control structure is refused by the IR verifier,
+\ and it is refused through the route a body reached before `catch` existed - an
+\ argument a callee declares - so it is the quotation path's ceiling and not this
+\ lane's. Measured on the parent binary the same way.
+: BODY-CONTROL-CASE ( -- )
+   s" the engine runs a caught body holding a control structure" T-LABEL
+   7 NCA-FIXTURE:NCA-BC {: cu:n cr:n :}
+   cr 0 T=  cu 8 T=
+
+   s" and the chain refuses it, while its straight-line twin compiles" T-LABEL
+   [: s" : NCA-BC1 ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;" 1 2 MEASURE-AT ;]
+   E-IR-VERIFY-SUCCARG TTHROWSQ
+   [: s" : NCA-BC2 ( n -- n n ) [: 1+ ;] catch ;" 1 2 MEASURE-AT ;]
+   0 TTHROWSQ ;
+
+\ THE SECOND CEILING, AND IT IS NOT A CATCH REFUSAL EITHER. A quotation body that
+\ CALLS, with a locals group in the definition around it, is refused as an
+\ operand naming a value of another function. It is measured on the parent binary
+\ through the same pre-catch route as the case above - a body handed to a callee
+\ that declares a quotation argument - so it is the quotation path's and not this
+\ lane's. It is pinned here because it is what decides the shape of the
+\ production-shape case above: that case's body does not call.
+: BODY-CALL-LOCALS-CASE ( -- )
+   s" the engine runs a caught calling body under a definition with locals" T-LABEL
+   7 NCA-FIXTURE:NCA-BL {: bu:n br:n :}
+   br 0 T=  bu 8 T=
+
+   s" and the chain refuses it, while the same body without the locals compiles" T-LABEL
+   [: CALLEE-OK1
+      s" : NCA-BL1 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
+      1 2 DEFINE-AT ;]
+   E-IR-VERIFY-SCOPE TTHROWSQ
+   [: CALLEE-OK1
+      s" : NCA-BL2 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch ;"
+      1 2 DEFINE-AT ;]
+   0 TTHROWSQ ;
+
+: RUN ( -- )
+   CONTENTS-CASE
+   NORMAL-CASE
+   LOCAL-CASE
+   LOOP-CASE
+   DEEP-CASE
+   WIDEN-CASE
+   TWO-WINDOW-CASE
+   STRING-SITE-CASE
+   PARKED-CASE
+   NORET-BODY-CASE
+   BODY-CONTROL-CASE
+   BODY-CALL-LOCALS-CASE ;
+
+;package
+
 T-RESET
 NCA-TEST:RUN
+NCA-DIFF:RUN
 T-REPORT
