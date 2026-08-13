@@ -561,6 +561,33 @@ public
 : SPELL-DEAD? ( ptr u8 n -- bool )
    CTL-DEAD? ;
 
+\ ---- and whether a call to it leaves the caller's return stack alone ----------
+\ THE SEVENTH QUESTION, AND THE NATIVE CHAIN CANNOT COMPILE A CALL WITHOUT IT.
+\ src/compiler/native/elaborate.f models the return stack ENTIRELY at compile
+\ time: `>r` moves a value id between two compile-time vectors, emits no
+\ instruction, and never touches the engine's return-stack region. That rests on
+\ the parked values being the ELABORATOR's own bookkeeping - and a callee whose
+\ declared effect takes a cell off its caller's return stack, or leaves one on it,
+\ moves a stack the caller's bookkeeping is the only record of. There is nowhere
+\ to put that motion, so a call to such a word is refused rather than compiled
+\ into one the elaborator's two vectors no longer describe.
+\
+\ IT ASKS WHAT THE ROWS SAY AND NOT WHAT THE SIGNATURE SPELLS, which is the whole
+\ reason the checker publishes the question instead of a flag for the `|` clause.
+\ `( n | R -- n | R )` writes a clause and moves nothing; a word with no clause at
+\ all recorded two empty rows because the checker's own balance check PROVED it
+\ moves nothing, which is almost every word in the tree. Reading the clause would
+\ refuse the first and admit neither fact.
+\
+\ FALSE WHEN NOTHING RESOLVES, the direction every reader in this file takes: a
+\ name the checker holds no effect for promises nothing about a return stack
+\ either, and answering neutral would let a call be compiled on a promise nobody
+\ made. Such a name is refused by SPELL-ARITY first in every path that reaches
+\ here, so this is the second derivation rather than the only one.
+: SPELL-RET-NEUTRAL? ( ptr u8 n -- bool )
+   EFFECT-QUERY 0= if false exit then
+   EFFECT-RET-NEUTRAL? ;
+
 private
 
 \ ---- and which cell a deferred word dispatches through ------------------------

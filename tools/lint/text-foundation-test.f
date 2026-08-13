@@ -950,9 +950,17 @@ variable REG-I
    \ src/compiler/native/feed.f stop reading a literal's spelling back with a
    \ decoder of its own - a whole file of re-derived float arithmetic
    \ (src/compiler/native/real-lit.f) went out with it.
+   \ It was 373 before the return-stack lowering (dot
+   \ habu-thread-parked-values-3cabd3aa) added `EFFECT-RET-NEUTRAL?`, the row
+   \ that lets checked Habu ask whether a word's declared effect leaves its
+   \ caller's return stack alone. The reader itself already existed; what it did
+   \ not have was an axiom, so src/compiler/native/dict.f - the first consumer the
+   \ checker's own comment named - could not call it at all. One row in, and it
+   \ is an engine-adjacent checker word rather than a primitive, on the same
+   \ terms as its siblings `EFFECT-QUOT-SIMPLE?` and `CTL-DEAD?`.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 373 ASSERT=
+   REG-COUNT 374 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

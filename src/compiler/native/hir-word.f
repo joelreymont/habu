@@ -927,9 +927,18 @@ public
 \ table; this serves the elaborator meeting a token it has no opinion about yet,
 \ so every way the engine can fail to answer - a spelling too long to be asked
 \ about, one that denotes no word in this scope, one the checker certified no
-\ effect for, one whose certified effect has a term whose width cannot be stated
-\ - answers false and leaves the token to be refused as unmodeled, by name, with
-\ the capability it is waiting for recorded. It never answers a row it guessed.
+\ effect for, one whose certified effect has a term whose width cannot be stated,
+\ and one whose certified effect MOVES THE CALLER'S RETURN STACK - answers false
+\ and leaves the token to be refused as unmodeled, by name, with the capability it
+\ is waiting for recorded. It never answers a row it guessed.
+\
+\ THE RETURN-STACK CLAUSE IS THE ONE THAT IS NOT ABOUT MISSING INFORMATION. The
+\ other four are the engine declining to say; this one is the engine saying
+\ something the elaborator cannot honour. Its return stack is a compile-time
+\ vector and a call has nowhere to put a callee's motion of it, so the row is
+\ refused rather than built - src/compiler/native/dict.f SPELL-RET-NEUTRAL? gives
+\ the whole argument, and the checker publishes the answer because it is the only
+\ authority on what a signature's return rows say.
 : RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
@@ -939,6 +948,7 @@ public
    entry 0= if false exit then
    FIX-NAME u NDICT:SPELL-ARITY {: in:n out:n :}
    in NDICT:ARITY-NONE = if false exit then
+   FIX-NAME u NDICT:SPELL-RET-NEUTRAL? 0= if false exit then
    FIX-NAME u NDICT:SPELL-GLUE nip {: glue:n :}   \ the callee's RESULT cells are the caller's concern
    FIX-NAME u NDICT:SPELL-DEAD? {: dead:bool :}
    c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW
