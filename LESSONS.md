@@ -6090,3 +6090,18 @@ plan yields a decline, not wrong code - check which guard caught it
 before claiming the mutation proves the one you edited. (4) A fixture
 that merely contains a store may not test the write rule - the rule
 needed a read, a write AND an accumulator in one body to be reachable.
+
+## The pool pricing's five (2026-08-13)
+
+(1) Read the diagnostic, not the error text - E-A64RA-POOL says
+"every register holds a needed value"; in every measured row it was
+"every register is BARRED and nothing holds anything" (free=18
+spare=0 forbid=all). (2) Two throw sites sharing one code need
+one-at-a-time recoding to attribute a class. (3) Publishing a callee
+can make its caller WORSE - a chain routine that can throw records
+24 destroyed GPRs, wider than the 18-register no-record worst case.
+(4) The census silently skips a package section with no public
+definition - examined=0 looks like a broken path. (5) The class's
+fix was invisible to its own leaf because the leaf named a mechanism
+instead of a measurement - the four-verdict experiment (same body,
+constant vs digit) was the whole diagnosis.
