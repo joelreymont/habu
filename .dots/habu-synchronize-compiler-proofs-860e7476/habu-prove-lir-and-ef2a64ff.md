@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-26T23:04:26.768107+02:00"
 blocks:
-  - habu-lower-native-exceptions-6ceb7667
   - habu-prove-stable-sir-91b9d57d
 ---
 
