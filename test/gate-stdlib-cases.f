@@ -530,6 +530,24 @@ SUITE compiler-native-j
    test/compiler/native-j.f
 ;SUITE
 
+\ `begin … again`, the third closer of a `begin` loop and the one whose loop has
+\ no exit. Its cases run the loop against the engine's own compilation of the
+\ same text - through an `exit` where the word returns and through the code it
+\ throws where it does not - so the number of turns is compared and not only the
+\ shape. It runs beside the `do` and `j` suites because it is another loop word
+\ the dialect gained and it goes through the same migration entry.
+SUITE compiler-native-again
+   test/compiler/native-again.f
+;SUITE
+
+\ `leave`, which leaves a counted loop from the middle. Every case runs both
+\ openers against the engine, because the pair that tells them apart is the
+\ limit equal to the start - the one turn a `leave` can fire on under `do` and
+\ cannot under `?do`. It runs beside the again suite for the same reason.
+SUITE compiler-native-leave
+   test/compiler/native-leave.f
+;SUITE
+
 \ The return-stack transfers, which compile to nothing at all: `>r` moves a value
 \ id between two COMPILE-TIME vectors and emits no instruction. Every case is
 \ differential against the engine's own compilation, because nothing about the
