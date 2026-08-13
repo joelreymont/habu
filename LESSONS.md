@@ -6208,3 +6208,25 @@ surprise - the half-feature that resulted cost a second lane.
 dimension NOT under test: four branch-imbalance probes were refused
 for a data-stack arity error and proved nothing about the return
 row.
+
+## The again/leave landing's three (2026-08-13)
+
+(1) A leaf's design sentences age. Both of this leaf's premises -
+"a while can give the after-loop block an edge" and "the
+elaborator cannot say unreachable" - were falsified by two cheap
+probes (the checker refuses while+again outright; PATH-DEAD landed
+with the dead-call work), and both falsifications made the work
+SMALLER. Probe the leaf's claims against the tree before designing
+to them.
+(2) A contract table's "this cannot arise" is a claim to falsify,
+not a wall: abi.f said a callless no-return routine cannot exist
+because what makes a body all-dead is the call it dies in;
+begin...again is exactly that routine. The repair is a contract
+stating field-by-field truths (no call so no trait, nothing writes
+x30 so link preserved, control no-return unchanged because callers
+were compiled against it), each held against the module by an
+existing validator.
+(3) A fixture that counts DOWN terminates only for the inputs a
+reader checked: `over 0 =` hung the suite on a negative counter
+where `over 1 <` does not. Guard loops with an inequality, not
+equality.
