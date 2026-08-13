@@ -6334,3 +6334,28 @@ writer.
 (3) A differential over a caught rethrow cannot compare the value
 under the code - depth is restored, contents are not, and on that
 path the routine that threw is the subject compiled two ways.
+
+## The successor-ordinal landing's five (2026-08-14)
+
+(1) When a producer's fix MOVES a refusal instead of clearing it,
+the arriving refusal is the next mirror of the same bug, not a new
+one - three passes each hid the next (allocator, verifier, emitter).
+Keep going until the probe accepts.
+(2) A diagnosis naming N sites is a hypothesis: the sweep found a
+sixth reader the leaf never mentioned, correct only because it
+declines the whole case - itself a finding (lost optimisation,
+dotted). Classify every reader as correct / needs-it / declines-it
+and say why for the declines.
+(3) Mutate the setter as well as the reader - forcing a base to
+zero red DIFFERENT fixtures than dropping the subtraction, because
+the contiguity guard fires before any successor is read.
+(4) A guard's mutation may surface only as a wrong answer elsewhere
+- the raw-read revert changed no refusal code in the shape probe
+and only red the suite at a different assertion. A mutation matrix
+scored on refusal codes alone calls such a site untested.
+(5) Destruction review over a day's merges caught what per-lane
+review could not: a later commit REPLACING a sibling's suite
+registration (the two suites ran only via the fork list), and a
+false measured claim guarding an untested reachable refusal. The
+cross-landing interaction probes all passed - the holes were in
+registration topology and prose, exactly where fresh eyes look.
