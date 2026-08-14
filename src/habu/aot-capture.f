@@ -82,11 +82,156 @@ s" AOT-CELL!" s" n ptr a --" TRUST
    loop ;
 
 \ --- reverse lookup: absolute call target (host xt) -> its dict record index ---
-: ACAP-TGT>REC ( n -- n ) {: tgt:n :}
+\ WHY THIS IS AN INDEX AND NOT A SCAN. Both callers ask once PER SITE - the BL
+\ scan below for every call in the copied blob, ACAP-OUT-CHAIN for every recorded
+\ address chain the window's DATA span does not hold - so a walk of the whole
+\ dictionary per question is quadratic in the size of the captured window. On the
+\ REPL window this file was written for that is 217 sites against 8,545 records
+\ (1.9M record reads, 7.6 ms); on the compiler chain it is 13,674 sites against
+\ 14,481 records, which is 198M reads and 1.16 s of every `install --force`.
+\ The engine's own name lookup had this disease and this cure, but its hash index
+\ cannot answer THIS question: it is keyed on a name and a wordlist (habu1.f
+\ C-HIDX-HASH) and what a call site knows is a code address. Hence a local index.
+\
+\ AN XT DOES NOT NAME A RECORD, and the tie-break is not a detail. `EXPORT` gives
+\ one body a SECOND record under a second name (habu2.f C-EXPORT), so two records
+\ can carry one xt, and the scan this replaces answered the LOWEST of them. The
+\ index reproduces that exactly rather than approximately: records are inserted in
+\ ascending order and an insert whose probe chain already holds a record with the
+\ same xt does nothing, so an xt's entry is the first index that ever carried it.
+\
+\ THE ANSWER IS VERIFIED, NEVER TRUSTED. A slot holds a record index and the probe
+\ re-reads that record's live [0] before accepting it, so a wrong slot can only
+\ make the probe walk on - it can never rename a call site. Staleness is refused
+\ rather than tolerated: the build stamps the ndict it indexed and every lookup
+\ checks it, so an index built for a different dictionary - or not built at all,
+\ since the stamp starts at 0 and ndict never is - ends the build instead of
+\ quietly reporting live call sites unresolved.
+DICT-CAP 2 * constant ACAP-TIDX-SLOTS          \ 2x the dictionary bound, so the load stays at
+create ACAP-TIDX ACAP-TIDX-SLOTS 4 * allot     \ or under half and a probe always meets an empty
+variable ACAP-TIDX-N                           \ slot. u32 slots: 0 empty, else record index + 1
+variable ACAP-TIDX-ND                          \ the ndict this index was built for (0 = none)
+variable ACAP-TS                               \ probe cursor
+
+: ACAP-TIDX@ ( n -- n ) 4 * ACAP-TIDX + ACAP-W32@ ;
+: ACAP-TIDX! ( n n -- ) {: v:n s:n :} v  s 4 * ACAP-TIDX +  AOT-P32! ;
+: ACAP-TIDX-STEP ( -- ) ACAP-TS @ 1+ ACAP-TIDX-SLOTS 1 - and ACAP-TS ! ;
+
+\ An entry's slot. Xts are instruction-aligned so the low two bits carry nothing;
+\ the rest goes through Knuth's multiplicative hash and the product's high half is
+\ folded down, so bodies laid out a constant distance apart do not share a chain.
+: ACAP-TIDX-HASH ( n -- n ) {: xt:n :}
+   xt 2 rshift 2654435761 *  $FFFFFFFF and {: g:n :}
+   g 16 rshift  g xor  ACAP-TIDX-SLOTS 1 - and ;
+
+\ The linear reference the index replaces. It is the specification of the answer
+\ and ACAP-TIDX-PROVE below holds the index against it on the live dictionary at
+\ every capture; nothing on the capture's hot path calls it.
+: ACAP-TGT>SCAN ( n -- n ) {: tgt:n :}
    ndict@ 0 ?do
       i AOT-REC AOT-RXT tgt = if i unloop exit then
    loop
    -1 ;
+
+: ACAP-TGT>REC ( n -- n ) {: tgt:n :}
+   ndict@ ACAP-TIDX-ND @ <> if
+      s" aot-capture: target index was not built for the live dictionary" 74 die
+   then
+   tgt ACAP-TIDX-HASH ACAP-TS !
+   ACAP-TIDX-SLOTS 0 ?do
+      ACAP-TS @ ACAP-TIDX@ {: e:n :}
+      e 0= if -1 unloop exit then                       \ empty slot: the xt is in no record
+      e 1- AOT-REC AOT-RXT tgt = if e 1- unloop exit then
+      ACAP-TIDX-STEP
+   loop
+   -1 ;
+
+: ACAP-TIDX-INS ( n -- ) {: k:n :}             \ index record k; the lowest index per xt wins
+   k AOT-REC AOT-RXT {: xt:n :}
+   xt ACAP-TIDX-HASH ACAP-TS !
+   ACAP-TIDX-SLOTS 0 ?do
+      ACAP-TS @ ACAP-TIDX@ {: e:n :}
+      e 0= if
+         k 1+ ACAP-TS @ ACAP-TIDX!
+         ACAP-TIDX-N @ 1+ ACAP-TIDX-N !
+         unloop exit
+      then
+      e 1- AOT-REC AOT-RXT xt = if unloop exit then     \ a lower index already carries this xt
+      ACAP-TIDX-STEP
+   loop
+   s" aot-capture: target index full" 74 die ;
+
+: ACAP-TIDX-BUILD ( -- )                       \ index the live dictionary, ascending
+   0 ACAP-TIDX-ND !
+   ndict@ DICT-CAP > if
+      s" aot-capture: dictionary above the target index bound" 74 die
+   then
+   ACAP-TIDX-SLOTS 0 ?do 0 i ACAP-TIDX! loop
+   0 ACAP-TIDX-N !
+   ndict@ 0 ?do i ACAP-TIDX-INS loop
+   ndict@ ACAP-TIDX-ND ! ;
+
+\ THE TIE-BREAK NEEDS A DUPLICATE TO BE TESTED, AND THE DICTIONARY DOES NOT
+\ SUPPLY ONE. Measured on this build: the metabuild host holds ZERO records
+\ sharing an entry at the REPL window every `install --force` captures, and two
+\ once the compiler chain is inside the window. So a mutation making the LAST
+\ index win instead of the first passed the whole battery - the branch is correct
+\ and, today, unreachable. EXPORT is the only producer of two records for one
+\ body, so the pair below is one, made deliberately and by that same production
+\ keyword. ACAP-TIDX-PROVE refuses an index built over a dictionary with no
+\ duplicate at all, which is what stops this pair from being deleted as unused
+\ and what will tell the next author why it is here.
+: ACAP-ALIAS-SEED ( -- n ) 0 ;
+public
+export ACAP-ALIAS-SEED                         \ a second record, same entry, second wordlist
+private
+
+variable ACAP-TIDX-MM                          \ index/scan disagreement count
+\ A value no record carries must answer -1, and the witness's own absence is
+\ established by the linear scan rather than assumed.
+: ACAP-TIDX-ABSENT ( n -- ) {: w:n :}
+   w ACAP-TGT>SCAN 0 >= if
+      s" aot-capture: target-index absence witness is a live record" 74 die
+   then
+   w ACAP-TGT>REC 0 >= if 1 ACAP-TIDX-MM +! then ;
+
+\ Some ordinary record's code entry. A package record's [0] is a raw WID, not an
+\ entry, so the near-miss witness below has to come from an ordinary one to be
+\ off instruction alignment rather than off nothing.
+: ACAP-NO-ORDINARY ( -- )
+   s" aot-capture: dictionary holds no ordinary record" 74 die ;
+: ACAP-TIDX-CODE-XT ( -- n )
+   ndict@ 0 ?do
+      i AOT-REC AOT-RWID -1 <> if i AOT-REC AOT-RXT unloop exit then
+   loop
+   ACAP-NO-ORDINARY ;
+
+\ THE PROOF IS O(ndict) AND IT IS NOT A SAMPLE. For every record k the index must
+\ answer some j with xt(j) = xt(k) and j <= k. Take the smallest index m carrying
+\ a given xt: its answer j obeys j <= m and xt(j) = xt(m), and m is the smallest
+\ index with that xt, so j >= m and therefore j = m. The scan returns exactly m,
+\ so agreeing on every record's OWN xt is agreeing on every xt there is - which is
+\ why no quadratic cross-check is run and none is needed. The two witnesses close
+\ the other half of the answer, the absent one.
+: ACAP-TIDX-PROVE ( -- )
+   0 ACAP-TIDX-MM !
+   ndict@ 0 ?do
+      i AOT-REC AOT-RXT {: xt:n :}
+      xt ACAP-TGT>REC {: j:n :}
+      j 0 < if 1 ACAP-TIDX-MM +! else
+         j i > if 1 ACAP-TIDX-MM +! then
+         j AOT-REC AOT-RXT xt <> if 1 ACAP-TIDX-MM +! then
+      then
+   loop
+   AOT-DATA-N ACAP-TIDX-ABSENT                          \ far: no code entry is a DATA address
+   ACAP-TIDX-CODE-XT 2 + ACAP-TIDX-ABSENT               \ near: a real entry, off alignment
+   ndict@ ACAP-TIDX-N @ - 0= if                         \ records inserted minus slots taken
+      s" aot-capture: no two records share an entry, so the tie-break above is untested" 74 die
+   then
+   ACAP-TIDX-MM @ 0= 0= if
+      s" aot-capture: TARGET INDEX MISMATCH count=" type ACAP-TIDX-MM @ . cr
+      s" aot-capture: target index disagrees with the dictionary scan" 74 die
+   then ;
 
 \ --- deduped name pool: entries are [len:u8][name bytes]; ADD returns the entry
 \ byte offset (points at the len byte). Records and call-reloc rows both reference
@@ -101,13 +246,105 @@ variable ACAP-EQ                                             \ pool-compare mism
    else 1 ACAP-EQ ! then
    ACAP-EQ @ 0= ;
 variable ACAP-PP                                             \ pool scan cursor
-: ACAP-POOL-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}           \ entry off, or -1 if absent
+\ The linear reference the pool index replaces. ACAP-NIDX-SELFTEST holds the index
+\ against it; nothing on the capture's hot path calls it.
+: ACAP-POOL-SCAN ( ptr u8 n -- n ) {: a:ptr u:n :}           \ entry off, or -1 if absent
    0 ACAP-PP !
    begin ACAP-PP @ AOT-NAMES-LEN @ < while
       a u ACAP-PP @ ACAP-POOL-EQ? if ACAP-PP @ exit then
       AOT-NAMES-BUF@ ACAP-PP @ + c@ 1+ ACAP-PP @ + ACAP-PP !
    repeat
    -1 ;
+
+\ --- the pool's index: name bytes -> entry offset -----------------------------
+\ SAME DISEASE, SAME CURE, ONE EXTRA FACT. The pool is DEDUPED - ACAP-POOL-ADD
+\ asks before every add and only writes on absence - so a name has at most one
+\ entry and "the first match" and "the match" are one answer, which is why the
+\ index needs no tie-break where the target index does. What the walk cost was is
+\ the walk: on the compiler chain, 18,737 asks against a pool growing to 37,779
+\ bytes, 0.29 s in ACAP-COMPACT-RECS alone.
+\
+\ ITS BOUND IS THE DICTIONARY'S, AND THAT IS DERIVED, NOT ESTIMATED. Every name
+\ that reaches ACAP-POOL-ADD is some host record's name: ACAP-ADD-SITE passes the
+\ callee record's, ACAP-COMPACT-RECS the captured record's own, ACAP-ADD-XTSITE
+\ the named word's. Distinct entries therefore cannot outnumber the dictionary,
+\ and 2x DICT-CAP slots hold the load at or under half. A producer that adds a
+\ name from somewhere else must re-derive that; the refusal below is what it meets
+\ if it does not.
+\
+\ THE POOL AND ITS INDEX ARE CLEARED BY ONE WORD. Several places empty the pool -
+\ the capture's own reset and both ends of each build-time self-test below - and an
+\ index left holding offsets into emptied bytes would answer a hit the scan cannot
+\ see. So no site sets AOT-NAMES-LEN to zero any more; ACAP-POOL-RESET is the only
+\ writer of the pair, and the coupling is structural rather than remembered.
+DICT-CAP 2 * constant ACAP-NIDX-SLOTS
+create ACAP-NIDX ACAP-NIDX-SLOTS 4 * allot                   \ u32: 0 empty, else entry off + 1
+variable ACAP-NIDX-N                                         \ entries in the pool
+variable ACAP-NH                                             \ name-hash accumulator
+variable ACAP-NS                                             \ probe cursor
+
+: ACAP-NIDX@ ( n -- n ) 4 * ACAP-NIDX + ACAP-W32@ ;
+: ACAP-NIDX! ( n n -- ) {: v:n s:n :} v  s 4 * ACAP-NIDX +  AOT-P32! ;
+: ACAP-NIDX-STEP ( -- ) ACAP-NS @ 1+ ACAP-NIDX-SLOTS 1 - and ACAP-NS ! ;
+
+\ FNV-1a over the name bytes, the same key derivation the engine's dictionary
+\ index uses (habu1.f C-HIDX-HASH), with the 32-bit result's high half folded down
+\ before the mask so short names do not crowd one end of the table.
+: ACAP-NIDX-HASH ( ptr u8 n -- n ) {: a:ptr u:n :}
+   2166136261 ACAP-NH !
+   u 0 ?do
+      ACAP-NH @  a i + c@ xor  16777619 *  $FFFFFFFF and  ACAP-NH !
+   loop
+   ACAP-NH @ {: g:n :}
+   g 16 rshift  g xor  ACAP-NIDX-SLOTS 1 - and ;
+
+: ACAP-POOL-RESET ( -- )                                     \ the pool and its index, together
+   0 AOT-NAMES-LEN !
+   ACAP-NIDX-SLOTS 0 ?do 0 i ACAP-NIDX! loop
+   0 ACAP-NIDX-N ! ;
+
+: ACAP-POOL-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}           \ entry off, or -1 if absent
+   a u ACAP-NIDX-HASH ACAP-NS !
+   ACAP-NIDX-SLOTS 0 ?do
+      ACAP-NS @ ACAP-NIDX@ {: e:n :}
+      e 0= if -1 unloop exit then                            \ empty slot: the name has no entry
+      a u e 1- ACAP-POOL-EQ? if e 1- unloop exit then
+      ACAP-NIDX-STEP
+   loop
+   -1 ;
+
+\ Every entry the pool holds must be the answer the index gives for its own
+\ bytes. It is one probe per entry, so it runs over the REAL pool at the end of
+\ every capture rather than over a fixture - which is where the thousands of names
+\ that actually share a slot are.
+variable ACAP-NIDX-PM                                        \ pool-proof mismatch count
+: ACAP-NIDX-PROVE ( -- )
+   0 ACAP-NIDX-PM !  0 ACAP-PP !
+   begin ACAP-PP @ AOT-NAMES-LEN @ < while
+      AOT-NAMES-BUF@ ACAP-PP @ 1+ +  AOT-NAMES-BUF@ ACAP-PP @ + c@
+      ACAP-POOL-FIND ACAP-PP @ <> if 1 ACAP-NIDX-PM +! then
+      AOT-NAMES-BUF@ ACAP-PP @ + c@ 1+ ACAP-PP @ + ACAP-PP !
+   repeat
+   ACAP-NIDX-PM @ 0= 0= if
+      s" aot-capture: POOL INDEX MISMATCH count=" type ACAP-NIDX-PM @ . cr
+      s" aot-capture: pool index does not answer its own entries" 74 die
+   then ;
+
+: ACAP-NIDX+ ( n -- ) {: off:n :}                            \ index an entry ACAP-POOL-ADD just wrote
+   ACAP-NIDX-N @ DICT-CAP >= if
+      s" aot-capture: name pool holds more entries than the dictionary" 74 die
+   then
+   AOT-NAMES-BUF@ off 1+ +  AOT-NAMES-BUF@ off + c@  ACAP-NIDX-HASH ACAP-NS !
+   ACAP-NIDX-SLOTS 0 ?do
+      ACAP-NS @ ACAP-NIDX@ 0= if
+         off 1+ ACAP-NS @ ACAP-NIDX!
+         ACAP-NIDX-N @ 1+ ACAP-NIDX-N !
+         unloop exit
+      then
+      ACAP-NIDX-STEP
+   loop
+   s" aot-capture: name pool index full" 74 die ;
+
 : ACAP-POOL-ADD ( ptr u8 n -- n ) {: a:ptr u:n :}            \ deduped entry off (points at len byte)
    u 255 > if s" aot-capture: name too long for pool" 74 die then
    a u ACAP-POOL-FIND dup 0 >= if exit then drop
@@ -116,6 +353,7 @@ variable ACAP-PP                                             \ pool scan cursor
    u  AOT-NAMES-BUF@ off + c!                                \ [len]
    u 0 ?do a i + c@  AOT-NAMES-BUF@ off 1+ + i + c!  loop    \ [bytes]
    off 1+ u + AOT-NAMES-LEN !
+   off ACAP-NIDX+
    off ;
 
 \ --- call-site reloc rows: packed 8 bytes = blob-off u32 + name-off u32 (into pool) ---
@@ -643,7 +881,7 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
 \ Capture the words in dict[rec-start, rec-end) compiled contiguously into the host
 \ region [blob-start, blob-end); [d0,d1) is the REPL DATA span (create/variable).
 : ACAP-RESET ( -- )
-   0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
+   0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  ACAP-POOL-RESET
    0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  ACAP-PWID-CLEAR
    0 AOT-XTSITE:N !
@@ -673,6 +911,8 @@ public
 
 : CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    ACAP-RESET
+   ACAP-TIDX-BUILD                              \ xt -> record index for THIS dictionary
+   ACAP-TIDX-PROVE                              \ ... which answers what the scan answers
    bstart bend ACAP-COPY-BLOB
    rend rstart ?do i bstart ACAP-ADD-REC loop
    ACAP-SCAN-CALLS
@@ -681,6 +921,7 @@ public
    d0 d1 ACAP-BAKE-DATA                         \ the window's own DATA bytes, declared cells trapped
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
+   ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
    ACAP-PWID-CAPTURE                            \ serialize the protected-WID bitmap
    ACAP-PWID-CHECK ;                            \ WID 0 is never a wordlist
 
@@ -708,7 +949,7 @@ private
 \ the [40] wid. ACAP-EXPAND-REC is the EXACT model of the boot-time
 \ EM-AOT-REGISTER-RECS unpack, so this also guards that inverse.
 : ACAP-WID-SELFTEST ( -- )
-   0 AOT-NAMES-LEN !                                \ fresh dedup pool for the synthetic record
+   ACAP-POOL-RESET                                  \ fresh dedup pool for the synthetic record
    0 ACAP-REC-DST {: d:ptr :}                        \ verbatim 48B dict record #0
    0 d AOT-N-C!                                      \ [0..8)   xt/blob-off = 0
    8 d 8 + AOT-N-C!                                  \ [8..16)  end = 8
@@ -721,7 +962,112 @@ private
    ACAP-PROVE-RECS                                   \ expand==verbatim, field-for-field (incl [40] wid)
    0 ACAP-CREC-DST 16 + ACAP-W32@ 1000 <> if
       s" aot-capture: wid>255 self-test: compact wid corrupted" 74 die then
-   0 AOT-REC-N !  0 AOT-NAMES-LEN ! ;               \ leave buffers clean for the real capture
+   0 AOT-REC-N !  ACAP-POOL-RESET ;                 \ leave buffers clean for the real capture
+
+\ --- build-time regression: the pool index answers what the linear pool walk
+\ answers. Runs in the live metabuild BEFORE stdin.f's CAPTURE-REPL and leaves the
+\ pool empty, so the real capture is unaffected. The cases are built to fool a
+\ reader that matches on bytes rather than on ENTRIES: a name that is a strict
+\ prefix of another, two of one length differing only in the last byte, and a name
+\ whose bytes also occur INSIDE a later entry at a non-entry boundary - which is
+\ the offset a substring search would return and an entry walk cannot. Each case
+\ is scored twice: the linear scan against the offset the add reported (so a
+\ broken reference is not mistaken for a broken index) and the index against the
+\ scan. Fail-closed via die. ---
+variable ACAP-NIDX-MM                                \ index disagrees with the pool scan
+variable ACAP-NIDX-XM                                \ pool scan disagrees with the expected offset
+: ACAP-NAME-CASE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+   a u ACAP-POOL-SCAN {: s:n :}
+   s want <> if 1 ACAP-NIDX-XM +! then
+   a u ACAP-POOL-FIND s <> if 1 ACAP-NIDX-MM +! then ;
+
+: ACAP-NIDX-CASES ( -- )                             \ the five entries, then every question
+   s" AB" ACAP-POOL-ADD {: o1:n :}
+   s" ABC" ACAP-POOL-ADD {: o2:n :}
+   s" ABD" ACAP-POOL-ADD {: o3:n :}                  \ same length as ABC, last byte differs
+   s" XY" ACAP-POOL-ADD {: o4:n :}
+   s" AXYB" ACAP-POOL-ADD {: o5:n :}                 \ contains XY at a non-entry boundary
+   o1 o2 = o1 o3 = or o1 o4 = or o1 o5 = or
+   o2 o3 = or o2 o4 = or o2 o5 = or
+   o3 o4 = or o3 o5 = or o4 o5 = or if
+      s" aot-capture: pool self-test: distinct names share an entry" 74 die
+   then
+   s" ABD" o3 ACAP-NAME-CASE                         \ asked out of add order
+   s" AB"  o1 ACAP-NAME-CASE
+   s" XY"  o4 ACAP-NAME-CASE                         \ not the copy inside AXYB
+   s" AXYB" o5 ACAP-NAME-CASE
+   s" ABC" o2 ACAP-NAME-CASE
+   s" ABE" -1 ACAP-NAME-CASE                         \ absent: shares a two-byte prefix
+   s" A"   -1 ACAP-NAME-CASE                         \ absent: a prefix of three entries
+   s" AXY" -1 ACAP-NAME-CASE                         \ absent: a prefix of AXYB
+   s" ABCD" -1 ACAP-NAME-CASE ;                      \ absent: an entry plus a byte
+
+\ THE BYTE COMPARISON NEEDS A COLLISION, AND FIVE NAMES IN 65,536 SLOTS DO NOT
+\ COLLIDE. Measured: a mutation that accepts the first OCCUPIED slot without
+\ comparing the name at all passed every case above and the whole battery, because
+\ each of those names had its slot to itself. These three do not: AAAC and AACC
+\ are one length and QZS is another, and all three hash to one slot, so a reader
+\ that skips the bytes answers the first of them for all three and a reader that
+\ compares only the length answers the wrong four-byte one. The slots are asserted
+\ EQUAL first, so a future change to ACAP-NIDX-HASH ends the build here with this
+\ line rather than quietly retiring the case.
+: ACAP-NIDX-COLLIDE ( -- )
+   s" AAAC" ACAP-NIDX-HASH {: h1:n :}
+   s" AACC" ACAP-NIDX-HASH {: h2:n :}
+   s" QZS"  ACAP-NIDX-HASH {: h3:n :}
+   h1 h2 <> h1 h3 <> or if
+      s" aot-capture: pool self-test: the collision fixture no longer collides" 74 die
+   then
+   s" AAAC" ACAP-POOL-ADD {: c1:n :}
+   s" AACC" ACAP-POOL-ADD {: c2:n :}
+   s" QZS"  ACAP-POOL-ADD {: c3:n :}
+   c1 c2 = c1 c3 = or c2 c3 = or if
+      s" aot-capture: pool self-test: colliding names share an entry" 74 die
+   then
+   s" AACC" c2 ACAP-NAME-CASE                        \ second on the chain, same length as the first
+   s" QZS"  c3 ACAP-NAME-CASE                        \ third on the chain, a different length
+   s" AAAC" c1 ACAP-NAME-CASE
+   s" AACA" -1 ACAP-NAME-CASE ;                      \ absent, one byte from two of the three
+
+: ACAP-NIDX-SELFTEST ( -- )
+   ACAP-POOL-RESET
+   0 ACAP-NIDX-MM !  0 ACAP-NIDX-XM !
+   ACAP-NIDX-CASES
+   ACAP-NIDX-COLLIDE
+   AOT-NAMES-LEN @ {: len0:n :}  ACAP-NIDX-N @ {: n0:n :}
+   s" ABC" ACAP-POOL-ADD  s" ABC" ACAP-POOL-SCAN <> if
+      s" aot-capture: pool self-test: re-adding a name moved its entry" 74 die
+   then
+   AOT-NAMES-LEN @ len0 <> ACAP-NIDX-N @ n0 <> or if
+      s" aot-capture: pool self-test: re-adding a name grew the pool" 74 die
+   then
+   ACAP-NIDX-XM @ 0= 0= if
+      s" aot-capture: pool self-test: linear pool scan wrong, count=" type ACAP-NIDX-XM @ . cr
+      s" aot-capture: pool scan disagrees with the recorded entry offsets" 74 die
+   then
+   ACAP-NIDX-MM @ 0= 0= if
+      s" aot-capture: pool self-test: index/scan mismatch, count=" type ACAP-NIDX-MM @ . cr
+      s" aot-capture: pool index disagrees with the pool scan" 74 die
+   then
+   \ THE RESET IS HALF THE CONTRACT. Emptying the pool without emptying the index
+   \ leaves slots pointing at bytes the next add is about to overwrite, and the
+   \ bytes are still THERE - so the stale entry compares equal and the index hands
+   \ back an offset the scan cannot see. Nothing else in the tree notices: a
+   \ mutation dropping the index half of ACAP-POOL-RESET passed the whole battery,
+   \ because the fixture names above happen to be nobody's real word. These three
+   \ questions are what make that mutation red.
+   ACAP-POOL-RESET
+   s" AXYB" ACAP-POOL-FIND -1 <> if
+      s" aot-capture: pool self-test: reset left an entry findable in the index" 74 die
+   then
+   ACAP-NIDX-N @ 0= 0= if
+      s" aot-capture: pool self-test: reset left the index population nonzero" 74 die
+   then
+   s" AB" ACAP-POOL-ADD 0= 0= if
+      s" aot-capture: pool self-test: the pool did not restart at offset 0" 74 die
+   then
+   ACAP-POOL-RESET ;
+ACAP-NIDX-SELFTEST
 ACAP-WID-SELFTEST
 
 \ --- build-time regression (TFAM 2b-v): the protected-WID bitmap must round-trip a

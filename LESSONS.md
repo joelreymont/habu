@@ -6624,3 +6624,38 @@ count. Verify the axis moved.
 asking what refuses FIRST on each half - the icode window was
 refusing images whose baked source the boot arena would have
 accepted, which named both halves (ADR reach + arena cap).
+
+## The capture-index landing's five (2026-08-14)
+
+(1) An "identical output" proof needs its OWN control, because the
+thing you add moves the output for a reason that is not your change:
+two 256 KB tables in the metabuild host pushed DP up 524,368 bytes,
+and the baked capture-time DATA base (habu2.f LAOTDATAD0) plus every
+host DATA absolute in the captured blob moved with it, so bin/hb's
+shasum changed. Padding the PRISTINE file by exactly that many bytes
+and diffing a canonical dump of everything the capture DECIDES made
+the two trees byte-identical over all 16,344 lines - and that is the
+proof, where the image shasum was only a question.
+(2) `.` prints a newline. A dump built as `s" tag " type X . cr` puts
+the VALUE on its own line, so `grep '^DUMP'` compared the labels and
+threw away every number; 5,262 "identical" lines hid 285 differing
+words. Diff the whole block, never a grepped projection of it.
+(3) A mutation that the CHECKER rejects has tested nothing. Two
+"caught" mutations were `habu: at 'X' after 'exit'` - dead code after
+an early exit, never loaded, never run. A mutation must COMPILE; swap
+the condition for a tautology (`e 0 >=`) instead of deleting the
+branch.
+(4) The two branches that a hash index exists to get right are exactly
+the two that a small fixture cannot reach. The dictionary held ZERO
+records sharing an xt at REPL scale (two once the compiler chain is in
+the window), so a last-index-wins mutation passed every gate; five
+names in 65,536 slots never collide, so a mutation skipping the name
+comparison entirely passed too. Both needed a fixture built on
+purpose - an `EXPORT` alias for the duplicate, a computed colliding
+triple (AAAC/AACC/QZS) for the chain - and each needs a guard that
+reds when the fixture stops being one, or it retires in silence.
+(5) A cure's own cost is a measurement, not a rounding error: the
+index build, its proof and two 65,536-slot clears cost 3.1 ms per
+capture, which at REPL scale ate 40% of the 7.6 ms saved (8.60 ms ->
+3.85 ms) and at chain scale was noise against 1.45 s -> 15 ms. Time
+the phases you ADD in the same run as the phases you remove.
