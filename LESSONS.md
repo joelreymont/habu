@@ -6412,3 +6412,20 @@ the bug.
 differentials - two mutations that looked like lost optimisations
 were named refusals (DKEEP, DSTACK). Read WHICH pass answers a
 mutation, not just that something red.
+
+## The tail landing's two, and a strengthening (2026-08-14)
+
+(1) STRENGTHENED, paid for a third time: pgrep -f in ANY wait loop
+- until-loops included - matches the waiting shell's own command
+line. Wait on the output FILE (until [ -s out.txt ]), never on a
+process pattern.
+(2) A generated constructor escapes hyphens in the owning package
+name: package NTL-FIXTURE + PRODUCT pt publishes
+NTL--FIXTURE-PT:MAKE (TF-CTOR-ESC doubles the hyphen; production
+example CNUM-NUMERIC--POLICY:MAKE). A fixture package with a
+hyphen pays it - cheaper to know than to E-UNDEFINED into.
+(3) An impossibility argument belongs IN the suite's prose with
+its measurement: the padded-construction-feeds-tail shape is
+unwritable (the checker refuses the required signature), and the
+derivation is recorded where the next lane will look before
+re-deriving it.
