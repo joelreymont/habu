@@ -125,14 +125,18 @@ ICODE-TAB-CELLS constant LBL-CAP
 \ Keep the historical table names as accessors so emitter code stays readable.
 : LBLP ( -- ptr n ) 0 ICODE-TAB ;
 variable NLBL
-\ fixups: site word-pos, next slot, kind (FX-B26 / FX-B19 / FX-ADR),
+\ fixups: site word-pos, next slot, kind (FX-B26 / FX-B19 / FX-ADR / FX-LOFF),
 \ and one pending-chain head per label. Target identity is the owning FXH chain.
-\ The kind selects how a resolved delta is encoded into the branch/ADR word.
+\ The kind selects how a resolved label is encoded into the branch/ADR/movw site.
 \ It is validated before any fixup-chain, free-list, NFX, or code mutation so a
 \ corrupt or internal invalid kind fails closed instead of silently patching ADR.
+\ Three kinds carry a DELTA from the site; FX-LOFF carries the label's own byte
+\ offset from the code base, so it is the one kind whose site position does not
+\ enter its value.
 0 constant FX-B26                              \ B/BL: 26-bit word delta
 1 constant FX-B19                              \ cond/CBZ/CBNZ: 19-bit word delta
 2 constant FX-ADR                              \ ADR: 21-bit byte delta
+3 constant FX-LOFF                             \ movz/movk pair: label byte offset
 : FXS ( -- ptr n ) 1 ICODE-TAB ;
 : FXN ( -- ptr n ) 2 ICODE-TAB ;
 : FXK ( -- ptr n ) 3 ICODE-TAB ;
@@ -210,7 +214,8 @@ variable FX-NEW
 : FX-KIND-OK? ( n -- bool )
    dup FX-B26 =
    over FX-B19 = or
-   swap FX-ADR = or ;
+   over FX-ADR = or
+   swap FX-LOFF = or ;
 
 : ?FX-KIND ( -- )
    I-KIND @ FX-KIND-OK? if exit then
@@ -255,6 +260,22 @@ variable FX-NEW
 : ?REL19 ( n -- n )  dup REL19-OK? if exit then  s" icode: cond branch out of reach" ICODE-EXIT-RC die ;
 
 : ?ADR ( n -- n )  dup ADR-OK? if exit then  s" icode: adr out of reach" ICODE-EXIT-RC die ;
+\ label-offset bound: LOFF, below carries a label's byte offset from the code
+\ base — a NON-NEGATIVE absolute position, not a signed delta around a site — in
+\ the two 16-bit immediate lanes of a movz/movk pair. So its bound is that pair's
+\ own capacity, and the distance from the reading site does not enter it at all.
+\ That is the whole point of the form: the reader adds the offset to the code
+\ base it holds at runtime, so a label the 21-bit ADR field cannot reach is still
+\ addressable. The window must fit inside this field for the form to be total
+\ over the buffer, and test/icode-fixup-test.f holds the two against each other.
+$10 constant MOVW-LANE-BITS         \ one movz/movk immediate lane
+2 constant LOFF-LANES               \ the pair LOFF, emits
+0 constant LOFF-LO                  \ inclusive: a code-buffer byte offset is never negative
+1 LOFF-LANES MOVW-LANE-BITS * lshift constant LOFF-HI   \ exclusive: 2^32 bytes
+
+: LOFF-OK? ( n -- bool )  dup LOFF-LO >=  swap LOFF-HI <  and ;   \ label byte offset representable?
+
+: ?LOFF ( n -- n )  dup LOFF-OK? if exit then  s" icode: label offset out of reach" ICODE-EXIT-RC die ;
 \ emit a branch (base already encoded with delta=0) to a label; resolve or defer
 variable BBASE  variable BKIND
 
@@ -289,6 +310,24 @@ variable BBASE  variable BKIND
    I-LBL @ cells LBLP + @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 ENC-ADR EMITW
    ELSE  ASM-CP @ - $4 *  ?ADR  I-RD @ swap ENC-ADR EMITW  THEN ;
+
+\ movz rd, #lo16 / movk rd, #hi16, lsl 16: rd = the label's byte offset from the
+\ code base (FX-LOFF fixup when forward). The caller adds the base the running
+\ image holds, which is what makes this the reach-free companion to ADR,.
+\ The pair is ALWAYS two words wide, whichever side of the label the site is on,
+\ because a forward site has to reserve the lanes before the offset is known and
+\ a site's width may not depend on where it was emitted.
+\ The zero-immediate base words come from the move-wide encoders for the same
+\ reason ADR,'s does: one authority for the field layout, and the destination
+\ register takes that encoder's own refusals before this layer folds a lane in.
+: LOFF, ( n label -- )
+   LABEL>N I-LBL ! I-RD !
+   I-LBL @ cells LBLP + @ dup 0 < IF
+     drop  ASM-CP @ I-LBL @ >LABEL FX-LOFF FX+
+     I-RD @ 0 0 MOVZHW EMITW  I-RD @ 0 1 MOVKHW EMITW
+   ELSE  $4 * ?LOFF I-X !
+     I-RD @ I-X @ $FFFF and 0 MOVZHW EMITW
+     I-RD @ I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW EMITW  THEN ;
 \ define a label here; backpatch and reclaim only that label's pending chain
 variable LBI
 
@@ -306,7 +345,16 @@ variable LBI
 \ from the head, so fixups patched before an out-of-reach one keep their new
 \ deltas and are freed. The invariant is per-fixup: the die always precedes the
 \ current fixup's PATCH write, never mid-write.
+\ FX-LOFF is the one kind whose value is not a delta, so it binds from ASM-CP
+\ alone and writes TWO site words. Validated before either PATCH, exactly like
+\ the single-word kinds: the die precedes the first lane's write.
+: FX-LOFF-PATCH ( -- )
+   ASM-CP @ $4 * ?LOFF I-X !                     \ the label's byte offset from the code base
+   0 I-X @ $FFFF and 0 MOVZHW  LBI @ cells FXS + @ PATCH
+   0 I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW  LBI @ cells FXS + @ 1 + PATCH ;
+
 : FX-PATCH ( -- )
+   LBI @ cells FXK + @ FX-LOFF = if FX-LOFF-PATCH exit then
    ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
    LBI @ cells FXK + @ FX-ENC                    \ delta -> patch bits by validated kind (or die)
    LBI @ cells FXS + @ PATCH ;

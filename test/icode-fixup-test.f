@@ -32,7 +32,7 @@ $801 constant SEQ-N
 $28000 constant WANT-TAB-BYTES
 $1000 constant CAPTURE-CAP
 10000 constant TIMEOUT-MS
-FX-ADR 1 + constant KIND-BAD     \ first kind past FX-ADR: the historic silent-ADR value
+FX-LOFF 1 + constant KIND-BAD    \ first kind past the last real one
 
 create OUT CAPTURE-CAP allot
 create ERR CAPTURE-CAP allot
@@ -162,6 +162,7 @@ variable WP
    FX-B26 FX-KIND-OK? TTRUE
    FX-B19 FX-KIND-OK? TTRUE
    FX-ADR FX-KIND-OK? TTRUE
+   FX-LOFF FX-KIND-OK? TTRUE
    KIND-BAD FX-KIND-OK? TFALSE
    -1 FX-KIND-OK? TFALSE
    $7F FX-KIND-OK? TFALSE ;
@@ -182,7 +183,11 @@ variable WP
    REL19-HI 1 - REL19-OK? TTRUE   REL19-LO REL19-OK? TTRUE
    REL19-HI REL19-OK? TFALSE      REL19-LO 1 - REL19-OK? TFALSE
    ADR-HI 1 - ADR-OK? TTRUE       ADR-LO ADR-OK? TTRUE          \ byte delta
-   ADR-HI ADR-OK? TFALSE          ADR-LO 1 - ADR-OK? TFALSE ;
+   ADR-HI ADR-OK? TFALSE          ADR-LO 1 - ADR-OK? TFALSE
+   \ LOFF's bound is a field capacity, not a signed reach: the low end is 0
+   \ because a code-buffer offset is never negative, and one below it rejects.
+   LOFF-HI 1 - LOFF-OK? TTRUE     LOFF-LO LOFF-OK? TTRUE        \ label byte offset
+   LOFF-HI LOFF-OK? TFALSE        LOFF-LO 1 - LOFF-OK? TFALSE ;
 
 \ a pure out-of-reach check mutates no fixup/code state (mirrors the kind guard)
 : TEST-REACH-PURE ( -- )
@@ -232,6 +237,79 @@ variable WP
    ENC-REL19-MAXNEG  ENC-REL19-MAXPOS
    ENC-REL26-MAXPOS  ENC-REL26-MAXNEG
    ENC-ADR-MAXPOS    ENC-ADR-MAXNEG ;
+
+\ ---- LOFF, the label-offset form --------------------------------------------
+\ THE TWO SIDES ARE THE POINT. ADR, refuses at ADR-HI whichever direction the
+\ label lies in (adr-far-fwd / adr-far-back below), and these cases stand at the
+\ SAME two geometries and assemble - which is the whole claim: what LOFF, emits
+\ does not depend on the distance from its site, only on where the label landed.
+\ Each case pins both words, so a form that silently dropped the high lane (the
+\ failure that would put a label past 64 KiB at the wrong address) reds here.
+$100 constant LOFF-NEAR-OFF                    \ a small offset both lanes can be read at
+LOFF-NEAR-OFF 4 / constant LOFF-NEAR-WORD
+ADR-HI 4 / constant ADR-HI-WORD                \ the word ADR, first refuses at
+variable LW0  variable LW1
+
+\ movz x5, #imm16 / movk x5, #imm16, lsl 16 with every other field fixed.
+: MOVZ5 ( n -- n )  5 lshift $D2800005 or ;
+: MOVK5 ( n -- n )  5 lshift $F2A00005 or ;
+
+\ EVERY FORWARD CASE PUTS ITS SITE OFF WORD ZERO. At word zero the label's own
+\ offset and its distance from the site are the same number, and a deferred
+\ patch that resolved the distance instead of the offset passed every case here
+\ until this filler went in.
+: ENC-LOFF-FAR-FWD ( -- )                        \ forward, label at byte ADR-HI: ADR, dies here
+   ASM-INIT  LBL {: t:label :}
+   0 EMITW  0 EMITW  0 EMITW
+   5 t LOFF,  ADR-HI-WORD ASM-CP !  t LBL,
+   3 WORD@ ADR-HI $FFFF and MOVZ5 T=
+   4 WORD@ ADR-HI $10 rshift MOVK5 T= ;
+
+: ENC-LOFF-FAR-BACK ( -- )                       \ backward, same distance the other way
+   ASM-INIT  LBL {: t:label :}
+   ADR-HI-WORD 1 + ASM-CP !  t LBL,              \ label at byte ADR-HI + 4
+   ADR-HI-WORD 1 + 2 * ASM-CP !  5 t LOFF,       \ site far above it
+   ADR-HI-WORD 1 + 2 * WORD@ ADR-HI 4 + $FFFF and MOVZ5 T=
+   ADR-HI-WORD 1 + 2 * 1 + WORD@ ADR-HI 4 + $10 rshift MOVK5 T= ;
+
+\ Same offset, the two production paths (deferred patch, immediate emit) - the
+\ words must agree, or one path is encoding a lane the other is not.
+: ENC-LOFF-PATHS ( -- )
+   ASM-INIT  LBL {: t:label :}
+   0 EMITW  0 EMITW  0 EMITW
+   5 t LOFF,  LOFF-NEAR-WORD ASM-CP !  t LBL,
+   3 WORD@ LW0 !  4 WORD@ LW1 !
+   ASM-INIT  LBL {: u:label :}
+   LOFF-NEAR-WORD ASM-CP !  u LBL,  LOFF-NEAR-WORD 2 * ASM-CP !  5 u LOFF,
+   LOFF-NEAR-WORD 2 * WORD@ LW0 @ T=
+   LOFF-NEAR-WORD 2 * 1 + WORD@ LW1 @ T=
+   LW0 @ LOFF-NEAR-OFF MOVZ5 T=
+   LW1 @ 0 MOVK5 T= ;
+
+\ The pair reserves both words before the offset is known, and the deferred
+\ patch fills them from the bind position alone.
+: TEST-LOFF-PENDING ( -- )
+   ASM-INIT
+   LBL {: t:label :}
+   0 EMITW  0 EMITW  0 EMITW
+   5 t LOFF,
+   ASM-CP @ 3 2 + T=                             \ the filler, then the pair's two words
+   NFX @ 1 T=
+   FXS 0 SLOT@ 3 T=  FXK 0 SLOT@ FX-LOFF T=
+   FXH t LABEL>N SLOT@ 0 T=
+   3 WORD@ 0 MOVZ5 T=                            \ lanes reserved at zero
+   4 WORD@ 0 MOVK5 T=
+   LOFF-NEAR-WORD ASM-CP !  t LBL,
+   NFX @ 0 T=
+   FX-FREE @ 0 T=
+   3 WORD@ LOFF-NEAR-OFF MOVZ5 T=
+   4 WORD@ 0 MOVK5 T= ;
+
+: TEST-LOFF ( -- )
+   TEST-LOFF-PENDING
+   ENC-LOFF-FAR-FWD
+   ENC-LOFF-FAR-BACK
+   ENC-LOFF-PATHS ;
 
 : TEST-REBIND-STATE ( label n -- )
    {: target:label words:n :}
@@ -367,6 +445,20 @@ variable WP
    LBL {: t:label :}
    t LBL,  ADR-HI 4 / 1 + ASM-CP !  5 t ADR, ;
 
+\ ?LOFF is the field's own bound, so it is reached the way REL26's is: the bind
+\ position is crafted past it, because the code window refuses first in
+\ production. Both sides, so neither the deferred nor the immediate path can
+\ truncate a lane instead of refusing.
+: EMIT-LOFF-OVER-FWD ( -- )                      \ deferred: label bound at LOFF-HI -> die
+   ASM-INIT
+   LBL {: t:label :}
+   5 t LOFF,  LOFF-HI 4 / ASM-CP !  t LBL, ;
+
+: EMIT-LOFF-OVER-BACK ( -- )                     \ immediate: label already at LOFF-HI -> die
+   ASM-INIT
+   LBL {: t:label :}
+   LOFF-HI 4 / ASM-CP !  t LBL,  0 ASM-CP !  5 t LOFF, ;
+
 \ ---- the code window ---------------------------------------------------------
 \ THE WINDOW IS A DERIVED NUMBER AND THIS IS WHERE IT IS HELD TO ITS OWNERS.
 \ src/arch/arm64/icode.f sizes CODE-CAP-BYTES as ADR-HI + IBUFSZ - the reach an
@@ -466,7 +558,9 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    s" rel26-far-fwd"  s" icode: branch out of reach" TEST-DIAG
    s" rel26-far-back" s" icode: branch out of reach" TEST-DIAG
    s" adr-far-fwd"    s" icode: adr out of reach" TEST-DIAG
-   s" adr-far-back"   s" icode: adr out of reach" TEST-DIAG ;
+   s" adr-far-back"   s" icode: adr out of reach" TEST-DIAG
+   s" loff-over-fwd"  s" icode: label offset out of reach" TEST-DIAG
+   s" loff-over-back" s" icode: label offset out of reach" TEST-DIAG ;
 
 : MAIN ( -- )
    T-RESET
@@ -478,6 +572,7 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    TEST-REACH-VALIDATE
    TEST-REACH-PURE
    TEST-REACH-ENCODE
+   TEST-LOFF
    TEST-REDEFINE
    TEST-FULL
    TEST-OVERFLOW
@@ -504,6 +599,8 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    s" rel26-far-back" CHILD-MODE? if EMIT-REL26-FAR-BACK exit then
    s" adr-far-fwd" CHILD-MODE? if EMIT-ADR-FAR-FWD exit then
    s" adr-far-back" CHILD-MODE? if EMIT-ADR-FAR-BACK exit then
+   s" loff-over-fwd" CHILD-MODE? if EMIT-LOFF-OVER-FWD exit then
+   s" loff-over-back" CHILD-MODE? if EMIT-LOFF-OVER-BACK exit then
    s" window-over" CHILD-MODE? if EMIT-WINDOW-OVER exit then
    s" window-parked" CHILD-MODE? if EMIT-WINDOW-PARKED exit then
    MAIN ;
