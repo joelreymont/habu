@@ -5804,7 +5804,7 @@ PRIM: cr     PRIM;
 PRIM: space  PRIM;
 PRIM: u.     PE-N PE-IN PRIM;
 
-PRIM: create   PE-PTR-A PE-OUT PRIM;
+PRIM: create   PRIM;
 PRIM: variable PE-PTR-A PE-OUT PRIM;
 PRIM: constant PE-A PE-OUT PRIM;
 PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
