@@ -319,14 +319,42 @@ public
 \ value as ONE term several cells wide instead - `OPTION:SOME` leaves one term of
 \ two cells - so its terms and its cells disagree in number and no per-term slot
 \ marks anything. There is no exported per-term width to say WHICH term is the
-\ wide one, so a row whose two counts disagree is reported glued THROUGHOUT. That
-\ is deliberately more than the truth: it can only cause a refusal where a finer
-\ answer would have compiled, never the reverse, and the finer answer belongs
-\ with the row-wise rename itself (dot habu-rename-rows-row-143c0331).
+\ wide one, so such a row is answered exactly when it has ONE term, where "the
+\ whole row is one value" is not an approximation but the truth, and answered
+\ NOT KNOWN when it has several.
 \
-\ THE ANSWER IS A BITMASK OVER CELLS, bit i for the i-th cell from the BOTTOM of
-\ the row, which is how the value vector indexes it. One cell holds it because a
-\ row wider than the vector is refused before it can be asked about.
+\ WHY NOT-KNOWN AND NOT "GLUED THROUGHOUT", WHICH IS WHAT THIS ANSWERED FIRST. An
+\ over-answer is safe only while the consumer's response to it is a REFUSAL. The
+\ consumer now SEGMENTS the vector into values - a rename takes the top `in`
+\ VALUES and puts them back whole (dot habu-rename-rows-row-143c0331) - and a
+\ segmentation that merges two values into one moves the wrong cells and balances
+\ every count, which is the silent miscompile this whole line of work exists to
+\ close. So the direction that fails closed changed with the consumer, and a row
+\ this cannot segment exactly says so instead of guessing wide.
+\
+\ Measured before it was written: over the 3788 rows the running engine holds a
+\ global effect for, NO row has terms and cells disagreeing at all, and every
+\ generated row that does (tools/row-shape-probe.f, over `OPTION:SOME`, a
+\ parametric `PRODUCT`'s MAKE/UNMAKE and a parametric `SUMTYPE`'s constructor)
+\ carries its wide term ALONE. A product field may not even be spelled as a
+\ parametric instantiation (`FIELD o option<n>` is throw 7109), which is the
+\ route that would mix one with an ordinary term. So the not-known bucket is
+\ empty today and the refusal it feeds costs nothing measurable; it is there
+\ because the cost of being wrong about it is a wrong program.
+\
+\ THE ANSWER IS A BITMASK OVER CELLS AND ITS BIT IS ABOUT A BOUNDARY, not about a
+\ cell: bit i says the i-th cell from the BOTTOM of the row and the one below it
+\ are cells of ONE value. That is what a per-cell "this is a bundle cell" bit
+\ could not say - two two-cell values standing next to each other set the same
+\ four bits as one four-cell value, and a consumer that has to know where one
+\ ends cannot tell them apart. `( -- option<n> option<n> )` is exactly that row
+\ and the checker records it exactly: slots 2 1 2 1.
+\
+\ BIT 0 IS THEREFORE ALWAYS CLEAR, and that is a fact about rows rather than a
+\ convention. A row is the whole of what a word takes or leaves, so its bottom
+\ cell begins a value; there is no cell below it for that cell to be glued to.
+\ One cell holds the mask because a row wider than the vector is refused before
+\ it can be asked about.
 
 \ ---- and what a quotation TERM of one of those rows takes and leaves ----------
 \ THE FIFTH QUESTION, AND IT HAS THE SAME OWNER AS THE ARITY. A body written
@@ -368,15 +396,33 @@ public
    EFFECT-DIN-N EFFECT-DIN-CELLS EFFECT-DOUT-N EFFECT-DOUT-CELLS ;
 
 public
-0 constant GLUE-NONE                 \ no cell of the row belongs to a bundle
+0 constant GLUE-NONE                 \ every cell of the row is a value of its own
+
+\ THE ROW'S SHAPE IS NOT STATABLE, which is a third answer and not a mask. Every
+\ representable mask has bit 0 clear, by the paragraph above: bit 0 would claim
+\ the row's bottom cell is glued to a cell below the row, and a row has nothing
+\ below it. So an all-bits answer is a value no row can take, which is why it can
+\ carry this and why it is the same -1 this file's other two absences are spelled
+\ with (ARITY-NONE, QUOT-NONE) - one vocabulary for "no answer", not a number
+\ picked because it happened to be free.
+-1 constant GLUE-UNKNOWN
 private
 
 64 constant GLUE-MAX                 \ cells of one row a mask can describe
 
-: GLUE-ALL ( n -- n ) {: cells:n :}   \ every cell of a `cells`-wide row glued
+\ A run of `cells` set bits at the bottom of a word, with the ceiling written
+\ once for the reason src/compiler/native/elaborate.f VRUN-MASK gives: shifting
+\ by the word size is reduced modulo that size on this machine, so a run as long
+\ as the word would come back as a run of ONE.
+: GLUE-RUN-MASK ( n -- n ) {: cells:n :}
    cells 0 <= if GLUE-NONE exit then
    cells GLUE-MAX >= if -1 exit then
    1 cells lshift 1 - ;
+
+\ The whole of a `cells`-wide row as ONE value: every cell above the bottom one
+\ is glued to the cell below it, and the bottom one begins the value.
+: GLUE-WHOLE ( n -- n )
+   GLUE-RUN-MASK  1 invert and ;
 
 \ ONE CELL IS NOT A BUNDLE, and that is the whole subtlety of this walk. Every
 \ value of a layout family is recorded cell by cell with its position, INCLUDING
@@ -386,40 +432,63 @@ private
 \ cells around. So a term's slot is not the question; the WIDTH of the value the
 \ term belongs to is, and that width is readable from the top of each run - the
 \ cells of one value carry slots W, W-1 ... 1 downwards, so the first slot met
-\ going down IS the width. A run of one is skipped, and a longer one is marked
-\ whole and stepped over.
+\ going down IS the width. A run of one is skipped, and a longer one is glued
+\ along its inner boundaries and stepped over.
 \
 \ Terms arrive top first and cells are numbered from the bottom, so term i is cell
 \ cells-1-i. That correspondence holds only while the two counts agree; when they
 \ do not, the row carries a term wider than one cell with no slot to find it by,
-\ and the whole row is glued without walking it.
-variable RG-MASK   variable RG-I   variable RG-S
+\ and the classification above decides between the one-term truth and not-known.
+\
+\ A RUN THAT REACHES PAST THE ROW'S END is a recorded row disagreeing with
+\ itself - a slot claiming more cells below it than the row has - and it is
+\ answered not-known for the reason the many-term case is: a shape this cannot
+\ state exactly is one it may not guess at.
+variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
 
 : RG-BIT ( n -- ) {: bit:n :}
    RG-MASK @  1 bit lshift or  RG-MASK ! ;
 
-: RG-RUN ( n n n -- ) {: cells:n top:n width:n :}   \ one value of `width` cells whose top term is `top`
-   width 0 ?do  cells 1 - top i + -  RG-BIT  loop ;
+\ One value of `width` cells whose top term is `top`, glued along its INNER
+\ boundaries only. Term `top` is cell cells-1-top and the value runs down from
+\ there, so its cells are cells-top-width .. cells-1-top; a bit is about a cell
+\ and the one BELOW it, so the boundaries inside the value are the UPPER
+\ `width-1` of its cells and its bottom cell carries none.
+: RG-RUN ( n n n -- ) {: cells:n top:n width:n :}
+   width 1 -  0 ?do  cells 1 - top i + -  RG-BIT  loop ;
+
+\ One term of the walk. The row's TERM count and its CELL count are the same
+\ number here - the classification above is what decides that - so one name
+\ serves as the walk's bound and as the base the run arithmetic counts down from.
+: RG-STEP ( n bool -- ) {: cells:n din:bool :}
+   din if RG-I @ EFFECT-DIN-SLOT else RG-I @ EFFECT-DOUT-SLOT then RG-S !
+   RG-S @ 2 < if
+      RG-I @ 1 + RG-I !
+      exit
+   then
+   RG-I @ RG-S @ + cells > if
+      1 RG-BAD !
+      cells RG-I !
+      exit
+   then
+   cells RG-I @ RG-S @ RG-RUN
+   RG-I @ RG-S @ + RG-I ! ;
 
 : ROW-GLUE ( n n bool -- n ) {: terms:n cells:n din:bool :}
-   cells 0 <= if GLUE-NONE exit then
-   cells GLUE-MAX > if cells GLUE-ALL exit then
-   terms cells <> if cells GLUE-ALL exit then
+   cells 0 < if GLUE-UNKNOWN exit then
+   cells 0 = if GLUE-NONE exit then
+   cells GLUE-MAX > if GLUE-UNKNOWN exit then
+   terms cells <> if
+      terms 1 = if cells GLUE-WHOLE exit then
+      GLUE-UNKNOWN exit
+   then
    GLUE-NONE RG-MASK !
    0 RG-I !
+   0 RG-BAD !
    begin RG-I @ terms < while
-      din if RG-I @ EFFECT-DIN-SLOT else RG-I @ EFFECT-DOUT-SLOT then RG-S !
-      RG-S @ 2 < if
-         RG-I @ 1 + RG-I !
-      else
-         RG-I @ RG-S @ + terms > if              \ a run reaching past the row: fail closed
-            cells GLUE-ALL RG-MASK !  terms RG-I !
-         else
-            cells RG-I @ RG-S @ RG-RUN
-            RG-I @ RG-S @ + RG-I !
-         then
-      then
+      cells din RG-STEP
    repeat
+   RG-BAD @ 0<> if GLUE-UNKNOWN exit then
    RG-MASK @ ;
 
 public
@@ -494,11 +563,13 @@ public
    dout 0 < if ARITY-NONE ARITY-NONE exit then
    din dout ;
 
-\ Which cells of this spelling's two rows belong to a multi-cell value, as the
-\ bitmasks described above: bit i for the i-th cell from the bottom of the row.
+\ Where the values of this spelling's two rows BEGIN AND END, as the bitmasks
+\ described above: bit i says the i-th cell from the bottom of the row and the
+\ one below it are cells of one value. GLUE-UNKNOWN for a row whose shape this
+\ cannot state exactly.
 \ GLUE-NONE twice for a name the checker holds no effect for, which is the same
-\ answer as "nothing here is bundled" and safe to be: a name with no effect is
-\ refused by SPELL-ARITY before any caller reaches for its glue.
+\ answer as "every cell here is its own value" and safe to be: a name with no
+\ effect is refused by SPELL-ARITY before any caller reaches for its glue.
 : SPELL-GLUE ( ptr u8 n -- n n )
    EFFECT-QUERY 0= if GLUE-NONE GLUE-NONE exit then
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}

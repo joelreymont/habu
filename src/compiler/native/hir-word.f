@@ -747,9 +747,15 @@ create FIX-NAME FIX-NAME-CAP allot
 \ separately, and the arity says only how many there are. Which of them are one
 \ value is a fact of the callee's declared effect, so it travels with the address
 \ and the arity rather than being worked out at the call site
-\ (dot habu-rename-over-rows-982167af). Zero means nothing the callee leaves is
-\ bundled, which is the answer for every one-cell row and the safe reading of a
-\ row a declarer had no glue for.
+\ (dot habu-rename-over-rows-982167af). Zero means every cell the callee leaves
+\ is a value of its own, which is the answer for every one-cell row and the safe
+\ reading of a row a declarer had no glue for.
+\
+\ AND A RESULT SHAPE NOTHING CAN STATE IS NOT A ROW THIS BUILDS. The declarer
+\ answers NDICT:GLUE-UNKNOWN for a row whose values it cannot place exactly, and
+\ storing that would hand the elaborator a segmentation to guess at - so
+\ RESOLVE-CALLABLE declines the name and it is refused as unmodelled, the same
+\ answer every other question that word cannot settle gives.
 \ AND THE DEADNESS IS THE CALLEE'S CONTROL EFFECT, TRAVELLING THE SAME ROAD FOR
 \ THE SAME REASON. Whether control comes back from a call is a fact of the
 \ callee, not of the site: `throw`, `die` and every definition whose own paths
@@ -954,6 +960,7 @@ public
    in NDICT:ARITY-NONE = if false exit then
    FIX-NAME u NDICT:SPELL-RET-NEUTRAL? 0= if false exit then
    FIX-NAME u NDICT:SPELL-GLUE nip {: glue:n :}   \ the callee's RESULT cells are the caller's concern
+   glue NDICT:GLUE-UNKNOWN = if false exit then   \ a result shape nothing can state is not a call this builds
    FIX-NAME u NDICT:SPELL-DEAD? {: dead:bool :}
    c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW
    true ;

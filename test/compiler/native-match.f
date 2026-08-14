@@ -243,6 +243,17 @@ private
       full OF NMX-PT:UNMAKE + + ENDOF
    ;MATCH ;
 
+\ The same payload, discarded instead of taken apart. It is two cells and ONE
+\ value, so `drop` has to take both - which is a row-wise rename inside an arm
+\ (dot habu-rename-rows-row-143c0331). The chain refused this body while a
+\ rename counted in cells; now it moves the value whole and this compares what
+\ the two compilations answer.
+: E-DROPPED ( n holder -- n )
+   MATCH holder
+      empty OF ENDOF
+      full OF drop ENDOF
+   ;MATCH ;
+
 : E-QUAD ( quad -- n )
    MATCH quad
       q0 OF 1 ENDOF
@@ -1067,9 +1078,10 @@ RUN-THE-REFUSALS
 \ ---- what an arm's payload IS -------------------------------------------------
 \ THE PAIR THAT BINDS THE GLUE RULE. Both arms keep two cells; one of them is two
 \ values and the other is one, and nothing but the registry's two counts says
-\ which. The rename compiles over the first and is refused over the second, so a
-\ rule that marked every payload would fail the first case and a rule that marked
-\ none would fail the second.
+\ which. A rename over the first moves one cell and over the second moves both,
+\ so a rule that marked every payload would move two cells where one was meant
+\ and a rule that marked none would take a `pt` apart - and each case reads the
+\ answer, not merely that something compiled.
 : PAYLOAD-CASE ( -- )
    s" a rename over two INDEPENDENT payload cells compiles and agrees" T-LABEL
    RC-SWAPPED @ 0 T=
@@ -1082,8 +1094,12 @@ RUN-THE-REFUSALS
    9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL E-HOLD
    9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL C-HOLD  T=
 
-   s" and a rename reaching into it is refused by name" T-LABEL
-   RC-DROPPED @ E-NELAB-BUNDLE T=
+   s" and a rename reaching into it moves the whole value, and agrees" T-LABEL
+   RC-DROPPED @ 0 T=
+   9 NMX-HOLDER:EMPTY E-DROPPED  9 NMX-HOLDER:EMPTY C-DROPPED  T=
+   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL E-DROPPED
+   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL C-DROPPED  T=
+   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL C-DROPPED 9 T=
 
    s" a scrutinee wider than its family declares compiles, and agrees" T-LABEL
    RC-INST @ 0 T=

@@ -981,7 +981,7 @@ public
 \ authority's name: a source word the dialect cannot compile is still
 \ E-HIR-UNMODELED, a row read as a meaning it does not carry is E-HIR-CLASS, and
 \ an address operand outside the field it lands in is the assembler's.
--8519 constant E-NELAB-BUNDLE   \ a compile-time stack rename reaching a cell that belongs to a multi-cell value: the elaborator's value vector holds one entry per cell, so a rename permutes cells, and a value spread over several of them would be taken apart with the cell counts still agreeing. Refused until renames move whole values (dot habu-rename-rows-row-143c0331)
+-8519 constant E-NELAB-BUNDLE   \ a multi-cell value the elaborator would have to take apart or would have to guess the shape of: one cell of such a value parked on the return stack, where the cells would be separated with every count still agreeing; or a declared row whose values the chain cannot place exactly (NDICT:GLUE-UNKNOWN), which is a segmentation it may not guess at. A compile-time stack RENAME no longer raises it - renames move whole values (dot habu-rename-rows-row-143c0331)
 -8520 constant E-NELAB-TOKEN    \ the definition's one memory order is wrong for the operation being staged: either the operation's schema declares more than one token among its operands or among its results, which the elaborator has no rule for, or it takes an order in a definition the pre-scan found no memory word in
 -8521 constant E-A64SEL-MEM     \ a memory operation in a routine whose convention names no data-stack place at all: the generic memory order of this dialect begins where the routine takes the caller's operands, and a routine that takes and publishes nothing has no beginning for it
 -8522 constant E-A64RAV-ORDER   \ a memory order the module mints and does not pass on exactly once: a token nothing reads leaves the order after it unstated, and a token two operations read is two orders claiming to be one
@@ -1230,7 +1230,7 @@ public
 \ rather than a number to widen in the elaborator alone.
 -8652 constant E-NELAB-QUOT-CAP \ more quotation bodies in one definition than a module of the native chain holds functions for
 
--8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, or a scrutinee whose bundle on that vector is not the width its family declares - which is what an instantiation wider than the declared one looks like from here
+-8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, a scrutinee whose bundle on that vector does not begin, hold together and end where its family's width says - which is what an instantiation wider than the declared one looks like from here - or an arm whose payload has several FIELDS in more CELLS, where no per-field width says where its values begin (dot habu-publish-the-payload-eb4ae38a)
 
 \ The code generator judge's source reader: -8700..-8719
 \

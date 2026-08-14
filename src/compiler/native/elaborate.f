@@ -374,7 +374,7 @@ create RF-BUF RF-CAP allot
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable VN                          \ how many values the vector holds
-variable VGLUE                       \ bit i set: vector entry i is a cell of a multi-cell value
+variable VGLUE                       \ bit i set: vector entries i and i-1 are cells of ONE value
 VMAX TYPED-BUFFER VSTK IR-ID:ir-value-id
 VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
 create VQ    VMAX cells allot        \ the quotation body entry i names, or VQ-NONE
@@ -423,36 +423,105 @@ RMAX TYPED-BUFFER RSTK IR-ID:ir-value-id
 : VGLUE-LOW ( n n -- n ) {: mask:n n:n :}
    mask  n VRUN-MASK  and ;
 
-\ Whether ONE entry is a cell of a multi-cell value. The run tests above answer
-\ about a span; this answers about a position, which is what a reader checking
-\ that a bundle ENDS where a declaration says it does has to ask.
-: VGLUE-AT? ( n -- bool ) {: i:n :}
+\ ---- what the glue bit SAYS ---------------------------------------------------
+\ A BIT IS ABOUT A BOUNDARY AND NOT ABOUT A CELL, and every reader below rests on
+\ that. Bit i says entry i and entry i-1 are cells of one value; so the values on
+\ the vector are its maximal runs of consecutive set bits, each run's lowest
+\ member being the entry ABOVE the value's bottom cell, and an entry whose own
+\ bit is clear is the bottom cell of whatever value it belongs to.
+\
+\ WHY NOT "ENTRY i IS A CELL OF A MULTI-CELL VALUE", WHICH IS WHAT THIS HELD
+\ FIRST. That bit cannot say where one value ends and the next begins: two
+\ two-cell values standing next to each other set exactly the bits one four-cell
+\ value sets. While every consumer's answer to "is anything bundled here" was a
+\ REFUSAL that was an over-answer in the safe direction. It stopped being safe
+\ the moment a consumer had to SEGMENT the vector instead - a rename takes the
+\ top `in` VALUES and puts them back whole - because merging two values into one
+\ moves the wrong cells and leaves every count balanced. The boundary bit is the
+\ same one cell of storage, crosses the same seams, and answers both questions.
+\
+\ BIT 0 IS ALWAYS CLEAR. Entry 0 is the bottom of the vector and there is nothing
+\ below it to be glued to; every writer here keeps that (VPUSH clears its own
+\ bit, and a row's own mask has bit 0 clear for the same reason - see
+\ src/compiler/native/dict.f). Two readers below rely on it to terminate.
+: VGLUE-BIT? ( n -- bool ) {: i:n :}
    i 0 < i VN @ >= or if E-NELAB-UNDER throw then
    VGLUE @  1 i lshift  and 0<> ;
 
-\ Every entry of a run stops being a cell of a multi-cell value. It is what a
-\ dispatch arm does to the cells it keeps: they were part of the scrutinee's
-\ bundle and the bundle is gone, so what they are now is the arm's own question.
+\ Every boundary inside a span stops being one. It is what a dispatch arm does to
+\ the cells it keeps: they were part of the scrutinee's bundle and the bundle is
+\ gone, so what they are now is the arm's own question. Clearing bit `base` is
+\ part of the answer and not an accident: the span's bottom cell stops continuing
+\ whatever stood below it.
 : VGLUE-CLEAR ( n n -- ) {: base:n n:n :}
    VGLUE @  n VRUN-MASK base lshift invert and  VGLUE ! ;
 
-\ Mark a run of entries already on the vector from a row's own mask, whose bit i
-\ is the i-th cell from the bottom of that row. The run starts at `base`, so the
-\ row's bit i is this vector's bit base+i.
+\ Lay a row's own mask over entries already on the vector, whose bit i is about
+\ the i-th cell from the bottom of that row. The row's bottom cell is entry
+\ `base`, so the row's bit i is this vector's bit base+i - and because the row's
+\ bit 0 is clear, this never claims the row's bottom cell continues the entry
+\ below it, which is a statement about the CALLER's vector that no row can make.
 : VGLUE-RUN ( n n -- ) {: base:n mask:n :}
    mask 0= if exit then
    VGLUE @  mask base lshift or  VGLUE ! ;
 
-\ Whether any entry from `base` to the top is a cell of a multi-cell value.
-\ It masks off the entries BELOW base rather than building a window of the ones
-\ above it, because the window's width would be VN-base and a vector filled to its
-\ ceiling makes that the whole word - a shift the machine reduces modulo the word
-\ size, which would answer "nothing bundled" for the one case that holds the most.
-\ Masking downwards only ever shifts by base, which is strictly less than VN.
+\ `w` entries from `base` upwards become ONE value, and it may reach FURTHER DOWN
+\ than `base`: every boundary inside the span is set and the one at `base` is left
+\ as it was found. Nothing is cleared because nothing needs to be - every
+\ boundary inside a span that is now one value is a boundary that belongs there.
+\
+\ THE ONE LEFT ALONE IS THE POINT OF THE WORD. A construction is lowered by
+\ pushing what the family DECLARES, so the span a site can name is the declared
+\ width plus the pad difference the checker filed - and at an instantiation whose
+\ payload is wider than the declaration, the value's own cells reach below that
+\ span. Severing `base` there would make one value read as two at every seam
+\ underneath. What is under `base` is the payload the site itself computed, and
+\ whatever boundaries it carries are its own.
+\
+\ AND THE TWO CALLERS THAT DO WANT `base` CLEARED CLEAR IT THEMSELVES, which is
+\ why there is no second word for them. A dispatch arm clears the whole span it
+\ keeps before it says anything about it, because the boundaries inside were the
+\ scrutinee's; a rename pushes each cell through VPUSH, which clears every
+\ entry's own bit as it goes. A `VGLUE-ONE` that cleared the span again was
+\ written and measured: replacing it with this word at either caller reds
+\ nothing, in either suite.
+: VGLUE-GROW ( n n -- ) {: base:n w:n :}
+   w 2 < if exit then
+   base 1+  w 1 - VRUN-MASK  VGLUE-RUN ;
+
+\ Whether any entry from `base` to the top is a cell of a multi-cell value. A bit
+\ AT base says a value straddles the boundary `base` stands on; a bit above it
+\ says a value lies inside the span. It masks off the entries BELOW base rather
+\ than building a window of the ones above it, because the window's width would
+\ be VN-base and a vector filled to its ceiling makes that the whole word - a
+\ shift the machine reduces modulo the word size, which would answer "nothing
+\ bundled" for the one case that holds the most. Masking downwards only ever
+\ shifts by base, which is strictly less than VN.
 : VGLUE-ABOVE? ( n -- bool ) {: base:n :}
    base VN @ >= if false exit then
    VGLUE @ VN @ VGLUE-LOW
    1 base lshift 1 - invert and 0<> ;
+
+\ Whether entry `i` continues the value below it, asked of an entry that may be
+\ the bottom one. It is the walk's step and its terminator in one word: entry 0
+\ continues nothing, so a walk down the cells of one value stops there whatever
+\ the mask holds.
+: VRUN-DOWN? ( n -- bool ) {: i:n :}
+   i 0 <= if false exit then
+   i VGLUE-BIT? ;
+
+\ The bottom cell of the value whose TOP cell is entry `i`.
+: VROW-BASE ( n -- n )
+   begin dup VRUN-DOWN? while 1- repeat ;
+
+\ ---- what the DEFINITION's own two rows say --------------------------------
+\ Where the values it takes begin, and where the ones it leaves do, as the same
+\ boundary mask - stated by the caller that drives this pass and read at the two
+\ ends of the body. They stand here rather than with the definition's arities
+\ below because the seam that reads the second of them is EMIT-RETURN, which is
+\ written before those arities are.
+variable IN-GLUE
+variable OUT-GLUE
 
 \ The i-th value from the bottom. Every reader of the vector goes through here,
 \ so an index outside what the vector holds is one refusal rather than several.
@@ -612,42 +681,111 @@ RMAX TYPED-BUFFER RSTK IR-ID:ir-value-id
 \ vector, so a rename that fits in the vector fits in the window, and there is no
 \ second ceiling to keep in step with the word model's.
 \
-\ A pick names its input by depth in the consumed window with zero being the top,
-\ so the value it names sits at window position in-1-depth. Picks are listed
-\ bottom first, which is the order they are pushed.
-\ THE WINDOW MAY NOT REACH A CELL OF A MULTI-CELL VALUE. A rename names its
-\ inputs by depth and puts back whichever it likes, so a window holding one cell
-\ of a value can drop it, duplicate it, or move it away from the cells it belongs
-\ with - and the picks are counted in cells, so the arity still balances and
-\ nothing further down would object. The test is on the whole window rather than
-\ only on its lower edge: a value lying entirely inside the window is just as
-\ easily permuted as one straddling it, and `swap` over two adjacent two-cell
-\ values is exactly that case.
+\ A RENAME COUNTS IN VALUES AND THE VECTOR COUNTS IN CELLS, and that difference
+\ is the whole of this section. `swap ( a b -- b a )` takes the top TWO VALUES,
+\ whichever way they are spelled: the ENGINE moves a two-cell `option<n>` whole -
+\ `( option<n> n -- n option<n> ) swap` answers the option's two cells above the
+\ number, measured - and the CHECKER certifies it because its stack holds one
+\ item per value. A window measured in cells instead permutes the cells of one
+\ value among themselves, balances every count doing it, and leaves a program
+\ nothing downstream objects to. That was four working definitions compiled into
+\ wrong ones (dot habu-rename-over-rows-982167af), and stage one refused every
+\ such window by name while this could not be built.
 \
-\ ONE PICK IS PUT BACK WITH THE MARK THE WINDOW ENTRY IT NAMES CARRIES. A rename
+\ SO THE WINDOW IS SEGMENTED BEFORE IT IS READ. The glue mask says where each
+\ value begins, so walking `in` values down from the top gives the window's lower
+\ edge; a pick names its input by depth in VALUES with zero being the top, so the
+\ value it names is the (in-1-depth)-th value from the window's bottom; and
+\ putting one back pushes all of its cells, in order, and marks them one value
+\ again. Picks are listed bottom first, which is the order they are pushed.
+\
+\ THE VECTOR RUNNING OUT OF VALUES IS THE ONLY REFUSAL LEFT HERE, and it cannot
+\ arise from certified source: the checker's own stack holds one item per value
+\ and has already agreed the rename's arity against it. It is asked because the
+\ alternative to asking is reading below the vector.
+\
+\ ONE PICK IS PUT BACK WITH THE MARKS THE WINDOW CELLS IT NAMES CARRY. A rename
 \ is the one motion that MOVES a quotation rather than making or consuming one,
 \ so it is the one place a mark travels sideways: `swap` over a quotation and a
-\ number leaves the quotation still named, one entry down.
+\ number leaves the quotation still named, one entry down. A quotation is one
+\ cell and so is one value, so a mark never has to be split or merged here.
+variable WGLUE                       \ the window's own glue, its bit 0 always clear
+variable WW                          \ how many cells the window holds
+
+\ Whether window cell k continues the cell below it. The window's cells are the
+\ vector's, shifted down by the window's base, so this is VRUN-DOWN? over the
+\ copy - and it terminates a walk at cell 0 for the same reason.
+: W-CONT? ( n -- bool ) {: k:n :}
+   k 0 <= if false exit then
+   k WW @ >= if false exit then
+   WGLUE @  1 k lshift  and 0<> ;
+
+\ One past the top cell of the window value that BEGINS at cell b.
+: W-END ( n -- n )
+   1+
+   begin dup W-CONT? while 1+ repeat ;
+
+\ Where the r-th window value from the BOTTOM begins. Each step maps one value's
+\ base to the next one's, so the walk is the step applied r times.
+: W-VALUE-BASE ( n -- n ) {: r:n :}
+   0 r 0 ?do W-END loop ;
+
+: W-VALUE-CELLS ( n -- n )
+   W-VALUE-BASE  dup W-END  swap - ;
+
+\ How many cells the top `values` values of the vector occupy, or -1 when the
+\ vector does not hold that many.
+variable VRW-P                       \ the cursor, walking one value down at a time
+variable VRW-N                       \ values still to find
+
+: VROWS-CELLS ( n -- n ) {: values:n :}
+   VN @ VRW-P !
+   values VRW-N !
+   begin VRW-N @ 0 >  VRW-P @ 0 >  and while
+      VRW-P @ 1- VROW-BASE VRW-P !
+      VRW-N @ 1- VRW-N !
+   repeat
+   VRW-N @ 0<> if -1 exit then
+   VN @ VRW-P @ - ;
+
 : RENAME-PICK ( n -- )
-   {: w:n :}
-   w VWIN @ VPUSH
-   w cells VQWIN + @  VN @ 1-  VQ! ;
+   {: r:n :}
+   r W-VALUE-BASE {: b:n :}
+   b W-END b - {: w:n :}
+   VN @ {: at:n :}
+   w 0 ?do
+      b i + VWIN @ VPUSH
+      b i + cells VQWIN + @  VN @ 1-  VQ!
+   loop
+   at w VGLUE-GROW ;
+
+\ Which window value one pick names, held inside the window it names it in. The
+\ picks come off a table this file did not write, and a depth outside the
+\ rename's own arity would otherwise read a value the window does not hold.
+: RENAME-VALUE ( n n -- n ) {: in:n depth:n :}
+   depth 0 < depth in >= or if E-NELAB-SHAPE throw then
+   in 1- depth - ;
 
 : RENAME ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena sym:IR-ID:ir-symbol-id :}
    r sym HIR-WORD:INPUTS@ {: in:n :}
    r sym HIR-WORD:PICKS {: picks:n :}
-   in VN @ > if E-NELAB-UNDER throw then
-   VN @ in - {: base:n :}
-   base VGLUE-ABOVE? if E-NELAB-BUNDLE throw then
-   in 0 ?do
+   in VROWS-CELLS {: w:n :}
+   w 0 < if E-NELAB-UNDER throw then
+   VN @ w - {: base:n :}
+   w WW !
+   VGLUE @ base rshift  w VGLUE-LOW  WGLUE !
+   w 0 ?do
       base i + VAT  i VWIN !
       base i + VQ@  i cells VQWIN + !
    loop
-   in VDROP
-   VN @ picks + VMAX > if E-NELAB-CAP throw then
+   w VDROP
+   0 picks 0 ?do
+      in  p r sym i HIR-WORD:PICK@  RENAME-VALUE  W-VALUE-CELLS +
+   loop
+   VN @ + VMAX > if E-NELAB-CAP throw then
    picks 0 ?do
-      in 1- p r sym i HIR-WORD:PICK@ -  RENAME-PICK
+      in  p r sym i HIR-WORD:PICK@  RENAME-VALUE  RENAME-PICK
    loop ;
 
 \ ---- the return-stack transfers ----------------------------------------------
@@ -1657,11 +1795,28 @@ create SB-BUF SB-CAP allot
 \ reach this refusal; it is asked for the reason NO-REAL-LOCAL-CK is asked, since
 \ reaching it means the one fact the lowering rests on stopped being true and the
 \ alternative is a routine that returns with a cell nobody can name.
+\
+\ AND THE VALUES LEAVE SEGMENTED THE WAY THE DECLARATION SAYS. The width check
+\ above is one derivation of the body's agreement with its own signature; this is
+\ the other half of the same agreement, because a caller marks what this routine
+\ leaves from the DECLARED row and never from the body - so a body whose last
+\ cells are one value where the declaration says two hands every caller a
+\ segmentation the routine did not produce. The declared answer is the one the
+\ caller staged (FRAME-GLUE!, kept in OUT-GLUE), so the two readings are of one
+\ published mask rather than of two derivations that could drift.
+\
+\ A QUOTATION BODY IS NOT HELD TO THIS, and the reason is that nothing states it.
+\ QEMIT-RETURN below returns under an arity its CONSUMER declared, and the
+\ consumer's row says how many cells the body leaves and not where their values
+\ begin; there is no recorded mask to compare against, so there is no second
+\ derivation to make. Publishing a quotation term's glue is what would give this
+\ seam its other half.
 : EMIT-RETURN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       out:n :}
    VN @ out <> if E-NELAB-ARITY throw then
    RN @ 0<> if E-NELAB-JOIN throw then
+   VGLUE @ out VGLUE-LOW  OUT-GLUE @ <> if E-NELAB-JOIN throw then
    out RETURN-CROSS
    c b HIR-OPCODE:RETURN HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    c b v key 0 op OPEN
@@ -2139,8 +2294,6 @@ variable BBASE                       \ the module ordinal this function's first 
 \ habu-let-exit-leave-7e013b93 carries the general case.
 variable IN-N                        \ values the definition takes
 variable OUT-N                       \ values the definition leaves
-variable IN-GLUE                     \ which of those it takes are cells of a multi-cell value
-variable OUT-GLUE                    \ and which of those it leaves are
 variable FR-GIN                      \ what the caller staged for the definition about to be compiled
 variable FR-GOUT
 variable EXIT-USED                   \ whether the body has an `exit` at all
@@ -2264,7 +2417,7 @@ NFROZEN:BMAX VMAX * constant ARG-CAP
 
 here CELL 1- and CELL swap - CELL 1- and allot
 create ARG-N NFROZEN:BMAX cells allot   \ vector positions stated for this block, or -1
-create ARG-G NFROZEN:BMAX cells allot   \ which of those positions are cells of a multi-cell value
+create ARG-G NFROZEN:BMAX cells allot   \ where the values in those positions begin, as the boundary mask above
 create ARG-R NFROZEN:BMAX cells allot   \ how many of the TOP positions are parked return values
 ARG-CAP TYPED-BUFFER ARG-T IR-ID:ir-type-id  \ the type each of those positions has
 VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hands over
@@ -2288,11 +2441,18 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    k 0 < k t ARG-WIDTH@ >= or if E-NELAB-JOIN throw then
    t VMAX * k + ARG-T @ ;
 
-\ Which of a block's argument positions are cells of a multi-cell value. A value
-\ that is one value on one side of an edge is one value on the other, so this
-\ crosses with the width and the types rather than being rederived after the
-\ join - without it every bundled value would arrive at a join looking like
-\ unrelated cells and a rename below it would no longer refuse.
+\ Where the values in a block's argument positions BEGIN. A value that is one
+\ value on one side of an edge is one value on the other, so this crosses with
+\ the width and the types rather than being rederived after the join - without it
+\ every bundled value would arrive at a join looking like unrelated cells, and a
+\ rename below it would take one apart instead of moving it whole.
+\
+\ THE FIRST EDGE STATES IT AND EVERY LATER EDGE IS HELD TO IT, exactly as the
+\ width, the parked split and the types are. Two arms that hand the join the same
+\ NUMBER of cells and disagree about where the values in them begin are refused
+\ by name (EDGE-STAGE below) rather than joined under whichever arm was walked
+\ first - and a boundary is the fact that disagreement is about: two arms can
+\ agree that four cells arrive and mean two values by it, or one, or four.
 : ARG-G@ ( n -- n )
    ARG-BLOCK-CK cells ARG-G + @ ;
 
@@ -3321,7 +3481,7 @@ create MTAG TMAX cells allot         \ an arm's variant tag, a `MATCH` row's tra
 create MPAD TMAX cells allot         \ the zero pads an arm drops, or a `construct` pushes
 create MPAY TMAX cells allot         \ the payload CELLS an arm keeps or a `construct` consumes - and, on a variant row, its payload FIELDS, which is the count the arm's `of` holds those cells against
 create MWID TMAX cells allot         \ a `MATCH` row's bundle width in cells, as the instantiation really occupies it
-create MONE TMAX cells allot         \ whether an arm's payload cells are ONE value
+create MFLD TMAX cells allot         \ how many FIELDS an arm's payload has, beside the CELLS it keeps
 create MEND TMAX cells allot         \ whether this `of` opens the LAST arm of its `MATCH`
 create MTOK MTOK-CAP allot
 
@@ -3356,7 +3516,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 : MPAD@ ( n -- n )    TOK-CK cells MPAD + @ ;
 : MPAY@ ( n -- n )    TOK-CK cells MPAY + @ ;
 : MWID@ ( n -- n )    TOK-CK cells MWID + @ ;
-: MONE@ ( n -- bool ) TOK-CK cells MONE + @ 0<> ;
+: MFLD@ ( n -- n )    TOK-CK cells MFLD + @ ;
 : MEND@ ( n -- bool ) TOK-CK cells MEND + @ 0<> ;
 
 \ Is this row an operand of a tag-dispatch form? Every walk after this pass asks
@@ -3389,8 +3549,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    w ix TOK-CK cells MWID + !
    ord ix TOK-CK cells MTAG + ! ;
 
-: MONE! ( n bool -- ) {: ix:n one:bool :}
-   one if 1 else 0 then  ix TOK-CK cells MONE + ! ;
+: MFLD! ( n n -- ) {: ix:n fields:n :}
+   fields ix TOK-CK cells MFLD + ! ;
 
 : MEND! ( n -- ) {: ix:n :}
    1 ix TOK-CK cells MEND + ! ;
@@ -3502,11 +3662,12 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ less those pads. A negative answer would be the family token's width and this
 \ arm's pads contradicting each other, which is refused rather than clamped.
 \
-\ AND WHETHER THOSE CELLS ARE ONE VALUE IS THE SAME QUESTION AS BEFORE, asked of
-\ the instantiated count: several cells are one value exactly when the payload
-\ has fewer FIELDS than cells. `option<pt>`'s `some` declares one field and one
-\ cell and would answer no; instantiated it is one field and TWO cells, and a
-\ rename that moved either of them would take a `pt` apart.
+\ AND WHERE THOSE CELLS' VALUES BEGIN IS THE VARIANT'S FIELD COUNT HELD AGAINST
+\ THE INSTANTIATED CELL COUNT, so the arm is given the COUNT and not a verdict
+\ derived from it: the two counts answer three cases and a boolean can only carry
+\ two (ARM-GLUE below states them). `option<pt>`'s `some` declares one field and
+\ one cell; instantiated it is one field and TWO cells, and a rename that moved
+\ either of them would take a `pt` apart.
 : MSCAN-OF ( n -- ) {: ix:n :}
    MV-ROW @ {: vix:n :}
    vix 0 < if E-NELAB-MATCH throw then
@@ -3516,7 +3677,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    t MS-WID@ 1- pads - {: pay:n :}
    pay 0 < if E-NELAB-MATCH throw then
    ix  vix MTAG@  pads  pay  MARM!
-   ix  vix MPAY@ pay <>  MONE!
+   ix  vix MPAY@  MFLD!
    t ix MS-ARM!
    -1 MV-ROW !
    MM-OFF MM ! ;
@@ -5183,19 +5344,24 @@ create JOIN-TAB TMAX cells allot
 \ fact of its own and the engine's emitter reads it back, and the chain has no
 \ way to ask for it - so what arrives here is a bundle wider than the width this
 \ pass was told. Compiling the arms against the declared width would drop the
-\ wrong cells and leave a program that runs. Two values of two families lying
-\ next to each other are refused by the same test, for the honest reason that a
-\ run of set bits does not say where one of them ends and the next begins.
+\ wrong cells and leave a program that runs.
+\
+\ THE TEST IS THREE CLAUSES AND EACH IS A DIFFERENT WAY OF DISAGREEING: the
+\ subject BEGINS where the pass was told (nothing joins its bottom cell to what
+\ is under it), it holds together across every boundary inside it, and it ENDS
+\ there too. Two values of two families lying next to each other used to be
+\ refused by the second clause, because a run of set bits could not say where one
+\ ended and the next began; the boundary bit says it, so `MATCH` over the upper of
+\ two adjacent bundles now compiles. The third clause is vacuous at both callers -
+\ the subject is on top of the vector - and is written because a subject that is
+\ not would need it and nothing in the wording says one cannot arrive.
 : BUNDLE-CK ( n n -- ) {: base:n w:n :}
-   w 1 = if
-      base VGLUE-AT? if E-NELAB-MATCH throw then
-      exit
-   then
-   w 0 ?do
-      base i + VGLUE-AT? 0= if E-NELAB-MATCH throw then
+   base VGLUE-BIT? if E-NELAB-MATCH throw then
+   w 1 ?do
+      base i + VGLUE-BIT? 0= if E-NELAB-MATCH throw then
    loop
-   base 0 <= if exit then
-   base 1- VGLUE-AT? if E-NELAB-MATCH throw then ;
+   base w + VN @ >= if exit then
+   base w + VGLUE-BIT? if E-NELAB-MATCH throw then ;
 
 \ `MATCH family`: open a frame over the bundle on top of the vector and build
 \ nothing. The values below it are what every arm has to leave the vector at, the
@@ -5215,7 +5381,7 @@ create JOIN-TAB TMAX cells allot
 : DO-OPEN-CASE ( n -- ) {: ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- {: base:n :}
-   base VGLUE-AT? if E-NELAB-MATCH throw then
+   base 1 BUNDLE-CK
    HIR-CTRL:OPEN-CASE base  ix JOIN-OF  CS-PUSH
    1 CS-TOP CS-W! ;
 
@@ -5260,18 +5426,27 @@ create JOIN-TAB TMAX cells allot
 \
 \ AND WHAT THE CELLS IT KEEPS ARE. They were part of a bundle and the bundle is
 \ gone, so the marks go with it - and what replaces them is the payload's own
-\ answer. One cell is never a bundle. Several cells are one value exactly when
-\ the variant's payload has fewer FIELDS than cells, because then one field is
-\ wider than a cell and no exported per-field width says which; that is the same
-\ answer, for the same reason, that src/compiler/native/dict.f gives a declared
-\ row whose terms and cells disagree in number, and it is more than the truth in
-\ the safe direction - it can only refuse a rename a finer answer would have
-\ allowed, never let one through.
-: ARM-GLUE ( n n bool -- ) {: base:n k:n one:bool :}
+\ answer, which the variant's two counts give in three cases and not two. As many
+\ FIELDS as cells means every field is one cell, so every kept cell is a value of
+\ its own. ONE field means the whole payload is that one field, so the kept cells
+\ are one value however many they are - which is `option<pt>`'s `some`,
+\ declaring one field and one cell and occupying two.
+\
+\ AND FEWER FIELDS THAN CELLS WITH SEVERAL OF THEM IS REFUSED BY NAME. At least
+\ one field is wider than a cell and the registry exports no per-field width to
+\ say which, so where the payload's values begin cannot be stated - and a walk
+\ that guessed "all of it is one value" would hand a rename inside the arm two
+\ values merged into one, which moves the wrong cells with every count still
+\ balancing. That guess was safe while every consumer answered a bundle with a
+\ refusal; it stopped being safe when renames began to segment. The capability
+\ that retires this refusal is the per-field width itself, dot
+\ habu-publish-the-payload-eb4ae38a.
+: ARM-GLUE ( n n n -- ) {: base:n k:n fields:n :}
    base k VGLUE-CLEAR
    k 2 < if exit then
-   one 0= if exit then
-   base  k VRUN-MASK  VGLUE-RUN ;
+   fields k = if exit then
+   fields 1 = if base k VGLUE-GROW exit then
+   E-NELAB-MATCH throw ;
 
 : ARM-RESHAPE ( n n -- ) {: ix:n t:n :}
    t CS-MATCH? 0= if 1 VDROP exit then
@@ -5279,7 +5454,7 @@ create JOIN-TAB TMAX cells allot
    d VN @ > if E-NELAB-UNDER throw then
    d VDROP
    t CS-DEPTH@ {: base:n :}
-   base  VN @ base -  ix MONE@  ARM-GLUE ;
+   base  VN @ base -  ix MFLD@  ARM-GLUE ;
 
 \ The block a tag that matched no variant runs into. It is the last arm's
 \ mismatch edge and nothing else reaches it, so it takes no values: it stages the
@@ -5410,10 +5585,7 @@ create JOIN-TAB TMAX cells allot
       ix 0 EMIT-LIT
    loop
    ix  ix MTAG@  EMIT-LIT
-   VN @ base - {: w:n :}
-   base w VGLUE-CLEAR
-   w 2 < if exit then
-   base  w VRUN-MASK  VGLUE-RUN ;
+   base  VN @ base -  VGLUE-GROW ;
 
 \ `RECURSE`: call the word being compiled. What the operation is handed is the
 \ WHOLE compile-time value vector, bottom first, and what it answers is the
@@ -5582,9 +5754,42 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ the call take apart what a rename above it could not. The callee's own results
 \ are marked from its declared effect, which is the other of the two places
 \ anything wider than a cell enters this vector.
+\ WHAT THE SURVIVORS KEEP IS THEIR OWN BOUNDARIES AND THE ONE AT THE WINDOW'S
+\ FOOT. A boundary at `k` says the call's LOWEST OPERAND continued the survivor
+\ under it, and for a value-aligned call it is never set: the checker's stack
+\ holds one item per value and a call consumes whole items, so the window begins
+\ where a value begins. The one call whose window does not is a construction at
+\ an instantiation WIDER than the callee declares - the site hands over the top
+\ cell of a payload that reaches further down - and there the routine leaves that
+\ cell exactly where it was, so the boundary across the window's foot is still
+\ the truth when the call is done. Dropping it would make one value's cells read
+\ as two below every seam, which is what the two arms of `if` then disagree
+\ about.
+\
+\ AND ONLY A LIVE BOUNDARY IS KEPT, which is what the first of the two masks is
+\ for and is not belt and braces. The record is never trimmed when the vector
+\ SHRINKS - VDROP moves the depth and leaves the bits where they were, because
+\ VPUSH clears each entry's own bit as the vector grows again - so every bit
+\ above the pre-call depth is whatever some earlier, taller vector left there.
+\ Bit `k` is one of them exactly when the call takes NO operands, since then `k`
+\ IS that depth and there is no lowest operand for a boundary to be about.
+\ Reading it merged a call's first RESULT with the survivor below it and the next
+\ rename then took three cells for two values - measured on lib/ptx/toolchain.f
+\ PARSE-VER, whose `REL-KEY` takes nothing and leaves two.
+\
+\ AND THE RUN IS STILL SHORT AT THE BOTTOM WHERE THE PAYLOAD'S OWN BOTTOM VALUE
+\ IS NOT GLUED, which this neither fixes nor worsens: the width the site can
+\ state is the callee's DECLARED one plus the pad difference, and the cells below
+\ that are covered only by whatever boundaries the payload already carried. The
+\ second instantiated number that would close it is dot
+\ habu-publish-the-payload-eb4ae38a.
+: CALL-KEPT ( n n n -- n ) {: keep:n k:n had:n :}
+   keep  had VGLUE-LOW  k 1+ VGLUE-LOW ;
+
 : CALL-CLOSE ( n n n -- )
    {: n:n out:n oglue:n :}
    VGLUE @ {: keep:n :}
+   VN @ {: had:n :}
    VQ-SAVE
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    VN @ VDROP
@@ -5597,7 +5802,7 @@ variable LRK                         \ crossing locals the walk below has taken 
    loop
    n out - {: k:n :}
    k VQ-KEEP
-   0  keep k VGLUE-LOW  VGLUE-RUN
+   0  keep k had CALL-KEPT  VGLUE-RUN
    k oglue VGLUE-RUN ;
 
 \ ---- a call control does not come back from ----------------------------------
@@ -5831,6 +6036,17 @@ create DN-BUF DN-CAP allot
    \ nothing - but what the callee DECLARED it leaves is unchanged by the copy,
    \ and a value of its several cells is still one value here. So the callee's
    \ own answer is stated over the results, exactly as DO-WORD-CALL states it.
+   \
+   \ AND THE BOUNDARY ACROSS THE WINDOW'S FOOT NEEDS NO RESTORING HERE, which a
+   \ made call does need (CALL-KEPT below). The copy rewrites the entries from
+   \ `base` up and VPUSH clears each entry's own bit, so a boundary AT `base`
+   \ would be lost - but only a call whose window splits a value has one, and the
+   \ single kind that does is a construction at an instantiation wider than the
+   \ callee declares. Those are generated constructors, whose bodies this chain
+   \ never recorded, so CALLEE-COPY? declines them at NINL:KNOWN? and no copied
+   \ call can arrive with that bit set. It was written, measured and deleted: a
+   \ restore put here and made to throw whenever it would restore anything never
+   \ fired across all 39 native suites.
    base  r sy HIR-WORD:OUT-GLUE@  VGLUE-RUN ;
 
 \ ---- what `[:` stages ---------------------------------------------------------
@@ -6088,8 +6304,7 @@ create DN-BUF DN-CAP allot
 \ describes the declared width and this value is wider than that by exactly `x`.
 : CON-BUNDLE-GLUE ( n -- ) {: w:n :}
    w VN @ > if E-NELAB-UNDER throw then
-   VN @ w - {: base:n :}
-   base  w VRUN-MASK  VGLUE-RUN ;
+   VN @ w -  w  VGLUE-GROW ;
 
 \ Either way of reaching another word's body. Which one this token is was decided
 \ once, before any walk started, and is read here rather than asked again.
@@ -6861,6 +7076,14 @@ EXPORT SPLICE-MEANING?
    out OUT-N !
    FR-GIN @ IN-GLUE !  FR-GOUT @ OUT-GLUE !
    0 FR-GIN !  0 FR-GOUT !
+   \ A DEFINITION WHOSE OWN ROWS CANNOT BE SEGMENTED IS NOT COMPILED. Its
+   \ arguments would enter the vector under a segmentation nothing stated and its
+   \ outputs would be held against one, so the body is refused by name here
+   \ rather than walked under a guess - the same answer RESOLVE-CALLABLE gives a
+   \ CALLEE whose result shape cannot be stated. It is asked after the statement
+   \ is consumed, so a refused definition leaves no answer for the next one.
+   IN-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
+   OUT-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    b IR-BUILD:FUNS QBASE !
    r n QUOT-SCAN
    r n LOCALS-SCAN
