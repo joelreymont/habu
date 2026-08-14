@@ -462,6 +462,11 @@ public
    \ list is what test/run.f actually forks.
    s" test/compiler/native-trap.f" GSI-FORK-INCLUDE
    s" test/compiler/native-migrate.f" GSI-FORK-INCLUDE
+   \ The recorder's two ceilings beside it, and the 851-byte definition the old
+   \ fixed one refused. Listed here as well as in test/gate-stdlib-cases.f for
+   \ the reason given a few lines below: only this list is what test/run.f
+   \ actually forks.
+   s" test/compiler/native-recorder.f" GSI-FORK-INCLUDE
    \ A quotation through the whole chain and running. It follows the migration
    \ entry because every case is a definition the migration published, and it is
    \ listed here as well as in test/gate-stdlib-cases.f for the reason given

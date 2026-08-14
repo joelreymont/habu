@@ -427,6 +427,15 @@ SUITE compiler-native-migrate
    test/compiler/native-migrate.f
 ;SUITE
 
+\ The two ceilings that entry opens a recording unit with, neither of which is a
+\ number this tree picks any more: the byte ceiling is the engine's own body
+\ capture and the tape is sized from the source. It runs beside the migration
+\ entry because both cases go through it, and it ends with the 851-byte
+\ definition the old 512-byte ceiling refused, run against the engine.
+SUITE compiler-native-recorder
+   test/compiler/native-recorder.f
+;SUITE
+
 \ A quotation, through the whole chain and running: the body compiled as a second
 \ function of the same emission, the Adr that names it decoded out of the
 \ published bytes, and the address executed. It runs after the migration entry
