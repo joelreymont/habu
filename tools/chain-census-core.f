@@ -166,14 +166,20 @@ $100000 constant POOL-CAP             \ bytes of names, paths and spellings kept
 20 constant DENSE-SHOWN               \ files listed in the density table
 64 constant NAME-CAP                  \ the longest package or subject name held
 
-\ The staging buffer for one renamed definition, and it is sized so that it can
-\ never be the reason a definition went unmeasured. The ENGINE will not compile a
-\ definition whose source passes eight kilobytes at all (measured: 7980 bytes
-\ loads, 8285 does not), so no definition in a file that loads can outgrow twice
-\ that. Every length refusal the census reports therefore comes from the
-\ RECORDER's own much smaller ceiling and carries the recorder's own code, which
-\ is the honest answer; the check inside SRC+ is a buffer guard and not a
-\ population the report has to explain.
+\ The staging buffer for one renamed definition. The number it has to clear is
+\ the RECORDER's own ceiling, which is the engine's body capture
+\ (src/compiler/native/migrate.f TEXT-CAP, BODYBUF-CAP, 8000 bytes): a source
+\ shorter than that is one the recorder will take, so the staging buffer has to
+\ hold it or the census would report its own capacity as a refusal.
+\
+\ AND THE TWO LENGTHS ARE NOT THE SAME LENGTH, which is the thing to know before
+\ trusting this number. A definition's SOURCE is what the census stages, and it
+\ can be far longer than the body the engine CAPTURES from it: the capture leaves
+\ out backslash comments, the indentation and the line breaks, so a definition
+\ that loads perfectly well may still stage many kilobytes. Twice the recorder's
+\ ceiling is the headroom, the longest definition in src or lib stages 2948 bytes
+\ (measured 2026-08-14), and a source past this buffer stops the run by name
+\ rather than being truncated into a measurement.
 $4000 constant SRC-CAP
 
 \ ---- per-file status ----------------------------------------------------------
@@ -322,6 +328,14 @@ variable POOL-U
 \ One row per definition the census offered to the chain. The code is the chain's
 \ own: zero means it compiled, anything else is the refusing stage's error. The
 \ spelling is filled in only where the refusal names one.
+\
+\ THE STAGED LENGTH IS RECORDED BECAUSE ONE REFUSAL CLASS IS ABOUT IT. The
+\ recorder refuses a source longer than its text buffer, and a report that says
+\ only "refused for length" cannot say by how much or whether a bigger buffer
+\ would clear the row. The number kept here is the exact byte count handed to
+\ NMIGRATE:MEASURE-HELD - not a length re-derived from the file - so a reader
+\ comparing it against the recorder's ceiling is comparing the two quantities
+\ that were actually compared.
 create D-FILE DEFS-MAX cells allot
 create D-NAME-OFF DEFS-MAX cells allot
 create D-NAME-U DEFS-MAX cells allot
@@ -330,14 +344,15 @@ create D-SPELL-OFF DEFS-MAX cells allot
 create D-SPELL-U DEFS-MAX cells allot
 create D-IN DEFS-MAX cells allot
 create D-OUT DEFS-MAX cells allot
+create D-SRC-U DEFS-MAX cells allot
 variable D-N
 
 : D-CK ( n -- n ) {: k:n :}
    k 0 < k D-N @ >= or if E-TBL-BOUNDS throw then
    k ;
 
-: DEF+ ( n n n n n n -- )
-   {: file:n noff:n nu:n code:n in:n out:n :}
+: DEF+ ( n n n n n n n -- )
+   {: file:n noff:n nu:n code:n in:n out:n srcu:n :}
    D-N @ DEFS-MAX >= if s" DEFS-MAX" CAP-FULL then
    D-N @ {: k:n :}
    file D-FILE k T!
@@ -348,6 +363,7 @@ variable D-N
    0 D-SPELL-U k T!
    in D-IN k T!
    out D-OUT k T!
+   srcu D-SRC-U k T!
    k 1+ D-N ! ;
 
 : DEF-SPELL! ( n n -- ) {: off:n u:n :}
@@ -730,7 +746,7 @@ variable STALE-N
    in RUN-IN !  out RUN-OUT !
    REFUSED-CLEAR
    [: MIGRATE ;] catch {: rc:n :}
-   CUR-FILE noff nu rc in out DEF+
+   CUR-FILE noff nu rc in out SRC-U @ DEF+
    rc STALE-CK
    rc 0= if CUR-FILE F-COMPILED T+ exit then
    rc RECORD-REFUSAL ;
@@ -1365,6 +1381,12 @@ public
 
 : DEF-OUT ( n -- n )
    D-CK D-OUT swap T@ ;
+
+\ How many source bytes this definition was offered to the chain as. It is the
+\ recorder's own subject: the ceiling a length refusal names is a ceiling on
+\ exactly this number.
+: DEF-SRC-U ( n -- n )
+   D-CK D-SRC-U swap T@ ;
 
 \ Which file the definition came from, as an index into the file table. A run over
 \ many files answers many rows and the only thing that ties one back to its source
