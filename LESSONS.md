@@ -6541,3 +6541,27 @@ from the field list: six of eight constants in the first draft
 were wrong in the same direction, and the differential half of
 each case passed while the pinning half failed - which is the
 pair working as designed.
+
+## The conversion and guard landings' five (2026-08-14)
+
+(1) A does>-created word and a generated data-base accessor are
+NOT the same word: one publishes an absolute address, the other a
+thread-relative one, and they agree everywhere except inside a
+task - where the fault address (region-base + dictionary-offset)
+names the bug exactly. Ask which kind a storage definer publishes
+before converting it.
+(2) When a subsystem has threads, a fixture that never starts one
+proves nothing about address semantics - four files of conversion
+passed every main-thread check and shipped a mutex bug the
+tasking gate caught.
+(3) Mutate a layout generator by ALIASING, not translating - a
+uniform offset shift is self-consistent and invisible; only
+breaking distinctness reds.
+(4) A guard that aborts valid data may be failing OPEN on the
+same axis - the declared-slot guard also passed a forged tag. The
+negative case is the other half of the same bug, never garnish.
+(5) When a fix that must work does not, instrument the walk
+instead of re-reading stack order: two prints around one call
+found what four rounds of reasoning could not - and revealed the
+deeper defect (a dead env write masking a term-arena clobber)
+that turned the obvious fix into a design question.
