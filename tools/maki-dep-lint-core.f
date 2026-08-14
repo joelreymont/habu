@@ -9,7 +9,7 @@
 \ ONE sanctioned exception (dot habu-route-the-maki-e61d8a1b): the native gate
 \ (test/run-lib.f) names the maki suite entry maki/test.f so it can SPAWN it as a
 \ black-box subprocess. That is not an import - habu never loads maki into its image
-\ - so the guarded dependency direction is intact. MDL-GATE-ROUTE? allows exactly
+\ - so the guarded dependency direction is intact. GATE-ROUTE? allows exactly
 \ that one token in exactly that one file; every other maki/ token still throws.
 \
 \ Scan: each src/, lib/, test/ Forth file is TOKENIZEd (which strips `\` line comments
@@ -21,69 +21,77 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, tools/lint/text.f,
 \ and tools/lint/token.f.
+\
+\ The module lives in `package MAKI-DEP-LINT`, the shape its sibling lints use
+\ (tools/error-code-lint-core.f, tools/signature-lint-core.f). Its five public
+\ words are the whole surface the CLI and the suite need - the walk, one string
+\ scanned in isolation, and the two the suite drives a scan's path with - and
+\ every helper below them is private.
 
-$80000 constant MDL-CAP   \ >= largest scanned source (checker.f grew past $40000)
-32 constant MDL-NCAP
-10 constant MDL-LF
-48 constant MDL-ZERO
-34 constant MDL-DQUOTE   \ TOKENIZE keeps an s" body's closing quote on the token
+package MAKI-DEP-LINT
 
-create MDL-BUF  MDL-CAP allot
-create MDL-NBUF MDL-NCAP allot
-create MDL-PATH 512 allot
+private
 
-variable MDL-PATHU
-variable MDL-BAD
-variable MDL-FILES
-variable MDL-NL#
-variable MDL-REPORT?
+32 constant NCAP
+10 constant LF
+48 constant ZERO
+34 constant DQUOTE   \ TOKENIZE keeps an s" body's closing quote on the token
 
-: MDL-NL ( -- ) MDL-LF emit ;
+\ One file at a time, in a slab sized from the file. It was a fixed arena that
+\ had been doubled for src/core/checker.f, the largest source in the tree, and a
+\ whole-file reader over an input that grows is what tools/lint/text.f LINT-SLAB
+\ exists for: the arena's next overrun would stop the lint on a file's length
+\ rather than on anything the lint is about.
+create SLAB LINT-SLAB:CELLS cells allot
+create NBUF NCAP allot
+create PATH 512 allot
 
-: MDL-TRUE ( -- bool )
-   0 0= ;
+variable PATHU
+variable BAD
+variable FILES
+variable NL#
+variable REPORT?
 
-: MDL-FALSE ( -- bool )
-   0 0= 0= ;
+: NL ( -- ) LF emit ;
 
-: MDL-REPORT! ( bool -- )
-   MDL-REPORT? ! ;
+: REPORT! ( bool -- )
+   REPORT? ! ;
 
-: MDL-REPORT-ON ( -- )
-   MDL-TRUE MDL-REPORT! ;
+: REPORT-ON ( -- )
+   LINT-TRUE REPORT! ;
 
-: MDL-REPORT-OFF ( -- )
-   MDL-FALSE MDL-REPORT! ;
+: REPORT-OFF ( -- )
+   LINT-FALSE REPORT! ;
 
-: MDL-U. ( n -- )
-   0 MDL-NL# !
-   dup 0= IF drop MDL-ZERO emit exit THEN
+: U. ( n -- )
+   0 NL# !
+   dup 0= IF drop ZERO emit exit THEN
    begin dup 0 > while
-      dup 10 mod MDL-ZERO + MDL-NBUF MDL-NL# @ + c!
-      10 / MDL-NL# @ 1+ MDL-NL# !
+      dup 10 mod ZERO + NBUF NL# @ + c!
+      10 / NL# @ 1+ NL# !
    repeat drop
-   begin MDL-NL# @ 0 > while
-      MDL-NL# @ 1- MDL-NL# !
-      MDL-NBUF MDL-NL# @ + c@ emit
+   begin NL# @ 0 > while
+      NL# @ 1- NL# !
+      NBUF NL# @ + c@ emit
    repeat ;
 
-: MDL-BAD+ ( -- ) MDL-BAD @ 1+ MDL-BAD ! ;
+: BAD+ ( -- ) BAD @ 1+ BAD ! ;
 
-: MDL-SRC? ( ptr u8 n -- bool ) {: a:ptr u :}
+: SRC? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" .f" HAS-EXT?  a u s" .fs" HAS-EXT? or ;
 
-: MDL-PATH! ( ptr u8 n -- ) {: a:ptr u :}
-   a MDL-PATH u LINT-BMOVE  u MDL-PATHU ! ;
+: PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a PATH u LINT-BMOVE  u PATHU ! ;
 
-: MDL-HIT ( ptr u8 n -- ) {: t:ptr tu :}
-   MDL-REPORT? @ if
+: HIT ( ptr u8 n -- ) {: t:ptr tu:n :}
+   REPORT? @ if
       s" MAKI-DEP " type
-      MDL-PATH MDL-PATHU @ type
+      PATH PATHU @ type
       s" : forbidden maki/ reference in token '" type
       t tu type
-      s" '" type MDL-NL
+      s" '" type NL
    then
-   MDL-BAD+ ;
+   BAD+ ;
 
 \ The sole sanctioned habu->maki reference: test/run-lib.f names the maki suite
 \ entries to SPAWN them (dots habu-route-the-maki-e61d8a1b,
@@ -92,53 +100,68 @@ variable MDL-REPORT?
 \ (each ending .f), as a bare token or an s" body (the closing quote rides on the
 \ token). A near-miss (maki/test.fs, maki/test-core.fs) or the token in any other
 \ file is still a finding.
-: MDL-GATE-EFFECTIVE ( ptr u8 n -- ptr u8 n ) {: t:ptr tu :}
-   tu 0 > if t tu 1- + c@ MDL-DQUOTE = if t tu 1- exit then then
+: GATE-EFFECTIVE ( ptr u8 n -- ptr u8 n ) {: t:ptr tu:n :}
+   tu 0 > if t tu 1- + c@ DQUOTE = if t tu 1- exit then then
    t tu ;
 
-: MDL-GATE-ROUTE? ( ptr u8 n -- bool ) {: t:ptr tu :}
-   MDL-PATH MDL-PATHU @ s" test/run-lib.f" LINT-STR= 0= if MDL-FALSE exit then
-   t tu MDL-GATE-EFFECTIVE {: e:ptr eu :}
-   e eu s" maki/test.f" LINT-STR= if MDL-TRUE exit then
+: GATE-ROUTE? ( ptr u8 n -- bool ) {: t:ptr tu:n :}
+   PATH PATHU @ s" test/run-lib.f" LINT-STR= 0= if LINT-FALSE exit then
+   t tu GATE-EFFECTIVE {: e:ptr eu:n :}
+   e eu s" maki/test.f" LINT-STR= if LINT-TRUE exit then
    e eu s" maki/test-" LINT-STARTS-WITH?
    e eu s" .f" LINT-ENDS-WITH? and ;
 
-: MDL-SCAN-TOKENS ( -- )
+: SCAN-TOKENS ( -- )
    0 begin dup TN# @ < while
       dup TOK 2dup s" maki/" LINT-CONTAINS? IF
-         2dup MDL-GATE-ROUTE? IF 2drop ELSE MDL-HIT THEN
+         2dup GATE-ROUTE? IF 2drop ELSE HIT THEN
       ELSE 2drop THEN
       1+
    repeat drop ;
 
 \ scan an arbitrary source string (used by both the file walk and the tests)
-: MDL-SCAN-STR ( ptr u8 n -- )
+: SCAN-STR ( ptr u8 n -- )
    LINT-TRUE PARENS? !
    TOKENIZE
-   MDL-SCAN-TOKENS ;
+   SCAN-TOKENS ;
 
 \ findings produced by scanning one string in isolation (reset -> scan -> count)
-: MDL-COUNT ( ptr u8 n -- n )
-   MDL-REPORT? @ {: report:bool :}
-   MDL-REPORT-OFF
-   0 MDL-BAD !
-   MDL-SCAN-STR
-   report MDL-REPORT!
-   MDL-BAD @ ;
+: COUNT ( ptr u8 n -- n )
+   REPORT? @ {: report:bool :}
+   REPORT-OFF
+   0 BAD !
+   SCAN-STR
+   report REPORT!
+   BAD @ ;
 
-: MDL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u :}
-   a u MDL-SRC? 0= IF exit THEN
-   a u MDL-PATH!
-   MDL-FILES @ 1+ MDL-FILES !
-   a u MDL-BUF MDL-CAP READ-FILE MDL-SCAN-STR ;
+: SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SRC? 0= IF exit THEN
+   a u PATH!
+   FILES @ 1+ FILES !
+   a u SLAB LINT-SLAB:LOAD
+   SLAB LINT-SLAB:TEXT SCAN-STR ;
 
-: MAKI-DEP-LINT ( -- )
-   MDL-REPORT-ON
-   0 MDL-BAD !  0 MDL-FILES !
-   s" src/"  [: MDL-SCAN-FILE ;] WALK-FILES
-   s" lib/"  [: MDL-SCAN-FILE ;] WALK-FILES
-   s" test/" [: MDL-SCAN-FILE ;] WALK-FILES
+: RUN ( -- )
+   REPORT-ON
+   0 BAD !  0 FILES !
+   s" src/"  [: SCAN-FILE ;] WALK-FILES
+   s" lib/"  [: SCAN-FILE ;] WALK-FILES
+   s" test/" [: SCAN-FILE ;] WALK-FILES
    s" maki-dep-lint: " type
-   MDL-FILES @ MDL-U. s"  file(s), " type
-   MDL-BAD @ MDL-U.   s"  finding(s)" type MDL-NL
-   MDL-BAD @ 0 > IF 1 throw THEN ;
+   FILES @ U. s"  file(s), " type
+   BAD @ U.   s"  finding(s)" type NL
+   BAD @ 0 > IF 1 throw THEN ;
+
+public
+
+\ The whole surface outside this file. RUN is the CLI's walk; COUNT is one
+\ string scanned in isolation, which is how the suite drives the token rules;
+\ SRC? and PATH! are the two the suite sets a scan's file context with, and
+\ PATHU is the cell it clears afterwards so later scans are file-agnostic.
+EXPORT RUN
+EXPORT COUNT
+EXPORT SRC?
+EXPORT PATH!
+EXPORT PATHU
+
+;package

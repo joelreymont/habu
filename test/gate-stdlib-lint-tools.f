@@ -48,7 +48,7 @@ REQUIRE-HARNESS
    \ The tool is REQUIRED, not INCLUDED, because its test file requires it too:
    \ GSI-INCLUDE loads through `included`, which never registers the file, so an
    \ INCLUDE here would load the tool a second time from the test's own `require`
-   \ and redefine PE-FB-CAP in the shared image. This matches CLOBBER above.
+   \ and redefine PE-MAX in the shared image. This matches CLOBBER above.
    s" tools/lint/ptx-emitter-lint.f" GSI-REQUIRE
    s" tools/lint/ptx-emitter-lint-test.f" GSI-INCLUDE
    s" tools/process-primitive-lint.f" GSI-INCLUDE
@@ -71,7 +71,7 @@ REQUIRE-HARNESS
    s" tools/dot-dep-lint-test.f" GSI-INCLUDE ;
 
 : MAKI ( -- )
-   s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
+   s" maki-dep-lint" [: MAKI-DEP-LINT:RUN ;] GSI-RUN
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE ;
 
 : LINT-DEF ( -- )

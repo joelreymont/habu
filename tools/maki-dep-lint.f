@@ -11,8 +11,16 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/maki-dep-lint-core.f
 
-: MDL-MAIN ( -- )
-   [: MAKI-DEP-LINT ;] catch {: code:n :}
+\ The entry is this package's own public word, the shape tools/chain-census.f
+\ uses: nothing here is global.
+package MAKI-DEP-LINT-CLI
+
+public
+
+: MAIN ( -- )
+   [: MAKI-DEP-LINT:RUN ;] catch {: code:n :}
    s" maki-dep-lint" code LINT-MAIN ;
 
-MDL-MAIN
+;package
+
+MAKI-DEP-LINT-CLI:MAIN

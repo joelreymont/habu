@@ -72,7 +72,6 @@ public
 
 private
 
-$80000 constant SRC-CAP   \ >= largest scanned source (checker.f grew past $40000)
 512 constant PATH-CAP
 2048 constant MAX-CLAIMS  \ the tree passed 1024 live claims; the table is sized above what it holds, and a full one dies rather than certifying a partial ledger
 1024 constant MAX-RES
@@ -80,7 +79,11 @@ $80000 constant SRC-CAP   \ >= largest scanned source (checker.f grew past $4000
 36 constant DOLLAR-C
 45 constant MINUS-C
 
-create BUF  SRC-CAP allot
+\ One file at a time, in a slab sized from the file. It was a fixed arena, and an
+\ arena doubled once already for src/core/checker.f is the shape tools/lint/text.f
+\ LINT-SLAB was written to end: the next source to cross the constant stops the
+\ whole ledger with a message about a buffer rather than about a code.
+create SRC-SLAB LINT-SLAB:CELLS cells allot
 create PATH PATH-CAP allot
 create DIGITS 32 allot
 
@@ -402,7 +405,8 @@ variable JX
    a u FORTH? 0= if exit then
    a u PATH!
    FILE# @ 1+ FILE# !
-   a u BUF SRC-CAP READ-FILE SCAN-TEXT ;
+   a u SRC-SLAB LINT-SLAB:LOAD
+   SRC-SLAB LINT-SLAB:TEXT SCAN-TEXT ;
 
 : ROOT ( ptr u8 n -- )
    [: SCAN-FILE ;] WALK-FILES ;

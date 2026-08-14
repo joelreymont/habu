@@ -34,8 +34,15 @@ require tools/lint/source-lex.f
 
 package PTX-EMITTER-LINT-TOOL
 
-$80000 constant PE-FB-CAP                       \ one file at a time; headroom past the largest scanned source (checker.f crossed $60000 with the field-projection window)
-create PE-FB PE-FB-CAP allot
+\ One file at a time, in a slab sized from the file. It was a fixed arena that
+\ had already been doubled once for src/core/checker.f, the largest source in the
+\ tree; tools/lint/text.f LINT-SLAB is what a whole-file reader over a growing
+\ input uses instead, so the lint never dies on a file for being long.
+create PE-FB-SLAB LINT-SLAB:CELLS cells allot
+
+: PE-FB-LOAD ( ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n :}
+   pa pu PE-FB-SLAB LINT-SLAB:LOAD
+   PE-FB-SLAB LINT-SLAB:TEXT ;
 
 \ ---- emitter-surface family: name -> abs ptr / len / per-run count ----------
 $20 constant PE-MAX
@@ -164,7 +171,7 @@ variable PE-IN-PKG   variable PE-LI   variable PE-BAD
 : PE-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u PE-POLICY? 0= if exit then
    a u PE-FILE!
-   a u PE-FB PE-FB-CAP READ-FILE {: ba:ptr bu:n :}
+   a u PE-FB-LOAD {: ba:ptr bu:n :}
    ba bu PE-MENTIONS? 0= if exit then
    ba bu PE-SCAN ;
 

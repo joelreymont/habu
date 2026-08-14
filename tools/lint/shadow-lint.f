@@ -26,10 +26,18 @@ require tools/lint/source-lex.f
 
 package SHADOW-LINT-TOOL
 
-$80000 constant SL-FB-CAP                    \ largest linted source + headroom (checker.f is the largest and crossed $60000 with the field-projection window)
-create FB SL-FB-CAP allot                    \ one file at a time
+\ One file at a time, in a slab sized from the file. It was a fixed arena and the
+\ arena had been doubled twice for one file - src/core/checker.f, the largest
+\ source in the tree - which is the shape tools/lint/text.f LINT-SLAB was written
+\ to end: the day the file crosses the constant the lint dies mid-run and the
+\ failure reads as the file's fault.
+create FB-SLAB LINT-SLAB:CELLS cells allot
 
-\ ---- prim-name store: copied out of habu1.f so FB can be reused per file ----
+: FB-LOAD ( ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n :}
+   pa pu FB-SLAB LINT-SLAB:LOAD
+   FB-SLAB LINT-SLAB:TEXT ;
+
+\ ---- prim-name store: copied out of habu1.f so the slab can be reused per file ----
 create PNAMES 8192 allot   variable PEND
 $200 constant PMAX
 create POFF PMAX cells allot   create PRIM-LEN PMAX cells allot   variable PN#
@@ -142,13 +150,13 @@ variable BAD  variable LI  variable IN-PACKAGE
    repeat ;
 
 : LINT-FILE  ( ptr u8 n -- ) {: pa:ptr pu:n :}
-   pa pu FB SL-FB-CAP READ-FILE {: a:ptr u:n :}
+   pa pu FB-LOAD {: a:ptr u:n :}
    pa pu a u LINT-SCAN ;
 
 \ prims live in habu1.f; lint every snap-toolchain file against them.
 : SHADOW-LINT
    0 BAD !
-   s" src/habu/habu1.f" FB SL-FB-CAP READ-FILE  TOKENIZE  SCAN-PRIMS
+   s" src/habu/habu1.f" FB-LOAD  TOKENIZE  SCAN-PRIMS
    s" tools/lint/text.f" LINT-FILE   s" tools/lint/token.f" LINT-FILE s" tools/lint/lib.f" LINT-FILE
    s" tools/lint/shadow-lint.f" LINT-FILE
    s" src/core/util.f"      LINT-FILE   s" src/core/cell.f"      LINT-FILE
