@@ -302,42 +302,77 @@ public
       dup a + c@ c = IF swap 1+ swap THEN  1+
    repeat  drop ;
 
-\ Shared split result arrays. Entries point into the original source string.
+\ Shared split results: a table of (offset, length) rows pointing into the
+\ caller's source string.
+\
+\ WHY IT IS A PACKAGE AND NOT SIX GLOBALS. Its storage used to be the global
+\ names SMAX/SOFF/SLEN/SN#, and `SLEN` is also the line length the engine's own
+\ baked line editor (src/habu/repl.f) publishes. Those two never met while the
+\ AOT seed ran on the interactive REPL only; the seed now runs at the end of the
+\ engine prefix on EVERY boot (dot habu-decide-arm-the-5234727b), so both names
+\ would land in one dictionary and the second one to arrive dies `duplicate
+\ definition` before this file's first lint runs. The package is the namespace
+\ that keeps them apart, and it is what docs/forth.md asks of a module anyway.
+\ The two scan cursors are the package's own for the same reason the storage is:
+\ the split words used to borrow READ-FILE's RGOT/RLEN, so a split during a read
+\ walked over the read's cursor.
+\ The public spellings are the ones the six consumers already call, so they call
+\ them bare through `using LINT-SPLIT` and no consumer body moves; renaming them
+\ would have edited definitions in two files that carry no package yet, and the
+\ package lint would then have demanded those files - and, transitively, their
+\ own consumers - migrate inside this dot.
+package LINT-SPLIT
+private
+
 $400 constant SMAX
-create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
+create SOFF SMAX cells allot   create SLEN SMAX cells allot
+variable CUR    \ scan cursor
+variable MARK   \ start of the field being scanned
+
+public
+
+variable SN#
 : SPLIT-CLEAR  ( -- )  0 SN# ! ;
-: SPLIT+ ( ptr u8 n -- ) {: a:ptr u :}
+: SPLIT+ ( ptr u8 n -- ) {: a:ptr u:n :}
    SN# @ SMAX >= IF s" lint: split result overflow" 1 die THEN
    a SOFF SN# @ cells + !  u SLEN SN# @ cells + !  SN# @ 1+ SN# ! ;
 : S@ ( n -- ptr u8 n )  dup cells SOFF + @  swap cells SLEN + @ ;
-: ADD-LINE ( ptr u8 n -- ) {: a:ptr u :}
+
+private
+
+: ADD-LINE ( ptr u8 n -- ) {: a:ptr u:n :}              \ one line, trailing CR dropped
    u 0 >  a u 1- + c@ LINT-CR = and IF a u 1- SPLIT+ ELSE a u SPLIT+ THEN ;
-: SPLIT-LINES ( ptr u8 n -- ) {: a:ptr u :}
-   SPLIT-CLEAR  0 RLEN !  0 RGOT !
-   begin RGOT @ u < while
-      a RGOT @ + c@ 10 = IF
-         a RLEN @ +  RGOT @ RLEN @ -  ADD-LINE
-         RGOT @ 1+ RLEN !
+
+public
+
+: SPLIT-LINES ( ptr u8 n -- ) {: a:ptr u:n :}
+   SPLIT-CLEAR  0 MARK !  0 CUR !
+   begin CUR @ u < while
+      a CUR @ + c@ 10 = IF
+         a MARK @ +  CUR @ MARK @ -  ADD-LINE
+         CUR @ 1+ MARK !
       THEN
-      RGOT @ 1+ RGOT !
+      CUR @ 1+ CUR !
    repeat
-   RLEN @ u < IF a RLEN @ +  u RLEN @ -  ADD-LINE THEN ;
-: SPLIT-WHITESPACE ( ptr u8 n -- ) {: a:ptr u :}
-   SPLIT-CLEAR  0 RGOT !
-   begin RGOT @ u < while
-      begin RGOT @ u <  a RGOT @ + c@ LINT-WS? and while RGOT @ 1+ RGOT ! repeat
-      RGOT @ u < IF
-         RGOT @ RLEN !
-         begin RGOT @ u <  a RGOT @ + c@ LINT-WS? 0= and while RGOT @ 1+ RGOT ! repeat
-         a RLEN @ +  RGOT @ RLEN @ -  SPLIT+
+   MARK @ u < IF a MARK @ +  u MARK @ -  ADD-LINE THEN ;
+: SPLIT-WHITESPACE ( ptr u8 n -- ) {: a:ptr u:n :}
+   SPLIT-CLEAR  0 CUR !
+   begin CUR @ u < while
+      begin CUR @ u <  a CUR @ + c@ LINT-WS? and while CUR @ 1+ CUR ! repeat
+      CUR @ u < IF
+         CUR @ MARK !
+         begin CUR @ u <  a CUR @ + c@ LINT-WS? 0= and while CUR @ 1+ CUR ! repeat
+         a MARK @ +  CUR @ MARK @ -  SPLIT+
       THEN
    repeat ;
-: JOIN-SPLIT ( ptr u8 n ptr u8 n ptr len -- ) {: sep:ptr su dst:ptr cap lp:ptr :}
+: JOIN-SPLIT ( ptr u8 n ptr u8 n ptr len -- ) {: sep:ptr su:n dst:ptr cap:n lp:ptr :}
    lp STR:BUF-RESET
    0 begin dup SN# @ < while
       dup 0 > IF sep su STR:LENGTH dst cap STR:LENGTH lp STR:BUF-APPEND THEN
       dup S@ STR:LENGTH dst cap STR:LENGTH lp STR:BUF-APPEND  1+
    repeat  drop ;
+
+;package
 : HAS-EXT? ( ptr u8 n ptr u8 n -- bool )  LINT-SUFFIX? ;
 : PATHISH? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u SLASH LINT-INDEX-OF MATCH option

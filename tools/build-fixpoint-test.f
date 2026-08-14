@@ -711,7 +711,7 @@ package BUILD-FIXPOINT
 
 : BFT-TEST-STAGE2-SCRATCH ( -- )
    BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" S2-SOURCE-CAP allot" CONTAINS? TFALSE
+   BFT-READ-BUF u s" SOURCE-CAP allot" CONTAINS? TFALSE
    BFT-READ-BUF u s" stage2: source mmap failed" CONTAINS? TTRUE ;
 
 \ The snap tail's RETIRE-AND-PERSIST is a named TRUSTED: boundary,
@@ -1123,7 +1123,7 @@ variable BAD-N
 : WRITE-STAGE2-DRIVER ( -- )
    STAGE2-DRIVER$ {: out:ptr outu:n :}
    out outu DRIVER-BASE
-   out outu s" src/habu/stage2.f" s" : S2-RUN" BF-APPEND-SOURCE-BEFORE
+   out outu s" src/habu/stage2.f" s" : RUN ( -- )" BF-APPEND-SOURCE-BEFORE
    out outu s" : BFT-S2-READ-EXIT ( -- ) READ-SRC DRV-EXIT-OK ;" BF-APPEND-LINE
    out outu s" BFT-S2-READ-EXIT" BF-APPEND-LINE ;
 

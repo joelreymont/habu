@@ -30,6 +30,7 @@ require tools/lint/lib.f
 require tools/lint/source-lex.f
 
 package BOOTSTRAP-MIRROR-LINT
+using LINT-SPLIT
 
 $20 constant NUM-CAP
 $0A constant LF

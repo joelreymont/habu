@@ -5,6 +5,7 @@
 require lib/sort.f
 
 package DOT-DEP
+using LINT-SPLIT
 
 $40000 constant DDP-FILE-CAP
 32 constant DDP-NUM-CAP

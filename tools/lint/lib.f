@@ -1,6 +1,8 @@
 \ lib.f - shared scanner foundation for native lint tools.
 \ Load after tools/lint/text.f and tools/lint/token.f.
 
+using LINT-SPLIT   \ tools/lint/text.f: SPLIT-LINES/SPLIT-WHITESPACE/SN#/S@
+
 \ ---- named scanners replacing the former regex use-cases ------------------
 \ Scanner captures remain in shared cells for scanner callers; scanner logic is
 \ checked and returns typed bools.
@@ -273,3 +275,5 @@ variable LINT-MAIN-NI
 
 \ Downstream scanner modules that need an unchecked boundary must declare and
 \ test that boundary locally instead of inheriting one from this shared library.
+
+;using

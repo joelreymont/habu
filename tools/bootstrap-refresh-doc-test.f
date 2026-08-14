@@ -10,6 +10,7 @@ require tools/lint/text.f
 require tools/bootstrap-refresh-doc.f
 
 package BOOTSTRAP-REFRESH-DOC
+using LINT-SPLIT
 
 $100 constant TEST-COMMAND-CAP
 10 constant TEST-LF

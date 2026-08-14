@@ -145,7 +145,7 @@ public
    OWNER
    CHECK-TOKENS
    s" src/habu/stage2.f" LOAD
-   s" S2-SOURCE-CAP" DEF-VALUE s" SOURCE-ARENA-CAP" T$=
+   s" SOURCE-CAP" DEF-VALUE s" SOURCE-ARENA-CAP" T$=
    s" src/habu/maker.f" LOAD
    s" MK-SOURCE-CAP" DEF-VALUE s" SOURCE-ARENA-CAP" T$= ;
 

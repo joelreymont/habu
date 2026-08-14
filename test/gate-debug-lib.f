@@ -4,6 +4,8 @@
 
 require tools/jitdump-core.f
 
+using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
+
 : GDB-PROP ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -140,3 +142,5 @@ variable GDB-LS
    GDB-JITDUMP
    GT-CLEANUP
    s" PASS: native prop/debug gate phase" type cr ;
+
+;using

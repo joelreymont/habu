@@ -3,4 +3,4 @@
 require src/arch/arm64/disasm.f
 require tools/jitdump-core.f
 
-JIT-AUTO
+JITDUMP:JIT-AUTO

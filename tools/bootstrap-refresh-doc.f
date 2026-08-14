@@ -7,6 +7,7 @@ require lib/fs.f
 require tools/lint/text.f
 
 package BOOTSTRAP-REFRESH-DOC
+using LINT-SPLIT
 
 0 constant TOKEN-ENGINE
 1 constant TOKEN-LOAD

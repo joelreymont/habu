@@ -16,7 +16,7 @@
 \ entry+length-4 and the return itself is at entry+length, and both are read here
 \ the way that inliner reads them.
 \
-\ WHY IT DOES NOT WALK TO THE FIRST RETURN. tools/jitdump-core.f's JD does, which
+\ WHY IT DOES NOT WALK TO THE FIRST RETURN. JITDUMP:JD (tools/jitdump-core.f) does, which
 \ is right for a routine somebody is reading and wrong for this question twice
 \ over: a routine with a guarded early exit stops at the first of its returns, and
 \ a routine that ends in a tail branch has no trailing return to stop at. The

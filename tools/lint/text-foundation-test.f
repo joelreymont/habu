@@ -18,6 +18,7 @@ public
 ;package
 
 package LINT-TEXT-TEST
+using LINT-SPLIT
 private
 
 variable TEST-N
