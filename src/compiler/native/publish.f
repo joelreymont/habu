@@ -325,7 +325,31 @@ create LOG-OLD-LEN VEC-HEADER-CELLS cells allot
 create LOG-NEW-START VEC-HEADER-CELLS cells allot
 create LOG-NEW-LEN VEC-HEADER-CELLS cells allot
 
+\ ---- when the storage is taken, and why not at load ---------------------------
+\ THE SEVEN MAPPINGS ARE NOT TAKEN WHILE THIS FILE LOADS, for the reason
+\ src/compiler/native/clobber.f states in full over its own three: a mapping's
+\ base is a process-local address the OS picks, so a base sitting in DATA that an
+\ ahead-of-time capture copies is neither reproducible across two captures of one
+\ tree nor meaningful in the engine that boots the result. Seven of the ten such
+\ cells the chain used to leave in its window were these.
+\
+\ LOG-INIT is called from LOG-ROOM - the one word every append passes through -
+\ and is idempotent, so a live log pays one load and one branch per publication
+\ and nothing per row. It is taken there rather than at the chain's entry for the
+\ reason clobber.f records: a record's public writers do not all pass through the
+\ migration entry, and storage belongs to the record that needs it. A read
+\ before the first publication is safe by the derivation clobber.f gives: an
+\ untaken vector's length reads 0, so ROWS# is 0 and every loop over a raw base
+\ below is empty, and a row cannot arrive at an untaken column because the append
+\ path asks VEC-CHECK-LIVE and throws. The reclamation cut is the case that needs
+\ it - a program may forget code having published nothing.
+\
+\ The guard asks the LAST column this word takes, so a failed allocation part way
+\ through cannot be mistaken for a finished one: the guard is still dead, the next
+\ call starts again, and VEC-INIT's own VEC-CHECK-DEAD refuses the column that did
+\ succeed with a named throw rather than leaving a half-taken log in use.
 : LOG-INIT ( -- )
+   LOG-NEW-LEN VEC-CAP@ COUNT>N 0= 0= if exit then
    LOG-NAMES ROWS-SEED NAME-CELLS * VEC-COUNT VEC-INIT
    LOG-LENS ROWS-SEED VEC-COUNT VEC-INIT
    LOG-WIDS ROWS-SEED VEC-COUNT VEC-INIT
@@ -333,8 +357,6 @@ create LOG-NEW-LEN VEC-HEADER-CELLS cells allot
    LOG-OLD-LEN ROWS-SEED VEC-COUNT VEC-INIT
    LOG-NEW-START ROWS-SEED VEC-COUNT VEC-INIT
    LOG-NEW-LEN ROWS-SEED VEC-COUNT VEC-INIT ;
-
-LOG-INIT
 
 \ How many rows are live. Every column is appended and truncated with the rest,
 \ and the address column is the one the reclamation cut below decides on, so its
@@ -390,6 +412,7 @@ LOG-INIT
 \ throw. Taking room changes no row: a publication refused after this ran finds
 \ the log holding exactly what it held before.
 : LOG-ROOM ( -- )
+   LOG-INIT
    ROWS# 1+ {: need:n :}
    need ROWS-CEIL > if E-NPUB-CAP throw then
    LOG-NAMES need NAME-CELLS * VEC-COUNT VEC-ENSURE

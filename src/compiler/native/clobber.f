@@ -143,12 +143,53 @@ create R-ENTRY VEC-HEADER-CELLS cells allot
 create R-GPR VEC-HEADER-CELLS cells allot
 create R-FPR VEC-HEADER-CELLS cells allot
 
+\ ---- when the storage is taken, and why not at load ---------------------------
+\ THE THREE MAPPINGS ARE NOT TAKEN WHILE THIS FILE LOADS. They used to be, and a
+\ mapping's base is a PROCESS-LOCAL address: the OS picks it, it moves between
+\ runs, and it means nothing in another engine. That is invisible while the chain
+\ is only ever loaded from source, and fatal the moment the chain is CAPTURED -
+\ an ahead-of-time capture window is dictionary, code and DATA bytes copied out
+\ of one engine and seeded into another, so a mapping base sitting in the DATA it
+\ copies is both non-reproducible (two captures of the same tree differ) and
+\ wrong in the engine that boots it. Measured before this changed: ten cells in
+\ the chain's window held mapping bases, three of them these, and they were the
+\ whole of the difference between two captures.
+\
+\ SO THE WINDOW IS EMPTY OF THEM BY CONSTRUCTION rather than by trapping them:
+\ the cells hold zero until a row is about to arrive, and ROOM-CK below - the one
+\ word every append passes through, which exists because room must be taken where
+\ a refusal is still free - takes the storage first. It is idempotent, so that
+\ costs a live table one load and one branch per publication and nothing per row.
+\
+\ THE ROOM WORD AND NOT THE CHAIN'S ENTRY, which was the first placement tried
+\ and had a hole this file's own suite found: NCLOB:RECORD and RECORD-CK are
+\ PUBLIC, so a caller that records an address without migrating anything - the
+\ suite does exactly that, and so may any consumer - never passes through
+\ src/compiler/native/migrate.f at all and met an untaken table (E-VEC-STATE,
+\ uncaught, rc -3302). Storage belongs to the record that needs it: taking it
+\ where the first row is admitted covers every writer there is, and needs no
+\ agreement with another file.
+\
+\ AND A READ BEFORE THE FIRST MIGRATION IS SAFE, WHICH IS A DERIVATION AND NOT A
+\ HOPE. Two facts make it: an untaken vector's length is a plain field read that
+\ answers 0 (lib/vector.f VEC-LEN@ asks nothing about the storage), so ROWS# is 0
+\ and every loop over the raw base below is empty; and a row cannot arrive at an
+\ untaken table, because appending goes through ROOM-CK -> VEC-ENSURE ->
+\ VEC-GROW-CAP, which asks VEC-CHECK-LIVE and throws E-VEC-STATE on one. Rows > 0
+\ therefore implies storage, so the readers that take the raw base run only when
+\ there is a base to take. The reclamation hook is the case that proves it is
+\ worth stating: a program may forget code having migrated nothing at all, and it
+\ must answer "no rows" rather than fault.
+\
+\ The guard asks the LAST column this word takes, so a failed allocation part way
+\ through cannot be mistaken for a finished one: the guard is still dead, the next
+\ call starts again, and VEC-INIT's own VEC-CHECK-DEAD refuses the column that did
+\ succeed with a named throw rather than leaving a half-taken table in use.
 : TABLE-INIT ( -- )
+   R-FPR VEC-CAP@ COUNT>N 0= 0= if exit then
    R-ENTRY ROWS-SEED VEC-COUNT VEC-INIT
    R-GPR ROWS-SEED VEC-COUNT VEC-INIT
    R-FPR ROWS-SEED VEC-COUNT VEC-INIT ;
-
-TABLE-INIT
 
 \ How many rows are live. The three columns are written and truncated together,
 \ so the address column's length is the table's length.
@@ -205,6 +246,7 @@ TABLE-INIT
 \ throw. Taking room changes no row: a caller refused after this ran finds the
 \ record holding exactly what it held before.
 : ROOM-CK ( -- )
+   TABLE-INIT
    ROWS# 1+ {: need:n :}
    need ROWS-CEIL > if E-NCLOB-CAP throw then
    R-ENTRY need VEC-COUNT VEC-ENSURE
