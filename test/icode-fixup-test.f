@@ -19,6 +19,10 @@ require lib/process-argv.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
+\ layout.f is here for one constant: IBUFSZ, the boot source arena that owns half
+\ of the code window's size. The window cases below hold the window against both
+\ of its owners, and one of them lives in that file.
+require src/habu/layout.f
 
 package ICODE-FIXUP-TEST
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
@@ -363,6 +367,51 @@ variable WP
    LBL {: t:label :}
    t LBL,  ADR-HI 4 / 1 + ASM-CP !  5 t ADR, ;
 
+\ ---- the code window ---------------------------------------------------------
+\ THE WINDOW IS A DERIVED NUMBER AND THIS IS WHERE IT IS HELD TO ITS OWNERS.
+\ src/arch/arm64/icode.f sizes CODE-CAP-BYTES as ADR-HI + IBUFSZ - the reach an
+\ emitted image's own PC-relative addressing can cross, plus the boot source
+\ arena a baked prefix has to fit. Neither owner is this file's or icode.f's to
+\ pick, so raising either one without the window reds here, naming the window.
+: TEST-WINDOW-DERIVED ( -- )
+   CODE-CAP-BYTES ADR-HI IBUFSZ + T=
+   CODE-CAP-WORDS CODE-CAP-BYTES 4 / T= ;
+
+\ Fill the window a word at a time from the real emit path, then read the first
+\ and last words back. Two things are proved that a cursor comparison alone does
+\ not: the mapping really spans the whole cap (a shorter one faults on the last
+\ store), and the guard admits exactly CODE-CAP-WORDS of them.
+$D503201F constant WINDOW-FILL                        \ nop, so the fill is legible in a dump
+
+: FILL-WINDOW ( n -- ) {: want:n :}
+   ASM-INIT
+   0 begin dup want < while
+      WINDOW-FILL EMITW
+      1 +
+   repeat drop ;
+
+: TEST-WINDOW-ADMITS ( -- )
+   CODE-CAP-WORDS FILL-WINDOW
+   ASM-CP @ CODE-CAP-WORDS T=
+   0 WORD@ WINDOW-FILL T=
+   CODE-CAP-WORDS 1 - WORD@ WINDOW-FILL T= ;
+
+\ One word past the cap. The refusal is a die, not a throw, so it is measured in
+\ a child the way every other icode refusal in this file is - and the die is why
+\ dot habu-make-the-arm64-fa89e081 exists: it asks whether these guards should be
+\ catchable instead of ending the process. This case says what today's exit is.
+: EMIT-WINDOW-OVER ( -- )
+   CODE-CAP-WORDS FILL-WINDOW
+   WINDOW-FILL EMITW ;
+
+\ The same refusal reached from the other side: BYTES, parks ASM-CP by writing it
+\ (icode.f BYTES,), so a cursor left at the cap is a state production reaches
+\ without emitting a single word.
+: EMIT-WINDOW-PARKED ( -- )
+   ASM-INIT
+   CODE-CAP-WORDS ASM-CP !
+   WINDOW-FILL EMITW ;
+
 : CHILD-MODE? ( ptr u8 n -- bool )
    SCRIPT-ARGC 1 <> if 2drop 0 0= 0= exit then
    0 SCRIPT-ARGV$ 2swap STR= ;
@@ -407,6 +456,10 @@ variable WP
    s" badkind" s" icode: invalid fixup kind" TEST-DIAG
    s" badkind-patch" s" icode: invalid fixup kind" TEST-DIAG ;
 
+: TEST-WINDOW-REFUSES ( -- )
+   s" window-over"   s" icode: code buffer overflow" TEST-DIAG
+   s" window-parked" s" icode: code buffer overflow" TEST-DIAG ;
+
 : TEST-REACH-DIAG ( -- )
    s" rel19-far-fwd"  s" icode: cond branch out of reach" TEST-DIAG
    s" rel19-far-back" s" icode: cond branch out of reach" TEST-DIAG
@@ -431,6 +484,9 @@ variable WP
    TEST-CORRUPT
    TEST-BADKIND
    TEST-REACH-DIAG
+   TEST-WINDOW-DERIVED
+   TEST-WINDOW-ADMITS
+   TEST-WINDOW-REFUSES
    T-REPORT
    s" icode-fixup-test: ok" type cr ;
 
@@ -448,6 +504,8 @@ variable WP
    s" rel26-far-back" CHILD-MODE? if EMIT-REL26-FAR-BACK exit then
    s" adr-far-fwd" CHILD-MODE? if EMIT-ADR-FAR-FWD exit then
    s" adr-far-back" CHILD-MODE? if EMIT-ADR-FAR-BACK exit then
+   s" window-over" CHILD-MODE? if EMIT-WINDOW-OVER exit then
+   s" window-parked" CHILD-MODE? if EMIT-WINDOW-PARKED exit then
    MAIN ;
 
 RUN
