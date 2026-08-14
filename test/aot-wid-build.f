@@ -21,7 +21,7 @@
 \ it never adds a public tail to either. The rest of the build reuses
 \ tools/build-fixpoint.f exactly as the normal stdin build does.
 \
-\ Ten modes, selected by environment so one builder serves every case its
+\ Eleven modes, selected by environment so one builder serves every case its
 \ companion suites need - test/aot-wid-suite.f, test/aot-wide-format-suite.f and
 \ the PTY half in test/aot-data-span-forge.f:
 \
@@ -72,6 +72,15 @@
 \                      resolve that name and write its entry where the rebase
 \                      would have written the chain's own target. The engine
 \                      reports which of the two ran.
+\   HABU_AOT_PREWIN=1  put a word that names a PREFIX data word inside the capture
+\                      window, and run it from the boot-run list. The prefix word's
+\                      body is short enough to inline, so the copy used to carry an
+\                      address below the window's DATA span and the capture died
+\                      named; the engine now declines that copy and emits the call,
+\                      which the seed relocates by name. The build asserts, over
+\                      the fixture word's own captured record, that the body holds
+\                      no DATA relocation site and does hold a call to the prefix
+\                      word.
 \   HABU_AOT_D0_SKEW=N run the capture a SECOND time over the same window with
 \                      its DATA span start raised by N bytes. Hand it an N past
 \                      the whole span and the window then contains none of the
@@ -243,6 +252,7 @@ create DRV-CH 1 allot
 : BIG-ENV$ ( -- ptr u8 n )       s" HABU_AOT_BIG" GETENV ;
 : EXT-ENV$ ( -- ptr u8 n )       s" HABU_AOT_EXT" GETENV ;
 : XT-ENV$ ( -- ptr u8 n )        s" HABU_AOT_XTSITE" GETENV ;
+: PREWIN-ENV$ ( -- ptr u8 n )    s" HABU_AOT_PREWIN" GETENV ;
 
 : REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
    v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
@@ -250,7 +260,7 @@ create DRV-CH 1 allot
 : CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
    OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and
    BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and  BIG-ENV$ nip 0 =  and
-   EXT-ENV$ nip 0 =  and  XT-ENV$ nip 0 =  and ;
+   EXT-ENV$ nip 0 =  and  XT-ENV$ nip 0 =  and  PREWIN-ENV$ nip 0 =  and ;
 
 \ The two shape checks are only DEFINED for the plain fixture build
 \ (CHECKS-WANTED?), so the window-content modes, which reuse the two bits and
@@ -494,12 +504,91 @@ create DRV-CH 1 allot
    REPL-BOOTRUN-LINES
    S\" s\" AWB-XT-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
+\ --- the pre-window DATA literal fixture (dot habu-aot-pre-window-0b01043c) -----
+\ THE SHAPE THE WHOLE DOT IS ABOUT. A window word names a data word the PREFIX
+\ defined. The prefix's `create` sits below the window's DATA span, so the address
+\ its body pushes is one the window cannot describe: rebasing it by the window
+\ delta is wrong (the metabuild host recompiles the whole core prefix a second
+\ time without rewinding DP, so its prefix band has no counterpart in the target)
+\ and leaving it is the building host's address baked into bin/hb.
+\
+\ HH0 is that prefix word: `create HH0 $6a09e667 , ...` in src/core/sha256.f,
+\ which PFX-LOAD-CORE-FILES loads long before CAPTURE-REPL opens the window. It is
+\ short enough for habu2.f C-CALL to copy inline, so before the decline landed the
+\ copy carried the chain into the window and the capture died named
+\ ("recorded address site ... in neither the window's DATA span nor its code
+\ span", exit 74). Its name is in the cold prefix the image bakes, which is what
+\ makes the BL the decline emits relocatable at boot - and its first cell is
+\ INITIALISED to the SHA-256 seed constant $6a09e667, so the boot half in
+\ test/aot-data-span-forge.f gets an answer that can only come from the right
+\ address in the built engine, not the zero an unrelocated read gives.
+\
+\ WHAT THE CHECK ASSERTS, and why it is structural rather than "the build did not
+\ die": it finds AWB-PRE-READ's own captured dict record BY NAME, takes its blob
+\ span from that record, and then requires BOTH halves over that span - no DATA
+\ relocation site inside it (the chain is gone) AND a call site inside it whose
+\ pooled callee name is HH0 (the BL is there, by name). Either half alone would
+\ pass on a fixture that stopped referencing the prefix word at all.
+: PREWIN-CHECK-DEF ( -- )
+   s" package AOT-CAPTURE" DRV-LINE
+   s" variable PW-DS  variable PW-CS" DRV-LINE
+   s" : PW-NAME= ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr u:n :}" DRV-LINE
+   s"    u 0 ?do a i + c@ b i + c@ <> if 0 0= 0= unloop exit then loop  0 0= ;" DRV-LINE
+   s" : PW-REC-BY-NAME ( ptr u8 n -- n ) {: a:ptr u:n :}" DRV-LINE
+   s"    AOT-REC-N @ 0 ?do" DRV-LINE
+   s"       i ACAP-REC-DST {: v:ptr :}" DRV-LINE
+   s"       v 16 + ACAP-W32@ u = if" DRV-LINE
+   s"          v 24 + a u PW-NAME= if i unloop exit then" DRV-LINE
+   s"       then" DRV-LINE
+   s"    loop  -1 ;" DRV-LINE
+   s" : PW-DSITES ( n n -- n ) {: start:n clen:n :}" DRV-LINE
+   s"    0 PW-DS !" DRV-LINE
+   s"    AOT-DSITE-N @ 0 ?do" DRV-LINE
+   s"       AOT-DSITE-BUF@ i 4 * + ACAP-W32@ {: off:n :}" DRV-LINE
+   s"       off start >= off start clen + < and if 1 PW-DS +! then" DRV-LINE
+   s"    loop  PW-DS @ ;" DRV-LINE
+   s" : PW-CALLS ( n n ptr u8 n -- n ) {: start:n clen:n a:ptr u:n :}" DRV-LINE
+   s"    0 PW-CS !" DRV-LINE
+   s"    AOT-SITE-N @ 0 ?do" DRV-LINE
+   s"       i ACAP-SITE-ROW {: r:ptr :}" DRV-LINE
+   s"       r ACAP-W32@ {: off:n :}  r 4 + ACAP-W32@ {: noff:n :}" DRV-LINE
+   s"       off start >= off start clen + < and" DRV-LINE
+   s"       AOT-NAMES-BUF@ noff + c@ u = and if" DRV-LINE
+   s"          AOT-NAMES-BUF@ noff 1+ + a u PW-NAME= if 1 PW-CS +! then" DRV-LINE
+   s"       then" DRV-LINE
+   s"    loop  PW-CS @ ;" DRV-LINE
+   s" : PREWIN-CHECK ( -- )" DRV-LINE
+   S\"    s\" AWB-PRE-READ\" PW-REC-BY-NAME {: k:n :}" DRV-LINE
+   s"    k 0 < if" DRV-LINE
+   S\"       s\" aot-wid-build: prewin fixture record not found\" 74 die then" DRV-LINE
+   s"    k ACAP-REC-DST {: v:ptr :}" DRV-LINE
+   s"    v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}" DRV-LINE
+   s"    start clen PW-DSITES {: ds:n :}" DRV-LINE
+   s"    ds 0= 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: prewin body still carries a DATA site\" 74 die then" DRV-LINE
+   S\"    start clen s\" HH0\" PW-CALLS {: cs:n :}" DRV-LINE
+   s"    cs 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: prewin body holds no call to the prefix word\" 74 die then" DRV-LINE
+   S\"    s\" aot-wid-build: prewin-calls \" type cs . cr" DRV-LINE
+   S\"    s\" aot-wid-build: prewin-dsites \" type ds . cr ;" DRV-LINE
+   s" PREWIN-CHECK" DRV-LINE
+   s" ;package" DRV-LINE ;
+
+: PREWIN-FIXTURE-LINES ( -- )
+   s" : AWB-PRE-READ ( -- n ) HH0 @ ;" DRV-LINE
+   S\" : AWB-PRE-REPORT ( -- ) s\" awb-pre=\" type AWB-PRE-READ . cr ;" DRV-LINE
+   RECAPTURE-LINE
+   PREWIN-CHECK-DEF
+   REPL-BOOTRUN-LINES
+   S\" s\" AWB-PRE-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
 : FIXTURE-LINES ( -- )
    BAKE-ENV$ nip 0 > if BAKE-FIXTURE-LINES exit then
    TRAP-ENV$ nip 0 > if TRAP-FIXTURE-LINES exit then
    BIG-ENV$ nip 0 > if BIG-FIXTURE-LINES exit then
    EXT-ENV$ nip 0 > if EXT-FIXTURE-LINES exit then
-   XT-ENV$ nip 0 > if XT-FIXTURE-LINES then ;
+   XT-ENV$ nip 0 > if XT-FIXTURE-LINES exit then
+   PREWIN-ENV$ nip 0 > if PREWIN-FIXTURE-LINES then ;
 
 : INJECT ( -- )
    CHECKS-WANTED? if

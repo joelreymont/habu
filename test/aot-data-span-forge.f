@@ -51,6 +51,16 @@
 \         boot-run exits $52 silently, so the reported magic is the cell's proof.
 \         On the pre-widening format the build never got this far either: the
 \         capture refused the record outright.
+\ THE PRE-WINDOW ELIMINATION (dot habu-aot-pre-window-0b01043c).
+\   PREWIN: a variant whose window holds a word naming a PREFIX data word. The
+\         engine used to copy that word's short body in, carrying an address below
+\         the window's DATA span, and the capture refused the build; it now
+\         declines the copy and emits the call, which the capture records BY NAME.
+\         So the report can only carry the prefix word's own initialised first cell
+\         if the seed resolved that name in the engine it was booting and patched
+\         the call to it. test/aot-wide-format-suite.f owns the build half, which
+\         runs on every host and reads the capture tables directly; this is the
+\         half that says the name reaches the right address at boot.
 \   XTSITE: a variant in which one of the window's own code-address chains was
 \         turned into a NAMED code site keyed on a different word. The seed must
 \         resolve that name and write its entry into the chain, so the engine
@@ -380,6 +390,40 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    HBPWID$ EXISTS? TTRUE
    ASSERT-XTSITE-BOOTS ;
 
+\ The pre-window elimination, proved where the relocation actually happens (dot
+\ habu-aot-pre-window-0b01043c). The window word reads the first cell of a PREFIX
+\ `create` whose body the engine used to copy into it, carrying an address the
+\ window could not describe. The engine now declines that copy and emits a call,
+\ which the capture records by NAME and the seed resolves in the engine it is
+\ booting - so what reaches the report is whatever that name resolves to THERE.
+\ The prefix word is sha256.f's HH0, whose first cell is the SHA-256 seed constant
+\ $6a09e667 = 1779033703, initialised by the prefix load of the built engine. Only
+\ the right address in the right engine yields it: a call that resolved to some
+\ other word, or a read of the zeroed window DATA, gives a different number, and a
+\ name the seed could not find never reports at all (EM-AOT-PATCH-SITES exits $51).
+: PRE-MAGIC$ ( -- ptr u8 n )     s" awb-pre=1779033703" ;
+: PRE-ZEROED$ ( -- ptr u8 n )    s" awb-pre=0" ;
+
+: ASSERT-PREWINDOW-BOOTS ( -- )
+   HBPWID$ PTY-SPAWN
+   s" AOT pre-window: the relocated call reads the prefix word's own cell" T-LABEL
+   PRE-MAGIC$ WAIT-FOR TTRUE
+   s" AOT pre-window: not the zero an unrelocated or window-DATA read gives" T-LABEL
+   RBUF$ PRE-ZEROED$ CONTAINS? 0= TTRUE
+   4 SEND-C
+   s" AOT pre-window: the engine exits 0" T-LABEL
+   PID @ >PID PROC-WAIT-RC MATCH result
+     ok  OF 0 T= ENDOF
+     err OF drop 1 0 T= ENDOF
+   ;MATCH
+   MFD @ close ;
+
+: PROBE-PREWINDOW ( -- )
+   s" HABU_AOT_PREWIN" BUILD-MODE
+   s" AOT pre-window: the variant built" T-LABEL
+   HBPWID$ EXISTS? TTRUE
+   ASSERT-PREWINDOW-BOOTS ;
+
 : BODY ( -- )
    RENDER-SPAN
    s" AOT data span guard: rendered span text parses back to 2*DATA-SIZE" T-LABEL
@@ -398,7 +442,8 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    PROBE-WINDOW-CONTENT
    PROBE-BIG-WINDOW
    PROBE-EXT-NAME
-   PROBE-XTSITE ;
+   PROBE-XTSITE
+   PROBE-PREWINDOW ;
 
 public
 

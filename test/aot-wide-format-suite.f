@@ -40,17 +40,31 @@
 \ HABU_AOT_XTSITE=1 mode makes such a row out of a real capture, through the
 \ capture's own writer, and dies unless exactly one was made.
 \
+\ THE FOURTH CASE, and the one that is an ELIMINATION rather than a carry (dot
+\ habu-aot-pre-window-0b01043c). A window word that names a PREFIX data word used
+\ to end the build: the prefix word's body is short, the engine's inliner copied
+\ it, and the copy carried an address below the window's DATA span, which the
+\ capture correctly refuses because no delta relates the metabuild host's prefix
+\ band to the target's. Carrying such an address was measured and refuted, so the
+\ engine now DECLINES to copy a body holding a chain the open window cannot
+\ describe and emits its call instead - a call the capture records by name and the
+\ seed resolves in the engine it is booting. The HABU_AOT_PREWIN=1 mode reads the
+\ capture's own tables back over the fixture word's record and dies unless the body
+\ is free of DATA sites and holds the call.
+\
 \ NOT COVERED HERE, and covered rather than faked: that the engines so built
 \ actually BOOT - the over-64 KiB one reporting its magic, the out-of-line-named
 \ one being FOUND by its long name, the named code site resolving to the word it
-\ names rather than the one the chain pointed at. The AOT seed is armed at the
-\ interactive REPL entry and nowhere else, so only a PTY boot can observe any of
-\ them; that half lives in test/aot-data-span-forge.f beside the other seed-pass
-\ boot regressions, and runs on Linux hosts, which are the ones this tree's PTY
-\ helper supports. What this suite adds on every host is that the capture and the
-\ bake succeed at all - the half that used to be impossible in all three cases.
+\ names rather than the one the chain pointed at, and the pre-window one reading
+\ the prefix word's initialised cell through the relocated call. The AOT seed is
+\ armed at the interactive REPL entry and nowhere else, so only a PTY boot can
+\ observe any of them; that half lives in test/aot-data-span-forge.f beside the
+\ other seed-pass boot regressions, and runs on Linux hosts, which are the ones
+\ this tree's PTY helper supports. What this suite adds on every host is that the
+\ capture and the bake succeed at all - the half that used to be impossible in all
+\ four cases.
 \
-\ Cost: three child engine builds; the big-window one is larger than the others
+\ Cost: four child engine builds; the big-window one is larger than the others
 \ because the maker compiles the filler. Registered as
 \ `TEST:SUITE aot-wide-format` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-wide-format-suite.f
@@ -179,10 +193,44 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    s" and computes with it" T-LABEL
    OUT$ s" 42" CONTAINS? TTRUE ;
 
+\ A window word that names a PREFIX data word (dot habu-aot-pre-window-0b01043c).
+\ The prefix's `create` sits below the window's DATA span, so the address its body
+\ pushes is one the window cannot describe, and the body is short enough that the
+\ engine's compile-mode inliner used to COPY it into the caller - which is how the
+\ address got in. On the unfixed base this exact mode dies at build time,
+\ "aot-capture: recorded address site ... in neither the window's DATA span nor its
+\ code span", exit 74, with no image produced. The engine now declines that copy
+\ and emits the call instead.
+\
+\ WHAT THE TWO PRINTED LINES MEAN. The builder reads its own capture tables over
+\ the fixture word's captured dict record, found by name: prewin-dsites is how many
+\ DATA relocation sites lie inside that word's blob span (must be zero - the chain
+\ is gone) and prewin-calls how many call sites inside it name the prefix word
+\ (must not be zero - the BL is there and carries the name the seed resolves). The
+\ builder DIES rather than print either line if its half fails, so matching them is
+\ matching assertions that already passed; asserting both is what stops a fixture
+\ that quietly stopped naming a prefix word from looking like a pass.
+: PROBE-PREWINDOW ( -- )
+   SETUP
+   s" HABU_AOT_PREWIN" BUILD-MODE
+   s" a window word naming a prefix data word builds cleanly" REQUIRE-BUILD
+   s" its body carries no DATA relocation site" T-LABEL
+   OUT$ s" aot-wid-build: prewin-dsites 0" CONTAINS? TTRUE
+   s" its body calls the prefix word by name instead" T-LABEL
+   OUT$ s" aot-wid-build: prewin-calls 1" CONTAINS? TTRUE
+   s" the pre-window variant image exists after the build" T-LABEL
+   HB$ EXISTS? TTRUE
+   BATCH-OK
+   s" the pre-window variant still runs a batch program" T-LABEL
+   RC @ 0 T=
+   s" and computes with it" T-LABEL
+   OUT$ s" 42" CONTAINS? TTRUE ;
+
 : BODY ( -- )
    PROBE-BIG-WINDOW
    PROBE-EXT-NAME
-   PROBE-XTSITE ;
+   PROBE-XTSITE
+   PROBE-PREWINDOW ;
 
 public
 
