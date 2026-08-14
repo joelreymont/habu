@@ -6483,3 +6483,21 @@ found it; no suite or review did.
 (4) Measure a family's row shapes before designing to them - two
 of the three buckets the fail-closed design had to handle were
 empty, which decides how much machinery to mint.
+
+## The recorder landing's three (2026-08-14)
+
+(1) A fixed whole-file arena is a SHARED tripwire, not a local
+choice: four lints sat 59 bytes from red on master, and the first
+lane to add a paragraph to the tree's largest file pays for all
+of them - then the package lint forces a migration before a
+single byte can be edited. Check wc -c against the arenas before
+adding prose to src/core/checker.f.
+(2) Derive a cap from the constraint that makes it real: TEXT-CAP
+IS the engine's capture bound (whose overflow is a FATAL exit,
+not a throw - the refusal is what stands between a long body and
+a dead process); the tape is a function of its input. A derived
+bound moves when its constraint moves and the fixtures follow.
+(3) A lifted cap re-prices every ceiling derived from it: CWIN-MAX
+16 was unreachable behind 512 bytes and now refuses real tree
+code. When a bound moves, sweep everything whose reachability
+argument cited it.
