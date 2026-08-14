@@ -4297,9 +4297,9 @@ s" c-local-ref" s" label label --" TRUST
       5 LAOTNAMES LABEL@ ADR,  9 5 4 ADD,            \ x9 = pool entry ptr = LAOTNAMES + name-off
       10 9 0 LDRB,                                   \ x10 = name length = pool[entry]
       9 9 1 ADDI,                                    \ x9 = name ptr = entry + 1
-      LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?
+      LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?, x5 = record
       13 pnf CBZ,
-      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject reloc into a protected WID (x24 survives)
+      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject reloc into a protected WID (reads LFIND's x5/x11; x24 survives)
       9 CP 24 ADD,                                   \ x9 = site addr = CP + blob offset
       10 11 9 SUB,  10 10 2 ASRI,  5 $3FFFFFF LIT64,  10 10 5 AND,   \ x10 = imm26 = (callee - site) >> 2, masked
       14 9 0 LDRW,  5 $FC000000 LIT64,  14 14 5 AND,  14 14 10 ORR,  14 9 0 STRW,   \ keep BL opcode, write imm26
@@ -4484,9 +4484,9 @@ public
       5 LAOTNAMES LABEL@ ADR,  9 5 4 ADD,         \ x9 = pool entry ptr
       10 9 0 LDRB,                                \ x10 = name length
       9 9 1 ADDI,                                 \ x9 = name ptr
-      LFIND LABEL@ BL,                            \ x11 = xt, x13 = found?
+      LFIND LABEL@ BL,                            \ x11 = xt, x13 = found?, x5 = record
       13 xnf CBZ,
-      LAOTWIDGATE LABEL@ BL,                      \ reject a resolve into a protected WID (x24 survives)
+      LAOTWIDGATE LABEL@ BL,                      \ reject a resolve into a protected WID (reads LFIND's x5/x11; x24 survives)
       9 CP 24 ADD,                                \ x9 = chain addr = CP + blob offset
       10 9 0 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 0 ADDI,   5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
       10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
@@ -4518,9 +4518,9 @@ public
       10 21 0 LDRB,  10 bdone CBZ,                   \ x10 = name len; 0 -> done
       SP SP 16 SUBI,  21 SP 0 STR,  10 SP 8 STR,     \ preserve cursor + len across the call
       9 21 1 ADDI,                                   \ x9 = name ptr = cursor + 1
-      LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?
+      LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?, x5 = record
       13 bnf CBZ,
-      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject bootrun into a protected WID
+      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject bootrun into a protected WID (reads LFIND's x5/x11)
       11 BLR,                                        \ call the entry word
       21 SP 0 LDR,  10 SP 8 LDR,  SP SP 16 ADDI,
       21 21 1 ADDI,  21 21 10 ADD,                   \ advance past [len][name]
@@ -4980,27 +4980,55 @@ public
    ret LBL,  RET, ;
 ;package
 
-\ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). x11 = resolved xt on entry;
-\ re-derive its record WID (scan dict for [0]==xt, read [40]) and, if that WID is in
-\ the protected-WID registry, fail-closed (exit ENGINE-ERROR:SEAL-PACKAGE) -- so a captured
-\ relocation callee or boot-run entry name that resolves into a sealed system /
-\ generated constructor package is rejected before the call immediate is rewritten
-\ or the entry word is executed. Preserves x11; clobbers x5/x6/x9/x13/x14; saves x30
-\ for the nested LPROTWIDQ. A not-found xt (no record) skips the guard.
+\ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). Entry is LFIND's answer
+\ as LFIND left it: x5 = the record the baked name resolved to, x11 = its xt. If
+\ that record's WID is in the protected-WID registry the boot fails closed (exit
+\ ENGINE-ERROR:SEAL-PACKAGE) -- so a captured relocation callee or boot-run entry
+\ name that resolves into a sealed system / generated constructor package is
+\ rejected before the call immediate is rewritten or the entry word is executed.
+\ Preserves x5 and x11; clobbers x6/x9/x13/x14; saves x30 for the nested LPROTWIDQ.
+\
+\ IT ASKS THE RECORD THE LOOKUP MATCHED, WHICH IS THE ONLY RECORD THAT ANSWERS.
+\ This used to take the xt alone and scan the whole dictionary for the first
+\ record whose [0] equalled it. That is not the same question and it is the
+\ weaker one: `EXPORT` gives one body a second record under a second name in a
+\ second wordlist, so an xt can sit in several rows, and the scan reports the
+\ LOWEST-indexed of them - measurably a different wid from the one the name
+\ resolved in. A protected wordlist reached through such a name would have been
+\ read as its unprotected sibling and admitted. It was also the whole per-boot
+\ cost of the pass, O(sites x dictionary): 2.4us per site at 7187 records,
+\ measured, which is tens of milliseconds a boot at compiler-chain scale.
+\
+\ THE POINTER IS CHECKED, NOT TRUSTED. A register handed between two engine
+\ routines is worth exactly what the receiver proves about it, so the gate
+\ re-establishes here what the old scan got by construction: the record is
+\ present, it lies inside the live record array, and its [0] is the xt LFIND
+\ returned. Anything else is an engine that no longer agrees with itself, and it
+\ dies named rather than resolving the guard away - which the old "no record
+\ found, skip the guard" leg would have done, silently, had it ever been
+\ reachable.
+\ The self-consistency message is lexical, like AOT-XTSITE:PATCH-CHAINS's own:
+\ the bytes are emitted after the exit that names them, and the write length is
+\ READ OFF the same string rather than counted by hand, so the two cannot drift.
 : EM-AOTWIDGATE ( -- )
-   LBL LBL LBL {: wscan:label wfound:label wdone:label :}
+   LBL LBL LBL  s" hb: AOT gate: lookup record unusable"
+   {: wbad:label wdone:label wmsg:label ma mu :}   \ typed-local-lint: allow-bare-local
    LAOTWIDGATE LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,           \ save return + xt
-   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   wscan LBL,  6 wdone CBZ,
-      14 5 0 LDR,  14 11 CMP,  C-EQ wfound BCOND,        \ record[0] == xt ?
-      5 5 DREC ADDI,  6 6 1 SUBI,  wscan B,
-   wfound LBL,
-      9 5 40 LDR,                                        \ x9 = record WID
-      LPROTWIDQ LABEL@ BL,                               \ x13 = protected?
-      13 wdone CBZ,
-         1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ protected WID at AOT boot gate: name it on fd 2 before exit 84
-         0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+   5 wbad CBZ,                                          \ LFIND reported a hit, so a record must be here
+   6 5 DBASE SUB,                                       \ x6 = byte offset into the record array
+   14 DREC MOVZ,  14 14 NDICT MUL,                      \ x14 = live array length in bytes
+   6 14 CMP,  C-CS wbad BCOND,                          \ unsigned: below DBASE wraps high, so one test covers both ends
+   14 5 0 LDR,  14 11 CMP,  C-NE wbad BCOND,            \ the record must carry the xt LFIND returned
+   9 5 40 LDR,                                          \ x9 = record WID
+   LPROTWIDQ LABEL@ BL,                                 \ x13 = protected?
+   13 wdone CBZ,
+      1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ protected WID at AOT boot gate: name it on fd 2 before exit 84
+      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+   wbad LBL,
+      1 wmsg ADR,  0 2 MOVZ,  2 mu 1+ MOVZ,  NR-WRITE SYS,   \ +1 = the newline emitted with the bytes
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   wmsg LBL,  ma mu BYTES,  NL-KW 1 BYTES,              \ unreachable: both legs above exit_group
    wdone LBL,
       30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -5714,7 +5742,10 @@ s" c-end-using" s" --" TRUST
 \ startup), and a chain walked through every slot without meeting an empty one.
 \ Qualified tokens (containing ':') never resolve here. Register/name-fold
 \ conventions mirror EMIT-FIND's authoritative linear scan; preserves
-\ x9/x10/x19(XDS)/x20(DATA).
+\ x9/x10/x19(XDS)/x20(DATA). It publishes LFIND's record output too - x5 = the
+\ matched record on a hit, 0 on every miss - because a caller that reaches this
+\ leaf reaches it INSTEAD of LFIND, and one of the two answering a question the
+\ other cannot is how the two shapes drift apart.
 : EMIT-FIND-USED ( -- )
    LFINDUSED LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
@@ -5822,7 +5853,8 @@ s" c-end-using" s" --" TRUST
    14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
    14 14 15 ORR,
    13 1 MOVZ,  13 13 14 ORR,
-   ret LBL,  RET,
+   RET,                                                            \ hit: x5 is the matched record, LFIND's own output shape
+   ret LBL,  5 0 MOVZ,  RET,                                       \ every miss leaves x5 = 0, including the two that never wrote it
    amb LBL,
       0 2 MOVZ,  1 ambmsg ADR,  2 60 MOVZ,  NR-WRITE SYS,
       PROT:LCLOSE LABEL@ BL,                                  \ region -> RX (idempotent; a compile-path caller is RW here)

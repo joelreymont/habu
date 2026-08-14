@@ -40,7 +40,16 @@
 \ private HB_TMP; it builds a throwaway `hb-pwid` engine whose AOT band has two
 \ extra word-list ids set (300 and 8000) on top of the ones the metabuild host
 \ protects for itself. This suite then probes hb-pwid on the real batch paths, and
-\ spawns the same builder twice more in its refusal modes.
+\ spawns the same builder in its three refusal modes and its three boot-gate
+\ modes.
+\
+\ The registry has two ends and this suite now holds both. A program the engine
+\ READS must not publish into a protected word-list (the forge cases). A name the
+\ engine BAKED must not resolve into one either: the AOT seed rewrites a call, an
+\ xt or a branch for every stored name, and LAOTWIDGATE stands between the lookup
+\ and all three. PROBE-BOOT-GATE is that end (dot
+\ habu-return-the-record-9c9b1731); before it, nothing in the tree executed the
+\ routine.
 \
 \ Note on the negative leg: an earlier revision proved "not protected" by having
 \ the same forge exit 0 against an unprotected id. Since the absent-package-context
@@ -66,7 +75,8 @@
 \ the moment a family is added. Reading the two baked ids back BY ID is the direct,
 \ stable proof, and it is what a bitmap makes cheap.
 \
-\ Cost: four child engine builds (~12 s each). It is registered as
+\ Cost: seven child engine builds (~12 s each; three of them are the boot-gate
+\ modes). It is registered as
 \ `TEST:SUITE aot-wid-restore` in test/gate-stdlib-cases.f, so it runs in the
 \ standalone stdlib gate (a required master gate) - not the fast tail-process
 \ fork tier, whose perf ratchet the build cost would exceed. Run standalone:
@@ -116,12 +126,16 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
 create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
 create REFUSE-BUF FS-PATH-CAP allot   variable REFUSE-U
 create REFUSE-HB-BUF FS-PATH-CAP allot  variable REFUSE-HB-U
+create GATE-BUF FS-PATH-CAP allot     variable GATE-U
+create GATE-HB-BUF FS-PATH-CAP allot  variable GATE-HB-U
 
 : ROOT$ ( -- ptr u8 n )   ROOT-BUF ROOT-U @ ;
 : HBPWID$ ( -- ptr u8 n ) HBPWID-BUF HBPWID-U @ ;
 : FORGE$ ( -- ptr u8 n )  FORGE-BUF FORGE-U @ ;
 : REFUSE-ROOT$ ( -- ptr u8 n ) REFUSE-BUF REFUSE-U @ ;
 : REFUSE-HB$ ( -- ptr u8 n )   REFUSE-HB-BUF REFUSE-HB-U @ ;
+: GATE-ROOT$ ( -- ptr u8 n )   GATE-BUF GATE-U @ ;
+: GATE-HB$ ( -- ptr u8 n )     GATE-HB-BUF GATE-HB-U @ ;
 : PLAIN$ ( -- ptr u8 n )  s" bin/hb" ;      \ the shipped engine = the engine under test
 : ERR$ ( -- ptr u8 n )    ERR ERR-U @ ;
 
@@ -140,6 +154,14 @@ create REFUSE-HB-BUF FS-PATH-CAP allot  variable REFUSE-HB-U
    a REFUSE-BUF u BYTE-COPY  u REFUSE-U !
    REFUSE-ROOT$ CLEANUP-TREE+
    REFUSE-ROOT$ s" hb-pwid" REFUSE-HB-BUF JOIN-PATH REFUSE-HB-U ! ;
+
+\ Same rule for each boot-gate mode: its own tree, so the engine a probe boots
+\ can only be the one that mode's build wrote.
+: GATE-SETUP ( -- )
+   s" habu-aot-wid-gate" TMPDIR-MKDIR {: a:ptr u:n :}
+   a GATE-BUF u BYTE-COPY  u GATE-U !
+   GATE-ROOT$ CLEANUP-TREE+
+   GATE-ROOT$ s" hb-pwid" GATE-HB-BUF JOIN-PATH GATE-HB-U ! ;
 
 \ --- decimal text for the builder's environment knobs ---
 create NUM-BUF 32 allot   variable NUM-U
@@ -178,6 +200,15 @@ create NUM-BUF 32 allot   variable NUM-U
    PROC-ENV-RESET
    s" HB_TMP" >LEN REFUSE-ROOT$ >LEN PROC-ENV+
    k ku >LEN  NUM$ >LEN PROC-ENV+
+   RUN-BUILDER ;
+
+\ A boot-gate build: the mode number picks the fixture the builder injects.
+: BUILD-GATE ( n -- ) {: mode:n :}
+   GATE-SETUP
+   mode NUM$!
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
+   s" HABU_AOT_GATE" >LEN  NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;
 
 \ --- forge child spawn + outcome capture (parameterised by engine) ---
@@ -223,6 +254,26 @@ create NUM-BUF 32 allot   variable NUM-U
 : ASSERT-OK ( -- )                   \ child exited cleanly
    EXITED @ TTRUE
    RC @ 0 T= ;
+
+\ Boot the engine with no program at all: the AOT boot-run list is what runs, and
+\ it runs before any input is read.
+: BOOT-EMPTY ( ptr u8 n -- ) {: e:ptr eu:n :}
+   PROC-ARGV-RESET
+   e eu >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  PROBE-TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME  STORE! ;
+
+: OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
+
+: ASSERT-GATE-REJECT ( -- )          \ the seed refused the name and said which guard did it
+   EXITED @ TTRUE
+   RC @ FORGE-RC T=
+   ERR$ s" hb: AOT protected-WID gate reject" CONTAINS? TTRUE
+   OUT$ s" awb-gate=" CONTAINS? 0= TTRUE ;      \ ... before the entry word could run
+
+: ASSERT-GATE-RAN ( -- )             \ the same fixture, unprotected: it boots and the entry runs
+   EXITED @ TTRUE
+   RC @ 0 T=
+   OUT$ s" awb-gate=open" CONTAINS? TTRUE ;
 
 \ A define into an UNPROTECTED word-list is refused too, but for an unrelated
 \ reason: since the absent-package-context reject landed, redirecting publication
@@ -337,6 +388,45 @@ create PRB PRB-CAP allot   variable PRB-U
    s" HABU_AOT_D0_SKEW" D0-SKEW-PAST-SPAN BUILD-REFUSED
    s" aot-capture: recorded address site outside both window spans" ASSERT-BUILD-REFUSED ;
 
+\ --- the AOT boot gate (dot habu-return-the-record-9c9b1731) --------------------
+\ The other end of the protected-WID registry. Everything above proves that a
+\ program the engine READS cannot publish into a sealed word-list. These three
+\ prove the same about what the engine BAKED: the AOT seed resolves every stored
+\ name and then rewrites a call, writes an xt, or branches to the word, and
+\ LAOTWIDGATE is what stands between the lookup and all three. Until this landed,
+\ nothing in the tree executed that routine at all - it could be deleted whole and
+\ every suite stayed green.
+\
+\ THE CONTROL IS NOT DECORATION. A qualified boot-run name that simply did not
+\ resolve would also stop the boot, so a reject on its own says nothing about
+\ protection. Mode 2 is the same fixture with the id left unprotected: the engine
+\ boots and the entry word reports, which is what makes the other two exits
+\ attributable to the bitmap.
+\
+\ AND THE ALIAS CASE IS THE ONE THAT DECIDES WHAT THE GATE MAY ASK. `EXPORT`
+\ gives one body a second record under a second name in a second word-list, so a
+\ code cell does not name a record. Mode 3 protects only the exported record's
+\ word-list and leaves the original's alone: a gate that recovers the word-list by
+\ searching the dictionary for a matching code cell reads the unprotected original
+\ and admits the name (measured: exit 0, entry word ran), while a gate that asks
+\ the record the LOOKUP matched rejects it. That is why LFIND returns its record.
+: PROBE-BOOT-GATE ( -- )
+   s" boot-run name in an unprotected package still boots and runs (control)" T-LABEL
+   2 BUILD-GATE
+   RC @ 0 T=
+   GATE-HB$ EXISTS? TTRUE
+   GATE-HB$ BOOT-EMPTY  ASSERT-GATE-RAN
+   s" boot-run name resolving into a protected package dies 84 at the gate" T-LABEL
+   1 BUILD-GATE
+   RC @ 0 T=
+   GATE-HB$ EXISTS? TTRUE
+   GATE-HB$ BOOT-EMPTY  ASSERT-GATE-REJECT
+   s" an EXPORT alias cannot smuggle the name past the gate" T-LABEL
+   3 BUILD-GATE
+   RC @ 0 T=
+   GATE-HB$ EXISTS? TTRUE
+   GATE-HB$ BOOT-EMPTY  ASSERT-GATE-REJECT ;
+
 \ AOT DATA-reserve span guard (dot habu-guard-aot-data-49de2ee6): the sibling
 \ seed-pass forge test/aot-data-span-forge.f builds an oversized-span variant and
 \ PTY-boots it (the reserve+guard only run on interactive REPL entry), proving a
@@ -373,6 +463,7 @@ create PRB PRB-CAP allot   variable PRB-U
    PROBE-VARIANT
    PROBE-CONTROL
    PROBE-REFUSALS
+   PROBE-BOOT-GATE
    PROBE-DATA-SPAN ;
 
 public

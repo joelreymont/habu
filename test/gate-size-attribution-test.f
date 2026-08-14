@@ -673,9 +673,47 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ it (14656 -> 14636) inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423)
 \ and MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
 \ The Linux rows below are owed this +20 as well.
-128724 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-14 re-measured live at the macOS byte-fixpoint for the seed gate's own
+\ lookup (dot habu-return-the-record-9c9b1731): LFIND publishes the dictionary
+\ record it matched, and the AOT boot gate reads that record instead of scanning
+\ the whole dictionary for one whose code cell matches. Diffed region by region
+\ against the two HABU_ENGINE_SIZE_MAP dumps; three code rows move and every other
+\ row is byte-identical.
+\   primitives/find      1260 -> 1284 (+24): EMIT-FIND, six instructions. Three
+\                                     zero x5 on the three miss exits (FIND-NEND,
+\                                     FIND-QBAD, FIND-MISS), one parks the linear
+\                                     scan's match in x17 (that loop's cursor IS
+\                                     x5), one puts it back at FIND-FOUND, and one
+\                                     is the RET that FIND-FOUND and FIND-MISS used
+\                                     to share and no longer can. The hash probe's
+\                                     own match - the path that answers nearly every
+\                                     lookup - gains nothing: x5 already holds the
+\                                     record when it returns.
+\   primitives/find-used  904 ->  912  (+8): EMIT-FIND-USED, two instructions, the
+\                                     same split: the hit path gets its own RET and
+\                                     the shared miss exit zeroes x5.
+\   dictionary-code      6844 -> 6916 (+72): EM-AOTWIDGATE, 108 -> 180 bytes, and
+\                                     the lookup half of it is a WASH. The scan cost
+\                                     nine instructions (two to set the cursor, seven
+\                                     for the loop body) and the checks that replaced
+\                                     it cost nine as well - null, inside the record
+\                                     array (subtract the base, multiply DREC by
+\                                     NDICT, one unsigned compare for both ends), and
+\                                     [0] equal to the xt LFIND returned. The whole
+\                                     +72 is the fail-closed exit those checks needed:
+\                                     eight instructions of write-and-exit (32 bytes,
+\                                     each SYS being movz x16 + svc) where the old
+\                                     routine simply fell through to the epilogue with
+\                                     the guard unasked, plus its 38-byte diagnostic
+\                                     padded to 40 and emitted beside the routine
+\                                     rather than in the shared message pool.
+\ CODELEN 128724 -> 128828 (+104), floor distance 1748 -> 1852. The text pad absorbs
+\ it (14636 -> 14532) inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423)
+\ and MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
+\ The Linux rows below are owed this +104 too, split the same three ways.
+128828 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-1748 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+1852 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

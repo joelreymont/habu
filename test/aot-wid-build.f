@@ -21,7 +21,7 @@
 \ it never adds a public tail to either. The rest of the build reuses
 \ tools/build-fixpoint.f exactly as the normal stdin build does.
 \
-\ Eleven modes, selected by environment so one builder serves every case its
+\ Twelve modes, selected by environment so one builder serves every case its
 \ companion suites need - test/aot-wid-suite.f, test/aot-wide-format-suite.f and
 \ the PTY half in test/aot-data-span-forge.f:
 \
@@ -90,6 +90,20 @@
 \                      the fixture word's own captured record, that the body holds
 \                      no DATA relocation site and does hold a call to the prefix
 \                      word.
+\   HABU_AOT_GATE=1|2|3  put a real package inside the capture window, ask the
+\                      engine for its public word-list id, and put the QUALIFIED
+\                      name of its one word on the boot-run list. Mode 1 also
+\                      protects that id, so the seed must reject the name at the
+\                      AOT boot gate: exit 84 naming the gate, before the entry
+\                      word runs. Mode 2 leaves the id unprotected and the same
+\                      engine must boot and report - which is what makes mode 1's
+\                      exit evidence about protection rather than about a name
+\                      that failed to resolve. Mode 3 reaches the same gate through
+\                      an `EXPORT` alias: one body, a global record and a second
+\                      record in the protected package. It exits 84 only for a gate
+\                      that asks the record the LOOKUP matched; a gate that
+\                      recovers the word-list by searching for the code cell reads
+\                      the unprotected original and admits it.
 \   HABU_AOT_D0_SKEW=N run the capture a SECOND time over the same window with
 \                      its DATA span start raised by N bytes. Hand it an N past
 \                      the whole span and the window then contains none of the
@@ -263,6 +277,7 @@ create DRV-CH 1 allot
 : XT-ENV$ ( -- ptr u8 n )        s" HABU_AOT_XTSITE" GETENV ;
 : XL-ENV$ ( -- ptr u8 n )        s" HABU_AOT_XTLIT" GETENV ;
 : PREWIN-ENV$ ( -- ptr u8 n )    s" HABU_AOT_PREWIN" GETENV ;
+: GATE-ENV$ ( -- ptr u8 n )      s" HABU_AOT_GATE" GETENV ;
 
 : REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
    v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
@@ -271,7 +286,7 @@ create DRV-CH 1 allot
    OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and
    BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and  BIG-ENV$ nip 0 =  and
    EXT-ENV$ nip 0 =  and  XT-ENV$ nip 0 =  and  XL-ENV$ nip 0 =  and
-   PREWIN-ENV$ nip 0 =  and ;
+   PREWIN-ENV$ nip 0 =  and  GATE-ENV$ nip 0 =  and ;
 
 \ The two shape checks are only DEFINED for the plain fixture build
 \ (CHECKS-WANTED?), so the window-content modes, which reuse the two bits and
@@ -680,7 +695,64 @@ create DRV-CH 1 allot
    REPL-BOOTRUN-LINES
    S\" s\" AWB-PRE-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
+\ --- the AOT boot-gate fixture (dot habu-return-the-record-9c9b1731) -----------
+\ THE GATE THIS REACHES. The seed resolves every baked name in the engine it is
+\ booting and then rewrites a call immediate, writes an xt into a code literal,
+\ or branches to the word. LAOTWIDGATE stands between the lookup and all three:
+\ if the name resolved inside a PROTECTED word-list - a sealed system or
+\ generated-constructor package - the boot dies rather than wire the image into
+\ it. Nothing else in the tree reaches that routine, so without this fixture the
+\ whole guard can be deleted and every suite stays green.
+\
+\ HOW THE NAME GETS THERE. The fixture opens a real package inside the capture
+\ window, exports one word, and asks the ENGINE for that package's public
+\ word-list id while the package is open - no id is invented, and a package whose
+\ id moved would still be the id under test. `prot-wid-add` is the same primitive
+\ production uses to seal a package. The boot-run list then carries the QUALIFIED
+\ name, so at boot LFIND resolves it through the package's own word-list and the
+\ gate sees the wid the lookup actually used.
+\
+\ WHY THERE IS A CONTROL MODE. Mode 1 protects the id and the engine must die 84
+\ naming the gate. Mode 2 is the same fixture with the protection left off: the
+\ engine must BOOT and the entry word must report. Without mode 2 an exit-84
+\ result proves nothing about protection - a qualified boot-run name that simply
+\ failed to resolve would look much the same from outside.
+\
+\ AND MODE 3, WHICH IS THE ONE AN XT CANNOT ANSWER. `EXPORT` publishes a second
+\ record for a body that already has one: same code cell, second name, second
+\ word-list. A gate that recovers the word-list by searching for a record whose
+\ code cell matches therefore reads whichever of the two records comes first -
+\ the ORIGINAL, in whatever word-list it was defined in - and never sees the
+\ protected one the name actually resolved through. Mode 3 builds exactly that
+\ shape: one body, a global record, an exported record in a protected package,
+\ and the qualified name on the boot-run list. It must exit 84 like mode 1.
+: GATE-ENTRY-LINES ( ptr u8 n -- ) {: mode:ptr mu:n :}
+   mode mu s" 3" STR= if
+      S\" : AWB-GATE-REPORT ( -- ) s\" awb-gate=alias\" type cr ;" DRV-LINE
+      s" package AWBGATE" DRV-LINE
+      s" public" DRV-LINE
+      s" EXPORT AWB-GATE-REPORT" DRV-LINE
+      exit
+   then
+   s" package AWBGATE" DRV-LINE
+   s" public" DRV-LINE
+   S\" : AWB-GATE-REPORT ( -- ) s\" awb-gate=open\" type cr ;" DRV-LINE ;
+
+: GATE-FIXTURE-LINES ( ptr u8 n -- ) {: mode:ptr mu:n :}
+   s" variable AWB-GATE-WID" DRV-LINE
+   mode mu GATE-ENTRY-LINES
+   s" get-current AWB-GATE-WID !" DRV-LINE
+   s" ;package" DRV-LINE
+   mode mu s" 2" STR= 0= if
+      s" AWB-GATE-WID @ prot-wid-add" DRV-LINE
+   then
+   RECAPTURE-LINE
+   REPL-BOOTRUN-LINES
+   S\" s\" AWBGATE:AWB-GATE-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
 : FIXTURE-LINES ( -- )
+   GATE-ENV$ {: g:ptr gu:n :}
+   gu 0 > if g gu GATE-FIXTURE-LINES exit then
    BAKE-ENV$ nip 0 > if BAKE-FIXTURE-LINES exit then
    TRAP-ENV$ nip 0 > if TRAP-FIXTURE-LINES exit then
    BIG-ENV$ nip 0 > if BIG-FIXTURE-LINES exit then

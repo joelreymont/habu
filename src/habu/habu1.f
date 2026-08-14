@@ -3588,6 +3588,38 @@ variable FIND-HINL
 variable FIND-HCMP
 variable FIND-HMATCH
 
+\ LFIND's register ABI. In: x9 = name address, x10 = name length. Out:
+\ x13 = 0 when the name is not in scope, else 1 | the folded record flags
+\ (bit 1 immediate, bit 3 wide-effect, bit 4 internal, bits 8-15 certified
+\ min-in); on a hit x11 = the record's code cell [0], x12 = its length cell [8],
+\ and X5 = THE MATCHED RECORD ITSELF, zero on a miss. It clobbers x2-x17 and
+\ preserves XDS (x19) and DATA (x20).
+\
+\ WHY THE RECORD IS AN OUTPUT AND NOT SOMETHING A CALLER RE-DERIVES. x11 and x12
+\ are read OUT of the record at the match, so the record is the thing this word
+\ actually found and those two cells are projections of it. A caller that needs a
+\ third cell - the sealed-WID gate wants [40], the wordlist the name resolved in
+\ - has no way back: an xt does not name a record, because one body may carry
+\ several names in several wordlists (`EXPORT` publishes exactly that: same code
+\ cell, second record, different wid). Searching the dictionary for a record
+\ whose [0] matches therefore answers "the lowest-indexed record sharing this
+\ body", which is a DIFFERENT question from "the record this name resolved to"
+\ and cannot see the wid the lookup actually used. Publishing the pointer is what
+\ makes the third cell askable at all, and it is free: the hash probe already
+\ holds the record in x5 when it returns, and every call site treats x5 as
+\ destroyed (it is inside the clobber set above), so no caller changes.
+\ The linear fallback is the one path that does not: it keeps scanning past a
+\ match because its rule is the LAST matching row, so it parks the match in x17
+\ - a register untouched by that loop - and FIND-FOUND puts it back in x5.
+\
+\ ONE MODEL IS STILL A REGISTER BEHIND, ON PURPOSE. tools/lint/clobber-lint.f
+\ lists Lfind's and Lfindused's returns as x11/x12/x13 and Laotwidgate's
+\ preserved set as x11; each should gain x5. That edit changes the body of a bare
+\ global in a legacy file, which package-diff-lint refuses until the whole file is
+\ packaged (dot habu-clobber-lint-cannot-305ed456, which owns exactly that
+\ prerequisite). The stale rows cost nothing today - no routine reads x5 after an
+\ LFIND call site, so nothing is poisoned that should not be - and the direction
+\ of the staleness is a false RED, never a false green.
 : EMIT-FIND ( -- )
    \ The qualifier probe's labels are lexical: the file's older passes keep
    \ theirs in variables, but a label only has to reach the emit it names, and
@@ -3700,8 +3732,8 @@ variable FIND-HMATCH
          10 10 17 SUB,  10 10 1 SUBI,
          FIND-START LABEL@ B,
       FIND-NNEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-NLOOP LABEL@ B,
-   FIND-NEND LABEL@ LBL,  RET,
-   FIND-QBAD LABEL@ LBL,  RET,
+   FIND-NEND LABEL@ LBL,  5 0 MOVZ,  RET,       \ no such wordlist: no record, and x5 says so
+   FIND-QBAD LABEL@ LBL,  5 0 MOVZ,  RET,       \ malformed NAME:a:b - the one exit that never touched x5
    FIND-START LABEL@ LBL,
       \ Hash probe: fold+hash the name once, walk the open-addressed chain for
       \ (name XOR wid). A validated slot (index<NDICT, wid==x2, name equal)
@@ -3750,6 +3782,8 @@ variable FIND-HMATCH
          15 4 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,
          7 7 1 ADDI,  FIND-HCMP LABEL@ B,
       FIND-HMATCH LABEL@ LBL,
+         \ x5 already holds the matched record and nothing below writes it, so
+         \ the pointer output costs this path nothing at all.
          11 5 0 LDR,  12 5 8 LDR,
          14 5 16 LDR,
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
@@ -3792,7 +3826,9 @@ variable FIND-HMATCH
          15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
          14 14 15 ORR,
-         13 1 MOVZ,  13 13 14 ORR,  FIND-NEXT LABEL@ B,
+         13 1 MOVZ,  13 13 14 ORR,
+         17 5 0 ADDI,                                         \ park the match: x5 is this loop's cursor, x17 is not touched by it
+         FIND-NEXT LABEL@ B,
       FIND-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-LOOP LABEL@ B,
    FIND-DONE LABEL@ LBL,
       13 FIND-FOUND LABEL@ CBNZ,
@@ -3802,8 +3838,10 @@ variable FIND-HMATCH
       FIND-TRYG LABEL@ LBL,
       14 DATA PKG-PUB-CELL LDR,  14 2 CMP,  C-NE FIND-MISS LABEL@ BCOND,
          2 0 MOVZ,  FIND-START LABEL@ B,
-      FIND-FOUND LABEL@ LBL,
-      FIND-MISS LABEL@ LBL,  RET, ;
+      \ Only the LINEAR scan can arrive here with x13 set - the hash probe's own
+      \ match returns from FIND-HMATCH - so the parked pointer is this call's.
+      FIND-FOUND LABEL@ LBL,  5 17 0 ADDI,  RET,
+      FIND-MISS LABEL@ LBL,   5 0 MOVZ,  RET, ;
 
 : C-NUM-INIT-REGS ( -- )
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ, ;
