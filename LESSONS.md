@@ -6449,3 +6449,19 @@ measured on - re-running the refutation against today's rows cost
 one mutation and turned an assumption into evidence.
 (5) A censused spelling may be the instrument's own renamed
 subject leaking into the table.
+
+## The create-axiom landing's three (2026-08-14)
+
+(1) A table keyed by a token can hold a fact about a DIFFERENT
+word - the create row stated what create DEFINES, and its own
+introducing commit said so. git log -S beat re-derivation: ten
+minutes to the why once the archaeology ran.
+(2) A wrong axiom shadowed by a special case is invisible where
+everyone looks: DEFINER-TOK short-circuits signed bodies, so the
+fault lived only in the UNSIGNED leg (where it certified a
+miscompile) and in every by-name reader. Test the leg the special
+case does not cover.
+(3) A comment can move a published measurement two ways: through a
+tokenizer that mis-lexes it and through a file-size cliff. Measure
+the build report and the file size after adding prose to a
+boot-prefix source.
