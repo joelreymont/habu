@@ -175,15 +175,16 @@ variable GD-MIN
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
-\ The code region's write window: open it over the addresses a bracket is about
-\ to write, close it, and grow it when emission runs past its end. The bodies are
-\ EMIT-PROT-WINDOW below; the callers are the definition, publication and patch
-\ brackets in this file and in habu2.f. The grandfathered LPROT/LPROTREC/LPROTSPAN
-\ ids stay above with the other label ids — this file's packaging debt is not
-\ something to grow, and these three are new.
+\ The region's write bands: open the code band over the addresses a bracket is
+\ about to write, declare each dictionary-record span and the control-flow band it
+\ also writes, close all three together, and grow the code band when emission runs
+\ past its end. The bodies are EMIT-PROT-WINDOW below; the callers are the
+\ definition, publication and patch brackets in this file and in habu2.f. The
+\ grandfathered LPROT/LPROTREC/LPROTSPAN ids stay above with the other label ids —
+\ this file's packaging debt is not something to grow, and these five are new.
 package PROT
 public
-variable LOPEN   variable LCLOSE   variable LGROW
+variable LOPEN   variable LCLOSE   variable LGROW   variable LSPAN   variable LCF
 ;package
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
@@ -2006,12 +2007,16 @@ variable SZA-I
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,     \ save w/addr first: the guard call clobbers x10 (B)
    7 4 MOVZ,  A 7 PROT-GUARD:CALL \ x9 is the target; protect its exact 4-byte write
-   \ The window is this caller's own target word. A patch names the address it
-   \ rewrites outright — it is the one region writer that is not at CP — so the
-   \ open says x9+4 and nothing here depends on where the code pointer stands.
-   1 9 4 ADDI,  PROT:LOPEN LABEL@ BL,
+   \ THE FLIP IS STATELESS, keyed on the target word, not on the bracket state a
+   \ compile is holding. A patch names the address it rewrites outright and its
+   \ target does not move between the two flips, which is exactly LPROTREC's
+   \ precondition, so the pair flips the same pages back that it opened. Going
+   \ through the code band instead would be wrong twice over: this is a Habu-level
+   \ primitive that can run while a compile bracket is open, and PROT:LCLOSE would
+   \ then close somebody else's bands and clear their record.
+   2 3 MOVZ,  LPROTREC LABEL@ BL,
    9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
-   PROT:LCLOSE LABEL@ BL,
+   2 5 MOVZ,  LPROTREC LABEL@ BL,
    9 SP 8 LDR,  C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 
@@ -2077,8 +2082,8 @@ public
 \ code-publish ( src dst len -- ): write a whole emission into the code arena in
 \ ONE protection window, and make the arena's own pointer say so.
 \
-\ WHAT IT DOES, IN ORDER. Guard the destination span; open the write window over
-\ [DBASE, dst+len) once; copy `len` bytes from the DATA-resident source to `dst`;
+\ WHAT IT DOES, IN ORDER. Guard the destination span; open the code band over
+\ [CP, dst+len) once; copy `len` bytes from the DATA-resident source to `dst`;
 \ close it once; clear the call map over the span it just wrote; advance the
 \ code pointer past it; flush the instruction and data caches over that one
 \ range. Two protection syscalls for a routine of any length, where the
@@ -2106,7 +2111,7 @@ public
    10 CP CMP,  C-EQ atcp BCOND,                 \ a publication is an append, or nothing
       0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    atcp LBL,
-   1 CP 9 ADD,  PROT:LOPEN LABEL@ BL,           \ region -> RW over [DBASE, CP+len), once
+   1 CP 9 ADD,  PROT:LOPEN LABEL@ BL,           \ code band -> RW over [CP, CP+len), once
    9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
    12 0 MOVZ,                                    \ x12 = byte offset into the copy
    loop LBL,
@@ -2979,21 +2984,28 @@ package ENGINE-EMIT
    s" f." ['] BFDOT FPRIM-L ;
 
 \ LCEMIT ( x9 = instruction word ): the one store every emission funnels through.
-\ Three instructions ask whether the word at CP is inside the bracket's open write
-\ window (PROT:WINDOW, habu1.f EMIT-PROT-WINDOW); when it is not, the miss path
-\ extends the window by one page and costs nothing per instruction. x12 already
+\ Five instructions ask whether the word at CP is inside the bracket's open code
+\ band (PROT:WLO/PROT:WINDOW, habu1.f EMIT-PROT-WINDOW); when it is not, the miss
+\ path extends the band by one unit and costs nothing per instruction. THE TEST IS
+\ A RANGE and not just the end, because pass 2 rewinds CP to the colon entry after
+\ its bracket is open (habu2.f EM-P2-START) and the compile loop reopens at the CP
+\ it reaches after a checker call: either can leave CP below the band's start, and
+\ a test that only asked about the end would store into an RX page. x12 already
 \ rides this body's saved pair for the guard, so the check adds no register
 \ pressure and LCEMIT stays register-transparent to its callers.
-\ A cell of 0 (no window open) reads as a miss, and the miss path returns without
+\ A cell of 0 (nothing open) reads as a miss, and the miss path returns without
 \ opening anything, so the store lands on an RX page and traps exactly as it does
 \ today: emitting outside a bracket is a bug and is not being made to work.
 : EMIT-CEMIT ( -- )
-   LBL {: inwin:label :}
+   LBL LBL {: inwin:label grow:label :}
    LCEMIT LABEL@ LBL,
    SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,
    28 GUARD-CODE-WORD
    12 DATA PROT:WINDOW LDR,
-   28 12 CMP,  C-CC inwin BCOND,
+   28 12 CMP,  C-CS grow BCOND,                  \ at or past the band's end
+   12 DATA PROT:WLO LDR,
+   28 12 CMP,  C-CS inwin BCOND,                 \ and at or above its start
+   grow LBL,
       SP SP 16 SUBI,  30 SP 0 STR,  1 SP 8 STR,
       1 CP 4 ADDI,  PROT:LGROW LABEL@ BL,
       30 SP 0 LDR,  1 SP 8 LDR,  SP SP 16 ADDI,
@@ -3066,120 +3078,283 @@ package ENGINE-EMIT
    RET,
    end LBL, ;
 
-\ ---- the code region's write window -------------------------------------------
-\ Three bodies over one cell (layout.f PROT:WINDOW), which holds the END ADDRESS
-\ of the RW window a bracket has open, or 0 when the region is at rest.
+\ ---- the region's write bands --------------------------------------------------
+\ The region mapping holds three things a compile bracket writes, and they are far
+\ apart: the dictionary records low down, the control-flow stack just under the
+\ code area, and the emitted code at CP. All three are RX at rest. The bodies
+\ below make writable only the pages of the bands a bracket actually writes, and
+\ flip exactly those back at the close. State: layout.f PROT:WLO/WINDOW (the code
+\ band's range), PROT:RLO/RHI (the record band's range) and PROT:CF (the
+\ control-flow band's latch), all 0 when the region is at rest.
 \
-\ WHY THE END IS RECORDED AND NOT RECOMPUTED. The region's brackets EMIT between
-\ open and close, so CP is not the same value at the two ends; a close that
-\ recomputed its range from the CP it happens to see would flip back a different
-\ range than the open made writable and leave RW pages above it. Reading the open
-\ window's own end back makes the closed range EQUAL to the opened one. Nothing
-\ above the window is ever made writable, so the region tail is RX from boot
-\ (habu2.f EM-SNAPSHOT-RX-FLUSH, at the end of EM-STARTUP) and stays RX — which
-\ is the property a raw store far above CP is supposed to trap on, and does.
+\ WHY THREE BANDS AND NOT ONE RANGE. The flip used to run from DBASE every time,
+\ so one range covered all three by covering the whole dictionary between them.
+\ Splitting them took a source-prefix boot from 335 ms to 243 ms, and the boot's
+\ minor faults from 122968 to 29277: a wide RW->RX->RW drops the page-table
+\ entries of the JIT'd code the engine is EXECUTING, so the syscalls (67-80 ms of
+\ the boot, by replaying the engine's own captured mprotect sequence) are the
+\ smaller half of what it cost. ONE CONTIGUOUS range from the record being
+\ published up to CP buys nothing at all: the dictionary between the two ends IS
+\ the cost. Dot habu-narrow-the-boot-9637c873; the numbers are in layout.f beside
+\ the cells.
 \
-\ WHY THE WINDOW GROWS. A bracket cannot say in advance how much code it will
-\ emit: a definition is unbounded. LCEMIT, the single store every emission funnels
-\ through, therefore extends the window when CP reaches its end (PROT:LGROW). The
-\ extension is exact — one page past the word being stored — so it costs one
-\ mprotect per PROT-PAGE-MAX bytes of emitted code and nothing per instruction.
+\ WHY THE EXTENT IS DECLARED AND NOT GUESSED. A fixed window of pages around
+\ &dict[NDICT] would be a lucky value, and two production writers already falsify
+\ it: EM-AOT-REGISTER-RECS publishes LAOTNREC records in one bracket, and
+\ C-PACKAGE-EXISTING-PRIVATE rewrites a record found anywhere below the watermark.
+\ Each writer says what it will write instead. A writer that forgets writes to an
+\ RX page and dies in the crash handler, so the declaration set is complete by
+\ construction rather than by review: `install --force` drives every definer over
+\ the whole prefix before any suite runs.
 \
-\ PROT:LOPEN ( x1 = one past the last region byte this bracket will write ).
-\ The argument is an ADDRESS rather than a length or a headroom above CP because
-\ the writers disagree about what they are relative to: emission and publication
-\ land at CP, but `patch32` rewrites an instruction its caller names outright,
-\ which can sit anywhere. Each site passes the address it will write and no
-\ reader has to carry a convention. The end is rounded UP to PROT-PAGE-MAX — the
-\ largest page any target uses, and the alignment EM-MMAP-CODE-REGION gives DBASE
-\ — and then clamped into [DBASE, DBASE+REGION], so "the window is a sub-range of
-\ the mapping" holds by construction and not by caller discipline. A site that
-\ understates its extent writes to an RX page and traps at once; it cannot
-\ corrupt anything quietly.
+\ WHY BOTH ENDS ARE RECORDED AND NOT RECOMPUTED. The brackets EMIT between open
+\ and close, so CP is not the same value at the two ends; a close that recomputed
+\ its range from the CP it happens to see would flip back a different range than
+\ the open made writable and leave RW pages behind. Reading the band's own
+\ recorded range back makes the closed range EQUAL to the opened one. Nothing
+\ outside the recorded ranges is ever made writable, so the region tail is RX from
+\ boot (habu2.f EM-SNAPSHOT-RX-FLUSH, at the end of EM-STARTUP) and stays RX —
+\ which is the property a raw store far above CP is supposed to trap on, and does.
 \
-\ PROT:LCLOSE ( -- ) flips exactly the recorded window back and clears the cell.
-\ With the cell already 0 it is a no-op, which is what the several defensive
-\ "region -> RX, idempotent" closes on the compile-error paths need: they run
-\ whether or not a window is open, and now they cost nothing when it is not.
+\ WHY A BAND GROWS. A bracket cannot say in advance how much code it will emit: a
+\ definition is unbounded. LCEMIT, the single store every emission funnels
+\ through, extends the code band when CP leaves it (PROT:LGROW). The extension is
+\ exact — one unit past the word being stored — so it costs one mprotect per
+\ PROT-PAGE-MAX bytes of emitted code and nothing per instruction.
 \
-\ THE WINDOW NEVER SHRINKS WHILE IT IS OPEN. LOPEN takes the maximum of the
-\ requested end and the end already recorded, so however the opens and grows
-\ interleave, the close flips back a range that CONTAINS everything any of them
-\ made writable. That containment is a property of this body, not of the call
-\ graph: no caller has to know whether a window is already open, and no ordering
-\ of the sites can orphan an RW page above the closed range.
+\ ALIGNMENT. Every flip is aligned outward to PROT-PAGE-MAX, the largest page any
+\ target uses and the alignment EM-MMAP-CODE-REGION gives DBASE, so every address
+\ handed to mprotect is page-aligned on both targets. CFSTK-OFF is a whole number
+\ of those units and the control-flow stack is shorter than one, so the
+\ control-flow band is exactly one unit and its record is a LATCH, not a range.
+\ DICT-SIZE is not on a unit boundary, so the lowest unit of the code band is the
+\ same unit as the control-flow band; the two bands may therefore overlap in that
+\ one unit while CP is still inside it. That is harmless ONLY BECAUSE THE CLOSE
+\ FLIPS EVERY BAND, together, in one body: a close that dropped one band would
+\ leave its latch claiming pages another band had already flipped RX, and the next
+\ write through the claim would fault. Measured, not assumed - a mutation that
+\ skips the control-flow close kills the fixpoint build.
+\
+\ PROT:LSPAN ( x1 = address, x2 = byte length ) declares a span this bracket will
+\ write. It intersects the span with each band, so the caller states an address
+\ range and never a band; a span that reaches no band declares nothing. A band
+\ only ever GROWS while it is open, so however the declarations interleave, the
+\ close flips back a range that CONTAINS everything any of them made writable.
+\ That containment is a property of these bodies, not of the call graph: no caller
+\ has to know what is already open, and no ordering of the sites can orphan an RW
+\ page. Declaring a span a band already covers costs no syscall. It clobbers
+\ x0/x1/x2 and x30 — the same set PROT:LOPEN has always clobbered, which is why
+\ every existing bracket site can carry a declaration without saving anything new.
+\
+\ PROT:LOPEN ( x1 = one past the last region byte this bracket will write ) is
+\ PROT:LSPAN over [CP, x1): the bracket openers all emit or publish at CP. An end
+\ at or below CP declares the single word at CP rather than a negative length.
+\
+\ PROT:LCF ( -- ) declares the whole control-flow band, register-transparently, so
+\ LCFPUSH/LCFPOP can call it without disturbing the emitter state they carry. Dot
+\ habu-move-the-control-c7de6246 moves that stack out of the protected region;
+\ when it lands, this body and PROT:CF go with it and the band disappears.
+\
+\ PROT:LCLOSE ( -- ) flips every open band back and clears its record. With
+\ nothing open it is a no-op, which is what the several defensive "region -> RX,
+\ idempotent" closes on the compile-error paths need: they run whether or not a
+\ bracket is open, and cost nothing when it is not.
 \
 \ PROT:LGROW ( x1 = one past the last byte that must be writable ) is the entry
-\ for a writer INSIDE someone else's bracket: LCEMIT running past the window's
-\ end, and the byte spills that reach it through PROT:RESERVE above. With no
-\ window open it returns at once, leaving the write to fault exactly as it does
-\ today: writing to the region outside a bracket is still a bug and still fails
-\ loudly. With the end already covered it returns without a syscall, which is
-\ what makes the LCEMIT check worth making. It clobbers x1 and the flags and
-\ nothing else, because LCEMIT is register-transparent to every emitter that
-\ calls it, so the flip's whole clobber set — x0/x2, the syscall-number register
-\ on both targets, and x30 for the call — is saved here.
-: EMIT-PROT-WINDOW ( -- )
-   LBL LBL LBL LBL LBL {: lo:label hi:label max:label none:label gnone:label :}
+\ for a writer INSIDE someone else's bracket: LCEMIT leaving the code band, and
+\ the byte spills that reach it through PROT:RESERVE above. With no code band open
+\ it returns at once, leaving the write to fault exactly as it does today: writing
+\ to the region outside a bracket is still a bug and still fails loudly. With the
+\ word already covered it returns without a syscall, which is what makes the
+\ LCEMIT check worth making. It clobbers x1 and the flags and nothing else,
+\ because LCEMIT is register-transparent to every emitter that calls it, so the
+\ flip's whole clobber set — x0/x2, the syscall-number register on both targets,
+\ and x30 for the call — is saved here.
+
+\ Align the span in x0 (start) and x1 (end) outward to whole PROT-PAGE-MAX units.
+\ x2 is scratch.
+: PAGE-OUT, ( -- )
+   0 0 16 LSRI,  0 0 16 LSLI,
+   2 PROT-PAGE-MAX 1 - MOVZ,  1 1 2 ADD,
+   1 1 16 LSRI,  1 1 16 LSLI, ;
+
+\ Union the unit-aligned span in x0/x1 into the band recorded at (locell, hicell)
+\ and flip the result RW. Branches to `done` without a syscall when the band
+\ already covers the span. x2 is scratch; x0/x1 are dead afterwards.
+: BAND-WIDEN, ( n n label -- ) {: locell:n hicell:n done:label :}
+   LBL LBL LBL {: fresh:label keeplo:label keephi:label :}
+   2 DATA locell LDR,
+   2 fresh CBZ,                                  \ nothing open -> this span opens the band
+      0 2 CMP,  C-LS keeplo BCOND,               \ an open band only ever grows
+         0 2 0 ADDI,
+      keeplo LBL,
+      2 DATA hicell LDR,
+      1 2 CMP,  C-CS keephi BCOND,
+         1 2 0 ADDI,
+      keephi LBL,
+      2 DATA locell LDR,  0 2 CMP,  C-NE fresh BCOND,
+      2 DATA hicell LDR,  1 2 CMP,  C-EQ done BCOND,   \ unchanged -> already covered
+   fresh LBL,
+   0 DATA locell STR,  1 DATA hicell STR,
+   1 1 0 SUB,  2 3 MOVZ,
+   LPROT LABEL@ BL, ;
+
+\ Flip the band recorded at (locell, hicell) back to RX and clear its record.
+\ The cells are cleared BEFORE the flip: after that point no band is claimed open.
+: BAND-CLOSE, ( n n -- ) {: locell:n hicell:n :}
+   LBL {: skip:label :}
+   0 DATA locell LDR,
+   1 DATA hicell LDR,
+   1 skip CBZ,
+   2 0 MOVZ,  2 DATA locell STR,  2 DATA hicell STR,
+   1 1 0 SUB,  2 5 MOVZ,
+   LPROT LABEL@ BL,
+   skip LBL, ;
+
+\ Flip the control-flow band, whose extent is the constant one unit at CFSTK-OFF.
+: CF-FLIP, ( n -- ) {: prot:n :}
+   0 CFSTK-OFF LIT64,  0 DBASE 0 ADD,
+   1 PROT-PAGE-MAX LIT64,
+   2 prot MOVZ,
+   LPROT LABEL@ BL, ;
+
+: EMIT-PROT-SPAN-DECL ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: rlo:label rhi:label rskip:label
+      flo:label fhi:label fskip:label
+      clo:label chi:label cskip:label :}
+   PROT:LSPAN LABEL@ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  3 SP 8 STR,  4 SP 16 STR,
+   3 1 0 ADDI,                                   \ x3 = span start
+   4 1 2 ADD,                                    \ x4 = span end
+   \ the dictionary-record band [DBASE, DBASE+CFSTK-OFF)
+   0 3 0 ADDI,  1 4 0 ADDI,
+   0 DBASE CMP,  C-CS rlo BCOND,
+      0 DBASE 0 ADDI,
+   rlo LBL,
+   2 CFSTK-OFF LIT64,  2 DBASE 2 ADD,
+   1 2 CMP,  C-LS rhi BCOND,
+      1 2 0 ADDI,
+   rhi LBL,
+   1 0 CMP,  C-LS rskip BCOND,                   \ the span reaches no record
+      PAGE-OUT,
+      PROT:RLO PROT:RHI rskip BAND-WIDEN,
+   rskip LBL,
+   \ the control-flow band [DBASE+CFSTK-OFF, DBASE+DICT-SIZE): one unit, latched
+   0 3 0 ADDI,  1 4 0 ADDI,
+   2 CFSTK-OFF LIT64,  2 DBASE 2 ADD,
+   0 2 CMP,  C-CS flo BCOND,
+      0 2 0 ADDI,
+   flo LBL,
+   2 DICT-SIZE LIT64,  2 DBASE 2 ADD,
+   1 2 CMP,  C-LS fhi BCOND,
+      1 2 0 ADDI,
+   fhi LBL,
+   1 0 CMP,  C-LS fskip BCOND,                   \ the span reaches no control-flow cell
+      2 DATA PROT:CF LDR,
+      2 fskip CBNZ,                              \ already declared -> no syscall
+      2 1 MOVZ,  2 DATA PROT:CF STR,
+      3 CF-FLIP,
+   fskip LBL,
+   \ the code band [the unit holding DBASE+DICT-SIZE, DBASE+REGION)
+   0 3 0 ADDI,  1 4 0 ADDI,
+   2 DICT-SIZE LIT64,  2 DBASE 2 ADD,
+   0 2 CMP,  C-CS clo BCOND,
+      0 2 0 ADDI,
+   clo LBL,
+   2 REGION LIT64,  2 DBASE 2 ADD,
+   1 2 CMP,  C-LS chi BCOND,
+      1 2 0 ADDI,
+   chi LBL,
+   1 0 CMP,  C-LS cskip BCOND,                   \ the span reaches no code word
+      PAGE-OUT,
+      PROT:WLO PROT:WINDOW cskip BAND-WIDEN,
+   cskip LBL,
+   30 SP 0 LDR,  3 SP 8 LDR,  4 SP 16 LDR,  SP SP 32 ADDI,  RET, ;
+
+: EMIT-PROT-OPEN ( -- )
+   LBL {: ok:label :}
    PROT:LOPEN LABEL@ LBL,
-   0 PROT-PAGE-MAX 1 - MOVZ,  1 1 0 ADD,
-   1 1 16 LSRI,  1 1 16 LSLI,                    \ end rounded up to a whole page
-   1 DBASE CMP,  C-CS lo BCOND,                  \ below the region -> empty window
-      1 DBASE 0 ADDI,
-   lo LBL,
-   0 REGION LIT64,  0 DBASE 0 ADD,
-   1 0 CMP,  C-LS hi BCOND,                      \ never past the mapping's end
-      1 0 0 ADDI,
-   hi LBL,
-   0 DATA PROT:WINDOW LDR,                       \ an open window only ever grows
-   1 0 CMP,  C-CS max BCOND,
-      1 0 0 ADDI,
-   max LBL,
-   1 DATA PROT:WINDOW STR,                       \ what the close will flip back
-   1 1 DBASE SUB,  2 3 MOVZ,
-   LPROT LABEL@ B,                               \ tail: mprotect(DBASE, len, RW)
+   1 CP CMP,  C-HI ok BCOND,                     \ an end at or below CP means the word at CP
+      1 CP 4 ADDI,
+   ok LBL,
+   2 1 CP SUB,  1 CP 0 ADDI,
+   PROT:LSPAN LABEL@ B, ;                        \ tail: declare [CP, end)
 
+: EMIT-PROT-CLOSE ( -- )
+   LBL {: xcf:label :}
    PROT:LCLOSE LABEL@ LBL,
-   1 DATA PROT:WINDOW LDR,
-   1 none CBZ,                                   \ no window open -> nothing to close
-   0 0 MOVZ,  0 DATA PROT:WINDOW STR,            \ cleared BEFORE the flip: after this
-   1 1 DBASE SUB,  2 5 MOVZ,                     \ point no window is claimed open
-   LPROT LABEL@ B,                               \ tail: mprotect(DBASE, len, RX)
-   none LBL,  RET,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   1 DATA PROT:CF LDR,
+   1 xcf CBZ,
+      0 0 MOVZ,  0 DATA PROT:CF STR,             \ cleared BEFORE the flip
+      5 CF-FLIP,
+   xcf LBL,
+   PROT:RLO PROT:RHI BAND-CLOSE,
+   PROT:WLO PROT:WINDOW BAND-CLOSE,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+: EMIT-PROT-GROW ( -- )
+   LBL LBL {: gnone:label gopen:label :}
    PROT:LGROW LABEL@ LBL,
    SP SP 48 SUBI,
    30 SP 0 STR,  0 SP 8 STR,  2 SP 16 STR,  8 SP 24 STR,  16 SP 32 STR,
    0 DATA PROT:WINDOW LDR,
    0 gnone CBZ,                                  \ nothing open -> let the write fault
-   1 0 CMP,  C-LS gnone BCOND,                   \ already writable -> no syscall
+   1 0 CMP,  C-HI gopen BCOND,                   \ past the band's end -> extend
+   0 DATA PROT:WLO LDR,
+   CP 0 CMP,  C-CS gnone BCOND,                  \ CP still inside the band -> no syscall
+   gopen LBL,
       PROT:LOPEN LABEL@ BL,
    gnone LBL,
    30 SP 0 LDR,  0 SP 8 LDR,  2 SP 16 LDR,  8 SP 24 LDR,  16 SP 32 LDR,
    SP SP 48 ADDI,  RET, ;
 
-\ THE EXTENT IS THE CALLER'S ARGUMENT ( x1 = byte length from DBASE, x2 = prot ).
-\ It used to be REGION, baked into this body, so "flip the whole 8 MB" was the
-\ silent default at all 48 call sites and no site said what it was opening. The
-\ length now travels with the call. Its callers are the three window bodies above,
-\ which tail-branch here with the window's own length, and the one boot flip that
-\ genuinely means the whole region (EM-SNAPSHOT-RX-FLUSH).
+: EMIT-PROT-CF ( -- )
+   LBL {: fret:label :}
+   PROT:LCF LABEL@ LBL,
+   SP SP 48 SUBI,
+   30 SP 0 STR,  0 SP 8 STR,  1 SP 16 STR,  2 SP 24 STR,  8 SP 32 STR,  16 SP 40 STR,
+   0 DATA PROT:CF LDR,
+   0 fret CBNZ,                                  \ already declared -> no syscall
+      1 CFSTK-OFF LIT64,  1 DBASE 1 ADD,
+      2 DICT-SIZE CFSTK-OFF - MOVZ,
+      PROT:LSPAN LABEL@ BL,
+   fret LBL,
+   30 SP 0 LDR,  0 SP 8 LDR,  1 SP 16 LDR,  2 SP 24 LDR,  8 SP 32 LDR,  16 SP 40 LDR,
+   SP SP 48 ADDI,  RET, ;
+
+: EMIT-PROT-WINDOW ( -- )
+   EMIT-PROT-SPAN-DECL
+   EMIT-PROT-OPEN
+   EMIT-PROT-CLOSE
+   EMIT-PROT-GROW
+   EMIT-PROT-CF ;
+
+\ THE WHOLE EXTENT IS THE CALLER'S ARGUMENT ( x0 = address, x1 = byte length,
+\ x2 = prot ). The base used to be DBASE and the length REGION, both baked into
+\ this body, so "flip the whole 8 MB from the region base" was the silent default
+\ at all 48 call sites and no site said what it was opening. First the length and
+\ now the base travel with the call, which is what lets a band flip its own pages
+\ instead of everything below them. Its callers are the band bodies above and the
+\ one boot flip that genuinely means the whole region (EM-SNAPSHOT-RX-FLUSH).
 \ x0/x1 are already clobbered across this call today (the kernel preserves only
-\ x2-x15, which is what habu2.f's LUNCAUGHT reporter relies on), so writing x1
+\ x2-x15, which is what habu2.f's LUNCAUGHT reporter relies on), so writing them
 \ at the site costs a caller nothing it was not already losing.
 : EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
-   0 DBASE 0 ADDI,  NR-MPROTECT SYS,  RET,
-   \ Narrow record-page flip ( x9 = target dict-record address, x2 = prot ):
-   \ mprotect only the two pages ($8000 = 2 * 16 KB) covering the record's flags
-   \ cell, instead of the whole 4/8 MB REGION. The dict-record flag pokes
-   \ (int/wide/min-in marks) hold x9 and every surrounding record cell fixed
-   \ across their own RW->poke->RX bracket, so open and close flip the IDENTICAL
-   \ page window -- W^X-symmetric, never orphaning a RW page (a stateless flip is
-   \ sound ONLY where the target address is stable across the bracket, which is
-   \ why the CP-tracking emission and checker-call windows record their end in
-   \ PROT:WINDOW instead). x9 rides in the kernel-preserved x2-x15 band, so it
-   \ survives the syscall for the caller's poke and closing flip.
+   NR-MPROTECT SYS,  RET,
+   \ STATELESS NARROW FLIP ( x9 = target address, x2 = prot ): mprotect only the
+   \ two pages ($8000 = 2 * 16 KB) covering the target, and record nothing. Its
+   \ users are the writers whose target is a SINGLE CELL OR WORD AT A FIXED
+   \ ADDRESS: the dict-record flag pokes (int/wide/min-in marks) and `patch32`.
+   \ Each holds x9 and everything around it fixed across its own RW->poke->RX
+   \ bracket, so open and close flip the IDENTICAL page window -- W^X-symmetric,
+   \ never orphaning a RW page. A stateless flip is sound ONLY where the target is
+   \ stable across the bracket AND the writer owns no other span, which is why the
+   \ compile brackets record their bands in PROT:WLO/WINDOW, RLO/RHI and CF
+   \ instead. x9 rides in the kernel-preserved x2-x15 band, so it survives the
+   \ syscall for the caller's poke and closing flip.
    LPROTREC LABEL@ LBL,
    0 9 14 LSRI,  0 0 14 LSLI,  1 $8000 MOVZ,  NR-MPROTECT SYS,  RET,
    EMIT-PROT-WINDOW

@@ -448,20 +448,76 @@ package HIDX
 public
 $27C8 constant CLAIMS
 ;package
-\ PROT:WINDOW: the end address of the RW window a code-region bracket has open,
-\ or 0 when the region is at rest (whole region RX). ONE cell is what makes the
-\ narrow flip sound: the brackets emit between open and close, so CP differs at
-\ the two ends and a recomputed close would flip a different range than the open
-\ made writable, orphaning RW pages above it. The open records its end here and
-\ the close flips exactly that range back, so the region tail above the window is
-\ never RW at all — it is RX from boot and stays RX. src/habu/habu1.f
-\ EMIT-PROT-WINDOW owns every read and write of this cell; engine-emitted code is
-\ its only writer. Lives at $27D0 in the reclaimed $27C0..$27E8 band
-\ (rg-verified unused repo-wide), in a package for the same reason HIDX:CLAIMS
-\ above is.
+\ ---- the region's three write bands ------------------------------------------
+\ The region mapping holds three things a compile bracket writes, and they are
+\ far apart: the dictionary records at [DBASE, DBASE+CFSTK-OFF), the control-flow
+\ stack at [DBASE+CFSTK-OFF, DBASE+DICT-SIZE), and the emitted code at
+\ [DBASE+DICT-SIZE, DBASE+REGION). All three are RX at rest, so a bracket must
+\ make writable every band it writes and flip each back at the close.
+\
+\ EACH BAND IS TRACKED SEPARATELY BECAUSE ONE RANGE CANNOT HOLD THEM. A single
+\ [lo, hi) covering the record being published and the code at CP spans the whole
+\ dictionary between them - which is what the flip used to do, from DBASE every
+\ time. Measured on a source-prefix boot (macos-arm64, dot
+\ habu-narrow-the-boot-9637c873): 14044 flips per boot over a mean 2.06 MB, and
+\ the boot went from 335 ms to 243 ms when the bands were split.
+\
+\ THE SYSCALLS ARE THE SMALLER HALF OF THAT. Replaying the engine's own captured
+\ mprotect sequence against a bare mapping costs 67-80 ms, so the rest is what a
+\ wide flip does to everything it covers: RW->RX->RW over [DBASE, CP) drops the
+\ page-table entries of the megabytes of JIT'd code the engine is EXECUTING and
+\ of the dictionary it is reading, and every one of them faults back in. The
+\ boot's minor faults fell from 122968 to 29277 with the bands, and its system
+\ time from 0.14 s to 0.05 s. The replay could not see that, because nothing was
+\ running inside its mapping - the same reason a contiguous record..code range
+\ measures as no gain there and is still the wrong shape here.
+\
+\ THE EXTENT OF A BAND IS DECLARED BY ITS WRITER, never guessed from NDICT. A
+\ fixed window of pages around &dict[NDICT] would be a lucky value: the AOT seed
+\ publishes LAOTNREC records in one bracket and C-PACKAGE-EXISTING-PRIVATE
+\ rewrites a record found anywhere below the watermark. Both already falsify it.
+\ A writer that forgets to declare its span writes to an RX page and the engine
+\ dies in the crash handler (exit 134) - which is what makes the declaration set
+\ complete by construction: `install --force` drives every definer over the whole
+\ prefix before any suite runs.
+\
+\ PROT:WINDOW / PROT:WLO: the end and start addresses of the RW window a bracket
+\ has open over the CODE band, or 0 when it is at rest. RECORDING BOTH ENDS is
+\ what makes the narrow flip sound: the brackets emit between open and close, so
+\ CP differs at the two ends and a recomputed close would flip a different range
+\ than the open made writable, orphaning RW pages above it. The open records its
+\ range here and the close flips exactly that range back, so the region tail above
+\ the window is never RW at all - it is RX from boot and stays RX.
+\ PROT:RLO / PROT:RHI: the same pair for the DICTIONARY-RECORD band, or 0 when no
+\ record span has been declared in this bracket.
+\ PROT:CF: a latch, not a range - the CONTROL-FLOW band's extent is the constant
+\ [CFSTK-OFF, DICT-SIZE), so there is nothing per-bracket to record but whether it
+\ is open. Dot habu-move-the-control-c7de6246 retires this band by moving the
+\ control-flow stack out of the protected region; when it lands, this cell and
+\ PROT:LCF go with it.
+\ src/habu/habu1.f EMIT-PROT-WINDOW owns every read and write of all five;
+\ engine-emitted code is their only writer.
+\
+\ WHERE THEY HAD TO GO, RE-DERIVED ON THE MERGED LAYOUT. WINDOW/WLO/RLO take the
+\ last three free cells of the reclaimed $27C0..$27E8 band, which then has none
+\ left. RHI and CF go ABOVE THE EVALUATOR FRAMES, at $47C0/$47C8 in the unclaimed
+\ run between the frames' end ($43C0 + EVAL-MAX-DEPTH * EVAL-FRAME-SIZE = $47C0)
+\ and the lowering transaction state ($5000) - swept for a claimant across src lib
+\ tools test maki bootstrap before taking them. They are NOT in the $40C8..$43B0
+\ gap: that run is reserved for widening the protected-WID bitmap, which cannot be
+\ split, and AOT-WINDOW:D0-CELL/B0-CELL already took its top two cells to keep the
+\ rest contiguous. All five sit below $7FF8, the ceiling AOT-WINDOW measured for a
+\ cell a compiled routine names directly (`DATA <off> LDR` is a 12-bit immediate
+\ scaled by eight), which every one of these is: the band bodies read them with
+\ exactly that form. All five are below DATA-START, so no compiled source can reach
+\ them. In a package for the same reason HIDX:CLAIMS above is.
 package PROT
 public
 $27D0 constant WINDOW
+$27D8 constant WLO
+$27E0 constant RLO
+$47C0 constant RHI
+$47C8 constant CF
 ;package
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (LEVALREC,
 \ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
@@ -608,8 +664,8 @@ $258 constant DEF-TKL-CELL
 \ $250..$350, and DEF-TKA/DEF-TKL survive inside it only because their liveness
 \ is confined to the definition NAME token, when the virtual stack is empty.
 $27A8 constant CMM-CELL
-\ PKG-* ($27C0..$27D8, less HIDX:CLAIMS at $27C8 and PROT:WINDOW at $27D0), the
-\ old DEFER-META slot ($27E0), and the old
+\ PKG-* ($27C0..$27D8, less HIDX:CLAIMS at $27C8 and PROT:WINDOW/WLO at
+\ $27D0/$27D8), the old DEFER-META slot ($27E0, now PROT:RLO), and the old
 \ $2780..$27A0 pass-2 cells are reclaimed by the immutable lowering
 \ transaction. The final old defer slot is the protected compile-immediate
 \ preflight hook. The
@@ -1002,6 +1058,7 @@ $43B8 constant B0-CELL           \ first address of its code span
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
 \ >= DATA-START; task-user cells stop at EVAL-FRAME and sixteen evaluator
-\ frames occupy $43C0..$47C0. The lowering state ends at $8000; the pre-trust defer
+\ frames occupy $43C0..$47C0, with PROT:RHI/PROT:CF taking the two cells directly
+\ above them. The lowering state ends at $8000; the pre-trust defer
 \ pending band follows, then the immutable lowering blob lives outside DATA.
 SNAP-RELOC:XTCELL-END constant DATA-START

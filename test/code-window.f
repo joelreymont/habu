@@ -1,6 +1,19 @@
-\ code-window.f - the code region's write window (src/habu/habu1.f
+\ code-window.f - the code region's write bands (src/habu/habu1.f
 \ EMIT-PROT-WINDOW). Two claims, each of which a plausible edit to the engine
 \ falsifies.
+\
+\ WHERE THE REST OF THE PROOF IS, AND WHY IT IS NOT A TEST. A bracket makes
+\ writable only the pages of the three bands it declares - dictionary records,
+\ the control-flow stack, the code at CP - and a writer that fails to declare its
+\ span stores into an RX page and dies in the crash handler (exit 134). The
+\ complete detector for THAT is the build, not a suite: `install --force`
+\ compiles the whole engine prefix through every definer, every patch path, the
+\ AOT seed and pass 2 before a single test runs, so a missing declaration cannot
+\ reach a green gate. Three were found exactly that way while the bands landed
+\ (`immediate`, the body length written at `;`, and the does> patch). Narrow a
+\ band by one page in the engine and the fixpoint build dies before this file is
+\ read; that is the mutation this design answers to, and it is why the cases
+\ below stay about protection SEMANTICS rather than about extents.
 \
 \ 1. THE TAIL IS EXECUTE-ONLY AT REST. Above an open window there is no window,
 \ and the region was flipped RX whole at the end of EM-STARTUP, so a raw store
@@ -73,7 +86,9 @@ variable CW-BASE
    s" TRUSTED: CW-READ ( -- ) cp@ $40000 + @ drop ; CW-READ" ACCEPTS
    s" the live code and the dictionary below CP are RX at rest too" T-LABEL
    s" TRUSTED: CW-LIVE ( -- ) 0 dbase@ DICT-SIZE + ! ; CW-LIVE" TRAPS
-   s" TRUSTED: CW-DICT ( -- ) 0 dbase@ ! ; CW-DICT" TRAPS ;
+   s" TRUSTED: CW-DICT ( -- ) 0 dbase@ ! ; CW-DICT" TRAPS
+   s" the control-flow stack is RX at rest as well: it is a band, not a scratch area" T-LABEL
+   s" TRUSTED: CW-CFSTK ( -- ) 0 dbase@ CFSTK-OFF + ! ; CW-CFSTK" TRAPS ;
 
 \ Park CP `pad` bytes below the first window page boundary at least one whole
 \ page above the mark, so no case can reach the words compiled before the mark.

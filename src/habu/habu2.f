@@ -1563,6 +1563,14 @@ s" c-emit-drop-x12" s" --" TRUST
 : EMIT-CF-HELPERS ( -- )
    LBL LBL LBL LBL LBL LBL {: pisb pdone kno kyes kchk knf :}
    LCFPUSH LABEL@ LBL,
+      \ The control-flow stack lives inside the protected region, so a push must
+      \ declare its band before it writes. PROT:LCF is register-transparent and
+      \ costs a load and a branch once the band is already open, which it is for
+      \ every push after the first in a bracket; only x30 has to be framed,
+      \ because the branch itself is what takes it.
+      SP SP 16 SUBI,  30 SP 0 STR,
+      PROT:LCF LABEL@ BL,
+      30 SP 0 LDR,  SP SP 16 ADDI,
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,    \ x11 = control-flow depth
       12 CFSTK-DEPTH-MAX MOVZ,  11 12 CMP,                 \ depth vs region cap (x12 = internal scratch, reloaded below; callers like J-ELSE preserve x14 across this call)
       C-GE LCFCAP LABEL@ BCOND,                            \ at the cap: fail-closed reject BEFORE the write (never overflow into the code area above CFSTK)
@@ -1575,6 +1583,7 @@ s" c-emit-drop-x12" s" --" TRUST
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,      \ x11 = control-flow depth (peek before pop)
       11 LORPHAN LABEL@ CBZ,                                 \ empty stack: orphan closer, fail-closed reject (never underflow into a bogus branch origin)
       SP SP 16 SUBI,  30 SP 0 STR,
+      PROT:LCF LABEL@ BL,                                    \ the depth store below is a control-flow band write
       11 11 1 SUBI,  11 10 0 STR,
       12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
       16 12 0 ADDI,
@@ -1585,6 +1594,14 @@ s" c-emit-drop-x12" s" --" TRUST
       9 16 0 LDR,
       30 SP 0 LDR,  SP SP 16 ADDI,  RET,
    LPAT LABEL@ LBL,
+      \ A patch writes BELOW CP - the branch it fills was emitted earlier in this
+      \ body - so the code band opened at the bracket's CP need not reach it: the
+      \ compile loop reopens at the CP it holds after every checker call, and pass
+      \ 2 rewinds CP outright. The target says so itself. Only x30 is framed; the
+      \ declaration leaves x9 and x11 alone.
+      SP SP 16 SUBI,  30 SP 0 STR,
+      1 9 0 ADDI,  2 4 MOVZ,  PROT:LSPAN LABEL@ BL,
+      30 SP 0 LDR,  SP SP 16 ADDI,
       11 9 0 LDRW,  10 CP 9 SUB,  10 10 2 ASRI,
       \ Select the immediate field by branch CLASS, not by bit 31: an
       \ unconditional B ($14000000, opcode bits[31:26]=000101) carries imm26
@@ -1611,14 +1628,16 @@ s" c-emit-drop-x12" s" --" TRUST
       kno  LBL,  0 0 MOVZ,  RET,
    LBCHAIN LABEL@ LBL,                                    \ patch a B-placeholder chain:
       LBL LBL {: bcl bcd :}                    \ x9=head offset, x14=target;
-      bcl LBL,  9 bcd CBZ,                           \ clobbers x5,x10-x12
+      SP SP 16 SUBI,  30 SP 0 STR,                 \ clobbers x0-x2 (the declaration), x5, x10-x12
+      bcl LBL,  9 bcd CBZ,
          10 DBASE 9 ADD,  11 10 0 LDRW,
+         1 10 0 ADDI,  2 4 MOVZ,  PROT:LSPAN LABEL@ BL,   \ each link is a write below CP
          12 14 10 SUB,  12 12 2 ASRI,
          5 $3FFFFFF LIT64,  12 12 5 AND,
          5 $14000000 LIT64,  12 12 5 ORR,
          12 10 0 STRW,
          9 11 0 ADDI,  bcl B,
-      bcd LBL,  RET, ;
+      bcd LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 : EMIT-LOC-FIND ( -- )
    LBL LBL LBL LBL LBL {: ll lmiss lhit lcmp lnext :}
@@ -2455,10 +2474,12 @@ public
    LBL {: nocr :}
    LDOESPATCH LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
-   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ region -> RW
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ code band -> RW
    10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
    12 11 0 LDR,  13 11 8 LDR,  12 12 13 ADD,             \ x12 = RET addr
+   1 11 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,     \ the created record, whose kind stamp clears below
+   1 12 0 ADDI,  2 4 MOVZ,  PROT:LSPAN LABEL@ BL,        \ the created body's RET, below CP
    14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
    5 $3FFFFFF LIT64,  14 14 5 AND,
    5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
@@ -2731,6 +2752,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       14 DATA WIDN-CELL LDR,  14 DATA DEF-WL-CELL STR,
       15 14 1 ADDI,  15 DATA WIDN-CELL STR,
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+      1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,   \ the record this publishes
       11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
       17 DATA TKL-CELL STR,
       C-STORE-NAME
@@ -2801,6 +2823,7 @@ s" c-store-def-name" s" --" TRUST
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,   \ the record this create publishes
    C-STORE-DEF-NAME
    CP 9 0 STR,
    11 DATA 0 LDR,
@@ -2841,6 +2864,7 @@ package INTERP-EMIT
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,     \ the record this constant publishes
    C-STORE-DEF-NAME
    15 G-POP                                             \ n -> x15 after name storage (clobbers x15)
    CP 9 0 STR,
@@ -2900,8 +2924,10 @@ package INTERP-EMIT
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    9 DATA PEND-CELL STR,
+   1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,   \ the record this body will publish
    C-STORE-DEF-NAME
    CP 9 0 STR,
+   PROT:LCF LABEL@ BL,                                \ the control-flow depth reset below
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
    12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
@@ -3107,6 +3133,7 @@ s" c-pretrust-ready?" s" --" TRUST
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    9 DATA PEND-CELL STR,
+   1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,   \ the record this defer publishes
    C-STORE-DEF-NAME
    CP 9 0 STR,
    C-DEFER-EMIT-CODE
@@ -3191,11 +3218,16 @@ s" j-is" s" --" TRUST
    done LBL, ;
 s" bdrainpretrust" s" --" TRUST
 
+\ `immediate` writes ONE flag cell of the record just published and emits nothing,
+\ so it is the stateless-flip shape, not a bracket: the target is fixed across the
+\ pair and the word owns no other span. It now reads exactly like its two
+\ siblings, habu1.f BWIDEMARK and BINTMARK, whose prose already claimed the
+\ mirror. Interpret-mode only, so no compile bracket is open around it.
 : C-IMMEDIATE ( -- )
-   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   2 3 MOVZ,  LPROTREC LABEL@ BL,
    10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 9 16 STR,
-   PROT:LCLOSE LABEL@ BL, ;
+   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
 : C-POSTPONE ( -- )
    LBL LBL LBL {: pok pnimm pdone :}
@@ -4105,6 +4137,13 @@ s" c-local-ref" s" label label --" TRUST
       pkg-wid:label widok:label next:label extname:label nameok:label :}
    9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (AOT-CREC-ROW stride), x12 = k
    11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N (survives LHIDXADD)
+   \ N records in ONE bracket, from the watermark upward: the seed knows the whole
+   \ extent before the loop starts and says so once, instead of declaring a record
+   \ per iteration. This is the writer that makes "a fixed window of pages around
+   \ &dict[NDICT]" unusable as a rule.
+   1 DREC MOVZ,  1 NDICT 1 MUL,  1 DBASE 1 ADD,
+   2 DREC MOVZ,  2 11 2 MUL,
+   PROT:LSPAN LABEL@ BL,
    rloop LBL,  12 11 CMP,  C-GE rdone BCOND,
       10 DREC MOVZ,  10 NDICT 10 MUL,  10 DBASE 10 ADD,   \ x10 = &dict[NDICT]
       6 9 16 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg BCOND,
@@ -5002,13 +5041,14 @@ public
 \ unbounded LPROT: everything else flips the window it opened. The cold path
 \ needs it because EM-MMAP-CODE-REGION maps the region RW and the narrow closes
 \ would then never touch the pages above the seeded code; the snapshot path needs
-\ it because the restore writes the whole region. Clearing PROT:WINDOW belongs
-\ here with it: "whole region RX" and "no window open" are one state, and a
-\ restored image's DATA copy can otherwise carry a window end from the run that
+\ it because the restore writes the whole region. Clearing every band's record
+\ belongs here with it: "whole region RX" and "no band open" are one state, and a
+\ restored image's DATA copy can otherwise carry a band's range from the run that
 \ wrote it.
 : EM-SNAPSHOT-RX-FLUSH ( -- )
-   2 5 MOVZ,  1 REGION LIT64,  LPROT LABEL@ BL,
-   9 0 MOVZ,  9 DATA PROT:WINDOW STR,
+   2 5 MOVZ,  0 DBASE 0 ADDI,  1 REGION LIT64,  LPROT LABEL@ BL,
+   9 0 MOVZ,  9 DATA PROT:WINDOW STR,  9 DATA PROT:WLO STR,
+   9 DATA PROT:RLO STR,  9 DATA PROT:RHI STR,  9 DATA PROT:CF STR,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH LABEL@ BL, ;
 
 : EM-SNAPSHOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
@@ -5296,8 +5336,10 @@ public
       C-QUALIFY-DEF
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
       9 DATA PEND-CELL STR,
+      1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,   \ the record this body will publish
       C-STORE-DEF-NAME
       CP 9 0 STR,
+      PROT:LCF LABEL@ BL,                                \ the control-flow depth reset below
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
       12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
@@ -5398,6 +5440,7 @@ s" c-package-alloc-wids" s" --" TRUST
    C-QUALIFY-CAP
    C-PACKAGE-ALLOC-WIDS
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,   \ the record this package publishes
    C-STORE-NAME
    11 DATA WIDN-CELL LDR,  11 11 2 SUBI,
    12 11 1 ADDI,
@@ -5407,10 +5450,15 @@ s" c-package-alloc-wids" s" --" TRUST
    5 9 0 ADDI, ;
 s" c-package-new-record" s" --" TRUST
 
+\ The record this writes is one the SCAN found: `package NAME` reopening an
+\ existing package rewrites that record's private-WID cell, and the record can sit
+\ anywhere below the watermark. It is the reason a record band keyed on NDICT
+\ would be a lucky value rather than a rule, so it declares the record it found.
 : C-PACKAGE-EXISTING-PRIVATE ( label -- ) {: done:label :}
    LBL {: havepri:label :}
    12 havepri CBNZ,
       C-PACKAGE-NEW-PRIVATE-WID
+      1 5 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,
       12 5 8 STR,
    havepri LBL,
    done B, ;
@@ -5857,6 +5905,7 @@ s" c-export-tail!" s" --" TRUST
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    C-EXPORT-TAIL!                                        \ tail again for the publish (pure rescan)
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,      \ the record this export publishes
    C-STORE-DEF-NAME
    14 SP 0 LDR,  14 9 0 STR,                            \ [0] = source code ptr
    14 SP 8 LDR,  14 9 8 STR,                            \ [8] = source body len
@@ -6770,8 +6819,9 @@ public
    10 DATA TXN-SRC-A-CELL LDR,
    9 DATA P2BODY0-CELL LDR,  9 10 9 ADD,  9 DATA INP-CELL STR,
    9 DATA TXN-SRC-U-CELL LDR,  9 10 9 ADD,  9 DATA INE-CELL STR,
-   11 DATA PEND-CELL LDR,  CP 11 0 LDR,
+   11 DATA PEND-CELL LDR,  CP 11 0 LDR,               \ CP back to the colon entry: below the band
    9 DATA P2DP-CELL LDR,  9 DATA DP-CELL STR,
+   PROT:LCF LABEL@ BL,                                \ the control-flow depth reset below
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
    12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
@@ -6842,8 +6892,13 @@ s" em-p2-check-definer" s" --" TRUST
    nop2 LBL, ;
 s" em-p2-finish" s" --" TRUST
 
+\ The body length lands in the record at the SECOND end of the definition, and a
+\ declaration does not survive that far: every checker call inside the body closes
+\ the bracket, and a close clears every band. So the record is declared again
+\ here, where it is written, rather than once at the colon.
 : EM-COMPILE-FLUSH-PEND ( -- )
    11 DATA PEND-CELL LDR,
+   1 11 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
    PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
 s" em-compile-flush-pend" s" --" TRUST
@@ -7924,7 +7979,7 @@ package LABELS
 : CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
-   LBL PROT:LOPEN !  LBL PROT:LCLOSE !  LBL PROT:LGROW !
+   LBL PROT:LOPEN !  LBL PROT:LCLOSE !  LBL PROT:LGROW !  LBL PROT:LSPAN !  LBL PROT:LCF !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !

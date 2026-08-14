@@ -628,9 +628,32 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ (15788 -> 15548) inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and
 \ MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
 \ The Linux rows below are owed this +240 as well.
-127812 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-14 re-measured live at the macOS byte-fixpoint for the protection bands
+\ (dot habu-narrow-the-boot-9637c873): the region's one write window becomes three
+\ narrow bands - dictionary records, control-flow stack, code - each flipped only
+\ over the pages a bracket declares. Diffed region by region against the two
+\ HABU_ENGINE_SIZE_MAP dumps of THIS tree (not carried over from the pre-window
+\ base it was first measured on); nine rows move and every other row is identical.
+\   primitives/protect   460 -> 1048 (+588): the span-declaration router, the two
+\     band helpers and the control-flow entry, against the old open/close/grow trio.
+\   dictionary-code     6728 -> 6844 (+116): `immediate` and the does> patch move to
+\     the stateless flip, and the AOT seed's captured set follows them.
+\   interpret/define    9980 -> 10060  (+80): one declaration at each definer.
+\   compile/exit        2472 -> 2496   (+24) and compile/semi 6232 -> 6252 (+20):
+\     LBCHAIN's per-link declaration and the body length declared where it is written.
+\   main/startup        6360 -> 6380   (+20): the four extra band cells cleared at the
+\     whole-region RX flush.
+\   interpret/colon      664 -> 680    (+16): the record and control-flow declarations.
+\   primitives/cemit     144 -> 156    (+12): LCEMIT's test becomes a RANGE test.
+\   primitives/qualify-def 2332 -> 2344 (+12) and primitives/base 14676 -> 14680 (+4).
+\ CODELEN 127812 -> 128704 (+892), floor distance 836 -> 1728. The text pad absorbs
+\ it (15548 -> 14656) inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423)
+\ and MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
+\ The Linux rows below are owed this +892 too, and the standing
+\ LINUX-REGION-BUDGETS primitives/protect row with them.
+128704 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-836 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+1728 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
