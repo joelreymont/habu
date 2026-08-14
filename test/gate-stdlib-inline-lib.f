@@ -505,6 +505,12 @@ public
    \ above: only this list is what test/run.f actually forks.
    s" test/compiler/native-match.f" GSI-FORK-INCLUDE
    s" test/compiler/native-rename-rows.f" GSI-FORK-INCLUDE
+   \ Loading a whole value out of memory and storing one back, at the width the
+   \ checker certified. It follows the rename leaf because its loads produce the
+   \ bundles that leaf moves, and it is listed here as well as in
+   \ test/gate-stdlib-cases.f for the reason given above: only this list is what
+   \ test/run.f actually forks.
+   s" test/compiler/native-wide-mem.f" GSI-FORK-INCLUDE
    s" test/compiler/native-vocab.f" GSI-FORK-INCLUDE
    \ The instrument a tail-call lane decides with: a routine's calls and the way
    \ it leaves, read off the emitted code. It belongs beside the chain's own

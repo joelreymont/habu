@@ -6501,3 +6501,43 @@ bound moves when its constraint moves and the fixtures follow.
 16 was unreachable behind 512 bytes and now refuses real tree
 code. When a bound moves, sweep everything whose reachability
 argument cited it.
+
+## The wide-memory landing's five (2026-08-14)
+
+(1) Before minting a per-token export, grep the PRIM rows for the
+fact itself. The width `@` and `!` move was already filed by the
+checker AND already exported (WF-W-AT), because the engine's own
+pass-2 recompiler needs it - so the chain's half was a two-line
+reader and no new store, no new axiom and no ratchet. The three
+sibling readers are keyed on the recording ordinal and that made
+a fourth ordinal-keyed table look inevitable; the fact's own key
+was the token's SOURCE BYTE OFFSET, and the tape carries it,
+checked (feed.f validates every span against the bytes at the
+offset it claims).
+(2) A differential cannot see cell ORDER unless the two compilers
+are CROSSED. A store and a load that both walk a bundle the wrong
+way round answer every value correctly, so write-with-one,
+read-with-the-other is the only fixture that binds the reversal
+mutation - and it found a real defect the same day.
+(3) The engine is the spec only where the engine is right. Its
+wide fetch of a parametric family instantiated WIDER than its
+declaration ends the process (`hb: bad layout tag`, exit 85) while
+the chain's reads correctly: layout-valid.f QUEUE-SUM takes the
+tag's slot from the DECLARED slot count, which at that
+instantiation is a payload cell. Twenty lines, no migration in
+them. When a differential's engine column aborts, reduce it to an
+engine-only reproducer before assuming the new code is wrong.
+(4) A per-token fact stops the body being INLINE-recordable. The
+record keeps spellings and kinds, not offsets, so a spliced row
+would be elaborated against the caller's facts; the rule belongs
+where the row is WRITTEN (SPLICEABLE?, where the fact is still
+live), and the caller side inherits it exactly as it inherits "no
+row holds a call". Its fixture pair must not use a buffer word for
+the address - a buffer word is a call, and then NEITHER body is
+recorded and the width decides nothing.
+(5) A hand-derived expected value is worth writing down and worth
+re-deriving from the ENGINE's own MAKE/UNMAKE order rather than
+from the field list: six of eight constants in the first draft
+were wrong in the same direction, and the differential half of
+each case passed while the pinning half failed - which is the
+pair working as designed.

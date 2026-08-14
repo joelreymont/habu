@@ -728,6 +728,48 @@ public
    w 0 < if 0 exit then
    w ;
 
+\ ---- and how many cells one memory access moves ------------------------------
+\ THE FOURTH TOKEN-KEYED READER, AND THE ONE THAT IS NOT KEYED ON THE RECORDING
+\ ORDINAL. `@` over a `ptr family` and `!` through one move the pointee's WHOLE
+\ logical value, which is the same arg-aware width the three readers above are
+\ about: `option<pt>` occupies two payload cells where its declaration reserves
+\ one, so the number is a function of a resolved type term and the registry has
+\ nothing to work it out from (src/compiler/native/family.f WIDTH).
+\
+\ WHAT IS DIFFERENT IS THAT NOBODY HAD TO PUBLISH IT, because it was already
+\ published - and under the ENGINE's own key. src/core/checker.f
+\ LAYOUT-FETCH-STEP and LAYOUT-STORE-STEP file the width in the WIDTH-FACT table
+\ as they certify the access, and src/habu/habu2.f EM-P2-QUERY-1 reads it back at
+\ the SOURCE BYTE OFFSET of the token, which is what its pass-2 recompiler emits
+\ the wide access from. So the chain asks the same table, at the same key, for
+\ the same number: one fact, one authority, and no second filing that could
+\ disagree with the emitter the chain is measured against.
+\
+\ THE KEY IS THE TOKEN'S OFFSET INTO THE CHECKED TEXT AND THE TAPE CARRIES IT.
+\ src/core/checker.f CHECK-SCAN reports each token to the tape observer with the
+\ very offset it files width facts under (TSTART), and
+\ src/compiler/native/feed.f validates every recorded span against the bytes at
+\ the offset it claims - so a tape row's span start IS that key, checked rather
+\ than assumed. A comment, a collapsed run of whitespace and a string literal's
+\ payload all move the offset, and they move it for both readers at once.
+\
+\ ABSENT IS ONE CELL, WHICH IS THE ORDINARY CASE AND NOT A GUESS. A width fact is
+\ filed only where the checker resolved the pointee to a layout family; `@`
+\ through a `ptr n`, a `ptr ptr u8` or a bare `ptr a` files nothing, and one cell
+\ is exactly what such an access moves. WF-W-AT answers one for an unfiled key,
+\ so absence is the checker's own answer here rather than this file's default.
+\
+\ AND A ROW AT A `@` OR `!` TOKEN CAN ONLY BE THE MEMORY ROW. Three writers fill
+\ the table: the two memory steps above, the transport scan (WF-XPORT-RECORD,
+\ which fires only on the transport spellings - `dup`, `swap`, `rot`, `r>` and
+\ their fellows), and the construct/MATCH pad record, which fires on a family or
+\ variant operand token. No two of them can be one token, and a second fact at
+\ one key is not merely improbable - WF-ADD-FULL dies on it (`conflicting width
+\ fact`). The caller asks only at a token its own word model already resolved to
+\ the load or the store operation, so what comes back describes that access.
+: MEM-CELLS ( n -- n )
+   0 WF-W-AT ;
+
 \ Whether control comes back from a call to the word this spelling denotes.
 \ False for a name the checker holds no control flag for, which is every
 \ ordinary word: a call that comes back is the common case and the one a caller

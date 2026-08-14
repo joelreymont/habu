@@ -700,6 +700,17 @@ SUITE compiler-native-rename-rows
    test/compiler/native-rename-rows.f
 ;SUITE
 
+\ Getting a value wider than a cell ONTO that vector and back into memory, which
+\ is the other half of the same story: `@` through a pointer to a multi-cell
+\ family reads the whole value and `!` writes it, at the width the checker
+\ certified. It runs after the rename leaf because its loads produce exactly the
+\ bundles a rename moves, and after the match leaf because one of its cases feeds
+\ a dispatch out of memory. The cell ORDER is measured by crossing the two
+\ compilers - what one writes, the other reads back.
+SUITE compiler-native-wide-mem
+   test/compiler/native-wide-mem.f
+;SUITE
+
 \ The same end-to-end run over the comparison and bitwise vocabulary, word by
 \ word, each answer compared with the interpreted word's. It runs beside the
 \ chain suite because it is the same path with a wider source vocabulary.

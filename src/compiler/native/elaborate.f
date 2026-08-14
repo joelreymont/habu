@@ -127,6 +127,7 @@ require src/compiler/ir/arena.f
 require src/compiler/ir/type.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
+require src/compiler/ir/source.f
 require src/compiler/native/tape.f
 require src/compiler/native/clobber.f
 require src/compiler/native/hir.f
@@ -176,6 +177,35 @@ private
 : WSYM ( n -- IR-ID:ir-symbol-id )
    {: ix:n :}
    CTX BLD  VW MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM ;
+
+\ ---- how many cells the access on a tape row moves ---------------------------
+\ A `@` through a pointer to a multi-cell family moves the WHOLE value and so
+\ does a `!`, and how many cells that is comes from the checker: it is the
+\ arg-aware width of the pointee, which the registry cannot work out
+\ (src/compiler/native/family.f WIDTH says why). src/compiler/native/dict.f
+\ MEM-CELLS carries where the number comes from and why absence is one cell; what
+\ is decided HERE is only the key, and the key is the token's OFFSET into the text
+\ the checker read.
+\
+\ WHICH IS THE ONE COORDINATE OF THIS TAPE THAT IS NOT ITS ORDINAL, and it is not
+\ a second key for one fact - it is the fact's own. The catch window and the
+\ dispatch cell counts were minted for this chain and filed under the recording
+\ ordinal; this width was already being published for the engine's own pass-2
+\ recompiler, which reads it at the token's source offset (src/habu/habu2.f
+\ EM-P2-QUERY-1 subtracts the source start from the token address and looks the
+\ difference up). Re-filing it under the ordinal would make two numbers where the
+\ chain and the emitter it is measured against need one.
+\
+\ THE VIEW IS PRESENTED RATHER THAN TAKEN FROM THE STAGING, because one caller
+\ asks BEFORE an elaboration is open: src/compiler/native/migrate.f asks
+\ SPLICEABLE? about the definition it has just compiled, and hands the tape it
+\ is asking about.
+: TOK-OFF ( IR-ARENA:view n -- n )
+   {: v:IR-ARENA:view ix:n :}
+   v MKEY ix NTAPE:SPAN@ IR-SOURCE:SPAN-START ;
+
+: TOK-CELLS ( IR-ARENA:view n -- n )
+   TOK-OFF NDICT:MEM-CELLS ;
 
 \ ---- naming the token a refusal was about ------------------------------------
 \ WHY THE CHAIN HAS TO SAY WHICH TOKEN. A body word the dialect cannot compile is
@@ -5355,13 +5385,21 @@ create JOIN-TAB TMAX cells allot
 \ two adjacent bundles now compiles. The third clause is vacuous at both callers -
 \ the subject is on top of the vector - and is written because a subject that is
 \ not would need it and nothing in the wording says one cannot arrive.
-: BUNDLE-CK ( n n -- ) {: base:n w:n :}
-   base VGLUE-BIT? if E-NELAB-MATCH throw then
+\
+\ AND THE REFUSAL IS THE CALLER'S NAME FOR IT RATHER THAN THIS WORD'S. The three
+\ clauses are one question about a bundle, and the two forms that ask it are not
+\ one form: a dispatch that meets a subject it was told the wrong width for is a
+\ tag-dispatch the elaborator cannot shape, while a `!` that meets one is a
+\ multi-cell value it would have to take apart. Both codes' own wording says so,
+\ so the code travels with the question rather than a third clause being written
+\ twice under two names.
+: BUNDLE-CK ( n n n -- ) {: base:n w:n code:n :}
+   base VGLUE-BIT? if code throw then
    w 1 ?do
-      base i + VGLUE-BIT? 0= if E-NELAB-MATCH throw then
+      base i + VGLUE-BIT? 0= if code throw then
    loop
    base w + VN @ >= if exit then
-   base w + VGLUE-BIT? if E-NELAB-MATCH throw then ;
+   base w + VGLUE-BIT? if code throw then ;
 
 \ `MATCH family`: open a frame over the bundle on top of the vector and build
 \ nothing. The values below it are what every arm has to leave the vector at, the
@@ -5371,7 +5409,7 @@ create JOIN-TAB TMAX cells allot
    ix MWID@ {: w:n :}
    w VN @ > if E-NELAB-UNDER throw then
    VN @ w - {: base:n :}
-   base w BUNDLE-CK
+   base w E-NELAB-MATCH BUNDLE-CK
    HIR-CTRL:OPEN-MATCH base  ix JOIN-OF  CS-PUSH
    w CS-TOP CS-W!
    ix MTAG@ CS-TOP CS-TRAP! ;
@@ -5381,7 +5419,7 @@ create JOIN-TAB TMAX cells allot
 : DO-OPEN-CASE ( n -- ) {: ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- {: base:n :}
-   base 1 BUNDLE-CK
+   base 1 E-NELAB-MATCH BUNDLE-CK
    HIR-CTRL:OPEN-CASE base  ix JOIN-OF  CS-PUSH
    1 CS-TOP CS-W! ;
 
@@ -6330,6 +6368,114 @@ create DN-BUF DN-CAP allot
    x 0= if exit then
    r  ix WSYM  HIR-WORD:CALLEE-OUT@  x +  CON-BUNDLE-GLUE ;
 
+\ ---- moving a whole value between memory and the vector ----------------------
+\ A `@` through a pointer to a multi-cell family reads the pointee's WHOLE value
+\ and a `!` through one writes it, so both move as many cells as the checker
+\ certified the family occupies at that instantiation. This dialect has a
+\ one-cell load and a one-cell store and nothing else, and that is deliberate:
+\ what a wide access IS, is W of them at consecutive addresses, so the width is a
+\ COUNT this pass spends rather than a form the dialect has to grow. Every one of
+\ them declares its own read or its own write and threads the definition's memory
+\ order through the schema, exactly as a scalar access does, so no pass below
+\ here learns that a wide access exists.
+\
+\ THE CELL ORDER IS THE ENGINE'S AND IT IS THE SAME ORDER BOTH WAYS. Its own wide
+\ fetch (src/habu/habu2.f EMIT-P2-FETCH) reads memory upwards from the base and
+\ pushes as it goes, so the cell at the base is the DEEPEST on the stack and the
+\ tag - which a family keeps on top - is the last one read; its wide store
+\ (EMIT-P2-STORE) copies the run back the same way round, deepest cell to the
+\ base. A chain that walked either of them downwards would answer the same NUMBER
+\ of cells with a value taken apart and put back inside out, which every count
+\ downstream would agree with.
+\
+\ THE ADDRESS IS THE BASE PLUS A CONSTANT AND NOT A RUNNING POINTER. The engine
+\ steps a register because it is writing a loop; this pass is writing W separate
+\ operations, and W independent addends off one base leave the allocator W
+\ independent short live ranges instead of a chain of them - while the block's
+\ literal memo makes the second definition to use `8` reuse the first's value.
+\
+\ WHAT THE FETCH DOES NOT REPRODUCE IS THE ENGINE'S TAG-DOMAIN VALIDATION, and
+\ that gap is neither this leaf's nor about width. The engine emits a check
+\ program in front of EVERY layout fetch, one cell wide or ten
+\ (src/core/layout-valid.f FETCH-BUILD files a descriptor for every fetch fact,
+\ and its checks come from the tags the pointee's schema reaches), and the chain
+\ has no reader for that certificate at any width: `@` through a pointer to a
+\ ONE-CELL enum compiles here today and is unvalidated today. Reproducing it is a
+\ capability of its own - the chain would have to read the frozen certificate's
+\ fetch descriptors and emit their guards - and nothing about it changes at width
+\ two, which is why it is named here rather than taken on by this pass.
+: WIDE-ADDR ( n IR-ID:ir-value-id n -- )
+   {: ix:n base:IR-ID:ir-value-id k:n :}
+   base VPUSH
+   k 0= if exit then
+   ix k cells EMIT-LIT
+   ix HIR-OPCODE:ADD EMIT-OPCODE ;
+
+\ `@` at width W: the address comes off the vector and W cells go back on, and
+\ they are ONE value. The run's own bottom bit is already clear - the first load's
+\ result was pushed there and a push clears its own boundary - so what is left to
+\ say is that the boundaries INSIDE the run are not boundaries, which is what
+\ VGLUE-GROW says and the only statement a producer of a bundle owes.
+: WIDE-LOAD ( n n -- ) {: ix:n w:n :}
+   VN @ 1 < if E-NELAB-UNDER throw then
+   VN @ 1- VAT {: base:IR-ID:ir-value-id :}
+   1 VDROP
+   VN @ {: bot:n :}
+   w 0 ?do
+      ix base i WIDE-ADDR
+      ix HIR-OPCODE:LOAD EMIT-OPCODE
+   loop
+   VN @ bot - w <> if E-NELAB-BUNDLE throw then
+   bot w VGLUE-GROW ;
+
+\ `!` at width W: the address comes off the top and the W cells under it are the
+\ value, which is held against the vector's own boundary record before a single
+\ store is staged. A run that does not begin, hold together and end where the
+\ certified width says is a value this pass would be taking apart - the cells
+\ would reach memory in an order nobody stated - and it is refused rather than
+\ written, with every count still agreeing.
+\
+\ THAT CHECK IS UNBOUND TODAY AND IS STILL WRITTEN, on the same terms as
+\ BUNDLE-CK's own third clause and INLINE-NAME's `call` arm: removing it reds
+\ nothing across this file's suite (measured). It is here because this is a
+\ SEGMENTING consumer - it takes the top W entries as one value - and the other
+\ segmenting consumer in this file asks exactly this question with exactly this
+\ word. What makes it unreachable is that every producer the chain has marks the
+\ span of a value it leaves, and a declared row whose boundaries the chain cannot
+\ place is refused before any body word runs (NDICT:GLUE-UNKNOWN); the day a
+\ producer arrives that does not, this is the consumer that would otherwise write
+\ half of one value and half of the next.
+: WIDE-STORE ( n n -- ) {: ix:n w:n :}
+   VN @ 1 < if E-NELAB-UNDER throw then
+   VN @ 1- VAT {: addr:IR-ID:ir-value-id :}
+   1 VDROP
+   w VN @ > if E-NELAB-UNDER throw then
+   VN @ w - {: bot:n :}
+   bot w E-NELAB-BUNDLE BUNDLE-CK
+   w 0 ?do
+      bot i + VAT VPUSH
+      ix addr i WIDE-ADDR
+      ix HIR-OPCODE:STORE EMIT-OPCODE
+   loop
+   VN @ bot w + <> if E-NELAB-BUNDLE throw then
+   w VDROP ;
+
+\ The walk's `op` arm. One cell is every operation this dialect has and is staged
+\ exactly as it was before this leaf; a wider one is a memory access and nothing
+\ else, because a width fact is filed only where the checker resolved a pointee to
+\ a layout family. A width on any other operation would mean this pass and the
+\ checker had read one token as two different words, so it is refused by name
+\ rather than compiled at whichever width happened to arrive.
+: DO-OP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   VW ix TOK-CELLS {: w:n :}
+   w 1 = if r ix EMIT-OP exit then
+   w 1 < if E-NELAB-BUNDLE throw then
+   r  ix WSYM  HIR-WORD:OPCODE@ {: k:HIR:opcode :}
+   k HIR-OPCODE:LOAD HIR-OPCODE:EQ if ix w WIDE-LOAD exit then
+   k HIR-OPCODE:STORE HIR-OPCODE:EQ if ix w WIDE-STORE exit then
+   E-NELAB-BUNDLE throw ;
+
 \ `unloop`: this dialect carries a counted loop's index and limit as block
 \ arguments, so there is no frame to drop and nothing is staged. What it does is
 \ insist that a counted loop IS open, which is the one thing the word means that
@@ -6542,7 +6688,7 @@ variable IX                          \ the body token the walk stands on
       literal      OF ix EMIT-CONST ENDOF
       real-literal OF ix EMIT-FCONST ENDOF
       string-literal OF ix EMIT-STRING ENDOF
-      op           OF r ix EMIT-OP ENDOF
+      op           OF r ix DO-OP ENDOF
       const-op     OF r ix EMIT-CONST-OP ENDOF
       fixed        OF r ix EMIT-FIXED ENDOF
       callable     OF p r ix DO-CALL ENDOF
@@ -6882,6 +7028,25 @@ EXPORT SPLICE-MEANING?
 \ interner, and the caller is the one that holds it. It is HIR-WORD:KEY-SYM of the
 \ symbol the tape recorded for row `ix`, which is what WSYM answers for a token of
 \ the definition this pass is elaborating.
+\
+\ AND A WIDE MEMORY ACCESS IS NOT ONE, WHICH IS THE ONLY CLAUSE HERE THAT IS
+\ ABOUT THE TOKEN RATHER THAN ABOUT ITS WORD. How many cells `@` and `!` move is
+\ a fact about the TOKEN, filed by the checker under its offset into the text of
+\ the definition being recorded - and a recorded row keeps a spelling, a kind and
+\ a literal, not an offset. A caller that spliced such a row would be elaborating
+\ the callee's tokens against its OWN definition's width facts, where the
+\ callee's offsets mean nothing, and the copy would move one cell where the
+\ routine moves several. So a body holding one is not recorded at all, and its
+\ callers call it - which is the same shape as this file's older invariant that
+\ NO ROW HOLDS A CALL: it is kept where the row is WRITTEN, and the caller-side
+\ re-judgement inherits it because no such row can exist to be met. The rule is
+\ asked here, where the recorder asks it, because here the fact is still live:
+\ the definition has just been certified and its width facts are the checker's
+\ per-check scratch. The capability that retires it is a width per recorded
+\ token, carried in the row beside its spelling and its kind - the same shape
+\ src/compiler/native/inline.f's other two open refusals take (a recorded body
+\ that binds locals, and one that makes blocks): the record is what has to learn
+\ the fact, not the splice.
 : SPLICEABLE? ( IR-ARENA:view IR-ARENA:arena n IR-ID:ir-symbol-id -- bool )
    {: v:IR-ARENA:view r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
    v ix NTAPE:KIND@ {: kd:NTAPE:kind :}
@@ -6889,6 +7054,7 @@ EXPORT SPLICE-MEANING?
    kd NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if true exit then
    kd NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    r sy HIR-WORD:MODELS? 0= if false exit then
+   v ix TOK-CELLS 1 <> if false exit then
    r sy HIR-WORD:MEANING@ SPLICE-MEANING? ;
 
 \ ---- what a recorder has to be told about a call -----------------------------
