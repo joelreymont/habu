@@ -489,18 +489,18 @@ RUN-THE-REFUSALS
    0 0 E-SBX
    6 0 C-SBX  0 E-LBX 408 T= ;
 
-\ THE ONE CASE WHOSE READER IS NOT THE ENGINE, AND THE MEASUREMENT THAT SAYS WHY.
-\ `opt2<pt>` occupies three cells where its declaration reserves two, and the
-\ ENGINE cannot read one back out of a TYPED-BUFFER at all: its own store is
-\ right - the chain reads back exactly what it wrote - and its own LOAD ends the
-\ process with `hb: bad layout tag` (ENGINE-ERROR:BAD-TAG, 85). The reason is the
-\ validation program in front of that load rather than the load itself:
-\ src/core/layout-valid.f QUEUE-SUM takes the tag's slot from the family's
-\ DECLARED slot count (`fam TFAM-SLOTS@`), which at a wider instantiation is a
-\ PAYLOAD cell, so the guard tests the wrong cell against the tag domain. It is
-\ pre-existing and has nothing to do with this leaf: the twenty-line reproducer
-\ below holds on master with no migration in it at all, and both wide accesses in
-\ it are the engine's own.
+\ THE CASE WITH TWO READERS AGAIN, AND WHAT IT COST TO GET THE SECOND ONE BACK.
+\ `opt2<pt>` occupies three cells where its declaration reserves two. Until dot
+\ habu-fix-the-engine-ba24a257 the ENGINE could not read one back out of a
+\ TYPED-BUFFER at all: its own store was right - the chain read back exactly
+\ what it wrote - and its own LOAD ended the process with `hb: bad layout tag`
+\ (ENGINE-ERROR:BAD-TAG, 85) on data the same engine had just written. The fault
+\ was the validation program in front of the load rather than the load itself:
+\ src/core/layout-valid.f QUEUE-SUM took the tag's slot from the family's
+\ DECLARED slot count, which at a wider instantiation is a PAYLOAD cell, so the
+\ guard tested a field against the tag domain. It now takes the slot from the
+\ INSTANTIATED width - the same T-WIDTH the access moves - and this twenty-line
+\ program, which held on master with no migration in it at all, answers 408:
 \
 \     PRODUCT pt 0 FIELD x n FIELD y n ;PRODUCT
 \     ENUM opt2 1 VARIANT n2 ;VARIANT VARIANT s2 FIELD value a ;VARIANT ;ENUM
@@ -508,29 +508,34 @@ RUN-THE-REFUSALS
 \     : MK ( n -- opt2<pt> ) dup 3 * swap 5 * PT:MAKE OPT2:S2 ;
 \     : PUT ( n n -- ) {: v:n k:n :} v MK k OP-AT ! ;
 \     : GET ( n -- n ) OP-AT @ MATCH opt2 n2 OF 0 ENDOF s2 OF PT:UNMAKE 7 * swap 11 * + ENDOF ;MATCH ;
-\     6 0 PUT  0 GET       \ hb: bad layout tag, exit 85
+\     6 0 PUT  0 GET       \ 408
 \
-\ SO THE STORE IS STILL A DIFFERENTIAL AND THE LOAD IS STILL EXECUTED, with the
-\ chain's own load as the reader for both columns: what the ENGINE's store leaves
-\ and what the CHAIN's store leaves are read back by one word and compared, which
-\ is the whole of what a store fixture can say. The load's own second column is
-\ what the defect above takes away, and this case will grow one the day it is
-\ fixed.
+\ SO THE CASE IS A FULL DIFFERENTIAL ON BOTH HALVES. Each store is read back by
+\ BOTH loads and the two answers are bound together before either is held
+\ against the expected number, which is what says the two compilers agree about
+\ the cells rather than that each agrees with itself. The guard that used to
+\ abort here is not weakened by any of this: test/gate-engine-lib.f
+\ WIDE-FETCH:RUN forges an out-of-range tag into a wide instantiation and
+\ requires the same abort, in a child process because a die exits the engine.
 : WIDE-INST-CASE ( -- )
    s" the chain compiles both halves of a wide instantiation through memory" T-LABEL
    RC-SOP @ 0 T=  RC-LOP @ 0 T=
 
-   s" and reads back a value the engine's store left, payload and tag" T-LABEL
-   6 0 E-SOP  0 C-LOP 408 T=
+   s" and both loads read back a value the engine's store left, payload and tag" T-LABEL
+   6 0 E-SOP  0 E-LOP  0 C-LOP T=
+   0 E-LOP 408 T=
 
    s" its empty variant too, whose pads the construction site added" T-LABEL
-   0 0 E-SOP  0 C-LOP 0 T=
+   0 0 E-SOP  0 E-LOP  0 C-LOP T=
+   0 E-LOP 0 T=
 
    s" and the chain's own store leaves the same three cells the engine's does" T-LABEL
    0 0 E-SOP
-   6 0 C-SOP  0 C-LOP 408 T=
+   6 0 C-SOP  0 E-LOP  0 C-LOP T=
+   6 0 C-SOP  0 E-LOP 408 T=
    6 0 E-SOP
-   0 0 C-SOP  0 C-LOP 0 T= ;
+   0 0 C-SOP  0 E-LOP  0 C-LOP T=
+   0 0 C-SOP  0 E-LOP 0 T= ;
 
 : OFFSET-CASE ( -- )
    s" two accesses of different widths in one body each get their own" T-LABEL

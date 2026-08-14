@@ -1082,6 +1082,83 @@ CONSTRUCT-RUNNER:SUBJECT!
    s" match" 70 s" interpret match fails closed" RUNTIME-RUNNER:LINE-RC
    s" PASS: match lowers natively; forged tag dies ENGINE-ERROR:BAD-TAG; interpret stays fail-closed" type cr ;
 
+\ THE TAG-DOMAIN GUARD IN FRONT OF A WIDE FETCH, AT AN INSTANTIATION WIDER THAN
+\ ITS DECLARATION (dot habu-fix-the-engine-ba24a257). The engine emits a
+\ validation program before every layout fetch (src/core/layout-valid.f) and it
+\ took the tag's cell from the family's DECLARED slot count. `gwfo<gwfp>`
+\ reserves one payload slot and occupies two once `gwfp` is substituted, so that
+\ count addressed a PAYLOAD cell and the guard read the wrong number: it ended
+\ the process on data this engine had just written, and - the same fault seen
+\ from the other side - it let a genuinely FORGED tag through, because the
+\ payload cell it read happened to be inside the tag domain.
+\
+\ SO THE CASE IS A PAIR AT EACH WIDTH, and the pair is what makes it a test
+\ rather than a demonstration. A valid value must round-trip and a forged one
+\ must abort with the FETCH guard's own diagnostic (`hb: bad layout tag`), not
+\ with the MATCH trap's (`hb: bad gwfo tag`) - which is exactly what the
+\ declared-slot guard answered for the wide forge, so the message pins which
+\ guard fired and no weakening of the fetch guard can pass here. The narrow
+\ family beside it is the control where declared and instantiated agree.
+\ It runs in a child process because a die exits the engine.
+package WIDE-FETCH
+private
+
+: SRC ( -- )                            \ wide instantiation + narrow control, with forges for both
+   s" PRODUCT gwfp 0 FIELD x n FIELD y n ;PRODUCT" GE-SRC-LINE
+   s" ENUM gwfo 1 VARIANT gwn ;VARIANT VARIANT gws FIELD value a ;VARIANT ;ENUM" GE-SRC-LINE
+   s" ENUM gwfn 0 VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
+   s" 4 TYPED-BUFFER GWF-AT gwfo<gwfp>" GE-SRC-LINE
+   s" 4 TYPED-BUFFER GWN-AT gwfn" GE-SRC-LINE
+   s" TRUSTED: GWF-FORGE ( -- gwfo<gwfp> ) 0 0 5 ;" GE-SRC-LINE
+   s" TRUSTED: GWN-FORGE ( -- gwfn ) 0 5 ;" GE-SRC-LINE
+   s" : GWF-MK ( n -- gwfo<gwfp> ) dup 3 * swap 5 * GWFP:MAKE GWFO:GWS ;" GE-SRC-LINE
+   s" : GWF-PUT ( n n -- ) {: v:n k:n :} v GWF-MK k GWF-AT ! ;" GE-SRC-LINE
+   s" : GWF-GET ( n -- n ) GWF-AT @ MATCH gwfo gwn OF 0 ENDOF gws OF GWFP:UNMAKE 7 * swap 11 * + ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : GWF-BAD ( n -- ) {: k:n :} GWF-FORGE k GWF-AT ! ;" GE-SRC-LINE
+   s" : GWN-PUT ( n n -- ) {: v:n k:n :} v GWFN:GNS k GWN-AT ! ;" GE-SRC-LINE
+   s" : GWN-GET ( n -- n ) GWN-AT @ MATCH gwfn gnn OF 0 ENDOF gns OF 13 * ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : GWN-BAD ( n -- ) {: k:n :} GWN-FORGE k GWN-AT ! ;" GE-SRC-LINE ;
+
+: ROUND ( -- )                   \ both widths store and load their own values back
+   GE-HB-RESET
+   GE-SRC-RESET
+   SRC
+   s" : GO ( -- ) 6 0 GWF-PUT 0 GWF-GET .  4 1 GWN-PUT 1 GWN-GET . ;  GO" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" wide-instantiation fetch round-trip" GE-EXPECT-OK
+   SB-RESET
+   s" 408" SB-APPEND GE-SB-LF                  \ 18*11 + 30*7, weighted so an exchange would show
+   s" 52" SB-APPEND GE-SB-LF                   \ 4*13, the narrow control
+   SB$ s" wide-instantiation fetch round-trip output" GE-EXPECT-OUT ;
+
+: BAD-WIDE ( -- )                \ forged tag at the wide instantiation: the FETCH guard fires
+   GE-HB-RESET
+   GE-SRC-RESET
+   SRC
+   s" : GO ( -- ) 0 GWF-BAD 0 GWF-GET . ;  GO" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   ENGINE-ERROR:BAD-TAG s" wide forged tag dies with ENGINE-ERROR:BAD-TAG" GE-EXPECT-RC
+   s" hb: bad layout tag" s" wide forged tag reaches the fetch guard" GE-EXPECT-ERR-HAS ;
+
+: BAD-NARROW ( -- )              \ the same forge where declared and instantiated agree
+   GE-HB-RESET
+   GE-SRC-RESET
+   SRC
+   s" : GO ( -- ) 1 GWN-BAD 1 GWN-GET . ;  GO" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   ENGINE-ERROR:BAD-TAG s" narrow forged tag dies with ENGINE-ERROR:BAD-TAG" GE-EXPECT-RC
+   s" hb: bad layout tag" s" narrow forged tag reaches the fetch guard" GE-EXPECT-ERR-HAS ;
+
+public
+
+: RUN ( -- )
+   ROUND
+   BAD-WIDE
+   BAD-NARROW
+   s" PASS: wide-instantiation fetch validates its own tag cell; forged tags still die there" type cr ;
+
+;package
+
 \ Dictionary-capacity exit diagnostic (dot habu-gate-runner-entry-81c84af0):
 \ a tool closure needing more than DICT-CAP records died exit_group(77)
 \ writing only the CURRENT TOKEN to fd 2 - a lone ':' byte, label-free and
@@ -2069,6 +2146,7 @@ public
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
    GE-MATCH-EXEC
+   WIDE-FETCH:RUN
    GE-DICT-FULL
    GE-DATA-FULL
    GE-DIV-MOD
