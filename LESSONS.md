@@ -6565,3 +6565,25 @@ instead of re-reading stack order: two prints around one call
 found what four rounds of reasoning could not - and revealed the
 deeper defect (a dead env write masking a term-arena clobber)
 that turned the obvious fix into a design question.
+
+## The protection landing's four (2026-08-14)
+
+(1) The cost of a wide RW->RX->RW flip is not the syscall - it
+drops the PTEs of the JIT code the engine is EXECUTING: 93,691
+minor faults per boot went with the bands. A trace replay against
+a bare mapping under-predicts such a change 4x (nothing executes
+inside the replayed region); sample(1) under-reports syscall time
+5x. Price protection changes by measuring the real workload.
+(2) A free layout gap can carry an invariant no free-list shows:
+the $40C8 gap must stay CONTIGUOUS for the WID bitmap, so
+"take the top two cells" and "move down the gap" are not
+equivalent. Read the gap's reservation prose before allocating;
+re-derive placement from the layout's structure, then sweep
+repo-wide for claimants.
+(3) Never pass an unvalidated subshell to jj abandon - an empty
+substitution abandoned the lane's own change (jj op undo
+recovered it).
+(4) When two lanes allot from one free band in one push, the
+orchestrator's cross-report view is the only place the collision
+is visible before the rebase - flag it in the rebase order, and
+the resolver re-derives on the merged file, never takes a side.
