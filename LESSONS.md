@@ -6465,3 +6465,21 @@ case does not cover.
 tokenizer that mis-lexes it and through a file-size cliff. Measure
 the build report and the file size after adding prose to a
 boot-prefix source.
+
+## The bundle-seams landing's four (2026-08-14)
+
+(1) A guard's safe direction is a property of its CONSUMER: the
+glue over-approximation was sound for four landings because every
+reader refused on it; the first reader that SEGMENTS turned the
+same over-answer into a miscompile. When a consumer changes from
+deciding to computing, re-derive every producer's fail-closed
+direction.
+(2) A boolean derived from two counts cannot carry three cases -
+store the count, let the consumer state the cases.
+(3) A record not trimmed when its subject shrinks holds live and
+stale data at adjacent indices - and the boundary between them is
+exactly the index a one-more-bit change reaches for. The census
+found it; no suite or review did.
+(4) Measure a family's row shapes before designing to them - two
+of the three buckets the fail-closed design had to handle were
+empty, which decides how much machinery to mint.
