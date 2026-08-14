@@ -62,3 +62,34 @@ cure). Inliner rider VERDICT: not this lane - inline.f splices
 tokens not addresses; the real hazard is the chain publication
 seam baking pre-window literals, which cannot arise until the
 cut and lands with it (recorded).
+
+HANDOFF 2026-08-14 (bake-chain lane, deep-session stop at the
+foundation blocker; the C commit 754b81e0 sits STACKED in
+.jj-ws/habu-bake-chain on master 9eb6437a - the fresh lane
+inherits workspace and commit). FOUNDATION BLOCKER, scoped
+exactly: aot-capture.f cannot load in plain bin/hb
+(E-UNDEFINED: AOT-CODE-B0) - 17 of its 73 referenced symbols
+are declared in habu2.f (the AOT-*-BUF/-CAP/-MAX set,
+AOT-CODE-B0, AOT-DATA-D0, AOT-REC, the *-LEN/*-N siblings, the
+AOT-WINDOW:/AOT-XTSITE: packages); the PROT-/SNAP-RELOC:
+layout constants already load (verified). IMPLEMENTATION ORDER
+for the fresh lane: (1) EXTRACT the 17 declarations + the
+AOT-SECTION:BYTES+AGREE budget into one shared file loaded by
+both the engine builder and the capture tool - MECHANICAL
+(declarations not logic), LINT-GATED (stdin-closure-lint
+rejects an unwired host file), EMIT-AOT-SEED stays put so the
+section-reach lint's label set is unaffected; RISK: the caps
+AGREE sums must TRAVEL TOGETHER with the budget - split files
+are the drift AGREE exists to stop. (2) The capture tool in
+bin/hb (window at first user token). (3) Writer/reader with
+the DATA-CAP lift riding the writer commit ($100000->$200000
+obligates AOT-SECTION-CAP $400000->$500000 and CODE-CAP-BYTES
+$900000->$A00000 - AGREE proves the chain or dies named).
+(4) The PROMOTED acceptance: cross-process double-capture
+sha256 comparison IN the build, fail-closed - NO band gate, NO
+band diagnostic (ruled; the block A/B localizes by hand).
+(5) Fixpoint loop (build->capture with new engine->rebuild->
+converge, referencing 05728727's partial coverage). (6)
+Provided rows generated from the artifact's own closure list.
+(7) Battery. Boot-side DKEEP-HOOK re-install rides the bake
+commit. All prior rulings on this leaf stand.
