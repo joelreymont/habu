@@ -262,11 +262,25 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
 \ A definition past the RECORDER's own text ceiling. It is a real refusal with a
 \ real code, and it is the instrument's rather than the dialect's: nothing about
 \ the body is outside the subset, the unit that records the tape simply will not
-\ take a source that long. There is deliberately no fixture for a body too long
-\ for the census's own staging buffer, because there cannot be one - the engine
-\ refuses to compile a definition of that size at all, so no file holding one
-\ would load.
-170 constant MID-STEPS                       \ about a kilobyte of body
+\ take a source that long.
+\
+\ WHAT MAKES SUCH A DEFINITION WRITABLE AT ALL IS THAT THE TWO LENGTHS ARE NOT
+\ THE SAME LENGTH, and this fixture is the proof of it. The recorder's ceiling is
+\ the engine's own body capture (src/compiler/native/migrate.f TEXT-CAP, which is
+\ BODYBUF-CAP), so a definition whose CAPTURE is past it cannot exist in a file
+\ that loads - the engine ends the process at status 71 rather than compiling it.
+\ What the census stages is the definition's SOURCE, and the capture leaves out
+\ everything the engine never reads as a token: backslash comments, the
+\ indentation, the line breaks. So the padding here is a comment block. The body
+\ is two tokens, the engine captures about twenty-five bytes and compiles it
+\ without complaint, and the source the census hands to the recorder is past
+\ eight kilobytes.
+\ The padding is counted off the engine's own constant rather than off a number,
+\ so the fixture follows the ceiling it is built to exceed instead of quietly
+\ falling under it the day that ceiling moves.
+1 constant MID-STEPS                          \ the whole body: `1+ 1-`
+75 constant PAD-LINE-U                        \ one comment line, newline included
+BODYBUF-CAP PAD-LINE-U / 1+ constant PAD-LINES
 
 \ Wrapped every ten steps: a source line has a ceiling, and a body written as one
 \ enormous line is truncated at it - which ends the definition early and hands the
@@ -282,35 +296,65 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
 : STEPS ( n -- ) {: n:n :}
    n 0 ?do i STEP1 loop ;
 
+\ One comment line of the padding, PAD-LINE-U bytes with its newline, and not one
+\ byte of it reaches the engine's capture.
+: PAD1 ( -- )
+   s"    \ ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp" LINE ;
+
+: PAD ( n -- ) {: n:n :}
+   n 0 ?do PAD1 loop ;
+
 : LONG-SRC ( -- ptr u8 n )
    FIX-RESET
    s" package CENSUS-FIX-LONG" LINE
    s" public" LINE
-   s" : CFL-MID ( n -- n ) " FIX+ MID-STEPS STEPS s" ;" LINE
+   s" : CFL-MID ( n -- n ) " FIX+ MID-STEPS STEPS LF
+   PAD-LINES PAD
+   s"    ;" LINE
    s" ;package" LINE
    FIX$ ;
 
 \ A refusal code the census's own table does not name, which is the case that has
-\ to widen the report instead of ending the run. It used to be a hexadecimal
-\ literal, until the tape learned to record one from the engine's own reader (dot
-\ habu-record-the-engine-79c570ed); it is now a body with more TOKENS than a
-\ recording unit's tape holds - src/compiler/native/migrate.f TAPE-CAP is 128
-\ rows and the definition's name takes one of them, so the sixty-fourth
-\ `1+ 1- ` pair is the append the tape refuses, while the text stays well inside
-\ the same unit's 512-byte ceiling so the longer-text refusal above cannot fire
+\ to widen the report instead of ending the run. It has moved twice. It was a
+\ hexadecimal literal until the tape learned to record one from the engine's own
+\ reader (dot habu-record-the-engine-79c570ed); then it was a body with more
+\ tokens than a recording unit's tape held, back when that was a fixed 128 rows.
+\ It is neither now: the recorder sizes a unit's tape from the source it was
+\ handed (src/compiler/native/migrate.f TAPE-ROOM, one row per two source bytes),
+\ and a token costs at least two bytes of the engine's capture, so no source can
+\ produce more rows than its own tape holds and E-NTAPE-CAP cannot be reached
+\ through the census at all.
+\
+\ SO IT IS THE ELABORATOR'S VALUE VECTOR INSTEAD - E-NELAB-CAP, and it is a
+\ ceiling of the same kind: sixty-four compile-time values
+\ (src/compiler/native/elaborate.f VMAX), which a body pushing seventy literals
+\ is past while the CHECKER, which has no such ceiling, certifies it happily. The
+\ text stays a few hundred bytes, so the recorder's own byte ceiling cannot fire
 \ first.
 \
-\ IF SOMEBODY GIVES E-NTAPE-CAP A ROW, this fixture has to move to whatever is
+\ IF SOMEBODY GIVES E-NELAB-CAP A ROW, this fixture has to move to whatever is
 \ unlisted then. The case is about the mechanism - an unpredicted code printed
 \ raw and read conservatively as a dialect gap - and it tests that mechanism only
 \ while its own code is genuinely absent from the table.
-64 constant UNL-STEPS
+70 constant UNL-PUSHES
+
+: PUSH1 ( n -- ) {: k:n :}
+   s" 1 " FIX+
+   k 1+ STEPS-PER-LINE mod 0= if LF then ;
+
+: DROP1 ( n -- ) {: k:n :}
+   s" drop " FIX+
+   k 1+ STEPS-PER-LINE mod 0= if LF then ;
+
+: UNL-BODY ( -- )
+   UNL-PUSHES 0 ?do i PUSH1 loop
+   UNL-PUSHES 0 ?do i DROP1 loop ;
 
 : UNL-SRC ( -- ptr u8 n )
    FIX-RESET
    s" package CENSUS-FIX-UNLISTED" LINE
    s" public" LINE
-   s" : CFU-MANY ( n -- n ) " FIX+ UNL-STEPS STEPS s" ;" LINE
+   s" : CFU-MANY ( n -- n ) " FIX+ UNL-BODY s" ;" LINE
    s" ;package" LINE
    FIX$ ;
 
@@ -661,11 +705,11 @@ variable ACC
    s" unlisted: the run finished" T-LABEL
       CHAIN-CENSUS:BUCKETS 1 T=
    s" unlisted: with the code the chain really threw" T-LABEL
-      0 CHAIN-CENSUS:BUCKET-CODE E-NTAPE-CAP T=
+      0 CHAIN-CENSUS:BUCKET-CODE E-NELAB-CAP T=
    s" unlisted: no row names it" T-LABEL
-      E-NTAPE-CAP CHAIN-CENSUS:CLASS-OF CHAIN-CENSUS:CL-DIALECT T=
+      E-NELAB-CAP CHAIN-CENSUS:CLASS-OF CHAIN-CENSUS:CL-DIALECT T=
    s" unlisted: the report prints it raw" T-LABEL
-      ra ru s" unlisted code -8243" LINT-CONTAINS? TTRUE ;
+      ra ru s" unlisted code -8305" LINT-CONTAINS? TTRUE ;
 
 \ ---- a refusal that never reached the elaborator carries no spelling ------------------------------------------
 \ The elaborator's refused-token record is cleared when its walk is ENTERED, so a

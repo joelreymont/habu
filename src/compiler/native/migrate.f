@@ -32,10 +32,10 @@
 \ migrating whichever record happened to be newest.
 \
 \ WHAT IT REFUSES. A second migration inside a live one, source longer than the
-\ recorder's buffer, a definition the engine's own check did not certify, a
-\ source that did not publish exactly one word, and a name that no longer
-\ resolves to that record. Everything the chain refuses keeps the chain's own
-\ name - a body outside the dialect's vocabulary is E-HIR-UNMODELED, a control
+\ engine's own body capture, a definition the engine's own check did not
+\ certify, a source that did not publish exactly one word, and a name that no
+\ longer resolves to that record. Everything the chain refuses keeps the chain's
+\ own name - a body outside the dialect's vocabulary is E-HIR-UNMODELED, a control
 \ structure the elaborator cannot close is E-NELAB-CTRL, register pressure the
 \ frame cannot absorb is E-A64RA-PRESSURE - and none of them is caught here, so a
 \ word the chain cannot compile is refused by name with its dictionary record
@@ -103,8 +103,38 @@ private
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
 
-512 constant TEXT-CAP                \ the longest definition a unit may record
-128 constant TAPE-CAP                \ the most tokens one definition may hold
+\ ---- what a recording unit is opened with ------------------------------------
+\ A UNIT IS OPENED WITH TWO CEILINGS AND NEITHER IS THIS FILE'S TO PICK ANY MORE.
+\ One is the byte buffer the scanned text is kept in and the other is how many
+\ tokens the tape holds. Both were chosen numbers - 512 bytes and 128 tokens -
+\ and what they measured was this file: the census of 2026-08-14 offered 3947
+\ definitions of src and lib to the chain and 151 of them never reached it,
+\ refused for the byte ceiling alone, one file holding 41. The longest definition
+\ in either tree stages 2948 bytes, so every one of those refusals was about the
+\ recorder and none of them about the dialect.
+\
+\ THE TEXT CEILING IS THE ENGINE'S OWN. What a unit records is not the caller's
+\ source: it is the text the ENGINE handed its check hook, the body capture it
+\ builds token by token in DATA at BODYBUF-OFF (src/habu/habu1.f EMIT-BCAP),
+\ which the checker scans and whose scan this file's producer copies. That
+\ capture has a ceiling the engine enforces itself, and it enforces it with a
+\ write to fd 2 and an exit - status 71, not a throw. So BODYBUF-CAP is the
+\ longest text a reader can ever hand over, a buffer of exactly that size can
+\ never be too small, and E-NFEED-TEXT is unreachable through this caller. It
+\ stays reachable where it is owned: test/compiler/native-feed.f opens its units
+\ with a 256-byte buffer and refuses a longer definition by that name.
+\
+\ AND THE SAME CONSTANT IS WHY A SOURCE IS STILL REFUSED BY LENGTH. The engine's
+\ overflow cannot be caught, so a source that would reach it has to be refused
+\ before `evaluate` sees it. The capture holds the definition's tokens each
+\ followed by one space, with the opening `:` and the closing `;` gone, so it is
+\ at least three bytes SHORTER than the source it was read from: a source of
+\ BODYBUF-CAP bytes captures at most BODYBUF-CAP - 3. Refusing a longer source is
+\ therefore exactly the guard that keeps the process alive, and it is reachable
+\ from both sides - measured on this engine, a definition whose capture reaches
+\ 8000 bytes compiles and one seven bytes longer exits 71.
+BODYBUF-CAP constant TEXT-CAP
+
 \ The longest name or spelling this file holds. Two things are measured by it -
 \ the name the migration publishes under, and each callee spelling a caller
 \ stages - and a staged spelling may be QUALIFIED where a publication's own name
@@ -363,8 +393,28 @@ variable M-MEASURE                   \ this migration proves the publication ins
    M-HELD @ 0= if exit then
    CHECKER-TAPE:HOLD-DISARM ;
 
+\ How many rows the tape is opened with, read off the SOURCE rather than chosen,
+\ for the reason MODEL-ROWS above reads the tape's own token count rather than a
+\ number. A token the reader consumes costs at least two bytes of the capture -
+\ one byte of spelling and the space after it - so a source of n bytes can never
+\ produce more than n/2 rows, and a tape that big cannot be overrun by the
+\ definition it was opened for.
+\
+\ IT IS READ OFF THE SOURCE RATHER THAN FIXED HIGH BECAUSE THE ROOM IS SHARED. A
+\ tape is a span of the context's own mapping, which is 512K for the whole run
+\ and already holds four modules of the machine dialect at once
+\ (src/compiler/ir/context.f MAP-BYTES). A ceiling generous enough for the
+\ longest definition the engine can compile is four thousand rows, a quarter of
+\ that mapping, and a fixed one would take it from every definition that is not
+\ that long. This costs what the definition costs.
+\
+\ A source too short to be a definition still has to reach the refusal that says
+\ so, so the room never goes below the one row NTAPE will accept.
+: TAPE-ROOM ( -- n )
+   M-SRC-U @ 2 / 1 max ;
+
 : RECORD ( -- n )
-   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB IR-BUILD:MODULE-KEY TAPE-ROOM NTAPE:NEW {: tp:IR-ARENA:arena :}
    CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
    HOLD-OPEN
    ndict@ {: before:n :}
@@ -983,6 +1033,9 @@ variable REC-OK                      \ the body staged so far is still one worth
    0 M-HELD-PENDING !
    NAME-BUF NAME-U @ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
+\ The length refusal comes before anything else this run does, because what it
+\ guards is the `evaluate` below: a source past the engine's body capture ends
+\ the process rather than throwing, so there is nothing left to catch it with.
 : RUN ( -- )
    M-OPEN @ 0<> if E-NMIGRATE-STATE throw then
    M-SRC-U @ TEXT-CAP > if E-NMIGRATE-TEXT throw then

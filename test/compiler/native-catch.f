@@ -105,8 +105,10 @@ private
 \
 \ AND THE CEILING IS REACHABLE THROUGH THE REAL ENTRY, which is why the case can
 \ measure the refusal rather than assert it in prose: seventeen sites is
-\ sixty-nine tokens, well inside the source tape's own ceiling of 128, so what
-\ answers first is the checker's table and not the tape's capacity.
+\ sixty-nine tokens in about three hundred and thirty bytes, and the recorder
+\ sizes a unit's tape from those bytes (src/compiler/native/migrate.f TAPE-ROOM,
+\ one row per two source bytes), so the tape has room to spare and what answers
+\ first is the checker's table and not a capacity of the recorder's.
 17 constant CAP-SITES                \ one more than the checker's CWIN-MAX
 4 constant SITE-TOKENS               \ [: ;] catch drop
 512 constant CAP-BUF-CAP

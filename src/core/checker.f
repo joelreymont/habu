@@ -6762,17 +6762,28 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \ this table's ceiling, and a query outside any recording all answer no width,
 \ and a consumer that cannot get a width refuses the body by name instead of
 \ compiling it against a number nobody proved. The ceiling is a count of catch
-\ SITES in one definition, which is a small number the tree measures in single
-\ digits.
-\ THE CEILING IS REACHABLE, WHICH IS WHY IT IS THIS LOW. A ceiling no source can
-\ get to is a branch no test can take, and the source tape a recording unit fills
-\ holds 128 tokens (src/compiler/native/migrate.f TAPE-CAP), which is 31 catch
-\ sites at four tokens each - so a ceiling of 32 would be answered by the tape's
-\ refusal every time and this one would never fire. Sixteen sites in ONE
-\ definition is already far past anything the tree writes (40 catch sites in all
-\ of src and lib), and a definition that wants more gets a named refusal from its
-\ consumer rather than a wrong window: a capability to raise here, where every
-\ reader sees it.
+\ SITES in one definition, which is a small number: most bodies in the tree hold
+\ one or two.
+\
+\ THE CEILING IS REACHABLE, AND WHAT MAKES IT REACHABLE CHANGED UNDER IT. A
+\ ceiling no source can get to is a branch no test can take, and this one used to
+\ be argued from the RECORDER's caps: a tape of 128 tokens is 31 catch sites at
+\ four tokens each, so a ceiling of 32 would have been answered by the tape's
+\ refusal every time and this one would never have fired. That argument is gone.
+\ src/compiler/native/migrate.f now sizes a unit's tape from the source it was
+\ handed and takes its byte ceiling from the engine's own body capture, so a
+\ recorded definition may hold as many catch sites as the engine can compile, and
+\ nothing upstream answers before this table does.
+\
+\ WHICH LEAVES THE MEASUREMENT AS THE WHOLE ARGUMENT, AND THE MEASUREMENT HAS
+\ MOVED TOO. The densest body in src and lib writes SEVENTEEN catch sites in one
+\ definition (lib/array-test.f AT-TEST-CHECKS, counted 2026-08-14), one past this
+\ ceiling - and while the recorder's byte cap was 512 a body that long was
+\ refused for its length before any of this was consulted. A body of that many
+\ sites is now refused by name here instead, which is the fail-closed answer and
+\ not a wrong window, and which test/compiler/native-catch.f CAP-CASE measures at
+\ exactly seventeen. Raising this number is a capability with its own derivation
+\ and its own two-sided fixture, not a widening to do in passing.
 
 \ ---- the recording unit both tables below are filed against -------------------
 \ ONE UNIT, ONE ORDINAL, AND THAT IS THE WHOLE REASON THESE TWO CELLS ARE NOT
@@ -6891,15 +6902,30 @@ create CWIN-TAB CWIN-MAX CW-ROW * cells allot
 \ have told the two apart: it is still not worth one, because the arithmetic
 \ already refuses what the flag would have refused.
 \
-\ THE CEILING IS REACHABLE, MEASURED THROUGH THE CONSUMER'S OWN CAPS. A recorded
-\ definition is one src/compiler/native/migrate.f is recording, and that unit
-\ holds 512 source bytes (TEXT-CAP) and 128 tokens (TAPE-CAP). A `MATCH` form
-\ with A arms is 3 + 3A tokens and files 1 + A rows, so the tape alone caps a
-\ definition at 42 rows and the byte count caps it lower: the densest body that
-\ actually COMPILES on this tree files 22 rows (eleven single-arm dispatches,
-\ 470 bytes - measured), and 24 rows is already 511 bytes. Twenty-four therefore
-\ refuses nothing the chain compiles today, and a body of 27 rows still fits both
-\ caps, so the overflow branch is one a fixture can take.
+\ THE CEILING IS REACHABLE, AND IT NO LONGER RESTS ON THE CONSUMER'S CAPS. It
+\ used to: a recorded definition is one src/compiler/native/migrate.f is
+\ recording, that unit held 512 source bytes and 128 tokens, a `MATCH` form with
+\ A arms is 3 + 3A tokens and files 1 + A rows, so the tape alone capped a
+\ definition at 42 rows and the byte count capped it lower - the densest body
+\ that actually COMPILED filed 22 rows (eleven single-arm dispatches, 470 bytes),
+\ and 24 rows was already 511 bytes. Twenty-four therefore refused nothing the
+\ chain compiled, and the fixture at 26 rows still fitted both caps.
+\
+\ BOTH OF THOSE CAPS ARE DERIVED NOW - the tape from the source it was handed and
+\ the byte ceiling from the engine's own body capture - so the second half of that
+\ argument is gone, and gone in the direction that matters: the tree really does
+\ write bodies far past twenty-four rows (src/compiler/native/a64ir.f OPCODE
+\ dispatches over seventy-six arms, measured 2026-08-14), and while the recorder
+\ refused 512 bytes none of them was recorded. They are recorded now.
+\
+\ WHAT HOLDS INSTEAD IS THE FAIL-CLOSED HALF, WHICH NEVER DEPENDED ON A CAP. A
+\ dropped row is CONSERVED and refuses the definition by name rather than
+\ compiling it a bundle short, so this ceiling is safe at any height and what a
+\ body past it costs is a named refusal a census can attribute, not a wrong
+\ program. The fixture at 24 and 26 rows is unaffected, because both were always
+\ inside the caps and are inside the derived ones. Raising this number is a
+\ capability with its own derivation and its own two-sided fixture, not a
+\ widening to do in passing.
 24 constant MWIN-MAX                 \ layout rows one recorded definition may hold
 0 constant MW-ORD                    \ the token ordinal the row stands on
 1 constant MW-VAL                    \ its cells: a family token's bundle width, an arm's pads, a construction's added cells
