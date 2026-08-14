@@ -6604,3 +6604,23 @@ no source-level scan sees that class.
 (4) Keeping public spellings and importing with using kept a
 26-file migration out of a dot; renaming public words is what
 drags the package lint into a caller cascade.
+
+## The bake blockers' four (2026-08-14)
+
+(1) "Re-derive" is only re-derivation when the key is unique -
+the gate's rescan keyed on an xt, which does NOT name a record
+(EXPORT publishes two records for one body), so the "independent
+check" answered a weaker question and accepted an alias into a
+protected wordlist. Check key uniqueness before calling a second
+lookup a safety property.
+(2) A priced ABI cascade across N sites may be an EXTENSION with
+zero edits - read the clobber contract before pricing: x5 was
+already clobbered on every path, so no caller could depend on it.
+(3) A control fixture can vary NOTHING: 200 words x 8 calls
+produced zero extra patch sites (constant-folded then inlined);
+it became honest only when it printed the producer's own site
+count. Verify the axis moved.
+(4) The two owners of a composite bound are discoverable by
+asking what refuses FIRST on each half - the icode window was
+refusing images whose baked source the boot arena would have
+accepted, which named both halves (ADR reach + arena cap).
