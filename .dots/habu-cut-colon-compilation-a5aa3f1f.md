@@ -349,3 +349,10 @@ definitions get a tape-without-certification capability (the reader
 records tokens; certification stays absent) - dot it when the design
 lane answers the who-compiles-unchecked question. The only sequencing
 that remains is ORDER (dependency and lane capacity), never deferral.
+
+BLOCKER-2 LIST AGED (Wave-0/2 audit 2026-08-14, the leaf-ages
+practice): the refused-word list quoted in BLOCKER 2 is badly
+stale - >r, r>, /mod and depth ALL MIGRATE today (probed through
+the production entry, exit 0). Re-measure the blocker's real
+population from the current census before pricing any cut step
+against this text.
