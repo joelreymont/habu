@@ -209,10 +209,26 @@ variable FIELD-I
    term PARAM>FAM TFAM-VAR-COUNT@
    TASK-PUSH ;
 
+\ THE TAG IS THE LAST CELL OF THE VALUE, AND HOW MANY CELLS THAT IS DEPENDS ON
+\ THE ARGUMENTS. src/core/checker.f PUSH-LOGICAL lays a layout value out as
+\ payload slots 0..W-2 with the tag at W-1, and W is the INSTANTIATED width:
+\ `opt2<pt>` reserves one payload slot in the registry and occupies two once
+\ `pt` is substituted. Taking the tag's slot from the declared count addressed a
+\ payload cell at such an instantiation, so the guard tested a field against the
+\ tag domain and ended the process on valid data (`hb: bad layout tag`,
+\ ENGINE-ERROR:BAD-TAG, on a store this same engine had written correctly).
+\
+\ T-WIDTH IS THE SAME NUMBER THE ACCESS ITSELF MOVES: src/core/checker.f
+\ WF-MEM-RECORD files it under the access token as the row's width and
+\ src/habu/habu2.f EMIT-P2-FETCH moves exactly that many cells. Reading it here
+\ puts the certificate and the bundle it validates on ONE width by construction
+\ rather than by agreement between two derivations. It is read before this walk
+\ mints any term (SCHEMA-TERM below allocates), so it is answered against the
+\ argument terms the row was certified with.
 : QUEUE-SUM ( n n -- ) {: term:n off:n :}
    term ENV-TERM!
    term PARAM>FAM {: fam:n :}
-   off fam TFAM-SLOTS@ + {: tag-off:n :}
+   off term T-WIDTH + 1 - {: tag-off:n :}
    tag-off fam CHECK,
    fam TFAM-VAR-COUNT@ 1 - SUM-I !
    begin SUM-I @ 0 >= while
