@@ -1181,6 +1181,10 @@ SUITE effect-read-api
    test/effect-read-api-test.f
 ;SUITE
 
+SUITE create-axiom
+   test/create-axiom-test.f
+;SUITE
+
 SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE

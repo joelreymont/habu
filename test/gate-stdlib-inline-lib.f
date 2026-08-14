@@ -712,6 +712,7 @@ public
    s" test/xt-cell-test.f" GSI-FORK-INCLUDE
    s" test/snapshot-xt-cell-decl.f" GSI-FORK-INCLUDE
    s" test/effect-read-api-test.f" GSI-FORK-INCLUDE
+   s" test/create-axiom-test.f" GSI-FORK-INCLUDE
    s" test/checker-assert-test.f" GSI-FORK-INCLUDE
    s" test/checker-dead-path-suite.f" GSI-FORK-INCLUDE
    s" test/checker-verify-pkg-scope.f" GSI-FORK-INCLUDE
