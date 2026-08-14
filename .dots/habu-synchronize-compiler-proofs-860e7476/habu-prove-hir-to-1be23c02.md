@@ -10,3 +10,8 @@ blocks:
 ---
 
 Full context: design section 10.2 requires source/checker/HIR binding and stack-to-SSA semantic preservation for the covered straight/control slice. Consume the typed heap and separation model so HIR/SIR loads, stores, allocation, free, traps, and unknown effects carry exact address-space, lifetime, permission, alias, and footprint facts; simulation uses locality/frame rather than an implicit flat store. Full prerequisites include habu-prove-compiler-separation-db458ea0 and the recorded shared-IR/control edges. Acceptance: elaborated HIR and verified SIR preserve stack, value, control, and heap behavior; shared fixtures/witness vectors pass Habu and Rocq; no Admitted.
+
+EDGE NOTE (control audit 2026-08-14): this leaf's blocks: entry
+for f8b5d801 is discharged - f8b5d801 closed as superseded. A Rocq
+refinement proof gating a differential-coverage leaf was inverted
+under the codegen-first ruling anyway.

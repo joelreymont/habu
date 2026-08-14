@@ -24,3 +24,10 @@ STRUCTURAL FACTS any successor design must respect:
 THE REFRAME (ruled 2026-08-11): the deliverable is not "seed the chain" - it is AN ENGINE BOOT MUST NOT RECOMPILE THE COMPILER FROM SOURCE. First consumer: the chain (+1.27s). Second: the prefix itself - a 15.8MB snapshot restore boots in 0.015s where the source-prefix boot takes 0.40s, so the gate's 323 boots spend ~124s recompiling the prefix before any test runs; warm images are retired by user decision (3098fa63) and the tree's chosen replacement IS the AOT-seed path. SEQUENCE: (a) rule habu-aot-has-no-0b01043c (gates every baked route); (b) AOT format widening, own dot (u16 site/name offsets -> u32 across call-site/DATA-site/CODE-site/XT tables + boot-side walkers, AOT-BLOB-CAP 64KB -> MBs vs the chain's 1.15MB, AOT-REC-MAX 256 -> 7000+, AOT-NAMES-CAP 16KB -> ~51KB, EXT-name records which capture refuses today at aot-capture.f:172; acceptance: capture and boot a blob > 64KB); (c) the arming-contract decision (USER); (d) bake the chain; (e) bake the prefix. LAND NOW independent of all of it: LPROT code-region narrowing + (PROT-SPAN) guard cost - ~20% of every boot today, pays on the 323 boots the gate already runs.
 
 Probes, logs, gate telemetry: session scratchpad probe/ and stageb-lane/ (stageb-design lane report has the full method per number).
+
+RIDER (prewindow landing 3443a30d): the CHAIN's own inliner
+(src/compiler/native/inline.f) has no equivalent below-window
+decline - not a live gap today (the chain never compiles window
+code), but this leaf must re-derive it before the chain enters the
+capture window. The engine-side model is C-CALL-SCAN-SAFE +
+AOT-WINDOW:EMIT-OUTSIDE (arithmetically-accepting unarmed state).
