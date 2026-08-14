@@ -3,13 +3,21 @@
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 
 \ MSIZE must cover the largest image any writer can emit: __text up to MPAGE
-\ ($200000, both targets' loud 73-die code-window guard) plus the largest
-\ non-text tail (Mach-O: DATA-CONST-SIZE + MACHO-FIXUPS-SIZE + the ad-hoc
-\ signature; ELF: ELF-RW-SZ). The writers assert this bound at load time
+\ (the assembler's code window plus its header page, both targets' loud 73-die
+\ code-window guard) plus the largest non-text tail (Mach-O: DATA-CONST-SIZE +
+\ MACHO-FIXUPS-SIZE + the ad-hoc signature; ELF: ELF-RW-SZ). This file is
+\ target-neutral and loads before either writer, so it cannot see those tails and
+\ cannot compute the sum; the writers assert it at load time instead
 \ (MACHO-MSIZE-CHECK / ELF-MSIZE-CHECK) so the code-window guard is always the
 \ binding constraint - an M-BOUNDS-RC throw here means a writer bug, not a
-\ program-size limit. $220000 exceeds the derived $210000 minimum with margin.
-$220000 constant MSIZE
+\ program-size limit.
+\
+\ Derived 2026-08-14 for the $500000 code window (dot
+\ habu-lift-the-image-42b2b9f4): MPAGE is $501000, the Mach-O tail at that window
+\ is $4000 + 104 + a $A16C signature bound, and the whole image is $50F1D4.
+\ Rounding that to $510000 and keeping the same $10000 of margin the old
+\ $220000/$210000 pair carried gives $520000.
+$520000 constant MSIZE
 $1002 constant M-MAP-PRIVATE-ANON
 75 constant M-BOUNDS-RC
 variable MBUF-A

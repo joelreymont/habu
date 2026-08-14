@@ -6,7 +6,46 @@
 \ bare, which is what this layer did when they were global names.
 using A64ASM
 
-$1ff000 constant CODE-CAP-BYTES  \ MPAGE-CODE-OFF: full 2 MB executable window
+\ ---- the window this assembler emits into ------------------------------------
+\ THE WINDOW IS NOT THIS FILE'S NUMBER TO PICK. It holds one emitted image, and
+\ an image is two things, each already bounded by a file that is not this one.
+\
+\ THE CODE HALF IS BOUNDED BY THIS FILE'S OWN ADR REACH. The baked-source label
+\ LSRC is the LAST thing an image emits (src/habu/habu2.f EMIT-SOURCE-BYTES, the
+\ final ENGINE-SIZE:MARK) and the boot path reaches it with an ADR planted in the
+\ startup region (C-SOURCE-BAKED and C-SOURCE-APPEND-LSRC, both under
+\ EM-STARTUP - the FIRST region). Every code byte lies between that site and that
+\ label, so a code half past the 21-bit signed ADR byte field cannot address its
+\ own baked source: the deferred patch runs ?ADR and dies `icode: adr out of
+\ reach` before any word is written. ADR-HI below is that field's exclusive
+\ bound, so it is exactly the code half's allowance.
+\
+\ THE BAKED-SOURCE HALF IS BOUNDED BY THE BOOT SOURCE ARENA. The same boot path
+\ copies LSRC into the source arena a byte at a time and refuses at IBUFSZ
+\ (src/habu/layout.f SOURCE-ARENA-CAP) with `hb: source prefix buffer full`,
+\ rc 74. A window able to assemble more baked source than the arena can hold
+\ would only produce engines that die on their first boot, so IBUFSZ is exactly
+\ that half's allowance. This file loads before layout.f, so the sum is spelled
+\ out here and test/icode-fixup-test.f holds it against both owners.
+\
+\ WHAT PAYS FOR IT IS NOTHING THAT IS TOUCHED. CODE is one demand-paged
+\ anonymous mapping taken on first emit (CODE-ALLOC), by build drivers only, and
+\ nothing walks the span: the image writers copy CODELEN bytes and pad to a
+\ content-rounded TEXTSZ, and ARESET rewinds a cursor rather than clearing a
+\ buffer. What grows is reserved address space in a build process.
+\
+\ THE ARCHITECTURAL CEILING IS FAR ABOVE THIS. The window is one contiguous run
+\ of code, so a B/BL between its ends must fit the 26-bit signed word field:
+\ REL26-HI words, 128 MiB, twenty-five times this window. Past that a single-pass
+\ assembler with no veneers could not branch across its own buffer.
+\
+\ WHY IT MOVED (2026-08-14, dot habu-lift-the-image-42b2b9f4). The old window was
+\ $1ff000, chosen as a round 2 MB rather than derived, and the tree had grown into
+\ it: the stdin maker engine emitted 2,038,580 bytes of __text against a
+\ 2,093,056-byte window, 2.6% clear, and the widening lane's stage build died on
+\ this guard. The window was refusing images the boot arena would have accepted,
+\ which is the wrong file refusing first.
+$500000 constant CODE-CAP-BYTES  \ ADR-HI ($100000) + IBUFSZ ($400000)
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
 $1000 constant ICODE-TAB-CELLS
@@ -194,10 +233,12 @@ variable FX-NEW
 \ Gforth seed generator's within-based rejection in bootstrap/cg/asm.fs exactly
 \ (?REL26/?REL19 on word deltas, ENC-ADR on the byte delta), so the native
 \ single-pass assembler fails closed at the identical boundary the trusted seed
-\ already rejects. The 2 MB code window (CODE-CAP-BYTES) overshoots REL19/ADR
-\ reach, so a forward or backward BCOND/CBZ/CBNZ/ADR — and a large enough B/BL —
-\ must be range-checked before its delta is masked, or the mask silently wraps
-\ to the wrong target. Every emit and patch site validates before code mutation.
+\ already rejects. The code window (CODE-CAP-BYTES) overshoots REL19/ADR reach —
+\ it always did, and now that the window is ADR-HI + IBUFSZ it overshoots ADR by
+\ exactly the boot source arena — so a forward or backward BCOND/CBZ/CBNZ/ADR,
+\ and a large enough B/BL, must be range-checked before its delta is masked, or
+\ the mask silently wraps to the wrong target. Every emit and patch site
+\ validates before code mutation.
       -33554432 constant REL26-LO   \ -2^25 words, inclusive  (B/BL 26-bit field)
        33554432 constant REL26-HI   \  2^25 words, exclusive
         -262144 constant REL19-LO   \ -2^18 words, inclusive  (cond/CBZ/CBNZ 19-bit field)

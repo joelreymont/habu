@@ -31,10 +31,27 @@ CODE-CAP-BYTES CODE-OFF + constant MPAGE
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
 104       constant MACHO-FIXUPS-SIZE
-\ Upper bound for the CODESIG2 ad-hoc signature appended into MBUF: SuperBlob +
-\ CodeDirectory + 32 B per 4 KB page of a full-MPAGE image is ~16.5 KB; $6000
-\ leaves slack for the id string and header growth.
-$6000     constant MACHO-SIG-MAX
+\ Upper bound for the CODESIG2 ad-hoc signature appended into MBUF, COMPUTED
+\ from the window rather than chosen, because it is a function of the window and
+\ a number chosen against one window size is wrong at the next. sign2.f hashes
+\ the finished file in CS-PAGE slots ($1000) and writes one CS-HASH digest ($20,
+\ SHA-256) per slot, after a 20-byte SuperBlob header ($14) and an 88-byte
+\ CodeDirectory header ($58, sign2.f CD-HDR) and the id string. The largest file
+\ this writer can hand the signer is a full MPAGE of __TEXT plus __DATA_CONST
+\ and the chained-fixups tail, so that is the slot count to price. $40 is the id
+\ allowance: the longest any driver passes is `hb-prog`, 7 bytes
+\ (src/habu/build.f, src/habu/aot-lib.f).
+\
+\ THE FOUR FORMAT NUMBERS ARE A MIRROR OF sign2.f AND NOTHING CHECKS THE MIRROR.
+\ They cannot be read from their owner here because sign2.f loads after this file
+\ and needs MACHO-SIG-MAX at load; and a fixture that ran sign2.f's own SB-SIZE at
+\ this worst case could only be written in macOS-only names, which the shared
+\ tools/object-image-test.f also runs on Linux. So the mirror is stated, not
+\ enforced: if sign2.f's CS-PAGE, CS-HASH or CD-HDR ever moved without this line,
+\ the failure is the loud 73 die below or the 75 image-cursor bounds throw, never
+\ a bad image. A dot for the cross-check is owed.
+MPAGE DATA-CONST-SIZE + MACHO-FIXUPS-SIZE +
+   $FFF + $1000 / $20 *   $14 + $58 + $40 +   constant MACHO-SIG-MAX
 $10       constant SG-READ-ONLY
 $6        constant S-NON-LAZY-SYMBOL-POINTERS
 6         constant DYLD-CHAINED-PTR-64-OFFSET
