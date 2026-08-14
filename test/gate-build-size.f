@@ -105,6 +105,14 @@ package BUILD-SIZE
 \ code-directory hash slots (+128): 148855 + 16384 + 128 = 165367. Exact
 \ CODE-TEXT/signature/floor rows in test/gate-size-attribution-test.f. The Linux
 \ row below is owed a linux-host re-measure for the same delta.
+\ 2026-08-14 macOS 165367 -> 165367: the pre-window elimination (dot
+\ habu-aot-pre-window-0b01043c) adds +240 of engine text - one EM-AOTWINQ routine
+\ (+204) plus two instructions at each of C-CALL's five emission sites (+40), less
+\ 4 in the AOT seed from a 3-byte shift in the window's DATA span that a bare
+\ pre-window `allot` reproduces on the unchanged engine. CODELEN 127572 -> 127812;
+\ it stays inside the same 16 KiB __TEXT page (floor distance 596 -> 836), so the
+\ page-rounded whole-file total is unchanged. Exact CODE-TEXT/floor rows in
+\ test/gate-size-attribution-test.f. The Linux row below is owed the same +240.
 165367 constant BASELINE-MACOS
 127168 constant BASELINE-LINUX
 

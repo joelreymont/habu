@@ -148,7 +148,10 @@ $1F constant ADDR-RD-MASK
 \ advances CP past the destination.
 \ A chain is the only relocation-meaningful thing an inlined body can carry: the
 \ inliner's safety scan has already refused every BL, B, B.cond, CBZ, TBZ, BLR, BR,
-\ RET and ADR, so no call site and no PC-relative material ever reaches here.
+\ RET and ADR, so no call site and no PC-relative material ever reaches here. That
+\ same scan now also refuses a body whose chain an OPEN capture window could not
+\ describe (AOT-WINDOW:EMIT-OUTSIDE below), so a record reissued here is one the
+\ capture in progress can classify.
 \ THE BAND IS ASKED ONLY INSIDE ITS OWN DOMAIN, and that is the region's extent
 \ rather than a guess about a value, exactly as in EMIT-CEMITBL. It covers the JIT
 \ region and nothing else, while the body being inlined is very often in the
@@ -234,6 +237,16 @@ $1F constant ADDR-RD-MASK
    C-ADDR-PUSH ;
 
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
+\ LOUTSIDE: the routine the safety scan below asks about one candidate body word -
+\ is the address chain this word starts outside the capture window the metabuild
+\ has open? It belongs to the window, so it joins the package src/habu/layout.f
+\ opens for the window's two cells; its body is emitted once, further down, beside
+\ the other AOT-pass routines. The label is declared HERE because the scan that
+\ calls it is compiled from this block.
+package AOT-WINDOW
+public
+variable LOUTSIDE
+;package
 $28 constant INL-MAX
 $D10043FF constant C-CALL-PROLOGUE-INSTR
 $D65F03C0 constant C-CALL-RET-INSTR
@@ -288,11 +301,19 @@ $D63F0200 constant C-CALL-BLR-X16     \ blr x16: kept for the deferred-word indi
    C-CALL-RET-INSTR lcall C-CALL-REJECT-EXACT
    C-CALL-ADR-MASK C-CALL-ADR lcall C-CALL-REJECT-MASKED ;
 
+\ The two rejections the scan makes, in the order their inputs die. Both take the
+\ lcall exit, which is the universal fallback: the target is a defined word with
+\ its own `ret`, so calling it and copying it are the same answer in two encodings,
+\ and every rejection here picks the encoding that stays correct.
+\ x15 is the word's ADDRESS and is what LOUTSIDE reads, so the cursor advances
+\ after both rejections rather than between the load and them.
 : C-CALL-SCAN-SAFE ( label label label -- ) {: lcopy:label lcall:label lsbody:label :}
    15 13 0 ADDI,
    lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
-      9 15 0 LDRW,  15 15 4 ADDI,
+      9 15 0 LDRW,
       lcall C-CALL-REJECT-UNSAFE
+      AOT-WINDOW:LOUTSIDE LABEL@ BL,  10 lcall CBNZ,   \ a chain the open capture window cannot describe
+      15 15 4 ADDI,
       lsbody B, ;
 
 : C-CALL-COPY-INLINE ( label label -- ) {: linl:label ldone:label :}
@@ -4854,6 +4875,71 @@ public
 
 ;package
 
+\ ---- the open capture window's question, asked of one body word ---------------
+\ WHAT IT ANSWERS. The compile-mode inliner is about to copy a candidate body into
+\ the word being compiled. If that body carries an address chain, the copy carries
+\ the chain's VALUE, and a captured window has to be able to say what that value
+\ means: an address inside the window's own DATA moves with the window and is
+\ rebased at boot, an address inside the window's own code moves with the blob and
+\ is rebased too, and an address that is in NEITHER is one the window cannot
+\ describe at all. The last kind used to be copied in and then refused by the
+\ capture (aot-capture.f ACAP-UNCLASSIFIED, exit 74) after the whole build had run.
+\ This routine says so BEFORE the copy, and the inliner then emits its BL instead -
+\ which the capture records as an ordinary call site and the seed relocates BY NAME
+\ in the engine being built, so the pre-window address never travels at all.
+\
+\ IT IS THE SAME CLASSIFICATION ACAP-SCAN-DSITES PERFORMS, on the live watermarks.
+\ There the spans are [d0,d1) and [b0,b1), both ends latched once the window has
+\ closed; here the window is still open, so the ends are the current DP and CP.
+\ Those are the same intervals restricted to what exists yet, because DP and CP
+\ only grow and no chain can name a cell not yet allotted or a body not yet
+\ compiled. Membership is decided by two unsigned range tests, which reject an
+\ address below the base in the same comparison.
+\
+\ EXISTENCE IS THE RECORD'S TO ANSWER, exactly as it is where the copy loop
+\ reissues a record, whose band read this repeats: a word is the start of a chain
+\ if and only if the address-literal map says so, and that map covers the JIT
+\ region and nothing else, so a body in the engine's loaded __text is passed
+\ through untested. The value is decoded only for a word the map has already
+\ called a chain, so nothing here recognises an address by what it looks like.
+\
+\ AND AN ENGINE WITH NO WINDOW OPEN DECLINES NOTHING, by arithmetic rather than by
+\ a flag: both cells read zero, the DATA test becomes "is the value below the
+\ current DP" and every address a recorded chain can hold is, so the first test
+\ accepts and the routine returns 0. That is why there is no armed/unarmed branch
+\ to keep in step, and why this path is exercised by every compile in every engine
+\ instead of only inside a metabuild.
+\
+\   x15 = the candidate body word's ADDRESS (not its contents)
+\   x10 = 0 to go on copying, nonzero to decline the body and call it
+\ Clobbers x5, x6, x9 and x10 - the same four the inliner's copy step and LCEMITBL
+\ already clobber, so every path out of C-CALL destroys them anyway.
+package AOT-WINDOW
+public
+: EMIT-OUTSIDE ( -- )
+   LBL LBL {: ok:label ret:label :}
+   LOUTSIDE LABEL@ LBL,
+   6 15 DBASE SUB,  5 REGION LIT64,  6 5 CMP,          \ inside the band the map covers?
+   C-CS ok BCOND,                                      \ no: engine __text carries no records
+   9 6 0 ADDI,  9 9 2 LSRI,  9 9 7 ANDI,               \ x9 = bit number = word index & 7
+   6 6 5 LSRI,                                         \ x6 = map byte index = offset >> 5
+   5 SNAP-RELOC:ADDRMAP-OFF LIT64,  6 6 5 ADD,  6 DATA 6 ADD,
+   10 6 0 LDRB,  10 10 9 LSRV,  10 10 1 ANDI,          \ x10 = this word's recorded bit
+   10 ok CBZ,                                          \ not a chain: nothing to classify
+   6 SNAP-RELOC:ADDR-IMM-MASK LIT64,                   \ x6 = one 16-bit immediate field
+   9 15 0 LDRW,   9 9 5 LSRI,   9 9 6 AND,             \ x9 = the address the four lanes spell out
+   10 15 4 LDRW,  10 10 5 LSRI,  10 10 6 AND,  10 10 16 LSLI,  9 9 10 ORR,
+   10 15 8 LDRW,  10 10 5 LSRI,  10 10 6 AND,  10 10 32 LSLI,  9 9 10 ORR,
+   10 15 12 LDRW, 10 10 5 LSRI,  10 10 6 AND,  10 10 48 LSLI,  9 9 10 ORR,
+   5 DATA D0-CELL LDR,  6 DATA DP-CELL LDR,            \ the window's DATA span, open at DP
+   10 9 5 SUB,  6 6 5 SUB,  10 6 CMP,  C-CC ok BCOND,
+   5 DATA B0-CELL LDR,  6 CP 0 ADDI,                   \ its code span, open at CP
+   10 9 5 SUB,  6 6 5 SUB,  10 6 CMP,  C-CC ok BCOND,
+   10 1 MOVZ,  ret B,                                  \ in neither: the window cannot describe it
+   ok LBL,  10 0 MOVZ,
+   ret LBL,  RET, ;
+;package
+
 \ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). x11 = resolved xt on entry;
 \ re-derive its record WID (scan dict for [0]==xt, read [40]) and, if that WID is in
 \ the protected-WID registry, fail-closed (exit ENGINE-ERROR:SEAL-PACKAGE) -- so a captured
@@ -7853,7 +7939,7 @@ package LABELS
    LBL SNAP-RELOC:LCALLS !  LBL SNAP-RELOC:LXT !  LBL SNAP-RELOC:LMARK !
    LBL SNAP-RELOC:LADDRS !  LBL SNAP-RELOC:LADDRSITE !
    LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !
-   LBL LAOTWIDGATE !
+   LBL LAOTWIDGATE !  LBL AOT-WINDOW:LOUTSIDE !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
 
 : CONTROL ( -- )
@@ -8226,7 +8312,7 @@ package ENGINE-EMIT
    EMIT-CREATE
    DOESPATCH:EMIT
    EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
-   EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE  EMIT-AOT-PROT-RESTORE
+   EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE  AOT-WINDOW:EMIT-OUTSIDE  EMIT-AOT-PROT-RESTORE
    SNAP-RELOC:EMIT-CALLS  SNAP-RELOC:EMIT-MARK  SNAP-RELOC:EMIT-XT
    SNAP-RELOC:EMIT-ADDR-SITE  SNAP-RELOC:EMIT-ADDRS
    EMIT-LOC-FIND

@@ -32,6 +32,8 @@ TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
 : AOT-LIVE-DATA ( -- ptr a ) data-base ;
 : AOT-CELL@ ( ptr a -- n ) @ ;
 s" AOT-CELL@" s" ptr a -- n" TRUST
+: AOT-CELL! ( n ptr a -- ) ! ;
+s" AOT-CELL!" s" n ptr a --" TRUST
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes
    v p c!  v 8 rshift p 1+ c!  v 16 rshift p 2 + c!  v 24 rshift p 3 + c!
    v 32 rshift p 4 + c!  v 40 rshift p 5 + c!  v 48 rshift p 6 + c!  v 56 rshift p 7 + c! ;
@@ -327,8 +329,22 @@ variable ACAP-P
 \ such a chain and said nothing, so the seeded engine read a host address in
 \ silence. Turning that silence into a named refusal is the improvement, and the
 \ refusal correctly blocks a capture whose window cannot describe its own
-\ contents. Whether such a site ever becomes legal - carried rather than refused -
-\ is dot habu-aot-pre-window-0b01043c; until it rules, this dies.
+\ contents.
+\
+\ IT IS NOW A BACKSTOP, AND THAT IS THE RULING (dot
+\ habu-aot-pre-window-0b01043c). Carrying such a site was measured and REFUTED:
+\ the metabuild host truncates its boot dictionary back to the first prefix file
+\ and recompiles the whole core prefix a second time without rewinding DP, so
+\ every pre-window address a window word can hold lives in a band with no
+\ counterpart in the target, and the two layouts are not even order-isomorphic -
+\ there is no delta and no monotone map, and a verbatim carry is silent
+\ corruption. What was eliminated instead is the way such a site got into a
+\ window: WINDOW-OPEN below tells the engine where the window starts, and the
+\ compile-mode inliner then declines to COPY a body carrying a chain the window
+\ cannot describe and emits its call instead (habu2.f AOT-WINDOW:EMIT-OUTSIDE), which the
+\ scan above records as an ordinary call site and the seed relocates by name. So
+\ the class is empty by construction and this refusal guards the next producer of
+\ one rather than the one that used to arrive here every build.
 : ACAP-CHAIN-BIT? ( n n -- bool ) {: bstart:n boff:n :}
    bstart boff + AOT-DBASE-N - {: off:n :}
    AOT-LIVE-DATA SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + AOT-A>U8 c@
@@ -359,12 +375,15 @@ variable ACAP-P
 \ the same reason a recorded BL's imm26 is - a captured host address is both
 \ builder-dependent and wrong in the seeded engine - and zeroing it means the boot
 \ patch is the only thing that can put an address there.
-\ ITS PRODUCER IS NOT HERE YET. A code literal naming a PRE-WINDOW word is what
-\ needs this, and ACAP-SCAN-DSITES still refuses one below; deciding which sites
-\ become named rows is dot habu-aot-pre-window-0b01043c. The row and its boot arm
-\ ship now because the format is baked into the engine and migrating it twice
-\ would migrate every baked-code route twice. An in-window code literal is NOT a
-\ candidate: rebasing it by the code delta is correct and costs no lookup.
+\ ITS PRODUCER IS NOT HERE YET. A code literal a window word CREATES for a
+\ pre-window word (`['] X` on a prefix word) is what needs this, and
+\ ACAP-SCAN-DSITES still refuses one below. Eliminating the class the way the DATA
+\ literals were eliminated does not reach it: the inliner's decline removes COPIES
+\ of such a chain, not the one the compile handler emits into the window word's own
+\ body. Building the name-keyed row is dot habu-widen-the-aot-089f5faf. The row and
+\ its boot arm ship now because the format is baked into the engine and migrating
+\ it twice would migrate every baked-code route twice. An in-window code literal is
+\ NOT a candidate: rebasing it by the code delta is correct and costs no lookup.
 : ACAP-ADD-XTSITE ( n ptr u8 n -- ) {: boff:n a:ptr u:n :}
    AOT-XTSITE:N @ AOT-XTSITE:MAX >= if s" aot-capture: too many named code sites" 74 die then
    a u ACAP-POOL-ADD {: noff:n :}
@@ -588,6 +607,27 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
    0 AOT-XTSITE:N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public
+
+\ Tell the ENGINE where the window that is about to be filled begins, so its
+\ compile-mode inliner can stop copying address chains the window will not be able
+\ to describe (habu2.f AOT-WINDOW:EMIT-OUTSIDE; the cells are src/habu/layout.f AOT-WINDOW:D0-CELL
+\ and AOT-WINDOW:B0-CELL). Called from the same three lines that latch the span, in
+\ src/habu/stdin.f CAPTURE-REPL, and the two arguments are those same two cursors.
+\
+\ It is the one thing this file tells the engine rather than reads from it, and it
+\ is what makes ACAP-UNCLASSIFIED below a BACKSTOP instead of the mechanism: a body
+\ holding a pre-window address is now called rather than copied, so the site the
+\ refusal names is unreachable by construction and the refusal stands guard over
+\ whatever produces one next.
+\
+\ THERE IS NO CLOSE, and that is the window's own shape, not an omission. The
+\ capture takes a SNAPSHOT of [d0, here) at the moment it runs; every definition
+\ compiled afterwards extends the same window, which is exactly what the widened
+\ re-captures in test/aot-wid-build.f do. The window therefore stays open for the
+\ life of the metabuild process, which exits once the image is written.
+: WINDOW-OPEN ( n n -- ) {: b0:n d0:n :}
+   d0 AOT-LIVE-DATA AOT-WINDOW:D0-CELL + AOT-CELL!
+   b0 AOT-LIVE-DATA AOT-WINDOW:B0-CELL + AOT-CELL! ;
 
 : CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    ACAP-RESET

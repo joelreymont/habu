@@ -503,8 +503,10 @@ $3CB0 constant AOT-SEED-ARM-CELL
 \ PROT-WID-MAX - WIDN, i.e. how many more wordlists may still be allocated AND
 \ protected, so a declaration's preflight is exact instead of approximate, and
 \ prot-wid-add names the bound itself when handed a WID at or above it. Growing the
-\ bound later means widening the band upward into the free $40C8..$43C0 gap and
-\ bumping UNCGH-CELL, exactly as the 16 -> 256 raise did.
+\ bound later means widening the band upward into the free $40C8..$43B0 gap and
+\ bumping UNCGH-CELL, exactly as the 16 -> 256 raise did. That gap ended at $43C0
+\ until the AOT capture-window cells took its top two cells (AOT-WINDOW:D0-CELL below);
+\ it is still contiguous from $40C8, which is what a bitmap needs.
 \
 \ TRANSITION: the tag cell ($3CB8) and the band base ($3CC0) are DELIBERATELY
 \ UNCHANGED, because aot-capture.f ACAP-PWID-CAPTURE reads the LIVE metabuild host
@@ -946,6 +948,55 @@ XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 \ when this guard was first written with one.
 DATA-SIZE 8 - constant XTCELL-OFF-MAX
 
+;package
+
+\ --- the open AOT capture window (dot habu-aot-pre-window-0b01043c) -------------
+\ Two cells naming where the capture window a metabuild has OPEN begins: the first
+\ address of its DATA span and the first address of its code span. They are what
+\ lets habu2.f C-CALL answer, while it is deciding between copying a body inline
+\ and calling it, whether an address chain that body carries is one the window can
+\ describe. A chain it cannot describe used to be copied in and then refused by the
+\ capture (aot-capture.f ACAP-UNCLASSIFIED, exit 74) with the build already done;
+\ declining to copy it emits the BL instead, which the capture relocates BY NAME
+\ and which is correct in the engine being built. That makes pre-window DATA empty
+\ by construction and leaves the capture's refusal as the backstop it was.
+\
+\ ZERO IS NOT A SENTINEL, IT IS THE ANSWER. An engine with no capture window open
+\ - every shipped bin/hb, every driver but the stdin metabuild - reads both cells
+\ as the zero the anonymous DATA mapping starts at, and C-CALL's test then asks
+\ whether the chain's value lies in [0, here) or in [0, cp). Every address a
+\ recorded chain can hold is below one of those two watermarks by construction (a
+\ DATA chain names a cell already allotted, a code chain a body already compiled),
+\ so an unarmed engine accepts every chain and declines nothing. There is no
+\ armed/unarmed branch to get wrong, and the same arithmetic runs in every compile
+\ in every engine rather than only in a metabuild.
+\
+\ Written once per build by AOT-CAPTURE:WINDOW-OPEN, from the same three lines of
+\ src/habu/stdin.f CAPTURE-REPL that latch REPL-B0/REPL-D0. There is no close: the
+\ window stays open for the life of the metabuild process, because every later
+\ definition extends it - the recapture fixtures in test/aot-wid-build.f widen this
+\ same window rather than opening another - and the process exits after the image
+\ is emitted.
+\
+\ WHERE THEY HAD TO GO, MEASURED. C-CALL reads them with `DATA <off> LDR`, whose
+\ unsigned offset is a 12-bit immediate scaled by eight, so an engine cell a
+\ compiled routine names directly cannot sit above $7FF8. Appending a band above
+\ the snapshot-relocation tables - the growth precedent the pre-trust defer table,
+\ the package-scope band and the `using` band all followed, which bumps DATA-START
+\ and moves nothing else - puts the offset near $91C00 and assembles as
+\ "asm: 12-bit immediate out of range", stopping the build. So these two take the
+\ TOP two cells of the gap that ran $40C8..$43C0, between the protected-WID guard
+\ band and the evaluator frames. What is left, $40C8..$43B0, is still ONE
+\ CONTIGUOUS run, which is what the growth that gap is reserved for needs: widening
+\ the protected-WID bitmap upward, a band that cannot be split.
+\
+\ They open the package src/habu/habu2.f reopens for the same window's baked half
+\ (AOT-WINDOW:LDATA, its declared-cell list and its boot-time copy), the way this
+\ file opens SNAP-RELOC for the bands habu2.f and snap-lib.f reopen.
+package AOT-WINDOW
+public
+$43B0 constant D0-CELL           \ first address of the open window's DATA span
+$43B8 constant B0-CELL           \ first address of its code span
 ;package
 
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is

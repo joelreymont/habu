@@ -307,6 +307,15 @@ public
 \   - a new place that bakes a DATA or a CODE address, or emits a direct call,
 \     or declares a persisted address cell, appears in rows 3 to 8 and fails
 \     until someone has looked at it;
+\   - row 10 gained a READER rather than a producer when the pre-window
+\     elimination landed (dot habu-aot-pre-window-0b01043c):
+\     AOT-WINDOW:EMIT-OUTSIDE asks the address-literal map whether one body word
+\     starts a chain, and decodes that chain's value to decide whether an open AOT
+\     capture window could describe it - so the compile-mode inliner can decline to
+\     copy a body it could not. It bakes nothing and declares nothing, which is why
+\     it joins this closure but not the producer vocabulary above. The row is still
+\     the right tripwire: anything new that names the map is either a producer the
+\     model owes a class or a reader whose reason belongs here.
 \   - rows 12 and 13 are the two names the address-cell DECLARER itself goes by
 \     in this file -- bare inside package SNAP-RELOC, qualified outside it -- so
 \     a new caller of that routine shows up whichever side of the package it is
@@ -352,7 +361,7 @@ public
       7 of s" C-CALL EMIT-CEMITBL EMIT-P2-VALID-EMIT EMIT-P2-STORE CORE" endof
       8 of s" EM-STARTUP-RUNTIME-STATE" endof
       9 of s" C-DATA-ADDR C-DATA-ADDR-RAW C-CODE-ADDR" endof
-      10 of s" EM-AOT-RELOC-CODE PATCH-CHAINS" endof
+      10 of s" EM-AOT-RELOC-CODE PATCH-CHAINS EMIT-OUTSIDE" endof
       11 of s" BSNAPREBASE EM-SNAPSHOT-RESTORE CORE" endof
       12 of s" MARK-CELL EMIT-MARK BXTSTORE" endof
       13 of s" C-DEFER-CELL J-IS CORE" endof

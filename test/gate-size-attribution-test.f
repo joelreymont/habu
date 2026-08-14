@@ -605,9 +605,32 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL
 \ (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
 \ The Linux rows below are owed a linux-host re-measure for this delta too.
-127572 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-14 re-measured live at the macOS byte-fixpoint for the pre-window
+\ elimination (dot habu-aot-pre-window-0b01043c): the compile-mode inliner now asks,
+\ per candidate body word, whether an address chain that word starts is one an open
+\ AOT capture window could describe, and declines to copy the body if it is not.
+\ Diffed region by region against the two HABU_ENGINE_SIZE_MAP dumps; four rows move
+\ and every other row is byte-identical.
+\   dictionary-code   6524 -> 6728  (+204): the EM-AOTWINQ routine, emitted once.
+\   compile/keywords 10336 -> 10368  (+32): four of C-CALL's five emission sites,
+\                                          two instructions each (BL + CBNZ).
+\   compile/call        692 -> 700    (+8): its fifth emission site, the same two.
+\   aot-seed          30520 -> 30516   (-4): NOT the capture. Every capture number is
+\     unchanged (blob 18060, recs 115, call sites 217, name pool 953, DATA sites 142,
+\     code sites 3, declared cells 1, boot-run 30), which is the measurement saying no
+\     production body was declined - one that would be declined ends the build today.
+\     What moved is the window's DATA span, 5729 -> 5726, because the new metabuild
+\     definitions allot 27 bytes before the window opens and something inside the
+\     window rounds DP up to eight. Falsified directly: a bare `create PW-PAD 27
+\     allot` before CAPTURE-REPL on the UNCHANGED engine source reproduces d0, d1 and
+\     the 5726 span byte for byte. Padded to four, the 3 bytes are this row's 4.
+\ CODELEN 127572 -> 127812 (+240), floor distance 596 -> 836. The text pad absorbs it
+\ (15788 -> 15548) inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and
+\ MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
+\ The Linux rows below are owed this +240 as well.
+127812 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-596 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+836 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
