@@ -461,13 +461,20 @@ variable LW0  variable LW1
 
 \ ---- the code window ---------------------------------------------------------
 \ THE WINDOW IS A DERIVED NUMBER AND THIS IS WHERE IT IS HELD TO ITS OWNERS.
-\ src/arch/arm64/icode.f sizes CODE-CAP-BYTES as ADR-HI + IBUFSZ - the reach an
-\ emitted image's own PC-relative addressing can cross, plus the boot source
-\ arena a baked prefix has to fit. Neither owner is this file's or icode.f's to
-\ pick, so raising either one without the window reds here, naming the window.
+\ src/arch/arm64/icode.f sizes CODE-CAP-BYTES as ADR-HI + IBUFSZ + AOT-SECTION-CAP
+\ - the reach an emitted image's own PC-relative addressing can cross, plus the
+\ boot source arena a baked prefix has to fit, plus what the AOT capture buffers
+\ may bake. None of the three is this file's or icode.f's to pick, so raising one
+\ without the window reds here, naming the window. The third term's own agreement
+\ with the buffers is executed at load by src/habu/habu2.f AOT-WINDOW-AGREE,
+\ which is the only place all those caps are visible.
 : TEST-WINDOW-DERIVED ( -- )
-   CODE-CAP-BYTES ADR-HI IBUFSZ + T=
-   CODE-CAP-WORDS CODE-CAP-BYTES 4 / T= ;
+   CODE-CAP-BYTES ADR-HI IBUFSZ + AOT-SECTION-CAP + T=
+   CODE-CAP-WORDS CODE-CAP-BYTES 4 / T=
+   \ LOFF, is only total over the buffer while every offset in the window fits
+   \ its movz/movk pair. Widening the window past the pair would leave a range
+   \ the emitter accepts and the form cannot say, so the two are held together.
+   CODE-CAP-BYTES LOFF-HI > TFALSE ;
 
 \ Fill the window a word at a time from the real emit path, then read the first
 \ and last words back. Two things are proved that a cursor comparison alone does

@@ -711,9 +711,36 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ it (14636 -> 14532) inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423)
 \ and MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
 \ The Linux rows below are owed this +104 too, split the same three ways.
-128828 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\
+\ 2026-08-14, dot habu-reach-the-seed-d1326596: every reference into the AOT
+\ payload section stops using ADR, and goes through habu2.f IMGREF:TADR, - a
+\ movz/movk offset, a load of the boot's text base and an add, four words where
+\ ADR, was one. The section also moves after the baked source, so the ADR, that
+\ reaches LSRC measures the ENGINE code half and nothing else.
+\ MEASURED by diffing two HABU_ENGINE_SIZE_MAP=1 captures; the +360 of new sites
+\ is one site times twelve each, against an -8 the same change pays back:
+\   compile/exit      2520 -> 2856 (+336): the 28 sites in EM-SEED-AOT and
+\                                     everything it inlines - COPY-BLOB,
+\                                     REGISTER-RECS, PATCH-SITES, VALIDATE,
+\                                     RELOC-DATA/CODE, COPY-DATA, TRAP-XTCELLS,
+\                                     PATCH-CHAINS, BOOTRUN. 28 x 12.
+\   dictionary-code   6916 -> 6940  (+24): EMIT-AOT-PROT-RESTORE's two sites.
+\   main/startup      6376 -> 6368   (-8): the startup region SHRINKS. Its two
+\                                     LSRC readers keep ADR, on purpose - that
+\                                     ADR, is what measures the engine code half
+\                                     - and the snapshot-presence test now reads
+\                                     the image-end label directly (movz/movk)
+\                                     instead of rebuilding the length from LSRC
+\                                     plus the padded source (adr/sub/movz/add).
+\ CODELEN 128828 -> 129180 (+352), floor distance 1852 -> 2204. The text pad
+\ absorbs it again (14532 -> 14180) inside the same 16 KiB __TEXT page, so
+\ MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) still do not move. The row
+\ ORDER changed with the emit order (baked-source now precedes aot-seed); the
+\ manifest looks rows up by name, so only the two numbers below move.
+\ The Linux rows below are owed this +352 too.
+129180 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-1852 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+2204 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

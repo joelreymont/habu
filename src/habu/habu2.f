@@ -38,6 +38,56 @@ using A64ASM
 \ CALL-or-INLINE emitter, are defined further down, right after the snapshot-
 \ relocation labels. All four record a site through SNAP-RELOC:MARK-SITE: the
 \ three because they are creating a chain, the inliner because it is copying one.
+\ ---- addressing a baked label the ADR field cannot reach -------------------
+\ ADR, reaches ADR-HI (1 MiB) from its own site. That is the whole allowance of
+\ the ENGINE code part, and the ADR, that reaches LSRC from the startup region is
+\ what MEASURES it -- so those two sites keep using ADR, on purpose and must not
+\ be converted; converting them would leave the window's first term with nothing
+\ enforcing it. What lies past LSRC is a different matter: the AOT payload
+\ section runs to its own buffer caps, megabytes once the compiler chain is
+\ captured, and a reader of it must not use ADR, however close a particular label
+\ happens to land today. The rule is the SECTION, not the distance -- see the
+\ three-part note in src/arch/arm64/icode.f, which is where the window is derived,
+\ and tools/aot-section-reach-lint.f, which refuses an ADR, into the section.
+\
+\ WHERE THE BASE COMES FROM, AND WHY IT IS NOT A REGISTER. EM-STARTUP takes the
+\ runtime text base into XREG-RBASE with an ADR, planted at the image's first
+\ instruction, then EM-DATA-INIT stores it into RBASE-CELL and repurposes that
+\ same register (layout.f names x20 both XREG-RBASE and DATA) for the DATA base.
+\ RBASE-CELL is therefore the live text CONTENT base for the whole rest of the
+\ boot, which is exactly what EM-SNAPSHOT-RESTORE and snap-lib.f SNAP:WRITE-BYTES
+\ already read it as. This word is valid only AFTER EM-DATA-INIT; a site before
+\ it still holds the base in XREG-RBASE and keeps using ADR,.
+\
+\ rt is a scratch register the caller names, because there is no free one to
+\ assume at these sites; it is clobbered. Naming the same register twice would
+\ load the base over the offset and then double the base - a wrong address in a
+\ correctly assembled image, which is the worst shape a fault can take - so the
+\ pair is refused at emit time instead of being asked for in a comment. The
+\ refusal is reachable by a caller's typo and by nothing else, so its evidence is
+\ a mutation: passing `9 9 LAOTCODE LABEL@ TADR,` stops the build with this
+\ message rather than producing an engine.
+\ LIMGEND belongs here because it is the same subject from the other end: the
+\ label bound past every baked part, which only this form can address.
+package IMGREF
+
+public
+
+variable LIMGEND                                  \ the emitted image's end = the cold text CONTENT length
+
+: TADR, ( n n label -- )                          \ ( rd rt label -- ) rd = runtime address of label
+   {: rd:n rt:n l:label :}
+   rd rt = if s" habu2: TADR, destination and scratch are one register" ICODE-EXIT-RC die then
+   rd l LOFF,                                     \ rd = label's byte offset from the text base
+   rt DATA RBASE-CELL LDR,                        \ rt = this boot's text CONTENT base
+   rd rt rd ADD, ;
+
+;package
+
+\ The emitter calls both by their bare names, so the import spans the file and
+\ closes beside the A64ASM one at the end.
+using IMGREF
+
 \ ---- source setup: baked LSRC or stdin ----
 variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBADLOC
 variable LSRCRD   variable LSHBANG   variable LOPENERR   variable LOPENNL
@@ -4112,7 +4162,7 @@ s" c-local-ref" s" label label --" TRUST
 \ Copy the baked LAOTCODE blob to CP (x11 = blob byte length on entry).
 : EM-AOT-COPY-BLOB ( -- )
    LBL LBL {: acopy:label adone:label :}
-   9 LAOTCODE LABEL@ ADR,  12 0 MOVZ,                \ x9 = blob src (__text), x12 = i
+   9 5 LAOTCODE LABEL@ TADR,  12 0 MOVZ,            \ x9 = blob src (__text), x12 = i
    acopy LBL,  12 11 CMP,  C-GE adone BCOND,
       3 9 12 ADD,  3 3 0 LDRB,  4 CP 12 ADD,  3 4 0 STRB,
       12 12 1 ADDI,  acopy B,
@@ -4136,8 +4186,8 @@ s" c-local-ref" s" label label --" TRUST
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: rloop:label rdone:label pkg:label fields:label nloop:label ndone:label
       pkg-wid:label widok:label next:label extname:label nameok:label :}
-   9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (AOT-CREC-ROW stride), x12 = k
-   11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N (survives LHIDXADD)
+   9 5 LAOTDICT LABEL@ TADR,  12 0 MOVZ,           \ x9 = compact record src (AOT-CREC-ROW stride), x12 = k
+   11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR,         \ x11 = N (survives LHIDXADD)
    \ N records in ONE bracket, from the watermark upward: the seed knows the whole
    \ extent before the loop starts and says so once, instead of declaring a record
    \ per iteration. This is the writer that makes "a fixed window of pages around
@@ -4156,7 +4206,7 @@ s" c-local-ref" s" label label --" TRUST
       3 9 4 LDRW,  3 10 8 STR,                     \ package [8] = private WID u32
       fields LBL,
       4 9 8 LDRW,                                   \ x4 = word2 = name-off u32
-      7 LAOTNAMES LABEL@ ADR,  4 7 4 ADD,           \ x4 = pool entry ptr (len byte)
+      7 5 LAOTNAMES LABEL@ TADR,  4 7 4 ADD,        \ x4 = pool entry ptr (len byte)
       5 4 0 LDRB,                                   \ x5 = name length = pool[entry]
       6 9 12 LDRW,                                  \ x6 = word3 = flags | min-in<<8
       7 6 $FF ANDI,                                 \ x7 = flags
@@ -4217,9 +4267,9 @@ s" c-local-ref" s" label label --" TRUST
    {: cloop:label cdone:label sloop:label sdone:label shi:label
       bloop:label bdone:label tagpub:label bad:label msg:label :}
    LAOTPROT LABEL@ LBL,
-   11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,
+   11 5 LAOTNPWID LABEL@ TADR,  11 11 0 LDR,
    5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND,  \ the baked frame must be a bitmap
-   9 LAOTPWID LABEL@ ADR,                           \ x9  = baked bitmap src
+   9 5 LAOTPWID LABEL@ TADR,                        \ x9  = baked bitmap src
    2 9 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,             \ WID 0 is never a wordlist
    10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,          \ x10 = &band[0] (offset > imm12: materialize + add)
    11 PROT-BITS-BYTES MOVZ,                         \ x11 = bytes left
@@ -4262,9 +4312,9 @@ s" c-local-ref" s" label label --" TRUST
 : EM-AOT-VALIDATE ( label -- ) {: bad:label :}
    LBL LBL
    {: pool-loop:label pool-done:label :}
-   21 LAOTNAMESLEN LABEL@ ADR,  21 21 0 LDR,
+   21 5 LAOTNAMESLEN LABEL@ TADR,  21 21 0 LDR,
    5 AOT-NAMES-CAP LIT64,  21 5 CMP,  C-HI bad BCOND,
-   22 LAOTNAMES LABEL@ ADR,
+   22 5 LAOTNAMES LABEL@ TADR,
    4 0 MOVZ,
    pool-loop LBL,
       4 21 CMP,  C-GE pool-done BCOND,
@@ -4288,13 +4338,13 @@ s" c-local-ref" s" label label --" TRUST
 \ the DATA region is mapped, so the map is writable here.
 : EM-AOT-PATCH-SITES ( -- )
    LBL LBL LBL LBL {: ploop:label pdone:label pnf:label pnomark:label :}
-   21 LAOTSITES LABEL@ ADR,                          \ x21 = row cursor (8B rows)
-   23 LAOTNSITE LABEL@ ADR,  23 23 0 LDR,            \ x23 = site count M
+   21 5 LAOTSITES LABEL@ TADR,                       \ x21 = row cursor (8B rows)
+   23 5 LAOTNSITE LABEL@ TADR,  23 23 0 LDR,         \ x23 = site count M
    22 0 MOVZ,                                        \ x22 = site index
    ploop LBL,  22 23 CMP,  C-GE pdone BCOND,
       24 21 0 LDRW,                                  \ x24 = blob offset u32 (survives LFIND)
       4 21 4 LDRW,                                   \ x4 = name-off u32
-      5 LAOTNAMES LABEL@ ADR,  9 5 4 ADD,            \ x9 = pool entry ptr = LAOTNAMES + name-off
+      5 10 LAOTNAMES LABEL@ TADR,  9 5 4 ADD,        \ x9 = pool entry ptr = LAOTNAMES + name-off
       10 9 0 LDRB,                                   \ x10 = name length = pool[entry]
       9 9 1 ADDI,                                    \ x9 = name ptr = entry + 1
       LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?, x5 = record
@@ -4337,7 +4387,7 @@ package AOT-WINDOW
 public
 : COPY-DATA ( -- )
    LBL LBL {: dcopy:label dcdone:label :}
-   9 LDATA LABEL@ ADR,  12 0 MOVZ,                  \ x9 = content src (__text), x12 = i
+   9 10 LDATA LABEL@ TADR,  12 0 MOVZ,              \ x9 = content src (__text), x12 = i
    dcopy LBL,  12 5 CMP,  C-GE dcdone BCOND,
       13 9 12 ADD,  13 13 0 LDRB,  14 3 12 ADD,  13 14 0 STRB,
       12 12 1 ADDI,  dcopy B,
@@ -4364,14 +4414,14 @@ public
 
 : TRAP-XTCELLS ( -- )
    LBL LBL LBL LBL {: xloop:label xdone:label xbad:label msg:label :}
-   23 LNXTOFF LABEL@ ADR,  23 23 0 LDR,             \ x23 = declared-cell count
+   23 10 LNXTOFF LABEL@ TADR,  23 23 0 LDR,         \ x23 = declared-cell count
    23 xdone CBZ,
    9 LKWDEFERUNSET LABEL@ ADR,  10 11 MOVZ,  LFIND LABEL@ BL,   \ x11 = trap xt, x13 = found?
    13 xbad CBZ,
    3 DATA DP-CELL LDR,                              \ x3 = DP, now past the window
-   5 LAOTDATASIZE LABEL@ ADR,  5 5 0 LDR,  3 3 5 SUB,   \ x3 = window base
-   21 LXTOFFS LABEL@ ADR,
-   23 LNXTOFF LABEL@ ADR,  23 23 0 LDR,
+   5 10 LAOTDATASIZE LABEL@ TADR,  5 5 0 LDR,  3 3 5 SUB,   \ x3 = window base
+   21 10 LXTOFFS LABEL@ TADR,
+   23 10 LNXTOFF LABEL@ TADR,  23 23 0 LDR,
    22 0 MOVZ,
    xloop LBL,  22 23 CMP,  C-GE xdone BCOND,
       24 21 0 LDRW,                                 \ x24 = window offset u32
@@ -4387,9 +4437,9 @@ public
 : EM-AOT-RELOC-DATA ( -- )
    LBL LBL LBL LBL {: dloop:label drdone:label ok:label msg:label :}
    3 DATA DP-CELL LDR,                              \ x3 = seed DP (abs) = REPL DATA base at boot
-   5 LAOTDATAD0 LABEL@ ADR,  5 5 0 LDR,             \ x5 = capture-time REPL DATA base
+   5 10 LAOTDATAD0 LABEL@ TADR,  5 5 0 LDR,         \ x5 = capture-time REPL DATA base
    6 3 5 SUB,                                       \ x6 = delta (survives the loop)
-   5 LAOTDATASIZE LABEL@ ADR,  5 5 0 LDR,           \ x5 = REPL DATA span
+   5 10 LAOTDATASIZE LABEL@ TADR,  5 5 0 LDR,       \ x5 = REPL DATA span
    7 DATA-SIZE LIT64,  7 DATA 7 ADD,  7 7 3 SUB,    \ x7 = headroom = (data-base + DATA-SIZE) - seed DP
    5 7 CMP,  C-LS ok BCOND,                         \ span <= headroom -> ok; else fall into the boot die
       1 msg ADR,  0 2 MOVZ,  2 31 MOVZ,  NR-WRITE SYS,
@@ -4398,8 +4448,8 @@ public
    ok LBL,
    AOT-WINDOW:COPY-DATA                             \ the window's own bytes, not a zeroed reserve
    3 3 5 ADD,  3 DATA DP-CELL STR,                  \ DP += span (bounded)
-   21 LAOTDSITES LABEL@ ADR,                        \ x21 = DATA-site cursor (u32 offsets)
-   23 LAOTNDSITE LABEL@ ADR,  23 23 0 LDR,          \ x23 = DATA-site count
+   21 10 LAOTDSITES LABEL@ TADR,                    \ x21 = DATA-site cursor (u32 offsets)
+   23 10 LAOTNDSITE LABEL@ TADR,  23 23 0 LDR,      \ x23 = DATA-site count
    22 0 MOVZ,
    dloop LBL,  22 23 CMP,  C-GE drdone BCOND,
       24 21 0 LDRW,                                 \ x24 = blob offset u32
@@ -4424,10 +4474,10 @@ public
 \ seeded location. Runs while the region is RW (before RX), same as the call patch.
 : EM-AOT-RELOC-CODE ( -- )
    LBL LBL {: cloop:label crdone:label :}
-   5 LAOTCODEB0 LABEL@ ADR,  5 5 0 LDR,            \ x5 = capture-time code base (B0)
+   5 10 LAOTCODEB0 LABEL@ TADR,  5 5 0 LDR,        \ x5 = capture-time code base (B0)
    6 CP 5 SUB,                                     \ x6 = code delta = seedCP - B0 (survives loop)
-   21 LAOTCSITES LABEL@ ADR,                       \ x21 = CODE-site cursor (u32 offsets)
-   23 LAOTNCSITE LABEL@ ADR,  23 23 0 LDR,         \ x23 = CODE-site count
+   21 10 LAOTCSITES LABEL@ TADR,                   \ x21 = CODE-site cursor (u32 offsets)
+   23 10 LAOTNCSITE LABEL@ TADR,  23 23 0 LDR,     \ x23 = CODE-site count
    22 0 MOVZ,
    cloop LBL,  22 23 CMP,  C-GE crdone BCOND,
       24 21 0 LDRW,                                \ x24 = blob offset u32
@@ -4475,13 +4525,13 @@ public
 36 constant MSG-LEN   \ byte length of "hb: AOT named code site unresolved\n"
 : PATCH-CHAINS ( -- )
    LBL LBL LBL LBL {: xloop:label xdone:label xnf:label msg:label :}
-   21 LROWS LABEL@ ADR,                           \ x21 = row cursor (8B rows)
-   23 LCOUNT LABEL@ ADR,  23 23 0 LDR,            \ x23 = row count
+   21 10 LROWS LABEL@ TADR,                       \ x21 = row cursor (8B rows)
+   23 10 LCOUNT LABEL@ TADR,  23 23 0 LDR,        \ x23 = row count
    22 0 MOVZ,
    xloop LBL,  22 23 CMP,  C-GE xdone BCOND,
       24 21 0 LDRW,                               \ x24 = blob offset u32 (survives LFIND)
       4 21 4 LDRW,                                \ x4 = name-off u32
-      5 LAOTNAMES LABEL@ ADR,  9 5 4 ADD,         \ x9 = pool entry ptr
+      5 10 LAOTNAMES LABEL@ TADR,  9 5 4 ADD,     \ x9 = pool entry ptr
       10 9 0 LDRB,                                \ x10 = name length
       9 9 1 ADDI,                                 \ x9 = name ptr
       LFIND LABEL@ BL,                            \ x11 = xt, x13 = found?, x5 = record
@@ -4513,7 +4563,7 @@ public
 \ no-ops. A missing name is a build/seed bug -> panic exit $52.
 : EM-AOT-BOOTRUN ( -- )
    LBL LBL LBL {: bloop:label bdone:label bnf:label :}
-   21 LAOTBOOTRUN LABEL@ ADR,                        \ x21 = list cursor
+   21 10 LAOTBOOTRUN LABEL@ TADR,                     \ x21 = list cursor
    bloop LBL,
       10 21 0 LDRB,  10 bdone CBZ,                   \ x10 = name len; 0 -> done
       SP SP 16 SUBI,  21 SP 0 STR,  10 SP 8 STR,     \ preserve cursor + len across the call
@@ -4534,10 +4584,10 @@ public
 \ the icache. LAOTNREC = 0 (stage2/maker/snap: nothing captured) skips the pass.
 : EM-SEED-AOT ( -- )
    LBL LBL LBL {: askip:label bad:label msg:label :}
-   11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N
+   11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR,        \ x11 = N
    11 askip CBZ,                                    \ nothing captured -> skip
    bad EM-AOT-VALIDATE
-   11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length, read before the flip
+   11 5 LAOTCODELEN LABEL@ TADR,  11 11 0 LDR,     \ x11 = blob length, read before the flip
    1 CP 11 ADD,  PROT:LOPEN LABEL@ BL,              \ region -> RW over the blob's landing span
    EM-AOT-COPY-BLOB                                 \ x11 rides the kernel-preserved x2-x15 band
    EM-AOT-REGISTER-RECS
@@ -4546,7 +4596,7 @@ public
    EM-AOT-RELOC-CODE
    AOT-XTSITE:PATCH-CHAINS                          \ named code literals, after the rebased ones
    9 CP 0 ADDI,                                     \ x9 = blob base (= CP before advance) for the flush
-   11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length again
+   11 5 LAOTCODELEN LABEL@ TADR,  11 11 0 LDR,     \ x11 = blob length again
    CP CP 11 ADD,                                    \ code area top past the blob
    PROT:LCLOSE LABEL@ BL,                           \ region -> RX
    LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
@@ -5124,11 +5174,17 @@ public
    11 10 IMAGE-TEXT-SIZE-OFF LDR,                   \ S = our executable text size
    12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,   \ x12 = trailer END (base+SNL+ADJ)
    \ The executable header is consumed by the OS loader and therefore owns the
-   \ snapshot-presence contract. A cold image ends at LSRC plus the padded baked
-   \ source length (page-rounded on ELF); a larger authenticated text extent
-   \ means a snapshot exists, so missing trailer magic is corruption.
-   13 LSRC LABEL@ ADR,  14 13 25 SUB,
-   5 SRCN @ 3 + -4 and LIT64,  14 14 5 ADD,
+   \ snapshot-presence contract. A cold image ends where the emitter stopped, and
+   \ LIMGEND is bound there with nothing after it, so its offset from the text
+   \ base IS that length (page-rounded on ELF, which pads its text). A larger
+   \ authenticated text extent means a snapshot exists, so missing trailer magic
+   \ is corruption.
+   \ This used to add up the layout instead - LSRC plus the padded baked source -
+   \ which was true only while the source was the last thing emitted. It stopped
+   \ being true when the AOT payload moved after it (dot
+   \ habu-reach-the-seed-d1326596) and the reconstruction read a cold image as a
+   \ corrupt snapshot. A label cannot go stale that way.
+   14 LIMGEND LABEL@ LOFF,
    HB-TARGET-LINUX? IF
       5 $FFF MOVZ,  14 14 5 ADD,
       5 -$1000 LIT64,  14 14 5 AND,
@@ -8035,7 +8091,7 @@ s" SRCA@" s" -- ptr u8" TRUST
 package LABELS
 
 : CORE ( -- )
-   LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !  LBL LIMGEND !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL PROT:LOPEN !  LBL PROT:LCLOSE !  LBL PROT:LGROW !  LBL PROT:LSPAN !  LBL PROT:LCF !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
@@ -8329,11 +8385,63 @@ s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
 : AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
 s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 
+\ ---- how much window the AOT section can ask for --------------------------
+\ THE THIRD TERM OF THE CODE WINDOW IS OWNED HERE, because the buffers are here.
+\ src/arch/arm64/icode.f sizes CODE-CAP-BYTES as ADR-HI + IBUFSZ +
+\ AOT-SECTION-CAP and cannot see any of these caps -- it is compiled first, and
+\ the recovery host reads it first too. So the sum is derived here from the
+\ buffers themselves and the agreement is EXECUTED at load, in every build and
+\ every recovery compile: raising a cap without the window stops the build
+\ instead of shipping an emitter whose buffer cannot hold what it may bake. That
+\ is the shape src/habu/rt.f RT:DSTACK-AGREE already uses for mnem.f's XDS and
+\ layout.f's ENGINE-GPR:DSTACK.
+\ The rounding is the section's headroom for what is not a buffer: the twelve
+\ count cells that head the tables and the pad each BYTES, run takes to the next
+\ 4-byte boundary, at most a couple of hundred bytes against 46 KiB of grain. It
+\ is a belt in any case -- a section that outgrew this would be refused by the
+\ emitter's own `icode: code buffer overflow`, and each buffer refuses on its own
+\ overflow long before that.
+package AOT-SECTION
+
+public
+
+$10000 constant GRAIN                              \ 64 KiB, the largest target page
+AOT-BLOB-CAP
+AOT-REC-MAX AOT-CREC-ROW * +                       \ compact dictionary records
+AOT-SITE-MAX 8 * +                                 \ call-site rows
+AOT-NAMES-CAP +                                    \ deduped name pool
+AOT-DSITE-MAX 4 * +                                \ DATA-literal sites
+AOT-DSITE-MAX 4 * +                                \ CODE-literal sites (same buffer's tail)
+AOT-WINDOW:XTOFF-MAX 4 * +                         \ declared address cells in the window
+AOT-WINDOW:DATA-CAP +                              \ the captured DATA window's content
+AOT-XTSITE:MAX 8 * +                               \ named code-literal rows
+AOT-BOOTRUN-CAP 1 + +                              \ +1 = the live 0 terminator
+PROT-BITS-BYTES +                                  \ protected-WID bitmap image
+GRAIN 1 - + GRAIN / GRAIN *
+constant BYTES
+
+private
+
+: AGREE ( -- )
+   BYTES AOT-SECTION-CAP <>
+   if s" habu2: AOT section caps and icode.f AOT-SECTION-CAP disagree" ICODE-EXIT-RC die then ;
+AGREE
+
+;package
+
 \ Bake the AOT section: blob length + blob, record count + N compact AOT-CREC-ROW
 \ records (blob-relative code span, name-pool reference, flags, wid), call-site
 \ count + M 8-byte rows (blob-off u32, name-off u32), then the name pool and the
-\ DATA/CODE/window offset tables, all u32. Placed last so it never shifts engine
-\ offsets. LAOTNREC = 0 makes EM-SEED-AOT skip the whole pass (stage2/maker/snap).
+\ DATA/CODE/window offset tables, all u32. Emitted LAST of the three image parts
+\ (ENGINE-EMIT:FORTH says why), after the baked source, so it shifts nothing and
+\ no reach depends on its size.
+\ EVERY LABEL THIS WORD BINDS IS ADDRESSED WITH TADR,, NEVER ADR,. That is a rule
+\ about the SECTION, not about how far away a particular label happens to land: a
+\ blob of a few hundred bytes and a blob of a megabyte are the same kind of thing
+\ and the boot code cannot tell them apart. Reordering the rows below is
+\ therefore free, and an ADR, into this section is a defect whatever today's
+\ measurement says (tools/aot-section-reach-lint.f refuses one).
+\ LAOTNREC = 0 makes EM-SEED-AOT skip the whole pass (stage2/maker/snap).
 : EMIT-AOT-SITES ( -- )   \ packed 8B rows (blob-off u32 + name-off u32)
    AOT-SITE-N @ 0 > IF AOT-SITE-BUF@ AOT-SITE-N @ 8 * BYTES, THEN ;
 : EMIT-AOT-DSITES ( -- )   \ packed u32 DATA-site offsets
@@ -8456,8 +8564,7 @@ package ENGINE-EMIT
    EMIT-PRIMITIVE-SECTIONS
    EMIT-DICTIONARY-SECTIONS   s" dictionary-code" ENGINE-SIZE:MARK
    EMIT-RUNTIME-SECTIONS      s" runtime" ENGINE-SIZE:MARK
-   EMIT-DICT                  s" seed-dictionary" ENGINE-SIZE:MARK
-   EMIT-AOT-SEED              s" aot-seed" ENGINE-SIZE:MARK ;
+   EMIT-DICT                  s" seed-dictionary" ENGINE-SIZE:MARK ;
 
 : EMIT-SOURCE-BYTES ( -- )
    LSRC LABEL@ LBL,  SRCA@ SRCN @ BYTES, ;
@@ -8470,12 +8577,26 @@ public
 \ can reconcile to the exact file size.
 \ Balanced whole-engine emission boundary.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
+\ THE THREE PARTS, IN THIS ORDER, AND WHY THE ORDER IS THE CONTRACT.
+\ An image is engine code, then the baked source, then the AOT payload, and each
+\ part is bounded by a different owner (src/arch/arm64/icode.f derives the code
+\ window from all three). The order is what keeps the FIRST bound real: the boot
+\ path reaches LSRC with an ADR, planted in the startup region, so the distance
+\ from the image's first instruction to LSRC is the engine code half, and ?ADR
+\ refuses at ADR-HI. Emitting the AOT payload BEFORE the source, as this did
+\ until 2026-08-14, put the payload's megabytes inside that distance and the ADR,
+\ then refused images whose engine code was a tenth of its allowance -- the wrong
+\ file refusing first, and the reason dot habu-reach-the-seed-d1326596 exists.
+\ The payload is last and is addressed only through TADR,, so its size cannot
+\ enter any reach.
 : FORTH ( ptr u8 n -- )
    ENGINE-SIZE:RESET
    EMIT-RESET-BUILDER
    LABELS:INIT
    EMIT-CODE-SECTIONS
-   EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK ;
+   EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK
+   EMIT-AOT-SEED              s" aot-seed" ENGINE-SIZE:MARK
+   LIMGEND LABEL@ LBL, ;                 \ nothing follows: this label IS the content length
 s" forth" s" ptr u8 n --" TRUST
 
 ;package
@@ -8491,4 +8612,5 @@ public
    ;
 ;package
 
+;using
 ;using

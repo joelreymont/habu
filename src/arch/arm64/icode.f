@@ -8,25 +8,41 @@ using A64ASM
 
 \ ---- the window this assembler emits into ------------------------------------
 \ THE WINDOW IS NOT THIS FILE'S NUMBER TO PICK. It holds one emitted image, and
-\ an image is two things, each already bounded by a file that is not this one.
+\ an image is THREE parts, each already bounded by a file that is not this one.
+\ The parts are emitted in that order (src/habu/habu2.f ENGINE-EMIT:FORTH) and
+\ the order is load-bearing: it is what keeps the first bound below true.
 \
-\ THE CODE HALF IS BOUNDED BY THIS FILE'S OWN ADR REACH. The baked-source label
-\ LSRC is the LAST thing an image emits (src/habu/habu2.f EMIT-SOURCE-BYTES, the
-\ final ENGINE-SIZE:MARK) and the boot path reaches it with an ADR planted in the
+\ THE ENGINE CODE PART IS BOUNDED BY THIS FILE'S OWN ADR REACH. The baked-source
+\ label LSRC is emitted directly after the engine code (src/habu/habu2.f
+\ EMIT-SOURCE-BYTES) and the boot path reaches it with an ADR planted in the
 \ startup region (C-SOURCE-BAKED and C-SOURCE-APPEND-LSRC, both under
-\ EM-STARTUP - the FIRST region). Every code byte lies between that site and that
-\ label, so a code half past the 21-bit signed ADR byte field cannot address its
-\ own baked source: the deferred patch runs ?ADR and dies `icode: adr out of
-\ reach` before any word is written. ADR-HI below is that field's exclusive
-\ bound, so it is exactly the code half's allowance.
+\ EM-STARTUP - the FIRST region). Every ENGINE code byte lies between that site
+\ and that label, so engine code past the 21-bit signed ADR byte field cannot
+\ address its own baked source: the deferred patch runs ?ADR and dies `icode: adr
+\ out of reach` before any word is written. ADR-HI below is that field's
+\ exclusive bound, so it is exactly this part's allowance.
 \
-\ THE BAKED-SOURCE HALF IS BOUNDED BY THE BOOT SOURCE ARENA. The same boot path
+\ THE BAKED-SOURCE PART IS BOUNDED BY THE BOOT SOURCE ARENA. The same boot path
 \ copies LSRC into the source arena a byte at a time and refuses at IBUFSZ
 \ (src/habu/layout.f SOURCE-ARENA-CAP) with `hb: source prefix buffer full`,
 \ rc 74. A window able to assemble more baked source than the arena can hold
 \ would only produce engines that die on their first boot, so IBUFSZ is exactly
-\ that half's allowance. This file loads before layout.f, so the sum is spelled
-\ out here and test/icode-fixup-test.f holds it against both owners.
+\ that part's allowance.
+\
+\ THE AOT PAYLOAD PART IS BOUNDED BY ITS OWN CAPTURE BUFFERS. It is emitted last
+\ (EMIT-AOT-SEED) and carries the compiled blob, the dictionary records, the
+\ relocation tables, the name pool and the captured DATA window - megabytes once
+\ the compiler chain is captured, and NOT bounded by any reach, because nothing
+\ addresses it with a PC-relative field: every reference into it goes through
+\ habu2.f's TADR,, which materialises the label's offset with LOFF, below and
+\ adds the text base the boot recorded. Its allowance is the sum of the capture
+\ buffers' own caps, each of which fails closed on overflow at capture time.
+\
+\ This file loads before layout.f and habu2.f, so all three terms are spelled out
+\ here. test/icode-fixup-test.f holds the window against ADR-HI and IBUFSZ, and
+\ habu2.f derives the third from the buffers themselves and dies at load if it
+\ disagrees with the constant below - the same shape src/habu/rt.f uses to hold
+\ mnem.f's XDS against layout.f's ENGINE-GPR:DSTACK.
 \
 \ WHAT PAYS FOR IT IS NOTHING THAT IS TOUCHED. CODE is one demand-paged
 \ anonymous mapping taken on first emit (CODE-ALLOC), by build drivers only, and
@@ -45,7 +61,17 @@ using A64ASM
 \ 2,093,056-byte window, 2.6% clear, and the widening lane's stage build died on
 \ this guard. The window was refusing images the boot arena would have accepted,
 \ which is the wrong file refusing first.
-$500000 constant CODE-CAP-BYTES  \ ADR-HI ($100000) + IBUFSZ ($400000)
+\
+\ WHY IT GREW A THIRD TERM (2026-08-14, dot habu-reach-the-seed-d1326596). The
+\ two-term window was measured against an image whose AOT payload was 30 KiB. At
+\ the compiler chain's scale the payload is megabytes, and it was emitted BETWEEN
+\ the engine code and the baked source, so it counted against the ADR term: the
+\ build died `icode: adr out of reach` at 29 sites with the engine code a tenth
+\ of its allowance. Moving the payload after the source and addressing it with
+\ TADR, took it out of every reach; it is a part of the image, so it is a term of
+\ the window, and this is that term.
+$400000 constant AOT-SECTION-CAP  \ src/habu/habu2.f AOT-SECTION-BYTES: the capture buffers ($3F4800) rounded to the 64 KiB grain
+$900000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + IBUFSZ ($400000) + AOT-SECTION-CAP ($400000)
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
 $1000 constant ICODE-TAB-CELLS

@@ -17,7 +17,16 @@
 \ is $4000 + 104 + a $A16C signature bound, and the whole image is $50F1D4.
 \ Rounding that to $510000 and keeping the same $10000 of margin the old
 \ $220000/$210000 pair carried gives $520000.
-$520000 constant MSIZE
+\
+\ RE-DERIVED 2026-08-14 for the $900000 code window (dot
+\ habu-reach-the-seed-d1326596, which gave the window its third term - the AOT
+\ payload section, now emitted last and addressed without any PC-relative
+\ reach). By the same method and the same margin: MPAGE is $901000, the Mach-O
+\ tail is $4000 + 104 + a $1216C signature bound (the bound is a function of the
+\ window, so it grew with it), the whole image is $9171D4, rounding gives
+\ $920000 and the margin gives $930000. The ELF side at this window is
+\ $901000 + $C0, far below it. Both writers still assert their own sum at load.
+$930000 constant MSIZE
 $1002 constant M-MAP-PRIVATE-ANON
 75 constant M-BOUNDS-RC
 variable MBUF-A
