@@ -296,6 +296,22 @@ variable FILE-USED
 \ package/public/private/;package and `using`), which is what the entry's removal
 \ had to establish first.  A global added to asm.f now reports, and its fixtures
 \ below pin that.
+\ src/os/image-bytes.f, src/os/linux/elf.f and src/os/macos/macho.f are the fifth
+\ entry, on the icode.f/mnem.f terms and for one subsystem: the executable image
+\ writer.  None of the three contains a `package` at all, and every later prefix
+\ source resolves their names bare -- src/habu/driver-io.f calls BUILD-IMAGE,
+\ MLEN@ and TEXTSZ, src/habu/snap-lib.f calls CODE-OFF and MBUF, and
+\ src/habu/habu2.f, tools/object-image.f and tools/image-bytes-test.f do the
+\ same.  Measured 2026-08-14: on master, changing the single line
+\ `$220000 constant MSIZE` in src/os/image-bytes.f to another number -- defining
+\ no new word, moving no boundary -- reported
+\ `E-PACKAGE-OWNERSHIP src/os/image-bytes.f:12:18`, so as configured the gate
+\ rejected every possible change to the image buffer's size, including the code
+\ window lift that found it (dot habu-lift-the-image-42b2b9f4, whose whole
+\ subject is those numbers).  Interim, exactly like the checker, render and ARM64
+\ entries.  Its retirement dot is NOT minted yet: the three files need real
+\ package owners and their bare callers migrated, which is a caller cascade this
+\ lane did not take, and the leaf for it is owed.
 \ src/core/layout-buffer.f is the fourth file of the sumtype.f class: a pre-hook
 \ core surface whose reason for being global is that it OWNS a global declaring
 \ word -- LAYOUT-BUFFER, the way sumtype.f owns NEWTYPE/SUMTYPE/ENUM/PRODUCT,
@@ -325,6 +341,9 @@ variable FILE-USED
    FILE$ s" src/core/render.f" LINT-STR= if true exit then       \ checker's render half, interim; see header
    FILE$ s" src/arch/arm64/icode.f" LINT-STR= if true exit then  \ ARM64 encoder prefix, interim; see header
    FILE$ s" src/arch/arm64/mnem.f" LINT-STR= if true exit then   \ ARM64 encoder prefix, interim; see header
+   FILE$ s" src/os/image-bytes.f" LINT-STR= if true exit then    \ image writer, interim; see header
+   FILE$ s" src/os/linux/elf.f" LINT-STR= if true exit then      \ image writer, interim; see header
+   FILE$ s" src/os/macos/macho.f" LINT-STR= if true exit then    \ image writer, interim; see header
    FILE$ s" src/core/enums.f" LINT-STR= ;
 
 \ Declaration-grammar fixture suites.  The second principled category, built on

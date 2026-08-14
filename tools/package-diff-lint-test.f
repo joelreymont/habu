@@ -203,6 +203,12 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    \ directory, so the disassembler beside them is a negative
    TEST-ROOT$ s" src/arch/arm64" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ the image writer, whose entry likewise names three files rather than the
+   \ src/os tree, so the signer beside macho.f is a negative
+   TEST-ROOT$ s" src/os/linux" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   TEST-ROOT$ s" src/os/macos" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    \ the Gforth recovery mirror's own directory, plus a same-basename neighbour
    \ one level up and a copy of the whole path under test/, which is what a
    \ suffix comparison would wrongly admit
@@ -1526,6 +1532,66 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" deleted package boundary in asm.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
+\ ---- src/os/{image-bytes,linux/elf,macos/macho}.f: the image writer ----
+\ Same category and same fixtures as the ARM64 encoder prefix: none of the three
+\ carries a package, and every later prefix source resolves their names bare. The
+\ positive is the shape that measured the problem - changing the number in
+\ `$220000 constant MSIZE` - and the negatives pin the match as an exact path,
+\ keep the sibling that shares each directory reported, and keep every scope
+\ change reported.
+
+: TEST-WRITE-IMAGE-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : MLEN@ ( -- n ) 0 ;" TEST-SOURCE-LINE
+   s" src/os/image-bytes.f" TEST-WRITE-SOURCE ;
+
+: TEST-IMAGE-OWNER-LOSS-DIFF ( -- )
+   s" src/os/image-bytes.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package IMAGE-BYTES" TEST-DIFF+ TEST-LF
+   s"  : MLEN@ ( -- n ) 0 ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-IMAGE-EXEMPTION ( -- )
+   \ Positive: a body change to an existing global is admitted in all three,
+   \ because the whole surface of each is global by construction.
+   s" src/os/image-bytes.f" TEST-CHECKER-COMMENT-CASE
+   s" the image writer exempts a body change in image-bytes.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   s" src/os/linux/elf.f" TEST-CHECKER-COMMENT-CASE
+   s" the image writer exempts a body change in elf.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   s" src/os/macos/macho.f" TEST-CHECKER-COMMENT-CASE
+   s" the image writer exempts a body change in macho.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: a new global is admitted too, the way it is for the encoder prefix.
+   s" src/os/macos/macho.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" the image writer exempts a new global in macho.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling carrying an allowlist path as a prefix is not an exact
+   \ match and must still fail.
+   s" src/os/image-bytes-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" sibling src/os/image-bytes-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename elsewhere carries the allowlist path as a suffix
+   \ but is not exact, so it must still fail.
+   s" lib/macho.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" lib/macho.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the signer shares macho.f's directory and is NOT in the entry, so a
+   \ new global there is still reported - the category is three named files, not
+   \ the src/os tree.
+   s" src/os/macos/sign2.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" src/os/macos/sign2.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): deleting a package boundary inside an allowlisted file
+   \ still reports lost ownership. The entry suppresses a plain global body or
+   \ definition change, never a scope change.
+   TEST-WRITE-IMAGE-OWNER-LOSS
+   TEST-DIFF-RESET TEST-IMAGE-OWNER-LOSS-DIFF
+   s" deleted package boundary in image-bytes.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 \ ---- src/habu/habu2.f: the engine emitter's body-edit admission ----
 \ This is the narrowest of the three principled categories, so its fixtures pin
 \ BOTH halves: the one shape it admits, and the shape it must keep reporting.
@@ -2692,6 +2758,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-CHECKER-EXEMPTION
    TEST-RENDER-EXEMPTION
    TEST-ARM64-EXEMPTION
+   TEST-IMAGE-EXEMPTION
    TEST-ENGINE-EXEMPTION
    TEST-MIRROR-EXEMPTION
    TEST-CONST-DEFINITIONS
