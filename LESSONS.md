@@ -6429,3 +6429,23 @@ its measurement: the padded-construction-feeds-tail shape is
 unwritable (the checker refuses the required signature), and the
 derivation is recorded where the next lane will look before
 re-deriving it.
+
+## The singletons diagnosis's five (2026-08-14)
+
+(1) A leaf's refusal list ages faster than the leaf - two of four
+named rows were zero after eleven landings; re-censusing cost 13
+minutes and deleted half the work order. Re-measure before
+diagnosing from a recorded list.
+(2) One root can wear three error codes, and the code names the
+pass that NOTICED, not the pass that is wrong. Reduce until the
+shapes differ in exactly one dimension before believing a bucket
+is a class.
+(3) A taxonomy's written argument is falsifiable - the census's
+claim that an arity refusal always means self-misstatement had a
+counterexample in its own output. Test a classifier's reason
+against a row, not against its prose.
+(4) A refuted road stays refuted only for the population it was
+measured on - re-running the refutation against today's rows cost
+one mutation and turned an assumption into evidence.
+(5) A censused spelling may be the instrument's own renamed
+subject leaking into the table.
