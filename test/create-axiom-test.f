@@ -195,6 +195,11 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 : CHAIN-ENUM-HALF ( -- )
    s" : CAX-D2 ( n -- n ) dup create , 1 + ;" 1 1 MEASURE ;
 
+\ `create allot` was lib/string.f BUFFER:'s definer half until that definer was
+\ converted to a generated colon accessor (dot habu-the-reader-re-a65e56e5). The
+\ shape is kept here because the row it measures is about `create` moving no stack
+\ cell, and a body that allots after it is the sharpest form of that question - not
+\ because the tree still ships one.
 : CHAIN-BUFFER-HALF ( -- )
    s" : CAX-D3 ( n -- ) create allot ;" 1 0 MEASURE ;
 
@@ -207,7 +212,7 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
    [: CHAIN-ALONE ;] LOADED TTHROWSQ
    NELAB:REFUSED-ROW -1 T=
 
-   s" and the two definer halves the tree ships" T-LABEL
+   s" the definer half the tree still ships, and the one it used to" T-LABEL
    [: CHAIN-ENUM-HALF ;] LOADED TTHROWSQ
    [: CHAIN-BUFFER-HALF ;] LOADED TTHROWSQ
 

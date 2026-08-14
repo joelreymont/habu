@@ -3,6 +3,7 @@
 s" lib/errors.f" required
 s" lib/memory.f" required
 s" lib/ffi-abi.f" required
+s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 
 package TASK
 
@@ -403,6 +404,28 @@ TRUSTED: TASK-RUN-USER ( -- n ) TASK-SELF TCB.USER-XT @ catch ;
 : TASK-DONE? ( ptr a -- bool )
    TASK-STATE@ TASK-DONE = ;
 
+\ ---- the three storage definers, and why only one converted -------------------
+\ TWO ADDRESS KINDS LIVE HERE, and only one of them is expressible as generated
+\ source today. A `create ... does> ( -- ptr a ) ;` word pushes the ABSOLUTE
+\ address of its dictionary storage, which is the same address in every thread.
+\ A generated `data-base <off> +` word resolves against the CALLING thread's data
+\ region - register 20, which the thread entry below points at the task's own
+\ 64 KiB region (TCB.REGION) - so inside a task it names a different object.
+\
+\ TASK and FACILITY publish SHARED storage: one TCB per task and one pthread
+\ mutex every task locks. They keep `create ... does>` because the tree has no
+\ checked source expression for a thread-invariant address (`dbase@`, register 26,
+\ holds it but is typed `-- n`, so writing it would trade a does> for a new
+\ pointer cast). Measured, not assumed: converting FACILITY makes each task lock
+\ its own uninitialised copy - lib/task-test.f dies E-TASK-THREAD (rc 237) - and
+\ converting TASK faults reading a TCB at region-base + dictionary-offset. The
+\ missing piece is one thread-invariant `( -- ptr a )` origin; until it exists,
+\ generated `data-base` accessors are for region-local storage only.
+\
+\ +USER is the other kind and converts cleanly: its storage IS a task-local slot,
+\ its does> body already read `@ data-base +`, and the offsets it hands out are
+\ bounded by TXN-STATE-OFF, inside every region.
+
 \ CREATE/DOES> publishes a typed TCB address, outside checker inference.
 \ Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: TASK ( n -- )
@@ -422,18 +445,39 @@ TRUSTED: TASK ( n -- )
    size TXN-STATE-OFF off - > if E-TASK-USER throw then
    off size + ;
 
-\ CREATE/DOES> derives a task-local address from the current data region.
-\ Retirement owner: habu-typed-defining-words-aa224eb5.
-TRUSTED: +USER ( n n -- n )
-   over over USER-NEXT
-   dup TASK-USER-NEXT !
-   >r drop create , r>
-   does> ( -- ptr a ) @ data-base + ;
+\ The slot's offset is fixed when the slot is declared, so it is baked into the
+\ generated body; `data-base` is read at CALL time, which is what makes the word
+\ answer the RUNNING task's own region - the whole point of a user slot, and what
+\ the retired does> body (`@ data-base +`) did with an extra load.
+\
+\ The text is built with package CODEGEN's append machinery rather than a fifth
+\ private copy of it. The calls are qualified rather than imported: a bare RESET
+\ under `using CODEGEN` collides with the global RESET (E-USING-SHADOW-GLOBAL),
+\ which is the collision docs/forth.md names as the case for qualifying.
+$60 constant SLOT-GEN-CAP
+SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
+
+: SLOT-NAME ( -- ptr u8 n )
+   parse-name dup 0= if E-TASK-USER throw then ;
+
+: +USER ( n n -- n ) {: off:n size:n :}
+   off size USER-NEXT {: next:n :}
+   next TASK-USER-NEXT !
+   SLOT-NAME {: name:ptr nameu:n :}
+   SLOT-GEN CODEGEN:RESET
+   s" : " SLOT-GEN CODEGEN:APPEND-STRING
+   name nameu SLOT-GEN CODEGEN:APPEND-STRING
+   s"  ( -- ptr a ) data-base " SLOT-GEN CODEGEN:APPEND-STRING
+   off SLOT-GEN CODEGEN:APPEND-DECIMAL
+   s"  + ;" SLOT-GEN CODEGEN:APPEND-STRING
+   SLOT-GEN CODEGEN:CONTENTS TDECL-EVAL-XT
+   next ;
 
 : HIS ( ptr a ptr a -- ptr a ) {: tcb:ptr cur:ptr :}
    cur data-base - tcb TCB.REGION @ + ;
 
-\ CREATE/DOES> publishes owner-tracked pthread mutex storage.
+\ CREATE/DOES> publishes owner-tracked pthread mutex storage, shared by every
+\ task (see the address-kind note above).
 \ Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: FACILITY ( -- )
    TASK-ALIGN8

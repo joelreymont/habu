@@ -592,9 +592,22 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ ANDI, LSLI, ORR). CODELEN 127508 -> 127564 (+56), floor distance 532 -> 588.
 \ Still inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and
 \ MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
-127564 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-14 re-measured live at the macOS byte-fixpoint for the field-accessor
+\ conversion (dot habu-the-reader-re-a65e56e5): src/core/structures.f's +FIELD /
+\ PTR-FIELD: / CFIELD: stop wearing two routines under one colon - each parses its
+\ own name, bakes the offset into a generated ordinary colon accessor and evaluates
+\ it through sumtype.f's TDECL-EVAL-XT boundary instead of `create ... does>`.
+\ No emitter changed, so no compile or primitive region moves: the whole delta is
+\ the AOT seed's captured record and name pool for the file's new definition set,
+\ aot-seed 30512 -> 30520 (+8), measured by diffing the two HABU_ENGINE_SIZE_MAP
+\ dumps region by region (every other row byte-identical). CODELEN 127564 ->
+\ 127572, floor distance 588 -> 596. The text pad absorbs it (15796 -> 15788)
+\ inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL
+\ (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
+\ The Linux rows below are owed a linux-host re-measure for this delta too.
+127572 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-588 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+596 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
