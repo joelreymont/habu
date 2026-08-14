@@ -1,9 +1,9 @@
 ---
 title: Seed the chain behind one prefix require
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-08-10T18:56:46.248678+02:00"
+created-at: "\"2026-08-10T18:56:46.248678+02:00\""
 ---
 
 ORIGINAL DESIGN (kept for the record, now refuted below): append 'require src/compiler/native/migrate.f' into the prefix buffer via the existing C-SOURCE-APPEND-X4-TO shape (PFX-APPEND-ENGINE-SNAP-HOOK precedent) - ONE row, ~40 bytes of IBUFSZ; the closure loads through include.f's own buffers (53 flat rows = 87.5% of IBUFSZ, forcing 4->8MB). Cost: +1.24s per cold bin/hb, +7464 dict records, +1.2MB code, +1.5MB DATA. docs/bootstrap.md gains: gforth stays a pre-chain recovery host and stays correct only while the engine can compile without the chain. Original acceptance: boot ndict 13,2xx; NMIGRATE:DEFINE works at first user token; full gate green; byte fixpoint. Files: src/habu/habu2.f. Depends: Stage A (landed), Stage C (landed).
@@ -31,3 +31,34 @@ decline - not a live gap today (the chain never compiles window
 code), but this leaf must re-derive it before the chain enters the
 capture window. The engine-side model is C-CALL-SCAN-SAFE +
 AOT-WINDOW:EMIT-OUTSIDE (arithmetically-accepting unarmed state).
+
+Claim: agent=bake-chain workspace=.jj-ws/habu-bake-chain
+
+RULED 2026-08-14 (bake-chain checkpoint, probes /tmp/bc-probe/):
+the metabuild-host capture entry is REFUTED BY EXPERIMENT - the
+host dictionary is not the target's (three ordered deaths:
+ARM64-W32 dup, ENGINE-ERROR dup, then regalloc.f's BMAX binding
+to the ENGINE'S max EMITTER - icode: label redefined; a colliding
+constant would have baked wrong data silently; and host-captured
+ASM: names do not exist in bin/hb so the seed's LFIND rejects at
+boot). RULING: the TWO-PROCESS design - capture in bin/hb itself
+(window opens at the first user token, ndict 6993/WIDN 276 = the
+seed point; names resolve in the booting engine BY CONSTRUCTION;
+137 chain WIDs all land above the target's WIDN - measured), the
+metabuild host reads the serialized artifact and bakes it
+unchanged. This lane's implementation scope: the artifact format
++ writer + reader + the BYTE-FIXPOINT DETERMINISM PROOF for a
+two-process capture; DATA-CAP derived-lifted (window DATA
+measured 1.53MB vs 1MB cap); provided rows for the 44 in-window
+files; boot-run reach to A64RAV:DKEEP-HOOK (the one declared
+cell); prove the armed decline empties the 26 out-of-window
+chains at capture. PRECONDITION dotted separately: ADR reach -
+the REAL blob ceiling (the +-1MB ADR field binds before the 2MB
+blob cap; section reorder cannot alone cover 2.7MB of payloads;
+a far-address form is needed, with Rocq rows per CG-02 if a new
+instruction form enters the emitter). Capture-side O(sites x
+dict) in ACAP-TGT>REC dotted (the boot gate's disease, same
+cure). Inliner rider VERDICT: not this lane - inline.f splices
+tokens not addresses; the real hazard is the chain publication
+seam baking pre-window literals, which cannot arise until the
+cut and lands with it (recorded).
