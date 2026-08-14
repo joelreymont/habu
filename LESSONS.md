@@ -6587,3 +6587,20 @@ recovered it).
 orchestrator's cross-report view is the only place the collision
 is visible before the rebase - flag it in the rebase order, and
 the resolver re-derives on the merged file, never takes a side.
+
+## The seed landing's four (2026-08-14)
+
+(1) jj restore <paths> with no --from restores from the PARENT -
+using it to A/B two builds silently deletes the working commit's
+content, and "restoring back" repeats the deletion. jj undo
+recovered it; copy the tree for A/B instead.
+(2) A rename inside a driver is not done when the callers compile
+- two test files couple to stage2.f by STRING LITERALS, and one
+CONTAINS?-based assertion would have gone silently vacuous rather
+than red. Grep the literals, not just the names.
+(3) When a namespace opens up, scan GENERATED program strings too
+- a collision inside a child-program string killed a pin dump and
+no source-level scan sees that class.
+(4) Keeping public spellings and importing with using kept a
+26-file migration out of a dot; renaming public words is what
+drags the package lint into a caller cascade.
