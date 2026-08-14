@@ -279,6 +279,63 @@ variable PTYNUM
    s"  ok" EXPECT
    s" habu> " EXPECT ;
 
+\ --- the two boot modes must enumerate ONE dictionary --------------------------
+\ Dot habu-decide-arm-the-5234727b (USER RULING 2026-08-11: one dictionary surface
+\ for every boot mode). The engine's baked REPL/stepper/debugger words are seeded
+\ into the dictionary at boot; that seed used to run at the interactive REPL entry
+\ alone and now runs at the end of the engine prefix on every boot. Every case in
+\ this file already depends on the interactive half - without the seed there is no
+\ prompt to type at - so what is left to prove is that the BATCH dictionary is the
+\ SAME SET, not merely a set that also answers.
+\
+\ test/aot-seed-surface.f folds every dictionary record name into one number.
+\ SEED-BATCH runs it through this engine as a PIPED program and keeps the number
+\ it printed; PTY-SEED-SURFACE types the same line at the terminal and requires
+\ the same number back. Neither side hardcodes it - it moves with every tree edit
+\ - and a mode that seeded a different set, in a different order, or at a
+\ different point cannot produce it.
+\
+\ The batch half lives here rather than in test/aot-seed-batch-suite.f (which owns
+\ the batch-only cases) because the comparison needs both modes in ONE process,
+\ this file is the tree's one cross-platform PTY driver, and its pipe vehicle is
+\ four lines away. The pty case must run FIRST, before any case types a definition
+\ into the interactive dictionary, or it would be comparing two different moments.
+create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
+
+: SEEDNUM$ ( -- ptr u8 n )    SEEDNUM SEEDNUM-U @ ;
+: SEED-LINE$ ( -- ptr u8 n )  S\" s\" test/aot-seed-surface.f\" required" ;
+
+: SEED-BYTE ( -- n )
+   SEEDI @ RN @ < if RBUF SEEDI @ + c@ exit then 0 ;
+
+: SEED-TOKEN! ( -- )                 \ first whitespace-delimited token of RBUF
+   0 SEEDNUM-U !  0 SEEDI !
+   begin SEED-BYTE dup 0 <> swap 33 < and while  SEEDI @ 1 + SEEDI !  repeat
+   begin SEED-BYTE 32 > SEEDNUM-U @ 64 < and while
+      SEED-BYTE SEEDNUM SEEDNUM-U @ + c!
+      SEEDNUM-U @ 1 + SEEDNUM-U !
+      SEEDI @ 1 + SEEDI !
+   repeat ;
+
+: SEED-BATCH ( -- )
+   CAPTURE-PIPES
+   CAPTURE-START-HB
+   CAPTURE-CLOSE-CHILD-ENDS
+   IN-W @ >FD SEED-LINE$ FD-WRITE-LN
+   IN-W @ close
+   RCLR
+   OUT-R @ >FD READ+
+   SEED-TOKEN!
+   OUT-R @ close
+   ERR-R @ close
+   PID @ >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   SEEDNUM-U @ 0 > TTRUE ;
+
+: PTY-SEED-SURFACE ( -- )
+   SEED-LINE$ STEP-LN
+   SEEDNUM$ EXPECT
+   s"  ok" EXPECT ;
+
 : PTY-ARITH ( -- )
    s" 1 2 + ." STEP-LN
    s" 3" EXPECT
@@ -664,8 +721,10 @@ variable PTYNUM
    MFD @ close ;
 
 : PTY-BASIC ( -- )
+   SEED-BATCH                        \ the pipe-mode fold, before this file owns a pty child
    PTY-START-HB
    PTY-PROMPT
+   PTY-SEED-SURFACE                  \ FIRST at the prompt: before any case types a definition
    PTY-ARITH
    PTY-UNKNOWN
    PTY-SQUARE

@@ -165,17 +165,23 @@ variable PIN-PROG-U
    s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n" PP+
    s\" SUMTYPE mfpw 0\n  VARIANT small n ;VARIANT\n  VARIANT big ptr u8 n n ;VARIANT\n;SUMTYPE\n" PP+
    s\" SUMTYPE mfpt 0\n  VARIANT one ;VARIANT\n  VARIANT two ;VARIANT\n  VARIANT three ;VARIANT\n;SUMTYPE\n" PP+
-   s\" variable A\n" PP+
-   s\" TRUSTED: CB@ ( n -- n ) {: a:n :} a {: p:ptr :} p c@ ;\n" PP+
-   s\" : HN ( n -- ) $F and dup 10 < if 48 + else 55 + then emit ;\n" PP+
-   s\" : HB ( n -- ) {: v:n :} v 4 rshift HN v HN ;\n" PP+
-   s\" : MARK ( -- ) cp@ A ! ;\n" PP+
-   s\" : SHOW ( -- ) cp@ {: e:n :} A @ begin dup e < while dup CB@ HB 1 + repeat drop cr ;\n" PP+
-   s\" MARK : W-CON ( n -- mfp ) construct mfp ok ; SHOW\n" PP+
-   s\" MARK : W-CONE ( n -- mfp ) construct mfp err ; SHOW\n" PP+
-   s\" MARK : W-MATCH ( mfp -- n ) MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ; SHOW\n" PP+
-   s\" MARK : W-MATCHW ( mfpw -- n ) MATCH mfpw small OF 100 * ENDOF big OF nip nip ENDOF ;MATCH ; SHOW\n" PP+
-   s\" MARK : W-MATCH3 ( mfpt -- n ) MATCH mfpt one OF 1 ENDOF two OF 2 ENDOF three OF 3 ENDOF ;MATCH ; SHOW\n" PP+ ;
+   \ The dump helpers carry an MFP- prefix because this program runs at GLOBAL
+   \ scope in the child, and the engine's baked REPL/debugger set is in that
+   \ scope too since the AOT seed began running on every boot (dot
+   \ habu-decide-arm-the-5234727b): the old `HN` collided with repl.f's `HN` and
+   \ killed the whole dump with `duplicate definition`. The pinned words below
+   \ are unaffected - their bytes hold no absolute address and no helper call.
+   s\" variable MFP-A\n" PP+
+   s\" TRUSTED: MFP-CB@ ( n -- n ) {: a:n :} a {: p:ptr :} p c@ ;\n" PP+
+   s\" : MFP-HN ( n -- ) $F and dup 10 < if 48 + else 55 + then emit ;\n" PP+
+   s\" : MFP-HB ( n -- ) {: v:n :} v 4 rshift MFP-HN v MFP-HN ;\n" PP+
+   s\" : MFP-MARK ( -- ) cp@ MFP-A ! ;\n" PP+
+   s\" : MFP-SHOW ( -- ) cp@ {: e:n :} MFP-A @ begin dup e < while dup MFP-CB@ MFP-HB 1 + repeat drop cr ;\n" PP+
+   s\" MFP-MARK : W-CON ( n -- mfp ) construct mfp ok ; MFP-SHOW\n" PP+
+   s\" MFP-MARK : W-CONE ( n -- mfp ) construct mfp err ; MFP-SHOW\n" PP+
+   s\" MFP-MARK : W-MATCH ( mfp -- n ) MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ; MFP-SHOW\n" PP+
+   s\" MFP-MARK : W-MATCHW ( mfpw -- n ) MATCH mfpw small OF 100 * ENDOF big OF nip nip ENDOF ;MATCH ; MFP-SHOW\n" PP+
+   s\" MFP-MARK : W-MATCH3 ( mfpt -- n ) MATCH mfpt one OF 1 ENDOF two OF 2 ENDOF three OF 3 ENDOF ;MATCH ; MFP-SHOW\n" PP+ ;
 
 \ Per-target bad-tag die tails (see the Per-target pins note above). The linux
 \ strings are untouched spark linux-arm64 measurements; the macos strings were

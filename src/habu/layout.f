@@ -528,15 +528,35 @@ $47C8 constant CF
 \ cells between the FFI block and the registry.
 $3CA0 constant EVALREC-CELL
 \ AOT-SEED-DONE-CELL: one-shot flag set the first time the post-cold-prefix AOT
-\ seed runs at LEXIT (EM-COMPILE-EXIT), so REPL re-entry does not re-seed. Lives in
-\ the $3CA0..$3CB8 free engine gap between the FFI block and the registry count cell.
+\ seed runs (EM-COMPILE-EXIT, at the end of the engine prefix stream), so neither
+\ the user stream's own exhaustion nor REPL re-entry can seed a second time. It is
+\ the seed's only guard: the seed itself now runs on every boot. Lives in the
+\ $3CA0..$3CB8 free engine gap between the FFI block and the registry count cell.
 $3CA8 constant AOT-SEED-DONE-CELL
-\ AOT-SEED-ARM-CELL: set to 1 only on the interactive repl entry (C-SOURCE SRC-REPL),
-\ so the AOT REPL seed runs solely when the engine is about to present the REPL --
-\ never for pipe programs, `--load` tool runs, or the snapshot builder (which retires
-\ the toolchain and runs SNAP:PERSIST before LEXIT). Zeroed by DATA-INIT for every
-\ boot.
-$3CB0 constant AOT-SEED-ARM-CELL
+\ BOOT-SRC:USER-END: the end of the USER source stream while the ENGINE PREFIX
+\ stream is running, and 0 once that stream has been installed (one-shot). In a
+\ package for the same reason HIDX:CLAIMS is: new names have no reason to join
+\ this file's global packaging debt.
+\
+\ A boot reads two top-level streams out of one buffer. C-SOURCE builds the engine
+\ prefix and then the user program (piped bytes, `s" f.f" required` rows, or the
+\ baked LSRC) into the same mapping; the shared cold-prefix routine publishes the
+\ prefix end as INE, and the mode publishes the buffer end here. The interpreter
+\ therefore reaches "source exhausted" (EM-COMPILE-EXIT, LEX0) at the END OF THE
+\ ENGINE PREFIX on every boot, which is the one point where the engine is complete
+\ and no user token has run yet: the AOT seed goes there, and then LEX0 installs
+\ [INE, USER-END) as the next stream and re-enters the interpreter, the same move
+\ EM-REPL-READ makes for a typed line.
+\
+\ This replaced AOT-SEED-ARM-CELL, which armed the seed at the interactive REPL
+\ entry alone (dot habu-decide-arm-the-5234727b, USER RULING 2026-08-11: one
+\ dictionary surface for every boot mode). Arming everywhere without splitting the
+\ streams would have been arming nothing: measured, the seed fired AFTER the batch
+\ program it was supposed to serve. Zeroed by DATA-INIT for every boot.
+package BOOT-SRC
+public
+$3CB0 constant USER-END
+;package
 \ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Records the WIDs of
 \ sealed system / generated constructor packages created in the friend window;
 \ PROT-WID? membership (habu1.f) gates the sealed-WID guards.

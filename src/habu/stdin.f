@@ -80,6 +80,13 @@ s" HB@" s" -- ptr u8" TRUST
 \ the boot-run list: EM-SEED-AOT LFINDs + calls each after the seed, so the engine
 \ installs the REPL with ZERO baked source. stage2/maker/snap use other drivers,
 \ so their AOT buffers stay empty and EM-SEED-AOT skips.
+\ WHAT THE CAPTURED SET IS FOR EVERY OTHER BOOT. The seed runs at the end of the
+\ engine prefix on every boot, not only the tty one (dot
+\ habu-decide-arm-the-5234727b), so every name compiled here is in the dictionary
+\ a piped or `--load` program sees. Adding a file to the four above therefore adds
+\ its global names to the engine's contract, and a spelling that some batch
+\ program already defines at global scope makes that program die `duplicate
+\ definition`. Check a new name against the tree before capturing it.
 \ Dynamic host evaluation is source-dependent and cannot carry a static effect.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: EVAL-HOST ( ptr u8 n -- ) evaluate ;    \ compile a source buffer in the host dict

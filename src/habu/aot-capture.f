@@ -507,11 +507,13 @@ variable ACAP-P
 \ --- boot-run list: append a top-level entry-word NAME to the 0-terminated
 \ [len][name] list EM-AOT-BOOTRUN walks (LFIND + blr) after the seed installs the
 \ REPL. Keeps a live trailing 0 terminator (uncounted) so the bake needs no pad.
-\ The seed that walks it is armed at the INTERACTIVE REPL ENTRY and nowhere else
-\ (src/habu/habu2.f, AOT-BOOTRUN-CAP), so a name added here runs when the built
-\ engine is entered on a tty and never on a batch run. A fixture that reports from
-\ inside a capture window therefore has to be booted under a pty; piping a program
-\ to the engine tests a path where none of this happened. ---
+\ The seed that walks it runs at the END OF THE ENGINE PREFIX on EVERY boot
+\ (src/habu/habu2.f, AOT-BOOTRUN-CAP), so a name added here runs before the first
+\ user token of a piped program, a `--load` run and a tty REPL alike. A fixture
+\ that reports from inside a capture window can therefore be a batch fixture: it
+\ pipes a line to the built engine and reads what the boot-run printed. A pty is
+\ still what an INTERACTIVE claim needs (the entry words ask TTY? themselves), and
+\ nothing else. ---
 public
 
 : BOOTRUN+ ( ptr u8 n -- ) {: a:ptr u:n :}

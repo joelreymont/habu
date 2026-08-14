@@ -1,12 +1,17 @@
 \ aot-data-span-forge.f - AOT seed-pass boot regressions that need a real terminal
 \ (dots habu-guard-aot-data-49de2ee6 and habu-bake-the-aot-7ececce8).
 \
-\ Everything here shares one reason for existing: the AOT seed is armed at the
-\ INTERACTIVE REPL ENTRY and nowhere else (AOT-SEED-ARM-CELL), so a claim about
-\ what the seed does can only be made by booting a built engine under a PTY. A
-\ piped or --load boot never seeds the blob, never registers the records and never
-\ walks the boot-run list, which makes it silent about every case below rather
-\ than a weaker test of them.
+\ Everything here boots a built engine under a PTY. That used to be forced: the
+\ AOT seed was armed at the interactive REPL entry and nowhere else, so a piped or
+\ --load boot never seeded the blob and was silent about every case below. Since
+\ dot habu-decide-arm-the-5234727b the seed runs at the end of the engine prefix
+\ on EVERY boot, so these cases could be written as batch fixtures, and the
+\ cheaper batch vehicle is where new seed cases belong -
+\ test/aot-seed-batch-suite.f is that vehicle. These stay on the PTY because they
+\ are already written, already spawn-driven, and each one reads output the
+\ boot-run prints: rewriting a passing forge is churn, not coverage. The one thing
+\ a batch fixture still cannot say is what the engine does when it is entered
+\ INTERACTIVELY, since the boot-run entry words ask TTY? themselves.
 \
 \ THE SPAN GUARD. Proves EM-AOT-RELOC-DATA's span bound (habu2.f) both directions.
 \   RED : a forged image whose baked LAOTDATASIZE exceeds the DATA region

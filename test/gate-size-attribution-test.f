@@ -651,9 +651,31 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ and MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
 \ The Linux rows below are owed this +892 too, and the standing
 \ LINUX-REGION-BUDGETS primitives/protect row with them.
-128704 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-14 re-measured live at the macOS byte-fixpoint for the every-boot AOT
+\ seed (dot habu-decide-arm-the-5234727b): a boot's engine prefix and its user
+\ program became two top-level source streams, so "source exhausted" is reached at
+\ the end of the prefix - where the seed now runs - and the user stream is
+\ installed there. Diffed region by region against the two HABU_ENGINE_SIZE_MAP
+\ dumps; two code rows move and every other row is byte-identical.
+\   compile/exit  2496 -> 2520 (+24): EM-COMPILE-EXIT. The arm-cell test is gone
+\                                     (-8, two instructions) and the user-stream
+\                                     install arrived (+32, eight: load the end
+\                                     cell, branch out when it is 0, clear it,
+\                                     carry INE into INP, store the new end, jump
+\                                     to LMAIN).
+\   main/startup  6380 -> 6376  (-4): C-SOURCE. The interactive-entry arm store is
+\                                     gone (-8, movz + str) and the shared
+\                                     cold-prefix routine publishes the prefix end
+\                                     as INE (+4, one str). The baked-source
+\                                     engines' matching store is not in THIS
+\                                     engine, which emits the stdin path only.
+\ CODELEN 128704 -> 128724 (+20), floor distance 1728 -> 1748. The text pad absorbs
+\ it (14656 -> 14636) inside the same 16 KiB __TEXT page, so MACOS-SIGNATURE (1423)
+\ and MACOS-TOTAL (165367) do not move and `FILE-SIZE bin/hb` is still 165367.
+\ The Linux rows below are owed this +20 as well.
+128724 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-1728 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+1748 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

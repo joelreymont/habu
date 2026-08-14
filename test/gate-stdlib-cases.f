@@ -1245,6 +1245,10 @@ SUITE aot-wid-restore
    test/aot-wid-suite.f
 ;SUITE
 
+SUITE aot-seed-batch
+   test/aot-seed-batch-suite.f
+;SUITE
+
 SUITE aot-wide-format
    test/aot-wide-format-suite.f
 ;SUITE

@@ -325,6 +325,7 @@ private
    s" snapshot-writer" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdlib-standalone-load" SUITE-LABEL= if SUITE-TRUE exit then
    s" aot-wid-restore" SUITE-LABEL= if SUITE-TRUE exit then
+   s" aot-seed-batch" SUITE-LABEL= if SUITE-TRUE exit then
    s" aot-wide-format" SUITE-LABEL= if SUITE-TRUE exit then
    s" using-import" SUITE-LABEL= if SUITE-TRUE exit then
    s" load-reject-diag" SUITE-LABEL= if SUITE-TRUE exit then

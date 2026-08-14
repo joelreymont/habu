@@ -1348,7 +1348,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    9 17 CMP,  C-NE SRC-PIPEOK LABEL@ BCOND,
    10 DATA ARGC-CELL LDR,  10 1 CMPI,  C-GT SRC-FILE LABEL@ BCOND,
    SRC-PIPEOK LABEL@ LBL,
-   11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
+   11 DATA INP-CELL STR,  9 DATA BOOT-SRC:USER-END STR,   \ INE is the prefix end (LCOLDPFX); the program is the second stream
    C-SOURCE-SKIP-SHEBANG ;
 
 : C-SOURCE-FILE-INIT ( -- )
@@ -1450,8 +1450,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    11 0 0 ADDI,  9 11 0 ADDI,
    LCOLDPFX LABEL@ BL,
    C-SOURCE-APPEND-LSRC
-   11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
-   12 1 MOVZ,  12 DATA AOT-SEED-ARM-CELL STR,     \ arm the AOT REPL seed: interactive repl only
+   11 DATA INP-CELL STR,  9 DATA BOOT-SRC:USER-END STR,   \ INE is the prefix end; the baked source is the second stream
    SRC-DONE LABEL@ B,
    SRC-DONE LABEL@ LBL, ;
 
@@ -1484,6 +1483,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    EMIT-COLD-PREFIX
    SRC-BFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN         \ seal after the cold prefix, before baked user source
    17 9 0 ADDI,
+   9 DATA INE-CELL STR,                            \ the prefix is this boot's first stream and it ends here
    12 LSRC LABEL@ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    SRC-BLOOP LABEL@ LBL,
       12 13 CMP,  C-GE SRC-BDONE LABEL@ BCOND,
@@ -1493,7 +1493,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
       SRC-BLOOP LABEL@ B,
    SRC-BDONE LABEL@ LBL,
    LSHBANG LABEL@ BL,
-   11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  SRC-DONE LABEL@ B,
+   11 DATA INP-CELL STR,  9 DATA BOOT-SRC:USER-END STR,  SRC-DONE LABEL@ B,   \ baked source: the second stream
    SRC-BFAIL LABEL@ LBL,                                          \ IBUFSZ baked-prefix overflow: label fd 2 before exit 74
    1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
@@ -1543,6 +1543,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
       12 SP 8 LDR,  12 noseal CBNZ,
       SRC-SFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN      \ seal before any appended user source
    noseal LBL,
+      9 DATA INE-CELL STR,                         \ the prefix is the boot's FIRST stream and it ends here
       30 SP 0 LDR,  SP SP 16 ADDI,  RET,
    skip LBL, ;
 
@@ -5227,7 +5228,7 @@ public
    9 DATA ENGINE-SNAP-XT-CELL STR,
    9 DATA REPLH-CELL STR,
    9 DATA AOT-SEED-DONE-CELL STR,
-   9 DATA AOT-SEED-ARM-CELL STR,
+   9 DATA BOOT-SRC:USER-END STR,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
    9 DATA PKGRESYNC-CELL STR,                            \ checker resync latch clear at boot (dot habu-recovery-pkg-scope)
    9 DATA P2-CELL STR,  9 DATA P2BODY0-CELL STR,
@@ -7566,17 +7567,42 @@ s" em-eval-clean-exit" s" --" TRUST
    11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  LMAIN LABEL@ B, ;
 s" em-repl-read" s" --" TRUST
 
+\ Top-level source exhausted. A boot arrives here TWICE: first at the end of the
+\ ENGINE PREFIX stream, then at the end of the USER stream (a piped program, the
+\ `required` rows `--load` wrote, or the baked LSRC) - see BOOT-SRC:USER-END in
+\ layout.f for why the two are separate streams in one buffer.
+\
+\ The first arrival is the only moment in a boot when the engine is complete and
+\ no user token has run, so it is where the AOT seed belongs: the captured code
+\ resolves its call sites by name against the cold-prefix dictionary, which now
+\ exists, and every mode - pty REPL, piped stdin, `--load`, `--build`, a baked
+\ driver - reaches it before its program. The done cell is the seed's only guard;
+\ the second arrival and any REPL re-entry find it set. (Dot
+\ habu-decide-arm-the-5234727b, USER RULING 2026-08-11: one dictionary surface for
+\ every boot mode. The rejected shapes are on that leaf: a new `AOT-SEED` prefix
+\ token would have put an engine-internal name in every program's dictionary, and
+\ hanging the seed on the existing SEAL-FRIEND token would have made a security
+\ primitive moonlight as dictionary construction.)
+\
+\ Installing the user stream is EM-REPL-READ's move: the new stream starts where
+\ the old one ended (INE), and re-entering LMAIN is a branch. The cell is cleared
+\ as it is consumed, so nothing can install it twice.
 : EM-COMPILE-EXIT ( -- )
-   LBL {: aoskip:label :}
+   LBL LBL {: aoskip:label nousrc:label :}
    LEXIT LABEL@ LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 LABEL@ CBZ,
       EM-EVAL-CLEAN-EXIT
    LEX0 LABEL@ LBL,                                          \ top-level source exhausted (EVALD==0), cp@ clean here
    9 DATA AOT-SEED-DONE-CELL LDR,  9 aoskip CBNZ,            \ already seeded -> skip
-   9 DATA AOT-SEED-ARM-CELL LDR,  9 aoskip CBZ,              \ armed only on the interactive repl entry
-      EM-SEED-AOT                                            \ seed the AOT REPL once, post-cold-prefix
+      EM-SEED-AOT                                            \ seed the baked words once, post-cold-prefix
       9 1 MOVZ,  9 DATA AOT-SEED-DONE-CELL STR,
    aoskip LBL,
+   9 DATA BOOT-SRC:USER-END LDR,  9 nousrc CBZ,                  \ no second stream -> repl or exit
+      10 0 MOVZ,  10 DATA BOOT-SRC:USER-END STR,                 \ one-shot: consume it before installing
+      10 DATA INE-CELL LDR,  10 DATA INP-CELL STR,           \ the user stream begins where the prefix ended
+      9 DATA INE-CELL STR,
+      LMAIN LABEL@ B,
+   nousrc LBL,
    9 DATA REPLH-CELL LDR,  9 LRBYE LABEL@ CBZ,
    0 1 MOVZ,  1 LOKS LABEL@ ADR,  2 4 MOVZ,  NR-WRITE SYS,
    EM-REPL-READ
@@ -8217,14 +8243,16 @@ create BUF MAX 8 * allot    variable N   \ 8B rows: blob-off u32 + name-off u32
 \ words (INSTALL/BPW-INSTALL/S-INSTALL) the metabuild ran at the tail of the REPL
 \ source. With the source dropped, EM-SEED-AOT LFINDs + calls each after RX/flush so
 \ the seeded engine installs the REPL with no embedded source.
-\ THIS LIST RUNS ON ONE PATH ONLY, and knowing which one is the difference between
-\ reading a seeded engine and reading nothing. The whole AOT seed is armed at the
-\ interactive REPL entry and nowhere else (C-SOURCE's SRC-REPL arm sets
-\ AOT-SEED-ARM-CELL; EM-COMPILE-EXIT tests it before calling EM-SEED-AOT), so a
-\ batch run - piped stdin or --load - never seeds the blob, never registers the
-\ records and never walks this list. That is why a captured word is not in the
-\ dictionary of an engine you ran a program through, and why anything that has to
-\ OBSERVE the seed has to enter the engine on a tty.
+\ THIS LIST RUNS ON EVERY BOOT, and it used to run on one. The seed fires at the
+\ end of the engine prefix stream (EM-COMPILE-EXIT, LEX0) whatever the mode is, so
+\ a piped program, a `--load` tool run and a tty REPL all reach their first user
+\ token with the blob copied, the records registered and this list walked. The
+\ entry words self-guard - INSTALL asks TTY? before installing a REPL - so a batch
+\ boot runs them and gets no REPL, which is a different thing from not running
+\ them. The old contract was the opposite (armed at the interactive REPL entry and
+\ nowhere else, dot habu-decide-arm-the-5234727b), which is why anything written
+\ before 2026-08-14 that says a captured word is missing from a batch dictionary,
+\ or that observing the seed needs a tty, is describing the retired shape.
 $400 constant AOT-BOOTRUN-CAP
 create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
