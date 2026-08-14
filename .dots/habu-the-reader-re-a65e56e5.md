@@ -1,9 +1,9 @@
 ---
 title: The reader re-entry refusals
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-08-12T20:50:32.016807+02:00"
+created-at: "\"2026-08-12T20:50:32.016807+02:00\""
 ---
 
 Census 2026-08-12: 9 first-refusals E-NFEED-SCAN - defining words that re-enter the reader (BUFFER:, ENUM+, BEGIN-STRUCTURE shapes). No dot owned the class. Establish whether the chain models defining-word re-entry or refuses it by design; if by design, the cut needs the answer for every tree use. Files: src/compiler/native/feed.f. Depends: none.
@@ -37,3 +37,5 @@ intended outcome. SEQUENCING: after habu-lift-the-recorder-d7480352
 (the 512-byte recorder cap refuses the layout-buffer shape's own
 file today - the converted forms must be PROVED compilable, not
 assumed). The census -8401 taxonomy row folds into 477f96d7.
+
+Claim: agent=does-conv workspace=.jj-ws/habu-does-conv
