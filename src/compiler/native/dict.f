@@ -594,7 +594,7 @@ public
    out 0 < if in CATCH-NONE exit then
    in out ;
 
-\ ---- and how many cells a tag-dispatch token really moves ---------------------
+\ ---- and how many cells a layout token really moves ---------------------------
 \ THE SECOND TOKEN-KEYED READER, AND IT EXISTS BECAUSE THE REGISTRY CANNOT
 \ ANSWER. src/compiler/native/family.f WIDTH says it plainly: it answers the
 \ width a family DECLARES, and a parametric family instantiated with a
@@ -606,8 +606,8 @@ public
 \ caller elaborating tape row `ix` asks about `ix` - the same coordinate, and
 \ for the same reason, as the catch window above.
 \
-\ WHAT THE TWO KINDS OF TOKEN ANSWER. A `MATCH` family token answers the whole
-\ bundle a value of that instantiation occupies, tag included; an arm's `of`
+\ WHAT THE TWO KINDS OF DISPATCH TOKEN ANSWER. A `MATCH` family token answers the
+\ whole bundle a value of that instantiation occupies, tag included; an arm's `of`
 \ token answers that arm's pad count, the cells between its payload and the tag.
 \ Both are cells the caller drops or keeps, so neither is a difference the
 \ caller would have to add back to a declared number.
@@ -625,6 +625,36 @@ public
 : MATCH-CELLS ( n -- n )
    EFFECT-MATCH-CELLS {: w:n :}
    w 0 < if MATCH-NONE exit then
+   w ;
+
+\ ---- and how many cells a construction's instantiation ADDS -------------------
+\ THE THIRD KIND OF TOKEN, ASKED THE SAME QUESTION AND ANSWERED WITH A DIFFERENCE.
+\ Building a value of a family is the inverse of taking one apart, and it is
+\ lowered by pushing what the family DECLARES: the generated constructor's body is
+\ the declared pads and the tag whatever it is instantiated at, and this chain's
+\ `construct` reads those same declared pads out of the registry. So the number a
+\ wide instantiation needs here is not the pad count - it is the cells MISSING
+\ from a declared-width lowering, which is what the checker computes once for the
+\ engine's pass 2 and files under this token (src/core/type-family.f
+\ TFC-CON-XPAD-RECORD). The caller pushes that many zero cells at the site, which
+\ is what the engine does at the same site (src/habu/habu2.f EM-COMPILE-CALL).
+\
+\ AND ABSENT IS ZERO HERE RATHER THAN A REFUSAL, WHICH IS THE OPPOSITE POLICY TO
+\ THE READER ABOVE AND IS FORCED BY WHAT THE TOKEN IS. A dispatch reader asks only
+\ about tokens it has already recognised as dispatch operands, so an absence there
+\ is a fact that should have been proved and was not. This reader is asked about
+\ every CALL, because a generated-constructor call is spelled like any other call
+\ and the answer is what tells them apart - so absence is the ordinary case and
+\ has to mean "adds nothing", which is the truth for every construction of a
+\ non-parametric family and for every call that is not a construction at all.
+\ What that costs when a row was DROPPED instead of never filed is a construction
+\ lowered one bundle short, and src/core/checker.f gives the argument in full: the
+\ deficit is conserved through every count this file makes afterwards, so the
+\ definition is refused at the first join, call or exit the short value reaches
+\ rather than compiled into a wrong program.
+: CON-PADS ( n -- n )
+   EFFECT-MATCH-CELLS {: w:n :}
+   w 0 < if 0 exit then
    w ;
 
 \ Whether control comes back from a call to the word this spelling denotes.

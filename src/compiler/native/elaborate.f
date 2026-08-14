@@ -3534,11 +3534,22 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ And its variant, whose numbers go onto the `construct` row: the pads it pushes
 \ and the tag it pushes after them are what turn a payload already on the stack
 \ into a value of the family.
+\
+\ THE PADS ARE THE INSTANTIATED ONES AND THE REGISTRY ANSWERS ONLY HALF OF THEM.
+\ The family reserves room for its widest variant, and a parametric family
+\ instantiated with a multi-cell argument reserves MORE than its declaration says
+\ - `option<a>` keeps one payload slot and `option<pt>` needs two, so `none` at
+\ that instantiation drops two zero cells where its declaration drops one. The
+\ registry has no term to work the second number out from (family.f WIDTH says
+\ why), so the checker files what a declared-width lowering is MISSING under this
+\ token and the two are added here. A token that published nothing adds nothing,
+\ which is the answer for every construction of a family that is not parametric.
 : MSCAN-CON-VAR ( n -- ) {: ix:n :}
    ix MTOK$ CB-FAM @ NFAM:VARIANT {: vid:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-VARIANT MROLE!
-   CB-ROW @  vid NFAM:TAG  CB-FAM @ vid NFAM:PADS  vid NFAM:PAY-CELLS  MARM!
+   CB-FAM @ vid NFAM:PADS  ix NDICT:CON-PADS +  {: pads:n :}
+   CB-ROW @  vid NFAM:TAG  pads  vid NFAM:PAY-CELLS  MARM!
    MM-OFF MM ! ;
 
 \ ---- the keywords the pass reacts to -----------------------------------------
@@ -6034,6 +6045,52 @@ create DN-BUF DN-CAP allot
    k win win QFILL
    ix entry  win 1+  win 1+  NDICT:GLUE-NONE  STAGE-WCALL ;
 
+\ ---- a call that BUILDS a value of a wide instantiation ------------------------
+\ WHY A CALL NEEDS ANY OF THIS. `OPTION:NONE` is a generated constructor and a
+\ generated constructor is an ordinary word: one routine, compiled once, that
+\ pushes the zero pads and the tag its family DECLARES. A parametric family
+\ instantiated with a multi-cell argument needs MORE pads than that - `option<a>`
+\ reserves one payload slot and `option<obj:line>` needs two - and the routine
+\ cannot know which instantiation this site meant, because the instantiation is a
+\ resolved type term and terms are the checker's. So the cells a declared-width
+\ lowering is missing are added at the SITE, which is where the instantiation is
+\ known, and the checker files how many under this very token
+\ (src/core/type-family.f TFC-CON-XPAD-RECORD, src/compiler/native/dict.f
+\ CON-PADS). Every call that is not a construction, and every construction that
+\ needs nothing added, answers zero and nothing below changes.
+\
+\ THE CELLS GO ON BEFORE THE CALL, WHICH IS THE ONLY PLACE THEY CAN GO. A value of
+\ a family is its payload, then its pads, then its tag on top; the routine pushes
+\ the pads and the tag together, so cells added after it would sit ABOVE the tag
+\ and cells added before it sit exactly where the pads belong - between the
+\ payload the site computed and the pads the routine is about to push. The engine
+\ adds them in the same place at the same site.
+\
+\ AND THE CALL'S OWN WINDOW IS UNTOUCHED, which was written the other way first
+\ and measured. The idea was that a site handing the callee `x` more cells and
+\ taking `x` more back describes what really happens, so the operation's declared
+\ input and output should both grow by `x`. They need not: whatever the callee
+\ declares it takes, the cells it takes are the TOP of the vector and it leaves
+\ them where they are with its own pushes above them - so the value that comes
+\ back is the same run of cells either way, and which side of the window the added
+\ zeros fall on cannot be observed. The wider window compiled every case in
+\ test/compiler/native-match.f identically, including the one whose construction
+\ has a payload UNDERNEATH the cells it adds, so it is not written: an unwidened
+\ window is one fewer number for two stages to disagree about.
+: CON-PADS-PUSH ( n n -- ) {: ix:n x:n :}
+   x 0 ?do  ix 0 EMIT-LIT  loop ;
+
+\ AND WHAT CAME BACK IS ONE VALUE. The call answered its DECLARED bundle and the
+\ cells added here are part of the same value, so the run is marked whole - the
+\ same statement `construct` makes about the cells it pushes, and the reason is
+\ the same: a rename that reached into them would take the value apart. It is
+\ stated here rather than left to the callee's own declared mask because that mask
+\ describes the declared width and this value is wider than that by exactly `x`.
+: CON-BUNDLE-GLUE ( n -- ) {: w:n :}
+   w VN @ > if E-NELAB-UNDER throw then
+   VN @ w - {: base:n :}
+   base  w VRUN-MASK  VGLUE-RUN ;
+
 \ Either way of reaching another word's body. Which one this token is was decided
 \ once, before any walk started, and is read here rather than asked again.
 \
@@ -6042,11 +6099,21 @@ create DN-BUF DN-CAP allot
 \ here rather than inside either arm because it is the same question whichever way
 \ the callee is reached: a copied call consumes the caller's cells exactly as a
 \ made one does, and a body handed to one is a body handed to the other.
+\
+\ AND SO IS THE CONSTRUCTION, for the same reason and with the same number: a
+\ copied body pushes the callee's declared cells exactly as the routine does, so
+\ the zeros go on in front of either and the run they join is the same width
+\ either way. The width is read off the CALLEE's declared row rather than the
+\ copy's, and the two agree because CALLEE-COPY? refuses to copy a body whose
+\ recorded output disagrees with what the caller declares (E-NELAB-INLINE).
 : DO-CALL ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    ix  r  ix WSYM  HIR-WORD:CALLEE-IN@  QCALL-FILL
-   ix INL-AT? if p r ix DO-INLINE exit then
-   r ix DO-WORD-CALL ;
+   ix NDICT:CON-PADS {: x:n :}
+   ix x CON-PADS-PUSH
+   ix INL-AT? if p r ix DO-INLINE else r ix DO-WORD-CALL then
+   x 0= if exit then
+   r  ix WSYM  HIR-WORD:CALLEE-OUT@  x +  CON-BUNDLE-GLUE ;
 
 \ `unloop`: this dialect carries a counted loop's index and limit as block
 \ arguments, so there is no frame to drop and nothing is staged. What it does is
