@@ -630,6 +630,7 @@ public
    s" tools/image-bytes-test.f" GSI-FORK-INCLUDE
    s" tools/codegen-role-test.f" GSI-FORK-INCLUDE
    s" test/icode-fixup-test.f" GSI-FORK-INCLUDE
+   s" tools/aot-section-reach-lint-test.f" GSI-FORK-INCLUDE
    s" test/engine-size-test.f" GSI-FORK-INCLUDE
    s" tools/size-report-test.f" GSI-FORK-INCLUDE
    s" tools/ddc-verify-test.f" GSI-FORK-INCLUDE

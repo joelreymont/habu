@@ -1117,6 +1117,10 @@ SUITE icode-fixup
    test/icode-fixup-test.f
 ;SUITE
 
+SUITE aot-section-reach
+   tools/aot-section-reach-lint-test.f
+;SUITE
+
 SUITE engine-size
    test/engine-size-test.f
 ;SUITE
