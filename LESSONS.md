@@ -6388,3 +6388,27 @@ Grep the counter's readers before reusing the counter's word.
 (2) A refusal ceiling needs its neighbour measured: 17-refused
 alone passes against a chain refusing every depth over four;
 17-refused beside 16-compiled is the assertion.
+
+## The two wide-family landings' four (2026-08-14)
+
+(1) A number's SHAPE is decided by what its consumer already
+emitted: the MATCH half publishes an absolute pad count (its
+consumer emitted nothing); the construction half publishes a
+DIFFERENCE (both its lowerings already push the declared cells).
+"Publish the count the consumer needs" is not "publish an
+absolute".
+(2) The absence policy of a token-keyed store belongs to each
+READER, not the store - a reader that proceeds on absence needs
+its own safety argument (here: cell conservation, pinned by a
+fixture pair, with the prose naming the change that would break
+it).
+(3) A refusal can be a per-definition approximation meeting a
+per-site truth: "travelling" is meaningless at the call the
+routine leaves through. Ask which pass over-approximates before
+designing a new mechanism; when four passes ask one question and
+three run before a block exists, the block-shaped derivation is
+the bug.
+(4) The register verifier is a sharper mutation detector than
+differentials - two mutations that looked like lost optimisations
+were named refusals (DKEEP, DSTACK). Read WHICH pass answers a
+mutation, not just that something red.
