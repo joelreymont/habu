@@ -128,6 +128,58 @@ SUMTYPE hold3 0
    VARIANT full3 pt3 ;VARIANT
 ;SUMTYPE
 
+\ A PARAMETRIC FAMILY THIS PACKAGE OWNS, which is what the `construct` half of a
+\ wide instantiation needs. Minting a value of a family belongs to the package
+\ that DECLARED it, so `construct option none` cannot be spelled here at all and
+\ the reserved form's side of the story would otherwise be untestable. It is
+\ `option` in every respect that matters - one parameter, an empty variant and a
+\ one-field one - so the two spellings of one construction can be held against
+\ each other: `OPTION:NONE` is a CALL to a routine that pushes what the family
+\ declares, and `construct opt2 n2` is this chain pushing the same cells itself,
+\ and a wide instantiation has to reach both.
+ENUM opt2 1
+   VARIANT n2 ;VARIANT
+   VARIANT s2 FIELD value a ;VARIANT
+;ENUM
+
+\ A FAMILY WHOSE WIDE VARIANT STILL CARRIES A PAYLOAD, which `opt2` and `option`
+\ between them cannot reach. In both of those the variant that needs cells added
+\ is the EMPTY one, so a construction that needed pads never had a payload under
+\ them and a lowering could put the added cells anywhere below the tag and still
+\ be right. Here `g1` carries one declared payload term and `g2` carries two, so
+\ at `grow<pt>` the instantiation reserves four payload slots where the
+\ declaration reserved two: `g1` arrives with a two-cell payload on the stack AND
+\ needs a cell added between that payload and its declared pad. It is the shape
+\ that says WHERE the added cells go.
+SUMTYPE grow 1
+   VARIANT g1 a ;VARIANT
+   VARIANT g2 a a ;VARIANT
+;SUMTYPE
+
+\ AND A FAMILY OF TWO PARAMETERS WHOSE ARMS ARE INSTANTIATED TO DIFFERENT WIDTHS,
+\ which is the shape production met first. lib/process.f PROC-CAPTURE>RESULT
+\ returns `result<pcap:captured,pcap:failed>` - a two-cell ok and a three-cell
+\ err - so its `ok` arm needs a cell added and its `err` arm needs none, and the
+\ chain refused it (-8503, measured, and the census row is gone). `pair<pt,pt3>`
+\ is that shape with this file's own types.
+SUMTYPE pair 2
+   VARIANT lo a ;VARIANT
+   VARIANT hi b ;VARIANT
+;SUMTYPE
+
+\ AND A FAMILY WHOSE WIDEST DECLARED VARIANT IS NOT ITS WIDEST INSTANTIATED ONE.
+\ At `narrow<pt3>` the parametric variant needs THREE payload cells and the
+\ two-cell one still needs two, so the instantiation reserves three slots where
+\ the declaration reserved two - and `p1`, which declares one pad, instantiates
+\ none. A lowering that can only ADD cells cannot correct that, so the checker
+\ refuses the construction outright rather than certifying a width no emitter can
+\ build (src/core/type-family.f TFC-XPAD-NARROW-REJECT). It is the negative of
+\ every case below: the same shape, the other sign.
+SUMTYPE narrow 1
+   VARIANT w2 n n ;VARIANT
+   VARIANT p1 a ;VARIANT
+;SUMTYPE
+
 \ ONE VARIANT AND THE SHORTEST SPELLINGS IN THIS FILE, and both are forced by
 \ the ceiling case at the foot of the file. That case has to put MORE dispatch
 \ rows in one definition than the checker records, while staying inside the
@@ -354,6 +406,123 @@ private
       full3 OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
    ;MATCH ;
 
+\ ---- BUILDING a value of a wide instantiation ---------------------------------
+\ THE OTHER HALF OF THE STORY THE CASES ABOVE TELL. Everything above takes a value
+\ of a wide instantiation APART; these put one together, which is the operation a
+\ dispatch has nothing to dispatch over without. A construction is lowered by
+\ pushing what the family DECLARES - the generated constructor is one routine
+\ compiled once, and `construct` reads the same declared pads out of the registry
+\ - so at `option<pt>`, where the instantiation reserves two payload slots and the
+\ declaration reserves one, both spellings are one zero cell short. The checker
+\ files that difference under the construction's own token and the chain adds the
+\ cells at the site, exactly where the engine adds them.
+\
+\ THE TWO ARMS OF EVERY MAKER BELOW NEED DIFFERENT NUMBERS, which is what makes
+\ them a pair rather than one case written twice. `some` at `option<pt>` carries a
+\ two-cell payload into a three-cell bundle and needs NOTHING added; `none`
+\ carries nothing and needs one cell. A store that answered per FAMILY, or per
+\ WORD, would hand one arm the other's number - and the `some` arm would then
+\ carry a cell too many while the `none` arm stayed short, with the two errors
+\ cancelling in any count that only added the arms up.
+: E-MKC ( n -- opt2<pt> )
+   dup 0 > if  dup 3 *  swap 5 *  NMX-PT:MAKE construct opt2 s2  else  drop construct opt2 n2  then ;
+
+: E-RDC ( opt2<pt> -- n )
+   MATCH opt2
+      n2 OF 0 ENDOF
+      s2 OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
+   ;MATCH ;
+
+\ lib/object.f NEXT-LINE'S SHAPE, REDUCED TO WHAT BROKE. That word dispatches over
+\ one `option` and builds ANOTHER at a wider instantiation in both arms, and its
+\ `none` arm is the row this case exists for: it constructed `option<obj:line>`
+\ one cell short and the chain refused the join between the two arms (-8503,
+\ measured). Here the scrutinee is `option<pt>` and what both arms build is
+\ `option<pt3>`, so the constructed instantiation is wider than the one taken
+\ apart and the two arms of the construction need two different numbers - the
+\ `some` arm's payload fills the bundle and needs nothing, the `none` arm needs
+\ two cells.
+: E-RELAY ( option<pt> -- option<pt3> )
+   MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF NMX-PT:UNMAKE over 3 * NMX-PT3:MAKE OPTION:SOME ENDOF
+   ;MATCH ;
+
+\ A WIDE CONSTRUCTION THE LOOP CARRIES ROUND ITS BACK EDGE. The value the body
+\ leaves is the value the next turn takes apart, so its pads travel the edge and
+\ the join at the top of the loop is where a bundle one cell short would meet one
+\ of the right width. The trip count is a constant, so the loop terminates
+\ whatever the payload is, and the payload still changes on every turn.
+: E-LOOPC ( n -- option<pt> )
+   dup 0 > if  dup 3 *  swap 5 *  NMX-PT:MAKE OPTION:SOME  else  drop OPTION:NONE  then
+   3 0 ?do
+      E-INST i +
+      dup 0 > if  dup 3 *  swap 5 *  NMX-PT:MAKE OPTION:SOME  else  drop OPTION:NONE  then
+   loop ;
+
+\ A STRING LITERAL IN FRONT OF A CONSTRUCTION, for the reason E-STRINST puts one
+\ in front of a dispatch: a literal is ONE token reported through its own event,
+\ so a report path that did not step the ordinal would file this construction's
+\ cells under the token before it - which here publishes nothing, and the
+\ construction would go back to being one cell short.
+: E-STRCON ( n -- option<pt> )
+   s" OPTION:NONE construct opt2 n2" 2drop
+   dup 0 > if  dup 3 *  swap 5 *  NMX-PT:MAKE OPTION:SOME  else  drop OPTION:NONE  then ;
+
+\ TWO CONSTRUCTIONS OF DIFFERENT INSTANTIATED WIDTHS IN ONE BODY, and they are of
+\ two FAMILIES because one family cannot be instantiated twice in one declared
+\ output - the checker resolves a construction's arguments from the first bundle
+\ of that family it finds there, so two `option`s would both be built at the first
+\ one's width and it refuses the body (measured). `option<pt>` adds one cell and
+\ `opt2<pt3>` adds two, so a reader keyed on the definition, or on the order the
+\ constructions appear in, gives one of them the other's number.
+: E-TWOC ( -- option<pt> opt2<pt3> )
+   OPTION:NONE  construct opt2 n2 ;
+
+: E-RDC3 ( opt2<pt3> -- n )
+   MATCH opt2
+      n2 OF 0 ENDOF
+      s2 OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
+   ;MATCH ;
+
+\ A CONSTRUCTION THAT HAS A PAYLOAD AND STILL NEEDS CELLS ADDED. `g1` at
+\ `grow<pt>` carries a two-cell payload and the instantiation reserves two more
+\ slots than its declaration, so one cell has to go in BETWEEN that payload and
+\ the pad the lowering already emits. Every other construction in this file needs
+\ cells for a variant that carries nothing, where anything below the tag would
+\ have done; this pair is what says the cells go above the payload.
+: E-MKG ( n -- grow<pt> )
+   dup 3 * swap 5 * NMX-PT:MAKE NMX-GROW:G1 ;
+
+: E-MKGC ( n -- grow<pt> )
+   dup 3 * swap 5 * NMX-PT:MAKE construct grow g1 ;
+
+: E-RDG ( grow<pt> -- n )
+   MATCH grow
+      g1 OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
+      g2 OF NMX-PT:UNMAKE 13 * swap 17 * + >r NMX-PT:UNMAKE 19 * swap 23 * + r> + ENDOF
+   ;MATCH ;
+
+\ THE TWO PARAMETERS OF ONE FAMILY INSTANTIATED TO DIFFERENT WIDTHS. Both arms
+\ carry a payload here - there is no empty variant to hide behind - and only one
+\ of them needs a cell added, so a number taken from the family rather than from
+\ the arm's own token would be wrong for one of the two whichever way it went.
+: E-MKP ( n -- pair<pt,pt3> )
+   dup 0 > if  dup 3 * swap 5 * NMX-PT:MAKE NMX-PAIR:LO
+          else  dup 3 * over 5 * rot 7 * NMX-PT3:MAKE NMX-PAIR:HI  then ;
+
+: E-RDP ( pair<pt,pt3> -- n )
+   MATCH pair
+      lo OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
+      hi OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
+   ;MATCH ;
+
+\ The two answers are combined through the RETURN stack because the value left
+\ under the one just read is a BUNDLE, and a rename over a bundle is refused -
+\ which is the rule this whole file is about, met from the other side.
+: E-RDTWO ( option<pt> opt2<pt3> -- n )
+   E-RDC3 >r E-INST r> 3 * + ;
+
 \ The family's own name inside a comment, and inside a string literal. Neither is
 \ a token of the dispatch grammar; both bodies must compile and answer.
 : E-CMT ( hue -- n )
@@ -427,6 +596,37 @@ private
 : HOLD3$ ( -- ptr u8 n )
    s" : C-HOLD3 ( hold3 -- n ) MATCH hold3 empty3 OF 0 ENDOF full3 OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF ;MATCH ;" ;
 
+\ ---- and the source for the constructions -------------------------------------
+: MKI$ ( -- ptr u8 n )
+   s" : C-MKI ( n -- option<pt> ) dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE OPTION:SOME else drop OPTION:NONE then ;" ;
+
+: MKI3$ ( -- ptr u8 n )
+   s" : C-MKI3 ( n -- option<pt3> ) dup 0 > if dup 3 * over 5 * rot 7 * NMX-PT3:MAKE OPTION:SOME else drop OPTION:NONE then ;" ;
+
+: MKC$ ( -- ptr u8 n )
+   s" : C-MKC ( n -- opt2<pt> ) dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE construct opt2 s2 else drop construct opt2 n2 then ;" ;
+
+: RELAY$ ( -- ptr u8 n )
+   s" : C-RELAY ( option<pt> -- option<pt3> ) MATCH option none OF OPTION:NONE ENDOF some OF NMX-PT:UNMAKE over 3 * NMX-PT3:MAKE OPTION:SOME ENDOF ;MATCH ;" ;
+
+: LOOPC$ ( -- ptr u8 n )
+   s" : C-LOOPC ( n -- option<pt> ) dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE OPTION:SOME else drop OPTION:NONE then 3 0 ?do E-INST i + dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE OPTION:SOME else drop OPTION:NONE then loop ;" ;
+
+: STRCON$ ( -- ptr u8 n )
+   S\" : C-STRCON ( n -- option<pt> ) s\" OPTION:NONE construct opt2 n2\" 2drop dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE OPTION:SOME else drop OPTION:NONE then ;" ;
+
+: TWOC$ ( -- ptr u8 n )
+   s" : C-TWOC ( -- option<pt> opt2<pt3> ) OPTION:NONE construct opt2 n2 ;" ;
+
+: MKG$ ( -- ptr u8 n )
+   s" : C-MKG ( n -- grow<pt> ) dup 3 * swap 5 * NMX-PT:MAKE NMX-GROW:G1 ;" ;
+
+: MKGC$ ( -- ptr u8 n )
+   s" : C-MKGC ( n -- grow<pt> ) dup 3 * swap 5 * NMX-PT:MAKE construct grow g1 ;" ;
+
+: MKP$ ( -- ptr u8 n )
+   s" : C-MKP ( n -- pair<pt,pt3> ) dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE NMX-PAIR:LO else dup 3 * over 5 * rot 7 * NMX-PT3:MAKE NMX-PAIR:HI then ;" ;
+
 : MK$ ( -- ptr u8 n )
    s" : C-MK ( n -- box ) construct box one ;" ;
 
@@ -496,6 +696,45 @@ private
 
 : ROWS26$ ( -- ptr u8 n )
    s" : C-ROWS26 ( -- n ) 0 MS MATCH sol ov OF 1 ENDOF ;MATCH + MS MATCH sol ov OF 3 ENDOF ;MATCH + MS MATCH sol ov OF 5 ENDOF ;MATCH + MS MATCH sol ov OF 7 ENDOF ;MATCH + MS MATCH sol ov OF 9 ENDOF ;MATCH + MS MATCH sol ov OF 11 ENDOF ;MATCH + MS MATCH sol ov OF 13 ENDOF ;MATCH + MS MATCH sol ov OF 15 ENDOF ;MATCH + MS MATCH sol ov OF 17 ENDOF ;MATCH + MS MATCH sol ov OF 19 ENDOF ;MATCH + MS MATCH sol ov OF 21 ENDOF ;MATCH + MS MATCH sol ov OF 23 ENDOF ;MATCH + MS MATCH sol ov OF 25 ENDOF ;MATCH + ;" ;
+
+\ ---- and the two sides of that ceiling for a CONSTRUCTION ---------------------
+\ THE TWO KINDS OF READER MEET THE FULL TABLE DIFFERENTLY, and this pair is what
+\ says so. A dispatch token's reader refuses the body when its row was dropped,
+\ because a token it has already recognised as a dispatch operand must have a
+\ number. A construction files a row only when its instantiation really adds
+\ cells, so ABSENT has to mean "adds nothing" - it is the answer for every
+\ construction of a family that is not parametric and for every call that is not a
+\ construction at all - and a dropped construction row therefore reads as zero and
+\ the site is lowered one bundle short.
+\
+\ THAT IS STILL NOT A WRONG PROGRAM, AND THIS PAIR IS THE PROOF. The missing cells
+\ are CONSERVED: every count the elaborator makes afterwards is against the width
+\ the checker instantiated, so the deficit reaches the definition's own declared
+\ output and is refused there by name. Eleven single-arm dispatches leave room for
+\ the construction's row and the body compiles and answers; twelve fill the table,
+\ the construction's row is dropped, and the body is refused for leaving the wrong
+\ number of cells. Both are inside the recorder's 512-byte text cap (451 and 489
+\ bytes, measured) and its 128-token tape, so nothing else refuses either side.
+: CONFIT$ ( -- ptr u8 n )
+   s" : C-CONFIT ( -- option<pt> ) 0 MS MATCH sol ov OF 1 ENDOF ;MATCH + MS MATCH sol ov OF 3 ENDOF ;MATCH + MS MATCH sol ov OF 5 ENDOF ;MATCH + MS MATCH sol ov OF 7 ENDOF ;MATCH + MS MATCH sol ov OF 9 ENDOF ;MATCH + MS MATCH sol ov OF 11 ENDOF ;MATCH + MS MATCH sol ov OF 13 ENDOF ;MATCH + MS MATCH sol ov OF 15 ENDOF ;MATCH + MS MATCH sol ov OF 17 ENDOF ;MATCH + MS MATCH sol ov OF 19 ENDOF ;MATCH + MS MATCH sol ov OF 21 ENDOF ;MATCH + drop OPTION:NONE ;" ;
+
+: CONOVER$ ( -- ptr u8 n )
+   s" : C-CONOVER ( -- option<pt> ) 0 MS MATCH sol ov OF 1 ENDOF ;MATCH + MS MATCH sol ov OF 3 ENDOF ;MATCH + MS MATCH sol ov OF 5 ENDOF ;MATCH + MS MATCH sol ov OF 7 ENDOF ;MATCH + MS MATCH sol ov OF 9 ENDOF ;MATCH + MS MATCH sol ov OF 11 ENDOF ;MATCH + MS MATCH sol ov OF 13 ENDOF ;MATCH + MS MATCH sol ov OF 15 ENDOF ;MATCH + MS MATCH sol ov OF 17 ENDOF ;MATCH + MS MATCH sol ov OF 19 ENDOF ;MATCH + MS MATCH sol ov OF 21 ENDOF ;MATCH + MS MATCH sol ov OF 23 ENDOF ;MATCH + drop OPTION:NONE ;" ;
+
+\ ---- the construction the CHECKER must go on refusing -------------------------
+\ `narrow<pt3>` reserves three payload slots where its declaration reserved two,
+\ and its `p1` variant fills all three - so where the declaration left one pad the
+\ instantiation leaves none, and a lowering that can only ADD cells would emit a
+\ pad the certified width does not have. The checker refuses it for both
+\ spellings, before the chain is handed anything. It is the one sign of the
+\ difference this lane publishes that must never reach an emitter, so both rows
+\ assert the CHECKER's rejection and that the elaborator recorded no refusal of
+\ its own.
+: NARROWC$ ( -- ptr u8 n )
+   s" : C-NARROWC ( n n n -- narrow<pt3> ) NMX-PT3:MAKE construct narrow p1 ;" ;
+
+: NARROWK$ ( -- ptr u8 n )
+   s" : C-NARROWK ( n n n -- narrow<pt3> ) NMX-PT3:MAKE NMX-NARROW:P1 ;" ;
 
 \ ---- driving one migration where its refusal can be read ----------------------
 \ A checked `catch` takes a stack-neutral quotation and a quotation cannot read
@@ -569,6 +808,11 @@ variable RC-DROPPED variable RC-INST variable RC-INST3
 variable RC-TWOW  variable RC-STRINST
 variable RC-TRIO  variable RC-ARMIF variable RC-ARMLOOP variable RC-HOLD3
 variable RC-ROWS24 variable RC-ROWS26
+variable RC-MKI   variable RC-MKI3  variable RC-MKC
+variable RC-RELAY variable RC-LOOPC variable RC-STRCON variable RC-TWOC
+variable RC-CONFIT variable RC-CONOVER variable RC-MKG variable RC-MKGC variable RC-MKP
+variable RC-NARROWC variable RC-NARROWK
+variable ROW-NARROWC variable ROW-NARROWK
 variable RC-MK0   variable RC-MK2   variable RC-DEAD
 variable RC-CMT   variable RC-STR
 variable RC-NONEXH variable RC-DUPVAR variable RC-NOFAM variable RC-NOTSUM
@@ -613,7 +857,18 @@ variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
    ARMIF$ 4 1 TRY-WIDE RC-ARMIF !
    ARMLOOP$ 4 1 TRY RC-ARMLOOP !
    HOLD3$ 4 1 TRY RC-HOLD3 !
-   ROWS24$ 0 1 TRY RC-ROWS24 ! ;
+   ROWS24$ 0 1 TRY RC-ROWS24 !
+   MKI$ 1 3 TRY RC-MKI !
+   MKI3$ 1 4 TRY RC-MKI3 !
+   MKC$ 1 3 TRY RC-MKC !
+   RELAY$ 3 4 TRY RC-RELAY !
+   LOOPC$ 1 3 TRY-WIDE RC-LOOPC !
+   STRCON$ 1 3 TRY RC-STRCON !
+   TWOC$ 0 7 TRY RC-TWOC !
+   MKG$ 1 5 TRY RC-MKG !
+   MKGC$ 1 5 TRY RC-MKGC !
+   MKP$ 1 4 TRY RC-MKP !
+   CONFIT$ 0 3 TRY RC-CONFIT ! ;
 
 : RUN-THE-REFUSALS ( -- )
    NONEXH$ 1 1 TRY RC-NONEXH !  NELAB:REFUSED-ROW ROW-NONEXH !
@@ -623,7 +878,10 @@ variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
    NOOF$ 1 1 TRY RC-NOOF !      NELAB:REFUSED-ROW ROW-NOOF !
    STRAY$ 1 1 TRY RC-STRAY !    NELAB:REFUSED-ROW ROW-STRAY !
    DROPPED$ 4 1 TRY RC-DROPPED !
-   ROWS26$ 0 1 TRY RC-ROWS26 ! ;
+   ROWS26$ 0 1 TRY RC-ROWS26 !
+   CONOVER$ 0 3 TRY RC-CONOVER !
+   NARROWC$ 3 4 TRY RC-NARROWC !  NELAB:REFUSED-ROW ROW-NARROWC !
+   NARROWK$ 3 4 TRY RC-NARROWK !  NELAB:REFUSED-ROW ROW-NARROWK ! ;
 
 RUN-THE-MIGRATIONS
 RUN-THE-REFUSALS
@@ -910,6 +1168,105 @@ RUN-THE-REFUSALS
    3 5 9 NMX-PT3:MAKE NMX-HOLD3:FULL3 C-HOLD3  T=
    3 5 9 NMX-PT3:MAKE NMX-HOLD3:FULL3 C-HOLD3 151 T= ;
 
+\ ---- building a value of a wide instantiation --------------------------------
+\ Every row here executes both compilations of a MAKER and compares what they
+\ answer through one ENGINE reader, which is the other way round from the cases
+\ above: there the maker was the engine's and the reader was under test, and a
+\ constructor that pushed the wrong number of cells would have been invisible
+\ because nothing in the tree ever compiled one through this chain.
+: BUILD-CASE ( -- )
+   s" a constructor call at a wider instantiation compiles, and agrees" T-LABEL
+   RC-MKI @ 0 T=
+   -1 E-MKI E-INST   -1 C-MKI E-INST   T=
+   0 E-MKI E-INST    0 C-MKI E-INST    T=
+   3 E-MKI E-INST    3 C-MKI E-INST    T=
+   5 E-MKI E-INST    5 C-MKI E-INST    T=
+   3 C-MKI E-INST 204 T=
+   0 C-MKI E-INST 0 T=
+
+   s" and one cell wider again, where its two arms need different numbers" T-LABEL
+   RC-MKI3 @ 0 T=
+   -1 E-MKI3 E-INST3  -1 C-MKI3 E-INST3  T=
+   0 E-MKI3 E-INST3   0 C-MKI3 E-INST3   T=
+   3 E-MKI3 E-INST3   3 C-MKI3 E-INST3   T=
+   7 E-MKI3 E-INST3   7 C-MKI3 E-INST3   T=
+   3 C-MKI3 E-INST3 423 T=
+   0 C-MKI3 E-INST3 0 T=
+
+   s" and the reserved `construct` form of the same construction" T-LABEL
+   RC-MKC @ 0 T=
+   -1 E-MKC E-RDC  -1 C-MKC E-RDC  T=
+   0 E-MKC E-RDC   0 C-MKC E-RDC   T=
+   3 E-MKC E-RDC   3 C-MKC E-RDC   T=
+   5 E-MKC E-RDC   5 C-MKC E-RDC   T=
+   3 C-MKC E-RDC 204 T=
+   0 C-MKC E-RDC 0 T=
+
+   s" a dispatch over one option that builds a wider one in both arms" T-LABEL
+   RC-RELAY @ 0 T=
+   0 E-MKI E-RELAY E-INST3   0 E-MKI C-RELAY E-INST3   T=
+   3 E-MKI E-RELAY E-INST3   3 E-MKI C-RELAY E-INST3   T=
+   5 E-MKI E-RELAY E-INST3   5 E-MKI C-RELAY E-INST3   T=
+   0 E-MKI C-RELAY E-INST3 0 T=
+   3 E-MKI C-RELAY E-INST3 453 T=
+
+   s" and one the back edge of a loop carries round" T-LABEL
+   RC-LOOPC @ 0 T=
+   -1 E-LOOPC E-INST  -1 C-LOOPC E-INST  T=
+   0 E-LOOPC E-INST   0 C-LOOPC E-INST   T=
+   1 E-LOOPC E-INST   1 C-LOOPC E-INST   T=
+   4 E-LOOPC E-INST   4 C-LOOPC E-INST   T=
+
+   s" a string literal in front of a construction does not shift the token" T-LABEL
+   RC-STRCON @ 0 T=
+   0 E-STRCON E-INST  0 C-STRCON E-INST  T=
+   3 E-STRCON E-INST  3 C-STRCON E-INST  T=
+   3 C-STRCON E-INST 204 T=
+
+   s" and two constructions of different widths in one body each get their own" T-LABEL
+   RC-TWOC @ 0 T=
+   E-TWOC E-RDTWO  C-TWOC E-RDTWO  T=
+   C-TWOC E-RDTWO 0 T=
+
+   s" a construction with a payload UNDER the cells it adds, both spellings" T-LABEL
+   RC-MKG @ 0 T=
+   RC-MKGC @ 0 T=
+   -1 E-MKG E-RDG   -1 C-MKG E-RDG   T=
+   3 E-MKG E-RDG    3 C-MKG E-RDG    T=
+   5 E-MKG E-RDG    5 C-MKG E-RDG    T=
+   3 E-MKGC E-RDG   3 C-MKGC E-RDG   T=
+   5 E-MKGC E-RDG   5 C-MKGC E-RDG   T=
+   3 C-MKG E-RDG 204 T=
+   3 C-MKGC E-RDG 204 T=
+
+   s" a two-parameter family whose arms need different numbers" T-LABEL
+   RC-MKP @ 0 T=
+   -1 E-MKP E-RDP  -1 C-MKP E-RDP  T=
+   3 E-MKP E-RDP   3 C-MKP E-RDP   T=
+   7 E-MKP E-RDP   7 C-MKP E-RDP   T=
+   3 C-MKP E-RDP 204 T=
+   -3 C-MKP E-RDP -423 T=
+
+   s" a narrower-than-declared instantiation stays refused by the CHECKER" T-LABEL
+   RC-NARROWC @ RC-REJECT T=
+   ROW-NARROWC @ -1 T=
+   RC-NARROWK @ RC-REJECT T=
+   ROW-NARROWK @ -1 T= ;
+
+\ ---- the construction-row ceiling --------------------------------------------
+\ A construction whose row fits the checker's table compiles and answers; one
+\ whose row the table had no room for reads as "adds nothing", is lowered a
+\ bundle short, and is refused for leaving the wrong number of cells rather than
+\ published. That refusal is the whole reason the reader may answer zero on
+\ absence, so it is asserted by CODE and not merely as "it did not compile".
+: CON-CEILING-CASE ( -- )
+   s" a construction inside the checker's row ceiling compiles and answers" T-LABEL
+   RC-CONFIT @ 0 T=
+   C-CONFIT E-INST 0 T=
+
+   s" and one past it is refused for the cells it left, not published short" T-LABEL
+   RC-CONOVER @ E-NELAB-ARITY T= ;
+
 \ ---- the dispatch-row ceiling ------------------------------------------------
 \ Twenty-four rows in one body is exactly what the checker records and it
 \ compiles; twenty-six overflows the table and is refused by name rather than
@@ -1073,6 +1430,8 @@ public
    PAYLOAD-CASE
    ORDINAL-CASE
    TRIPLE-CASE
+   BUILD-CASE
+   CON-CEILING-CASE
    ROW-CEILING-CASE
    AGREE-UNW
    AGREE-STEP
