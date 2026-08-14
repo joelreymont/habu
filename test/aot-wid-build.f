@@ -72,6 +72,15 @@
 \                      resolve that name and write its entry where the rebase
 \                      would have written the chain's own target. The engine
 \                      reports which of the two ran.
+\   HABU_AOT_XTLIT=1   put a word holding `['] HH0` - a CODE literal naming a
+\                      PRE-WINDOW word - inside the capture window. The compile
+\                      handler emits that chain into the window word's own body, so
+\                      the inliner decline cannot reach it and the capture used to
+\                      die named. It is now carried as a name-keyed code row: the
+\                      build asserts, over the fixture word's own captured record,
+\                      exactly one such row inside its body naming HH0 and no
+\                      rebased code site there, and the engine reports the ticked
+\                      value at boot for its caller to compare against its own.
 \   HABU_AOT_PREWIN=1  put a word that names a PREFIX data word inside the capture
 \                      window, and run it from the boot-run list. The prefix word's
 \                      body is short enough to inline, so the copy used to carry an
@@ -252,6 +261,7 @@ create DRV-CH 1 allot
 : BIG-ENV$ ( -- ptr u8 n )       s" HABU_AOT_BIG" GETENV ;
 : EXT-ENV$ ( -- ptr u8 n )       s" HABU_AOT_EXT" GETENV ;
 : XT-ENV$ ( -- ptr u8 n )        s" HABU_AOT_XTSITE" GETENV ;
+: XL-ENV$ ( -- ptr u8 n )        s" HABU_AOT_XTLIT" GETENV ;
 : PREWIN-ENV$ ( -- ptr u8 n )    s" HABU_AOT_PREWIN" GETENV ;
 
 : REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
@@ -260,7 +270,8 @@ create DRV-CH 1 allot
 : CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
    OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and
    BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and  BIG-ENV$ nip 0 =  and
-   EXT-ENV$ nip 0 =  and  XT-ENV$ nip 0 =  and  PREWIN-ENV$ nip 0 =  and ;
+   EXT-ENV$ nip 0 =  and  XT-ENV$ nip 0 =  and  XL-ENV$ nip 0 =  and
+   PREWIN-ENV$ nip 0 =  and ;
 
 \ The two shape checks are only DEFINED for the plain fixture build
 \ (CHECKS-WANTED?), so the window-content modes, which reuse the two bits and
@@ -504,6 +515,93 @@ create DRV-CH 1 allot
    REPL-BOOTRUN-LINES
    S\" s\" AWB-XT-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
+\ --- the pre-window CODE literal fixture (dot habu-widen-the-aot-089f5faf) ------
+\ THE CASE THE INLINER DECLINE CANNOT REACH. `['] HH0` on a PREFIX word compiles a
+\ code-address chain straight into the window word's own body (habu2.f C-BTICK ->
+\ C-CODE-ADDR), so there is no copy to decline: the chain is the window's own. Its
+\ value is a prefix code address, which the window's DATA span does not hold and
+\ its code span does not hold either, and on the base this exact fixture ends the
+\ build - "aot-capture: recorded address site at blob offset N carries V which is
+\ in neither the window's DATA span nor its code span", exit 74, no image. The
+\ capture now recognises it as a call target that is not a BL and writes a
+\ name-keyed code row; the seed resolves HH0 in the engine it is booting.
+\
+\ WHAT THE CHECK ASSERTS, and why each half is needed. It finds AWB-XL-REPORT's own
+\ captured dict record BY NAME and takes its blob span from that record, then
+\ requires THREE things over that span: exactly one named code row inside it (more
+\ than one means the fixture grew a second literal and the case stopped being
+\ about the one under test), that row's pooled name is HH0 (a row naming something
+\ else would resolve to the wrong entry and still "pass" a count), and NO rebased
+\ code site inside it (which is the other way the classification could have gone -
+\ the two lists are exclusive, so this is what says the site took the named branch
+\ rather than being carried b0-relative).
+\
+\ WHAT THE BOOT HALF ASSERTS. The reporter prints the ticked value from INSIDE the
+\ window. Its caller boots the same engine again with a program that ticks the same
+\ word from OUTSIDE, in ordinary compiled code, and requires the two numbers to be
+\ equal. That needs no fixed constant, so it survives ASLR, and neither of the two
+\ wrong answers can produce it: the host's address (had the chain been carried
+\ verbatim) is not this engine's, and the zero the capture leaves is not either.
+: XL-CHECK-DEF ( -- )
+   s" package AOT-CAPTURE" DRV-LINE
+   s" variable XL-HIT  variable XL-CS" DRV-LINE
+   s" : XL-NAME= ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr u:n :}" DRV-LINE
+   s"    u 0 ?do a i + c@ b i + c@ <> if 0 0= 0= unloop exit then loop  0 0= ;" DRV-LINE
+   S\" : XL-HH0$ ( -- ptr u8 n ) s\" HH0\" ;" DRV-LINE
+   s" : XL-REC-BY-NAME ( ptr u8 n -- n ) {: a:ptr u:n :}" DRV-LINE
+   s"    AOT-REC-N @ 0 ?do" DRV-LINE
+   s"       i ACAP-REC-DST {: v:ptr :}" DRV-LINE
+   s"       v 16 + ACAP-W32@ u = if" DRV-LINE
+   s"          v 24 + a u XL-NAME= if i unloop exit then" DRV-LINE
+   s"       then" DRV-LINE
+   s"    loop  -1 ;" DRV-LINE
+   s" : XL-ROW ( n -- ptr u8 ) 8 * AOT-XTSITE:BUF@ + ;" DRV-LINE
+   s" : XL-POOL= ( n ptr u8 n -- bool ) {: noff:n a:ptr u:n :}" DRV-LINE
+   s"    AOT-NAMES-BUF@ noff + c@ u = 0= if 0 0= 0= exit then" DRV-LINE
+   s"    AOT-NAMES-BUF@ noff 1+ + a u XL-NAME= ;" DRV-LINE
+   s" : XL-ROW-IN ( n n -- n ) {: start:n clen:n :}" DRV-LINE
+   s"    -1 XL-HIT !" DRV-LINE
+   s"    AOT-XTSITE:N @ 0 ?do" DRV-LINE
+   s"       i XL-ROW ACAP-W32@ {: off:n :}" DRV-LINE
+   s"       off start >= off start clen + < and if" DRV-LINE
+   s"          XL-HIT @ 0 >= if" DRV-LINE
+   S\"             s\" aot-wid-build: xtlit body holds more than one named row\" 74 die then" DRV-LINE
+   s"          i XL-HIT !" DRV-LINE
+   s"       then" DRV-LINE
+   s"    loop" DRV-LINE
+   s"    XL-HIT @ ;" DRV-LINE
+   s" : XL-CSITES ( n n -- n ) {: start:n clen:n :}" DRV-LINE
+   s"    0 XL-CS !" DRV-LINE
+   s"    AOT-CSITE-N @ 0 ?do" DRV-LINE
+   s"       AOT-DSITE-N @ i + 4 * AOT-DSITE-BUF@ + ACAP-W32@ {: off:n :}" DRV-LINE
+   s"       off start >= off start clen + < and if 1 XL-CS +! then" DRV-LINE
+   s"    loop  XL-CS @ ;" DRV-LINE
+   s" : XL-CHECK ( -- )" DRV-LINE
+   S\"    s\" AWB-XL-REPORT\" XL-REC-BY-NAME {: k:n :}" DRV-LINE
+   s"    k 0 < if" DRV-LINE
+   S\"       s\" aot-wid-build: xtlit fixture record not found\" 74 die then" DRV-LINE
+   s"    k ACAP-REC-DST {: v:ptr :}" DRV-LINE
+   s"    v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}" DRV-LINE
+   s"    start clen XL-ROW-IN {: xi:n :}" DRV-LINE
+   s"    xi 0 < if" DRV-LINE
+   S\"       s\" aot-wid-build: xtlit body made no named code row\" 74 die then" DRV-LINE
+   s"    xi XL-ROW 4 + ACAP-W32@ XL-HH0$ XL-POOL= 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: xtlit row names some other word\" 74 die then" DRV-LINE
+   s"    start clen XL-CSITES {: cs:n :}" DRV-LINE
+   s"    cs 0= 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: xtlit body still carries a rebased code site\" 74 die then" DRV-LINE
+   S\"    s\" aot-wid-build: xtlit \" type xi XL-ROW ACAP-W32@ . cr" DRV-LINE
+   S\"    s\" aot-wid-build: xtlit-csites \" type cs . cr ;" DRV-LINE
+   s" XL-CHECK" DRV-LINE
+   s" ;package" DRV-LINE ;
+
+: XL-FIXTURE-LINES ( -- )
+   S\" : AWB-XL-REPORT ( -- ) s\" awb-xl=\" type ['] HH0 . cr ;" DRV-LINE
+   RECAPTURE-LINE
+   XL-CHECK-DEF
+   REPL-BOOTRUN-LINES
+   S\" s\" AWB-XL-REPORT\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
 \ --- the pre-window DATA literal fixture (dot habu-aot-pre-window-0b01043c) -----
 \ THE SHAPE THE WHOLE DOT IS ABOUT. A window word names a data word the PREFIX
 \ defined. The prefix's `create` sits below the window's DATA span, so the address
@@ -588,6 +686,7 @@ create DRV-CH 1 allot
    BIG-ENV$ nip 0 > if BIG-FIXTURE-LINES exit then
    EXT-ENV$ nip 0 > if EXT-FIXTURE-LINES exit then
    XT-ENV$ nip 0 > if XT-FIXTURE-LINES exit then
+   XL-ENV$ nip 0 > if XL-FIXTURE-LINES exit then
    PREWIN-ENV$ nip 0 > if PREWIN-FIXTURE-LINES then ;
 
 : INJECT ( -- )

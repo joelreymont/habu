@@ -320,22 +320,20 @@ variable ACAP-P
 \ above every address that region can hold on either target, so no value can be in
 \ both spans and the two counts partition the recorded set.
 \
-\ AND A SITE IN NEITHER SPAN IS FATAL. It is an address the window does not carry
-\ - the shape a PRE-WINDOW literal has: data allotted while the prefix loaded, so
-\ below d0, whose correct value is fixed by the prefix's own DP and differs
-\ between the metabuild host and bin/hb. Rebasing it by this window's delta would
-\ be wrong and skipping it leaves the host's address baked in. The band is what
-\ makes the case VISIBLE at all: the old value-range scan recorded no site for
-\ such a chain and said nothing, so the seeded engine read a host address in
-\ silence. Turning that silence into a named refusal is the improvement, and the
-\ refusal correctly blocks a capture whose window cannot describe its own
-\ contents.
+\ AND A SITE IN NEITHER SPAN IS AN ADDRESS THE WINDOW DOES NOT CARRY - the shape a
+\ PRE-WINDOW literal has, whose correct value is fixed by the prefix's own layout
+\ and differs between the metabuild host and bin/hb. Rebasing it by this window's
+\ delta would be wrong and skipping it leaves the host's address baked in. The band
+\ is what makes the case VISIBLE at all: the old value-range scan recorded no site
+\ for such a chain and said nothing, so the seeded engine read a host address in
+\ silence. Which of the two things happens to it now depends on what it names, and
+\ ACAP-OUT-CHAIN below is where that is decided.
 \
-\ IT IS NOW A BACKSTOP, AND THAT IS THE RULING (dot
+\ PRE-WINDOW DATA IS ELIMINATED, AND THAT IS THE RULING (dot
 \ habu-aot-pre-window-0b01043c). Carrying such a site was measured and REFUTED:
 \ the metabuild host truncates its boot dictionary back to the first prefix file
 \ and recompiles the whole core prefix a second time without rewinding DP, so
-\ every pre-window address a window word can hold lives in a band with no
+\ every pre-window DATA address a window word can hold lives in a band with no
 \ counterpart in the target, and the two layouts are not even order-isomorphic -
 \ there is no delta and no monotone map, and a verbatim carry is silent
 \ corruption. What was eliminated instead is the way such a site got into a
@@ -343,8 +341,15 @@ variable ACAP-P
 \ compile-mode inliner then declines to COPY a body carrying a chain the window
 \ cannot describe and emits its call instead (habu2.f AOT-WINDOW:EMIT-OUTSIDE), which the
 \ scan above records as an ordinary call site and the seed relocates by name. So
-\ the class is empty by construction and this refusal guards the next producer of
+\ that class is empty by construction and the refusal guards the next producer of
 \ one rather than the one that used to arrive here every build.
+\
+\ PRE-WINDOW CODE IS CARRIED, AND THE DECLINE CANNOT REACH IT. A `['] X` or
+\ `postpone X` naming a prefix word is not a copied body - the compile handler
+\ emits the chain into the window word's own body - so there is nothing for the
+\ inliner to decline. It is instead a call target that is not a BL, and it gets the
+\ answer a call target gets: the name travels and the seed resolves it. That is the
+\ name-keyed row above (dot habu-widen-the-aot-089f5faf).
 : ACAP-CHAIN-BIT? ( n n -- bool ) {: bstart:n boff:n :}
    bstart boff + AOT-DBASE-N - {: off:n :}
    AOT-LIVE-DATA SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + AOT-A>U8 c@
@@ -375,15 +380,14 @@ variable ACAP-P
 \ the same reason a recorded BL's imm26 is - a captured host address is both
 \ builder-dependent and wrong in the seeded engine - and zeroing it means the boot
 \ patch is the only thing that can put an address there.
-\ ITS PRODUCER IS NOT HERE YET. A code literal a window word CREATES for a
-\ pre-window word (`['] X` on a prefix word) is what needs this, and
-\ ACAP-SCAN-DSITES still refuses one below. Eliminating the class the way the DATA
-\ literals were eliminated does not reach it: the inliner's decline removes COPIES
-\ of such a chain, not the one the compile handler emits into the window word's own
-\ body. Building the name-keyed row is dot habu-widen-the-aot-089f5faf. The row and
-\ its boot arm ship now because the format is baked into the engine and migrating
-\ it twice would migrate every baked-code route twice. An in-window code literal is
-\ NOT a candidate: rebasing it by the code delta is correct and costs no lookup.
+\ ITS PRODUCER IS ACAP-OUT-CHAIN BELOW. A code literal a window word CREATES for a
+\ pre-window word (`['] X` or `postpone X` on a prefix word) is what needs this.
+\ Eliminating the class the way the DATA literals were eliminated does not reach
+\ it: the inliner's decline removes COPIES of such a chain, not the one the compile
+\ handler emits into the window word's own body (habu2.f C-BTICK and C-POSTPONE
+\ both call C-CODE-ADDR there), so the decline leaves the case standing and only a
+\ carry can answer it. An in-window code literal is NOT a candidate: rebasing it by
+\ the code delta is correct and costs no lookup.
 : ACAP-ADD-XTSITE ( n ptr u8 n -- ) {: boff:n a:ptr u:n :}
    AOT-XTSITE:N @ AOT-XTSITE:MAX >= if s" aot-capture: too many named code sites" 74 die then
    a u ACAP-POOL-ADD {: noff:n :}
@@ -400,9 +404,45 @@ variable ACAP-P
    s" which is in neither the window's DATA span nor its code span" type cr
    s" aot-capture: recorded address site outside both window spans" 74 die ;
 
+\ A recorded chain the window's DATA span does not hold. Three outcomes, and the
+\ middle one is what dot habu-widen-the-aot-089f5faf added.
+\
+\ IN-WINDOW CODE is left alone: ACAP-SCAN-CSITES rebases it by the code delta, and
+\ the value it must preserve is (value - b0), which the second sweep stores.
+\
+\ A WORD'S ENTRY becomes a name-keyed row. The chain holds the code entry of a word
+\ the host dictionary knows and the window does not contain, which is exactly the
+\ shape a `['] X` or `postpone X` on a PRE-WINDOW word compiles to. Its value cannot
+\ be rebased -- the metabuild host recompiles the whole core prefix a second time
+\ without rewinding DP, so its prefix band has no counterpart in the target and no
+\ delta relates the two -- and it cannot be left, because that bakes the building
+\ host's address into bin/hb. What it CAN be is what a call site already is: a NAME.
+\ The reverse lookup is the same ACAP-TGT>REC the BL scan uses, the name is read the
+\ same way (AOT-RNPTR, so an EXT name travels too), and the seed resolves it with
+\ the same LFIND. ACAP-ADD-XTSITE zeroes the four lanes, so no host address is left
+\ underneath the answer.
+\
+\ ANYTHING ELSE STILL ENDS THE BUILD, and the two classes cannot be confused. A
+\ pre-window DATA address is the other thing a window word can hold that the spans
+\ do not place, and it can never match here: a record's [0] is a code ENTRY, and
+\ DATA-VA sits far above every address the code region can hold on either target,
+\ so no DATA address equals any record's xt. Pre-window DATA is eliminated at the
+\ producer instead (the inliner decline, dot habu-aot-pre-window-0b01043c) and its
+\ arrival here is still the named refusal.
+: ACAP-OUT-CHAIN ( n n n n -- ) {: boff:n v:n bstart:n bend:n :}
+   v bstart >= v bend < and if exit then          \ in-window code: the CODE sweep rebases it
+   v ACAP-TGT>REC {: k:n :}
+   k 0 < if boff v ACAP-UNCLASSIFIED then         \ no return: the refusal ends the build
+   boff  k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN  ACAP-ADD-XTSITE ;
+
 \ The DATA half, and the totality check. Every recorded site is classified here:
-\ one in the DATA span is recorded for the boot DATA-reloc pass, one in the code
-\ span is left for the second sweep, and one in neither ends the build.
+\ one in the DATA span is recorded for the boot DATA-reloc pass, and every other
+\ one goes to ACAP-OUT-CHAIN above, which rebases, names, or refuses it.
+\ THE ZEROED LANES DO NOT DISTURB THE SECOND SWEEP. A named row's chain is left
+\ holding 0, and ACAP-SCAN-CSITES asks the same in-code-span question of it, which
+\ 0 fails -- so a site named here is not also rebased there. The interior words of
+\ the chain are never re-examined either way: the address map carries one bit at
+\ each chain's START and this walk tests that bit before it reads anything.
 : ACAP-SCAN-DSITES ( n n n n -- ) {: bstart:n bend:n d0:n d1:n :}
    d0 AOT-DATA-D0 !  d1 d0 - AOT-DATA-SIZE !
    0 ACAP-P !
@@ -412,7 +452,7 @@ variable ACAP-P
          v d0 >= v d1 < and if
             ACAP-P @ ACAP-ADD-DSITE
          else
-            v bstart >= v bend < and 0= if ACAP-P @ v ACAP-UNCLASSIFIED then
+            ACAP-P @ v bstart bend ACAP-OUT-CHAIN
          then
       then
       ACAP-P @ 4 + ACAP-P !
