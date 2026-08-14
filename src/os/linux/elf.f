@@ -51,17 +51,22 @@ $401 constant ELF-R-AARCH64-GLOB-DAT
 1 constant DT-NEEDED
 30 constant DT-FLAGS
 8 constant DF-BIND-NOW
-$200000 constant MPAGE
+\ The generated executable window: everything the assembler can emit, behind the
+\ header page it sits at. It is DERIVED from the assembler's own buffer rather
+\ than written out again, because the two are one fact and a second spelling of
+\ one fact is a drift waiting for an editor. What used to hold them together was
+\ a load-time comparison of two hand-written literals; the comparison is gone
+\ with the second literal, and the drift it watched for is now unwritable.
+CODE-CAP-BYTES CODE-OFF + constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
 
 \ Fail closed at load time: the image buffer must fit the largest emittable
 \ image (text at MPAGE + the RW tail) so the loud MPAGE code-window guard
 \ stays the binding constraint, never a silent M-BOUNDS-RC throw from the
-\ byte cursor.
+\ byte cursor. MSIZE belongs to the target-neutral src/os/image-bytes.f, which
+\ cannot see this target's tail, so this is the check that binds the two.
 : ELF-MSIZE-CHECK ( -- )
-   CODE-CAP-BYTES CODE-OFF + MPAGE <>
-   IF s" elf: code capacity differs from MPAGE" 73 die THEN
    MPAGE ELF-RW-SZ + MSIZE >
    IF s" elf: MSIZE below max image" 73 die THEN ;
 ELF-MSIZE-CHECK

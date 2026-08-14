@@ -20,7 +20,14 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $80000034 constant LC-DYLD-CHAINED-FIXUPS
 $100000000 constant VMBASE
-$200000   constant MPAGE             \ maximum generated executable window
+\ The maximum generated executable window: everything the assembler can emit,
+\ behind the header page it sits at. It is DERIVED from the assembler's own
+\ buffer rather than written out again, because the two are one fact and a
+\ second spelling of one fact is a drift waiting for an editor. What used to
+\ hold them together was a load-time comparison of two hand-written literals;
+\ the comparison is gone with the second literal, and the drift it watched for
+\ is now unwritable.
+CODE-CAP-BYTES CODE-OFF + constant MPAGE
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
 104       constant MACHO-FIXUPS-SIZE
@@ -36,10 +43,10 @@ variable CODELEN
 \ Fail closed at load time: the image buffer must fit the largest emittable
 \ image (__text at MPAGE + __DATA_CONST + chained fixups + signature) so the
 \ loud MPAGE code-window guard stays the binding constraint, never a silent
-\ M-BOUNDS-RC throw from the byte cursor.
+\ M-BOUNDS-RC throw from the byte cursor. MSIZE belongs to the target-neutral
+\ src/os/image-bytes.f, which cannot see this target's tail, so this is the
+\ check that binds the two.
 : MACHO-MSIZE-CHECK ( -- )
-   CODE-CAP-BYTES CODE-OFF + MPAGE <>
-   IF s" macho: code capacity differs from MPAGE" 73 die THEN
    MPAGE DATA-CONST-SIZE + MACHO-FIXUPS-SIZE + MACHO-SIG-MAX + MSIZE >
    IF s" macho: MSIZE below max image" 73 die THEN ;
 MACHO-MSIZE-CHECK
