@@ -1,8 +1,10 @@
 ---
 title: Widen the AOT capture format past its 64KB world
-status: active
+status: closed
 priority: 2
 issue-type: task
+closed-at: "2026-08-14T14:30:41.186213+02:00"
+close-reason: "Riders completed at f85ce686 (two commits): the acceptance (capture AND boot >64KB) was landed-but-unasserted on macOS (the PTY forge self-skips green) - now asserted IN BATCH unconditionally, ASLR-proof; the missing CODE-literal producer built (ACAP-OUT-CHAIN carries a pre-window ['] by name via the BL scan's own reverse lookup; red-first at the exact offset). TWO FINDINGS DOTTED: LAOTWIDGATE is O(sites x dictionary) - 85ms/boot at chain scale, paid per boot since arm-seed (the leaf's cost model named the wrong term; LFIND is 20ns); the nine capacity refusals have no fixtures (stage engine's own cap dies first - needs a direct-drive vehicle)."
 created-at: "\"2026-08-11T17:49:45.565263+02:00\""
 ---
 
