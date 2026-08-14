@@ -6659,3 +6659,22 @@ index build, its proof and two 65,536-slot clears cost 3.1 ms per
 capture, which at REPL scale ate 40% of the 7.6 ms saved (8.60 ms ->
 3.85 ms) and at chain scale was noise against 1.45 s -> 15 ms. Time
 the phases you ADD in the same run as the phases you remove.
+
+## The reach and hash landings' four (2026-08-14)
+
+(1) A fixture at word zero cannot see an offset/distance
+confusion - the two are the same number at the origin. Forward
+fixup fixtures emit filler first; the mutation that passed until
+they did is the record.
+(2) A label can BE a bound's measuring instrument: LSRC's ADR is
+what makes ADR reach bound the engine-code half - converting it
+would have deleted the bound while appearing to complete the
+conversion. Ask what a site MEASURES before converting it.
+(3) A started-green mutation is a coverage hole wearing a pass:
+zero duplicate xts and zero hash collisions existed to exercise
+two load-bearing branches - each became a production fixture with
+a guard that reds if the fixture goes vacuous.
+(4) When a checksum comparison is confounded (the DP shift moved
+the sha), the honest identity proof is a canonical dump of every
+DECISION diffed against a control padded by exactly the
+confounder - not a weaker assertion.
