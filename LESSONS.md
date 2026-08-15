@@ -6895,7 +6895,6 @@ hand-built multi-range deletion eats a code line eventually
 SL-PREFIX); comment edits leave the sha identical because
 comments compile to nothing, but it is a seed file and install
 belongs before any gate that reads it.
-
 ## 2026-08-15 - the captured-wid rebase's six (bake-chain-7)
 
 (1) A wordlist id is a coordinate, not a name. The capture already
@@ -6934,3 +6933,7 @@ the host's own AOT-ARM:WIDN baked a name no target defines and the
 engine died exit 81 - the boot BL-range assertion, because an
 unresolved callee's displacement is enormous. Primitives and
 layout constants only, in anything the window will compile.
+(7) The stdin host's own band claim is the same class and is
+false today - dotted habu-stdin-host-s-5a992a38: declare bands
+where the marks are true, or the audit fires never.
+

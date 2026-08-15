@@ -589,3 +589,17 @@ owned by the capture tool's own packages - the accidental margin
 the rebase retires. The PRE-window bitmap's host-numbering
 soundness (correct only by shared load-order prefix) is
 ef47ad69's ground; not this lane's scope.
+
+WID REBASE LANDED 2026-08-15 (bake-chain-7, merged 3270f147, dot
+54dec421 CLOSED): wids are window coordinates end to end -
+mandatory WID-SPAN latch, capture-side audit by name, seed-side
+rebase + single WIDN-by-span advance, window seals as a relative
+table applied post-rebase, artifact VERSION 2. Six mutations red
+named cases; one check deleted as redundant (unsigned span test
+covers both sides). The four-wid accidental margin is retired.
+Host prelude-band falsity dotted 5a992a38 (exit-81 class).
+REMAINING: (2) the merge per MERGE RULINGS incl. amended (4)
+(the PWIN table and wid span rebase through the merge onto the
+host's window continuation) -> (3) two-engine emit -> (4)
+sha-convergence fixpoint -> (5) provided rows -> (6) battery +
+boot delta.
