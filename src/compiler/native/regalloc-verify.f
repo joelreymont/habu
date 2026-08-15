@@ -1,87 +1,15 @@
 \ regalloc-verify.f - decide whether a finished register assignment is true of the
 \ module it claims to be about.
 \
-\ docs/compiler-ir-design.md section 7.9 ("validate the final assignment
-\ independently") and section 11.3, which lists the register-allocation validator
-\ among the checks the JIT path runs before it makes anything executable. The
-\ allocator in src/compiler/native/regalloc.f publishes claims; this file is what
-\ turns an accepted claim into an answer a later stage may emit code from, and it
-\ is the only place that answers at all.
+\ It re-derives every register fact from the operand and result windows of the
+\ module it is handed and knows nothing about how the allocator reached them.
 \
-\ WHAT INDEPENDENT MEANS HERE. Every fact this file decides on is re-derived from
-\ the frozen module, never read out of the allocator's working tables. It walks
-\ the block itself to learn where each value is written and where it is last
-\ read, and it compares that against the interval the allocator recorded - so an
-\ allocator that mis-measured a live range is caught by the disagreement, not
-\ excused by it. The one thing it does take from the allocator is which module
-\ and which routine contract the allocation was made for, because those are what
-\ it is checking the assignment against; both are checked to be the ones it was
-\ handed. That contract is also where the routine's fixed registers are declared
-\ - which register each argument arrives in and each returned value leaves in -
-\ and every declared position is compared against the assignment itself, so an
-\ allocator that pre-coloured nothing, or pre-coloured the wrong value, or
-\ planned a move it never made, disagrees here rather than being taken at its
-\ word. Which register fields an instruction form shares is likewise re-derived:
-\ the ties come out of the module's own schema table, so this file and the
-\ allocator agree because they read one declaration, not because one told the
-\ other. The dialect's own identities - which type is a register, which is a
-\ memory token, which attribute key carries a slot - come from the dialect
-\ itself, asked while the module was still being built, for the same reason: an
-\ identity taken from the allocator would be the allocator telling the checker
-\ what to check.
+\ A register number names a register of ONE file - d0 and x0 are two registers
+\ and both are number zero - so every question about a register is asked of the
+\ FILE the value's class belongs to.
 \
-\ THE FRAME, AND WHAT IS DECIDABLE ABOUT IT. A value that lost its register lives
-\ in a slot of the routine's frame, and four facts about that are this file's:
-\   - every slot a frame access names is one the routine can actually address.
-\     A64EFF:CHECK-SLOT is the rule and it is called with the routine's own
-\     contract, so a slot outside the declared frame, an unaligned one, or one
-\     past the reach of the offset field is refused under A64EFF's name.
-\   - the frame the module reserves is the frame the contract declares, it is
-\     reserved by the block's first operation and released by the one in front of
-\     the terminator, and no other operation touches the stack pointer. A module
-\     that stores into a frame it never took is the failure this catches.
-\   - no two values share a slot: a slot is written once. That is stronger than
-\     "no two values live at once share a slot" and it is what is decidable from
-\     the module alone - a module records which slot a store writes, not which
-\     value a later load was meant for, so a slot handed to a second value would
-\     be indistinguishable from a slot legitimately reused if reuse were allowed.
-\     The allocator never reuses a slot, so this check is exact for it; an
-\     allocator that starts reusing slots reddens here, which is the right way to
-\     find out that this rule has to be generalised with it.
-\   - every load reads a slot something stored to first, so no reload invents a
-\     value out of whatever the frame happened to hold.
-\ What is NOT decided here is that the loaded value is the value the program
-\ wanted: that is a statement about the module this one was rewritten FROM, and
-\ this file is handed one module. The owner of that comparison is the lowering
-\ pass (dot habu-prove-the-spill-0294e0e8).
-\
-\ TWO VALUE CLASSES. A general register and a memory token, told apart by type.
-\ A token lives in no register, so it is covered and measured like every other
-\ value and takes part in no register rule: it is not checked against the pool,
-\ it never clashes with anything, and asking for its register is refused rather
-\ than answered with something that looks like one.
-\
-\ THE INTERFERENCE RULE, IN FULL. Two different values may share a register
-\ exactly when they are never live at the same instant. Order them by where they
-\ are written:
-\   - two values written at the same position are always live together. Only
-\     block arguments can be, and they all arrive at once, so two arguments never
-\     share a register - not even when one of them is never read, because the
-\     caller still has to have put both somewhere.
-\   - otherwise the earlier value is dead by the time the later one is written
-\     exactly when its last read is at or before that position. An operation
-\     reads its operands and then writes its results, so a value read for the
-\     last time by operation i and a value written by operation i do not clash;
-\     that is what lets a chain run in one register, and it is what makes the
-\     move-wide overwrite's tied register legal rather than a special case.
-\ A value that is never read is live only where it is written, which still costs
-\ a register there, because the instruction writes one.
-\
-\ WHAT THIS FILE DOES NOT DECIDE. Whether the module is a well-formed A64IR
-\ module at all is IR-VERIFY's and the dialect's, and whether the operations
-\ compute what the source said is the selector's. This file assumes a verified
-\ module and asks one question about it: is this assignment of registers to its
-\ values legal, complete, and consistent with its own definitions and uses.
+\ Value ids are the MODULE's and slots are a FUNCTION's, so the value tables are
+\ cleared once per module and the slot table once per function.
 
 require lib/prelude.f
 require lib/errors.f
@@ -101,24 +29,12 @@ package A64RAV
 using NFROZEN
 
 \ ---- the one door this check opens for a reader ------------------------------
-\ A residency refusal names one code for three different findings, and the
-\ module it was about lives in an arena torn down with the run - so a reader
-\ that wants either has to be called WHILE the run is standing. This is that
-\ moment. It is declared here, before everything, because the refusal that calls
-\ it is far below and the name has to be the PUBLIC deferred word for a tool to
-\ install into; it is a door rather than a printer because no compiler file here
-\ formats diagnostics, and a formatter installed at the refusal site would be
-\ carried into every engine build. tools/codegen-verify-dump.f is the reader.
-\ The default does nothing, and is installed as soon as there is a body for it.
 public
 
 defer DKEEP-HOOK ( -- )
 
 private
 
-\ No position at all: what the tables hold for a value this check has not
-\ measured yet. Every position a measured value carries is one of the linear
-\ order re-derived below, which starts at zero.
 -1 constant NOPOS
 
 0 constant ST-NONE
@@ -127,39 +43,15 @@ private
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ The three value classes this dialect has, spelled exactly as the allocator
-\ spells them: a general register, a floating register, and the memory token the
-\ frame forms thread.
 0 constant C-GPR
 1 constant C-TOKEN
 2 constant C-FPR
 
-\ The register FILES those classes live in. A register number names a register of
-\ ONE file - d0 and x0 are two registers and both are number zero - so every
-\ question below about a register is asked of the FILE the value's class belongs
-\ to, and never of the class itself.
-\
-\ WHY THE TWO ARE WRITTEN DOWN SEPARATELY WHILE THEY STILL AGREE. Today the map
-\ below is one-to-one, so "same class" and "same file" pick out the same pairs of
-\ values and every check here would read the same either way. They stop agreeing
-\ the moment one file holds two classes, which is the shape this machine's vector
-\ registers already have - v3 and d3 are ONE register - and a check keyed on the
-\ class would then quietly stop comparing a vector against a double and let the
-\ allocator put both in that one register. So the file is what every register
-\ question is asked of, ahead of any class that shares one, and the agreement of
-\ today's two answers is a fact about the map rather than a thing anything relies
-\ on.
-\
-\ AND A CLASS THIS MAP DOES NOT NAME IS REFUSED. FILE-OF is total over the
-\ classes it knows and throws for every other one, so a class added without a
-\ file cannot be silently treated as a general register: it fails on the first
-\ module that carries one, loudly, which is the only behaviour that keeps the
-\ paragraph above true of a dialect that grows.
+\ Two files, separately numbered, so a register question is always asked of one.
 2 constant FILES-N
 0 constant F-GPR
 1 constant F-FPR
 
-\ The class is held in no register file at all.
 -1 constant NOFILE
 
 : FILE-OF ( n -- n )
@@ -169,10 +61,8 @@ private
    cls C-TOKEN = if NOFILE exit then
    E-A64RAV-CLASS throw ;
 
-\ This operation names no slot.
 -1 constant NOSLOT
 
-\ Slots one block may use: one per value at worst.
 VMAX constant SLOTS-MAX
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -213,12 +103,8 @@ create D-AT VMAX cells allot         \ where the module says each value is writt
 create L-AT VMAX cells allot         \ where the module says each value is last read
 create S-AT VMAX cells allot         \ whether the block defines this value at all
 
-\ Where each function's positions begin on the module's one number line, with
-\ the line's end filed one past the last function. A value belongs to the
-\ function whose window its definition position falls in, which is the only sense
-\ in which "belongs to" is needed here: the intervals of two functions are
-\ disjoint, so the window is a fact about the line rather than a second copy of
-\ the module's structure.
+\ A value belongs to the function whose window its definition position falls in,
+\ which is the only sense in which a value has a function at all.
 create F-VB NFROZEN:FMAX 1 + cells allot
 create C-AT VMAX cells allot         \ which class the module gives each value
 create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
@@ -241,17 +127,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 : USES! ( n n -- )                   {: v:n k:n :} v k cells U-AT + ! ;
 
 \ ---- the tables, and which of them a FUNCTION owns ---------------------------
-\ THE VALUE TABLES ARE THE MODULE'S AND THE SLOT TABLE IS A FUNCTION'S, and the
-\ difference is not a convention. A value id is local to the MODULE, so two
-\ functions never name one value and one table over the whole module answers for
-\ both. A frame slot is an offset from the machine stack pointer inside the frame
-\ the routine RESERVED, and every function of an emission reserves its own -
-\ src/compiler/native/select.f builds a prologue per function - so slot zero of
-\ one function and slot zero of another are two different words of two different
-\ frames. Cleared once for the module, the second function's first store into
-\ slot zero reads as a second value in the first function's slot, which is
-\ E-A64RAV-SHARE about two values that were never live at the same moment.
-\ Measured, on a definition holding one quotation whose value crosses a call.
+\ The value tables are the MODULE's; the slot table is a FUNCTION's.
 : VALUES-CLEAR ( -- )
    VMAX 0 ?do
       0 i SEEN!
@@ -273,14 +149,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    dup 0 < over VMAX >= or if E-A64RAV-COVER throw then ;
 
 \ ---- what an operation says about the memory it reaches -----------------------
-\ Nothing below asks which opcode an operation is. Every form that touches memory
-\ carries its offset or its size under one of the dialect's four keys, and which
-\ key it is says which region the access is in: a frame slot and a frame size are
-\ counted from the machine stack pointer, a data-stack slot and a data-stack
-\ adjustment from the engine's data-stack pointer. Reading the key rather than
-\ the opcode is what keeps a frame rule from ever being applied to a data-stack
-\ access, and it is why a form added to the dialect is judged by what it says
-\ about itself.
 : ATTR-INT ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
    NOSLOT
@@ -298,27 +166,12 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 : DBYTES-OF ( IR-ID:ir-op-id -- n )  0 BND-DBYTES @ ATTR-INT ;
 : DBACK-OF ( IR-ID:ir-op-id -- n )   0 BND-DBACK @ ATTR-INT ;
 
-\ The take-back count is the field only the call form carries, so carrying it is
-\ what makes an operation a call - asked of the operation itself rather than of
-\ its opcode, which is the rule every other reader here follows.
 : DCALL? ( IR-ID:ir-op-id -- bool )
    DBACK-OF NOSLOT <> ;
 
-\ Does this operation carry the trap form's own target key? The trap branch is
-\ told from the tail branch by a key of its own, for the reason
-\ src/compiler/native/a64ir.f gives where that key is declared: under `a64.entry`
-\ it would answer TAILBR? below, and this pass would then demand that the
-\ routine's contract declare a tail call and measure the routine's results
-\ against a data-stack run whose one value is a family ordinal.
 : TRAP-AT? ( IR-ID:ir-op-id -- bool )
    0 BND-TRAP @ ATTR-INT NOSLOT <> ;
 
-\ Which region an operation reaches, read off the keys the dialect declares for
-\ each family rather than off an opcode name. A frame access counts its offset
-\ from the machine stack pointer and a data-stack access counts its offset from
-\ the engine's data-stack pointer, so an operation that carries a frame key is in
-\ the frame and one that carries a data-stack key is in the caller's stack, and
-\ no check about one can ever be applied to the other.
 : FRAME-TOUCH? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id FRAME-OF NOSLOT <>  id SLOT-OF NOSLOT <>  or ;
@@ -328,17 +181,11 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    id DBYTES-OF NOSLOT <>  id DSLOT-OF NOSLOT <>  or
    id DBACK-OF NOSLOT <> or ;
 
-\ Does this operation write a value into a slot, or read one out of one?
 : STORES? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    V-SCHR VW id OPCODE-AT IR-SCHEMA:FEFFECT@
    IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ ;
 
-\ The functions this check measures, re-derived rather than taken on trust. Every
-\ one is measured and every one is checked: an assignment is accepted for the
-\ whole module, so a function left out would be a routine emitted under registers
-\ nothing agreed with - and a quotation body is exactly such a routine, reached
-\ only through an address some caller executes.
 : FUN-AT ( n -- IR-ID:ir-fun-id )
    {: k:n :}
    k 0 < k FUN-COUNT >= or if E-A64RAV-SHAPE throw then
@@ -350,11 +197,8 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    n NFROZEN:FMAX > if E-A64RAV-COVER throw then
    n ;
 
-\ THE BLOCK THE ROUTINE'S RESULTS LEAVE THROUGH, and NO-RET when there is none.
-\ The rule and the reason a trap block is not that block are written once, in
-\ src/compiler/native/regalloc.f MB-RET-ORD; this is the same question asked of
-\ this pass's own view, which is why it is asked again rather than taken from the
-\ allocator.
+\ The block the routine's RESULTS leave through, and NO-RET when there is none;
+\ a trap block is not that block.
 -1 constant NO-RET
 
 : RET-ORD ( IR-ID:ir-fun-id -- n )
@@ -370,19 +214,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 
 \ ---- where one function's blocks stand in the module --------------------------
 \ A block names itself twice over: by its ordinal in the MODULE, which is what a
-\ successor carries, and by its ordinal in its OWN function, which is what every
-\ table here is keyed by - the block windows, the liveness planes, the residency
-\ map. The two are one subtraction apart exactly while a function's blocks are
-\ contiguous, which is how src/compiler/ir/fun.f mints them and how
-\ src/compiler/native/select.f writes them back; it is proved here rather than
-\ assumed, because a check reading another function's block would accept an
-\ assignment nobody made. This is re-derived from the module rather than taken
-\ from the allocator, for the reason the whole file exists.
-\
-\ IT IS SET WHERE A FUNCTION'S BLOCK WINDOW IS ESTABLISHED and at no other
-\ moment - VLAYOUT for the walks keyed by V-BLKS, ORDER-CK for the walk keyed by
-\ NB-N - so no reader has to know which walk it is in, and neither setter can
-\ disagree with the other: both derive the base from the function itself.
+\ successor carries, and by its ordinal in the FUNCTION.
 : VB-BASE! ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f 0 BLOCK-AT IR-ID:BLOCK-LOCAL VB-BASE !
@@ -407,28 +239,12 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    pos k LAST! ;
 
 \ ---- the checks --------------------------------------------------------------
-\ Every value of the module is a value of this function, the allocation covers
-\ exactly those values, and the interval it recorded for each one is the interval
-\ the module gives.
-\ How many values the module holds, read before any function is measured because
-\ the measuring loops over them.
 : VALS-N! ( -- )
    V-VALR VW IR-OP:FVALUES {: n:n :}
    n VMAX > if E-A64RAV-COVER throw then
    n N-VALS ! ;
 
-\ EVERY VALUE OF THE MODULE WAS DEFINED EXACTLY ONCE, ACROSS ALL ITS FUNCTIONS -
-\ which is the same guarantee this made when a module held one function, said
-\ over the whole module instead of over the only function in it. The two halves
-\ come from two places and always did. ONCE is NOTE-DEF's refusal: it rejects a
-\ value whose SEEN flag is already set, and because the flag table is now cleared
-\ once for the module rather than once per function, a value defined in two
-\ functions is refused there instead of quietly overwriting the first definition.
-\ EVERY is the sweep below, asked after the last function has been measured
-\ rather than after the first, so a value defined in no function at all is still
-\ a refusal and a value defined in a LATER function is no longer mistaken for one.
-\ The count is held against the allocator's own so that a module and an
-\ allocation describing different numbers of values cannot agree.
+\ Every value of the module was defined exactly once, across all its functions.
 : COVER-CK ( -- )
    N-VALS @ A64RA:VALUES <> if E-A64RAV-COVER throw then
    N-VALS @ 0 ?do i SEEN-AT 0= if E-A64RAV-COVER throw then loop ;
@@ -439,13 +255,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       i LAST-AT i A64RA:LAST@ <> if E-A64RAV-INTERVAL throw then
    loop ;
 
-\ Three register classes: every value of this dialect is a general register, a
-\ floating register, or the memory token the frame forms thread, and the class is
-\ decided by the type the module gives the value against the three the dialect
-\ answered. A value of any fourth type has been given a register that cannot hold
-\ it. The class is RE-DERIVED here, from the module rather than from the
-\ allocator's tables, which is what makes an allocation that gave a double a
-\ general register a refusal rather than an agreement.
 : CLASS-CK ( -- )
    N-VALS @ 0 ?do
       MKEY i IR-ID:PACK-VALUE VALUE-TYPE-AT
@@ -458,73 +267,14 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       0= if E-A64RAV-CLASS throw then
    loop ;
 
-\ Is this value's register one of THIS file's? Asked by everything that counts
-\ registers, holds one against a pool, or compares two of them.
 : IN-FILE? ( n n -- bool )
    {: v:n fl:n :}
    v FILE-AT fl = ;
 
-\ Does this value live in a register at all - in any file?
 : REGGED? ( n -- bool )
    FILE-AT NOFILE <> ;
 
 \ ---- the memory order --------------------------------------------------------
-\ Every memory order this module mints is passed on exactly once ON EVERY PATH
-\ THROUGH THE ROUTINE. An access takes the order as it stands and answers the
-\ order as it now stands, so along any one run the orders form a chain: the
-\ routine's first memory operation mints one, its last ends it, and every access
-\ in between reads exactly the answer of the access before it.
-\
-\ WHY THE RULE IS PER PATH AND NOT PER MODULE. It used to be simply "used exactly
-\ once", counted over the whole function, which is the same statement for a
-\ routine of one block. It stops being the same statement the moment a routine
-\ branches. A two-way branch of this dialect hands its successors nothing, so
-\ both of them read the order the block above them left - two uses of one value,
-\ and no fork of memory at all, because only one of the two blocks runs. A loop
-\ is the same shape once more: the order the body leaves is read by the latch,
-\ which goes round again, and by the block the loop exits through. Counting uses
-\ over the whole function would refuse both, and refusing them would mean the
-\ order could not cross an edge - which is exactly what a loop with a memory word
-\ in it needs it to do.
-\
-\ WHAT IS CHECKED INSTEAD, AND WHY IT IS NOT WEAKER. Three things, and together
-\ they say "consumed exactly once on every path":
-\   the order is never dropped     - every token value is read at least once;
-\   no block reads one twice       - a block's own straight line is a chain;
-\   no two readers are on one path - for any two blocks that read one order,
-\                                    neither can be reached from the other
-\                                    without passing the block that DEFINES it
-\                                    again, which would give the reader a new
-\                                    order rather than the one it read before.
-\ The third is what the old count really stood for. Two accesses on one path each
-\ claiming to follow the same order is still refused - they would either be in
-\ one block, or in two blocks one of which reaches the other without redefining -
-\ and a token nothing reads is still refused, so nothing the old rule caught gets
-\ through. What it no longer refuses is the honest case: mutually exclusive
-\ readers of one order.
-\
-\ THE THIRD CLAUSE IS A BACKSTOP, AND SAYS SO. The first two are reached by
-\ ordinary mistakes and were falsified by making them: a selection pass that
-\ builds an access and forgets to pass its order on fails the first, and one that
-\ hands two accesses of a block the same order fails the second. The third was
-\ not reachable from any mutation of this compiler, because a module with two
-\ readers of one order on one path is refused before it gets here - either by the
-\ freeze verifier's dominance rule, or by the allocator's edge rule, which finds
-\ the order and the block argument it feeds live at the same time. It is written
-\ anyway, and it is not claimed to be tested: the rule this file states is a rule
-\ about the module, and a check that only looks at the shapes its neighbours
-\ happen to catch is not a check of that rule. Removing the two clauses above it
-\ and the allocator's edge rule reaches it. Dot habu-reach-the-mem-05c529af is
-\ the case that would reach it from a module instead.
-\
-\ WHY THIS IS WORTH CHECKING WHEN NOTHING REORDERS YET. A pass that built an
-\ access and forgot to pass its order on leaves a module in which the accesses
-\ after it are not ordered against it - and the instructions would still be
-\ emitted in the printed order, so the routine would compute the right answer and
-\ every execution test would pass. What is broken is the module's claim, not
-\ today's output, and a claim is exactly what a validator is for: the first pass
-\ that is allowed to move an instruction would move it, and the failure would
-\ appear a leaf away from its cause.
 : UB-AT ( n -- n )                   cells UB + @ ;
 : UB! ( n n -- )                     {: v:n k:n :} v k cells UB + ! ;
 : DB-AT ( n -- n )                   cells DB + @ ;
@@ -538,18 +288,12 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    {: k:n b:n :}
    k UB-AT  1 b lshift or  k UB! ;
 
-\ How many distinct blocks read this value. Held against the total number of
-\ reads, it says whether some block read it twice without a count per block.
 : UB-BLOCKS ( n -- n )
    {: k:n :}
    0
    NB-N @ 0 ?do k i UB-HAS? if 1+ then loop ;
 
 \ ---- reachability between blocks, with one block held out --------------------
-\ The question a path rule asks is "can control get from this reader to that one
-\ WITHOUT passing the operation that defines the order again". Holding the
-\ defining block out of the walk answers exactly that: a route that goes back
-\ through it arrives with a new order, which is not the value being checked.
 : RCH? ( n -- bool )                 cells RCH + @ 0<> ;
 : RCH-MARK ( n -- )                  1 swap cells RCH + ! ;
 
@@ -560,8 +304,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    SUCC-AT IR-ID:BLOCK-LOCAL  VB-BASE @ -
    dup 0 < over NB-N @ >= or if E-A64RAV-SHAPE throw then ;
 
-\ Mark every successor of this block except the one held out, and answer whether
-\ any mark was new.
 : RCH-EXPAND ( n n -- bool )
    {: b:n d:n :}
    FUN b BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
@@ -571,7 +313,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       dup d = over RCH? or if drop else RCH-MARK drop true then
    loop ;
 
-\ Everything control can reach from one block without entering the held-out one.
 : REACH-FILL ( n n -- )
    {: from:n d:n :}
    RCH-CLEAR
@@ -584,7 +325,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       0=
    until ;
 
-\ No other block that reads this order is reachable from this one.
 : ORDER-FROM-CK ( n n -- )
    {: k:n u:n :}
    u  k DB-AT  REACH-FILL
@@ -631,13 +371,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    d NOPOS = if false exit then
    d lo >= d hi < and ;
 
-\ THE TOKEN VALUES IT ORDERS ARE THIS FUNCTION'S, and the window is how it says
-\ so. The counts this rebuilds - which blocks name a value, where it is defined -
-\ are counted from THIS function's blocks, so a token value belonging to another
-\ function would be ordered against blocks it never appears in and refused for
-\ being absent from them. On one number line a value is this function's exactly
-\ when its definition position lies in this function's span, which is the same
-\ disjointness the overlap check rests on rather than a second rule.
+\ The token values it orders are this FUNCTION's, and the window says so.
 : ORDER-CK ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id lo:n hi:n :}
    f 0 S-FUN !
@@ -650,21 +384,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       i CLS-AT C-TOKEN =  i lo hi IN-WINDOW?  and if i ORDER-VALUE-CK then
    loop ;
 
-\ Every assigned register is one the routine's contract says it may destroy. The
-\ contract cannot name x18, x30 or register 31 at all - A64EFF refuses them in
-\ any general-register set - so a reserved register fails this check for the same
-\ reason an unrelated callee-saved register does. A memory token holds no
-\ register, and one that was given a real register is refused as loudly as a
-\ register outside the pool: the emitter would then be reading a machine object
-\ out of something that is only an ordering. That second refusal is fail-closed
-\ rather than reachable and says so: a claim is the allocator's own, no module
-\ built by hand can forge one, and the allocator gives a token none. It is still
-\ written, because a check that only looks at the registers it expects to see is
-\ not a check, and it is not claimed to be tested - only mutating the allocator
-\ reaches it.
-\ The registers one file's pool holds. Named per file with no default arm: a
-\ value of a file this word does not know would otherwise be held against the
-\ general registers, which is the one wrong answer that reads as an agreement.
 : FILE-POOL ( n n n -- n )
    {: fl:n pool:n fpool:n :}
    fl F-GPR = if pool exit then
@@ -686,42 +405,18 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    loop ;
 
 \ ---- what a caller may keep in a register across a call ----------------------
-\ THE RULE. A value whose own live range spans a call site is in a register the
-\ callee does not write. Nothing in a Habu word's convention is callee-saved, so
-\ the only reason such a register exists is that the callee is a routine this
-\ system published and recorded what it destroys (src/compiler/native/clobber.f);
-\ for a callee with no record - every word the engine's own emitter compiled -
-\ the set is the whole pool and nothing may cross the call in a register at all.
-\
-\ WHY IT IS RE-DERIVED HERE AND NOT READ OFF THE CALL SITE. The selector decided
-\ how many values to leave in registers, and this file's whole job is to disagree
-\ with the selector when it is wrong. So the callee's address is read off the
-\ operation - which is where the branch's displacement was measured from, so it
-\ IS the code that will run - and the destroyed set is asked of the one record
-\ that published it. A selector that saved too little is refused here whatever it
-\ believed, and so is an allocator that put a crossing value in a register the
-\ callee writes.
-\
-\ AND THE RANGE IS OPEN AT BOTH ENDS, for the reason the allocator's own version
-\ gives: a value the site stores in front of the branch is dead there and a value
-\ it loads behind the branch is not alive yet, so neither is at risk. What is at
-\ risk is a value defined strictly before and read strictly after.
+\ A value whose live range spans a call site has to be in a register the callee
+\ does not destroy, which is the whole of the caller-save rule re-derived here.
 : VCALL-ENTRY ( IR-ID:ir-op-id -- n )
    0 BND-ENTRY @ ATTR-INT ;
 
-\ The form that leaves the routine THROUGH another routine. It is told from a
-\ call to another word by the two fields, not by an opcode, which is the reading
-\ every other question here is asked by: both name an ADDRESS, and only a call
-\ carries a take-back count - because only a call has anything to take back.
+\ Read by its ATTRIBUTES and never by its opcode: a tail branch carries an
+\ address and no take-back count.
 : TAILBR? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id VCALL-ENTRY NOSLOT = if false exit then
    id DBACK-OF NOSLOT = ;
 
-\ What the callee leaves alone in ONE file, as a mask of that file's registers.
-\ Per file and with no default arm, for FILE-POOL's reason: a file this word does
-\ not name would be held against the general registers' record, and a value of it
-\ would cross the call looking safe.
 : VCALL-BITS ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id fl:n :}
    id VCALL-ENTRY {: e:n :}
@@ -743,22 +438,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       then
    loop ;
 
-\ Are these two values ever live at the same instant? See the header: values
-\ written at the same position always are, and otherwise the earlier one has to
-\ be read for the last time at or before the later one is written.
-\
-\ THIS IS ALSO THE WHOLE CHECK ON COALESCING, AND IT NEEDS TO KNOW NOTHING ABOUT
-\ IT. src/compiler/native/regalloc.f gives a copy's two ends one register
-\ wherever their classes hold no interfering pair, and it decides that by walking
-\ the copies in the module's own order, so which merges get made depends on that
-\ order. None of that is re-derived here and none of it needs to be. What a merge
-\ can do wrong is put two values that ARE live at the same instant into one
-\ register, and OVERLAP-CK below refuses exactly that, from the module's own
-\ liveness and the assignment's own registers. It is a statement about the
-\ answer, so it holds whatever order the answer was reached in - and it would
-\ catch a coalescer with no order at all. A validator that instead re-derived the
-\ merge sequence would be checking that the allocator did what the allocator
-\ does.
 : CLASH? ( n n -- bool )
    {: a:n b:n :}
    a DEF-AT b DEF-AT = if true exit then
@@ -767,33 +446,8 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    then
    b LAST-AT a DEF-AT > ;
 
-\ HOW THE FILE KEYING WAS PROVED, SINCE NO FIXTURE CAN BUILD THE PAIR IT CATCHES.
-\ This dialect has one class per file, so a module of it cannot hold two values
-\ of two classes in one file, and the refusal below is reached the way this
-\ file's other closed-world clauses are: by mutating the compiler and running the
-\ gate. The mutation adds the third class the machine already has - a vector,
-\ which lives in the FLOATING file because v3 and d3 are one register - and gives
-\ the ALLOCATOR the plausible wrong model that a vector is a file of its own, so
-\ it hands one vector and one double the same d0 while both are alive. That is an
-\ allocator bug of exactly the kind this file exists to refuse.
-\
-\ Keyed on the CLASS, the verifier accepted it: ACCEPTED? true, both values
-\ reported register 0, and a routine whose two live doubles are one register was
-\ passed to the emitter with no diagnostic. Keyed on the FILE, the same tree
-\ throws E-A64RAV-OVERLAP. Both runs were over TWO-FILES-CASE in
-\ test/compiler/native-regalloc.f, which is the module the mutation needs and is
-\ in the suite for its own sake: it is what proves this clause does not refuse a
-\ cell and a double that hold register zero of two different files.
-\
-\ WHICH PAIRS ARE COMPARED, AND WHY IT IS THE FILE THAT DECIDES. Two values can
-\ be handed one machine register exactly when their registers are numbered in the
-\ same file, so that is the pair this asks about. It is deliberately NOT "the
-\ same class": one file may hold more than one class - this machine's vector and
-\ floating classes are one file, v3 and d3 being one register - and a class-keyed
-\ question would then walk past the one pair it exists to catch and call the
-\ result checked. The file is asked of both, and a value in no file is not in
-\ this question at all, so the memory token's non-register is never compared with
-\ anything.
+\ Two values that clash may not share a register, measured over the live ranges
+\ this pass computed rather than the ones the allocator claimed.
 : OVERLAP-CK ( -- )
    N-VALS @ {: n:n :}
    n 0 ?do
@@ -804,12 +458,8 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       loop
    loop ;
 
-\ A form that names one register field twice - the move-wide overwrite keeps the
-\ bits of its destination it does not write - declares that tie in its own
-\ operation schema. Every declared tie is checked here on its own terms, read out
-\ of the module's schema table rather than out of anything the allocator kept: an
-\ assignment that gives a tied result and its operand two registers describes an
-\ instruction the machine cannot execute.
+\ A form that names one register field twice - the move-wide overwrite - has its
+\ result tied to its operand, which the schema declares.
 : OP-TIE-CK ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id i:n :}
    V-SCHP VW V-SCHR VW  id OPCODE-AT  i IR-SCHEMA:FTIE-RESULT@ {: rs:n :}
@@ -829,24 +479,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    loop ;
 
 \ ---- the routine's declared registers ------------------------------------------
-\ The contract this check was handed says which register each argument arrives in
-\ and which each returned value leaves in. Both are decided here from that list
-\ and the assignment alone: nothing is read out of the allocator's own view of
-\ its constraints, so an allocator that pre-coloured the wrong value, pre-coloured
-\ nothing at all, or planned a move it never made is caught by the disagreement.
-\ A contract naming more positions than the module has arguments or returned
-\ values is not this module's contract and is refused before any position is
-\ compared.
-\ How many positions of one side are register places. Re-derived here rather than
-\ read out of the allocator, for the same reason every other fact is: a side that
-\ mixes register places with data-stack places has no pairing rule anywhere in
-\ this chain, and a side declared entirely in data-stack slots constrains no
-\ register at all - the selector turned every one of those places into an
-\ operation, and VDSTACK-CK below is what judges those. This asks the LIST and
-\ not the contract's declared convention, because how many positions are
-\ registers is a property the list answers on its own; which convention the
-\ routine speaks is what the three checks under it read, and they read it from
-\ the declaration.
 : REG-POSITIONS ( A64EFF:placeseq -- n )
    {: s:A64EFF:placeseq :}
    s A64EFF:SEQ-LEN {: len:n :}
@@ -866,20 +498,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       args i A64EFF:SEQ-REG@ <> if E-A64RAV-FIXED throw then
    loop ;
 
-\ Where control leaves, the register holding returned value j is the one declared
-\ for position j. The terminator is read off the block's own row, and its
-\ operands are the values the routine returns, so this is the assignment's answer
-\ at exactly the instant the convention talks about.
-\ A ROUTINE THAT LEAVES THROUGH A CALLEE RETURNS NOTHING FROM HERE, so its
-\ terminator's one operand is the data-stack order it ends and not a value in a
-\ register. Under the data-stack convention the returned values were written into
-\ the caller's cells before the branch - or are still standing in them - and the
-\ callee is what will publish them, so there is no position for this rule to be
-\ about. A tail branch under a REGISTER convention would be one, and there is no
-\ such convention in the chain: the selector refuses a call under it, and a tail
-\ branch is a call. THE QUESTION IS THE CONTRACT'S DECLARATION and not whether
-\ the result list names a slot - a routine that returns nothing names no slot and
-\ still leaves through the data-stack convention it was entered under.
 : OUT-TAIL-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    V-DSTACK @ 0= if E-A64RAV-PLACE throw then
@@ -900,10 +518,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 
 \ ---- the frame -----------------------------------------------------------------
 \ A block that touches the frame at all takes it with its first operation and
-\ gives it back with the one in front of its terminator, and both name the frame
-\ the routine's contract declares. Any other operation that moves the stack
-\ pointer - one that declares a memory effect and names no slot - is a second
-\ frame inside the first, and there is no rule for that here.
+\ gives it back with its last.
 : FRAMES? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
    false
@@ -919,29 +534,13 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 
 \ ---- the data stack ----------------------------------------------------------
 \ A routine whose convention names data-stack slots reaches the caller's stack
-\ with a fixed sequence, and this is where the module is measured against the
-\ declaration that sequence came from. Four facts are decidable from one module
-\ and one contract, and all four are checked by VDSTACK-CK below: the pointer is
-\ moved from where the caller left it to where the body stands, and from there to
-\ exactly one past the results before the routine returns; each load names the
-\ slot the argument place at its position names, in that order; each store names
-\ the slot the result place at its position names, in that order; and nothing
-\ anywhere else touches the data stack.
-\
-\ WHAT IS NOT DECIDABLE HERE, and its owner. Whether the value a store publishes
-\ is the value the program computed for that result is a statement about the
-\ module the selector read, and this file is handed one module - the same gap the
-\ spill lowering has (dot habu-prove-the-spill-0294e0e8), with the same owner
-\ (dot habu-prove-a-data-df458151).
+\ and one whose convention names registers never does.
 : DMOVE-AT? ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id at:n want:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
    id DSLOT-OF NOSLOT <> if E-A64RAV-DSTACK throw then
    id DBYTES-OF want <> if E-A64RAV-DSTACK throw then ;
 
-\ Every slot the module names is written before it is read, and no slot is
-\ written twice. See the header for why the second rule is the decidable form of
-\ "no two values share a slot".
 : FLOW-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 0 ?do
@@ -959,13 +558,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       then
    loop ;
 
-\ Every slot a frame access names, measured against the routine that has to
-\ address it. The rule is A64EFF's, so a slot outside the declared frame, an
-\ unaligned one, or one past the reach of the offset field is refused under
-\ A64EFF's own name; the contract is rebuilt per access because a value of more
-\ than one cell cannot be held in a local. It is asked of every block of the
-\ function rather than of one, because a routine that branches reaches its frame
-\ from both ends of itself.
 : SLOT-CK ( IR-ID:ir-fun-id A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
    {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
@@ -986,28 +578,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    loop ;
 
 \ ---- re-deriving the allocation ----------------------------------------------
-\ Everything above judges one operation, one slot or one pair of values. The
-\ routine as a whole is measured here, and every step is re-derived from the
-\ module rather than read off the allocator: the linear block order, the
-\ liveness, the hull interval of each value, and the edge clause. If this file
-\ asked A64RA which order it chose or which values it thought were live, it would
-\ be checking the allocator's belief against the allocator's belief.
-\
-\ The rule it re-derives is the one src/compiler/native/regalloc.f states, and it
-\ is stated again here in its own terms so the two can disagree: blocks in the
-\ order the module records them, one position for each block's arguments and one
-\ per operation; live-out of a block is the union of live-in over its successors
-\ and live-in is what the block reads before it writes, plus live-out minus what
-\ it defines; a value's range reaches back to the entry of every block it is live
-\ in to and forward to the last operation of every block it is live out of.
-\
-\ THE EDGE CLAUSE IS THIS FILE'S REASON FOR EXISTING ON THIS PATH. A branch moves
-\ nothing: the value a terminator hands over at position i and the argument it
-\ lands in at the destination are one physical register, or the routine computes
-\ with whatever happened to be in the destination's register instead. Checking it
-\ here - against the module's own edges and the accepted registers - is what makes
-\ a swapped successor pair, a mis-wired operand and a block argument left in the
-\ wrong register a refusal rather than a wrong answer at run time.
+\ Live ranges are held as bit sets over positions of one number line.
 64 constant SET-BITS
 VMAX SET-BITS / constant SETC
 0 constant P-IN
@@ -1085,19 +656,8 @@ create V-TMP SETC cells allot
    e b cells VB-EN + !
    e 1+ V-AT ! ;
 
-\ THE POSITIONS RUN ACROSS THE WHOLE MODULE AND NOT FROM EACH FUNCTION'S OWN
-\ ZERO, which is what lets one set of value tables describe several functions. A
-\ module holds one append-only value arena (src/compiler/ir/op.f), so a second
-\ function's values are new ordinals in the same space; if its POSITIONS restarted
-\ at zero, two values of two functions would carry the same interval and
-\ OVERLAP-CK would read a register legitimately reused by two routines that never
-\ run at once as a live conflict. On one number line the intervals of two
-\ functions are disjoint by construction, so the overlap question needs no notion
-\ of which function a value came from and answers correctly without one.
-\
-\ The base is passed in because this is run twice over each function: once to
-\ measure every function onto the line, and once more, from the SAME base, to put
-\ the block tables back for the structural checks that read them.
+\ The positions run across the whole MODULE and not from each function's own
+\ zero, so two functions' values can never be measured against one line twice.
 : VLAYOUT ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id base:n :}
    f BLOCK-COUNT {: n:n :}
@@ -1212,19 +772,6 @@ create V-TMP SETC cells allot
    {: k:n :}
    V-BLKS @ 0 ?do i k VEXTEND1 loop ;
 
-\ One function onto the number line: its blocks laid out from the base it was
-\ given, its liveness, the interval every value it defines gets from its own
-\ blocks, and the extension of those intervals across the blocks they live
-\ through. The extension is asked only about the values THIS function defined -
-\ VEXTEND-V reads V-BLKS, which holds this function's blocks - so asking it about
-\ another function's value would extend that value's interval over blocks it has
-\ nothing to do with.
-\
-\ NEITHER THE TABLES NOR THE COVER CHECK BELONG HERE ANY MORE. Both are about the
-\ MODULE: the tables are cleared once before the first function so that the
-\ duplicate-definition refusal in VDEF-AT sees every function at once, and the
-\ cover check is asked once after the last one, when every value has had its
-\ chance to be defined.
 : VMEASURE1 ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id base:n :}
    f base VLAYOUT
@@ -1236,25 +783,15 @@ create V-TMP SETC cells allot
 
 \ ---- the edge clause ---------------------------------------------------------
 \ A branch moves nothing, so the register holding the value a terminator hands
-\ over at position i has to be the register holding the destination's argument at
-\ that position. Both are read out of the accepted assignment, and the positions
-\ are read out of the module's own operand list and the destination's own
-\ argument list - so a successor named in the wrong order, an operand wired to
-\ the wrong argument, and an argument left in a register nothing wrote all fail
-\ here.
+\ over is the register holding the destination's argument at that index.
 : VEDGE1 ( IR-ID:ir-op-id IR-ID:ir-block-id n -- )
    {: t:IR-ID:ir-op-id sb:IR-ID:ir-block-id i:n :}
    t i OPERAND-AT SLOT A64RA:CLAIM@
    sb i ARG-AT SLOT A64RA:CLAIM@
    <> if E-A64RAV-EDGE throw then ;
 
-\ A terminator with more than one successor hands nothing over - its operands are
-\ its own, the register it tests - so every one of those successors has to be a
-\ block that takes no arguments. src/compiler/ir/verify.f cannot state this yet
-\ (dot habu-state-what-a-2f99fb94), so the assignment is where it is decided:
-\ an edge that was supposed to carry values and does not go through a block of
-\ its own would leave those values in whatever registers the destination happened
-\ to be given.
+\ A terminator with more than one successor hands nothing over - its operands
+\ are what it tests, not block arguments.
 : VMULTI-CK ( IR-ID:ir-fun-id IR-ID:ir-op-id -- )
    {: f:IR-ID:ir-fun-id t:IR-ID:ir-op-id :}
    t SUCCS-OF 0 ?do
@@ -1275,39 +812,13 @@ create V-TMP SETC cells allot
 
 \ ---- the frame of a routine with control flow --------------------------------
 \ A routine of more than one block reaches its frame in exactly TWO blocks: the
-\ one the caller enters and the one control leaves through. That pair is not a
-\ convenience. The frame forms thread a memory order and that order has to be
-\ read exactly once on every run, so two frame-touching blocks where one can be
-\ reached from the other would be two readers of one order on one path; the entry
-\ block dominates every block of the routine and every run that returns passes
-\ through the exit block, so those two - in that order - are the pair that can
-\ never have that problem. It is also what makes "a slot is written before it is
-\ read" decidable across a routine that branches: reading the two blocks in
-\ linear order reads them in the order every run makes them in.
-\
-\ THE FRAME HAS ONE LAYOUT AND, WHEN THE ROUTINE CALLS, TWO OWNERS.
-\ src/compiler/native/frame.f draws the line: the caller's return address is the
-\ bottom slot of a calling routine's frame and the register allocator's slots
-\ start above it. Both halves are decided here from the contract's own traits -
-\ the link save and the link restore name the link slot and no other access may,
-\ and every other frame slot named is at or above the base the allocator starts
-\ at. A spill placed on top of a return address fails the second clause under its
-\ own name rather than being found by a routine that returns into its own data.
-\
-\ AND THE FRAME ITSELF IS TAKEN AND GIVEN BACK IN THOSE TWO PLACES. The entry
-\ block takes it with its first operation and the exit block gives it back with
-\ the one in front of its terminator, both naming the frame the contract
-\ declares, and nothing anywhere else moves the stack pointer. A routine that
-\ calls adds the save and the restore inside that bracket; a routine that only
-\ spills has the bracket and nothing else in it.
+\ one that takes it and the one that gives it back.
 : VNO-FRAME ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    V-BLKS @ 0 ?do
       f i BLOCK-AT FRAMES? if E-A64RAV-FRAME throw then
    loop ;
 
-\ Does this module reach a frame at all? Re-derived from the operations, because
-\ it decides where the data-stack entry and exit sequences stand.
 : VANY-FRAME ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    0 V-FRAME !
@@ -1315,8 +826,6 @@ create V-TMP SETC cells allot
       f i BLOCK-AT FRAMES? if 1 V-FRAME ! then
    loop ;
 
-\ One frame access at this position, moving the link register into or out of the
-\ slot src/compiler/native/frame.f keeps it in.
 : VLINK-AT? ( IR-ID:ir-block-id n bool -- )
    {: bk:IR-ID:ir-block-id at:n store:bool :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
@@ -1327,7 +836,6 @@ create V-TMP SETC cells allot
    then
    id STORES? if E-A64RAV-CALL throw then ;
 
-\ Only the two blocks above may reach the frame at all.
 : VFRAME-BLOCKS-CK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id rb:n :}
    V-BLKS @ 0 ?do
@@ -1336,12 +844,6 @@ create V-TMP SETC cells allot
       then
    loop ;
 
-\ Nothing but the operations named here carries a frame SIZE: an operation that
-\ moves the stack pointer anywhere else is a second frame inside the first. Two
-\ positions are kept rather than one, because when the routine's entry block is
-\ also the block control leaves through, the reserve and the release are two
-\ positions of THAT ONE block; a caller with only one to keep passes NOPOS for
-\ the other, which is the same "no position at all" the tables above start from.
 
 : VNO-SIZE ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id keep:n also:n :}
@@ -1351,14 +853,6 @@ create V-TMP SETC cells allot
       then
    loop ;
 
-\ Is this position of this block one of the routine's two link accesses? A
-\ routine whose contract keeps no return address has none anywhere - one that
-\ does not call, and one that calls and never comes back, which reads nothing
-\ back; a routine that keeps one saves the link register as the entry block's
-\ second operation and restores it two in front of the exit block's terminator.
-\ It is a question about a POSITION rather than a word answering "the" position,
-\ because when the entry block and the exit block are one block both accesses are
-\ in it and one answer could not name them both.
 : VLINK-HERE? ( IR-ID:ir-block-id n n n -- bool )
    {: bk:IR-ID:ir-block-id b:n rb:n at:n :}
    V-LSAVE @ 0= if false exit then
@@ -1366,8 +860,6 @@ create V-TMP SETC cells allot
    b rb = at bk OP-COUNT 3 - = and if true exit then
    false ;
 
-\ The partition, one access at a time: a link access names the link slot and
-\ every other access names a slot the allocator was allowed to start at.
 : VOWNER1 ( IR-ID:ir-block-id n n n -- )
    {: bk:IR-ID:ir-block-id b:n rb:n at:n :}
    bk at OP-AT SLOT-OF {: off:n :}
@@ -1389,20 +881,6 @@ create V-TMP SETC cells allot
       bk i rb VOWNER-BLOCK
    loop ;
 
-\ The bracket both shapes share: the frame is taken by the entry block's first
-\ operation and given back by the one in front of the exit block's terminator,
-\ both naming the frame the contract declares, and no other block reaches it.
-\
-\ THE TWO BLOCKS MAY BE ONE, AND THEN IT IS ONE WINDOW RATHER THAN TWO. A routine
-\ with no control flow has a single block, which is both the block its caller
-\ enters and the block control leaves through - `: A ( n -- n ) B 1+ ;` is
-\ exactly that shape and is the commonest call site there is. The rule does not
-\ change: the reserve is still the first operation and the release still stands
-\ in front of the terminator, and the only difference is that both are positions
-\ of one block, so the two are kept from ONE scan instead of one each from two.
-\ They still have to be different positions - a block short enough for the reserve
-\ and the release to be the same operation is not a frame taken and given back -
-\ and that is what the length test below says.
 : VBRACKET-CK ( IR-ID:ir-fun-id n n n -- )
    {: f:IR-ID:ir-fun-id rb:n want:n bad:n :}
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
@@ -1422,29 +900,14 @@ create V-TMP SETC cells allot
    f rb VFRAME-BLOCKS-CK ;
 
 \ A routine that does not call has nothing in its frame but what the register
-\ allocator put there, and may have no frame at all - a routine whose values all
-\ fit, which is every routine this half saw before it could spill.
+\ allocator put there.
 : VSPILL-CK ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id rb:n want:n :}
    V-FRAME @ 0= if f VNO-FRAME exit then
    f rb want E-A64RAV-FRAME VBRACKET-CK ;
 
 \ A routine that DOES call keeps its caller's return address in the bottom slot,
-\ because the first call would otherwise destroy it. The save is the entry
-\ block's second operation and the restore stands two in front of the exit
-\ block's terminator, inside the bracket above. A routine that saved its return
-\ address and did not restore it, or restored it from another slot, returns to
-\ whatever the frame happened to hold.
-\
-\ AND THE TWO WINDOWS BECOME ONE WHEN THE ROUTINE HAS ONE BLOCK, which is what a
-\ word that calls another word without branching is: `: A ( n -- n ) B 1+ ;`. The
-\ save is still at position one and the restore still stands two in front of the
-\ terminator; when the entry block and the exit block are the same block those
-\ are two positions of it, and the rule is the same rule read once instead of
-\ twice. They still have to be DIFFERENT positions, so the block has to be long
-\ enough to hold the reserve, the save, the restore, the release and the return -
-\ five operations - or the save and the restore would be one operation claiming
-\ to be both.
+\ and the allocator's own slots start above it.
 : VLINK-CK ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id rb:n want:n :}
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
@@ -1457,25 +920,8 @@ create V-TMP SETC cells allot
    eb 1 true VLINK-AT?
    xb n 3 - false VLINK-AT? ;
 
-\ A ROUTINE THAT NEVER RETURNS TAKES ITS FRAME AND DOES NOT GIVE IT BACK, and
-\ that is the whole of what changes. There is no block for a release to stand in
-\ front of and nothing to release it for: every path leaves through the branch
-\ that ends the process, so the machine stack pointer this routine moved is never
-\ read again by anybody. The half that still holds is the opening one - the frame
-\ is taken by the first operation of the block the caller enters, it names the
-\ frame the contract declares, and no other operation of any block moves the
-\ pointer - which is what a second frame inside the first would break and is
-\ therefore still measured.
-\
-\ THE SAVED RETURN ADDRESS IS NOT THE SAME STORY, AND THAT IS WHY IT IS THE
-\ CONTRACT'S QUESTION AND NOT THE MODULE'S. A routine saves the link register
-\ before its first call because that call destroys it, and it saves it in order
-\ to restore it before returning. A routine that never returns restores nothing,
-\ so a save would stand alone - and the production contract for such a routine
-\ declares the address destroyed instead and saves nothing at all
-\ (src/compiler/native/abi.f NORET-FRAMED), which is what makes it frameless.
-\ A hand-built contract that still declares the address preserved gets the save
-\ measured, standing alone, which is the shape VNO-RET-LINK-CK below is for.
+\ A routine that never returns takes its frame and does not give it back, so its
+\ declared delta is the whole of it.
 : VNO-RET-BRACKET-CK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id want:n :}
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
@@ -1507,9 +953,6 @@ create V-TMP SETC cells allot
    f rb VOWNER-CK ;
 
 \ ---- the data stack, across blocks -------------------------------------------
-\ The entry sequence is at the top of the block the caller enters, the exit
-\ sequence is in front of the terminator of the block control leaves through, and
-\ nothing anywhere else may touch the caller's stack.
 : VNO-DSTACK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 0 ?do
@@ -1520,54 +963,15 @@ create V-TMP SETC cells allot
    {: b:n :}
    b cells VB-EN + @  b cells VB-ST + @ - ;
 
-\ How many operations the routine's own frame costs at each end. A routine that
-\ keeps its caller's return address takes its frame and saves that address before
-\ it reads a single argument, and restores and gives the frame back after it has
-\ published its results, so both sequences sit two operations further in than
-\ they otherwise would. A routine that only spills has the frame without the
-\ save, so it costs one at each end; one that never reaches a frame costs none.
-\ The first is the contract's own declaration and the second is re-derived from
-\ the module, for the same reason every other fact here is.
 : PRO-N ( -- n )
    V-LSAVE @ 0<> if 2 exit then
    V-FRAME @ 0<> if 1 exit then
    0 ;
 
 \ ---- what each slot of the caller's stack holds ------------------------------
-\ THE SECOND DERIVATION. The selector decides that a value already lies in the
-\ slot a store would write and builds no store, and that a value nothing reads
-\ out of a register need never be loaded into one. This is that decision measured
-\ again, from the module alone: two facts per slot, computed over the whole
-\ function by the same kind of forward walk the selector runs and by code that
-\ shares none of it.
-\
-\   IS THE SLOT DEFINED - has some path put a value in this cell and has nothing
-\     destroyed it since. Meet is `and`, so a slot is defined only when it is
-\     defined however control arrived. A call publishing a slot no store in front
-\     of it wrote is refused unless this says the cell already holds something,
-\     which is the whole of what an omitted store claims.
-\
-\   WHICH VALUE THE SLOT HOLDS - the machine value the cell provably equals, or
-\     nothing. Two paths disagreeing means nothing, which only ever costs a
-\     refusal this check would otherwise make. What it decides is the other
-\     direction: a store writing the value the cell already holds, and a load of a
-\     cell whose value is already in a register, are accesses the emission had no
-\     reason to make and are refused.
-\
-\ WHAT THIS CANNOT DECIDE, AND WHOSE IT IS. Whether the value standing in a slot
-\ is the value the PROGRAM meant to publish there is a statement about the module
-\ the selector read, and this file is handed one module - the same gap the store
-\ run always had (dot habu-prove-a-data-df458151, named at the head of the data
-\ stack section above). What is decided here is that the emission is the one
-\ canonical lowering for the module's own residency: every omission justified,
-\ every access necessary.
-\
-\ A SLOT'S CONTENT IS NAMED BY A CELL AND THE THREE KINDS DO NOT COLLIDE. A
-\ machine value is its own module-local ordinal, below VMAX; the routine's own
-\ argument `i`, which no operation of the module defines, is VMAX + i; and the
-\ slot `j` a call publishes back is counted past both from the call's own ordinal.
-\ Nothing indexes by these numbers - they are only ever compared - so the naming
-\ needs no table and no bound.
+\ The residency is a SECOND derivation: the selector decides a value already
+\ lies in the slot it would be stored to, and this re-derives that from the
+\ module rather than reading the selector's claim.
 64 constant VDSLOTS                  \ slots the residency is tracked over
 -1 constant VD-BOT                   \ nothing is known about this slot
 -2 constant VD-TOP                   \ nothing has been said about it yet
@@ -1592,22 +996,8 @@ variable VD-PREV
 variable VD-MOVED
 
 \ ---- where the pointer stands, re-derived ------------------------------------
-\ THE THIRD DERIVATION. Every number the four data-stack forms carry is a
-\ DISTANCE from the data-stack pointer, and the pointer is not at the base of the
-\ routine's window any more: src/compiler/native/select.f stands it wherever the
-\ fewest adjustments are needed and writes every offset against that place. So
-\ this file cannot read a slot off an attribute; it has to know where the pointer
-\ IS at each point, and it works that out from the module and the contract alone.
-\
-\ WHICH IS ONE NUMBER, and that is a fact about the machine rather than a
-\ simplification. The pointer is a register: it holds one value at a time, and a
-\ body that stood in two places would need an adjustment on every edge between
-\ them, which is more instructions and never fewer. So the routine stands at ONE
-\ place; it is entered at 8*in, moved to that place by the entry form, moved to
-\ the callee's base and back at each call, and moved to 8*out to return. The
-\ entry form's own field is what says where: the caller left the pointer at 8*in
-\ and that form moves it down by what it carries, so the place is the difference,
-\ and every other rule below is measured from it.
+\ Every number the four data-stack forms carry is re-derived, including where
+\ the body's pointer stands, because a place that is merely read proves nothing.
 variable VD-STAND                    \ where the body's data-stack pointer stands
 0 VD-STAND !
 variable VD-ENTRY                    \ where the caller leaves it: 8*in
@@ -1615,26 +1005,6 @@ variable VD-ENTRY                    \ where the caller leaves it: 8*in
 variable VD-LEAVE                    \ where the caller expects it back: 8*out
 0 VD-LEAVE !
 
-\ AND WHY THE PLACE ITSELF IS RE-DERIVED AND NOT MERELY READ. A place that is
-\ inside the bound and consistent with every offset written against it is still
-\ the wrong place if some other place would have cost fewer instructions: the
-\ adjustments a routine does not need are exactly the adjustments this whole
-\ capability exists to delete, so a module carrying one is a module whose
-\ lowering is not the canonical one - the same judgement this file already makes
-\ about a store that writes what the cell holds and a load of a value already in
-\ a register. The places a routine REQUIRES are decidable from the module: one
-\ where the caller leaves the pointer, one where it expects it back, and two per
-\ call site, which are the two distances that site carries. So the choice is
-\ re-derived from those and the module is refused if it stands anywhere else.
-\
-\ AND THE COLLECTION HAS THE SAME SIZE AS THE SELECTOR'S SURVEY, and gives up in
-\ the same way. src/compiler/native/select.f keeps the base for a routine with
-\ more required places than its survey holds, because standing at the base is
-\ always available and always correct; a routine past that size therefore has no
-\ chosen place to re-derive, and this rule stands aside for it while every other
-\ rule here still applies. The two sizes are one number twice for one reason: two
-\ different ones would make this rule refuse the very modules the selector
-\ decided not to place.
 256 constant VDREQ-MAX               \ places one routine's collection holds
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -1717,21 +1087,12 @@ variable VD-BCOST
    v s cells VD-VCUR + !
    d s cells VD-DCUR + ! ;
 
-\ The cell one of those distances names. It is the distance plus where the
-\ pointer stands, and it has to come out a whole cell at or above the base: a
-\ distance that names a cell under the caller's window, or a cell boundary the
-\ stack has not got, is not an access of this routine's stack at all.
 : VDCELL ( n -- n )
    VD-STAND @ + {: off:n :}
    off 0 < if E-A64RAV-DSTACK throw then
    off A64IR:SLOT-WIDTH mod 0<> if E-A64RAV-DSTACK throw then
    off A64IR:SLOT-WIDTH / ;
 
-\ And the reach of the field it is written in, which is the whole of what makes
-\ the placement's freedom safe: over the pointer an access is the scaled unsigned
-\ field, under it the unscaled signed one, and A64EFF answers both. It is asked
-\ of the distance rather than of the cell, because the distance is what the
-\ instruction holds.
 : VDREACH-CK ( n -- )
    {: off:n :}
    off A64EFF:SLOT-BACK negate < if E-A64RAV-DSTACK throw then
@@ -1743,8 +1104,6 @@ variable VD-BCOST
    off VDREACH-CK
    off VDCELL ;
 
-\ Is this content a value of the module - the only kind a register can already
-\ hold, and therefore the only kind that makes an access unnecessary?
 : VD-NAMED? ( n -- bool )
    dup 0 >= swap N-VALS @ < and ;
 
@@ -1755,11 +1114,6 @@ variable VD-BCOST
    {: id:IR-ID:ir-op-id j:n :}
    VMAX VDSLOTS +  id IR-ID:OP-LOCAL VDSLOTS * +  j + ;
 
-\ Everything the callee could have written stops holding anything, and the slots
-\ it takes back hold what it left there. The verifier reads the take-back count
-\ off the call's own field, so a site that saved live values below the callee's
-\ base is covered without this check having to know how many: those cells are
-\ inside the take-back run and are defined, which is all an omitted store needs.
 : VDCALL-XFER ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id DBACK-OF VDCELL {: back:n :}
@@ -1769,10 +1123,7 @@ variable VD-BCOST
    loop ;
 
 \ A store through an address the program computed may have reached a data-stack
-\ cell - which is exactly what the dialect declares by putting the addressed
-\ forms in the same space as the data-stack forms - so no cell provably holds a
-\ named value afterwards. It cannot UNdefine one: a store leaves something
-\ behind wherever it landed.
+\ slot, so it clobbers what this pass believed about the slot's contents.
 : VDCLOBBER? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id STORES? 0= if false exit then
@@ -1784,17 +1135,8 @@ variable VD-BCOST
    loop ;
 
 \ ---- what a data-stack refusal was about, kept for a reader -------------------
-\ ONE CODE, THREE REASONS, AND A CALLER WHO SEES NEITHER THE OPERATION NOR THE
-\ REASON. E-A64RAV-DKEEP says a data-stack access the emission had no reason to
-\ make, and which access and which of the three reasons are exactly what someone
-\ diagnosing it needs; a scratch build that split the code into three was how the
-\ 122-definition residency defect was found at all, and rebuilding that by hand
-\ is what this records instead.
-\
-\ IT IS KEPT THE WAY src/compiler/native/regalloc.f KEEPS A SEALED WALK: written
-\ as the run goes and readable until the next run starts. Nothing resets it on
-\ the way out of a refusal, which is what makes it readable AFTER the throw -
-\ tools/codegen-verify-dump.f prints the operation and the reason from here.
+\ One code, three reasons, and a caller who sees neither the operation nor the
+\ module: the reason is published beside the refusal so a reader can say which.
 1 constant DKEEP-NAMED       \ a load into a slot already holding a named value
 2 constant DKEEP-DEAD        \ a load whose result nothing reads
 3 constant DKEEP-SAME        \ a store of the value the slot already holds
@@ -1804,9 +1146,6 @@ variable VD-BCOST
 variable LAST-CLAUSE
 variable LAST-HELD           \ has a residency run ever filled the three above
 
-\ The hook declared at the head of this file does nothing until someone installs
-\ a reader, and it is called once per residency run - at the refusal below, or
-\ at the end of a run that reached it.
 : DKEEP-HOOK-NONE ( -- ) ;
 : DKEEP-HOOK-DEFAULT ( -- )
    [: DKEEP-HOOK-NONE ;] is A64RAV:DKEEP-HOOK ;
@@ -1820,8 +1159,6 @@ DKEEP-HOOK-DEFAULT
    E-A64RAV-DKEEP throw ;
 
 \ ---- one operation, measured -------------------------------------------------
-\ The refusals are here rather than in a second walk because the map they judge
-\ is the map at that operation, and re-deriving it twice would be two answers.
 : VDLOAD-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id VDSLOT-CELL {: s:n :}
@@ -1838,23 +1175,12 @@ DKEEP-HOOK-DEFAULT
    s VDV@ k = if id DKEEP-SAME DKEEP! then
    k VD-DEF s VDPUT ;
 
-\ Every slot the branch publishes holds something. A store in front of it is one
-\ way; the cell already holding what the callee is to read is the other, and this
-\ is where that claim is held against the module.
-\
-\ AND THIS IS ALSO WHERE THE POINTER'S PLACE AT THE BRANCH IS JUDGED. Where the
-\ pointer stands when the Bl is taken IS the callee's base - one past the last
-\ cell the site publishes - so a site that entered the callee one cell too high
-\ would be claiming a cell nothing has written, and this rule refuses it under its
-\ own name rather than letting the callee read whatever was there.
 : VDPUBLISH-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id DBYTES-OF VDCELL 0 ?do
       i VDD@ VD-DEF <> if E-A64RAV-DRES throw then
    loop ;
 
-\ The routine's own publication: the cells the convention says the caller will
-\ read the results out of, at the moment the pointer moves over them.
 : VDOUTS-CK ( A64EFF:placeseq n -- )
    {: outs:A64EFF:placeseq r:n :}
    r 0 ?do
@@ -1885,9 +1211,8 @@ DKEEP-HOOK-DEFAULT
    a b = if a exit then
    VD-UNDEF ;
 
-\ A value the branch hands to argument `i` is read as that argument on the way
-\ in, which is what lets one cell keep its name round a loop whose two edges
-\ carry two different values into it.
+\ A value a branch hands to argument `i` is read as that argument on the way in,
+\ so the two are one register by the edge rule.
 : VDXLATE ( IR-ID:ir-op-id IR-ID:ir-block-id n -- n )
    {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id v:n :}
    v VD-NAMED? 0= if v exit then
@@ -1947,9 +1272,6 @@ DKEEP-HOOK-DEFAULT
    bk OP-COUNT 0 ?do  bk i OP-AT VDOP-XFER  loop
    b VDOUT<CUR ;
 
-\ The entry map: the caller wrote the argument cells, the pointer move at the
-\ head of the entry block is what makes them slots zero upwards, and nothing in
-\ the module defines them - so they are named as the routine's own arguments.
 : VDENTRY-IN ( n A64EFF:placeseq -- )
    {: a:n args:A64EFF:placeseq :}
    VDSLOTS 0 ?do
@@ -1987,10 +1309,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    drop ;
 
 \ ---- the checked pass --------------------------------------------------------
-\ The same walk once more with the refusals turned on. It is a second walk rather
-\ than a flag on the first because the map has to have STOPPED moving before an
-\ omission is judged against it: a round of the descent above is an answer that
-\ may still fall.
 : VDCK-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id DCALL? if id VDPUBLISH-CK  id VDCALL-XFER exit then
@@ -2006,16 +1324,10 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 0 ?do  bk i OP-AT VDCK-OP  loop ;
 
-\ How far in front of the epilogue the moment being judged stands: the returning
-\ form is judged where the pointer moves over the results, and the tail form at
-\ the branch itself, which has no such move in front of it.
 : VDPUB-BACK ( -- n )
    V-TAIL @ 0<> if 1 exit then
    2 ;
 
-\ The exit publication is judged in its own block, at the position the shape
-\ check already found it: the map there is the one the walk above rebuilt, and
-\ the cells the convention names have to hold something at exactly that point.
 : VDCK-EXIT ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
    rb VDCUR<IN
@@ -2035,13 +1347,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    DKEEP-HOOK ;
 
 \ ---- the entry and exit sequences, re-derived --------------------------------
-\ Which loads and stores the two sequences really carry is not fixed any more:
-\ an argument no operation reads out of a register has no load and a result
-\ already standing in the cell it publishes from has no store. What is fixed is
-\ that the ones present name the declared places IN ORDER and name no other
-\ place, so the run is a rising subsequence of the convention rather than a
-\ prefix of it. The counts are recorded because the scan that accounts for every
-\ data-stack position of the routine has to know where these two windows end.
 : VDLOAD? ( IR-ID:ir-block-id n -- bool )
    {: bk:IR-ID:ir-block-id at:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
@@ -2065,14 +1370,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       VD-J @ 1+ VD-J !
    until ;
 
-\ The entry form is where the pointer's place comes FROM. The caller left the
-\ pointer one past the arguments, at 8*in; this form moves it down by what it
-\ carries; so where the body stands is the difference, and every distance the
-\ module holds afterwards is read against it. It is bounded as well as derived: a
-\ place under the base names cells this routine does not own, and a place further
-\ above the base than the unscaled field reaches would put an access of the base
-\ itself out of reach - so a module standing outside [0, SLOT-BACK] is refused
-\ here rather than at whichever access happened to notice.
 : VDSTAND-AT ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id at:n entry:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
@@ -2100,18 +1397,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       VD-EL @ 1+ VD-EL !
    repeat ;
 
-\ WHY WALKING BACK FROM THE PUBLICATION CANNOT MISREAD A CALL SITE'S STORES. A
-\ site's store run is always followed by the branch itself, so the operation in
-\ front of the pointer move that publishes the results is either one of these
-\ stores or something that is not a data-stack store at all.
-\
-\ AND THE PUBLICATION IS WHERE THE RETURN IS JUDGED. The body stands where the
-\ entry form put it, this form moves it up by what it carries, and it has to
-\ arrive at 8*out - which is the place the caller will read the results from and
-\ go on computing against. A routine that returns with the pointer anywhere else
-\ hands its caller a stack whose top is not where the caller believes it is, so
-\ the wanted distance is stated as one past the results LESS where the body
-\ stands, and a module carrying any other one is refused.
 : VDEXIT-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
@@ -2131,23 +1416,8 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
    loop ;
 
-\ THE SAME WINDOW FOR A ROUTINE THAT LEAVES THROUGH A CALLEE, and the two
-\ differences are the whole of what a tail branch is. There is no publication:
-\ the pointer is not moved over the results here, because the callee is what will
-\ move it, so the window ends at the terminator itself rather than one before it.
-\ And where the pointer stands is not derived from a field this time, it is
-\ DEMANDED: a tail branch enters the callee at the place the pointer is standing
-\ at, and the callee will leave the pointer one past ITS results and return to
-\ OUR caller - which reads its results at 8*out. A routine whose body stands
-\ anywhere else hands its caller a stack top that is not where the caller
-\ believes it is, and no instruction after the branch could put it right, so it
-\ is refused here.
-\
-\ WHAT THE STORE RUN IN FRONT OF IT IS. The cells the callee will read its
-\ arguments out of are the very cells this routine's caller will read its results
-\ out of - that coincidence IS the tail call - so the run is measured against the
-\ declared OUT places exactly as the publication's run is, in rising order and
-\ naming no other place.
+\ The same window for a routine that leaves through a CALLEE, whose results the
+\ callee publishes into the very cells this routine's caller reads.
 : VDTAIL-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
@@ -2168,21 +1438,14 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
    loop ;
 
-\ Which positions of the block control leaves through belong to that window. The
-\ WHICH OF THE TWO EXIT RUNS THIS ROUTINE HAS, AND THE THIRD ANSWER: NEITHER. A
-\ routine that never returns publishes nothing, so there is no run to measure and
-\ no place for it to require. Nothing is lost by leaving the measurement out:
-\ VDCLEAN1 below accounts for every data-stack position of every block, so a
-\ publication standing anywhere in such a routine is a position it can make
-\ neither an entry window nor a site out of, and is refused there by name.
+\ Which of the two exit runs this routine has - and the third answer, NEITHER,
+\ for a routine every path of which traps.
 : VDLEAVE-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
    rb NO-RET = if exit then
    V-TAIL @ 0<> if f rb r outs VDTAIL-CK exit then
    f rb r outs VDEXIT-CK ;
 
-\ tail form has no publication position of its own, so its window is the store
-\ run alone; the returning form has the publication as well.
 : VDTAIL-POS? ( n n -- bool )
    {: n:n at:n :}
    n 1 - PRO-N - {: q:n :}
@@ -2202,16 +1465,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    false ;
 
 \ ---- a call site, re-derived -------------------------------------------------
-\ What the dialect lowers a call to, measured from the module rather than taken
-\ from the selector: a run of data-stack stores naming slots the call publishes,
-\ in rising order, the call, and a run of data-stack loads naming slots it takes
-\ back, in rising order. Neither run has to be complete any more - an omitted
-\ store is one the residency above has to justify and an omitted load is one
-\ nothing reads - so what is measured is that every access present names a slot
-\ inside its own run and that no two of them name the same slot or name them out
-\ of order. A store the emission put after the branch, a slot named twice, and a
-\ store naming a cell past the ones the call publishes are three different
-\ disagreements and all three are refused here.
 : DSTORE-RUN ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
@@ -2244,40 +1497,19 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
    loop ;
 
-\ THE CALL'S OWN ARITHMETIC, as far as it can be re-derived. A branch-with-link
-\ leaves the pointer at the callee's RESULT base, which is its argument base less
-\ what the callee takes and plus what it leaves - so the two places one site
-\ carries differ by exactly the callee's net effect. For a call to another word
-\ that effect is the callee's own declaration and this file is handed no callee,
-\ so nothing here can check it, and the site is covered by the two run bounds and
-\ by the publication rule instead. For a call to THIS routine the callee IS the
-\ routine being measured: its net effect is 8*out less 8*in, and a site claiming
-\ any other one is refused. Which of the two a site is, is read off the field that
-\ names an address - a call carrying one enters somebody else - exactly as every
-\ other reader here asks the operation rather than its opcode.
 : VDNET-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id VCALL-ENTRY NOSLOT <> if exit then
    id DBACK-OF  id DBYTES-OF -  {: net:n :}
    net  VD-LEAVE @ VD-ENTRY @ -  <> if E-A64RAV-CALL throw then ;
 
-\ One place the routine requires, recorded as the re-derivation of the placement
-\ needs it. A place required twice is recorded twice, because two points each pay
-\ their own adjustment.
 : VDREQ+ ( n -- )
    {: at:n :}
    VD-REQ-N @ VDREQ-MAX >= if 1 VD-REQ-OVER ! exit then
    at  VD-REQ-N @ cells VD-REQ + !
    VD-REQ-N @ 1+ VD-REQ-N ! ;
 
-\ A TRAP SITE IS A CALL SITE WITH NOTHING TO TAKE BACK, and it is measured as
-\ one: a run of data-stack stores naming slots below the base the callee is
-\ entered at, and then the branch. What it does not have is the second half.
-\ Control never comes back, so there is no load run to measure, no take-back
-\ count to hold the site's arithmetic against, and nothing after the branch at
-\ all - the trap IS the block's terminator, which is what the first line holds it
-\ to. A trap carrying a take-back count would be a call staged under the wrong
-\ form and is refused rather than measured as one.
+\ A trap site is a call site with nothing to take back, and it is measured as one.
 : VTRAP-SITE ( IR-ID:ir-block-id n n -- n )
    {: bk:IR-ID:ir-block-id at:n cp:n :}
    cp bk OP-COUNT 1- <> if E-A64RAV-CALL throw then
@@ -2303,11 +1535,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    bk cp 1+ b  id DBACK-OF VDCELL  VDRUN-BOUND
    cp 1+ b + ;
 
-\ Every position of every block that touches the caller's data stack is either
-\ part of the routine's own entry or exit, or part of one call site. The scan is
-\ forward and consumes a whole call site at a time, so a store left over between
-\ two sites, or a call with no stores in front of it, stops at the first position
-\ the scan cannot account for.
 : VDCLEAN1 ( IR-ID:ir-fun-id n n n -- )
    {: f:IR-ID:ir-fun-id b:n eb:n rb:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
@@ -2326,11 +1553,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    repeat ;
 
 \ ---- the placement, re-derived -----------------------------------------------
-\ The same choice src/compiler/native/select.f makes, made again here from the
-\ places this file collected while it walked the module: fewest adjustments wins,
-\ a place outside the bound is not a candidate, the base is the incumbent because
-\ it is where the pass stood before there was a choice, and a tie goes to the
-\ lower place so the answer does not depend on the order the walk found them in.
 : VDPLACE-COST ( n -- n )
    {: c:n :}
    0
@@ -2362,13 +1584,8 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    VD-REQ-N @ 0 ?do  i cells VD-REQ + @ VDPLACE-TRY  loop
    VD-BEST @ VD-STAND @ <> if E-A64RAV-DSTACK throw then ;
 
-\ WHICH OF THE TWO SHAPES THIS MODULE HAS TO HAVE IS THE CONTRACT'S DECLARATION.
-\ A register-convention routine touches the caller's stack nowhere; a data-stack
-\ one has an entry run, an exit run and a call site's runs and nothing else. The
-\ counts below are how LONG those runs are and they can both be zero: a ( -- )
-\ word entered through the data stack takes the pointer by nothing and publishes
-\ nothing, which is two operations that emit no instruction and are still the
-\ shape this measures.
+\ Which of the two shapes this module has to have is the CONTRACT's declaration:
+\ a register-convention routine touches the caller's stack nowhere.
 : VDSTACK-CK ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
    args A64EFF:SEQ-SLOTS {: a:n :}
@@ -2390,14 +1607,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    f rb a r args outs VDRES-CK ;
 
 \ ---- the contract's control and the module's terminator ----------------------
-\ The contract says how control leaves this routine and the module shows it, and
-\ the two are held against each other here rather than either being believed. A
-\ contract declaring a return over a module that branches away would describe a
-\ routine whose caller is never come back to; a contract declaring a tail call
-\ over a module that returns would leave a frame reserved and a link saved for a
-\ branch that is not there. And a tail branch anywhere but at the end of the
-\ block control leaves through is a routine abandoned in the middle of itself:
-\ every other block would be unreachable code the layout still writes.
 : VTAIL1 ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id b:n rb:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
@@ -2409,13 +1618,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       then
    loop ;
 
-\ A ROUTINE THAT NEVER RETURNS LEAVES THROUGH NO CALLEE EITHER. A tail branch is
-\ this routine returning THROUGH somebody else - the callee publishes into the
-\ very cells this routine's caller reads - so a routine with no block that hands
-\ its caller anything has no place for one. VTAIL1 above already refuses one
-\ wherever it stands, because no block is the block control leaves through; what
-\ is left is the contract, and a contract declaring a tail call over such a
-\ module is the same mismatch the returning arm names.
+\ A routine that never returns leaves through no callee either.
 : VNO-TAIL-CK ( -- )
    V-TAIL @ 0<> if E-A64RAV-SHAPE throw then ;
 
@@ -2434,9 +1637,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
       f i BLOCK-AT FLOW-CK
    loop ;
 
-\ The call rule over the whole linear order. A live range is measured in global
-\ positions, so the operation index inside its block is turned into one before
-\ the rule is asked.
 : VCLOB-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
@@ -2448,11 +1648,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    {: f:IR-ID:ir-fun-id :}
    V-BLKS @ 0 ?do f i VCLOB-BLOCK loop ;
 
-\ The checks that are about VALUES, asked once for the module after every
-\ function has been measured onto the number line. Each of them sweeps the value
-\ table, and the value table is the module's, so asking them per function would
-\ either ask about values the function does not hold or ask the same question as
-\ many times as there are functions.
 : VALUE-CKS ( -- )
    COVER-CK
    INTERVAL-CK
@@ -2460,10 +1655,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    REGISTER-CK
    OVERLAP-CK ;
 
-\ The checks that are about one FUNCTION's structure: its blocks, its edges, its
-\ frame, the registers its arguments arrive in and its results leave in. They read
-\ the block tables, which hold one function at a time, so each is asked with that
-\ function's layout restored.
 : VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n n n -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n
       lo:n hi:n :}
@@ -2487,33 +1678,18 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    IR-BUILD:FMODULE A64RA:MODULE@ IR-ID:MODULE-SAME?
    0= if E-A64RAV-MODULE throw then ;
 
-\ The allocation depends on two facts of the contract: which registers of each
-\ file the routine may write, which in both cases is what it destroys together
-\ with what it returns a value in. A contract that names a different set is a
-\ different allocation problem, and this one is not an answer to it. Both are
-\ checked, because an allocation made against one pool and accepted against
-\ another would hand out registers the routine promised to keep.
 : CONTRACT-CK ( A64EFF:gprs A64EFF:fprs -- )
    {: pool:A64EFF:gprs fpool:A64EFF:fprs :}
    pool A64RA:POOL A64EFF-GPRS:EQ 0= if E-A64RAV-CONTRACT throw then
    fpool A64RA:FPOOL A64EFF-FPRS:EQ 0= if E-A64RAV-CONTRACT throw then ;
 
-\ An accepted answer is about one sealed walk. A later walk raises the
-\ allocator's generation, so the acceptance stops answering rather than answering
-\ about a walk nobody checked.
 : FRESH-CK ( -- )
    ST @ ST-ACCEPTED <> if E-A64RAV-STATE throw then
    STATE-CK
    A64RA:GEN A-GEN @ <> if E-A64RAV-STATE throw then ;
 
-\ WHY THIS BINDING IS NOT SPENT. The allocator and the lowering pass take a
-\ one-shot binding because nothing else in them says which module the next call
-\ is about, so a caller could otherwise run against a module it never bound. Here
-\ that hole is closed by an identity check instead: the binding records the module
-\ it was taken over and ACCEPT refuses any other one by name. A binding left
-\ behind by a refused check is therefore harmless - it can only ever be used
-\ against the module it belongs to - and the one state worth refusing is having
-\ been asked for a check before any binding was taken at all.
+\ This binding is NOT spent, because the allocator and the lowering pass take
+\ their own over the same module.
 : BND-TAKE ( -- )
    BND-MODE @ BOUND-YES <> if E-A64RAV-STATE throw then ;
 
@@ -2529,19 +1705,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
 
 \ ---- which places one FUNCTION's boundary uses -------------------------------
-\ The same reading src/compiler/native/select.f makes at the other end of the
-\ pair, and it has to be the same reading: this pass measures each function's
-\ entry and exit against the places that function's arguments and results really
-\ occupy, and an emission holds a routine per quotation as well as the
-\ definition's own. Those routines have their own effects, so one arity for the
-\ whole emission would measure a quotation body's boundary against the enclosing
-\ word's - which is the E-A64SEL-PLACE the selector used to raise, arriving here
-\ as a verifier that agreed with an allocation nobody had checked.
-\
-\ THE ARITY IS THE MODULE'S AND THE CONVENTION IS THE CONTRACT'S. NFROZEN:FUN-ARITY
-\ reads the function's own recorded signature, which is where the elaborator put
-\ it; the contract still says which convention the emission speaks and still says
-\ what function zero - the word this emission is published as - has to be.
 : FUN-SLOTS ( n -- A64EFF:placeseq )
    {: k:n :}
    A64EFF:SEQ-NONE
@@ -2552,12 +1715,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    in din <> if E-A64RAV-CONTRACT throw then
    out dout <> if E-A64RAV-CONTRACT throw then ;
 
-\ Under the register convention a place is the ABI's allocation and no count can
-\ re-derive it, so the contract's own lists stand for every function exactly as
-\ they did before this seam existed. src/compiler/native/abi.f declares the
-\ data-stack convention for every routine the chain really compiles, so that path
-\ is a fixture's and it is left alone rather than given a derivation with no
-\ basis.
 : FUN-PLACES ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- A64EFF:placeseq A64EFF:placeseq )
    {: f:IR-ID:ir-fun-id ord:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
    V-DSTACK @ 0= if args outs exit then
@@ -2566,25 +1723,8 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    in FUN-SLOTS  out FUN-SLOTS ;
 
 \ ---- the contract's control statement, against the module's own answer --------
-\ THE CONTRACT'S `no-return` IS A PERMISSION AND THE MODULE HAS TO HAVE EARNED
-\ IT. It is what lets a routine that calls keep no return address at all
-\ (src/compiler/native/frame.f LINK-KEPT?), so a contract declaring it over a
-\ function that DOES have a block control leaves through describes a routine that
-\ returns with the caller's address already destroyed - it would jump to wherever
-\ its own last callee was going to come back to. Nothing further down catches it:
-\ with no save declared, every frame rule this file has is the frameless one and
-\ every one of them passes.
-\
-\ IT IS ASKED OF FUNCTION ZERO, because that is the function the contract
-\ describes - the same scoping DECL-CK above keeps. A quotation of a routine that
-\ never comes back is an ordinary routine with a return of its own.
-\
-\ THE OTHER DIRECTION IS NOT REFUSED, and deliberately. A contract that claims a
-\ return the module does not make grants nothing and takes nothing away: where it
-\ also declares a call, its prologue's frame and link save are built and nothing
-\ releases them, which the memory-order rule refuses by name; where it does not,
-\ the routine is frameless either way and the bytes are the same. It is a
-\ declaration that overstates rather than one that licenses.
+\ The contract's `no-return` is a PERMISSION the module has to have earned: it
+\ is what lets a routine that calls keep no return address at all.
 : VNORET-CK ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    V-NORET @ 0= if exit then
@@ -2625,14 +1765,8 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
 public
 
 \ ---- binding the dialect -----------------------------------------------------
-\ Learn the identities this check needs from the dialect itself, while the module
-\ is still being built: which type a general register is, which is the memory
-\ token, and the two attribute keys the frame forms carry their fields under. A
-\ module's symbols and types are its own ordinals, so this is the only moment any
-\ of them can be asked for, and taking them from the allocator instead would be
-\ the thing being checked telling the checker what to check. A second binding
-\ replaces the first; see BND-TAKE for why that is safe here and not in the
-\ passes that take a one-shot binding.
+\ The only moment a module can be asked its opcode and key identities, because
+\ its symbols are its own ordinals.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b DIALECT-CK
@@ -2650,8 +1784,6 @@ public
    BOUND-YES BND-MODE ! ;
 
 \ ---- the check ---------------------------------------------------------------
-\ Accept the sealed allocation as a true assignment for this module under this
-\ routine contract, or refuse it by name. Nothing is answered until this returns.
 : ACCEPT ( IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
    {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
@@ -2679,21 +1811,14 @@ public
 : ACCEPTED? ( -- bool )
    ST @ ST-ACCEPTED = ;
 
-\ The register that holds this value. This is the only checked answer in the
-\ chain: it exists only after ACCEPT has agreed with the module, and it stops
-\ existing the moment a later allocation replaces the one that was accepted. A
-\ memory token holds no register, so asking for one is refused rather than
-\ answered with a number that is not a register.
+\ The one checked answer in the chain. It stops answering the moment a later
+\ allocation replaces the one that was accepted.
 : REG@ ( n -- n )
    FRESH-CK
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
    dup REGGED? 0= if E-A64RAV-CLASS throw then
    A64RA:CLAIM@ ;
 
-\ Which register FILE this value lives in. The emitter asks after it has asked
-\ for the register, because the number alone does not say which file it names -
-\ d3 and x3 are two registers and both are number three - and what a routine
-\ destroys has to be counted per file.
 : FLOATING? ( n -- bool )
    FRESH-CK
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
@@ -2701,42 +1826,8 @@ public
    F-FPR IN-FILE? ;
 
 \ ---- what the accepted allocation says this routine destroys ------------------
-\ THE DERIVATION, AS ONE STATEMENT. The general registers a routine emitted from
-\ this allocation writes, and that a CALLER could be holding a value in, are
-\ exactly the registers this allocation assigns to its values.
-\
-\ THE ARGUMENT IS THE EMITTER'S, READ OFF ITS SOURCE. Every general register that
-\ reaches an instruction in src/compiler/native/emit.f comes from one of four
-\ places and no other: REG-OF, which is A64RAV:REG@ and answers only this
-\ allocation's claims; A64EFF:LINK-GPR, the link register the prologue saves and
-\ the epilogue restores; A64EFF:SP-GPR, operand 31, which the frame accesses name
-\ as the stack pointer; and A64EFF:DSTACK-GPR, the register the running engine
-\ keeps its data-stack pointer in, which the entry, the exit and every call site
-\ step. The last three are members of the reserved set A64EFF's GPR-MASK
-\ excludes - which since CG-13 is the target's x18/x30/31 plus EVERY register
-\ the running engine occupies (src/habu/layout.f ENGINE-GPR:MASK - the
-\ data-stack pointer and, beside it, DATA/RBASE, DBASE, NDICT and CP, none of
-\ which reaches an emitted instruction at all) - so no routine contract can
-\ hand any of them to an allocator and no caller can be holding a value in
-\ one - which is why they are not in the answer here rather than being
-\ subtracted from it.
-\
-\ WHAT A CALLER MAY THEREFORE RELY ON. The data-stack pointer is not preserved
-\ and is not clobbered either: a routine moves it down over its arguments and up
-\ over its results, which is the convention every call site already accounts for
-\ in the two byte counts it carries. The link register is written at every call
-\ site by the branch itself, whatever the callee does, so it is the CALLER's
-\ business and not a fact about any callee. Both are outside this answer for the
-\ same reason: no value of any routine ever lives in them.
-\
-\ AND THIS IS ONE AUTHORITY AND NOT TWO. It is derived from the assignment this
-\ file ACCEPTED, so a register that reaches an instruction without being in it
-\ would have had to reach it without being a claim - which is what the emitter
-\ holds its own count of written registers against before it seals.
-\ Both answers are counted per FILE and not per class, which is what makes them
-\ stay right when one file holds two classes: what a caller can be holding in x3
-\ is decided by everything this routine puts in the general file, whatever kind
-\ of value each one is.
+\ What the allocation assigned, which is what may be published: a register the
+\ emission does not happen to write today is still one it could name tomorrow.
 : GPR-WRITTEN ( -- A64EFF:gprs )
    FRESH-CK
    0
@@ -2757,26 +1848,12 @@ public
    loop
    A64EFF:FPR-SET ;
 
-\ Is this value one that lives in a register at all? The emitter asks before it
-\ asks for a register, and a caller that wants to probe an accepted answer for
-\ staleness asks about the module rather than about one value's class.
 : REGISTERED? ( n -- bool )
    FRESH-CK
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
    REGGED? ;
 
 \ ---- reading back what the last residency run was about ----------------------
-\ The answers a data-stack refusal leaves behind, for the reason given where they
-\ are written. The clause is zero when the last run reached the end without one,
-\ so a reader is told "no refusal" rather than shown the previous run's operation
-\ under this run's function.
-\
-\ THE FOUR COLUMNS BELOW THE FIRST THREE ARE THE ONES THE THREE CLAUSES ARE ABOUT,
-\ and they are published rather than re-derived for the reason
-\ src/compiler/native/regalloc.f publishes its sealed walk: a reader that
-\ recomputed them would be a second answer, and the whole defect this recording
-\ exists for was two answers to one question. Structure comes from NFROZEN, which
-\ is public already; these are the residency facts only this check holds.
 : DKEEP-HELD? ( -- bool )            LAST-HELD @ 0<> ;
 : DKEEP-FUN ( -- IR-ID:ir-fun-id )   0 LAST-FUN @ ;
 : DKEEP-OP ( -- IR-ID:ir-op-id )     0 LAST-OP @ ;
