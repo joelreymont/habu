@@ -631,7 +631,6 @@ loading; one section's base depends on another's length -
 recorded so ruling 2's "per-section base offset" reads right);
 package records' [0]/[8] take the WID rebase, never the blob
 shift.
-
 MERGE LANDED, MILESTONE BLOCKED BY A PRE-EXISTING GAP
 2026-08-15 (bake-chain-8, three commits stacked in
 .jj-ws/habu-bake-chain on master 9c23a67d: b5d4c151 claim,
@@ -714,3 +713,26 @@ UNEXERCISED BY EITHER SIDE: named code sites (xtsites) are 0 in
 the chain artifact and 0 in the merge probe's window, so the
 merge's shift of those two fields is carried by code and by no
 measurement.
+
+MERGE LANDED 2026-08-15 (bake-chain-8, merged 127cdbb6): READ and
+MERGE share one LOAD-PASS + one section loader, differing in one
+BASE table; nine shift-class mutations red named cases (sum-per-
+row-family checks, not range checks); chain reader/writer unified
+under SNAP-RELOC (two consumers - the emitted relocation pass
+consumes the constants); driver parameter ARTIFACT! per the
+channel ruling; DKEEP-HOOK on the boot-run list via the tool.
+Two-pass READ ratified by measurement (second file pass 0.2ms,
+second SHA is the between-passes check). Engine delta 341B
+attributed to stdin.f's pre-window DP shift, dicts identical.
+BOOT MILESTONE BLOCKED by P1 habu-seed-call-site-9d7d8e72: the
+seed's LFIND is wordlist-blind - 15421 of 18896 chain sites have
+packaged callees and exit a SILENT 81 ($51). Fix ruled on that
+dot (site rows carry the callee wid as a window coordinate, 12B
+rows, VERSION 3, wordlist-aware resolve, capture-side
+resolves-as-the-seed-asks audit, named diagnostic for $51).
+Items (3)-(6) blocked behind it. Loose ends recorded: xtsites=0
+on both sides (shift carried by code, no measurement - fixture
+owed when one exists); three W32 spellings in aot-capture.f
+(dedup is a caller cascade, not authorized); the metabuild
+acceptance fixture awaits the blocker (vehicle ready).
+

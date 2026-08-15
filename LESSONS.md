@@ -6937,3 +6937,23 @@ layout constants only, in anything the window will compile.
 false today - dotted habu-stdin-host-s-5a992a38: declare bands
 where the marks are true, or the audit fires never.
 
+
+## 2026-08-15 - the merge landing's four (bake-chain-8)
+
+(1) A range check over a live population is not a shift test:
+when the host side is small beside the artifact, "inside the
+merged span" and "inside the artifact's span" are nearly the
+same band - four of nine shift mutations passed the range
+checks. Read the input once alone, keep a sum per row family,
+require merged = original + count x shift.
+(2) lldb breakpoints set before `run` silently never fire on
+these images: process launch --stop-at-entry, then br set -a,
+then continue. Two wrong conclusions came from breakpoints that
+never fired.
+(3) Exit 81 is two different deaths: BL-RANGE-RC writes a
+message; EM-AOT-PATCH-SITES' name-not-found ($51) writes
+nothing. A silent 81 is the second.
+(4) A test window with no packages tests no packages: the AOT
+capture looked complete for a year because the only window ever
+captured was the package-free REPL - and 82% of the chain's call
+sites have packaged callees (dot 9d7d8e72).

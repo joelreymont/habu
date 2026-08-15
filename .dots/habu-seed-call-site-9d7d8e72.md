@@ -1,0 +1,9 @@
+---
+title: Seed call-site resolution is wordlist-blind
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-15T23:39:19.899983+02:00"
+---
+
+P1 found by bake-chain-8 (2026-08-15), debugger-proven not inferred: EM-AOT-PATCH-SITES (habu2.f:4401 pnf) resolves each captured call site's BARE name via LFIND in the global wordlist; a packaged callee never resolves and the exit is a SILENT 81 ($51, no message - distinct from layout.f BL-RANGE-RC 81 which writes one). Caught at 0x10000c588: x13=0 LFIND miss, site 219, pool entry CDIGEST:SLOT@ - public in package CDIGEST (src/compiler/digest.f:86). Measured over the merged buffers: 18896 sites = 15421 packaged callees + 3475 prefix words - 82% of the chain cannot be relocated today. Never fired because the only window ever captured (the REPL) defines no package; corroboration: aot-wid-build's gate modes already had to put QUALIFIED names on the boot-run list. Qualifying names is refuted as the fix: it reaches only PUBLIC package words and the chain has private callees in quantity. RULED fix direction: each site carries its callee's WID beside the name - window-relative, rebased by exactly the record machinery (54dec421's discipline), site row widens 8B->12B (one site = one row; the existing parallel tables are value families, not fields of one record), artifact VERSION 3, seed resolves wordlist-aware, and the capture-side audit that should have caught this (every site's name resolves THE WAY THE SEED WILL ASK) lands with the fix. Acceptance: the merged-engine boot milestone (NMIGRATE:DEFINE at first user token) plus a minimal packaged-callee fixture window (a package word calling another package's public AND private word), mutation-proven; the silent $51 exit gains a named diagnostic either way. Blocks e98b03d4 items (3)-(6).
