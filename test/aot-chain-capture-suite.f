@@ -541,6 +541,40 @@ create SW1 512 allot
    s" a closure list the chain digest does not re-derive is refused" T-LABEL
    s" aot-file: the chain sources have changed since this capture" READ-REFUSED ;
 
+\ ---- the merge, against the same artifact -----------------------------------
+\ AOT-FILE:MERGE appends this artifact to a capture that already happened, in
+\ that capture's coordinates. test/aot-file-merge.f is what runs it - it captures
+\ a window of its own so every shift has a nonzero quantity, and it checks each
+\ row family's SUM against the artifact's own plus the row count times the shift,
+\ which is what pins a shift to its size rather than to a range. What is asserted
+\ HERE is the other half: the merged counts are the host's plus THIS capture's,
+\ measured in the tool's process and checked in the merge's, so the two censuses
+\ have to agree across two processes rather than within one.
+: RUN-MERGE ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/aot-file-merge.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   ART$ >LEN PROC-ARGV+
+   EXEC ;
+
+: MERGED= ( ptr u8 n ptr u8 n n -- ) {: h:ptr hu:n m:ptr mu:n want:n :}
+   m mu FIELD  h hu FIELD -  want T= ;
+
+: PROBE-MERGE ( -- )
+   RUN-MERGE
+   s" the production merge accepts the artifact the capture wrote" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... appending exactly the records this capture measured" T-LABEL
+   s" hostrecs=" s" mergedrecs=" T-RECS @ MERGED=
+   s" ... exactly its call sites" T-LABEL
+   s" hostsites=" s" mergedsites=" T-SITES @ MERGED=
+   s" ... exactly its code" T-LABEL
+   s" hostblob=" s" mergedblob=" T-BLOB @ MERGED=
+   s" ... and exactly its DATA window" T-LABEL
+   s" hostdata=" s" mergeddatasz=" T-DATASZ @ MERGED= ;
+
 : BODY ( -- )
    SETUP
    MUTANT-BUILD
@@ -551,6 +585,7 @@ create SW1 512 allot
    PROBE-NOT-FIRST
    PROBE-ARTIFACT
    PROBE-READBACK
+   PROBE-MERGE
    PROBE-DAMAGE
    PROBE-FORGED
    PROBE-CHAIN ;

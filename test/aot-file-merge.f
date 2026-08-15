@@ -412,25 +412,25 @@ variable T-ORD    variable T-WIDN
 : CENSUS. ( -- )
    s" aot-file-merge: merged" type cr
    s" hostrecs=" type H-REC @ .
-   s" recs=" type AOT-REC-N @ .
+   s" mergedrecs=" type AOT-REC-N @ .
    s" hostsites=" type H-SITE @ .
-   s" sites=" type AOT-SITE-N @ .
+   s" mergedsites=" type AOT-SITE-N @ .
    s" hostblob=" type H-BLOB @ .
-   s" blob=" type AOT-BLOB-LEN @ . cr
+   s" mergedblob=" type AOT-BLOB-LEN @ . cr
    s" hostnames=" type H-NAMES @ .
-   s" names=" type AOT-NAMES-LEN @ .
+   s" mergednames=" type AOT-NAMES-LEN @ .
    s" hostdsites=" type H-DSITE @ .
-   s" dsites=" type AOT-DSITE-N @ .
+   s" mergeddsites=" type AOT-DSITE-N @ .
    s" hostcsites=" type H-CSITE @ .
-   s" csites=" type AOT-CSITE-N @ . cr
+   s" mergedcsites=" type AOT-CSITE-N @ . cr
    s" hostdata=" type H-DATA @ .
-   s" datasz=" type AOT-DATA-SIZE @ .
+   s" mergeddatasz=" type AOT-DATA-SIZE @ .
    s" hostxtoff=" type H-XTOFF @ .
-   s" xtoff=" type AOT-WINDOW:XTOFF-N @ .
+   s" mergedxtoff=" type AOT-WINDOW:XTOFF-N @ .
    s" hostspan=" type H-SPAN @ .
-   s" widspan=" type AOT-WID-SPAN @ .
+   s" mergedwidspan=" type AOT-WID-SPAN @ .
    s" hostpwin=" type H-PWIN @ .
-   s" pwin=" type AOT-PWIN-N @ . cr ;
+   s" mergedpwin=" type AOT-PWIN-N @ . cr ;
 
 : MAIN ( -- )
    ?ARGS
