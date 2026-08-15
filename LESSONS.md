@@ -6847,3 +6847,16 @@ minting a list or a mark, ask which existing component already
 had to know the answer. A hand-written closure manifest would
 have agreed with the engine only until the first chain file
 gained a dependency.
+
+## 2026-08-15 - the comment ruling
+
+Source files are not design documents. 54% of the compiler chain
+was comments - essays, narrated rationale, refutation histories in
+file headers - and the user called it what it is: bloat. The rule
+now: stack signatures always, maintained carefully; a comment only
+for a non-obvious constraint the code cannot state, one or two
+lines; design history and refutation records live in the dot leaf
+and LESSONS.md, never in source. Meaning lives in word names and
+factoring. Prose in source is also live risk twice over: source-
+shape tests count comment tokens, and baked-source prefixes carry
+comment bytes into the shipped binary.

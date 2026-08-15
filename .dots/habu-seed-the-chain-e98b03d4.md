@@ -32,7 +32,7 @@ code), but this leaf must re-derive it before the chain enters the
 capture window. The engine-side model is C-CALL-SCAN-SAFE +
 AOT-WINDOW:EMIT-OUTSIDE (arithmetically-accepting unarmed state).
 
-Claim: agent=bake-chain-5 workspace=.jj-ws/habu-bake-chain
+Claim: agent=bake-chain-6 workspace=.jj-ws/habu-bake-chain
 
 RULED 2026-08-14 (bake-chain checkpoint, probes /tmp/bc-probe/):
 the metabuild-host capture entry is REFUTED BY EXPERIMENT - the
@@ -452,3 +452,44 @@ rightly rejects an unwired host file. Next: the format file +
 writer + verifying reader (round-trip sha acceptance), then
 merge, two-engine emit, fixpoint, provided rows from the
 artifact's list, battery.
+
+FORMAT RULINGS AMENDED 2026-08-15 (bake-chain-6 checkpoint, two
+premises refuted by measurement, both fixes ruled):
+(1) driver-io.f is NOT requirable in a booted engine
+(E-UNDEFINED: MBUF - it drags the image-writer closure incl.
+macho/sign2). RULED: split the fd-write concern into a new
+common prefix source, package FDIO, FDIO:WALL ( n ptr u8 n -- );
+the 8 call sites (driver-io.f, aot-lib.f, snap-lib.f x6) move to
+the packaged name; all five builder lists gain the file. The
+flat-name shortcut (unpackaged DRV-WALL in a new file) is
+refused - the Packages rule is blocking.
+(2) aot-ident.f must load in the metabuild host but CLOSURE!
+reads the require registry, and bootstrap.sh's stdin branch does
+not append include.f. RULED: move the registry-bracketing loop
+into tools/aot-chain-capture.f (its only caller, beside its
+sibling refusals); aot-ident.f keeps one concern via
+AOT-IDENT:RESET ( -- ) and AOT-IDENT:PATH+ ( ptr u8 n -- ) plus
+COUNT/PATH$/CHAIN-DIGEST - ONE digest implementation both
+processes call. Widening the recovery host to carry include.f is
+refused: never widen a host to satisfy a dependency that can be
+not created.
+(3) FORMAT RATIFIED as tabled: 136B header (magic $00544F4155424148,
+version hard-eq, target, section-count 13, payload-len, three
+32B shas), payload = fixed-order 13-entry section table + bytes,
+u64 LE, no padding, counts DERIVED from section lengths (one
+authority per number; non-multiple lengths are named refusals),
+scalars only AOT-DATA-D0 + canonical-zero AOT-CODE-B0 (per-
+section sha census proved every payload byte identical across
+three ASLR-shifted processes - the fixpoint has a measured
+basis). Identity stays outside the format file: AOT-FILE:WRITE/
+READ take (producer-key, path); the tool passes ENGINE-ID:KEY,
+the metabuild the sha of the capture host it emitted.
+(4) READER AMENDMENT (one addition to the two-pass shape): pass
+2 re-accumulates the payload SHA-256 while filling destination
+buffers and asserts it equals the header's payload sha at the
+end - "the file did not change between passes" becomes a check,
+like the header byte-identity assert, instead of an assumption.
+(5) The poisoned-buffer round trip is APPROVED (stronger than
+the ruled clear). The item-(2) flag is recorded: the merge runs
+strictly AFTER the host's own capture; the artifact carries
+compact rows only.
