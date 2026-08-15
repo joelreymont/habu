@@ -155,13 +155,31 @@ create HEX 64 allot
    AOT-IDENT:RESET
    Q1 @ Q0 @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ AOT-IDENT:PATH+ loop ;
 
+\ WHAT THE SEEDED ENGINE HAS TO RUN BEFORE THE CHAIN IS USABLE, and it is this
+\ tool's to say, the way src/habu/stdin.f CAPTURE-REPL names its own installers.
+\ The window holds exactly one declared address cell - A64RAV:DKEEP-HOOK, the
+\ `defer` regalloc-verify.f opens for a reader of its refusals - and a captured
+\ cell arrives trapped, because what it held was a code address in the process
+\ that compiled it. The boot-run list is where a window installs its own vectors,
+\ so the word that installs that one goes on it; without it the first refusal the
+\ verifier reaches dies "defer: unset execution vector".
+: BOOTRUN ( -- )
+   AOT-WINDOW:XTOFF-N @ 1 = if
+      s" A64RAV:DKEEP-HOOK-DEFAULT" AOT-CAPTURE:BOOTRUN+ exit
+   then
+   s" aot-chain-capture: the window has " type AOT-WINDOW:XTOFF-N @ .
+   s" declared address cells and this tool installs one" type cr
+   s" aot-chain-capture: an unlisted declared address cell would boot untrapped"
+   REFUSE-RC die ;
+
 : RUN ( -- )
    ?FIRST
    ?WINDOW
    LATCH-CLOSURE
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
    W0 @ W1 @ AOT-CAPTURE:WID-SPAN
-   B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE ;
+   B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE
+   BOOTRUN ;
 
 \ One `name=value` per line. `codespan`/`dataspan` are the window's own measured
 \ extents, so a reader can check the capture against the window instead of taking

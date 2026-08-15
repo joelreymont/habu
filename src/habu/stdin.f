@@ -100,6 +100,33 @@ public
 variable B0  variable R0  variable D0  variable W0
 variable B1  variable R1  variable D1  variable W1
 
+\ THE ARTIFACT THIS EMIT BAKES, and the engine whose key it has to carry. Empty
+\ is the CAPTURE HOST - today's bin/hb shape, the engine a build with no chain to
+\ merge emits - and a declared artifact is the PRODUCT. That is the only thing
+\ the two emissions differ by: no mode flag, no second prefix.
+\ THE BUILD DRIVER OWNS BOTH PATHS. docs/forth.md is explicit that a build source
+\ must not read them out of a stale environment, so they arrive as a call the
+\ driver splices into the source it generates (tools/build-fixpoint.f
+\ BF-EMIT-STDIN-RUN-SOURCE takes the driver file, which is how the fixtures
+\ already reach this driver).
+\ THE PRODUCER KEY IS TWO INDEPENDENT READINGS OF ONE FACT: the capture stamped
+\ the SHA-256 of the binary it was running into the artifact, and this hashes the
+\ binary it is told produced it. A mismatch is the reader's refusal.
+$100 constant APATH-CAP           \ src/habu/aot-ident.f's per-path cap, same reason
+create ART-P APATH-CAP allot   variable ART-U
+create ENG-P APATH-CAP allot   variable ENG-U
+create PROD 32 allot
+
+: PATH-COPY ( ptr u8 n ptr u8 -- ) {: a:ptr u:n d:ptr :}
+   u APATH-CAP > IF s" hb: artifact path exceeds the driver's buffer" 74 die THEN
+   u 0 ?do a i + c@  d i + c!  loop ;
+
+\ ( artifact-path engine-path -- ): the artifact to merge and the engine that
+\ produced it. Called with two empty spans, this emit is the capture host.
+: ARTIFACT! ( ptr u8 n ptr u8 n -- ) {: a:ptr au:n e:ptr eu:n :}
+   a au ART-P PATH-COPY  au ART-U !
+   e eu ENG-P PATH-COPY  eu ENG-U ! ;
+
 private
 
 : CAPTURE-REPL ( -- )
@@ -115,6 +142,20 @@ private
    s" BPW-INSTALL" AOT-CAPTURE:BOOTRUN+            \ debug-watch.f -> watch table init
    s" S-INSTALL" AOT-CAPTURE:BOOTRUN+ ;            \ stepper.f -> stepper read hook
 
+\ Append the declared artifact to what CAPTURE-REPL just captured, in the
+\ coordinates of that capture, so EMIT-AOT-SEED still bakes one of everything.
+\ A declared artifact is mandatory once declared: an engine this build cannot key
+\ or read is a refusal, never a quietly unseeded product.
+: MERGE-ARTIFACT ( -- )
+   ART-U @ 0= IF exit THEN
+   ENG-U @ 0= IF
+      s" hb: an artifact was declared with no engine to key it against" 74 die
+   THEN
+   ENG-P ENG-U @ PROD SHA256-FILE 0 <> IF
+      s" hb: cannot hash the engine that produced the artifact" 74 die
+   THEN
+   PROD ART-P ART-U @ AOT-FILE:MERGE ;
+
 ;package
 
 package STDIN-DRIVER
@@ -122,6 +163,7 @@ public
 
 : RUN ( -- )
    CAPTURE-REPL
+   MERGE-ARTIFACT
    0 0= STDIN? !
    HB@ 0 ENGINE-EMIT:FORTH                        \ empty LSRC: the REPL is seeded, not re-parsed
    s" hb" STDIN-OUT DRV-EMIT-IMAGE

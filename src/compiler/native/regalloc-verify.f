@@ -1147,8 +1147,19 @@ variable LAST-CLAUSE
 variable LAST-HELD           \ has a residency run ever filled the three above
 
 : DKEEP-HOOK-NONE ( -- ) ;
+
+\ PUBLIC BECAUSE A CAPTURED CHAIN HAS TO RE-RUN IT. DKEEP-HOOK is the one
+\ declared address cell in the compiler chain's capture window, and a captured
+\ window's declared cells arrive trapped: what they held was a code address in
+\ the process that compiled them, so the seed re-traps each one and the boot-run
+\ list is what installs the real vector (src/habu/aot-decl.f says why). The
+\ capture tool puts this name on that list, and LFIND has to find it. There is no
+\ wrapper: a second name for a one-cell install is the forwarder that grows a
+\ second body.
+public
 : DKEEP-HOOK-DEFAULT ( -- )
    [: DKEEP-HOOK-NONE ;] is A64RAV:DKEEP-HOOK ;
+private
 DKEEP-HOOK-DEFAULT
 
 : DKEEP! ( IR-ID:ir-op-id n -- )
