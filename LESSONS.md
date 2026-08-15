@@ -6957,3 +6957,25 @@ nothing. A silent 81 is the second.
 capture looked complete for a year because the only window ever
 captured was the package-free REPL - and 82% of the chain's call
 sites have packaged callees (dot 9d7d8e72).
+
+## 2026-08-16 - the wordlist landing's four (bake-chain-9 + gate)
+
+(1) Never edit the tree while test/run.f runs - six of eight reds
+in one stretch were the lane's own concurrent builds and mutation
+experiments. The wait is cheaper than the unpicking.
+(2) jj new <other> with an unsnapshotted working-copy edit loses
+it silently; re-read the file after any checkout when an edit was
+pending.
+(3) A gate whose stated purpose is broader than the invariant it
+protects refuses legitimate work the first time a real workload
+arrives: the AOT seal gate refused CALLS to public words of
+sealed packages, which the live seal permits every day - the
+discriminator (defining/opening vs calling) was in the engine
+source, not the gate's comment. State the invariant, not the
+category.
+(4) The pipeline-RC mistake recurred AT THE GATE: `run.f | tail;
+echo RC=$?` reports tail's status, and only the runner printing
+its verdict as text caught it. The rule exists ("echo RC
+separately, never behind a pipe") - it failed by habit, not
+ignorance. Capture to a file, echo the engine's RC on its own
+line, then read the file.

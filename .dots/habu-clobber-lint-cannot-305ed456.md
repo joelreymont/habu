@@ -15,3 +15,10 @@ WHY IT WAS NOT DONE THERE: package-diff-lint refuses it. START-L?, PSEUDO?, PSEU
 REGRESSION TO KEEP, also written and measured in that lane: append to tools/lint/clobber-sys-x8-fixture.f a callee whose label lives in a package (`package CLOBBER-FIX public variable LQUAL ;package`) plus a caller that keeps x13 live across `CLOBBER-FIX:LQUAL LABEL@ BL,`. The fixture count goes 3 -> 4 findings and the census 13/6 -> 15/7. Falsified by mutation: restoring the first-character predicate drops the finding back to 3 and the test dies. Add direct assertions too - START-L? true for LPROT, PROT:LOPEN, SNAP-RELOC:LCALLS and A:B:LTAIL, false for LHEAD:OPEN, PROT:OPEN, PROT: and CP.
 
 Files: tools/lint/clobber-lint.f, tools/lint/clobber-lint-test.f, tools/lint/clobber-sys-x8-fixture.f. Depends: none.
+
+NOTE 2026-08-16 (from the WLFIND landing, 9d7d8e72): habu1.f's
+"the stale rows cost nothing today" is now one read from false -
+the seed's patch pass deliberately keys its gate check on the
+requested scope instead of re-reading the resolved record to
+dodge the stale LFIND x5 model. Repairing this lint unblocks
+that simplification.

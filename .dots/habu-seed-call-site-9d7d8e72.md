@@ -48,7 +48,6 @@ CODE-CAP-BYTES $A00000->$A20000 - the AGREE chain guards the
 lift; if MACHO-MSIZE-CHECK trips, re-derive MSIZE by
 image-bytes.f's own method (the fourth-coupled-term lesson).
 Seed-affecting: install --force before every cold gate.
-
 LANDED IN PART 2026-08-16 (bake-chain-9, commit on
 .jj-ws/habu-bake-chain over master dc18bbca). The four-clause
 scope is IN and the P1 is fixed: a site row is 12B (blob-off,
@@ -113,3 +112,40 @@ all refused. For this family the RANGE check fires first on
 every mutation, so the sum-per-row-family check is present and
 consistent with the file's other ten families but has no kill of
 its own.
+
+
+GATE DISCRIMINATOR RULING 2026-08-16 (bake-chain-9 landing): the
+sealed-WID gate's stated purpose was broader than the invariant
+the live seal enforces - EMIT-STORE-DEF-NAME refuses DEFINING
+into a protected wid, C-PACKAGE-SEAL-GUARD refuses OPENING one,
+and CALLING a public word of a sealed package is what checked
+source does every day. RULED: the gate admits a callee that is
+PUBLIC in its package and refuses a PRIVATE one, on all three
+paths (call sites, code literals, boot-run names) - aligning the
+gate with the seal's real discriminator instead of the over-broad
+"any protected wid". This covers both measured refusals (the 3
+pre-window CODE-RECLAIM:WATCH sites and the in-window
+DKEEP-HOOK-DEFAULT boot-run entry) WITHOUT exemption classes.
+test/aot-wid-build.f's gate modes convert to a PRIVATE-reaching
+case so EM-AOTWIDGATE keeps a live red path - the gate must not
+go quiet. The D3 in-window exemption is SUPERSEDED by this
+simpler rule (delete it if it landed; public/private is the
+whole discriminator). Mutation: a private callee of a sealed
+package must still refuse on every path.
+The clobber-lint note in habu1.f ("the stale rows cost nothing
+today") is one read from false after WLFIND - annotate via
+305ed456's leaf, not by editing the note in place.
+
+RESOLUTION LANDED 2026-08-16 (bake-chain-9, merged 88e31d8d):
+12B site rows with the four-clause scope, one WLFIND routine
+shared by search-wl and the seed, named diagnostics replacing
+the silent $51, the resolves-as-the-seed-asks audit over all
+18893 sites, VERSION 3, caps lifted ($520000/$A20000/MSIZE
+$A50000 re-derived). 18893 sites relocate; the merged engine
+boots and runs programs and the boot-run installer fires.
+MILESTONE STILL OPEN behind: (a) the GATE DISCRIMINATOR RULING
+above (public-callable/private-refused - supersedes D3's
+exemption); (b) the merged-engine NMIGRATE:DEFINE crash, dotted
+c970bf04. This dot stays active until the gate ruling lands and
+the milestone transcript is green.
+
