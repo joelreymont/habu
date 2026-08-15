@@ -1,10 +1,12 @@
 ---
 title: Seed call-site resolution is wordlist-blind
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-08-15T23:39:19.899983+02:00"
+created-at: "\"2026-08-15T23:39:19.899983+02:00\""
 ---
+
+Claim: agent=bake-chain-9 workspace=.jj-ws/habu-bake-chain
 
 P1 found by bake-chain-8 (2026-08-15), debugger-proven not inferred: EM-AOT-PATCH-SITES (habu2.f:4401 pnf) resolves each captured call site's BARE name via LFIND in the global wordlist; a packaged callee never resolves and the exit is a SILENT 81 ($51, no message - distinct from layout.f BL-RANGE-RC 81 which writes one). Caught at 0x10000c588: x13=0 LFIND miss, site 219, pool entry CDIGEST:SLOT@ - public in package CDIGEST (src/compiler/digest.f:86). Measured over the merged buffers: 18896 sites = 15421 packaged callees + 3475 prefix words - 82% of the chain cannot be relocated today. Never fired because the only window ever captured (the REPL) defines no package; corroboration: aot-wid-build's gate modes already had to put QUALIFIED names on the boot-run list. Qualifying names is refuted as the fix: it reaches only PUBLIC package words and the chain has private callees in quantity. RULED fix direction: each site carries its callee's WID beside the name - window-relative, rebased by exactly the record machinery (54dec421's discipline), site row widens 8B->12B (one site = one row; the existing parallel tables are value families, not fields of one record), artifact VERSION 3, seed resolves wordlist-aware, and the capture-side audit that should have caught this (every site's name resolves THE WAY THE SEED WILL ASK) lands with the fix. Acceptance: the merged-engine boot milestone (NMIGRATE:DEFINE at first user token) plus a minimal packaged-callee fixture window (a package word calling another package's public AND private word), mutation-proven; the silent $51 exit gains a named diagnostic either way. Blocks e98b03d4 items (3)-(6).
 
@@ -46,3 +48,68 @@ CODE-CAP-BYTES $A00000->$A20000 - the AGREE chain guards the
 lift; if MACHO-MSIZE-CHECK trips, re-derive MSIZE by
 image-bytes.f's own method (the fourth-coupled-term lesson).
 Seed-affecting: install --force before every cold gate.
+
+LANDED IN PART 2026-08-16 (bake-chain-9, commit on
+.jj-ws/habu-bake-chain over master dc18bbca). The four-clause
+scope is IN and the P1 is fixed: a site row is 12B (blob-off,
+name-off, scope), artifact VERSION 3, the seed resolves through
+`search-wl`'s own body - factored into ONE labelled routine
+(habu1.f WLFIND:EMIT / WLFIND:LENTRY, x0/x1/x2 in, x11 = xt,
+x12 = row) that the primitive and the seed both BL. BSWL keeps
+the wid-2 short-circuit; the seed's calls do not. The silent $51
+is gone: two named fd-2 diagnostics ("hb: AOT call site
+unresolved", "... names a wordlist outside the window"), both
+exit ENGINE-ERROR:AOT-SEED like the sibling passes. The capture
+audit ACAP-?SITE reads the ROW just written and requires the
+engine's own find to answer the callee's xt, over all 18893
+sites; the 12 OWNER-API-PRI-WID sites take the structural check.
+MEASURED END TO END: the metabuild merges the real 3.1 MB chain
+artifact and emits an engine; 18893 sites relocate; that engine
+boots, runs ordinary programs, and the chain's own boot-run
+installer resolves and runs.
+TWO GATE RULINGS ARE OWED BEFORE THE MILESTONE CLOSES, both
+measured, both outside D3 as written:
+(1) 3 call sites resolve into a PRE-WINDOW protected wordlist -
+CODE-RECLAIM:WATCH, a PUBLIC word of a sealed package the chain
+calls from checked source. [T0,T0+span) cannot cover it: the
+seed did not create that wordlist.
+(2) the chain's boot-run entry A64RAV:DKEEP-HOOK-DEFAULT is a
+public word of an IN-WINDOW protected package
+(regalloc-verify.f:1886 `get-current prot-wid-add`), and D3 kept
+the gate for boot-run names.
+Both die exit 84 "hb: AOT protected-WID gate reject". THE LIVE
+SEAL DOES NOT FORBID EITHER: habu2.f EMIT-STORE-DEF-NAME refuses
+DEFINING into a protected wid and C-PACKAGE-SEAL-GUARD refuses
+OPENING one - calling a public word of a sealed package is what
+checked source does today. Proposal: the gate admits a callee
+that is PUBLIC in its package (the resolved wid is some package
+row's [0]) and refuses a private one, on all three paths;
+aot-wid-build's gate modes then need their protected package to
+be a private-reaching case. Alternative: extend [T0,T0+span) to
+the boot-run path (fixes (2) only).
+AND ONE NEW DEFECT, not this dot's: with both gate rejections
+bypassed the merged engine boots and `NMIGRATE:DEFINE` CRASHES
+(SIGSEGV, exit 134, pc 0x10052191c) where the same call on the
+source-loaded chain returns 0. Without the chain's boot-run
+installer it throws 7134 = E-PATH-RANGE (src/core/util.f PATHZ)
+instead. Ordinary programs run fine in the same engine. That is
+the next blocker for e98b03d4's milestone and wants its own dot
+and a debugger session.
+VEHICLE: tools/aot-chain-bake.f (new) splices
+STDIN-DRIVER:ARTIFACT! into stdin.f and runs the production
+stdin build - `bin/hb --load tools/aot-chain-bake.f -- <artifact>
+<producer-engine>` leaves $HB_TMP/hb-chain. It has no suite yet
+(the milestone it would assert is blocked); the schedule lint is
+satisfied because it is a build tool beside
+tools/aot-chain-capture.f, not a test.
+MUTATIONS PROVEN: capture scope forced to 0 for a packaged
+callee (the original defect) -> the audit refuses naming SLOT@;
+the qualified spelling dropped -> the audit refuses naming
+BYTES-ALLOC-LEN in scope 4294967294; the merge's scope rebase
+deleted -> 185 out-of-range coordinates; the QUALIFIED marker
+treated as movable -> the merge refuses by name; a wrong shift
+quantity, a uniform off-by-one and a single-row off-by-one ->
+all refused. For this family the RANGE check fires first on
+every mutation, so the sum-per-row-family check is present and
+consistent with the file's other ten families but has no kill of
+its own.

@@ -4361,31 +4361,74 @@ public
    pool-done LBL,
       4 21 CMP,  C-NE bad BCOND, ;
 
-\ For each baked call site (packed 8B row = blob-off u32 then name-off u32 into the
-\ deduped [len][bytes] name pool at LAOTNAMES) resolve the callee by NAME in THIS
-\ engine (LFIND over primitives, cold-prefix words, and the just-registered
-\ siblings) and re-encode ONLY the BL imm26 at CP+blob-offset to that address
+\ For each baked call site (blob-off u32, name-off u32 into the deduped
+\ [len][bytes] name pool at LAOTNAMES, callee scope u32) resolve the callee in
+\ THIS engine and re-encode ONLY the BL imm26 at CP+blob-offset to that address
 \ (disp = callee - site, in BL range by the boot region assertion); the BL opcode
 \ (the callee is named, not embedded) is preserved. A missing name is a build/seed
-\ inconsistency: fail closed. Rows are 4B-aligned so each loads with a single LDRW.
+\ inconsistency: fail closed. Rows are 4B-aligned so each field loads with a
+\ single LDRW.
+\ THE SCOPE IS WHAT MAKES THE NAME AN IDENTITY. A bare name is not one - the
+\ compiler chain puts SLOT@ in five wordlists and in none of them globally, so a
+\ global lookup answered "absent" for 82% of its call sites (dot 9d7d8e72). Four
+\ scopes and no more: a wid below FIRST-DYNAMIC-WID is a layout constant and means
+\ the same wordlist here; a window coordinate becomes T0 + (wid - W0), the rebase
+\ the records take; WID-QUAL says the pooled name is qualified and LFIND's own
+\ qualifier path resolves it; anything else is refused by name.
+\ AND THE SEALED-WID GATE ASKS ABOUT THE ANSWER, not the question: a callee whose
+\ record lives in a wordlist THIS SEED just created ([T0, T0+span)) is a call the
+\ checker already bound inside the window's own package, so the gate - which
+\ exists to stop a baked name reaching into a wordlist the engine already had -
+\ is not asked about it. Every other callee goes through it unchanged.
 \ The AOT seed writes call immediates straight into the region, so it is the second
 \ producer of region-to-text calls and records its sites in the same map as
 \ EMIT-CEMITBL, by the same region-extent test. It runs from EM-COMPILE-EXIT, after
 \ the DATA region is mapped, so the map is writable here.
 : EM-AOT-PATCH-SITES ( -- )
-   LBL LBL LBL LBL {: ploop:label pdone:label pnf:label pnomark:label :}
-   21 5 LAOTSITES LABEL@ TADR,                       \ x21 = row cursor (8B rows)
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   s" hb: AOT call site unresolved"  s" hb: AOT call site names a wordlist outside the window"
+   {: ploop:label pdone:label pnf:label pnomark:label
+      pqual:label pscope:label pgate:label pbad:label pskip:label
+      nfmsg:label badmsg:label
+      nfa nfu bada badu :}                           \ typed-local-lint: allow-bare-local
+   21 5 LAOTSITES LABEL@ TADR,                       \ x21 = row cursor
    23 5 LAOTNSITE LABEL@ TADR,  23 23 0 LDR,         \ x23 = site count M
    22 0 MOVZ,                                        \ x22 = site index
    ploop LBL,  22 23 CMP,  C-GE pdone BCOND,
-      24 21 0 LDRW,                                  \ x24 = blob offset u32 (survives LFIND)
+      24 21 0 LDRW,                                  \ x24 = blob offset u32 (survives the lookup)
       4 21 4 LDRW,                                   \ x4 = name-off u32
       5 10 LAOTNAMES LABEL@ TADR,  9 5 4 ADD,        \ x9 = pool entry ptr = LAOTNAMES + name-off
       10 9 0 LDRB,                                   \ x10 = name length = pool[entry]
       9 9 1 ADDI,                                    \ x9 = name ptr = entry + 1
+      25 21 8 LDRW,                                  \ x25 = callee scope u32 (survives the lookup)
+      5 WID-QUAL LIT64,  25 5 CMP,  C-EQ pqual BCOND,
+      25 FIRST-DYNAMIC-WID CMPI,  C-CC pscope BCOND, \ layout constant: this number in every engine
+      6 7 AOT-WINDOW:LWIDW0 LABEL@ TADR,  6 6 0 LDR,
+      25 25 6 SUB,                                   \ window-relative
+      6 7 AOT-WINDOW:LWIDSPAN LABEL@ TADR,  6 6 0 LDR,
+      25 6 CMP,  C-CS pbad BCOND,                    \ one unsigned test refuses both sides
+      7 DATA WIDN-CELL LDR,  7 7 6 SUB,              \ x7 = T0; the records pass moved WIDN past the window
+      25 25 7 ADD,
+   pscope LBL,
+      0 9 0 ADDI,  1 10 0 ADDI,  2 25 0 ADDI,
+      WLFIND:LENTRY LABEL@ BL,                       \ x11 = xt or 0, x12 = the row
+      11 pnf CBZ,
+      5 12 0 ADDI,                                   \ the row the gate asks about
+      pgate B,
+   pqual LBL,
       LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?, x5 = record
       13 pnf CBZ,
-      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject reloc into a protected WID (reads LFIND's x5/x11; x24 survives)
+   pgate LBL,
+      \ The scope this site was resolved IN, which for a wordlist find is the wid
+      \ the matched row carries - the probe validates that equality itself. A
+      \ qualified name's marker is not a wid and lands outside the band, so the
+      \ gate keeps every callee the seed did not create the wordlist for.
+      14 15 AOT-WINDOW:LWIDSPAN LABEL@ TADR,  14 14 0 LDR,
+      15 DATA WIDN-CELL LDR,  15 15 14 SUB,          \ [T0, T0+span): the wordlists this seed just created
+      9 25 15 SUB,
+      9 14 CMP,  C-CC pskip BCOND,
+      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject reloc into a protected WID (reads x5/x11; x24 survives)
+   pskip LBL,
       9 CP 24 ADD,                                   \ x9 = site addr = CP + blob offset
       10 11 9 SUB,  10 10 2 ASRI,  5 $3FFFFFF LIT64,  10 10 5 AND,   \ x10 = imm26 = (callee - site) >> 2, masked
       14 9 0 LDRW,  5 $FC000000 LIT64,  14 14 5 AND,  14 14 10 ORR,  14 9 0 STRW,   \ keep BL opcode, write imm26
@@ -4397,8 +4440,15 @@ public
          5 SNAP-RELOC:CALLMAP-OFF LIT64,  14 14 5 ADD,  14 DATA 14 ADD,
          5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
       pnomark LBL,
-      21 21 8 ADDI,  22 22 1 ADDI,  ploop B,
-   pnf LBL,  0 $51 MOVZ,  NR-EXIT-GROUP SYS,
+      21 21 SITE-ROW ADDI,  22 22 1 ADDI,  ploop B,
+   pnf LBL,
+      1 nfmsg ADR,  0 2 MOVZ,  2 nfu 1+ MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   nfmsg LBL,  nfa nfu BYTES,  NL-KW 1 BYTES,        \ unreachable: the leg above exit_groups
+   pbad LBL,
+      1 badmsg ADR,  0 2 MOVZ,  2 badu 1+ MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   badmsg LBL,  bada badu BYTES,  NL-KW 1 BYTES,
    pdone LBL, ;
 
 \ DATA-literal relocation (third relocation class): reserve the REPL's DATA span
@@ -8170,7 +8220,7 @@ package LABELS
    LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
-   LBL HIDX:LREBUILD !  LBL HIDX:LFULL !
+   LBL HIDX:LREBUILD !  LBL HIDX:LFULL !  LBL WLFIND:LENTRY !
    LBL SNAP-RELOC:LCALLS !  LBL SNAP-RELOC:LXT !  LBL SNAP-RELOC:LMARK !
    LBL SNAP-RELOC:LADDRS !  LBL SNAP-RELOC:LADDRSITE !
    LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !
@@ -8311,8 +8361,8 @@ public
 \ therefore free, and an ADR, into this section is a defect whatever today's
 \ measurement says (tools/aot-section-reach-lint.f refuses one).
 \ LAOTNREC = 0 makes EM-SEED-AOT skip the whole pass (stage2/maker/snap).
-: EMIT-AOT-SITES ( -- )   \ packed 8B rows (blob-off u32 + name-off u32)
-   AOT-SITE-N @ 0 > IF AOT-SITE-BUF@ AOT-SITE-N @ 8 * BYTES, THEN ;
+: EMIT-AOT-SITES ( -- )   \ packed rows (blob-off u32 + name-off u32 + scope u32)
+   AOT-SITE-N @ 0 > IF AOT-SITE-BUF@ AOT-SITE-N @ SITE-ROW * BYTES, THEN ;
 : EMIT-AOT-DSITES ( -- )   \ packed u32 DATA-site offsets
    AOT-DSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * BYTES, THEN ;
 : EMIT-AOT-CSITES ( -- )   \ packed u32 CODE-site offsets (after the AOT-DSITE-N DATA u32s)
@@ -8399,6 +8449,7 @@ package ENGINE-EMIT
    EMIT-PROTWID                s" primitives/protected-wid" ENGINE-SIZE:MARK
    EMIT-FLUSH                 s" primitives/flush" ENGINE-SIZE:MARK
    EMIT-FIND                  s" primitives/find" ENGINE-SIZE:MARK
+   WLFIND:EMIT                s" primitives/find-wl" ENGINE-SIZE:MARK
    EMIT-FIND-USED             s" primitives/find-used" ENGINE-SIZE:MARK
    EMIT-HIDX                  s" primitives/hash-index" ENGINE-SIZE:MARK
    EMIT-QUALIFY-DEF           s" primitives/qualify-def" ENGINE-SIZE:MARK

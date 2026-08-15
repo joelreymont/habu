@@ -83,7 +83,7 @@ package AOT-FILE
 using AOT-BUF
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-2 constant VERSION   \ 2 added the window's wordlist span and its protected WIDs
+3 constant VERSION   \ 3 widened a call-site row with the callee's SCOPE
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -211,7 +211,7 @@ variable CUR
    k S-SCALARS = if SCAL-BYTES exit then
    k S-BLOB    = if AOT-BLOB-LEN @ exit then
    k S-RECS    = if AOT-REC-N @ AOT-CREC-ROW * exit then
-   k S-SITES   = if AOT-SITE-N @ 8 * exit then
+   k S-SITES   = if AOT-SITE-N @ SITE-ROW * exit then
    k S-NAMES   = if AOT-NAMES-LEN @ exit then
    k S-DSITES  = if AOT-DSITE-N @ 4 * exit then
    k S-CSITES  = if AOT-CSITE-N @ 4 * exit then
@@ -228,7 +228,7 @@ variable CUR
 : SEC-ROW ( n -- n ) {: k:n :}
    k S-SCALARS = if 8 exit then
    k S-RECS    = if AOT-CREC-ROW exit then
-   k S-SITES   = if 8 exit then
+   k S-SITES   = if SITE-ROW exit then
    k S-DSITES  = if 4 exit then
    k S-CSITES  = if 4 exit then
    k S-XTOFFS  = if 4 exit then
@@ -243,7 +243,7 @@ variable CUR
    k S-SCALARS = if SCAL-BYTES exit then
    k S-BLOB    = if AOT-BLOB-CAP exit then
    k S-RECS    = if AOT-REC-MAX AOT-CREC-ROW * exit then
-   k S-SITES   = if AOT-SITE-MAX 8 * exit then
+   k S-SITES   = if AOT-SITE-MAX SITE-ROW * exit then
    k S-NAMES   = if AOT-NAMES-CAP exit then
    k S-DSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-CSITES  = if AOT-DSITE-MAX 4 * exit then
@@ -531,7 +531,7 @@ private
    SCAL 24 + U64@ AOT-WID-SPAN !
    S-BLOB ROW-LEN@ AOT-BLOB-LEN !
    S-RECS ROW-LEN@ AOT-CREC-ROW / AOT-REC-N !
-   S-SITES ROW-LEN@ 8 / AOT-SITE-N !
+   S-SITES ROW-LEN@ SITE-ROW / AOT-SITE-N !
    S-NAMES ROW-LEN@ AOT-NAMES-LEN !
    S-DSITES ROW-LEN@ 4 / AOT-DSITE-N !
    S-CSITES ROW-LEN@ 4 / AOT-CSITE-N !
@@ -684,7 +684,7 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
    SEC-N 0 ?do 0 i BASE! loop
    H-BLOB @                    S-BLOB BASE!
    H-REC @ AOT-CREC-ROW *      S-RECS BASE!
-   H-SITE @ 8 *                S-SITES BASE!
+   H-SITE @ SITE-ROW *     S-SITES BASE!
    H-NAMES @                   S-NAMES BASE!
    H-DSITE @ 4 *               S-DSITES BASE!
    H-DSITE @ 4 * S-DSITES ROW-LEN@ + H-CSITE @ 4 * +   S-CSITES BASE!
@@ -775,9 +775,26 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
       then
    loop ;
 
+\ A call site's third field is a SCOPE, and only one of its four kinds moves: a
+\ window coordinate continues the host's window, exactly as a record's wid does.
+\ A layout constant and the QUALIFIED marker are the same number in every engine
+\ and in every merge, so REWID's own pass-through is what leaves them alone.
+: SCOPE-FIXED? ( n -- bool ) {: w:n :}      \ the same number in every engine, so no merge moves it
+   w WID-QUAL = if 0 0= exit then
+   w FIRST-DYNAMIC-WID < ;
+
+: MERGE-SITE-SCOPE ( -- )
+   S-SITES SEC-AT {: p:ptr :}
+   S-SITES SEC-ROWS 0 ?do
+      p i SITE-ROW * + {: r:ptr :}
+      r 8 + U32@ {: w:n :}
+      w SCOPE-FIXED? 0= if  r 4 + U32@ w REWID  r 8 + U32!  then
+   loop ;
+
 : MERGE-ROWS ( -- )
-   S-SITES SEC-AT    S-SITES SEC-ROWS    8 0 H-BLOB @ FIELD+
-   S-SITES SEC-AT    S-SITES SEC-ROWS    8 4 H-NAMES @ FIELD+
+   S-SITES SEC-AT    S-SITES SEC-ROWS    SITE-ROW 0 H-BLOB @ FIELD+
+   S-SITES SEC-AT    S-SITES SEC-ROWS    SITE-ROW 4 H-NAMES @ FIELD+
+   MERGE-SITE-SCOPE
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 0 H-BLOB @ FIELD+
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 4 H-NAMES @ FIELD+
    S-XTOFFS SEC-AT   S-XTOFFS SEC-ROWS   4 0 H-DATA @ FIELD+

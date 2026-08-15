@@ -346,20 +346,22 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
    off ACAP-NIDX+
    off ;
 
-\ --- call-site reloc rows: packed 8 bytes = blob-off u32 + name-off u32 (into pool) ---
-\ Both fields are u32 and neither carries a range check of its own, because
-\ neither value can reach one: a blob offset is an index into a blob the copy
-\ already refused past AOT-BLOB-CAP, and a pool offset is an index into a pool
-\ ACAP-POOL-ADD already refused past AOT-NAMES-CAP. Both caps are megabytes below
-\ 2^32, so the refusals that exist are the whole bound. The u16 fields these
+\ --- call-site reloc rows: blob-off u32 + name-off u32 (into pool) + scope u32 ---
+\ The first two fields are u32 and neither carries a range check of its own,
+\ because neither value can reach one: a blob offset is an index into a blob the
+\ copy already refused past AOT-BLOB-CAP, and a pool offset is an index into a
+\ pool ACAP-POOL-ADD already refused past AOT-NAMES-CAP. Both caps are megabytes
+\ below 2^32, so the refusals that exist are the whole bound. The u16 fields these
 \ replaced DID need their own checks, because their bound (64 KiB) sat below the
 \ buffer caps and nothing else would have caught a crossing.
-: ACAP-SITE-ROW ( n -- ptr u8 ) 8 * AOT-SITE-BUF@ + ;
-: ACAP-ADD-SITE ( n ptr u8 n -- ) {: boff:n a:ptr u:n :}
+\ The SCOPE is the wordlist the seed searches the name in, and ACAP-SITE-SCOPE
+\ below is the only producer of a value for it.
+: ACAP-SITE-ROW ( n -- ptr u8 ) SITE-ROW * AOT-SITE-BUF@ + ;
+: ACAP-ADD-SITE ( n ptr u8 n n -- ) {: boff:n a:ptr u:n w:n :}
    AOT-SITE-N @ AOT-SITE-MAX >= if s" aot-capture: too many call sites" 74 die then
    a u ACAP-POOL-ADD {: noff:n :}
    AOT-SITE-N @ ACAP-SITE-ROW {: r:ptr :}
-   boff r AOT-P32!  noff r 4 + AOT-P32!
+   boff r AOT-P32!  noff r 4 + AOT-P32!  w r 8 + AOT-P32!
    AOT-SITE-N @ 1+ AOT-SITE-N ! ;
 
 \ --- records: copy host record (48 bytes), rebase ordinary [0] xt to blob offset ---
@@ -638,13 +640,115 @@ private
    v ACAP-W-D0 @ < if s" in the prelude band, which no target carries" type exit then
    s" above the window's DATA span" type ;
 
-\ --- scan the copied blob for call sites; record + canonicalize each ---
+\ --- what wordlist the seed will search a callee's name in ---------------------
+\ A bare name is not an identity: measured on the chain, SLOT@ lives in five
+\ wordlists at once and in none of them globally. So a site carries a SCOPE, and
+\ four kinds of scope are all there are. A wid below FIRST-DYNAMIC-WID is a
+\ layout.f CONSTANT and names the same wordlist in every engine, exactly as wid 0
+\ does. A wid inside the window is a coordinate the seed rebases like a record's.
+\ A wid the window did not create is this engine's own number for a package the
+\ target numbers its own way, so the NAME carries the scope instead - qualified
+\ with the package's own name, which the seed resolves through the qualifier path
+\ a compile uses. Anything left is refused by name.
+$3A constant ACAP-QUAL-SEP                        \ ':' - the separator LFIND's qualifier scan looks for
+256 constant ACAP-QUAL-CAP
+create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
+
+: ACAP-PKG-PUB ( n -- n ) {: w:n :}               \ the package row publishing wid w, or -1
+   ndict@ 0 ?do
+      i AOT-REC AOT-RWID DICT-WL:NAMESPACE = if
+         i AOT-REC AOT-RXT w = if i unloop exit then
+      then
+   loop
+   -1 ;
+
+: ACAP-QUAL$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n wa:ptr wu:n :}
+   pu wu + 1+ ACAP-QUAL-CAP > if
+      s" aot-capture: qualified callee name exceeds the buffer" 74 die
+   then
+   pu 0 ?do pa i + c@  ACAP-QUAL-BUF i + c!  loop
+   ACAP-QUAL-SEP ACAP-QUAL-BUF pu + c!
+   wu 0 ?do wa i + c@  ACAP-QUAL-BUF pu 1+ + i + c!  loop
+   ACAP-QUAL-BUF  pu wu + 1+ ;
+
 variable ACAP-P
+
+\ A private word of a pre-window package is the one callee no scope can carry:
+\ the qualifier reaches a package's PUBLIC wordlist only. It is also unreachable -
+\ a caller in that package's private scope is itself a record of that package, and
+\ ACAP-?WID refuses a window record whose wid the window did not create - so this
+\ names the next producer of one rather than a case that arrives.
+: ACAP-REFUSE-SCOPE ( n n -- ) {: k:n w:n :}
+   s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
+   s"  calls " type k ACAP-NAME.
+   s"  in wordlist " type w .
+   s" , which its window did not create and no package publishes" type cr
+   s" aot-capture: call site into a wordlist the seed cannot name" 74 die ;
+
+: ACAP-SITE-SCOPE ( n -- ptr u8 n n ) {: k:n :}   \ callee record -> name, scope
+   k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN {: a:ptr u:n :}
+   k AOT-REC AOT-RWID {: w:n :}
+   w 0 >= w FIRST-DYNAMIC-WID < and if a u w exit then
+   w ACAP-WID-IN? if a u w exit then
+   w ACAP-PKG-PUB {: p:n :}
+   p 0 < if k w ACAP-REFUSE-SCOPE then
+   p AOT-REC AOT-RNPTR  p AOT-REC AOT-RNLEN  a u ACAP-QUAL$  WID-QUAL ;
+
+\ --- audit (d): the row resolves the way the seed will ask ---------------------
+\ The question EM-AOT-PATCH-SITES asks at the boot of the engine this capture is
+\ baked into, asked here of the row that was just written - the pooled name and
+\ the stored scope, through the engine's own find. A wrong scope (the whole of
+\ dot 9d7d8e72: a packaged callee searched globally), a wrong pool offset and a
+\ shadowed name all fail at the build that made the artifact instead of at that
+\ boot, where the exit says only that a name was not found.
+\ ONE SCOPE CANNOT BE ASKED FROM HERE and is carried by what makes it safe
+\ instead: `search-wl` refuses OWNER-API-PRI-WID, the sealed engine-helper
+\ wordlist that the seed's own routine does search, so a site there is required to
+\ name a PRE-WINDOW record - one of the engine's own baked helpers - whose wid is
+\ a layout constant and therefore the same number in the target.
+: ACAP-QUAL-SPLIT ( ptr u8 n -- n ) {: a:ptr u:n :}   \ separator index, or -1
+   u 0 ?do a i + c@ ACAP-QUAL-SEP = if i unloop exit then loop
+   -1 ;
+
+: ACAP-QUAL-XT ( ptr u8 n -- n ) {: a:ptr u:n :}      \ what a qualified name resolves to, or 0
+   a u ACAP-QUAL-SPLIT {: c:n :}
+   c 0 < if 0 exit then
+   a c DICT-WL:NAMESPACE search-wl {: pub:n :}        \ the package row's [0] is its public wid
+   pub 0= if 0 exit then
+   a c + 1+  u c - 1-  pub search-wl ;
+
+: ACAP-SITE-XT ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
+   w WID-QUAL = if a u ACAP-QUAL-XT exit then
+   a u w search-wl ;
+
+: ACAP-REFUSE-SITE ( n n ptr u8 n n -- ) {: s:n k:n a:ptr u:n w:n :}
+   s" aot-capture: call site " type s .
+   s" bakes the name " type a u type
+   s"  in scope " type w .
+   s" , which does not resolve to " type k ACAP-NAME.
+   s"  in this engine" type cr
+   s" aot-capture: a call site's name does not resolve the way the seed asks" 74 die ;
+
+: ACAP-?SITE ( n n -- ) {: s:n k:n :}
+   s ACAP-SITE-ROW {: r:ptr :}
+   r 4 + ACAP-W32@ {: noff:n :}
+   AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@ {: a:ptr u:n :}
+   r 8 + ACAP-W32@ {: w:n :}
+   w OWNER-API-PRI-WID = if
+      k ACAP-PRE-R @ < if exit then
+      s k a u w ACAP-REFUSE-SITE
+   then
+   a u w ACAP-SITE-XT  k AOT-REC AOT-RXT = if exit then
+   s k a u w ACAP-REFUSE-SITE ;
+
+\ --- scan the copied blob for call sites; record + canonicalize each ---
 : ACAP-SITE-HERE ( -- )
    AOT-BLOB-BUF@ ACAP-P @ + ACAP-TGT ACAP-TGT>REC {: k:n :}
    k 0 < if 1 AOT-UNRES-N +! exit then                \ call to no dict word -> word kept-source (counted)
    ACAP-P @ k ACAP-SITE-BAND                          \ ... and the target has this name
-   ACAP-P @  k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN  ACAP-ADD-SITE
+   k ACAP-SITE-SCOPE {: a:ptr u:n w:n :}
+   ACAP-P @ a u w ACAP-ADD-SITE
+   AOT-SITE-N @ 1- k ACAP-?SITE
    AOT-BLOB-BUF@ ACAP-P @ +        ACAP-ZERO-IMM ;     \ one 4-byte BL site
 : ACAP-SCAN-CALLS ( -- )
    0 ACAP-P !

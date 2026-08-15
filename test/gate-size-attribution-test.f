@@ -805,9 +805,26 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
 \ move and `FILE-SIZE bin/hb` is still 165367.
 \ The Linux rows below are owed this +432 as well.
-129960 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-16 the call site's callee wordlist (dot habu-seed-call-site-9d7d8e72),
+\ measured live at the byte fixpoint against a control build of master dc18bbca.
+\ Four rows move and every other one of the 49 is byte-identical:
+\   aot-seed        30536 -> 31404 (+868): the seed's four-clause scope resolve,
+\     the [T0, T0+span) test that keeps the sealed-WID gate off a wordlist the
+\     seed itself just created, and the two named boot diagnostics that replaced
+\     the silent $51 exit.
+\   compile/exit     3272 -> 3576 (+304): the same pass, emitted inline a second
+\     time under EM-COMPILE-EXIT.
+\   primitives/find-wl 0 -> 516 (+516): the one-wordlist find, now a labelled
+\     routine two callers share.
+\   primitives/base 14680 -> 14204 (-476): `search-wl`'s body, which is what
+\     moved into that routine.
+\ CODELEN 129960 -> 131172 (+1212), floor distance 2984 -> 4196. Inside the same
+\ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
+\ move and `FILE-SIZE bin/hb` is still 165367 (measured).
+\ The Linux rows below are owed this +1212 as well.
+131172 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-2984 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+4196 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

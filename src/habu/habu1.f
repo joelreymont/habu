@@ -223,6 +223,12 @@ public
 variable LREBUILD
 variable LFULL
 ;package
+\ The one-wordlist search shared by the `search-wl` primitive and the AOT seed's
+\ call-site pass; packaged for the same reason HIDX is.
+package WLFIND
+public
+variable LENTRY
+;package
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
@@ -2656,7 +2662,11 @@ private
       c7 c7 1 ADDI,  hl B,
    hd LBL, ;
 
-\ BSWL is the `search-wl` primitive: the name's row in ONE wordlist, or 0.
+\ WLFIND:LENTRY is the name's row in ONE wordlist, and the whole of `search-wl`'s
+\ body: in x0 = name, x1 = length, x2 = wid; out x11 = the row's code cell or 0,
+\ x12 = the row itself or 0. Two callers, one implementation - the primitive
+\ below, and the AOT seed's call-site pass, which asks the same question of a
+\ captured callee's wordlist and needs the ROW for the sealed-WID gate.
 \
 \ ITS ANSWER IS THE LAST MATCHING ROW, and that is not the same rule as "the
 \ matching row". The scan below runs record 0 upwards and overwrites its result
@@ -2684,7 +2694,10 @@ private
 \ walked through every slot without meeting an empty one. An empty slot IS the
 \ answer "absent from this wordlist", because every record below NDICT is in the
 \ table and slots only ever go empty -> occupied.
-: BSWL ( -- )
+package WLFIND
+public
+: EMIT ( -- )
+   LENTRY LABEL@ LBL,
    LBL SWL-LOOP !
    LBL SWL-END !
    LBL SWL-NEXT !
@@ -2694,14 +2707,8 @@ private
    LBL SWL-F2 !
    LBL SWL-INL !
    LBL LBL LBL LBL LBL LBL {: plin:label ploop:label pnext:label pinl:label pcmp:label pmatch:label :}
-   2 G-POP  1 G-POP  0 G-POP
    11 0 MOVZ,                                              \ result defaults to absent
-   \ search-wl short-circuits WID OWNER-API-PRI-WID to absent: WID 2 is the
-   \ reserved OWNER-API-private wordlist that carries the registered engine-helper
-   \ records ((PROT-SPAN)); nothing legitimate raw-searches it (dynamic wordlists
-   \ start at FIRST-DYNAMIC-WID), and test/engine-suite.f pins that (PROT-SPAN)
-   \ stays hidden from every wordlist.
-   2 OWNER-API-PRI-WID CMPI,  C-EQ SWL-END LABEL@ BCOND,   \ reserved OWNER-API-private WID is never raw-searchable
+   12 0 MOVZ,                                              \ ... and so does the row: neither loop writes x12
    \ Hash probe. x0 (name), x1 (len), x2 (wid) and x11 (result) are preserved
    \ across it for the scan the two fallbacks reach.
    4 DICT-WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,   \ not a wordlist key -> scan
@@ -2730,7 +2737,7 @@ private
          15 4 CMP,  C-NE pnext BCOND,
          7 7 1 ADDI,  pcmp B,
       pmatch LBL,
-         11 5 0 LDR,  SWL-END LABEL@ B,
+         11 5 0 LDR,  12 5 0 ADDI,  SWL-END LABEL@ B,
       pnext LBL,
          8 8 1 SUBI,  8 plin CBZ,
          6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  ploop B,
@@ -2753,9 +2760,24 @@ private
          SWL-F2 LABEL@ LBL,
          9 10 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
          7 7 1 ADDI,  SWL-CMP LABEL@ B,
-      SWL-MATCH LABEL@ LBL,  11 5 0 LDR,  SWL-NEXT LABEL@ B,
+      SWL-MATCH LABEL@ LBL,  11 5 0 LDR,  12 5 0 ADDI,  SWL-NEXT LABEL@ B,
       SWL-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  SWL-LOOP LABEL@ B,
-   SWL-END LABEL@ LBL,  11 G-PUSH ;
+   SWL-END LABEL@ LBL,  RET, ;
+;package
+
+\ `search-wl ( ptr u8 n n -- n )`: the routine above, minus one wordlist. WID
+\ OWNER-API-PRI-WID carries the registered engine-helper records ((PROT-SPAN),
+\ (LP2VEXEC)) and is never raw-searchable - test/engine-suite.f pins that no
+\ checked program can name one. The refusal belongs to the PRIMITIVE and not to
+\ the routine: the AOT seed relocates calls to those helpers by name and must
+\ search that wordlist, and it is not a checked program.
+: BSWL ( -- )
+   LBL {: absent:label :}
+   2 G-POP  1 G-POP  0 G-POP
+   11 0 MOVZ,
+   2 OWNER-API-PRI-WID CMPI,  C-EQ absent BCOND,
+   WLFIND:LENTRY LABEL@ BL,
+   absent LBL,  11 G-PUSH ;
 
 : BPARSE-NAME ( -- )
    LBL PARSE-NONE !
@@ -2916,7 +2938,7 @@ package ENGINE-EMIT
 : EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH 1 GDEREF-F   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
-   s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-L
+   s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-F
    s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
    s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;

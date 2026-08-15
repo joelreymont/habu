@@ -445,7 +445,7 @@ create SW1 512 allot
    s" a wrong magic is refused by name" T-LABEL
    s" aot-file: magic=" READ-REFUSED
 
-   FRESH  3 O-VERSION A64!  EMIT
+   FRESH  O-VERSION A64@ 1+ O-VERSION A64!  EMIT
    false RUN-READ
    s" a wrong version is refused by name" T-LABEL
    s" aot-file: version=" READ-REFUSED

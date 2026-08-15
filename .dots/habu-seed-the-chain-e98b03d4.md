@@ -736,3 +736,18 @@ owed when one exists); three W32 spellings in aot-capture.f
 (dedup is a caller cascade, not authorized); the metabuild
 acceptance fixture awaits the blocker (vehicle ready).
 
+CALL SITES RESOLVE 2026-08-16 (bake-chain-9, dot 9d7d8e72):
+the wordlist-blind P1 is fixed - a site row carries its callee's
+SCOPE, VERSION 3, and the seed resolves through the same
+one-wordlist find `search-wl` is. The merged engine now BOOTS
+from the real chain artifact and runs programs; 18893 sites
+relocate. The milestone is still open on two counts, and neither
+is the resolution: (a) the sealed-WID gate refuses 3 call sites
+into CODE-RECLAIM (a pre-window sealed package's PUBLIC word) and
+the chain's own boot-run entry into A64RAV (an in-window sealed
+package) - rulings owed on 9d7d8e72; (b) with those bypassed,
+NMIGRATE:DEFINE crashes in the seeded engine (SIGSEGV, exit 134)
+where the source-loaded chain returns 0. (b) is a new defect and
+the next real blocker for items (3)-(6); it wants its own dot.
+Vehicle for both: tools/aot-chain-bake.f, which runs the
+production stdin build with STDIN-DRIVER:ARTIFACT! spliced in.

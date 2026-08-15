@@ -121,10 +121,20 @@ create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
 \   [MAX*48 .. +MAX*CREC-ROW)  compact 20B records (three u32 role/code/name fields + metadata + wid)
 \   [+MAX*CREC-ROW .. +48)     48B scratch for the build-time expand==verbatim proof
 create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + 48 + allot    variable AOT-REC-N
+\ A call-site row: three u32 words - blob-off, name-off, and the callee's SCOPE,
+\ the wordlist the seed resolves the name in. A wid below FIRST-DYNAMIC-WID is a
+\ layout constant and passes through, a window coordinate is rebased like a
+\ record's, and WID-QUAL says the pooled name is qualified and carries its own
+\ scope (a pre-window package's word, whose id is that engine's own number).
+\ Named without the AOT- prefix the older tails here carry: that prefix is the
+\ recorded debt this file's header names, and a new name does not join it.
+12 constant SITE-ROW
+$FFFFFFFE constant WID-QUAL
+
 \ 32768 call sites: the metabuild window carries one BL site per 83 blob bytes,
 \ so the chain's 1.15 MiB projects to ~14k sites.
 32768 constant AOT-SITE-MAX
-create AOT-SITE-BUF AOT-SITE-MAX 8 * allot    variable AOT-SITE-N   \ packed 8B rows: blob-off u32 + name-off u32
+create AOT-SITE-BUF AOT-SITE-MAX SITE-ROW * allot    variable AOT-SITE-N   \ packed rows: blob-off u32 + name-off u32 + callee scope u32
 create AOT-NAMES-BUF AOT-NAMES-CAP allot    variable AOT-NAMES-LEN
 \ DATA-literal relocation table (third relocation class): blob offsets of the
 \ movz/movk x9 DATA-address literals (create/variable buffer refs). AOT-DATA-D0 =
@@ -314,7 +324,7 @@ public
 $10000 constant GRAIN                              \ 64 KiB, the largest target page
 AOT-BLOB-CAP
 AOT-REC-MAX AOT-CREC-ROW * +                       \ compact dictionary records
-AOT-SITE-MAX 8 * +                                 \ call-site rows
+AOT-SITE-MAX SITE-ROW * +                          \ call-site rows
 AOT-NAMES-CAP +                                    \ deduped name pool
 AOT-DSITE-MAX 4 * +                                \ DATA-literal sites
 AOT-DSITE-MAX 4 * +                                \ CODE-literal sites (same buffer's tail)

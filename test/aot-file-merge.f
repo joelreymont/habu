@@ -64,7 +64,7 @@ variable D0  variable D1  variable W0  variable W1
 \ What the host held before the merge, read back afterwards to say what moved.
 variable H-BLOB   variable H-REC    variable H-SITE  variable H-NAMES
 variable H-DSITE  variable H-CSITE  variable H-XTOFF variable H-DATA
-variable H-BOOT   variable H-PWIN   variable H-SPAN
+variable H-BOOT   variable H-PWIN   variable H-SPAN  variable H-SMOV
 variable BAD
 
 \ The artifact on its own: its counts, its two window bases, and one sum per row
@@ -75,7 +75,7 @@ variable A-XTOFF  variable A-PWIN   variable A-D0    variable A-W0
 variable A-ORD                       \ ordinary (non-package) records
 variable A-WIDN                      \ record wid fields that are not the global 0
 variable A-RBLOB  variable A-RNAME  variable A-RWID
-variable A-SBLOB  variable A-SNAME
+variable A-SBLOB  variable A-SNAME  variable A-SWID  variable A-SMOV
 variable A-DROW   variable A-CROW   variable A-XROW  variable A-PROW
 variable A-DVAL   variable A-CVAL
 variable SUM      variable SUM2     variable CNT
@@ -117,6 +117,29 @@ defer HOOK ( -- )                    \ a declared address cell
 
 : USER ( n -- n ) CALLEE CALLEE ;
 
+;package
+
+\ A second package, because a call site's callee lives in one of three kinds of
+\ wordlist and a bare name tells them apart in none: this package's own PRIVATE
+\ word, its PUBLIC word called from outside, and the global words above. All
+\ three are call sites in this window and each carries its own scope.
+package AFMW2
+private
+: HIDDEN ( n -- n ) {: v:n :}
+   v 1 +  v 2 * +  v 3 * +  v 5 * +  v 7 * +  v 11 * +  v 13 * +
+   v 17 * +  v 19 * +  v 23 * +  v 29 * +  v 31 * + ;
+public
+: SHOWN ( n -- n ) {: v:n :}
+   v 37 *  v 41 * +  v 43 * +  v 47 * +  v 53 * +  v 59 * +
+   v 61 * +  v 67 * +  v 71 * +  v 73 * +  v 79 * +  v 83 * + ;
+: BOTH ( n -- n ) HIDDEN SHOWN ;
+;package
+
+package AFMW
+public
+
+: CROSS ( n -- n ) AFMW2:BOTH AFMW2:SHOWN ;
+
 : TOUCH ( -- ) 7 BUF c! ;            \ a DATA literal: BUF's address in this window
 
 : NONE ( -- ) ;
@@ -148,13 +171,30 @@ create KEY 32 allot
    B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE
    s" AFMW:INSTALL" AOT-CAPTURE:BOOTRUN+ ;
 
+variable T-SWID   variable T-SMOV
+
+\ A call site's scope moves only when it is a window coordinate. A layout
+\ constant and the QUALIFIED marker name the same thing in every engine, so they
+\ are the same number on both sides of a merge and the sum counts what moves.
+: SCOPE-MOVES? ( n -- bool ) {: w:n :}
+   w WID-QUAL = if 0 0= 0= exit then
+   w FIRST-DYNAMIC-WID >= ;
+
+: WALK-SITES ( n n -- ) {: base:n n:n :}
+   0 T-SWID !  0 T-SMOV !
+   n 0 ?do
+      AOT-SITE-BUF@ base i + SITE-ROW * + 8 + W32@ {: w:n :}
+      w SCOPE-MOVES? if  T-SWID @ w + T-SWID !  T-SMOV @ 1+ T-SMOV !  then
+   loop ;
+
 : LATCH ( -- )
    AOT-BLOB-LEN @ H-BLOB !          AOT-REC-N @ H-REC !
    AOT-SITE-N @ H-SITE !            AOT-NAMES-LEN @ H-NAMES !
    AOT-DSITE-N @ H-DSITE !          AOT-CSITE-N @ H-CSITE !
    AOT-WINDOW:XTOFF-N @ H-XTOFF !   AOT-DATA-SIZE @ H-DATA !
    AOT-BOOTRUN-LEN @ H-BOOT !       AOT-PWIN-N @ H-PWIN !
-   AOT-WID-SPAN @ H-SPAN ! ;
+   AOT-WID-SPAN @ H-SPAN !
+   0 AOT-SITE-N @ WALK-SITES  T-SMOV @ H-SMOV ! ;
 
 : ?NONZERO ( n ptr u8 n -- ) {: v:n a:ptr u:n :}
    v 0 > if exit then
@@ -169,7 +209,8 @@ create KEY 32 allot
    H-DSITE @ s" DATA sites" ?NONZERO    H-CSITE @ s" CODE sites" ?NONZERO
    H-XTOFF @ s" address cells" ?NONZERO H-DATA @ s" DATA bytes" ?NONZERO
    H-BOOT @ s" boot-run names" ?NONZERO H-PWIN @ s" protected window WIDs" ?NONZERO
-   H-SPAN @ s" wordlists" ?NONZERO ;
+   H-SPAN @ s" wordlists" ?NONZERO
+   H-SMOV @ s" call sites into a window wordlist" ?NONZERO ;
 
 \ ---- what every merged coordinate has to satisfy -----------------------------
 \ Each check is a RANGE over a live population, so a shift that is dropped, or
@@ -238,8 +279,10 @@ variable T-ORD    variable T-WIDN
    0 AOT-REC-N @ WALK-RECS
    T-RBLOB @ A-RBLOB !  T-RNAME @ A-RNAME !  T-RWID @ A-RWID !
    T-ORD @ A-ORD !      T-WIDN @ A-WIDN !
-   AOT-SITE-BUF@ AOT-SITE-N @ 8 0 SUM-ROWS A-SBLOB !
-   AOT-SITE-BUF@ AOT-SITE-N @ 8 4 SUM-ROWS A-SNAME !
+   AOT-SITE-BUF@ AOT-SITE-N @ SITE-ROW 0 SUM-ROWS A-SBLOB !
+   AOT-SITE-BUF@ AOT-SITE-N @ SITE-ROW 4 SUM-ROWS A-SNAME !
+   0 AOT-SITE-N @ WALK-SITES
+   T-SWID @ A-SWID !  T-SMOV @ A-SMOV !
    AOT-DSITE-BUF@ AOT-DSITE-N @ 4 0 SUM-ROWS A-DROW !
    AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * + AOT-CSITE-N @ 4 0 SUM-ROWS A-CROW !
    AOT-WINDOW:XTOFF-BUF@ AOT-WINDOW:XTOFF-N @ 4 0 SUM-ROWS A-XROW !
@@ -254,6 +297,15 @@ variable T-ORD    variable T-WIDN
 : HOST-WID? ( n -- ) {: w:n :}
    w 0= if exit then
    w  AOT-WID-W0 @  AOT-WID-W0 @ H-SPAN @ +  s" a host record wid" ?IN ;
+
+: HOST-SCOPE? ( n -- ) {: w:n :}
+   w SCOPE-MOVES? 0= if exit then
+   w  AOT-WID-W0 @  AOT-WID-W0 @ H-SPAN @ +  s" a host call site scope" ?IN ;
+
+: MERGED-SCOPE? ( n -- ) {: w:n :}
+   w SCOPE-MOVES? 0= if exit then
+   w  AOT-WID-W0 @ H-SPAN @ +  AOT-WID-W0 @ AOT-WID-SPAN @ +
+   s" a merged call site scope" ?IN ;
 
 \ The host's own rows must be where they were: a merge that shifted everything
 \ instead of only what it read would still put the chain in range.
@@ -285,14 +337,16 @@ variable T-ORD    variable T-WIDN
 
 : ?SITES ( -- )
    H-SITE @ 0 ?do
-      AOT-SITE-BUF@ i 8 * + {: r:ptr :}
+      AOT-SITE-BUF@ i SITE-ROW * + {: r:ptr :}
       r W32@ 0 H-BLOB @ s" a host call site blob offset" ?IN
       r 4 + W32@ 0 H-NAMES @ s" a host call site name offset" ?IN
+      r 8 + W32@ HOST-SCOPE?
    loop
    AOT-SITE-N @ H-SITE @ ?do
-      AOT-SITE-BUF@ i 8 * + {: r:ptr :}
+      AOT-SITE-BUF@ i SITE-ROW * + {: r:ptr :}
       r W32@ H-BLOB @ AOT-BLOB-LEN @ s" a merged call site blob offset" ?IN
       r 4 + W32@ H-NAMES @ AOT-NAMES-LEN @ s" a merged call site name offset" ?IN
+      r 8 + W32@ MERGED-SCOPE?
    loop ;
 
 \ The DATA half: the row moved with the blob, and the chain it points at now
@@ -364,12 +418,18 @@ variable T-ORD    variable T-WIDN
       s" merged record name offset" ?SUM
    T-RWID @   A-RWID @ A-WIDN @ AOT-WID-W0 @ H-SPAN @ + A-W0 @ - * +
       s" merged record wid" ?SUM
-   AOT-SITE-BUF@ H-SITE @ 8 * + A-SITE @ 8 0 SUM-ROWS
+   AOT-SITE-BUF@ H-SITE @ SITE-ROW * + A-SITE @ SITE-ROW 0 SUM-ROWS
       A-SBLOB @ A-SITE @ H-BLOB @ * +
       s" merged call site blob offset" ?SUM
-   AOT-SITE-BUF@ H-SITE @ 8 * + A-SITE @ 8 4 SUM-ROWS
+   AOT-SITE-BUF@ H-SITE @ SITE-ROW * + A-SITE @ SITE-ROW 4 SUM-ROWS
       A-SNAME @ A-SITE @ H-NAMES @ * +
       s" merged call site name offset" ?SUM
+   H-SITE @ A-SITE @ WALK-SITES
+   T-SMOV @ A-SMOV @ = 0= if
+      s" aot-file-merge: a merged call site scope changed kind" DIE
+   then
+   T-SWID @  A-SWID @ A-SMOV @ AOT-WID-W0 @ H-SPAN @ + A-W0 @ - * +
+      s" merged call site scope" ?SUM
    AOT-DSITE-BUF@ H-DSITE @ 4 * + A-DSITE @ 4 0 SUM-ROWS
       A-DROW @ A-DSITE @ H-BLOB @ * +
       s" merged DATA site row" ?SUM

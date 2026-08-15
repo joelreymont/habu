@@ -37,7 +37,14 @@
 \ gives $A30000. The ELF side at this window is $A01000 + $C0, far below it.
 \ Both writers still assert their own sum at load, so this line is a claim the
 \ build checks rather than one it takes.
-$A30000 constant MSIZE
+\ RE-DERIVED 2026-08-16 for the $A20000 code window (dot
+\ habu-seed-call-site-9d7d8e72, which widened an AOT call-site row to carry the
+\ callee's wordlist, lifting AOT-SECTION-CAP by $20000 and CODE-CAP-BYTES with
+\ it). Fourth time by the same method and the same margin: MPAGE is $A21000, the
+\ Mach-O tail is $4000 + 104 + a $1456C signature bound, the whole image is
+\ $A395D4, rounding gives $A40000 and the margin gives $A50000. The ELF side at
+\ this window is $A21000 + $C0, far below it.
+$A50000 constant MSIZE
 $1002 constant M-MAP-PRIVATE-ANON
 75 constant M-BOUNDS-RC
 variable MBUF-A
