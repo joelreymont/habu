@@ -1,9 +1,11 @@
 ---
 title: Register compiler sources
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-26T22:54:38.127558+02:00"
+created-at: "\"2026-07-26T22:54:38.127558+02:00\""
+closed-at: "2026-08-15T14:07:28.872260+02:00"
+close-reason: "Closed (vintage audit 2026-08-15, re-executed after the pool incident): sources (UTF-8 N/A recorded source.f:39). Production-consumed by the native chain; suites dual-registered, green through the real entry."
 blocks:
   - habu-own-compiler-ir-1e8e0bec
 ---

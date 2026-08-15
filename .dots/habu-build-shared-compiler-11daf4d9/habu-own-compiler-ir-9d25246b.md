@@ -1,9 +1,11 @@
 ---
 title: Own compiler IR context
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-26T22:54:38.107827+02:00"
+created-at: "\"2026-07-26T22:54:38.107827+02:00\""
+closed-at: "2026-08-15T14:07:28.866184+02:00"
+close-reason: "Closed (vintage audit 2026-08-15, re-executed after the pool incident): context (serial/stale/ceiling negatives). Production-consumed by the native chain; suites dual-registered, green through the real entry."
 blocks:
   - habu-bind-compiler-target-b3dfa307
 ---
