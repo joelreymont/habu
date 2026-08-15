@@ -135,3 +135,28 @@ the probe but is unproven. The tool must carry an explicit
 fail-closed assertion (design it at the tool commit: every BL
 target inside the window resolves to a window record or a
 TARGET-prefix name, refused by name otherwise).
+
+FOUNDATION MERGED 2026-08-15 (master 5b155731, four commits: C
+storage-on-demand, aot-decl extraction + fixture repair, reloc
+pins, the four-term cap lift with AGREE and MACHO-MSIZE gates
+mutation-proven). The capture RUNS end-to-end over the chain
+window in bin/hb: recs 6586, sites 18602, blob 1194680, dsites
+3536, csites 16, xtsites 0, xtoff 1 (the predicted DKEEP-HOOK
+cell), datasz 1531275 - every buffer has headroom. ACCEPTANCE
+CLAUSE RETIRED: the armed-decline-empties-the-26 clause is
+doubly refuted (decline never involved; cure was the map-rewind
+fix) - test/p2-map-rewind.f is its replacement. PRELUDE-HAZARD
+RULING for the tool commit (items 2+): the assertion is
+TWO-SIDED and structural - the tool records four marks (ndict
+and DP at prelude-start and at window-open) and refuses BY NAME
+any site landing in the prelude band on either axis: (a) every
+BL target resolves to a record BELOW prelude-start or INSIDE the
+window - a target in [prelude-start, window-open) names a word
+absent from the booting engine; (b) every recorded DATA address
+lies below prelude-d0 or inside [d0,d1) - a window word holding
+a prelude buffer's address would bake a dangling pointer that
+ACAP-UNCLASSIFIED cannot see. Both audits run over the FULL site
+populations (18602 + 3536), fail-closed, at capture. Items
+(2)-(7) otherwise per the standing handoffs; the fourth-coupled-
+term lesson (CODE-CAP feeds MPAGE feeds signature feeds MSIZE)
+recorded.
