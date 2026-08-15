@@ -17,3 +17,10 @@ home authoritative; non-neutral lies die in vector arithmetic or
 the checker). Every remaining CALLEE/DEFINE-CALLING site is in
 test/ or tools/; production uses DEFINE/resolution. The deletion
 is the structural fix, unchanged.
+
+SIMPLIFICATION PRIORITY NOTE (audit 2026-08-15): this deletion is
+the largest earned tree simplification currently unblocked - the
+staging road's remaining sites are ALL test/tools, the production
+migrations use DEFINE/resolution, and the net-neutral-lie residual
+(re-proved live 2026-08-14) dies with the road. No dependency
+blocks it.

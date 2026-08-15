@@ -195,6 +195,29 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 
 : DRV-LINE ( ptr u8 n -- ) DRV+ DRV-NL ;
 
+\ Every reopened AOT-CAPTURE block below reads the capture buffers by their bare
+\ names, and those are package AOT-BUF's public surface (src/habu/aot-decl.f).
+\ aot-capture.f's own `using AOT-BUF` closes with that file's `;package`, and this
+\ text is a fresh eval frame besides, so each generated block has to open its own
+\ import. One word emits the pair and DRV-IMPORT-CHECK proves no block skipped it.
+: DRV-AOT-CAPTURE ( -- )
+   s" package AOT-CAPTURE" DRV-LINE
+   s" using AOT-BUF" DRV-LINE ;
+
+: DRV-AT? ( n ptr u8 n -- bool ) {: off:n a:ptr u:n :}
+   off u + DRV-U @ > if 0 0= 0= exit then
+   DRV-BUF off + u  a u STR= ;
+
+: DRV-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}          \ occurrences in the assembled driver
+   0  DRV-U @ 0 ?do  i a u DRV-AT? if 1+ then  loop ;
+
+\ Structural, not textual: it counts openers and counts opener-followed-by-import,
+\ so a block that opens the package without the import makes the two disagree.
+: DRV-IMPORT-CHECK ( -- )
+   S\" package AOT-CAPTURE\n" DRV-COUNT
+   S\" package AOT-CAPTURE\nusing AOT-BUF\n" DRV-COUNT
+   <> if s" aot-wid-build: a generated AOT-CAPTURE block has no `using AOT-BUF`" BF-BUILD-RC die then ;
+
 create DRV-CH 1 allot
 : DRV-CH+ ( n -- ) {: c:n :}
    c DRV-CH c!  DRV-CH 1 DRV+ ;
@@ -232,7 +255,7 @@ create DRV-CH 1 allot
 \ words are private to package AOT-CAPTURE, so the definitions are emitted inside
 \ a reopened block of it and stay private too.
 : SHAPE-CHECK-DEF ( -- )
-   s" package AOT-CAPTURE" DRV-LINE
+   DRV-AOT-CAPTURE
    s" : PWID-SHAPE-CHECK ( -- )" DRV-LINE
    s"    ACAP-PWID-TAG@ PROT-REG-TAG <> if" DRV-LINE
    S\"       s\" aot-wid-build: metabuild host band carries no bitmap tag\" 74 die then" DRV-LINE
@@ -393,7 +416,7 @@ create DRV-CH 1 allot
 \ that stopped exceeding the old ceiling would make this fixture prove nothing,
 \ so it ends the build instead of quietly passing.
 : BIG-CHECK-DEF ( -- )
-   s" package AOT-CAPTURE" DRV-LINE
+   DRV-AOT-CAPTURE
    s" : BIG-MAX-SITE ( -- n )" DRV-LINE
    s"    0 AOT-SITE-N @ 0 ?do i ACAP-SITE-ROW ACAP-W32@ max loop ;" DRV-LINE
    s" : BIG-MAX-DSITE ( -- n )" DRV-LINE
@@ -434,7 +457,7 @@ create DRV-CH 1 allot
 \ record, compares the caller's token against the bytes at [24]. A wrong pointer
 \ there cannot find the word, and EM-AOT-BOOTRUN exits $52 instead of reporting.
 : EXT-CHECK-DEF ( -- )
-   s" package AOT-CAPTURE" DRV-LINE
+   DRV-AOT-CAPTURE
    s" : EXT-REC-N ( -- n )" DRV-LINE
    s"    0 AOT-REC-N @ 0 ?do i ACAP-CREC-DST 12 + c@ 2 and 0= 0= if 1+ then loop ;" DRV-LINE
    s" : EXT-CHECK ( -- )" DRV-LINE
@@ -477,7 +500,7 @@ create DRV-CH 1 allot
 \ of the word that contains it, by NAME, and the build dies unless exactly one
 \ code site lies inside that word.
 : XT-DOCTOR-DEF ( -- )
-   s" package AOT-CAPTURE" DRV-LINE
+   DRV-AOT-CAPTURE
    s" variable XT-HIT" DRV-LINE
    s" : XT-NAME= ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr u:n :}" DRV-LINE
    s"    u 0 ?do a i + c@ b i + c@ <> if 0 0= 0= unloop exit then loop  0 0= ;" DRV-LINE
@@ -558,7 +581,7 @@ create DRV-CH 1 allot
 \ wrong answers can produce it: the host's address (had the chain been carried
 \ verbatim) is not this engine's, and the zero the capture leaves is not either.
 : XL-CHECK-DEF ( -- )
-   s" package AOT-CAPTURE" DRV-LINE
+   DRV-AOT-CAPTURE
    s" variable XL-HIT  variable XL-CS" DRV-LINE
    s" : XL-NAME= ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr u:n :}" DRV-LINE
    s"    u 0 ?do a i + c@ b i + c@ <> if 0 0= 0= unloop exit then loop  0 0= ;" DRV-LINE
@@ -643,7 +666,7 @@ create DRV-CH 1 allot
 \ pooled callee name is HH0 (the BL is there, by name). Either half alone would
 \ pass on a fixture that stopped referencing the prefix word at all.
 : PREWIN-CHECK-DEF ( -- )
-   s" package AOT-CAPTURE" DRV-LINE
+   DRV-AOT-CAPTURE
    s" variable PW-DS  variable PW-CS" DRV-LINE
    s" : PW-NAME= ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr u:n :}" DRV-LINE
    s"    u 0 ?do a i + c@ b i + c@ <> if 0 0= 0= unloop exit then loop  0 0= ;" DRV-LINE
@@ -767,7 +790,7 @@ create DRV-CH 1 allot
       LEGACY-CHECK-DEF
    then
    CAPTURE-REPL-LINES
-   s" package AOT-CAPTURE" DRV-LINE
+   DRV-AOT-CAPTURE
    PWID-BODY
    s" ;package" DRV-LINE
    FIXTURE-LINES
@@ -784,6 +807,7 @@ create DRV-CH 1 allot
    DRV-RESET
    SRC-BUF keep DRV+                \ stdin.f minus its terminal driver call
    INJECT                           \ ... plus the bitmap-working fixture
+   DRV-IMPORT-CHECK
    DRV-PATH$ DRV-BUF DRV-U @ WRITE-ALL ;
 
 : EMIT-PWID-STDIN ( -- )
