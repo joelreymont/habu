@@ -71,16 +71,20 @@ variable B0  variable B1      \ the window's code span
 variable R0  variable R1      \ its dictionary record span
 variable D0  variable D1      \ its DATA span
 variable Q0  variable Q1      \ its require-registry span: the closure it loaded
+variable W0  variable W1      \ its wordlist span
 
-\ Latch the three cursors and tell the engine where the window starts, which is
+\ Latch the four cursors and tell the engine where the window starts, which is
 \ what makes its compile-mode inliner emit a CALL to a pre-window body rather than
 \ copying it with the addresses it holds (habu2.f AOT-WINDOW:EMIT-OUTSIDE).
 : OPEN ( -- )
-   cp@ B0 !  ndict@ R0 !  here D0 !  REQUIRE-N @ Q0 !
+   cp@ B0 !  ndict@ R0 !  here D0 !  REQUIRE-N @ Q0 !  AOT-ARM:WIDN W0 !
    B0 @ D0 @ AOT-ARM:OPEN ;
 
+\ WIDN is latched HERE and not read again at capture time: the tool's own tooling
+\ loads after this point and opens packages of its own, so the live counter has
+\ moved on by the time CAPTURE runs.
 : CLOSE ( -- )
-   cp@ B1 !  ndict@ R1 !  here D1 !  REQUIRE-N @ Q1 ! ;
+   cp@ B1 !  ndict@ R1 !  here D1 !  REQUIRE-N @ Q1 !  AOT-ARM:WIDN W1 ! ;
 
 ;package
 
@@ -156,6 +160,7 @@ create HEX 64 allot
    ?WINDOW
    LATCH-CLOSURE
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
+   W0 @ W1 @ AOT-CAPTURE:WID-SPAN
    B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE ;
 
 \ One `name=value` per line. `codespan`/`dataspan` are the window's own measured
@@ -175,6 +180,9 @@ create HEX 64 allot
    s" dataspan=" type D1 @ D0 @ - .
    s" bandrecs=" type R0 @ PRE-R @ - .
    s" bandbytes=" type D0 @ PRE-D @ - .
+   s" widw0=" type W0 @ .
+   s" widspan=" type W1 @ W0 @ - .
+   s" pwin=" type AOT-PWIN-N @ .
    s" closure=" type AOT-IDENT:COUNT .
    s" first=" type 0 AOT-IDENT:PATH$ type cr
    s" last=" type AOT-IDENT:COUNT 1 - AOT-IDENT:PATH$ type cr
@@ -229,10 +237,11 @@ $A5 constant POISON-BYTE
    AOT-XTSITE:BUF@ AOT-XTSITE:N @ 8 * AOT-XTSITE:MAX 8 * SMEAR
    AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ AOT-BOOTRUN-CAP SMEAR
    AOT-PWID-BUF@ PROT-BITS-BYTES PROT-BITS-BYTES SMEAR
+   AOT-PWIN-BUF@ AOT-PWIN-N @ 4 * AOT-PWIN-MAX 4 * SMEAR
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
    0 AOT-DSITE-N !  0 AOT-CSITE-N !  0 AOT-WINDOW:XTOFF-N !  0 AOT-DATA-SIZE !
-   0 AOT-XTSITE:N !  0 AOT-BOOTRUN-LEN !
-   0 AOT-DATA-D0 !  0 AOT-CODE-B0 !
+   0 AOT-XTSITE:N !  0 AOT-BOOTRUN-LEN !  0 AOT-PWIN-N !
+   0 AOT-DATA-D0 !  0 AOT-CODE-B0 !  0 AOT-WID-W0 !  0 AOT-WID-SPAN !
    AOT-IDENT:RESET ;
 
 : SAME? ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr n:n :}

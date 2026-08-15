@@ -90,19 +90,27 @@ s" HB@" s" -- ptr u8" TRUST
 \ Dynamic host evaluation is source-dependent and cannot carry a static effect.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: EVAL-HOST ( ptr u8 n -- ) evaluate ;    \ compile a source buffer in the host dict
-variable REPL-B0  variable REPL-R0  variable REPL-D0
-variable REPL-B1  variable REPL-R1  variable REPL-D1
-
 package STDIN-DRIVER
+public
+
+\ The window this driver opens, in the four coordinates a capture is declared in:
+\ code, records, DATA and wordlist ids. They are public because the widened
+\ re-captures in test/aot-wid-build.f start their windows where this one started
+\ its own, and a fixture that guessed those marks would be testing its guess.
+variable B0  variable R0  variable D0  variable W0
+variable B1  variable R1  variable D1  variable W1
+
+private
 
 : CAPTURE-REPL ( -- )
    READ-REPL                                     \ REPL sources -> HB scratch buffer
-   cp@ REPL-B0 !  ndict@ REPL-R0 !  here REPL-D0 !
-   REPL-R0 @ REPL-D0 @ AOT-CAPTURE:PRELUDE-MARK   \ no prelude: this host compiles only what the target's prefix carries
-   REPL-B0 @ REPL-D0 @ AOT-ARM:OPEN               \ the engine declines to inline pre-window chains from here on
+   cp@ B0 !  ndict@ R0 !  here D0 !  AOT-ARM:WIDN W0 !
+   R0 @ D0 @ AOT-CAPTURE:PRELUDE-MARK             \ no prelude: this host compiles only what the target's prefix carries
+   B0 @ D0 @ AOT-ARM:OPEN                         \ the engine declines to inline pre-window chains from here on
    HB@ HL @ EVAL-HOST                             \ compile the REPL in the host dictionary
-   cp@ REPL-B1 !  ndict@ REPL-R1 !  here REPL-D1 !
-   REPL-B0 @ REPL-B1 @  REPL-R0 @ REPL-R1 @  REPL-D0 @ REPL-D1 @  AOT-CAPTURE:CAPTURE
+   cp@ B1 !  ndict@ R1 !  here D1 !  AOT-ARM:WIDN W1 !
+   W0 @ W1 @ AOT-CAPTURE:WID-SPAN
+   B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE
    s" INSTALL" AOT-CAPTURE:BOOTRUN+                \ repl.f    -> REPL read hook + termios save
    s" BPW-INSTALL" AOT-CAPTURE:BOOTRUN+            \ debug-watch.f -> watch table init
    s" S-INSTALL" AOT-CAPTURE:BOOTRUN+ ;            \ stepper.f -> stepper read hook

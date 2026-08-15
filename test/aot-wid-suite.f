@@ -211,6 +211,37 @@ create NUM-BUF 32 allot   variable NUM-U
    s" HABU_AOT_GATE" >LEN  NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;
 
+\ The same build, with the fixture's package landed on an exact wordlist id in
+\ the METABUILD HOST. The id is one the shipped engine already uses, so what the
+\ capture carries is an alias of a live target wordlist.
+create GWID-BUF 32 allot   variable GWID-U
+: GWID$! ( n -- ) {: v:n :}
+   v NUM$!  NUM$ {: a:ptr u:n :}
+   a GWID-BUF u BYTE-COPY  u GWID-U ! ;
+: GWID$ ( -- ptr u8 n ) GWID-BUF GWID-U @ ;
+
+: BUILD-GATE-AT ( n n -- ) {: mode:n wid:n :}
+   GATE-SETUP
+   wid GWID$!
+   mode NUM$!
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
+   s" HABU_AOT_GATE" >LEN  NUM$ >LEN PROC-ENV+
+   s" HABU_AOT_GATE_WID" >LEN  GWID$ >LEN PROC-ENV+
+   RUN-BUILDER ;
+
+\ The gate fixture built with the baked wid window moved AFTER the capture, so
+\ the records name wordlists it does not contain. `k` is the knob that moves it.
+: BUILD-GATE-FORGED ( ptr u8 n n -- ) {: k:ptr ku:n v:n :}
+   GATE-SETUP
+   v GWID$!
+   2 NUM$!
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
+   s" HABU_AOT_GATE" >LEN  NUM$ >LEN PROC-ENV+
+   k ku >LEN  GWID$ >LEN PROC-ENV+
+   RUN-BUILDER ;
+
 \ --- forge child spawn + outcome capture (parameterised by engine) ---
 : STORE! ( len len outcome -- )
    MATCH outcome
@@ -246,6 +277,7 @@ create NUM-BUF 32 allot   variable NUM-U
    EXITED @ TTRUE  RC @ 0 T=
    PARSE-OUT ;
 
+
 : ASSERT-REJECT ( -- )               \ child exited 84 naming the protected-publish guard
    EXITED @ TTRUE
    RC @ FORGE-RC T=
@@ -263,6 +295,27 @@ create NUM-BUF 32 allot   variable NUM-U
    RUN-ARGV-STDIN-CAPTURE-OUTCOME  STORE! ;
 
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
+
+\ The same reading, from a TAGGED line: an engine that carries a boot-run entry
+\ prints before any probe of it does, so its whole stdout is not a number.
+: LINE-AT ( n -- ptr u8 n ) {: at:n :}
+   OUT at +  OUT-U @ at -  {: a:ptr u:n :}
+   a u 10 INDEX-OF MATCH option
+     none OF a u ENDOF
+     some OF IDX>N a swap ENDOF
+   ;MATCH ;
+
+: TAG-AT ( ptr u8 n -- n ) {: t:ptr tu:n :}
+   OUT$ t tu FIND-SUB MATCH option
+     none OF T-FAIL 0 ENDOF
+     some OF IDX>N tu + ENDOF
+   ;MATCH ;
+
+: TAGGED-N ( ptr u8 n -- n )
+   TAG-AT LINE-AT TRIM STR>NUMBER? MATCH option
+     some OF ENDOF
+     none OF T-FAIL 0 ENDOF
+   ;MATCH ;
 
 : ASSERT-GATE-REJECT ( -- )          \ the seed refused the name and said which guard did it
    EXITED @ TTRUE
@@ -282,6 +335,7 @@ create NUM-BUF 32 allot   variable NUM-U
 \ gives for these ids, and it is exactly what makes the exit-84 cases above
 \ evidence: the two outcomes carry different codes AND different diagnostics, so
 \ an 84 can only have come from the protected-WID bitmap.
+82 constant SEED-RC                  \ src/core/engine-error.f ENGINE-ERROR:AOT-SEED
 70 constant CTX-RC                   \ src/core/checker.f PKGCTX-REJECT-RC (private there)
 : ASSERT-NOT-PROTECTED ( -- )
    EXITED @ TTRUE
@@ -327,6 +381,22 @@ create PRB PRB-CAP allot   variable PRB-U
 : PROBE-TAG$ ( -- ptr u8 n )
    S\" : PRB-TAG ( -- ) data-base PROT-REG-TAG-CELL + @ PROT-REG-TAG = if 1 else 0 then . ;\nPRB-TAG" ;
 : PROBE-WORDLIST$ ( -- ptr u8 n )  s" wordlist . " ;
+
+\ The AWBGATE package's public wordlist id in a built engine, and how many
+\ package records claim it. One is what a dictionary says about an id it handed
+\ out; two is two packages sharing a wordlist. Both are printed on TAGGED lines,
+\ because these engines carry a boot-run entry that prints first.
+: ALIAS-PROBE$ ( -- ptr u8 n )
+   PRB-RESET
+   s" require tools/pkg-wid-probe.f" PRB+ PRB-NL
+   s" require tools/prot-wid-probe.f" PRB+ PRB-NL
+   S\" : PRB-ALIAS ( -- ) s\" AWBGATE\" PKG-WID-PROBE:WID-OF {: w:n :}" PRB+ PRB-NL
+   S\"    s\" awb-wid=\" type w FMT:.U cr" PRB+ PRB-NL
+   S\"    s\" awb-owners=\" type w PKG-WID-PROBE:OWNERS FMT:.U cr" PRB+ PRB-NL
+   S\"    s\" awb-high=\" type PKG-WID-PROBE:HIGH FMT:.U cr" PRB+ PRB-NL
+   S\"    s\" awb-widn=\" type PROT-WID-PROBE:WIDS FMT:.U cr ;" PRB+ PRB-NL
+   s" PRB-ALIAS" PRB+
+   PRB$ ;
 
 : PROBE-VARIANT ( -- )
    s" restored band carries the bitmap shape tag before batch input" T-LABEL
@@ -427,6 +497,109 @@ create PRB PRB-CAP allot   variable PRB-U
    GATE-HB$ EXISTS? TTRUE
    GATE-HB$ BOOT-EMPTY  ASSERT-GATE-REJECT ;
 
+\ --- the wid rebase (dot habu-rebase-captured-wids-54dec421) --------------------
+\ A captured record travels with the wordlist id it had in the METABUILD HOST,
+\ whose wid space is not the target's: the host compiles the EMITTER while the
+\ target's prefix compiles the checker and the stdlib, so the two number their
+\ wordlists independently. Registering such an id verbatim puts the captured word
+\ into whichever wordlist the target keeps at that number - a sealed one refuses
+\ the boot (exit 84 with nothing in the fixture asking for protection), an
+\ ordinary one takes the word in silence and two packages own one wordlist.
+\
+\ THE TWO IDS ARE THE ENGINE'S, NOT THIS FILE'S. The shipped engine is asked for
+\ its own WIDN and then for the seal state of the ids below it, so the sealed
+\ case and the ordinary case each name a wordlist that engine really has. A
+\ number written down here would stop being an alias the first time the prefix
+\ moved.
+variable ALIAS-SEALED   variable ALIAS-OPEN   variable ALIAS-W
+
+: PICK-ALIAS-WIDS ( -- )
+   0 ALIAS-SEALED !  0 ALIAS-OPEN !
+   PLAIN$ PROBE-WORDLIST$ READ-N 1 - ALIAS-W !
+   begin
+      ALIAS-W @ 1 >
+      ALIAS-SEALED @ 0=  ALIAS-OPEN @ 0=  or
+      and
+   while
+      PLAIN$ ALIAS-W @ MEMBER-PROBE$ READ-N 1 = if
+         ALIAS-SEALED @ 0= if ALIAS-W @ ALIAS-SEALED ! then
+      else
+         ALIAS-OPEN @ 0= if ALIAS-W @ ALIAS-OPEN ! then
+      then
+      ALIAS-W @ 1 - ALIAS-W !
+   repeat ;
+
+\ One alias case: build the control fixture (mode 2, nothing protected) on the
+\ given id, and require that the engine boots, that its entry word runs, and that
+\ the id the seed actually gave the captured package is owned by that package
+\ alone.
+: ALIAS-CASE ( n -- ) {: wid:n :}
+   2 wid BUILD-GATE-AT
+   RC @ 0 <> if s" aot-wid-suite: builder stderr:" type cr ERR$ type cr then
+   RC @ 0 T=
+   GATE-HB$ EXISTS? TTRUE
+   GATE-HB$ BOOT-EMPTY  ASSERT-GATE-RAN
+   GATE-HB$ ALIAS-PROBE$ FORGE-LOAD
+   EXITED @ TTRUE  RC @ 0 T=
+   s" ... and the captured package owns its wordlist alone" T-LABEL
+   s" awb-owners=" TAGGED-N  1 T=
+   s" ... at an id the target's own prefix never handed out" T-LABEL
+   s" awb-wid=" TAGGED-N  wid >  TTRUE
+   s" ... and the engine's next id is past every id its records claim" T-LABEL
+   s" awb-widn=" TAGGED-N  s" awb-high=" TAGGED-N  >  TTRUE ;
+
+\ The capture's own refusal, reached by telling it the window made fewer
+\ wordlists than it did. It names the RECORD, which is what the boot's refusal
+\ cannot do, and it stops the build before an engine exists.
+: BUILD-GATE-NARROW ( n -- ) {: v:n :}
+   GATE-SETUP
+   v GWID$!
+   2 NUM$!
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
+   s" HABU_AOT_GATE" >LEN  NUM$ >LEN PROC-ENV+
+   s" HABU_AOT_WID_NARROW" >LEN  GWID$ >LEN PROC-ENV+
+   RUN-BUILDER ;
+
+: PROBE-WID-CAPTURE-REFUSAL ( -- )
+   s" a captured wid its declared window does not contain stops the build" T-LABEL
+   2 BUILD-GATE-NARROW
+   RC @ 0 <> TTRUE
+   ERR$ s" aot-capture: captured wid outside the window" CONTAINS? TTRUE
+   s" ... and the refusal names the record that carries it" T-LABEL
+   OUT$ s" window record AWBGATE names wordlist" CONTAINS?
+   ERR$ s" window record AWBGATE names wordlist" CONTAINS? or TTRUE
+   s" ... and no engine is written" T-LABEL
+   GATE-HB$ EXISTS? 0= TTRUE ;
+
+\ The seed's own refusal, which the capture-side audit makes unreachable from a
+\ real capture: only a baked window that disagrees with the baked records can
+\ reach it, and that is what the two forges bake.
+: FORGED-CASE ( ptr u8 n n -- ) {: k:ptr ku:n v:n :}
+   k ku v BUILD-GATE-FORGED
+   RC @ 0 T=
+   GATE-HB$ EXISTS? TTRUE
+   GATE-HB$ BOOT-EMPTY
+   EXITED @ TTRUE
+   RC @ SEED-RC T=
+   ERR$ s" hb: AOT wid outside the capture window" CONTAINS? TTRUE
+   OUT$ s" awb-gate=" CONTAINS? 0= TTRUE ;
+
+: PROBE-WID-FORGED ( -- )
+   s" a baked wid below the baked window is refused at the seed" T-LABEL
+   s" HABU_AOT_WID_SKEW" 5 FORGED-CASE
+   s" a baked wid past the baked window's end is refused at the seed" T-LABEL
+   s" HABU_AOT_WID_SPAN" 1 FORGED-CASE ;
+
+: PROBE-WID-REBASE ( -- )
+   PICK-ALIAS-WIDS
+   s" the shipped engine offers a sealed and an unsealed id below its WIDN" T-LABEL
+   ALIAS-SEALED @ 0 >  ALIAS-OPEN @ 0 >  and TTRUE
+   s" a captured package on a SEALED target wordlist boots (was exit 84)" T-LABEL
+   ALIAS-SEALED @ ALIAS-CASE
+   s" a captured package on an ORDINARY target wordlist boots" T-LABEL
+   ALIAS-OPEN @ ALIAS-CASE ;
+
 \ AOT DATA-reserve span guard (dot habu-guard-aot-data-49de2ee6): the sibling
 \ seed-pass forge test/aot-data-span-forge.f builds an oversized-span variant and
 \ PTY-boots it (the reserve+guard only run on interactive REPL entry), proving a
@@ -464,6 +637,9 @@ create PRB PRB-CAP allot   variable PRB-U
    PROBE-CONTROL
    PROBE-REFUSALS
    PROBE-BOOT-GATE
+   PROBE-WID-REBASE
+   PROBE-WID-CAPTURE-REFUSAL
+   PROBE-WID-FORGED
    PROBE-DATA-SPAN ;
 
 public

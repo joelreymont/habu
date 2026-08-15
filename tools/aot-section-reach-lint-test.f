@@ -126,7 +126,7 @@ using AOT-REACH-LINT
    FINDINGS-RESET
    s" src/habu/habu2.f" SCAN-FILE
    FINDINGS 0 T=
-   LABELS-FOUND 24 T= ;
+   LABELS-FOUND 28 T= ;
 
 : MAIN ( -- )
    T-RESET

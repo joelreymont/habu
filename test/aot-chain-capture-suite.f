@@ -345,8 +345,9 @@ create ART ART-CAP allot    variable ART-LEN
 16 constant O-TARGET
 24 constant O-SECTIONS
 104 constant O-PAYSHA
-13 constant SEC-N
+14 constant SEC-N
 16 constant ROW-BYTES
+13 constant S-CLOSURE            \ the last section: the closure list
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -444,7 +445,7 @@ create SW1 512 allot
    s" a wrong magic is refused by name" T-LABEL
    s" aot-file: magic=" READ-REFUSED
 
-   FRESH  2 O-VERSION A64!  EMIT
+   FRESH  3 O-VERSION A64!  EMIT
    false RUN-READ
    s" a wrong version is refused by name" T-LABEL
    s" aot-file: version=" READ-REFUSED
@@ -510,7 +511,7 @@ create SW1 512 allot
    s" a section larger than the buffer it fills is refused" T-LABEL
    s" is larger than the buffer it fills" READ-REFUSED
 
-   FRESH  1 12 SEC-AT A64!  RESEAL EMIT
+   FRESH  1 S-CLOSURE SEC-AT A64!  RESEAL EMIT
    false RUN-READ
    s" a closure list that does not fill its section is refused" T-LABEL
    s" the closure list does not fill its section" READ-REFUSED ;
@@ -522,7 +523,7 @@ create SW1 512 allot
 \ open failure, and it needs no edit to a file the rest of the tree is using.
 : PROBE-CHAIN ( -- )
    FRESH
-   12 SEC-AT {: cl:n :}
+   S-CLOSURE SEC-AT {: cl:n :}
    cl 8 + A64@ {: l0:n :}
    cl 8 + 8 + l0 + A64@ {: l1:n :}
    l0 l1 = if

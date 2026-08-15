@@ -6895,3 +6895,42 @@ hand-built multi-range deletion eats a code line eventually
 SL-PREFIX); comment edits leave the sha identical because
 comments compile to nothing, but it is a seed file and install
 belongs before any gate that reads it.
+
+## 2026-08-15 - the captured-wid rebase's six (bake-chain-7)
+
+(1) A wordlist id is a coordinate, not a name. The capture already
+carried code offsets blob-relative and rebased DATA and CODE
+literals at seed; the wid was the one coordinate left absolute, and
+that is the whole bug. Naming it that way made the fix a fourth
+instance of a shape the file already had, instead of new
+machinery - and it made the rule fall out: only wid 0, the global
+wordlist, means the same thing in two processes.
+(2) The dot offered two fixes and one of them does not work.
+"Advance WIDN past the highest captured wid before registration"
+governs FUTURE allocation; a captured wid of 209 still registers
+into the wordlist the target's prefix already built at 209. Both
+baselines reproduce with WIDN advancing exactly as proposed. Read
+an offered fix against the failure before implementing it.
+(3) The two spaces were never near each other. The metabuild host
+compiles the EMITTER (asm/icode/habu1/habu2) and the target's
+prefix compiles the checker and the stdlib, so the host is at wid
+209 where the target is at 284 - measured, not close. The chain
+capture clears the target by exactly 4 wids, and those 4 are the
+capture tool's own two packages.
+(4) A guard with no producer passes every mutation. Deleting the
+seed's out-of-window refusal left the whole suite green, because
+the capture-side audit refuses that state first and nothing could
+bake it. The cure was a forge that moves the baked window AFTER
+the capture - and it takes a fixture that captures a NON-ZERO wid
+at all, which the REPL sources (no package anywhere) never do.
+(5) Two bound checks were one. Deleting the "below the window"
+branch changed no verdict: the subtraction wraps a low wid to a
+huge unsigned value, so the single unsigned span test already
+refused both sides. The mutation that proved a check redundant is
+the one that deleted it.
+(6) Generated fixture text is compiled INSIDE the capture window,
+so it may only call what the TARGET has. A burn loop written with
+the host's own AOT-ARM:WIDN baked a name no target defines and the
+engine died exit 81 - the boot BL-range assertion, because an
+unresolved callee's displacement is enormous. Primitives and
+layout constants only, in anything the window will compile.

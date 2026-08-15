@@ -55,4 +55,10 @@ public
    d0 LIVE AOT-WINDOW:D0-CELL + CELL!
    b0 LIVE AOT-WINDOW:B0-CELL + CELL! ;
 
+\ The engine's next wordlist id. It is read here, beside the window's other base
+\ cursors, because every producer needs it at the same two moments they need those
+\ - when the window opens and when it closes - and the pair is the wid span the
+\ capture declares (aot-capture.f WID-SPAN).
+: WIDN ( -- n ) LIVE WIDN-CELL + @ ;
+
 ;package

@@ -418,6 +418,38 @@ variable AOT-UNRES-N                          \ kept-source counter: unresolved 
 : ACAP-REC-NAME ( ptr u8 bool -- ptr u8 ) {: v:ptr ext:bool :}
    ext 0= if v 24 + exit then
    v 24 + ACAP-W32@  v 28 + ACAP-W32@ 32 lshift or  AOT-N>U8 ;
+\ Audit (c): every wid a record carries is a window coordinate. Wid 0, the global
+\ wordlist, is the only number that names the same wordlist in two processes; a
+\ wordlist the window did not create has no counterpart the seed could rebase it
+\ to, so it is refused here rather than registered into whatever the target keeps
+\ at that number. A package's private slot is 0 when it has none.
+: ACAP-WID-IN? ( n -- bool ) {: w:n :}
+   w 0= if 0 0= exit then
+   w AOT-WID-W0 @ < if 0 0= 0= exit then
+   w AOT-WID-W0 @ AOT-WID-SPAN @ + < ;
+
+: ACAP-?WID ( ptr u8 n -- ) {: v:ptr w:n :}
+   w ACAP-WID-IN? if exit then
+   s" aot-capture: window record " type
+   v  v ACAP-REC-EXT?  ACAP-REC-NAME  v 16 + ACAP-W32@  type
+   s"  names wordlist " type w .
+   s" , which its window did not create; the window allocated [" type
+   AOT-WID-W0 @ .
+   s" ," type AOT-WID-W0 @ AOT-WID-SPAN @ + .
+   s" )" type cr
+   s" aot-capture: captured wid outside the window" 74 die ;
+
+: ACAP-AUDIT-WIDS ( -- )
+   AOT-REC-N @ 0 ?do
+      i ACAP-REC-DST {: v:ptr :}
+      v AOT-RWID -1 = if
+         v v ACAP-W32@ ACAP-?WID
+         v v 8 + ACAP-W32@ ACAP-?WID
+      else
+         v v 40 + ACAP-W32@ ACAP-?WID
+      then
+   loop ;
+
 : ACAP-COMPACT-RECS ( -- )
    AOT-REC-N @ 0 ?do
       i ACAP-REC-DST {: v:ptr :}                              \ verbatim 48B record
@@ -541,6 +573,8 @@ variable ACAP-RECMM                                           \ record-proof mis
 variable ACAP-PRE-R      \ first record index of the prelude band
 variable ACAP-PRE-D      \ first DATA address of the prelude band
 variable ACAP-MARKED?    \ the band was declared for this capture
+variable ACAP-WID-M0  variable ACAP-WID-M1   \ the window's wordlist span, as latched
+variable ACAP-WID-MARKED?
 variable ACAP-W-B0                       \ the window's code base, latched at CAPTURE
 variable ACAP-W-R0  variable ACAP-W-R1   \ its record span
 variable ACAP-W-D0                       \ its first DATA address
@@ -552,6 +586,16 @@ public
 \ producer with no prelude passes the window's own start, which is an empty band.
 : PRELUDE-MARK ( n n -- ) {: r:n d:n :}
    r ACAP-PRE-R !  d ACAP-PRE-D !  0 0= ACAP-MARKED? ! ;
+
+\ Declare the wordlist ids the window allocated: WIDN as it stood when the window
+\ opened, and as it stood when the window closed. Mandatory, like the band above -
+\ a capture that never declared it cannot tell a wordlist its own window made from
+\ one it inherited, and the two rebase differently.
+: WID-SPAN ( n n -- ) {: w0:n w1:n :}
+   w1 w0 < if
+      s" aot-capture: the window's wordlist span ends before it starts" 74 die
+   then
+   w0 ACAP-WID-M0 !  w1 ACAP-WID-M1 !  0 0= ACAP-WID-MARKED? ! ;
 
 private
 
@@ -935,6 +979,9 @@ private
 : ACAP-PWID-BIT? ( n -- bool ) {: wid:n :}
    wid ACAP-PWID-IN-RANGE? 0= if 0 0= 0= exit then
    wid ACAP-PWID-BYTE c@  wid 7 and rshift  1 and 0= 0= ;
+: ACAP-PWID-BIT-CLR ( n -- ) {: wid:n :}
+   wid ACAP-PWID-IN-RANGE? 0= if exit then
+   wid ACAP-PWID-BYTE dup c@  1 wid 7 and lshift $FF xor and  swap c! ;
 : ACAP-PWID-CLEAR ( -- )
    PROT-BITS-BYTES 0 ?do 0 AOT-PWID-BUF@ i + c! loop ;
 : ACAP-PWID-TAG@ ( -- n ) AOT-LIVE-DATA PROT-REG-TAG-CELL + atomic@ ;
@@ -961,6 +1008,27 @@ private
    ACAP-PWID-TAG@ {: tag:n :}
    tag PROT-REG-TAG = if ACAP-PWID-SAME-SHAPE exit then
    tag ACAP-PWID-LEGACY ;
+: ACAP-PWIN-ADD ( n -- ) {: rel:n :}
+   AOT-PWIN-N @ AOT-PWIN-MAX >= if
+      s" aot-capture: more protected window WIDs than the table holds" 74 die
+   then
+   rel AOT-PWIN-N @ 4 * AOT-PWIN-BUF@ + AOT-P32!
+   AOT-PWIN-N @ 1+ AOT-PWIN-N ! ;
+
+\ Move the window's own protected WIDs out of the bitmap and into the
+\ window-relative table. The bitmap is restored before the cold prefix, when the
+\ target has no wid base yet, so a window bit left in it seals whatever number the
+\ target happens to keep there instead of the wordlist that was sealed here.
+: ACAP-PWID-SPLIT ( -- )
+   0 AOT-PWIN-N !
+   AOT-WID-W0 @ AOT-WID-SPAN @ + {: w1:n :}
+   w1 AOT-WID-W0 @ ?do
+      i ACAP-PWID-BIT? if
+         i AOT-WID-W0 @ - ACAP-PWIN-ADD
+         i ACAP-PWID-BIT-CLR
+      then
+   loop ;
+
 variable ACAP-PWID-N                                           \ population accumulator
 : ACAP-PWID-COUNT ( -- n )                                     \ how many WIDs are protected
    0 ACAP-PWID-N !
@@ -987,7 +1055,7 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  ACAP-POOL-RESET
    0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  ACAP-PWID-CLEAR
-   0 AOT-XTSITE:N !
+   0 AOT-XTSITE:N !  0 AOT-PWIN-N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public
 
@@ -1025,9 +1093,14 @@ public
    ACAP-PRE-D @ d0 > if
       s" aot-capture: prelude DATA mark above the window's DATA base" 74 die
    then
+   ACAP-WID-MARKED? @ 0= if
+      s" aot-capture: capture without a declared wordlist span" 74 die
+   then
    bstart ACAP-W-B0 !
    rstart ACAP-W-R0 !  rend ACAP-W-R1 !
-   d0 ACAP-W-D0 ! ;
+   d0 ACAP-W-D0 !
+   ACAP-WID-M0 @ AOT-WID-W0 !
+   ACAP-WID-M1 @ ACAP-WID-M0 @ - AOT-WID-SPAN ! ;
 
 : CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart rstart rend d0 ACAP-BAND!
@@ -1036,6 +1109,7 @@ public
    ACAP-TIDX-PROVE                              \ ... which answers what the scan answers
    bstart bend ACAP-COPY-BLOB
    rend rstart ?do i bstart ACAP-ADD-REC loop
+   ACAP-AUDIT-WIDS
    ACAP-SCAN-CALLS
    bstart bend d0 d1 ACAP-SCAN-DSITES
    bstart bend ACAP-SCAN-CSITES
@@ -1044,6 +1118,7 @@ public
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
    ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
    ACAP-PWID-CAPTURE                            \ serialize the protected-WID bitmap
+   ACAP-PWID-SPLIT                              \ the window's own seals travel relative
    ACAP-PWID-CHECK ;                            \ WID 0 is never a wordlist
 
 private

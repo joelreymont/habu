@@ -60,9 +60,10 @@
 \ AOT-CREC-ROW, the site count is its length over 8, AOT-DATA-SIZE is the window
 \ DATA section's length, and so on. A stored count would be a second authority for
 \ a number the length already fixes, and two authorities disagree eventually. A
-\ length that is not a whole number of rows is refused by name instead. Only two
-\ numbers are genuine scalars - the capture-time DATA base and the canonical code
-\ base - and they travel in a section of their own.
+\ length that is not a whole number of rows is refused by name instead. Four
+\ numbers are genuine scalars - the capture-time DATA base, the canonical code
+\ base, and the window's wordlist base and span - and they travel in a section of
+\ their own.
 \
 \ WHAT THE READER REFUSES, each by name and each fail-closed: a wrong magic, a
 \ wrong version, a wrong target, a wrong section count, a producer that is not the
@@ -76,7 +77,7 @@ package AOT-FILE
 using AOT-BUF
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-1 constant VERSION
+2 constant VERSION   \ 2 added the window's wordlist span and its protected WIDs
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -91,7 +92,7 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 104 constant O-PAYSHA
 32 constant SHA-BYTES
 
-13 constant SEC-N
+14 constant SEC-N
 16 constant ROW-BYTES                \ one section-table row: offset u64 + length u64
 
 0 constant S-SCALARS
@@ -106,9 +107,12 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 9 constant S-XTSITES
 10 constant S-BOOTRUN
 11 constant S-PWID
-12 constant S-CLOSURE
+12 constant S-PWIN
+13 constant S-CLOSURE
 
-16 constant SCAL-BYTES               \ the two genuine scalars: DATA base, code base
+\ The four genuine scalars: the capture-time DATA base, the canonical code base,
+\ and the window's wordlist base and span. Everything else is a length.
+32 constant SCAL-BYTES
 \ AOT-IDENT holds at most 256 paths of at most 256 bytes, so the list cannot
 \ exceed 8 + 256 * (8 + 256) = 67592 bytes. The cap is the next round number above
 \ it and the overflow is refused rather than truncated.
@@ -190,6 +194,7 @@ variable CUR
    k S-XTSITES = if AOT-XTSITE:BUF@ exit then
    k S-BOOTRUN = if AOT-BOOTRUN-BUF@ exit then
    k S-PWID    = if AOT-PWID-BUF@ exit then
+   k S-PWIN    = if AOT-PWIN-BUF@ exit then
    CBUF ;
 
 : SEC-LEN ( n -- n ) {: k:n :}
@@ -205,6 +210,7 @@ variable CUR
    k S-XTSITES = if AOT-XTSITE:N @ 8 * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-LEN @ exit then
    k S-PWID    = if PROT-BITS-BYTES exit then
+   k S-PWIN    = if AOT-PWIN-N @ 4 * exit then
    CLEN @ ;
 
 \ How many bytes one row of a section is, so a length that is not a whole number
@@ -217,6 +223,7 @@ variable CUR
    k S-CSITES  = if 4 exit then
    k S-XTOFFS  = if 4 exit then
    k S-XTSITES = if 8 exit then
+   k S-PWIN    = if 4 exit then
    1 ;
 
 \ The buffer each section is read back into, and how much of it there is. The
@@ -236,6 +243,7 @@ variable CUR
    k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-CAP exit then
    k S-PWID    = if PROT-BITS-BYTES exit then
+   k S-PWIN    = if AOT-PWIN-MAX 4 * exit then
    CLOSURE-CAP ;
 
 : SEC-NAME ( n -- ptr u8 n ) {: k:n :}
@@ -251,13 +259,16 @@ variable CUR
    k S-XTSITES = if s" named code sites" exit then
    k S-BOOTRUN = if s" boot-run list" exit then
    k S-PWID    = if s" protected-WID bitmap" exit then
+   k S-PWIN    = if s" protected window WIDs" exit then
    s" closure list" ;
 
 \ ---- staging the two assembled sections -------------------------------------
 
 : STAGE-SCALARS ( -- )
    AOT-DATA-D0 @ SCAL U64!
-   AOT-CODE-B0 @ SCAL 8 + U64! ;
+   AOT-CODE-B0 @ SCAL 8 + U64!
+   AOT-WID-W0 @ SCAL 16 + U64!
+   AOT-WID-SPAN @ SCAL 24 + U64! ;
 
 : CB! ( n n -- ) {: v:n at:n :} v CBUF at + U64! ;
 
@@ -471,6 +482,8 @@ private
 : RESTORE-COUNTS ( -- )
    SCAL U64@ AOT-DATA-D0 !
    SCAL 8 + U64@ AOT-CODE-B0 !
+   SCAL 16 + U64@ AOT-WID-W0 !
+   SCAL 24 + U64@ AOT-WID-SPAN !
    S-BLOB ROW-LEN@ AOT-BLOB-LEN !
    S-RECS ROW-LEN@ AOT-CREC-ROW / AOT-REC-N !
    S-SITES ROW-LEN@ 8 / AOT-SITE-N !
@@ -481,6 +494,7 @@ private
    S-WDATA ROW-LEN@ AOT-DATA-SIZE !
    S-XTSITES ROW-LEN@ 8 / AOT-XTSITE:N !
    S-BOOTRUN ROW-LEN@ AOT-BOOTRUN-LEN !
+   S-PWIN ROW-LEN@ 4 / AOT-PWIN-N !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
 \ The list walks to its own end or the artifact is refused: a count that promises

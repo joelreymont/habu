@@ -46,7 +46,7 @@ package AOT-REACH-LINT
 
 create AR-SLAB LINT-SLAB:CELLS cells allot
 
-\ The section binds 23 labels today; the cap is generous and its overflow is a
+\ The section binds 27 labels today; the cap is generous and its overflow is a
 \ named refusal rather than a silent truncation, because a dropped member is a
 \ member this lint stops checking.
 $40 constant LMAX

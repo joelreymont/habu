@@ -40,6 +40,17 @@
 \                      walking the read loop out of the band.
 \   HABU_AOT_SPAN=N    overwrite the captured AOT DATA span (the sibling
 \                      test/aot-data-span-forge.f forge; see SPAN-FORGE-LINE).
+\   HABU_AOT_WID_SKEW=N  move the captured wid window's base up by N after the
+\                      capture, so the baked records name wordlists BELOW the
+\                      baked window. The seed must refuse at boot.
+\   HABU_AOT_WID_SPAN=N  the same forge on the other side: set the baked window's
+\                      span to N, so the records name wordlists past its end.
+\   HABU_AOT_WID_NARROW=N  declare the window's wordlist span N ids late, so a
+\                      wordlist the window really made is outside it. The CAPTURE
+\                      must refuse, naming the record.
+\   HABU_AOT_GATE_WID=N  land the gate fixture's package on wordlist id N in the
+\                      METABUILD HOST, so the case is built on an id the target
+\                      engine already uses (see GATE-WID-LINES).
 \   HABU_AOT_BAKE=1    put an INITIALISED data cell and a word that reads it inside
 \                      the capture window, and run that word from the boot-run
 \                      list. The built engine reports the value when it is entered
@@ -239,6 +250,25 @@ create DRV-CH 1 allot
       v vu DRV+  s"  AOT-DATA-SIZE !" DRV-LINE
    then ;
 
+\ Optional wid-window forges (dot habu-rebase-captured-wids-54dec421). The seed
+\ rebases every captured wid through the baked window, and refuses one the window
+\ does not contain - on either side. The capture refuses such a record at capture
+\ time, so the only way to bake one is to move the window AFTER the capture and
+\ before the emit. Raising the base puts every captured wid BELOW the window;
+\ shrinking the span puts them past its end. Both need a fixture that captures a
+\ non-zero wid at all - the REPL sources define no package, so HABU_AOT_GATE
+\ supplies the package these are combined with.
+: WID-FORGE-LINE ( -- )
+   s" HABU_AOT_WID_SKEW" GETENV {: v:ptr vu:n :}
+   vu 0 > if
+      s" AOT-BUF:AOT-WID-W0 @ " DRV+  v vu DRV+
+      s"  + AOT-BUF:AOT-WID-W0 !" DRV-LINE
+   then
+   s" HABU_AOT_WID_SPAN" GETENV {: p:ptr pu:n :}
+   pu 0 > if
+      p pu DRV+  s"  AOT-BUF:AOT-WID-SPAN !" DRV-LINE
+   then ;
+
 \ --- the fixture contract -----------------------------------------------------
 \ These two ids are what test/aot-wid-suite.f probes for in the built engine, so
 \ any drift here turns that suite red (it is self-checking) - keep the two in
@@ -331,8 +361,10 @@ create DRV-CH 1 allot
 \ not a stand-in for one. The line is emitted inside the reopened AOT-CAPTURE
 \ package, where CAPTURE resolves bare.
 : SKEW-BODY ( ptr u8 n -- ) {: v:ptr vu:n :}
-   s" REPL-B0 @ REPL-B1 @  REPL-R0 @ REPL-R1 @" DRV+
-   s"  REPL-D0 @ " DRV+  v vu DRV+  s"  +  REPL-D1 @  CAPTURE" DRV-LINE ;
+   s" STDIN-DRIVER:B0 @ STDIN-DRIVER:B1 @" DRV+
+   s"  STDIN-DRIVER:R0 @ STDIN-DRIVER:R1 @" DRV+
+   s"  STDIN-DRIVER:D0 @ " DRV+  v vu DRV+
+   s"  +  STDIN-DRIVER:D1 @  CAPTURE" DRV-LINE ;
 
 : PWID-BODY ( -- )
    OOR-ENV$ {: o:ptr ou:n :}
@@ -363,8 +395,23 @@ create DRV-CH 1 allot
 \ bake or the seed is stood in for.
 \ The boot-run list is re-stated because CAPTURE resets it, and the three REPL
 \ entries come first so the engine still installs its REPL before the fixture runs.
+\ HABU_AOT_WID_NARROW=N declares the window's wordlist span N ids short, so a
+\ wordlist the window really made falls outside what the capture is told it made
+\ - the fixture's package is the last thing the window creates, so the short end
+\ is the end that reaches it. The capture must refuse at build time, naming the
+\ record; the boot's own refusal never gets the chance.
+: WID-SPAN-LINE ( -- )
+   s" HABU_AOT_WID_NARROW" GETENV {: n:ptr nu:n :}
+   nu 0= if
+      s" STDIN-DRIVER:W0 @ AOT-ARM:WIDN AOT-CAPTURE:WID-SPAN" DRV-LINE exit
+   then
+   s" STDIN-DRIVER:W0 @ AOT-ARM:WIDN " DRV+  n nu DRV+
+   s"  - AOT-CAPTURE:WID-SPAN" DRV-LINE ;
+
 : RECAPTURE-LINE ( -- )
-   s" REPL-B0 @ cp@  REPL-R0 @ ndict@  REPL-D0 @ here  AOT-CAPTURE:CAPTURE" DRV-LINE ;
+   WID-SPAN-LINE
+   s" STDIN-DRIVER:B0 @ cp@  STDIN-DRIVER:R0 @ ndict@" DRV+
+   s"  STDIN-DRIVER:D0 @ here  AOT-CAPTURE:CAPTURE" DRV-LINE ;
 
 : REPL-BOOTRUN-LINES ( -- )
    S\" s\" INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
@@ -762,65 +809,37 @@ create DRV-CH 1 allot
    s" public" DRV-LINE
    S\" : AWB-GATE-REPORT ( -- ) s\" awb-gate=open\" type cr ;" DRV-LINE ;
 
-\ --- the fixture's wid precondition (dot habu-rebase-captured-wids-54dec421) ---
-\ A NAMED, TESTED BOUNDARY around something the capture cannot yet express.
-\
-\ THE HAZARD. A captured record travels with the wordlist id it had in the
-\ METABUILD HOST, and the AOT boot gate tests that raw number against the TARGET
-\ engine's live protected set. The two are unrelated id spaces: the target's own
-\ prefix allocates up to WIDN (288 measured on this tree), so any captured id
-\ below that aliases a real target wordlist. If the alias happens to be a sealed
-\ one the gate refuses; if it happens to be an ordinary one, the captured record
-\ is registered into a package nobody named and nothing says so.
-\
-\ HOW IT WAS FOUND. Adding two packages to the stdin metabuild host - four ids,
-\ public and private - moved this fixture's AWBGATE from host id 205 to 209, and
-\ 209 is protected in the shipped engine while 205 is not, so mode 2's control
-\ engine stopped booting. Reproduced on an untouched tree with two empty
-\ placeholder packages in the host: same shift, same refusal. Nothing about the
-\ files involved mattered; the arithmetic did.
-\
-\ WHAT THIS DOES ABOUT IT. It states the invariant the whole capture design has
-\ been ASSUMING and never enforced - a captured id must lie above every id the
-\ target's own prefix allocates - and it makes this fixture satisfy the invariant
-\ instead of stumbling into it. The bound is measured, not guessed: the builder
-\ runs in a booted engine of the target's shape and asks it for the next id it
-\ would hand out. The driver then burns ids until its next one is past that
-\ bound, and the check refuses BY NAME if the package still came back below it.
-\ It never selects a different id and carries on, and it never skips.
-\
-\ IT IS INTERIM. The general fix is the captured ids' own, on the dot above:
-\ rebase them into the target's space at seed time, or advance the target's WIDN
-\ past the highest captured id before any of them is registered. When that lands,
-\ this boundary and its three emitted words go with it.
-variable AWB-BOUND
-create AWB-NUM 32 allot
+\ --- landing the fixture on a chosen wordlist id -------------------------------
+\ HABU_AOT_GATE_WID names the id the fixture's package must get IN THE HOST, so a
+\ case can be built on an id the TARGET engine already uses - the alias the wid
+\ rebase exists to make harmless (dot habu-rebase-captured-wids-54dec421). The
+\ suite chooses it from the target's own band and its own WIDN; nothing is
+\ written down here. Burning only moves forward, so a host already past the id
+\ refuses BY NAME rather than quietly testing a different one.
+: GATE-WID-ENV$ ( -- ptr u8 n ) s" HABU_AOT_GATE_WID" GETENV ;
 
-: DRV-N ( n -- ) {: v:n :}
-   SB-RESET  v FMT:SB-U  SB$ {: a:ptr u:n :}
-   a AWB-NUM u BYTE-COPY
-   AWB-NUM u DRV+ ;
-
-\ The bound is this process's own next wordlist id, and this process is a booted
-\ engine of the target's shape - so it is the target's prefix allocation measured
-\ rather than a number anybody chose. The id it burns here is the builder's, not
-\ the driver's.
-: GATE-WID-BOUND-LINES ( -- )
-   wordlist AWB-BOUND !
-   s" : AWB-WID-BOUND ( -- n ) " DRV+  AWB-BOUND @ DRV-N  s"  ;" DRV-LINE
-   s" : AWB-WID-ADVANCE ( -- ) begin wordlist AWB-WID-BOUND > 0= while repeat ;" DRV-LINE
-   s" AWB-WID-ADVANCE" DRV-LINE ;
+: GATE-WID-LINES ( -- )
+   GATE-WID-ENV$ {: w:ptr wu:n :}
+   wu 0= if exit then
+   s" : AWB-WID-WANT ( -- n ) " DRV+  w wu DRV+  s"  ;" DRV-LINE
+   \ The burn reads WIDN through a primitive and a layout constant, never through
+   \ a host word: this text is compiled INSIDE the capture window, so a call to
+   \ anything the metabuild host has and the target has not bakes a name the seed
+   \ cannot resolve (measured: exit 81, the boot BL-range assertion).
+   s" : AWB-BURN ( -- ) begin data-base WIDN-CELL + @ AWB-WID-WANT < while wordlist drop repeat ;" DRV-LINE
+   s" AWB-BURN" DRV-LINE ;
 
 : GATE-WID-CHECK-LINES ( -- )
+   GATE-WID-ENV$ nip 0= if exit then
    s" : AWB-WID-CHECK ( -- )" DRV-LINE
-   s"    AWB-GATE-WID @ AWB-WID-BOUND > if exit then" DRV-LINE
-   S\"    s\" aot-wid-build: the gate fixture's wordlist id is below the target's own\" type cr" DRV-LINE
-   S\"    s\" aot-wid-build: captured wordlist id aliases a target wordlist\" 74 die ;" DRV-LINE
+   s"    AWB-GATE-WID @ AWB-WID-WANT = if exit then" DRV-LINE
+   S\"    s\" aot-wid-build: the fixture did not land on the wordlist id it was given\" type cr" DRV-LINE
+   S\"    s\" aot-wid-build: host wordlist id already past the alias target\" 74 die ;" DRV-LINE
    s" AWB-WID-CHECK" DRV-LINE ;
 
 : GATE-FIXTURE-LINES ( ptr u8 n -- ) {: mode:ptr mu:n :}
    s" variable AWB-GATE-WID" DRV-LINE
-   GATE-WID-BOUND-LINES
+   GATE-WID-LINES
    mode mu GATE-ENTRY-LINES
    s" get-current AWB-GATE-WID !" DRV-LINE
    s" ;package" DRV-LINE
@@ -854,6 +873,7 @@ create AWB-NUM 32 allot
    s" ;package" DRV-LINE
    FIXTURE-LINES
    SPAN-FORGE-LINE
+   WID-FORGE-LINE
    s" 0 0= STDIN? !" DRV-LINE
    s" HB@ 0 ENGINE-EMIT:FORTH" DRV-LINE
    S\" s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV-LINE

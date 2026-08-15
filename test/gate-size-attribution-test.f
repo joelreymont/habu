@@ -785,9 +785,29 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
 \ move and `FILE-SIZE bin/hb` is still 165367.
 \ The Linux rows below are owed this +4 as well.
-129528 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-15, the captured-wid rebase (dot habu-rebase-captured-wids-54dec421).
+\ The seed stopped registering a captured record under the wordlist id it had in
+\ the CAPTURING process and started rebasing it into the booting engine's own wid
+\ space, refusing one the capture window does not contain, and sealing the
+\ wordlists that window sealed. Attribution is a region-by-region diff of two
+\ HABU_ENGINE_SIZE_MAP dumps, the control being a scratch export of master that
+\ reproduced the pre-change engine byte for byte (sha d151fbac...): THREE rows
+\ move and every other one of the 49 is byte-identical.
+\   compile/exit    2856 -> 3272 (+416): the boot pass itself - the per-wid
+\     rebase in the record loop, the window-seal loop, the named refusal, and the
+\     single WIDN advance that replaced the per-record one.
+\   aot-seed        30520 -> 30536 (+16): the window's wid base, its span and the
+\     sealed-id count, measured after alignment. The sealed-id TABLE is empty in
+\     this engine - the metabuild's REPL window creates no wordlist and so seals
+\     none - so only the cells show. A chain capture fills it with 125 rows.
+\   container/text-pad 13832 -> 13400 (-432): the pad absorbs the whole of it.
+\ CODELEN 129528 -> 129960 (+432), floor distance 2552 -> 2984. Inside the same
+\ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
+\ move and `FILE-SIZE bin/hb` is still 165367.
+\ The Linux rows below are owed this +432 as well.
+129960 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-2552 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+2984 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

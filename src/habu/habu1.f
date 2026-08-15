@@ -196,6 +196,10 @@ variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATA
 package AOT-WINDOW
 public
 variable LDATA  variable LNXTOFF  variable LXTOFFS
+\ The window's wordlist base and span, and the window-relative ids it sealed. The
+\ seed rebases every captured wid through the first pair and applies the third
+\ after that rebase, which is the only moment the target's own base is known.
+variable LWIDW0  variable LWIDSPAN  variable LNPWIN  variable LPWIN
 ;package
 variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
 \ Named code sites: a code-address literal whose value is the entry of a WORD, so
@@ -2568,6 +2572,7 @@ package ENGINE-EMIT
    2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
 package ENGINE-EMIT
+public
 
 \ PROT-BITS-ADDR, ( base w a m scratch -- ): emit the bitmap addressing sequence.
 \ xbase holds the region base (DATA live, or a snapshot/AOT image's DATA source) and
@@ -2587,6 +2592,8 @@ package ENGINE-EMIT
 : PROT-BITS-ADDR, ( n n n n n -- ) {: base:n w:n a:n m:n scratch:n :}
    a PROT-BITS-OFF MOVZ,  a base a ADD,
    a w a m scratch PROT-BITS-AT, ;
+
+private
 
 \ prot-wid-add ( wid -- ): mark wid protected. Idempotent (an already-protected wid
 \ returns untouched), and fail-closed at the WID bound: a wid at or above

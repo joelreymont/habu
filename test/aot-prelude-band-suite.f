@@ -30,6 +30,8 @@
 \               refuses a BAND rather than refusing everything.
 \   call/none   a capture that never declared a band at all: refused. A producer
 \               that forgets the marks does not get the benefit of the doubt.
+\   call/nowid  the band declared and the wordlist span not: refused too, and by
+\               its own name, so the two mandatory declarations are told apart.
 \   call/high   a record mark above the window's own first record: refused, because
 \               a band that begins after the window it bounds describes nothing.
 \   call/dhigh  the same for the DATA mark, moved on its own so the two halves of
@@ -138,6 +140,11 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    s" a capture that declared no band at all is refused" T-LABEL
    s" aot-capture: capture without a declared prelude band" REFUSED ;
 
+: PROBE-WID-UNMARKED ( -- )
+   s" nowid" CALL-CASE
+   s" a capture that declared no wordlist span is refused" T-LABEL
+   s" aot-capture: capture without a declared wordlist span" REFUSED ;
+
 : PROBE-MARK-ABOVE ( -- )
    s" high" CALL-CASE
    s" a band beginning after the window it bounds is refused" T-LABEL
@@ -171,6 +178,7 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    PROBE-CALL-REFUSED
    PROBE-CALL-CAPTURED
    PROBE-UNMARKED
+   PROBE-WID-UNMARKED
    PROBE-MARK-ABOVE
    PROBE-DATA-MARK-ABOVE
    PROBE-DATA-REFUSED

@@ -97,6 +97,11 @@ create AOT-NAMES-BUF AOT-NAMES-CAP allot    variable AOT-NAMES-LEN
 16384 constant AOT-DSITE-MAX
 create AOT-DSITE-BUF AOT-DSITE-MAX 4 * allot    variable AOT-DSITE-N   \ packed u32 blob offsets (DATA then CODE)
 variable AOT-DATA-D0    variable AOT-DATA-SIZE
+\ The window's wordlist span, [W0, W0+SPAN). A captured wid is a window-relative
+\ coordinate the same way a blob offset is: only wid 0, the global wordlist, means
+\ the same thing in two processes, so the seed maps an in-window wid to
+\ T0 + (wid - W0) and refuses every other non-zero wid by name.
+variable AOT-WID-W0    variable AOT-WID-SPAN
 \ The window's DATA CONTENT, and the offsets the seed must not take from it.
 \ Reserving the span zeroed was right only while every byte in it was zero. It is
 \ not: the REPL sources put real bytes there - a TRUST row's name and signature
@@ -193,6 +198,13 @@ create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 \ be the frame's version.
 create AOT-PWID-BUF PROT-BITS-BYTES allot
 
+\ The window's own protected WIDs, window-relative, kept OUT of the bitmap above.
+\ EMIT-AOT-PROT-RESTORE runs before the cold prefix and so before the target's wid
+\ base exists; only these rows can carry a window wordlist's seal across, and the
+\ seed sets each bit after rebasing it. The chain's window seals 125.
+4096 constant AOT-PWIN-MAX
+create AOT-PWIN-BUF AOT-PWIN-MAX 4 * allot    variable AOT-PWIN-N   \ packed u32
+
 \ Raw emitter-boundary views (same pattern as SRCA@): expose the build-scratch
 \ buffers as `ptr` for the checked copy/BYTES, sites below.
 \ The blob, record, site, name, relocation, and boot-run accessors refine their
@@ -231,6 +243,8 @@ s" AOT-BUF:AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
 \ Retirement for the six accessors above: habu-builder-trust-rows-c5d41af6.
 : AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
 s" AOT-BUF:AOT-PWID-BUF@" s" -- ptr u8" TRUST
+: AOT-PWIN-BUF@ ( -- ptr u8 ) AOT-PWIN-BUF ;
+s" AOT-BUF:AOT-PWIN-BUF@" s" -- ptr u8" TRUST
 
 ;package
 
@@ -270,6 +284,7 @@ AOT-WINDOW:DATA-CAP +                              \ the captured DATA window's 
 AOT-XTSITE:MAX 8 * +                               \ named code-literal rows
 AOT-BOOTRUN-CAP 1 + +                              \ +1 = the live 0 terminator
 PROT-BITS-BYTES +                                  \ protected-WID bitmap image
+AOT-PWIN-MAX 4 * +                                 \ the window's own protected WIDs
 GRAIN 1 - + GRAIN / GRAIN *
 constant BYTES
 

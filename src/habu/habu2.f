@@ -4161,14 +4161,56 @@ s" c-local-ref" s" label label --" TRUST
 \ flags|len, the [24..40) inline name (from the deduped LAOTNAMES pool, zero-padded),
 \ and [40] wid (full u32 so wordlist IDs above 255 survive) -- the EXACT inverse of
 \ the build-time ACAP-COMPACT-RECS, proven byte-identical to the source-compiled
-\ record by ACAP-PROVE-RECS. As each record is registered WIDN is advanced above its
-\ wid, so a post-seed wordlist allocation cannot collide with a restored wordlist.
+\ record by ACAP-PROVE-RECS. Every wid is rebased out of the capture's window and
+\ into this engine's space first (AOT-WINDOW:REBASE-WID,), and WIDN moves once, past
+\ the whole window, after the loop.
 \ x2..x7 are LHIDXADD's saved set; x9/x11/x12 survive it. Records are 4B-aligned so
 \ each 32-bit word loads with LDRW.
+package AOT-WINDOW
+public
+
+\ Rebase one captured wid in xw into the wid space of the engine being booted, or
+\ branch to `bad`. A captured wid is a WINDOW coordinate: 0 is the global
+\ wordlist, which means the same thing in every process and passes through, and
+\ every other one must lie in [W0, W0+span) and becomes WIDN + (wid - W0). WIDN is
+\ read per wid because the pass advances it exactly once, after the loop, so every
+\ read in the loop answers the same number: the target's base.
+: REBASE-WID, ( n n n label -- ) {: w:n s1:n s2:n bad:label :}
+   LBL {: zero:label :}
+   w zero CBZ,
+   s1 s2 LWIDW0 LABEL@ TADR,  s1 s1 0 LDR,
+   w w s1 SUB,                                   \ window-relative
+   s1 s2 LWIDSPAN LABEL@ TADR,  s1 s1 0 LDR,
+   \ One unsigned test refuses both sides: a wid below the base wraps high.
+   w s1 CMP,  C-CS bad BCOND,
+   s1 DATA WIDN-CELL LDR,
+   w w s1 ADD,
+   zero LBL, ;
+
+\ Seal the wordlists the window sealed, now that the rebase has said where they
+\ landed. EMIT-AOT-PROT-RESTORE cannot carry these: it runs before the cold prefix
+\ and so before the base they are relative to exists.
+: SEAL-WIDS, ( label -- ) {: bad:label :}
+   LBL LBL {: ploop:label pdone:label :}
+   3 4 LNPWIN LABEL@ TADR,  3 3 0 LDR,          \ x3 = row count
+   7 0 MOVZ,                                    \ x7 = i
+   ploop LBL,  7 3 CMP,  C-GE pdone BCOND,
+      4 5 LPWIN LABEL@ TADR,
+      6 7 2 LSLI,  4 4 6 ADD,  4 4 0 LDRW,       \ x4 = window-relative WID
+      5 DATA WIDN-CELL LDR,  4 4 5 ADD,          \ x4 = this engine's WID for it
+      5 PROT-WID-MAX MOVZ,  4 5 CMP,  C-CS bad BCOND,
+      DATA 4 5 6 2 ENGINE-EMIT:PROT-BITS-ADDR,   \ x5 = &word, x6 = mask
+      2 5 LDAR,  2 2 6 ORR,  2 5 STLR,           \ release-publish the set bit
+      7 7 1 ADDI,  ploop B,
+   pdone LBL, ;
+
+;package
+
 : EM-AOT-REGISTER-RECS ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: rloop:label rdone:label pkg:label fields:label nloop:label ndone:label
-      pkg-wid:label widok:label next:label extname:label nameok:label :}
+      pkg-wid:label next:label extname:label nameok:label
+      bad:label msg:label done:label :}
    9 5 LAOTDICT LABEL@ TADR,  12 0 MOVZ,           \ x9 = compact record src (AOT-CREC-ROW stride), x12 = k
    11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR,         \ x11 = N (survives LHIDXADD)
    \ N records in ONE bracket, from the watermark upward: the seed knows the whole
@@ -4185,8 +4227,8 @@ s" c-local-ref" s" label label --" TRUST
       3 9 4 LDRW,  3 10 8 STR,                      \ ordinary [8] = code length u32
       fields B,
       pkg LBL,
-      3 9 0 LDRW,  3 10 0 STR,                     \ package [0] = public WID u32
-      3 9 4 LDRW,  3 10 8 STR,                     \ package [8] = private WID u32
+      3 9 0 LDRW,  3 4 5 bad AOT-WINDOW:REBASE-WID,  3 10 0 STR,   \ package [0] = public WID
+      3 9 4 LDRW,  3 4 5 bad AOT-WINDOW:REBASE-WID,  3 10 8 STR,   \ package [8] = private WID
       fields LBL,
       4 9 8 LDRW,                                   \ x4 = word2 = name-off u32
       7 5 LAOTNAMES LABEL@ TADR,  4 7 4 ADD,        \ x4 = pool entry ptr (len byte)
@@ -4218,16 +4260,27 @@ s" c-local-ref" s" label label --" TRUST
       extname LBL,  4 10 24 STR,                    \ [24] = the pool entry's bytes
       nameok LBL,
       6 9 16 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg-wid BCOND,
+      6 4 5 bad AOT-WINDOW:REBASE-WID,
       6 10 40 STR,                                  \ ordinary [40] wid = word4 (full u32, hi=0)
-      4 6 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE widok BCOND,   \ WIDN = max(WIDN, wid+1)
-         4 DATA WIDN-CELL STR,                       \ advance so post-seed allocs clear restored wids
-      widok LBL,  next B,
+      next B,
       pkg-wid LBL,
-      6 0 MOVN,  6 10 40 STR,                       \ package marker is signed -1; never advances WIDN
+      6 0 MOVN,  6 10 40 STR,                       \ package marker is signed -1, not a wid
       next LBL,
       NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
       9 9 AOT-CREC-ROW ADDI,  12 12 1 ADDI,  rloop B,
-   rdone LBL, ;
+   rdone LBL,
+   bad AOT-WINDOW:SEAL-WIDS,                          \ still WIDN = the target's base
+   \ WIDN = base + span, once. The span and not the highest wid registered: a
+   \ window may allocate a wordlist no record names, and a later allocation must
+   \ not be handed one of those either.
+   4 5 AOT-WINDOW:LWIDSPAN LABEL@ TADR,  4 4 0 LDR,
+   5 DATA WIDN-CELL LDR,  4 4 5 ADD,  4 DATA WIDN-CELL STR,
+   done B,
+   bad LBL,
+      1 msg ADR,  0 2 MOVZ,  2 39 MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT wid outside the capture window" BYTES,  NL-KW 1 BYTES,
+   done LBL, ;
 
 \ Validate and restore the baked protected-WID bitmap (TFAM 2b-v) immediately
 \ after cold startup clears the live band, before the cold prefix can register its
@@ -8114,6 +8167,7 @@ package LABELS
    LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
    LBL LAOTBOOTRUN !
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LAOTPROT !  LBL LPROTWIDQ !
+   LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL HIDX:LREBUILD !  LBL HIDX:LFULL !
@@ -8274,6 +8328,8 @@ public
    AOT-DATA-SIZE @ 0 > IF DATA-BUF@ AOT-DATA-SIZE @ BYTES, THEN ;
 : EMIT-XTOFFS ( -- )   \ packed u32 window offsets of the declared address cells
    XTOFF-N @ 0 > IF XTOFF-BUF@ XTOFF-N @ 4 * BYTES, THEN ;
+: EMIT-PWIN ( -- )   \ packed u32 window-relative protected WIDs
+   AOT-PWIN-N @ 0 > IF AOT-PWIN-BUF@ AOT-PWIN-N @ 4 * BYTES, THEN ;
 ;package
 : EMIT-AOT-SEED ( -- )
    LAOTCODELEN LABEL@ LBL,  AOT-BLOB-LEN @ DCQ,
@@ -8302,7 +8358,11 @@ public
    LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
    LAOTNPWID LABEL@ LBL,  PROT-REG-TAG DCQ,                                  \ protected-WID frame: shape tag
    LAOTPWID LABEL@ LBL,                                                      \ then the fixed-width bitmap (TFAM 2b-v)
-   AOT-PWID-BUF@ PROT-BITS-BYTES BYTES, ;
+   AOT-PWID-BUF@ PROT-BITS-BYTES BYTES,
+   AOT-WINDOW:LWIDW0 LABEL@ LBL,  AOT-WID-W0 @ DCQ,
+   AOT-WINDOW:LWIDSPAN LABEL@ LBL,  AOT-WID-SPAN @ DCQ,
+   AOT-WINDOW:LNPWIN LABEL@ LBL,  AOT-PWIN-N @ DCQ,
+   AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN ;
 
 \ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
 \ (dot habu-checker-fitting-arity-70dc94e4). Pops a token name, runs the same
