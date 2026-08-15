@@ -1,239 +1,31 @@
 \ hir.f - the straight-line HIR dialect: the closed set of operations the
 \ resolved Habu IR has for a colon body that only computes with integers.
 \
-\ docs/compiler-ir-design.md section 7.2 ("Stage N1: HIR - resolved Habu IR")
-\ and section 5.3 ("closed-world operation schemas"). Section 5.3 line 229 says
-\ each dialect has an exhaustive operation family and one schema table; this
-\ file is that family for the straight-line subset, and it fills a module's
-\ schema table through the IR-SCHEMA builder that src/compiler/ir/build.f owns.
-\ It defines no storage of its own and it does not repeat a single check
-\ IR-SCHEMA already makes.
+\ The subset is CLOSED: an opcode with no elaborator, no lowering and no test
+\ would be a promise rather than a schema, so none is declared here.
 \
-\ WHAT THE SUBSET IS. Forty-four opcodes, and nothing else. Twenty-seven of them
-\ compute with cells:
-\   hir.const     an integer literal
-\   hir.add       integer addition
-\   hir.sub       integer subtraction
-\   hir.mul       integer multiplication
-\   hir.div       signed integer division, truncating toward zero
-\   hir.lt        signed less-than, answering a Habu flag
-\   hir.le        signed less-than-or-equal, answering a Habu flag
-\   hir.gt        signed greater-than, answering a Habu flag
-\   hir.ge        signed greater-than-or-equal, answering a Habu flag
-\   hir.eq        equality, answering a Habu flag - the opcode family spells
-\                 this member `equal`, because an ENUM that derives a comparison
-\                 word has already taken the name `eq`
-\   hir.ne        inequality, answering a Habu flag
-\   hir.and       bitwise and
-\   hir.or        bitwise or
-\   hir.xor       bitwise exclusive or
-\   hir.lshift    logical shift left by a count the program computed
-\   hir.rshift    logical shift right by a count the program computed
-\   hir.invert    bitwise complement, the one unary operation of the subset
-\   hir.mem       the memory the definition is entered with
-\   hir.load      read one cell from an address the program computed
-\   hir.store     write one cell to an address the program computed
-\   hir.bload     read one BYTE from an address the program computed
-\   hir.bstore    write one BYTE to an address the program computed
-\   hir.br        go on to one block, handing it the live values
-\   hir.brz       go on to one of two blocks, on whether a value is zero
-\   hir.call      call the word being compiled, handing it the values it takes
-\                 and every value the caller still holds
-\   hir.wordcall  call ANOTHER word, at the entry address and under the arity the
-\                 operation carries, handing it the same thing
-\   hir.return    leave the function with the word's outputs
-\   hir.trap      leave the function WITHOUT returning: hand the family ordinal
-\                 to the one shared trap routine and branch there
-\ and seventeen compute with doubles:
-\   hir.fconst    a double literal, carrying the cell the double is
-\   hir.fadd      double addition
-\   hir.fsub      double subtraction
-\   hir.fmul      double multiplication
-\   hir.fdiv      double division, which does not trap - it answers an infinity
-\                 or the default NaN
-\   hir.fneg      negation, the sign bit turned over
-\   hir.fabs      absolute value
-\   hir.fsqrt     square root
-\   hir.flt       double less-than, answering a Habu flag
-\   hir.fgt       double greater-than, answering a Habu flag
-\   hir.feq       double equality, answering a Habu flag
-\   hir.fltz      the same less-than against zero, which is one operand
-\   hir.feqz      the same equality against zero, which is one operand
-\   hir.int>real  a signed cell rounded to the nearest double
-\   hir.real>int  a double truncated toward zero into a signed cell
-\   hir.bits>real a data-stack cell read as the double it holds
-\   hir.real>bits a double read as the cell it is
+\ Every one of the five float comparisons answers FALSE for a NaN, both ways
+\ round, measured on this engine. That is a fact about CONTROL FLOW, and
+\ src/compiler/native/a64ir.f names the conditions that keep it.
 \
-\ WHY A DOUBLE IS A SECOND TYPE AND NOT A SECOND SET OF OPERATIONS ON CELLS. A
-\ Habu stack holds a double unboxed, in one cell, as its own bit pattern, so
-\ nothing about its SIZE distinguishes it from an integer. What distinguishes it
-\ is that no operation reads one as the other: adding two doubles is not adding
-\ two cells and the machine has two register files to prove it. So the difference
-\ is carried by the value's type - REAL-TYPE below - which is what makes handing
-\ a double to `hir.add` a statement the module cannot hold rather than a mistake
-\ some later pass might notice. The two crossings are the last two opcodes, they
-\ compute nothing, and they exist because the source language really does cross
-\ there: a word's arguments arrive in data-stack cells and `@` answers the cell a
-\ double was stored in.
+\ A shift takes its count as an operand and lowers to the shift-BY-REGISTER
+\ form, which takes the count modulo the register width - so `1 64 lshift` is
+\ 1, exactly as the engine's own `lshift` answers.
 \
-\ That is exactly what section 7.2's list needs for a colon body with no
-\ control flow, no calls, no locals and no strings. Section 7.2 names more
-\ operations still - `execute`, `catch` and the rest - and every one of them is a
-\ later leaf of the same chain. An opcode with no elaborator, no lowering and no
-\ test would be a promise, not a schema, so none is declared here.
+\ hir.mem is where the memory order STARTS. It gets no instruction, because the
+\ routine's order already begins where it takes the caller's operands.
 \
-\ WHAT A QUOTATION IS IN THIS DIALECT, AND WHY IT IS ONE OPCODE AND NOT A FAMILY.
-\ `[: … ;]` writes a body that is not part of the body around it: it has its own
-\ entry, its own return, and it is reached by an address somebody executes. So it
-\ is compiled as one more FUNCTION of the same emission, and the only thing the
-\ enclosing body holds is that function's address - which is `hir.quot`, declared
-\ below. There is no operation here for making a quotation, none for entering
-\ one, and none for what a quotation captures, because a quotation of this subset
-\ captures nothing: it is a routine, and naming a routine is one value.
+\ An access width is a FORM and never an attribute, so a width the machine
+\ cannot encode cannot be spelled. The address is an ordinary operand in the
+\ GENERIC space with unrestricted aliasing, which forbids moving a load across
+\ a store to an address nothing proved is another.
 \
-\ WHY SIX COMPARISONS AND NOT THREE WITH THE OPERANDS TURNED ROUND. `a > b` is
-\ `b < a` and `a >= b` is `b <= a`, so the greater-than pair could have been the
-\ less-than pair read backwards, and a source word could have been modelled as
-\ "this opcode, with its operands swapped". It is not, for two reasons. The word
-\ model of src/compiler/native/hir-word.f binds a source word to ONE opcode and
-\ nothing else, so an operand order would have to become a second field on every
-\ row and a second thing every reader has to consult before it knows what a row
-\ means. And `<>` cannot be reached by swapping at all - it is `=` inverted, and
-\ inverting a flag is an operation, not an argument order - so a scheme that
-\ turned operands round would still need a member for it and would then have two
-\ ways of saying the same kind of thing. Six opcodes for six source relations is
-\ one rule: a comparison names its relation, and every stage below reads that
-\ name.
+\ dup, drop, swap and over stage no operation at all: they are compile-time
+\ renames in src/compiler/native/hir-word.f.
 \
-\ AND WHY THE FLOAT COMPARISONS ARE FIVE RATHER THAN SIX. The engine's whole
-\ float comparison vocabulary is five words - `f<`, `f>`, `f=`, `f0<` and `f0=`
-\ (src/habu/habu1.f EMIT-FP-PRIMS, and the survey at the head of
-\ tools/codegen-compare-corpus3.f lists them) - and this dialect models the
-\ vocabulary that exists rather than the one an integer reader would expect.
-\ There is no `f<=`, no `f>=` and no float inequality to model, so declaring
-\ opcodes for them would be declaring operations no source word can reach. The
-\ same rule as above decides that `f>` is its own opcode and not `f<` read
-\ backwards.
-\
-\ WHY A COMPARISON AGAINST ZERO IS ITS OWN OPERATION AND NOT A COMPARISON WITH A
-\ ZERO LITERAL. `f0<` is not `0.0 f<` with the operands turned round: it is one
-\ instruction of this machine, FCMP against the immediate zero, and the engine's
-\ own `f0<` emits exactly that (habu1.f (FCMP0)). Modelling it as a comparison
-\ against a materialised zero would cost the literal's move-wide chain and a move
-\ across the register files for a value the instruction does not need - and it
-\ would put a second lowering in the chain for a source word that has one. So the
-\ operand count is the difference, and it is a difference the SCHEMA states: a
-\ two-operand form and a one-operand form are two schemas, and a caller staging
-\ either with the other's operands is refused when the operation is closed.
-\
-\ WHAT A FLOAT COMPARISON ANSWERS, AND THE ONE FACT EVERY STAGE BELOW HAS TO
-\ KEEP. It answers a Habu flag - all bits set or none - exactly as an integer
-\ comparison does, so its result is a CELL and not a double. What is not the same
-\ is what happens when an operand is a NaN: on this machine every one of the five
-\ answers FALSE, both ways round, which the survey measured on this engine. That
-\ is a fact about CONTROL FLOW and not about arithmetic - `x f0< if A else B
-\ then` takes the ELSE arm when x is a NaN - and it is why the machine dialect
-\ chooses the conditions it does rather than the ones an integer reader would
-\ pick. This dialect states the fact by declaring five relations and nothing
-\ about how they are tested; src/compiler/native/a64ir.f is where the conditions
-\ that keep it are named, and it says why.
-\
-\ WHY A SHIFT TAKES ITS COUNT AS AN OPERAND. Habu's `lshift` and `rshift` take
-\ the count off the stack, so the count is whatever the program computed and not
-\ a field of the instruction - which is why they are ordinary binary operations
-\ here and lower to the machine's shift-BY-REGISTER forms. What that makes them
-\ agree with is the engine: the register forms take the count modulo the register
-\ width, so `1 64 lshift` is 1 and not 0, and the engine's own `lshift` answers
-\ the same because it is the same instruction. A dialect that declared a count
-\ ceiling here would be inventing a rule the interpreted word does not keep.
-\
-\ AND WHY THE COMPLEMENT IS AN OPERATION RATHER THAN AN EXCLUSIVE OR WITH ALL
-\ ONES. `invert` is `-1 xor` and the engine computes it that way, by moving all
-\ ones into a register first. In a compiled routine that literal is a value like
-\ any other: it is materialised by a move-wide chain, which for all-ones is four
-\ instructions, and it occupies a register the allocator then has to place. The
-\ machine has a one-instruction complement, so modelling `invert` as its own
-\ operation is what lets the chain reach it - and the unary shape is the honest
-\ one anyway, because `invert` reads one value and answers one.
-\
-\ WHY MEMORY NEEDS THREE OPCODES AND NOT TWO. A load and a store say what a
-\ program does to memory; they do not say in which order it does it, and the
-\ order is the whole of what `!` then `@` to one address means. In an SSA module
-\ an order is a value: each access takes the memory as it stood and answers the
-\ memory as it now stands, so a load written after a store reads that store's
-\ answer and no later pass may lift it above. That value has to start somewhere,
-\ and hir.mem is where - it is the memory the definition is entered with. It
-\ computes nothing, reads nothing and writes nothing, so it is declared pure and
-\ carries only the token it mints; src/compiler/native/select.f gives it no
-\ instruction at all, because on this machine the routine's memory order already
-\ begins where the routine takes the caller's operands.
-\
-\ WHY THE WIDTH OF AN ACCESS IS A FORM AND NOT AN ATTRIBUTE. `@` and `c@` reach
-\ the same address space in the same order, and they differ only in how many
-\ bytes they move - so a width field on ONE memory opcode looks like the smaller
-\ change. It is the wrong one. An operation's schema is what says what the
-\ operation IS: its operand and result types, its effect on memory, the
-\ instruction a selector may lower it to. A width carried as an attribute would
-\ leave one schema standing for two accesses that write different numbers of
-\ bytes, so every consumer - the selector, the emitter, and any later pass that
-\ has to know whether two accesses overlap - would have to read an attribute
-\ before it knew what it was looking at, and a schema-driven check could no
-\ longer tell a wrong lowering from a right one. It would also make an
-\ unwritable state writable: an attribute is a number, and a number can be a
-\ width no machine form of this target has. Two forms make the closed world of
-\ design line 229 do the work instead - `hir.bload` and `hir.bstore` are members
-\ of the opcode family, every MATCH over the family has to answer for them, and
-\ a width the machine cannot encode cannot be spelled at all. That is exactly
-\ how the cell forms were built, and the byte forms are built the same way.
-\
-\ THE ADDRESS IS AN OPERAND, WHICH IS WHY THIS IS NOT THE FRAME. The two memory
-\ forms of the machine dialect that existed before this one reach a frame slot,
-\ whose base is the stack pointer and whose offset is a field of the
-\ instruction - nothing the program computes. These two reach wherever the
-\ program says: the address is an ordinary value of this dialect, defined by
-\ whatever computed it, so `BUMP-CELL @` and `a i + c@` are the same shape with
-\ different arithmetic in front of them. The effect is therefore declared in the
-\ generic address space with unrestricted aliasing: an address a program
-\ computed may name any cell it can reach, and a dialect that claimed otherwise
-\ would license a reordering nothing proved.
-\
-\ WHY DUP, DROP, SWAP AND OVER ARE NOT OPCODES. Section 7.3 line 758 is explicit:
-\ those words "produce no SIR operation and therefore no runtime instruction",
-\ because they only rearrange the compile-time value vector. An `hir.dup`
-\ opcode would create an operation whose whole job is to be deleted again one
-\ stage later, and the old emitter's stack traffic is precisely what this
-\ pipeline exists to stop emitting. They are modeled instead as compile-time
-\ stack renames in src/compiler/native/hir-word.f, which is the other half of
-\ this dialect: this file says which operations exist, that one says what a
-\ Habu source word means.
-\
-\ THE TRAP FLAG IS THE UNIT'S NUMERIC POLICY, NOT A CONSTANT. Design line 240
-\ records whether an operation may trap, and design section 5.5 puts the
-\ numerical policy on the compilation unit. Whether integer overflow traps is
-\ therefore not a fact about addition; it is a fact about the binding this
-\ context was created with. REGISTER reads CNUM:OVERFLOW@ off the context's
-\ bound policy, so the same three arithmetic opcodes register as may-trap under
-\ a trapping policy and as total under a wrapping one. Nothing here re-derives
-\ that policy or carries a default for it.
-\
-\ THE TARGET IS AARCH64, DELIBERATELY. Design line 241 makes a schema declare
-\ the architecture and features its operation needs, and IR-SCHEMA validates
-\ that declaration against the context's bound target contract. This is the
-\ native pipeline, so its dialect requires `aarch64` with the baseline feature
-\ set: integer add, subtract and multiply need no floating point and no SIMD.
-\ The consequence is intended - registering this dialect against a GPU binding
-\ is refused by IR-SCHEMA rather than quietly accepted.
-\
-\ WHY THE DIALECT IDENTITY LIVES HERE. A schema table's dialect name and schema
-\ version are header fields of the module (design line 1714), fixed when the
-\ builder is created, and only the dialect knows them. NEW-BUILDER supplies
-\ them, so a module that is going to hold these opcodes is created with this
-\ dialect's own name and version instead of a caller's spelling of them. That
-\ used to be all: a caller who created a builder through IR-BUILD directly, and
-\ named its table something else, could still register these rows into it, and
-\ nothing but the usage rule said not to. REGISTER now reads the table's own
-\ dialect and version back off the live module through IR-BUILD's live readers
-\ and refuses a table that is not this dialect's, so the rule is a check.
+\ Whether an arithmetic opcode may trap is the unit's numeric policy, read off
+\ the context's bound policy rather than fixed here. The target is aarch64 with
+\ the baseline features, so registering against another binding is refused.
 
 require lib/prelude.f
 require lib/errors.f
@@ -249,16 +41,12 @@ require src/compiler/ir/build.f
 package HIR
 public
 
-\ The whole operation family of the straight-line subset. It is an ENUM and not
-\ a list of names because design line 229's closed world is then a property of
-\ the type: a later stage that binds a source word, or matches on what an
-\ operation is, cannot name an operation this dialect does not have, and every
-\ MATCH over it has to answer for every member.
-\
-\ The count is deliberately not written down here. It was, as "all five", and it
-\ was still saying five long after the family had grown past forty - which is
-\ how a reader comes to believe the chain compiles less than it does. The
-\ members below are the list; anything that needs the number counts them.
+\ An ENUM, so a later stage cannot name an operation this dialect does not have
+\ and every MATCH over it has to answer for every member. The member for `=` is
+\ spelled `equal`, because a derived comparison word has already taken `eq`.
+\ Six integer comparisons and not three read backwards, because a word model
+\ binds a source word to ONE opcode; five float ones, because the engine's whole
+\ float comparison vocabulary is five words.
 ENUM opcode DERIVE eq
    const
    add
@@ -308,127 +96,15 @@ ENUM opcode DERIVE eq
    realbits
 ;ENUM
 
-\ What a structured control word does to the blocks a definition is made of.
-\ Each member names one Habu source word, and the pairs are openers and closers
-\ of one structure: `if` closes with `then`, `begin` with `until`, `repeat` or
-\ `again`, and either `do` or `?do` with `loop`. `index` is the loop index `i`
-\ and `outer-index` is `j`, which are neither - each reads an open counted loop's
-\ index and stages no operation of its own. `self-call` is `RECURSE`: it calls the word being compiled. It is a
-\ control action rather than an operation word because how many values it takes
-\ and leaves is the DEFINITION's arity, which no schema-driven staging can read
-\ off an opcode - the elaborator stages it by hand, exactly as it stages the
-\ return. It is an ENUM for the same reason the opcode family is: a table that
-\ binds a source word to a control action cannot name an action this dialect has
-\ no construction for, and every MATCH over it has to answer for all of them.
-\
-\ TWO MEMBERS ARE NEITHER AN OPENER NOR A CLOSER, AND THEY ARE SPELLED `mid-`.
-\ `mid-while` is `while`, which stands inside an open `begin` loop and leaves it
-\ when its test is false; `mid-else` is `else`, which stands inside an open `if`
-\ and starts its second arm. Both END the block they stand in and start another
-\ one without touching the control stack's depth, which is exactly what makes
-\ them a third kind rather than a badly-named opener: a structure that has met
-\ one of them is still open and still has to be closed by the closer it began
-\ with.
-\
-\ `begin` HAS A THIRD CLOSER AND IT IS THE ONE THAT NEVER LEAVES. `until` leaves
-\ the loop when its test is true and `repeat` leaves it through the `while` that
-\ stands in the middle of it; `close-again` is `again`, whose back edge is
-\ unconditional and whose loop has no exit edge at all - so the block after it is
-\ reached by nothing and none is built. That is a member of its own rather than a
-\ spelling of `repeat` because the two build different things: `repeat` opens the
-\ block its `while`s branched out to and `again` opens no block.
-\
-\ AND IT CANNOT BE GIVEN AN EXIT BY A `while`, which is the engine's and the
-\ checker's answer rather than a rule invented here. src/habu/habu2.f J-AGAIN
-\ pops ONE control frame and branches back, leaving a `while`'s forward branch
-\ unresolved; src/core/checker.f CF-AGAIN refuses any frame a `while` has touched
-\ (it requires frame kind 3, and `while` makes it 4), exactly as CF-UNTIL does.
-\ So `begin … while … again` is refused where it is written - measured on this
-\ engine, `: T ( -- ) begin true while again ;` is rejected at `again` - and no
-\ checked body can present one here.
-\
-\ `early-leave` IS `exit` FOR A COUNTED LOOP RATHER THAN FOR THE DEFINITION,
-\ which is why it stands beside `early-exit`. Both end the path they are written
-\ on and hand the live values to a block some OTHER word opens: `exit` to the
-\ definition's one return block, `leave` to the block after the innermost counted
-\ loop the walk is inside - the block `loop`'s own exit stub branches to and
-\ `?do`'s skip stub already branched to. So it is one more edge into a block the
-\ loop was always going to have rather than a construction of its own, and which
-\ loop it leaves is the frame search `i` and `unloop` already make.
-\ src/core/checker.f CF-LEAVE says the same two things: it unifies the stack at
-\ the `leave` with the row the `do` point recorded, and then marks the path dead.
-\
-\ THE COUNTED LOOP HAS TWO OPENERS AND ONE CLOSER, WHICH IS THE ENGINE'S SHAPE.
-\ `open-do` is `do` and `open-do-skip` is `?do`; both take a limit and a start
-\ and both close with `loop`. The difference is one test and nothing else:
-\ src/habu/habu2.f J-DO opens the loop frame and falls into the body, and J-?DO
-\ emits that same opening preceded by `cmp start,limit` and a branch out when
-\ they are EQUAL. So `do` runs its body at least once - `0 0 do … loop` runs one
-\ turn, measured on this engine - and `?do` runs it no times there. Every other
-\ pair of limit and start, the two words are the same loop: at `5 0 do` and
-\ `5 0 ?do` alike the body runs five times, and at `0 5 do` and `0 5 ?do` alike
-\ it runs once, because the test at `loop` is `index + 1 < limit` signed and the
-\ first increment is already past. Two members rather than one because they emit
-\ different code; one closer because the structure they open is the same one.
-\ The checker makes no distinction at all (src/core/checker.f CF-DO answers for
-\ both), which is right there and not here: what the two words take and leave is
-\ the same, and what they EMIT is not.
-\
-\ AND IT HAS TWO INDICES, WHICH ARE TWO MEMBERS AND NOT ONE WITH A DEPTH. `index`
-\ is `i`, the innermost open counted loop's index, and `outer-index` is `j`, the
-\ index of the loop ONE FRAME FURTHER OUT. src/habu/habu2.f J-J is J-I's eight
-\ instructions with one number changed - `sub x11,x11,#2` where J-I subtracts one
-\ from the loop-frame depth - so a row that carried a depth would say exactly
-\ what these two members say. It is not written that way for two reasons. A
-\ control row carries no payload at all (src/compiler/native/hir-word.f
-\ CONTROL-ROW writes the action and four unused cells), so a depth would be the
-\ first field of a family that has none, meaningless in twenty-seven members out
-\ of twenty-nine. And there is no third depth to generalise over: `k` is not a
-\ word of this Forth - neither the engine's keyword table nor src/core/checker.f
-\ CF-TOK? knows the spelling, measured, `k` inside three loops is refused as an
-\ undefined word - so the field would have exactly two values for ever. Two
-\ members is how every other distinction of this family is drawn, `do` and `?do`
-\ included.
-\
-\ SEVEN MEMBERS BELONG TO THE THREE TAG-DISPATCH FORMS, and they are control
-\ actions for the same reason `self-call` is: what they take and leave is a fact
-\ about the FAMILY the source names rather than about an opcode, so no
-\ schema-driven staging can read it off one. `open-match` is `MATCH`, which opens
-\ a dispatch over the tag of the bundle on top of the stack; `match-arm` is `of`
-\ and `close-arm` is `endof`, the two words a `MATCH` variant arm and a `case`
-\ arm SHARE; `close-match` is `;MATCH`; `open-case` is `case` and `close-case` is
-\ `endcase`; and `make-bundle` is `construct`, which is not a structure at all -
-\ it stages the zero pads and the tag that turn a payload already on the stack
-\ into a value of its family.
-\
-\ THE LAST TWO ARE `[:` AND `;]`, and they are control actions for a reason of
-\ their own: what stands between them is not part of the body that writes them.
-\ A quotation body is a ROUTINE - its own entry, its own return, reached by an
-\ address some caller executes - so the tokens between the pair are a second
-\ function of the module and not operations of the first. `open-quot` is
-\ therefore the one action that both stages a value AND takes a span of the tape
-\ out of the enclosing body's hands; `close-quot` names the token that ends it,
-\ and a walk that ever STEPS one has met a closer with no opener.
-\
-\ `of` AND `endof` ARE ONE MEMBER EACH AND NOT TWO PAIRS, which is the source
-\ language's shape rather than a saving. The engine compiles both forms through
-\ one `of` and one `endof` and tells them apart by which structure is open
-\ (src/habu/habu2.f J-ENDOF reads a branch-kind bit), and the checker does the
-\ same by the kind of its top control frame (src/core/checker.f
-\ CF-ENDOF-DISPATCH). A dialect that gave them four members would be inventing a
-\ distinction the two authorities that decide what these tokens mean do not make,
-\ and the elaborator would then have to agree with a rule nobody else keeps.
-\ AND THE LAST TWO ARE WHAT A PROGRAM DOES WITH A QUOTATION ONCE IT HOLDS ONE.
-\ `bind-defer` is `is`, which stores the value into a deferred word's dispatch
-\ cell, and `exec` is `execute`, which enters the routine the value names. Both
-\ compile to a CALL - `is` to the engine's own store-and-declare primitive and
-\ `execute` to the engine's own `execute` - and neither can be a `callable` row,
-\ which is what makes them control actions for exactly the reason `self-call` is
-\ one: what the call takes and leaves is not a fact about the word written. `is`
-\ moves what the DEFERRED WORD declares, and the token after it names which;
-\ `execute` takes one cell more than the quotation it is handed takes, and which
-\ quotation that is, is a fact about the value on the stack where it stands. A
-\ row that stated either number would state it once for every site in the tree.
+\ One member per Habu control word. `mid-while` and `mid-else` end their block
+\ and start another without changing the control stack's depth, which is what
+\ makes them a third kind. `close-again` opens no block at all, and the engine
+\ and the checker both refuse a `while` inside a `begin … again`. `do` runs its
+\ body at least once where `?do` may run it none, which is why they are two
+\ openers with one closer. `index` and `outer-index` are two members because
+\ `k` is not a word of this Forth, so a depth field would have two values for
+\ ever. `of` and `endof` are one member each, because the engine and the checker
+\ tell the MATCH form from the case form by which structure is open.
 ENUM ctrl DERIVE eq
    open-if
    mid-else
@@ -461,66 +137,18 @@ ENUM ctrl DERIVE eq
    catch
 ;ENUM
 
-\ WHICH WAY A RETURN-STACK WORD MOVES CELLS, and it is three actions rather than
-\ two because a peek is not a pop. `to-r` takes cells off the data stack and puts
-\ them on the return stack, `from-r` does the reverse, and `fetch-r` copies the
-\ return stack's top cells onto the data stack WITHOUT taking them off - so a
-\ body may read a parked value as often as it likes and still owe exactly one
-\ `r>`. How MANY cells is the row's other number, which is what lets one action
-\ serve `>r` and `2>r`.
+\ Three actions and not two, because a peek is not a pop: `fetch-r` copies the
+\ return stack's top cells without taking them off.
 ENUM rmove DERIVE eq
    to-r
    from-r
    fetch-r
 ;ENUM
 
-\ What a Habu source word, or a source-tape token, means to this dialect.
-\ `literal` is a token's meaning and never a word's: an integer literal is not a
-\ call, and the tape's own token kind is what makes it one. The other three are
-\ a word's meaning and never a token kind's. `op` elaborates to one operation
-\ above, `rename` only rearranges the compile-time value vector and produces no
-\ operation at all (section 7.3 line 758), and `unmodeled` is a named boundary
-\ checked source may not compile yet. src/compiler/native/hir-word.f is the
-\ table that binds a word to one of them; the vocabulary lives here because it
-\ is the dialect's, not the table's.
-\ `fixed` is the meaning of a word that pushes one value and nothing else, which
-\ is what a `create`d data word does: its address is decided once, when the word
-\ is created, and every mention of it is that number. The row carries the value,
-\ and where that value comes from is not the caller's to say: the declaration
-\ names the word and src/compiler/native/dict.f asks the running dictionary what
-\ it pushes.
-\ `open-locals` and `close-locals` are the two halves of a `{: … :}` group. A
-\ group binds names to values the body then reads by name, and a bound name is
-\ nothing but a value of the compile-time vector - so the group stages no
-\ operation, exactly as a rename does, and the names between the two halves are
-\ the PROGRAM's rather than this dialect's. That is why they are two meanings
-\ and not one: what the opener does is start reading names, and what the closer
-\ does is take one value off the vector per name read, right to left.
-\ `callable` is the meaning of a word that is CALLED: a word already compiled and
-\ published, whose entry address and declared arity the row carries. It is not a
-\ `control` action the way `RECURSE` is, because `RECURSE` needs no name of its
-\ own - it means the definition being compiled - while a callable word is a
-\ different routine for every row, so what it means IS the row's payload.
-\ `real-literal` is the second token meaning, and it is a meaning of its own
-\ rather than `literal` with a type beside it for the same reason `hir.fconst` is
-\ an opcode of its own: what a token MEANS is what the elaborator stages for it,
-\ and the two stage two different operations leaving values of two different
-\ types. The tape's own token kind is what makes a token one or the other, and
-\ neither is ever a word's meaning.
-\ `rstack` is `>r`, `r>` and `r@` with their two-cell forms, and it is a meaning
-\ beside `rename` rather than a kind of it. What the two have in common is that
-\ they stage NO operation and emit no instruction: both only move value ids
-\ around at compile time, and the machine never learns that either happened. What
-\ separates them is which vectors they move between - a rename permutes the data
-\ vector, and these carry a value from it to the return vector or back - and a
-\ rename row has no cell that could say so. The engine's own `>r` writes a cell
-\ into a data-region stack and bumps a depth counter; this dialect keeps the
-\ parked value in the vector it already keeps every other live value in, so the
-\ counter has nothing to count and the region is never touched. That is sound
-\ because the checker has already PROVED the return stack's depth at every point
-\ of a certified body: it unifies the return row at every join and loop edge and
-\ refuses a body that does not leave the row as it found it, so the depth is a
-\ compile-time number and not a run-time one.
+\ `literal` and `real-literal` are token meanings and never a word's; the rest
+\ are a word's and never a token kind's. `rename`, `open-locals`/`close-locals`
+\ and `rstack` stage no operation at all - they only move value ids at compile
+\ time, which is sound because the checker has already proved the return row.
 ENUM meaning DERIVE eq
    literal
    real-literal
@@ -540,28 +168,19 @@ ENUM meaning DERIVE eq
 private
 
 \ ---- the dialect's own symbols -----------------------------------------------
-\ Every symbol this dialect mints is spelled `hir.`-something. One module
-\ interner holds opcode names, attribute keys, semantic-rule names, renderer
-\ names and - once src/compiler/native/hir-word.f fills its table - the
-\ spellings of Habu source words, so the prefix is what keeps a dialect symbol
-\ and a source word from ever being the same interned symbol.
-
-\ Design line 240 with design section 5.5: whether integer overflow traps is the
-\ compilation unit's numeric policy, so the schema reads it rather than fixing
 \ it.
+\ Every symbol this dialect mints is spelled `hir.`-something, which is what
+\ keeps a dialect symbol and a source word from being one interned symbol.
 : TRAPS? ( IR-CTX:ctx -- bool )
    IR-CTX:BINDING@ CBIND:POLICY@ CNUM:OVERFLOW@
    CNUM-OVERFLOW:TRAP CNUM-OVERFLOW:EQ ;
 
-\ Design line 241: the native pipeline's architecture, with the baseline feature
-\ set, because integer arithmetic needs nothing more.
+\ The native pipeline's architecture, with the baseline feature set.
 : TARGET ( -- )
    CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET ;
 
-\ Design line 241 again, for the operations that need a floating unit. It is a
-\ different requirement and it is declared as one: a binding whose target
-\ contract has no floating-point feature is refused by IR-SCHEMA at the first
-\ float schema rather than compiling a body it cannot execute.
+\ A different requirement, declared as one: a binding with no floating-point
+\ feature is refused at the first float schema.
 : FP-TARGET ( -- )
    CTARGET-ARCH:AARCH64 CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
    IR-SCHEMA:SET-TARGET ;
@@ -578,21 +197,13 @@ public
 : NAME ( -- ptr u8 n )
    s" hir" ;
 
-\ Version 0.5: the straight-line subset with doubles in it, a terminator that
-\ does not return, the address of another function of the emission, and a literal
-\ that says whether the number it carries is an address. The major version stays
-\ at zero until the dialect is the whole of section 7.2; the minor version moved
-\ when the double type and its twelve operations arrived, again when hir.trap
-\ did, again when hir.quot did, and again when `hir.const` grew its second
-\ required attribute - because a table with them and one without are two
-\ different tables and every consumer compares the version exactly.
+\ Every consumer compares the version exactly, so a table with a new required
+\ attribute and one without are two different tables.
 0 constant MAJOR
 5 constant MINOR
 
 \ ---- the opcode names --------------------------------------------------------
-\ This module's interned symbol for one opcode. Interning deduplicates, so
-\ asking twice answers the same identity, and this is the symbol both
-\ IR-SCHEMA's readers and IR-BUILD:BEGIN-OP take.
+\ Interning deduplicates, so asking twice answers the same identity.
 : OPCODE ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- IR-ID:ir-symbol-id )
    MATCH opcode
       const  OF s" hir.const"  ENDOF
@@ -644,62 +255,29 @@ public
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
-\ Design line 479: the attribute key `hir.const` requires. The literal's value
-\ is the whole content of a constant, so an `hir.const` without it means
-\ nothing, and IR-OP refuses one that omits it.
+\ The literal's value is the whole content of a constant.
 : KEY-VALUE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.value" IR-BUILD:INTERN-SYMBOL ;
 
-\ Design line 479: the second key `hir.const` requires - WHAT THE NUMBER IS, as
-\ against what it equals.
-\
-\ WHY THE KIND IS KNOWN HERE AND NOWHERE LATER. Two of the things this dialect
-\ stages as an integer literal are addresses: the data field a `create`d word
-\ names, and the body of an interned string literal. Every later pass sees a
-\ number, and a number carries no evidence of what it is - an address of the DATA
-\ region and an ordinary integer that happens to equal one are the same sixty-four
-\ bits. The elaborator is the last place that still knows, because it is reading
-\ the WORD MODEL, which says this token is a fixed-value word; so the fact is
-\ recorded where it is known and travels with the operation from there.
-\
-\ AND WHAT DOWNSTREAM NEEDS IT FOR. The address a compiled routine carries has to
-\ be found again after publication, by the relocation pass that rewrites it when
-\ the region it names moves. That pass may not recognise one by decoding region
-\ bytes: a compiled word carries inline data that decodes as a move-wide chain.
-\ So the kind crosses into the machine dialect as `a64.addr` and the emitter
-\ records the site from it.
+\ WHAT the number is, as against what it equals. Two things this dialect stages
+\ as an integer literal are addresses, and a number carries no evidence of being
+\ one; the elaborator is the last place that still knows, so it records it here.
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.addr" IR-BUILD:INTERN-SYMBOL ;
 
-\ The kinds that key may name. ADDR-NONE is every ordinary number the source
-\ wrote or a word model carries; ADDR-DATA is an address of the engine's DATA
-\ region, which is what EMIT-FIXED-SYM and EMIT-STRING stage. A small enumeration
-\ rather than a flag, so the CODE kind a `[']` needs is a new member and not a
-\ second attribute - and the machine dialect names its own kinds with the same
-\ meanings, translated across the boundary by src/compiler/native/select.f rather
-\ than shared, because a dialect's table is its own.
+\ A small enumeration rather than a flag, so a CODE kind is a new member and not
+\ a second attribute.
 0 constant ADDR-NONE
 1 constant ADDR-DATA
 ADDR-DATA constant ADDR-KIND-MAX
 
-\ A kind this dialect knows, refused where the attribute is built rather than
-\ where it is read - an unknown number reaching selection would be a site class
-\ the machine dialect has no rule for.
+\ Refused where the attribute is BUILT rather than where it is read.
 : ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    dup 0 < over ADDR-KIND-MAX > or if E-HIR-ADDR throw then
    IR-BUILD:INTERN-INT-ATTR ;
 
-\ The three attribute keys `hir.wordcall` requires. A call to another word means
-\ nothing without all three: where the callee starts, how many values it takes,
-\ and how many it leaves. They are three keys and not one packed number because
-\ a key answers "which fact, in which units", and a reader that had to unpack a
-\ triple could get the fields in the wrong order without any authority noticing.
-\
-\ WHY THE ARITY IS ON THE OPERATION AND NOT DERIVED FROM ITS LISTS. Both of the
-\ operation's lists are variadic - how many values are live across a call is the
-\ call site's fact and how many the callee moves is the routine's - so the two
-\ counts cannot be told apart by counting. The arity is what splits them, and it
-\ has to be carried.
+\ Three keys and not one packed number, because a reader could get the fields of
+\ a triple in the wrong order without any authority noticing.
 : KEY-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.entry" IR-BUILD:INTERN-SYMBOL ;
 
@@ -709,63 +287,33 @@ ADDR-DATA constant ADDR-KIND-MAX
 : KEY-OUT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.out" IR-BUILD:INTERN-SYMBOL ;
 
-\ The one attribute key `hir.quot` requires: WHICH function of this module the
-\ value it answers is the address of, as that function's ordinal. It is an
-\ ordinal rather than an address because there is no address yet - the body is
-\ emitted with the enclosing routine and where it lands is decided by the
-\ emitter, not by the pass that says which routine it is.
+\ An ordinal and not an address, because there is no address yet: where the body
+\ lands is the emitter's answer.
 : KEY-FUN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.fun" IR-BUILD:INTERN-SYMBOL ;
 
 \ ---- the type of an ordinary value -------------------------------------------
-\ One signed 64-bit integer per stack value, which is what every schema this
-\ dialect registers declares. It is published beside the other two value types
-\ because a pass that WRITES a module of this dialect has to state the type of
-\ every block argument and every result it mints, and the three readers here are
-\ the dialect's own answer to that question. src/compiler/native/elaborate.f
-\ still interns the same identity itself and says in its own header why that
-\ restatement is checked rather than trusted; a pass that has no such argument
-\ asks here.
+\ One signed 64-bit integer per stack value, which every schema here declares.
 : CELL-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
 
 \ ---- the type of the memory order --------------------------------------------
-\ The order of the definition's memory accesses, as a value they pass along. It
-\ lives in no register and stands for no number: it is what makes "this load
-\ happens after that store" a dependency the module holds rather than a property
-\ of the printed order. Every stage that has to tell a general value from an
-\ ordering value reads this identity, which is why it is one public reader here
-\ rather than a type interned at each use site.
+\ It lives in no register and stands for no number: it is what makes "this load
+\ happens after that store" a dependency the module holds.
 : MEM-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-DOMAIN:DATA-MEM IR-BUILD:INTERN-TOKEN ;
 
 \ ---- the type of a double ----------------------------------------------------
-\ The second value type of this dialect. A Habu stack holds a double in one
-\ unboxed cell as its own bit pattern, so a double and a cell are the same eight
-\ bytes and the same slot - but they are NOT the same value: no arithmetic of
-\ this dialect reads one as the other, and which of the two a value is decides
-\ which register file can hold it and which instruction may compute with it. So
-\ the difference is a TYPE and not a convention, and this reader is the one place
-\ that says it, exactly as MEM-TYPE is for the memory order.
-\
-\ WHY THE TWO ARE BRIDGED BY OPERATIONS RATHER THAN BY A CONVERSION. `hir.bits>real`
-\ and `hir.real>bits` below are the two crossings, and they compute nothing: they
-\ are the same eight bytes read as the other type. They exist because the SOURCE
-\ language crosses there - `@` answers the cell a double was stored in, `!` puts
-\ one back, and a word's arguments and results reach it through data-stack cells -
-\ so the crossing is a real event of a real program and a dialect that hid it
-\ would be claiming the machine moves nothing.
+\ A double and a cell are the same eight bytes and NOT the same value: which of
+\ the two decides which register file may hold it. The two crossings compute
+\ nothing - they are the same bytes read as the other type.
 : REAL-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-FMT:DOUBLE IR-BUILD:INTERN-FLT ;
 
 private
 
 \ ---- the schema definitions --------------------------------------------------
-\ Design lines 242 and 243 require a semantic-rule identifier and a renderer
-\ identifier per schema, so a later pass dispatches on an identity rather than
-\ on a string comparison. Each opcode names its own, derived from its own
-\ spelling. Neither is public: the schema table is the authority on what an
-\ opcode's rule and renderer are, and IR-SCHEMA:RULE@ and RENDERER@ answer it.
+\ Neither is public: IR-SCHEMA:RULE@ and RENDERER@ are the authority.
 : RULE ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- IR-ID:ir-symbol-id )
    MATCH opcode
       const  OF s" hir.rule.const"  ENDOF
@@ -887,9 +435,7 @@ private
    c b HIR-OPCODE:CONST NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One binary integer operation: two cells in, one cell out. The three arithmetic
-\ opcodes differ only in their names, so they share this shape, and each one's
-\ may-trap flag is the compilation unit's overflow policy.
+\ Each one's may-trap flag is the compilation unit's overflow policy.
 : DEF-BINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -902,14 +448,8 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Division: the same two cells in and one cell out, and it is the one arithmetic
-\ operation of this dialect that may trap whatever the unit's numeric policy
-\ says. The policy is about OVERFLOW, and a division does not overflow the way a
-\ sum does; what it does is divide by zero, and the engine's own `/` traps on
-\ that unconditionally - src/habu/habu1.f BDIV0? branches over a `brk` when the
-\ divisor is not zero. So the may-trap flag is declared true here rather than
-\ read off the policy, and the machine dialect's lowering has to reproduce the
-\ trap rather than drop it.
+\ The one arithmetic operation that may trap whatever the policy says: the
+\ policy is about OVERFLOW, and the engine's `/` traps on a zero divisor.
 : DEF-DIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b HIR-OPCODE:DIV OPCODE IR-SCHEMA:BEGIN-OP
@@ -922,20 +462,9 @@ private
    c b HIR-OPCODE:DIV NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One binary operation that cannot raise: two cells in, one cell out, and the
-\ may-trap flag declared false rather than read off the unit's numeric policy.
-\ Eleven opcodes have this shape - the six comparisons, whose answer is a Habu
-\ flag of all bits set or none, and the three bitwise combinations and two
-\ shifts. They are one definer and not two because the schema of a comparison and
-\ the schema of a bitwise combination are the same statement: two cells in, one
-\ cell out, pure, total.
-\
-\ AND WHAT MAKES THEM TOTAL IS THE SAME FACT IN BOTH CASES. The unit's policy is
-\ about OVERFLOW, and none of these eleven can overflow - a comparison answers
-\ one of two values, a bitwise combination answers a function of its arguments'
-\ bits, and a shift takes its count modulo the register width. Declaring them
-\ through DEF-BINARY would make them trapping under a trapping unit and oblige
-\ the machine stage to reproduce a trap that cannot happen.
+\ Two cells in, one out, pure and TOTAL: none of the eleven can overflow, so
+\ declaring them through DEF-BINARY would oblige the machine stage to reproduce
+\ a trap that cannot happen.
 : DEF-TOTAL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -948,10 +477,7 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ The one unary operation of this subset: one cell in, one cell out, and total.
-\ `invert` reads one value and answers its complement, and the schema says so -
-\ which is what stops a caller staging it with the two operands every other
-\ computing operation here takes.
+\ One cell in, one cell out, which is what stops a caller staging it with two.
 : DEF-UNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -964,23 +490,15 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the memory forms --------------------------------------------------------
-\ Design lines 238 and 239: an operation that touches memory declares the domain,
-\ the address space and the alias behaviour, and carries the token that orders it
-\ against the others. The address these two forms reach is a value the program
-\ computed, so it may name any cell the program can reach: the space is the
-\ generic one and the aliasing is unrestricted, which is the declaration that
-\ forbids a later pass from moving a load across a store to "another" address it
-\ cannot prove is another.
+\ The address is a value the program computed, so it may name any cell it can
+\ reach: the generic space with unrestricted aliasing.
 : GENERIC-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
 
-\ The memory the definition is entered with. It reads nothing and writes
-\ nothing - it is where the order STARTS, not an access - so it is declared pure
-\ and its whole content is the token it mints. Being pure is what lets it carry
-\ a token result with no token operand: there is nothing before it to take one
-\ from.
+\ Pure, which is what lets it carry a token result with no token operand: there
+\ is nothing before it to take one from.
 : DEF-MEM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b HIR-OPCODE:MEM OPCODE IR-SCHEMA:BEGIN-OP
@@ -991,12 +509,8 @@ private
    c b HIR-OPCODE:MEM NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Reading one cell: the address, and the memory as it stands. It answers the
-\ cell's contents and the memory it read them out of, so the access after it
-\ takes that answer and cannot be lifted above this one. The token is the LAST
-\ operand and the LAST result of both forms, which is this dialect's own
-\ convention and is why src/compiler/native/elaborate.f finds it by TYPE rather
-\ than by position.
+\ The token is the LAST operand and the LAST result of both forms, which is why
+\ elaborate.f finds it by TYPE rather than by position.
 : DEF-LOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
    c b HIR-OPCODE:LOAD OPCODE IR-SCHEMA:BEGIN-OP
@@ -1010,11 +524,8 @@ private
    c b HIR-OPCODE:LOAD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Writing one cell: the value, the address, and the memory as it stands. Forth
-\ writes `value address !`, so the value is the deeper of the two on the data
-\ stack and therefore the first operand - the same rule every other binary
-\ operation of this dialect follows, and the reason a swapped pair is a wrong
-\ program rather than a wrong index.
+\ Forth writes `value address !`, so the value is the deeper of the two and
+\ therefore the first operand.
 : DEF-STORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
    c b HIR-OPCODE:STORE OPCODE IR-SCHEMA:BEGIN-OP
@@ -1028,12 +539,8 @@ private
    c b HIR-OPCODE:STORE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Reading one byte: the same address and order the cell load takes, and the same
-\ two answers. What differs is the number of bytes the access moves, and that is
-\ the whole content of the form - the value it answers is the byte widened into a
-\ cell, which is what `c@` leaves on a Habu stack. The operand and result types
-\ are the cell type for that reason: a byte is not a type of this dialect, it is
-\ a width of an access.
+\ The value it answers is the byte widened into a cell: a byte is not a type of
+\ this dialect, it is a width of an access.
 : DEF-BLOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
    c b HIR-OPCODE:BLOAD OPCODE IR-SCHEMA:BEGIN-OP
@@ -1047,10 +554,7 @@ private
    c b HIR-OPCODE:BLOAD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Writing one byte: the value, the address, and the memory as it stands, in the
-\ order Forth writes `value address c!`. Only the value's lowest byte reaches
-\ memory, which is what the machine form encodes and what the engine's own `c!`
-\ does; the operand is still a cell, because a cell is what the program has.
+\ Only the value's lowest byte reaches memory; the operand is still a cell.
 : DEF-BSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
    c b HIR-OPCODE:BSTORE OPCODE IR-SCHEMA:BEGIN-OP
@@ -1064,11 +568,8 @@ private
    c b HIR-OPCODE:BSTORE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Going on to one block, handing it the values that are still live. Design lines
-\ 706-708 make a terminator's operands the successor's block arguments and
-\ design line 532 makes the verifier match their count and types against the
-\ destination, so how many there are is a property of the destination and the
-\ list is one variadic tail.
+\ A terminator's operands are the successor's block arguments, so how many
+\ there are is a property of the destination and the list is one variadic tail.
 : DEF-BR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b HIR-OPCODE:BR OPCODE IR-SCHEMA:BEGIN-OP
@@ -1080,13 +581,8 @@ private
    c b HIR-OPCODE:BR NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Going on to the first successor when the tested value is zero and to the
-\ second when it is not, which is how every structured control word of this
-\ subset asks its question. Its one operand is the value it tests and not a
-\ block argument: with two successors the operation model has no way to say
-\ which operand belongs to which destination, so both successors take no
-\ arguments and an edge that has to carry values goes through a block whose
-\ terminator is the unconditional form above.
+\ Its one operand is the value it tests and not a block argument: with two
+\ successors nothing could say which operand belongs to which destination.
 : DEF-BRZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b HIR-OPCODE:BRZ OPCODE IR-SCHEMA:BEGIN-OP
@@ -1098,11 +594,8 @@ private
    c b HIR-OPCODE:BRZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Leaving the function. Design line 237 makes this a terminator, and design
-\ lines 706-708 hand the outputs to the one exit block as its arguments, so it
-\ has operands and no results. A word's output count is a property of the word,
-\ not of the opcode, so the operand list is one variadic cell: zero or more
-\ outputs, each a cell.
+\ A word's output count is a property of the word and not of the opcode, so the
+\ operand list is one variadic cell.
 : DEF-RETURN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b HIR-OPCODE:RETURN OPCODE IR-SCHEMA:BEGIN-OP
@@ -1114,36 +607,9 @@ private
    c b HIR-OPCODE:RETURN NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Leaving the function WITHOUT returning. Design line 237 makes a terminator an
-\ operation that ends a block, and src/compiler/ir/verify.f line 630 already
-\ contemplates "a terminator that names no successor"; the return was the only
-\ one until now, and it is the one that hands the caller its results. This is the
-\ other kind: control leaves the routine and does not come back, because the one
-\ shared trap routine it goes to ends the process.
-\
-\ ITS ONE OPERAND IS THE FAMILY ORDINAL, AND THAT IS WHY THIS IS ONE OPERATION
-\ AND NOT A MESSAGE. A scrutinee whose tag matches no arm has to say WHICH family
-\ it was matching, and the engine's own MATCH says it by copying `"hb: bad "`,
-\ the family name and `" tag\n"` into every site - 52 bytes for a
-\ three-character family, pinned in test/match-factor-pin.f, over 303 sites. The
-\ name cannot be a pointer there because the type-family string pool is grown by
-\ doubling and moves (src/habu/habu2.f:7029). A NUMBER does not move, so the
-\ operand is the ordinal src/compiler/native/trap.f gave that family, and the
-\ bytes live once, in that file, beside the routine that writes them.
-\
-\ AND WHY IT CARRIES NO ADDRESS. Which routine a trap goes to is not a fact about
-\ the source program - there is exactly one, tree-wide - so a module that carried
-\ it could carry a different one, and "the trap routine is emitted once" would
-\ stop being a property of the compiler and become a property of whoever built
-\ the module. WHERE the trap is implemented is a machine fact, the same way
-\ hir.mem's ordering is a machine fact with no instruction of its own, so the
-\ address is put on the MACHINE operation by src/compiler/native/select.f, which
-\ has one place to read it from.
-\
-\ IT MAY TRAP, AND THE MACHINE FORM REPRODUCES IT EXACTLY, by being the branch
-\ that reaches the routine that ends the process. That is what select.f's trap
-\ gate requires of every may-trap opcode, and it is why this one cannot be
-\ silently lowered to nothing.
+\ Its one operand is the family ORDINAL, because a name cannot be a pointer -
+\ the type-family string pool is grown by doubling and moves. It carries no
+\ address, because there is exactly one trap routine tree-wide.
 : DEF-TRAP ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b HIR-OPCODE:TRAP OPCODE IR-SCHEMA:BEGIN-OP
@@ -1155,34 +621,9 @@ private
    c b HIR-OPCODE:TRAP NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Calling the word being compiled, which is what `RECURSE` is. Its operands are
-\ the memory order and EVERY value the caller still holds, bottom first, with the
-\ arguments the callee takes as the top of them; its results are the order again
-\ and those same values, with the callee's outputs in place of its arguments.
-\
-\ WHY THE WHOLE LIVE VECTOR CROSSES THE OPERATION AND NOT JUST THE ARGUMENTS. The
-\ callee is this same routine, so every register the caller could be holding a
-\ value in is a register the callee writes: a Habu word's contract destroys
-\ exactly the registers the allocator hands out, and there is no role in it for a
-\ register that is written and put back. So a value the caller still needs does
-\ not survive the call in a register, and the honest way to say that in the source
-\ dialect is that the call CONSUMES it and ANSWERS it again - a different value,
-\ defined by the call, which whatever computes with it afterwards reads instead.
-\ The machine stage then has somewhere real to put it (the caller's own data
-\ stack) and the register allocator sees the two lifetimes it really has rather
-\ than one lifetime spanning a call that ends it.
-\
-\ WHY BOTH LISTS ARE VARIADIC. How many values are live across a call is a fact
-\ about the call site, and how many the callee takes and leaves is a fact about
-\ the routine - neither is a fact about the opcode, so neither can be a fixed
-\ count in a schema. The order is the one fixed operand and the one fixed result,
-\ so a reader finds it by position as well as by type.
-\
-\ AND WHY IT MAY TRAP. A call runs the callee, and whatever the callee can do the
-\ call can do: the corpus's own recursive word divides nothing, but a call that
-\ declared itself total would be claiming something about a routine rather than
-\ about an operation. The machine lowering reproduces it exactly, by being the
-\ same call, which is what src/compiler/native/select.f's trap rule requires.
+\ Operands are the memory order and EVERY live value, results the order and
+\ those values again: no register survives the call, so the call CONSUMES each
+\ value and ANSWERS it, which is the two lifetimes the allocator really has.
 : DEF-CALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
    c b HIR-OPCODE:CALL OPCODE IR-SCHEMA:BEGIN-OP
@@ -1196,29 +637,9 @@ private
    c b HIR-OPCODE:CALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Calling ANOTHER word. Everything about the shape is `hir.call`'s - the memory
-\ order and every live value in, the order and those values out, both lists
-\ variadic, read-write on generic memory, and may-trap because whatever the
-\ callee can do the call can do. What it adds is the three fields that say WHICH
-\ routine: its entry address and its declared arity.
-\
-\ WHY IT IS A SECOND OPERATION AND NOT A FIELD ON THE FIRST. The two differ in
-\ their TARGET, and the two targets are not the same kind of thing. A self-call
-\ goes to a block of the function being compiled, which is a label: its
-\ displacement is known when the blocks are laid out, exactly as a branch's is,
-\ and no address exists anywhere in the module. A call to another word goes to an
-\ address, which is a number the module has to carry. Making one operation hold
-\ either would mean a field that is sometimes meaningless, and a reader would
-\ have to know which case it was in before it knew what the field meant - the
-\ same argument that made the byte and cell accesses two forms rather than one
-\ form with a width.
-\
-\ AND WHY THE CALLER'S SAVE DISCIPLINE IS UNCHANGED. The operation consumes every
-\ live value and answers it again, exactly as `hir.call` does, so no register
-\ crosses it whatever the callee destroys. That is what makes the discipline
-\ correct against a callee this compiler did not produce: it assumes nothing about
-\ the callee's registers, only that the callee keeps the convention a Habu word is
-\ entered and left through.
+\ A second operation and not a field, because a self-call goes to a LABEL and
+\ this goes to an ADDRESS the module has to carry. The save discipline is
+\ unchanged, so it assumes nothing about a callee this compiler did not produce.
 : DEF-WORDCALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
    c b HIR-OPCODE:WORDCALL OPCODE IR-SCHEMA:BEGIN-OP
@@ -1235,35 +656,9 @@ private
    c b HIR-OPCODE:WORDCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ The address of ANOTHER function of this module, as a value. It is what `[:`
-\ leaves: a quotation body is a routine with its own entry and its own return,
-\ compiled as one more function of this emission, and what the enclosing body
-\ holds is the address that routine is entered at.
-\
-\ NO OPERANDS AND ONE CELL. It reads nothing - which function it names is decided
-\ where the source wrote `[:` and not by anything the program computes - and what
-\ it answers is an ADDRESS, which on this machine is a cell like any other. That
-\ is not a shortcut around a richer type and it was measured: a schema names ONE
-\ result type, fixed when the family is registered, so a code-reference result
-\ would assert one signature for every quotation in the tree, and the quotations
-\ the tree really holds have four different ones (a ( -- ) body beside a
-\ ( n n n -- n ) one). Worse, src/compiler/ir/verify.f OPERAND-TYPE-CK holds
-\ every operand against its opcode's declared type, so a value of any type but
-\ the cell type could not be returned, stored, handed to a call or carried across
-\ a block edge - E-IR-VERIFY-OPTYPE, measured on `hir.return` - and those are the
-\ only things a program ever does with a quotation. The engine agrees: an xt on a
-\ Habu stack is a cell holding a code address, which is exactly what
-\ `hir.fixed` already answers for a `create`d word.
-\
-\ SO WHICH ROUTINE IT IS RIDES IN AN ATTRIBUTE, exactly as `hir.wordcall` carries
-\ its callee's entry and arity rather than encoding them in its operand types.
-\ The attribute is the callee's ORDINAL in this module and not an address: the
-\ body has not been emitted yet when this operation is staged, and where it lands
-\ is the emitter's answer.
-\
-\ IT IS PURE AND CANNOT TRAP. Naming a routine runs nothing: the address exists
-\ because the emission does, and no path through this operation enters the body.
-\ Whatever the body can do is the business of whoever executes it.
+\ One cell out, because a schema names ONE result type and the tree's
+\ quotations have four different signatures; which routine it is rides in an
+\ attribute, as the callee's ORDINAL, because the body is not emitted yet.
 : DEF-QUOT ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b HIR-OPCODE:QUOT OPCODE IR-SCHEMA:BEGIN-OP
@@ -1276,13 +671,7 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the float forms ---------------------------------------------------------
-\ A double literal: no operands, one double of result, and the value it holds -
-\ which is the literal's own bit pattern, because the cell IS the double. It is a
-\ second opcode rather than `hir.const` with a float result for the reason the
-\ byte and cell accesses are two forms: a schema is what says what an operation
-\ IS, and one schema standing for two operations that leave values of two
-\ different types would leave every reader consulting the result type before it
-\ knew what it was looking at.
+\ The value is the literal's own bit pattern, because the cell IS the double.
 : DEF-FCONST ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
    c b HIR-OPCODE:FCONST OPCODE IR-SCHEMA:BEGIN-OP
@@ -1294,15 +683,8 @@ private
    c b HIR-OPCODE:FCONST NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Two doubles in, one double out. The four arithmetic words share this shape, and
-\ ALL FOUR ARE TOTAL - including the division, which is the one place this
-\ dialect's float rules and its integer rules disagree on purpose. An integer
-\ division by zero traps, and `hir.div` declares it; a float division by zero
-\ answers an infinity and a zero over a zero answers the default NaN, neither of
-\ which is a trap (survey (5) and (6) at the head of
-\ tools/codegen-compare-corpus3.f, measured on this engine). A float operation
-\ that declared itself trapping would oblige the machine stage to reproduce a
-\ trap the hardware does not raise.
+\ ALL FOUR ARE TOTAL, including the division: a float division by zero answers
+\ an infinity and zero over zero the default NaN, neither of which is a trap.
 : DEF-FBINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id o:HIR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1315,9 +697,7 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One double in, one double out: negate, absolute value and square root. The
-\ square root of a negative is the default NaN rather than a raise, so it is
-\ total with the rest of them.
+\ The square root of a negative is the default NaN rather than a raise.
 : DEF-FUNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id o:HIR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1329,17 +709,8 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Two doubles in, a CELL out: the three float comparisons that take two operands.
-\ The result type is the cell type and not the double type, which is the whole
-\ shape of a comparison - it answers a Habu flag, all bits set or none, and a
-\ flag is a number a branch tests and an integer operation may combine. A schema
-\ that answered a double here would put the flag in the floating register file,
-\ where no branch of this machine can read it.
-\
-\ THEY ARE TOTAL, and that is the same IEEE754 fact the arithmetic rests on: a
-\ comparison against a NaN does not raise, it answers false. Declaring one
-\ trapping would oblige the machine stage to reproduce a trap the hardware does
-\ not take.
+\ A CELL out and not a double: a flag in the floating file is one no branch of
+\ this machine can read. Total, because comparing against a NaN answers false.
 : DEF-FCOMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id
       o:HIR:opcode :}
@@ -1353,11 +724,8 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One double in, a cell out: the two comparisons against zero. The zero is not an
-\ operand because the INSTRUCTION does not take one - FCMP has a form whose second
-\ operand is the immediate zero, and the engine's own `f0<` and `f0=` use it - so
-\ a schema with two operands here would be describing a different instruction and
-\ would cost a materialised literal to fill the operand it declared.
+\ The zero is not an operand because the INSTRUCTION does not take one: FCMP
+\ has a form whose second operand is the immediate zero.
 : DEF-FCOMPARE0 ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id
       o:HIR:opcode :}
@@ -1370,16 +738,8 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One value of one type in, one value of the other out. Four operations have this
-\ shape and they are FOUR and not two, because two of them compute and two do
-\ not. `hir.int>real` rounds a signed cell to the nearest double and
-\ `hir.real>int` truncates a double toward zero, saturating at the ends and
-\ answering zero for a NaN - two different roundings, which is why the corpus
-\ pins them in two rows (survey (8)). `hir.bits>real` and `hir.real>bits` round
-\ nothing at all: they are the same eight bytes read as the other type, which is
-\ what crossing between a data-stack cell and a double IS on this machine.
-\ Modelling a rounding conversion and a reinterpretation as one operation with a
-\ flag would let a wrong lowering read as a right one.
+\ Four and not two, because two of them compute and two do not: the rounding
+\ pair rounds, and the bit pair is the same eight bytes read as the other type.
 : DEF-CROSS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder ti:IR-ID:ir-type-id to:IR-ID:ir-type-id
       o:HIR:opcode :}
@@ -1393,14 +753,8 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the table this dialect may fill -----------------------------------------
-\ Design line 229's closed world is per dialect, so an operation family may only
-\ be defined into the schema table of the dialect it belongs to. The table's
-\ dialect name and schema version are fixed when the module is created and
-\ nothing can change them afterwards, so reading them back off the live module
-\ decides it: the name is compared byte for byte through the module's own
-\ interner, which appends nothing, and the version has to be the exact version
-\ these definitions were written for. A module of another dialect, or of a later
-\ or earlier version of this one, is refused before the first opcode is defined.
+\ The table's dialect name and version are fixed when the module is created, so
+\ reading them back off the live module decides whose table it is.
 : DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b  c b IR-BUILD:DIALECT@  NAME IR-BUILD:SYMBOL-IS?
@@ -1411,23 +765,12 @@ private
 public
 
 \ ---- creation and registration -----------------------------------------------
-\ Create a builder for a module of this dialect. The staged IR-BUILD plan is
-\ consumed here exactly as IR-BUILD:NEW-BUILDER consumes it; what this word
-\ adds is the dialect's own name and schema version, which no caller should be
-\ spelling out.
+\ It adds the dialect's own name and schema version, which no caller spells.
 : NEW-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
    NAME MAJOR MINOR IR-BUILD:NEW-BUILDER ;
 
-\ Define the whole straight-line operation family into this builder's schema
-\ table. Nearly every check belongs to IR-SCHEMA:DEFINE - the module owns each
-\ symbol and type, the target contract admits the requirement, no opcode is
-\ defined twice, the ceilings hold - so registering twice, or against a module
-\ or a target that cannot hold these schemas, is refused there and this word
-\ repeats none of it. The one check that is this dialect's own is the first
-\ line: a schema table belongs to exactly one dialect at one schema version, and
-\ IR-SCHEMA cannot make it because it has no opinion about which dialect its
-\ caller is. Definition is one opcode at a time, so a refusal leaves the opcodes
-\ that were already defined and defines no more.
+\ Definition is one opcode at a time, so a refusal leaves the opcodes already
+\ defined and defines no more.
 : REGISTER ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b DIALECT-CK
