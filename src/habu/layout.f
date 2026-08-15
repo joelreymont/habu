@@ -503,10 +503,10 @@ $27C8 constant CLAIMS
 \ left. RHI and CF go ABOVE THE EVALUATOR FRAMES, at $47C0/$47C8 in the unclaimed
 \ run between the frames' end ($43C0 + EVAL-MAX-DEPTH * EVAL-FRAME-SIZE = $47C0)
 \ and the lowering transaction state ($5000) - swept for a claimant across src lib
-\ tools test maki bootstrap before taking them. They are NOT in the $40C8..$43B0
+\ tools test maki bootstrap before taking them. They are NOT in the $40C8..$43A8
 \ gap: that run is reserved for widening the protected-WID bitmap, which cannot be
-\ split, and AOT-WINDOW:D0-CELL/B0-CELL already took its top two cells to keep the
-\ rest contiguous. All five sit below $7FF8, the ceiling AOT-WINDOW measured for a
+\ split, and AOT-WINDOW:T0-CELL/D0-CELL/B0-CELL already took its top three cells to
+\ keep the rest contiguous. All five sit below $7FF8, the ceiling AOT-WINDOW measured for a
 \ cell a compiled routine names directly (`DATA <off> LDR` is a 12-bit immediate
 \ scaled by eight), which every one of these is: the band bodies read them with
 \ exactly that form. All five are below DATA-START, so no compiled source can reach
@@ -579,9 +579,9 @@ $3CB0 constant USER-END
 \ PROT-WID-MAX - WIDN, i.e. how many more wordlists may still be allocated AND
 \ protected, so a declaration's preflight is exact instead of approximate, and
 \ prot-wid-add names the bound itself when handed a WID at or above it. Growing the
-\ bound later means widening the band upward into the free $40C8..$43B0 gap and
+\ bound later means widening the band upward into the free $40C8..$43A8 gap and
 \ bumping UNCGH-CELL, exactly as the 16 -> 256 raise did. That gap ended at $43C0
-\ until the AOT capture-window cells took its top two cells (AOT-WINDOW:D0-CELL below);
+\ until the AOT window cells took its top three cells (AOT-WINDOW:T0-CELL below);
 \ it is still contiguous from $40C8, which is what a bitmap needs.
 \
 \ TRANSITION: the tag cell ($3CB8) and the band base ($3CC0) are DELIBERATELY
@@ -1064,16 +1064,30 @@ DATA-SIZE 8 - constant XTCELL-OFF-MAX
 \ the package-scope band and the `using` band all followed, which bumps DATA-START
 \ and moves nothing else - puts the offset near $91C00 and assembles as
 \ "asm: 12-bit immediate out of range", stopping the build. So these two take the
-\ TOP two cells of the gap that ran $40C8..$43C0, between the protected-WID guard
-\ band and the evaluator frames. What is left, $40C8..$43B0, is still ONE
+\ TOP cells of the gap that ran $40C8..$43C0, between the protected-WID guard
+\ band and the evaluator frames. What is left, $40C8..$43A8, is still ONE
 \ CONTIGUOUS run, which is what the growth that gap is reserved for needs: widening
 \ the protected-WID bitmap upward, a band that cannot be split.
 \
 \ They open the package src/habu/habu2.f reopens for the same window's baked half
 \ (AOT-WINDOW:LDATA, its declared-cell list and its boot-time copy), the way this
 \ file opens SNAP-RELOC for the bands habu2.f and snap-lib.f reopen.
+\
+\ T0-CELL is the SEED side of the same subject: the first wordlist id this boot's
+\ seed allocated for the captured window, latched once by EM-AOT-REGISTER-RECS
+\ before it registers anything, and read by the sealed-WID gate to tell a wordlist
+\ the seed just created from one the engine already had.
+\ IT IS LATCHED BECAUSE IT CANNOT BE DERIVED. The records pass advances WIDN past
+\ the whole span exactly once, so `WIDN - span` answers T0 only while nothing else
+\ has allocated a wordlist - true during the call-site pass and NOT true at
+\ EM-AOT-BOOTRUN, where an entry word already ran and may have opened a package.
+\ A gate that recomputed it would be right on two paths and silently wrong on the
+\ third, which is the implicit-ordering trap this file's neighbours keep naming.
+\ Zero until a seed runs, which reads as an empty window: `wid - 0` is below a
+\ zero span for no wid at all, so a boot with nothing captured admits nothing here.
 package AOT-WINDOW
 public
+$43A8 constant T0-CELL           \ first wordlist id the seed allocated for the window
 $43B0 constant D0-CELL           \ first address of the open window's DATA span
 $43B8 constant B0-CELL           \ first address of its code span
 ;package

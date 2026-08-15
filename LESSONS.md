@@ -6979,3 +6979,39 @@ its verdict as text caught it. The rule exists ("echo RC
 separately, never behind a pipe") - it failed by habit, not
 ignorance. Capture to a file, echo the engine's RC on its own
 line, then read the file.
+
+## 2026-08-16 - the layered gate's five (bake-chain-10)
+
+(1) A gate's accept-set is what its fixture can reach, and two
+OTHER files decided it here. The sealed-WID gate's refuse leg has
+no producer: EM-AOT-PATCH-SITES' scope classifier admits four
+shapes and rebases every window coordinate into the window, and
+LFIND's qualifier path (habu1.f FIND-NMATCH) takes its search wid
+from the package record's [0] - its PUBLIC slot. So no artifact
+can name a private word of a sealed package. Read both resolvers
+before promising a fixture; a guard whose threat is an edit to
+another file is documented, not deleted, and not faked either.
+(2) Mutating boot-path prefix code BRICKS bin/hb: the mutant's own
+REPL AOT seed refuses at boot, so every later `bin/hb --load` -
+including the rebuild that would undo it - exits with the mutant's
+own code, and the install looks like a source error. Recovery is
+not bootstrap.sh: copy a healthy bin/hb from another workspace and
+refresh from source. Park a spare BEFORE mutating.
+(3) A fixture package opened inside the capture window is a
+wordlist the SEED creates, so any gate layer keyed on window
+provenance answers before the fixture's real question is asked. A
+fixture for a pre-window rule has to call what the target's own
+PREFIX has (CODE-RECLAIM:WATCHERS sealed, CHECKER-TAPE:HOLD-DISARM
+not) - and a `constant` is no use, because the compile-mode
+inliner copies its body and leaves no call site at all.
+(4) A driver's pre-window definitions do NOT ship. The emitted
+engine's dictionary is built by the emitter and its checker/stdlib
+come from the cold prefix re-read at boot, so a package the
+metabuild host defines before CAPTURE-REPL is absent from the
+target and its boot-run name dies exit $52 with NO message. A
+silent 82 out of a seeded engine is EM-AOT-BOOTRUN's name-not-found
+leg.
+(5) The clobber lint reads a call as clobbering its result
+register, so parking one of your own values in x13 across
+LPROTWIDQ reads as carried-across even when the later read is the
+callee's answer. Use a register the call does not own.

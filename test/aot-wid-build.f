@@ -101,20 +101,16 @@
 \                      the fixture word's own captured record, that the body holds
 \                      no DATA relocation site and does hold a call to the prefix
 \                      word.
-\   HABU_AOT_GATE=1|2|3  put a real package inside the capture window, ask the
-\                      engine for its public word-list id, and put the QUALIFIED
-\                      name of its one word on the boot-run list. Mode 1 also
-\                      protects that id, so the seed must reject the name at the
-\                      AOT boot gate: exit 84 naming the gate, before the entry
-\                      word runs. Mode 2 leaves the id unprotected and the same
-\                      engine must boot and report - which is what makes mode 1's
-\                      exit evidence about protection rather than about a name
-\                      that failed to resolve. Mode 3 reaches the same gate through
-\                      an `EXPORT` alias: one body, a global record and a second
-\                      record in the protected package. It exits 84 only for a gate
-\                      that asks the record the LOOKUP matched; a gate that
-\                      recovers the word-list by searching for the code cell reads
-\                      the unprotected original and admits it.
+\   HABU_AOT_GATE=1|2  compile a call to a QUALIFIED PREFIX word inside the capture
+\                      window, so the seed resolves that name through the package's
+\                      public word-list and the AOT boot gate judges the wid the
+\                      lookup used. Mode 1's callee is in a SEALED prefix package
+\                      (CODE-RECLAIM), mode 2's in an unsealed one (CHECKER-TAPE),
+\                      and both engines must boot: calling a public word of a
+\                      sealed package is what checked source does. The pair exists
+\                      for the mutation - deleting the gate's public-slot admit
+\                      kills mode 1 and leaves mode 2 alone - and the build asserts
+\                      each package's seal status before it uses it.
 \   HABU_AOT_D0_SKEW=N run the capture a SECOND time over the same window with
 \                      its DATA span start raised by N bytes. Hand it an N past
 \                      the whole span and the window then contains none of the
@@ -769,44 +765,64 @@ create DRV-CH 1 allot
 \ --- the AOT boot-gate fixture (dot habu-return-the-record-9c9b1731) -----------
 \ THE GATE THIS REACHES. The seed resolves every baked name in the engine it is
 \ booting and then rewrites a call immediate, writes an xt into a code literal,
-\ or branches to the word. LAOTWIDGATE stands between the lookup and all three:
-\ if the name resolved inside a PROTECTED word-list - a sealed system or
-\ generated-constructor package - the boot dies rather than wire the image into
-\ it. Nothing else in the tree reaches that routine, so without this fixture the
-\ whole guard can be deleted and every suite stays green.
+\ or branches to the word. LAOTWIDGATE stands between the lookup and all three,
+\ and it decides in layers: a wordlist THIS SEED created is admitted first, then
+\ the two engine-reserved ones, then any unprotected one, and a SEALED wordlist
+\ the engine already had is admitted only when it is a package's PUBLIC slot.
+\ Nothing else in the tree reaches that routine, so without this fixture the last
+\ layer can be deleted and every suite stays green.
 \
-\ HOW THE NAME GETS THERE. The fixture opens a real package inside the capture
-\ window, exports one word, and asks the ENGINE for that package's public
-\ word-list id while the package is open - no id is invented, and a package whose
-\ id moved would still be the id under test. `prot-wid-add` is the same primitive
-\ production uses to seal a package. The boot-run list then carries the QUALIFIED
-\ name, so at boot LFIND resolves it through the package's own word-list and the
-\ gate sees the wid the lookup actually used.
+\ WHY THE CALLEE IS A PREFIX WORD AND THE PATH IS A CALL SITE. A package the
+\ fixture opens inside the capture window is a wordlist the SEED creates, so the
+\ first layer answers for it and the sealed/unsealed question is never asked -
+\ any in-window fixture, protected or not, simply boots. The wordlist under test
+\ therefore has to be one the target engine ALREADY HAD, and the only ones a
+\ fixture can reach are its own prefix's. So the window compiles a word that
+\ CALLS a qualified prefix word: the capture stores that site with the qualified
+\ marker, and at boot LFIND resolves it through the package row's public slot -
+\ the wid the lookup actually used, which is what the gate asks about.
+\ The word is compiled and never run. The gate decides at SEED time, on the call
+\ site, before any of the window's code executes; running the callee would only
+\ add its side effects to the fixture.
 \
-\ WHY THERE IS A CONTROL MODE. Mode 1 protects the id and the engine must die 84
-\ naming the gate. Mode 2 is the same fixture with the protection left off: the
-\ engine must BOOT and the entry word must report. Without mode 2 an exit-84
-\ result proves nothing about protection - a qualified boot-run name that simply
-\ failed to resolve would look much the same from outside.
+\ THE TWO CALLEES DIFFER IN ONE FACT, THE SEAL, and the build asserts that fact
+\ rather than trusting it (GATE-SEAL-CHECK-LINES): CODE-RECLAIM seals both its
+\ word-lists in src/habu/xref.f, CHECKER-TAPE seals neither in src/core/checker.f,
+\ and both publish a word whose body reads a PRE-WINDOW data cell - which is what
+\ makes the compile-mode inliner decline the copy and emit the BL this fixture
+\ needs. A constant would have been inlined and left no call site at all.
 \
-\ AND MODE 3, WHICH IS THE ONE AN XT CANNOT ANSWER. `EXPORT` publishes a second
-\ record for a body that already has one: same code cell, second name, second
-\ word-list. A gate that recovers the word-list by searching for a record whose
-\ code cell matches therefore reads whichever of the two records comes first -
-\ the ORIGINAL, in whatever word-list it was defined in - and never sees the
-\ protected one the name actually resolved through. Mode 3 builds exactly that
-\ shape: one body, a global record, an exported record in a protected package,
-\ and the qualified name on the boot-run list. It must exit 84 like mode 1.
+\ WHY THERE IS A CONTROL MODE. Mode 1's callee is sealed and mode 2's is not, and
+\ BOTH must boot: calling a public word of a sealed package is what checked source
+\ does every day. What separates them is the mutation - delete the gate's
+\ public-slot admit and mode 1 dies 84 naming WATCHERS while mode 2 still boots.
+\ Without mode 2 that exit would prove nothing about the bitmap, since a qualified
+\ name that simply failed to resolve would look much the same from outside.
+: GATE-SEAL-CHECK-LINES ( -- )
+   GATE-ENV$ nip 0= if exit then
+   s" : AWB-PKG-PUB ( ptr u8 n -- n ) DICT-WL:NAMESPACE search-wl ;" DRV-LINE
+   s" : AWB-PROT ( n -- n ) {: w:n :}" DRV-LINE
+   s"    w 6 rshift 8 * data-base PROT-BITS-OFF + + @  w 63 and rshift  1 and ;" DRV-LINE
+   s" : AWB-?SEAL ( ptr u8 n n -- ) {: a:ptr u:n want:n :}" DRV-LINE
+   s"    a u AWB-PKG-PUB {: w:n :}" DRV-LINE
+   s"    w 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: the gate fixture's package is gone: \" type a u type cr" DRV-LINE
+   S\"       s\" aot-wid-build: gate fixture package missing\" 74 die then" DRV-LINE
+   s"    w AWB-PROT want = if exit then" DRV-LINE
+   S\"    s\" aot-wid-build: gate fixture package \" type a u type" DRV-LINE
+   S\"    s\" : seal status is not what the mode assumes\" type cr" DRV-LINE
+   S\"    s\" aot-wid-build: gate fixture seal assumption broken\" 74 die ;" DRV-LINE
+   S\" s\" CODE-RECLAIM\" 1 AWB-?SEAL" DRV-LINE
+   S\" s\" CHECKER-TAPE\" 0 AWB-?SEAL" DRV-LINE ;
+
 : GATE-ENTRY-LINES ( ptr u8 n -- ) {: mode:ptr mu:n :}
-   mode mu s" 3" STR= if
-      S\" : AWB-GATE-REPORT ( -- ) s\" awb-gate=alias\" type cr ;" DRV-LINE
-      s" package AWBGATE" DRV-LINE
-      s" public" DRV-LINE
-      s" EXPORT AWB-GATE-REPORT" DRV-LINE
-      exit
-   then
    s" package AWBGATE" DRV-LINE
    s" public" DRV-LINE
+   mode mu s" 1" STR= if
+      s" : AWB-GATE-CALL ( -- ) CODE-RECLAIM:WATCHERS drop ;" DRV-LINE
+   else
+      s" : AWB-GATE-CALL ( -- ) CHECKER-TAPE:HOLD-DISARM ;" DRV-LINE
+   then
    S\" : AWB-GATE-REPORT ( -- ) s\" awb-gate=open\" type cr ;" DRV-LINE ;
 
 \ --- landing the fixture on a chosen wordlist id -------------------------------
@@ -867,6 +883,7 @@ create DRV-CH 1 allot
       SHAPE-CHECK-DEF
       LEGACY-CHECK-DEF
    then
+   GATE-SEAL-CHECK-LINES                \ host-side, before the window: nothing extra is captured
    CAPTURE-REPL-LINES
    DRV-AOT-CAPTURE
    PWID-BODY

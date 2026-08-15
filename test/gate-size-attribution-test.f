@@ -822,9 +822,29 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
 \ move and `FILE-SIZE bin/hb` is still 165367 (measured).
 \ The Linux rows below are owed this +1212 as well.
-131172 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-16 the sealed-WID gate's four layers (dot habu-seed-call-site-9d7d8e72),
+\ measured live at the byte fixpoint against a control build of master 9c9a43de
+\ with the same HABU_ENGINE_SIZE_MAP run. Three rows move and every other one of
+\ the 50 is byte-identical:
+\   dictionary-code  6940 -> 7108 (+168): EM-AOTWIDGATE stops asking "is this wid
+\     protected" and decides in four layers instead - the window test against the
+\     latched T0, the two engine-reserved wordlists, the protected bit, and the
+\     namespace-row scan for the package's public slot - plus the callee name the
+\     reject now writes on fd 2 before exit 84.
+\   compile/exit     3576 -> 3544 (-32): the call-site pass gave its own
+\     in-window exemption up to that routine, so the pass emitted inline under
+\     EM-COMPILE-EXIT lost the test it used to carry.
+\   runtime          9256 -> 9252 (-4): EM-AOT-REGISTER-RECS latches T0 into the
+\     new AOT-WINDOW:T0-CELL and the surrounding register use settles four bytes
+\     shorter.
+\   container/text-pad 12188 -> 12056 (-132): the pad absorbs the whole net.
+\ CODELEN 131172 -> 131304 (+132), floor distance 4196 -> 4328. Inside the same
+\ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
+\ move and `FILE-SIZE bin/hb` is still 165367 (measured).
+\ The Linux rows below are owed this +132 as well.
+131304 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-4196 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+4328 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

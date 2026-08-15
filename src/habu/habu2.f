@@ -378,7 +378,7 @@ variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled
 23 constant BADSTR-MSG-LEN    \ byte length of "hb: bad string literal\n" (LBADSTR; unterminated or bad-escape string literal)
 variable LPROTPUB   variable LPROTAOT   \ protected-WID seal labeled rc-84 exits (publish-into-protected / AOT boot-pass gate reject)
 40 constant PROTPUB-MSG-LEN   \ byte length of "hb: cannot publish into protected word: " (LPROTPUB; C-STORE-DEF-NAME appends the def name + newline)
-34 constant PROTAOT-MSG-LEN   \ byte length of "hb: AOT protected-WID gate reject\n" (LPROTAOT; EM-AOTWIDGATE boot-pass reject)
+35 constant PROTAOT-MSG-LEN   \ byte length of "hb: AOT protected-WID gate reject: " (LPROTAOT; EM-AOTWIDGATE appends the callee name + newline)
 variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
 33 constant MMAPCODE-MSG-LEN   \ byte length of "hb: cannot map fixed code region\n" (LMMAPCODE)
 33 constant MMAPDATA-MSG-LEN   \ byte length of "hb: cannot map fixed data region\n" (LMMAPDATA)
@@ -605,7 +605,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
    LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES,                       \ BADSTR-MSG-LEN bytes incl. newline
    LPROTPUB LABEL@ LBL, s" hb: cannot publish into protected word: " BYTES,                     \ PROTPUB-MSG-LEN bytes; C-STORE-DEF-NAME appends the def name + newline
-   LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject" BYTES,  NL-KW 1 BYTES,            \ PROTAOT-MSG-LEN bytes incl. newline
+   LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject: " BYTES,                          \ PROTAOT-MSG-LEN bytes; EM-AOTWIDGATE appends the callee name + newline
    LMMAPCODE LABEL@ LBL, s" hb: cannot map fixed code region" BYTES,  NL-KW 1 BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
    LMMAPDATA LABEL@ LBL, s" hb: cannot map fixed data region" BYTES,  NL-KW 1 BYTES,            \ MMAPDATA-MSG-LEN bytes incl. newline
    LBLRANGE LABEL@ LBL, s" hb: code region out of BL range" BYTES,  NL-KW 1 BYTES, ;            \ BLRANGE-MSG-LEN bytes incl. newline
@@ -4213,6 +4213,12 @@ public
       bad:label msg:label done:label :}
    9 5 LAOTDICT LABEL@ TADR,  12 0 MOVZ,           \ x9 = compact record src (AOT-CREC-ROW stride), x12 = k
    11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR,         \ x11 = N (survives LHIDXADD)
+   \ T0, before a single wid is handed out: the base every window coordinate below
+   \ rebases against, and the number the sealed-WID gate reads on all three passes
+   \ to tell a wordlist this seed created from one the engine already had. Latched
+   \ here rather than recomputed there, because WIDN stops answering it the moment
+   \ a boot-run entry word allocates a wordlist of its own.
+   5 DATA WIDN-CELL LDR,  5 DATA AOT-WINDOW:T0-CELL STR,
    \ N records in ONE bracket, from the watermark upward: the seed knows the whole
    \ extent before the loop starts and says so once, instead of declaring a record
    \ per iteration. This is the writer that makes "a fixed window of pages around
@@ -4375,20 +4381,22 @@ public
 \ the same wordlist here; a window coordinate becomes T0 + (wid - W0), the rebase
 \ the records take; WID-QUAL says the pooled name is qualified and LFIND's own
 \ qualifier path resolves it; anything else is refused by name.
-\ AND THE SEALED-WID GATE ASKS ABOUT THE ANSWER, not the question: a callee whose
-\ record lives in a wordlist THIS SEED just created ([T0, T0+span)) is a call the
-\ checker already bound inside the window's own package, so the gate - which
-\ exists to stop a baked name reaching into a wordlist the engine already had -
-\ is not asked about it. Every other callee goes through it unchanged.
+\ AND EVERY CALLEE GOES THROUGH THE SEALED-WID GATE, unconditionally. This pass
+\ used to skip it for a wordlist the seed had just created, which was the right
+\ verdict reached in the wrong place: a rule about which callees may be wired is
+\ the gate's, and splitting it between a caller-side skip and a callee-side test
+\ is how the gate came to be stated more broadly than the seal it protects.
+\ EM-AOTWIDGATE now carries that clause itself, as the first of its four, so all
+\ three baked-name passes decide alike.
 \ The AOT seed writes call immediates straight into the region, so it is the second
 \ producer of region-to-text calls and records its sites in the same map as
 \ EMIT-CEMITBL, by the same region-extent test. It runs from EM-COMPILE-EXIT, after
 \ the DATA region is mapped, so the map is writable here.
 : EM-AOT-PATCH-SITES ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    s" hb: AOT call site unresolved"  s" hb: AOT call site names a wordlist outside the window"
    {: ploop:label pdone:label pnf:label pnomark:label
-      pqual:label pscope:label pgate:label pbad:label pskip:label
+      pqual:label pscope:label pgate:label pbad:label
       nfmsg:label badmsg:label
       nfa nfu bada badu :}                           \ typed-local-lint: allow-bare-local
    21 5 LAOTSITES LABEL@ TADR,                       \ x21 = row cursor
@@ -4419,16 +4427,7 @@ public
       LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?, x5 = record
       13 pnf CBZ,
    pgate LBL,
-      \ The scope this site was resolved IN, which for a wordlist find is the wid
-      \ the matched row carries - the probe validates that equality itself. A
-      \ qualified name's marker is not a wid and lands outside the band, so the
-      \ gate keeps every callee the seed did not create the wordlist for.
-      14 15 AOT-WINDOW:LWIDSPAN LABEL@ TADR,  14 14 0 LDR,
-      15 DATA WIDN-CELL LDR,  15 15 14 SUB,          \ [T0, T0+span): the wordlists this seed just created
-      9 25 15 SUB,
-      9 14 CMP,  C-CC pskip BCOND,
-      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject reloc into a protected WID (reads x5/x11; x24 survives)
-   pskip LBL,
+      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: the one sealed-WID rule, shared with the other two passes (reads x5/x11; x24 survives)
       9 CP 24 ADD,                                   \ x9 = site addr = CP + blob offset
       10 11 9 SUB,  10 10 2 ASRI,  5 $3FFFFFF LIT64,  10 10 5 AND,   \ x10 = imm26 = (callee - site) >> 2, masked
       14 9 0 LDRW,  5 $FC000000 LIT64,  14 14 5 AND,  14 14 10 ORR,  14 9 0 STRW,   \ keep BL opcode, write imm26
@@ -5117,12 +5116,76 @@ public
 ;package
 
 \ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). Entry is LFIND's answer
-\ as LFIND left it: x5 = the record the baked name resolved to, x11 = its xt. If
-\ that record's WID is in the protected-WID registry the boot fails closed (exit
-\ ENGINE-ERROR:SEAL-PACKAGE) -- so a captured relocation callee or boot-run entry
-\ name that resolves into a sealed system / generated constructor package is
-\ rejected before the call immediate is rewritten or the entry word is executed.
+\ as LFIND left it: x5 = the record the baked name resolved to, x11 = its xt. A
+\ callee the engine's own rules would not let checked source CALL fails the boot
+\ closed (exit ENGINE-ERROR:SEAL-PACKAGE), so a captured relocation callee or
+\ boot-run entry name is rejected before the call immediate is rewritten or the
+\ entry word is executed.
 \ Preserves x5 and x11; clobbers x6/x9/x13/x14; saves x30 for the nested LPROTWIDQ.
+\
+\ WHAT IT REFUSES IS A PRIVATE WORD OF A SEALED PRE-EXISTING PACKAGE, and that is
+\ far narrower than "any protected WID", which is what this asked until
+\ 2026-08-16. The rule is four layers and every one of them was forced by a
+\ measurement on the real compiler chain (18893 sites); they are tested in this
+\ order because the first is one subtraction and answers for most of them.
+\
+\ (1) A WORDLIST THIS SEED CREATED IS NOT ONE THE ENGINE ALREADY HAD. The gate
+\ exists to stop a baked name reaching into a pre-existing sealed wordlist; the
+\ window's own private call to its own private word is the window calling itself,
+\ and refusing it refuses the whole chain - 10648 of its sites resolve into
+\ in-window PRIVATE wordlists that the chain's own packages sealed with the
+\ ordinary `private get-current prot-wid-add` idiom, and AOT-WINDOW:SEAL-WIDS,
+\ has already set those bits by the time the call-site pass runs.
+\ T0 is READ FROM ITS CELL, not recomputed: `WIDN - span` is T0 only until
+\ something else allocates a wordlist, which a boot-run entry word may do before
+\ the last name on the list has been through this gate.
+\
+\ (2) THE TWO ENGINE-RESERVED WORDLISTS ARE ADMITTED, and the tree already ruled
+\ why. OWNER-API-PRI-WID carries the registered engine helpers ((PROT-SPAN),
+\ (LP2VEXEC)) and habu1.f's BSWL states it: the refusal of that wordlist belongs
+\ to the `search-wl` PRIMITIVE and not to the shared routine, "because the AOT
+\ seed relocates calls to those helpers by name and must search that wordlist".
+\ The pins in LPROTWIDQ exist so no post-seal PUBLISH can forge a record into
+\ them - a publish-side fact this gate was inheriting by accident. Nothing else
+\ can ever be in there: EMIT-STORE-DEF-NAME refuses the publish (test/seal.f pins
+\ `2 set-current : X ;` at exit 84), so a callee resolved in wid 2 IS one of the
+\ engine's own resident helpers. The chain calls (LP2VEXEC) from 12 sites - every
+\ compiled typed fetch emits one.
+\
+\ (4) AND THE SEAL'S OWN DISCRIMINATOR IS PUBLIC-VERSUS-PRIVATE, which is in the
+\ engine rather than in a category name: EMIT-STORE-DEF-NAME refuses DEFINING
+\ into a protected wid and C-PACKAGE-SEAL-GUARD refuses OPENING one, while
+\ CALLING a public word of a sealed package is what checked source does every
+\ day. A gate stated more broadly than the invariant it protects refuses
+\ legitimate work the first time a real workload arrives, and one did: the
+\ chain's 3 CODE-RECLAIM:WATCH sites and its A64RAV:DKEEP-HOOK-DEFAULT boot-run
+\ entry are all public words of sealed packages, and all four died here.
+\ A package's PUBLIC wordlist is its record's [0] and its PRIVATE one is [8], so
+\ the question is answered by asking the namespace rows rather than by any
+\ property of the number. The scan reaches only a wid that survived the three
+\ layers above, which on the merged chain is four callees a boot.
+\
+\ ITS REFUSE LEG HAS NO PRODUCER TODAY, AND IS KEPT ANYWAY. Nothing an artifact
+\ can carry reaches it, because two accept-sets in two other files already cover
+\ the whole input space:
+\   - a CALL SITE's scope is one of four shapes (EM-AOT-PATCH-SITES). A raw
+\     pre-window wid is not one of them - it dies `pbad`, exit
+\     ENGINE-ERROR:AOT-SEED, which test/aot-wid-suite.f PROBE-WID-FORGED already
+\     pins - and a window coordinate is rebased to T0 + (wid - W0), which layer
+\     (1) admits BY CONSTRUCTION: the rebase and the layer read the same span.
+\   - a BOOT-RUN or CODE-LITERAL name is resolved by LFIND, whose qualifier path
+\     (habu1.f FIND-NMATCH) takes the search wid from the package record's [0] -
+\     its PUBLIC slot - so a qualified name cannot land in a private wordlist, and
+\     a bare one at seed time has no open package and lands in wid 0. The one way
+\     to open a sealed package is refused by C-PACKAGE-SEAL-GUARD.
+\ So this leg guards an EDIT rather than an input: widen either accept-set - carry
+\ a verbatim pre-window wid in the site row, say, which is dot 9d7d8e72's refuted
+\ option (b) - and a private callee of a sealed package arrives here and is
+\ refused by name instead of being wired in. A defence whose threat lives in
+\ another file cannot be justified by a fixture in this one; the layers that DO
+\ decide are each falsified by mutation on the real chain (deleting one reds
+\ SERIAL-NEXT, (LP2VEXEC), HS-FIELD and WATCH respectively), and test/aot-wid-suite.f
+\ PROBE-BOOT-GATE holds the public-slot admit with a two-mode pair.
 \
 \ IT ASKS THE RECORD THE LOOKUP MATCHED, WHICH IS THE ONLY RECORD THAT ANSWERS.
 \ This used to take the xt alone and scan the whole dictionary for the first
@@ -5147,8 +5210,9 @@ public
 \ the bytes are emitted after the exit that names them, and the write length is
 \ READ OFF the same string rather than counted by hand, so the two cannot drift.
 : EM-AOTWIDGATE ( -- )
-   LBL LBL LBL  s" hb: AOT gate: lookup record unusable"
-   {: wbad:label wdone:label wmsg:label ma mu :}   \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL LBL LBL LBL  s" hb: AOT gate: lookup record unusable"
+   {: wbad:label wdone:label wmsg:label winl:label
+      wploop:label wpnext:label wrej:label ma mu :}   \ typed-local-lint: allow-bare-local
    LAOTWIDGATE LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,           \ save return + xt
    5 wbad CBZ,                                          \ LFIND reported a hit, so a record must be here
@@ -5157,9 +5221,46 @@ public
    6 14 CMP,  C-CS wbad BCOND,                          \ unsigned: below DBASE wraps high, so one test covers both ends
    14 5 0 LDR,  14 11 CMP,  C-NE wbad BCOND,            \ the record must carry the xt LFIND returned
    9 5 40 LDR,                                          \ x9 = record WID
+   \ (1) a wordlist THIS SEED created. One unsigned test refuses both sides, and it
+   \ goes first because it answers for 14769 of the chain's 18893 sites.
+   \ x13 stays untouched here: it is LPROTWIDQ's result register below, and a value
+   \ of this routine's own parked in it would read as carried across that call.
+   14 6 AOT-WINDOW:LWIDSPAN LABEL@ TADR,  14 14 0 LDR,  \ x14 = span (x6 = TADR scratch)
+   6 DATA AOT-WINDOW:T0-CELL LDR,                       \ x6 = T0, latched by the records pass
+   6 9 6 SUB,  6 14 CMP,  C-CC wdone BCOND,
+   \ (2) the engine's own API wordlists: no source can publish into either, and
+   \ the seed relocates a registered helper's call by name through wid 2.
+   9 OWNER-API-PUB-WID CMPI,  C-EQ wdone BCOND,
+   9 OWNER-API-PRI-WID CMPI,  C-EQ wdone BCOND,
+   \ (3) an ordinary pre-window wordlist.
    LPROTWIDQ LABEL@ BL,                                 \ x13 = protected?
    13 wdone CBZ,
-      1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ protected WID at AOT boot gate: name it on fd 2 before exit 84
+   \ (4) sealed and pre-window: admit it if this wid is some package's PUBLIC
+   \ wordlist. A namespace row carries -1 where an ordinary record carries its wid,
+   \ its [0] is the package's public wid and its [8] the private one, so the roles
+   \ are read off the rows that define them.
+   6 DBASE 0 ADDI,  14 NDICT 0 ADDI,
+   wploop LBL,
+      14 wrej CBZ,
+      13 6 40 LDR,  13 13 1 ADDI,  13 wpnext CBNZ,      \ [40] == -1 <=> a namespace row
+      13 6 0 LDR,  13 9 CMP,  C-EQ wdone BCOND,         \ its public wordlist: checked source calls it
+   wpnext LBL,
+      6 6 DREC ADDI,  14 14 1 SUBI,  wploop B,
+   wrej LBL,
+      1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ private word of a sealed package: name it on fd 2 before exit 84
+      \ + the callee's own name, read off the record the lookup matched, the way
+      \ EMIT-STORE-DEF-NAME appends the def name to its sibling exit. Without it the
+      \ gate names a category and no reader can tell which of thousands of baked
+      \ names it refused. [16] carries the length in its low bits and DNAME-EXT says
+      \ the bytes live outside the record.
+      14 5 16 LDR,
+      6 DNAME-EXT LIT64,  6 14 6 AND,
+      2 14 0 ADDI,  2 2 14 LSLI,  2 2 14 LSRI,          \ x2 = name length
+      1 5 24 ADDI,                                      \ x1 = the inline bytes
+      6 winl CBZ,  1 5 24 LDR,                          \ EXT: [24] points at them
+      winl LBL,
+      0 2 MOVZ,  NR-WRITE SYS,
+      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    wbad LBL,
       1 wmsg ADR,  0 2 MOVZ,  2 mu 1+ MOVZ,  NR-WRITE SYS,   \ +1 = the newline emitted with the bytes

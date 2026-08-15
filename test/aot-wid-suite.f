@@ -40,7 +40,7 @@
 \ private HB_TMP; it builds a throwaway `hb-pwid` engine whose AOT band has two
 \ extra word-list ids set (300 and 8000) on top of the ones the metabuild host
 \ protects for itself. This suite then probes hb-pwid on the real batch paths, and
-\ spawns the same builder in its three refusal modes and its three boot-gate
+\ spawns the same builder in its three refusal modes and its two boot-gate
 \ modes.
 \
 \ The registry has two ends and this suite now holds both. A program the engine
@@ -75,7 +75,7 @@
 \ the moment a family is added. Reading the two baked ids back BY ID is the direct,
 \ stable proof, and it is what a bitmap makes cheap.
 \
-\ Cost: seven child engine builds (~12 s each; three of them are the boot-gate
+\ Cost: six child engine builds (~12 s each; two of them are the boot-gate
 \ modes). It is registered as
 \ `TEST:SUITE aot-wid-restore` in test/gate-stdlib-cases.f, so it runs in the
 \ standalone stdlib gate (a required master gate) - not the fast tail-process
@@ -317,15 +317,19 @@ create GWID-BUF 32 allot   variable GWID-U
      none OF T-FAIL 0 ENDOF
    ;MATCH ;
 
-: ASSERT-GATE-REJECT ( -- )          \ the seed refused the name and said which guard did it
-   EXITED @ TTRUE
-   RC @ FORGE-RC T=
-   ERR$ s" hb: AOT protected-WID gate reject" CONTAINS? TTRUE
-   OUT$ s" awb-gate=" CONTAINS? 0= TTRUE ;      \ ... before the entry word could run
-
 : ASSERT-GATE-RAN ( -- )             \ the same fixture, unprotected: it boots and the entry runs
    EXITED @ TTRUE
    RC @ 0 T=
+   OUT$ s" awb-gate=open" CONTAINS? TTRUE ;
+
+\ The seed wired the call site up and the engine reached its entry word. The
+\ stderr half is what separates "the gate admitted it" from "the gate was never
+\ asked": a reject writes that line before exit 84, so its absence with rc 0 is
+\ the admit, not a fixture that quietly stopped compiling the call.
+: ASSERT-GATE-ADMITTED ( -- )
+   EXITED @ TTRUE
+   RC @ 0 T=
+   ERR$ s" hb: AOT protected-WID gate reject" CONTAINS? 0= TTRUE
    OUT$ s" awb-gate=open" CONTAINS? TTRUE ;
 
 \ A define into an UNPROTECTED word-list is refused too, but for an unrelated
@@ -467,35 +471,43 @@ create PRB PRB-CAP allot   variable PRB-U
 \ nothing in the tree executed that routine at all - it could be deleted whole and
 \ every suite stayed green.
 \
-\ THE CONTROL IS NOT DECORATION. A qualified boot-run name that simply did not
-\ resolve would also stop the boot, so a reject on its own says nothing about
-\ protection. Mode 2 is the same fixture with the id left unprotected: the engine
-\ boots and the entry word reports, which is what makes the other two exits
-\ attributable to the bitmap.
+\ BOTH BOOT, AND THAT IS THE POINT. The window compiles a call to a QUALIFIED
+\ prefix word, so the seed resolves it through that package's public slot and the
+\ gate's last layer decides: a callee in a SEALED wordlist the engine already had
+\ is admitted when the wid is the package's PUBLIC one. Calling a public word of a
+\ sealed package is what checked source does every day - EMIT-STORE-DEF-NAME
+\ refuses DEFINING into a sealed wid and C-PACKAGE-SEAL-GUARD refuses OPENING one,
+\ and neither forbids the call - so a gate that rejected here would refuse
+\ legitimate work, and did: the compiler chain's own CODE-RECLAIM:WATCH sites and
+\ its A64RAV:DKEEP-HOOK-DEFAULT boot-run entry all died at this routine before the
+\ layers landed.
 \
-\ AND THE ALIAS CASE IS THE ONE THAT DECIDES WHAT THE GATE MAY ASK. `EXPORT`
-\ gives one body a second record under a second name in a second word-list, so a
-\ code cell does not name a record. Mode 3 protects only the exported record's
-\ word-list and leaves the original's alone: a gate that recovers the word-list by
-\ searching the dictionary for a matching code cell reads the unprotected original
-\ and admits the name (measured: exit 0, entry word ran), while a gate that asks
-\ the record the LOOKUP matched rejects it. That is why LFIND returns its record.
+\ WHAT SEPARATES THE TWO IS THE MUTATION THEY SURVIVE. Delete the public-slot
+\ admit and mode 1 dies 84 naming WATCHERS while mode 2, whose callee's package
+\ seals nothing, still boots. That contrast is what attributes mode 1's verdict to
+\ the bitmap rather than to a name that merely failed to resolve, and the builder
+\ asserts both packages' seal status on the live host before it builds either, so
+\ a tree that sealed CHECKER-TAPE or unsealed CODE-RECLAIM stops the build by name
+\ instead of quietly testing one thing twice.
+\
+\ NO CASE HERE CAN MAKE THE GATE REFUSE, and that is a property of the format
+\ rather than a gap in the fixture: a call site's scope is a window coordinate the
+\ seed rebases into the window, and LFIND's qualifier path reads only a package's
+\ public slot, so nothing an artifact carries reaches the refuse leg.
+\ EM-AOTWIDGATE's own note carries that proof and the reason the leg is kept.
 : PROBE-BOOT-GATE ( -- )
-   s" boot-run name in an unprotected package still boots and runs (control)" T-LABEL
+   s" a call site into an UNSEALED prefix package boots and runs (control)" T-LABEL
    2 BUILD-GATE
    RC @ 0 T=
    GATE-HB$ EXISTS? TTRUE
-   GATE-HB$ BOOT-EMPTY  ASSERT-GATE-RAN
-   s" boot-run name resolving into a protected package dies 84 at the gate" T-LABEL
+   GATE-HB$ BOOT-EMPTY
+   ASSERT-GATE-ADMITTED
+   s" a call site into a SEALED prefix package's PUBLIC word-list is admitted" T-LABEL
    1 BUILD-GATE
    RC @ 0 T=
    GATE-HB$ EXISTS? TTRUE
-   GATE-HB$ BOOT-EMPTY  ASSERT-GATE-REJECT
-   s" an EXPORT alias cannot smuggle the name past the gate" T-LABEL
-   3 BUILD-GATE
-   RC @ 0 T=
-   GATE-HB$ EXISTS? TTRUE
-   GATE-HB$ BOOT-EMPTY  ASSERT-GATE-REJECT ;
+   GATE-HB$ BOOT-EMPTY
+   ASSERT-GATE-ADMITTED ;
 
 \ --- the wid rebase (dot habu-rebase-captured-wids-54dec421) --------------------
 \ A captured record travels with the wordlist id it had in the METABUILD HOST,
