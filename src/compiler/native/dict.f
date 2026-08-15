@@ -1,59 +1,14 @@
 \ dict.f - what the running engine's dictionary says a spelling denotes. One
 \ concern: turning a name a program wrote into the fact the chain needs about it.
 \
-\ TWO QUESTIONS, ONE RESOLVER. A definition the chain compiles names other words,
-\ and the chain needs two different facts about them: where a called word's code
-\ starts, and what value a `create`d data word or a `constant` pushes. Both begin
-\ with the same question - which record does this spelling denote, here, in the
-\ scope this definition is compiled in - so the walk that answers it lives here
-\ once and both askers read it. It used to live inside the migration entry, where
-\ only the first asker could reach it.
+\ The lookup order is the engine's own (habu1.f EMIT-FIND): the open package's
+\ private wordlist, then its public one, then the global one, then a NAME:tail
+\ through the namespace record. The used-publics leg is deliberately NOT walked:
+\ a name reached through a `using` answers absent (habu-walk-the-used-96694010).
 \
-\ THE ORDER IS THE ENGINE'S OWN AND NOT A SECOND OPINION ABOUT IT.
-\ src/habu/habu1.f EMIT-FIND resolves a bare token in the open package's private
-\ wordlist, then its public one, then the global wordlist, and a NAME:tail token
-\ through the namespace record for NAME - which is what src/habu/xref.f
-\ XREF-FIND-QUALIFIED is. That lookup is what resolves a definition's own body
-\ when the engine compiles it, in the scope the chain's caller runs in, so any
-\ other question would answer about a word the body does not name. What is NOT
-\ walked is the used-publics leg the engine reaches after the global wordlist: a
-\ word named through a `using` answers absent here and the compilation is refused
-\ rather than made against an unconfirmed answer, which is the fail-closed
-\ direction. Dot habu-walk-the-used-96694010 carries it, and dot
-\ habu-one-resolver-for-4e9e3e59 carries giving the engine, the checker and this
-\ file one resolver instead of three walks of one order.
-\
-\ WHY A DATA WORD'S VALUE IS OBTAINED BY RUNNING IT. There is no record slot
-\ holding it. src/habu/xref.f's slots are START, LEN, FLAGS, NAME and WORDLIST;
-\ the address a `create`d word pushes lives only as the four-instruction chain
-\ src/habu/habu2.f C-ADDR-RAW baked into that word's own code, and
-\ src/habu/layout.f:771-773 forbids recovering it by decoding - "Nothing ever
-\ recognises a chain by looking at region bytes or at the value a chain carries: a
-\ compiled word may hold inline non-instruction data, and an ordinary integer may
-\ hold any value at all." So "ask the engine what this word is" has exactly one
-\ honest form: enter the word and take what it leaves. A created word's published
-\ effect is `-- ptr a` (habu2.f LASTC-TRUST:PUBLISH-PTR-A) and a `constant`'s is
-\ `-- a`; both bodies push one value and return, so running one IS the engine
-\ answering.
-\
-\ AND WHY IT IS SAFE TO ENTER ONE, WHICH IS A DIFFERENT QUESTION. Entering a word
-\ to see what it leaves is only honest if the word's body is a push and nothing
-\ else; entering an ordinary word to find that out would be finding out by doing
-\ whatever it does. That is why WHICH DEFINER made a record is RECORDED and never
-\ recognised: `constant`, `create` and `variable` stamp the record's flags cell
-\ (src/habu/layout.f DKIND) at the moment they emit the body, and `does>` - the
-\ one writer that replaces such a body with a clause - clears the stamp in the
-\ same window it patches the return. So SPELL-FIXED below asks the record, and
-\ only a record whose body is still the definer's own is ever entered.
-\
-\ AND WHY THAT IS THE HONEST PLACE FOR THE ANSWER RATHER THAN THE CALLER'S. The
-\ address is a fact of the running process, and a caller that states it states a
-\ number it obtained the same way a moment earlier. Two authorities for one fact
-\ is one authority too many: the caller's copy goes stale the instant the word is
-\ retired and redefined, and nothing downstream can tell a stale address from a
-\ live one - it is an ordinary integer either way. So the question is asked where
-\ the answer is used, and there is no parameter left for anyone to answer it
-\ wrongly.
+\ No record slot holds what a `create`d or `constant` word pushes and decoding
+\ its body is forbidden, so the only honest answer is to ENTER the word - and
+\ only a record whose flags still carry its definer's stamp is ever entered.
 
 require lib/prelude.f
 require lib/errors.f
@@ -63,11 +18,8 @@ package NDICT
 public
 
 \ ---- the scope every question below is asked in ------------------------------
-\ The two wordlists the open package owns. They are published because WHICH scope
-\ is open is itself a fact a caller may need to hold on to: the migration entry
-\ takes them when it stages the first of several callees and refuses a staging
-\ whose later rows were resolved in a different scope. A zero private cell is the
-\ engine's own test for no package open.
+\ Published because WHICH scope is open is a fact a caller may need to hold on
+\ to. A zero private cell is the engine's own test for no package open.
 : OPEN-PRI ( -- n )
    data-base PKG-PRI-CELL + @ ;
 
@@ -77,15 +29,10 @@ public
 private
 
 \ ---- which record a spelling denotes -----------------------------------------
-\ `search-wl` is the engine's own scan and case fold over one wordlist, and it
-\ answers the record's code start - which is the address a call site branches to
-\ and the address a word is entered at. Zero is its absent answer, and no word's
-\ code starts there. XREF-QUAL-INDEX's answer for a token a second colon makes
-\ name nothing.
 -2 constant QUAL-BAD
 
-\ The open package's two wordlists, in the engine's order. No package open
-\ answers absent, so the global leg below is then the whole of the search.
+\ `search-wl` is the engine's own scan and case fold, and zero is its absent
+\ answer; no word's code starts there.
 : OPEN-START ( ptr u8 n -- n )
    {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    OPEN-PRI 0= if 0 exit then
@@ -105,21 +52,8 @@ private
    XREF-START ;
 
 \ ---- the same walk, answering the record rather than the code start ----------
-\ WHY THIS EXISTS AT ALL, GIVEN THE WALK ABOVE. Some questions are about the
-\ RECORD and not about the address in its first slot - whether the word runs at
-\ compile time, whether it is engine-internal - and `search-wl` answers the slot,
-\ not the record. So the legs are walked once more with the finder that answers a
-\ record, in the same order.
-\
-\ AND WHY THAT IS NOT A SECOND OPINION. It would be, if either answer were
-\ allowed to stand on its own. `search-wl` is the engine's own primitive and it
-\ closes doors this finder does not - it short-circuits the owner-API private
-\ wordlist to absent (src/habu/habu1.f) - so it stays the authority on WHETHER a
-\ spelling denotes anything here and WHERE. The record found below is used only
-\ for the slots the start does not carry, and it is REFUSED unless its own start
-\ is the start the authority already answered. Two walks that must agree are one
-\ answer with a check on it; the moment they disagree, nothing is compiled. Dot
-\ habu-one-resolver-for-4e9e3e59 carries collapsing them into one walk.
+\ `search-wl` stays the authority on whether and where. This walk supplies only
+\ the slots a start does not carry, and is REFUSED unless the two starts agree.
 : OPEN-REC ( ptr u8 n -- ptr a )
    {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    OPEN-PRI 0= if XREF-NULL exit then
@@ -141,31 +75,17 @@ private
    a u BARE-REC ;
 
 \ ---- entering the word the spelling denoted ----------------------------------
-\ THE ONE BOUNDARY THIS FILE NEEDS, AND WHY THE CHECKER CANNOT CERTIFY IT.
 \ `execute` enters a word the dictionary named at run time, so what it consumes
-\ and leaves is not known where the call is written. The checker can only admit
-\ such a call once it can be given the effect the entered word is required to
-\ have and can hold the call to it - an arity-guarded `execute` with a typed
-\ result row, which is dot habu-guard-an-executed-8a0f2f77. Until that lands the
-\ trust is here and it is one word wide: nothing but the `execute` is unchecked,
-\ the resolution above it and the arity check below it are ordinary checked Habu.
-\ It is the same shape src/compiler/ir/context.f CE-RUN keeps around the one
-\ operation its checker cannot express.
+\ and leaves is unknown here. Retires with habu-guard-an-executed-8a0f2f77.
 TRUSTED: RUN-WORD ( n -- n )
    execute ;
 
-\ The depth the answer has to stand one above. It is a cell rather than a local
-\ because a local binding taken AFTER the entered word ran would itself read
-\ whatever that word left - so a word that pushed nothing would be diagnosed by
-\ reading a value belonging to the caller, which is the failure this check exists
-\ to refuse. Written before the entry and read after it, the count is the
-\ caller's own and cannot be moved by what the entered word did.
+\ A cell and not a local: a local bound AFTER the entered word ran would itself
+\ read what that word left, which is the failure this check exists to refuse.
 variable FX-BASE
 
 public
 
-\ Where the code of the word this spelling denotes starts, or zero when it
-\ denotes no word in the scope this runs in.
 : SPELL-START ( ptr u8 n -- n )
    {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    a u XREF-QUAL-INDEX {: q:n :}
@@ -174,20 +94,8 @@ public
    a u BARE-START ;
 
 \ ---- which definer made the record a spelling denotes -------------------------
-\ THE THREE ANSWERS ARE THE THREE THINGS A MENTION OF A NAME CAN MEAN. A record
-\ the `constant` definer made means a number; one `create` or `variable` made
-\ means the address of that word's own storage, which a snapshot moves with the
-\ DATA region and which therefore may not be compiled as an ordinary number; and
-\ anything else means a call. The stamp is the definer's, made when the body was
-\ emitted and cleared by the only writer that replaces such a body, so this is a
-\ question about the record and not a guess about the bytes it points at.
-\
-\ IT IS ASKED THROUGH THE SAME WALK AND THE SAME THREE REFUSALS CALL-TARGET USES,
-\ because a stamp on a record nobody can reach by this name says nothing about
-\ what this body means. A record the finder does not agree with the engine's own
-\ start about, and a retired one, answer NONE - the second is the staleness that
-\ matters most here, since a retired data word's address is still a perfectly
-\ ordinary integer.
+\ A `create`d or `variable` address moves with the DATA region on a snapshot, so
+\ it may not be compiled as an ordinary number. The stamp is the definer's own.
 0 constant FIXED-NONE                \ nothing a mention of this name folds to
 1 constant FIXED-VAL                 \ `constant`: the body pushes a decided number
 2 constant FIXED-ADDR                \ `create`/`variable`: the body pushes a DATA address
@@ -205,22 +113,8 @@ public
    f DKIND:ADDR and 0<> if FIXED-ADDR exit then
    FIXED-NONE ;
 
-\ The value the word this spelling denotes pushes: a `create`d word's address, a
-\ `constant`'s number. The three refusals are the three ways the question has no
-\ answer. A spelling that denotes nothing is refused because there is no second
-\ authority to prefer and no number to fall back on. A spelling whose record no
-\ definer stamped is refused BEFORE the word is entered, because entering it is
-\ what a caller may only do to a body that is a push. And a word that did not
-\ leave exactly one value where it was entered is refused because it is not a
-\ word of this kind at all, and whatever is on the stack is not its answer.
-\
-\ WHAT THE COUNT PROVES AND WHAT IT LEAVES TO THE MISSING CAPABILITY. It settles
-\ the arity: a word that leaves none, or two, or that consumed one and left none,
-\ is caught, and the throw unwinds to the caller's own recovery with the stack
-\ restored. What it cannot settle is the TYPE - a word that consumed one value
-\ and left two answers the count and still answered with the wrong thing - and
-\ that is precisely the typed result row dot habu-guard-an-executed-8a0f2f77
-\ carries. The residual gap is named rather than papered over.
+\ A record no definer stamped is refused BEFORE the word is entered. The count
+\ settles the arity but not the TYPE (habu-guard-an-executed-8a0f2f77).
 : FIXED-VALUE ( ptr u8 n -- n )
    {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    a u SPELL-START {: start:n :}
@@ -231,235 +125,50 @@ public
    depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
 
 \ ---- and how many cells a call to it moves --------------------------------
-\ THE THIRD QUESTION, AND IT HAS THE SAME ANSWER-WHERE-IT-IS-USED SHAPE. A call
-\ site has to know how many cells it hands the callee and how many it takes back.
-\ That is not the caller's opinion either: it is what the CHECKER accepted for
-\ that name, and the checker is the only authority on it. A migration that states
-\ the arity itself compiles a routine that moves the wrong number of cells and
-\ nothing downstream refuses it - the selector builds the store run, the load run
-\ and both byte counts from the one stated number, so every derivation it holds
-\ against itself agrees (dot habu-resolve-a-callee-0340dfde, mutation of
-\ 2026-08-02). So the count is read off the checker here, beside the address, and
-\ a caller states a NAME and nothing else.
-\
-\ AND CELLS ARE ASKED FOR DIRECTLY, BECAUSE TERMS ARE A DIFFERENT NUMBER. The
-\ checker used to publish an effect only as a count of TERMS, and a term is not a
-\ cell: `ptr u8 n` is two terms and two cells, but one term of a three-cell
-\ layout family is one term and three cells. This file read the term count and
-\ then had to argue its way back to cells from a coarse per-term family enum -
-\ sound only for the terms the enum resolved, so a row carrying any other term
-\ was answered absent. That cost every named CONSTANT, whose published effect is
-\ `-- a`: a bare raw type variable the enum leaves gray, refused rather than
-\ compiled against a guessed width. Dot habu-export-the-checker-2bbc831c closed
-\ it at the source - the checker now records each row cell's width as it stores
-\ the effect, using the same ROW-TERM-CELLS that computes ER.MINI, and publishes
-\ the row's total through EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS. So the answer
-\ arrives as the number this file actually wants, from the only authority that
-\ knows it, and the reconstruction is gone rather than improved.
-\
-\ IT STILL FAILS CLOSED, on the checker's word rather than this file's. A row the
-\ checker cannot width answers CELLS-NONE - the case a snapshot written before
-\ the width field existed restores - and that arrives here as ARITY-NONE and a
-\ named refusal, exactly as an uncertified name does.
-
-\ The store's readers are sig-less colon words the seal marks internal, so this
-\ used to arrive past a one-word trusted boundary - the only route the checker
-\ admitted. src/core/checker.f now carries a `PRIM:` row per reader stating the
-\ effect its own definition declares, so the call is ordinary checked Habu and
-\ the word below is the file's own vocabulary rather than a boundary
-\ (dot habu-turn-the-registry-4c064064).
+\ CELLS and not terms: `ptr u8 n` is two terms and two cells, while one term of
+\ a three-cell family is one term and three cells. The checker publishes cells.
 : EFF-CELLS ( ptr u8 n -- n n )
    EFFECT-QUERY if EFFECT-DIN-CELLS EFFECT-DOUT-CELLS else -1 -1 then ;
 
-\ ---- and whether control comes back from it ----------------------------------
-\ THE FOURTH QUESTION, AND IT HAS THE SAME OWNER AS THE ARITY. A call to `throw`
-\ or `die`, or to any word whose own body ends in one, has no normal
-\ continuation: the values below it never reach the block after the call,
-\ because control never gets there. A caller that compiled such a call as an
-\ ordinary one has to make the path it is on join the next one, and there is
-\ nothing to join with - which is the E-NELAB-JOIN the chain refused
-\ `: JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;` with.
-\
-\ THE ANSWER IS THE CHECKER'S AND THIS FILE ASKS FOR IT BY NAME. The checker
-\ records a control flag per WORD, in the same store and keyed by the same
-\ symbol as everything else it certifies (src/core/checker.f, NORET-AXIOMS and
-\ CTL-FLAGS): `throw` and `die` carry theirs as axioms, and a definition whose
-\ own paths all end in one earns the flag when it is certified. So there is no
-\ list of dead words here and no spelling compared - the same discipline
-\ SPELL-ARITY keeps, for the same reason. A second list would go stale the
-\ moment a package defined its own `throw`, and the checker learned that the
-\ hard way: keying deadness on a spelling certified a body whose arm returned
-\ nothing where its signature promised a cell.
-\
-\ THE QUESTION IS ASKED AND NOT THE BITS, and the mask has moved to the encoding
-\ it reads. Which bit means dead is the checker's; what this file needs to know
-\ is whether the call comes back. That used to be a copy of `CTL-DEAD and 0 <>`
-\ here behind a trusted boundary, because a boot prefix reader was all this file
-\ could reach; src/core/checker.f CTL-DEAD? now answers the question itself and
-\ SPELL-DEAD? below calls it, so there is one mask and it lives with its encoding.
-
-\ ---- which cells of a row may not be separated from one another ---------------
-\ WHY A CALL SITE HAS TO KNOW THIS AND CANNOT WORK IT OUT. A value of a layout
-\ family occupies several stack cells, and those cells are one value: reordering
-\ them, or moving one without the others, destroys it. The compile-time value
-\ vector in src/compiler/native/elaborate.f holds one entry per CELL, so a
-\ rename - which is nothing but a permutation of that vector - will happily take
-\ a bundle apart, and the CELL counts still add up, so nothing downstream
-\ notices. That is dot habu-rename-over-rows-982167af, measured as four working
-\ programs the chain compiled into wrong ones.
-\
-\ WHAT THE CHECKER ALREADY KNOWS AND HOW IT SPELLS IT. A declared signature
-\ records a layout value as one term PER CELL, each carrying its position in the
-\ bundle (EFFECT-DIN-SLOT / EFFECT-DOUT-SLOT: slot+1, 0 for an ordinary term).
-\ That is the only fact that separates `( option<n> n -- )` from `( a b n -- )`:
-\ the two agree on the term count, the cell count and the family of every term,
-\ and disagree only here.
-\
-\ AND WHERE IT SPELLS IT THE OTHER WAY. A generated constructor's row keeps the
-\ value as ONE term several cells wide instead - `OPTION:SOME` leaves one term of
-\ two cells - so its terms and its cells disagree in number and no per-term slot
-\ marks anything. There is no exported per-term width to say WHICH term is the
-\ wide one, so such a row is answered exactly when it has ONE term, where "the
-\ whole row is one value" is not an approximation but the truth, and answered
-\ NOT KNOWN when it has several.
-\
-\ WHY NOT-KNOWN AND NOT "GLUED THROUGHOUT", WHICH IS WHAT THIS ANSWERED FIRST. An
-\ over-answer is safe only while the consumer's response to it is a REFUSAL. The
-\ consumer now SEGMENTS the vector into values - a rename takes the top `in`
-\ VALUES and puts them back whole (dot habu-rename-rows-row-143c0331) - and a
-\ segmentation that merges two values into one moves the wrong cells and balances
-\ every count, which is the silent miscompile this whole line of work exists to
-\ close. So the direction that fails closed changed with the consumer, and a row
-\ this cannot segment exactly says so instead of guessing wide.
-\
-\ Measured before it was written: over the 3788 rows the running engine holds a
-\ global effect for, NO row has terms and cells disagreeing at all, and every
-\ generated row that does (tools/row-shape-probe.f, over `OPTION:SOME`, a
-\ parametric `PRODUCT`'s MAKE/UNMAKE and a parametric `SUMTYPE`'s constructor)
-\ carries its wide term ALONE. A product field may not even be spelled as a
-\ parametric instantiation (`FIELD o option<n>` is throw 7109), which is the
-\ route that would mix one with an ordinary term. So the not-known bucket is
-\ empty today and the refusal it feeds costs nothing measurable; it is there
-\ because the cost of being wrong about it is a wrong program.
-\
-\ THE ANSWER IS A BITMASK OVER CELLS AND ITS BIT IS ABOUT A BOUNDARY, not about a
-\ cell: bit i says the i-th cell from the BOTTOM of the row and the one below it
-\ are cells of ONE value. That is what a per-cell "this is a bundle cell" bit
-\ could not say - two two-cell values standing next to each other set the same
-\ four bits as one four-cell value, and a consumer that has to know where one
-\ ends cannot tell them apart. `( -- option<n> option<n> )` is exactly that row
-\ and the checker records it exactly: slots 2 1 2 1.
-\
-\ BIT 0 IS THEREFORE ALWAYS CLEAR, and that is a fact about rows rather than a
-\ convention. A row is the whole of what a word takes or leaves, so its bottom
-\ cell begins a value; there is no cell below it for that cell to be glued to.
-\ One cell holds the mask because a row wider than the vector is refused before
-\ it can be asked about.
-
-\ ---- and what a quotation TERM of one of those rows takes and leaves ----------
-\ THE FIFTH QUESTION, AND IT HAS THE SAME OWNER AS THE ARITY. A body written
-\ `[: … ;]` is compiled as a routine, and a routine's arity is how many cells its
-\ caller hands it and how many it takes back. Nothing at the place the body is
-\ WRITTEN says what those are: the numbers belong to the term that CONSUMES it -
-\ the operand a callee declares, or the result the enclosing definition declares -
-\ and the checker is the only authority on either.
-\
-\ THE CHECKER PUBLISHES IT AS A DESCENT. A quotation is one term of a row
-\ carrying a whole effect of its own, and src/core/checker.f moves its row latch
-\ onto that effect and back (EFFECT-DIN-QUOT / EFFECT-DOUT-QUOT / EFFECT-QUOT-UP).
-\ So the readers below descend, read the same two counts every other row is read
-\ with, and come back up - and the descent is closed on every path, including the
-\ ones that decline, because a latch left displaced would answer the next
-\ question about this quotation instead of about the row that asked it.
-\
-\ TERMS ARE COUNTED FROM THE TOP AND CELLS FROM THE BOTTOM, and that is why the
-\ index is refused rather than converted when the two counts disagree. A caller
-\ knows which CELL of the row it is holding; the descent is indexed by TERM; and
-\ the two are the same index only while every term of the row is one cell wide,
-\ which is exactly the boundary this file already draws for SPELL-ARITY. A row
-\ where they differ carries a term several cells wide with nothing to say which
-\ term that is, so the answer is "no quotation there" and the caller refuses by
-\ name instead of descending into whichever term the arithmetic landed on.
-\
-\ AND A BODY THAT IS NOT AN ORDINARY ROUTINE IS DECLINED. EFFECT-QUOT-SIMPLE? is
-\ the checker's own three-clause question - the return rows are neutral, there is
-\ no throw edge, and the fall-through is live - and a body failing any of them is
-\ not something a caller may reach with a branch and come back from. Nothing here
-\ re-derives those clauses; this asks the one word that owns them.
-\ The seven readers those clauses need are named directly at the call sites
-\ below. Each used to have a one-line `TRUSTED:` bridge here whose whole body was
-\ the call, and a bridge that renames a word it can now simply call would be a
-\ second name for one question. The one row that is still written out is the one
-\ that computes: four reads in a fixed order, so a caller takes the counts of ONE
-\ row rather than four answers it has to keep straight itself.
 : EFF-COUNTS ( -- n n n n )        \ din terms, din cells, dout terms, dout cells
    EFFECT-DIN-N EFFECT-DIN-CELLS EFFECT-DOUT-N EFFECT-DOUT-CELLS ;
 
 public
 0 constant GLUE-NONE                 \ every cell of the row is a value of its own
 
-\ THE ROW'S SHAPE IS NOT STATABLE, which is a third answer and not a mask. Every
-\ representable mask has bit 0 clear, by the paragraph above: bit 0 would claim
-\ the row's bottom cell is glued to a cell below the row, and a row has nothing
-\ below it. So an all-bits answer is a value no row can take, which is why it can
-\ carry this and why it is the same -1 this file's other two absences are spelled
-\ with (ARITY-NONE, QUOT-NONE) - one vocabulary for "no answer", not a number
-\ picked because it happened to be free.
+\ ---- which cells of a row may not be separated from one another --------------
+\ Bit i says the i-th cell from the BOTTOM of the row and the one below it are
+\ cells of ONE value, so bit 0 is always clear and all-bits is an impossible row.
 -1 constant GLUE-UNKNOWN
 private
 
 64 constant GLUE-MAX                 \ cells of one row a mask can describe
 
-\ A run of `cells` set bits at the bottom of a word, with the ceiling written
-\ once for the reason src/compiler/native/elaborate.f VRUN-MASK gives: shifting
-\ by the word size is reduced modulo that size on this machine, so a run as long
-\ as the word would come back as a run of ONE.
+\ Shifting by the word size is reduced modulo it on this machine, so a run as
+\ long as the word would come back as a run of ONE.
 : GLUE-RUN-MASK ( n -- n ) {: cells:n :}
    cells 0 <= if GLUE-NONE exit then
    cells GLUE-MAX >= if -1 exit then
    1 cells lshift 1 - ;
 
-\ The whole of a `cells`-wide row as ONE value: every cell above the bottom one
-\ is glued to the cell below it, and the bottom one begins the value.
+\ Every cell above the bottom one is glued to the cell below it.
 : GLUE-WHOLE ( n -- n )
    GLUE-RUN-MASK  1 invert and ;
 
-\ ONE CELL IS NOT A BUNDLE, and that is the whole subtlety of this walk. Every
-\ value of a layout family is recorded cell by cell with its position, INCLUDING
-\ the families whose values are a single cell - a plain closed enum is one tag and
-\ nothing else. Marking those would refuse renames over ordinary one-cell values
-\ for no reason: a value that occupies one cell cannot be taken apart by moving
-\ cells around. So a term's slot is not the question; the WIDTH of the value the
-\ term belongs to is, and that width is readable from the top of each run - the
-\ cells of one value carry slots W, W-1 ... 1 downwards, so the first slot met
-\ going down IS the width. A run of one is skipped, and a longer one is glued
-\ along its inner boundaries and stepped over.
-\
-\ Terms arrive top first and cells are numbered from the bottom, so term i is cell
-\ cells-1-i. That correspondence holds only while the two counts agree; when they
-\ do not, the row carries a term wider than one cell with no slot to find it by,
-\ and the classification above decides between the one-term truth and not-known.
-\
-\ A RUN THAT REACHES PAST THE ROW'S END is a recorded row disagreeing with
-\ itself - a slot claiming more cells below it than the row has - and it is
-\ answered not-known for the reason the many-term case is: a shape this cannot
-\ state exactly is one it may not guess at.
+\ The width of the value a term belongs to is readable from the top of each run:
+\ the cells of one value carry slots W, W-1 ... 1 downwards. A run of one is not
+\ a bundle, and a run reaching past the row's end answers not-known.
 variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
 
 : RG-BIT ( n -- ) {: bit:n :}
    RG-MASK @  1 bit lshift or  RG-MASK ! ;
 
-\ One value of `width` cells whose top term is `top`, glued along its INNER
-\ boundaries only. Term `top` is cell cells-1-top and the value runs down from
-\ there, so its cells are cells-top-width .. cells-1-top; a bit is about a cell
-\ and the one BELOW it, so the boundaries inside the value are the UPPER
-\ `width-1` of its cells and its bottom cell carries none.
+\ Term `top` is cell cells-1-top; a bit is about a cell and the one BELOW it, so
+\ the inner boundaries are the upper width-1 cells and the bottom cell carries none.
 : RG-RUN ( n n n -- ) {: cells:n top:n width:n :}
    width 1 -  0 ?do  cells 1 - top i + -  RG-BIT  loop ;
 
-\ One term of the walk. The row's TERM count and its CELL count are the same
-\ number here - the classification above is what decides that - so one name
-\ serves as the walk's bound and as the base the run arithmetic counts down from.
+\ The row's term count and its cell count are the same number here.
 : RG-STEP ( n bool -- ) {: cells:n din:bool :}
    din if RG-I @ EFFECT-DIN-SLOT else RG-I @ EFFECT-DOUT-SLOT then RG-S !
    RG-S @ 2 < if
@@ -493,43 +202,9 @@ variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
 
 public
 
-\ Where a compiled CALL may branch to for this spelling, or zero when it may not
-\ branch there at all. It answers the ADDRESS rather than a yes, because every
-\ caller that wants the answer wants the address too and asking twice would walk
-\ the dictionary twice for one question.
-\
-\ A NAME IN A BODY IS NOT ALWAYS A CALL, and the two flags that say so are the
-\ two src/compiler/native/publish.f already refuses a publication for, for the
-\ same reason. An IMMEDIATE word runs while the source around it is being
-\ compiled - a body that writes one is asking for something to happen THEN, and a
-\ routine that branches to it at run time does not do that thing late, it does a
-\ different thing entirely. An ENGINE-INTERNAL word has no name past the seal, so
-\ a body naming one is naming something that will not be there. Neither is a
-\ capability this chain is missing, so neither is guessed at: the spelling is
-\ answered not-callable and refused as unmodelled, by name.
-\
-\ THIS IS MEASURED AND NOT ARGUED, AND THE WALK IS A TOOL. Asking every record in
-\ a loaded engine which ones SPELL-START resolves AND SPELL-ARITY sizes - the two
-\ answers that would otherwise be enough to build a call - finds 1632 words, and
-\ among them exactly `include` and `require`, both IMMEDIATE, plus the RETIRED
-\ records the walk sets aside separately. Those are exactly what this refuses and
-\ nothing else does: without it a body
-\ naming `include` compiles into a routine that branches, at run time, into the
-\ word that loads a file while the compiler is reading one. The internal clause
-\ finds nothing today, and it is kept because it is publish.f's own rule about
-\ publish.f's own flag, and a predicate that answers "may a call branch here"
-\ half way is worse than one nobody has to remember the exceptions to.
-\
-\ The walk is tools/callable-arity-probe.f, so the paragraph above can be
-\ re-measured instead of believed. It moved once already: before the checker
-\ published cell widths the same walk found 805, and every one of the 827 words
-\ it gained is a name whose width used to be unstatable here.
-\
-\ A RETIRED RECORD IS THE THIRD, and it is the staleness the caller-stated
-\ address could never see. `forget` and a redefinition retire the old record and
-\ leave its code where it was, so its start is still a perfectly ordinary integer
-\ pointing at instructions nobody can reach by name any more. Asked here, at the
-\ moment the call is compiled, it answers retired and nothing is emitted.
+\ Where a compiled CALL may branch to, or zero when it may not branch there at
+\ all: an IMMEDIATE word runs at compile time, an ENGINE-INTERNAL word has no
+\ name past the seal, and a RETIRED record's start is code nothing can reach.
 : CALL-TARGET ( ptr u8 n -- n )
    {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    a u SPELL-START {: start:n :}
@@ -545,31 +220,16 @@ public
 
 -1 constant ARITY-NONE
 
-\ How many cells a call to the word this spelling denotes consumes, and how many
-\ it leaves. ARITY-NONE twice when the checker certified no effect for the name,
-\ or when it certified one whose width IT cannot state. Both rows are demanded:
-\ a call that knows what it hands over and not what it takes back is no more
-\ compilable than one that knows neither, so either row absent refuses the pair.
-\
-\ ABSENT IS TESTED AS "NOT A COUNT", not as a particular number. A width is a
-\ count of cells and so is never negative; the checker spells its own absence
-\ CELLS-NONE and the boundary spells an uncertified name -1, and this asks the
-\ property both of them have instead of matching either spelling. The pair this
-\ file publishes for it is its own ARITY-NONE, so no caller has to know that the
-\ two vocabularies currently agree on a value.
+\ Absent is tested as "not a count", not as a particular number: a width is a
+\ count of cells and never negative, whichever vocabulary spelled the absence.
 : SPELL-ARITY ( ptr u8 n -- n n )
    EFF-CELLS {: din:n dout:n :}
    din 0 < if ARITY-NONE ARITY-NONE exit then
    dout 0 < if ARITY-NONE ARITY-NONE exit then
    din dout ;
 
-\ Where the values of this spelling's two rows BEGIN AND END, as the bitmasks
-\ described above: bit i says the i-th cell from the bottom of the row and the
-\ one below it are cells of one value. GLUE-UNKNOWN for a row whose shape this
-\ cannot state exactly.
-\ GLUE-NONE twice for a name the checker holds no effect for, which is the same
-\ answer as "every cell here is its own value" and safe to be: a name with no
-\ effect is refused by SPELL-ARITY before any caller reaches for its glue.
+\ GLUE-NONE for a name the checker holds no effect for - the same answer as
+\ "every cell is its own value", and SPELL-ARITY refuses such a name first.
 : SPELL-GLUE ( ptr u8 n -- n n )
    EFFECT-QUERY 0= if GLUE-NONE GLUE-NONE exit then
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
@@ -581,10 +241,8 @@ public
 -1 constant QUOT-NONE                \ that term is no quotation this chain may compile
 private
 
-\ The two counts, read while the latch is down, with the latch put back before
-\ either is answered. Declining and answering leave the latch in the same place,
-\ which is what makes a caller's next question about the row it thinks it is
-\ about.
+\ Read while the latch is down, with the latch put back before either is
+\ answered; declining and answering leave it in the same place.
 : QUOT-CELLS ( -- n n )
    EFFECT-QUOT-SIMPLE? {: simple:bool :}
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
@@ -594,8 +252,8 @@ private
    dn dc <> on oc <> or if QUOT-NONE QUOT-NONE exit then
    dc oc ;
 
-\ Whether this row's terms and cells are the same index, which is what makes term
-\ `i` and cell `i` the same thing to ask about.
+\ Terms are counted from the TOP and cells from the BOTTOM, so term i and cell i
+\ are the same index only while every term of the row is one cell wide.
 : ROW-INDEXABLE? ( bool -- bool )
    {: din:bool :}
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
@@ -604,11 +262,8 @@ private
 
 public
 
-\ What the quotation at term `i` of this spelling's INPUT row takes and leaves,
-\ in cells, counting terms from the TOP of the row as the checker does.
-\ QUOT-NONE twice when there is no such term, when it is not a quotation, when
-\ the row's terms and cells are not the same index, or when the body is not one a
-\ caller may reach with a branch and come back from.
+\ QUOT-NONE twice when there is no such term, it is not a quotation, the row is
+\ not indexable, or the body is not one a caller may branch to and come back from.
 : SPELL-QUOT-DIN ( ptr u8 n n -- n n )
    {: a u:n i:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    a u EFFECT-QUERY 0= if QUOT-NONE QUOT-NONE exit then
@@ -616,7 +271,6 @@ public
    i EFFECT-DIN-QUOT 0= if QUOT-NONE QUOT-NONE exit then
    QUOT-CELLS ;
 
-\ The same for term `i` of its OUTPUT row.
 : SPELL-QUOT-DOUT ( ptr u8 n n -- n n )
    {: a u:n i:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    a u EFFECT-QUERY 0= if QUOT-NONE QUOT-NONE exit then
@@ -625,40 +279,12 @@ public
    QUOT-CELLS ;
 
 \ ---- and the window a catch site takes ---------------------------------------
-\ THE ONE QUESTION HERE THAT IS NOT ASKED BY NAME, because the word it is about
-\ has no answer under its name. `catch` is certified per SITE: its rows are built
-\ where it stands, out of the quotation in hand and the live stack under it, so
-\ SPELL-ARITY answers absent for it exactly as it does for `execute`. What a call
-\ site needs is the window - how many stack cells the caught body may disturb -
-\ and the checker records that where it makes it, filed under the TOKEN the catch
-\ stands on. That ordinal is a coordinate both stages already share: the checker
-\ reports each token it consumes to the source-tape observer in order and exactly
-\ once, and src/compiler/native/feed.f appends one tape row per report and
-\ refuses any other order. So a caller elaborating tape row `ix` asks about `ix`.
-\
-\ THE SECOND NUMBER IS NOT THE FIRST ONE AGAIN. A caught body that returns leaves
-\ the window it took - `catch` fit-checks the live row against both of the
-\ quotation's rows, so the two widths are the same number and a disagreement is a
-\ fault in this descent rather than a program to compile. A body that never
-\ returns has no output row at all, and that is what the absent second answer
-\ says: not a refusal, because a routine with no return is exactly what such a
-\ body compiles into, but a fact its caller has to be told rather than infer.
-\
-\ ABSENT IS SPELLED IN THIS FILE'S OWN VOCABULARY, for the reason SPELL-ARITY
-\ gives about its own: the checker spells no-width CELLS-NONE and this file
-\ spells no-catch CATCH-NONE, and no caller should have to know that the two
-\ vocabularies happen to agree on a value today.
-\ It is the one reader here whose name does not begin with SPELL, because it is
-\ the one that is not asked about a spelling: the key is a token of the tape the
-\ caller is elaborating.
 public
 -1 constant CATCH-NONE               \ no catch this chain may compile stands on that token
 
-\ What the catch on tape token `ix` takes and leaves, in cells. CATCH-NONE twice
-\ for a token no catch was recorded on - one that is not a catch at all, one
-\ whose definition was never recorded, and one past the ceiling the checker
-\ records catch sites up to. CATCH-NONE for the second alone when the caught body
-\ never comes back.
+\ The catch window is certified per SITE, so it is keyed by the TAPE TOKEN the
+\ catch stands on rather than by a name. A body that never returns has no
+\ output row, which is what the absent second answer says.
 : CATCH-CELLS ( n -- n n )
    EFFECT-CATCH-CELLS {: in:n out:n :}
    in 0 < if CATCH-NONE CATCH-NONE exit then
@@ -666,31 +292,6 @@ public
    in out ;
 
 \ ---- and how many cells a layout token really moves ---------------------------
-\ THE SECOND TOKEN-KEYED READER, AND IT EXISTS BECAUSE THE REGISTRY CANNOT
-\ ANSWER. src/compiler/native/family.f WIDTH says it plainly: it answers the
-\ width a family DECLARES, and a parametric family instantiated with a
-\ multi-cell argument occupies more cells than that - the arg-aware number is a
-\ function of a resolved type term, which is the checker's value and never
-\ reaches this chain. The same holds one level down for an arm: the pads a
-\ variant drops are the DECLARED pads unless the instantiation widened them. So
-\ the checker files both numbers under the token that publishes them, and a
-\ caller elaborating tape row `ix` asks about `ix` - the same coordinate, and
-\ for the same reason, as the catch window above.
-\
-\ WHAT THE TWO KINDS OF DISPATCH TOKEN ANSWER. A `MATCH` family token answers the
-\ whole bundle a value of that instantiation occupies, tag included; an arm's `of`
-\ token answers that arm's pad count, the cells between its payload and the tag.
-\ Both are cells the caller drops or keeps, so neither is a difference the
-\ caller would have to add back to a declared number.
-\
-\ MATCH-NONE IS FAIL-CLOSED AND MEANS EXACTLY ONE THING: nobody proved a number
-\ for this token. It covers a token that is no dispatch operand, a definition
-\ nobody recorded, an arm whose instantiation the checker could not close, and
-\ every token of a definition that filled the checker's table - because one
-\ dropped row would otherwise be indistinguishable from a token with nothing to
-\ say, and a caller reading "nothing" for an arm whose pads were dropped would
-\ compile the wrong drop with every count still agreeing. The caller refuses the
-\ body by name.
 -1 constant MATCH-NONE               \ no dispatch cell count was proved for that token
 
 : MATCH-CELLS ( n -- n )
@@ -699,108 +300,27 @@ public
    w ;
 
 \ ---- and how many cells a construction's instantiation ADDS -------------------
-\ THE THIRD KIND OF TOKEN, ASKED THE SAME QUESTION AND ANSWERED WITH A DIFFERENCE.
-\ Building a value of a family is the inverse of taking one apart, and it is
-\ lowered by pushing what the family DECLARES: the generated constructor's body is
-\ the declared pads and the tag whatever it is instantiated at, and this chain's
-\ `construct` reads those same declared pads out of the registry. So the number a
-\ wide instantiation needs here is not the pad count - it is the cells MISSING
-\ from a declared-width lowering, which is what the checker computes once for the
-\ engine's pass 2 and files under this token (src/core/type-family.f
-\ TFC-CON-XPAD-RECORD). The caller pushes that many zero cells at the site, which
-\ is what the engine does at the same site (src/habu/habu2.f EM-COMPILE-CALL).
-\
-\ AND ABSENT IS ZERO HERE RATHER THAN A REFUSAL, WHICH IS THE OPPOSITE POLICY TO
-\ THE READER ABOVE AND IS FORCED BY WHAT THE TOKEN IS. A dispatch reader asks only
-\ about tokens it has already recognised as dispatch operands, so an absence there
-\ is a fact that should have been proved and was not. This reader is asked about
-\ every CALL, because a generated-constructor call is spelled like any other call
-\ and the answer is what tells them apart - so absence is the ordinary case and
-\ has to mean "adds nothing", which is the truth for every construction of a
-\ non-parametric family and for every call that is not a construction at all.
-\ What that costs when a row was DROPPED instead of never filed is a construction
-\ lowered one bundle short, and src/core/checker.f gives the argument in full: the
-\ deficit is conserved through every count this file makes afterwards, so the
-\ definition is refused at the first join, call or exit the short value reaches
-\ rather than compiled into a wrong program.
+\ Absent is ZERO here rather than a refusal: this reader is asked about every
+\ call, so absence is the ordinary case and means "adds nothing".
 : CON-PADS ( n -- n )
    EFFECT-MATCH-CELLS {: w:n :}
    w 0 < if 0 exit then
    w ;
 
 \ ---- and how many cells one memory access moves ------------------------------
-\ THE FOURTH TOKEN-KEYED READER, AND THE ONE THAT IS NOT KEYED ON THE RECORDING
-\ ORDINAL. `@` over a `ptr family` and `!` through one move the pointee's WHOLE
-\ logical value, which is the same arg-aware width the three readers above are
-\ about: `option<pt>` occupies two payload cells where its declaration reserves
-\ one, so the number is a function of a resolved type term and the registry has
-\ nothing to work it out from (src/compiler/native/family.f WIDTH).
-\
-\ WHAT IS DIFFERENT IS THAT NOBODY HAD TO PUBLISH IT, because it was already
-\ published - and under the ENGINE's own key. src/core/checker.f
-\ LAYOUT-FETCH-STEP and LAYOUT-STORE-STEP file the width in the WIDTH-FACT table
-\ as they certify the access, and src/habu/habu2.f EM-P2-QUERY-1 reads it back at
-\ the SOURCE BYTE OFFSET of the token, which is what its pass-2 recompiler emits
-\ the wide access from. So the chain asks the same table, at the same key, for
-\ the same number: one fact, one authority, and no second filing that could
-\ disagree with the emitter the chain is measured against.
-\
-\ THE KEY IS THE TOKEN'S OFFSET INTO THE CHECKED TEXT AND THE TAPE CARRIES IT.
-\ src/core/checker.f CHECK-SCAN reports each token to the tape observer with the
-\ very offset it files width facts under (TSTART), and
-\ src/compiler/native/feed.f validates every recorded span against the bytes at
-\ the offset it claims - so a tape row's span start IS that key, checked rather
-\ than assumed. A comment, a collapsed run of whitespace and a string literal's
-\ payload all move the offset, and they move it for both readers at once.
-\
-\ ABSENT IS ONE CELL, WHICH IS THE ORDINARY CASE AND NOT A GUESS. A width fact is
-\ filed only where the checker resolved the pointee to a layout family; `@`
-\ through a `ptr n`, a `ptr ptr u8` or a bare `ptr a` files nothing, and one cell
-\ is exactly what such an access moves. WF-W-AT answers one for an unfiled key,
-\ so absence is the checker's own answer here rather than this file's default.
-\
-\ AND A ROW AT A `@` OR `!` TOKEN CAN ONLY BE THE MEMORY ROW. Three writers fill
-\ the table: the two memory steps above, the transport scan (WF-XPORT-RECORD,
-\ which fires only on the transport spellings - `dup`, `swap`, `rot`, `r>` and
-\ their fellows), and the construct/MATCH pad record, which fires on a family or
-\ variant operand token. No two of them can be one token, and a second fact at
-\ one key is not merely improbable - WF-ADD-FULL dies on it (`conflicting width
-\ fact`). The caller asks only at a token its own word model already resolved to
-\ the load or the store operation, so what comes back describes that access.
+\ Keyed by the token's OFFSET into the checked text, the same key the engine's
+\ own pass 2 reads. Absent is one cell, which is the checker's own answer.
 : MEM-CELLS ( n -- n )
    0 WF-W-AT ;
 
-\ Whether control comes back from a call to the word this spelling denotes.
 \ False for a name the checker holds no control flag for, which is every
-\ ordinary word: a call that comes back is the common case and the one a caller
-\ needs no permission for. A name the checker certified nothing at all for is
-\ refused by SPELL-ARITY before any caller reaches for this.
+\ ordinary word; SPELL-ARITY refuses an uncertified name before this is reached.
 : SPELL-DEAD? ( ptr u8 n -- bool )
    CTL-DEAD? ;
 
 \ ---- and whether a call to it leaves the caller's return stack alone ----------
-\ THE SEVENTH QUESTION, AND THE NATIVE CHAIN CANNOT COMPILE A CALL WITHOUT IT.
-\ src/compiler/native/elaborate.f models the return stack ENTIRELY at compile
-\ time: `>r` moves a value id between two compile-time vectors, emits no
-\ instruction, and never touches the engine's return-stack region. That rests on
-\ the parked values being the ELABORATOR's own bookkeeping - and a callee whose
-\ declared effect takes a cell off its caller's return stack, or leaves one on it,
-\ moves a stack the caller's bookkeeping is the only record of. There is nowhere
-\ to put that motion, so a call to such a word is refused rather than compiled
-\ into one the elaborator's two vectors no longer describe.
-\
-\ IT ASKS WHAT THE ROWS SAY AND NOT WHAT THE SIGNATURE SPELLS, which is the whole
-\ reason the checker publishes the question instead of a flag for the `|` clause.
-\ `( n | R -- n | R )` writes a clause and moves nothing; a word with no clause at
-\ all recorded two empty rows because the checker's own balance check PROVED it
-\ moves nothing, which is almost every word in the tree. Reading the clause would
-\ refuse the first and admit neither fact.
-\
-\ FALSE WHEN NOTHING RESOLVES, the direction every reader in this file takes: a
-\ name the checker holds no effect for promises nothing about a return stack
-\ either, and answering neutral would let a call be compiled on a promise nobody
-\ made. Such a name is refused by SPELL-ARITY first in every path that reaches
-\ here, so this is the second derivation rather than the only one.
+\ It asks what the ROWS say and not what the signature spells: a word with no
+\ `|` clause records two empty rows because the balance check proved it moves none.
 : SPELL-RET-NEUTRAL? ( ptr u8 n -- bool )
    EFFECT-QUERY 0= if false exit then
    EFFECT-RET-NEUTRAL? ;
@@ -808,46 +328,15 @@ public
 private
 
 \ ---- and which cell a deferred word dispatches through ------------------------
-\ THE SIXTH QUESTION, AND IT IS THE ONE `is` NEEDS. `[: … ;] is NAME` stores an
-\ execution token into NAME's dispatch cell, and where that cell is, is a fact of
-\ the running engine exactly as a callee's entry address is: `defer` allocates
-\ the cell in the DP heap and writes its address into a meta trailer just past
-\ the word's code (src/habu/habu2.f C-DEFER-CELL and C-DEFER-META-WRITE). So the
-\ question is asked here, beside the other five, and a caller names a spelling
-\ and nothing else.
-\
-\ THE TRAILER IS RECOGNISED BY ITS MAGIC AND NEVER BY ITS SHAPE. Past any
-\ record's code stands whatever the next definition put there, and
-\ src/habu/layout.f's own rule about the region says it plainly: "an ordinary
-\ integer may hold any value at all". So the first cell of the trailer is held
-\ against DEFER-MAGIC - src/habu/layout.f's constant, the same one the engine
-\ writes and the same one the engine's own `is` checks in C-DEFER-TARGET-META -
-\ and a record whose trailer does not carry it answers absent. That is what
-\ makes "this spelling names a deferred word" a structural question rather than
-\ a guess about a number: a `create`d word whose data happens to begin with the
-\ magic would have to have been written with the magic in it, and a word whose
-\ code is followed by a plausible-looking address is answered absent because the
-\ cell BEFORE that address is not the magic.
-\
-\ THE TWO READS ARE THE ONE THING THIS FILE CANNOT DO IN CHECKED HABU, for the
-\ same reason RUN-WORD above cannot: the trailer is memory at an address the
-\ dictionary handed over, and the checker has no type for it. The boundary is two
-\ cells wide, does no deciding, and every refusal around it is ordinary checked
-\ Habu. Dot habu-typed-xt-storage-ddad4af8's typed cell is the capability that
-\ would let the trailer be read as a declared shape.
+\ The trailer is recognised by DEFER-MAGIC and never by its shape, because an
+\ ordinary integer may hold any value. Retires with habu-typed-xt-storage-ddad4af8.
 TRUSTED: TRAILER@ ( n -- n )
    @ ;
 
 public
 
-\ Where the word this spelling denotes dispatches through, or zero when it is not
-\ a deferred word here. Zero is the absent answer for the same reason it is
-\ CALL-TARGET's: no dispatch cell is at address zero.
-\
-\ THE RECORD IS THE AUTHORITY ON WHERE THE TRAILER IS. A record carries its
-\ code's start and its length, and the trailer begins where the code ends - so
-\ the two slots the walk above already answers are the whole of the arithmetic,
-\ and there is no second opinion about a word's extent for this to drift from.
+\ The record carries the code's start and its length, and the trailer begins
+\ where the code ends, so there is no second opinion about a word's extent.
 : SPELL-DEFER-CELL ( ptr u8 n -- n )
    {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    a u SPELL-REC {: rec:ptr :}
