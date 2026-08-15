@@ -37,8 +37,6 @@ TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
 : AOT-LIVE-DATA ( -- ptr a ) data-base ;
 : AOT-CELL@ ( ptr a -- n ) @ ;
 s" AOT-CELL@" s" ptr a -- n" TRUST
-: AOT-CELL! ( n ptr a -- ) ! ;
-s" AOT-CELL!" s" n ptr a --" TRUST
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes
    v p c!  v 8 rshift p 1+ c!  v 16 rshift p 2 + c!  v 24 rshift p 3 + c!
    v 32 rshift p 4 + c!  v 40 rshift p 5 + c!  v 48 rshift p 6 + c!  v 56 rshift p 7 + c! ;
@@ -678,7 +676,7 @@ variable ACAP-P
 \ counterpart in the target, and the two layouts are not even order-isomorphic -
 \ there is no delta and no monotone map, and a verbatim carry is silent
 \ corruption. What was eliminated instead is the way such a site got into a
-\ window: WINDOW-OPEN below tells the engine where the window starts, and the
+\ window: AOT-ARM:OPEN tells the engine where the window starts, and the
 \ compile-mode inliner then declines to COPY a body carrying a chain the window
 \ cannot describe and emits its call instead (habu2.f AOT-WINDOW:EMIT-OUTSIDE), which the
 \ scan above records as an ordinary call site and the seed relocates by name. So
@@ -993,15 +991,18 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public
 
-\ Tell the ENGINE where the window that is about to be filled begins, so its
-\ compile-mode inliner can stop copying address chains the window will not be able
-\ to describe (habu2.f AOT-WINDOW:EMIT-OUTSIDE; the cells are src/habu/layout.f AOT-WINDOW:D0-CELL
-\ and AOT-WINDOW:B0-CELL). Called from the same three lines that latch the span, in
-\ src/habu/stdin.f CAPTURE-REPL, and the two arguments are those same two cursors.
+\ THIS FILE DOES NOT ARM THE WINDOW; AOT-ARM:OPEN (src/habu/aot-arm.f) does, and
+\ it is the only word that writes AOT-WINDOW:D0-CELL/B0-CELL. Every producer calls
+\ it directly - src/habu/stdin.f CAPTURE-REPL, test/aot-band-lib.f, and the chain
+\ capture tool - because a capture running inside a booted engine has to arm the
+\ window before its own tooling exists, and this file cannot be loaded that early
+\ without putting its closure (asm.f, icode.f) in front of the compiler chain that
+\ shares it. A capture-side alias for the operation would just be a second name
+\ that could grow a second body.
 \
-\ It is the one thing this file tells the engine rather than reads from it, and it
-\ is what makes ACAP-UNCLASSIFIED below a BACKSTOP instead of the mechanism: a body
-\ holding a pre-window address is now called rather than copied, so the site the
+\ The arming is why ACAP-UNCLASSIFIED below is a BACKSTOP rather than the
+\ mechanism: with the window declared, a body holding a pre-window address is
+\ called rather than copied (habu2.f AOT-WINDOW:EMIT-OUTSIDE), so the site the
 \ refusal names is unreachable by construction and the refusal stands guard over
 \ whatever produces one next.
 \
@@ -1010,9 +1011,6 @@ public
 \ compiled afterwards extends the same window, which is exactly what the widened
 \ re-captures in test/aot-wid-build.f do. The window therefore stays open for the
 \ life of the metabuild process, which exits once the image is written.
-: WINDOW-OPEN ( n n -- ) {: b0:n d0:n :}
-   d0 AOT-LIVE-DATA AOT-WINDOW:D0-CELL + AOT-CELL!
-   b0 AOT-LIVE-DATA AOT-WINDOW:B0-CELL + AOT-CELL! ;
 
 \ The band the two audits read, latched from this capture's own arguments. The
 \ marks are NOT reset with the buffers: they describe the process, and a widened

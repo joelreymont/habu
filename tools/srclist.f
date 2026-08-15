@@ -93,7 +93,7 @@ variable SL-DRIVER-U
 \ stdin metabuild-host closure file(s) sit between driver-io.f and the driver;
 \ manifest-sourced so this canonical order cannot drift from the real build.
 : SL-CLOSURE-EXTRA ( -- )
-   SL-STDIN? if SDC-AOT$ type space then ;
+   SL-STDIN? if SDC-ARM$ type space SDC-AOT$ type space then ;
 
 : SL-DRIVER-PATH ( -- )
    SL-STDIN? if SDC-DRIVER$ type exit then

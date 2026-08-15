@@ -948,6 +948,7 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-INCLUDE
    out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-DRIVER-IO
+   out outu SDC-ARM$ BF-APPEND-SOURCE
    out outu SDC-AOT$ BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;
 

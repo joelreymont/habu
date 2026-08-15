@@ -13,8 +13,11 @@
 \               builders (build-fixpoint stdin emit + bootstrap emit_src stdin)
 \               must include it: aot-decl.f (the AOT capture format's buffers,
 \               caps and section budget, which habu2.f's seed emitters and
-\               aot-capture.f both read), aot-capture.f (its AOT-CAPTURE:CAPTURE
-\               runs in STDIN-DRIVER:RUN) and the driver stdin.f itself.
+\               aot-capture.f both read), aot-arm.f (the one writer of the
+\               engine's capture-window cells, which the driver's CAPTURE-REPL
+\               calls, so it must be compiled in ahead of it), aot-capture.f (its
+\               AOT-CAPTURE:CAPTURE runs in STDIN-DRIVER:RUN) and the driver
+\               stdin.f itself.
 \               aot-decl.f is a COMMON prefix source - it loads in EVERY build,
 \               immediately before habu2.f, not only in the stdin one - and it is
 \               listed here because both stdin source builders must still name it
@@ -36,11 +39,12 @@ public
 
 $1 constant SDC-HOST
 
-4 constant SDC-COUNT
+5 constant SDC-COUNT
 0 constant SDC-I-INCLUDE
 1 constant SDC-I-AOT
 2 constant SDC-I-DRIVER
 3 constant SDC-I-DECL
+4 constant SDC-I-ARM
 
 $4A constant SDC-BAD-IDX-RC
 
@@ -49,6 +53,7 @@ $4A constant SDC-BAD-IDX-RC
    ix SDC-I-AOT     = if s" src/habu/aot-capture.f" exit then
    ix SDC-I-DRIVER  = if s" src/habu/stdin.f" exit then
    ix SDC-I-DECL    = if s" src/habu/aot-decl.f" exit then
+   ix SDC-I-ARM     = if s" src/habu/aot-arm.f" exit then
    s" stdin-closure: bad file index" SDC-BAD-IDX-RC die ;
 
 : SDC-FLAGS ( n -- n ) {: ix:n :}
@@ -56,6 +61,7 @@ $4A constant SDC-BAD-IDX-RC
    ix SDC-I-AOT     = if SDC-HOST exit then
    ix SDC-I-DRIVER  = if SDC-HOST exit then
    ix SDC-I-DECL    = if SDC-HOST exit then
+   ix SDC-I-ARM     = if SDC-HOST exit then
    s" stdin-closure: bad file index" SDC-BAD-IDX-RC die ;
 
 \ named accessors: the ONLY sanctioned way for a checked consumer to name a
@@ -64,6 +70,7 @@ $4A constant SDC-BAD-IDX-RC
 : SDC-AOT$     ( -- ptr u8 n ) SDC-I-AOT SDC-PATH ;
 : SDC-DRIVER$  ( -- ptr u8 n ) SDC-I-DRIVER SDC-PATH ;
 : SDC-DECL$    ( -- ptr u8 n ) SDC-I-DECL SDC-PATH ;
+: SDC-ARM$     ( -- ptr u8 n ) SDC-I-ARM SDC-PATH ;
 
 : SDC-ROLE? ( n n -- bool ) and 0= 0= ;
 

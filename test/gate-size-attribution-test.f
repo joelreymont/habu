@@ -762,9 +762,32 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not move and
 \ `FILE-SIZE bin/hb` is still 165367.
 \ The Linux rows below are owed this +344 on compile/semi.
-129524 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-15 re-measured live at the macOS byte-fixpoint for the capture-window
+\ arming word (dot habu-seed-the-chain-e98b03d4): src/habu/aot-arm.f becomes the
+\ one writer of AOT-WINDOW:D0-CELL/B0-CELL and joins the stdin metabuild host
+\ ahead of aot-capture.f, whose own AOT-CELL! (its last caller gone) is deleted.
+\ Both files are HOST-only - neither is baked - so nothing in the engine's own
+\ text moves. Diffed region by region against two HABU_ENGINE_SIZE_MAP dumps, one
+\ of them a control build of master in a scratch export that reproduced the
+\ pre-change engine byte for byte (sha 799f5601...): TWO rows move and every
+\ other row is byte-identical.
+\   aot-seed        30516 -> 30520 (+4): NOT the capture. Instrumenting
+\     src/habu/stdin.f CAPTURE-REPL in both trees printed every captured quantity
+\     and eight of the nine are identical (blob 18060, recs 115, call sites 217,
+\     name pool 953, DATA sites 142, code sites 3, xt sites 0, declared cells 1).
+\     The ninth is the window's DATA span, 5726 -> 5730, which the new host
+\     definitions move because they allot before the window opens. Falsified on
+\     the control tree with a change that is not this one: renaming aot-capture.f's
+\     pre-window TRUST row AOT-CELL! to AOT-CELL2! - one byte of interned name -
+\     moves the same span to 5725 and leaves the other eight numbers alone.
+\   container/text-pad 13836 -> 13832 (-4): the pad absorbs it.
+\ CODELEN 129524 -> 129528 (+4), floor distance 2548 -> 2552. Inside the same
+\ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
+\ move and `FILE-SIZE bin/hb` is still 165367.
+\ The Linux rows below are owed this +4 as well.
+129528 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-2548 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+2552 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

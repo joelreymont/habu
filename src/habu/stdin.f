@@ -99,7 +99,7 @@ package STDIN-DRIVER
    READ-REPL                                     \ REPL sources -> HB scratch buffer
    cp@ REPL-B0 !  ndict@ REPL-R0 !  here REPL-D0 !
    REPL-R0 @ REPL-D0 @ AOT-CAPTURE:PRELUDE-MARK   \ no prelude: this host compiles only what the target's prefix carries
-   REPL-B0 @ REPL-D0 @ AOT-CAPTURE:WINDOW-OPEN    \ the engine declines to inline pre-window chains from here on
+   REPL-B0 @ REPL-D0 @ AOT-ARM:OPEN               \ the engine declines to inline pre-window chains from here on
    HB@ HL @ EVAL-HOST                             \ compile the REPL in the host dictionary
    cp@ REPL-B1 !  ndict@ REPL-R1 !  here REPL-D1 !
    REPL-B0 @ REPL-B1 @  REPL-R0 @ REPL-R1 @  REPL-D0 @ REPL-D1 @  AOT-CAPTURE:CAPTURE

@@ -1047,12 +1047,15 @@ DATA-SIZE 8 - constant XTCELL-OFF-MAX
 \ armed/unarmed branch to get wrong, and the same arithmetic runs in every compile
 \ in every engine rather than only in a metabuild.
 \
-\ Written once per build by AOT-CAPTURE:WINDOW-OPEN, from the same three lines of
-\ src/habu/stdin.f CAPTURE-REPL that latch REPL-B0/REPL-D0. There is no close: the
-\ window stays open for the life of the metabuild process, because every later
-\ definition extends it - the recapture fixtures in test/aot-wid-build.f widen this
-\ same window rather than opening another - and the process exits after the image
-\ is emitted.
+\ Written by AOT-ARM:OPEN (src/habu/aot-arm.f), the only word in the tree that
+\ writes either cell, and every producer calls it directly: the metabuild from the
+\ same three lines of src/habu/stdin.f CAPTURE-REPL that latch REPL-B0/REPL-D0,
+\ and a capture running inside a booted engine from its own prelude, because the
+\ window it arms opens before that engine's capture tooling exists. There is no
+\ close: the window stays open for the life of the metabuild process, because
+\ every later definition extends it - the recapture fixtures in
+\ test/aot-wid-build.f widen this same window rather than opening another - and
+\ the process exits after the image is emitted.
 \
 \ WHERE THEY HAD TO GO, MEASURED. C-CALL reads them with `DATA <off> LDR`, whose
 \ unsigned offset is a 12-bit immediate scaled by eight, so an engine cell a

@@ -266,6 +266,8 @@ emit_src() {
   cat src/habu/driver-io.f >> "$out"
   printf '\n' >> "$out"
   if [[ "$driver" == "src/habu/stdin.f" ]]; then
+    cat src/habu/aot-arm.f >> "$out"
+    printf '\n' >> "$out"
     cat src/habu/aot-capture.f >> "$out"
     printf '\n' >> "$out"
   fi

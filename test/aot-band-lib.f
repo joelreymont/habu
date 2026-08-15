@@ -29,6 +29,7 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/aot-decl.f
+require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 
 package AOT-BAND
@@ -56,14 +57,14 @@ variable B0  variable B1  variable R0  variable R1  variable D0  variable D1
 \ inliner decline to copy a body carrying an address the window cannot describe.
 : OPEN ( -- )
    cp@ B0 !  ndict@ R0 !  here D0 !
-   B0 @ D0 @ AOT-CAPTURE:WINDOW-OPEN ;
+   B0 @ D0 @ AOT-ARM:OPEN ;
 
 \ The same window, with the engine told nothing. Then the decline never fires and
 \ a copied prelude body keeps its address, which is the only way to put a
 \ pre-window DATA literal in front of the DATA audit.
 : OPEN-UNARMED ( -- )
    cp@ B0 !  ndict@ R0 !  here D0 !
-   0 0 AOT-CAPTURE:WINDOW-OPEN ;
+   0 0 AOT-ARM:OPEN ;
 
 : CLOSE ( -- ) cp@ B1 !  ndict@ R1 !  here D1 ! ;
 
