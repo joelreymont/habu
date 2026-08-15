@@ -743,6 +743,13 @@ address arithmetic at the public boundary.
 
 ## Stack comments
 
+- **The stack effect is the contract; prose is not.** A source file is not a
+  design document. Keep every `( before -- after )` and maintain it carefully.
+  Write a comment only for a constraint the code cannot state — a units,
+  ownership or ordering invariant, a hardware encoding fact, a checker
+  boundary — and keep it to one or two lines. No design essays, no narrated
+  rationale, no refutation history: that belongs in the dot leaf and in
+  `LESSONS.md`. Meaning lives in word names and factoring.
 - **Every definition** carries `( before -- after )`.
 - **Multi-line definitions use line effects where they clarify.** The
   definition line carries the word effect `( before -- after )`. Add trailing
