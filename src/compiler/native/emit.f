@@ -2,215 +2,23 @@
 \ that are the machine's own reading of it, and a map from every emitted byte
 \ back to the source it came from.
 \
-\ docs/compiler-ir-design.md section 7.11 ("A64ENC consumes physical A64IR and
-\ calls the existing encoder words") and section 11.3, which puts the
-\ encoder/fixup check among the things the JIT path runs before anything becomes
-\ executable. Everything before this pass names values, registers and forms;
-\ after it there is nothing left to name, only bytes. This file owns exactly that
-\ last step: which four bytes each operation is, where in the buffer they sit,
-\ and which source span they answer for.
+\ It decides nothing but where each block's instructions land, which is what a
+\ branch's displacement is measured from. Registers come only through
+\ A64RAV:REG@, the one door an accepted allocation answers; encodings come only
+\ from src/arch/arm64/asm.f, which bounds every field before it packs a bit.
 \
-\ WHAT THIS FILE DOES NOT DECIDE. It does not decide what the program computes -
-\ that is the selector's - and it does not decide which register holds which
-\ value. It asks. The only door to a register is A64RAV:REG@, which answers only
-\ after the independent validator has agreed with the module and stops answering
-\ the moment a later allocation replaces the one that was agreed with. Nothing
-\ here reads A64RA's claims, so there is no route by which an unchecked
-\ assignment reaches an instruction. It does not decide the bit layout of an
-\ instruction either: every word below comes out of src/arch/arm64/asm.f, which
-\ is the one authority on each form, and no encoding constant is written here.
-\ It does decide where each block's instructions land, because that is what a
-\ branch's displacement is measured from, and nothing before this pass has any
-\ business knowing it.
+\ The layout and the fixups are ONE pass: the label table IS the block-start
+\ table, a block IS a label, and its ordinal is its name, so nothing is patched.
 \
-\ WHAT IT REFUSES, AND WHY EACH ONE IS ITS OWN JUDGEMENT.
-\   - an unbound dialect, or a second binding over a live one. A module's symbols
-\     are its own ordinals, so "is this operation a move-wide" has no answer from
-\     outside without either the dialect's authority or a second copy of its
-\     spellings. This pass asks A64IR while the module is still being built, the
-\     same way src/compiler/native/regalloc.f does, and keeps the identities.
-\   - a frozen module that is not the one the binding was taken over.
-\   - a register assignment nobody accepted, or one accepted for another module.
-\     The stale case answers itself: the emitter probes REG@ before it emits a
-\     byte, so an acceptance a later allocation invalidated is refused by
-\     A64RAV under A64RAV's own name rather than quietly re-read here.
-\   - a shape this layout cannot serve, re-derived from the module rather than
-\     taken on trust: at least one function and no more than the chain's shared
-\     ceiling, at least one block in each, no more blocks than the layout table
-\     holds, and a block whose only terminator is its last operation. The freeze verifier already forbids a block with two terminators
-\     or one that is not last; this pass measures it again because it is about to
-\     lay the operations out in that order.
-\   - a branch whose successor names no block of the function being emitted, and
-\     a branch whose displacement does not fit the field its form encodes it in.
-\     The second is the reach check: both branch encoders MASK their displacement
-\     field instead of bounding it, so a branch out of reach would quietly become
-\     a branch somewhere else, and the bound is made here against the width the
-\     dialect declares for that form.
-\   - an operation of a form outside the dialect's family. An unmodelled form may
-\     mean something this file does not know, and guessing is how the wrong four
-\     bytes get published.
-\   - a caller reading an emission that never happened, or an index past its end.
-\   - a caller asking how many instructions of an emission are its BODY when that
-\     emission BRANCHES OUT of itself. A call site publishes its arguments and
-\     takes its results back through the very data-stack forms a routine's own
-\     crossings use, so for such a routine the emission less its crossings is not
-\     its body, and there is no number to give.
+\ Three instructions are elided, and each rule is written once and asked twice -
+\ by the layout that counts and by the writer that appends, with CURSOR-CK
+\ holding the two together: a trailing branch to the block laid out next
+\ (FALL-THRU?), a copy into its own register (COPY?), and a data-stack
+\ adjustment of nothing. An elided instruction gets NO source-map row, because
+\ row k describes the instruction WORD@ k answers.
 \
-\ WHAT IT DOES NOT RE-CHECK, DELIBERATELY. It does not bound a register number, a
-\ move-wide immediate or a half selector. Every encoder in src/arch/arm64/asm.f
-\ refuses an operand that does not fit its field before it packs a single bit,
-\ and its bounds are written once there, per field. A second copy of those bounds
-\ here would be a second authority that can drift from the fields it describes,
-\ so the operands go to the encoder as they are and the encoder's refusal is the
-\ refusal. The one arithmetic this file does is turning the dialect's shift - a
-\ number of bits - into the half selector the encoding holds, and it divides
-\ through the assembler's own SCALE/, which refuses a value the division would
-\ round instead of silently encoding the half below it.
-\
-\ TWO REFUSALS HERE ARE FAIL-CLOSED RATHER THAN REACHABLE, AND SAY SO. A move-wide
-\ operation with no attribute under a declared key (E-A64EMIT-ATTR) cannot reach
-\ this file: the freeze verifier decides an operation's attribute keys against its
-\ schema, so a frozen module always carries exactly one of each. More instructions
-\ than the buffers hold (E-A64EMIT-CAP) cannot either: at most three instructions
-\ per operation, one value per operation that defines one, and the allocator
-\ refuses a routine with more values or more blocks than the ceilings above. Both
-\ are still written, because a
-\ search and a buffer need an answer for the case they cannot serve, and neither
-\ is claimed to be tested. What the assembler's own guards catch is a live gap and
-\ not a foreclosed one: a module built by hand can carry a raw out-of-field
-\ move-wide attribute that freezes and verifies, because a schema cannot yet
-\ declare an attribute's value domain (dot habu-declare-an-attr-a14961ae), and the
-\ assembler answers it by ending the process rather than by throwing (dot
-\ habu-make-the-arm64-fa89e081).
-\
-\ THE FRAME FORMS ARE FOUR MORE INSTRUCTIONS AND NOTHING ELSE. A store, a load,
-\ and the subtraction and addition that take the routine's frame and give it back
-\ each encode exactly like every other form here: through the assembler's own
-\ encoder, with the register the accepted allocation answers and the slot or size
-\ the operation carries. The memory token those operations thread is an ordering
-\ dependency and not a machine object, so it reaches no encoder at all - it is
-\ read by the passes that have to keep the accesses in order, and it occupies no
-\ register and no byte. Nothing here decides where a spill goes either: the slot
-\ is the operation's own field, decided by the allocator and checked by the
-\ validator before this pass runs.
-\
-\ THE FOUR DATA-STACK FORMS ARE FOUR MORE INSTRUCTIONS AND NOTHING ELSE, for the
-\ same reason: the same load, store, subtraction and addition, against the
-\ register the running engine keeps the caller's data stack in. Nothing here
-\ decides that a routine reads its arguments off the data stack - the convention
-\ is declared on the routine's contract and turned into these operations by
-\ src/compiler/native/select.f, so what reaches this pass is a module that
-\ already contains its own entry and exit, and this file only encodes them.
-\
-\ THE TWO ADDRESSED FORMS ARE TWO MORE INSTRUCTIONS AND NOTHING ELSE, and the
-\ only difference is where the base comes from. A frame access names the stack
-\ pointer and a data-stack access names the engine's data-stack register, both
-\ written here because neither is a value; an addressed access takes its base out
-\ of the module, as the register the accepted allocation gave the address value.
-\ Its offset is zero - `[Xn]` - and that zero is a property of the form rather
-\ than a field of the operation, because this dialect has no addressing mode with
-\ an offset for a caller to have got wrong.
-\
-\ THE BLOCK LAYOUT AND THE FIXUPS ARE ONE PASS AND NOT TWO. A branch has to know
-\ where it is going before it can be encoded, and where it is going is where the
-\ destination block's first instruction lands. So the layout is computed first,
-\ from the instruction count of each operation, and every displacement is then
-\ known when its instruction is encoded. That is why there is no relocation list
-\ and nothing to patch afterwards: the label table is the block-start table, a
-\ block IS a label, and its ordinal is its name.
-\
-\ AND A CALL TO ANOTHER WORD NEEDS NO RELOCATION EITHER, FOR THE SAME REASON READ
-\ FROM THE OTHER END. Its target is not a block of this function but an address,
-\ so the label table cannot answer it; what it needs instead is where THIS
-\ routine's own bytes will be written, and that is decided by the publication
-\ seam before the emission is made. So the pass is told that address, both ends
-\ of the subtraction are known when the instruction is encoded, and nothing is
-\ patched afterwards here either. The alternative - emit a branch to nowhere and
-\ let the seam fix it up through the source map - would put an instruction
-\ encoder in the seam, and then two files would decide what a Bl is. The seam
-\ instead holds the placement this pass was given against the slot it claims, so
-\ the one authority on where a routine lands is asked twice and measured against
-\ itself.
-\
-\ A BRANCH TO THE BLOCK LAID OUT NEXT IS NOT EMITTED, WHICH MAKES A TERMINATOR'S
-\ INSTRUCTION COUNT A PROPERTY OF THE LAYOUT AND NOT ONLY OF ITS FORM. A
-\ terminator whose trailing unconditional branch names the very next block
-\ reaches that block by falling into it, so the branch is left out. That is four
-\ bytes and a jump for every one of them, and the fused compare-and-branch is
-\ wired to leave its unconditional half pointing at the next block precisely so
-\ this can delete it. The price is exact and worth naming: the layout order is
-\ load-bearing. Moving a block changes what is emitted and not only where it
-\ lands, which is the property the full-branch emission used to buy.
-\
-\ AND SO THIS PASS CHOOSES THE ORDER RATHER THAN INHERITING IT. Which branches
-\ the rule above deletes is decided by which block is written next, and that used
-\ to be whatever order the elaborator happened to build the blocks in - so a
-\ `begin … while … repeat` loop, whose exit stub is built between the header and
-\ the body, kept two branches that nothing about the program required.
-\ ORDER-BLOCKS writes block zero first, the block control leaves the routine
-\ through last - the publication seam records a length that says the emission
-\ ends in the return - and between them follows each block with the successor its
-\ trailing branch names, falling back to the lowest block not yet written. The
-\ order is one permutation, held in one table, and the layout, the writer and the
-\ fall-through rule all read it - so there is one owner of "what comes next" and
-\ no second answer to drift from it. The module's own block order is untouched
-\ and still names every block: the label table, every branch and every other
-\ reader of the module go on speaking in ordinals.
-\
-\ SO THE RULE IS WRITTEN ONCE AND BOTH PASSES ASK IT. FALL-THRU? answers, from an
-\ operation and the ordinal of the block it terminates, whether that trailing
-\ branch is reached by falling through. The layout subtracts its instruction from
-\ the form's count and the emitter leaves out exactly the instruction the layout
-\ did not count - one word, two callers, no second copy to drift from the first.
-\ And because one rule asked twice is still a rule asked twice, WALK holds the
-\ instruction cursor against the layout at the start of every block and at the
-\ end of the routine: a disagreement between what was counted and what was
-\ written is E-A64EMIT-LAYOUT before any caller can read a byte of it. The same
-\ cursor covers the second elision below.
-\
-\ THE SOURCE MAP IS THE POINT OF THE BYTE OFFSETS. Every emitted instruction gets
-\ one row: the byte offset it was placed at, and the span of the operation it
-\ came from. An operation that is more than one instruction gets one row per
-\ instruction, each carrying the span of the operation they all came from. The offset is the cursor at the moment the instruction was appended,
-\ not four times its index, so a run that emitted one instruction too few or too
-\ many is visible in the map and not only in the length. This is what a located
-\ diagnostic about emitted code reads, and it is why the bytes are a byte buffer
-\ with a little-endian placement of each word rather than an array of words: the
-\ offsets have to index something a caller can actually look at.
-\
-\ A COPY INTO THE REGISTER IT COMES FROM IS NOT EMITTED EITHER, WHICH MAKES A
-\ COPY'S INSTRUCTION COUNT A PROPERTY OF THE REGISTER ASSIGNMENT. An a64.mov
-\ whose source and destination registers are the same moves nothing, so it is
-\ left out. The register allocator is what makes that common rather than
-\ accidental: it prefers one register for both ends of a copy wherever the two do
-\ not interfere (src/compiler/native/regalloc.f, step five), which is how the
-\ copy a value crossing an argument-carrying edge is split with disappears on a
-\ loop latch. But the rule here is register equality alone and asks nothing about
-\ intent, so a copy whose ends land in one register for any other reason goes the
-\ same way.
-\
-\ SO THE SECOND RULE IS WRITTEN ONCE TOO. SELF-MOV? answers, from an operation,
-\ whether it is a copy into its own register; the layout subtracts its
-\ instruction and PUT-MOV leaves out exactly the instruction the layout did not
-\ count. The same cursor check holds them both. What this rule costs is an
-\ ordering: the layout used to be computable from the module alone and now needs
-\ the accepted assignment, so EMIT probes the acceptance before it lays the
-\ blocks out. That is written where the pass is run.
-\
-\ AN ELIDED INSTRUCTION GETS NO ROW, because the map has one row per emitted
-\ instruction and nothing else. That is what the index of a row MEANS here: row k
-\ describes the instruction WORD@ k answers, and the two are read together by
-\ every caller that locates a byte. A row standing for an instruction that was
-\ not emitted would put every row after it against the wrong instruction, which
-\ is a worse answer than the honest one - the terminator's span is on the rows of
-\ the instructions it did emit, and a branch or a copy that is not there is not
-\ anywhere.
-\
-\ ONE EMISSION AT A TIME. The buffers are fixed package-owned storage rather than
-\ heap objects, so this pass emits one routine at a time - the single-task
-\ compilation discipline the rest of the native chain keeps. A run that refuses
-\ leaves no sealed emission behind, so a reader after a refusal answers nothing
-\ rather than answering about the run before it.
+\ Block zero is written first and the block control leaves through last, because
+\ publish.f records a length that says the emission ends in the return.
 
 require lib/prelude.f
 require lib/errors.f
@@ -228,15 +36,13 @@ require src/compiler/native/regalloc-verify.f
 require src/arch/arm64/asm.f
 
 package A64EMIT
-\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
-\ One slot per member of the operation family, so the family stays exhaustive: a
-\ member added to A64IR:opcode makes this fail to compile until it has a slot and
-\ an encoding.
+\ One slot per member of the family, so a member added to A64IR:opcode fails to
+\ compile here until it has a slot and an encoding.
 76 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
@@ -319,19 +125,11 @@ private
 1 constant BOUND-YES
 
 \ ---- how much of one routine this pass holds ----------------------------------
-\ Instructions in one routine. Five forms of the dialect emit more than one
-\ instruction - the comparison, the division, the call and the fused
-\ compare-and-branch are three each and the two-way branch is two - and none
-\ emits more than three, so three per operation is the
-\ ceiling per operation. Operations are bounded by the values they define: every
-\ operation defines at least one value except a block's terminator, the release
-\ of the frame and the data-stack publish, of which there is at most one each per
-\ block. So a routine that fits the two ceilings NFROZEN commits to emits at most
-\ this many.
+\ Three per operation is the ceiling: five forms emit more than one and none
+\ emits more than three.
 3 constant INSN-PER-OP
 INSN-PER-OP VMAX BMAX 3 * + * constant INSN-CAP
 
-\ Every ARM64 instruction is four bytes.
 4 constant INSN-BYTES
 
 \ ---- emission state ----------------------------------------------------------
@@ -352,10 +150,6 @@ variable B-BASE                      \ where this function's blocks start in the
 variable LAY-AT
 0 LAY-AT !
 
-\ The registers this run has put into a destination field, and the registers the
-\ accepted allocation says the routine destroys. The first is counted while the
-\ instructions are built and the second is taken at the seal; NOTE-WRITE and
-\ CLOBBER-SEAL below are where each of them is said.
 variable EM-WGPR
 0 EM-WGPR !
 variable EM-WFPR
@@ -365,31 +159,16 @@ variable EM-CGPR
 variable EM-CFPR
 0 EM-CFPR !
 
-\ And what the code this run BRANCHES TO destroys. A routine destroys what its
-\ own instructions write and everything the routines it calls write, so a caller
-\ that read only the first half would be told a register survives a call that the
-\ callee's callee writes. It is kept apart from the count above because it is not
-\ something these instructions did: the check that the emission wrote nothing the
-\ allocation did not claim is about this routine's own instructions, and this is
-\ about somebody else's.
+\ A routine destroys what its own instructions write AND everything the routines
+\ it calls write; this is the second half, and it is not something these
+\ instructions did.
 variable EM-KGPR
 0 EM-KGPR !
 variable EM-KFPR
 0 EM-KFPR !
 
-\ How many of the instructions this run wrote are the routine's CROSSINGS rather
-\ than its work, and how many branches out of the routine it wrote. Both are
-\ counted the way the clobber set is - while the instructions are being written,
-\ by the word that writes them - and BODY-INSNS at the foot of this file is what
-\ they are for: a caller deciding whether to copy a routine's body into itself
-\ has to know how much of the emission that body IS.
-\
-\ THE COUNT IS THE CURSOR'S OWN DIFFERENCE AND NOT A SECOND ARITHMETIC. What an
-\ operation costs in instructions is already decided twice over - by the layout,
-\ which counts it, and by the writer, which appends it, held together by
-\ CURSOR-CK - and a third count here could disagree with both. So the interface
-\ total is read off N-INS across each operation the writer is handed, which makes
-\ it the same number by construction whatever elisions apply to it.
+\ The interface total is read off the cursor's own difference, so it is the same
+\ number by construction whatever elisions apply.
 variable EM-IFACE
 0 EM-IFACE !
 variable EM-NCALL
@@ -400,18 +179,8 @@ variable EM-LAST                     \ the form of the last operation it wrote
 -1 EM-LAST !
 
 \ ---- where this routine will be written --------------------------------------
-\ A branch to a block is measured from the layout, so it is the same displacement
-\ wherever the routine lands. A branch to ANOTHER WORD is not: the callee has an
-\ address of its own, so the distance between the two depends on where this
-\ routine's own bytes go. That address is not this pass's to decide - the
-\ publication seam claims the engine's code space and is the one authority on it
-\ - so this pass is TOLD it, and the seam refuses to publish an emission whose
-\ placement is not the slot it is claiming.
-\
-\ IT IS DECLARED AND CONSUMED LIKE THE DIALECT BINDING, for the same reason: an
-\ emission has to be about one placement, and a run that refused must not leave a
-\ placement behind for the next one to measure against. A run that emits no call
-\ to another word needs none, and one that does and was told none is refused.
+\ A branch to another WORD is measured from where this routine's bytes go, which
+\ is the publication seam's answer, so this pass is TOLD it and never invents one.
 0 constant PLACE-NO
 1 constant PLACE-YES
 variable PLACE-MODE
@@ -440,15 +209,9 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OFF IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MASK IR-ID:ir-symbol-id
 
-\ The emitted bytes, and one source-map row per emitted instruction.
 create CODE INSN-CAP INSN-BYTES * allot
-\ Two more columns of the instruction map, and they are what makes an address
-\ chain findable after publication. A relocation pass may not recognise one by
-\ decoding region bytes - a compiled word carries inline data that decodes as a
-\ move-wide - so the kind travels from the elaborator, through selection, to
-\ here, and is recorded per INSTRUCTION because that is the granularity a site
-\ index is in. A word no move-wide wrote holds ADDR-NONE and a register nobody
-\ names.
+\ A relocation pass may not recognise an address chain by decoding region bytes,
+\ so the kind travels from the elaborator and is recorded per INSTRUCTION.
 create M-ADDR INSN-CAP cells allot
 create M-ARD INSN-CAP cells allot
 create M-OFF INSN-CAP cells allot
@@ -456,52 +219,22 @@ create M-ST INSN-CAP cells allot
 create M-LN INSN-CAP cells allot
 INSN-CAP TYPED-BUFFER M-SRC IR-ID:ir-source-id
 
-\ Where each block's first instruction lands, in instructions from the start of
-\ the routine. This is the whole label table: a block IS a label, its ordinal is
-\ its name, and a branch is resolved by subtracting the branch's own position
-\ from the entry here. There is no relocation list, because there is nothing to
-\ patch afterwards - the layout is computed before the first byte is written, so
-\ every displacement is known when its instruction is encoded.
-\
-\ IT IS KEYED BY ORDINAL AND NOT BY POSITION, because a branch names an ordinal.
-\ Which POSITION a block is laid out at is the other two tables below.
+\ Keyed by ORDINAL, because a branch names an ordinal.
 create B-START BMAX cells allot
 
-\ The order the blocks are laid out in, read both ways round. B-ORDER answers
-\ which block is written at a position and B-PLACE answers which position a block
-\ is written at, and they are one permutation held twice because both directions
-\ are asked in the inner loop of a pass: the layout and the writer walk positions
-\ and the fall-through rule asks where a branch's TARGET sits. Deriving either
-\ from the other by searching would put a scan of every block inside the
-\ per-operation question that rule is.
+\ One permutation held twice, because both directions are asked in an inner loop.
 create B-ORDER BMAX cells allot        \ position -> block ordinal
 create B-PLACE BMAX cells allot        \ block ordinal -> position
 
-\ Where a branch that names this block SHOULD go, which is not always the block
-\ it names. A block whose whole content is an unconditional branch is a place
-\ control passes through without doing anything, so a branch to it can name the
-\ far end instead and the block itself becomes unreachable. B-GOTO holds that far
-\ end for every block - itself, for the blocks that are not passed through - and
-\ B-KEEP says which blocks are still reached once every branch has been
-\ redirected. The two are written once, before the order is chosen, and every
-\ reader of a successor asks B-GOTO rather than the module.
+\ A block whose whole content is an unconditional branch is passed through, so a
+\ branch to it can name the far end and the block itself becomes unreachable.
 create B-GOTO BMAX cells allot         \ block ordinal -> the block a branch to it should name
 create B-KEEP BMAX cells allot         \ block ordinal -> is it still reachable
 variable N-LAID                        \ how many blocks the order actually holds
 
-\ Where each FUNCTION's first instruction lands, in instructions from the start
-\ of the emission. The five tables above are rewritten for every function, which
-\ is right - a block ordinal means nothing outside the function that named it -
-\ and it is exactly why this one exists: a function's start has to outlive the
-\ tables that computed it, because a a64.codeaddr in the FIRST function names the
-\ entry of a LATER one and is encoded before that function has been laid out.
-\
-\ WHICH IS WHY THE EMISSION IS MEASURED BEFORE IT IS WRITTEN. EMIT below lays
-\ every function out once to fill this table and then lays each one out again to
-\ write it. Two walks rather than a patch list: nothing is emitted in the first,
-\ so nothing has to be revisited in the second, and the emitter stays the only
-\ writer of a byte of this routine - the same argument PUT-WORD-CALL makes about
-\ why a call to another word needs no relocation.
+\ A function's start has to outlive the per-function tables, because an
+\ a64.codeaddr in an EARLIER function names a LATER one's entry. So EMIT lays
+\ every function out once to fill this, then lays each out again to write it.
 create F-START FMAX cells allot        \ function ordinal -> its first instruction
 variable N-FUNS                        \ how many functions the emission holds
 
@@ -667,8 +400,7 @@ variable N-FUNS                        \ how many functions the emission holds
       E-A64EMIT-OPCODE throw
    endcase ;
 
-\ Which member of the family this symbol names. An operation of a form outside it
-\ has no encoding here and is refused rather than skipped or guessed at.
+\ A form outside the family has no encoding here and is refused rather than guessed.
 : OPCODE-SLOT ( IR-ID:ir-symbol-id -- n )
    {: sym:IR-ID:ir-symbol-id :}
    -1
@@ -682,23 +414,14 @@ variable N-FUNS                        \ how many functions the emission holds
    OPCODE-AT OPCODE-SLOT ;
 
 \ ---- the registers, through the one door that answers ------------------------
-\ A64RAV:REG@ is the only checked answer in the chain, and it is the only way a
-\ register reaches an instruction here.
+\ The one checked answer in the chain, and the only way a register reaches an
+\ instruction here.
 : REG-OF ( IR-ID:ir-value-id -- n )
    IR-ID:VALUE-LOCAL A64RAV:REG@ ;
 
 \ ---- the registers this emission WRITES --------------------------------------
-\ A destination register is noted as it is asked for, so what the finished
-\ emission destroys is counted from the instructions it really built rather than
-\ from the module it read. It is held against the accepted allocation's own
-\ answer before the run seals, and the two together are what
-\ src/compiler/native/publish.f may record about the routine: an emission that
-\ wrote a register no value claimed is refused instead of published as a routine
-\ that destroys less than it does.
-\
-\ THE COUNT IS PER FILE because a register number names a register of ONE file -
-\ d3 and x3 are two registers and both are number three - so which file the value
-\ lives in is asked of the same accepted allocation the number came from.
+\ Counted per FILE, because a register number names a register of ONE file - d3
+\ and x3 are two registers and both are number three.
 : NOTE-WRITE ( IR-ID:ir-value-id n -- )
    {: v:IR-ID:ir-value-id r:n :}
    v IR-ID:VALUE-LOCAL A64RAV:FLOATING? if
@@ -717,9 +440,6 @@ variable N-FUNS                        \ how many functions the emission holds
    OPERAND-AT REG-OF ;
 
 \ ---- the move-wide operands --------------------------------------------------
-\ The freeze verifier already proves that a move-wide operation carries exactly
-\ one attribute under each key its schema declares, so the search below finds
-\ one; it refuses rather than reading a neighbouring attribute if it does not.
 : ATTR-SLOT ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
    -1
@@ -734,10 +454,8 @@ variable N-FUNS                        \ how many functions the emission holds
    id want ATTR-SLOT {: k:n :}
    id k ATTR-INT-AT ;
 
-\ Whether an operation carries a key at all. ATTR-SLOT above refuses a key that
-\ is missing, because every reader that asks for one is reading a field its
-\ operation's schema requires; this is the other question, asked by a reader that
-\ walks operations of every form and acts on the fields it FINDS.
+\ ATTR-SLOT refuses a missing key; this is the other question, asked by a reader
+\ that walks operations of every form and acts on the fields it FINDS.
 : ATTR-HAS? ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- bool )
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
    false
@@ -748,85 +466,56 @@ variable N-FUNS                        \ how many functions the emission holds
 : IMM-OF ( IR-ID:ir-op-id -- n )
    0 BND-IMM @ ATTR-INT ;
 
-\ What kind of thing the chain this operation belongs to is building. Only the
-\ move-wide forms declare the key, so a reader that walks every operation asks
-\ whether this one carries it at all - ATTR-HAS? is that question - and an
-\ operation that does not is building nothing an address pass cares about.
 : ADDR-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 BND-ADDR @ ATTR-HAS? 0= if A64IR:ADDR-NONE exit then
    id 0 BND-ADDR @ ATTR-INT ;
 
-\ The dialect records the shift as a number of bits; the encoding holds the half
-\ it selects. SCALE/ is the assembler's own refusal for a value its division
-\ would round, so a shift that names no whole half is refused there rather than
-\ quietly encoding the half below it.
+\ The dialect records a number of BITS and the encoding holds the half it
+\ selects, so SCALE/ refuses a shift that names no whole half.
 : HALF-OF ( IR-ID:ir-op-id -- n )
    0 BND-SH @ ATTR-INT A64IR:HALF-BITS SCALE/ ;
 
 \ ---- the frame operands ------------------------------------------------------
-\ A slot is a byte offset from the stack pointer and a reserved frame is a byte
-\ count, and both go to the encoder as the bytes they are: ENC-LDR and ENC-STR
-\ divide by their own access scale and refuse a value that division would round,
-\ and ENC-SUBI and ENC-ADDI bound their own immediate field. No bound is repeated
-\ here for the same reason none of the move-wide ones is.
 : SLOT-OFF ( IR-ID:ir-op-id -- n )
    0 BND-SLOT @ ATTR-INT ;
 
 : FRAME-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-FRAME @ ATTR-INT ;
 
-\ The arithmetic immediate, under the dialect's own key for it. It goes to the
-\ encoder as the number it is: ENC-ADDI and ENC-SUBI bound their own field, so
-\ no bound is repeated here for the same reason none of the frame ones is.
 : OFF-IMM ( IR-ID:ir-op-id -- n )
    0 BND-OFF @ ATTR-INT ;
 
-\ The logical immediate, under the dialect's own key for it. The dialect holds
-\ the MASK - the number the instruction masks with - and the encoders take the
-\ thirteen-bit description of it, so the packer converts one to the other here.
-\ It cannot refuse: the dialect's own bound on this key is that same packer, so
-\ a mask that reached a module is one it already built a description for.
+\ The dialect holds the MASK and the encoders take its thirteen-bit description,
+\ so the packer converts here; it cannot refuse, because the dialect's bound is
+\ that same packer.
 : MASK-IMM ( IR-ID:ir-op-id -- n )
    0 BND-MASK @ ATTR-INT >LIMM ;
 
 \ ---- the data-stack operands -------------------------------------------------
-\ The same two readings against the other pointer, under the dialect's own keys
-\ for them. They are separate keys and separate readers because a frame offset
-\ and a data-stack offset are counted from different registers: one key answering
-\ both would let a frame access encode as a data-stack access.
 : DSLOT-OFF ( IR-ID:ir-op-id -- n )
    0 BND-DSLOT @ ATTR-INT ;
 
 : DBYTES-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-DBYTES @ ATTR-INT ;
 
-\ The second adjustment, which only the call forms carry: how far the pointer
-\ comes back down over what the callee left.
 : DBACK-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-DBACK @ ATTR-INT ;
 
-\ The address a call to another word branches to. It is the callee's own entry
-\ and not a displacement, so this pass does the one subtraction that turns it
-\ into one - which is the whole reason the placement below has to be known here.
+\ The callee's own entry and not a displacement, which is why the placement has
+\ to be known here.
 : ENTRY-ADDR ( IR-ID:ir-op-id -- n )
    0 BND-ENTRY @ ATTR-INT ;
 
-\ Which function of this emission an address form names, as that function's
-\ ordinal.
 : FUN-OF ( IR-ID:ir-op-id -- n )
    0 BND-FUN @ ATTR-INT ;
 
-\ The address the trap form branches to. It is the same kind of number under a
-\ key of its own, for the reason src/compiler/native/a64ir.f gives where that
-\ key is declared: two passes recognise a tail branch by the presence of
-\ `a64.entry` and a trap is not one.
+\ Under a key of its own, because two passes recognise a tail branch by the
+\ presence of `a64.entry` and a trap is not one.
 : TRAP-ADDR ( IR-ID:ir-op-id -- n )
    0 BND-TRAP @ ATTR-INT ;
 
 \ ---- one instruction per operation -------------------------------------------
-\ Each of these is exactly the encoder call the form names, with the registers
-\ the accepted allocation answers and the operands the module carries.
 : WORD-MOVZ ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id IMM-OF  id HALF-OF  MOVZHW ;
@@ -835,84 +524,46 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id IMM-OF  id HALF-OF  MOVKHW ;
 
-\ The move-wide that writes the COMPLEMENT of its shifted immediate. It reads its
-\ fields exactly as the two above do - the dialect holds the same key list for
-\ all three - and differs in the encoder it hands them to and in ONE REFUSAL.
-\
-\ A MOVN MAY NOT CARRY AN ADDRESS, and that is stated here as a refusal rather
-\ than by leaving the key off its schema. The relocation pass rewrites a chain by
-\ writing four plain sixteen-bit immediates over the four that are there; a movn
-\ builds its value out of ONES, so a pass that met one would have to know which
-\ lane it was and complement that lane's immediate - and the whole value of a
-\ fixed carrier is that the pass reads four identical move-wides and asks nothing
-\ else. src/compiler/native/select.f MATERIALISE-ADDR never builds one, so this
-\ is the guard that says so where it can be checked instead of where it happens
-\ to be true: a future pass that folded a chain into a movn is refused here
-\ rather than silently producing a site the loader cannot rewrite.
+\ A MOVN MAY NOT CARRY AN ADDRESS: the relocation pass rewrites a chain by
+\ writing four plain immediates, and a movn builds its value out of ONES.
 : WORD-MOVN ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id ADDR-OF A64IR:ADDR-NONE <> if E-A64EMIT-ADDR throw then
    id 0 RESULT-REG  id IMM-OF  id HALF-OF  MOVNHW ;
 
-\ The copy that puts a returned value where the routine's contract says it
-\ leaves. ENC-MOV is the assembler's own name for the Orr-with-zero-register
-\ form ARM64 spells a move as, so no second idiom is written here.
 : WORD-MOV ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-MOV ;
 
-\ The bitwise complement, which reads the same one register and writes the same
-\ one. ENC-MVN is the assembler's own name for the Orn-with-zero-register form,
-\ exactly as ENC-MOV is for the Orr one.
 : WORD-MVN ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-MVN ;
 
-\ The shifted-register three-operand forms differ only in which encoder they end
-\ in, so they share the operand reading.
 : TRIPLE ( IR-ID:ir-op-id -- n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  id 1 OPERAND-REG ;
 
-\ The add and subtract immediate forms: one register written, one read, and the
-\ third field is not a register at all but the number the operation carries. It
-\ is the same reading shape TRIPLE has with its last register replaced by that
-\ number, which is exactly the difference the form is for.
 : PAIRI ( IR-ID:ir-op-id -- n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  id OFF-IMM ;
 
-\ The same three fields for the logical immediate forms, differing only in which
-\ of the two immediate keys the third comes from.
 : PAIRM ( IR-ID:ir-op-id -- n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  id MASK-IMM ;
 
-\ The zero register, which is what register 31 is in this instruction's addend
-\ field. No value of the machine dialect stands for it and the allocator never
-\ hands it out, so this cannot happen by the ordinary route - which is exactly
-\ why it is asked. `madd rd, rn, rm, xzr` and `mul rd, rn, rm` are the SAME four
-\ bytes, so an addend that arrived here as register 31 would silently emit a
-\ multiply where the module says multiply-add, and the answer would be wrong by
-\ the whole addend. formal/Common/Insn.v puts that word outside `wf` for the same
-\ reason (`madd_mul_alias_at_xzr`); this is that boundary where the register is
-\ finally known.
+\ `madd rd, rn, rm, xzr` and `mul rd, rn, rm` are the SAME four bytes, so an
+\ addend arriving as register 31 would silently emit a multiply.
 31 constant ZERO-REG
 
 : ?ADDEND ( n -- n )
    dup ZERO-REG = if E-A64COMB-ADDEND throw then ;
 
-\ The three-source form's four registers, in the order `madd rd, rn, rm, ra`
-\ names them - which is the order the schema in src/compiler/native/a64ir.f
-\ declares its operands in, so neither reader has to know the other's.
+\ In the order `madd rd, rn, rm, ra` names them, which is the order the schema
+\ declares its operands in.
 : QUAD ( IR-ID:ir-op-id -- n n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  id 1 OPERAND-REG  id 2 OPERAND-REG ?ADDEND ;
 
-\ The frame accesses. Both name the stack pointer as their base, because the
-\ frame is where the stack pointer is: the form has no other base and this
-\ dialect has no value that could be one. The register moved is the store's one
-\ operand and the load's first result, which is what their schemas declare.
 : WORD-STORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-STR ;
@@ -921,12 +572,6 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDR ;
 
-\ The floating forms. Every one of them is a register-to-register instruction of
-\ the shape its schema declares, so they read their operands and their result the
-\ way every other form here does and end in the assembler's own encoder. The two
-\ conversions and the two crossings name registers of two different files in the
-\ two fields, which the encoders know: ENC-SCVTF and ENC-FMOVXD take a D
-\ destination and an X source, ENC-FCVTZS and ENC-FMOVDX the other way round.
 : WORD-FNEG ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FNEG ;
@@ -955,16 +600,10 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDX ;
 
-\ The copy of the D file: one register into another, both fields D. It is the
-\ floating twin of a64.mov and it is elided under the same rule - see SELF-MOV?
-\ below, which asks the operation what file its copy is in rather than which
-\ opcode it is.
 : WORD-FMOVDD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDD ;
 
-\ Taking the frame and giving it back are one subtraction and one addition on the
-\ stack pointer, of exactly the size the operation carries.
 : WORD-RESERVE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    A64EFF:SP-GPR A64EFF:SP-GPR  id FRAME-SIZE  ENC-SUBI ;
@@ -973,20 +612,8 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    A64EFF:SP-GPR A64EFF:SP-GPR  id FRAME-SIZE  ENC-ADDI ;
 
-\ The four data-stack forms, which are the same four instructions against the
-\ other pointer. The base is A64EFF:DSTACK-GPR - the register the running engine
-\ keeps the data stack in - asked for rather than written here, for the same
-\ reason the frame accesses ask for the stack-pointer operand.
-\
-\ WHICH ADDRESSING MODE AN ACCESS IS WRITTEN IN. The offset an access carries is
-\ the distance from where the pointer stands to the cell it names, and the
-\ placement in src/compiler/native/select.f stands the pointer where the fewest
-\ adjustments are needed - so a cell can be under the pointer as easily as over
-\ it. Over it is the scaled unsigned field, Ldr and Str; under it is the unscaled
-\ signed field, Ldur and Stur. It is ONE dialect form written two ways rather
-\ than two forms, because which way it goes is not a property of the access: the
-\ same a64.dload names the same cell whichever place the routine happens to
-\ stand at. Both are one instruction, so nothing about the layout turns on it.
+\ Over the pointer is the scaled unsigned field, Ldr and Str; under it is the
+\ unscaled signed field, Ldur and Stur. One dialect form written two ways.
 : DENC-LDR ( n n n -- n )
    dup 0 < if ENC-LDUR exit then ENC-LDR ;
 
@@ -1001,13 +628,8 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-STR ;
 
-\ The same six accesses for the D file. Every one of them is its general twin
-\ with one encoder swapped, and nothing else about it changes: the same base
-\ register is named, the same offset is read off the same attribute, the same
-\ addressing mode is chosen by the same sign test. What the swap buys is the
-\ whole point of the forms - a double reaches memory and leaves it in the file
-\ it lives in, so no FMOV stands in front of a float operation that reads memory
-\ or behind one that writes it.
+\ Each is its general twin with one encoder swapped, so a double reaches memory
+\ and leaves it in the file it lives in.
 : DENC-LDRD ( n n n -- n )
    dup 0 < if ENC-LDURD exit then ENC-LDRD ;
 
@@ -1031,18 +653,10 @@ variable N-FUNS                        \ how many functions the emission holds
    id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-STRD ;
 
 \ ---- the two addressed forms -------------------------------------------------
-\ The same Ldr and Str the frame and the data stack use, with the base taken out
-\ of the module instead of named by this file: an addressed access reaches
-\ wherever the program computed, so its base is the register the accepted
-\ allocation gave the address value. The offset is zero, which is what `[Xn]` is,
-\ and it is written here as the number the form carries rather than read off an
-\ attribute the dialect does not declare: there is no addressing mode with an
-\ offset in this dialect, so there is no field to read.
+\ Offset zero is `[Xn]`, written here because this dialect has no addressing
+\ mode with an offset for an operation to carry one in.
 0 constant ADDR-OFF
 
-\ The load's address is its first operand and its loaded value is its first
-\ result; the store's value is its first operand and its address is its second,
-\ which is the order the dialect declares and the order Forth writes.
 : WORD-ALOAD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ADDR-OFF  ENC-LDR ;
@@ -1051,7 +665,6 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF  ENC-STR ;
 
-\ The D file's pair of the same two, base and offset read exactly as above.
 : WORD-FALOAD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ADDR-OFF  ENC-LDRD ;
@@ -1060,13 +673,8 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF  ENC-STRD ;
 
-\ The same two accesses one byte wide. Ldrb and Strb are their own encodings
-\ with their own unscaled twelve-bit offset field, so the width is which
-\ ENCODER is called and nothing else about the instruction changes: same
-\ destination register, same base register out of the accepted allocation, same
-\ zero offset. A byte access encoded with ENC-LDR would read eight bytes where
-\ the program asked for one, which is why the two are separate arms of the table
-\ below rather than one arm reading a width off the operation.
+\ The width is which ENCODER is called: ENC-LDR would read eight bytes where the
+\ program asked for one.
 : WORD-ABLOAD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ADDR-OFF  ENC-LDRB ;
@@ -1076,11 +684,8 @@ variable N-FUNS                        \ how many functions the emission holds
    id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF  ENC-STRB ;
 
 \ ---- the caller's return address ---------------------------------------------
-\ The same Str and Ldr the frame accesses are, against the same stack pointer,
-\ moving the register the routine's contract has its own field for. It is asked
-\ for by name rather than written here, for the same reason the stack pointer and
-\ the data-stack pointer are: the one place that says why no routine may hold
-\ state in x30 is also the one place that says where it does appear.
+\ x30 is asked for by name rather than written here, from the one place that
+\ says why no routine may hold state in it.
 : WORD-LNKSTR ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    A64EFF:LINK-GPR  A64EFF:SP-GPR  id SLOT-OFF  ENC-STR ;
@@ -1102,8 +707,6 @@ variable N-FUNS                        \ how many functions the emission holds
    {: off:n :}
    CODE off + c@ ;
 
-\ Little-endian placement, which is what the machine reads and what the map's
-\ offsets index.
 : WORD! ( n n -- )
    {: w:n off:n :}
    w off BYTE!
@@ -1120,10 +723,8 @@ variable N-FUNS                        \ how many functions the emission holds
    st k cells M-ST + !
    ln k cells M-LN + ! ;
 
-\ Append one instruction at the cursor and record where it landed. An operation
-\ that is more than one instruction calls this once per instruction, so the map
-\ has a row for each of them and each row carries the span of the operation they
-\ all came from.
+\ The offset is the cursor at the moment the instruction was appended, not four
+\ times its index, so a run that emitted one too few is visible in the map.
 : APPEND ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id w:n :}
    N-INS @ INSN-CAP >= if E-A64EMIT-CAP throw then
@@ -1137,38 +738,17 @@ variable N-FUNS                        \ how many functions the emission holds
    k 1+ N-INS ! ;
 
 \ ---- the block layout --------------------------------------------------------
-\ Blocks are laid out in an order this pass CHOOSES, and the section after the
-\ next one is where it is chosen. The module's own order - the order the selector
-\ built the blocks in - is still the one every OTHER reader of the module numbers
-\ instructions by, and it still names every block: an ordinal is a block's name
-\ here as it is everywhere else, and the label table above is keyed by it. What
-\ this pass decides is only which block's instructions are WRITTEN next, which is
-\ what the fall-through rule below is a question about.
-\
-\ Which blocks there are to name. A block of the function being emitted is one
-\ this pass laid out, so an ordinal outside that range is a module this layout
-\ cannot serve rather than a branch to nowhere; and a successor is such an
-\ ordinal. Both are asked during the layout as well as during the emission,
-\ because the layout has to know which block a terminator's trailing branch names
-\ before it can decide whether that branch is emitted at all.
+\ An ordinal outside the function's blocks is a module this layout cannot serve.
 : BLK-ORD-CK ( n -- n )
    dup 0 < over N-BLK @ >= or if E-A64EMIT-BLOCK throw then ;
 
-\ A successor carries a block's ordinal in the MODULE and the tables above are
-\ keyed by its ordinal in the FUNCTION being laid out, so the base filed with
-\ that function comes off it here. The bound then says what it always said - an
-\ edge leaving the function is a module this layout cannot serve - and it says it
-\ truly, where before the subtraction a successor of a later function landed
-\ inside the range and named a block of the earlier one.
+\ A successor carries a block's ordinal in the MODULE and these tables are keyed
+\ by its ordinal in the FUNCTION, so the function's base comes off it here.
 : SUCC-BLOCK ( IR-ID:ir-op-id n -- n )
    SUCC-AT IR-ID:BLOCK-LOCAL  B-BASE @ -  BLK-ORD-CK ;
 
-\ WHERE THIS FUNCTION'S BLOCKS START IN THE MODULE, filed with the layout that is
-\ keyed by their function ordinals and proved contiguous while it is filed. That
-\ contiguity is how src/compiler/ir/fun.f mints a function's blocks and what
-\ src/compiler/native/select.f preserves when it writes a module out again; the
-\ whole of the subtraction above rests on it, so it is measured rather than
-\ assumed.
+\ A function's blocks are contiguous, which the subtraction above rests on, so
+\ it is measured while it is filed rather than assumed.
 : B-BASE! ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f 0 BLOCK-AT IR-ID:BLOCK-LOCAL B-BASE !
@@ -1177,10 +757,9 @@ variable N-FUNS                        \ how many functions the emission holds
       if E-A64EMIT-SHAPE throw then
    loop ;
 
-\ How many instructions a FORM is, is a property of the form: one for all but the
-\ three comparisons, the division, the two calls and the three
-\ compare-and-branches, which are three each, and the two-way branch and the
-\ eight conditional selects, which are two.
+\ A property of the FORM: one for all but the three comparisons, the division,
+\ the two calls and the three compare-and-branches, and the two-way branch and
+\ the eight conditional selects, which are two.
 : INSNS-OF ( n -- n )
    {: k:n :}
    k O-SELZ = if 2 exit then
@@ -1206,15 +785,8 @@ variable N-FUNS                        \ how many functions the emission holds
    k O-TRAP = if 2 exit then
    1 ;
 
-\ How many instructions an OPERATION is, is that count less the two instructions
-\ it can turn out not to need: a trailing branch to the block laid out next, and
-\ a copy from a register into itself. The next four words say which.
-\
-\ Three forms end in an unconditional branch: the one-way branch is nothing else,
-\ and the two-way branch and the compare-and-branch each end in one after their
-\ conditional. This says which successor that trailing branch names, and -1 for
-\ every form that ends in no such branch - the return, and everything that is not
-\ a terminator at all.
+\ Which successor the trailing unconditional branch names, and -1 for a form
+\ that ends in no such branch.
 : TAIL-SUCC ( n -- n )
    {: k:n :}
    k O-BR = if 0 exit then
@@ -1226,97 +798,14 @@ variable N-FUNS                        \ how many functions the emission holds
    -1 ;
 
 \ ---- the chosen block order --------------------------------------------------
-\ WHICH BRANCHES GET DELETED IS A CHOICE, AND THIS IS WHERE IT IS MADE. The rule
-\ below deletes a terminator's trailing unconditional branch when its target is
-\ the block written next. Written next was, until this section existed, whatever
-\ the elaborator's build order happened to make it - so a loop written
-\ `begin … while … repeat` had its exit stub built between the header and the
-\ body, the header's trailing branch to the body could not fall through, and
-\ neither could the stub's branch to the block after the loop. Two branches, in
-\ every loop of that shape, deleted by nothing but laying the blocks out in a
-\ different order.
-\
-\ THE RULE, IN ONE SENTENCE. Block zero is written first, because it is the
-\ routine's entry - the caller enters at the first byte and the prologue is in it.
-\ The block control leaves the routine through is written last, because the
-\ record published for the routine says so - see RET-ORD below. After each block,
-\ write the block its trailing unconditional branch names, if that block has not
-\ been written yet; otherwise write the lowest-numbered block that has not been
-\ written yet.
-\
-\ WHY THE TRAILING SUCCESSOR AND NOT THE OTHER ONE. It is the only successor
-\ whose edge costs an instruction that laying it next would remove. A two-way
-\ branch's FIRST successor is reached by the conditional, which is emitted
-\ wherever that block sits; its second is reached by the unconditional below it,
-\ which is the instruction the rule deletes. So the likeliest successor, in the
-\ only sense this pass can pay for, is the one the trailing branch names - and
-\ nothing here has to guess which way a test will go, because whichever way the
-\ selection wired it, that is the arm the four bytes are on.
-\
-\ FOR AN UNFUSED LOOP TEST THAT IS THE BODY, and the loop comes out the shape a
-\ reader expects: the header falls into the body, the exit stub sinks below the
-\ latch, and the only unconditional branch left is the back edge. For a loop
-\ whose test FUSED into the branch it is the exit stub instead, because
-\ src/compiler/native/select.f wires the condition-holds arm first and staying in
-\ the loop is what the condition holding means - so the stub gets the
-\ fall-through, and the body and the back edge keep a branch each. That is one
-\ branch more than the shape needs and this pass cannot take it: laying the body
-\ next instead would mean inverting the conditional's condition, which is a
-\ decision about an instruction and not about an order (dot
-\ habu-choose-which-arm-ffe23e64).
-\
-\ WHY THE FALLBACK IS THE LOWEST BLOCK LEFT. A trace ends where its successor has
-\ already been written - at a back edge, or at a join two arms reach. What comes
-\ next then has to come from somewhere, and the module's own order is the one
-\ answer that is already agreed: taking the lowest block not yet written keeps
-\ the emission as close to the build order as the traces allow, so a routine
-\ whose build order was already the best order is written out unchanged.
-\
-\ WHY THIS IS THE SAME OWNER AS THE LAYOUT AND NOT A PASS BEFORE IT. Three
-\ readers ask the order: the layout asks which block to count next, the writer
-\ asks which block to write next, and the fall-through rule asks where a branch's
-\ TARGET sits relative to its own block. CURSOR-CK holds the first two against
-\ each other at every block boundary, and that check only means anything if all
-\ three are reading one table. Choosing the order also needs exactly what this
-\ file already holds and nothing else: the dialect binding that says which opcode
-\ a terminator is, and TAIL-SUCC, which says which successor the trailing branch
-\ names. A separate file would need a second binding over the same module and a
-\ second statement of TAIL-SUCC - the second authority on one rule this file
-\ refuses everywhere else.
-\
-\ AND IT CHANGES NO DISPLACEMENT'S REACH. Every branch between blocks of one
-\ routine is measured inside that routine, and INSN-CAP above bounds a routine at
-\ three instructions per operation over the value and block ceilings NFROZEN
-\ commits to. The narrowest field any of these branches has is the nineteen bits
-\ the conditional and the compare-against-zero forms carry, which reaches
-\ 2^18 instructions either way - two orders of magnitude past the longest routine
-\ that can exist here. So no permutation of the blocks can put a branch out of
-\ reach. The reach check stays where it is anyway, because it is about the
-\ encoder masking its field and not about the layout.
-\
-\ WHAT IT DOES NOT TOUCH. The register allocation. That is computed over the
-\ module's own block order, before this pass runs, and it is a function of the
-\ module and the register budget alone - no interference, no hull and no
-\ coalescing decision reads a byte offset or a layout position. This pass reads
-\ the accepted assignment (SELF-MOV? below) and never the other way round. So a
-\ value whose hull is stretched because the module records a loop's exit stub
-\ between its header and its body has exactly the same hull after this
-\ reordering: moving where the stub is WRITTEN does not move where it is
-\ RECORDED. That artefact belongs to whoever changes the recorded order or the
-\ coalescing, and nothing here can reach it.
 
-\ Where a block sits in the order, and which block sits at a position. A position
-\ is a number of the same range an ordinal is - the order is a permutation of the
-\ block ordinals - so one bound check serves both.
+\ The order is a permutation of the block ordinals, so one bound serves both.
 : AT-POS ( n -- n )
    BLK-ORD-CK cells B-ORDER + @ ;
 
 : POS-OF ( n -- n )
    BLK-ORD-CK cells B-PLACE + @ ;
 
-\ Has this block been given a position yet? Every row starts below zero, so the
-\ question is answered by the table the answer is written into rather than by a
-\ second count that could disagree with it.
 : LAID? ( n -- bool )
    BLK-ORD-CK cells B-PLACE + @ 0 >= ;
 
@@ -1327,31 +816,20 @@ variable N-FUNS                        \ how many functions the emission holds
    bb  pp cells B-ORDER + !
    pp  bb cells B-PLACE + ! ;
 
-\ Where a branch naming this block should go. It is read after GOTO! has run, so
-\ it already holds the far end of however long a chain of pass-through blocks
-\ stood in the way.
+\ Read after GOTO! has run, so it holds the far end of however long a chain of
+\ pass-through blocks stood in the way.
 : GOTO-OF ( n -- n )
    BLK-ORD-CK cells B-GOTO + @ ;
 
-\ And is this block still reached once every branch has been redirected? It is a
-\ table read like the one above, and it lives here beside it because the order
-\ has to ask it while it is being chosen; the sweep that WRITES the table needs
-\ the register assignment and so stands further down.
 : KEPT? ( n -- bool )
    BLK-ORD-CK cells B-KEEP + @ 0<> ;
 
-\ The block a terminator's trailing unconditional branch names, or -1 when the
-\ block ends in no such branch. It is TAIL-SUCC asked of a whole block, which is
-\ the form the ordering needs: the elision rule asks it of an operation.
 : TAIL-BLOCK ( IR-ID:ir-block-id -- n )
    TERM-AT {: t:IR-ID:ir-op-id :}
    t SLOT-AT TAIL-SUCC {: s:n :}
    s 0 < if -1 exit then
    t s SUCC-BLOCK GOTO-OF ;
 
-\ The lowest-numbered block with no position yet, or -1 when every block has one.
-\ Only the blocks still reached are candidates: one that nothing branches to any
-\ more is not laid out at all, which is where the bytes come from.
 : NEXT-UNLAID ( -- n )
    0 begin dup N-BLK @ < while
       dup KEPT? over LAID? 0= and if exit then
@@ -1359,8 +837,6 @@ variable N-FUNS                        \ how many functions the emission holds
    repeat
    drop -1 ;
 
-\ Which block follows this one: the one its trailing branch names when that block
-\ is still unwritten, and otherwise the lowest block left.
 : FOLLOWER ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT TAIL-BLOCK {: s:n :}
@@ -1368,29 +844,8 @@ variable N-FUNS                        \ how many functions the emission holds
    s LAID? if NEXT-UNLAID exit then
    s ;
 
-\ THE LAST BLOCK WRITTEN IS THE ONE CONTROL LEAVES THE ROUTINE THROUGH, AND THAT
-\ IS NOT A PREFERENCE. src/compiler/native/publish.f records a word's code length
-\ as the emission LESS ONE INSTRUCTION, because the engine's records exclude a
-\ word's trailing return - that is the span its inliner copies into a caller
-\ (src/habu/habu2.f EM-COMPILE-FLUSH-PEND). So the emission's last instruction has
-\ to BE the return. Left to itself the trace above would happily end a routine on
-\ a loop's back edge, and the record published for it would then be a body with
-\ its last branch cut off: the routine still runs, because the return is reached
-\ in the middle, and every reader of the record - the inliner, the workload scan,
-\ the redirection seam - is one instruction wrong about it. The trace is
-\ therefore run over every block but this one, and this one is written last.
-\
-\ WHICH BLOCK THAT IS, RE-DERIVED HERE. The one the routine's RESULTS leave
-\ through. src/compiler/native/regalloc.f MB-RET-ORD writes the rule and the
-\ reason a trap block is not that block; this is the same question asked of this
-\ pass's own view, because this pass is about to make the whole emission end in
-\ it. A module that reached here has exactly one such block or none.
-\
-\ AND NONE IS AN ANSWER, NOT A REFUSAL. Every path of such a routine leaves
-\ through the branch that ends the process, so there is no return for the
-\ emission to end on and nothing for the record to leave out - which is exactly
-\ what the paragraph above needs the last block for. ORDER-BLOCKS below pins no
-\ last block for it and lets the trace decide the whole order.
+\ A routine every path of which traps has no return for the emission to end on,
+\ so no block is pinned last and the trace decides the whole order.
 -1 constant NO-RET
 
 : RET-ORD ( IR-ID:ir-fun-id -- n )
@@ -1404,66 +859,17 @@ variable N-FUNS                        \ how many functions the emission holds
       then
    loop ;
 
-\ The order itself, decided before a single instruction is counted. The block
-\ count is established and bounded here rather than in LAYOUT below, because this
-\ is now the first word that reads it - and because a shape this pass cannot
-\ serve should be refused as that before any register assignment is read.
-\
-\ THE TWO ENDS ARE PINNED FIRST AND THE TRACE FILLS WHAT IS BETWEEN THEM. Block
-\ zero is the entry, so it takes the first position; the return block takes the
-\ last. A routine of one block is both, which is the only way they can be the
-\ same block - a longer routine whose entry is also its exit has no path to any
-\ of its other blocks, and it is refused here rather than emitted as a record the
-\ seam would mis-measure. The trace then fills the positions between, and the
-\ return block is already placed, so it is never picked up early.
-\
-\ THE RULE, WRITTEN ONCE. An operation's trailing unconditional branch is reached
-\ by falling into it when the block it names is the block laid out immediately
-\ after the one the operation terminates - and then it is not emitted at all.
-\ The layout below subtracts it from the form's count and PUT-BR, PUT-BRZ and
-\ PUT-CMPBR leave out the same instruction by asking this same word, so there is
-\ no second statement of the rule that could come to disagree with the first.
-\
-\ IT IS ASKED IN POSITIONS AND ANSWERED ABOUT ORDINALS. The operation arrives
-\ with the ORDINAL of the block it terminates, because that is what every caller
-\ of it has, and the successor it names is an ordinal too; "immediately after" is
-\ a statement about where the two were laid out, so both go through the order.
-\ Nothing here depends on where any block STARTS, which is why it can still be
-\ asked during the layout that is about to decide exactly that.
+\ Asked in POSITIONS and answered about ORDINALS, so nothing here depends on
+\ where any block starts - which is what lets the layout ask it.
 : FALL-THRU? ( IR-ID:ir-op-id n -- bool )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT TAIL-SUCC {: s:n :}
    s 0 < if false exit then
    id s SUCC-BLOCK GOTO-OF POS-OF  home POS-OF 1+ = ;
 
-\ THE SECOND RULE, ALSO WRITTEN ONCE. A copy whose source and destination are the
-\ same register moves that register into itself, which is no instruction at all,
-\ and it is not emitted. The register allocator prefers one register for both
-\ ends of a copy wherever the two do not interfere - step five of
-\ src/compiler/native/regalloc.f - so this is what deletes the copy an
-\ argument-carrying edge is split with; but nothing here asks whether the
-\ allocator meant it to. The rule is register equality and only that, so a copy
-\ whose ends happened to land in one register for any other reason goes the same
-\ way.
-\
-\ THERE ARE TWO COPIES AND ONE RULE. a64.mov copies a general register and
-\ a64.fmovdd copies a floating one, and the elision is the same statement about
-\ both: same register in, same register out, no instruction. COPY? is what makes
-\ it one statement - a form added to either file has to be named there and
-\ nowhere else, and a second `<>` test beside this one is exactly the copy of the
-\ rule that could come to disagree with it. The register NUMBER is what is
-\ compared, and the two files are separately numbered, which is sound here
-\ because a copy's ends are one class and a class has one file: the allocator
-\ refuses a class spanning the two by name (E-A64RA-FILE), so `d3 = x3` is not a
-\ comparison this word can be asked to make.
-\
-\ IT IS ASKED THROUGH THE SAME DOOR AS EVERY OTHER REGISTER. OPERAND-REG and
-\ RESULT-REG are A64RAV:REG@, the one checked answer in the chain, so a stale or
-\ unaccepted assignment refuses here exactly as it refuses when an instruction is
-\ being encoded. What it costs is that the layout can no longer be computed
-\ before the assignment has been accepted: how many instructions a copy is, is
-\ now a fact about the allocation. EMIT below therefore probes the assignment
-\ before it lays the blocks out, and says so.
+\ The rule is register equality alone. The two files are separately numbered,
+\ which is sound because a copy's ends are one class and the allocator refuses a
+\ class spanning the two by name.
 : COPY? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id SLOT-AT {: k:n :}
@@ -1474,11 +880,6 @@ variable N-FUNS                        \ how many functions the emission holds
    id COPY? 0= if false exit then
    id 0 RESULT-REG  id 0 OPERAND-REG  = ;
 
-\ How many of an operation's data-stack adjustments are no instruction at all.
-\ The question is asked of the operation and not of its opcode - which is the
-\ rule every reader in this file follows - so an operation carrying one
-\ adjustment answers about that one, a call carrying two answers about both, and
-\ an operation carrying neither answers nothing.
 : DZERO1 ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
    {: id:IR-ID:ir-op-id key:IR-ID:ir-symbol-id :}
    id key ATTR-HAS? 0= if 0 exit then
@@ -1510,50 +911,8 @@ variable N-FUNS                        \ how many functions the emission holds
    cells B-START + @ ;
 
 \ ---- the blocks control only passes through ----------------------------------
-\ A BLOCK WHOSE WHOLE CONTENT IS AN UNCONDITIONAL BRANCH DOES NOTHING, AND A
-\ BRANCH TO IT CAN NAME THE FAR END INSTEAD. Control arriving at such a block
-\ leaves it again immediately, so every branch that names it is made to take two
-\ branches to reach the place it was always going. Redirecting them costs
-\ nothing at run time and deletes the block: nothing reaches it any more, so it
-\ is not laid out and its branch is never written.
-\
-\ WHAT MAKES IT SOUND IS THAT THE BLOCK EMITS NOTHING, AND NOT WHAT ITS EDGES
-\ SAY. A branch hands its operands to the destination's block arguments, and the
-\ obvious rule would be that the block passed through has to hand on exactly what
-\ it was given. That rule is too strong, and it rejects the case this pass exists
-\ for: a counted loop's latch is a block with no arguments whose branch carries
-\ the incremented index to the header, so it hands on values it was never given
-\ and is refused by a rule about arguments while emitting nothing whatsoever.
-\
-\ THE REGISTERS ARE WHERE THE ARGUMENT ACTUALLY IS. src/compiler/native/
-\ regalloc-verify.f has already accepted both edges, and its edge rule says the
-\ register holding a terminator's operand i is the register holding the
-\ destination's argument i. So when T's branch executes, D's arguments are
-\ already in D's registers. If T emits NO instruction before that branch, then
-\ nothing happens between arriving at T and leaving it - no register is written,
-\ no flag is set - so those registers hold the same values at the moment the
-\ branch INTO T executes. Redirecting that branch straight to D therefore lands D
-\ in the identical machine state, and the values are reachable because the
-\ allocator's own liveness put them there: T holds no instruction, so what is
-\ live leaving T is live entering it, and so is live along the edge into it.
-\
-\ SO THE CONDITION IS ABOUT EMITTED INSTRUCTIONS AND IS ASKED AFTER THE
-\ ASSIGNMENT IS ACCEPTED. Two operations can be present and emit nothing - a copy
-\ into the register it already lives in, and a data-stack adjustment of zero
-\ bytes - and which they are is a fact about the register assignment. That is why
-\ EMIT now probes the acceptance BEFORE it chooses the order, where it used to
-\ choose the order first: the order is no longer a question the module alone can
-\ answer, exactly as the layout already was not.
-\
-\ THE ENTRY IS NEVER PASSED THROUGH. Block zero is where the caller arrives, so
-\ it is laid first whatever it contains; treating it as a block to be deleted
-\ would be deleting the routine's first byte. It costs nothing measurable and it
-\ removes the only case where "unreachable" and "the entry" could disagree.
-\ Does this operation emit nothing at all? Two of them can: a copy into the
-\ register it already lives in, and a data-stack adjustment of zero bytes. Both
-\ are the elisions the layout already subtracts, asked here without the third -
-\ a trailing branch reached by falling through - because that one is a question
-\ about the order this word is helping to decide.
+\ Two operations can be present and emit nothing, which is a fact about the
+\ register assignment - so the ORDER is chosen after the acceptance is probed.
 : OP-SILENT? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id SLOT-AT INSNS-OF
@@ -1561,9 +920,6 @@ variable N-FUNS                        \ how many functions the emission holds
    id DZERO-MOVES -
    0= ;
 
-\ And does the whole block emit nothing before its terminator? That is what makes
-\ control merely pass through it: everything it holds is a copy that moves
-\ nothing, so arriving and leaving are the same machine state.
 : SILENT-BEFORE-TERM? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
    0
@@ -1580,8 +936,6 @@ variable N-FUNS                        \ how many functions the emission holds
    t SLOT-AT O-BR <> if false exit then
    bk SILENT-BEFORE-TERM? ;
 
-\ The walk that finds that far end. One step, so that the bound below is a plain
-\ counted loop and this file keeps its habit of not declaring locals inside one.
 variable CH-AT
 
 : CHASE-STEP ( IR-ID:ir-fun-id -- bool )
@@ -1593,11 +947,7 @@ variable CH-AT
    true ;
 
 \ A chain of pass-through blocks that closed into a loop would be walked for
-\ ever - `begin again` with an empty body is exactly that - so the walk is
-\ bounded by the number of blocks there are: more steps than that and it has
-\ visited one twice. Stopping part way round such a loop is still a correct
-\ answer, because every block on it passes control straight to the next, so the
-\ branch is redirected to one of them and the routine still spins where it must.
+\ ever, so the walk is bounded by the number of blocks there are.
 : CHASE ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id b:n :}
    b CH-AT !
@@ -1606,17 +956,11 @@ variable CH-AT
    loop
    CH-AT @ ;
 
-\ Every block's far end, written once. A block that is not passed through is its
-\ own answer, so every reader can ask unconditionally.
 : GOTO! ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    N-BLK @ 0 ?do  f i CHASE  i cells B-GOTO + !  loop ;
 
 \ ---- which blocks are still reached ------------------------------------------
-\ Reachability over the REDIRECTED edges, from the entry. It is a fixed point
-\ reached by sweeping until a sweep marks nothing, which needs no work list and
-\ no recursion: at most BMAX blocks makes the sweep cheap, and a sweep that
-\ marks nothing is the answer.
 : KEEP1 ( n -- n )
    {: s:n :}
    s KEPT? if 0 exit then
@@ -1644,33 +988,11 @@ variable CH-AT
    1 0 cells B-KEEP + !
    begin  f KEEP-SWEEP 0=  until ;
 
-\ LAY is what bounds the two numbers it writes, so a follower outside the
-\ function's blocks is E-A64EMIT-BLOCK here rather than a row written past the
-\ end of a table. It cannot happen: fewer than N-LAID blocks are laid when a
-\ position is still to be filled, so NEXT-UNLAID always has one to answer with.
-\
-\ AND THE ORDER IS OVER THE BLOCKS STILL REACHED, WHICH IS NOT ALL OF THEM. The
-\ redirection above is computed first, and a block every branch was redirected
-\ past is reached by nothing: it is left out of the order, so no position is
-\ spent on it and its own branch is never written. That is where the bytes go.
-\ N-LAID is therefore how many positions there are, and N-BLK stays the number of
-\ blocks the module has, because a branch still names an ORDINAL and the label
-\ table is still keyed by one.
-\
-\ THE COUNT OF KEPT BLOCKS IS TAKEN RATHER THAN ASSUMED, because the trace below
-\ fills exactly N-LAID positions and a miscount would leave one unwritten or run
-\ past the end. The return block is always reached - it is the block control
-\ leaves through - and so is the entry, which is why the two ends can still be
-\ pinned before the trace fills what is between them.
+\ Taken rather than assumed, because the trace fills exactly this many positions.
 : KEPT-COUNT ( -- n )
    0
    N-BLK @ 0 ?do  i KEPT? if 1+ then  loop ;
 
-\ A ROUTINE THAT NEVER RETURNS PINS NOTHING AT THE END, because the paragraph
-\ above is the only reason anything is pinned there and it does not apply: there
-\ is no trailing return for the record to leave out, so no block has to be last
-\ and the trace decides the whole order from the entry. The entry is still laid
-\ first, for the reason it always is - it is where the caller arrives.
 : ORDER-NO-RET ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id k:n :}
    0 0 LAY
@@ -1701,28 +1023,8 @@ variable CH-AT
       f  i 1- AT-POS  FOLLOWER  i LAY
    loop ;
 
-\ Where each block's first instruction lands, measured in instructions from the
-\ start of the routine. It is computed before a single byte is written, because a
-\ forward branch has to know where it is going before it can be encoded.
-\
-\ THE WALK IS OVER POSITIONS AND THE TABLE IS KEYED BY ORDINALS, which is the
-\ whole of what the chosen order changes here. Blocks are counted in the order
-\ they will be written - that is what makes each one's start the sum of the
-\ instructions written before it - and each one's start is filed under its own
-\ name, because a branch names a block and not a position.
-\
-\ Each block is counted knowing its own ordinal, because that is what its
-\ terminator's fall-through question is asked against. LAY-AT is left holding the
-\ instruction count of everything up to and including this function, which is
-\ what WALK holds its cursor against when it has emitted the last block.
-\
-\ THE COUNT IS FROM THE START OF THE EMISSION AND NOT OF THE FUNCTION, which is
-\ what makes a module of several functions one stream of instructions. A
-\ displacement is DELTA's subtraction of two of these numbers, so both ends have
-\ to be measured from the same place; measuring each function from its own zero
-\ would make every branch in the second function point one function too early.
-\ The base is passed in rather than read off N-INS because the measuring walk
-\ runs before a byte is written, when N-INS is nothing for every function.
+\ Counted from the start of the EMISSION and not of the function, because a
+\ displacement subtracts two of these and both ends must share an origin.
 : LAYOUT ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id base:n :}
    base LAY-AT !
@@ -1732,15 +1034,11 @@ variable CH-AT
    loop ;
 
 \ ---- the branches ------------------------------------------------------------
-\ The displacement one branch carries, counted in instructions from the branch
-\ itself, which is what the architecture's PC-relative fields hold.
 : DELTA ( n -- n )
    START-AT N-INS @ - ;
 
-\ The reach check the branches dot asks for, made before the encoder is called.
-\ Both encoders mask their displacement field rather than bounding it - a branch
-\ out of reach would silently become a branch somewhere else - so the bound is
-\ made here, against the field width the dialect declares for that form.
+\ Both encoders MASK their displacement field rather than bounding it, so a
+\ branch out of reach would silently become a branch somewhere else.
 : B-WORD ( n -- n )
    {: d:n :}
    d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
@@ -1751,55 +1049,27 @@ variable CH-AT
    d A64IR:BZ-FITS? 0= if E-A64EMIT-REACH throw then
    rt d ENC-CBZ ;
 
-\ The conditional branch reaches as far as its own nineteen-bit displacement
-\ field, which is asked for by that form's own name: ENC-BCOND masks the field
-\ exactly as the other two encoders do, so a target out of reach would become a
-\ target somewhere else rather than a refusal.
 : BCOND-WORD ( n n -- n )
    {: d:n k:n :}
    d A64IR:BCOND-FITS? 0= if E-A64EMIT-REACH throw then
    d k ENC-BCOND ;
 
-\ Going to one block, handing it its arguments. The arguments are already in the
-\ registers the destination's block arguments were given - that is the register
-\ allocation's own decision and the validator has agreed with it - so the
-\ operands reach no encoder here and the whole instruction is the jump.
-\
-\ And when the block it goes to is the one laid out next, the jump is the fall
-\ into it and there is no instruction at all. FALL-THRU? is the layout's own
-\ word, asked here with the same two arguments, so the instruction left out is
-\ exactly the instruction the layout did not count.
+\ The arguments are already in the destination's registers by the allocation's
+\ own decision, so they reach no encoder and the whole instruction is the jump.
 : PUT-BR ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id home FALL-THRU? if exit then
    id  id 0 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
-\ The two-way branch: go to the first successor when the tested register is
-\ zero, and to the second when it is not. The conditional is always emitted; the
-\ unconditional below it is the one the fall-through rule can delete, and when it
-\ does the second successor is reached by running off the end of this block into
-\ the block laid out next, which is that same successor.
 : PUT-BRZ ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG  id 0 SUCC-BLOCK GOTO-OF DELTA  BZ-WORD  APPEND
    id home FALL-THRU? if exit then
    id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
-\ The fused compare-and-branch, which is three instructions: compare the two
-\ registers, go to the first successor when the condition the operation carries
-\ holds, and go to the second when it does not. The comparison writes only the
-\ condition flags and the branch beside it reads them there, so no register is
-\ written and no flag is materialised - which is the whole difference from the
-\ pair of operations this replaces.
-\
-\ THE UNCONDITIONAL HALF IS THE ONE THAT CAN GO, and this is the form it goes
-\ from most often: src/compiler/native/select.f wires the condition-true arm
-\ first, which leaves the second successor - the arm the condition did not choose
-\ - as the block laid out next. So the usual emission of this operation is two
-\ instructions, the compare and the conditional, and the not-taken path falls
-\ into its own successor. The conditional branch's displacement is measured after
-\ the compare has been appended, because a displacement is counted from the
-\ instruction that carries it.
+\ The comparison writes only the flags and the branch beside it reads them
+\ there, so no register is written. The conditional's displacement is measured
+\ after the compare is appended, because it is counted from its own instruction.
 : PUT-CMPBR ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
@@ -1807,11 +1077,6 @@ variable CH-AT
    id home FALL-THRU? if exit then
    id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
-\ The same fused branch against a number the operation carries. Only the first
-\ instruction differs - one register and the immediate instead of two registers -
-\ and the two branches after it are the register form's, unchanged, because what
-\ they read is the flags and not what wrote them. The fall-through rule is the
-\ same rule for the same reason.
 : PUT-CMPBRI ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG id OFF-IMM ENC-CMPI  APPEND
@@ -1819,22 +1084,8 @@ variable CH-AT
    id home FALL-THRU? if exit then
    id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
-\ The two fused FLOAT compare-and-branches, which are the same three instructions
-\ with an Fcmp in front instead of a Cmp - the two-register form for the three
-\ comparisons that take two doubles, and the compare-against-zero form for the
-\ two that take one. Everything after the first instruction is identical to the
-\ integer form's, deliberately: the conditional branch reads the flags the same
-\ way whichever instruction wrote them, and the trailing unconditional half goes
-\ under exactly the same fall-through rule.
-\
-\ WHAT THE Fcmp DOES THAT THE Cmp DOES NOT is raise the unordered condition when
-\ either operand is a NaN, and that is the whole of how a compiled float branch
-\ keeps the interpreted word's answer for a NaN. The conditions
-\ src/compiler/native/select.f names - MI, GT and EQ - are all false under it, so
-\ the conditional below is NOT taken and control reaches the second successor,
-\ which the selection wired to the arm the source's `if` takes when its flag is
-\ zero. No check is written here because there is nothing to check: the rule is
-\ the instruction's and the condition's.
+\ The Fcmp raises the unordered condition for a NaN and the conditions selection
+\ names are all false under it, so control reaches the SECOND successor.
 : PUT-FCMPBR ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-FCMP  APPEND
@@ -1849,10 +1100,8 @@ variable CH-AT
    id home FALL-THRU? if exit then
    id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
 
-\ One comparison, which is three instructions: compare the two registers, set one
-\ into the result on the condition, and negate it, because a Habu flag is all
-\ bits set rather than one. This is the sequence the engine's own emitter uses,
-\ so a compiled comparison answers what an interpreted one answers.
+\ Compare, set one on the condition, negate - because a Habu flag is all bits
+\ set. It is the sequence the engine's own emitter uses.
 : PUT-FLAG ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
@@ -1860,9 +1109,6 @@ variable CH-AT
    id  rd id COND-OF ENC-CSET  APPEND
    id  rd rd ENC-NEG  APPEND ;
 
-\ The same comparison against a number the operation carries. Only the first
-\ instruction differs; the Cset and the negation are the register form's, because
-\ what they read is the flags and a Habu flag is the same number either way.
 : PUT-FLAGI ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
@@ -1870,12 +1116,6 @@ variable CH-AT
    id  rd id COND-OF ENC-CSET  APPEND
    id  rd rd ENC-NEG  APPEND ;
 
-\ The two float comparisons that answer a number, which are the same three
-\ instructions with an Fcmp in front. The Cset and the negation are the general
-\ file's, because a Habu flag is a number and lives there whichever file the
-\ values compared came out of; this is the sequence the engine's own (FCMP) and
-\ (FCMP0) emit, so a compiled float comparison answers what an interpreted one
-\ answers - all bits set or none, and none for a NaN.
 : PUT-FFLAG ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
@@ -1890,17 +1130,8 @@ variable CH-AT
    id  rd id COND-OF ENC-CSET  APPEND
    id  rd rd ENC-NEG  APPEND ;
 
-\ The two conditional selects, each two instructions: write the flags, then move
-\ one of two registers into the result on the condition. Nothing branches, so
-\ neither of them asks the fall-through rule anything and neither carries a
-\ successor - they are ordinary value operations that happen to read the flags
-\ the instruction in front of them wrote.
-\
-\ THE FIRST SOURCE IS THE CONDITION-HOLDS ANSWER in both, which is the same
-\ order a64.cmpbr puts its successors in and the order the dialect's own note
-\ states. A Csel writes its first source register when the condition holds and
-\ its second when it does not, so the operand order and the instruction agree
-\ without anything here turning them round.
+\ The FIRST source is the condition-holds answer, which is the order a Csel
+\ reads and the order a64.cmpbr puts its successors in.
 : PUT-SELZ ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 0 OPERAND-REG 0 ENC-CMPI  APPEND
@@ -1913,15 +1144,6 @@ variable CH-AT
    id  id 0 RESULT-REG  id 2 OPERAND-REG  id 3 OPERAND-REG
        id COND-OF  ENC-CSEL  APPEND ;
 
-\ The same two, choosing between DOUBLES. Each is its partner above with the
-\ second instruction moved to the D file: the Cmp is unchanged, because what
-\ decides the arm is a cell either way, and the Csel becomes an Fcsel because
-\ the registers it moves are D registers. The operand positions are the same
-\ four, so the condition-holds answer is still the first source and the polarity
-\ argument above covers both pairs at once. The three register numbers a Csel
-\ names and the three an Fcsel names come out of the same allocation through the
-\ same door - REG-OF - and which FILE each one is a number in is a property of
-\ the value the operand names, which is what the schema's operand types settled.
 : PUT-SELZD ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 0 OPERAND-REG 0 ENC-CMPI  APPEND
@@ -1934,26 +1156,8 @@ variable CH-AT
    id  id 0 RESULT-REG  id 2 OPERAND-REG  id 3 OPERAND-REG
        id COND-OF  ENC-FCSEL  APPEND ;
 
-\ The four whose flags an FLOAT compare wrote. Each is one of the four above
-\ with its first instruction changed from a Cmp over cells to the Fcmp over
-\ doubles the source really wrote, and nothing after that first instruction
-\ differs: a Csel and an Fcsel read the flags the same way whichever instruction
-\ left them, and the condition-holds answer is still the first source.
-\
-\ WHAT THE Fcmp DOES THAT THE Cmp DOES NOT is raise the unordered condition when
-\ either operand is a NaN, and that is the whole of how a fused float select
-\ keeps the interpreted word's answer for one. The conditions
-\ src/compiler/native/select.f names for a float comparison - MI, GT and EQ - are
-\ all false under it, so the select writes its SECOND source, which the selection
-\ wired to the arm the source's `if` takes when its flag is zero. No check is
-\ written here because there is nothing to check: the rule is the instruction's
-\ and the condition's, exactly as it is in PUT-FCMPBR above.
-\
-\ THE TWO ZERO FORMS READ THEIR CONDITION OFF THE OPERATION and not off `ne` the
-\ way PUT-SELZ and PUT-SELZD do. Those two test a Habu flag a program computed,
-\ so the only question is whether it is zero; these two compare a double against
-\ the immediate zero, so which relation is being asked - `f0<` or `f0=` - is the
-\ condition the operation carries.
+\ The two zero forms read their condition off the OPERATION, because which
+\ relation is asked - `f0<` or `f0=` - is not always `ne`.
 : PUT-FCMPSEL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-FCMP  APPEND
@@ -1978,15 +1182,8 @@ variable CH-AT
    id  id 0 RESULT-REG  id 1 OPERAND-REG  id 2 OPERAND-REG
        id COND-OF  ENC-FCSEL  APPEND ;
 
-\ One division, which is three instructions: branch past the trap when the
-\ divisor is not zero, the trap, and the divide. It is the sequence the engine's
-\ own `/` compiles to - src/habu/habu1.f BDIV0? followed by BDIV - so a compiled
-\ division answers what an interpreted one answers on every divisor, and ends
-\ the process on the one divisor a bare Sdiv would answer zero for.
-\
-\ The branch distance is a property of this form and not of the block layout:
-\ it skips exactly the one instruction between it and the divide, so it is
-\ written here as the two words it is rather than measured off the label table.
+\ It skips exactly the one instruction between it and the divide, so it is
+\ written here rather than measured off the label table.
 2 constant DIV-SKIP                  \ words from the guard to the divide
 
 : PUT-SDIV ( IR-ID:ir-op-id -- )
@@ -1996,18 +1193,7 @@ variable CH-AT
    id  id TRIPLE ENC-SDIV  APPEND ;
 
 \ ---- moving the data-stack pointer -------------------------------------------
-\ One adjustment, and the whole of what an adjustment is: a distance, in
-\ whichever direction its sign names, and NO INSTRUCTION AT ALL when it is zero.
-\ Zero is the ordinary case rather than the exception - the placement in
-\ src/compiler/native/select.f stands the routine's pointer where the most of
-\ these come out zero - and an `add x19, x19, #0` would be an instruction that
-\ moves nothing, written because a field happened to be there.
-\
-\ THE ELISION IS THE LAYOUT'S RULE TOO. DZERO-MOVES above answers, from the
-\ operation, how many of its adjustments are nothing, and BOTH the layout and
-\ this word are that one answer - the same discipline SELF-MOV? and FALL-THRU?
-\ keep, and for the same reason: an instruction the layout counted and the
-\ emitter did not write moves every branch after it.
+\ NO INSTRUCTION AT ALL when the distance is zero, which is the ordinary case.
 : PUT-DMOVE ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id d:n :}
    d 0= if exit then
@@ -2017,9 +1203,6 @@ variable CH-AT
    then
    id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR d negate  ENC-SUBI  APPEND ;
 
-\ The routine's own two, which differ only in which way the field is read: the
-\ entry field says how far DOWN from where the caller left the pointer the body
-\ stands, and the exit field how far UP from there the results are published.
 : PUT-DTAKE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id DBYTES-SIZE negate  PUT-DMOVE ;
@@ -2028,20 +1211,7 @@ variable CH-AT
    {: id:IR-ID:ir-op-id :}
    id  id DBYTES-SIZE  PUT-DMOVE ;
 
-\ One call, which is the branch and up to two adjustments: the data-stack
-\ pointer to the base the callee is entered at, the branch that leaves the return
-\ address in the link register, and the pointer back to where the body stands.
-\ The two adjustments are the operation's own fields and either of them can be a
-\ distance of nothing, which is no instruction; only the branch is this pass's
-\ arithmetic, and only the branch is always written.
-\
-\ THE TARGET IS BLOCK ZERO OF THE ROUTINE BEING EMITTED, which is where the
-\ caller entered and therefore where the callee has to enter: the prologue that
-\ takes the frame, saves the return address and reads the arguments is the first
-\ thing in it. Its displacement is measured exactly as a branch's is - the block's
-\ start less this instruction's own position - and it is held against the field
-\ the dialect declares for the Bl form before the encoder is called, because that
-\ encoder masks its displacement field rather than bounding it.
+\ Block zero is where the caller entered and therefore where the callee enters.
 0 constant CALL-BLOCK                \ the routine's own entry
 
 : BL-WORD ( n -- n )
@@ -2049,13 +1219,8 @@ variable CH-AT
    d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
    d ENC-BL ;
 
-\ What a branch out of this routine adds to what the routine destroys. A
-\ self-call adds nothing at all, and that is not an omission: the callee IS this
-\ routine, so what it destroys is what is being counted here and the union with
-\ itself changes nothing. A call to another word adds that word's own recorded
-\ answer, or - for a word this process has no row for, which is every word the
-\ engine's own emitter compiled - the whole register file, because nothing is
-\ known about it.
+\ A self-call adds nothing: the callee IS this routine. A word with no recorded
+\ row adds the whole register file, because nothing is known about it.
 : NOTE-CALLEE ( n -- )
    {: e:n :}
    e A64EFF:GPR-ALL NCLOB:GPR-CLOB A64EFF:GPRS-N  EM-KGPR @ or  EM-KGPR !
@@ -2068,29 +1233,8 @@ variable CH-AT
    id  id DBACK-SIZE negate  PUT-DMOVE ;
 
 \ ---- calling another word ----------------------------------------------------
-\ The same one to three instructions, and only the branch is computed
-\ differently.
-\ A self-call's target is block zero of this routine, so its displacement is the
-\ label table's answer; this one's target is an address, so the displacement is
-\ that address less the address the branch instruction itself will occupy - which
-\ is the placement this pass was told plus the instructions written before it.
-\
-\ WHY THIS NEEDS NO RELOCATION TABLE AND NOTHING TO PATCH. A relocation exists to
-\ carry a displacement across the moment a value it depends on becomes known. Here
-\ nothing becomes known later: the callee is a word already compiled and
-\ published, so its address is fixed before this routine is even selected, and
-\ where this routine lands is decided by the publication seam BEFORE the emission
-\ is made and handed here. So the displacement is exact when the instruction is
-\ encoded, exactly as a block branch's is, and the emitter stays the only writer
-\ of a byte of this routine. The alternative - emit a branch to nowhere and let
-\ the seam patch it through the source map - would make the seam an instruction
-\ encoder, and then two files would decide what a Bl is.
-\
-\ AND BOTH ENDS ARE INSTRUCTION ALIGNED BY CONSTRUCTION, so the subtraction is a
-\ whole number of instructions: src/compiler/native/a64ir.f refuses an entry that
-\ is not, and PLACE-AT below refuses a placement that is not. The reach is asked
-\ against the Bl field the same way every other branch's is, because that encoder
-\ masks its displacement rather than bounding it.
+\ Both ends are instruction aligned by construction, so the subtraction is a
+\ whole number of instructions.
 : PLACEMENT-CK ( -- n )
    EM-PLACED @ 0= if E-A64EMIT-PLACE throw then
    EM-PLACE @ ;
@@ -2107,33 +1251,15 @@ variable CH-AT
    id  id DBACK-SIZE negate  PUT-DMOVE ;
 
 \ ---- the address of another function of this emission ------------------------
-\ ONE INSTRUCTION AND NO ADDRESS AT ALL. An Adr adds a constant to its own
-\ address, so what has to be computed is a DISTANCE inside the emission, and
-\ nothing about where the emission will finally be written enters into it. That
-\ is why this needs no relocation and no placement: PUT-WORD-CALL above measures
-\ against the address this routine was told it would occupy because its target is
-\ outside the emission; this one's target is inside it, and the distance between
-\ two instructions of one emission is the same wherever the emission is put.
-\
-\ THE TARGET'S START IS KNOWN BECAUSE THE EMISSION WAS MEASURED FIRST. MEASURE
-\ laid every function out and filed its first instruction in F-START before a
-\ byte was written, exactly so that this instruction - which stands in an EARLIER
-\ function than the one it names - can be encoded in one pass.
-\
-\ AND THE ORDINAL IS HELD AGAINST WHAT THE EMISSION HOLDS. The dialect refuses a
-\ negative ordinal, which is all it can say; whether the number names a function
-\ of THIS emission is what N-FUNS knows, and a value naming a function that does
-\ not exist would otherwise be encoded as a distance to whatever the table held.
+\ Known because MEASURE laid every function out and filed its start before a
+\ byte was written; the ordinal is held against what the emission really holds.
 : FUN-START ( n -- n )
    {: k:n :}
    k 0 < k N-FUNS @ >= or if E-A64EMIT-SHAPE throw then
    k cells F-START + @ ;
 
-\ The distance in BYTES, which is the unit the field counts - the two branch
-\ forms above count instructions because their fields do. Both ends are whole
-\ instructions of the same emission, so the difference is a multiple of four and
-\ the field's low two bits come out clear, which is what the encoder's own
-\ division of the byte delta relies on.
+\ In BYTES, which is the unit this field counts - the branch fields count
+\ instructions.
 : ADR-DELTA ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id FUN-OF FUN-START  N-INS @ -  INSN-BYTES * ;
@@ -2148,73 +1274,33 @@ variable CH-AT
    id  id 0 RESULT-REG  id ADR-DELTA  ADR-WORD  APPEND ;
 
 \ ---- leaving through another word --------------------------------------------
-\ The tail branch, which is ONE instruction and never more. It is the same
-\ displacement the word call above computes - the callee's entry less the address
-\ this instruction will occupy - encoded into a B instead of a Bl, so the callee's
-\ own return goes to the address x30 already holds, which is OUR caller's.
-\
-\ THERE IS NO ADJUSTMENT AND NO SECOND INSTRUCTION, and that is a property of the
-\ form rather than a case that happens to be empty: the selector only builds this
-\ operation where the data-stack pointer already stands at the callee's entry
-\ base, and the schema carries no adjustment field for it to have written one in.
-\
-\ IT NOTES ITS CALLEE EXACTLY AS A CALL DOES. What this routine destroys covers
-\ what the routine it leaves through destroys - the branch is the last thing that
-\ happens here, but a caller of THIS routine gets the callee's registers written
-\ under this routine's name, so the union is the same union.
+\ ONE instruction and never more: the selector only builds it where the pointer
+\ already stands at the callee's entry base.
 : PUT-TAILCALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id ENTRY-ADDR NOTE-CALLEE
    id  id WORD-DELTA B-WORD  APPEND ;
 
 \ ---- leaving through the routine that ends the process -----------------------
-\ The adjustment that moves the pointer over the ordinal, and the branch. The
-\ same displacement the two forms above compute, out of the address under this
-\ form's own key.
-\
-\ IT DOES NOT NOTE ITS CALLEE, AND THAT IS THE ONE PLACE THIS DIFFERS FROM THE
-\ TAIL BRANCH. What a routine destroys is what a CALLER of it has to assume, and
-\ a caller only ever observes registers on a path that comes back. Control that
-\ reaches this instruction never returns to this routine, so it never returns to
-\ this routine's caller either: nothing the trap routine writes can be read by
-\ anybody who could have been holding a value. Adding its registers to this
-\ routine's destroyed set would be claiming a cost on every path for something
-\ that only happens on a path with no continuation, and it would make every
-\ caller of a word containing one MATCH save its whole register file.
+\ It does NOT note its callee: control that reaches here never returns to this
+\ routine, so nothing the trap routine writes can be read by anybody.
 : PUT-TRAP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id DBYTES-SIZE  PUT-DMOVE
    id  id TRAP-ADDR  PLACEMENT-CK -  INSN-BYTES /  N-INS @ -  B-WORD  APPEND ;
 
-\ One copy, which is one instruction unless it is a copy from a register into
-\ itself, and then it is none. SELF-MOV? is the layout's own word, asked here
-\ with the same argument, so the instruction left out is exactly the instruction
-\ the layout did not count. An elided copy gets no source-map row for the same
-\ reason an elided branch gets none: a row's index is which instruction WORD@
-\ answers at it.
+\ An elided copy gets no source-map row, for the reason an elided branch gets none.
 : PUT-MOV ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id SELF-MOV? if exit then
    id  id WORD-MOV  APPEND ;
 
-\ The same, in the other register file. It asks the same word for the same
-\ reason, so a floating copy the allocator coalesced away costs no instruction
-\ either - and the layout, which subtracts SELF-MOV? from every operation's
-\ count, has already left the same one out.
 : PUT-FMOVDD ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id SELF-MOV? if exit then
    id  id WORD-FMOVDD  APPEND ;
 
 \ ---- one operation, as the instructions it is --------------------------------
-\ The whole encoding table. Every arm names the instructions one machine
-\ operation becomes; nothing else in this file decides which bytes an operation
-\ is.
-\
-\ The block ordinal comes down with the operation because three of the arms need
-\ it: a terminator's trailing branch is emitted or not according to which block
-\ was laid out after the one it terminates, and nothing about the operation
-\ itself says which block that is.
 : PUT-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT SLOT-OPCODE
@@ -2298,27 +1384,17 @@ variable CH-AT
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
-\ One or more functions, each of one or more blocks, each block ending in exactly
-\ one terminator. The first function is the routine the definition names and the
-\ rest are the bodies its quotations make, in the order the elaborator opened
-\ them; nothing here depends on which is which, because a function is emitted the
-\ same way whatever a caller reaches it by.
 : FUN-AT ( n -- IR-ID:ir-fun-id )
    {: k:n :}
    k 0 < k N-FUNS @ >= or if E-A64EMIT-SHAPE throw then
    MKEY k IR-ID:PACK-FUN ;
 
-\ How many functions this module holds, held against the ceiling every pass of
-\ the chain shares. A module with none is not a routine at all.
 : FUNS-CK ( -- )
    FUN-COUNT {: n:n :}
    n 1 < if E-A64EMIT-SHAPE throw then
    n FMAX > if E-A64EMIT-CAP throw then
    n N-FUNS ! ;
 
-\ The block's operations run in one order and end once. Re-derived rather than
-\ taken from the verifier, because this pass is about to lay them out in exactly
-\ that order.
 : TERMINATOR? ( IR-ID:ir-block-id n -- bool )
    OP-AT SLOT-AT {: k:n :}
    k O-RET = k O-BR = or k O-BRZ = or k O-CMPBR = or k O-CMPBRI = or
@@ -2340,25 +1416,8 @@ variable CH-AT
    loop ;
 
 \ ---- which instructions are the routine's crossings, and which are its work ---
-\ A Habu routine is entered with its arguments in the caller's data-stack cells
-\ and leaves its results in them, so five of the dialect's forms are its
-\ CROSSINGS rather than anything it computes: the two pointer moves the
-\ convention needs, the loads that read the arguments out of those cells, the
-\ stores that write the results back, and the return. Everything else is the
-\ routine's work - the instructions a caller that copied this body would have to
-\ write for itself.
-\
-\ THE SAME TWO FORMS APPEAR AT A CALL SITE, WHICH IS WHY THE CALLS ARE COUNTED
-\ TOO. A site publishing its arguments and reading its results back uses the very
-\ a64.dstore and a64.dload the entry and the exit use, so in a routine that CALLS
-\ they are not all interface and the difference below would not be that routine's
-\ body. BODY-INSNS refuses such an emission by name rather than answering a
-\ number that means something else.
-\ The D file's two data-stack accesses are the same crossing as the general
-\ pair and are counted with them: an argument that arrives as a double is read
-\ out of the caller's cell by a64.fdload exactly as a cell argument is read by
-\ a64.dload, and which register file the eight bytes land in says nothing about
-\ whether the instruction is interface or work.
+\ Five forms are a routine's CROSSINGS rather than its work. The same two appear
+\ at a CALL SITE, which is why BODY-INSNS refuses a routine that calls.
 : IFACE-FORM? ( n -- bool )
    {: k:n :}
    k O-DTAKE = k O-DLOAD = or k O-DSTORE = or k O-DPUBLISH = or k O-RET = or
@@ -2368,15 +1427,8 @@ variable CH-AT
    {: k:n :}
    k O-CALL = k O-WORDCALL = or k O-TAILCALL = or ;
 
-\ One operation written, and what it added to the two counts above. The cursor is
-\ read on both sides of the writer, so an elided adjustment costs the interface
-\ nothing here exactly as it costs the layout nothing there.
-\ Which forms leave the routine by BRANCHING to another one. Both of them end
-\ control here: the tail branch reaches a callee whose results become this
-\ routine's, and the trap reaches the routine that ends the process. What the two
-\ have in common is the one thing the readers of the count below ask about - a
-\ caller may not COPY such a routine's body, because a copied `b` would branch
-\ out of whatever caller it was copied into.
+\ Both end control here, and a caller may not COPY such a routine: a copied `b`
+\ would branch out of whatever caller it was copied into.
 : LEAVE-FORM? ( n -- bool )
    {: k:n :}
    k O-TAILCALL = k O-TRAP = or ;
@@ -2398,21 +1450,11 @@ variable CH-AT
       bk i OP-AT home PUT-COUNTED
    loop ;
 
-\ The cursor against the layout, at the start of every block and once more when
-\ the last one has been written. Where a block's instructions begin is what every
-\ displacement in the routine was computed from, so the writer arriving anywhere
-\ else means the count the layout made and the instructions this pass emitted are
-\ two different routines - which is the one failure the shared fall-through rule
-\ is meant to make unreachable, and therefore the one worth stating out loud
-\ rather than trusting. It costs one comparison per block and it is fail-closed:
-\ nothing is sealed, so no caller can read the bytes of a routine whose layout
-\ and emission disagree.
+\ Where a block's instructions begin is what every displacement was computed
+\ from, so the writer arriving elsewhere means two different routines.
 : CURSOR-CK ( n -- )
    START-AT N-INS @ <> if E-A64EMIT-LAYOUT throw then ;
 
-\ The blocks are written in the chosen order, which is the order the layout
-\ counted them in - and the cursor check below is what says so at every boundary
-\ rather than leaving it to the two loops looking alike.
 : WALK ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    N-LAID @ 0 ?do
@@ -2422,17 +1464,13 @@ variable CH-AT
    N-INS @ LAY-AT @ <> if E-A64EMIT-LAYOUT throw then ;
 
 \ ---- what one emission run is told -------------------------------------------
-\ The binding is taken whatever the outcome, so neither an emission without a
-\ binding nor a refused emission can leave one behind for the next caller.
 : BND-TAKE ( -- )
    BND-MODE @ {: have:n :}
    BOUND-NO BND-MODE !
    have BOUND-YES <> if E-A64EMIT-BIND throw then ;
 
-\ The declared placement becomes this emission's, and the declaration is spent
-\ whatever the run's outcome - so a refused emission leaves no placement for the
-\ next one to measure a branch against, and a placement declared and never used
-\ cannot survive into a second routine.
+\ Spent whatever the outcome, so a refused emission leaves no placement for the
+\ next one to measure a branch against.
 : PLACE-TAKE ( -- )
    PLACE-MODE @ PLACE-YES = if 1 else 0 then EM-PLACED !
    PLACE-AT-N @ EM-PLACE !
@@ -2447,9 +1485,6 @@ variable CH-AT
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
    c b o A64IR:OPCODE  o SLOT-OF BND-OP ! ;
 
-\ A module whose schema table was created for another dialect, or for another
-\ version of this one, holds operations whose encodings this pass does not know
-\ even if some of them happen to be spelled the same.
 : DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b  c b IR-BUILD:DIALECT@  A64IR:NAME IR-BUILD:SYMBOL-IS?
@@ -2457,21 +1492,14 @@ variable CH-AT
    c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64EMIT-MODULE throw then
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64EMIT-MODULE throw then ;
 
-\ These instructions belong to one architecture. A context bound to another
-\ machine describes a processor that executes none of them.
 : TARGET-CK ( IR-CTX:ctx -- )
    IR-CTX:BINDING@ CBIND:VALIDATE CBIND:TARGET@ CTARGET:ARCH@
    CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
    0= if E-A64EMIT-TARGET throw then ;
 
-\ The register assignment this run will read. The probe is what makes staleness
-\ a refusal before a byte is written rather than halfway through: an acceptance a
-\ later allocation replaced stops answering, under A64RAV's own name. It asks
-\ whether the first value is one that lives in a register rather than which
-\ register it is in, because the first value of a module that spills is the
-\ memory token the frame forms thread and that has no register to answer. What is
-\ left for this pass to judge is whether the accepted assignment is about the
-\ module it is being asked to emit.
+\ The probe makes staleness a refusal before a byte is written. It asks whether
+\ the first value lives in a register at all, because in a module that spills
+\ that value is the memory token, which has none.
 : ALLOC-CK ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
    A64RAV:ACCEPTED? 0= if E-A64EMIT-ALLOC throw then
@@ -2482,15 +1510,9 @@ variable CH-AT
 : SEAL-CK ( -- )
    ST @ ST-SEALED <> if E-A64EMIT-STATE throw then ;
 
-\ What this routine destroys, decided once, at the seal, from two answers that
-\ were reached different ways. The allocation's answer is every register it
-\ assigned to a value (A64RAV:GPR-WRITTEN); this run's answer is every register
-\ it put into a destination field. The first is what may be published, because a
-\ register the emission does not happen to write today is still one an
-\ instruction could name tomorrow without the allocation changing; the second is
-\ what proves the first is not too narrow. An emission that wrote a register no
-\ value claimed means the two disagree about what the routine is, and neither can
-\ be published: E-A64EMIT-CLOBBER.
+\ The allocation's answer is what may be published; this run's answer is what
+\ proves it is not too narrow. An emission that wrote a register no value
+\ claimed means the two disagree about what the routine is.
 : CLOBBER-SEAL ( -- )
    A64RAV:GPR-WRITTEN A64EFF:GPRS-N {: g:n :}
    A64RAV:FPR-WRITTEN A64EFF:FPRS-N {: f:n :}
@@ -2505,12 +1527,8 @@ variable CH-AT
 public
 
 \ ---- binding the dialect -----------------------------------------------------
-\ Learn the operation and attribute-key identities of the module that is about to
-\ be emitted, while it is still being built. A module's symbols are its own
-\ ordinals, so this is the only moment the dialect can be asked which symbol each
-\ of its opcodes and keys is; the answers stay valid after the module freezes
-\ because freezing keeps the module's identity. The binding is spent by the next
-\ EMIT.
+\ The only moment a module can be asked its opcode and key identities, because
+\ its symbols are its own ordinals.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    BND-MODE @ BOUND-YES = if E-A64EMIT-BIND throw then
@@ -2608,31 +1626,16 @@ public
    c b A64IR:KEY-FUN    0 BND-FUN !
    BOUND-YES BND-MODE ! ;
 
-\ Whether a binding is live, for a caller cleaning up after a refused run. See
-\ src/compiler/native/select.f BOUND? for why each pass answers for itself.
 : BOUND? ( -- bool )
    BND-MODE @ BOUND-YES = ;
 
-\ Give up a binding without emitting against it. A placement declared beside it
-\ goes with it, for the same reason: it described a routine that was never
-\ emitted.
 : RELEASE ( -- )
    PLACE-TAKE
    BND-TAKE ;
 
 \ ---- declaring where this routine will be written ----------------------------
-\ The address the next emission's own first instruction will occupy. Only a
-\ module that calls another word needs it, because only such a call is measured
-\ from anywhere but the block layout; a caller that declares one for a routine
-\ that turns out not to call is not refused, and the seam checks it anyway, which
-\ is one more place a placement that drifted is caught rather than one fewer.
-\
-\ IT IS NOT THIS PASS'S NUMBER AND THIS PASS DOES NOT INVENT ONE. There is no
-\ default and no fallback: an emission that needs a placement and was given none
-\ is refused by name. What is checked here is only that the number could be the
-\ address of an instruction at all, which is the same question A64IR asks of a
-\ callee's entry - both ends of the subtraction have to be instruction addresses
-\ for the displacement to be a whole number of instructions.
+\ There is no default: an emission that needs a placement and was given none is
+\ refused by name. What is checked is that it could be an instruction address.
 : PLACE-AT ( n -- )
    {: at:n :}
    PLACE-MODE @ PLACE-YES = if E-A64EMIT-PLACE throw then
@@ -2641,11 +1644,6 @@ public
    at PLACE-AT-N !
    PLACE-YES PLACE-MODE ! ;
 
-\ Whether the sealed emission was made against a placement, and which one. The
-\ publication seam reads both: an emission that was measured from an address is
-\ only correct where that address is, so the seam holds it against the slot it is
-\ about to claim and refuses the pair rather than writing the routine somewhere
-\ its branches do not point.
 : PLACED? ( -- bool )
    SEAL-CK EM-PLACED @ 0<> ;
 
@@ -2653,30 +1651,9 @@ public
    SEAL-CK EM-PLACE @ ;
 
 \ ---- the pass ----------------------------------------------------------------
-\ Emit the whole of one frozen machine module, under the register assignment the
-\ validator has accepted for it, into this package's buffers. Nothing is readable
-\ until this returns; a run that refuses leaves no sealed emission.
-\
-\ THE SHAPE AND THE ORDER ARE DECIDED FIRST AND THE LAYOUT IS NOT. Whether these
-\ operations are something this leaf can emit at all is a question about the
-\ module alone, so SHAPE-CK is asked before any assignment is read - a module of
-\ a shape this pass cannot serve is refused as that, and not as a complaint
-\ about registers. Which order the blocks are written in is a question about the
-\ module alone too: it reads terminators and successors and nothing else, so it
-\ is asked next, and a routine too big to lay out is refused there for the same
-\ reason. But how many instructions the module IS depends on the assignment,
-\ because a copy whose two ends are one register is no instruction (SELF-MOV?
-\ above), so the layout cannot be computed until the assignment has been
-\ accepted. ALLOC-CK therefore comes after the order and before the layout: the
-\ acceptance is probed, and only then are the blocks measured and written.
-\
-\ AND THE FUNCTIONS ARE MEASURED BEFORE ANY OF THEM IS WRITTEN. A a64.codeaddr
-\ names a function's entry, and the function it names is emitted after the
-\ instruction that names it, so where every function starts has to be known
-\ before the first byte. MEASURE lays each one out in turn and files its start;
-\ WRITE-ALL lays each one out again, from the start MEASURE filed, and writes it.
-\ The second layout is not a repeat of work but the restoration of the block
-\ tables, which hold one function at a time and were left holding the last.
+\ Shape first, then the ORDER - both questions about the module alone - and only
+\ then the acceptance, because a copy's instruction count is a fact about the
+\ assignment. The functions are measured before any of them is written.
 : SHAPES-CK ( -- )
    N-FUNS @ 0 ?do i FUN-AT SHAPE-CK loop ;
 
@@ -2701,40 +1678,13 @@ public
    loop ;
 
 \ ---- where this emission's address chains start ------------------------------
-\ WHAT A SITE IS, AND WHY IT IS A RUN AND NOT A FLAG ON ONE INSTRUCTION. The
-\ relocation pass rewrites an address by writing four sixteen-bit immediates over
-\ the four move-wide words that spell it out, so what it has to be given is the
-\ index of a word that REALLY BEGINS four such words. Marking only the first lane
-\ would make the other three an assumption: the pass would trust that whatever
-\ follows is the rest of the chain, and a fold, a reorder or a dropped lane would
-\ leave it rewriting instructions that are not the chain. So every lane carries
-\ the kind, and this scan admits a site only where it finds a run of EXACTLY four
-\ consecutive lanes, all of the same kind, all writing the SAME register.
-\
-\ EVERY OTHER RUN LENGTH IS A REFUSAL RATHER THAN A SKIP. Three lanes, five
-\ lanes, or four lanes naming two registers are all shapes no producer in this
-\ tree builds - MATERIALISE-ADDR emits four into one, always - so meeting one
-\ means a pass between selection and here changed a chain, and the emission is
-\ refused instead of published with a site that describes something else. That is
-\ the same standard the engine's own loader holds a recorded site to
-\ (src/habu/habu2.f EMIT-ADDRS, which exits ADDRMAP-RC on a site that is not a
-\ whole chain in one register); making the producer refuse first means the loader
-\ never has to.
-\
-\ AND THE SAME-REGISTER CLAUSE IS THE ONE STAGE 1 EARNED. The loader takes the
-\ register off the site's own first word and requires the other three to name it;
-\ four words naming four different registers spell out no address at all. This
-\ end of the pipeline refuses to BUILD that, so the two halves agree by
-\ construction rather than by coincidence.
-\ One chain is four instructions, so an emission cannot hold more chains than a
-\ quarter of its instruction ceiling - which makes the bound derived rather than
-\ chosen, and makes the refusal above a backstop the emitter cannot reach through
-\ any program rather than a limit on how many addresses a routine may name.
+\ One chain is four instructions, so the bound is derived rather than chosen.
+\ A site is admitted only for a run of EXACTLY four consecutive lanes of one
+\ kind writing the SAME register; every other run length is a refusal.
 INSN-CAP A64IR:HALVES / constant SITE-CEIL
 create SITES SITE-CEIL cells allot
 variable N-SITES
 
-\ How many lanes of the same kind and register run from k, counting k itself.
 : RUN-AT ( n -- n )
    {: k:n :}
    k cells M-ADDR + @ {: kind:n :}
@@ -2798,52 +1748,29 @@ variable SCAN-K
 : SEALED? ( -- bool )
    ST @ ST-SEALED = ;
 
-\ What the routine this emission is destroys, one reader per register file. It
-\ reads off the SEALED run for the same reason every byte the publication seam
-\ writes does: an emission that refused leaves no answer here, and an answer here
-\ was reached under the allocation this emission was made against rather than
-\ under whichever one is live when the question is asked.
+\ Read off the SEALED run, so an answer was reached under the allocation this
+\ emission was made against.
 : GPR-CLOBBER ( -- A64EFF:gprs )
    SEAL-CK EM-CGPR @ A64EFF:GPR-SET ;
 
 : FPR-CLOBBER ( -- A64EFF:fprs )
    SEAL-CK EM-CFPR @ A64EFF:FPR-SET ;
 
-\ Does control leave this emission by branching to another routine ANYWHERE in
-\ it? The body recorder needs that answer and cannot read it off the bytes: a
-\ caller that copied such a body would copy a `b` measured from where these bytes
-\ were going to be, and it would branch out of the caller it was copied into.
-\
-\ IT IS A QUESTION ABOUT THE WHOLE EMISSION AND NOT ABOUT ITS LAST INSTRUCTION,
-\ which is what stopped being one thing when the trap arrived. A tail branch is
-\ the only way a routine could leave by branching while there was only one block
-\ control left through, so "leaves by branching" and "does not end in a return"
-\ were one fact. A routine that returns on one path and traps on another does
-\ both: it may not be copied, AND its emission ends in the return the recorded
-\ length has to leave out. The two readers ask their own question now.
+\ A routine that returns on one path and traps on another does both: it may not
+\ be copied, AND its emission ends in the return the recorded length leaves out.
 : LEAVES-BY-BRANCH? ( -- bool )
    SEAL-CK EM-TAIL @ 0<> ;
 
-\ And does it END in a return? The publication seam records a word's length as
-\ the span its callers may copy, which the engine defines as everything before
-\ the trailing return (src/habu/habu2.f EM-COMPILE-FLUSH-PEND), so the seam
-\ subtracts one instruction - and only where there is one to subtract. It is the
-\ last OPERATION that is asked about rather than the last instruction word,
-\ because the operation is what this pass knows: a return is exactly one
-\ instruction, so an emission whose last operation is one ends in it.
+\ The last OPERATION is asked about rather than the last instruction word,
+\ because a return is exactly one instruction.
 : TRAILING-RETURN? ( -- bool )
    SEAL-CK EM-LAST @ O-RET = ;
 
-\ How many instructions were emitted, and how many bytes they occupy.
 : INSNS ( -- n )
    SEAL-CK N-INS @ ;
 
-\ How many address chains this emission carries, and where each one starts -
-\ as an INSTRUCTION INDEX, which is the coordinate the publication seam turns
-\ into an address by the same arithmetic it uses for a call site. The kind is
-\ answered separately, because the seam records the two in different places: the
-\ start goes in the region's address map and the kind in the capture window's
-\ own list.
+\ An INSTRUCTION INDEX, which is the coordinate the seam turns into an address
+\ by the same arithmetic it uses for a call site.
 : ADDR-SITES ( -- n )
    SEAL-CK N-SITES @ ;
 
@@ -2859,72 +1786,31 @@ variable SCAN-K
    i 0 < i N-SITES @ >= or if E-A64EMIT-BOUND throw then
    i cells SITES + @ cells M-ADDR + @ ;
 
-\ And how many of them are the routine's BODY: the emission less its crossings -
-\ the two data-stack pointer moves, the loads that read its arguments out of the
-\ caller's cells, the stores that write its results back, and the return.
-\
-\ WHAT IT IS FOR, AND WHY IT IS MEASURED HERE RATHER THAN DERIVED FROM AN ARITY.
-\ A caller that copies this routine's body into itself writes exactly these
-\ instructions and none of the crossings - src/compiler/native/inline.f carries
-\ the argument - so this is what such a copy COSTS, and the size rule that
-\ decides whether to make one is asked about this number. It used to be derived
-\ instead: the whole emission less an interface computed from the declared arity.
-\ That derivation stopped being true when the crossings stopped being a fixed
-\ count - the residency pass emits no store for a cell that already holds the
-\ value and no load for a value nothing reads out of one, and the placement emits
-\ a pointer move only where the pointer really moves - so an arity-derived
-\ interface OVERSTATES what most routines pay and therefore UNDERSTATES their
-\ bodies, which is the unsound direction for a rule that admits small bodies.
-\ Counting them while they are written cannot be wrong about them.
-\
-\ AND A ROUTINE THAT CALLS HAS NO ANSWER HERE. Its call sites publish and take
-\ back through the same two forms its own crossings use, so the difference would
-\ not be its body; and a routine that calls is one no caller may copy anyway, for
-\ the reason inline.f gives. It is refused by name rather than answered.
+\ Measured while the crossings are written rather than derived from an arity: an
+\ arity-derived interface OVERSTATES what most routines pay and so UNDERSTATES
+\ their bodies, which is the unsound direction. A routine that calls is refused.
 : BODY-INSNS ( -- n )
    SEAL-CK
    EM-NCALL @ 0<> if E-A64EMIT-BODY throw then
    N-INS @ EM-IFACE @ - ;
 
 \ ---- the block layout, read back ---------------------------------------------
-\ How many blocks were laid out, and where each one starts. A caller that wants
-\ to know whether a branch went where the layout said it would reads these and
-\ the instruction at the branch's own position; a fixture asserts both.
-\
-\ IT IS THE COUNT OF POSITIONS AND NOT OF BLOCKS, which is what its callers walk:
-\ every one of them iterates positions and asks BLOCK-AT-POS@ for each. Since the
-\ layout began leaving out the blocks every branch is redirected past, the two
-\ numbers differ - a routine may have five blocks and four positions - and the
-\ one a walk over the order needs is this one. BLOCK-START@ is still keyed by
-\ ORDINAL, because that is what a branch names.
+\ The count of POSITIONS and not of blocks: the layout leaves out the blocks
+\ every branch was redirected past. BLOCK-START@ is still keyed by ORDINAL.
 : BLOCKS ( -- n )
    SEAL-CK N-LAID @ ;
 
 : BLOCK-START@ ( n -- n )
    SEAL-CK BLK-ORD-CK cells B-START + @ ;
 
-\ How many of the module's blocks the redirection left unreachable, and so out of
-\ the order entirely. It is the pass's own count of what it did, read back the
-\ way A64COMB:FUSED is: a byte count that fell says a routine got smaller, and
-\ only this says the collapse is what made it smaller.
 : DROPPED ( -- n )
    SEAL-CK N-BLK @ N-LAID @ - ;
 
-\ And which block a branch naming this one is actually sent to, so a fixture can
-\ say the redirection happened rather than infer it from a byte count.
 : GOTO@ ( n -- n )
    SEAL-CK GOTO-OF ;
 
-\ And which block was written at a position, which is the order this pass chose.
-\ It is read back for the same reason the starts are: the order decides which
-\ branches exist at all, so a fixture that wants to say a routine was written in
-\ the order its blocks were built - or in some other one - has to be able to ask.
-\ A POSITION PAST THE LAST ONE LAID IS A REFUSAL AND NOT A LEFTOVER. The order
-\ table is written for the positions this routine has and not cleared beyond
-\ them, so a caller reading past N-LAID would be handed whichever block sat there
-\ during some earlier emission - a number that looks like an answer. Since the
-\ collapse began dropping blocks there are fewer positions than blocks, so this
-\ is reachable by any fixture that kept walking to the old count.
+\ A position past the last laid is a refusal, not a leftover: the table is not
+\ cleared beyond the positions this routine has.
 : BLOCK-AT-POS@ ( n -- n )
    SEAL-CK
    dup 0 < over N-LAID @ >= or if E-A64EMIT-BLOCK throw then
@@ -2933,22 +1819,15 @@ variable SCAN-K
 : SIZE ( -- n )
    SEAL-CK N-INS @ INSN-BYTES * ;
 
-\ The most instructions one emission can hold, published because it is half of a
-\ standing invariant nobody can state from one side. The address form's
-\ displacement field is twenty-one signed BITS of bytes and the distance it has
-\ to carry is a distance INSIDE this buffer, so `INSN-CAP * INSN-BYTES` being
-\ under that field's reach is what makes E-A64EMIT-REACH unreachable for an Adr.
-\ Raise this and the two facts have to be held against each other again;
-\ test/compiler/native-quot.f is where they are.
+\ Published because it is half of an invariant nobody can state from one side:
+\ INSN-CAP * INSN-BYTES under the Adr field's reach is what makes E-A64EMIT-REACH
+\ unreachable for an Adr.
 : INSN-MAX ( -- n )
    INSN-CAP ;
 
-\ The emitted bytes themselves. The source map's offsets index this buffer.
 : BYTES ( -- ptr u8 )
    SEAL-CK CODE ;
 
-\ One instruction, read back out of the bytes it was placed in, so a caller that
-\ wants a word and a caller that wants bytes are looking at the same thing.
 : WORD@ ( n -- n )
    SEAL-CK ORD-CK INSN-BYTES * {: off:n :}
    off BYTE@
@@ -2957,8 +1836,6 @@ variable SCAN-K
    off 3 + BYTE@ 24 lshift or ;
 
 \ ---- the source map ----------------------------------------------------------
-\ One row per emitted instruction: where its bytes were placed, and the span of
-\ the operation that produced it.
 : MAP-OFFSET@ ( n -- n )
    SEAL-CK ORD-CK cells M-OFF + @ ;
 
