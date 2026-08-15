@@ -493,3 +493,17 @@ like the header byte-identity assert, instead of an assumption.
 the ruled clear). The item-(2) flag is recorded: the merge runs
 strictly AFTER the host's own capture; the artifact carries
 compact rows only.
+
+WID-SPACE HAZARD 2026-08-15 (bake-chain-6, P1 dot
+habu-rebase-captured-wids-54dec421): captured records carry
+capture-process wids; the seed registers them against the
+TARGET's wid space. The "137 chain WIDs above the target's WIDN"
+clause was measured, not enforced - host-only closure packages
+shift host wids relative to the target (isolated: two dummy
+packages moved a fixture wid 205->209 into the target's sealed
+set, boot gate exit 84; an unsealed alias would misregister
+SILENTLY). Items (d)-(g) MUST NOT ship on the accidental
+alignment: they depend on 54dec421 (rebase at seed) or a
+structural proof of the invariant. Interim ruled boundary: the
+wid fixture refuses by name when its wid is protected in the
+target.

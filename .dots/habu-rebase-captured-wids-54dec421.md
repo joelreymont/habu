@@ -1,0 +1,9 @@
+---
+title: "Rebase captured WIDs into the target's space at seed"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-15T20:02:58.506973+02:00"
+---
+
+P1 soundness defect found by bake-chain-6 (2026-08-15): a captured AOT record travels with its CAPTURE-PROCESS wid and EM-SEED-AOT registers it against the TARGET engine's live wid space - two unrelated numbering spaces. Isolated on the parent commit: two dummy host packages shift the fixture's AWBGATE from host wid 205 to 209; target wid 209 is sealed, so the O(1) boot gate refuses (exit 84) - but a captured wid aliasing an UNSEALED target wordlist registers silently into the wrong package. Both engines' protected bitmaps byte-identical (36 wids, max 198); target WIDN 288, so every host wid below 288 aliases a real target wordlist. The leaf e98b03d4's '137 chain WIDs all land above the target's WIDN - measured' is measured, NOT enforced: host-only closure packages (aot-capture/aot-arm/aot-ident/aot-file) shift every later host wid relative to the target, which is exactly what the isolation experiment reproduced. Fix direction the code itself suggests: EMIT-AOT-PROT-RESTORE already advances WIDN past the highest restored wid in the other direction - captured record wids need the equivalent rebase into the target's space at seed time (or WIDN advanced past the highest captured wid BEFORE registration, making alias impossible by construction). Acceptance: a fixture that bakes a package whose host wid aliases (a) a sealed and (b) an unsealed target wordlist, both refused-or-rebased correctly, mutation-proven; the e98b03d4 chain bake items (d)-(g) must not ship on the accidental above-WIDN alignment - they depend on this dot or on a structural proof of the invariant. Interim boundary (ruled): test/aot-wid-build.f asserts the wid it bakes is not protected in the target and refuses BY NAME - a loud precondition, not a skip.
