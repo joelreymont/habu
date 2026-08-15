@@ -192,54 +192,32 @@ private
 
 18 constant REGS
 
-: CALLEE1 ( ptr u8 n ptr u8 n -- )   \ the spelling the source writes, and the word it denotes
-   CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE ;
-
-: CALLEE2 ( ptr u8 n ptr u8 n -- )   \ the same for a callee that takes two cells
-   CODEGEN-COMPARE:CODE-ENTRY 2 1 NMIGRATE:CALLEE ;
-
-: STAGE-OK1 ( -- )
-   s" QSC-OK1" s" QSC-FIXTURE:QSC-OK1" CALLEE1 ;
-
-: STAGE-BAD ( -- )
-   s" QSC-BAD" s" QSC-FIXTURE:QSC-BAD" CALLEE1 ;
-
-: STAGE-APPLY ( -- )
-   s" QSC-APPLY" s" QSC-FIXTURE:QSC-APPLY" CALLEE2 ;
-
 : DEF-P ( -- )
-   STAGE-BAD
    s" : QSC-P-N ( n -- n ) [: QSC-BAD ;] catch {: rc:n :} rc 0 <> if rc throw then ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 : DEF-A ( -- )
-   STAGE-OK1
    s" : QSC-A-N ( n n -- n ) {: k:n lim:n :} lim 5 * [: QSC-OK1 ;] catch drop k 3 * + ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : DEF-T ( -- )
-   STAGE-BAD
    s" : QSC-T-N ( n n -- n n ) {: k:n lim:n :} lim 5 * [: QSC-BAD ;] catch {: rc:n :} k 3 * + rc ;"
-   2 2 REGS NMIGRATE:DEFINE-CALLING ;
+   2 2 REGS NMIGRATE:DEFINE ;
 
 : DEF-TWO ( -- )
-   STAGE-OK1
    s" : QSC-2-N ( n n -- n ) {: a:n b:n :} a 3 * [: QSC-OK1 ;] catch drop a 5 * + b 7 * + ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : DEF-E ( -- )
-   STAGE-OK1 STAGE-APPLY
    s" : QSC-E-N ( n n -- n ) {: k:n lim:n :} [: QSC-OK1 ;] lim 5 * QSC-APPLY k 3 * + ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : DEF-L ( -- )
-   STAGE-OK1
    s" : QSC-L-N ( n -- n ) {: v:n :} 0 3 0 ?do i {: t:n :} v [: QSC-OK1 ;] catch drop t 7 * + + loop ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
-\ The branching bodies call nothing, so they go through the entry that stages no
-\ callee. Using the calling entry for them would refuse: a migration with no
-\ callee staged is not a calling one.
+\ The bodies that call and the bodies that do not go through one entry: the
+\ chain resolves whatever name a body writes off the dictionary.
 : DEF ( ptr u8 n n n -- )
    REGS NMIGRATE:DEFINE ;
 
@@ -269,9 +247,8 @@ private
    2 1 DEF ;
 
 : DEF-EB ( -- )
-   STAGE-APPLY
    s" : QSC-EB-N ( n n -- n ) {: k:n lim:n :} [: dup 3 > if 3 * else 5 * then ;] lim QSC-APPLY k 7 * + ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 public
 
@@ -295,24 +272,11 @@ private
 
 18 constant REGS
 
-\ A migration that stages a callee cannot be measured without publishing - there
-\ is no held entry that takes a staged list - so the case that measures the
-\ acceptance itself goes through the publishing entry under a name of its own.
-: DEFINE-AT ( ptr u8 n n n -- )
-   REGS NMIGRATE:DEFINE-CALLING ;
-
 \ Compiling a body without publishing anything, so a refusal can be measured with
 \ nothing left behind on the way out. It takes no staged callee, which is why the
 \ refusal cases below are written with bodies that call nothing.
 : MEASURE-AT ( ptr u8 n n n -- )
    REGS NMIGRATE:MEASURE-HELD ;
-
-\ The spelling is the QUALIFIED one here, because these migrations run with this
-\ package open rather than the fixture's: the source they compile is evaluated in
-\ the scope this file is in, so a bare tail would resolve to nothing.
-: STAGE-OK1 ( -- )
-   s" QSC-FIXTURE:QSC-OK1" s" QSC-FIXTURE:QSC-OK1"
-   CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE ;
 
 \ BOTH ANSWERS ARE BOUND BEFORE EITHER IS COMPARED. A pair of comparators over
 \ four stack cells holds each answer against ITSELF - the top two are the second
@@ -398,14 +362,12 @@ public
 \ question is about.
 : ACCEPT-CASE ( -- )
    s" a calling quotation compiles under a definition with a group" T-LABEL
-   [: STAGE-OK1
-      s" : QSC-ACC1 ( n n -- n ) {: k:n lim:n :} lim [: QSC-FIXTURE:QSC-OK1 ;] catch drop k 3 * + ;"
-      2 1 DEFINE-AT ;]
+   [: s" : QSC-ACC1 ( n n -- n ) {: k:n lim:n :} lim [: QSC-FIXTURE:QSC-OK1 ;] catch drop k 3 * + ;"
+      2 1 MEASURE-AT ;]
    0 TTHROWSQ
    s" and so does the same body with no group around it" T-LABEL
-   [: STAGE-OK1
-      s" : QSC-ACC2 ( n -- n n ) [: QSC-FIXTURE:QSC-OK1 ;] catch ;"
-      1 2 DEFINE-AT ;]
+   [: s" : QSC-ACC2 ( n -- n n ) [: QSC-FIXTURE:QSC-OK1 ;] catch ;"
+      1 2 MEASURE-AT ;]
    0 TTHROWSQ ;
 
 : PRODUCTION-CASE ( -- )

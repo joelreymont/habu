@@ -108,16 +108,10 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
    a u XREF-FIND dup XREF-FOUND? 0= if drop E-NPUB-NAME throw then
    XREF-START ;
 
-\ Every body below reaches the same four callees, so the staging is one word.
-: STAGE ( -- )
-   s" DKA:SEVEN" s" DKA:SEVEN" ENTRY-OF 0 1 NMIGRATE:CALLEE
-   s" DKA:BASE"  s" DKA:BASE"  ENTRY-OF 0 1 NMIGRATE:CALLEE
-   s" DKA:ID"    s" DKA:ID"    ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" DKA:ANS!"  s" DKA:ANS!"  ENTRY-OF 1 0 NMIGRATE:CALLEE ;
-
+\ Every body below names its callees and the chain resolves each of them off the
+\ dictionary while it elaborates the body, so a migration is all a caller states.
 : MIGRATE ( ptr u8 n n n -- ) {: a:ptr u:n in:n out:n :}
-   STAGE
-   a u in out REGS NMIGRATE:DEFINE-CALLING ;
+   a u in out REGS NMIGRATE:DEFINE ;
 
 \ One run of an engine-compiled body on a fresh data stack, answering what it
 \ left behind. The buffer is re-taken per run so no answer can survive into the

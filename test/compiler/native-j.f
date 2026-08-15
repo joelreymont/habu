@@ -157,10 +157,8 @@ private
    1 1 REGS NMIGRATE:DEFINE ;
 
 : CALL ( -- )
-   s" NJ-CALLEE-N" s" NJ-FIXTURE:NJ-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE
    s" : NJ-CALL-N ( n n n -- n ) {: seed:n a:n b:n :} seed a 0 ?do b 0 ?do NJ-CALLEE-N j + loop loop ;"
-   3 1 REGS NMIGRATE:DEFINE-CALLING ;
+   3 1 REGS NMIGRATE:DEFINE ;
 
 : EARLY ( -- )
    s" : NJ-LEAVE-N ( n n -- n ) {: a:n b:n :} 0 a 0 ?do b 0 ?do j 3 * + i 2 > if leave then loop loop ;"

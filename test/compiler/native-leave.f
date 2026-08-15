@@ -135,16 +135,12 @@ private
    1 1 REGS NMIGRATE:DEFINE ;
 
 : CALL ( -- )
-   s" NLV-CALLEE-N" s" NLV-FIXTURE:NLV-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE
    s" : NLV-CALL-N ( n n -- n ) {: len:n seed:n :} seed len 0 ?do NLV-CALLEE-N dup 0 < if leave then loop ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : LOCAL ( -- )
-   s" NLV-CALLEE-N" s" NLV-FIXTURE:NLV-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE
    s" : NLV-LOCAL-N ( n n n -- n ) {: k:n len:n seed:n :} seed len 0 ?do NLV-CALLEE-N k + dup 0 < if leave then loop ;"
-   3 1 REGS NMIGRATE:DEFINE-CALLING ;
+   3 1 REGS NMIGRATE:DEFINE ;
 
 : LEAVE-LOCAL ( -- )
    s" : NLV-LEAVE-LOCAL-N ( n -- n ) {: leave:n :} leave leave + ;"

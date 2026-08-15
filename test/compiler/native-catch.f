@@ -335,56 +335,46 @@ private
 
 18 constant REGS
 
-: CALLEE1 ( ptr u8 n ptr u8 n -- )   \ the spelling the source writes, and the word it denotes
-   CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE ;
 
 : D1 ( -- )
-   s" NCA-CLOB" s" NCA-FIXTURE:NCA-CLOB" CALLEE1
    s" : NCA-D1-N ( n -- n n ) [: NCA-CLOB ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+   1 2 REGS NMIGRATE:DEFINE ;
 
 : D2 ( -- )
-   s" NCA-OK1" s" NCA-FIXTURE:NCA-OK1" CALLEE1
    s" : NCA-D2-N ( n -- n n ) [: NCA-OK1 ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+   1 2 REGS NMIGRATE:DEFINE ;
 
 : D4 ( -- )
    s" : NCA-D4-N ( n -- n n ) [: 1+ ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
    1 2 REGS NMIGRATE:DEFINE ;
 
 : D5 ( -- )
-   s" NCA-OK1" s" NCA-FIXTURE:NCA-OK1" CALLEE1
    s" : NCA-D5-N ( n -- n ) 3 0 ?do [: NCA-OK1 ;] catch drop loop ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 : D6 ( -- )
-   s" NCA-DEEP1" s" NCA-FIXTURE:NCA-DEEP1" CALLEE1
    s" : NCA-D6-N ( n -- n n ) [: NCA-DEEP1 ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+   1 2 REGS NMIGRATE:DEFINE ;
 
 : D7 ( -- )
-   s" NCA-WIDE" s" NCA-FIXTURE:NCA-WIDE" CALLEE1
    s" : NCA-D7-N ( n -- n n ) [: NCA-WIDE ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+   1 2 REGS NMIGRATE:DEFINE ;
 
 : D8 ( -- )
    s" : NCA-D8-N ( n n -- n n n ) [: 1+ swap 1+ swap ;] catch drop [: 1+ ;] catch ;"
    2 3 REGS NMIGRATE:DEFINE ;
 
 : D9 ( -- )
-   s" NCA-OK1" s" NCA-FIXTURE:NCA-OK1" CALLEE1
    S\" : NCA-D9-N ( n -- n n ) s\q hi\q 2drop [: NCA-OK1 ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE-CALLING ;
+   1 2 REGS NMIGRATE:DEFINE ;
 
 : PT ( -- )
-   s" NCA-CLOB" s" NCA-FIXTURE:NCA-CLOB" CALLEE1
    s" : NCA-PT-N ( n -- n n n ) 42 >r [: NCA-CLOB ;] catch r> ;"
-   1 3 REGS NMIGRATE:DEFINE-CALLING ;
+   1 3 REGS NMIGRATE:DEFINE ;
 
 : PN ( -- )
-   s" NCA-OK1" s" NCA-FIXTURE:NCA-OK1" CALLEE1
    s" : NCA-PN-N ( n -- n n n ) 42 >r [: NCA-OK1 ;] catch r> ;"
-   1 3 REGS NMIGRATE:DEFINE-CALLING ;
+   1 3 REGS NMIGRATE:DEFINE ;
 
 \ The caught body holding a control structure of its own, which used to be the
 \ ceiling this file's last refusal case pinned. It calls nothing, so it goes
@@ -416,19 +406,6 @@ private
 
 : MEASURE-AT ( ptr u8 n n n -- )
    REGS NMIGRATE:MEASURE-HELD ;
-
-\ A migration that stages a callee cannot be measured without publishing - there
-\ is no held entry that takes a staged list - so the two halves of the calling
-\ case go through the publishing entry under names of their own.
-: DEFINE-AT ( ptr u8 n n n -- )
-   REGS NMIGRATE:DEFINE-CALLING ;
-
-\ The spelling is the QUALIFIED one, because these two migrations run with this
-\ suite's own package open rather than the fixture's: the source they compile is
-\ evaluated in the scope this file is in, so a bare tail would resolve to nothing.
-: CALLEE-OK1 ( -- )
-   s" NCA-FIXTURE:NCA-OK1" s" NCA-FIXTURE:NCA-OK1"
-   CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE ;
 
 \ THE TWO ANSWERS ARE BOUND BEFORE EITHER IS COMPARED, because a catch site
 \ leaves TWO cells and a bare pair of comparators over four stack cells would
@@ -610,13 +587,11 @@ public
    br 0 T=  bu 8 T=
 
    s" and the chain compiles it now, with the group and without it" T-LABEL
-   [: CALLEE-OK1
-      s" : NCA-BL1 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
-      1 2 DEFINE-AT ;]
+   [: s" : NCA-BL1 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
+      1 2 MEASURE-AT ;]
    0 TTHROWSQ
-   [: CALLEE-OK1
-      s" : NCA-BL2 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch ;"
-      1 2 DEFINE-AT ;]
+   [: s" : NCA-BL2 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch ;"
+      1 2 MEASURE-AT ;]
    0 TTHROWSQ ;
 
 : RUN ( -- )

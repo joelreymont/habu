@@ -284,9 +284,9 @@ variable OLD-LEN
 \ else or does not return at all; a branch to the wrong word answers that word's
 \ function of 5.
 \
-\ AND WHERE THE CALLEE'S ADDRESS COMES FROM. The publication seam's own log,
-\ which is the same authority the seam wrote the record from. This suite never
-\ writes an address down.
+\ AND WHERE THE CALLEE'S ADDRESS COMES FROM. The dictionary, asked by the
+\ elaborator while it reads the body: the caller writes the name and nothing
+\ else. This suite never writes an address down.
 : DBL-SRC ( -- ptr u8 n )
    s" : NMG-DBL ( n -- n ) dup + ;" ;
 
@@ -300,8 +300,7 @@ variable OLD-LEN
    s" NMG-DBL" GLOBAL-WID NPUB:NEW-START ;
 
 : MIGRATE-USE ( -- )
-   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
-   USE-SRC 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   USE-SRC 1 1 REGS NMIGRATE:DEFINE ;
 
 : CALL-CASE ( -- )
    MIGRATE-DBL
@@ -345,12 +344,10 @@ variable OLD-LEN
    L3-SRC 1 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-L2 ( -- )
-   s" NMG-L3"  s" NMG-L3" GLOBAL-WID NPUB:NEW-START  1 1 NMIGRATE:CALLEE
-   L2-SRC 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   L2-SRC 1 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-L1 ( -- )
-   s" NMG-L2"  s" NMG-L2" GLOBAL-WID NPUB:NEW-START  1 1 NMIGRATE:CALLEE
-   L1-SRC 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   L1-SRC 1 1 REGS NMIGRATE:DEFINE ;
 
 : DEEP-CASE ( -- )
    MIGRATE-L3
@@ -392,8 +389,7 @@ variable OLD-LEN
    s" : NMG-VIA ( n -- n ) dup NMG-ENG + ;" ;
 
 : MIGRATE-VIA ( -- )
-   s" NMG-ENG"  s" NMG-ENG" REC-START  1 1 NMIGRATE:CALLEE
-   VIA-SRC 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   VIA-SRC 1 1 REGS NMIGRATE:DEFINE ;
 
 : INTEROP-CASE ( -- )
    ENG-SRC EV
@@ -451,16 +447,13 @@ variable OLD-LEN
 16 constant LOOP-REGS
 
 : MIGRATE-LC ( -- )
-   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
-   LC-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   LC-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-LF ( -- )
-   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
-   LF-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   LF-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-LN ( -- )
-   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
-   LN-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   LN-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 : LOOP-CALL-CASE ( -- )
    MIGRATE-LC
@@ -490,134 +483,6 @@ variable OLD-LEN
    s" 4 NMG-LN" EV-N 48 T=
    s" 1 NMG-LN" EV-N 12 T=
    s" 0 NMG-LN" EV-N 0 T= ;
-
-\ ---- what a call to another word refuses -------------------------------------
-\ A callee is stated as a spelling and an address, and those are ONE fact: the
-\ caller got the address by resolving the spelling, and the body reaches the
-\ routine by writing it. So the first four cases below are all one statement
-\ contradicting itself - a spelling whose word does not begin where the address
-\ says - and the migration entry refuses every one of them by its own name, at
-\ the moment they are staged, before the engine has compiled anything at all.
-\
-\   the null address        no word begins at zero
-\   an address that is not  no word begins in the middle of an instruction
-\     four-byte aligned
-\   an address out of reach nothing this process published lives 256 MiB from
-\                           the routine that would branch to it
-\   a spelling that no      there is no word to have an address, and no second
-\     lookup answers        authority to prefer
-\
-\ WHAT THE THREE ADDRESS SHAPES USED TO REACH, AND WHERE EACH IS PROVED NOW. A
-\ caller could once state any number, so these three cases carried the refusals of
-\ the three stages that would have met one: the word model's E-HIR-CALLEE, the
-\ machine dialect's E-A64IR-ENTRY and the emitter's E-A64EMIT-REACH. Those stages
-\ still refuse, and no production path can reach them any more, because a resolved
-\ address is a real code address of this process by construction. The word model's
-\ refusal is proved directly in test/compiler/native-hir.f, and the dialect's - a
-\ null and an unaligned entry - in test/compiler/native-a64ir.f, where the reach
-\ bound's own predicate is pinned at its exact edge as well. Restoring an
-\ end-to-end assertion of the emitter's reach refusal, which now needs a module
-\ built for it rather than a migration, is dot habu-reach-the-emitter-e23caccb.
-\
-\ AND NONE OF THEM PUBLISHES A WORD AT ALL, which the cases measure: the refusal
-\ is a whole migration earlier than it was, so the definition that would have used
-\ the staged callee is never handed to the engine. Each case keeps a name of its
-\ own so that measurement is one assertion per case rather than one for all four.
-\
-\ THE ARITY HALF IS STILL THE CALLER'S TO GET WRONG, and the last two cases are
-\ that half: what a call site publishes is the arity it was told, and a site told
-\ to publish more than the caller holds has nothing to publish. Those two run the
-\ whole migration, so the word IS published by the engine before the chain refuses
-\ it - the state a refusal has to leave working.
-$10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 26-bit field
-
-: MIGRATE-NULL-ENTRY ( -- )
-   s" NMG-DBL" 0 1 1 NMIGRATE:CALLEE
-   s" : NMG-B1 ( n -- n ) NMG-DBL 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
-
-: MIGRATE-ODD-ENTRY ( -- )
-   s" NMG-DBL" DBL-ENTRY 2 + 1 1 NMIGRATE:CALLEE
-   s" : NMG-B2 ( n -- n ) NMG-DBL 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
-
-: MIGRATE-FAR-ENTRY ( -- )
-   s" NMG-DBL" DBL-ENTRY FAR-ENOUGH + 1 1 NMIGRATE:CALLEE
-   s" : NMG-B3 ( n -- n ) NMG-DBL 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
-
-\ A spelling nothing in this image carries, stated against a real address. It is
-\ the other half of the same rule: an address is only a callee's when a spelling
-\ says so, and a spelling that says nothing leaves the address unclaimed.
-: MIGRATE-NO-SUCH-CALLEE ( -- )
-   s" NMG-NOBODY" DBL-ENTRY 1 1 NMIGRATE:CALLEE
-   s" : NMG-B6 ( n -- n ) NMG-NOBODY 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
-
-\ A body the checker certifies, whose callee is STATED to take two values where
-\ the compile-time vector holds one. It is the arity half of the same statement:
-\ what a call site publishes is the arity it was told, and a site told to publish
-\ more than the caller holds has nothing to publish.
-\
-\ THE CALLEE IS ONE THE ENGINE COMPILED, and that is what this case is about
-\ rather than an accident of which word was handy. The chain recorded no body for
-\ it and never will, so the caller's statement stands as made and the refusal is
-\ the elaborator's own: the vector cannot hand over a value it does not hold. The
-\ same lie about a callee the CHAIN compiled is caught earlier and by a different
-\ name, because the callee's own migration recorded what it really declares, and
-\ the case below measures that.
-: DEFINE-ENGINE-DBL ( -- )
-   s" : NMG-EDBL ( n -- n ) dup + ;" EV ;
-
-: MIGRATE-DEEP-ARITY ( -- )
-   s" NMG-EDBL" s" NMG-EDBL" REC-START 2 1 NMIGRATE:CALLEE
-   s" : NMG-B4 ( n -- n ) NMG-EDBL ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
-
-\ The same lie about a callee whose body the chain DID record, with enough on the
-\ vector that nothing underflows: the caller says the callee takes two values and
-\ the callee's own migration recorded that it takes one. Two authorities about
-\ one routine, and they are held against each other rather than one of them being
-\ believed - a caller compiled against the wrong effect would publish its
-\ arguments at the wrong slots whether the body was copied in or branched to.
-: MIGRATE-WRONG-ARITY ( -- )
-   s" NMG-DBL" DBL-ENTRY 2 1 NMIGRATE:CALLEE
-   s" : NMG-B5 ( n n -- n ) NMG-DBL + ;" 2 1 REGS NMIGRATE:DEFINE-CALLING ;
-
-: CALL-REFUSAL-CASES ( -- )
-   s" a callee stated at the null address is not the word the spelling names"
-   T-LABEL
-   [: MIGRATE-NULL-ENTRY ;] E-NMIGRATE-CALLEE TTHROWSQ
-
-   s" nor is one stated in the middle of that word's first instruction" T-LABEL
-   [: MIGRATE-ODD-ENTRY ;] E-NMIGRATE-CALLEE TTHROWSQ
-
-   s" nor is one stated a quarter of a gigabyte away from it" T-LABEL
-   [: MIGRATE-FAR-ENTRY ;] E-NMIGRATE-CALLEE TTHROWSQ
-
-   s" and a spelling no lookup answers leaves a real address unclaimed" T-LABEL
-   [: MIGRATE-NO-SUCH-CALLEE ;] E-NMIGRATE-CALLEE TTHROWSQ
-
-   s" every one of them is refused before the engine compiles the caller"
-   T-LABEL
-   s" NMG-B1" DEFINED? TFALSE
-   s" NMG-B2" DEFINED? TFALSE
-   s" NMG-B3" DEFINED? TFALSE
-   s" NMG-B6" DEFINED? TFALSE
-
-   s" a call site told to publish more than the caller holds is refused" T-LABEL
-   DEFINE-ENGINE-DBL
-   [: MIGRATE-DEEP-ARITY ;] E-NELAB-CALL TTHROWSQ
-
-   s" and an effect that is not the one the callee recorded is refused" T-LABEL
-   [: MIGRATE-WRONG-ARITY ;] E-NELAB-INLINE TTHROWSQ
-
-   s" while the words those two DID publish still run their own code" T-LABEL
-   s" 5 NMG-B4" EV-N 10 T=
-   s" 3 5 NMG-B5" EV-N 13 T=
-   s" NMG-B4" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
-   s" NMG-B5" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
-
-   s" and a migration still runs after every one of those refusals" T-LABEL
-   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
-   s" : NMG-AFTER ( n -- n ) NMG-DBL 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
-   s" 6 NMG-AFTER" EV-N 13 T=
-   s" NMG-AFTER" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
 \ ---- a word the chain cannot compile ------------------------------------------
 \ WHY A NAME REACHED THROUGH `using` IS THE FIXTURE. A name the dialect does not
@@ -1419,8 +1284,7 @@ variable BACK-N
    STEP-SRC 1 2 LOOP-REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-WCALL ( -- )
-   s" NMG-STEP"  s" NMG-STEP" GLOBAL-WID NPUB:NEW-START  1 2 NMIGRATE:CALLEE
-   WCALL-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   WCALL-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-UNTIL ( -- )
    UNTIL-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE ;
@@ -1629,9 +1493,8 @@ variable BACK-N
    s" : NMG-FD ( r -- r ) 2.0 f* ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : FLOAT-CALL ( -- )
-   s" NMG-FD"  s" NMG-FD" GLOBAL-WID NPUB:NEW-START  1 1 NMIGRATE:CALLEE
    s" : NMG-FCALL ( r -- r ) 1.0 f* dup NMG-FD f+ ;"
-   1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ TWO DOUBLES CROSSING ONE JOIN IN SWAPPED ORDER. This is MAX2's shape in the
 \ other register file, and it is the case the edge SPLIT exists for: one arm
@@ -1926,9 +1789,9 @@ variable MEAS-PUB0
    s" : NMG-MEASURE-AFTER ( n -- n ) 6 + ;" 1 1 REGS NMIGRATE:MEASURE-HELD
    s" NMG-MEASURE-AFTER" DEFINED? TFALSE ;
 
-\ ---- a name resolved off the engine, with nothing staged ---------------------
-\ THE CASE THE WHOLE TRANCHE IS ABOUT. Nothing below stages a callee, a data word
-\ or an address. Each body simply NAMES a word, and the chain resolves the name:
+\ ---- a name resolved off the engine ------------------------------------------
+\ THE CASE THE WHOLE TRANCHE IS ABOUT, and now the only road there is. A body
+\ simply NAMES a word and the chain resolves the name:
 \ src/compiler/native/dict.f answers where its code starts, in the order the
 \ engine resolves that same body, and the CHECKER answers how many cells a call
 \ to it moves. If either answer were wrong the migrated routine would branch
@@ -1954,7 +1817,7 @@ variable MEAS-PUB0
 : RESOLVED-CASE ( -- )
    RESOLVED-SETUP
 
-   s" a body that NAMES a tree word migrates with nothing staged" T-LABEL
+   s" a body that NAMES a tree word migrates on the name alone" T-LABEL
    MIGRATE-RESOLVED-CALL
    s" RES-CALLER" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
 
@@ -1962,7 +1825,7 @@ variable MEAS-PUB0
    s" 10 20 RES-CALLER" EV-N 66 T=
    s" 1 2 RES-CALLER" EV-N 12 T=
 
-   s" a body that NAMES a data word migrates with nothing staged" T-LABEL
+   s" a body that NAMES a data word migrates on the name alone" T-LABEL
    MIGRATE-RESOLVED-DATA
    s" RES-READ" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
    s" RES-READ" EV-N 42 T=
@@ -2230,7 +2093,6 @@ variable MEAS-PUB0
    DEEP-CASE
    INTEROP-CASE
    LOOP-CALL-CASE
-   CALL-REFUSAL-CASES
    CONST-CALL-CASE
    CONST-FOLD-CASE
    REFUSED-CASE

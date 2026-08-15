@@ -409,8 +409,7 @@ public
 \ A migrated routine that calls the word it shares its name with.
 package NRT-SELFP
 public
-s" NRT-BASE:NRT-SELF" s" NRT-BASE:NRT-SELF" CODEGEN-SCAN:WORD-ENTRY 1 1 NMIGRATE:CALLEE
-s" : NRT-SELF ( n -- n ) NRT-BASE:NRT-SELF 1 + ;" 1 1 NREACH-TEST:REGS NMIGRATE:DEFINE-CALLING
+s" : NRT-SELF ( n -- n ) NRT-BASE:NRT-SELF 1 + ;" 1 1 NREACH-TEST:REGS NMIGRATE:DEFINE
 ;package
 
 package NREACH-TEST

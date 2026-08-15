@@ -121,16 +121,12 @@ private
    1 1 REGS NMIGRATE:DEFINE ;
 
 : CALL ( -- )
-   s" NAG-CALLEE-N" s" NAG-FIXTURE:NAG-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE
    s" : NAG-CALL-N ( n n -- n n ) begin over 1 < if exit then swap 1 - swap NAG-CALLEE-N again ;"
-   2 2 REGS NMIGRATE:DEFINE-CALLING ;
+   2 2 REGS NMIGRATE:DEFINE ;
 
 : LOCAL ( -- )
-   s" NAG-CALLEE-N" s" NAG-FIXTURE:NAG-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE
    s" : NAG-LOCAL-N ( n n n -- n n ) {: k:n :} begin over 1 < if exit then swap 1 - swap NAG-CALLEE-N k + again ;"
-   3 2 REGS NMIGRATE:DEFINE-CALLING ;
+   3 2 REGS NMIGRATE:DEFINE ;
 
 : ACC ( -- )
    s" : NAG-ACC-N ( n -- n n ) 0 swap begin dup 0 = if drop negate 1 - throw then swap over + swap 1 - again ;"

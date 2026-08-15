@@ -143,16 +143,12 @@ private
    1 1 REGS NMIGRATE:DEFINE ;
 
 : CALL ( -- )
-   s" NDO-CALLEE-N" s" NDO-FIXTURE:NDO-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE
    s" : NDO-CALL-N ( n n -- n ) {: seed:n len:n :} seed len 0 do NDO-CALLEE-N loop ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : LOCAL ( -- )
-   s" NDO-CALLEE-N" s" NDO-FIXTURE:NDO-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE
    s" : NDO-LOCAL-N ( n n n -- n ) {: k:n seed:n len:n :} seed len 0 do NDO-CALLEE-N k + loop ;"
-   3 1 REGS NMIGRATE:DEFINE-CALLING ;
+   3 1 REGS NMIGRATE:DEFINE ;
 
 public
 

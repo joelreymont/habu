@@ -61,7 +61,7 @@ package NLS-FIXTURE
 public
 
 \ The name NLS-SHADOW reads after its scope has closed. It is a constant rather
-\ than a colon word so the row needs no callee staging: what it proves is which
+\ than a colon word so the row has no call in it at all: what it proves is which
 \ MEANING the second mention takes, and a constant answers that without dragging
 \ a call seam into the case.
 99 constant NLS-W
@@ -374,16 +374,12 @@ variable RC-TWICE                    \ and one declaring the same name twice at 
    s" : NLS-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
    1 1 REGS NMIGRATE:DEFINE ;
 
-: CALLEE-STAGE ( -- )
-   s" NLS-CALLEE-N" s" NLS-FIXTURE:NLS-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE ;
 
 : CALL ( -- )
-   CALLEE-STAGE
    s" : NLS-CALL-N ( n n n -- n ) {: k:n s:n lim:n :} 0 lim 0 ?do s i + {: a:n :} a NLS-CALLEE-N k + a 3 * + + loop k 5 * + ;"
-   3 1 REGS NMIGRATE:DEFINE-CALLING ;
+   3 1 REGS NMIGRATE:DEFINE ;
 
-\ THE CALLEE THIS ONE STAGES IS THE ENGINE'S OWN ROUTINE, and that is the whole
+\ THE CALLEE THIS ONE NAMES IS THE ENGINE'S OWN ROUTINE, and that is the whole
 \ difference. A callee the chain compiled has a clobber row, so
 \ src/compiler/native/elaborate.f CALL-KEEPS? answers that it keeps registers for
 \ its caller and no local of the caller has to travel at all. A routine the chain
@@ -391,14 +387,10 @@ variable RC-TWICE                    \ and one declaring the same name twice at 
 \ local a call can reach then travels through a data-stack slot - which is the
 \ mixed state a partly-migrated tree really is in, and the only state in which
 \ CROSS-L is not zero.
-: CALLEE-ENGINE ( -- )
-   s" NLS-CALLEE" s" NLS-FIXTURE:NLS-CALLEE" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE ;
 
 : SLOT ( -- )
-   CALLEE-ENGINE
    s" : NLS-SLOT-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do {: a:n :} a 3 * loop lim 0 ?do {: b:n :} b NLS-CALLEE k + b 5 * + loop k 7 * + ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : CATCHLOOP ( -- )
    s" : NLS-CATCH-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a [: 3 * ;] catch nip a 3 * + + loop k 5 * + ;"

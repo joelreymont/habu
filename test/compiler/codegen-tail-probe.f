@@ -106,13 +106,6 @@ private
 
 8 constant REGS
 
-\ Where a published word's code starts, which is what a call site is staged
-\ with. The spelling is the qualified one, because the routines below are
-\ published inside the fixture's package.
-: ENTRY-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u XREF-FIND dup XREF-FOUND? 0= if drop E-NPUB-NAME throw then
-   XREF-START ;
-
 \ The callee the tail row leaves through: eleven operations, which is past the
 \ engine's forty bytes of body and past the chain's own bound for a routine of
 \ arity one to one, so neither generator copies it and the caller really does
@@ -131,17 +124,14 @@ private
 \ there was a tail lowering at all. An optimisation that turned it into a
 \ compilation failure would not be an optimisation.
 : OUTSIDE ( -- )
-   s" abs" NDICT:SPELL-START {: e:n :}
-   s" abs" e 1 1 NMIGRATE:CALLEE
    s" : OUTSIDE-N ( n -- n ) abs ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ And the caller whose whole body is that call. Its emitted code is one
 \ instruction: the branch.
 : TAILED ( -- )
-   s" NTP-BIG-N" s" NTP-FIXTURE:NTP-BIG-N" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : TAILED-N ( n -- n ) NTP-BIG-N ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ THE EMPTY ROUTINE, which is where a recorded length is at its most misleading
 \ and why CODE-BYTES exists. Its emission is a return and nothing else, so the

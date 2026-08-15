@@ -470,8 +470,7 @@ variable CTRL-BODY
    A64EMIT:BODY-INSNS EDGE-OUT-BODY ! ;
 
 : MIGRATE-COPIES ( -- )
-   s" NINL-EDGE-IN" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-COPIES ( n -- n ) NINL-EDGE-IN ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : NINL-COPIES ( n -- n ) NINL-EDGE-IN ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 \ The body count of a routine that CALLS has no meaning - a call site publishes
 \ and takes back through the very data-stack forms a routine's own crossings use,
@@ -482,8 +481,7 @@ variable CTRL-BODY
 variable CALLS-BODY-RC
 
 : MIGRATE-CALLS ( -- )
-   s" NINL-EDGE-OUT" s" NINL-EDGE-OUT" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-CALLS ( n -- n ) NINL-EDGE-OUT ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" : NINL-CALLS ( n -- n ) NINL-EDGE-OUT ;" 1 1 REGS NMIGRATE:DEFINE
    [: A64EMIT:BODY-INSNS drop ;] catch CALLS-BODY-RC ! ;
 
 \ A third callee, whose body carries LITERALS. The two above are additions of a
@@ -493,8 +491,7 @@ variable CALLS-BODY-RC
    s" : NINL-LIT ( n -- n ) 3 * 7 + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-USE-LIT ( -- )
-   s" NINL-LIT" s" NINL-LIT" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-USE-LIT ( n -- n ) NINL-LIT ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : NINL-USE-LIT ( n -- n ) NINL-LIT ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 \ The same three bodies as the engine compiles them, so that what the copied
 \ caller answers is held against a second compiler and not only against
@@ -594,12 +591,10 @@ variable CALLS-BODY-RC
    A64EMIT:BODY-INSNS CTRL-BODY ! ;
 
 : MIGRATE-VIA-CTRL ( -- )
-   s" NINL-CTRL" s" NINL-CTRL" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-VIA-CTRL ( n -- n ) NINL-CTRL ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : NINL-VIA-CTRL ( n -- n ) NINL-CTRL ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-CALLER-CALLEE ( -- )
-   s" NINL-EDGE-IN" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-VIA ( n -- n ) NINL-EDGE-IN ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : NINL-VIA ( n -- n ) NINL-EDGE-IN ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-SELF ( -- )
    s" : NINL-SELF ( n -- n ) dup 0 > if 1- RECURSE then ;"
@@ -653,46 +648,21 @@ variable CALLS-BODY-RC
    s" 4 NINL-CTRL" EV-N 4 T=
    s" -4 NINL-CTRL" EV-N 0 T= ;
 
-\ ---- whose body the row at a stated address is ---------------------------------
-\ A call site does not FIND its row: it states an address, taken from what its own
-\ migration declared about the callee, and reads whatever is keyed there. So the
-\ key is a claim, and the only thing the ROW holds against it is the arity - which
-\ agrees by coincidence all the time, because `( n -- n )` helpers are everywhere.
-\ What makes the claim the right routine's is settled where the spelling and the
-\ address are staged together: NINL-LIT and NINL-EDGE-IN are both recorded, both
-\ `( n -- n )`, and answer entirely different arithmetic, and the staging below
-\ declares NINL-LIT at NINL-EDGE-IN's address.
+\ ---- whose body the row a call site reads is -----------------------------------
+\ A call site's row is keyed by an address, and which address a body's name has
+\ is the ENGINE's answer: the elaborator resolves the spelling the body writes
+\ through src/compiler/native/dict.f at the point it is used. There is no second
+\ statement about the callee for it to disagree with, so the row a site reads is
+\ the row of the routine the name really denotes - the question a caller used to
+\ be able to get wrong by staging one word's spelling at another word's address.
 \
-\ THE REFUSAL IS LOUD AND THAT IS DELIBERATE. Everything else this file refuses -
-\ a body with a control structure, one too large, one that fills a row, one that
-\ met a full table - is the record declining to hold a body, and the answer is the
-\ call the site always made. This is not that: the caller's two statements about
-\ one callee name two different routines, and the CALL that would be emitted
-\ instead branches to the address whatever the spelling said. Neither answer is
-\ usable, so the staging is refused - which happens before the engine has compiled
-\ anything, so the definition that would have used it is never published either.
-: STAGE-WRONG-NAME ( -- )
-   s" NINL-LIT" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
-
-: MIGRATE-WRONG-NAME ( -- )
-   STAGE-WRONG-NAME
-   s" : NINL-WRONG-NAME ( n -- n ) NINL-LIT ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
-
-\ A migration that takes no list at all. It refuses a staged one by name, so it
-\ is how "the refusal staged nothing" is asked structurally rather than inferred
-\ from a later migration happening to work.
-: MIGRATE-NO-CALLEE ( -- )
-   s" : NINL-NO-CALLEE ( n -- n ) 3 + ;" 1 1 REGS NMIGRATE:DEFINE ;
-
-\ The same declaration written in the other case. A dictionary name is the same
-\ name in either case, so this names the SAME word, the staging is accepted and
-\ the body is still copied - which is what stops the refusal above from being a
-\ byte comparison that turns away legal Habu.
+\ WHAT IS STILL WORTH ASKING IS THE RESOLVER'S OWN REACH, and case is where a
+\ resolver written as a byte comparison would turn away legal Habu: a dictionary
+\ name is the same name in either case, so the body below names NINL-EDGE-IN and
+\ its row is NINL-EDGE-IN's row, copied.
 : MIGRATE-CASE-NAME ( -- )
-   s" ninl-edge-in" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-CASE-NAME ( n -- n ) ninl-edge-in ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 : KEY-CASES ( -- )
    s" the two callees are both recorded and have the same arity" T-LABEL
@@ -701,22 +671,14 @@ variable CALLS-BODY-RC
    s" NINL-LIT" ENTRY-OF NINL:IN@  s" NINL-EDGE-IN" ENTRY-OF NINL:IN@ T=
    s" NINL-LIT" ENTRY-OF NINL:OUT@ s" NINL-EDGE-IN" ENTRY-OF NINL:OUT@ T=
 
-   s" so a caller naming one of them at the other's address is refused as it
-      states it, before anything is compiled"
-   T-LABEL
-   [: STAGE-WRONG-NAME ;] E-NMIGRATE-CALLEE TTHROWSQ
-   [: MIGRATE-WRONG-NAME ;] E-NMIGRATE-CALLEE TTHROWSQ
-   s" NINL-WRONG-NAME" DEFINED? TFALSE
-
-   s" and the refusal staged nothing, so a migration that takes no list runs"
-   T-LABEL
-   MIGRATE-NO-CALLEE
-   s" 4 NINL-NO-CALLEE" EV-N 7 T=
-
-   s" while the same name in the other case is one word, and is copied" T-LABEL
+   s" so a name written in the other case is one word, and is copied" T-LABEL
    MIGRATE-CASE-NAME
    s" NINL-CASE-NAME" BL-COUNT 0 T=
-   s" 3 NINL-CASE-NAME" EV-N 96 T= ;
+   s" 3 NINL-CASE-NAME" EV-N 96 T=
+
+   s" and it is NINL-EDGE-IN's body it copied, not the other row's" T-LABEL
+   s" 3 NINL-CASE-NAME" EV-N  s" 3 NINL-COPIES" EV-N T=
+   s" 3 NINL-CASE-NAME" EV-N  s" 3 NINL-USE-LIT" EV-N T<> ;
 
 \ ---- an address that WAS this word's and is not any more -----------------------
 \ The sharpest shape of a caller contradicting itself, because every other
@@ -740,8 +702,8 @@ variable STALE-ENTRY
    s" undefine NINL-TWICE" EV
    s" : NINL-TWICE ( n -- n ) 2 + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
-: STAGE-STALE ( -- )
-   s" NINL-TWICE" STALE-ENTRY @ 1 1 NMIGRATE:CALLEE ;
+: MIGRATE-AFTER-TWICE ( -- )
+   s" : NINL-AFTER-TWICE ( n -- n ) NINL-TWICE ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : STALE-CASES ( -- )
    s" the old address still holds a row, of the right arity, under this name"
@@ -756,71 +718,33 @@ variable STALE-ENTRY
    s" NINL-TWICE" ENTRY-OF STALE-ENTRY @ T<>
    s" NINL-TWICE" ENTRY-OF 0 NINL:LIT@ 2 T=
 
-   s" so a caller that states the old address is refused, though every question
-      the row itself could answer answers yes"
+   s" so a caller that names it copies the LIVE row and not the stale one,
+      though every question the stale row itself could answer answers yes"
    T-LABEL
-   [: STAGE-STALE ;] E-NMIGRATE-CALLEE TTHROWSQ
+   MIGRATE-AFTER-TWICE
+   s" NINL-AFTER-TWICE" BL-COUNT 0 T=
+   s" 5 NINL-AFTER-TWICE" EV-N 7 T=
 
    s" and the word still runs the code it really has" T-LABEL
    s" 5 NINL-TWICE" EV-N 7 T= ;
-
-\ ---- which word a staged spelling denotes --------------------------------------
-\ The address staged beside a spelling has to be where THAT spelling's own word
-\ begins, and which word a spelling names is asked of the engine's own lookup
-\ (src/compiler/native/migrate.f RESOLVES-TO-ENTRY) rather than of a comparison
-\ written here. The cases below are the ones where a test built out of colons and
-\ suffixes would answer differently: a token with a second colon names nothing, a
-\ colon at either edge qualifies nothing so the token is an ordinary name, and a
-\ package word's bare TAIL names nothing from outside that package - which is
-\ precisely what a comparison against the recorded tail used to accept.
-\
-\ EVERY ONE OF THEM IS STAGED AGAINST A REAL ADDRESS, so the refusal is about the
-\ spelling and not about the address: NINL-EDGE-IN's own entry is what each of
-\ them claims.
-: STAGE-SPELL ( ptr u8 n -- )
-   s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
-
-: STAGE-TWO-COLONS ( -- )   s" A:B:C" STAGE-SPELL ;
-: STAGE-LEAD-COLON ( -- )   s" :NINL-EDGE-IN" STAGE-SPELL ;
-: STAGE-TRAIL-COLON ( -- )  s" NINL-EDGE-IN:" STAGE-SPELL ;
-: STAGE-NO-SUCH-WORD ( -- ) s" NINL-NOBODY" STAGE-SPELL ;
-
-: SPELLING-CASES ( -- )
-   s" a token with a second colon names nothing, so no address is its own"
-   T-LABEL
-   [: STAGE-TWO-COLONS ;] E-NMIGRATE-CALLEE TTHROWSQ
-
-   s" a colon at either edge qualifies nothing, so the token is an ordinary name
-      and there is no such word"
-   T-LABEL
-   [: STAGE-LEAD-COLON ;] E-NMIGRATE-CALLEE TTHROWSQ
-   [: STAGE-TRAIL-COLON ;] E-NMIGRATE-CALLEE TTHROWSQ
-
-   s" and a spelling that denotes no word at all is refused rather than believed"
-   T-LABEL
-   [: STAGE-NO-SUCH-WORD ;] E-NMIGRATE-CALLEE TTHROWSQ
-
-   s" none of which staged anything, so an entry that takes no list still runs"
-   T-LABEL
-   s" : NINL-SPELL-OK ( n -- n ) 5 + ;" 1 1 REGS NMIGRATE:DEFINE
-   s" 4 NINL-SPELL-OK" EV-N 9 T= ;
 
 \ ---- a call site that names its callee across a package boundary ---------------
 \ A word published inside a package is recorded under its bare tail, because that
 \ is the name the publication gave it; a caller outside that package can only name
 \ it as PKG:TAIL, and a caller INSIDE it writes the tail alone. Both name one
-\ routine and both have to stage, which is what makes the resolver the engine's
-\ own and not a lookup in the global wordlist: a bare tail resolves through the
-\ open package's wordlists exactly as the engine resolves the body that writes it.
+\ routine, and each is resolved where its body is compiled, which is what makes
+\ the resolver the engine's own and not a lookup in the global wordlist: a bare
+\ tail resolves through the open package's wordlists exactly as the engine
+\ resolves the body that writes it.
 \ (The first version of the name check compared raw spellings and refused a legal
 \ program: tools/codegen-compare-test.f assertion 238, dot
 \ habu-resolve-qualified-spellings-ec037942.)
 \
 \ TWO PACKAGES HOLD A ROUTINE OF THE SAME TAIL, which is the case a comparison of
 \ tails cannot decide at all: NINL-PKG:NINL-PKG-IN and NINL-PKG2:NINL-PKG-IN are
-\ different routines with one tail, so a caller that names the second at the
-\ first's address writes a tail that matches and an address that does not. It is
-\ refused because the spelling is resolved WHOLE, package and all.
+\ different routines with one tail and different arithmetic, so which body a
+\ qualified caller copies says whether the spelling was resolved WHOLE, package
+\ and all.
 : MIGRATE-PKG-CALLEES ( -- )
    s" package NINL-PKG public" EV
    s" : NINL-PKG-IN ( n -- n ) dup + dup + dup + dup + dup + ;"
@@ -832,29 +756,17 @@ variable STALE-ENTRY
    s" ;package" EV ;
 
 \ A caller compiled INSIDE the package, naming its callee by the bare tail the
-\ open package resolves. The staging runs in that same scope, which is the whole
-\ point: the spelling is the one the body writes and the scope is the one the body
-\ is compiled in.
+\ open package resolves. That is the whole point: the spelling is the one the
+\ body writes and the scope is the one the body is compiled in.
 : MIGRATE-PKG-INSIDE ( -- )
    s" package NINL-PKG public" EV
-   s" NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-PKG-BARE ( n -- n ) NINL-PKG-IN ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING
+   1 1 REGS NMIGRATE:DEFINE
    s" ;package" EV ;
 
 : MIGRATE-QUALIFIED ( -- )
-   s" NINL-PKG:NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-QUALIFIED ( n -- n ) NINL-PKG:NINL-PKG-IN ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
-
-: STAGE-QUAL-WRONG ( -- )
-   s" NINL-PKG:NINL-PKG-LIT" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
-
-: STAGE-WRONG-PKG ( -- )
-   s" NINL-PKG2:NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
-
-: STAGE-BARE-TAIL ( -- )
-   s" NINL-PKG-IN" s" NINL-PKG:NINL-PKG-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 : QUALIFIED-CASES ( -- )
    s" a routine published inside a package is recorded under its own address"
@@ -878,53 +790,19 @@ variable STALE-ENTRY
    s" 3 NINL-QUALIFIED" EV-N 96 T=
    s" -7 NINL-QUALIFIED" EV-N  s" -7 NINL-ENGINE-COPIES" EV-N T=
 
-   s" while a qualified name for the package's OTHER routine is refused" T-LABEL
+   s" and it is THAT package's routine it copied, not the other package's of
+      the same tail, nor the package's other routine"
+   T-LABEL
    s" NINL-PKG:NINL-PKG-LIT" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
    s" NINL-PKG:NINL-PKG-LIT" ENTRY-OF NINL:IN@
    s" NINL-PKG:NINL-PKG-IN" ENTRY-OF NINL:IN@ T=
-   [: STAGE-QUAL-WRONG ;] E-NMIGRATE-CALLEE TTHROWSQ
-
-   s" and so is ANOTHER package's routine of the same tail, which is the case a
-      comparison of tails cannot decide"
-   T-LABEL
-   [: STAGE-WRONG-PKG ;] E-NMIGRATE-CALLEE TTHROWSQ
-
-   s" and so is the bare tail itself, named from outside the package that holds it"
-   T-LABEL
-   [: STAGE-BARE-TAIL ;] E-NMIGRATE-CALLEE TTHROWSQ
+   s" 3 NINL-QUALIFIED" EV-N  s" 3 NINL-PKG2:NINL-PKG-IN" EV-N T<>
+   s" 3 NINL-QUALIFIED" EV-N  s" 3 NINL-PKG:NINL-PKG-LIT" EV-N T<>
 
    s" and all three package routines still run" T-LABEL
    s" 3 NINL-PKG:NINL-PKG-IN" EV-N 96 T=
    s" 5 NINL-PKG:NINL-PKG-LIT" EV-N 22 T=
    s" 3 NINL-PKG2:NINL-PKG-IN" EV-N 27 T= ;
-
-\ ---- a list staged in one scope and spent in another ---------------------------
-\ Which word a bare spelling denotes is a question about a SCOPE, so the staging
-\ resolves it in the scope the staging runs in and the migration compiles the
-\ body in the scope the run runs in. Every caller there is stages and migrates in
-\ one word, so those are one scope - and the check rests on that, which is why
-\ the wordlists are recorded with the first row and held against the ones the run
-\ finds rather than assumed to be the same. Moving the scope in between is the
-\ one way to make the resolver's answer stale without changing the dictionary.
-: STAGE-THEN-MOVE ( -- )
-   s" NINL-EDGE-IN" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" package NINL-PKG public" EV
-   s" : NINL-SCOPE-MOVED ( n -- n ) NINL-EDGE-IN ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
-
-: SCOPE-CASES ( -- )
-   s" a list staged in one scope and spent in another is refused" T-LABEL
-   [: STAGE-THEN-MOVE ;] E-NMIGRATE-CALLEE TTHROWSQ
-   s" ;package" EV
-   s" NINL-SCOPE-MOVED" DEFINED? TFALSE
-   s" NINL-PKG:NINL-SCOPE-MOVED" DEFINED? TFALSE
-
-   s" and the row it staged is still the list's, so the run that spends it works"
-   T-LABEL
-   s" : NINL-AFTER-SCOPE ( n -- n ) NINL-EDGE-IN ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING
-   s" 3 NINL-AFTER-SCOPE" EV-N 96 T=
-   s" NINL-AFTER-SCOPE" BL-COUNT 0 T= ;
 
 \ ---- what a copied body brings with it -----------------------------------------
 \ A copied body's loads and stores thread the CALLER's memory order, because
@@ -936,9 +814,8 @@ variable STALE-ENTRY
    s" : NINL-LOAD ( ptr n -- n ) @ ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-USE-LOAD ( -- )
-   s" NINL-LOAD" s" NINL-LOAD" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-USE-LOAD ( ptr n -- n ) NINL-LOAD 1 + ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ A division survives a copy as the same operation it was, and that operation is
 \ the guard and the divide together - the machine form branches over a `brk` when
@@ -949,9 +826,8 @@ variable STALE-ENTRY
    s" : NINL-DIV ( n n -- n ) / ;" 2 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-USE-DIV ( -- )
-   s" NINL-DIV" s" NINL-DIV" ENTRY-OF 2 1 NMIGRATE:CALLEE
    s" : NINL-USE-DIV ( n n -- n ) NINL-DIV 1 + ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 \ The same division past the size rule, and a caller that therefore CALLS it.
 \ It is the control the trap count needs: the guard is in the callee either way,
@@ -961,9 +837,8 @@ variable STALE-ENTRY
    2 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-CALL-DIV ( -- )
-   s" NINL-DIV-BIG" s" NINL-DIV-BIG" ENTRY-OF 2 1 NMIGRATE:CALLEE
    s" : NINL-CALL-DIV ( n n -- n ) NINL-DIV-BIG ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : DEFINE-CELL ( -- )
    s" create NINL-CELL 16 allot" EV
@@ -1060,30 +935,22 @@ variable L4-BODY
 
 : MIGRATE-LIT-CHAIN ( -- )
    s" : NINL-L1 ( n -- n ) 3 + ;" 1 1 REGS NMIGRATE:DEFINE
-   s" NINL-L1" s" NINL-L1" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-L2 ( n -- n ) NINL-L1 7 * ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
-   s" NINL-L2" s" NINL-L2" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-L3 ( n -- n ) NINL-L2 11 * ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" : NINL-L2 ( n -- n ) NINL-L1 7 * ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NINL-L3 ( n -- n ) NINL-L2 11 * ;" 1 1 REGS NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS L3-BODY !
-   s" NINL-L3" s" NINL-L3" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-L4 ( n -- n ) NINL-L3 5 - ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" : NINL-L4 ( n -- n ) NINL-L3 5 - ;" 1 1 REGS NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS L4-BODY !
-   s" NINL-L4" s" NINL-L4" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-L5 ( n -- n ) NINL-L4 ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : NINL-L5 ( n -- n ) NINL-L4 ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 variable R3-BODY
 
 : MIGRATE-RENAME-CHAIN ( -- )
    s" : NINL-R1 ( n n -- n n ) swap swap swap swap swap swap swap swap ;"
    2 2 REGS NMIGRATE:DEFINE
-   s" NINL-R1" s" NINL-R1" ENTRY-OF 2 2 NMIGRATE:CALLEE
-   s" : NINL-R2 ( n n -- n n ) NINL-R1 NINL-R1 ;" 2 2 REGS NMIGRATE:DEFINE-CALLING
-   s" NINL-R1" s" NINL-R1" ENTRY-OF 2 2 NMIGRATE:CALLEE
-   s" NINL-R2" s" NINL-R2" ENTRY-OF 2 2 NMIGRATE:CALLEE
-   s" : NINL-R3 ( n n -- n n ) NINL-R2 NINL-R1 ;" 2 2 REGS NMIGRATE:DEFINE-CALLING
+   s" : NINL-R2 ( n n -- n n ) NINL-R1 NINL-R1 ;" 2 2 REGS NMIGRATE:DEFINE
+   s" : NINL-R3 ( n n -- n n ) NINL-R2 NINL-R1 ;" 2 2 REGS NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS R3-BODY !
-   s" NINL-R3" s" NINL-R3" ENTRY-OF 2 2 NMIGRATE:CALLEE
-   s" : NINL-R4 ( n n -- n n ) NINL-R3 ;" 2 2 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : NINL-R4 ( n n -- n n ) NINL-R3 ;" 2 2 REGS NMIGRATE:DEFINE ;
 
 \ The same arithmetic as the whole literal chain, compiled by the ENGINE, so what
 \ the copied chain answers is held against a second compiler.
@@ -1186,9 +1053,8 @@ variable R3-BODY
    s" : NINL-STORE ( r ptr a -- ) ! ;" 2 0 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-PUT ( -- )
-   s" NINL-STORE" s" NINL-STORE" ENTRY-OF 2 0 NMIGRATE:CALLEE
    s" : NINL-PUT ( r ptr a -- ) {: v:r b:ptr :} v v f+ b NINL-STORE ;"
-   2 0 REGS NMIGRATE:DEFINE-CALLING ;
+   2 0 REGS NMIGRATE:DEFINE ;
 
 : ARG-CASES ( -- )
    s" a body that stores its argument is recorded as the store it is" T-LABEL
@@ -1245,14 +1111,12 @@ variable FSUM-BIG-BODY
    A64EMIT:BODY-INSNS FSUM-BIG-BODY ! ;
 
 : MIGRATE-FPUT ( -- )
-   s" NINL-FSUM" s" NINL-FSUM" ENTRY-OF 2 1 NMIGRATE:CALLEE
    s" : NINL-FPUT ( r r ptr a -- ) {: x:r y:r b:ptr :} x y NINL-FSUM b ! ;"
-   3 0 REGS NMIGRATE:DEFINE-CALLING ;
+   3 0 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-FPUT-BIG ( -- )
-   s" NINL-FSUM-BIG" s" NINL-FSUM-BIG" ENTRY-OF 2 1 NMIGRATE:CALLEE
    s" : NINL-FPUT-BIG ( r r ptr a -- ) {: x:r y:r b:ptr :} x y NINL-FSUM-BIG b ! ;"
-   3 0 REGS NMIGRATE:DEFINE-CALLING ;
+   3 0 REGS NMIGRATE:DEFINE ;
 
 \ And the result crossing computes nothing, which this second caller is what
 \ says: it copies the same body and goes on computing with the sum as a double.
@@ -1260,9 +1124,8 @@ variable FSUM-BIG-BODY
 \ double in the next operation, so a crossing that converted rather than
 \ reinterpreted answers a different number here.
 : MIGRATE-FUSE ( -- )
-   s" NINL-FSUM" s" NINL-FSUM" ENTRY-OF 2 1 NMIGRATE:CALLEE
    s" : NINL-FUSE ( r r -- r ) NINL-FSUM 1.0 f* ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : RESULT-CASES ( -- )
    s" the small float callee is recorded and the padded one is not" T-LABEL
@@ -1347,8 +1210,7 @@ variable FULL-BODY
    A64EMIT:BODY-INSNS FULL-BODY ! ;
 
 : MIGRATE-CALL-FULL ( -- )
-   s" NINL-FULL" s" NINL-FULL" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NINL-CALL-FULL ( n -- n ) NINL-FULL ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : NINL-CALL-FULL ( n -- n ) NINL-FULL ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : CAP-CASES ( -- )
    s" the table is full, and it is the table that says so" T-LABEL
@@ -1407,9 +1269,8 @@ variable RECLAIM-ENTRY
    s" NINL-GONE" ENTRY-OF RECLAIM-ENTRY ! ;
 
 : MIGRATE-RECLAIM-CALLER ( -- )
-   s" NINL-RECYCLED" s" NINL-RECYCLED" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NINL-RECYCLED-CALLER ( n -- n ) NINL-RECYCLED ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ The freed row taken again, by a body small enough to be recorded. Its row is
 \ the index the reclamation gave back, which is what makes the body question
@@ -1533,10 +1394,8 @@ public
    MIGRATE-TWICE-FIRST
    MIGRATE-TWICE-AGAIN
    STALE-CASES
-   SPELLING-CASES
    MIGRATE-PKG-CALLEES
    QUALIFIED-CASES
-   SCOPE-CASES
    DEFINE-CELL
    MIGRATE-LOAD
    MIGRATE-USE-LOAD

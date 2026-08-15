@@ -282,14 +282,12 @@ $F8400000 constant LDUR-OP
 1 constant CALL-OUT
 
 : MIGRATE-NARROW ( -- )
-   s" NCLOB-STEP" s" NCLOB-STEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NCLOB-NARROW ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NCLOB-STEP NCLOB-STEP loop ;"
-   CALL-IN CALL-OUT REGS NMIGRATE:DEFINE-CALLING ;
+   CALL-IN CALL-OUT REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-WIDE ( -- )
-   s" NCLOB-ENGINE-STEP"  s" NCLOB-ENGINE-STEP" ENTRY-OF  1 1 NMIGRATE:CALLEE
    s" : NCLOB-WIDE ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NCLOB-ENGINE-STEP NCLOB-ENGINE-STEP loop ;"
-   CALL-IN CALL-OUT REGS NMIGRATE:DEFINE-CALLING ;
+   CALL-IN CALL-OUT REGS NMIGRATE:DEFINE ;
 
 : NARROW-CASES ( -- )
    s" both callers answer what their body says, on the same inputs" T-LABEL
@@ -374,19 +372,16 @@ $F8400000 constant LDUR-OP
    s" : NCLOB-ENGINE-PSTEP ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;" EV ;
 
 : MIGRATE-PRESSURE-NARROW ( -- )
-   s" NCLOB-PSTEP" s" NCLOB-PSTEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NCLOB-PN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s NCLOB-PSTEP + + + + + + ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-PRESSURE-WIDE ( -- )
-   s" NCLOB-ENGINE-PSTEP" s" NCLOB-ENGINE-PSTEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NCLOB-PW ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s NCLOB-ENGINE-PSTEP + + + + + + ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-PRESSURE-CONTROL ( -- )
-   s" NCLOB-PSTEP" s" NCLOB-PSTEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NCLOB-PC ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s NCLOB-PSTEP + + + + + ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 : PRESSURE-CASES ( -- )
    s" both pressure callers answer what their body says" T-LABEL
@@ -469,14 +464,12 @@ variable GONE-ENTRY
 14 constant RECLAIM-REGS
 
 : MIGRATE-RECLAIM-CALLER ( -- )
-   s" NCLOB-RECYCLED" s" NCLOB-RECYCLED" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NCLOB-RECYCLED-CALLER ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s NCLOB-RECYCLED + + + + + + + + + + ;"
-   1 1 RECLAIM-REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 RECLAIM-REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-RECLAIM-TWIN ( -- )
-   s" NCLOB-ENGINE-STEP" s" NCLOB-ENGINE-STEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
    s" : NCLOB-RECYCLED-TWIN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s NCLOB-ENGINE-STEP + + + + + + + + + + ;"
-   1 1 RECLAIM-REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 RECLAIM-REGS NMIGRATE:DEFINE ;
 
 : RECLAIM-CALLER-CASES ( -- )
    s" a caller of the word at a reclaimed slot computes what its body says" T-LABEL

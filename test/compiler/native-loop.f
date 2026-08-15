@@ -325,10 +325,8 @@ private
    1 1 REGS NMIGRATE:DEFINE ;
 
 : CALL ( -- )
-   s" NLPT-CALLEE-N" s" NLPT-FIXTURE:NLPT-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE
    s" : NLPT-CALL-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NLPT-CALLEE-N loop ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : TWO ( -- )
    s" : NLPT-TWO-N ( n n -- n ) {: seed:n len:n :} seed 1 len 0 ?do 1 + swap 2 + swap loop + ;"

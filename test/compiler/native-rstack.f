@@ -296,24 +296,18 @@ variable RC-CELL                     \ and the same body parking the plain cell
    s" : NRS-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
    1 1 REGS NMIGRATE:DEFINE ;
 
-: CALLEE-STAGE ( -- )
-   s" NRS-CALLEE-N" s" NRS-FIXTURE:NRS-CALLEE-N" CODEGEN-COMPARE:CODE-ENTRY
-   1 1 NMIGRATE:CALLEE ;
 
 : CALL ( -- )
-   CALLEE-STAGE
    s" : NRS-CALL-N ( n n -- n ) {: k:n s:n :} k >r s NRS-CALLEE-N r> + ;"
-   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 REGS NMIGRATE:DEFINE ;
 
 : TWOCALL ( -- )
-   CALLEE-STAGE
    s" : NRS-2CALL-N ( n n n -- n ) {: a:n b:n s:n :} a >r b >r s NRS-CALLEE-N r> 3 * + r> 5 * + ;"
-   3 1 REGS NMIGRATE:DEFINE-CALLING ;
+   3 1 REGS NMIGRATE:DEFINE ;
 
 : CALLLOOP ( -- )
-   CALLEE-STAGE
    s" : NRS-CALLLOOP-N ( n n n -- n ) {: k:n s:n lim:n :} k >r s lim 0 ?do NRS-CALLEE-N k + loop r> + ;"
-   3 1 REGS NMIGRATE:DEFINE-CALLING ;
+   3 1 REGS NMIGRATE:DEFINE ;
 
 \ ---- the three callee questions, measured and recorded ------------------------
 \ MEASURE-HELD runs every stage a publication runs and keeps none of it, so a
