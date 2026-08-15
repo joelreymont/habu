@@ -51,7 +51,6 @@ require lib/string.f
 require lib/test.f
 require lib/prelude.f
 require src/compiler/native/migrate.f
-require tools/codegen-compare-core.f
 
 \ ---- the engine's compilation: the reference ---------------------------------
 \ Ordinary definitions. bin/hb compiles these with the emitter it has always

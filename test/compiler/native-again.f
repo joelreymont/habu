@@ -43,7 +43,6 @@ require lib/prelude.f
 require lib/string.f
 require lib/errors.f
 require src/compiler/native/migrate.f
-require tools/codegen-compare-core.f
 require tools/codegen-loop-inventory.f
 
 \ ---- the engine's compilation: the reference ---------------------------------

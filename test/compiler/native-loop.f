@@ -61,7 +61,6 @@ require lib/test.f
 require lib/prelude.f
 require lib/string.f
 require src/compiler/native/migrate.f
-require tools/codegen-compare-core.f
 require tools/codegen-loop-inventory.f
 
 package NLPT-FIXTURE
