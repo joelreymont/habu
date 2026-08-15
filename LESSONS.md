@@ -27,7 +27,10 @@ fits.
   fold, and it answers the record's slot 0, which IS the code start XREF-START
   reads.
 - **Two facts a caller states about one thing are one fact, and the fix is to
-  derive one from the other where they arrive together.** `NMIGRATE:CALLEE` took
+  derive one from the other where they arrive together.** (The staging entry
+  this records was deleted outright on 2026-08-15, dot
+  habu-delete-the-callee-de637624; what follows is why it went.)
+  `NMIGRATE:CALLEE` took
   a callee's spelling and its entry address and cross-checked neither; every
   caller had obtained the address by resolving that spelling. Downstream checks
   could not close it — the recorded-body name check in
@@ -6761,3 +6764,44 @@ second die line: the tried-and-reverted separate DATA refusal
 stole ACAP-UNCLASSIFIED's only producer under the D0-SKEW forge
 and lost a tested stop. When a new check classifies the same bad
 state an old check refuses, extend the old check's diagnostic.
+
+## 2026-08-15 - the callee-staging deletion's five
+
+(1) A deletion's baseline is not "the gate is green", it is the
+BAD PROGRAM the mechanism accepts. One source text through both
+roads settled it in one run: `( n n -- n n ) TR-BIG ;` compiled to
+56 bytes through resolution and 4 through the staging road, because
+the staged 2-in-2-out number told the selector the callee consumed
+both values. Two roads to one row is two different programs from
+one text, and the number that made them differ was a parameter.
+After the deletion the probe does not fail at runtime - it fails to
+LOAD (`E-UNDEFINED: NMIGRATE:CALLEE`, rc 70), which is the whole
+point: the lie class dies with the road that could say it.
+(2) The leaf's file list was eight months of drift out of date -
+10 files named, 22 in the tree, 87 sites named, 104 present. A
+scope written as "every remaining reference, proven with rg" is
+drift-proof where a file list is not; check the count before
+believing a leaf's inventory.
+(3) A refusal test is about the mechanism or about the behaviour,
+and the way to tell is to ask what the input class becomes after
+the deletion. `A:B:C`, `:FOO` and `FOO:` as callee spellings were
+only ever reachable because a CALLER handed them over; a body
+cannot write them - the engine answers E-UNDEFINED first, probed
+directly. Those cases died with the entry that had the parameter.
+The stale-address case was the opposite: its subject (a caller must
+not reach a re-migrated word's old routine) survives, so it was
+converted to assert the copy comes from the LIVE row, and mutating
+the fixture to publish the same body twice reds it.
+(4) Deleting a road can strand a fail-closed guard downstream.
+elaborate.f CALLEE-COPY? still holds the recorded inline arity
+against the word model's, but both now come from the checker, and
+a callee migrated under a mismatched arity is refused earlier by
+E-NELAB-ARITY (-8303, probed). The guard is right to keep and now
+has no producer - worth a dot, not a deletion.
+(5) A worktree's `bin/hb` is not its commit. test/p2-map-rewind.f
+red with "expected 37, got 62" - and red identically on unmodified
+master, because the checkout's seed predated master by a day.
+`install --force` cleared it. The honest attribution test is a
+control workspace at master built the same way: both engines came
+out 799f5601..., so the byte change was master's and the diff's
+engine contribution was zero.
