@@ -1,5 +1,7 @@
 \ run-lib-test.f - focused coverage for the DGX Spark host profile and the
 \ startup calibration reference it selects.
+\ schedule-lint: allow-unscheduled - manual-standalone by design, see the run line
+\ below; the detection asserts are only valid on a DGX Spark (GB10) host.
 \
 \ Manual-standalone gate (not a TEST:SUITE member): run directly from the repo
 \ root with

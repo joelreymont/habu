@@ -215,8 +215,71 @@ private
    s" an unterminated string literal is refused, not scanned around" T-LABEL
    [: RUN-BAD-QUOTE ;] SCHEDULE-LINT:E-SCHED-QUOTE TTHROWSQ ;
 
+\ ---- the disk audit ----------------------------------------------------------
+\
+\ The fixture tree under tools/lint/sched-fixture/ is REAL FILES, because the
+\ audit's question is about the disk and synthetic bytes cannot answer it. The
+\ fixture seeds one root and then runs the shipped closure and the shipped walk -
+\ REACH-ROOT, REACH-CLOSE, DISK-TREE are the words LIVE itself calls - so what is
+\ under test is the production reference grammar, not a model of it.
+\
+\ Every file in that tree is built to be judged wrongly by a text search. Three
+\ are reached and must stay silent, and each uses a different reference shape: a
+\ `require` directive, a bare literal, and a path that is one WORD of a longer
+\ literal. Three must report: one named only inside a `\` comment, one named only
+\ by a literal in a file that is itself unreached, and one carrying the pragma
+\ text in three places that are not a comment-line head. One must stay silent on
+\ the strength of a real pragma. Mutating the lint to search text instead of
+\ walking the closure flips the first three; mutating the pragma test to a
+\ substring search flips the last two.
+: FIXTURE-ROOT$ ( -- ptr u8 n )
+   s" tools/lint/sched-fixture/root.f" ;
+
+: FIXTURE-TREE$ ( -- ptr u8 n )
+   s" tools/lint/sched-fixture/" ;
+
+: FIXTURE-RUN ( -- n )
+   SCHEDULE-LINT:PREPARE
+   SCHEDULE-LINT:REPORT-OFF
+   SCHEDULE-LINT:RESET
+   FIXTURE-ROOT$ SCHEDULE-LINT:REACH-ROOT
+   SCHEDULE-LINT:REACH-CLOSE
+   FIXTURE-TREE$ SCHEDULE-LINT:DISK-TREE
+   SCHEDULE-LINT:DARK# ;
+
+: T-REACH ( -- )
+   s" the three reaching shapes each carry one neighbour into the closure" T-LABEL
+   FIXTURE-RUN drop
+   s" a require directive reaches its file" T-LABEL
+   s" tools/lint/sched-fixture/linked.f" SCHEDULE-LINT:REACHED? TTRUE
+   s" a bare literal reaches the file a spawner would be handed" T-LABEL
+   s" tools/lint/sched-fixture/spawned.f" SCHEDULE-LINT:REACHED? TTRUE
+   s" a path that is one word of a longer literal is reached too" T-LABEL
+   s" tools/lint/sched-fixture/embedded.f" SCHEDULE-LINT:REACHED? TTRUE
+   s" a path named only in a line comment is not reached" T-LABEL
+   s" tools/lint/sched-fixture/dangling.f" SCHEDULE-LINT:REACHED? TFALSE
+   s" a literal naming a file that is not on disk reaches nothing" T-LABEL
+   s" tools/lint/sched-fixture/no-such-file.f" SCHEDULE-LINT:REACHED? TFALSE
+   s" reach does not flow out of an unreached file" T-LABEL
+   s" tools/lint/sched-fixture/orphan-ref.f" SCHEDULE-LINT:REACHED? TFALSE
+   s" the root and its three reachable neighbours, and nothing else" T-LABEL
+   SCHEDULE-LINT:REACH# 4 T= ;
+
+\ Four of the tree's files are unreached and three of them report, so the fourth
+\ is the pragma's work. The REACHED? clause is what makes that inference sound:
+\ without it, excused.f could be silent because something reached it, and the
+\ count would read the same.
+: T-DISK ( -- )
+   s" three unreached sources report and the excused one does not" T-LABEL
+   FIXTURE-RUN 3 T=
+   s" every finding is a disk finding" T-LABEL
+   SCHEDULE-LINT:FINDINGS 3 T=
+   s" and the excused file is silent on its pragma, not on being reached" T-LABEL
+   s" tools/lint/sched-fixture/excused.f" SCHEDULE-LINT:REACHED? TFALSE ;
+
 \ The live tree, through the same entry the gate runs: every registration in
-\ test/gate-stdlib-cases.f must be reachable by a slice predicate or a fork list.
+\ test/gate-stdlib-cases.f must be reachable by a slice predicate or a fork list,
+\ and every .f under test/ must be reached by some runner.
 : T-LIVE ( -- )
    SCHEDULE-LINT:REPORT-ON
    SCHEDULE-LINT:STRICT ;
@@ -233,6 +296,8 @@ private
    T-STDIN
    T-EMPTY
    T-REFUSALS
+   T-REACH
+   T-DISK
    T-REPORT
    T-LIVE ;
 

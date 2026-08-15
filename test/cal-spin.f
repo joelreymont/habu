@@ -1,4 +1,7 @@
 \ cal-spin.f - standalone host calibration probe.
+\ schedule-lint: allow-unscheduled - a host calibration probe, not a suite: it
+\ MEASURES the box, so a gate row would make a phase verdict host-dependent.
+\ test/cal-spin-lib.f documents the pair; skills/habu-host-profiles/SKILL.md runs it.
 \
 \ Prints the wall-clock milliseconds of ONE run of the gate's fixed calibration
 \ spin (test/cal-spin-lib.f CAL-SPIN:MS) in a freshly spawned process, then

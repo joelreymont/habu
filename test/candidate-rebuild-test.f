@@ -1,4 +1,7 @@
 \ candidate-rebuild-test.f - real scheduler candidate-source regression.
+\ schedule-lint: allow-unscheduled - it cannot be: docs/gate.md says a whole-gate
+\ scheduling regression run inside test/run.f would enter the same gate
+\ recursively. Run its two subcommands standalone before landing runner changes.
 \
 \ Run: bin/hb --load test/candidate-rebuild-test.f -- rebuild; bin/hb --load test/candidate-rebuild-test.f -- import
 

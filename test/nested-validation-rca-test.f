@@ -1,5 +1,8 @@
 \ nested-validation-rca-test.f - focused topology and step-evidence coverage.
 \ Run: bin/hb --load test/nested-validation-rca-test.f
+\ schedule-lint: allow-unscheduled - habu-guard-nested-valid-5ef5491d owns the
+\ decision. The asserts pass anywhere; tools/nested-validation-rca-core.f then
+\ dies rc 64 off Linux, so a SUITE row would red the gate on every macOS host.
 
 require lib/test.f
 require tools/nested-validation-rca-core.f

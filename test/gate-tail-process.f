@@ -1,4 +1,7 @@
 \ gate-tail-process.f - focused stdlib tail-process runner.
+\ schedule-lint: allow-unscheduled - habu-schedule-or-retire-a32cf3b8 owns the
+\ decision. Nothing spawns this file, yet RUN below is the only enforcer of
+\ TAIL-BUDGET:PROCESS-MS, so it is neither schedulable as-is nor safe to delete.
 
 require lib/errors.f
 require lib/string.f

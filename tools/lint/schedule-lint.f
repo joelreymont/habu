@@ -1,5 +1,6 @@
-\ schedule-lint.f - every SUITE registration must be reachable by a runner, and
-\ every phase that runner has must be started.
+\ schedule-lint.f - every SUITE registration must be reachable by a runner, every
+\ phase that runner has must be started, and every test source on disk must be
+\ reached by one of them.
 \
 \ THE HOLE THIS CLOSES. test/gate-stdlib-cases.f registers a suite by writing
 \ `SUITE <label> <files...> ;SUITE`. Writing it there does not run it. A
@@ -35,6 +36,62 @@
 \ finding too: a registration with two files and one of them scheduled is half
 \ dark, and the half that is dark is the half nobody notices.
 \
+\ THE THIRD QUESTION, and the one the first two cannot ask. Everything above
+\ starts from a REGISTRATION and asks whether anything runs it. A test source
+\ that was never registered at all is invisible to that: it is in no SUITE row,
+\ so nothing walks it, and in no fork list, so it does not even move the
+\ scheduled-file count. Measured on this tree before the check existed, dropping
+\ a conforming suite at test/compiler/native-probe-gap.f left every number
+\ identical - 223 registrations, 337 scheduled files, 0 findings, byte for byte.
+\ "It passes" and "it is scheduled" were already separate facts; this is the
+\ third, that it EXISTS and nothing reaches it.
+\   REACH       a source is reached when a gate fork list or a SUITE row names
+\               it, or when something already reached loads it. The second half
+\               is a transitive closure and not an allowlist: most of test/ is
+\               support - fixtures a driver spawns, `-lib.f` halves, obligation
+\               and schema files a proof requires - and those are reached
+\               through their loader, not by being registered themselves. When
+\               this landed the closure carried a few hundred roots out to just
+\               over a thousand sources; SUMMARY prints both counts. The closure
+\               is the whole difference between a check with nine findings and
+\               one with a hundred and seventy eight.
+\   DISK        every `.f` under test/ that the closure did not reach is a
+\               finding, named by path. Not lib/ or tools/: a source there is a
+\               library until something makes it a test, while test/ has no
+\               other purpose. Widening it is habu-tier-parity-lint-31aaa95b's.
+\               `.fs` is out of scope on both sides of that walk - those are
+\               Gforth recovery-host sources, which this gate does not schedule
+\               and cannot run - though the closure still follows a require into
+\               one, so a `.fs` file a habu source loads is counted as reached.
+\
+\ HOW A SOURCE IS REACHED, structurally. Two shapes, both read off the shared
+\ lexer's token table rather than searched for: `require`/`include` followed by
+\ a word that names a source on disk, and a string literal any of whose payload
+\ words names one. The literal arm covers spawning, where the path is data
+\ handed to a runner - `s" test/compiler/ir-id-replay.f" HB-LOAD-OUTCOME` - and
+\ it reads payload WORDS, not the whole payload, because a generated line like
+\ `s" require test/compiler/ir-id-concurrency.f" SB-APPEND` carries the path
+\ inside a longer literal. The alternative was a list of spawning words to match
+\ on, which is exactly the hand-written list this lint refuses to keep anywhere
+\ else. Both arms demand the file EXIST, so a literal naming a path that is not
+\ there grants nothing, and neither arm can see a path in a comment: the lexer
+\ consumed those before the table was built.
+\
+\ WHAT THIS ARM CAN MISS, stated plainly because it grants coverage rather than
+\ demanding it. A path assembled at runtime from pieces - a directory in one
+\ literal and a basename in another - is invisible here, and its file reports as
+\ unreached. That is a false RED and the safe direction: it demands an answer.
+\ The answer is a documented pragma, below.
+\
+\ THE PRAGMA. A source that is deliberately unscheduled says so in itself:
+\   \ schedule-lint: allow-unscheduled - <why, naming the spawner or the dot>
+\ It is the `typed-local-lint: allow-bare-local` convention this tree already
+\ runs 425 times, with one tightening: the marker is read at the head of a `\`
+\ comment LINE, so a mention of it inside prose, a string, or a longer sentence
+\ is not a pragma. Every use carries its reason on the same line. A pragma is
+\ not an allowlist entry - it lives in the file it excuses, and it is the thing
+\ a reviewer of that file reads first.
+\
 \ WHERE THE SETS COME FROM. All of them are derived from the real sources; there
 \ is no hand-written list of suites, slices or phases to go stale.
 \   slices          test/run-lib.f PHASE-SLICE-TOKEN over every live phase, put
@@ -43,6 +100,9 @@
 \   phase schedule  test/run-lib.f's order tables, read as data
 \   scheduled files every .f under test/, the shape
 \                   `s" PATH" GSI-FORK-INCLUDE | GSI-INCLUDE | GSI-REQUIRE`
+\   reached files   those, plus every SUITE row's members, closed transitively
+\                   over require/include and spawn literals
+\   disk            every .f WALK-FILES finds under test/
 \ All three inline gate bodies live under test/, so walking test/ reaches every
 \ list there is. A GSI list placed OUTSIDE test/ would be invisible here and its
 \ registration would report as dark - a false RED, which is the safe direction:
@@ -117,19 +177,33 @@ public
 
 private
 
-$80000 constant FILE-CAP                \ largest linted source + headroom (test/engine-suite.f is 162K)
+\ The closure follows require lines out of test/ into the engine's own sources,
+\ so the largest source this reads is no longer the largest TEST: src/core/checker.f
+\ is 514K where test/engine-suite.f is 162K. READ-ALL probes past the cap and
+\ throws E-FS-CAPACITY rather than returning a truncated file, so a cap set too
+\ low stops the lint instead of silently losing that file's references - which is
+\ how this number was found to be wrong.
+$100000 constant FILE-CAP               \ largest source the closure can reach + headroom
 $4000 constant LABEL-CAP                \ packed selected labels
 $8000 constant SCHED-CAP                \ packed scheduled paths
+\ The closure is the whole load graph, not just test/: about 25.6KB packed for
+\ the thousand-odd sources on this tree, so this is 2.5x headroom. Overflow is a
+\ throw, never a truncation - a reach set that quietly stopped recording would
+\ start calling reached files dark.
+$10000 constant REACH-CAP               \ packed reached paths
 $100 constant NAME-CAP                  \ one suite label
 
 0 constant UNFILED-SET                  \ labels whose files are not all scheduled
 1 constant SCHED-SET                    \ files a gate fork list schedules
+2 constant REACH-SET                    \ files some runner reaches, transitively
 
 $40 constant PHASE-CAP                  \ >= TEST:PHASES
 $10 constant SLICE-CAP                  \ >= the slices STDLIB-GATE:SLICE-ID? knows
 
 create LABEL-BUF LABEL-CAP allot        \ packed [len][bytes] runs
 create SCHED-BUF SCHED-CAP allot
+create REACH-BUF REACH-CAP allot
+create WORK-BUF FS-PATH-CAP allot       \ the closure's current path, copied out of the set
 create PHASE-STARTED PHASE-CAP allot    \ one byte per phase: an order table names it
 create PHASE-DEFERRED PHASE-CAP allot   \ one byte per phase: the deferred table names it
 create LIVE-SLICE PHASE-CAP cells allot \ slice ids the live phases ask for
@@ -143,6 +217,13 @@ variable PHASE-I                        \ cursor of the phase walks
 variable SLICE-I                        \ cursor of the slice walks
 variable LABEL-U   variable LABEL-N
 variable SCHED-U   variable SCHED-N
+variable REACH-U   variable REACH-N
+variable REACH-I                        \ closure cursor: entries below it have been scanned
+variable SEED-I                         \ cursor of the fork-list seeding walk
+variable WORK-U
+variable LIT-I     variable LIT-J       \ payload-word walk over one string literal
+variable PR-I      variable PR-J        \ line walk of the pragma scan
+variable DARK-N                         \ unreached sources found on disk
 variable NAME-U
 variable ORIGIN-U
 variable FILE-A
@@ -193,27 +274,33 @@ variable NUM-D
 
 : SET-BASE ( n -- ptr u8 ) {: s:n :}
    s UNFILED-SET = if LABEL-BUF exit then
-   SCHED-BUF ;
+   s SCHED-SET = if SCHED-BUF exit then
+   REACH-BUF ;
 
 : SET-CAP@ ( n -- n ) {: s:n :}
    s UNFILED-SET = if LABEL-CAP exit then
-   SCHED-CAP ;
+   s SCHED-SET = if SCHED-CAP exit then
+   REACH-CAP ;
 
 : SET-U@ ( n -- n ) {: s:n :}
    s UNFILED-SET = if LABEL-U @ exit then
-   SCHED-U @ ;
+   s SCHED-SET = if SCHED-U @ exit then
+   REACH-U @ ;
 
 : SET-U! ( n n -- ) {: v:n s:n :}
    s UNFILED-SET = if v LABEL-U ! exit then
-   v SCHED-U ! ;
+   s SCHED-SET = if v SCHED-U ! exit then
+   v REACH-U ! ;
 
 : SET-N@ ( n -- n ) {: s:n :}
    s UNFILED-SET = if LABEL-N @ exit then
-   SCHED-N @ ;
+   s SCHED-SET = if SCHED-N @ exit then
+   REACH-N @ ;
 
 : SET-N! ( n n -- ) {: v:n s:n :}
    s UNFILED-SET = if v LABEL-N ! exit then
-   v SCHED-N ! ;
+   s SCHED-SET = if v SCHED-N ! exit then
+   v REACH-N ! ;
 
 : SET-BYTE ( n n -- n ) {: s:n off:n :}
    s SET-BASE off + c@ ;
@@ -258,6 +345,25 @@ variable NUM-D
    repeat
    s HAS-OFF @ SET-BYTE HAS-LEN !
    s SET-BASE HAS-OFF @ + 1 + HAS-LEN @ ;
+
+\ ---- the reach set: what some runner loads -----------------------------------
+\ A candidate becomes a member only if it is a source path that EXISTS. The
+\ existence test is last because it is a syscall and the two cheap tests reject
+\ almost everything: a suffix compare kills ordinary literals, and the
+\ membership test kills the repeats, which is most of what a load graph offers -
+\ the members absorb several times their own number of references.
+
+: SRC-SUFFIX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" .f" LINT-ENDS-WITH? if LINT-TRUE exit then
+   a u s" .fs" LINT-ENDS-WITH? ;
+
+: REACH-TRY ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if exit then
+   u FS-PATH-CAP > if exit then
+   a u SRC-SUFFIX? 0= if exit then
+   REACH-SET a u SET-HAS? if exit then
+   a u EXISTS? 0= if exit then
+   REACH-SET a u SET+ ;
 
 \ ---- the source under scan ---------------------------------------------------
 
@@ -553,8 +659,14 @@ private
    s" schedule-lint:   " type a u type
    s"  is in no GSI-FORK-INCLUDE / GSI-INCLUDE / GSI-REQUIRE list under test/" type cr ;
 
+\ A registration's members are reach roots whether or not a fork list also names
+\ them: the SUITE row IS a runner, and the standalone gate spawns it. This runs
+\ before the scheduled-set test below so a member that is dark for the coverage
+\ question still seeds the closure for the disk question - the two ask different
+\ things of the same path.
 : FILE-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
    CUR-FILES @ 1+ CUR-FILES !
+   a u REACH-TRY
    SCHED-SET a u SET-HAS? if exit then
    MISS-COUNT
    a u MISS-LINE ;
@@ -652,6 +764,160 @@ private
 : READ-INTO ( ptr u8 n -- ) {: a:ptr u:n :}
    a u FILE-A-FIELD @ FILE-CAP READ-ALL FILE-U ! ;
 
+\ ---- the reach closure --------------------------------------------------------
+\
+\ Breadth-first over the load graph, with the reach set doubling as the queue:
+\ REACH-I is the cursor of what has been SCANNED, SET-N@ the count of what has
+\ been FOUND, and every path is appended once, so the walk ends exactly when the
+\ two meet. New members appended during a scan are behind the cursor and get
+\ their turn; a member already present is not re-queued, which is what keeps a
+\ cycle (two files that require each other) from spinning.
+
+$20 constant SP-C
+$0A constant NL-C
+
+\ Bounds first, byte second: the offset walks below run to the end of their
+\ buffer, so the test at the end must answer without reading there.
+: BLANK-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
+   i u >= if LINT-FALSE exit then
+   a i + c@ SP-C <= ;
+
+: TEXT-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
+   i u >= if LINT-FALSE exit then
+   a i + c@ SP-C > ;
+
+\ Every whitespace-separated word of one literal's payload. `s" lib/x.f -- --json"`
+\ offers three words and one of them is a path; `s" require test/y.f"` offers two.
+\ Reading the payload whole would see neither.
+: PAYLOAD-WORDS ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 LIT-I !
+   begin LIT-I @ u < while
+      begin a u LIT-I @ BLANK-AT? while LIT-I @ 1+ LIT-I ! repeat
+      LIT-I @ LIT-J !
+      begin a u LIT-J @ TEXT-AT? while LIT-J @ 1+ LIT-J ! repeat
+      LIT-J @ LIT-I @ > if a LIT-I @ + LIT-J @ LIT-I @ - REACH-TRY then
+      LIT-J @ LIT-I !
+   repeat ;
+
+\ `require PATH` / `include PATH`: the engine parses the next word as the path,
+\ so the token after the directive is the candidate and a string literal there is
+\ not one. Case-insensitive, because the dictionary is.
+: LOAD-DIRECTIVE? ( n -- bool ) {: k:n :}
+   k s" require" LEX-IS if LINT-TRUE exit then
+   k s" include" LEX-IS ;
+
+: REF-DIRECTIVE ( n -- ) {: k:n :}
+   k LOAD-DIRECTIVE? 0= if exit then
+   k 1+ LINT-LEX:COUNT >= if exit then
+   k 1+ LEX-WORD? 0= if exit then
+   k 1+ LEX-STRING? if exit then
+   k 1+ LINT-LEX:TOKEN REACH-TRY ;
+
+: REF-AT ( n -- ) {: k:n :}
+   k REF-DIRECTIVE
+   k LEX-STRING? 0= if exit then
+   k LINT-LEX:CONTENT PAYLOAD-WORDS ;
+
+: SCAN-REFS ( -- )
+   0 WALK-I !
+   begin WALK-I @ LINT-LEX:COUNT < while
+      WALK-I @ REF-AT
+      WALK-I @ 1+ WALK-I !
+   repeat ;
+
+\ The cursor's path is copied out before the file is read, because the scan that
+\ follows appends to the very buffer SET-AT pointed into.
+: WORK! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a WORK-BUF u BYTE-COPY
+   u WORK-U ! ;
+
+: WORK$ ( -- ptr u8 n )
+   WORK-BUF WORK-U @ ;
+
+: REACH-ONE ( -- )
+   REACH-SET REACH-I @ SET-AT WORK!
+   WORK$ READ-INTO
+   WORK$ FILE$ LEX-SOURCE
+   SCAN-REFS ;
+
+\ The fork lists are the other half of the roots; the SUITE rows seeded
+\ themselves as they were judged. A GSI entry naming a path that is not there
+\ seeds nothing, because REACH-TRY requires the file to exist - the reach set
+\ answers "what is loaded", and a list can name what is gone.
+: SEED-REACH ( -- )
+   0 SEED-I !
+   begin SEED-I @ SCHED-SET SET-N@ < while
+      SCHED-SET SEED-I @ SET-AT REACH-TRY
+      SEED-I @ 1+ SEED-I !
+   repeat ;
+
+: CLOSE-REACH ( -- )
+   0 REACH-I !
+   begin REACH-I @ REACH-SET SET-N@ < while
+      REACH-ONE
+      REACH-I @ 1+ REACH-I !
+   repeat ;
+
+\ ---- the disk audit -----------------------------------------------------------
+\
+\ The other end of the same question. A registration nobody runs is dark; so is a
+\ source nobody registered, and only this walk can see the second one, because
+\ every other set in this file starts from something that was written down.
+
+: PRAGMA$ ( -- ptr u8 n )
+   s" \ schedule-lint: allow-unscheduled" ;
+
+: NL-AT? ( n -- bool ) {: i:n :}
+   i FILE-U @ >= if LINT-TRUE exit then
+   FILE$ drop i + c@ NL-C = ;
+
+: LINE-END ( n -- n ) {: i:n :}
+   i PR-J !
+   begin PR-J @ NL-AT? 0= while PR-J @ 1+ PR-J ! repeat
+   PR-J @ ;
+
+: LINE$ ( n -- ptr u8 n ) {: i:n :}
+   FILE$ drop i +
+   i LINE-END i - ;
+
+\ The marker at the head of a comment LINE, after indentation and nothing else.
+\ Anchoring it there is what separates a pragma from a mention: this very file
+\ names the marker in its own header prose and in PRAGMA$ above, and the lint's
+\ fixtures quote it inside string literals - none of those sit at a line head,
+\ so none of them excuses anything. A plain substring search over the file would
+\ have exempted this file from its own rule.
+: PRAGMA-LINE? ( n -- bool ) {: i:n :}
+   i LINE$ LINT-LTRIM PRAGMA$ LINT-STARTS-WITH? ;
+
+: PRAGMA? ( -- bool )
+   0 PR-I !
+   begin PR-I @ FILE-U @ < while
+      PR-I @ PRAGMA-LINE? if LINT-TRUE exit then
+      PR-I @ LINE-END 1+ PR-I !
+   repeat
+   LINT-FALSE ;
+
+: DARK-FINDING ( ptr u8 n -- ) {: a:ptr u:n :}
+   BAD @ 1+ BAD !
+   DARK-N @ 1+ DARK-N !
+   REPORT? @ 0= if exit then
+   s" schedule-lint: " type a u type
+   s"  is on disk and no runner reaches it: no gate fork list, no SUITE row, and nothing scheduled loads it" type cr ;
+
+\ The file is read only for the sources the closure did not reach - a handful -
+\ so the pragma scan costs nothing on the 300 that are fine. LIVE has already
+\ mapped the scan buffer; this walk is private and runs nowhere else.
+: DISK-AT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" .f" ENDS-WITH? 0= if exit then
+   REACH-SET a u SET-HAS? if exit then
+   a u READ-INTO
+   PRAGMA? if exit then
+   a u DARK-FINDING ;
+
+: DISK-WALK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u [: DISK-AT ;] WALK-FILES ;
+
 \ ---- the phase audit ----------------------------------------------------------
 \
 \ The second half of the question. Every phase the runner has not retired is a
@@ -721,10 +987,13 @@ public
    0 SUITE-N !
    0 HIT-LINE !
    0 HIT-U !
+   0 DARK-N !
+   0 REACH-I !
    0 LIVE-SLICE-N !
    PHASE-TABLES-RESET
    UNFILED-SET SET-RESET
-   SCHED-SET SET-RESET ;
+   SCHED-SET SET-RESET
+   REACH-SET SET-RESET ;
 
 \ Read the runner's schedule: which phases an order table starts, which the
 \ deferred table excuses, and which slices those phases ask for. Every later
@@ -794,15 +1063,49 @@ public
 : SCHED# ( -- n )
    SCHED-SET SET-N@ ;
 
+\ The closure and the disk audit as separate entries, so a fixture can run the
+\ shipped words over a fixture tree instead of re-implementing either. REACH-ROOT
+\ seeds one root by hand where the live run seeds them from the fork lists and
+\ the SUITE rows; everything after it is the production path.
+: REACH-ROOT ( ptr u8 n -- )
+   PREPARE
+   REACH-TRY ;
+
+: REACH-CLOSE ( -- )
+   PREPARE
+   CLOSE-REACH ;
+
+: DISK-TREE ( ptr u8 n -- ) {: a:ptr u:n :}
+   PREPARE
+   a u DISK-WALK ;
+
+\ Sources the closure proved some runner loads, and the .f files under test/ it
+\ did not reach. A fixture asserts both: the closure is what keeps the disk
+\ audit from reporting support files, so a fixture that only counted findings
+\ could not tell a working closure from an empty one.
+: REACH# ( -- n )
+   REACH-SET SET-N@ ;
+
+: DARK# ( -- n )
+   DARK-N @ ;
+
+: REACHED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   REACH-SET a u SET-HAS? ;
+
 \ The live tree: the real schedule, the real predicate run against it, the real
-\ gate bodies, the real registrations. Order matters - the registrations are
-\ judged against the schedule and the file lists that came before them.
+\ gate bodies, the real registrations. Order matters twice over - the
+\ registrations are judged against the schedule and the file lists that came
+\ before them, and the closure then needs every root those three produced, as the
+\ disk audit needs the closure.
 : LIVE ( -- )
    PREPARE
    RESET
    SCHEDULE
    s" test/" SCHED-TREE
    s" test/gate-stdlib-cases.f" CASE-FILE
+   SEED-REACH
+   CLOSE-REACH
+   s" test/" DISK-WALK
    PHASE-AUDIT ;
 
 : SUMMARY ( -- )
@@ -810,10 +1113,12 @@ public
    SUITE# DEC. s"  registration(s), " type
    SLICE# DEC. s"  live slice(s), " type
    SCHED# DEC. s"  scheduled file(s), " type
+   REACH# DEC. s"  reached source(s), " type
+   DARK# DEC. s"  unreached on disk, " type
    FINDINGS DEC. s"  finding(s)" type cr ;
 
-\ Gate entry: a registration nobody runs, or a phase nobody starts, fails the
-\ gate.
+\ Gate entry: a registration nobody runs, a phase nobody starts, or a test source
+\ nobody reaches fails the gate.
 : STRICT ( -- )
    LIVE
    SUMMARY

@@ -176,6 +176,34 @@ SUITE compiler-ir-intern-manifest
    test/compiler/ir-intern-manifest.f
 ;SUITE
 
+\ The other four proof manifests, registered here beside the two above for the
+\ same reason those two are: a manifest is the cheap resident half of a proof
+\ family - it asserts the obligation rows and their schema without spawning Rocq,
+\ so it belongs in the standalone gate as well as in the resident fork list,
+\ where all six already sit. Only ir-id and ir-intern had rows; the other four
+\ were fork-only, which meant `test/gate-stdlib.f` run on its own checked two
+\ manifests out of six. The proof gates they belong to stay cases-only and say
+\ why further down.
+SUITE compiler-ir-structure-manifest
+   test/compiler/ir-structure-manifest.f
+;SUITE
+
+SUITE compiler-ir-storage-manifest
+   test/compiler/ir-storage-manifest.f
+;SUITE
+
+SUITE compiler-checker-model-manifest
+   test/compiler/checker-model-manifest.f
+;SUITE
+
+SUITE compiler-insn-manifest
+   test/compiler/insn-manifest.f
+;SUITE
+
+SUITE compiler-reloc-manifest
+   test/compiler/reloc-manifest.f
+;SUITE
+
 SUITE compiler-ir-schema
    test/compiler/ir-schema.f
 ;SUITE
@@ -389,6 +417,22 @@ SUITE compiler-asm-package
 
 SUITE compiler-native-a64ir
    test/compiler/native-a64ir.f
+;SUITE
+
+\ The typed ARM64 routine-effect schema, next to the a64 lowering it constrains.
+\ It was fork-only, so the register bounds it pins were unchecked in a standalone
+\ gate run.
+SUITE compiler-a64-effect
+   test/compiler/a64-effect.f
+;SUITE
+
+\ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
+\ and binding.f through their public words. It is the acceptance suite
+\ habu-bind-compiler-target-b3dfa307 is answered by, and a suite that answers a
+\ dot has to be reachable by name in the registry, not only inside a fork list -
+\ that missing row is what blocked the dot.
+SUITE compiler-target-policy
+   test/compiler/target-policy.f
 ;SUITE
 
 SUITE compiler-native-select
