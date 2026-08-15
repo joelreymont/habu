@@ -71,19 +71,6 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
 : ACAP-ZERO-IMM ( ptr u8 -- ) {: p:ptr :}         \ zero the imm26 -> bare `bl #0`, for build determinism
    p ACAP-W32@ $FC000000 and  p ACAP-W32! ;
 
-\ Re-encode a full 64-bit value into an existing four-lane MOVZ/MOVK chain (the
-\ four imm16 fields), keeping each instruction's opcode AND its destination
-\ register. Used to canonicalize the code-address literals so the baked blob is
-\ builder-independent. It never reads the register it preserves, which is what
-\ lets it rewrite a chain the native compiler emitted into an allocator's
-\ register as readily as one the engine emitted into x9.
-: ACAP-SET-CHAIN ( ptr u8 n -- ) {: p:ptr val:n :}
-   4 0 ?do
-      p i 4 * + ACAP-W32@ $FFE0001F and                \ keep opcode + Rd
-      val i 16 * rshift $FFFF and 5 lshift or           \ this lane's imm16 into bits 20-5
-      p i 4 * + ACAP-W32!
-   loop ;
-
 \ --- reverse lookup: absolute call target (host xt) -> its dict record index ---
 \ WHY THIS IS AN INDEX AND NOT A SCAN. Both callers ask once PER SITE - the BL
 \ scan below for every call in the copied blob, ACAP-OUT-CHAIN for every recorded
@@ -738,15 +725,6 @@ variable ACAP-P
    AOT-LIVE-DATA SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + AOT-A>U8 c@
    off 2 rshift 7 and rshift 1 and 0= 0= ;
 
-\ The four immediate fields of a recorded chain, whatever register they name. The
-\ register is not read: the producers agree on the carrier's WIDTH, and which
-\ register it writes into is the allocator's business and no longer this file's.
-: ACAP-CHAINV ( ptr u8 -- n ) {: p:ptr :}
-   p ACAP-W32@ 5 rshift $FFFF and
-   p 4 + ACAP-W32@ 5 rshift $FFFF and 16 lshift or
-   p 8 + ACAP-W32@ 5 rshift $FFFF and 32 lshift or
-   p 12 + ACAP-W32@ 5 rshift $FFFF and 48 lshift or ;
-
 : ACAP-ADD-DSITE ( n -- ) {: boff:n :}   \ store blob offset as u32
    AOT-DSITE-N @ AOT-DSITE-MAX >= if s" aot-capture: too many DATA sites" 74 die then
    boff  AOT-DSITE-N @ 4 * AOT-DSITE-BUF@ +  AOT-P32!
@@ -776,7 +754,7 @@ variable ACAP-P
    a u ACAP-POOL-ADD {: noff:n :}
    AOT-XTSITE:N @ 8 * AOT-XTSITE:BUF@ + {: r:ptr :}
    boff r AOT-P32!  noff r 4 + AOT-P32!
-   AOT-BLOB-BUF@ boff +  0 ACAP-SET-CHAIN                 \ no host address travels in the blob
+   AOT-BLOB-BUF@ boff +  0 SNAP-RELOC:SET-CHAIN                 \ no host address travels in the blob
    AOT-XTSITE:N @ 1+ AOT-XTSITE:N ! ;
 
 \ The refusal, with the site named. A capture that cannot classify one of its own
@@ -833,7 +811,7 @@ variable ACAP-P
    0 ACAP-P !
    begin ACAP-P @ SNAP-RELOC:ADDR-CHAIN-BYTES + AOT-BLOB-LEN @ <= while
       bstart ACAP-P @ ACAP-CHAIN-BIT? if
-         AOT-BLOB-BUF@ ACAP-P @ + ACAP-CHAINV {: v:n :}
+         AOT-BLOB-BUF@ ACAP-P @ + SNAP-RELOC:CHAINV {: v:n :}
          v d0 >= v d1 < and if
             ACAP-P @ ACAP-ADD-DSITE
          else
@@ -862,10 +840,10 @@ variable ACAP-P
    0 ACAP-P !
    begin ACAP-P @ SNAP-RELOC:ADDR-CHAIN-BYTES + AOT-BLOB-LEN @ <= while
       bstart ACAP-P @ ACAP-CHAIN-BIT? if
-         AOT-BLOB-BUF@ ACAP-P @ + ACAP-CHAINV {: v:n :}
+         AOT-BLOB-BUF@ ACAP-P @ + SNAP-RELOC:CHAINV {: v:n :}
          v bstart >= v bend < and if
             ACAP-P @ ACAP-ADD-CSITE
-            AOT-BLOB-BUF@ ACAP-P @ +  v bstart -  ACAP-SET-CHAIN
+            AOT-BLOB-BUF@ ACAP-P @ +  v bstart -  SNAP-RELOC:SET-CHAIN
          then
       then
       ACAP-P @ 4 + ACAP-P !

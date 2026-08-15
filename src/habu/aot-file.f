@@ -72,6 +72,12 @@
 \ the payload, a section longer than the buffer it fills, a section length that is
 \ not a whole number of rows, a closure list that does not walk to its own end, and
 \ a chain digest that does not re-derive from the files on disk.
+\
+\ TWO ENTRY POINTS OVER ONE MACHINERY. READ fills the buffers with the artifact,
+\ bases and all, and is what the round trip and the fixpoint compare. MERGE
+\ APPENDS the artifact to a capture that already happened, in that capture's
+\ coordinates, because the engine bakes ONE of everything; the section that says
+\ what they disagree about is at the merge itself.
 
 package AOT-FILE
 using AOT-BUF
@@ -150,6 +156,15 @@ variable CUR
 : U64@ ( ptr u8 -- n ) {: p:ptr :}
    0 8 0 ?do  8 lshift  p 7 i - + c@ or  loop ;
 
+\ The packed u32 every row field of this format is. Owner-prefixed by its
+\ package like every other reader of that shape in the tree (AOT-W32@,
+\ ACAP-W32@, SNAP-RELOC's instruction word; see tools/jitdump-core.f).
+: U32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
+
+: U32! ( n ptr u8 -- ) {: v:n p:ptr :}
+   v p c!  v 8 rshift p 1+ c!  v 16 rshift p 2 + c!  v 24 rshift p 3 + c! ;
+
 \ Counted rather than short-circuited, and that is not a style choice: this file
 \ compiles in the stdin metabuild host, where src/habu/hide.f has already retired
 \ `true` and `false` (measured - the host build died E-UNDEFINED: false). Every
@@ -168,18 +183,13 @@ variable CUR
    off  k ROW-BYTES * TBL +      U64!
    len  k ROW-BYTES * TBL + 8 +  U64! ;
 
-\ THE TABLE IS THE ONE AUTHORITY FOR EVERY LENGTH, in both directions. The writer
-\ derives it from the live buffers before it needs a pointer, so asking the table
-\ here answers for a write; the reader has it before it fills anything, so the
-\ same question answers for a read against buffers still holding the last
-\ capture. Reading the live count variables instead would have made the reader's
-\ CODE-site pointer depend on whatever AOT-DSITE-N happened to hold.
-: DSITE-BYTES ( -- n ) S-DSITES ROW-LEN@ ;
-
 \ ---- the section table, read off the live buffers ---------------------------
 \ Both directions ask these two words, so a section's source and its size cannot
 \ come apart. The two assembled sections (the scalars and the closure list) are
 \ staged into buffers of their own first, which is what keeps the pair uniform.
+\ SEC-PTR answers a BUFFER, never a position inside one: where a section's bytes
+\ sit in that buffer is the BASE table below, which is the one thing READ and
+\ MERGE disagree about.
 
 : SEC-PTR ( n -- ptr u8 ) {: k:n :}
    k S-SCALARS = if SCAL exit then
@@ -188,7 +198,7 @@ variable CUR
    k S-SITES   = if AOT-SITE-BUF@ exit then
    k S-NAMES   = if AOT-NAMES-BUF@ exit then
    k S-DSITES  = if AOT-DSITE-BUF@ exit then
-   k S-CSITES  = if AOT-DSITE-BUF@ DSITE-BYTES + exit then
+   k S-CSITES  = if AOT-DSITE-BUF@ exit then
    k S-XTOFFS  = if AOT-WINDOW:XTOFF-BUF@ exit then
    k S-WDATA   = if AOT-WINDOW:DATA-BUF@ exit then
    k S-XTSITES = if AOT-XTSITE:BUF@ exit then
@@ -226,10 +236,9 @@ variable CUR
    k S-PWIN    = if 4 exit then
    1 ;
 
-\ The buffer each section is read back into, and how much of it there is. The
-\ CODE-literal sites share the DATA-site buffer's tail, so their room is what the
-\ DATA sites left - which is why the table's order puts the DATA sites first and
-\ the reader fills them in that order.
+\ How much of each buffer there is. The CODE-literal sites share the DATA-site
+\ buffer, so both name the whole of it and their BASEs are what keeps them apart
+\ - which is also what makes the room check `base + length` rather than length.
 : SEC-CAP ( n -- n ) {: k:n :}
    k S-SCALARS = if SCAL-BYTES exit then
    k S-BLOB    = if AOT-BLOB-CAP exit then
@@ -237,7 +246,7 @@ variable CUR
    k S-SITES   = if AOT-SITE-MAX 8 * exit then
    k S-NAMES   = if AOT-NAMES-CAP exit then
    k S-DSITES  = if AOT-DSITE-MAX 4 * exit then
-   k S-CSITES  = if AOT-DSITE-MAX 4 * DSITE-BYTES - exit then
+   k S-CSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-XTOFFS  = if AOT-WINDOW:XTOFF-MAX 4 * exit then
    k S-WDATA   = if AOT-WINDOW:DATA-CAP exit then
    k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
@@ -261,6 +270,28 @@ variable CUR
    k S-PWID    = if s" protected-WID bitmap" exit then
    k S-PWIN    = if s" protected window WIDs" exit then
    s" closure list" ;
+
+\ ---- where each section's bytes sit in its buffer ----------------------------
+\ THE ONE THING READ AND MERGE DISAGREE ABOUT. Every other question - which
+\ buffer, how long, how wide a row, what it is called - has one answer for both,
+\ so the table below is the whole of the parameterization and the loading,
+\ digesting and room-checking machinery is shared.
+
+create BASE SEC-N cells allot
+: BASE@ ( n -- n ) cells BASE + @ ;
+: BASE! ( n n -- ) cells BASE + ! ;
+
+\ The artifact IS the buffers: every section at its buffer's own start, except
+\ the CODE sites, which live behind the DATA sites in the buffer they share.
+\ THE TABLE IS THE ONE AUTHORITY FOR THAT OFFSET, in both directions. The writer
+\ derives the table from the live buffers before it needs a position, so asking
+\ the table here answers for a write; the reader has the table before it fills
+\ anything, so the same question answers for a read against buffers still
+\ holding the last capture. Reading the live count variables instead would have
+\ made the reader's CODE-site position depend on whatever AOT-DSITE-N held.
+: BASES-ALONE ( -- )
+   SEC-N 0 ?do 0 i BASE! loop
+   S-DSITES ROW-LEN@ S-CSITES BASE! ;
 
 \ ---- staging the two assembled sections -------------------------------------
 
@@ -304,7 +335,7 @@ variable CUR
    SHA256-RESET
    TBL SEC-N ROW-BYTES * SHA256-UPDATE
    SEC-N 0 ?do
-      i SEC-LEN 0 > if i SEC-PTR i SEC-LEN SHA256-UPDATE then
+      i SEC-LEN 0 > if i SEC-PTR i BASE@ + i SEC-LEN SHA256-UPDATE then
    loop
    PAYSHA SHA256-FINAL ;
 
@@ -334,7 +365,7 @@ variable CUR
    SHA256-RESET
    HDR HDR-BYTES PUT
    TBL SEC-N ROW-BYTES * PUT
-   SEC-N 0 ?do i SEC-PTR i SEC-LEN PUT loop
+   SEC-N 0 ?do i SEC-PTR i BASE@ + i SEC-LEN PUT loop
    FILESHA SHA256-FINAL ;
 
 public
@@ -348,6 +379,7 @@ public
 : WRITE ( ptr u8 ptr u8 n -- ) {: prod:ptr path:ptr pathu:n :}
    STAGE
    BUILD-TABLE
+   BASES-ALONE
    PAYLOAD-DIGEST
    DERIVED AOT-IDENT:CHAIN-DIGEST
    prod BUILD-HEADER
@@ -459,7 +491,7 @@ private
    then ;
 
 : ?ROOM ( n -- ) {: k:n :}
-   k ROW-LEN@ k SEC-CAP <= if exit then
+   k BASE@ k ROW-LEN@ + k SEC-CAP <= if exit then
    FD @ close
    s" aot-file: section " type k SEC-NAME type s"  is larger than the buffer it fills" DIE ;
 
@@ -473,8 +505,21 @@ private
 : LOAD-SECTION ( n -- ) {: k:n :}
    k ?ROOM
    k ROW-LEN@ 0= if exit then
-   k SEC-PTR k ROW-LEN@ GET
-   k SEC-PTR k ROW-LEN@ SHA256-UPDATE ;
+   k SEC-PTR k BASE@ + k ROW-LEN@ GET
+   k SEC-PTR k BASE@ + k ROW-LEN@ SHA256-UPDATE ;
+
+\ Read a section past without keeping it. The bytes still feed the running
+\ digest, so a section this build has no use for is still one the second pass
+\ proves it read. CHUNK-BUF is free here: the verify pass that owns it has
+\ finished, and a section too big for it is refused rather than partly read.
+: SKIP-SECTION ( n -- ) {: k:n :}
+   k ROW-LEN@ 0= if exit then
+   k ROW-LEN@ CHUNK > if
+      FD @ close
+      s" aot-file: section " type k SEC-NAME type s"  is too large to read past" DIE
+   then
+   CHUNK-BUF k ROW-LEN@ GET
+   CHUNK-BUF k ROW-LEN@ SHA256-UPDATE ;
 
 \ Every count is the length the table gave, divided by the row the format fixes.
 \ Reading them back in the same order the writer derived them from is what makes
@@ -540,11 +585,11 @@ private
    PAYSHA HDR O-PAYSHA + SHA-BYTES BYTES= if exit then
    s" aot-file: the second pass did not read the payload the first pass verified" DIE ;
 
-public
-
-\ Fill the live capture buffers from `path`, refusing anything this build must not
-\ bake. `want` is the 32-byte producer key this reader accepts and nothing else.
-: READ ( ptr u8 ptr u8 n -- ) {: want:ptr path:ptr pathu:n :}
+\ Everything both entry points do before a single byte lands anywhere: verify the
+\ header, verify the payload against its own digest, reopen, prove the header did
+\ not move, and take the section table. What follows differs only in where the
+\ sections go and what is done to them once they are there.
+: LOAD-PASS ( ptr u8 ptr u8 n -- ) {: want:ptr path:ptr pathu:n :}
    path pathu OPEN-RD
    HDR HDR-BYTES GET
    want CHECK-HEADER
@@ -559,11 +604,273 @@ public
    ?TABLE
    S-CLOSURE ROW-LEN@ CLEN !
    S-SCALARS SCAL-BYTES ?EXACT
-   S-PWID PROT-BITS-BYTES ?EXACT
+   S-PWID PROT-BITS-BYTES ?EXACT ;
+
+public
+
+\ Fill the live capture buffers from `path`, refusing anything this build must not
+\ bake. `want` is the 32-byte producer key this reader accepts and nothing else.
+\ The artifact REPLACES what the buffers held: it brings its own DATA base, its
+\ own code base and its own wordlist window, and the round trip lives here.
+: READ ( ptr u8 ptr u8 n -- )
+   LOAD-PASS
+   BASES-ALONE
    SEC-N 0 ?do i LOAD-SECTION loop
    FD @ close
    ?PAYLOAD-AGAIN
    RESTORE-COUNTS
+   RESTORE-CLOSURE
+   ?CHAIN ;
+
+private
+
+\ ---- merging an artifact into a capture that already happened ----------------
+\
+\ WHY MERGE IS NOT READ WITH DIFFERENT NUMBERS. The metabuild host captures its
+\ own window first and then takes the chain's from an artifact, and habu2.f
+\ EMIT-AOT-SEED bakes ONE blob, ONE name pool, ONE (DATA base, size) pair and ONE
+\ wordlist window. So the second capture has to be expressed in the first's
+\ coordinates: every offset it carries moves by what the host already holds, and
+\ every VALUE it carries - a DATA address in its own window, a code address in
+\ its own blob, a wordlist id in its own window - has to be recomputed for the
+\ merged one. Loading into zeroed buffers is not a degenerate case of this: a
+\ host DATA base of 0 would bake a DATA base of 0.
+\
+\ THE SIX THINGS THAT MOVE, and nothing else does:
+\   blob offsets    ordinary records' [0], call sites' [0], named code sites'
+\                   [0], and both site tables' own u32 rows: + the host's blob.
+\   pool offsets    records' [8], call sites' [4], named code sites' [4]: + the
+\                   host's pool, which is appended to and never deduplicated
+\                   against (the remap would buy under a kilobyte).
+\   window offsets  the declared address cells: + the host's DATA span.
+\   DATA values     each recorded chain holds an address in the ARTIFACT's DATA
+\                   window; the merged window continues the host's, so it moves
+\                   to the same place inside that.
+\   CODE values     each holds an offset into the artifact's own blob, which is
+\                   now that far into the merged blob.
+\   wordlist ids    records' wids and the window's own protected ids are window
+\                   coordinates, so they continue the host's window rather than
+\                   restarting it, and the merged span is the two added.
+\ The host's PRE-window protected bitmap is NOT one of them: the artifact's is
+\ the capture engine's own band, numbered in a wordlist space this host does not
+\ share, and the host's band already covers what this engine protects. It is read
+\ past, so the payload digest still proves it arrived.
+
+variable H-BLOB   variable H-REC     variable H-SITE   variable H-NAMES
+variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
+variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
+variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
+
+: LATCH-HOST ( -- )
+   AOT-BLOB-LEN @ H-BLOB !            AOT-REC-N @ H-REC !
+   AOT-SITE-N @ H-SITE !              AOT-NAMES-LEN @ H-NAMES !
+   AOT-DSITE-N @ H-DSITE !            AOT-CSITE-N @ H-CSITE !
+   AOT-WINDOW:XTOFF-N @ H-XTOFF !     AOT-DATA-SIZE @ H-DATA !
+   AOT-XTSITE:N @ H-XTSITE !          AOT-BOOTRUN-LEN @ H-BOOTRUN !
+   AOT-PWIN-N @ H-PWIN !              AOT-WID-SPAN @ H-SPAN ! ;
+
+\ A merge appends, so there has to be something to append to. A host that has not
+\ captured yet would take every shift below as zero and bake the artifact alone -
+\ an engine with the chain and without the REPL, which boots and is wrong.
+: ?HOST-CAPTURED ( -- )
+   AOT-REC-N @ 0 > if exit then
+   s" aot-file: nothing has been captured for this artifact to be merged into" DIE ;
+
+\ Each section behind what the host already holds. The CODE sites are the one
+\ base that is not the host's own count: they sit behind the host's DATA rows,
+\ the artifact's DATA rows AND the host's CODE rows, because the two tables share
+\ one buffer with every DATA row ahead of every CODE row.
+: BASES-AFTER-HOST ( -- )
+   SEC-N 0 ?do 0 i BASE! loop
+   H-BLOB @                    S-BLOB BASE!
+   H-REC @ AOT-CREC-ROW *      S-RECS BASE!
+   H-SITE @ 8 *                S-SITES BASE!
+   H-NAMES @                   S-NAMES BASE!
+   H-DSITE @ 4 *               S-DSITES BASE!
+   H-DSITE @ 4 * S-DSITES ROW-LEN@ + H-CSITE @ 4 * +   S-CSITES BASE!
+   H-XTOFF @ 4 *               S-XTOFFS BASE!
+   H-DATA @                    S-WDATA BASE!
+   H-XTSITE @ 8 *              S-XTSITES BASE!
+   H-BOOTRUN @                 S-BOOTRUN BASE!
+   H-PWIN @ 4 *                S-PWIN BASE! ;
+
+\ The host's CODE rows move up by the artifact's DATA rows before anything is
+\ read into the gap they leave. Copied from the top down, because the source and
+\ the destination overlap.
+: OPEN-CSITE-GAP ( -- )
+   H-DSITE @ S-DSITES ROW-LEN@ 4 / + H-CSITE @ + S-CSITES ROW-LEN@ 4 / +
+   AOT-DSITE-MAX > if
+      FD @ close
+      s" aot-file: the merged DATA and CODE site tables do not fit one buffer" DIE
+   then
+   S-DSITES ROW-LEN@ {: d:n :}
+   d 0= if exit then
+   H-CSITE @ 0 ?do
+      H-CSITE @ 1 - i - {: k:n :}
+      AOT-DSITE-BUF@ H-DSITE @ k + 4 * +  U32@
+      AOT-DSITE-BUF@ H-DSITE @ 4 * + d + k 4 * +  U32!
+   loop ;
+
+: SEC-AT ( n -- ptr u8 ) {: k:n :} k SEC-PTR k BASE@ + ;
+: SEC-ROWS ( n -- n ) {: k:n :} k ROW-LEN@ k SEC-ROW / ;
+
+: SCALARS@ ( -- )
+   SCAL U64@ A-D0 !
+   SCAL 8 + U64@ A-B0 !
+   SCAL 16 + U64@ A-W0 !
+   SCAL 24 + U64@ A-SPAN ! ;
+
+\ Both captures canonicalize their code literals against base 0 (aot-capture.f
+\ ACAP-SCAN-CSITES), which is what lets a merge move one into the other's blob by
+\ shifting an offset. A capture that did not is a shape this cannot rebase.
+: ?BASES ( -- )
+   AOT-CODE-B0 @ 0= A-B0 @ 0= and if exit then
+   s" aot-file: a code base is not the canonical zero this merge shifts against" DIE ;
+
+\ Raise one u32 field of every row: `n` rows of `row` bytes from `p`, the field
+\ at byte `off` in each.
+: FIELD+ ( ptr u8 n n n n -- ) {: p:ptr n:n row:n off:n d:n :}
+   n 0 ?do
+      p i row * + off + {: q:ptr :}
+      q U32@ d +  q U32!
+   loop ;
+
+: NAME. ( n -- ) {: noff:n :}
+   AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@  type ;
+
+\ A captured wid is a window coordinate: 0 is the global wordlist and means the
+\ same thing in every process, and an in-window id continues the host's window
+\ instead of restarting it. An id the artifact's own window did not create has no
+\ counterpart here, so it is refused by name rather than rebased into whatever
+\ this host keeps at that number.
+: REWID ( n n -- n ) {: noff:n w:n :}
+   w 0= if 0 exit then
+   w A-W0 @ >= w A-W0 @ A-SPAN @ + < and if
+      AOT-WID-W0 @ H-SPAN @ + w + A-W0 @ - exit
+   then
+   s" aot-file: merged record " type noff NAME.
+   s"  names wordlist " type w .
+   s" , which its own window did not create; that window allocated [" type
+   A-W0 @ .  s" ," type A-W0 @ A-SPAN @ + .  s" )" type cr
+   s" aot-file: a merged record names a wid its window did not create" DIE
+   0 ;
+
+\ A record's name offset always moves with the pool. Its [0] and [4] are a blob
+\ offset and a code length for an ordinary word, and a package's PUBLIC and
+\ PRIVATE wordlist ids for a package record - which take the wid rebase and never
+\ the blob shift.
+: MERGE-RECS ( -- )
+   S-RECS SEC-AT {: c0:ptr :}
+   S-RECS SEC-ROWS 0 ?do
+      c0 i AOT-CREC-ROW * + {: c:ptr :}
+      c 8 + U32@ H-NAMES @ +  c 8 + U32!
+      c 8 + U32@ {: noff:n :}
+      c 16 + U32@ {: w:n :}
+      w $FFFFFFFF = if
+         noff c U32@ REWID      c U32!
+         noff c 4 + U32@ REWID  c 4 + U32!
+      else
+         c U32@ H-BLOB @ +      c U32!
+         noff w REWID           c 16 + U32!
+      then
+   loop ;
+
+: MERGE-ROWS ( -- )
+   S-SITES SEC-AT    S-SITES SEC-ROWS    8 0 H-BLOB @ FIELD+
+   S-SITES SEC-AT    S-SITES SEC-ROWS    8 4 H-NAMES @ FIELD+
+   S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 0 H-BLOB @ FIELD+
+   S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 4 H-NAMES @ FIELD+
+   S-XTOFFS SEC-AT   S-XTOFFS SEC-ROWS   4 0 H-DATA @ FIELD+
+   S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+ ;
+
+: ?DVALUE ( n n -- ) {: boff:n v:n :}
+   s" aot-file: the chain at merged blob offset " type boff H-BLOB @ + .
+   s" holds " type v .
+   s" which its own window's DATA span does not contain" type cr
+   s" aot-file: a merged DATA literal is outside the artifact's DATA window" DIE ;
+
+\ Each recorded chain holds an address in the ARTIFACT's DATA window; the merged
+\ window continues the host's, so the address moves to the same place inside it.
+\ The site's own blob offset moves with the blob, and it is read before it moves
+\ because it is what locates the chain.
+: MERGE-DSITES ( -- )
+   S-DSITES SEC-AT {: p:ptr :}
+   S-WDATA ROW-LEN@ {: dlen:n :}
+   S-DSITES SEC-ROWS 0 ?do
+      p i 4 * + {: q:ptr :}
+      q U32@ {: boff:n :}
+      AOT-BLOB-BUF@ H-BLOB @ + boff + {: ch:ptr :}
+      ch SNAP-RELOC:CHAINV {: v:n :}
+      v A-D0 @ >= v A-D0 @ dlen + < and 0= if boff v ?DVALUE then
+      ch  v A-D0 @ -  AOT-DATA-D0 @ +  H-DATA @ +  SNAP-RELOC:SET-CHAIN
+      boff H-BLOB @ +  q U32!
+   loop ;
+
+: ?CVALUE ( n n -- ) {: boff:n v:n :}
+   s" aot-file: the chain at merged blob offset " type boff H-BLOB @ + .
+   s" holds code offset " type v .
+   s" which its own blob does not contain" type cr
+   s" aot-file: a merged CODE literal is outside the artifact's blob" DIE ;
+
+\ Each holds an offset into the artifact's own blob, canonicalized against code
+\ base 0, and that blob now starts that far into the merged one.
+: MERGE-CSITES ( -- )
+   S-CSITES SEC-AT {: p:ptr :}
+   S-BLOB ROW-LEN@ {: blen:n :}
+   S-CSITES SEC-ROWS 0 ?do
+      p i 4 * + {: q:ptr :}
+      q U32@ {: boff:n :}
+      AOT-BLOB-BUF@ H-BLOB @ + boff + {: ch:ptr :}
+      ch SNAP-RELOC:CHAINV {: v:n :}
+      v blen < 0= if boff v ?CVALUE then
+      ch  v H-BLOB @ +  SNAP-RELOC:SET-CHAIN
+      boff H-BLOB @ +  q U32!
+   loop ;
+
+\ Every count is the host's plus the length the table gave, divided by the row
+\ the format fixes - the same one authority per number the plain read uses. The
+\ two bases and the window's own base do not move: they are the host's, and the
+\ artifact was just expressed in them.
+: MERGE-COUNTS ( -- )
+   H-BLOB @ S-BLOB ROW-LEN@ + AOT-BLOB-LEN !
+   H-REC @ S-RECS SEC-ROWS + AOT-REC-N !
+   H-SITE @ S-SITES SEC-ROWS + AOT-SITE-N !
+   H-NAMES @ S-NAMES ROW-LEN@ + AOT-NAMES-LEN !
+   H-DSITE @ S-DSITES SEC-ROWS + AOT-DSITE-N !
+   H-CSITE @ S-CSITES SEC-ROWS + AOT-CSITE-N !
+   H-XTOFF @ S-XTOFFS SEC-ROWS + AOT-WINDOW:XTOFF-N !
+   H-DATA @ S-WDATA ROW-LEN@ + AOT-DATA-SIZE !
+   H-XTSITE @ S-XTSITES SEC-ROWS + AOT-XTSITE:N !
+   H-BOOTRUN @ S-BOOTRUN ROW-LEN@ + AOT-BOOTRUN-LEN !
+   H-PWIN @ S-PWIN SEC-ROWS + AOT-PWIN-N !
+   H-SPAN @ A-SPAN @ + AOT-WID-SPAN !
+   0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
+
+public
+
+\ Append the artifact at `path` to the capture already in the live buffers,
+\ expressed in that capture's coordinates. `want` is the 32-byte producer key
+\ this reader accepts and nothing else. Every refusal READ can raise, this one
+\ raises too - it is the same header, payload and table machinery - plus the ones
+\ a second capture can fail on its own.
+: MERGE ( ptr u8 ptr u8 n -- )
+   ?HOST-CAPTURED
+   LATCH-HOST
+   LOAD-PASS
+   BASES-AFTER-HOST
+   OPEN-CSITE-GAP
+   SEC-N 0 ?do
+      i S-PWID = if i SKIP-SECTION else i LOAD-SECTION then
+   loop
+   FD @ close
+   ?PAYLOAD-AGAIN
+   SCALARS@
+   ?BASES
+   MERGE-RECS
+   MERGE-ROWS
+   MERGE-DSITES
+   MERGE-CSITES
+   MERGE-COUNTS
    RESTORE-CLOSURE
    ?CHAIN ;
 

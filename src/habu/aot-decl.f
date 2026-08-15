@@ -42,6 +42,7 @@
 \ is what makes an address literal recognisable in a code blob. It sits with the
 \ capture buffers because the two readers are the emitter's relocation pass and
 \ the capture's own site scan, and a shape read two ways is a shape that drifts.
+\ The reader and writer of a chain's VALUE live here too, for the same reason.
 package SNAP-RELOC
 public
 
@@ -67,6 +68,44 @@ $FFFF constant ADDR-IMM-MASK
 16 constant ADDR-CHAIN-BYTES
 $1F constant ADDR-RD-MASK
 5 constant ADDR-RD-BITS
+
+\ ONE READER AND ONE WRITER OF A CHAIN'S VALUE, beside the shape they read it
+\ with. Three passes need them - the capture's site scan, the merge that rebases
+\ a read-back capture into a host's coordinates, and any later consumer - and a
+\ private copy in each is exactly the drift the shape constants moved here to
+\ stop. The relocation pass in src/habu/habu2.f is not one of the three: it is
+\ EMITTED machine code and consumes the constants directly.
+private
+
+\ The chain's own instruction word. Owner-prefixed like every other reader of
+\ this shape in the tree (AOT-W32@, ACAP-W32@; see tools/jitdump-core.f).
+: W32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
+
+: W32! ( n ptr u8 -- ) {: w:n p:ptr :}
+   w p c!  w 8 rshift p 1+ c!  w 16 rshift p 2 + c!  w 24 rshift p 3 + c! ;
+
+public
+
+\ The four immediate fields as one value, whatever register the chain names: the
+\ immediate sits just above the destination-register field, which is what
+\ ADDR-RD-BITS is the width of.
+: CHAINV ( ptr u8 -- n ) {: p:ptr :}
+   p W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and
+   p 4 + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and 16 lshift or
+   p 8 + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and 32 lshift or
+   p 12 + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and 48 lshift or ;
+
+\ Re-encode a full 64-bit value into an existing chain, keeping each word's
+\ opcode AND its destination register - it never reads the register it
+\ preserves, so a chain the native compiler emitted into an allocator's register
+\ rewrites as readily as one the engine emitted into x9.
+: SET-CHAIN ( ptr u8 n -- ) {: p:ptr val:n :}
+   4 0 ?do
+      p i 4 * + W32@ ADDR-OPC-MASK and
+      val i 16 * rshift ADDR-IMM-MASK and ADDR-RD-BITS lshift or
+      p i 4 * + W32!
+   loop ;
 ;package
 
 package AOT-BUF
