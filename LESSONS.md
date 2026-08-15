@@ -6805,3 +6805,33 @@ master, because the checkout's seed predated master by a day.
 control workspace at master built the same way: both engines came
 out 799f5601..., so the byte change was master's and the diff's
 engine contribution was zero.
+
+## 2026-08-15 - the arming word and the chain capture tool (bake-chain-5)
+
+(1) A capture that RUNS proves buffers and formats; being FIRST is
+what makes the prelude marks mean anything. The band audit's lower
+bound is an assumption about the process until something checks it
+- the tool asks the engine's own require registry (REQUIRE-N minus
+REQUIRE-BOOT-N must be exactly one) instead of trusting a comment
+saying "run me first". Run behind one other file, the unchecked
+tool captured a smaller window, exited 0, and produced an
+unbootable seed.
+(2) `require` of a prefix file is a no-op in a booted engine for
+layout.f (0 records) but not for asm.f (178): whether a file is
+already registered in the booting engine is what makes chain-first
+ordering both necessary and cheap. Measure the record count, don't
+reason from the file's role.
+(3) A pad sweep is not always the right control for a
+DP-displacement delta: eight pad builds said nothing, while
+instrumenting the producer's own census (CAPTURE-REPL printing all
+nine captured quantities in both trees) attributed the +4 in one
+build and falsified against a foreign one-byte name change.
+(4) A mutation the checker rejects (live code after `exit`) tests
+nothing - count only mutations that compile and pass the checker.
+(5) A load-sensitive test reds the gate only when the box is busy:
+maki/cad-replay-test.f failed 4/6 under six concurrent instances
+on BOTH the candidate stack and unmodified master, and 12/12 green
+idle. Before blaming the stack, reproduce the red under the same
+load on master - and never run foreground suites concurrently with
+a gate battery on the same box (the first red here was
+self-inflicted exactly that way). Dot: habu-cad-replay-test-8be2ba00.

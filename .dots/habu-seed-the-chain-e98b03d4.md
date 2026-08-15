@@ -32,7 +32,7 @@ code), but this leaf must re-derive it before the chain enters the
 capture window. The engine-side model is C-CALL-SCAN-SAFE +
 AOT-WINDOW:EMIT-OUTSIDE (arithmetically-accepting unarmed state).
 
-Claim: agent=bake-chain-4 workspace=.jj-ws/habu-bake-chain
+Claim: agent=bake-chain-5 workspace=.jj-ws/habu-bake-chain
 
 RULED 2026-08-14 (bake-chain checkpoint, probes /tmp/bc-probe/):
 the metabuild-host capture entry is REFUTED BY EXPERIMENT - the
@@ -216,3 +216,94 @@ gen N emits the capture host, capture runs in it, artifact A_N,
 product = prefix + A_N; CONVERGED when sha256(A_N) =
 sha256(A_N-1) - which is also the promoted cross-process
 double-capture acceptance, run IN the build, fail-closed.
+
+ITEMS (a)+(b) LANDED 2026-08-15 (bake-chain-5, reviewed
+hunk-by-hunk, gated, merged): src/habu/aot-arm.f - AOT-ARM:OPEN
+is the ONLY writer AND the only name for the window-cell write
+(the WINDOW-OPEN forwarder was minted, then deleted by ruling:
+a second name for a one-writer operation is the one thing that
+can grow a second body); manifest slot SDC-ARM$ in both stdin
+builders. tools/aot-chain-capture.f: chain-first, marks first,
+and a STRUCTURAL first-load check - REQUIRE-N minus
+REQUIRE-BOOT-N must be exactly 1, asked of the engine's own
+registry (run behind any other file, the marks would swallow
+that file's records and the capture would exit 0 with an
+unbootable seed - measured before the check existed). Suite
+aot-chain-capture: order case is a mutant DERIVED from the real
+tool file (fail-closed on its anchor), decoy proves the detector
+reads exit codes not text. Census: recs=6764 sites=18939
+blob=1215872 dsites=3717 datasz~1531450, capture 1.31s. Engine
++4B (CODELEN 129528), attributed by control build + producer
+census instrumentation + foreign-change falsification. Payoff
+re-measured: 1023ms/boot is what the bake removes (270 bare vs
+1293 chain-compiling, 5 runs each). NOTED: an UNARMED chain
+window captures near-identically today - the arm is a backstop
+for the chain, not its mechanism. Items (c)-(g) remain: the
+artifact writer/fail-closed reader (reader MERGES per ruling),
+the two-engine emit, the sha-convergence fixpoint, provided
+rows, battery + boot delta.
+
+ITEMS (a)+(b) COMPLETE 2026-08-15 (bake-chain-5, two commits
+stacked in .jj-ws/habu-bake-chain on master 3a74ac2b: 7701f63b
+and c59e7879; full battery green ON THE STACK, fixpoint 24bce3e6
+x2 byte-identical, 165367 bytes).
+(a) src/habu/aot-arm.f minted: package AOT-ARM, one public word
+OPEN ( b0 d0 -- ), the ONLY writer of AOT-WINDOW:D0-CELL/B0-CELL.
+RULED at review and done: AOT-CAPTURE:WINDOW-OPEN is DELETED, not
+delegating - a second name for a one-writer operation is the one
+thing that can grow a second body - and its three callers
+(stdin.f CAPTURE-REPL, aot-band-lib.f OPEN and OPEN-UNARMED) call
+AOT-ARM:OPEN directly. aot-capture.f's now-unused AOT-CELL! TRUST
+row is deleted with it; the engine bytes are unchanged by the
+deletion (host-side only, proven by rebuilding). Manifest slot
+SDC-I-ARM/SDC-ARM$ plus both stdin builders and the closure
+lint's two consumer checks. Size ratchet paid IN the commit with a measured
+attribution (control build of master in a scratch export
+reproduced the pre-change engine byte for byte; only aot-seed
++4/text-pad -4 move; the metabuild capture census is identical in
+eight of nine numbers and the ninth is the window's DATA span
+5726 -> 5730, falsified against an unrelated pre-window edit).
+(b) tools/aot-chain-capture.f: chain-first, line order IS the
+contract, census on stdout (recs=6764 sites=18939 blob=1215872
+names=49014 dsites=3717 csites=16 xtsites=0 xtoff=1
+datasz=1531450, blob==codespan, datasz==dataspan, band 16 recs /
+95 bytes). Suite aot-chain-capture registered + slice-selected
+(schedule lint falsified by deleting the predicate); its order
+case is a MUTANT DERIVED FROM THE REAL FILE (splice
+`require src/arch/arm64/asm.f` before the window-open anchor,
+fail-closed if the anchor is not unique), plus a not-first case
+and a decoy that proves the suite reads exit codes, not text.
+Four mutations red it (injection neutered 3, REFUSED ignoring rc
+1, tool census inconsistent 1, first-load check tautology 3).
+
+NEW STRUCTURAL FINDING, fixed in (b): the band audit trusts every
+record BELOW the mark to be one the target has, which is true of
+the ENGINE's surface and of nothing else. `bin/hb --load X.f
+tools/aot-chain-capture.f` marks X's records as the engine's and
+captures a SMALLER window that calls names no target defines -
+measured: asm.f first gives code span 1194680 instead of 1215872,
+exit 0, unbootable seed. The tool now asks the engine's own
+registry instead of trusting a convention: src/core/include.f
+freezes REQUIRE-BOOT-N at the end of the boot prefix, so
+REQUIRE-N - REQUIRE-BOOT-N is how many files THIS process loaded
+and the only acceptable answer is one. MEASURED SIDE FACTS the
+successor needs: layout.f is already registered in a booted
+engine (require = 0 records) which is why aot-arm.f may depend on
+it; asm.f is NOT (178 records), which is why the chain must bring
+it in; an UNARMED chain window captures identically today (the
+arm is a backstop for the chain, not its mechanism); the chain
+compile costs 1023 ms per boot on this host (270 -> 1293 ms).
+
+REMAINING, items (c)-(g), unstarted. Authoritative section list
+for the artifact is habu2.f EMIT-AOT-SEED (13 sections + the
+scalars: blob/len, compact recs/n, sites/n, names/len, datasize,
+data-d0, dsites/n, xtoffs/n, window DATA, code-b0, csites/n,
+xtsite rows/n, boot-run, prot tag + bitmap). Suggested split for
+the next lane: (c1) format + writer + fail-closed parse-and-
+verify reader + round-trip suite with truncation / version /
+digest / section-order fixtures - this alone unlocks the
+fixpoint's sha comparison; (c2) the MERGE reader per the ruling;
+(d) two-engine emit; (e) fixpoint loop; (f) provided rows (the
+mechanism already exists: include.f REQUIRE-BOOT-FREEZE +
+ENGINE-PROVIDES?); (g) battery + the 1023 ms delta. All rulings
+on this leaf stand.
