@@ -396,12 +396,21 @@ source text, its two arities and the register budget.
 
 ## Performance measurement tools (tools/perf/)
 
-- `tools/perf/protcost.py` — attributes a boot's samples to the engine's
-  mprotect stubs and the `(PROT-SPAN)` guard. It re-derives the stub
-  addresses and the guard's extent from the disassembly on every run, so
-  it survives a rebuild instead of pinning literal offsets. Built for the
-  write-window landing (2026-08-11); the method is documented in its
-  header. Start here for any "where does boot time go" protection question.
+- **"Where does boot time go" for a protection change — measure the real
+  workload; there is no tool row here on purpose.** Two cheaper instruments
+  were tried and both refuted on the same landing (2026-08-14), so neither
+  gets a shortcut in this file. `sample(1)` bucketed by mprotect stub
+  under-reports syscall time about 5x (`tools/perf/protcost.py` read 12.5ms
+  where wall/sys said 67-80ms; the tool was deleted rather than left as a
+  wrong number with a trustworthy interface). Replaying the syscall
+  sequence against a fresh bare mapping under-predicts about 4x in the
+  other direction, because nothing executes inside the replayed region and
+  the real cost is not the syscall at all — a wide RW→RX→RW flip drops the
+  PTEs of the JIT code the engine is executing, which showed up as 93,691
+  minor faults per boot. Price a protection change by running the actual
+  workload and reading wall/sys time and the minor-fault count together
+  (`/usr/bin/time -l` on macOS); attribute it by moving the fault count,
+  not by attributing samples to a stub.
 - `tools/perf/boot-census-watcher.c` + `boot-census-analyze.py` — follow a
   command's whole process tree via kqueue `EVFILT_PROC` and classify every
   child fork-vs-exec by image path and argv (fork children keep the
