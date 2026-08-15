@@ -6860,3 +6860,38 @@ and LESSONS.md, never in source. Meaning lives in word names and
 factoring. Prose in source is also live risk twice over: source-
 shape tests count comment tokens, and baked-source prefixes carry
 comment bytes into the shipped binary.
+
+## 2026-08-15 - the artifact landing's four (bake-chain-6)
+
+(1) A ruled design can rest on an unverified premise; the
+cheapest probe is the one nobody ran. "The writer requires
+driver-io.f" was ruled and wrong - one require in bin/hb refuted
+it in four seconds and the assumed route would have dragged the
+Mach-O writer into a portable tool.
+(2) Prose in a lint describing what its fixtures kill is a claim
+to falsify. Swapping the shared row comparison for a suffix
+match left the whole suite green - the cheque went four rows
+deep with no fixture covering it.
+(3) A fixture's implicit precondition is arithmetic, and
+arithmetic moves: four wordlist ids walked a control case from
+unprotected to protected. Reproducing on an untouched tree with
+two empty placeholder packages separated "my change is wrong"
+from "my change is first".
+(4) true/false do not exist in the stdin metabuild host
+(hide.f retires them); host-side sources derive booleans. The
+tree said so in the shape of its neighboring code.
+
+## 2026-08-15 - the comment sweep's three (comment-sweep)
+
+(1) Prove a comment-only diff with the tree's own lexer, not a
+diff of stripped text: code tokens + string-literal payloads +
+stack signatures, falsified in four directions (code edit,
+signature edit, payload edit, .( ) removal) before trusting
+IDENTICAL. A grep check would have been the patch.
+(2) Strip mechanically, re-insert constraints by anchor; a
+hand-built multi-range deletion eats a code line eventually
+(one did - the instrument caught it).
+(3) src/arch/arm64/asm.f IS in the engine prefix (srclist
+SL-PREFIX); comment edits leave the sha identical because
+comments compile to nothing, but it is a seed file and install
+belongs before any gate that reads it.

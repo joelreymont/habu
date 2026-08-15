@@ -507,3 +507,20 @@ alignment: they depend on 54dec421 (rebase at seed) or a
 structural proof of the invariant. Interim ruled boundary: the
 wid fixture refuses by name when its wid is protected in the
 target.
+
+FORMAT+WRITER+READER LANDED 2026-08-15 (bake-chain-6, merged
+7a72b56f with fc1ae6f1 FDIO split): src/habu/aot-file.f owns the
+ruled 136B-header/13-section format; artifact 3,095,842B, two
+processes byte-identical, writer digest = outside shasum. 13
+named refusals each mutation-proven incl. the forged-header
+family; poisoned-buffer round trip on every write. FDIO:WALL is
+the tree's one descriptor write; driver-io.f in package-lint
+OLD-GLOBAL (self-retiring via acbd02b7). Wid boundary in
+test/aot-wid-build.f per 54dec421. Host facts recorded in code:
+hide.f retires true/false in the stdin host; driver-io.f
+unreachable in a booted engine. REMAINING: (2) reader MERGE into
+host buffers (artifact carries compact rows only - merge runs
+strictly AFTER host capture) -> (3) two-engine emit -> (4)
+sha-convergence fixpoint -> (5) provided rows -> (6) battery +
+boot delta. Reader two-pass vs in-memory: revisit AT the merge
+step with a measurement.
