@@ -104,6 +104,14 @@ require src/habu/aot-capture.f
 require src/habu/aot-ident.f
 require lib/engine-id.f
 
+\ The artifact, and the whole-span descriptor write it needs. src/habu/fdio.f is
+\ the tree's one write-all loop and the only part of the build drivers' I/O a
+\ booted engine can load - src/habu/driver-io.f itself stops at E-UNDEFINED: MBUF,
+\ six files short of the target's image writer. Both load after the window for the
+\ same reason everything else here does.
+require src/habu/fdio.f
+require src/habu/aot-file.f
+
 package AOT-CHAIN
 using AOT-BUF
 public
@@ -127,10 +135,26 @@ $4A constant REFUSE-RC
 create CHAIN-SHA 32 allot
 create HEX 64 allot
 
+\ The closure the window compiled, read out of the engine's own require registry.
+\ [Q0,Q1) is REQUIRE-N bracketed across the window, so it is exactly the files the
+\ chain pulled in and nothing else. The registry read lives here rather than in
+\ src/habu/aot-ident.f because this is the only process that has a window to
+\ bracket - the metabuild fills the same table from the artifact's own list - and
+\ because aot-ident.f has to compile in a metabuild host that carries no
+\ src/core/include.f.
+: ?CLOSURE ( -- )
+   Q1 @ Q0 @ > if exit then
+   s" aot-chain-capture: the window loaded no file" REFUSE-RC die ;
+
+: LATCH-CLOSURE ( -- )
+   ?CLOSURE
+   AOT-IDENT:RESET
+   Q1 @ Q0 @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ AOT-IDENT:PATH+ loop ;
+
 : RUN ( -- )
    ?FIRST
    ?WINDOW
-   Q0 @ Q1 @ AOT-IDENT:CLOSURE!
+   LATCH-CLOSURE
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
    B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE ;
 
@@ -159,7 +183,85 @@ create HEX 64 allot
    s" chaindigest=" type HEX 64 type cr
    s" producer=" type ENGINE-ID:KEY$ type cr ;
 
-: MAIN ( -- ) RUN CENSUS. ;
+\ ---- the artifact, and the proof that writing it is a round trip -------------
+\
+\ THE PRODUCER KEY is the SHA-256 of the binary this process is running, taken
+\ over the path lib/engine-id.f resolved for itself. The census prints the same
+\ fact in hex through ENGINE-ID:KEY$, and test/aot-chain-capture-suite.f hashes
+\ bin/hb from the outside and compares - so the key the artifact carries is a
+\ reading of a file this suite has already pinned, not a claim.
+\
+\ THE ROUND TRIP RUNS EVERY TIME AN ARTIFACT IS WRITTEN, and it is the same
+\ comparison the fixpoint loop promotes across generations: write A, destroy the
+\ live buffers, read A back into them, write B from what came back, and require
+\ sha256(A) = sha256(B). A reader that drops a section, reads a length short, or
+\ fills the wrong buffer cannot survive it, and the writer's own digest of the
+\ bytes it handed the descriptor is what is compared - not a re-read of the file.
+\ B is written over A's path, so what is left on disk is one artifact and the
+\ assertion says the two spellings of it were identical.
+\
+\ THE POISON is what makes the round trip adversarial. Zeroing the buffers would
+\ let a reader that skips a section pass whenever the section happened to be zero
+\ - the window's boot-run list and named code sites are empty today, and its
+\ address-cell table holds one row. $A5 is a byte no captured section can be
+\ mistaken for, and it goes over each section's own extent plus a margin past it,
+\ so a read that stops short leaves poison inside the span it claimed to fill.
+
+create PROD 32 allot
+create SHA-A 32 allot
+create AHEX 64 allot
+$A5 constant POISON-BYTE
+64 constant POISON-MARGIN
+
+: SMEAR ( ptr u8 n n -- ) {: a:ptr u:n cap:n :}
+   u POISON-MARGIN + cap > if cap else u POISON-MARGIN + then {: n:n :}
+   n 0 ?do POISON-BYTE a i + c! loop ;
+
+: POISON ( -- )
+   AOT-BLOB-BUF@ AOT-BLOB-LEN @ AOT-BLOB-CAP SMEAR
+   AOT-REC-BUF@ AOT-REC-MAX 48 * +  AOT-REC-N @ AOT-CREC-ROW *
+      AOT-REC-MAX AOT-CREC-ROW * SMEAR
+   AOT-SITE-BUF@ AOT-SITE-N @ 8 * AOT-SITE-MAX 8 * SMEAR
+   AOT-NAMES-BUF@ AOT-NAMES-LEN @ AOT-NAMES-CAP SMEAR
+   AOT-DSITE-BUF@ AOT-DSITE-N @ AOT-CSITE-N @ + 4 * AOT-DSITE-MAX 4 * SMEAR
+   AOT-WINDOW:XTOFF-BUF@ AOT-WINDOW:XTOFF-N @ 4 * AOT-WINDOW:XTOFF-MAX 4 * SMEAR
+   AOT-WINDOW:DATA-BUF@ AOT-DATA-SIZE @ AOT-WINDOW:DATA-CAP SMEAR
+   AOT-XTSITE:BUF@ AOT-XTSITE:N @ 8 * AOT-XTSITE:MAX 8 * SMEAR
+   AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ AOT-BOOTRUN-CAP SMEAR
+   AOT-PWID-BUF@ PROT-BITS-BYTES PROT-BITS-BYTES SMEAR
+   0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
+   0 AOT-DSITE-N !  0 AOT-CSITE-N !  0 AOT-WINDOW:XTOFF-N !  0 AOT-DATA-SIZE !
+   0 AOT-XTSITE:N !  0 AOT-BOOTRUN-LEN !
+   0 AOT-DATA-D0 !  0 AOT-CODE-B0 !
+   AOT-IDENT:RESET ;
+
+: SAME? ( ptr u8 ptr u8 n -- bool ) {: a:ptr b:ptr n:n :}
+   n 0 ?do a i + c@ b i + c@ <> if false unloop exit then loop  true ;
+
+: ?ROUND-TRIP ( -- )
+   SHA-A AOT-FILE:SHA$ drop 32 SAME? if exit then
+   s" aot-chain-capture: the artifact does not survive its own round trip"
+   REFUSE-RC die ;
+
+: ARTIFACT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   ENGINE-ID:PATH$ PROD SHA256-FILE 0 <> if
+      s" aot-chain-capture: cannot hash the engine that is running" REFUSE-RC die
+   then
+   PROD path pathu AOT-FILE:WRITE
+   AOT-FILE:SHA$ drop SHA-A 32 BYTE-COPY
+   POISON
+   PROD path pathu AOT-FILE:READ
+   PROD path pathu AOT-FILE:WRITE
+   ?ROUND-TRIP
+   SHA-A AHEX SHA256>HEX
+   s" artifact=" type AHEX 64 type cr
+   s" artifactpath=" type path pathu type cr
+   s" roundtrip=ok" type cr ;
+
+: MAIN ( -- )
+   RUN
+   CENSUS.
+   SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ ARTIFACT then ;
 
 ;package
 

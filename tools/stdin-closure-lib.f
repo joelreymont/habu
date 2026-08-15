@@ -17,7 +17,10 @@
 \               engine's capture-window cells, which the driver's CAPTURE-REPL
 \               calls, so it must be compiled in ahead of it), aot-capture.f (its
 \               AOT-CAPTURE:CAPTURE runs in STDIN-DRIVER:RUN) and the driver
-\               stdin.f itself.
+\               stdin.f itself, aot-ident.f (the closure list and its digest,
+\               which the reader re-derives from disk) and aot-file.f (the
+\               artifact reader itself, which fills the same AOT-BUF buffers a
+\               host-side capture would).
 \               aot-decl.f is a COMMON prefix source - it loads in EVERY build,
 \               immediately before habu2.f, not only in the stdin one - and it is
 \               listed here because both stdin source builders must still name it
@@ -39,12 +42,14 @@ public
 
 $1 constant SDC-HOST
 
-5 constant SDC-COUNT
+7 constant SDC-COUNT
 0 constant SDC-I-INCLUDE
 1 constant SDC-I-AOT
 2 constant SDC-I-DRIVER
 3 constant SDC-I-DECL
 4 constant SDC-I-ARM
+5 constant SDC-I-IDENT
+6 constant SDC-I-FILE
 
 $4A constant SDC-BAD-IDX-RC
 
@@ -54,6 +59,8 @@ $4A constant SDC-BAD-IDX-RC
    ix SDC-I-DRIVER  = if s" src/habu/stdin.f" exit then
    ix SDC-I-DECL    = if s" src/habu/aot-decl.f" exit then
    ix SDC-I-ARM     = if s" src/habu/aot-arm.f" exit then
+   ix SDC-I-IDENT   = if s" src/habu/aot-ident.f" exit then
+   ix SDC-I-FILE    = if s" src/habu/aot-file.f" exit then
    s" stdin-closure: bad file index" SDC-BAD-IDX-RC die ;
 
 : SDC-FLAGS ( n -- n ) {: ix:n :}
@@ -62,6 +69,8 @@ $4A constant SDC-BAD-IDX-RC
    ix SDC-I-DRIVER  = if SDC-HOST exit then
    ix SDC-I-DECL    = if SDC-HOST exit then
    ix SDC-I-ARM     = if SDC-HOST exit then
+   ix SDC-I-IDENT   = if SDC-HOST exit then
+   ix SDC-I-FILE    = if SDC-HOST exit then
    s" stdin-closure: bad file index" SDC-BAD-IDX-RC die ;
 
 \ named accessors: the ONLY sanctioned way for a checked consumer to name a
@@ -71,6 +80,8 @@ $4A constant SDC-BAD-IDX-RC
 : SDC-DRIVER$  ( -- ptr u8 n ) SDC-I-DRIVER SDC-PATH ;
 : SDC-DECL$    ( -- ptr u8 n ) SDC-I-DECL SDC-PATH ;
 : SDC-ARM$     ( -- ptr u8 n ) SDC-I-ARM SDC-PATH ;
+: SDC-IDENT$   ( -- ptr u8 n ) SDC-I-IDENT SDC-PATH ;
+: SDC-FILE$    ( -- ptr u8 n ) SDC-I-FILE SDC-PATH ;
 
 : SDC-ROLE? ( n n -- bool ) and 0= 0= ;
 

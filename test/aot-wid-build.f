@@ -121,6 +121,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/vector.f
+require lib/fmt.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
@@ -761,11 +762,69 @@ create DRV-CH 1 allot
    s" public" DRV-LINE
    S\" : AWB-GATE-REPORT ( -- ) s\" awb-gate=open\" type cr ;" DRV-LINE ;
 
+\ --- the fixture's wid precondition (dot habu-rebase-captured-wids-54dec421) ---
+\ A NAMED, TESTED BOUNDARY around something the capture cannot yet express.
+\
+\ THE HAZARD. A captured record travels with the wordlist id it had in the
+\ METABUILD HOST, and the AOT boot gate tests that raw number against the TARGET
+\ engine's live protected set. The two are unrelated id spaces: the target's own
+\ prefix allocates up to WIDN (288 measured on this tree), so any captured id
+\ below that aliases a real target wordlist. If the alias happens to be a sealed
+\ one the gate refuses; if it happens to be an ordinary one, the captured record
+\ is registered into a package nobody named and nothing says so.
+\
+\ HOW IT WAS FOUND. Adding two packages to the stdin metabuild host - four ids,
+\ public and private - moved this fixture's AWBGATE from host id 205 to 209, and
+\ 209 is protected in the shipped engine while 205 is not, so mode 2's control
+\ engine stopped booting. Reproduced on an untouched tree with two empty
+\ placeholder packages in the host: same shift, same refusal. Nothing about the
+\ files involved mattered; the arithmetic did.
+\
+\ WHAT THIS DOES ABOUT IT. It states the invariant the whole capture design has
+\ been ASSUMING and never enforced - a captured id must lie above every id the
+\ target's own prefix allocates - and it makes this fixture satisfy the invariant
+\ instead of stumbling into it. The bound is measured, not guessed: the builder
+\ runs in a booted engine of the target's shape and asks it for the next id it
+\ would hand out. The driver then burns ids until its next one is past that
+\ bound, and the check refuses BY NAME if the package still came back below it.
+\ It never selects a different id and carries on, and it never skips.
+\
+\ IT IS INTERIM. The general fix is the captured ids' own, on the dot above:
+\ rebase them into the target's space at seed time, or advance the target's WIDN
+\ past the highest captured id before any of them is registered. When that lands,
+\ this boundary and its three emitted words go with it.
+variable AWB-BOUND
+create AWB-NUM 32 allot
+
+: DRV-N ( n -- ) {: v:n :}
+   SB-RESET  v FMT:SB-U  SB$ {: a:ptr u:n :}
+   a AWB-NUM u BYTE-COPY
+   AWB-NUM u DRV+ ;
+
+\ The bound is this process's own next wordlist id, and this process is a booted
+\ engine of the target's shape - so it is the target's prefix allocation measured
+\ rather than a number anybody chose. The id it burns here is the builder's, not
+\ the driver's.
+: GATE-WID-BOUND-LINES ( -- )
+   wordlist AWB-BOUND !
+   s" : AWB-WID-BOUND ( -- n ) " DRV+  AWB-BOUND @ DRV-N  s"  ;" DRV-LINE
+   s" : AWB-WID-ADVANCE ( -- ) begin wordlist AWB-WID-BOUND > 0= while repeat ;" DRV-LINE
+   s" AWB-WID-ADVANCE" DRV-LINE ;
+
+: GATE-WID-CHECK-LINES ( -- )
+   s" : AWB-WID-CHECK ( -- )" DRV-LINE
+   s"    AWB-GATE-WID @ AWB-WID-BOUND > if exit then" DRV-LINE
+   S\"    s\" aot-wid-build: the gate fixture's wordlist id is below the target's own\" type cr" DRV-LINE
+   S\"    s\" aot-wid-build: captured wordlist id aliases a target wordlist\" 74 die ;" DRV-LINE
+   s" AWB-WID-CHECK" DRV-LINE ;
+
 : GATE-FIXTURE-LINES ( ptr u8 n -- ) {: mode:ptr mu:n :}
    s" variable AWB-GATE-WID" DRV-LINE
+   GATE-WID-BOUND-LINES
    mode mu GATE-ENTRY-LINES
    s" get-current AWB-GATE-WID !" DRV-LINE
    s" ;package" DRV-LINE
+   GATE-WID-CHECK-LINES
    mode mu s" 2" STR= 0= if
       s" AWB-GATE-WID @ prot-wid-add" DRV-LINE
    then

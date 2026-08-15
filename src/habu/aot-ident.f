@@ -15,6 +15,17 @@
 \ with no second copy of that set to go stale. A hand-written closure list would
 \ agree with the engine only until the first chain file gained a dependency.
 \
+\ THE REGISTRY READ IS NOT HERE, AND THAT IS THE POINT. This file holds a list and
+\ its digest; who fills the list is the filler's business. The capture reads the
+\ require registry (tools/aot-chain-capture.f, which is the only process with a
+\ window span to bracket) and the metabuild reads the list an artifact carries
+\ (src/habu/aot-file.f). Two fillers, one table, one digest — the shape
+\ src/habu/aot-decl.f already uses for the capture buffers. It also keeps this
+\ file loadable in BOTH metabuild hosts: tools/bootstrap.sh's stdin source does
+\ not compile src/core/include.f, so a REQUIRE-SLOT here would break the recovery
+\ route, and the digest the reader re-derives has to be the same code the producer
+\ ran or the comparison proves nothing.
+\
 \ THE DIGEST IS RE-DERIVABLE, WHICH IS THE POINT. It is SHA-256 over the ordered
 \ concatenation of those files' bytes, so a reader holding the artifact's file
 \ list can recompute it from disk and compare. That turns "this artifact says it
@@ -58,22 +69,20 @@ variable N
 
 public
 
-\ Latch the closure from the engine's require registry. r0 and r1 are REQUIRE-N as
-\ the window opened and closed, so [r0,r1) is what the window loaded and nothing
-\ else. An empty range is a capture that compiled no file and is refused here
-\ rather than producing an artifact that claims to come from nothing.
-: CLOSURE! ( n n -- ) {: r0:n r1:n :}
-   r1 r0 <= if
-      s" aot-ident: the capture loaded no file" REFUSE-RC die
-   then
-   r1 r0 - ?ROOM
-   0 N !
-   r1 r0 ?do
-      i REQUIRE-LEN@ ?FITS
-      i REQUIRE-SLOT  N @ SLOT  i REQUIRE-LEN@ BYTE-COPY
-      i REQUIRE-LEN@ N @ LEN!
-      N @ 1+ N !
-   loop ;
+\ Empty the table. A filler starts here, so a second fill cannot leave a tail of
+\ the first one's paths behind it.
+: RESET ( -- ) 0 N ! ;
+
+\ Append one path, in load order. Both refusals are the table's own invariants -
+\ more paths than it holds, or a path longer than a slot - and a path that does
+\ not fit is refused rather than cut, because a cut path names a different file
+\ and would still hash.
+: PATH+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   N @ ?ROOM
+   u ?FITS
+   a  N @ SLOT  u BYTE-COPY
+   u N @ LEN!
+   N @ 1+ N ! ;
 
 : COUNT ( -- n ) N @ ;
 

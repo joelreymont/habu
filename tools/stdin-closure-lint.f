@@ -69,6 +69,8 @@ variable SDCL-BAD
    s" SDC-AOT$" SDCL-NEED
    s" SDC-DECL$" SDCL-NEED
    s" SDC-ARM$" SDCL-NEED
+   s" SDC-IDENT$" SDCL-NEED
+   s" SDC-FILE$" SDCL-NEED
    s" SDC-DRIVER$" SDCL-NEED ;
 
 \ srclist names the stdin metabuild-host closure through the same accessors.
@@ -77,6 +79,8 @@ variable SDCL-BAD
    s" SDC-AOT$" SDCL-NEED
    s" SDC-DECL$" SDCL-NEED
    s" SDC-ARM$" SDCL-NEED
+   s" SDC-IDENT$" SDCL-NEED
+   s" SDC-FILE$" SDCL-NEED
    s" SDC-DRIVER$" SDCL-NEED
    s" src/habu/driver-io.f" SDCL-NEED ;
 

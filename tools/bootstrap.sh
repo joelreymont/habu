@@ -271,6 +271,10 @@ emit_src() {
     printf '\n' >> "$out"
     cat src/habu/aot-capture.f >> "$out"
     printf '\n' >> "$out"
+    cat src/habu/aot-ident.f >> "$out"
+    printf '\n' >> "$out"
+    cat src/habu/aot-file.f >> "$out"
+    printf '\n' >> "$out"
   fi
   cat "$driver" >> "$out"
   printf '\n' >> "$out"
