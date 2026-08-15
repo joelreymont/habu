@@ -603,3 +603,31 @@ REMAINING: (2) the merge per MERGE RULINGS incl. amended (4)
 host's window continuation) -> (3) two-engine emit -> (4)
 sha-convergence fixpoint -> (5) provided rows -> (6) battery +
 boot delta.
+
+MERGE CHANNEL RULINGS 2026-08-15 (bake-chain-8 checkpoint):
+(1) The artifact reaches the metabuild as a DRIVER PARAMETER
+spliced into the generated source by the build driver (option 3):
+STDIN-DRIVER gains one public setter (artifact path + producer-
+key path, empty by default); RUN merges when declared, refuses
+by name when a declared artifact is unreadable/unhashable/
+wrong-keyed. No env channel (forth.md: the driver owns path
+construction; no stale envp), no magic HB_TMP name. Item (3)
+sets the same parameter from the capture host it emits.
+(2) DKEEP-HOOK's boot-run entry is the CAPTURE TOOL's to declare
+(chain names belong to the tool, as CAPTURE-REPL declares its
+installers); A64RAV:DKEEP-HOOK-DEFAULT moves to public - no
+wrapper (a second name for one operation is the deleted-
+forwarder lesson).
+(3) Acceptance is a new registered suite through the real
+BF-EMIT-STDIN-RUN-SOURCE + build-fixpoint path, child-process
+NMIGRATE:DEFINE probe, six shift-class mutations; the production
+install lane proves the milestone again at item (3).
+RATIFIED from the same checkpoint: two-pass READ stays (measured:
+the second file pass costs 0.2ms, the second SHA 147ms, and the
+second SHA IS the changed-between-passes check; 358ms once per
+metabuild vs a 4MiB buffer is not a trade); the DSITE/CSITE
+shared-buffer relocation order (host CODE rows move up BEFORE
+loading; one section's base depends on another's length -
+recorded so ruling 2's "per-section base offset" reads right);
+package records' [0]/[8] take the WID rebase, never the blob
+shift.
