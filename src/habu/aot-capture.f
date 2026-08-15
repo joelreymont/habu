@@ -48,7 +48,7 @@ s" AOT-CELL!" s" n ptr a --" TRUST
 \ --- host dictionary record k (48 bytes): field readers (ptr-first byte offsets) ---
 : AOT-REC ( n -- ptr a ) 48 * AOT-DBASE swap + ;
 : AOT-RXT ( ptr a -- n ) AOT-CELL@ ;                          \ [0] code entry (xt)
-: AOT-REND ( ptr a -- n ) 8 + AOT-CELL@ ;                     \ [8] code end or package private WID
+: AOT-RLEN ( ptr a -- n ) 8 + AOT-CELL@ ;                     \ [8] code LENGTH (habu2.f EM-AOT-REGISTER-RECS) or package private WID
 : AOT-RFLAGS ( ptr a -- n ) 16 + AOT-CELL@ ;                  \ [16] flags | name len
 : AOT-RNLEN ( ptr a -- n ) AOT-RFLAGS $0003FFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 14 bits are flags + DNAME-MIN-IN + DKIND)
 : AOT-REXT? ( ptr a -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
@@ -512,11 +512,109 @@ variable ACAP-RECMM                                           \ record-proof mis
    len 0 ?do bstart AOT-N>U8 i + c@  AOT-BLOB-BUF@ i + c!  loop
    len AOT-BLOB-LEN ! ;
 
+\ --- the prelude band: what a captured word may call, and what it may hold ----
+\ WHOSE DICTIONARY THE SEED RESOLVES IN. A captured call site travels as a NAME
+\ and EM-SEED-AOT LFINDs it in the engine it is booting, so every callee a window
+\ word has must be a word THAT engine carries: either a word of the capturing
+\ process that the target's own prefix defines too, or a word inside the window,
+\ which the seed registers before it patches anything. A capture running in a
+\ booted bin/hb has a third kind, and it is the one this band exists for - the
+\ files the capture tool loads to be ABLE to capture. Those words exist in the
+\ capturing engine and in no target, so a call into them bakes a name that LFIND
+\ cannot answer, and the failure lands at the boot of a shipped binary rather than
+\ at the build that made it.
+\
+\ THE MARKS ARE THE BAND. The producer records the record index and the DATA
+\ cursor as they stood when its prelude began; the window's own rstart and d0 are
+\ where that prelude ended. What lies between is the prelude, and what lies below
+\ is the engine the capture is running in - whose names the target shares because
+\ the target is built from the same prefix. The band is two-sided because a
+\ prelude word can reach a window word two ways: as the target of a call, and as
+\ an ADDRESS a window word holds, which the DATA relocation would then rebase into
+\ a pointer at nothing. Both audits run over the full recorded populations, and
+\ both refuse by naming the window word that carries the site.
+\
+\ THE HOST DECLARES AN EMPTY BAND, and that is a statement rather than a default:
+\ the metabuild host compiles its whole prefix from the same sources the engine it
+\ writes will carry, so it has no prelude of its own and its marks are the window's
+\ own start (src/habu/stdin.f CAPTURE-REPL). Declaring is mandatory - a capture
+\ that never called PRELUDE-MARK does not know which of its words the target has,
+\ and refuses instead of guessing.
+variable ACAP-PRE-R      \ first record index of the prelude band
+variable ACAP-PRE-D      \ first DATA address of the prelude band
+variable ACAP-MARKED?    \ the band was declared for this capture
+variable ACAP-W-B0                       \ the window's code base, latched at CAPTURE
+variable ACAP-W-R0  variable ACAP-W-R1   \ its record span
+variable ACAP-W-D0                       \ its first DATA address
+
+public
+
+\ Declare where the capturing process's own prelude begins: the record index and
+\ the DATA cursor as they stood before the capture tool loaded anything. A
+\ producer with no prelude passes the window's own start, which is an empty band.
+: PRELUDE-MARK ( n n -- ) {: r:n d:n :}
+   r ACAP-PRE-R !  d ACAP-PRE-D !  0 0= ACAP-MARKED? ! ;
+
+private
+
+\ The window record whose compiled code holds this blob offset, or -1. Used only
+\ on a refusal path, so a linear walk of the window is the right shape: it needs
+\ no index, no proof that an index answers what it answers, and no reset.
+\ A package record ([40] = -1) carries WID roles in [0]/[8] rather than a code
+\ span, so it can hold no offset and is skipped.
+: ACAP-REC-AT ( n -- n ) {: boff:n :}
+   ACAP-W-B0 @ boff + {: a:n :}
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do
+      i AOT-REC AOT-RWID -1 <> if
+         i AOT-REC AOT-RXT a <=
+         i AOT-REC AOT-RXT i AOT-REC AOT-RLEN + a > and if i unloop exit then
+      then
+   loop
+   -1 ;
+
+: ACAP-NAME. ( n -- ) {: k:n :}
+   k 0 < if s" <no record>" type exit then
+   k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN  type ;
+
+\ Audit (a): every call a window word makes. A callee below the prelude mark is a
+\ word of the booting engine and the target's prefix defines it; a callee inside
+\ the window is registered by the seed before the patch pass runs. Anything else
+\ is a name the target has not got, and the capture ends here rather than baking
+\ it.
+: ACAP-SITE-BAND ( n n -- ) {: boff:n k:n :}
+   k ACAP-PRE-R @ < if exit then
+   k ACAP-W-R0 @ >= k ACAP-W-R1 @ < and if exit then
+   s" aot-capture: window word " type boff ACAP-REC-AT ACAP-NAME.
+   s"  at blob offset " type boff .
+   s" calls " type k ACAP-NAME.
+   s" , which the booting engine has and no target does" type cr
+   s" aot-capture: window call into the prelude band" 74 die ;
+
+\ Audit (b) is the DATA half, and it is a SENTENCE ADDED TO AN EXISTING REFUSAL
+\ rather than a second one. A recorded address the window's spans do not place is
+\ already refused below (ACAP-UNCLASSIFIED), fail-closed, for every value; what
+\ the band adds is WHICH KIND of address it is, and that is the difference between
+\ a diagnostic a reader can act on and a number. The kind that matters to a
+\ capture running in a booted engine is the middle one: an address allotted after
+\ this process started and before the window opened belongs to the capture tool's
+\ own prelude, exists in no target, and would be rebased into a pointer at
+\ whatever the seeded engine put at that offset.
+\ Writing it as a second refusal was tried and refuted: with a forged window base
+\ (test/aot-wid-suite.f HABU_AOT_D0_SKEW moves d0 past the span) every real window
+\ address falls into the band, so the second refusal took the first one's only
+\ producer and the tree lost a tested stop. One refusal, one die line, and the
+\ band in the diagnostic keeps both.
+: ACAP-BAND. ( n -- ) {: v:n :}
+   v ACAP-PRE-D @ < if s" below this process's own start" type exit then
+   v ACAP-W-D0 @ < if s" in the prelude band, which no target carries" type exit then
+   s" above the window's DATA span" type ;
+
 \ --- scan the copied blob for call sites; record + canonicalize each ---
 variable ACAP-P
 : ACAP-SITE-HERE ( -- )
    AOT-BLOB-BUF@ ACAP-P @ + ACAP-TGT ACAP-TGT>REC {: k:n :}
    k 0 < if 1 AOT-UNRES-N +! exit then                \ call to no dict word -> word kept-source (counted)
+   ACAP-P @ k ACAP-SITE-BAND                          \ ... and the target has this name
    ACAP-P @  k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN  ACAP-ADD-SITE
    AOT-BLOB-BUF@ ACAP-P @ +        ACAP-ZERO-IMM ;     \ one 4-byte BL site
 : ACAP-SCAN-CALLS ( -- )
@@ -642,9 +740,11 @@ variable ACAP-P
 \ The refusal, with the site named. A capture that cannot classify one of its own
 \ recorded chains has nothing correct to bake, so it dies rather than choosing.
 : ACAP-UNCLASSIFIED ( n n -- ) {: boff:n v:n :}
-   s" aot-capture: recorded address site at blob offset " type boff .
+   s" aot-capture: window word " type boff ACAP-REC-AT ACAP-NAME.
+   s"  at blob offset " type boff .
    s" carries " type v .
-   s" which is in neither the window's DATA span nor its code span" type cr
+   s" which is " type v ACAP-BAND.
+   s" and so in neither the window's DATA span nor its code span" type cr
    s" aot-capture: recorded address site outside both window spans" 74 die ;
 
 \ A recorded chain the window's DATA span does not hold. Three outcomes, and the
@@ -914,7 +1014,25 @@ public
    d0 AOT-LIVE-DATA AOT-WINDOW:D0-CELL + AOT-CELL!
    b0 AOT-LIVE-DATA AOT-WINDOW:B0-CELL + AOT-CELL! ;
 
+\ The band the two audits read, latched from this capture's own arguments. The
+\ marks are NOT reset with the buffers: they describe the process, and a widened
+\ re-capture of the same window (test/aot-wid-build.f) is the same process.
+: ACAP-BAND! ( n n n n -- ) {: bstart:n rstart:n rend:n d0:n :}
+   ACAP-MARKED? @ 0= if
+      s" aot-capture: capture without a declared prelude band" 74 die
+   then
+   ACAP-PRE-R @ rstart > if
+      s" aot-capture: prelude mark above the window's first record" 74 die
+   then
+   ACAP-PRE-D @ d0 > if
+      s" aot-capture: prelude DATA mark above the window's DATA base" 74 die
+   then
+   bstart ACAP-W-B0 !
+   rstart ACAP-W-R0 !  rend ACAP-W-R1 !
+   d0 ACAP-W-D0 ! ;
+
 : CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+   bstart rstart rend d0 ACAP-BAND!
    ACAP-RESET
    ACAP-TIDX-BUILD                              \ xt -> record index for THIS dictionary
    ACAP-TIDX-PROVE                              \ ... which answers what the scan answers

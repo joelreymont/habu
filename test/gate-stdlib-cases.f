@@ -1257,6 +1257,10 @@ SUITE aot-wide-format
    test/aot-wide-format-suite.f
 ;SUITE
 
+SUITE aot-prelude-band
+   test/aot-prelude-band-suite.f
+;SUITE
+
 SUITE friend-arena-absence
    test/seal-absence.f
 ;SUITE
