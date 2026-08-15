@@ -524,3 +524,68 @@ strictly AFTER host capture) -> (3) two-engine emit -> (4)
 sha-convergence fixpoint -> (5) provided rows -> (6) battery +
 boot delta. Reader two-pass vs in-memory: revisit AT the merge
 step with a measurement.
+
+MERGE RULINGS 2026-08-15 (bake-chain-6 handoff, four decisions):
+(1) ACAP-CHAINV/ACAP-SET-CHAIN move beside SNAP-RELOC's shape
+constants in aot-decl.f - ONE chain reader/writer, three
+consumers (relocation pass, capture scan, merge). A private copy
+is the drift the existing comment forbids.
+(2) READ and MERGE are separate entry points over one
+section-loading machinery parameterized by per-section base
+offset. READ replaces (adopts artifact D0/B0; the round trip
+stays here); MERGE keeps the host's bases and rebases values.
+Zeroed-buffer loading is NOT degenerate merging - hostD0=0 would
+bake D0=0.
+(3) Name pool: APPEND, no dedup (49,720 of 131,072 - the remap
+pass buys <1KB). AOT-NAMES-LEN for a merged seed means the
+concatenated pools; recorded here so item (6)'s size numbers
+read right.
+(4) The host's protected-WID bitmap is untouched by the merge;
+the artifact's band is NOT merged.
+ORDER AMENDED (the lane's own finding, adopted): the WID REBASE
+(54dec421) lands FIRST, before the merge - the merge writes wids
+into baked records, and rebasing first makes the record handling
+simple instead of revisited. New order: wid rebase -> merge ->
+two-engine emit -> fixpoint -> provided rows -> battery.
+Five shift classes recorded (blob/name/DATA-offset axes + DATA
+and CODE value rebases); call site STDIN-DRIVER:RUN between
+CAPTURE-REPL and ENGINE-EMIT:FORTH; headroom proven (sums:
+blob 1.23/2MiB, DATA 1.537/2MiB, recs 6859/16384, sites
+19110/32768, names 49720/131072). When the sweep campaign trims
+aot-file.f's header, its MEASURED facts (hide.f boolean
+retirement, the MBUF route, forged-table reasoning) land HERE,
+not deleted.
+
+WID REBASE RULINGS 2026-08-15 (bake-chain-7 checkpoint; option B
+of 54dec421 REFUTED by measurement - WIDN governs future
+allocation, a captured wid 209 still registers into the existing
+target wordlist at 209; both baselines reproduce on the real
+build path; the unsealed alias puts AWBGATE's word into
+LOWER-CERT's public wordlist, silently):
+(1) THE FIX IS THE REBASE, wid as a window-relative coordinate,
+exactly as proposed: capture latches [W0,W1); seed reads T0=WIDN
+once, maps w=0 to 0, in-window w to T0+(w-W0), refuses anything
+else BY NAME; WIDN=T0+span once (deleting the per-record
+max/store). Two new baked scalars (W0, span) in EMIT-AOT-SEED,
+LAOTDATAD0 shape; section-reach labels + AGREE budget updated.
+The ARTIFACT carries the span: VERSION bumps to 2 - hard
+equality is what the version field is FOR; a soundness fix is
+the legitimate consumer.
+(2) AOT-CAPTURE:WID-SPAN ( w0 w1 -- ) as a separate MANDATORY
+latch mirroring PRELUDE-MARK - unmarked capture refuses. Four
+call sites move.
+(3) MERGE RULING (4) AMENDED: the artifact DOES carry its
+in-window protected wids, as a window-relative u32 table the
+seed applies AFTER rebasing (the chain's 51 constructor packages
+must not ship unsealed - the seal threat model is checked habu,
+and an unsealed ctor package is a real hole). The host's
+PRE-window band stays untouched by the merge. EMIT-AOT-PROT-
+RESTORE cannot do this (runs before T0 exists) - the new table
+is the honest form. The wid fixture's gate mode 1 adapts to
+protect through the new table so EM-AOTWIDGATE keeps a live
+test; it must not go quiet.
+NOTED: the chain clears the target's WIDN by exactly 4 wids,
+owned by the capture tool's own packages - the accidental margin
+the rebase retires. The PRE-window bitmap's host-numbering
+soundness (correct only by shared load-order prefix) is
+ef47ad69's ground; not this lane's scope.
