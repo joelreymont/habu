@@ -21,6 +21,11 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 
+\ driver-io.f's DRV-WRITE-IMAGE-PATH calls FDIO:WALL, and for the same reason the
+\ encoders above are `require`d rather than probed: the DRV-WRITE-IMAGE probe
+\ below answers "is driver-io.f loaded", which is a different question.
+require src/habu/fdio.f
+
 : OBJIMG-WORD? ( ptr u8 n -- bool )
    XREF-FIND 0= 0= ;
 

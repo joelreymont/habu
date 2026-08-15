@@ -94,6 +94,7 @@ SRC_COMMON=(
   src/habu/regalloc.f
   src/habu/jit.f
   src/habu/engine-size.f
+  src/habu/fdio.f
   src/habu/aot-decl.f
   src/habu/habu2.f
   src/habu/xref.f

@@ -355,12 +355,12 @@ package SNAP
    MBUF {: hdr:ptr :}
    SNAP-EXTRA-PTR {: extra:ptr :}
    RESET-BUF
-   SFD @ hdr CODE-OFF DRV-WALL
-   SFD @ STB@ STSZ @ DRV-WALL
-   SFD @ SNC-PTR SCL @ DRV-WALL
-   SFD @ SND-PTR SDL @ DRV-WALL
-   SFD @ TRL 48 DRV-WALL
-   SFD @ extra SNAP-EXTRA-SIZE DRV-WALL
+   SFD @ hdr CODE-OFF FDIO:WALL
+   SFD @ STB@ STSZ @ FDIO:WALL
+   SFD @ SNC-PTR SCL @ FDIO:WALL
+   SFD @ SND-PTR SDL @ FDIO:WALL
+   SFD @ TRL 48 FDIO:WALL
+   SFD @ extra SNAP-EXTRA-SIZE FDIO:WALL
    SFD @ SNAP-CLOSE-SEAM:RUN
    SFD @ close-rc 0 <> IF s" snap: output close failed" 74 die THEN ;
 

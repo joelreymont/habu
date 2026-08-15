@@ -168,7 +168,7 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 : AOT-WRITE-OBJ ( -- )
    AOT-OBJ PATH0 1537 493 open DRV-WFD !
    DRV-WFD @ 0 < IF s" aot: cannot open object output" 74 die THEN
-   DRV-WFD @ CODE ASM-LEN DRV-WALL
+   DRV-WFD @ CODE ASM-LEN FDIO:WALL
    DRV-WFD @ close ;
 
 \ --- preseeded test entry: raw physical value-stack cells materialized before

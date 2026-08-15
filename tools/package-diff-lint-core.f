@@ -1016,11 +1016,12 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    bit 0= if false exit then
    allowed bit and 0<> ;
 
-\ The engine trunk -- src/habu/habu2.f and src/habu/layout.f -- is the third
-\ principled category and the narrowest of the three.  It is admitted for exactly
-\ one shape: a change to the BODY of a global word that already exists.  Adding a
-\ new global word to either file is still reported, which is what separates this
-\ entry from the interim entries in GLOBAL-IMPLEMENTATION? above.
+\ The engine trunk -- habu2.f, layout.f, xref.f, habu1.f and the build drivers'
+\ shared I/O, driver-io.f -- is the third principled category and the narrowest
+\ of the three.  It is admitted for exactly one shape: a change to the BODY of a
+\ global word that already exists.  Adding a new global word to any of them is
+\ still reported, which is what separates this entry from the interim entries in
+\ GLOBAL-IMPLEMENTATION? above.
 \ the whole of stdout and the first stderr line against exact expected text.  The
 \ fixture is the gate's own input and its correctness authority is that
 \ whole-stream comparison, not a load through a package boundary.
@@ -1230,14 +1231,49 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ is what the repair above did with its five new labels, keeping them lexical
 \ inside the word that emits them rather than adding five globals.
 \
+\ Why src/habu/driver-io.f is the fifth member.  Same kind of file and the same
+\ rule, one layer out from the engine: it is the shared fail-closed I/O every
+\ internal build driver runs on - the image-emission tail, the size-map
+\ reconciliation and the uncaught-throw reporter - and it is CONCATENATED into
+\ every build source (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f
+\ BF-APPEND-DRIVER-IO) rather than required, so stage2.f, build.f, maker.f,
+\ stdin.f, snap-lib.f and aot-lib.f all resolve its 35 DRV-* words bare in one
+\ flat namespace.  Its packaging census is already written down and scoped as its
+\ own P1 task (dot habu-pkg-build-driver-acbd02b7: wrap it in package DRIVER-IO,
+\ export only the emit-image, success/failure, size-map and reload-retirement
+\ entries, with byte-golden fixtures on every command path and before/after
+\ size and latency measurements), so like the four above it is a body of existing
+\ code waiting on a packaging dot rather than a growing language surface.
+\ Measured 2026-08-15: extracting the whole-span descriptor write into
+\ src/habu/fdio.f and repointing its one caller - replacing the single body line
+\ `DRV-WFD @ MBUF MLEN@ DRV-WALL` with `... FDIO:WALL`, publishing no new name in
+\ this file and deleting one - reported
+\ `E-PACKAGE-OWNERSHIP src/habu/driver-io.f:17:3` on DRV-WRITE-IMAGE-PATH, and
+\ restoring driver-io.f to its pre-image with the rest of that diff in place
+\ returned the gate to rc 0, which is how the finding was pinned to that one
+\ line.  As configured the gate therefore rejected every possible change to the
+\ build drivers' I/O, including the deduplication of the short-write loop that
+\ found this: a booted engine cannot load driver-io.f at all (E-UNDEFINED: MBUF,
+\ with six files including the target's Mach-O writer between), so a capture
+\ writing an artifact inside bin/hb had no way to reach the tree's one write-all
+\ loop.  The asymmetry is earned on the same structural fact as the other four:
+\ the file's own successor package DRIVER-IO is already specified on that dot, so
+\ a genuinely new word here has an owner it can join and must join one - which is
+\ what fdio.f did, opening package FDIO for the extracted concern rather than
+\ adding a fifth global beside the DRV-* set.
+\
 \ Retirement condition.  The habu2.f half is removed when the continuing habu2
 \ packaging work (dot habu-cont-habu2-emitter-493363e7) extends those seams over
 \ the remaining global surface, the layout.f half when dot
 \ habu-give-layout-f-315df2ca finishes packaging that file, the xref.f half
 \ when dot habu-pkg-dictionary-cross-73f449d9 splits that file into its read and
-\ lifecycle packages, and the habu1.f half when dot
-\ habu-pkg-the-engine-842acca7 packages the primitive emitters - exactly as the
-\ checker and render entries are removed by their own sealing dots.
+\ lifecycle packages, the habu1.f half when dot
+\ habu-pkg-the-engine-842acca7 packages the primitive emitters, and the
+\ driver-io.f half when dot habu-pkg-build-driver-acbd02b7 wraps that file in
+\ package DRIVER-IO - exactly as the checker and render entries are removed by
+\ their own sealing dots.  That dot carries the matching obligation in its own
+\ leaf (RETIREMENT CLAUSE, 2026-08-15): removing this row is part of its
+\ acceptance, so the two point at each other and neither can drift alone.
 \ FINISH-DEFINITION
 \ checks SCOPE-DELTA before it consults this admission, so adding or deleting a
 \ package boundary around an engine word is still reported here like anywhere
@@ -1246,17 +1282,18 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ here even though no line of it is marked added -- so WHOLE-CHANGED closes that
 \ hole and reports the whole file.
 \
-\ The three paths are rows reached through ONE comparison site, for the reason the
+\ The five paths are rows reached through ONE comparison site, for the reason the
 \ fixture row table below gives: a weakening -- a suffix match, a case fold, a
 \ prefix test -- then has exactly one place to live and changes every row at once,
 \ so the hostile fixtures kill it on all of them.
-4 constant ENGINE-TRUNK-N
+5 constant ENGINE-TRUNK-N
 
 : ENGINE-TRUNK-AT ( n -- ptr u8 n ) {: row:n :}
    row 0= if s" src/habu/habu2.f" exit then
    row 1 = if s" src/habu/layout.f" exit then
    row 2 = if s" src/habu/xref.f" exit then
-   s" src/habu/habu1.f" ;
+   row 3 = if s" src/habu/habu1.f" exit then
+   s" src/habu/driver-io.f" ;
 
 : ENGINE-TRUNK-PATH? ( -- bool )
    0 TRUNK-HIT !

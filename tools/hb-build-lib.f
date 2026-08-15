@@ -555,6 +555,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/habu/regalloc.f" HBB-KEY-FILE+
    s" src/habu/jit.f" HBB-KEY-FILE+
    s" src/habu/engine-size.f" HBB-KEY-FILE+
+   s" src/habu/fdio.f" HBB-KEY-FILE+
    s" src/habu/aot-decl.f" HBB-KEY-FILE+
    s" src/habu/habu2.f" HBB-KEY-FILE+
    s" src/habu/xref.f" HBB-KEY-FILE+

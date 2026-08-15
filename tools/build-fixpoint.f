@@ -867,6 +867,12 @@ package BUILD-FIXPOINT
 : BF-APPEND-COMBINATORS ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/combinators.f" BF-APPEND-SOURCE ;
 
+\ The whole-span descriptor write, ahead of driver-io.f (its only caller in a
+\ builder) and ahead of aot-decl.f, which is where the AOT artifact writer's
+\ closure begins.
+: BF-APPEND-FDIO ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu s" src/habu/fdio.f" BF-APPEND-SOURCE ;
+
 : BF-APPEND-INCLUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu SDC-INCLUDE$ BF-APPEND-SOURCE ;
 
@@ -902,6 +908,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-FDIO
    out outu SDC-DECL$ BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
@@ -1015,6 +1022,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-FDIO
    out outu SDC-DECL$ BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;

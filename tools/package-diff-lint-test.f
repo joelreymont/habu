@@ -199,6 +199,11 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" src/habu" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ a copy of the engine-trunk directory one level down, so a fixture can sit at
+   \ a path that ENDS WITH a listed one - which is what a suffix comparison at the
+   \ shared row site would wrongly admit
+   TEST-ROOT$ s" test/src/habu" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    \ the ARM64 encoder prefix, which the entry names file by file rather than by
    \ directory, so the disassembler beside them is a negative
    TEST-ROOT$ s" src/arch/arm64" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
@@ -1773,6 +1778,44 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    \ suffix but is not exact, so it still fails.
    s" lib/habu1.f" TEST-ENGINE-BODY-CASE
    s" lib/habu1.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ The fifth engine-trunk row, src/habu/driver-io.f, is pinned by the same
+   \ fixtures in both directions.  The positive is its measured probe: repointing
+   \ the one body line of the existing global DRV-WRITE-IMAGE-PATH at the
+   \ extracted FDIO:WALL reported E-PACKAGE-OWNERSHIP before this row, so the
+   \ build drivers' shared I/O could not be changed at all -- and a booted engine
+   \ cannot load the file to reach its write loop, which is what forced the
+   \ extraction.
+   s" src/habu/driver-io.f" TEST-ENGINE-BODY-CASE
+   s" driver-io exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a new unpackaged word in driver-io.f is still reported.  The file's
+   \ successor package DRIVER-IO is already specified on dot
+   \ habu-pkg-build-driver-acbd02b7, so a new driver word has an owner it can join
+   \ -- which is what keeps this row from becoming a licence to grow the DRV-*
+   \ global set while that dot is open.
+   s" src/habu/driver-io.f" TEST-ENGINE-NEW-GLOBAL-CASE
+   s" new global in driver-io still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling carrying the row's path as a prefix is not an exact
+   \ match, so its body edit still fails.
+   s" src/habu/driver-io-extra.f" TEST-ENGINE-BODY-CASE
+   s" sibling src/habu/driver-io-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the row's path as a
+   \ suffix but is not exact, so it still fails.
+   s" lib/driver-io.f" TEST-ENGINE-BODY-CASE
+   s" lib/driver-io.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (hostile), and it guards all five rows at once because they share
+   \ one comparison site: a path that ENDS WITH a listed one.  The prose above
+   \ claims a suffix weakening dies on these fixtures, and until this case existed
+   \ it did not - swapping the row comparison for LINT-ENDS-WITH? left the whole
+   \ suite green (measured 2026-08-15), because no other fixture path has a full
+   \ row path as its tail.  test/src/habu/driver-io.f is not the build drivers'
+   \ I/O and must keep reporting.
+   s" test/src/habu/driver-io.f" TEST-ENGINE-BODY-CASE
+   s" test/src/habu/driver-io.f suffix path still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
 \ ---- bootstrap/cg/forth.fs: the Gforth recovery mirror ------------------------
