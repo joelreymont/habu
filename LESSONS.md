@@ -6678,3 +6678,23 @@ a guard that reds if the fixture goes vacuous.
 the sha), the honest identity proof is a canonical dump of every
 DECISION diffed against a control padded by exactly the
 confounder - not a weaker assertion.
+
+## The bake checkpoint's four (2026-08-15)
+
+(1) When a pass rewinds a cursor, every side effect KEYED on that
+cursor is its to undo - EM-P2-START restores DP and lists its
+resets; the address-map bit is keyed on CP and was not in the
+list. Grep what the rewound cursor INDEXES, not just what the
+word assigns.
+(2) A leaf's count can be right and its diagnosis wrong: exactly
+26, and none was an out-of-window chain. Arming the decline and
+measuring both ways cost one run and refuted the ruling.
+(3) To decide whether a recorded site is real, ask whether the
+bytes AT it are the shape the record claims - four raw words and
+an opcode mask separated 3536 live sites from 26 dead ones where
+the values alone said only "not an address".
+(4) git apply inside a .jj-ws workspace silently applies NOTHING
+and exits 0 (jj workspaces are subdirectories of the git
+toplevel; git-apply drops paths outside the cwd subtree).
+Restore with jj file show; verify the BYTES changed, never the
+exit code.

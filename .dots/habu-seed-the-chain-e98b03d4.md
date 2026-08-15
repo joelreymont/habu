@@ -117,3 +117,21 @@ otherwise per the earlier HANDOFF section; all rulings stand.
 POOL RULES (from the incident): a worker's jj new/squash is
 unsafe while another lane holds an open working copy; after any
 rebase, diff the stack for foreign paths.
+
+PREMISE CORRECTION 2026-08-15 (bake-chain-3 checkpoint): the "26
+out-of-window chains" are NOT chains - they are stale recorded-
+address bits from pass-2 recompile (dot: clear-the-address-map
+P1, blocks this leaf); the armed-decline acceptance clause is
+REPLACED by that dot's stale-bit regression. Measured for item
+(3): chain window DATA span 1,531,272B (the $200000 lift is
+real); code 1,194,680B and 6586 records fit with room. Item (2)
+prelude re-measured in-boot: ~100ms, 475 records, aot-capture.f
+loads and self-tests IN bin/hb - the two-process premise holds.
+OPEN RULING for the tool (item 2): the window starts at the
+first user token and therefore CONTAINS the prelude's words
+(asm/icode/aot-capture) which do not exist in the target - any
+window-to-prelude call would fail LFIND at boot; did not bite in
+the probe but is unproven. The tool must carry an explicit
+fail-closed assertion (design it at the tool commit: every BL
+target inside the window resolves to a window record or a
+TARGET-prefix name, refused by name otherwise).
