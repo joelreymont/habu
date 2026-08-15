@@ -1,41 +1,11 @@
 \ immediate.f - the native immediate-word contract table: which compile-time
 \ words checked source may compile, and under what contract.
 \
-\ docs/compiler-ir-design.md section 7.1, the three classes of compile-time
-\ immediate word. A front-end intrinsic is a registered compiler word that
-\ calls HIR builder operations. Sealed compile-time computation is a checked
-\ immediate that may run during elaboration but may reach the generated program
-\ only through the HIR builder capability. Everything else is an unmodeled
-\ boundary: checked source must not compile it, and while such a boundary
-\ exists it has to be named, tested, inventoried, and scheduled for retirement.
+\ A `compile-time` row is permission and not a seal: nothing yet confines such a
+\ word to the HIR builder (habu-seal-the-compile-5f56e5e9).
 \
-\ WHY A TABLE AND NOT A LIST OF SPECIAL CASES. The elaborator needs one answer
-\ per word, and it needs the refusal to name the word rather than fail
-\ anonymously somewhere downstream. A declared unmodeled entry carries the
-\ symbol naming the capability that must land before it can be retired, so a
-\ refusal can say what is missing; an undeclared word refuses too, but has
-\ nothing to say beyond its own name. Both refusals are E-NIMM-UNMODELED,
-\ because to checked source they are the same event: this word has no
-\ elaboration contract.
-\
-\ WHAT THIS FILE DOES NOT DO. It does not seal the compile-time capability. A
-\ `compile-time` entry records that a word is allowed to run during elaboration;
-\ the guarantee that it can only reach the program through the builder is the
-\ HIR builder's to enforce, and there is no builder yet
-\ (habu-elaborate-straight-line-72b55798). Until then this class is a declared
-\ intent, and dot habu-seal-the-compile-5f56e5e9 tracks the capability that
-\ turns it into a proof. It also does not decide which words are immediate:
-\ that is the frozen checker environment's fact (habu-bind-checker-env-ed4f9f87).
-\ This table answers "may this immediate word be compiled, and how", not "is
-\ this word immediate".
-\
-\ ONE TABLE SERVES ONE MODULE. Rows live on an IR-ARENA arena owned by the
-\ compilation context and are keyed by the module's own interned symbols, so
-\ the table dies with its context and a foreign module's symbol cannot enter
-\ it. Lookup is a linear scan of the declared rows: the table holds the
-\ compiler's immediate vocabulary, tens of entries, and a scan keeps the row
-\ shape flat and the ordering observable for the inventory walk that section
-\ 7.1 requires of every boundary.
+\ One table per module. Rows live on the context's arena, keyed by that module's
+\ own interned symbols, so a foreign module's symbol cannot enter it.
 
 require lib/prelude.f
 require lib/errors.f
@@ -49,9 +19,8 @@ require src/compiler/native/tape.f
 package NIMM
 public
 
-\ `intrinsic` is a registered front-end compiler word. `compile-time` is a
-\ checked immediate that may run during elaboration. `unmodeled` is a named
-\ boundary checked source may not compile.
+\ intrinsic: a registered front-end compiler word. compile-time: a checked
+\ immediate that may run during elaboration. unmodeled: a named boundary.
 ENUM class DERIVE eq
    intrinsic
    compile-time
@@ -133,8 +102,7 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 : RC@ ( IR-ARENA:arena n n -- n )
    ROW-CELL LCELL@ ;
 
-\ The row that classifies this symbol, or a negative answer. One scan serves
-\ the lookup, the duplicate check, and the inventory walk.
+\ One scan serves the lookup, the duplicate check and the inventory walk.
 : FIND ( IR-ARENA:arena n -- n )
    {: a:IR-ARENA:arena so:n :}
    -1
@@ -165,8 +133,7 @@ public
 
 private
 
-\ Write one row whose symbol both checks have already passed: it belongs to this
-\ table's module, and the module's interner has answered for it.
+\ Both checks have already passed: the symbol is this module's and interned.
 : WRITE ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-symbol-id n n -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena id:IR-ID:ir-symbol-id cls:n rsn:n :}
    id IR-ID:SYMBOL-LOCAL {: so:n :}
@@ -176,9 +143,8 @@ private
    c a cls IR-ARENA:PUSH drop
    c a rsn IR-ARENA:PUSH drop ;
 
-\ Append one validated row. The symbol store is asked for the symbol's length,
-\ which is its own ownership and bound check, so a spelling this module never
-\ interned cannot be classified.
+\ The symbol store is asked for the symbol's length, which is its own ownership
+\ and bound check, so a spelling this module never interned cannot be classified.
 : ROW-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n n -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena sy:IR-ARENA:arena
       id:IR-ID:ir-symbol-id cls:n rsn:n :}
@@ -186,10 +152,8 @@ private
    sy id IR-SYM:LEN@ drop
    c a id cls rsn WRITE ;
 
-\ The same append for a module that is still being built. Its interner is held
-\ privately by src/compiler/ir/build.f, so the builder answers the one question
-\ this table cannot ask directly, and it answers it by asking IR-SYM - the same
-\ refusal, under the same name, as the table-held path above.
+\ A module still being built holds its interner privately in ir/build.f, so the
+\ builder answers - by asking IR-SYM, the same refusal under the same name.
 : BROW-ADD ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ARENA:arena
       id:IR-ID:ir-symbol-id cls:n rsn:n :}
@@ -199,28 +163,20 @@ private
 
 public
 
-\ Declare a word this compiler models: a front-end intrinsic, or a checked
-\ immediate allowed to run during elaboration. Handing this word `unmodeled`
-\ is refused - an unmodeled boundary has to name what it is waiting for, so it
-\ has its own declarer.
+\ `unmodeled` is refused here: a boundary has to name what it is waiting for.
 : DECLARE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id NIMM:class -- )
    {: cl:NIMM:class :}
    cl NIMM-CLASS:UNMODELED NIMM-CLASS:EQ if E-NIMM-CLASS throw then
    cl CLASS-CODE NO-REASON ROW-ADD ;
 
-\ The same declaration for a module still being built, which is every module the
-\ compiler makes: src/compiler/ir/build.f is the single mutation route to one, so
-\ a caller that has a builder cannot hand over the symbol rows the declarer above
-\ wants. This is the pairing NTAPE:PUSH and NTAPE:PUSH-INTO already have, and
-\ without it this table could only ever be filled for a module assembled by hand.
+\ ir/build.f is the single mutation route to a module still being built.
 : DECLARE-INTO ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id NIMM:class -- )
    {: cl:NIMM:class :}
    cl NIMM-CLASS:UNMODELED NIMM-CLASS:EQ if E-NIMM-CLASS throw then
    cl CLASS-CODE NO-REASON BROW-ADD ;
 
-\ Declare a named unmodeled boundary. The reason symbol names the capability
-\ whose absence is why checked source may not compile this word, so a refusal
-\ can say what has to land before the boundary can be retired.
+\ The reason symbol names the capability whose absence is why checked source may
+\ not compile this word, so a refusal can say what has to land.
 : DECLARE-UNMODELED ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- )
    {: a:IR-ARENA:arena sy:IR-ARENA:arena
       id:IR-ID:ir-symbol-id why:IR-ID:ir-symbol-id :}
@@ -231,10 +187,7 @@ public
    why IR-ID:SYMBOL-LOCAL 1+
    ROW-ADD ;
 
-\ The same boundary declaration for a module still being built. Both symbols are
-\ that module's, so both go to its builder; without this the inventory of named
-\ boundaries that section 7.1 requires could only be kept for a module nobody
-\ compiles.
+\ Both symbols are that module's, so both go to its builder.
 : DECLARE-UNMODELED-INTO ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ARENA:arena
       id:IR-ID:ir-symbol-id why:IR-ID:ir-symbol-id :}
@@ -259,24 +212,20 @@ private
 
 public
 
-\ The declared class of a word. A word this table never classified has no
-\ contract at all, which is the same refusal a declared unmodeled boundary
-\ gets when it is asked to compile.
+\ A word never classified gets the same refusal a declared unmodeled one does.
 : CLASS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- NIMM:class )
    {: a:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    a id ROW-OF {: l:n :}
    a l OFF-CLASS RC@ N>CLASS ;
 
-\ The gate. Answers the contract under which checked source may compile this
-\ immediate word, and refuses everything else by name.
+\ The gate: the contract under which checked source may compile this word.
 : ADMIT ( IR-ARENA:arena IR-ID:ir-symbol-id -- NIMM:class )
    {: a:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    a id CLASS@ {: cl:NIMM:class :}
    cl NIMM-CLASS:UNMODELED NIMM-CLASS:EQ if E-NIMM-UNMODELED throw then
    cl ;
 
-\ The capability an unmodeled boundary is waiting for. Only an unmodeled entry
-\ names one; asking a modeled word is a category error, not a missing value.
+\ Only an unmodeled entry names one; asking a modeled word is a category error.
 : REASON@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
    {: a:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-symbol-id :}
    a key KEY-CK
@@ -287,8 +236,7 @@ public
    dup NO-REASON = if E-NIMM-STATE throw then
    1- key swap IR-ID:PACK-SYMBOL ;
 
-\ The i-th declared word, in declaration order. This is what an inventory of
-\ the remaining boundaries walks.
+\ Declaration order - what an inventory of the remaining boundaries walks.
 : AT ( IR-ARENA:arena IR-ID:ir-module-key n -- IR-ID:ir-symbol-id )
    {: a:IR-ARENA:arena key:IR-ID:ir-module-key i:n :}
    a key KEY-CK
@@ -297,10 +245,7 @@ public
    key a i OFF-SYM RC@ IR-ID:PACK-SYMBOL ;
 
 \ ---- the tape join -----------------------------------------------------------
-\ The elaborator walks a sealed tape and, for each name token the frozen
-\ checker environment says is immediate, asks this table whether it may be
-\ compiled. Only a name token can name a word: a literal is not a call, so
-\ asking about one is a caller error rather than an unmodeled boundary.
+\ Only a name token can name a word; a literal is a caller error, not a boundary.
 : ADMIT-TOKEN ( IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena n -- NIMM:class )
    {: v:IR-ARENA:view key:IR-ID:ir-module-key a:IR-ARENA:arena i:n :}
    v i NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ

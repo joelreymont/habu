@@ -2,91 +2,17 @@
 \ against the address its code starts at. One concern: the record a call site
 \ narrows its caller-save discipline against.
 \
-\ WHY THERE IS ANYTHING TO RECORD. Nothing in a Habu word's convention is
-\ callee-saved (src/compiler/native/abi.f), so a call site has to assume the
-\ callee destroys every register the caller could be holding a value in, and put
-\ all of them somewhere the callee cannot reach. That assumption is exactly right
-\ for a callee the chain did not compile, and much too wide for one it did: an
-\ emission the validator accepted says which registers it writes, register by
-\ register, and most routines write a handful. This file is where that answer
-\ lives between the publication that made it and the call site that uses it.
+\ The key is the ADDRESS and not the name: a name can be redefined, and a row is
+\ right exactly as long as the code there is the routine it was written for.
 \
-\ THE KEY IS THE ADDRESS AND NOT THE NAME, and that is the whole soundness
-\ argument. A call site branches to an ADDRESS - the entry the migration staged
-\ and the emitter measured its displacement from - so what a site needs to know
-\ is what the code at that address destroys. A name can be redefined; a row here
-\ describes the code at an address, and it is right for exactly as long as that
-\ code is the routine it was written for.
+\ A row may only ever NARROW. A caller compiled against one saved everything
+\ outside its set, so a second record destroying more is E-NCLOB-WIDEN.
 \
-\ WHICH IS NOT AS LONG AS THE PROCESS RUNS, AND THAT IS WHY ROWS ARE DROPPED.
-\ src/compiler/native/publish.f writes every emission at the engine's free code
-\ slot and moves the pointer past it, so no two publications claim one slot
-\ WHILE THE POINTER ONLY GOES FORWARD. It does not: a FORGET
-\ (src/habu/xref.f) and a declaration rollback
-\ (src/core/generated-declaration-dictionary.f) both move it back, and the bytes
-\ above it are handed to whatever is compiled next. A row left behind then
-\ describes a routine nobody can reach any more, and - worse - a later
-\ publication or an engine definition can land at exactly that address and
-\ inherit it, which is a caller told that the routine it is about to branch to
-\ destroys the registers of a routine that no longer exists. That was reproduced
-\ end to end: a stale narrow row made a caller skip saving two registers the
-\ engine's own emitter writes, and the caller computed 86 where 76 was right.
+\ Row lifetime follows code lifetime: a forget or a declaration rollback moves
+\ the free code slot back, so DROP-FROM runs from xref.f's CODE-RECLAIM.
 \
-\ SO ROW LIFETIME IS A CONSEQUENCE OF CODE LIFETIME. This file registers with
-\ src/habu/xref.f's CODE-RECLAIM, which is the one word every checked
-\ reclamation of code space goes through, and drops every row at or above the
-\ floor before the bytes are released. Nothing else may drop a row, which is why
-\ DROP-FROM below is private and reachable only through that registration: the
-\ argument that a row may only narrow is an argument about LIVE code, and it is
-\ untouched, because a dropped row's code is gone.
-\
-\ AND THE TABLE IS THE BETTER FOR IT. A row was previously kept for every
-\ address this process ever published at, so a forget-and-re-migrate cycle burnt
-\ a row per turn and the table's end became a limit on how many times a program
-\ could recompile a word rather than on how many routines it has. Dropping the
-\ rows of reclaimed code gives the table its end back, so a slot whose routine is
-\ gone is a slot a later publication can have.
-\
-\ AND THE ONE RULE THAT KEEPS IT TRUE IS THAT A ROW MAY ONLY EVER NARROW. A
-\ caller compiled while this file knew nothing about an address saved everything,
-\ which is right whatever the callee turns out to destroy. A caller compiled
-\ against a row saved everything outside that row's set, and stays right only
-\ while the code at that address destroys no more than the row says. So a second
-\ record for one address is accepted when it destroys a SUBSET of what the first
-\ one did and refused by name when it destroys anything more - E-NCLOB-WIDEN -
-\ rather than silently invalidating callers nothing tracks. The refusal cannot be
-\ reached through the publication seam, because a slot is claimed once between
-\ reclamations and a reclamation drops the row; it is here because that is a
-\ property of two other files, and a rule that callers' correctness rests on
-\ should fail closed where it is used rather than be argued about where it is
-\ provided.
-\
-\ AND THE REFUSAL IS ALSO ASKED IN FRONT. RECORD below runs after the routine is
-\ in the code arena and the dictionary record points at it, so a refusal there
-\ would leave running code with a row that describes something else - which is
-\ exactly the shape the widen rule exists to prevent. RECORD-CK is the same
-\ question asked while a refusal still costs nothing, and the publication seam
-\ asks it before it writes a byte.
-\
-\ WHAT AN UNKNOWN ADDRESS ANSWERS. The worst case its caller states, which is
-\ what the caller was doing before this file existed. A word the engine's own
-\ emitter compiled has no row here and never will, and a site that calls one
-\ saves everything it holds - so the narrowing is something a chain-compiled
-\ callee EARNS, and the discipline is unchanged everywhere else.
-\
-\ THE ENGINE'S OWN `catch` IS THAT CASE AND MUST STAY THAT CASE. A compiled
-\ `catch` is an ordinary branch-with-link to the engine's catch entry
-\ (src/compiler/native/elaborate.f DO-CATCH), so a row here would narrow what its
-\ callers save across it - and what runs behind that address is not one routine
-\ but the engine's handler AND whatever quotation it was handed, which is a
-\ different body at every site. A row narrowed against one of them would be a
-\ caller told it may keep a register that another body destroys, and nothing
-\ downstream could tell. It is structurally impossible today rather than merely
-\ avoided: the only writer is the publication seam, which records the emission it
-\ has just written at the slot it claimed, and the engine's entries are not
-\ emissions of this chain and are never published through it. Nothing may add a
-\ row for an address this chain did not emit, and no optimisation of a call site
-\ may treat the engine's catch as a routine with a known clobber set.
+\ An address with no row answers the caller's worst case, and the engine's own
+\ `catch` entry must stay that case - a different body runs behind it per site.
 
 require lib/prelude.f
 require lib/errors.f
@@ -98,27 +24,7 @@ package NCLOB
 private
 
 \ ---- how many routines this file can remember at once -------------------------
-\ ONE ROW PER LIVE PUBLISHED ROUTINE, AND THE PROGRAM SAYS HOW MANY THAT IS. A
-\ row is never dropped TO MAKE SPACE - dropping one would silently widen what
-\ every caller compiled against it assumed - so a table that could not grow was a
-\ limit on how much of a program the chain may compile, and not a limit on
-\ anything the record is about. It was 128 rows, which is what the system
-\ migrated when the record was written; a whole-tree census hit that number
-\ exactly and reported it as the size of the compilable tree.
-\
-\ SO THE ROWS ARE A GROWABLE VECTOR AND NOT A FIXED ARRAY. lib/vector.f is the
-\ tree's growable cell array: mapped storage, doubled and copied when it fills,
-\ and the span it grew out of handed back to the OS. Three of them, one per
-\ column, because the lookup below reads only the address column and a row's
-\ three cells are never read together.
-\
-\ AND "NOWHERE TO ALLOCATE FROM" WAS NOT TRUE. That was the reason given for the
-\ fixed array, and the chain disproves it on every migration it makes: each one
-\ runs inside src/compiler/ir/context.f's WITH-CONTEXT, which maps half a
-\ megabyte through MEM:WITH-BYTES and gives it back, and the publication this
-\ file serves happens inside that. What is true is that the space must be taken
-\ BEFORE the commit phase, because a publication's commit may not throw, and
-\ ROOM-CK below is where it is taken.
+\ A row is never dropped to make space, so the table grows rather than caps.
 128 constant ROWS-SEED
 
 \ ---- and the one ceiling that is left -----------------------------------------
@@ -136,6 +42,8 @@ private
 \ the seam at all. It is asked because a caller that records addresses of its own
 \ is not the seam, and a record that grew without a bound would be a table with
 \ no answer for how large it may become.
+\ Slots are claimed in strictly increasing order and each is an aligned address
+\ in the code region, so its instruction slots bound the rows. A backstop.
 4 constant INSN-BYTES
 REGION INSN-BYTES / constant ROWS-CEIL
 
@@ -143,65 +51,21 @@ create R-ENTRY VEC-HEADER-CELLS cells allot
 create R-GPR VEC-HEADER-CELLS cells allot
 create R-FPR VEC-HEADER-CELLS cells allot
 
-\ ---- when the storage is taken, and why not at load ---------------------------
-\ THE THREE MAPPINGS ARE NOT TAKEN WHILE THIS FILE LOADS. They used to be, and a
-\ mapping's base is a PROCESS-LOCAL address: the OS picks it, it moves between
-\ runs, and it means nothing in another engine. That is invisible while the chain
-\ is only ever loaded from source, and fatal the moment the chain is CAPTURED -
-\ an ahead-of-time capture window is dictionary, code and DATA bytes copied out
-\ of one engine and seeded into another, so a mapping base sitting in the DATA it
-\ copies is both non-reproducible (two captures of the same tree differ) and
-\ wrong in the engine that boots it. Measured before this changed: ten cells in
-\ the chain's window held mapping bases, three of them these, and they were the
-\ whole of the difference between two captures.
-\
-\ SO THE WINDOW IS EMPTY OF THEM BY CONSTRUCTION rather than by trapping them:
-\ the cells hold zero until a row is about to arrive, and ROOM-CK below - the one
-\ word every append passes through, which exists because room must be taken where
-\ a refusal is still free - takes the storage first. It is idempotent, so that
-\ costs a live table one load and one branch per publication and nothing per row.
-\
-\ THE ROOM WORD AND NOT THE CHAIN'S ENTRY, which was the first placement tried
-\ and had a hole this file's own suite found: NCLOB:RECORD and RECORD-CK are
-\ PUBLIC, so a caller that records an address without migrating anything - the
-\ suite does exactly that, and so may any consumer - never passes through
-\ src/compiler/native/migrate.f at all and met an untaken table (E-VEC-STATE,
-\ uncaught, rc -3302). Storage belongs to the record that needs it: taking it
-\ where the first row is admitted covers every writer there is, and needs no
-\ agreement with another file.
-\
-\ AND A READ BEFORE THE FIRST MIGRATION IS SAFE, WHICH IS A DERIVATION AND NOT A
-\ HOPE. Two facts make it: an untaken vector's length is a plain field read that
-\ answers 0 (lib/vector.f VEC-LEN@ asks nothing about the storage), so ROWS# is 0
-\ and every loop over the raw base below is empty; and a row cannot arrive at an
-\ untaken table, because appending goes through ROOM-CK -> VEC-ENSURE ->
-\ VEC-GROW-CAP, which asks VEC-CHECK-LIVE and throws E-VEC-STATE on one. Rows > 0
-\ therefore implies storage, so the readers that take the raw base run only when
-\ there is a base to take. The reclamation hook is the case that proves it is
-\ worth stating: a program may forget code having migrated nothing at all, and it
-\ must answer "no rows" rather than fault.
-\
-\ The guard asks the LAST column this word takes, so a failed allocation part way
-\ through cannot be mistaken for a finished one: the guard is still dead, the next
-\ call starts again, and VEC-INIT's own VEC-CHECK-DEAD refuses the column that did
-\ succeed with a named throw rather than leaving a half-taken table in use.
+\ The three mappings are NOT taken while this file loads: a mapping base is
+\ process-local, and an AOT capture copies this file's DATA into another engine.
+\ The guard asks the LAST column, so a part-way allocation cannot look finished.
 : TABLE-INIT ( -- )
    R-FPR VEC-CAP@ COUNT>N 0= 0= if exit then
    R-ENTRY ROWS-SEED VEC-COUNT VEC-INIT
    R-GPR ROWS-SEED VEC-COUNT VEC-INIT
    R-FPR ROWS-SEED VEC-COUNT VEC-INIT ;
 
-\ How many rows are live. The three columns are written and truncated together,
-\ so the address column's length is the table's length.
+\ The three columns are written and truncated together.
 : ROWS# ( -- n )
    R-ENTRY VEC-LEN@ LEN>N ;
 
-\ The address column, read the way the three scans below read it: the storage
-\ base and one cell out of it. They walk every live row, so this is the one
-\ reader on a path whose length is the population, and the checked element
-\ accessor - six nested calls to prove an index the loop bound already proves -
-\ made a lookup twelve times what it costs here. The row columns are read once
-\ per operation rather than once per row, so they keep the checked accessor.
+\ Read raw: this is the one reader on a path whose length is the population, and
+\ the checked accessor cost twelve times as much. The row columns keep it.
 : ENTRY-AT ( n -- n ) {: k:n :}
    R-ENTRY VEC-DATA@ k cells + @ ;
 
@@ -217,16 +81,13 @@ create R-FPR VEC-HEADER-CELLS cells allot
 : FPR-AT! ( n n -- ) {: v:n k:n :}
    v R-FPR k VEC-IDX VEC-N! ;
 
-\ Cut the table to its first k rows. The three columns move together or the
-\ record would answer one routine's address with another routine's registers.
+\ The three columns move together, or a row answers another routine's registers.
 : TRUNC-TO ( n -- ) {: k:n :}
    k VEC-LEN R-ENTRY VEC-LEN!
    k VEC-LEN R-GPR VEC-LEN!
    k VEC-LEN R-FPR VEC-LEN! ;
 
-\ Which row this address has, or -1. Linear, because the answer has to be exact:
-\ a hash that collided would hand one routine's destroyed set to another
-\ routine's callers.
+\ Linear: a hash collision would hand one routine's set to another's callers.
 : ROW-OF ( n -- n )
    {: entry:n :}
    -1
@@ -234,17 +95,12 @@ create R-FPR VEC-HEADER-CELLS cells allot
       i ENTRY-AT entry = if drop i leave then
    loop ;
 
-\ The bits, so that "is every register of the new set already in the old one" is
-\ one question asked of one file at a time.
 : NARROWS? ( n n -- bool )
    {: old:n new:n :}
    new old and new = ;
 
-\ Room for one more row, taken in front. Growing is an allocation and an
-\ allocation can fail, so it happens where a refusal still costs nothing rather
-\ than in the append, which runs in a publication's commit phase and may not
-\ throw. Taking room changes no row: a caller refused after this ran finds the
-\ record holding exactly what it held before.
+\ Room is taken in front because an allocation can fail and the append runs in a
+\ publication's commit phase, which may not throw. Taking room changes no row.
 : ROOM-CK ( -- )
    TABLE-INIT
    ROWS# 1+ {: need:n :}
@@ -260,12 +116,8 @@ create R-FPR VEC-HEADER-CELLS cells allot
    g R-GPR VEC-PUSH-N drop
    f R-FPR VEC-PUSH-N drop ;
 
-\ The first row at or above this address, or the end of the table. What makes one
-\ number the whole answer is that the live table is in publication order and a
-\ publication's slot is above every slot claimed before it - which
-\ src/compiler/native/publish.f holds as a REFUSAL, E-NPUB-SLOT, rather than as
-\ an assumption - so the rows a reclamation takes away are a SUFFIX and the cut
-\ is where it starts.
+\ The live table is in publication order and publish.f refuses a slot below the
+\ last routine's end (E-NPUB-SLOT), so the rows a reclamation drops are a SUFFIX.
 : FLOOR-ROW ( n -- n )
    {: floor:n :}
    ROWS#
@@ -273,13 +125,8 @@ create R-FPR VEC-HEADER-CELLS cells allot
       i ENTRY-AT floor >= if drop i leave then
    loop ;
 
-\ ...and that the rest of the table really is above the floor. A row below it
-\ after the cut would mean this table is not the sequence the cut rests on, which
-\ is a defect in this file rather than anything a program can ask for: there is
-\ no correct answer to give and no caller to give it to, so it dies here rather
-\ than dropping the wrong rows. A watcher may not throw - the reclamation it is
-\ answering is already half done - and this is the shape src/core/decl-event.f
-\ uses for the same class of defect.
+\ A row below the floor means this table is not that sequence: a defect here with
+\ no correct answer to give, and a watcher may not throw.
 : ORDER-CK ( n n -- )
    {: floor:n k:n :}
    ROWS# k ?do
@@ -288,13 +135,8 @@ create R-FPR VEC-HEADER-CELLS cells allot
       then
    loop ;
 
-\ Drop every row whose routine starts at or above this address. It is private and
-\ registered ONCE, below, with the one word every checked reclamation of code
-\ space goes through: dropping a row is sound exactly when the code it describes
-\ is gone, and this file is not in a position to know that - the file that
-\ reclaims the space is. Dropping a suffix rather than sifting the table is what
-\ leaves the surviving rows where they were, so nothing that counted them has to
-\ be told, and the slots above the cut are a later publication's to take.
+\ Registered once with CODE-RECLAIM: dropping a row is sound exactly when the code
+\ it describes is gone, which only the file reclaiming the space knows.
 : DROP-FROM ( n -- )
    {: floor:n :}
    floor FLOOR-ROW {: k:n :}
@@ -303,14 +145,10 @@ create R-FPR VEC-HEADER-CELLS cells allot
 
 public
 
-\ Does this file know what the routine at this address destroys?
 : KNOWN? ( n -- bool )
    ROW-OF 0 >= ;
 
-\ What the routine at this address destroys, or the worst case the caller states
-\ for an address with no row. Two readers rather than one, because a shortage in
-\ one register file is not answered by the other and neither is a consumer's
-\ worst case.
+\ Two readers: a shortage in one register file is not answered by the other.
 : GPR-CLOB ( n A64EFF:gprs -- A64EFF:gprs )
    {: entry:n worst:A64EFF:gprs :}
    entry ROW-OF {: k:n :}
@@ -323,15 +161,8 @@ public
    k 0 < if worst exit then
    k FPR-AT A64EFF:FPR-SET ;
 
-\ Would RECORD below take this set at this address? Both of its refusals, asked
-\ while a refusal still costs nothing. RECORD runs once the routine is in the
-\ code arena and the dictionary record points at it, so a refusal THERE leaves
-\ running code with no row or - worse, and this really happened - with a row
-\ that describes a different routine: a widening publication was refused after
-\ its word was live and retargeted, and the next caller compiled against the row
-\ the refusal left behind computed 119 where 110 was right. So the publication
-\ seam asks this before it writes a byte, and the refusals inside RECORD are the
-\ backstop rather than the path.
+\ The same refusals asked while a refusal still costs nothing. RECORD runs once
+\ the routine is live, so a refusal there leaves a row describing another routine.
 : RECORD-CK ( n A64EFF:gprs A64EFF:fprs -- )
    {: entry:n g:A64EFF:gprs f:A64EFF:fprs :}
    entry ROW-OF {: k:n :}
@@ -339,10 +170,6 @@ public
    k GPR-AT g A64EFF:GPRS-N NARROWS? 0= if E-NCLOB-WIDEN throw then
    k FPR-AT f A64EFF:FPRS-N NARROWS? 0= if E-NCLOB-WIDEN throw then ;
 
-\ Record what the routine published at this address destroys. A first row is
-\ taken as it stands; a second one for the same address is taken only when it
-\ destroys no register the first did not, because every caller compiled in
-\ between saved exactly what the first row let it skip.
 : RECORD ( n A64EFF:gprs A64EFF:fprs -- )
    {: entry:n g:A64EFF:gprs f:A64EFF:fprs :}
    g A64EFF:GPRS-N {: gb:n :}
@@ -354,16 +181,12 @@ public
    gb k GPR-AT!
    fb k FPR-AT! ;
 
-\ How many routines this file remembers, which is what a test measures a
-\ publication against.
 : ROWS ( -- n )
    ROWS# ;
 
 private
 
-\ Hear about every reclamation of code space, for as long as this file is
-\ loaded. It is one registration and there is no way to undo it: a row that
-\ outlived its code is what this whole file's answer is read against.
+\ One registration, and there is no way to undo it.
 : WATCH-INSTALL ( -- )
    [: DROP-FROM ;] CODE-RECLAIM:WATCH ;
 
