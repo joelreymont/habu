@@ -58,17 +58,14 @@
 \ point they are used, through src/compiler/native/dict.f, for every name in the
 \ body the dialect does not model. There is no parameter left for a caller to
 \ answer wrongly, and no ceiling on how many words a body may call.
-\
-\ THE STAGING ENTRIES BELOW ARE WHAT IS LEFT OF THE OLD ARRANGEMENT. CALLEE still
-\ takes a spelling, an address and an effect, and DEFINE-CALLING still spends the
-\ list; a caller that uses them can still state an effect that is not the one the
-\ checker certified, which is the lie dot habu-resolve-a-callee-0340dfde was
-\ opened for. Resolution closes that class for every name nobody stages - which
-\ is every name in a body by default - and deleting the staging path outright is
-\ the remaining half of that dot. What holds the staging together meanwhile: a
-\ spelling and an address are ONE fact stated twice, so RESOLVES-TO-ENTRY below
-\ refuses an address that is not where that spelling's word starts, settling the
-\ name, the package it was published in and the address in one comparison.
+\ AND THERE IS ONE ROAD TO A ROW, WHICH IS WHAT CLOSED THE LIE. A caller used to
+\ be able to STAGE a callee - a spelling, an address and an effect - and a staged
+\ effect that was not the one the checker certified compiled anyway, because the
+\ selector built the save run, the restore run and both byte counts from the one
+\ stated number (dot habu-resolve-a-callee-0340dfde). The staging path is gone.
+\ Nothing about a callee is a parameter any more, so there is no second authority
+\ left to disagree with the certificate, and the class of caller that could lie
+\ about a callee has no way left to say it.
 
 require lib/prelude.f
 require lib/errors.f
@@ -135,106 +132,15 @@ TRUSTED: EV ( ptr u8 n -- )
 \ 8000 bytes compiles and one seven bytes longer exits 71.
 BODYBUF-CAP constant TEXT-CAP
 
-\ The longest name or spelling this file holds. Two things are measured by it -
-\ the name the migration publishes under, and each callee spelling a caller
-\ stages - and a staged spelling may be QUALIFIED where a publication's own name
-\ is never more than a tail, so the ceiling is the longer of the two forms. A
-\ spelling past it is refused rather than truncated into a name that denotes
-\ another word.
+\ The longest name this file holds: the name the migration publishes under, which
+\ is the tail a publication's record carries. A name past it is refused rather
+\ than truncated into one that denotes another word.
 64 constant NAME-CAP
 
 create TXT TEXT-CAP allot
 create NAME-BUF NAME-CAP allot
 variable NAME-U
 variable NAME-WID
-
-\ ---- the words one migrated definition calls ---------------------------------
-\ A body may call several DIFFERENT words - `||a-b|| / ||b||` calls one word for
-\ the distance and another for the norm - so the caller stages one row per callee
-\ and then migrates. Each row is what the word model needs and nothing more: the
-\ spelling the body writes, where the callee's code starts, and the effect it
-\ declares. All three are the caller's statement for the same reason a data
-\ word's address is (dot habu-resolve-a-callee-0340dfde).
-\
-\ THE LIST BELONGS TO ONE MIGRATION AND IS CLEARED BY IT. RUN empties it when the
-\ run ends, whether the run succeeded or threw, so every migration starts with an
-\ empty list and a row staged for a migration that then failed cannot be picked
-\ up by the next one. An entry that takes no list refuses a staged one rather
-\ than running with rows nothing will use.
-4 constant CALLEES-MAX
-
-create CALLEE-BUF CALLEES-MAX NAME-CAP * allot
-here CELL 1- and CELL swap - CELL 1- and allot
-variable CALLEE-N
-create CALLEE-U CALLEES-MAX cells allot
-create CALLEE-ADDR CALLEES-MAX cells allot
-create CALLEE-IN CALLEES-MAX cells allot
-create CALLEE-OUT CALLEES-MAX cells allot
-
-: CALLEE-AT ( n -- n )
-   dup 0 < over CALLEE-N @ >= or if E-NMIGRATE-STATE throw then ;
-
-: CALLEE$ ( n -- ptr u8 n )
-   CALLEE-AT {: k:n :}
-   CALLEE-BUF k NAME-CAP * +  k cells CALLEE-U + @ ;
-
-: CALLEES-CLEAR ( -- )
-   0 CALLEE-N ! ;
-
-: CALLEES-NONE-CK ( -- )
-   CALLEE-N @ 0<> if E-NMIGRATE-STATE throw then ;
-
-\ ---- holding a staged spelling against the address staged with it -------------
-\ WHY THE TWO ARE ONE FACT. The caller obtained the address by resolving the
-\ spelling and the body reaches the routine by writing it, so a staging where
-\ they disagree is a caller contradicting itself. Nothing downstream catches it:
-\ the recorded-body check (src/compiler/native/elaborate.f CALLEE-COPY?) is only
-\ reached for an address that HAS a row, and the CALL a site emits instead
-\ branches to the stated address whatever the spelling said. So it is settled
-\ here, where the two arrive together, and settling it settles the NAME, the
-\ PACKAGE the routine was published in and the ADDRESS in one comparison.
-\
-\ WHICH RECORD A SPELLING DENOTES IS NOT ASKED HERE ANY MORE.
-\ src/compiler/native/dict.f owns that walk - the engine's own order, its
-\ fail-closed treatment of a name reached only through a `using`, and the reason
-\ both are what they are. It moved there when the word model started asking the
-\ same question about a data word's spelling: one resolver, two askers.
-\
-\ The one refusal. A spelling that denotes nothing is refused for the same reason
-\ a mismatched address is: there is no second authority to prefer, and a
-\ migration compiled against an unconfirmed address is a routine that branches
-\ somewhere nobody named.
-: RESOLVES-TO-ENTRY ( ptr u8 n n -- )
-   {: ca cu:n entry:n :} \ typed-local-lint: allow-bare-local - ca keeps the ptr u8 byte-span role
-   ca cu NDICT:SPELL-START {: start:n :}
-   start 0= if E-NMIGRATE-CALLEE throw then
-   start entry <> if E-NMIGRATE-CALLEE throw then ;
-
-\ ---- and the scope a staged list is spent in ---------------------------------
-\ A spelling is resolved in the scope the STAGING runs in, and the definition it
-\ was staged for is compiled in the scope the MIGRATION runs in. Those are one
-\ scope for every caller there is, because a caller stages its callees and
-\ migrates in one word - and the whole of the check above rests on it, so it is
-\ REFUSED rather than assumed. The wordlists the resolver walked are recorded
-\ with the first row and held against the ones each later row and the run itself
-\ find, which turns "the scope did not move between them" into the same kind of
-\ refusal the publication seam holds an emission's placement to.
-\
-\ IT RETIRES WITH THE CALLER'S ADDRESS. When the migration reads a callee's
-\ address off the dictionary itself (dot habu-resolve-a-callee-0340dfde) the
-\ resolution happens inside the run, in the one scope that can matter, and both
-\ this and the check above go with it.
-variable CALLEE-PRI
-variable CALLEE-PUB
-
-: CALLEES-SCOPE! ( -- )
-   NDICT:OPEN-PRI CALLEE-PRI !
-   NDICT:OPEN-PUB CALLEE-PUB ! ;
-
-: CALLEES-SCOPE-CK ( -- )
-   CALLEE-N @ 0= if exit then
-   NDICT:OPEN-PRI CALLEE-PRI @ <> if E-NMIGRATE-CALLEE throw then
-   NDICT:OPEN-PUB CALLEE-PUB @ <> if E-NMIGRATE-CALLEE throw then ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER M-CTX IR-CTX:ctx
@@ -325,12 +231,11 @@ variable M-MEASURE                   \ this migration proves the publication ins
 \ that row holds is the engine's answer and not the caller's: the caller names
 \ the word, the word model asks the dictionary.
 : EXTRA-ROWS ( -- n )
-   CALLEE-N @
-   M-DATA-U @ 0<> if 1+ then ;
+   M-DATA-U @ 0<> if 1 else 0 then ;
 
 \ How many rows the table is committed to, and why that number is read off the
 \ TAPE rather than chosen. The dialect's own words are a fixed count and the
-\ staged extras are counted above, but the elaborator now adds a row for every
+\ data word is counted above, but the elaborator adds a row for every
 \ name the body writes that the dialect does not model and the engine does
 \ (src/compiler/native/elaborate.f RESOLVE-SCAN). Which names those are is not
 \ known until the body has been read, and the thing that read it is the tape - so
@@ -346,24 +251,11 @@ variable M-MEASURE                   \ this migration proves the publication ins
    M-DATA-U @ 0= if exit then
    CC BB r  CC BB DATA$ IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED ;
 
-\ Every word this definition calls, as the word model's own rows. The list is the
-\ caller's, staged before the migration; this only reads it, one row at a time,
-\ so a body that calls one word and a body that calls four go down the same path.
-: DECLARE-CALLEE1 ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena k:n :}
-   CC BB r  CC BB k CALLEE$ IR-BUILD:INTERN-SYMBOL
-   k cells CALLEE-ADDR + @
-   k cells CALLEE-IN + @
-   k cells CALLEE-OUT + @  HIR-WORD:DECLARE-CALLABLE ;
-
-: DECLARE-CALLEE ( IR-ARENA:arena -- ) {: r:IR-ARENA:arena :}
-   CALLEE-N @ 0 ?do  r i DECLARE-CALLEE1  loop ;
-
 : MODEL ( -- IR-ARENA:arena IR-ARENA:arena )
    CC BB IR-BUILD:MODULE-KEY MODEL-ROWS HIR-WORD:PICK-CELLS HIR-WORD:NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    CC BB p r HIR-WORD:REGISTER-WORDS
    r DECLARE-DATA
-   r DECLARE-CALLEE
    p r ;
 
 \ ---- stage N0: the definition the engine compiles ----------------------------
@@ -1039,12 +931,10 @@ variable REC-OK                      \ the body staged so far is still one worth
 : RUN ( -- )
    M-OPEN @ 0<> if E-NMIGRATE-STATE throw then
    M-SRC-U @ TEXT-CAP > if E-NMIGRATE-TEXT throw then
-   CALLEES-SCOPE-CK
    1 M-OPEN !
    0 M-RC !
    IN-CONTEXT
    0 M-OPEN !
-   CALLEES-CLEAR
    NINL:STAGED? if NINL:STAGE-CLEAR then
    M-RC @ {: rc:n :}
    rc 0 <> if HELD-RETRACT rc throw then
@@ -1063,7 +953,6 @@ public
 \ chain's code. `in` and `out` are its declared arities and `regs` the scratch
 \ registers its routine may use.
 : DEFINE ( ptr u8 n n n n -- )
-   CALLEES-NONE-CK
    STAGE RUN ;
 
 \ Compile the definition this source publishes WITHOUT publishing it: the engine
@@ -1078,7 +967,6 @@ public
 \ the old emitter already published; this one is the first that does not, which
 \ is what makes the old emitter's emission unnecessary rather than prerequisite.
 : DEFINE-HELD ( ptr u8 n n n n -- )
-   CALLEES-NONE-CK
    STAGE
    1 M-HELD !
    RUN ;
@@ -1099,60 +987,17 @@ public
 \ the definitions. What the caller wanted to know is answered before any of that
 \ is written down.
 : MEASURE-HELD ( ptr u8 n n n n -- )
-   CALLEES-NONE-CK
    STAGE
    1 M-HELD !
    1 M-MEASURE !
    RUN ;
 
-\ Stage one word the NEXT migration's definition calls: its spelling as the
-\ definition writes it, the address its code starts at, and the effect it
-\ declares. The spelling is COPIED, because it is a span of the caller's memory
-\ and the migration reads it later, inside the recorded run.
-\
-\ THE SPELLING AND THE ADDRESS ARE HELD AGAINST EACH OTHER BEFORE EITHER IS
-\ KEPT, so a staging that contradicts itself leaves no row behind for the next
-\ migration to be refused for. The two capacity refusals come first because they
-\ are about this list rather than about the callee, and the scope the list
-\ belongs to is taken from the first row and held against every row after it.
-: CALLEE ( ptr u8 n n n n -- )
-   {: ca cu:n entry:n cin:n cout:n :} \ typed-local-lint: allow-bare-local - ca keeps the ptr u8 byte-span role
-   CALLEE-N @ {: k:n :}
-   k CALLEES-MAX >= if E-NMIGRATE-STATE throw then
-   cu NAME-CAP > if E-NMIGRATE-TEXT throw then
-   k 0= if CALLEES-SCOPE! else CALLEES-SCOPE-CK then
-   ca cu entry RESOLVES-TO-ENTRY
-   ca  CALLEE-BUF k NAME-CAP * +  cu STR-LEN BYTE-COPY-LEN
-   cu k cells CALLEE-U + !
-   entry k cells CALLEE-ADDR + !
-   cin k cells CALLEE-IN + !
-   cout k cells CALLEE-OUT + !
-   k 1+ CALLEE-N ! ;
-
-\ Migrate a definition that CALLS the words staged above it. A migration with no
-\ callee staged is refused: it would be DEFINE.
-\
-\ NOTHING IS DECLARED ABOUT THE FRAME HERE ANY MORE. This entry used to raise a
-\ flag saying "this definition calls", and a migration whose body called without
-\ it was refused. The flag was never the fact: ROUTINE picks the frame from
-\ NELAB:CALLED?, which is what the WALK found, and the refusal only checked that
-\ the caller had predicted the walk correctly. Once a body's names resolve off
-\ the dictionary a caller cannot predict it at all - any body may turn out to
-\ call - and the prediction was redundant the whole time, because the frame was
-\ already derived from the walk that knows.
-: DEFINE-CALLING ( ptr u8 n n n n -- )
-   {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
-   CALLEE-N @ 0= if E-NMIGRATE-STATE throw then
-   sa su in out regs STAGE
-   RUN ;
-
-\ The same for a definition that names one `create`d data word. Its spelling as
+\ Migrating a definition that names one `create`d data word. Its spelling as
 \ the definition writes it is the whole of what the caller says about it: the
 \ address that word pushes is the engine's to answer, and the word model asks
 \ src/compiler/native/dict.f for it while it declares the row.
 : DEFINE-DATA ( ptr u8 n ptr u8 n n n n -- )
    {: sa su:n da du:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
-   CALLEES-NONE-CK
    sa su in out regs STAGE
    da M-DATA ! du M-DATA-U !
    RUN ;
