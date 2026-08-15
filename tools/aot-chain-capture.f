@@ -70,16 +70,17 @@ public
 variable B0  variable B1      \ the window's code span
 variable R0  variable R1      \ its dictionary record span
 variable D0  variable D1      \ its DATA span
+variable Q0  variable Q1      \ its require-registry span: the closure it loaded
 
 \ Latch the three cursors and tell the engine where the window starts, which is
 \ what makes its compile-mode inliner emit a CALL to a pre-window body rather than
 \ copying it with the addresses it holds (habu2.f AOT-WINDOW:EMIT-OUTSIDE).
 : OPEN ( -- )
-   cp@ B0 !  ndict@ R0 !  here D0 !
+   cp@ B0 !  ndict@ R0 !  here D0 !  REQUIRE-N @ Q0 !
    B0 @ D0 @ AOT-ARM:OPEN ;
 
 : CLOSE ( -- )
-   cp@ B1 !  ndict@ R1 !  here D1 ! ;
+   cp@ B1 !  ndict@ R1 !  here D1 !  REQUIRE-N @ Q1 ! ;
 
 ;package
 
@@ -94,6 +95,14 @@ AOT-CHAIN:CLOSE
 require src/arch/arm64/icode.f
 require src/habu/aot-decl.f
 require src/habu/aot-capture.f
+
+\ The capture's IDENTITY, loaded with the same "after the window" rule. aot-ident.f
+\ turns the require-registry span above into the closure list and its digest;
+\ lib/engine-id.f answers the other half, the content key of the binary this
+\ capture is running in, which the metabuild recomputes over the engine it emitted
+\ and compares. Both are above the window, so neither is captured.
+require src/habu/aot-ident.f
+require lib/engine-id.f
 
 package AOT-CHAIN
 using AOT-BUF
@@ -115,9 +124,13 @@ $4A constant REFUSE-RC
    R1 @ R0 @ <> if exit then
    s" aot-chain-capture: the window is empty - the chain did not load" REFUSE-RC die ;
 
+create CHAIN-SHA 32 allot
+create HEX 64 allot
+
 : RUN ( -- )
    ?FIRST
    ?WINDOW
+   Q0 @ Q1 @ AOT-IDENT:CLOSURE!
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
    B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE ;
 
@@ -137,7 +150,14 @@ $4A constant REFUSE-RC
    s" codespan=" type B1 @ B0 @ - .
    s" dataspan=" type D1 @ D0 @ - .
    s" bandrecs=" type R0 @ PRE-R @ - .
-   s" bandbytes=" type D0 @ PRE-D @ - . ;
+   s" bandbytes=" type D0 @ PRE-D @ - .
+   s" closure=" type AOT-IDENT:COUNT .
+   s" first=" type 0 AOT-IDENT:PATH$ type cr
+   s" last=" type AOT-IDENT:COUNT 1 - AOT-IDENT:PATH$ type cr
+   CHAIN-SHA AOT-IDENT:CHAIN-DIGEST
+   CHAIN-SHA HEX SHA256>HEX
+   s" chaindigest=" type HEX 64 type cr
+   s" producer=" type ENGINE-ID:KEY$ type cr ;
 
 : MAIN ( -- ) RUN CENSUS. ;
 

@@ -28,6 +28,14 @@
 \ refusal sentence and exits 0. A checker that read text and not exit codes would
 \ call that a refusal; the self-test asserts it does not.
 \
+\ THE IDENTITY CASE READS ONE FACT TWICE. The capture reports the content key of
+\ the engine it is running in (lib/engine-id.f, resolving its own executable) and
+\ this suite hashes bin/hb from the outside with SHA256-FILE; the two must agree.
+\ That is the mechanism the metabuild uses to refuse an artifact some other engine
+\ produced, so it is worth a case of its own rather than trust. The closure the
+\ capture names comes from the engine's require registry, so the case asserts it
+\ starts at the file the window actually required.
+\
 \ Cost: three child engine runs (~3s), no metabuild. Registered as
 \ `SUITE aot-chain-capture` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-chain-capture-suite.f
@@ -56,6 +64,8 @@ variable RC
 
 create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 create MUT-BUF FS-PATH-CAP allot     variable MUT-U
+create DIG 32 allot
+create DHEX 64 allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : MUT$ ( -- ptr u8 n )  MUT-BUF MUT-U @ ;
@@ -170,6 +180,17 @@ create MUT-BUF FS-PATH-CAP allot     variable MUT-U
      ENDOF
    ;MATCH ;
 
+\ The `want` bytes printed after `label`, or a zero-length string when the label is
+\ absent or the line is short. Used for the two digests, which are fixed-width hex.
+: TEXT-FIELD ( ptr u8 n n -- ptr u8 n ) {: la:ptr lu:n want:n :}
+   OUT$ la lu FIND-SUB MATCH option
+     none OF OUT 0 ENDOF
+     some OF IDX>N lu + {: off:n :}
+             OUT-U @ off - want < if OUT 0 exit then
+             OUT off + want
+     ENDOF
+   ;MATCH ;
+
 : FLOOR ( n n ptr u8 n -- ) {: got:n want:n la:ptr lu:n :}
    la lu T-LABEL
    got want >= 0= if
@@ -202,6 +223,24 @@ create MUT-BUF FS-PATH-CAP allot     variable MUT-U
    s" xtoff=" FIELD         1 s" ... and its declared address cell" FLOOR
    s" bandrecs=" FIELD      1 s" the prelude band is not empty" FLOOR
    s" bandbytes=" FIELD     1 s" ... on the DATA axis either" FLOOR ;
+
+\ The capture's identity, read from the same run PROBE-REAL just made. The producer
+\ key is the interesting one: the tool reports the content key of the binary it is
+\ RUNNING (lib/engine-id.f, which resolves its own executable), and this suite
+\ hashes bin/hb from the outside. Two independent readings of one fact, compared -
+\ which is the whole mechanism the metabuild will use to refuse an artifact that
+\ some other engine produced.
+: PROBE-IDENT ( -- )
+   s" the capture names the closure it loaded" T-LABEL
+   s" closure=" FIELD  40 s" closure files" FLOOR
+   s" ... starting at the chain root the window required" T-LABEL
+   s" first=src/compiler/native/migrate.f" SAID? TTRUE
+   s" ... and carries a full-width digest over their bytes" T-LABEL
+   s" chaindigest=" 64 TEXT-FIELD nip 64 T=
+   s" the producer key is the engine that ran the capture" T-LABEL
+   s" bin/hb" DIG SHA256-FILE 0 T=
+   DIG DHEX SHA256>HEX
+   s" producer=" 64 TEXT-FIELD  DHEX 64 T$= ;
 
 \ The refuted order, spliced into the real file. The diagnostic must name a window
 \ word and a callee; `<no record>` on either side would mean the audit fired
@@ -244,6 +283,7 @@ create MUT-BUF FS-PATH-CAP allot     variable MUT-U
    MUTANT-BUILD
    SELFTEST
    PROBE-REAL
+   PROBE-IDENT
    PROBE-ORDER
    PROBE-NOT-FIRST ;
 
