@@ -631,3 +631,86 @@ loading; one section's base depends on another's length -
 recorded so ruling 2's "per-section base offset" reads right);
 package records' [0]/[8] take the WID rebase, never the blob
 shift.
+
+MERGE LANDED, MILESTONE BLOCKED BY A PRE-EXISTING GAP
+2026-08-15 (bake-chain-8, three commits stacked in
+.jj-ws/habu-bake-chain on master 9c23a67d: b5d4c151 claim,
+1291bd60 the merge, 5a7d8191 the driver parameter).
+(1) src/habu/aot-decl.f gains SNAP-RELOC:CHAINV/SET-CHAIN beside
+the shape constants (ruling 1), expressed in ADDR-OPC-MASK/
+ADDR-IMM-MASK/ADDR-RD-BITS instead of respelling them; the
+private copies in aot-capture.f are deleted. The "relocation
+pass" consumer is EMITTED MACHINE CODE (habu2.f:4951-4980) and
+consumes the CONSTANTS, so the word-level reader/writer has two
+consumers, not three. Proof the move is behaviour-preserving: the
+artifact sha is unchanged, 70393ec8..., byte for byte.
+(2) AOT-FILE:MERGE per MERGE RULINGS. READ and MERGE share one
+LOAD-PASS and one section loader; the ONLY parameterization is a
+BASE table (SEC-PTR now answers a BUFFER, never a position). The
+five shifts plus the wid/PWIN continuation are all in, the host's
+CODE rows are relocated before loading, package records' [0]/[4]
+take the wid rebase, and the artifact's PRE-window bitmap is read
+PAST (SKIP-SECTION) so the payload digest still covers it.
+(3) src/habu/stdin.f: STDIN-DRIVER:ARTIFACT! (artifact path +
+producer-engine path, empty = the capture host), MERGE-ARTIFACT
+between CAPTURE-REPL and the emit, fail-closed once declared.
+A64RAV:DKEEP-HOOK-DEFAULT is public and tools/aot-chain-capture.f
+puts it on the boot-run list, refusing if the window's declared
+address cells are ever not exactly the one it installs.
+TWO-PASS READ MEASURED (the leaf's open question, now closed with
+numbers): READ = 358 ms on the real 3.1 MB artifact = payload SHA
+pass 1 147 ms + pass 2 147 ms + chain digest 62 ms + 2 ms of
+everything else. A whole-file slurp is 0.2 ms and SHA-256 runs at
+21 MB/s here. The second FILE pass costs 0.2 ms; the second SHA
+costs 147 ms and IS the changed-between-passes check. Two-pass
+stays; a staged read would buy 147 ms once per build for a 4 MiB
+buffer.
+ENGINE BYTES ATTRIBUTED: 165367 both sides, 341 bytes differ
+against a control build of clean master (161e8f2b, which
+reproduces bin/hb exactly). Every difference is one constant:
+stdin.f allots ~800 more bytes of DP before the window opens, so
+the REPL window's DATA base and every literal into it move by
+800, and LAOTDATAD0 moves by the same 800 - the seed's rebase
+subtracts it again. imgdump: identical dicts.
+
+BLOCKER, AND IT IS NOT THE MERGE: a captured call site to a
+PACKAGED word cannot be resolved by the seed. Measured on the
+merged engine, which builds and then exits 81 with no diagnostic
+at the FIRST user token: habu2.f:4401 EM-AOT-PATCH-SITES `pnf`
+(exit $51, silent). Caught in lldb at 0x10000c588 - x13=0 (LFIND
+missed), x22=219 (site index), x10=5, x9 -> the pool entry
+`SLOT@`. That is CDIGEST:SLOT@, `public` in package CDIGEST
+(src/compiler/digest.f:86), and ACAP-ADD-SITE stores the record's
+BARE name, which the seed's LFIND looks up in the global
+wordlist. Population, measured over the merged buffers: 18896
+sites = 15421 whose callee record is PACKAGED + 3475 with no
+merged record (prefix words, which resolve). So 82% of the
+chain's call sites cannot be relocated today.
+WHY IT NEVER FIRED BEFORE: the only window ever captured is the
+REPL (repl/debug-watch/stepper/debug), which defines no package,
+so every callee was global. The chain is packages nearly all the
+way down. The capture-side band audit does not catch it either -
+it proves the callee HAS a record, not that the name the seed
+will use finds it.
+COROBORATION IN THE TREE: test/aot-wid-build.f's gate modes put
+the QUALIFIED name of a packaged word on the boot-run list, which
+is the same wall met from the other side.
+FIX DIRECTION, unruled and item-sized on its own: the site row
+carries the callee's WID next to its name (8B row -> 12B, or a
+parallel u32 table), window-relative, rebased by exactly the
+machinery the records already use, and the seed resolves with a
+wordlist-aware find. Artifact VERSION 3. Qualifying the name
+instead is cheaper but only reaches PUBLIC package words; private
+callees, which the chain has in quantity, still miss. The
+capture-side audit that should have caught this at capture time -
+"every site's name resolves the way the seed will ask" - belongs
+with the fix.
+DEBUGGER NOTE for whoever takes it: lldb breakpoints set BEFORE
+`run` silently never fire on these images; `process launch
+--stop-at-entry` first, then `br set -a`, then `continue` works.
+The exit-81 class is ambiguous - layout.f BL-RANGE-RC is also 81,
+and it writes a message where this one writes nothing.
+UNEXERCISED BY EITHER SIDE: named code sites (xtsites) are 0 in
+the chain artifact and 0 in the merge probe's window, so the
+merge's shift of those two fields is carried by code and by no
+measurement.
