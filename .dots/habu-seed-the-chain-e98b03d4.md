@@ -307,3 +307,148 @@ fixpoint's sha comparison; (c2) the MERGE reader per the ruling;
 mechanism already exists: include.f REQUIRE-BOOT-FREEZE +
 ENGINE-PROVIDES?); (g) battery + the 1023 ms delta. All rulings
 on this leaf stand.
+
+(c) PREMISE PROBES DONE 2026-08-15 (bake-chain-5, on merged
+master 4a2fea12; no edits, nothing to commit - this entry IS the
+result). Re-baselined census after the staging-road deletion:
+recs=6744 sites=18893 blob=1212352 names=48767 dsites=3686
+csites=16 xtsites=0 xtoff=1 datasz=1531042, blob==codespan,
+datasz==dataspan, band 16 recs / 95 bytes, exit 0 - inside the
+suite's floors, no test change needed. bin/hb 24bce3e6 unchanged
+(the chain is not in the engine).
+PRIMITIVES BOTH PROCESSES HAVE, so one shared format file can
+serve writer and reader the way aot-decl.f serves two fillers:
+SHA256 ( ptr u8 n ptr u8 -- ), SHA256>HEX, SHA256-RESET/-UPDATE/
+-FINAL (src/core/sha256.f, in BF-APPEND-COMMON and in the baked
+prefix - verified live in bin/hb against the "abc" vector
+ba7816bf...), PATH0 (a checker PRIM, so it is everywhere), and
+raw open/read/write/close (verified live: wrote 32, read back
+32). NOT available in a booted bin/hb: driver-io.f's DRV-WALL
+(E-UNDEFINED) - driver-io.f is a prefix source but its words are
+not baked into the dictionary, unlike layout.f's, so a writer
+that wants short-write safety either requires driver-io.f after
+the window closes or carries its own loop.
+STRUCTURAL FINDING - (f) IS A PREREQUISITE OF (c), NOT THE LAST
+ITEM. The chain closure needs no new mechanism and no hand list:
+the engine's own require registry already IS it. REQUIRE-N read
+at window-open and at window-close brackets exactly the files the
+chain loaded, and REQUIRE-SLOT/REQUIRE-LEN@ enumerate them in
+load order - measured in the capture tool's own shape: pre=1,
+window=43, starting src/compiler/native/migrate.f, abi.f,
+target.f, digest.f ... ending publish.f, branch.f. That list is
+(f)'s provided rows AND the only honest input to (c)'s "chain
+digest", so the closure list should be built FIRST and the format
+should carry it.
+TWO QUESTIONS THE FORMAT CANNOT BE WRITTEN WITHOUT (the format is
+baked into the engine, so it migrates once - guessing these is
+how a weak identity check becomes permanent):
+  1. PRODUCER SHA - over what? Proposal: sha256 of the capture
+     HOST BINARY, which the two-engine metabuild (item d) has the
+     path to because it just emitted it, and which the capture
+     tool can be handed as an argument. The reader then refuses an
+     artifact produced by any engine other than the one this build
+     made.
+  2. CHAIN DIGEST - over what? Proposal: sha256 over the ordered
+     concatenation of the 43-file closure above, with the file
+     LIST carried in the artifact so the reader can re-derive the
+     digest rather than trust it, and so item (f) reads its
+     provided rows out of the artifact instead of a second list.
+  Also proposed, and NOT in the ruling, so it needs a yes: a
+  third digest over the payload region. The ruled two identify the
+  producer and the input; neither catches a partially written or
+  corrupted file, and the header's size arithmetic only catches
+  truncation. One SHA256 pass, 32 bytes.
+Suggested build order once ruled: closure list + digests -> format
++ writer + verifying reader (round-trip acceptance: capture,
+write A, clear the buffers, read A back, write B, sha256(A) =
+sha256(B) - the same comparison item (e) promotes) -> (c2) merge
+-> (d) -> (e) -> (f) reading the artifact's own list -> (g).
+
+CLOSURE + DIGESTS LANDED 2026-08-15 (bake-chain-5, commit
+6dcb71c4 in .jj-ws/habu-bake-chain on master 4a2fea12; full
+battery green, fixpoint 24bce3e6 x2, 165367 bytes - the engine is
+untouched, both new paths are tool-side). src/habu/aot-ident.f:
+package AOT-IDENT, engine primitives only (SHA256*, PATH0,
+open/read/close, the include registry) so the metabuild host can
+load it unchanged when the reader needs it. CLOSURE! ( r0 r1 -- )
+latches the require-registry span into a path table (refusing an
+empty span and any path over the cap), COUNT/PATH$ read it, and
+CHAIN-DIGEST ( ptr u8 -- ) streams the files' bytes through
+SHA256 in load order. The capture tool latches REQUIRE-N at
+window open and close and now reports closure=43,
+first=src/compiler/native/migrate.f,
+last=src/compiler/native/branch.f, chaindigest=3a3f8d0f... and
+producer=24bce3e6..., the last being EXACTLY `shasum -a 256
+bin/hb` - so the two independent readings ruling #1 asks for are
+proven equal end to end, on a real run, not by construction.
+Digest evidence: identical across two runs; changes when one byte
+is appended to the FIRST closure file (27d3eafc...) and when one
+byte is appended to the LAST (eafe16b5...); returns to
+3a3f8d0f... when both are restored. Suite gained PROBE-IDENT
+(closure floor, chain-root assertion, 64-wide digest, and the
+producer double-reading computed in-suite with SHA256-FILE);
+falsified by two code mutations - reporting the chain digest as
+the producer key reds it, and latching the closure over an empty
+span reds it.
+NEXT: the format file. Header layout is unblocked now that all
+three digests are ruled and the closure is derivable; the
+artifact carries the file LIST from AOT-IDENT:PATH$ so the reader
+re-derives the chain digest from disk, and (f) reads its provided
+rows out of that same list. aot-ident.f needs a manifest slot in
+tools/stdin-closure-lib.f plus both stdin builders at the moment
+the READER lands in the metabuild host - it has none yet, because
+nothing host-side uses it yet and an unwired host file is what
+the closure lint exists to reject.
+
+FORMAT RULINGS 2026-08-15 (the three questions, answered; the
+format bakes once, so these are final):
+(1) PRODUCER SHA = sha256 of the CAPTURE-HOST ENGINE BINARY,
+computed twice as two independent readings of one fact: the tool
+hashes its own running binary (the lib/engine-id.f path - the
+same identity the cad-store key already uses) and writes it; the
+metabuild reader recomputes sha256 of the capture host it just
+emitted and hard-equality-refuses a mismatch. No path strings, no
+timestamps - the bytes of the engine that produced the capture.
+(2) CHAIN DIGEST = sha256 over the ordered concatenation of the
+closure files' BYTES, in load order, with the FILE LIST carried
+in the artifact - and the reader RE-DERIVES the digest from disk
+rather than trusting the stored one. A mismatch means the chain
+sources moved since capture: refuse, and the fixpoint loop's
+recapture is the cure. RATIFIED with it: the closure list comes
+from the engine's own require registry (REQUIRE-N bracketed at
+window open/close, REQUIRE-SLOT enumeration - measured pre=1,
+window=43) - never a hand-maintained list; and item (f)'s
+provided rows READ THE ARTIFACT'S OWN LIST, making (f) a
+prerequisite of (c) exactly as the lane found.
+(3) PAYLOAD DIGEST: YES - sha256 over everything after the
+header, verified by the reader before any section is parsed. 32
+bytes and one pass buys a precise refusal where size arithmetic
+only catches truncation; a fail-closed reader that can say
+"corrupt" instead of "the sizes add up" is the ruled shape, not
+new ceremony.
+Also ratified: the round-trip acceptance (capture, write A, clear
+the live buffers, read A back into them, write B, assert
+sha256(A)=sha256(B)) - the same comparison item (e) promotes to
+cross-process; and the DRV-WALL finding - the writer requires
+src/habu/driver-io.f AFTER the window closes (it is prelude, above
+the band) rather than hand-rolling a second short-write loop.
+Build order as proposed: closure+digests -> format+writer+reader
+-> merge -> two-engine emit -> fixpoint -> provided-rows-from-
+artifact -> battery.
+
+CLOSURE+DIGESTS LANDED 2026-08-15 (bake-chain-5b, merged
+6dcb71c4): src/habu/aot-ident.f (package AOT-IDENT, engine
+primitives only so the metabuild host loads it unchanged) -
+CLOSURE! latches the require-registry span (43 files,
+migrate.f..branch.f), CHAIN-DIGEST streams their bytes through
+SHA-256 in load order, refuse-never-skip. The tool reports
+closure/first/last/chaindigest/producer; producer proven equal to
+an outside shasum of bin/hb (the two-independent-readings
+mechanism), chain digest falsified four ways (byte appended to
+first file, to last, both restored). PROBE-IDENT in the suite.
+NOT yet wired into tools/stdin-closure-lib.f BY DESIGN - the
+manifest slot lands with the reader, else the closure lint
+rightly rejects an unwired host file. Next: the format file +
+writer + verifying reader (round-trip sha acceptance), then
+merge, two-engine emit, fixpoint, provided rows from the
+artifact's list, battery.

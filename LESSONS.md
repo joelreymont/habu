@@ -6835,3 +6835,15 @@ idle. Before blaming the stack, reproduce the red under the same
 load on master - and never run foreground suites concurrently with
 a gate battery on the same box (the first red here was
 self-inflicted exactly that way). Dot: habu-cad-replay-test-8be2ba00.
+
+## 2026-08-15 - the closure that was already recorded (bake-chain-5b)
+
+The tree usually already knows. Two things this leaf was about to
+hand-build - the chain closure list and "was I loaded first" -
+were both single reads out of src/core/include.f's require
+registry, which had recorded them all along (REQUIRE-N bracketed
+at window open/close; REQUIRE-N minus REQUIRE-BOOT-N). Before
+minting a list or a mark, ask which existing component already
+had to know the answer. A hand-written closure manifest would
+have agreed with the engine only until the first chain file
+gained a dependency.
