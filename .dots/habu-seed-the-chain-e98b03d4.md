@@ -32,7 +32,7 @@ code), but this leaf must re-derive it before the chain enters the
 capture window. The engine-side model is C-CALL-SCAN-SAFE +
 AOT-WINDOW:EMIT-OUTSIDE (arithmetically-accepting unarmed state).
 
-Claim: agent=bake-chain workspace=.jj-ws/habu-bake-chain
+Claim: agent=bake-chain-4 workspace=.jj-ws/habu-bake-chain
 
 RULED 2026-08-14 (bake-chain checkpoint, probes /tmp/bc-probe/):
 the metabuild-host capture entry is REFUTED BY EXPERIMENT - the
@@ -160,3 +160,59 @@ populations (18602 + 3536), fail-closed, at capture. Items
 (2)-(7) otherwise per the standing handoffs; the fourth-coupled-
 term lesson (CODE-CAP feeds MPAGE feeds signature feeds MSIZE)
 recorded.
+
+BAND LANDED + THREE RULINGS 2026-08-15 (bake-chain-4 reviewed
+hunk-by-hunk, gated, merged). The two-sided audit is in
+src/habu/aot-capture.f: PRELUDE-MARK is MANDATORY (unmarked
+capture refuses), the call audit refuses by name over all sites,
+and the DATA half is a CLASSIFICATION on the existing
+ACAP-UNCLASSIFIED refusal - a second refusal was tried and
+refuted (the D0-SKEW forge made it steal the first refusal's
+only producer; one die line keeps both tested). Suite
+aot-prelude-band (7 child cases incl. the NAMER string-not-call
+fixture). AOT-REND renamed AOT-RLEN ([8] is code LENGTH -
+verified against EM-AOT-REGISTER-RECS, habu2.f:4185).
+
+RULING (tool ordering): prelude-first is REFUTED BY MEASUREMENT
+- 98 of 18602 call sites resolve into the prelude band (first:
+chain word MASK calls A64ASM's LIMM?; asm.f is in the chain's
+own closure, so prelude and chain share it and every such name
+would fail LFIND at a shipped boot). The FOUNDATION-MERGED
+"end-to-end" capture was producing an unbootable seed. ORDER IS
+CHAIN-FIRST: window opens at the first user token, migrate.f
+(with asm.f) inside it, icode/aot-decl/aot-capture load after it
+closes - orchestrator-reproduced: 0 violations, recs=6764
+sites=18939 blob=1215872 dsites=3717. Arming ownership: mint
+src/habu/aot-arm.f - ONE word owning the AOT-WINDOW:D0-CELL/
+B0-CELL write, required by aot-capture.f (WINDOW-OPEN delegates
+to it) and loaded by the tool BEFORE the window opens (it needs
+only layout.f, proven checked). Manifest slot in
+tools/stdin-closure-lib.f + both stdin builders - the aot-decl
+shape, already paid once. Two writers of those cells is drift;
+refused.
+
+RULING (one blob, two windows): the artifact READER MERGES.
+The reader appends the artifact's blob/records/sites into the
+host's live capture buffers with the three offset shifts, and
+rebases the artifact's DATA and CODE literals into the host's
+coordinates so EMIT-AOT-SEED still bakes ONE blob, ONE name
+pool, ONE (D0,size) pair. The seed frame does NOT grow a second
+span - the boot-side machinery stays untouched; merge complexity
+lives in the reader, which is new and fail-closed. This is what
+puts DKEEP-HOOK on the boot-run list (item 5). The
+below-prelude-d0 address class: today's audit refuses it and the
+measured population is empty; if the merge design ever needs
+that class, the argument is made HERE explicitly, not inherited.
+
+RULING (fixpoint host): once the chain is baked, require
+migrate.f is a no-op in the product and include dies on
+duplicates - the product engine can never capture its own chain.
+THE METABUILD EMITS TWO ENGINES from the same captured prefix in
+one run: the CAPTURE HOST (no artifact baked - today's bin/hb
+shape, a build artifact, never shipped) and the PRODUCT
+(artifact merged and baked). The emit differs only in the
+artifact parameter - no mode flag, no second prefix. Fixpoint:
+gen N emits the capture host, capture runs in it, artifact A_N,
+product = prefix + A_N; CONVERGED when sha256(A_N) =
+sha256(A_N-1) - which is also the promoted cross-process
+double-capture acceptance, run IN the build, fail-closed.

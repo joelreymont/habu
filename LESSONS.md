@@ -6734,3 +6734,30 @@ appears exactly twice in the whole file, comments included, and
 says so in its own header. A comment naming one of them a third
 time red a gate 200 lines away. Before adding prose to that file,
 check what counts its tokens.
+
+## 2026-08-15 - the prelude-band landing (bake-chain-4)
+
+(1) A lint whose entry point is a LIBRARY exits 0 having checked
+nothing: `bin/hb --load tools/lint/schedule-lint.f` loads words
+and stops, and the "0 findings" the worker reported was that empty
+load. The lint only runs through its TEST DRIVER
+(tools/lint/schedule-lint-test.f) or the gate slice. Before
+believing any lint number, know which file EXECUTES the check -
+and the orchestrator's own battery through test/run.f is what
+caught the false green, which is exactly why merges rest on gates
+the orchestrator runs.
+(2) The schedule lint earned its keep the first time a new suite
+landed: registered in gate-stdlib-cases.f, green by hand, selected
+by NO slice predicate - it would never have run in the gate.
+"Passing" and "scheduled" are separate facts with separate proofs.
+(3) A ruled design survived contact with measurement only halfway:
+prelude-first ordering for the capture tool was refuted by 98 of
+18602 call sites (the chain's own closure shares asm.f with the
+prelude), and the foundation's "end-to-end capture" had been
+producing an unbootable seed. A capture that RUNS proves buffers
+and formats; only the band audit proves the seed can BOOT.
+(4) Folding a new refusal into an existing one beat adding a
+second die line: the tried-and-reverted separate DATA refusal
+stole ACAP-UNCLASSIFIED's only producer under the D0-SKEW forge
+and lost a tested stop. When a new check classifies the same bad
+state an old check refuses, extend the old check's diagnostic.
