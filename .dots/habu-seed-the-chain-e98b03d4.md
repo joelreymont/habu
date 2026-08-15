@@ -93,3 +93,27 @@ converge, referencing 05728727's partial coverage). (6)
 Provided rows generated from the artifact's own closure list.
 (7) Battery. Boot-side DKEEP-HOOK re-install rides the bake
 commit. All prior rulings on this leaf stand.
+
+ITEM (1) COMPLETE 2026-08-15 (bake-chain-2, stack in the
+workspace on d50dfa80-era base): aot-decl.f landed as ruled
+(package AOT-BUF + AOT-WINDOW/AOT-XTSITE + the AGREE budget +
+SNAP-RELOC's five SHAPE constants - the arbiter proved they are
+format not emitter; the emitters correctly stay host-only);
+habu2.f -227 lines with top-level using; all four lists + the
+manifest wired (three tool files gained packages - ownership
+debt paid, zero cascade); reloc pins repointed (own commit).
+Fixpoint d1585042 x4 byte-identical; full battery green ON THE
+STACK. CRITICAL FOR THE CONTINUATION: the aot-wid-build.f
+fixture repair (DRV-AOT-CAPTURE emitting opener+import at all 8
+sites + DRV-IMPORT-CHECK counting structure over the assembled
+buffer, mutation-proved rc 74) was LOST to the pool incident -
+master now carries the REVERT (df09c744), so the repair MUST be
+re-applied INSIDE the extraction commit at rebase time or the
+battery reds on aot-wide-format. Item (2) handoff: the capture
+tool is a NEW tool sharing the format (aot-capture.f loads in
+bin/hb now but calls host-only CARRY-SITE/EMIT-OUTSIDE);
+prelude asm+icode+layout+aot-decl (+38ms). Items (2)-(7)
+otherwise per the earlier HANDOFF section; all rulings stand.
+POOL RULES (from the incident): a worker's jj new/squash is
+unsafe while another lane holds an open working copy; after any
+rebase, diff the stack for foreign paths.
