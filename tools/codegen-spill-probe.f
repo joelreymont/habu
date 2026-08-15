@@ -126,21 +126,12 @@ variable TRY-IN
 : MIGRATE-RC ( -- n )
    [: TRY-SRC @ TRY-U @ TRY-IN @ 1 REGS NMIGRATE:DEFINE ;] catch ;
 
-: MIGRATE-CALLING-RC ( -- n )
-   [: TRY-SRC @ TRY-U @ TRY-IN @ 1 REGS NMIGRATE:DEFINE-CALLING ;] catch ;
-
 \ Where a word's code starts, read off its own dictionary record. A name this
 \ image does not hold is refused rather than answered with an address, because
 \ every case below is about WHICH routine is branched to.
 : ENTRY-OF ( ptr u8 n -- n ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a u XREF-FIND dup XREF-FOUND? 0= if drop E-NMIGRATE-CALLEE throw then
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-NPUB-NAME throw then
    XREF-START ;
-
-\ The callee the calling cases branch to, staged from the dictionary so that what
-\ is refused is the body under test and never a missing routine.
-: CALLEE-AT ( ptr u8 n -- ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a u
-   a u ENTRY-OF 1 1 NMIGRATE:CALLEE ;
 
 \ Does this routine publish what it destroys? It is the one property the two
 \ callees below differ in, so it is measured off the record rather than argued
@@ -153,18 +144,6 @@ variable TRY-IN
 
 : TRY ( ptr u8 n n -- n )
    STAGE MIGRATE-RC ;
-
-\ WHICH ROUTINE A CASE BRANCHES TO IS ITS OWN TEXT'S ANSWER, NOT THIS STAGING'S,
-\ and it was measured rather than assumed: staging the chain's C-LONG-N under a
-\ body that names the engine's C-LONG changes no answer below, because
-\ DEFINE-CALLING resolves the body's names off the dictionary. What the staging
-\ is for is the entry's own precondition - a migration with no callee staged is
-\ refused - so one staged row serves every calling case here, and a case that
-\ wants the other compilation of the callee says so in its own source.
-: TRY-CALLING ( ptr u8 n n -- n )
-   STAGE
-   s" CODEGEN-CORPUS4:C-LONG-N" CALLEE-AT
-   MIGRATE-CALLING-RC ;
 
 \ ---- a body of N constants, written by counting rather than by hand ----------
 \ THE CASES BELOW STRADDLE THREE WALLS AND ONE OF THEM IS AT FORTY-FOUR, so the
@@ -288,7 +267,7 @@ variable SRC-U
    s" eight locals across a call with NO loop compile: the call is not it"
    T-LABEL
    s" : SP-SL8-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n :} seed CODEGEN-CORPUS4:C-LONG-N a + b + c + d + e + f + g + h + ;"
-   9 TRY-CALLING 0 T= ;
+   9 TRY 0 T= ;
 
 \ ---- what it IS: the crossing, measured by moving one thing ------------------
 \ The same eight locals, the same loop, the same call, the same budget. The only
@@ -305,11 +284,11 @@ variable SRC-U
 : CROSSING-CASES ( -- )
    s" eight locals read BEFORE a loop that calls compile" T-LABEL
    s" : SP-PRE8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} a b + c + d + e + f + g + h + seed + len 0 ?do CODEGEN-CORPUS4:C-LONG loop ;"
-   10 TRY-CALLING 0 T=
+   10 TRY 0 T=
 
    s" and read AFTER it they are refused: they had to travel" T-LABEL
    s" : SP-POST8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + g + h + ;"
-   10 TRY-CALLING E-A64RA-SPILL T= ;
+   10 TRY E-A64RA-SPILL T= ;
 
 \ ---- and what decides whether the crossing happens at all --------------------
 \ WHAT THE CASES ABOVE MEASURE IS THE PRICE OF TRAVELLING, AND THIS SECTION IS
@@ -349,15 +328,15 @@ variable SRC-U
 
    s" the refused body compiles against the callee that published one" T-LABEL
    s" : SP-CPOST8-N ( n n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + h + ;"
-   10 TRY-CALLING 0 T=
+   10 TRY 0 T=
 
    s" seven crossing the callee that published none are refused" T-LABEL
    s" : SP-EPOST7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + g + ;"
-   9 TRY-CALLING E-A64RA-SPILL T=
+   9 TRY E-A64RA-SPILL T=
 
    s" and six across it compile" T-LABEL
    s" : SP-EPOST6-N ( n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + ;"
-   8 TRY-CALLING 0 T= ;
+   8 TRY 0 T= ;
 
 \ ---- the wall a value that can be WRITTEN AGAIN moves ------------------------
 \ A CLASS WHOSE ONE VALUE WAS WRITTEN BY A MOVE-WIDE NEEDS NO FRAME SLOT, because

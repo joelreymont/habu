@@ -47,16 +47,12 @@
 \ where the second file is one call on the source in question. A refusal is
 \ caught either way, so a refused module is dumped exactly like an accepted one.
 \
-\   VERIFY-DUMP:REPORT          a body that calls nothing. It goes through
-\                               NMIGRATE:MEASURE-HELD, the census entry that runs
-\                               every stage and keeps nothing.
-\   VERIFY-DUMP:REPORT-CALLING  a body whose callees the caller has just staged
-\                               with NMIGRATE:CALLEE. MEASURE-HELD refuses a
-\                               staged callee list by name, so this goes through
-\                               the entry that consumes one - and that entry
-\                               PUBLISHES on success. Most data-stack findings
-\                               need this one: a residency finding needs a call
-\                               site to exist at all.
+\   VERIFY-DUMP:REPORT          any body, whether it calls or not. It goes
+\                               through NMIGRATE:MEASURE-HELD, the census entry
+\                               that runs every stage and keeps nothing: a body
+\                               that names another word has that name resolved
+\                               off the dictionary like any other, so a call
+\                               site needs nothing of the caller but the source.
 
 require lib/errors.f
 require lib/prelude.f
@@ -82,16 +78,6 @@ variable SRC-REGS
 \ dumped as many times as it takes without filling the address-keyed records.
 : RUN-RC ( -- n )
    [: SRC @ SRC-U @ SRC-IN @ SRC-OUT @ SRC-REGS @ NMIGRATE:MEASURE-HELD ;]
-   catch ;
-
-\ THE SAME FOR A BODY THAT CALLS SOMETHING, and it is a second entry rather than
-\ a flag because it is a different promise. MEASURE-HELD is the census entry and
-\ refuses a staged callee list by name; the entry that consumes one PUBLISHES on
-\ success, so a dump of a calling body leaves the word behind. That matters for
-\ this file's own subject: a data-stack residency finding needs a call site to
-\ exist at all, so the calling entry is the one most dumps go through.
-: RUN-CALLING-RC ( -- n )
-   [: SRC @ SRC-U @ SRC-IN @ SRC-OUT @ SRC-REGS @ NMIGRATE:DEFINE-CALLING ;]
    catch ;
 
 : LBL ( ptr u8 n -- )   type ;
@@ -198,15 +184,6 @@ public
    a SRC ! u SRC-U ! in SRC-IN ! out SRC-OUT ! regs SRC-REGS !
    HOOK-ON
    s" verify rc " RUN-RC SAY-N
-   A64RAV:DKEEP-HELD? 0= if s" verify judged no" LBL NL then ;
-
-\ The same for a body whose callees the caller has just staged with
-\ NMIGRATE:CALLEE. A successful dump publishes the word; a refused one does not.
-: REPORT-CALLING ( ptr u8 n n n n -- )
-   {: a:ptr u:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a SRC ! u SRC-U ! in SRC-IN ! out SRC-OUT ! regs SRC-REGS !
-   HOOK-ON
-   s" verify rc " RUN-CALLING-RC SAY-N
    A64RAV:DKEEP-HELD? 0= if s" verify judged no" LBL NL then ;
 
 ;package

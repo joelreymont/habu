@@ -107,12 +107,10 @@ private
    s" : T-AT-N ( ptr a n -- ptr a ) cells + ;" 2 1 REGS NMIGRATE:DEFINE ;
 
 : T-GET ( -- )
-   s" T-AT-N" s" CODEGEN-CORPUS3:T-AT-N" CODEGEN-COMPARE:CODE-ENTRY 2 1 NMIGRATE:CALLEE
-   s" : T-GET-N ( ptr a n -- r ) T-AT-N @ ;" 2 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : T-GET-N ( ptr a n -- r ) T-AT-N @ ;" 2 1 REGS NMIGRATE:DEFINE ;
 
 : T-SET ( -- )
-   s" T-AT-N" s" CODEGEN-CORPUS3:T-AT-N" CODEGEN-COMPARE:CODE-ENTRY 2 1 NMIGRATE:CALLEE
-   s" : T-SET-N ( r ptr a n -- ) T-AT-N ! ;" 3 0 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : T-SET-N ( r ptr a n -- ) T-AT-N ! ;" 3 0 REGS NMIGRATE:DEFINE ;
 
 \ ---- the five kernel rows ----------------------------------------------------
 \ WHAT THEY NEEDED THAT THE THREE ABOVE DID NOT. Every one of them carries a
@@ -135,39 +133,32 @@ private
 
 \ maki/array.f:16 through the corpus: the plain accumulation.
 : T-SUM ( -- )
-   s" T-GET-N" s" CODEGEN-CORPUS3:T-GET-N" CODEGEN-COMPARE:CODE-ENTRY 2 1 NMIGRATE:CALLEE
    s" : T-SUM-N ( ptr a n -- r ) {: base len :} 0.0  len 0 ?do  base i T-GET-N f+  loop ;"
-   2 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ maki/array.f:20 through the corpus: the in-place step, whose point is the
 \ stores. Both columns step the SAME weight buffer, so the head-to-head check is
 \ about the loads and the stores and not only about the arithmetic between them.
 : T-SGD ( -- )
-   s" T-GET-N" s" CODEGEN-CORPUS3:T-GET-N" CODEGEN-COMPARE:CODE-ENTRY 2 1 NMIGRATE:CALLEE
-   s" T-SET-N" s" CODEGEN-CORPUS3:T-SET-N" CODEGEN-COMPARE:CODE-ENTRY 3 0 NMIGRATE:CALLEE
    s" : T-SGD!-N ( r ptr a ptr a n -- ) {: lr wbase gbase len :} len 0 ?do wbase i T-GET-N lr gbase i T-GET-N f* f- wbase i T-SET-N loop ;"
-   4 0 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   4 0 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ maki/array.f:32 through the corpus: the two-pointer accumulation.
 : T-DIST2 ( -- )
-   s" T-GET-N" s" CODEGEN-CORPUS3:T-GET-N" CODEGEN-COMPARE:CODE-ENTRY 2 1 NMIGRATE:CALLEE
    s" : T-DIST2-N ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :} 0.0 len 0 ?do abase i T-GET-N bbase i T-GET-N f- dup f* f+ loop ;"
-   3 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   3 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ maki/array.f:39 through the corpus: the one-pointer square accumulation.
 : T-NORM2 ( -- )
-   s" T-GET-N" s" CODEGEN-CORPUS3:T-GET-N" CODEGEN-COMPARE:CODE-ENTRY 2 1 NMIGRATE:CALLEE
    s" : T-NORM2-N ( ptr a n -- r ) {: bbase:ptr len:n :} 0.0 len 0 ?do bbase i T-GET-N dup f* f+ loop ;"
-   2 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ maki/array.f:46 through the corpus: two accumulations, two square roots and a
 \ division, reached through two calls to two DIFFERENT words. It is the row that
 \ needed the migration to carry a list of callees rather than one.
 : T-REL-L2 ( -- )
-   s" T-DIST2-N" s" CODEGEN-CORPUS3:T-DIST2-N" CODEGEN-COMPARE:CODE-ENTRY 3 1 NMIGRATE:CALLEE
-   s" T-NORM2-N" s" CODEGEN-CORPUS3:T-NORM2-N" CODEGEN-COMPARE:CODE-ENTRY 2 1 NMIGRATE:CALLEE
    s" : T-REL-L2-N ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :} abase bbase len T-DIST2-N fsqrt bbase len T-NORM2-N fsqrt f/ ;"
-   3 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   3 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ ---- the two branch rows whose arms disagree about the class -----------------
 \ maki/autograd.f:23 through the corpus. Its two arms hand the join a DOUBLE and

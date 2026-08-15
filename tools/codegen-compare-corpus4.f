@@ -238,9 +238,9 @@ public
 \ That is the whole point of them: they are not rows and they are not measured,
 \ they are the thing the call rows call.
 \
-\ THEY ARE FOUR AND NOT FIVE because the migration entry stages at most four
-\ callees for one definition. CALL-FAN below therefore has five call SITES over
-\ these four, which is the same question about the same rule.
+\ THEY ARE FOUR AND CALL-FAN BELOW HAS FIVE SITES OVER THEM, which is what
+\ separates how many words a body names from how many times it calls: a repeated
+\ name is one callee and two sites, and the copying rule is asked at every site.
 : C-ADD1 ( n -- n ) 1 + ;
 : C-MUL2 ( n -- n ) 2 * ;
 : C-AND7 ( n -- n ) 7 and ;

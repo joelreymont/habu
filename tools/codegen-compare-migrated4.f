@@ -111,40 +111,30 @@ private
 \ of tools/codegen-compare-corpus4.f is about: the engine's code for this body
 \ contains no call instruction at all and the chain's contains five.
 : CALL-FAN ( -- )
-   s" C-ADD1-N" s" CODEGEN-CORPUS4:C-ADD1-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-MUL2-N" s" CODEGEN-CORPUS4:C-MUL2-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-AND7-N" s" CODEGEN-CORPUS4:C-AND7-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-XOR5-N" s" CODEGEN-CORPUS4:C-XOR5-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : CALL-FAN-N ( n -- n ) C-ADD1-N C-MUL2-N C-AND7-N C-XOR5-N C-ADD1-N ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ Five sites over the callee the engine calls and the chain copies.
 : CALL-FAN-BIG ( -- )
-   s" C-MAD-N" s" CODEGEN-CORPUS4:C-MAD-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : CALL-FAN-BIG-N ( n -- n ) C-MAD-N C-MAD-N C-MAD-N C-MAD-N C-MAD-N ;"
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   1 1 REGS NMIGRATE:DEFINE ;
 
 \ Three calls a turn with three locals live across the loop and read after it.
 : CALL-LOOP-3 ( -- )
-   s" C-ADD1-N" s" CODEGEN-CORPUS4:C-ADD1-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-MUL2-N" s" CODEGEN-CORPUS4:C-MUL2-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
-   s" C-XOR5-N" s" CODEGEN-CORPUS4:C-XOR5-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : CALL-LOOP-3-N ( n n n n n -- n ) {: a:n b:n c:n seed:n len:n :} seed len 0 ?do C-ADD1-N C-MUL2-N C-XOR5-N loop a + b + c + ;"
-   5 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   5 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ Four calls a turn and nothing else in the body.
 : TINY-CALLEE ( -- )
-   s" C-ADD1-N" s" CODEGEN-CORPUS4:C-ADD1-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : TINY-CALLEE-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do C-ADD1-N C-ADD1-N C-ADD1-N C-ADD1-N loop ;"
-   2 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   2 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ Eight values live across a call the loop really makes, read only after it: the
 \ seven locals and the trip count. The callee is C-LONG-N, which neither
 \ generator copies.
 : CALL-PRESSURE ( -- )
-   s" C-LONG-N" s" CODEGEN-CORPUS4:C-LONG-N" CODEGEN-COMPARE:CODE-ENTRY 1 1 NMIGRATE:CALLEE
    s" : CALL-PRESSURE-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do C-LONG-N loop a + b + c + d + e + f + g + len + ;"
-   9 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   9 1 LOOP-REGS NMIGRATE:DEFINE ;
 
 \ ---- the two straight-line rows -----------------------------------------------
 

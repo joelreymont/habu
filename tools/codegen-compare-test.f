@@ -1841,13 +1841,6 @@ variable TRY-REGS
    a TRY-SRC ! u TRY-U ! in TRY-IN ! regs TRY-REGS !
    MIGRATE-RC ;
 
-\ The same for a body that CALLS, with the callee staged first. A migration
-\ clears its staged callees whether it succeeded or was refused
-\ (src/compiler/native/migrate.f, RUN), so a refusal here leaves nothing behind
-\ for the cases after it.
-: MIGRATE-CALLING-RC ( -- n )
-   [: TRY-SRC @ TRY-U @ TRY-IN @ 1 TRY-REGS @ NMIGRATE:DEFINE-CALLING ;] catch ;
-
 \ The corpus's PRESSURE-LOOP body, character for character.
 : SPILL-14$ ( -- ptr u8 n )
    s" : PRESSURE-LOOP-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;" ;
@@ -1900,45 +1893,6 @@ variable TRY-REGS
 : SPILL-CALL-7-ENG$ ( -- ptr u8 n )
    s" : CALL-PRESSURE-E7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + ;" ;
 
-\ One staged callee, named the way a migrated body would spell it and addressed
-\ off its own dictionary record.
-: CALLEE-AT ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u
-   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then
-   XREF-START 1 1 NMIGRATE:CALLEE ;
-
-\ A calling body tried against the callee the corpus's own gap row calls. The
-\ callee is the chain's published C-LONG-N, so a refusal is about the body and
-\ not about a routine the chain has never seen.
-: TRY-CALLING ( ptr u8 n n n -- n ) {: a:ptr u:n in:n regs:n :}
-   a TRY-SRC ! u TRY-U ! in TRY-IN ! regs TRY-REGS !
-   s" CODEGEN-CORPUS4:C-LONG-N" CALLEE-AT
-   MIGRATE-CALLING-RC ;
-
-\ Stage a fifth callee for one definition. The entry holds four
-\ (src/compiler/native/migrate.f, `4 constant CALLEES-MAX`), so the fifth staging
-\ is the refusal and nothing after it runs.
-: STAGE-FIVE ( -- )
-   s" CODEGEN-CORPUS4:C-ADD1-N" CALLEE-AT
-   s" CODEGEN-CORPUS4:C-MUL2-N" CALLEE-AT
-   s" CODEGEN-CORPUS4:C-AND7-N" CALLEE-AT
-   s" CODEGEN-CORPUS4:C-XOR5-N" CALLEE-AT
-   s" CODEGEN-CORPUS4:C-ADD1-N" CALLEE-AT ;
-
-\ The four rows the refused fifth left staged belong to the next migration
-\ whatever happens, so they are spent here on a real one rather than left for some
-\ later caller to be refused for. It is also the other half of the claim: four is
-\ a ceiling because four WORK.
-: SPEND-FOUR ( -- )
-   s" : FAN-CEILING-N ( n -- n ) CODEGEN-CORPUS4:C-ADD1-N CODEGEN-CORPUS4:C-MUL2-N CODEGEN-CORPUS4:C-AND7-N CODEGEN-CORPUS4:C-XOR5-N ;"
-   1 1 8 NMIGRATE:DEFINE-CALLING ;
-
-: FIVE-RC ( -- n )
-   [: STAGE-FIVE ;] catch ;
-
-: SPEND-RC ( -- n )
-   [: SPEND-FOUR ;] catch ;
-
 : REFUSAL-CASES ( -- )
    s" the corpus's own pressure loop compiles at the largest register pool" T-LABEL
    SPILL-14$ 2 18 TRY 0 T=
@@ -1950,25 +1904,19 @@ variable TRY-REGS
    SPILL-16$ 2 18 TRY E-A64RA-SPILL T=
 
    s" the corpus's own call-pressure loop compiles at the same pool" T-LABEL
-   SPILL-CALL-8$ 9 18 TRY-CALLING 0 T=
+   SPILL-CALL-8$ 9 18 TRY 0 T=
 
    s" and against a callee that published nothing the same text is refused" T-LABEL
-   SPILL-CALL-8-ENG$ 9 18 TRY-CALLING E-A64RA-SPILL T=
+   SPILL-CALL-8-ENG$ 9 18 TRY E-A64RA-SPILL T=
 
    s" and it is the seventh live value there and not the budget: six compiles" T-LABEL
-   SPILL-CALL-7-ENG$ 9 18 TRY-CALLING 0 T=
+   SPILL-CALL-7-ENG$ 9 18 TRY 0 T=
 
    s" a routine of eleven arguments is refused by the place list" T-LABEL
    WIDE-11$ 11 18 TRY E-A64EFF-SEQ T=
 
    s" and ten, which is what it holds, is not" T-LABEL
-   WIDE-10$ 10 18 TRY 0 T=
-
-   s" a fifth callee staged for one definition is refused" T-LABEL
-   FIVE-RC E-NMIGRATE-STATE T=
-
-   s" and the four the refusal left staged make a definition that compiles" T-LABEL
-   SPEND-RC 0 T= ;
+   WIDE-10$ 10 18 TRY 0 T= ;
 
 \ ---- the cost assertions, which are not scheduled ----------------------------
 \ Everything below turns on a wall clock, so nothing below is reached from MAIN.
