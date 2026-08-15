@@ -1,6 +1,12 @@
 \ srclist.f - emit canonical compiler source order.
 
 require tools/stdin-closure-lib.f
+\ the manifest is the one place a stdin-closure path lives; read its names bare.
+using STDIN-CLOSURE
+
+\ SL- words are this tool's own; nothing outside the file names one, so the
+\ package publishes nothing and SRCLIST-MAIN runs inside it.
+package SRCLIST
 
 64 constant SL-USAGE-RC
 
@@ -75,7 +81,9 @@ variable SL-DRIVER-U
    s" src/habu/layout.f src/habu/treeshake.f src/habu/rt.f src/habu/crash.f " type
    SL-TARGET-IMAGE
    s" src/habu/habu1.f src/habu/prof.f src/habu/regalloc.f " type
-   s" src/habu/jit.f src/habu/engine-size.f src/habu/habu2.f src/habu/xref.f " type
+   s" src/habu/jit.f src/habu/engine-size.f " type
+   SDC-DECL$ type space
+   s" src/habu/habu2.f src/habu/xref.f " type
    s" src/os/script-argv.f " type
    s" src/habu/driver-io.f " type ;
 
@@ -101,3 +109,5 @@ variable SL-DRIVER-U
    cr ;
 
 SRCLIST-MAIN
+
+;package

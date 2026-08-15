@@ -5,6 +5,12 @@
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
+\ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
+\ loaded immediately before this file so a capture running in bin/hb and this
+\ emitter share one declaration of the format. The import spans the file - the
+\ seed emitters at the end read the buffers, the relocation emitters near the top
+\ read the window - and closes beside the A64ASM one.
+using AOT-BUF
 
 \ ---- literal emitters: scalars vs relocatable addresses ---------------------------
 \ A relocatable address must never be emitted through the scalar path. Scalars use the
@@ -144,29 +150,6 @@ variable LADDRSITE  \ record the chain about to be emitted at CP as an address l
 \ pass reads them with one shift rather than a mask-and-compare against a 64-bit
 \ literal.
 $25 constant BL-OP-HI
-
-\ The shape of the four-instruction address chain habu2.f C-ADDR-RAW emits, as the
-\ relocation pass has to read it back. ADDR-OPC-MASK keeps everything in a MOVZ or
-\ MOVK word except its 16-bit immediate, so masking a site word leaves the opcode,
-\ the shift and the destination register to compare. ADDR-IMM-MASK is that
-\ immediate once it has been shifted down by five, and ADDR-CHAIN-BYTES is the
-\ whole chain.
-\ W-MOVZ0/W-MOVK1/W-MOVK2/W-MOVK3 all name x9, because that is the register the ONE
-\ carrier C-ADDR-RAW writes into, but they are not the only chains that reach the
-\ map: a chain the native compiler emits names whichever register its allocator
-\ chose. So the pass takes the register from the SITE's own first word and requires
-\ the other three lanes to name that same one. ADDR-RD-MASK is the destination-
-\ register field of a move-wide word and ADDR-RD-BITS its width, so shifting a
-\ scaffold down by that width and back clears the register out of it and leaves the
-\ opcode and the shift, which is what the site's register is then put back into.
-\ Accepting any register without the agreement requirement would accept four words
-\ that name four different registers, whose four immediates spell out no address at
-\ all; formal/Common/Reloc.v states both halves.
-$FFE0001F constant ADDR-OPC-MASK
-$FFFF constant ADDR-IMM-MASK
-16 constant ADDR-CHAIN-BYTES
-$1F constant ADDR-RD-MASK
-5 constant ADDR-RD-BITS
 
 \ Emit "declare the engine cell at OFFSET as holding a region address". The three
 \ engine hook cells are named this way at cold boot; the dispatch cell of a
@@ -8261,203 +8244,6 @@ public
 
 ;package
 
-\ ---- AOT M2: N-word capture buffers (host-only build scratch; `allot` DATA, NOT
-\ baked into bin/hb). aot-capture.f fills them from the metabuild host's compiled
-\ words; EMIT-AOT-SEED bakes blob + N dict records + a call-site relocation table
-\ (site blob-offset -> callee dict NAME); EM-SEED-AOT copies/registers/relocates at
-\ boot. Site rows and dict records are stored as cells here for @/! access; the bake
-\ packs sites to u32 triples.
-\
-\ EVERY OFFSET IN THE BAKED FORMAT IS A u32, and the capacities below are what
-\ makes that the only bound worth stating. The format was u16 throughout, which
-\ put a hard 64 KiB ceiling on a captured blob; the compiler chain this seed
-\ exists to carry measures 1.15 MiB, so the ceiling was the format's, not the
-\ engine's. Widening the fields alone would have moved the wall to the buffers,
-\ so the two travel together: each cap below is sized past the chain's measured
-\ demand and every one of them is far below 2^32, which is why no field needs a
-\ range check of its own -- the buffer's own overflow refusal is the bound, and
-\ it is named and fail-closed.
-\ Host cost: these are `allot`ed in the METABUILD HOST's DATA (never in bin/hb),
-\ where a full metabuild reaches DP = 10,034,713 bytes measured on 2026-08-12.
-\ The buffers below add ~4.6 MiB, which leaves ~17 MiB of headroom on the
-\ smaller of the two targets (Linux DATA-SIZE 32 MiB).
-$200000 constant AOT-BLOB-CAP     \ 2 MiB: the chain's 1.15 MiB of code with room to grow
-create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
-\ 16384: the chain needs ~6554 records, and DICT-CAP (32768) is the absolute
-\ ceiling a capture window can reach, since the window is a dictionary subrange.
-16384 constant AOT-REC-MAX
-\ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
-\   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)
-\   [MAX*48 .. +MAX*CREC-ROW)  compact 20B records (three u32 role/code/name fields + metadata + wid)
-\   [+MAX*CREC-ROW .. +48)     48B scratch for the build-time expand==verbatim proof
-create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + 48 + allot    variable AOT-REC-N
-\ 32768 call sites: the metabuild window carries one BL site per 83 blob bytes,
-\ so the chain's 1.15 MiB projects to ~14k sites.
-32768 constant AOT-SITE-MAX
-create AOT-SITE-BUF AOT-SITE-MAX 8 * allot    variable AOT-SITE-N   \ packed 8B rows: blob-off u32 + name-off u32
-create AOT-NAMES-BUF AOT-NAMES-CAP allot    variable AOT-NAMES-LEN
-\ DATA-literal relocation table (third relocation class): blob offsets of the
-\ movz/movk x9 DATA-address literals (create/variable buffer refs). AOT-DATA-D0 =
-\ the capture engine's REPL-DATA base (abs); AOT-DATA-SIZE = the REPL DATA span
-\ (all allot/variable => zero content). EM-SEED-AOT reserves DATA and rebases each
-\ literal by (seed-DP - AOT-DATA-D0).
-\ 16384 shared rows: the metabuild window records one address chain per 127 blob
-\ bytes, so the chain's 1.15 MiB projects to ~9k DATA plus CODE sites together.
-16384 constant AOT-DSITE-MAX
-create AOT-DSITE-BUF AOT-DSITE-MAX 4 * allot    variable AOT-DSITE-N   \ packed u32 blob offsets (DATA then CODE)
-variable AOT-DATA-D0    variable AOT-DATA-SIZE
-\ The window's DATA CONTENT, and the offsets the seed must not take from it.
-\ Reserving the span zeroed was right only while every byte in it was zero. It is
-\ not: the REPL sources put real bytes there - a TRUST row's name and signature
-\ are `s"` literals interned into DP - and those arrived in the seeded engine as
-\ zeros. So the span travels as bytes, sized by AOT-DATA-SIZE (one authority for
-\ the length; the buffer never carries more than the span).
-\ A DECLARED ADDRESS CELL IS THE ONE THING THE BYTES MAY NOT CARRY. `defer` in the
-\ window allots a dispatch cell and registers it (SNAP-RELOC's XTCELL table), and
-\ what it holds is a code address in the BUILDING host - ASLR-varying on macOS.
-\ Baking that would make the image depend on the run that built it and the byte
-\ fixpoint would never close, which is the same reason the code literals are
-\ stored b0-relative. Those cells are therefore zeroed in the image and their
-\ offsets listed here; EM-AOT-RELOC-DATA stores the seeded engine's own
-\ `defer-unset` trap xt into each one at boot. The offsets are u32, so the window
-\ they index is bounded by DATA-CAP alone.
-package AOT-WINDOW
-public
-$100000 constant DATA-CAP        \ 1 MiB; the metabuild REPL window measures 5724 bytes
-create DATA-BUF DATA-CAP allot
-4096 constant XTOFF-MAX          \ declared address cells in the window (metabuild REPL: 1)
-create XTOFF-BUF XTOFF-MAX 4 * allot    variable XTOFF-N   \ packed u32 window offsets
-;package
-\ CODE-literal relocation table (fourth relocation class): blob offsets of the
-\ movz/movk x9 literals whose value lands in the captured code range [B0,B1) --
-\ anonymous quotation-body entry addresses (J-SEMIQUOT `C-CODE-ADDR QENT`). Rebased by
-\ the code delta (seedCP - captureB0); no name (quotations are anonymous). Stored in
-\ the DATA-site buffer right after the AOT-DSITE-N DATA offsets (one fewer scratch
-\ view), and baked as its own contiguous LAOTCSITES section.
-variable AOT-CSITE-N
-variable AOT-CODE-B0
-\ NAMED code sites (fifth relocation class): blob offsets of movz/movk literals
-\ whose value is the ENTRY OF A WORD, paired with that word's name in the pool.
-\ The seed LFINDs the name in the engine it is booting and writes the xt into the
-\ four immediate lanes -- the same answer the call-site table gets for a BL, for a
-\ site that is not a BL. A capture stores 0 in the lanes, so the baked blob carries
-\ no host address and the patch is the only thing that can put a real one there.
-\ WHY THIS EXISTS BEFORE ITS PRODUCER. A code literal that names a PRE-WINDOW word
-\ cannot be rebased: its correct value is fixed by the prefix's own layout and
-\ differs between the metabuild host and bin/hb, which is why ACAP-SCAN-DSITES
-\ still refuses one. Resolving it by name is the answer, and the row is the format
-\ half of that answer; the pass that decides WHICH sites become named rows is the
-\ inliner-decline work, dot habu-aot-pre-window-0b01043c. The format is baked into
-\ the engine, so it migrates once - a row kind added later is a second migration
-\ of every baked-code route. In-window code literals stay b0-relative: rebasing
-\ them is correct and costs no lookup.
-package AOT-XTSITE
-public
-16384 constant MAX
-create BUF MAX 8 * allot    variable N   \ 8B rows: blob-off u32 + name-off u32
-;package
-\ boot-run name list: 0-terminated [len][name-bytes] records of the top-level entry
-\ words (INSTALL/BPW-INSTALL/S-INSTALL) the metabuild ran at the tail of the REPL
-\ source. With the source dropped, EM-SEED-AOT LFINDs + calls each after RX/flush so
-\ the seeded engine installs the REPL with no embedded source.
-\ THIS LIST RUNS ON EVERY BOOT, and it used to run on one. The seed fires at the
-\ end of the engine prefix stream (EM-COMPILE-EXIT, LEX0) whatever the mode is, so
-\ a piped program, a `--load` tool run and a tty REPL all reach their first user
-\ token with the blob copied, the records registered and this list walked. The
-\ entry words self-guard - INSTALL asks TTY? before installing a REPL - so a batch
-\ boot runs them and gets no REPL, which is a different thing from not running
-\ them. The old contract was the opposite (armed at the interactive REPL entry and
-\ nowhere else, dot habu-decide-arm-the-5234727b), which is why anything written
-\ before 2026-08-14 that says a captured word is missing from a batch dictionary,
-\ or that observing the seed needs a tty, is describing the retired shape.
-$400 constant AOT-BOOTRUN-CAP
-create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
-
-\ protected-WID registry AOT image (TFAM 2b-v): a bit-for-bit image of the live
-\ friend-arena bitmap, baked so EMIT-AOT-PROT-RESTORE can restore it at boot --
-\ advancing WIDN past the highest restored WID so a post-restore wordlist alloc
-\ cannot collide with a protected one. The blob is a fixed PROT-BITS-BYTES image of
-\ a SET, so it does not depend on the order the writing run protected its WIDs. It
-\ is always emitted at full width, which is what lets the shape tag in front of it
-\ be the frame's version.
-create AOT-PWID-BUF PROT-BITS-BYTES allot
-
-\ Raw emitter-boundary views (same pattern as SRCA@): expose the build-scratch
-\ buffers as `ptr` for the checked copy/BYTES, sites below.
-\ The blob, record, site, name, relocation, and boot-run accessors refine their
-\ respective scratch buffers.
-: AOT-BLOB-BUF@ ( -- ptr u8 ) AOT-BLOB-BUF ;
-s" AOT-BLOB-BUF@" s" -- ptr u8" TRUST
-: AOT-REC-BUF@ ( -- ptr a ) AOT-REC-BUF ;
-s" AOT-REC-BUF@" s" -- ptr a" TRUST
-: AOT-SITE-BUF@ ( -- ptr u8 ) AOT-SITE-BUF ;
-s" AOT-SITE-BUF@" s" -- ptr u8" TRUST
-: AOT-NAMES-BUF@ ( -- ptr u8 ) AOT-NAMES-BUF ;
-s" AOT-NAMES-BUF@" s" -- ptr u8" TRUST
-: AOT-DSITE-BUF@ ( -- ptr u8 ) AOT-DSITE-BUF ;
-s" AOT-DSITE-BUF@" s" -- ptr u8" TRUST
-package AOT-XTSITE
-public
-: BUF@ ( -- ptr u8 ) BUF ;
-s" AOT-XTSITE:BUF@" s" -- ptr u8" TRUST
-;package
-package AOT-WINDOW
-public
-: DATA-BUF@ ( -- ptr u8 ) DATA-BUF ;
-s" AOT-WINDOW:DATA-BUF@" s" -- ptr u8" TRUST
-: XTOFF-BUF@ ( -- ptr u8 ) XTOFF-BUF ;
-s" AOT-WINDOW:XTOFF-BUF@" s" -- ptr u8" TRUST
-;package
-: AOT-BOOTRUN-BUF@ ( -- ptr u8 ) AOT-BOOTRUN-BUF ;
-s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
-\ Retirement for the six accessors above: habu-builder-trust-rows-c5d41af6.
-: AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
-s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
-
-\ ---- how much window the AOT section can ask for --------------------------
-\ THE THIRD TERM OF THE CODE WINDOW IS OWNED HERE, because the buffers are here.
-\ src/arch/arm64/icode.f sizes CODE-CAP-BYTES as ADR-HI + IBUFSZ +
-\ AOT-SECTION-CAP and cannot see any of these caps -- it is compiled first, and
-\ the recovery host reads it first too. So the sum is derived here from the
-\ buffers themselves and the agreement is EXECUTED at load, in every build and
-\ every recovery compile: raising a cap without the window stops the build
-\ instead of shipping an emitter whose buffer cannot hold what it may bake. That
-\ is the shape src/habu/rt.f RT:DSTACK-AGREE already uses for mnem.f's XDS and
-\ layout.f's ENGINE-GPR:DSTACK.
-\ The rounding is the section's headroom for what is not a buffer: the twelve
-\ count cells that head the tables and the pad each BYTES, run takes to the next
-\ 4-byte boundary, at most a couple of hundred bytes against 46 KiB of grain. It
-\ is a belt in any case -- a section that outgrew this would be refused by the
-\ emitter's own `icode: code buffer overflow`, and each buffer refuses on its own
-\ overflow long before that.
-package AOT-SECTION
-
-public
-
-$10000 constant GRAIN                              \ 64 KiB, the largest target page
-AOT-BLOB-CAP
-AOT-REC-MAX AOT-CREC-ROW * +                       \ compact dictionary records
-AOT-SITE-MAX 8 * +                                 \ call-site rows
-AOT-NAMES-CAP +                                    \ deduped name pool
-AOT-DSITE-MAX 4 * +                                \ DATA-literal sites
-AOT-DSITE-MAX 4 * +                                \ CODE-literal sites (same buffer's tail)
-AOT-WINDOW:XTOFF-MAX 4 * +                         \ declared address cells in the window
-AOT-WINDOW:DATA-CAP +                              \ the captured DATA window's content
-AOT-XTSITE:MAX 8 * +                               \ named code-literal rows
-AOT-BOOTRUN-CAP 1 + +                              \ +1 = the live 0 terminator
-PROT-BITS-BYTES +                                  \ protected-WID bitmap image
-GRAIN 1 - + GRAIN / GRAIN *
-constant BYTES
-
-private
-
-: AGREE ( -- )
-   BYTES AOT-SECTION-CAP <>
-   if s" habu2: AOT section caps and icode.f AOT-SECTION-CAP disagree" ICODE-EXIT-RC die then ;
-AGREE
-
-;package
-
 \ Bake the AOT section: blob length + blob, record count + N compact AOT-CREC-ROW
 \ records (blob-relative code span, name-pool reference, flags, wid), call-site
 \ count + M 8-byte rows (blob-off u32, name-off u32), then the name pool and the
@@ -8641,5 +8427,6 @@ public
    ;
 ;package
 
+;using
 ;using
 ;using

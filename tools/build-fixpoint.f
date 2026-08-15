@@ -10,6 +10,8 @@
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require src/habu/verify-source.f
 require tools/stdin-closure-lib.f
+\ the manifest is the one place a stdin-closure path lives; read its names bare.
+using STDIN-CLOSURE
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
@@ -900,6 +902,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
+   out outu SDC-DECL$ BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
@@ -1011,6 +1014,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
+   out outu SDC-DECL$ BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;
 

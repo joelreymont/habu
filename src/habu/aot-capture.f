@@ -2,7 +2,7 @@
 \
 \ Scans the metabuild host's freshly-compiled words for inter-word call sites
 \ (one direct `BL imm26` each, habu2.f LCEMITBL), reverse-looks-up each callee's
-\ dict NAME, and builds the four AOT buffers (habu2.f) that EMIT-AOT-SEED bakes
+\ dict NAME, and builds the four AOT buffers (src/habu/aot-decl.f) that EMIT-AOT-SEED bakes
 \ into bin/hb: a code blob, N dict records (xt/end blob-relative, inline name),
 \ a call-site relocation table (blob-offset -> callee name-pool ref), and a name
 \ pool. At boot EM-SEED-AOT copies the blob, registers the records, and re-encodes
@@ -19,6 +19,11 @@
 \ the checked build stays fail-closed through the image writer).
 
 package AOT-CAPTURE
+
+\ The buffers this file fills are package AOT-BUF's public surface
+\ (src/habu/aot-decl.f), read here by their bare names; the import closes with
+\ the package.
+using AOT-BUF
 
 \ --- raw dict/code boundary casts (host build-time only). AOT-DBASE names only
 \ the dictionary record region; live engine registries are under AOT-LIVE-DATA. ---

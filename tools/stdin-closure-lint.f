@@ -16,6 +16,11 @@ require lib/errors.f
 require lib/string.f
 require lib/fs.f
 require tools/stdin-closure-lib.f
+using STDIN-CLOSURE
+
+\ Everything below is this tool's own vocabulary - nothing outside the file
+\ names an SDCL word - so the package publishes nothing.
+package STDIN-CLOSURE-LINT
 
 $40000 constant SDCL-CAP
 $80 constant SDCL-NAME-CAP
@@ -62,12 +67,14 @@ variable SDCL-BAD
    s" tools/build-fixpoint.f" SDCL-CONSUMER!
    s" SDC-INCLUDE$" SDCL-NEED
    s" SDC-AOT$" SDCL-NEED
+   s" SDC-DECL$" SDCL-NEED
    s" SDC-DRIVER$" SDCL-NEED ;
 
 \ srclist names the stdin metabuild-host closure through the same accessors.
 : SDCL-CHECK-SRCLIST ( -- )
    s" tools/srclist.f" SDCL-CONSUMER!
    s" SDC-AOT$" SDCL-NEED
+   s" SDC-DECL$" SDCL-NEED
    s" SDC-DRIVER$" SDCL-NEED
    s" src/habu/driver-io.f" SDCL-NEED ;
 
@@ -108,3 +115,5 @@ variable SDCL-BAD
 
 SDCL-SELFTEST
 SDCL-LINT
+
+;package
