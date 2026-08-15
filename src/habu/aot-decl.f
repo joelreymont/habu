@@ -117,7 +117,13 @@ variable AOT-DATA-D0    variable AOT-DATA-SIZE
 
 package AOT-WINDOW
 public
-$100000 constant DATA-CAP        \ 1 MiB; the metabuild REPL window measures 5724 bytes
+\ 2 MiB, and the term that made it move: the compiler chain's window measures
+\ 1,531,272 DATA bytes, so the 1 MiB this held refused the chain outright ("DATA
+\ window exceeds the AOT data buffer"). The metabuild REPL window that sized the
+\ old cap measures 5724. Raising it raises AOT-SECTION:BYTES by the same $100000,
+\ which is why icode.f AOT-SECTION-CAP and CODE-CAP-BYTES move with it and why
+\ AGREE below is executed rather than commented: the three are one number.
+$200000 constant DATA-CAP
 create DATA-BUF DATA-CAP allot
 4096 constant XTOFF-MAX          \ declared address cells in the window (metabuild REPL: 1)
 create XTOFF-BUF XTOFF-MAX 4 * allot    variable XTOFF-N   \ packed u32 window offsets

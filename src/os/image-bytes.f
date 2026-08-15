@@ -26,7 +26,18 @@
 \ window, so it grew with it), the whole image is $9171D4, rounding gives
 \ $920000 and the margin gives $930000. The ELF side at this window is
 \ $901000 + $C0, far below it. Both writers still assert their own sum at load.
-$930000 constant MSIZE
+\
+\ RE-DERIVED 2026-08-15 for the $A00000 code window (dot
+\ habu-seed-the-chain-e98b03d4, which lifted AOT-WINDOW:DATA-CAP to $200000 so
+\ the compiler chain's 1,531,272 DATA bytes fit; AOT-SECTION-CAP and
+\ CODE-CAP-BYTES move with it, and src/habu/aot-decl.f AGREE executes that).
+\ Third time by the same method and the same margin: MPAGE is $A01000, the
+\ Mach-O tail is $4000 + 104 + a $1416C signature bound (again a function of the
+\ window), the whole image is $A191D4, rounding gives $A20000 and the margin
+\ gives $A30000. The ELF side at this window is $A01000 + $C0, far below it.
+\ Both writers still assert their own sum at load, so this line is a claim the
+\ build checks rather than one it takes.
+$A30000 constant MSIZE
 $1002 constant M-MAP-PRIVATE-ANON
 75 constant M-BOUNDS-RC
 variable MBUF-A
