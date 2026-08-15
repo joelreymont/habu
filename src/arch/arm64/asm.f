@@ -1,74 +1,36 @@
-\ asm.fs — ARM64 instruction encoders in the STANDALONE's Forth (operands -> u32).
-\ Hex constants preserve the bit layout used by the native engine builder.
-\ The standalone encodes ARM64 directly instead of relying on baked host output.
+\ asm.f — ARM64 instruction encoders, package A64ASM (operands -> u32).
+\ Hex constants preserve the bit layout the native engine builder uses.
 \
-\ Every encoder refuses an operand that does not fit its field, and every
-\ encoder that divides a byte operand by an access scale refuses a value that
-\ division would round down. Both refusals happen BEFORE any bit is packed, so
-\ a bad operand ends the process with a diagnostic instead of running into the
-\ neighbouring field and emitting a different instruction. The two operands
-\ this file does not bound are bounded by the layer that computes them: a
-\ branch or ADR displacement is a label distance, and src/arch/arm64/icode.f
-\ checks its reach (?REL26, ?REL19, ?ADR) before handing it over, in words for
-\ a branch and in bytes for ADR — which its word-counting position also makes
-\ a multiple of four by construction.
-\
-\ Package A64ASM. The public surface is the encoders themselves, the two
-\ operand conversions a caller has to make before one of them will take its
-\ operand (SCALE/ and >LIMM, plus the LIMM? question a pass asks to decide
-\ whether the immediate form exists at all), the condition-code vocabulary of
-\ the field ?COND bounds, and the field widths another layer pins its own copy
-\ against. Everything the encoders are BUILT from — the operand screens, the
-\ scratch cells, the bit-layout stencils and the logical-immediate packer — is
-\ private, so the names this file used to hand every program are 108 published
-\ encoders and conversions plus 69 that no longer leave the file at all.
+\ Every encoder screens its operand BEFORE packing a bit, so a bad operand dies
+\ instead of overflowing the neighbouring field; branch and ADR displacements
+\ are the exception, bounded by src/arch/arm64/icode.f (?REL26/?REL19/?ADR).
 
 package A64ASM
 
-\ The module's own word mask and the status every refusal below exits with.
 $FFFFFFFF constant ARM64-W32
 
 : MSK ( n -- n ) ARM64-W32 and ;
 
-\ Every refusal in this file ends the process with this status, the same code
-\ the label and branch layer in icode.fs reports, so one status means "the
-\ assembler refused to encode that" wherever the refusal came from.
+\ Every refusal in this file exits with this status, and so does the label and
+\ branch layer in src/arch/arm64/icode.f.
 72 constant ASM-EXIT-RC
 
 public
 
-\ Operand bounds, one per kind of field, each derived from the WIDTH of the
-\ field the encoder drops the operand into: an unsigned field of w bits holds
-\ 0 .. 2^w - 1. They are written here once, so no encoder carries a bound of
-\ its own and no bound can drift from the field it describes. Each one is an
-\ independent fact about one field, so the table is split by who reads it: the
-\ five below are published because a layer that must not exceed a field pins
-\ its own copy against them, and the three in the private section have no
-\ reader outside this file. Publishing one is moving its line.
 1  5 lshift constant REG-LIM     \ Rd/Rn/Rm/Rt register number
 1 16 lshift constant IMM16-LIM   \ move-wide immediate, SVC number
 1 12 lshift constant IMM12-LIM   \ add/sub/compare immediate, load/store offset field
 1  4 lshift constant COND-LIM    \ condition code
 1  2 lshift constant HW-LIM      \ move-wide shifted-half selector
 
-\ Its bits, once the bound has been made: the field is nine bits wide and sits
-\ at bit twelve, so a negative offset is its two's complement in those nine bits.
+\ Nine bits at bit twelve, so a negative offset is its two's complement there.
 1 9 lshift 1 - constant SIMM9-MASK
 12 constant SIMM9-SHIFT
 
-\ x18 is Darwin platform-reserved: XNU zeroes it on any synchronous trap
-\ return (page fault included), so emitted code must never hold live state
-\ there. Fail closed at encode time for every X-register operand field.
+\ x18 is Darwin platform-reserved: XNU zeroes it on any synchronous trap return,
+\ so emitted code must never hold live state there. Fail closed at encode time.
 18 constant ARM-RESERVED-REG
 
-\ The vocabulary of that four-bit field, in the architecture's own order. It
-\ lives beside the field it fills, so a caller that needs "less than" names the
-\ condition rather than writing 11, and there is one place that says which
-\ number each condition is. src/arch/arm64/mnem.f used to carry a second copy;
-\ it now loads after this file and reads these. Unlike the bounds table above
-\ this is one closed enumeration of one field rather than a list of separate
-\ facts, so it is published whole: a vocabulary missing three of its words
-\ would say the field cannot hold them.
  0 constant C-EQ   1 constant C-NE   2 constant C-CS   3 constant C-CC
  4 constant C-MI   5 constant C-PL   6 constant C-VS   7 constant C-VC
  8 constant C-HI   9 constant C-LS  10 constant C-GE  11 constant C-LT
@@ -76,14 +38,11 @@ public
 
 private
 
-\ The three bounds of that same table no caller outside this file reads: the
-\ logical-immediate packing, the register shift amount and the vector lane.
 1 13 lshift constant NIS-LIM     \ packed N:immr:imms of a logical immediate
 1  6 lshift constant SHIFT-LIM   \ shift amount for a 64-bit register
 1  3 lshift constant LANEH-LIM   \ which 16-bit lane of a vector UMOV reads
 
-\ True when v does not fit the unsigned field that holds 0 .. lim-1. Every
-\ bound below is this one test; only the limit and the diagnostic differ.
+\ True when v is outside the unsigned field that holds 0 .. lim-1.
 : OUT? ( n n -- bool )  swap dup 0 < swap rot >= or ;
 
 : ?REG ( n -- n )
@@ -101,11 +60,7 @@ private
 : ?SHIFT ( n -- n )
    dup SHIFT-LIM OUT? IF s" asm: shift amount out of range" ASM-EXIT-RC die THEN ;
 
-\ The unscaled load/store offset field: nine bits read as a signed number, so it
-\ holds -256 .. 255 and it counts BYTES rather than access widths. It is the one
-\ field in this file that is signed, which is why it has a bound of its own
-\ rather than reusing OUT? above: a negative operand is in range here and out of
-\ range everywhere else.
+\ Signed nine-bit field, -256 .. 255, counted in BYTES rather than access widths.
 1 8 lshift constant SIMM9-LIM        \ the magnitude one side of the field holds
 
 : ?SIMM9 ( n -- n )
@@ -118,17 +73,12 @@ private
 : ?HW ( n -- n )
    dup HW-LIM OUT? IF s" asm: move-wide half out of range" ASM-EXIT-RC die THEN ;
 
-\ Which 16-bit lane a vector-to-general move reads. A vector holds eight of
-\ them, so the operand is three bits and NOT the five the register operands
-\ carry: the two bits below it in the word are the ones that say the lane is 16
-\ bits wide rather than 8 or 32, and they belong to the opcode. An index this
-\ refuses would run into them and name a different element size.
+\ Three bits, not five: the two bits below the lane index are opcode and say the
+\ lane is 16 bits wide.
 : ?LANEH ( n -- n )
    dup LANEH-LIM OUT? IF s" asm: vector lane index out of range" ASM-EXIT-RC die THEN ;
 
-\ Operand 31 in a logical or an add/sub form is the zero register, which is how
-\ ARM64 spells a move, a negate and a complement; the three encoders that use
-\ it say so at their own lines.
+\ Operand 31 in a logical or an add/sub form is the zero register.
 31 constant ARM-ZERO-REG
 
 : XREG? ( n -- n )
@@ -141,10 +91,6 @@ private
 
 : XR3 ( n n n -- n n n )  XREG? rot XREG? rot XREG? rot ;
 
-\ Four X-register operands, which is what the three-source multiply forms take.
-\ It is XR2 twice with the pair order swapped between, so the reserved-register
-\ refusal reaches every one of the four and no slot is screened by a rule of its
-\ own: whatever XR2 means for a two-operand form it means here as well.
 : XR4 ( n n n n -- n n n n )  XR2 2swap XR2 2swap ;
 
 : XRDI ( n n n -- n n n )  rot XREG? rot XREG? rot ;
@@ -155,14 +101,7 @@ private
 
 : DR3 ( n n n -- n n n )  ?REG rot ?REG rot ?REG rot ;
 
-\ A memory access of the D file: the transferred register, the base register it
-\ addresses through, and an offset. The two registers are of two different
-\ FILES, which is the whole of what this word says: the transfer names a D
-\ register and takes the field bound alone, because that file has no
-\ platform-reserved member, while the base names an X register and takes the
-\ refusal as every other base in this file does. It is XRDI with the
-\ destination's refusal weakened to the bound, and it is the same split
-\ ENC-LD1V makes one operand earlier.
+\ The transfer names a D register (field bound only); the base names an X one.
 : DRXN ( n n n -- n n n )  rot ?REG rot XREG? rot ;
 
 \ move-wide operands: destination register, 16-bit immediate, shifted half.
@@ -193,9 +132,7 @@ variable ARM-Z
    ARM-BASE ! ARM-R3!
    ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-RM @ 16 lshift or MSK ;
 
-\ three-source: rd rn rm ra. The fourth register sits in its own five-bit field
-\ at bit ten, between the two the shifted-register forms above use, so this is
-\ RRR with that one field added rather than a layout of its own.
+\ rd rn rm ra; the addend's own five-bit field sits at bit ten.
 : RRRA ( n n n n n -- n )
    ARM-BASE ! ARM-RA ! ARM-R3!
    ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or
@@ -209,20 +146,14 @@ variable ARM-Z
    ARM-BASE ! ARM-R2!
    ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or MSK ;
 
-\ The unscaled SIGNED offset layout: the other addressing mode of the same
-\ load/store group RRI serves. The offset is in bytes and may be negative, which
-\ is the whole reason ENC-LDUR and ENC-STUR exist - an access BELOW the base
-\ register has no spelling in the unsigned forms. It is not scaled, so no
-\ alignment is forced by the encoding; a caller that wants cells still hands
-\ over a multiple of eight because that is what its own data is.
+\ Unscaled SIGNED byte offset: the only spelling for an access below the base.
 : RRSI ( n n n n -- n )
    ARM-BASE ! ARM-I3!
    ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or
    ARM-IMM @ SIMM9-MASK and SIMM9-SHIFT lshift or MSK ;
 
-\ encodeBitMasks: plain mask -> nis. A valid mask is a power-of-2-sized
-\ repeating element (2..64 bits) that is a rotated contiguous run of ones;
-\ 0 and all-ones are not encodable (die 72).
+\ encodeBitMasks: mask -> nis. Encodable = a power-of-2-sized repeating element
+\ (2..64 bits) that is a rotated run of ones; 0 and all-ones are not.
 variable PCX
 
 : POPC64 ( n -- n )
@@ -282,26 +213,13 @@ variable LIE   variable LIONES
 
 : LIMM-BAD ( -- )  s" asm: bad logical immediate" ASM-EXIT-RC die ;
 
-\ The encoding attempt itself, which answers whether the mask has an encoding
-\ instead of ending the process when it does not. It exists because its two
-\ callers - >LIMM and LIMM?, both in the public section below - need OPPOSITE
-\ things from the same rule: an emitter that has already committed to the
-\ instruction can only die on a mask that will not pack, while a pass DECIDING
-\ whether to use the immediate form at all has to ask first and choose the
-\ register form when the answer is no. Both read this one implementation, so the
-\ rule cannot drift into a second copy that admits a mask the packer rejects -
-\ which would put the die back, at the far end of a decision that had already
-\ been made.
-\ The nis is zero when the answer is false; a caller that ignores the flag and
-\ encodes it anyway gets `and rd, rn, #1`, not a wild field.
-\ The boolean literals this predicate answers with. src/arch/arm64/asm.f is
-\ loaded as bare source by the encoder gate, without lib/prelude.f, so `true`
-\ and `false` are not in the dictionary here - and they are spelled the way the
-\ prelude spells them, as comparisons, which is also what gives them the
-\ checker's bool type instead of a number's.
+\ This file is loaded as bare source by the encoder gate, without lib/prelude.f,
+\ so `true` and `false` are spelled here as the comparisons the prelude uses.
 : LIMM-YES ( -- bool ) 0 0= ;
 : LIMM-NO  ( -- bool ) 0 0= 0= ;
 
+\ Answers rather than dying, because >LIMM must die and LIMM? must choose. The
+\ nis is 0 when false, so ignoring the flag encodes `and rd, rn, #1`.
 : LIMM-TRY ( n -- n bool )
    ARM-X !
    ARM-X @ 0 =  ARM-X @ -1 =  or IF 0 LIMM-NO exit THEN
@@ -314,9 +232,6 @@ variable LIE   variable LIONES
 
 public
 
-\ A byte operand the encoder is about to divide by its access scale. The
-\ division rounds down, so a value it would round is refused here rather than
-\ silently encoding the aligned operand below it.
 : SCALE/ ( n n -- n )
    2dup mod 0 <> IF s" asm: operand is not a multiple of its scale" ASM-EXIT-RC die THEN
    / ;
@@ -338,45 +253,20 @@ public
 
 : ENC-EOR ( n n n -- n ) XR3 $CA000000 RRR ;
 
-\ Or with the second source inverted. It is the Orr form above with the
-\ shifted-register N bit set, which is bit 21 - the one bit that separates the
-\ four logical forms from their negated partners - so it is written as that base
-\ rather than as a second family.
+\ Orr with the second source inverted: bit 21 is the shifted-register N bit.
 : ENC-ORN ( n n n -- n ) XR3 $AA200000 RRR ;
 
-\ A register-to-register move. ARM64 has no move form of its own: `mov xd, xm`
-\ is `orr xd, xzr, xm`, which is what a disassembler prints back and what the
-\ recovery emitter writes too. Operand 31 in a logical form is the zero
-\ register, so the copy is that one form with ARM-ZERO-REG as its first source,
-\ named once above rather than written at each caller.
+\ ARM64 has no move form: `mov xd, xm` IS `orr xd, xzr, xm`.
 : ENC-MOV ( n n -- n ) ARM-ZERO-REG swap ENC-ORR ;
 
-\ A negation, for the same reason and by the same route: ARM64 has no negate
-\ form either, and `neg xd, xm` IS `sub xd, xzr, xm`. It is the last instruction
-\ of the three a Habu comparison compiles to - compare, set one on the
-\ condition, negate - because a Habu flag is all bits set and not one.
+\ ARM64 has no negate form: `neg xd, xm` IS `sub xd, xzr, xm`.
 : ENC-NEG ( n n -- n ) ARM-ZERO-REG swap ENC-SUB ;
 
-\ A bitwise complement, by the same route again: ARM64 has no complement form of
-\ its own, and `mvn xd, xm` IS `orn xd, xzr, xm`. It is what Habu's `invert`
-\ computes in one instruction. The engine's own `invert` reaches the same answer
-\ in two - it moves all-ones into a register with a Movn and takes the exclusive
-\ or - because a primitive that pops and pushes has a spare register anyway; a
-\ compiled routine has no reason to spend one.
+\ ARM64 has no complement form: `mvn xd, xm` IS `orn xd, xzr, xm`.
 : ENC-MVN ( n n -- n ) ARM-ZERO-REG swap ENC-ORN ;
 
-\ The multiply group, which is one instruction with an addend field rather than
-\ the four separate forms these four names suggest. MUL is the multiply-add
-\ whose addend is register 31, the zero register - that is why its base carries
-\ $7C00, the addend field already full - and MNEG, which this file does not
-\ spell, would be MSUB's register-31 case in the same way. So a caller that
-\ wants a plain product writes ENC-MUL and a caller that wants the product
-\ accumulated writes ENC-MADD; they differ in one field and the encoding says so.
-\
-\ SMULH is the odd one and takes three operands, not four: it answers the HIGH
-\ half of a signed 64x64 product, so there is nothing to accumulate and its
-\ addend field is fixed full like MUL's. It is what a division by a constant
-\ becomes once the constant has been turned into a reciprocal.
+\ MUL is MADD with the addend field already full of register 31 (hence $7C00);
+\ SMULH takes three operands - a high half of a product has nothing to add.
 : ENC-MUL ( n n n -- n ) XR3 $9B007C00 RRR ;
 
 : ENC-SMULH ( n n n -- n ) XR3 $9B407C00 RRR ;
@@ -434,15 +324,8 @@ public
 
 : ENC-STRW ( n n n -- n ) XRDI 4 SCALE/ ?IMM12 $B9000000 RRI ;
 
-\ The same four accesses for the D-register file. A double lives in that file,
-\ so a load that lands it in a general register and a move across afterwards is
-\ two instructions where the machine has one; these are the one. Every field is
-\ the general form's - the scaled pair divides a byte offset by eight and holds
-\ twelve bits of it, the unscaled pair holds nine signed bits of a byte offset
-\ at bit twelve - and exactly one bit of the opcode differs: bit 26, which the
-\ architecture calls V and which says the transferred register is of the
-\ SIMD&FP file. ARM ARM (DDI 0487) C6.2, LDR/STR/LDUR/STUR (immediate, SIMD&FP)
-\ with size=11 for the 64-bit form.
+\ The same four accesses for the D file. One opcode bit differs, bit 26 (V),
+\ which says the transferred register is of the SIMD&FP file. DDI 0487 C6.2.
 : ENC-LDRD ( n n n -- n ) DRXN 8 SCALE/ ?IMM12 $FD400000 RRI ;
 
 : ENC-STRD ( n n n -- n ) DRXN 8 SCALE/ ?IMM12 $FD000000 RRI ;
@@ -481,26 +364,8 @@ public
 
 : ENC-FMUL ( n n n -- n ) DR3 $1E600800 RRR ;
 
-\ SIMD: the three forms a 16-byte strip of a byte-summing loop is made of. They
-\ are here with no caller yet, which is the same order SMULH, MADD and MSUB
-\ arrived in and for the same reason - the chain may not emit a form
-\ formal/Common/Insn.v does not carry, so the encoder and the model row land
-\ before the pass that will write them.
-\
-\ THE V FILE IS THE D FILE, which is why no new operand bound appears here.
-\ v3 and d3 are one register read at two widths, so the SIMD operands below are
-\ bounded by the same DR2 the FP forms above use, and for the same reason: the
-\ file has no platform-reserved member, so only the five-bit field bound applies
-\ to them. The ONE operand here that is screened for x18 is UMOV's destination,
-\ which is a general register - so a single instruction spans both files and the
-\ two lists in the model say different things about its operands.
-\
-\ Reference: ARM Architecture Reference Manual for A-profile, C7.2 -
-\ LD1 (multiple structures, one register, no offset), UADDLV, UMOV. LD1 puts Rt
-\ at bit 0 and Rn at 5, the same two positions the loads above use. UADDLV adds
-\ sixteen unsigned bytes into one 16-bit result, which cannot overflow: the
-\ largest is 16 * 255 = 4080. UMOV then carries that result into a general
-\ register, and it is the only bridge in this group between the two files.
+\ The V file IS the D file, so DR2 bounds these too; UMOV's destination is the
+\ one general register here. UADDLV sums 16 bytes into 16 bits and cannot overflow.
 : ENC-LD1V ( n n -- n ) DR2 XREG? $4C407000 RR ;
 
 : ENC-UADDLV ( n n -- n ) DR2 $6E303800 RR ;
@@ -514,15 +379,8 @@ public
    XR2ND ?COND ARM-IMM ! ARM-RD !
    $9A9F07E0 ARM-RD @ or  ARM-IMM @ 1 xor 12 lshift or MSK ;
 
-\ conditional select ( rd rn rm cond -- w ): rd takes rn when the condition
-\ holds and rm when it does not, in one instruction and with no branch. It is
-\ the same 11-bit base the Cset above is built on with the two-bit op2 field
-\ left at zero - Cset is that base with op2 = 01, which is Csinc, and its own
-\ line spells the base out with the increment bit already in it. The condition
-\ sits in the same four-bit field a conditional branch carries it in, so the
-\ four bits mean whatever the instruction that last wrote the flags made them
-\ mean - which is why a select after an Fcmp keeps the NaN rule its condition
-\ was chosen for.
+\ rd takes rn when the condition holds and rm when it does not, with no branch.
+\ The condition reads whatever last wrote the flags, Fcmp's NaN rule included.
 : ENC-CSEL ( n n n n -- n )
    ?COND ARM-IMM !
    XR3 ARM-R3!
@@ -545,9 +403,8 @@ public
    XRDI ?SHIFT ARM-SH ! ARM-RN ! ARM-RD !
    $9340FC00 ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-SH @ 16 lshift or MSK ;
 
-\ logical immediates (nis = N<<12 | immr<<6 | imms). `>LIMM` already builds nis
-\ inside the 13-bit field, so ?NIS only ever fires for a caller that packs its
-\ own value and hands it straight to an encoder.
+\ nis = N<<12 | immr<<6 | imms. >LIMM already builds it inside the 13-bit field,
+\ so ?NIS only fires for a caller that packs its own value.
 : ENC-ANDI ( n n n -- n ) XRDI ?NIS $92000000 RRI ;
 
 : ENC-ORRI ( n n n -- n ) XRDI ?NIS $B2000000 RRI ;
@@ -557,10 +414,7 @@ public
 : >LIMM ( n -- n )
    LIMM-TRY 0= IF LIMM-BAD THEN ;
 
-\ Whether the and/orr/eor immediate forms can carry this mask at all. This is the
-\ whole of the validity question - a logical immediate has no bound to check
-\ separately, because the set of encodable masks IS the set the packer above can
-\ build a nis for.
+\ The set of encodable masks IS the set the packer can build a nis for.
 : LIMM? ( n -- bool )
    LIMM-TRY swap drop ;
 
@@ -606,18 +460,8 @@ public
 
 : ENC-FCMP0 ( n -- n ) ?REG $1E602008 swap 5 lshift or MSK ;
 
-\ conditional select of two doubles ( rd rn rm cond -- w ): rd takes rn when the
-\ condition holds and rm when it does not, in one instruction and with no
-\ branch. It is the Csel above moved to the D file: the four operand fields sit
-\ at the same four positions and carry the same meanings, and the only thing
-\ that differs is the opcode - the ftype half of it says double, so no operand
-\ names the register width. NO OPERAND REACHES XREG? and that is not an omission
-\ but the file: d18 is an ordinary D register and holds no platform state, so
-\ only the field bound applies and DR3 is what applies it. The condition sits in
-\ the same four-bit field a conditional branch carries it in, so the four bits
-\ mean whatever the instruction that last wrote the flags made them mean - which
-\ is why this form after an Fcmp keeps the NaN rule the condition was chosen for
-\ and why it is equally correct after a plain Cmp.
+\ Csel on the D file: same four operand positions, ftype says double. No operand
+\ reaches XREG? - d18 holds no platform state - and the condition reads the flags.
 : ENC-FCSEL ( n n n n -- n )
    ?COND ARM-IMM !
    DR3 ARM-R3!
