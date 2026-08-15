@@ -102,6 +102,14 @@ public
 : SCAFFOLD-FILE$ ( -- ptr u8 n )
    s" src/habu/habu1.f" ;
 
+\ The four-lane chain's SHAPE constants moved out of the second emitter file when
+\ the AOT format's declarations got one owner: a capture running inside bin/hb has
+\ to recognise the same chain the emitter's relocation pass reads back, and a shape
+\ read two ways is a shape that drifts. They are package SNAP-RELOC's public
+\ surface there, exactly as they were here, so these rows follow the definition.
+: DECL-FILE$ ( -- ptr u8 n )
+   s" src/habu/aot-decl.f" ;
+
 \ ---- 1. the pinned band constants --------------------------------------------
 \ Each row is a shipped constant and the model definition that mirrors it. The
 \ cases file reads the shipped literal structurally; the obligations file asks
@@ -119,15 +127,15 @@ public
       4 of LAYOUT-FILE$ endof
       5 of EMIT-FILE$ endof
       6 of LAYOUT-FILE$ endof
-      7 of EMIT-FILE$ endof
-      8 of EMIT-FILE$ endof
-      9 of EMIT-FILE$ endof
+      7 of DECL-FILE$ endof
+      8 of DECL-FILE$ endof
+      9 of DECL-FILE$ endof
       10 of SCAFFOLD-FILE$ endof
       11 of SCAFFOLD-FILE$ endof
       12 of SCAFFOLD-FILE$ endof
       13 of SCAFFOLD-FILE$ endof
-      14 of EMIT-FILE$ endof
-      15 of EMIT-FILE$ endof
+      14 of DECL-FILE$ endof
+      15 of DECL-FILE$ endof
       E-CRL-ROW throw
    endcase ;
 

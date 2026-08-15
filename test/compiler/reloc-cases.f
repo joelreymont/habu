@@ -264,7 +264,14 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    s" CALLMSG-LEN" s" CALLMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" XTMSG-LEN" s" XTMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" ADDRMSG-LEN" s" ADDRMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" XTBANDMSG-LEN" s" XTBANDMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" XTBANDMSG-LEN" s" XTBANDMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
+
+\ The four-lane chain's SHAPE is declared in src/habu/aot-decl.f, because a capture
+\ running inside bin/hb has to recognise the same chain this emitter's relocation
+\ pass reads back. The machine binds those five from the file that declares them,
+\ so the scan follows the definition rather than a copy kept here.
+: LOAD-DECL-SYMS ( -- )
+   DECL-FILE$ COMPILER-ID-SRC:SCAN-FILE
    s" ADDR-OPC-MASK" s" ADDR-OPC-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" ADDR-IMM-MASK" s" ADDR-IMM-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" ADDR-CHAIN-BYTES" s" ADDR-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
@@ -320,6 +327,7 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    LOAD-LAYOUT-SYMS
    LOAD-GLOBAL-LABELS
    LOAD-SCAFFOLD-SYMS
+   LOAD-DECL-SYMS
    LOAD-EMIT-SYMS ;
 
 : CLEAR-REGS ( -- )
