@@ -6698,3 +6698,39 @@ and exits 0 (jj workspaces are subdirectories of the git
 toplevel; git-apply drops paths outside the cwd subtree).
 Restore with jj file show; verify the BYTES changed, never the
 exit code.
+
+## The map-rewind landing's five (2026-08-15)
+
+(1) A diagnosis that names ONE consumer of a rewound cursor is a
+hypothesis about how many there are. The leaf named the address
+map; the same rewind orphaned the CALL map too, and asking the
+question of both bands in one scan cost one probe: 26 stale
+address records AND 17 stale call records over the compiler
+chain, 15 of them on words that are not calls. Two of the 17 sat
+on words that ARE calls, so that half was not even fail-closed -
+the relocation pass would have shifted a displacement that never
+needed shifting. Sweep every band the cursor indexes before
+believing a count.
+(2) The tree had already written the fix down, for the other
+writer: NPUBWIN CLEAR-CALLMAP-SPAN clears the call map over a
+republished span and its prose states the invariant ("the map
+never describes code that no longer exists"). Grep for the loop
+before writing one; the landing became one parameterized emitter
+called from both places instead of a second hand-written index.
+(3) A refactor's identity is measurable: building with ONLY the
+factoring hunk applied produced a byte-identical bin/hb, which is
+what made the +344 attributable to the fix alone and let the
+size-attribution row name one region.
+(4) A pass-2 subject needs a NARROW TWIN - same body text, same
+name length, one-cell signature - and then the suite hard-codes
+no offsets at all: the twin IS pass 1's lowering, so it says
+where the stale bit lands and what a correct record there looks
+like. It also supplies the non-vacuity guard, because if the two
+passes ever agree on the offset the stale bit hides on the live
+site and the twin comparison reds instead of passing.
+(5) Prose in src/habu/habu2.f is COUNTED source. The C-CALL
+emitter's source-shape test asserts that each of its helpers
+appears exactly twice in the whole file, comments included, and
+says so in its own header. A comment naming one of them a third
+time red a gate 200 lines away. Before adding prose to that file,
+check what counts its tokens.
