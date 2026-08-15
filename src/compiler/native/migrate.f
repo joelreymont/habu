@@ -2,70 +2,17 @@
 \ the engine and then recompiled by the native chain, published as an ordinary
 \ word. One concern: driving the whole chain for one definition.
 \
-\ WHAT A MIGRATION IS. The caller states the definition's source. The engine
-\ compiles it exactly as it compiles every other definition - same interpreter,
-\ same checker, same emitter - and publishes the word. That compilation is what
-\ produces the tape: the checker's own reader fills it while it consumes the
-\ definition, so the tokens the chain elaborates are the tokens the checker
-\ certified and not a second reading of the same text. The chain then compiles
-\ that tape, and the publication seam points the word's dictionary record at the
-\ result. Afterwards the word is entered the way every word is entered, and the
-\ code the old emitter produced for it is simply no longer reachable by that
-\ name.
+\ The caller states the definition's SOURCE. The engine compiles it the ordinary
+\ way, and the checker's own reader fills the tape while it consumes the tokens,
+\ so the chain elaborates what the checker certified and not a second reading.
 \
-\ WHY THE SOURCE IS HANDED OVER RATHER THAN READ FROM THE INPUT STREAM. The tape
-\ only exists while a recording unit is open, and a unit is opened by a word - so
-\ something has to run before the definition and something after it, and the two
-\ have to be one word or the tape's context dies between them. Handing the
-\ definition over as text makes that one word. It is not a weaker tie to the
-\ definition than typing it at top level would be: `evaluate` IS the interpret
-\ path, the word this text publishes is a real dictionary record, and the tape is
-\ filled by the checker's reader during that publication. Giving the migration a
-\ definer that reads a definition out of the input stream is dot
-\ habu-parse-a-migrated-b38a83d9, and nothing else here changes when it lands.
+\ The NAME is not a parameter: it is read off the record the source published,
+\ and a source that published none or several is refused. Nothing about a callee
+\ is a parameter either - dict.f answers where its code starts and how many
+\ cells a call to it moves, at the point those are used.
 \
-\ THE NAME IS NOT A PARAMETER. Which word was defined is read off the dictionary
-\ rather than restated by the caller: the migration requires that the source
-\ published exactly one record and takes its name from that record. A caller
-\ therefore cannot ask for one definition's code to be installed under another
-\ name, and a source that defines nothing, or two things, is refused instead of
-\ migrating whichever record happened to be newest.
-\
-\ WHAT IT REFUSES. A second migration inside a live one, source longer than the
-\ engine's own body capture, a definition the engine's own check did not
-\ certify, a source that did not publish exactly one word, and a name that no
-\ longer resolves to that record. Everything the chain refuses keeps the chain's
-\ own name - a body outside the dialect's vocabulary is E-HIR-UNMODELED, a control
-\ structure the elaborator cannot close is E-NELAB-CTRL, register pressure the
-\ frame cannot absorb is E-A64RA-PRESSURE - and none of them is caught here, so a
-\ word the chain cannot compile is refused by name with its dictionary record
-\ untouched and keeps running the code the engine compiled for it.
-\
-\ WHAT IT STILL STATES. How many values the definition takes and leaves, and how
-\ many scratch registers its routine may use. The checker knows the first two -
-\ it parsed the declared effect during the very scan that filled the tape - but
-\ publishes an effect only through a lookup by name into its live store, which
-\ answers about whoever carries that name now rather than about this definition.
-\ Binding the accepted effect to the recorded unit is dot
-\ habu-bind-checker-env-ed4f9f87; the register count is a budget, and choosing it
-\ from the routine rather than from the caller is dot
-\ habu-choose-the-register-a95390ac.
-\
-\ AND, FOR A DEFINITION THAT CALLS ANOTHER WORD, NOTHING AT ALL ANY MORE. The
-\ body names the word and that is the whole of it. Where the callee's code starts
-\ and how many cells a call to it moves are facts of the running engine and of
-\ the checker, and src/compiler/native/elaborate.f RESOLVE-SCAN asks them at the
-\ point they are used, through src/compiler/native/dict.f, for every name in the
-\ body the dialect does not model. There is no parameter left for a caller to
-\ answer wrongly, and no ceiling on how many words a body may call.
-\ AND THERE IS ONE ROAD TO A ROW, WHICH IS WHAT CLOSED THE LIE. A caller used to
-\ be able to STAGE a callee - a spelling, an address and an effect - and a staged
-\ effect that was not the one the checker certified compiled anyway, because the
-\ selector built the save run, the restore run and both byte counts from the one
-\ stated number (dot habu-resolve-a-callee-0340dfde). The staging path is gone.
-\ Nothing about a callee is a parameter any more, so there is no second authority
-\ left to disagree with the certificate, and the class of caller that could lie
-\ about a callee has no way left to say it.
+\ Nothing the chain refuses is caught here, so a word the chain cannot compile
+\ keeps running the code the engine compiled for it, under the refuser's name.
 
 require lib/prelude.f
 require lib/errors.f
@@ -87,54 +34,18 @@ package NMIGRATE
 private
 
 \ ---- the one boundary this file needs ---------------------------------------
-\ `evaluate` is the metaprogramming boundary the checker does not model, and it
-\ is how a definition reaches the engine's own compile path from inside a word.
-\
-\ AND IT IS THE ONE SITE A SWEEP MUST NOT TOUCH. Dot
-\ habu-turn-the-registry-4c064064 converted the chain's TRUSTED: bridges into
-\ `PRIM:` rows wherever the wrapped word was a boot prefix reader the seal had put
-\ out of the checker's reach. `evaluate` is not that: it compiles whatever text it
-\ is handed, so a row for it would not restore a reachable word's declared effect,
-\ it would hand every checked body in the tree the compile-arbitrary-source door.
-\ The wrapper stays, one word wide, and the text it is handed is built above.
+\ `evaluate` compiles whatever text it is handed, so it may never become a
+\ `PRIM:` row: that would hand every checked body the arbitrary-source door.
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
 
 \ ---- what a recording unit is opened with ------------------------------------
-\ A UNIT IS OPENED WITH TWO CEILINGS AND NEITHER IS THIS FILE'S TO PICK ANY MORE.
-\ One is the byte buffer the scanned text is kept in and the other is how many
-\ tokens the tape holds. Both were chosen numbers - 512 bytes and 128 tokens -
-\ and what they measured was this file: the census of 2026-08-14 offered 3947
-\ definitions of src and lib to the chain and 151 of them never reached it,
-\ refused for the byte ceiling alone, one file holding 41. The longest definition
-\ in either tree stages 2948 bytes, so every one of those refusals was about the
-\ recorder and none of them about the dialect.
-\
-\ THE TEXT CEILING IS THE ENGINE'S OWN. What a unit records is not the caller's
-\ source: it is the text the ENGINE handed its check hook, the body capture it
-\ builds token by token in DATA at BODYBUF-OFF (src/habu/habu1.f EMIT-BCAP),
-\ which the checker scans and whose scan this file's producer copies. That
-\ capture has a ceiling the engine enforces itself, and it enforces it with a
-\ write to fd 2 and an exit - status 71, not a throw. So BODYBUF-CAP is the
-\ longest text a reader can ever hand over, a buffer of exactly that size can
-\ never be too small, and E-NFEED-TEXT is unreachable through this caller. It
-\ stays reachable where it is owned: test/compiler/native-feed.f opens its units
-\ with a 256-byte buffer and refuses a longer definition by that name.
-\
-\ AND THE SAME CONSTANT IS WHY A SOURCE IS STILL REFUSED BY LENGTH. The engine's
-\ overflow cannot be caught, so a source that would reach it has to be refused
-\ before `evaluate` sees it. The capture holds the definition's tokens each
-\ followed by one space, with the opening `:` and the closing `;` gone, so it is
-\ at least three bytes SHORTER than the source it was read from: a source of
-\ BODYBUF-CAP bytes captures at most BODYBUF-CAP - 3. Refusing a longer source is
-\ therefore exactly the guard that keeps the process alive, and it is reachable
-\ from both sides - measured on this engine, a definition whose capture reaches
-\ 8000 bytes compiles and one seven bytes longer exits 71.
+\ The unit's text ceiling is the ENGINE's own body capture, which overflows with
+\ an exit rather than a throw - so a longer source is refused before `evaluate`
+\ sees it. The capture is at least three bytes shorter than its source.
 BODYBUF-CAP constant TEXT-CAP
 
-\ The longest name this file holds: the name the migration publishes under, which
-\ is the tail a publication's record carries. A name past it is refused rather
-\ than truncated into one that denotes another word.
+\ A name past it is refused rather than truncated into one that denotes another word.
 64 constant NAME-CAP
 
 create TXT TEXT-CAP allot
@@ -163,43 +74,10 @@ variable M-SPILLS                    \ frame slots this definition proved it nee
 variable M-REMATS                    \ values it writes again instead of putting away
 
 \ ---- compiling without publishing --------------------------------------------
-\ A DEFAULT migration lets the engine publish the definition and then points the
-\ published record at the chain's code. That makes the chain a second pass over
-\ a word that already exists, and it is why the old emitter cannot be removed:
-\ every definition must succeed through it first.
-\
-\ A HELD migration asks the engine to certify the definition and publish
-\ NOTHING. The checker still runs, the tape is still filled by its reader, and
-\ the record `:` built is still there - but the count does not move, the name
-\ never enters the index, and the emission's code space is given straight back.
-\ The chain then compiles the tape and its own publisher commits that record
-\ (src/compiler/native/publish.f COMMIT-HELD). Nothing is reachable under the
-\ name until code the validator accepted stands behind it.
-\
-\ M-HELD-PENDING IS THE OBLIGATION, not a copy of the mode. It is raised once the
-\ engine has really held a record for this run and lowered when that record is
-\ committed, so the failure path can tell "a definition is being withheld and
-\ nobody will ever publish it" from "nothing was held". What it owes on that path
-\ is the checker's side of the retraction: the engine gave the code space back by
-\ itself, and the count never moved, but the certified signature the checker
-\ recorded under this name did not go away with them.
-\
-\ AND A MEASURED MIGRATION IS A HELD ONE THAT NEVER COMMITS. It asks the whole
-\ chain the same question - the engine certifies, the reader fills the tape, the
-\ dialect elaborates it, the allocator accepts it, the emitter seals it, and the
-\ publication seam makes every refusal it can make - and then keeps none of the
-\ answer: no code, no record, no clobber row, no replacement-log row and no
-\ count. The held record is retracted on the way out exactly as a refused run
-\ retracts it, because a measured run leaves the same thing behind: a definition
-\ that certified and was never published.
-\
-\ WHY THAT IS A MODE AND NOT A CALLER'S OWN AFFAIR. What a publication keeps is
-\ kept in two records that may not drop a row to make space - a row is the whole
-\ of what a caller compiled against it - so a caller that asks the question a few
-\ thousand times fills them, and the refusal it then gets says the chain ran out
-\ of table rather than that the definition is one it cannot compile. That is a
-\ measurement of the instrument. tools/chain-census-core.f is the caller that
-\ asks, and it read the first of those tables as the size of the compilable tree.
+\ A HELD migration asks the engine to certify and publish NOTHING; the chain's
+\ own publisher commits the record `:` built, so nothing is reachable under the
+\ name until code the validator accepted stands behind it. A MEASURED migration
+\ is a held one that never commits. M-HELD-PENDING is the obligation to retract.
 variable M-HELD                      \ this migration compiles without publishing
 variable M-HELD-PENDING              \ a held record is waiting to be committed or retracted
 variable M-MEASURE                   \ this migration proves the publication instead of making it
@@ -225,25 +103,13 @@ variable M-MEASURE                   \ this migration proves the publication ins
    c b HIR:REGISTER
    b ;
 
-\ The dialect's source-word model: which Habu word means which operation. A
-\ definition that mentions a `create`d data word needs one row more, because
-\ which data words a program names is the program's and not the dialect's. What
-\ that row holds is the engine's answer and not the caller's: the caller names
-\ the word, the word model asks the dictionary.
+\ Which data words a program names is the program's and not the dialect's, and
+\ the row's contents are the engine's answer rather than the caller's.
 : EXTRA-ROWS ( -- n )
    M-DATA-U @ 0<> if 1 else 0 then ;
 
-\ How many rows the table is committed to, and why that number is read off the
-\ TAPE rather than chosen. The dialect's own words are a fixed count and the
-\ data word is counted above, but the elaborator adds a row for every
-\ name the body writes that the dialect does not model and the engine does
-\ (src/compiler/native/elaborate.f RESOLVE-SCAN). Which names those are is not
-\ known until the body has been read, and the thing that read it is the tape - so
-\ the ceiling is the tape's own token count, which is the most distinct names a
-\ body can possibly write. That makes the table as large as the program needs and
-\ no larger, with no number for anyone to pick: a body that names nothing outside
-\ the dialect never fills the headroom, and one that names a hundred words cannot
-\ run out of it.
+\ Read off the TAPE: the elaborator adds a row per name the body writes that the
+\ dialect does not model, and which names those are is not known until it is read.
 : MODEL-ROWS ( -- n )
    HIR-WORD:WORDS EXTRA-ROWS + TAPE NTAPE:TOKENS + ;
 
@@ -259,24 +125,15 @@ variable M-MEASURE                   \ this migration proves the publication ins
    p r ;
 
 \ ---- stage N0: the definition the engine compiles ----------------------------
-\ The engine compiles the definition and the unit answers the sealed tape and the
-\ verdict the scan reached. Both are parked rather than left on the stack,
-\ because this runs inside the quotation the recovery below catches.
+\ Parked rather than left on the stack, because this runs inside the quotation
+\ the recovery below catches.
 : SCAN ( -- )
    SRC$ EV
    NFEED:END-UNIT M-VERDICT !  0 M-TAPE ! ;
 
-\ Open a unit, run the scan, and close it. Anything that fails between the two -
-\ the engine refusing the source, the checker refusing the definition, a source
-\ that opened no scan at all or a second one - leaves the producer holding a
-\ half-recorded unit, and the ONE route out of that is to give it up. So the
-\ failure is caught here only to release the recorder, and is rethrown with its
-\ own code: without this every later migration in the process would be refused
-\ for the state this one left behind rather than for anything about itself.
-\ The hold is opened around the scan and closed on every path out of it. Leaving
-\ it armed would withhold the NEXT definition the process compiles - one this
-\ migration knows nothing about and no chain is waiting for - so the close is
-\ paired with the open rather than left to the caller.
+\ A failure between open and close leaves the producer holding a half-recorded
+\ unit, so it is caught only to release the recorder and rethrown unchanged.
+\ The hold is closed on every path: left armed it would withhold the NEXT definition.
 : HOLD-OPEN ( -- )
    M-HELD @ 0= if exit then
    CHECKER-TAPE:HOLD-ARM ;
@@ -285,23 +142,8 @@ variable M-MEASURE                   \ this migration proves the publication ins
    M-HELD @ 0= if exit then
    CHECKER-TAPE:HOLD-DISARM ;
 
-\ How many rows the tape is opened with, read off the SOURCE rather than chosen,
-\ for the reason MODEL-ROWS above reads the tape's own token count rather than a
-\ number. A token the reader consumes costs at least two bytes of the capture -
-\ one byte of spelling and the space after it - so a source of n bytes can never
-\ produce more than n/2 rows, and a tape that big cannot be overrun by the
-\ definition it was opened for.
-\
-\ IT IS READ OFF THE SOURCE RATHER THAN FIXED HIGH BECAUSE THE ROOM IS SHARED. A
-\ tape is a span of the context's own mapping, which is 512K for the whole run
-\ and already holds four modules of the machine dialect at once
-\ (src/compiler/ir/context.f MAP-BYTES). A ceiling generous enough for the
-\ longest definition the engine can compile is four thousand rows, a quarter of
-\ that mapping, and a fixed one would take it from every definition that is not
-\ that long. This costs what the definition costs.
-\
-\ A source too short to be a definition still has to reach the refusal that says
-\ so, so the room never goes below the one row NTAPE will accept.
+\ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
+\ can never produce more than n/2 rows. A tape is a span of the shared mapping.
 : TAPE-ROOM ( -- n )
    M-SRC-U @ 2 / 1 max ;
 
@@ -316,26 +158,19 @@ variable M-MEASURE                   \ this migration proves the publication ins
    M-VERDICT @ -1 <> if E-NMIGRATE-VERDICT throw then
    before ;
 
-\ How many bytes the reader handed over, as the registry recorded them. The
-\ source is named off the tape's own first span, so the length asked for is the
-\ length of the text the recorded rows span into, read off the live builder
-\ because selection takes its binding before the module freezes.
+\ Read off the live builder because selection takes its binding before the
+\ module freezes.
 : TEXT-LEN ( -- n )
    CC BB  TAPE MKEY 0 NTAPE:SPAN@ IR-SOURCE:SPAN-SRC
    IR-BUILD:SOURCE-LEN ;
 
 \ ---- which word the source published -----------------------------------------
-\ Exactly one record, and the name is that record's. A source that published
-\ none or several is refused rather than having its newest record migrated.
+\ Exactly one record, and the name is that record's.
 : PUBLISHED-ONE ( n -- ) {: before:n :}
    ndict@ before 1+ <> if E-NMIGRATE-NAME throw then ;
 
-\ The held migration's version of the same question, and it is the OPPOSITE
-\ assertion. A source that published anything under a hold either defined
-\ something the hold does not cover - a `create`, a `constant`, a second
-\ definition - or the hold did not take, and in both cases the record this
-\ migration is about is not the one the count points at. So the count must not
-\ have moved at all.
+\ The opposite assertion: anything published under a hold means the record this
+\ migration is about is not the one the count points at, so the count must not move.
 : PUBLISHED-NONE ( n -- ) {: before:n :}
    ndict@ before <> if E-NMIGRATE-NAME throw then ;
 
@@ -343,9 +178,8 @@ variable M-MEASURE                   \ this migration proves the publication ins
    M-HELD @ 0<> if before PUBLISHED-NONE exit then
    before PUBLISHED-ONE ;
 
-\ Which record this migration is about. A published one is the newest; a held one
-\ is the unpublished slot the count still points at, which is exactly the slot
-\ src/compiler/native/publish.f will commit.
+\ A published record is the newest; a held one is the unpublished slot the count
+\ still points at, which is exactly the slot publish.f will commit.
 : REC-INDEX ( -- n )
    M-HELD @ 0<> if ndict@ exit then
    ndict@ 1- ;
@@ -353,8 +187,7 @@ variable M-MEASURE                   \ this migration proves the publication ins
 : LATEST-NAME$ ( -- ptr u8 n )
    REC-INDEX XREF-REC XREF-NAME$ ;
 
-\ Which wordlist the definition landed in. A word is a tail in a wordlist, and
-\ where a definition lands is decided by the package scope open when the source
+\ Where a definition lands is decided by the package scope open when the source
 \ is evaluated, so the wordlist is read off the record rather than assumed.
 : LATEST-WID ( -- n )
    REC-INDEX XREF-REC XREF-WORDLIST ;
@@ -367,47 +200,17 @@ variable M-MEASURE                   \ this migration proves the publication ins
    a NAME-BUF u STR-LEN BYTE-COPY-LEN
    u NAME-U ! ;
 
-\ In its own wordlist, the tail has to resolve to the record the evaluation just
-\ made. If an earlier record of the same tail wins that lookup, the republication
-\ would rewrite the wrong one, so this is refused instead.
+\ If an earlier record of the same tail wins the lookup, the republication would
+\ rewrite the wrong one.
 : RESOLVES-TO-LATEST ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
    a u wid XREF-FIND-WL-INDEX ndict@ 1- <> if E-NMIGRATE-NAME throw then ;
 
 \ ---- recording this definition's body for its callers ------------------------
-\ WHY A MIGRATION RECORDS ANYTHING. A definition small enough that copying its
-\ body into a call site costs no more instructions than the call did is one every
-\ later caller should copy rather than call, and the only moment its body can be
-\ kept is while it is being compiled: the tokens live in a module that dies with
-\ this run, and their spellings can only be asked of that module's own interner.
-\ src/compiler/native/inline.f is the record and carries the argument for why an
-\ address is the right key and what the size rule is.
-\
-\ WHICH BODY QUALIFIES IS NOT DECIDED HERE. Whether a token could stand in a
-\ copied body is the ELABORATOR's rule - it is the pass that would have to stage
-\ it - and it is asked here, token by token, through NELAB:SPLICEABLE?. This file
-\ decides nothing about the body; it copies the tokens out and states the arity
-\ the caller declared for the definition.
-\
-\ AND WHAT IS WRITTEN DOWN FOR A CALL IS WHAT THE ROUTINE HAS, NOT WHAT THE
-\ SOURCE SAID. A body may write a call that the elaboration COPIED - the routine
-\ published for `: T-GET-N ( ptr a n -- r ) T-AT-N @ ;` contains T-AT-N's
-\ operations and no branch at all - and staging the call token for it would key a
-\ row full of calls to an address holding straight-line code. So the elaborator
-\ is asked which sites it copied (NELAB:COPIED?) and from which row
-\ (NELAB:COPIED-ENTRY), and that row is spliced into the staging in place of the
-\ call. src/compiler/native/inline.f carries the argument for why a flattened row
-\ is the honest one and why the recording still terminates.
-\
-\ AND THE TOKENS ARE STAGED BEFORE THE ROW EXISTS, WHICH IS WHY THE RECORD HAS
-\ THREE STEPS. The spellings have to be read while the module is still being
-\ built. The address the routine will occupy is settled once the emission has
-\ been placed against a slot, but it is not the definition's yet, because a
-\ refusal is still possible between the placement and the publication - and a row
-\ keyed to a slot no publication claimed would be a body waiting for whatever
-\ word is published there next. So the staging is CLAIMED while a refusal still
-\ costs nothing, which is where every refusal the record can make is asked, and
-\ committed only after the seam has written the routine at the address the claim
-\ named. A run that never got that far throws its staging away in RUN.
+\ Which body qualifies is the ELABORATOR's rule, asked token by token through
+\ NELAB:SPLICEABLE?. What is written down is what the ROUTINE has: a call the
+\ elaboration COPIED is staged as the row it was copied from, not as a call.
+\ Tokens are staged while the module is alive, claimed while a refusal is still
+\ free, and committed only after the seam wrote the routine at the claimed address.
 64 constant SPELL-CAP                \ the longest spelling one staged token may have
 
 create SPELL-BUF SPELL-CAP allot
@@ -415,25 +218,15 @@ create SPELL-BUF SPELL-CAP allot
 here CELL 1- and CELL swap - CELL 1- and allot
 variable REC-OK                      \ the body staged so far is still one worth keeping
 
-\ A call the elaboration copied, staged as the row it was copied FROM. The row is
-\ already flat - no row holds a call - so this adds operations and never another
-\ call, and one splice is the whole of it. A row that will not fit beside what is
-\ staged already ends the recording, exactly as an over-long spelling does: this
-\ definition is one its callers will call, and calling it is correct.
+\ The row is already flat - no row holds a call - so this adds operations only.
 : REC-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    r ix NELAB:COPIED-ENTRY {: entry:n :}
    entry NINL:TOKENS NINL:STAGE-FITS? 0= if 0 REC-OK ! exit then
    entry NINL:STAGE-RECORD ;
 
-\ One body token, copied into the staging area. A token the elaborator could not
-\ stage inside a copied body, one whose spelling is longer than a record holds,
-\ and one that no longer fits in a row, all end the recording: this definition is
-\ one its callers will call.
-\
-\ THE COPIED CALL IS ASKED ABOUT FIRST, because SPLICEABLE? answers about the
-\ token as written and every call is written as a call. Asking it first is what
-\ makes the two questions one order rather than two overlapping rules.
+\ The copied call is asked about FIRST, because SPLICEABLE? answers about the
+\ token as written and every call is written as a call.
 : REC-TOKEN ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    REC-OK @ 0= if exit then
@@ -453,14 +246,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    u NINL:SPELL-FITS? 0= if 0 REC-OK ! exit then
    SPELL-BUF u NINL:STAGE-NAME ;
 
-\ The whole body, or nothing. It runs while the module is still being built,
-\ which is why it stands between the elaboration and the emission.
-\
-\ THE CAPACITY IS NOT ASKED ABOUT THE SOURCE HERE ANY MORE, because a source
-\ token is no longer one staged token: a call the elaboration copied stages a
-\ whole row. A count taken before the walk could only be a guess in both
-\ directions, so the ceiling is asked at each step instead, by the step that
-\ knows what it is about to add.
+\ Runs while the module is still being built. The ceiling is asked at each step,
+\ because a copied call stages a whole row rather than one token.
 : STAGE-BODY ( IR-ARENA:arena -- )
    {: r:IR-ARENA:arena :}
    TAPE NTAPE:TOKENS {: n:n :}
@@ -471,135 +258,35 @@ variable REC-OK                      \ the body staged so far is still one worth
    loop
    REC-OK @ 0= if NINL:STAGE-CLEAR then ;
 
-\ The size rule, asked of the emission the validator accepted. It is the last
-\ thing that can disqualify a body, and it is asked here because this is the
-\ first moment the definition's own instruction count exists.
-\
-\ WHAT IT IS ASKED ABOUT IS THE BODY AND NOT THE WHOLE EMISSION, because the body
-\ is what a caller copying this routine would write - the emitter measured it
-\ while it wrote it, and src/compiler/native/inline.f carries the argument for
-\ why that measurement and not an arity-derived subtraction. A routine that calls
-\ has no answer there, and none is needed: a body with a call in it never reaches
-\ this word, because every token of it had to be one the elaborator could splice
-\ and a call is not.
+\ Asked of the BODY and not the whole emission, because the body is what a
+\ caller copying this routine would write; the emitter measured it as it wrote.
 : SIZE-CK ( -- )
    NINL:STAGED? 0= if exit then
    A64EMIT:LEAVES-BY-BRANCH? if NINL:STAGE-CLEAR exit then
    M-IN @ M-OUT @ A64EMIT:BODY-INSNS NINL:SMALL? 0= if NINL:STAGE-CLEAR then ;
 
-\ Claim the row for the staged body: the address the routine is about to be
-\ published at. The emitter's own recorded placement is that address before the
-\ publication as much as after it - the seam refuses to publish an emission whose
-\ placement is not the slot it is claiming, so a publication that returns wrote
-\ the routine at exactly the address this asked about.
-\
-\ IT IS ASKED HERE BECAUSE THIS IS THE LAST MOMENT A REFUSAL IS FREE. Everything
-\ the record can refuse - an address that is not one, an address that already has
-\ a row - is refused with the word still running the code the engine compiled for
-\ it, which is what every other refusal in this chain leaves behind. And a record
-\ with no room for another body refuses nothing at all: it declines the row, the
-\ word publishes, and its callers call it, exactly as they call a body the size
-\ rule turned down.
-\
-\ AND A MEASURED RUN CLAIMS NOTHING, because the address it would claim is one no
-\ routine is going to occupy: the run publishes nothing, the code pointer never
-\ moves, and the next definition compiled in this process starts exactly there. A
-\ row claimed for it would be a body kept against somebody else's code - and the
-\ record says so itself, by refusing the second measurement's claim at the same
-\ address (E-NINL-DUP). The staging is left for RUN to drop, which is the same
-\ path a refused run's staging leaves by.
+\ The last moment a refusal is free. A record with no room declines the row
+\ instead: the word publishes and its callers call it. A measured run claims nothing.
 : CLAIM-ROW ( -- )
    NINL:STAGED? 0= if exit then
    M-MEASURE @ 0<> if exit then
    A64EMIT:PLACEMENT NINL:CLAIM ;
 
-\ Write the row the claim reserved, now that the seam has published the routine
-\ at the address it was claimed for. A staging that was declined a row left no
-\ claim behind, so this is the same question as "is there still a body to keep".
+\ A staging that was declined a row left no claim, so this is the same question
+\ as "is there still a body to keep".
 : KEEP-BODY ( -- )
    NINL:CLAIMED? 0= if exit then
    NINL:COMMIT ;
 
 \ ---- the chain ---------------------------------------------------------------
-\ Select, allocate, have the allocation accepted and emit, under the convention a
-\ Habu word is entered through. The contract is built more than once from the
-\ same four numbers because a routine value cannot be held in a local; every one
-\ of them is the same declaration, so the selector, the allocator and the
-\ validator are answering about one routine.
-\
-\ WHETHER THIS ROUTINE CALLS IS THE ELABORATOR'S ANSWER AND NOT THE CALLER'S. It
-\ was the caller's while every call written in a body became a call in the
-\ module, and it stopped being so when a small callee started being copied into
-\ its caller instead: a definition can now be written with four calls in it and
-\ contain none. The module is what the contract has to describe - the selector
-\ holds the two against each other and refuses a frame reserved for a call that
-\ is not there - so the contract is read off the pass that built the module.
-\
-\ THERE IS NO LONGER A SECOND DIRECTION TO KEEP. A check used to refuse a
-\ migration whose body called when the caller had not entered it as one that
-\ calls. That was never a fact about the definition, only a test of whether the
-\ caller had predicted the walk; and now that a body's names resolve off the
-\ dictionary, any body may turn out to call and no caller can predict it. It went
-\ with the flag it read.
-\
-\ AND HOW MUCH FRAME IT TAKES, which is the one thing stated here that is nobody's
-\ declaration. How many values a definition cannot keep in its registers is
-\ decided by the allocator and by nothing else, so M-SPILLS starts at zero and is
-\ filled in by EMITTED below out of what the walk proved. Zero is what the four
-\ unframed forms declared before this file counted anything, so a definition whose
-\ values all fit is compiled under exactly the contract it always had.
-\
-\ WHETHER CONTROL COMES BACK FROM THIS ROUTINE AT ALL IS THE CHECKER'S, AND IT IS
-\ ASKED ABOUT THIS DEFINITION BY NAME. A definition every path of which ends in a
-\ call to a word that never returns is one the checker certifies as never
-\ returning, in the same control-flag store and under the same symbol it
-\ certified everything else about it (src/core/checker.f CTL-DEAD), and
-\ src/compiler/native/dict.f is the door the chain already reads that store
-\ through for every CALLEE a body names. Asking it about the definition itself is
-\ the same question about one word further out - and it is the right authority
-\ rather than a convenient one: every OTHER caller in the tree is compiled
-\ against that same certificate, so a routine published under any contract but
-\ `control no-return` would be a routine disagreeing with what its callers were
-\ told. The elaborator's own walk is the second derivation and the allocation
-\ validator holds the two together (src/compiler/native/regalloc-verify.f
-\ VNORET-CK), so this is a claim held against a derivation rather than a decision
-\ taken twice.
-\
-\ THE NAME IS THE ONE KEEP-NAME COPIED, which is the tail the record carries, and
-\ it is the same key HELD-RETRACT gives back to the checker on the way out of a
-\ refused held run. It is readable here for a held migration as much as for a
-\ published one: the hold withholds the DICTIONARY record, and the certificate is
-\ the checker's, recorded while the engine compiled the source. A migration
-\ inside an open package would need the qualified spelling and does not have one
-\ yet, exactly as HELD-RETRACT does not - that arrives with the package-scoped
-\ migration, dot habu-parse-a-migrated-b38a83d9.
-\
-\ AND A WRONG ANSWER HERE CANNOT PUBLISH A WRONG ROUTINE, which is what makes a
-\ name-keyed question safe to ask at all. Answered yes for a body that really
-\ returns, the contract declares no-return over a module with a return in it and
-\ the allocation validator refuses it by name; answered no for a body whose every
-\ path ends, the contract declares a frame the routine has no epilogue to end and
-\ the memory-order rule refuses THAT by name - which is the refusal this whole
-\ leaf was opened for. Both directions are refusals with the definition still
-\ running the code the engine compiled for it.
+\ Asked of the checker by name, because every OTHER caller in the tree was
+\ compiled against that same certificate. A wrong answer cannot publish a wrong
+\ routine: either direction is refused by the validator or the memory-order rule.
 : NO-RETURN? ( -- bool )
    NAME-BUF NAME-U @ NDICT:SPELL-DEAD? ;
 
-\ THE NO-RETURN ARM COMES FIRST, because the three below it are shapes of a
-\ routine that HAS a return - one to make, one to replace with a branch, and one
-\ to make after a call it came back from - and a body whose every path ends has
-\ none: the elaborator closed each block at the dead call and put the trap that
-\ leaves behind it. So the question that decides whether there is a return at all
-\ is asked before the questions about what to do with one. No body measured so
-\ far answers yes to this and to the tail question both, so the order is a
-\ statement about what the arms MEAN rather than a refusal anything has hit.
-\ AND A BODY THAT NEVER RETURNS ANSWERS THE CALL QUESTION TOO, which the three
-\ arms below already ask and this one used not to. A body that dies in a call
-\ contains one by construction; a `begin … again` loop contains none, and the
-\ selector refuses a contract declaring a call over a module that has none
-\ (E-A64SEL-CALL). So the same question CALLED? answers for the returning forms
-\ decides which of the two no-return forms this is, and it is the module's own
-\ answer rather than a second reading of the checker's certificate.
+\ The no-return arm comes first: the three below are shapes of a routine that
+\ HAS a return, and a body whose every path ends has none.
 : ROUTINE ( -- A64EFF:routine )
    NO-RETURN? if
       NELAB:CALLED? if
@@ -626,24 +313,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    IR-BUILD:PLAN-DEFAULT
    CC HIR:NEW-BUILDER ;
 
-\ The module in which a counted loop whose body only accumulates is the
-\ arithmetic that loop would have computed. It stands between the elaborator and
-\ selection because that is where the pattern is visible: the guard's
-\ subtraction, the index and the limit the header takes as arguments and the
-\ additions the body makes are all values of the SOURCE dialect, and the closed
-\ form written there is an ordinary program the selector, the combine pass and
-\ the allocator then treat like any other.
-\
-\ A MODULE WITH NO SUCH LOOP IS HANDED BACK UNTOUCHED, for the reason COMBINED
-\ below gives: rebuilding a module renumbers its values, so a routine that gained
-\ nothing could still come out holding different registers and therefore
-\ different bytes. The scan is asked first and the binding given straight back
-\ when it answers zero.
-\
-\ SELECTION'S BINDING IS TAKEN OVER THE MODULE THAT IS REALLY SELECTED. A binding
-\ records which module it learned its opcode identities from and SELECT refuses
-\ any other, so a rewrite has to give the first binding back and take a second one
-\ over the builder it is about to write into.
+\ A module with no such loop is handed back UNTOUCHED: rebuilding renumbers
+\ values, so a routine that gained nothing could still come out with other bytes.
 : CLOSED ( IR-BUILD:module n -- IR-BUILD:module )
    {: m:IR-BUILD:module len:n :}
    m NLOOP:FOLDS {: n:n :}
@@ -657,14 +328,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    m1 ;
 
 \ The recorded length is read off the LIVE builder, before the freeze consumes
-\ the handle, because selection is handed the text the unit kept and refuses it
-\ unless it digests to the source the module was compiled from.
-\
-\ THE LOWERING PASS IS BOUND HERE TOO, because a module's symbols are its own
-\ ordinals and this is the only moment the machine dialect can be asked them: the
-\ module a rewrite would read is the one selection is about to write. A migration
-\ whose walk decides no spill gives that binding straight back, which is what the
-\ RELEASE in EMITTED below is.
+\ the handle. The lowering pass is bound here because a module's symbols are its own.
 : SELECTED ( n -- IR-BUILD:module )
    {: len:n :}
    CC BB NLOOP:BIND-DIALECT
@@ -679,20 +343,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    CC ab A64COMB:BIND-DIALECT
    CC m ab TXT len ROUTINE A64SEL:SELECT ;
 
-\ The module in which a multiply and the addition that reads its product are one
-\ multiply-add. It stands between selection and allocation because that is where
-\ the pattern is visible: the two operations are values here and registers
-\ afterwards, and the allocator's own reuse of a register is what makes the same
-\ pair unfusable once it has run.
-\
-\ A MODULE WITH NO SUCH PAIR IS HANDED BACK UNTOUCHED, which is not an
-\ optimisation of this pass but the thing that keeps every other routine's bytes
-\ what they were. Rebuilding a module renumbers its values, and the allocator
-\ breaks ties on those numbers, so a routine that gained nothing could still come
-\ out holding different registers and therefore different bytes. The scan is
-\ asked first and the binding given straight back when it answers zero, exactly
-\ as EMITTED below gives the spill binding back for a routine that spills
-\ nothing.
+\ A module with no such pair is handed back UNTOUCHED: rebuilding renumbers
+\ values and the allocator breaks ties on those numbers.
 : COMBINED ( IR-BUILD:module n -- IR-BUILD:module )
    {: m:IR-BUILD:module len:n :}
    m A64COMB:FUSIONS {: n:n :}
@@ -710,26 +362,16 @@ variable REC-OK                      \ the body staged so far is still one worth
    m IR-BUILD:RETIRE
    m1 ;
 
-\ The emission is made against the slot the publication seam is about to claim,
-\ which is what a branch to another word is measured from. It is declared for
-\ EVERY migration and not only for one that calls: a migration always publishes
-\ through that seam at that slot, so stating it once here is one rule rather than
-\ a condition, and the seam holds it against the slot it really claims - which
-\ turns "nothing moved the code pointer between the emission and the
-\ publication" from an assumption into a refusal.
+\ Declared for EVERY migration, not only one that calls, so the seam can hold it
+\ against the slot it really claims.
 : EMIT-AT ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
    m ROUTINE A64RAV:ACCEPT
    NPUB:NEXT-SLOT A64EMIT:PLACE-AT
    CC m A64EMIT:EMIT ;
 
-\ The module in which the sealed spill decisions are real stores and loads. The
-\ emitter's binding is given back first because it was taken over the builder
-\ selection wrote into, and everything from here on reads the builder this makes.
-\ The reserve the rewrite emits is sized from A64RA:FRAME - the frame the walk
-\ just proved this routine needs - which is the same number ROUTINE declares from
-\ the same count, so the module and its contract agree by construction rather
-\ than by the caller getting a guess right.
+\ The reserve is sized from A64RA:FRAME, the same count ROUTINE declares from,
+\ so the module and its contract agree by construction.
 : LOWERED ( IR-BUILD:module n -- IR-BUILD:module )
    {: m:IR-BUILD:module len:n :}
    A64EMIT:RELEASE
@@ -740,50 +382,9 @@ variable REC-OK                      \ the body staged so far is still one worth
    CC m nb TXT len A64SPILL:REWRITE ;
 
 \ ---- the two stages, or the four ---------------------------------------------
-\ A definition whose values all fit its registers is selected, allocated,
-\ accepted and emitted - one walk, exactly as before this file knew what a spill
-\ was.
-\
-\ ONE WHOSE VALUES DO NOT FIT IS NO LONGER REFUSED. The allocator does not hold a
-\ walk to the frame its contract arrived with any more; it hands out the slots the
-\ program needs and answers how many (habu-derive-a-routine-84ed36b6). So the
-\ count is read off the walk, the contract above declares exactly it, and two
-\ stages go in between: build the module those decisions are real operations in,
-\ and allocate THAT - because the decisions the first walk sealed are not an
-\ assignment for the module it read. Skipping either does not quietly emit the
-\ wrong program; the validator refuses it.
-\
-\ WHAT THE SECOND WALK DECIDES IS NOTHING, because it reads a module whose
-\ operations already are the ones the first walk assumed. It is still run, because
-\ the claims the emitter reads have to be claims about the module being emitted.
-\
-\ A ROUTINE THAT CALLS STILL CANNOT SPILL, and it is refused rather than
-\ mis-emitted. Its frame is built by the SELECTOR - src/compiler/native/select.f
-\ PROLOGUE emits the reserve and the link save, sized from the contract selection
-\ was handed - and selection has already happened by the time the count is known.
-\ The lowering pass keeps that prologue rather than resizing it
-\ (src/compiler/native/spill.f ONCE-CK), so the module reserves the frame a
-\ spill-free routine needed while its contract declares the one the spills need,
-\ and src/compiler/native/regalloc-verify.f refuses the difference by name. Making
-\ a calling routine spill starts at the selector and is dot
-\ habu-exercise-a-call-dda45093.
-\
-\ THE TWO QUESTIONS THIS WORD ASKS THE WALK ARE DIFFERENT ONES AND ARE ASKED
-\ SEPARATELY. How much FRAME the routine needs is a count of slots, and the
-\ contract above declares exactly that. Whether the module the emitter reads is
-\ the one the walk decided is a count of DECISIONS: every row of the plan is an
-\ operation the module does not contain yet, and a walk with no rows described
-\ the module it read. The two used to be one number because every row implied a
-\ slot - a value put away had one, and a value read back came out of it - and
-\ they came apart the moment a walk could decide something that needs no slot at
-\ all: a value RE-EMITTED where it is read (src/compiler/native/regalloc.f
-\ MB-EVICT) takes no frame, and a returned value that has to be copied into the
-\ register it leaves in never did. Asked through the slot count, such a walk
-\ looks like one that decided nothing, the lowering never runs, and what reaches
-\ the emitter is the module the walk REFUSED to allocate - values with no
-\ register and no slot, which src/compiler/native/regalloc-verify.f REGISTER-CK
-\ refuses by name (E-A64RAV-REGISTER). tools/codegen-alloc-dump.f is what reads
-\ the two counts apart on a refused migration.
+\ Frame slots and DECISIONS are different counts: a value re-emitted where it is
+\ read takes no slot, so a walk asked through the slot count looks like one that
+\ decided nothing. A routine that calls still cannot spill; it is refused.
 : EMITTED ( -- )
    TEXT-LEN {: len:n :}
    len SELECTED len COMBINED {: m:IR-BUILD:module :}
@@ -801,12 +402,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    m1 EMIT-AT ;
 
 \ ---- one migration -----------------------------------------------------------
-\ A held record is not in the name index, so asking whether its tail resolves to
-\ it would ask whether an unpublished record can be found - which it cannot, by
-\ construction. The question that check really answers, "the record about to be
-\ rewritten is the one this source made", is answered for a held migration by the
-\ publisher instead: src/compiler/native/publish.f HELD-CK refuses any index but
-\ the one slot the engine can have withheld.
+\ A held record is not in the name index, so publish.f HELD-CK answers this
+\ instead - it refuses any index but the one slot the engine can have withheld.
 : RESOLUTION-CK ( n -- ) {: wid:n :}
    M-HELD @ 0<> if exit then
    LATEST-NAME$ wid RESOLVES-TO-LATEST ;
@@ -826,14 +423,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    then
    NAME-BUF NAME-U @ wid NPUB:REPUBLISH ;
 
-\ THE MODEL IS BUILT AFTER THE TAPE AND NOT BEFORE IT. It used to be built first,
-\ because everything in it was known before the body was read: the dialect's own
-\ words, and whatever the caller had staged. Neither of those is the whole table
-\ any more - the elaborator adds a row for each name the body writes that the
-\ engine can answer for - so the table has to be sized from the body, and the
-\ body is the tape. Nothing between the two ever needed the model: the engine's
-\ own compilation of the source is what RECORD runs, and it knows nothing about
-\ this chain's vocabulary.
+\ The model is built AFTER the tape, because the table has to be sized from the
+\ body and the body is the tape.
 : WORK ( -- )
    CC HIR-MOD 0 M-BLD !
    RECORD {: before:n :}
@@ -853,25 +444,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    wid PUBLISH-IT
    KEEP-BODY ;
 
-\ The failure is caught INSIDE the context and carried out as a code, so the
-\ context always leaves the ordinary way and gives its arenas back. A throw that
-\ unwound past it would strand every arena the run had built, and the arena
-\ registry - which is small and shared - would run out after a handful of refused
-\ words. Nothing is decided here: the code is rethrown unchanged by RUN.
-\ A refused run gives its bindings back, for the same reason it gives its arenas
-\ back. Each of the chain's passes takes an identity binding over the module it
-\ is about to read, and two of them refuse a second binding over a live one - so
-\ a binding a refusal left behind would make every LATER migration fail for the
-\ state this one left rather than for anything about itself, which is exactly
-\ what RUN below refuses to let happen with the recorder.
-\
-\ EACH PASS IS ASKED ABOUT ITSELF, so this cannot get out of step with how far
-\ the run got. Selection spends its binding first thing, allocation spends its
-\ own, emission spends its own - so which are still live depends on which stage
-\ refused, and no counter kept here could track that without being a second copy
-\ of state the passes already hold. The validator is left out because its own
-\ binding is documented as replaceable: a second one over a live one is not a
-\ refusal there.
+\ Caught INSIDE the context so it always leaves the ordinary way and gives its
+\ arenas back. Each pass is asked about ITSELF, so this cannot get out of step.
 : RETURN-BINDINGS ( -- )
    NLOOP:BOUND? if NLOOP:RELEASE then
    A64SEL:BOUND? if A64SEL:RELEASE then
@@ -886,48 +460,21 @@ variable REC-OK                      \ the body staged so far is still one worth
    [: WORK ;] catch M-RC !
    M-RC @ 0 <> if RETURN-BINDINGS then ;
 
-\ The whole run, once. A migration inside a migration would record one
-\ definition's tokens onto the other's tape, so the second is refused by name.
-\
-\ The failure is caught only to put the entry back where the next migration can
-\ open, and is rethrown with its own code: a refused word must not make every
-\ later migration refuse too, and it must not turn some stage's refusal into
-\ this file's.
-\ The run inside its own context, which gives the arenas the stages built back
-\ when it leaves.
+\ A migration inside a migration would record one definition's tokens onto the
+\ other's tape. The failure is rethrown unchanged with its own code.
 : IN-CONTEXT ( -- )
    NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- what a refused HELD migration owes --------------------------------------
-\ A refused held run leaves less behind than a refused ordinary one, because the
-\ engine already took back everything it owns: the count never moved, the name
-\ never entered the index, and the code space went back to the colon entry the
-\ moment the hold was taken. The record at that slot is inert - the next
-\ definition the engine compiles writes over it - so there is nothing to undo
-\ there either.
-\
-\ WHAT IS LEFT IS THE CHECKER'S. The definition CERTIFIED; that is what made it
-\ holdable. So the checker recorded a signature under the name, and unlike the
-\ count and the code that signature has no owner that gives it back. Left in
-\ place it is a certified effect for a word that does not exist: the next
-\ definition of that name meets the certified-duplicate guard and is refused for
-\ the state this run left rather than for anything about itself - the same
-\ failure mode RECORD gives the recorder up to avoid.
-\
-\ THE NAME IS THE TAIL THE RECORD CARRIES, which is the checker's symbol for a
-\ definition made at top level, where migrations run. A held migration inside an
-\ open package would need the qualified spelling, and that arrives with the
-\ package-scoped migration (dot habu-parse-a-migrated-b38a83d9); until then a
-\ held run in a package would under-retract, so the fixture pins the global case
-\ this file actually supports.
+\ The engine gives the count and the code space back by itself; the certified
+\ signature has no owner that does, so it is retracted here by the record's tail.
 : HELD-RETRACT ( -- )
    M-HELD-PENDING @ 0= if exit then
    0 M-HELD-PENDING !
    NAME-BUF NAME-U @ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
-\ The length refusal comes before anything else this run does, because what it
-\ guards is the `evaluate` below: a source past the engine's body capture ends
-\ the process rather than throwing, so there is nothing left to catch it with.
+\ The length refusal comes first because a source past the engine's body capture
+\ ends the process rather than throwing.
 : RUN ( -- )
    M-OPEN @ 0<> if E-NMIGRATE-STATE throw then
    M-SRC-U @ TEXT-CAP > if E-NMIGRATE-TEXT throw then
@@ -949,53 +496,27 @@ variable REC-OK                      \ the body staged so far is still one worth
 
 public
 
-\ Compile the definition this source publishes, and republish it as the native
-\ chain's code. `in` and `out` are its declared arities and `regs` the scratch
-\ registers its routine may use.
+\ `in` and `out` are the declared arities, `regs` the scratch registers allowed.
 : DEFINE ( ptr u8 n n n n -- )
    STAGE RUN ;
 
-\ Compile the definition this source publishes WITHOUT publishing it: the engine
-\ certifies it and withholds the record, the chain compiles the tape, and this
-\ file's publisher commits that record. A refusal anywhere leaves the definition
-\ uncompiled and unpublished, with the refusing stage's own error - the chain's
-\ vocabulary refusal is still E-HIR-UNMODELED, its control refusal still
-\ E-NELAB-CTRL - and nothing under the name at all, because there never was
-\ anything under the name.
-\
-\ THIS IS THE ENTRY THE CUT NEEDS. Every other entry in this file compiles a word
-\ the old emitter already published; this one is the first that does not, which
-\ is what makes the old emitter's emission unnecessary rather than prerequisite.
+\ The first entry that compiles a word the old emitter never published, which is
+\ what makes the old emitter unnecessary rather than prerequisite.
 : DEFINE-HELD ( ptr u8 n n n n -- )
    STAGE
    1 M-HELD !
    RUN ;
 
-\ Ask whether the chain can compile the definition this source publishes, and
-\ keep nothing whatever the answer is. It runs every stage DEFINE-HELD runs,
-\ including every refusal the publication seam can make
-\ (src/compiler/native/publish.f VALIDATE-HELD), and stops one step short of the
-\ writes: no code in the arena, no dictionary record, no row in either
-\ address-keyed record, no replacement-log row, and the checker's signature for
-\ the name retracted on the way out. A refusal arrives exactly as it would have
-\ from DEFINE-HELD, with the refusing stage's own code.
-\
-\ THIS IS WHAT A CENSUS NEEDS AND THE OTHER ENTRIES CANNOT GIVE IT. Every other
-\ entry here publishes, and a publication is permanent: the two address-keyed
-\ records may not drop a row to make space, so a caller that asks about a few
-\ thousand definitions fills them and is refused for the tables rather than for
-\ the definitions. What the caller wanted to know is answered before any of that
-\ is written down.
+\ Stops one step short of every write, because a publication is permanent and
+\ the two address-keyed records may not drop a row to make space.
 : MEASURE-HELD ( ptr u8 n n n n -- )
    STAGE
    1 M-HELD !
    1 M-MEASURE !
    RUN ;
 
-\ Migrating a definition that names one `create`d data word. Its spelling as
-\ the definition writes it is the whole of what the caller says about it: the
-\ address that word pushes is the engine's to answer, and the word model asks
-\ src/compiler/native/dict.f for it while it declares the row.
+\ The spelling is the whole of what the caller says: the address that word
+\ pushes is the engine's to answer.
 : DEFINE-DATA ( ptr u8 n ptr u8 n n n n -- )
    {: sa su:n da du:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
    sa su in out regs STAGE
@@ -1010,16 +531,8 @@ public
 : WID ( -- n )
    NAME-WID @ ;
 
-\ How many values the last migration put in the frame, and therefore how many
-\ slots its routine's frame holds. Zero for every definition that fits, which is
-\ nearly all of them.
-\
-\ IT IS NO LONGER THE WHOLE ANSWER TO "DID THIS ONE TAKE THE LOWERING PATH", and
-\ that is what REMATS below is for. A value the walk decided to write again where
-\ it is read goes through the same lowering and takes no slot, so a definition
-\ can be lowered with nothing in its frame. Both counts are published because the
-\ code a lowered definition and a fitting one publish are both just code, and a
-\ test that only checked the answers could not tell which route produced them.
+\ Both counts are published because a lowered definition and a fitting one
+\ publish code that looks the same, so a test could not tell the routes apart.
 : SPILLS ( -- n )
    M-SPILLS @ ;
 
