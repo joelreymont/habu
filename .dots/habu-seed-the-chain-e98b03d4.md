@@ -32,7 +32,7 @@ code), but this leaf must re-derive it before the chain enters the
 capture window. The engine-side model is C-CALL-SCAN-SAFE +
 AOT-WINDOW:EMIT-OUTSIDE (arithmetically-accepting unarmed state).
 
-Claim: agent=bake-chain-7 workspace=.jj-ws/habu-bake-chain
+Claim: agent=bake-chain-8 workspace=.jj-ws/habu-bake-chain
 
 RULED 2026-08-14 (bake-chain checkpoint, probes /tmp/bc-probe/):
 the metabuild-host capture entry is REFUTED BY EXPERIMENT - the
