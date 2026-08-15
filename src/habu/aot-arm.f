@@ -19,7 +19,9 @@
 \ target does. 98 of 18602 call sites, refused by name at aot-capture.f
 \ ACAP-SITE-BAND (first: the chain's MASK calling A64ASM's LIMM?). So the arming
 \ word has to be loadable with the chain still ahead of it, which means it may
-\ depend on src/habu/layout.f and nothing else.
+\ depend on src/habu/layout.f and nothing else. That dependency is free where it
+\ matters: layout.f is already registered in a booted engine, so requiring it
+\ there compiles 0 records, while requiring asm.f compiles 178 (both measured).
 \
 \ WHO LOADS IT. Two processes, the same way aot-decl.f is loaded by two: the stdin
 \ metabuild host compiles it in (manifest slot tools/stdin-closure-lib.f SDC-ARM$,
