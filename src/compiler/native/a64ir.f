@@ -1,376 +1,22 @@
 \ a64ir.f - the ARM64 machine dialect: the closed set of operations that stand
 \ for real ARM64 instruction forms, with virtual registers as SSA values.
 \
-\ docs/compiler-ir-design.md section 5.3 ("closed-world operation schemas") and
-\ section 7.2's stage chain. Section 5.3 line 229 says each dialect has an
-\ exhaustive operation family and one schema table; this file is that family for
-\ the straight-line integer subset of ARM64, and it fills a module's schema table
-\ through the IR-SCHEMA builder that src/compiler/ir/build.f owns. It defines no
-\ storage of its own and repeats no check IR-SCHEMA already makes.
+\ A condition is four bits, and what they MEAN depends on which instruction wrote
+\ the flags. Fcmp raises the unordered condition for a NaN by setting
+\ N=0 Z=0 C=1 V=1, and against those bits the conditions read:
 \
-\ WHAT AN A64IR OPERATION IS. One instruction of the modelled ARM64 vocabulary,
-\ with its register operands replaced by SSA values. A value of this dialect is a
-\ virtual general register: the operation that defines it is the instruction that
-\ writes it, and the operations that take it as an operand are the instructions
-\ that read it. Which physical register each one ends up in is the register
-\ allocator's answer and is deliberately absent here, and the four bytes each
-\ operation encodes to are the emission leaf's answer and are absent here too.
-\ Between those two neighbours this file owns exactly one thing: which machine
-\ operations exist and what shape each one has.
+\   lt    11  N != V          TRUE on unordered
+\   le    13  Z=1 or N != V   TRUE
+\   ne     1  Z = 0           TRUE
+\   ge    10  N  = V          false
+\   gt    12  Z=0 and N = V   false
+\   equal  0  Z = 1           false
+\   mi     4  N = 1           false
 \
-\ THE VOCABULARY IS THE MODELLED ONE, NOT A SECOND ONE. Every opcode below names
-\ one form of the instruction vocabulary src/arch/arm64/asm.f encodes, and it
-\ carries only operands that form has. All but one of them is also a form of the
-\ 48-form vocabulary formal/Common/Insn.v models; the exception is `a64.mvn`,
-\ whose Orn base was added to the assembler with this dialect's complement and is
-\ not in that model yet - dot habu-model-orn-in-39435de5 is the row, and
-\ until it lands the encoder is held by test/compiler/native-a64ir.f's own
-\ assertion against the shipped assembler instead:
-\   a64.movz     Movz rd imm hw  - write a 16-bit half into a cleared register
-\   a64.movk     Movk rd imm sh  - overwrite one 16-bit half, keeping the rest
-\   a64.mov      Orr rd xzr rm   - copy one register into another
-\   a64.add      Add rd rn rm    - 64-bit register addition
-\   a64.sub      Sub rd rn rm    - 64-bit register subtraction
-\   a64.mul      Mul rd rn rm    - 64-bit register multiplication
-\   a64.sdiv     Cbnz rm +2; Brk; Sdiv rd rn rm
-\                                - 64-bit signed division, trapping on a zero
-\                                  divisor exactly as the engine's own `/` does
-\   a64.and      And rd rn rm    - 64-bit register bitwise and
-\   a64.orr      Orr rd rn rm    - 64-bit register bitwise or
-\   a64.eor      Eor rd rn rm    - 64-bit register bitwise exclusive or
-\   a64.lslv     Lslv rd rn rm   - shift left by a register's low six bits
-\   a64.lsrv     Lsrv rd rn rm   - logical shift right by the same
-\   a64.mvn      Orn rd xzr rm   - the bitwise complement of one register
-\   a64.str      Str rt sp off   - store a register into a frame slot
-\   a64.ldr      Ldr rt sp off   - load a register back out of a frame slot
-\   a64.astr     Str rt rn 0     - store a register through an address register
-\   a64.aldr     Ldr rt rn 0     - load a register through an address register
-\   a64.astrb    Strb rt rn 0    - store a register's lowest byte through an
-\                                  address register
-\   a64.aldrb    Ldrb rt rn 0    - load one byte through an address register,
-\                                  zero-extended into the register
-\   a64.fstr     StrD dt sp off  - store a DOUBLE into a frame slot
-\   a64.fldr     LdrD dt sp off  - load one back out of a frame slot
-\   a64.fdstore  StrD dt ds off  - write a DOUBLE into a data-stack slot
-\   a64.fdload   LdrD dt ds off  - read one out of a data-stack slot
-\   a64.fastr    StrD dt rn 0    - store a DOUBLE through an address register
-\   a64.faldr    LdrD dt rn 0    - load one through an address register
-\   a64.reserve  Subi sp sp n    - claim the routine's own frame
-\   a64.release  Addi sp sp n    - give the frame back
-\   a64.dtake    Subi ds ds n    - take the caller's operands off the data stack
-\   a64.dload    Ldr rt ds off   - read one of them out of its slot
-\   a64.dstore   Str rt ds off   - write a result into its slot
-\   a64.dpublish Addi ds ds n    - make the results the caller's
-\   a64.flag     Cmp rn rm; Cset rd cc; Sub rd xzr rd
-\                                - leave the Habu flag of one comparison
-\   a64.flagi    Cmp rn #imm; Cset rd cc; Sub rd xzr rd
-\                                - the same against a number the instruction
-\                                  carries instead of a second register
-\   a64.selz     Cmp rn #0; Csel rd rn rm ne
-\                                - choose between two registers on whether a
-\                                  third is not zero
-\   a64.cmpsel   Cmp rn rm; Csel rd rn rm cc
-\                                - compare two registers and choose between two
-\                                  others under the condition
-\   a64.b        B target        - go to one block, handing it its arguments
-\   a64.cbz      Cbz rt target; B other
-\                                - go to the first block when rt is zero and to
-\                                  the second when it is not
-\   a64.cmpbr    Cmp rn rm; B.cc target; B other
-\                                - compare two registers and go to the first
-\                                  block when the condition holds and to the
-\                                  second when it does not, without ever
-\                                  materialising the flag as a number
-\   a64.cmpbri   Cmp rn #imm; B.cc target; B other
-\                                - the same against a number the instruction
-\                                  carries instead of a second register
-\   a64.fflag    Fcmp dn dm; Cset rd cc; Sub rd xzr rd
-\                                - leave the Habu flag of one float comparison
-\   a64.fflagz   Fcmp dn #0.0; Cset rd cc; Sub rd xzr rd
-\                                - the same against the immediate zero, which is
-\                                  a form of the instruction and not an operand
-\   a64.fcmpbr   Fcmp dn dm; B.cc target; B other
-\                                - the fused float compare-and-branch
-\   a64.fcmpbrz  Fcmp dn #0.0; B.cc target; B other
-\                                - the same against the immediate zero
-\   a64.selzd    Cmp rn #0; Fcsel dd dn dm ne
-\                                - a64.selz choosing between two DOUBLES
-\   a64.cmpseld  Cmp rn rm; Fcsel dd dn dm cc
-\                                - a64.cmpsel choosing between two DOUBLES
-\   a64.fcmpsel  Fcmp dn dm; Csel rd rn rm cc
-\                                - compare two DOUBLES and choose between two
-\                                  general registers under the condition
-\   a64.fcmpselz Fcmp dn #0.0; Csel rd rn rm cc
-\                                - the same against the immediate zero
-\   a64.fcmpseld Fcmp dn dm; Fcsel dd dn dm cc
-\                                - compare two DOUBLES and choose between two
-\                                  more under the condition
-\   a64.fcmpselzd Fcmp dn #0.0; Fcsel dd dn dm cc
-\                                - the same against the immediate zero
-\   a64.call     Addi ds ds n; Bl entry; Subi ds ds m
-\                                - hand the caller's data stack to the word being
-\                                  compiled, call it, and take the stack back
-\   a64.wordcall Addi ds ds n; Bl entry; Subi ds ds m
-\                                - the same three instructions to ANOTHER word,
-\                                  whose entry address the operation carries
-\   a64.tailcall B entry         - leave through another word, which returns to
-\                                  OUR caller: the last call a routine makes,
-\                                  where its result is already the routine's own
-\                                  result and the data-stack pointer already
-\                                  stands where the callee is entered
-\   a64.trap     B entry         - leave through the one shared routine that ends
-\                                  the process, which does not come back: the
-\                                  ordinal naming the family is already in the
-\                                  cell that routine is entered through
-\   a64.codeaddr Adr rd, fn      - the address ANOTHER function of this emission
-\                                  is entered at, as a value. The operation
-\                                  carries the function's ORDINAL and not its
-\                                  address, because the address is where the
-\                                  emitter puts it and nothing before emission
-\                                  knows that. The instruction is PC-relative, so
-\                                  the value is right wherever the emission is
-\                                  finally written and no relocation carries it
-\   a64.lnkstr   Str x30 sp off  - put the caller's return address in a frame slot
-\   a64.lnkldr   Ldr x30 sp off  - take it back out again
-\   a64.ret      Ret             - return to the address in the link register
-\ There is no opcode here for a form no pass in the chain produces yet. An opcode
-\ with no selection rule and no emission would be a promise, not a schema.
-\
-\ THE SIX D-FILE MEMORY FORMS ARE THE SIX ABOVE THEM WITH ONE BIT OF THE OPCODE
-\ CHANGED, AND THAT IS THE WHOLE OF WHAT THEY ADD. A double lives in the floating
-\ file, so before these existed a double could only reach memory by being moved
-\ into a general register first and moved back on the way out: an Fmovdx in front
-\ of every store of one and an Fmovxd behind every load. The architecture has no
-\ such requirement - LDR and STR name a register of either file, and which one
-\ they name is bit 26 - so the pairs are exact twins of a64.str/a64.ldr,
-\ a64.dstore/a64.dload and a64.astr/a64.aldr: same operands in the same order,
-\ same base register named by the form rather than taken as an operand where the
-\ general twin names it, same offset attribute, same memory space and same token
-\ chain. ONE thing differs and it is the register CLASS of the transferred value,
-\ which is what a schema states and therefore the only place it can be stated.
-\
-\ AND a64.faldr AND a64.fastr SPAN BOTH FILES, which is why DEF-ALDR and DEF-ASTR
-\ below take two types. The base is an address the program computed, so it is a
-\ general register; the transferred value is a double, so it is a floating one.
-\ Declaring them with one type - which was possible while every member of the
-\ shape was general - would say the ADDRESS is of the floating file, and no
-\ addressing mode of this machine has such a thing.
-\
-\ THE FOUR FLOAT COMPARISON FORMS ARE FOUR AND NOT TWO, and both splits are
-\ instruction forms rather than tastes. The flag-materialising pair and the fused
-\ pair differ in exactly what the integer pair differ in - one writes a number
-\ into a register and one reads the flags with a branch - and the two-operand and
-\ zero-operand halves of each pair differ because FCMP really does have two
-\ forms: one comparing two D registers and one comparing a D register against the
-\ immediate zero. The engine reaches both (src/habu/habu1.f (FCMP) and (FCMP0)),
-\ so modelling the zero comparison as a comparison against a materialised 0.0
-\ would emit a longer sequence than the interpreted word for the same source
-\ word, and an operation whose operand list does not match its instruction's.
-\
-\ THE FORMS THAT ARE MORE THAN ONE INSTRUCTION, AND WHY EACH ONE IS. Every other
-\ form above is one instruction, and that is the rule this dialect keeps wherever
-\ it can: one operation, one form, four bytes. The division breaks it because its
-\ zero-divisor guard and the divide it guards are inseparable - the whole point
-\ of the guard is that nothing runs between the test and the divide. The two call
-\ forms break it because between the first of their three instructions and the
-\ last, the data-stack pointer stands above values that are the CALLEE's, so an
-\ access placed in the middle would read the callee's stack through the caller's
-\ offsets. Every other one breaks it for a single related reason, which is the
-\ condition flags: the three comparisons that materialise a flag, the two-way
-\ branch, the three compare-and-branches and the eight conditional selects. The
-\ flags are a single architectural register that no value of this dialect stands
-\ for and the allocator may never hand out, so the instructions that write them
-\ and the instruction that reads them have to be inseparable - and the only way
-\ an IR can say "inseparable" is to make them one operation. What a form's count
-\ is, is written down once and read by the layout: how many instructions the
-\ operations of a block are is never guessed at from anything but the opcodes in
-\ it.
-\
-\ THE COUNT IS A CEILING FOR SEVEN FORMS AND AN EXACT NUMBER FOR EVERYTHING ELSE.
-\ The one-way branch, the two-way branch and the three compare-and-branches each
-\ end in an unconditional branch, and src/compiler/native/emit.f does not emit
-\ that branch when the block it names is the block laid out next - the machine
-\ gets there by falling into it. So those five are one instruction shorter
-\ wherever the layout allows, which makes their count a property of the
-\ operation's POSITION as well as of its form. The other two are the copies:
-\ a64.mov and a64.fmovdd whose source and destination registers are the same move
-\ nothing and are not emitted either, which makes their count a property of the
-\ REGISTER ASSIGNMENT. All of that is the
-\ emitter's own arithmetic and it is stated there: each rule is one word both its
-\ layout pass and its writing pass ask, and the two are held against each other
-\ at every block boundary. Nothing outside the emitter counts instructions.
-\
-\ THE COMPARE-AND-BRANCH IS WHY THE FLAGS ARGUMENT MATTERS RATHER THAN BEING A
-\ CURIOSITY. A source comparison that only ever answers a branch test does not
-\ need the number a Habu flag is: the machine already has the answer in its
-\ condition flags one instruction after the compare, and a branch can read it
-\ there. Written as a64.flag followed by a64.cbz that is five instructions and a
-\ register - compare, set, negate, test-and-branch, branch - where a64.cmpbr is
-\ three and none. It has to be ONE operation for exactly the reason a64.flag is
-\ one: the compare writes the flags and the conditional branch reads them, and an
-\ IR in which they were two operations would let a later pass put something
-\ between them. src/compiler/native/select.f is the pass that chooses it, and it
-\ only does so when the source comparison's single use is that branch.
-\
-\ THE FOUR DATA-STACK FORMS ARE THE OTHER CALLING CONVENTION, MADE OF
-\ INSTRUCTIONS. Design section 7.6 gives an externally callable Habu word its
-\ inputs and outputs in canonical slots of the CALLER's data stack rather than in
-\ registers, and the running engine keeps the pointer to that stack in one
-\ register it never gives away (A64EFF:DSTACK-GPR). These four forms are how a
-\ routine reaches it, and they are the exact mirror of the frame four: the
-\ pointer is named by the form rather than taken as an operand, for the same
-\ reason and with the same consequence - no value of this dialect stands for it
-\ and none can, because a value is a register the allocator may hand out and this
-\ one it may never. The stack is full-ascending and the pointer sits just past
-\ the caller's top, so a routine taking `a` arguments moves it down over them
-\ once (a64.dtake), reads argument i at 8i, writes result j at 8j, and moves it
-\ up over `r` results once (a64.dpublish). That is the same net effect a word the
-\ engine compiled itself has, arrived at with two instructions instead of one
-\ push or pop per value.
-\
-\ WHY THEY THREAD A CHAIN OF THEIR OWN. The token type is the one MEM-TYPE below,
-\ because there is one kind of ordering value in this dialect and a second would
-\ be a second class the allocator has to learn. The CHAIN is separate: a64.dtake
-\ mints one and a64.dpublish ends it, exactly as a64.reserve and a64.release do
-\ for the frame. Forcing the two into one chain would declare that a frame access
-\ and a data-stack access have to keep their order against each other, and they
-\ do not - the frame is below the machine stack pointer and the data stack is a
-\ region of the engine's own that no frame access can reach - so the schemas say
-\ which space each form touches and the orderings stay two.
-\
-\ WHY A COPY IS A FORM WHEN THE MACHINE HAS NO COPY INSTRUCTION. A routine's
-\ contract says which register each returned value leaves in, and the value the
-\ program computed is not always already there - it can be an argument the caller
-\ put somewhere else, or a value whose register was decided by a tie. Putting it
-\ where it has to be is one instruction, and it has to be an operation of this
-\ dialect for the same reason a spill store is: a register allocator may decide
-\ it, but only a module can contain it, and only what a module contains can be
-\ checked. ARM64 has no separate move instruction - `mov xd, xm` IS `orr xd, xzr,
-\ xm`, which is what a disassembler prints back - so this form is that one form
-\ with the zero register in its first source, and src/arch/arm64/asm.f says so
-\ once in ENC-MOV rather than at each caller.
-\
-\ THE FOUR MEMORY FORMS EXIST BECAUSE A SPILL IS AN INSTRUCTION. A straight-line
-\ block can hold more values at once than any register file has, so the register
-\ allocator has to be able to put a value somewhere that is not a register and
-\ read it back. That somewhere is a slot of the routine's own frame, and the
-\ allocator can only decide it if the decision names instructions something can
-\ emit - which is what a64.str and a64.ldr are. A routine has no frame until it
-\ takes one: nothing may be written below the stack pointer on this platform, so
-\ a routine that uses a slot must move the stack pointer down over its own frame
-\ and put it back before it returns. a64.reserve and a64.release are that pair,
-\ and they are in the dialect rather than added silently at emission because a
-\ frame the module does not name is a frame nothing can check.
-\
-\ WHY A FRAME SLOT IS AN ATTRIBUTE AND NOT AN OPERAND. An operand of this IR is
-\ an SSA value - something an operation defined - and a slot is not: no operation
-\ computes it, it has no type in the value grammar, and two operations naming the
-\ same slot are not naming one definition. What a slot is, is a constant field of
-\ the instruction, which is exactly what an attribute is, and IR-SCHEMA can
-\ validate an attribute: it declares the key, the freeze verifier proves every
-\ operation of the form carries exactly one attribute under it, and the value
-\ goes through the checked builder below, so no operation with an unreachable
-\ slot can be built at all. The base register is not an operand either, for the
-\ same reason in reverse: the frame is reached from the stack pointer, the stack
-\ pointer is not a value of this dialect and never can be (a value is a register
-\ the allocator may hand out, and this one it may not), so the base of a frame
-\ access is a property of the form and the two forms say so by name.
-\
-\ THE MEMORY FORMS ARE NOT PURE, AND SAY SO IN THE ONE PLACE THAT DECIDES. An
-\ operation that reads or writes memory has to declare it, and IR-VERIFY makes
-\ that declaration structural: an operation whose effect is not pure must carry a
-\ memory token, so the order of the memory operations is an SSA chain and not a
-\ convention. The four memory forms therefore thread one token - a64.reserve
-\ mints it, a64.str and a64.ldr take it and pass it on, a64.release ends it - and
-\ MEM-TYPE below is the single place that says what that token is. A value of
-\ this dialect is now one of two things, a general register or a memory token,
-\ and the register allocator reads the type to tell them apart rather than
-\ knowing which opcode produced which.
-\
-\ THE FRAME BOUNDS ARE A64EFF'S, NOT A SECOND COPY. How far a slot can sit from
-\ the stack pointer and how deep a frame can be are facts about the unsigned
-\ offset field of the Ldr and Str forms, and src/compiler/a64-effect.f already
-\ owns them - it is the schema that describes a routine's frame region, its
-\ SLOT-REACH is that field's reach for one access width, and its own suite pins
-\ both against src/arch/arm64/asm.f. So the two builders below ask A64EFF rather
-\ than restating the arithmetic, and a slot the assembler could not encode is
-\ refused before it is interned, exactly as an out-of-field move-wide immediate
-\ is.
-\
-\ WHY MOVK TAKES AN OPERAND WHEN THE INSTRUCTION HAS ONE REGISTER. Movk keeps the
-\ bits of rd it does not write, so the register it names is both a source and a
-\ destination. In SSA a value is written once, so the value the instruction keeps
-\ has to be named: a64.movk reads the value the previous half left and defines
-\ the value with this half merged in. That is what makes a materialised 64-bit
-\ constant a chain of operations the allocator can read rather than a hidden
-\ update of a register nobody declared. The two SSA values are still one register
-\ field, and a64.movk's schema says so with a tie, so the register allocator gets
-\ the constraint from the form itself rather than from this opcode's name.
-\
-\ WHY A RETURN CARRIES OPERANDS WHEN THE INSTRUCTION CARRIES NONE. The Ret form
-\ reads no register the assembler names, but the values a word returns are still
-\ live where control leaves, and something has to say so or the allocator is free
-\ to reuse their registers one instruction early. The returned values are
-\ therefore the terminator's operands, exactly as they are in the HIR dialect
-\ this stage selects from. Which physical registers they must sit in at that
-\ point is the target contract's answer, not this dialect's.
-\
-\ THE MACHINE BOUNDS. Two, and both come off the move-wide form. Its immediate
-\ field is sixteen bits, so a half is 0..65535; its half selector is two bits, so
-\ a 64-bit register is written in four halves and a legal shift is 0, 16, 32 or
-\ 48. They are written here as the field widths they are - the same way
-\ src/compiler/a64-effect.f writes its bounds - and test/compiler/native-a64ir.f
-\ reads src/arch/arm64/asm.f's own IMM16-LIM and HW-LIM back and asserts them
-\ against these, so a bound that moved in the assembler reddens this dialect
-\ instead of silently disagreeing with it.
-\
-\ ONE FORM MAY TRAP, AND IT IS THE ONE THAT HAS TO. Add, Sub and Mul on ARM64
-\ wrap; none of them raises on overflow, and a frame access does not either -
-\ its slot is proved addressable before the operation can be built. Division is
-\ the exception, and deliberately: the engine's own `/` branches over a `brk`
-\ when the divisor is not zero (src/habu/habu1.f BDIV0?), so a divide by zero
-\ ends the process rather than answering the zero a bare Sdiv would. a64.sdiv is
-\ those three instructions as ONE operation, for the same reason the comparison
-\ is three - the guard and the divide are inseparable, and an IR in which they
-\ were two operations would let a later pass put something between them - and
-\ its schema declares that it may trap. That declaration is what lets the
-\ selector tell a source operation it can lower faithfully from one it cannot: a
-\ trapping ADDITION still needs a flag-setting form and a conditional branch to
-\ a trap target, and none of that is in this dialect yet, so the selector still
-\ refuses it.
-\
-\ THE TWO ADDRESSED FORMS ARE THE ONLY ONES WHOSE BASE IS A VALUE. Every other
-\ memory form above reaches a region the FORM names - the frame from the stack
-\ pointer, the caller's stack from the engine's own pointer - and neither base is
-\ a value of this dialect, because neither register is one the allocator may hand
-\ out. a64.aldr and a64.astr are the opposite: their base is an ordinary virtual
-\ register, defined by whatever computed the address, so they are how a program
-\ reaches a cell it named itself. Both use the same Ldr and Str forms as the
-\ frame accesses with an offset of zero, which is what `[Xn]` is on this machine,
-\ so no new encoding enters the assembler for them.
-\
-\ AND THEY SHARE THE DATA STACK'S ORDER, WHICH IS NOT A CONVENIENCE. An address
-\ a program computed may name any cell the program can reach, and the caller's
-\ data stack is such a region: a routine that stores through a computed address
-\ can, in principle, be storing into the very slot a later a64.dstore publishes
-\ into. So the two families are in ONE address space and ONE token chain -
-\ a64.dtake mints it, every access threads it, a64.dpublish ends it - and the
-\ orderings a module states are then true rather than convenient. Splitting them
-\ would declare that a computed store and a data-stack store need not keep their
-\ order, and nothing proves that. The frame is the case where something does
-\ prove it: a frame slot is below the machine stack pointer, no operation of this
-\ dialect produces the stack pointer as a value, and no source word can therefore
-\ compute an address inside it - which is why the frame keeps a chain and a space
-\ of its own, and why the data-stack forms' aliasing is now unrestricted while
-\ the frame's stays unaliased.
-\
-\ THREE VALUE CLASSES, DELIBERATELY NAMED. A value of this dialect is a 64-bit
-\ general register, a 64-bit floating register, or the memory token the frame
-\ forms thread, and GPR-TYPE, FPR-TYPE and MEM-TYPE are the single places that
-\ say which is which. The SIMD register file, labels and fixups are further
-\ records of the same dialect and are not here yet; the seam where they arrive is
-\ these three readers, which is why they exist instead of each schema interning
-\ its own type inline.
+\ So a float less-than lowers under `mi` and never under `lt`, and the three
+\ conditions the float comparisons reach - mi, gt and equal - are exactly the
+\ three that are false on unordered. That is why every float comparison this
+\ engine has answers false for a NaN.
 
 require lib/prelude.f
 require lib/errors.f
@@ -387,10 +33,8 @@ require src/arch/arm64/asm.f
 package A64IR
 public
 
-\ The whole operation family of the straight-line integer subset. It is an ENUM
-\ so design line 229's closed world is a property of the type: a selection rule
-\ cannot name a machine operation this dialect does not have, and every MATCH
-\ over it has to answer for every member.
+\ An ENUM, so a selection rule cannot name an operation this dialect does not
+\ have and every MATCH over it has to answer for every member.
 ENUM opcode DERIVE eq
    movz
    movk
@@ -470,64 +114,9 @@ ENUM opcode DERIVE eq
    codeaddr
 ;ENUM
 
-\ The conditions a comparison may be made under: one per relation the SOURCE
-\ dialect has a comparison for, and no others. Six, because six are what Habu's
-\ comparison words compare with - `<`, `<=`, `>`, `>=`, `=` and `<>`. The
-\ equality member is spelled `equal` and not `eq`, because `eq` is the name the
-\ ENUM derives for its own comparison word and a member cannot take it. It is an
-\ ENUM so a caller names the condition instead of writing the number the field
-\ holds, and so a condition this dialect has no form for is unwritable rather
-\ than checked.
-\
-\ THREE OF THEM ARE THE COMPLEMENTS OF THE OTHER THREE, AND THAT IS NOT A
-\ REDUNDANCY. A form that has to BRANCH on the falsity of a relation names the
-\ relation and puts its two successors the other way round, so branch polarity
-\ still needs no complement and src/compiler/native/select.f never asks for one.
-\ What does need them is the form that MATERIALISES a flag: a comparison that
-\ answers a number has no successors to swap, so `<>` can only be reached by a
-\ condition of its own. `>` and `>=` could have been `<` and `<=` with the
-\ operands turned round instead - it is the same relation - but then a lowering
-\ would be an operand order in one place and a condition in another, and two
-\ tables that have to agree are two tables that can disagree. One condition per
-\ source relation keeps it one table, and it also keeps every emitted comparison
-\ byte-identical to the sequence the engine's own primitive emits for that word.
-\
-\ AND THE SEVENTH IS `mi`, WHICH THE FLOAT COMPARISONS NEED AND NO INTEGER
-\ COMPARISON DOES. This is the one place in the chain where a condition cannot be
-\ read off the relation's NAME, and the reason is the unordered flag.
-\
-\ A condition is four bits of an instruction, and what those bits MEAN depends on
-\ which instruction wrote the flags. After a Subs, `lt` is "signed less than".
-\ After an Fcmp it is not: Fcmp raises the unordered condition when either
-\ operand is a NaN, and it does so by setting N=0 Z=0 C=1 V=1. Read the six
-\ integer conditions against those four bits:
-\
-\   condition  code  the test        on unordered (N=0 Z=0 C=1 V=1)
-\   lt         11    N != V          0 != 1 - TRUE
-\   le         13    Z=1 or N != V   TRUE
-\   ne          1    Z = 0           TRUE
-\   ge         10    N  = V          false
-\   gt         12    Z=0 and N = V   false
-\   equal       0    Z = 1           false
-\   mi          4    N = 1           false
-\
-\ So `lt` after an Fcmp answers TRUE for a NaN, and the engine's `f<` answers
-\ false for one (survey (4) at the head of tools/codegen-compare-corpus3.f,
-\ measured). A float less-than lowered under `lt` would therefore take the other
-\ arm of a branch than the interpreted word takes, on exactly the input the
-\ difference matters for. `mi` is the condition that means less-than after an
-\ Fcmp and is false on unordered, which is why the engine's own `f<` uses it, and
-\ it is why this member exists rather than the float words borrowing `lt`.
-\
-\ `gt` and `equal` are NOT borrowed either - they are the same four bits for both
-\ kinds of comparison because the architecture says so, and the members are one
-\ each because a condition is a machine condition and two names for one field
-\ value would be two things that can drift apart. What differs between an integer
-\ `>` and a float `f>` is not the condition; it is the instruction that set the
-\ flags, and that is the OPCODE's business. The three conditions the float
-\ comparisons reach - `mi`, `gt` and `equal` - are exactly the three that are
-\ false on unordered, and that is not a coincidence: it is the whole of why every
-\ float comparison this engine has answers false for a NaN.
+\ One condition per SOURCE relation, so a lowering is never an operand order in
+\ one place and a condition in another. `equal` is spelled so because the ENUM's
+\ derived comparison word takes `eq`. `mi` is the seventh, for the float forms.
 ENUM cond DERIVE eq
    lt
    le
@@ -541,8 +130,6 @@ ENUM cond DERIVE eq
 private
 
 \ ---- the machine bounds ------------------------------------------------------
-\ Read off the move-wide form: a 16-bit immediate field and a 2-bit half
-\ selector, over a 64-bit register.
 64 constant XBITS                    \ bits in a general register
 16 constant IMM-BITS                 \ the move-wide immediate field
 2 constant HW-BITS                   \ the move-wide half selector
@@ -554,33 +141,13 @@ XBITS HALVES-N / constant HALF-N     \ bits per half
 $FFFF constant HALF-MASK
 
 \ ---- the frame bounds --------------------------------------------------------
-\ A frame access moves one whole general register, which is the widest access the
-\ modelled memory forms carry. Everything else about a slot - how far it can sit
-\ from the stack pointer, and how deep a frame may be - is A64EFF's, because
-\ A64EFF is the schema that describes the frame region and its bounds are already
-\ pinned against the shipped assembler.
 XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
 
-\ The frame itself is claimed and given back by an add/sub-immediate, whose
-\ immediate is an unsigned twelve-bit field with no scale. That is a tighter
-\ bound than the reach of a slot - a scaled offset field of the same width
-\ addresses eight times as far - so the deepest frame this dialect can RESERVE is
-\ this field's largest value, rounded down to the stack alignment. It is written
-\ here as the field width it is, the same way the move-wide bounds are, and
-\ test/compiler/native-a64ir.f pins it against the shipped assembler's IMM12-LIM
-\ and against ENC-SUBI's own output.
 12 constant OFF-BITS                 \ the add/sub immediate and the offset field
 1 OFF-BITS lshift 1- constant OFF-MAX
 OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 
 \ ---- the condition field -----------------------------------------------------
-\ A conditional form selects one of sixteen conditions with a four-bit field, and
-\ the architecture's own numbering says which number each condition is. Both are
-\ written here as the field width and the codes they are, the same way the
-\ move-wide bounds are, and test/compiler/native-a64ir.f reads
-\ src/arch/arm64/asm.f's own COND-LIM, C-LT and C-LE back and asserts them
-\ against these - so a field or a code that moved in the assembler reddens this
-\ dialect instead of silently disagreeing with it.
 4 constant COND-BITS
 1 COND-BITS lshift constant COND-LIM
 11 constant COND-LT                  \ signed less than
@@ -592,57 +159,32 @@ OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 4 constant COND-MI                   \ negative - less than, after an Fcmp
 
 \ ---- the branch fields -------------------------------------------------------
-\ How far each branch form reaches, as the signed word displacement its own
-\ field holds. An unconditional branch carries a 26-bit field, a
-\ compare-and-branch a 19-bit one and a conditional branch a 19-bit one, all
-\ counting instructions rather than bytes. The emitter asks here before it hands
-\ a displacement to the encoder, because the encoder masks the field rather than
-\ bounding it - a branch out of reach would otherwise become a branch somewhere
-\ else. The conditional branch's width is written as its own constant even
-\ though it is the same number as the compare-and-branch's: they are two
-\ instruction forms with two displacement fields, and one constant standing for
-\ both would let a field that moved in one be judged by the other's width.
 26 constant B-BITS
 19 constant BZ-BITS
 19 constant BCOND-BITS
 
-\ And the reach of the one form that names an address rather than a branch
-\ target. Its field is twenty-one bits and it counts BYTES, which is the one
-\ place the units of this section change: the instruction adds the field to its
-\ own address, so a word-aligned target simply leaves the field's low two bits
-\ clear rather than being counted in words. It is written as its own constant for
-\ the reason the two nineteens above are two constants: a field that moved would
-\ move here and nowhere else.
 21 constant ADR-BITS
 
-\ Every instruction of this architecture is four bytes, which is why every
-\ displacement field above counts instructions rather than bytes. It is written
-\ here as the machine fact it is, beside the fields that are measured in it, and
-\ it is what says whether an ADDRESS of code can be the address of an
-\ instruction at all.
+\ Every instruction is four bytes, which is why every displacement field above
+\ counts instructions rather than bytes.
 4 constant INSN-BYTES
 
 \ ---- the dialect's own symbols -----------------------------------------------
-\ Every symbol this dialect mints is spelled `a64.`-something, so a dialect
-\ symbol and any other name in the module's one interner can never collide.
 
 : TARGET ( -- )
    CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET ;
 
-\ The forms that need a floating unit declare one. A machine without it cannot
-\ hold these schemas at all, which is the refusal a target contract exists for.
+\ A machine without a floating unit cannot hold these schemas at all.
 : FP-TARGET ( -- )
    CTARGET-ARCH:AARCH64 CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
    IR-SCHEMA:SET-TARGET ;
 
-\ Design lines 236-238: a value-producing machine operation ends no block, names
-\ no successor, holds no region, and carries no effect token. None of the six
-\ forms touches memory, so none of them takes a memory effect either.
+\ A value-producing machine operation ends no block, names no successor, holds
+\ no region and carries no effect token.
 : PURE-VALUE ( -- )
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE ;
 
-\ Design line 240: no form of this dialect raises.
 : TOTAL ( -- )
    false IR-SCHEMA:SET-TRAP ;
 
@@ -652,32 +194,17 @@ public
 : NAME ( -- ptr u8 n )
    s" a64" ;
 
-\ Version 0.10 adds the two comparison forms that compare against a number the
-\ instruction carries rather than against a second register.
-\ Version 0.9 adds the third required attribute on the move-wide forms: what kind
-\ of thing the chain a move belongs to is building. A table with it and one
-\ without disagree about what a movz IS, so the version moves with it.
-\ Version 0.6: the integer subset, the scalar floating forms, the four float
-\ comparison forms, the four conditional selects - two that answer a cell and two
-\ that answer a double - and the tail branch, which is the first terminator of
-\ this dialect that leaves through another routine - and the trap branch, which
-\ is the first that leaves through one that does not come back. The major version
-\ stays at zero until the dialect is the whole machine; the minor version moves
-\ whenever the schema table gains a form, because a table with these forms in it
-\ and one without are two different tables and every consumer compares the
-\ version exactly.
+\ Every consumer compares the version exactly, so a table with a form and one
+\ without are two different tables.
 0 constant MAJOR
 10 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
-\ A pass that materialises a constant walks the halves of a register, and it asks
-\ here rather than repeating the arithmetic.
 : REG-BITS ( -- n )      XBITS ;
 : HALVES ( -- n )        HALVES-N ;
 : HALF-BITS ( -- n )     HALF-N ;
 : IMM-LIMIT ( -- n )     IMM-LIM ;
 
-\ The i-th 16-bit half of a 64-bit value, counting from the least significant.
 \ The shift is logical, so a negative value reads as the bit pattern the machine
 \ holds, which is what a move-wide chain has to reproduce.
 : HALF-OF ( n n -- n )
@@ -685,18 +212,12 @@ public
    i 0 < i HALVES-N >= or if E-A64IR-SHIFT throw then
    v i HALF-N * rshift HALF-MASK and ;
 
-\ The shift, in bits, that selects the i-th half.
 : HALF-SHIFT ( n -- n )
    {: i:n :}
    i 0 < i HALVES-N >= or if E-A64IR-SHIFT throw then
    i HALF-N * ;
 
-\ The kinds that key may name. ADDR-NONE is every ordinary number - a loop
-\ bound, a mask, a character - and is what all but a handful of moves carry.
-\ ADDR-DATA is an address of the engine's DATA region: a `create`d word's data
-\ field and the body of an interned string literal are the two the chain builds
-\ today. The value is a small enumeration rather than a flag so the CODE kind
-\ the `[']` road needs is a new member and not a second attribute.
+\ A small enumeration rather than a flag, so the CODE kind is a new member.
 0 constant ADDR-NONE
 1 constant ADDR-DATA
 ADDR-DATA constant ADDR-KIND-MAX
@@ -704,10 +225,6 @@ ADDR-DATA constant ADDR-KIND-MAX
 private
 
 \ ---- checked move-wide operands ----------------------------------------------
-\ A move-wide immediate that does not fit the field, and a shift that does not
-\ select a half. They are private because a caller reaches both fields through
-\ the attribute builders below, so there is no route to an operand that skipped
-\ its bound.
 : IMM16 ( n -- n )
    dup 0 < over IMM-LIM >= or if E-A64IR-IMM throw then ;
 
@@ -715,116 +232,62 @@ private
    dup 0 < over XBITS >= or if E-A64IR-SHIFT throw then
    dup HALF-N mod 0<> if E-A64IR-SHIFT throw then ;
 
-\ A relocation kind this dialect knows. An unknown number here would reach the
-\ emitter as a site class it has no rule for, so it is refused where every other
-\ move-wide operand is refused rather than defaulted to "not an address".
+\ An unknown number would reach the emitter as a site class it has no rule for.
 : ADDR-KIND ( n -- n )
    dup 0 < over ADDR-KIND-MAX > or if E-A64IR-IMM throw then ;
 
 \ ---- checked frame operands --------------------------------------------------
-\ A slot offset the memory forms can reach: inside the frame it is measured from,
-\ naturally aligned to the access width - which is what makes the scale division
-\ exact - and inside the reach of the scaled offset field. How far that reaches
-\ is A64EFF's answer for this width, not a constant repeated here.
 : SLOT ( n -- n )
    dup 0 < if E-A64IR-SLOT throw then
    dup SLOT-BYTES mod 0<> if E-A64IR-SLOT throw then
    dup SLOT-BYTES A64EFF:SLOT-REACH > if E-A64IR-SLOT throw then ;
 
-\ A frame a routine could both declare and take: the stack pointer stays aligned,
-\ the frame stays inside the region A64EFF can describe at all, and it stays
-\ inside the one immediate that claims it.
+\ The stack pointer stays aligned, the frame stays inside the region A64EFF can
+\ describe, and it stays inside the one immediate that claims it.
 : FRAME ( n -- n )
    dup 0 < if E-A64IR-FRAME throw then
    dup A64EFF:SP-ALIGN mod 0<> if E-A64IR-FRAME throw then
    dup A64EFF:FRAME-MAX > if E-A64IR-FRAME throw then
    dup FRAME-LIM > if E-A64IR-FRAME throw then ;
 
-\ An immediate the add, subtract and compare forms can carry in the instruction
-\ itself. It is the same twelve-bit field a frame is claimed with, and unlike a
-\ frame it takes no alignment: any value the field holds is an immediate an
-\ arithmetic instruction can name. It is UNSIGNED and it takes no shift, because
-\ the encoders src/arch/arm64/asm.f ships hardwire the shift bit to zero
-\ (ENC-ADDI, ENC-SUBI, ENC-CMPI) - so a negative immediate is not "subtract
-\ instead", it is a value these forms cannot express, and the caller that wanted
-\ one has to choose the register form itself. For a COMPARISON the same sentence
-\ reads: `cmp rn, #-k` is `cmn rn, #k`, which is a different instruction this
-\ dialect does not carry, so a comparison against a negative literal stays a
-\ comparison against a register.
+\ Twelve bits, UNSIGNED, with the shift bit hardwired to zero, so a negative
+\ immediate is a value these forms cannot express - `cmp rn, #-k` is `cmn`.
 : OFF ( n -- n )
    dup 0 < if E-A64IR-OFF throw then
    dup OFF-MAX > if E-A64IR-OFF throw then ;
 
-\ THE MASK THE LOGICAL IMMEDIATE FORMS CARRY, AND WHY ITS BOUND IS NOT A RANGE.
-\ Every other immediate in this dialect is bounded by the WIDTH of the field it
-\ drops into, so the check is a comparison. This one is not: the and/orr/eor
-\ immediate is not a mask stored in a field, it is a mask RECONSTRUCTED from a
-\ thirteen-bit description of a repeating element - a rotated contiguous run of
-\ ones, at an element width that is a power of two. So the set of values the
-\ form can carry is not an interval, and no comparison describes it. Whether a
-\ mask is encodable is answered by trying to encode it, which is what
-\ src/arch/arm64/asm.f's packer does, and that packer is asked here rather than
-\ having its rule restated: a second copy would be free to drift into admitting
-\ a mask the encoder then refuses, and the encoder's refusal ends the process.
-\ A mask that cannot be encoded is therefore not representable in this dialect
-\ at all, so no pass can build one and leave the die for the emitter to reach.
+\ Not a range: the logical immediate is RECONSTRUCTED from a thirteen-bit
+\ description, so the packer is asked rather than having its rule restated.
 : MASK ( n -- n )
    dup A64ASM:LIMM? 0= if E-A64IR-MASK throw then ;
 
 \ ---- checked data-stack operands ---------------------------------------------
-\ An offset from the data-stack pointer, which is what an access of the caller's
-\ stack encodes. It is SIGNED, and that is the whole difference from a frame
-\ slot: a routine's pointer stands where the fewest adjustments put it, so a cell
-\ it still has to reach can be under the pointer as easily as over it - and the
-\ engine's own convention keeps every live value under the pointer, so under is
-\ the ordinary direction rather than the exceptional one. Above, the reach is the
-\ scaled unsigned field's, which is A64EFF's answer for this width; below, it is
-\ the unscaled signed field's, which is A64EFF's answer too and takes no width.
-\ The stack is a stack of whole cells, so an offset that is not a multiple of one
-\ names no cell in either direction.
 : DSLOT ( n -- n )
    dup A64EFF:SLOT-BACK negate < if E-A64IR-DSLOT throw then
    dup SLOT-BYTES mod 0<> if E-A64IR-DSLOT throw then
    dup SLOT-BYTES A64EFF:SLOT-REACH > if E-A64IR-DSLOT throw then ;
 
-\ How far the data-stack pointer moves at one of the four points that move it.
-\ It is a whole number of cells - a routine takes and publishes values, not
-\ bytes - and it goes into the twelve-bit add/sub immediate the frame is claimed
-\ with, in whichever direction its sign names: the same field serves the Add and
-\ the Sub, so what is bounded here is the MAGNITUDE. There is no stack-alignment
-\ rule: the data stack is cell-aligned, not sixteen.
+\ A whole number of cells, and the same twelve-bit field serves the Add and the
+\ Sub, so what is bounded is the MAGNITUDE. The data stack is cell-aligned.
 : DBYTES ( n -- n )
    dup SLOT-BYTES mod 0<> if E-A64IR-DBYTES throw then
    dup abs OFF-MAX > if E-A64IR-DBYTES throw then ;
 
-\ A callee entry address a Bl could name: the address of a whole instruction, and
-\ not the null address, where no code lives. How far away it is, is not asked
-\ here - the distance depends on where the CALLING routine is written, which
-\ nothing before emission knows - so the reach stays the emitter's.
+\ How far away it is is not asked here: the distance depends on where the
+\ CALLING routine is written, so the reach stays the emitter's.
 : ENTRY ( n -- n )
    dup 0 <= if E-A64IR-ENTRY throw then
    dup INSN-BYTES mod 0<> if E-A64IR-ENTRY throw then ;
 
 \ ---- the checked function ordinal --------------------------------------------
-\ A position in the emission being built, which is what the address-of-a-function
-\ form names instead of an address. A negative one is no position at all and is
-\ refused here; HOW MANY functions the emission holds is not this dialect's fact,
-\ so the upper bound belongs to the emitter and is made there.
 : FUN-ORD ( n -- n )
    dup 0 < if E-A64IR-FUN throw then ;
 
 \ ---- the checked condition operand -------------------------------------------
-\ A condition the four-bit field can hold. It is private because a caller reaches
-\ the field through the attribute builder below, which takes a condition of this
-\ dialect's own vocabulary, so there is no route to a condition that skipped its
-\ bound - and the bound is still made, because the vocabulary and the field are
-\ two facts and this is where they are held against each other.
 : COND ( n -- n )
    dup 0 < over COND-LIM >= or if E-A64IR-COND throw then ;
 
 \ ---- the checked branch displacement -----------------------------------------
-\ A signed value that fits a field of `bits` bits, counted in instructions. Both
-\ branch forms ask this and neither carries its own arithmetic.
 : FITS? ( n n -- bool )
    {: d:n bits:n :}
    1 bits 1- lshift {: half:n :}
@@ -833,54 +296,30 @@ private
 public
 
 \ ---- the type of a virtual register ------------------------------------------
-\ One 64-bit general-register value. Every operand and every result of this
-\ dialect has this type today; a second register class arrives as a second
-\ reader beside this one, never as a raw type interned at a use site.
 : GPR-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
 
 \ ---- the type of the memory token --------------------------------------------
-\ The order of the frame accesses, as a value the operations pass along. It lives
-\ in no register: it is what makes "this load happens after that store" a
-\ dependency the module holds rather than a property of the printed order.
 : MEM-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-DOMAIN:DATA-MEM IR-BUILD:INTERN-TOKEN ;
 
-\ The third value class: a 64-bit floating register. It is the seam the header
-\ above names, arriving exactly as it said it would - a reader beside the other
-\ two, never a type interned at a use site - and everything downstream reads the
-\ class off the value's type against these three identities. The machine really
-\ does have two register files, so this is not a label on a cell: an instruction
-\ that names a D register cannot name an X register in the same field, and a
-\ value in the wrong file is a wrong program rather than a wrong number.
+\ The machine really has two register files: an instruction naming a D register
+\ cannot name an X register in the same field.
 : FPR-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-FMT:DOUBLE IR-BUILD:INTERN-FLT ;
 
 \ ---- the bytes one frame access moves ----------------------------------------
-\ A consumer that places slots asks for the width rather than assuming it, and
-\ takes the reach that goes with it from A64EFF.
 : SLOT-WIDTH ( -- n )    SLOT-BYTES ;
 
-\ The deepest frame a routine of this dialect can reserve. A consumer deciding
-\ how much frame a program needs asks here rather than assuming the whole region
-\ A64EFF can describe is reachable in one instruction.
 : FRAME-LIMIT ( -- n )   FRAME-LIM ;
 
-\ The largest immediate the add and subtract forms carry. A pass deciding whether
-\ a constant can stand in the instruction instead of a register asks here, so the
-\ field's width is stated once in this dialect and never restated by a consumer.
 : OFF-LIMIT ( -- n )     OFF-MAX ;
 
-\ Whether the logical immediate forms can carry this mask. A pass CHOOSING
-\ between the immediate form and the register form asks this first and takes the
-\ register form when the answer is no; the bound above is what makes a pass that
-\ forgot to ask fail loudly instead of emitting a wrong instruction.
+\ A pass CHOOSING between the immediate and the register form asks this; the
+\ bound at MASK is what makes a pass that forgot fail loudly.
 : MASK-IMM? ( n -- bool )   A64ASM:LIMM? ;
 
 \ ---- the opcode names --------------------------------------------------------
-\ This module's interned symbol for one opcode. Interning deduplicates, so asking
-\ twice answers the same identity, and this is the symbol both IR-SCHEMA's
-\ readers and IR-BUILD:BEGIN-OP take.
 : OPCODE ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
    MATCH opcode
       movz    OF s" a64.movz"    ENDOF
@@ -963,10 +402,6 @@ public
    IR-BUILD:INTERN-SYMBOL ;
 
 \ ---- the condition a comparison is made under --------------------------------
-\ The number the four-bit field holds for one condition of this dialect's
-\ vocabulary. It is public because the emitter hands it to the encoder as the
-\ condition operand, and because the suite pins each one against the assembler's
-\ own name for it.
 : COND-CODE ( A64IR:cond -- n )
    MATCH cond
       lt    OF COND-LT ENDOF
@@ -978,10 +413,6 @@ public
       mi    OF COND-MI ENDOF
    ;MATCH ;
 
-\ The condition one stored code names. It is an exact case, so a code outside
-\ this dialect's vocabulary is refused at first touch instead of decoding as some
-\ other condition. A pass that reads a comparison back off a module and builds it
-\ into another one goes through here.
 : N>COND ( n -- A64IR:cond )
    case
       COND-LT of A64IR-COND:LT endof
@@ -995,48 +426,24 @@ public
    endcase ;
 
 \ ---- the reach of each branch form -------------------------------------------
-\ Whether a word displacement fits the field the form encodes it in. The emitter
-\ asks before it encodes, because the encoders mask their displacement fields
-\ rather than bounding them.
 : B-FITS? ( n -- bool )      B-BITS FITS? ;
 : BZ-FITS? ( n -- bool )     BZ-BITS FITS? ;
 : BCOND-FITS? ( n -- bool )  BCOND-BITS FITS? ;
 
-\ The same question for the address form, and its argument is a BYTE delta. The
-\ encoder is the shipped assembler's ENC-ADR, which masks its field exactly as
-\ the branch encoders mask theirs, so the emitter asks this first and an address
-\ out of reach is refused instead of becoming the address of something else.
 : ADR-FITS? ( n -- bool )    ADR-BITS FITS? ;
 
-\ Design line 479: the two attribute keys a move-wide operation requires. The
-\ immediate and the half it goes into are the whole content of a move, so a move
-\ without either means nothing, and IR-OP refuses one that omits it.
 : KEY-IMM ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.imm" IR-BUILD:INTERN-SYMBOL ;
 
 : KEY-SHIFT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.shift" IR-BUILD:INTERN-SYMBOL ;
 
-\ Design line 479: the third key a move-wide operation requires - WHAT KIND OF
-\ THING the chain it belongs to is building. A move-wide that starts an address
-\ chain has to be found again after publication, by a relocation pass that may
-\ not decode region bytes to recognise one: a compiled word carries inline data
-\ that decodes as a move, and an ordinary integer may hold any value at all. So
-\ the kind travels with the operation from the point the elaborator knew it, and
-\ src/compiler/native/emit.f records the site off this attribute.
-\
-\ IT IS REQUIRED AND NOT AN EXTENSION KEY, which is the whole reason it is
-\ trustworthy. A pass that rewrites a move-wide - combine.f copies operations
-\ between modules through an explicit key-by-key list - drops any key it does not
-\ name, and a dropped extension key is silently gone. A dropped REQUIRED key is
-\ E-IR-VERIFY-ATTRKEY at the next verification, so a rewrite that loses the kind
-\ stops the compilation instead of quietly unrecording a relocation site.
+\ A move-wide starting an address chain has to be found again after
+\ publication, and a relocation pass may not decode region bytes. It is a
+\ REQUIRED key, so a rewrite that drops it stops the compilation.
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.addr" IR-BUILD:INTERN-SYMBOL ;
 
-\ The three attribute values, each refused before it is interned if it does not
-\ fit the field it names. A pass building a move goes through these, so there is
-\ no route by which an out-of-range move-wide operand reaches a module at all.
 : IMM-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    IMM16 IR-BUILD:INTERN-INT-ATTR ;
 
@@ -1046,8 +453,6 @@ public
 : ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    ADDR-KIND IR-BUILD:INTERN-INT-ATTR ;
 
-\ The two attribute keys the frame forms require: which slot a frame access
-\ names, and how deep a frame the routine reserves.
 : KEY-SLOT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.slot" IR-BUILD:INTERN-SYMBOL ;
 
@@ -1060,124 +465,50 @@ public
 : FRAME-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    FRAME IR-BUILD:INTERN-INT-ATTR ;
 
-\ The one attribute key the four immediate forms of the arithmetic field require:
-\ the number the instruction carries in its own field. It is its own key rather
-\ than the move-wide's `a64.imm`, for the reason the data-stack keys are their own
-\ below: the two fields have different widths, so one key answering both would let
-\ a sixteen-bit move-wide check pass a value the twelve-bit arithmetic field
-\ cannot hold.
-\
-\ AND ONE KEY SERVES FOUR FORMS BECAUSE THEY SHARE ONE FIELD. The add and
-\ subtract immediates and the two comparison immediates all drop their number
-\ into the same twelve-bit unsigned field with the shift bit hardwired to zero -
-\ src/arch/arm64/asm.f's ENC-ADDI, ENC-SUBI and ENC-CMPI are one `?IMM12` and
-\ one `RRI`-shaped layout between them - so the set of values each can carry is
-\ the same set, and OFF below is the one bound that describes it. A second key
-\ over the same field would be a second copy of that bound, free to drift; what
-\ distinguishes an addend from a comparison operand is the OPCODE, which every
-\ reader of an operation already has. That is why this is not the split
-\ `a64.mask` and `a64.trap-entry` are: those two exist because the values or the
-\ readings really do differ, and here neither does.
+\ Its own key and not the move-wide's, because the fields have different widths.
+\ One key serves four forms because all four share one twelve-bit field.
 : KEY-OFF ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.off" IR-BUILD:INTERN-SYMBOL ;
 
 : OFF-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    OFF IR-BUILD:INTERN-INT-ATTR ;
 
-\ The one attribute key the logical immediate forms require: the whole mask, as
-\ the number it masks with. It is its own key for the reason `a64.off` is its
-\ own: the two fields admit different values, and one key answering both would
-\ let an arithmetic immediate pass a value the logical field cannot express -
-\ and, the other way round, would refuse the mask -2, which the logical field
-\ carries and the arithmetic one cannot hold at all.
+\ Its own key because the two fields admit different values: the logical one
+\ carries the mask -2, which the arithmetic field cannot hold at all.
 : KEY-MASK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.mask" IR-BUILD:INTERN-SYMBOL ;
 
 : MASK-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    MASK IR-BUILD:INTERN-INT-ATTR ;
 
-\ The two attribute keys the data-stack forms require. They are their own keys
-\ rather than the frame's, because a consumer that walks a module has to be able
-\ to say which region an access is in without asking which opcode it is - and a
-\ frame slot and a data-stack slot are counted from different pointers, so one
-\ key answering both would let a frame check judge a data-stack access.
 : KEY-DSLOT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.dslot" IR-BUILD:INTERN-SYMBOL ;
 
 : KEY-DBYTES ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.dbytes" IR-BUILD:INTERN-SYMBOL ;
 
-\ The second data-stack adjustment, which only the call form has: a call moves
-\ the pointer up over what it hands the callee and back down over what it takes
-\ from it, and the two counts differ whenever the callee leaves a different
-\ number of values than it takes. It is its own key rather than a second
-\ attribute under KEY-DBYTES because a key answers "which pointer, in which
-\ direction" for every reader that walks a module without asking which opcode it
-\ is looking at, and an operation carrying one key twice would be two answers to
-\ one question.
 : KEY-DBACK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.dback" IR-BUILD:INTERN-SYMBOL ;
 
-\ The attribute key the call-another-word form requires: the address its branch
-\ goes to. It is an attribute and not an operand for the reason a frame slot is:
-\ no operation of this dialect computes it, it stands for no register, and two
-\ calls naming one address are not naming one definition. It is not the
-\ displacement either - a displacement depends on where the CALLING routine is
-\ written, which nothing before emission knows - so what the module carries is
-\ the callee's own address and the subtraction is the emitter's.
 : KEY-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.entry" IR-BUILD:INTERN-SYMBOL ;
 
-\ The address the TRAP form branches to, under a key of its own. It is the same
-\ kind of number the key above carries and it is deliberately not that key.
-\
-\ WHY A SECOND KEY AND NOT THE SAME ONE. Two passes recognise the form a routine
-\ leaves through by its ATTRIBUTES and never by its opcode - a tail branch is
-\ "carries an address and carries no take-back count", which is
-\ src/compiler/native/regalloc.f TAILBR-AT? and
-\ src/compiler/native/regalloc-verify.f TAILBR?, and both say in as many words
-\ that reading the keys rather than the opcode is the rule every other question
-\ there is asked by. A trap carries an address and no take-back count too, so
-\ under `a64.entry` it would BE a tail branch to both of them: the validator
-\ would demand that the routine's contract declare a tail call, and it would
-\ measure the routine's results against a data-stack run whose one value is a
-\ family ordinal. Neither is true, and neither failure would name the trap.
-\
-\ SO THE DISTINCTION IS PUT WHERE THOSE PASSES ALREADY LOOK. `a64.entry` means
-\ the address of a routine this one leaves through whose results become this
-\ routine's results; a trap's callee has no results and this routine has no
-\ caller left to give them to. One key per fact keeps both readings exact and
-\ leaves both predicates as they are, which is what stops a third form from
-\ silently joining a classification it does not belong to.
+\ Its own key, because two passes recognise a tail branch by its ATTRIBUTES and
+\ a trap under `a64.entry` would BE one to both of them.
 : KEY-TRAP-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.trap-entry" IR-BUILD:INTERN-SYMBOL ;
 
-\ The one attribute key the address-of-a-function form requires: WHICH function
-\ of this emission the value is the address of, as that function's ordinal. It is
-\ an ordinal and not an address for the reason the design list gives - there is no
-\ address until the emitter has laid the emission out - and it is its own key
-\ rather than `a64.entry`, because an entry is an address the world already has
-\ and this is a position in a module nobody has written yet.
-\
-\ WHAT THE BOUND HERE IS AND WHAT IT IS NOT. A negative ordinal names no function
-\ of any emission, which the dialect can say by itself. Whether the ordinal names
-\ a function of THIS emission depends on how many functions the emission holds,
-\ which is the emitter's fact, so it is refused there and not counted twice.
+\ An ordinal and not an address: there is no address until the emitter has laid
+\ the emission out. How many functions there are is the emitter's fact.
 : KEY-FUN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.fun" IR-BUILD:INTERN-SYMBOL ;
 
 : FUN-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    FUN-ORD IR-BUILD:INTERN-INT-ATTR ;
 
-\ The attribute key the comparison form requires: which condition it sets its
-\ flag on. The condition is the whole content of a comparison, so a comparison
-\ without it means nothing, and IR-OP refuses one that omits it.
 : KEY-COND ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.cond" IR-BUILD:INTERN-SYMBOL ;
 
-\ The value it carries. It takes a condition of this dialect's vocabulary rather
-\ than a number, so a condition no comparison of this dialect makes cannot be
-\ spelled at all, and the number it becomes is still held against the field.
 : COND-ATTR ( IR-CTX:ctx IR-BUILD:builder A64IR:cond -- IR-ID:ir-attr-id )
    COND-CODE COND IR-BUILD:INTERN-INT-ATTR ;
 
@@ -1187,29 +518,15 @@ public
 : DBYTES-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    DBYTES IR-BUILD:INTERN-INT-ATTR ;
 
-\ The take-back count is the same field in the same instruction form, so it is
-\ held against the same bound.
 : DBACK-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    DBYTES IR-BUILD:INTERN-INT-ATTR ;
 
-\ The address a call-another-word form branches to, held against what an address
-\ of CODE on this machine can be: every instruction is four bytes and every
-\ instruction is at a multiple of four, so an entry that is not is the address of
-\ no instruction and no Bl can be built to it. How FAR it is, is not a question
-\ this dialect can answer - the distance depends on where the calling routine
-\ lands - so the reach is checked by the emitter, which is the one pass that
-\ knows both ends.
 : ENTRY-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    ENTRY IR-BUILD:INTERN-INT-ATTR ;
 
 private
 
 \ ---- the schema definitions --------------------------------------------------
-\ Design lines 242 and 243 require a semantic-rule identifier and a renderer
-\ identifier per schema, so a later pass dispatches on an identity rather than on
-\ a string comparison. Each opcode names its own, derived from its own spelling.
-\ Neither is public: the schema table is the authority on what an opcode's rule
-\ and renderer are, and IR-SCHEMA:RULE@ and RENDERER@ answer it.
 : RULE ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
    MATCH opcode
       movz    OF s" a64.rule.movz"    ENDOF
@@ -1372,27 +689,19 @@ private
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
-\ The two fields every schema of this dialect names the same way.
 : NAMED ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
    c b o RULE IR-SCHEMA:SET-RULE
    c b o RENDERER IR-SCHEMA:SET-RENDERER ;
 
-\ The three attribute keys a move-wide operation declares, in the order a builder
-\ has to present them. All three forms share the list - movz, movk and movn - so
-\ the kind is a question every move-wide answers rather than a property only some
-\ of them have, and MOVN's answer is constrained by the emitter rather than by
-\ its absence here: see EMIT-MOVN in src/compiler/native/emit.f, which refuses a
-\ movn that claims to carry an address. Stating the exclusion as a refusal is
-\ what makes it checkable; leaving movn off this list would state it by silence.
+\ All three forms share the list, and MOVN's answer is constrained by the
+\ emitter, which refuses a movn claiming to carry an address.
 : MOVE-ATTRS ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b KEY-IMM IR-SCHEMA:ADD-ATTR
    c b KEY-SHIFT IR-SCHEMA:ADD-ATTR
    c b KEY-ADDR IR-SCHEMA:ADD-ATTR ;
 
-\ Movz: no register is read, one is written, and the immediate and its half say
-\ what goes into it.
 : DEF-MOVZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:MOVZ OPCODE IR-SCHEMA:BEGIN-OP
@@ -1404,15 +713,6 @@ private
    c b A64IR-OPCODE:MOVZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ The address of another function of this emission. It reads no register and
-\ writes one, and the ordinal it carries says which function - so it has the
-\ shape of a move-wide with a different attribute, and none of the move-wide's
-\ arithmetic: what goes into the register is an address the emitter computes,
-\ not a number this module holds.
-\
-\ IT IS PURE AND TOTAL. The instruction adds a constant to its own address, which
-\ reads no memory, writes nothing but its register, and cannot fault. Whatever
-\ the function it names may do is the business of whoever branches there.
 : DEF-CODEADDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:CODEADDR OPCODE IR-SCHEMA:BEGIN-OP
@@ -1424,13 +724,6 @@ private
    c b A64IR-OPCODE:CODEADDR NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Movn: the same shape as the movz above - no register read, one written, the
-\ immediate and its half - and the one difference is that the register is filled
-\ with the COMPLEMENT of the shifted immediate, so every half the instruction
-\ does not name comes out all ones instead of all zeros. That is what makes it
-\ the cheap way to build a value most of whose halves are ones: -1 is one movn
-\ where it is a movz and three movks, and src/compiler/native/select.f's
-\ MATERIALISE picks whichever of the two chains is shorter.
 : DEF-MOVN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:MOVN OPCODE IR-SCHEMA:BEGIN-OP
@@ -1442,11 +735,8 @@ private
    c b A64IR-OPCODE:MOVN NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Movk: the value whose other halves survive is the operand, and the value with
-\ this half merged in is the result. The instruction names one register field for
-\ both, so the schema declares result 0 tied to operand 0 and every consumer that
-\ has to put them in one physical register reads that instead of knowing which
-\ opcode the overwrite is.
+\ The instruction names one register field for both, so the schema declares
+\ result 0 tied to operand 0.
 : DEF-MOVK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:MOVK OPCODE IR-SCHEMA:BEGIN-OP
@@ -1460,9 +750,6 @@ private
    c b A64IR-OPCODE:MOVK NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One register read, one written, and no tie: the two register fields are
-\ independent, so the form can put a value somewhere else. The two forms of this
-\ dialect with that shape share it.
 : DEF-UNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1474,28 +761,14 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Mov: the form exists so that the two registers CAN be different, which is what
-\ makes it able to put a value where a routine's contract says it has to leave
-\ and to hand a block argument the value an edge carries. A copy whose source and
-\ destination came out the same register is `orr xd, xzr, xd`, an instruction
-\ that does nothing, and one pass does build them:
-\ src/compiler/native/select.f splits every argument-carrying edge into one copy
-\ per argument, and a copy whose two ends coalesce into one register is exactly
-\ that no-op. It is emitted rather than elided because eliding it is a peephole,
-\ and the register allocator is what decides whether it is one - not this
-\ dialect, and not the emitter.
+\ The form exists so that the two registers CAN be different. A copy whose ends
+\ coalesce is a no-op, and whether to elide it is the allocator's decision.
 : DEF-MOV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    A64IR-OPCODE:MOV DEF-UNARY ;
 
-\ Mvn: the bitwise complement, which is `orn xd, xzr, xm` exactly as the copy
-\ above is `orr xd, xzr, xm`. It is the whole of what Habu's `invert` compiles
-\ to, in one instruction and one register.
 : DEF-MVN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    A64IR-OPCODE:MVN DEF-UNARY ;
 
-\ One shifted-register or two-source three-operand form: two registers read, one
-\ written. The arithmetic, bitwise and shift opcodes differ only in their names,
-\ so they share this shape.
 : DEF-BINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1508,35 +781,6 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One register read, one written, and a second source that is not a register at
-\ all but a number standing in the instruction's own field. `add rd, rn, #imm`
-\ and `sub rd, rn, #imm` have exactly this shape and differ only in their names
-\ and in the base word the emitter picks, so the two share it.
-\
-\ THE IMMEDIATE IS AN ATTRIBUTE AND NOT AN OPERAND, which is the whole of why
-\ the form costs no register. An operand names a VALUE, and a value has to be
-\ somewhere - so a form whose second source were an operand would be the
-\ register-register addition this dialect already carries, with a move-wide
-\ chain in front of it to put the number in a register. An attribute is part of
-\ the instruction itself, so the number occupies nothing and the chain is not
-\ written at all.
-\
-\ IT DECLARES NO TIE, for the reason DEF-BINARY declares none: the encoders name
-\ independent destination and source register fields (src/arch/arm64/asm.f RRI),
-\ so the result may be any register and the operand keeps its value.
-\
-\ AND IT IS NOT COMMUTATIVE, which is a fact about `sub` rather than about this
-\ shape. The operand is the value the immediate is added to or subtracted FROM,
-\ so a rewriter folding a constant into a subtraction may only fold the value
-\ being subtracted, never the value subtracted from. That rule is the caller's
-\ to keep; this schema only says which of the two the operand is.
-\ One logical immediate form: one register read, one written, and the mask in
-\ the instruction. It is DEF-BINARY-IMM with the other immediate key, and it is
-\ a separate word rather than a parameter because the key is what says which
-\ field the value is checked against - the whole point of the two keys.
-\
-\ All three ARE commutative, unlike the subtract the shape below shares with the
-\ add, so a pass folding a constant into one of them may read either operand.
 : DEF-LOGICAL-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1549,6 +793,9 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ The immediate is an ATTRIBUTE and not an operand, which is why the form costs
+\ no register. It declares no tie, and `sub` is not commutative: only the value
+\ being subtracted may be folded, never the value subtracted from.
 : DEF-BINARY-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1561,29 +808,9 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Madd: the multiply-add, which is the one form of this dialect that reads THREE
-\ registers and writes one. The product's two factors are operands 0 and 1 and
-\ the addend is operand 2, in the order `madd rd, rn, rm, ra` names them, so a
-\ reader of the operand window and a reader of the instruction agree without
-\ either having to know the other's order.
-\
-\ AND IT DECLARES NO TIE, WHICH IS THE POINT OF THE FORM. The obvious reading of
-\ "accumulate" is that the addend and the destination are one register, the way
-\ Movk's surviving halves and its result are, and that reading is wrong here:
-\ ARM64's multiply-add names four INDEPENDENT five-bit fields
-\ (src/arch/arm64/asm.f RRRA), so the destination may be any register and the
-\ addend keeps its value. A tie declared here would be a constraint the machine
-\ does not impose, and the register allocator would honour it by inserting copies
-\ to satisfy a rule nothing needs - which is how a form meant to remove one
-\ instruction would start adding them.
-\
-\ ITS ADDEND MAY NOT BE THE ZERO REGISTER, and that is a fact about the encoding
-\ rather than about this dialect: `madd rd, rn, rm, xzr` IS `mul rd, rn, rm`,
-\ the same four bytes, which is why formal/Common/Insn.v puts that addend outside
-\ `wf` and carries `madd_mul_alias_at_xzr` as the reason. No value of this
-\ dialect stands for the zero register, so no module can name it here; the
-\ emission leaf refuses it anyway, because the register a value ends up in is
-\ decided after this schema is read.
+\ Operands are rn, rm then the addend ra. It declares NO tie - ARM64 names four
+\ independent fields - and its addend may never be the zero register, because
+\ `madd rd, rn, rm, xzr` IS `mul rd, rn, rm`, the same four bytes.
 : DEF-MADD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:MADD OPCODE IR-SCHEMA:BEGIN-OP
@@ -1597,14 +824,8 @@ private
    c b A64IR-OPCODE:MADD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Signed division: the same two registers in and one out as the three forms
-\ above, and the one form of this dialect that may raise. It is three
-\ instructions - branch over the trap when the divisor is not zero, the trap,
-\ the divide - because that is what the engine's own `/` is, and a routine this
-\ chain compiles has to do what the interpreted word does on every input rather
-\ than only on the ones a harness pins. The three are one operation for the
-\ reason the comparison's three are: the branch and the instruction it guards
-\ are inseparable, and nothing may be inserted between them.
+\ The one form that may raise, and three instructions: branch over the trap when
+\ the divisor is not zero, the trap, the divide - which is what the engine's `/` is.
 : DEF-SDIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:SDIV OPCODE IR-SCHEMA:BEGIN-OP
@@ -1618,18 +839,11 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the frame forms ---------------------------------------------------------
-\ Design lines 238 and 239: an operation that touches memory declares the domain,
-\ the address space and the alias behaviour, and carries the token that orders it
-\ against the others. The space is the routine's own stack frame, which no other
-\ operation of this dialect can reach, so nothing in a module aliases it.
 : FRAME-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR--TYPE-SPACE:LOCAL IR--SCHEMA-ALIAS:UNALIASED e IR-SCHEMA:SET-MEMORY ;
 
-\ Str: the register whose value is being put away, and the token that orders this
-\ store against every other frame access. The slot it goes into is the
-\ instruction's own field, so it rides as the attribute.
 : DEF-STR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1643,9 +857,6 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Ldr: the value read out of the slot, and the token passed on. Result zero is
-\ the register, so a consumer that wants the loaded value asks for the first
-\ result the way it does of every other value-producing form.
 : DEF-LDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1659,8 +870,6 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Reserve: the routine takes its frame, and the token every later frame access
-\ carries starts here. It reads no token because there is nothing before it.
 : DEF-RESERVE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:RESERVE OPCODE IR-SCHEMA:BEGIN-OP
@@ -1672,8 +881,6 @@ private
    c b A64IR-OPCODE:RESERVE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Release: the frame goes back and the token ends. It defines no value, so every
-\ frame access of the block is ordered before it and none can follow it.
 : DEF-RELEASE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:RELEASE OPCODE IR-SCHEMA:BEGIN-OP
@@ -1686,41 +893,18 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the data-stack forms ----------------------------------------------------
-\ The caller's data stack is not the routine's frame: it is a region of the
-\ running engine's own memory, reached through the pointer register the engine
-\ keeps it in. The space says so, which is how a consumer tells a frame access
-\ from a data-stack access without asking which opcode it is looking at. The
-\ aliasing is unrestricted because a module of this dialect can reach that region
-\ another way: a64.aldr and a64.astr take their address as a value, and a value
-\ can be the address of a data-stack slot - `run-in-stack` is a checked primitive
-\ that makes a buffer the caller owns into exactly this region. That is the same
-\ declaration those two forms make, and the two families share one token chain
-\ for exactly this reason.
-\
-\ WHAT THAT DECLARATION IS FOR, SAID PLAINLY, because a reader has taken it for
-\ more than it says. It is an ORDERING statement: it forbids a later pass from
-\ moving one of these accesses across another it cannot prove is elsewhere. It is
-\ NOT a statement that a pass reasoning about slot CONTENTS must forget what it
-\ knows at an addressed store - src/compiler/native/select.f, at DOUT-AT, gives
-\ the measurement for why forgetting there is the wrong answer rather than the
-\ cautious one.
+\ Unrestricted aliasing is an ORDERING statement: it forbids moving one access
+\ across another it cannot prove is elsewhere, and nothing more than that.
 : DSTACK-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
 
-\ The same space and the same alias behaviour for a form that also ENDS its
-\ block. The two are one word each rather than a control flag on one, because
-\ the control shape and the memory space are declared once apiece and a caller
-\ that stated both would be refused for stating one twice.
 : DSTACK-TERM-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    true 0 0 IR-SCHEMA:SET-CONTROL
    IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
 
-\ Dtake: the routine moves the data-stack pointer down over the arguments the
-\ caller left, and the order of every data-stack access starts here. It reads no
-\ token because there is nothing before it.
 : DEF-DTAKE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:DTAKE OPCODE IR-SCHEMA:BEGIN-OP
@@ -1732,8 +916,6 @@ private
    c b A64IR-OPCODE:DTAKE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Dload: one argument read out of its slot. Result zero is the register, so the
-\ value an argument arrives as is asked for exactly like any other value.
 : DEF-DLOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1747,7 +929,6 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Dstore: one result written into its slot, which is how a Habu word publishes.
 : DEF-DSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1761,9 +942,6 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Dpublish: the data-stack pointer moves up over the results, which is the moment
-\ they become the caller's. It defines no value, so every data-stack access of
-\ the block is ordered before it and none can follow it.
 : DEF-DPUBLISH ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:DPUBLISH OPCODE IR-SCHEMA:BEGIN-OP
@@ -1776,31 +954,14 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the two addressed forms -------------------------------------------------
-\ The only memory forms of this dialect whose base is a value. They are in the
-\ same generic space as the data-stack forms and thread the same chain, because
-\ an address the program computed may name a data-stack slot; the aliasing is
-\ unrestricted, which is the declaration that forbids a later pass from moving
-\ one of these across another access it cannot prove is elsewhere. That is all it
-\ forbids - the note at DSTACK-MEM above says what it does not.
 : ADDR-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
 
-\ Aldr: the address to read through, and the token that orders this load against
-\ every other access. Result zero is the register the cell's contents land in, so
-\ a consumer that wants the loaded value asks for the first result the way it
-\ does of every other value-producing form. There is no offset attribute: the
-\ form encodes at offset zero, which is `[Xn]`, and an offset that is not zero is
-\ an addressing mode this dialect does not have rather than a field left at its
-\ default.
-\
-\ THE BASE AND THE TRANSFER ARE TWO TYPES AND NOT ONE, because the D file's
-\ member of this shape spans both files: a64.faload reads through an X register
-\ and lands the eight bytes in a D one. Writing them as one type was possible
-\ only while every member was general, and the moment one is not, one type would
-\ declare the ADDRESS to be of the floating file - which no addressing mode has
-\ and which the machine cannot encode.
+\ There is no offset attribute: the form encodes at offset zero. The base and
+\ the transfer are two TYPES, because a64.faload reads through an X register
+\ and lands the bytes in a D one.
 : DEF-ALDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ID:ir-type-id v:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1814,12 +975,6 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Astr: the register whose value is being written, the address to write it
-\ through, and the token. The value is the FIRST operand and the address the
-\ second, which is the order the source dialect's store has them and the order
-\ Forth writes them in, so a swapped pair is a wrong program rather than a
-\ different spelling of the same one. The two types are the load's two, for the
-\ load's reason.
 : DEF-ASTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ID:ir-type-id v:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1833,17 +988,8 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Aldrb and astrb: the same two addressed accesses one byte wide. Everything
-\ about them is the addressed cell forms' - the base is a value, the offset is
-\ zero, the space is generic and the aliasing unrestricted, and they thread the
-\ one token chain - and the single difference is the number of bytes the
-\ instruction moves. That difference is the FORM and not a field: the machine
-\ has separate Ldrb and Strb encodings, so a width no encoding exists for cannot
-\ be named at all, and every MATCH over this dialect's opcode family has to say
-\ what a byte access becomes. The loaded byte arrives zero-extended, because
-\ Ldrb writes a W register and writing a W register clears the upper half of the
-\ X register - which is what `c@` leaves on a Habu stack; the stored byte is the
-\ operand register's lowest, which is what `c!` writes.
+\ The width is the FORM: the machine has separate Ldrb and Strb encodings. The
+\ loaded byte arrives zero-extended, which is what `c@` leaves.
 : DEF-ALDRB ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:ABLOAD OPCODE IR-SCHEMA:BEGIN-OP
@@ -1871,17 +1017,9 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the comparison form -----------------------------------------------------
-\ Flag: two registers compared, and the Habu flag that comparison leaves. It is
-\ ONE operation of this dialect and three instructions of the machine - compare,
-\ set one on the condition, negate - because the three are inseparable: the
-\ condition flags they pass between them are a single architectural resource that
-\ no value of this dialect stands for and the register allocator may not hand
-\ out, so an IR in which they were three operations would let any later pass put
-\ something between them and change what the second one reads. Modelling the
-\ flags as a value instead would add a third value class to every pass in the
-\ chain to express a lifetime that is always exactly one instruction long. The
-\ sequence is the one the engine's own emitter uses for `<` today, so a compiled
-\ comparison computes what an interpreted one computes, all bits set or none.
+\ ONE operation and three instructions - compare, set one on the condition,
+\ negate - because the flags between them are a single architectural resource
+\ no value stands for and the allocator may not hand out.
 : DEF-FLAG ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FLAG OPCODE IR-SCHEMA:BEGIN-OP
@@ -1895,26 +1033,8 @@ private
    c b A64IR-OPCODE:FLAG NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Flagi: the same comparison against a number the instruction carries instead of
-\ against a second register. It is the form above with its second operand moved
-\ into the instruction, which is the whole of the difference and the whole of the
-\ saving: an operand names a VALUE and a value has to be in a register, so the
-\ register form obliges whatever selects it to build the number first, and this
-\ form obliges nobody.
-\
-\ THE OPERAND IS THE LEFT-HAND SIDE AND THE IMMEDIATE IS THE RIGHT. `cmp rn,
-\ #imm` sets its flags from rn - imm, so the condition is read the way it is read
-\ for the register form and the two are the same comparison with the same
-\ condition. A rewriter may therefore fold only the SECOND operand of a
-\ comparison: folding the first would be comparing the number against the value,
-\ which is the mirrored relation, and no instruction of this dialect spells it.
-\ That rule is the caller's to keep; this schema only says which of the two the
-\ operand is.
-\
-\ WHICH VALUES IT CAN CARRY IS THE ENCODER'S RULE AND NOT A TASTE. OFF above is
-\ the bound, so a comparison against a number the field cannot hold is not
-\ representable in this dialect at all and no pass can leave the die for the
-\ emitter to reach.
+\ The operand is the LEFT-hand side and the immediate the right, so a rewriter
+\ may fold only the second operand of a comparison.
 : DEF-FLAG-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FLAGI OPCODE IR-SCHEMA:BEGIN-OP
@@ -1929,61 +1049,7 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the two conditional-select forms ----------------------------------------
-\ A selection whose two answers are already computed does not need a branch at
-\ all: the machine's Csel writes one of two registers into a third on a
-\ condition, in one instruction and with nothing for a predictor to get wrong.
-\ These are the two forms that reach it, and they stand to the two BRANCH forms
-\ below exactly as those stand to each other - one tests a register against
-\ zero, the other compares two registers under a named condition.
-\
-\ EACH IS ONE OPERATION AND TWO INSTRUCTIONS, for the reason a64.flag and
-\ a64.cmpbr are one operation and three: what passes between the compare and
-\ the select is the condition flags, a single architectural resource that no
-\ value of this dialect stands for and the register allocator may never hand
-\ out. An IR in which the two were two operations would let a later pass - the
-\ spill lowering is the one that really inserts instructions - put a load
-\ between them, and then the select would read whatever that load left.
-\
-\ THE POLARITY IS THE SOURCE BRANCH'S, NOT THE MACHINE'S. hir.brz goes to its
-\ FIRST successor when the value it tests is zero, so the arm a Habu `if`
-\ takes is the SECOND. Both forms below therefore name the
-\ condition-holds answer first and the other second, which is the same order
-\ a64.cmpbr puts its successors in; src/compiler/native/select.f wires one
-\ table for both.
-\
-\ AND THE CONDITION MEANS WHAT THE INSTRUCTION THAT WROTE THE FLAGS MADE IT
-\ MEAN, WHICH IS WHY THE FLAGS-WRITER IS PART OF THE FORM. These two take their
-\ flags from a Cmp of two general registers or from a Cmp of one against the
-\ immediate zero, so their condition is the integer relation the source
-\ comparison names and no NaN can reach them. The four forms whose first
-\ instruction is an Fcmp are separate opcodes further down for exactly that
-\ reason: after an Fcmp the same four bits mean something else on an unordered
-\ comparison, so which instruction wrote the flags cannot be an operand or an
-\ attribute - it has to be the opcode.
-\
-\ TWO OF THE FOUR MOVE A DOUBLE, AND THE ONLY THING THAT MAKES THEM A SECOND
-\ PAIR IS THE FILE THE ANSWER LIVES IN. Csel writes a general register and Fcsel
-\ writes a D register; the two instructions read the same flags under the same
-\ four-bit condition and differ in nothing else, so a64.selzd and a64.cmpseld
-\ are a64.selz and a64.cmpsel with the two chosen-between operands and the
-\ result moved to the floating file. They cannot be one form each with a
-\ file-polymorphic type, because a schema's operand types ARE how every reader
-\ downstream learns which file a value belongs to - which is the same reason the
-\ four crossing forms above are four and not one.
-\
-\ HOW THE EIGHT ARE SPELLED, so a form added later has a name rather than an
-\ argument. A leading `f` says the values COMPARED are doubles, exactly as it
-\ does in a64.fflag and a64.fcmpbr. A trailing `d` says the value CHOSEN is,
-\ exactly as it does in a64.fmovxd. That is a square rather than a list: two
-\ shapes - a zero test and a two-register compare - times two flags-writers times
-\ two answer files, and all eight corners are now filled. This pair is the corner
-\ with neither letter; a64.selzd and a64.cmpseld below carry only the trailing
-\ `d`; and a64.fcmpsel, a64.fcmpselz, a64.fcmpseld and a64.fcmpselzd, also below,
-\ are the four whose flags an Fcmp wrote.
 
-\ Selz: the value tested against zero, the answer when it is NOT zero, the
-\ answer when it is. Two instructions: compare the tested register against the
-\ immediate zero, then select on `ne`.
 : DEF-SELZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:SELZ OPCODE IR-SCHEMA:BEGIN-OP
@@ -1997,10 +1063,6 @@ private
    c b A64IR-OPCODE:SELZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Cmpsel: the two registers compared, the answer when the named relation holds,
-\ the answer when it does not. Two instructions: the compare, then the select
-\ under the condition the operation carries - which is the same attribute under
-\ the same key every other comparing form of this dialect carries.
 : DEF-CMPSEL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:CMPSEL OPCODE IR-SCHEMA:BEGIN-OP
@@ -2017,12 +1079,6 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the two branch forms ----------------------------------------------------
-\ B: control goes to one block, unconditionally. Its operands are the values it
-\ hands that block as the block's arguments - design lines 706-708 make a
-\ terminator's operands exactly that, and design line 532 makes the verifier
-\ match their count and types against the destination - so how many there are is
-\ a property of the destination rather than of the form, and the list is one
-\ variadic tail.
 : DEF-BR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:BR OPCODE IR-SCHEMA:BEGIN-OP
@@ -2034,16 +1090,6 @@ private
    c b A64IR-OPCODE:BR NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Cbz: control goes to the first successor when the tested register is zero and
-\ to the second when it is not. Its one operand is the register it tests and NOT
-\ a block argument, which is why both of its successors must be blocks that take
-\ no arguments: with two successors the operation model has no way to say which
-\ operand belongs to which destination (src/compiler/ir/verify.f says so where
-\ it checks the single-successor case), so a two-way branch of this dialect hands
-\ nothing over and an edge that has to carry values goes through a block whose
-\ terminator is the unconditional form above. That is ordinary critical-edge
-\ splitting, and src/compiler/native/elaborate.f builds every conditional edge
-\ that way.
 : DEF-BRZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:BRZ OPCODE IR-SCHEMA:BEGIN-OP
@@ -2055,41 +1101,9 @@ private
    c b A64IR-OPCODE:BRZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Cmpbr: control goes to the first successor when the two registers stand in the
-\ named relation and to the second when they do not. Its two operands are the
-\ registers it compares and NOT block arguments, so both of its successors must
-\ be blocks that take none - the same rule the two-way branch above keeps, for
-\ the same reason: with two successors the operation model has no way to say
-\ which operand belongs to which destination.
-\
-\ THE FIRST SUCCESSOR IS THE CONDITION-HOLDS ONE, AND THAT IS A DECISION THE
-\ MACHINE MADE. The emitter lays a conditional branch to the first successor
-\ down and an unconditional branch to the second after it, so the first
-\ successor is the one reached by a TAKEN conditional and the second is reached
-\ by falling into the branch below. A pass fusing a source two-way branch has a
-\ free choice of which way round to put them - it can negate the condition and
-\ keep the source order, or keep the condition and swap the order - and the two
-\ are not equally fast: measured over the eleven-row corpus against
-\ byte-identical control rows, putting the CONDITION-TRUE arm first is flat and
-\ putting the condition-FALSE arm first costs the loop rows four to six per
-\ cent, because it makes the hot path a taken conditional that jumps over the
-\ unconditional branch beside it. Keeping the condition-true arm first is also
-\ what leaves the unconditional branch pointing at the block laid out next,
-\ which is the branch a later elision pass can delete (dot
-\ habu-elide-a-branch-74966a02). src/compiler/native/select.f wires the
-\ successors accordingly.
-\
-\ IT DEFINES NO VALUE, WHICH IS THE WHOLE SAVING. The comparison it stands for
-\ writes only the condition flags, and the branch beside it reads them there, so
-\ nothing is materialised into a register and the register allocator has one
-\ fewer live value to place. That is what makes it three instructions and no
-\ register where a64.flag followed by a64.cbz is five and one.
-\
-\ THE CONDITION IS THE WHOLE CONTENT OF THE TEST, so it rides as the attribute
-\ under the same key the comparison form uses, and IR-OP refuses an operation
-\ that omits it. Which condition a fused source comparison becomes is
-\ src/compiler/native/select.f's answer, not this file's: this form only says
-\ that the first successor is the one taken when the condition holds.
+\ The first successor is the CONDITION-HOLDS one, measured: putting the
+\ condition-false arm first costs the loop rows four to six per cent. Neither
+\ successor may take arguments; it defines no value, which is the whole saving.
 : DEF-CMPBR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:CMPBR OPCODE IR-SCHEMA:BEGIN-OP
@@ -2103,13 +1117,8 @@ private
    c b A64IR-OPCODE:CMPBR NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Cmpbri: the fused branch against a number the instruction carries. It stands to
-\ a64.cmpbr exactly as a64.flagi stands to a64.flag, and every sentence of the
-\ form above carries over unchanged - the first successor is still the
-\ condition-holds one, neither successor may take arguments, and it defines no
-\ value. The one operand it keeps is the comparison's LEFT-hand side, for the
-\ reason a64.flagi's is: the machine subtracts the immediate FROM the register,
-\ so a rewriter may fold only the second operand of a comparison.
+\ Every sentence of a64.cmpbr carries over; the operand it keeps is the LEFT-hand
+\ side, because the machine subtracts the immediate FROM the register.
 : DEF-CMPBR-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:CMPBRI OPCODE IR-SCHEMA:BEGIN-OP
@@ -2123,11 +1132,6 @@ private
    c b A64IR-OPCODE:CMPBRI NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Ret: the block's one terminator. Design line 237 makes it a terminator and
-\ design lines 706-708 give a terminator no results of its own; the values still
-\ live where control leaves are its operands, and how many there are is a
-\ property of the routine rather than of the form, so the list is one variadic
-\ cell.
 : DEF-RET ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:RET OPCODE IR-SCHEMA:BEGIN-OP
@@ -2140,30 +1144,6 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the call, and the link register it costs --------------------------------
-\ Call: the routine hands the caller's data stack to the word being compiled and
-\ takes it back. THREE instructions and one operation - move the data-stack
-\ pointer up over everything the callee is being handed, branch with link to the
-\ routine's own entry, move it back down over everything the callee left - for
-\ the reason the comparison and the division are one operation each: between the
-\ first and the last of the three the machine is in a state no other operation of
-\ this dialect is written for. The pointer stands above values that are the
-\ CALLEE's, so an access placed in the middle would be reading or writing the
-\ callee's stack through the caller's offsets, and an IR in which the three were
-\ three operations would let any later pass put one there.
-\
-\ IT MOVES NO VALUE, AND THAT IS THE WHOLE POINT. The values crossing a call are
-\ moved by ordinary a64.dstore and a64.dload operations around it - the same two
-\ forms a routine's own entry and exit use, at the same slots counted from the
-\ same pointer - so the caller's saved values and the callee's arguments are
-\ operations a validator can read rather than an effect this form claims. What is
-\ left for the form itself is control, the link register, and the two adjustments,
-\ and the two adjustments are its attributes.
-\
-\ THE TARGET IS THE ROUTINE'S OWN ENTRY AND IS NOT AN OPERAND. A self-call's
-\ displacement is known where every other branch's is - at layout, as the
-\ distance to a block of this function - so it needs no relocation and no symbol.
-\ A call to ANOTHER word does need both, and this dialect has neither: it is
-\ refused by the selector rather than approximated here.
 : DEF-CALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:CALL OPCODE IR-SCHEMA:BEGIN-OP
@@ -2177,28 +1157,6 @@ private
    c b A64IR-OPCODE:CALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Wordcall: the same three instructions to ANOTHER word. Everything a64.call
-\ says about the shape it says about this one - one operation because the machine
-\ is in a state no other operation of this dialect is written for between the
-\ first instruction and the last, the values crossing it moved by ordinary
-\ a64.dstore and a64.dload around it, and the two adjustments as its own
-\ attributes. What it adds is the third attribute: the address the branch goes
-\ to.
-\
-\ THE TARGET IS AN ADDRESS AND NOT A BLOCK, WHICH IS THE WHOLE DIFFERENCE. A
-\ self-call's target is block zero of the function being emitted, so its
-\ displacement falls out of the block layout exactly as a branch's does and no
-\ address appears in the module at all. This one's target is somewhere else
-\ entirely, so the module carries the address and the emitter subtracts the
-\ place the calling instruction lands at. That subtraction needs a fact no
-\ earlier pass has - where this routine will be written - and the emitter is
-\ told it by the seam that decides it.
-\
-\ IT CARRIES THE SAME TWO ADJUSTMENTS UNDER THE SAME TWO KEYS, deliberately: a
-\ consumer that walks a module to find call sites reads the keys and not the
-\ opcodes (src/compiler/native/regalloc-verify.f says so in full), so a form that
-\ named its adjustments differently would be a call site that consumer could not
-\ see, and the caller-save discipline would go unchecked around it.
 : DEF-WORDCALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:WORDCALL OPCODE IR-SCHEMA:BEGIN-OP
@@ -2213,37 +1171,9 @@ private
    c b A64IR-OPCODE:WORDCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Tailcall: the last call a routine makes, made by BRANCHING to the callee so
-\ that the callee's own return goes to OUR caller. It is a TERMINATOR and not a
-\ call: control does not come back here, so there is nothing after it to reach.
-\
-\ WHY IT IS A FORM AND NOT A FLAG ON THE WORDCALL. Every consumer of this dialect
-\ reads the opcode to know what an operation does, and this one does something no
-\ other call does - it ends the block. A flag would make the register allocator's
-\ validator, the emitter's layout and the freeze verifier all read a field before
-\ they knew whether they were looking at a terminator.
-\
-\ IT CARRIES NO ADJUSTMENT, AND THAT IS THE WHOLE OF WHAT MAKES IT ONE
-\ INSTRUCTION. A call site moves the data-stack pointer up over what it hands the
-\ callee and back down over what it takes back; there is no taking back here, and
-\ the selector only chooses this form where the pointer ALREADY stands at the
-\ callee's entry base - which it proves before it builds one
-\ (src/compiler/native/select.f, TAIL-CK). So the two adjustment keys are absent
-\ rather than present and zero, which is also what keeps the consumers that find
-\ a call site by those keys from reading this as one: a tail branch is not a call
-\ site, it has no store run behind it and no load run in front of it, and
-\ src/compiler/native/regalloc-verify.f says so in a clause of its own.
-\
-\ IT TAKES THE DATA-STACK ORDER AND ENDS IT, exactly as a64.dpublish does, for
-\ the same reason: it is the moment the results become the caller's - or rather
-\ the moment the CALLEE becomes the one that will make them so - and no access of
-\ this routine may be ordered after it.
-\
-\ THE TARGET IS AN ADDRESS, LIKE THE WORDCALL'S. A branch to a block of this
-\ function has its displacement fall out of the layout; this one goes somewhere
-\ else entirely, so the module carries the address and the emitter subtracts the
-\ place the branch lands at, told to it by the seam that decides where the
-\ routine is written.
+\ A TERMINATOR and not a call. It carries NO adjustment, which is what makes it
+\ one instruction: the selector only chooses it where the pointer already stands
+\ at the callee's entry base. It takes the data-stack order and ends it.
 : DEF-TAILCALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:TAILCALL OPCODE IR-SCHEMA:BEGIN-OP
@@ -2255,40 +1185,9 @@ private
    c b A64IR-OPCODE:TAILCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Trap: the branch to the one routine that ends the process. The same single `B`
-\ the tail branch above is, to an address the module carries under the same key,
-\ taking the data-stack order and ending it in the same way - because the ordinal
-\ it hands the routine was written into the caller's stack by an ordinary
-\ a64.dstore, and no access may be ordered after the branch that leaves.
-\
-\ WHY IT IS ITS OWN FORM AND NOT THE TAIL BRANCH WITH ANOTHER TARGET. The two
-\ instructions are identical and everything AROUND them differs. A tail branch is
-\ how a routine RETURNS: the callee takes exactly what this routine takes, leaves
-\ exactly what it leaves, and publishes this routine's results into the very
-\ cells this routine's caller will read. This one publishes nothing and comes
-\ back from nowhere - the callee takes one value that is not this routine's
-\ result and ends the process. Four passes have to tell the difference, because
-\ each of them re-derives the block control leaves the routine THROUGH in order
-\ to place the routine's results there, give the frame back there, and end the
-\ emission there: src/compiler/native/regalloc.f MB-RET-ORD says which block that
-\ is and why a trap block is not it, and src/compiler/native/regalloc-verify.f,
-\ src/compiler/native/spill.f and src/compiler/native/emit.f each ask the same
-\ question of their own view. One opcode with a flag would make every one of them
-\ read a field before it knew what it was looking at, which is the argument the
-\ tail branch itself makes one paragraph up.
-\
-\ IT CARRIES AN ADJUSTMENT AND THE TAIL BRANCH DOES NOT, which is the second
-\ difference and it is not a detail. A tail branch is only ever built where the
-\ data-stack pointer ALREADY stands at the callee's entry base, because the
-\ callee takes exactly what this routine takes. The trap's callee takes ONE cell
-\ that is nobody's argument, so the pointer has to move over it here - the same
-\ `Addi ds ds n` a call site makes, under the same key, and no take-back count
-\ because there is nothing to take back. That absence is what keeps this out of
-\ the call-site reading as well: a call is the form that carries `a64.dback`.
-\
-\ IT DECLARES ITSELF TRAPPING, and here that is not a caution: the operation IS
-\ the trap. src/compiler/native/select.f will not lower a may-trap source
-\ operation to a form that does not reproduce it, and this is the form that does.
+\ Its own form and not the tail branch with another target: a tail branch is how
+\ a routine RETURNS, and this publishes nothing and comes back from nowhere. It
+\ carries an adjustment, over the one cell the trap routine takes.
 : DEF-TRAP ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:TRAP OPCODE IR-SCHEMA:BEGIN-OP
@@ -2301,15 +1200,8 @@ private
    c b A64IR-OPCODE:TRAP NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Saving and restoring the caller's return address. They are the same Str and Ldr
-\ the frame forms above are, against the same stack pointer, and they differ in
-\ exactly one thing: the register they move is x30, which is named by the FORM.
-\ It has to be, for the reason the stack pointer and the data-stack pointer are:
-\ an operand of this dialect is a value, a value is a register the allocator may
-\ hand out, and the link register is one it may never - src/compiler/a64-effect.f
-\ keeps x30 out of every general-register set, which is what makes "the allocator
-\ cannot put a value in the link register" a fact about what a contract can be
-\ rather than a rule some pass has to remember.
+\ The register they move is x30, which is named by the FORM: A64EFF keeps it out
+\ of every general-register set, so no operand could ever name it.
 : DEF-LNKSTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:LINKSAVE OPCODE IR-SCHEMA:BEGIN-OP
@@ -2335,47 +1227,12 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the floating forms ------------------------------------------------------
-\ Seven arithmetic forms, one instruction each, exactly as the engine's own
-\ float primitives are: FADD, FSUB, FMUL, FDIV, FNEG, FABS and FSQRT over the
-\ D-register file. They are the generic value shapes with the floating type
-\ passed in, because a two-source three-operand form and a two-operand form are
-\ the same statement whichever file they name - which is what makes the file a
-\ property of the TYPE rather than of the shape.
-\
-\ NONE OF THEM MAY TRAP, and that is a fact about IEEE754 rather than about this
-\ dialect: dividing by zero answers an infinity, zero by zero and the square root
-\ of a negative answer the default NaN, and nothing raises. The source dialect
-\ declares the same thing, so the trap rule the selector applies is satisfied by
-\ the two agreeing rather than by either being relaxed.
 
-\ The two rounding conversions, each one instruction and each between the two
-\ files: SCVTF reads a general register and writes a floating one, rounding to
-\ nearest with ties to even; FCVTZS reads a floating register and writes a
-\ general one, truncating toward zero and saturating at the ends. The operand
-\ and result types are the two register classes, so a lowering that named the
-\ wrong direction is a type error in the module rather than a wrong instruction
-\ nobody sees.
 
-\ The two moves, which compute nothing and only change which file the same eight
-\ bytes are in. FMOV Dd,Xn and FMOV Xd,Dn are the two crossings the source
-\ dialect's reinterpretations lower to, and they are the same instructions the
-\ engine's own float primitives use to get a data-stack cell into a floating
-\ register and back (src/habu/habu1.f, BF+).
 
-\ THERE IS A FLOATING COPY HERE AND STILL NO FLOATING FRAME ACCESS, AND BOTH
-\ HALVES ARE SCOPE STATEMENTS. A double is copied when it crosses a block edge -
-\ every argument-carrying edge is split in values by
-\ src/compiler/native/select.f - and a double crosses one as soon as an `if` has
-\ a float literal in an arm or a loop carries an accumulator, so a64.fmovdd
-\ below is a form real programs reach and it is defined. A double reaches a FRAME
-\ SLOT only when the allocator has to put one away, which the routine contract's
-\ whole floating file makes rare and which nothing in the float corpus reaches: a
-\ form with no lowering that no program reaches is a promise and not a schema, so
-\ the STR and LDR forms of the D file arrive with the leaf that reaches them -
-\ dot habu-spill-a-double-bbd5583f - and src/compiler/native/spill.f refuses a
-\ double it would have to put away, by name, until then.
 
-\ One floating binary form: two D operands, one D result.
+\ None of the floating forms may trap: dividing by zero answers an infinity,
+\ zero by zero and the square root of a negative the default NaN.
 : DEF-FBINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -2388,11 +1245,6 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One form with one operand and one result, at two types that may be the same
-\ one. The floating unary forms and the copy take a D and answer a D; the two
-\ conversions and the two crossings take one file and answer the other. One
-\ definer serves all of them because the statement is the same statement with
-\ different types in it, which is exactly what a type-parameterised schema is for.
 : DEF-FCROSS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder ti:IR-ID:ir-type-id to:IR-ID:ir-type-id
       o:A64IR:opcode :}
@@ -2406,23 +1258,7 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the four float comparison forms -----------------------------------------
-\ The floating mirror of a64.flag and a64.cmpbr, and the same argument holds them
-\ together: an Fcmp writes only the condition flags, and the instruction that
-\ reads them - a Cset or a B.cc - has to be inseparable from it, because the
-\ flags are a single architectural resource no value of this dialect stands for
-\ and the register allocator may never hand out. So each of these is ONE
-\ operation and three instructions of the machine.
-\
-\ WHAT IS NEW HERE AND WHAT IS NOT. The register file is: the values compared are
-\ D registers and the flag a materialising form answers is an X register, so the
-\ operand types and the result type are two different classes in one operation.
-\ The condition is not new: it rides as the same attribute under the same key,
-\ and which condition each source word becomes is src/compiler/native/select.f's
-\ answer against the table at the head of this file. What these forms say is that
-\ the flags were written by an Fcmp - which is exactly the fact that decides what
-\ a condition means for a NaN.
 
-\ Fflag: two D registers compared, and the Habu flag that comparison leaves.
 : DEF-FFLAG ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FFLAG OPCODE IR-SCHEMA:BEGIN-OP
@@ -2436,8 +1272,6 @@ private
    c b A64IR-OPCODE:FFLAG NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Fflagz: the same against the immediate zero, which the instruction carries and
-\ the operation therefore does not. One operand, because the form has one.
 : DEF-FFLAGZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FFLAGZ OPCODE IR-SCHEMA:BEGIN-OP
@@ -2450,17 +1284,9 @@ private
    c b A64IR-OPCODE:FFLAGZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Fcmpbr: control goes to the first successor when the two D registers stand in
-\ the named relation and to the second when they do not - and when either of them
-\ is a NaN the relation does NOT hold, whichever of the three conditions is
-\ named, so control goes to the SECOND. That is the whole of how this dialect
-\ keeps the engine's NaN rule through a fused branch: the rule is not a check
-\ anyone wrote, it is the unordered flag and the choice of conditions above.
-\
-\ The first successor is the condition-holds one, exactly as it is for the
-\ integer form and for the same measured reason; the pass that wires them is
-\ src/compiler/native/select.f and it says which way round it puts them. It
-\ defines no value, which is the whole saving.
+\ When either operand is a NaN the relation does NOT hold, whichever condition
+\ is named, so control goes to the SECOND successor - which is the whole of how
+\ this dialect keeps the engine's NaN rule through a fused branch.
 : DEF-FCMPBR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FCMPBR OPCODE IR-SCHEMA:BEGIN-OP
@@ -2474,7 +1300,6 @@ private
    c b A64IR-OPCODE:FCMPBR NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Fcmpbrz: the same fused branch against the immediate zero.
 : DEF-FCMPBRZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FCMPBRZ OPCODE IR-SCHEMA:BEGIN-OP
@@ -2488,32 +1313,7 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the two selects that answer a double ------------------------------------
-\ The conditional-select pair further up, with the two chosen-between operands
-\ and the result in the D file and everything else the same. They live here
-\ rather than beside their general partners because the floating type is in
-\ scope here and because they need the floating target: the machine they lower
-\ to is the machine with an Fcsel in it.
-\
-\ THE TWO FILES MEET IN ONE OPERATION, exactly as they do in a64.fflag, and the
-\ operand types are where the meeting is written down. What decides the arm is a
-\ GENERAL register - a value tested against zero, or two values compared - and
-\ what is chosen between is a pair of doubles. A form that put the tested value
-\ in the floating file would be asking the machine to Cmp a D register, which is
-\ not an instruction; a form that put the answers in the general file is
-\ a64.selz, which already exists.
-\
-\ AND THE NaN RULE COMES ACROSS UNTOUCHED, which is the whole reason these two
-\ need no NaN argument of their own. Neither form compares a double. The flags
-\ they select on were written by an integer Cmp over cells - a Habu flag, or two
-\ numbers - so a NaN cannot reach them, and where the tested cell IS the flag a
-\ float comparison left, that flag is the one a64.fflag or a64.fflagz computed
-\ under a condition already chosen to be false when the unordered flag is set.
-\ The select therefore picks on exactly the number the source branch tested, so
-\ it takes the arm the source branch took, NaN or not.
 
-\ Selzd: the cell tested against zero, the double taken when it is NOT zero, the
-\ double taken when it is. Two instructions: compare the tested register against
-\ the immediate zero, then Fcsel on `ne`.
 : DEF-SELZD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:SELZD OPCODE IR-SCHEMA:BEGIN-OP
@@ -2527,9 +1327,6 @@ private
    c b A64IR-OPCODE:SELZD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Cmpseld: the two cells compared, the double taken when the named relation
-\ holds, the double taken when it does not. Two instructions: the Cmp, then the
-\ Fcsel under the condition the operation carries.
 : DEF-CMPSELD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:CMPSELD OPCODE IR-SCHEMA:BEGIN-OP
@@ -2546,40 +1343,9 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the four selects whose flags an Fcmp wrote ------------------------------
-\ The last row of the square. The four forms above choose on flags a Cmp over
-\ CELLS left; these four choose on flags an Fcmp over DOUBLES left, which is the
-\ shape a source `x y f< if a else b then` really has. Written the long way that
-\ is an a64.fflag - Fcmp, Cset, Sub - and then a select that tests the number it
-\ answered against zero, five instructions and one register; written as one of
-\ these it is the Fcmp and the select, two instructions and no register.
-\
-\ WHY THE FLAGS-WRITER HAS TO BE THE OPCODE AND NOT A FIELD. A condition is four
-\ bits of the select instruction, and what those four bits MEAN depends on which
-\ instruction wrote the flags: after an Fcmp of a NaN the unordered condition is
-\ set - N=0 Z=0 C=1 V=1 - and `lt` reads TRUE there while `mi` reads false, where
-\ after a Subs the two are the same relation. So an operation that carried "which
-\ instruction wrote the flags" as an attribute would let a later pass change the
-\ meaning of the condition beside it without changing the condition. It is the
-\ opcode, and the condition table that pairs a source relation with a condition
-\ for THIS row of the square is at the head of src/compiler/native/select.f, with
-\ the whole derivation written out beside it.
-\
-\ THE ZERO FORMS CARRY A CONDITION AND a64.selz DOES NOT, which is the one shape
-\ difference a reader would not predict from the names. a64.selz tests a Habu
-\ FLAG cell - a number the program computed - so its condition is always `ne`,
-\ "the flag is not zero", and there is nothing to say. a64.fcmpselz compares a
-\ DOUBLE against the immediate zero, and which relation it is asking about -
-\ `f0<` or `f0=` - is the condition. Both zero forms therefore take one compared
-\ operand and carry the condition attribute.
-\
-\ EACH IS ONE OPERATION AND TWO INSTRUCTIONS for the reason every other
-\ flags-reading form is: the flags pass between the compare and the select and
-\ are a single architectural resource no value of this dialect stands for, so a
-\ later pass must have nowhere to put anything between them.
 
-\ Fcmpsel: the two doubles compared, the cell taken when the named relation
-\ holds, the cell taken when it does not. Two instructions: the Fcmp, then the
-\ Csel under the condition the operation carries.
+\ The flags-writer is the OPCODE and never a field, because what a condition
+\ MEANS depends on which instruction wrote the flags.
 : DEF-FCMPSEL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FCMPSEL OPCODE IR-SCHEMA:BEGIN-OP
@@ -2595,8 +1361,6 @@ private
    c b A64IR-OPCODE:FCMPSEL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Fcmpselz: the same against the immediate zero, which the instruction carries
-\ and the operation therefore does not.
 : DEF-FCMPSELZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FCMPSELZ OPCODE IR-SCHEMA:BEGIN-OP
@@ -2611,9 +1375,6 @@ private
    c b A64IR-OPCODE:FCMPSELZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Fcmpseld: the two doubles compared, the double taken when the named relation
-\ holds, the double taken when it does not. Every operand and the result are of
-\ the floating file, which is the only corner of the square where that is so.
 : DEF-FCMPSELD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FCMPSELD OPCODE IR-SCHEMA:BEGIN-OP
@@ -2629,7 +1390,6 @@ private
    c b A64IR-OPCODE:FCMPSELD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Fcmpselzd: the same against the immediate zero. This is the shape RELU-F has.
 : DEF-FCMPSELZD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:FCMPSELZD OPCODE IR-SCHEMA:BEGIN-OP
@@ -2645,13 +1405,8 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the table this dialect may fill -----------------------------------------
-\ Design line 229's closed world is per dialect, so an operation family may only
-\ be defined into the schema table of the dialect it belongs to. The table's
-\ dialect name and schema version are fixed when the module is created and
-\ nothing can change them afterwards, so reading them back off the live module
-\ decides it: the name is compared byte for byte through the module's own
-\ interner, which appends nothing, and the version has to be the exact version
-\ these definitions were written for.
+\ The table's dialect name and version are fixed when the module is created, so
+\ reading them back off the live module decides whose table it is.
 : DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b  c b IR-BUILD:DIALECT@  NAME IR-BUILD:SYMBOL-IS?
@@ -2662,20 +1417,11 @@ private
 public
 
 \ ---- creation and registration -----------------------------------------------
-\ Create a builder for a module of this dialect. The staged IR-BUILD plan is
-\ consumed here exactly as IR-BUILD:NEW-BUILDER consumes it; what this word adds
-\ is the dialect's own name and schema version, which no caller should be
-\ spelling out.
 : NEW-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
    NAME MAJOR MINOR IR-BUILD:NEW-BUILDER ;
 
-\ Define the whole machine operation family into this builder's schema table.
-\ Nearly every check belongs to IR-SCHEMA:DEFINE - the module owns each symbol
-\ and type, the target contract admits the requirement, no opcode is defined
-\ twice, the ceilings hold - so registering twice, or against a module or a
-\ target that cannot hold these schemas, is refused there and this word repeats
-\ none of it. The one check that is this dialect's own is the first line, because
-\ IR-SCHEMA has no opinion about which dialect its caller is.
+\ Definition is one opcode at a time, so a refusal leaves the opcodes already
+\ defined and defines no more.
 : REGISTER ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b DIALECT-CK
