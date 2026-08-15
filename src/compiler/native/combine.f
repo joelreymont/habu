@@ -4,88 +4,15 @@
 \ reads it. One concern: finding those pairs and writing the module that holds
 \ the combined form.
 \
-\ WHY THE PASS EXISTS, AND WHY IT IS THIS PATTERN AND NOT A LIBRARY OF THEM.
-\ ARM64 has a multiply-add: `madd rd, rn, rm, ra` computes ra + rn*rm in one
-\ instruction and one cycle's worth of encoding, where this chain emits a
-\ multiply and then an addition. Which of the shapes ARM64 rewards actually
-\ OCCUR in the code this chain emits is a measurement, not a matter of taste, and
-\ tools/codegen-combine-inventory.f is that measurement: over the 723
-\ instructions of the 54 migrated corpus rows it finds 17 multiply-then-add
-\ pairs, no multiply-then-subtract pair at all, no immediate shift at all - so no
-\ shifted-operand fold and no bitfield extract - and 25 pairable loads whose
-\ instruction this tree does not model. This pass is therefore the ONE pattern
-\ the measurement found a consumer for. The others are recorded as measured
-\ zeroes rather than written on the chance that some other corpus would want
-\ them.
+\ It runs BEFORE the allocator, which is the whole reason it can see a pattern at
+\ all: the same two instructions after allocation are often unfusable.
 \
-\ WHY IT IS A PASS AND NOT A RULE INSIDE THE SELECTOR. src/compiler/native/
-\ select.f already fuses one pair - a comparison and the branch that reads it -
-\ and the obvious economy would be to fuse this pair there too. The obstacle is
-\ that a selector which emits fewer operations than it walks has to keep its own
-\ accounting of how many instructions each block became (select.f's FUSED-GPR?
-\ and the residency and placement code around it), because the block's operation
-\ count no longer says. A pass that writes a module in which the multiply is
-\ simply not there needs none of that: the new module's operation count IS the
-\ instruction count, exactly as it is for every module this chain emits, and
-\ src/compiler/native/emit.f counts it the way it counts every other. One fewer
-\ place where a number is kept by hand.
+\ Every fold requires the folded value to have EXACTLY ONE use and to be defined
+\ in the same block. A value read twice still needs its register, so folding one
+\ reader would leave the producer in place and ADD an instruction.
 \
-\ AND BECAUSE THE RESULT IS VALIDATED RATHER THAN TRUSTED. docs/compiler-ir-
-\ design.md section 9.2 puts fusion among the passes to treat as untrusted
-\ producers with a small validator, and that is what this is: the module this
-\ pass writes goes through the ordinary src/compiler/native/regalloc-verify.f,
-\ which re-derives every register fact from the operand and result windows of the
-\ module it is handed and knows nothing about this pass. A combine that got a
-\ register wrong is caught by something that does not share its reasoning.
-\
-\ WHAT IS FUSED, IN ONE SENTENCE. A multiply whose result is read by exactly one
-\ operation in the whole function, where that operation is an addition in the
-\ same block, becomes the addition's multiply-add: the multiply is not copied,
-\ and the addition is written as `madd` taking the multiply's two factors and the
-\ addition's OTHER operand as its addend.
-\
-\ THE FOUR CONDITIONS, AND WHY EACH ONE IS THERE.
-\
-\   THE PRODUCT HAS EXACTLY ONE USE. This is the condition that makes the fusion
-\   pay rather than cost. A product read twice still has to be computed into a
-\   register, so folding one of its readers would leave the multiply where it was
-\   and ADD an instruction. It is the same test src/compiler/native/select.f
-\   makes before it fuses a comparison into a branch (USES-OF ... 1 <>), and it
-\   is exact here for the reason it is exact there: this dialect is SSA, so a
-\   value's uses are the operands that name it and there is nothing else to
-\   count.
-\
-\   THAT USE IS AN ADDITION. Nothing else has a multiply-add. A subtraction has
-\   `msub`, which the shipped assembler and formal/Common/Insn.v both carry - but
-\   the inventory counts ZERO multiply-then-subtract pairs in this corpus, so the
-\   form has no consumer and this pass does not write one. When a corpus grows
-\   one, `msub` is a second arm here and the model row is already waiting.
-\
-\   THE TWO ARE IN ONE BLOCK. The multiply-add stands where the ADDITION stood,
-\   so the multiply moves forward to that point. Within a block that is always
-\   sound - the factors are SSA values that are still what they were, and a
-\   multiply cannot trap, which its schema says by being TOTAL - and a rule that
-\   reached across blocks would have to ask whether the multiply's block always
-\   reaches the addition's, which is a dominance question this pass has no reason
-\   to open for a pattern the measurement finds adjacent.
-\
-\   AND THE ADDEND IS NOT THE PRODUCT ITSELF. `x*y + x*y` reads the product
-\   twice, so the use count already refuses it; the case is named because it is
-\   the one shape where an addition's two operands are one value and a rewriter
-\   that counted USES PER OPERATION rather than per operand would call it a
-\   single use and fold a value it still needs.
-\
-\ WHAT THIS PASS DOES NOT DECIDE. Which register anything ends up in - that is
-\ the allocator's, and this pass runs before it, which is the whole reason it can
-\ see the pattern at all. The same two instructions AFTER allocation are often
-\ unfusable: the allocator reuses registers, so the corpus row C-MAD (`3 * 5 +`)
-\ emits a multiply and an addition whose addend sits in the very register the
-\ multiply read, and no rewriter of finished code may touch it. Running here,
-\ before registers exist, is what makes those rows reachable.
-\
-\ ONE REWRITE AT A TIME, for the reason src/compiler/native/spill.f gives: the
-\ value map is a package-owned slot and the old module is read through the one
-\ cursor src/compiler/native/frozen.f owns.
+\ One rewrite at a time: the value map is a package-owned slot and the old module
+\ is read through the one cursor src/compiler/native/frozen.f owns.
 
 require lib/prelude.f
 require lib/errors.f
@@ -106,9 +33,8 @@ using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
-\ One slot per member of the machine operation family, so the family stays
-\ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
-\ has a slot and a rule for rebuilding it here too.
+\ One slot per member of the machine operation family, so a member added to
+\ A64IR:opcode fails to compile here until it has a slot and a rebuild rule.
 76 constant OPCODES-N
 
 0 constant O-MOVZ
@@ -187,10 +113,8 @@ private
 73 constant O-CODEADDR
 74 constant O-FLAGI
 75 constant O-CMPBRI
-\ One slot per attribute key the dialect declares. This pass writes no attribute
-\ of its own - the form it introduces carries none - but it COPIES every one the
-\ selector built, and a field copied under the wrong key would be a routine
-\ reading its arguments out of its own frame.
+\ This pass writes no attribute of its own but COPIES every one the selector
+\ built, and a field copied under the wrong key would misread a frame.
 14 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
@@ -210,9 +134,8 @@ private
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ The longest function name this pass can carry across. A name is copied out of
-\ the old module's interner and interned into the new one, because the two
-\ modules number their symbols separately.
+\ A name is copied out of the old module's interner and interned into the new
+\ one, because the two modules number their symbols separately.
 128 constant NAME-CAP
 
 \ Values in one function, and operations in one block. Both are the ceilings the
@@ -239,9 +162,8 @@ VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
 create NAMEBUF NAME-CAP allot
 
-\ The block's plan, one cell per operation: which operation of this block folds
-\ into the one at this position, or -1 when none does. A multiply named here is
-\ not copied, and the operation it is named at is written as the multiply-add.
+\ One cell per operation: which operation of this block folds into the one at
+\ this position, or -1. A multiply named here is not copied.
 create FOLD-AT OPS-MAX cells allot
 create FOLDED OPS-MAX cells allot
 create IMM-AT OPS-MAX cells allot
@@ -413,9 +335,8 @@ create CMP-AT OPS-MAX cells allot
       E-A64SPILL-OPCODE throw
    endcase ;
 
-\ Which member of the family this symbol names. An operation of a form outside it
-\ Which member of the family this symbol names. An operation of a form outside it
-\ has no rule here and is refused rather than copied blind.
+\ An operation of a form outside the family has no rule here and is refused
+\ rather than copied blind.
 : OPCODE-SLOT ( IR-ID:ir-symbol-id -- n )
    {: sym:IR-ID:ir-symbol-id :}
    -1
@@ -427,6 +348,8 @@ create CMP-AT OPS-MAX cells allot
 \ Which declared key this symbol is. A frozen module carries no attribute under a
 \ key its opcode's schema did not declare - the freeze verifier decides that - so
 \ this refusal is fail-closed rather than reachable.
+\ A frozen module carries no attribute under a key its schema did not declare,
+\ so this refusal is fail-closed rather than reachable.
 : KEY-SLOT-OF ( IR-ID:ir-symbol-id -- n )
    {: sym:IR-ID:ir-symbol-id :}
    -1
@@ -439,10 +362,8 @@ create CMP-AT OPS-MAX cells allot
    OPCODE-AT OPCODE-SLOT ;
 
 \ ---- the value map -----------------------------------------------------------
-\ Old value to new value. A multiply that was folded away binds NOTHING here, so
-\ a reader of its product that this pass failed to account for does not quietly
-\ get some other value - it reaches an unset slot and the rewrite is refused.
-\ That is the safety net under the use count below.
+\ A folded producer binds NOTHING here, so a reader this pass failed to account
+\ for reaches an unset slot and the rewrite is refused.
 : VCLEAR ( -- )
    VMAX 0 ?do
       0 i cells VSET + !
@@ -488,10 +409,8 @@ create CMP-AT OPS-MAX cells allot
    src SRC-CK
    BLD SID st ln IR-BUILD:ADD-SPAN ;
 
-\ The type of one value of the old module, restated in the new one. The two
-\ modules number their types separately, so a value's class is carried across by
-\ identity and not by ordinal; a value of neither class is one this pass has no
-\ type for.
+\ The two modules number their types separately, so a value's class is carried
+\ across by identity and not by ordinal.
 : TYPE-OF ( IR-ID:ir-value-id -- IR-ID:ir-type-id )
    {: id:IR-ID:ir-value-id :}
    id VALUE-TYPE-AT {: t:IR-ID:ir-type-id :}
@@ -501,10 +420,8 @@ create CMP-AT OPS-MAX cells allot
    E-A64COMB-SHAPE throw ;
 
 \ ---- how many operands of the function name a value --------------------------
-\ The same count src/compiler/native/select.f takes before it fuses a comparison
-\ into a branch, and it is counted per OPERAND rather than per operation: an
-\ addition whose two operands are one value uses it twice, and a count that said
-\ once would fold a product that is still needed.
+\ Counted per OPERAND and not per operation: an addition whose two operands are
+\ one value uses it twice, and a count saying once would fold a live product.
 : USES-IN-OP ( IR-ID:ir-value-id IR-ID:ir-op-id -- n )
    {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
    0
@@ -527,10 +444,8 @@ create CMP-AT OPS-MAX cells allot
    loop ;
 
 \ ---- which pairs this block folds --------------------------------------------
-\ Where in this block the operation defining a value is, or -1 when the value is
-\ not defined by an operation of this block at all - a block argument, or a value
-\ from another block. Only a definition IN THIS BLOCK may be folded, because the
-\ combined form stands where the reader stands.
+\ Only a definition IN THIS BLOCK may be folded, because the combined form
+\ stands where the reader stands.
 : DEF-INDEX ( IR-ID:ir-block-id IR-ID:ir-value-id -- n )
    {: bk:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    -1
@@ -541,9 +456,8 @@ create CMP-AT OPS-MAX cells allot
       then
    loop ;
 
-\ Whether the operation at this position is a multiply this pass may fold into
-\ the one reading it: a multiply, defining one value, and that value read by
-\ exactly one operand of the whole function.
+\ A multiply defining one value, that value read by exactly one operand of the
+\ whole function.
 : FOLDABLE-MUL? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    k 0 < if false exit then
@@ -552,22 +466,15 @@ create CMP-AT OPS-MAX cells allot
    id RESULTS-OF 1 <> if false exit then
    f  id 0 RESULT-AT  USES-OF 1 = ;
 
-\ And whether it stands BEFORE the addition that would fold it. A frozen module
-\ defines every value before it is read, so a multiply behind an addition's
-\ operand is always above it in the block and this is never false - but the
-\ combined form is written where the ADDITION stands, and if the multiply were
-\ below it the pass would be moving a computation backwards past its own inputs.
-\ That is the one thing this rewrite must not do, so it is asked here rather than
-\ inherited from the verifier that ran before it.
+\ The combined form is written where the ADDITION stands, so a multiply below it
+\ would be a computation moved backwards past its own inputs.
 : FOLDS-HERE? ( IR-ID:ir-fun-id IR-ID:ir-block-id n n -- bool )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id d:n k:n :}
    d k >= if false exit then
    f bk d FOLDABLE-MUL? ;
 
-\ The multiply this addition folds, or -1. The addition names two operands; a
-\ multiply behind EITHER of them will do, and the first one asked wins so that a
-\ hypothetical `x*y + x*y` - which the use count has already refused - could
-\ never be read as folding both.
+\ A multiply behind EITHER operand will do, and the first asked wins, so
+\ `x*y + x*y` could never be read as folding both.
 : FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    bk k OP-AT {: id:IR-ID:ir-op-id :}
@@ -580,35 +487,9 @@ create CMP-AT OPS-MAX cells allot
    -1 ;
 
 \ ---- which constants this block puts in the instruction ------------------------
-\ THE SECOND PATTERN, AND WHY IT IS THE SAME SHAPE AS THE FIRST. ARM64's add and
-\ subtract carry a small number in the instruction itself, and this chain does
-\ not use that form: src/compiler/native/select.f selects the register-register
-\ add for every addition, so a constant small enough to have stood in the
-\ instruction is built into a register by a move-wide first.
-\ tools/codegen-loop-inventory.f measures the consequence - over the 54 migrated
-\ corpus rows, 24 of the 42 move-wides standing inside a loop body are constants
-\ small enough for the arithmetic field, each read once by the add or subtract
-\ under it. Folding one removes the move-wide outright and costs no register,
-\ which is why that column is counted apart from the hoistable ones: hoisting
-\ such a constant would save the same instruction and spend a register to do it.
-\
-\ The conditions are the multiply-add's, restated for this pair, with one that
-\ is new:
-\   THE CONSTANT HAS EXACTLY ONE USE. Identical to the product's condition and
-\   exact for the identical reason: a number read twice still has to be in a
-\   register, so folding one reader would leave the move-wide and ADD an
-\   instruction.
-\   THE MOVE-WIDE IS A WHOLE CONSTANT AND IT FITS. A movz writing the bottom
-\   half of a cleared register IS the number, while a movz under a movk is one
-\   half of a larger one - and the single-use condition already excludes the
-\   second, because such a movz's one reader is the movk. The value must also
-\   fit the twelve-bit field the form carries, which A64IR states once.
-\   THE TWO ARE IN ONE BLOCK, AND THE MOVE-WIDE STANDS FIRST. Both as above.
-\   AND THE CONSTANT IS ON THE RIGHT SIDE OF A SUBTRACTION, which is the new
-\   one. Addition is commutative, so either operand may be the constant; `sub`
-\   is not, and its immediate form subtracts FROM the register. So `x - 5` folds
-\   and `5 - x` does not, and reading the operand by position rather than by
-\   identity is what keeps those apart.
+\ ARM64's add and subtract carry a small number in the instruction, and the
+\ selector always picks the register form, so the constant costs a move-wide.
+\ Addition is commutative and `sub` is not: `x - 5` folds and `5 - x` does not.
 : ATTR-BY-KEY ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id want:n :}
    -1
@@ -616,13 +497,8 @@ create CMP-AT OPS-MAX cells allot
       id i ATTR-KEY-AT KEY-SLOT-OF want = if drop id i ATTR-INT-AT leave then
    loop ;
 
-\ The whole number this operation puts in a register, and whether it is one at
-\ all. A movz writing the bottom half of a cleared register IS the number; a
-\ movz under a movk is one half of a larger one, and the single-use condition
-\ the callers apply already excludes that, because such a movz's one reader is
-\ the movk. Both immediate folds below read this, so the question "is this
-\ operation a whole constant" is asked once and each fold adds only its own
-\ question about whether ITS field can hold the answer.
+\ A movz writing the bottom half of a cleared register IS the number; a movz
+\ under a movk is one half of a larger one, which the single-use test excludes.
 : MOVZ-VALUE ( IR-ID:ir-op-id -- n bool )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT O-MOVZ <> if 0 false exit then
@@ -640,12 +516,8 @@ create CMP-AT OPS-MAX cells allot
    v A64IR:OFF-LIMIT > if -1 exit then
    v ;
 
-\ The same reading against the OTHER immediate field. The arithmetic field is
-\ bounded by its width, so the question there is a comparison; the logical field
-\ is not bounded by a width at all - it holds whatever mask its thirteen-bit
-\ description can rebuild - so the question here is whether that description
-\ exists, which only the packer can answer. Asking it is what keeps this fold
-\ from handing the emitter a mask it would have to die on.
+\ The logical field is not bounded by a width but by whether its thirteen-bit
+\ description can rebuild the mask, which only the packer can answer.
 : WHOLE-MASK? ( IR-ID:ir-op-id -- bool )
    MOVZ-VALUE {: v:n ok:bool :}
    ok 0= if false exit then
@@ -670,10 +542,8 @@ create CMP-AT OPS-MAX cells allot
    d k >= if false exit then
    f bk d FOLDABLE-IMM? ;
 
-\ The constant this add or subtract folds, or -1. An addition is asked of both
-\ its operands and a subtraction only of its second, which is the whole of the
-\ commutativity rule above. A pair the multiply-add already claimed is left
-\ alone, so the two patterns never both rewrite one operation.
+\ An addition is asked of both operands and a subtraction only of its second. A
+\ pair the multiply-add already claimed is left alone.
 : IMM-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    f bk k FOLD-FOR 0 >= if -1 exit then
@@ -690,20 +560,8 @@ create CMP-AT OPS-MAX cells allot
    -1 ;
 
 \ ---- which masks this block puts in the instruction ---------------------------
-\ THE THIRD PATTERN. ARM64's and, orr and eor carry a mask in the instruction,
-\ and this chain does not use that form either: a mask small enough to have
-\ stood in the instruction is built into a register by a move-wide first, so
-\ `x 7 and` is a movz and an and where it is one `and xd, xn, #7`.
-\
-\ The conditions are the arithmetic fold's, with the two that differ:
-\   WHETHER THE FIELD CAN HOLD IT is not a range question. See WHOLE-MASK?.
-\   AND ALL THREE ARE COMMUTATIVE, so either operand may be the mask - unlike
-\   the subtract, which is why this asks both positions unconditionally where
-\   IMM-FOLD-FOR asks the first only of an addition.
-\ Nothing here cross-checks the other two folds. They claim an addition, a
-\ subtraction or a multiply, and this claims a bitwise operation, so no
-\ operation is a candidate for two of them and no movz can be claimed twice: a
-\ constant with one use has one reader, and it is that reader which folds it.
+\ and, orr and eor are all commutative, so either operand may be the mask.
+\ No operation is a candidate for two folds, so no movz can be claimed twice.
 : FOLDABLE-MASK? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    k 0 < if false exit then
@@ -733,42 +591,10 @@ create CMP-AT OPS-MAX cells allot
    -1 ;
 
 \ ---- which constants this block compares against without a register -----------
-\ THE FOURTH PATTERN. ARM64's compare carries a small number in the instruction
-\ too, and until now this chain reached it for exactly one thing - the zero a
-\ conditional select tests its flag against, which the select form holds itself.
-\ Every comparison a PROGRAM writes went the other way: `x 0=` is a constant zero
-\ and an equality, `x 1 <=` is a constant one and a comparison, and the constant
-\ was built into a register by a move-wide and compared against. Measured over
-\ the five corpora's rows, 45 comparisons reach the machine and 17 of them are
-\ against a constant this field could have held - LADDER's eight-step ladder
-\ alone is seven of them - and every one of the 17 has the constant in the
-\ SECOND operand.
-\
-\ The conditions are the arithmetic fold's, with the two that differ:
-\
-\   THE READER IS A COMPARISON, WHICH IS EITHER OF TWO FORMS. This dialect has no
-\   standalone compare: a comparison reaches the machine only fused, as the flag
-\   it materialises (a64.flag) or as the branch that reads it (a64.cmpbr), so the
-\   fold has two readers to recognise and writes the immediate variant of
-\   whichever one it found. The two conditional selects are deliberately NOT
-\   here: a64.selz already compares against the immediate zero and a64.cmpsel's
-\   comparison feeds a select rather than a flag, so folding into them is a
-\   separate shape with its own measurement.
-\
-\   AND ONLY THE SECOND OPERAND MAY BE FOLDED, which is the subtraction's rule
-\   arriving for a different reason. `cmp rn, #imm` sets its flags from rn minus
-\   imm, so moving the constant into the field only works where the constant was
-\   the RIGHT-hand side; a constant on the left is the mirrored relation - `5 < x`
-\   is `x > 5` - and turning it round means changing the condition as well, which
-\   is a second rewrite and not this one. The measurement says that rewrite has
-\   no consumer in this corpus: of the 17 foldable constants, 17 are on the right
-\   and none on the left. So the position is read by ordinal, exactly as the
-\   subtraction's is, and a left-hand constant keeps the register form.
-\
-\ Nothing here cross-checks the other three folds, for the reason the mask fold
-\ gives: those claim a multiply, an addition, a subtraction or a bitwise
-\ operation, and this claims a comparison, so no operation is a candidate for two
-\ of them and no movz can be claimed twice.
+\ This dialect has no standalone compare: one reaches the machine only fused, as
+\ the flag it materialises or as the branch that reads it, so both are folded.
+\ Only the SECOND operand may be: `cmp rn, #imm` sets flags from rn minus imm,
+\ and turning a left-hand constant round means changing the condition too.
 : COMPARE-OP? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT O-FLAG =  id OP-SLOT O-CMPBR =  or ;
@@ -920,9 +746,8 @@ create CMP-AT OPS-MAX cells allot
       then
    loop ;
 
-\ The blocks a terminator hands control to. Blocks are copied one for one and in
-\ order, so block b of the old module is block b of the new one and a successor
-\ is carried across by its ordinal.
+\ Blocks are copied one for one and in order, so a successor is carried across
+\ by its ordinal.
 : COPY-SUCCS ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id SUCCS-OF {: n:n :}
@@ -964,21 +789,15 @@ create CMP-AT OPS-MAX cells allot
    id  CLOSE  BIND-RESULTS ;
 
 \ ---- the operation the pair becomes ------------------------------------------
-\ The addition's operand that is NOT the folded multiply's product: the addend.
-\ It is found by identity against the product rather than by position, because
-\ either operand of an addition may be the one that carries it.
+\ Found by identity against the product rather than by position, because either
+\ operand of an addition may carry it.
 : ADDEND-OF ( IR-ID:ir-op-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id prod:IR-ID:ir-value-id :}
    id 0 OPERAND-AT prod SAME-VALUE? if id 1 OPERAND-AT exit then
    id 0 OPERAND-AT ;
 
-\ The multiply-add itself, written where the addition stood. Its operands are the
-\ multiply's two factors and then the addend, which is the order
-\ src/compiler/native/a64ir.f's schema declares and the order
-\ `madd rd, rn, rm, ra` names them in. The ADDITION's result is what the new
-\ operation defines, so everything that read the sum still reads it; the
-\ multiply's product is bound to nothing, and the value map refuses any reader of
-\ it that this pass did not account for.
+\ Operand order is the schema's and `madd rd, rn, rm, ra`'s. The ADDITION's
+\ result is what the new operation defines; the product is bound to nothing.
 : EMIT-MADD ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mul:IR-ID:ir-op-id add:IR-ID:ir-op-id :}
    mul 0 RESULT-AT {: prod:IR-ID:ir-value-id :}
@@ -990,13 +809,8 @@ create CMP-AT OPS-MAX cells allot
    add  CLOSE  BIND-RESULTS
    1 N-FUSED +! ;
 
-\ The add or subtract immediate, written where the arithmetic stood. It reads the
-\ operand that is NOT the folded constant and carries the constant in its own
-\ attribute, so the move-wide is bound to nothing and the value map refuses any
-\ reader of it this pass did not account for - exactly as it does for a folded
-\ product. Which of the two opcodes it is comes off the operation being rewritten
-\ rather than off the sign of anything: this dialect's immediate is unsigned, and
-\ a subtraction stays a subtraction.
+\ Reads the operand that is NOT the folded constant and carries the constant in
+\ its own attribute. This dialect's immediate is unsigned; a subtract stays one.
 : EMIT-ADDI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mz:IR-ID:ir-op-id ar:IR-ID:ir-op-id :}
    mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
@@ -1010,10 +824,8 @@ create CMP-AT OPS-MAX cells allot
    ar  CLOSE  BIND-RESULTS
    1 N-FUSED +! ;
 
-\ The bitwise operation with its mask in the instruction, written where the
-\ register form stood. It is EMIT-ADDI against the other immediate key, and
-\ which of the three opcodes it is comes off the operation being rewritten -
-\ the mask is the same number whichever of them reads it.
+\ EMIT-ADDI against the other immediate key: the mask is the same number
+\ whichever of the three opcodes reads it.
 : EMIT-MASKI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mz:IR-ID:ir-op-id lg:IR-ID:ir-op-id :}
    mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
@@ -1030,37 +842,17 @@ create CMP-AT OPS-MAX cells allot
    lg  CLOSE  BIND-RESULTS
    1 N-FUSED +! ;
 
-\ The condition an operation was made under, as the code the module stores. A
-\ comparison of this dialect carries it under a REQUIRED key, so an operation
-\ that reached this pass without one is a module the freeze verifier should have
-\ refused; it is checked rather than defaulted, because a defaulted condition is
-\ a comparison that answers the wrong relation and nothing downstream would say
-\ so.
+\ A comparison carries its condition under a REQUIRED key, so it is checked
+\ rather than defaulted - a defaulted condition answers the wrong relation.
 : COND-CODE-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id K-COND ATTR-BY-KEY {: v:n :}
    v 0 < if E-A64COMB-SHAPE throw then
    v ;
 
-\ The comparison with its constant in the instruction, written where the register
-\ form stood. It is EMIT-ADDI's shape with two differences that both come from
-\ what a comparison is.
-\
-\ THE OPERAND IS TAKEN BY POSITION AND NOT BY IDENTITY. EMIT-ADDI asks which of
-\ the addition's two operands is not the constant, because either may be; here
-\ only operand 1 was ever a candidate, so operand 0 is the one that stays and
-\ reading it by ordinal is what keeps a mirrored comparison out.
-\
-\ AND WHICH SHAPE IS REBUILT DEPENDS ON WHETHER THE COMPARISON WAS FUSED. The
-\ flag form defines a value and ends nothing; the branch form defines none and
-\ ends the block, so it carries its two successors across. Both keep the
-\ condition they were made under - the immediate changes what is compared, never
-\ how the answer is read.
-\ AND A FORM IT DOES NOT KNOW IS REFUSED RATHER THAN TREATED AS THE FLAG ONE.
-\ Two opcodes reach here today and each is asked for by name; a third comparison
-\ form admitted by COMPARE-OP? above and forgotten here would otherwise be
-\ written as a flag-materialising one, which for a select would drop the two
-\ registers it chooses between.
+\ Operand 0 is taken by POSITION, because only operand 1 was ever a candidate.
+\ The flag form defines a value; the branch form ends the block and carries its
+\ successors. A third form is refused rather than written as the flag one.
 : EMIT-CMPI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mz:IR-ID:ir-op-id cm:IR-ID:ir-op-id :}
    cm OP-SLOT {: s:n :}
@@ -1081,9 +873,8 @@ create CMP-AT OPS-MAX cells allot
    1 N-FUSED +! ;
 
 \ ---- the block ---------------------------------------------------------------
-\ The old block's arguments are the new block's arguments, one for one. The value
-\ map is NOT cleared here: a value defined in one block is read in the blocks it
-\ dominates, so the map belongs to the function.
+\ The value map is NOT cleared here: a value defined in one block is read in the
+\ blocks it dominates, so the map belongs to the function.
 : OPEN-BLOCK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    CTX BLD IR-BUILD:BEGIN-BLOCK
@@ -1185,10 +976,8 @@ create CMP-AT OPS-MAX cells allot
 public
 
 \ ---- binding the dialect -----------------------------------------------------
-\ Learn the operation, key and type identities of the module that is about to be
-\ read, while it is still being built - the only moment a module can be asked
-\ them, because its symbols and types are its own ordinals. The binding is spent
-\ by the next REWRITE, or given back by RELEASE when the scan finds nothing.
+\ The only moment a module can be asked its operation, key and type identities,
+\ because its symbols and types are its own ordinals.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    BND-MODE @ BOUND-YES = if E-A64COMB-BIND throw then
@@ -1298,12 +1087,8 @@ public
    BND-TAKE ;
 
 \ ---- what the module holds ---------------------------------------------------
-\ How many pairs this module would fold, asked before anything is built. A caller
-\ that gets zero keeps the module it has, which is what keeps every routine
-\ WITHOUT the pattern byte-for-byte what it was: no second module is built, no
-\ value is renumbered, and the register allocator sees exactly what it saw
-\ before. It reads through the bound module's own cursor, so it is asked between
-\ the binding and the rewrite.
+\ Asked before anything is built. A caller that gets zero keeps the module it
+\ has, which is what keeps every routine without the pattern byte-for-byte.
 : FUSIONS ( IR-BUILD:module -- n )
    {: m:IR-BUILD:module :}
    BOUND? 0= if E-A64COMB-BIND throw then
@@ -1324,11 +1109,8 @@ public
    loop ;
 
 \ ---- the pass ----------------------------------------------------------------
-\ Build the module in which each of those pairs is one multiply-add, and answer
-\ it frozen. The builder is a fresh one from A64IR:NEW-BUILDER - this pass
-\ registers the machine operation family into it - and the bytes are the source
-\ text the old module was compiled from, proved by digest before any span is
-\ carried across.
+\ The bytes are the source text the old module was compiled from, proved by
+\ digest before any span is carried across.
 : REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
    BND-TAKE
@@ -1342,9 +1124,8 @@ public
    FUN-COUNT 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
    c b IR-BUILD:FREEZE ;
 
-\ How many pairs the last rewrite really folded. A caller compares it with what
-\ the scan promised, so a walk that quietly folded a different number than the
-\ scan counted is a refusal at the caller rather than a module nobody checked.
+\ A caller compares it with what the scan promised, so a walk that folded a
+\ different number is a refusal rather than a module nobody checked.
 : FUSED ( -- n )
    N-FUSED @ ;
 

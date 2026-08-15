@@ -1,119 +1,22 @@
 \ spill.f - build the machine module in which the register allocator's spill
 \ decisions are real store and load operations.
 \
-\ docs/compiler-ir-design.md section 7.9. src/compiler/native/regalloc.f decides
-\ which value loses its register, where, and which slot of the routine's frame it
-\ goes into; those decisions are claims about a module that does not contain them
-\ yet. This file is the step that makes them operations, and it is the only place
-\ in the native chain that reads a machine module and writes another one.
+\ A frozen module cannot gain an operation and a builder cannot gain one in the
+\ middle, so this reads a frozen module and writes a new one. The alternative -
+\ the emitter materialising the stores out of the allocator's claims - would
+\ leave the validator checking the allocator's belief against itself.
 \
-\ WHY THIS IS A SECOND MODULE AND NOT AN EDIT. A frozen module cannot gain an
-\ operation - that is what frozen means, and every reader downstream depends on
-\ it - and a builder cannot gain one in the middle either, because a block's
-\ operations are a window that only grows at its end. A spill store belongs in
-\ front of the operation that took the register, so there is no way to add one to
-\ a module that already ran to its terminator. The honest shape is therefore the
-\ one every other stage of this chain already has: read a frozen module, build a
-\ new one, freeze it, and let the ordinary verifier decide it. The alternative -
-\ leaving the module alone and having the emitter materialise the stores and
-\ loads out of the allocator's claims - was rejected deliberately: it would make
-\ the instruction stream something no module contains, so the independent
-\ validator would have nothing to re-derive the spills from and would end up
-\ checking the allocator's belief against the allocator's belief. Here the
-\ validator reads operations.
+\ A routine that CALLS arrives with a frame the selector reserved, so it gets no
+\ second reserve; a module with neither shape has been through this pass already
+\ and is refused. There is one frame per module and it is the first function's.
 \
-\ WHAT THE REWRITE IS, IN ONE SENTENCE. Every block of the old function appears
-\ in the new one, with the same arguments, the same successors and the same
-\ operations in the same order, reading the same values - except that a value
-\ that lost its register is read out of its slot instead, by a load placed in
-\ front of the operation that reads it.
+\ The dialect's frame forms carry a memory token, and an operation of the OLD
+\ module that reaches the frame is re-threaded onto the order as it stands here.
+\ Which operations those are is read off the attribute KEYS the dialect declares,
+\ never off an opcode name, so a data-stack access is never threaded onto it.
 \
-\ AN ANCHOR IS A BLOCK AND A POSITION INSIDE IT. A plan row used to name a
-\ position alone, which names one operation only while there is one block; with
-\ more than one block the same index names one operation per block, and a store
-\ would land in whichever block the cursor reached first. The row carries its
-\ block now (src/compiler/native/regalloc.f, PLAN-BLOCK@), and the walk below
-\ matches on both.
-\
-\ THE FIVE THINGS THIS PASS INSERTS. A reserve at the top of the entry block and
-\ a release in front of the terminator of the block control leaves through,
-\ because a routine that uses a slot has to take its frame and give it back; a
-\ store in front of the operation the plan anchors it to; a load in front of each
-\ operation that reads a value out of a slot; and a copy in front of the return,
-\ for a returned value that is not in the register the routine's contract says it
-\ leaves in. The order inside one anchor is the order the allocator decided them,
-\ which is what makes the register the allocator counted on free exactly where it
-\ counted on it.
-\
-\ THE FRAME MAY ALREADY BE THE ROUTINE'S OWN, AND THEN THIS PASS TAKES NONE. A
-\ routine that calls has a frame before this pass ever sees it: the selector
-\ reserved it and put the caller's return address in the slot
-\ src/compiler/native/frame.f names, and the allocator placed its own slots above
-\ that one out of the same declaration. So a module that arrives with a prologue
-\ keeps it and gets no second reserve, and a module that arrives without one gets
-\ a reserve and a release only when the plan really needs a slot. A frame
-\ reserved and given back with nothing written into it would be two instructions
-\ for nothing and a stack pointer no reader could account for.
-\
-\ AND A MODULE HOLDS SEVERAL FUNCTIONS NOW, WITH ONE FRAME BETWEEN THEM. Every
-\ function is rebuilt - a function left out would be a routine the emitter never
-\ received, and a quotation body is exactly such a routine - and every one is held
-\ to the frame-shape rule above, because lowering any of them twice would build
-\ the second frame this pass exists to prevent. What is NOT repeated is the frame
-\ itself: its base and its slot count are one per module, the module's first
-\ function is the definition's own routine, and
-\ src/compiler/native/regalloc.f FRAME-ONCE-CK refuses by name a later function
-\ that needs a slot. So the reserve and the release this pass inserts go into the
-\ first function and PRO-N records that function's answer.
-\
-\ THE MEMORY TOKEN IS THREADED HERE, AND RE-THREADED THROUGH WHAT WAS ALREADY
-\ THERE. The dialect's frame forms carry a memory token so their order is a
-\ dependency the module holds rather than a property of the printed order. The
-\ reserve mints it, each store and load takes the last one and answers a new one,
-\ and the release consumes the last. An operation of the OLD module that reaches
-\ the frame - a prologue's save, an epilogue's restore and release - is part of
-\ that same chain, so its token operand is rewritten to the order as it stands
-\ where the operation now sits rather than carried across. Which operations those
-\ are is read off the attribute keys the dialect declares for the frame, never
-\ off an opcode name, so a data-stack access can never be threaded onto the
-\ frame's order by mistake.
-\
-\ WHAT IT REFUSES, AND WHY EACH ONE IS ITS OWN JUDGEMENT.
-\   - an unbound dialect, or a second binding over a live one. A module's symbols
-\     are its own ordinals, so "is this operation a store" has no answer from
-\     outside without the dialect's authority; this pass asks A64IR while the old
-\     module is still being built, exactly as the allocator and the emitter do.
-\   - a frozen module that is not the one the binding was taken over.
-\   - a plan that is not about this module, or a walk that decided nothing at
-\     all: rewriting a module that needs no store, no load and no copy would be a
-\     duplicate, and a duplicate with a new identity is a module nobody asked for.
-\   - a module whose frame operations are neither nothing nor exactly a selector's
-\     prologue, in ANY of its functions. Spill lowering runs once; a function that
-\     has been through it holds a reserve of its own with no link save under it,
-\     and lowering that again would build a second frame inside the first, so it
-\     stops here by name wherever it stands.
-\   - a shape this pass cannot rebuild: no function at all, more functions than
-\     the chain's shared ceiling, an empty block, a span naming a source the old
-\     module does not have, or a value read before it is defined.
-\   - source text whose digest is not the one the old module recorded. Every
-\     operation carries a span into that text, and the new module needs the same
-\     source registered in it, so the bytes are proved to be the same bytes
-\     before a single span is rebuilt.
-\
-\ WHERE THE CALLER STILL HAS TO KNOW THE ORDER. Reaching bytes for a program
-\ that spills is four stages in one order - allocate, ask how many spills, lower,
-\ allocate the lowered module - and every caller spells it out today. One word
-\ that answers "the module that was emitted" would make the branch unforgettable
-\ (dot habu-give-the-native-f9a7eb36). The one thing that cannot go wrong quietly
-\ is the branch being skipped: an allocation that decided a spill is not an
-\ assignment for the module it read, and the validator refuses it.
-\
-\ ONE REWRITE AT A TIME. The value map is a fixed package-owned slot rather than a
-\ heap object, and the old module is read through the one cursor
-\ src/compiler/native/frozen.f owns, so this pass rewrites one module at a time -
-\ the single-task compilation discipline the rest of the native chain keeps. The
-\ whole walk is one call, and the binding is taken at entry whatever the outcome,
-\ so a refused rewrite leaves nothing behind for the next caller.
+\ One rewrite at a time: the value map is a package-owned slot and the old module
+\ is read through the one cursor src/compiler/native/frozen.f owns.
 
 require lib/prelude.f
 require lib/errors.f
@@ -135,10 +38,9 @@ package A64SPILL
 using NFROZEN
 private
 
+\ One slot per member of the machine operation family, so a member added to
+\ A64IR:opcode fails to compile here until it has a slot and a rebuild rule.
 \ ---- the bound dialect -------------------------------------------------------
-\ One slot per member of the machine operation family, so the family stays
-\ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
-\ has a slot and a rule for rebuilding it.
 76 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
@@ -237,9 +139,8 @@ private
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ The longest function name this pass can carry across. A name is copied out of
-\ the old module's interner and interned into the new one, because the two
-\ modules number their symbols separately.
+\ A name is copied out of the old module's interner and interned into the new
+\ one, because the two modules number their symbols separately.
 128 constant NAME-CAP
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -268,12 +169,8 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 VMAX TYPED-BUFFER RMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
-\ THE OPERATION THAT DEFINED EACH VALUE OF THE MODULE BEING REWRITTEN. A value
-\ the allocator marked for re-emission is written again where it is read, and
-\ what is written is that operation's own immediate - so the pass has to be able
-\ to reach it from the value. It is filled as the walk copies each operation and
-\ read only at a later position, which is sound for the reason the plan cursor
-\ is: SSA puts a definition before every read of it and this walk is in order.
+\ A value marked for re-emission is written again where it is read, out of its
+\ defining operation's own immediate, so the pass has to reach it from the value.
 VMAX TYPED-BUFFER DOP IR-ID:ir-op-id
 create RPOS VMAX cells allot
 create NAMEBUF NAME-CAP allot
@@ -447,8 +344,8 @@ create NAMEBUF NAME-CAP allot
       E-A64SPILL-OPCODE throw
    endcase ;
 
-\ Which member of the family this symbol names. An operation of a form outside it
-\ has no rule here and is refused rather than copied blind.
+\ An operation of a form outside the family has no rule here and is refused
+\ rather than copied blind.
 : OPCODE-SLOT ( IR-ID:ir-symbol-id -- n )
    {: sym:IR-ID:ir-symbol-id :}
    -1
@@ -457,9 +354,8 @@ create NAMEBUF NAME-CAP allot
    loop
    dup 0 < if E-A64SPILL-OPCODE throw then ;
 
-\ Which declared key this symbol is. A frozen module carries no attribute under a
-\ key its opcode's schema did not declare - the freeze verifier decides that - so
-\ this refusal is fail-closed rather than reachable.
+\ A frozen module carries no attribute under a key its schema did not declare,
+\ so this refusal is fail-closed rather than reachable.
 : KEY-SLOT-OF ( IR-ID:ir-symbol-id -- n )
    {: sym:IR-ID:ir-symbol-id :}
    -1
@@ -469,11 +365,6 @@ create NAMEBUF NAME-CAP allot
    dup 0 < if E-A64SPILL-OPCODE throw then ;
 
 \ ---- which operations reach the routine's own frame --------------------------
-\ The dialect carries a frame size and a frame slot offset under two of its keys
-\ and the caller's data stack under three others, so the key an operation carries
-\ says which region it reaches. Reading the key rather than the opcode is what
-\ keeps the frame's memory order from ever being threaded through a data-stack
-\ access - the same reading src/compiler/native/regalloc-verify.f makes.
 : FRAME-TOUCH? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    false
@@ -482,10 +373,8 @@ create NAMEBUF NAME-CAP allot
       k K-SLOT = k K-FRAME = or if drop true leave then
    loop ;
 
-\ Is this value of the old module a memory order rather than a register? The
-\ token operand of a frame access is the order it follows and its token result is
-\ the order it leaves, and both are found by type because that is what tells them
-\ apart from the registers beside them.
+\ Found by TYPE, because that is what tells a memory order apart from the
+\ registers beside it.
 : MEM-VALUE? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT 0 BND-MEM @ SAME-TYPE? ;
 
@@ -511,11 +400,8 @@ create NAMEBUF NAME-CAP allot
    k cells VSET + @ 0= if E-A64SPILL-SHAPE throw then
    k VMAP @ ;
 
-\ Which value carries an old value in front of the operation at this position: the
-\ load placed there if there is one, and the value itself otherwise. The position
-\ counts operations of the whole FUNCTION rather than of one block, because the
-\ same index inside two blocks would make a load in one of them answer for a read
-\ in the other.
+\ The position counts operations of the whole FUNCTION rather than of one block,
+\ because the same index inside two blocks would cross their loads.
 : RBIND ( n n IR-ID:ir-value-id -- )
    {: k:n pos:n new:IR-ID:ir-value-id :}
    new k RMAP !
@@ -552,10 +438,8 @@ create NAMEBUF NAME-CAP allot
    src SRC-CK
    BLD SID st ln IR-BUILD:ADD-SPAN ;
 
-\ The type of one value of the old module, restated in the new one. The two
-\ modules number their types separately, so a value's class is carried across by
-\ identity and not by ordinal; a value of neither class is a value this pass has
-\ no type for.
+\ The two modules number their types separately, so a value's class is carried
+\ across by identity and not by ordinal.
 : TYPE-OF ( IR-ID:ir-value-id -- IR-ID:ir-type-id )
    {: id:IR-ID:ir-value-id :}
    id VALUE-TYPE-AT {: t:IR-ID:ir-type-id :}
@@ -564,10 +448,8 @@ create NAMEBUF NAME-CAP allot
    t 0 BND-MEM @ SAME-TYPE? if CTX BLD A64IR:MEM-TYPE exit then
    E-A64SPILL-SHAPE throw ;
 
-\ Is this value of the old module one of the floating file's? Every insert below
-\ asks, because a value put away and brought back has to travel through the file
-\ it lives in: the same eight bytes stored by the general form come back in a
-\ general register, which is not where the operation that reads them looks.
+\ A value put away and brought back has to travel through the file it lives in:
+\ the same eight bytes stored by the general form come back in a general register.
 : FPR-VALUE? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT 0 BND-FPR @ SAME-TYPE? ;
 
@@ -575,22 +457,8 @@ create NAMEBUF NAME-CAP allot
    {: k:n :}
    MKEY k IR-ID:PACK-VALUE FPR-VALUE? ;
 
-\ WHICH FORM PUTS A VALUE AWAY AND WHICH BRINGS IT BACK IS THE ONE QUESTION THIS
-\ PASS ASKS ABOUT A VALUE'S FILE, and it is these two words. The general file's
-\ pair is a64.str and a64.ldr; the floating file's is a64.fstr and a64.fldr,
-\ which are the same two forms with the same operands over the other register
-\ file. Nothing else about an insert changes - same slot, same anchor, same
-\ token, same order - because nothing else about it depends on where the eight
-\ bytes live.
-\
-\ THE PASS USED TO REFUSE A DOUBLE HERE, AND WHAT THAT REFUSAL PROTECTED IS NOW
-\ STRUCTURAL. While the dialect had no D-file access, putting a double away could
-\ only have been done with the GENERAL store - the same eight bytes written by
-\ the right instruction and read back into the wrong register file - so refusing
-\ by name was the only fail-closed answer. The two words below make the file a
-\ property of the value the plan names, and the substrate checks the answer: a
-\ double handed to a64.str is an operand whose type is not the one that schema
-\ declares, which IR-BUILD refuses as E-IR-VERIFY-OPTYPE.
+\ The general pair is a64.str/a64.ldr and the floating pair a64.fstr/a64.fldr;
+\ nothing else about an insert depends on where the eight bytes live.
 : STORE-FORM ( n -- A64IR:opcode )
    FPR-SLOT? if A64IR-OPCODE:FSTORE exit then A64IR-OPCODE:STORE ;
 
@@ -612,9 +480,8 @@ create NAMEBUF NAME-CAP allot
 : FPR-RESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
 
-\ The class of the register a value comes back into, which is the class of the
-\ register it left. Reading it off the value rather than writing GPR everywhere is
-\ what makes the reload of a double land where the operation below it looks.
+\ A value comes back into the class of register it left, which is what makes the
+\ reload of a double land where the operation below it looks.
 : FILE-RESULT+ ( n -- )
    FPR-SLOT? if FPR-RESULT+ exit then GPR-RESULT+ ;
 
@@ -629,11 +496,8 @@ create NAMEBUF NAME-CAP allot
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-FRAME  CTX BLD size A64IR:FRAME-ATTR  IR-BUILD:ADD-ATTR ;
 
-\ The arithmetic immediate, which four forms carry: the add and subtract
-\ immediates and the two comparisons against a number. This pass introduces none
-\ of them - folding a constant into one is the combine pass's - but it copies the
-\ ones that pass built, and an immediate copied under the wrong key would be a
-\ routine adding, or comparing against, the wrong number.
+\ This pass introduces no immediate but copies the ones the combine pass built,
+\ and one copied under the wrong key would compare against the wrong number.
 : OFF-ATTR+ ( n -- )
    {: imm:n :}
    CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD imm A64IR:OFF-ATTR  IR-BUILD:ADD-ATTR ;
@@ -642,10 +506,8 @@ create NAMEBUF NAME-CAP allot
    {: m:n :}
    CTX BLD  CTX BLD A64IR:KEY-MASK  CTX BLD m A64IR:MASK-ATTR  IR-BUILD:ADD-ATTR ;
 
-\ The two data-stack fields. This pass inserts no data-stack operation of its
-\ own - the convention is the selector's - but it copies the ones the selector
-\ built, and a field copied under the wrong key would be a routine reading its
-\ arguments out of its own frame.
+\ This pass inserts no data-stack operation but copies the selector's, and a
+\ field copied under the wrong key would read arguments out of the frame.
 : DSLOT-ATTR+ ( n -- )
    {: off:n :}
    CTX BLD  CTX BLD A64IR:KEY-DSLOT  CTX BLD off A64IR:DSLOT-ATTR  IR-BUILD:ADD-ATTR ;
@@ -654,25 +516,21 @@ create NAMEBUF NAME-CAP allot
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD size A64IR:DBYTES-ATTR  IR-BUILD:ADD-ATTR ;
 
-\ The callee address a call to another word carries. It is copied across
-\ unchanged: this pass moves values into and out of frame slots and decides
-\ nothing about where a call goes.
+\ Copied unchanged: this pass decides nothing about where a call goes.
 : ENTRY-ATTR+ ( n -- )
    {: entry:n :}
    CTX BLD  CTX BLD A64IR:KEY-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
    IR-BUILD:ADD-ATTR ;
 
-\ And the address the TRAP form branches to, which the selector put under a key
-\ of its own so that a reader cannot mistake it for a callee this routine comes
-\ back from. Copied across unchanged for the same reason the callee address is.
+\ Under a key of its own, so a reader cannot mistake it for a callee this
+\ routine comes back from.
 : TRAP-ENTRY-ATTR+ ( n -- )
    {: entry:n :}
    CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
    IR-BUILD:ADD-ATTR ;
 
-\ And which function of the emission an address form names. It is an ordinal in
-\ a module this pass rebuilds function for function and in order, so the number
-\ means the same thing on both sides and is carried across unchanged.
+\ An ordinal in a module this pass rebuilds function for function and in order,
+\ so the number means the same thing on both sides.
 : FUN-ATTR+ ( n -- )
    {: k:n :}
    CTX BLD  CTX BLD A64IR:KEY-FUN  CTX BLD k A64IR:FUN-ATTR  IR-BUILD:ADD-ATTR ;
@@ -681,8 +539,7 @@ create NAMEBUF NAME-CAP allot
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD size A64IR:DBACK-ATTR  IR-BUILD:ADD-ATTR ;
 
-\ The condition a comparison was made under. It is decoded back into the
-\ dialect's own vocabulary before it is rebuilt, so a stored code the dialect has
+\ Decoded back into the dialect's vocabulary, so a stored code the dialect has
 \ no condition for is refused rather than copied through.
 : COND-ATTR+ ( n -- )
    {: v:n :}
@@ -696,10 +553,8 @@ create NAMEBUF NAME-CAP allot
    {: id:IR-ID:ir-op-id i:n :}
    CTX BLD id i IR-BUILD:OP-RESULT@ ;
 
-\ Every attribute of one operation, put on the operation being built. It stands
-\ here rather than beside the operation copier because two callers want it: the
-\ copier, and the re-emission below, which rebuilds a move-wide out of the
-\ immediate its original carried.
+\ Two callers want it: the copier, and the re-emission that rebuilds a move-wide
+\ out of the immediate its original carried.
 : COPY-ATTRS ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id ATTRS-OF {: n:n :}
@@ -732,7 +587,6 @@ create NAMEBUF NAME-CAP allot
    loop ;
 
 \ ---- the four operations this pass inserts -----------------------------------
-\ The routine takes its frame, and the memory order starts.
 : EMIT-RESERVE ( IR-ID:ir-op-id -- )
    A64IR-OPCODE:RESERVE OPEN
    MEM-RESULT+
@@ -745,8 +599,7 @@ create NAMEBUF NAME-CAP allot
    FRAME-N @ FRAME-ATTR+
    CLOSE drop ;
 
-\ The value leaves its register for its slot. It is read here for the last time
-\ as a register value; everything after this reads it out of the slot.
+\ The value is read here for the last time as a register value.
 : EMIT-STORE ( IR-ID:ir-op-id n -- )
    {: at:IR-ID:ir-op-id k:n :}
    at k STORE-FORM OPEN
@@ -756,9 +609,8 @@ create NAMEBUF NAME-CAP allot
    k A64RA:SLOT@ SLOT-ATTR+
    CLOSE 0 RESULT@ TOK! ;
 
-\ The value comes back into a register, in front of the operation that reads it.
-\ The loaded value is a value of its own - a load defines a register, it does not
-\ revive one - so the operation below it reads this value and not the old one.
+\ A load DEFINES a register rather than reviving one, so the operation below it
+\ reads this value and not the old one.
 : EMIT-LOAD ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
    at k LOAD-FORM OPEN
@@ -770,25 +622,9 @@ create NAMEBUF NAME-CAP allot
    id 1 RESULT@ TOK!
    k pos  id 0 RESULT@  RBIND ;
 
-\ The value is put into the register the routine's contract says it leaves in, in
-\ front of the return. The copy reads the value as it stands at this position -
-\ which is the reloaded one when the value spent part of its life in a slot - and
-\ its result is a value of its own, so the return below it carries the copy and
-\ not the original. Which register the copy lands in is not decided here and is
-\ not in the plan: the lowered module is allocated again, and that walk reads the
-\ declaration off the same contract.
-\
-\ AND IT IS THE ONE INSERT THAT STAYS IN THE GENERAL FILE, WHICH IS NOT AN
-\ OMISSION BESIDE THE TWO ABOVE. A copy is planned for a returned value the
-\ CONTRACT names a register for, and the only result placements a contract of
-\ this chain states are general ones: A64EFF:ROUTINE carries a floating result
-\ set, and nothing in the chain reads it - src/compiler/native/regalloc.f plans
-\ its moves against the general out list alone (MB-PLAN-MOVES over OUTS-N). So a
-\ double cannot be the subject of a move, and a64.fmovdd here would be a form
-\ with no producer. The day a contract states where a returned double leaves,
-\ this word wants the same two-armed question the store and the load ask - and
-\ until then IR-BUILD refuses the mismatch by name rather than this pass copying
-\ a double with a general move.
+\ Reads the value as it stands here, which is the reloaded one when it spent
+\ part of its life in a slot. Contracts state only general result placements,
+\ so a double is never the subject of a move.
 : EMIT-MOVE ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
    at A64IR-OPCODE:MOV OPEN
@@ -797,13 +633,8 @@ create NAMEBUF NAME-CAP allot
    CLOSE {: id:IR-ID:ir-op-id :}
    k pos  id 0 RESULT@  RBIND ;
 
-\ The value is written AGAIN, in front of the operation that reads it, instead of
-\ being read back out of a slot. What is re-emitted is the operation that defined
-\ it - one movz, carrying the immediate it always carried - so this insert names
-\ no slot, takes no memory token and answers none: it joins no memory order at
-\ all, which is the whole reason the allocator is allowed to choose it for a
-\ class that may not go in the frame. Like a load, what it writes is a value of
-\ its own, so the operation below reads this one and not the original.
+\ Names no slot, takes no memory token and answers none: it joins no memory
+\ order at all, which is why the allocator may choose it for a frameless class.
 : EMIT-REMAT ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
    k DOP @ {: d:IR-ID:ir-op-id :}
@@ -813,14 +644,8 @@ create NAMEBUF NAME-CAP allot
    CLOSE {: id:IR-ID:ir-op-id :}
    k pos  id 0 RESULT@  RBIND ;
 
-\ Every decision the allocator anchored to this position, in the order it made
-\ them. The plan is in that order already - a walk decides one operation's spills
-\ before the next one's - so this reads it with a cursor rather than searching
-\ it, and REWRITE refuses a plan the cursor did not reach the end of once every
-\ function has been walked: a decision anchored to a position no block of the
-\ module has would otherwise be dropped in silence, and a dropped store is a
-\ value that never reaches its slot. It is asked after the LAST function because
-\ the plan is the module's and not one function's.
+\ The plan is already in anchor order, so this reads it with a cursor rather
+\ than searching. A cursor that did not reach the end is refused by REWRITE.
 : INSERT-ONE ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id j:n pos:n :}
    j A64RA:PLAN-VALUE@ {: k:n :}
@@ -829,24 +654,10 @@ create NAMEBUF NAME-CAP allot
    j A64RA:PLAN-REMAT? if at k pos EMIT-REMAT exit then
    at k pos EMIT-LOAD ;
 
-\ Does the row the cursor stands on belong in front of this operation? Both the
-\ block and the index inside it have to agree; matching the index alone would put
-\ a store meant for one block in front of the operation of the same number in
-\ another.
-\
-\ THE ANCHOR IS REALLY A FUNCTION, A BLOCK AND A POSITION, and only the last two
-\ are carried. The allocator plans functions in the module's own order and blocks
-\ in each function's own order (src/compiler/native/regalloc.f WALK and MB-PLAN)
-\ and this walk reads them in exactly that order through a cursor that only moves
-\ forward, so a row is reached in the function that made it AS LONG AS no
-\ function after the first contributes one. Today none can: a store or a reload
-\ names a frame slot and FRAME-ONCE-CK refuses by name a function after the first
-\ that takes one, and the returned-value copy is planned only for a contract that
-\ names a REGISTER for a result, which src/compiler/native/abi.f - the one
-\ production writer of a contract - never does. The moment the frame stops being
-\ a module singleton (dot habu-give-each-fn-c1fd7c5a) the row has to carry its
-\ function, for exactly the reason it already carries its block: the same index
-\ inside two functions names one operation in each.
+\ Both the block and the index have to agree; matching the index alone would put
+\ one block's store in front of another block's operation of the same number.
+\ The function is not carried, which holds only while no function after the
+\ first contributes a row (habu-give-each-fn-c1fd7c5a).
 : HERE? ( n n -- bool )
    {: b:n at:n :}
    N-CUR @ A64RA:PLAN-N >= if false exit then
@@ -863,10 +674,6 @@ create NAMEBUF NAME-CAP allot
    repeat ;
 
 \ ---- copying one operation of the old block ----------------------------------
-
-\ The blocks a terminator hands control to. Blocks are copied one for one and in
-\ order, so block b of the old module is block b of the new one and a successor
-\ is carried across by its ordinal.
 : COPY-SUCCS ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id SUCCS-OF {: n:n :}
@@ -876,11 +683,9 @@ create NAMEBUF NAME-CAP allot
       IR-BUILD:ADD-SUCCESSOR
    loop ;
 
-\ An operand that is the frame's own memory order is replaced by the order as it
-\ stands here, because this pass may have put stores and loads between the two
-\ operations that used to be neighbours on that chain. Every other operand is the
-\ value the old one maps to.
 : COPY-OPERANDS ( IR-ID:ir-op-id n bool -- )
+\ An operand that is the frame's own memory order is replaced by the order as it
+\ stands HERE, because this pass may have put inserts between two neighbours.
    {: id:IR-ID:ir-op-id pos:n frame:bool :}
    id OPERANDS-OF {: n:n :}
    n 0 ?do
@@ -899,9 +704,9 @@ create NAMEBUF NAME-CAP allot
       CTX BLD  id i RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
    loop ;
 
-\ The memory order a frame access answers becomes the order this pass threads its
-\ own stores and loads onto from here on.
 : BIND-RESULTS ( IR-ID:ir-op-id IR-ID:ir-op-id bool -- )
+\ The order a frame access answers becomes the order this pass threads its own
+\ stores and loads onto from here on.
    {: old:IR-ID:ir-op-id new:IR-ID:ir-op-id frame:bool :}
    old RESULTS-OF {: n:n :}
    n 0 ?do
@@ -924,10 +729,8 @@ create NAMEBUF NAME-CAP allot
    id  CLOSE  frame BIND-RESULTS ;
 
 \ ---- the block ---------------------------------------------------------------
-\ The old block's arguments are the new block's arguments, one for one, so a
-\ routine's inputs arrive the same way whether or not anything spilled. The value
-\ map is NOT cleared here: a value defined in one block is read in the blocks it
-\ dominates, so the map belongs to the function.
+\ The value map is NOT cleared here: a value defined in one block is read in the
+\ blocks it dominates, so the map belongs to the function.
 : OPEN-BLOCK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    CTX BLD IR-BUILD:BEGIN-BLOCK
@@ -940,28 +743,16 @@ create NAMEBUF NAME-CAP allot
       VBIND
    loop ;
 
-\ Does this pass take the frame itself, in this function? Only when the plan
-\ really needs a slot AND the module did not arrive with a frame of its own. A
-\ plan of nothing but moves needs no slot, and a routine that reserved a frame it
-\ never wrote into would be two instructions and a stack pointer nobody can
-\ account for; a routine that calls already took its frame in the selector, and a
-\ second reserve inside the first is not a shape any reader of this chain has.
-\
-\ AND ONLY THE FIRST FUNCTION EVER TAKES IT, because there is one frame and it is
-\ that function's: its base and its slot count are one per module, and
-\ src/compiler/native/regalloc.f FRAME-ONCE-CK refuses by name a later function
-\ that needs a slot. So a later function has nothing to put in a frame, and a
-\ reserve in it would move a stack pointer for storage nothing addresses.
 : FRAMES? ( n -- bool )
+\ Only when the plan really needs a slot AND the module did not arrive with a
+\ frame of its own; and only in the first function, because there is one frame.
    {: k:n :}
    k 0<> if false exit then
    A64RA:SPILLS 0<> PRO-N @ 0= and ;
 
-\ One block. The reserve opens the ENTRY block and the release stands in front of
-\ the terminator of the block control leaves through, which is the same pair of
-\ places the selector's own prologue uses - and the only pair whose two ends the
-\ routine passes exactly once, in that order, on every run.
 : WALK-BLOCK ( IR-ID:ir-fun-id n n n -- )
+\ The reserve opens the ENTRY block and the release stands in front of the
+\ terminator control leaves through - the only pair passed once, in that order.
    {: f:IR-ID:ir-fun-id k:n b:n rb:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
@@ -983,10 +774,8 @@ create NAMEBUF NAME-CAP allot
    IR-SYM:FCOPY {: u:n :}
    CTX BLD NAMEBUF u IR-BUILD:INTERN-SYMBOL ;
 
-\ The signature is the old one, restated in the new module's own types: one
-\ virtual register per input and one per output, exactly as the old module has
-\ them.
 : FUN-SIG ( IR-ID:ir-fun-id -- IR-ID:ir-type-id )
+\ One virtual register per input and one per output, as the old module has them.
    {: f:IR-ID:ir-fun-id :}
    V-TYPR VW  V-FUNR VW MKEY f IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@
    {: in:n out:n :}
@@ -996,12 +785,9 @@ create NAMEBUF NAME-CAP allot
    out 0 ?do t IR-TYPE:FN-RESULT loop
    CTX BLD IR-BUILD:INTERN-CODE-REF ;
 
-\ THE BLOCK THE ROUTINE'S RESULTS LEAVE THROUGH, and NO-RET when there is none.
-\ The rule and the reason a trap block is not that block are written once, in
-\ src/compiler/native/regalloc.f MB-RET-ORD; this is the same question asked of
-\ this pass's own view, which is why it is asked again rather than taken from the
-\ allocator.
 -1 constant NO-RET
+\ The rule, and why a trap block is not that block, is written once in
+\ regalloc.f MB-RET-ORD; this asks it again of this pass's own view.
 
 : RET-ORD ( IR-ID:ir-fun-id -- n )
    {: f:IR-ID:ir-fun-id :}
@@ -1014,12 +800,9 @@ create NAMEBUF NAME-CAP allot
       then
    loop ;
 
-\ One function of the old module, rebuilt into the new one. The value map and the
-\ operation counter are cleared here because both are the FUNCTION's: a value is
-\ read in the blocks its definition dominates and in no other function at all,
-\ and the counter is what tells a load placed in front of one operation from a
-\ load placed in front of the operation of the same number in another block.
 : WALK-FUN ( IR-ID:ir-fun-id n -- )
+\ Both are the FUNCTION's: a value is read in the blocks its definition
+\ dominates and in no other function, and the counter separates two blocks.
    {: f:IR-ID:ir-fun-id k:n :}
    CTX BLD f FUN-NAME IR-BUILD:BEGIN-FUN
    CTX BLD f FUN-SIG IR-BUILD:SET-SIGNATURE
@@ -1053,10 +836,9 @@ create NAMEBUF NAME-CAP allot
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
    0= if E-A64SPILL-PLAN throw then ;
 
-\ The plan this rewrite is about. It has to be sealed, it has to be about the
-\ module being read, and it has to have decided something: a module that needs no
-\ spill needs no rewrite.
 : PLAN-CK ( IR-BUILD:module -- )
+\ Sealed, about this module, and it has to have decided something: a module that
+\ needs no spill needs no rewrite.
    {: m:IR-BUILD:module :}
    A64RA:SEALED? 0= if E-A64SPILL-PLAN throw then
    m IR-BUILD:FMODULE A64RA:MODULE@ IR-ID:MODULE-SAME?
@@ -1064,20 +846,8 @@ create NAMEBUF NAME-CAP allot
    A64RA:PLAN-N 0= if E-A64SPILL-PLAN throw then ;
 
 \ ---- whose frame the module arrives with -------------------------------------
-\ Two shapes are lowerable and they are told apart by counting the four frame
-\ forms of the dialect. A module with NONE of them has no frame yet, so this pass
-\ takes one when the plan needs a slot. A module with exactly one reserve, one
-\ link save, one link restore and one release, the reserve opening the entry
-\ block, is a routine that CALLS: the selector built that prologue out of the
-\ contract and the allocator placed its slots above the link slot out of the same
-\ contract, so the frame is already the right size and this pass adds nothing to
-\ its ends. Anything else has been through this pass already - a reserve with no
-\ save under it is the one it emitted last time - and lowering it again would
-\ build a second frame inside the first.
-\
-\ THE TEST IS THE FRAME FORMS BY NAME AND NOT "ANY OPERATION THAT TOUCHES
-\ MEMORY": a routine that reads its arguments off the caller's data stack touches
-\ memory in every one of its entry loads and has never been through this pass.
+\ Two lowerable shapes, told apart by counting the four frame forms by NAME: none
+\ at all, or exactly a selector's prologue with its reserve opening the entry block.
 : COUNT-FRAME-OP ( IR-ID:ir-op-id -- )
    OPCODE-AT OPCODE-SLOT {: k:n :}
    k O-RESERVE  = if N-RES @ 1+ N-RES ! then
@@ -1104,22 +874,9 @@ create NAMEBUF NAME-CAP allot
    f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE <>
    if E-A64SPILL-SHAPE throw then ;
 
-\ ONE FUNCTION'S FRAME SHAPE, and the answer is kept only for the first. Every
-\ function of the module is held to the same rule - a function that has been
-\ through this pass already, or one whose four frame forms are neither nothing
-\ nor exactly a selector's prologue, is refused wherever it stands - because
-\ lowering any of them twice builds a second frame inside the first.
-\
-\ PRO-N IS THE FIRST FUNCTION'S ANSWER AND NOT A RUNNING ONE. It says whether
-\ this pass has to TAKE a frame, and there is one frame: its base, its slot count
-\ and its size are one per module (src/compiler/native/regalloc.f FRAME-ONCE-CK,
-\ which refuses a later function that needs a slot by name), and the module's
-\ first function is the definition's own routine. So the reserve and the release
-\ this pass inserts go into that function, and the answer that decides whether it
-\ inserts them is that function's. Nothing is lost by not keeping the others'
-\ answers, because nothing is inserted into them: the count each one is held to
-\ is the count of the forms it already carries.
 : ONCE-CK ( IR-ID:ir-fun-id n -- )
+\ Every function is held to the frame rule, because lowering any of them twice
+\ builds a second frame inside the first. PRO-N is the FIRST function's answer.
    {: f:IR-ID:ir-fun-id k:n :}
    f COUNT-FRAME
    N-SAV @ 0= if
@@ -1130,10 +887,8 @@ create NAMEBUF NAME-CAP allot
    f PROLOGUE-CK
    k 0= if 1 PRO-N ! then ;
 
-\ How many functions this module holds, held against the ceiling every pass of
-\ the chain shares. A module with none is not a routine at all, and each one is
-\ asked the frame question above.
 : SHAPE-CK ( -- n )
+\ A module with no function is not a routine at all.
    FUN-COUNT {: n:n :}
    n 1 < if E-A64SPILL-SHAPE throw then
    n NFROZEN:FMAX > if E-A64SPILL-CAP throw then
@@ -1154,11 +909,8 @@ create NAMEBUF NAME-CAP allot
 public
 
 \ ---- binding the dialect -----------------------------------------------------
-\ Learn the operation, key and type identities of the module that is about to be
-\ rewritten, while it is still being built. A module's symbols and types are its
-\ own ordinals, so this is the only moment the dialect can be asked which one
-\ each of them is; the answers stay valid after the module freezes because
-\ freezing keeps the module's identity. The binding is spent by the next REWRITE.
+\ The only moment a module can be asked its operation, key and type identities,
+\ because its symbols and types are its own ordinals.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    BND-MODE @ BOUND-YES = if E-A64SPILL-BIND throw then
@@ -1259,24 +1011,19 @@ public
    BOUND-YES BND-MODE ! ;
 
 \ Whether a binding is live, for a caller cleaning up after a refused run. See
-\ src/compiler/native/select.f BOUND? for why each pass answers for itself. This
-\ pass needs one for a reason the other three do not have: whether its binding was
-\ ever spent depends on whether the walk decided a spill, and a caller cleaning up
-\ after a refusal cannot know how far the run got.
+\ Each pass answers for itself; this one needs it because whether its binding was
+\ spent depends on whether the walk decided a spill.
 : BOUND? ( -- bool )
    BND-MODE @ BOUND-YES = ;
 
+\ Give up a binding without rewriting against it.
 \ Give up a binding without rewriting against it.
 : RELEASE ( -- )
    BND-TAKE ;
 
 \ ---- the pass ----------------------------------------------------------------
-\ Build the module in which the sealed spill plan is real operations, and answer
-\ it frozen. The builder is a fresh one from A64IR:NEW-BUILDER - this pass
-\ registers the machine operation family into it, so a builder that already holds
-\ them, or one of another dialect, is refused by A64IR. The bytes are the source
-\ text the old module was compiled from, and they are proved to be by digest
-\ before any span is carried across.
+\ The bytes are the source text the old module was compiled from, proved by
+\ digest before any span is carried across.
 : REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
    BND-TAKE
