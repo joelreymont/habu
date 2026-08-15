@@ -2,205 +2,23 @@
 \ that loop would have computed. One concern: recognising those loops and
 \ writing the module that holds the closed form instead.
 \
-\ WHY THE PASS EXISTS. tools/codegen-compare.f measures this chain against a
-\ clang -O2 twin of every corpus row, and the mechanism attribution of the
-\ remaining gap named ONE optimisation class this chain did not have at all:
-\ clang computes the ANSWER of a counted loop instead of running it. SUM-TO,
-\ MANY-LOCALS and TINY-CALLEE are the three rows that gap belongs to - 120 of
-\ the 164 gap bytes and 15.95 of the 21.6 gap nanoseconds when this file was
-\ written - and all three are the same shape: a `?do` loop whose whole body adds
-\ things to one accumulator. What such a loop leaves is a sum with a closed form,
-\ and this file is the pass that writes it.
+\ Trip count, measured on this engine rather than derived: start = limit skips
+\ the loop at the guard; start < limit runs limit - start turns; start > limit
+\ runs ONE turn. A start of the largest integer wraps below the limit, so the
+\ start must be a compile-time constant and must not be that maximum.
 \
-\ WHY IT IS A SOURCE-DIALECT PASS AND NOT A MACHINE ONE. The facts the recogniser
-\ needs are the loop's own SSA values - the guard's subtraction, the index and
-\ the limit the header takes as arguments, the additions the body makes - and
-\ src/compiler/native/elaborate.f puts every one of them in the HIR module. So
-\ the earliest place that can see the shape is also the place with the smallest
-\ vocabulary to answer for: forty-five opcodes here against seventy-three in the
-\ machine dialect. Running here also means the closed form is an ORDINARY HIR
-\ program: src/compiler/native/select.f chooses its instructions, fuses its
-\ comparison into the branch that reads it and if-converts what it can, and
-\ src/compiler/native/combine.f folds its multiply and the addition above it into
-\ one multiply-add. None of that had to be written twice.
+\ With T turns, entry accumulator acc0, K added every turn and the index added m
+\ times a turn, the loop leaves acc0 + K*T + m*(start*T + T*(T-1)/2), in
+\ wrapping 64-bit arithmetic, which is what the loop itself does.
 \
-\ AND BECAUSE THE RESULT IS VALIDATED RATHER THAN TRUSTED. What this pass writes
-\ goes through the ordinary freeze verifier, the ordinary selector, the ordinary
-\ register allocator and src/compiler/native/regalloc-verify.f, none of which
-\ knows this pass exists. A closed form that got a register or an edge wrong is
-\ caught by something that does not share its reasoning.
+\ T*(T-1) overflows long before T*(T-1)/2 does, so the halving happens BEFORE
+\ the multiply: T*(T-1)/2 = (T >> 1) * (T - 1 + (T & 1)), exact for both parities.
 \
-\ ---- WHAT IS RECOGNISED, IN ONE SENTENCE -------------------------------------
-\ A `?do` loop of exactly three blocks - a header, an exit stub and a latch -
-\ whose header holds nothing but additions into ONE of its arguments, where each
-\ addition's other operand is either the loop index or a value that cannot change
-\ with the turn.
+\ Deleting the header, the exit stub and the latch is sound only because the
+\ recogniser proves nothing else reaches them, nothing outside reads their
+\ values, and the body holds no store, no call and nothing that may trap.
 \
-\ Everything else is declined, and declining is not an error: the scan answers
-\ zero, the caller keeps the module it has, and the routine is compiled exactly
-\ as it was before this file existed.
-\
-\ ---- AND WHAT IS MOVED, BECAUSE THE TWO ARE ONE PASS -------------------------
-\ "A value that cannot change with the turn" used to mean a value from OUTSIDE
-\ the loop, and that left the shape the corpus was built around outside the rule:
-\ a body that reads fourteen fields of one record and adds them up computes its
-\ addend INSIDE the header, out of a base pointer and some offsets, none of which
-\ the turn touches. So the pass now moves such work into the pre-header first and
-\ recognises what is left.
-\
-\ THE PRECONDITION IS ONE SCAN OF THE SCHEMA AND NOT AN ALIAS ANALYSIS. What
-\ licenses moving a READ above a loop is that nothing in the loop WRITES, calls,
-\ or can trap - and the dialect declares each of those about every operation it
-\ has (src/compiler/native/hir.f GENERIC-MEM), so the question is asked of the
-\ schema the module carries rather than of the addresses the program computes. A
-\ body with a write in it moves nothing, whatever its reads look like.
-\
-\ THE READS MOVE TOGETHER OR NOT AT ALL, and that is what the memory ORDER needs.
-\ It is threaded read to read, so a rule that asked each read's order operand to
-\ be unchanging would ask the reads of one body to support each other in a circle
-\ that never starts. With no write anywhere in the loop the reads answer the same
-\ bytes every turn, so they go as a group and the thread through the body is then
-\ empty - which is also why the position the order arrives in stops changing and
-\ the recogniser below sees one accumulator instead of two.
-\
-\ WHAT IS NOT MOVED IS A NUMBER THE BLOCK BUILDS. A single constant addend is
-\ folded into what one turn adds at compile time and always was; a TREE of
-\ constants is the same number spread over several operations, and moving it
-\ would put arithmetic above the loop that one literal expresses. Such a loop is
-\ declined exactly as it was before, which is what keeps every routine that
-\ already folded folding to the same bytes.
-\
-\ AND MOVING IS NOT AN OPTIMISATION ON ITS OWN HERE. Only work the closed form
-\ READS is moved, so a loop this pass does not go on to fold moves nothing: the
-\ two halves are one decision, and a hoist that left the loop standing would have
-\ made the routine hold its values across the loop's edges instead of inside its
-\ body, which is worse and was measured to be worse.
-\
-\ ---- THE SHAPE, BLOCK BY BLOCK -----------------------------------------------
-\ This is what src/compiler/native/elaborate.f builds for `?do … loop`, and
-\ test/compiler/native-elaborate.f's SUMTO-CASE pins it independently:
-\
-\   g    the guard. `d = sub(limit, start)` and `brz d -> (sk, pr)`.
-\   sk   the skip stub, reached when d is zero. Untouched by this pass.
-\   pr   the pre-header. `br pr -> h` handing the header its arguments.
-\   h    the header. Takes the live vector, then the index and the limit, then
-\        the locals that cross and the memory order when the definition has
-\        either. Holds the body, then `one = const 1`, `nx = add(idx, one)`,
-\        `f = lt(nx, lim)` and `brz f -> (xt, la)`.
-\   xt   the exit stub. `br xt -> jn` handing on the vector.
-\   la   the latch. `br la -> h` handing back the vector, `nx` and the limit.
-\   jn   the join both exits meet in.
-\
-\ THE TWO COUNTERS ARE FOUND BY THEIR USE AND NOT BY WHERE THEY SIT. They are the
-\ last two arguments only when the body binds no crossing local and touches no
-\ memory at all; a definition that loads anything gives every block it opens a
-\ memory-order argument after them, and a call gives it one per crossing local
-\ (src/compiler/native/elaborate.f OPEN-ARGS-H). So the index is read off the
-\ addition that counts and the limit off the comparison that stops, and PLAN-
-\ COUNTERS? below records where the pair really is. Everything else the header
-\ carries is a CARRIED position, numbered the way the exit stub hands them on,
-\ and CARRY-ARG is the one place that turns such a number into an argument.
-\
-\ THE GUARD IS READ, NOT ASSUMED, and it is the whole reason the trip count can
-\ be written down. `brz` takes its FIRST successor when the tested value is zero,
-\ so control reaches `pr` exactly when `limit - start` is not zero, which is
-\ exactly when `limit` and `start` differ. Without that fact the closed form
-\ would be wrong for the empty loop, so this pass refuses any pre-header whose
-\ one predecessor is not a guard of that exact shape.
-\
-\ ---- THE TRIP COUNT, WHICH IS NOT `limit - start` ----------------------------
-\ The engine's `?do` skips the loop only when the two are EQUAL. Any other
-\ ordering runs the body at least once, and then the test at `loop` is
-\ `index + 1 < limit`, signed. So for a start that is not the largest
-\ representable integer:
-\
-\   start = limit   0 turns   - the guard took the other edge and this pass never
-\                               reaches the closed form on that path
-\   start < limit   limit - start turns
-\   start > limit   ONE turn  - the first `index + 1` is already past the limit
-\
-\ Measured, not derived from the standard: `: T ( n n -- n ) {: seed len :}
-\ seed len 0 ?do 1 + 1 + 1 + 1 + loop ;` answers seed+4 at len 1, seed+12 at
-\ len 3, and seed+4 at len -1 and len -5.
-\
-\ START = THE LARGEST INTEGER IS THE CASE THIS TABLE HAS NO ROW FOR, and it is
-\ refused rather than guessed at. There `index + 1` wraps to the smallest integer,
-\ which IS below the limit, so the loop runs round through nearly the whole
-\ integer range and the count is neither `limit - start` nor one. The refusal is
-\ structural: the start must be a compile-time constant, and that constant must
-\ not be the maximum.
-\
-\ ---- THE CLOSED FORM ---------------------------------------------------------
-\ With `T` turns, an accumulator `acc0` on entry, `K` added every turn and the
-\ index added `m` times a turn, the loop leaves
-\
-\   acc0 + K*T + m*(start*T + T*(T-1)/2)
-\
-\ because the indices visited are start, start+1, … start+T-1. Every term is
-\ computed in wrapping 64-bit arithmetic, which is what the loop itself does, so
-\ the answer is the loop's answer bit for bit and not merely mathematically.
-\
-\ THE HALF IS EXACT WITHOUT A 128-BIT MULTIPLY, and that is what keeps this pass
-\ inside the machine forms the chain already has. `T*(T-1)` overflows sixty-four
-\ bits long before `T*(T-1)/2` does, so dividing the low half is wrong. But one
-\ of `T` and `T-1` is even, so the halving can be done BEFORE the multiply:
-\
-\   T*(T-1)/2  =  (T >> 1) * (T - 1 + (T & 1))
-\
-\ For even T the right factor is T-1 and the left is T/2; for odd T the right is
-\ T and the left is (T-1)/2. Both are the exact integer product, so both agree
-\ with the true value modulo 2^64. Checked at 0, 1, 2, 3, 4 and the maximum.
-\
-\ THE TWO TRIP COUNTS ARE TWO ARMS AND NOT A SELECT, because the source dialect
-\ has no select and the arms want different work. The pre-header ends on
-\ `lt(start, limit)`: the taken arm computes the whole closed form with T = d,
-\ and the other computes `acc0 + K + m*start`, which is the same formula at T = 1
-\ with every product gone. The comparison and the branch are the pair
-\ src/compiler/native/select.f already fuses into one compare-and-branch.
-\
-\ ---- WHY DELETING THE THREE BLOCKS PRESERVES EVERY OBSERVABLE ----------------
-\ The header, the exit stub and the latch are removed from the module the pass
-\ writes. That is sound because of four facts the recogniser establishes before
-\ anything is written, and it would be unsound without any one of them:
-\
-\   NOTHING ELSE REACHES THEM. The header's predecessors are the pre-header and
-\   the latch; the exit stub's and the latch's is the header. So the three blocks
-\   are entered only from the loop, and after the pre-header stops branching into
-\   the header no edge into any of them survives.
-\
-\   NOTHING ELSE READS THEIR VALUES. Every value they define is read inside them:
-\   the header's arguments by the body, the increment and the comparison; the
-\   accumulator's new value by the latch and the exit stub. Those are checked one
-\   by one, so a value that escaped the loop would be a refusal and not a dangling
-\   reference. The values that LEAVE the loop are the ones the exit stub hands the
-\   join, and the arms hand the join the same list.
-\
-\   THEY HAVE NO EFFECT TO PRESERVE. Every operation of the header is either
-\   accounted for by a rule here or MOVED into the pre-header - the coverage
-\   check below admits nothing else - so what is deleted is additions, constants
-\   and the terminator. There is no store, no call and no trap in the loop,
-\   because the move's own precondition refuses every body that has one, and
-\   there is no read left in it, because the reads went with the move. Deleting
-\   the blocks removes no event. A body that WRITES is declined rather than
-\   folded, for the reason this paragraph gives: the closed form of its
-\   ARITHMETIC would be right and its memory would be gone.
-\
-\   AND THEY TERMINATE. A counted loop with the shape above runs T turns and
-\   stops; the closed form is what it leaves. The one case where that is not
-\   obvious is the enormous trip count, and it is still exactly right: a loop the
-\   machine would take an hour to run answers in six instructions, which changes
-\   how long the program takes and not what it computes.
-\
-\ ---- WHAT THIS PASS DOES NOT DECIDE ------------------------------------------
-\ Which registers anything lands in, whether the comparison fuses into the
-\ branch, whether the multiply and the addition above it become one multiply-add,
-\ and whether the two arms are worth if-converting. All of those are decided
-\ downstream by passes that read the module this one writes.
-\
-\ ONE LOOP PER FUNCTION, and it is the first one recognised. A body with two
-\ foldable loops has its second one compiled as it always was; nothing about it
-\ is wrong, it is simply not folded. Raising that is a capacity change here and
-\ not a soundness one.
+\ One loop per function, and it is the first one recognised.
 
 require lib/prelude.f
 require lib/errors.f
@@ -221,9 +39,8 @@ using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
-\ One slot per member of the source operation family, so the family stays
-\ exhaustive: a member added to HIR:opcode makes this fail to compile until it
-\ has a slot and a rule for rebuilding it here too.
+\ One slot per member of the source operation family, so a member added to
+\ HIR:opcode fails to compile here until it has a slot and a rebuild rule.
 46 constant OPCODES-N
 
 0 constant O-CONST
@@ -273,10 +90,8 @@ private
 44 constant O-REALBITS
 45 constant O-QUOT
 
-\ One slot per attribute key the dialect declares. This pass writes one of its
-\ own - the literal a constant carries - and COPIES every one the elaborator
-\ built, and a field copied under the wrong key would be a call reaching the
-\ wrong routine.
+\ This pass writes one key of its own and COPIES every one the elaborator built;
+\ a field copied under the wrong key would be a call reaching the wrong routine.
 5 constant KEYS-N
 0 constant K-VALUE
 1 constant K-ENTRY
@@ -287,23 +102,16 @@ private
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ The longest function name this pass can carry across. A name is copied out of
-\ the old module's interner and interned into the new one, because the two
-\ modules number their symbols separately.
+\ A name is copied out of the old module's interner and interned into the new
+\ one, because the two modules number their symbols separately.
 128 constant NAME-CAP
 
-\ Values in one function and blocks in one function: the ceilings the
-\ neighbouring passes keep, for the same reason. Addends is this pass's own -
-\ how many separate loop-invariant values one turn may add up - and thirty-two
-\ is far past the eight the widest corpus row holds.
+\ Addends is this pass's own: how many loop-invariant values one turn may add.
 NFROZEN:VMAX constant VMAX
 NFROZEN:BMAX constant BMAX
 32 constant INV-MAX
 
-\ Operations in the one block this pass reads operation by operation. It is the
-\ header's own size, so it is bounded by what fits in a block rather than by how
-\ many blocks a routine has, and it is the values-per-block ceiling for that
-\ reason.
+\ The header's own size, so it is bounded by what fits in a block.
 NFROZEN:VMAX constant COV-MAX
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -326,9 +134,8 @@ create VSET VMAX cells allot
 create NAMEBUF NAME-CAP allot
 
 \ ---- the plan one recognised loop is ----------------------------------------
-\ Every row is written by the scan and read by the rewrite, and the scan is the
-\ only thing that decides anything: by the time a single operation is copied the
-\ questions are all answered.
+\ Every row is written by the scan and read by the rewrite; by the time one
+\ operation is copied the questions are all answered.
 variable P-OK                        \ whether a loop was recognised at all
 variable P-G                         \ the guard block
 variable P-PR                        \ the pre-header
@@ -470,9 +277,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    loop
    dup 0 < if E-NLOOP-OPCODE throw then ;
 
-\ Which declared key this symbol is. A frozen module carries no attribute under a
-\ key its opcode's schema did not declare - the freeze verifier decides that - so
-\ this refusal is fail-closed rather than reachable.
+\ A frozen module carries no attribute under a key its schema did not declare,
+\ so this refusal is fail-closed rather than reachable.
 : KEY-SLOT-OF ( IR-ID:ir-symbol-id -- n )
    {: sym:IR-ID:ir-symbol-id :}
    -1
@@ -489,11 +295,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    id OP-SLOT want = ;
 
 \ ---- the value map -----------------------------------------------------------
-\ Old value to new value. A value defined inside the loop this pass deletes binds
-\ NOTHING here, so a reader of one that the recogniser failed to account for does
-\ not quietly get some other value - it reaches an unset slot and the rewrite is
-\ refused. That is the safety net under every "nothing outside reads it" the
-\ header above claims.
+\ A value defined inside the deleted loop binds NOTHING here, so a reader the
+\ recogniser failed to account for reaches an unset slot and the rewrite fails.
 : VCLEAR ( -- )
    VMAX 0 ?do
       0 i cells VSET + !
@@ -539,10 +342,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    src SRC-CK
    BLD SID st ln IR-BUILD:ADD-SPAN ;
 
-\ The type of one value of the old module, restated in the new one. The two
-\ modules number their types separately, so a value's class is carried across by
-\ identity and not by ordinal; a value of none of the three is one this pass has
-\ no type for.
+\ The two modules number their types separately, so a value's class is carried
+\ across by identity and not by ordinal.
 : TYPE-OF ( IR-ID:ir-value-id -- IR-ID:ir-type-id )
    {: id:IR-ID:ir-value-id :}
    id VALUE-TYPE-AT {: t:IR-ID:ir-type-id :}
@@ -552,10 +353,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    E-NLOOP-SHAPE throw ;
 
 \ ---- the block ordinals of one function --------------------------------------
-\ A successor names a block by its ordinal in the MODULE, and this pass renumbers
-\ blocks, so every successor it writes goes through the plan's table. The one
-\ function this chain compiles starts its blocks at zero, which is checked before
-\ a loop is recognised rather than assumed here.
+\ A successor names a block by its ordinal in the MODULE and this pass renumbers
+\ blocks, so every successor it writes goes through the plan's table.
 : BLOCK-ORD ( IR-ID:ir-fun-id n -- n )
    BLOCK-AT IR-ID:BLOCK-LOCAL ;
 
@@ -582,22 +381,16 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
       then
    loop ;
 
-\ The number this operation puts on the stack, and whether it is a constant at
-\ all. Every reader of a literal in this pass goes through here, so "is this a
-\ compile-time number" is one question asked in one place.
+\ Every reader of a literal here goes through this, so "is this a compile-time
+\ number" is one question asked in one place.
 : CONST-VALUE ( IR-ID:ir-op-id -- n bool )
    {: id:IR-ID:ir-op-id :}
    id O-CONST OP-IS? 0= if 0 false exit then
    id RESULTS-OF 1 <> if 0 false exit then
    id K-VALUE ATTR-BY-KEY ;
 
-\ Where in this block the operation defining a value is, or -1 when the value is
-\ not defined by an operation of this block at all - a block argument, or a value
-\ from another block.
-\ ANY of an operation's results answers, not only a lone one. An operation that
-\ leaves two - a load leaves the cell it read AND the memory it read it out of -
-\ defines both, and reading "no operation of this block" for one of them would
-\ make a value the block really computes look like a value from outside it.
+\ ANY of an operation's results answers: a load leaves the cell AND the memory
+\ order, and reading "not of this block" for one would hide what the block computes.
 : DEFINES? ( IR-ID:ir-op-id IR-ID:ir-value-id -- bool )
    {: id:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
    false
@@ -619,10 +412,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
       bk i ARG-AT v SAME-VALUE? if drop i leave then
    loop ;
 
-\ The whole function searched for the operation that defines one value, so that a
-\ question about a value defined OUTSIDE the loop - is the start a constant, and
-\ which number is it - can be asked at all. A value defined by a block argument
-\ answers "no operation", which is a real answer and not a failure.
+\ The whole function, so a question about a value defined OUTSIDE the loop can be
+\ asked. A block argument answers "no operation", which is a real answer.
 : FUN-DEF ( IR-ID:ir-fun-id IR-ID:ir-value-id -- IR-ID:ir-op-id bool )
    {: f:IR-ID:ir-fun-id v:IR-ID:ir-value-id :}
    f 0 BLOCK-AT TERM-AT false
@@ -638,10 +429,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    id CONST-VALUE ;
 
 \ ---- how many edges reach a block --------------------------------------------
-\ Every terminator of the function asked for its successors, which is the only
-\ authority on what reaches what. The two questions below are what makes deleting
-\ the loop's blocks sound: a block reached from somewhere this pass did not
-\ account for would still be reached after the loop's own edges were removed.
+\ Every terminator asked for its successors, which is the only authority on what
+\ reaches what - and what makes deleting the loop's blocks sound.
 : EDGES-INTO ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id b:n :}
    0
@@ -652,9 +441,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
       loop
    loop ;
 
-\ The one block whose terminator names this one, when exactly one does, and -1
-\ otherwise. A block named twice by the SAME terminator counts twice, which is
-\ what makes a two-way branch to one block answer -1 here rather than naming it.
+\ A block named twice by the SAME terminator counts twice, so a two-way branch
+\ to one block answers -1 rather than naming it.
 : SOLE-PRED ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id b:n :}
    f b EDGES-INTO 1 <> if -1 exit then
@@ -675,15 +463,9 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    0 P-A !  -1 P-IDX !  -1 P-K !  0 P-M !  0 P-START !  0 P-KCONST !
    0 P-INV-N ! ;
 
-\ WHERE ONE CARRIED VALUE SITS IN THE HEADER'S ARGUMENT LIST. The elaborator
-\ opens a loop's header with the live vector first, then the two counters of
-\ every loop the edge crosses, then the locals that cross, then the memory order
-\ (src/compiler/native/elaborate.f OPEN-ARGS-H). So the counters are the last two
-\ arguments only when the body binds no crossing local and touches no memory at
-\ all, and they are in the MIDDLE of the list otherwise. Everything else the
-\ header carries - the accumulator, a local, the order - is a CARRIED position,
-\ numbered the way the exit stub hands them to the join, and this is the one
-\ place that turns such a number into an argument of the header.
+\ The elaborator opens a header with the live vector, then the counters, then
+\ crossing locals, then the memory order, so the counters are last only for a
+\ body that binds no local and touches no memory. This numbers everything else.
 : CARRY-ARG ( n -- n )
    {: i:n :}
    i P-IDX @ < if i exit then
@@ -706,19 +488,9 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    cells P-COV + @ 0<> ;
 
 \ ---- the work one turn repeats -----------------------------------------------
-\ HOW ONE OPERATION STANDS TO THE TURN. Not fixed at all; fixed but computed from
-\ nothing but numbers this block builds; or fixed AND reading something the loop
-\ was handed. The last two are told apart because only the third is WORK.
-\
-\ A TREE OF CONSTANTS IS A NUMBER, AND THIS PASS FOLDS NUMBERS RATHER THAN MOVING
-\ THEM. One constant addend is added into what a turn adds at compile time
-\ (CHAIN-ADDEND), and a tree of them is the same number written across several
-\ operations - so moving twenty-nine additions of constants above the loop would
-\ put arithmetic there that one literal expresses, and it is the shape that first
-\ makes a rewritten module big enough to meet the migration context's scratch
-\ (E-IR-CTX-SCRATCH, measured at twenty-seven constants). Until this pass can work
-\ such a tree out, a loop whose turn adds one is DECLINED exactly as it was before
-\ the move existed. Moving it is not the missing capability; folding it is.
+\ A tree of constants is one number spread over operations, so a turn that adds
+\ one is DECLINED rather than moved: moving it would put arithmetic above the
+\ loop that one literal expresses. Folding such a tree is the missing capability.
 0 constant FIX-NO
 1 constant FIX-NUMBER
 2 constant FIX-OUTSIDE
@@ -746,10 +518,7 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    1 k SLOT-CK cells P-MOV + !
    P-MOV-N @ 1+ P-MOV-N ! ;
 
-\ The three tables over the header, cleared together: how each operation stands
-\ to the turn, which of them the pre-header really takes, and which carried
-\ positions leave the loop as one of the moved answers. A block bigger than they
-\ hold is DECLINED, for COV-INIT?'s reason.
+\ A block bigger than the three tables hold is DECLINED, for COV-INIT?'s reason.
 : FIX-INIT? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
@@ -761,11 +530,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    true ;
 
 \ ---- what the schema says an operation does ----------------------------------
-\ An operation may be lifted off a loop only if its whole content is the value it
-\ answers. The dialect declares that of every operation it has - the effect class
-\ and whether it may trap are fields of the schema the module carries
-\ (src/compiler/native/hir.f GENERIC-MEM) - so it is READ here rather than
-\ restated as a list of opcodes this file would have to remember to extend.
+\ The effect class and whether an operation may trap are fields of the schema
+\ the module carries, so this is READ rather than kept as a list of opcodes.
 : EFFECT-QUIET? ( IR-SCHEMA:effect -- bool )
    MATCH IR-SCHEMA:effect
       pure       OF true  ENDOF
@@ -791,10 +557,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
    V-SCHR VW sym IR-SCHEMA:FEFFECT@ EFFECT-MEM? ;
 
-\ The memory ORDER, told apart from the numbers a program computes with by its
-\ TYPE, which is how src/compiler/native/elaborate.f tells them apart too. It
-\ names no value and holds no register: it is the thread that says what happened
-\ before what, and the group rule below is what answers for it.
+\ Told apart from the numbers a program computes by its TYPE, which is how the
+\ elaborator tells them apart too.
 : MEM-VALUE? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT  0 BND-MEM @  SAME-TYPE? ;
 
@@ -824,18 +588,15 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
       then
    loop ;
 
-\ An argument the loop hands back untouched. It holds the same value on every
-\ turn - the one the pre-header handed over - so an operation reading it reads
-\ the same thing every turn too.
+\ It holds the value the pre-header handed over on every turn.
 : ARG-KEPT? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id a:n :}
    f P-LA @ BLOCK-AT TERM-AT a OPERAND-AT
    f P-H @ BLOCK-AT a ARG-AT
    SAME-VALUE? ;
 
-\ One operand, in the same three answers. A value from OUTSIDE the header is the
-\ thing the loop was handed, and an argument it hands back untouched is one too:
-\ both are values the pre-header holds, and reading either is work.
+\ A value from OUTSIDE the header, and an argument the loop hands back
+\ untouched, are both values the pre-header holds, and reading either is work.
 : VAL-FIX ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-value-id -- n )
    {: f:IR-ID:ir-fun-id hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    hb v ARG-INDEX {: a:n :}
@@ -844,12 +605,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    d 0 < if FIX-OUTSIDE exit then
    d FIX@ ;
 
-\ THE ORDER IS LEFT OUT OF THIS TEST ON PURPOSE. A read's order operand is the
-\ previous read's answer, so asking it to be unchanging would make the reads of
-\ one body support each other in a circle that never starts, and the whole body
-\ would be declined for a value that is not a number at all. What answers for the
-\ order instead is MEM-GROUP? below: with no write anywhere in the loop, the
-\ reads move TOGETHER and the thread through the body is then empty.
+\ The ORDER is left out on purpose: a read's order operand is the previous
+\ read's answer, so requiring it unchanging is a circle that never starts.
 : OP-FIX ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-op-id -- n )
    {: f:IR-ID:ir-fun-id hb:IR-ID:ir-block-id id:IR-ID:ir-op-id :}
    id OP-QUIET? 0= if FIX-NO exit then
@@ -873,12 +630,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
       then
    loop ;
 
-\ The memory the body reads moves whole or not at all. What licenses moving a
-\ read above the loop is that nothing in the loop WRITES - OP-QUIET? has already
-\ refused every operation that does, and every call and everything that may trap
-\ with them - and once that holds a read answers the same bytes on every turn.
-\ Leaving one behind would leave the order threaded through the body, so a body
-\ with a read the addressing keeps inside it keeps them all.
+\ Licensed by nothing in the loop WRITING; then a read answers the same bytes
+\ every turn. Leaving one behind would leave the order threaded through the body.
 : MEM-GROUP? ( IR-ID:ir-block-id -- bool )
    {: hb:IR-ID:ir-block-id :}
    true
@@ -891,16 +644,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
 : FIX-CLEAR ( IR-ID:ir-block-id -- )
    OP-COUNT 0 ?do  i FIX-NO FIX!  loop ;
 
-\ Every operation of the body that cannot change with the turn, found by asking
-\ again until nothing more answers yes. An operation joins the set when the
-\ operands it computes with are already fixed, and joining it fixes ITS results
-\ for the next round, so one round per operation is more than enough. The
-\ terminator is never asked: a block ends where it ends.
-\
-\ NOTHING IS REFUSED HERE. A body whose work all changes with the turn leaves the
-\ set empty, and an empty set is the pass exactly as it was before this section
-\ existed - which is what keeps every loop that already folded folding to the
-\ same bytes.
+\ Asked again until nothing more answers yes; joining an operation fixes its
+\ results for the next round. Nothing is refused here - an empty set is fine.
 : PLAN-FIX ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
@@ -909,10 +654,7 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    loop
    hb MEM-GROUP? 0= if hb FIX-CLEAR then ;
 
-\ A block that hands control on and does nothing else: exactly one operation, its
-\ terminator, and no arguments of its own. Both stubs of a counted loop are one,
-\ and a stub that had grown an operation would be work this pass is about to
-\ delete.
+\ Exactly one operation, its terminator, and no arguments of its own.
 : PURE-EDGE? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 1 <> if false exit then
@@ -926,8 +668,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    t 0 SUCC-ORD true ;
 
 \ ---- the loop's five blocks --------------------------------------------------
-\ Read off the header's own terminator and the edges into it, and every one of
-\ them checked rather than taken from the shape the elaborator usually builds.
+\ Read off the header's own terminator and the edges into it, every one checked
+\ rather than taken from the shape the elaborator usually builds.
 : PLAN-STUBS? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id h:n :}
    f h BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
@@ -950,9 +692,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    h P-H !  xt P-XT !  la P-LA !  jn P-JN !
    true ;
 
-\ The pre-header is the other edge into the header, and the guard is the only
-\ edge into the pre-header. Requiring exactly two edges into the header is what
-\ says the loop is entered from one place and gone round from one place.
+\ Exactly two edges into the header is what says the loop is entered from one
+\ place and gone round from one place.
 : PLAN-ENTRY? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    P-H @ {: h:n :}
@@ -975,9 +716,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    pr P-PR !  g P-G !
    true ;
 
-\ The guard, which is the whole reason the trip count can be written down: its
-\ branch tests `limit - start` and takes its SECOND successor when that is not
-\ zero, so control reaches the pre-header exactly when the two differ.
+\ `brz` takes its SECOND successor when the tested value is not zero, so control
+\ reaches the pre-header exactly when limit and start differ.
 : PLAN-GUARD? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-G @ BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
@@ -997,10 +737,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    true ;
 
 \ ---- the header's own shape --------------------------------------------------
-\ How wide the live vector is, which of its positions the loop changes, and that
-\ the index really is counted the way `loop` counts it. Everything this word
-\ writes is read by the recurrence walk below, and everything it checks is a
-\ sentence the closed form depends on.
+\ Everything this writes is read by the recurrence walk, and everything it
+\ checks is a sentence the closed form depends on.
 : PLAN-SHAPE? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
@@ -1018,18 +756,9 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    hb OP-COUNT 1- COV!
    true ;
 
-\ The two counters, found by their USE and then located in the header's argument
-\ list. The index is the value the loop's own addition adds one to and the limit
-\ is what the comparison holds the sum against, so both are read off the
-\ operations that count rather than taken from where the list usually puts them.
-\ WHERE they sit is then recorded, and CARRY-ARG numbers everything else around
-\ them.
-\
-\ THEY ARE ADJACENT, INDEX FIRST, because one edge hands the pair over together
-\ (src/compiler/native/elaborate.f LOOP-ARG+ adds them in that order and nothing
-\ else writes that list), and the latch hands the incremented index back into the
-\ first of the two and the limit unchanged into the second. A header whose
-\ counters sit anywhere else is not a shape this pass has a plan for.
+\ The index is the value the loop's addition adds one to and the limit is what
+\ the comparison holds the sum against, so both are read off the operations that
+\ count. They are adjacent, index first, because one edge hands the pair over.
 : PLAN-COUNTERS? ( IR-ID:ir-fun-id IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- bool )
    {: f:IR-ID:ir-fun-id idx:IR-ID:ir-value-id lim:IR-ID:ir-value-id nx:IR-ID:ir-value-id :}
    f P-H @ BLOCK-AT  idx ARG-INDEX {: a:n :}
@@ -1041,10 +770,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    a P-IDX !
    true ;
 
-\ The comparison the loop leaves on, the addition it counts with, and the one
-\ that addition adds. Each is found from the operand of the operation above it,
-\ so what is checked is that these four operations really are one counted step
-\ and not four operations that happen to be in the block.
+\ Each is found from the operand of the operation above it, so what is checked
+\ is that the four really are one counted step.
 : PLAN-STEP? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
@@ -1069,20 +796,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    fi COV!  ni COV!  oi COV!
    true ;
 
-\ Which position of the live vector the loop changes - exactly one, or this is
-\ not a single-accumulator loop - and that the exit stub hands the join the same
-\ list the latch hands the header. That second half is what lets the closed form
-\ be handed to the join in the latch's own positions.
-\
-\ NONE-YET AND TOO-MANY ARE TWO ANSWERS AND NOT ONE NEGATIVE NUMBER, because the
-\ scan asks about the one it already has rather than about its sign. Whether that
-\ distinction is load-bearing was MEASURED rather than assumed: writing the test
-\ as "is one already set" instead is a plan that names the last changed position
-\ when three change, and the suite stays green under it - the second half of this
-\ word catches that shape anyway, because a position the loop changed cannot
-\ match the argument the header took. So the two names are for the reader, the
-\ second half is the guard, and test/compiler/native-loop.f's three-accumulator
-\ row is what holds both.
+\ Exactly one position of the live vector may change, and the exit stub must
+\ hand the join the same list the latch hands the header.
 -1 constant ACC-NONE
 -2 constant ACC-MANY
 
@@ -1092,12 +807,7 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    at ;
 
 \ A position the loop changes that is NOT an accumulator: the latch hands on the
-\ answer of work that moves to the pre-header, and nothing left in the body reads
-\ the argument the position arrives in. So after the move the loop neither reads
-\ nor writes it, what leaves at that position is the moved definition itself, and
-\ the arms hand the join exactly that. The memory order is the position this is
-\ written for - the loop's reads leave it holding "after the last read" - and no
-\ shape measured so far answers yes to it any other way.
+\ answer of moved work and nothing left in the body reads its argument.
 : POS-THRU? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id a:n :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
@@ -1106,9 +816,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    d FIXED? 0= if false exit then
    hb  hb a ARG-AT  STAYING-READS? 0= ;
 
-\ What the exit stub must be handing the join at one position: the accumulator's
-\ new value where the loop accumulates, the moved answer where it hands one
-\ through, and the argument the header took everywhere else.
+\ The accumulator's new value where the loop accumulates, the moved answer where
+\ it hands one through, and the header's own argument everywhere else.
 : ACC-EXPECT ( IR-ID:ir-op-id IR-ID:ir-block-id n n -- IR-ID:ir-value-id )
    {: lat:IR-ID:ir-op-id hb:IR-ID:ir-block-id k:n i:n :}
    i k =  i THRU?  or if lat i CARRY-ARG OPERAND-AT exit then
@@ -1133,11 +842,8 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    loop ;
 
 \ ---- what one turn adds ------------------------------------------------------
-\ The walk back from the accumulator's new value to the accumulator itself. Each
-\ step must be an addition whose LEFT operand carries the chain on, which is what
-\ `acc x +` builds; an addition written the other way round is declined rather
-\ than searched for, because a search would have to guess which operand is the
-\ accumulator when both are additions of this block.
+\ Each step must be an addition whose LEFT operand carries the chain on, which
+\ is what `acc x +` builds; the other way round is declined rather than searched.
 0 constant CH-WALK
 1 constant CH-DONE
 -1 constant CH-NO
@@ -1150,17 +856,9 @@ variable CH-STATE
    v n P-INV !
    n 1+ P-INV-N ! ;
 
-\ One addend classified: the loop index, a number this block builds, a value from
-\ outside the loop, or - the last clause - the answer of work inside the body
-\ that cannot change with the turn, which the pre-header takes off it. A header
-\ argument that is not the index is declined: it would be unchanging in effect,
-\ but reading one would mean carrying the header's argument list into the arms,
-\ and no measured row needs it.
-\
-\ A NUMBER THE BLOCK BUILDS IS FOLDED AND NOT MOVED, and the order of the last
-\ two clauses is what says so: four additions of one become one number at compile
-\ time, where moving them would leave four values for the arms to add. That is
-\ also why every loop this pass already folded still folds to the same bytes.
+\ A number the block builds is FOLDED at compile time and not moved: four
+\ additions of one become one number, where moving them would leave the arms
+\ four values to add. That is why every loop that already folded folds the same.
 : CHAIN-ADDEND ( IR-ID:ir-block-id IR-ID:ir-value-id -- )
    {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    v  hb P-IDX @ ARG-AT  SAME-VALUE? if P-M @ 1+ P-M ! exit then
@@ -1202,19 +900,9 @@ variable CH-STATE
    CH-STATE @ CH-DONE = ;
 
 \ ---- which of the unchanging operations the pre-header really takes ----------
-\ The closed form reads two things the body computed: the values one turn adds,
-\ and whatever leaves the loop at a position it hands a moved answer through.
-\ Those are the seeds; everything they read in turn joins them, and the set is
-\ then closed under reading.
-\
-\ AN OPERATION NOTHING ASKS FOR IS NOT MOVED. Moving it would put work above the
-\ loop that the loop's own answer never needed, and it is then an operation no
-\ rule here accounted for - which PLAN-COVER? declines, exactly as it declines
-\ any other. So a body carrying a dead operation keeps its loop, which is the
-\ answer it had before this section existed.
-
-\ One value asked for: when an unchanging operation of this block defines it and
 \ has not been asked for yet, it joins the set and the answer says the set grew.
+\ An operation nothing asks for is not moved: it would then be an operation no
+\ rule accounted for, which PLAN-COVER? declines.
 : MOVE-ASK ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
    {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    hb v DEF-INDEX {: d:n :}
@@ -1249,13 +937,8 @@ variable CH-STATE
       then
    loop ;
 
-\ Every operand of every moved operation reachable from where it now stands: a
-\ value from outside the loop, an argument the loop hands back untouched or hands
-\ a moved answer through, or another moved operation's result. The analysis above
-\ already implies this - it is why each of those operations was called unchanging
-\ in the first place - and it is asked again because the EMISSION rests on it: an
-\ operand of any other kind would be copied into the pre-header naming a value
-\ that block cannot see.
+\ Asked again because the EMISSION rests on it: an operand of any other kind
+\ would be copied into the pre-header naming a value that block cannot see.
 : MOVE-OPERAND-OK? ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
    {: f:IR-ID:ir-fun-id hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    hb v ARG-INDEX {: a:n :}
@@ -1285,12 +968,8 @@ variable CH-STATE
       then
    loop ;
 
-\ Every operation of the header accounted for. This is the coverage check the
-\ soundness argument rests on: a store, a load the addressing keeps inside the
-\ body, a call, a trap, a second accumulator or an operation whose result nothing
-\ reads is an operation no rule here claimed, and the loop is declined rather
-\ than folded around it. An operation the pre-header takes is accounted for by
-\ being taken.
+\ The coverage check the soundness argument rests on: a store, a load the
+\ addressing keeps inside, a call, a trap or a second accumulator is declined.
 : PLAN-COVER? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
@@ -1300,9 +979,8 @@ variable CH-STATE
    loop ;
 
 \ ---- the start, which has to be a number this pass can read ------------------
-\ The largest representable integer is the one start the trip-count table has no
-\ row for: there `index + 1` wraps below the limit and the loop runs round nearly
-\ the whole range.
+\ The one start the trip-count table has no row for: there index + 1 wraps below
+\ the limit and the loop runs round nearly the whole range.
 $7FFFFFFFFFFFFFFF constant MAX-START
 
 : PLAN-START? ( IR-ID:ir-fun-id -- bool )
@@ -1315,9 +993,8 @@ $7FFFFFFFFFFFFFFF constant MAX-START
    true ;
 
 \ ---- what the rewriter's tables can hold -------------------------------------
-\ Asked as part of recognising a loop rather than raised as a refusal during the
-\ rewrite, so a function too big for the value map is compiled exactly as it was
-\ instead of failing to compile at all.
+\ Asked while recognising rather than raised during the rewrite, so a function
+\ too big for the value map is compiled exactly as it was.
 : OPERANDS-FIT? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    true
@@ -1441,9 +1118,8 @@ $7FFFFFFFFFFFFFFF constant MAX-START
 : SUCC+ ( n -- )
    NEW-ORD NSUCC+ ;
 
-\ The two shapes every operation this pass INVENTS has: a binary operation over
-\ cells, and a number. Each takes the old operation whose span it stands at, so
-\ a diagnostic about the closed form points at the loop it replaced.
+\ Each takes the old operation whose span it stands at, so a diagnostic about
+\ the closed form points at the loop it replaced.
 : MK2 ( IR-ID:ir-op-id HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: sp:IR-ID:ir-op-id o:HIR:opcode a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
    sp o OPEN
@@ -1452,10 +1128,8 @@ $7FFFFFFFFFFFFFFF constant MAX-START
    CELL-RESULT+
    CLOSE 0 RESULT@ ;
 
-\ A constant this pass mints for itself - a loop bound, a stride, an index. Every
-\ one of them is an ORDINARY number: this pass rewrites control flow and never
-\ invents an address, so the kind is stated here as a fact about what the pass
-\ does rather than passed in by callers who would all pass the same thing.
+\ Every constant this pass mints is an ORDINARY number: it rewrites control flow
+\ and never invents an address.
 : MKC ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: sp:IR-ID:ir-op-id v:n :}
    sp HIR-OPCODE:CONST OPEN
@@ -1495,9 +1169,8 @@ $7FFFFFFFFFFFFFFF constant MAX-START
       then
    loop ;
 
-\ A successor is carried across by its NEW ordinal, because this pass renumbers
-\ blocks. Every one goes through the plan's table, so a branch to a block the
-\ rewrite deleted is a refusal and never a branch to whatever now stands there.
+\ Carried across by its NEW ordinal, so a branch to a deleted block is a refusal
+\ and never a branch to whatever now stands there.
 : COPY-SUCCS ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id SUCCS-OF {: n:n :}
@@ -1552,12 +1225,8 @@ $7FFFFFFFFFFFFFFF constant MAX-START
    CTX BLD IR-BUILD:END-BLOCK drop ;
 
 \ ---- the work the pre-header takes off the body ------------------------------
-\ The arguments first. A moved operation may read one, and what such an argument
-\ holds on every turn is the value the pre-header was handing the header - which
-\ is the plan's own sentence about it: the loop either hands that argument back
-\ untouched, or nothing that stays behind reads it at all. So the argument is
-\ bound to the pre-header's operand, and the operations copied afterwards find it
-\ under the name they already used.
+\ What such an argument holds on every turn is the value the pre-header was
+\ handing the header, so it is bound to the pre-header's operand.
 : BIND-MOVED-ARGS ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
@@ -1568,10 +1237,8 @@ $7FFFFFFFFFFFFFFF constant MAX-START
       then
    loop ;
 
-\ And then the operations, in the order the body had them. That order is a legal
-\ one here because the set is closed under what each operation reads: everything
-\ a moved operation names is either bound above, defined outside the loop, or
-\ defined by a moved operation standing earlier in the same block.
+\ The body's own order is legal here because the set is closed under what each
+\ operation reads.
 : EMIT-MOVED ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f BIND-MOVED-ARGS
@@ -1601,11 +1268,8 @@ variable W-K?
    W-K? @ 0= if v 0 W-K !  1 W-K? !  exit then
    sp HIR-OPCODE:ADD  0 W-K @  v  MK2  0 W-K ! ;
 
-\ The sum of everything one turn adds apart from the index, staged in the
-\ pre-header because both arms read it. The constants the loop built inside its
-\ own header are added up here at compile time instead of being copied out: four
-\ additions of one become one number, which is what makes the smallest row of the
-\ three smaller than the loop it replaces.
+\ Staged in the pre-header because both arms read it. Constants the loop built
+\ in its own header are added up here at compile time rather than copied out.
 : EMIT-K ( IR-ID:ir-op-id -- )
    {: sp:IR-ID:ir-op-id :}
    0 W-K? !
@@ -1620,9 +1284,8 @@ variable W-K?
    {: sp:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
    sp HIR-OPCODE:ADD  0 W-ACC @  v  MK2  0 W-ACC ! ;
 
-\ T*(T-1)/2 in sixty-four bits, exactly. One of T and T-1 is even, so the halving
-\ happens before the multiply and the product that would have overflowed never
-\ exists: `(T >> 1) * (T - 1 + (T & 1))`.
+\ One of T and T-1 is even, so the halving happens before the multiply and the
+\ product that would have overflowed never exists.
 : EMIT-HALF ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: sp:IR-ID:ir-op-id t:IR-ID:ir-value-id one:IR-ID:ir-value-id :}
    sp HIR-OPCODE:SUB    t one MK2 {: tm1:IR-ID:ir-value-id :}
@@ -1631,10 +1294,8 @@ variable W-K?
    sp HIR-OPCODE:ADD    tm1 par MK2 {: p:IR-ID:ir-value-id :}
    sp HIR-OPCODE:MUL    hlf p MK2 ;
 
-\ The index's whole contribution over T turns: start*T + T*(T-1)/2, taken m
-\ times. The two multiplications that a compile-time zero or one would make
-\ pointless are not staged at all - the start is a constant this pass has read
-\ and m is a count it made itself, so neither is a guess.
+\ The two multiplications a compile-time zero or one would make pointless are
+\ not staged at all: the start is a constant read and m a count made here.
 1 TYPED-BUFFER W-IX IR-ID:ir-value-id    \ the index term while it is being built
 
 : EMIT-INDEX ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
@@ -1651,10 +1312,8 @@ variable W-K?
    0 W-IX @ ;
 
 \ ---- the two arms ------------------------------------------------------------
-\ Which value the join is handed at one position: the arm's own answer at the
-\ accumulator's position, and at every other position the value the pre-header
-\ was handing the header - which is the same value, because the recogniser
-\ established that the latch hands every other position back unchanged.
+\ The arm's own answer at the accumulator's position, and the value the
+\ pre-header was handing the header at every other.
 : ARM-OPERAND ( IR-ID:ir-op-id IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: pt:IR-ID:ir-op-id lat:IR-ID:ir-op-id i:n :}
    i P-K @ = if 0 W-ACC @ exit then
@@ -1672,11 +1331,7 @@ variable W-K?
    P-JN @ SUCC+
    CLOSE drop ;
 
-\ The arm the loop takes when it runs one turn, which is every ordering where the
-\ start is not below the limit. The formula at T = 1 is acc0 + K + m*start, and
-\ both products are gone: K is already a value and m*start is a number this pass
-\ multiplies out itself, because m is a count it made and the start is a constant
-\ it read.
+\ The formula at T = 1, where both products are gone.
 : EMIT-ONE ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT TERM-AT {: sp:IR-ID:ir-op-id :}
@@ -1690,10 +1345,8 @@ variable W-K?
    f sp ARM-TERM
    CLOSE-BLOCK ;
 
-\ The arm the loop takes when the start is below the limit, where the trip count
-\ is the guard's own subtraction. The subtraction is REUSED rather than recomputed:
-\ it is defined in the guard, which dominates this arm, and it is exactly the
-\ number of turns.
+\ The trip count is the guard's own subtraction, REUSED rather than recomputed:
+\ the guard dominates this arm.
 : EMIT-MANY ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT TERM-AT {: sp:IR-ID:ir-op-id :}
@@ -1714,9 +1367,8 @@ variable W-K?
    CLOSE-BLOCK ;
 
 \ ---- the pre-header, which now decides which form to run ---------------------
-\ It keeps its own arguments and gains the invariant sum and one comparison. The
-\ comparison and the branch that reads it are the pair src/compiler/native/select.f
-\ already fuses into one compare-and-branch, so the test costs no register.
+\ The comparison and the branch that reads it are the pair select.f fuses into
+\ one compare-and-branch, so the test costs no register.
 : EMIT-PRE ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f P-PR @ BLOCK-AT {: pb:IR-ID:ir-block-id :}
@@ -1868,10 +1520,8 @@ variable W-K?
 public
 
 \ ---- binding the dialect -----------------------------------------------------
-\ Learn the operation, key and type identities of the module that is about to be
-\ read, while it is still being built - the only moment a module can be asked
-\ them, because its symbols and types are its own ordinals. The binding is spent
-\ by the next REWRITE, or given back by RELEASE when the scan finds nothing.
+\ The only moment a module can be asked its operation, key and type identities,
+\ because its symbols and types are its own ordinals.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    BND-MODE @ BOUND-YES = if E-NLOOP-BIND throw then
@@ -1899,17 +1549,10 @@ public
    BND-TAKE ;
 
 \ ---- what the module holds ---------------------------------------------------
-\ How many loops this module would close, asked before anything is built. A
-\ caller that gets zero keeps the module it has, which is what keeps every
-\ routine WITHOUT a foldable loop byte-for-byte what it was: no second module is
-\ built, no value is renumbered, and every stage downstream sees exactly what it
-\ saw before. It reads through the bound module's own cursor, so it is asked
-\ between the binding and the rewrite.
-\
-\ MORE THAN ONE FUNCTION IN A MODULE IS DECLINED RATHER THAN WALKED. This chain
-\ compiles one definition into one module, and a block's ordinal within its
-\ function is its ordinal within the module only while that holds; a second
-\ function would make the plan's renumbering table name someone else's block.
+\ Asked before anything is built. A caller that gets zero keeps the module it
+\ has, which is what keeps every routine without a foldable loop byte-for-byte.
+\ More than one function is DECLINED: a block's ordinal within its function is
+\ its ordinal within the module only while there is one.
 : FOLDS ( IR-BUILD:module -- n )
    {: m:IR-BUILD:module :}
    BOUND? 0= if E-NLOOP-BIND throw then
@@ -1921,11 +1564,8 @@ public
    1 ;
 
 \ ---- the pass ----------------------------------------------------------------
-\ Build the module in which that loop is the arithmetic it would have computed,
-\ and answer it frozen. The builder is a fresh one from HIR:NEW-BUILDER - this
-\ pass registers the source operation family into it - and the bytes are the
-\ source text the old module was compiled from, proved by digest before any span
-\ is carried across.
+\ The bytes are the source text the old module was compiled from, proved by
+\ digest before any span is carried across.
 : REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
    BND-TAKE
@@ -1940,9 +1580,8 @@ public
    MKEY 0 IR-ID:PACK-FUN WALK-FUN
    c b IR-BUILD:FREEZE ;
 
-\ How many loops the last rewrite really closed. A caller compares it with what
-\ the scan promised, so a walk that quietly folded a different number than the
-\ scan counted is a refusal at the caller rather than a module nobody checked.
+\ A caller compares it with what the scan promised, so a walk that folded a
+\ different number is a refusal rather than a module nobody checked.
 : FOLDED ( -- n )
    N-FOLDED @ ;
 
