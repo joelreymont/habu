@@ -4005,16 +4005,17 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ its own body instead of branching. The recursion happens once, while the callee
 \ is compiled, where the emitter's instruction count can be held against it.
 \
-\ AND WHOSE BODY IT IS, IS HELD BETWEEN TWO AUTHORITIES. The caller states what
-\ effect it believes the word at an address has (src/compiler/native/migrate.f
-\ stages it), and the callee's own migration recorded the effect that word really
-\ declared. WHICH word lives at that address is no longer one of the caller's two
-\ statements to get wrong: the staging refuses an address that is not where the
-\ staged spelling's own word begins (migrate.f RESOLVES-TO-ENTRY), so the row
-\ reached here is the row of the word the site named. The ARITY is what is left,
-\ and a disagreement about it means the caller is compiling against an effect the
-\ publication does not have - the call it would emit instead would be just as
-\ wrong - so it is refused by name rather than resolved in either direction.
+\ AND WHOSE BODY IT IS, IS NOBODY'S STATEMENT ANY MORE. WHICH word a body names
+\ is resolved off the dictionary while the body is read (RESOLVE-SCAN below,
+\ through src/compiler/native/dict.f), so the row reached here is the row of the
+\ word the site named and no caller writes an address down. What the two arity
+\ comparisons below still hold apart is the CHECKER's effect for that word
+\ against the effect its own migration recorded for it; a disagreement means a
+\ caller would be compiling against an effect the publication does not have, so
+\ it is refused by name rather than resolved in either direction. Holding a
+\ migration's declared effect to the checker's certificate is dot
+\ habu-bind-checker-env-ed4f9f87, and these two lose their last producer when
+\ it lands.
 here CELL 1- and CELL swap - CELL 1- and allot
 create INL-TAB TMAX cells allot      \ whether the call on this body token is copied
 
@@ -4194,13 +4195,12 @@ private
 
 \ The callee named on this token, and whether its body may be copied here.
 \
-\ THE ROW IS FOUND BY AN ADDRESS THE CALLER STATED, and what makes that address
-\ the right routine's is settled where it was staged rather than here: a staged
-\ address that is not where the staged spelling's own word begins is refused by
-\ src/compiler/native/migrate.f's RESOLVES-TO-ENTRY, against the engine's own
-\ lookup, which settles the name, the package and the address in one comparison.
-\ So a row reached here belongs to the word this site named, and nothing about
-\ WHICH routine it is remains to be asked.
+\ THE ROW IS FOUND BY THE ADDRESS THE NAME RESOLVED TO, and the resolution is
+\ the engine's own: RESOLVE-SCAN puts every name the dialect does not model to
+\ src/compiler/native/dict.f, in the order the engine resolves that same body,
+\ which settles the name, the package and the address together. So a row reached
+\ here belongs to the word this site named, and nothing about WHICH routine it
+\ is remains to be asked.
 \
 \ WHAT IS STILL HELD AGAINST THE ROW IS THE ARITY, because that half is still the
 \ caller's own statement: the migration takes the callee's declared effect from

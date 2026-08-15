@@ -173,15 +173,16 @@
 \                   nothing here a scheduler can move.
 \
 \ WHAT IS DELIBERATELY NOT HERE. No row is a program nobody would write, and no
-\ row was tuned after its numbers were read. Two shapes that would have been
-\ larger losses were left out on purpose: a body with five DIFFERENT callees,
-\ because the migration entry stages at most four (src/compiler/native/migrate.f,
-\ `4 constant CALLEES-MAX`, and a fifth is refused with E-NMIGRATE-STATE), and a
-\ body of more than ten arguments, because a routine's place list holds ten
-\ (src/compiler/a64-effect.f, SEQ-MAX-N, and an eleventh is refused with
-\ E-A64EFF-SEQ). Both refusals are checked in tools/codegen-compare-test.f rather
-\ than described here, and both have dots. Building a row on either would have
-\ measured a ceiling in the migration entry instead of a code generator.
+\ row was tuned after its numbers were read. One shape that would have been a
+\ larger loss was left out on purpose: a body of more than ten arguments,
+\ because a routine's place list holds ten (src/compiler/a64-effect.f,
+\ SEQ-MAX-N, and an eleventh is refused with E-A64EFF-SEQ). That refusal is
+\ checked in tools/codegen-compare-test.f rather than described here, and it has
+\ a dot. Building a row on it would have measured a ceiling in the place list
+\ instead of a code generator. There is no longer a ceiling on how many words a
+\ body may call - the migration entry that held four was deleted with the
+\ staging path - so CALL-FAN's four callees are the copying rule's subject and
+\ not an entry's limit.
 \
 \ THE CORPUS IS PINNED, exactly as the first three are. Do not "improve" a word
 \ here. Adding a word adds a row; changing a body invalidates the recorded

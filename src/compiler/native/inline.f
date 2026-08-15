@@ -59,22 +59,20 @@
 \ order, and the second is what stops it depending on migration HISTORY - on how
 \ many times a program forgot and re-migrated before this one.
 \
-\ AND THE ROW HOLDS NO NAME, BECAUSE THE ADDRESS A CALLER STATES IS ALREADY THE
-\ NAME'S OWN ANSWER. A call site does not search for its row: it STATES an
-\ address, taken from what its own migration declared about the callee
-\ (src/compiler/native/migrate.f's CALLEE), and reads whatever row is keyed
-\ there. That statement used to be free, so an address one routine out landed on
-\ a real row and only the arity was held against it - which agrees by coincidence
-\ all the time, because `( n n -- n )` helpers are everywhere - and the row
-\ carried the published name so that the two could be told apart. It is not free
-\ any more: RESOLVES-TO-ENTRY refuses a staged address that is not where the
-\ staged spelling's own word begins, so the address a row is read by is the
-\ dictionary's answer for the name the site wrote. A recorded name held against
-\ that spelling could then only repeat the dictionary, and where it did NOT it
-\ was wrong: `EXPORT` publishes a second record over one routine's code, so an
-\ alias names that routine as truly as its first name does and a name comparison
-\ would refuse a legal copy. What remains held against the row is the ARITY,
-\ which is still the caller's own statement and not yet anybody else's answer.
+\ AND THE ROW HOLDS NO NAME, BECAUSE THE ADDRESS IS ALREADY THE NAME'S OWN
+\ ANSWER. A call site does not search for its row and it does not state an
+\ address either: the elaborator resolves the spelling the body wrote through
+\ src/compiler/native/dict.f and reads the row keyed at what the dictionary
+\ answered. A caller USED to hand the address over beside a spelling, which was
+\ free, so an address one routine out landed on a real row and only the arity
+\ was held against it - which agrees by coincidence all the time, because
+\ `( n n -- n )` helpers are everywhere - and the row carried the published name
+\ so the two could be told apart. Both the staging and that name column are
+\ gone. A recorded name could only repeat the dictionary, and where it did NOT
+\ it was wrong: `EXPORT` publishes a second record over one routine's code, so
+\ an alias names that routine as truly as its first name does and a name
+\ comparison would refuse a legal copy. What is still held against the row is
+\ the ARITY, against the effect the checker certified for that word.
 \
 \ WHICH BODIES ARE RECORDED, AND BOTH HALVES OF THE RULE ARE DERIVED.
 \
