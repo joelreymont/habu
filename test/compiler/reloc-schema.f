@@ -316,6 +316,15 @@ public
 \     it joins this closure but not the producer vocabulary above. The row is still
 \     the right tripwire: anything new that names the map is either a producer the
 \     model owes a class or a reader whose reason belongs here.
+\   - row 10 then gained an ERASER, which is the third kind and the one the
+\     tripwire was worth having for (dot habu-clear-the-addr-7595039c):
+\     EM-P2-START rewinds the code pointer to the colon entry so the width-aware
+\     pass can lower the body again, and the records pass 1 wrote at that cursor
+\     describe code pass 2 is about to replace. It clears both maps over
+\     [entry, pass-1 CP) - which is why it names ADDRMAP-OFF and CALLMAP-OFF and
+\     nothing else in the vocabulary. It creates no chain, so the model owes it no
+\     relocation class; what it owes is this sentence, because an eraser with the
+\     wrong span is exactly as wrong as a producer with the wrong kind.
 \   - rows 12 and 13 are the two names the address-cell DECLARER itself goes by
 \     in this file -- bare inside package SNAP-RELOC, qualified outside it -- so
 \     a new caller of that routine shows up whichever side of the package it is
@@ -361,7 +370,7 @@ public
       7 of s" C-CALL EMIT-CEMITBL EMIT-P2-VALID-EMIT EMIT-P2-STORE CORE" endof
       8 of s" EM-STARTUP-RUNTIME-STATE" endof
       9 of s" C-DATA-ADDR C-DATA-ADDR-RAW C-CODE-ADDR" endof
-      10 of s" EM-AOT-RELOC-CODE PATCH-CHAINS EMIT-OUTSIDE" endof
+      10 of s" EM-AOT-RELOC-CODE PATCH-CHAINS EMIT-OUTSIDE EM-P2-START" endof
       11 of s" BSNAPREBASE EM-SNAPSHOT-RESTORE CORE" endof
       12 of s" MARK-CELL EMIT-MARK BXTSTORE" endof
       13 of s" C-DEFER-CELL J-IS CORE" endof

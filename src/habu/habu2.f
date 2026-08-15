@@ -6900,6 +6900,31 @@ public
 \ the colon entry (the name bytes stay) and DP to the definition watermark,
 \ reset the per-definition compile state exactly as EM-INTERPRET-COLON does,
 \ re-emit the prologue, and re-run the compile loop width-aware.
+\
+\ THE REWIND OWNS EVERY RECORD KEYED ON THE CURSOR IT REWINDS, and two are: the
+\ region-to-text call map and the address-literal map, both indexed by region
+\ offset and both written AT CP as pass 1 emitted (SNAP-RELOC:MARK-SITE from
+\ C-CODE-ADDR / C-DATA-ADDR / C-DATA-ADDR-RAW, the record the inliner's copy loop
+\ reissues for a chain it duplicates, and EMIT-CEMITBL for a call into the
+\ engine's loaded __text). Pass 2 lowers the same body with the widths it now
+\ knows, so its stream has different lengths and its records land at different
+\ offsets; a bit pass 1 set at a word pass 2 fills with something else is a
+\ record of code that no longer exists.
+\ Both maps' readers treat a bit as authoritative - EMIT-ADDRS
+\ requires the four move-wide words and EMIT-CALLS requires a BL, and each
+\ refuses the image outright when the bytes disagree - so the stale bit is not a
+\ wasted bit, it is an image this engine will not load, and the AOT capture
+\ refuses the same site one build step earlier (aot-capture.f ACAP-UNCLASSIFIED).
+\ So the span pass 1 emitted is cleared in both maps in the same breath as the
+\ two cursors are put back. It is DP's watermark's counterpart for CP.
+\
+\ The span is exactly [entry, pass-1 CP): the entry is the pending definition's
+\ own code field, read from PEND-CELL, which is where CP is being put back to,
+\ and CP is still where pass 1 left it. Nothing below the entry is touched, so a
+\ record any earlier definition owns is untouched by construction.
+\ The maps live in DATA, which is a separate fixed mapping from the JIT region
+\ the protection bands cover, so this write needs no band declaration - the same
+\ reason EMIT-ADDR-SITE and EMIT-CEMITBL need none.
 : EM-P2-START ( -- )
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    LOWER-TXN:SEAL
@@ -6908,7 +6933,11 @@ public
    10 DATA TXN-SRC-A-CELL LDR,
    9 DATA P2BODY0-CELL LDR,  9 10 9 ADD,  9 DATA INP-CELL STR,
    9 DATA TXN-SRC-U-CELL LDR,  9 10 9 ADD,  9 DATA INE-CELL STR,
-   11 DATA PEND-CELL LDR,  CP 11 0 LDR,               \ CP back to the colon entry: below the band
+   11 DATA PEND-CELL LDR,  10 11 0 LDR,               \ x10 = the colon entry
+   9 CP 10 SUB,                                       \ x9 = the span pass 1 emitted from it
+   SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN,      \ x9/x10 survive the clear
+   SNAP-RELOC:ADDRMAP-OFF SNAP-RELOC:CLEAR-SPAN,
+   CP 10 0 ADDI,                                      \ CP back to the colon entry: below the band
    9 DATA P2DP-CELL LDR,  9 DATA DP-CELL STR,
    PROT:LCF LABEL@ BL,                                \ the control-flow depth reset below
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,

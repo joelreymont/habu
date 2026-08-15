@@ -2020,6 +2020,44 @@ variable SZA-I
    9 SP 8 LDR,  C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 
+\ ---- undoing a relocation record over a span of region words -----------------
+\ THE TWO RELOCATION MAPS ARE KEYED ON REGION OFFSET, so whenever the code at a
+\ span of offsets is replaced or thrown away, every bit recorded about those
+\ words is a statement about code that is gone. Both maps' readers treat a bit as
+\ authoritative and refuse the image when the bytes underneath do not have the
+\ recorded shape (habu2.f SNAP-RELOC:EMIT-CALLS and SNAP-RELOC:EMIT-ADDRS, exits
+\ CALLMAP-RC and ADDRMAP-RC), which is what makes leaving one behind a defect and
+\ not a wasted bit: the stale record is indistinguishable from a live one.
+\
+\ ONE EMITTER, PARAMETERIZED BY THE MAP, because the two maps have identical
+\ shape - one bit per four-byte region word, byte index = offset >> 5, bit number
+\ = (offset >> 2) & 7 - and the only thing that differs is the base the byte index
+\ is added to. A second hand-written loop would be a second place to get that
+\ indexing wrong.
+\
+\   x10 = the first region address the span covers
+\   x9  = its byte length; both survive, so a caller clearing both maps states
+\         the span once.
+\ Clobbers x6, x7 and x12..x15.
+package SNAP-RELOC
+public
+: CLEAR-SPAN, ( n -- ) {: mapoff:n :}
+   LBL LBL {: loop:label done:label :}
+   12 10 DBASE SUB,                             \ x12 = region byte offset of the first word
+   13 12 9 ADD,                                 \ x13 = one past the last word's offset
+   7 0 MOVZ,  7 7 1 SUBI,                       \ x7 = all ones, for inverting one bit mask
+   loop LBL,
+   12 13 CMP,  C-CS done BCOND,
+   14 12 2 LSRI,  14 14 7 ANDI,                 \ x14 = bit number = word index & 7
+   15 12 5 LSRI,                                \ x15 = map byte index = offset >> 5
+   6 mapoff LIT64,  15 15 6 ADD,  15 DATA 15 ADD,
+   6 1 MOVZ,  6 6 14 LSLV,  6 6 7 EOR,          \ x6 = ~(1 << bit)
+   14 15 0 LDRB,  14 14 6 AND,  14 15 0 STRB,
+   12 12 4 ADDI,
+   loop B,
+   done LBL, ;
+;package
+
 package NPUBWIN
 
 private
@@ -2060,22 +2098,16 @@ private
 \ is gone with the code, and a bit left set would make a snapshot restore
 \ relocate a displacement that is not a call any more. Clearing here is what
 \ makes "the map never describes code that no longer exists" a property of
-\ publication rather than of a later sweep. Clobbers x12-x15.
+\ publication rather than of a later sweep.
+\ It clears the CALL map only, and the address map's half of the same statement
+\ is not made here: this publisher's own chain records go in through
+\ `addrmap-set` after the copy lands, and the code-pointer rewind that can leave
+\ an address record standing under a later publication is the code-arena
+\ reclamation in src/habu/xref.f, whose CODE-RECLAIM watcher contract is written
+\ for exactly this class of address-keyed fact and does not yet carry either map.
+\ Clobbers x6, x7 and x12..x15.
 : CLEAR-CALLMAP-SPAN ( -- )
-   LBL LBL {: loop:label done:label :}
-   12 10 DBASE SUB,                             \ x12 = region byte offset of the first word
-   13 12 9 ADD,                                 \ x13 = one past the last word's offset
-   7 0 MOVZ,  7 7 1 SUBI,                       \ x7 = all ones, for inverting one bit mask
-   loop LBL,
-   12 13 CMP,  C-CS done BCOND,
-   14 12 2 LSRI,  14 14 7 ANDI,                 \ x14 = bit number = word index & 7
-   15 12 5 LSRI,                                \ x15 = map byte index = offset >> 5
-   6 SNAP-RELOC:CALLMAP-OFF LIT64,  15 15 6 ADD,  15 DATA 15 ADD,
-   6 1 MOVZ,  6 6 14 LSLV,  6 6 7 EOR,          \ x6 = ~(1 << bit)
-   14 15 0 LDRB,  14 14 6 AND,  14 15 0 STRB,
-   12 12 4 ADDI,
-   loop B,
-   done LBL, ;
+   SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN, ;
 
 public
 

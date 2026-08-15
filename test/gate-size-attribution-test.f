@@ -738,9 +738,33 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ ORDER changed with the emit order (baked-source now precedes aot-seed); the
 \ manifest looks rows up by name, so only the two numbers below move.
 \ The Linux rows below are owed this +352 too.
-129180 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\
+\ 2026-08-15, dot habu-clear-the-addr-7595039c: EM-P2-START, the width-aware
+\ recompile's entry, rewinds CP to the colon entry and now clears both relocation
+\ maps over the span pass 1 emitted, so pass 1's records cannot describe words
+\ pass 2 refills. MEASURED by diffing two HABU_ENGINE_SIZE_MAP=1 captures; the
+\ whole delta is one region:
+\   compile/semi      6252 -> 6596 (+344): EM-P2-START is EMITTED TWICE (the
+\                                     publish gate's trigger and the standalone
+\                                     trigger site further down habu2.f), and each
+\                                     copy grows by 172 - two bit-clear loops
+\                                     (SNAP-RELOC:CLEAR-SPAN,: 19 instructions
+\                                     plus the map base's LIT64, one word for
+\                                     CALLMAP-OFF and two for ADDRMAP-OFF, so 80
+\                                     and 84 bytes) and the 8 bytes of span
+\                                     arithmetic that replaced the bare CP load.
+\ The habu1.f half of the same change is a pure factoring: NPUBWIN's
+\ CLEAR-CALLMAP-SPAN became one call to the shared emitter, and a build with only
+\ that hunk applied is BYTE-IDENTICAL to the baseline engine, which is how the
+\ +344 is known to be the fix and nothing else.
+\ CODELEN 129180 -> 129524 (+344), floor distance 2204 -> 2548. The text pad
+\ absorbs it (14180 -> 13836) inside the same 16 KiB __TEXT page, so
+\ MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not move and
+\ `FILE-SIZE bin/hb` is still 165367.
+\ The Linux rows below are owed this +344 on compile/semi.
+129524 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-2204 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+2548 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
