@@ -24,6 +24,13 @@
 \ splice is fail-closed on its anchor: if the anchor line is not present exactly
 \ once the suite stops rather than running an unmutated file and passing.
 \
+\   THE BOOT-RUN LIST. The window's load runs four installers that write cells
+\   below it, and a seeded engine re-runs them only because the tool names them.
+\   The tool checks its list against the engine's own declared-address-cell
+\   registry, so this suite runs the tool with one row deleted and requires the
+\   refusal - the alternative being an engine whose code-reclaim watchers are
+\   silently absent.
+\
 \ AND THE SUITE PROVES ITS OWN DETECTOR. test/aot-chain-decoy.f prints the
 \ refusal sentence and exits 0. A checker that read text and not exit codes would
 \ call that a refusal; the self-test asserts it does not.
@@ -36,7 +43,7 @@
 \ capture names comes from the engine's require registry, so the case asserts it
 \ starts at the file the window actually required.
 \
-\ Cost: three child engine runs (~3s), no metabuild. Registered as
+\ Cost: four child engine runs (~4s), no metabuild. Registered as
 \ `SUITE aot-chain-capture` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-chain-capture-suite.f
 
@@ -65,6 +72,7 @@ variable RC
 
 create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 create MUT-BUF FS-PATH-CAP allot     variable MUT-U
+create ROWMUT-BUF FS-PATH-CAP allot  variable ROWMUT-U
 create ART-BUF FS-PATH-CAP allot     variable ART-U
 create CASE-BUF FS-PATH-CAP allot    variable CASE-U
 create DIG 32 allot
@@ -78,6 +86,7 @@ create ART ART-CAP allot    variable ART-LEN
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : MUT$ ( -- ptr u8 n )  MUT-BUF MUT-U @ ;
+: ROWMUT$ ( -- ptr u8 n ) ROWMUT-BUF ROWMUT-U @ ;
 : ART$ ( -- ptr u8 n )  ART-BUF ART-U @ ;
 : CASE$ ( -- ptr u8 n ) CASE-BUF CASE-U @ ;
 : HB$ ( -- ptr u8 n )   s" bin/hb" ;
@@ -105,7 +114,11 @@ create ART ART-CAP allot    variable ART-LEN
    ROOT-BUF CASE-BUF ROOT-U @ BYTE-COPY
    s" /case.aot" {: ca:ptr cu:n :}
    ca CASE-BUF ROOT-U @ + cu BYTE-COPY
-   ROOT-U @ cu + CASE-U ! ;
+   ROOT-U @ cu + CASE-U !
+   ROOT-BUF ROWMUT-BUF ROOT-U @ BYTE-COPY
+   s" /dropped-row.f" {: ra:ptr ru:n :}
+   ra ROWMUT-BUF ROOT-U @ + ru BYTE-COPY
+   ROOT-U @ ru + ROWMUT-U ! ;
 
 \ ---- the derived mutant ------------------------------------------------------
 
@@ -140,6 +153,63 @@ create ART ART-CAP allot    variable ART-LEN
    WRITE-MUTANT
    s" the mutant is the tool plus exactly the injected require" T-LABEL
    MUT$ FILE-SIZE  SHAPE:TEXT nip INJECT$ nip + T= ;
+
+\ ---- the boot-run list's own mutant ------------------------------------------
+\
+\ WHAT THIS ONE LOCKS, and why a comment could not. The window's load runs four
+\ installers whose writes land in cells BELOW it - three CHECKER-TAPE observer
+\ cells and three CODE-RECLAIM watcher slots - and a seeded engine gets those
+\ back from the boot-run list or not at all. Only one of the four fails loudly:
+\ without the tape observer the first definition dies "checker: no source-tape
+\ observer to arm", while a missing watcher leaves inline and publish rows naming
+\ code a reclamation already took back, and nothing prints. So the tool counts
+\ the cells the window planted, asks the engine's own declared-address-cell
+\ registry rather than its own list, and refuses when the two disagree.
+\
+\ THE MUTANT IS THE REAL FILE WITH ONE DECLARE ROW DELETED - a line, not a
+\ substring - so the fixture cannot drift from the list it tests, and it is
+\ fail-closed on its anchor: a row spelled twice, or not at all, stops the suite
+\ rather than running an unmutated file and passing.
+: ROW$ ( -- ptr u8 n ) s" NCLOB:WATCH-INSTALL" ;
+
+: ?ROW ( -- )
+   ROW$ SHAPE:COUNT 1 = if exit then
+   s" aot-chain-capture-suite: boot-run rows naming " type ROW$ type s" =" type
+   ROW$ SHAPE:COUNT .
+   s" aot-chain-capture-suite: the dropped-row case cannot be built" STOP-RC die ;
+
+: ROW-OFF ( -- n )
+   SHAPE:TEXT ROW$ FIND-SUB MATCH option
+     none OF -1 ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
+
+\ The whole line the row sits on: back to the newline above it, forward past the
+\ one that ends it.
+: LINE-FROM ( n -- n ) {: at:n :}
+   SHAPE:TEXT drop {: src:ptr :}
+   at begin dup 0 > while
+      dup 1 - src + c@ 10 = if exit then
+      1 -
+   repeat ;
+
+: LINE-PAST ( n -- n ) {: at:n :}
+   SHAPE:TEXT {: src:ptr u:n :}
+   at begin dup u < while
+      dup src + c@ 10 = if 1 + exit then
+      1 +
+   repeat ;
+
+: ROW-MUTANT-BUILD ( -- )
+   TOOL$ SHAPE:LOAD
+   ?ROW
+   ROW-OFF LINE-FROM {: a:n :}
+   ROW-OFF LINE-PAST {: b:n :}
+   SHAPE:TEXT drop {: src:ptr :}
+   ROWMUT$ src a WRITE-ALL
+   ROWMUT$ src b +  SHAPE:TEXT nip b -  APPEND-FILE
+   s" the dropped-row mutant is the tool less exactly one line" T-LABEL
+   ROWMUT$ FILE-SIZE  SHAPE:TEXT nip b a - -  T= ;
 
 \ ---- one child engine run ----------------------------------------------------
 
@@ -314,6 +384,21 @@ create ART ART-CAP allot    variable ART-LEN
    s" aot-chain-capture: files loaded before the capture=2" SAID? TTRUE
    s" ... before any window is captured" T-LABEL
    s" recs=" SAID? 0= TTRUE ;
+
+\ One installer missing from the list. The two counts are read as NUMBERS and
+\ their difference asserted, so a refusal that fired for some other reason - or
+\ one that printed the labels and no measurement - fails here.
+: PROBE-ROW-DROPPED ( -- )
+   ROWMUT$ RUN-CASE
+   s" a boot-run list one installer short is refused" T-LABEL
+   s" aot-chain-capture: a load-time installer this list does not name runs once here and never again"
+   REFUSED
+   s" ... naming what the window planted and what the list refills" T-LABEL
+   s" aot-chain-capture: pre-window declared cells holding a window address=" FIELD
+   s" aot-chain-capture: cells the declared installers refill=" FIELD -
+   1 T=
+   s" ... and no artifact is written" T-LABEL
+   s" roundtrip=ok" SAID? 0= TTRUE ;
 
 \ Fail-closed proof of this suite's own refusal detector: a child that prints the
 \ refusal sentence and exits 0 is not a refusal.
@@ -594,11 +679,13 @@ create SW1 512 allot
 : BODY ( -- )
    SETUP
    MUTANT-BUILD
+   ROW-MUTANT-BUILD
    SELFTEST
    PROBE-REAL
    PROBE-IDENT
    PROBE-ORDER
    PROBE-NOT-FIRST
+   PROBE-ROW-DROPPED
    PROBE-ARTIFACT
    PROBE-READBACK
    PROBE-MERGE

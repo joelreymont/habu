@@ -157,20 +157,82 @@ create HEX 64 allot
 
 \ WHAT THE SEEDED ENGINE HAS TO RUN BEFORE THE CHAIN IS USABLE, and it is this
 \ tool's to say, the way src/habu/stdin.f CAPTURE-REPL names its own installers.
-\ The window holds exactly one declared address cell - A64RAV:DKEEP-HOOK, the
-\ `defer` regalloc-verify.f opens for a reader of its refusals - and a captured
-\ cell arrives trapped, because what it held was a code address in the process
-\ that compiled it. The boot-run list is where a window installs its own vectors,
-\ so the word that installs that one goes on it; without it the first refusal the
-\ verifier reaches dies "defer: unset execution vector".
-: BOOTRUN ( -- )
-   AOT-WINDOW:XTOFF-N @ 1 = if
-      s" A64RAV:DKEEP-HOOK-DEFAULT" AOT-CAPTURE:BOOTRUN+ exit
-   then
-   s" aot-chain-capture: the window has " type AOT-WINDOW:XTOFF-N @ .
-   s" declared address cells and this tool installs one" type cr
+\
+\ A window word that runs AT LOAD TIME and writes a cell is the whole class. The
+\ write itself never travels: what the window's own DATA holds is captured byte
+\ for byte, but a cell BELOW the window belongs to the engine the chain was loaded
+\ into, and in a seeded engine that cell holds whatever the target's prefix put
+\ there. Only a boot-run entry can put the window's routine back.
+\
+\ THE TWO AXES ARE COUNTED SEPARATELY BECAUSE THEY FAIL SEPARATELY.
+\   In the window: a captured declared cell arrives trapped, because what it held
+\   was a code address in the process that compiled it, and the seed re-traps it.
+\   A64RAV:DKEEP-HOOK is the one - the `defer` regalloc-verify.f opens for a reader
+\   of its refusals - and without its installer the first refusal the verifier
+\   reaches dies "defer: unset execution vector". ?XTOFF holds that count.
+\   Below the window: three CHECKER-TAPE observer cells and three CODE-RECLAIM
+\   watcher slots, six in all, planted by four load-time installers. Without them
+\   a seeded engine dies "checker: no source-tape observer to arm" on the first
+\   definition - and the three watcher rows fail SILENTLY, leaving inline and
+\   publish rows pointing at code a reclamation already took back. ?TRAPPED holds
+\   that count, measured against the engine's own registry rather than read off
+\   this list.
+\
+\ So each row below carries the number of pre-window cells its installer refills,
+\ and the two numbers are checked against what the process measures. A fifth
+\ installer nobody declared moves the measurement and not the list, and the
+\ capture stops.
+variable CELLS-OWED           \ pre-window cells the declared installers refill
+
+: RESOLVE-BAD ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n r:ptr ru:n :}
+   s" aot-chain-capture: boot-run name " type a u type s"  " type r ru type cr
+   s" aot-chain-capture: the seed resolves this list by name at boot and a miss is silent"
+   REFUSE-RC die ;
+
+\ Asked exactly the way the seed asks it. A qualified name resolves through the
+\ namespace record's PUBLIC slot (habu1.f FIND-NMATCH) and XREF-FIND-INDEX takes
+\ the same route, so a name that is private, misspelt, or belongs to a word the
+\ window did not compile answers here instead of dying $52 with no message in the
+\ built engine. The window test is the second half: a name that resolves to a
+\ PRE-WINDOW word would run the host's copy at boot and install nothing.
+: ?RESOLVES ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u XREF-FIND-INDEX {: k:n :}
+   k 0 < if a u s" does not resolve here, so it will not resolve there" RESOLVE-BAD then
+   k R0 @ >= k R1 @ < and if exit then
+   a u s" resolves to a word outside the capture window" RESOLVE-BAD ;
+
+: DECLARE ( ptr u8 n n -- ) {: a:ptr u:n cells:n :}
+   a u ?RESOLVES
+   a u AOT-CAPTURE:BOOTRUN+
+   CELLS-OWED @ cells + CELLS-OWED ! ;
+
+: DECLARE-ALL ( -- )
+   0 CELLS-OWED !
+   s" A64RAV:DKEEP-HOOK-DEFAULT" 0 DECLARE   \ its cell is in the window: see ?XTOFF
+   s" NFEED:INSTALL"             3 DECLARE   \ CHECKER-TAPE scan, token, verdict
+   s" NCLOB:WATCH-INSTALL"       1 DECLARE   \ CODE-RECLAIM watcher slots, one each
+   s" NINL:WATCH-INSTALL"        1 DECLARE
+   s" NPUB:WATCH-INSTALL"        1 DECLARE ;
+
+: ?XTOFF ( -- )
+   AOT-WINDOW:XTOFF-N @ 1 = if exit then
+   s" aot-chain-capture: declared address cells in the window=" type AOT-WINDOW:XTOFF-N @ .
+   s" aot-chain-capture: and this tool installs one" type cr
    s" aot-chain-capture: an unlisted declared address cell would boot untrapped"
    REFUSE-RC die ;
+
+: ?TRAPPED ( -- )
+   B0 @ B1 @ D0 @ AOT-CAPTURE:TRAPPED-BELOW {: got:n :}
+   got CELLS-OWED @ = if exit then
+   s" aot-chain-capture: pre-window declared cells holding a window address=" type got .
+   s" aot-chain-capture: cells the declared installers refill=" type CELLS-OWED @ .
+   s" aot-chain-capture: a load-time installer this list does not name runs once here and never again"
+   REFUSE-RC die ;
+
+: BOOTRUN ( -- )
+   ?XTOFF
+   DECLARE-ALL
+   ?TRAPPED ;
 
 : RUN ( -- )
    ?FIRST

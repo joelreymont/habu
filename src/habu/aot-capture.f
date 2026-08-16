@@ -1040,13 +1040,24 @@ variable ACAP-P
    woff 8 + len <= if woff ACAP-ADD-XTOFF  woff ACAP-ZERO-CELL exit then
    woff ACAP-XTCELL-STRADDLES ;
 
+\ The declared-address-cell table, read where it lives. A row is the cell's own
+\ address counted from the DATA base, which is the form the engine stores and the
+\ form both readers below want; ACAP-XTCELL-AT hands back the cell itself.
+: ACAP-XTCELL-ROWS ( -- n )
+   AOT-LIVE-DATA SNAP-RELOC:XTCELL-N-CELL + AOT-CELL@ ;
+
+: ACAP-XTCELL-OFF ( n -- n ) {: k:n :}
+   AOT-LIVE-DATA SNAP-RELOC:XTCELL-ROWS-OFF + k cells + AOT-CELL@ ;
+
+: ACAP-XTCELL-AT ( n -- ptr a ) {: k:n :}
+   AOT-LIVE-DATA k ACAP-XTCELL-OFF + ;
+
 : ACAP-BAKE-DATA ( n n -- ) {: d0:n d1:n :}
    d1 d0 - {: len:n :}
    d0 len ACAP-COPY-DATA
    d0 AOT-DATA-N - {: d0off:n :}
-   AOT-LIVE-DATA SNAP-RELOC:XTCELL-N-CELL + AOT-CELL@ {: rows:n :}
-   rows 0 ?do
-      AOT-LIVE-DATA SNAP-RELOC:XTCELL-ROWS-OFF + i cells + AOT-CELL@ d0off - {: woff:n :}
+   ACAP-XTCELL-ROWS 0 ?do
+      i ACAP-XTCELL-OFF d0off - {: woff:n :}
       woff 0 >= woff len < and if woff len ACAP-MASK-XTCELL then
    loop ;
 
@@ -1070,6 +1081,36 @@ public
    u 0 ?do a i + c@  AOT-BOOTRUN-BUF@ off + 1+ i + c!  loop
    off u + 1+ AOT-BOOTRUN-LEN !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;      \ live terminator (uncounted)
+
+\ How many declared address cells BELOW the window hold an address inside it.
+\
+\ THIS IS THE OTHER HALF OF THE BOOT-RUN CONTRACT, and the half nothing measured
+\ until now. A declared cell INSIDE the window is zeroed and re-trapped by the
+\ seed (ACAP-MASK-XTCELL above), so the window's own cells are accounted for by
+\ XTOFF. A cell below the window is not captured at all - it belongs to the
+\ engine the window was loaded into - and if the window's load PLANTED a window
+\ address in it, then that write is a load-time effect no captured byte carries.
+\ In a seeded engine the cell holds whatever the target's own prefix put there,
+\ and the only thing that can put the window's routine back is a boot-run entry.
+\ So every cell counted here is a boot-run row owed, and a caller that declares
+\ fewer rows than this counts has an installer it has not declared.
+\
+\ IT ANSWERS THE CELL'S CONTENT, NOT ITS KIND, which is what makes it total: the
+\ engine registers a row wherever an execution token is STORED - `is` into a
+\ `defer` and CODE-RECLAIM's watcher table alike - so an installer of a kind
+\ nobody has written yet is counted the same way. A cell whose value points
+\ somewhere else is somebody else's business and is not counted, so an install
+\ made after the window closes cannot be mistaken for one the window made.
+: TRAPPED-BELOW ( n n n -- n ) {: b0:n b1:n d0:n :}
+   d0 AOT-DATA-N - {: d0off:n :}
+   0
+   ACAP-XTCELL-ROWS 0 ?do
+      i ACAP-XTCELL-OFF {: off:n :}
+      off d0off < if
+         i ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
+         v b0 >= v b1 < and if 1+ then
+      then
+   loop ;
 
 private
 

@@ -7118,3 +7118,45 @@ callee's answer. Use a register the call does not own.
   above the host's window - nothing writes there - but the capture tool's
   own round trip smears $A5 over the same buffer in its process, so the
   pad is stored rather than assumed.
+
+## 2026-08-16 - the load-time installers (bake-chain-13, dot 072becbc)
+
+- **A survey of "every top-level effect" that reads for installers finds
+  the installers it expects.** The dot bounded the class at two by
+  reading `src/compiler/native/`; there are four, and the two it missed
+  (`inline.f:358`, `publish.f:479`) are in the directory it read. What
+  found them was not a better read but a measurement with no opinion:
+  `CODE-RECLAIM:WATCHERS` is 0 when the window opens and 3 when it
+  closes. `habu2.f:5334` had said "the chain's 3 CODE-RECLAIM:WATCH
+  sites" in a comment all along.
+- **Ask the registry, not the source.** The engine already records every
+  cell an execution token is stored into - `is` into a `defer` and
+  CODE-RECLAIM's watcher table alike - so "how many pre-window cells did
+  this window plant a word into" is six lines over
+  `SNAP-RELOC:XTCELL-*` and is total over installer KINDS nobody has
+  written yet. The source-scanning alternative needs a whitelist of
+  declaring forms, and that whitelist is the thing that goes stale.
+- **The audit you can afford is the one whose false-positive population
+  is empty.** Diffing pre-window DATA across the window's load looks
+  like the complete answer and is not: 215,288 bytes change in 62,916
+  runs, nearly all interpreter and checker scratch plus the require
+  registry. Measured before building, in an afternoon's probe, which is
+  cheaper than a mechanism nobody can keep green.
+- **Prove a classifier by construction, not by arithmetic.** Three
+  observer cells plus three watcher slots equals the six that were
+  counted, which proves nothing about what the count would do to a
+  seventh. Registering one more watcher from ABOVE the window moved the
+  registry 96->97 and the "someone else's cell" bucket 89->90 while the
+  answer stayed 6 - so the count cannot mistake a later install for one
+  the window made.
+- **A missing installer that fails loudly is the lucky one.** Only the
+  tape observer dies by name ("checker: no source-tape observer to
+  arm"); the three code-reclaim watchers fail silently, leaving inline
+  and publish rows that name code a reclamation already took back. The
+  audit exists for the silent three.
+- **Two builds of one tree differing is not always non-determinism.**
+  The bake splices the artifact PATH into its generated driver, so a
+  different `HB_TMP` shifts DP and changes the merged engine's bytes.
+  Baking twice with identical paths is byte-identical; that experiment
+  is what turns "the failure moved" into "the failure is layout
+  sensitive", which is a diagnosis.

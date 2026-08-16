@@ -469,15 +469,19 @@ public
 : NEW-LEN ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
    LOG-NEW-LEN  a u wid LOG-OK VEC-IDX VEC-N@ ;
 
-private
-
 \ So the line a claimed slot is held against follows the pointer down when the
 \ space above it is really given back.
+\
+\ PUBLIC BECAUSE A CAPTURED CHAIN HAS TO RE-RUN IT: the slot is CODE-RECLAIM's,
+\ below the capture window, so a seeded engine would hold every published line
+\ against an address the reclaim already gave back. Named on
+\ tools/aot-chain-capture.f's boot-run list, which LFIND resolves.
 : WATCH-INSTALL ( -- )
    [: RECLAIMED ;] CODE-RECLAIM:WATCH ;
 
 WATCH-INSTALL
 
+private
 get-current prot-wid-add
 
 public

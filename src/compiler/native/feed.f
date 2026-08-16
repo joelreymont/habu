@@ -207,14 +207,19 @@ public
    CHECKER-TAPE:DISARM
    CLEAR ;
 
-private
-
 \ Three events, one authority: the scan's text, each token, and the verdict.
+\
+\ PUBLIC BECAUSE A CAPTURED CHAIN HAS TO RE-RUN IT, the way
+\ A64RAV:DKEEP-HOOK-DEFAULT is. It runs at load time into three declared cells
+\ BELOW the capture window - CHECKER-TAPE's own - so no captured byte carries it
+\ and a seeded engine reaches ARM with nothing installed. Named on
+\ tools/aot-chain-capture.f's boot-run list, which LFIND resolves.
 : INSTALL ( -- )
    [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-TAPE:INSTALL ;
 
 INSTALL
 
+private
 get-current prot-wid-add
 
 public

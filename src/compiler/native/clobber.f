@@ -184,14 +184,18 @@ public
 : ROWS ( -- n )
    ROWS# ;
 
-private
-
 \ One registration, and there is no way to undo it.
+\
+\ PUBLIC BECAUSE A CAPTURED CHAIN HAS TO RE-RUN IT: the slot it fills is
+\ CODE-RECLAIM's, below the capture window, so a seeded engine keeps the rows
+\ this drops and says nothing. tools/aot-chain-capture.f names it on the
+\ boot-run list, and LFIND finds no private word.
 : WATCH-INSTALL ( -- )
    [: DROP-FROM ;] CODE-RECLAIM:WATCH ;
 
 WATCH-INSTALL
 
+private
 get-current prot-wid-add
 
 public

@@ -350,13 +350,21 @@ private
    floor DROP-FROM
    S-CLAIM @ 0<> if STAGE-CLEAR then ;
 
+public
+
 \ One registration, and no way to undo it: a row that outlived its code is a
 \ body a caller would splice in place of the routine it meant to call.
+\
+\ PUBLIC BECAUSE A CAPTURED CHAIN HAS TO RE-RUN IT: the slot is CODE-RECLAIM's,
+\ below the capture window, so a seeded engine would keep exactly the stale rows
+\ this exists to drop, silently. Named on tools/aot-chain-capture.f's boot-run
+\ list, which LFIND resolves - and it resolves no private word.
 : WATCH-INSTALL ( -- )
    [: RECLAIM ;] CODE-RECLAIM:WATCH ;
 
 WATCH-INSTALL
 
+private
 get-current prot-wid-add
 
 public
