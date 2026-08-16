@@ -325,3 +325,104 @@ AOT section-label count 28 -> 30, and MACOS-CODE-TEXT 131984 -> 135488
 (+3504 = 3452 payload read from the engine's own published cell + 8
 for its length word + 44 for AOT-SIG:PUBLISH,'s eleven instructions),
 floor distance 5008 -> 8512, same 16 KiB page, file still 165367.
+
+THE RED WAS ROOT-CAUSED AND IT WAS NOT WHAT THE HANDOFF GUESSED
+(bake-chain-20, 2026-08-17). Not build timing, not a new stdout line,
+not a timeout: asserts 224/225 are POLICY's two, not PROBE's. The
+"empty label" clue was a red herring - lib/test/assert.f runs
+T-LABEL-CLEAR after EVERY assert, so only a subtest's FIRST assert
+carries its label. 224 is `SOURCE-ARENA-CAP need >=` and 225 is
+`need NEXT-POW2 SOURCE-ARENA-CAP T=`, which reported got 8388608.
+Every PROBE assert passed; the engine accepts and refuses exactly
+what master's does.
+THE CAUSE IS THE CAPACITY POLICY. A `--build` holds the cold prefix
+and the generated stage2 source in ONE arena, so LIVE-SIZE is their
+sum. Measured, cold prefix by bisecting `--build` (CAP - OK - 1) and
+stage2 through BF-STAGE2-SOURCE: master cb26fc19 1,391,858 +
+1,961,629 = 3,353,487, need 4,191,859, fits $400000; increment C
+1,422,190 + 1,999,714 = 3,421,904, need 4,277,380, does not. The
+master control ran the same engine over a `git archive cb26fc19`
+tree, which is sound because increment C changes no PFX-LOAD-ROW -
+the cold-prefix FILE LIST is identical and only contents differ.
+Delta accounted to the byte: stage2 +38,085 = checker 20,410 +
+type-family 9,925 + habu2 4,051 + aot-decl 2,652 + habu1 508 +
+image-bytes 539; cold +30,332 = checker + type-family, the only two
+changed files the cold prefix carries.
+THE ARENA WAS ALREADY 1,956 BYTES FROM THIS RED. The largest
+composite $400000 admits is 3,355,443 and master stood at 3,353,487.
+checker.f is counted TWICE (cold prefix and stage2 both carry it), so
+978 bytes of checker source would have tripped it for whoever edited
+next. The bump was owed whatever landed.
+LANDED (commit 9219ec56, approved on master 3dd55e61): SOURCE-ARENA-CAP
+$400000 -> $800000, the gforth token mirror with it, CODE-CAP-BYTES
+$AC0000 -> $EC0000 (ADR-HI + IBUFSZ + AOT-SECTION-CAP), MSIZE $AF0000
+-> $F00000 by image-bytes.f's own method, sixth time - MPAGE $EC1000,
+tail $4000 + 104 + a $1D96C bound, image $EE29D4, round $EF0000,
+margin $F00000. The method was validated by re-deriving the CURRENT
+line from scratch first: it reproduces $1596C / $ADA9D4 / $AF0000
+exactly. Three mutations red their guards: drifting CODE-CAP-BYTES to
+$EB0000 reds test/icode-fixup-test.f, drifting the gforth mirror back
+to $400000 reds tools/bootstrap-codegen-test.f's token compare, and
+putting MSIZE back to $AF0000 kills a build by name with `macho:
+MSIZE below max image`. So $F00000 is required, not merely roomy.
+Engine file size unchanged at 165367 (the window is virtual, as
+icode.f's own prose says); install fixpoint x2 byte-identical
+e2a5c242...; build-fixpoint-test green rc 0; icode-fixup,
+bootstrap-codegen, image-bytes, engine-size, hb-build all green.
+Two dots minted from this: habu-dedup-the-cold-8010f67c (the cold
+prefix and the stage2 source carry ~1.4 MB of ONE checker/core text
+twice, which is where the real headroom is, with the Linux DATA-SIZE
+rider for maker.f's 8-of-32MiB dictionary allot) and
+habu-maker-f-comment-249a69f5 (maker.f:22 says "mmap'd" of an allot).
+
+NOW THE BLOCKER, AND IT IS INCREMENT C'S OWN DESIGN (bake-chain-20).
+Increment 3 rebased clean onto the fixed stack (abf880fa) and the
+product BUILDS: install 17.6s, bin/hb 3,649,399 bytes, the artifact
+fixpoint held ("two processes wrote the same artifact"), and the
+host digest e2a5c242... is byte-identical to the engine this tree
+installs without the bake, exactly as increment 3 claims. The
+ACCEPTANCE passes on the product: `bin/hb --load src/arch/arm64/icode.f`
+rc 0 and `using A64ASM : T ( n -- n ) ENC-B ;` runs - the phase that
+named the whole defect is green.
+BUT test/run.f reds ~60 phases, all with ONE message:
+`tfam: the seeded families registry opens at 53 where the capture
+marked 49` / `tfam: a seeded type registry does not start where its
+capture did`. THE REFUSAL IS CORRECT AND THE DESIGN IS WHAT IS WRONG.
+Falsified with a minimal fixture, three cases on the product: a file
+that names a seeded chain word and declares NO family of its own is
+green; the SAME file with ONE `NEWTYPE` ahead of it dies; with four,
+dies. So the mechanism is exact - the registry install is deferred to
+the first lazy intake (checker.f CK-AOT-REG-INSTALL), but the carried
+family ids are absolute (EN.H, identity by id) and are only valid at
+the BOOT-TIME base. Any user family declared before the first chain
+reference shifts the high-water and the base-equality clause refuses.
+Declaring a type and then calling a chain word is completely ordinary,
+which is why it is 60 phases and not a corner.
+WHY INCREMENT C'S ACCEPTANCE COULD NOT SEE IT: the family-typed
+reproducer USES a chain family (ir-arena:view<>); it never DECLARES a
+new one ahead of the intake. The gap only opens when bin/hb is the
+product, so increment 3 is the first thing that could show it.
+CK-AOT-REG-INSTALL's own comment already names the three answers -
+"already there, appendable, or neither, and the third is a refusal" -
+and the bug is that "appendable" is judged by base equality, so it is
+only true when nothing has declared a family yet. A lazy install
+cannot promise that.
+THE FIX THAT LOOKS RIGHT, UNRULED, FOR THE COORDINATOR: install the
+REGISTRY eagerly at the seed point (prefix-stream end, before any user
+token), and keep only the SIGNATURE POOL lazy. That is where
+appendability is true by construction and where no rollback frame is
+open, which answers the comment's stated reason for latching nowhere.
+It also keeps the lazy intake's real win: the registry is ~46 KB of
+pointer-free rows, against the 124 KB of signature text and 6798 rows
+whose parse is what the laziness was priced to avoid. The alternative,
+remapping ids at intake, is the id remap the design ruled out and
+would have to rewrite every family id in every carried row plus the
+eight stores' cross-references.
+STILL OWED AFTER THAT RULING: the registry-eager change with a
+registered regression (declare a family, then name a chain word) and
+its mutations, the battery re-run on the product, THE NUMBERS OF
+RECORD (baseline bare 258.3 / source-chain 1353.3 / baked 353.2 /
+baked-no-chain 261.1 / install 6.74s -> 16.0s; this lane measured
+install 6.4s unbaked and 17.6s baked, the rest not yet re-measured),
+the certified-delta attribution (4474 -> 4571 on the host at 9219ec56),
+and increment 3's description still says "BLOCKED, do not merge".
