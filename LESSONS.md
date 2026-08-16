@@ -7196,6 +7196,7 @@ callee's answer. Use a register the call does not own.
   suite now bakes the artifact and runs a program through it. Reachable-and-
   well-formed is not runs.
 
+
 ## 2026-08-16 - the audit execution's three (audit-fix)
 
 (1) An isolation build attributes a seed-affecting byte delta in
@@ -7211,3 +7212,4 @@ can reach it: XTSITE discriminated one real mutant, and the
 classifier that would have to emit that row returns early for
 exactly the values that make it possible. Deleted on
 producibility, not on taste.
+++++++ somwsmms 5c8ac8f9 "build: the seeded chain tells the registry it is loaded" (rebased revision)

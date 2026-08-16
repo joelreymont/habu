@@ -734,12 +734,12 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
 : PROGRAM$ ( -- ptr u8 n )
    s\" s\" : FOO ( n -- n ) 1 + ;\" 1 1 8 NMIGRATE:DEFINE 7 FOO .\n" ;
 
-: RUN-BAKED ( -- )
+: RUN-BAKED-PROGRAM ( ptr u8 n -- ) {: p:ptr pu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   ENGINE$ >LEN  PROGRAM$ >LEN  OUT CAP >LEN  ERR CAP >LEN  CASE-TIMEOUT-MS >MS
+   ENGINE$ >LEN  p pu >LEN  OUT CAP >LEN  ERR CAP >LEN  CASE-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
@@ -756,12 +756,96 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
    RC @ 0 T=
    s" ... at the path the tool names" T-LABEL
    ENGINE$ FILE-SIZE 0 > TTRUE
-   RUN-BAKED
+   PROGRAM$ RUN-BAKED-PROGRAM
    s" ... and that engine compiles a word through the chain and runs it" T-LABEL
    RC @ 0 <> if DIAG. then
    RC @ 0 T=
    s" ... answering what the word computes, and printing nothing else" T-LABEL
    OUT$ s\" 8\n" T$= ;
+
+\ ---- and it says it has the files the seed carries ---------------------------
+\
+\ WHAT THIS LOCKS. Baking the chain puts its 43 files' definitions in the engine
+\ but tells src/core/include.f nothing, so a program's `require
+\ src/compiler/native/migrate.f` reads the file a second time and dies on a
+\ duplicate definition - the seeded engine would be WORSE than the source one for
+\ the chain's own consumers. src/habu/habu2.f marks every merged closure file
+\ `provided` in the cold prefix, ahead of the freeze that decides what
+\ ENGINE-PROVIDES? answers for.
+\
+\ THE PROBE IS GENERATED FROM THE ARTIFACT'S OWN CLOSURE LIST, not from a list
+\ written here: the suite walks the closure section it already parses and asks the
+\ engine about every path in it, so a row the emitter drops is a count that does
+\ not match and no fixture edit can hide it. The control is a real file the chain
+\ never loads - the capture tool itself - because a detector that answers true for
+\ everything would otherwise pass.
+\ AND THE LAST LINE IS THE POINT: the same `require` a consumer writes, followed
+\ by a definition through the chain. Without the rows that line is the duplicate
+\ definition, so the case fails on the behaviour and not only on a count.
+$8000 constant PROG-CAP
+create PROG PROG-CAP allot   variable PROG-U
+variable CUR
+: PROG$ ( -- ptr u8 n ) PROG PROG-U @ ;
+: NOT-IN-CLOSURE$ ( -- ptr u8 n ) s" tools/aot-chain-capture.f" ;
+
+: PROG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   PROG-U @ u + PROG-CAP > if
+      s" aot-chain-capture-suite: the provided-rows probe outgrew its buffer" STOP-RC die
+   then
+   a PROG PROG-U @ + u BYTE-COPY
+   PROG-U @ u + PROG-U ! ;
+
+\ `if` is a compile-time word, so the question is asked by a word the program
+\ defines and every row is one call to it.
+: ASK+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n c:ptr cu:n :}
+   s\" s\" " PROG+  a u PROG+
+   s\" \" " PROG+  c cu PROG+  s\" \n" PROG+ ;
+
+\ Every path the artifact names, read out of the section table the fixtures above
+\ already anchor. A list that runs past its own section is a broken fixture, not a
+\ failed assertion.
+: ASK-CLOSURE+ ( -- )
+   S-CLOSURE SEC-AT {: cl:n :}
+   cl S-CLOSURE SEC-LEN@ + {: end:n :}
+   cl 8 + CUR !
+   T-CLOSURE @ 0 ?do
+      CUR @ A64@ {: pu:n :}
+      CUR @ 8 + pu + end > if
+         s" aot-chain-capture-suite: the closure list runs past its section" STOP-RC die
+      then
+      ART CUR @ 8 + +  pu  s" PROBE-ASK" ASK+
+      CUR @ 8 + pu + CUR !
+   loop ;
+
+: BUILD-PROG ( -- )
+   FRESH
+   0 PROG-U !
+   s\" variable PROBE-PROV\nvariable PROBE-EXTRA\n" PROG+
+   s\" : PROBE-ASK ( ptr u8 n -- ) ENGINE-PROVIDES? if 1 PROBE-PROV +! then ;\n" PROG+
+   s\" : PROBE-ASK-X ( ptr u8 n -- ) ENGINE-PROVIDES? if 1 PROBE-EXTRA +! then ;\n" PROG+
+   ASK-CLOSURE+
+   NOT-IN-CLOSURE$ s" PROBE-ASK-X" ASK+
+   s\" s\" provided=\" type PROBE-PROV @ .\n" PROG+
+   s\" s\" extra=\" type PROBE-EXTRA @ .\n" PROG+
+   s\" require src/compiler/native/migrate.f\n" PROG+
+   PROGRAM$ PROG+ ;
+
+: TAIL= ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   OUT-U @ u < if 0 0= 0= exit then
+   OUT OUT-U @ u - + u  a u  STR= ;
+
+: PROBE-PROVIDED ( -- )
+   BUILD-PROG
+   PROG$ RUN-BAKED-PROGRAM
+   s" the baked engine takes a chain require as the no-op the seed makes it" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... marking every file the artifact's closure names, and no more" T-LABEL
+   s" provided=" FIELD T-CLOSURE @ T=
+   s" ... and nothing the chain never loaded" T-LABEL
+   s" extra=" FIELD 0 T=
+   s" ... with the chain still compiling a word after the require" T-LABEL
+   s\" 8\n" TAIL= TTRUE ;
 
 \ ---- the product's bytes owe nothing to the paths the build was given ---------
 \
@@ -858,6 +942,7 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
    PROBE-FORGED
    PROBE-CHAIN
    PROBE-BAKED
+   PROBE-PROVIDED
    PROBE-REPRO
    PROBE-DP-MOVED ;
 

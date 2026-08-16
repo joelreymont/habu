@@ -44,9 +44,16 @@
 
 package AOT-IDENT
 
+public
+\ The table's two bounds are public because a consumer that has to size storage
+\ for a whole closure must derive it from here: src/habu/habu2.f assembles the
+\ paths into one image table and its buffer is exactly what these two allow, so
+\ no second budget can disagree with this one.
 256 constant MAX               \ closure files; the chain measures 43
 $100 constant PATH-CAP         \ per-path bytes; include.f's own cap is larger, and
                                \ a path that does not fit is refused rather than cut
+private
+
 $10000 constant CHUNK          \ file read granularity for the streaming digest
 $4A constant REFUSE-RC
 

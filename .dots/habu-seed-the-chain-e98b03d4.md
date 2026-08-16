@@ -886,3 +886,130 @@ provided rows via LAPPPROV from RESTORE-CLOSURE's list, (6) the
 battery + the re-measured payoff. Measured inputs for the estimate:
 one engine emit 2.84s (`-- stage` 3.50s vs `-- stdin` 6.34s), one
 capture 2.74s, install --force 6.48s today.
+
+INCREMENT 2 - ITEM (5) PROVIDED ROWS LANDED 2026-08-16
+(bake-chain-16). The product's cold prefix marks every file of
+the merged artifact's closure `provided`, ahead of
+EMIT-REQUIRE-FREEZE-TOKEN and inside the SNAP-CELL cold-boot
+guard; with no artifact merged AOT-IDENT holds nothing and not a
+byte is emitted, so the capture host is unchanged by
+construction.
+HOW THE EMITTER REACHES THE LIST, the one decision the ruling
+left open: aot-ident.f MOVES to the common prefix position
+src/habu/aot-decl.f already occupies - loaded in every build
+immediately before habu2.f - and the emitter reads AOT-IDENT
+directly. The alternative (the driver copying the paths into a
+habu2-owned table) was refused: it makes "zero rows without an
+artifact" a thing the driver must remember instead of a fact
+about who fills the table. Five lists move with it
+(BF-APPEND-COMMON, BF-APPEND-SNAP-BUILD, the stdin emit,
+bootstrap.sh SRC_COMMON, srclist.f); the manifest keeps its slot.
+ONE TABLE, NOT A LABEL PER FILE: package PFX-CHAIN assembles the
+zero-terminated paths into ONE image table (BYTES, pads to the
+four-byte grain, so a path per call left zeros between the rows
+and the walk read the first as the end - measured, the first
+build marked 1 file of 43), and the cold prefix walks it into
+LAPPPROV. Buffer size is AOT-IDENT:MAX x PATH-CAP, published for
+that purpose, so no second budget can be the narrower one.
+ENGINE DELTA on the capture host: 370 bytes, dicts identical
+(imgdump), all of it inside the aot-seed - 368 are DATA literals
+in the captured REPL blob moving with the host's pre-window DP
+cursor (the class attributed at 127cdbb6), and 2 are the
+host-numbered pre-window protected-WID bitmap renumbering when
+AOT-IDENT's wid moves ahead of habu2.f's packages: same
+population, different numbers, the falsity dot 5a992a38 already
+owns. Product engine 3,368,695 bytes.
+PAYOFF THROUGH A REAL CONSUMER: `require
+src/compiler/native/migrate.f` + a definition through the chain
+runs in 0.33s on the baked engine against 1.31s on the capture
+host - and without the rows that program does not run at all, it
+dies on a duplicate definition.
+PROBE-PROVIDED in the registered suite is generated FROM THE
+ARTIFACT'S OWN closure section (one question per path, plus a
+real file the chain never loads as the control, plus the require
+and a chain definition), mutation-proven twice: dropping the
+cold-prefix call reds three assertions, and moving the call after
+EMIT-REQUIRE-FREEZE-TOKEN reds exactly the count - so the ruled
+placement is tested, not commented.
+REMAINING: (3) two-engine emit, (4) the artifact fixpoint, (6)
+battery + the numbers of record + the two gate splits.
+
+ITEMS (3)+(4) BUILT AND BLOCKED 2026-08-16 (bake-chain-16; the
+work sits STACKED in .jj-ws/habu-bake-chain as a WIP commit ON
+TOP of the mergeable increment-2 commit, described "WIP
+(BLOCKED, do not merge)". It builds, it is gated at the build
+level, and it must not land until the blocker below is fixed).
+WHAT WORKS, measured end to end: BF-EMIT-ENGINE ( driver -- )
+factored out of BF-BUILD-STDIN-FROM-STAGE and called twice - the
+capture host (kept as hb-host with its maker hb-host-mk, never
+installed) and then the product from a generated driver.
+hb-host is BYTE-IDENTICAL to the engine the same tree installs
+today (4f43d6e2). The artifact fixpoint runs two captures in two
+hb-host processes to two paths and compares sha256 to
+BF-MAX-GENS, dying ARTIFACT-FIXPOINT-BROKEN - it converged on
+generation 0 in every run. The generator moved into
+BUILD-FIXPOINT (BF-CHAIN-DRIVER-FROM/BF-CHAIN-DRIVER$) and
+tools/aot-chain-bake.f is a thin caller of it with the
+fail-closed CLI boundary the -2802 loose end asked for (measured:
+an escaped throw now prints "aot-chain-bake: failed: uncaught
+throw code -2802" and "no engine was written"). Stamp key folds
+the CAPTURE TOOL's closure (ENTRY$ = BF-CAPTURE-TOOL$, tag
+capture-src), one row, subsuming the chain's 43. Snapshot builds
+from hb-host per ruling 2, and THE PROBE CONFIRMED THE RULING
+RATHER THAN SURPRISING: building the snapshot from the PRODUCT
+succeeds and writes 27,869,288 bytes against 22,015,840 from the
+host - 5.85 MB of chain the keep surface never declared, silently.
+Install total 16.0s against 6.74s (2.4x), product 3,352,183 bytes,
+and a product installed as bin/hb rebuilds the whole thing to
+itself byte-identically (86e581da x2).
+GATE SPLIT, done as ruling 1 asks and one step further: the exact
+whole-file ratchet, the $40000 cap, the exact CODELEN ratchet and
+SIZE-ATTR:VALIDATE all move onto hb-host (ENGINE-GATE:HOST-SIZE-CHECK
++ the map captured from hb-host-mk), and the PRODUCT is held to a
+STATEMENT rather than a number: GE-PRODUCT-ACCOUNT compares the
+product's own byte map to the host's row by row and requires that
+ONLY aot-seed, main/startup and dictionary-code differ, each
+strictly larger, with both directions of "a row one map has and
+the other does not" named. Mutation-proven: dropping PFX-CHAIN:ROWS
+reds it with `row main/startup / a baked chain left one of the
+three rows it must grow unchanged`. Measured, the three deltas are
++3,172,184 seed, +32 walk, +1156 table - and nothing else moves.
+test/gate-size-attribution-test.f's live coupling becomes
+directional for the same reason, with the exact coupling named as
+having moved to the build slice.
+THE BLOCKER, and it is NOT the two-engine emit: AOT-SEEDED WORDS
+CANNOT BE CALLED FROM CHECKED CODE. A seeded word is in the
+runtime dictionary and NOT in the checker's record set, so a new
+`:` definition that names one dies `hook: non-certified
+definition: <word> at '<seeded name>'`. Measured both ways:
+`using A64ASM  1 ENC-B .` PRINTS in the product (top level,
+interpret) while `: T ( n -- n ) ENC-B ;` in the same file dies -
+and the SAME failure reproduces on TODAY'S engine with a
+REPL-seeded name (`: T2 ( -- ) BPW-INSTALL ;` dies in hb-host),
+so this is a PRE-EXISTING property of the seed, not a defect this
+lane introduced. It never bit because the only window ever baked
+was the REPL, whose words are typed at a prompt and never
+compiled into anything. It bites the moment bin/hb is the
+product: `bin/hb --load src/arch/arm64/icode.f` dies at `b,` on
+ENC-B, and with it 14 battery phases - the capture suite itself,
+hb-build fixtures, chain-census, maki/onnx/asm-collide,
+build-fixpoint fixtures, the snapshot writer.
+WHAT THE FIX LOOKS LIKE (unruled, item-sized, wants its own dot):
+the artifact must carry the window's CHECKER SIGNATURES beside
+its records - the USIGS surface habu1.f keeps and
+BOOT-USIG-END-PTR bounds - and the seed must register them with
+the same window-relative rebase the wids and blob already take.
+That is a new artifact section, VERSION 4, a new merge shift
+class, and a capture-side audit that every window record's
+signature is carried; the acceptance is the reproducer above
+turning green in BOTH engines.
+ALSO OWED WHEN THAT LANDS: the aot-chain-capture suite and every
+other fixture that uses bin/hb as a CAPTURE host needs a capture
+host to use - bin/hb will not be one - and item (6)'s battery has
+to be re-run on the product.
+THE NUMBERS OF RECORD, measured on the final landed build (7 runs
+each, high and low dropped): bare 258.3ms / source-chain 1353.3ms
+/ baked-chain 353.2ms / baked-no-chain 261.1ms. THE BAKE REMOVES
+1000.1 ms PER CHAIN BOOT (-73.9%); the seed costs 2.8 ms on a boot
+that never touches the chain. Install 6.74s -> 16.0s.
+

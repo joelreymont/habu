@@ -96,6 +96,7 @@ SRC_COMMON=(
   src/habu/engine-size.f
   src/habu/fdio.f
   src/habu/aot-decl.f
+  src/habu/aot-ident.f
   src/habu/habu2.f
   src/habu/xref.f
   src/core/generated-declaration-dictionary.f
@@ -270,8 +271,6 @@ emit_src() {
     cat src/habu/aot-arm.f >> "$out"
     printf '\n' >> "$out"
     cat src/habu/aot-capture.f >> "$out"
-    printf '\n' >> "$out"
-    cat src/habu/aot-ident.f >> "$out"
     printf '\n' >> "$out"
     cat src/habu/aot-file.f >> "$out"
     printf '\n' >> "$out"

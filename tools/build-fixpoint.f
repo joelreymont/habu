@@ -910,6 +910,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
    out outu SDC-DECL$ BF-APPEND-SOURCE
+   out outu SDC-IDENT$ BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
@@ -957,7 +958,6 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-DRIVER-IO
    out outu SDC-ARM$ BF-APPEND-SOURCE
    out outu SDC-AOT$ BF-APPEND-SOURCE
-   out outu SDC-IDENT$ BF-APPEND-SOURCE
    out outu SDC-FILE$ BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;
 
@@ -1026,6 +1026,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
    out outu SDC-DECL$ BF-APPEND-SOURCE
+   out outu SDC-IDENT$ BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;
 

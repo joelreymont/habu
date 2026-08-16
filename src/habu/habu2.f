@@ -1387,6 +1387,90 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-LOAD-STDLIB-FILES
    done LBL, ;
 
+\ ---------------------------------------------------------------------------
+\ The merged chain's provide rows.
+\
+\ Baking the chain puts its 43 files' definitions in the engine and tells
+\ src/core/include.f nothing, so a program's `require
+\ src/compiler/native/migrate.f` would read the file a second time and die on a
+\ duplicate definition - the seeded engine would be WORSE for the chain's own
+\ consumers than the source one. These rows are what make that require the
+\ registry no-op it already is for src/core/checker.f.
+\
+\ THE LIST IS THE ARTIFACT'S, so nothing here can disagree with it: the merge
+\ latches the closure the capture recorded and re-derives its digest from disk
+\ (src/habu/aot-file.f RESTORE-CLOSURE, then the chain-digest refusal), and this
+\ reads that same table. An emit with no artifact merged holds none, which is why
+\ the capture host carries no row and is unchanged by construction.
+package PFX-CHAIN
+public
+
+\ The label the table is bound to; LABELS:INIT mints it with the rest.
+variable LTAB
+
+private
+
+\ ONE TABLE, NOT ONE LABEL PER FILE: the file set belongs to the artifact, so its
+\ size is a runtime fact here, and a walk over a terminated table is what the boot
+\ code can express without knowing it.
+\ ASSEMBLED HERE AND EMITTED IN ONE BYTES, - measured, not assumed: every BYTES,
+\ pads to the four-byte grain, so a path per call leaves up to three zero bytes
+\ between rows and the walk reads the first of them as the table's end. The first
+\ build of this table marked one file of the 43 for exactly that reason.
+\ The buffer is what AOT-IDENT's own two bounds allow, so it cannot be the
+\ narrower of two budgets.
+AOT-IDENT:MAX AOT-IDENT:PATH-CAP 1 + * 1 + constant TAB-CAP
+create TAB TAB-CAP allot
+variable TAB-U
+
+: TAB+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a  TAB TAB-U @ +  u BYTE-COPY
+   0  TAB TAB-U @ + u +  c!
+   TAB-U @ u + 1 + TAB-U ! ;
+
+\ Every path zero-terminated, closed by an empty one.
+: TAB! ( -- )
+   0 TAB-U !
+   AOT-IDENT:COUNT 0 ?do i AOT-IDENT:PATH$ TAB+ loop
+   0 TAB TAB-U @ + c!
+   TAB-U @ 1 + TAB-U ! ;
+
+\ LAPPPROV leaves x12 on the terminator of the path it just wrote (its walk stops
+\ at the zero byte without stepping over it), so one ADDI is the whole step to the
+\ next path and an empty path ends the table.
+: WALK ( -- )
+   LBL LBL {: loop:label done:label :}
+   12 LTAB LABEL@ ADR,
+   loop LBL,
+      4 12 0 LDRB,
+      4 done CBZ,
+      LAPPPROV LABEL@ BL,
+      12 12 1 ADDI,
+      loop B,
+   done LBL, ;
+
+public
+
+\ The table itself, emitted with the other baked path strings.
+: TABLE ( -- )
+   AOT-IDENT:COUNT 0= if exit then
+   TAB!
+   LTAB LABEL@ LBL,
+   TAB TAB-U @ BYTES, ;
+
+\ Cold boots only, like the stdlib rows above and for the same reason: a snapshot
+\ restores the registry it was baked with, and the dev snapshot's keep surface
+\ (tools/build-fixpoint.f BF-APPEND-SNAP-KEEP) carries no chain at all.
+: ROWS ( -- )
+   AOT-IDENT:COUNT 0= if exit then
+   LBL {: done:label :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   WALK
+   done LBL, ;
+
+;package
+
 : PFX-PROVIDE-FILES ( -- )
    PFX-PROVIDE-CHECKER-FILES
    PFX-PROVIDE-DECL-FILES
@@ -1601,6 +1685,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
       PFX-PROVIDE-FILES
       PFX-LOAD-INTMARK-COLD                        \ LAST prefix definition/marking pass
       PFX-LOAD-TOPROW-COLD                         \ tier-1 top-row tracker: armed on the first user token
+      PFX-CHAIN:ROWS                               \ the merged chain's files, ahead of the freeze
       EMIT-REQUIRE-FREEZE-TOKEN                    \ engine-provided path count, same boundary
       EMIT-SEAL-CAPTURE-TOKEN                      \ watermark token at the true engine-prefix end
       12 SP 8 LDR,  12 noseal CBNZ,
@@ -1860,7 +1945,8 @@ variable LKWTRUSTDECL
    LCHKSNAPTOKEN LABEL@ LBL,
    s" ' CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
    NL-KW 1 BYTES,
-   PFX-PATH-FILES ;
+   PFX-PATH-FILES
+   PFX-CHAIN:TABLE ;
 
 ;package
 
@@ -8577,6 +8663,7 @@ package LABELS
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
    LBL LPCADTYPES !  LBL LPCADARITH !  LBL LPSTRING !
    LBL LPMEMORY !  LBL LPVECTOR !
+   LBL PFX-CHAIN:LTAB !
    LBL LCHKSNAPTOKEN ! ;
 
 : JIT ( -- )

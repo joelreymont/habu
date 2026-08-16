@@ -21,11 +21,14 @@
 \               which the reader re-derives from disk) and aot-file.f (the
 \               artifact reader itself, which fills the same AOT-BUF buffers a
 \               host-side capture would).
-\               aot-decl.f is a COMMON prefix source - it loads in EVERY build,
-\               immediately before habu2.f, not only in the stdin one - and it is
-\               listed here because both stdin source builders must still name it
-\               and this lint is what proves they do. Its index is a manifest
-\               slot, not a load position. include.f is NOT host-needed:
+\               aot-decl.f and aot-ident.f are COMMON prefix sources - they load
+\               in EVERY build, immediately before habu2.f, not only in the stdin
+\               one - and they are listed here because both stdin source builders
+\               must still name them and this lint is what proves they do. Their
+\               indexes are manifest slots, not load positions. aot-ident.f is
+\               there because habu2.f reads it: a merged artifact's closure is
+\               what the cold prefix marks `provided`, and the emitter has to see
+\               that list before it writes the rows. include.f is NOT host-needed:
 \               habu2.f EMIT-COLD-PREFIX bakes its source (read from disk) into
 \               every engine, so `require`/`include` exist at runtime without
 \               host compilation.

@@ -84,6 +84,7 @@ variable SL-DRIVER-U
    s" src/habu/jit.f src/habu/engine-size.f " type
    s" src/habu/fdio.f " type
    SDC-DECL$ type space
+   SDC-IDENT$ type space
    s" src/habu/habu2.f src/habu/xref.f " type
    s" src/os/script-argv.f " type
    s" src/habu/driver-io.f " type ;
@@ -95,7 +96,7 @@ variable SL-DRIVER-U
 \ manifest-sourced so this canonical order cannot drift from the real build.
 : SL-CLOSURE-EXTRA ( -- )
    SL-STDIN? if SDC-ARM$ type space SDC-AOT$ type space then
-   SL-STDIN? if SDC-IDENT$ type space SDC-FILE$ type space then ;
+   SL-STDIN? if SDC-FILE$ type space then ;
 
 : SL-DRIVER-PATH ( -- )
    SL-STDIN? if SDC-DRIVER$ type exit then
