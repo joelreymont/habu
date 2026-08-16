@@ -842,9 +842,22 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
 \ move and `FILE-SIZE bin/hb` is still 165367 (measured).
 \ The Linux rows below are owed this +132 as well.
-131304 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-16 the breakpoint handler's return-address line (dot
+\ habu-merged-engine-nmigrate-c970bf04), measured the same way against the
+\ four-layer-gate build. Two rows move:
+\   runtime          9252 -> 9296 (+44): C-BP-PRINT-HIT reads the interrupted
+\     x30 out of the same mcontext the pc comes from and prints it under its own
+\     header, so a breakpoint in a seeded engine can name its caller.
+\   aot-seed        31404 -> 31408 (+4): the "habu-bp-lr:" bytes, emitted with
+\     the handler's other message labels.
+\   container/text-pad 12056 -> 12008 (-48): the pad absorbs the whole net.
+\ CODELEN 131304 -> 131352 (+48), floor distance 4328 -> 4376. Inside the same
+\ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
+\ move and `FILE-SIZE bin/hb` is still 165367 (measured).
+\ The Linux rows below are owed this +48 as well.
+131352 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-4328 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+4376 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

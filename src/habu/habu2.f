@@ -453,6 +453,26 @@ s" c-mctx-pc>r10" s" --" TRUST
    12 9 MACOS-MCTX-X19-OFF LDR, ;
 s" c-mctx-x19>r12" s" --" TRUST
 
+\ ---- naming a breakpoint's caller --------------------------------------------
+\ The three pieces of the `habu-bp-lr:` line: its label, its bytes, and the read
+\ that gets the interrupted thread's x30 out of the signal mcontext. In a package
+\ because they are new - the label variables and message buffers around them are
+\ this file's recorded packaging debt and a new name has no reason to join it.
+\ MEASURED, NOT INFERRED: this handler's own x30 is long gone by the time the
+\ first number reaches fd 2 (LHEX is a BL), so the value has to come from the
+\ same mcontext the pc does.
+package BP-CALLER
+public
+variable LBPLH
+create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 58 c, 10 c,   \ habu-bp-lr:\n
+12 constant BPL-LEN
+
+: C-MCTX-LR>R9 ( -- )
+   HB-TARGET-LINUX? IF 9 9 LINUX-MCTX-LR-OFF LDR, exit THEN
+   9 9 MACOS-MCTX-LR-OFF LDR, ;
+s" BP-CALLER:C-MCTX-LR>R9" s" --" TRUST
+;package
+
 : C-MCTX-SP-16! ( -- )
    HB-TARGET-LINUX? IF
       12 9 LINUX-MCTX-SP-OFF LDR,  12 12 16 SUBI,  12 9 LINUX-MCTX-SP-OFF STR, exit
@@ -475,11 +495,20 @@ s" c-mctx-pc+4!" s" --" TRUST
    15 8 24 LDR,  12 15 1 LSRI, ;
 s" c-bp-hit-save" s" --" TRUST
 
+\ WHO CALLED THIS, which is the question a breakpoint in a seeded engine is
+\ usually asked and could not answer. The pc and the top of the data stack say
+\ where execution is and what it is holding; the interrupted x30 says where it
+\ came back to, and tools/code-owner.f turns that into a record name. It is read
+\ out of the same mcontext the pc comes from, so it is the value the trapped
+\ thread held - not this handler's own link register, which the BL to LHEX has
+\ already overwritten by the time the first number is printed.
 : C-BP-PRINT-HIT ( -- )
    1 LBPH LABEL@ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,
    9 SP 32 LDR,  LHEX LABEL@ BL,
    9 SP 24 LDR,  C-MCTX-X19>R12
    9 12 8 SUBI,  9 9 0 LDR,  LHEX LABEL@ BL,
+   1 BP-CALLER:LBPLH LABEL@ ADR,  0 2 MOVZ,  2 BP-CALLER:BPL-LEN MOVZ,  NR-WRITE SYS,
+   9 SP 24 LDR,  BP-CALLER:C-MCTX-LR>R9  LHEX LABEL@ BL,
    1 LBPSH LABEL@ ADR,  0 2 MOVZ,  2 15 MOVZ,  NR-WRITE SYS, ;
 s" c-bp-print-hit" s" --" TRUST
 
@@ -579,6 +608,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    tno LBL,
    LCRASHH LABEL@ B,
    LBPH LABEL@ LBL,  BPH-KW 9 BYTES,
+   BP-CALLER:LBPLH LABEL@ LBL, BP-CALLER:BPL-KW BP-CALLER:BPL-LEN BYTES,
    LBPSH LABEL@ LBL, BPS-KW 15 BYTES,
    LBPWH LABEL@ LBL, BPW-KW 15 BYTES,
    LBADLOC LABEL@ LBL, BADLOC-KW $50 BYTES,
@@ -8362,7 +8392,7 @@ package LABELS
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
-   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
    LBL LSRCRD !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !

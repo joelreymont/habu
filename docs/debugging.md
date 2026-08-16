@@ -41,10 +41,13 @@ evaluator.
 ## `BP+` / `BP-` — one-shot breakpoints on compiled words (REPL)
 `src/habu/debug.f` (baked into `bin/hb`): `' WORD BP+` plants a `BRK #0` at the
 word's entry. Hitting it prints `habu-bp:` + the pc + the data-stack top, then
-prints `habu-bp-stack:` with each live data-stack cell and `habu-bp-watch:` with
-watched address/value pairs, then restores the original instruction and
-**resumes** the word; the breakpoint is
-one-shot. `' WORD BP*` is **persistent** (fires every call — the handler
+`habu-bp-lr:` + the **interrupted thread's x30** — the address the word will
+return to, which is what names its caller — then `habu-bp-stack:` with each live
+data-stack cell and `habu-bp-watch:` with watched address/value pairs, then
+restores the original instruction and **resumes** the word; the breakpoint is
+one-shot. Feed the `habu-bp-lr:` value to `tools/code-owner.f` (below) to turn it
+into a caller's name; that pair is the only way to answer "who called this?" in a
+seeded engine, because lldb cannot plant a breakpoint in the JIT region at all. `' WORD BP*` is **persistent** (fires every call — the handler
 emulates the entry prologue `sub sp,#16` by adjusting the ucontext sp/pc and
 leaves the BRK planted, so no single-step is needed). `N ' WORD BPN` is
 persistent but **silent for the first N hits** (skip-count). `BP-` removes;
@@ -74,6 +77,30 @@ bin/hb --load lib/errors.f lib/string.f src/arch/arm64/disasm.f tools/imagedisas
 bin/hb --load tools/imgdump.f -- bin/hb
 bin/hb --load tools/imgdump.f -- old-hb new-hb
 ```
+
+## Which word owns this address — `tools/code-owner.f`
+
+A debugger stop, a crash dump and a breakpoint all hand back raw addresses in the
+JIT region, where no external symbol table reaches: `nm` and lldb see the loaded
+`__text` and nothing else. The dictionary has the answer, because every record
+carries its routine's start and length.
+
+```sh
+<engine> --load tools/code-owner.f tools/code-owner-main.f -- '$181954'
+```
+
+The argument is a **region offset**, not an address — ASLR moves the region every
+boot, so an absolute address caught in one process means nothing in the next, and
+`region-off=` is what one run can hand another. It prints every record whose span
+contains the address (an `EXPORT` alias and a republication both make that more
+than one) with the offset into each, or says plainly that no record owns it.
+`CODE-OWNER:AT.` takes a live address for use inside a larger probe, and
+`CODE-OWNER:AT` answers the count so a caller can tell "no owner" from silence.
+
+It must run inside the engine under study, for the same reason
+`tools/snap-heap-owner.f` must: that is the only process where those records
+exist. This is what turned an anonymous return address into `owner=PATHZ off=384`
+during the merged-engine crash hunt (dot habu-merged-engine-nmigrate-c970bf04).
 
 ## Dictionary / xref inspection
 Semantic dictionary inspection is a live-image Forth surface, not external text

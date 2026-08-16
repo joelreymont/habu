@@ -7015,3 +7015,22 @@ leg.
 register, so parking one of your own values in x13 across
 LPROTWIDQ reads as carried-across even when the later read is the
 callee's answer. Use a register the call does not own.
+
+## 2026-08-16 - the caller-naming pair (bake-chain-10, dot c970bf04)
+
+- **lldb cannot stop a seeded engine, so the engine's own tools have
+  to.** Neither software nor hardware breakpoints fire on these
+  images: a breakpoint planted on `c!`'s `__text` entry never fired
+  while `c!` demonstrably executed, and `-H` addresses bind into
+  `dyld`. What works is the engine's own `BP+`/`BP*`/`BPN`, a raw
+  `BRK #0` planted with `patch32` (an unregistered BRK falls through
+  LTRAPH to the crash dump, which prints every register), and
+  `tools/code-owner.f` to turn the addresses back into names. Reach
+  for those first and do not spend a lane on the debugger.
+- **A stale `lr` is not a caller.** At a trap, x30 names the last BL
+  the thread executed, which is the caller only if the routine was
+  entered by a BL and has not called anything since. Confirm entry
+  first - a BRK at the entry that does not fire while one further in
+  does is proof that control arrived mid-body - or the register sends
+  you to a word whose call targets are byte-identical to the working
+  build.
