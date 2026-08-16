@@ -228,3 +228,22 @@ STILL OWED: the artifact's signature + six registry sections at VERSION
 4, the seed emit and the CHECK! retry, the remaining tests with
 their mutations, increment 3's rebase and battery, and a control
 build attributing the certified 4474 -> 4501 delta.
+
+REGISTRY TIMING RULING 2026-08-17 (bake-chain-20's blocker; the
+refusal is CORRECT, the lazy install's promise is not): the
+TYPE-FAMILY REGISTRY installs EAGERLY at the seed point -
+prefix-stream end, before any user token - where base equality
+is true BY CONSTRUCTION and no rollback frame is open (the
+install's own comment states why it latched nowhere; the seed
+point is the answer to that comment's stated reason). The
+SIGNATURE POOL stays lazy - the laziness was priced for 124KB
+of parse-heavy text and 6798 parses, not for 46KB of
+pointer-free rows. Id remap at intake stays REFUSED (ruled at
+the route decision). Regression: the three-case fixture (no
+family / one NEWTYPE ahead / four ahead - all green after) plus
+a registered case declaring a family THEN naming a chain word;
+mutations: eager install dropped reds the fixture; the
+base-equality refusal must STAY for a genuinely foreign base
+(the forge case keeps it live). Increment C's acceptance gap is
+recorded: its family-typed reproducer used a chain family but
+never declared one ahead - only the product could see this.
