@@ -1309,6 +1309,10 @@ SUITE aot-chain-capture
    test/aot-chain-capture-suite.f
 ;SUITE
 
+SUITE aot-sig-pool
+   test/aot-sig-pool-suite.f
+;SUITE
+
 SUITE does-clause-record
    test/does-clause-record.f
 ;SUITE

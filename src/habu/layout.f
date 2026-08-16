@@ -519,6 +519,30 @@ $27E0 constant RLO
 $47C0 constant RHI
 $47C8 constant CF
 ;package
+
+\ AOT-SIG:POOL-CELL / AOT-SIG:LEN-CELL: where the baked SIGNATURE POOL is and how
+\ long it is, published by the seed (habu2.f EM-SEED-AOT) at the moment it
+\ registers the captured records, and read by the checker's lazy intake when a
+\ definition names a seeded word the checker has no effect for. Zero until a seed
+\ runs, which reads as "no pool" and leaves the intake a no-op - so an engine with
+\ nothing captured behaves exactly as it did.
+\ THE POOL IS NOT COPIED ANYWHERE. It is __text, mapped for the life of the
+\ process, and an offset into it means the same thing at every boot; a copy would
+\ buy nothing and cost the whole pool's DATA.
+\ WHERE THEY GO: the next two cells of the same unclaimed run PROT:RHI/CF took,
+\ $47D0/$47D8, swept for a claimant across src lib tools test maki bootstrap
+\ before taking them, below $7FF8 and below DATA-START for the reasons above.
+\ THE CHECKER MIRRORS THESE TWO NUMBERS (src/core/checker.f CK-AOT-SIG-*-OFF)
+\ because src/core/checker.f loads BEFORE this file in every host that has both -
+\ the same reason CK-SEAL-LATCH-OFF is mirrored there. The mirror is not left to
+\ prose: test/aot-sig-pool-suite.f reads both names out of a booted engine, where
+\ both are live, and refuses a disagreement.
+package AOT-SIG
+public
+$47D0 constant POOL-CELL
+$47D8 constant LEN-CELL
+;package
+
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (LEVALREC,
 \ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
 \ cannot name emit-time labels) can branch to it. It must sit in a DATA slot no

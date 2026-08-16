@@ -51,9 +51,18 @@ public
 \ copies pre-window bodies instead of calling them), which test/aot-band-lib.f
 \ OPEN-UNARMED uses to put a pre-window DATA literal in front of the capture's
 \ DATA audit.
+\
+\ THE CHECKER'S SIGNATURE CAPTURE IS THE SAME FACT, so it is armed from the same
+\ call rather than from a second one. A window is open exactly when these two
+\ cells name it, and the rows the checker collects while it is open are the
+\ signatures of the words inside it; two independent arming calls would let a
+\ capture take a window's records with another window's signatures. Disarming
+\ (0 0) also clears the collected rows, so a second window starts empty.
 : OPEN ( n n -- ) {: b0:n d0:n :}
    d0 LIVE AOT-WINDOW:D0-CELL + CELL!
-   b0 LIVE AOT-WINDOW:B0-CELL + CELL! ;
+   b0 LIVE AOT-WINDOW:B0-CELL + CELL!
+   b0 0= d0 0= and if CHECKER-ASIG-DISARM exit then
+   CHECKER-ASIG-ARM ;
 
 \ The engine's next wordlist id. It is read here, beside the window's other base
 \ cursors, because every producer needs it at the same two moments they need those

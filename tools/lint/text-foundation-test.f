@@ -972,9 +972,20 @@ variable REG-I
    \ the checker's value, which never reaches the native chain - so without an
    \ axiom the chain had to hold the registry's declared width against the bundle
    \ its value vector really carried and refuse the disagreement by name.
+   \ It was 376 before the baked signature pool (dot
+   \ habu-seeded-words-invisible-c7505a49) added the eight rows of its capture
+   \ surface: `CHECKER-ASIG-ARM` and `CHECKER-ASIG-DISARM`, which
+   \ src/habu/aot-arm.f turns on and off with the capture window it already owns;
+   \ `CHECKER-ASIG-ARMED?`; and the five readers src/habu/aot-capture.f copies the
+   \ store out through - `CHECKER-ASIG-N`, `CHECKER-ASIG-ROW-BYTES`,
+   \ `CHECKER-ASIG-STR-BYTES`, `CHECKER-ASIG-ROW-C@` and `CHECKER-ASIG-STR-C@`.
+   \ They are boot-prefix Habu words rather than engine primitives, on the same
+   \ terms as `CTL-DEAD?` above: the file's own definitions compile with the hook
+   \ off, so a checked caller outside it has no record to resolve against and the
+   \ axiom restates a signature the definition already carries.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 376 ASSERT=
+   REG-COUNT 384 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

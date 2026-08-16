@@ -4879,6 +4879,261 @@ BADSIG-DEFAULT
 : USIG-BAD-FOREIGN? ( ptr u8 n -- bool )   \ not the definition CHECK just handled
    NMA @ NMU @ CORE-STR= 0= ;
 
+\ ---- the AOT signature pool: the capture side --------------------------------
+\
+\ WHAT IT COLLECTS. One row per row that enters USIGS, carrying the SIGNATURE
+\ TEXT that built it and the key USIGS itself is under - the checker's own symbol
+\ row, (package, visibility, name), read back from CHECKER-REC-SYM. Re-deriving
+\ that key from the dictionary instead would get a package word wrong in exactly
+\ the way dot habu-bind-a-bare-69c2a5fd already cost this tree once.
+\
+\ WHERE THE PRODUCERS ARE, and how that set was arrived at. E-ADD-EFFECT is the
+\ one creator of a user record, but its arguments are ROWS, and rendering them
+\ back is not faithful: REND-SIG renders BROW and DCUR only, so a signature with
+\ a return-stack clause ( R [ ... ] ) would come back without it. So the text is
+\ taken where the text exists, at the three words that reach E-ADD-EFFECT:
+\   USIG-ADD             every row built from TEXT - a declared signature, a
+\                        TRUST row, TRUSTED:, `defer NAME ( E )`, and the typed
+\                        storage declarers all arrive here.
+\   render.f REC-SIG     the only row built from an INFERRED effect; the text is
+\                        REND-SIG's, which that word used to render and drop.
+\   CHECKER-EXPORT       re-publishes an existing record under a package tail and
+\                        has no text of its own, so the SOURCE row's text is
+\                        copied - exact, and no render.
+\ THAT LIST IS NOT TRUSTED, IT IS GATED. src/habu/aot-capture.f's audit walks the
+\ finished window and refuses by name if any checked record has no row here, so a
+\ fourth producer stops a capture instead of baking an engine whose checker
+\ cannot see one of its own words. The list above is what the audit measured to
+\ zero over the compiler chain; the first two alone left 17 records behind
+\ (eleven TRUSTED:, one defer, three typed-storage cells, two EXPORTs).
+\
+\ IT IS ARMED, NOT ALWAYS ON. Nothing is mapped and nothing is copied until ARM
+\ runs - src/habu/aot-arm.f OPEN arms it when a capture window opens and disarms
+\ it when the window shuts. Every other boot and every other build pays the
+\ variables below and not one byte more.
+\
+\ STRINGS ARE INTERNED ONLY WHERE INTERNING PAYS. A signature text and a package
+\ name repeat across thousands of definitions and are looked up in the distinct
+\ list before they are appended; a word NAME is very nearly unique (measured over
+\ the compiler chain: 7556 rows, 120,896 bytes of them, against 123,979 bytes of
+\ string), so a name is appended without the scan and never joins the list. That
+\ is what keeps the scan bounded by the distinct count instead of by the row
+\ count.
+\
+\ DUPLICATES ARE LEGAL AND NEWEST WINS, which is USIGS' own rule: a name recorded
+\ twice in one window leaves two rows and the intake takes the later, exactly as
+\ USIG-NEWEST does.
+\
+\ THE READER TAKES BYTES, NOT A SPAN. src/habu/aot-capture.f copies the two
+\ arenas out through CHECKER-ASIG-ROW-C@ / CHECKER-ASIG-STR-C@ rather than being
+\ handed a raw pointer, which is what lets this store stay an ordinary checked
+\ `ptr a` arena with no trusted role cast of its own.
+
+$10000 constant ASIG-ROW-INIT           \ bytes; grows geometrically
+$40000 constant ASIG-STR-INIT           \ bytes
+$800 constant ASIG-DIST-INIT            \ cells
+$2000 constant ASIG-LAST-INIT           \ cells, indexed by symbol id
+16 constant ASIG-ROW                    \ name-off, sig-off, pkg-off, vis - four u32
+$0 constant ASIG.NAME
+$4 constant ASIG.SIG
+$8 constant ASIG.PKG
+$C constant ASIG.VIS
+$FFFF constant ASIG-STR-MAX             \ what a u16 length prefix can carry
+
+variable ASIG-ARMED     variable ASIG-MAPPED
+variable ASIG-ROW-U     variable ASIG-ROW-CAP-V
+variable ASIG-STR-U     variable ASIG-STR-CAP-V
+variable ASIG-DIST-N    variable ASIG-DIST-CAP-V
+variable ASIG-LAST-CAP-V
+variable ASIG-I         variable ASIG-J
+PTR-VARIABLE ASIG-ROW-P
+PTR-VARIABLE ASIG-STR-P
+PTR-VARIABLE ASIG-DIST-P
+PTR-VARIABLE ASIG-LAST-P
+
+: CHECKER-ASIG-ARMED? ( -- bool ) ASIG-ARMED @ 0 <> ;
+
+: ASIG-U16! ( n n -- ) {: v:n at:n :}
+   v $FF and  ASIG-STR-P @ at + c!
+   v 8 rshift $FF and  ASIG-STR-P @ at 1 + + c! ;
+
+: ASIG-U16@ ( n -- n ) {: at:n :}
+   ASIG-STR-P @ at + c@  ASIG-STR-P @ at 1 + + c@ 8 lshift or ;
+
+: ASIG-ROW-U32! ( n n -- ) {: v:n at:n :}
+   4 0 ?do  v i 8 * rshift $FF and  ASIG-ROW-P @ at i + + c!  loop ;
+
+\ The newest row for a symbol, as a row offset + 1, indexed by symbol id. It is
+\ what makes both the duplicate test and CHECKER-ASIG-EXPORT constant-time; a
+\ backward scan for the same answer is quadratic in the row count, and the chain
+\ writes 7556 of them.
+: ASIG-LAST-ROOM ( n -- ) {: sym:n :}
+   sym ASIG-LAST-CAP-V @ < IF exit THEN
+   ASIG-LAST-CAP-V @ BEGIN dup sym <= WHILE 2 * REPEAT {: nc:n :}
+   ASIG-LAST-P @ ASIG-LAST-CAP-V @ cells nc cells ARENA-BYTES-GROW ASIG-LAST-P !
+   ASIG-LAST-P @ ASIG-LAST-CAP-V @ nc ARENA-CELLS-ZERO
+   nc ASIG-LAST-CAP-V ! ;
+
+: ASIG-LAST@ ( n -- n ) {: sym:n :}
+   sym ASIG-LAST-CAP-V @ >= IF 0 EXIT THEN
+   ASIG-LAST-P @ sym cells + @ ;
+
+: ASIG-LAST! ( n n -- ) {: v:n sym:n :}
+   sym ASIG-LAST-ROOM
+   v ASIG-LAST-P @ sym cells + ! ;
+
+\ Most significant byte first into the accumulator, so the shift is the running
+\ value's and not the byte's - the same shape aot-file.f U64@ uses, and getting
+\ it the other way round silently reads a different number.
+: ASIG-ROW-U32@ ( n -- n ) {: at:n :}
+   0  4 0 ?do  8 lshift  ASIG-ROW-P @ at 3 i - + + c@ or  loop ;
+
+: ASIG-ROW-ROOM ( -- )
+   ASIG-ROW-U @ ASIG-ROW + ASIG-ROW-CAP-V @ <= IF exit THEN
+   ASIG-ROW-P @ ASIG-ROW-CAP-V @ dup 2 * {: old:ptr oc:n nc:n :}
+   old oc nc ARENA-BYTES-GROW ASIG-ROW-P !
+   nc ASIG-ROW-CAP-V ! ;
+
+: ASIG-STR-ROOM ( n -- ) {: need:n :}
+   ASIG-STR-U @ need + ASIG-STR-CAP-V @ <= IF exit THEN
+   ASIG-STR-P @ ASIG-STR-CAP-V @ {: old:ptr oc:n :}
+   oc BEGIN dup ASIG-STR-U @ need + < WHILE 2 * REPEAT {: nc:n :}
+   old oc nc ARENA-BYTES-GROW ASIG-STR-P !
+   nc ASIG-STR-CAP-V ! ;
+
+: ASIG-DIST-ROOM ( -- )
+   ASIG-DIST-N @ ASIG-DIST-CAP-V @ < IF exit THEN
+   ASIG-DIST-P @ ASIG-DIST-CAP-V @ cells dup 2 * {: old:ptr ob:n nb:n :}
+   old ob nb ARENA-BYTES-GROW ASIG-DIST-P !
+   ASIG-DIST-CAP-V @ 2 * ASIG-DIST-CAP-V ! ;
+
+\ Append `[len u16][bytes]` and answer the record's own offset.
+: ASIG-STR+ ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u ASIG-STR-MAX > IF
+      s" checker: a signature-pool string is longer than the pool's length field" 76 die
+   THEN
+   u 2 + ASIG-STR-ROOM
+   ASIG-STR-U @ {: at:n :}
+   u at ASIG-U16!
+   0 ASIG-I !
+   BEGIN ASIG-I @ u < WHILE
+      a ASIG-I @ + c@  ASIG-STR-P @ at 2 + ASIG-I @ + + c!
+      ASIG-I @ 1 + ASIG-I !
+   REPEAT
+   at u + 2 + ASIG-STR-U !
+   at ;
+
+: ASIG-STR-AT= ( ptr u8 n n -- bool ) {: a:ptr u:n at:n :}
+   at ASIG-U16@ u <> IF RES-FALSE EXIT THEN
+   0 ASIG-J !
+   BEGIN ASIG-J @ u < WHILE
+      a ASIG-J @ + c@  ASIG-STR-P @ at 2 + ASIG-J @ + + c@ <> IF RES-FALSE EXIT THEN
+      ASIG-J @ 1 + ASIG-J !
+   REPEAT
+   RES-TRUE ;
+
+\ Interned append: scan the distinct list, and join it on a miss. Only the two
+\ repeating classes come through here.
+: ASIG-STR-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 ASIG-I !
+   BEGIN ASIG-I @ ASIG-DIST-N @ < WHILE
+      ASIG-DIST-P @ ASIG-I @ cells + @ {: at:n :}
+      a u at ASIG-STR-AT= IF at EXIT THEN
+      ASIG-I @ 1 + ASIG-I !
+   REPEAT
+   a u ASIG-STR+ {: at2:n :}
+   ASIG-DIST-ROOM
+   at2 ASIG-DIST-P @ ASIG-DIST-N @ cells + !
+   ASIG-DIST-N @ 1 + ASIG-DIST-N !
+   at2 ;
+
+: ASIG-ROW+ ( n n n n -- ) {: noff:n soff:n poff:n vis:n :}
+   ASIG-ROW-ROOM
+   ASIG-ROW-U @ {: at:n :}
+   noff at ASIG.NAME + ASIG-ROW-U32!
+   soff at ASIG.SIG  + ASIG-ROW-U32!
+   poff at ASIG.PKG  + ASIG-ROW-U32!
+   vis  at ASIG.VIS  + ASIG-ROW-U32!
+   at ASIG-ROW + ASIG-ROW-U ! ;
+
+\ Write the row and make it the symbol's newest. Both producers end here: they
+\ differ only in where the signature offset comes from.
+: ASIG-EMIT ( n n -- ) {: sym:n soff:n :}
+   sym SYM-NAME$ ASIG-STR+ {: noff:n :}
+   sym SYM-PKG$ ASIG-STR-INTERN {: poff:n :}
+   ASIG-ROW-U @ {: at:n :}
+   noff soff poff  sym SYM-ROW SYM.VIS @  ASIG-ROW+
+   at 1 + sym ASIG-LAST! ;
+
+\ Does the symbol's newest row already carry this exact signature text? The
+\ texts are interned, so identity of the offset is identity of the text.
+: ASIG-SAME-AS-NEWEST? ( n n -- bool ) {: sym:n soff:n :}
+   sym ASIG-LAST@ {: prev:n :}
+   prev 0= IF RES-FALSE EXIT THEN
+   prev 1 - ASIG.SIG + ASIG-ROW-U32@ soff = ;
+
+\ The producer for a row that arrives WITH its text. `sa su` is that text; the
+\ key comes from the symbol row the record was just written under.
+\
+\ THE SAME ROW ARRIVES TWICE AND ONLY ONE IS KEPT. A declared definition reaches
+\ USIG-ADD once when CHECK certifies it and again when the engine's publish tail
+\ re-records the declared signature through TRUST, so keeping both gave 13,974
+\ rows for 6798 words. A row whose symbol's newest row already carries the same
+\ text is that replay and is dropped. A genuine REDEFINITION still appends and
+\ still wins by being later - measured over the compiler chain, 758 of the 7556
+\ rows are a second or later row for their symbol, and every pair looked at is a
+\ data record recorded `--` at definition time and `-- ptr a` when the engine
+\ auto-trusts it at publish. Newest-wins is what makes that the live answer.
+: CHECKER-ASIG-CAPTURE ( ptr u8 n -- ) {: sa:ptr su:n :}
+   CHECKER-ASIG-ARMED? 0= IF exit THEN
+   CHECKER-REC-SYM @ {: sym:n :}
+   sym 0= IF exit THEN
+   sa su ASIG-STR-INTERN {: soff:n :}
+   sym soff ASIG-SAME-AS-NEWEST? IF exit THEN
+   sym soff ASIG-EMIT ;
+
+\ CHECKER-EXPORT has no signature text of its own: it re-publishes a record that
+\ already exists under a package's public tail. Copying the SOURCE row's text is
+\ exact where a re-render would not be, and a source with no row is a missing
+\ producer rather than something to guess at - the capture audit names it.
+: CHECKER-ASIG-EXPORT ( n -- ) {: src:n :}
+   CHECKER-ASIG-ARMED? 0= IF exit THEN
+   CHECKER-REC-SYM @ {: sym:n :}
+   sym 0= src 0= or IF exit THEN
+   src ASIG-LAST@ {: prev:n :}
+   prev 0= IF exit THEN
+   prev 1 - ASIG.SIG + ASIG-ROW-U32@ {: soff:n :}
+   sym soff ASIG-SAME-AS-NEWEST? IF exit THEN
+   sym soff ASIG-EMIT ;
+
+: CHECKER-ASIG-RESET ( -- )
+   0 ASIG-ROW-U !  0 ASIG-STR-U !  0 ASIG-DIST-N !
+   ASIG-LAST-P @ 0 ASIG-LAST-CAP-V @ ARENA-CELLS-ZERO ;
+
+: CHECKER-ASIG-ARM ( -- )
+   ASIG-MAPPED @ 0= IF
+      ASIG-ROW-INIT ARENA-ALLOC ASIG-ROW-P !   ASIG-ROW-INIT ASIG-ROW-CAP-V !
+      ASIG-STR-INIT ARENA-ALLOC ASIG-STR-P !   ASIG-STR-INIT ASIG-STR-CAP-V !
+      ASIG-DIST-INIT cells ARENA-ALLOC ASIG-DIST-P !  ASIG-DIST-INIT ASIG-DIST-CAP-V !
+      ASIG-LAST-INIT cells ARENA-ALLOC ASIG-LAST-P !  ASIG-LAST-INIT ASIG-LAST-CAP-V !
+      -1 ASIG-MAPPED !
+   THEN
+   CHECKER-ASIG-RESET
+   -1 ASIG-ARMED ! ;
+
+: CHECKER-ASIG-DISARM ( -- ) 0 ASIG-ARMED ! ;
+
+\ The read surface src/habu/aot-capture.f copies the pool out through.
+: CHECKER-ASIG-N ( -- n ) ASIG-ROW-U @ ASIG-ROW / ;
+: CHECKER-ASIG-ROW-BYTES ( -- n ) ASIG-ROW-U @ ;
+: CHECKER-ASIG-STR-BYTES ( -- n ) ASIG-STR-U @ ;
+: CHECKER-ASIG-ROW-C@ ( n -- n ) {: at:n :}
+   at 0 < at ASIG-ROW-U @ >= or IF s" checker: signature-pool row read out of range" 76 die THEN
+   ASIG-ROW-P @ at + c@ ;
+: CHECKER-ASIG-STR-C@ ( n -- n ) {: at:n :}
+   at 0 < at ASIG-STR-U @ >= or IF s" checker: signature-pool string read out of range" 76 die THEN
+   ASIG-STR-P @ at + c@ ;
+
 : USIG-ADD-BAD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
@@ -4895,7 +5150,8 @@ BADSIG-DEFAULT
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW
    SGBAD @ if 2drop 2drop sa su na nu USIG-ADD-BAD exit then
-   SGHASR @ E-ADD-EFFECT ;
+   SGHASR @ E-ADD-EFFECT
+   sa su CHECKER-ASIG-CAPTURE ;
 
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
@@ -5587,6 +5843,22 @@ PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ moment its file gained a package (dot habu-checker-defined-answers-1504bbde).
 PRIM: CHECKER-DEFINED-HERE? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-RESOLVES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+\ The AOT signature pool's own surface, for the same reason every axiom above it
+\ exists: this file's definitions are compiled with the hook off, so a checked
+\ caller outside it has no record to resolve against. The two callers are
+\ src/habu/aot-arm.f, which arms and disarms the store with the capture window it
+\ already owns, and src/habu/aot-capture.f, which copies the store out a byte at
+\ a time. Each word below is ordinary checked-typeable Habu; the axiom restates
+\ the signature it already carries and grants no capability the definition does
+\ not have.
+PRIM: CHECKER-ASIG-ARM PRIM;
+PRIM: CHECKER-ASIG-DISARM PRIM;
+PRIM: CHECKER-ASIG-ARMED? PE-F PE-OUT PRIM;
+PRIM: CHECKER-ASIG-N PE-N PE-OUT PRIM;
+PRIM: CHECKER-ASIG-ROW-BYTES PE-N PE-OUT PRIM;
+PRIM: CHECKER-ASIG-STR-BYTES PE-N PE-OUT PRIM;
+PRIM: CHECKER-ASIG-ROW-C@ PE-N PE-IN PE-N PE-OUT PRIM;
+PRIM: CHECKER-ASIG-STR-C@ PE-N PE-IN PE-N PE-OUT PRIM;
 \ CAST-PEND! ( name$ -- ) arms the one-shot cast-certification window (defined
 \ near CTOR-PEND below). The axiom keeps it checker-known so the roles.f CAST:
 \ declarer — an ordinary checked word — can call it; unlike CTOR-PEND!/LBUF-PEND!
@@ -8027,6 +8299,7 @@ variable UNSAFE-SYM-N
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ EXPORT-RECORD
    E-ADD-EFFECT
+   a u CHECKER-FIND-ACTIVE-SYM CHECKER-ASIG-EXPORT
    a u EXPORT-META-COPY ;
 
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
@@ -12056,6 +12329,39 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
 
 : CHECKER-CANDIDATE-SCOPE-DONE ( -- )
    0 CHECK-CANDIDATE-DONE drop ;
+
+\ ---- the baked signature pool, and the lazy intake that reads it -------------
+\
+\ WHAT THE POOL IS FOR. An AOT seed puts a word in the RUNTIME dictionary; it
+\ does not put the checker's record of that word's effect anywhere, so a `:`
+\ definition naming a seeded word dies E-UNDEFINED at that token even though the
+\ engine can call it. The capture now carries the window's signatures beside its
+\ records and the seed publishes them here, and the checker takes ONE row at the
+\ moment it needs it.
+\
+\ WHY IT IS LAZY AND NOT REPLAYED AT BOOT. Replaying the whole pool costs 85 ms on
+\ every boot of a seeded engine (measured over the compiler chain's 6798 words);
+\ taking one row costs 12.5 us and a boot that never names a seeded word pays
+\ nothing at all.
+\
+\ THE TWO CELLS ARE MIRRORED, not imported: this file loads BEFORE
+\ src/habu/layout.f in every host that has both - the engine's own cold prefix
+\ (habu2.f PFX-PATH-CHECKER-FILES ahead of PFX-PATH-CORE-FILES) and the metabuild
+\ host (tools/build-fixpoint.f BF-APPEND-RUN-PRELUDE ahead of BF-APPEND-COMMON) -
+\ which is the same reason CK-SEAL-LATCH-OFF above is mirrored. The agreement is
+\ EXECUTED rather than commented: test/aot-sig-pool-suite.f reads AOT-SIG:POOL-CELL
+\ and these two constants out of a booted engine, where all three are live names,
+\ and refuses a disagreement.
+$47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-SIG:POOL-CELL
+$47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-SIG:LEN-CELL
+
+\ The pool base is a POINTER the seed stored, so it is read through `ptr-field`
+\ rather than through a plain `@`: the cell holds an address in __text and the
+\ role has to survive the read. The length is an ordinary count.
+: CK-AOT-SIG-POOL-FIELD ( -- ptr ptr u8 )
+   data-base CK-AOT-SIG-POOL-OFF CELL / ptr-field ;
+: CK-AOT-SIG-POOL ( -- ptr u8 ) CK-AOT-SIG-POOL-FIELD @ ;
+: CK-AOT-SIG-LEN ( -- n ) data-base CK-AOT-SIG-LEN-OFF + @ ;
 
 \ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
 \ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.

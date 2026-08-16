@@ -961,9 +961,19 @@ BADSIG-DIAG-INSTALL
 : REC-REFUSE-DIAG ( ptr u8 n -- )
    REC-REFUSE-WHY REC-REFUSE-EMIT ;
 
+\ The render is no longer thrown away. It was here only to detect unmodeled tags
+\ and an absurd var count, and it is ALSO the text an AOT capture has to carry
+\ for a word whose effect was inferred rather than declared - the other arm of
+\ CHECK's fork hands the declared text straight to CHECKER-USIG-CERT-ADD. The
+\ capture runs after the record exists, because it reads the symbol that record
+\ was written under; when nothing is armed it is a single flag test.
 : REC-SIG ( ptr u8 n -- ) {: na:ptr nu:n :}
-   REND-SIG 2drop        \ rendered only to detect unmodeled tags / var count
-   RQM @ 0 =  NLET @ 27 <  and IF na nu CHECKER-USIG-CERT-CURRENT EXIT THEN
+   REND-SIG {: sa:ptr su:n :}
+   RQM @ 0 =  NLET @ 27 <  and IF
+      na nu CHECKER-USIG-CERT-CURRENT
+      sa su CHECKER-ASIG-CAPTURE
+      EXIT
+   THEN
    na nu REC-REFUSE-DIAG ;
 : REC-SIG-INSTALL ( -- ) [: REC-SIG ;] is RECXT ;
 REC-SIG-INSTALL

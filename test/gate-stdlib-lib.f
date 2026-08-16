@@ -329,6 +329,7 @@ private
    s" aot-wide-format" SUITE-LABEL= if SUITE-TRUE exit then
    s" aot-prelude-band" SUITE-LABEL= if SUITE-TRUE exit then
    s" aot-chain-capture" SUITE-LABEL= if SUITE-TRUE exit then
+   s" aot-sig-pool" SUITE-LABEL= if SUITE-TRUE exit then
    s" using-import" SUITE-LABEL= if SUITE-TRUE exit then
    s" load-reject-diag" SUITE-LABEL= if SUITE-TRUE exit then
    s" load-argv-contract" SUITE-LABEL= if SUITE-TRUE exit then
