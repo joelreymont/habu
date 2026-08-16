@@ -784,3 +784,42 @@ convergence fixpoint, (5) provided rows from the artifact's
 list, (6) battery + the ~1s/boot payoff measured. Loose ends:
 differential bake ce93a41c, stale DATA cell 1a728720, host
 prelude band 5a992a38, Gforth recovery 53355d74.
+
+PAYOFF MEASURED + BUILD RULINGS 2026-08-16 (bake-chain-15
+checkpoint): bare 258.3ms / source-chain 1352.8ms / baked-chain
+348.1ms / baked-no-chain 263.0ms - THE BAKE REMOVES 1004.7ms PER
+CHAIN BOOT (-74.3%), seed cost +4.7ms. Install projection ~14.8s
+(2.3x) with the ruled double capture.
+REPRODUCIBILITY DEFECT found by premise probe, fix proven:
+interpret-mode s" allots at HERE, so the spliced artifact path
+moved the captured DATA base - 12081 bytes differed between
+bakes of one tree. RULED: land the colon-body declaration form
+(proven byte-identical across 15-vs-39-char paths) PLUS the
+structural audit (STDIN-DRIVER latches here at load end; RUN
+refuses by name if the DATA cursor moved before CAPTURE-REPL -
+any future DP-consuming build parameter becomes a named refusal)
+as INCREMENT 1.
+RULING 1 (size ratchet): the lane's read is adopted - the exact
+ratchet and its attribution history stay on the CAPTURE HOST
+(byte-for-byte the engine the gate has always measured, still
+produced by every install); the PRODUCT gets its own row
+ratcheting intrinsic text + reported seed payload. Bumping the
+baseline to product numbers is refused - it would convert a
+code-size ratchet into a payload ratchet that reds on every
+chain edit.
+RULING 2 (snapshot verb): snap builds from the CAPTURE HOST -
+the shape snap has always consumed; a seeded product's keep
+surface does not carry the chain. Probe before wiring; if the
+probe surprises (e.g. the seed re-fires correctly under
+snapshot boot), checkpoint with the measurement.
+RULING 3 (double capture): CONFIRMED as ruled - 2.74s per
+forced build buys the cross-process determinism proof; both it
+and the write-time round trip stay.
+STAMP KEY: ONE authority - point the single existing fold at
+the capture tool's closure (which subsumes the chain's 43
+files); drop the separate chain row. Two rows over nested sets
+is two authorities for one fact.
+Design for (3)/(4)/(5) as tabled (BF-EMIT-ENGINE factored and
+called twice; fixpoint by file sha to BF-MAX-GENS with a named
+death; provided rows from RESTORE-CLOSURE via LAPPPROV, zero
+rows when no artifact) - GO.
