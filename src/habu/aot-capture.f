@@ -1168,10 +1168,10 @@ private
    ACAP-PWID-TAG@ {: tag:n :}
    tag PROT-REG-TAG = if ACAP-PWID-SAME-SHAPE exit then
    tag ACAP-PWID-LEGACY ;
+\ No overflow refusal: the table is AOT-PWIN-MAX = PROT-WID-MAX rows and its one
+\ caller below zeroes the count, then offers each WID of the window once and only
+\ where a bitmap bit answers - and no WID at or above the bound has one.
 : ACAP-PWIN-ADD ( n -- ) {: rel:n :}
-   AOT-PWIN-N @ AOT-PWIN-MAX >= if
-      s" aot-capture: more protected window WIDs than the table holds" 74 die
-   then
    rel AOT-PWIN-N @ 4 * AOT-PWIN-BUF@ + AOT-P32!
    AOT-PWIN-N @ 1+ AOT-PWIN-N ! ;
 

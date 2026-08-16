@@ -179,7 +179,12 @@ public
 \ AGREE below is executed rather than commented: the three are one number.
 $200000 constant DATA-CAP
 create DATA-BUF DATA-CAP allot
-4096 constant XTOFF-MAX          \ declared address cells in the window (metabuild REPL: 1)
+\ One row per declared address cell that lies in the window, so the engine's own
+\ table bounds it: habu2.f EMIT-MARK is the single producer of a row, it dedupes
+\ and exits XTCELL-RC at the cap, and ACAP-BAKE-DATA offers each row here at most
+\ once. Taken from that cap rather than measured (the metabuild REPL window holds
+\ one), so the two cannot drift apart.
+SNAP-RELOC:XTCELL-CAP constant XTOFF-MAX
 create XTOFF-BUF XTOFF-MAX 4 * allot    variable XTOFF-N   \ packed u32 window offsets
 ;package
 
@@ -251,7 +256,11 @@ create AOT-PWID-BUF PROT-BITS-BYTES allot
 \ EMIT-AOT-PROT-RESTORE runs before the cold prefix and so before the target's wid
 \ base exists; only these rows can carry a window wordlist's seal across, and the
 \ seed sets each bit after rebasing it. The chain's window seals 125.
-4096 constant AOT-PWIN-MAX
+\ One row per SET BIT of the bitmap above, so the bitmap's own bound is how many
+\ rows can ever exist: ACAP-PWID-SPLIT visits each WID of the window once and adds
+\ a row only where a bit answers, which no WID at or above PROT-WID-MAX has. At the
+\ bound the table cannot overflow, which is why nothing refuses a row.
+PROT-WID-MAX constant AOT-PWIN-MAX
 create AOT-PWIN-BUF AOT-PWIN-MAX 4 * allot    variable AOT-PWIN-N   \ packed u32
 
 \ Raw emitter-boundary views (same pattern as SRCA@): expose the build-scratch
@@ -310,7 +319,8 @@ s" AOT-BUF:AOT-PWIN-BUF@" s" -- ptr u8" TRUST
 \ layout.f's ENGINE-GPR:DSTACK.
 \ The rounding is the section's headroom for what is not a buffer: the twelve
 \ count cells that head the tables and the pad each BYTES, run takes to the next
-\ 4-byte boundary, at most a couple of hundred bytes against 46 KiB of grain. It
+\ 4-byte boundary, at most a couple of hundred bytes against the $37FF the grain
+\ rounding leaves at this cap set ($51C801 of buffers under $520000). It
 \ is a belt in any case -- a section that outgrew this would be refused by the
 \ emitter's own `icode: code buffer overflow`, and each buffer refuses on its own
 \ overflow long before that.
