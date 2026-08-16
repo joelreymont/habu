@@ -805,6 +805,15 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
 \ AND THE FOURTH IS THE REFUSAL THAT MUST SURVIVE. A lazy intake that answered
 \ for names it has no row for would turn every typo into a certified call into
 \ nothing, so an undefined word still has to die.
+\
+\ THE FAMILY CASE IS RUN TWICE, AND THE SECOND RUN IS THE PLACEMENT. Registry
+\ ids are absolute, so a program that declares its own type before it names a
+\ chain word is the whole difference between installing the registry at the seed
+\ point and installing it at the first intake. Measured three ways on the
+\ product: at the seed point both runs certify; installed at the intake instead,
+\ the first certifies and the second dies `does not start where its capture
+\ did`; installed nowhere, both die `a seeded signature does not parse`. Only
+\ the second run separates the first world from the second.
 
 : SIG-OK$ ( -- ptr u8 n )
    s\" using A64ASM\n: SIGT ( n -- n ) ENC-B ;\ns\" sig-ok\" type cr\n" ;
@@ -814,6 +823,16 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
 
 : SIG-FAM-BAD$ ( -- ptr u8 n )
    s\" : SIGFTBAD ( n -- n ) NTAPE:TOKENS ;\ns\" reached\" type cr\n" ;
+
+\ The same family-typed definition with a type of the PROGRAM'S OWN ahead of it.
+\ This is the case that decides WHERE the registry goes in, and the one an
+\ engine that installed it at the first signature intake fails: the carried rows
+\ name families by absolute id, so they only mean those families while the live
+\ registry still ends where the capture's did, and `NEWTYPE zz1 0` has already
+\ moved the high-water by the time the intake runs. Installing at the seed point
+\ - before this program's first token - is what makes it ordinary again.
+: SIG-FAM-AFTER-DECL$ ( -- ptr u8 n )
+   s\" NEWTYPE zz1 0\n: SIGFD ( IR-ARENA:view -- n ) NTAPE:TOKENS ;\ns\" decl-fam-ok\" type cr\n" ;
 
 : SIG-UNDEF$ ( -- ptr u8 n )
    s\" : SIGX ( -- ) NO-SUCH-SEEDED-WORD ;\ns\" reached\" type cr\n" ;
@@ -830,6 +849,11 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
    RC @ 0 <> if DIAG. then
    RC @ 0 T=
    OUT$ s\" fam-ok\n" T$=
+   SIG-FAM-AFTER-DECL$ RUN-BAKED-PROGRAM
+   s" ... even when the program declared a type of its own first" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   OUT$ s\" decl-fam-ok\n" T$=
    SIG-FAM-BAD$ RUN-BAKED-PROGRAM
    s" ... and that family is a FAMILY there: the wrong type is refused" T-LABEL
    CHECK-RC s" ir-arena:view" RC-REFUSED

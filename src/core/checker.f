@@ -11823,16 +11823,30 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
 : CK-AOT-STR-A ( n -- ptr u8 ) {: at:n :} CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF + at + 2 + ;
 : CK-AOT-STR$ ( n -- ptr u8 n ) {: at:n :} at CK-AOT-STR-A at CK-AOT-STR-U ;
 
-\ The registry the signatures resolve against, put in before the first row is
-\ parsed: a signature naming a window-declared family would otherwise be refused
-\ as a bad stored signature rather than taken.
+\ The registry the signatures resolve against. A signature naming a
+\ window-declared family would otherwise be refused as a bad stored signature
+\ rather than taken.
 \
-\ IT IS ASKED EVERY TIME AND LATCHED NOWHERE. A latch would be a claim about
-\ state this file does not own: the checker's rollback frames rewind the type
-\ registries with every scope they close, so an install that happened inside one
-\ can be undone after the flag said it happened. The hook answers from the live
-\ high-waters instead - already there, appendable, or neither, and the third is
-\ a refusal - which costs eight comparisons and cannot go stale.
+\ THE SEED CALLS THIS, AT THE SEED POINT, AND NOTHING ELSE DOES. It used to run
+\ from the intake instead, and that was wrong for a reason no acceptance could
+\ see until bin/hb was the product: the carried rows name families by ABSOLUTE
+\ id, so they only mean those families while the live registry still ends where
+\ the capture's did. An intake happens whenever source first names a chain word,
+\ and source is free to declare a type before that - `NEWTYPE zz1 0` and then a
+\ chain call is ordinary - which moves the high-water off the recorded base and
+\ turns an ordinary program into a refusal.
+\
+\ src/habu/habu2.f AOT-SIG:INSTALL, calls it at the end of the engine prefix,
+\ after AOT-SIG:PUBLISH, has filled the two cells and before the first user
+\ token. That is where the base equality below is true BY CONSTRUCTION, and it
+\ is also the answer to the objection that used to live here: a latch could be
+\ undone by a checker rollback frame rewinding the type registries, but at the
+\ seed point no such frame is open, so there is nothing to undo.
+\
+\ THE REFUSAL STAYS, and it is not dead weight. It still answers for a
+\ genuinely foreign payload - an artifact captured against a different engine
+\ prefix - which is the case the base equality was written for and the one the
+\ seed point cannot rule out.
 : CK-AOT-REG-INSTALL ( -- )
    CK-AOT-SIG-POOL CK-AOT-S-REG CK-AOT-OFF +  CK-AOT-S-REG CK-AOT-LEN
    REG-EXT-AOT-LOAD-XT ;
@@ -11968,9 +11982,10 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
 \ with NEW, and NEW is the in-progress body's whole unification state - the type
 \ variable pool, the accumulator rows, the trail. Taking a row at the token that
 \ missed would destroy the very check that asked for it.
+\ The registry is NOT installed here: the seed put it in before this engine read
+\ a user token (CK-AOT-REG-INSTALL above says why it has to be that early).
 : CK-AOT-INTAKE ( -- bool )
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
-   CK-AOT-REG-INSTALL
    RES-TRUE CK-AOT-MISSES ;
 
 : CHECK-RESET {: a u :}

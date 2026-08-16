@@ -219,7 +219,7 @@ variable LAOTBOOTRUN
 \ global naming debt the older LAOT* ids carry.
 package AOT-SIG
 public
-variable LLEN  variable LSPAN
+variable LLEN  variable LSPAN  variable LNAME
 ;package
 variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)
 variable LPROTWIDQ

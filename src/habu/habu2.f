@@ -4944,6 +4944,43 @@ public
    9 DATA POOL-CELL STR,
    9 5 LLEN LABEL@ TADR,  9 9 0 LDR,
    9 DATA LEN-CELL STR, ;
+
+\ Put the payload's TYPE REGISTRY in, here and nowhere later. The carried
+\ signature rows name families by ABSOLUTE id, so the ids are only the families
+\ they mean while the live registry still ends where the capture's did. This
+\ point is the one moment that is true by construction: the engine prefix has
+\ run and no user token has, so nothing outside the engine can have declared a
+\ type yet, and no checker rollback frame is open to undo the install. Doing it
+\ at the first signature intake instead - which is where it used to happen -
+\ made ordinary source refuse: declare a NEWTYPE, then name a chain word, and
+\ the high-water has already moved past the base the capture recorded.
+\
+\ The SIGNATURE POOL stays lazy. That laziness was priced for 124 KB of text and
+\ 6798 parses; the registry is 46 KB of pointer-free rows, and a boot pays for
+\ it whether or not it ever names a chain word.
+\
+\ Resolved by name through LFIND, the way EM-AOT-BOOTRUN resolves an entry word,
+\ and refused the same way: the widgate rules the callee's wordlist and a
+\ missing name is a seed built against a checker that no longer has it, which is
+\ a panic and not a miss.
+: INSTALL-NAME$ ( -- ptr u8 n )
+   s" CK-AOT-REG-INSTALL" ;
+
+\ The emitted immediate comes from the emitted bytes, so the two cannot drift.
+: INSTALL-NAME-LEN ( -- n )
+   INSTALL-NAME$ {: a:ptr u:n :} u ;
+
+: INSTALL, ( -- )
+   LBL LBL {: nf:label done:label :}
+   9 5 LNAME LABEL@ TADR,
+   10 INSTALL-NAME-LEN MOVZ,
+   LFIND LABEL@ BL,
+   13 nf CBZ,
+   LAOTWIDGATE LABEL@ BL,
+   11 BLR,
+   done B,
+   nf LBL,  0 $52 MOVZ,  NR-EXIT-GROUP SYS,
+   done LBL, ;
 ;package
 
 \ Seed the metabuild-captured AOT words at LEXIT: copy the blob, register N dict
@@ -4969,6 +5006,7 @@ public
    PROT:LCLOSE LABEL@ BL,                           \ region -> RX
    LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
    AOT-SIG:PUBLISH,                                 \ the checker payload's address and length
+   AOT-SIG:INSTALL,                                 \ then its type registry, before any user token can declare a family
    EM-AOT-BOOTRUN                                   \ install the REPL (no source): LFIND+blr the entry words
    askip B,
    bad LBL,
@@ -8603,7 +8641,7 @@ package LABELS
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
    LBL LAOTBOOTRUN !
-   LBL AOT-SIG:LLEN !  LBL AOT-SIG:LSPAN !
+   LBL AOT-SIG:LLEN !  LBL AOT-SIG:LSPAN !  LBL AOT-SIG:LNAME !
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LAOTPROT !  LBL LPROTWIDQ !
    LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
@@ -8875,6 +8913,7 @@ s" AOT-SIG-PAYLOAD:BUF@" s" -- ptr u8" TRUST
    AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN
    AOT-SIG-PAYLOAD:BUILD                          \ before the length label reads it
    AOT-SIG:LLEN LABEL@ LBL,  AOT-SIG-PAYLOAD:LEN @ DCQ,
+   AOT-SIG:LNAME LABEL@ LBL,  AOT-SIG:INSTALL-NAME$ BYTES,
    AOT-SIG:LSPAN LABEL@ LBL,  AOT-SIG-PAYLOAD:EMIT ;
 
 \ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker

@@ -128,9 +128,11 @@ using AOT-REACH-LINT
    FINDINGS 0 T=
    \ 28 before the checker payload (dot habu-seeded-words-invisible-c7505a49)
    \ bound two more: AOT-SIG:LLEN, the payload's byte length, and AOT-SIG:LSPAN,
-   \ the span itself. Both are addressed with TADR, like every other row of the
-   \ section, which is the rule this count is the coverage of.
-   LABELS-FOUND 30 T= ;
+   \ the span itself. The eager registry install added AOT-SIG:LNAME, the name
+   \ the seed LFINDs to call the checker's install at the seed point. All three
+   \ are addressed with TADR, like every other row of the section, which is the
+   \ rule this count is the coverage of.
+   LABELS-FOUND 31 T= ;
 
 : MAIN ( -- )
    T-RESET
