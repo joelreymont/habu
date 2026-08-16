@@ -70,8 +70,8 @@ using A64ASM
 \ of its allowance. Moving the payload after the source and addressing it with
 \ TADR, took it out of every reach; it is a part of the image, so it is a term of
 \ the window, and this is that term.
-$520000 constant AOT-SECTION-CAP  \ src/habu/aot-decl.f AOT-SECTION:BYTES: the capture buffers ($51C801) rounded to the 64 KiB grain
-$A20000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + IBUFSZ ($400000) + AOT-SECTION-CAP ($520000)
+$5C0000 constant AOT-SECTION-CAP  \ src/habu/aot-decl.f AOT-SECTION:BYTES: the capture buffers ($5BC801) rounded to the 64 KiB grain
+$AC0000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + IBUFSZ ($400000) + AOT-SECTION-CAP ($5C0000)
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
 $1000 constant ICODE-TAB-CELLS

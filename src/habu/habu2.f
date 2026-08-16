@@ -4922,6 +4922,30 @@ public
    bnf LBL,  0 $52 MOVZ,  NR-EXIT-GROUP SYS,
    bdone LBL, ;
 
+\ Publish the checker payload: where it is and how long. Two DATA cells, written
+\ once and never again, which is what makes them readable by ordinary checked
+\ code (src/core/checker.f CK-AOT-SIG-POOL / CK-AOT-SIG-LEN) with no relocation
+\ of their own: the span is __text, mapped for the life of the process, and an
+\ offset into it means the same thing at every boot.
+\
+\ IT RUNS AFTER THE RECORDS ARE REGISTERED and before the boot-run list, because
+\ a boot-run entry word is a definition like any other and may name a seeded
+\ word: the checker has to be able to see the pool by the time one is compiled.
+\ A build that captured nothing never reaches here - EM-SEED-AOT skips the whole
+\ pass - so both cells stay the zero the DATA region boots with, which is exactly
+\ "no pool" to the intake.
+\ In the package that owns the two cells, the way AOT-WINDOW's boot passes sit in
+\ the package that owns its label ids: src/habu/layout.f declares POOL-CELL and
+\ LEN-CELL, and this is the one writer of them.
+package AOT-SIG
+public
+: PUBLISH, ( -- )
+   9 5 LSPAN LABEL@ TADR,
+   9 DATA POOL-CELL STR,
+   9 5 LLEN LABEL@ TADR,  9 9 0 LDR,
+   9 DATA LEN-CELL STR, ;
+;package
+
 \ Seed the metabuild-captured AOT words at LEXIT: copy the blob, register N dict
 \ records, name-relocate the call sites, relocate DATA-address literals, advance CP.
 \ Region is RX at LEXIT so the pass toggles RW around all region writes and flushes
@@ -4944,6 +4968,7 @@ public
    CP CP 11 ADD,                                    \ code area top past the blob
    PROT:LCLOSE LABEL@ BL,                           \ region -> RX
    LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
+   AOT-SIG:PUBLISH,                                 \ the checker payload's address and length
    EM-AOT-BOOTRUN                                   \ install the REPL (no source): LFIND+blr the entry words
    askip B,
    bad LBL,
@@ -8578,6 +8603,7 @@ package LABELS
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
    LBL LAOTBOOTRUN !
+   LBL AOT-SIG:LLEN !  LBL AOT-SIG:LSPAN !
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LAOTPROT !  LBL LPROTWIDQ !
    LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
@@ -8744,6 +8770,77 @@ public
 : EMIT-PWIN ( -- )   \ packed u32 window-relative protected WIDs
    AOT-PWIN-N @ 0 > IF AOT-PWIN-BUF@ AOT-PWIN-N @ 4 * BYTES, THEN ;
 ;package
+\ ---- the checker payload: one span, its own table, three sections -------------
+\ WHY IT IS ONE SPAN. The seed publishes it with the two DATA cells layout.f set
+\ aside (AOT-SIG:POOL-CELL and LEN-CELL), and the checker needs three: the
+\ signature rows, the strings they name, and the type registry the signatures
+\ resolve against. So the span carries its own table - a section count, then a
+\ row of (offset, length) each, then the sections - in the shape this file's own
+\ artifact reader uses, and src/core/checker.f refuses every malformation of it
+\ by name before it believes a byte.
+\
+\ IT IS ASSEMBLED INTO A BUFFER AND EMITTED ONCE. BYTES, pads its run to the
+\ four-byte grain, so three separate runs would leave gaps the table would have
+\ to describe; one run over one contiguous buffer leaves the offsets meaning
+\ exactly what they say. The buffer is the payload's own, sized from the three
+\ caps it concatenates.
+package AOT-SIG-PAYLOAD
+using AOT-BUF
+public
+
+3 constant SEC-N
+SEC-N 16 * 8 + constant TBL-BYTES
+TBL-BYTES  AOT-SIG-MAX SIG-ROW * +  AOT-SIG-STR-CAP +  AOT-REG-CAP +  constant CAP
+create BUF CAP allot
+variable LEN
+variable CUR
+
+: BUF@ ( -- ptr u8 ) BUF ;
+s" AOT-SIG-PAYLOAD:BUF@" s" -- ptr u8" TRUST
+
+: U64! ( n n -- ) {: v:n at:n :}
+   8 0 ?do  v i 8 * rshift $FF and  BUF@ at i + + c!  loop ;
+
+: SEC-PTR ( n -- ptr u8 ) {: k:n :}
+   k 0 = if AOT-SIG-BUF@ exit then
+   k 1 = if AOT-SIG-STR-BUF@ exit then
+   AOT-REG-BUF@ ;
+
+: SEC-LEN ( n -- n ) {: k:n :}
+   k 0 = if AOT-SIG-N @ SIG-ROW * exit then
+   k 1 = if AOT-SIG-STR-LEN @ exit then
+   AOT-REG-LEN @ ;
+
+\ Nothing to publish when nothing was captured, and that is the whole of the
+\ "an engine with no seed behaves exactly as it did" story: LEN stays 0, the
+\ seed skips, both cells stay 0 and the checker's intake is a cell read.
+: BUILD ( -- )
+   0 LEN !
+   AOT-SIG-N @ 0= AOT-SIG-STR-LEN @ 0= and AOT-REG-LEN @ 0= and if exit then
+   SEC-N 0 U64!
+   TBL-BYTES CUR !
+   SEC-N 0 ?do
+      CUR @  i 16 * 8 +  U64!
+      i SEC-LEN  i 16 * 16 +  U64!
+      CUR @ i SEC-LEN + CUR !
+   loop
+   CUR @ CAP > if
+      s" habu2: the checker payload exceeds its own buffer" ICODE-EXIT-RC die
+   then
+   TBL-BYTES CUR !
+   SEC-N 0 ?do
+      i SEC-PTR  BUF@ CUR @ +  i SEC-LEN  BYTE-COPY
+      CUR @ i SEC-LEN + CUR !
+   loop
+   CUR @ LEN ! ;
+
+\ BUILD is the caller's, so the length label and the bytes read one assembly
+\ rather than two: EMIT-AOT-SEED builds once, emits the length, then emits this.
+: EMIT ( -- )
+   LEN @ 0 > if BUF@ LEN @ BYTES, then ;
+
+;package
+
 : EMIT-AOT-SEED ( -- )
    LAOTCODELEN LABEL@ LBL,  AOT-BLOB-LEN @ DCQ,
    LAOTCODE LABEL@ LBL,
@@ -8775,7 +8872,10 @@ public
    AOT-WINDOW:LWIDW0 LABEL@ LBL,  AOT-WID-W0 @ DCQ,
    AOT-WINDOW:LWIDSPAN LABEL@ LBL,  AOT-WID-SPAN @ DCQ,
    AOT-WINDOW:LNPWIN LABEL@ LBL,  AOT-PWIN-N @ DCQ,
-   AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN ;
+   AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN
+   AOT-SIG-PAYLOAD:BUILD                          \ before the length label reads it
+   AOT-SIG:LLEN LABEL@ LBL,  AOT-SIG-PAYLOAD:LEN @ DCQ,
+   AOT-SIG:LSPAN LABEL@ LBL,  AOT-SIG-PAYLOAD:EMIT ;
 
 \ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
 \ (dot habu-checker-fitting-arity-70dc94e4). Pops a token name, runs the same

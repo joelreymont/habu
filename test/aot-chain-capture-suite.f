@@ -72,6 +72,8 @@ $4000 constant CAP
 74 constant REFUSE-RC        \ what a refused capture exits with
 75 constant READ-RC          \ ... and what src/habu/aot-file.f's own refusals exit with
 74 constant STOP-RC          \ ... and what this suite exits with when its own fixture has gone vacuous
+70 constant CHECK-RC         \ ... and what a definition the checker will not certify exits with
+76 constant REG-RC           \ ... and what a seeded type registry the engine cannot take exits with
 
 create OUT CAP allot     variable OUT-U
 create ERR CAP allot     variable ERR-U
@@ -459,9 +461,11 @@ create ART ART-CAP allot    variable ART-LEN
 16 constant O-TARGET
 24 constant O-SECTIONS
 104 constant O-PAYSHA
-14 constant SEC-N
+17 constant SEC-N
 16 constant ROW-BYTES
-13 constant S-CLOSURE            \ the last section: the closure list
+13 constant S-SIGS               \ the window's checker signature rows
+15 constant S-REG                \ ... and the type registry those rows resolve against
+16 constant S-CLOSURE            \ the last section: the closure list
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -777,6 +781,98 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
    s" ... answering what the word computes, and printing nothing else" T-LABEL
    OUT$ s\" 8\n" T$= ;
 
+\ ---- and its words can be NAMED by checked code ------------------------------
+\
+\ WHAT THIS LOCKS, and why running a chain word was not enough. PROBE-BAKED
+\ proves the seeded code executes. It does not prove the seeded engine can
+\ COMPILE against it: a seed puts a word in the runtime dictionary and nothing in
+\ the checker's record set, so `: T ( n -- n ) ENC-B ;` died E-UNDEFINED at that
+\ token in an engine that could call ENC-B all day. The product is a compiler, so
+\ that is the difference between an engine that ships and one that does not -
+\ `bin/hb --load src/arch/arm64/icode.f` and fourteen battery phases died on it.
+\
+\ THE FAMILY-TYPED CASE IS THE ONE THAT CANNOT PASS BY LUCK. A signature is text,
+\ and text mentioning `IR-ARENA:view` only parses where that family is
+\ registered, so the third program below certifies exactly when the type registry
+\ travelled too. Its negative is what proves the family arrived as a FAMILY
+\ rather than as an untyped cell: passing an `n` where the view belongs has to be
+\ refused with both type names, and an engine that had merely made the name
+\ resolvable would accept it.
+\
+\ AND THE FOURTH IS THE REFUSAL THAT MUST SURVIVE. A lazy intake that answered
+\ for names it has no row for would turn every typo into a certified call into
+\ nothing, so an undefined word still has to die.
+
+: SIG-OK$ ( -- ptr u8 n )
+   s\" using A64ASM\n: SIGT ( n -- n ) ENC-B ;\ns\" sig-ok\" type cr\n" ;
+
+: SIG-FAM$ ( -- ptr u8 n )
+   s\" : SIGFT ( IR-ARENA:view -- n ) NTAPE:TOKENS ;\ns\" fam-ok\" type cr\n" ;
+
+: SIG-FAM-BAD$ ( -- ptr u8 n )
+   s\" : SIGFTBAD ( n -- n ) NTAPE:TOKENS ;\ns\" reached\" type cr\n" ;
+
+: SIG-UNDEF$ ( -- ptr u8 n )
+   s\" : SIGX ( -- ) NO-SUCH-SEEDED-WORD ;\ns\" reached\" type cr\n" ;
+
+: PROBE-SEEDED-SIG ( -- )
+   SIG-OK$ RUN-BAKED-PROGRAM
+   s" a definition in the seeded engine may name a seeded word" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... and runs" T-LABEL
+   OUT$ s\" sig-ok\n" T$=
+   SIG-FAM$ RUN-BAKED-PROGRAM
+   s" ... including one whose signature names a family the window declared" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   OUT$ s\" fam-ok\n" T$=
+   SIG-FAM-BAD$ RUN-BAKED-PROGRAM
+   s" ... and that family is a FAMILY there: the wrong type is refused" T-LABEL
+   CHECK-RC s" ir-arena:view" RC-REFUSED
+   s" ... and the body that would have run it never does" T-LABEL
+   OUT$ s" reached" CONTAINS? 0= TTRUE
+   SIG-UNDEF$ RUN-BAKED-PROGRAM
+   s" ... while a word no window ever compiled is still undefined, by name" T-LABEL
+   CHECK-RC s" NO-SUCH-SEEDED-WORD" RC-REFUSED ;
+
+\ ---- and the registry it resolves against is asserted, not assumed -----------
+\
+\ WHAT THIS LOCKS. The type registry travels as a DELTA appended at the
+\ high-water its capture window opened on, because its records name each other by
+\ family id, schema node id and interned string offset and none of those rebase.
+\ That is sound exactly while the two engines agree on the base, and they do -
+\ the cold prefix is all that fills the registry before a seed runs. There is no
+\ remap if they ever disagree, so the engine has to refuse rather than append a
+\ delta whose ids mean other families.
+\
+\ THE FORGE IS THE ONLY WAY TO REACH IT. Both engines derive the base the same
+\ way, so no source edit produces a disagreement; the artifact's own recorded
+\ base is what a corrupt or stale registry section would carry, and moving it by
+\ one is exactly that. The payload digest covers it, so the case reseals - the
+\ same machinery every forged-table case above uses, proven to stamp the field
+\ the reader reads by the case that reseals without editing.
+: REG-BASE-AT ( -- n ) S-REG SEC-AT 8 + ;      \ store 0's base, first row of the table
+
+: PROBE-REG-BASE ( -- )
+   FRESH
+   s" the artifact carries a type registry to forge" T-LABEL
+   S-REG SEC-LEN@ 0 > TTRUE
+   REG-BASE-AT A64@ {: was:n :}
+   s" ... whose first store opens at a base of its own" T-LABEL
+   was 0 > TTRUE
+   was 1 + REG-BASE-AT A64!
+   RESEAL
+   EMIT
+   BAKE-TOOL$ CASE$ BAKE-WITH
+   s" a forged registry base still bakes: the artifact is well-formed" T-LABEL
+   RC @ 0 T=
+   SIG-FAM$ RUN-BAKED-PROGRAM
+   s" ... and the engine refuses it the moment a signature needs the registry" T-LABEL
+   REG-RC s" does not start where its capture did" RC-REFUSED
+   s" ... naming the store whose base disagreed" T-LABEL
+   s" families" SAID? TTRUE ;
+
 \ ---- and it says it has the files the seed carries ---------------------------
 \
 \ WHAT THIS LOCKS. Baking the chain puts its 43 files' definitions in the engine
@@ -956,9 +1052,11 @@ variable CUR
    PROBE-FORGED
    PROBE-CHAIN
    PROBE-BAKED
+   PROBE-SEEDED-SIG
    PROBE-PROVIDED
    PROBE-REPRO
-   PROBE-DP-MOVED ;
+   PROBE-DP-MOVED
+   PROBE-REG-BASE ;                  \ last: it leaves a deliberately unusable engine
 
 public
 

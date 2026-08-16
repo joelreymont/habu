@@ -211,6 +211,16 @@ public
 variable LCOUNT  variable LROWS
 ;package
 variable LAOTBOOTRUN
+\ The checker payload the seed publishes into layout.f's AOT-SIG cells: its byte
+\ length, then the span itself (signature rows, their strings, the type registry
+\ delta, behind a table of their own). In package AOT-SIG for the same reason
+\ AOT-XTSITE's label ids are in theirs: layout.f already owns that name for the
+\ two cells this payload is published into, and a new label does not join the
+\ global naming debt the older LAOT* ids carry.
+package AOT-SIG
+public
+variable LLEN  variable LSPAN
+;package
 variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)
 variable LPROTWIDQ
 variable LDPBAD   \ DP-CHECK out-of-range die target (defined in habu2.f EM-COMPILE-DIE; dot habu-dictionary-allot-past-4e5c3c2b)

@@ -2328,6 +2328,234 @@ private
 REG-EXT-PERSIST-INSTALL
 
 \ ---------------------------------------------------------------------------
+\ AOT capture: the registry delta a captured window declared, and putting it
+\ back in the engine that was seeded with that window.
+\
+\ WHY THE REGISTRY TRAVELS AT ALL. A seeded word's checker signature is text, and
+\ the intake parses it: `( IR-ARENA:view -- )` has to resolve the family `view`
+\ in package IR-ARENA. A window that declared families therefore has to carry
+\ them or its family-typed half stays uncallable from checked code while its
+\ scalar-typed half works.
+\
+\ WHY AN APPEND AND NOT A COPY. Every record below is integers and interned
+\ offsets - the persist pass above says so, and each store asserts a zero
+\ pointer mask - so family ids, schema node ids and string offsets are
+\ IDENTITIES rather than addresses. They keep their meaning in another process
+\ exactly when the store they index starts at the same place, so the delta the
+\ window added appends at the base the window opened on. The two engines reach
+\ that base the same way: the cold prefix is the only thing that builds this
+\ registry before a seed runs.
+\
+\ AND WHY THE BASE IS ASSERTED. There is no remap. If a target's store is not at
+\ the base the capture marked, every id in the delta means something else there,
+\ and the honest answer is a refusal - the shape src/habu/aot-file.f ?BASES uses
+\ for a code base that is not the zero the merge shifts against.
+\
+\ IT IS IDEMPOTENT BY MEASUREMENT, NOT BY A FLAG. The checker's rollback frames
+\ rewind these stores whenever a scope closes, so a "loaded" flag can outlive
+\ the rows it describes. LOAD reads the live high-waters instead: at base it
+\ appends, at base+delta it is already there, and anything else is the refusal.
+\
+\ AND IT IS ALL EIGHT STORES OR NONE. The stores name each other - a sum variant
+\ names a family, a family names an interned type-name offset, a schema node
+\ names a family - so a delta in one is read against every other store's base
+\ too. Installing part of a delta would leave those references pointing at rows
+\ that were never put in, so a delta that cannot go in whole does not go in.
+8 constant REG-AOT-N                      \ stores, in the order below
+24 constant REG-AOT-ROW                   \ base u64, count u64, bytes u64
+REG-AOT-N REG-AOT-ROW * 8 + constant REG-AOT-HDR
+
+variable REG-AOT-I  variable REG-AOT-J  variable REG-AOT-CUR
+variable REG-AOT-CLOSED
+create REG-AOT-MARK-A REG-AOT-N cells allot
+create REG-AOT-END-A REG-AOT-N cells allot
+
+: REG-AOT-WIDTH ( n -- n ) {: k:n :}
+   k 0 = IF TF-REC EXIT THEN
+   k 1 = IF CELL EXIT THEN
+   k 2 = IF SUMV-REC EXIT THEN
+   k 3 = IF PF-REC EXIT THEN
+   k 4 = IF LAY-REC EXIT THEN
+   k 5 = IF 1 EXIT THEN
+   k 6 = IF SCH-REC EXIT THEN
+   CELL ;
+
+: REG-AOT-COUNT ( n -- n ) {: k:n :}
+   k 0 = IF TFAM-N @ EXIT THEN
+   k 1 = IF TF-PK-N @ EXIT THEN
+   k 2 = IF SUMV-N @ EXIT THEN
+   k 3 = IF PF-COMMIT-N @ EXIT THEN
+   k 4 = IF LAY-N @ EXIT THEN
+   k 5 = IF TF-STR-U @ EXIT THEN
+   k 6 = IF SCH-N @ EXIT THEN
+   SCH-ROOT-N @ ;
+
+: REG-AOT-BASE-PTR ( n -- ptr a ) {: k:n :}
+   k 0 = IF TF-BASE EXIT THEN
+   k 1 = IF TF-PK-BASE EXIT THEN
+   k 2 = IF SUMV-BASE EXIT THEN
+   k 3 = IF PF-BASE EXIT THEN
+   k 4 = IF LAY-BASE EXIT THEN
+   k 5 = IF TF-STR EXIT THEN
+   k 6 = IF SCH-BASE EXIT THEN
+   SCH-ROOT-BASE ;
+
+: REG-AOT-NAME ( n -- ptr u8 n ) {: k:n :}
+   k 0 = IF s" families" EXIT THEN
+   k 1 = IF s" parameter kinds" EXIT THEN
+   k 2 = IF s" sum variants" EXIT THEN
+   k 3 = IF s" product fields" EXIT THEN
+   k 4 = IF s" layouts" EXIT THEN
+   k 5 = IF s" type names" EXIT THEN
+   k 6 = IF s" schema nodes" EXIT THEN
+   s" schema roots" ;
+
+\ Room for `n` elements in store k, through the store's own geometric grow, so a
+\ seeded delta lands in an arena that grew exactly as a compiled one would.
+: REG-AOT-ROOM ( n n -- ) {: k:n n:n :}
+   k 0 = IF n TF-CAP-V @ > IF n TF-GROW THEN EXIT THEN
+   k 1 = IF n TF-PK-CAP-V @ > IF n TF-PK-GROW THEN EXIT THEN
+   k 2 = IF n SUMV-CAP-V @ > IF n SUMV-GROW THEN EXIT THEN
+   k 3 = IF n PF-CAP-V @ > IF n PF-GROW THEN EXIT THEN
+   k 4 = IF n LAY-CAP-V @ > IF n LAY-GROW THEN EXIT THEN
+   k 5 = IF n TF-STR-U @ - TF-STR-ENSURE EXIT THEN
+   k 6 = IF n SCH-CAP-V @ > IF n SCH-GROW THEN EXIT THEN
+   n SCH-ROOT-CAP-V @ > IF n SCH-ROOT-GROW THEN ;
+
+: REG-AOT-COUNT! ( n n -- ) {: k:n n:n :}
+   k 0 = IF n TFAM-N ! EXIT THEN
+   k 1 = IF n TF-PK-N ! EXIT THEN
+   k 2 = IF n SUMV-N ! EXIT THEN
+   k 3 = IF n PF-N !  n PF-COMMIT-N ! EXIT THEN
+   k 4 = IF n LAY-N ! EXIT THEN
+   k 5 = IF n TF-STR-U ! EXIT THEN
+   k 6 = IF n SCH-N ! EXIT THEN
+   n SCH-ROOT-N ! ;
+
+: REG-AOT-U64! ( n ptr u8 -- ) {: v:n p:ptr :}
+   8 0 ?do  v i 8 * rshift $FF and  p i + c!  loop ;
+
+: REG-AOT-U64@ ( ptr u8 -- n ) {: p:ptr :}
+   0 8 0 ?do  8 lshift  p 7 i - + c@ or  loop ;
+
+: REG-AOT-MARK@ ( n -- n ) {: k:n :} REG-AOT-MARK-A k cells + @ ;
+: REG-AOT-END@ ( n -- n ) {: k:n :} REG-AOT-END-A k cells + @ ;
+
+\ The high-waters the window opens on, latched by src/habu/aot-arm.f OPEN from
+\ the same call that arms the signature collection - one window, one base.
+: REG-AOT-MARK ( -- )
+   0 REG-AOT-CLOSED !
+   REG-AOT-N 0 ?do  i REG-AOT-COUNT  REG-AOT-MARK-A i cells +  !  loop ;
+
+\ AND THE HIGH-WATERS IT CLOSES ON, which is a different moment from the one the
+\ capture RUNS at. A capture tool loads its own sources after the window shuts -
+\ the assembler, the artifact writer - and those declare types of their own. Read
+\ live at capture time, the delta carried the tool's families as well as the
+\ window's, and the seeded engine then measured its own registry against a base
+\ that had counted types no target has (measured: the chain's window declares 70
+\ families and the capture read more). So the window's types end where its
+\ definitions end, at src/habu/aot-arm.f SIG-CLOSE, and this is that latch.
+\ It is a MEASUREMENT and not a one-shot: a build that captures the same window
+\ twice, each time carrying more of it, ends its types twice.
+: REG-AOT-CLOSE ( -- )
+   REG-AOT-N 0 ?do  i REG-AOT-COUNT  REG-AOT-END-A i cells +  !  loop
+   -1 REG-AOT-CLOSED ! ;
+
+\ ---- writing the delta -------------------------------------------------------
+
+: REG-AOT-OVERFLOW ( -- )
+   s" tfam: the captured type registry does not fit the artifact's buffer" 74 die ;
+
+\ A window that declared no type of its own has no delta, and a delta of nothing
+\ is not a registry: it would carry eight bases and no id that depends on them,
+\ and asserting those bases in the target would refuse a capture that never
+\ needed the registry at all. The metabuild host's REPL window is exactly that
+\ case - measured, it declares no family, variant, field, layout or schema node.
+: REG-AOT-EMPTY? ( -- bool )
+   0 REG-AOT-J !
+   REG-AOT-N 0 ?do
+      i REG-AOT-END@ i REG-AOT-MARK@ - REG-AOT-J @ + REG-AOT-J !
+   loop
+   REG-AOT-J @ 0= ;
+
+: REG-AOT-SAVE ( ptr u8 n -- n ) {: dst:ptr cap:n :}
+   REG-AOT-CLOSED @ 0= IF
+      s" tfam: a type registry was captured from a window that never closed" 74 die
+   THEN
+   REG-AOT-EMPTY? IF 0 EXIT THEN
+   cap REG-AOT-HDR < IF REG-AOT-OVERFLOW THEN
+   REG-AOT-N dst REG-AOT-U64!
+   REG-AOT-HDR REG-AOT-CUR !
+   REG-AOT-N 0 ?do
+      i REG-AOT-MARK@ {: base:n :}
+      i REG-AOT-END@ base - {: cnt:n :}
+      cnt 0 < IF
+         s" tfam: a type registry shrank across the capture window" 74 die
+      THEN
+      cnt i REG-AOT-WIDTH * {: bytes:n :}
+      base   dst i REG-AOT-ROW * 8 + +       REG-AOT-U64!
+      cnt    dst i REG-AOT-ROW * 8 + 8 + +   REG-AOT-U64!
+      bytes  dst i REG-AOT-ROW * 8 + 16 + +  REG-AOT-U64!
+      REG-AOT-CUR @ bytes + cap > IF REG-AOT-OVERFLOW THEN
+      bytes 0 > IF
+         i REG-AOT-BASE-PTR base i REG-AOT-WIDTH * +
+         dst REG-AOT-CUR @ +
+         bytes USIGS-COPY
+      THEN
+      REG-AOT-CUR @ bytes + REG-AOT-CUR !
+   loop
+   REG-AOT-CUR @ ;
+
+\ ---- putting it back ---------------------------------------------------------
+
+: REG-AOT-BASE-BAD ( n n n -- ) {: k:n want:n got:n :}
+   s" tfam: the seeded " type k REG-AOT-NAME type
+   s"  registry opens at " type got .
+   s" where the capture marked " type want . cr
+   s" tfam: a seeded type registry does not start where its capture did" 76 die ;
+
+: REG-AOT-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
+   u 0= IF EXIT THEN
+   u REG-AOT-HDR < IF
+      s" tfam: a seeded type registry is shorter than its own table" 76 die THEN
+   src REG-AOT-U64@ REG-AOT-N <> IF
+      s" tfam: a seeded type registry names a store count this engine cannot read" 76 die THEN
+   REG-AOT-HDR REG-AOT-CUR !
+   REG-AOT-N 0 ?do
+      src i REG-AOT-ROW * 8 + +      REG-AOT-U64@ {: base:n :}
+      src i REG-AOT-ROW * 8 + 8 + +  REG-AOT-U64@ {: cnt:n :}
+      src i REG-AOT-ROW * 8 + 16 + + REG-AOT-U64@ {: bytes:n :}
+      cnt i REG-AOT-WIDTH * bytes <> IF
+         s" tfam: a seeded type registry section is not a whole number of records" 76 die THEN
+      REG-AOT-CUR @ bytes + u > IF
+         s" tfam: a seeded type registry section runs past its own bytes" 76 die THEN
+      i REG-AOT-COUNT {: live:n :}
+      live base cnt + = IF
+         REG-AOT-CUR @ bytes + REG-AOT-CUR !     \ already appended: nothing to do
+      ELSE
+         live base <> IF i base live REG-AOT-BASE-BAD THEN
+         bytes 0 > IF
+            i base cnt + REG-AOT-ROOM
+            src REG-AOT-CUR @ +
+            i REG-AOT-BASE-PTR base i REG-AOT-WIDTH * +
+            bytes USIGS-COPY
+         THEN
+         i base cnt + REG-AOT-COUNT!
+         REG-AOT-CUR @ bytes + REG-AOT-CUR !
+      THEN
+   loop
+   REG-AOT-CUR @ u <> IF
+      s" tfam: a seeded type registry does not fill its own bytes" 76 die THEN
+   TFX-SNAP-RESET ;                              \ the tail index predates these families
+
+: REG-EXT-AOT-INSTALL ( -- )
+   [: REG-AOT-MARK ;] is REG-EXT-AOT-MARK-XT
+   [: REG-AOT-CLOSE ;] is REG-EXT-AOT-CLOSE-XT
+   [: REG-AOT-SAVE ;] is REG-EXT-AOT-SAVE-XT
+   [: REG-AOT-LOAD ;] is REG-EXT-AOT-LOAD-XT ;
+REG-EXT-AOT-INSTALL
+
+\ ---------------------------------------------------------------------------
 \ Built-in parametric cell families — the checker parser's parametric type
 \ constructors, replacing checker.f's old hard-coded PARAM-CTOR? whitelist. Every
 \ family is PUBLIC and global (empty package) so a bare `span<...>` resolves via

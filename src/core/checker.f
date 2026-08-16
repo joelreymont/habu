@@ -5134,6 +5134,43 @@ PTR-VARIABLE ASIG-LAST-P
    at 0 < at ASIG-STR-U @ >= or IF s" checker: signature-pool string read out of range" 76 die THEN
    ASIG-STR-P @ at + c@ ;
 
+\ ---- the names one check pass could not resolve ------------------------------
+\ WHY THE MISSES ARE COLLECTED RATHER THAN READ OFF FAILTK. The pinned token is
+\ not the unresolved one: DO-TOK1 pins EVERY token until a failure sets FAILSET,
+\ so a body whose seeded name is followed by one more token pins that other
+\ token instead (measured - `: T ( -- ) SEEDED dup ;` pins `dup`). The lazy
+\ intake below needs the names themselves, and it needs all of them: taking one
+\ per pass would re-check the body once per seeded name it mentions.
+\
+\ IT IS A BOUNDED QUEUE, NOT A RECORD. A pass that fills it drops the rest, and
+\ that costs a pass rather than an answer: the intake takes what it has, the
+\ retry re-checks, and the names that did not fit are collected again by the
+\ next pass. Cleared at CHECK-RESET, so it always describes the pass just run.
+$800 constant ASIG-MISS-CAP
+create ASIG-MISS ASIG-MISS-CAP allot
+variable ASIG-MISS-U
+variable ASIG-MISS-I
+variable ASIG-MISS-K
+
+: ASIG-MISS-CLEAR ( -- ) 0 ASIG-MISS-U ! ;
+
+\ [len u16][bytes], the same record shape the pool's strings use.
+: ASIG-MISS+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   ASIG-MISS-U @ u + 2 + ASIG-MISS-CAP > IF exit THEN
+   u $FF and  ASIG-MISS ASIG-MISS-U @ + c!
+   u 8 rshift $FF and  ASIG-MISS ASIG-MISS-U @ 1 + + c!
+   0 ASIG-MISS-K !
+   BEGIN ASIG-MISS-K @ u < WHILE
+      a ASIG-MISS-K @ + c@  ASIG-MISS ASIG-MISS-U @ 2 + ASIG-MISS-K @ + + c!
+      ASIG-MISS-K @ 1 + ASIG-MISS-K !
+   REPEAT
+   ASIG-MISS-U @ u + 2 + ASIG-MISS-U ! ;
+
+: ASIG-MISS-LEN@ ( n -- n ) {: at:n :}
+   ASIG-MISS at + c@  ASIG-MISS at 1 + + c@ 8 lshift or ;
+
+: ASIG-MISS-A@ ( n -- ptr u8 ) {: at:n :} ASIG-MISS at 2 + + ;
+
 : USIG-ADD-BAD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
@@ -5865,6 +5902,13 @@ PRIM: CHECKER-ASIG-STR-C@ PE-N PE-IN PE-N PE-OUT PRIM;
 \ one caller's question.
 PRIM: CHECKER-ASIG-KNOWN? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-ASIG-MISSING? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CHECKER-ASIG-ROW-FOR PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+\ The registry's two capture-side verbs, for the same reason: src/habu/aot-arm.f
+\ marks the window's registry base and src/habu/aot-capture.f writes the delta,
+\ and both are checked files that must not be able to name a registry store.
+PRIM: CHECKER-REG-AOT-MARK PRIM;
+PRIM: CHECKER-REG-AOT-CLOSE PRIM;
+PRIM: CHECKER-REG-AOT-SAVE PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ CAST-PEND! ( name$ -- ) arms the one-shot cast-certification window (defined
 \ near CTOR-PEND below). The axiom keeps it checker-known so the roles.f CAST:
 \ declarer — an ordinary checked word — can call it; unlike CTOR-PEND!/LBUF-PEND!
@@ -6720,6 +6764,28 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym ASIG-LAST@ 0= ;
+
+\ The third question, asked with the same key: WHERE is this word's row, so the
+\ capture can copy it. The answer is the row's byte offset plus one, 0 for none,
+\ and the caller reads the sixteen bytes through CHECKER-ASIG-ROW-C@ - the row
+\ the artifact carries IS the row this store holds, so no field is re-encoded on
+\ the way out.
+\
+\ IT ANSWERS THE NEWEST ROW, which is what makes the copy window-scoped. The
+\ capture walks the window's dictionary records and asks this once per record,
+\ so the artifact carries a signature for a word the target engine HAS and for
+\ no other; copying the store whole put 723 rows naming the capture tool's own
+\ post-window words into an engine that has none of them, and a signature for an
+\ absent word is worse than a missing one - a definition naming it would certify
+\ and then call nothing. The duplicate rows the store keeps (a data record
+\ recorded `--` at definition time and `-- ptr a` when the engine auto-trusts it
+\ at publish) do not travel either: USIGS' newest-wins rule is answered HERE, so
+\ the artifact's reader never has to implement it a second time.
+: CHECKER-ASIG-ROW-FOR ( ptr u8 n bool ptr u8 n -- n )
+   {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
+   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
+   hit 0= IF 0 EXIT THEN
+   sym ASIG-LAST@ ;
 
 : CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
@@ -7950,6 +8016,58 @@ defer REG-LATE-SCRATCH-SNAP-XT ( -- )
    [: ;] is REG-LATE-SCRATCH-SNAP-XT ;
 REG-EXT-DEFAULTS
 
+\ ---- the type registry an AOT capture has to carry ---------------------------
+\ WHY IT TRAVELS WITH THE SIGNATURES. A seeded word's signature is TEXT, and the
+\ intake parses it: `( IR-ARENA:view -- )` resolves the family named `view` in
+\ package IR-ARENA through the type-family registry. A window that declared
+\ families has to carry them, or every signature naming one is refused at intake
+\ instead of certified - which would leave the family-typed half of a captured
+\ chain uncallable while the scalar-typed half worked.
+\
+\ THE BASE IS ASSERTED, NEVER REMAPPED. Family ids, schema node ids and interned
+\ type-name offsets are identities: the records name each other by id and by
+\ offset and nothing in them rebases (type-family.f says so for every store).
+\ The engine that seeds and the engine that captured both reach the window with
+\ the same registry, because the cold prefix is the only thing that builds it -
+\ measured equal over the compiler chain - so the window's delta appends at a
+\ base the two agree on. A disagreement has no remap and is refused by name, the
+\ way src/habu/aot-file.f ?BASES refuses a code base that is not the canonical
+\ zero it shifts against.
+\
+\ THE ENUMERATION LIVES WITH THE STORES, exactly as REG-EXT-PERSIST-XT below
+\ does and for the same reason: the TFAM and SCHEMA registries are in files that
+\ load after this one, so this file cannot name them. MARK latches the
+\ high-waters a capture window opens at, SAVE writes those marks and the delta
+\ into the caller's buffer, and LOAD asserts the marks against the live stores
+\ and appends.
+defer REG-EXT-AOT-MARK-XT ( -- )
+defer REG-EXT-AOT-CLOSE-XT ( -- )
+defer REG-EXT-AOT-SAVE-XT ( ptr u8 n -- n )
+defer REG-EXT-AOT-LOAD-XT ( ptr u8 n -- )
+
+\ A build with no type registry loaded has no delta to write. Reading one is a
+\ different matter: bytes that no store can take are a seeded engine whose
+\ signatures cannot resolve, so that direction dies by name rather than
+\ silently leaving the families out.
+: REG-EXT-AOT-NO-SAVE ( ptr u8 n -- n ) 2drop 0 ;
+: REG-EXT-AOT-NO-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= IF EXIT THEN
+   s" checker: a seeded type registry arrived with no registry to take it" 76 die ;
+
+: REG-EXT-AOT-DEFAULTS ( -- )
+   [: ;] is REG-EXT-AOT-MARK-XT
+   [: ;] is REG-EXT-AOT-CLOSE-XT
+   [: REG-EXT-AOT-NO-SAVE ;] is REG-EXT-AOT-SAVE-XT
+   [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-LOAD-XT ;
+REG-EXT-AOT-DEFAULTS
+
+\ What src/habu/aot-arm.f and src/habu/aot-capture.f call. They are checked code
+\ and the registry is not theirs, so the two sides meet at these two names and
+\ the axioms below them.
+: CHECKER-REG-AOT-MARK ( -- ) REG-EXT-AOT-MARK-XT ;
+: CHECKER-REG-AOT-CLOSE ( -- ) REG-EXT-AOT-CLOSE-XT ;
+: CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
+
 : CHECKER-SNAPSHOT-PREPARE ( -- )
    TOKBUF-RESET
    HIDX-RESET
@@ -8680,6 +8798,7 @@ variable WF-I
    CURSYM @ TRY-PRIMS IF EXIT THEN
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
+   a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
    -1 UNDEFERR ! -1 UNCK ! THEN THEN ;
 
 : ROW-DROP-1 ( n -- n )            \ row below the top cell; die 76 if it is not a push
@@ -11586,6 +11705,274 @@ public
 : CHECKER-HOLD? ( -- n )
    CHECKER-TAPE:HOLD-ARMED @ ;
 
+\ ---- the baked signature pool, and the lazy intake that reads it -------------
+\
+\ WHAT THE POOL IS FOR. An AOT seed puts a word in the RUNTIME dictionary; it
+\ does not put the checker's record of that word's effect anywhere, so a `:`
+\ definition naming a seeded word dies E-UNDEFINED at that token even though the
+\ engine can call it. The capture now carries the window's signatures beside its
+\ records and the seed publishes them here, and the checker takes ONE row at the
+\ moment it needs it.
+\
+\ WHY IT IS LAZY AND NOT REPLAYED AT BOOT. Replaying the whole pool costs 85 ms on
+\ every boot of a seeded engine (measured over the compiler chain's 6798 words);
+\ taking one row costs 12.5 us and a boot that never names a seeded word pays
+\ nothing at all.
+\
+\ THE TWO CELLS ARE MIRRORED, not imported: this file loads BEFORE
+\ src/habu/layout.f in every host that has both - the engine's own cold prefix
+\ (habu2.f PFX-PATH-CHECKER-FILES ahead of PFX-PATH-CORE-FILES) and the metabuild
+\ host (tools/build-fixpoint.f BF-APPEND-RUN-PRELUDE ahead of BF-APPEND-COMMON) -
+\ which is the same reason CK-SEAL-LATCH-OFF above is mirrored. The agreement is
+\ EXECUTED rather than commented: test/aot-sig-pool-suite.f reads AOT-SIG:POOL-CELL
+\ and these two constants out of a booted engine, where all three are live names,
+\ and refuses a disagreement.
+$47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-SIG:POOL-CELL
+$47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-SIG:LEN-CELL
+
+\ The pool base is a POINTER the seed stored, so it is read through `ptr-field`
+\ rather than through a plain `@`: the cell holds an address in __text and the
+\ role has to survive the read. The length is an ordinary count.
+: CK-AOT-SIG-POOL-FIELD ( -- ptr ptr u8 )
+   data-base CK-AOT-SIG-POOL-OFF CELL / ptr-field ;
+: CK-AOT-SIG-POOL ( -- ptr u8 ) CK-AOT-SIG-POOL-FIELD @ ;
+: CK-AOT-SIG-LEN ( -- n ) data-base CK-AOT-SIG-LEN-OFF + @ ;
+
+\ ---- what the two cells point at ---------------------------------------------
+\ ONE PAYLOAD, THREE SECTIONS, because the seed has two cells to publish with and
+\ the checker needs three spans: the rows, the strings they name, and the type
+\ registry those signatures resolve against. So the payload carries its own
+\ table, in the shape src/habu/aot-file.f uses for the artifact - a count, then a
+\ row of (offset, length) per section, then the sections contiguous behind it -
+\ and every malformation is refused by name before a byte of it is believed.
+\
+\ THE ROWS AND THE STRINGS ARE THIS FILE'S OWN FORMAT, carried verbatim. A row is
+\ four u32 (name, signature, package, visibility) whose first three are offsets
+\ into the string section, and a string is `[len u16][bytes]`. That is the
+\ signature store above, byte for byte: the artifact and the seed are couriers
+\ for it and re-encode nothing, which is why a row that arrives here can be read
+\ with the same arithmetic that wrote it.
+3 constant CK-AOT-SEC-N
+16 constant CK-AOT-ROW                  \ = ASIG-ROW: the store's row, carried verbatim
+0 constant CK-AOT-S-ROWS
+1 constant CK-AOT-S-STR
+2 constant CK-AOT-S-REG
+CK-AOT-SEC-N 16 * 8 + constant CK-AOT-TBL-END
+
+variable CK-AOT-STATE                   \ 0 unread, 1 usable, -1 nothing seeded
+variable CK-AOT-RETRY-ARMED             \ a retry loop is driving this pass
+variable CK-AOT-RETRY-DUE               \ ... and this pass is not the last one
+variable CK-AOT-I   variable CK-AOT-J   variable CK-AOT-K
+variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
+
+: CK-AOT-DIE ( ptr u8 n -- ) 76 die ;
+
+: CK-AOT-U64@ ( n -- n ) {: at:n :}
+   0  8 0 ?do  8 lshift  CK-AOT-SIG-POOL at 7 i - + + c@ or  loop ;
+
+: CK-AOT-U32@ ( n -- n ) {: at:n :}
+   CK-AOT-SIG-POOL at + c@
+   CK-AOT-SIG-POOL at 1 + + c@ 8 lshift or
+   CK-AOT-SIG-POOL at 2 + + c@ 16 lshift or
+   CK-AOT-SIG-POOL at 3 + + c@ 24 lshift or ;
+
+: CK-AOT-U16@ ( n -- n ) {: at:n :}
+   CK-AOT-SIG-POOL at + c@  CK-AOT-SIG-POOL at 1 + + c@ 8 lshift or ;
+
+: CK-AOT-OFF ( n -- n ) {: k:n :} k 16 * 8 + CK-AOT-U64@ ;
+: CK-AOT-LEN ( n -- n ) {: k:n :} k 16 * 16 + CK-AOT-U64@ ;
+
+\ Every clause a malformed payload can fail, each with its own refusal: the
+\ table has to fill the span exactly, the sections have to follow one another
+\ without a gap, and the row section has to be a whole number of rows. A seeded
+\ engine that fails any of them is a build defect, not a runtime condition.
+: CK-AOT-VALIDATE ( -- )
+   CK-AOT-SIG-LEN CK-AOT-TBL-END < IF
+      s" checker: the seeded signature payload is shorter than its own table" CK-AOT-DIE THEN
+   0 CK-AOT-U64@ CK-AOT-SEC-N <> IF
+      s" checker: the seeded signature payload names a section count this engine cannot read" CK-AOT-DIE THEN
+   CK-AOT-TBL-END CK-AOT-CUR !
+   CK-AOT-SEC-N 0 ?do
+      i CK-AOT-OFF CK-AOT-CUR @ <> IF
+         s" checker: a seeded payload section does not start where the last one ended" CK-AOT-DIE THEN
+      i CK-AOT-LEN 0 < IF
+         s" checker: a seeded payload section has a negative length" CK-AOT-DIE THEN
+      CK-AOT-CUR @ i CK-AOT-LEN + CK-AOT-CUR !
+   loop
+   CK-AOT-CUR @ CK-AOT-SIG-LEN <> IF
+      s" checker: the seeded payload sections do not fill the span the seed published" CK-AOT-DIE THEN
+   CK-AOT-S-ROWS CK-AOT-LEN CK-AOT-ROW mod 0 <> IF
+      s" checker: the seeded signature rows are not a whole number of rows" CK-AOT-DIE THEN ;
+
+\ Usable once, and the answer is latched: a boot that never names a seeded word
+\ pays one cell read, and one that does pays the validation once.
+: CK-AOT-READY? ( -- bool )
+   CK-AOT-STATE @ 0 <> IF CK-AOT-STATE @ 0 > EXIT THEN
+   CK-AOT-SIG-LEN 0 <= IF -1 CK-AOT-STATE ! RES-FALSE EXIT THEN
+   CK-AOT-VALIDATE
+   1 CK-AOT-STATE !
+   RES-TRUE ;
+
+: CK-AOT-ROWS ( -- n ) CK-AOT-S-ROWS CK-AOT-LEN CK-AOT-ROW / ;
+: CK-AOT-FIELD ( n n -- n ) {: r:n f:n :}
+   CK-AOT-S-ROWS CK-AOT-OFF r CK-AOT-ROW * + f + CK-AOT-U32@ ;
+
+\ A string record's bytes, as a span into the payload. It is __text and stays
+\ mapped for the life of the process, so the parser reads it in place.
+: CK-AOT-STR-U ( n -- n ) {: at:n :} CK-AOT-S-STR CK-AOT-OFF at + CK-AOT-U16@ ;
+: CK-AOT-STR-A ( n -- ptr u8 ) {: at:n :} CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF + at + 2 + ;
+: CK-AOT-STR$ ( n -- ptr u8 n ) {: at:n :} at CK-AOT-STR-A at CK-AOT-STR-U ;
+
+\ The registry the signatures resolve against, put in before the first row is
+\ parsed: a signature naming a window-declared family would otherwise be refused
+\ as a bad stored signature rather than taken.
+\
+\ IT IS ASKED EVERY TIME AND LATCHED NOWHERE. A latch would be a claim about
+\ state this file does not own: the checker's rollback frames rewind the type
+\ registries with every scope they close, so an install that happened inside one
+\ can be undone after the flag said it happened. The hook answers from the live
+\ high-waters instead - already there, appendable, or neither, and the third is
+\ a refusal - which costs eight comparisons and cannot go stale.
+: CK-AOT-REG-INSTALL ( -- )
+   CK-AOT-SIG-POOL CK-AOT-S-REG CK-AOT-OFF +  CK-AOT-S-REG CK-AOT-LEN
+   REG-EXT-AOT-LOAD-XT ;
+
+\ ---- taking one row ----------------------------------------------------------
+\ THE KEY IS THE ROW'S OWN SCOPE, not the scope the failing reference was
+\ resolved in. A row carries (package, visibility, name) - the key SYM-FIND is
+\ keyed on - so the intake re-interns the word where it actually lives and lets
+\ the RETRY do the scope walk, exactly as it would for a word compiled from
+\ source here. Deriving a scope from the failing token instead would be a second
+\ resolver, and the two would disagree the first time a bare tail resolved
+\ through a used package.
+: CK-AOT-ROW-SYM ( n -- n ) {: r:n :}
+   r 8 CK-AOT-FIELD CK-AOT-STR$        \ package
+   r 12 CK-AOT-FIELD                   \ visibility, this file's own encoding
+   r 0 CK-AOT-FIELD CK-AOT-STR$        \ name
+   SYM-INTERN ;
+
+: CK-AOT-ROW-PRESENT? ( n -- bool ) {: r:n :}
+   r 8 CK-AOT-FIELD CK-AOT-STR$
+   r 12 CK-AOT-FIELD
+   r 0 CK-AOT-FIELD CK-AOT-STR$
+   SYM-FIND {: sym:n hit:bool :}
+   hit 0= IF RES-FALSE EXIT THEN
+   sym CHECKER-FIND-USIG-SYM ;
+
+\ USIG-ADD's body with the key supplied rather than derived, and its refusal
+\ kept: a signature this engine cannot parse is a build that baked a text its
+\ own parser rejects, which is a death and not a miss.
+: CK-AOT-TAKE ( n -- ) {: r:n :}
+   r 4 CK-AOT-FIELD CK-AOT-STR$ {: sa:ptr su:n :}
+   CHECKER-REC-SYM @ {: was:n :}
+   r CK-AOT-ROW-SYM CHECKER-REC-SYM !
+   NEW
+   SGBAD-CLEAR
+   sa su PARSE-SIG-RAW
+   SGBAD @ IF
+      2drop 2drop
+      2 sa su write drop
+      s" : checker: a seeded signature does not parse in the engine it was baked into"
+      CK-AOT-DIE
+   THEN
+   SGHASR @ E-ADD-EFFECT
+   was CHECKER-REC-SYM ! ;
+
+\ ---- taking every row one pass could have used -------------------------------
+\ EVERY row whose name the pass could not resolve, not the newest one: the same
+\ tail lives in many packages of a captured chain, and taking only the last of
+\ them would leave the reference that named one of the others unresolved while
+\ reporting progress. Taking them all adds effects for words the seeded engine
+\ really has, under the scopes it really has them in, so nothing is invented and
+\ the retry's own scope walk picks the one the reference meant.
+: CK-AOT-NAME= ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
+   r 0 CK-AOT-FIELD {: at:n :}
+   at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
+   0 CK-AOT-J !
+   BEGIN CK-AOT-J @ u < WHILE
+      at CK-AOT-STR-A CK-AOT-J @ + c@  a CK-AOT-J @ + c@ <> IF RES-FALSE EXIT THEN
+      CK-AOT-J @ 1 + CK-AOT-J !
+   REPEAT
+   RES-TRUE ;
+
+\ A qualified token names its own package, so only that package's row answers
+\ for it; the split is CHECKER-QUALIFIED?'s, the one this file already resolves
+\ qualified references with.
+: CK-AOT-PKG= ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
+   r 8 CK-AOT-FIELD {: at:n :}
+   at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
+   0 CK-AOT-J !
+   BEGIN CK-AOT-J @ u < WHILE
+      at CK-AOT-STR-A CK-AOT-J @ + c@  a CK-AOT-J @ + c@ <> IF RES-FALSE EXIT THEN
+      CK-AOT-J @ 1 + CK-AOT-J !
+   REPEAT
+   RES-TRUE ;
+
+: CK-AOT-ROW-WANTED? ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF
+      r CHECKER-QPKG$ CK-AOT-PKG= 0= IF RES-FALSE EXIT THEN
+      r CHECKER-QTAIL$ CK-AOT-NAME= EXIT
+   THEN
+   r a u CK-AOT-NAME= ;
+
+\ `take` distinguishes the two callers: the retry decision asks whether a row
+\ would be taken and must leave the tables alone, and the intake takes them. One
+\ walk answers both, so the two can never disagree about what is available.
+: CK-AOT-SERVE ( ptr u8 n bool -- bool ) {: a:ptr u:n take:bool :}
+   0 CK-AOT-GOT !
+   0 CK-AOT-I !
+   BEGIN CK-AOT-I @ CK-AOT-ROWS < WHILE
+      CK-AOT-I @ a u CK-AOT-ROW-WANTED? IF
+         CK-AOT-I @ CK-AOT-ROW-PRESENT? 0= IF
+            take IF CK-AOT-I @ CK-AOT-TAKE THEN
+            -1 CK-AOT-GOT !
+         THEN
+      THEN
+      CK-AOT-I @ 1 + CK-AOT-I !
+   REPEAT
+   CK-AOT-GOT @ 0 <> ;
+
+: CK-AOT-MISSES ( bool -- bool ) {: take:bool :}
+   0 CK-AOT-ANY !
+   0 CK-AOT-K !
+   BEGIN CK-AOT-K @ ASIG-MISS-U @ < WHILE
+      CK-AOT-K @ ASIG-MISS-A@  CK-AOT-K @ ASIG-MISS-LEN@  take CK-AOT-SERVE IF
+         -1 CK-AOT-ANY !
+      THEN
+      CK-AOT-K @ CK-AOT-K @ ASIG-MISS-LEN@ + 2 + CK-AOT-K !
+   REPEAT
+   CK-AOT-ANY @ 0 <> ;
+
+\ Would another pass see something this one could not? Asked inside CHECK, at
+\ the moment the verdict is reached, because that is where the two facts it
+\ needs already are: the pass latched E-UNDEFINED and the queue holds the names
+\ it could not resolve. It takes nothing - CHECK must not publish an effect
+\ while its own diagnostic is still pending.
+: CK-AOT-RETRY-DUE? ( n -- bool ) {: verdict:n :}
+   verdict -1 = IF RES-FALSE EXIT THEN
+   UNDEFERR @ 0= IF RES-FALSE EXIT THEN
+   ASIG-MISS-U @ 0= IF RES-FALSE EXIT THEN
+   CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
+   RES-FALSE CK-AOT-MISSES ;
+
+\ Latched where the verdict is reached, so the diagnostic below it can ask one
+\ variable instead of re-deriving the answer, and so a bare CHECK - one with no
+\ retry loop above it - reports exactly as it always did.
+: CK-AOT-LATCH-RETRY ( n -- n ) {: verdict:n :}
+   0 CK-AOT-RETRY-DUE !
+   CK-AOT-RETRY-ARMED @ 0= IF verdict EXIT THEN
+   verdict CK-AOT-RETRY-DUE? IF -1 CK-AOT-RETRY-DUE ! THEN
+   verdict ;
+
+\ The intake itself, at the definition boundary and nowhere else: USIG-ADD opens
+\ with NEW, and NEW is the in-progress body's whole unification state - the type
+\ variable pool, the accumulator rows, the trail. Taking a row at the token that
+\ missed would destroy the very check that asked for it.
+: CK-AOT-INTAKE ( -- bool )
+   CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
+   CK-AOT-REG-INSTALL
+   RES-TRUE CK-AOT-MISSES ;
+
 : CHECK-RESET {: a u :}
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
@@ -11602,6 +11989,7 @@ public
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !
+   ASIG-MISS-CLEAR                     \ the queue always describes the pass just run
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
 \ ---- reporting one token to the source-tape observer ---------------------------
@@ -11627,6 +12015,18 @@ public
 variable SCAN-U       \ the token's own byte length, taken before the judgement
 variable SCAN-TOK0    \ was it the definition's name token?
 
+\ THE OBSERVER SEES ONE SCAN PER DEFINITION, and a lazy signature intake makes
+\ the checker scan some bodies twice. src/compiler/native/feed.f ON-SCAN refuses
+\ a second scan of a unit it is already recording, and it is right to: two scans
+\ would be two tapes. What it is owed is the token stream, and that is a function
+\ of the TEXT alone - the reader splits on spaces and decides a payload skip from
+\ the token's own spelling, so an intake between passes changes which words
+\ resolve and not which tokens exist. So the first pass gives the observer the
+\ whole stream, every later pass is silent, and CHECK! hands over the one verdict
+\ at the end. CHECK-RETRY asserts the streams matched rather than assuming it.
+variable RESCAN       \ this pass is a retry; the observer already has the stream
+variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
+
 \ The token this turn's judgement swallowed, reported after the judgement's own
 \ row so the tape reads in consumption order. It is never the definition's name
 \ token: the name is parsed before the parser switches to compiling, and neither
@@ -11649,8 +12049,12 @@ variable SCAN-TOK0    \ was it the definition's name token?
    TSTART @ TADDR  SCAN-U @  TSTART @  SCAN-TOK0 @  CHECKER-TAPE:TOKEN
    SCAN-PEND-REPORT ;
 
+: TAPE-FEED? ( -- bool )
+   CHECKER-TAPE:ARMED @ 0 <>  RESCAN @ 0=  and ;
+
 : CHECK-SCAN ( -- )
-   CHECKER-TAPE:ARMED @ IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
+   0 SCAN-TOKS !
+   TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
@@ -11677,12 +12081,13 @@ variable SCAN-TOK0    \ was it the definition's name token?
        ELSE
          TI @ TSTART !
          BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
-         CHECKER-TAPE:ARMED @ IF
+         TAPE-FEED? IF
             TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !
             0 IS-PEND !
          THEN
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
-         CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
+         SCAN-TOKS @ 1 + SCAN-TOKS !
+         TAPE-FEED? IF SCAN-REPORT THEN
        THEN
      THEN
    REPEAT ;
@@ -11966,10 +12371,13 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    CHECK-SIG? OK @ and IF NP-CHECK THEN               \ declared quantifiers must stay parametric
    CHECK-VERDICT                                      \ malformed/unsafe/non-parametric rejects
    dup DVERD !
+   CK-AOT-LATCH-RETRY                                 \ is a seeded signature still to come?
    dup 0= IF RIGID-DIAG-CLASSIFY THEN                 \ name a rigid host-identity mismatch
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    dup MEO-ON @ and IF MEO-APPLY THEN     \ file-relative origin for this def's diagnostic
-   DIAG-QUIET @ 0= and IF DIAGXT THEN
+   \ A pass another pass will replace has not judged anything yet, so it says
+   \ nothing: the diagnostic belongs to the verdict the definition is given.
+   DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
    dup -1 = NMU @ 0 > and IF
       0 CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
@@ -12373,44 +12781,54 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
 : CHECKER-CANDIDATE-SCOPE-DONE ( -- )
    0 CHECK-CANDIDATE-DONE drop ;
 
-\ ---- the baked signature pool, and the lazy intake that reads it -------------
-\
-\ WHAT THE POOL IS FOR. An AOT seed puts a word in the RUNTIME dictionary; it
-\ does not put the checker's record of that word's effect anywhere, so a `:`
-\ definition naming a seeded word dies E-UNDEFINED at that token even though the
-\ engine can call it. The capture now carries the window's signatures beside its
-\ records and the seed publishes them here, and the checker takes ONE row at the
-\ moment it needs it.
-\
-\ WHY IT IS LAZY AND NOT REPLAYED AT BOOT. Replaying the whole pool costs 85 ms on
-\ every boot of a seeded engine (measured over the compiler chain's 6798 words);
-\ taking one row costs 12.5 us and a boot that never names a seeded word pays
-\ nothing at all.
-\
-\ THE TWO CELLS ARE MIRRORED, not imported: this file loads BEFORE
-\ src/habu/layout.f in every host that has both - the engine's own cold prefix
-\ (habu2.f PFX-PATH-CHECKER-FILES ahead of PFX-PATH-CORE-FILES) and the metabuild
-\ host (tools/build-fixpoint.f BF-APPEND-RUN-PRELUDE ahead of BF-APPEND-COMMON) -
-\ which is the same reason CK-SEAL-LATCH-OFF above is mirrored. The agreement is
-\ EXECUTED rather than commented: test/aot-sig-pool-suite.f reads AOT-SIG:POOL-CELL
-\ and these two constants out of a booted engine, where all three are live names,
-\ and refuses a disagreement.
-$47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-SIG:POOL-CELL
-$47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-SIG:LEN-CELL
-
-\ The pool base is a POINTER the seed stored, so it is read through `ptr-field`
-\ rather than through a plain `@`: the cell holds an address in __text and the
-\ role has to survive the read. The length is an ordinary count.
-: CK-AOT-SIG-POOL-FIELD ( -- ptr ptr u8 )
-   data-base CK-AOT-SIG-POOL-OFF CELL / ptr-field ;
-: CK-AOT-SIG-POOL ( -- ptr u8 ) CK-AOT-SIG-POOL-FIELD @ ;
-: CK-AOT-SIG-LEN ( -- n ) data-base CK-AOT-SIG-LEN-OFF + @ ;
-
 \ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
 \ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.
+\ ---- checking a body that names a seeded word --------------------------------
+\ WHERE THE INTAKE GOES, and why it is here rather than at the token that missed:
+\ taking a signature runs USIG-ADD, USIG-ADD opens with NEW, and NEW is the whole
+\ of an in-progress body's unification state - the type-variable pool, the
+\ accumulator rows, the trail. The definition boundary is the one place the
+\ checker has a clean slate, so the pass runs, the names it could not resolve are
+\ taken, and the pass runs again.
+\
+\ TERMINATION IS STRUCTURAL, NOT A BOUND. Every pass either creates an effect for
+\ a (package, visibility, name) the checker did not have - and the pool holds
+\ finitely many - or creates none, and a pass that creates none is the last one.
+\ So no name is ever taken twice and no body can loop.
+\
+\ IT WRAPS CHECK AND NOT CHECK!, so the source tape's verdict and the certificate
+\ producer below see the definition's answer once instead of once per pass.
+variable CK-RETRY-V
+variable CK-RETRY-TOKS
+
+: CK-RETRY-STREAM-CK ( -- )
+   SCAN-TOKS @ CK-RETRY-TOKS @ = IF EXIT THEN
+   s" checker: a re-checked body read a different token stream than the observer holds"
+   76 die ;
+
+: CHECK-RETRY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 RESCAN !
+   -1 CK-AOT-RETRY-ARMED !
+   a u CHECK CK-RETRY-V !
+   SCAN-TOKS @ CK-RETRY-TOKS !
+   BEGIN CK-AOT-RETRY-DUE @ 0 <> WHILE
+      \ The pass held its diagnostic because a row was there to take. If taking
+      \ it now finds nothing, the two walks disagree and the definition would be
+      \ refused with no diagnostic at all - so that is a death, not a fallthrough.
+      CK-AOT-INTAKE 0= IF
+         s" checker: a held diagnostic had no seeded signature to take after all" 76 die
+      THEN
+      -1 RESCAN !
+      a u CHECK CK-RETRY-V !
+      CK-RETRY-STREAM-CK
+   REPEAT
+   0 RESCAN !
+   0 CK-AOT-RETRY-ARMED !
+   CK-RETRY-V @ ;
+
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1 VSIG !
-   a u CHECK {: verdict:n :}
+   a u CHECK-RETRY {: verdict:n :}
    0 VSIG !
    CHECKER-TAPE:ARMED @ IF a u verdict CHECKER-TAPE:DONE THEN
    a u verdict CHECKER-CERT:PRODUCE

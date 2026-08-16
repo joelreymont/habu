@@ -7212,4 +7212,36 @@ can reach it: XTSITE discriminated one real mutant, and the
 classifier that would have to emit that row returns early for
 exactly the values that make it possible. Deleted on
 producibility, not on taste.
-++++++ somwsmms 5c8ac8f9 "build: the seeded chain tells the registry it is loaded" (rebased revision)
+
+## 2026-08-17 - the seeded signatures' five (bake-chain-19)
+
+- **A ruling's lookup key can be right about the mechanism and wrong
+  about the data.** The intake was ruled to read FAILTK, and FAILTK is
+  not the unresolved token: DO-TOK1 pins EVERY token until a failure
+  latches FAILSET, so `: T ( -- ) SEEDED dup ;` pins `dup`. The probe
+  that proved the retry used a body whose seeded name was last. Check
+  what a pinned value is pinned BY before building on it.
+- **The completeness audit found the fix's own next bug twice.** The
+  window-record walk refused first when the type registry's delta was
+  read live at capture time (it counted the capture tool's own
+  families) and again when a fixture extended a window past the moment
+  the collection stopped. Both were real; an audit that only passes on
+  the happy path would have shipped an engine that refused itself.
+- **Ask which of two facts is chosen by a walk.** The signature rows
+  are picked by a walk over the window's records, so a store holding
+  more than the window is harmless. The registry delta is two
+  high-waters subtracted, so the moment it is read IS its meaning.
+  Those two need different discipline, and treating them alike cost a
+  round trip through the whole build.
+- **Postfix arithmetic reads left to right and so must the reviewer.**
+  `live base + cnt =` is `(live+base) = cnt`, not `live = base+cnt`.
+  It passed the first call by luck (both sides were the base) and
+  refused the second, which looked exactly like a registry that had
+  been installed and then lost. A dumper over the artifact's own bytes
+  answered it in one run; two hours of reasoning had not.
+- **A control build of master IN THE LANE'S OWN WORKSPACE is the only
+  honest attribution.** One red out of nine looked environmental until
+  master's tree, built and tested in the same workspace with the same
+  HB_TMP, passed it. Save the working copy, `jj new master`, build,
+  test, restore - three minutes, and it turns "probably not mine" into
+  a fact either way.

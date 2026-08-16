@@ -56,6 +56,14 @@
 \ that consumes every one of them, and a format that lists them in some other
 \ order invites a reader that fills the wrong buffer.
 \
+\ THREE OF THE SECTIONS ARE THE CHECKER'S, not the seed's. The signature rows and
+\ the strings they name are src/core/checker.f's signature pool, carried verbatim
+\ so nothing is re-encoded on the way through; the type registry is one opaque
+\ span whose internal table belongs to the registry that owns those records
+\ (src/core/type-family.f). This file moves their bytes and, for a merge, moves a
+\ row's three string offsets behind the pool it is appended to. It reads none of
+\ them, which is what keeps one format in one place.
+\
 \ COUNTS ARE NOT STORED. AOT-REC-N is the record section's length divided by
 \ AOT-CREC-ROW, the site count is its length over 8, AOT-DATA-SIZE is the window
 \ DATA section's length, and so on. A stored count would be a second authority for
@@ -83,7 +91,7 @@ package AOT-FILE
 using AOT-BUF
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-3 constant VERSION   \ 3 widened a call-site row with the callee's SCOPE
+4 constant VERSION   \ 4 added the window's checker signatures and its type registry
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -98,7 +106,7 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 104 constant O-PAYSHA
 32 constant SHA-BYTES
 
-14 constant SEC-N
+17 constant SEC-N
 16 constant ROW-BYTES                \ one section-table row: offset u64 + length u64
 
 0 constant S-SCALARS
@@ -114,7 +122,10 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 10 constant S-BOOTRUN
 11 constant S-PWID
 12 constant S-PWIN
-13 constant S-CLOSURE
+13 constant S-SIGS
+14 constant S-SIGSTR
+15 constant S-REG
+16 constant S-CLOSURE
 
 \ The four genuine scalars: the capture-time DATA base, the canonical code base,
 \ and the window's wordlist base and span. Everything else is a length.
@@ -205,6 +216,9 @@ variable CUR
    k S-BOOTRUN = if AOT-BOOTRUN-BUF@ exit then
    k S-PWID    = if AOT-PWID-BUF@ exit then
    k S-PWIN    = if AOT-PWIN-BUF@ exit then
+   k S-SIGS    = if AOT-SIG-BUF@ exit then
+   k S-SIGSTR  = if AOT-SIG-STR-BUF@ exit then
+   k S-REG     = if AOT-REG-BUF@ exit then
    CBUF ;
 
 : SEC-LEN ( n -- n ) {: k:n :}
@@ -221,6 +235,9 @@ variable CUR
    k S-BOOTRUN = if AOT-BOOTRUN-LEN @ exit then
    k S-PWID    = if PROT-BITS-BYTES exit then
    k S-PWIN    = if AOT-PWIN-N @ 4 * exit then
+   k S-SIGS    = if AOT-SIG-N @ SIG-ROW * exit then
+   k S-SIGSTR  = if AOT-SIG-STR-LEN @ exit then
+   k S-REG     = if AOT-REG-LEN @ exit then
    CLEN @ ;
 
 \ How many bytes one row of a section is, so a length that is not a whole number
@@ -234,6 +251,7 @@ variable CUR
    k S-XTOFFS  = if 4 exit then
    k S-XTSITES = if 8 exit then
    k S-PWIN    = if 4 exit then
+   k S-SIGS    = if SIG-ROW exit then
    1 ;
 
 \ How much of each buffer there is. The CODE-literal sites share the DATA-site
@@ -253,6 +271,9 @@ variable CUR
    k S-BOOTRUN = if AOT-BOOTRUN-CAP exit then
    k S-PWID    = if PROT-BITS-BYTES exit then
    k S-PWIN    = if AOT-PWIN-MAX 4 * exit then
+   k S-SIGS    = if AOT-SIG-MAX SIG-ROW * exit then
+   k S-SIGSTR  = if AOT-SIG-STR-CAP exit then
+   k S-REG     = if AOT-REG-CAP exit then
    CLOSURE-CAP ;
 
 : SEC-NAME ( n -- ptr u8 n ) {: k:n :}
@@ -269,6 +290,9 @@ variable CUR
    k S-BOOTRUN = if s" boot-run list" exit then
    k S-PWID    = if s" protected-WID bitmap" exit then
    k S-PWIN    = if s" protected window WIDs" exit then
+   k S-SIGS    = if s" signature rows" exit then
+   k S-SIGSTR  = if s" signature strings" exit then
+   k S-REG     = if s" type registry" exit then
    s" closure list" ;
 
 \ ---- where each section's bytes sit in its buffer ----------------------------
@@ -540,6 +564,9 @@ private
    S-XTSITES ROW-LEN@ 8 / AOT-XTSITE:N !
    S-BOOTRUN ROW-LEN@ AOT-BOOTRUN-LEN !
    S-PWIN ROW-LEN@ 4 / AOT-PWIN-N !
+   S-SIGS ROW-LEN@ SIG-ROW / AOT-SIG-N !
+   S-SIGSTR ROW-LEN@ AOT-SIG-STR-LEN !
+   S-REG ROW-LEN@ AOT-REG-LEN !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
 \ The list walks to its own end or the artifact is refused: a count that promises
@@ -651,6 +678,10 @@ private
 \   wordlist ids    records' wids and the window's own protected ids are window
 \                   coordinates, so they continue the host's window rather than
 \                   restarting it, and the merged span is the two added.
+\   pool offsets    a signature row's name, signature and package are offsets
+\                   into the signature strings, which are appended the same way
+\                   the name pool is - and for the same reason, without a
+\                   deduplication pass.
 \ The host's PRE-window protected bitmap is NOT one of them: the artifact's is
 \ the capture engine's own band, numbered in a wordlist space this host does not
 \ share, and the host's band already covers what this engine protects. It is read
@@ -659,6 +690,7 @@ private
 variable H-BLOB   variable H-REC     variable H-SITE   variable H-NAMES
 variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
 variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
+variable H-SIG    variable H-SIGSTR  variable H-REG
 variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
 
@@ -668,7 +700,9 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    AOT-DSITE-N @ H-DSITE !            AOT-CSITE-N @ H-CSITE !
    AOT-WINDOW:XTOFF-N @ H-XTOFF !     AOT-DATA-SIZE @ H-DATA !
    AOT-XTSITE:N @ H-XTSITE !          AOT-BOOTRUN-LEN @ H-BOOTRUN !
-   AOT-PWIN-N @ H-PWIN !              AOT-WID-SPAN @ H-SPAN ! ;
+   AOT-PWIN-N @ H-PWIN !              AOT-WID-SPAN @ H-SPAN !
+   AOT-SIG-N @ H-SIG !                AOT-SIG-STR-LEN @ H-SIGSTR !
+   AOT-REG-LEN @ H-REG ! ;
 
 \ A merge appends, so there has to be something to append to. A host that has not
 \ captured yet would take every shift below as zero and bake the artifact alone -
@@ -692,7 +726,9 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    H-XTOFF @ 4 *               S-XTOFFS BASE!
    H-XTSITE @ 8 *              S-XTSITES BASE!
    H-BOOTRUN @                 S-BOOTRUN BASE!
-   H-PWIN @ 4 *                S-PWIN BASE! ;
+   H-PWIN @ 4 *                S-PWIN BASE!
+   H-SIG @ SIG-ROW *           S-SIGS BASE!
+   H-SIGSTR @                  S-SIGSTR BASE! ;
 
 \ The host's CODE rows move up by the artifact's DATA rows before anything is
 \ read into the gap they leave. Copied from the top down, because the source and
@@ -748,6 +784,22 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    pad 0 ?do 0 AOT-WINDOW:DATA-BUF@ H-DATA @ + i + c! loop
    H-DATA @ pad +  H-DATA-R !
    H-DATA-R @ S-WDATA BASE! ;
+
+\ THE TYPE REGISTRY IS THE ONE SECTION A MERGE CANNOT APPEND. Its records name
+\ each other by family id, schema node id and interned string offset, and each
+\ delta is expressed against the registry high-water its own window opened on -
+\ the same one for both, because the cold prefix is all that fills it before a
+\ capture. So two non-empty deltas would both claim the same ids, and there is no
+\ remap that could tell them apart afterwards. Measured, the metabuild host's
+\ REPL window declares no families at all, so one of the two is always empty; if
+\ that ever stops being true this refuses by name rather than baking a registry
+\ in which one window's ids silently mean another's.
+: ?REG ( -- )
+   H-REG @ 0= if exit then
+   S-REG ROW-LEN@ 0= if exit then
+   s" aot-file: the host window declared " type H-REG @ .
+   s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
+   s" aot-file: two type-registry deltas cannot share one base" DIE ;
 
 \ Both captures canonicalize their code literals against base 0 (aot-capture.f
 \ ACAP-SCAN-CSITES), which is what lets a merge move one into the other's blob by
@@ -827,7 +879,10 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 0 H-BLOB @ FIELD+
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 4 H-NAMES @ FIELD+
    S-XTOFFS SEC-AT   S-XTOFFS SEC-ROWS   4 0 H-DATA-R @ FIELD+
-   S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+ ;
+   S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+
+   S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 0 H-SIGSTR @ FIELD+
+   S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 4 H-SIGSTR @ FIELD+
+   S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 8 H-SIGSTR @ FIELD+ ;
 
 : ?DVALUE ( n n -- ) {: boff:n v:n :}
    s" aot-file: the chain at merged blob offset " type boff H-BLOB @ + .
@@ -890,6 +945,9 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    H-BOOTRUN @ S-BOOTRUN ROW-LEN@ + AOT-BOOTRUN-LEN !
    H-PWIN @ S-PWIN SEC-ROWS + AOT-PWIN-N !
    H-SPAN @ A-SPAN @ + AOT-WID-SPAN !
+   H-SIG @ S-SIGS SEC-ROWS + AOT-SIG-N !
+   H-SIGSTR @ S-SIGSTR ROW-LEN@ + AOT-SIG-STR-LEN !
+   S-REG ROW-LEN@ 0 > if S-REG ROW-LEN@ AOT-REG-LEN ! then
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
 public
@@ -909,6 +967,7 @@ public
    ?HOST-CAPTURED
    LATCH-HOST
    LOAD-PASS
+   ?REG
    BASES-AFTER-HOST
    OPEN-CSITE-GAP
    SEC-N 0 ?do

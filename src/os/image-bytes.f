@@ -44,7 +44,15 @@
 \ Mach-O tail is $4000 + 104 + a $1456C signature bound, the whole image is
 \ $A395D4, rounding gives $A40000 and the margin gives $A50000. The ELF side at
 \ this window is $A21000 + $C0, far below it.
-$A50000 constant MSIZE
+\ RE-DERIVED 2026-08-17 for the $AC0000 code window (dot
+\ habu-seeded-words-invisible-c7505a49, which gave the AOT payload the window's
+\ checker signatures and the type registry its own buffers, lifting
+\ AOT-SECTION-CAP by $A0000 and CODE-CAP-BYTES with it). Fifth time by the same
+\ method and the same margin: MPAGE is $AC1000, the Mach-O tail is $4000 + 104 +
+\ a $1596C signature bound, the whole image is $ADA9D4, rounding gives $AE0000
+\ and the margin gives $AF0000. The ELF side at this window is $AC1000 + $C0, far
+\ below it.
+$AF0000 constant MSIZE
 $1002 constant M-MAP-PRIVATE-ANON
 75 constant M-BOUNDS-RC
 variable MBUF-A

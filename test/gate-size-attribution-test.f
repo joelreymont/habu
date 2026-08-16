@@ -880,9 +880,26 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
 \ move and `FILE-SIZE bin/hb` is still 165367 (measured).
 \ The Linux rows below are owed this +12 as well.
-131984 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-17 the seeded checker payload (dot
+\ habu-seeded-words-invisible-c7505a49). The whole +3504 lands in aot-seed, and
+\ it divides with no residue into three measured parts:
+\   3452  the payload itself, read out of the built engine's own published cell
+\         (`data-base AOT-SIG:LEN-CELL + @`): the REPL window's signature rows,
+\         the strings they name, an empty type registry and the 56-byte table
+\         that says where each of the three begins.
+\      8  the length word EMIT-AOT-SEED bakes in front of it (AOT-SIG:LLEN).
+\     44  AOT-SIG:PUBLISH,, the eleven instructions the seed runs to store that
+\         address and that length into the two DATA cells: two TADR, (four words
+\         each, being LOFF, + the text-base load + an add) plus LDR and two STR.
+\ CODELEN 131984 -> 135488 (+3504), floor distance 5008 -> 8512. Still the eighth
+\ 16 KiB __TEXT page ((CODE-OFF + CODE-TEXT) / 16 KiB is 8 both sides), so
+\ MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not move and
+\ `FILE-SIZE bin/hb` is still 165367 (measured).
+\ The Linux rows below are owed this +3504 as well; a Linux window's payload is
+\ its own REPL capture, so the number there is that host's to measure.
+135488 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-5008 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+8512 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

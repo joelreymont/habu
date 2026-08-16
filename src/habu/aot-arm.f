@@ -68,10 +68,16 @@ public
 \ refuse for the wrong reason (measured: HOLDER reported as uncarried, masking
 \ the address refusal the fixture exists to check). SIG-CLOSE below is the only
 \ thing that ends the collection.
+\ THE TYPE REGISTRY IS MARKED FROM THE SAME CALL, for the same reason: what a
+\ capture carries is the registry DELTA the window declared, and the base that
+\ delta appends at is whatever the registry held when the window opened. One
+\ window, one base, one call - a separate marking call could name a different
+\ moment, and family ids taken against the wrong base name other families.
 : OPEN ( n n -- ) {: b0:n d0:n :}
    d0 LIVE AOT-WINDOW:D0-CELL + CELL!
    b0 LIVE AOT-WINDOW:B0-CELL + CELL!
-   CHECKER-ASIG-ARM ;
+   CHECKER-ASIG-ARM
+   CHECKER-REG-AOT-MARK ;
 
 \ The window's DEFINITIONS end here, which is not the same fact as the window's
 \ SPAN ending - the span deliberately has no close (see aot-capture.f: a capture
@@ -83,7 +89,14 @@ public
 \ and the 723 extra name words no target engine has. A signature for a word that
 \ is not there is worse than a missing one: a definition naming it would certify
 \ and then call nothing.
-: SIG-CLOSE ( -- ) CHECKER-ASIG-DISARM ;
+\ THE WINDOW'S TYPES END HERE TOO, and for the same reason its definitions do: a
+\ capture tool loads its own assembler and artifact writer after the window, and
+\ those declare families of their own. Read live at capture time the registry
+\ delta carried them, and the seeded engine measured its base against a registry
+\ that had counted types no target has.
+: SIG-CLOSE ( -- )
+   CHECKER-ASIG-DISARM
+   CHECKER-REG-AOT-CLOSE ;
 
 \ The engine's next wordlist id. It is read here, beside the window's other base
 \ cursors, because every producer needs it at the same two moments they need those
