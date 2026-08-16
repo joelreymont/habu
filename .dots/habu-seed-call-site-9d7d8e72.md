@@ -190,3 +190,30 @@ csites prime suspect); merge DATA alignment defect dotted
 b8fec035; the x30 return-address line in EMIT-TRAPH is IN SCOPE
 of c970bf04 (build the tool), as is promoting the owner.f
 address->record probe to tools/.
+
+FIXTURE RULING 2026-08-16 (bake-chain-10's two-resolver proof):
+layer (4)'s refuse leg is UNREACHABLE from any artifact - the
+scope classifier refuses raw pre-window wids (exit 82, already
+pinned by PROBE-WID-FORGED) and LFIND's qualifier path reads
+only a package's public slot, so the accept-sets cover the input
+space. RULED: option (1). The refuse leg STAYS as documented
+fail-closed defence - it guards against a future edit to the
+classifier or the format (D1's refuted option (b) is exactly the
+edit it would catch), and the two-resolver proof goes in its
+comment as the reason it has no producer today. Option (2) is
+refused (inventing a hole to test a guard); option (3) is
+refused (the defence is cross-file and the threat is a future
+edit to the OTHER file). Modes: 1 becomes "a qualified boot-run
+name into a sealed package's public wordlist boots"; 2 stays
+the unprotected control; 3 is rebuilt as the PUBLIC/PRIVATE
+STRADDLE - original record in a private wordlist, EXPORTed
+record in a public one: a correct gate reads the wid the name
+RESOLVED through and boots, an xt-scanning gate reads the
+private record and dies 84. That gives mode 3 sharper teeth
+than it had: it now discriminates the resolved-record read from
+the xt-scan shortcut, which is the exact bug class the gate
+could regress into.
+The bricked-engine recovery (mutation of boot-path prefix code
+kills every subsequent --load incl. the rebuild; copy a healthy
+bin/hb from another workspace, refresh from source; park a spare
+BEFORE mutating) goes to LESSONS.md with the landing.
