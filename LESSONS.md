@@ -7195,3 +7195,19 @@ callee's answer. Use a register the call does not own.
   both sides of every structural check and wrong only when the code runs, so the
   suite now bakes the artifact and runs a program through it. Reachable-and-
   well-formed is not runs.
+
+## 2026-08-16 - the audit execution's three (audit-fix)
+
+(1) An isolation build attributes a seed-affecting byte delta in
+seconds: rebuild with ONE constant reverted and everything else
+in place - "393 bytes moved" became "16KiB of allot moved the
+DATA cursor" with no disassembly.
+(2) A comment carrying a measured number is a second authority,
+and one had already drifted ($514800 short by two sections);
+the executed AGREE never noticed because it compares the rounded
+sum. Derive in code, not in prose.
+(3) A test's unique content is only worth keeping if a producer
+can reach it: XTSITE discriminated one real mutant, and the
+classifier that would have to emit that row returns early for
+exactly the values that make it possible. Deleted on
+producibility, not on taste.
