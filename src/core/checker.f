@@ -3000,6 +3000,24 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 : FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FAM-MARK FAM-K !
    a 6 + u 6 - FAM-K @ MK-ATOM-K ;
+\ The package a signature parse resolves bare family tails in. Normally the
+\ authenticated package of the definition being checked - signature text is
+\ written where the definition is, so its scope is the definition's scope. The
+\ ONE other case is a stored signature at AOT intake (CK-AOT-TAKE below): its
+\ text was written in the ROW'S package - `make` in package ir-source says
+\ `span`, not `IR-SOURCE:span`, and certified there - and re-parsing it in the
+\ intake's scope reads those tails in the wrong package. The intake already
+\ interns the word under the row's key for exactly this reason; the parse scope
+\ is the same fact, so it comes from the same row. Same resolver, same lexical
+\ order - only the package the walk starts from is the row's.
+variable SIGSCOPE-ON   0 SIGSCOPE-ON !
+PTR-VARIABLE SIGSCOPE-P
+variable SIGSCOPE-U
+: SIGSCOPE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a SIGSCOPE-P !  u SIGSCOPE-U !  -1 SIGSCOPE-ON ! ;
+: SIGSCOPE-OFF ( -- ) 0 SIGSCOPE-ON ! ;
+: SIG-SCOPE$ ( -- ptr u8 n )
+   SIGSCOPE-ON @ IF SIGSCOPE-P @ SIGSCOPE-U @ ELSE CHECKER-AUTH-PACKAGE$ THEN ;
 \ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a family token through the TFAM
 \ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
 \ (0 false) — always two items, so every caller drops the id on the false path.
@@ -3009,7 +3027,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 \ `PKG:tail` tokens, case validation, hidden `@` names, and ambiguity handling
 \ live in the installed resolver (type-family.f TFAM-SIG-RESOLVE).
 : SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   CHECKER-AUTH-PACKAGE$ a u TFAM-RESOLVE* ;
+   SIG-SCOPE$ a u TFAM-RESOLVE* ;
 \ EXT-MARK-FREE-TAIL ( ptr u8 n -- ) : BTC-7 — mark an extent family FREE by its
 \ lowercase tail, resolved through the SAME scope SIG-FAM? uses so the recorded id
 \ is exactly the one SIG-END-PARAM reads off a redx<..> arg. EXTPROD: (maki/extent.f)
@@ -11882,7 +11900,9 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
    r CK-AOT-ROW-SYM CHECKER-REC-SYM !
    NEW
    SGBAD-CLEAR
+   r 8 CK-AOT-FIELD CK-AOT-STR$ SIGSCOPE!   \ bare family tails read in the row's package
    sa su PARSE-SIG-RAW
+   SIGSCOPE-OFF
    SGBAD @ IF
       2drop 2drop
       2 sa su write drop
@@ -12776,19 +12796,6 @@ TYPES-DEFAULTS
    RBF-POP ;
 
 variable CAND-A   variable CAND-U   variable CAND-VERDICT
-: CHECK-CANDIDATE-BODY ( -- )        \ ( -- ) closure: check the stashed source, stash the verdict
-   CAND-A @ CAND-U @ CHECK CAND-VERDICT ! ;
-\ Throw-safe: a throw inside CHECK must not unwind past the candidate pop, or the
-\ rollback frame leaks (RBF-DEPTH stuck, rejected rows survive) and the next probe
-\ runs on corrupted state. Mirror CHK-RUN-SCOPED: run the body under catch, pop the
-\ frame unconditionally, re-throw the caught code, return the verdict on success.
-: CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a CAND-A !  u CAND-U !
-   CHECK-CANDIDATE-START
-   [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
-   0 CHECK-CANDIDATE-DONE drop
-   rc 0 <> IF rc throw THEN
-   CAND-VERDICT @ ;
 
 : CHECKER-CANDIDATE-SCOPE-START ( -- )
    CHECK-CANDIDATE-START ;
@@ -12840,6 +12847,41 @@ variable CK-RETRY-TOKS
    0 RESCAN !
    0 CK-AOT-RETRY-ARMED !
    CK-RETRY-V @ ;
+
+\ A candidate answers through the SAME retry loop a definition does, because a
+\ seeded engine must give a candidate the verdict the source engine gives it: a
+\ bare CHECK cannot see a seeded word whose row was never taken in this
+\ process, and reported it E-UNDEFINED - ir-context.f's seal battery read that
+\ 1 where the source engine's refusal reads 0. The rows a retry takes inside
+\ the candidate's rollback frame are popped with it; the next miss re-takes
+\ them, so nothing depends on the probe having happened.
+\
+\ Throw-safe, mirroring CHK-RUN-SCOPED: a throw inside CHECK must not unwind
+\ past the candidate pop, or the rollback frame leaks (RBF-DEPTH stuck,
+\ rejected rows survive) and the next probe runs on corrupted state. The retry
+\ loop's own driving state is snapshotted here too, where the catch is: a
+\ candidate may run inside an enclosing CHECK-RETRY pass, and the inner loop
+\ finishing - or dying - must not disarm or misread the outer one.
+: CHECK-CANDIDATE-BODY ( -- )        \ ( -- ) closure: check the stashed source, stash the verdict
+   CAND-A @ CAND-U @ CHECK-RETRY CAND-VERDICT ! ;
+
+: CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a CAND-A !  u CAND-U !
+   CK-AOT-RETRY-ARMED @ {: armed0:n :}
+   CK-AOT-RETRY-DUE @ {: due0:n :}
+   RESCAN @ {: rescan0:n :}
+   CK-RETRY-V @ {: v0:n :}
+   CK-RETRY-TOKS @ {: toks0:n :}
+   CHECK-CANDIDATE-START
+   [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
+   0 CHECK-CANDIDATE-DONE drop
+   armed0 CK-AOT-RETRY-ARMED !
+   due0 CK-AOT-RETRY-DUE !
+   rescan0 RESCAN !
+   v0 CK-RETRY-V !
+   toks0 CK-RETRY-TOKS !
+   rc 0 <> IF rc throw THEN
+   CAND-VERDICT @ ;
 
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1 VSIG !
