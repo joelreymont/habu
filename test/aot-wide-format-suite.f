@@ -31,16 +31,7 @@
 \ unless the capture really produced an out-of-line record, so the case cannot
 \ pass on a window whose names all shrank back under the limit.
 \
-\ THE THIRD THING, and the one whose producer is still ahead of it: a NAMED code
-\ site. A code-address literal whose value is a word's entry can be resolved by
-\ name at boot instead of rebased - which is the only correct answer for a
-\ literal naming a PRE-WINDOW word, whose address the window cannot describe (dot
-\ habu-aot-pre-window-0b01043c owns deciding which sites those are). The row and
-\ its boot arm ship with the rest of the format so it migrates once. The
-\ HABU_AOT_XTSITE=1 mode makes such a row out of a real capture, through the
-\ capture's own writer, and dies unless exactly one was made.
-\
-\ THE FOURTH CASE, and the one that is an ELIMINATION rather than a carry (dot
+\ THE THIRD CASE, and the one that is an ELIMINATION rather than a carry (dot
 \ habu-aot-pre-window-0b01043c). A window word that names a PREFIX data word used
 \ to end the build: the prefix word's body is short, the engine's inliner copied
 \ it, and the copy carried an address below the window's DATA span, which the
@@ -52,18 +43,24 @@
 \ capture's own tables back over the fixture word's record and dies unless the body
 \ is free of DATA sites and holds the call.
 \
-\ THE FIFTH CASE, and the one the ruling's rider named for this dot: a pre-window
-\ CODE literal. `['] X` on a PREFIX word compiles its chain into the window word's
-\ OWN body, so the decline that emptied the DATA class cannot reach it - there is
-\ no copy to decline. The capture now recognises it as a call target that is not a
-\ BL and writes a name-keyed row, which is the row kind the third case ships the
-\ format for. The HABU_AOT_XTLIT=1 mode asserts, over the fixture word's own
-\ captured record, exactly one such row inside its body naming the prefix word and
-\ no rebased code site there. On the base this build DIES named.
+\ THE FOURTH CASE, and the one the ruling's rider named for this dot: a pre-window
+\ CODE literal, which is also what puts a NAMED code row on the bake-and-boot path.
+\ `['] X` on a PREFIX word compiles its chain into the window word's OWN body, so
+\ the decline that emptied the DATA class cannot reach it - there is no copy to
+\ decline. The capture recognises it as a call target that is not a BL and writes a
+\ name-keyed row instead, and the seed resolves that name in the engine it is
+\ booting. The HABU_AOT_XTLIT=1 mode asserts, over the fixture word's own captured
+\ record, exactly one such row inside its body naming the prefix word and no
+\ rebased code site there. On the base this build DIES named.
+\ It is the ONLY case the row kind needs. A row can only ever name a word the
+\ window does not contain (aot-capture.f ACAP-OUT-CHAIN returns early for a value
+\ inside the blob span, and every captured record's entry is inside it), so a
+\ fixture that doctors a row onto a WINDOW word tests a lookup the classifier
+\ cannot produce - which is what the deleted HABU_AOT_XTSITE mode did.
 \
 \ AND THE BOOT HALF IS HERE TOO, ON EVERY HOST. That used to be impossible: the
 \ AOT seed was armed at the interactive REPL entry and nowhere else, so only a PTY
-\ could observe a captured word and the boot half of all four cases lived in
+\ could observe a captured word and the boot half of every case lived in
 \ test/aot-data-span-forge.f, which runs on Linux hosts alone - it prints
 \ "PTY boot cases run on linux only; skipped" everywhere else, so on a macOS host
 \ NOTHING was asserting that any of this boots. Since dot
@@ -77,7 +74,7 @@
 \ sibling keeps its own copies; what only IT can still say is what the engine does
 \ when it is entered INTERACTIVELY, since the entry words ask TTY? themselves.
 \
-\ Cost: five child engine builds; the big-window one is larger than the others
+\ Cost: four child engine builds; the big-window one is larger than the others
 \ because the maker compiles the filler. Registered as
 \ `TEST:SUITE aot-wide-format` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-wide-format-suite.f
@@ -239,26 +236,6 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    s" the out-of-line-named word is found by that name at boot" T-LABEL
    s" awb-ext=" s" 6510767442340633178" REPORT= ;
 
-: PROBE-XTSITE ( -- )
-   SETUP
-   s" HABU_AOT_XTSITE" BUILD-MODE
-   s" a window carrying a named code site builds cleanly" REQUIRE-BUILD
-   s" the capture turned one code site into a named row" T-LABEL
-   OUT$ s" aot-wid-build: xtsite " CONTAINS? TTRUE
-   s" the named-code-site variant image exists after the build" T-LABEL
-   HB$ EXISTS? TTRUE
-   BATCH-OK
-   s" the named-code-site variant still runs a batch program" T-LABEL
-   RC @ 0 T=
-   s" and computes with it" T-LABEL
-   OUT$ s" 42" CONTAINS? TTRUE
-   \ Three answers were possible and only one is the row working: 11 is the
-   \ quotation the chain originally pointed at (the rebase ran, the named row did
-   \ not), 22 is the word the row names, and the zero the capture left is a jump
-   \ to address 0. 22 is the one that says the seed resolved the NAME.
-   s" the named code site resolves to the word it names, not the chain's own" T-LABEL
-   s" awb-xt=" s" 22" REPORT= ;
-
 \ A window word that names a PREFIX data word (dot habu-aot-pre-window-0b01043c).
 \ The prefix's `create` sits below the window's DATA span, so the address its body
 \ pushes is one the window cannot describe, and the body is short enough that the
@@ -332,7 +309,6 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
 : BODY ( -- )
    PROBE-BIG-WINDOW
    PROBE-EXT-NAME
-   PROBE-XTSITE
    PROBE-XTLIT
    PROBE-PREWINDOW ;
 
