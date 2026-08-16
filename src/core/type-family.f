@@ -2514,6 +2514,28 @@ create REG-AOT-END-A REG-AOT-N cells allot
    s" where the capture marked " type want . cr
    s" tfam: a seeded type registry does not start where its capture did" 76 die ;
 
+\ NO ABSOLUTE FOREIGN ID SURVIVES LOAD. Seven of the eight stores reference
+\ each other by ids the base equality below makes meaningful in this engine;
+\ the variant store's SV.CTOR-SYM is the one cell that does not - it names a
+\ row of the CHECKER'S SYMBOL STORE, which is interned on demand and has no
+\ base alignment between the capture engine and this one. Measured: seeded
+\ rows arrived carrying ctor-sym 7750 against a boot SYM-N of 3147, and once
+\ the ctor index served them, whatever fresh definition later interned sym
+\ 7750 inherited a stale seeded variant - a count-dependent mis-bind that
+\ wedged the install fixpoint. So the load makes the cell STRUCTURALLY
+\ ABSENT: 0 is the value SVX-LINK and SUMV-FROM-CTOR-SYM already refuse to
+\ key on. A seeded constructor is an ordinary word here - its calls certify
+\ through the signature row the intake takes, which every seeded suite
+\ proves - and a consumer that someday needs seeded ctor-hood must mint a
+\ TARGET id, not believe a carried one.
+: REG-AOT-SCRUB ( n n n -- ) {: k:n base:n cnt:n :}
+   k 2 <> IF EXIT THEN
+   base REG-AOT-J !
+   BEGIN REG-AOT-J @ base cnt + < WHILE
+      0 REG-AOT-J @ SUMV-REC@ SV.CTOR-SYM !
+      REG-AOT-J @ 1 + REG-AOT-J !
+   REPEAT ;
+
 : REG-AOT-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
    u 0= IF EXIT THEN
    u REG-AOT-HDR < IF
@@ -2541,12 +2563,25 @@ create REG-AOT-END-A REG-AOT-N cells allot
             bytes USIGS-COPY
          THEN
          i base cnt + REG-AOT-COUNT!
+         i base cnt REG-AOT-SCRUB
          REG-AOT-CUR @ bytes + REG-AOT-CUR !
       THEN
    loop
    REG-AOT-CUR @ u <> IF
       s" tfam: a seeded type registry does not fill its own bytes" 76 die THEN
-   TFX-SNAP-RESET ;                              \ the tail index predates these families
+   TFX-SNAP-RESET                                \ the tail index predates these families
+   0 SVX-GEN ! ;                                 \ and so does the ctor-symbol index. The
+                                                 \ bulk copy grew SUMV-N past SVX-HI, a
+                                                 \ direction SVX-SYNC deliberately does not
+                                                 \ watch (ordinary growth links per write),
+                                                 \ so the next SVX-ENSURE rebuilds over the
+                                                 \ seeded rows - which is safe exactly
+                                                 \ because REG-AOT-SCRUB above already made
+                                                 \ their ctor cells structurally absent.
+                                                 \ This reset lands WITH the scrub, never
+                                                 \ alone: over unscrubbed rows it turns the
+                                                 \ carried foreign ids into live bindings
+                                                 \ (dot habu-seeded-variant-ctor-c98479f0).
 
 : REG-EXT-AOT-INSTALL ( -- )
    [: REG-AOT-MARK ;] is REG-EXT-AOT-MARK-XT
