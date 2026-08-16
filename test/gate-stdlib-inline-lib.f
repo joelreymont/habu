@@ -424,8 +424,8 @@ public
    s" lib/memory-test.f" GSI-FORK-INCLUDE
    s" lib/vector-test.f" GSI-FORK-INCLUDE
    s" lib/byte-buffer-test.f" GSI-FORK-INCLUDE
-   s" test/compiler/ir-id.f" GSI-FORK-INCLUDE
-   s" test/compiler/ir-id-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-id-host.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-id-manifest-host.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-intern-manifest.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-structure-manifest.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-storage-manifest.f" GSI-FORK-INCLUDE

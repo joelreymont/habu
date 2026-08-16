@@ -107,7 +107,13 @@ create ART ART-CAP allot    variable ART-LEN
 : PROD1$ ( -- ptr u8 n ) PROD1-BUF PROD1-U @ ;
 : DPMUT$ ( -- ptr u8 n ) DPMUT-BUF DPMUT-U @ ;
 : BFMUT$ ( -- ptr u8 n ) BFMUT-BUF BFMUT-U @ ;
-: HB$ ( -- ptr u8 n )   s" bin/hb" ;
+\ SUBJECT: source-loading the chain. The capture and the bake must LOAD the
+\ chain's 43 files, so they run on the CAPTURE HOST the install keeps beside
+\ the product (bin/hb-host) - the product already provides every closure file,
+\ which turns the load this suite exists to measure into a no-op and captures
+\ an empty window. The BAKED programs the suite then runs are chain BEHAVIOR
+\ and go through ENGINE$, the engine the bake itself emitted - never this one.
+: HB$ ( -- ptr u8 n )   s" bin/hb-host" ;
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 : TOOL$ ( -- ptr u8 n ) s" tools/aot-chain-capture.f" ;
@@ -390,7 +396,7 @@ create ART ART-CAP allot    variable ART-LEN
    s" ... and carries a full-width digest over their bytes" T-LABEL
    s" chaindigest=" 64 TEXT-FIELD nip 64 T=
    s" the producer key is the engine that ran the capture" T-LABEL
-   s" bin/hb" DIG SHA256-FILE 0 T=
+   HB$ DIG SHA256-FILE 0 T=
    DIG DHEX SHA256>HEX
    s" producer=" 64 TEXT-FIELD  DHEX 64 T$= ;
 

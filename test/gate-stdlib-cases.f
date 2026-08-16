@@ -165,11 +165,11 @@ SUITE engine-identity
 ;SUITE
 
 SUITE compiler-ir-id
-   test/compiler/ir-id.f
+   test/compiler/ir-id-host.f
 ;SUITE
 
 SUITE compiler-ir-id-manifest
-   test/compiler/ir-id-manifest.f
+   test/compiler/ir-id-manifest-host.f
 ;SUITE
 
 SUITE compiler-ir-intern-manifest
@@ -774,7 +774,7 @@ SUITE compiler-native-vocab
 \ label no predicate selects is the bare (ALL) one, and no phase of test/run.f
 \ has ever run it. They were unscheduled, not deferred.
 SUITE compiler-ir-id-proof
-   test/compiler/ir-id-proof.f
+   test/compiler/ir-id-proof-host.f
 ;SUITE
 
 \ The interning parity gate compiles formal/Common/Interning.v with the Rocq
