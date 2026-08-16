@@ -62,8 +62,6 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
 \ ACAP-TGT decodes imm26, which B and BL share, so it reads both.
 : ACAP-W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
-: ACAP-W32! ( n ptr u8 -- ) {: w:n p:ptr :}
-   w p c!  w 8 rshift p 1+ c!  w 16 rshift p 2 + c!  w 24 rshift p 3 + c! ;
 : ACAP-TGT ( ptr u8 -- n ) {: p:ptr :}            \ absolute callee address of the BL at p
    p ACAP-W32@ $3FFFFFF and  $2000000 xor $2000000 -  2 lshift    \ sign-extended imm26 * 4
    AOT-CODE-B0 @  p AOT-BLOB-BUF@ -  +  + ;                       \ + (B0 + site blob offset)
@@ -78,7 +76,7 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
    t AOT-CODE-B0 @ < if 0 0= 0= exit then
    t AOT-CODE-B0 @ AOT-BLOB-LEN @ + < ;
 : ACAP-ZERO-IMM ( ptr u8 -- ) {: p:ptr :}         \ zero the imm26 -> bare `bl #0`, for build determinism
-   p ACAP-W32@ $FC000000 and  p ACAP-W32! ;
+   p ACAP-W32@ $FC000000 and  p AOT-P32! ;
 
 \ --- reverse lookup: absolute call target (host xt) -> its dict record index ---
 \ WHY THIS IS AN INDEX AND NOT A SCAN. Both callers ask once PER SITE - the BL
