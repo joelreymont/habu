@@ -264,12 +264,27 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 170 = min
 DICT-CAP cells constant PROF-CNT-BYTES
 
 25 constant SOURCE-HEADROOM-PCT
-$400000 constant SOURCE-ARENA-CAP
+$800000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ
 \ The 2026-07-15 owner-persistence composite was 1,687,332 bytes; 25% headroom
 \ required 2,109,165, so the smallest power of two selected SOURCE-ARENA-CAP.
 \ The fixpoint regression enforces the policy from live stage2 and cold-prefix
 \ measurements.
+\ RE-DERIVED 2026-08-17 (dot habu-seeded-words-invisible-c7505a49). A `--build`
+\ holds the cold prefix and the generated stage2 source in ONE arena, so the
+\ composite is their sum: 1,422,190 + 1,999,714 = 3,421,904 bytes, and 25%
+\ headroom requires 4,277,380, which the old $400000 could not meet. The
+\ smallest power of two that does is $800000.
+\ HOW CLOSE THIS ALREADY WAS: the largest composite $400000 admitted was
+\ 3,355,443 bytes and the tree stood at 3,353,487 - 1,956 bytes of slack. The
+\ cold prefix and the stage2 source BOTH carry src/core/checker.f, so the arena
+\ was 978 bytes of checker source away from refusing anyone's next edit. The
+\ bump was owed whatever landed next.
+\ THE DUPLICATION IS THE REAL COST and it is dotted, not fixed here: roughly
+\ 1.4 MB of the composite is one checker/core text counted twice, once from the
+\ cold prefix and once from the stage2 source's own re-include (dot
+\ habu-dedup-the-cold-8010f67c). Deduplicating it buys far more than this
+\ doubling; it is a redesign of what `--build` loads, so it is its own work.
 \ IBUFSZ overflow is labeled rc 74. Keep the bootstrap mirror token-identical.
 20 constant DATA
 

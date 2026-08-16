@@ -73,7 +73,7 @@ $2000000 constant DATA-SIZE    \ data-space mmap (always RW, separate from the R
 \ EMIT-PROF indexes (NDICT <= DICT-CAP). prof.fs derives PROF-CNT = DATA-SIZE - this.
 DICT-CAP cells constant PROF-CNT-BYTES
 25 constant SOURCE-HEADROOM-PCT
-$400000 constant SOURCE-ARENA-CAP
+$800000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ  \ native mirror src/habu/layout.f
 
 require exec.fs
