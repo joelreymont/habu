@@ -149,3 +149,44 @@ exemption); (b) the merged-engine NMIGRATE:DEFINE crash, dotted
 c970bf04. This dot stays active until the gate ruling lands and
 the milestone transcript is green.
 
+
+GATE RULING CORRECTED 2026-08-16 (bake-chain-10's census refutes
+the public/private rule as a REPLACEMENT: the chain seals its own
+packages - 10648 in-window private sites are sealed - so without
+the window clause the chain cannot bake; my ruling's evidence was
+measured WITH D3 in place). THE RULE IS LAYERED, one gate routine
+carrying all of it, in this order:
+(1) wid in [T0, T0+span) -> admit (the window's own wordlists,
+seed-created; cheap arithmetic first, which also keeps the
+namespace scan off the 14769-site hot path). T0 is LATCHED into
+a DATA cell at seed start (the precedented top slot below
+AOT-WINDOW:D0-CELL at $43A8) - never derived as WIDN-span, which
+is the implicit-ordering trap. The window clause moves INTO the
+gate: a security rule split across a caller-side skip and a
+callee-side test is how the over-broad gate happened - the
+lane's argument, adopted.
+(2) wid 1 / wid 2 -> admit (engine API + registered helpers;
+EMIT-STORE-DEF-NAME refuses every publish into them, test/seal.f
+pins it at 84, and BSWL's own prose says the seed must search
+wid 2). APPROVED - the lane's proposal, measured-necessary (12
+sites).
+(3) not protected -> admit.
+(4) protected pre-window -> admit iff the wid is some package
+record's PUBLIC slot ([40]=-1 rows, [0] public / [8] private),
+read structurally off the namespace rows; refuse otherwise BY
+NAME (the diagnostic the lane already built).
+All three paths (call sites, code literals, boot-run) share the
+one routine. The fixture converts to the CALL-SITE path with an
+explicitly private scope (a qualified boot-run name structurally
+cannot reach a private word - measured); EM-AOTWIDGATE keeps a
+live red path. Mutations: each layer deleted reds a named case;
+a pre-window private callee of a sealed package refuses on every
+path.
+ALSO from the checkpoint: the acceptance command's arity was MY
+error - the real call is s" : FOO ( n -- n ) 1 + ;" 1 1 8
+NMIGRATE:DEFINE; the milestone transcript uses it. The crash is
+localized (entry into PATHZ's body without its entry executing -
+csites prime suspect); merge DATA alignment defect dotted
+b8fec035; the x30 return-address line in EMIT-TRAPH is IN SCOPE
+of c970bf04 (build the tool), as is promoting the owner.f
+address->record probe to tools/.
