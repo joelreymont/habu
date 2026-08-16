@@ -247,3 +247,24 @@ base-equality refusal must STAY for a genuinely foreign base
 (the forge case keeps it live). Increment C's acceptance gap is
 recorded: its family-typed reproducer used a chain family but
 never declared one ahead - only the product could see this.
+
+FIXTURE-PARTITION RULING 2026-08-17 (the 29 remaining phases):
+(0) FIRST, before any adaptation: probe the ATTR-LOCAL anomaly -
+ir-id.f:157 packs 13, :158 reads 0 on the product. A packed
+value reading back 0 is potentially a data word whose VALUE did
+not travel (a seed defect class nothing yet audits). Nobody
+adapts a fixture in that family until this has its own verdict;
+if it is a defect, it gets a dot and blocks the close.
+(1) THE CAPTURE HOST IS KEPT: install retains bin/hb-host
+beside bin/hb (the build already emits it; never shipped is not
+never kept). Fixtures obtain a capture host by PATH, no
+rebuilding.
+(2) ONE PARTITION RULE covers both classes: a fixture whose
+SUBJECT is source-loading the chain (captures, load-time deltas,
+family-count brackets) runs against bin/hb-host; a fixture whose
+subject is chain BEHAVIOR runs against the product. The
+partition is per-fixture-subject, stated in each fixture's
+header, not per-suite.
+(3) The class that changed failure mode under the fix gets
+fresh diagnosis per the lane's own flag - the old diagnosis is
+void.
