@@ -5859,6 +5859,12 @@ PRIM: CHECKER-ASIG-ROW-BYTES PE-N PE-OUT PRIM;
 PRIM: CHECKER-ASIG-STR-BYTES PE-N PE-OUT PRIM;
 PRIM: CHECKER-ASIG-ROW-C@ PE-N PE-IN PE-N PE-OUT PRIM;
 PRIM: CHECKER-ASIG-STR-C@ PE-N PE-IN PE-N PE-OUT PRIM;
+\ The audit's two questions, keyed the way SYM-FIND is keyed. They exist as
+\ axioms so the audit can ask them WITHOUT SYM-FIND and CHECKER-FIND-USIG-SYM
+\ joining this list, which would widen the checker's trusted boundary to answer
+\ one caller's question.
+PRIM: CHECKER-ASIG-KNOWN? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CHECKER-ASIG-MISSING? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ CAST-PEND! ( name$ -- ) arms the one-shot cast-certification window (defined
 \ near CTOR-PEND below). The axiom keeps it checker-known so the roles.f CAST:
 \ declarer — an ordinary checked word — can call it; unlike CTOR-PEND!/LBUF-PEND!
@@ -6677,6 +6683,43 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
       FMEND @ HIDX-EFF-DEP+
    THEN
    FEP-HIT? ;
+
+\ ---- the capture audit's two questions ---------------------------------------
+\ src/habu/aot-capture.f asks these once per window dictionary record, with the
+\ record's own package and name - derived from its WORDLIST, not from whatever
+\ package happens to be open, because the wordlist is what SYM-FIND is keyed on.
+\
+\ THEY LIVE HERE BECAUSE THEY ARE QUESTIONS ABOUT TWO CHECKER TABLES, the effect
+\ store and the signature pool. Answering them outside would need SYM-FIND and
+\ CHECKER-FIND-USIG-SYM in the axiom list, and that list is the checker's trusted
+\ boundary rather than somewhere to widen for a caller's convenience.
+\
+\ THE SCOPE ARRIVES AS A PACKAGE NAME AND ONE BOOLEAN, never as a visibility
+\ number: SYM-GLOBAL/SYM-PRIVATE/SYM-PUBLIC are this file's encoding and this
+\ file's constants are not reachable from checked code, so a caller spelling them
+\ would be a second authority for one encoding - the drift the audit itself
+\ exists to stop. An EMPTY package name is the global scope, which is not a
+\ sentinel but the key CHECKER-GLOBAL-SYM already interns under.
+: ASIG-AUDIT-VIS ( n bool -- n ) {: pkgu:n pub:bool :}
+   pkgu 0= IF SYM-GLOBAL EXIT THEN
+   pub IF SYM-PUBLIC EXIT THEN
+   SYM-PRIVATE ;
+
+: CHECKER-ASIG-KNOWN? ( ptr u8 n bool ptr u8 n -- bool )
+   {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
+   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
+   hit 0= IF RES-FALSE EXIT THEN
+   sym CHECKER-FIND-USIG-SYM ;
+
+\ True exactly when the checker knows an effect for the name and the pool carries
+\ no signature for it - the one condition a capture must refuse, because that
+\ word is callable from checked code here and would not be in the seeded engine.
+: CHECKER-ASIG-MISSING? ( ptr u8 n bool ptr u8 n -- bool )
+   {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
+   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
+   hit 0= IF RES-FALSE EXIT THEN
+   sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
+   sym ASIG-LAST@ 0= ;
 
 : CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;

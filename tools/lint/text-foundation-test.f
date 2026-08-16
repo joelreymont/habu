@@ -983,9 +983,14 @@ variable REG-I
    \ terms as `CTL-DEAD?` above: the file's own definitions compile with the hook
    \ off, so a checked caller outside it has no record to resolve against and the
    \ axiom restates a signature the definition already carries.
+   \ It was 384 before the capture audit (same dot) added the two questions it
+   \ asks per window record - `CHECKER-ASIG-KNOWN?` and `CHECKER-ASIG-MISSING?`.
+   \ They are two rows rather than none because the alternative was putting
+   \ SYM-FIND and CHECKER-FIND-USIG-SYM in this table, which would widen the
+   \ checker's trusted boundary far past what the audit needs to ask.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 384 ASSERT=
+   REG-COUNT 386 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

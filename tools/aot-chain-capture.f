@@ -84,7 +84,8 @@ variable W0  variable W1      \ its wordlist span
 \ loads after this point and opens packages of its own, so the live counter has
 \ moved on by the time CAPTURE runs.
 : CLOSE ( -- )
-   cp@ B1 !  ndict@ R1 !  here D1 !  REQUIRE-N @ Q1 !  AOT-ARM:WIDN W1 ! ;
+   cp@ B1 !  ndict@ R1 !  here D1 !  REQUIRE-N @ Q1 !  AOT-ARM:WIDN W1 !
+   AOT-ARM:SIG-CLOSE ;
 
 ;package
 
@@ -255,6 +256,10 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    s" csites=" type AOT-CSITE-N @ .
    s" xtsites=" type AOT-XTSITE:N @ .
    s" xtoff=" type AOT-WINDOW:XTOFF-N @ .
+   s" sigs=" type CHECKER-ASIG-N .
+   s" sigbytes=" type CHECKER-ASIG-ROW-BYTES CHECKER-ASIG-STR-BYTES + .
+   s" sigknown=" type AOT-CAPTURE:SIG-KNOWN .
+   s" sigexempt=" type AOT-CAPTURE:SIG-EXEMPT .
    s" datasz=" type AOT-DATA-SIZE @ .
    s" codespan=" type B1 @ B0 @ - .
    s" dataspan=" type D1 @ D0 @ - .

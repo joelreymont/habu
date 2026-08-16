@@ -52,17 +52,38 @@ public
 \ OPEN-UNARMED uses to put a pre-window DATA literal in front of the capture's
 \ DATA audit.
 \
-\ THE CHECKER'S SIGNATURE CAPTURE IS THE SAME FACT, so it is armed from the same
-\ call rather than from a second one. A window is open exactly when these two
-\ cells name it, and the rows the checker collects while it is open are the
-\ signatures of the words inside it; two independent arming calls would let a
-\ capture take a window's records with another window's signatures. Disarming
-\ (0 0) also clears the collected rows, so a second window starts empty.
+\ THE CHECKER'S SIGNATURE CAPTURE STARTS HERE TOO, from the same call rather than
+\ a second one: a window opens exactly once, and the rows the checker collects
+\ from that moment are the signatures of the words inside it. Two independent
+\ arming calls would let a capture take one window's records with another
+\ window's signatures.
+\
+\ IT ARMS ON `0 0` AS WELL, and that is the whole point of keeping the two axes
+\ apart. Passing 0 0 disarms the INLINER's window - it is what makes the engine
+\ copy a pre-window body instead of calling it, which test/aot-band-lib.f
+\ OPEN-UNARMED needs to put a pre-window DATA literal in front of the capture's
+\ DATA audit. It does not say "collect nothing": that window is still a window
+\ being captured, and its words still need their signatures carried. Tying the
+\ collection to the CELLS' VALUE conflated the two and made the band fixtures
+\ refuse for the wrong reason (measured: HOLDER reported as uncarried, masking
+\ the address refusal the fixture exists to check). SIG-CLOSE below is the only
+\ thing that ends the collection.
 : OPEN ( n n -- ) {: b0:n d0:n :}
    d0 LIVE AOT-WINDOW:D0-CELL + CELL!
    b0 LIVE AOT-WINDOW:B0-CELL + CELL!
-   b0 0= d0 0= and if CHECKER-ASIG-DISARM exit then
    CHECKER-ASIG-ARM ;
+
+\ The window's DEFINITIONS end here, which is not the same fact as the window's
+\ SPAN ending - the span deliberately has no close (see aot-capture.f: a capture
+\ snapshots [d0, here) and later definitions extend the same window). What ends
+\ is the set of definitions the artifact will carry, and everything a capture
+\ TOOL compiles after its window - its own icode.f, aot-decl.f, aot-capture.f and
+\ artifact writer - is not in that set. Measured on the compiler chain: leaving
+\ the store armed past the window collected 8279 rows where the window has 7556,
+\ and the 723 extra name words no target engine has. A signature for a word that
+\ is not there is worse than a missing one: a definition naming it would certify
+\ and then call nothing.
+: SIG-CLOSE ( -- ) CHECKER-ASIG-DISARM ;
 
 \ The engine's next wordlist id. It is read here, beside the window's other base
 \ cursors, because every producer needs it at the same two moments they need those

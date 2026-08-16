@@ -355,7 +355,21 @@ create ART ART-CAP allot    variable ART-LEN
    s" dsites=" FIELD     3000 s" ... its DATA-literal sites" FLOOR
    s" xtoff=" FIELD         1 s" ... and its declared address cell" FLOOR
    s" bandrecs=" FIELD      1 s" the prelude band is not empty" FLOOR
-   s" bandbytes=" FIELD     1 s" ... on the DATA axis either" FLOOR ;
+   s" bandbytes=" FIELD     1 s" ... on the DATA axis either" FLOOR
+
+   \ The signature audit's own numbers, and the identity that makes them a
+   \ statement rather than two counters: it visits EVERY window record exactly
+   \ once and puts each in one of the two buckets, so their sum is the record
+   \ count. A walk that skipped a class, or counted one twice, breaks this
+   \ without breaking either floor below it.
+   s" every window record is either checked or exempt, and none is both" T-LABEL
+   s" sigknown=" FIELD  s" sigexempt=" FIELD +  s" recs=" FIELD T=
+   s" sigknown=" FIELD    6000 s" the window's checked words" FLOOR
+   s" sigexempt=" FIELD     50 s" ... and its package records" FLOOR
+   \ The pool carries a row for each checked word and may carry more than one -
+   \ a redefinition leaves both and the newest wins - so the floor is the checked
+   \ count itself, which is what the audit proved per record.
+   s" sigs=" FIELD  s" sigknown=" FIELD  s" the pool covers every checked word" FLOOR ;
 
 \ The capture's identity, read from the same run PROBE-REAL just made. The producer
 \ key is the interesting one: the tool reports the content key of the binary it is

@@ -180,8 +180,51 @@ nothing and looks like a scanner bug; and a fixture that leaves
 the lexer holding UNTERMINATED-QUOTE changes what the NEXT
 fixture counts, so every fixture now asserts the lexer's own
 health before its count is believed.
-STILL OWED: the audit moved into src/habu/aot-capture.f and its
-tool, the artifact's signature + six registry sections at VERSION
+THE AUDIT IS IN THE PRODUCTION CAPTURE PATH (increment B). It runs
+inside AOT-CAPTURE:CAPTURE, per RECORD and not as a count
+comparison, so the three-producer enumeration is a thing a gate
+refuses rather than a thing a comment claims. Measured through
+the real tool: recs=6892, sigknown=6798, sigexempt=94,
+sigs=7556 - and 6798 + 94 = 6892 is asserted in
+test/aot-chain-capture-suite.f as the partition it is. Mutation
+table: dropping the CHECKER-EXPORT producer reds naming
+SPLICE-STAGING (the exact pair the audit first found), never
+arming the store reds naming MAKE, dropping the USIG-ADD producer
+reds naming MAKE, and dropping the package-record counter reds
+the partition assertion 6892 vs 6798 plus the sigexempt floor.
+The two questions live in the checker (CHECKER-ASIG-KNOWN? /
+CHECKER-ASIG-MISSING?) because they are about two checker tables;
+they take the scope as a package name plus one boolean, never a
+visibility number, so SYM-GLOBAL/PRIVATE/PUBLIC stays one
+authority - this file's constants are not reachable from checked
+code, so a caller spelling them would be a second.
+A BOUND THE RULING DID NOT NAME, found by measurement: nothing
+disarmed the store at the window's end, so the capture TOOL's own
+post-window closure (icode.f, aot-decl.f, aot-capture.f, the
+artifact writer) landed in the pool - 8279 rows where the window
+has 7556, the extra 723 naming words no target engine has. A
+signature for a word that is not there is worse than a missing
+one: a definition naming it would certify and then call nothing.
+AOT-ARM:SIG-CLOSE now ends the window's DEFINITIONS at CLOSE,
+which is a different fact from the window's SPAN ending (the span
+deliberately has none).
+TWO MORE THINGS REVIEW CAUGHT, both real. (1) The audit ran
+BEFORE the call and address scans and masked them:
+test/aot-band-data.f's address refusal came back as an uncarried
+signature. Soundness refusals come first; the audit is last of
+the audits now. (2) Arming the signature store off the window
+CELLS' VALUE conflated two axes - `0 0 OPEN` disarms the
+INLINER's window on purpose (test/aot-band-lib.f OPEN-UNARMED
+needs a copied pre-window body) and says nothing about whether
+that window's signatures are wanted. OPEN now always arms;
+SIG-CLOSE is the only thing that ends collection.
+AND ONE PERFORMANCE DEFECT: the wid -> package lookup walked the
+whole dictionary per window record, 6892 times. One memo cell
+keyed on the wid (records arrive grouped by package) turns that
+into 94 walks - the capture went 2.96s -> 1.86s, which is faster
+than it was before the audit existed. The two near-identical
+namespace walks are one parameterized walk now.
+STILL OWED: the artifact's signature + six registry sections at VERSION
 4, the seed emit and the CHECK! retry, the remaining tests with
 their mutations, increment 3's rebase and battery, and a control
 build attributing the certified 4474 -> 4501 delta.

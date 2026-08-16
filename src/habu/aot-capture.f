@@ -661,13 +661,20 @@ $3A constant ACAP-QUAL-SEP                        \ ':' - the separator LFIND's 
 256 constant ACAP-QUAL-CAP
 create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
 
-: ACAP-PKG-PUB ( n -- n ) {: w:n :}               \ the package row publishing wid w, or -1
+\ The package row whose PUBLIC ([0]) or PRIVATE ([8]) wordlist is w, or -1. One
+\ walk for both halves: the two differ by a field and nothing else, and a second
+\ copy of the walk is a second place for the namespace-record shape to drift.
+: ACAP-PKG-ROW ( n bool -- n ) {: w:n pub:bool :}
    ndict@ 0 ?do
       i AOT-REC AOT-RWID DICT-WL:NAMESPACE = if
-         i AOT-REC AOT-RXT w = if i unloop exit then
+         pub if i AOT-REC AOT-RXT else i AOT-REC AOT-RLEN then
+         w = if i unloop exit then
       then
    loop
    -1 ;
+
+: ACAP-PKG-PUB ( n -- n ) {: w:n :}               \ the package row publishing wid w, or -1
+   w 0 0= ACAP-PKG-ROW ;
 
 : ACAP-QUAL$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n wa:ptr wu:n :}
    pu wu + 1+ ACAP-QUAL-CAP > if
@@ -700,6 +707,112 @@ variable ACAP-P
    w ACAP-PKG-PUB {: p:n :}
    p 0 < if k w ACAP-REFUSE-SCOPE then
    p AOT-REC AOT-RNPTR  p AOT-REC AOT-RNLEN  a u ACAP-QUAL$  WID-QUAL ;
+
+\ --- audit (f): every checked window word's signature travels ------------------
+\
+\ WHY THIS AUDIT EXISTS. An AOT seed puts a word in the runtime dictionary and
+\ nothing in the checker's record set, so a `:` definition naming a seeded word
+\ dies E-UNDEFINED at that token in the shipped engine even though the engine can
+\ call it. The artifact therefore carries the window's SIGNATURES, collected by
+\ the checker while the window is open (src/core/checker.f, armed by
+\ src/habu/aot-arm.f OPEN). This is the check that the collection is COMPLETE.
+\
+\ IT IS NOT A COUNT COMPARISON. The collection happens at three producers, and
+\ that list is an enumeration - a fourth producer added later would be silently
+\ missed. So this asks the question per RECORD: for every record the window
+\ compiled, if the checker knows an effect for it then the pool must carry its
+\ signature, and if it does not the capture ends here by name. That turns the
+\ enumeration into something a gate refuses rather than something a comment
+\ claims. Measured over the compiler chain when it was written: 6892 records = 94
+\ package records + 6798 checked words, all 6798 carried; the first version of
+\ the collection left 17 behind and this is what named them.
+\
+\ THE TWO EXEMPT ROLES ARE ROLES, NOT NAMES. A package record and a retired
+\ record are identified by their WORDLIST - DICT-WL:NAMESPACE and
+\ DICT-WL:RETIRED - so no spelling can put a word in either class.
+\
+\ A WORD WITH NO CHECKER EFFECT IS NOT A FINDING. A `0 set-check` span in a
+\ window compiles real runtime words the checker never recorded; they are
+\ uncallable from checked code in THIS engine and stay exactly as uncallable in
+\ the seeded one, so there is nothing to carry and nothing to refuse.
+
+\ The scope half of the key SYM-FIND uses - ( pkg$, public?, found? ) - taken
+\ from the record's own WORDLIST and not from whatever package is open. An empty
+\ package name is the global scope, which is the key the checker interns a global
+\ under. A wid no package row claims is refused rather than guessed at: answering
+\ "global" for it would ask about a different word.
+\
+\ THE LAST ANSWER IS KEPT because the walk above is linear in the dictionary and
+\ this is asked once per window record - 6892 times over the compiler chain, and
+\ its records arrive grouped by package, so one memo cell turns 6892 walks into
+\ 94. Keyed on the wid itself, so it cannot answer for a different one.
+variable ACAP-PKG-MEMO-W                          \ the wid the memo answers for, 0 = none
+variable ACAP-PKG-MEMO-ROW                        \ ... and the package row it answered
+variable ACAP-PKG-MEMO-PUB
+
+: ACAP-PKG-LOOKUP ( n -- n bool ) {: w:n :}       \ package row and public?, row -1 if none
+   w ACAP-PKG-MEMO-W @ = if
+      ACAP-PKG-MEMO-ROW @ ACAP-PKG-MEMO-PUB @ 0 <> exit
+   then
+   w 0 0= ACAP-PKG-ROW {: p:n :}
+   p 0 >= if
+      w ACAP-PKG-MEMO-W !  p ACAP-PKG-MEMO-ROW !  -1 ACAP-PKG-MEMO-PUB !
+      p 0 0= exit
+   then
+   w 0 0= 0= ACAP-PKG-ROW {: q:n :}
+   w ACAP-PKG-MEMO-W !  q ACAP-PKG-MEMO-ROW !  0 ACAP-PKG-MEMO-PUB !
+   q 0 0= 0= ;
+
+: ACAP-REC-PKG ( n -- ptr u8 n bool bool ) {: w:n :}
+   w 0= if s" "  0 0= 0=  0 0= exit then
+   w ACAP-PKG-LOOKUP {: p:n pub:bool :}
+   p 0 < if s" "  0 0= 0=  0 0= 0= exit then
+   p AOT-REC AOT-RNPTR  p AOT-REC AOT-RNLEN  pub  0 0= ;
+
+variable ACAP-SIG-KNOWN                            \ window records the checker knows an effect for
+variable ACAP-SIG-EXEMPT                           \ package, retired, and unrecorded records
+
+: ACAP-REFUSE-SIG-WID ( n n -- ) {: k:n w:n :}
+   s" aot-capture: window record " type k ACAP-NAME.
+   s"  is in wordlist " type w .
+   s" , which no package record claims" type cr
+   s" aot-capture: a window record's wordlist names no package" 74 die ;
+
+: ACAP-REFUSE-SIG ( n -- ) {: k:n :}
+   s" aot-capture: the checker knows an effect for window word " type k ACAP-NAME.
+   s"  and the captured signature pool carries none" type cr
+   s" aot-capture: a checked window word's signature was not captured" 74 die ;
+
+: ACAP-?SIG ( n -- ) {: k:n :}
+   k AOT-REC AOT-RWID {: w:n :}
+   w DICT-WL:NAMESPACE = if ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit then
+   w DICT-WL:RETIRED = if ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit then
+   w ACAP-REC-PKG {: pa:ptr pu:n pub:bool ok:bool :}
+   ok 0= if k w ACAP-REFUSE-SIG-WID then
+   k AOT-REC AOT-RNPTR k AOT-REC AOT-RNLEN {: na:ptr nu:n :}
+   pa pu pub na nu CHECKER-ASIG-KNOWN? 0= if
+      ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit
+   then
+   ACAP-SIG-KNOWN @ 1 + ACAP-SIG-KNOWN !
+   pa pu pub na nu CHECKER-ASIG-MISSING? if k ACAP-REFUSE-SIG then ;
+
+\ IT RUNS LAST OF THE AUDITS, after the call and address scans. Those ask whether
+\ what travels is SOUND - a name the target has, an address the target can place;
+\ this asks whether it is COMPLETE. A window that is unsound is unsound whether
+\ or not its signatures were collected, so the more fundamental refusal has to be
+\ the one a reader sees. Running it earlier masked them (measured:
+\ test/aot-band-data.f's address refusal came back as an uncarried signature).
+\
+\ NOTHING TESTS THE ARMING SEPARATELY, and that is not an omission: a window
+\ compiled with the store disarmed has an empty pool, and the walk below then
+\ names its FIRST checked word as uncarried. A guard asking "is the store armed
+\ NOW" would be asking at the wrong moment anyway - a capture tool closes the
+\ signature window (AOT-ARM:SIG-CLOSE) before it captures, so armed-now is false
+\ on the correct path.
+: ACAP-AUDIT-SIGS ( -- )
+   0 ACAP-SIG-KNOWN !  0 ACAP-SIG-EXEMPT !
+   0 ACAP-PKG-MEMO-W !  0 ACAP-PKG-MEMO-ROW !  0 ACAP-PKG-MEMO-PUB !
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do i ACAP-?SIG loop ;
 
 \ --- audit (d): the row resolves the way the seed will ask ---------------------
 \ The question EM-AOT-PATCH-SITES asks at the boot of the engine this capture is
@@ -1110,6 +1223,14 @@ public
       then
    loop ;
 
+\ What the signature audit measured, so a reader can check the capture against
+\ the window instead of taking the audit's word for it: the records it found the
+\ checker knows an effect for, and the ones it exempted (package rows, retired
+\ rows, and words with no checker effect at all). The two sum to the window's
+\ record count, which is what tools/aot-chain-capture.f prints them beside.
+: SIG-KNOWN ( -- n ) ACAP-SIG-KNOWN @ ;
+: SIG-EXEMPT ( -- n ) ACAP-SIG-EXEMPT @ ;
+
 private
 
 \ --- protected-WID registry capture (TFAM 2b-v): serialize the live friend-arena
@@ -1279,7 +1400,8 @@ public
    ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
    ACAP-PWID-CAPTURE                            \ serialize the protected-WID bitmap
    ACAP-PWID-SPLIT                              \ the window's own seals travel relative
-   ACAP-PWID-CHECK ;                            \ WID 0 is never a wordlist
+   ACAP-PWID-CHECK                              \ WID 0 is never a wordlist
+   ACAP-AUDIT-SIGS ;                            \ ... and every checked word's signature travels
 
 private
 
