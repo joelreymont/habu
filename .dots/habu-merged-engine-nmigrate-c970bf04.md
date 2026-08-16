@@ -46,3 +46,34 @@ looks likelier, because a RET explains all three observations at once
 (no prologue, no entry breakpoint, and an lr left over from the last
 real BL). Bisect with the same patch32 BRK across the words that RET
 into that address.
+
+ROOT CAUSE + RULINGS 2026-08-16 (bake-chain-11; proof by repair -
+patching the three does-links to PTR-VARIABLE+68 removes the
+SIGSEGV): DOESPATCH:EMIT plants a plain PC-relative B one word
+past the record's span, targeting an INTERIOR address; ACAP-CALL?
+scans only BL, so the branch is copied verbatim and relocation
+strands it at PATHZ+36. Three words are the whole class (M-SRC,
+M-DATA, TX-DIA - the PTR-VARIABLEs called rather than inlined).
+RULING 1: option (2) - THE DOES-CLAUSE GETS ITS OWN DICTIONARY
+RECORD, so the link's target is an entry and the existing
+name-keyed site path carries it with no new field. Option (1)
+(name+delta) is REFUSED: a captured branch must never depend on
+a callee's interior byte layout. Two requirements ride the fix:
+(a) the seed's patcher must PRESERVE THE BRANCH KIND - a B
+patched as BL would corrupt x30; the site row or the patch site
+itself must keep the original opcode; (b) the capture-side audit
+lands with it - a B in the blob whose target is outside the
+window (or resolves to no record) is refused BY NAME, and the
+"word at start+len is ret" completeness audit (102 vs 98, the
+class detector) is worth keeping as a capture check if it holds
+over the real populations - probe it. Compiler change: record
+counts move, the fixpoint churns - attribute it, that is what
+the control-build discipline is for.
+RULING 2: TAKE b8fec035 in the same lane - both defects block
+the milestone transcript, you hold the harness and the evidence,
+and the fix is bounded (align the merged window base up to 8,
+pad the content, extend the merge suite's sums to prove the pad,
+alignment assert over the merged engine's declared cells). But
+SEPARATE commits, each fully gated - the does-record change is
+seed-affecting compiler work; the alignment fix is merge-reader
+work; neither review should have to untangle the other.
