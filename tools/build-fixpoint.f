@@ -87,6 +87,8 @@ create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
 create BF-ENGINE-BUF FS-PATH-CAP allot
 create BF-INSTALL-TMP-BUF FS-PATH-CAP allot
+create BF-HOST-DST-BUF FS-PATH-CAP allot
+create BF-HOST-TMP-BUF FS-PATH-CAP allot
 BF-LF BF-LF-BUF c!
 
 variable BF-ART-PATH-A
@@ -124,6 +126,8 @@ variable BF-REC-STAGE?
 variable BF-REC-STDIN?
 variable BF-ENGINE-U
 variable BF-INSTALL-TMP-U
+variable BF-HOST-DST-U
+variable BF-HOST-TMP-U
 variable BF-FORCE
 variable BF-PIN-N
 variable BF-PIN-ON
@@ -1560,8 +1564,31 @@ variable BF-DRV-R
    BF-INSTALL-TMP$ BF-ENGINE$ RENAME-FILE
    s" hb-stdin" BF-REMOVE-TMP ;
 
+\ The CAPTURE HOST is kept beside the engine it captured for. A fixture whose
+\ subject is source-loading the chain (a capture, a load-time delta, a
+\ family-count bracket) cannot run against the product - the product already
+\ provides the chain, so the load it wants to measure is a no-op - and
+\ rebuilding a host per fixture is the cost this file exists to pay once. The
+\ path derives from BF-ENGINE$ the way the install tmp does, so a fixture
+\ install under HABU_FIXPOINT_ENGINE keeps its host in its own sandbox and
+\ never writes this repo's bin.
+: BF-HOST-DST$ ( -- ptr u8 n )
+   BF-ENGINE$ s" -host" BF-HOST-DST-BUF FS-MUT-SUFFIX-PATH BF-HOST-DST-U !
+   BF-HOST-DST-BUF BF-HOST-DST-U @ ;
+
+: BF-HOST-TMP$ ( -- ptr u8 n )
+   BF-ENGINE$ s" -host.tmp" BF-HOST-TMP-BUF FS-MUT-SUFFIX-PATH BF-HOST-TMP-U !
+   BF-HOST-TMP-BUF BF-HOST-TMP-U @ ;
+
+: BF-INSTALL-HOST ( -- )
+   BF-HOST-TMP$ 2dup EXISTS? if REMOVE-FILE else 2drop then
+   s" hb-host" BF-A$ BF-HOST-TMP$ COPY-FILE-STREAM
+   BF-HOST-TMP$ CHMOD-X
+   BF-HOST-TMP$ BF-HOST-DST$ RENAME-FILE ;
+
 : BF-BIN-HB? ( ptr u8 n -- bool )
-   s" bin/hb" STR= ;
+   2dup s" bin/hb" STR= if 2drop BF-TRUE exit then
+   s" bin/hb-host" STR= ;
 
 : BF-REMOVE-BIN-OTHER ( ptr u8 n -- ) {: path:ptr pathu :}
    path pathu FILE? if
@@ -1575,6 +1602,7 @@ variable BF-DRV-R
    BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-STDIN-FRESH
    BF-INSTALL-HB
+   BF-INSTALL-HOST
    BF-CLEAN-BIN
    s" bin/hb ready (small checked engine, tty REPL + stdin)" type cr ;
 
