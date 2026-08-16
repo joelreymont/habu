@@ -767,3 +767,20 @@ stage-0 pre-existing red dotted 53355d74 (recovery host dead on
 this host). After 072becbc: the milestone transcript, then items
 (3) two-engine emit, (4) fixpoint, (5) provided rows, (6)
 battery + boot delta.
+
+THE BOOT MILESTONE IS GREEN 2026-08-16 (bake-chain-14, merged
+e161ce9c; ec6c709b and 9d7d8e72 CLOSED): capture -> bake -> the
+baked engine compiles s" : FOO ( n -- n ) 1 + ;" through the
+chain and prints 8, exit 0 - PROBE-BAKED in the registered
+suite, mutation-proven. The fourth relocation class was removed
+rather than added: typed-storage accessors now emit create-based
+addressing (the relocatable form) instead of data-base+scalar;
+RAW-BLOCK? armed-window exemption; forge still refused. Four
+classes total stood between capture and boot (wids, does-links,
+DATA alignment, storage offsets) - each fixed with its audit,
+each found because the previous fix made the next failure
+louder. REMAINING ITEMS: (3) two-engine emit, (4) sha
+convergence fixpoint, (5) provided rows from the artifact's
+list, (6) battery + the ~1s/boot payoff measured. Loose ends:
+differential bake ce93a41c, stale DATA cell 1a728720, host
+prelude band 5a992a38, Gforth recovery 53355d74.
