@@ -43,7 +43,14 @@
 \ capture names comes from the engine's require registry, so the case asserts it
 \ starts at the file the window actually required.
 \
-\ Cost: four child engine runs (~4s) plus one metabuild bake (~7s). Registered as
+\ AND THE PRODUCT OWES NOTHING TO THE PATHS THE BUILD WAS GIVEN. The bake splices
+\ the artifact path into the driver it generates; a top-level `s"` allots at HERE,
+\ which is the capture window's DATA base, so the length of that path used to
+\ reach the engine's bytes - 12081 of them. Two cases hold the repair: the same
+\ artifact baked under a longer path must produce the same engine, and a spliced
+\ line that moves the cursor must be refused by name instead of quietly baked.
+\
+\ Cost: four child engine runs (~4s) plus three metabuild bakes (~20s). Registered as
 \ `SUITE aot-chain-capture` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-chain-capture-suite.f
 
@@ -75,8 +82,12 @@ create MUT-BUF FS-PATH-CAP allot     variable MUT-U
 create ROWMUT-BUF FS-PATH-CAP allot  variable ROWMUT-U
 create ART-BUF FS-PATH-CAP allot     variable ART-U
 create CASE-BUF FS-PATH-CAP allot    variable CASE-U
+create LONG-BUF FS-PATH-CAP allot    variable LONG-U
+create PROD1-BUF FS-PATH-CAP allot   variable PROD1-U
+create DPMUT-BUF FS-PATH-CAP allot   variable DPMUT-U
 create DIG 32 allot
 create DHEX 64 allot
+create EHEX 64 allot
 
 \ The artifact under test, held whole so a case can edit bytes and write the
 \ result out. 4 MiB covers today's 2.95 MiB with room; READ-ALL refuses a file
@@ -89,6 +100,9 @@ create ART ART-CAP allot    variable ART-LEN
 : ROWMUT$ ( -- ptr u8 n ) ROWMUT-BUF ROWMUT-U @ ;
 : ART$ ( -- ptr u8 n )  ART-BUF ART-U @ ;
 : CASE$ ( -- ptr u8 n ) CASE-BUF CASE-U @ ;
+: LONG$ ( -- ptr u8 n ) LONG-BUF LONG-U @ ;
+: PROD1$ ( -- ptr u8 n ) PROD1-BUF PROD1-U @ ;
+: DPMUT$ ( -- ptr u8 n ) DPMUT-BUF DPMUT-U @ ;
 : HB$ ( -- ptr u8 n )   s" bin/hb" ;
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
@@ -99,26 +113,27 @@ create ART ART-CAP allot    variable ART-LEN
 : ANCHOR$ ( -- ptr u8 n ) s\" \nAOT-CHAIN:OPEN\n" ;
 : INJECT$ ( -- ptr u8 n ) s\" require src/arch/arm64/asm.f\n" ;
 
+\ <root><name> into dst, answering the length the caller latches. Every path this
+\ suite hands a child hangs off the one temporary root.
+: UNDER-ROOT ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n dst:ptr :}
+   ROOT-BUF dst ROOT-U @ BYTE-COPY
+   a dst ROOT-U @ + u BYTE-COPY
+   ROOT-U @ u + ;
+
+\ The two artifact names differ in LENGTH on purpose: the bake splices the path it
+\ is given into the driver it generates, and PROBE-REPRO is the assertion that the
+\ length of that path cannot reach the engine's bytes.
 : SETUP ( -- )
    s" habu-aot-chain" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
-   ROOT-BUF MUT-BUF ROOT-U @ BYTE-COPY
-   s" /hoisted.f" {: sa:ptr su:n :}
-   sa MUT-BUF ROOT-U @ + su BYTE-COPY
-   ROOT-U @ su + MUT-U !
-   ROOT-BUF ART-BUF ROOT-U @ BYTE-COPY
-   s" /chain.aot" {: aa:ptr au:n :}
-   aa ART-BUF ROOT-U @ + au BYTE-COPY
-   ROOT-U @ au + ART-U !
-   ROOT-BUF CASE-BUF ROOT-U @ BYTE-COPY
-   s" /case.aot" {: ca:ptr cu:n :}
-   ca CASE-BUF ROOT-U @ + cu BYTE-COPY
-   ROOT-U @ cu + CASE-U !
-   ROOT-BUF ROWMUT-BUF ROOT-U @ BYTE-COPY
-   s" /dropped-row.f" {: ra:ptr ru:n :}
-   ra ROWMUT-BUF ROOT-U @ + ru BYTE-COPY
-   ROOT-U @ ru + ROWMUT-U ! ;
+   s" /hoisted.f"       MUT-BUF    UNDER-ROOT MUT-U !
+   s" /chain.aot"       ART-BUF    UNDER-ROOT ART-U !
+   s" /case.aot"        CASE-BUF   UNDER-ROOT CASE-U !
+   s" /dropped-row.f"   ROWMUT-BUF UNDER-ROOT ROWMUT-U !
+   s" /chain-under-a-considerably-longer-name.aot" LONG-BUF UNDER-ROOT LONG-U !
+   s" /hb-chain-first"  PROD1-BUF  UNDER-ROOT PROD1-U !
+   s" /cursor-moved.f"  DPMUT-BUF  UNDER-ROOT DPMUT-U ! ;
 
 \ ---- the derived mutant ------------------------------------------------------
 
@@ -698,19 +713,22 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
 \ tools/aot-chain-bake.f leaves the engine at <HB_TMP>/hb-chain, and EXEC gives
 \ every child HB_TMP=ROOT$, so the suite's own root is where it lands.
 : ENGINE-PATH! ( -- )
-   ROOT-BUF ENGINE-BUF ROOT-U @ BYTE-COPY
-   s" /hb-chain" {: a:ptr u:n :}
-   a ENGINE-BUF ROOT-U @ + u BYTE-COPY
-   ROOT-U @ u + ENGINE-U ! ;
+   s" /hb-chain" ENGINE-BUF UNDER-ROOT ENGINE-U ! ;
 
-: RUN-BAKE ( -- )
+: BAKE-TOOL$ ( -- ptr u8 n ) s" tools/aot-chain-bake.f" ;
+
+\ The bake, parameterized by the tool file and the artifact path, because two
+\ cases below vary exactly one of those and nothing else.
+: BAKE-WITH ( ptr u8 n ptr u8 n -- ) {: tool:ptr toolu:n art:ptr artu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" tools/aot-chain-bake.f" >LEN PROC-ARGV+
+   tool toolu >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
-   ART$ >LEN PROC-ARGV+
+   art artu >LEN PROC-ARGV+
    HB$ >LEN PROC-ARGV+
    EXEC ;
+
+: RUN-BAKE ( -- ) BAKE-TOOL$ ART$ BAKE-WITH ;
 
 \ Define a word through NMIGRATE:DEFINE - the chain's entry point - then call it.
 : PROGRAM$ ( -- ptr u8 n )
@@ -745,6 +763,84 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
    s" ... answering what the word computes, and printing nothing else" T-LABEL
    OUT$ s\" 8\n" T$= ;
 
+\ ---- the product's bytes owe nothing to the paths the build was given ---------
+\
+\ WHY THIS IS A CASE AND NOT AN ASSUMPTION. The bake splices the artifact path
+\ into the driver source it generates, and an interpret-mode `s"` ALLOTS its bytes
+\ at HERE - which src/habu/stdin.f CAPTURE-REPL latches as the capture window's
+\ DATA base. Measured before the fix: the same artifact under two paths of
+\ different length baked engines differing in 12081 bytes, so `bin/hb` stopped
+\ being reproducible the moment two developers used different temporary roots.
+\ The fix puts the two literals inside a colon body, where they compile into code
+\ below the window and the seed's canonical CODE-B0 absorbs them; this case is the
+\ property that fix exists for, asserted over the real production bake.
+\ A file that cannot be hashed is a broken fixture, not a failed assertion: stop
+\ rather than compare a digest of nothing against a digest of nothing.
+: HEX-OF ( ptr u8 n ptr u8 -- ) {: p:ptr u:n hex:ptr :}
+   p u DIG SHA256-FILE 0 <> if
+      s" aot-chain-capture-suite: cannot hash " type p u type cr
+      s" aot-chain-capture-suite: the reproducibility case cannot be built" STOP-RC die
+   then
+   DIG hex SHA256>HEX ;
+
+: PROBE-REPRO ( -- )
+   ENGINE$ PROD1$ COPY-FILE-STREAM
+   ART$ LONG$ COPY-FILE-STREAM
+   BAKE-TOOL$ LONG$ BAKE-WITH
+   s" the same artifact under a longer path bakes an engine" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   PROD1$ DHEX HEX-OF
+   ENGINE$ EHEX HEX-OF
+   s" ... byte for byte the engine the shorter path baked" T-LABEL
+   DHEX 64 EHEX 64 T$= ;
+
+\ ---- and the driver refuses any parameter that would ---------------------------
+\
+\ THE MUTANT IS THE REAL BAKE TOOL PLUS ONE LINE, spliced at a fail-closed anchor,
+\ and the line makes the generated driver consume DATA at top level - which is
+\ what the historical string literal did, stated as the rule rather than as the
+\ one spelling of it. src/habu/stdin.f DP-MARK latches the cursor as the last
+\ thing the driver's own load does, so RUN sees any such splice and refuses by
+\ name. Without the refusal the build writes an engine that is simply not the one
+\ the same tree would write elsewhere, and nothing anywhere says so.
+: DP-ANCHOR$ ( -- ptr u8 n ) s\" \n   ART$ ?PATH  ENG$ ?PATH\n" ;
+: DP-INJECT$ ( -- ptr u8 n ) S\"    S\\\" 8 allot\" DRV-LINE\n" ;
+
+: DP-ANCHOR-OFF ( -- n )
+   SHAPE:TEXT DP-ANCHOR$ FIND-SUB MATCH option
+     none OF -1 ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
+
+: ?DP-ANCHOR ( -- )
+   DP-ANCHOR$ SHAPE:COUNT 1 = if exit then
+   s" aot-chain-capture-suite: parameter anchors in " type BAKE-TOOL$ type s" =" type
+   DP-ANCHOR$ SHAPE:COUNT .
+   s" aot-chain-capture-suite: the moved-cursor case cannot be built" STOP-RC die ;
+
+: DP-MUTANT-BUILD ( -- )
+   BAKE-TOOL$ SHAPE:LOAD
+   ?DP-ANCHOR
+   DP-ANCHOR-OFF DP-ANCHOR$ nip + {: cut:n :}
+   SHAPE:TEXT drop {: src:ptr :}
+   DPMUT$ src cut WRITE-ALL
+   DPMUT$ DP-INJECT$ APPEND-FILE
+   DPMUT$ src cut +  SHAPE:TEXT nip cut -  APPEND-FILE
+   s" the moved-cursor mutant is the bake tool plus exactly the injected line" T-LABEL
+   DPMUT$ FILE-SIZE  SHAPE:TEXT nip DP-INJECT$ nip + T= ;
+
+: PROBE-DP-MOVED ( -- )
+   DP-MUTANT-BUILD
+   ENGINE$ 2dup EXISTS? if REMOVE-FILE else 2drop then
+   DPMUT$ ART$ BAKE-WITH
+   s" a build parameter that moves the DATA cursor is refused" T-LABEL
+   RC @ 0 <> TTRUE
+   s" ... naming the cursor, so the reason is actionable" T-LABEL
+   s" the DATA cursor moved after the driver marked it" SAID? TTRUE
+   s" ... and no engine is written" T-LABEL
+   ENGINE$ EXISTS? 0= TTRUE ;
+
 : BODY ( -- )
    SETUP
    MUTANT-BUILD
@@ -761,7 +857,9 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
    PROBE-DAMAGE
    PROBE-FORGED
    PROBE-CHAIN
-   PROBE-BAKED ;
+   PROBE-BAKED
+   PROBE-REPRO
+   PROBE-DP-MOVED ;
 
 public
 

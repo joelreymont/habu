@@ -116,10 +116,22 @@ create ENG-BUF FS-PATH-CAP allot   variable ENG-U
 : ART$ ( -- ptr u8 n ) ART-BUF ART-U @ ;
 : ENG$ ( -- ptr u8 n ) ENG-BUF ENG-U @ ;
 
+\ THE TWO PATHS GO IN A COLON BODY, never on a top-level line. An interpret-mode
+\ `s"` ALLOTS its bytes at HERE, and src/habu/stdin.f CAPTURE-REPL latches HERE as
+\ the capture window's DATA base - so a top-level literal made the emitted engine
+\ depend on the LENGTH of the paths spliced into it, and two bakes of one tree from
+\ artifact paths of different lengths wrote engines differing in 12081 bytes.
+\ Compiled into a body the same literal lands in code below the window, where the
+\ seed's canonical CODE-B0 absorbs it, and neither path reaches the product's
+\ bytes. stdin.f's DP-MARK refuses the top-level shape by name.
+: DECL-NAME$ ( -- ptr u8 n ) s" ART-DECL" ;
+
 : INJECT ( -- )
    ART$ ?PATH  ENG$ ?PATH
-   S\" s\" " DRV+  ART$ DRV+  S\" \" s\" " DRV+  ENG$ DRV+
-   S\" \" STDIN-DRIVER:ARTIFACT!" DRV-LINE
+   S\" : " DRV+  DECL-NAME$ DRV+  S\"  ( -- ) s\" " DRV+  ART$ DRV+
+   S\" \" s\" " DRV+  ENG$ DRV+
+   S\" \" STDIN-DRIVER:ARTIFACT! ;" DRV-LINE
+   DECL-NAME$ DRV-LINE
    RUN-TAIL$ DRV-LINE ;
 
 : GEN-DRIVER ( -- )

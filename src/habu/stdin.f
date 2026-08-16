@@ -129,6 +129,24 @@ create PROD 32 allot
 
 private
 
+\ THE EMIT'S DATA BASE IS THE DRIVER'S, NOT ITS PARAMETERS'. CAPTURE-REPL latches
+\ `here` as the window's DATA base, and an interpret-mode `s"` ALLOTS its bytes
+\ there - so a parameter spliced in as a TOP-LEVEL string literal moves that base,
+\ every literal into the window, and the residue pad with it. Measured before the
+\ fix: two builds of one tree differing only in the length of the artifact path
+\ wrote engines differing in 12081 bytes. A spliced parameter therefore belongs
+\ inside a colon body, where its literal compiles into code below the window's own
+\ base and the seed's canonical CODE-B0 absorbs it (tools/aot-chain-bake.f).
+\ DP-MARK is the last thing this file does, so whatever the build driver appends
+\ runs between the mark and RUN, and RUN refuses by name if the cursor moved. The
+\ mark is mandatory: unmarked, DP0 is 0 and no boot can match it.
+variable DP0
+
+: ?DP ( -- )
+   here DP0 @ = IF exit THEN
+   s" hb: the DATA cursor moved after the driver marked it; this emit would not reproduce"
+   74 die ;
+
 : CAPTURE-REPL ( -- )
    READ-REPL                                     \ REPL sources -> HB scratch buffer
    cp@ B0 !  ndict@ R0 !  here D0 !  AOT-ARM:WIDN W0 !
@@ -161,7 +179,11 @@ private
 package STDIN-DRIVER
 public
 
+\ Latch the DATA cursor the capture window will start from.
+: DP-MARK ( -- ) here DP0 ! ;
+
 : RUN ( -- )
+   ?DP
    CAPTURE-REPL
    MERGE-ARTIFACT
    0 0= STDIN? !
@@ -171,4 +193,5 @@ public
 
 ;package
 
+STDIN-DRIVER:DP-MARK
 STDIN-DRIVER:RUN
