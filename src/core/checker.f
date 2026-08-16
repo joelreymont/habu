@@ -1754,7 +1754,17 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN    \ plain scalar / role OK; linear con NO
    dup TAG T-PTR = IF PTR>INNER RECURSE EXIT THEN    \ ptr: pointee must also be RAW-admissible
    drop RES-TRUE ;                                    \ atom / xt / row: engine raw-stores these -> admit
+\ THE ARMED WINDOW IS THE SANCTIONED MINT, and it is exempt here for the same
+\ reason NOMPTR-BLOCK? exempts it: LAYOUT-INTRO is set only while CHECK coerces
+\ the OUTPUT row of the accessor a storage definer just generated, keyed on the
+\ pending name, and user source cannot arm it (xref erases LBUF-PEND! and its
+\ siblings after boot). Without this clause a generated accessor could not name
+\ its storage through the `create`d word that owns it, and the only shape left
+\ was `data-base <baked offset> +` -- an address no relocation pass can see,
+\ which is what put another table's writes on BMID's cells in a merged engine
+\ (dot habu-bmid-module-id-ec6c709b, src/core/layout-buffer.f LBUF-SOURCE).
 : RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates the RAW cell discipline?
+   LAYOUT-INTRO @ 0 <> IF 2drop RES-FALSE EXIT THEN  \ the definer's own introduction form
    over TVK-RAW? 0= IF 2drop RES-FALSE EXIT THEN     \ ordinary var: never blocks
    nip RAW-OK? 0= ;                                   \ RAW var: `term` must be RAW-admissible
 

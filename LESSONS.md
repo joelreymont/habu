@@ -7160,3 +7160,38 @@ callee's answer. Use a register the call does not own.
   Baking twice with identical paths is byte-identical; that experiment
   is what turns "the failure moved" into "the failure is layout
   sensitive", which is a diagnosis.
+
+## 2026-08-16 - the unrelocatable offset (bake-chain-14, dot ec6c709b)
+
+- **An address that survives a snapshot can still be a broken address.** A
+  snapshot moves the whole DATA region together, so `data-base + <baked
+  offset>` keeps its meaning and nothing complains for years. A capture moves
+  the window's CONTENT relative to `data-base`, and that same expression then
+  names a place the storage is not. "It has always worked" was evidence about
+  one mover, and there are three.
+- **A one-line probe beat the whole instrument shelf.** Two words compiled into
+  the window - `here data-base - constant ZOFF0` beside `create ZMARK` - printed
+  -152 in the merged engine and 0 in the source-loaded control, which is the
+  entire diagnosis: the scalar did not move and the `create` address did. The
+  owner tools and the residue census were ready and were not needed; put a
+  known-good and a suspect side by side in the SAME window and read the
+  difference.
+- **152 is not a random number, and the arithmetic names the victim.** BKEY and
+  BMID are 16 cells each, so an accessor pointing 152 bytes high puts BKEY slot
+  i on BMID slot i+3. The dot's symptom - "BMID slot 0 changes to 10 when the
+  module at slot 1 is created" - falls straight out of that, so the displacement
+  measurement confirmed the aliasing report without a second experiment.
+- **A type rule can force the shape that breaks a machine rule.** The checker's
+  RAW discipline fences `create`/`variable` pointers out of nominal families,
+  and `data-base` is deliberately not RAW - so the only expression a generated
+  accessor COULD use to reach its typed storage was the one no relocation pass
+  can see. The armed introduction window already exempts the sibling rule
+  (NOMPTR-BLOCK?); the missing exemption in RAW-BLOCK? is what made the defect
+  unavoidable. When a definer's shape looks perverse, check whether a checker
+  rule left it no other shape.
+- **The structural cases all passed.** The artifact was well-formed, the reader
+  restored every count, the merge placed every section, the digests matched -
+  and the engine was broken. A capture reference nothing records is correct on
+  both sides of every structural check and wrong only when the code runs, so the
+  suite now bakes the artifact and runs a program through it. Reachable-and-
+  well-formed is not runs.

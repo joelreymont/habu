@@ -43,7 +43,7 @@
 \ capture names comes from the engine's require registry, so the case asserts it
 \ starts at the file the window actually required.
 \
-\ Cost: four child engine runs (~4s), no metabuild. Registered as
+\ Cost: four child engine runs (~4s) plus one metabuild bake (~7s). Registered as
 \ `SUITE aot-chain-capture` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-chain-capture-suite.f
 
@@ -676,6 +676,75 @@ create SW1 512 allot
    s" ... and its DATA window, placed at most a cell late for alignment" T-LABEL
    s" hostdata=" s" mergeddatasz=" T-DATASZ @ MERGED-PAD= ;
 
+\ ---- the engine the artifact is for -----------------------------------------
+\ WHY A BAKE BELONGS IN THIS SUITE. Everything above proves the artifact is
+\ well-formed and that the reader and the merge put its pieces where they say
+\ they do. None of that can prove the engine those pieces make will RUN the
+\ chain: a captured reference no relocation pass can see is well-formed on both
+\ sides and wrong only when the code executes. That is exactly what a merged
+\ engine did - a table's accessor addressed its storage by a baked offset from
+\ `data-base`, the merge placed the window 152 bytes elsewhere, and BKEY's
+\ writes landed on BMID's cells (dot habu-bmid-module-id-ec6c709b) - and it
+\ passed every structural case here.
+\
+\ So this case bakes the artifact with the production tool and asks the engine
+\ it writes to compile and run a word: the shortest program that goes all the
+\ way through the chain's own definer into native code and back with an answer.
+\ Cost: one metabuild (~7s).
+
+create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
+: ENGINE$ ( -- ptr u8 n ) ENGINE-BUF ENGINE-U @ ;
+
+\ tools/aot-chain-bake.f leaves the engine at <HB_TMP>/hb-chain, and EXEC gives
+\ every child HB_TMP=ROOT$, so the suite's own root is where it lands.
+: ENGINE-PATH! ( -- )
+   ROOT-BUF ENGINE-BUF ROOT-U @ BYTE-COPY
+   s" /hb-chain" {: a:ptr u:n :}
+   a ENGINE-BUF ROOT-U @ + u BYTE-COPY
+   ROOT-U @ u + ENGINE-U ! ;
+
+: RUN-BAKE ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/aot-chain-bake.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   ART$ >LEN PROC-ARGV+
+   HB$ >LEN PROC-ARGV+
+   EXEC ;
+
+\ Define a word through NMIGRATE:DEFINE - the chain's entry point - then call it.
+: PROGRAM$ ( -- ptr u8 n )
+   s\" s\" : FOO ( n -- n ) 1 + ;\" 1 1 8 NMIGRATE:DEFINE 7 FOO .\n" ;
+
+: RUN-BAKED ( -- )
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE$ >LEN  PROGRAM$ >LEN  OUT CAP >LEN  ERR CAP >LEN  CASE-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
+            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
+            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
+   ;MATCH ;
+
+: PROBE-BAKED ( -- )
+   ENGINE-PATH!
+   RUN-BAKE
+   s" the production bake accepts this artifact and writes an engine" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... at the path the tool names" T-LABEL
+   ENGINE$ FILE-SIZE 0 > TTRUE
+   RUN-BAKED
+   s" ... and that engine compiles a word through the chain and runs it" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... answering what the word computes, and printing nothing else" T-LABEL
+   OUT$ s\" 8\n" T$= ;
+
 : BODY ( -- )
    SETUP
    MUTANT-BUILD
@@ -691,7 +760,8 @@ create SW1 512 allot
    PROBE-MERGE
    PROBE-DAMAGE
    PROBE-FORGED
-   PROBE-CHAIN ;
+   PROBE-CHAIN
+   PROBE-BAKED ;
 
 public
 
