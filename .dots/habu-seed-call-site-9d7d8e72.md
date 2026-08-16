@@ -217,3 +217,14 @@ The bricked-engine recovery (mutation of boot-path prefix code
 kills every subsequent --load incl. the rebuild; copy a healthy
 bin/hb from another workspace, refresh from source; park a spare
 BEFORE mutating) goes to LESSONS.md with the landing.
+
+GATE LANDED 2026-08-16 (bake-chain-10, merged ec3f2425 +
+00e37b94): the four-layer gate as ruled, T0 latched, caller-side
+exemption deleted, refuse leg documented with the two-resolver
+proof; four-callee mutation table (SERIAL-NEXT / (LP2VEXEC) /
+HS-FIELD / WATCH); straddle mode 3 discriminates resolved-record
+from xt-scan. Debug capability landed: habu-bp-lr caller line +
+tools/code-owner.f. The chain BAKES AND BOOTS with no bypass.
+This dot's remaining scope: the milestone transcript, blocked
+only by c970bf04 (the PATHZ+180 crash - leading hypothesis a RET
+through a corrupted saved x30; bisect method on that dot).
