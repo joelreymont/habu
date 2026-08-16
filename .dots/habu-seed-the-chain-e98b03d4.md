@@ -823,3 +823,66 @@ Design for (3)/(4)/(5) as tabled (BF-EMIT-ENGINE factored and
 called twice; fixpoint by file sha to BF-MAX-GENS with a named
 death; provided rows from RESTORE-CLOSURE via LAPPPROV, zero
 rows when no artifact) - GO.
+
+INCREMENT 1 LANDED IN THE LANE 2026-08-16 (bake-chain-15, two
+commits on master f91f0bf8: 39014204 claim, 4003cd6a the fix).
+THE DEFECT, root-caused not guessed: interpret-mode `s"` ALLOTS
+its bytes at HERE (probed: `here` moves by exactly the literal's
+length), and stdin.f CAPTURE-REPL latches `here` as the capture
+window's DATA base - so the artifact path the bake splices into
+its generated driver reached the emitted engine. Three bakes of
+one tree, same artifact bytes, same producer, paths of 15/25/39
+chars: three different engines, 12081 bytes apart, same size.
+THE FIX is one shape change and one audit. The two literals move
+into a colon body (`: ART-DECL ( -- ) s" A" s" E"
+STDIN-DRIVER:ARTIFACT! ;` + a call), where they compile into CODE
+below the window, which the seed's canonical CODE-B0 absorbs -
+byte-identical products across 15-vs-39-char artifact paths AND
+6-vs-41-char producer paths, and the product still compiles a word
+through the chain. STDIN-DRIVER:DP-MARK latches the cursor as the
+driver's last act; RUN refuses by name if anything moved it, so
+the NEXT DP-consuming build parameter is a named refusal rather
+than a quietly unreproducible engine. The mark is mandatory
+(unmarked, DP0 is 0 and no boot matches).
+ENGINE DELTA ATTRIBUTED BY CONTROL: 335 bytes, size unchanged at
+165367 (the ratchet row stands). A control build carrying ONLY
+`variable DP0` - no ?DP, no DP-MARK, no calls - reproduces the
+installed engine BYTE FOR BYTE (b07d9d67...), so the whole delta
+is the 8-byte pre-window DATA shift and the two new words cost the
+engine nothing.
+TESTS, mutation-proven: PROBE-REPRO (same artifact under a longer
+path must bake the same engine) and PROBE-DP-MOVED (a spliced line
+that moves the cursor is refused by name and writes no engine),
+both in test/aot-chain-capture-suite.f, which is registered. The
+moved-cursor mutant is the REAL bake tool plus exactly one
+injected line at a fail-closed anchor, with a byte-size assertion
+that the injection landed. Three mutations red named cases:
+removing ?DP reds 70/71/72; the exact PRE-FIX WORLD (no ?DP + the
+top-level splice) reds 68 with two different engine digests, which
+is the original defect caught by the new case; a broken anchor
+stops the suite exit 74 by name. SETUP's four copies of the
+path-join pattern folded into UNDER-ROOT (ENGINE-PATH! too).
+GATES on the landed tree: test/run.f ENGINE RC=0, 0 RED phases,
+196s (a first run showed one RED in test/proc-pty.f under the
+32-way pool; it PASSES standalone against both my engine and the
+pre-increment master engine, and the re-run is clean - pool flake,
+not the change); maki ENGINE RC=0; install --force x3 all
+b07d9d67...; judge --check 46 rows agree; typed-local-diff-lint
+and package-diff-lint exit 0 on the lane diff (liveness proved -
+a violating diff throws); error-code-lint 0 findings; dot lint 0
+findings; bootstrap-mirror-lint exit 0.
+NOTE FOR THE SUCCESSOR: the bake tool has no fail-closed CLI
+boundary, so a refused maker surfaces as `uncaught throw code
+-2802` and exit 67 AFTER the real named message - the diagnosis is
+on stderr but the rc is the engine's generic one. Pre-existing;
+worth a BF-CLI-shaped wrapper when the generator moves into
+build-fixpoint.f at item (3).
+REMAINING FOR THE NEXT LANE, all four rulings standing: (3) the
+two-engine emit (BF-EMIT-ENGINE factored and called twice; the
+driver generator moves out of tools/aot-chain-bake.f into
+BUILD-FIXPOINT, which owns path construction), (4) the double
+capture by file sha to BF-MAX-GENS with a named death, (5)
+provided rows via LAPPPROV from RESTORE-CLOSURE's list, (6) the
+battery + the re-measured payoff. Measured inputs for the estimate:
+one engine emit 2.84s (`-- stage` 3.50s vs `-- stdin` 6.34s), one
+capture 2.74s, install --force 6.48s today.
