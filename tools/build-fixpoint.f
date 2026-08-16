@@ -1297,10 +1297,181 @@ package BUILD-FIXPOINT
    BF-RECORD-STAGE
    BF-STAGE-FIXPOINT-FROM-SOURCE ;
 
-: BF-BUILD-STDIN-FROM-STAGE ( -- )
-   BF-STDIN-SOURCE
+\ ---------------------------------------------------------------------------
+\ The chain capture, and the driver that bakes it.
+\
+\ THE DRIVER OWNS THE PATHS. docs/forth.md is explicit that a build source must
+\ not read them out of an environment, so the artifact and the engine that
+\ produced it arrive at src/habu/stdin.f as a call spliced into the source this
+\ builder generates. The generator lives here, with the rest of the build's path
+\ construction, and tools/aot-chain-bake.f is a caller of it.
+\
+\ THE TWO LITERALS GO IN A COLON BODY, never on a top-level line. An interpret-mode
+\ `s"` ALLOTS its bytes at HERE, which CAPTURE-REPL latches as the capture window's
+\ DATA base, so a top-level literal made the emitted engine depend on the LENGTH of
+\ the paths spliced into it - two builds of one tree from different temporary roots
+\ wrote engines differing in 12081 bytes. Compiled into a body the same literal
+\ lands in code below the window and the seed's canonical CODE-B0 absorbs it.
+\ src/habu/stdin.f DP-MARK refuses the top-level shape by name.
+create BF-CHAIN-DRV-BUF FS-PATH-CAP allot   variable BF-CHAIN-DRV-U
+create BF-ART-A-BUF FS-PATH-CAP allot       variable BF-ART-A-U
+create BF-ART-B-BUF FS-PATH-CAP allot       variable BF-ART-B-U
+create BF-ART-DG-A BF-STAMP-DG-U allot
+create BF-ART-DG-B BF-STAMP-DG-U allot
+variable BF-AGEN
+variable BF-AFOUND
+variable BF-DRV-R
+
+: BF-CHAIN-DRIVER$ ( -- ptr u8 n )
+   BF-CHAIN-DRV-BUF BF-CHAIN-DRV-U @ ;
+
+: BF-CHAIN-DRIVER-PATH! ( -- )
+   s" chain-driver.f" BF-CHAIN-DRV-BUF BF-TMP> BF-CHAIN-DRV-U ! ;
+
+: BF-ART-A$ ( -- ptr u8 n )
+   s" chain.aot" BF-ART-A-BUF BF-TMP> BF-ART-A-U !
+   BF-ART-A-BUF BF-ART-A-U @ ;
+
+: BF-ART-B$ ( -- ptr u8 n )
+   s" chain-b.aot" BF-ART-B-BUF BF-TMP> BF-ART-B-U !
+   BF-ART-B-BUF BF-ART-B-U @ ;
+
+: BF-CAPTURE-TOOL$ ( -- ptr u8 n )
+   s" tools/aot-chain-capture.f" ;
+
+: BF-PREPARE-CAPTURE-ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr a ) {: exe:ptr exeu:n art:ptr artu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   BF-CAPTURE-TOOL$ >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   art artu >LEN PROC-ARGV+
+   exe exeu >LEN PROC-ARGV-PREPARE ;
+
+: BF-RUN-CAPTURE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n art:ptr artu:n :}
+   BF-PREPARE-ENV
+   exe exeu art artu BF-PREPARE-CAPTURE-ARGV
+   PROC-ENV-PREPARE -1 >FD -1 >FD -1 >FD
+   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
+
+: BF-CAPTURE-INTO ( ptr u8 n -- ) {: art:ptr artu:n :}
+   s" hb-host" BF-A$ art artu BF-RUN-CAPTURE BF-RC0 ;
+
+: BF-ART-DIGEST ( ptr u8 n ptr u8 -- ) {: p:ptr u:n dg:ptr :}
+   p u dg SHA256-FILE dup 0 <> if throw then drop ;
+
+: BF-ART-MATCH? ( -- bool )
+   BF-ART-A$ BF-ART-DG-A BF-ART-DIGEST
+   BF-ART-B$ BF-ART-DG-B BF-ART-DIGEST
+   BF-ART-DG-A BF-STAMP-DG-U BF-ART-DG-B BF-STAMP-DG-U STR= ;
+
+\ TWO CAPTURES, TWO PROCESSES, ONE ANSWER - the promoted acceptance, run in the
+\ build and fail-closed. A capture reads a booted engine's live dictionary and
+\ writes addresses out of it, so "the same tree gives the same artifact" is a
+\ property of the capture and not of the sources; proving it needs a second
+\ process, whose ASLR and heap differ, rather than a second call. The loop is
+\ BF-STAGE-FIXPOINT-FROM-SOURCE's shape: a generation that disagrees promotes and
+\ retries, and running out of generations is a named death, not a warning.
+: BF-ARTIFACT-FIXPOINT ( -- )
+   BF-ART-A$ BF-CAPTURE-INTO
+   0 BF-AGEN !
+   0 BF-AFOUND !
+   begin BF-AGEN @ BF-MAX-GENS < while
+      BF-ART-B$ BF-CAPTURE-INTO
+      BF-ART-MATCH? if
+         -1 BF-AFOUND !
+         BF-MAX-GENS BF-AGEN !
+      else
+         s" chain-b.aot" s" chain.aot" BF-RENAME-TMP
+         BF-AGEN @ 1 + BF-AGEN !
+      then
+   repeat
+   BF-AFOUND @ 0= if
+      s" ARTIFACT-FIXPOINT BROKEN: two captures of one engine disagree after 4 generations"
+      BF-BUILD-RC die
+   then
+   s" chain capture OK: two processes wrote the same artifact" type cr ;
+
+: BF-DRV-WS? ( n -- bool ) {: c:n :}
+   c 32 = c 9 = or c 13 = or c 10 = or ;
+
+: BF-DRV-LAST ( -- n )
+   BF-SOURCE-LEN @ 1 -
+   begin dup 0 >= while
+      dup BF-SRC-C@ BF-DRV-WS? 0= if exit then
+      1 -
+   repeat ;
+
+: BF-DRV-TAIL-BAD ( -- )
+   s" build-fixpoint: src/habu/stdin.f no longer ends with STDIN-DRIVER:RUN" BF-BUILD-RC die ;
+
+: BF-DRV-TAIL$ ( -- ptr u8 n ) s" STDIN-DRIVER:RUN" ;
+
+\ Everything up to the trailing `STDIN-DRIVER:RUN`, which the generated driver
+\ replaces with the artifact declaration plus the same call. Fail closed if the
+\ tail moved: a driver assembled around a tail that is no longer there would run
+\ some other program.
+: BF-DRV-KEEP ( -- n )
+   BF-DRV-LAST {: l:n :}
+   BF-DRV-TAIL$ {: t:ptr tu:n :}
+   l 1 + tu < if BF-DRV-TAIL-BAD then
+   l 1 + tu - BF-SOURCE-BUF + tu  t tu STR= 0= if BF-DRV-TAIL-BAD then
+   l 1 + tu > if l tu - BF-SRC-C@ BF-DRV-WS? 0= if BF-DRV-TAIL-BAD then then
+   l 1 + tu - ;
+
+\ A path holding a `"` would end the generated string literal early and the driver
+\ would compile some other program. Refuse rather than escape.
+: BF-DRV-PATH? ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BF-DRV-R !
+   begin BF-DRV-R @ u < while
+      a BF-DRV-R @ + c@ BF-DQ = if
+         s" build-fixpoint: a path with a quote cannot be spliced into the driver"
+         BF-BUILD-RC die
+      then
+      BF-DRV-R @ 1 + BF-DRV-R !
+   repeat ;
+
+: BF-DRV+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   BF-CHAIN-DRIVER$ a u APPEND-FILE ;
+
+\ ( artifact-path producer-engine-path -- ): stdin.f with its tail replaced by the
+\ declaration of THIS artifact and the same call.
+: BF-CHAIN-DRIVER-FROM ( ptr u8 n ptr u8 n -- ) {: art:ptr artu:n eng:ptr engu:n :}
+   art artu BF-DRV-PATH?
+   eng engu BF-DRV-PATH?
+   BF-CHAIN-DRIVER-PATH!
+   SDC-DRIVER$ BF-READ-SOURCE
+   BF-DRV-KEEP {: keep:n :}
+   BF-CHAIN-DRIVER$ BF-SOURCE-BUF keep WRITE-ALL
+   S\" : ART-DECL ( -- ) s\" " BF-DRV+
+   art artu BF-DRV+
+   S\" \" s\" " BF-DRV+
+   eng engu BF-DRV+
+   S\" \" STDIN-DRIVER:ARTIFACT! ;\nART-DECL\n" BF-DRV+
+   BF-DRV-TAIL$ BF-DRV+
+   BF-LF-BUF 1 BF-DRV+ ;
+
+: BF-CHAIN-DRIVER! ( -- )
+   BF-ART-A$ s" hb-host" BF-B$ BF-CHAIN-DRIVER-FROM ;
+
+\ ---------------------------------------------------------------------------
+\ TWO ENGINES, ONE PREFIX.
+\
+\ Once the compiler chain is baked, `require src/compiler/native/migrate.f` is a
+\ registry no-op in the product and src/core/include.f dies on duplicates, so the
+\ product can never capture its own chain. The build therefore emits the same
+\ prefix twice and the two emissions differ by ONE parameter - the artifact the
+\ driver declares (src/habu/stdin.f STDIN-DRIVER:ARTIFACT!). No mode flag, no
+\ second prefix, no second source list:
+\
+\   hb-host    the CAPTURE HOST. No artifact: today's bin/hb shape. A build
+\              artifact, never installed - but the engine every size gate has
+\              always measured, and the one the capture runs in.
+\   hb-stdin   the PRODUCT, seeded from the artifact captured in hb-host.
+\              BF-INSTALL-HB is untouched, so bin/hb is the product by
+\              construction.
+: BF-EMIT-ENGINE ( ptr u8 n -- ) {: drv:ptr drvu:n :}
+   s" stage2-src" drv drvu BF-EMIT-STDIN-RUN-SOURCE
    BF-CERTIFY-STDIN
-   BF-RECORD-STDIN
    BF-RUN-STAGE
    s" stage2-got" s" hb-stdin-mk" BF-RENAME-TMP
    s" hb-stdin-mk" BF-CHMOD-X-TMP
@@ -1311,6 +1482,21 @@ package BUILD-FIXPOINT
    s" hb-stdin" BF-CHMOD-X-TMP
    s" hb-stdin" BF-CODESIGN-VERIFY-TMP ;
 
+\ The capture host and the maker that wrote it. The maker is kept because the
+\ CODELEN gate re-runs it with HABU_ENGINE_SIZE_MAP to attribute the engine's
+\ bytes, and the engine it must attribute is the host.
+: BF-KEEP-HOST ( -- )
+   s" hb-stdin" s" hb-host" BF-RENAME-TMP
+   s" hb-stdin-mk" s" hb-host-mk" BF-RENAME-TMP ;
+
+: BF-BUILD-STDIN-FROM-STAGE ( -- )
+   SDC-DRIVER$ BF-EMIT-ENGINE
+   BF-RECORD-STDIN                              \ the HOST's source is the stamp's: the
+   BF-KEEP-HOST                                 \ product's names a temporary artifact path
+   BF-ARTIFACT-FIXPOINT
+   BF-CHAIN-DRIVER!
+   BF-CHAIN-DRIVER$ BF-EMIT-ENGINE ;
+
 : BF-BUILD-STDIN ( -- )
    BF-PREFLIGHT
    BF-BUILD-STDIN-FROM-STAGE ;
@@ -1319,12 +1505,17 @@ package BUILD-FIXPOINT
    BF-STAGE-FIXPOINT
    BF-BUILD-STDIN-FROM-STAGE ;
 
+\ THE SNAPSHOT BUILDS FROM THE CAPTURE HOST, which is the shape snap has always
+\ consumed: the dev snapshot's keep surface is the plain engine's, and a seeded
+\ product's is not - its chain arrives from the AOT seed at boot, which a snapshot
+\ restore skips. Building the image from the host keeps the two products
+\ independent instead of making the snapshot a function of the chain.
 : BF-BUILD-SNAP-FROM-STDIN ( -- )
    BF-SNAP-SOURCE
    BF-CERTIFY-SNAP
    s" hb-snap0" BF-REMOVE-TMP
    s" hb-new" BF-REMOVE-TMP
-   s" hb-stdin" s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
+   s" hb-host" s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
    s" hb-snap0" BF-EXPECT
    s" hb-snap0" s" hb-new" BF-RENAME-TMP
    s" hb-new" BF-CODESIGN-FORCE-TMP
@@ -1466,18 +1657,20 @@ package BUILD-FIXPOINT
 \ The stamp key - what the refresh weighs when it decides a rebuild is
 \ unnecessary: the key's preimage, and the comparison against the stored stamp.
 \
-\ The native compiler chain is the one build input this key cannot reach by
-\ digesting the engine and the two emitted stage sources. The chain is seeded
-\ into the stage engine as prefix source read straight from the checkout, so
-\ editing it changes no emitted byte and no other stamp input, and the refresh
-\ would answer `fixpoint: cached` over an engine built from the older chain.
-\ Fold the chain entry's whole ordered require/include closure into the preimage
-\ instead. Discovery is the same walk the hb-build artifact cache keys with
+\ The chain capture is the one build input this key cannot reach by digesting the
+\ engine and the two emitted stage sources. The capture runs in the host engine
+\ from sources read straight from the checkout, so editing the chain changes no
+\ emitted byte and no other stamp input, and the refresh would answer `fixpoint:
+\ cached` over a product baked from the older chain. Fold the CAPTURE TOOL's whole
+\ ordered require/include closure into the preimage instead - ONE row, and it
+\ subsumes the chain's own 43 files because the tool requires the chain entry
+\ inside its window. A second row over the nested set would be two authorities for
+\ one fact. Discovery is the same walk the hb-build artifact cache keys with
 \ (tools/event-closure-lib.f over tools/source-discovery.f), so exactly the files
-\ that actually load are keyed: an edit to any of them rebuilds, an edit to a
-\ file the chain does not load does not. Discovery rejects fail-closed, so a
-\ chain whose closure cannot be reproduced fails the refresh rather than being
-\ keyed as though it were absent.
+\ that actually load are keyed: an edit to any of them rebuilds, an edit to a file
+\ the capture does not load does not. Discovery rejects fail-closed, so a closure
+\ that cannot be reproduced fails the refresh rather than being keyed as though it
+\ were absent.
 \
 \ The closure digest is captured ONCE per process and every key derived
 \ afterwards replays that capture. The capture happens before the build, because
@@ -1491,7 +1684,7 @@ variable CHAIN-DONE?
 variable CHAIN-I
 
 : ENTRY$ ( -- ptr u8 n )
-   s" src/compiler/native/migrate.f" ;
+   BF-CAPTURE-TOOL$ ;
 
 : CLOSURE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
    a u EC:BUILD
@@ -1518,7 +1711,7 @@ variable CHAIN-I
    0 BF-STAMP-U !
    s" build-fixpoint-stamp-v2" BF-STAMP-FRAG+
    BF-STAMP-ENGINE+
-   s" chain-src" CHAIN-DG BF-STAMP-DG+ ;
+   s" capture-src" CHAIN-DG BF-STAMP-DG+ ;
 
 : BF-STAMP-STAGE-KEY+ ( -- )
    BF-STAMP-DG BF-STAGE2-DIGEST
@@ -1756,11 +1949,14 @@ EXPORT BF-APPEND-LF
 EXPORT BF-APPEND-RUN-PRELUDE
 EXPORT BF-BUILD-STDIN-FROM-STAGE
 EXPORT BF-CERTIFY-STDIN
+EXPORT BF-CHAIN-DRIVER$
+EXPORT BF-CHAIN-DRIVER-FROM
 EXPORT BF-CHMOD-X-TMP
 EXPORT BF-CLI
 EXPORT BF-CLI-SELF-DISPATCH
 EXPORT BF-CODESIGN-FORCE-TMP
 EXPORT BF-CODESIGN-VERIFY-TMP
+EXPORT BF-EMIT-ENGINE
 EXPORT BF-EMIT-SNAP-RUN-SOURCE-WITH
 EXPORT BF-EMIT-STDIN-RUN-SOURCE
 EXPORT BF-ENGINE!

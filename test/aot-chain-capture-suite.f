@@ -87,6 +87,7 @@ create CASE-BUF FS-PATH-CAP allot    variable CASE-U
 create LONG-BUF FS-PATH-CAP allot    variable LONG-U
 create PROD1-BUF FS-PATH-CAP allot   variable PROD1-U
 create DPMUT-BUF FS-PATH-CAP allot   variable DPMUT-U
+create BFMUT-BUF FS-PATH-CAP allot   variable BFMUT-U
 create DIG 32 allot
 create DHEX 64 allot
 create EHEX 64 allot
@@ -105,6 +106,7 @@ create ART ART-CAP allot    variable ART-LEN
 : LONG$ ( -- ptr u8 n ) LONG-BUF LONG-U @ ;
 : PROD1$ ( -- ptr u8 n ) PROD1-BUF PROD1-U @ ;
 : DPMUT$ ( -- ptr u8 n ) DPMUT-BUF DPMUT-U @ ;
+: BFMUT$ ( -- ptr u8 n ) BFMUT-BUF BFMUT-U @ ;
 : HB$ ( -- ptr u8 n )   s" bin/hb" ;
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
@@ -135,7 +137,8 @@ create ART ART-CAP allot    variable ART-LEN
    s" /dropped-row.f"   ROWMUT-BUF UNDER-ROOT ROWMUT-U !
    s" /chain-under-a-considerably-longer-name.aot" LONG-BUF UNDER-ROOT LONG-U !
    s" /hb-chain-first"  PROD1-BUF  UNDER-ROOT PROD1-U !
-   s" /cursor-moved.f"  DPMUT-BUF  UNDER-ROOT DPMUT-U ! ;
+   s" /cursor-moved.f"  DPMUT-BUF  UNDER-ROOT DPMUT-U !
+   s" /generator-mutant.f" BFMUT-BUF UNDER-ROOT BFMUT-U ! ;
 
 \ ---- the derived mutant ------------------------------------------------------
 
@@ -991,41 +994,72 @@ variable CUR
 
 \ ---- and the driver refuses any parameter that would ---------------------------
 \
-\ THE MUTANT IS THE REAL BAKE TOOL PLUS ONE LINE, spliced at a fail-closed anchor,
-\ and the line makes the generated driver consume DATA at top level - which is
-\ what the historical string literal did, stated as the rule rather than as the
-\ one spelling of it. src/habu/stdin.f DP-MARK latches the cursor as the last
-\ thing the driver's own load does, so RUN sees any such splice and refuses by
-\ name. Without the refusal the build writes an engine that is simply not the one
-\ the same tree would write elsewhere, and nothing anywhere says so.
-: DP-ANCHOR$ ( -- ptr u8 n ) s\" \n   ART$ ?PATH  ENG$ ?PATH\n" ;
-: DP-INJECT$ ( -- ptr u8 n ) S\"    S\\\" 8 allot\" DRV-LINE\n" ;
+\ THE MUTANT IS THE REAL GENERATOR PLUS ONE LINE, and the line makes the generated
+\ driver consume DATA at top level - which is what the historical string literal
+\ did, stated as the rule rather than as the one spelling of it. src/habu/stdin.f
+\ DP-MARK latches the cursor as the last thing the driver's own load does, so RUN
+\ sees any such splice and refuses by name. Without the refusal the build writes an
+\ engine that is simply not the one the same tree would write elsewhere, and
+\ nothing anywhere says so.
+\
+\ TWO DERIVED FILES, because the generator moved to where the build's other path
+\ construction lives: tools/build-fixpoint.f with one more append spliced in ahead
+\ of the one that writes the driver's own tail, and
+\ tools/aot-chain-bake.f with its require of build-fixpoint repointed at that copy.
+\ Both splices are fail-closed on anchors that must appear exactly once, so a
+\ generator that moved again stops this suite instead of running an unmutated file.
+: BF-TOOL$ ( -- ptr u8 n ) s" tools/build-fixpoint.f" ;
+: DP-ANCHOR$ ( -- ptr u8 n ) s\" \n   BF-DRV-TAIL$ BF-DRV+\n" ;
+: DP-INJECT$ ( -- ptr u8 n ) S\"    S\\\" 8 allot\\n\" BF-DRV+\n" ;
+: REQ-ANCHOR$ ( -- ptr u8 n ) s\" \nrequire tools/build-fixpoint.f\n" ;
 
-: DP-ANCHOR-OFF ( -- n )
-   SHAPE:TEXT DP-ANCHOR$ FIND-SUB MATCH option
+: FIND-OFF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   SHAPE:TEXT a u FIND-SUB MATCH option
      none OF -1 ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;
 
-: ?DP-ANCHOR ( -- )
-   DP-ANCHOR$ SHAPE:COUNT 1 = if exit then
-   s" aot-chain-capture-suite: parameter anchors in " type BAKE-TOOL$ type s" =" type
-   DP-ANCHOR$ SHAPE:COUNT .
+: ?ONE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n f:ptr fu:n :}
+   a u SHAPE:COUNT 1 = if exit then
+   s" aot-chain-capture-suite: anchors in " type f fu type s" =" type
+   a u SHAPE:COUNT .
    s" aot-chain-capture-suite: the moved-cursor case cannot be built" STOP-RC die ;
 
-: DP-MUTANT-BUILD ( -- )
+\ text[0,cut) + inject + text[cut,end)
+: SPLICE ( ptr u8 n n ptr u8 n -- ) {: dst:ptr dstu:n cut:n inj:ptr inju:n :}
+   SHAPE:TEXT drop {: src:ptr :}
+   dst dstu src cut WRITE-ALL
+   dst dstu inj inju APPEND-FILE
+   dst dstu src cut +  SHAPE:TEXT nip cut -  APPEND-FILE
+   s" the mutant is its file plus exactly the injected line" T-LABEL
+   dst dstu FILE-SIZE  SHAPE:TEXT nip inju + T= ;
+
+: BF-MUTANT-BUILD ( -- )
+   BF-TOOL$ SHAPE:LOAD
+   DP-ANCHOR$ BF-TOOL$ ?ONE
+   BFMUT$ DP-ANCHOR$ FIND-OFF 1 + DP-INJECT$ SPLICE ;
+
+\ The bake tool, requiring the mutant generator instead of the real one. The
+\ replacement is the same length question as the splice above: the require line is
+\ rewritten, not added, so the assertion is on the bytes either side of it.
+: BAKE-MUTANT-BUILD ( -- )
    BAKE-TOOL$ SHAPE:LOAD
-   ?DP-ANCHOR
-   DP-ANCHOR-OFF DP-ANCHOR$ nip + {: cut:n :}
+   REQ-ANCHOR$ BAKE-TOOL$ ?ONE
+   REQ-ANCHOR$ FIND-OFF 1 + {: cut:n :}
    SHAPE:TEXT drop {: src:ptr :}
    DPMUT$ src cut WRITE-ALL
-   DPMUT$ DP-INJECT$ APPEND-FILE
-   DPMUT$ src cut +  SHAPE:TEXT nip cut -  APPEND-FILE
-   s" the moved-cursor mutant is the bake tool plus exactly the injected line" T-LABEL
-   DPMUT$ FILE-SIZE  SHAPE:TEXT nip DP-INJECT$ nip + T= ;
+   DPMUT$ s" require " APPEND-FILE
+   DPMUT$ BFMUT$ APPEND-FILE
+   DPMUT$ s\" \n" APPEND-FILE
+   DPMUT$ src cut REQ-ANCHOR$ nip 1 - + +
+          SHAPE:TEXT nip cut - REQ-ANCHOR$ nip 1 - -  APPEND-FILE
+   s" the bake mutant is the tool with its generator require repointed" T-LABEL
+   DPMUT$ FILE-SIZE
+   SHAPE:TEXT nip BF-TOOL$ nip - BFMUT$ nip +  T= ;
 
 : PROBE-DP-MOVED ( -- )
-   DP-MUTANT-BUILD
+   BF-MUTANT-BUILD
+   BAKE-MUTANT-BUILD
    ENGINE$ 2dup EXISTS? if REMOVE-FILE else 2drop then
    DPMUT$ ART$ BAKE-WITH
    s" a build parameter that moves the DATA cursor is refused" T-LABEL

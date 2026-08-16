@@ -32,6 +32,20 @@ public
 5 constant GENG-VALIDATE-ID
 6 constant GENG-CONSTRUCT-ID
 7 constant GENG-RUNTIME-PARITY-ID
+\ THE TWO ENGINES ARE MEASURED DIFFERENTLY, and the reason is what each one is.
+\ tools/build-fixpoint.f emits the capture host and then the product from one
+\ prefix. The host is byte-for-byte the engine every size row here was measured
+\ on, so it keeps this cap, the exact whole-file ratchet, the exact CODELEN
+\ ratchet and the per-region budgets. The product is that engine plus a baked
+\ chain, and the chain's payload moves with every compiler-source edit - an exact
+\ row on IT would be a payload ratchet that reds on work it does not govern
+\ (ruling on dot habu-seed-the-chain-e98b03d4).
+\ WHAT THE PRODUCT IS HELD TO INSTEAD IS A STATEMENT, NOT A NUMBER: baking a
+\ chain changes the seed, the cold-prefix walk that reads the baked path table,
+\ and the table itself - and nothing else in the engine. GE-PRODUCT-ACCOUNT holds
+\ every other row of the product's own byte map equal to the host's, so a new
+\ emitter that grew only under the product is named, and a build that dropped the
+\ seed is named, without committing a byte count that the chain would move.
 $40000 constant GE-MAX-CANDIDATE-BYTES
 
 create GE-SCRIPT-PATH FS-PATH-CAP allot
@@ -233,13 +247,32 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" hb-stdin" BF-A$ GE-SRC-CANDIDATE-PATH! ;
 
 package ENGINE-GATE
+
+\ The capture host, under the temporary root the build just used. Only the build
+\ slice can ask for it: the validate slice is handed an engine and has no build
+\ root, which is exactly why the exact row lives on the build side.
+: GE-HOST$ ( -- ptr u8 n )
+   s" hb-host" BF-A$ ;
+
 public
 
+\ The product carries a whole engine and then some, so the committed engine row is
+\ its floor. A candidate under it is a build that shipped something other than the
+\ engine; its ceiling is GE-PRODUCT-ACCOUNT's business, where both maps exist.
 : CANDIDATE-SIZE-CHECK ( -- )
-   GE-CANDIDATE$ FILE-SIZE GE-MAX-CANDIDATE-BYTES > if
-      s" Habu-under-test candidate too large" GE-FAIL
+   GE-CANDIDATE$ FILE-SIZE BUILD-SIZE:BASELINE < if
+      s" Habu-under-test candidate smaller than the committed engine baseline" GE-FAIL
+   then ;
+
+\ The capture host: the exact ratchet, unchanged, on the engine it was measured on.
+: HOST-SIZE-CHECK ( -- )
+   GE-HOST$ EXECUTABLE? 0= if
+      s" capture host missing: the build emitted no hb-host" GE-FAIL
    then
-   GE-CANDIDATE$ BUILD-SIZE:RATCHET ;
+   GE-HOST$ FILE-SIZE GE-MAX-CANDIDATE-BYTES > if
+      s" capture host too large" GE-FAIL
+   then
+   GE-HOST$ BUILD-SIZE:RATCHET ;
 
 ;package
 
@@ -360,14 +393,24 @@ private
    GT-ROOT s" hb-size-map" GE-SZMAP-PATH JOIN-PATH GE-SZMAP-U !
    GE-SZMAP-PATH GE-SZMAP-U @ ;
 
-: GE-CODELEN-CAPTURE ( -- )
+create GE-PRODMAP-PATH FS-PATH-CAP allot
+variable GE-PRODMAP-U
+
+: GE-PRODMAP$ ( -- ptr u8 n )              \ ... and for the product it emitted next
+   GT-ROOT s" hb-product-size-map" GE-PRODMAP-PATH JOIN-PATH GE-PRODMAP-U !
+   GE-PRODMAP-PATH GE-PRODMAP-U @ ;
+
+: GE-MAP-CAPTURE ( ptr u8 n ptr u8 n -- ) {: mk:ptr mku:n dst:ptr dstu:n :}
    s" candidate-size-map" GS-EVENT
    GE-HB-RESET
    s" HABU_ENGINE_SIZE_MAP" >LEN s" 1" >LEN PROC-ENV+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   s" hb-stdin-mk" BF-A$ GE-TIMEOUT-MS GE-RUN-ENV
+   mk mku BF-A$ GE-TIMEOUT-MS GE-RUN-ENV
    s" candidate size-map capture" GE-EXPECT-OK
-   GE-SZMAP$ GT-OUT$ WRITE-ALL ;
+   dst dstu GT-OUT$ WRITE-ALL ;
+
+: GE-CODELEN-CAPTURE ( -- )
+   s" hb-host-mk" GE-SZMAP$ GE-MAP-CAPTURE ;
 
 : GE-CODELEN-PAIR. ( n n -- ) {: sz:n base:n :}
    s" candidate " type sz .
@@ -402,8 +445,124 @@ private
    GE-CODELEN-CAPTURE
    GE-SZMAP$ SIZE-REPORT:LOAD
    SIZE-REPORT:SUM-TEXT SIZE-ATTR:HOST-CODE-TEXT GE-CODELEN-ENFORCE
-   GE-SZMAP$ GE-CANDIDATE$ SIZE-ATTR:VALIDATE
+   GE-SZMAP$ GE-HOST$ SIZE-ATTR:VALIDATE
    s" PASS: exact CODELEN ratchet (SUM-TEXT held to committed CODE-TEXT row)" type cr ;
+
+\ --- What baking a chain is allowed to change -------------------------------
+\ The host's byte map is the engine's; the product's is the same engine plus a
+\ seed. Three rows may move and the reason for each is a line of source: the AOT
+\ seed carries the chain (habu2.f EMIT-AOT-SEED), the startup block gains the walk
+\ that reads the baked path table (PFX-CHAIN:ROWS), and the dictionary-code block
+\ carries the table itself (PFX-CHAIN:TABLE). Container rows move with the file's
+\ page rounding and its code signature, which are consequences, not code.
+\ EVERY OTHER ROW MUST BE EQUAL. That is the statement a committed byte count
+\ cannot make: an emitter that grew only when a chain is baked is named here, and
+\ it costs nothing when the chain's payload changes. Both directions are covered -
+\ a row the product does not have, and a row it has and the host does not.
+64 constant GE-MAPROW-CAP
+64 constant GE-MAPNAME-CAP
+create GE-MAPROW-NAME GE-MAPROW-CAP GE-MAPNAME-CAP * allot
+create GE-MAPROW-U GE-MAPROW-CAP cells allot
+create GE-MAPROW-VAL GE-MAPROW-CAP cells allot
+create GE-MAPROW-SEEN GE-MAPROW-CAP cells allot
+variable GE-MAPROW-N
+variable GE-MAPROW-I
+
+: GE-MAPROW-NAME$ ( n -- ptr u8 n ) {: ix:n :}
+   ix GE-MAPNAME-CAP * GE-MAPROW-NAME +  ix cells GE-MAPROW-U + @ ;
+
+: GE-MAPROW+ ( ptr u8 n n -- ) {: a:ptr u:n v:n :}
+   GE-MAPROW-N @ GE-MAPROW-CAP >= if
+      s" size-map snapshot: more rows than the gate can hold" GE-FAIL
+   then
+   u GE-MAPNAME-CAP > if
+      s" size-map snapshot: a row name longer than the gate can hold" GE-FAIL
+   then
+   a  GE-MAPROW-N @ GE-MAPNAME-CAP * GE-MAPROW-NAME +  u BYTE-COPY
+   u GE-MAPROW-N @ cells GE-MAPROW-U + !
+   v GE-MAPROW-N @ cells GE-MAPROW-VAL + !
+   0 GE-MAPROW-N @ cells GE-MAPROW-SEEN + !
+   GE-MAPROW-N @ 1 + GE-MAPROW-N ! ;
+
+\ The loaded map, copied out: SIZE-REPORT holds one map at a time and the names
+\ point into the buffer the next load overwrites.
+: GE-MAPROW-SNAPSHOT ( -- )
+   0 GE-MAPROW-N !
+   0 GE-MAPROW-I !
+   begin GE-MAPROW-I @ SIZE-REPORT:COUNT < while
+      GE-MAPROW-I @ SIZE-REPORT:NAME$ GE-MAPROW-I @ SIZE-REPORT:VAL@ GE-MAPROW+
+      GE-MAPROW-I @ 1 + GE-MAPROW-I !
+   repeat ;
+
+: GE-MAPROW-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup GE-MAPROW-N @ < while
+      dup GE-MAPROW-NAME$ a u STR= if exit then
+      1 +
+   repeat drop -1 ;
+
+: GE-SEED-ROW? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" aot-seed" STR= if 0 0= exit then
+   a u s" main/startup" STR= if 0 0= exit then
+   a u s" dictionary-code" STR= if 0 0= exit then
+   0 0= 0= ;
+
+: GE-ROW-MOVED-FAIL ( ptr u8 n n n -- ) {: a:ptr u:n host:n prod:n :}
+   s" row " type a u type
+   s"  host " type host .
+   s"  product " type prod . cr
+   s" baking a chain moved an engine row it does not own" GE-FAIL ;
+
+: GE-ROW-MISSING-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" row " type a u type cr
+   s" the product's byte map does not carry a row the capture host's does" GE-FAIL ;
+
+: GE-ROW-NEW-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" row " type a u type cr
+   s" the product's byte map carries a row the capture host's does not" GE-FAIL ;
+
+: GE-SEED-ROW-FLAT-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" row " type a u type cr
+   s" a baked chain left one of the three rows it must grow unchanged" GE-FAIL ;
+
+: GE-PRODUCT-ROW ( n -- ) {: ix:n :}
+   ix SIZE-REPORT:NAME$ {: a:ptr u:n :}
+   ix SIZE-REPORT:VAL@ {: prod:n :}
+   ix SIZE-REPORT:CONTAINER? if exit then
+   a u GE-MAPROW-FIND {: at:n :}
+   at 0 < if a u GE-ROW-NEW-FAIL then
+   -1 at cells GE-MAPROW-SEEN + !
+   at cells GE-MAPROW-VAL + @ {: host:n :}
+   a u GE-SEED-ROW? if
+      prod host > 0= if a u GE-SEED-ROW-FLAT-FAIL then
+      exit
+   then
+   prod host <> if a u host prod GE-ROW-MOVED-FAIL then ;
+
+: GE-PRODUCT-UNSEEN ( -- )
+   0 GE-MAPROW-I !
+   begin GE-MAPROW-I @ GE-MAPROW-N @ < while
+      GE-MAPROW-I @ GE-MAPROW-NAME$ {: a:ptr u:n :}
+      GE-MAPROW-I @ cells GE-MAPROW-SEEN + @ 0=
+      a u s" container/" CONTAINS? 0= and if a u GE-ROW-MISSING-FAIL then
+      GE-MAPROW-I @ 1 + GE-MAPROW-I !
+   repeat ;
+
+: GE-PRODUCT-ACCOUNT ( -- )
+   GE-SZMAP$ SIZE-REPORT:LOAD
+   GE-MAPROW-SNAPSHOT
+   s" hb-stdin-mk" GE-PRODMAP$ GE-MAP-CAPTURE
+   GE-PRODMAP$ SIZE-REPORT:LOAD
+   GE-CANDIDATE$ SIZE-REPORT:RECONCILE
+   GE-CANDIDATE$ FILE-SIZE SIZE-REPORT:SUM-ALL <> if
+      s" the product's byte map does not add up to the product" GE-FAIL
+   then
+   0 GE-MAPROW-I !
+   begin GE-MAPROW-I @ SIZE-REPORT:COUNT < while
+      GE-MAPROW-I @ GE-PRODUCT-ROW
+      GE-MAPROW-I @ 1 + GE-MAPROW-I !
+   repeat
+   GE-PRODUCT-UNSEEN
+   s" PASS: product accounts (only the seed, its walk and its table differ from the host)" type cr ;
 
 \ --- Per-region __text budget ratchet (dot habu-enforce-native-region-1003651b) -
 \ The exact-CODELEN ratchet above holds the __text TOTAL to its committed row, but a
@@ -551,6 +710,8 @@ public
    GE-PROMOTE-CANDIDATE
    GE-CODELEN-RATCHET
    GE-REGION-RATCHET
+   GE-PRODUCT-ACCOUNT
+   ENGINE-GATE:HOST-SIZE-CHECK
    BF-TMP-RESET
    GE-EXPECT-CANDIDATE
    ENGINE-GATE:CANDIDATE-SIZE-CHECK

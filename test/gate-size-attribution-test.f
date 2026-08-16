@@ -1209,6 +1209,11 @@ variable RB-Q-A  variable RB-Q-U  variable RB-Q-V  variable RB-Q-HIT
 : LIVE-ENGINE ( -- n )
    s" bin/hb" FILE-SIZE ;
 
+\ The installed engine carries a whole engine and, in a seeded product, a chain
+\ besides. Less than the committed total is an engine that is not this one.
+: LIVE-CARRIES-ENGINE? ( -- bool )
+   LIVE-ENGINE HOST-TOTAL >= ;
+
 public
 
 \ Committed CODE-TEXT (__text) row for whichever target is running (0 = unmeasured).
@@ -1241,9 +1246,16 @@ public
    s" bytes __text headroom to the 4 KiB text floor (measured linux layout)" type cr ;
 
 \ Pure self-check (no build): each target's committed decomposition reconstructs
-\ its whole file and page-floor shave, and the running target's committed total
-\ equals the live installed engine. Any drift - a bigger engine, a stale row -
-\ fails one of these, so the manifest cannot silently fall behind reality.
+\ its whole file and page-floor shave, and the live installed engine carries at
+\ least the committed total.
+\ THE LIVE COUPLING IS DIRECTIONAL NOW, and the reason is what bin/hb became. The
+\ rows below decompose the CAPTURE HOST - the engine the build emits first and the
+\ one every number here was measured on - and the installed engine is that engine
+\ plus a baked compiler chain whose payload moves with every compiler-source edit
+\ (dot habu-seed-the-chain-e98b03d4). Equality here would be a payload ratchet. The
+\ EXACT coupling did not weaken, it MOVED to where the host exists: the engine
+\ build slice runs SIZE-ATTR:VALIDATE against hb-host on every build, which holds
+\ SUM-ALL to that file byte for byte and every committed region row with it.
 \ The committed-row self-check for a target whose decomposition is measured. A
 \ target whose CODE-TEXT is owed has nothing here to check: its rows do not claim
 \ to reconstruct anything, and the live coupling below still holds its whole-file
@@ -1259,7 +1271,7 @@ public
    MACOS-MODEL-SUM MACOS-TOTAL T=
    MACOS-MODEL-FLOOR MACOS-FLOOR-DIST T=
    LINUX-SELF-CHECK
-   HOST-TOTAL LIVE-ENGINE T=
+   LIVE-CARRIES-ENGINE? TTRUE
    T-REPORT ;
 
 \ Live drift check against a captured map + its engine (for a build-and-capture
