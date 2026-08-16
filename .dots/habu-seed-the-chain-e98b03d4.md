@@ -1013,3 +1013,10 @@ each, high and low dropped): bare 258.3ms / source-chain 1353.3ms
 1000.1 ms PER CHAIN BOOT (-73.9%); the seed costs 2.8 ms on a boot
 that never touches the chain. Install 6.74s -> 16.0s.
 
+
+STRUCTURAL FACT (2) CORRECTED 2026-08-16 (bake-chain-17): "the
+AOT seed is TTY-ARMED" is STALE - habu2.f EM-COMPILE-EXIT seeds
+at prefix-stream end in EVERY boot mode since the 2026-08-11
+arming ruling. Baked code serves every boot, which is what the
+payoff numbers measure. The original fact's product-decision
+escalation is RESOLVED by that ruling.
