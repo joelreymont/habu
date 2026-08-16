@@ -855,9 +855,23 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
 \ move and `FILE-SIZE bin/hb` is still 165367 (measured).
 \ The Linux rows below are owed this +48 as well.
-131352 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-16 the does>-clause dictionary record (dot
+\ habu-merged-engine-nmigrate-c970bf04), measured against a control build of the
+\ same tree without it. Two emitter rows move:
+\   compile/keywords 10368 -> 10920 (+552): J-DOES now assembles the `adr` that
+\     computes the clause entry, writes the clause's name out of line at CP, and
+\     builds its 48-byte record - with the two capacity exits (dict slot, code
+\     region) that reach for C-DIE-DICT-FULL / C-DIE-CODE-FULL.
+\   compile/semi     6596 -> 6664 (+68): the clause record's own length at the
+\     flush, and its count plus hash-index row at the publish.
+\   container/text-pad 12008 -> 11388 (-620): the pad absorbs the whole net.
+\ CODELEN 131352 -> 131972 (+620), floor distance 4376 -> 4996. Inside the same
+\ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
+\ move and `FILE-SIZE bin/hb` is still 165367 (measured).
+\ The Linux rows below are owed this +620 as well.
+131972 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-4376 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+4996 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

@@ -59,6 +59,7 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
 \ absolute host address = the site's original code address + sign-extended(imm26)*4.
 \ The site sits in the copied blob buffer, so its original address is AOT-CODE-B0
 \ (the capture-time code base) + the byte offset of the site within the blob.
+\ ACAP-TGT decodes imm26, which B and BL share, so it reads both.
 : ACAP-W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 : ACAP-W32! ( n ptr u8 -- ) {: w:n p:ptr :}
@@ -68,6 +69,14 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
    AOT-CODE-B0 @  p AOT-BLOB-BUF@ -  +  + ;                       \ + (B0 + site blob offset)
 : ACAP-CALL? ( ptr u8 -- bool ) {: p:ptr :}
    p ACAP-W32@ $FC000000 and $94000000 = ;
+: ACAP-BRANCH? ( ptr u8 -- bool ) {: p:ptr :}
+   p ACAP-W32@ $FC000000 and $14000000 = ;
+\ The window's own code, as the copy holds it. The blob moves rigidly — the seed
+\ copies it whole and the merge appends it whole — so a branch that lands inside
+\ it keeps its displacement and needs no name.
+: ACAP-IN-CODE? ( n -- bool ) {: t:n :}
+   t AOT-CODE-B0 @ < if 0 0= 0= exit then
+   t AOT-CODE-B0 @ AOT-BLOB-LEN @ + < ;
 : ACAP-ZERO-IMM ( ptr u8 -- ) {: p:ptr :}         \ zero the imm26 -> bare `bl #0`, for build determinism
    p ACAP-W32@ $FC000000 and  p ACAP-W32! ;
 
@@ -742,18 +751,48 @@ variable ACAP-P
    s k a u w ACAP-REFUSE-SITE ;
 
 \ --- scan the copied blob for call sites; record + canonicalize each ---
-: ACAP-SITE-HERE ( -- )
-   AOT-BLOB-BUF@ ACAP-P @ + ACAP-TGT ACAP-TGT>REC {: k:n :}
-   k 0 < if 1 AOT-UNRES-N +! exit then                \ call to no dict word -> word kept-source (counted)
+\ TWO OPCODES REACH A WORD FROM OUTSIDE IT AND BOTH TRAVEL BY NAME. A BL is
+\ every ordinary call. A B is ordinary control flow, inside the word that emitted
+\ it, where the rigid blob move keeps it exact — except for one producer:
+\ LDOESPATCH plants `b D` at a created word's RET, and D is the does>-clause of
+\ the DEFINING word. When that definer sits outside the window, its displacement
+\ measures against code the target does not have, and three chain words came to
+\ branch into the middle of PATHZ that way (dot
+\ habu-merged-engine-nmigrate-c970bf04). So an OUT-OF-WINDOW B is a site, and the
+\ rule over it is total rather than tolerant: it must name a record ENTRY. The
+\ clause carries one now (habu2.f J-DOES), and a branch that resolves to no
+\ record is refused BY NAME here — not counted into AOT-UNRES-N the way an
+\ unresolved BL is, because a call to a word the capture kept in source is a word
+\ nobody baked, while a branch with no name is a jump into whatever the delta
+\ lands on. The in-window Bs stay verbatim: 4852 of them on the compiler chain,
+\ and making each a name lookup would buy nothing a rigid move does not give.
+: ACAP-SITE-ADD ( n -- ) {: k:n :}
    ACAP-P @ k ACAP-SITE-BAND                          \ ... and the target has this name
    k ACAP-SITE-SCOPE {: a:ptr u:n w:n :}
    ACAP-P @ a u w ACAP-ADD-SITE
    AOT-SITE-N @ 1- k ACAP-?SITE
-   AOT-BLOB-BUF@ ACAP-P @ +        ACAP-ZERO-IMM ;     \ one 4-byte BL site
+   AOT-BLOB-BUF@ ACAP-P @ +        ACAP-ZERO-IMM ;     \ one 4-byte site
+: ACAP-SITE-HERE ( -- )
+   AOT-BLOB-BUF@ ACAP-P @ + ACAP-TGT ACAP-TGT>REC {: k:n :}
+   k 0 < if 1 AOT-UNRES-N +! exit then                \ call to no dict word -> word kept-source (counted)
+   k ACAP-SITE-ADD ;
+: ACAP-REFUSE-BRANCH ( n -- ) {: t:n :}
+   s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
+   s"  at blob offset " type ACAP-P @ .
+   s" branches out of the window to " type t .
+   s" , which is no record's entry and so has no name the seed can resolve" type cr
+   s" aot-capture: out-of-window branch to no record" 74 die ;
+: ACAP-BRANCH-HERE ( -- )
+   AOT-BLOB-BUF@ ACAP-P @ + ACAP-TGT {: t:n :}
+   t ACAP-IN-CODE? if exit then                       \ the blob's own control flow
+   t ACAP-TGT>REC {: k:n :}
+   k 0 < if t ACAP-REFUSE-BRANCH then
+   k ACAP-SITE-ADD ;
 : ACAP-SCAN-CALLS ( -- )
    0 ACAP-P !
    begin ACAP-P @ 4 + AOT-BLOB-LEN @ <= while
       AOT-BLOB-BUF@ ACAP-P @ + ACAP-CALL? if ACAP-SITE-HERE then
+      AOT-BLOB-BUF@ ACAP-P @ + ACAP-BRANCH? if ACAP-BRANCH-HERE then
       ACAP-P @ 4 + ACAP-P !
    repeat ;
 

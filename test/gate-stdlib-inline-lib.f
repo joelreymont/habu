@@ -723,6 +723,9 @@ public
    s" test/xt-effect-test.f" GSI-FORK-INCLUDE
    s" test/xt-cell-test.f" GSI-FORK-INCLUDE
    s" test/snapshot-xt-cell-decl.f" GSI-FORK-INCLUDE
+   \ Forked: every case evaluates a definition into the global wordlist and one
+   \ opens a package, so a shared in-process group would meet them twice.
+   s" test/does-clause-record.f" GSI-FORK-INCLUDE
    s" test/effect-read-api-test.f" GSI-FORK-INCLUDE
    s" test/create-axiom-test.f" GSI-FORK-INCLUDE
    s" test/checker-assert-test.f" GSI-FORK-INCLUDE

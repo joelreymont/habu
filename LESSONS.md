@@ -7034,3 +7034,58 @@ callee's answer. Use a register the call does not own.
   does is proof that control arrived mid-body - or the register sends
   you to a word whose call targets are byte-identical to the working
   build.
+
+## 2026-08-16 - the census lessons (bake-chain-11, dots c970bf04 + b8fec035)
+
+- **A per-record scan cannot see a link that sits at start+len.** Every
+  earlier walk of the merged engine went record by record and missed
+  the does>-link entirely, because the branch LDOESPATCH plants lives
+  one word PAST the record's span and no span covers it. A contiguous
+  scan of the whole code region found it in one pass, and the offset
+  it sits at is the signature of the whole class.
+- **A completeness audit with a permanent false-positive population is
+  not the check to keep.** "The word at start+len is ret" answered 102
+  in the merged engine and 98 in bin/hb, and ~59 of those are records
+  whose start+len simply lands on inline string data. A total
+  classification - every branch targets a record entry, an address
+  inside its own record, or __text - is a rule with no tolerated
+  exceptions, and that is what replaced it.
+- **A census that does not match PAIRWISE concludes nothing.** Counting
+  aligned cells on each side separately read 740 against 369 and said
+  nothing at all; matching each cell to its counterpart by name and wid
+  and comparing RESIDUES showed 1120 of 1133 unchanged and all 13
+  movers shifted by exactly -1.
+
+## 2026-08-16 - the does-clause record (bake-chain-12, dot c970bf04)
+
+- **The engine's own dictionary is the shortest path to a diagnostic.**
+  The question "what do the three broken branches point at" was
+  answered in one capture run by 40 lines of temporary Habu inside
+  `aot-capture.f` - names, wids and record indices printed straight
+  from the live dictionary the capture already indexes - after two
+  lanes of debugger and breakpoint work had localised the crash but
+  not its cause. Put the probe where the data already is.
+- **A pre-window definer is the whole class.** Only three of the
+  chain's 45 does>-links were broken, and the discriminator is not
+  which definer made them: it is whether the definer's body was
+  captured. 4852 in-window branches move rigidly with the blob and are
+  correct; the three whose `PTR-VARIABLE` sits below the window carry a
+  displacement no target can honour. So the rule is about the WINDOW,
+  not about does>, and it is written that way.
+- **Habu names may hold any byte above $20, which makes a synthesized
+  name cheap - except `:`.** A colon that is not at an edge turns a
+  name into a package-qualified one, so `PARENT;does` is the shape and
+  `PARENT:does` would have been a silent redirect into a wordlist.
+- **A capacity exit is a forward reference.** `does>`'s new record
+  reaches for `C-DIE-DICT-FULL`, which habu2.f defines 150 lines below
+  `J-DOES`, so the whole does> block moved down rather than the dies
+  moving up: in a self-hosting emitter, "define before use" decides
+  file order and the checker says so immediately (E-UNDEFINED at
+  certify, before any engine is written).
+- **Gforth's stage-0 path is red on master on this host** - both
+  `tools/bootstrap.sh`'s wide-memory gate and any `FORTH-EXE` engine
+  die the same way with and without a change (`pick-reason at
+  'CODE-REASON'`, rc 70). A mirror edit can then only be proven
+  structurally: it compiles, and the emitted stage-0 engine differs
+  from the control in 52248 bytes. Run the control before believing a
+  red belongs to you.

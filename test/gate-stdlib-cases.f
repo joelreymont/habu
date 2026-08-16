@@ -1309,6 +1309,10 @@ SUITE aot-chain-capture
    test/aot-chain-capture-suite.f
 ;SUITE
 
+SUITE does-clause-record
+   test/does-clause-record.f
+;SUITE
+
 SUITE friend-arena-absence
    test/seal-absence.f
 ;SUITE

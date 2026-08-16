@@ -3048,8 +3048,87 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ epilogue. The patch itself runs in LDOESPATCH (ENGINE text): flipping the
 \ region to RW would un-map EXECUTE from the page the defining word runs on.
 \ Locals BEFORE does> are refused (the shared teardown wouldn't match).
+\ The clause gets a dictionary record of its own, named PARENT;does in the
+\ parent's wordlist, so the `b D` LDOESPATCH plants at a created word's RET aims
+\ at a record ENTRY rather than at an interior address no AOT seed can name.
+\ src/habu/habu2.f carries the same five words and the reasoning; the mirror
+\ keeps them because an engine recovered through Gforth builds the next one, and
+\ a dictionary without clause records makes that build refuse.
+5 constant DOES-SUF-LEN                                \ ";does"
+
+\ x11 = the parent's pending record, x13 = the clause name's length, x14 = the
+\ parent's name bytes, x15 = that length rounded up to a word.
+: C-DOES-NAME$ ( -- )
+   LBL {: inl :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   11 DATA PEND-CELL LDR,
+   12 11 16 LDR,
+   13 12 0 ADDI,  13 13 14 LSLI,  13 13 14 LSRI,
+   14 11 24 ADDI,
+   12 12 DNAME-EXT ANDI,  12 inl CBZ,
+      14 11 24 LDR,
+   inl LBL,
+   13 13 DOES-SUF-LEN ADDI,
+   15 13 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI, ;
+
+: C-DOES-ROOM ( -- )
+   LBL LBL {: ndok cpok :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   9 DICT-CAP 1 - MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+      0 77 MOVZ,  NR-EXIT-GROUP SYS,
+   ndok LBL,
+   9 CP 15 ADD,
+   10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  9 10 CMP,  C-LT cpok BCOND,
+      s" bootstrap: does> clause name too long" C-EXIT76
+   cpok LBL, ;
+
+\ `adr x10, D`: four words down and then past the name bytes.
+: C-DOES-ADR ( -- )
+   9 15 16 ADDI,  9 9 2 LSRI,  9 9 5 LSLI,
+   10 $1000000A LIT64,  9 9 10 ORR,
+   LCEMIT @ BL, ;
+
+: C-DOES-REC ( -- )
+   LBL LBL LBL LBL {: cpy cpd pad pend :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   C-DOES-NAME$
+   10 CP 0 ADDI,
+   12 13 DOES-SUF-LEN SUBI,
+   cpy LBL,  12 cpd CBZ,
+      9 14 0 LDRB,  9 10 0 STRB,
+      14 14 1 ADDI,  10 10 1 ADDI,  12 12 1 SUBI,  cpy B,
+   cpd LBL,
+   9 $3B MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ ';'
+   9 $64 MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 'd'
+   9 $6F MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 'o'
+   9 $65 MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 'e'
+   9 $73 MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 's'
+   12 15 13 SUB,  9 0 MOVZ,
+   pad LBL,  12 pend CBZ,
+      9 10 0 STRB,  10 10 1 ADDI,  12 12 1 SUBI,  pad B,
+   pend LBL,
+   14 NDICT 1 ADDI,  9 DREC MOVZ,  14 14 9 MUL,  14 DBASE 14 ADD,
+   9 0 MOVZ,
+   9 14 0 STR,  9 14 8 STR,  9 14 16 STR,
+   9 14 24 STR,  9 14 32 STR,  9 14 40 STR,
+   9 CP 15 ADD,  9 14 0 STR,
+   9 DNAME-EXT LIT64,  9 13 9 ORR,  9 14 16 STR,
+   9 CP 0 ADDI,  9 14 24 STR,
+   11 DATA PEND-CELL LDR,  9 11 40 LDR,  9 14 40 STR,
+   CP CP 15 ADD, ;
+
+: C-DOES-LEN ( -- )
+   LBL {: none :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   9 DATA DOESB-CELL LDR,  9 none CBZ,
+   11 NDICT 1 ADDI,  12 DREC MOVZ,  11 11 12 MUL,  11 DBASE 11 ADD,
+   9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
+   none LBL, ;
+
+: C-DOES-PUB ( -- )
+   LBL {: none :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   9 DATA DOESB-CELL LDR,  9 none CBZ,
+   NDICT NDICT 1 ADDI,
+   none LBL, ;
+
 : J-DOES ( -- )
-   LBL {: dok :}
+   LBL {: dok :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    12 DATA LOCF-CELL LDR,  12 dok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
@@ -3057,10 +3136,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    C-PARSE-CREATED-SIG
    C-EMIT-CRSIG-SET
-   $1000008A C-EMITW                     \ adr x10, #+16 = D (4 words ahead)
+   C-DOES-NAME$  C-DOES-ROOM
+   C-DOES-ADR                            \ adr x10, D = past word 4 and the name bytes
    16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
    $D63F0200 C-EMITW                     \ blr x16
    J-EXIT                                \ word 4: the defining word ends here
+   C-DOES-REC                            \ the name bytes, then the clause's record
    9 $D10043FF LIT64,  LCEMIT @ BL,      \ D: fresh prologue for the does-body
    9 $F90003FE LIT64,  LCEMIT @ BL, ;
 
@@ -5653,6 +5734,7 @@ variable P2SK
    9 W-RET LIT64,  LCEMIT @ BL, ;
 
 : EMIT-COMPILE-FLUSH-PEND ( -- )
+   C-DOES-LEN
    11 DATA PEND-CELL LDR,
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL, ;
@@ -5672,6 +5754,7 @@ variable P2SK
    C-CALL-TRUST-PEND
    NDICT NDICT 1 ADDI,
    EM-REC-WIDE-PUBLISH
+   C-DOES-PUB
    [ also LOWER-TXN ] FINISH [ previous ]
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
@@ -5690,6 +5773,7 @@ variable P2SK
    nohook LBL,
       NDICT NDICT 1 ADDI,
       EM-REC-WIDE-PUBLISH
+      C-DOES-PUB
    rejected LBL,
    [ also LOWER-TXN ] FINISH [ previous ]
    C-CLEAR-TRUSTED-STATE

@@ -2473,21 +2473,8 @@ s" c-call-checker-defer" s" --" TRUST
    bad LBL,  C-SIG-BAD
    done LBL, ;
 
-: J-DOES ( -- )
-   LBL {: dok :}
-   12 DATA LOCF-CELL LDR,  12 dok CBZ,                    \ does> with locals active: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level. Fires before J-DOES emits any does-patch code; only DOESB/compile-state set -> rollback drops it
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
-   dok LBL,
-   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
-   C-PARSE-CREATED-SIG
-   C-EMIT-CRSIG-SET
-   $1000008A C-EMITW                     \ adr x10, #+16 = D (4 words ahead)
-   16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
-   $D63F0200 C-EMITW                     \ blr x16
-   J-EXIT                                \ word 4: the defining word ends here
-   9 $D10043FF LIT64,  LCEMIT LABEL@ BL,      \ D: fresh prologue for the does-body
-   9 $F90003FE LIT64,  LCEMIT LABEL@ BL, ;
+\ J-DOES is emitted further down, past the capacity exits its clause record
+\ reaches for (C-DIE-DICT-FULL / C-DIE-CODE-FULL).
 
 : J-QUOT ( -- )
    LBL {: qok :}
@@ -2638,6 +2625,151 @@ public
 : C-DIE-CODE-FULL ( -- )
    LCODEFULL C-CAP-LABEL
    $4C C-DIE-TOKEN-NL ;
+
+\ ---- the does>-clause's own dictionary record --------------------------------
+\ WHY THE CLAUSE NEEDS A NAME. LDOESPATCH patches the created word's RET into
+\ `b D`, and D is the clause entry — an address INSIDE the defining word's
+\ compiled body. That branch is the one call in the system the AOT seed cannot
+\ relocate: it travels as a raw PC-relative word, so a capture whose defining
+\ word lies OUTSIDE the window carries a displacement measured against code no
+\ target has, and the seeded engine branches into the middle of another word
+\ (dot habu-merged-engine-nmigrate-c970bf04: three chain words, one SIGSEGV).
+\ Giving the clause a record of its own makes D a record ENTRY, so the
+\ name-keyed call-site path carries it and the seed resolves it in the engine it
+\ is booting exactly as it resolves every BL. Carrying a name plus a byte delta
+\ instead was refused: a captured branch must never depend on a callee's
+\ interior layout.
+\
+\ IT OVERLAPS ITS PARENT AND TRIMS NOTHING. The defining word's length is
+\ written at `;`, past the clause body, so the parent's span already covers the
+\ clause. Overlapping spans are ordinary here — EXPORT publishes a second record
+\ over one body and CODE-RECLAIM republishes — and trimming the parent would
+\ move a span the inliner, the snapshot and the size census all read.
+\
+\ THE NAME IS THE PARENT'S PLUS `;does`, derived and not invented, because the
+\ seed looks it up in ANOTHER engine and the only identity two engines spell the
+\ same way is the parent's own name. Every byte above $20 is a legal name byte;
+\ `:` is the one to avoid, since a colon inside a name makes the name
+\ package-qualified. The bytes are stored out of line (DNAME-EXT) whatever their
+\ length, in the gap between the defining word's own exit and the clause entry —
+\ code the parent branches over and never executes, which is why the `adr` that
+\ computes D is assembled here rather than being the constant it was.
+\
+\ THE WID IS THE PARENT'S, which is also the answer the sealed-WID gate needs:
+\ the clause is exactly as public or private as the word it belongs to. The slot
+\ is &dict[NDICT+1], one above the parent's own pending slot, and both are
+\ counted by the one publish; every abandon path leaves both uncounted.
+package DOES-REC
+
+5 constant SUF-LEN                                     \ ";does"
+
+public
+
+\ x11 = the parent's pending record, x13 = the clause name's length, x14 = the
+\ parent's name bytes, x15 = the clause name's length rounded up to a word.
+: NAME$ ( -- )
+   LBL {: inl:label :}
+   11 DATA PEND-CELL LDR,
+   12 11 16 LDR,
+   13 12 0 ADDI,  13 13 14 LSLI,  13 13 14 LSRI,       \ the parent's own name length
+   14 11 24 ADDI,
+   12 12 DNAME-EXT ANDI,  12 inl CBZ,
+      14 11 24 LDR,                                    \ ... which is a pointer when it is long
+   inl LBL,
+   13 13 SUF-LEN ADDI,
+   15 13 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI, ;
+
+\ The two capacities the clause adds: one dictionary slot above the parent's,
+\ and the name bytes at CP. Refused here, before anything is written.
+: ROOM ( -- )
+   LBL LBL {: ndok:label cpok:label :}
+   9 DICT-CAP 1 - MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+      C-DIE-DICT-FULL
+   ndok LBL,
+   9 CP 15 ADD,
+   10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  9 10 CMP,  C-LT cpok BCOND,
+      C-DIE-CODE-FULL
+   cpok LBL, ;
+
+\ `adr x10, D`: four words down and then past the name bytes. The displacement
+\ is a multiple of four, so only immhi is ever set.
+: ENTRY-ADR ( -- )
+   9 15 16 ADDI,  9 9 2 LSRI,  9 9 5 LSLI,
+   10 $1000000A LIT64,  9 9 10 ORR,
+   LCEMIT LABEL@ BL, ;
+
+\ The clause's name bytes at CP, then the record that names them, then CP up to
+\ the clause entry. The pad between the two is written zero rather than left:
+\ these bytes are copied into the AOT blob verbatim, so they have to be a value
+\ and not whatever the last abandoned definition put there.
+: MAKE ( -- )
+   LBL LBL LBL LBL {: cpy:label cpd:label pad:label pend:label :}
+   NAME$
+   1 15 0 ADDI,  PROT:RESERVE
+   10 CP 0 ADDI,                                       \ the write cursor
+   12 13 SUF-LEN SUBI,
+   cpy LBL,  12 cpd CBZ,
+      9 14 0 LDRB,  9 10 0 STRB,
+      14 14 1 ADDI,  10 10 1 ADDI,  12 12 1 SUBI,  cpy B,
+   cpd LBL,
+   9 $3B MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ ';'
+   9 $64 MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 'd'
+   9 $6F MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 'o'
+   9 $65 MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 'e'
+   9 $73 MOVZ,  9 10 0 STRB,  10 10 1 ADDI,            \ 's'
+   12 15 13 SUB,  9 0 MOVZ,
+   pad LBL,  12 pend CBZ,
+      9 10 0 STRB,  10 10 1 ADDI,  12 12 1 SUBI,  pad B,
+   pend LBL,
+   14 NDICT 1 ADDI,  9 DREC MOVZ,  14 14 9 MUL,  14 DBASE 14 ADD,
+   1 14 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,
+   9 0 MOVZ,                                           \ a slot an abandoned definition may have written
+   9 14 0 STR,  9 14 8 STR,  9 14 16 STR,
+   9 14 24 STR,  9 14 32 STR,  9 14 40 STR,
+   9 CP 15 ADD,  9 14 0 STR,                           \ [0] = the clause entry
+   9 DNAME-EXT LIT64,  9 13 9 ORR,  9 14 16 STR,       \ [16] = its name length, out of line
+   9 CP 0 ADDI,  9 14 24 STR,                          \ [24] = the name bytes
+   11 DATA PEND-CELL LDR,  9 11 40 LDR,  9 14 40 STR,  \ [40] = the parent's wordlist
+   CP CP 15 ADD, ;
+
+\ The clause record's own length, by the parent's rule and inside the parent's
+\ protection span: both bodies end at the shared epilogue. It runs BEFORE the
+\ parent's write, which leaves x9 live for the cache flush.
+: FLUSH ( -- )
+   LBL {: none:label :}
+   9 DATA DOESB-CELL LDR,  9 none CBZ,
+   11 NDICT 1 ADDI,  12 DREC MOVZ,  11 11 12 MUL,  11 DBASE 11 ADD,
+   1 11 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,
+   9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
+   none LBL, ;
+
+\ Counted and indexed with its parent, after the record facts the publish pokes
+\ into &record[NDICT-1] — which is the parent's slot until this bump moves it.
+: PUBLISH ( -- )
+   LBL {: none:label :}
+   9 DATA DOESB-CELL LDR,  9 none CBZ,
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   none LBL, ;
+
+;package
+
+: J-DOES ( -- )
+   LBL {: dok:label :}
+   12 DATA LOCF-CELL LDR,  12 dok CBZ,                    \ does> with locals active: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level. Fires before J-DOES emits any does-patch code; only DOESB/compile-state set -> rollback drops it
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
+   dok LBL,
+   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
+   C-PARSE-CREATED-SIG
+   C-EMIT-CRSIG-SET
+   DOES-REC:NAME$  DOES-REC:ROOM
+   DOES-REC:ENTRY-ADR                    \ adr x10, D = past word 4 and the name bytes
+   16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
+   $D63F0200 C-EMITW                     \ blr x16
+   J-EXIT                                \ word 4: the defining word ends here
+   DOES-REC:MAKE                         \ the name bytes, then the clause's record
+   9 $D10043FF LIT64,  LCEMIT LABEL@ BL,      \ D: fresh prologue for the does-body
+   9 $F90003FE LIT64,  LCEMIT LABEL@ BL, ;
 
 : C-QUALIFY-CAP ( -- )
    LBL {: room :}
@@ -7232,6 +7364,7 @@ s" em-p2-finish" s" --" TRUST
 \ the bracket, and a close clears every band. So the record is declared again
 \ here, where it is written, rather than once at the colon.
 : EM-COMPILE-FLUSH-PEND ( -- )
+   DOES-REC:FLUSH
    11 DATA PEND-CELL LDR,
    1 11 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
@@ -7373,6 +7506,7 @@ s" HOLD-EMIT:EM-COMPILE-HELD?" s" label --" TRUST
    finish HOLD-EMIT:EM-COMPILE-HELD?
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
+   DOES-REC:PUBLISH
    finish LBL,
    EM-P2-FINISH
    C-CLEAR-TRUSTED-STATE
