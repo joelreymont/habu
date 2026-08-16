@@ -7089,3 +7089,32 @@ callee's answer. Use a register the call does not own.
   structurally: it compiles, and the emitted stage-0 engine differs
   from the control in 52248 bytes. Run the control before believing a
   red belongs to you.
+
+## 2026-08-16 - the merged DATA window (bake-chain-12, dot b8fec035)
+
+- **A length is not an alignment, and neither is rounding it.** The dot's
+  diagnosis was that the merge appended the artifact's window at an
+  unrounded host length; measured, that length is already a multiple of
+  four and the skew comes from the two BASES: the host window was
+  captured at a DATA cursor with residue 7 and the artifact's at residue
+  4. Rounding the length up to eight would have changed the number
+  without fixing anything. What a captured address needs kept is its own
+  8-residue, and that is a statement about where the two windows START.
+- **Nothing in this engine aligns DATA.** `variable` allots a cell
+  wherever DP stands (habu2.f C-VARIABLE), so every alignment a cell has
+  is inherited from the cursor - which is why the seed had to be made to
+  advance DP to the capture base's residue before copying, and why the
+  merge has to place the artifact's slice at its own base's residue. The
+  two together are the whole invariant; either alone leaves it to luck.
+- **A residue census only means something PAIRWISE and only for the half
+  you moved.** Comparing a merged engine against a source-loaded one
+  shows both the merge's skew and the two hosts' own different cursors:
+  after the fix every cell of the CHAIN keeps its residue and the eleven
+  that still differ are REPL buffers whose two captures were taken in
+  metabuild hosts with different DATA cursors. Split the population by
+  wordlist before reading the number.
+- **Answer the "does this arrive zero" question by looking, then write
+  the byte anyway.** The metabuild's DATA payload buffer measured zero
+  above the host's window - nothing writes there - but the capture tool's
+  own round trip smears $A5 over the same buffer in its process, so the
+  pad is stored rather than assumed.

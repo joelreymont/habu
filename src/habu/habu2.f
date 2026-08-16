@@ -4681,10 +4681,21 @@ public
    xdone LBL, ;
 ;package
 
+\ THE DELTA IS A WHOLE NUMBER OF CELLS, and that is what keeps an ALIGNMENT.
+\ Every captured DATA address moves by one delta, so a delta that is not a
+\ multiple of eight changes each address's 8-residue - and the atomics do not
+\ survive that: LDAXR and STLR fault on a misaligned address (dot
+\ habu-merged-data-window-b8fec035, measured: a merged engine died SIGBUS in
+\ FIND-B on a cell four bytes off). Nothing aligns DP for the seed - `variable`
+\ allots a cell wherever DP stands (C-VARIABLE) - so the seed advances DP to the
+\ next address carrying the capture base's OWN residue, and from there the whole
+\ window arrives with every cell exactly as aligned as it was captured. It costs
+\ at most seven bytes of DATA once per boot.
 : EM-AOT-RELOC-DATA ( -- )
    LBL LBL LBL LBL {: dloop:label drdone:label ok:label msg:label :}
    3 DATA DP-CELL LDR,                              \ x3 = seed DP (abs) = REPL DATA base at boot
    5 10 LAOTDATAD0 LABEL@ TADR,  5 5 0 LDR,         \ x5 = capture-time REPL DATA base
+   6 5 3 SUB,  6 6 7 ANDI,  3 3 6 ADD,              \ ... and DP up to that base's own 8-residue
    6 3 5 SUB,                                       \ x6 = delta (survives the loop)
    5 10 LAOTDATASIZE LABEL@ TADR,  5 5 0 LDR,       \ x5 = REPL DATA span
    7 DATA-SIZE LIT64,  7 DATA 7 ADD,  7 7 3 SUB,    \ x7 = headroom = (data-base + DATA-SIZE) - seed DP

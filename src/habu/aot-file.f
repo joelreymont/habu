@@ -660,6 +660,7 @@ variable H-BLOB   variable H-REC     variable H-SITE   variable H-NAMES
 variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
 variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
 variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
+variable H-DATA-R                    \ where the artifact's window begins inside the merged one
 
 : LATCH-HOST ( -- )
    AOT-BLOB-LEN @ H-BLOB !            AOT-REC-N @ H-REC !
@@ -689,7 +690,6 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
    H-DSITE @ 4 *               S-DSITES BASE!
    H-DSITE @ 4 * S-DSITES ROW-LEN@ + H-CSITE @ 4 * +   S-CSITES BASE!
    H-XTOFF @ 4 *               S-XTOFFS BASE!
-   H-DATA @                    S-WDATA BASE!
    H-XTSITE @ 8 *              S-XTSITES BASE!
    H-BOOTRUN @                 S-BOOTRUN BASE!
    H-PWIN @ 4 *                S-PWIN BASE! ;
@@ -719,6 +719,35 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
    SCAL 8 + U64@ A-B0 !
    SCAL 16 + U64@ A-W0 !
    SCAL 24 + U64@ A-SPAN ! ;
+
+\ WHERE THE ARTIFACT'S WINDOW BEGINS, and it is not simply the host's length.
+\ What a captured address needs kept is its 8-RESIDUE - the atomics fault on a
+\ misaligned cell - and the seed delivers that by advancing DP to the residue of
+\ the base it was captured against (habu2.f EM-AOT-RELOC-DATA). So an artifact
+\ address survives exactly when its slice starts at (A-D0 - hostD0) past the
+\ host's length, modulo eight. Measured on the compiler chain: the host base
+\ carries residue 7 and the artifact's carries 4, so the two do NOT agree and
+\ appending flush - which is what this did - moved every chain `variable` four
+\ bytes off and killed the merged engine with SIGBUS (dot
+\ habu-merged-data-window-b8fec035). Rounding the host's LENGTH up to eight
+\ would not have fixed it: that length is already a multiple of four and the
+\ skew comes from the two BASES, not from it.
+\
+\ THE PAD IS WRITTEN, NOT LEFT. Measured, the metabuild's payload buffer holds
+\ zero above the host's window - nothing has written there - but these bytes
+\ become live DATA in the booted engine, and a byte no one decided is a byte
+\ that can change when another producer reaches this buffer first (the capture
+\ tool's own round trip smears $A5 over it). So the pad is stored.
+\
+\ IT IS SET HERE AND NOT WITH THE OTHER BASES because it needs the artifact's
+\ own DATA base, and that arrives in the scalars section - which the format puts
+\ first, so it is already read when the window's own section comes up.
+: PLACE-WDATA ( -- )
+   SCALARS@
+   A-D0 @  AOT-DATA-D0 @ -  H-DATA @ -  7 and {: pad:n :}
+   pad 0 ?do 0 AOT-WINDOW:DATA-BUF@ H-DATA @ + i + c! loop
+   H-DATA @ pad +  H-DATA-R !
+   H-DATA-R @ S-WDATA BASE! ;
 
 \ Both captures canonicalize their code literals against base 0 (aot-capture.f
 \ ACAP-SCAN-CSITES), which is what lets a merge move one into the other's blob by
@@ -797,7 +826,7 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
    MERGE-SITE-SCOPE
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 0 H-BLOB @ FIELD+
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 4 H-NAMES @ FIELD+
-   S-XTOFFS SEC-AT   S-XTOFFS SEC-ROWS   4 0 H-DATA @ FIELD+
+   S-XTOFFS SEC-AT   S-XTOFFS SEC-ROWS   4 0 H-DATA-R @ FIELD+
    S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+ ;
 
 : ?DVALUE ( n n -- ) {: boff:n v:n :}
@@ -819,7 +848,7 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
       AOT-BLOB-BUF@ H-BLOB @ + boff + {: ch:ptr :}
       ch SNAP-RELOC:CHAINV {: v:n :}
       v A-D0 @ >= v A-D0 @ dlen + < and 0= if boff v ?DVALUE then
-      ch  v A-D0 @ -  AOT-DATA-D0 @ +  H-DATA @ +  SNAP-RELOC:SET-CHAIN
+      ch  v A-D0 @ -  AOT-DATA-D0 @ +  H-DATA-R @ +  SNAP-RELOC:SET-CHAIN
       boff H-BLOB @ +  q U32!
    loop ;
 
@@ -856,7 +885,7 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
    H-DSITE @ S-DSITES SEC-ROWS + AOT-DSITE-N !
    H-CSITE @ S-CSITES SEC-ROWS + AOT-CSITE-N !
    H-XTOFF @ S-XTOFFS SEC-ROWS + AOT-WINDOW:XTOFF-N !
-   H-DATA @ S-WDATA ROW-LEN@ + AOT-DATA-SIZE !
+   H-DATA-R @ S-WDATA ROW-LEN@ + AOT-DATA-SIZE !
    H-XTSITE @ S-XTSITES SEC-ROWS + AOT-XTSITE:N !
    H-BOOTRUN @ S-BOOTRUN ROW-LEN@ + AOT-BOOTRUN-LEN !
    H-PWIN @ S-PWIN SEC-ROWS + AOT-PWIN-N !
@@ -864,6 +893,12 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
 public
+
+\ Where the artifact's own window begins inside the merged one. It is the one
+\ number in the placement a reader cannot recompute for itself, so
+\ test/aot-file-merge.f asks the merge for it and checks the pad's size, its
+\ bytes and its residue against numbers of its own.
+: WDATA-BASE ( -- n ) H-DATA-R @ ;
 
 \ Append the artifact at `path` to the capture already in the live buffers,
 \ expressed in that capture's coordinates. `want` is the 32-byte producer key
@@ -877,6 +912,7 @@ public
    BASES-AFTER-HOST
    OPEN-CSITE-GAP
    SEC-N 0 ?do
+      i S-WDATA = if PLACE-WDATA then
       i S-PWID = if i SKIP-SECTION else i LOAD-SECTION then
    loop
    FD @ close

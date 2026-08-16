@@ -561,6 +561,22 @@ create SW1 512 allot
 : MERGED= ( ptr u8 n ptr u8 n n -- ) {: h:ptr hu:n m:ptr mu:n want:n :}
    m mu FIELD  h hu FIELD -  want T= ;
 
+\ The DATA window is the one axis that does not append flush. A captured
+\ address has to keep its 8-residue - the atomics fault on a misaligned cell -
+\ and the two windows were captured against DATA cursors with residues of their
+\ own, so the merge starts the artifact's slice up to seven bytes late (dot
+\ habu-merged-data-window-b8fec035). The exact placement is asked of the merge
+\ by test/aot-file-merge.f, which reads AOT-FILE:WDATA-BASE and checks the
+\ shift is a whole number of cells; what is asked HERE, across the two
+\ processes, is that the whole difference is this capture's own window and a
+\ pad below one cell - so a merge that dropped the artifact, or padded by a
+\ cell too many, is still named.
+8 constant PAD-BOUND
+
+: MERGED-PAD= ( ptr u8 n ptr u8 n n -- ) {: h:ptr hu:n m:ptr mu:n want:n :}
+   m mu FIELD  h hu FIELD -  want - {: pad:n :}
+   pad 0 >= pad PAD-BOUND < and TTRUE ;
+
 : PROBE-MERGE ( -- )
    RUN-MERGE
    s" the production merge accepts the artifact the capture wrote" T-LABEL
@@ -572,8 +588,8 @@ create SW1 512 allot
    s" hostsites=" s" mergedsites=" T-SITES @ MERGED=
    s" ... exactly its code" T-LABEL
    s" hostblob=" s" mergedblob=" T-BLOB @ MERGED=
-   s" ... and exactly its DATA window" T-LABEL
-   s" hostdata=" s" mergeddatasz=" T-DATASZ @ MERGED= ;
+   s" ... and its DATA window, placed at most a cell late for alignment" T-LABEL
+   s" hostdata=" s" mergeddatasz=" T-DATASZ @ MERGED-PAD= ;
 
 : BODY ( -- )
    SETUP

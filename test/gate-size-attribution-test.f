@@ -869,9 +869,20 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
 \ move and `FILE-SIZE bin/hb` is still 165367 (measured).
 \ The Linux rows below are owed this +620 as well.
-131972 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-16 the seeded DATA window's alignment (dot
+\ habu-merged-data-window-b8fec035), measured against a control build of the
+\ same tree without it. One emitter row moves:
+\   compile/exit 3544 -> 3556 (+12): EM-AOT-RELOC-DATA advances DP to the
+\     residue of the base the window was captured against, so the seed's delta
+\     is a whole number of cells and every captured address keeps its alignment.
+\   container/text-pad 11388 -> 11376 (-12): the pad absorbs it.
+\ CODELEN 131972 -> 131984 (+12), floor distance 4996 -> 5008. Inside the same
+\ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
+\ move and `FILE-SIZE bin/hb` is still 165367 (measured).
+\ The Linux rows below are owed this +12 as well.
+131984 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-4996 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+5008 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

@@ -78,6 +78,7 @@ variable A-RBLOB  variable A-RNAME  variable A-RWID
 variable A-SBLOB  variable A-SNAME  variable A-SWID  variable A-SMOV
 variable A-DROW   variable A-CROW   variable A-XROW  variable A-PROW
 variable A-DVAL   variable A-CVAL
+variable A-DATA                      \ the artifact's own DATA window length
 variable SUM      variable SUM2     variable CNT
 
 : DIE ( ptr u8 n -- ) REFUSE-RC die ;
@@ -276,6 +277,7 @@ variable T-ORD    variable T-WIDN
    AOT-DSITE-N @ A-DSITE !             AOT-CSITE-N @ A-CSITE !
    AOT-WINDOW:XTOFF-N @ A-XTOFF !      AOT-PWIN-N @ A-PWIN !
    AOT-DATA-D0 @ A-D0 !                AOT-WID-W0 @ A-W0 !
+   AOT-DATA-SIZE @ A-DATA !
    0 AOT-REC-N @ WALK-RECS
    T-RBLOB @ A-RBLOB !  T-RNAME @ A-RNAME !  T-RWID @ A-RWID !
    T-ORD @ A-ORD !      T-WIDN @ A-WIDN !
@@ -356,7 +358,7 @@ variable T-ORD    variable T-WIDN
       AOT-DSITE-BUF@ i 4 * + W32@ {: boff:n :}
       boff H-BLOB @ AOT-BLOB-LEN @ s" a merged DATA site blob offset" ?IN
       AOT-BLOB-BUF@ boff + SNAP-RELOC:CHAINV
-      AOT-DATA-D0 @ H-DATA @ +
+      AOT-DATA-D0 @ AOT-FILE:WDATA-BASE +
       AOT-DATA-D0 @ AOT-DATA-SIZE @ +
       s" a merged DATA literal" ?IN
    loop
@@ -380,7 +382,7 @@ variable T-ORD    variable T-WIDN
 : ?XTOFFS ( -- )
    AOT-WINDOW:XTOFF-N @ H-XTOFF @ ?do
       AOT-WINDOW:XTOFF-BUF@ i 4 * + W32@
-      H-DATA @ AOT-DATA-SIZE @ s" a merged address cell offset" ?IN
+      AOT-FILE:WDATA-BASE AOT-DATA-SIZE @ s" a merged address cell offset" ?IN
    loop
    H-XTOFF @ 0 ?do
       AOT-WINDOW:XTOFF-BUF@ i 4 * + W32@ 0 H-DATA @ s" a host address cell offset" ?IN
@@ -403,6 +405,34 @@ variable T-ORD    variable T-WIDN
    s"  sum is " type got .
    s" where the artifact's plus its own shift is " type want . cr
    1 BAD +! ;
+
+\ ---- where the artifact's window was placed, and why it is not H-DATA -------
+\ A captured DATA address has to keep its 8-RESIDUE across the seed, because the
+\ atomics fault on a misaligned cell; the seed delivers that by advancing DP to
+\ the residue of the base the host window was captured against, so an artifact
+\ address survives exactly when its slice begins at (A-D0 - hostD0) past the
+\ host's length, modulo eight. Appending flush moved every chain `variable` four
+\ bytes off and killed the merged engine with SIGBUS (dot
+\ habu-merged-data-window-b8fec035).
+\
+\ THE THREE QUESTIONS ARE SEPARATE, and none of them is "the base is a multiple
+\ of eight" - it is not, and a check that asked that would pass a merge whose
+\ artifact came from a base with any other residue at all. What is asked is that
+\ the SHIFT the merge applies is a whole number of cells, that the pad is
+\ exactly what the residue rule needs and no more, and that its bytes are a
+\ value rather than whatever the buffer held.
+8 constant CELL-BYTES
+
+: ?PLACEMENT ( -- )
+   AOT-FILE:WDATA-BASE {: base:n :}
+   base H-DATA @ - {: pad:n :}
+   AOT-DATA-D0 @ base +  A-D0 @ -  CELL-BYTES 1 - and
+      0 s" the merged window's shift in cells" ?SUM
+   pad  0 CELL-BYTES s" the merged window's pad" ?IN
+   AOT-DATA-SIZE @  base A-DATA @ +  s" the merged DATA size" ?SUM
+   pad 0 ?do
+      AOT-WINDOW:DATA-BUF@ H-DATA @ + i + c@ 0 s" a merged window pad byte" ?SUM
+   loop ;
 
 : ?EXACT ( -- )
    AOT-REC-N @ H-REC @ - A-REC @ = 0= if
@@ -437,13 +467,13 @@ variable T-ORD    variable T-WIDN
       A-CROW @ A-CSITE @ H-BLOB @ * +
       s" merged CODE site row" ?SUM
    AOT-WINDOW:XTOFF-BUF@ H-XTOFF @ 4 * + A-XTOFF @ 4 0 SUM-ROWS
-      A-XROW @ A-XTOFF @ H-DATA @ * +
+      A-XROW @ A-XTOFF @ AOT-FILE:WDATA-BASE * +
       s" merged address cell offset" ?SUM
    AOT-PWIN-BUF@ H-PWIN @ 4 * + A-PWIN @ 4 0 SUM-ROWS
       A-PROW @ A-PWIN @ H-SPAN @ * +
       s" merged protected window WID" ?SUM
    AOT-DSITE-BUF@ H-DSITE @ 4 * + A-DSITE @ SUM-CHAINS
-      A-DVAL @ A-DSITE @ AOT-DATA-D0 @ H-DATA @ + A-D0 @ - * +
+      A-DVAL @ A-DSITE @ AOT-DATA-D0 @ AOT-FILE:WDATA-BASE + A-D0 @ - * +
       s" merged DATA literal" ?SUM
    AOT-DSITE-BUF@ AOT-DSITE-N @ H-CSITE @ + 4 * + A-CSITE @ SUM-CHAINS
       A-CVAL @ A-CSITE @ H-BLOB @ * +
@@ -502,7 +532,7 @@ variable T-ORD    variable T-WIDN
    KEY 0 SCRIPT-ARGV$ AOT-FILE:MERGE
    ?KEPT
    ?HOST-RECS  ?MERGED-RECS
-   ?SITES  ?DSITES  ?CSITES  ?XTOFFS  ?PWIN
+   ?SITES  ?PLACEMENT  ?DSITES  ?CSITES  ?XTOFFS  ?PWIN
    ?EXACT
    ?BOOTRUN
    ?BAD
