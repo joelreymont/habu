@@ -751,3 +751,19 @@ where the source-loaded chain returns 0. (b) is a new defect and
 the next real blocker for items (3)-(6); it wants its own dot.
 Vehicle for both: tools/aot-chain-bake.f, which runs the
 production stdin build with STDIN-DRIVER:ARTIFACT! spliced in.
+
+DOES-RECORD + ALIGNMENT LANDED 2026-08-16 (bake-chain-12, merged
+7b64d652 + e9fc960c; c970bf04 and b8fec035 CLOSED). The does>
+clause is a first-class record (PARENT;does); the capture's
+branch audit is total (in-window / record-entry / __text, refuse
+by name); the merged DATA window sits at its captured base's
+residue with a written pad; residue census 10 skewed -> 0. Both
+crashes gone (SIGSEGV then the predicted SIGBUS). THE MILESTONE
+now fails loudly at exit 76 'no source-tape observer to arm':
+two load-time installers (CHECKER-TAPE:INSTALL,
+CODE-RECLAIM:WATCH) need boot-run rows - dot 072becbc, the ruled
+DKEEP-HOOK shape, bounded at exactly two by survey. Gforth
+stage-0 pre-existing red dotted 53355d74 (recovery host dead on
+this host). After 072becbc: the milestone transcript, then items
+(3) two-engine emit, (4) fixpoint, (5) provided rows, (6)
+battery + boot delta.
