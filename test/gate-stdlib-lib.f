@@ -248,6 +248,7 @@ private
    s" diff-parser" SUITE-LABEL= if SUITE-TRUE exit then
    s" diff-frame-codec" SUITE-LABEL= if SUITE-TRUE exit then
    s" schedule-lint" SUITE-LABEL= if SUITE-TRUE exit then
+   s" region-room" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-LINT-ARTIFACTS-LABEL? ( -- bool )

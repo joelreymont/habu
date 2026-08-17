@@ -1313,6 +1313,10 @@ SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
 ;SUITE
 
+SUITE region-room
+   test/region-room-suite.f
+;SUITE
+
 SUITE does-clause-record
    test/does-clause-record.f
 ;SUITE

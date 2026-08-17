@@ -40,7 +40,10 @@ constant MASK
 
 ;package
 
-$800000 constant REGION
+\ REGION: the one mapping that holds BOTH the dictionary and the emitted code.
+\ CODE-BAND:BYTES below states the split; grow REGION whenever DICT-SIZE grows,
+\ or the dictionary takes its records out of the code band's bytes.
+$A00000 constant REGION
 \ RBASE-VA: snapshot CANONICAL region base (a fixed portability sentinel, NOT the
 \ runtime map address). The live JIT region maps at __text base + REGION-OFF (see
 \ habu2.f EM-MMAP-CODE-REGION) so every call site and callee sit inside BL's
@@ -116,7 +119,28 @@ $48425350414E5321 constant SNAP-MAGIC
 \ (LPROTREC) keep the seal-time internal-mark cost off the grown region, so the
 \ 4 MB -> 8 MB growth stays under the runtime ratchet. Keep DICT-CAP/CFSTK-OFF/
 \ DICT-SIZE/HIDX-SLOTS/HIDX-BYTES in step.
-$181000 constant DICT-SIZE
+\ Grown $181000 -> $301000 with DICT-CAP 32768 -> 65536 and REGION $800000 ->
+\ $A00000 (dot habu-seeded-words-invisible-c7505a49). The derivation is under
+\ DICT-CAP; both sides grew for the same reason as last time, and the code side
+\ grew BECAUSE the dict side did - see CODE-BAND:BYTES below.
+$301000 constant DICT-SIZE
+\ CODE-BAND:BYTES: what is left of REGION for emitted code, [DBASE+DICT-SIZE,
+\ DBASE+REGION). NAMED, not left as a subtraction nobody performs: the two bands
+\ share one budget, so every dictionary growth spends the code band's bytes, and
+\ that is invisible while only REGION and DICT-SIZE have names. It cost this lane
+\ a near miss - lifting DICT-CAP alone would have left 36 KB of code band and
+\ traded `dictionary full` for `code space full` at the same suite.
+\ SIZED BY THE SAME METHOD AS DICT-CAP, over the same composite: the monolithic
+\ maki inventory emits 4,047,032 code bytes unseeded and 5,234,436 seeded (the
+\ chain restores 1,208,800 of code at boot), so 5,234,436 + 25% = 6,543,045.
+\ REGION $A00000 leaves 7,335,936 - 1.40x the measurement, and the inventory
+\ finishes at 71% of the band. REGION costs nothing at rest (it is an
+\ anonymous mapping, and a snapshot writes only [SDB, CP)), so the grain is the
+\ 2 MiB step, not a doubling.
+package CODE-BAND
+public
+REGION DICT-SIZE - constant BYTES
+;package
 48 constant DREC
 16 constant DNAME-INL
 1 constant OWNER-API-PUB-WID
@@ -238,8 +262,31 @@ $4000000000000000 constant DNAME-WIDE
 \ unchecked user code, TRUSTED: bodies, hide.f refresh shims) are unaffected:
 \ those are declared trusted boundaries.
 $8000000000000000 constant DNAME-INT
-32768 constant DICT-CAP
-$180000 constant CFSTK-OFF
+\ DICT-CAP: dictionary record slots. Raised 32768 -> 65536 by the same method
+\ SOURCE-ARENA-CAP states below - the largest measured composite, plus
+\ SOURCE-HEADROOM-PCT, rounded up to a power of two.
+\ THE COMPOSITE IS THE MONOLITHIC MAKI INVENTORY, `bin/hb --load maki/test.f`,
+\ which loads all 193 files into ONE image (the gate's four maki slices are
+\ smaller: 28626 / 20637 / 20315 / 15985 seeded). Measured per file through the
+\ real MAKI-TEST harness: 26419 records unseeded and 33131 seeded, +25% = 41414,
+\ and the smallest power of two above that is 65536.
+\ THE SEED'S SHARE IS 6892 RECORDS AT BOOT (94 package records + 6798 checked
+\ words), constant to the record at every one of the 193 files - it publishes its
+\ window once. The end-to-end delta is 178 smaller because one file
+\ (maki/onnx/asm-collide-test.f) requires chain sources the seeded engine already
+\ provides, so the unseeded run publishes records the seeded run does not.
+\ THE OLD CAP WAS ALREADY SHORT OF THIS FILE'S OWN STANDARD, UNSEEDED: 26419
+\ needed 33024 and the cap was 32768. The seed did not create the debt, it made
+\ it fail loudly - as `hb: dictionary full at: DLT-ROOT-U` in the file AFTER the
+\ one that exhausted the slots, which is why REGION-ROOM:REQUIRE-ROOM now ends
+\ the inventory with both bands' numbers.
+\ 65536 exceeds the move-wide imm16 field, so the DICT-CAP comparison sites in
+\ src/habu/habu2.f and bootstrap/cg/forth.fs load it with LIT64 - the same
+\ treatment HIDX-SLOTS $10000 already needed. LIT64 emits ONE instruction for a
+\ single-chunk value, so the sites cost what MOVZ cost, and asm.f ?IMM16 dies
+\ `asm: 16-bit immediate out of range` on a missed one, so none can drift.
+65536 constant DICT-CAP
+$300000 constant CFSTK-OFF
 24 constant CF-REC
 8 constant CF-LOCN
 16 constant CF-LOCF
@@ -672,19 +719,21 @@ $20000 constant AOT-NAMES-CAP
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
 \ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 32768: HIDX-SLOTS $10000
 \ ($10000 = 65536 exceeds MOVZ imm16, so the three habu1.f probe sites load it
-\ with LIT64), HIDX-BYTES $40000.
-$10000 constant HIDX-SLOTS
-$40000 constant HIDX-BYTES
+\ with LIT64), HIDX-BYTES $40000. Grown again with DICT-CAP 65536: HIDX-SLOTS
+\ $20000, HIDX-BYTES $80000 - the 2x identity is why DICT-CAP stays a power of
+\ two rather than taking the first value that clears the headroom rule.
+$20000 constant HIDX-SLOTS
+$80000 constant HIDX-BYTES
 \ HIDX:LOAD-MAX: the claimed-slot count at which LHIDXADD compacts the table
 \ in place instead of letting chains grow toward a full wrap. Three quarters of
-\ the file: strictly above DICT-CAP ($8000), so a compaction always lands the
+\ the file: strictly above DICT-CAP ($10000), so a compaction always lands the
 \ count back at NDICT with room to spare and can never itself be at the bound,
 \ and strictly below HIDX-SLOTS, so an insert always meets an empty slot within
 \ its chain and the full-wrap path is structurally unreachable (it dies loudly
 \ if reached; nothing silently disables the index any more - CG-25).
 package HIDX
 public
-$C000 constant LOAD-MAX
+$18000 constant LOAD-MAX
 ;package
 $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL

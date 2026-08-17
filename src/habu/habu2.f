@@ -2769,7 +2769,7 @@ public
 \ and the name bytes at CP. Refused here, before anything is written.
 : ROOM ( -- )
    LBL LBL {: ndok:label cpok:label :}
-   9 DICT-CAP 1 - MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+   9 DICT-CAP 1 - LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
       C-DIE-DICT-FULL
    ndok LBL,
    9 CP 15 ADD,
@@ -2859,7 +2859,7 @@ public
 
 : C-QUALIFY-CAP ( -- )
    LBL {: room :}
-   14 DICT-CAP MOVZ,  NDICT 14 CMP,  C-LT room BCOND,
+   14 DICT-CAP LIT64,  NDICT 14 CMP,  C-LT room BCOND,
       LDICTFULL C-CAP-LABEL
       $4D C-QUALIFY-FAIL
    room LBL, ;
@@ -3197,7 +3197,7 @@ package INTERP-EMIT
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       C-DIE-CODE-FULL
    cpok LBL,
-   9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
       C-DIE-DICT-FULL
    ndok LBL,
    LTOK LABEL@ BL,  0 done CBZ,
@@ -3339,7 +3339,7 @@ s" c-defer-meta-write" s" --" TRUST
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       C-DIE-CODE-FULL
    cpok LBL,
-   9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
       C-DIE-DICT-FULL
    ndok LBL, ;
 s" c-defer-room" s" --" TRUST
@@ -5722,7 +5722,7 @@ public
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
    5 DICT-SIZE LIT64,  6 5 CMP,  C-LT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
-   5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
+   5 DICT-CAP LIT64,  15 5 CMP,  C-GT snbad BCOND,
    SP SP 64 SUBI,
    6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
    15 SP 32 STR,  21 SP 40 STR,  25 SP 48 STR,
@@ -5921,7 +5921,7 @@ public
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
          C-DIE-CODE-FULL
       cpok LBL,
-      9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots end at CFSTK-OFF
+      9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots end at CFSTK-OFF
          C-DIE-DICT-FULL
       ndok LBL,
       LTOK LABEL@ BL,
