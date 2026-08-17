@@ -32,3 +32,30 @@ stays AT THE PROBE'S POINT (the only proven one; SEAL-NDICT-CELL
 is past the chain rows and would collide - the lane's
 duplicate-78 measurement is the argument).
 
+PLACEMENT RULING REVERSED 2026-08-17 (the lane's leg-2 evidence;
+my (B) ruling rested on its own one-file-early veto measurement -
+the veto MOVED, it was not stale, and the lint refuses (B) in
+three legacy files): OPTION (C) - the mark records at the END OF
+lower-cert-seal.f, the file that IS the core prefix's last file.
+The re-derivation: the structural invariant is POSITION (the mark
+must be taken at the boundary), not file identity - the boundary
+is the end of that file, so recording it there is placement AT
+the fact, and a dedicated file was the expensive answer: a lint
+migration (packaging three files other dots own), a proven
+two-stage landing (no existing engine bakes the new row - the
+build refuses until an engine rebuilds without the mark), a
+fleet reseed, and nine hand lists, against four lines at the
+boundary. THE GOOD PARTS OF LEG 2 ALL SURVIVE THE MOVE: the
+words stay in their own package block (package PREFIX-MARK
+inside lower-cert-seal.f - the lint accepts packaged words in
+any file; the NDICT@-shadow lesson and its DICT/USIG naming
+stand), the capability probe stays IN THE BUILD
+(BF-REQUIRE-WATERMARK refusing before a byte is emitted, proven
+firing), the regression test stands, and a 3-line comment at
+the mark STATES the derivation and prices the rejected
+alternative so the concern-mixing is a documented decision, not
+drift. The stale-veto correction on generated-declaration.f
+gets its own honest wording: the veto moved (build-fixpoint.f
+packaged; habu2.f/boot-pin still unpackaged - their packaging
+belongs to their own dots).
+
