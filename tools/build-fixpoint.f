@@ -1514,12 +1514,20 @@ variable BF-DRV-R
 \ product's is not - its chain arrives from the AOT seed at boot, which a snapshot
 \ restore skips. Building the image from the host keeps the two products
 \ independent instead of making the snapshot a function of the chain.
+\ It is a word because tools/build-fixpoint-test.f builds its own snap0 the same
+\ way. While each side named its engine itself, the fixture went on naming the
+\ product after this rule landed, and the image it built died at boot with
+\ `hb: AOT call site unresolved` - the seed's own refusal, reported against an
+\ engine production never asks for.
+: BF-SNAP-ENGINE$ ( -- ptr u8 n )
+   s" hb-host" ;
+
 : BF-BUILD-SNAP-FROM-STDIN ( -- )
    BF-SNAP-SOURCE
    BF-CERTIFY-SNAP
    s" hb-snap0" BF-REMOVE-TMP
    s" hb-new" BF-REMOVE-TMP
-   s" hb-host" s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
+   BF-SNAP-ENGINE$ s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
    s" hb-snap0" BF-EXPECT
    s" hb-snap0" s" hb-new" BF-RENAME-TMP
    s" hb-new" BF-CODESIGN-FORCE-TMP
@@ -1734,12 +1742,22 @@ variable CHAIN-I
    ENTRY$ CHAIN-DG CHAIN-DIGEST!
    BF-TRUE CHAIN-DONE? ! ;
 
+\ The preimage tag for the capture-source digest. It is a word because two
+\ places must spell it alike: the key below writes the field, and
+\ tools/build-fixpoint-test.f rebuilds the same framed field to prove the
+\ digest reached the preimage. While the tag was a literal in both, renaming it
+\ here left the fixture searching for a tag the key no longer writes - and the
+\ fixture's own negative case went on passing, because an absent tag is absent
+\ either way.
+: BF-STAMP-CAPTURE-TAG$ ( -- ptr u8 n )
+   s" capture-src" ;
+
 : BF-STAMP-KEY-BEGIN ( -- )
    CHAIN-RECORD
    0 BF-STAMP-U !
    s" build-fixpoint-stamp-v2" BF-STAMP-FRAG+
    BF-STAMP-ENGINE+
-   s" capture-src" CHAIN-DG BF-STAMP-DG+ ;
+   BF-STAMP-CAPTURE-TAG$ CHAIN-DG BF-STAMP-DG+ ;
 
 : BF-STAMP-STAGE-KEY+ ( -- )
    BF-STAMP-DG BF-STAGE2-DIGEST
