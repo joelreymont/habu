@@ -8,7 +8,7 @@ created-at: "\"2026-08-16T21:18:22.839047+02:00\""
 
 P1, blocks the product becoming bin/hb (re-minted 2026-08-16 - the first leaf was lost uncommitted in a working-copy jump, the jj-new lesson). DEFECT: an AOT-seeded word is in the runtime dictionary but not the checker's record set; ': T2 ( -- ) BPW-INSTALL ;' dies 'hook: non-certified definition' on TODAY's engine; one TRUST row closes it completely (measured) - the missing thing is a checker symbol + effect record, nothing else. THE BLIT SHAPE IS REFUTED (bake-chain-17 probe): USIGS is one of ~35 persistable checker surfaces (CHECKER-SNAPSHOT-PREPARE enumerates them); signature rows name TYPE-FAMILY IDS (EN.H, identity by id, 70 families created in-window, 3712 role-qualified refs) and SYM string POINTERS - a blitted USIGS names family 111 in an engine holding 49. Route 1 (full blit) = 7.9MB + the tree's first artifact pointer-rebase + ~18ms every boot; Route 2 (eager text replay) = 85ms every boot, priced out. RULED: ROUTE 3 - lazy intake at the checker's existing miss seam (checker.f:8354 DO-TOK, one leg before UNDEFERR consulting a baked name->signature-text pool): zero cost for boots that never name a chain word, 12.5us per distinct referenced word, NO id remap; capture audit = every window dict record has a signature row or the capture refuses by name. SUB-PROBE FIRST: render->re-parse fidelity for sig-less inferred words (REND-SIG refuses unmodeled tags and >26 tyvars) - measure the sig-less share of the 6798 and round-trip before committing. FAMILY REGISTRY travels WITH this fix via the existing REG-EXT-PERSIST machinery (tens of KB) and the acceptance GAINS a family-typed reproducer - a family-typed chain word called from checked code must work or refuse loudly (the lucky-value gap named at checkpoint); if the registry work explodes on contact, checkpoint. Acceptance: both original reproducers + the family-typed one green in both engines; bin/hb --load icode.f green in the product; signature-carry mutation reds by name; then increment 3 (stacked WIP cf4ad8b1) rebases, its battery re-runs ON the product, both land, e98b03d4 closes. Also: fix the leaf's stale 'AOT seed is TTY-ARMED' structural fact (seeds at prefix-stream end in every mode since 2026-08-11).
 
-Claim: agent=bake-chain-21 workspace=.jj-ws/habu-bake-chain
+Claim: agent=bake-chain-22 workspace=.jj-ws/habu-bake-chain
 
 SUB-PROBE GREEN 2026-08-16 (bake-chain-17, ruling 2). Over
 `require src/compiler/native/migrate.f` in a booted bin/hb: 2003
@@ -742,3 +742,149 @@ wall blamed an innocent file, the prot-wid-probe shape), and
 the named first consumer already exists (maki/test.f's closing
 REQUIRE-ROOM). Dict and code headroom on one line, fail-closed
 at a floor stated as a fraction of the bound.
+
+DICT CAPACITY LANDED 2026-08-17 (bake-chain-21, commit b614673b
+"layout: size both region bands for the composite they hold" on
+de5dcdd2 on the stack tip 3210c5a5). The ruling's three parts and
+the probe all landed together.
+THE RECORD, measured through the real MAKI-TEST harness over all
+193 files of `bin/hb --load maki/test.f` (the merge-gate command,
+which loads them into ONE image; the gate's four slices are
+smaller and all four passed before and after: 28626 / 20637 /
+20315 / 15985 seeded):
+  boot ndict        host 7160   product 14052   (seed = +6892)
+  inventory ndict   host 26419  product 33131
+  inventory code    host 4,047,032  product 5,234,436 bytes
+The seed delta is 6892 at EVERY one of the 193 files - it
+publishes its window once. End to end it is 178 smaller, and the
+step is at exactly one file: maki/onnx/asm-collide-test.f
+requires chain sources the seeded engine already provides, so the
+unseeded run publishes records the seeded run does not. One step,
+not drift.
+LANDED: DICT-CAP 32768 -> 65536 (33131 +25% = 41414, smallest
+power of two), CFSTK-OFF $300000, DICT-SIZE $301000, HIDX-SLOTS
+$20000, HIDX-BYTES $80000, HIDX:LOAD-MAX $18000, REGION $800000
+-> $A00000, and CODE-BAND:BYTES = REGION - DICT-SIZE. Six
+`DICT-CAP MOVZ,` sites in habu2.f and five in bootstrap/cg/
+forth.fs became LIT64 - including the two `DICT-CAP 1 -` sites
+that still FIT imm16, because a site that works only while the
+cap happens to fit a 16-bit field is a lucky value. LIT64 emits
+ONE instruction for a single-chunk value, so the sites cost what
+MOVZ cost; the size gate confirms it (engine 165367/3649399
+unchanged, gate-size-attribution green with no ratchet bump).
+THE CONSTANT IS PACKAGED, not global: the package diff lint
+refused `CODE-AREA` at layout.f:140 by name, which is the same
+liveness this lane already paid for with AOT-SIG. It is
+`package CODE-BAND / public / REGION DICT-SIZE - constant BYTES`,
+the shape `package HIDX` already uses two hundred lines below.
+THE PROBE (Q2) IS tools/region-room-probe.f + test/region-room-
+suite.f, registered as SUITE region-room in gate-stdlib-cases.f
+AND selected by SUITE-LINT-TOOLS-LABEL? in gate-stdlib-lib.f. The
+second half was NOT optional: with the registration alone,
+tools/lint/schedule-lint-test.f named it - "SUITE region-room is
+unscheduled: no slice predicate selects its label" - exactly the
+dark-suite hole the 2026-08-15 lesson describes. Both floors are
+SOURCE-HEADROOM-PCT, so the guard and the sizing rule are the
+same rule; REQUIRE-ROOM ends maki/test.f beside the sibling
+PROT-WID-PROBE call and prints
+`region headroom: dict 33131/65536 records, 32405 left (floor
+13108); code 5234436/7335936 bytes, 2101500 left (floor
+1467188)`.
+FIVE MUTATIONS, all run: FLOOR-OF as cap/4 reds the two boundary
+asserts; CODE-USED without DICT-SIZE reds the origin assert;
+DICT-CAP back to 32768 reds four; SOURCE-HEADROOM-PCT 25->20 reds
+the historical case; REGION back to $800000 reds the code case.
+THE FOURTH MUTATION CAUGHT A TAUTOLOGY IN MY OWN TEST and is why
+the suite has a CODE-CASE: the first LAYOUT-CASE asserted
+CFSTK-OFF + cfstk + CODE-BAND:BYTES = REGION, which RESTATES
+CODE-BAND:BYTES' definition - REGION went back to $800000 and the
+suite stayed green. What binds REGION is the sizing rule over the
+code band's own composite, and that case also keeps the lane's
+near miss as a test: the dictionary lift ALONE, inside the old
+region, leaves a code band this guard refuses.
+GATES ON b614673b: install fixpoint x2 byte-identical (bin/hb
+58bd8a1f..., hb-host 8ddfbebd...), artifact converged
+65ad95fa..., "two processes wrote the same artifact"; the
+merge-gate `bin/hb --load maki/test.f` rc 0 on the PRODUCT (was
+rc 77) and rc 0 on the host; reloc-proof, icode-fixup-test,
+bootstrap-codegen-test, gate-size-attribution green; both diff
+lints exit 0 (package lint liveness proved by its own refusal);
+error-code-lint 0 findings, dot-dep-lint 0 findings, schedule
+lint 0 findings.
+FULL BATTERY test/run.f: ENGINE RC=1, 3:40 wall, SIX RED - the
+SAME six as the handoff, with maki now green throughout:
+  RED native checker diagnostics repair slice   (leaf C)
+  RED build-fixpoint-fixtures                   (leaf B)
+  RED GROUP: stdlib/tool-doc                    (leaf C)
+  RED native checker diagnostics group          (wrapper)
+  RED native engine build slice                 (wrapper)
+  RED native stdlib tail slice                  (wrapper)
+
+THE MASTER LINEAGE TRAP, and it cost me a recovery (read this
+before any rebase). `master` is a DOTS-ONLY ruling lane -
+3a6c58a5 -> 48651132 -> a81b4fa6 -> 826d2187 -> f272ec21 ->
+3dd55e61 - and it contains NONE of this lane's implementation
+stack: `ancestors(master) & (3210c5a5 | 9219ec56 | 136ca999)` is
+EMPTY. `jj rebase -s @ -d master` therefore does not "catch up";
+it MOVES the working copy off the stack onto a tree with no
+seeded-signature work at all, and the first symptom is quiet -
+SOURCE-ARENA-CAP reading $400000 where the lane's own 9219ec56
+put $800000. The leaf's rulings and the lane's code are on two
+different lines: merge the leaf TEXT (union: this lane's version
+plus master's ruling blocks) and rebase code onto 3210c5a5,
+never onto master.
+
+RECORD FOR LEAF (B), build-fixpoint-fixtures, captured from the
+battery's own pool log (gate-stdlib-tail/hb-pool-*/pool-0-7-21-
+out.log) - 10 failures, TWO classes, red on BOTH engines:
+  asserts 41 42 46 47 49 62  "expected true got false" - six
+    CONTAINS pins over the EMITTED STAGE2 SOURCE that are now
+    ABSENT (BFT-TEST-STAGE2-SOURCE and its neighbours). Absent,
+    not present-and-wrong: something the pins expect to be
+    emitted no longer is, or moved.
+  asserts 148 149 155 156    the snap child exits 82 with
+    `hb: AOT call site unresolved` where 0 was expected (case
+    label "snap trailer"). That message has ONE producer,
+    src/habu/habu2.f:4645, beside "AOT call site names a wordlist
+    outside the window".
+  Between the two, `certify: cert-blocking rejected rc 70` and
+  `habu: in bft-cert-bad2: at 'drop' expected: n actual:` are
+  EXPECTED negative-fixture output, not failures.
+The assert numbers are run ORDINALS, so the first job is to map
+them to their pins (count, or label them) - do not guess from the
+file. If the snap child's 82 traces to a real seed/snap
+interaction, CHECKPOINT with the bytes: that is the snapshot-verb
+ruling's ground (snap builds from the host) needing its wiring,
+which increment 3 carries.
+
+RECORD FOR LEAF (C), the diagnostics repair slice: the fork
+worker throws -2201 (E-FS-OPEN) AFTER the last passing case
+`byte-ptr store-target class`, i.e. entering test/gate-
+diagnostics-lib.f FILE-ORIGIN, which is the first case in that
+run to WRITE A SOURCE FILE (WRITE-SRC -> PATH! -> GT-PATH, rooted
+at the GT-START tmp root) and then hand the PATH to check.f
+rather than stdin. Every earlier case is stdin-only. WHY-THREW
+dumped SB fill=17, CK fill=0, CK-ROW fill=57. That is the whole
+of what is measured; the tmp-root-versus-fork question is
+UNANSWERED and must be dumped, not reasoned about. The task
+contract stands: diagnose to a verdict, and if it is genuinely
+pre-existing, prove it with a control build of master's tree in
+this workspace (the 2026-08-17 lesson) and DOT it rather than
+fixing out of scope.
+
+STILL OWED: leaves (B) and (C); the battery to honest zero (or to
+red-equals-dotted-preexisting with master controls); judge
+--check; the remaining tool lints; THE NUMBERS OF RECORD on an
+idle box (bare / source-chain / baked-chain / baked-no-chain /
+install, 7 runs, high-low dropped; record to beat 258.3 / 1352.8
+/ ~350 / ~262 / 6.74s->16-17.6s - this lane measured install
+16.8s twice with the grown bands); the certified walk (4474 ->
+4574 -> current, attributed); lifting increment 3's BLOCKED
+marker LAST, only on an honest-green battery; and the closing
+package.
+ONE THING THE NEXT WORKER SHOULD RE-PROVE RATHER THAN TRUST: I
+could not find `region-room: ok` in any surviving pool log after
+the lint-tools slice passed, so the suite's presence IN the gate
+rests on the schedule lint's answer, not on observed output. The
+2026-08-15 lesson's own recipe - break one assertion and watch
+the full gate go red - has NOT been run for it.

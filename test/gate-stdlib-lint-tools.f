@@ -101,6 +101,15 @@ REQUIRE-HARNESS
 : SCHEDULE ( -- )
    s" tools/lint/schedule-lint-test.f" GSI-INCLUDE ;
 
+\ The region's two headroom guards. It is registered as SUITE region-room in
+\ test/gate-stdlib-cases.f and selected by SUITE-LINT-TOOLS-LABEL?, and that
+\ pair schedules it in the standalone `test/gate-stdlib.f -- lint-tools` run
+\ ONLY: test/run.f's phase 17 is resident, so it forks THIS body and reads no
+\ registration at all. Proven, not assumed - breaking one of the suite's
+\ assertions left the whole battery green until this fork existed.
+: REGION-ROOM ( -- )
+   s" test/region-room-suite.f" GSI-INCLUDE ;
+
 : NAMESPACE ( -- )
    s" namespace-lint" [: NAMESPACE-LINT-STRICT ;] GSI-RUN
    s" tools/namespace-lint-test.f" GSI-INCLUDE ;
@@ -137,6 +146,7 @@ public
    s" lint-tools/diff" GSI-FORK-TIMEOUT-MS [: LINT-DIFF ;] GT-POOL-START-FORK
    s" lint-tools/diff-frame" GSI-FORK-TIMEOUT-MS [: LINT-DIFF-FRAME ;] GT-POOL-START-FORK
    s" lint-tools/schedule" GSI-FORK-TIMEOUT-MS [: SCHEDULE ;] GT-POOL-START-FORK
+   s" lint-tools/region-room" GSI-FORK-TIMEOUT-MS [: REGION-ROOM ;] GT-POOL-START-FORK
    s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: NAMESPACE ;] GT-POOL-START-FORK
    s" lint-tools/package-diff" GSI-FORK-TIMEOUT-MS [: PACKAGE-OWNERSHIP ;] GT-POOL-START-FORK
    s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: ERROR-CODE ;] GT-POOL-START-FORK
