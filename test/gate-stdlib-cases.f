@@ -1286,6 +1286,10 @@ SUITE checker-rollback-sig-pool
    test/checker-rollback-sig-pool.f
 ;SUITE
 
+SUITE sig-scope-intake
+   test/sig-scope-intake.f
+;SUITE
+
 SUITE snapshot-writer
    test/snapshot-writer.f
 ;SUITE

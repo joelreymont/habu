@@ -739,6 +739,10 @@ public
    \ opens a rollback scope, which is process-wide checker state no in-process
    \ neighbour should inherit.
    s" test/checker-rollback-sig-pool.f" GSI-FORK-INCLUDE
+   \ Forked for the same reason and one more: it declares a public family whose
+   \ tail deliberately collides with a chain package's, and it must be the first
+   \ thing in its process to name the seeded word it takes a row for.
+   s" test/sig-scope-intake.f" GSI-FORK-INCLUDE
    s" test/checker-verify-pkg-scope.f" GSI-FORK-INCLUDE
    s" test/checker-replay-pkg-state.f" GSI-FORK-INCLUDE
    s" test/prim-link-test.f" GSI-FORK-INCLUDE
