@@ -635,16 +635,24 @@ fits.
   arity for type family" otherwise) but its BARE qualifier in a `MATCH` selector — do
   not put qualifier and `<...>` together. A parameterized `result` type can't be a
   `{: :}` local — specialize the word or keep it on the stack.
-- **A generated PRODUCT/SUMTYPE constructor DOUBLES every internal hyphen of the
-  family and prefixes the (escaped) package.** `PRODUCT content-digest` in `package
-  ARTIFACT` generates `ARTIFACT-CONTENT--DIGEST:MAKE`; a nullary variant ctor is
-  `PKG-FAMILY:VARIANT`; `MATCH` arms and destructuring use the BARE variant name.
-  Package-private family ctors live in a DERIVED escaped package
-  (`PRODUCT pxevid` in `package PX-PROBE` → `PX--PROBE-PXEVID:MAKE`). Wrap long
-  spellings in short private words. Escaped ctor names >32 chars SHA-fall-back to an
-  unreadable `Thexhash-TAIL` (readability cap `TF-CTOR-NAME-LIMIT`, raised 16→32; not a
-  structural bound — long names store via DNAME-EXT). Keep `len(PKG)+1+len(escaped-family)
-  ≤ 32` for any family a caller must construct by name.
+- **`TF-CTOR-ESC` DOUBLES every internal hyphen — of the family AND of the
+  owning package — and prefixes the escaped package** (2026-07, 2026-08-13,
+  2026-08-14). `PRODUCT content-digest` in `package ARTIFACT` generates
+  `ARTIFACT-CONTENT--DIGEST:MAKE`; `package NTL-FIXTURE` + `PRODUCT pt`
+  publishes `NTL--FIXTURE-PT:MAKE` (production example
+  `CNUM-NUMERIC--POLICY:MAKE`); an `ENUM meaning` in `package HIR-WORD`
+  generates `HIR--WORD-MEANING:`. A nullary variant ctor is
+  `PKG-FAMILY:VARIANT`; `MATCH` arms and destructuring use the BARE variant
+  name. Package-private family ctors live in a DERIVED escaped package
+  (`PRODUCT pxevid` in `package PX-PROBE` → `PX--PROBE-PXEVID:MAKE`). So a
+  package or fixture name carrying a hyphen pays for it at every call site —
+  cheaper to know than to `E-UNDEFINED` into, and putting the enum in the
+  hyphen-free package it really belongs to is the fix. Wrap long spellings in
+  short private words. Escaped ctor names >32 chars SHA-fall-back to an
+  unreadable `Thexhash-TAIL` (readability cap `TF-CTOR-NAME-LIMIT`, raised
+  16→32; not a structural bound — long names store via DNAME-EXT). Keep
+  `len(PKG)+1+len(escaped-family) ≤ 32` for any family a caller must
+  construct by name.
 - **A word returning a layout value (PRODUCT/SUMTYPE) cannot be called at TOP LEVEL**
   ("interpret-mode layout value") — wrap the construct/UNMAKE/assert in one checked
   word and call THAT from top level (store the decoded handle's slot in a variable and
@@ -816,14 +824,58 @@ fits.
   referenced inside suite.f (128→256, fully contained). Same FM-BUF-CAP pattern: a fixed
   cap sized for a statically-known registration set, grown by constant with the wall kept.
   The `maki-suite ITEM-MAX=128` note is stale.
-- **A copied `bin/hb` is NOT a frozen baseline** — the small engine LOADS `src/core/*.f`
-  from the WORKING TREE at boot, so an old binary in an edited tree exhibits the EDITED
-  checker; red/green comparisons must pin the SOURCE tree state, not the binary. (Chasing
-  "engine words not in any tracked source" wasted a session before one out-of-tree run
-  exposed it.) A worker `.jj-ws/*` tree has no `bin/hb` (`bin/` is gitignored) — provision
-  each with a COPY (never a symlink into main — a workspace rebuild would overwrite the
-  binary other workers use). Stale worker workspaces hold stale baked binaries that produce
-  FAKE gate reds when reused.
+- **A worktree's `bin/hb` is not its commit, and a copied `bin/hb` is not a
+  frozen baseline — `install --force` before ANY gate, then attribute against a
+  control built the same way** (2026-07, 2026-08-05, 08-06, 08-11, 08-14,
+  08-15, 08-17). The engine is BOTH stale and live at once and that is the
+  whole trap: the small engine LOADS `src/core/*.f` from the WORKING TREE at
+  boot, so an old binary in an edited tree exhibits the EDITED checker (chasing
+  "engine words not in any tracked source" wasted a session before one
+  out-of-tree run exposed it), while everything BAKED into it — the seeded
+  stdlib prefix, engine text, published-code layout — is whatever the tree was
+  when that binary was built. So red/green comparisons must pin the SOURCE tree
+  state, not the binary, and any lane whose gates depend on engine bytes (size
+  ratchets, published-code decoding, seal probes) is measuring a different
+  engine than the tree describes until it refreshes. Measured failure modes,
+  all of which read as real regressions: a fresh workspace seeded with the main
+  worktree's `bin/hb` was NOT at the compiler fixpoint (`install --force`
+  changed the binary with zero source edits, then was stable); since the stdlib
+  entered the boot prefix, tests querying the RUNNING engine's provide surface
+  (bundle assume-or-carry, anything reading `ENGINE-PROVIDES?`) red under a
+  pre-seed binary — two deterministic red runs were this, not the change under
+  test; `test/p2-map-rewind.f` red "expected 37, got 62" identically on
+  unmodified master because the checkout's seed predated master by a day; and a
+  source-reading lint run with an old engine over a modified tree measures the
+  TREE, so the base thing in a "pre-existing failure" claim must be the test's
+  INPUT, not the binary that runs it. Rules: `bin/hb` is untracked (`bin/` is
+  gitignored) so every workspace carries its own — provision each with a COPY,
+  never a symlink into main, since a workspace rebuild would overwrite the
+  binary other workers use, and never `cp` over a live `bin/hb` (new inode:
+  `cp` to temp + `mv`). `build-fixpoint-refresh -- all --force` reaches the
+  fixpoint but does NOT replace `bin/hb` — only `install` does, so check
+  `bin/hb`'s mtime before believing a negative result on any `src/habu` change.
+  `install --force` before ANY gate, not just after seed-file edits: a
+  "tools-only change" is not an exemption because the TREE under the binary
+  moved; `test/run.f` spawns `bin/hb` children by RELATIVE path and
+  fixpoint-refresh children spawn the checkout's own `./bin/hb`, so a fresh
+  DRIVER engine is not enough and a workspace with no engine reds the whole
+  battery with spawn failures that look like real regressions — diagnose a
+  surprising all-red battery by re-running one suite with output visible before
+  blaming the tree. An engine older than the tree's core dies at the first
+  unknown core word (bare name + exit 70); recover by installing the freshest
+  local engine as `bin/hb` first, then `install --force`.
+  `src/arch/arm64/asm.f` is in the engine prefix (srclist `SL-PREFIX`)
+  so its comment-only edits leave the sha identical yet still precede a gate
+  that reads it, and install after every mutation experiment too — a mutant
+  whose build succeeds replaces `bin/hb` and every later mutant then runs on a
+  broken host. Refresh the main worktree's engine immediately after merging any
+  engine-text change, and reseed every worker workspace; the stale-seed
+  false-red class has bitten from both directions. Finally, the only honest
+  attribution is a CONTROL build of master in the lane's own workspace with the
+  same `HB_TMP`: save the working copy, `jj new master`, build, test, restore —
+  three minutes, and it turns "probably not mine" into a fact either way. On
+  the `p2-map-rewind` red both engines came out `799f5601…`, which proved the
+  byte change was master's and the diff's engine contribution was zero.
 - **`FS-SKIP-DIR?` must skip every conventional untracked dir, and the integrator runs
   `run.f` in the MAIN checkout too.** It skipped `.jj`/`.git`/`.dots` but not `.jj-ws`, so
   every walker saw stale worker-workspace trees (478 phantom lint findings) — a
@@ -1193,11 +1245,48 @@ fits.
   master as green.** A tree landed green on the spark failed the Mac battery's stale-status doc
   lint (`N/N/N` measurement params read as a count-shaped string); assume per-host slice
   composition differs until proven identical.
-- **A `bin/hb` older than the tree's core dies at the first unknown core word (bare name +
-  exit 70) — and fixpoint refresh children spawn the checkout's `./bin/hb`, so a fresh DRIVER
-  engine is not enough.** Recover by installing the freshest local engine as `bin/hb` first
-  (new inode: `cp` to temp + `mv`, never over the live file), then `install --force`.
-
+- **A red that only appears when the box is busy is the BOX — reproduce it on
+  unmodified master under the same load before it is a finding, and give every
+  gate RUN its own temp root** (2026-08-06, 08-11, 08-12, 08-13, 08-15). The
+  measurements are unambiguous. `maki/cad-replay-test.f` failed 4/6 under six
+  concurrent instances on BOTH the candidate stack and unmodified master, and
+  12/12 green idle (dot habu-cad-replay-test-8be2ba00). Three concurrent heavy
+  suites produced a false red that vanished on rerun. A perf band that passed
+  at load 4 marginal-failed with correctness green at load 8+ on both the merge
+  candidate and an unmodified baseline clone, with the verdict's own
+  `empty=f`/`admissible=f` fields flagging the contention — an external process
+  (UnrealEditor) was holding two to three cores. A cold-cache `test/run.f` with
+  a fresh `HB_TMP` reports `performance=hard-fail correctness=t` at ~33s
+  against a 25s cold budget while the warm rerun passes at ~31s against 35s,
+  and the unmodified parent measured 32793ms against the changed tree's
+  32982ms — 0.6%. Editing any file in the declared phase sets
+  (`test/run-files.f`, `lib/content-key.f`, `test/run-lib.f`) invalidates every
+  phase key, so the next battery runs fully cold and takes minutes longer,
+  which is exactly when timing assertions red (TIMEOUT-UNDER-LOAD, group-time
+  ratchets). So: a red whose failing member does not reference the changed code,
+  on a fully-cold or loaded run, is this — prove it, then rerun sequentially;
+  two sequential greens settle it. Never run foreground suites concurrently
+  with a gate battery on the same box, and one gate at a time even inside your
+  own lane root. Temp roots are per RUN, not merely per lane: two lanes sharing
+  one `HB_TMP` wiped each other mid-flight because a gate `rm -rf`s its root at
+  start, two runs of ONE lane sharing a root did the same, and a backgrounded
+  subshell that outlives the harness's completion report collided two censuses
+  on one root — let the harness own background jobs. A gate that ran during a
+  shared-root window proves nothing and must be rerun; this is also the
+  likeliest source of paired timing-assertion flakes across lanes — and the
+  first cad-replay red was self-inflicted in exactly that way. Two
+  discriminators keep the diagnosis honest: an elapsed-only overshoot with NO
+  child-count delta (e.g. 10099/10000) is machine-load noise rather than your
+  change, and the ASSERTION NUMBER separates the classes in one line — a
+  content ratchet cannot flake on timing and a nanosecond budget cannot flake
+  on content, so read it before charging a red to an open contention incident
+  (one lane charged its own unbumped content ratchet to one). Before treating a
+  band failure as a regression — or stalling a merge indefinitely — rerun the
+  same suite on the last IN-BAND-PASSING tree as an A/B control. Merge only when
+  correctness is green on the exact candidate tree, every owning gate passes,
+  and the control proves the band failure environmental; re-verify the band on
+  the next quiet-machine cold run, and state the window any "green" verdict
+  covers.
 - **Never edit the tree while a gate or a census is running** (2026-08-10,
   08-12, 08-13, 08-16). Forked gate workers load source files mid-run and a
   census re-reads `src`/`lib` file TEXT, so an edit lands inside the
@@ -1928,28 +2017,66 @@ fits.
 
 ## Diagnostics & Benchmarks
 
-- **A matching diagnostic string is a lead, never an attribution — reproduce on
-  the exact engine and path before you inherit someone else's dot.** The
-  pre-trust-defer red printed `hook: non-certified definition: install at 'is'`,
-  the verbatim signature of the Gforth stage0 mirror replay defect written up in
-  `docs/debugging.md` and owned by dot `habu-fix-stage0-pre-88a4297e`, so the
-  red was filed as that defect. It is not: the whole failure reproduces under
-  the NATIVE engine on a plain `bin/hb --load` child boot, with no gforth and
-  without `tools/bootstrap.sh`. That message is the generic consequence of a
-  pre-trust deferred word that has no checker rows, and both engines emit it.
-  The falsification that settled it took one run: copy `src/` to a private root,
-  patch the copy, boot a child with that root as its working directory (the
-  engine re-reads its prefix from source at boot), and see which engine is
-  actually speaking.
-- **When an opaque exit code names no site, mutate one candidate site's code to
-  a unique number and re-run on the real load path.** Exit 67 with
-  `hb: uncaught throw code 7136` says only that `E-PKG-CONTEXT` escaped, and
-  `src/core/checker.f` throws it from nine places. Copying `src/`, changing
-  exactly one of them to `7911` (padded to the same byte length so no offsets
-  move) and booting a child engine against the copy printed
+- **DUMP THE RECORD BEFORE NAMING THE PRODUCER — a code, an ordinal or a
+  matching string is a LEAD, never an attribution** (2026-07, 2026-08-05,
+  08-13, 08-14, 08-17; the most repeated mistake in this file). Numbers,
+  ordinals and codes are cheap to read and expensive to assume, and every
+  measured miss took the same shape: a handoff recorded the diagnostics slice
+  as throwing -2102 `E-FS-OPEN` entering `FILE-ORIGIN` when the code is -2201
+  `E-STR-CAPACITY` and the case is `PUBLIC-SIGNATURES`, in a different slice
+  entirely; another recorded the build-fixpoint reds as emitted-stage2
+  `CONTAINS` pins when mapping the run ordinals to subtests put them in the
+  stale-install sandbox, the cert-inject sandbox and the stamp fold; a third
+  called the whole class pre-existing when the same tree's own unseeded engine
+  passes every one of them; a predecessor pinned `E-IR-FUN-BOUND` to a specific
+  bound check and designed a fix for it, but the code has twenty-plus throw
+  sites in one file, a one-line probe on the suspected line never fired, and
+  the real raiser was the test reading operations by absolute index. Read the
+  DIAGNOSTIC, not the error text: `E-A64RA-POOL` says "every register holds a
+  needed value" while in every measured row it was "every register is BARRED
+  and nothing holds anything" (free=18 spare=0 forbid=all). One root can wear
+  three error codes, and the code names the pass that NOTICED, not the pass
+  that is wrong — reduce until the shapes differ in exactly one dimension
+  before believing a bucket is a class, and two throw sites sharing one code
+  need one-at-a-time recoding to attribute it. Assert ORDINALS are not line
+  numbers: `TFAIL assert 41` names nothing, because `lib/test/assert.f` clears
+  the label after every assertion so only a subtest's first assert carries one
+  — printing `T-CASES` at each subtest boundary turned ten anonymous failures
+  into three named root causes in one run. A matching diagnostic string is the
+  same trap one level up: the pre-trust-defer red printed
+  `hook: non-certified definition: install at 'is'`, the verbatim signature of
+  the Gforth stage0 mirror replay defect written up in `docs/debugging.md` and
+  owned by dot `habu-fix-stage0-pre-88a4297e`, so the red was filed as that
+  defect — it is not, the whole failure reproduces under the NATIVE engine on a
+  plain `bin/hb --load` child boot, with no gforth and without
+  `tools/bootstrap.sh`, because that message is the generic consequence of a
+  pre-trust deferred word with no checker rows and both engines emit it. The
+  tools that settle these are cheap. Copy `src/` to a private root, patch the
+  copy, boot a child with that root as its working directory (the engine
+  re-reads its prefix from source at boot) and see which engine is actually
+  speaking. When an opaque exit code names no site, mutate ONE candidate site's
+  code to a unique number and re-run on the real load path: exit 67 with
+  `hb: uncaught throw code 7136` says only that `E-PKG-CONTEXT` escaped and
+  `src/core/checker.f` throws it from nine places, so changing exactly one of
+  them to `7911` (padded to the same byte length so no offsets move) printed
   `hb: uncaught throw code 7911` and pinned the site to `checker.f:634` in one
-  step. Cheaper and more certain than reading nine call paths, and it works for
-  any engine constant that reaches stderr.
+  step — cheaper and more certain than reading nine call paths, and it works
+  for any engine constant that reaches stderr. Put the probe where the data
+  already is: 40 lines of temporary Habu inside `aot-capture.f`, printing names,
+  wids and record indices straight from the live dictionary the capture already
+  indexes, answered in one run what two lanes of debugger work had localised
+  but not explained, and a dumper over an artifact's own bytes answered a
+  postfix-arithmetic bug that two hours of reasoning had not. When two probes
+  must be correlated, put them on the SAME file descriptor so their order is
+  evidence rather than two logs to reconcile — the engine-side probe wrote the
+  slot name from the replay loop while the checker-side probe `type`d the name
+  at the head of `: TRUST` and `: CHECKER-DEFER`, and that took ten minutes where a
+  week of "the faulty instruction is not yet pinned" had not, and it also
+  refuted the inherited finding the whole diagnosis rested on (the replayed
+  `trust` and `checker-defer` calls were recorded as never entering their
+  definitions; they entered every time, for all 31 slots). Inherited findings
+  are leads, not facts: re-measure the one the diagnosis rests on, and
+  reproduce on the exact engine and path before you inherit someone else's dot.
 - **Diagnostics are an API.** JSON errors carry `schema_version:1`, source spans, verdict, word,
   token, expected, actual; wrappers keep valid JSON object lines and fail nonzero on rejection. Source
   origins are wrapper-owned (definition-relative spans; inject origin markers, keep them out of user
@@ -2129,13 +2256,9 @@ fits.
   `maki-layout-valid` held only stale snapshots of work already on master.
   Diff each head against its parent and check the touched files exist on
   master before deciding recover-vs-drop.
-- A fresh gate workspace has no `bin/hb` (gitignored), and `test/run.f` spawns
-  `bin/hb` children by relative path — the whole battery reds with spawn
-  failures that look like real regressions. Install (or copy) the engine into
-  the workspace BEFORE gating, and diagnose a surprising all-red battery by
-  re-running one suite with output visible before blaming the tree. A lane
-  whose diff is a multi-commit stack must be rebased with `-s <stack root>`,
-  not `-s <tip>` — tip-only rebase orphans the base and manufactures conflicts.
+- A lane whose diff is a multi-commit stack must be rebased with
+  `-s <stack root>`, not `-s <tip>` — tip-only rebase orphans the base and
+  manufactures conflicts.
 - A fail-closed toolchain resolver needs per-host-class test assertions. The
   ptxas resolver was correctly changed from a silent dead-path default to a
   named throw, but the tests kept asserting unconditional resolution — green
@@ -2208,16 +2331,6 @@ fits.
   `:CALL`-shaped token it does not model, so a future wrapped call cannot be
   silently skipped. When a new emission *shape* is introduced, audit every
   text-scanning lint for that shape the same day it lands.
-- A perf-band verdict on a contended machine measures the environment, not the
-  tree. With an external process (UnrealEditor) holding two to three cores, the
-  identical suite that passed in-band at load 4 failed marginal-fail with
-  correctness green at load 8+ on BOTH the merge candidate and the unmodified
-  baseline clone; the verdict's own empty=f/admissible=f fields flagged the
-  contention. Before treating a band failure as a regression (or stalling a
-  merge indefinitely), rerun the same suite on the last in-band-passing tree as
-  an A/B control: merge only when correctness is green on the exact candidate
-  tree, every owning gate passes, and the control proves the band failure
-  environmental. Re-verify the band on the next quiet-machine cold run.
 - Never append `|| true` to any investigative command, even a supposedly
   optional probe such as `readlink`. It converts failure into shell success and
   makes the reported exit status false evidence. Run each probe alone, preserve
@@ -2700,11 +2813,6 @@ fits.
   raw sample, one word that turns those samples into budgets and verdicts - so a
   scheduler can measure while nothing else runs. Extracting them also cut the
   correctness suite from 2.20s to 0.44s.
-- **An upper-bound budget check passes trivially on an unmeasured table.** A
-  verdict of the form `median <= budget` reads a zeroed sample table as a pass,
-  so a skipped or half-finished measurement looks green. Count the stored
-  samples as they are appended and make the complete count part of every
-  verdict; then a dropped run fails closed instead of certifying nothing.
 - **A quiet measurement phase must refuse by construction, not by convention.**
   The one place the JSON reader ratchets now run is scheduled outside the
   numbered phases, after every parallel phase has drained and before the run is
@@ -2755,13 +2863,6 @@ fits.
   is actually present, and read the dot's own text for atomicity clauses: two
   of the remaining dots said in their contracts that neither could close without
   the other, which the list did not mention.
-- **A cold-cache native gate run on this box overruns the performance band while
-  correctness stays green.** `bin/hb --load test/run.f` with a fresh `HB_TMP`
-  reports `performance=hard-fail correctness=t` at roughly 33s against a 25s
-  cold budget; the second, warm run of the same tree passes at ~31s against the
-  35s warm budget. Confirm the same cold overrun on the unmodified parent before
-  attributing it to a change: parent 32793ms, changed tree 32982ms, a 0.6%
-  difference.
 - **A reviewer-supplied "verified reference patch" is a claim until you hash it.**
   A round-2 verdict pointed at a scratch tree said to contain three verified
   fixes; the file there was byte-identical to the unfixed original
@@ -2966,16 +3067,52 @@ fits.
   `files(...)`, extract the clean files, and rebuild the workspace rather
   than trying to repair it in place.
 
-- **A structural gate must classify closed under calls, not per-body.** The
-  interning parity gate had to assert that every capacity check precedes the
-  first arena write. Written as a token scan over each intern word's own body
-  it would have passed vacuously forever: `IR-SYM:INTERN` and
-  `IR-ATTR:INTERN5` contain no `IR-ARENA:PUSH` token at all — they write
-  through `POOL-ADD`/`ROW-ADD`/`ROW-ADD5`. The gate classifies a definition as
-  a writer if it pushes *or calls a writer*, and additionally asserts the
-  writer and checker counts are both non-zero, so the ordering claim cannot be
-  true because it found nothing. Any gate that says "X happens before Y" must
-  prove it found an X and a Y.
+- **A check that RESTATES its own subject cannot fail — assert the CONSEQUENCE
+  the implementation was shaped for, and prove the check found a subject at
+  all** (2026-07, 2026-08-14, 08-17; "the lane's most repeated mistake"). Five
+  shapes, one defect. (a) The assertion repeats the walk: asserting a manifest
+  holds exactly the rows between the walk's two bounds is the walk again. The
+  assertion that does work is the consequence the bounds were CHOSEN for — a
+  family the engine arrived with must not be named in a scanned file's
+  manifest — and it reds the moment the bound is removed. A layout case
+  restating `CODE-BAND:BYTES`' definition was the same trap one lane earlier.
+  (b) The literal is compared against a counter its own rows incremented: an
+  AOT gate asserted exactly 69 named definitions lived in a module —
+  self-satisfying. (c) The proof restates the model's own definition:
+  `arena_push_appends` proves the push appends when the model DEFINES it as
+  appending — scaffolding wearing the costume of a result. The worth test is:
+  holding the model faithful, could a plausible change to the Habu code falsify
+  this? Mutate the CODE, not the model. If nothing in the implementation can
+  break it, demote it to an internal lemma or delete it, because publishing it in a manifest
+  inflates apparent coverage. (d) The check finds nothing and is therefore
+  vacuously true: the interning parity gate had to assert that every capacity
+  check precedes the first arena write, and written as a token scan over each
+  intern word's own body it would have passed forever, because `IR-SYM:INTERN`
+  and `IR-ATTR:INTERN5` contain no `IR-ARENA:PUSH` token at all — they write
+  through `POOL-ADD`/`ROW-ADD`/`ROW-ADD5`. The gate now classifies a definition
+  as a writer if it pushes OR CALLS a writer, and additionally asserts the
+  writer and checker counts are both non-zero. Any gate that says "X happens
+  before Y" must prove it found an X and a Y. Same shape for an upper-bound
+  budget: a verdict of the form `median <= budget` reads a zeroed sample table
+  as a pass, so a skipped or half-finished measurement looks green — count the
+  stored samples as they are appended and make the complete count part of every
+  verdict, so a dropped run fails closed instead of certifying nothing.
+  (e) The relationship is TESTED where it could be DERIVED: `SKIP-SECTION`
+  refused a section wider than its scratch buffer, but the only section it
+  skips has its length pinned by `?EXACT` before the loop begins, so the branch
+  was dead — and deleting it alone would have left a silent overflow for
+  whoever raises `PROT-WID-MAX`. Declaring `CHUNK = max(PROT-BITS-BYTES,
+  $10000)` makes the buffer wide enough by construction and cannot rot, and
+  the case that forges the bitmap's width is the pin's own standing proof.
+  Finally, before STRENGTHENING any census-shaped check, ask what breaks when
+  it fails. The AOT census's revision to a real bijection over the live
+  dictionary interval was sound and was the wrong artifact: adding a private
+  helper to a private package violates nothing the lexical wrapper, the
+  ownership gate, the public-surface test and the AOT gates do not already
+  cover. That census protected a MIGRATION invariant ("everything moved into
+  the package"), true the day packaging landed and baggage every day after.
+  Deletion was the fix. If the answer is "nothing that is not already caught
+  structurally", delete it however sound its arithmetic.
 - **A claim from the other orchestrator is still a claim; verify it before
   freezing it.** A design document named a corrective leaf for a "double
   `TV-VFIELDS!` write" in `TV-NEW-VIEW` that came verbatim from a blackboard
@@ -3012,19 +3149,6 @@ fits.
 - **Give each lane a private scratch subdirectory.** Two workers wrote generic
   artifact names into the shared scratchpad and one clobbered the other's
   evidence mid-run. Name the directory after the lane in the brief.
-- **Ask what breaks if the check is violated, before making the check
-  rigorous.** An AOT gate asserted that exactly 69 named definitions lived in
-  a module, comparing a literal against a counter those same rows incremented
-  — self-satisfying. The fix looked like proving a real bijection over the
-  live dictionary interval, and that revision was sound. It was also the wrong
-  artifact: adding a private helper to a private package violates nothing the
-  lexical wrapper, the ownership gate, the public-surface test and the AOT
-  gates do not already cover. The census protected a MIGRATION invariant
-  ("everything moved into the package"), true the day packaging landed and
-  baggage every day after. Deletion was the fix. Before strengthening any
-  census-shaped check, ask what breaks when it fails; if the answer is
-  "nothing that is not already caught structurally", delete it however sound
-  its arithmetic.
 - **Search for an existing frozen design before writing a new one.** A tensor
   ownership design was drafted, reviewed, and rejected twice before a survey
   found that `.blackboard/gpt2-forward-leaf-design-20260727.md` had already
@@ -3069,13 +3193,15 @@ fits.
   (`base..payload`, then `payload..package`), say what the composed tree must
   CONTAIN rather than which commit to apply, and state the expected
   pre-composition result so a predicted red cannot be mistaken for a finding.
-- **`git apply` inside a jj workspace silently does nothing.** It resolves to
-  the parent git directory, returns exit 0, and writes no file. A worker
-  caught it only by hashing the target afterward rather than trusting the exit
-  code, and switched to `patch -p1`. Any tool that reports success without
-  changing the tree will manufacture a green composition out of nothing;
-  verify by content, never by exit status, when applying a patch across
-  workspaces.
+- **`git apply` inside a jj workspace silently does nothing** (2026-07, 2026-08-15).
+  A `.jj-ws` workspace is a subdirectory of the git toplevel, so git-apply
+  resolves to the parent git directory, drops every path outside the cwd
+  subtree, returns exit 0, and writes no file. A worker caught it only by
+  hashing the target afterward rather than trusting the exit code, and
+  switched to `patch -p1`; `jj file show` is the other route back. Any tool
+  that reports success without changing the tree will manufacture a green
+  composition out of nothing; verify the BYTES changed, never the exit
+  status, when applying a patch across workspaces.
 - **When you find one untested copy path, sweep for its siblings.** A review
   pass found that the type-family record's growth path copied a newly added
   cell with no test — the one-cell-short mutation survived green — and fixed
@@ -3268,15 +3394,11 @@ fits.
   naming another orchestrator's agent on local absence alone. Ask, or leave it
   claimed.
 
-- **A proof that restates its own definition proves nothing.** Measured across
+- **The value is in the statements that could NOT be proved.** Measured across
   the three compiler-substrate models: 176 published results, of which 43 are
-  explicit counterexamples or negative statements — those cannot be vacuous.
-  But some are near-restatements: `arena_push_appends` proves the push appends
-  when the model *defines* it as appending. That is scaffolding wearing the
-  costume of a result. The test for worth is: holding the model faithful, could
-  a plausible change to the Habu code falsify this? Mutate the CODE, not the
-  model. If nothing in the implementation can break it, demote it to an internal
-  lemma or delete it — publishing it in a manifest inflates apparent coverage.
+  explicit counterexamples or negative statements — those cannot be vacuous,
+  while some others are near-restatements (see the entry on checks that restate
+  their own subject, which `arena_push_appends` is the model-side instance of).
   The real value this session came from statements that could NOT be proved:
   every one of the seven defects was found when a worker tried to state a
   universal property and the code refused it — an operation belonging to no
@@ -3380,17 +3502,6 @@ fits.
   reddened the whole no-binary recovery path. Lesson for next time: when a
   registration "happens" and is then invisible, ask which INSTANCE of the
   registry received it before suspecting the code that registers.
-
-- **Interleave the two probes on one stream, and distrust an inherited
-  diagnosis.** The dot for that bug recorded, from an earlier lane, that the
-  replayed `trust` and `checker-defer` calls never entered their definitions.
-  They entered every time, for all 31 slots. What settled it was putting the
-  engine-side probe (write the slot name from the replay loop) and the
-  checker-side probe (`type` the name at the head of `: TRUST` and
-  `: CHECKER-DEFER`) on the SAME file descriptor, so their order was real
-  evidence instead of two logs to correlate. Ten minutes of that replaced a
-  week of "the faulty instruction is not yet pinned". Inherited findings are
-  leads, not facts; re-measure the one the whole diagnosis rests on.
 
 - **Readiness answered by existence is a proxy, and proxies go stale.**
   `C-PRETRUST-READY?` asks "is a word named `trust` resolvable" when it means
@@ -3550,18 +3661,33 @@ fits.
   additions; the fix went into the calling test packages and the library work
   became its own dot.
 
-- **A mutation that moves a guard is not the same experiment as one that removes
-  it.** Falsifying the reserved-register half of the instruction-encoding gate,
-  the first attempt changed `XREG?` in `src/arch/arm64/asm.f` from refusing x18
-  to refusing x19. The gate reported zero failures, which looked like a hole in
-  the gate. It was not: three encoding vectors legitimately use x19, so the
-  moved guard killed the gate process before it reached a single assertion, and
-  a dead run and a clean run print the same nothing to a `grep TFAIL`. Deleting
-  the guard body instead - the mutation that actually models "somebody removed
-  the check" - turned exactly the twelve refusal rows red and nothing else. Two
-  rules came out of it: mutate by deleting the thing under test, not by moving
-  it somewhere else the fixtures also use, and never read "no failures" from a
-  filtered run without also checking the run reached its report line.
+- **A mutation that never RAN tests nothing — prove the mutant compiled and
+  reached the assertions before reading its verdict** (2026-08-11, 08-12,
+  08-14, 08-15). Four measured ways a mutation silently tests nothing: the edit
+  leaves the file uncompilable, so the suite never loads and produces neither
+  red nor green; the CHECKER rejects it (`habu: at 'X' after 'exit'` — dead
+  code after an early exit, never loaded, never run); it dies before the
+  assertions run (the register-swap mutant exited 134 and proved nothing, while
+  the +1 mutant lit 27 assertions); or it MOVES a guard instead of removing it.
+  That last one is the subtle case. Falsifying the reserved-register half of
+  the instruction-encoding gate, the first attempt changed `XREG?` in
+  `src/arch/arm64/asm.f` from refusing x18 to refusing x19. The gate reported
+  zero failures, which looked like a hole in the gate. It was not: three
+  encoding vectors legitimately use x19, so the moved guard killed the gate
+  process before it reached a single assertion, and a dead run and a clean run
+  print the same nothing to a `grep TFAIL`. Deleting the guard body instead —
+  the mutation that actually models "somebody removed the check" — turned
+  exactly the twelve refusal rows red and nothing else. The discipline: mutate
+  by deleting the thing under test, not by moving it somewhere else the
+  fixtures also use; prefer swapping a condition for a tautology (`e 0 >=`)
+  over deleting a branch; prove the edit landed (assert the text changed, read
+  it back) and that the mutant COMPILES, passes the checker, and differs from
+  the original; assert the ANCHOR you matched is unique and the BASELINE is
+  green first (an anchor that matched a different word and a baseline still
+  carrying debug prints gave two false verdicts from one battery); and never
+  read "no failures" from a filtered run without also checking the run reached
+  its report line — "no TFAIL in the output" of a file that never loaded is not
+  a pass.
 
 - **A `case` default cannot answer with a value in this Forth.** `ENDCASE`
   consumes the selector, so a default arm that pushes a result leaves the stack
@@ -3782,9 +3908,8 @@ fits.
   package name as its whole error message (exit 84). Two files that belong
   together either share one package and only the last one seals it, or — better
   — become two packages with a one-way dependency. Watch the generated enum
-  namespace when picking the name: a hyphen inside a package name is doubled, so
-  package `HIR-WORD` with an `ENUM meaning` generates `HIR--WORD-MEANING:`.
-  Putting the enum in the hyphen-free package it really belongs to is the fix.
+  namespace when picking the name: `TF-CTOR-ESC` doubles a hyphen inside the
+  package name (see the constructor-escaping entry).
 
 - **A test fixture that throws holds its context until the enclosing harness
   exits, so throwing fixtures must be cheap.** An `IR-BUILD` module owns fifteen
@@ -3864,15 +3989,37 @@ fits.
   map rather than from four times its index, so a map that lost a row stops the
   program from running instead of being checked only where a test looks.
 
-- **A mutation can survive because a neighbouring check makes it
-  behaviour-preserving, and that is a seam and not a test gap.** Replacing the
-  native emitter's checked register reader (`A64RAV:REG@`) with the allocator's
-  raw claim (`A64RA:CLAIM@`) left the whole suite green, because the emitter
-  already probes acceptance, freshness and module identity before it reads a
-  register. No test can tell the two apart; only review can. The real answer is
-  to stop the raw claim being readable at all - the allocator publishes it
-  publicly today, so its own header's "the validator is the only door" is a
-  convention rather than a structure (dot habu-close-the-alloc-af5b68a2).
+- **A SURVIVING mutation is a verdict on the code, not automatically a gap in
+  the suite — ask what already catches it, then delete, forge, or bind**
+  (2026-08-10, 08-14, 08-15, 08-17). Four measured shapes, four different
+  verdicts. (a) A neighbouring check makes the mutation behaviour-preserving,
+  which is a seam only review can close: replacing the native emitter's checked
+  register reader (`A64RAV:REG@`) with the allocator's raw claim
+  (`A64RA:CLAIM@`) left the whole suite green, because the emitter already
+  probes acceptance, freshness and module identity before it reads a register.
+  No test can tell the two apart. The real answer is to stop the raw claim
+  being readable at all - the allocator publishes it publicly today, so its own
+  header's "the validator is the only door" is a convention rather than a
+  structure (dot habu-close-the-alloc-af5b68a2). (b) The mutated check is
+  REDUNDANT, and the mutation that proved it is the one that deleted it: the
+  captured-wid "below the window" branch changed no verdict, because the
+  subtraction wraps a low wid to a huge unsigned value and the single unsigned
+  span test already refused both sides. Same shape for belt-and-braces, which
+  is dead code until a mutation binds it - a saturation flag survived design
+  review and died in one measurement (overflow drops a suffix; every suffix
+  token already refuses on absence). Write it, measure it, delete it, and say
+  why in place. (c) The guard has NO PRODUCER, so every mutation passes:
+  deleting the seed's out-of-window refusal left the suite green because the
+  capture-side audit refuses that state first and nothing could bake it. The
+  cure is a forge that reaches the state after the earlier refusal - here one
+  that moves the baked window AFTER the capture, which needs a fixture that
+  captures a NON-ZERO wid at all, something the package-free REPL sources never
+  do. Related: a test's unique content is only worth keeping if a producer can
+  reach it (XTSITE discriminated one real mutant, but the classifier that would
+  emit that row returns early for exactly the values that make it possible -
+  deleted on producibility, not on taste). (d) The suspected bug was already
+  caught downstream, so the honest outcome is a corrected comment, not a
+  claimed repair.
 
 - **Two refusing compiler fixtures that each build two modules are already one
   group too many.** The registry note in `src/compiler/ir/context.f` bites at
@@ -5210,17 +5357,75 @@ assertions, so two mutations printed a mismatch yet the suite exited 0.
 Snapshot, reset, then judge - and prove the fixture with a mutation, because
 this failure mode is a green suite that prints a mismatch.
 
-## Verify carried-over claims by experiment before ruling on them (2026-08-01)
+## PROBE THE LEAF: a leaf's premises, counts, inventories and quantities age faster than the leaf (2026-08-01, 08-07, 08-10, 08-13, 08-14, 08-15, 08-16, 08-17)
 
-During the process-train abandonment decision, I grounded a ruling on "master
-is unbootstrappable" — a claim carried through context compaction that
-actually described the provisional composition, not master. Codex ran the
-bootstrap and the full suite on clean master and disproved it in minutes.
-What worked: adversarial verification of the other orchestrator's premises
-before accepting a program. What didn't: relaying remembered state as a
-ruling ground without re-deriving it. Rule: a factual premise that decides a
-design ruling gets an experiment, not a recollection — bootstrappability,
-greenness, and consumer counts are all cheap to measure.
+Recorded at least ten times, always the same shape and always cheap to
+settle: a factual premise that decides a design ruling gets an EXPERIMENT,
+not a recollection. Premises that were ruled and wrong: "master is
+unbootstrappable", which grounded the process-train abandonment decision (a
+claim carried through context compaction that actually described the
+provisional composition, not master — the bootstrap and the full suite on
+clean master disproved it in minutes); "two published counts, terms vs cells,
+already distinguish an ADT bundle from loose values" (they are equal in
+exactly the case that miscompiles, and a two-line probe comparing a bundled
+signature against a two-variable one with identical counts would have cost
+five minutes at design time); "the writer requires driver-io.f" (one `require`
+in `bin/hb` refuted it in four seconds, and the assumed route would have
+dragged the Mach-O writer into a portable tool); "a while can give the
+after-loop block an edge" and "the elaborator cannot say unreachable" (both
+falsified by two cheap probes — the checker refuses while+again outright, and
+`PATH-DEAD` had landed with the dead-call work — and both falsifications made
+the work SMALLER); prelude-first ordering for the capture tool (refuted by 98 of 18602 call
+sites, because the chain's own closure shares `asm.f` with the prelude); the
+intake ruled to read `FAILTK`, which is not the unresolved token because
+`DO-TOK1` pins EVERY token until a failure latches `FAILSET`, so
+`: T ( -- ) SEEDED dup ;` pins `dup` and the probe that "proved" the retry
+had used a body whose seeded name happened to be last — check what a pinned
+value is pinned BY before building on it.
+
+COUNTS and INVENTORIES rot the same way. A leaf's refusal list: two of four
+named rows were zero after eleven landings, and re-censusing cost 13 minutes
+and deleted half the work order. A leaf's file list: eight months out of date,
+10 files named against 22 in the tree, 87 sites against 104 present — a scope
+written as "every remaining reference, proven with `rg`" is drift-proof where
+a file list is not. A dot that bounded a class of load-time installers at two
+by reading `src/compiler/native/`: there are four, and the two it missed
+(`inline.f:358`, `publish.f:479`) are in the directory it read — what found
+them was not a better read but a measurement with no opinion
+(`CODE-RECLAIM:WATCHERS` is 0 when the window opens and 3 when it closes),
+and `habu2.f:5334` had said "the chain's 3 `CODE-RECLAIM:WATCH` sites" in a
+comment all along. A diagnosis that names ONE consumer of a rewound cursor is a hypothesis about
+how many there are: the same rewind orphaned the call map too, 26 stale
+address records AND 17 stale call records. A diagnosis naming N sites is a
+hypothesis: a sweep found a sixth reader the leaf never mentioned. An audit's
+~85 duplicated lines between two files had become ~30 between two DIFFERENT
+files, because one of them was now a thin caller — re-measuring is a grep, and
+taking the number on faith would have refactored a file that no longer had the
+problem. (That one is the ninth recorded instance.)
+
+A leaf's TITLE and DIAGNOSIS can be wrong while its count is right, and vice
+versa. "Multi-cell payloads in match" measured as fully supported while the
+real blocker was parametric instantiation wider than its declaration; two of
+that leaf's three concrete claims were false, its requested fixtures already
+shipped registered, and an open dot already owned the real work — eight cheap
+`MEASURE-HELD` probes separated the axes before any design was written. The
+bake checkpoint's count was exactly right at 26 and its diagnosis wrong (none
+was an out-of-window chain); arming the decline and measuring both ways cost
+one run and refuted the ruling. And when a leaf OFFERS a fix, read the offered
+fix against the failure before implementing it: "advance WIDN past the highest
+captured wid before registration" governs FUTURE allocation, while a captured
+wid of 209 still registers into the wordlist the target's prefix already built
+at 209 — both baselines reproduce with WIDN advancing exactly as proposed.
+
+The discipline: adversarial verification of the other orchestrator's premises
+before accepting a program; a brief's premises come from the tree AS IT STANDS
+(re-read the owning file the same day — a lane was dispatched to build a
+per-call-site inline cost model the tree already had, recorded in this very
+file, because the briefing orchestrator wrote the premise from memory); and
+probe the leaf's central premise before building on it, even — especially —
+when you wrote the leaf. Bootstrappability, greenness, counts and consumer
+inventories are all cheap to measure, and the refutations shrink the work more
+often than they grow it.
 
 ## Run the ownership census before dispatching a caller wave (2026-08-01)
 
@@ -5363,25 +5568,10 @@ believed until mutation-proven in both directions - here by mutating the
 layout constant and watching a real hb-build die with the probe's own
 message. A text pin would have satisfied a comment; the probe kills builds.
 
-## A seeded engine is not a fixpoint engine (2026-08-05)
+## CSE's prize is its cost (2026-08-05)
 
-A fresh workspace seeded with the main worktree's bin/hb was not at the
-compiler fixpoint - install --force changed the binary with zero source
-edits, then was stable. Any lane whose gates depend on engine bytes (size
-ratchets, published-code decoding, seal probes) is measuring a different
-engine than the tree describes until it refreshes. Refresh the seed before
-gating, and refresh the main worktree's engine immediately after merging
-any engine-text change - the stale-seed false-red class has now bitten
-from both directions.
-
-## An error code is not a location, and CSE's prize is its cost (2026-08-05)
-
-Two lessons from one lane. A predecessor pinned E-IR-FUN-BOUND to a specific
-bound check and designed a fix for it; the code has twenty-plus throw sites
-in one file, a one-line probe on the suspected line never fired, and the real
-raiser was the test reading operations by absolute index - a legitimate
-optimization changed the count and the fixture called it an invariant
-violation. Probe the suspected line before designing against it. Second: the
+(The same lane also produced the `E-IR-FUN-BOUND` misattribution recorded
+under "dump the record before naming the producer".) The
 literal CSE measured 4 corpus rows improved and 0 regressed, and still did
 not land - collapsing repeated constants EXTENDS the constant's live range,
 and in a starved frame that turned one spill into two, minus one movz plus a
@@ -5496,27 +5686,21 @@ E-A64RA-PRESSURE left the old case proving the opposite thing, a gap that
 only surfaced because the case was rewritten by hand. Rename or re-test a
 refusal whose bound moves.
 
-## install replaces the binary; a fixpoint alone does not (2026-08-06)
+## Diagnose a seal that fires under a new exit before building around it (2026-08-06)
 
-build-fixpoint-refresh -- all --force reaches the fixpoint but does NOT
-replace bin/hb - only install does. A working engine fix read as 'still
-failing' for a full cycle because the running binary predated it. Check
-bin/hb's mtime before believing a negative result on any src/habu change.
-And from the same lane: when a seal fires under a new exit, diagnose it
-before building around it - this one was RIGHT to fire and one slot too
-tight, and the widening's invariant (the pending row is the one slot ':'
-writes before raising the count) became the design's atomicity story.
+A working engine fix read as 'still failing' for a full cycle because the
+running binary predated it (see the `install --force` entry). The seal it
+tripped was RIGHT to fire and one slot too tight, and the widening's
+invariant - the pending row is the one slot ':' writes before raising the
+count - became the design's atomicity story.
 
-## Read the assert number before charging a red to an incident (2026-08-06)
+## Two on measuring, from the incident-attribution lanes (2026-08-06)
 
-An open host-contention incident became a place to file reds. A lane with
-one red phase charged it to the incident and merged - the red was its own
-unbumped content ratchet. The incident lane certified the sibling 'refuted'
-over an attribution window that stopped one commit short of the breakage. A
-content ratchet cannot flake on timing and a nanosecond budget cannot flake
-on content: the assertion number distinguishes them in one line, and a
-'green' verdict must state the window it covers. Two more from the same
-pair of lanes: a calibration probe is valid only for workloads bound by the
+(An open host-contention incident became a place to file reds; the
+assert-number discriminator that settled it is in the contention entry
+under Gate Harness, and the incident lane also certified a sibling
+'refuted' over an attribution window that stopped one commit short of
+the breakage.) A calibration probe is valid only for workloads bound by the
 resource it measures (a register spin saw 8% while fork/exec work ran 73%
 slow); and measuring finished code undercounts a pre-allocation
 optimisation - register reuse hides fusions, so a post-allocation inventory
@@ -5565,17 +5749,13 @@ reference actually emitted and why - a byte win bought by keeping a call
 the reference removed may be a time loss, and the time column adjudicates
 policy differences.
 
-## Brief from the file, and publish the dot before the lane (2026-08-07)
+## Publish the dot before the lane (2026-08-07)
 
-A lane was dispatched to build a per-call-site inline cost model that the
-tree already had - inline.f SMALL? decides from measured post-selection
-size against the convention-derived overhead, landed earlier and recorded
-in this very file, and the briefing orchestrator wrote the premise from
-memory instead of re-reading the owning file. The same dispatch named a dot
-that existed only in an unpublished working-copy commit, so the worker
-found nothing to claim. Two rules, both old, both violated at once: a
-brief's premises come from the tree as it stands (re-read the owning file
-the same day), and dot metadata publishes BEFORE any lane depends on it.
+The dispatch that briefed a lane from memory (see PROBE THE LEAF - the tree
+already had `inline.f` `SMALL?`, deciding from measured post-selection size
+against the convention-derived overhead) also named a dot that existed only
+in an unpublished working-copy commit, so the worker found nothing to claim.
+Dot metadata publishes BEFORE any lane depends on it.
 The lane's refusal to build was correct and cheap; the wasted dispatch was
 the fee. Bonus finding from the same refusal: TINY-CALLEE's gap is clang
 CLOSED-FORMING the loop, not inlining - the gap table without mechanism
@@ -5702,20 +5882,12 @@ spelling list); and "both compile" is not parity - only reading both
 frozen modules back, op by op, catches a body that compiled into worse
 code than its twin.
 
-## A premise is only as good as its five-minute probe (2026-08-10)
+## A ruling's condition can be necessary but not sufficient (2026-08-10)
 
-The rename-miscompile leaf said two published counts (terms vs cells)
-already distinguish an ADT bundle from loose values. They are equal in
-exactly the case that miscompiles - a user signature flattens the bundle
-- and the design built on that sentence had to be killed on measurement.
-The two-line probe comparing a bundled signature against a two-variable
-one with identical counts would have cost five minutes at design time.
-Probe the leaf's central premise before building on it, even (especially)
-when you wrote the leaf. Second find from the same lane: a ruling's
-condition can be necessary but not sufficient - "boundary falls inside a
-run" missed swap over two adjacent whole bundles; the built test covers
-the whole window. Workers should strengthen a ruling when the code shows
-it short, and say so.
+(The rename-miscompile leaf's own false premise is recorded under PROBE THE
+LEAF.) "Boundary falls inside a run" missed swap over two adjacent whole
+bundles; the built test covers the whole window. Workers should strengthen a
+ruling when the code shows it short, and say so.
 
 ## A running value across a block walk is a hidden dominance claim (2026-08-10)
 
@@ -5731,37 +5903,29 @@ by luck. Same lane, second find: deriving a new answer (NO-RET) is not
 consuming it - grep every reader of the old answer before believing
 the derivation landed.
 
-## The memo is a dominance argument, not a liveness one (2026-08-10)
+## The memo is a dominance argument, not a liveness one (2026-08-10, from the dead-path and match lanes)
 
 The block-local literal memo hands a value across block boundaries
 legally (SSA-wise) and can still be an allocator failure: reusing an
-earlier block's constant for UNREACHABLE code gave a real value a live
-range across every call for nothing (measured E-A64RA-POOL on the
-simplest dead-path shape). Stage unreachable operands fresh. Same lane:
-the first DIALECT consumer of an IR form that only hand-built fixtures
-exercised is where its missing table rows surface (two passes lacked the
-trap's key row) - budget that surfacing into the first consumer's lane.
+earlier block's constant for UNREACHABLE code - a dead path, or an
+unreachable trap operand - gave a real value a live range across every
+call for nothing (measured E-A64RA-POOL on the simplest dead-path
+shape). Unreachable code still costs registers if you share its
+constants; stage unreachable operands fresh. Two siblings from the same
+pair of lanes: the first DIALECT consumer of an IR form that only
+hand-built fixtures exercised is where its missing table rows surface
+(two passes lacked the trap's key row) - budget that surfacing into the
+first consumer's lane; and a capacity six passes share (NFROZEN:BMAX) is
+a product decision to raise, not a constant to bump inside a feature
+lane - measure the unlock cost, pin the current ceiling in a test so the
+raise has a number to move, and dot it.
 
-## Unreachable code still costs registers if you share its constants (2026-08-10)
-
-(From the match lane, generalising the dead-path find.) The block-local
-literal memo is a dominance argument, not a liveness one: reusing an
-earlier block's constant for an unreachable trap operand gave a real
-value a live range across every call. Stage unreachable operands fresh.
-And a capacity six passes share (NFROZEN:BMAX) is a product decision to
-raise, not a constant to bump inside a feature lane - measure the
-unlock cost, pin the current ceiling in a test so the raise has a
-number to move, and dot it.
-
-## Three from the closed-forming lane (2026-08-10)
+## Two from the closed-forming lane (2026-08-10)
 
 A test whose inputs are only reachable BECAUSE an optimisation fired
 must assert the optimisation fired and stop if it did not - otherwise
 a regression turns a red gate into a machine that never returns (a
-2^63-turn loop was asked for before this was caught). A mutation that
-leaves the suite green is a verdict on the fix, not the suite: a
-suspected sentinel bug was already caught downstream, and the honest
-outcome was a corrected comment, not a claimed repair. And optimising
+2^63-turn loop was asked for before this was caught). And optimising
 a corpus row breaks the instruments that used it as a subject - two
 loop-measuring suites named SUM-TO because it was the smallest counted
 loop, and the fold left them measuring nothing.
@@ -5800,17 +5964,13 @@ defeated when written as a compiled call site - the inliner may have
 copied the body, so the test passes against an engine that corrupted
 the record. Enter through the interpreter (evaluate), which uses the
 address the record holds. The alias-reclamation case passed against a
-BROKEN engine until the call form changed. Sibling rule from the same
-lane: a recorded length is not a routine's extent (measured: 554 baked
-records where START+LEN+4 is not the next start) - derive floors from
-starts and slot-ordering, never from lengths.
+BROKEN engine until the call form changed. (The sibling rule from the same
+lane - a recorded length is not a routine's extent - is under the
+per-record-scan entry.)
 
-## The mutation harness needs its own hygiene (2026-08-11)
+## A symmetric fixture cannot say the body was walked (2026-08-11)
 
-Two false verdicts from one battery: an anchor that matched a DIFFERENT
-word (assert anchor uniqueness before mutating) and a baseline that
-still carried debug prints (assert the baseline green first). And a
-fixture that passes for a body whose arity is symmetric proves nothing
+A fixture that passes for a body whose arity is symmetric proves nothing
 about whether the body was walked at all - the S1 skip bug built
 ( n -- n ) bodies as accidental argument-pass-throughs and every
 symmetric fixture passed; only an asymmetric body told the truth.
@@ -5819,10 +5979,9 @@ mechanism when calls rename values - acceptance then tracks whether
 the inliner fired; carry facts on the vector entry the walk actually
 moves.
 
-## Three from the no-return lane (2026-08-11)
+## Two from the no-return lane (2026-08-11)
 
-Gate evidence must be sequential - three concurrent heavy suites
-produced a false red that vanished on rerun. Habu quotations are not
+Habu quotations are not
 closures - a probe's [: ;] cannot read the enclosing locals; park
 values in a variable. And a mutation
 that changes nothing falsifies the COMMENT that claimed it would - the
@@ -5840,29 +5999,13 @@ still not proved the mechanism's INPUT exists - "the MOPERAND?
 mechanism" was true of MATCH and false of is, and one contrast probe
 with the same dumper separated them.
 
-## The seeded prefix made binary staleness a red class (2026-08-11)
+## Three from the keyfix lane (2026-08-11)
 
-Since the stdlib entered the boot prefix, tests that query the RUNNING
-engine's provide surface (bundle assume-or-carry, anything reading
-ENGINE-PROVIDES?) red under a bin/hb built before the seed - and bin/hb
-is untracked, so every workspace carries its own. install --force before
-ANY gate, not just after seed-file edits; a "tools-only change" is not
-an exemption because the TREE under the binary moved. Two deterministic
-red runs were this, not the change under test. Sibling notes from the
-keyfix lane: run the package lint on a one-line probe diff before
+Run the package lint on a one-line probe diff before
 designing any build-fixpoint change (it decides the change's shape);
 using PKG is file-scoped and never reaches requiring files;
 build-fixpoint-test self-runs at load so appended debug drivers never
 execute - bisect by unregistering steps.
-
-## Lane temp roots must be lane-private (2026-08-11)
-
-Two concurrent lanes briefly shared one HB_TMP root, and one of them
-does rm -rf on that root at the start of every gate run - it wiped the
-other lane's build mid-flight. Every gate invocation names a temp root
-private to its lane (and ideally to the run); a gate that ran during a
-shared-root window proves nothing and must be rerun. This is also the
-likeliest source of paired timing-assertion flakes across lanes.
 
 ## Packaging a legacy tool file: three checker-scope facts (2026-08-11)
 
@@ -5888,18 +6031,6 @@ its target name needs the qualified spelling even inside the import.
 Also: a package whose exported tails share the package's own prefix
 walls off future head edits (E-REDUNDANT-PACKAGE-PREFIX fires on the
 next change) - pick the package name so the tails don't repeat it.
-
-## Editing keyed phase files runs the gate cold (2026-08-11)
-
-The gate caches phase results keyed on declared file sets
-(test/run-files.f). An edit to any file in those sets - lib/content-key.f,
-test/run-lib.f itself - invalidates every phase key, so the next battery
-runs fully cold and takes minutes longer; under a concurrent lane that is
-exactly when timing assertions red (TIMEOUT-UNDER-LOAD, group-time
-ratchets). A red whose failing member does not reference the changed
-code, on a fully-cold run, is this - prove it (the fold census reporter
-reads clean at the throw site), then rerun sequentially. Two sequential
-greens settle it.
 
 ## Before minting a name, grep for what the engine already bakes (2026-08-11)
 
@@ -5995,23 +6126,20 @@ working, not a defect. Recovery for a stale workspace engine: copy a
 current fixpoint binary from a sibling workspace (then install
 --force to confirm), pass through the stage-1 tree, or bootstrap.
 
-## The write-window landing's six (2026-08-11)
+## The write-window landing's five (2026-08-11)
 
 From the code-region window lane, verbatim: (1) a design sentence
 about a hot path must be checked against EVERY writer, not the one
 that names it - "LCEMIT is str/add so a write never runs ahead of
 CP" was true of LCEMIT and false of seven byte-spill sites; (2) a
 stores-based-at-R scan must follow one level of register copy AND
-both spellings of the register (CP and 28); (3) install --force
-after every mutation experiment, not just before the gate - a
-mutant whose build succeeds replaces bin/hb and every later mutant
-runs on a broken host; (4) an emit-time macro carrying a bare
+both spellings of the register (CP and 28); (3) an emit-time macro carrying a bare
 register number leaves it in front of the next instruction where a
 positional reader takes the wrong operand - give macros a register
-ABI; (5) package-diff-lint refuses any changed word in an
+ABI; (4) package-diff-lint refuses any changed word in an
 unpackaged legacy file, so "fix the lint" can be gated behind
 "package the lint" - check before planning a lint fix into a lane;
-(6) the crash handler exits 134 itself, so a refused write is an
+(5) the crash handler exits 134 itself, so a refused write is an
 EXIT not a signal on both targets - assert T-OUTCOME-EXITED= 134.
 
 ## A profile of a system that no longer exists (2026-08-11)
@@ -6025,14 +6153,6 @@ optimizations measured against the same baseline are not additive if
 they share a cost; re-profile after the first lands before building
 the second. The refutation is recorded on the leaf so the idea is
 dead, not pending.
-
-## A mutant that fails to compile tests nothing (2026-08-12)
-
-A mutation whose edit leaves the file uncompilable produces no red
-and no green - the suite never ran. Before reading any mutation
-result: prove the edit landed (assert the text changed, read it
-back) and prove the mutant COMPILES and differs from the original.
-"No TFAIL in the output" of a file that never loaded is not a pass.
 
 ## The judge lane's four (2026-08-12)
 
@@ -6062,14 +6182,12 @@ proved for that shape's callee class. "The hazard is enforced
 downstream" answers safety; it does not answer whether the mechanism
 was also the only place the value could live.
 
-## The literal-authority landing's three (2026-08-12)
+## The literal-authority landing's two (2026-08-12)
 
 (1) "The value doesn't exist yet at that point" is a measurable
 question, not a taste question - one read of the engine's literal
 hook (bytes handed over, never the number) settled a two-shape
-design. (2) A mutation that dies before the assertions run is not
-evidence - the register-swap mutant exited 134 and proved nothing;
-the +1 mutant lit 27 assertions. (3) Deleting a decoder deletes its
+design. (2) Deleting a decoder deletes its
 ratchet debt - real-lit.f carried a standing obligation to track a
 known engine float bug; asking the engine directly retired the
 obligation for free.
@@ -6108,41 +6226,33 @@ anything (recovery verified by rebuilding a byte-identical engine).
 engine size but shifts baked WIDs - the sha changes while the size
 does not; expect it, don't chase it.
 
-## The residency landing's three (2026-08-12)
+## The residency landing's two (2026-08-12)
 
 (1) A build that never loads the mutated file proves nothing -
 install --force does not compile the native chain (only migrate.f
 requires select.f), so an install rc 0 after a chain mutation is
-silence, not evidence; the consumer load is the check. (2) One HB_TMP
-per RUN, not just per lane - two gate runs of one lane sharing a root
-wiped each other mid-flight. (3) The rg wrapper rewrote matched text
+silence, not evidence; the consumer load is the check. (2) The rg wrapper rewrote matched text
 in search output (--replace struck again); file lists came from grep.
 
-## The hoist landing's four (2026-08-13)
+## The hoist landing's three (2026-08-13)
 
 (1) RUN THE GATE WITH STDIN FROM /dev/null in agent shells - children
 inherit a unix-socket stdin and some block forever probing fd 0; the
 hang surfaced as timeouts on UNRELATED process phases (diagnosed with
 sample + lsof, fd 0 = unix socket; < /dev/null turned two reds green).
-(2) One gate at a time even in your own lane root - a second run
-against the same HB_TMP reproduces the shared-root incident within
-one lane. (3) A mutation of an analysis in a pass that VALIDATES its
+(2) A mutation of an analysis in a pass that VALIDATES its
 plan yields a decline, not wrong code - check which guard caught it
-before claiming the mutation proves the one you edited. (4) A fixture
+before claiming the mutation proves the one you edited. (3) A fixture
 that merely contains a store may not test the write rule - the rule
 needed a read, a write AND an accumulator in one body to be reachable.
 
-## The pool pricing's five (2026-08-13)
+## The pool pricing's three (2026-08-13)
 
-(1) Read the diagnostic, not the error text - E-A64RA-POOL says
-"every register holds a needed value"; in every measured row it was
-"every register is BARRED and nothing holds anything" (free=18
-spare=0 forbid=all). (2) Two throw sites sharing one code need
-one-at-a-time recoding to attribute a class. (3) Publishing a callee
+(1) Publishing a callee
 can make its caller WORSE - a chain routine that can throw records
 24 destroyed GPRs, wider than the 18-register no-record worst case.
-(4) The census silently skips a package section with no public
-definition - examined=0 looks like a broken path. (5) The class's
+(2) The census silently skips a package section with no public
+definition - examined=0 looks like a broken path. (3) The class's
 fix was invisible to its own leaf because the leaf named a mechanism
 instead of a measurement - the four-verdict experiment (same body,
 constant vs digit) was the whole diagnosis.
@@ -6166,24 +6276,18 @@ have compiled a SHORTER program with no refusal anywhere. A refusal
 list would have hidden that hole; guarding the passes exposed it.
 (4) A local's name is the bytes before the annotation's colon, so no
 local name can contain one - which quietly makes `[:`, `{:` and `:}`
-unspellable as names and left exactly one token to refuse. Derive the
-refusal set from what can REACH the check, or half of it is dead
-code. (5) The census over `src lib` is reproducible; over `tools` it
-is not - most of tools/ runs a MAIN word at load and one of them
-(build-fixpoint-main.f) exits the process, so a whole-tree census
-stops there and prints no report at all.
-
-## A refusal list can hide the miscompile it was meant to prevent (2026-08-13)
-
-The chain refused every local named after a dialect word - guarding a
-collision that could not happen (six of eight readers already asked the
-locals frame first) while the two readers that did NOT ask included one
-that silently MISCOMPILED a local named `is` (the deferred pre-pass
-stepped over it as an operand: shorter program, no refusal anywhere).
-Deleting the list and naming the invariant - every meaning-reader asks
-the frame first - exposed and closed the hole the list hid. Derive
-refusals from what can structurally reach a check, never from a list of
-spellings.
+unspellable as names and left exactly one token to refuse. So a REFUSAL
+LIST can hide the miscompile it was meant to prevent: deleting the list
+and naming the invariant instead - every meaning-reader asks the locals
+frame first, and a new pass over body tokens asks it before any
+classification (the pass that didn't broke `{: again:n :}` by reading
+the local as the loop closer) - exposed and closed the hole the list
+hid. One structural question covers every reserved spelling; a list
+never does. Derive the refusal set from what can structurally REACH the
+check, or half of it is dead code. (5) The census over `src lib` is
+reproducible; over `tools` it is not - most of tools/ runs a MAIN word
+at load and one of them (build-fixpoint-main.f) exits the process, so a
+whole-tree census stops there and prints no report at all.
 
 ## The definer-kind fold's five (2026-08-13)
 
@@ -6242,15 +6346,9 @@ dimension NOT under test: four branch-imbalance probes were refused
 for a data-stack arity error and proved nothing about the return
 row.
 
-## The again/leave landing's three (2026-08-13)
+## The again/leave landing's two (2026-08-13)
 
-(1) A leaf's design sentences age. Both of this leaf's premises -
-"a while can give the after-loop block an edge" and "the
-elaborator cannot say unreachable" - were falsified by two cheap
-probes (the checker refuses while+again outright; PATH-DEAD landed
-with the dead-call work), and both falsifications made the work
-SMALLER.
-(2) A contract table's "this cannot arise" is a claim to falsify,
+(1) A contract table's "this cannot arise" is a claim to falsify,
 not a wall: abi.f said a callless no-return routine cannot exist
 because what makes a body all-dead is the call it dies in;
 begin...again is exactly that routine. The repair is a contract
@@ -6258,7 +6356,7 @@ stating field-by-field truths (no call so no trait, nothing writes
 x30 so link preserved, control no-return unchanged because callers
 were compiled against it), each held against the module by an
 existing validator.
-(3) A fixture that counts DOWN terminates only for the inputs a
+(2) A fixture that counts DOWN terminates only for the inputs a
 reader checked: `over 0 =` hung the suite on a negative counter
 where `over 1 <` does not. Guard loops with an inequality, not
 equality.
@@ -6300,7 +6398,7 @@ answer against itself and passes on wrong code.
 first at 31 sites), so its guard branch would be untestable. The
 ceiling below the shadowing cap is the one a test can take.
 
-## The locals-scope landing's three (2026-08-13)
+## The locals-scope landing's two (2026-08-13)
 
 (1) A clean textual merge across an exhaustive MATCH is not a
 merge: the new enum member from the other lane red the load with
@@ -6308,48 +6406,33 @@ merge: the new enum member from the other lane red the load with
 Non-exhaustive dispatches would have silently skipped it. After a
 rebase, the honest check is "what did the other lane newly
 SCHEDULE and newly ENUMERATE", not just "what did it edit".
-(2) A new pass over body tokens must ask the locals question
-before any classification - the file already said so, and the
-pass that didn't broke {: again:n :} by reading the local as the
-loop closer. One structural question covers every reserved
-spelling; a list never does.
-(3) Before believing a fixture exercises a carrier, force the
+(2) Before believing a fixture exercises a carrier, force the
 carrier's value to a constant and check something reds - the
 crossing-locals carrier was dead-tested across five suites
 because every fixture's callee had a clobber row and nothing
 ever travelled.
 
-## The j landing's four (2026-08-13)
+## The j landing's three (2026-08-13)
 
 (1) The census's pressure/capacity refusal codes are not
 reproducible run to run (one definition swapped E-A64SEL-CAP for
 E-A64RA-SPILL over the same tree); the totals and dialect buckets
 are stable. Never attribute a code swap inside that class to a
 change.
-(2) A backgrounded subshell survives the harness's completion
-report - two censuses collided on one HB_TMP. Let the harness own
-background jobs.
-(3) The reserved-word rule bites in test fixtures: private
+(2) The reserved-word rule bites in test fixtures: private
 helpers named IF and LEAVE died as "closer without opener" before
 any assertion ran.
-(4) Compiler test leaves need the fork harness's deps (lib/date,
+(3) Compiler test leaves need the fork harness's deps (lib/date,
 lib/test, lib/source) - a bare --load of native-hir.f fails on
 master too. Run leaves through the gate before concluding your
 change broke them.
 
-## The match probe's two (2026-08-13)
+## A census histogram and a row scan must come from one process (2026-08-13)
 
-(1) A leaf's title can name the wrong axis: "multi-cell payloads
-in match" measured as fully supported, while the real blocker was
-the parametric instantiation wider than its declaration. Two of
-the leaf's three concrete claims were false, its requested
-fixtures already shipped registered, and an open dot already
-owned the real work. Eight cheap MEASURE-HELD probes separated
-the axes before any design was written.
-(2) A census histogram and a per-definition row scan must come
+A census histogram and a per-definition row scan must come
 from ONE process - two runs of the same instrument over the same
 tree disagreed by one row; the run printing both numbers agreed
-with itself.
+with itself. (The leaf's own mis-named axis is under PROBE THE LEAF.)
 
 ## The quotation-scope landing's three (2026-08-13)
 
@@ -6373,11 +6456,10 @@ path the routine that threw is the subject compiled two ways.
 the arriving refusal is the next mirror of the same bug, not a new
 one - three passes each hid the next (allocator, verifier, emitter).
 Keep going until the probe accepts.
-(2) A diagnosis naming N sites is a hypothesis: the sweep found a
-sixth reader the leaf never mentioned, correct only because it
-declines the whole case - itself a finding (lost optimisation,
-dotted). Classify every reader as correct / needs-it / declines-it
-and say why for the declines.
+(2) Classify every reader as correct / needs-it / declines-it and
+say why for the declines: the sixth reader the leaf never mentioned
+(see PROBE THE LEAF) was correct only because it declines the whole
+case - itself a finding, a lost optimisation, dotted.
 (3) Mutate the setter as well as the reader - forcing a base to
 zero red DIFFERENT fixtures than dropping the subtraction, because
 the contiguity guard fires before any successor is read.
@@ -6392,19 +6474,12 @@ false measured claim guarding an untested reachable refusal. The
 cross-landing interaction probes all passed - the holes were in
 registration topology and prose, exactly where fresh eyes look.
 
-## The width-export landing's four (2026-08-14)
+## The width-export landing's two (2026-08-14)
 
-(1) To call a failure pre-existing, the base thing must be the
-test's INPUT, not the binary that runs it - a source-reading lint
-run with an old engine over a modified tree measures the tree.
-(2) A lane that adds a checker axiom owns a ratchet it never
+(1) A lane that adds a checker axiom owns a ratchet it never
 opened. Grep finds names; a ratchet is a NUMBER - find it by
 asking which tests READ the file you changed.
-(3) Belt-and-braces is dead code until a mutation binds it: the
-saturation flag survived design review and died in one measurement
-(overflow drops a suffix; every suffix token already refuses on
-absence). Write it, measure it, delete it, and say why in place.
-(4) Publish the count the consumer needs, not a delta it re-adds -
+(2) Publish the count the consumer needs, not a delta it re-adds -
 two stages with separate arithmetic can drift; two readings of one
 subtraction cannot. And file every new per-token fact against the
 ONE shared recording ordinal; a second counter is the mistake the
@@ -6445,37 +6520,24 @@ differentials - two mutations that looked like lost optimisations
 were named refusals (DKEEP, DSTACK). Read WHICH pass answers a
 mutation, not just that something red.
 
-## The tail landing's two (2026-08-14)
+## An impossibility argument belongs in the suite's prose, with its measurement (2026-08-14)
 
-(1) A generated constructor escapes hyphens in the owning package
-name: package NTL-FIXTURE + PRODUCT pt publishes
-NTL--FIXTURE-PT:MAKE (TF-CTOR-ESC doubles the hyphen; production
-example CNUM-NUMERIC--POLICY:MAKE). A fixture package with a
-hyphen pays it - cheaper to know than to E-UNDEFINED into.
-(2) An impossibility argument belongs IN the suite's prose with
+The tail landing's keeper: an impossibility argument belongs IN the suite's prose with
 its measurement: the padded-construction-feeds-tail shape is
 unwritable (the checker refuses the required signature), and the
 derivation is recorded where the next lane will look before
 re-deriving it.
 
-## The singletons diagnosis's five (2026-08-14)
+## The singletons diagnosis's three (2026-08-14)
 
-(1) A leaf's refusal list ages faster than the leaf - two of four
-named rows were zero after eleven landings; re-censusing cost 13
-minutes and deleted half the work order. Re-measure before
-diagnosing from a recorded list.
-(2) One root can wear three error codes, and the code names the
-pass that NOTICED, not the pass that is wrong. Reduce until the
-shapes differ in exactly one dimension before believing a bucket
-is a class.
-(3) A taxonomy's written argument is falsifiable - the census's
+(1) A taxonomy's written argument is falsifiable - the census's
 claim that an arity refusal always means self-misstatement had a
 counterexample in its own output. Test a classifier's reason
 against a row, not against its prose.
-(4) A refuted road stays refuted only for the population it was
+(2) A refuted road stays refuted only for the population it was
 measured on - re-running the refutation against today's rows cost
 one mutation and turned an assumption into evidence.
-(5) A censused spelling may be the instrument's own renamed
+(3) A censused spelling may be the instrument's own renamed
 subject leaking into the table.
 
 ## The create-axiom landing's three (2026-08-14)
@@ -6653,7 +6715,7 @@ asking what refuses FIRST on each half - the icode window was
 refusing images whose baked source the boot arena would have
 accepted, which named both halves (ADR reach + arena cap).
 
-## The capture-index landing's five (2026-08-14)
+## The capture-index landing's four (2026-08-14)
 
 (1) An "identical output" proof needs its OWN control, because the
 thing you add moves the output for a reason that is not your change:
@@ -6668,12 +6730,7 @@ proof, where the image shasum was only a question.
 the VALUE on its own line, so `grep '^DUMP'` compared the labels and
 threw away every number; 5,262 "identical" lines hid 285 differing
 words. Diff the whole block, never a grepped projection of it.
-(3) A mutation that the CHECKER rejects has tested nothing. Two
-"caught" mutations were `habu: at 'X' after 'exit'` - dead code after
-an early exit, never loaded, never run. A mutation must COMPILE; swap
-the condition for a tautology (`e 0 >=`) instead of deleting the
-branch.
-(4) The two branches that a hash index exists to get right are exactly
+(3) The two branches that a hash index exists to get right are exactly
 the two that a small fixture cannot reach. The dictionary held ZERO
 records sharing an xt at REPL scale (two once the compiler chain is in
 the window), so a last-index-wins mutation passed every gate; five
@@ -6682,7 +6739,7 @@ comparison entirely passed too. Both needed a fixture built on
 purpose - an `EXPORT` alias for the duplicate, a computed colliding
 triple (AAAC/AACC/QZS) for the chain - and each needs a guard that
 reds when the fixture stops being one, or it retires in silence.
-(5) A cure's own cost is a measurement, not a rounding error: the
+(4) A cure's own cost is a measurement, not a rounding error: the
 index build, its proof and two 65,536-slot clears cost 3.1 ms per
 capture, which at REPL scale ate 40% of the 7.6 ms saved (8.60 ms ->
 3.85 ms) and at chain scale was noise against 1.45 s -> 15 ms. Time
@@ -6707,38 +6764,26 @@ the sha), the honest identity proof is a canonical dump of every
 DECISION diffed against a control padded by exactly the
 confounder - not a weaker assertion.
 
-## The bake checkpoint's four (2026-08-15)
+## The bake checkpoint's two (2026-08-15)
 
 (1) When a pass rewinds a cursor, every side effect KEYED on that
 cursor is its to undo - EM-P2-START restores DP and lists its
 resets; the address-map bit is keyed on CP and was not in the
 list. Grep what the rewound cursor INDEXES, not just what the
 word assigns.
-(2) A leaf's count can be right and its diagnosis wrong: exactly
-26, and none was an out-of-window chain. Arming the decline and
-measuring both ways cost one run and refuted the ruling.
-(3) To decide whether a recorded site is real, ask whether the
+(2) To decide whether a recorded site is real, ask whether the
 bytes AT it are the shape the record claims - four raw words and
 an opcode mask separated 3536 live sites from 26 dead ones where
 the values alone said only "not an address".
-(4) git apply inside a .jj-ws workspace silently applies NOTHING
-and exits 0 (jj workspaces are subdirectories of the git
-toplevel; git-apply drops paths outside the cwd subtree).
-Restore with jj file show; verify the BYTES changed, never the
-exit code.
 
 ## The map-rewind landing's five (2026-08-15)
 
-(1) A diagnosis that names ONE consumer of a rewound cursor is a
-hypothesis about how many there are. The leaf named the address
-map; the same rewind orphaned the CALL map too, and asking the
-question of both bands in one scan cost one probe: 26 stale
-address records AND 17 stale call records over the compiler
-chain, 15 of them on words that are not calls. Two of the 17 sat
-on words that ARE calls, so that half was not even fail-closed -
-the relocation pass would have shifted a displacement that never
-needed shifting. Sweep every band the cursor indexes before
-believing a count.
+(1) Sweep every band a rewound cursor indexes before believing a
+count (the leaf named only the address map; see PROBE THE LEAF).
+Of the 17 stale CALL records, 15 sat on words that are not calls;
+the other two sat on words that ARE calls, so that half was not
+even fail-closed - the relocation pass would have shifted a
+displacement that never needed shifting.
 (2) The tree had already written the fix down, for the other
 writer: NPUBWIN CLEAR-CALLMAP-SPAN clears the call map over a
 republished span and its prose states the invariant ("the map
@@ -6765,19 +6810,17 @@ check what counts its tokens.
 
 ## 2026-08-15 - the prelude-band landing (bake-chain-4)
 
-(1) A ruled design survived contact with measurement only halfway:
-prelude-first ordering for the capture tool was refuted by 98 of
-18602 call sites (the chain's own closure shares asm.f with the
-prelude), and the foundation's "end-to-end capture" had been
-producing an unbootable seed. A capture that RUNS proves buffers
-and formats; only the band audit proves the seed can BOOT.
+(1) A capture that RUNS proves buffers and formats; only the band
+audit proves the seed can BOOT - the foundation's "end-to-end
+capture" had been producing an unbootable seed. (The refuted
+prelude-first premise is under PROBE THE LEAF.)
 (2) Folding a new refusal into an existing one beat adding a
 second die line: the tried-and-reverted separate DATA refusal
 stole ACAP-UNCLASSIFIED's only producer under the D0-SKEW forge
 and lost a tested stop. When a new check classifies the same bad
 state an old check refuses, extend the old check's diagnostic.
 
-## 2026-08-15 - the callee-staging deletion's five
+## 2026-08-15 - the callee-staging deletion's three
 
 (1) A deletion's baseline is not "the gate is green", it is the
 BAD PROGRAM the mechanism accepts. One source text through both
@@ -6789,12 +6832,7 @@ one text, and the number that made them differ was a parameter.
 After the deletion the probe does not fail at runtime - it fails to
 LOAD (`E-UNDEFINED: NMIGRATE:CALLEE`, rc 70), which is the whole
 point: the lie class dies with the road that could say it.
-(2) The leaf's file list was eight months of drift out of date -
-10 files named, 22 in the tree, 87 sites named, 104 present. A
-scope written as "every remaining reference, proven with rg" is
-drift-proof where a file list is not; check the count before
-believing a leaf's inventory.
-(3) A refusal test is about the mechanism or about the behaviour,
+(2) A refusal test is about the mechanism or about the behaviour,
 and the way to tell is to ask what the input class becomes after
 the deletion. `A:B:C`, `:FOO` and `FOO:` as callee spellings were
 only ever reachable because a CALLER handed them over; a body
@@ -6804,19 +6842,12 @@ The stale-address case was the opposite: its subject (a caller must
 not reach a re-migrated word's old routine) survives, so it was
 converted to assert the copy comes from the LIVE row, and mutating
 the fixture to publish the same body twice reds it.
-(4) Deleting a road can strand a fail-closed guard downstream.
+(3) Deleting a road can strand a fail-closed guard downstream.
 elaborate.f CALLEE-COPY? still holds the recorded inline arity
 against the word model's, but both now come from the checker, and
 a callee migrated under a mismatched arity is refused earlier by
 E-NELAB-ARITY (-8303, probed). The guard is right to keep and now
 has no producer - worth a dot, not a deletion.
-(5) A worktree's `bin/hb` is not its commit. test/p2-map-rewind.f
-red with "expected 37, got 62" - and red identically on unmodified
-master, because the checkout's seed predated master by a day.
-`install --force` cleared it. The honest attribution test is a
-control workspace at master built the same way: both engines came
-out 799f5601..., so the byte change was master's and the diff's
-engine contribution was zero.
 
 ## 2026-08-15 - the arming word and the chain capture tool (bake-chain-5)
 
@@ -6838,15 +6869,6 @@ DP-displacement delta: eight pad builds said nothing, while
 instrumenting the producer's own census (CAPTURE-REPL printing all
 nine captured quantities in both trees) attributed the +4 in one
 build and falsified against a foreign one-byte name change.
-(4) A mutation the checker rejects (live code after `exit`) tests
-nothing - count only mutations that compile and pass the checker.
-(5) A load-sensitive test reds the gate only when the box is busy:
-maki/cad-replay-test.f failed 4/6 under six concurrent instances
-on BOTH the candidate stack and unmodified master, and 12/12 green
-idle. Before blaming the stack, reproduce the red under the same
-load on master - and never run foreground suites concurrently with
-a gate battery on the same box (the first red here was
-self-inflicted exactly that way). Dot: habu-cad-replay-test-8be2ba00.
 
 ## 2026-08-15 - the closure that was already recorded (bake-chain-5b)
 
@@ -6873,27 +6895,22 @@ factoring. Prose in source is also live risk twice over: source-
 shape tests count comment tokens, and baked-source prefixes carry
 comment bytes into the shipped binary.
 
-## 2026-08-15 - the artifact landing's four (bake-chain-6)
+## 2026-08-15 - the artifact landing's three (bake-chain-6)
 
-(1) A ruled design can rest on an unverified premise; the
-cheapest probe is the one nobody ran. "The writer requires
-driver-io.f" was ruled and wrong - one require in bin/hb refuted
-it in four seconds and the assumed route would have dragged the
-Mach-O writer into a portable tool.
-(2) Prose in a lint describing what its fixtures kill is a claim
+(1) Prose in a lint describing what its fixtures kill is a claim
 to falsify. Swapping the shared row comparison for a suffix
 match left the whole suite green - the cheque went four rows
 deep with no fixture covering it.
-(3) A fixture's implicit precondition is arithmetic, and
+(2) A fixture's implicit precondition is arithmetic, and
 arithmetic moves: four wordlist ids walked a control case from
 unprotected to protected. Reproducing on an untouched tree with
 two empty placeholder packages separated "my change is wrong"
 from "my change is first".
-(4) true/false do not exist in the stdin metabuild host
+(3) true/false do not exist in the stdin metabuild host
 (hide.f retires them); host-side sources derive booleans. The
 tree said so in the shape of its neighboring code.
 
-## 2026-08-15 - the comment sweep's three (comment-sweep)
+## 2026-08-15 - the comment sweep's two (comment-sweep)
 
 (1) Prove a comment-only diff with the tree's own lexer, not a
 diff of stripped text: code tokens + string-literal payloads +
@@ -6903,11 +6920,7 @@ IDENTICAL. A grep check would have been the patch.
 (2) Strip mechanically, re-insert constraints by anchor; a
 hand-built multi-range deletion eats a code line eventually
 (one did - the instrument caught it).
-(3) src/arch/arm64/asm.f IS in the engine prefix (srclist
-SL-PREFIX); comment edits leave the sha identical because
-comments compile to nothing, but it is a seed file and install
-belongs before any gate that reads it.
-## 2026-08-15 - the captured-wid rebase's six (bake-chain-7)
+## 2026-08-15 - the captured-wid rebase's four (bake-chain-7)
 
 (1) A wordlist id is a coordinate, not a name. The capture already
 carried code offsets blob-relative and rebased DATA and CODE
@@ -6916,39 +6929,21 @@ that is the whole bug. Naming it that way made the fix a fourth
 instance of a shape the file already had, instead of new
 machinery - and it made the rule fall out: only wid 0, the global
 wordlist, means the same thing in two processes.
-(2) The dot offered two fixes and one of them does not work.
-"Advance WIDN past the highest captured wid before registration"
-governs FUTURE allocation; a captured wid of 209 still registers
-into the wordlist the target's prefix already built at 209. Both
-baselines reproduce with WIDN advancing exactly as proposed. Read
-an offered fix against the failure before implementing it.
-(3) The two spaces were never near each other. The metabuild host
+(2) The two spaces were never near each other. The metabuild host
 compiles the EMITTER (asm/icode/habu1/habu2) and the target's
 prefix compiles the checker and the stdlib, so the host is at wid
 209 where the target is at 284 - measured, not close. The chain
 capture clears the target by exactly 4 wids, and those 4 are the
 capture tool's own two packages.
-(4) A guard with no producer passes every mutation. Deleting the
-seed's out-of-window refusal left the whole suite green, because
-the capture-side audit refuses that state first and nothing could
-bake it. The cure was a forge that moves the baked window AFTER
-the capture - and it takes a fixture that captures a NON-ZERO wid
-at all, which the REPL sources (no package anywhere) never do.
-(5) Two bound checks were one. Deleting the "below the window"
-branch changed no verdict: the subtraction wraps a low wid to a
-huge unsigned value, so the single unsigned span test already
-refused both sides. The mutation that proved a check redundant is
-the one that deleted it.
-(6) Generated fixture text is compiled INSIDE the capture window,
+(3) Generated fixture text is compiled INSIDE the capture window,
 so it may only call what the TARGET has. A burn loop written with
 the host's own AOT-ARM:WIDN baked a name no target defines and the
 engine died exit 81 - the boot BL-range assertion, because an
 unresolved callee's displacement is enormous. Primitives and
 layout constants only, in anything the window will compile.
-(7) The stdin host's own band claim is the same class and is
+(4) The stdin host's own band claim is the same class and is
 false today - dotted habu-stdin-host-s-5a992a38: declare bands
 where the marks are true, or the audit fires never.
-
 
 ## 2026-08-15 - the merge landing's three (bake-chain-8)
 
@@ -7027,12 +7022,16 @@ callee's answer. Use a register the call does not own.
 
 ## 2026-08-16 - the census lessons (bake-chain-11, dots c970bf04 + b8fec035)
 
-- **A per-record scan cannot see a link that sits at start+len.** Every
+- **A per-record scan cannot see what sits outside a record's span, and a
+  recorded LENGTH is not a routine's extent** (2026-08-10, 08-16). Every
   earlier walk of the merged engine went record by record and missed
   the does>-link entirely, because the branch LDOESPATCH plants lives
   one word PAST the record's span and no span covers it. A contiguous
   scan of the whole code region found it in one pass, and the offset
-  it sits at is the signature of the whole class.
+  it sits at is the signature of the whole class. The same gap the other
+  way round: `START+LEN+4` is not the next start (measured: 554 baked
+  records where it is not), so derive floors from starts and slot-ordering,
+  never from lengths.
 - **A completeness audit with a permanent false-positive population is
   not the check to keep.** "The word at start+len is ret" answered 102
   in the merged engine and 98 in bin/hb, and ~59 of those are records
@@ -7048,13 +7047,6 @@ callee's answer. Use a register the call does not own.
 
 ## 2026-08-16 - the does-clause record (bake-chain-12, dot c970bf04)
 
-- **The engine's own dictionary is the shortest path to a diagnostic.**
-  The question "what do the three broken branches point at" was
-  answered in one capture run by 40 lines of temporary Habu inside
-  `aot-capture.f` - names, wids and record indices printed straight
-  from the live dictionary the capture already indexes - after two
-  lanes of debugger and breakpoint work had localised the crash but
-  not its cause. Put the probe where the data already is.
 - **A pre-window definer is the whole class.** Only three of the
   chain's 45 does>-links were broken, and the discriminator is not
   which definer made them: it is whether the definer's body was
@@ -7111,14 +7103,6 @@ callee's answer. Use a register the call does not own.
 
 ## 2026-08-16 - the load-time installers (bake-chain-13, dot 072becbc)
 
-- **A survey of "every top-level effect" that reads for installers finds
-  the installers it expects.** The dot bounded the class at two by
-  reading `src/compiler/native/`; there are four, and the two it missed
-  (`inline.f:358`, `publish.f:479`) are in the directory it read. What
-  found them was not a better read but a measurement with no opinion:
-  `CODE-RECLAIM:WATCHERS` is 0 when the window opens and 3 when it
-  closes. `habu2.f:5334` had said "the chain's 3 CODE-RECLAIM:WATCH
-  sites" in a comment all along.
 - **Ask the registry, not the source.** The engine already records every
   cell an execution token is stored into - `is` into a `defer` and
   CODE-RECLAIM's watcher table alike - so "how many pre-window cells did
@@ -7187,7 +7171,7 @@ callee's answer. Use a register the call does not own.
   well-formed is not runs.
 
 
-## 2026-08-16 - the audit execution's three (audit-fix)
+## 2026-08-16 - the audit execution's two (audit-fix)
 
 (1) An isolation build attributes a seed-affecting byte delta in
 seconds: rebuild with ONE constant reverted and everything else
@@ -7197,20 +7181,9 @@ DATA cursor" with no disassembly.
 and one had already drifted ($514800 short by two sections);
 the executed AGREE never noticed because it compares the rounded
 sum. Derive in code, not in prose.
-(3) A test's unique content is only worth keeping if a producer
-can reach it: XTSITE discriminated one real mutant, and the
-classifier that would have to emit that row returns early for
-exactly the values that make it possible. Deleted on
-producibility, not on taste.
 
-## 2026-08-17 - the seeded signatures' five (bake-chain-19)
+## 2026-08-17 - the seeded signatures' three (bake-chain-19)
 
-- **A ruling's lookup key can be right about the mechanism and wrong
-  about the data.** The intake was ruled to read FAILTK, and FAILTK is
-  not the unresolved token: DO-TOK1 pins EVERY token until a failure
-  latches FAILSET, so `: T ( -- ) SEEDED dup ;` pins `dup`. The probe
-  that proved the retry used a body whose seeded name was last. Check
-  what a pinned value is pinned BY before building on it.
 - **The completeness audit found the fix's own next bug twice.** The
   window-record walk refused first when the type registry's delta was
   read live at capture time (it counted the capture tool's own
@@ -7229,34 +7202,9 @@ producibility, not on taste.
   refused the second, which looked exactly like a registry that had
   been installed and then lost. A dumper over the artifact's own bytes
   answered it in one run; two hours of reasoning had not.
-- **A control build of master IN THE LANE'S OWN WORKSPACE is the only
-  honest attribution.** One red out of nine looked environmental until
-  master's tree, built and tested in the same workspace with the same
-  HB_TMP, passed it. Save the working copy, `jj new master`, build,
-  test, restore - three minutes, and it turns "probably not mine" into
-  a fact either way.
 
-## 2026-08-17 - the bake-chain-22 lane's eight
+## 2026-08-17 - the bake-chain-22 lane's five
 
-- **Run the break-and-watch, do not inherit it.** Two handoffs carried
-  "registered and selected, so it runs". One deliberately inverted
-  assertion and one full battery settled it in four minutes, and the
-  answer was no.
-- **DUMP THE RECORD BEFORE NAMING THE PRODUCER, three more times.**
-  A handoff recorded the diagnostics slice as throwing -2102 E-FS-OPEN
-  entering FILE-ORIGIN; the code is -2201 E-STR-CAPACITY and the case
-  is PUBLIC-SIGNATURES, in a different slice entirely. Another
-  recorded the build-fixpoint reds as emitted-stage2 CONTAINS pins;
-  mapping the run ordinals to subtests put them in the stale-install
-  sandbox, the cert-inject sandbox and the stamp fold. A third called
-  the whole class pre-existing; the same tree's own unseeded engine
-  passes every one of them. Numbers, ordinals and codes are cheap to
-  read and expensive to assume.
-- **Assert ordinals are not line numbers - label them or map them.**
-  `TFAIL assert 41` names nothing, because lib/test/assert.f clears
-  the label after every assertion, so only a subtest's first assert
-  carries one. Printing T-CASES at each subtest boundary turned ten
-  anonymous failures into three named root causes in one run.
 - **A negative case that passes for the wrong reason hides its
   positive twin.** The stamp fixture searched the preimage for the tag
   `chain-src` after the key started writing `capture-src`. The
@@ -7301,18 +7249,11 @@ producibility, not on taste.
   silence. Merge ruling TEXT by union; rebase code onto the stack
   tip. Check `ancestors(master) & <your commits>` before believing a
   rebase is a fast-forward.
-- **Break-and-watch before trust, every time.** Two handoffs carried
-  "registered and selected, so it runs" for a suite the battery never
-  ran. Four minutes of inverting one assertion answered what a lint's
-  green had not. A registration is a claim; a red is evidence.
-- **A test that restates the implementation's bounds cannot fail.**
-  Asserting a manifest holds exactly the rows between the walk's two
-  bounds repeats the walk. The assertion that does work is the
-  CONSEQUENCE the bounds were chosen for - a family the engine
-  arrived with must not be named in a scanned file's manifest - and
-  it reds the moment the bound is removed. The same trap was caught
-  one lane earlier when a layout case restated CODE-BAND:BYTES'
-  definition; it is the lane's most repeated mistake.
+- **Break-and-watch before trust, every time — run it, do not inherit it.**
+  Two handoffs carried "registered and selected, so it runs" for a suite the
+  battery never ran. One deliberately inverted assertion and one full battery
+  settled it in four minutes, and the answer was no; that is what a lint's
+  green had not answered. A registration is a claim; a red is evidence.
 - **ONE FACT, ONE WORD - three defects in this lane were one fact
   spelled twice.** The stamp tag lived as a literal in the tool and
   again in its fixture, so a rename broke the fixture silently. The
@@ -7365,20 +7306,6 @@ producibility, not on taste.
   ONE string; reverting the compose reds seven of them. Nothing else in
   the tree had noticed, because every earlier case searched only the
   stderr half.
-- **Derive the relationship instead of testing it.** `SKIP-SECTION`
-  refused a section wider than its scratch buffer. The only section it
-  skips has its length pinned by `?EXACT` before the loop begins, so the
-  branch was dead - and deleting it alone would have left a silent
-  overflow for whoever raises `PROT-WID-MAX`. Declaring
-  `CHUNK = max(PROT-BITS-BYTES, $10000)` makes the buffer wide enough by
-  construction and cannot rot; the case that forges the bitmap's width is
-  the pin's own standing proof.
-- **A leaf's QUANTITIES age as fast as its verdicts.** The audit recorded
-  ~85 duplicated lines between the bake tool and the wid builder. The
-  bake tool had since become a thin caller, so the real duplication was
-  ~30 lines between two DIFFERENT files. Re-measuring is a grep; taking
-  the number on faith would have refactored a file that no longer had the
-  problem. (Probe-the-leaf, for the ninth recorded time.)
 - **`dot off` is not "release the claim".** It closes and archives, so an
   unfinished dot handed back reads as done and its leaf leaves the tree.
   Reopening is a hand edit of the front matter plus moving the file out of
