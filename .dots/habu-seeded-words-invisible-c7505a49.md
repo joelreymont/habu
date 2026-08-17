@@ -324,3 +324,28 @@ intake) with the pv:zpl mutation pin.
 (3) The CHECK-CANDIDATE! retry-snapshot fix (seal candidates
 answering identically on product and host, caught by ir-context's
 seal battery) is noted as increment-C completion, not new scope.
+
+DICT-CAPACITY RULING 2026-08-17 (bake-chain-21's record: seed
+delta exactly 6892 records constant across all 193 files; the
+monolithic inventory needs 33,302; master was ALREADY under its
+own 25% standard unseeded at 26,410x1.25 - the bump was owed
+before the seed, the seed made it fail; and the STRUCTURAL
+SURPRISE - REGION holds dict AND code, so a dict lift alone
+leaves 36KB of code band):
+(1) DICT-CAP 65,536 - Q1 answered: NOT 49,152; picking a cap to
+dodge an encoder limit is the convenience the review gate
+refuses, and the HIDX-SLOTS = 2x identity stays whole. The
+786KB snapshot cost is real and noted, not deciding.
+(2) REGION $A00000 AND the named CODE-AREA constant - the
+coupling becomes a constant a reader sees instead of a
+subtraction nobody performs. Approved as the structural half.
+(3) The cascade as tabled: nine MOVZ sites to LIT64 (the
+HIDX-SLOTS precedent), the four-file mirror set (forth.fs,
+Reloc.v region_bytes, the frozen reloc-schema literal) - the
+parity gate enforces it in every direction.
+(Q2) THE HEADROOM PROBE IS APPROVED - it passes the new-
+mechanism test exactly: the failing probe is this very red (the
+wall blamed an innocent file, the prot-wid-probe shape), and
+the named first consumer already exists (maki/test.f's closing
+REQUIRE-ROOM). Dict and code headroom on one line, fail-closed
+at a floor stated as a fraction of the bound.
