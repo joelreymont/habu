@@ -8,7 +8,10 @@ created-at: "\"2026-08-16T21:18:22.839047+02:00\""
 
 P1, blocks the product becoming bin/hb (re-minted 2026-08-16 - the first leaf was lost uncommitted in a working-copy jump, the jj-new lesson). DEFECT: an AOT-seeded word is in the runtime dictionary but not the checker's record set; ': T2 ( -- ) BPW-INSTALL ;' dies 'hook: non-certified definition' on TODAY's engine; one TRUST row closes it completely (measured) - the missing thing is a checker symbol + effect record, nothing else. THE BLIT SHAPE IS REFUTED (bake-chain-17 probe): USIGS is one of ~35 persistable checker surfaces (CHECKER-SNAPSHOT-PREPARE enumerates them); signature rows name TYPE-FAMILY IDS (EN.H, identity by id, 70 families created in-window, 3712 role-qualified refs) and SYM string POINTERS - a blitted USIGS names family 111 in an engine holding 49. Route 1 (full blit) = 7.9MB + the tree's first artifact pointer-rebase + ~18ms every boot; Route 2 (eager text replay) = 85ms every boot, priced out. RULED: ROUTE 3 - lazy intake at the checker's existing miss seam (checker.f:8354 DO-TOK, one leg before UNDEFERR consulting a baked name->signature-text pool): zero cost for boots that never name a chain word, 12.5us per distinct referenced word, NO id remap; capture audit = every window dict record has a signature row or the capture refuses by name. SUB-PROBE FIRST: render->re-parse fidelity for sig-less inferred words (REND-SIG refuses unmodeled tags and >26 tyvars) - measure the sig-less share of the 6798 and round-trip before committing. FAMILY REGISTRY travels WITH this fix via the existing REG-EXT-PERSIST machinery (tens of KB) and the acceptance GAINS a family-typed reproducer - a family-typed chain word called from checked code must work or refuse loudly (the lucky-value gap named at checkpoint); if the registry work explodes on contact, checkpoint. Acceptance: both original reproducers + the family-typed one green in both engines; bin/hb --load icode.f green in the product; signature-carry mutation reds by name; then increment 3 (stacked WIP cf4ad8b1) rebases, its battery re-runs ON the product, both land, e98b03d4 closes. Also: fix the leaf's stale 'AOT seed is TTY-ARMED' structural fact (seeds at prefix-stream end in every mode since 2026-08-11).
 
-Claim: agent=bake-chain-22 workspace=.jj-ws/habu-bake-chain
+
+Claim: agent=bake-chain-22 workspace=.jj-ws/habu-bake-chain (leaves B
+and the region-room hole closed; leaf C diagnosed and dotted;
+increment 3 still BLOCKED pending 2f9cc56d)
 
 SUB-PROBE GREEN 2026-08-16 (bake-chain-17, ruling 2). Over
 `require src/compiler/native/migrate.f` in a booted bin/hb: 2003
@@ -888,3 +891,105 @@ the lint-tools slice passed, so the suite's presence IN the gate
 rests on the schedule lint's answer, not on observed output. The
 2026-08-15 lesson's own recipe - break one assertion and watch
 the full gate go red - has NOT been run for it.
+
+BAKE-CHAIN-22 CLOSE 2026-08-17. Three commits on 2ca699d4:
+ef22bee0 the region-room fork, a413b3a8 the build-fixpoint
+fixtures, c1145b21 the code ratchet.
+
+(1) THE REGION-ROOM SUITE WAS DARK and the owed break-and-watch
+found it. One inverted assertion, full battery, same six reds, no
+pool log naming it. REASON: phase 17 is RESIDENT, so test/run.f
+forks test/run-worker-stdlib.f -> GSI-LINT-TOOLS ->
+test/gate-stdlib-lint-tools.f, and that body's fork list is the
+only thing it reads; a SUITE row plus a label predicate schedules
+the STANDALONE `test/gate-stdlib.f -- lint-tools` run and nothing
+else. tools/lint/schedule-lint.f SLICE-AT counts a slice live
+from PHASE-SLICE-TOKEN without asking TEST:PHASE-RESIDENT?, so it
+answered covered. Measured: 233 registrations, 8 label-only under
+a resident-only slice (tool, check-cli, lint-tools), 7 of them run
+anyway through the GSI body's own call, region-room genuinely
+dark. Fixed with a fork in the GSI body; row and predicate stay.
+Proven both ways: broken -> `RED: lint-tools/region-room`;
+restored -> `PASS: lint-tools/region-room (31ms)` in the full
+battery. Lint hole dotted habu-schedule-lint-resident-8b020630.
+
+(2) LEAF (B) IS THREE ROOTS, none the one the handoff named.
+Ordinals mapped by printing T-CASES per subtest: 41/42 `stale seed
+install`, 46/47/49 `cert inject install`, 62 `chain stamp fold`,
+148/149/155/156 `snap trailer`. `stage2 source` is 92-116 and was
+green throughout.
+ (B1) Both sandbox subtests died `-2102` with an EMPTY tmp:
+ BF-STAMP-MATCH? calls CHAIN-RECORD first, ENTRY$ is
+ tools/aot-chain-capture.f, and the sandbox copied only
+ build-fixpoint.f's require closure. It now copies ENTRY$'s
+ closure, asked from the tool.
+ (B2) The key writes `capture-src`; FRAGMENT$ searched for
+ `chain-src`. The positive failed, the negative passed for the
+ wrong reason. Both take BF-STAMP-CAPTURE-TAG$ now.
+ (B3) BFT-SNAP0-BUILD built from `hb-stdin`, the seeded product;
+ the build uses `hb-host` because a restore skips the AOT seed.
+ Exit 82 `hb: AOT call site unresolved` was the seed refusing
+ correctly about an engine production never asks for. Both ask
+ BF-SNAP-ENGINE$ now.
+ MUTATIONS, each alone, each redding only its own asserts: drop
+ `ENTRY$ COPY-CLOSURE` -> 41/42/46/47/49; drop the capture digest
+ from the key -> 62; BF-SNAP-ENGINE$ back to hb-stdin ->
+ 148/149/155/156 with the same 82. Fixture rc 0 in 40s.
+
+(3) LEAF (C) IS ONE DEFECT, IT IS OURS, IT IS DOTTED, AND IT
+BLOCKS THE CLOSE. Code is -2201 E-STR-CAPACITY (not -2102) and the
+case is PUBLIC-SIGNATURES (not FILE-ORIGIN, which is in the
+file-unsafe slice and green). PS-EMIT-REGISTRY walks TFAM-N@ over
+the LIVE engine and stamps every public family's rows with the
+SCANNED FILE: seeded, examples/llm/good.f reports 386 definitions
+in 60,491 bytes; the same tree's bin/hb-host reports 13 in 1,982.
+GT-OUT-CAP is 32768, so the diagnostics repair slice and GROUP
+stdlib/tool-doc (tools/public-signatures-test.f, 24 failures on
+the product, GREEN on the host) both overflow. NOT pre-existing.
+The fix is a product choice - load-time high-water base vs
+declared-in-file filter, cap growth refused - so it is
+CHECKPOINTED: habu-public-signatures-publishes-2f9cc56d.
+
+(4) THE CODE RATCHET, attributed by building each commit and
+diffing its HABU_ENGINE_SIZE_MAP against its parent's:
+135488 -> 281da640 135560 (+72: +52 compile/exit for
+AOT-SIG:INSTALL,'s thirteen instructions, +20 aot-seed for the
+CK-AOT-REG-INSTALL name) -> 2ca699d4 135648 (+88: interpret/define
++16, primitives/find +16, find-wl +8, find-used +8, hash-index
++24, qualify-def +16 - the six phases that materialise the raised
+caps). container/text-pad 7872 -> 7712 absorbs all 160 in the same
+16 KiB page, so the file stays 165367. MACOS-CODE-TEXT ->  135648,
+MACOS-FLOOR-DIST -> 8672; manifest self-check and the live
+SIZE-ATTR coupling both green.
+
+(5) NUMBERS OF RECORD, idle box, 7 runs each, high and low
+dropped, `--load` of a one-line program:
+  bare (hb-host, empty)            251.4 ms  [was 258.3]
+  source-chain (hb-host, require) 1255.2 ms  [was 1353.3]
+  baked-chain (bin/hb, require)    261.0 ms  [was 353.2]
+  baked-no-chain (bin/hb, empty)   259.8 ms  [was 261.1]
+THE BAKE REMOVES 994.2 ms PER CHAIN BOOT (-79.2%); the seed costs
+8.4 ms on a boot that never names a chain word. Through a real
+consumer (same require plus `using A64ASM : BENCH-T ( n -- n )
+ENC-B ;`, which drives the lazy intake): 1234.2 ms host vs 256.3
+ms product, -977.9 ms. Install --force 16.80 s then 16.89 s,
+byte-identical twice (bin/hb 58bd8a1f..., hb-host 8ddfbebd...),
+artifact fixpoint held both times.
+CERTIFIED WALK, host census per commit: 9e9263e7 4571 | 331a549a
+4571 | 281da640 4574 | c4e108d8 4574 | 08f715cd 4577 | 136ca999
+4578 | de5dcdd2 4578 | 2ca699d4 4578 | current 4578. The 4474 leg
+is below this stack's base and was NOT re-measured: master's tree
+will not build under this lane's engine (bin/hb and bin/hb-host
+both exit 82 with empty stdout and stderr), so that control needs
+master's own bootstrap engine.
+
+(6) BATTERY 6 RED -> 3 RED. Newly green: build-fixpoint-fixtures,
+native stdlib tail slice, native engine build slice. Still red:
+the diagnostics repair slice, GROUP stdlib/tool-doc, and the
+diagnostics group wrapper - all three are 2f9cc56d.
+OTHER GATES: `bin/hb --load maki/test.f` rc 0 on the PRODUCT;
+judge --check 46 rows agree; error-code, stdin-closure, namespace,
+dot-dep and schedule lints 0 findings; both diff lints exit 0.
+INCREMENT 3'S BLOCKED MARKER IS NOT LIFTED - the battery is not
+honest-green, which was the condition. It lifts when 2f9cc56d
+lands.

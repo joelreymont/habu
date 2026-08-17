@@ -7245,3 +7245,68 @@ producibility, not on taste.
   HB_TMP, passed it. Save the working copy, `jj new master`, build,
   test, restore - three minutes, and it turns "probably not mine" into
   a fact either way.
+
+## 2026-08-17 - the dark suite and three wrong producers (bake-chain-22)
+
+- **A schedule lint can only answer the question it asks.** The region
+  headroom suite was a SUITE row in test/gate-stdlib-cases.f, selected
+  by the lint-tools predicate, and the schedule lint said it was
+  covered - because it reads test/run-lib.f's phase-to-slice map and
+  never asks TEST:PHASE-RESIDENT?. Phase 17 is resident: test/run.f
+  forks test/run-worker-stdlib.f, which runs the in-process GSI body
+  and loads no registration at all. Breaking one of the suite's
+  assertions left the whole battery green. Registration plus a
+  predicate is not scheduling; only the list the runner actually forks
+  is. Dotted as habu-schedule-lint-resident-8b020630.
+- **Run the break-and-watch, do not inherit it.** Two handoffs carried
+  "registered and selected, so it runs". One deliberately inverted
+  assertion and one full battery settled it in four minutes, and the
+  answer was no.
+- **DUMP THE RECORD BEFORE NAMING THE PRODUCER, three more times.**
+  A handoff recorded the diagnostics slice as throwing -2102 E-FS-OPEN
+  entering FILE-ORIGIN; the code is -2201 E-STR-CAPACITY and the case
+  is PUBLIC-SIGNATURES, in a different slice entirely. Another
+  recorded the build-fixpoint reds as emitted-stage2 CONTAINS pins;
+  mapping the run ordinals to subtests put them in the stale-install
+  sandbox, the cert-inject sandbox and the stamp fold. A third called
+  the whole class pre-existing; the same tree's own unseeded engine
+  passes every one of them. Numbers, ordinals and codes are cheap to
+  read and expensive to assume.
+- **Assert ordinals are not line numbers - label them or map them.**
+  `TFAIL assert 41` names nothing, because lib/test/assert.f clears
+  the label after every assertion, so only a subtest's first assert
+  carries one. Printing T-CASES at each subtest boundary turned ten
+  anonymous failures into three named root causes in one run.
+- **A negative case that passes for the wrong reason hides its
+  positive twin.** The stamp fixture searched the preimage for the tag
+  `chain-src` after the key started writing `capture-src`. The
+  positive assertion failed; the negative one beside it went on
+  passing, because an absent tag is absent whichever name you look
+  for. Both now take the tag from the tool.
+- **What a sandbox must carry is a function of what the tool opens,
+  not of what it requires.** The stale-build sandbox copied the
+  refresh tool's require closure, and the stamp key had grown a second
+  closure walk over the CAPTURE tool - opened before `--force` is even
+  read, before anything is written. Every fault the fixtures inject
+  came back as one bare uncaught throw. Ask the tool for its entry.
+- **Two engines mean two ways to be wrong, and a fixture inherits
+  neither.** The build learned to make the snapshot from the capture
+  host, because a restore skips the AOT seed; the fixture kept naming
+  the product and got exit 82, `hb: AOT call site unresolved`. That
+  was the seed refusing correctly about an engine production never
+  asks for. When a build rule picks one of two engines, the rule is a
+  word both callers ask, not a literal each spells.
+- **A seed makes every "the live registry" query a different
+  question.** tools/public-signatures-core.f publishes a ctor row for
+  every public family in the process and stamps it with the scanned
+  file. Unseeded that was a handful; seeded it is the whole baked
+  chain, so a 13-definition file reports 386 definitions and overflows
+  every consumer's buffer. The same tree's bin/hb-host answers 13.
+  Any tool that reads a global table and attributes it to a local
+  subject is owed this audit before a seed lands.
+- **Attribute a ratchet by building the commits, not by counting
+  instructions.** +160 of engine text split 72/88 across two commits,
+  and each half landed in named rows of the size map - measured by
+  extracting each commit's tree, installing, and diffing its map
+  against its parent's. Three builds, two minutes, and the prose can
+  say which rows and why.
