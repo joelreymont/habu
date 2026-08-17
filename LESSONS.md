@@ -7336,3 +7336,24 @@ sum. Derive in code, not in prose.
   resolved by the fixture partition: `test/compiler/ir-id-host.f` runs it
   on the capture host, where the require actually reads the file. Phase 0
   of the partition ruling has no other standing record, so it has this one.
+
+## 2026-08-18 - the single-prefix closing five (single-prefix-4)
+
+(1) A nondeterministic pass rate is a symptom, not noise: one
+passing run in ten meant the stale store landed on a mapped page
+and corrupted it SILENTLY; rerunning until green would have
+shipped it.
+(2) Removing a redundant load can expose persisted-pointer bugs
+anywhere: a double load re-runs every "variable X-P X-BOOT X-P !"
+and hides a missing snapshot re-arm. The ASLR intersect (two
+runs of one image; persisted pointers identical, live ones vary)
+is the class's detector - recorded in docs/debugging.md.
+(3) When a module's own header states a contract, check whether
+anything implements it - decl-event.f's promised snapshot re-arm
+had been unimplemented since the file landed.
+(4) Build a master baseline before blaming your lane: two
+exports, two builds, two live-cell reads settled in minutes what
+argument could not.
+(5) lldb -b returns to an interactive prompt on a crash and
+silently drops remaining -o commands; use -k for crash commands,
+and --no-lldbinit.
