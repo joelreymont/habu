@@ -75,11 +75,16 @@
 \
 \ WHAT THE READER REFUSES, each by name and each fail-closed: a wrong magic, a
 \ wrong version, a wrong target, a wrong section count, a producer that is not the
-\ engine this build made, a file whose length disagrees with its header, a payload
-\ whose digest disagrees, a section table that is not contiguous or steps outside
-\ the payload, a section longer than the buffer it fills, a section length that is
-\ not a whole number of rows, a closure list that does not walk to its own end, and
-\ a chain digest that does not re-derive from the files on disk.
+\ engine this build made, a payload too short to hold its own section table, a file
+\ whose length disagrees with its header, a payload whose digest disagrees, a
+\ section table that is not contiguous, a section with a negative length, one that
+\ runs past the payload, a set of sections that does not fill it, a fixed-width
+\ section that is not its fixed width, a section longer than the buffer it fills, a
+\ section length that is not a whole number of rows, a closure list that does not
+\ walk to its own end, a second pass that did not read what the first one verified,
+\ and a chain digest that does not re-derive from the files on disk.
+\ Every one of them has a case in test/aot-chain-capture-suite.f, forged against a
+\ real artifact and run through the production reader in a child process.
 \
 \ TWO ENTRY POINTS OVER ONE MACHINERY. READ fills the buffers with the artifact,
 \ bases and all, and is what the round trip and the fixpoint compare. MERGE
@@ -134,12 +139,17 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 \ exceed 8 + 256 * (8 + 256) = 67592 bytes. The cap is the next round number above
 \ it and the overflow is refused rather than truncated.
 $20000 constant CLOSURE-CAP
-$10000 constant CHUNK                \ read granularity for the verify pass
+\ The verify pass's read granularity, and the floor under it is the widest
+\ section a merge reads PAST without keeping. SKIP-SECTION fills CHUNK-BUF in one
+\ GET, so the buffer is DERIVED from that section instead of being guarded
+\ against it at read time: a length check there would be a value test for a
+\ relationship the declaration can state.
+$10000 constant CHUNK-FLOOR
+PROT-BITS-BYTES CHUNK-FLOOR max constant CHUNK
 
 $4B constant REFUSE-RC
 
 create HDR HDR-BYTES allot           \ the header as written, or as read in pass 1
-create HDR2 HDR-BYTES allot          \ ... and as re-read in pass 2, compared byte for byte
 create TBL SEC-N ROW-BYTES * allot
 create SCAL SCAL-BYTES allot
 create CBUF CLOSURE-CAP allot        \ the closure list, assembled or read back
@@ -294,6 +304,33 @@ variable CUR
    k S-SIGSTR  = if s" signature strings" exit then
    k S-REG     = if s" type registry" exit then
    s" closure list" ;
+
+\ A refusal that names a section has to arrive on ONE stream. `type` writes to
+\ stdout and `die`'s message to stderr, so a caller keeping only stderr read
+\ " has a negative length" with no subject and could not say which section. The
+\ sentence is composed here instead. The cap covers the longest name and the
+\ longest tail with room to spare, and outgrowing it is a refusal of its own
+\ rather than a truncated one.
+$80 constant MSG-CAP
+create MSG MSG-CAP allot
+create MSG-SP 1 allot
+variable MSG-U
+$20 MSG-SP c!
+
+: MSG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   MSG-U @ u + MSG-CAP > if
+      s" aot-file: a section refusal outgrew its own message buffer" DIE
+   then
+   a MSG MSG-U @ + u BYTE-COPY
+   MSG-U @ u + MSG-U ! ;
+
+: SECT-DIE ( n ptr u8 n -- ) {: k:n t:ptr tu:n :}
+   0 MSG-U !
+   s" aot-file: section " MSG+
+   k SEC-NAME MSG+
+   MSG-SP 1 MSG+
+   t tu MSG+
+   MSG MSG-U @ DIE ;
 
 \ ---- where each section's bytes sit in its buffer ----------------------------
 \ THE ONE THING READ AND MERGE DISAGREE ABOUT. Every other question - which
@@ -477,36 +514,26 @@ private
       s" aot-file: the artifact's payload does not match its payload digest" DIE
    then ;
 
-\ Pass two re-reads the header and requires it byte for byte. The file changing
-\ between the two passes is then a refusal rather than an assumption, and the
-\ running digest below closes the same hole over the payload.
-: ?SAME-HEADER ( -- )
-   HDR HDR2 HDR-BYTES BYTES= if exit then
-   FD @ close
-   s" aot-file: the artifact changed while it was being read" DIE ;
-
 : ?TABLE ( -- )
    SEC-N ROW-BYTES * CUR !
    SEC-N 0 ?do
       i ROW-OFF@ CUR @ <> if
          FD @ close
-         s" aot-file: section " type i SEC-NAME type
-         s"  does not start where the table says the last one ended" DIE
+         i s" does not start where the table says the last one ended" SECT-DIE
       then
       i ROW-LEN@ {: len:n :}
       len 0 < if
          FD @ close
-         s" aot-file: section " type i SEC-NAME type s"  has a negative length" DIE
+         i s" has a negative length" SECT-DIE
       then
       len i SEC-ROW mod 0 <> if
          FD @ close
-         s" aot-file: section " type i SEC-NAME type
-         s"  is not a whole number of rows" DIE
+         i s" is not a whole number of rows" SECT-DIE
       then
       CUR @ len + CUR !
       CUR @ PAYLEN @ > if
          FD @ close
-         s" aot-file: section " type i SEC-NAME type s"  runs past the payload" DIE
+         i s" runs past the payload" SECT-DIE
       then
    loop
    CUR @ PAYLEN @ <> if
@@ -517,14 +544,14 @@ private
 : ?ROOM ( n -- ) {: k:n :}
    k BASE@ k ROW-LEN@ + k SEC-CAP <= if exit then
    FD @ close
-   s" aot-file: section " type k SEC-NAME type s"  is larger than the buffer it fills" DIE ;
+   k s" is larger than the buffer it fills" SECT-DIE ;
 
 \ The two fixed-width sections say their own size, so a short one is a different
 \ shape rather than a smaller one and cannot be filled in part.
 : ?EXACT ( n n -- ) {: k:n want:n :}
    k ROW-LEN@ want = if exit then
    FD @ close
-   s" aot-file: section " type k SEC-NAME type s"  is not its fixed width" DIE ;
+   k s" is not its fixed width" SECT-DIE ;
 
 : LOAD-SECTION ( n -- ) {: k:n :}
    k ?ROOM
@@ -534,14 +561,12 @@ private
 
 \ Read a section past without keeping it. The bytes still feed the running
 \ digest, so a section this build has no use for is still one the second pass
-\ proves it read. CHUNK-BUF is free here: the verify pass that owns it has
-\ finished, and a section too big for it is refused rather than partly read.
+\ proves it read. CHUNK-BUF is free here - the verify pass that owns it has
+\ finished - and it is wide enough by construction: the only section a merge
+\ skips is the protected-WID bitmap, ?EXACT has already pinned that section's
+\ length to PROT-BITS-BYTES, and CHUNK is declared no smaller than that.
 : SKIP-SECTION ( n -- ) {: k:n :}
    k ROW-LEN@ 0= if exit then
-   k ROW-LEN@ CHUNK > if
-      FD @ close
-      s" aot-file: section " type k SEC-NAME type s"  is too large to read past" DIE
-   then
    CHUNK-BUF k ROW-LEN@ GET
    CHUNK-BUF k ROW-LEN@ SHA256-UPDATE ;
 
@@ -613,9 +638,18 @@ private
    s" aot-file: the second pass did not read the payload the first pass verified" DIE ;
 
 \ Everything both entry points do before a single byte lands anywhere: verify the
-\ header, verify the payload against its own digest, reopen, prove the header did
-\ not move, and take the section table. What follows differs only in where the
-\ sections go and what is done to them once they are there.
+\ header, verify the payload against its own digest, reopen, step over the header
+\ and take the section table. What follows differs only in where the sections go
+\ and what is done to them once they are there.
+\
+\ PASS ONE'S HEADER IS THE ONLY HEADER. The second open re-reads those 136 bytes
+\ to move the cursor and then discards them, because every decision - magic,
+\ version, target, section count, producer, payload length, payload digest, chain
+\ digest - was made from the copy pass one verified. A file replaced between the
+\ passes is caught by what pass two DOES read: a table that no longer fits pass
+\ one's payload length is refused by ?TABLE, and any payload that is not the one
+\ pass one verified is refused by ?PAYLOAD-AGAIN against pass one's own digest.
+\ Comparing the two headers as well answered a question no later step asks.
 : LOAD-PASS ( ptr u8 ptr u8 n -- ) {: want:ptr path:ptr pathu:n :}
    path pathu OPEN-RD
    HDR HDR-BYTES GET
@@ -623,8 +657,7 @@ private
    VERIFY-PAYLOAD
    FD @ close
    path pathu OPEN-RD
-   HDR2 HDR-BYTES GET
-   ?SAME-HEADER
+   CHUNK-BUF HDR-BYTES GET
    SHA256-RESET
    TBL SEC-N ROW-BYTES * GET
    TBL SEC-N ROW-BYTES * SHA256-UPDATE

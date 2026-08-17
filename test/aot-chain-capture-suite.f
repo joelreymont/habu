@@ -88,6 +88,8 @@ create LONG-BUF FS-PATH-CAP allot    variable LONG-U
 create PROD1-BUF FS-PATH-CAP allot   variable PROD1-U
 create DPMUT-BUF FS-PATH-CAP allot   variable DPMUT-U
 create BFMUT-BUF FS-PATH-CAP allot   variable BFMUT-U
+create AFMUT-BUF FS-PATH-CAP allot   variable AFMUT-U
+create RDMUT-BUF FS-PATH-CAP allot   variable RDMUT-U
 create DIG 32 allot
 create DHEX 64 allot
 create EHEX 64 allot
@@ -107,6 +109,8 @@ create ART ART-CAP allot    variable ART-LEN
 : PROD1$ ( -- ptr u8 n ) PROD1-BUF PROD1-U @ ;
 : DPMUT$ ( -- ptr u8 n ) DPMUT-BUF DPMUT-U @ ;
 : BFMUT$ ( -- ptr u8 n ) BFMUT-BUF BFMUT-U @ ;
+: AFMUT$ ( -- ptr u8 n ) AFMUT-BUF AFMUT-U @ ;
+: RDMUT$ ( -- ptr u8 n ) RDMUT-BUF RDMUT-U @ ;
 \ SUBJECT: source-loading the chain. The capture and the bake must LOAD the
 \ chain's 43 files, so they run on the CAPTURE HOST the install keeps beside
 \ the product (bin/hb-host) - the product already provides every closure file,
@@ -144,7 +148,9 @@ create ART ART-CAP allot    variable ART-LEN
    s" /chain-under-a-considerably-longer-name.aot" LONG-BUF UNDER-ROOT LONG-U !
    s" /hb-chain-first"  PROD1-BUF  UNDER-ROOT PROD1-U !
    s" /cursor-moved.f"  DPMUT-BUF  UNDER-ROOT DPMUT-U !
-   s" /generator-mutant.f" BFMUT-BUF UNDER-ROOT BFMUT-U ! ;
+   s" /generator-mutant.f" BFMUT-BUF UNDER-ROOT BFMUT-U !
+   s" /reader-mutant.f"    AFMUT-BUF UNDER-ROOT AFMUT-U !
+   s" /read-entry-mutant.f" RDMUT-BUF UNDER-ROOT RDMUT-U ! ;
 
 \ ---- the derived mutant ------------------------------------------------------
 
@@ -237,6 +243,33 @@ create ART ART-CAP allot    variable ART-LEN
    s" the dropped-row mutant is the tool less exactly one line" T-LABEL
    ROWMUT$ FILE-SIZE  SHAPE:TEXT nip b a - -  T= ;
 
+\ ---- deriving a mutant from a real file --------------------------------------
+\ Four case families below are "the real file plus (or minus) exactly one line",
+\ so the anchor check and the splice live here once rather than beside whichever
+\ family was written first. `?ONE` names the FILE it was looking in, because a
+\ single message now serves anchors in four of them.
+
+: FIND-OFF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   SHAPE:TEXT a u FIND-SUB MATCH option
+     none OF -1 ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
+
+: ?ONE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n f:ptr fu:n :}
+   a u SHAPE:COUNT 1 = if exit then
+   s" aot-chain-capture-suite: anchors in " type f fu type s" =" type
+   a u SHAPE:COUNT .
+   s" aot-chain-capture-suite: a derived-mutant case cannot be built" STOP-RC die ;
+
+\ text[0,cut) + inject + text[cut,end)
+: SPLICE ( ptr u8 n n ptr u8 n -- ) {: dst:ptr dstu:n cut:n inj:ptr inju:n :}
+   SHAPE:TEXT drop {: src:ptr :}
+   dst dstu src cut WRITE-ALL
+   dst dstu inj inju APPEND-FILE
+   dst dstu src cut +  SHAPE:TEXT nip cut -  APPEND-FILE
+   s" the mutant is its file plus exactly the injected line" T-LABEL
+   dst dstu FILE-SIZE  SHAPE:TEXT nip inju + T= ;
+
 \ ---- one child engine run ----------------------------------------------------
 
 : EXEC ( -- )
@@ -267,15 +300,21 @@ create ART ART-CAP allot    variable ART-LEN
    ART$ >LEN PROC-ARGV+
    EXEC ;
 
-\ The production reader, run on whatever bytes the case put at CASE$.
-: RUN-READ ( bool -- ) {: mm:bool :}
+\ The production reader, run on whatever bytes the case put at CASE$. `entry` is
+\ the file that loads AOT-FILE:READ; the one case below that has to reach a
+\ refusal only a defective READER can raise passes a derived copy of it instead.
+: READ-ENTRY$ ( -- ptr u8 n ) s" test/aot-file-read.f" ;
+
+: RUN-READ-WITH ( ptr u8 n bool -- ) {: e:ptr eu:n mm:bool :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" test/aot-file-read.f" >LEN PROC-ARGV+
+   e eu >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    CASE$ >LEN PROC-ARGV+
    mm if s" mismatch" >LEN PROC-ARGV+ then
    EXEC ;
+
+: RUN-READ ( bool -- ) {: mm:bool :} READ-ENTRY$ mm RUN-READ-WITH ;
 
 : SAID? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    OUT$ a u CONTAINS?  ERR$ a u CONTAINS? or ;
@@ -469,9 +508,13 @@ create ART ART-CAP allot    variable ART-LEN
 8 constant O-VERSION
 16 constant O-TARGET
 24 constant O-SECTIONS
+32 constant O-PAYLEN
 104 constant O-PAYSHA
 17 constant SEC-N
 16 constant ROW-BYTES
+0 constant S-SCALARS             \ the first section: the four genuine scalars, fixed width
+1 constant S-BLOB                \ the code blob: bytes, so any length is a whole number of rows
+11 constant S-PWID               \ the protected-WID bitmap, the other fixed-width section
 13 constant S-SIGS               \ the window's checker signature rows
 15 constant S-REG                \ ... and the type registry those rows resolve against
 16 constant S-CLOSURE            \ the last section: the closure list
@@ -622,26 +665,155 @@ create SW1 512 allot
 
    FRESH  1 SEC-LEN@ 8 + 1 SEC-LEN!  RESEAL EMIT
    false RUN-READ
-   s" a section table that is not contiguous is refused" T-LABEL
-   s" does not start where the table says the last one ended" READ-REFUSED
+   s" a section table that is not contiguous is refused, by section" T-LABEL
+   s" section records does not start where the table says the last one ended"
+   READ-REFUSED
 
    FRESH  3 SEC-LEN@ 4 - 3 SEC-LEN!  RETABLE RESEAL EMIT
    false RUN-READ
-   s" a section length that is not a whole number of rows is refused" T-LABEL
-   s" is not a whole number of rows" READ-REFUSED
+   s" a section length that is not a whole number of rows is refused, by section" T-LABEL
+   s" section call sites is not a whole number of rows" READ-REFUSED
 
    FRESH
    1 SEC-LEN@ 8 SEC-LEN@ + {: both:n :}
    both 1 SEC-LEN!  0 8 SEC-LEN!
    RETABLE RESEAL EMIT
    false RUN-READ
-   s" a section larger than the buffer it fills is refused" T-LABEL
-   s" is larger than the buffer it fills" READ-REFUSED
+   s" a section larger than the buffer it fills is refused, by section" T-LABEL
+   s" section blob is larger than the buffer it fills" READ-REFUSED
 
    FRESH  1 S-CLOSURE SEC-AT A64!  RESEAL EMIT
    false RUN-READ
    s" a closure list that does not fill its section is refused" T-LABEL
    s" the closure list does not fill its section" READ-REFUSED ;
+
+\ ---- the rest of the reader's table and closure refusals ---------------------
+\
+\ WHY THESE ARE A SEPARATE BLOCK FROM PROBE-FORGED ABOVE. Those five are the
+\ shapes a corrupt file takes; these are the shapes a WELL-FORMED-LOOKING table
+\ takes - each one passes every check before it and is caught by exactly one
+\ named refusal, so a case that fired early would be pinning the wrong word. The
+\ payload-length case is the only one that needs no reseal, and that is a fact
+\ about the format rather than a shortcut: the header is the one part the payload
+\ digest does not cover, so an edit there survives on its own.
+\ EACH CASE NAMES THE SECTION AS WELL AS THE REFUSAL. `blob has a negative
+\ length` and `scalars is not its fixed width` are one string, so a refusal that
+\ fired on some other section - which is how a fixture stops testing what it was
+\ written for - fails here instead of passing.
+: PROBE-SHORT-PAYLOAD ( -- )
+   FRESH  SEC-N ROW-BYTES * 1 -  O-PAYLEN A64!  EMIT
+   false RUN-READ
+   s" a payload too short to hold its own section table is refused" T-LABEL
+   s" the payload is shorter than its own section table" READ-REFUSED ;
+
+: PROBE-TABLE-SHAPE ( -- )
+   FRESH  -1 S-BLOB SEC-LEN!  RESEAL EMIT
+   false RUN-READ
+   s" a section with a negative length is refused, by section" T-LABEL
+   s" section blob has a negative length" READ-REFUSED
+
+   FRESH  O-PAYLEN A64@ S-BLOB SEC-LEN!  RESEAL EMIT
+   false RUN-READ
+   s" a section that runs past the payload is refused, by section" T-LABEL
+   s" section blob runs past the payload" READ-REFUSED
+
+   FRESH  S-CLOSURE SEC-LEN@ 8 - S-CLOSURE SEC-LEN!  RESEAL EMIT
+   false RUN-READ
+   s" a set of sections that does not fill the payload is refused" T-LABEL
+   s" the sections do not fill the payload" READ-REFUSED ;
+
+\ The two fixed-width sections, each shortened by a whole number of ITS rows and
+\ the bytes given to the blob, so the table stays contiguous and still fills the
+\ payload: what is left is only the width, which is what ?EXACT is for.
+\ THE BITMAP CASE CARRIES A SECOND JOB. It is the standing proof of the pin that
+\ makes src/habu/aot-file.f SKIP-SECTION's buffer wide enough by construction -
+\ the merge reads that one section past without keeping it, and its length is
+\ already fixed before the section loop begins.
+: SHRINK-INTO-BLOB ( n n -- ) {: k:n by:n :}
+   k SEC-LEN@ by - k SEC-LEN!
+   S-BLOB SEC-LEN@ by + S-BLOB SEC-LEN!
+   RETABLE RESEAL EMIT ;
+
+: PROBE-FIXED-WIDTH ( -- )
+   FRESH  S-SCALARS 8 SHRINK-INTO-BLOB
+   false RUN-READ
+   s" a scalars section that is not its fixed width is refused" T-LABEL
+   s" section scalars is not its fixed width" READ-REFUSED
+
+   FRESH  S-PWID 4 SHRINK-INTO-BLOB
+   false RUN-READ
+   s" ... and so is a short protected-WID bitmap, before any section is read" T-LABEL
+   s" section protected-WID bitmap is not its fixed width" READ-REFUSED ;
+
+\ The closure section is a count followed by (length, bytes) entries, and the two
+\ ways it can end early are told apart by which bound the walk crosses first: one
+\ more entry than the bytes hold, and one entry claiming more bytes than remain.
+: PROBE-CLOSURE-SHAPE ( -- )
+   FRESH  S-CLOSURE SEC-AT A64@ 1 +  S-CLOSURE SEC-AT A64!  RESEAL EMIT
+   false RUN-READ
+   s" a closure count one entry past its bytes is refused" T-LABEL
+   s" the closure list ends inside an entry" READ-REFUSED
+
+   FRESH  S-CLOSURE SEC-LEN@  S-CLOSURE SEC-AT 8 + A64!  RESEAL EMIT
+   false RUN-READ
+   s" a closure entry claiming more bytes than remain is refused" T-LABEL
+   s" the closure list ends inside a path" READ-REFUSED ;
+
+\ ---- the refusal only a defective reader can raise ---------------------------
+\
+\ WHY THIS ONE NEEDS A MUTANT. ?PAYLOAD-AGAIN asks whether the second pass read
+\ the bytes the first pass verified. On a static file it cannot fail: the table
+\ ?TABLE accepted is contiguous and sums to the payload, so pass two reads
+\ exactly what pass one streamed. Its two real producers are a file replaced
+\ between the passes - which no artifact this suite can write reaches - and a
+\ reader that does not read what its own table promised. The second is the one
+\ the header claimed was "measured", and this turns that measurement into a case.
+\
+\ THE MUTANT IS THE REAL READER PLUS ONE LINE, the way the order and cursor cases
+\ above are the real tool plus one line: src/habu/aot-file.f with a line that
+\ makes LOAD-SECTION return early for the closure section, and a copy of the read
+\ entry point whose require is repointed at it. Skipping the LAST section is what
+\ leaves the file cursor where the reader expects it, so the refusal that fires is
+\ the digest comparison and not a short read. Both splices are fail-closed on
+\ anchors that must appear exactly once.
+: AF-TOOL$ ( -- ptr u8 n ) s" src/habu/aot-file.f" ;
+: LS-ANCHOR$ ( -- ptr u8 n ) s\" \n: LOAD-SECTION ( n -- ) {: k:n :}\n" ;
+: LS-INJECT$ ( -- ptr u8 n ) s\"    k S-CLOSURE = if exit then\n" ;
+: RD-ANCHOR$ ( -- ptr u8 n ) s\" \nrequire src/habu/aot-file.f\n" ;
+
+: AF-MUTANT-BUILD ( -- )
+   AF-TOOL$ SHAPE:LOAD
+   LS-ANCHOR$ AF-TOOL$ ?ONE
+   AFMUT$ LS-ANCHOR$ FIND-OFF LS-ANCHOR$ nip + 1 - LS-INJECT$ SPLICE ;
+
+\ The entry point, with its require of the real reader rewritten to name the
+\ mutant. Rewritten and not added, so the assertion is on the bytes either side.
+: RD-MUTANT-BUILD ( -- )
+   READ-ENTRY$ SHAPE:LOAD
+   RD-ANCHOR$ READ-ENTRY$ ?ONE
+   RD-ANCHOR$ FIND-OFF 1 + {: cut:n :}
+   SHAPE:TEXT drop {: src:ptr :}
+   RDMUT$ src cut WRITE-ALL
+   RDMUT$ s" require " APPEND-FILE
+   RDMUT$ AFMUT$ APPEND-FILE
+   RDMUT$ s\" \n" APPEND-FILE
+   RDMUT$ src cut RD-ANCHOR$ nip 1 - + +
+          SHAPE:TEXT nip cut - RD-ANCHOR$ nip 1 - -  APPEND-FILE
+   s" the read mutant is the entry with its reader require repointed" T-LABEL
+   RDMUT$ FILE-SIZE
+   SHAPE:TEXT nip AF-TOOL$ nip - AFMUT$ nip +  T= ;
+
+: PROBE-SECOND-PASS ( -- )
+   AF-MUTANT-BUILD
+   RD-MUTANT-BUILD
+   FRESH EMIT
+   RDMUT$ false RUN-READ-WITH
+   s" a reader that skips a section it promised to read is refused" T-LABEL
+   s" the second pass did not read the payload the first pass verified" READ-REFUSED
+   s" ... and the unmutated reader takes the same bytes" T-LABEL
+   false RUN-READ
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T= ;
 
 \ The chain digest is re-derived from the files the artifact names, so the test
 \ is a list that names the same files in a different order - which changes the
@@ -1043,27 +1215,6 @@ variable CUR
 : DP-INJECT$ ( -- ptr u8 n ) S\"    S\\\" 8 allot\\n\" BF-DRV+\n" ;
 : REQ-ANCHOR$ ( -- ptr u8 n ) s\" \nrequire tools/build-fixpoint.f\n" ;
 
-: FIND-OFF ( ptr u8 n -- n ) {: a:ptr u:n :}
-   SHAPE:TEXT a u FIND-SUB MATCH option
-     none OF -1 ENDOF
-     some OF IDX>N ENDOF
-   ;MATCH ;
-
-: ?ONE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n f:ptr fu:n :}
-   a u SHAPE:COUNT 1 = if exit then
-   s" aot-chain-capture-suite: anchors in " type f fu type s" =" type
-   a u SHAPE:COUNT .
-   s" aot-chain-capture-suite: the moved-cursor case cannot be built" STOP-RC die ;
-
-\ text[0,cut) + inject + text[cut,end)
-: SPLICE ( ptr u8 n n ptr u8 n -- ) {: dst:ptr dstu:n cut:n inj:ptr inju:n :}
-   SHAPE:TEXT drop {: src:ptr :}
-   dst dstu src cut WRITE-ALL
-   dst dstu inj inju APPEND-FILE
-   dst dstu src cut +  SHAPE:TEXT nip cut -  APPEND-FILE
-   s" the mutant is its file plus exactly the injected line" T-LABEL
-   dst dstu FILE-SIZE  SHAPE:TEXT nip inju + T= ;
-
 : BF-MUTANT-BUILD ( -- )
    BF-TOOL$ SHAPE:LOAD
    DP-ANCHOR$ BF-TOOL$ ?ONE
@@ -1114,6 +1265,11 @@ variable CUR
    PROBE-MERGE
    PROBE-DAMAGE
    PROBE-FORGED
+   PROBE-SHORT-PAYLOAD
+   PROBE-TABLE-SHAPE
+   PROBE-FIXED-WIDTH
+   PROBE-CLOSURE-SHAPE
+   PROBE-SECOND-PASS
    PROBE-CHAIN
    PROBE-BAKED
    PROBE-SEEDED-SIG
