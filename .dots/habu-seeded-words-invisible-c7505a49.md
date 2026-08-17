@@ -268,3 +268,24 @@ header, not per-suite.
 (3) The class that changed failure mode under the fix gets
 fresh diagnosis per the lane's own flag - the old diagnosis is
 void.
+
+SCOPE-PARSE RULING 2026-08-17 (the fork's byte-dump verdict; the
+render/taker/writer candidates are ALL innocent - the earlier
+"mangled" comparison was two unrelated rows, the STRUCTURE
+make/unmake pair whose shapes coincidentally matched): stored
+signature text is SCOPE-DEPENDENT - 153 of 1087 rows carry a
+bare non-primitive term legal in its own package and unparseable
+outside it. RULED: THE PARSE USES THE ROW'S PACKAGE as its
+resolution scope - pkg-off is already on the row and the intake
+already interns the word there; one authority, no text rewrite.
+Qualifying the STRUCTURE generator is REFUSED as the patch shape
+(repairs generated words, leaves hand-written bare signatures
+broken). THE RULED ACCEPTANCE IS CORRECTED - text-equal
+round-trip is VACUOUS (it already holds over a live bug); the
+axis that works: a seeded word whose own signature names its OWN
+package's family BARE must certify a caller in a FOREIGN scope;
+mutation = parse the stored text in the intake's scope instead
+of the row's, redding by name. Lane rule adopted into LESSONS at
+the close: DUMP THE RECORD BEFORE NAMING THE PRODUCER - twice
+this lane a symptom-read produced a wrong mechanism and the
+bytes settled it in minutes.
