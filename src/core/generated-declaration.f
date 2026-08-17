@@ -393,13 +393,16 @@ private
 \ its first consumer and needs nothing from the layer below — the same argument
 \ that puts DECL-REJECT here.  It also has to be visible to GENERATED-DECL-CTOR
 \ further down this file and to structure-make.f, which is why it sits above
-\ both.  A separate src/core/decl-replay.f would be the tidier home, but adding
-\ any engine-prefix source file requires editing the file list in
-\ tools/build-fixpoint.f, which is wholly unpackaged and not allowlisted, so
-\ that edit fails the package-ownership gate (measured: adding one
-\ BF-APPEND-SOURCE line reports "`BF-APPEND-DECL-FILES` defines a changed
-\ module word outside a package").  That veto is already tracked as its own
-\ dot; when it lifts, this package moves out unchanged.
+\ both.  A separate src/core/decl-replay.f would be the tidier home, and the veto
+\ that blocks it has MOVED, not lifted.  tools/build-fixpoint.f is packaged now
+\ and its BF-APPEND-* lists take the edit; so does src/habu/habu2.f, whose
+\ PFX-*-ROW lists are global but pre-existing.  What still refuses is
+\ tools/boot-pin.f, which has no package at all: adding one prefix row there
+\ reports "`BP-EACH` defines a changed module word outside a package" (measured
+\ against this tree by dot habu-single-prefix-load-17a8c792, which priced the
+\ same edit and put its own mark at the end of an existing prefix file
+\ instead).  boot-pin.f's packaging belongs to its own dot; when it lands, this
+\ package moves out unchanged.
 \
 \ Why every tail carries an `RP-` stem.  The neighbouring declaration-layer
 \ packages do the same (`SD-` in structure-decl.f, `ED-` in enum-decl.f, `SM-`

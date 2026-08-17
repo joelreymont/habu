@@ -12477,10 +12477,19 @@ defer REG-EXT-RB-SAVE-XT ( -- )
 defer REG-EXT-RB-FINALIZE-XT ( -- )
 defer REG-EXT-RB-RESTORE-XT ( -- )
 
+\ The same two extension registries again, for the ONE mark that is not a scope:
+\ the core-prefix boundary below records into a single record instead of pushing
+\ a frame, so its extension halves have to be depth-neutral too. Same installers,
+\ same owners, different bodies - see CHECKER-BOUND.
+defer REG-EXT-BND-SAVE-XT ( -- )
+defer REG-EXT-BND-RESTORE-XT ( -- )
+
 : REG-EXT-RB-DEFAULTS ( -- )
    [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-SAVE-XT
    [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-FINALIZE-XT
-   [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-RESTORE-XT ;
+   [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-RESTORE-XT
+   [: REG-EXT-RB-NOOP ;] is REG-EXT-BND-SAVE-XT
+   [: REG-EXT-RB-NOOP ;] is REG-EXT-BND-RESTORE-XT ;
 REG-EXT-RB-DEFAULTS
 
 $0 constant RBF.UEND-OFF
@@ -12615,9 +12624,13 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    MSEEN-CAP-INIT MSEEN-CAP-V !
    0 MSEEN-N ! ;
 
-: RBF-PUSH ( -- )          \ save every current high-water mark into a new frame
-   RBF-ENSURE
-   RBF-CUR {: r:ptr :}
+\ THE FIELD LIST, WRITTEN ONCE. Both the frame stack below and the core-prefix
+\ boundary further down record and restore through this pair, so a mark added
+\ here joins both by construction: a later field cannot be pushed by a scope and
+\ silently missed by the boundary, which is how the boundary came to restore
+\ four cursor families out of twenty and leave a warm image whose first
+\ declaration stored through a stale pointer.
+: RBF-SAVE-INTO ( ptr a -- ) {: r:ptr :}
    UEND @ r RBF.UEND !
    NORET-END @ r RBF.NEND !
    SYM-N @ r RBF.SYMN !
@@ -12637,21 +12650,9 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-PACKAGE-NEUTRAL @ r RBF.PKGNEU !
    CHECKER-USE-OWNED-N @ r RBF.PKGUSE !
    DFER-END @ r RBF.DFEREND !
-   RBF-NO-COORDINATOR r RBF.COORD !
-   CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
-   RBF-DEPTH @ 1 + RBF-DEPTH !
-   REG-EXT-RB-SAVE-XT ;
+   RBF-NO-COORDINATOR r RBF.COORD ! ;
 
-\ Restore the top frame, running the caller's registry restore first.  The
-\ restore action is a parameter rather than a mode flag: an ordinary scope hands
-\ over the installed extension hook (which rejects a stale product-field depth),
-\ while a declaration frame hands over its own throw-free restore.  A throw
-\ inside either action can therefore never leave a latch behind that disables
-\ product-field validation for every later pop.
-: RBF-POP-WITH ( [ -- ] -- )
-   execute                 \ registry restore for the frame this pop retires
-   RBF-DEPTH @ 1 - RBF-DEPTH !
-   RBF-CUR {: r:ptr :}
+: RBF-RESTORE-FROM ( ptr a -- ) {: r:ptr :}
    r RBF.UEND @ USIGS-RESTORE-END
    r RBF.NEND @ NORET-RESTORE-END
    r RBF.SYMN @ HIDX-SYMS-RETIRE      \ pop retired hash-index rows before SYM-N rewinds
@@ -12672,9 +12673,27 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.PKGU @ CHECKER-PACKAGE-U !
    r RBF.PKGNEU @ CHECKER-PACKAGE-NEUTRAL !
    r RBF.PKGUSE @ CHECKER-USE-OWNED-N !
-   RBF-NAME-CUR CHECKER-PACKAGE-NAME r RBF.PKGU @ USIGS-COPY
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
+
+: RBF-PUSH ( -- )          \ save every current high-water mark into a new frame
+   RBF-ENSURE
+   RBF-CUR RBF-SAVE-INTO
+   CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
+   RBF-DEPTH @ 1 + RBF-DEPTH !
+   REG-EXT-RB-SAVE-XT ;
+
+\ Restore the top frame, running the caller's registry restore first.  The
+\ restore action is a parameter rather than a mode flag: an ordinary scope hands
+\ over the installed extension hook (which rejects a stale product-field depth),
+\ while a declaration frame hands over its own throw-free restore.  A throw
+\ inside either action can therefore never leave a latch behind that disables
+\ product-field validation for every later pop.
+: RBF-POP-WITH ( [ -- ] -- )
+   execute                 \ registry restore for the frame this pop retires
+   RBF-DEPTH @ 1 - RBF-DEPTH !
+   RBF-NAME-CUR CHECKER-PACKAGE-NAME RBF-CUR RBF.PKGU @ USIGS-COPY
+   RBF-CUR RBF-RESTORE-FROM ;
 
 : RBF-POP ( -- )           \ restore every mark from the top frame, retiring index rows
    [: REG-EXT-RB-RESTORE-XT ;] RBF-POP-WITH ;
@@ -12682,6 +12701,58 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-FINALIZE ( -- )     \ keep every published row and release the live savepoint
    REG-EXT-RB-FINALIZE-XT
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;
+
+\ ---------------------------------------------------------------------------
+\ THE CORE-PREFIX BOUNDARY. One mark, taken once at the end of the boot prefix
+\ (src/core/lower-cert-seal.f) and rewound to once at the head of a generated
+\ engine source (src/habu/prefix-rewind.f), which returns a compiling host to
+\ the end of its own boot instead of orphaning that prefix and recompiling it.
+\
+\ IT IS A RECORD, NOT A FRAME. A frame held open across the whole boot is one
+\ frame deeper than the core for its entire life, and the depth-lockstep assert
+\ (RBF-DEPTH @ TYPES-READY-XT) fails on the first declaration past the mark -
+\ measured, throw 7113. So this moves no depth, holds no savepoint, and stacks
+\ with nothing: it reads and writes the same field list a scope does, through
+\ the pair above, from storage of its own.
+\
+\ WHY IT LIVES HERE AND NOT IN THE REWIND. The list of marks a scope invalidates
+\ is this file's, and it changes when this file changes. Enumerating it at the
+\ call site made the boundary a second, older copy of the list: it carried four
+\ of the cursor families and left the rest, and a warm snapshot image built that
+\ way segfaulted on its first type declaration - a store through a pointer into
+\ records the rewind had taken away. Derived from one list, that cannot recur.
+\ The extension registries ride the same way they do for a scope, through hooks
+\ their owners install (src/core/type-family.f), so they cannot drift either.
+create RBF-BND-REC    RBF-REC allot
+create RBF-BND-NAME   CHECKER-PACKAGE-CAP allot
+variable RBF-BND-N   0 RBF-BND-N !
+
+package CHECKER-BOUND
+
+public
+
+\ How many marks the boundary carries, off the record rather than a hand count,
+\ so the number cannot go stale the way a written-out one does. Zero until MARK
+\ has run, which is what makes it the build's capability probe: an engine whose
+\ boundary carries nothing cannot host a source that rewinds to one.
+: CURSORS ( -- n )
+   RBF-BND-N @ ;
+
+: MARK ( -- )
+   RBF-DEPTH @ IF s" checker: prefix boundary inside rollback scope" 76 die THEN
+   RBF-BND-REC RBF-SAVE-INTO
+   CHECKER-PACKAGE-NAME RBF-BND-NAME CHECKER-PACKAGE-U @ USIGS-COPY
+   REG-EXT-BND-SAVE-XT
+   RBF-REC CELL / RBF-BND-N ! ;
+
+: REWIND ( -- )
+   RBF-BND-N @ 0= IF s" checker: no recorded prefix boundary" 76 die THEN
+   RBF-DEPTH @ IF s" checker: prefix boundary inside rollback scope" 76 die THEN
+   REG-EXT-BND-RESTORE-XT
+   RBF-BND-NAME CHECKER-PACKAGE-NAME RBF-BND-REC RBF.PKGU @ USIGS-COPY
+   RBF-BND-REC RBF-RESTORE-FROM ;
+
+;package
 
 package CHECKER-DECL-FRAME
 

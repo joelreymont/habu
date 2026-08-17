@@ -1863,6 +1863,8 @@ private
 
 ;package
 
+
+
 package TYPE-FIELD
 
 public
@@ -2228,6 +2230,76 @@ package CHECKER-DECL-FRAME
    PF-TX-DEPTH @ IF s" checker: snapshot inside field transaction" 76 die THEN
    PF-TX-BOOT PF-TX-P !
    PF-TX-CAP-INIT PF-TX-CAP-V ! ;
+
+\ ---- the core-prefix boundary: this file's half -------------------------------
+\ THE TYPE REGISTRIES' PART OF THE ONE BOUNDARY. src/core/checker.f CHECKER-BOUND
+\ owns the mark and the seam; these two bodies are its extension halves, hung off
+\ REG-EXT-BND-SAVE-XT / REG-EXT-BND-RESTORE-XT exactly as EXT-SAVE/EXT-RESTORE
+\ below hang off the scope hooks. Left out of the boundary, these registries keep
+\ every family, variant, field, layout and schema node the boot declared after
+\ the mark - rows whose defining source the rewind removes - and a snapshot taken
+\ afterwards redeclares one on the first `require` and dies `duplicate family`
+\ (measured, at 'option').
+\
+\ IT IS A RECORDED SET, NOT A FRAME, because the seam it serves is not a scope.
+\ The SAVE/RESTORE stack above is pushed and popped in lockstep with the
+\ checker's core frame and checker.f asserts that lockstep; an unpaired push held
+\ open across the whole boot fails the first declaration after it (measured:
+\ throw 7113). So this moves no depth. It records the same counters TF-SAVE does
+\ and runs the same restore body TF-RESTORE-TOP runs, minus TF-RELEASE, which is
+\ the stack pop and has nothing to pop here. Restoring the counters IS
+\ retirement: the rows are pointer-free and TFAM-REWIND unchains the two indexes
+\ before they move.
+\
+\ AT REST IS PART OF THE CONTRACT. A recorded set only describes the registries
+\ when nothing is half-declared, so both halves refuse a live field transaction
+\ or an open rollback frame rather than record (or restore) a number some frame
+\ above them also holds. The sibling reset words on either side of this block
+\ make the same refusal for the same reason.
+package PREFIX-BOUND
+
+private
+
+variable BTFAM  variable BSTRU  variable BPK  variable BSUMV  variable BLAY
+variable BPF    variable BPFC   variable BSCH  variable BSCHR
+
+: AT-REST ( -- )
+   PF-TX-DEPTH @ IF
+      s" checker: prefix boundary inside field transaction" 76 die THEN
+   TF-RBF-DEPTH @ IF
+      s" checker: prefix boundary inside family rollback scope" 76 die THEN
+   SCH-RBF-DEPTH @ IF
+      s" checker: prefix boundary inside schema rollback scope" 76 die THEN ;
+
+: PFX-MARK ( -- )
+   AT-REST
+   TFAM-N @ BTFAM !
+   TF-STR-U @ BSTRU !
+   TF-PK-N @ BPK !
+   SUMV-N @ BSUMV !
+   LAY-N @ BLAY !
+   PF-N @ BPF !
+   PF-COMMIT-N @ BPFC !
+   SCHEMA-REG:COUNTS BSCHR ! BSCH ! ;
+
+: PFX-REWIND ( -- )
+   AT-REST
+   BSCH @ BSCHR @ SCHEMA-REG:REWIND
+   BTFAM @ BSTRU @ BPK @ BSUMV @ BLAY @ TFAM-REWIND
+   BPF @ PF-N @ PF-SCRUB
+   BPF @ PF-N !
+   BPFC @ PF-COMMIT-N ! ;
+
+\ Installed, not published: the boundary has ONE public seam and it is the
+\ checker's. These are its extension halves, reached exactly the way a scope's
+\ are (REG-EXT-RB-* below), so the registries this file owns cannot be rewound
+\ at the boundary by anything but the boundary.
+: INSTALL-BOUND ( -- )
+   [: PFX-MARK ;] is REG-EXT-BND-SAVE-XT
+   [: PFX-REWIND ;] is REG-EXT-BND-RESTORE-XT ;
+INSTALL-BOUND
+
+;package
 
 \ combined registry rollback hooks: one SAVE/RESTORE pair the checker's core
 \ RBF-PUSH/POP drives, so TFAM + SCHEMA frames stay in lockstep with core marks.

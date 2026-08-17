@@ -405,6 +405,46 @@ immediate
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
    REQUIRE-SAVE-N @ REQUIRE-N ! ;
 
+\ ---- the registry's own truncation seam -------------------------------------
+\ THE ONE WAY TO MAKE THIS REGISTRY SMALLER, and it exists because storing the
+\ count is not a truncation. Four other cells are cursors INTO the rows, and a
+\ bare `REQUIRE-N !` leaves every one of them naming rows that are gone:
+\ REQUIRE-BOOT-N would go on answering ENGINE-PROVIDES? for a file the caller
+\ just dropped, REQUIRE-BASE would hide surviving rows from REQUIRE-KNOWN?
+\ (dedup silently off), and the two SAVE cells would restore a discovery pass
+\ back to the vanished rows. So each is brought down with the count, and none of
+\ them can end up above it.
+\
+\ ITS CALLER IS THE BUILD'S CORE-PREFIX REWIND (src/habu/prefix-rewind.f), which
+\ returns a compiling host to the end of its own boot prefix: the rows the boot
+\ recorded after that point describe files whose definitions the rewind removes,
+\ and a snapshot taken afterwards would otherwise persist an image that claims
+\ to provide what it no longer carries (measured: the stdlib).
+\
+\ The two words are a package block because the rest of this file is legacy
+\ global surface and the ownership gate refuses a new global here (measured:
+\ "`REQUIRE-TRUNCATE` defines a changed module word outside a package"). The
+\ tails are NOT spelled like the cells they move - a tail that folded onto
+\ `REQUIRE-N` inside this block would be that cell.
+package REQUIRE-REG
+
+public
+
+: COUNT ( -- n )
+   REQUIRE-N @ ;
+
+: TRUNCATE ( n -- ) {: keep:n :}
+   keep 0 < keep REQUIRE-N @ > or if
+      s" require: truncate outside the registry" INCLUDE-DIE
+   then
+   keep REQUIRE-N !
+   REQUIRE-BOOT-N @ keep > if keep REQUIRE-BOOT-N ! then
+   REQUIRE-BASE @ keep > if keep REQUIRE-BASE ! then
+   REQUIRE-SAVE-N @ keep > if keep REQUIRE-SAVE-N ! then
+   REQUIRE-SAVE-BASE @ keep > if keep REQUIRE-SAVE-BASE ! then ;
+
+;package
+
 \ The loader scratch a fresh pass may reset at any time: the open file, the read
 \ counters, the path buffer, the discovery base and the event log. None of it
 \ describes a load in flight, so resetting it underneath one is safe.

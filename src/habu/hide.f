@@ -141,5 +141,12 @@ TRUSTED: BFR-SN! ( ptr u8 -- )
    b v BFR-FIND-FIRST-INDEX
    BFR-MIN-FOUND BFR-REQUIRE-INDEX ;
 
+\ THE EARLIEST-MARKER REWIND. Truncates to whichever named marker sits earlier,
+\ which is util.f's first record - the start of the whole core prefix. The
+\ native builder no longer emits it (src/habu/prefix-rewind.f rewinds to the
+\ prefix END instead), and it stays because tools/bootstrap.sh's recovery
+\ prelude emits its own BOOT-* twin of exactly these words: this file is the
+\ executable spec that tools/bootstrap-codegen-test.f drives to keep the two
+\ sides honest.
 : BFR-HIDE-DICT-FROM-EARLIEST ( ptr u8 n ptr u8 n -- )
    BFR-MARKER-INDEX BFR-NDICT! ;

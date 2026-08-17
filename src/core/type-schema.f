@@ -272,6 +272,35 @@ variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
 : SCHEMA-ROLLBACK-FINALIZE ( -- )
    SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH ! ;
 
+\ ---- depth-neutral rewind to a recorded pair --------------------------------
+\ The frame words above are a STACK, pushed and popped in lockstep with the
+\ checker's core frame. The build's core-prefix rewind is not a scope: it
+\ returns a compiling host to a boundary its own boot crossed long before, so it
+\ carries a recorded pair instead of holding a frame open across the whole boot,
+\ and moves no depth. This is SCHEMA-ROLLBACK-SAVE/RESTORE's body reading a
+\ recorded pair instead of the frame stack, for the same reason those two words
+\ restore only counters: the node and root fields are pointer-free, so putting
+\ the counts back retires every entry above them.
+\ The one caller is src/core/type-family.f PREFIX-BOUND:PFX-MARK/PFX-REWIND,
+\ which carries this pair alongside the family registry's own counters so the
+\ two halves of a declaration frame move together here exactly as they do
+\ through CHECKER-DECL-FRAME:EXT-SAVE/EXT-RESTORE.
+package SCHEMA-REG
+
+public
+
+: COUNTS ( -- n n )
+   SCH-N @ SCH-ROOT-N @ ;
+
+: REWIND ( n n -- ) {: n:n rootn:n :}
+   n 0 < n SCH-N @ > or rootn 0 < or rootn SCH-ROOT-N @ > or IF
+      s" checker: schema rewind outside the registry" 76 die
+   THEN
+   n SCH-N !
+   rootn SCH-ROOT-N ! ;
+
+;package
+
 \ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.
 : SCHEMA-RBF-SNAP-RESET ( -- )

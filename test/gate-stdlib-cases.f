@@ -1378,6 +1378,10 @@ SUITE dictionary-record-shapes
    test/drec-shape-test.f
 ;SUITE
 
+SUITE core-prefix-mark
+   test/prefix-mark-test.f
+;SUITE
+
 SUITE stdlib-runner-fixtures
    lib/test/runner-test.f
 ;SUITE

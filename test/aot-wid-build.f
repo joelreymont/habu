@@ -235,11 +235,20 @@ create DRV-CH 1 allot
 \ --- the fixture contract -----------------------------------------------------
 \ These two ids are what test/aot-wid-suite.f probes for in the built engine, so
 \ any drift here turns that suite red (it is self-checking) - keep the two in
-\ step. 300 is above the u8 ceiling the old u32-row table existed to clear; 8000
-\ sits high in the band, far above any wordlist a boot allocates, so the suite can
-\ also assert that its NEIGHBOUR 8001 came back unprotected - a restore that
-\ smeared or mis-shifted the band would set it.
-: FIXTURE-A$ ( -- ptr u8 n ) s" 300" ;
+\ step. 8000 sits high in the band, far above any wordlist a boot allocates, so
+\ the suite can also assert that its NEIGHBOUR 8001 came back unprotected - a
+\ restore that smeared or mis-shifted the band would set it.
+\
+\ THE LOW ID IS NOT A LITERAL, because its whole job is to be an id the SHIPPED
+\ engine does not already protect, and that is a fact about the shipped engine
+\ rather than a number. The suite reads it off the live band and hands it over as
+\ HABU_PWID_A; a pinned 300 stopped being outside that band the moment the
+\ engine's wordlist count changed, and the control leg started asserting the
+\ opposite of what it says. The default below is for a standalone run only - the
+\ suite always passes the knob, and its own "baked wid is protected" case is what
+\ catches a knob that failed to arrive.
+: FIXTURE-A$ ( -- ptr u8 n )
+   s" HABU_PWID_A" GETENV dup 0 > if exit then 2drop s" 300" ;
 : FIXTURE-B$ ( -- ptr u8 n ) s" 8000" ;
 
 \ --- shape and conversion checks emitted into the driver ----------------------

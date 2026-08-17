@@ -518,9 +518,28 @@ variable ROOT-U
    VERIFY-PATH VERIFY-U @ >LEN BUILD-VERIFY-DRIVER
    DRIVER-PATH DRIVER-U @ BUILD$ WRITE-ALL ;
 
+\ THE COLD PAYLOAD ASSEMBLES ITS OWN PRELUDE, and the reason is this fixture's
+\ whole subject. The corpus declares checker primitive rows at top level, which
+\ is what the engine's own cold prefix does - and there `PRIM:` is still an
+\ ordinary word, because src/core/internal-mark.f classifies the prefix only at
+\ its very end. A PRODUCTION payload is past that point: it rewinds to the
+\ core-prefix mark and inherits the host's classified `PRIM:`, so an interpreted
+\ row fails closed with `hb: internal engine word: PRIM:` and rc 70. That
+\ narrowing is intended and production keeps exactly one rewind shape.
+\
+\ So this reaches for the OTHER rewind src/habu/hide.f still carries for the
+\ recovery mirror: truncate to util.f's first record and re-read the whole boot
+\ prefix, which is the deliberately cold, unmarked shape this differential is a
+\ differential OF. Both words are production's - the builder's own boot-prefix
+\ assembly and the recovery host's own rewind - so nothing here is a stand-in.
 : WRITE-COLD-PAYLOAD ( -- )
    s" cold.f" BF-RESET-OUT
-   s" cold.f" BF-APPEND-RUN-PRELUDE
+   s" cold.f" s" src/habu/hide.f" BF-APPEND-SOURCE
+   s" cold.f" s" BFR-CHECK-OFF" BF-APPEND-LINE
+   s" cold.f" s" BFR-USIGS-RESET" BF-APPEND-LINE
+   s" cold.f" S\" s\" IMK-NDICT0\" s\" SEQ\" BFR-HIDE-DICT-FROM-EARLIEST" BF-APPEND-LINE
+   s" cold.f" BF-APPEND-BOOT-PREFIX
+   s" cold.f" s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE
    s" cold.f" NATIVE-PATH NATIVE-U @ BF-APPEND-SOURCE
    s" cold.f" BF-APPEND-COMMON
    s" cold.f" COMPILER-BUILD:SEAL ;

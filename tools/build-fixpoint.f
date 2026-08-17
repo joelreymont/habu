@@ -27,7 +27,6 @@ $10000 constant BF-CERT-DIAG-CAP
 10 constant BF-LF
 64 constant BF-USAGE-RC
 74 constant BF-BUILD-RC
-32 constant BF-SP
 34 constant BF-DQ
 $2F constant BF-SLASH
 64 constant BF-STAMP-HEX-U
@@ -74,7 +73,6 @@ create BF-PIN-KEYS BF-PIN-CAP BF-STAMP-DG-U * allot
 create BF-PIN-DIGS BF-PIN-CAP BF-STAMP-DG-U * allot
 create BF-PIN-KEYBUF 40 allot
 create BF-PIN-DIGBUF 40 allot
-create BF-CHAR-BUF 1 allot
 create BF-STAMP-KEY 80 allot
 create BF-STAMP-OLD 80 allot
 create BF-STAMP-DG 40 allot
@@ -362,10 +360,6 @@ variable BF-CERT-PATH-U
 : BF-APPEND-LF ( ptr u8 n -- ) {: out:ptr outu :}
    out outu BF-OUT$ BF-LF-BUF 1 APPEND-FILE ;
 
-: BF-APPEND-C ( ptr u8 n n -- ) {: out:ptr outu:n c:n :}
-   c BF-CHAR-BUF c!
-   out outu BF-OUT$ BF-CHAR-BUF 1 APPEND-FILE ;
-
 : BF-APPEND-LINE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n a:ptr u:n :}
    out outu a u BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
@@ -415,37 +409,69 @@ public
 
 package BUILD-FIXPOINT
 
-: BF-APPEND-HIDE-CALL ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n name:ptr nameu:n word:ptr wordu:n :}
-   out outu s" s" BF-APPEND-BYTES
-   out outu BF-DQ BF-APPEND-C
-   out outu BF-SP BF-APPEND-C
-   out outu name nameu BF-APPEND-BYTES
-   out outu BF-DQ BF-APPEND-C
-   out outu BF-SP BF-APPEND-C
-   out outu word wordu BF-APPEND-BYTES
-   out outu BF-APPEND-LF ;
+\ THE HOST CAPABILITY THE EMITTED REWIND NEEDS. The stage source rewinds to the
+\ mark src/core/lower-cert-seal.f records at the core prefix's end, and it
+\ carries no copy of that prefix for an older rewind to land on. So a host
+\ engine without the mark cannot build this tree at all, and the honest place to
+\ say so is here - before a byte is emitted - naming the file and the repair.
+\ Emitting the old earliest-marker rewind instead would truncate below a prefix
+\ the source no longer re-emits, and the first symptom would be an undefined
+\ core word reported from somewhere inside a 900KB generated file.
+\
+\ CHECKER-RESOLVES? is the check because it is the only existence query in the
+\ boot prefix that answers for a package-qualified name: `search-wl` searches
+\ one wordlist on the raw spelling and a package name is not itself a
+\ dictionary word, so it answers 0 for PKG:TAIL whether or not the package has
+\ it (measured, against STR:LENGTH).
+: BF-WATERMARK? ( -- bool )
+   s" PREFIX-MARK:CURSORS" CHECKER-RESOLVES? ;
 
-: BF-APPEND-HIDE2-CALL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n a:ptr au:n b:ptr bu:n word:ptr wordu:n :}
-   out outu s" s" BF-APPEND-BYTES
-   out outu BF-DQ BF-APPEND-C
-   out outu BF-SP BF-APPEND-C
-   out outu a au BF-APPEND-BYTES
-   out outu BF-DQ BF-APPEND-C
-   out outu BF-SP BF-APPEND-C
-   out outu s" s" BF-APPEND-BYTES
-   out outu BF-DQ BF-APPEND-C
-   out outu BF-SP BF-APPEND-C
-   out outu b bu BF-APPEND-BYTES
-   out outu BF-DQ BF-APPEND-C
-   out outu BF-SP BF-APPEND-C
-   out outu word wordu BF-APPEND-BYTES
-   out outu BF-APPEND-LF ;
+\ AND THE FACT THE NAME CANNOT CARRY. Resolvability answers "could this host
+\ compile the call"; it cannot answer "did this host's mark record the boundary
+\ set", because a name resolves whether or not anything ever wrote through it -
+\ and an engine built from a tree that carried the words but never took the
+\ boundary is exactly the host that would emit a rewind restoring nothing. So the
+\ value is read too, and it is DATA no other writer can produce: CU is private to
+\ PREFIX-MARK and src/core/lower-cert-seal.f assigns it once, from
+\ CHECKER-BOUND:CURSORS. Zero therefore means the boundary set never landed in
+\ this engine, not that it never ran - the mark is top-level in a prefix file, so
+\ every host that boots has reached it.
+\
+\ Through `evaluate`, and only after the resolvability check has passed, because
+\ the two clauses answer different hazards and the compile one comes first: a
+\ host without the word cannot COMPILE a body that names it, so this file's load
+\ would die E-UNDEFINED before any guard could speak. That is what a resolvability
+\ query is for, and it is why the value cannot simply be called.
+\
+\ WHAT THIS DELIBERATELY DOES NOT CHECK, and why the reason is a measurement and
+\ not an omission: that the recorded width still equals the seam's live one.
+\ CHECKER-BOUND lives below the lower-cert seal, and the seal is what makes it
+\ unreachable from every consumer outside the prefix - measured here,
+\ `s" CHECKER-BOUND:CURSORS" CHECKER-RESOLVES?` answers 0 on a booted engine while
+\ the same query answers -1 for PREFIX-MARK:CURSORS. It is the same wall that made
+\ src/habu/prefix-rewind.f reach the seam through a trusted row rather than a
+\ name. So no consumer can hold the two numbers at once, and the property that
+\ the count comes OFF the seam is carried by construction instead: one assignment,
+\ in the file that owns the mark, from the seam itself.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
+TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
 
-\ IMK-NDICT0 is util.f's first definition (new engines); SEQ is the fallback
-\ marker for older stage engines that predate it.
+: BF-MARK-CURSORS ( -- n )
+   s" PREFIX-MARK:CURSORS" BF-EVAL-N ;
+
+: BF-REQUIRE-WATERMARK ( -- )
+   BF-WATERMARK? 0= if
+      s" build-fixpoint: host engine has no core-prefix watermark (src/core/lower-cert-seal.f); reseed bin/hb from a current engine and refresh" BF-BUILD-RC die
+   then
+   BF-MARK-CURSORS 0= if
+      s" build-fixpoint: host engine's core-prefix mark carries no checker boundary (src/core/lower-cert-seal.f never recorded CHECKER-BOUND:CURSORS); reseed bin/hb from a current engine and refresh" BF-BUILD-RC die
+   then ;
+
+\ The one line every generated engine source opens its payload with. The
+\ earliest-marker form src/habu/hide.f still carries is the recovery script's
+\ mirror, not this builder's.
 : BF-STAGE2-HIDE-DEFS ( ptr u8 n -- )
-   2dup s" BFR-USIGS-RESET" BF-APPEND-LINE
-   s" IMK-NDICT0" s" SEQ" s" BFR-HIDE-DICT-FROM-EARLIEST" BF-APPEND-HIDE2-CALL ;
+   s" PREFIX-REWIND:TO-CORE" BF-APPEND-LINE ;
 
 : BF-APP-CLOSE ( ptr n -- ) {: p:ptr :}
    p @ dup 0 >= if close else drop then
@@ -745,6 +771,7 @@ package BUILD-FIXPOINT
 \ covered by the structural tools/codegen-role-test.f (gate suite codegen-role). Only
 \ BF-PREFLIGHT-ICODE remains here, for icode's mmap/no-static-allot runtime invariants.
 : BF-PREFLIGHT ( -- )
+   BF-REQUIRE-WATERMARK
    BF-PREFLIGHT-ICODE ;
 
 : BF-TARGET-UNKNOWN ( -- )
@@ -923,22 +950,19 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-DECL-FILES
    out outu BF-APPEND-BOOT-CORE ;
 
+\ WHAT IS NOT HERE. Every core-prefix file the compiling host already carries
+\ from its own boot is absent: the payload rewinds to the mark at the end of
+\ that prefix (BF-STAGE2-HIDE-DEFS) rather than truncating past it and
+\ recompiling. src/os/script-argv.f is the exception that proves the rule - the
+\ engine loads it AFTER the mark, so the rewind takes it away and the payload
+\ has to bring it back. The absent files are still statically checked, as their
+\ own build phase: BF-APPEND-BOOT-PREFIX.
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu BF-APPEND-ROLES
-   out outu BF-APPEND-CORE-BYTES
-   out outu BF-APPEND-TARGET-FLAG
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-TARGET-LAYOUT
    out outu BF-APPEND-TARGET-SYS
-   out outu BF-APPEND-HABU-LAYOUT
-   out outu BF-APPEND-ENV-BASE
    out outu BF-APPEND-SCRIPT-ARGV
-   out outu BF-APPEND-ENUMS
-   out outu s" src/core/sha256.f" BF-APPEND-SOURCE
-   out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
@@ -955,23 +979,16 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-FDIO
    out outu SDC-DECL$ BF-APPEND-SOURCE
    out outu SDC-IDENT$ BF-APPEND-SOURCE
-   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
-   out outu s" src/habu/xref.f" BF-APPEND-SOURCE
-   out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
-   out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE
-   out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
-   out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE ;
+   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/hide.f" BF-APPEND-SOURCE
+   out outu s" src/habu/prefix-rewind.f" BF-APPEND-SOURCE
    out outu s" BFR-CHECK-OFF" BF-APPEND-LINE
    out outu BF-STAGE2-HIDE-DEFS
-   out outu BF-APPEND-CHECKER-BOOT
-   out outu BF-APPEND-DECL-FILES
-   out outu BF-APPEND-CORE-FILES
    out outu s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE ;
 
 : BF-APPEND-STDIN-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
@@ -1001,7 +1018,6 @@ package BUILD-FIXPOINT
    out outu BF-RESET-OUT
    out outu BF-APPEND-STDIN-RUN-PRELUDE
    out outu BF-APPEND-COMMON
-   out outu BF-APPEND-INCLUDE
    out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-DRIVER-IO
    out outu SDC-ARM$ BF-APPEND-SOURCE
@@ -1009,28 +1025,17 @@ package BUILD-FIXPOINT
    out outu SDC-FILE$ BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;
 
-\ Snapshot source layout: the dev-engine keep surface (the same files the
-\ plain engine bakes as its startup prefix, plus the baked REPL sources)
-\ loads FIRST, then SNAP-TAIL-MARK opens the builder-only tail. snap.f
-\ retires everything from the marker before SNAP:PERSIST, so the persisted image
-\ carries only the keep surface.
+\ Snapshot keep surface: what the persisted image must carry that the rewind
+\ above does not already leave live. SNAP-TAIL-MARK opens the builder-only tail
+\ after it, and snap.f retires everything from that marker before SNAP:PERSIST.
+\
+\ This used to re-read the whole core prefix here. It could not work twice: the
+\ prefix installs into one-shot `defer` cells that the first load seals, so the
+\ second load's rows went nowhere - and every snapshot carried the orphaned
+\ first copy in its persisted DATA. The keep surface is now what it always
+\ meant: src/os/script-argv.f, which the engine loads AFTER the mark and the
+\ rewind therefore takes away, plus whatever an extension build keeps.
 : BF-APPEND-SNAP-KEEP ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu BF-APPEND-ROLES
-   out outu BF-APPEND-CORE-BYTES
-   out outu BF-APPEND-TARGET-FLAG
-   out outu BF-APPEND-TARGET-LAYOUT
-   out outu BF-APPEND-HABU-LAYOUT
-   out outu BF-APPEND-ENV-BASE
-   out outu BF-APPEND-INCLUDE
-   out outu BF-APPEND-ENUMS
-   out outu s" src/core/sha256.f" BF-APPEND-SOURCE
-   out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-COMBINATORS
-   out outu s" src/habu/xref.f" BF-APPEND-SOURCE
-   out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
-   out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE
-   out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
-   out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-SCRIPT-ARGV
    out outu BUILD-EXT:APPEND-KEEP ;
 
@@ -2087,6 +2092,7 @@ package BUILD-FIXPOINT
 public
 
 EXPORT BF-APPEND-BYTES
+EXPORT BF-APPEND-BOOT-PREFIX
 EXPORT BF-APPEND-COMMON
 EXPORT BF-APPEND-DRIVER-IO
 EXPORT BF-APPEND-LF

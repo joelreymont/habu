@@ -38,7 +38,8 @@
 \
 \ How it is proven: test/aot-wid-build.f is spawned in a child process with a
 \ private HB_TMP; it builds a throwaway `hb-pwid` engine whose AOT band has two
-\ extra word-list ids set (300 and 8000) on top of the ones the metabuild host
+\ extra word-list ids set (8000 and a low one derived from the shipped engine's
+\ own live band, handed over as HABU_PWID_A) on top of the ones the metabuild host
 \ protects for itself. This suite then probes hb-pwid on the real batch paths, and
 \ spawns the same builder in its three refusal modes and its two boot-gate
 \ modes.
@@ -96,7 +97,8 @@ require lib/process-env.f
 package AOT-WID-SUITE
 
 \ Test vectors - mirror the ids baked by test/aot-wid-build.f.
-300   constant WID-A                 \ baked protected word-list id > 255
+variable WID-A-V                     \ baked protected id > 255, DERIVED (see DERIVE-WID-A)
+: WID-A ( -- n ) WID-A-V @ ;
 8000  constant WID-B                 \ baked protected word-list id high in the band
 8001  constant WID-NEIGHBOUR         \ one id past WID-B: must come back UNprotected
 70000 constant WID-OOR               \ far above the bound: the capture must refuse it
@@ -191,6 +193,8 @@ create NUM-BUF 32 allot   variable NUM-U
 : BUILD-VARIANT ( -- )
    PROC-ENV-RESET
    s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
+   WID-A NUM$!
+   s" HABU_PWID_A" >LEN NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;
 
 \ A refusal build: the named knob carries a value the capture must reject.
@@ -401,6 +405,19 @@ create PRB PRB-CAP allot   variable PRB-U
    S\"    s\" awb-widn=\" type PROT-WID-PROBE:WIDS FMT:.U cr ;" PRB+ PRB-NL
    s" PRB-ALIAS" PRB+
    PRB$ ;
+
+\ The low baked id is read off the SHIPPED engine rather than pinned: its only
+\ stated property is that the shipped engine does not protect it, so the shipped
+\ engine is the only thing that can say which ids qualify. Above the live
+\ wordlist count by a margin, and above 255 (the u8 ceiling the old row table
+\ existed to clear) - then checked against the live band, so the derivation
+\ proves its own premise instead of assuming it.
+: DERIVE-WID-A ( -- )
+   PLAIN$ PROBE-WORDLIST$ READ-N {: live:n :}
+   live 64 + 256 max WID-A-V !
+   WID-A 255 > TTRUE
+   WID-A WID-B < TTRUE
+   PLAIN$ WID-A MEMBER-PROBE$ READ-N 0 T= ;
 
 : PROBE-VARIANT ( -- )
    s" restored band carries the bitmap shape tag before batch input" T-LABEL
@@ -639,6 +656,8 @@ variable ALIAS-SEALED   variable ALIAS-OPEN   variable ALIAS-W
 
 : BODY ( -- )
    SETUP
+   s" derived low baked id is outside the shipped engine's band" T-LABEL
+   DERIVE-WID-A
    BUILD-VARIANT
    s" aot-wid variant engine builds cleanly" T-LABEL
    RC @ 0 T=

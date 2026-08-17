@@ -514,6 +514,7 @@ HBB-INSTALL-CHILD-LINTS
 
 : HBB-KEY-COMMON-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" src/habu/hide.f" HBB-KEY-FILE+
+   s" src/habu/prefix-rewind.f" HBB-KEY-FILE+
    s" src/core/util.f" HBB-KEY-FILE+
    s" src/core/cell.f" HBB-KEY-FILE+
    s" src/core/pointer-storage.f" HBB-KEY-FILE+

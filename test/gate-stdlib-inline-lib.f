@@ -632,6 +632,7 @@ public
    s" tools/asm-src-test.f" GSI-FORK-INCLUDE
    s" tools/asm-checked-test.f" GSI-FORK-INCLUDE
    s" test/drec-shape-test.f" GSI-FORK-INCLUDE
+   s" test/prefix-mark-test.f" GSI-FORK-INCLUDE
    s" tools/image-bytes-test.f" GSI-FORK-INCLUDE
    s" tools/codegen-role-test.f" GSI-FORK-INCLUDE
    s" test/icode-fixup-test.f" GSI-FORK-INCLUDE

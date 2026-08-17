@@ -62,6 +62,7 @@ variable BFT-STALE-HB-U
 variable BFT-STALE-TMP-U
 variable BFT-STALE-STAMP-U
 variable BFT-STALE-HIDE-U
+variable BFT-STALE-MARK-U
 variable BFT-CP-U
 variable BFT-BIG-OUT-A
 variable BFT-BIG-ERR-A
@@ -96,6 +97,7 @@ create BFT-STALE-HB-BUF FS-PATH-CAP allot
 create BFT-STALE-TMP-BUF FS-PATH-CAP allot
 create BFT-STALE-STAMP-BUF FS-PATH-CAP allot
 create BFT-STALE-HIDE-BUF FS-PATH-CAP allot
+create BFT-STALE-MARK-BUF FS-PATH-CAP allot
 create BFT-CP-BUF FS-PATH-CAP allot
 create BFT-NL 10 c,
 create BFT-KEY1 64 allot
@@ -180,6 +182,9 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-STALE-HIDE ( -- ptr u8 n )
    BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U @ ;
+
+: BFT-STALE-MARK ( -- ptr u8 n )
+   BFT-STALE-MARK-BUF BFT-STALE-MARK-U @ ;
 
 : BFT-BIG-OUT-FIELD ( -- ptr ptr u8 )
    BFT-BIG-OUT-A 0 ptr-field ;
@@ -555,7 +560,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-STALE s" bin/hb" BFT-STALE-HB-BUF BFT-STALE-HB-U BFT-PATH!
    BFT-STALE s" tmp" BFT-STALE-TMP-BUF BFT-STALE-TMP-U BFT-PATH!
    BFT-STALE s" stamp" BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U BFT-PATH!
-   BFT-STALE s" src/habu/hide.f" BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U BFT-PATH! ;
+   BFT-STALE s" src/habu/hide.f" BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U BFT-PATH!
+   BFT-STALE s" src/core/lower-cert-seal.f" BFT-STALE-MARK-BUF BFT-STALE-MARK-U BFT-PATH! ;
 
 \ The sandbox needs every tools/ file the refresh loads. That list used to be
 \ written out by hand and went stale the moment build-fixpoint.f grew a require:
@@ -634,9 +640,12 @@ variable IX
 \ BFT-STALE sandbox tree (private tmp + scratch install target - the real
 \ workspace bin/hb is never touched) with a fresh sabotage replacing the
 \ stale-seed one.
-: BFT-CERT-INJ-SABOTAGE ( -- )
+: BFT-STALE-HIDE-RESTORE ( -- )
    s" src/habu/hide.f" BFT-READ {: u:n :}
-   BFT-STALE-HIDE BFT-READ-BUF u WRITE-ALL
+   BFT-STALE-HIDE BFT-READ-BUF u WRITE-ALL ;
+
+: BFT-CERT-INJ-SABOTAGE ( -- )
+   BFT-STALE-HIDE-RESTORE
    BFT-STALE-HIDE s" : BFT-CERT-INJ ( n -- n ) drop ;" APPEND-FILE
    BFT-STALE-HIDE BFT-NL 1 APPEND-FILE ;
 
@@ -688,33 +697,171 @@ package BUILD-FIXPOINT
      some OF drop STR-FALSE ENDOF
    ;MATCH TTRUE ;
 
+\ Does an emitted source DEFINE this name at top level? The question the
+\ single-load contract needs answered about the assembled payload is "is there a
+\ second copy of this prefix file in here", and a substring search cannot answer
+\ it: src/habu/hide.f still ships in the payload, so the text
+\ BFR-HIDE-DICT-FROM-EARLIEST is present whether or not anything calls it, and
+\ every prefix name appears in the comments of the files that call it.
+\
+\ So this reuses the certify scanner's own tokenizer - the same NEXT-SCAN that
+\ decides what VERIFY:SOURCE-BUF checked - and reads the token in the DEFINITION
+\ position after a `:`. A name in a comment, in a string, or at a call site is
+\ not in that position. The hostile fixtures below are what prove it.
+;package
+
+package VERIFY
+variable DEF-HIT
+variable DEF-A
+variable DEF-U
+
+: DEF-WANT$ ( -- ptr u8 n )
+   DEF-A @ DEF-U @ ;
+
+public
+
+: DEFINES? ( ptr u8 n ptr u8 n -- bool ) {: src:ptr srcu:n want:ptr wantu:n :}
+   want DEF-A !  wantu DEF-U !
+   0 DEF-HIT !
+   src srcu SOURCE! SCAN-RESET
+   begin NEXT-SCAN dup 0 > while
+      s" :" CORE-STR= if
+         NEXT-SCAN dup 0 > if
+            DEF-WANT$ CORE-STR= if -1 DEF-HIT ! then
+         else 2drop then
+      then
+   repeat 2drop
+   DEF-HIT @ 0<> ;
+;package
+
+package BUILD-FIXPOINT
+
+\ Hostile fixtures for the definition scan above. Each puts the subject name in
+\ a position that is NOT a top-level definition, and each must answer false -
+\ otherwise the single-load assertions below would be satisfied by the comments
+\ and call sites the payload is full of. The two positives beside them keep the
+\ whole thing from passing by always answering false.
+: BFT-DEF-DECOY$ ( -- ptr u8 n )
+   s" BFT-DECOY" ;
+
+: BFT-DEF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u BFT-DEF-DECOY$ VERIFY:DEFINES? ;
+
+: BFT-TEST-DEFINES-SCAN ( -- )
+   s\" \\ : BFT-DECOY ( -- ) ;\n" BFT-DEF? TFALSE
+   s\" ( : BFT-DECOY ( -- ) ;)\n" BFT-DEF? TFALSE
+   s\" : OTHER ( -- ) s\\\" BFT-DECOY\\\" 2drop ;\n" BFT-DEF? TFALSE
+   s\" : OTHER ( -- ) BFT-DECOY ;\n" BFT-DEF? TFALSE
+   s\" : BFT-DECOYS ( -- ) ;\n" BFT-DEF? TFALSE
+   s\" : BFT-DECOY ( -- ) ;\n" BFT-DEF? TTRUE
+   s\" \\ BFT-DECOY in a comment first\n: BFT-DECOY ( -- ) ;\n" BFT-DEF? TTRUE ;
+
+\ THE HOST CAPABILITY THE BUILD REQUIRES, refused at the door. The payload
+\ rewinds to the mark src/core/lower-cert-seal.f records at the core prefix's
+\ end and carries no copy of that prefix, so a host engine without the mark
+\ cannot build this tree at all - BF-PREFLIGHT has to say so before a byte is
+\ emitted, not leave an undefined core word to surface from inside a generated
+\ file. The sabotage is that file with its PREFIX-MARK block cut off and nothing
+\ else changed: an engine reads its boot prefix from the tree it runs in, so the
+\ sandbox's copy IS the child's prefix, and the sandbox engine is byte-identical
+\ to the workspace one. Runs after the certify-injection case, so it restores
+\ that case's sabotaged src/habu/hide.f first.
+: BFT-MARK-SABOTAGE ( -- )
+   BFT-STALE-HIDE-RESTORE
+   s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
+   BFT-READ-BUF u s" package PREFIX-MARK" BFT-FIND BFT-FOUND {: cut:n :}
+   cut 0 > TTRUE
+   BFT-STALE-MARK BFT-READ-BUF cut WRITE-ALL ;
+
+: BFT-TEST-WATERMARK-REQUIRED ( -- )
+   BFT-MARK-SABOTAGE
+   BFT-STALE-ARGV
+   BFT-STALE-SPAWN {: outu:n erru:n rcn:n :}
+   rcn BF-BUILD-RC T=
+   BFT-BIG-ERR erru s" no core-prefix watermark" CONTAINS? TTRUE
+   BFT-BIG-ERR erru s" src/core/lower-cert-seal.f" CONTAINS? TTRUE
+   BFT-BIG-OUT outu s" self-check census" CONTAINS? TFALSE
+   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
+   BFT-STALE-STAMP FILE? TFALSE ;
+
+\ THE SAME PROBE'S VALUE LAYER, forged twice. Both fixtures leave every name in
+\ place, so the resolvability clause above passes and only the value can refuse -
+\ which is the whole point of reading one: a name resolves whether or not
+\ anything ever wrote through it, and an engine built from a tree that carried
+\ the words but never took the boundary is exactly the host that would emit a
+\ rewind restoring nothing.
+\
+\ The fixture stops the file one line short of taking the boundary width, so
+\ every PREFIX-MARK name resolves, the mark still records the dictionary end and
+\ the include registry, and only CURSORS reads zero. That is the one state the
+\ name clause is blind to and the value clause exists for. The rewrite starts
+\ from the workspace file, so it cannot inherit an earlier case's damage.
+: BFT-MARK-VALUE-FORGE ( ptr u8 n -- ) {: tail:ptr tailu:n :}
+   BFT-STALE-HIDE-RESTORE
+   s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
+   BFT-READ-BUF u s" CHECKER-BOUND:CURSORS CU !" BFT-FIND BFT-FOUND {: cut:n :}
+   cut 0 > TTRUE
+   BFT-STALE-MARK BFT-READ-BUF cut WRITE-ALL
+   BFT-STALE-MARK tail tailu APPEND-FILE ;
+
+: BFT-MARK-VALUE-REFUSED ( ptr u8 n -- ) {: msg:ptr msgu:n :}
+   BFT-STALE-ARGV
+   BFT-STALE-SPAWN {: outu:n erru:n rcn:n :}
+   rcn BF-BUILD-RC T=
+   BFT-BIG-ERR erru msg msgu CONTAINS? TTRUE
+   BFT-BIG-OUT outu s" self-check census" CONTAINS? TFALSE
+   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
+   BFT-STALE-STAMP FILE? TFALSE ;
+
+: BFT-TEST-WATERMARK-VALUE ( -- )
+   s\" ;package\n" BFT-MARK-VALUE-FORGE
+   s" carries no checker boundary" BFT-MARK-VALUE-REFUSED ;
+
+\ THE SINGLE-LOAD CONTRACT, over the two sources a real build writes.
+\
+\ Each probe name is asked of BOTH assemblies, and the pair is the claim: the
+\ boot prefix defines it, the payload does not. Asking only the payload would
+\ also pass if the prefix had stopped being certified anywhere at all, which is
+\ the failure the certify-only phase exists to prevent.
+\
+\ Three probes spanning the prefix's extent - util.f is its first file,
+\ checker.f its largest, xref.f one of its last - because a payload that stopped
+\ re-emitting only its first file would satisfy one probe.
+: BFT-PREFIX-ONCE ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   BFT-STAGE2 BFT-READ {: u:n :}
+   BFT-READ-BUF u name nameu VERIFY:DEFINES? TFALSE
+   BFT-PREFIX BFT-READ {: v:n :}
+   BFT-READ-BUF v name nameu VERIFY:DEFINES? TTRUE ;
+
+\ Both assemblies are written here rather than inherited from an earlier step,
+\ so the pair the contract compares is one build's. The payload is the STDIN
+\ source - the one that becomes bin/hb - because that is the assembly a shipped
+\ engine is compiled from; BF-STAGE2-SOURCE writes the same file with the stage
+\ driver instead, and BFT-TEST-CERTIFY-PHASE-SOURCES already pins that the two
+\ differ.
 : BFT-TEST-STAGE2-SOURCE ( -- )
+   BFT-ROOT BF-TMP!
+   BF-PREFIX-SOURCE
+   BF-STDIN-SOURCE
+   s" CORE-STR=" BFT-PREFIX-ONCE
+   s" ATOMA-FIELD" BFT-PREFIX-ONCE
+   s" SEAL-DICT-GUARD" BFT-PREFIX-ONCE
    BFT-STAGE2 BFT-READ {: u :}
    BFT-READ-BUF u s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HOOK set-check" CONTAINS? TFALSE
-   BFT-READ-BUF u s" variable SEQ" CONTAINS? TTRUE
-   BFT-READ-BUF u s" : STR=" CONTAINS? TFALSE
-   BFT-READ-BUF u s" : CORE-STR=" CONTAINS? TTRUE
-   BFT-READ-BUF u s" include src/core/checker-registry.f" CONTAINS? TFALSE
-   BFT-READ-BUF u s" checker-registry.f - typed checker effect store" CONTAINS? TTRUE
-   BFT-READ-BUF u s" src/core/include.f" CONTAINS? TTRUE
-   BFT-READ-BUF u s" TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 )" CONTAINS? TTRUE
-   BFT-READ-BUF u s" TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )" CONTAINS? TTRUE
-   BFT-READ-BUF u s" : include ( -- )" CONTAINS? TTRUE
-   BFT-READ-BUF u s" BFR-USIGS-RESET" CONTAINS? TTRUE
-   BFT-READ-BUF u s" BFR-CHECK-OFF" CONTAINS? TTRUE
-   BFT-READ-BUF u s" BFR-HIDE-DICT-FROM-EARLIEST" CONTAINS? TTRUE
-   BFT-READ-BUF u s" : ATOMA-FIELD ( n -- ptr ptr u8 )" CONTAINS? TTRUE
-   BFT-READ-BUF u s" : ATOMA-FIELD" CONTAINS? TTRUE
-   BFT-READ-BUF u s" 0 constant T-CON" CONTAINS? TTRUE
-   BFT-READ-BUF u s" LOWER-CERT-HOOK:INSTALL" CONTAINS? TTRUE
-   BFT-READ-BUF u s" undefine FULL-XT" BFT-FIND BFT-FOUND {: seal-base:n :}
-   BFT-READ-BUF u seal-base s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
-   BFT-READ-BUF u seal s" \ driver-io.f" BFT-FIND-AFTER BFT-FOUND {: driver:n :}
-   seal-base seal < TTRUE
+   BFT-READ-BUF u s" RPD@" VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s" STDIN-OUT" VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s" BFR-CHECK-OFF" BFT-FIND BFT-FOUND {: off:n :}
+   BFT-READ-BUF u off s" PREFIX-REWIND:TO-CORE" BFT-FIND-AFTER BFT-FOUND {: rewind:n :}
+   BFT-READ-BUF u rewind s" LOWER-CERT-HOOK:INSTALL" BFT-FIND-AFTER BFT-FOUND {: hook:n :}
+   BFT-READ-BUF u hook s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
+   BFT-READ-BUF u seal s" driver-io.f" BFT-FIND-AFTER BFT-FOUND {: driver:n :}
+   off rewind < TTRUE
+   rewind hook < TTRUE
+   hook seal < TTRUE
    seal driver < TTRUE
    BFT-READ-BUF u BF-BOUNDARY-RAW-OFF$ CONTAINS? TFALSE
    BFT-READ-BUF u s\" s\" ASM-CODE\" s\" -- asm\" TRUST" CONTAINS? TFALSE
-   BFT-READ-BUF u s" STDIN-OUT" CONTAINS? TTRUE ;
+   BF-TMP-RESET ;
 
 : BFT-TEST-NO-STAGE2-RUN-SOURCE ( -- )
    BFT-RUN FILE? TFALSE ;
@@ -761,13 +908,17 @@ package BUILD-FIXPOINT
    seal build < TTRUE
    build retire < TTRUE
    BFT-READ-BUF u BF-BOUNDARY-RAW-OFF$ CONTAINS? TFALSE
-   BFT-READ-BUF u s" : ATOMA-FIELD ( n -- ptr ptr u8 )" CONTAINS? TTRUE
-   BFT-READ-BUF u s" TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 )" CONTAINS? TTRUE
-   BFT-READ-BUF u s" TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )" CONTAINS? TTRUE
-   BFT-READ-BUF u s" : INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )" CONTAINS? TTRUE
-   BFT-READ-BUF u s" : included ( ptr u8 n -- )" CONTAINS? TTRUE
    BFT-READ-BUF u s" SNAP-MAGIC" CONTAINS? TTRUE
    BFT-READ-BUF u s" CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" CONTAINS? TTRUE
+   \ THE KEEP SURFACE, stated as what it is. The core prefix is not re-read here
+   \ - the payload rewinds to the mark at its end and the compiling host's own
+   \ copy stays live - so the one file the image must bring back is the one the
+   \ engine loads AFTER that mark and the rewind therefore takes away.
+   BFT-READ-BUF u s" CORE-STR=" VERIFY:DEFINES? TFALSE
+   BFT-READ-BUF u s" ATOMA-FIELD" VERIFY:DEFINES? TFALSE
+   BFT-READ-BUF u s" SEAL-DICT-GUARD" VERIFY:DEFINES? TFALSE
+   BFT-READ-BUF u s" SCRIPT-ARGV$" VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s" : SCRIPT-ARGV$" BFT-FIND BFT-FOUND mark < TTRUE
    BF-TMP-RESET ;
 
 \ Doctored snapshot-trailer regression (TFAM 12 item 6, dot
@@ -1544,6 +1695,8 @@ public
    s" missing preamble diag" [: BFT-TEST-MISSING-PREAMBLE ;] BFT-STEP
    s" stale seed install" [: BFT-TEST-STALE-INSTALL ;] BFT-STEP
    s" cert inject install" [: BFT-TEST-CERT-INJECT-INSTALL ;] BFT-STEP
+   s" watermark required" [: BFT-TEST-WATERMARK-REQUIRED ;] BFT-STEP
+   s" watermark value" [: BFT-TEST-WATERMARK-VALUE ;] BFT-STEP
    s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
    s" chain closure key" [: TEST-CLOSURE-KEY ;] BFT-STEP
    s" chain stamp fold" [: TEST-STAMP-FOLD ;] BFT-STEP
@@ -1562,6 +1715,7 @@ public
    s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP
    s" certify boot prefix" [: BFT-TEST-CERTIFY-BOOT-PREFIX ;] BFT-STEP
    s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
+   s" defines scan" [: BFT-TEST-DEFINES-SCAN ;] BFT-STEP
    s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
    s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP
