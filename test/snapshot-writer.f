@@ -319,6 +319,23 @@ variable BAND-WID
    s"  PROT-WID-PROBE:MEMBER? if 1 else 0 then . ; PRB" SB-APPEND
    SB$ ;
 
+\ The declaration-event module grows its arenas through the host allocator
+\ (src/core/decl-event.f DEV-REG-GROW1), and the writer copies the DP heap
+\ verbatim, so a base left grown at persist is an address of the BUILD process
+\ baked into the image. src/core/decl-event.f DEV-SNAPSHOT-RESET is what puts
+\ the three arenas back on their baked boot stores, and these are its two
+\ observable halves: the restored log is empty, and the first declaration in the
+\ restored image publishes rather than storing its event through the build's
+\ address. The second is the leg that failed - a warm image died EXC_BAD_ACCESS
+\ at `stale base + DEV-N * DEV-REC` on its first ENUM - and it failed only on the
+\ runs where ASLR left that address unmapped, so the deterministic first leg
+\ rides with it and the pair is read together.
+: PROBE-EVENTS$ ( -- ptr u8 n )
+   s" DECL-EVENT:COUNT . " ;
+
+: PROBE-DECLARE$ ( -- ptr u8 n )
+   s" ENUM sw-warm 0 VARIANT sw-warm-a ;VARIANT ;ENUM DECL-EVENT:COUNT . " ;
+
 : FORGE$ ( n -- ptr u8 n ) {: wid:n :}
    SB-RESET
    wid FMT:SB-U
@@ -386,7 +403,15 @@ variable BAND-WID
    s" band with a wrong shape tag is refused at snapshot-read" T-LABEL
    DOCTOR-TAG ASSERT-BAND-REFUSED
    s" band claiming wid 0 is refused at snapshot-read" T-LABEL
-   DOCTOR-WID0 ASSERT-BAND-REFUSED ;
+   DOCTOR-WID0 ASSERT-BAND-REFUSED
+   s" restored image starts with an empty declaration-event log" T-LABEL
+   PROBE-EVENTS$ WARM-STDIN
+   EXITED @ TTRUE  RC @ 0 T=
+   PARSE-OUT 0 T=
+   s" first declaration in a restored image publishes, not faults" T-LABEL
+   PROBE-DECLARE$ WARM-STDIN
+   EXITED @ TTRUE  RC @ 0 T=
+   PARSE-OUT 0 > TTRUE ;
 
 \ ---- scenarios ----
 : POISON-CASE ( -- )

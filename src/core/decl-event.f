@@ -724,6 +724,44 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
       DEV-PART-CLEAR
    THEN ;
 
+\ ---------------------------------------------------------------------------
+\ IMAGE-SNAPSHOT RESET — a different "snapshot" from the participant phase just
+\ above. DEV-PART-SNAPSHOT opens a DECLARATION savepoint; this word prepares the
+\ module to be written into a persisted engine IMAGE.
+\
+\ All three arenas here grow through DEV-REG-GROW1, which re-allocates from the
+\ host process's allocator, so a grown base is a live address of THIS process and
+\ nothing else. The snapshot writer copies the DP heap verbatim, so a grown base
+\ left in place is persisted as a number that means nothing in the process that
+\ restores it: the restored image's first declaration reads DEV-BASE and stores
+\ through it. Measured, before this word existed: a warm image stored 1 into an
+\ unmapped page and died SIGSEGV/SIGBUS on its first ENUM, and on the runs where
+\ that address happened to land inside a mapped region it corrupted it silently
+\ instead. The three cursors go back to zero with the arenas because the boot
+\ stores they point at are the small baked ones - a published high-water that
+\ outran them would index off the end of the buffer it names.
+\
+\ THE EVENTS ARE MEANT TO GO. `variable DEV-A-P DEV-A-BOOT DEV-A-P !` at the head
+\ of this file is the module's own statement that its state is re-seeded per
+\ process, and reflection is a within-declaration view: COUNT/KIND@/IDENTITY read
+\ what the declarations of THIS process published, and every durable consequence
+\ of a declaration - family, variants, schema, layout, generated words - was
+\ published into registries that persist properly. A restored image therefore
+\ starts its event log empty, which is exactly what a restored image did before,
+\ by accident, when the build re-loaded this file on top of itself and re-ran the
+\ line above.
+\
+\ It runs at depth 0 or not at all: an image captured mid-declaration would carry
+\ frames whose field-owner and checker savepoints no one will ever close.
+: DEV-SNAPSHOT-RESET ( -- )
+   GENERATED-DECL:DEPTH 0 <> DEV-TX-DEPTH @ 0 <> or IF
+      s" decl-event: snapshot inside declaration transaction" DEV-BUG-RC die
+   THEN
+   DEV-A-BOOT DEV-A-P !                DEV-CAP-INIT DEV-CAP-V !
+   DEV-TX-BOOT DEV-TX-P !              DEV-TX-CAP-INIT DEV-TX-CAP-V !
+   DEV-PART-BASE-BOOT DEV-PART-BASE-P ! DEV-PART-CAP-INIT DEV-PART-CAP !
+   DEV-RESET ;
+
 2 constant DEV-PARTICIPANT
 
 : DEV-PART-INSTALL ( -- )
@@ -775,6 +813,7 @@ public
 : FINALIZE ( n -- ) DEV-FINALIZE ;
 : ROLLBACK ( n -- ) DEV-ROLLBACK ;
 : RESET ( -- ) DEV-RESET ;
+: SNAPSHOT-RESET ( -- ) DEV-SNAPSHOT-RESET ;
 
 : CURRENT-VARIANT ( -- n ) DEV-CUR-VAR @ ;
 : NO-VARIANT ( -- n ) DEV-NO-VARIANT ;

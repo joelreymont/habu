@@ -127,13 +127,23 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    words 0 > prot-wid-room 0= and IF E-PROTECTION-CAP throw THEN
    STAGE-ENSURE ;
 
+\ The generated-declaration participants' image-snapshot reset, in descending
+\ participant order: protection (this file), then dictionary, then the event
+\ transaction. This word is the chain's anchor because this file is the last
+\ participant to load and therefore the one that owns TDECL-OWNER-SNAPSHOT-XT,
+\ the hook CHECKER-SNAPSHOT-PREPARE reaches all of them through; an earlier
+\ participant cannot name a later one, so the tail is a call and not a hook.
+\ Each link drops its own grown, process-local buffers back to their baked boot
+\ stores - a persisted host address is a wild pointer in the process that
+\ restores the image.
 : SNAPSHOT-RESET ( -- )
    GENERATED-DECL:DEPTH 0 <> STAGE-N @ 0 <> or IF E-PROTECTION-CAP throw THEN
    STAGE-BOOT STAGE-P !
    BASE-BOOT BASE-P !
    CAP-INIT STAGE-CAP !
    CAP-INIT BASE-CAP !
-   GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET ;
+   GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
+   DECL-EVENT:SNAPSHOT-RESET ;
 
 3 constant PARTICIPANT
 

@@ -150,6 +150,61 @@ through `src/habu/xref.f` and the instruction encodings through
 `src/habu/habu1.f`, and the snapshot builder inlines both rather than
 `require`-ing them, so the tool must not `require` them either.
 
+## Is this heap cell a persisted pointer or a live one — the ASLR intersect
+
+A snapshot image carries the whole DP heap verbatim, so a cell holding an
+address the *build* process owned — a `malloc`ed arena base, an execution token
+in the build's code region — is wrong the moment the image boots somewhere else.
+The restored process is full of perfectly good addresses in the same numeric
+range, so "this cell looks like a pointer" separates nothing. What separates them
+is where the number comes from: **a persisted pointer was written into the image
+and is therefore identical in every run; a live one is produced by the running
+process and moves with ASLR.**
+
+So run the same image twice, dump the DP heap from each, and intersect:
+
+```sh
+for n in A B; do
+  ( (printf '7 .\n'; sleep 30) | ./hb-new >/dev/null 2>&1 ) &
+  sleep 3
+  pid=$(pgrep -n -f hb-new)
+  lldb --no-lldbinit -b -p "$pid" \
+    -o "memory read --outfile heap-$n.bin --binary --force 0x44000000000 0x44001100000" \
+    -o detach -o quit >/dev/null
+done
+```
+
+A cell that holds an out-of-band address (above the image, i.e. neither the DP
+heap at `DATA-VA` nor this run's code region) **and holds the same value in both
+dumps** is persisted, and it is a defect. A cell whose value differs between the
+two dumps is this process's own and is fine. The pipe held open by `sleep` is
+what gives a booted, quiescent process to attach to; the trivial `7 .` only
+proves the engine reached its REPL.
+
+Run the same intersect against an image built from a known-good tree and compare
+the two sets **by owner name** (`SNAP-HEAP-OWNER:DUMP`, above): what the suspect
+image carries and the good one does not is the regression, and everything in both
+is a pre-existing cell the good image already ships green. That comparison is
+what named `DEV-A-P` in dot `habu-single-prefix-load-17a8c792` — the arena base
+of `src/core/decl-event.f`, `malloc`ed by the build and persisted, so the warm
+image's first `ENUM` stored its event at `stale base + DEV-N * DEV-REC` and died
+`EXC_BAD_ACCESS` on an unmapped page. Note that it did NOT die on every run: when
+ASLR happened to leave that address mapped, the store landed in live memory and
+the program "passed". A nondeterministic pass rate is itself a symptom of this
+class, not noise to be re-run away.
+
+Two ways this class hides:
+
+- **A double load re-seeds it.** If the build loads the owning source twice, the
+  second load re-runs `variable X-P X-BOOT X-P !` and the persisted copy is the
+  fresh one. The defect is still there; only the accident is. Removing a
+  redundant load is therefore a change that can expose persisted-pointer bugs
+  anywhere in the tree, and this intersect is how to check.
+- **The owner map does not name it.** `snap-heap-owner` recognises only the
+  engine's own fixed x9 address chain, so a cell inside a natively compiled
+  `create` shows up attributed to whatever recognised owner lies below it, with a
+  large offset. Treat a big offset as "unnamed", not as that word's field.
+
 ## Stage0 mirror vs native engine — which engine is actually running
 
 Two independent engines compile the prefix, and a defect can live in one and be
