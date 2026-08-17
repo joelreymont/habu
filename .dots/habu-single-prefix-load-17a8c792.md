@@ -222,3 +222,17 @@ pointers identical, live ones vary) is adopted as the class's
 detection method - record it in docs/debugging.md with the
 landing.
 
+EQUALITY CLAUSE CONFIRMED-AS-REFUTED 2026-08-18: the seam sits
+below the lower-cert seal, so no consumer outside the prefix can
+hold both numbers - the equality clause has no home except the
+assignment, where it is a tautology. The lane's form preserves
+the ruling's INTENT in the reachable shape: the nonzero clause
+forged and mutation-backed; the off-the-seam property held BY
+CONSTRUCTION (one assignment, in the mark's owner, from the
+seam); and the unreachability itself ASSERTED in the test so the
+day the wall moves, the test says so. Ruled: this is the final
+form. COMMIT SPLIT KEPT as the truth-recording shape - the
+parent is green on every gate that exists at it, and the child
+repairs the latent defect the parent unmasks; recorded here so
+a future bisector reads this sentence.
+
