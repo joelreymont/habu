@@ -78,6 +78,7 @@ create BF-CHAR-BUF 1 allot
 create BF-STAMP-KEY 80 allot
 create BF-STAMP-OLD 80 allot
 create BF-STAMP-DG 40 allot
+create BF-REC-PREFIX-DG 40 allot
 create BF-REC-STAGE-DG 40 allot
 create BF-REC-STDIN-DG 40 allot
 create BF-CERT-DIAG BF-CERT-DIAG-CAP allot
@@ -122,6 +123,7 @@ variable BF-STAMP-PATH-U
 variable BF-STAMP-DIR-U
 variable BF-STAMP-DEF-U
 variable BF-STAMP-U
+variable BF-REC-PREFIX?
 variable BF-REC-STAGE?
 variable BF-REC-STDIN?
 variable BF-ENGINE-U
@@ -883,6 +885,44 @@ package BUILD-FIXPOINT
 : BF-APPEND-ENUMS ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/enums.f" BF-APPEND-SOURCE ;
 
+\ THE BOOT PREFIX, in the engine's own load order.
+\
+\ These are the files src/habu/habu2.f PFX-LOAD-BASE-FILES makes every engine
+\ re-read at boot, and this word is the build's mirror of that list:
+\ BF-APPEND-CHECKER-BOOT is PFX-LOAD-CHECKER-FILES, BF-APPEND-DECL-FILES is
+\ PFX-LOAD-DECL-FILES, and BF-APPEND-BOOT-CORE is PFX-LOAD-CORE-FILES. Each
+\ path is spelled once, in the appender that already owned it.
+\
+\ The assembly is CERTIFY-ONLY: nothing here is ever fed to a stage compile.
+\ The compiling host already carries these definitions from its own boot and
+\ the generated stage source rewinds to them (src/habu/hide.f) instead of
+\ recompiling them, so their static check has no other home. That check is the
+\ only gate they have (dot habu-staged-fixpoint-src-0b5fc6e6), which is why it
+\ is a build phase of its own rather than a side effect of the stage source.
+: BF-APPEND-BOOT-CORE ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu BF-APPEND-CORE-FILES
+   out outu BF-APPEND-ROLES
+   out outu BF-APPEND-CORE-BYTES
+   out outu BF-APPEND-TARGET-FLAG
+   out outu BF-APPEND-TARGET-LAYOUT
+   out outu BF-APPEND-HABU-LAYOUT
+   out outu BF-APPEND-ENV-BASE
+   out outu BF-APPEND-INCLUDE
+   out outu BF-APPEND-ENUMS
+   out outu s" src/core/sha256.f" BF-APPEND-SOURCE
+   out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-COMBINATORS
+   out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
+   out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE
+   out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
+   out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE ;
+
+: BF-APPEND-BOOT-PREFIX ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu BF-APPEND-CHECKER-BOOT
+   out outu BF-APPEND-DECL-FILES
+   out outu BF-APPEND-BOOT-CORE ;
+
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
    out outu BF-APPEND-ROLES
    out outu BF-APPEND-CORE-BYTES
@@ -936,6 +976,10 @@ package BUILD-FIXPOINT
 
 : BF-APPEND-STDIN-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu BF-APPEND-RUN-PRELUDE ;
+
+: BF-EMIT-PREFIX-SOURCE ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu BF-RESET-OUT
+   out outu BF-APPEND-BOOT-PREFIX ;
 
 : BF-EMIT-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu driver:ptr driveru :}
    out outu BF-RESET-OUT
@@ -1114,6 +1158,9 @@ package BUILD-FIXPOINT
    bn bnu BF-B-PATH BF-TMP> BF-B-LEN !
    BF-A-PATH BF-A-LEN @ BF-B-PATH BF-B-LEN @ BF-FILE= ;
 
+: BF-PREFIX-SOURCE ( -- )
+   s" prefix-src" BF-EMIT-PREFIX-SOURCE ;
+
 : BF-STAGE2-SOURCE ( -- )
    s" stage2-src" s" src/habu/stage2.f" BF-EMIT-SOURCE ;
 
@@ -1185,6 +1232,12 @@ package BUILD-FIXPOINT
 \ source before BF-CERTIFY-STDIN runs. Each certify therefore reads the same
 \ physical path but its own phase's distinct content — the `stage2-src`/`stdin-src`
 \ argument is the diagnostic label for the phase, not a second file name.
+\ The boot prefix's own certify phase. Its bytes are assembled into their own
+\ stage-input path and read straight back through VERIFY:SOURCE-BUF; no build
+\ step ever compiles that file.
+: BF-CERTIFY-PREFIX ( -- )
+   s" prefix-src" s" prefix-src" BF-A$ BF-CERTIFY-GENERATED ;
+
 : BF-CERTIFY-STAGE2 ( -- )
    s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;
 
@@ -1194,14 +1247,19 @@ package BUILD-FIXPOINT
 : BF-CERTIFY-SNAP ( -- )
    s" hb-snap-src" s" hb-snap-src" BF-A$ BF-CERTIFY-GENERATED ;
 
-\ Self-check certification census (dot habu-census-assert-the-f3a20b1f). The
-\ stage2 certify above fail-closes on any uncheckable/rejected definition, so
-\ reaching this report proves Uncheckable and Rejected are 0. CENSUS-COUNT reopens
+\ Self-check certification census (dot habu-census-assert-the-f3a20b1f). Every
+\ certify above fail-closes on any uncheckable/rejected definition, so reaching
+\ this report proves Uncheckable and Rejected are 0. CENSUS-COUNT reopens
 \ VERIFY to reuse its tokenizer (NEXT-SCAN skips strings and `\`/`( )` comments and
 \ each colon body), so the tally is exactly the top-level colon definitions the
-\ certify scanner verified. The count is per target: the assembled stage2 source
-\ includes the target's src/os leg, so linux-arm64 and macos-arm64 measure their
+\ certify scanner verified. The count is per target: both assemblies include the
+\ target's src/os leg, so linux-arm64 and macos-arm64 measure their
 \ own totals, mirroring the per-target CODELEN rows in test/gate-build-size.f.
+\
+\ The total is reported with its two phases beside it because they answer
+\ different questions: the boot prefix is what the host already carries and the
+\ assembled source is what a stage compile consumes. A phase that silently
+\ emptied would otherwise hide inside one sum.
 ;package
 
 package VERIFY
@@ -1227,22 +1285,36 @@ package BUILD-FIXPOINT
    HB-TARGET-MACOS? if s" macos-arm64" exit then
    BF-TARGET-UNKNOWN ;
 
-: BF-CENSUS-COUNT-STAGE2 ( -- n )
-   s" stage2-src" BF-A$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   s" stage2-src" BF-A$ buf cap READ-ALL {: u:n :}
-   buf u VERIFY:CENSUS-COUNT ;
+: BF-CENSUS-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u BF-A$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   a u BF-A$ buf cap READ-ALL {: len:n :}
+   buf len VERIFY:CENSUS-COUNT ;
 
 : BF-CENSUS-REPORT ( -- )
+   s" prefix-src" BF-CENSUS-COUNT {: pfx:n :}
+   s" stage2-src" BF-CENSUS-COUNT {: stg:n :}
    s" self-check census (" type BF-CENSUS-TARGET$ type
-   s" ): 0 uncheckable, 0 rejected, certified = " type
-   BF-CENSUS-COUNT-STAGE2 . ;
+   s" ): 0 uncheckable, 0 rejected, certified = " type pfx stg + .
+   s"   boot prefix = " type pfx .
+   s"   assembled = " type stg . ;
+
+: BF-SRC-DIGEST ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dg:ptr :}
+   a u BF-A$ dg SHA256-FILE dup 0 <> if throw then drop ;
 
 : BF-STAGE2-DIGEST ( ptr u8 -- ) {: dg:ptr :}
-   s" stage2-src" BF-A$ dg SHA256-FILE dup 0 <> if throw then drop ;
+   s" stage2-src" dg BF-SRC-DIGEST ;
+
+: BF-PREFIX-DIGEST ( ptr u8 -- ) {: dg:ptr :}
+   s" prefix-src" dg BF-SRC-DIGEST ;
 
 : BF-RECORD-RESET ( -- )
+   0 BF-REC-PREFIX? !
    0 BF-REC-STAGE? !
    0 BF-REC-STDIN? ! ;
+
+: BF-RECORD-PREFIX ( -- )
+   BF-REC-PREFIX-DG BF-PREFIX-DIGEST
+   -1 BF-REC-PREFIX? ! ;
 
 : BF-RECORD-STAGE ( -- )
    BF-REC-STAGE-DG BF-STAGE2-DIGEST
@@ -1295,6 +1367,9 @@ package BUILD-FIXPOINT
 
 : BF-STAGE-FIXPOINT ( -- )
    BF-PREFLIGHT
+   BF-PREFIX-SOURCE
+   BF-CERTIFY-PREFIX
+   BF-RECORD-PREFIX
    BF-STAGE2-SOURCE
    BF-CERTIFY-STAGE2
    BF-CENSUS-REPORT
@@ -1770,6 +1845,14 @@ variable CHAIN-I
    BF-STAMP-ENGINE+
    BF-STAMP-CAPTURE-TAG$ CHAIN-DG BF-STAMP-DG+ ;
 
+\ The boot prefix is a keyed build input in its own right. Its bytes reach no
+\ stage source, so without this row an edit to checker.f would leave every
+\ other stamp input identical and the refresh would answer `fixpoint: cached`
+\ over a product whose prefix had changed underneath it.
+: BF-STAMP-PREFIX-KEY+ ( -- )
+   BF-STAMP-DG BF-PREFIX-DIGEST
+   s" prefix-src" BF-STAMP-DG BF-STAMP-DG+ ;
+
 : BF-STAMP-STAGE-KEY+ ( -- )
    BF-STAMP-DG BF-STAGE2-DIGEST
    s" stage2-src" BF-STAMP-DG BF-STAMP-DG+ ;
@@ -1784,6 +1867,8 @@ variable CHAIN-I
 
 : BF-STAMP-KEY! ( -- )
    BF-STAMP-KEY-BEGIN
+   BF-PREFIX-SOURCE
+   BF-STAMP-PREFIX-KEY+
    BF-STAGE2-SOURCE
    BF-STAMP-STAGE-KEY+
    BF-STDIN-SOURCE
@@ -1791,9 +1876,11 @@ variable CHAIN-I
    BF-STAMP-KEY-END ;
 
 : BF-STAMP-RECORDED-KEY! ( -- )
+   BF-REC-PREFIX? @ 0= if E-BUILD-STATUS throw then
    BF-REC-STAGE? @ 0= if E-BUILD-STATUS throw then
    BF-REC-STDIN? @ 0= if E-BUILD-STATUS throw then
    BF-STAMP-KEY-BEGIN
+   s" prefix-src" BF-REC-PREFIX-DG BF-STAMP-DG+
    s" stage2-src" BF-REC-STAGE-DG BF-STAMP-DG+
    s" stdin-src" BF-REC-STDIN-DG BF-STAMP-DG+
    BF-STAMP-KEY-END ;

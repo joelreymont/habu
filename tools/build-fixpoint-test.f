@@ -46,6 +46,7 @@ $4A constant MISSING-RC
 variable BFT-ROOT-U
 variable BFT-HB-NEW-U
 variable BFT-HB-U
+variable BFT-PREFIX-U
 variable BFT-STAGE2-U
 variable BFT-RUN-U
 variable BFT-SNAP-U
@@ -79,6 +80,7 @@ variable BFT-HABU1-I
 create BFT-ROOT-BUF FS-PATH-CAP allot
 create BFT-HB-NEW-BUF FS-PATH-CAP allot
 create BFT-HB-BUF FS-PATH-CAP allot
+create BFT-PREFIX-BUF FS-PATH-CAP allot
 create BFT-STAGE2-BUF FS-PATH-CAP allot
 create BFT-RUN-BUF FS-PATH-CAP allot
 create BFT-SNAP-BUF FS-PATH-CAP allot
@@ -130,6 +132,9 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-HB ( -- ptr u8 n )
    BFT-HB-BUF BFT-HB-U @ ;
+
+: BFT-PREFIX ( -- ptr u8 n )
+   BFT-PREFIX-BUF BFT-PREFIX-U @ ;
 
 : BFT-STAGE2 ( -- ptr u8 n )
    BFT-STAGE2-BUF BFT-STAGE2-U @ ;
@@ -209,6 +214,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-ROOT CLEANUP-TREE+
    BFT-ROOT s" hb-new" BFT-HB-NEW-BUF BFT-HB-NEW-U BFT-PATH!
    BFT-ROOT s" hb-stdin" BFT-HB-BUF BFT-HB-U BFT-PATH!
+   BFT-ROOT s" prefix-src" BFT-PREFIX-BUF BFT-PREFIX-U BFT-PATH!
    BFT-ROOT s" stage2-src" BFT-STAGE2-BUF BFT-STAGE2-U BFT-PATH!
    BFT-ROOT s" stage2-run-src" BFT-RUN-BUF BFT-RUN-U BFT-PATH!
    BFT-ROOT s" hb-snap-src" BFT-SNAP-BUF BFT-SNAP-U BFT-PATH!
@@ -319,6 +325,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BF-TMP-RESET ;
 
 : BFT-RECORD! ( -- )
+   BF-PREFIX-SOURCE
+   BF-RECORD-PREFIX
    BF-STAGE2-SOURCE
    BF-RECORD-STAGE
    BF-STDIN-SOURCE
@@ -329,6 +337,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    {: outu erru :}
    BFT-ERR erru BFT-EMPTY$ T$=
    BFT-OUT outu s" bin/hb refresh OK: compiler fixpoint" CONTAINS? TTRUE
+   BFT-OUT outu s" boot prefix = " CONTAINS? TTRUE      \ the census reports both phases
+   BFT-OUT outu s" assembled = " CONTAINS? TTRUE
    BFT-OUT outu s" snapshot image OK: candidate validated" CONTAINS? TFALSE
    BFT-OUT outu s" fixpoint: cached " CONTAINS? TFALSE
    BFT-HB FILE? TTRUE
@@ -402,32 +412,45 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    rcn BF-USAGE-RC T=
    BFT-ERR erru s" missing required load" CONTAINS? TTRUE ;
 
-: BFT-STAGE-MUTATED-KEY! ( -- )
+\ The stamp key with ONE emitted source mutated between its emission and its
+\ digest row. A word per phase would be a copy of the key sequence per phase,
+\ and the copy is what goes stale: a phase added to BF-STAMP-KEY! and forgotten
+\ here would leave its mutation case silently testing the old key. One
+\ sequence, one selector.
+0 constant BFT-MUT-NONE
+1 constant BFT-MUT-PREFIX
+2 constant BFT-MUT-STAGE
+3 constant BFT-MUT-STDIN
+
+: BFT-KEY-MUT! ( n -- ) {: mut:n :}
    BF-STAMP-KEY-BEGIN
+   BF-PREFIX-SOURCE
+   mut BFT-MUT-PREFIX = if s" prefix-src" BF-A$ s" \ mutated boot prefix" APPEND-FILE then
+   BF-STAMP-PREFIX-KEY+
    BF-STAGE2-SOURCE
-   s" stage2-src" BF-A$ s" \ mutated stage source" APPEND-FILE
+   mut BFT-MUT-STAGE = if s" stage2-src" BF-A$ s" \ mutated stage source" APPEND-FILE then
    BF-STAMP-STAGE-KEY+
    BF-STDIN-SOURCE
+   mut BFT-MUT-STDIN = if s" stage2-src" BF-A$ s" \ mutated stdin source" APPEND-FILE then
    BF-STAMP-STDIN-KEY+
    BF-STAMP-KEY-END ;
 
-: BFT-STDIN-MUTATED-KEY! ( -- )
-   BF-STAMP-KEY-BEGIN
-   BF-STAGE2-SOURCE
-   BF-STAMP-STAGE-KEY+
-   BF-STDIN-SOURCE
-   s" stage2-src" BF-A$ s" \ mutated stdin source" APPEND-FILE
-   BF-STAMP-STDIN-KEY+
-   BF-STAMP-KEY-END ;
+: BFT-KEY-DIFFERS ( n -- ) {: mut:n :}
+   mut BFT-KEY-MUT!
+   BFT-KEY1 BF-STAMP-HEX-U BF-STAMP-KEY BF-STAMP-HEX-U STR= TFALSE ;
 
+\ Every emitted source the key covers is load-bearing, and the unmutated run is
+\ the control: without it, three keys differing would also be the signature of
+\ a key that simply never reproduces.
 : BFT-TEST-STAMP-SOURCE-KEY ( -- )
    BFT-STAMP-SCOPE
    BF-STAMP-KEY!
    BF-STAMP-KEY BFT-KEY1 BF-STAMP-HEX-U BYTE-COPY
-   BFT-STAGE-MUTATED-KEY!
-   BFT-KEY1 BF-STAMP-HEX-U BF-STAMP-KEY BF-STAMP-HEX-U STR= TFALSE
-   BFT-STDIN-MUTATED-KEY!
-   BFT-KEY1 BF-STAMP-HEX-U BF-STAMP-KEY BF-STAMP-HEX-U STR= TFALSE
+   BFT-MUT-PREFIX BFT-KEY-DIFFERS
+   BFT-MUT-STAGE BFT-KEY-DIFFERS
+   BFT-MUT-STDIN BFT-KEY-DIFFERS
+   BFT-MUT-NONE BFT-KEY-MUT!
+   BFT-KEY1 BF-STAMP-HEX-U BF-STAMP-KEY BF-STAMP-HEX-U STR= TTRUE
    BFT-STAMP-UNSCOPE ;
 
 : BFT-ZERO-KEY$ ( -- ptr u8 n )
@@ -1336,6 +1359,29 @@ variable BAD-N
 \ BF-CERTIFY-STDIN read the same path at different times. Prove the certify path
 \ exists in each phase and that the stdin phase OVERWRITES it with distinct
 \ content — so BF-CERTIFY-STDIN certifies the stdin driver source, not stage2 twice.
+\ The boot prefix is a certify phase of its own, and it is BLOCKING. The
+\ subject is the real assembly through the real phase word, not a hand-built
+\ stand-in: BF-PREFIX-SOURCE writes the bytes the build writes and
+\ BF-CERTIFY-PREFIX is the word the build calls. The good case proves those
+\ exact bytes certify; the bad case is the SAME bytes with one type-broken
+\ definition appended, which must throw rather than warn - the fail-open
+\ variant would pass the good case identically.
+\ The two membership assertions are structural, not decorative: they name a
+\ definition from the first checker-boot file and one from deep inside
+\ checker.f, so an assembly that silently emitted nothing, or stopped after its
+\ first file, still certifies clean and would pass without them.
+: BFT-TEST-CERTIFY-BOOT-PREFIX ( -- )
+   BFT-ROOT BF-TMP!
+   BF-PREFIX-SOURCE
+   BFT-PREFIX FILE? TTRUE
+   BF-CERTIFY-PREFIX
+   BFT-PREFIX BFT-READ {: u:n :}
+   BFT-READ-BUF u s" : CORE-STR=" CONTAINS? TTRUE
+   BFT-READ-BUF u s" checker-registry.f - typed checker effect store" CONTAINS? TTRUE
+   s" prefix-src" BF-A$ s" : BFT-PFX-BAD ( n -- n ) drop ;" APPEND-FILE
+   [: BF-CERTIFY-PREFIX ;] E-BUILD-CERTIFY TTHROWSQ
+   BF-TMP-RESET ;
+
 : BFT-TEST-CERTIFY-PHASE-SOURCES ( -- )
    BFT-ROOT BF-TMP!
    BF-STAGE2-SOURCE
@@ -1514,6 +1560,7 @@ public
    s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
    s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP
+   s" certify boot prefix" [: BFT-TEST-CERTIFY-BOOT-PREFIX ;] BFT-STEP
    s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
    s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
    s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
