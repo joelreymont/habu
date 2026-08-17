@@ -59,3 +59,24 @@ gets its own honest wording: the veto moved (build-fixpoint.f
 packaged; habu2.f/boot-pin still unpackaged - their packaging
 belongs to their own dots).
 
+SEAL RULING 2026-08-17 (the leg-2/3 blocker: SEAL-DICT-GUARD
+refuses the snap retire below the boot watermark - correctly,
+by its own light): THE SNAP RETIRE RUNS UNDER THE BUILD-MODE
+LATCH, exactly the discipline the metabuild's own rewind
+already uses (it stores ndict! under MODE-BUILD's open latch
+and never trips the guard). One rewind discipline, no second
+floor, no watermark re-capture. The guard's invariant is
+untouched: sealed definitions stay unforgettable BY CHECKED
+CODE - the latch is build machinery. PRECONDITION: verify the
+latch is NOT reachable from checked habu (the seal threat model
+is checked habu); if it is, checkpoint - that would be a seal
+hole independent of this work. The lane's option (iii) - snap
+keeping the old rewind - is REFUSED in the lane's own words:
+two rewind shapes in production with the 4.48MB orphan
+preserved for exactly the artifact that persists it.
+LANE HYGIENE RULING: rebuild legs 2-4 from the clean 65fede79
+plus the banked scratchpad files (spx/lcs-C.f, bf-C.f, bft-C.f,
+hide-2b.f, prefix-mark-test.f, leaf-resolved.md) - do NOT fight
+the divergent conflicted twin; abandon it. Leg 4's pins get
+corrected against the REAL emitted source, mutation-backed.
+
