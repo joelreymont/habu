@@ -12,14 +12,17 @@
 \
 \ How the bits are injected without editing production source: the stdin
 \ metabuild driver src/habu/stdin.f ends with a single top-level
-\ `STDIN-DRIVER:RUN` call. This builder reads that file, verifies it still ends
-\ with that call (and dies with a clear message if the tail ever drifts), drops
-\ the call, and appends the same sequence written out at interpret level, with
-\ the protected-WID work spliced in between capturing the REPL and emitting the
-\ image. CAPTURE-REPL and the capture words are package-private, so the appended
-\ text reopens STDIN-DRIVER and AOT-CAPTURE to reach them by their bare names -
-\ it never adds a public tail to either. The rest of the build reuses
-\ tools/build-fixpoint.f exactly as the normal stdin build does.
+\ `STDIN-DRIVER:RUN` call, and everything before it is what a generated driver
+\ keeps. WHICH BYTES THOSE ARE IS NOT THIS FILE'S TO SAY - it asks
+\ BUILD-FIXPOINT's BF-DRV-SOURCE-KEEP, the same word the production chain driver
+\ asks, so the tail token and its fail-closed check live in one place instead of
+\ two that drift. This builder then appends the driver's own terminal sequence
+\ written out at interpret level, with the protected-WID work spliced in between
+\ capturing the REPL and emitting the image. CAPTURE-REPL and the capture words
+\ are package-private, so the appended text reopens STDIN-DRIVER and AOT-CAPTURE
+\ to reach them by their bare names - it never adds a public tail to either. The
+\ rest of the build reuses tools/build-fixpoint.f exactly as the normal stdin
+\ build does.
 \
 \ Sixteen modes, one per entry below (HABU_AOT_GATE serves two), selected by
 \ environment so one builder serves every case its companion suites need -
@@ -139,14 +142,11 @@ require tools/build-fixpoint.f
 package AOT-WID-BUILD
 using BUILD-FIXPOINT
 
-: STDIN-SRC-PATH ( -- ptr u8 n ) s" src/habu/stdin.f" ;
-
-$4000 constant SRC-CAP             \ src/habu/stdin.f is ~4 KB
-\ Driver = source (minus GO) + injection. The big-window mode writes BIG-FILLER-N
-\ definitions into it, which is what sets this cap rather than the ~4 KB source.
+\ Driver = the stdin source BUILD-FIXPOINT keeps + this file's injection. The
+\ big-window mode writes BIG-FILLER-N definitions into it, which is what sets this
+\ cap rather than the ~4 KB source.
 $10000 constant DRV-CAP
 
-create SRC-BUF SRC-CAP allot   variable SRC-U
 create DRV-BUF DRV-CAP allot   variable DRV-U
 create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 
@@ -155,35 +155,6 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 
 : DRV-PATH! ( -- )                 \ <HB_TMP>/pwid-driver.f
    BF-TMP$ s" pwid-driver.f" DRV-PATH-BUF JOIN-PATH DRV-PATH-U ! ;
-
-: READ-STDIN-SRC ( -- )
-   STDIN-SRC-PATH SRC-BUF SRC-CAP READ-ALL SRC-U !
-   SRC-U @ 0 <= if s" aot-wid-build: cannot read src/habu/stdin.f" BF-BUILD-RC die then ;
-
-: WS? ( n -- bool ) {: c:n :}      \ whitespace: space, tab, cr, lf
-   c 32 = c 9 = or c 13 = or c 10 = or ;
-
-: SRC-LAST ( -- n )                \ index of last non-whitespace byte, or -1
-   SRC-U @ 1-
-   begin dup 0 >= while
-      dup SRC-BUF + c@ WS? 0= if exit then
-      1-
-   repeat ;
-
-: TAIL-BAD ( -- )
-   s" aot-wid-build: src/habu/stdin.f no longer ends with STDIN-DRIVER:RUN" BF-BUILD-RC die ;
-
-: RUN-TAIL$ ( -- ptr u8 n ) s" STDIN-DRIVER:RUN" ;
-
-\ Length of stdin.f to keep: everything up to (not including) the trailing
-\ `STDIN-DRIVER:RUN`. Fail closed if the file does not end with that token.
-: RUN-KEEP ( -- n )
-   SRC-LAST {: l:n :}
-   RUN-TAIL$ {: t:ptr tu:n :}
-   l 1+ tu < if TAIL-BAD then
-   l 1+ tu - SRC-BUF + tu t tu STR= 0= if TAIL-BAD then
-   l 1+ tu > if l tu - SRC-BUF + c@ WS? 0= if TAIL-BAD then then
-   l 1+ tu - ;
 
 : DRV-RESET ( -- )
    0 DRV-U ! ;
@@ -816,10 +787,9 @@ create DRV-CH 1 allot
 
 : GEN-DRIVER ( -- )
    DRV-PATH!
-   READ-STDIN-SRC
-   RUN-KEEP {: keep:n :}
+   BF-DRV-SOURCE-KEEP {: keep:n :}  \ the build's own split of the stdin driver
    DRV-RESET
-   SRC-BUF keep DRV+                \ stdin.f minus its terminal driver call
+   BF-SOURCE-BUF keep DRV+          \ stdin.f minus its terminal driver call
    INJECT                           \ ... plus the bitmap-working fixture
    DRV-IMPORT-CHECK
    DRV-PATH$ DRV-BUF DRV-U @ WRITE-ALL ;

@@ -1422,6 +1422,18 @@ variable BF-DRV-R
    l 1 + tu > if l tu - BF-SRC-C@ BF-DRV-WS? 0= if BF-DRV-TAIL-BAD then then
    l 1 + tu - ;
 
+\ THE ONE SPLIT OF THE STDIN DRIVER, and the only word any generator asks. It
+\ reads src/habu/stdin.f into BF-SOURCE-BUF and answers how many of those bytes a
+\ generated driver keeps - everything up to the terminal `STDIN-DRIVER:RUN` the
+\ generator replaces. Three generators want that: this file's own chain driver,
+\ tools/aot-chain-bake.f through it, and test/aot-wid-build.f, which used to
+\ carry its own copy of the whitespace scan, the tail token and the fail-closed
+\ check. Two spellings of one fact drift, and the fact is which bytes of a
+\ shipped source file a build may keep.
+: BF-DRV-SOURCE-KEEP ( -- n )
+   SDC-DRIVER$ BF-READ-SOURCE
+   BF-DRV-KEEP ;
+
 \ A path holding a `"` would end the generated string literal early and the driver
 \ would compile some other program. Refuse rather than escape.
 : BF-DRV-PATH? ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -1443,8 +1455,7 @@ variable BF-DRV-R
    art artu BF-DRV-PATH?
    eng engu BF-DRV-PATH?
    BF-CHAIN-DRIVER-PATH!
-   SDC-DRIVER$ BF-READ-SOURCE
-   BF-DRV-KEEP {: keep:n :}
+   BF-DRV-SOURCE-KEEP {: keep:n :}
    BF-CHAIN-DRIVER$ BF-SOURCE-BUF keep WRITE-ALL
    S\" : ART-DECL ( -- ) s\" " BF-DRV+
    art artu BF-DRV+
@@ -2002,6 +2013,7 @@ EXPORT BF-CLI
 EXPORT BF-CLI-SELF-DISPATCH
 EXPORT BF-CODESIGN-FORCE-TMP
 EXPORT BF-CODESIGN-VERIFY-TMP
+EXPORT BF-DRV-SOURCE-KEEP
 EXPORT BF-EMIT-ENGINE
 EXPORT BF-EMIT-SNAP-RUN-SOURCE-WITH
 EXPORT BF-EMIT-STDIN-RUN-SOURCE
