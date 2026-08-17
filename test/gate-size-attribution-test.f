@@ -880,9 +880,48 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 16 KiB __TEXT page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not
 \ move and `FILE-SIZE bin/hb` is still 165367 (measured).
 \ The Linux rows below are owed this +12 as well.
-131984 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-17 the seeded checker payload (dot
+\ habu-seeded-words-invisible-c7505a49). The whole +3504 lands in aot-seed, and
+\ it divides with no residue into three measured parts:
+\   3452  the payload itself, read out of the built engine's own published cell
+\         (`data-base AOT-SIG:LEN-CELL + @`): the REPL window's signature rows,
+\         the strings they name, an empty type registry and the 56-byte table
+\         that says where each of the three begins.
+\      8  the length word EMIT-AOT-SEED bakes in front of it (AOT-SIG:LLEN).
+\     44  AOT-SIG:PUBLISH,, the eleven instructions the seed runs to store that
+\         address and that length into the two DATA cells: two TADR, (four words
+\         each, being LOFF, + the text-base load + an add) plus LDR and two STR.
+\ CODELEN 131984 -> 135488 (+3504), floor distance 5008 -> 8512. Still the eighth
+\ 16 KiB __TEXT page ((CODE-OFF + CODE-TEXT) / 16 KiB is 8 both sides), so
+\ MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not move and
+\ `FILE-SIZE bin/hb` is still 165367 (measured).
+\ The Linux rows below are owed this +3504 as well; a Linux window's payload is
+\ its own REPL capture, so the number there is that host's to measure.
+\ 2026-08-17 the seed's registry install and the region's new caps, same dot.
+\ +160, and it divides between two commits with no residue. Each half was
+\ measured by building that commit's own tree and diffing its
+\ HABU_ENGINE_SIZE_MAP against its parent's, so every byte below names a row.
+\   +72  `aot: install the seeded type registry at the seed point`
+\        +52 compile/exit: AOT-SIG:INSTALL,, the thirteen instructions the seed
+\            runs to resolve CK-AOT-REG-INSTALL and call it - one TADR, (four
+\            words), MOVZ, BL, CBZ, BL, BLR, B, MOVZ, and a two-word SYS,.
+\        +20 aot-seed: the name it resolves by, `CK-AOT-REG-INSTALL`, 18 bytes
+\            in the emitted pool.
+\   +88  `layout: size both region bands for the composite they hold`
+\        +16 interpret/define, +16 primitives/find, +8 primitives/find-wl,
+\        +8 primitives/find-used, +24 primitives/hash-index,
+\        +16 primitives/qualify-def - the six phases that materialise DICT-CAP,
+\        HIDX-SLOTS, HIDX-BYTES and HIDX:LOAD-MAX. A raised cap needs a second
+\        instruction where one MOVZ carried the old one, which is the cost the
+\        LIT64 conversion made honest rather than the cost it added.
+\ CODELEN 135488 -> 135648, floor distance 8512 -> 8672. container/text-pad
+\ 7872 -> 7712 absorbs the whole +160 inside the same eighth 16 KiB __TEXT page,
+\ so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not move and
+\ `FILE-SIZE bin/hb` is still 165367 (measured).
+\ The Linux rows below are owed this +160 as well.
+135648 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-5008 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+8672 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
@@ -1192,6 +1231,11 @@ variable RB-Q-A  variable RB-Q-U  variable RB-Q-V  variable RB-Q-HIT
 : LIVE-ENGINE ( -- n )
    s" bin/hb" FILE-SIZE ;
 
+\ The installed engine carries a whole engine and, in a seeded product, a chain
+\ besides. Less than the committed total is an engine that is not this one.
+: LIVE-CARRIES-ENGINE? ( -- bool )
+   LIVE-ENGINE HOST-TOTAL >= ;
+
 public
 
 \ Committed CODE-TEXT (__text) row for whichever target is running (0 = unmeasured).
@@ -1224,9 +1268,16 @@ public
    s" bytes __text headroom to the 4 KiB text floor (measured linux layout)" type cr ;
 
 \ Pure self-check (no build): each target's committed decomposition reconstructs
-\ its whole file and page-floor shave, and the running target's committed total
-\ equals the live installed engine. Any drift - a bigger engine, a stale row -
-\ fails one of these, so the manifest cannot silently fall behind reality.
+\ its whole file and page-floor shave, and the live installed engine carries at
+\ least the committed total.
+\ THE LIVE COUPLING IS DIRECTIONAL NOW, and the reason is what bin/hb became. The
+\ rows below decompose the CAPTURE HOST - the engine the build emits first and the
+\ one every number here was measured on - and the installed engine is that engine
+\ plus a baked compiler chain whose payload moves with every compiler-source edit
+\ (dot habu-seed-the-chain-e98b03d4). Equality here would be a payload ratchet. The
+\ EXACT coupling did not weaken, it MOVED to where the host exists: the engine
+\ build slice runs SIZE-ATTR:VALIDATE against hb-host on every build, which holds
+\ SUM-ALL to that file byte for byte and every committed region row with it.
 \ The committed-row self-check for a target whose decomposition is measured. A
 \ target whose CODE-TEXT is owed has nothing here to check: its rows do not claim
 \ to reconstruct anything, and the live coupling below still holds its whole-file
@@ -1242,7 +1293,7 @@ public
    MACOS-MODEL-SUM MACOS-TOTAL T=
    MACOS-MODEL-FLOOR MACOS-FLOOR-DIST T=
    LINUX-SELF-CHECK
-   HOST-TOTAL LIVE-ENGINE T=
+   LIVE-CARRIES-ENGINE? TTRUE
    T-REPORT ;
 
 \ Live drift check against a captured map + its engine (for a build-and-capture

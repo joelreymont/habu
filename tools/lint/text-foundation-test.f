@@ -988,9 +988,21 @@ variable REG-I
    \ They are two rows rather than none because the alternative was putting
    \ SYM-FIND and CHECKER-FIND-USIG-SYM in this table, which would widen the
    \ checker's trusted boundary far past what the audit needs to ask.
+   \ It was 386 before the lazy signature intake (same dot) added the four rows
+   \ its capture side needs. `CHECKER-ASIG-ROW-FOR` is the third question asked
+   \ per window record, beside KNOWN? and MISSING? above: WHERE the word's row
+   \ is, so src/habu/aot-capture.f can copy it out of the store by the same
+   \ keyed lookup rather than by scanning. The other three are the type
+   \ registry's - `CHECKER-REG-AOT-MARK` and `CHECKER-REG-AOT-CLOSE`, which
+   \ src/habu/aot-arm.f and src/habu/aot-capture.f use to bracket the window a
+   \ registry delta is measured over, and `CHECKER-REG-AOT-SAVE`, which writes
+   \ that delta into the artifact's buffer. All four are boot-prefix Habu words
+   \ whose bodies compile with the hook off, on the same terms as the eight
+   \ above, and all four exist so their callers do NOT have to name a registry
+   \ store or a symbol table directly.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 386 ASSERT=
+   REG-COUNT 390 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

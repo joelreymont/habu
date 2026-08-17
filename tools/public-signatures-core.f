@@ -754,8 +754,32 @@ private
       PS-CLOSURE-I @ 1+ PS-CLOSURE-I !
    repeat ;
 
+\ --- THE LOAD-TIME BRACKET, and why "the live registry" is the wrong set.
+\ The synthesized rows below are stamped with the SCANNED FILE's path, so the
+\ families they may speak for are the ones THIS LOAD declared - not every family
+\ the process happens to hold. Those were the same set only while an engine
+\ arrived empty of them. A seeded engine arrives with the whole baked chain's
+\ registry already installed, and an unfiltered walk then reports a
+\ 13-definition file as defining 386 words, attributing every chain constructor
+\ to a file that never mentioned one (measured: 60,491 bytes against the same
+\ tree's unseeded host answering 1,982).
+\ THE BOUNDARY IS A HIGH-WATER TAKEN WHEN THIS FILE LOADS, which is the earliest
+\ moment the tool exists to take one. Everything below it came with the engine:
+\ the AOT seed installs its registry before any user token runs, so no family a
+\ program declares can be under this mark. Everything at or above it was
+\ declared by the program now loading - the load order the tool's own header and
+\ every caller already use, tool first and subject after. It is a constant, not
+\ a variable, because a second writer would be a second answer.
+\ It is PUBLIC because it is part of what a manifest means: a reader that wants
+\ to know which families this manifest could have spoken for needs the mark it
+\ was bracketed by, and deriving it a second time from outside would be a second
+\ answer to the same question.
+public
+TFAM-N@ constant FAM-BASE
+private
+
 \ --- synthesized public constructor signatures (item 13). Each PUBLIC ENUM
-\ family in the live registry publishes one nullary constructor per variant:
+\ family THIS LOAD declared publishes one nullary constructor per variant:
 \ word `PKG:VARIANT` (from SUMV-CTOR-PKG$/SUMV-NAME$), signature `-- family<args>`
 \ (the logical family type from name+arity, mirroring sumtype.f TDGEN-OUT-TYPE).
 \ Metadata only -- never a hidden field; payload-carrying SUM/PRODUCT constructors
@@ -820,8 +844,14 @@ private
    s" exported" PS-JSON-KEY PS-TRUE PS-JSON-BOOL
    PS-DEF-END ;
 
+\ THE TOOL'S OWN STATEMENT of what a manifest may contain, so the two of them
+\ are public: the bracket's regression in tools/public-signatures-test.f has to
+\ name a family this walk WOULD have published, and re-deriving that rule beside
+\ the walk would be a second answer to the walk's own question.
+public
 : PS-ENUM-PUBLIC? ( n -- bool ) {: fam:n :}
    fam TFAM-KIND@ PS-TK-ENUM = fam TFAM-PUBLIC? and ;
+private
 
 \ derive S1: a DERIVE-eq enum also publishes PKG:TAG ( fam -- n ) and
 \ PKG:EQ ( fam fam -- bool ), synthesized from the same registry metadata.
@@ -873,13 +903,15 @@ private
    fam TFAM-DERIVE-HASH? IF
       fam s" hash" file-a file-u 0 PS-EMIT-DRV THEN ;
 
+public
 : PS-DRV-PUBLIC? ( n -- bool ) {: fam:n :}
    fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or
    fam TFAM-PUBLIC? and ;
+private
 
 : PS-EMIT-REGISTRY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    PS-TRUST @ IF exit THEN
-   TFAM-N@ 0 ?do
+   TFAM-N@ FAM-BASE ?do
       i PS-ENUM-PUBLIC? IF i file-a file-u PS-EMIT-FAM-CTORS THEN
       i PS-DRV-PUBLIC? IF i file-a file-u PS-EMIT-FAM-DRV THEN
    loop ;

@@ -7212,4 +7212,155 @@ can reach it: XTSITE discriminated one real mutant, and the
 classifier that would have to emit that row returns early for
 exactly the values that make it possible. Deleted on
 producibility, not on taste.
-++++++ somwsmms 5c8ac8f9 "build: the seeded chain tells the registry it is loaded" (rebased revision)
+
+## 2026-08-17 - the seeded signatures' five (bake-chain-19)
+
+- **A ruling's lookup key can be right about the mechanism and wrong
+  about the data.** The intake was ruled to read FAILTK, and FAILTK is
+  not the unresolved token: DO-TOK1 pins EVERY token until a failure
+  latches FAILSET, so `: T ( -- ) SEEDED dup ;` pins `dup`. The probe
+  that proved the retry used a body whose seeded name was last. Check
+  what a pinned value is pinned BY before building on it.
+- **The completeness audit found the fix's own next bug twice.** The
+  window-record walk refused first when the type registry's delta was
+  read live at capture time (it counted the capture tool's own
+  families) and again when a fixture extended a window past the moment
+  the collection stopped. Both were real; an audit that only passes on
+  the happy path would have shipped an engine that refused itself.
+- **Ask which of two facts is chosen by a walk.** The signature rows
+  are picked by a walk over the window's records, so a store holding
+  more than the window is harmless. The registry delta is two
+  high-waters subtracted, so the moment it is read IS its meaning.
+  Those two need different discipline, and treating them alike cost a
+  round trip through the whole build.
+- **Postfix arithmetic reads left to right and so must the reviewer.**
+  `live base + cnt =` is `(live+base) = cnt`, not `live = base+cnt`.
+  It passed the first call by luck (both sides were the base) and
+  refused the second, which looked exactly like a registry that had
+  been installed and then lost. A dumper over the artifact's own bytes
+  answered it in one run; two hours of reasoning had not.
+- **A control build of master IN THE LANE'S OWN WORKSPACE is the only
+  honest attribution.** One red out of nine looked environmental until
+  master's tree, built and tested in the same workspace with the same
+  HB_TMP, passed it. Save the working copy, `jj new master`, build,
+  test, restore - three minutes, and it turns "probably not mine" into
+  a fact either way.
+
+## 2026-08-17 - the dark suite and three wrong producers (bake-chain-22)
+
+- **A schedule lint can only answer the question it asks.** The region
+  headroom suite was a SUITE row in test/gate-stdlib-cases.f, selected
+  by the lint-tools predicate, and the schedule lint said it was
+  covered - because it reads test/run-lib.f's phase-to-slice map and
+  never asks TEST:PHASE-RESIDENT?. Phase 17 is resident: test/run.f
+  forks test/run-worker-stdlib.f, which runs the in-process GSI body
+  and loads no registration at all. Breaking one of the suite's
+  assertions left the whole battery green. Registration plus a
+  predicate is not scheduling; only the list the runner actually forks
+  is. Dotted as habu-schedule-lint-resident-8b020630.
+- **Run the break-and-watch, do not inherit it.** Two handoffs carried
+  "registered and selected, so it runs". One deliberately inverted
+  assertion and one full battery settled it in four minutes, and the
+  answer was no.
+- **DUMP THE RECORD BEFORE NAMING THE PRODUCER, three more times.**
+  A handoff recorded the diagnostics slice as throwing -2102 E-FS-OPEN
+  entering FILE-ORIGIN; the code is -2201 E-STR-CAPACITY and the case
+  is PUBLIC-SIGNATURES, in a different slice entirely. Another
+  recorded the build-fixpoint reds as emitted-stage2 CONTAINS pins;
+  mapping the run ordinals to subtests put them in the stale-install
+  sandbox, the cert-inject sandbox and the stamp fold. A third called
+  the whole class pre-existing; the same tree's own unseeded engine
+  passes every one of them. Numbers, ordinals and codes are cheap to
+  read and expensive to assume.
+- **Assert ordinals are not line numbers - label them or map them.**
+  `TFAIL assert 41` names nothing, because lib/test/assert.f clears
+  the label after every assertion, so only a subtest's first assert
+  carries one. Printing T-CASES at each subtest boundary turned ten
+  anonymous failures into three named root causes in one run.
+- **A negative case that passes for the wrong reason hides its
+  positive twin.** The stamp fixture searched the preimage for the tag
+  `chain-src` after the key started writing `capture-src`. The
+  positive assertion failed; the negative one beside it went on
+  passing, because an absent tag is absent whichever name you look
+  for. Both now take the tag from the tool.
+- **What a sandbox must carry is a function of what the tool opens,
+  not of what it requires.** The stale-build sandbox copied the
+  refresh tool's require closure, and the stamp key had grown a second
+  closure walk over the CAPTURE tool - opened before `--force` is even
+  read, before anything is written. Every fault the fixtures inject
+  came back as one bare uncaught throw. Ask the tool for its entry.
+- **Two engines mean two ways to be wrong, and a fixture inherits
+  neither.** The build learned to make the snapshot from the capture
+  host, because a restore skips the AOT seed; the fixture kept naming
+  the product and got exit 82, `hb: AOT call site unresolved`. That
+  was the seed refusing correctly about an engine production never
+  asks for. When a build rule picks one of two engines, the rule is a
+  word both callers ask, not a literal each spells.
+- **A seed makes every "the live registry" query a different
+  question.** tools/public-signatures-core.f publishes a ctor row for
+  every public family in the process and stamps it with the scanned
+  file. Unseeded that was a handful; seeded it is the whole baked
+  chain, so a 13-definition file reports 386 definitions and overflows
+  every consumer's buffer. The same tree's bin/hb-host answers 13.
+  Any tool that reads a global table and attributes it to a local
+  subject is owed this audit before a seed lands.
+- **Attribute a ratchet by building the commits, not by counting
+  instructions.** +160 of engine text split 72/88 across two commits,
+  and each half landed in named rows of the size map - measured by
+  extracting each commit's tree, installing, and diffing its map
+  against its parent's. Three builds, two minutes, and the prose can
+  say which rows and why.
+
+## 2026-08-17 - the close (bake-chain-22, dot c7505a49)
+
+- **A stack's own base can be the only lineage that has it.** `master`
+  was a dots-only ruling lane carrying none of this lane's code, so
+  `jj rebase -s @ -d master` would not have caught anything up - it
+  would have moved the working copy onto a tree where
+  SOURCE-ARENA-CAP still read $400000, and the first symptom is
+  silence. Merge ruling TEXT by union; rebase code onto the stack
+  tip. Check `ancestors(master) & <your commits>` before believing a
+  rebase is a fast-forward.
+- **Break-and-watch before trust, every time.** Two handoffs carried
+  "registered and selected, so it runs" for a suite the battery never
+  ran. Four minutes of inverting one assertion answered what a lint's
+  green had not. A registration is a claim; a red is evidence.
+- **A test that restates the implementation's bounds cannot fail.**
+  Asserting a manifest holds exactly the rows between the walk's two
+  bounds repeats the walk. The assertion that does work is the
+  CONSEQUENCE the bounds were chosen for - a family the engine
+  arrived with must not be named in a scanned file's manifest - and
+  it reds the moment the bound is removed. The same trap was caught
+  one lane earlier when a layout case restated CODE-BAND:BYTES'
+  definition; it is the lane's most repeated mistake.
+- **ONE FACT, ONE WORD - three defects in this lane were one fact
+  spelled twice.** The stamp tag lived as a literal in the tool and
+  again in its fixture, so a rename broke the fixture silently. The
+  snapshot's build engine lived as a literal on each side, so a rule
+  that moved to the capture host left the fixture building from the
+  product. The publish rule lived in the walk and would have lived
+  again in the walk's own regression. Each fix is a word both callers
+  ask. When two places must agree, the agreement is a definition, not
+  a convention.
+- **Three debts were owed BEFORE the seed and the seed only made them
+  fail.** The dictionary was already under its own 25% headroom
+  standard unseeded; the source arena stood 1,956 bytes from its wall
+  with checker.f counted twice; and public-signatures already
+  attributed the whole live registry to whichever file it scanned. A
+  seed does not create these - it removes the slack that was hiding
+  them. Expect a bake to surface the arithmetic every fixed arena and
+  every "the live registry" query was already getting wrong.
+- **A seeded engine changes the ANSWER to every global-table query,
+  not just its size.** Growing the buffer would have kept a manifest
+  that claimed a 13-definition file defines 386 words. The fix is a
+  boundary that says which rows the file could have declared; the
+  capacity was the messenger.
+- **The package lint decides where a new regression may live.**
+  Adding a case to an unpackaged fixture makes every word it touches
+  a changed module word outside a package, and the lint refuses the
+  diff. That is not an obstacle to route around: it is the tree
+  asking for the new work to arrive packaged. A new file with its own
+  package, registered in the SUITE row AND in the list test/run.f
+  actually forks, cost less than migrating a legacy fixture would
+  have - and it made the registration provable by its own
+  break-and-watch.

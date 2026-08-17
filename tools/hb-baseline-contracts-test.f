@@ -56,10 +56,15 @@ variable HBT-PUBLIC-BAD
 : HBT-EXEC? ( ptr u8 n -- bool )
    FS-PATHZ HBT-X-OK access 0= ;
 
+\ The public surface is the engine and the capture host the install keeps
+\ beside it (tools/build-fixpoint.f BF-INSTALL-HOST): fixtures whose subject
+\ is source-loading the chain obtain the host by this path. Anything else
+\ executable in bin is still a contract violation.
 : HBT-BIN-FILE ( ptr u8 n -- ) {: a:ptr u :}
    a u HBT-EXEC? if
       HBT-PUBLIC-N @ 1+ HBT-PUBLIC-N !
-      a u s" bin/hb" STR= 0= if -1 HBT-PUBLIC-BAD ! then
+      a u s" bin/hb" STR=
+      a u s" bin/hb-host" STR= or 0= if -1 HBT-PUBLIC-BAD ! then
    then ;
 
 : HBT-SCRIPT$SRC ( -- ptr u8 n )
@@ -118,7 +123,7 @@ variable HBT-PUBLIC-BAD
    0 HBT-PUBLIC-N !
    0 HBT-PUBLIC-BAD !
    s" bin" [: HBT-BIN-FILE ;] WALK-FILES
-   HBT-PUBLIC-N @ 1 T=
+   HBT-PUBLIC-N @ 2 T=
    HBT-PUBLIC-BAD @ 0 T= ;
 
 : HBT-TEST-PIPELINE ( -- )

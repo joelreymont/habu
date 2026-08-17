@@ -1457,8 +1457,17 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
       TDGEN-J @ 1 + TDGEN-J !
    REPEAT ;
 
-: TDGEN-OUT-TYPE ( n -- ) {: fam:n :}    \ family<a,b,..> (bare tail at arity 0)
-   fam TFAM-NAME$ TDGEN-APP
+\ The family's own spelling in a GENERATED declaration, and it is qualified for
+\ the same reason TDGEN-FAM-REF qualifies every payload family: the generated
+\ word is interned into the ctor package, not the package the declaration ran
+\ in, so its signature text has no scope in which a bare tail means this
+\ family. Bare `span` written here certified only because the checker context
+\ at generation was still the declaring package - a scope the finished word
+\ does not carry - and the same text re-parsed at AOT intake resolved the
+\ GLOBAL span instead (arity 3, refusal). Payload references never had this
+\ bug; the output type was the one bare spelling left.
+: TDGEN-OUT-TYPE ( n -- ) {: fam:n :}    \ PKG:family<a,b,..>
+   fam TDGEN-FAM-REF
    fam TFAM-ARITY@ {: ar:n :}
    ar 0= IF EXIT THEN
    60 TDGEN-C,

@@ -260,6 +260,9 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    s" sigbytes=" type CHECKER-ASIG-ROW-BYTES CHECKER-ASIG-STR-BYTES + .
    s" sigknown=" type AOT-CAPTURE:SIG-KNOWN .
    s" sigexempt=" type AOT-CAPTURE:SIG-EXEMPT .
+   s" sigrows=" type AOT-SIG-N @ .
+   s" sigstr=" type AOT-SIG-STR-LEN @ .
+   s" reg=" type AOT-REG-LEN @ .
    s" datasz=" type AOT-DATA-SIZE @ .
    s" codespan=" type B1 @ B0 @ - .
    s" dataspan=" type D1 @ D0 @ - .
@@ -323,9 +326,13 @@ $A5 constant POISON-BYTE
    AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ AOT-BOOTRUN-CAP SMEAR
    AOT-PWID-BUF@ PROT-BITS-BYTES PROT-BITS-BYTES SMEAR
    AOT-PWIN-BUF@ AOT-PWIN-N @ 4 * AOT-PWIN-MAX 4 * SMEAR
+   AOT-SIG-BUF@ AOT-SIG-N @ SIG-ROW * AOT-SIG-MAX SIG-ROW * SMEAR
+   AOT-SIG-STR-BUF@ AOT-SIG-STR-LEN @ AOT-SIG-STR-CAP SMEAR
+   AOT-REG-BUF@ AOT-REG-LEN @ AOT-REG-CAP SMEAR
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
    0 AOT-DSITE-N !  0 AOT-CSITE-N !  0 AOT-WINDOW:XTOFF-N !  0 AOT-DATA-SIZE !
    0 AOT-XTSITE:N !  0 AOT-BOOTRUN-LEN !  0 AOT-PWIN-N !
+   0 AOT-SIG-N !  0 AOT-SIG-STR-LEN !  0 AOT-REG-LEN !
    0 AOT-DATA-D0 !  0 AOT-CODE-B0 !  0 AOT-WID-W0 !  0 AOT-WID-SPAN !
    AOT-IDENT:RESET ;
 

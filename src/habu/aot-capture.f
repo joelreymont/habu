@@ -783,6 +783,29 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    s"  and the captured signature pool carries none" type cr
    s" aot-capture: a checked window word's signature was not captured" 74 die ;
 
+\ --- and the same walk emits the rows -----------------------------------------
+\ THE COPY IS THE AUDIT'S WALK, not a second pass over the store. Every row the
+\ artifact carries is one the audit just proved belongs to a word this window
+\ compiled, so the artifact cannot name a word the target engine has not got.
+\ Copying the store instead put 723 extra rows in (the capture tool's own
+\ post-window words) and a signature for an absent word is worse than a missing
+\ one: a definition naming it certifies and then calls nothing.
+\
+\ THE ROW IS COPIED, NOT REBUILT. It is four u32 - name, signature and package as
+\ offsets into the pool's string arena, then visibility - and the arena travels
+\ verbatim beside it, so nothing is re-interned and no offset is recomputed. The
+\ checker owns that format and stays its only reader.
+: ACAP-SIG-OVERFLOW ( -- )
+   s" aot-capture: the window has more checked words than the signature buffer holds" 74 die ;
+
+: ACAP-SIG-ROW+ ( n -- ) {: at:n :}
+   AOT-SIG-N @ 1 + AOT-SIG-MAX > if ACAP-SIG-OVERFLOW then
+   SIG-ROW 0 ?do
+      at i + CHECKER-ASIG-ROW-C@
+      AOT-SIG-BUF@ AOT-SIG-N @ SIG-ROW * + i + c!
+   loop
+   AOT-SIG-N @ 1 + AOT-SIG-N ! ;
+
 : ACAP-?SIG ( n -- ) {: k:n :}
    k AOT-REC AOT-RWID {: w:n :}
    w DICT-WL:NAMESPACE = if ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit then
@@ -794,7 +817,28 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
       ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit
    then
    ACAP-SIG-KNOWN @ 1 + ACAP-SIG-KNOWN !
-   pa pu pub na nu CHECKER-ASIG-MISSING? if k ACAP-REFUSE-SIG then ;
+   pa pu pub na nu CHECKER-ASIG-MISSING? if k ACAP-REFUSE-SIG then
+   pa pu pub na nu CHECKER-ASIG-ROW-FOR {: row:n :}
+   row 0= if k ACAP-REFUSE-SIG then
+   row 1 - ACAP-SIG-ROW+ ;
+
+\ The strings the rows name, whole. They are the pool's own arena and the rows
+\ index it by offset, so re-interning the referenced subset would mean rewriting
+\ every offset - a remap where a copy does. What the arena holds beyond the rows
+\ that travel is the interned text of the duplicates newest-wins dropped: shared
+\ records, measured in single kilobytes against the 124 KB the names alone need.
+: ACAP-SIG-STRINGS ( -- )
+   CHECKER-ASIG-STR-BYTES {: n:n :}
+   n AOT-SIG-STR-CAP > if
+      s" aot-capture: the window's signature strings exceed the artifact's string buffer" 74 die
+   then
+   n 0 ?do i CHECKER-ASIG-STR-C@ AOT-SIG-STR-BUF@ i + c! loop
+   n AOT-SIG-STR-LEN ! ;
+
+\ The type registry the signatures resolve against, written by the registry that
+\ owns those records; this file carries the bytes and never reads them.
+: ACAP-SIG-REGISTRY ( -- )
+   AOT-REG-BUF@ AOT-REG-CAP CHECKER-REG-AOT-SAVE AOT-REG-LEN ! ;
 
 \ IT RUNS LAST OF THE AUDITS, after the call and address scans. Those ask whether
 \ what travels is SOUND - a name the target has, an address the target can place;
@@ -809,10 +853,32 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ NOW" would be asking at the wrong moment anyway - a capture tool closes the
 \ signature window (AOT-ARM:SIG-CLOSE) before it captures, so armed-now is false
 \ on the correct path.
+\ WHERE THE WINDOW'S TYPES END, and why it is a different question from where its
+\ SIGNATURES end. The rows that travel are chosen by the walk below - one per
+\ record of THIS window - so a store holding more than the window says is
+\ harmless: nothing outside [R0,R1) is ever copied. The registry has no such
+\ walk. Its delta is two high-waters subtracted, so the moment it is read is the
+\ whole of what it means, and that moment is here: whatever the registry has
+\ grown by the time a capture runs is what that capture declares.
+\
+\ UNLESS THE WINDOW WAS CLOSED EARLY, which one caller must do.
+\ tools/aot-chain-capture.f loads its own assembler and artifact writer AFTER its
+\ window and before it captures, and those declare families of their own; read
+\ here, the delta would carry them (measured: the chain declares 70 families and
+\ a capture-time read counted more, and the seeded engine then refused its own
+\ registry). That tool closes at the window instead (AOT-ARM:SIG-CLOSE), which
+\ disarms the collection, and an already-closed window keeps the end it declared.
+: ACAP-SIG-END ( -- )
+   CHECKER-ASIG-ARMED? 0= if exit then
+   CHECKER-REG-AOT-CLOSE ;
+
 : ACAP-AUDIT-SIGS ( -- )
-   0 ACAP-SIG-KNOWN !  0 ACAP-SIG-EXEMPT !
+   ACAP-SIG-END
+   0 ACAP-SIG-KNOWN !  0 ACAP-SIG-EXEMPT !  0 AOT-SIG-N !
    0 ACAP-PKG-MEMO-W !  0 ACAP-PKG-MEMO-ROW !  0 ACAP-PKG-MEMO-PUB !
-   ACAP-W-R1 @ ACAP-W-R0 @ ?do i ACAP-?SIG loop ;
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do i ACAP-?SIG loop
+   ACAP-SIG-STRINGS
+   ACAP-SIG-REGISTRY ;
 
 \ --- audit (d): the row resolves the way the seed will ask ---------------------
 \ The question EM-AOT-PATCH-SITES asks at the boot of the engine this capture is

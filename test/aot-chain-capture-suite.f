@@ -72,6 +72,8 @@ $4000 constant CAP
 74 constant REFUSE-RC        \ what a refused capture exits with
 75 constant READ-RC          \ ... and what src/habu/aot-file.f's own refusals exit with
 74 constant STOP-RC          \ ... and what this suite exits with when its own fixture has gone vacuous
+70 constant CHECK-RC         \ ... and what a definition the checker will not certify exits with
+76 constant REG-RC           \ ... and what a seeded type registry the engine cannot take exits with
 
 create OUT CAP allot     variable OUT-U
 create ERR CAP allot     variable ERR-U
@@ -85,6 +87,7 @@ create CASE-BUF FS-PATH-CAP allot    variable CASE-U
 create LONG-BUF FS-PATH-CAP allot    variable LONG-U
 create PROD1-BUF FS-PATH-CAP allot   variable PROD1-U
 create DPMUT-BUF FS-PATH-CAP allot   variable DPMUT-U
+create BFMUT-BUF FS-PATH-CAP allot   variable BFMUT-U
 create DIG 32 allot
 create DHEX 64 allot
 create EHEX 64 allot
@@ -103,7 +106,14 @@ create ART ART-CAP allot    variable ART-LEN
 : LONG$ ( -- ptr u8 n ) LONG-BUF LONG-U @ ;
 : PROD1$ ( -- ptr u8 n ) PROD1-BUF PROD1-U @ ;
 : DPMUT$ ( -- ptr u8 n ) DPMUT-BUF DPMUT-U @ ;
-: HB$ ( -- ptr u8 n )   s" bin/hb" ;
+: BFMUT$ ( -- ptr u8 n ) BFMUT-BUF BFMUT-U @ ;
+\ SUBJECT: source-loading the chain. The capture and the bake must LOAD the
+\ chain's 43 files, so they run on the CAPTURE HOST the install keeps beside
+\ the product (bin/hb-host) - the product already provides every closure file,
+\ which turns the load this suite exists to measure into a no-op and captures
+\ an empty window. The BAKED programs the suite then runs are chain BEHAVIOR
+\ and go through ENGINE$, the engine the bake itself emitted - never this one.
+: HB$ ( -- ptr u8 n )   s" bin/hb-host" ;
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 : TOOL$ ( -- ptr u8 n ) s" tools/aot-chain-capture.f" ;
@@ -133,7 +143,8 @@ create ART ART-CAP allot    variable ART-LEN
    s" /dropped-row.f"   ROWMUT-BUF UNDER-ROOT ROWMUT-U !
    s" /chain-under-a-considerably-longer-name.aot" LONG-BUF UNDER-ROOT LONG-U !
    s" /hb-chain-first"  PROD1-BUF  UNDER-ROOT PROD1-U !
-   s" /cursor-moved.f"  DPMUT-BUF  UNDER-ROOT DPMUT-U ! ;
+   s" /cursor-moved.f"  DPMUT-BUF  UNDER-ROOT DPMUT-U !
+   s" /generator-mutant.f" BFMUT-BUF UNDER-ROOT BFMUT-U ! ;
 
 \ ---- the derived mutant ------------------------------------------------------
 
@@ -385,7 +396,7 @@ create ART ART-CAP allot    variable ART-LEN
    s" ... and carries a full-width digest over their bytes" T-LABEL
    s" chaindigest=" 64 TEXT-FIELD nip 64 T=
    s" the producer key is the engine that ran the capture" T-LABEL
-   s" bin/hb" DIG SHA256-FILE 0 T=
+   HB$ DIG SHA256-FILE 0 T=
    DIG DHEX SHA256>HEX
    s" producer=" 64 TEXT-FIELD  DHEX 64 T$= ;
 
@@ -459,9 +470,11 @@ create ART ART-CAP allot    variable ART-LEN
 16 constant O-TARGET
 24 constant O-SECTIONS
 104 constant O-PAYSHA
-14 constant SEC-N
+17 constant SEC-N
 16 constant ROW-BYTES
-13 constant S-CLOSURE            \ the last section: the closure list
+13 constant S-SIGS               \ the window's checker signature rows
+15 constant S-REG                \ ... and the type registry those rows resolve against
+16 constant S-CLOSURE            \ the last section: the closure list
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -777,6 +790,122 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
    s" ... answering what the word computes, and printing nothing else" T-LABEL
    OUT$ s\" 8\n" T$= ;
 
+\ ---- and its words can be NAMED by checked code ------------------------------
+\
+\ WHAT THIS LOCKS, and why running a chain word was not enough. PROBE-BAKED
+\ proves the seeded code executes. It does not prove the seeded engine can
+\ COMPILE against it: a seed puts a word in the runtime dictionary and nothing in
+\ the checker's record set, so `: T ( n -- n ) ENC-B ;` died E-UNDEFINED at that
+\ token in an engine that could call ENC-B all day. The product is a compiler, so
+\ that is the difference between an engine that ships and one that does not -
+\ `bin/hb --load src/arch/arm64/icode.f` and fourteen battery phases died on it.
+\
+\ THE FAMILY-TYPED CASE IS THE ONE THAT CANNOT PASS BY LUCK. A signature is text,
+\ and text mentioning `IR-ARENA:view` only parses where that family is
+\ registered, so the third program below certifies exactly when the type registry
+\ travelled too. Its negative is what proves the family arrived as a FAMILY
+\ rather than as an untyped cell: passing an `n` where the view belongs has to be
+\ refused with both type names, and an engine that had merely made the name
+\ resolvable would accept it.
+\
+\ AND THE FOURTH IS THE REFUSAL THAT MUST SURVIVE. A lazy intake that answered
+\ for names it has no row for would turn every typo into a certified call into
+\ nothing, so an undefined word still has to die.
+\
+\ THE FAMILY CASE IS RUN TWICE, AND THE SECOND RUN IS THE PLACEMENT. Registry
+\ ids are absolute, so a program that declares its own type before it names a
+\ chain word is the whole difference between installing the registry at the seed
+\ point and installing it at the first intake. Measured three ways on the
+\ product: at the seed point both runs certify; installed at the intake instead,
+\ the first certifies and the second dies `does not start where its capture
+\ did`; installed nowhere, both die `a seeded signature does not parse`. Only
+\ the second run separates the first world from the second.
+
+: SIG-OK$ ( -- ptr u8 n )
+   s\" using A64ASM\n: SIGT ( n -- n ) ENC-B ;\ns\" sig-ok\" type cr\n" ;
+
+: SIG-FAM$ ( -- ptr u8 n )
+   s\" : SIGFT ( IR-ARENA:view -- n ) NTAPE:TOKENS ;\ns\" fam-ok\" type cr\n" ;
+
+: SIG-FAM-BAD$ ( -- ptr u8 n )
+   s\" : SIGFTBAD ( n -- n ) NTAPE:TOKENS ;\ns\" reached\" type cr\n" ;
+
+\ The same family-typed definition with a type of the PROGRAM'S OWN ahead of it.
+\ This is the case that decides WHERE the registry goes in, and the one an
+\ engine that installed it at the first signature intake fails: the carried rows
+\ name families by absolute id, so they only mean those families while the live
+\ registry still ends where the capture's did, and `NEWTYPE zz1 0` has already
+\ moved the high-water by the time the intake runs. Installing at the seed point
+\ - before this program's first token - is what makes it ordinary again.
+: SIG-FAM-AFTER-DECL$ ( -- ptr u8 n )
+   s\" NEWTYPE zz1 0\n: SIGFD ( IR-ARENA:view -- n ) NTAPE:TOKENS ;\ns\" decl-fam-ok\" type cr\n" ;
+
+: SIG-UNDEF$ ( -- ptr u8 n )
+   s\" : SIGX ( -- ) NO-SUCH-SEEDED-WORD ;\ns\" reached\" type cr\n" ;
+
+: PROBE-SEEDED-SIG ( -- )
+   SIG-OK$ RUN-BAKED-PROGRAM
+   s" a definition in the seeded engine may name a seeded word" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... and runs" T-LABEL
+   OUT$ s\" sig-ok\n" T$=
+   SIG-FAM$ RUN-BAKED-PROGRAM
+   s" ... including one whose signature names a family the window declared" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   OUT$ s\" fam-ok\n" T$=
+   SIG-FAM-AFTER-DECL$ RUN-BAKED-PROGRAM
+   s" ... even when the program declared a type of its own first" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   OUT$ s\" decl-fam-ok\n" T$=
+   SIG-FAM-BAD$ RUN-BAKED-PROGRAM
+   s" ... and that family is a FAMILY there: the wrong type is refused" T-LABEL
+   CHECK-RC s" ir-arena:view" RC-REFUSED
+   s" ... and the body that would have run it never does" T-LABEL
+   OUT$ s" reached" CONTAINS? 0= TTRUE
+   SIG-UNDEF$ RUN-BAKED-PROGRAM
+   s" ... while a word no window ever compiled is still undefined, by name" T-LABEL
+   CHECK-RC s" NO-SUCH-SEEDED-WORD" RC-REFUSED ;
+
+\ ---- and the registry it resolves against is asserted, not assumed -----------
+\
+\ WHAT THIS LOCKS. The type registry travels as a DELTA appended at the
+\ high-water its capture window opened on, because its records name each other by
+\ family id, schema node id and interned string offset and none of those rebase.
+\ That is sound exactly while the two engines agree on the base, and they do -
+\ the cold prefix is all that fills the registry before a seed runs. There is no
+\ remap if they ever disagree, so the engine has to refuse rather than append a
+\ delta whose ids mean other families.
+\
+\ THE FORGE IS THE ONLY WAY TO REACH IT. Both engines derive the base the same
+\ way, so no source edit produces a disagreement; the artifact's own recorded
+\ base is what a corrupt or stale registry section would carry, and moving it by
+\ one is exactly that. The payload digest covers it, so the case reseals - the
+\ same machinery every forged-table case above uses, proven to stamp the field
+\ the reader reads by the case that reseals without editing.
+: REG-BASE-AT ( -- n ) S-REG SEC-AT 8 + ;      \ store 0's base, first row of the table
+
+: PROBE-REG-BASE ( -- )
+   FRESH
+   s" the artifact carries a type registry to forge" T-LABEL
+   S-REG SEC-LEN@ 0 > TTRUE
+   REG-BASE-AT A64@ {: was:n :}
+   s" ... whose first store opens at a base of its own" T-LABEL
+   was 0 > TTRUE
+   was 1 + REG-BASE-AT A64!
+   RESEAL
+   EMIT
+   BAKE-TOOL$ CASE$ BAKE-WITH
+   s" a forged registry base still bakes: the artifact is well-formed" T-LABEL
+   RC @ 0 T=
+   SIG-FAM$ RUN-BAKED-PROGRAM
+   s" ... and the engine refuses it the moment a signature needs the registry" T-LABEL
+   REG-RC s" does not start where its capture did" RC-REFUSED
+   s" ... naming the store whose base disagreed" T-LABEL
+   s" families" SAID? TTRUE ;
+
 \ ---- and it says it has the files the seed carries ---------------------------
 \
 \ WHAT THIS LOCKS. Baking the chain puts its 43 files' definitions in the engine
@@ -895,41 +1024,72 @@ variable CUR
 
 \ ---- and the driver refuses any parameter that would ---------------------------
 \
-\ THE MUTANT IS THE REAL BAKE TOOL PLUS ONE LINE, spliced at a fail-closed anchor,
-\ and the line makes the generated driver consume DATA at top level - which is
-\ what the historical string literal did, stated as the rule rather than as the
-\ one spelling of it. src/habu/stdin.f DP-MARK latches the cursor as the last
-\ thing the driver's own load does, so RUN sees any such splice and refuses by
-\ name. Without the refusal the build writes an engine that is simply not the one
-\ the same tree would write elsewhere, and nothing anywhere says so.
-: DP-ANCHOR$ ( -- ptr u8 n ) s\" \n   ART$ ?PATH  ENG$ ?PATH\n" ;
-: DP-INJECT$ ( -- ptr u8 n ) S\"    S\\\" 8 allot\" DRV-LINE\n" ;
+\ THE MUTANT IS THE REAL GENERATOR PLUS ONE LINE, and the line makes the generated
+\ driver consume DATA at top level - which is what the historical string literal
+\ did, stated as the rule rather than as the one spelling of it. src/habu/stdin.f
+\ DP-MARK latches the cursor as the last thing the driver's own load does, so RUN
+\ sees any such splice and refuses by name. Without the refusal the build writes an
+\ engine that is simply not the one the same tree would write elsewhere, and
+\ nothing anywhere says so.
+\
+\ TWO DERIVED FILES, because the generator moved to where the build's other path
+\ construction lives: tools/build-fixpoint.f with one more append spliced in ahead
+\ of the one that writes the driver's own tail, and
+\ tools/aot-chain-bake.f with its require of build-fixpoint repointed at that copy.
+\ Both splices are fail-closed on anchors that must appear exactly once, so a
+\ generator that moved again stops this suite instead of running an unmutated file.
+: BF-TOOL$ ( -- ptr u8 n ) s" tools/build-fixpoint.f" ;
+: DP-ANCHOR$ ( -- ptr u8 n ) s\" \n   BF-DRV-TAIL$ BF-DRV+\n" ;
+: DP-INJECT$ ( -- ptr u8 n ) S\"    S\\\" 8 allot\\n\" BF-DRV+\n" ;
+: REQ-ANCHOR$ ( -- ptr u8 n ) s\" \nrequire tools/build-fixpoint.f\n" ;
 
-: DP-ANCHOR-OFF ( -- n )
-   SHAPE:TEXT DP-ANCHOR$ FIND-SUB MATCH option
+: FIND-OFF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   SHAPE:TEXT a u FIND-SUB MATCH option
      none OF -1 ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;
 
-: ?DP-ANCHOR ( -- )
-   DP-ANCHOR$ SHAPE:COUNT 1 = if exit then
-   s" aot-chain-capture-suite: parameter anchors in " type BAKE-TOOL$ type s" =" type
-   DP-ANCHOR$ SHAPE:COUNT .
+: ?ONE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n f:ptr fu:n :}
+   a u SHAPE:COUNT 1 = if exit then
+   s" aot-chain-capture-suite: anchors in " type f fu type s" =" type
+   a u SHAPE:COUNT .
    s" aot-chain-capture-suite: the moved-cursor case cannot be built" STOP-RC die ;
 
-: DP-MUTANT-BUILD ( -- )
+\ text[0,cut) + inject + text[cut,end)
+: SPLICE ( ptr u8 n n ptr u8 n -- ) {: dst:ptr dstu:n cut:n inj:ptr inju:n :}
+   SHAPE:TEXT drop {: src:ptr :}
+   dst dstu src cut WRITE-ALL
+   dst dstu inj inju APPEND-FILE
+   dst dstu src cut +  SHAPE:TEXT nip cut -  APPEND-FILE
+   s" the mutant is its file plus exactly the injected line" T-LABEL
+   dst dstu FILE-SIZE  SHAPE:TEXT nip inju + T= ;
+
+: BF-MUTANT-BUILD ( -- )
+   BF-TOOL$ SHAPE:LOAD
+   DP-ANCHOR$ BF-TOOL$ ?ONE
+   BFMUT$ DP-ANCHOR$ FIND-OFF 1 + DP-INJECT$ SPLICE ;
+
+\ The bake tool, requiring the mutant generator instead of the real one. The
+\ replacement is the same length question as the splice above: the require line is
+\ rewritten, not added, so the assertion is on the bytes either side of it.
+: BAKE-MUTANT-BUILD ( -- )
    BAKE-TOOL$ SHAPE:LOAD
-   ?DP-ANCHOR
-   DP-ANCHOR-OFF DP-ANCHOR$ nip + {: cut:n :}
+   REQ-ANCHOR$ BAKE-TOOL$ ?ONE
+   REQ-ANCHOR$ FIND-OFF 1 + {: cut:n :}
    SHAPE:TEXT drop {: src:ptr :}
    DPMUT$ src cut WRITE-ALL
-   DPMUT$ DP-INJECT$ APPEND-FILE
-   DPMUT$ src cut +  SHAPE:TEXT nip cut -  APPEND-FILE
-   s" the moved-cursor mutant is the bake tool plus exactly the injected line" T-LABEL
-   DPMUT$ FILE-SIZE  SHAPE:TEXT nip DP-INJECT$ nip + T= ;
+   DPMUT$ s" require " APPEND-FILE
+   DPMUT$ BFMUT$ APPEND-FILE
+   DPMUT$ s\" \n" APPEND-FILE
+   DPMUT$ src cut REQ-ANCHOR$ nip 1 - + +
+          SHAPE:TEXT nip cut - REQ-ANCHOR$ nip 1 - -  APPEND-FILE
+   s" the bake mutant is the tool with its generator require repointed" T-LABEL
+   DPMUT$ FILE-SIZE
+   SHAPE:TEXT nip BF-TOOL$ nip - BFMUT$ nip +  T= ;
 
 : PROBE-DP-MOVED ( -- )
-   DP-MUTANT-BUILD
+   BF-MUTANT-BUILD
+   BAKE-MUTANT-BUILD
    ENGINE$ 2dup EXISTS? if REMOVE-FILE else 2drop then
    DPMUT$ ART$ BAKE-WITH
    s" a build parameter that moves the DATA cursor is refused" T-LABEL
@@ -956,9 +1116,11 @@ variable CUR
    PROBE-FORGED
    PROBE-CHAIN
    PROBE-BAKED
+   PROBE-SEEDED-SIG
    PROBE-PROVIDED
    PROBE-REPRO
-   PROBE-DP-MOVED ;
+   PROBE-DP-MOVED
+   PROBE-REG-BASE ;                  \ last: it leaves a deliberately unusable engine
 
 public
 

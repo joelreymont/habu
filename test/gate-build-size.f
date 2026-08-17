@@ -151,6 +151,11 @@ package BUILD-SIZE
 
 public
 
+\ The committed row itself. test/gate-engine-lib.f derives the PRODUCT's band from
+\ it - a seeded engine is this engine plus a bounded seed - so the number stays in
+\ one place instead of being written twice.
+EXPORT BASELINE
+
 : RATCHET ( ptr u8 n -- )
    FILE-SIZE BASELINE ENFORCE ;
 

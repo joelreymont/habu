@@ -18,7 +18,7 @@
 20 constant RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
 
-$800000 constant REGION       \ mmap region size (8 MB; grown 4->8 MB with DICT-CAP 16384->32768, dot habu-lprot-narrow-protection-03cc8d7f)
+$A00000 constant REGION       \ mmap region size (10 MB; dict band + code band, mirrors src/habu/layout.f REGION/CODE-BAND:BYTES; grown 8->10 MB with DICT-CAP 32768->65536, dot habu-seeded-words-invisible-c7505a49)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
@@ -34,7 +34,7 @@ $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 32 constant SNAP-TRL-DATALEN
 40 constant SNAP-TRL-VERSION
 40 constant SNAP-TRL-LEGACY-BYTES
-$181000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (grown $C1000->$181000 with DICT-CAP 32768)
+$301000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (grown $181000->$301000 with DICT-CAP 65536)
                                \ (= CFSTK-OFF + $1000; grown with DICT-CAP 16384,
                                \ mirrors src/habu/layout.f)
 48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
@@ -57,8 +57,8 @@ $2000000000000000 constant DNAME-EXT
 \ interpret dispatch/tick fail closed on it (src/habu/layout.f). Stage0 never
 \ sets the bit (no checker), so the mirrored gate is inert parity.
 $4000000000000000 constant DNAME-WIDE
-32768   constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..32767 end exactly at CFSTK.
-$180000 constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
+65536   constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..65535 end exactly at CFSTK. Past imm16, so the comparison sites below load it with LIT64.
+$300000 constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
 24      constant CF-REC
 8       constant CF-LOCN
 16      constant CF-LOCF
@@ -73,7 +73,7 @@ $2000000 constant DATA-SIZE    \ data-space mmap (always RW, separate from the R
 \ EMIT-PROF indexes (NDICT <= DICT-CAP). prof.fs derives PROF-CNT = DATA-SIZE - this.
 DICT-CAP cells constant PROF-CNT-BYTES
 25 constant SOURCE-HEADROOM-PCT
-$400000 constant SOURCE-ARENA-CAP
+$800000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ  \ native mirror src/habu/layout.f
 
 require exec.fs
@@ -3072,7 +3072,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-DOES-ROOM ( -- )
    LBL LBL {: ndok cpok :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   9 DICT-CAP 1 - MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+   9 DICT-CAP 1 - LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
       0 77 MOVZ,  NR-EXIT-GROUP SYS,
    ndok LBL,
    9 CP 15 ADD,
@@ -3310,7 +3310,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
          qapply B,
       nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
    nmake LBL,
-      9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT nroom BCOND,
+      9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT nroom BCOND,
          0 77 MOVZ,  NR-EXIT-GROUP SYS,
       nroom LBL,
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -3581,7 +3581,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
          11 5 0 LDR,  12 5 8 LDR,  done B,
       miss LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
    make LBL,
-      9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT room BCOND,
+      9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT room BCOND,
          0 77 MOVZ,  NR-EXIT-GROUP SYS,
       room LBL,
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -4525,7 +4525,7 @@ variable CFSK2
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
    5 DICT-SIZE LIT64,  6 5 CMP,  C-LT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
-   5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
+   5 DICT-CAP LIT64,  15 5 CMP,  C-GT snbad BCOND,
    SP SP 64 SUBI,
    6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
    15 SP 32 STR,  21 SP 40 STR,  25 SP 48 STR,
@@ -4643,7 +4643,7 @@ variable CFSK2
 : C-COLON-DICT-ROOM ( -- )
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL LBL {: ndok msg full :}
-   9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
    full B,
    msg LBL,  s" hb: dictionary full at: " BYTES,  CAPNL-KW 1 BYTES,
    full LBL,

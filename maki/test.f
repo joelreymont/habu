@@ -6,6 +6,7 @@
 \ run-all inventory; every suite below must land in exactly one slice.
 require maki/test-harness.f
 require tools/prot-wid-probe.f
+require tools/region-room-probe.f
 
 using TEST
 
@@ -412,5 +413,14 @@ RUN
 \ the floor makes the next approach to the ceiling name itself, one whole doubling
 \ before anything is refused.
 PROT-WID-PROBE:REQUIRE-ROOM
+
+\ Dictionary and code headroom, on the same terms and for the same reason (dot
+\ habu-seeded-words-invisible-c7505a49). This inventory is the largest composite
+\ either band carries - all 193 files in ONE image, where each gate slice loads a
+\ quarter - so it is the run whose numbers size DICT-CAP and CODE-BAND:BYTES, and
+\ run that will meet a wall first. It met the dictionary's: the band filled during
+\ tokenizer-test.f and the engine named DLT-ROOT-U in data-loader-test.f, which
+\ passes standalone. Now the approach names itself here instead.
+REGION-ROOM:REQUIRE-ROOM
 
 ;using

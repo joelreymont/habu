@@ -541,6 +541,13 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 \ stamp key uses - so the sandbox tracks the tool's own requires. src/ and lib/
 \ still come over whole, because the stage build reads far more of them than
 \ build-fixpoint.f's own requires name.
+\ TWO CLOSURES, and the second is the same lesson a second time. The stamp key
+\ now opens the CAPTURE TOOL's closure as well, before it consults --force and
+\ before anything is written, so a sandbox without it dies -2102 (E-FS-OPEN)
+\ ahead of every fault these fixtures inject: the stale-seed crash and the
+\ certify injection both came back as a bare uncaught throw. The entry is asked
+\ from the tool - ENTRY$ - rather than spelled here, so whatever the key walks
+\ is what the sandbox carries.
 
 variable IX
 
@@ -559,6 +566,7 @@ variable IX
    s" src" BFT-STALE-COPY-TREE
    s" lib" BFT-STALE-COPY-TREE
    s" tools/build-fixpoint.f" COPY-CLOSURE
+   ENTRY$ COPY-CLOSURE
    s" tools/build-fixpoint-main.f" BFT-STALE-COPY-FILE
    s" bin/hb" BFT-STALE-COPY-FILE
    BFT-STALE-HB CHMOD-X
@@ -766,11 +774,16 @@ package BUILD-FIXPOINT
 : BFT-BYTES ( -- ptr u8 )
    BFT-BYTES-FIELD @ ;
 
+\ The image is built from the engine BF-BUILD-SNAP-FROM-STDIN builds it from -
+\ the capture host - asked from the tool rather than named here. A snapshot
+\ restore skips the AOT seed, so an image made by the seeded product carries
+\ call sites nothing resolves and exits 82 at boot; that is the seed refusing
+\ correctly, about an engine the build never asks for.
 : BFT-SNAP0-BUILD ( -- )
    BF-SNAP-SOURCE
    BF-CERTIFY-SNAP
    s" hb-snap0" BF-REMOVE-TMP
-   s" hb-stdin" s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
+   BF-SNAP-ENGINE$ s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
    s" hb-snap0" BF-EXPECT
    s" hb-snap0" BF-CODESIGN-FORCE-TMP
    s" hb-snap0" BF-CHMOD-X-TMP ;
@@ -1411,11 +1424,14 @@ create DG-C 40 allot
    u SB-APPEND-C
    a u SB-APPEND ;
 
-\ The framed `chain-src` fragment BF-STAMP-KEY-BEGIN appends for a given digest:
-\ the tag as one field, the digest as the next.
+\ The framed capture-source fragment BF-STAMP-KEY-BEGIN appends for a given
+\ digest: the tag as one field, the digest as the next. The tag comes from the
+\ tool (BF-STAMP-CAPTURE-TAG$), not from a copy here - a copy is what let this
+\ case go on looking for `chain-src` after the key started writing
+\ `capture-src`, while the negative case beside it passed for the wrong reason.
 : FRAGMENT$ ( ptr u8 -- ptr u8 n ) {: dg:ptr :}
    SB-RESET
-   s" chain-src" FIELD+
+   BF-STAMP-CAPTURE-TAG$ FIELD+
    dg BF-STAMP-DG-U FIELD+
    SB$ ;
 

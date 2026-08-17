@@ -1,0 +1,9 @@
+---
+title: dot lint dies at 1024 lines and names no file
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-17T05:08:27.290418+02:00"
+---
+
+tools/lint/text.f:337 LINT-SPLIT:SPLIT+ dies 'lint: split result overflow' when a file exceeds SMAX=$400 lines (tools/lint/text.f:327). MEASURED 2026-08-17 (bake-chain-22): .dots/habu-seeded-words-invisible-c7505a49.md reached 1034 lines and killed 'bin/hb --load tools/dot-dep-lint.f' outright - no findings printed, no file named, just the one line. Its sibling .dots/habu-seed-the-chain-e98b03d4.md is at 1022, so the next append to either leaf reproduces it. TWO DEFECTS, not one. (a) THE DIAGNOSTIC NAMES NOTHING: the die is inside the split primitive, which has no idea which file it is splitting, so the operator sees a capacity message with no path and no line count - the lane above lost several minutes to it. (b) THE ARENA IS FIXED where the tree's other scanners size theirs from the input: tools/public-signatures-core.f:41 already says so in prose ('each gets a slab sized from the file rather than a fixed arena that the next error block overruns') and uses LINT-SLAB for exactly this reason. FIX SHAPE: size the line table from the input the way LINT-SLAB does, or - if a bound must stay - carry the caller's path into the refusal so it names the file and the limit. Raising $400 to $800 alone is refused: it moves the wall without making the next hit legible. ACCEPTANCE: a synthetic dot file above the current limit lints without dying; a file genuinely past whatever bound remains is refused BY NAME with its path and its line count; mutation - shrinking the bound below a real dot's length must red the fixture by that dot's path. Consumers of LINT-SPLIT beyond dot-dep-lint must be checked: the same split backs several tools/lint scanners.

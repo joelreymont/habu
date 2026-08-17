@@ -186,7 +186,7 @@ public
       0 of $1000000 endof
       1 of $300000000 endof
       2 of $8000000 endof
-      3 of $800000 endof
+      3 of $A00000 endof
       4 of 95 endof
       5 of $25 endof
       6 of 97 endof
@@ -795,9 +795,13 @@ variable XOPEN-BASE
 \ The pass is called once per band with (base, length, target). The writer's leg
 \ is (WB, LEN, CB) and the loader's is (CB, LEN, LB), which is how the engine
 \ calls it: once for the JIT region and once for the engine's loaded __text.
-\ Every address below is a frozen literal. The band is REGION ($800000) long,
-\ the canonical base is the RBASE-VA sentinel ($300000000), and the two live
-\ bases are ordinary region bases.
+\ Every address below is a frozen literal, INCLUDING THE BAND LENGTH ($800000).
+\ It is deliberately not REGION: the rows place a site at the band's last word
+\ ($1017FFFF0 = base + $7FFFF0) to prove the pass relocates there, and that
+\ property belongs to the band a row declares, not to whatever capacity REGION
+\ currently has. REGION's own value is pinned once, in PIN-VALUE, against
+\ layout.f and the model. The canonical base is the RBASE-VA sentinel
+\ ($300000000) and the two live bases are ordinary region bases.
 
 \ Same band base both runs: the region comes back word for word, including the
 \ unrecorded chain at slot one - a sibling DATA literal of the identical shape -

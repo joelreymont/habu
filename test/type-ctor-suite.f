@@ -1194,7 +1194,12 @@ CTOR-PAYPROV-TEST:LIVE-ROWS 1 T=
 CTOR-PAYPROV-TEST:LIVE-NAME s" PV-ZPL:ONE" T$=
 \ the live declaration's own payload cell became the constructor's input and its
 \ own cell width set the zero padding (one slot, one cell, so no pads, tag 0).
-CTOR-PAYPROV-TEST:LIVE-DEF s" PV-ZPL:ONE ( n -- zpl ) 0 " T$=
+\ The output family is spelled QUALIFIED: the generated word lives in the ctor
+\ package, not the declaring one, so its signature text carries the one spelling
+\ that resolves from anywhere (the seeded-signature scope defect, dot
+\ habu-seeded-signature-loses-78c16109). This pin is the mutation guard: a
+\ generator that drops the qualifier again shortens this text and reds here.
+CTOR-PAYPROV-TEST:LIVE-DEF s" PV-ZPL:ONE ( n -- pv:zpl ) 0 " T$=
 
 s" PAYLOAD-PROVIDER" type cr
 

@@ -214,17 +214,23 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-ERR erru BLTT-EMPTY$ T$=
    BLTT-OUT outu BLTT-OK$ CONTAINS? TTRUE ;
 
+\ The public bin surface is the engine and the capture host the install keeps
+\ beside it (tools/build-fixpoint.f BF-INSTALL-HOST); anything else is a leak.
+: BLTT-BIN-NAME-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" hb" STR=
+   a u s" hb-host" STR= or ;
+
 : BLTT-CHECK-BIN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u FILE? if
       BLTT-PUBLIC-BIN-N @ 1 + BLTT-PUBLIC-BIN-N !
-      a u BASENAME s" hb" T$=
+      a u BASENAME BLTT-BIN-NAME-OK? TTRUE
    then ;
 
 : BLTT-TEST-PUBLIC-BINS ( -- )
    s" bin" DIR? if
       0 BLTT-PUBLIC-BIN-N !
       s" bin" [: BLTT-CHECK-BIN ;] WALK-FILES
-      BLTT-PUBLIC-BIN-N @ 1 T=
+      BLTT-PUBLIC-BIN-N @ 2 T=
    then ;
 
 : BLTT-MAIN ( -- )

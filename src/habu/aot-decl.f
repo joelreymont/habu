@@ -263,6 +263,40 @@ create AOT-PWID-BUF PROT-BITS-BYTES allot
 PROT-WID-MAX constant AOT-PWIN-MAX
 create AOT-PWIN-BUF AOT-PWIN-MAX 4 * allot    variable AOT-PWIN-N   \ packed u32
 
+\ ---- the checker payload: signatures and the type-family registry -------------
+\ WHY AN AOT ENGINE NEEDS THEM. A seed puts a word in the RUNTIME dictionary and
+\ nothing in the checker's record set, so a `:` definition naming a seeded word
+\ dies E-UNDEFINED at that token even though the engine can call it. These three
+\ buffers carry what closes that: one row per checked window word, the strings
+\ those rows name, and the type-family registry delta the signatures resolve
+\ against.
+\
+\ THE ROW FORMAT IS THE CHECKER'S, NOT THIS FILE'S. A row is four u32 - name
+\ offset, signature offset, package offset, visibility - and each offset names a
+\ `[len u16][bytes]` record in the string section, which is src/core/checker.f's
+\ signature-pool arena copied verbatim. The artifact is a courier for that arena:
+\ the only thing a merge does to a row is move its three offsets by the length of
+\ the pool it is appended behind.
+\ SIG-MAX IS THE RECORD BOUND, not a measurement: the capture emits at most one
+\ row per window dictionary record, so a window that fits AOT-REC-MAX records
+\ cannot produce more rows than that.
+16 constant SIG-ROW
+AOT-REC-MAX constant AOT-SIG-MAX
+create AOT-SIG-BUF AOT-SIG-MAX SIG-ROW * allot    variable AOT-SIG-N
+\ $40000 against the compiler chain's measured 123,979 bytes of pool string: the
+\ names of 6798 words plus the interned signature and package texts. Overflow is
+\ refused by name, never truncated.
+$40000 constant AOT-SIG-STR-CAP
+create AOT-SIG-STR-BUF AOT-SIG-STR-CAP allot    variable AOT-SIG-STR-LEN
+\ The registry delta travels as OPAQUE BYTES with its own internal table, written
+\ and read by the registry that owns those records (src/core/type-family.f and
+\ src/core/type-schema.f through the checker's REG-EXT hook). Record widths and
+\ store count live with the stores; this file carries the bytes and the cap.
+\ $20000 against the chain's measured 45,666: 70 families, 317 sum variants, 43
+\ product fields, 43 schema nodes and 3,778 bytes of interned type-name string.
+$20000 constant AOT-REG-CAP
+create AOT-REG-BUF AOT-REG-CAP allot    variable AOT-REG-LEN
+
 \ Raw emitter-boundary views (same pattern as SRCA@): expose the build-scratch
 \ buffers as `ptr` for the checked copy/BYTES, sites below.
 \ The blob, record, site, name, relocation, and boot-run accessors refine their
@@ -277,6 +311,12 @@ s" AOT-BUF:AOT-SITE-BUF@" s" -- ptr u8" TRUST
 s" AOT-BUF:AOT-NAMES-BUF@" s" -- ptr u8" TRUST
 : AOT-DSITE-BUF@ ( -- ptr u8 ) AOT-DSITE-BUF ;
 s" AOT-BUF:AOT-DSITE-BUF@" s" -- ptr u8" TRUST
+: AOT-SIG-BUF@ ( -- ptr u8 ) AOT-SIG-BUF ;
+s" AOT-BUF:AOT-SIG-BUF@" s" -- ptr u8" TRUST
+: AOT-SIG-STR-BUF@ ( -- ptr u8 ) AOT-SIG-STR-BUF ;
+s" AOT-BUF:AOT-SIG-STR-BUF@" s" -- ptr u8" TRUST
+: AOT-REG-BUF@ ( -- ptr u8 ) AOT-REG-BUF ;
+s" AOT-BUF:AOT-REG-BUF@" s" -- ptr u8" TRUST
 
 ;package
 
@@ -344,6 +384,9 @@ AOT-XTSITE:MAX 8 * +                               \ named code-literal rows
 AOT-BOOTRUN-CAP 1 + +                              \ +1 = the live 0 terminator
 PROT-BITS-BYTES +                                  \ protected-WID bitmap image
 AOT-PWIN-MAX 4 * +                                 \ the window's own protected WIDs
+AOT-SIG-MAX SIG-ROW * +                            \ one signature row per window word
+AOT-SIG-STR-CAP +                                  \ the pool strings those rows name
+AOT-REG-CAP +                                      \ the type-family registry delta
 GRAIN 1 - + GRAIN / GRAIN *
 constant BYTES
 

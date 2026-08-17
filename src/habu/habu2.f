@@ -2769,7 +2769,7 @@ public
 \ and the name bytes at CP. Refused here, before anything is written.
 : ROOM ( -- )
    LBL LBL {: ndok:label cpok:label :}
-   9 DICT-CAP 1 - MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+   9 DICT-CAP 1 - LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
       C-DIE-DICT-FULL
    ndok LBL,
    9 CP 15 ADD,
@@ -2859,7 +2859,7 @@ public
 
 : C-QUALIFY-CAP ( -- )
    LBL {: room :}
-   14 DICT-CAP MOVZ,  NDICT 14 CMP,  C-LT room BCOND,
+   14 DICT-CAP LIT64,  NDICT 14 CMP,  C-LT room BCOND,
       LDICTFULL C-CAP-LABEL
       $4D C-QUALIFY-FAIL
    room LBL, ;
@@ -3197,7 +3197,7 @@ package INTERP-EMIT
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       C-DIE-CODE-FULL
    cpok LBL,
-   9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
       C-DIE-DICT-FULL
    ndok LBL,
    LTOK LABEL@ BL,  0 done CBZ,
@@ -3339,7 +3339,7 @@ s" c-defer-meta-write" s" --" TRUST
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       C-DIE-CODE-FULL
    cpok LBL,
-   9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
       C-DIE-DICT-FULL
    ndok LBL, ;
 s" c-defer-room" s" --" TRUST
@@ -4922,6 +4922,67 @@ public
    bnf LBL,  0 $52 MOVZ,  NR-EXIT-GROUP SYS,
    bdone LBL, ;
 
+\ Publish the checker payload: where it is and how long. Two DATA cells, written
+\ once and never again, which is what makes them readable by ordinary checked
+\ code (src/core/checker.f CK-AOT-SIG-POOL / CK-AOT-SIG-LEN) with no relocation
+\ of their own: the span is __text, mapped for the life of the process, and an
+\ offset into it means the same thing at every boot.
+\
+\ IT RUNS AFTER THE RECORDS ARE REGISTERED and before the boot-run list, because
+\ a boot-run entry word is a definition like any other and may name a seeded
+\ word: the checker has to be able to see the pool by the time one is compiled.
+\ A build that captured nothing never reaches here - EM-SEED-AOT skips the whole
+\ pass - so both cells stay the zero the DATA region boots with, which is exactly
+\ "no pool" to the intake.
+\ In the package that owns the two cells, the way AOT-WINDOW's boot passes sit in
+\ the package that owns its label ids: src/habu/layout.f declares POOL-CELL and
+\ LEN-CELL, and this is the one writer of them.
+package AOT-SIG
+public
+: PUBLISH, ( -- )
+   9 5 LSPAN LABEL@ TADR,
+   9 DATA POOL-CELL STR,
+   9 5 LLEN LABEL@ TADR,  9 9 0 LDR,
+   9 DATA LEN-CELL STR, ;
+
+\ Put the payload's TYPE REGISTRY in, here and nowhere later. The carried
+\ signature rows name families by ABSOLUTE id, so the ids are only the families
+\ they mean while the live registry still ends where the capture's did. This
+\ point is the one moment that is true by construction: the engine prefix has
+\ run and no user token has, so nothing outside the engine can have declared a
+\ type yet, and no checker rollback frame is open to undo the install. Doing it
+\ at the first signature intake instead - which is where it used to happen -
+\ made ordinary source refuse: declare a NEWTYPE, then name a chain word, and
+\ the high-water has already moved past the base the capture recorded.
+\
+\ The SIGNATURE POOL stays lazy. That laziness was priced for 124 KB of text and
+\ 6798 parses; the registry is 46 KB of pointer-free rows, and a boot pays for
+\ it whether or not it ever names a chain word.
+\
+\ Resolved by name through LFIND, the way EM-AOT-BOOTRUN resolves an entry word,
+\ and refused the same way: the widgate rules the callee's wordlist and a
+\ missing name is a seed built against a checker that no longer has it, which is
+\ a panic and not a miss.
+: INSTALL-NAME$ ( -- ptr u8 n )
+   s" CK-AOT-REG-INSTALL" ;
+
+\ The emitted immediate comes from the emitted bytes, so the two cannot drift.
+: INSTALL-NAME-LEN ( -- n )
+   INSTALL-NAME$ {: a:ptr u:n :} u ;
+
+: INSTALL, ( -- )
+   LBL LBL {: nf:label done:label :}
+   9 5 LNAME LABEL@ TADR,
+   10 INSTALL-NAME-LEN MOVZ,
+   LFIND LABEL@ BL,
+   13 nf CBZ,
+   LAOTWIDGATE LABEL@ BL,
+   11 BLR,
+   done B,
+   nf LBL,  0 $52 MOVZ,  NR-EXIT-GROUP SYS,
+   done LBL, ;
+;package
+
 \ Seed the metabuild-captured AOT words at LEXIT: copy the blob, register N dict
 \ records, name-relocate the call sites, relocate DATA-address literals, advance CP.
 \ Region is RX at LEXIT so the pass toggles RW around all region writes and flushes
@@ -4944,6 +5005,8 @@ public
    CP CP 11 ADD,                                    \ code area top past the blob
    PROT:LCLOSE LABEL@ BL,                           \ region -> RX
    LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
+   AOT-SIG:PUBLISH,                                 \ the checker payload's address and length
+   AOT-SIG:INSTALL,                                 \ then its type registry, before any user token can declare a family
    EM-AOT-BOOTRUN                                   \ install the REPL (no source): LFIND+blr the entry words
    askip B,
    bad LBL,
@@ -5659,7 +5722,7 @@ public
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
    5 DICT-SIZE LIT64,  6 5 CMP,  C-LT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
-   5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
+   5 DICT-CAP LIT64,  15 5 CMP,  C-GT snbad BCOND,
    SP SP 64 SUBI,
    6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
    15 SP 32 STR,  21 SP 40 STR,  25 SP 48 STR,
@@ -5858,7 +5921,7 @@ public
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
          C-DIE-CODE-FULL
       cpok LBL,
-      9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots end at CFSTK-OFF
+      9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots end at CFSTK-OFF
          C-DIE-DICT-FULL
       ndok LBL,
       LTOK LABEL@ BL,
@@ -8578,6 +8641,7 @@ package LABELS
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
    LBL LAOTBOOTRUN !
+   LBL AOT-SIG:LLEN !  LBL AOT-SIG:LSPAN !  LBL AOT-SIG:LNAME !
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LAOTPROT !  LBL LPROTWIDQ !
    LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
@@ -8744,6 +8808,77 @@ public
 : EMIT-PWIN ( -- )   \ packed u32 window-relative protected WIDs
    AOT-PWIN-N @ 0 > IF AOT-PWIN-BUF@ AOT-PWIN-N @ 4 * BYTES, THEN ;
 ;package
+\ ---- the checker payload: one span, its own table, three sections -------------
+\ WHY IT IS ONE SPAN. The seed publishes it with the two DATA cells layout.f set
+\ aside (AOT-SIG:POOL-CELL and LEN-CELL), and the checker needs three: the
+\ signature rows, the strings they name, and the type registry the signatures
+\ resolve against. So the span carries its own table - a section count, then a
+\ row of (offset, length) each, then the sections - in the shape this file's own
+\ artifact reader uses, and src/core/checker.f refuses every malformation of it
+\ by name before it believes a byte.
+\
+\ IT IS ASSEMBLED INTO A BUFFER AND EMITTED ONCE. BYTES, pads its run to the
+\ four-byte grain, so three separate runs would leave gaps the table would have
+\ to describe; one run over one contiguous buffer leaves the offsets meaning
+\ exactly what they say. The buffer is the payload's own, sized from the three
+\ caps it concatenates.
+package AOT-SIG-PAYLOAD
+using AOT-BUF
+public
+
+3 constant SEC-N
+SEC-N 16 * 8 + constant TBL-BYTES
+TBL-BYTES  AOT-SIG-MAX SIG-ROW * +  AOT-SIG-STR-CAP +  AOT-REG-CAP +  constant CAP
+create BUF CAP allot
+variable LEN
+variable CUR
+
+: BUF@ ( -- ptr u8 ) BUF ;
+s" AOT-SIG-PAYLOAD:BUF@" s" -- ptr u8" TRUST
+
+: U64! ( n n -- ) {: v:n at:n :}
+   8 0 ?do  v i 8 * rshift $FF and  BUF@ at i + + c!  loop ;
+
+: SEC-PTR ( n -- ptr u8 ) {: k:n :}
+   k 0 = if AOT-SIG-BUF@ exit then
+   k 1 = if AOT-SIG-STR-BUF@ exit then
+   AOT-REG-BUF@ ;
+
+: SEC-LEN ( n -- n ) {: k:n :}
+   k 0 = if AOT-SIG-N @ SIG-ROW * exit then
+   k 1 = if AOT-SIG-STR-LEN @ exit then
+   AOT-REG-LEN @ ;
+
+\ Nothing to publish when nothing was captured, and that is the whole of the
+\ "an engine with no seed behaves exactly as it did" story: LEN stays 0, the
+\ seed skips, both cells stay 0 and the checker's intake is a cell read.
+: BUILD ( -- )
+   0 LEN !
+   AOT-SIG-N @ 0= AOT-SIG-STR-LEN @ 0= and AOT-REG-LEN @ 0= and if exit then
+   SEC-N 0 U64!
+   TBL-BYTES CUR !
+   SEC-N 0 ?do
+      CUR @  i 16 * 8 +  U64!
+      i SEC-LEN  i 16 * 16 +  U64!
+      CUR @ i SEC-LEN + CUR !
+   loop
+   CUR @ CAP > if
+      s" habu2: the checker payload exceeds its own buffer" ICODE-EXIT-RC die
+   then
+   TBL-BYTES CUR !
+   SEC-N 0 ?do
+      i SEC-PTR  BUF@ CUR @ +  i SEC-LEN  BYTE-COPY
+      CUR @ i SEC-LEN + CUR !
+   loop
+   CUR @ LEN ! ;
+
+\ BUILD is the caller's, so the length label and the bytes read one assembly
+\ rather than two: EMIT-AOT-SEED builds once, emits the length, then emits this.
+: EMIT ( -- )
+   LEN @ 0 > if BUF@ LEN @ BYTES, then ;
+
+;package
+
 : EMIT-AOT-SEED ( -- )
    LAOTCODELEN LABEL@ LBL,  AOT-BLOB-LEN @ DCQ,
    LAOTCODE LABEL@ LBL,
@@ -8775,7 +8910,11 @@ public
    AOT-WINDOW:LWIDW0 LABEL@ LBL,  AOT-WID-W0 @ DCQ,
    AOT-WINDOW:LWIDSPAN LABEL@ LBL,  AOT-WID-SPAN @ DCQ,
    AOT-WINDOW:LNPWIN LABEL@ LBL,  AOT-PWIN-N @ DCQ,
-   AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN ;
+   AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN
+   AOT-SIG-PAYLOAD:BUILD                          \ before the length label reads it
+   AOT-SIG:LLEN LABEL@ LBL,  AOT-SIG-PAYLOAD:LEN @ DCQ,
+   AOT-SIG:LNAME LABEL@ LBL,  AOT-SIG:INSTALL-NAME$ BYTES,
+   AOT-SIG:LSPAN LABEL@ LBL,  AOT-SIG-PAYLOAD:EMIT ;
 
 \ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
 \ (dot habu-checker-fitting-arity-70dc94e4). Pops a token name, runs the same
