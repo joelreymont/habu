@@ -80,7 +80,7 @@ hide-2b.f, prefix-mark-test.f, leaf-resolved.md) - do NOT fight
 the divergent conflicted twin; abandon it. Leg 4's pins get
 corrected against the REAL emitted source, mutation-backed.
 
-Claim: agent=single-prefix workspace=.jj-ws/habu-single-prefix
+Claim: agent=single-prefix-3 workspace=.jj-ws/habu-single-prefix2
 
 CHECKPOINT RULINGS 2026-08-17 (the root class named: the rewind
 must restore EVERY cursor it invalidates - it restored two of
@@ -154,4 +154,38 @@ PF-SCRUB + its counts, and the schema equivalent - the same
 bodies TF-RESTORE-TOP uses, read from the mark's own record, no
 depth change, no stack interaction. The mark's comment drops the
 transaction phrasing and states the counter-boundary fact.
+
+FIFTH-APPLICATION RULING 2026-08-17 (the warm-image declaration
+crash: TO-CORE restores four cursor families; RBF-PUSH at
+checker.f:12618 is the AUTHORITATIVE enumeration of ~18 a
+checker scope invalidates; a declaration reads exactly the
+unrestored ones and stores through a stale pointer into the
+baked read-only band - the root class a fifth time, at the
+checker's own core record):
+(1) THE CHECKER OWNS THE LIST, SO THE CHECKER OWNS THE SEAM.
+Do NOT enumerate eighteen numbers in prefix-rewind: mint ONE
+checker-owned depth-neutral pair (CHECKER-BOUND:MARK/REWIND or
+kin) DEFINED BESIDE RBF-PUSH/RESTORE-TOP whose record and
+restore bodies are derived from THE SAME field list - lockstep
+by construction, so an RBF field added later cannot silently
+miss the boundary. The index-retire seams (HIDX-SYMS-RETIRE,
+ASIG-SYMS-RETIRE) run BEFORE their counts move - the recorded
+lesson, now load-bearing twice.
+(2) PREFIX-BOUND and SCHEMA-REG COLLAPSE INTO IT - the four
+type-registry cursors are members of the full set; two
+overlapping seams is two authorities. The fourth cursor's
+machinery either becomes the general pair or defers to it;
+keep the TRUSTED-withholding form and its priced argument.
+(3) The mark's comment: the cursor COUNT comes off the seam,
+never a hand-written number - "four cursors" was honest for a
+day; the sentence that replaces it should not need replacing.
+(4) Residual 2 (the watermark probe blind to the boundary):
+the structural form is DATA not name - the probe reads a value
+in the mark's record that only the new seam writes; no lucky
+same-commit coupling; checkpoint if that needs anything
+unruled.
+(5) This is NOT a separate dot: it is the completing
+application of this dot's own invariant, in scope. The crash
+exists only in the lane's unmerged state - master never had
+TO-CORE - so nothing shipped is affected.
 
