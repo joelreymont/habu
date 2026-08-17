@@ -7364,3 +7364,59 @@ producibility, not on taste.
   actually forks, cost less than migrating a legacy fixture would
   have - and it made the registration provable by its own
   break-and-watch.
+
+## 2026-08-17 - the audit's rest (audit-exec, dot f1efea13)
+
+- **A guard kept for symmetry is a guard nobody asked what its removal
+  admits.** Two of the reader's ten unproven refusals fire only when the
+  file changes between its two passes, so no forged artifact reaches
+  either. Enumerating what each one ADMITS separated them: pass two's
+  header feeds NOTHING else - every decision is made from the copy pass
+  one verified - so `?SAME-HEADER` refused a state `?TABLE` and
+  `?PAYLOAD-AGAIN` already refuse against pass one's own digest, and it
+  went. `?PAYLOAD-AGAIN` survives because its removal admits a reader
+  that does not read what its own table promised. Same evidence, two
+  verdicts.
+- **A refusal split across two streams is half a refusal.** `type` writes
+  to stdout and `die`'s message to stderr, so a section refusal put its
+  subject on one and its sentence on the other: a caller keeping stderr
+  read " has a negative length" with no subject and a leading space. The
+  new cases found it by pinning `section blob has a negative length` as
+  ONE string; reverting the compose reds seven of them. Nothing else in
+  the tree had noticed, because every earlier case searched only the
+  stderr half.
+- **Derive the relationship instead of testing it.** `SKIP-SECTION`
+  refused a section wider than its scratch buffer. The only section it
+  skips has its length pinned by `?EXACT` before the loop begins, so the
+  branch was dead - and deleting it alone would have left a silent
+  overflow for whoever raises `PROT-WID-MAX`. Declaring
+  `CHUNK = max(PROT-BITS-BYTES, $10000)` makes the buffer wide enough by
+  construction and cannot rot; the case that forges the bitmap's width is
+  the pin's own standing proof.
+- **A leaf's QUANTITIES age as fast as its verdicts.** The audit recorded
+  ~85 duplicated lines between the bake tool and the wid builder. The
+  bake tool had since become a thin caller, so the real duplication was
+  ~30 lines between two DIFFERENT files. Re-measuring is a grep; taking
+  the number on faith would have refactored a file that no longer had the
+  problem. (Probe-the-leaf, for the ninth recorded time.)
+- **`dot off` is not "release the claim".** It closes and archives, so an
+  unfinished dot handed back reads as done and its leaf leaves the tree.
+  Reopening is a hand edit of the front matter plus moving the file out of
+  `.dots/archive/`. There is no release verb; write the leaf, then edit
+  the status.
+- **`jj describe` does not start a new change.** Item 3's edits landed
+  inside the already-described dots commit because the working copy was
+  still that commit. The recovery is save-restore-reapply: copy the files
+  aside, `jj restore --from @-` them, let the commit be what it claimed,
+  then `jj new` and copy back. Check `jj diff --stat` against the message
+  before every describe.
+- **The seeded product cannot capture its own chain, and says so.** Running
+  `tools/aot-chain-capture.f` under `bin/hb` refuses "the window is empty
+  - the chain did not load", because the product marks every merged
+  closure file `provided` and the `require` is a no-op. The capture host
+  `bin/hb-host` is the only engine that can run it. The refusal named the
+  cause exactly and was still misread once.
+- **The pipeline-RC trap, again, mid-lane.** `bin/hb --load ... | tail -2;
+  echo rc=$?` reported 0 for a build that exited 74. It cost a rerun, not
+  a wrong conclusion, only because the diagnostic text was also being
+  read. Capture to a variable and echo the rc on its own line.

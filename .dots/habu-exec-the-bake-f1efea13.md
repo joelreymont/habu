@@ -48,3 +48,30 @@ they are read before the producer key so a stale or foreign
 artifact is refused by the thing that is actually wrong instead of
 by "produced by a different engine". Keep them until a bump
 retires the section count for free.
+
+ITEMS 1/2/3 LANDED 2026-08-17 (audit-exec). Item 1: nine forged
+cases through the production reader, each redding only itself
+(ten-mutation table); ?SAME-HEADER deleted as subsumed by
+?PAYLOAD-AGAIN (pass two's header feeds nothing else);
+SKIP-SECTION's too-large refusal deleted as dead, CHUNK derived
+from PROT-BITS-BYTES instead; ?PAYLOAD-AGAIN given the suite's
+derived-mutant case. The cases also found a real defect - section
+refusals printed their subject to stdout and died to stderr - now
+composed into one sentence by SECT-DIE, whose revert reds seven
+cases. Item 2: BF-DRV-SOURCE-KEEP is the one split of the stdin
+driver, asked by all three generators; engine byte-identical.
+Item 3: AOT-ARM owns the window's eight cells and publishes
+WINDOW-OPEN / WINDOW-OPEN-UNARMED / WINDOW-CLOSE / WINDOW$; five
+hand-rolled latch quartets deleted; WID-SPAN and its mandatory
+refusal folded in, with the prelude-band suite's `nowid` mode
+deleted on producibility; every forge re-verified to still red.
+
+RESIDUAL FOR THE NEXT LANE:
+- The audit's 85-line splice figure was stale (the bake tool had
+  already become a thin caller); the real duplication was ~30
+  lines between build-fixpoint.f and aot-wid-build.f, and it is
+  gone. Nothing further is owed on item 2.
+- aot-decl.f:208-213 stale producer claim, still open from the
+  audit-fix pass.
+- Items A/B/C handed to this lane mid-flight (checker.f rollback
+  retire, the SIGSCOPE fixture, two one-liners) were NOT started.
