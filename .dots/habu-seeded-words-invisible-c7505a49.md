@@ -8,7 +8,7 @@ created-at: "\"2026-08-16T21:18:22.839047+02:00\""
 
 P1, blocks the product becoming bin/hb (re-minted 2026-08-16 - the first leaf was lost uncommitted in a working-copy jump, the jj-new lesson). DEFECT: an AOT-seeded word is in the runtime dictionary but not the checker's record set; ': T2 ( -- ) BPW-INSTALL ;' dies 'hook: non-certified definition' on TODAY's engine; one TRUST row closes it completely (measured) - the missing thing is a checker symbol + effect record, nothing else. THE BLIT SHAPE IS REFUTED (bake-chain-17 probe): USIGS is one of ~35 persistable checker surfaces (CHECKER-SNAPSHOT-PREPARE enumerates them); signature rows name TYPE-FAMILY IDS (EN.H, identity by id, 70 families created in-window, 3712 role-qualified refs) and SYM string POINTERS - a blitted USIGS names family 111 in an engine holding 49. Route 1 (full blit) = 7.9MB + the tree's first artifact pointer-rebase + ~18ms every boot; Route 2 (eager text replay) = 85ms every boot, priced out. RULED: ROUTE 3 - lazy intake at the checker's existing miss seam (checker.f:8354 DO-TOK, one leg before UNDEFERR consulting a baked name->signature-text pool): zero cost for boots that never name a chain word, 12.5us per distinct referenced word, NO id remap; capture audit = every window dict record has a signature row or the capture refuses by name. SUB-PROBE FIRST: render->re-parse fidelity for sig-less inferred words (REND-SIG refuses unmodeled tags and >26 tyvars) - measure the sig-less share of the 6798 and round-trip before committing. FAMILY REGISTRY travels WITH this fix via the existing REG-EXT-PERSIST machinery (tens of KB) and the acceptance GAINS a family-typed reproducer - a family-typed chain word called from checked code must work or refuse loudly (the lucky-value gap named at checkpoint); if the registry work explodes on contact, checkpoint. Acceptance: both original reproducers + the family-typed one green in both engines; bin/hb --load icode.f green in the product; signature-carry mutation reds by name; then increment 3 (stacked WIP cf4ad8b1) rebases, its battery re-runs ON the product, both land, e98b03d4 closes. Also: fix the leaf's stale 'AOT seed is TTY-ARMED' structural fact (seeds at prefix-stream end in every mode since 2026-08-11).
 
-Claim: agent=bake-chain-20 workspace=.jj-ws/habu-bake-chain
+Claim: agent=bake-chain-21 workspace=.jj-ws/habu-bake-chain
 
 SUB-PROBE GREEN 2026-08-16 (bake-chain-17, ruling 2). Over
 `require src/compiler/native/migrate.f` in a booted bin/hb: 2003
@@ -426,3 +426,319 @@ baked-no-chain 261.1 / install 6.74s -> 16.0s; this lane measured
 install 6.4s unbaked and 17.6s baked, the rest not yet re-measured),
 the certified-delta attribution (4474 -> 4571 on the host at 9219ec56),
 and increment 3's description still says "BLOCKED, do not merge".
+
+CLAUSE (0) VERDICT 2026-08-17 (bake-chain-20): FIXTURE ARTIFACT,
+and the anomaly was MIS-ATTRIBUTED - by me, in the flag that
+became the ruling's first clause. There is no packed value
+reading back as 0. ir-id.f:412 declares `13 constant FAMILY#`,
+and the failing assert is :556 `TF1 @ TF0 @ - FAMILY# T=` - a
+family-count DELTA - which reads 0. The 13 is FAMILY#, not the
+13 that ATTR-CASE packs at :157; the two are the same number by
+coincidence and I matched the wrong one by grepping `13 T=`,
+which :556 does not spell. The run confirms it: assert 1 carries
+an EMPTY label, and FAMILY-SURFACE is the one T= in the file
+with no T-LABEL above it. The `tfam: bad family id` that follows
+is :557's loop indexing TF0+0..12 past the live TFAM-N.
+ATTR-LOCAL IS CORRECT ON THE PRODUCT, proven outside the fixture
+with the fixture's own sequence (NEW-MODULE, PACK-ATTR 13,
+ATTR-LOCAL): local=13, owner-same=yes, count-n=14, local2=5, and
+bin/hb and hb-host agree on all four. No seed defect here, and
+no data word lost its value. WHY 0 IS LEGITIMATE UNDER SEEDING:
+BEFORE/AFTER latch TFAM-N around the fixture's require of the
+chain; seeded, every closure file is already `provided`, the
+require is a no-op, no family is declared between the latches,
+so the delta is 0 by construction. Subject = source-loading the
+chain -> bin/hb-host under clause (2).
+
+BUT CLAUSE (3) IS NOT ONE CLASS, AND THE REST OF IT IS A REAL
+DEFECT. The ~15 phases do not share ir-id.f's shape: ir-op.f,
+ir-build.f and native-tape.f carry no TFAM-N bracket at all and
+die `checker: a seeded signature does not parse in the engine it
+was baked into` - the same message the no-install mutation
+produced. The stored text for IR-SOURCE:SPAN is
+` IR-ID:ir-source-id n n -- span`; the source at
+src/compiler/ir/source.f:371 declares
+`( IR-ARENA:arena IR-ID:ir-source-id n n -- IR-SOURCE:span )`.
+So a seeded word's OWN signature does not round-trip: the
+leading IR-ARENA:arena is gone to a bare space and IR-SOURCE:span
+lost its qualifier, while IR-ID:ir-source-id kept one. Naming
+IR-SOURCE:SPAN by hand certifies on both engines, so the registry
+travelled - what fails is the STORE'S OWN RENDER of a signature
+whose types are package-qualified families.
+THE ACCEPTANCE GAP, same shape as increment C's: every
+family-typed case so far put the family in the TEST'S signature
+(SIGFT's IR-ARENA:view) and never exercised a SEEDED word whose
+own signature names one. Nothing covered the round trip.
+DOT: habu-seeded-sig-qualifier-round-trip. This BLOCKS the close.
+No fixture in this class is to be adapted around it.
+
+RENDER-DEFECT PROBE VERDICT 2026-08-17 (bake-chain-20): it is
+NONE OF THE THREE CANDIDATES, and the ruling's acceptance as
+written would pass while the bug remained. Evidence is the
+artifact's own bytes (chain-b.aot, strings -a):
+  line 7421  IR-ARENA:arena IR-ID:ir-source-id n n -- IR-SOURCE:span
+  line 7347  IR-ID:ir-source-id n n -- span
+  line 7350  span -- IR-ID:ir-source-id n n
+The FULL, CORRECT declared text for IR-SOURCE:SPAN is stored,
+intact and qualified. Nothing was truncated and no leading term
+was dropped. 7347/7350 are DIFFERENT ROWS - the names that
+follow them in the string section are `make` and `unmake`, the
+STRUCTURE-generated constructor and destructor for `span`, and
+their shapes match its three fields exactly (src
+IR-ID:ir-source-id, start n, len n). I had compared two
+unrelated rows.
+SO REND-SIG IS INNOCENT (the declared text never went near it),
+THE DECLARED-ARM TAKER IS INNOCENT (SGA/SGU stored the text
+verbatim - text-equality with the declaration HOLDS), and THE
+POOL WRITER IS INNOCENT (the leading space is the signature-text
+convention, present on every row).
+THE ACTUAL DEFECT: stored signature text is SCOPE-DEPENDENT and
+the intake re-parses it in the wrong scope. Naming a family bare
+from inside its own package is legal Habu - `make`/`unmake` in
+package ir-source say `span`, not `IR-SOURCE:span`, and they
+certified at definition. 153 of the 1087 stored signatures carry
+a bare non-primitive term (digest, arch, abi, view, arena, ctx,
+builder ...). Every one is unparseable outside its package.
+THE FIX IS THE PARSE SCOPE, NOT THE TEXT. The row already
+carries pkg-off beside name-off, sig-off and vis, and the intake
+already uses the package to re-intern the word where it lives;
+the signature parse must use that same package as its resolution
+scope. Qualifying the STRUCTURE generator's output instead would
+be a patch: it repairs generated words and leaves every
+hand-written bare-family signature broken.
+ACCEPTANCE AS RULED IS UNSOUND ON THIS AXIS: "the round-tripped
+text is EQUAL to the declaration" already holds - the text is
+byte-identical to what was declared. A case asserting it passes
+today and constrains nothing. The axis that does work: a seeded
+word whose own signature names its OWN package's family BARE
+must certify a caller in a FOREIGN scope; mutation = parse the
+stored text in the intake's scope instead of the row's, which
+reds it by name.
+
+SCOPE-PARSE IMPLEMENTATION + THE THIRD BYTE-DUMP VERDICT
+2026-08-17 (bake-chain-20): the ruling's fix landed in three
+parts, and running it home surfaced one more defect class,
+dotted habu-seeded-variant-ctor-c98479f0 and CHECKPOINTED.
+(1) sumtype.f TDGEN-OUT-TYPE now spells the generated
+declaration's own family QUALIFIED, the way TDGEN-FAM-REF
+already spelled every payload family. The bare tail was the one
+exception, and it is exactly the 153 bare rows: every one is
+generator output (make/unmake/eq/tag/ordinal); the tree's
+hand-written signatures qualify even in-package (measured:
+IR-ARENA uses IR-ARENA:view inside its own file). The pinned
+generated text in test/type-ctor-suite.f:1197 grew by its
+qualifier (pv:zpl) and now guards the spelling by mutation.
+(2) checker.f SIG-SCOPE$/SIGSCOPE!: the AOT intake parses a
+stored VERBATIM signature in the ROW'S package (armed only in
+CK-AOT-TAKE). For hand-written rows the row package IS the
+declaring scope. NOTE the ruling's premise fails for generated
+rows: their row package is the CTOR package (ir--source-span),
+not the scope the text renders in - which is why (1) is needed.
+(3) checker.f CHECK-CANDIDATE! now answers through CHECK-RETRY:
+a bare CHECK cannot see a seeded word never taken in-process,
+so ir-context.f's seal battery read verdict 1 (undefined) where
+the source engine reads 0 (refused). Snapshot/restore of the
+retry state makes nesting safe. All five seal candidates now
+answer identically on product and host, loud diagnostics equal.
+RESULTS: ir-op/ir-build/native-tape/ir-attr/ir-context/
+ir-source/native-feed green on the product; battery 29 -> 17
+RED (6 wrappers); zero seeded-signature parse failures remain.
+THE THIRD VERDICT (dump-the-record, again): scan-index's red is
+SCX-DIFF-SUMV (55), not USIG - the SVX ctor index never hears
+the seeded delta's bulk append. The honest one-line reset
+exposed habu-seeded-variant-ctor-c98479f0 (see the dot: carried
+SV.CTOR-SYM ids are capture-absolute into the UNALIGNED sym
+store; a colliding fresh sym inherits a stale variant;
+count-dependent; wedged the install until reverted). The reset
+is REVERTED and must land with the ctor-sym repair, never alone.
+scan-index stays red as that defect's honest symptom.
+
+CTOR-SYM REPAIR LANDED 2026-08-17 (bake-chain-20, per the ruling
+at 48651132): mechanism (b), zero-on-load, chosen by consumer
+shape - SVX-LINK and SUMV-FROM-CTOR-SYM already refuse to key on
+0, so absence is structural, and every seeded suite proves a
+seeded ctor's calls certify through its intaken signature row.
+REG-AOT-SCRUB zeroes SV.CTOR-SYM for exactly the rows the load
+appends (store 2, [base,base+cnt)); the SVX reset lands in the
+same change, safe now because the rows it exposes are scrubbed.
+MEASURED AFTER: the install fixpoint survives its own engine
+(the exact 11-file load that wedged), checker-scan-index is
+GREEN (the ds=55 differential agrees - first green since the
+capture began carrying the registry), ir-op/ir-context stay
+green, the count-collision reproducer stays clean, and a walk
+finds zero SUMV rows with ctor-sym >= SYM-N. Mutations, both
+run in this lane: reset-without-scrub is the wedge (install
+itself reds, exit 70); scrub-without-reset is the mask
+(scan-index's registered differential reds at ds=55). Each half
+is guarded by a registered gate that fails without the other.
+
+CTOR-SYM LANDED + PARTITION LANDED + HANDOFF 2026-08-17
+(bake-chain-20, context handoff; stack is 8 commits on 9e9263e7,
+nothing pushed, all in .jj-ws/habu-bake-chain):
+  3210c5a5 test: the bin-surface pins admit the kept capture host
+  9e33e19f test: partition fixtures by subject between product/host
+  7142d09c build: the install keeps the capture host beside the product
+  136ca999 tfam: no absolute foreign id survives the registry load
+  08f715cd checker: seeded rows parse in their own scope, candidates retry
+  c4e108d8 sumtype: spell the generated declaration's own family qualified
+  281da640 aot: install the seeded type registry at the seed point
+  331a549a + 8bdc7b85-line dots commits (verdicts, defect records)
+BATTERY: 29 -> 17 -> 10 -> 6 RED (3 wrappers + 3 leaves).
+PARTITION TABLE (subject -> engine, stated in each header):
+  test/aot-chain-capture-suite.f  capture+bake via HB$ -> bin/hb-host
+    (baked programs stay on the engines it bakes; producer-key
+    probe hashes HB$); GREEN on the schedule.
+  test/snapshot-writer.f  child build -> bin/hb-host default,
+    HABU_UNDER_TEST overrides; GREEN.
+  test/compiler/ir-id.f, ir-id-manifest.f, ir-id-proof.f  ->
+    thin -host drivers via test/host-run-lib.f (child verdict is
+    the verdict, output relayed); schedules updated in BOTH
+    test/gate-stdlib-cases.f and the tail-pure fork list; GREEN.
+  bin-surface pins (hb-baseline-contracts, bundle-lib-test) now
+  name bin/hb-host and pin the count at two; GREEN.
+CTOR-SYM: REG-AOT-SCRUB + SVX reset landed together (136ca999).
+scan-index GREEN (first since the registry travelled); the
+install survives its own engine; zero foreign ids in a walk.
+REMAINING RED, all pre-existing, none diagnosed to root yet:
+ (1) native checker diagnostics repair slice - throws -2201
+     (E-FS-OPEN) into expected-0 asserts; same code family as
+     GROUP stdlib/tool-doc. Suspect: a repair/doc tool opening a
+     path that exists only in a source tree arrangement - NOT
+     seeded-signature related (predates the fix chain unchanged).
+ (2) build-fixpoint-fixtures (tools/build-fixpoint-test.f): 10
+     fails on BOTH engines - emitted-source CONTAINS pins
+     (F41..F62) plus a snap child dying `hb: AOT call site
+     unresolved` exit 82. Red on both engines means NOT a
+     partition case; likely the emitted prelude changed shape
+     under the increments (fresh diagnosis owed).
+ (3) MAKI on the product: rc 77 `hb: dictionary full at:
+     DLT-ROOT-U` in maki/examples/nanogpt/data-loader-test.f;
+     host green. The seed registers the chain's ~6900 records,
+     and maki's largest example overflows the remaining dict
+     headroom. Fix shape: grow the dictionary capacity in the
+     layout (seed-affecting; install --force + full battery + a
+     fresh look at ENGINE-SIZE marks). Judge/lints/NUMBERS OF
+     RECORD and the certified walk (4474 -> 4574 + today's
+     commits) still owed; increment 3 stays BLOCKED until the
+     phases are green.
+
+REGISTRY TIMING RULING 2026-08-17 (bake-chain-20's blocker; the
+refusal is CORRECT, the lazy install's promise is not): the
+TYPE-FAMILY REGISTRY installs EAGERLY at the seed point -
+prefix-stream end, before any user token - where base equality
+is true BY CONSTRUCTION and no rollback frame is open (the
+install's own comment states why it latched nowhere; the seed
+point is the answer to that comment's stated reason). The
+SIGNATURE POOL stays lazy - the laziness was priced for 124KB
+of parse-heavy text and 6798 parses, not for 46KB of
+pointer-free rows. Id remap at intake stays REFUSED (ruled at
+the route decision). Regression: the three-case fixture (no
+family / one NEWTYPE ahead / four ahead - all green after) plus
+a registered case declaring a family THEN naming a chain word;
+mutations: eager install dropped reds the fixture; the
+base-equality refusal must STAY for a genuinely foreign base
+(the forge case keeps it live). Increment C's acceptance gap is
+recorded: its family-typed reproducer used a chain family but
+never declared one ahead - only the product could see this.
+
+FIXTURE-PARTITION RULING 2026-08-17 (the 29 remaining phases):
+(0) FIRST, before any adaptation: probe the ATTR-LOCAL anomaly -
+ir-id.f:157 packs 13, :158 reads 0 on the product. A packed
+value reading back 0 is potentially a data word whose VALUE did
+not travel (a seed defect class nothing yet audits). Nobody
+adapts a fixture in that family until this has its own verdict;
+if it is a defect, it gets a dot and blocks the close.
+(1) THE CAPTURE HOST IS KEPT: install retains bin/hb-host
+beside bin/hb (the build already emits it; never shipped is not
+never kept). Fixtures obtain a capture host by PATH, no
+rebuilding.
+(2) ONE PARTITION RULE covers both classes: a fixture whose
+SUBJECT is source-loading the chain (captures, load-time deltas,
+family-count brackets) runs against bin/hb-host; a fixture whose
+subject is chain BEHAVIOR runs against the product. The
+partition is per-fixture-subject, stated in each fixture's
+header, not per-suite.
+(3) The class that changed failure mode under the fix gets
+fresh diagnosis per the lane's own flag - the old diagnosis is
+void.
+
+SCOPE-PARSE RULING 2026-08-17 (the fork's byte-dump verdict; the
+render/taker/writer candidates are ALL innocent - the earlier
+"mangled" comparison was two unrelated rows, the STRUCTURE
+make/unmake pair whose shapes coincidentally matched): stored
+signature text is SCOPE-DEPENDENT - 153 of 1087 rows carry a
+bare non-primitive term legal in its own package and unparseable
+outside it. RULED: THE PARSE USES THE ROW'S PACKAGE as its
+resolution scope - pkg-off is already on the row and the intake
+already interns the word there; one authority, no text rewrite.
+Qualifying the STRUCTURE generator is REFUSED as the patch shape
+(repairs generated words, leaves hand-written bare signatures
+broken). THE RULED ACCEPTANCE IS CORRECTED - text-equal
+round-trip is VACUOUS (it already holds over a live bug); the
+axis that works: a seeded word whose own signature names its OWN
+package's family BARE must certify a caller in a FOREIGN scope;
+mutation = parse the stored text in the intake's scope instead
+of the row's, redding by name. Lane rule adopted into LESSONS at
+the close: DUMP THE RECORD BEFORE NAMING THE PRODUCER - twice
+this lane a symptom-read produced a wrong mechanism and the
+bytes settled it in minutes.
+
+CTOR-SYM RULING + PREMISE RATIFICATION 2026-08-17 (the fork's
+checkpoint; new defect class c98479f0 - seeded SUMV variant rows
+carry ABSOLUTE capture-engine sym ids, masked today by SVX-SYNC's
+deliberate direction gap; the honest reset converts the mask to
+active mis-binding and wedged the fixpoint - reverted, recovered,
+dotted):
+(1) THE INVARIANT RULES, the mechanism is the fork's to derive
+per consumer evidence: NO ABSOLUTE FOREIGN ID SURVIVES LOAD -
+whatever consumes SV.CTOR-SYM must see a TARGET-MINTED id or a
+structurally-absent marker, never a capture-engine number.
+Between (a) re-derive at load from the variant's (pkg,name) and
+(b) zero-on-load + re-intern at first use: pick by what the
+consumer's shape makes structural (if SVX treats 0 as absent
+and the first checked use interns through the existing intake,
+(b) is the lazy-where-priced shape; if the index must answer
+eagerly, (a) at the seed point beside the registry install).
+Checkpoint if both fail on contact. THE SVX RESET LANDS WITH
+THE REPAIR, never alone - ratified in the fork's words.
+scan-index stays red as the honest symptom until then.
+(2) PREMISE CORRECTION RATIFIED, reversing part of the scope-
+parse ruling on the fork's evidence: the 153 bare rows are ALL
+generator output, and the row package for generated words is
+the CTOR package, not the writing scope - so row-package parsing
+alone could never fix them. Hand-written signatures qualify even
+in-package (measured), so the generator was the SOLE producer of
+bare text, and TDGEN-OUT-TYPE qualifying the generated
+declaration's own family - matching its existing treatment of
+payload families - is fixing the only producer, not the patch
+the original refusal targeted. Both halves landed (generator
+qualification + SIGSCOPE row-package parse armed only in the
+intake) with the pv:zpl mutation pin.
+(3) The CHECK-CANDIDATE! retry-snapshot fix (seal candidates
+answering identically on product and host, caught by ir-context's
+seal battery) is noted as increment-C completion, not new scope.
+
+DICT-CAPACITY RULING 2026-08-17 (bake-chain-21's record: seed
+delta exactly 6892 records constant across all 193 files; the
+monolithic inventory needs 33,302; master was ALREADY under its
+own 25% standard unseeded at 26,410x1.25 - the bump was owed
+before the seed, the seed made it fail; and the STRUCTURAL
+SURPRISE - REGION holds dict AND code, so a dict lift alone
+leaves 36KB of code band):
+(1) DICT-CAP 65,536 - Q1 answered: NOT 49,152; picking a cap to
+dodge an encoder limit is the convenience the review gate
+refuses, and the HIDX-SLOTS = 2x identity stays whole. The
+786KB snapshot cost is real and noted, not deciding.
+(2) REGION $A00000 AND the named CODE-AREA constant - the
+coupling becomes a constant a reader sees instead of a
+subtraction nobody performs. Approved as the structural half.
+(3) The cascade as tabled: nine MOVZ sites to LIT64 (the
+HIDX-SLOTS precedent), the four-file mirror set (forth.fs,
+Reloc.v region_bytes, the frozen reloc-schema literal) - the
+parity gate enforces it in every direction.
+(Q2) THE HEADROOM PROBE IS APPROVED - it passes the new-
+mechanism test exactly: the failing probe is this very red (the
+wall blamed an innocent file, the prot-wid-probe shape), and
+the named first consumer already exists (maki/test.f's closing
+REQUIRE-ROOM). Dict and code headroom on one line, fail-closed
+at a floor stated as a fraction of the bound.
