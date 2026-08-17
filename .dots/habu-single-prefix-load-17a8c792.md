@@ -135,3 +135,23 @@ through the fixture's existing knob mechanism.
 (4) The REQUIRE-REG package-block self-resolution is RATIFIED -
 it is the PREFIX-MARK precedent applied, and the gate is green.
 
+RULING 1 REVISED 2026-08-17 (refuted on the bench: an unpaired
+EXT-SAVE leaves TFAM/SCHEMA one frame deeper than the core for
+the whole boot and the first post-mark declaration dies 7113 -
+the depth-lockstep assert doing its job): OPTION (B) - the
+DEPTH-NEUTRAL COUNTER PAIR. The boundary is a checker COUNTER
+boundary, not a transaction boundary - my phrasing was the wrong
+abstraction and the bench said so. The deciding argument is
+uniformity: the three landed cursors are each a RECORDED NUMBER
+restored through its owner's truncation seam; option (a) would
+make the fourth a live stack frame spanning the entire boot and
+payload, coupled to the rollback stack's lifetime and privates -
+structurally different from its siblings and fragile in exactly
+the way the lane flagged. (B) is the fourth application of the
+SAME shape: capture the five TFAM counters + the PF and SCH
+counts in the mark's record; rewind through TFAM-REWIND,
+PF-SCRUB + its counts, and the schema equivalent - the same
+bodies TF-RESTORE-TOP uses, read from the mark's own record, no
+depth change, no stack interaction. The mark's comment drops the
+transaction phrasing and states the counter-boundary fact.
+
