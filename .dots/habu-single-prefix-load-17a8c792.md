@@ -80,7 +80,7 @@ hide-2b.f, prefix-mark-test.f, leaf-resolved.md) - do NOT fight
 the divergent conflicted twin; abandon it. Leg 4's pins get
 corrected against the REAL emitted source, mutation-backed.
 
-Claim: agent=single-prefix-3 workspace=.jj-ws/habu-single-prefix2
+Claim: agent=single-prefix-4 workspace=.jj-ws/habu-single-prefix2
 
 CHECKPOINT RULINGS 2026-08-17 (the root class named: the rewind
 must restore EVERY cursor it invalidates - it restored two of
@@ -200,4 +200,25 @@ field count (every build host has taken the mark - it is
 top-level in lower-cert-seal - so zero means the boundary set
 never landed, not never-ran). Name-shaped guard for the
 name-shaped hazard, data for the fact; neither alone.
+
+RESIDUE FIX RULING 2026-08-18 (the DEV-A-P persisted malloc
+pointer, root-caused to the byte - 0x102fbc000 + 29x40 = the
+faulting address; master green BY ACCIDENT, the double load
+re-seeding a module whose own header promised a snapshot re-arm
+nothing implemented): THE FIX IS APPROVED AS PROPOSED - both
+ruled shapes were correctly refuted (not scope-recorded state;
+beside-TO-CORE rests on the lucky zero-events value), and the
+violated invariant is the SNAPSHOT's (a persisted image carries
+no host-process pointer), whose enforcement point and mechanism
+the tree already owns with three precedents (SEEN-, TDECL-
+SCRATCH-, and the protection chain's SNAPSHOT-RESET reaching
+participants by qualified call). The new public SNAPSHOT-RESET
+in decl-event.f + the one chain line in descending participant
+order (900->850->800) is the precedent applied, not new
+machinery; the event-log drop REPRODUCES master's observable
+contract (DEV-PUB-N=0 measured on shipped images). The
+ASLR-intersect discriminator (two runs of one image, persisted
+pointers identical, live ones vary) is adopted as the class's
+detection method - record it in docs/debugging.md with the
+landing.
 
