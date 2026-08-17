@@ -48,50 +48,24 @@ create BUF 8 allot
    v 1 +  v 2 * +  v 3 * +  v 5 * +  v 7 * +  v 11 * +  v 13 * +
    v 17 * +  v 19 * +  v 23 * +  v 29 * +  v 31 * + ;
 
-variable B0  variable B1  variable R0  variable R1  variable D0  variable D1
-variable W0  variable W1
-
 : MODE$ ( -- ptr u8 n ) s" HABU_BAND" GETENV ;
 : MODE= ( ptr u8 n -- bool ) {: a:ptr u:n :} MODE$ a u STR= ;
 
-\ Open the window and tell the engine where it starts, which is what makes the
-\ inliner decline to copy a body carrying an address the window cannot describe.
-: OPEN ( -- )
-   cp@ B0 !  ndict@ R0 !  here D0 !  AOT-ARM:WIDN W0 !
-   B0 @ D0 @ AOT-ARM:OPEN ;
-
-\ The same window, with the engine told nothing. Then the decline never fires and
-\ a copied prelude body keeps its address, which is the only way to put a
-\ pre-window DATA literal in front of the DATA audit.
-: OPEN-UNARMED ( -- )
-   cp@ B0 !  ndict@ R0 !  here D0 !  AOT-ARM:WIDN W0 !
-   0 0 AOT-ARM:OPEN ;
-
-: CLOSE ( -- ) cp@ B1 !  ndict@ R1 !  here D1 !  AOT-ARM:WIDN W1 ! ;
-
-\ The band this run declares. `real` is what a capture tool must declare; the
-\ other four are the ways of getting it wrong, each with its own refusal. `high`
-\ and `dhigh` move one mark each, so the two halves of the mark check are told
-\ apart: a record mark above the window, and a DATA mark above it.
+\ The band this run declares, read against the window AOT-ARM latched. `real` is
+\ what a capture tool must declare; the other three are the ways of getting it
+\ wrong, each with its own refusal. `high` and `dhigh` move one mark each, so the
+\ two halves of the mark check are told apart: a record mark above the window,
+\ and a DATA mark above it.
 : MARK ( -- )
    s" none" MODE= if exit then
-   s" empty" MODE= if R0 @ D0 @ AOT-CAPTURE:PRELUDE-MARK exit then
-   s" high" MODE= if R1 @ D0 @ AOT-CAPTURE:PRELUDE-MARK exit then
-   s" dhigh" MODE= if R0 @ D1 @ AOT-CAPTURE:PRELUDE-MARK exit then
+   s" empty" MODE= if AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK exit then
+   s" high" MODE= if AOT-ARM:R1 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK exit then
+   s" dhigh" MODE= if AOT-ARM:R0 @ AOT-ARM:D1 @ AOT-CAPTURE:PRELUDE-MARK exit then
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK ;
-
-\ The window's wordlist span, declared the same way and just as mandatory.
-\ `nowid` declares the band and stops there, so the two refusals have separate
-\ producers: `none` reaches the band's, `nowid` reaches this one.
-: WIDMARK ( -- )
-   s" none" MODE= if exit then
-   s" nowid" MODE= if exit then
-   W0 @ W1 @ AOT-CAPTURE:WID-SPAN ;
 
 : GO ( -- )
    MARK
-   WIDMARK
-   B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE
+   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    s" aot-band: captured recs=" type AOT-REC-N @ .
    s" sites=" type AOT-SITE-N @ . cr ;
 

@@ -10,7 +10,7 @@
 
 require test/aot-band-lib.f
 
-AOT-BAND:OPEN-UNARMED
+AOT-ARM:WINDOW-OPEN-UNARMED
 
 package AOT-BAND-DATA
 public
@@ -19,5 +19,5 @@ public
 
 ;package
 
-AOT-BAND:CLOSE
+AOT-ARM:WINDOW-CLOSE
 AOT-BAND:GO

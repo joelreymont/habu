@@ -1136,10 +1136,11 @@ DATA-SIZE 8 - constant XTCELL-OFF-MAX
 \ in every engine rather than only in a metabuild.
 \
 \ Written by AOT-ARM:OPEN (src/habu/aot-arm.f), the only word in the tree that
-\ writes either cell, and every producer calls it directly: the metabuild from the
-\ same lines of src/habu/stdin.f CAPTURE-REPL that latch STDIN-DRIVER:B0/D0,
-\ and a capture running inside a booted engine from its own prelude, because the
-\ window it arms opens before that engine's capture tooling exists. There is no
+\ writes either cell, and reached through AOT-ARM:WINDOW-OPEN, which latches the
+\ window's four coordinates and arms these two from the same call: the metabuild
+\ through src/habu/stdin.f CAPTURE-REPL, and a capture running inside a booted
+\ engine from its own prelude, because the window it arms opens before that
+\ engine's capture tooling exists. There is no
 \ close: the window stays open for the life of the metabuild process, because
 \ every later definition extends it - the recapture fixtures in
 \ test/aot-wid-build.f widen this same window rather than opening another - and

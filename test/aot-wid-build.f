@@ -317,16 +317,14 @@ create DRV-CH 1 allot
    FIXTURE-B$ DRV+  s"  ACAP-PWID-SET" DRV-LINE ;
 
 \ Re-run the real capture over the real window with the DATA span start moved.
-\ The window variables are stdin.f's own globals and still hold the span
-\ CAPTURE-REPL just used, so this is the production entry point (AOT-CAPTURE's
-\ public CAPTURE) called with a window that cannot describe its own contents -
-\ not a stand-in for one. The line is emitted inside the reopened AOT-CAPTURE
-\ package, where CAPTURE resolves bare.
+\ AOT-ARM's window cells still hold the span CAPTURE-REPL just latched, so raising
+\ D0 and handing the same WINDOW$ to the production entry point (AOT-CAPTURE's
+\ public CAPTURE) gives a window that cannot describe its own contents - a poked
+\ wrong value, not a stand-in. The line is emitted inside the reopened
+\ AOT-CAPTURE package, where CAPTURE resolves bare.
 : SKEW-BODY ( ptr u8 n -- ) {: v:ptr vu:n :}
-   s" STDIN-DRIVER:B0 @ STDIN-DRIVER:B1 @" DRV+
-   s"  STDIN-DRIVER:R0 @ STDIN-DRIVER:R1 @" DRV+
-   s"  STDIN-DRIVER:D0 @ " DRV+  v vu DRV+
-   s"  +  STDIN-DRIVER:D1 @  CAPTURE" DRV-LINE ;
+   s" AOT-ARM:D0 @ " DRV+  v vu DRV+  s"  + AOT-ARM:D0 !" DRV-LINE
+   s" AOT-ARM:WINDOW$ CAPTURE" DRV-LINE ;
 
 : PWID-BODY ( -- )
    OOR-ENV$ {: o:ptr ou:n :}
@@ -357,23 +355,23 @@ create DRV-CH 1 allot
 \ bake or the seed is stood in for.
 \ The boot-run list is re-stated because CAPTURE resets it, and the three REPL
 \ entries come first so the engine still installs its REPL before the fixture runs.
-\ HABU_AOT_WID_NARROW=N declares the window's wordlist span N ids short, so a
-\ wordlist the window really made falls outside what the capture is told it made
-\ - the fixture's package is the last thing the window creates, so the short end
-\ is the end that reaches it. The capture must refuse at build time, naming the
-\ record; the boot's own refusal never gets the chance.
-: WID-SPAN-LINE ( -- )
+\ HABU_AOT_WID_NARROW=N pokes the window's wordlist END back down by N after it
+\ was latched, so the window declares fewer ids than it really made - the
+\ fixture's package is the last thing the window creates, so the short end is the
+\ end that reaches it. The capture must refuse at build time, naming the record;
+\ the boot's own refusal never gets the chance.
+: WID-NARROW-LINE ( -- )
    s" HABU_AOT_WID_NARROW" GETENV {: n:ptr nu:n :}
-   nu 0= if
-      s" STDIN-DRIVER:W0 @ AOT-ARM:WIDN AOT-CAPTURE:WID-SPAN" DRV-LINE exit
-   then
-   s" STDIN-DRIVER:W0 @ AOT-ARM:WIDN " DRV+  n nu DRV+
-   s"  - AOT-CAPTURE:WID-SPAN" DRV-LINE ;
+   nu 0= if exit then
+   s" AOT-ARM:W1 @ " DRV+  n nu DRV+  s"  - AOT-ARM:W1 !" DRV-LINE ;
 
+\ WINDOW-CLOSE moves the window's three END cursors to the live ones and re-reads
+\ WIDN, leaving its START where CAPTURE-REPL put it - which is exactly the widened
+\ window these fixtures need, and one word instead of six cursor reads.
 : RECAPTURE-LINE ( -- )
-   WID-SPAN-LINE
-   s" STDIN-DRIVER:B0 @ cp@  STDIN-DRIVER:R0 @ ndict@" DRV+
-   s"  STDIN-DRIVER:D0 @ here  AOT-CAPTURE:CAPTURE" DRV-LINE ;
+   s" AOT-ARM:WINDOW-CLOSE" DRV-LINE
+   WID-NARROW-LINE
+   s" AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE" DRV-LINE ;
 
 : REPL-BOOTRUN-LINES ( -- )
    S\" s\" INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE

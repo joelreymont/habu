@@ -67,24 +67,18 @@ require src/habu/aot-arm.f
 package AOT-CHAIN
 public
 
-variable B0  variable B1      \ the window's code span
-variable R0  variable R1      \ its dictionary record span
-variable D0  variable D1      \ its DATA span
 variable Q0  variable Q1      \ its require-registry span: the closure it loaded
-variable W0  variable W1      \ its wordlist span
 
-\ Latch the four cursors and tell the engine where the window starts, which is
-\ what makes its compile-mode inliner emit a CALL to a pre-window body rather than
-\ copying it with the addresses it holds (habu2.f AOT-WINDOW:EMIT-OUTSIDE).
+\ The window's code, record, DATA and wordlist spans are AOT-ARM's, latched by
+\ the words that name the two moments; the require registry is this tool's own
+\ fifth axis, because it is the only process with a window to bracket it across.
 : OPEN ( -- )
-   cp@ B0 !  ndict@ R0 !  here D0 !  REQUIRE-N @ Q0 !  AOT-ARM:WIDN W0 !
-   B0 @ D0 @ AOT-ARM:OPEN ;
+   AOT-ARM:WINDOW-OPEN
+   REQUIRE-N @ Q0 ! ;
 
-\ WIDN is latched HERE and not read again at capture time: the tool's own tooling
-\ loads after this point and opens packages of its own, so the live counter has
-\ moved on by the time CAPTURE runs.
 : CLOSE ( -- )
-   cp@ B1 !  ndict@ R1 !  here D1 !  REQUIRE-N @ Q1 !  AOT-ARM:WIDN W1 !
+   AOT-ARM:WINDOW-CLOSE
+   REQUIRE-N @ Q1 !
    AOT-ARM:SIG-CLOSE ;
 
 ;package
@@ -134,7 +128,7 @@ $4A constant REFUSE-RC
    REFUSE-RC die ;
 
 : ?WINDOW ( -- )
-   R1 @ R0 @ <> if exit then
+   AOT-ARM:R1 @ AOT-ARM:R0 @ <> if exit then
    s" aot-chain-capture: the window is empty - the chain did not load" REFUSE-RC die ;
 
 create CHAIN-SHA 32 allot
@@ -199,7 +193,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 : ?RESOLVES ( ptr u8 n -- ) {: a:ptr u:n :}
    a u XREF-FIND-INDEX {: k:n :}
    k 0 < if a u s" does not resolve here, so it will not resolve there" RESOLVE-BAD then
-   k R0 @ >= k R1 @ < and if exit then
+   k AOT-ARM:R0 @ >= k AOT-ARM:R1 @ < and if exit then
    a u s" resolves to a word outside the capture window" RESOLVE-BAD ;
 
 : DECLARE ( ptr u8 n n -- ) {: a:ptr u:n cells:n :}
@@ -223,7 +217,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    REFUSE-RC die ;
 
 : ?TRAPPED ( -- )
-   B0 @ B1 @ D0 @ AOT-CAPTURE:TRAPPED-BELOW {: got:n :}
+   AOT-ARM:B0 @ AOT-ARM:B1 @ AOT-ARM:D0 @ AOT-CAPTURE:TRAPPED-BELOW {: got:n :}
    got CELLS-OWED @ = if exit then
    s" aot-chain-capture: pre-window declared cells holding a window address=" type got .
    s" aot-chain-capture: cells the declared installers refill=" type CELLS-OWED @ .
@@ -240,8 +234,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    ?WINDOW
    LATCH-CLOSURE
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
-   W0 @ W1 @ AOT-CAPTURE:WID-SPAN
-   B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE
+   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    BOOTRUN ;
 
 \ One `name=value` per line. `codespan`/`dataspan` are the window's own measured
@@ -264,12 +257,12 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    s" sigstr=" type AOT-SIG-STR-LEN @ .
    s" reg=" type AOT-REG-LEN @ .
    s" datasz=" type AOT-DATA-SIZE @ .
-   s" codespan=" type B1 @ B0 @ - .
-   s" dataspan=" type D1 @ D0 @ - .
-   s" bandrecs=" type R0 @ PRE-R @ - .
-   s" bandbytes=" type D0 @ PRE-D @ - .
-   s" widw0=" type W0 @ .
-   s" widspan=" type W1 @ W0 @ - .
+   s" codespan=" type AOT-ARM:B1 @ AOT-ARM:B0 @ - .
+   s" dataspan=" type AOT-ARM:D1 @ AOT-ARM:D0 @ - .
+   s" bandrecs=" type AOT-ARM:R0 @ PRE-R @ - .
+   s" bandbytes=" type AOT-ARM:D0 @ PRE-D @ - .
+   s" widw0=" type AOT-ARM:W0 @ .
+   s" widspan=" type AOT-ARM:W1 @ AOT-ARM:W0 @ - .
    s" pwin=" type AOT-PWIN-N @ .
    s" closure=" type AOT-IDENT:COUNT .
    s" first=" type 0 AOT-IDENT:PATH$ type cr

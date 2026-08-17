@@ -30,8 +30,6 @@
 \               refuses a BAND rather than refusing everything.
 \   call/none   a capture that never declared a band at all: refused. A producer
 \               that forgets the marks does not get the benefit of the doubt.
-\   call/nowid  the band declared and the wordlist span not: refused too, and by
-\               its own name, so the two mandatory declarations are told apart.
 \   call/high   a record mark above the window's own first record: refused, because
 \               a band that begins after the window it bounds describes nothing.
 \   call/dhigh  the same for the DATA mark, moved on its own so the two halves of
@@ -44,7 +42,13 @@
 \               inside it. The pair is what shows the band classifies the address
 \               rather than decorating every refusal with the same sentence.
 \
-\ Cost: seven child bin/hb runs, no metabuild. Registered as
+\ THE WORDLIST SPAN HAS NO CASE HERE, and that is a deletion rather than a gap:
+\ it used to be declared by a call of its own, so "the tool declared the band and
+\ forgot the span" was a state a fixture could reach. AOT-ARM:WINDOW-OPEN and
+\ WINDOW-CLOSE now latch the span with the other three coordinates, so no
+\ producer can leave it undeclared and the refusal that named it is gone with it.
+\
+\ Cost: six child bin/hb runs, no metabuild. Registered as
 \ `SUITE aot-prelude-band` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-prelude-band-suite.f
 
@@ -140,10 +144,6 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    s" a capture that declared no band at all is refused" T-LABEL
    s" aot-capture: capture without a declared prelude band" REFUSED ;
 
-: PROBE-WID-UNMARKED ( -- )
-   s" nowid" CALL-CASE
-   s" a capture that declared no wordlist span is refused" T-LABEL
-   s" aot-capture: capture without a declared wordlist span" REFUSED ;
 
 : PROBE-MARK-ABOVE ( -- )
    s" high" CALL-CASE
@@ -178,7 +178,6 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    PROBE-CALL-REFUSED
    PROBE-CALL-CAPTURED
    PROBE-UNMARKED
-   PROBE-WID-UNMARKED
    PROBE-MARK-ABOVE
    PROBE-DATA-MARK-ABOVE
    PROBE-DATA-REFUSED

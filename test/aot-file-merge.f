@@ -58,9 +58,6 @@ public
 
 $4A constant REFUSE-RC
 
-variable B0  variable B1  variable R0  variable R1
-variable D0  variable D1  variable W0  variable W1
-
 \ What the host held before the merge, read back afterwards to say what moved.
 variable H-BLOB   variable H-REC    variable H-SITE  variable H-NAMES
 variable H-DSITE  variable H-CSITE  variable H-XTOFF variable H-DATA
@@ -88,16 +85,9 @@ variable SUM      variable SUM2     variable CNT
 : W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
-: OPEN ( -- )
-   cp@ B0 !  ndict@ R0 !  here D0 !  AOT-ARM:WIDN W0 !
-   B0 @ D0 @ AOT-ARM:OPEN ;
-
-: CLOSE ( -- )
-   cp@ B1 !  ndict@ R1 !  here D1 !  AOT-ARM:WIDN W1 ! ;
-
 ;package
 
-AFM:OPEN
+AOT-ARM:WINDOW-OPEN
 
 \ ---- the window: one live producer of every axis the merge moves -------------
 \ A package of its own, so the capture has a wordlist to rebase; protected, so it
@@ -149,7 +139,7 @@ public
 
 ;package
 
-AFM:CLOSE
+AOT-ARM:WINDOW-CLOSE
 
 package AFM
 using AOT-BUF
@@ -168,8 +158,7 @@ create KEY 32 allot
 
 : CAPTURE-HOST ( -- )
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
-   W0 @ W1 @ AOT-CAPTURE:WID-SPAN
-   B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE
+   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    s" AFMW:INSTALL" AOT-CAPTURE:BOOTRUN+ ;
 
 variable T-SWID   variable T-SMOV

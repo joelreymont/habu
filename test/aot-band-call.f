@@ -8,7 +8,7 @@
 
 require test/aot-band-lib.f
 
-AOT-BAND:OPEN
+AOT-ARM:WINDOW-OPEN
 
 package AOT-BAND-CALL
 public
@@ -25,5 +25,5 @@ create WBUF 8 allot
 
 ;package
 
-AOT-BAND:CLOSE
+AOT-ARM:WINDOW-CLOSE
 AOT-BAND:GO

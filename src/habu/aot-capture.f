@@ -569,8 +569,6 @@ variable ACAP-RECMM                                           \ record-proof mis
 variable ACAP-PRE-R      \ first record index of the prelude band
 variable ACAP-PRE-D      \ first DATA address of the prelude band
 variable ACAP-MARKED?    \ the band was declared for this capture
-variable ACAP-WID-M0  variable ACAP-WID-M1   \ the window's wordlist span, as latched
-variable ACAP-WID-MARKED?
 variable ACAP-W-B0                       \ the window's code base, latched at CAPTURE
 variable ACAP-W-R0  variable ACAP-W-R1   \ its record span
 variable ACAP-W-D0                       \ its first DATA address
@@ -582,16 +580,6 @@ public
 \ producer with no prelude passes the window's own start, which is an empty band.
 : PRELUDE-MARK ( n n -- ) {: r:n d:n :}
    r ACAP-PRE-R !  d ACAP-PRE-D !  0 0= ACAP-MARKED? ! ;
-
-\ Declare the wordlist ids the window allocated: WIDN as it stood when the window
-\ opened, and as it stood when the window closed. Mandatory, like the band above -
-\ a capture that never declared it cannot tell a wordlist its own window made from
-\ one it inherited, and the two rebase differently.
-: WID-SPAN ( n n -- ) {: w0:n w1:n :}
-   w1 w0 < if
-      s" aot-capture: the window's wordlist span ends before it starts" 74 die
-   then
-   w0 ACAP-WID-M0 !  w1 ACAP-WID-M1 !  0 0= ACAP-WID-MARKED? ! ;
 
 private
 
@@ -1440,14 +1428,14 @@ public
    ACAP-PRE-D @ d0 > if
       s" aot-capture: prelude DATA mark above the window's DATA base" 74 die
    then
-   ACAP-WID-MARKED? @ 0= if
-      s" aot-capture: capture without a declared wordlist span" 74 die
+   AOT-ARM:W1 @ AOT-ARM:W0 @ < if
+      s" aot-capture: the window's wordlist span ends before it starts" 74 die
    then
    bstart ACAP-W-B0 !
    rstart ACAP-W-R0 !  rend ACAP-W-R1 !
    d0 ACAP-W-D0 !
-   ACAP-WID-M0 @ AOT-WID-W0 !
-   ACAP-WID-M1 @ ACAP-WID-M0 @ - AOT-WID-SPAN ! ;
+   AOT-ARM:W0 @ AOT-WID-W0 !
+   AOT-ARM:W1 @ AOT-ARM:W0 @ - AOT-WID-SPAN ! ;
 
 : CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart rstart rend d0 ACAP-BAND!

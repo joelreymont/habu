@@ -31,8 +31,13 @@
 \ EVERY CALLER CALLS THIS WORD, not a wrapper. src/habu/aot-capture.f briefly
 \ carried a capture-side WINDOW-OPEN that forwarded here; it was deleted, because
 \ a second name for a one-writer operation is the one thing that can grow a second
-\ body. Callers today: stdin.f CAPTURE-REPL, test/aot-band-lib.f (which also
-\ passes 0 0 on purpose, below), and the chain capture tool named above.
+\ body. What this file publishes now is the whole opening and closing of a window
+\ (WINDOW-OPEN / WINDOW-OPEN-UNARMED / WINDOW-CLOSE, at the foot), so a producer
+\ names the moment rather than spelling four cursor reads out; OPEN itself stays
+\ public because those three are its only callers and the arming is still one
+\ writer. Producers today: stdin.f CAPTURE-REPL, tools/aot-chain-capture.f,
+\ test/aot-band-lib.f (which uses the unarmed variant on purpose),
+\ test/aot-file-merge.f, and the driver text test/aot-wid-build.f generates.
 
 package AOT-ARM
 
@@ -100,8 +105,53 @@ public
 
 \ The engine's next wordlist id. It is read here, beside the window's other base
 \ cursors, because every producer needs it at the same two moments they need those
-\ - when the window opens and when it closes - and the pair is the wid span the
-\ capture declares (aot-capture.f WID-SPAN).
+\ - when the window opens and when it closes.
 : WIDN ( -- n ) LIVE WIDN-CELL + @ ;
+
+\ ---- the window's four coordinates -------------------------------------------
+\
+\ A CAPTURE WINDOW IS FOUR SPANS, NOT ONE, and every producer needs all four at
+\ the same two moments. Four of them wrote the pair of latch lines out by hand -
+\ the stdin driver, the chain capture tool, the band fixture and the merge
+\ fixture - and a fifth generated the text. Latching three of the four, or
+\ reading one of them at some other moment, is a silent wrong capture rather than
+\ a refusal: the wordlist counter especially, because a capture tool's own
+\ tooling opens packages AFTER the window closes, so a WIDN read at capture time
+\ answers for the tool and not for the window.
+variable B0  variable B1      \ the window's code span
+variable R0  variable R1      \ its dictionary record span
+variable D0  variable D1      \ its DATA span
+variable W0  variable W1      \ its wordlist span
+
+private
+
+: LATCH-OPEN ( -- ) cp@ B0 !  ndict@ R0 !  here D0 !  WIDN W0 ! ;
+
+public
+
+\ Open the window: latch the four cursors and arm the inliner against the two
+\ the engine keeps cells for.
+: WINDOW-OPEN ( -- )
+   LATCH-OPEN
+   B0 @ D0 @ OPEN ;
+
+\ The same window with the engine told nothing, so the inliner's decline never
+\ fires and a copied pre-window body keeps its address - the only way to put a
+\ pre-window DATA literal in front of the capture's DATA audit
+\ (test/aot-band-lib.f). The four coordinates are latched either way: an unarmed
+\ window is still a window being captured.
+: WINDOW-OPEN-UNARMED ( -- )
+   LATCH-OPEN
+   0 0 OPEN ;
+
+\ Where the window's definitions end. The wordlist counter is latched HERE for
+\ the reason above, and never read again at capture time.
+: WINDOW-CLOSE ( -- )
+   cp@ B1 !  ndict@ R1 !  here D1 !  WIDN W1 ! ;
+
+\ The window as aot-capture.f CAPTURE takes it. One reader, so a caller cannot
+\ hand the six in a different order than the next caller does.
+: WINDOW$ ( -- n n n n n n )
+   B0 @ B1 @  R0 @ R1 @  D0 @ D1 @ ;
 
 ;package

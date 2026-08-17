@@ -93,13 +93,6 @@ TRUSTED: EVAL-HOST ( ptr u8 n -- ) evaluate ;    \ compile a source buffer in th
 package STDIN-DRIVER
 public
 
-\ The window this driver opens, in the four coordinates a capture is declared in:
-\ code, records, DATA and wordlist ids. They are public because the widened
-\ re-captures in test/aot-wid-build.f start their windows where this one started
-\ its own, and a fixture that guessed those marks would be testing its guess.
-variable B0  variable R0  variable D0  variable W0
-variable B1  variable R1  variable D1  variable W1
-
 \ THE ARTIFACT THIS EMIT BAKES, and the engine whose key it has to carry. Empty
 \ is the CAPTURE HOST - today's bin/hb shape, the engine a build with no chain to
 \ merge emits - and a declared artifact is the PRODUCT. That is the only thing
@@ -147,15 +140,16 @@ variable DP0
    s" hb: the DATA cursor moved after the driver marked it; this emit would not reproduce"
    74 die ;
 
+\ The window's four coordinates are AOT-ARM's, latched by the two words that
+\ name the moments. The widened re-captures in test/aot-wid-build.f start their
+\ windows where this one started its own and read the same cells.
 : CAPTURE-REPL ( -- )
    READ-REPL                                     \ REPL sources -> HB scratch buffer
-   cp@ B0 !  ndict@ R0 !  here D0 !  AOT-ARM:WIDN W0 !
-   R0 @ D0 @ AOT-CAPTURE:PRELUDE-MARK             \ no prelude: this host compiles only what the target's prefix carries
-   B0 @ D0 @ AOT-ARM:OPEN                         \ the engine declines to inline pre-window chains from here on
+   AOT-ARM:WINDOW-OPEN                            \ the engine declines to inline pre-window chains from here on
+   AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK  \ no prelude: this host compiles only what the target's prefix carries
    HB@ HL @ EVAL-HOST                             \ compile the REPL in the host dictionary
-   cp@ B1 !  ndict@ R1 !  here D1 !  AOT-ARM:WIDN W1 !
-   W0 @ W1 @ AOT-CAPTURE:WID-SPAN
-   B0 @ B1 @  R0 @ R1 @  D0 @ D1 @  AOT-CAPTURE:CAPTURE
+   AOT-ARM:WINDOW-CLOSE
+   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    s" INSTALL" AOT-CAPTURE:BOOTRUN+                \ repl.f    -> REPL read hook + termios save
    s" BPW-INSTALL" AOT-CAPTURE:BOOTRUN+            \ debug-watch.f -> watch table init
    s" S-INSTALL" AOT-CAPTURE:BOOTRUN+ ;            \ stepper.f -> stepper read hook
