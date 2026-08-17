@@ -1282,6 +1282,10 @@ SUITE checker-dead-path
    test/checker-dead-path-suite.f
 ;SUITE
 
+SUITE checker-rollback-sig-pool
+   test/checker-rollback-sig-pool.f
+;SUITE
+
 SUITE snapshot-writer
    test/snapshot-writer.f
 ;SUITE

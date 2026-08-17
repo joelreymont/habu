@@ -5000,6 +5000,32 @@ PTR-VARIABLE ASIG-LAST-P
    sym ASIG-LAST-ROOM
    v ASIG-LAST-P @ sym cells + ! ;
 
+\ Forget one symbol's newest row. Bounded by the live capacity for the same
+\ reason ASIG-LAST@ is: a symbol above it never had an entry, and reaching for
+\ one through ASIG-LAST! would grow the arena to store a zero.
+: ASIG-LAST-FORGET ( n -- ) {: sym:n :}
+   sym ASIG-LAST-CAP-V @ >= IF EXIT THEN
+   0 sym ASIG-LAST! ;
+
+\ ASIG-SYMS-RETIRE ( n -- ) : forget the newest-row index for symbols [n, SYM-N)
+\ before a scope restores SYM-N. This store is keyed by SYMBOL ID and a rollback
+\ HANDS THOSE IDS BACK, so an entry written inside the popped scope answers for
+\ whatever word interns next at the same id - a different word's row, served as
+\ this one's. HIDX-SYMS-RETIRE is the same fact about the other sym-keyed table,
+\ and this is its twin; the two are called together from RBF-POP-WITH.
+\
+\ IT IS NOT THE ROWS THAT ARE RETIRED, only the index. A row records the name,
+\ package and visibility it was written under, so it stays true about the word it
+\ names whatever happens to the symbol table afterwards; what cannot survive a
+\ rewind is the CLAIM that row is symbol N's newest.
+: ASIG-SYMS-RETIRE ( n -- ) {: keep:n :}
+   ASIG-MAPPED @ 0= IF EXIT THEN
+   SYM-N @ 1 -
+   BEGIN dup keep >= WHILE
+      dup ASIG-LAST-FORGET
+      1 -
+   REPEAT drop ;
+
 \ Most significant byte first into the accumulator, so the shift is the running
 \ value's and not the byte's - the same shape aot-file.f U64@ uses, and getting
 \ it the other way round silently reads a different number.
@@ -12629,6 +12655,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.UEND @ USIGS-RESTORE-END
    r RBF.NEND @ NORET-RESTORE-END
    r RBF.SYMN @ HIDX-SYMS-RETIRE      \ pop retired hash-index rows before SYM-N rewinds
+   r RBF.SYMN @ ASIG-SYMS-RETIRE      \ ... and the signature pool's, keyed by the same ids
    r RBF.SYMN @ SYM-N !
    r RBF.SYMU @ SYM-STR-U !
    r RBF.CTN @ CTN !

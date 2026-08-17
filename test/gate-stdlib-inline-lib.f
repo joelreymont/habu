@@ -735,6 +735,10 @@ public
    s" test/create-axiom-test.f" GSI-FORK-INCLUDE
    s" test/checker-assert-test.f" GSI-FORK-INCLUDE
    s" test/checker-dead-path-suite.f" GSI-FORK-INCLUDE
+   \ Forked with the rest of the checker family: it arms the signature pool and
+   \ opens a rollback scope, which is process-wide checker state no in-process
+   \ neighbour should inherit.
+   s" test/checker-rollback-sig-pool.f" GSI-FORK-INCLUDE
    s" test/checker-verify-pkg-scope.f" GSI-FORK-INCLUDE
    s" test/checker-replay-pkg-state.f" GSI-FORK-INCLUDE
    s" test/prim-link-test.f" GSI-FORK-INCLUDE
