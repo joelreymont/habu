@@ -23,3 +23,28 @@ parenthetical corrected in passing. Engine delta = the 16KiB
 PWIN allot, isolation-proven. REMAINING: items 1/2/3/7/8 after
 bake-chain-16 lands; plus the aot-decl.f:208-213 stale
 producer claim found as residual.
+
+ITEM 7 (O-SECTIONS) JUDGED 2026-08-17 (audit-exec): NOT WORTH A
+BUMP OF ITS OWN. The field, its hard-equality check and its forged
+case have to go together, and the header layout is VERSION's, so
+the fold lands at v5 - WHENEVER A REAL CHANGE FORCES ONE. Nothing
+here forces one: the whole saving is eight header bytes and one
+check, against a recapture of every artifact in flight.
+
+AND THE DRIFT PROTECTION IS NOT THE VERSION EQUALITY. Nothing
+makes a SEC-N change bump VERSION - the two constants sit in one
+file with no rule between them - so version equality does not
+subsume the field. THE PRODUCER KEY DOES. CHECK-HEADER accepts
+only an artifact whose 32-byte producer key equals the one the
+caller hands in (the metabuild's key for the capture host it just
+emitted; the read fixture's key for the engine it is running), so
+an accepted artifact was written by the exact binary that is
+reading it - which compiled this SEC-N. A section count that
+differs is unreachable behind that check, and so, for that matter,
+are a wrong magic, version and target.
+
+WHAT THE FOUR EARLY FIELDS BUY IS ORDER, and that is a real job:
+they are read before the producer key so a stale or foreign
+artifact is refused by the thing that is actually wrong instead of
+by "produced by a different engine". Keep them until a bump
+retires the section count for free.
