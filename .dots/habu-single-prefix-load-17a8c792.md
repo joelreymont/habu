@@ -111,3 +111,27 @@ this is 8010f67c's dividend arriving early (the dedup the
 composite policy predicted); the unproven recovery path is
 53355d74's standing ground, stated not claimed.
 
+FOURTH-CURSOR RULINGS 2026-08-17 (the invariant completing
+itself - fixing cursor 3 moved the failure to cursor 4, and the
+deletion alternative was refuted by measurement):
+(1) YES - the mark becomes the checker's own COMBINED FRAME:
+EXT-SAVE at the boundary, EXT-RESTORE in the rewind (the
+type-family registry's own seam, per its comment naming PF-*/
+SCH-* as participants with EXT-SAVE/RESTORE as the pair). This
+is the FOURTH application of the one invariant - every cursor
+restored by its owner's truncation word - not a new idea. The
+mark's comment states it: THE CORE-PREFIX BOUNDARY IS A CHECKER
+TRANSACTION BOUNDARY. Checkpoint if the AOT capture window's
+bracketing of the same counters surfaces anything unruled.
+(2) verify-prim-test uses the EARLIEST-MARKER rewind hide.f
+already keeps for the recovery mirror - its subject IS a
+deliberately cold, unmarked checker, i.e. the recovery-host
+shape, and the header says so. No second PRODUCTION shape is
+minted; the seal ruling's refusal covered production, not a
+harness whose subject is the cold form itself.
+(3) aot-wid: derive the control id from the shipped engine's
+live band in the suite and THREAD it into the spawned build
+through the fixture's existing knob mechanism.
+(4) The REQUIRE-REG package-block self-resolution is RATIFIED -
+it is the PREFIX-MARK precedent applied, and the gate is green.
+
