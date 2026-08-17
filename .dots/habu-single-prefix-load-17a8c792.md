@@ -81,3 +81,33 @@ the divergent conflicted twin; abandon it. Leg 4's pins get
 corrected against the REAL emitted source, mutation-backed.
 
 Claim: agent=single-prefix workspace=.jj-ws/habu-single-prefix
+
+CHECKPOINT RULINGS 2026-08-17 (the root class named: the rewind
+must restore EVERY cursor it invalidates - it restored two of
+three):
+(1) THE THIRD MARK: yes - capture REQUIRE-N at the boundary and
+rewind the include registry through its own seam, the exact
+mirror of the USIGS lesson (a raw store is not a truncation; the
+registry's seam repairs what a bare REQUIRE-N ! would not). The
+seam is a new public word where the registry lives; the hazard
+judgment (include/included already bypass the registry) is
+adopted; checkpoint if the ownership gate refuses the shape.
+An image must never claim to provide what the rewind removed.
+(2) verify-prim-test: EXPORT BF-APPEND-CHECKER-BOOT for the
+harness (a named consumer building a legitimately unmarked
+cold-load), AND the narrowing is RECORDED AS INTENDED for
+production payloads - a payload executing internal-marked
+definers was an escape, not a feature.
+(3) aot-wid control ids: derive, never pin - approved.
+(4) THE SEAL DEVIATION IS APPROVED as the ruling's own logic at
+the breaking site: the rewind restores the floor it moved, same
+cell, under the build latch, measured STRICTER than master
+(306->239 forgettable window). Two residuals dotted separately.
+(5) prefix-rewind.f approved - hide.f is deliberately unpackaged
+for the recovery mirror's design (measured refusal), and the
+split sharpens it: hide.f IS the recovery host's surface.
+(6) The arena cap HALVING is approved with its caveat recorded -
+this is 8010f67c's dividend arriving early (the dedup the
+composite policy predicted); the unproven recovery path is
+53355d74's standing ground, stated not claimed.
+
