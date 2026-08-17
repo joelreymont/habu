@@ -189,3 +189,15 @@ application of this dot's own invariant, in scope. The crash
 exists only in the lane's unmerged state - master never had
 TO-CORE - so nothing shipped is affected.
 
+PROBE MECHANISM RULING 2026-08-18 (residual 4 - a build tool
+must read a number that may not exist on an old host): BOTH
+LAYERS, each doing its own job - CHECKER-RESOLVES? on
+PREFIX-MARK:CURSORS guards the COMPILE hazard (an old host
+cannot even compile the call - the resolvability check is the
+existence guard, which is what it is FOR), then evaluate the
+call and require the VALUE nonzero and equal to the seam's own
+field count (every build host has taken the mark - it is
+top-level in lower-cert-seal - so zero means the boundary set
+never landed, not never-ran). Name-shaped guard for the
+name-shaped hazard, data for the fact; neither alone.
+
