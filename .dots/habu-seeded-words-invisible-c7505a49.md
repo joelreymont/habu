@@ -349,3 +349,15 @@ wall blamed an innocent file, the prot-wid-probe shape), and
 the named first consumer already exists (maki/test.f's closing
 REQUIRE-ROOM). Dict and code headroom on one line, fail-closed
 at a floor stated as a fraction of the bound.
+
+PUBLIC-SIGNATURES RULING 2026-08-17 (2f9cc56d; the tool walks
+the LIVE engine, so a seeded product publishes 386 defs where
+the host publishes 13 - misattributed provenance, not a cap
+problem; cap growth stays refused): THE LOAD-TIME HIGH-WATER
+BRACKET - the tool publishes families created AFTER its scan's
+load began, the same bracket discipline the whole campaign uses.
+That IS "declared by this load," structurally - the
+declared-in-file parse would be new machinery answering the same
+question by text. The diag gate's golden follows the contract:
+update it WITH attribution (each removed row named as
+seed-provenance), never silently.
